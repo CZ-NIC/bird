@@ -901,6 +901,7 @@ krt_reconfigure(struct proto *p, struct proto_config *new)
 
   return o->scan_time == n->scan_time
     && o->learn == n->learn		/* persist needn't be the same */
+    && o->devroutes == n->devroutes
     && krt_set_params_same(&o->set, &n->set)
     && krt_scan_params_same(&o->scan, &n->scan)
     ;
