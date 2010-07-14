@@ -871,7 +871,7 @@ undefined value is regarded as empty clist for most purposes.
 	The name of the protocol which the route has been imported from. Read-only.
 
 	<tag><m/enum/ source</tag>
-	what protocol has told me about this route. Possible values: <cf/RTS_DUMMY/, <cf/RTS_STATIC/, <cf/RTS_INHERIT/, <cf/RTS_DEVICE/, <cf/RTS_STATIC_DEVICE/, <cf/RTS_REDIRECT/, <cf/RTS_RIP/, <cf/RTS_OSPF/, <cf/RTS_OSPF_IA/, <cf/RTS_OSPF_EXT/, <cf/RTS_BGP/, <cf/RTS_PIPE/.
+	what protocol has told me about this route. Possible values: <cf/RTS_DUMMY/, <cf/RTS_STATIC/, <cf/RTS_INHERIT/, <cf/RTS_DEVICE/, <cf/RTS_STATIC_DEVICE/, <cf/RTS_REDIRECT/, <cf/RTS_RIP/, <cf/RTS_OSPF/, <cf/RTS_OSPF_IA/, <cf/RTS_OSPF_EXT1/, <cf/RTS_OSPF_EXT2/, <cf/RTS_BGP/, <cf/RTS_PIPE/.
 
 	<tag><m/enum/ cast</tag>
 
