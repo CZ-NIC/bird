@@ -343,7 +343,7 @@ rte_validate(rte *e)
   int c;
   net *n = e->net;
 
-  if (ipa_nonzero(ipa_and(n->n.prefix, ipa_not(ipa_mkmask(n->n.pxlen)))))
+  if ((n->n.pxlen > BITS_PER_IP_ADDRESS) || !ip_is_prefix(n->n.prefix,n->n.pxlen))
     {
       log(L_BUG "Ignoring bogus prefix %I/%d received via %s",
 	  n->n.prefix, n->n.pxlen, e->sender->name);

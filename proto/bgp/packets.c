@@ -219,7 +219,7 @@ bgp_encode_prefixes(struct bgp_proto *p, byte *w, struct bgp_bucket *buck, unsig
   ip_addr a;
   int bytes;
 
-  while (!EMPTY_LIST(buck->prefixes) && remains >= 5)
+  while (!EMPTY_LIST(buck->prefixes) && remains >= (1+sizeof(ip_addr)))
     {
       struct bgp_prefix *px = SKIP_BACK(struct bgp_prefix, bucket_node, HEAD(buck->prefixes));
       DBG("\tDequeued route %I/%d\n", px->n.prefix, px->n.pxlen);
