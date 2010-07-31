@@ -145,7 +145,7 @@ get_seqnum(struct top_hash_entry *en)
 
   if (en->lsa.sn == LSA_MAXSEQNO)
   {
-    log(L_WARN, "OSPF: Premature origination of LSA (Type: %04x, Id: %R, Rt: %R)",
+    log(L_WARN "OSPF: Premature origination of LSA (Type: %04x, Id: %R, Rt: %R)",
 	en->lsa.type, en->lsa.id, en->lsa.rt);
     return LSA_INITSEQNO;
   }
@@ -657,7 +657,7 @@ check_sum_lsa_same(struct top_hash_entry *en, u32 metric)
 {
   /* Netmask already checked in check_sum_net_lsaid_collision() */
   struct ospf_lsa_sum *sum = en->lsa_body;
-  return (sum->metric == metric);
+  return (en->lsa.sn != LSA_MAXSEQNO) && (sum->metric == metric);
 }
 
 #define check_sum_net_lsa_same(en,metric) \
@@ -700,7 +700,7 @@ check_sum_net_lsa_same(struct top_hash_entry *en, u32 metric)
 {
   /* Prefix already checked in check_sum_net_lsaid_collision() */
   struct ospf_lsa_sum_net *sum = en->lsa_body;
-  return (sum->metric == metric);
+  return (en->lsa.sn != LSA_MAXSEQNO) && (sum->metric == metric);
 }
 
 static inline void *
@@ -720,7 +720,8 @@ static inline int
 check_sum_rt_lsa_same(struct top_hash_entry *en, u32 drid, u32 metric, u32 options)
 {
   struct ospf_lsa_sum_rt *sum = en->lsa_body;
-  return (sum->options == options) && (sum->metric == metric) && (sum->drid == drid);
+  return (en->lsa.sn != LSA_MAXSEQNO) && (sum->options == options) &&
+    (sum->metric == metric) && (sum->drid == drid);
 }
 
 #endif
@@ -886,7 +887,8 @@ check_ext_lsa(struct top_hash_entry *en, struct fib_node *fn, u32 metric, ip_add
   if  (fn->pxlen != ipa_mklen(ext->netmask))
     return -1;
 
-  return (ext->metric == metric) && (ext->tag == tag) && ipa_equal(ext->fwaddr,fwaddr);
+  return (en->lsa.sn != LSA_MAXSEQNO) && (ext->metric == metric) &&
+    (ext->tag == tag) && ipa_equal(ext->fwaddr,fwaddr);
 }
 
 #else /* OSPFv3 */
@@ -937,6 +939,9 @@ check_ext_lsa(struct top_hash_entry *en, struct fib_node *fn, u32 metric, ip_add
   /* LSAID collision */
   if ((fn->pxlen != pxlen) || !ipa_equal(fn->prefix, prefix))
     return -1;
+
+  if (en->lsa.sn == LSA_MAXSEQNO)
+    return 0;
 
   u32 rt_metric = ext->metric & METRIC_MASK;
   ip_addr rt_fwaddr = IPA_NONE;
