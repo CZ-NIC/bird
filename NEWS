@@ -1,3 +1,8 @@
+Version 1.2.4 (2010-08-03)
+  o Added 'show memory' command.
+  o Important bugfix in IPv6 BGP.
+  o Several minor bugfixes.
+
 Version 1.2.3 (2010-06-01)
   o Pattern matching for community lists.
   o Many fixes in OSPF protocol (esp. in multi-areas and vlinks).
