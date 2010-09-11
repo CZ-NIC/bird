@@ -919,6 +919,9 @@ interpret(struct f_inst *what)
       runtime("Can't add/delete to non-clist");
 
     struct f_val dummy;
+    u16 op = what->aux;
+    i = 0;
+
     if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
       i = v2.val.i;
 #ifndef IPV6
@@ -926,13 +929,13 @@ interpret(struct f_inst *what)
     else if (v2.type == T_IP)
       i = ipa_to_u32(v2.val.px.ip);
 #endif
-    else if ((v2.type == T_SET) && (what->aux == 'd') && clist_set_type(v2.val.t, &dummy))
-      what->aux = 'D';
+    else if ((v2.type == T_SET) && (op == 'd') && clist_set_type(v2.val.t, &dummy))
+      op = 'D';
     else
       runtime("Can't add/delete non-pair");
 
     res.type = T_CLIST;
-    switch (what->aux) {
+    switch (op) {
     case 'a': res.val.ad = int_set_add(f_pool, v1.val.ad, i); break;
     case 'd': res.val.ad = int_set_del(f_pool, v1.val.ad, i); break;
     case 'D': res.val.ad = clist_del_matching(f_pool, v1.val.ad, v2.val.t); break;
