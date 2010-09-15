@@ -119,6 +119,13 @@ static inline int int_cmp(int i1, int i2)
   else return 1;
 }
 
+static inline int uint_cmp(unsigned int i1, unsigned int i2)
+{
+  if (i1 == i2) return 0;
+  if (i1 < i2) return -1;
+  else return 1;
+}
+
 /**
  * val_compare - compare two values
  * @v1: first value
@@ -144,9 +151,9 @@ val_compare(struct f_val v1, struct f_val v2)
 #ifndef IPV6
     /* IP->Quad implicit conversion */
     if ((v1.type == T_QUAD) && (v2.type == T_IP))
-      return int_cmp(v1.val.i, ipa_to_u32(v2.val.px.ip));
+      return uint_cmp(v1.val.i, ipa_to_u32(v2.val.px.ip));
     if ((v1.type == T_IP) && (v2.type == T_QUAD))
-      return int_cmp(ipa_to_u32(v1.val.px.ip), v2.val.i);
+      return uint_cmp(ipa_to_u32(v1.val.px.ip), v2.val.i);
 #endif
 
     debug( "Types do not match in val_compare\n" );
@@ -156,9 +163,10 @@ val_compare(struct f_val v1, struct f_val v2)
   case T_ENUM:
   case T_INT:
   case T_BOOL:
+    return int_cmp(v1.val.i, v2.val.i);
   case T_PAIR:
   case T_QUAD:
-    return int_cmp(v1.val.i, v2.val.i);
+    return uint_cmp(v1.val.i, v2.val.i);
   case T_IP:
     return ipa_compare(v1.val.px.ip, v2.val.px.ip);
   case T_PREFIX:
