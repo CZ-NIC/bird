@@ -921,6 +921,7 @@ rt_unlock_table(rtable *r)
       DBG("Deleting routing table %s\n", r->name);
       rem_node(&r->n);
       fib_free(&r->fib);
+      rfree(r->gc_event);
       mb_free(r);
       config_del_obstacle(conf);
     }
