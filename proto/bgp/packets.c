@@ -222,10 +222,10 @@ bgp_encode_prefixes(struct bgp_proto *p, byte *w, struct bgp_bucket *buck, unsig
   while (!EMPTY_LIST(buck->prefixes) && remains >= (1+sizeof(ip_addr)))
     {
       struct bgp_prefix *px = SKIP_BACK(struct bgp_prefix, bucket_node, HEAD(buck->prefixes));
-      DBG("\tDequeued route %I/%d\n", px->n.prefix, px->n.pxlen);
+      DBG("\tDequeued route %F\n", &px->n);
       *w++ = px->n.pxlen;
       bytes = (px->n.pxlen + 7) / 8;
-      a = px->n.prefix;
+      a = *FPREFIX_IP(&px->n);
       ipa_hton(a);
       memcpy(w, &a, bytes);
       w += bytes;
@@ -242,7 +242,7 @@ bgp_flush_prefixes(struct bgp_proto *p, struct bgp_bucket *buck)
   while (!EMPTY_LIST(buck->prefixes))
     {
       struct bgp_prefix *px = SKIP_BACK(struct bgp_prefix, bucket_node, HEAD(buck->prefixes));
-      log(L_ERR "%s: - route %I/%d skipped", p->p.name, px->n.prefix, px->n.pxlen);
+      log(L_ERR "%s: - route %F skipped", p->p.name, &px->n);
       rem_node(&px->bucket_node);
       fib_delete(&p->prefix_fib, px);
     }

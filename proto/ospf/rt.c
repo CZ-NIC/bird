@@ -921,7 +921,7 @@ decide_sum_lsa(struct ospf_area *oa, ort *nf, int dest)
     return 1;
 
   struct area_net *anet = (struct area_net *)
-    fib_route(&nf->n.oa->net_fib, nf->fn.prefix, nf->fn.pxlen);
+    fib_route(&nf->n.oa->net_fib, &nf->fn.prefix, nf->fn.pxlen);
 
   /* Condensed area network found */ 
   if (anet)
@@ -1140,7 +1140,7 @@ ospf_rt_abr1(struct proto_ospf *po)
     /* Compute condensed area networks */
     if (nf->n.type == RTS_OSPF)
     {
-      anet = (struct area_net *) fib_route(&nf->n.oa->net_fib, nf->fn.prefix, nf->fn.pxlen);
+      anet = (struct area_net *) fib_route(&nf->n.oa->net_fib, &nf->fn.prefix, nf->fn.pxlen);
       if (anet)
       {
 	if (!anet->active)

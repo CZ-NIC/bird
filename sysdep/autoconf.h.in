@@ -42,6 +42,11 @@
 #undef CONFIG_BGP
 #undef CONFIG_OSPF
 #undef CONFIG_PIPE
+#undef CONFIG_LDP
+
+/* Features compiled in */
+#undef MPLS
+#undef MPLS_VPN
 
 /* We have <syslog.h> and syslog() */
 #undef HAVE_SYSLOG

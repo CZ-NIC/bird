@@ -101,7 +101,7 @@ krt_parse_entry(byte *ent, struct krt_proto *p)
 	a.iface = ng->iface;
       else
 	{
-	  log(L_WARN "Kernel told us to use non-neighbor %I for %I/%d", gw, net->n.prefix, net->n.pxlen);
+	  log(L_WARN "Kernel told us to use non-neighbor %I for %F", gw, &net->n);
 	  return;
 	}
       a.dest = RTD_ROUTER;
@@ -120,7 +120,7 @@ krt_parse_entry(byte *ent, struct krt_proto *p)
     }
   else
     {
-      log(L_WARN "Kernel reporting unknown route type to %I/%d", net->n.prefix, net->n.pxlen);
+      log(L_WARN "Kernel reporting unknown route type to %F", &net->n);
       return;
     }
 

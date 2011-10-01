@@ -107,7 +107,7 @@ listen_opt:
 CF_ADDTO(conf, newtab)
 
 newtab: TABLE SYM {
-   rt_new_table($2);
+   rt_new_table($2, RT_IP);
    }
  ;
 

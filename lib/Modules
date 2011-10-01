@@ -10,6 +10,8 @@ ipv6.h
 ipv4.c
 ipv4.h
 #endif
+addrs.c
+addrs.h
 lists.c
 lists.h
 md5.c

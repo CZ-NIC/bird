@@ -73,9 +73,22 @@ fib_ht_free(struct fib_node **h)
 }
 
 static inline unsigned
-fib_hash(struct fib *f, ip_addr *a)
+fib_hash(struct fib *f, void *a)
 {
-  return ipa_hash(*a) >> f->hash_shift;
+  u32 *v, x;
+  int i;
+
+  if (f->hash_f)
+    return f->hash_f(a);
+
+  if (f->addr_type == RT_IP)
+    return ipa_hash(*((ip_addr *)a)) >> f->hash_shift;
+
+  x = 0;
+  for (i = 0, v = (u32 *)a; i < f->addr_size / 4; i++, v++)
+    x = x ^ *v;
+
+  return ((x ^ (x >> 16) ^ (x >> 8)) & 0xffff) >> f->hash_shift;
 }
 
 static void
@@ -98,16 +111,52 @@ fib_dummy_init(struct fib_node *dummy UNUSED)
 void
 fib_init(struct fib *f, pool *p, unsigned node_size, unsigned hash_order, fib_init_func init)
 {
+  fib2_init(f, p, node_size, RT_IP, sizeof(ip_addr), hash_order, init, NULL);
+}
+
+/**
+ * fib2_init - initialize a new FIB
+ * @f: the FIB to be initialized (the structure itself being allocated by the caller)
+ * @p: pool to allocate the nodes in
+ * @node_size: total node size to be used (each node consists of a standard header &fib_node
+ * followed by user data)
+ * @addr_type: type of addresses stored in fib (RT_*)
+ * @addr_size: size of address data
+ * @hash_order: initial hash order (a binary logarithm of hash table size), 0 to use default order
+ * (recommended)
+ * @init: pointer a function to be called to initialize a newly created node
+ * @hash_p: optional pointer a function to be called to hash node
+ *
+ * This function initializes a newly allocated FIB and prepares it for use. Note node_size
+ * cannot exceed 255 bytes for address types not fitting into ip_addr
+ */
+void
+fib2_init(struct fib *f, pool *p, unsigned node_size, unsigned int addr_type, unsigned int addr_size, \
+		unsigned hash_order, fib_init_func init, fib_hash_func hash_f)
+{
   if (!hash_order)
     hash_order = HASH_DEF_ORDER;
   f->fib_pool = p;
+  if (addr_size > sizeof(ip_addr))
+  {
+    node_size = BIRD_ALIGN(node_size, CPU_STRUCT_ALIGN);
+    f->addr_off = node_size;
+
+    node_size += addr_size;
+  }
+  else
+    f->addr_off = OFFSETOF(struct fib_node, prefix);
+
   f->fib_slab = sl_new(p, node_size);
   f->hash_order = hash_order;
   fib_ht_alloc(f);
   bzero(f->hash_table, f->hash_size * sizeof(struct fib_node *));
+  f->addr_type = addr_type;
+  f->addr_size = addr_size;
   f->entries = 0;
   f->entries_min = 0;
   f->init = init ? : fib_dummy_init;
+  f->hash_f = hash_f;
 }
 
 static void
@@ -133,7 +182,7 @@ fib_rehash(struct fib *f, int step)
       while (e = x)
 	{
 	  x = e->next;
-	  nh = fib_hash(f, &e->prefix);
+	  nh = fib_hash(f, FPREFIX(e));
 	  while (nh > ni)
 	    {
 	      *t = NULL;
@@ -163,11 +212,11 @@ fib_rehash(struct fib *f, int step)
  * a pointer to it or %NULL if no such node exists.
  */
 void *
-fib_find(struct fib *f, ip_addr *a, int len)
+fib_find(struct fib *f, void *a, int len)
 {
   struct fib_node *e = f->hash_table[fib_hash(f, a)];
 
-  while (e && (e->pxlen != len || !ipa_equal(*a, e->prefix)))
+  while (e && (e->pxlen != len || memcmp(a, FPREFIX(e), f->addr_size)))
     e = e->next;
   return e;
 }
@@ -197,26 +246,26 @@ fib_histogram(struct fib *f)
 /**
  * fib_get - find or create a FIB node
  * @f: FIB to work with
- * @a: pointer to IP address of the prefix
- * @len: prefix length
+ * @a: pointer to IP (or other family) address of the prefix
+ * @len: prefix length (if address family requires it)
  *
  * Search for a FIB node corresponding to the given prefix and
  * return a pointer to it. If no such node exists, create it.
  */
 void *
-fib_get(struct fib *f, ip_addr *a, int len)
+fib_get(struct fib *f, void *a, int len)
 {
-  unsigned int h = ipa_hash(*a);
-  struct fib_node **ee = f->hash_table + (h >> f->hash_shift);
+  unsigned int h = fib_hash(f, a);
+  struct fib_node **ee = f->hash_table + h;
   struct fib_node *g, *e = *ee;
-  u32 uid = h << 16;
+  u32 uid = h << (16 + f->hash_shift);
 
-  while (e && (e->pxlen != len || !ipa_equal(*a, e->prefix)))
+  while (e && (e->pxlen != len || memcmp(a, FPREFIX(e), f->addr_size)))
     e = e->next;
   if (e)
     return e;
 #ifdef DEBUGGING
-  if (len < 0 || len > BITS_PER_IP_ADDRESS || !ip_is_prefix(*a,len))
+  if ((f->addr_type == RT_IP) && (len < 0 || len > BITS_PER_IP_ADDRESS || !ip_is_prefix(*((ip_addr *)a),len)))
     bug("fib_get() called for invalid address");
 #endif
 
@@ -228,13 +277,15 @@ fib_get(struct fib *f, ip_addr *a, int len)
       uid++;
     }
 
-  if ((uid >> 16) != h)
+  if ((uid >> (16 + f->hash_shift)) != h)
     log(L_ERR "FIB hash table chains are too long");
 
   // log (L_WARN "FIB_GET %I %x %x", *a, h, uid);
 
   e = sl_alloc(f->fib_slab);
-  e->prefix = *a;
+  e->addr_type = f->addr_type;
+  e->addr_off = f->addr_off;
+  memcpy(FPREFIX(e), a, f->addr_size);
   e->pxlen = len;
   e->next = *ee;
   e->uid = uid;
@@ -250,22 +301,25 @@ fib_get(struct fib *f, ip_addr *a, int len)
 /**
  * fib_route - CIDR routing lookup
  * @f: FIB to search in
- * @a: pointer to IP address of the prefix
- * @len: prefix length
+ * @a: pointer to IP (or other family) address of the prefix
+ * @len: prefix length (if address family requires)
  *
  * Search for a FIB node with longest prefix matching the given
  * network, that is a node which a CIDR router would use for routing
- * that network.
+ * that network. Function should be called for IPv4/IPv6 routes only
  */
 void *
-fib_route(struct fib *f, ip_addr a, int len)
+fib_route(struct fib *f, ip_addr *a, int len)
 {
   ip_addr a0;
   void *t;
 
+  if (f->addr_type != RT_IP)
+    return NULL;
+
   while (len >= 0)
     {
-      a0 = ipa_and(a, ipa_mkmask(len));
+      a0 = ipa_and(*a, ipa_mkmask(len));
       t = fib_find(f, &a0, len);
       if (t)
 	return t;
@@ -321,7 +375,7 @@ void
 fib_delete(struct fib *f, void *E)
 {
   struct fib_node *e = E;
-  unsigned int h = fib_hash(f, &e->prefix);
+  unsigned int h = fib_hash(f, FPREFIX(e));
   struct fib_node **ee = f->hash_table + h;
   struct fib_iterator *it;
 
@@ -413,7 +467,7 @@ fit_get(struct fib *f, struct fib_iterator *i)
   if (k = i->next)
     k->prev = j;
   j->next = k;
-  i->hash = fib_hash(f, &n->prefix);
+  i->hash = fib_hash(f, FPREFIX(n));
   return n;
 }
 
@@ -429,6 +483,7 @@ fit_put(struct fib_iterator *i, struct fib_node *n)
   n->readers = i;
   i->prev = (struct fib_iterator *) n;
 }
+
 
 #ifdef DEBUGGING
 
@@ -452,7 +507,7 @@ fib_check(struct fib *f)
       for(n=f->hash_table[i]; n; n=n->next)
 	{
 	  struct fib_iterator *j, *j0;
-	  unsigned int h0 = ipa_hash(n->prefix);
+	  unsigned int h0 = fib_hash(f, FPREFIX(n));
 	  if (h0 < lo)
 	    bug("fib_check: discord in hash chains");
 	  lo = h0;
@@ -491,14 +546,15 @@ void dump(char *m)
 {
   unsigned int i;
 
-  debug("%s ... order=%d, size=%d, entries=%d\n", m, f.hash_order, f.hash_size, f.hash_size);
+  debug("%s ... type=%d order=%d, size=%d, entries=%d\n", m, f.addr_type, f.hash_order, f.hash_size, f.hash_size);
   for(i=0; i<f.hash_size; i++)
     {
       struct fib_node *n;
       struct fib_iterator *j;
       for(n=f.hash_table[i]; n; n=n->next)
 	{
-	  debug("%04x %04x %p %I/%2d", i, ipa_hash(n->prefix), n, n->prefix, n->pxlen);
+	  debug("%04x %04x %p %s", i, fib_hash(&f, FPREFIX(n)) << f->hash_shift, n, fn_print(&f, n));
+
 	  for(j=n->readers; j; j=j->next)
 	    debug(" %p[%p]", j, j->node);
 	  debug("\n");

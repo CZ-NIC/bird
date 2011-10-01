@@ -841,7 +841,7 @@ bgp_get_bucket(struct bgp_proto *p, net *n, ea_list *attrs, int originate)
   for(i=0; i<ARRAY_SIZE(bgp_mandatory_attrs); i++)
     if (!(seen & (1 << bgp_mandatory_attrs[i])))
       {
-	log(L_ERR "%s: Mandatory attribute %s missing in route %I/%d", p->p.name, bgp_attr_table[bgp_mandatory_attrs[i]].name, n->n.prefix, n->n.pxlen);
+	log(L_ERR "%s: Mandatory attribute %s missing in route %F", p->p.name, bgp_attr_table[bgp_mandatory_attrs[i]].name, &n->n);
 	return NULL;
       }
 
@@ -849,7 +849,7 @@ bgp_get_bucket(struct bgp_proto *p, net *n, ea_list *attrs, int originate)
   a = ea_find(new, EA_CODE(EAP_BGP, BA_NEXT_HOP));
   if (!a || ipa_equal(p->cf->remote_ip, *(ip_addr *)a->u.ptr->data))
     {
-      log(L_ERR "%s: Invalid NEXT_HOP attribute in route %I/%d", p->p.name, n->n.prefix, n->n.pxlen);
+      log(L_ERR "%s: Invalid NEXT_HOP attribute in route %F", p->p.name, &n->n);
       return NULL;
     }
 
@@ -893,7 +893,7 @@ bgp_rt_notify(struct proto *P, rtable *tbl UNUSED, net *n, rte *new, rte *old UN
 	  init_list(&buck->prefixes);
 	}
     }
-  px = fib_get(&p->prefix_fib, &n->n.prefix, n->n.pxlen);
+  px = fib_get(&p->prefix_fib, FPREFIX(&n->n), n->n.pxlen);
   if (px->bucket_node.next)
     {
       DBG("\tRemoving old entry.\n");

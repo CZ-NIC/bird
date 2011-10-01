@@ -36,9 +36,10 @@ struct fib_node {
   struct fib_iterator *readers;		/* List of readers of this node */
   byte pxlen;
   byte flags;				/* User-defined */
-  byte x0, x1;				/* User-defined */
+  byte addr_type;			/* User-defined */
+  byte addr_off;			/* address data offset */
   u32 uid;				/* Unique ID based on hash */
-  ip_addr prefix;			/* In host order */
+  ip_addr prefix;			/* Address data in host order (if it fits in ip_addr length) */
 };
 
 struct fib_iterator {			/* See lib/slists.h for an explanation */
@@ -50,6 +51,7 @@ struct fib_iterator {			/* See lib/slists.h for an explanation */
 };
 
 typedef void (*fib_init_func)(struct fib_node *);
+typedef int (*fib_hash_func)(void *);
 
 struct fib {
   pool *fib_pool;			/* Pool holding all our data */
@@ -58,15 +60,21 @@ struct fib {
   unsigned int hash_size;		/* Number of hash table entries (a power of two) */
   unsigned int hash_order;		/* Binary logarithm of hash_size */
   unsigned int hash_shift;		/* 16 - hash_log */
+  unsigned int addr_type;		/* Type of adresses stored in fib (IPv46, VPNv46, MPLS, etc..)*/
+  unsigned int addr_size;		/* size of address specified in entry */
+  unsigned int addr_off;		/* value of data offset to be set in fib_node */
   unsigned int entries;			/* Number of entries */
   unsigned int entries_min, entries_max;/* Entry count limits (else start rehashing) */
   fib_init_func init;			/* Constructor */
+  fib_hash_func hash_f;			/* Optional hash function */
 };
 
 void fib_init(struct fib *, pool *, unsigned node_size, unsigned hash_order, fib_init_func init);
-void *fib_find(struct fib *, ip_addr *, int);	/* Find or return NULL if doesn't exist */
-void *fib_get(struct fib *, ip_addr *, int); 	/* Find or create new if nonexistent */
-void *fib_route(struct fib *, ip_addr, int);	/* Longest-match routing lookup */
+void fib2_init(struct fib *, pool *, unsigned node_size, unsigned int addr_type, unsigned int addr_size, \
+		unsigned hash_order, fib_init_func init, fib_hash_func hash_f);
+void *fib_find(struct fib *, void *, int);	/* Find or return NULL if doesn't exist */
+void *fib_get(struct fib *, void *, int); 	/* Find or create new if nonexistent */
+void *fib_route(struct fib *, ip_addr *, int);	/* Longest-match routing lookup */
 void fib_delete(struct fib *, void *);	/* Remove fib entry */
 void fib_free(struct fib *);		/* Destroy the fib */
 void fib_check(struct fib *);		/* Consistency check for debugging */
@@ -74,6 +82,11 @@ void fib_check(struct fib *);		/* Consistency check for debugging */
 void fit_init(struct fib_iterator *, struct fib *); /* Internal functions, don't call */
 struct fib_node *fit_get(struct fib *, struct fib_iterator *);
 void fit_put(struct fib_iterator *, struct fib_node *);
+
+#define FPREFIX(n)	((void *)(((char *)(n)) + (n)->addr_off))
+#define FPREFIX_IP(n)	((ip_addr *)FPREFIX(n))
+#define FPREFIX_VPN(n)	((vpn_addr *)FPREFIX(n))
+#define PROTO_FIB(x)	((x)->table->fib.addr_type)
 
 #define FIB_WALK(fib, z) do {					\
 	struct fib_node *z, **ff = (fib)->hash_table;		\
@@ -116,6 +129,7 @@ void fit_put(struct fib_iterator *, struct fib_node *);
 struct rtable_config {
   node n;
   char *name;
+  int rtype;				/* Type of the table (IPv46, VPNv46, MPLS, etc..)*/
   struct rtable *table;
   struct proto_config *krt_attached;	/* Kernel syncer attached to this table */
   int gc_max_ops;			/* Maximum number of operations before GC is run */
@@ -126,6 +140,7 @@ typedef struct rtable {
   node n;				/* Node in list of all tables */
   struct fib fib;
   char *name;				/* Name of this table */
+  int rtype;				/* Type of the table (IPv46, VPNv46, MPLS, etc..)*/
   list hooks;				/* List of announcement hooks */
   int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
@@ -213,6 +228,33 @@ typedef struct rte {
 
 #define REF_COW 1			/* Copy this rte on write */
 
+/* Types of routing tables/entries */
+#define RT_IPV4		1
+#define RT_IPV6		2
+#define RT_VPNV4	3
+#define RT_VPNV6	4
+#define RT_MPLS		5
+
+#define RT_MAX		6
+
+/* Same tables using bit positions. Used for appropriate table linking on protocol init */
+#define RT_IPV4_BIT	0x001
+#define RT_IPV6_BIT	0x002
+#define RT_VPNV4_BIT	0x004
+#define RT_VPNV6_BIT	0x008
+#define RT_MPLS_BIT	0x010
+
+#ifndef IPV6
+#define RT_IP		RT_IPV4
+#define RT_IP_BIT	RT_IPV4_BIT
+#define RT_VPN		RT_VPNV4
+#else
+#define RT_IP		RT_IPV6
+#define RT_IP_BIT	RT_IPV6_BIT
+#define RT_VPN		RT_VPNV6
+#endif
+
+
 /* Types of route announcement, also used as flags */
 #define RA_OPTIMAL 1			/* Announcement of optimal route change */
 #define RA_ANY 2			/* Announcement of any route change */
@@ -240,7 +282,8 @@ void rt_dump_all(void);
 int rt_feed_baby(struct proto *p);
 void rt_feed_baby_abort(struct proto *p);
 void rt_prune_all(void);
-struct rtable_config *rt_new_table(struct symbol *s);
+struct rtable_config *rt_new_table(struct symbol *s, int rtype);
+int rt_addrsize(int rtype);
 
 struct rt_show_data {
   ip_addr prefix;

@@ -279,6 +279,12 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			s = ipbuf;
 			goto str;
 
+		/* Generic address - pointer to fib_node */
+		case 'F':
+			bsprintf(ipbuf, "%s", fn_print(va_arg(args, struct fib_node *)));
+			s = ipbuf;
+			goto str;
+
 		/* Router/Network ID - essentially IPv4 address in u32 value */
 		case 'R':
 			x = va_arg(args, u32);
