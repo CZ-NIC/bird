@@ -33,7 +33,7 @@ ospf_rt_initort(struct fib_node *fn)
   ort *ri = (ort *) fn;
   reset_ri(ri);
   ri->old_rta = NULL;
-  ri->fn.x0 = ri->fn.x1 = 0;
+  ri->fn.flags = 0;
 }
 
 static inline int
@@ -938,7 +938,7 @@ check_sum_net_lsa(struct proto_ospf *po, ort *nf)
   struct ospf_area *anet_oa = NULL;
 
   /* RT entry marked as area network */
-  if (nf->fn.x0)
+  if (nf->fn.flags & OSPF_RT_PERSISTENT)
   {
     /* It is a default route for stub areas, handled entirely in ospf_rt_abr() */
     if (nf->fn.pxlen == 0)
@@ -989,7 +989,7 @@ decide_nssa_lsa(ort *nf, u32 *rt_metric, ip_addr *rt_fwaddr, u32 *rt_tag)
     return 0;
 
   /* Condensed area network found */ 
-  if (fib_route(&oa->enet_fib, nf->fn.prefix, nf->fn.pxlen))
+  if (fib_route(&oa->enet_fib, &nf->fn.prefix, nf->fn.pxlen))
     return 0;
 
   if (!en || (en->lsa.type != LSA_T_NSSA))
@@ -1042,11 +1042,11 @@ check_nssa_lsa(struct proto_ospf *po, ort *nf)
   ip_addr rt_fwaddr;
 
   /* Do not translate LSA if there is already the external LSA from route export */
-  if (fn->x1 == EXT_EXPORT)
+  if (fn->flags & OSPF_RT_EXPORT)
     return;
 
   /* RT entry marked as area network */
-  if (fn->x0)
+  if (fn->flags & OSPF_RT_PERSISTENT)
   {
     /* Find that area network */
     WALK_LIST(oa, po->area_list)
@@ -1065,8 +1065,8 @@ check_nssa_lsa(struct proto_ospf *po, ort *nf)
   else if (decide_nssa_lsa(nf, &rt_metric, &rt_fwaddr, &rt_tag))
     originate_ext_lsa(po->backbone, fn, EXT_NSSA, rt_metric, rt_fwaddr, rt_tag, 0);
 
-  else if (fn->x1 == EXT_NSSA)
-    flush_ext_lsa(po->backbone, fn);
+  else if (fn->flags & OSPF_RT_NSSA)
+    flush_ext_lsa(po->backbone, fn, 1);
 }
 
 /* RFC 2328 16.7. p2 - find new/lost vlink endpoints */
@@ -1149,7 +1149,7 @@ ospf_rt_abr1(struct proto_ospf *po)
 
 	  /* Get a RT entry and mark it to know that it is an area network */
 	  ort *nfi = (ort *) fib_get(&po->rtf, &anet->fn.prefix, anet->fn.pxlen);
-	  nfi->fn.x0 = 1; /* mark and keep persistent, to have stable UID */
+	  nfi->fn.flags |= OSPF_RT_PERSISTENT; /* mark persistent, to have stable UID */
 
 	  /* 16.2. (3) */
 	  if (nfi->n.type == RTS_OSPF_IA)
@@ -1165,7 +1165,7 @@ ospf_rt_abr1(struct proto_ospf *po)
 
   ip_addr addr = IPA_NONE;
   default_nf = (ort *) fib_get(&po->rtf, &addr, 0);
-  default_nf->fn.x0 = 1; /* keep persistent */
+  default_nf->fn.flags |= OSPF_RT_PERSISTENT; /* keep persistent */
 
   struct ospf_area *oa;
   WALK_LIST(oa, po->area_list)
@@ -1189,7 +1189,7 @@ ospf_rt_abr1(struct proto_ospf *po)
     if (oa_is_nssa(oa) && oa->ac->default_nssa)
       originate_ext_lsa(oa, &default_nf->fn, 0, oa->ac->default_cost, IPA_NONE, 0, 0);
     else
-      flush_ext_lsa(oa, &default_nf->fn);
+      flush_ext_lsa(oa, &default_nf->fn, 0);
 
 
     /* RFC 2328 16.4. (3) - precompute preferred ASBR entries */
@@ -1301,7 +1301,7 @@ ospf_rt_abr2(struct proto_ospf *po)
     if (rt_is_nssa(nf) && (nf->n.options & ORTA_PROP))
     {
       struct area_net *anet = (struct area_net *)
-	fib_route(&nf->n.oa->enet_fib, nf->fn.prefix, nf->fn.pxlen);
+	fib_route(&nf->n.oa->enet_fib, &nf->fn.prefix, nf->fn.pxlen);
 
       if (anet)
       {
@@ -1311,7 +1311,7 @@ ospf_rt_abr2(struct proto_ospf *po)
 
 	  /* Get a RT entry and mark it to know that it is an area network */
 	  nf2 = (ort *) fib_get(&po->rtf, &anet->fn.prefix, anet->fn.pxlen);
-	  nf2->fn.x0 = 1;
+	  nf2->fn.flags |= OSPF_RT_PERSISTENT; /* keep persistent */
 	}
 
 	u32 metric = (nf->n.type == RTS_OSPF_EXT1) ?
@@ -1545,7 +1545,7 @@ ospf_rt_reset(struct proto_ospf *po)
   FIB_WALK(&po->rtf, nftmp)
   {
     ri = (ort *) nftmp;
-    ri->fn.x0 = 0;
+    ri->fn.flags &= ~OSPF_RT_PERSISTENT;
     reset_ri(ri);
   }
   FIB_WALK_END;
@@ -2041,8 +2041,8 @@ again1:
       rte_update(p->table, ne, p, p, NULL);
     }
 
-    /* Remove unused rt entry. Entries with fn.x0 == 1 are persistent. */
-    if (!nf->n.type && !nf->fn.x0 && !nf->fn.x1)
+    /* Remove unused rt entry. Entries with any flags are persistent. */
+    if (!nf->n.type && !nf->fn.flags)
     {
       FIB_ITERATE_PUT(&fit, nftmp);
       fib_delete(fib, nftmp);
