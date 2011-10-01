@@ -138,23 +138,27 @@ int
 addr_print_rd(u64 rd, char *buf, int buflen)
 {
   int res = 0;
-  u32 v4;
+  u32 key, val;
 
-  switch (rd >> 48)
+  switch (rd >> 48) // FIXME check this ???
   {
     case 0:
       /* 2-byte asn id : 4-byte vpn id */
-      res = snprintf(buf, buflen, "%d:%u", (int)((rd >> 32) & 0xFFFF), (u32)(rd & 0xFFFFFFFF));
+      key = (rd >> 32) & 0xFFFF;
+      val = rd;
+      res = bsnprintf(buf, buflen, "%u:%u", key, val);
       break;
     case 1:
       /* 4-byte IPv4 id : 2-byte vpn id */
-      v4 = (u32)(rd >> 16);
-      res = snprintf(buf, buflen, "%s:%d", addr_print(RT_IPV4, &v4, NULL), (int)(rd >> 48));
+      key = rd >> 16;
+      val = rd & 0xFFFF;
+      res = bsnprintf(buf, buflen, "%R:%u", key, val);
       break;
     case 2:
       /* 4-byte asn id : 2-byte vpn id */
-      v4 = (u32)(rd >> 16);
-      res = snprintf(buf, buflen, "%u:%d", v4, (int)(rd >> 48));
+      key = rd >> 16;
+      val = rd & 0xFFFF;
+      res = bsnprintf(buf, buflen, "%u:%u", key, val);
       break;
   }
 
@@ -167,7 +171,7 @@ addr_print_rd(u64 rd, char *buf, int buflen)
 void inline
 get_vpn4(void *addrdata, vpn4_addr *addr)
 {
-  addr->rd = ((u64)get_u32(addrdata) << 32) + get_u32(addrdata + 4);
+  addr->rd = get_u64(addrdata);
   addr->addr = get_u32(addrdata + 8);
 }
 
@@ -177,7 +181,7 @@ get_vpn6(void *addrdata, vpn6_addr *addr)
   int i;
   u32 *old, *new;
 
-  addr->rd = ((u64)get_u32(addrdata) << 32) + get_u32(addrdata + 4);
+  addr->rd = get_u64(addrdata);
   old = addrdata + 8;
   new = (u32 *)&addr->addr;
   for (i = 0; i < 4; i++, old++, new++)
@@ -188,10 +192,7 @@ void inline
 put_vpn4(void *addrdata, vpn4_addr *addr)
 {
   u32 *v4;
-  /* Put RD */
-  put_u32(addrdata, (u32)(addr->rd >> 32));
-  put_u32(addrdata + 4, (u32)(addr->rd & 0xFFFFFFFF));
-  /* Put IPv4 addr */
+  put_u64(addrdata, addr->rd);
   v4 = (u32 *)&addr->addr;
   put_u32(addrdata + 8, *v4);
 }
@@ -201,9 +202,7 @@ put_vpn6(void *addrdata, vpn6_addr *addr)
 {
   int i;
   u32 *old, *new;
-  /* Put RD */
-  put_u32(addrdata, (u32)(addr->rd >> 32));
-  put_u32(addrdata + 4, (u32)(addr->rd & 0xFFFFFFFF));
+  put_u64(addrdata, addr->rd);
   /* Put IPv6 addr */
   new = addrdata + 8;
   old = (u32 *)&addr->addr;

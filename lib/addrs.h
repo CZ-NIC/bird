@@ -26,8 +26,6 @@ typedef ip_addr ip6_addr;
 
 #else	/* ! DEBUGGING */
 
-typedef uint64_t u64;
-
 #ifndef IPV6
 typedef struct ipv6_addr {
   u32 addr[4];
