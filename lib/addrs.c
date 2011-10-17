@@ -20,56 +20,44 @@
 #include "lib/string.h"
 #include "lib/addrs.h"
 
-#define PBUFS	4
-#define PSIZE	50
-
 /**
  * fn_print - prints a FIB node
+ * @buf: data buffer
+ * @buflen: data buffer size
  * @n: pointer to fib_node structure
  *
- * This function prints fib node address to static buffer and
- * returns it to the caller. Up to PBUFS(4) different buffers are
- * available.
+ * This function prints fib node address to supplied buffer.
  */
-char *
-fn_print(struct fib_node *n)
+void
+fn_print(char *buf, int buflen, struct fib_node *n)
 {
-  char *x;
-  int res;
-
   switch (n->addr_type)
   {
     case RT_IPV4:
     case RT_IPV6:
     case RT_VPNV4:
     case RT_VPNV6:
-      x = addr_print(n->addr_type, FPREFIX(n), &res);
-      bsnprintf(x + res, 5, "/%d", n->pxlen);
+      addr_print(buf, buflen, n->addr_type, FPREFIX(n));
+      bsnprintf(buf + strlen(buf), 5, "/%d", n->pxlen);
       break;
 
     default:
-      x = addr_print(n->addr_type, FPREFIX(n), &res);
+      addr_print(buf, buflen, n->addr_type, FPREFIX(n));
   }
-
-  return x;
 }
 
 /**
- * addr_print - prints address of given type into static buffer
+ * addr_print - prints address of given type into supplied buffer
+ * @buf: data buffer
+ * @buflen: data buffer size
  * @rtype: address type
  * @addr: pointer to address data
- * @len: pointer to save printed address length to. Can be NULL
  *
- * This function prints address int human-readable format to static buffer
- * and returns it to the caller. Up to PBUFS(4) different buffers are
- * available.
+ * This function prints address into human-readable format.
  */
-char *
-addr_print(int rtype, void *addr, int *len)
+void
+addr_print(char *buf, int buflen, int rtype, void *addr)
 {
-  static int cntr;
-  static char buf[PBUFS][PSIZE];
-  char *x;
   int res = 0;
   ip4_addr v4;
   ip6_addr v6;
@@ -77,8 +65,6 @@ addr_print(int rtype, void *addr, int *len)
   vpn4_addr *pv4;
   vpn6_addr *pv6;
 #endif
-
-  x = buf[cntr++ % PBUFS];
 
   /* 
    * XXX: converting address to network format and 
@@ -90,52 +76,47 @@ addr_print(int rtype, void *addr, int *len)
   {
     case RT_IPV4:
       put_addr(&v4, rtype, addr);
-      inet_ntop(AF_INET, &v4, x, PSIZE);
+      inet_ntop(AF_INET, &v4, buf, buflen);
       break;
 
     case RT_IPV6:
       put_addr(&v6, rtype, addr);
-      inet_ntop(AF_INET6, &v6, x, PSIZE);
+      inet_ntop(AF_INET6, &v6, buf, buflen);
       break;
 #ifdef MPLS_VPN
     case RT_VPNV4:
       pv4 = (vpn4_addr *)addr;
-      res = addr_print_rd(pv4->rd, x, PSIZE);
-      *(x + res++) = ' ';
+      res = addr_print_rd(buf, buflen, pv4->rd);
+      *(buf + res++) = ' ';
       put_addr(&v4, RT_IPV4, &pv4->addr);
-      inet_ntop(AF_INET, &v4, x + res, PSIZE - res);
+      inet_ntop(AF_INET, &v4, buf + res, buflen - res);
       break;
 
     case RT_VPNV6:
       pv6 = (vpn6_addr *)addr;
-      res = addr_print_rd(pv6->rd, x, PSIZE);
-      *(x + res++) = ' ';
+      res = addr_print_rd(buf, buflen, pv6->rd);
+      *(buf + res++) = ' ';
       put_addr(&v6, RT_IPV6, &pv6->addr);
-      inet_ntop(AF_INET6, &v6, x + res, PSIZE - res);
+      inet_ntop(AF_INET6, &v6, buf + res, buflen - res);
       break;
 #endif
 
     default:
-      res = bsnprintf(x, PSIZE, "RT:%d", rtype);
+      res = bsnprintf(buf, buflen, "RT:%d", rtype);
   }
-
-  if (len)
-    *len = strlen(x);
-
-  return x;
 }
 
 #ifdef MPLS_VPN
 /**
  * addr_print_rd - prints route distinguisher into supplied buffer
- * @rd: route distinguisher (host format)
  * @addr: pointer to destination buffer
  * @len: buffer length
+ * @rd: route distinguisher (host format)
  *
- * This function prints RD in human-readable format
+ * This function prints RD in human-readable format.
  */
 int
-addr_print_rd(u64 rd, char *buf, int buflen)
+addr_print_rd(char *buf, int buflen, u64 rd)
 {
   int res = 0;
   u32 key, val;
@@ -212,7 +193,7 @@ put_vpn6(void *addrdata, vpn6_addr *addr)
 #endif
 
 /**
- * get_addr - converts address to host presentation
+ * get_addr - converts address to host representation
  * @addrdata: pointer to network (source) data buffer
  * @rt_family: address family
  * @datanew: pointer to host data buffer
@@ -264,11 +245,11 @@ void
 put_addr(void *datanew, int rt_family, void *addrdata)
 {
   int i;
-  uint32_t *old, *new;
+  u32 *old, *new;
   switch (rt_family)
   {
     case RT_IPV4:
-      old = (uint32_t *)addrdata;
+      old = addrdata;
       put_u32(datanew, *old);
       break;
 

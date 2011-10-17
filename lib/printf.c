@@ -137,7 +137,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 	u32 x;
 	char *str, *start;
 	const char *s;
-	char ipbuf[STD_ADDRESS_P_LENGTH+1];
+	char ipbuf[MAX_ADDRESS_P_LENGTH];
 
 	int flags;		/* flags to number() */
 
@@ -281,7 +281,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 
 		/* Generic address - pointer to fib_node */
 		case 'F':
-			bsprintf(ipbuf, "%s", fn_print(va_arg(args, struct fib_node *)));
+			fn_print(ipbuf, sizeof(ipbuf), va_arg(args, struct fib_node *));
 			s = ipbuf;
 			goto str;
 

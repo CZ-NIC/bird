@@ -57,10 +57,13 @@ typedef vpn6_addr vpn_addr;
 
 #endif
 
+/* Buffer must be sufficient to hold RD(15+6+1) + IPv6 address(39) + prefix(4) = 22+39+4=67 */
+#define MAX_ADDRESS_P_LENGTH	70
+
 struct fib_node;
 
 #ifdef MPLS_VPN
-int addr_print_rd(u64 rd, char *buf, int buflen);
+int addr_print_rd(char *buf, int buflen, u64 rd);
 void get_vpn4(void *addrdata, vpn4_addr *newv4);
 void get_vpn6(void *addrdata, vpn6_addr *newv6);
 void put_vpn4(void *addrdata, vpn4_addr *addr);
@@ -69,8 +72,8 @@ void put_vpn6(void *addrdata, vpn6_addr *addr);
 void get_addr(void *addrdata, int rt_family, void *datanew);
 void put_addr(void *datanew, int rt_family, void *addrdata);
 
-char *addr_print(int rtype, void *addr, int *len);
-char *fn_print(struct fib_node *f);	/* Prints human-readable fib_node prefix */
+void addr_print(char *buf, int buflen, int rtype, void *addr);
+void fn_print(char *buf, int buflen, struct fib_node *n);
 
 #endif
 

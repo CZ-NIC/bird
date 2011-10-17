@@ -72,23 +72,17 @@ fib_ht_free(struct fib_node **h)
   mb_free(h);
 }
 
-static inline unsigned
-fib_hash(struct fib *f, void *a)
+u32
+ip_hash(struct fib *f, void *a)
 {
-  u32 *v, x;
-  int i;
+  return ipa_hash(*((ip_addr *)a)) >> f->hash_shift;
+}
 
-  if (f->hash_f)
-    return f->hash_f(a);
-
-  if (f->addr_type == RT_IP)
-    return ipa_hash(*((ip_addr *)a)) >> f->hash_shift;
-
-  x = 0;
-  for (i = 0, v = (u32 *)a; i < f->addr_size / 4; i++, v++)
-    x = x ^ *v;
-
-  return ((x ^ (x >> 16) ^ (x >> 8)) & 0xffff) >> f->hash_shift;
+u32
+vpn_hash(struct fib *f, void *a)
+{
+  /* Ignore RD in our calculations for now */
+  return ipa_hash(((vpn_addr *)a)->addr) >> f->hash_shift;
 }
 
 static void
@@ -111,7 +105,7 @@ fib_dummy_init(struct fib_node *dummy UNUSED)
 void
 fib_init(struct fib *f, pool *p, unsigned node_size, unsigned hash_order, fib_init_func init)
 {
-  fib2_init(f, p, node_size, RT_IP, sizeof(ip_addr), hash_order, init, NULL);
+  fib2_init(f, p, node_size, RT_IP, sizeof(ip_addr), hash_order, init, ip_hash);
 }
 
 /**
@@ -125,7 +119,7 @@ fib_init(struct fib *f, pool *p, unsigned node_size, unsigned hash_order, fib_in
  * @hash_order: initial hash order (a binary logarithm of hash table size), 0 to use default order
  * (recommended)
  * @init: pointer a function to be called to initialize a newly created node
- * @hash_p: optional pointer a function to be called to hash node
+ * @hash_p: mandatory pointer a function to be called to hash node
  *
  * This function initializes a newly allocated FIB and prepares it for use. Note node_size
  * cannot exceed 255 bytes for address types not fitting into ip_addr

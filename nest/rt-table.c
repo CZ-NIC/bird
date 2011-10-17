@@ -855,10 +855,18 @@ rt_event(void *ptr)
     rt_prune(tab);
 }
 
+/**
+ * rt_addrsize - returns (host format) size of address of given type
+ * @addr_type: address type
+ *
+ * Returns sizeof() appropriate structure or sizeof(ip_addr) if
+ * address type is unknown
+ *
+ */
 int
-rt_addrsize(int rtype)
+rt_addrsize(int addr_type)
 {
-  switch (rtype)
+  switch (addr_type)
   {
 #ifdef MPLS_VPN
     case RT_VPNV4:
@@ -884,9 +892,27 @@ rt_addrsize(int rtype)
 void
 rt_setup(pool *p, rtable *t, char *name, struct rtable_config *cf)
 {
+  fib_hash_func f;
+
   bzero(t, sizeof(*t));
-  t->rtype = cf ? cf->rtype : RT_IP;
-  fib2_init(&t->fib, p, sizeof(net), t->rtype, rt_addrsize(t->rtype), 0, rte_init, NULL);
+  t->addr_type = cf ? cf->addr_type : RT_IP;
+  /* Select hashing function depending on table type */
+  switch (t->addr_type)
+  {
+    case RT_IP:
+      f = ip_hash;
+      break;
+
+    case RT_VPN:
+      f = vpn_hash;
+      break;
+
+    default:
+      f = ip_hash;
+      break;
+  }
+
+  fib2_init(&t->fib, p, sizeof(net), t->addr_type, rt_addrsize(t->addr_type), 0, rte_init, f);
   t->name = name;
   t->config = cf;
   init_list(&t->hooks);
@@ -1132,13 +1158,13 @@ rt_next_hop_update(rtable *tab)
 
 
 struct rtable_config *
-rt_new_table(struct symbol *s, int rtype)
+rt_new_table(struct symbol *s, int addr_type)
 {
   struct rtable_config *c = cfg_allocz(sizeof(struct rtable_config));
 
   cf_define_symbol(s, SYM_TABLE, c);
   c->name = s->name;
-  c->rtype = rtype;
+  c->addr_type = addr_type;
   add_tail(&new_config->tables, &c->n);
   c->gc_max_ops = 1000;
   c->gc_min_time = 5;
@@ -1662,7 +1688,7 @@ rt_find_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
 void
 rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr *gw, ip_addr *ll)
 {
-  if (tab->rtype != RT_IP)
+  if (tab->addr_type != RT_IP)
     return;
 
   rta_apply_hostentry(a, rt_find_hostentry(tab, *gw, *ll, dep));
@@ -1690,7 +1716,7 @@ rt_format_via(rte *e, byte *via)
 }
 
 static void
-rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tmpa)
+rt_show_rte(struct cli *c, byte *prefix, rte *e, struct rt_show_data *d, ea_list *tmpa)
 {
   byte via[STD_ADDRESS_P_LENGTH+32], from[STD_ADDRESS_P_LENGTH+8];
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
@@ -1717,7 +1743,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
     a->proto->proto->get_route_info(e, info, tmpa);
   else
     bsprintf(info, " (%d)", e->pref);
-  cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", ia, via, a->proto->name,
+  cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", prefix, via, a->proto->name,
 	     tm, from, primary ? " *" : "", info);
   for (nh = a->nexthops; nh; nh = nh->next)
     cli_printf(c, -1007, "\tvia %I on %s weight %d", nh->gw, nh->iface->name, nh->weight + 1);
@@ -1730,7 +1756,9 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 {
   rte *e, *ee;
   int ok;
+  byte prefix[MAX_ADDRESS_P_LENGTH];
 
+  fn_print(prefix, sizeof(prefix), &n->n);
   if (n->routes)
     d->net_counter++;
   for(e=n->routes; e; e=e->next)
@@ -1766,7 +1794,8 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	{
 	  d->show_counter++;
 	  if (d->stats < 2)
-	    rt_show_rte(c, fn_print(&n->n), e, d, tmpa);
+	    rt_show_rte(c, prefix, e, d, tmpa);
+	  prefix[0] = '\0';
 	}
       if (e != ee)
       {
