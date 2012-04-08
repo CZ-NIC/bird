@@ -924,6 +924,7 @@ bgp_init(struct proto_config *C)
   p->remote_as = c->remote_as;
   p->is_internal = (c->local_as == c->remote_as);
   p->rs_client = c->rs_client;
+  if (c->rs_client) P->accept_ra_types = RA_ANY;
   p->rr_client = c->rr_client;
   p->igp_table = get_igp_table(c);
 

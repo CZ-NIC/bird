@@ -134,6 +134,17 @@ rte_do_cow(rte *r)
   return e;
 }
 
+static int
+rte_same(rte *x, rte *y)
+{
+  return
+    x->attrs == y->attrs &&
+    x->flags == y->flags &&
+    x->pflags == y->pflags &&
+    x->pref == y->pref &&
+    (!x->attrs->proto->rte_same || x->attrs->proto->rte_same(x, y));
+}
+
 static int				/* Actually better or at least as good as */
 rte_better(rte *new, rte *old)
 {
@@ -190,6 +201,7 @@ do_rte_announce(struct announce_hook *a, int type UNUSED, net *net, rte *new, rt
   struct proto_stats *stats = &p->stats;
   rte *new0 = new;
   rte *old0 = old;
+  struct rta loca;
   int ok;
 
 #ifdef CONFIG_PIPE
@@ -229,6 +241,63 @@ do_rte_announce(struct announce_hook *a, int type UNUSED, net *net, rte *new, rt
     }
   else
     stats->exp_withdraws_received++;
+
+#ifdef CONFIG_BGP
+  if ((p->proto == &proto_bgp) && (p->accept_ra_types == RA_ANY))
+    {
+       rte *x = net->routes;
+       rte *y = net->routes;
+       rte *xbest = NULL;
+       struct ea_list *xa;
+
+       /* Route Server Client */
+
+       if (p->debug) log(L_TRACE "XXX: %s - Entering my code", p->name);
+
+       while(x)
+         {
+           y = x;
+	   xa = p->make_tmp_attrs ? p->make_tmp_attrs(x, rte_update_pool) : NULL;
+ 
+           if ( filter == FILTER_ACCEPT || (!filter) || (f_run(filter, &y, &xa, rte_update_pool, FF_FORCE_TMPATTR) == F_ACCEPT))
+             {
+               if (xbest)
+                 {
+                   if (rte_better(x , xbest)) xbest = x;	// XXX HERE
+                 }
+               else xbest = x;
+             }
+           x = x->next;
+         }
+       // Now, I should have the best route that went through the filter
+       if (xbest)
+         {
+           rte_trace_out(D_ROUTES, p, xbest, "XXX: best route found");
+           if (old && rte_same(xbest, old)) { if (p->debug) log(L_TRACE "XXX: DELETING BEST ROUTE");}
+           if ((new) && rte_better(xbest, new)) { if (p->debug) log(L_TRACE "XXX: Ignoring - add"); return;} // Ignore routes worse than 'best'.
+           if ((!new) && old && rte_better(xbest, old))  { if (p->debug) log(L_TRACE "XXX: Ignoring - remove"); return;}	// Ignore routes worse than 'best'.
+
+           if (!new)
+             {
+               if (p->debug) log(L_TRACE "XXX: So I am deleting the best route, hmm");
+               memcpy(&loca, xbest->attrs, sizeof(rta));
+               loca.aflags = 0;
+               loca.eattrs = xbest->attrs->eattrs;
+               loca.hostentry = NULL;
+               new = rte_get_temp(&loca);
+               new->net = xbest->net;
+               new->pflags = 0;
+               memcpy(&(new->u), &(xbest->u), sizeof(new->u));
+               new->pref = xbest->pref;
+               new->pflags = xbest->pflags;
+             }
+         }
+       else { if (p->debug) log(L_TRACE "XXX: No best route"); }
+
+       if (p->debug) log(L_TRACE "XXX: %s - Leaving my code", p->name);
+    }
+#endif
+
 
   /*
    * This is a tricky part - we don't know whether route 'old' was
@@ -408,17 +477,6 @@ rte_free_quick(rte *e)
 {
   rta_free(e->attrs);
   sl_free(rte_slab, e);
-}
-
-static int
-rte_same(rte *x, rte *y)
-{
-  return
-    x->attrs == y->attrs &&
-    x->flags == y->flags &&
-    x->pflags == y->pflags &&
-    x->pref == y->pref &&
-    (!x->attrs->proto->rte_same || x->attrs->proto->rte_same(x, y));
 }
 
 static void
