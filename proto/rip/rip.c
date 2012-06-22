@@ -718,7 +718,7 @@ new_iface(struct proto *p, struct iface *new, unsigned long flags, struct iface_
 #ifndef IPV6
       rif->sock->daddr = ipa_from_u32(0xe0000009);
 #else
-      rif->sock->daddr = ipa_build(0xff020000, 0, 0, 9);
+      rif->sock->daddr = ipa_build6(0xff020000, 0, 0, 9);
 #endif
     } else {
       rif->sock->daddr = new->addr->brd;
@@ -808,7 +808,7 @@ rip_if_notify(struct proto *p, unsigned c, struct iface *iface)
 #ifndef IPV6
       lock->addr = ipa_from_u32(0xe0000009);
 #else
-      ip_pton("FF02::9", &lock->addr);
+      lock->addr = ipa_build6(0xff020000, 0, 0, 9);
 #endif
     else
       lock->addr = iface->addr->brd;

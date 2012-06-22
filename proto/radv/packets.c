@@ -245,7 +245,7 @@ radv_sk_open(struct radv_iface *ifa)
   sk->saddr = ifa->addr->ip;
 
   /* We want listen just to ICMPv6 messages of type RS and RA */
-  if (sk_set_icmp_filter(sk, ICMPV6_RS, ICMPV6_RA) < 0)
+  if (sk_set_icmp6_filter(sk, ICMPV6_RS, ICMPV6_RA) < 0)
     goto err;
 
   if (sk_setup_multicast(sk) < 0)

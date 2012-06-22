@@ -452,7 +452,7 @@ block:
  * Complex types, their bison value is struct f_val
  */
 fipa:
-   IPA %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.px.ip = $1; }
+   ipa_raw %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.px.ip = $1; }
  ;
 
 
@@ -541,7 +541,7 @@ switch_items:
  ;
 
 fprefix_s:
-   IPA '/' NUM %prec '/' {
+   ipa_raw '/' NUM %prec '/' {
      if (($3 < 0) || ($3 > MAX_PREFIX_LENGTH) || !ip_is_prefix($1, $3)) cf_error("Invalid network prefix: %I/%d.", $1, $3);
      $$.type = T_PREFIX; $$.val.px.ip = $1; $$.val.px.len = $3;
    }

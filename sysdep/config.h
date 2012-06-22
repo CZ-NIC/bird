@@ -9,6 +9,9 @@
 /* BIRD version */
 #define BIRD_VERSION "1.3.7"
 
+// XXXX temporary define
+#define IPV1 1
+
 /* Include parameters determined by configure script */
 #include "sysdep/autoconf.h"
 

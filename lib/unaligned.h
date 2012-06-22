@@ -17,6 +17,7 @@
  *  if possible.
  */
 
+#include "lib/endian.h"
 #include "lib/string.h"
 
 static inline u16

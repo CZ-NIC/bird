@@ -3,13 +3,6 @@ bitops.c
 bitops.h
 ip.h
 ip.c
-#ifdef IPV6
-ipv6.c
-ipv6.h
-#else
-ipv4.c
-ipv4.h
-#endif
 lists.c
 lists.h
 md5.c

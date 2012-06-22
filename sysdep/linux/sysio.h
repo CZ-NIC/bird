@@ -6,9 +6,11 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#include <linux/socket.h>
+#include <linux/tcp.h>
+
 #include <net/if.h>
 
-#ifdef IPV6
 
 #ifndef IPV6_UNICAST_HOPS
 /* Needed on glibc 2.0 systems */
@@ -16,22 +18,10 @@
 #define CONFIG_IPV6_GLIBC_20
 #endif
 
-static inline void
-set_inaddr(struct in6_addr *ia, ip_addr a)
-{
-  ipa_hton(a);
-  memcpy(ia, &a, sizeof(a));
-}
 
-static inline void
-get_inaddr(ip_addr *a, struct in6_addr *ia)
-{
-  memcpy(a, ia, sizeof(*a));
-  ipa_ntoh(*a);
-}
 
 static inline char *
-sysio_bind_to_iface(sock *s)
+sk_bind_to_iface(sock *s)
 {
   struct ifreq ifr;
   strcpy(ifr.ifr_name, s->iface->name);
@@ -39,22 +29,6 @@ sysio_bind_to_iface(sock *s)
     return "SO_BINDTODEVICE";
 
   return NULL;
-}
-
-#else
-
-static inline void
-set_inaddr(struct in_addr *ia, ip_addr a)
-{
-  ipa_hton(a);
-  memcpy(&ia->s_addr, &a, sizeof(a));
-}
-
-static inline void
-get_inaddr(ip_addr *a, struct in_addr *ia)
-{
-  memcpy(a, &ia->s_addr, sizeof(*a));
-  ipa_ntoh(*a);
 }
 
 
@@ -73,12 +47,12 @@ static inline void fill_mreqn(struct ip_mreqn *m, struct iface *ifa, ip_addr sad
 {
   bzero(m, sizeof(*m));
   m->imr_ifindex = ifa->index;
-  set_inaddr(&m->imr_address, saddr);
-  set_inaddr(&m->imr_multiaddr, maddr);
+  ipa_put_in4(&m->imr_address, saddr);
+  ipa_put_in4(&m->imr_multiaddr, maddr);
 }
 
 static inline char *
-sysio_setup_multicast(sock *s)
+sk_setup_multicast4(sock *s)
 {
   struct ip_mreqn m;
   int zero = 0;
@@ -95,16 +69,11 @@ sysio_setup_multicast(sock *s)
     return "IP_MULTICAST_IF";
 
   /* Is this necessary? */
-  struct ifreq ifr;
-  strcpy(ifr.ifr_name, s->iface->name);
-  if (setsockopt(s->fd, SOL_SOCKET, SO_BINDTODEVICE, &ifr, sizeof(ifr)) < 0)
-    return "SO_BINDTODEVICE";
-
-  return NULL;
+  return sk_bind_to_iface(s);
 }
 
 static inline char *
-sysio_join_group(sock *s, ip_addr maddr)
+sk_join_group4(sock *s, ip_addr maddr)
 {
   struct ip_mreqn m;
 
@@ -117,7 +86,7 @@ sysio_join_group(sock *s, ip_addr maddr)
 }
 
 static inline char *
-sysio_leave_group(sock *s, ip_addr maddr)
+sk_leave_group4(sock *s, ip_addr maddr)
 {
   struct ip_mreqn m;
 
@@ -129,11 +98,7 @@ sysio_leave_group(sock *s, ip_addr maddr)
   return NULL;
 }
 
-#endif
 
-
-#include <linux/socket.h>
-#include <linux/tcp.h>
 
 /* For the case that we have older kernel headers */
 /* Copied from Linux kernel file include/linux/tcp.h */
@@ -154,12 +119,12 @@ struct tcp_md5sig {
 #endif
 
 static int
-sk_set_md5_auth_int(sock *s, sockaddr *sa, char *passwd)
+sk_set_md5_auth_int(sock *s, struct sockaddr *sa, int sa_len, char *passwd)
 {
   struct tcp_md5sig md5;
 
   memset(&md5, 0, sizeof(md5));
-  memcpy(&md5.tcpm_addr, (struct sockaddr *) sa, sizeof(*sa));
+  memcpy(&md5.tcpm_addr, sa, sa_len);
 
   if (passwd)
     {
@@ -182,57 +147,42 @@ sk_set_md5_auth_int(sock *s, sockaddr *sa, char *passwd)
       if (errno == ENOPROTOOPT)
 	log(L_ERR "Kernel does not support TCP MD5 signatures");
       else
-	log(L_ERR "sk_set_md5_auth_int: setsockopt: %m");
+	log(L_ERR "sk_set_md5_auth_int: TCP_MD5SIG: %m");
     }
 
   return rv;
 }
 
 
-#ifndef IPV6
-
 /* RX/TX packet info handling for IPv4 */
 /* Mostly similar to standardized IPv6 code */
 
-#define CMSG_RX_SPACE CMSG_SPACE(sizeof(struct in_pktinfo))
-#define CMSG_TX_SPACE CMSG_SPACE(sizeof(struct in_pktinfo))
+#define CMSG_SPACE_PKTINFO4 CMSG_SPACE(sizeof(struct in_pktinfo))
+#define CMSG_SPACE_PKTINFO6 CMSG_SPACE(sizeof(struct in6_pktinfo))
 
-static char *
-sysio_register_cmsgs(sock *s)
+#define CMSG_RX_SPACE MAX(CMSG_SPACE_PKTINFO4,CMSG_SPACE_PKTINFO6)
+#define CMSG_TX_SPACE MAX(CMSG_SPACE_PKTINFO4,CMSG_SPACE_PKTINFO6)
+
+static inline char *
+sk_request_pktinfo4(sock *s)
 {
   int ok = 1;
-  if ((s->flags & SKF_LADDR_RX) &&
-      setsockopt(s->fd, IPPROTO_IP, IP_PKTINFO, &ok, sizeof(ok)) < 0)
-    return "IP_PKTINFO";
+  if (s->flags & SKF_LADDR_RX)
+    if (setsockopt(s->fd, IPPROTO_IP, IP_PKTINFO, &ok, sizeof(ok)) < 0)
+      return "IP_PKTINFO";
 
   return NULL;
 }
 
-static void
-sysio_process_rx_cmsgs(sock *s, struct msghdr *msg)
+static inline void
+sk_process_rx_cmsg4(sock *s, struct cmsghdr *cm)
 {
-  struct cmsghdr *cm;
-  struct in_pktinfo *pi = NULL;
-
-  if (!(s->flags & SKF_LADDR_RX))
-    return;
-
-  for (cm = CMSG_FIRSTHDR(msg); cm != NULL; cm = CMSG_NXTHDR(msg, cm))
+  if (cm->cmsg_level == IPPROTO_IP && cm->cmsg_type == IP_PKTINFO)
     {
-      if (cm->cmsg_level == IPPROTO_IP && cm->cmsg_type == IP_PKTINFO)
-	pi = (struct in_pktinfo *) CMSG_DATA(cm);
+      struct in_pktinfo *pi = (struct in_pktinfo *) CMSG_DATA(cm);
+      s->laddr = ipa_get_in4(&pi->ipi_addr);
+      s->lifindex = pi->ipi_ifindex;
     }
-
-  if (!pi)
-    {
-      s->laddr = IPA_NONE;
-      s->lifindex = 0;
-      return;
-    }
-
-  get_inaddr(&s->laddr, &pi->ipi_addr);
-  s->lifindex = pi->ipi_ifindex;
-  return;
 }
 
 /*
@@ -261,8 +211,6 @@ sysio_prepare_tx_cmsgs(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
 }
 */
 
-#endif
-
 
 #ifndef IP_MINTTL
 #define IP_MINTTL 21
@@ -273,7 +221,8 @@ sysio_prepare_tx_cmsgs(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
 #endif
 
 
-#ifndef IPV6
+// XXXX
+#if 0
 
 static int
 sk_set_min_ttl4(sock *s, int ttl)
@@ -290,8 +239,6 @@ sk_set_min_ttl4(sock *s, int ttl)
 
   return 0;
 }
-
-#else
 
 static int
 sk_set_min_ttl6(sock *s, int ttl)

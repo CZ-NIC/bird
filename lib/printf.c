@@ -273,9 +273,10 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 		/* IP address */
 		case 'I':
 			if (flags & SPECIAL)
-				ip_ntox(va_arg(args, ip_addr), ipbuf);
+				ip6_ntox(va_arg(args, ip_addr), ipbuf);
 			else {
-				ip_ntop(va_arg(args, ip_addr), ipbuf);
+				// XXXX update IPv4 / IPv6 distinction
+				ip6_ntop(va_arg(args, ip_addr), ipbuf);
 				if (field_width > 0)
 					field_width = STD_ADDRESS_P_LENGTH;
 			}
@@ -300,11 +301,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 		/* Router/Network ID - essentially IPv4 address in u32 value */
 		case 'R':
 			x = va_arg(args, u32);
-			bsprintf(ipbuf, "%d.%d.%d.%d",
-				 ((x >> 24) & 0xff),
-				 ((x >> 16) & 0xff),
-				 ((x >> 8) & 0xff),
-				 (x & 0xff));
+			ip4_ntop(ip4_from_u32(x), ipbuf);
 			s = ipbuf;
 			goto str;
 

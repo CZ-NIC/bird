@@ -39,6 +39,8 @@ CF_DECLS
   int i;
   u32 i32;
   ip_addr a;
+  ip4_addr a4;
+  ip6_addr a6;
   struct symbol *s;
   char *t;
   struct rtable_config *r;
@@ -67,14 +69,15 @@ CF_DECLS
 %token PO PC
 %token <i> NUM ENUM
 %token <i32> RTRID
-%token <a> IPA
+%token <a4> IP4
+%token <a6> IP6
 %token <s> SYM
 %token <t> TEXT
 %type <iface> ipa_scope
 
 %type <i> expr bool pxlen
 %type <time> datetime
-%type <a> ipa
+%type <a> ipa ipa_raw
 %type <px> prefix prefix_or_ipa
 %type <t> text_or_none
 
@@ -119,7 +122,7 @@ definition:
      cf_define_symbol($2, SYM_NUMBER, NULL);
      $2->aux = $4;
    }
- | DEFINE SYM '=' IPA ';' {
+ | DEFINE SYM '=' ipa_raw ';' {
      cf_define_symbol($2, SYM_IPA, cfg_alloc(sizeof(ip_addr)));
      *(ip_addr *)$2->def = $4;
    }
@@ -137,9 +140,15 @@ bool:
  ;
 
 /* Addresses, prefixes and netmasks */
+// XXXX check users
+
+ipa_raw:
+   IP4 { $$ = ipa_from_ip4($1); }
+ | IP6 { $$ = ipa_from_ip6($1); }
+ ;
 
 ipa:
-   IPA
+   ipa_raw
  | SYM {
      if ($1->class != SYM_IPA) cf_error("IP address expected");
      $$ = *(ip_addr *)$1->def;

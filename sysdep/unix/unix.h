@@ -28,17 +28,11 @@ volatile int async_config_flag;
 volatile int async_dump_flag;
 volatile int async_shutdown_flag;
 
-#ifdef IPV6
+// XXXX
 #define BIRD_PF PF_INET6
 #define BIRD_AF AF_INET6
-typedef struct sockaddr_in6 sockaddr;
-static inline int sa_family_check(sockaddr *sa) { return sa->sin6_family == AF_INET6; }
-#else
-#define BIRD_PF PF_INET
-#define BIRD_AF AF_INET
-typedef struct sockaddr_in sockaddr;
-static inline int sa_family_check(sockaddr *sa) { return sa->sin_family == AF_INET; }
-#endif
+static inline int sa_family_check(struct sockaddr *sa) { return sa->sa_family == AF_INET6; }
+
 
 #ifndef SUN_LEN
 #define SUN_LEN(ptr) ((size_t) (((struct sockaddr_un *) 0)->sun_path) + strlen ((ptr)->sun_path))
@@ -49,8 +43,6 @@ struct iface;
 
 void io_init(void);
 void io_loop(void);
-void fill_in_sockaddr(sockaddr *sa, ip_addr a, struct iface *ifa, unsigned port);
-void get_sockaddr(sockaddr *sa, ip_addr *a, struct iface **ifa, unsigned *port, int check);
 void sk_open_unix(struct birdsock *s, char *name);
 void *tracked_fopen(struct pool *, char *name, char *mode);
 void test_old_bird(char *path);

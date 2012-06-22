@@ -106,25 +106,15 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 {include} { if(cf_open_hook) new_include(); }
 
 {DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+ {
-#ifdef IPV6
-  if (ipv4_pton_u32(yytext, &cf_lval.i32))
-    return RTRID;
+  if (ip4_pton(yytext, &cf_lval.a4))
+    return IP4;
   cf_error("Invalid IPv4 address %s", yytext);
-#else
-  if (ip_pton(yytext, &cf_lval.a))
-    return IPA;
-  cf_error("Invalid IP address %s", yytext);
-#endif
 }
 
 ({XIGIT}*::|({XIGIT}*:){3,})({XIGIT}*|{DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+) {
-#ifdef IPV6
-  if (ip_pton(yytext, &cf_lval.a))
-    return IPA;
-  cf_error("Invalid IP address %s", yytext);
-#else
-  cf_error("This is an IPv4 router, therefore IPv6 addresses are not supported");
-#endif
+  if (ip6_pton(yytext, &cf_lval.a6))
+    return IP6;
+  cf_error("Invalid IPv6 address %s", yytext);
 }
 
 0x{XIGIT}+ {

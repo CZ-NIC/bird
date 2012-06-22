@@ -94,7 +94,7 @@ nl_send(struct nl_sock *nl, struct nlmsghdr *nh)
 }
 
 static void
-nl_request_dump(int cmd)
+nl_request_dump(int pf, int cmd)
 {
   struct {
     struct nlmsghdr nh;
@@ -103,9 +103,7 @@ nl_request_dump(int cmd)
   req.nh.nlmsg_type = cmd;
   req.nh.nlmsg_len = sizeof(req);
   req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
-  /* Is it important which PF_* is used for link-level interface scan?
-     It seems that some information is available only when PF_INET is used. */
-  req.g.rtgen_family = (cmd == RTM_GETLINK) ? PF_INET : BIRD_PF;
+  req.g.rtgen_family = pf;
   nl_send(&nl_scan, &req.nh);
 }
 
@@ -238,6 +236,19 @@ nl_parse_attrs(struct rtattr *a, struct rtattr **k, int ksize)
   else
     return 1;
 }
+
+static inline ip4_addr rta4_get_ip4(struct rtattr *a)
+{ return ip4_get(RTA_DATA(a)); }
+
+static inline ip6_addr rta6_get_ip6(struct rtattr *a)
+{ return ip6_get(RTA_DATA(a)); }
+
+static inline ip_addr rta4_get_ipa(struct rtattr *a)
+{ return ipa_from_ip4(ip4_get(RTA_DATA(a))); }
+
+static inline ip_addr rta6_get_ipa(struct rtattr *a)
+{ return ipa_from_ip6(ip6_get(RTA_DATA(a))); }
+
 
 void
 nl_add_attr(struct nlmsghdr *h, unsigned bufsize, unsigned code,
@@ -445,54 +456,58 @@ nl_parse_addr(struct nlmsghdr *h)
 {
   struct ifaddrmsg *i;
   struct rtattr *a[IFA_ANYCAST+1];
-  int new = h->nlmsg_type == RTM_NEWADDR;
+  int new = (h->nlmsg_type == RTM_NEWADDR);
   struct ifa ifa;
-  struct iface *ifi;
-  int scope;
+  ip_addr addr;
+  int ipv4 = 0;
 
   if (!(i = nl_checkin(h, sizeof(*i))) || !nl_parse_attrs(IFA_RTA(i), a, sizeof(a)))
     return;
-  if (i->ifa_family != BIRD_AF)
-    return;
-  if (!a[IFA_ADDRESS] || RTA_PAYLOAD(a[IFA_ADDRESS]) != sizeof(ip_addr)
-#ifdef IPV6
-      || a[IFA_LOCAL] && RTA_PAYLOAD(a[IFA_LOCAL]) != sizeof(ip_addr)
-#else
-      || !a[IFA_LOCAL] || RTA_PAYLOAD(a[IFA_LOCAL]) != sizeof(ip_addr)
-      || (a[IFA_BROADCAST] && RTA_PAYLOAD(a[IFA_BROADCAST]) != sizeof(ip_addr))
-#endif
-      )
-    {
-      log(L_ERR "nl_parse_addr: Malformed message received");
-      return;
-    }
 
-  ifi = if_find_by_index(i->ifa_index);
-  if (!ifi)
+  bzero(&ifa, sizeof(ifa));
+
+  if (i->ifa_family == AF_INET)
+    {
+      if (!a[IFA_ADDRESS] || (RTA_PAYLOAD(a[IFA_ADDRESS]) != sizeof(ip4_addr)) ||
+	  !a[IFA_LOCAL]   || (RTA_PAYLOAD(a[IFA_LOCAL]) != sizeof(ip4_addr)))
+	goto malformed;
+
+      addr = rta4_get_ipa(a[IFA_ADDRESS]);
+      ifa.ip = rta4_get_ipa(a[IFA_LOCAL]);
+      ipv4 = 1;
+    }
+  else if (i->ifa_family == AF_INET6)
+    {
+      if (!a[IFA_ADDRESS] || (RTA_PAYLOAD(a[IFA_ADDRESS]) != sizeof(ip6_addr)) ||
+	  (a[IFA_LOCAL]   && (RTA_PAYLOAD(a[IFA_LOCAL]) != sizeof(ip6_addr))))
+	goto malformed;
+
+      addr = rta6_get_ipa(a[IFA_ADDRESS]);
+      /* IFA_LOCAL can be unset for IPv6 interfaces */
+      ifa.ip = a[IFA_LOCAL] ? rta6_get_ipa(a[IFA_LOCAL]) : addr;
+    }
+  else
+    return;	/* Ignore unknown address families */
+
+  ifa.iface = if_find_by_index(i->ifa_index);
+  if (!ifa.iface)
     {
       log(L_ERR "KIF: Received address message for unknown interface %d", i->ifa_index);
       return;
     }
 
-  bzero(&ifa, sizeof(ifa));
-  ifa.iface = ifi;
   if (i->ifa_flags & IFA_F_SECONDARY)
     ifa.flags |= IA_SECONDARY;
 
-  /* IFA_LOCAL can be unset for IPv6 interfaces */
-  memcpy(&ifa.ip, RTA_DATA(a[IFA_LOCAL] ? : a[IFA_ADDRESS]), sizeof(ifa.ip));
-  ipa_ntoh(ifa.ip);
-  ifa.pxlen = i->ifa_prefixlen;
-  if (i->ifa_prefixlen > BITS_PER_IP_ADDRESS)
+  ifa.pxlen = i->ifa_prefixlen + (ipv4 ? 96 : 0); // XXXXX: Hack
+  if (ifa.pxlen > BITS_PER_IP_ADDRESS)
     {
-      log(L_ERR "KIF: Invalid prefix length for interface %s: %d", ifi->name, i->ifa_prefixlen);
-      new = 0;
+      log(L_ERR "KIF: Received invalid pxlen %d on %s",  i->ifa_prefixlen, ifa.iface->name);
+      return;
     }
+
   if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS)
     {
-      ip_addr addr;
-      memcpy(&addr, RTA_DATA(a[IFA_ADDRESS]), sizeof(addr));
-      ipa_ntoh(addr);
       ifa.prefix = ifa.brd = addr;
 
       /* It is either a host address or a peer address */
@@ -507,44 +522,36 @@ nl_parse_addr(struct nlmsghdr *h)
   else
     {
       ip_addr netmask = ipa_mkmask(ifa.pxlen);
-      ifa.prefix = ipa_and(ifa.ip, netmask);
-      ifa.brd = ipa_or(ifa.ip, ipa_not(netmask));
+      ifa.prefix = ipa_and(addr, netmask);
+      ifa.brd = ipa_or(addr, ipa_not(netmask));
+
       if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS - 1)
 	ifa.opposite = ipa_opposite_m1(ifa.ip);
 
-#ifndef IPV6
-      if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS - 2)
+      if ((i->ifa_prefixlen == BITS_PER_IP_ADDRESS - 2) && ipv4)
 	ifa.opposite = ipa_opposite_m2(ifa.ip);
-
-      if ((ifi->flags & IF_BROADCAST) && a[IFA_BROADCAST])
-	{
-	  ip_addr xbrd;
-	  memcpy(&xbrd, RTA_DATA(a[IFA_BROADCAST]), sizeof(xbrd));
-	  ipa_ntoh(xbrd);
-	  if (ipa_equal(xbrd, ifa.prefix) || ipa_equal(xbrd, ifa.brd))
-	    ifa.brd = xbrd;
-	  else if (ifi->flags & IF_TMP_DOWN) /* Complain only during the first scan */
-	    log(L_ERR "KIF: Invalid broadcast address %I for %s", xbrd, ifi->name);
-	}
-#endif
     }
 
-  scope = ipa_classify(ifa.ip);
-  if (scope < 0)
+  int scope = ipa_classify(ifa.ip);
+  if ((scope == IADDR_INVALID) || !(scope & IADDR_HOST))
     {
-      log(L_ERR "KIF: Invalid interface address %I for %s", ifa.ip, ifi->name);
+      log(L_ERR "KIF: Received invalid address %I on %s", ifa.ip, ifa.iface->name);
       return;
     }
   ifa.scope = scope & IADDR_SCOPE_MASK;
 
   DBG("KIF: IF%d(%s): %s IPA %I, flg %x, net %I/%d, brd %I, opp %I\n",
-      ifi->index, ifi->name,
-      new ? "added" : "removed",
+      ifa.iface->index, ifa.iface->name, new ? "added" : "removed",
       ifa.ip, ifa.flags, ifa.prefix, ifa.pxlen, ifa.brd, ifa.opposite);
   if (new)
     ifa_update(&ifa);
   else
     ifa_delete(&ifa);
+  return;
+
+ malformed:
+  log(L_ERR "KIF: Received malformed address message");
+  return;
 }
 
 void
@@ -554,14 +561,24 @@ kif_do_scan(struct kif_proto *p UNUSED)
 
   if_start_update();
 
-  nl_request_dump(RTM_GETLINK);
+  /* Is it important which PF_* is used for link-level interface scan?
+     It seems that some information is available only when PF_INET is used. */
+
+  nl_request_dump(PF_INET, RTM_GETLINK);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWLINK || h->nlmsg_type == RTM_DELLINK)
       nl_parse_link(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
 
-  nl_request_dump(RTM_GETADDR);
+  nl_request_dump(PF_INET, RTM_GETADDR);
+  while (h = nl_get_scan())
+    if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
+      nl_parse_addr(h);
+    else
+      log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
+
+  nl_request_dump(PF_INET6, RTM_GETADDR);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
       nl_parse_addr(h);
@@ -944,7 +961,7 @@ krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NUL
 {
   struct nlmsghdr *h;
 
-  nl_request_dump(RTM_GETROUTE);
+  nl_request_dump(BIRD_PF, RTM_GETROUTE);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
       nl_parse_route(h, 1);
@@ -1055,11 +1072,9 @@ nl_open_async(void)
 
   bzero(&sa, sizeof(sa));
   sa.nl_family = AF_NETLINK;
-#ifdef IPV6
-  sa.nl_groups = RTMGRP_LINK | RTMGRP_IPV6_IFADDR | RTMGRP_IPV6_ROUTE;
-#else
-  sa.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV4_ROUTE;
-#endif
+  sa.nl_groups = RTMGRP_LINK |
+    RTMGRP_IPV4_IFADDR | RTMGRP_IPV4_ROUTE |
+    RTMGRP_IPV6_IFADDR | RTMGRP_IPV6_ROUTE;
   if (bind(fd, (struct sockaddr *) &sa, sizeof(sa)) < 0)
     {
       log(L_ERR "Unable to bind asynchronous rtnetlink socket: %m");

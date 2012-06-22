@@ -57,14 +57,14 @@ tags:
 
 install: all
 	$(INSTALL) -d $(DESTDIR)/$(sbindir) $(DESTDIR)/$(sysconfdir) $(DESTDIR)/@runtimedir@
-	$(INSTALL_PROGRAM) -s $(exedir)/bird $(DESTDIR)/$(sbindir)/bird@SUFFIX@
+	$(INSTALL_PROGRAM) -s $(exedir)/bird $(DESTDIR)/$(sbindir)/bird
 	if test -n "@CLIENT@" ; then								\
-		$(INSTALL_PROGRAM) -s $(exedir)/birdc $(DESTDIR)/$(sbindir)/birdc@SUFFIX@ ;	\
+		$(INSTALL_PROGRAM) -s $(exedir)/birdc $(DESTDIR)/$(sbindir)/birdc ;		\
 	fi
 	if ! test -f $(DESTDIR)/@CONFIG_FILE@ ; then						\
 		$(INSTALL_DATA) $(srcdir)/doc/bird.conf.example $(DESTDIR)/@CONFIG_FILE@ ;	\
 	else											\
-		echo "Not overwriting old bird@SUFFIX@.conf" ;					\
+		echo "Not overwriting old bird.conf" ;						\
 	fi
 
 install-docs:

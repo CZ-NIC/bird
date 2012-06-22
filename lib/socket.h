@@ -43,6 +43,7 @@ typedef struct birdsock {
   /* laddr and lifindex are valid only if SKF_LADDR_RX flag is set to request it */
 
   int fd;				/* System-dependent data */
+  int af;				/* Address family (AF_INET, AF_INET6 or 0 for non-IP) of fd */
   node n;
   void *rbuf_alloc, *tbuf_alloc;
   char *password;				/* Password for MD5 authentication */
@@ -66,25 +67,27 @@ int sk_setup_multicast(sock *s);
 int sk_join_group(sock *s, ip_addr maddr);
 int sk_leave_group(sock *s, ip_addr maddr);
 
-#ifdef IPV6
 int sk_set_ipv6_checksum(sock *s, int offset);
-int sk_set_icmp_filter(sock *s, int p1, int p2);
-#endif
-
+int sk_set_icmp6_filter(sock *s, int p1, int p2);
 int sk_set_broadcast(sock *s, int enable);
 
-static inline int
-sk_send_buffer_empty(sock *sk)
-{
-	return sk->tbuf == sk->tpos;
-}
+static inline int sk_send_buffer_empty(sock *sk)
+{ return sk->tbuf == sk->tpos; }
+
+static inline int sk_is_ipv4(sock *sk)
+{ return sk->af == AF_INET; }
+
+static inline int sk_is_ipv6(sock *sk)
+{ return sk->af == AF_INET6; }
+
 
 
 /* Socket flags */
 
-#define SKF_V6ONLY	1	/* Use IPV6_V6ONLY socket option */
-#define SKF_LADDR_RX	2	/* Report local address for RX packets */
-#define SKF_LADDR_TX	4	/* Allow to specify local address for TX packets */
+#define SKF_V4ONLY	1	/* Use IPv4 for IP sockets */
+#define SKF_V6ONLY	2	/* Use IPV6_V6ONLY socket option */
+#define SKF_LADDR_RX	4	/* Report local address for RX packets */
+#define SKF_LADDR_TX	6	/* Allow to specify local address for TX packets */
 
 
 /*
