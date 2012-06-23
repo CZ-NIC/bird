@@ -36,6 +36,16 @@ get_u32(void *p)
   return ntohl(x);
 }
 
+static inline u64
+get_u64(void *p)
+{
+  u32 xh, xl;
+  memcpy(&xh, p, 4);
+  memcpy(&xl, p+4, 4);
+  return (((u64) ntohl(xh)) << 32) | ntohl(xl);
+}
+
+
 static inline void
 put_u16(void *p, u16 x)
 {
@@ -48,6 +58,17 @@ put_u32(void *p, u32 x)
 {
   x = htonl(x);
   memcpy(p, &x, 4);
+}
+
+
+static inline void
+put_u64(void *p, u64 x)
+{
+  u32 xh, xl;
+  xh = htonl(x >> 32); 
+  xl = htonl((u32) x); 
+  memcpy(p, &xh, 4);
+  memcpy(p+4, &xl, 4);
 }
 
 #endif

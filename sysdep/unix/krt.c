@@ -285,14 +285,14 @@ static inline void
 krt_trace_in(struct krt_proto *p, rte *e, char *msg)
 {
   if (p->p.debug & D_PACKETS)
-    log(L_TRACE "%s: %I/%d: %s", p->p.name, e->net->n.prefix, e->net->n.pxlen, msg);
+    log(L_TRACE "%s: %F: %s", p->p.name, &e->net->n, msg);
 }
 
 static inline void
 krt_trace_in_rl(struct rate_limit *rl, struct krt_proto *p, rte *e, char *msg)
 {
   if (p->p.debug & D_PACKETS)
-    log_rl(rl, L_TRACE "%s: %I/%d: %s", p->p.name, e->net->n.prefix, e->net->n.pxlen, msg);
+    log_rl(rl, L_TRACE "%s: %F: %s", p->p.name, &e->net->n, msg);
 }
 
 /*
@@ -335,7 +335,7 @@ krt_learn_announce_update(struct krt_proto *p, rte *e)
   net *n = e->net;
   rta *aa = rta_clone(e->attrs);
   rte *ee = rte_get_temp(aa);
-  net *nn = net_get(p->p.table, n->n.prefix, n->n.pxlen);
+  net *nn = fib_get(&p->p.table->fib, FPREFIX(&n->n), n->n.pxlen);
   ee->net = nn;
   ee->pflags = 0;
   ee->pref = p->p.preference;
@@ -346,7 +346,7 @@ krt_learn_announce_update(struct krt_proto *p, rte *e)
 static void
 krt_learn_announce_delete(struct krt_proto *p, net *n)
 {
-  n = net_find(p->p.table, n->n.prefix, n->n.pxlen);
+  n = fib_find(&p->p.table->fib, FPREFIX(&n->n), n->n.pxlen);
   if (n)
     rte_update(p->p.table, n, &p->p, &p->p, NULL);
 }
@@ -356,7 +356,7 @@ static void
 krt_learn_scan(struct krt_proto *p, rte *e)
 {
   net *n0 = e->net;
-  net *n = net_get(&p->krt_table, n0->n.prefix, n0->n.pxlen);
+  net *n = fib_get(&p->krt_table.fib, FPREFIX(&n0->n), n0->n.pxlen);
   rte *m, **mm;
 
   e->attrs = rta_lookup(e->attrs);
@@ -427,7 +427,7 @@ again:
 	}
       if (!n->routes)
 	{
-	  DBG("%I/%d: deleting\n", n->n.prefix, n->n.pxlen);
+	  DBG("%F: deleting\n", &n->n);
 	  if (old_best)
 	    {
 	      krt_learn_announce_delete(p, n);
@@ -442,12 +442,12 @@ again:
       n->routes = best;
       if (best != old_best || !(n->n.flags & KRF_INSTALLED))
 	{
-	  DBG("%I/%d: announcing (metric=%d)\n", n->n.prefix, n->n.pxlen, best->u.krt.metric);
+	  DBG("%F: announcing (metric=%d)\n", &n->n, best->u.krt.metric);
 	  krt_learn_announce_update(p, best);
 	  n->n.flags |= KRF_INSTALLED;
 	}
       else
-	DBG("%I/%d: uptodate (metric=%d)\n", n->n.prefix, n->n.pxlen, best->u.krt.metric);
+	DBG("%F: uptodate (metric=%d)\n", &n->n, best->u.krt.metric);
     }
   FIB_ITERATE_END(f);
 }
@@ -456,8 +456,8 @@ static void
 krt_learn_async(struct krt_proto *p, rte *e, int new)
 {
   net *n0 = e->net;
-  net *n = net_get(&p->krt_table, n0->n.prefix, n0->n.pxlen);
   rte *g, **gg, *best, **bestp, *old_best;
+  net *n = fib_get(&p->krt_table.fib, FPREFIX(&n0->n), n0->n.pxlen);
 
   e->attrs = rta_lookup(e->attrs);
 

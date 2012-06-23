@@ -390,6 +390,8 @@ static inline int ipa_classify_net(ip_addr a)
 #define STD_ADDRESS_P_LENGTH 39
 #define SIZE_OF_IP_HEADER 40
 
+#define MAX_ADDRESS_P_LENGTH 40
+
 #define ipa_class_mask(x) _MI4(ipv4_class_mask(_I(x)))
 
 
@@ -402,6 +404,8 @@ static inline int ipa_classify_net(ip_addr a)
 u32 ipv4_class_mask(u32);
 byte *ipv4_skip_header(byte *, int *);
 
+struct fib_node;
+void fn_print(char *buf, int buflen, struct fib_node *n);
 
 
 

@@ -50,16 +50,25 @@ typedef struct orta
 }
 orta;
 
+
+/* Values for fn.flags in struct ort */
+#define OSPF_RT_PERSISTENT	0x01
+#define OSPF_RT_EXPORT		0x02
+#define OSPF_RT_NSSA		0x04
+#define OSPF_RT_SRC		(0x02 | 0x04)
+
 typedef struct ort
 {
   /*
-   * We use fn.x0 to mark persistent rt entries, that are needed for summary
-   * LSAs that don't have 'proper' rt entry (area networks + default to stubs)
-   * to keep uid stable (used for LSA ID in OSPFv3 - see fibnode_to_lsaid()).
+   * We use OSPF_RT_PERSISTENT to mark persistent rt entries, that are
+   * needed for summary LSAs that don't have 'proper' rt entry (area
+   * networks + default to stubs) to keep uid stable (used for LSA ID
+   * in OSPFv3 - see fibnode_to_lsaid()).
    *
-   * We use fn.x1 to note whether the external route was originated
-   * from the route export (in ospf_rt_notify()) or from the NSSA
-   * route translation (in check_nssa_lsa()).
+   * We use ORT_RT_EXPORT and ORT_RT_NSSA to note whether the
+   * external/NSSA route was originated from the route export (in
+   * ospf_rt_notify()) or from the NSSA route translation (in
+   * check_nssa_lsa()).
    *
    * old_* values are here to represent the last route update. old_rta
    * is cached (we keep reference), mainly for multipath nexthops.

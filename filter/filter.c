@@ -833,7 +833,7 @@ interpret(struct f_inst *what)
       case T_STRING:	/* Warning: this is a special case for proto attribute */
 	res.val.s = rta->proto->name;
 	break;
-      case T_PREFIX:	/* Warning: this works only for prefix of network */
+      case T_PREFIX:	/* Warning: this works only for RT_IP prefix of network */
 	{
 	  res.val.px.ip = (*f_rte)->net->n.prefix;
 	  res.val.px.len = (*f_rte)->net->n.pxlen;

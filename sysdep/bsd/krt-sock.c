@@ -93,7 +93,7 @@ krt_sock_send(int cmd, rte *e)
   sockaddr gate, mask, dst;
   ip_addr gw;
 
-  DBG("krt-sock: send %I/%d via %I\n", net->n.prefix, net->n.pxlen, a->gw);
+  DBG("krt-sock: send %F via %I\n", &net->n, a->gw);
 
   bzero(&msg,sizeof (struct rt_msghdr));
   msg.rtm.rtm_version = RTM_VERSION;
@@ -101,15 +101,6 @@ krt_sock_send(int cmd, rte *e)
   msg.rtm.rtm_seq = msg_seq++;
   msg.rtm.rtm_addrs = RTA_DST;
   msg.rtm.rtm_flags = RTF_UP | RTF_PROTO1;
-
-  if (net->n.pxlen == MAX_PREFIX_LENGTH)
-  {
-    msg.rtm.rtm_flags |= RTF_HOST;
-  }
-  else
-  {
-    msg.rtm.rtm_addrs |= RTA_NETMASK;
-  }
 
 #ifdef RTF_REJECT
   if(a->dest == RTD_UNREACHABLE)
@@ -149,6 +140,20 @@ krt_sock_send(int cmd, rte *e)
   fill_in_sockaddr(&dst, net->n.prefix, NULL, 0);
   fill_in_sockaddr(&mask, ipa_mkmask(net->n.pxlen), NULL, 0);
   fill_in_sockaddr(&gate, gw, NULL, 0);
+  /* XXXX from patch
+  if (net->n.addr_type == RT_IP)
+   {
+     fill_in_sockaddr(&dst, *FPREFIX_IP(&net->n), 0);
+     fill_in_sockaddr(&mask, ipa_mkmask(net->n.pxlen), 0);
+
+     if (net->n.pxlen == MAX_PREFIX_LENGTH)
+       msg.rtm.rtm_flags |= RTF_HOST;
+     else
+       msg.rtm.rtm_addrs |= RTA_NETMASK;
+   }
+  */
+ 
+ 
 
   switch (a->dest)
   {
@@ -193,7 +198,7 @@ krt_sock_send(int cmd, rte *e)
   msg.rtm.rtm_msglen = l;
 
   if ((l = write(rt_sock, (char *)&msg, l)) < 0) {
-    log(L_ERR "KRT: Error sending route %I/%d to kernel: %m", net->n.prefix, net->n.pxlen);
+    log(L_ERR "KRT: Error sending route %F to kernel: %m",  &net->n);
     return -1;
   }
 
@@ -340,8 +345,8 @@ krt_read_rt(struct ks_msg *msg, struct krt_proto *p, int scan)
   a.iface = if_find_by_index(msg->rtm.rtm_index);
   if (!a.iface)
     {
-      log(L_ERR "KRT: Received route %I/%d with unknown ifindex %u",
-	  net->n.prefix, net->n.pxlen, msg->rtm.rtm_index);
+      log(L_ERR "KRT: Received route %F with unknown ifindex %u",
+	  &net->n, msg->rtm.rtm_index);
       return;
     }
 
@@ -365,8 +370,8 @@ krt_read_rt(struct ks_msg *msg, struct krt_proto *p, int scan)
         if (ipa_classify(a.gw) == (IADDR_HOST | SCOPE_HOST))
           return;
 
-	log(L_ERR "KRT: Received route %I/%d with strange next-hop %I",
-	    net->n.prefix, net->n.pxlen, a.gw);
+	log(L_ERR "KRT: Received route %F with strange next-hop %I",
+	    &net->n, a.gw);
 	return;
       }
   }

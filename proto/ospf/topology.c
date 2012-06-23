@@ -1114,8 +1114,11 @@ originate_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src,
   body = originate_ext_lsa_body(po, &lsa.length, fn, metric, fwaddr, tag, pbit);
   lsasum_calculate(&lsa, body);
 
-  if (src) 
-    fn->x1 = src;
+  if (src)
+  {
+    fn->flags &= ~OSPF_RT_SRC;
+    fn->flags |= src;
+  }
 
   lsa_install_new(po, &lsa, dom, body);
   ospf_lsupd_flood(po, NULL, NULL, &lsa, dom, 1);
@@ -1131,7 +1134,7 @@ originate_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src,
 }
 
 void
-flush_ext_lsa(struct ospf_area *oa, struct fib_node *fn)
+flush_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src)
 {
   struct proto_ospf *po = oa->po;
   struct proto *p = &po->proto;
@@ -1154,7 +1157,9 @@ flush_ext_lsa(struct ospf_area *oa, struct fib_node *fn)
 	  return;
 	}
 
-      fn->x1 = 0;
+      /* Clean up source bits */
+      if (src)
+	fn->flags &= ~OSPF_RT_SRC;
       ospf_lsupd_flush_nlsa(po, en);
     }
 }

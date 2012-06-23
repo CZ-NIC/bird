@@ -640,7 +640,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
     char buf[128 + nh_bufsize(a->nexthops)];
   } r;
 
-  DBG("nl_send_route(%I/%d,new=%d)\n", net->n.prefix, net->n.pxlen, new);
+  DBG("nl_send_route(%F,new=%d)\n", &net->n, new);
 
   bzero(&r.h, sizeof(r.h));
   bzero(&r.r, sizeof(r.r));
@@ -654,7 +654,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
   r.r.rtm_table = KRT_CF->sys.table_id;
   r.r.rtm_protocol = RTPROT_BIRD;
   r.r.rtm_scope = RT_SCOPE_UNIVERSE;
-  nl_add_attr_ipa(&r.h, sizeof(r), RTA_DST, net->n.prefix);
+  nl_add_attr_ipa(&r.h, sizeof(r), RTA_DST, *FPREFIX_IP(&net->n));
 
   u32 metric = 0;
   if (new && e->attrs->source == RTS_INHERIT)
@@ -837,8 +837,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 	  ra.nexthops = nl_parse_multipath(p, a[RTA_MULTIPATH]);
 	  if (!ra.nexthops)
 	    {
-	      log(L_ERR "KRT: Received strange multipath route %I/%d",
-		  net->n.prefix, net->n.pxlen);
+	      log(L_ERR "KRT: Received strange multipath route %F", &net->n);
 	      return;
 	    }
 	    
@@ -848,8 +847,8 @@ nl_parse_route(struct nlmsghdr *h, int scan)
       ra.iface = if_find_by_index(oif);
       if (!ra.iface)
 	{
-	  log(L_ERR "KRT: Received route %I/%d with unknown ifindex %u",
-	      net->n.prefix, net->n.pxlen, oif);
+	  log(L_ERR "KRT: Received route %F with unknown ifindex %u",
+	      &net->n, oif);
 	  return;
 	}
 
@@ -868,8 +867,8 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 			   (i->rtm_flags & RTNH_F_ONLINK) ? NEF_ONLINK : 0);
 	  if (!ng || (ng->scope == SCOPE_HOST))
 	    {
-	      log(L_ERR "KRT: Received route %I/%d with strange next-hop %I",
-		  net->n.prefix, net->n.pxlen, ra.gw);
+	      log(L_ERR "KRT: Received route %F with strange next-hop %I",
+		  &net->n, ra.gw);
 	      return;
 	    }
 	}

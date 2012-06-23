@@ -65,6 +65,9 @@ net_route(rtable *tab, ip_addr a, int len)
   ip_addr a0;
   net *n;
 
+  if (tab->fib.addr_type != RT_IP)
+    return NULL;
+
   while (len >= 0)
     {
       a0 = ipa_and(a, ipa_mkmask(len));
@@ -165,7 +168,7 @@ rte_trace(struct proto *p, rte *e, int dir, char *msg)
   byte via[STD_ADDRESS_P_LENGTH+32];
 
   rt_format_via(e, via);
-  log(L_TRACE "%s %c %s %I/%d %s", p->name, dir, msg, e->net->n.prefix, e->net->n.pxlen, via);
+  log(L_TRACE "%s %c %s %F %s", p->name, dir, msg, &e->net->n, via);
 }
 
 static inline void
@@ -416,18 +419,22 @@ rte_validate(rte *e)
   int c;
   net *n = e->net;
 
-  if ((n->n.pxlen > BITS_PER_IP_ADDRESS) || !ip_is_prefix(n->n.prefix,n->n.pxlen))
+  // XXXX: Do not bother checking non-IP routes at the moment
+  if (n->n.addr_type != RT_IP)
+    return 1;
+
+  if ((n->n.pxlen > BITS_PER_IP_ADDRESS) || !ip_is_prefix(*FPREFIX_IP(&n->n),n->n.pxlen))
     {
-      log(L_WARN "Ignoring bogus prefix %I/%d received via %s",
-	  n->n.prefix, n->n.pxlen, e->sender->proto->name);
+      log(L_WARN "Ignoring bogus prefix %F received via %s",
+	  &n->n, e->sender->proto->name);
       return 0;
     }
 
-  c = ipa_classify_net(n->n.prefix);
+  c = ipa_classify_net(*FPREFIX_IP(&n->n));
   if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
     {
-      log(L_WARN "Ignoring bogus route %I/%d received via %s",
-	  n->n.prefix, n->n.pxlen, e->sender->proto->name);
+      log(L_WARN "Ignoring bogus route %F received via %s",
+	  &n->n, e->sender->proto->name);
       return 0;
     }
 
@@ -494,8 +501,8 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
 	    {
 	      if (new)
 		{
-		  log(L_ERR "Pipe collision detected when sending %I/%d to table %s",
-		      net->n.prefix, net->n.pxlen, table->name);
+		  log(L_ERR "Pipe collision detected when sending %F to table %s",
+		      &net->n, table->name);
 		  rte_free_quick(new);
 		}
 	      return;
@@ -820,7 +827,7 @@ rt_dump(rtable *t)
   net *n;
   struct announce_hook *a;
 
-  debug("Dump of routing table <%s>\n", t->name);
+  debug("Dump of routing table <%s>:%d\n", t->name, t->fib.addr_type);
 #ifdef DEBUGGING
   fib_check(&t->fib);
 #endif
@@ -927,11 +934,66 @@ rt_event(void *ptr)
     rt_prune_nets(tab);
 }
 
+/**
+ * rt_addrsize - returns (host format) size of address of given type
+ * @addr_type: address type
+ *
+ * Returns sizeof() appropriate structure or sizeof(ip_addr) if
+ * address type is unknown
+ *
+ */
+int
+rt_addrsize(int addr_type)
+{
+  switch (addr_type)
+  {
+#ifdef MPLS_VPN
+    case RT_VPNV4:
+      return sizeof(vpn4_addr);
+    case RT_VPNV6:
+      return sizeof(vpn6_addr);
+#endif
+    case RT_IPV4:
+      return sizeof(ip4_addr);
+    case RT_IPV6:
+      return sizeof(ip6_addr);
+  }
+
+  return sizeof(ip_addr);
+}
+
+
+/**
+ * rt_setup - initialize routing table
+ *
+ * This function is called to set up rtable (hooks, lists, fib, ..)
+ */
 void
 rt_setup(pool *p, rtable *t, char *name, struct rtable_config *cf)
 {
+  fib_hash_func f;
+
   bzero(t, sizeof(*t));
-  fib_init(&t->fib, p, sizeof(net), 0, rte_init);
+  t->addr_type = cf ? cf->addr_type : RT_IP;
+  /* Select hashing function depending on table type */
+  switch (t->addr_type)
+  {
+    case RT_IP:
+      f = ip_hash;
+      break;
+
+#ifdef XXXX
+    case RT_VPN:
+      f = vpn_hash;
+      break;
+#endif
+
+    default:
+      f = ip_hash;
+      break;
+  }
+
+  fib2_init(&t->fib, p, sizeof(net), t->addr_type, rt_addrsize(t->addr_type), 0, rte_init, f);
   t->name = name;
   t->config = cf;
   init_list(&t->hooks);
@@ -1058,7 +1120,7 @@ rt_preconfig(struct config *c)
   struct symbol *s = cf_find_symbol("master");
 
   init_list(&c->tables);
-  c->master_rtc = rt_new_table(s);
+  c->master_rtc = rt_new_table(s, RT_IP);
 }
 
 
@@ -1212,12 +1274,13 @@ rt_next_hop_update(rtable *tab)
 
 
 struct rtable_config *
-rt_new_table(struct symbol *s)
+rt_new_table(struct symbol *s, int addr_type)
 {
   struct rtable_config *c = cfg_allocz(sizeof(struct rtable_config));
 
   cf_define_symbol(s, SYM_TABLE, c);
   c->name = s->name;
+  c->addr_type = addr_type;
   add_tail(&new_config->tables, &c->n);
   c->gc_max_ops = 1000;
   c->gc_min_time = 5;
@@ -1575,7 +1638,7 @@ rt_notify_hostcache(rtable *tab, net *net)
   if (tab->hcu_scheduled)
     return;
 
-  if (trie_match_prefix(hc->trie, net->n.prefix, net->n.pxlen))
+  if (trie_match_prefix(hc->trie, *FPREFIX_IP(&net->n), net->n.pxlen))
     rt_schedule_hcu(tab);
 }
 
@@ -1626,6 +1689,8 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
   rta *old_src = he->src;
   int pxlen = 0;
 
+  /* XXXX: check for non-IP address families ? */
+
   /* Reset the hostentry */ 
   he->src = NULL;
   he->gw = IPA_NONE;
@@ -1641,8 +1706,8 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
       if (a->hostentry)
 	{
 	  /* Recursive route should not depend on another recursive route */
-	  log(L_WARN "Next hop address %I resolvable through recursive route for %I/%d",
-	      he->addr, n->n.prefix, pxlen);
+	  log(L_WARN "Next hop address %I resolvable through recursive route for %F",
+	      he->addr, &n->n);
 	  goto done;
 	}
 
@@ -1725,9 +1790,23 @@ rt_find_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
   return he;
 }
 
+/**
+ * rta_set_recursive_next_hop - notify table about recursive nexthop 
+ * @dep: table with non-directly reachable route
+ * @a: pointer to route attributes
+ * @tab: table where nexthop should be resolved
+ * @gw: nexthop to resolve
+ * @ll: link-local nexthop address (IPv6 case)
+ *
+ * Search for a FIB node corresponding to the given prefix and
+ * return a pointer to it. If no such node exists, create it.
+ */
 void
 rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr *gw, ip_addr *ll)
 {
+  if (tab->addr_type != RT_IP)
+    return;
+
   rta_apply_hostentry(a, rt_find_hostentry(tab, *gw, *ll, dep));
 }
 
@@ -1753,7 +1832,7 @@ rt_format_via(rte *e, byte *via)
 }
 
 static void
-rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tmpa)
+rt_show_rte(struct cli *c, byte *prefix, rte *e, struct rt_show_data *d, ea_list *tmpa)
 {
   byte via[STD_ADDRESS_P_LENGTH+32], from[STD_ADDRESS_P_LENGTH+8];
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
@@ -1781,7 +1860,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
     a->proto->proto->get_route_info(e, info, tmpa);
   else
     bsprintf(info, " (%d)", e->pref);
-  cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", ia, via, a->proto->name,
+  cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", prefix, via, a->proto->name,
 	     tm, from, primary ? (sync_error ? " !" : " *") : "", info);
   for (nh = a->nexthops; nh; nh = nh->next)
     cli_printf(c, -1007, "\tvia %I on %s weight %d", nh->gw, nh->iface->name, nh->weight + 1);
@@ -1793,11 +1872,11 @@ static void
 rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 {
   rte *e, *ee;
-  byte ia[STD_ADDRESS_P_LENGTH+8];
+  byte prefix[MAX_ADDRESS_P_LENGTH];
   struct announce_hook *a;
   int ok;
 
-  bsprintf(ia, "%I/%d", n->n.prefix, n->n.pxlen);
+  fn_print(prefix, sizeof(prefix), &n->n);
   if (n->routes)
     d->net_counter++;
   for(e=n->routes; e; e=e->next)
@@ -1833,8 +1912,8 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	{
 	  d->show_counter++;
 	  if (d->stats < 2)
-	    rt_show_rte(c, ia, e, d, tmpa);
-	  ia[0] = 0;
+	    rt_show_rte(c, prefix, e, d, tmpa);
+	  prefix[0] = '\0';
 	}
       if (e != ee)
       {
@@ -1926,6 +2005,7 @@ rt_show(struct rt_show_data *d)
 	cli_msg(8001, "Network not in table");
     }
 }
+
 
 /*
  *  Documentation for functions declared inline in route.h

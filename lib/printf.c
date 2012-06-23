@@ -139,7 +139,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 	u32 x;
 	char *str, *start;
 	const char *s;
-	char ipbuf[STD_ADDRESS_P_LENGTH+1];
+ 	char ipbuf[MAX_ADDRESS_P_LENGTH];
 	struct iface *iface;
 
 	int flags;		/* flags to number() */
@@ -296,6 +296,12 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			size--;
 
 			s = iface->name;
+			goto str;
+
+		/* Generic address - pointer to fib_node */
+		case 'F':  // XXXX probably remove/replace
+			fn_print(ipbuf, sizeof(ipbuf), va_arg(args, struct fib_node *));
+			s = ipbuf;
 			goto str;
 
 		/* Router/Network ID - essentially IPv4 address in u32 value */

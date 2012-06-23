@@ -349,7 +349,23 @@ ip_scope_text(unsigned scope)
     return scope_table[scope];
 }
 
+#include "nest/route.h"
 
+void
+fn_print(char *buf, int buflen, struct fib_node *n)
+{
+  // XXXX temporary
+  switch (n->addr_type)
+  {
+  case RT_IPV4:
+  case RT_IPV6:
+    bsprintf(buf, "%I/%d", n->prefix, n->pxlen);
+    break;
+  default:
+    bsprintf(buf, "???");
+    break;
+  }
+}
 
 
 #if 0
