@@ -44,6 +44,7 @@ CF_DECLS
 
 CF_KEYWORDS(ROUTER, ID, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, TABLE, STATES, ROUTES, FILTERS)
+CF_KEYWORDS(IPV4, IPVX, VPN4, VPN6, MPLS)
 CF_KEYWORDS(LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE)
 CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, INTERFACES)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, COMMANDS, PREEXPORT, GENERATE, ROA, AS, MAX, FLUSH)
@@ -65,7 +66,7 @@ CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 %type <ro> roa_args
 %type <rot> roa_table_arg
 %type <sd> sym_args
-%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_or_preexport roa_mode limit_action
+%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_or_preexport roa_mode limit_action table_type
 %type <ps> proto_patt proto_patt2
 %type <g> limit_spec
 
@@ -107,10 +108,18 @@ listen_opt:
 
 CF_ADDTO(conf, newtab)
 
-newtab: TABLE SYM {
-   rt_new_table($2, RT_IP);
-   }
+table_type:
+   /* empty */ { $$ = RT_IP; }
+ | IPV4 { $$ = RT_IPV4; }
+ | IPVX { $$ = RT_IPV6; } /* XXXX */
+ | VPN4 { $$ = RT_VPN4; }
+ | VPN6 { $$ = RT_VPN6; }
+ | MPLS { $$ = RT_MPLS; }
  ;
+
+newtab: table_type TABLE SYM {
+  rt_new_table($3, $1);
+};
 
 CF_ADDTO(conf, roa_table)
 
@@ -173,7 +182,11 @@ proto_item:
  | EXPORT imexport { this_proto->out_filter = $2; }
  | IMPORT LIMIT limit_spec { this_proto->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_proto->out_limit = $3; }
- | TABLE rtable { this_proto->table = $2; }
+ | TABLE rtable {
+     if (!rt_match($2->addr_type, this_proto->protocol->tables))
+       cf_error("Incompatible table class");
+     this_proto->table = $2;
+   }
  | ROUTER ID idval { this_proto->router_id = $3; }
  | DESCRIPTION TEXT { this_proto->dsc = $2; }
  ;

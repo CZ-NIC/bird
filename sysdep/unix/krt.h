@@ -61,6 +61,7 @@ struct krt_proto {
 #ifdef CONFIG_ALL_TABLES_AT_ONCE
   node instance_node;		/* Node in krt instance list */
 #endif
+  int addr_type;		/* Kernel table address type */
   int initialized;		/* First scan has already been finished */
 };
 

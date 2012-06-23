@@ -40,7 +40,8 @@ struct protocol {
   int name_counter;			/* Counter for automatic name generation */
   int attr_class;			/* Attribute class known to this protocol */
   int multitable;			/* Protocol handles all announce hooks itself */
-  unsigned preference;			/* Default protocol preference */
+  u32 tables;				/* Can be attached to these classes of tables (RTB_* flags) */
+  u32 preference;			/* Default protocol preference */
 
   void (*preconfig)(struct protocol *, struct config *);	/* Just before configuring */
   void (*postconfig)(struct proto_config *);			/* After configuring each instance */

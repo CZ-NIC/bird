@@ -257,8 +257,10 @@ typedef struct rte {
 #define RTB_VPN6	(1 << RT_VPN6)
 #define RTB_MPLS	(1 << RT_MPLS)
 
+#define RTB_IP		(RTB_IPV4 | RTB_IPV6)
+
+// XXXX these should probably go away, check their users
 #define RT_IP		RT_IPV6
-#define RTB_IP		RTB_IPV6
 
 
 /* Types of route announcement, also used as flags */
@@ -291,6 +293,7 @@ void rt_feed_baby_abort(struct proto *p);
 void rt_schedule_prune_all(void);
 int rt_prune_loop(void);
 struct rtable_config *rt_new_table(struct symbol *s, int addr_type);
+static inline int rt_match(int rt, u32 rtlist) { return !rtlist || ((1 << rt)  & rtlist); }
 int rt_addrsize(int addr_type); // XXXX needed?
 
 

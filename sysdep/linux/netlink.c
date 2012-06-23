@@ -237,6 +237,8 @@ nl_parse_attrs(struct rtattr *a, struct rtattr **k, int ksize)
     return 1;
 }
 
+#define IPSIZE(ipv4) ((ipv4) ? sizeof(ip4_addr) : sizeof(ip6_addr))
+
 static inline ip4_addr rta4_get_ip4(struct rtattr *a)
 { return ip4_get(RTA_DATA(a)); }
 
@@ -249,10 +251,15 @@ static inline ip_addr rta4_get_ipa(struct rtattr *a)
 static inline ip_addr rta6_get_ipa(struct rtattr *a)
 { return ipa_from_ip6(ip6_get(RTA_DATA(a))); }
 
+static inline ip_addr rtax_get_ipa(struct rtattr *a, const int ipv4)
+{ return ipv4 ? rta4_get_ipa(a) : rta6_get_ipa(a); }
 
-void
-nl_add_attr(struct nlmsghdr *h, unsigned bufsize, unsigned code,
-	    void *data, unsigned dlen)
+static inline void ipax_put(void *buf, ip_addr a, const int ipv4)
+{ if (ipv4) ip4_put(buf, ipa_to_ip4(a)); else ip6_put(buf, ipa_to_ip6(a)); }
+
+
+void *
+nl_add_attr(struct nlmsghdr *h, unsigned bufsize, unsigned code, unsigned dlen)
 {
   unsigned len = RTA_LENGTH(dlen);
   unsigned pos = NLMSG_ALIGN(h->nlmsg_len);
@@ -264,42 +271,42 @@ nl_add_attr(struct nlmsghdr *h, unsigned bufsize, unsigned code,
   a->rta_type = code;
   a->rta_len = len;
   h->nlmsg_len = pos + len;
-  memcpy(RTA_DATA(a), data, dlen);
+  return RTA_DATA(a);
 }
 
 static inline void
 nl_add_attr_u32(struct nlmsghdr *h, unsigned bufsize, int code, u32 data)
 {
-  nl_add_attr(h, bufsize, code, &data, 4);
+  void *buf = nl_add_attr(h, bufsize, code, 4);
+  memcpy(buf, &data, 4);
 }
 
 static inline void
-nl_add_attr_ipa(struct nlmsghdr *h, unsigned bufsize, int code, ip_addr ipa)
+nl_add_attr_ipa(struct nlmsghdr *h, unsigned bufsize, int code, ip_addr ipa, const int ipv4)
 {
-  ipa_hton(ipa);
-  nl_add_attr(h, bufsize, code, &ipa, sizeof(ipa));
+  void *buf = nl_add_attr(h, bufsize, code, IPSIZE(ipv4));
+  ipax_put(buf, ipa, ipv4);
 }
 
-#define RTNH_SIZE (sizeof(struct rtnexthop) + sizeof(struct rtattr) + sizeof(ip_addr))
+#define RTNH_SIZE(ipv4) (sizeof(struct rtnexthop) + sizeof(struct rtattr) + IPSIZE(ipv4))
 
 static inline void
-add_mpnexthop(char *buf, ip_addr ipa, unsigned iface, unsigned char weight)
+add_mpnexthop(char *buf, ip_addr ipa, const int ipv4, unsigned iface, unsigned char weight)
 {
   struct rtnexthop *nh = (void *) buf;
   struct rtattr *rt = (void *) (buf + sizeof(*nh));
-  nh->rtnh_len = RTNH_SIZE;
+  nh->rtnh_len = RTNH_SIZE(ipv4);
   nh->rtnh_flags = 0;
   nh->rtnh_hops = weight;
   nh->rtnh_ifindex = iface;
-  rt->rta_len = sizeof(*rt) + sizeof(ipa);
+  rt->rta_len = sizeof(*rt) + IPSIZE(ipv4);
   rt->rta_type = RTA_GATEWAY;
-  ipa_hton(ipa);
-  memcpy(buf + sizeof(*nh) + sizeof(*rt), &ipa, sizeof(ipa));
+  ipax_put(buf + sizeof(*nh) + sizeof(*rt), ipa, ipv4);
 }
 
 
 static void
-nl_add_multipath(struct nlmsghdr *h, unsigned bufsize, struct mpnh *nh)
+nl_add_multipath(struct nlmsghdr *h, unsigned bufsize, struct mpnh *nh, const int ipv4)
 {
   unsigned len = sizeof(struct rtattr);
   unsigned pos = NLMSG_ALIGN(h->nlmsg_len);
@@ -309,12 +316,12 @@ nl_add_multipath(struct nlmsghdr *h, unsigned bufsize, struct mpnh *nh)
   
   for (; nh; nh = nh->next)
     {
-      len += RTNH_SIZE;
+      len += RTNH_SIZE(ipv4);
       if (pos + len > bufsize)
 	bug("nl_add_multipath: packet buffer overflow");
 
-      add_mpnexthop(buf, nh->gw, nh->iface->index, nh->weight);
-      buf += RTNH_SIZE;
+      add_mpnexthop(buf, nh->gw, ipv4, nh->iface->index, nh->weight);
+      buf += RTNH_SIZE(ipv4);
     }
 
   rt->rta_type = RTA_MULTIPATH;
@@ -324,7 +331,7 @@ nl_add_multipath(struct nlmsghdr *h, unsigned bufsize, struct mpnh *nh)
 
 
 static struct mpnh *
-nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
+nl_parse_multipath(struct krt_proto *p, struct rtattr *ra, const int ipv4)
 {
   /* Temporary buffer for multicast nexthops */
   static struct mpnh *nh_buffer;
@@ -365,12 +372,10 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
       nl_parse_attrs(RTNH_DATA(nh), a, sizeof(a));
       if (a[RTA_GATEWAY])
 	{
-	  if (RTA_PAYLOAD(a[RTA_GATEWAY]) != sizeof(ip_addr))
+	  if (RTA_PAYLOAD(a[RTA_GATEWAY]) != IPSIZE(ipv4))
 	    return NULL;
 
-	  memcpy(&rv->gw, RTA_DATA(a[RTA_GATEWAY]), sizeof(ip_addr));
-	  ipa_ntoh(rv->gw);
-
+	  rv->gw = rtax_get_ipa(a[RTA_GATEWAY], ipv4);
 	  neighbor *ng = neigh_find2(&p->p, &rv->gw, rv->iface,
 				     (nh->rtnh_flags & RTNH_F_ONLINK) ? NEF_ONLINK : 0);
 	  if (!ng || (ng->scope == SCOPE_HOST))
@@ -499,7 +504,7 @@ nl_parse_addr(struct nlmsghdr *h)
   if (i->ifa_flags & IFA_F_SECONDARY)
     ifa.flags |= IA_SECONDARY;
 
-  ifa.pxlen = i->ifa_prefixlen + (ipv4 ? 96 : 0); // XXXXX: Hack
+  ifa.pxlen = i->ifa_prefixlen + (ipv4 ? 96 : 0); // XXXX: Hack
   if (ifa.pxlen > BITS_PER_IP_ADDRESS)
     {
       log(L_ERR "KIF: Received invalid pxlen %d on %s",  i->ifa_prefixlen, ifa.iface->name);
@@ -592,7 +597,9 @@ kif_do_scan(struct kif_proto *p UNUSED)
  *	Routes
  */
 
-static struct krt_proto *nl_table_map[NL_NUM_TABLES];
+static struct krt_proto *nl_table4_map[NL_NUM_TABLES];
+static struct krt_proto *nl_table6_map[NL_NUM_TABLES];
+#define nl_tablex_map(x) (x ? nl_table4_map : nl_table6_map)
 
 int
 krt_capable(rte *e)
@@ -620,24 +627,25 @@ krt_capable(rte *e)
 }
 
 static inline int
-nh_bufsize(struct mpnh *nh)
+nh_bufsize(struct mpnh *nh, const int ipv4)
 {
   int rv = 0;
   for (; nh != NULL; nh = nh->next)
-    rv += RTNH_SIZE;
+    rv += RTNH_SIZE(ipv4);
   return rv;
 }
 
 static int
 nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
 {
+  int ipv4 = (p->addr_type == RT_IPV4);
   eattr *ea;
   net *net = e->net;
   rta *a = e->attrs;
   struct {
     struct nlmsghdr h;
     struct rtmsg r;
-    char buf[128 + nh_bufsize(a->nexthops)];
+    char buf[128 + nh_bufsize(a->nexthops, ipv4)];
   } r;
 
   DBG("nl_send_route(%F,new=%d)\n", &net->n, new);
@@ -648,13 +656,13 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
   r.h.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
   r.h.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | (new ? NLM_F_CREATE|NLM_F_EXCL : 0);
 
-  r.r.rtm_family = BIRD_AF;
-  r.r.rtm_dst_len = net->n.pxlen;
+  r.r.rtm_family = ipv4 ? AF_INET : AF_INET6;
+  r.r.rtm_dst_len = net->n.pxlen - (ipv4 ? 96 : 0); // XXXX: Hack;
   r.r.rtm_tos = 0;
   r.r.rtm_table = KRT_CF->sys.table_id;
   r.r.rtm_protocol = RTPROT_BIRD;
   r.r.rtm_scope = RT_SCOPE_UNIVERSE;
-  nl_add_attr_ipa(&r.h, sizeof(r), RTA_DST, *FPREFIX_IP(&net->n));
+  nl_add_attr_ipa(&r.h, sizeof(r), RTA_DST, *FPREFIX_IP(&net->n), ipv4);
 
   u32 metric = 0;
   if (new && e->attrs->source == RTS_INHERIT)
@@ -665,7 +673,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
     nl_add_attr_u32(&r.h, sizeof(r), RTA_PRIORITY, metric);
 
   if (ea = ea_find(eattrs, EA_KRT_PREFSRC))
-    nl_add_attr_ipa(&r.h, sizeof(r), RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data);
+    nl_add_attr_ipa(&r.h, sizeof(r), RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data, ipv4);
 
   if (ea = ea_find(eattrs, EA_KRT_REALM))
     nl_add_attr_u32(&r.h, sizeof(r), RTA_FLOW, ea->u.data);
@@ -677,7 +685,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
     case RTD_ROUTER:
       r.r.rtm_type = RTN_UNICAST;
       nl_add_attr_u32(&r.h, sizeof(r), RTA_OIF, a->iface->index);
-      nl_add_attr_ipa(&r.h, sizeof(r), RTA_GATEWAY, a->gw);
+      nl_add_attr_ipa(&r.h, sizeof(r), RTA_GATEWAY, a->gw, ipv4);
       break;
     case RTD_DEVICE:
       r.r.rtm_type = RTN_UNICAST;
@@ -694,7 +702,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
       break;
     case RTD_MULTIPATH:
       r.r.rtm_type = RTN_UNICAST;
-      nl_add_multipath(&r.h, sizeof(r), a->nexthops);
+      nl_add_multipath(&r.h, sizeof(r), a->nexthops, ipv4);
       break;
     default:
       bug("krt_capable inconsistent with nl_send_route");
@@ -716,10 +724,16 @@ krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old, struct ea_list 
    */
 
   if (old)
+    {
+      // log(L_WARN "KRT: %p OLD %I/%d GW %I", p, n->n.prefix, n->n.pxlen, old->attrs->gw);
     nl_send_route(p, old, NULL, 0);
+    }
 
   if (new)
+    {
+      // log(L_WARN "KRT: %p NEW %I/%d %I/%d GW %I", p, n->n.prefix, n->n.pxlen, new->attrs->gw);
     err = nl_send_route(p, new, eattrs, 1);
+    }
 
   if (err < 0)
     n->n.flags |= KRF_SYNC_ERROR;
@@ -737,51 +751,52 @@ nl_parse_route(struct nlmsghdr *h, int scan)
   struct rtmsg *i;
   struct rtattr *a[RTA_CACHEINFO+1];
   int new = h->nlmsg_type == RTM_NEWROUTE;
-
   ip_addr dst = IPA_NONE;
   u32 oif = ~0;
-  int src;
+  int src, ipv4, ipsize;
 
   if (!(i = nl_checkin(h, sizeof(*i))) || !nl_parse_attrs(RTM_RTA(i), a, sizeof(a)))
     return;
-  if (i->rtm_family != BIRD_AF)
-    return;
-  if ((a[RTA_DST] && RTA_PAYLOAD(a[RTA_DST]) != sizeof(ip_addr)) ||
-#ifdef IPV6
+
+  if (i->rtm_family == AF_INET)
+    ipv4 = 1;
+  else if (i->rtm_family == AF_INET6)
+    ipv4 = 0;
+  else
+    return;	/* Ignore unknown address families */
+
+  ipsize = IPSIZE(ipv4);
+  if ((a[RTA_DST] && RTA_PAYLOAD(a[RTA_DST]) != ipsize) ||
       (a[RTA_IIF] && RTA_PAYLOAD(a[RTA_IIF]) != 4) ||
-#endif
       (a[RTA_OIF] && RTA_PAYLOAD(a[RTA_OIF]) != 4) ||
-      (a[RTA_GATEWAY] && RTA_PAYLOAD(a[RTA_GATEWAY]) != sizeof(ip_addr)) ||
+      (a[RTA_GATEWAY] && RTA_PAYLOAD(a[RTA_GATEWAY]) != ipsize) ||
       (a[RTA_PRIORITY] && RTA_PAYLOAD(a[RTA_PRIORITY]) != 4) ||
-      (a[RTA_PREFSRC] && RTA_PAYLOAD(a[RTA_PREFSRC]) != sizeof(ip_addr)) ||
-      (a[RTA_FLOW] && RTA_PAYLOAD(a[RTA_OIF]) != 4))
+      (a[RTA_PREFSRC] && RTA_PAYLOAD(a[RTA_PREFSRC]) != ipsize) ||
+      (a[RTA_FLOW] && RTA_PAYLOAD(a[RTA_FLOW]) != 4))
     {
       log(L_ERR "KRT: Malformed message received");
       return;
     }
 
   if (a[RTA_DST])
-    {
-      memcpy(&dst, RTA_DATA(a[RTA_DST]), sizeof(dst));
-      ipa_ntoh(dst);
-    }
+    dst = rtax_get_ipa(a[RTA_DST], ipv4);
+  else if (ipv4) // XXXX hack
+    dst = ipa_build4(0,0,0,0);
 
   if (a[RTA_OIF])
     memcpy(&oif, RTA_DATA(a[RTA_OIF]), sizeof(oif));
 
-  p = nl_table_map[i->rtm_table];	/* Do we know this table? */
-  DBG("KRT: Got %I/%d, type=%d, oif=%d, table=%d, prid=%d, proto=%s\n", dst, i->rtm_dst_len, i->rtm_type, oif, i->rtm_table, i->rtm_protocol, p ? p->p.name : "(none)");
-  if (!p)
+  DBG("KRT: Got %I/%d, type=%d, oif=%d, table=%d, prid=%d\n", dst, i->rtm_dst_len, i->rtm_type, oif, i->rtm_table, i->rtm_protocol);
+
+  p = nl_tablex_map(ipv4)[i->rtm_table];
+  if (!p)				/* We don't know this table */
     SKIP("unknown table %d\n", i->rtm_table);
 
-
-#ifdef IPV6
-  if (a[RTA_IIF])
+  if (a[RTA_IIF])			/* We don't support IIF */
     SKIP("IIF set\n");
-#else
+
   if (i->rtm_tos != 0)			/* We don't support TOS */
     SKIP("TOS %02x\n", i->rtm_tos);
-#endif
 
   if (scan && !new)
     SKIP("RTM_DELROUTE in scan\n");
@@ -818,7 +833,8 @@ nl_parse_route(struct nlmsghdr *h, int scan)
       src = KRT_SRC_ALIEN;
     }
 
-  net *net = net_get(p->p.table, dst, i->rtm_dst_len);
+  int pxlen = i->rtm_dst_len + (ipv4 ? 96 : 0);  // XXXX: Hack
+  net *net = net_get(p->p.table, dst, pxlen);
 
   rta ra = {
     .proto = &p->p,
@@ -834,7 +850,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
       if (a[RTA_MULTIPATH])
 	{
 	  ra.dest = RTD_MULTIPATH;
-	  ra.nexthops = nl_parse_multipath(p, a[RTA_MULTIPATH]);
+	  ra.nexthops = nl_parse_multipath(p, a[RTA_MULTIPATH], ipv4);
 	  if (!ra.nexthops)
 	    {
 	      log(L_ERR "KRT: Received strange multipath route %F", &net->n);
@@ -847,8 +863,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
       ra.iface = if_find_by_index(oif);
       if (!ra.iface)
 	{
-	  log(L_ERR "KRT: Received route %F with unknown ifindex %u",
-	      &net->n, oif);
+	  log(L_ERR "KRT: Received route %F with unknown ifindex %u", &net->n, oif);
 	  return;
 	}
 
@@ -856,8 +871,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 	{
 	  neighbor *ng;
 	  ra.dest = RTD_ROUTER;
-	  memcpy(&ra.gw, RTA_DATA(a[RTA_GATEWAY]), sizeof(ra.gw));
-	  ipa_ntoh(ra.gw);
+	  ra.gw = rtax_get_ipa(a[RTA_GATEWAY], ipv4);
 
 	  /* Silently skip strange 6to4 routes */
 	  if (ipa_in_net(ra.gw, IPA_NONE, 96))
@@ -873,22 +887,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 	    }
 	}
       else
-	{
-	  ra.dest = RTD_DEVICE;
-
-	  /*
-	   * In Linux IPv6, 'native' device routes have proto
-	   * RTPROT_BOOT and not RTPROT_KERNEL (which they have in
-	   * IPv4 and which is expected). We cannot distinguish
-	   * 'native' and user defined device routes, so we ignore all
-	   * such device routes and for consistency, we have the same
-	   * behavior in IPv4. Anyway, users should use RTPROT_STATIC
-	   * for their 'alien' routes.
-	   */
-
-	  if (i->rtm_protocol == RTPROT_BOOT)
-	    src = KRT_SRC_KERNEL;
-	}
+	ra.dest = RTD_DEVICE;
 
       break;
     case RTN_BLACKHOLE:
@@ -919,9 +918,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 
   if (a[RTA_PREFSRC])
     {
-      ip_addr ps;
-      memcpy(&ps, RTA_DATA(a[RTA_PREFSRC]), sizeof(ps));
-      ipa_ntoh(ps);
+      ip_addr ps = rtax_get_ipa(a[RTA_PREFSRC], ipv4);
 
       ea_list *ea = alloca(sizeof(ea_list) + sizeof(eattr));
       ea->next = ra.eattrs;
@@ -960,7 +957,14 @@ krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NUL
 {
   struct nlmsghdr *h;
 
-  nl_request_dump(BIRD_PF, RTM_GETROUTE);
+  nl_request_dump(PF_INET, RTM_GETROUTE);
+  while (h = nl_get_scan())
+    if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
+      nl_parse_route(h, 1);
+    else
+      log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
+
+  nl_request_dump(PF_INET6, RTM_GETROUTE);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
       nl_parse_route(h, 1);
@@ -1095,12 +1099,10 @@ nl_open_async(void)
  *	Interface to the UNIX krt module
  */
 
-static u8 nl_cf_table[(NL_NUM_TABLES+7) / 8];
-
 void
 krt_sys_start(struct krt_proto *p, int first)
 {
-  nl_table_map[KRT_CF->sys.table_id] = p;
+  nl_tablex_map(p->addr_type == RT_IPV4)[KRT_CF->sys.table_id] = p;
   if (first)
     {
       nl_open();
@@ -1119,21 +1121,25 @@ krt_sys_reconfigure(struct krt_proto *p UNUSED, struct krt_config *n, struct krt
   return n->sys.table_id == o->sys.table_id;
 }
 
+static u32 nl_table4_cf[(NL_NUM_TABLES+31) / 32];
+static u32 nl_table6_cf[(NL_NUM_TABLES+31) / 32];
 
 void
 krt_sys_preconfig(struct config *c UNUSED)
 {
-  bzero(&nl_cf_table, sizeof(nl_cf_table));
+  bzero(&nl_table4_cf, sizeof(nl_table4_cf));
+  bzero(&nl_table6_cf, sizeof(nl_table6_cf));
 }
 
 void
 krt_sys_postconfig(struct krt_config *x)
 {
-  int id = x->sys.table_id;
+  u32 *tbl = (x->c.table->addr_type == RT_IPV4) ? nl_table4_cf : nl_table6_cf;
+  u32 id = x->sys.table_id;
 
-  if (nl_cf_table[id/8] & (1 << (id%8)))
+  if (tbl[id/32] & (1 << (id%32)))
     cf_error("Multiple kernel syncers defined for table #%d", id);
-  nl_cf_table[id/8] |= (1 << (id%8));
+  tbl[id/32] |= (1 << (id%32));
 }
 
 void

@@ -954,7 +954,8 @@ rt_addrsize(int addr_type)
       return sizeof(vpn6_addr);
 #endif
     case RT_IPV4:
-      return sizeof(ip4_addr);
+      // XXXX
+      return sizeof(ip6_addr);
     case RT_IPV6:
       return sizeof(ip6_addr);
   }

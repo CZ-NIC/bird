@@ -141,6 +141,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 	const char *s;
  	char ipbuf[MAX_ADDRESS_P_LENGTH];
 	struct iface *iface;
+	ip_addr ip;
 
 	int flags;		/* flags to number() */
 
@@ -272,11 +273,15 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 
 		/* IP address */
 		case 'I':
+			ip = va_arg(args, ip_addr);
 			if (flags & SPECIAL)
-				ip6_ntox(va_arg(args, ip_addr), ipbuf);
+				ip6_ntox(ip, ipbuf);
 			else {
-				// XXXX update IPv4 / IPv6 distinction
-				ip6_ntop(va_arg(args, ip_addr), ipbuf);
+				// XXXX better IPv4 / IPv6 distinction
+				if (ipa_is_ip4(ip))
+					ip4_ntop(ipa_to_ip4(ip), ipbuf);
+				else
+					ip6_ntop(ipa_to_ip6(ip), ipbuf);
 				if (field_width > 0)
 					field_width = STD_ADDRESS_P_LENGTH;
 			}

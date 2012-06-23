@@ -595,6 +595,7 @@ krt_same_dest(rte *k, rte *e)
   switch (ka->dest)
     {
     case RTD_ROUTER:
+      // XXXX check iface
       return ipa_equal(ka->gw, ea->gw);
     case RTD_DEVICE:
       return !strcmp(ka->iface->name, ea->iface->name);
@@ -966,6 +967,8 @@ krt_start(struct proto *P)
   p->krt_pool = P->pool;
 #endif
 
+  p->addr_type = p->p.table->addr_type;
+
 #ifdef KRT_ALLOW_LEARN
   krt_learn_init(p);
 #endif
@@ -1106,20 +1109,21 @@ krt_get_attr(eattr * a, byte * buf, int buflen UNUSED)
 
 
 struct protocol proto_unix_kernel = {
-  name:		"Kernel",
-  template:	"kernel%d",
-  attr_class:	EAP_KRT,
-  preference:	DEF_PREF_INHERITED,
-  preconfig:	krt_preconfig,
-  postconfig:	krt_postconfig,
-  init:		krt_init,
-  start:	krt_start,
-  shutdown:	krt_shutdown,
-  reconfigure:	krt_reconfigure,
-  copy_config:	krt_copy_config,
-  get_attr:	krt_get_attr,
+  .name =		"Kernel",
+  .template =		"kernel%d",
+  .attr_class =		EAP_KRT,
+  .tables =		RTB_IP,
+  .preference =		DEF_PREF_INHERITED,
+  .preconfig =		krt_preconfig,
+  .postconfig =		krt_postconfig,
+  .init =		krt_init,
+  .start =		krt_start,
+  .shutdown =		krt_shutdown,
+  .reconfigure =	krt_reconfigure,
+  .copy_config =	krt_copy_config,
+  .get_attr =		krt_get_attr,
 #ifdef KRT_ALLOW_LEARN
-  dump:		krt_dump,
-  dump_attrs:	krt_dump_attrs,
+  .dump =		krt_dump,
+  .dump_attrs =		krt_dump_attrs,
 #endif
 };

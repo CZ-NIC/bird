@@ -37,6 +37,9 @@ dev_ifa_notify(struct proto *p, unsigned c, struct ifa *ad)
   if (ad->scope <= SCOPE_LINK)
     return;
 
+  if (ipa_is_ip4(ad->prefix) != (p->table->addr_type == RT_IPV4))
+    return;
+
   if (c & IF_CHANGE_DOWN)
     {
       net *n;
@@ -107,10 +110,11 @@ dev_copy_config(struct proto_config *dest, struct proto_config *src)
 }
 
 struct protocol proto_device = {
-  name:		"Direct",
-  template:	"direct%d",
-  preference:	DEF_PREF_DIRECT,
-  init:		dev_init,
-  reconfigure:	dev_reconfigure,
-  copy_config:	dev_copy_config
+  .name = 		"Direct",
+  .template =		"direct%d",
+  .tables =		RTB_IP,
+  .preference =		DEF_PREF_DIRECT,
+  .init =		dev_init,
+  .reconfigure =	dev_reconfigure,
+  .copy_config =	dev_copy_config
 };
