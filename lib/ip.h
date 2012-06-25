@@ -338,7 +338,7 @@ int ip6_pton(char *a, ip6_addr *o);
 
 
 
-
+ip4_addr ip4_class_mask(ip4_addr a);
 
 
 
@@ -401,7 +401,7 @@ static inline int ipa_classify_net(ip_addr a)
 #define IP_PREC_INTERNET_CONTROL 0xc0
 */
 
-u32 ipv4_class_mask(u32);
+
 byte *ipv4_skip_header(byte *, int *);
 
 struct fib_node;

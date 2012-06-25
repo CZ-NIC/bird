@@ -58,22 +58,20 @@ p_igp_table(struct proto *p)
 static void
 static_install(struct proto *p, struct static_route *r, struct iface *ifa)
 {
-  net *n;
-  rta a, *aa;
-  rte *e;
-
   if (r->installed)
     return;
 
   DBG("Installing static route %I/%d, rtd=%d\n", r->net, r->masklen, r->dest);
-  bzero(&a, sizeof(a));
-  a.proto = p;
-  a.source = (r->dest == RTD_DEVICE) ? RTS_STATIC_DEVICE : RTS_STATIC;
-  a.scope = SCOPE_UNIVERSE;
-  a.cast = RTC_UNICAST;
-  a.dest = r->dest;
-  a.gw = r->via;
-  a.iface = ifa;
+
+  rta a = {
+    .proto = p,
+    .source = (r->dest == RTD_DEVICE) ? RTS_STATIC_DEVICE : RTS_STATIC,
+    .scope = SCOPE_UNIVERSE,
+    .cast = RTC_UNICAST,
+    .dest = r->dest,
+    .gw = r->via,
+    .iface = ifa
+  };
 
   if (r->dest == RTD_MULTIPATH)
     {
@@ -108,9 +106,10 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
   if (r->dest == RTDX_RECURSIVE)
     rta_set_recursive_next_hop(p->table, &a, p_igp_table(p), &r->via, &r->via);
 
-  aa = rta_lookup(&a);
-  n = net_get(p->table, r->net, r->masklen);
-  e = rte_get_temp(aa);
+  // int pxlen = r->masklen + (ipa_is_ip4(r->net) ? 96 : 0);  // XXXX: Hack
+  net *n = net_get(p->table, r->net, r->masklen);
+  rta *aa = rta_lookup(&a);
+  rte *e = rte_get_temp(aa);
   e->net = n;
   e->pflags = 0;
   rte_update(p->table, n, p, p, e);
@@ -120,13 +119,13 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
 static void
 static_remove(struct proto *p, struct static_route *r)
 {
-  net *n;
-
   if (!r->installed)
     return;
 
   DBG("Removing static route %I/%d\n", r->net, r->masklen);
-  n = net_find(p->table, r->net, r->masklen);
+
+  // int pxlen = r->masklen + (ipa_is_ip4(r->net) ? 96 : 0);  // XXXX: Hack
+  net *n = net_find(p->table, r->net, r->masklen);
   if (n)
     rte_update(p->table, n, p, p, NULL);
   r->installed = 0;

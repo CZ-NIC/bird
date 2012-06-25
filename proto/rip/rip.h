@@ -1,7 +1,7 @@
 /*
  * Structures for RIP protocol
  *
-   FIXME: in V6, they insert additional entry whenever next hop differs. Such entry is identified by 0xff in metric.
+ * FIXME: in V6, they insert additional entry whenever next hop differs. Such entry is identified by 0xff in metric.
  */
 
 #include "nest/route.h"
@@ -14,16 +14,12 @@
 #define PACKET_MAX	25
 #define PACKET_MD5_MAX	18	/* FIXME */
 
+#define RIP_PORT_V2	520	/* RIPv2 (for IPv4) */
+#define RIP_PORT_NG	521	/* RIPng (for IPv6 */
 
-#define RIP_V1		1
-#define RIP_V2		2
-#define RIP_NG		1	/* A new version numbering */
+#define IP4_ALL_RIP_ROUTERS	ipa_build4(224, 0, 0, 9)
+#define IP6_ALL_RIP_ROUTERS	ipa_build6(0xff020000, 0, 0, 9)
 
-#ifndef IPV6
-#define RIP_PORT	520	/* RIP for IPv4 */
-#else
-#define RIP_PORT	521	/* RIPng */
-#endif
 
 struct rip_connection {
   node n;
@@ -48,31 +44,30 @@ struct rip_packet_heading {		/* 4 bytes */
 #define RIPCMD_TRACEOFF         4       /* turn it off */
 #define RIPCMD_MAX              5
   u8 version;
-#define RIP_V1			1
-#define RIP_V2			2
-#define RIP_NG 			1	/* this is verion 1 of RIPng */
   u16 unused;
 };
 
-#ifndef IPV6
-struct rip_block {	/* 20 bytes */
-  u16 family;	/* 0xffff on first message means this is authentication */
+struct rip_block {	/* 20 bytes, for both RIPv2 and RIPng */
+  u32 data[5];
+};
+
+struct rip_block_v2 {
+  u16 afi;		/* 0xffff on first message means this is authentication */
   u16 tag;
-  ip_addr network;
-  ip_addr netmask;
-  ip_addr nexthop;
+  ip4_addr network;
+  ip4_addr netmask;
+  ip4_addr nexthop;
   u32 metric;
 };
-#else
-struct rip_block { /* IPv6 version!, 20 bytes, too */
-  ip_addr network;
+
+struct rip_block_ng {
+  ip6_addr network;
   u16 tag;
   u8 pxlen;
   u8 metric;
 };
-#endif
 
-struct rip_block_auth { /* 20 bytes */
+struct rip_block_auth {
   u16 mustbeFFFF;
   u16 authtype;
   u16 packetlen;

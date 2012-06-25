@@ -692,6 +692,7 @@ protos_build(void)
 #endif
 #ifdef CONFIG_RIP
   proto_build(&proto_rip);
+  proto_build(&proto_ripng);
 #endif
 #ifdef CONFIG_STATIC
   proto_build(&proto_static);

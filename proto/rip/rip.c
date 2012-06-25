@@ -68,6 +68,12 @@
 
 static struct rip_interface *new_iface(struct proto *p, struct iface *new, unsigned long flags, struct iface_patt *patt);
 
+static inline int rip_is_old(struct proto *p)
+{ return p->proto == &proto_rip; }
+
+static inline int rip_is_ng(struct proto *p)
+{ return p->proto == &proto_ripng; }
+
 /*
  * Output processing
  *
@@ -92,34 +98,30 @@ rip_tx_err( sock *s, int err )
  * that could be fixed but it is not real problem).
  */
 static int
-rip_tx_prepare(struct proto *p, struct rip_block *b, struct rip_entry *e, struct rip_interface *rif, int pos )
+rip_tx_prepare(struct proto *p, struct rip_block *block, struct rip_entry *e, struct rip_interface *rif, int pos )
 {
-  int metric;
-  DBG( "." );
-  b->tag     = htons( e->tag );
-  b->network = e->n.prefix;
-  metric = e->metric;
-  if (neigh_connected_to(p, &e->whotoldme, rif->iface)) {
-    DBG( "(split horizon)" );
-    metric = P_CF->infinity;
+  int split = neigh_connected_to(p, &e->whotoldme, rif->iface);
+  int nh_ok = neigh_connected_to(p, &e->nexthop, rif->iface);
+  int metric = split ? P_CF->infinity : e->metric;
+
+  if (rip_is_old(p)) {
+    /* RIPv2 */
+    struct rip_block_v2 *b = (void *) block;
+    b->afi = htons(AF_INET);
+    b->tag = htons(e->tag);
+    b->network = ip4_hton(ipa_to_ip4(e->n.prefix));
+    b->netmask = ip4_hton(ip4_mkmask(e->n.pxlen));
+    b->nexthop = nh_ok ? ip4_hton(ipa_to_ip4(e->nexthop)) : IP4_NONE;
+    b->metric = htonl(metric);
+
+  } else {
+    /* RIPng */
+    struct rip_block_ng *b = (void *) block;
+    b->network = ip6_hton(e->n.prefix);
+    b->tag = htons(e->tag);
+    b->pxlen = e->n.pxlen;
+    b->metric = metric;
   }
-#ifndef IPV6
-  b->family  = htons( 2 ); /* AF_INET */
-  b->netmask = ipa_mkmask( e->n.pxlen );
-  ipa_hton( b->netmask );
-
-  if (neigh_connected_to(p, &e->nexthop, rif->iface))
-    b->nexthop = e->nexthop;
-  else
-    b->nexthop = IPA_NONE;
-  ipa_hton( b->nexthop );  
-  b->metric  = htonl( metric );
-#else
-  b->pxlen = e->n.pxlen;
-  b->metric  = metric; /* it is u8 */
-#endif
-
-  ipa_hton( b->network );
 
   return pos+1;
 }
@@ -146,19 +148,18 @@ rip_tx( sock *s )
     DBG( "Preparing packet to send: " );
 
     packet->heading.command = RIPCMD_RESPONSE;
-#ifndef IPV6
-    packet->heading.version = RIP_V2;
-#else
-    packet->heading.version = RIP_NG;
-#endif
     packet->heading.unused  = 0;
 
     i = !!P_CF->authtype;
-#ifndef IPV6
-    maxi = ((P_CF->authtype == AT_MD5) ? PACKET_MD5_MAX : PACKET_MAX);
-#else
-    maxi = 5; /* We need to have at least reserve of one at end of packet */
-#endif
+
+    if (rip_is_old(p)) {
+      packet->heading.version = 2; 
+      maxi = ((P_CF->authtype == AT_MD5) ? PACKET_MD5_MAX : PACKET_MAX);
+    } else {
+      /* RIPng has independent version numbering */
+      packet->heading.version = 1;
+      maxi = 5;	/* FIXME: This is some nonsense? */
+    }
     
     FIB_ITERATE_START(&P->rtable, &c->iter, z) {
       struct rip_entry *e = (struct rip_entry *) z;
@@ -278,116 +279,122 @@ rip_rte_update_if_better(rtable *tab, net *net, struct proto *p, rte *new)
 }
 
 /*
- * advertise_entry - let main routing table know about our new entry
+ * process_block - let main routing table know about our new entry
  * @b: entry in network format
  *
- * This basically translates @b to format used by bird core and feeds
- * bird core with this route.
+ * This does some basic checking and then translates @b to format
+ * used by bird core and feeds bird core with this route.
  */
 static void
-advertise_entry( struct proto *p, struct rip_block *b, ip_addr whotoldme, struct iface *iface )
+process_block( struct proto *p, struct rip_block *block, ip_addr from, struct iface *iface, int version )
 {
-  rta *a, A;
-  rte *r;
-  net *n;
-  neighbor *neighbor;
   struct rip_interface *rif;
-  int pxlen;
+  ip_addr prefix, gw;
+  int pxlen, metric, tag;
 
-  bzero(&A, sizeof(A));
-  A.proto = p;
-  A.source = RTS_RIP;
-  A.scope = SCOPE_UNIVERSE;
-  A.cast = RTC_UNICAST;
-  A.dest = RTD_ROUTER;
-  A.flags = 0;
-#ifndef IPV6
-  A.gw = ipa_nonzero(b->nexthop) ? b->nexthop : whotoldme;
-  pxlen = ipa_mklen(b->netmask);
-#else
-  /* FIXME: next hop is in other packet for v6 */
-  A.gw = whotoldme; 
-  pxlen = b->pxlen;
-#endif
-  A.from = whotoldme;
+  CHK_MAGIC;
 
-  /* No need to look if destination looks valid - ie not net 0 or 127 -- core will do for us. */
+  if (rip_is_old(p)) {
+    /* RIPv2 */
+    struct rip_block_v2 *b = (void *) block;
 
-  neighbor = neigh_find2( p, &A.gw, iface, 0 );
-  if (!neighbor) {
-    log( L_REMOTE "%s: %I asked me to route %I/%d using not-neighbor %I.", p->name, A.from, b->network, pxlen, A.gw );
+    if (ntohs(b->afi) != AF_INET)
+      return;
+
+    prefix = ipa_from_ip4(ip4_ntoh(b->network));
+    gw = ip4_nonzero(b->nexthop) ? ipa_from_ip4(ip4_ntoh(b->nexthop)) : from;
+    metric = ntohl(b->metric);
+    tag = ntohs(b->tag);
+
+    /* FIXME (nonurgent): better handling of RIPv1? */
+    if (version == 1)
+      pxlen = ip4_masklen(ip4_class_mask(ipa_to_ip4(prefix)));
+    else
+      pxlen = ip4_masklen(ip4_ntoh(b->netmask));
+
+    if (pxlen < 0) {
+      log(L_REMOTE "%s: Received invalid netmask for %I from %I",
+	  p->name, prefix, from);
+      return;
+    }
+
+  } else {
+    /* RIPng */
+    struct rip_block_ng *b = (void *) block;
+    prefix = ip6_ntoh(b->network);
+    gw = from;
+    pxlen = b->pxlen;
+    metric = b->metric;
+    tag = ntohs(b->tag);
+
+    /* Ignore nexthop block */
+    if (metric == 0xff)
+      return;
+
+    if (pxlen > MAX_PREFIX_LENGTH) {
+      log(L_REMOTE "%s: Received invalid pxlen %d for %I from %I",
+	  p->name, pxlen, prefix, from);
+      return;
+    }
+  }
+
+
+  if ((!metric) || (metric > P_CF->infinity)) {
+    log(L_REMOTE "%s: Received route %I/%d with invalid metric %d from %I",
+	p->name, prefix, pxlen, metric, from);
     return;
   }
-  if (neighbor->scope == SCOPE_HOST) {
+
+  neighbor *neigh = neigh_find2( p, &gw, iface, 0 );
+  if (!neigh) {
+    log( L_REMOTE "%s: Received route %I/%d with strange nexthop %I from %I",
+	 p->name, prefix, pxlen, gw, from );
+    return;
+  }
+  if (neigh->scope == SCOPE_HOST) {
     DBG("Self-destined route, ignoring.\n");
     return;
   }
 
-  A.iface = neighbor->iface;
-  if (!(rif = neighbor->data)) {
-    rif = neighbor->data = find_interface(p, A.iface);
+
+  TRACE(D_PACKETS, "Received %I/%d metric %d from %I",
+	prefix, pxlen, metric, from);
+
+  rta A = {
+    .proto = p,
+    .source = RTS_RIP,
+    .scope = SCOPE_UNIVERSE,
+    .cast = RTC_UNICAST,
+    .dest = RTD_ROUTER,
+    .gw = gw,
+    .from = from,
+    .iface = neigh->iface
+  };
+
+  if (rip_is_old(p)) pxlen += 96;  // XXXX: Hack
+  net *n = net_get(p->table, prefix, pxlen);
+  rta *a = rta_lookup(&A);
+  rte *r = rte_get_temp(a);
+
+  if (!(rif = neigh->data)) {
+    rif = neigh->data = find_interface(p, A.iface);
   }
   if (!rif)
     bug("Route packet using unknown interface? No.");
-    
-  /* set to: interface of nexthop */
-  a = rta_lookup(&A);
-  if (pxlen==-1)  {
-    log( L_REMOTE "%s: %I gave me invalid pxlen/netmask for %I.", p->name, A.from, b->network );
-    return;
-  }
-  n = net_get( p->table, b->network, pxlen );
-  r = rte_get_temp(a);
-#ifndef IPV6
-  r->u.rip.metric = ntohl(b->metric) + rif->metric;
-#else  
-  r->u.rip.metric = b->metric + rif->metric;
-#endif
 
+  r->u.rip.metric = metric + rif->metric;
+  if (r->u.rip.metric > P_CF->infinity)
+    r->u.rip.metric = P_CF->infinity;
+  r->u.rip.tag = tag;
   r->u.rip.entry = NULL;
-  if (r->u.rip.metric > P_CF->infinity) r->u.rip.metric = P_CF->infinity;
-  r->u.rip.tag = ntohl(b->tag);
+
   r->net = n;
   r->pflags = 0; /* Here go my flags */
   rip_rte_update_if_better( p->table, n, p, r );
   DBG( "done\n" );
 }
 
-/*
- * process_block - do some basic check and pass block to advertise_entry
- */
-static void
-process_block( struct proto *p, struct rip_block *block, ip_addr whotoldme, struct iface *iface )
-{
-#ifndef IPV6
-  int metric = ntohl( block->metric );
-#else
-  int metric = block->metric;
-#endif
-  ip_addr network = block->network;
-
-  CHK_MAGIC;
-#ifdef IPV6
-  TRACE(D_ROUTES, "block: %I tells me: %I/%d available, metric %d... ",
-      whotoldme, network, block->pxlen, metric );
-#else
-  TRACE(D_ROUTES, "block: %I tells me: %I/%d available, metric %d... ",
-      whotoldme, network, ipa_mklen(block->netmask), metric );
-#endif
-
-  if ((!metric) || (metric > P_CF->infinity)) {
-#ifdef IPV6 /* Someone is sedning us nexthop and we are ignoring it */
-    if (metric == 0xff)
-      { DBG( "IpV6 nexthop ignored" ); return; }
-#endif
-    log( L_WARN "%s: Got metric %d from %I", p->name, metric, whotoldme );
-    return;
-  }
-
-  advertise_entry( p, block, whotoldme, iface );
-}
-
-#define BAD( x ) { log( L_REMOTE "%s: " x, p->name ); return 1; }
+#define BAD( x ) do { log( L_REMOTE "%s: " x, p->name ); return 1; } while(0)
 
 /*
  * rip_process_packet - this is main routine for incoming packets.
@@ -396,12 +403,12 @@ static int
 rip_process_packet( struct proto *p, struct rip_packet *packet, int num, ip_addr whotoldme, int port, struct iface *iface )
 {
   int i;
-  int authenticated = 0;
+  int auth = 0;
   neighbor *neighbor;
 
   switch( packet->heading.version ) {
-  case RIP_V1: DBG( "Rip1: " ); break;
-  case RIP_V2: DBG( "Rip2: " ); break;
+  case 1: DBG( "Rip1: " ); break;
+  case 2: DBG( "Rip2: " ); break;
   default: BAD( "Unknown version" );
   }
 
@@ -414,6 +421,7 @@ rip_process_packet( struct proto *p, struct rip_packet *packet, int num, ip_addr
 	    BAD( "They asked me to send routing table, but he is not my neighbor" );
     	  rip_sendto( p, whotoldme, port, HEAD(P->interfaces) ); /* no broadcast */
           break;
+
   case RIPCMD_RESPONSE: DBG( "*** Rtable from %I\n", whotoldme ); 
           if (port != P_CF->port) {
 	    log( L_REMOTE "%s: %I send me routing info from port %d", p->name, whotoldme, port );
@@ -425,31 +433,25 @@ rip_process_packet( struct proto *p, struct rip_packet *packet, int num, ip_addr
 	    return 0;
 	  }
 
-          for (i=0; i<num; i++) {
-	    struct rip_block *block = &packet->block[i];
-#ifndef IPV6
-	    /* Authentication is not defined for v6 */
-	    if (block->family == 0xffff) {
-	      if (i)
-		continue;	/* md5 tail has this family */
-	      if (rip_incoming_authentication(p, (void *) block, packet, num, whotoldme))
-		BAD( "Authentication failed" );
-	      authenticated = 1;
-	      continue;
-	    }
-#endif
-	    if ((!authenticated) && (P_CF->authtype != AT_NONE))
-	      BAD( "Packet is not authenticated and it should be" );
-	    ipa_ntoh( block->network );
-#ifndef IPV6
-	    ipa_ntoh( block->netmask );
-	    ipa_ntoh( block->nexthop );
-	    if (packet->heading.version == RIP_V1)	/* FIXME (nonurgent): switch to disable this? */
-	      block->netmask = ipa_class_mask(block->network);
-#endif
-	    process_block( p, block, whotoldme, iface );
+	  /* Authentication is not defined for RIPng */
+	  if (rip_is_old(p)) {
+	      struct rip_block_auth *b = (void *) &packet->block[0];
+
+	      if (b->mustbeFFFF == 0xffff) {
+		if (rip_incoming_authentication(p, b, packet, num, whotoldme))
+		  BAD( "Authentication failed" );
+		else
+		  auth = 1;
+	      }
 	  }
+
+	  if ((!auth) && (P_CF->authtype != AT_NONE))
+	    BAD( "Packet is not authenticated and it should be" );
+
+          for (i=auth; i<num; i++)
+	    process_block( p, &packet->block[i], whotoldme, iface, packet->heading.version);
           break;
+
   case RIPCMD_TRACEON:
   case RIPCMD_TRACEOFF: BAD( "I was asked for traceon/traceoff" );
   case 5: BAD( "Some Sun extension around here" );
@@ -474,22 +476,21 @@ rip_rx(sock *s, int size)
   if (i->mode & IM_NOLISTEN)
     return 1;
 
-#ifdef IPV6
   if (! i->iface || s->lifindex != i->iface->index)
     return 1;
 
   iface = i->iface;
-#endif
+
 
   CHK_MAGIC;
-  DBG( "RIP: message came: %d bytes from %I via %s\n", size, s->faddr, i->iface ? i->iface->name : "(dummy)" );
+  DBG( "RIP: message came: %d bytes from %I via %s\n", size, s->faddr, iface ? iface->name : "(dummy)" );
   size -= sizeof( struct rip_packet_heading );
   if (size < 0) BAD( "Too small packet" );
   if (size % sizeof( struct rip_block )) BAD( "Odd sized packet" );
   num = size / sizeof( struct rip_block );
   if (num>PACKET_MAX) BAD( "Too many blocks" );
 
-  if (ipa_equal(i->iface->addr->ip, s->faddr)) {
+  if (ipa_equal(iface->addr->ip, s->faddr)) {
     DBG("My own packet\n");
     return 1;
   }
@@ -703,11 +704,12 @@ new_iface(struct proto *p, struct iface *new, unsigned long flags, struct iface_
   rif->sock->err_hook = rip_tx_err;
   rif->sock->daddr = IPA_NONE;
   rif->sock->dport = P_CF->port;
+  rif->sock->flags = rip_is_old(p) ? SKF_V4ONLY : SKF_V6ONLY;
   if (new)
     {
       rif->sock->ttl = 1;
       rif->sock->tos = IP_PREC_INTERNET_CONTROL;
-      rif->sock->flags = SKF_LADDR_RX;
+      rif->sock->flags |= SKF_LADDR_RX;
     }
 
   if (new) {
@@ -715,11 +717,7 @@ new_iface(struct proto *p, struct iface *new, unsigned long flags, struct iface_
       log( L_WARN "%s: rip is not defined over unnumbered links", p->name );
     rif->sock->saddr = IPA_NONE;
     if (rif->multicast) {
-#ifndef IPV6
-      rif->sock->daddr = ipa_from_u32(0xe0000009);
-#else
-      rif->sock->daddr = ipa_build6(0xff020000, 0, 0, 9);
-#endif
+      rif->sock->daddr = rip_is_old(p) ? IP4_ALL_RIP_ROUTERS : IP6_ALL_RIP_ROUTERS;
     } else {
       rif->sock->daddr = new->addr->brd;
     }
@@ -805,11 +803,7 @@ rip_if_notify(struct proto *p, unsigned c, struct iface *iface)
 
     lock = olock_new( p->pool );
     if (!(PATT->mode & IM_BROADCAST) && (iface->flags & IF_MULTICAST))
-#ifndef IPV6
-      lock->addr = ipa_from_u32(0xe0000009);
-#else
-      lock->addr = ipa_build6(0xff020000, 0, 0, 9);
-#endif
+      lock->addr = rip_is_old(p) ? IP4_ALL_RIP_ROUTERS : IP6_ALL_RIP_ROUTERS;
     else
       lock->addr = iface->addr->brd;
     lock->port = P_CF->port;
@@ -982,7 +976,6 @@ rip_init_config(struct rip_proto_config *c)
 {
   init_list(&c->iface_list);
   c->infinity	= 16;
-  c->port	= RIP_PORT;
   c->period	= 30;
   c->garbage_time = 120+180;
   c->timeout_time = 120;
@@ -1036,6 +1029,7 @@ rip_copy_config(struct proto_config *dest, struct proto_config *src)
 struct protocol proto_rip = {
   name: "RIP",
   template: "rip%d",
+  tables: RTB_IPV4,
   attr_class: EAP_RIP,
   preference: DEF_PREF_RIP,
   get_route_info: rip_get_route_info,
@@ -1047,3 +1041,20 @@ struct protocol proto_rip = {
   reconfigure: rip_reconfigure,
   copy_config: rip_copy_config
 };
+
+struct protocol proto_ripng = {
+  name: "RIPng",
+  template: "ripng%d",
+  tables: RTB_IPV6,
+  attr_class: EAP_RIP,
+  preference: DEF_PREF_RIP,
+  get_route_info: rip_get_route_info,
+  get_attr: rip_get_attr,
+
+  init: rip_init,
+  dump: rip_dump,
+  start: rip_start,
+  reconfigure: rip_reconfigure,
+  copy_config: rip_copy_config
+};
+

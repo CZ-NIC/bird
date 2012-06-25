@@ -24,7 +24,7 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(RIP, INFINITY, METRIC, PORT, PERIOD, GARBAGE, TIMEOUT,
+CF_KEYWORDS(RIP, RIPNG, INFINITY, METRIC, PORT, PERIOD, GARBAGE, TIMEOUT,
 	    MODE, BROADCAST, MULTICAST, QUIET, NOLISTEN, VERSION1, 
 	    AUTHENTICATION, NONE, PLAINTEXT, MD5,
 	    HONOR, NEVER, NEIGHBOR, ALWAYS,
@@ -39,11 +39,20 @@ CF_ADDTO(proto, rip_cfg '}' { RIP_CFG->passwords = get_passwords(); } )
 rip_cfg_start: proto_start RIP {
      this_proto = proto_config_new(&proto_rip, sizeof(struct rip_proto_config), $1);
      rip_init_config(RIP_CFG);
+     RIP_CFG->port = RIP_PORT_V2;
+   }
+ ;
+
+ripng_cfg_start: proto_start RIPNG {
+     this_proto = proto_config_new(&proto_ripng, sizeof(struct rip_proto_config), $1);
+     rip_init_config(RIP_CFG);
+     RIP_CFG->port = RIP_PORT_NG;
    }
  ;
 
 rip_cfg:
    rip_cfg_start proto_name '{'
+ | ripng_cfg_start proto_name '{'
  | rip_cfg proto_item ';'
  | rip_cfg INFINITY expr ';'	{ RIP_CFG->infinity = $3; }
  | rip_cfg PORT expr ';'	{ RIP_CFG->port = $3; }

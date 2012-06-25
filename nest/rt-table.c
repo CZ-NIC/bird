@@ -517,7 +517,8 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
 #ifdef CONFIG_RIP
 	      /* lastmod is used internally by RIP as the last time
 		 when the route was received. */
-	      if (src->proto == &proto_rip)
+	      if ((src->proto == &proto_rip) ||
+		  (src->proto == &proto_ripng))
 		old->lastmod = now;
 #endif
 	      return;

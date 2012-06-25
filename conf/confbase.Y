@@ -162,6 +162,8 @@ ipa_scope:
 
 prefix:
    ipa pxlen {
+     if (ipa_is_ip4($1))
+       $2 += 96;	// XXXX make it better
      if (!ip_is_prefix($1, $2)) cf_error("Invalid prefix");
      $$.addr = $1; $$.len = $2;
    }

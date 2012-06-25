@@ -349,6 +349,24 @@ ip_scope_text(unsigned scope)
     return scope_table[scope];
 }
 
+ip4_addr
+ip4_class_mask(ip4_addr ad)
+{
+  u32 m, a = _I(ad);
+  
+  if (a < 0x80000000)
+    m = 0xff000000;
+  else if (a < 0xc0000000)
+    m = 0xffff0000;
+  else
+    m = 0xffffff00;
+  if (a & ~m)
+    m = 0xffffffff;
+
+  return _MI4(m);
+}
+
+
 #include "nest/route.h"
 
 void
@@ -484,8 +502,8 @@ void ipa_ntoh(ip_addr x) { DUMMY }
 int ipa_classify(ip_addr x) { DUMMY }
 
 /**
- * ipa_class_mask - guess netmask according to address class
- * @x: IP address
+ * ip4_class_mask - guess netmask according to address class
+ * @x: IPv4 address
  *
  * This function (available in IPv4 version only) returns a
  * network mask according to the address class of @x. Although
@@ -493,7 +511,7 @@ int ipa_classify(ip_addr x) { DUMMY }
  * routing protocols transferring no prefix lengths nor netmasks
  * and this function could be useful to them.
  */
-ip_addr ipa_class_mask(ip_addr x) { DUMMY }
+ip_addr ip4_class_mask(ip_addr x) { DUMMY }
 
 /**
  * ipa_from_u32 - convert IPv4 address to an integer
