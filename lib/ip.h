@@ -15,12 +15,29 @@
 #include "lib/unaligned.h"
 
 
-#ifdef DEBUGGING
+
+#define IP4_MIN_MTU		576	/* RFC 2328 A.1 */
+#define IP6_MIN_MTU		1280	/* RFC 5340 A.1 */
+
+#define IP4_ALL_SPF_ROUTERS	ipa_build4(224, 0, 0, 5)
+#define IP4_ALL_D_ROUTERS	ipa_build4(224, 0, 0, 6)
+
+#define IP6_All_NODES		ipa_build6(0xFF020000, 0, 0, 1)
+#define IP6_ALL_ROUTERS		ipa_build6(0xFF020000, 0, 0, 2)
+#define IP6_ALL_OSPF_ROUTERS	ipa_build6(0xFF020000, 0, 0, 5)
+#define IP6_ALL_OSPF_D_ROUTERS	ipa_build6(0xFF020000, 0, 0, 6)
+
+#define IP4_NONE _MI4(0)
+#define IP6_NONE _MI6(0,0,0,0)
+#define IPA_NONE IP6_NONE
+
 
 /*
  *	Use the structural representation when you want to make sure
  *	nobody unauthorized attempts to handle ip_addr as number.
  */
+
+#ifdef DEBUGGING
 
 typedef struct ip4_addr {
   u32 addr;
@@ -52,11 +69,6 @@ typedef struct ip6_addr {
 
 typedef ip6_addr ip_addr;
 
-
-
-#define IPA_NONE IP6_NONE
-#define IP4_NONE _MI4(0)
-#define IP6_NONE _MI6(0,0,0,0)
 
 
 /*
@@ -123,9 +135,11 @@ static inline ip6_addr ip6_not(ip6_addr a)
 
 #define ipa_from_ip4(x) _MI6(0,0,0xffff,_I(x))
 #define ipa_from_ip6(x) x
+#define ipa_from_u32(x) ipa_from_ip4(ip4_from_u32(x))
 
 #define ipa_to_ip4(x) _I3(x)
 #define ipa_to_ip6(x) x
+#define ipa_to_u32(x) ip4_to_u32(ipa_to_ip4(x))
 
 #define ip4_from_u32(x) _MI4(x)
 #define ip4_to_u32(x) _I(x)

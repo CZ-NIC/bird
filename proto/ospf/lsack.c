@@ -9,29 +9,38 @@
 #include "ospf.h"
 
 
+/*
 struct ospf_lsack_packet
 {
-  struct ospf_packet ospf_packet;
-  struct ospf_lsa_header lsh[];
+  struct ospf_packet hdr;
+  // union ospf_auth auth;
+
+  struct ospf_lsa_header lsas[];
 };
+*/
 
 
-char *s_queue[] = { "direct", "delayed" };
-
-
-static void ospf_dump_lsack(struct proto *p, struct ospf_lsack_packet *pkt)
+static void
+ospf_lsack_body(struct proto_ospf *po, struct ospf_packet *pkt, unsigned plen,
+		struct ospf_lsa_header **body, unsigned *count)
 {
-  struct ospf_packet *op = &pkt->ospf_packet;
+  unsigned hdrlen = ospf_pkt_hdrlen(po);
+  *body = ((void *) pkt) + hdrlen;
+  *count = (plen - hdrlen) / sizeof(struct ospf_lsa_header);
+}
 
-  ASSERT(op->type == LSACK_P);
-  ospf_dump_common(p, op);
+static void
+ospf_lsack_dump(struct proto_ospf *po, struct ospf_packet *pkt)
+{
+  struct ospf_lsa_header *lsas;
+  unsigned i, lsa_count;
 
-  unsigned int i, j;
-  j = (ntohs(op->length) - sizeof(struct ospf_lsack_packet)) /
-    sizeof(struct ospf_lsa_header);
+  ASSERT(pkt->type == LSACK_P);
+  ospf_dump_common(po, pkt);
 
-  for (i = 0; i < j; i++)
-    ospf_dump_lsahdr(p, pkt->lsh + i);
+  ospf_lsack_body(po, pkt, ntohs(pkt->length), &lsas, &lsa_count);
+  for (i = 0; i < lsa_count; i++)
+    ospf_dump_lsahdr(po, lsas + i);
 }
 
 
@@ -42,87 +51,47 @@ static void ospf_dump_lsack(struct proto *p, struct ospf_lsack_packet *pkt)
  */
 
 void
-ospf_lsack_enqueue(struct ospf_neighbor *n, struct ospf_lsa_header *h,
-		   int queue)
+ospf_lsack_enqueue(struct ospf_neighbor *n, struct ospf_lsa_header *h, int queue)
 {
   struct lsah_n *no = mb_alloc(n->pool, sizeof(struct lsah_n));
   memcpy(&no->lsa, h, sizeof(struct ospf_lsa_header));
   add_tail(&n->ackl[queue], NODE no);
-  DBG("Adding (%s) ack for %R, ID: %R, RT: %R, Type: %u\n", s_queue[queue],
+  DBG("Adding (%s) ack for %R, ID: %R, RT: %R, Type: %u\n",
+      (queue == ACKL_DIRECT) ? "direct" : "delayed",
       n->rid, ntohl(h->id), ntohl(h->rt), h->type);
 }
 
-void
-ospf_lsack_send(struct ospf_neighbor *n, int queue)
+static inline void
+ospf_lsack_send_one(struct ospf_neighbor *n, int queue)
 {
-  struct ospf_packet *op;
-  struct ospf_lsack_packet *pk;
-  u16 len, i = 0;
-  struct ospf_lsa_header *h;
-  struct lsah_n *no;
   struct ospf_iface *ifa = n->ifa;
-  struct proto *p = &n->ifa->oa->po->proto;
+  struct proto_ospf *po = ifa->oa->po;
+  struct ospf_lsa_header *lsas;
+  struct ospf_packet *pkt;
+  struct lsah_n *no;
+  unsigned i, lsa_max, length;
 
-  if (EMPTY_LIST(n->ackl[queue]))
-    return;
 
-  pk = ospf_tx_buffer(ifa);
-  op = &pk->ospf_packet;
+  pkt = ospf_tx_buffer(ifa);
+  ospf_pkt_fill_hdr(ifa, pkt, LSACK_P);
+  ospf_lsack_body(po, pkt, ospf_pkt_maxsize(ifa), &lsas, &lsa_max);
 
-  ospf_pkt_fill_hdr(n->ifa, pk, LSACK_P);
-  h = pk->lsh;
-
-  while (!EMPTY_LIST(n->ackl[queue]))
+  for (i = 0; i < lsa_max && !EMPTY_LIST(n->ackl[queue]); i++)
   {
     no = (struct lsah_n *) HEAD(n->ackl[queue]);
-    memcpy(h + i, &no->lsa, sizeof(struct ospf_lsa_header));
-    DBG("Iter %u ID: %R, RT: %R, Type: %04x\n", i, ntohl((h + i)->id),
-	ntohl((h + i)->rt), (h + i)->type);
-    i++;
+    memcpy(&lsas[i], &no->lsa, sizeof(struct ospf_lsa_header));
+    DBG("Iter %u ID: %R, RT: %R, Type: %04x\n",
+	i, ntohl(lsas[i].id), ntohl(lsas[i].rt), lsas[i].type);
     rem_node(NODE no);
     mb_free(no);
-    if ((i * sizeof(struct ospf_lsa_header) +
-	 sizeof(struct ospf_lsack_packet)) > ospf_pkt_maxsize(n->ifa))
-    {
-      if (!EMPTY_LIST(n->ackl[queue]))
-      {
-	len =
-	  sizeof(struct ospf_lsack_packet) +
-	  i * sizeof(struct ospf_lsa_header);
-	op->length = htons(len);
-	DBG("Sending and continuing! Len=%u\n", len);
-
-	OSPF_PACKET(ospf_dump_lsack, pk, "LSACK packet sent via %s", ifa->iface->name);
-
-	if (ifa->type == OSPF_IT_BCAST)
-	{
-	  if ((ifa->state == OSPF_IS_DR) || (ifa->state == OSPF_IS_BACKUP))
-	    ospf_send_to_all(ifa);
-	  else if (ifa->cf->real_bcast)
-	    ospf_send_to_bdr(ifa);
-	  else
-	    ospf_send_to(ifa, AllDRouters);
-	}
-	else
-	{
-	  if ((ifa->state == OSPF_IS_DR) || (ifa->state == OSPF_IS_BACKUP))
-	    ospf_send_to_agt(ifa, NEIGHBOR_EXCHANGE);
-	  else
-	    ospf_send_to_bdr(ifa);
-	}
-
-	ospf_pkt_fill_hdr(n->ifa, pk, LSACK_P);
-	i = 0;
-      }
-    }
   }
 
-  len = sizeof(struct ospf_lsack_packet) + i * sizeof(struct ospf_lsa_header);
-  op->length = htons(len);
-  DBG("Sending! Len=%u\n", len);
+  length = ospf_pkt_hdrlen(po) + i * sizeof(struct ospf_lsa_header);
+  pkt->length = htons(length);
 
-  OSPF_PACKET(ospf_dump_lsack, pk, "LSACK packet sent via %s", ifa->iface->name);
+  OSPF_PACKET(ospf_lsack_dump, pkt, "LSACK packet sent via %s", ifa->iface->name);
 
+  /* XXXX this is very strange */
   if (ifa->type == OSPF_IT_BCAST)
   {
     if ((ifa->state == OSPF_IS_DR) || (ifa->state == OSPF_IS_BACKUP))
@@ -134,37 +103,46 @@ ospf_lsack_send(struct ospf_neighbor *n, int queue)
   }
   else
     ospf_send_to_agt(ifa, NEIGHBOR_EXCHANGE);
+
+  /*
+    if ((ifa->state == OSPF_IS_DR) || (ifa->state == OSPF_IS_BACKUP))
+      ospf_send_to_agt(ifa, NEIGHBOR_EXCHANGE);
+    else
+      ospf_send_to_bdr(ifa);
+  */
 }
 
 void
-ospf_lsack_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
+ospf_lsack_send(struct ospf_neighbor *n, int queue)
+{
+  while (!EMPTY_LIST(n->ackl[queue]))
+    ospf_lsack_send_one(n, queue);
+}
+
+void
+ospf_lsack_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 		   struct ospf_neighbor *n)
 {
-  struct proto *p = &ifa->oa->po->proto;
-  struct ospf_lsa_header lsa;
+  struct proto_ospf *po = ifa->oa->po;
+  struct ospf_lsa_header lsa, *lsas;
   struct top_hash_entry *en;
-  unsigned int i, lsano;
+  unsigned i, lsa_count;
 
-  unsigned int size = ntohs(ps_i->length);
-  if (size < sizeof(struct ospf_lsack_packet))
-  {
-    log(L_ERR "Bad OSPF LSACK packet from %I -  too short (%u B)", n->ip, size);
-    return;
-  }
 
-  struct ospf_lsack_packet *ps = (void *) ps_i;
-  OSPF_PACKET(ospf_dump_lsack, ps, "LSACK packet received from %I via %s", n->ip, ifa->iface->name);
+  /* No need to check length, lsack has only basic header */
 
-  ospf_neigh_sm(n, INM_HELLOREC);
+  OSPF_PACKET(ospf_lsack_dump, pkt, "LSACK packet received from %I via %s",
+	      n->ip, ifa->iface->name);
 
   if (n->state < NEIGHBOR_EXCHANGE)
     return;
 
-  lsano = (size - sizeof(struct ospf_lsack_packet)) /
-    sizeof(struct ospf_lsa_header);
-  for (i = 0; i < lsano; i++)
+  ospf_neigh_sm(n, INM_HELLOREC);	/* Not in RFC */
+
+  ospf_lsack_body(po, pkt, ntohs(pkt->length), &lsas, &lsa_count);
+  for (i = 0; i < lsa_count; i++)
   {
-    ntohlsah(ps->lsh + i, &lsa);
+    ntohlsah(&lsas[i], &lsa);
     u32 dom = ospf_lsa_domain(lsa.type, n->ifa);
     if ((en = ospf_hash_find_header(n->lsrth, dom, &lsa)) == NULL)
       continue;			/* pg 155 */

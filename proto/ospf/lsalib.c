@@ -11,11 +11,9 @@
 void
 flush_lsa(struct top_hash_entry *en, struct proto_ospf *po)
 {
-  struct proto *p = &po->proto;
-
   OSPF_TRACE(D_EVENTS,
 	     "Going to remove LSA Type: %04x, Id: %R, Rt: %R, Age: %u, Seqno: 0x%x",
-	     en->lsa.type, en->lsa.id, en->lsa.rt, en->lsa.age, en->lsa.sn);
+	     en->lsa_type, en->lsa.id, en->lsa.rt, en->lsa.age, en->lsa.sn);
   s_rem_node(SNODE en);
   if (en->lsa_body != NULL)
     mb_free(en->lsa_body);
@@ -30,7 +28,7 @@ ospf_flush_area(struct proto_ospf *po, u32 areaid)
 
   WALK_SLIST_DELSAFE(en, nxt, po->lsal)
   {
-    if ((LSA_SCOPE(&en->lsa) == LSA_SCOPE_AREA) && (en->domain == areaid))
+    if ((LSA_SCOPE(en->lsa_type) == LSA_SCOPE_AREA) && (en->domain == areaid))
       flush_lsa(en, po);
   }
 }
@@ -53,7 +51,6 @@ ospf_flush_area(struct proto_ospf *po, u32 areaid)
 void
 ospf_age(struct proto_ospf *po)
 {
-  struct proto *p = &po->proto;
   struct top_hash_entry *en, *nxt;
   int flush = can_flush_lsa(po);
 
@@ -68,7 +65,7 @@ ospf_age(struct proto_ospf *po)
     if ((en->lsa.rt == po->router_id) && (en->lsa.age >= LSREFRESHTIME))
     {
       OSPF_TRACE(D_EVENTS, "Refreshing my LSA: Type: %u, Id: %R, Rt: %R",
-		 en->lsa.type, en->lsa.id, en->lsa.rt);
+		 en->lsa_type, en->lsa.id, en->lsa.rt);
       en->lsa.sn++;
       en->lsa.age = 0;
       en->inst_t = now;
@@ -95,10 +92,7 @@ void
 htonlsah(struct ospf_lsa_header *h, struct ospf_lsa_header *n)
 {
   n->age = htons(h->age);
-#ifdef OSPFv2
-  n->options = h->options;
-#endif
-  n->type = htont(h->type);
+  n->type_raw = htont(h->type_raw);
   n->id = htonl(h->id);
   n->rt = htonl(h->rt);
   n->sn = htonl(h->sn);
@@ -110,10 +104,7 @@ void
 ntohlsah(struct ospf_lsa_header *n, struct ospf_lsa_header *h)
 {
   h->age = ntohs(n->age);
-#ifdef OSPFv2
-  h->options = n->options;
-#endif
-  h->type = ntoht(n->type);
+  h->type_raw = ntoht(n->type_raw);
   h->id = ntohl(n->id);
   h->rt = ntohl(n->rt);
   h->sn = ntohl(n->sn);
@@ -292,6 +283,147 @@ lsa_comp(struct ospf_lsa_header *l1, struct ospf_lsa_header *l2)
   return CMP_SAME;
 }
 
+
+static inline int
+lsa_walk_rt2(struct ospf_lsa_rt_walk *rt)
+{
+  if (rt->buf >= rt->bufend)
+    return 0;
+
+  struct ospf_lsa_rt2_link *l = rt->buf;
+  rt->buf += sizeof(struct ospf_lsa_rt2_link) + l->no_tos * sizeof(struct ospf_lsa_rt2_tos);
+
+  rt->type = l->type;
+  rt->metric = l->metric;
+  rt->id = l->id;
+  rt->data = l->data;
+  return 1;
+}
+
+static inline int
+lsa_walk_rt3(struct ospf_lsa_rt_walk *rt)
+{
+  while (rt->buf >= rt->bufend)
+  {
+    rt->en = ospf_hash_find_rt_next(rt->en);
+    if (!rt->en)
+      return 0;
+
+    rt->buf = rt->en->lsa_body;
+    rt->bufend = rt->buf + rt->en->lsa.length - sizeof(struct ospf_lsa_header);
+    rt->buf += sizeof(struct ospf_lsa_rt);
+  }
+
+  struct ospf_lsa_rt3_link *l = rt->buf;
+  rt->buf += sizeof(struct ospf_lsa_rt3_link);
+
+  rt->type = l->type;
+  rt->metric = l->metric;
+  rt->lif = l->lif;
+  rt->nif = l->nif;
+  rt->id = l->id;
+  return 1;
+}
+
+void
+lsa_walk_rt_init(struct proto_ospf *po, struct top_hash_entry *act, struct ospf_lsa_rt_walk *rt)
+{
+  rt->ospf2 = ospf_is_v2(po);
+  rt->id = rt->data = rt->lif = rt->nif = 0;
+
+  if (rt->ospf2)
+    rt->en = act;
+  else
+    rt->en = ospf_hash_find_rt_first(po->gr, act->domain, act->lsa.rt);
+
+  rt->buf = rt->en->lsa_body;
+  rt->bufend = rt->buf + rt->en->lsa.length - sizeof(struct ospf_lsa_header);
+  rt->buf += sizeof(struct ospf_lsa_rt);
+}
+
+int
+lsa_walk_rt(struct ospf_lsa_rt_walk *rt)
+{
+  return rt->ospf2 ? lsa_walk_rt2(rt) : lsa_walk_rt3(rt);
+}
+
+
+void
+lsa_parse_sum_net(struct top_hash_entry *en, int ospf2, ip_addr *ip, int *pxlen, u8 *pxopts, u32 *metric)
+{
+  if (ospf2)
+  {
+    struct ospf_lsa_sum2 *ls = en->lsa_body;
+    *ip = ipa_from_u32(en->lsa.id & ls->netmask);
+    *pxlen = u32_masklen(ls->netmask);
+    *pxopts = 0;
+    *metric = ls->metric & METRIC_MASK;
+  }
+  else
+  {
+    struct ospf_lsa_sum3_net *ls = en->lsa_body;
+    u16 rest;
+    lsa_get_ipv6_prefix(ls->prefix, ip, pxlen, pxopts, &rest);
+    *metric = ls->metric & METRIC_MASK;
+  }
+}
+
+void
+lsa_parse_sum_rt(struct top_hash_entry *en, int ospf2, u32 *drid, u32 *metric, u32 *options)
+{
+  if (ospf2)
+  {
+    struct ospf_lsa_sum2 *ls = en->lsa_body;
+    *drid = en->lsa.id;
+    *metric = ls->metric & METRIC_MASK;
+    *options = 0;
+  }
+  else
+  {
+    struct ospf_lsa_sum3_rt *ls = en->lsa_body;
+    *drid = ls->drid;
+    *metric = ls->metric & METRIC_MASK;
+    *options = ls->options & OPTIONS_MASK;
+  }
+}
+
+void
+lsa_parse_ext(struct top_hash_entry *en, int ospf2, struct ospf_lsa_ext_local *rt)
+{
+  if (ospf2)
+  {
+    struct ospf_lsa_ext2 *ext = en->lsa_body;
+    rt->ip = ipa_from_u32(en->lsa.id & ext->netmask);
+    rt->pxlen = u32_masklen(ext->netmask);
+    rt->pxopts = 0;
+    rt->metric = ext->metric & METRIC_MASK;
+    rt->ebit = ext->metric & LSA_EXT2_EBIT;
+
+    rt->fbit = ip4_nonzero(ext->fwaddr);
+    rt->fwaddr = ipa_from_ip4(ext->fwaddr);
+
+    rt->tag = ext->tag;
+    rt->propagate = lsa_get_options(&en->lsa) & OPT_P;
+  }
+  else
+  {
+    struct ospf_lsa_ext3 *ext = en->lsa_body;
+    u16 rest;
+    u32 *buf = lsa_get_ipv6_prefix(ext->rest, &rt->ip, &rt->pxlen, &rt->pxopts, &rest);
+    rt->metric = ext->metric & METRIC_MASK;
+    rt->ebit = ext->metric & LSA_EXT3_EBIT;
+
+    rt->fbit = ext->metric & LSA_EXT3_FBIT;
+    if (rt->fbit)
+      buf = lsa_get_ipv6_addr(buf, &rt->fwaddr);
+    else 
+      rt->fwaddr = IPA_NONE;
+
+    rt->tag = (ext->metric & LSA_EXT3_TBIT) ? *buf++ : 0;
+    rt->propagate = rt->pxopts & OPT_PX_P;
+  }
+}
+
 #define HDRLEN sizeof(struct ospf_lsa_header)
 
 static int
@@ -372,16 +504,16 @@ pxlen(u32 *buf)
 }
 
 static int
-lsa_validate_sum_net(struct ospf_lsa_header *lsa, struct ospf_lsa_sum_net *body)
+lsa_validate_sum_net(struct ospf_lsa_header *lsa, struct ospf_lsa_sum3_net *body)
 {
-  if (lsa->length < (HDRLEN + sizeof(struct ospf_lsa_sum_net) + 4))
+  if (lsa->length < (HDRLEN + sizeof(struct ospf_lsa_sum3_net) + 4))
     return 0;
 
   u8 pxl = pxlen(body->prefix);
   if (pxl > MAX_PREFIX_LENGTH)
     return 0;
 
-  if (lsa->length != (HDRLEN + sizeof(struct ospf_lsa_sum_net) + 
+  if (lsa->length != (HDRLEN + sizeof(struct ospf_lsa_sum3_net) + 
 		      IPV6_PREFIX_SPACE(pxl)))
     return 0;
 
@@ -390,18 +522,18 @@ lsa_validate_sum_net(struct ospf_lsa_header *lsa, struct ospf_lsa_sum_net *body)
 
 
 static int
-lsa_validate_sum_rt(struct ospf_lsa_header *lsa, struct ospf_lsa_sum_rt *body)
+lsa_validate_sum_rt(struct ospf_lsa_header *lsa, struct ospf_lsa_sum3_rt *body)
 {
-  if (lsa->length != (HDRLEN + sizeof(struct ospf_lsa_sum_rt)))
+  if (lsa->length != (HDRLEN + sizeof(struct ospf_lsa_sum3_rt)))
     return 0;
 
   return 1;
 }
 
 static int
-lsa_validate_ext(struct ospf_lsa_header *lsa, struct ospf_lsa_ext *body)
+lsa_validate_ext(struct ospf_lsa_header *lsa, struct ospf_lsa_ext3 *body)
 {
-  if (lsa->length < (HDRLEN + sizeof(struct ospf_lsa_ext) + 4))
+  if (lsa->length < (HDRLEN + sizeof(struct ospf_lsa_ext3) + 4))
     return 0;
 
   u8 pxl = pxlen(body->rest);
@@ -409,14 +541,14 @@ lsa_validate_ext(struct ospf_lsa_header *lsa, struct ospf_lsa_ext *body)
     return 0;
 
   int len = IPV6_PREFIX_SPACE(pxl);
-  if (body->metric & LSA_EXT_FBIT) // forwardinf address
+  if (body->metric & LSA_EXT3_FBIT) // forwardinf address
     len += 16;
-  if (body->metric & LSA_EXT_TBIT) // route tag
+  if (body->metric & LSA_EXT3_TBIT) // route tag
     len += 4;
   if (*body->rest & 0xFFFF) // referenced LS type field
     len += 4;
 
-  if (lsa->length != (HDRLEN + sizeof(struct ospf_lsa_ext) + len))
+  if (lsa->length != (HDRLEN + sizeof(struct ospf_lsa_ext3) + len))
     return 0;
 
   return 1;
@@ -492,12 +624,10 @@ lsa_validate(struct ospf_lsa_header *lsa, void *body)
     case LSA_T_EXT:
     case LSA_T_NSSA:
       return lsa_validate_ext(lsa, body);
-#ifdef OSPFv3
     case LSA_T_LINK:
       return lsa_validate_link(lsa, body);
     case LSA_T_PREFIX:
       return lsa_validate_prefix(lsa, body);
-#endif
     default:
       /* In OSPFv3, unknown LSAs are OK,
 	 In OSPFv2, unknown LSAs are already rejected

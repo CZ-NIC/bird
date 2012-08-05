@@ -160,7 +160,7 @@ radv_send_ra(struct radv_iface *ifa, int shutdown)
   }
 
   RADV_TRACE(D_PACKETS, "Sending RA via %s", ifa->iface->name);
-  sk_send_to(ifa->sk, ifa->plen, AllNodes, 0);
+  sk_send_to(ifa->sk, ifa->plen, IP6_ALL_NODES, 0);
 }
 
 
@@ -251,7 +251,7 @@ radv_sk_open(struct radv_iface *ifa)
   if (sk_setup_multicast(sk) < 0)
     goto err;
 
-  if (sk_join_group(sk, AllRouters) < 0)
+  if (sk_join_group(sk, IP6_ALL_ROUTERS) < 0)
     goto err;
 
   ifa->sk = sk;

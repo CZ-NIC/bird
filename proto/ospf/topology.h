@@ -16,6 +16,7 @@ struct top_hash_entry
 				   in intra-area routing table calculation */
   struct top_hash_entry *next;	/* Next in hash chain */
   struct ospf_lsa_header lsa;
+  u16 lsa_type;			/* lsa.type processed and converted to common values */	
   u32 domain;			/* Area ID for area-wide LSAs, Iface ID for link-wide LSAs */
   //  struct ospf_area *oa;
   void *lsa_body;
@@ -76,7 +77,7 @@ void flush_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src);
 
 
 #ifdef OSPFv2
-struct top_hash_entry * ospf_hash_find_net(struct top_graph *f, u32 domain, u32 lsa);
+struct top_hash_entry * ospf_hash_find_net(struct top_graph *f, u32 domain, u32 id, u32 nif);
 
 static inline struct top_hash_entry *
 ospf_hash_find_rt(struct top_graph *f, u32 domain, u32 rtr)
@@ -85,6 +86,13 @@ ospf_hash_find_rt(struct top_graph *f, u32 domain, u32 rtr)
 }
 
 #else /* OSPFv3 */
+static inline struct top_hash_entry *
+ospf_hash_find_net(struct top_graph *f, u32 domain, u32 id, u32 nif)
+{
+  return ospf_hash_find(f, domain, nif, id, LSA_T_NET);
+}
+
+
 struct top_hash_entry * ospf_hash_find_rt(struct top_graph *f, u32 domain, u32 rtr);
 struct top_hash_entry * ospf_hash_find_rt_first(struct top_graph *f, u32 domain, u32 rtr);
 struct top_hash_entry * ospf_hash_find_rt_next(struct top_hash_entry *e);

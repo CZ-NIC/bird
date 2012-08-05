@@ -26,12 +26,25 @@ static inline void htonlsab1(void *h, u16 len) { htonlsab(h, h, len); };
 static inline void ntohlsab1(void *n, u16 len) { ntohlsab(n, n, len); };
 #endif
 
+struct ospf_lsa_rt_walk {
+  struct top_hash_entry *en;
+  void *buf, *bufend;
+  int ospf2;
+  u16 type, metric;
+  u32 id, data, lif, nif;
+};
+
 void lsasum_calculate(struct ospf_lsa_header *header, void *body);
 u16 lsasum_check(struct ospf_lsa_header *h, void *body);
 #define CMP_NEWER 1
 #define CMP_SAME 0
 #define CMP_OLDER -1
 int lsa_comp(struct ospf_lsa_header *l1, struct ospf_lsa_header *l2);
+void lsa_walk_rt_init(struct proto_ospf *po, struct top_hash_entry *act, struct ospf_lsa_rt_walk *rt);
+int lsa_walk_rt(struct ospf_lsa_rt_walk *rt);
+void lsa_parse_sum_net(struct top_hash_entry *en, int ospf2, ip_addr *ip, int *pxlen, u8 *pxopts, u32 *metric);
+void lsa_parse_sum_rt(struct top_hash_entry *en, int ospf2, u32 *drid, u32 *metric, u32 *options);
+void lsa_parse_ext(struct top_hash_entry *en, int ospf2, struct ospf_lsa_ext_local *rt);
 int lsa_validate(struct ospf_lsa_header *lsa, void *body);
 struct top_hash_entry * lsa_install_new(struct proto_ospf *po, struct ospf_lsa_header *lsa, u32 domain, void *body);
 void ospf_age(struct proto_ospf *po);

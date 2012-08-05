@@ -534,10 +534,8 @@ ifa_update(struct ifa *a)
 	break;
       }
 
-#ifndef IPV6
-  if ((i->flags & IF_BROADCAST) && !ipa_nonzero(a->brd))
-    log(L_ERR "Missing broadcast address for interface %s", i->name);
-#endif
+  if (ipa_is_ip4(a->ip) && (i->flags & IF_BROADCAST) && !ipa_nonzero(a->brd))
+    log(L_WARN "Missing broadcast address for interface %s", i->name);
 
   b = mb_alloc(if_pool, sizeof(struct ifa));
   memcpy(b, a, sizeof(struct ifa));
@@ -583,10 +581,13 @@ ifa_delete(struct ifa *a)
       }
 }
 
+
 static void
 auto_router_id(void)
 {
-#ifndef IPV6
+// XXXX check this
+#if 0
+
   struct iface *i, *j;
 
   j = NULL;

@@ -26,9 +26,6 @@
 
 #define ICMPV6_PROTO 58
 
-#define AllNodes   ipa_build6(0xFF020000, 0, 0, 1)	/* FF02::1 */
-#define AllRouters ipa_build6(0xFF020000, 0, 0, 2)	/* FF02::2 */
-
 #define ICMPV6_RS 133
 #define ICMPV6_RA 134
 

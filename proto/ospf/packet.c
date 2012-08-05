@@ -439,7 +439,7 @@ ospf_rx_hook(sock *sk, int size)
   struct ospf_neighbor *n = find_neigh(ifa, rid);
 #endif
 
-  if(!n && (ps->type != HELLO_P))
+  if (!n && (ps->type != HELLO_P))
   {
     log(L_WARN "OSPF: Received non-hello packet from unknown neighbor (src %I, iface %s)",
 	sk->faddr, ifa->iface->name);

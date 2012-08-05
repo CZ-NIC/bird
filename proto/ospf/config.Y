@@ -335,7 +335,7 @@ ipa_item:
     ipa_el
   | ipa_ne;
  
-ipa_el: IPA ';'
+ipa_el: ipa ';'
  {
    this_nbma = cfg_allocz(sizeof(struct nbma_node));
    add_tail(&OSPF_PATT->nbma_list, NODE this_nbma);
@@ -344,7 +344,7 @@ ipa_el: IPA ';'
  }
 ;
 
-ipa_ne: IPA ELIGIBLE ';'
+ipa_ne: ipa ELIGIBLE ';'
  {
    this_nbma = cfg_allocz(sizeof(struct nbma_node));
    add_tail(&OSPF_PATT->nbma_list, NODE this_nbma);

@@ -17,27 +17,29 @@ struct ospf_lsupd_packet
 
 
 /* Beware of unaligned access */
-void ospf_dump_lsahdr(struct proto *p, struct ospf_lsa_header *lsa_n)
+void ospf_dump_lsahdr(struct proto_ospf *po, struct ospf_lsa_header *lsa_n)
 {
   struct ospf_lsa_header lsa;
   ntohlsah(lsa_n, &lsa);
 
   log(L_TRACE "%s:     LSA      Type: %04x, Id: %R, Rt: %R, Age: %u, Seq: %08x, Sum: %04x",
-      p->name, lsa.type, lsa.id, lsa.rt, lsa.age, lsa.sn, lsa.checksum);
+      po->proto.name, lsa.type, lsa.id, lsa.rt, lsa.age, lsa.sn, lsa.checksum);
 }
 
-void ospf_dump_common(struct proto *p, struct ospf_packet *op)
+void ospf_dump_common(struct proto_ospf *po, struct ospf_packet *pkt)
 {
-  log(L_TRACE "%s:     length   %d", p->name, ntohs(op->length));
-  log(L_TRACE "%s:     router   %R", p->name, ntohl(op->routerid));
+  struct proto *p = &po->proto;
+  log(L_TRACE "%s:     length   %d", p->name, ntohs(pkt->length));
+  log(L_TRACE "%s:     router   %R", p->name, ntohl(pkt->routerid));
 }
 
-static void ospf_dump_lsupd(struct proto *p, struct ospf_lsupd_packet *pkt)
+static void ospf_dump_lsupd(struct proto_ospf *po, struct ospf_lsupd_packet *pkt)
 {
+  struct proto *p = &po->proto;
   struct ospf_packet *op = &pkt->ospf_packet;
 
   ASSERT(op->type == LSUPD_P);
-  ospf_dump_common(p, op);
+  ospf_dump_common(po, op);
 
   /* We know that ntohs(op->length) >= sizeof(struct ospf_lsa_header) */
   u8 *pbuf= (u8 *) pkt;
@@ -160,7 +162,6 @@ ospf_lsupd_flood(struct proto_ospf *po,
   struct ospf_iface *ifa;
   struct ospf_neighbor *nn;
   struct top_hash_entry *en;
-  struct proto *p = &po->proto;
   int ret, retval = 0;
 
   /* pg 148 */
@@ -352,7 +353,7 @@ void				/* I send all I received in LSREQ */
 ospf_lsupd_send_list(struct ospf_neighbor *n, list * l)
 {
   struct ospf_area *oa = n->ifa->oa;
-  struct proto *p = &oa->po->proto;
+  struct proto_ospf *po = oa->po;
   struct l_lsr_head *lsr;
   struct top_hash_entry *en;
   struct ospf_lsupd_packet *pkt;
@@ -487,6 +488,8 @@ ospf_lsupd_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
       continue;
     }
 
+    u16 lsa_type = ntohs(lsa->type_raw);
+    lsa_type = xxxx(lsa_type); // XXXX finish
 #ifdef OSPFv2
     /* pg 143 (2) */
     if ((lsa->type == 0) || (lsa->type == 6) || (lsa->type > LSA_T_NSSA))
@@ -496,21 +499,21 @@ ospf_lsupd_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
     }
 
     /* pg 143 (3) */
-    if ((lsa->type == LSA_T_EXT) && !oa_is_ext(ifa->oa))
+    if ((lsa_type == LSA_T_EXT) && !oa_is_ext(ifa->oa))
     {
       log(L_WARN "Received External LSA in stub area from %I", n->ip);
       continue;
     }
 #else /* OSPFv3 */
     /* 4.5.1 (2) */
-    if ((LSA_SCOPE(lsa) == LSA_SCOPE_AS) && !oa_is_ext(ifa->oa))
+    if ((LSA_SCOPE(lsa_type) == LSA_SCOPE_AS) && !oa_is_ext(ifa->oa))
     {
       log(L_WARN "Received LSA with AS scope in stub area from %I", n->ip);
       continue;
     }
 
     /* 4.5.1 (3) */
-    if ((LSA_SCOPE(lsa) == LSA_SCOPE_RES))
+    if ((LSA_SCOPE(lsa_type) == LSA_SCOPE_RES))
     {
       log(L_WARN "Received LSA with invalid scope from %I", n->ip);
       continue;
@@ -520,10 +523,10 @@ ospf_lsupd_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
     ntohlsah(lsa, &lsatmp);
 
     DBG("Update Type: %u ID: %R RT: %R, Sn: 0x%08x Age: %u, Sum: %u\n",
-	lsatmp.type, lsatmp.id, lsatmp.rt, lsatmp.sn, lsatmp.age, lsatmp.checksum);
+	lsa_type, lsatmp.id, lsatmp.rt, lsatmp.sn, lsatmp.age, lsatmp.checksum);
 
     /* FIXME domain should be link id for unknown LSA types with zero Ubit */
-    u32 domain = ospf_lsa_domain(lsatmp.type, ifa);
+    u32 domain = ospf_lsa_domain(lsa_type, ifa);
     lsadb = ospf_hash_find_header(po->gr, domain, &lsatmp);
 
 #ifdef LOCAL_DEBUG
@@ -550,7 +553,7 @@ ospf_lsupd_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
 
 #ifdef OSPFv2
       /* 13.4 - check self-originated LSAs of NET type */
-      if ((!self) && (lsatmp.type == LSA_T_NET))
+      if ((!self) && (lsa_type == LSA_T_NET))
       {
 	struct ospf_iface *nifa;
 	WALK_LIST(nifa, po->iface_list)
@@ -576,7 +579,7 @@ ospf_lsupd_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
 	}
 
 	OSPF_TRACE(D_EVENTS, "Received old self-originated LSA (Type: %04x, Id: %R, Rt: %R)",
-		   lsatmp.type, lsatmp.id, lsatmp.rt);
+		   lsa_type, lsatmp.id, lsatmp.rt);
 
 	if (lsadb)
 	{
@@ -666,8 +669,7 @@ ospf_lsupd_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
 
 #ifdef OSPFv3
       /* Events 6,7 from RFC5340 4.4.3. */
-      if ((lsatmp.type == LSA_T_LINK) &&
-	  (ifa->state == OSPF_IS_DR))
+      if ((lsa_type == LSA_T_LINK) && (ifa->state == OSPF_IS_DR))
 	schedule_net_lsa(ifa);
 #endif
 
@@ -733,12 +735,11 @@ void
 ospf_lsupd_flush_nlsa(struct proto_ospf *po, struct top_hash_entry *en)
 {
   struct ospf_lsa_header *lsa = &en->lsa;
-  struct proto *p = &po->proto;
 
   lsa->age = LSA_MAXAGE;
   lsa->sn = LSA_MAXSEQNO;
   lsasum_calculate(lsa, en->lsa_body);
   OSPF_TRACE(D_EVENTS, "Premature aging self originated lsa!");
-  OSPF_TRACE(D_EVENTS, "Type: %04x, Id: %R, Rt: %R", lsa->type, lsa->id, lsa->rt);
+  OSPF_TRACE(D_EVENTS, "Type: %04x, Id: %R, Rt: %R", en->lsa_type, lsa->id, lsa->rt);
   ospf_lsupd_flood(po, NULL, NULL, lsa, en->domain, 0);
 }

@@ -14,6 +14,9 @@
 #include "nest/route.h"
 #include "nest/attrs.h"
 
+
+#define IPV6 1 // XXXX temporary
+
 struct f_inst {		/* Instruction */
   struct f_inst *next;	/* Structure is 16 bytes, anyway */
   u16 code;

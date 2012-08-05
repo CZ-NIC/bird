@@ -123,7 +123,6 @@ neigh_chstate(struct ospf_neighbor *n, u8 state)
   {
     struct ospf_iface *ifa = n->ifa;
     struct proto_ospf *po = ifa->oa->po;
-    struct proto *p = &po->proto;
 
     n->state = state;
 
@@ -157,13 +156,10 @@ neigh_chstate(struct ospf_neighbor *n, u8 state)
 	n->dds = random_u32();
       }
       n->dds++;
-      n->myimms.byte = 0;
-      n->myimms.bit.ms = 1;
-      n->myimms.bit.m = 1;
-      n->myimms.bit.i = 1;
+      n->myimms = DBDES_IMMS;
     }
     if (state > NEIGHBOR_EXSTART)
-      n->myimms.bit.i = 0;
+      n->myimms &= ~DBDES_I;
   }
 }
 
@@ -554,7 +550,7 @@ neighbor_timer_hook(timer * timer)
 {
   struct ospf_neighbor *n = (struct ospf_neighbor *) timer->data;
   struct ospf_iface *ifa = n->ifa;
-  struct proto *p = &ifa->oa->po->proto;
+  struct proto_ospf *po = ifa->oa->po;
 
   OSPF_TRACE(D_EVENTS,
 	     "Inactivity timer fired on interface %s for neighbor %I.",
@@ -566,7 +562,8 @@ void
 ospf_neigh_remove(struct ospf_neighbor *n)
 {
   struct ospf_iface *ifa = n->ifa;
-  struct proto *p = &ifa->oa->po->proto;
+  struct proto_ospf *po = ifa->oa->po;
+  u32 rid = n->rid;
 
   if ((ifa->type == OSPF_IT_NBMA) || (ifa->type == OSPF_IT_PTMP))
   {
@@ -579,7 +576,7 @@ ospf_neigh_remove(struct ospf_neighbor *n)
   neigh_chstate(n, NEIGHBOR_DOWN);
   rem_node(NODE n);
   rfree(n->pool);
-  OSPF_TRACE(D_EVENTS, "Deleting neigbor.");
+  OSPF_TRACE(D_EVENTS, "Deleting neigbor %R", rid);
 }
 
 void
@@ -633,7 +630,7 @@ rxmt_timer_hook(timer * timer)
     return;
   }
 
-  if ((n->state == NEIGHBOR_EXCHANGE) && n->myimms.bit.ms)	/* I'm master */
+  if ((n->state == NEIGHBOR_EXCHANGE) && (n->myimms & DBDES_MS))	/* I'm master */
     ospf_dbdes_send(n, 0);
 
 

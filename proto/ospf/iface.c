@@ -34,7 +34,7 @@ static void
 wait_timer_hook(timer * timer)
 {
   struct ospf_iface *ifa = (struct ospf_iface *) timer->data;
-  struct proto *p = &ifa->oa->po->proto;
+  struct proto_ospf *po = ifa->oa->po;
 
   OSPF_TRACE(D_EVENTS, "Wait timer fired on interface %s.", ifa->iface->name);
   ospf_iface_sm(ifa, ISM_WAITF);
@@ -172,9 +172,8 @@ ospf_sk_leave_dr(struct ospf_iface *ifa)
 static void
 ospf_iface_down(struct ospf_iface *ifa)
 {
-  struct ospf_neighbor *n, *nx;
   struct proto_ospf *po = ifa->oa->po;
-  struct proto *p = &po->proto;
+  struct ospf_neighbor *n, *nx;
   struct ospf_iface *iff;
 
   if (ifa->type != OSPF_IT_VLINK)
@@ -232,7 +231,8 @@ ospf_iface_down(struct ospf_iface *ifa)
 void
 ospf_iface_remove(struct ospf_iface *ifa)
 {
-  struct proto *p = &ifa->oa->po->proto;
+  struct proto_ospf *po = ifa->oa->po;
+
   if (ifa->type == OSPF_IT_VLINK)
     OSPF_TRACE(D_EVENTS, "Removing vlink to %R via area %R", ifa->vid, ifa->voa->areaid);
 
@@ -261,7 +261,6 @@ void
 ospf_iface_chstate(struct ospf_iface *ifa, u8 state)
 {
   struct proto_ospf *po = ifa->oa->po;
-  struct proto *p = &po->proto;
   u8 oldstate = ifa->state;
 
   if (oldstate == state)
@@ -490,7 +489,7 @@ ospf_iface_stubby(struct ospf_iface_patt *ip, struct ifa *addr)
 void
 ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *ip)
 {
-  struct proto *p = &oa->po->proto;
+  struct proto_ospf *po = oa->po;
   struct iface *iface = addr ? addr->iface : NULL;
   struct pool *pool;
 
@@ -511,7 +510,7 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
 #endif
   }
 
-  pool = rp_new(p->pool, "OSPF Interface");
+  pool = rp_new(po->proto.pool, "OSPF Interface");
   ifa = mb_allocz(pool, sizeof(struct ospf_iface));
   ifa->iface = iface;
   ifa->addr = addr;
@@ -625,7 +624,7 @@ ospf_iface_change_timer(timer *tm, unsigned val)
 int
 ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 {
-  struct proto *p = &ifa->oa->po->proto;
+  struct proto_ospf *po = ifa->oa->po;
   struct nbma_node *nb, *nbx;
   char *ifname = (ifa->type != OSPF_IT_VLINK) ? ifa->iface->name : "vlink";
 
@@ -1047,7 +1046,6 @@ ospf_ifaces_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
 static void
 ospf_iface_change_mtu(struct proto_ospf *po, struct ospf_iface *ifa)
 {
-  struct proto *p = &po->proto;
   struct ospf_packet *op;
   struct ospf_neighbor *n;
   OSPF_TRACE(D_EVENTS, "Changing MTU on interface %s", ifa->iface->name);

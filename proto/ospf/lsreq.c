@@ -9,47 +9,52 @@
 #include "ospf.h"
 
 
+/*
 struct ospf_lsreq_packet
 {
-  struct ospf_packet ospf_packet;
-  struct ospf_lsreq_header lsh[];
+  struct ospf_packet hdr;
+  // union ospf_auth auth;
+
+  struct ospf_lsreq_header lsrs[];
 };
+*/
 
-
-static void ospf_dump_lsreq(struct proto *p, struct ospf_lsreq_packet *pkt)
+static void
+ospf_lsreq_body(struct proto_ospf *po, struct ospf_packet *pkt, unsigned plen,
+		struct ospf_lsreq_header **body, unsigned *count)
 {
-  struct ospf_packet *op = &pkt->ospf_packet;
+  unsigned hdrlen = ospf_pkt_hdrlen(po);
+  *body = ((void *) pkt) + hdrlen;
+  *count = (plen - hdrlen) / sizeof(struct ospf_lsreq_header);
+}
 
-  ASSERT(op->type == LSREQ_P);
-  ospf_dump_common(p, op);
+static void
+ospf_lsreq_dump(struct proto_ospf *po, struct ospf_packet *pkt)
+{
+  struct ospf_lsreq_header *lsrs;
+  unsigned i, lsr_count;
 
-  unsigned int i, j;
-  j = (ntohs(op->length) - sizeof(struct ospf_lsreq_packet)) /
-    sizeof(struct ospf_lsreq_header);
+  ASSERT(pkt->type == LSREQ_P);
+  ospf_dump_common(po, pkt);
 
-  for (i = 0; i < j; i++)
-    log(L_TRACE "%s:     LSR      Type: %04x, Id: %R, Rt: %R", p->name,
-	htonl(pkt->lsh[i].type), htonl(pkt->lsh[i].id), htonl(pkt->lsh[i].rt));
+  ospf_lsreq_body(po, pkt, ntohs(pkt->length), &lsrs, &lsr_count);
+  for (i = 0; i < lsr_count; i++)
+    log(L_TRACE "%s:     LSR      Type: %04x, Id: %R, Rt: %R", po->proto.name,
+	ntohl(lsrs[i].type), ntohl(lsrs[i].id), ntohl(lsrs[i].rt));
 }
 
 void
 ospf_lsreq_send(struct ospf_neighbor *n)
 {
-  snode *sn;
+  struct ospf_iface *ifa = n->ifa;
+  struct proto_ospf *po = ifa->oa->po;
+  struct ospf_lsreq_header *lsrs;
   struct top_hash_entry *en;
-  struct ospf_lsreq_packet *pk;
-  struct ospf_packet *op;
-  struct ospf_lsreq_header *lsh;
-  u16 length;
-  int i, j;
-  struct proto *p = &n->ifa->oa->po->proto;
+  struct ospf_packet *pkt;
+  unsigned i, lsh_max, length;
+  snode *sn;
 
-  pk = ospf_tx_buffer(n->ifa);
-  op = &pk->ospf_packet;
 
-  ospf_pkt_fill_hdr(n->ifa, pk, LSREQ_P);
-
-  sn = SHEAD(n->lsrql);
   if (EMPTY_SLIST(n->lsrql))
   {
     if (n->state == NEIGHBOR_LOADING)
@@ -57,81 +62,68 @@ ospf_lsreq_send(struct ospf_neighbor *n)
     return;
   }
 
-  i = j = (ospf_pkt_maxsize(n->ifa) - sizeof(struct ospf_lsreq_packet)) /
-    sizeof(struct ospf_lsreq_header);
-  lsh = pk->lsh;
+  pkt = ospf_tx_buffer(ifa);
+  ospf_pkt_fill_hdr(ifa, pkt, LSREQ_P);
+  ospf_lsreq_body(po, pkt, ospf_pkt_maxsize(ifa), &lsrs, &lsh_max);
 
-  for (; i > 0; i--)
+  sn = SHEAD(n->lsrql);
+  for (i = 0; i < lsh_max; i++)
   {
     en = (struct top_hash_entry *) sn;
-    lsh->type = htonl(en->lsa.type);
-    lsh->rt = htonl(en->lsa.rt);
-    lsh->id = htonl(en->lsa.id);
     DBG("Requesting %uth LSA: Type: %u, ID: %R, RT: %R, SN: 0x%x, Age %u\n",
 	i, en->lsa.type, en->lsa.id, en->lsa.rt, en->lsa.sn, en->lsa.age);
-    lsh++;
+
+    lsrs[i].type = htonl(en->lsa.type);
+    lsrs[i].rt = htonl(en->lsa.rt);
+    lsrs[i].id = htonl(en->lsa.id);
+
     if (sn == STAIL(n->lsrql))
       break;
     sn = sn->next;
   }
-  if (i != 0)
-    i--;
 
-  length =
-    sizeof(struct ospf_lsreq_packet) + (j -
-					i) * sizeof(struct ospf_lsreq_header);
-  op->length = htons(length);
+  length = ospf_pkt_hdrlen(po) + i * sizeof(struct ospf_lsreq_header);
+  pkt->length = htons(length);
 
-  OSPF_PACKET(ospf_dump_lsreq, pk, "LSREQ packet sent to %I via %s", n->ip, n->ifa->iface->name);
-  ospf_send_to(n->ifa, n->ip);
+  OSPF_PACKET(ospf_lsreq_dump, pkt, "LSREQ packet sent to %I via %s",
+	      n->ip, ifa->iface->name);
+  ospf_send_to(ifa, n->ip);
 }
 
 void
-ospf_lsreq_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
+ospf_lsreq_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 		   struct ospf_neighbor *n)
 {
-  struct ospf_area *oa = ifa->oa;
-  struct proto_ospf *po = oa->po;
-  struct proto *p = &po->proto;
-  struct ospf_lsreq_header *lsh;
-  struct l_lsr_head *llsh;
+  struct proto_ospf *po = ifa->oa->po;
+  struct ospf_lsreq_header *lsrs;
+  unsigned i, lsr_count;
   list uplist;
   slab *upslab;
-  int i, lsano;
 
-  unsigned int size = ntohs(ps_i->length);
-  if (size < sizeof(struct ospf_lsreq_packet))
-  {
-    log(L_ERR "Bad OSPF LSREQ packet from %I -  too short (%u B)", n->ip, size);
-    return;
-  }
 
-  struct ospf_lsreq_packet *ps = (void *) ps_i;
-  OSPF_PACKET(ospf_dump_lsreq, ps, "LSREQ packet received from %I via %s", n->ip, ifa->iface->name);
+  /* No need to check length, lsreq has only basic header */
+
+  OSPF_PACKET(ospf_lsreq_dump, pkt, "LSREQ packet received from %I via %s",
+	      n->ip, ifa->iface->name);
 
   if (n->state < NEIGHBOR_EXCHANGE)
     return;
 
-  ospf_neigh_sm(n, INM_HELLOREC);
+  ospf_neigh_sm(n, INM_HELLOREC);	/* Not in RFC */
 
-  lsh = ps->lsh;
   init_list(&uplist);
   upslab = sl_new(n->pool, sizeof(struct l_lsr_head));
 
-  lsano = (size - sizeof(struct ospf_lsreq_packet)) /
-    sizeof(struct ospf_lsreq_header);
-  for (i = 0; i < lsano; lsh++, i++)
+  ospf_lsreq_body(po, pkt, ntohs(pkt->length), &lsrs, &lsr_count);
+  for (i = 0; i < lsr_count; i++)
   {
-    u32 hid = ntohl(lsh->id);
-    u32 hrt = ntohl(lsh->rt);
-    u32 htype = ntohl(lsh->type);
+    u32 hid = ntohl(lsrs[i].id);
+    u32 hrt = ntohl(lsrs[i].rt);
+    u32 htype = ntohl(lsrs[i].type);
     u32 dom = ospf_lsa_domain(htype, ifa);
-    DBG("Processing requested LSA: Type: %u, ID: %R, RT: %R\n", lsh->type, hid, hrt);
-    llsh = sl_alloc(upslab);
-    llsh->lsh.id = hid;
-    llsh->lsh.rt = hrt;
-    llsh->lsh.type = htype;
-    add_tail(&uplist, NODE llsh);
+    // XXXX check
+    DBG("Processing requested LSA: Type: %u, ID: %R, RT: %R\n", htype, hid, hrt);
+
     if (ospf_hash_find(po->gr, dom, hid, hrt, htype) == NULL)
     {
       log(L_WARN "Received bad LSREQ from %I: Type: %04x, Id: %R, Rt: %R",
@@ -140,7 +132,14 @@ ospf_lsreq_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
       rfree(upslab);
       return;
     }
+
+    struct l_lsr_head *llsh = sl_alloc(upslab);
+    llsh->lsh.id = hid;
+    llsh->lsh.rt = hrt;
+    llsh->lsh.type = htype;
+    add_tail(&uplist, NODE llsh);
   }
+
   ospf_lsupd_send_list(n, &uplist);
   rfree(upslab);
 }

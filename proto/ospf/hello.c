@@ -9,25 +9,26 @@
 #include "ospf.h"
 
 
-#ifdef OSPFv2
-struct ospf_hello_packet
+struct ospf_hello2_packet
 {
-  struct ospf_packet ospf_packet;
-  ip_addr netmask;
+  struct ospf_packet hdr;
+  union ospf_auth auth;
+
+  u32 netmask;
   u16 helloint;
   u8 options;
   u8 priority;
   u32 deadint;
   u32 dr;
   u32 bdr;
+
+  u32 neighbors[];
 };
-#endif
 
-
-#ifdef OSPFv3
-struct ospf_hello_packet
+struct ospf_hello3_packet
 {
-  struct ospf_packet ospf_packet;
+  struct ospf_packet hdr;
+
   u32 iface_id;
   u8 priority;
   u8 options3;
@@ -37,67 +38,100 @@ struct ospf_hello_packet
   u16 deadint;
   u32 dr;
   u32 bdr;
+
+  u32 neighbors[];
 };
-#endif
 
 
 void
-ospf_hello_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
+ospf_hello_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 		   struct ospf_neighbor *n, ip_addr faddr)
 {
   struct proto_ospf *po = ifa->oa->po;
   struct proto *p = &po->proto;
   char *beg = "OSPF: Bad HELLO packet from ";
-  unsigned int size, i, twoway, peers;
-  u32 tmp;
-  u32 *pnrid;
+  unsigned int size, i, two_way;
 
-  size = ntohs(ps_i->length);
-  if (size < sizeof(struct ospf_hello_packet))
-  {
-    log(L_ERR "%s%I - too short (%u B)", beg, faddr, size);
-    return;
-  }
+  u32 rcv_iface_id, rcv_helloint, rcv_deadint, rcv_dr, rcv_bdr;
+  u8 rcv_options, rcv_priority;
 
-  struct ospf_hello_packet *ps = (void *) ps_i;
+  u32 *neighbors;
+  u32 neigh_count;
+
 
   OSPF_TRACE(D_PACKETS, "HELLO packet received from %I via %s%s", faddr,
-      (ifa->type == OSPF_IT_VLINK ? "vlink-" : ""), ifa->iface->name);
+	     (ifa->type == OSPF_IT_VLINK ? "vlink-" : ""), ifa->iface->name);
 
-#ifdef OSPFv2
-  ip_addr mask = ps->netmask;
-  ipa_ntoh(mask);
-  if ((ifa->type != OSPF_IT_VLINK) &&
-      (ifa->type != OSPF_IT_PTP) &&
-      !ipa_equal(mask, ipa_mkmask(ifa->addr->pxlen)))
+  size = ntohs(pkt->length);
+
+  if (ospf_is_v2(po))
   {
-    log(L_ERR "%s%I - netmask mismatch (%I)", beg, faddr, mask);
+    struct ospf_hello2_packet *ps = (void *) pkt;
+
+    if (size < sizeof(struct ospf_hello2_packet))
+    {
+      log(L_ERR "%s%I - too short (%u B)", beg, faddr, size);
+      return;
+    }
+
+    rcv_iface_id = 0;
+    rcv_helloint = ntohs(ps->helloint);
+    rcv_deadint = ntohl(ps->deadint);
+    rcv_dr = ntohl(ps->dr);
+    rcv_bdr = ntohl(ps->bdr);
+    rcv_options = ps->options;
+    rcv_priority = ps->priority;
+
+    int pxlen = u32_masklen(ntohl(ps->netmask));
+    if ((ifa->type != OSPF_IT_VLINK) &&
+	(ifa->type != OSPF_IT_PTP) &&
+	(pxlen != ifa->addr->pxlen))
+    {
+      log(L_ERR "%s%I - prefix length mismatch (%d)", beg, faddr, pxlen);
+      return;
+    }
+
+    neighbors = ps->neighbors;
+    neigh_count = (size - sizeof(struct ospf_hello2_packet)) / sizeof(u32);
+  }
+  else /* OSPFv3 */
+  {
+    struct ospf_hello3_packet *ps = (void *) pkt;
+
+    if (size < sizeof(struct ospf_hello3_packet))
+    {
+      log(L_ERR "%s%I - too short (%u B)", beg, faddr, size);
+      return;
+    }
+
+    rcv_iface_id = ntohl(ps->iface_id);
+    rcv_helloint = ntohs(ps->helloint);
+    rcv_deadint = ntohs(ps->deadint);
+    rcv_dr = ntohl(ps->dr);
+    rcv_bdr = ntohl(ps->bdr);
+    rcv_options = ps->options;
+    rcv_priority = ps->priority;
+
+    neighbors = ps->neighbors;
+    neigh_count = (size - sizeof(struct ospf_hello3_packet)) / sizeof(u32);
+  }
+
+  if (rcv_helloint != ifa->helloint)
+  {
+    log(L_ERR "%s%I - hello interval mismatch (%d)", beg, faddr, rcv_helloint);
     return;
   }
-#endif
 
-  tmp = ntohs(ps->helloint);
-  if (tmp != ifa->helloint)
+  if (rcv_deadint != ifa->deadint)
   {
-    log(L_ERR "%s%I - hello interval mismatch (%d)", beg, faddr, tmp);
-    return;
-  }
-
-#ifdef OSPFv2
-  tmp = ntohl(ps->deadint);
-#else /* OSPFv3 */
-  tmp = ntohs(ps->deadint);
-#endif
-  if (tmp != ifa->deadint)
-  {
-    log(L_ERR "%s%I - dead interval mismatch (%d)", beg, faddr, tmp);
+    log(L_ERR "%s%I - dead interval mismatch (%d)", beg, faddr, rcv_deadint);
     return;
   }
 
   /* Check whether bits E, N match */
-  if ((ps->options ^ ifa->oa->options) & (OPT_E | OPT_N))
+  if ((rcv_options ^ ifa->oa->options) & (OPT_E | OPT_N))
   {
-    log(L_ERR "%s%I - area type mismatch (%x)", beg, faddr, ps->options);
+    log(L_ERR "%s%I - area type mismatch (%x)", beg, faddr, rcv_options);
     return;
   }
 
@@ -115,8 +149,8 @@ ospf_hello_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
       }
 
       if (nn && (ifa->type == OSPF_IT_NBMA) &&
-	  (((ps->priority == 0) && nn->eligible) ||
-	   ((ps->priority > 0) && !nn->eligible)))
+	  (((rcv_priority == 0) && nn->eligible) ||
+	   ((rcv_priority > 0) && !nn->eligible)))
       {
 	log(L_ERR "Eligibility mismatch for neighbor: %I on %s",
 	    faddr, ifa->iface->name);
@@ -132,85 +166,67 @@ ospf_hello_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
 
     n = ospf_neighbor_new(ifa);
 
-    n->rid = ntohl(((struct ospf_packet *) ps)->routerid);
+    n->rid = ntohl(pkt->routerid);
     n->ip = faddr;
-    n->dr = ntohl(ps->dr);
-    n->bdr = ntohl(ps->bdr);
-    n->priority = ps->priority;
-#ifdef OSPFv3
-    n->iface_id = ntohl(ps->iface_id);
-#endif
+    n->dr = rcv_dr;
+    n->bdr = rcv_bdr;
+    n->priority = rcv_priority;
+    n->iface_id = rcv_iface_id;
   }
   ospf_neigh_sm(n, INM_HELLOREC);
 
-  pnrid = (u32 *) ((struct ospf_hello_packet *) (ps + 1));
-
-  peers = (size - sizeof(struct ospf_hello_packet))/ sizeof(u32);
-
-  twoway = 0;
-  for (i = 0; i < peers; i++)
+  two_way = 0;
+  for (i = 0; i < neigh_count; i++)
   {
-    if (ntohl(pnrid[i]) == po->router_id)
+    if (ntohl(neighbors[i]) == po->router_id)
     {
       DBG("%s: Twoway received from %I\n", p->name, faddr);
       ospf_neigh_sm(n, INM_2WAYREC);
-      twoway = 1;
+      two_way = 1;
       break;
     }
   }
-
-  if (!twoway)
+  if (!two_way)
     ospf_neigh_sm(n, INM_1WAYREC);
 
-  u32 olddr = n->dr;
-  u32 oldbdr = n->bdr;
-  u32 oldpriority = n->priority;
-#ifdef OSPFv3
-  u32 oldiface_id = n->iface_id;
-#endif
+  u32 old_dr = n->dr;
+  u32 old_bdr = n->bdr;
+  u32 old_priority = n->priority;
+  u32 old_iface_id = n->iface_id;
 
-  n->dr = ntohl(ps->dr);
-  n->bdr = ntohl(ps->bdr);
-  n->priority = ps->priority;
-#ifdef OSPFv3
-  n->iface_id = ntohl(ps->iface_id);
-#endif
-
+  n->dr = rcv_dr;
+  n->bdr = rcv_bdr;
+  n->priority = rcv_priority;
+  n->iface_id = rcv_iface_id;
 
   /* Check priority change */
   if (n->state >= NEIGHBOR_2WAY)
   {
-#ifdef OSPFv2
-    u32 neigh = ipa_to_u32(n->ip);
-#else /* OSPFv3 */
-    u32 neigh = n->rid;
-#endif
+    u32 n_id = ospf_is_v2(po) ? ipa_to_u32(n->ip) : n->rid;
 
-    if (n->priority != oldpriority)
+    if (n->priority != old_priority)
       ospf_iface_sm(ifa, ISM_NEICH);
 
-#ifdef OSPFv3
-    if (n->iface_id != oldiface_id)
+    if (n->iface_id != old_iface_id)
       ospf_iface_sm(ifa, ISM_NEICH);
-#endif
 
     /* Neighbor is declaring itself ad DR and there is no BDR */
-    if ((n->dr == neigh) && (n->bdr == 0)
+    if ((n->dr == n_id) && (n->bdr == 0)
 	&& (n->state != NEIGHBOR_FULL))
       ospf_iface_sm(ifa, ISM_BACKS);
 
     /* Neighbor is declaring itself as BDR */
-    if ((n->bdr == neigh) && (n->state != NEIGHBOR_FULL))
+    if ((n->bdr == n_id) && (n->state != NEIGHBOR_FULL))
       ospf_iface_sm(ifa, ISM_BACKS);
 
     /* Neighbor is newly declaring itself as DR or BDR */
-    if (((n->dr == neigh) && (n->dr != olddr))
-	|| ((n->bdr == neigh) && (n->bdr != oldbdr)))
+    if (((n->dr == n_id) && (n->dr != old_dr))
+	|| ((n->bdr == n_id) && (n->bdr != old_bdr)))
       ospf_iface_sm(ifa, ISM_NEICH);
 
     /* Neighbor is no more declaring itself as DR or BDR */
-    if (((olddr == neigh) && (n->dr != olddr))
-	|| ((oldbdr == neigh) && (n->bdr != oldbdr)))
+    if (((old_dr == n_id) && (n->dr != old_dr))
+	|| ((old_bdr == n_id) && (n->bdr != old_bdr)))
       ospf_iface_sm(ifa, ISM_NEICH);
   }
 
@@ -225,13 +241,14 @@ ospf_hello_receive(struct ospf_packet *ps_i, struct ospf_iface *ifa,
 void
 ospf_hello_send(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
 {
-  struct ospf_hello_packet *pkt;
-  struct ospf_packet *op;
-  struct proto *p;
+  struct proto_ospf *po = ifa->oa->po;
+  struct proto *p = &po->proto;
+  struct ospf_packet *pkt;
   struct ospf_neighbor *neigh, *n1;
-  u16 length;
-  int i;
   struct nbma_node *nb;
+  u32 *neighbors;
+  u16 length;
+  int i, max;
 
   if (ifa->state <= OSPF_IS_LOOP)
     return;
@@ -239,65 +256,69 @@ ospf_hello_send(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
   if (ifa->stub)
     return;			/* Don't send any packet on stub iface */
 
-  p = (struct proto *) (ifa->oa->po);
   DBG("%s: Hello/Poll timer fired on interface %s with IP %I\n",
       p->name, ifa->iface->name, ifa->addr->ip);
 
-  /* Now we should send a hello packet */
   pkt = ospf_tx_buffer(ifa);
-  op = &pkt->ospf_packet;
-
-  /* Now fill ospf_hello header */
   ospf_pkt_fill_hdr(ifa, pkt, HELLO_P);
 
-#ifdef OSPFv2
-  pkt->netmask = ipa_mkmask(ifa->addr->pxlen);
-  ipa_hton(pkt->netmask);
-  if ((ifa->type == OSPF_IT_VLINK) || (ifa->type == OSPF_IT_PTP))
-    pkt->netmask = IPA_NONE;
-#endif
+  if (ospf_is_v2(po))
+  {
+    struct ospf_hello2_packet *ps = (void *) pkt;
 
-  pkt->helloint = ntohs(ifa->helloint);
-  pkt->priority = ifa->priority;
+    ps->netmask = htonl(u32_mkmask(ifa->addr->pxlen));
 
-#ifdef OSPFv3
-  pkt->iface_id = htonl(ifa->iface->index);
+    if ((ifa->type == OSPF_IT_VLINK) || (ifa->type == OSPF_IT_PTP))
+      ps->netmask = 0;
 
-  pkt->options3 = ifa->oa->options >> 16;
-  pkt->options2 = ifa->oa->options >> 8;
-#endif
-  pkt->options = ifa->oa->options;
+    ps->helloint = ntohs(ifa->helloint);
+    ps->options = ifa->oa->options;
+    ps->priority = ifa->priority;
+    ps->deadint = htonl(ifa->deadint);
+    ps->dr = htonl(ipa_to_u32(ifa->drip));
+    ps->bdr = htonl(ipa_to_u32(ifa->bdrip));
 
-#ifdef OSPFv2
-  pkt->deadint = htonl(ifa->deadint);
-  pkt->dr = htonl(ipa_to_u32(ifa->drip));
-  pkt->bdr = htonl(ipa_to_u32(ifa->bdrip));
-#else /* OSPFv3 */
-  pkt->deadint = htons(ifa->deadint);
-  pkt->dr = htonl(ifa->drid);
-  pkt->bdr = htonl(ifa->bdrid);
-#endif
+    length = sizeof(struct ospf_hello2_packet);
+    neighbors = ps->neighbors;
+  }
+  else
+  {
+    struct ospf_hello3_packet *ps = (void *) pkt;
+
+    ps->iface_id = htonl(ifa->iface->index);
+    ps->priority = ifa->priority;
+    ps->options3 = ifa->oa->options >> 16;
+    ps->options2 = ifa->oa->options >> 8;
+    ps->options = ifa->oa->options;
+    ps->helloint = ntohs(ifa->helloint);
+    ps->deadint = htons(ifa->deadint);
+    ps->dr = htonl(ifa->drid);
+    ps->bdr = htonl(ifa->bdrid);
+
+    length = sizeof(struct ospf_hello3_packet);
+    neighbors = ps->neighbors;
+  }
+
+  i = 0;
+  max = (ospf_pkt_bufsize(ifa) - length) / sizeof(u32);
 
   /* Fill all neighbors */
-  i = 0;
-
   if (kind != OHS_SHUTDOWN)
   {
-    u32 *pp = (u32 *) (((u8 *) pkt) + sizeof(struct ospf_hello_packet));
     WALK_LIST(neigh, ifa->neigh_list)
     {
-      if ((i+1) * sizeof(u32) + sizeof(struct ospf_hello_packet) > ospf_pkt_bufsize(ifa))
+      if (i == max)
       {
 	log(L_WARN "%s: Too many neighbors on interface %s", p->name, ifa->iface->name);
 	break;
       }
-      *(pp + i) = htonl(neigh->rid);
+      neighbors[i] = htonl(neigh->rid);
       i++;
     }
   }
 
-  length = sizeof(struct ospf_hello_packet) + i * sizeof(u32);
-  op->length = htons(length);
+  length += i * sizeof(u32);
+  pkt->length = htons(length);
 
   switch(ifa->type)
   {
