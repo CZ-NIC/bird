@@ -41,6 +41,7 @@
 #undef CONFIG_RADV
 #undef CONFIG_BGP
 #undef CONFIG_OSPF
+#undef CONFIG_ISIS
 #undef CONFIG_PIPE
 
 /* We have <syslog.h> and syslog() */

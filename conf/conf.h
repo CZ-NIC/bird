@@ -72,6 +72,14 @@ void config_add_obstacle(struct config *);
 void config_del_obstacle(struct config *);
 void order_shutdown(void);
 
+static inline void
+cf_range(const char *opt, int val, int min, int max)
+{ 
+  if ((val < min) || (val > max))
+    cf_error("%s must be in range %d-%d", opt, min, max);
+}
+
+
 #define CONF_DONE 0
 #define CONF_PROGRESS 1
 #define CONF_QUEUED 2

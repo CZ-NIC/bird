@@ -51,7 +51,7 @@ if test "$enable_ipv6" = yes ; then
 else
 	ip=ipv4
 	SUFFIX=""
-	all_protocols=bgp,ospf,pipe,rip,static
+	all_protocols=bgp,ospf,isis,pipe,rip,static
 fi
 
 if test "$given_suffix" = yes ; then

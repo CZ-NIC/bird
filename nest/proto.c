@@ -701,6 +701,9 @@ protos_build(void)
 #ifdef CONFIG_OSPF
   proto_build(&proto_ospf);
 #endif
+#ifdef CONFIG_ISIS
+  proto_build(&proto_isis);
+#endif
 #ifdef CONFIG_PIPE
   proto_build(&proto_pipe);
 #endif

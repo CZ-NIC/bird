@@ -27,6 +27,13 @@ CF_HDR
 CF_DEFINES
 
 static void
+check_u8(unsigned val)
+{
+  if (val > 0xFF)
+    cf_error("Value %d out of range (0-255)", val);
+}
+
+static void
 check_u16(unsigned val)
 {
   if (val > 0xFFFF)
