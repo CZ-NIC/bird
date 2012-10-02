@@ -65,11 +65,10 @@ do { if ((po->proto.debug & D_PACKETS) || OSPF_FORCE_DEBUG) \
 #define MINLSARRIVAL 1
 #define LSINFINITY 0xffffff
 
-#define DEFAULT_OSPFTICK 1
-#define DEFAULT_RFC1583 0	/* compatibility with rfc1583 */
-#define DEFAULT_STUB_COST 1000
-#define DEFAULT_ECMP_LIMIT 16
-#define DEFAULT_TRANSINT 40
+#define OSPF_DEFAULT_TICK 1
+#define OSPF_DEFAULT_STUB_COST 1000
+#define OSPF_DEFAULT_ECMP_LIMIT 16
+#define OSPF_DEFAULT_TRANSINT 40
 
 
 struct ospf_config
@@ -202,11 +201,12 @@ struct ospf_iface
   u16 autype;
   u32 csn;                      /* Last used crypt seq number */
   bird_clock_t csn_use;         /* Last time when packet with that CSN was sent */
-  ip_addr all_routers;		/*  */
-  ip_addr drip;			/* Designated router */
-  ip_addr bdrip;		/* Backup DR */
-  u32 drid;
-  u32 bdrid;
+  ip_addr all_routers;		/* XXXX */
+  ip_addr des_routers;		/* XXXX */
+  ip_addr drip;			/* Designated router IP */
+  ip_addr bdrip;		/* Backup DR IP */
+  u32 drid;			/* DR Router ID */
+  u32 bdrid;			/* BDR Router ID */
   s16 rt_pos_beg;		/* Position of iface in Router-LSA, begin, inclusive */
   s16 rt_pos_end;		/* Position of iface in Router-LSA, end, exclusive */
   s16 px_pos_beg;		/* Position of iface in Rt Prefix-LSA, begin, inclusive */
@@ -244,7 +244,7 @@ struct ospf_iface
 #define OSPF_I_OK 0		/* Everything OK */
 #define OSPF_I_SK 1		/* Socket open failed */
 #define OSPF_I_LL 2		/* Missing link-local address (OSPFv3) */
-  u8 sk_dr; 			/* Socket is a member of DRouters group */
+  u8 sk_dr; 			/* Socket is a member of designated routers group */
   u8 marked;			/* Used in OSPF reconfigure */
   u16 rxbuf;			/* Buffer size */
   u8 check_link;		/* Whether iface link change is used */
@@ -276,12 +276,10 @@ union ospf_auth
 /* Area IDs */
 #define BACKBONE	0
 
-
 #define DBDES_I		4	/* Init bit */
 #define DBDES_M		2	/* More bit */
 #define DBDES_MS	1	/* Master/Slave bit */
 #define DBDES_IMMS	(DBDES_I | DBDES_M | DBDES_MS)
-
 
 
 
@@ -303,6 +301,18 @@ struct ospf_packet
   u16 vdep;
 };
 
+static inline u16 ospf_pkt_get_autype(struct ospf_packet *pkt)
+{ return ntohs(pkt->vdep); }
+
+static inline void ospf_pkt_set_autype(struct ospf_packet *pkt, u16 val)
+{ pkt->vdep = htons(val); }
+
+static inline u8 ospf_pkt_get_instance_id(struct ospf_packet *pkt)
+{ return ntohs(pkt->vdep) >> 8; }
+
+static inline void ospf_pkt_set_instance_id(struct ospf_packet *pkt, u16 val)
+{ pkt->vdep = htons(val << 8); }
+
 
 // XXXX
 /*
@@ -323,6 +333,8 @@ struct ospf_packet
 #define LSA_T_LINK	0x0008
 #define LSA_T_PREFIX	0x2009
 
+#define LSA_T_V2_MASK	0x00ff
+
 #define LSA_UBIT	0x8000
 
 #define LSA_SCOPE_LINK	0x0000
@@ -330,7 +342,7 @@ struct ospf_packet
 #define LSA_SCOPE_AS	0x4000
 #define LSA_SCOPE_RES	0x6000
 #define LSA_SCOPE_MASK	0x6000
-#define LSA_SCOPE(lsa)	((lsa) & LSA_SCOPE_MASK)
+#define LSA_SCOPE(type)	((type) & LSA_SCOPE_MASK)
 
 
 #define LSA_MAXAGE	3600	/* 1 hour */
@@ -345,6 +357,8 @@ struct ospf_packet
 #define LSART_NET	2
 #define LSART_STUB	3
 #define LSART_VLNK	4
+
+#define LSA_RT2_LINKS	0x0000FFFF
 
 #define LSA_SUM2_TOS	0xFF000000
 
@@ -396,6 +410,19 @@ struct ospf_lsa_rt2_link
   u16 metric;
   u8 no_tos;
   u8 type;
+#endif
+};
+
+struct ospf_lsa_rt2_tos
+{
+#ifdef CPU_BIG_ENDIAN
+  u8 tos;
+  u8 padding;
+  u16 metric;
+#else
+  u16 metric;
+  u8 padding;
+  u8 tos;
 #endif
 };
 
@@ -486,27 +513,6 @@ struct ospf_lsa_prefix
 };
 
 
-
-
-#ifdef OSPFv2
-
-
-/* Endianity swap for lsa->type */
-#define ntoht(x) x
-#define htont(x) x
-
-
-#else  /* OSPFv3 */
-
-
-
-
-/* Endianity swap for lsa->type */
-#define ntoht(x) ntohs(x)
-#define htont(x) htons(x)
-
-#endif
-
 #define METRIC_MASK  0x00FFFFFF
 #define OPTIONS_MASK 0x00FFFFFF
 
@@ -518,8 +524,6 @@ lsa_net_count(struct ospf_lsa_header *lsa)
     / sizeof(u32);
 }
 
-
-#ifdef OSPFv3
 
 #define IPV6_PREFIX_SPACE(x) ((((x) + 63) / 32) * 4)
 #define IPV6_PREFIX_WORDS(x) (((x) + 63) / 32)
@@ -581,21 +585,21 @@ put_ipv6_addr(u32 *buf, ip_addr addr)
   return buf + 4;
 }
 
-#endif
-
-
 
 struct ospf_lsreq_header
 {
   u32 type;
   u32 id;
-  u32 rt;			/* Advertising router */
+  u32 rt;
 };
 
-struct l_lsr_head
+struct ospf_lsreq_item
 {
-  node n;
-  struct ospf_lsreq_header lsh;
+  struct ospf_lsreq_item *next;
+  u32 domain;
+  u32 type;
+  u32 id;
+  u32 rt;
 };
 
 
@@ -625,19 +629,30 @@ struct ospf_neighbor
   u8 adj;			/* built adjacency? */
   u32 options;			/* Options received */
 
-  /* dr and bdr store IP address in OSPFv2 and router ID in OSPFv3,
-     we use the same type to simplify handling */
+  /* Entries dr and bdr store IP addresses in OSPFv2 and router IDs in
+   * OSPFv3, we use the same type to simplify handling
+   */
   u32 dr;			/* Neigbour's idea of DR */
   u32 bdr;			/* Neigbour's idea of BDR */
   u32 iface_id;			/* ID of Neighbour's iface connected to common network */
 
-  siterator dbsi;		/* Database summary list iterator */
-  slist lsrql;			/* Link state request */
-  struct top_graph *lsrqh;	/* LSA graph */
-  siterator lsrqi;
-  slist lsrtl;			/* Link state retransmission list */
-  siterator lsrti;
+  /* Database summary list iterator, controls initial dbdes exchange.
+   * Advances in the LSA list as dbdes packets are sent.
+   */
+  siterator dbsi;		/* iterator of po->lsal */
+
+  /* Link state request list, controls initial LSA exchange.
+   * Entries added when received in dbdes packets, removed as sent in lsreq packets.
+   */
+  slist lsrql;			/* slist of struct top_hash_entry from n->lsrqh */
+  struct top_graph *lsrqh;
+
+  /* Link state retransmission list, controls LSA retransmission during flood.
+   * Entries added as sent in lsupd packets, removed when received in lsack packets.
+   */
+  slist lsrtl;			/* slist of struct top_hash_entry from n->lsrth */
   struct top_graph *lsrth;
+
   void *ldbdes;			/* Last database description packet */
   timer *rxmt_timer;		/* RXMT timer */
   list ackl[2];

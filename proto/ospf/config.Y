@@ -143,8 +143,7 @@ ospf_proto_start: proto_start OSPF {
      this_proto = proto_config_new(&proto_ospf, sizeof(struct ospf_config), $1);
      init_list(&OSPF_CFG->area_list);
      init_list(&OSPF_CFG->vlink_list);
-     OSPF_CFG->rfc1583 = DEFAULT_RFC1583;
-     OSPF_CFG->tick = DEFAULT_OSPFTICK;
+     OSPF_CFG->tick = OSPF_DEFAULT_TICK;
   }
  ;
 
@@ -166,9 +165,9 @@ ospf_area_start: AREA idval {
   this_area = cfg_allocz(sizeof(struct ospf_area_config));
   add_tail(&OSPF_CFG->area_list, NODE this_area);
   this_area->areaid = $2;
-  this_area->default_cost = DEFAULT_STUB_COST;
+  this_area->default_cost = OSPF_DEFAULT_STUB_COST;
   this_area->type = OPT_E;
-  this_area->transint = DEFAULT_TRANSINT;
+  this_area->transint = OSPF_DEFAULT_TRANSINT;
 
   init_list(&this_area->patt_list);
   init_list(&this_area->net_list);

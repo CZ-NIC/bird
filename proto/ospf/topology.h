@@ -23,9 +23,7 @@ struct top_hash_entry
   bird_clock_t inst_t;		/* Time of installation into DB */
   struct mpnh *nhs;		/* Computed nexthops - valid only in ospf_rt_spf() */
   ip_addr lb;			/* In OSPFv2, link back address. In OSPFv3, any global address in the area useful for vlinks */
-#ifdef OSPFv3
   u32 lb_id;			/* Interface ID of link back iface (for bcast or NBMA networks) */
-#endif
   u32 dist;			/* Distance from the root */
   u16 ini_age;
   u8 color;
@@ -51,16 +49,14 @@ struct top_graph
 struct top_graph *ospf_top_new(pool *);
 void ospf_top_free(struct top_graph *);
 void ospf_top_dump(struct top_graph *, struct proto *);
-u32 ospf_lsa_domain(u32 type, struct ospf_iface *ifa);
+
 struct top_hash_entry *ospf_hash_find_header(struct top_graph *f, u32 domain,
 					     struct ospf_lsa_header *h);
 struct top_hash_entry *ospf_hash_get_header(struct top_graph *f, u32 domain,
 					    struct ospf_lsa_header *h);
 
-struct top_hash_entry *ospf_hash_find(struct top_graph *, u32 domain, u32 lsa, u32 rtr,
-				      u32 type);
-struct top_hash_entry *ospf_hash_get(struct top_graph *, u32 domain, u32 lsa, u32 rtr,
-				     u32 type);
+struct top_hash_entry *ospf_hash_find(struct top_graph *, u32 domain, u32 lsa, u32 rtr, u32 type);
+struct top_hash_entry *ospf_hash_get(struct top_graph *, u32 domain, u32 lsa, u32 rtr, u32 type);
 void ospf_hash_delete(struct top_graph *, struct top_hash_entry *);
 void originate_rt_lsa(struct ospf_area *oa);
 void update_rt_lsa(struct ospf_area *oa);

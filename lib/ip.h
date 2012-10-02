@@ -19,13 +19,13 @@
 #define IP4_MIN_MTU		576	/* RFC 2328 A.1 */
 #define IP6_MIN_MTU		1280	/* RFC 5340 A.1 */
 
-#define IP4_ALL_SPF_ROUTERS	ipa_build4(224, 0, 0, 5)
-#define IP4_ALL_D_ROUTERS	ipa_build4(224, 0, 0, 6)
+#define IP4_OSPF_ALL_ROUTERS	ipa_build4(224, 0, 0, 5)
+#define IP4_OSPF_DES_ROUTERS	ipa_build4(224, 0, 0, 6)
 
-#define IP6_All_NODES		ipa_build6(0xFF020000, 0, 0, 1)
+#define IP6_ALL_NODES		ipa_build6(0xFF020000, 0, 0, 1)
 #define IP6_ALL_ROUTERS		ipa_build6(0xFF020000, 0, 0, 2)
-#define IP6_ALL_OSPF_ROUTERS	ipa_build6(0xFF020000, 0, 0, 5)
-#define IP6_ALL_OSPF_D_ROUTERS	ipa_build6(0xFF020000, 0, 0, 6)
+#define IP6_OSPF_ALL_ROUTERS	ipa_build6(0xFF020000, 0, 0, 5)
+#define IP6_OSPF_DES_ROUTERS	ipa_build6(0xFF020000, 0, 0, 6)
 
 #define IP4_NONE _MI4(0)
 #define IP6_NONE _MI6(0,0,0,0)

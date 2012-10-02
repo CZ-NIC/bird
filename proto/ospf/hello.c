@@ -48,7 +48,6 @@ ospf_hello_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 		   struct ospf_neighbor *n, ip_addr faddr)
 {
   struct proto_ospf *po = ifa->oa->po;
-  struct proto *p = &po->proto;
   char *beg = "OSPF: Bad HELLO packet from ";
   unsigned int size, i, two_way;
 

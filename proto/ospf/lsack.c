@@ -96,10 +96,8 @@ ospf_lsack_send_one(struct ospf_neighbor *n, int queue)
   {
     if ((ifa->state == OSPF_IS_DR) || (ifa->state == OSPF_IS_BACKUP))
       ospf_send_to_all(ifa);
-    else if (ifa->cf->real_bcast)
-      ospf_send_to_bdr(ifa);
     else
-      ospf_send_to(ifa, AllDRouters);
+      ospf_send_to_des(ifa);
   }
   else
     ospf_send_to_agt(ifa, NEIGHBOR_EXCHANGE);
@@ -127,6 +125,7 @@ ospf_lsack_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
   struct ospf_lsa_header lsa, *lsas;
   struct top_hash_entry *en;
   unsigned i, lsa_count;
+  u32 lsa_dom, lsa_type;
 
 
   /* No need to check length, lsack has only basic header */
@@ -142,9 +141,11 @@ ospf_lsack_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
   ospf_lsack_body(po, pkt, ntohs(pkt->length), &lsas, &lsa_count);
   for (i = 0; i < lsa_count; i++)
   {
-    ntohlsah(&lsas[i], &lsa);
-    u32 dom = ospf_lsa_domain(lsa.type, n->ifa);
-    if ((en = ospf_hash_find_header(n->lsrth, dom, &lsa)) == NULL)
+    lsa_ntoh_hdr(&lsas[i], &lsa);
+    lsa_xxxxtype(lsa.type_raw, n->ifa, &lsa_type, &lsa_dom);
+
+    en = ospf_hash_find(n->lsrth, lsa_dom, lsa.id, lsa.rt, lsa_type);
+    if (!en)
       continue;			/* pg 155 */
 
     if (lsa_comp(&lsa, &en->lsa) != CMP_SAME)	/* pg 156 */
@@ -154,7 +155,7 @@ ospf_lsack_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 
       OSPF_TRACE(D_PACKETS, "Strange LSACK from %I", n->ip);
       OSPF_TRACE(D_PACKETS, "Type: %04x, Id: %R, Rt: %R",
-		 lsa.type, lsa.id, lsa.rt);
+		 lsa_type, lsa.id, lsa.rt);
       OSPF_TRACE(D_PACKETS, "I have: Age: %4u, Seq: %08x, Sum: %04x",
 		 en->lsa.age, en->lsa.sn, en->lsa.checksum);
       OSPF_TRACE(D_PACKETS, "He has: Age: %4u, Seq: %08x, Sum: %04x",
@@ -162,8 +163,8 @@ ospf_lsack_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
       continue;
     }
 
-    DBG("Deleting LS Id: %R RT: %R Type: %u from LS Retl for neighbor %R\n",
-	lsa.id, lsa.rt, lsa.type, n->rid);
+    DBG("Deleting LSA (Type: %04x Id: %R Rt: %R) from lsrtl for neighbor %R\n",
+	lsa_type, lsa.id, lsa.rt, n->rid);
     s_rem_node(SNODE en);
     ospf_hash_delete(n->lsrth, en);
   }

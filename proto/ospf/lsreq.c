@@ -19,7 +19,7 @@ struct ospf_lsreq_packet
 };
 */
 
-static void
+static inline void
 ospf_lsreq_body(struct proto_ospf *po, struct ospf_packet *pkt, unsigned plen,
 		struct ospf_lsreq_header **body, unsigned *count)
 {
@@ -71,9 +71,10 @@ ospf_lsreq_send(struct ospf_neighbor *n)
   {
     en = (struct top_hash_entry *) sn;
     DBG("Requesting %uth LSA: Type: %u, ID: %R, RT: %R, SN: 0x%x, Age %u\n",
-	i, en->lsa.type, en->lsa.id, en->lsa.rt, en->lsa.sn, en->lsa.age);
+	i, en->lsa_type, en->lsa.id, en->lsa.rt, en->lsa.sn, en->lsa.age);
 
-    lsrs[i].type = htonl(en->lsa.type);
+    u32 rtype = lsa_get_type(po, en->lsa.type_raw);
+    lsrs[i].type = htonl(rtype);
     lsrs[i].rt = htonl(en->lsa.rt);
     lsrs[i].id = htonl(en->lsa.id);
 
@@ -97,7 +98,9 @@ ospf_lsreq_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
   struct proto_ospf *po = ifa->oa->po;
   struct ospf_lsreq_header *lsrs;
   unsigned i, lsr_count;
-  list uplist;
+
+  struct ospf_lsreq_item *lsr_head, *lsr;
+  struct ospf_lsreq_item **lsr_pos = &lsr_head;
   slab *upslab;
 
 
@@ -111,35 +114,39 @@ ospf_lsreq_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 
   ospf_neigh_sm(n, INM_HELLOREC);	/* Not in RFC */
 
-  init_list(&uplist);
-  upslab = sl_new(n->pool, sizeof(struct l_lsr_head));
+  upslab = sl_new(n->pool, sizeof(struct ospf_lsreq_item));
 
   ospf_lsreq_body(po, pkt, ntohs(pkt->length), &lsrs, &lsr_count);
   for (i = 0; i < lsr_count; i++)
   {
-    u32 hid = ntohl(lsrs[i].id);
-    u32 hrt = ntohl(lsrs[i].rt);
-    u32 htype = ntohl(lsrs[i].type);
-    u32 dom = ospf_lsa_domain(htype, ifa);
-    // XXXX check
-    DBG("Processing requested LSA: Type: %u, ID: %R, RT: %R\n", htype, hid, hrt);
+    u32 id, rt, type, dom;
 
-    if (ospf_hash_find(po->gr, dom, hid, hrt, htype) == NULL)
+    id = ntohl(lsrs[i].id);
+    rt = ntohl(lsrs[i].rt);
+    lsa_xxxxtype(ntohl(lsrs[i].type), ifa, &type, &dom);
+
+    DBG("Processing requested LSA: Type: %04x, Id: %R, Rt: %R\n", type, id, rt);
+
+    if (ospf_hash_find(po->gr, dom, id, rt, type) == NULL)
     {
       log(L_WARN "Received bad LSREQ from %I: Type: %04x, Id: %R, Rt: %R",
-	  n->ip, htype, hid, hrt);
+	  n->ip, type, id, rt);
       ospf_neigh_sm(n, INM_BADLSREQ);
       rfree(upslab);
       return;
     }
 
-    struct l_lsr_head *llsh = sl_alloc(upslab);
-    llsh->lsh.id = hid;
-    llsh->lsh.rt = hrt;
-    llsh->lsh.type = htype;
-    add_tail(&uplist, NODE llsh);
-  }
+    lsr = sl_alloc(upslab);
+    lsr->domain = dom;
+    lsr->type = type;
+    lsr->id = id;
+    lsr->rt = rt;
 
-  ospf_lsupd_send_list(n, &uplist);
+    *lsr_pos = lsr;
+    lsr_pos = &(lsr->next);
+  }
+  *lsr_pos = NULL;
+
+  ospf_lsupd_send_list(n, lsr_head);
   rfree(upslab);
 }

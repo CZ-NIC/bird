@@ -26,8 +26,8 @@ const char *ospf_inm[] =
 };
 
 static void neigh_chstate(struct ospf_neighbor *n, u8 state);
-static struct ospf_neighbor *electbdr(list nl);
-static struct ospf_neighbor *electdr(list nl);
+static struct ospf_neighbor *electbdr(struct proto_ospf *, list nl);
+static struct ospf_neighbor *electdr(struct proto_ospf *, list nl);
 static void neighbor_timer_hook(timer * timer);
 static void rxmt_timer_hook(timer * timer);
 static void ackd_timer_hook(timer * t);
@@ -37,11 +37,9 @@ init_lists(struct ospf_neighbor *n)
 {
   s_init_list(&(n->lsrql));
   n->lsrqh = ospf_top_new(n->pool);
-  s_init(&(n->lsrqi), &(n->lsrql));
 
   s_init_list(&(n->lsrtl));
   n->lsrth = ospf_top_new(n->pool);
-  s_init(&(n->lsrti), &(n->lsrtl));
 }
 
 /* Resets LSA request and retransmit lists.
@@ -163,8 +161,11 @@ neigh_chstate(struct ospf_neighbor *n, u8 state)
   }
 }
 
+static inline u32 neigh_get_id(struct proto_ospf *po, struct ospf_neighbor *n)
+{ return ospf_is_v2(po) ? ipa_to_u32(n->ip) : n->rid; }
+
 static struct ospf_neighbor *
-electbdr(list nl)
+electbdr(struct proto_ospf *po, list nl)
 {
   struct ospf_neighbor *neigh, *n1, *n2;
   u32 nid;
@@ -173,11 +174,7 @@ electbdr(list nl)
   n2 = NULL;
   WALK_LIST(neigh, nl)			/* First try those decl. themselves */
   {
-#ifdef OSPFv2
-    nid = ipa_to_u32(neigh->ip);
-#else /* OSPFv3 */
-    nid = neigh->rid;
-#endif
+    nid = neigh_get_id(po, neigh);
 
     if (neigh->state >= NEIGHBOR_2WAY)	/* Higher than 2WAY */
       if (neigh->priority > 0)		/* Eligible */
@@ -222,7 +219,7 @@ electbdr(list nl)
 }
 
 static struct ospf_neighbor *
-electdr(list nl)
+electdr(struct proto_ospf *po, list nl)
 {
   struct ospf_neighbor *neigh, *n;
   u32 nid;
@@ -230,11 +227,7 @@ electdr(list nl)
   n = NULL;
   WALK_LIST(neigh, nl)			/* And now DR */
   {
-#ifdef OSPFv2
-    nid = ipa_to_u32(neigh->ip);
-#else /* OSPFv3 */
-    nid = neigh->rid;
-#endif
+    nid = neigh_get_id(po, neigh);
 
     if (neigh->state >= NEIGHBOR_2WAY)	/* Higher than 2WAY */
       if (neigh->priority > 0)		/* Eligible */
@@ -449,19 +442,14 @@ bdr_election(struct ospf_iface *ifa)
   me.priority = ifa->priority;
   me.ip = ifa->addr->ip;
 
-#ifdef OSPFv2
-  me.dr = ipa_to_u32(ifa->drip);
-  me.bdr = ipa_to_u32(ifa->bdrip);
-#else /* OSPFv3 */
-  me.dr = ifa->drid;
-  me.bdr = ifa->bdrid;
+  me.dr  = ospf_is_v2(po) ? ipa_to_u32(ifa->drip) : ifa->drid;
+  me.bdr = ospf_is_v2(po) ? ipa_to_u32(ifa->bdrip) : ifa->bdrid;
   me.iface_id = ifa->iface->index;
-#endif
 
   add_tail(&ifa->neigh_list, NODE & me);
 
-  nbdr = electbdr(ifa->neigh_list);
-  ndr = electdr(ifa->neigh_list);
+  nbdr = electbdr(po, ifa->neigh_list);
+  ndr = electdr(po, ifa->neigh_list);
 
   if (ndr == NULL)
     ndr = nbdr;
@@ -472,16 +460,11 @@ bdr_election(struct ospf_iface *ifa)
       || ((ifa->bdrid == myid) && (nbdr != &me))
       || ((ifa->bdrid != myid) && (nbdr == &me)))
   {
-#ifdef OSPFv2
-    me.dr = ndr ? ipa_to_u32(ndr->ip) : 0;
-    me.bdr = nbdr ? ipa_to_u32(nbdr->ip) : 0;
-#else /* OSPFv3 */
-    me.dr = ndr ? ndr->rid : 0;
-    me.bdr = nbdr ? nbdr->rid : 0;
-#endif
+    me.dr = ndr ? neigh_get_id(po, ndr) : 0;
+    me.bdr = nbdr ? neigh_get_id(po, nbdr) : 0;
 
-    nbdr = electbdr(ifa->neigh_list);
-    ndr = electdr(ifa->neigh_list);
+    nbdr = electbdr(po, ifa->neigh_list);
+    ndr = electdr(po, ifa->neigh_list);
 
     if (ndr == NULL)
       ndr = nbdr;
@@ -492,12 +475,10 @@ bdr_election(struct ospf_iface *ifa)
  
   ifa->drid = ndr ? ndr->rid : 0;
   ifa->drip = ndr ? ndr->ip  : IPA_NONE;
+  ifa->dr_iface_id = ndr ? ndr->iface_id : 0;
+
   ifa->bdrid = nbdr ? nbdr->rid : 0;
   ifa->bdrip = nbdr ? nbdr->ip  : IPA_NONE;
-
-#ifdef OSPFv3
-  ifa->dr_iface_id = ndr ? ndr->iface_id : 0;
-#endif
 
   DBG("DR=%R, BDR=%R\n", ifa->drid, ifa->bdrid);
 
@@ -640,26 +621,28 @@ rxmt_timer_hook(timer * timer)
   {
     if (!EMPTY_SLIST(n->lsrtl))	/* FULL */
     {
-      list uplist;
-      slab *upslab;
-      struct l_lsr_head *llsh;
+      struct ospf_lsreq_item *lsr_head, *lsr;
+      struct ospf_lsreq_item **lsr_pos = &lsr_head;
 
-      init_list(&uplist);
-      upslab = sl_new(n->pool, sizeof(struct l_lsr_head));
+      slab *upslab = sl_new(n->pool, sizeof(struct ospf_lsreq_item));
 
       WALK_SLIST(en, n->lsrtl)
       {
 	if ((SNODE en)->next == (SNODE en))
 	  bug("RTList is cycled");
-	llsh = sl_alloc(upslab);
-	llsh->lsh.id = en->lsa.id;
-	llsh->lsh.rt = en->lsa.rt;
-	llsh->lsh.type = en->lsa.type;
-	DBG("Working on ID: %R, RT: %R, Type: %u\n",
-	    en->lsa.id, en->lsa.rt, en->lsa.type);
-	add_tail(&uplist, NODE llsh);
+
+	lsr = sl_alloc(upslab);
+	lsr->domain = en->domain;
+	lsr->type = en->lsa_type;
+	lsr->id = en->lsa.id;
+	lsr->rt = en->lsa.rt;
+
+	*lsr_pos = lsr;
+	lsr_pos = &(lsr->next);
       }
-      ospf_lsupd_send_list(n, &uplist);
+      *lsr_pos = NULL;
+
+      ospf_lsupd_send_list(n, lsr_head);
       rfree(upslab);
     }
   }

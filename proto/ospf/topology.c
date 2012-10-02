@@ -31,12 +31,11 @@ void flush_prefix_net_lsa(struct ospf_iface *ifa);
 #endif
 
 
-#ifdef OSPFv2
 static inline u32
 fibnode_to_lsaid(struct proto_ospf *po, struct fib_node *fn)
 {
-  /* We have to map IP prefixes to u32 in such manner that resulting
-     u32 interpreted as IP address is a member of given
+  /* In OSPFv2, We have to map IP prefixes to u32 in such manner 
+     that resulting u32 interpreted as IP address is a member of given
      prefix. Therefore, /32 prefix have to be mapped on itself.
      All received prefixes have to be mapped on different u32s.
 
@@ -63,7 +62,18 @@ fibnode_to_lsaid(struct proto_ospf *po, struct fib_node *fn)
      possible to have both reliably and the suggested algorithm was
      unnecessary complicated and it does crazy things like changing
      LSA ID for a network because different network appeared, we
-     choose a different way. */
+     choose a different way.
+
+     In OSPFv3, it is simpler. There is not a requirement for
+     membership of the result in the input network, so we just use a
+     hash-based unique ID of a routing table entry for a route that
+     originated given LSA. For ext-LSA, it is an imported route in the
+     nest's routing table (p->table). For summary-LSA, it is a
+     'source' route in the protocol internal routing table (po->rtf).
+  */
+
+  if (ospf_is_v3(po))
+    return fn->uid;
 
   u32 id = _I(fn->prefix);
 
@@ -75,24 +85,6 @@ fibnode_to_lsaid(struct proto_ospf *po, struct fib_node *fn)
   else
     return id | ~u32_mkmask(fn->pxlen);
 }
-
-#else /* OSPFv3 */
-
-static inline u32
-fibnode_to_lsaid(struct proto_ospf *po, struct fib_node *fn)
-{
-  /*
-   * In OSPFv3, it is simpler. There is not a requirement for
-   * membership of the result in the input network, so we just use a
-   * hash-based unique ID of a routing table entry for a route that
-   * originated given LSA. For ext-LSA, it is an imported route in the
-   * nest's routing table (p->table). For summary-LSA, it is a
-   * 'source' route in the protocol internal routing table (po->rtf).
-   */
-  return fn->uid;
-}
-
-#endif
 
 
 static void *
@@ -1611,7 +1603,7 @@ ospf_top_rehash(struct top_graph *f, int step)
     while (e)
     {
       x = e->next;
-      n = newt + ospf_top_hash(f, e->domain, e->lsa.id, e->lsa.rt, e->lsa.type);
+      n = newt + ospf_top_hash(f, e->domain, e->lsa.id, e->lsa.rt, e->lsa_type);
       e->next = *n;
       *n = e;
       e = x;
@@ -1619,35 +1611,6 @@ ospf_top_rehash(struct top_graph *f, int step)
   }
   ospf_top_ht_free(oldt);
 }
-
-#ifdef OSPFv2
-
-u32
-ospf_lsa_domain(u32 type, struct ospf_iface *ifa)
-{
-  return (type == LSA_T_EXT) ? 0 : ifa->oa->areaid;
-}
-
-#else /* OSPFv3 */
-
-u32
-ospf_lsa_domain(u32 type, struct ospf_iface *ifa)
-{
-  switch (type & LSA_SCOPE_MASK)
-    {
-    case LSA_SCOPE_LINK:
-      return ifa->iface->index;
-
-    case LSA_SCOPE_AREA:
-      return ifa->oa->areaid;
-
-    case LSA_SCOPE_AS:
-    default:
-      return 0;
-    }
-}
-
-#endif
 
 struct top_hash_entry *
 ospf_hash_find_header(struct top_graph *f, u32 domain, struct ospf_lsa_header *h)
@@ -1667,7 +1630,8 @@ ospf_hash_find(struct top_graph *f, u32 domain, u32 lsa, u32 rtr, u32 type)
   struct top_hash_entry *e;
   e = f->hash_table[ospf_top_hash(f, domain, lsa, rtr, type)];
 
-  while (e && (e->lsa.id != lsa || e->lsa.type != type || e->lsa.rt != rtr || e->domain != domain))
+  while (e && (e->lsa.id != lsa || e->lsa.rt != rtr ||
+	       e->lsa_type != type || e->domain != domain))
     e = e->next;
 
   return e;
@@ -1749,7 +1713,8 @@ ospf_hash_get(struct top_graph *f, u32 domain, u32 lsa, u32 rtr, u32 type)
   ee = f->hash_table + ospf_top_hash(f, domain, lsa, rtr, type);
   e = *ee;
 
-  while (e && (e->lsa.id != lsa || e->lsa.rt != rtr || e->lsa.type != type || e->domain != domain))
+  while (e && (e->lsa.id != lsa || e->lsa.rt != rtr || 
+	       e->lsa_type != type || e->domain != domain))
     e = e->next;
 
   if (e)
@@ -1762,8 +1727,9 @@ ospf_hash_get(struct top_graph *f, u32 domain, u32 lsa, u32 rtr, u32 type)
   e->lb = IPA_NONE;
   e->lsa.id = lsa;
   e->lsa.rt = rtr;
-  e->lsa.type = type;
+  e->lsa.type = type; 
   e->lsa_body = NULL;
+  e->lsa_type = type;
   e->domain = domain;
   e->next = *ee;
   *ee = e;
@@ -1776,7 +1742,7 @@ void
 ospf_hash_delete(struct top_graph *f, struct top_hash_entry *e)
 {
   struct top_hash_entry **ee = f->hash_table + 
-    ospf_top_hash(f, e->domain, e->lsa.id, e->lsa.rt, e->lsa.type);
+    ospf_top_hash(f, e->domain, e->lsa.id, e->lsa.rt, e->lsa_type);
 
   while (*ee)
   {

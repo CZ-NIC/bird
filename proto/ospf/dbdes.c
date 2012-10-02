@@ -36,20 +36,6 @@ struct ospf_dbdes3_packet
 };
 
 
-
-#ifdef OSPFv2
-
-#define hton_opt(X) X
-#define ntoh_opt(X) X
-#endif
-
-
-#ifdef OSPFv3
-
-#define hton_opt(X) htonl(X)
-#define ntoh_opt(X) ntohl(X)
-#endif
-
 static inline unsigned
 ospf_dbdes_hdrlen(struct proto_ospf *po)
 {
@@ -69,29 +55,112 @@ ospf_dbdes_body(struct proto_ospf *po, struct ospf_packet *pkt, unsigned plen,
   
 static void ospf_dbdes_dump(struct proto_ospf *po, struct ospf_packet *pkt)
 {
-  struct proto *p = &po->proto;
   struct ospf_lsa_header *lsas;
   unsigned i, lsa_count;
+  u32 pkt_ddseq;
+  u16 pkt_iface_mtu;
+  u8 pkt_imms;
 
   ASSERT(pkt->type == DBDES_P);
   ospf_dump_common(po, pkt);
 
-  log(L_TRACE "%s:     imms     %s%s%s", p->name,
-      (imms & DBDES_I) ? "I " : "",
-      (imms & DBDES_M) ? "M " : "",
-      (imms & DBDES_MS) ? "MS" : "");
-  log(L_TRACE "%s:     ddseq    %u", p->name, ntohl(pkt->ddseq));
+  if (ospf_is_v2(po))
+  {
+    struct ospf_dbdes2_packet *ps = (void *) pkt;
+    pkt_iface_mtu = ntohs(ps->iface_mtu);
+    pkt_imms = ps->imms;
+    pkt_ddseq = ntohl(ps->ddseq);
+  }
+  else /* OSPFv3 */
+  {
+    struct ospf_dbdes3_packet *ps = (void *) pkt;
+    pkt_iface_mtu = ntohs(ps->iface_mtu);
+    pkt_imms = ps->imms;
+    pkt_ddseq = ntohl(ps->ddseq);
+  }
 
-  struct ospf_lsa_header *plsa = (void *) (pkt + 1);
-  unsigned int i, j;
+  log(L_TRACE "%s:     mtu      %u", po->proto.name, pkt_iface_mtu);
+  log(L_TRACE "%s:     imms     %s%s%s", po->proto.name,
+      (pkt_imms & DBDES_I) ? "I " : "",
+      (pkt_imms & DBDES_M) ? "M " : "",
+      (pkt_imms & DBDES_MS) ? "MS" : "");
+  log(L_TRACE "%s:     ddseq    %u", po->proto.name, pkt_ddseq);
 
-  j = (ntohs(op->length) - sizeof(struct ospf_dbdes_packet)) /
-    sizeof(struct ospf_lsa_header);
-
-  for (i = 0; i < j; i++)
-    ospf_dump_lsahdr(p, &lsas[i]);
+  ospf_dbdes_body(po, pkt, ntohs(pkt->length), &lsas, &lsa_count);
+  for (i = 0; i < lsa_count; i++)
+    ospf_dump_lsahdr(po, lsas + i);
 }
 
+
+static void
+ospf_dbdes_prepare(struct ospf_neighbor *n, struct ospf_packet *pkt, int lsdb)
+{
+  struct ospf_iface *ifa = n->ifa;
+  struct proto_ospf *po = ifa->oa->po;
+  int i = 0;
+
+  ospf_pkt_fill_hdr(ifa, pkt, DBDES_P);
+
+  if (lsdb && (n->myimms & DBDES_M))
+  {
+    struct ospf_lsa_header *lsas;
+    unsigned lsa_max;
+    snode *sn;
+
+    ospf_dbdes_body(po, pkt, ospf_pkt_maxsize(ifa), &lsas, &lsa_max);
+    sn = s_get(&(n->dbsi));
+
+    while (i < lsa_max)
+    {
+      struct top_hash_entry *en = (struct top_hash_entry *) sn;
+
+      if (lsa_flooding_allowed(en->lsa_type, en->domain, ifa))
+      {
+	lsa_hton_hdr(&(en->lsa), lsas + i);
+	i++;
+      }
+
+      if (sn == STAIL(po->lsal))
+      {
+	n->myimms &= ~DBDES_M;	/* Unset more bit */
+	break;
+      }
+
+      sn = sn->next;
+    }
+
+    s_put(&(n->dbsi), sn);
+  }
+
+  u16 iface_mtu = (ifa->type == OSPF_IT_VLINK) ? 0 : ifa->iface->mtu;
+  unsigned length;
+
+  if (ospf_is_v2(po))
+  {
+    struct ospf_dbdes2_packet *ps = (void *) pkt;
+
+    ps->iface_mtu = htons(iface_mtu);
+    ps->options = ifa->oa->options;
+    ps->imms = n->myimms;
+    ps->ddseq = htonl(n->dds);
+
+    length = sizeof(struct ospf_dbdes2_packet);
+  }
+  else /* OSPFv3 */
+  {
+    struct ospf_dbdes3_packet *ps = (void *) pkt;
+
+    ps->options = htonl(ifa->oa->options);
+    ps->iface_mtu = htons(iface_mtu);
+    ps->imms = n->myimms;
+    ps->ddseq = htonl(n->dds);
+
+    length = sizeof(struct ospf_dbdes3_packet);
+  }
+
+  length += i * sizeof(struct ospf_lsa_header);
+  pkt->length = htons(length);
+}
 
 /**
  * ospf_dbdes_send - transmit database description packet
@@ -110,10 +179,8 @@ ospf_dbdes_send(struct ospf_neighbor *n, int next)
   struct ospf_iface *ifa = n->ifa;
   struct ospf_area *oa = ifa->oa;
   struct proto_ospf *po = oa->po;
-
-  struct ospf_dbdes_packet *pkt;
-  struct ospf_packet *op;
-  u16 length, i, j;
+  struct ospf_packet *pkt;
+  unsigned length;
 
   /* FIXME ??? */
   if ((oa->rt == NULL) || (EMPTY_LIST(po->lsal)))
@@ -121,19 +188,13 @@ ospf_dbdes_send(struct ospf_neighbor *n, int next)
 
   switch (n->state)
   {
-  case NEIGHBOR_EXSTART:	/* Send empty packets */
+  case NEIGHBOR_EXSTART:
     n->myimms |= DBDES_I;
-    pkt = ospf_tx_buffer(ifa);
-    op = &pkt->ospf_packet;
-    ospf_pkt_fill_hdr(ifa, pkt, DBDES_P);
-    pkt->iface_mtu = (ifa->type == OSPF_IT_VLINK) ? 0 : htons(ifa->iface->mtu);
-    pkt->options = hton_opt(oa->options);
-    pkt->imms = n->myimms;
-    pkt->ddseq = htonl(n->dds);
-    length = sizeof(struct ospf_dbdes_packet);
-    op->length = htons(length);
 
-    OSPF_PACKET(ospf_dump_dbdes, pkt, "DBDES packet sent to %I via %s", n->ip, ifa->iface->name);
+    /* Send empty packets */
+    pkt = ospf_tx_buffer(ifa);
+    ospf_dbdes_prepare(n, pkt, 0);
+    OSPF_PACKET(ospf_dbdes_dump, pkt, "DBDES packet sent to %I via %s", n->ip, ifa->iface->name);
     ospf_send_to(ifa, n->ip);
     break;
 
@@ -141,72 +202,12 @@ ospf_dbdes_send(struct ospf_neighbor *n, int next)
     n->myimms &= ~DBDES_I;
 
     if (next)
-    {
-      snode *sn;
-      struct ospf_lsa_header *lsa;
-
-      pkt = n->ldbdes;
-      op = (struct ospf_packet *) pkt;
-
-      ospf_pkt_fill_hdr(ifa, pkt, DBDES_P);
-      pkt->iface_mtu = (ifa->type == OSPF_IT_VLINK) ? 0 : htons(ifa->iface->mtu);
-      pkt->ddseq = htonl(n->dds);
-      pkt->options = hton_opt(oa->options);
-
-      j = i = (ospf_pkt_maxsize(ifa) - sizeof(struct ospf_dbdes_packet)) / sizeof(struct ospf_lsa_header);	/* Number of possible lsaheaders to send */
-      lsa = (n->ldbdes + sizeof(struct ospf_dbdes_packet));
-
-      if (n->myimms & DBDES_M)
-      {
-	sn = s_get(&(n->dbsi));
-
-	DBG("Number of LSA: %d\n", j);
-	for (; i > 0; i--)
-	{
-	  struct top_hash_entry *en= (struct top_hash_entry *) sn;
-
-          if (ospf_lsa_flooding_allowed(&en->lsa, en->domain, ifa))
-          {
-	    htonlsah(&(en->lsa), lsa);
-	    DBG("Working on: %d\n", i);
-	    DBG("\tX%01x %-1R %-1R %p\n", en->lsa.type, en->lsa.id, en->lsa.rt, en->lsa_body);
-
-	    lsa++;
-          }
-          else i++;	/* No lsa added */
-
-	  if (sn == STAIL(po->lsal))
-          {
-            i--;
-	    break;
-          }
-
-	  sn = sn->next;
-	}
-
-	if (sn == STAIL(po->lsal))
-	{
-	  DBG("Number of LSA NOT sent: %d\n", i);
-	  DBG("M bit unset.\n");
-	  n->myimms &= ~DBDES_M;	/* Unset more bit */
-	}
-
-	s_put(&(n->dbsi), sn);
-      }
-
-      pkt->imms = n->myimms;
-
-      length = (j - i) * sizeof(struct ospf_lsa_header) +
-	sizeof(struct ospf_dbdes_packet);
-      op->length = htons(length);
-
-      DBG("%s: DB_DES (M) prepared for %I.\n", p->name, n->ip);
-    }
+      ospf_dbdes_prepare(n, n->ldbdes, 1);
 
   case NEIGHBOR_LOADING:
   case NEIGHBOR_FULL:
-    length = ntohs(((struct ospf_packet *) n->ldbdes)->length);
 
+    length = ntohs(((struct ospf_packet *) n->ldbdes)->length);
     if (!length)
     {
       OSPF_TRACE(D_PACKETS, "No packet in my buffer for repeating");
@@ -218,21 +219,19 @@ ospf_dbdes_send(struct ospf_neighbor *n, int next)
     pkt = ospf_tx_buffer(ifa);
     memcpy(pkt, n->ldbdes, length);
 
-    OSPF_PACKET(ospf_dump_dbdes, pkt, "DBDES packet sent to %I via %s", n->ip, ifa->iface->name);
+    OSPF_PACKET(ospf_dbdes_dump, pkt, "DBDES packet sent to %I via %s", n->ip, ifa->iface->name);
     ospf_send_to(ifa, n->ip);
 
+    /* XXXX remove this? */
     if (n->myimms & DBDES_MS)
       tm_start(n->rxmt_timer, n->ifa->rxmtint);		/* Restart timer */
 
     if (!(n->myimms & DBDES_MS))
-    {
       if (!(n->myimms & DBDES_M) && 
 	  !(n->imms & DBDES_M) &&
 	  (n->state == NEIGHBOR_EXCHANGE))
-      {
 	ospf_neigh_sm(n, INM_EXDONE);
-      }
-    }
+
     break;
 
   default:			/* Ignore it */
@@ -241,36 +240,35 @@ ospf_dbdes_send(struct ospf_neighbor *n, int next)
 }
 
 static void
-ospf_dbdes_reqladd(struct ospf_dbdes_packet *ps, struct ospf_neighbor *n)
+ospf_dbdes_process(struct ospf_neighbor *n, struct ospf_packet *pkt, unsigned plen)
 {
-  struct ospf_lsa_header *plsa, lsa;
-  struct top_hash_entry *he, *sn;
-  struct ospf_area *oa = n->ifa->oa;
-  struct top_graph *gr = oa->po->gr;
-  struct ospf_packet *op;
-  int i, j;
+  struct ospf_iface *ifa = n->ifa;
+  struct proto_ospf *po = ifa->oa->po;
+  struct ospf_lsa_header *lsas;
+  unsigned i, lsa_count;
 
-  op = (struct ospf_packet *) ps;
+  ospf_dbdes_body(po, pkt, plen, &lsas, &lsa_count);
 
-  plsa = (void *) (ps + 1);
-
-  j = (ntohs(op->length) - sizeof(struct ospf_dbdes_packet)) /
-    sizeof(struct ospf_lsa_header);
-
-  for (i = 0; i < j; i++)
+  for (i = 0; i < lsa_count; i++)
   {
-    ntohlsah(plsa + i, &lsa);
-    u32 dom = ospf_lsa_domain(lsa.type, n->ifa);
-    if (((he = ospf_hash_find_header(gr, dom, &lsa)) == NULL) ||
-	(lsa_comp(&lsa, &(he->lsa)) == 1))
+    struct top_hash_entry *en, *req;
+    struct ospf_lsa_header lsa;
+    u32 lsa_type, lsa_domain;
+
+    lsa_ntoh_hdr(lsas + i, &lsa);
+    lsa_xxxxtype(lsa.type_raw, ifa, &lsa_type, &lsa_domain);
+
+    /* XXXX: Add check for 0-type or flooding_allowed */
+
+    en = ospf_hash_find(po->gr, lsa_domain, lsa.id, lsa.rt, lsa_type);
+    if (!en || (lsa_comp(&lsa, &(en->lsa)) == CMP_NEWER))
     {
-      /* Is this condition necessary? */
-      if (ospf_hash_find_header(n->lsrqh, dom, &lsa) == NULL)
-      {
-	sn = ospf_hash_get_header(n->lsrqh, dom, &lsa);
-	ntohlsah(plsa + i, &(sn->lsa));
-	s_add_tail(&(n->lsrql), SNODE sn);
-      }
+      req = ospf_hash_get(n->lsrqh, lsa_domain, lsa.id, lsa.rt, lsa_type);
+
+      if (ospf_hash_is_new(req))
+	s_add_tail(&(n->lsrql), SNODE req);
+
+      en->lsa = lsa;
     }
   }
 }
@@ -280,18 +278,21 @@ ospf_dbdes_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 		   struct ospf_neighbor *n)
 {
   struct proto_ospf *po = ifa->oa->po;
-
   u32 rcv_ddseq, rcv_options;
   u16 rcv_iface_mtu;
   u8 rcv_imms;
+  unsigned plen;
 
-
-  unsigned int size = ntohs(ps_i->length);
-  if (size < sizeof(struct ospf_dbdes_packet))
+  plen = ntohs(pkt->length);
+  if (plen < ospf_dbdes_hdrlen(po))
   {
-    log(L_ERR "Bad OSPF DBDES packet from %I -  too short (%u B)", n->ip, size);
+    log(L_ERR "OSPF: Bad DBDES packet from %I - too short (%u B)", n->ip, plen);
     return;
   }
+
+  OSPF_PACKET(ospf_dbdes_dump, pkt, "DBDES packet received from %I via %s", n->ip, ifa->iface->name);
+
+  ospf_neigh_sm(n, INM_HELLOREC);
 
   if (ospf_is_v2(po))
   {
@@ -310,10 +311,6 @@ ospf_dbdes_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
     rcv_ddseq = ntohl(ps->ddseq);
   }
   
-  OSPF_PACKET(ospf_dbdes_dump, ps, "DBDES packet received from %I via %s", n->ip, ifa->iface->name);
-
-  ospf_neigh_sm(n, INM_HELLOREC);
-
   switch (n->state)
   {
   case NEIGHBOR_DOWN:
@@ -331,12 +328,12 @@ ospf_dbdes_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 	(rcv_iface_mtu != 0) &&
 	(ifa->iface->mtu != 0) && 
 	(ifa->type != OSPF_IT_VLINK))
-      log(L_WARN "OSPF: MTU mismatch with neighbour %I on interface %s (remote %d, local %d)",
+      log(L_WARN "OSPF: MTU mismatch with neighbor %I on interface %s (remote %d, local %d)",
 	  n->ip, ifa->iface->name, rcv_iface_mtu, ifa->iface->mtu);
 
     if ((rcv_imms == DBDES_IMMS) &&
 	(n->rid > po->router_id) &&
-	(size == sizeof(struct ospf_dbdes_packet)))
+	(plen == ospf_dbdes_hdrlen(po)))
     {
       /* I'm slave! */
       n->dds = rcv_ddseq;
@@ -374,7 +371,7 @@ ospf_dbdes_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 	(rcv_ddseq == n->ddr))
     {
       /* Duplicate packet */
-      OSPF_TRACE(D_PACKETS, "Received duplicate dbdes from %I.", n->ip);
+      OSPF_TRACE(D_PACKETS, "Received duplicate dbdes from %I", n->ip);
       if (!(n->myimms & DBDES_MS))
       {
 	/* Slave should retransmit dbdes packet */
@@ -417,7 +414,7 @@ ospf_dbdes_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
       }
       n->dds++;
       DBG("Incrementing dds\n");
-      ospf_dbdes_reqladd(ps, n);
+      ospf_dbdes_process(n, pkt, plen);
       if (!(n->myimms & DBDES_M) &&
 	  !(rcv_imms & DBDES_M))
       {
@@ -439,7 +436,7 @@ ospf_dbdes_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
       }
       n->ddr = rcv_ddseq;
       n->dds = rcv_ddseq;
-      ospf_dbdes_reqladd(ps, n);
+      ospf_dbdes_process(n, pkt, plen);
       ospf_dbdes_send(n, 1);
     }
     break;
@@ -451,7 +448,7 @@ ospf_dbdes_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 	(rcv_ddseq == n->ddr))
       /* Only duplicate are accepted */
     {
-      OSPF_TRACE(D_PACKETS, "Received duplicate dbdes from %I.", n->ip);
+      OSPF_TRACE(D_PACKETS, "Received duplicate dbdes from %I", n->ip);
       if (!(n->myimms & DBDES_MS))
       {
 	/* Slave should retransmit dbdes packet */

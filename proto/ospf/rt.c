@@ -15,12 +15,8 @@ static void rt_sync(struct proto_ospf *po);
 
 /* In ospf_area->rtr we store paths to routers, but we use RID (and not IP address)
    as index, so we need to encapsulate RID to IP address */
-#ifdef OSPFv2
-#define ipa_from_rid(x) _MI(x)
-#else /* OSPFv3 */
-#define ipa_from_rid(x) _MI6(0,0,0,x)
-#endif
 
+#define ipa_from_rid(x) ipa_from_u32(x)
 
 static inline void reset_ri(ort *ort)
 {
@@ -311,7 +307,7 @@ spfa_process_rt(struct ospf_area *oa, struct top_hash_entry *act)
   struct ospf_lsa_rt_walk rtl;
   struct top_hash_entry *tmp;
   ip_addr prefix;
-  int pxlen;
+  int pxlen, i;
 
   if (rt->options & OPT_RT_V)
     oa->trcap = 1;
@@ -339,8 +335,7 @@ spfa_process_rt(struct ospf_area *oa, struct top_hash_entry *act)
   }
 
   /* Now process Rt links */
-  lsa_walk_rt_init(po, act, &rtl);
-  while (lsa_walk_rt(&rtl))
+  for (lsa_walk_rt_init(po, act, &rtl), i = 0; lsa_walk_rt(&rtl); i++)
   {
     tmp = NULL;
 

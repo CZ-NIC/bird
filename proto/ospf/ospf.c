@@ -164,11 +164,7 @@ ospf_area_add(struct proto_ospf *po, struct ospf_area_config *ac, int reconf)
   if (oa->areaid == 0)
     po->backbone = oa;
 
-#ifdef OSPFv2
-  oa->options = ac->type;
-#else /* OSPFv3 */
-  oa->options = OPT_R | ac->type | OPT_V6;
-#endif
+  oa->options = ospf_is_v2(po) ? ac->type : (OPT_R | ac->type | OPT_V6);
 
   /*
    * Set E-bit for NSSA ABR routers. No need to explicitly call
@@ -383,7 +379,6 @@ schedule_net_lsa(struct ospf_iface *ifa)
   ifa->orignet = 1;
 }
 
-#ifdef OSPFv3
 void
 schedule_link_lsa(struct ospf_iface *ifa)
 {
@@ -392,7 +387,6 @@ schedule_link_lsa(struct ospf_iface *ifa)
   OSPF_TRACE(D_EVENTS, "Scheduling link-LSA origination for iface %s", ifa->iface->name);
   ifa->origlink = 1;
 }
-#endif
 
 void
 schedule_rt_lsa(struct ospf_area *oa)
@@ -589,7 +583,7 @@ ospf_rt_notify(struct proto *p, rtable *tbl UNUSED, net * n, rte * new, rte * ol
   // FIXME check for gw should be per ifa, not per iface
   if ((new->attrs->dest == RTD_ROUTER) &&
       ipa_nonzero(new->attrs->gw) &&
-      !ipa_has_link_scope(new->attrs->gw) &&
+      !ipa_is_link_local(new->attrs->gw) &&
       (ospf_iface_find((struct proto_ospf *) p, new->attrs->iface) != NULL))
     gw = new->attrs->gw;
 
@@ -682,11 +676,8 @@ ospf_area_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
   oa->ac = nac;
 
   // FIXME better area type reconfiguration
-#ifdef OSPFv2
-  oa->options = nac->type;
-#else /* OSPFv3 */
-  oa->options = OPT_R | nac->type | OPT_V6;
-#endif
+  oa->options = ospf_is_v2(oa->po) ? nac->type : (OPT_R | nac->type | OPT_V6);
+
   if (oa_is_nssa(oa) && (oa->po->areano > 1))
     oa->po->ebit = 1;
 
@@ -986,7 +977,7 @@ lsa_compare_for_state(const void *p1, const void *p2)
   if (nt1)
   {
 #ifdef OSPFv3
-    /* In OSPFv3, neworks are named base on ID of DR */
+    /* In OSPFv3, networks are named based on ID of DR */
     if (lsa1->rt != lsa2->rt)
       return lsa1->rt - lsa2->rt;
 #endif
@@ -1488,17 +1479,17 @@ ospf_sh_lsadb(struct lsadb_show_data *ld)
 	case LSA_SCOPE_AS:
 	  cli_msg(-1017, "Global");
 	  break;
+
 	case LSA_SCOPE_AREA:
 	  cli_msg(-1017, "Area %R", hea[i]->domain);
 	  break;
-#ifdef OSPFv3
+
 	case LSA_SCOPE_LINK:
 	  {
 	    struct iface *ifa = if_find_by_index(hea[i]->domain);
 	    cli_msg(-1017, "Link %s", (ifa != NULL) ? ifa->name : "?");
 	  }
 	  break;
-#endif
       }
       cli_msg(-1017, "");
       cli_msg(-1017," Type   LS ID           Router           Age  Sequence  Checksum");
@@ -1506,7 +1497,6 @@ ospf_sh_lsadb(struct lsadb_show_data *ld)
       last_dscope = dscope;
       last_domain = hea[i]->domain;
     }
-
 
     cli_msg(-1017," %04x  %-15R %-15R %5u  %08x    %04x",
 	    lsa->type, lsa->id, lsa->rt, lsa->age, lsa->sn, lsa->checksum);

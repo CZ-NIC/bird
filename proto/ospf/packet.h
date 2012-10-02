@@ -15,24 +15,32 @@ unsigned ospf_pkt_maxsize(struct ospf_iface *ifa);
 int ospf_rx_hook(sock * sk, int size);
 void ospf_tx_hook(sock * sk);
 void ospf_err_hook(sock * sk, int err);
-void ospf_send_to_agt(struct ospf_iface *ifa, u8 state);
-void ospf_send_to_bdr(struct ospf_iface *ifa);
 void ospf_send_to(struct ospf_iface *ifa, ip_addr ip);
 
-static inline void ospf_send_to_all(struct ospf_iface *ifa) { ospf_send_to(ifa, ifa->all_routers); }
+void ospf_send_to_agt(struct ospf_iface *ifa, u8 state);
+void ospf_send_to_bdr(struct ospf_iface *ifa);
+
+static inline void ospf_send_to_all(struct ospf_iface *ifa)
+{
+  ospf_send_to(ifa, ifa->all_routers);
+}
+
+static inline void ospf_send_to_des(struct ospf_iface *ifa)
+{
+  if (ipa_nonzero(ifa->des_routers))
+    ospf_send_to(ifa, ifa->des_routers);
+  else
+    ospf_send_to_bdr(ifa);
+}
 
 static inline void * ospf_tx_buffer(struct ospf_iface *ifa) { return ifa->sk->tbuf; }
 
 static inline unsigned
 ospf_pkt_bufsize(struct ospf_iface *ifa)
 {
-#ifdef OSPFv2
-  unsigned headers = (ifa->autype == OSPF_AUTH_CRYPT) ? OSPF_AUTH_CRYPT_SIZE : 0;
-#else
-  unsigned headers = 0;
-#endif
-
-  return ifa->sk->tbsize - headers;
+  /* Reserve buffer space for authentication footer */
+  return ifa->sk->tbsize - 
+    (ifa->autype == OSPF_AUTH_CRYPT) ? OSPF_AUTH_CRYPT_SIZE : 0;
 }
 
 
