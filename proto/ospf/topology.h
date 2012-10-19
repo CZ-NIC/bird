@@ -39,6 +39,7 @@ struct top_graph
   pool *pool;			/* Pool we allocate from */
   slab *hash_slab;		/* Slab for hash entries */
   struct top_hash_entry **hash_table;	/* Hashing (modelled a`la fib) */
+  unsigned int ospf2;		/* Whether it is for OSPFv2 or OSPFv3 */
   unsigned int hash_size;
   unsigned int hash_order;
   unsigned int hash_mask;
@@ -71,28 +72,21 @@ void flush_sum_lsa(struct ospf_area *oa, struct fib_node *fn, int type);
 void originate_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src, u32 metric, ip_addr fwaddr, u32 tag, int pbit);
 void flush_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src);
 
+struct top_hash_entry * ospf_hash_find_rt(struct top_graph *f, u32 domain, u32 rtr);
+struct top_hash_entry * ospf_hash_find_rt3_first(struct top_graph *f, u32 domain, u32 rtr);
+struct top_hash_entry * ospf_hash_find_rt3_next(struct top_hash_entry *e);
 
-#ifdef OSPFv2
-struct top_hash_entry * ospf_hash_find_net(struct top_graph *f, u32 domain, u32 id, u32 nif);
+struct top_hash_entry * ospf_hash_find_net2(struct top_graph *f, u32 domain, u32 id);
 
-static inline struct top_hash_entry *
-ospf_hash_find_rt(struct top_graph *f, u32 domain, u32 rtr)
-{
-  return ospf_hash_find(f, domain, rtr, rtr, LSA_T_RT);
-}
-
-#else /* OSPFv3 */
+/* In OSPFv2, id is network IP prefix (lsa.id) while lsa.rt field is unknown
+   In OSPFv3, id is lsa.rt of DR while nif is neighbor iface id (lsa.id) */
 static inline struct top_hash_entry *
 ospf_hash_find_net(struct top_graph *f, u32 domain, u32 id, u32 nif)
 {
-  return ospf_hash_find(f, domain, nif, id, LSA_T_NET);
+  return f->ospf2 ?
+    ospf_hash_find_net2(f, domain, id) :
+    ospf_hash_find(f, domain, nif, id, LSA_T_NET);
 }
-
-
-struct top_hash_entry * ospf_hash_find_rt(struct top_graph *f, u32 domain, u32 rtr);
-struct top_hash_entry * ospf_hash_find_rt_first(struct top_graph *f, u32 domain, u32 rtr);
-struct top_hash_entry * ospf_hash_find_rt_next(struct top_hash_entry *e);
-#endif
 
 
 #endif /* _BIRD_OSPF_TOPOLOGY_H_ */

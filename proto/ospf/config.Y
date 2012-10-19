@@ -21,7 +21,9 @@ static list *this_nets;
 static struct area_net_config *this_pref;
 static struct ospf_stubnet_config *this_stubnet; 
 
-#ifdef OSPFv2
+static inline int ospf_cfg_is_v2(void) { return OSPF_CFG->ospf2; }
+static inline int ospf_cfg_is_v3(void) { return ! OSPF_CFG->ospf2; }
+
 static void
 ospf_iface_finish(void)
 {
@@ -38,21 +40,6 @@ ospf_iface_finish(void)
   if ((ip->autype == OSPF_AUTH_NONE) && (ip->passwords != NULL))
     log(L_WARN "Password option without authentication option does not make sense");
 }
-#endif
-
-#ifdef OSPFv3
-static void
-ospf_iface_finish(void)
-{
-  struct ospf_iface_patt *ip = OSPF_PATT;
-
-  if (ip->deadint == 0)
-    ip->deadint = ip->deadc * ip->helloint;
-
-  if ((ip->autype != OSPF_AUTH_NONE) || (get_passwords() != NULL))
-    cf_error("Authentication not supported in OSPFv3");
-}
-#endif
 
 static void
 ospf_area_finish(void)
@@ -104,25 +91,23 @@ ospf_proto_finish(void)
 }
 
 static inline void
-check_defcost(int cost)
+ospf_check_defcost(int cost)
 {
   if ((cost <= 0) || (cost >= LSINFINITY))
    cf_error("Default cost must be in range 1-%d", LSINFINITY-1);
 }
 
 static inline void
-set_instance_id(unsigned id)
+ospf_check_auth(void)
 {
-#ifdef OSPFv3
-  OSPF_PATT->instance_id = id;
-#else
-  cf_error("Instance ID requires OSPFv3");
-#endif
+  if (ospf_cfg_is_v3())
+    cf_error("Authentication not supported in OSPFv3");
 }
+
 
 CF_DECLS
 
-CF_KEYWORDS(OSPF, AREA, OSPF_METRIC1, OSPF_METRIC2, OSPF_TAG, OSPF_ROUTER_ID)
+CF_KEYWORDS(OSPF, OSPF2, OSPF3, AREA, OSPF_METRIC1, OSPF_METRIC2, OSPF_TAG, OSPF_ROUTER_ID)
 CF_KEYWORDS(NEIGHBORS, RFC1583COMPAT, STUB, TICK, COST, COST2, RETRANSMIT)
 CF_KEYWORDS(HELLO, TRANSMIT, PRIORITY, DEAD, TYPE, BROADCAST, BCAST)
 CF_KEYWORDS(NONBROADCAST, NBMA, POINTOPOINT, PTP, POINTOMULTIPOINT, PTMP)
@@ -134,16 +119,23 @@ CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL)
 
 %type <t> opttext
 %type <ld> lsadb_args
+%type <i> ospf_proto_key
 
 CF_GRAMMAR
 
 CF_ADDTO(proto, ospf_proto '}' { ospf_proto_finish(); } )
 
-ospf_proto_start: proto_start OSPF {
+ospf_proto_key: 
+   OSPF2 { $$ = 1; }
+ | OSPF3 { $$ = 0; }
+ ;
+
+ospf_proto_start: proto_start ospf_proto_key {
      this_proto = proto_config_new(&proto_ospf, sizeof(struct ospf_config), $1);
      init_list(&OSPF_CFG->area_list);
      init_list(&OSPF_CFG->vlink_list);
      OSPF_CFG->tick = OSPF_DEFAULT_TICK;
+     OSPF_CFG->ospf2 = $2;
   }
  ;
 
@@ -155,7 +147,7 @@ ospf_proto:
 ospf_proto_item:
    proto_item
  | RFC1583COMPAT bool { OSPF_CFG->rfc1583 = $2; }
- | ECMP bool { OSPF_CFG->ecmp = $2 ? DEFAULT_ECMP_LIMIT : 0; }
+ | ECMP bool { OSPF_CFG->ecmp = $2 ? OSPF_DEFAULT_ECMP_LIMIT : 0; }
  | ECMP bool LIMIT expr { OSPF_CFG->ecmp = $2 ? $4 : 0; if ($4 < 0) cf_error("ECMP limit cannot be negative"); }
  | TICK expr { OSPF_CFG->tick = $2; if($2<=0) cf_error("Tick must be greater than zero"); }
  | ospf_area
@@ -189,9 +181,9 @@ ospf_area_item:
  | NSSA { this_area->type = OPT_N; }
  | SUMMARY bool { this_area->summary = $2; }
  | DEFAULT NSSA bool { this_area->default_nssa = $3; }
- | DEFAULT COST expr { this_area->default_cost = $3; check_defcost($3); }
- | DEFAULT COST2 expr { this_area->default_cost = $3 | LSA_EXT_EBIT; check_defcost($3); }
- | STUB COST expr { this_area->default_cost = $3;  check_defcost($3); }
+ | DEFAULT COST expr { this_area->default_cost = $3; ospf_check_defcost($3); }
+ | DEFAULT COST2 expr { this_area->default_cost = $3 | LSA_EXT_EBIT; ospf_check_defcost($3); }
+ | STUB COST expr { this_area->default_cost = $3; ospf_check_defcost($3); }
  | TRANSLATOR bool { this_area->translator = $2; }
  | TRANSLATOR STABILITY expr { this_area->transint = $3; }
  | NETWORKS { this_nets = &this_area->net_list; } '{' pref_list '}'
@@ -243,10 +235,10 @@ ospf_vlink_item:
  | WAIT expr { OSPF_PATT->waitint = $2 ; }
  | DEAD expr { OSPF_PATT->deadint = $2 ; if ($2<=1) cf_error("Dead interval must be greater than one"); }
  | DEAD COUNT expr { OSPF_PATT->deadc = $3 ; if ($3<=1) cf_error("Dead count must be greater than one"); }
- | AUTHENTICATION NONE { OSPF_PATT->autype = OSPF_AUTH_NONE ; }
- | AUTHENTICATION SIMPLE { OSPF_PATT->autype = OSPF_AUTH_SIMPLE ; }
- | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT ; }
- | password_list 
+ | AUTHENTICATION NONE { OSPF_PATT->autype = OSPF_AUTH_NONE;  }
+ | AUTHENTICATION SIMPLE { OSPF_PATT->autype = OSPF_AUTH_SIMPLE; ospf_check_auth(); }
+ | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT; ospf_check_auth(); }
+ | password_list { ospf_check_auth(); }
  ;
 
 ospf_vlink_start: VIRTUAL LINK idval
@@ -286,7 +278,7 @@ ospf_iface_item:
  | TYPE PTP { OSPF_PATT->type = OSPF_IT_PTP ; }
  | TYPE POINTOMULTIPOINT { OSPF_PATT->type = OSPF_IT_PTMP ; }
  | TYPE PTMP { OSPF_PATT->type = OSPF_IT_PTMP ; }
- | REAL BROADCAST bool { OSPF_PATT->real_bcast = $3; if (OSPF_VERSION != 2) cf_error("Real broadcast option requires OSPFv2"); }
+ | REAL BROADCAST bool { OSPF_PATT->real_bcast = $3; if (!ospf_cfg_is_v2()) cf_error("Real broadcast option requires OSPFv2"); }
  | TRANSMIT DELAY expr { OSPF_PATT->inftransdelay = $3 ; if (($3<=0) || ($3>65535)) cf_error("Transmit delay must be in range 1-65535"); }
  | PRIORITY expr { OSPF_PATT->priority = $2 ; if (($2<0) || ($2>255)) cf_error("Priority must be in range 0-255"); }
  | STRICT NONBROADCAST bool { OSPF_PATT->strictnbma = $3 ; }
@@ -294,13 +286,13 @@ ospf_iface_item:
  | CHECK LINK bool { OSPF_PATT->check_link = $3; }
  | ECMP WEIGHT expr { OSPF_PATT->ecmp_weight = $3 - 1; if (($3<1) || ($3>256)) cf_error("ECMP weight must be in range 1-256"); }
  | NEIGHBORS '{' ipa_list '}'
- | AUTHENTICATION NONE { OSPF_PATT->autype = OSPF_AUTH_NONE ; }
- | AUTHENTICATION SIMPLE { OSPF_PATT->autype = OSPF_AUTH_SIMPLE ; }
- | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT ; }
+ | AUTHENTICATION NONE { OSPF_PATT->autype = OSPF_AUTH_NONE; }
+ | AUTHENTICATION SIMPLE { OSPF_PATT->autype = OSPF_AUTH_SIMPLE; ospf_check_auth(); }
+ | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT; ospf_check_auth(); }
  | RX BUFFER LARGE { OSPF_PATT->rxbuf = OSPF_RXBUF_LARGE ; } 
  | RX BUFFER NORMAL { OSPF_PATT->rxbuf = OSPF_RXBUF_NORMAL ; } 
  | RX BUFFER expr { OSPF_PATT->rxbuf = $3 ; if (($3 < OSPF_RXBUF_MINSIZE) || ($3 > OSPF_MAX_PKT_SIZE)) cf_error("Buffer size must be in range 256-65535"); } 
- | password_list
+ | password_list { ospf_check_auth(); }
  ;
 
 pref_list:
@@ -376,7 +368,10 @@ ospf_iface_start:
 
 ospf_instance_id:
    /* empty */
- | INSTANCE expr { set_instance_id($2); }
+ | INSTANCE expr {
+     if (ospf_cfg_is_v2()) cf_error("Instance ID requires OSPFv3");
+     OSPF_PATT->instance_id = $2;
+   }
  ;
 
 ospf_iface_opts:

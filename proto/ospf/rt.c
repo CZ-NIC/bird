@@ -1,9 +1,11 @@
 /*
- * BIRD -- OSPF
+ *	BIRD -- OSPF
  * 
- * (c) 2000--2004 Ondrej Filip <feela@network.cz>
+ *	(c) 2000--2004 Ondrej Filip <feela@network.cz>
+ *	(c) 2009--2012 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2009--2012 CZ.NIC z.s.p.o.
  * 
- * Can be freely distributed and used under the terms of the GNU GPL.
+ *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
 #include "ospf.h"
@@ -13,10 +15,6 @@ static void add_cand(list * l, struct top_hash_entry *en,
 		     struct ospf_area *oa, int i);
 static void rt_sync(struct proto_ospf *po);
 
-/* In ospf_area->rtr we store paths to routers, but we use RID (and not IP address)
-   as index, so we need to encapsulate RID to IP address */
-
-#define ipa_from_rid(x) ipa_from_u32(x)
 
 static inline void reset_ri(ort *ort)
 {

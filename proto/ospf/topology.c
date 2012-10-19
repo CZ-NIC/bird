@@ -3,6 +3,8 @@
  *
  *	(c) 1999       Martin Mares <mj@ucw.cz>
  *	(c) 1999--2004 Ondrej Filip <feela@network.cz>
+ *	(c) 2009--2012 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2009--2012 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -23,12 +25,6 @@
 void originate_prefix_rt_lsa(struct ospf_area *oa);
 void originate_prefix_net_lsa(struct ospf_iface *ifa);
 void flush_prefix_net_lsa(struct ospf_iface *ifa);
-
-#ifdef OSPFv2
-#define ipa_to_rid(x) _I(x)
-#else /* OSPFv3 */
-#define ipa_to_rid(x) _I3(x)
-#endif
 
 
 static inline u32
@@ -75,7 +71,7 @@ fibnode_to_lsaid(struct proto_ospf *po, struct fib_node *fn)
   if (ospf_is_v3(po))
     return fn->uid;
 
-  u32 id = _I(fn->prefix);
+  u32 id = ipa_to_u32(fn->prefix);
 
   if ((po->rfc1583) || (fn->pxlen == 0) || (fn->pxlen == 32))
     return id;
@@ -760,7 +756,6 @@ originate_sum_net_lsa(struct ospf_area *oa, struct fib_node *fn, int metric)
   OSPF_TRACE(D_EVENTS, "Originating net-summary-LSA for %I/%d (metric %d)",
 	     fn->prefix, fn->pxlen, metric);
 
-  /* options argument is used in ORT_NET and OSPFv3 only */
   lsa.age = 0;
   lsa.type_raw = LSA_T_SUM_NET;
   lsa.id = fibnode_to_lsaid(po, fn);
@@ -999,24 +994,10 @@ find_surrogate_fwaddr(struct ospf_area *oa)
 	(ifa->type == OSPF_IT_VLINK))
       continue;
 
-#ifdef OSPFv2
-    a = ifa->addr;
-    if (a->flags & IA_PEER)
-      continue;
-
-    np = ((a->flags & IA_HOST) || ifa->stub) ? 2 : 1;
-    if (np > cur_np)
+    if (ospf_is_v2(po))
     {
-      cur_addr = a;
-      cur_np = np;
-    }
-
-#else /* OSPFv3 */
-    WALK_LIST(a, ifa->iface->addrs)
-    {
-      if ((a->flags & IA_SECONDARY) ||
-	  (a->flags & IA_PEER) ||
-	  (a->scope <= SCOPE_LINK))
+      a = ifa->addr;
+      if (a->flags & IA_PEER)
 	continue;
 
       np = ((a->flags & IA_HOST) || ifa->stub) ? 2 : 1;
@@ -1026,7 +1007,23 @@ find_surrogate_fwaddr(struct ospf_area *oa)
 	cur_np = np;
       }
     }
-#endif
+    else /* OSPFv3 */
+    {
+      WALK_LIST(a, ifa->iface->addrs)
+      {
+	if ((a->flags & IA_SECONDARY) ||
+	    (a->flags & IA_PEER) ||
+	    (a->scope <= SCOPE_LINK))
+	  continue;
+
+	np = ((a->flags & IA_HOST) || ifa->stub) ? 2 : 1;
+	if (np > cur_np)
+	{
+	  cur_addr = a;
+	  cur_np = np;
+	}
+      }
+    }
   }
 
   return cur_addr ? cur_addr->ip : IPA_NONE;
@@ -1637,71 +1634,66 @@ ospf_hash_find(struct top_graph *f, u32 domain, u32 lsa, u32 rtr, u32 type)
   return e;
 }
 
-
-#ifdef OSPFv2
-
-/* In OSPFv2, sometimes we don't know Router ID when looking for network LSAs.
-   There should be just one, so we find any match. */
-struct top_hash_entry *
-ospf_hash_find_net(struct top_graph *f, u32 domain, u32 id, u32 nif)
-{
-  struct top_hash_entry *e;
-  e = f->hash_table[ospf_top_hash(f, domain, id, 0, LSA_T_NET)];
-
-  while (e && (e->lsa.id != id || e->lsa.type != LSA_T_NET || e->domain != domain))
-    e = e->next;
-
-  return e;
-}
-
-#endif
-
-
-#ifdef OSPFv3
-
-/* In OSPFv3, usually we don't know LSA ID when looking for router
-   LSAs. We return matching LSA with smallest LSA ID. */
+/* In OSPFv2, lsa.id is the same as lsa.rt for router LSA. In OSPFv3, we don't know
+   lsa.id when looking for router LSAs. We return matching LSA with smallest lsa.id. */
 struct top_hash_entry *
 ospf_hash_find_rt(struct top_graph *f, u32 domain, u32 rtr)
 {
   struct top_hash_entry *rv = NULL;
   struct top_hash_entry *e;
-  e = f->hash_table[ospf_top_hash(f, domain, 0, rtr, LSA_T_RT)];
-  
+  /* We can put rtr for lsa.id to hash fn, it is ignored in OSPFv3 */
+  e = f->hash_table[ospf_top_hash(f, domain, rtr, rtr, LSA_T_RT)];
+
   while (e)
+  {
+    if (e->lsa.rt == rtr && e->lsa_type == LSA_T_RT && e->domain == domain)
     {
-      if (e->lsa.rt == rtr && e->lsa.type == LSA_T_RT && e->domain == domain)
-	if (!rv || e->lsa.id < rv->lsa.id)
-	  rv = e;
-      e = e->next;
+      if (f->ospf2 && (e->lsa.id == rtr))
+	return e;
+      if (!f->ospf2 && (!rv || e->lsa.id < rv->lsa.id))
+	rv = e;
     }
+    e = e->next;
+  }
 
   return rv;
 }
 
 static inline struct top_hash_entry *
-find_matching_rt(struct top_hash_entry *e, u32 domain, u32 rtr)
+find_matching_rt3(struct top_hash_entry *e, u32 domain, u32 rtr)
 {
-  while (e && (e->lsa.rt != rtr || e->lsa.type != LSA_T_RT || e->domain != domain))
+  while (e && (e->lsa.rt != rtr || e->lsa_type != LSA_T_RT || e->domain != domain))
     e = e->next;
   return e;
 }
 
 struct top_hash_entry *
-ospf_hash_find_rt_first(struct top_graph *f, u32 domain, u32 rtr)
+ospf_hash_find_rt3_first(struct top_graph *f, u32 domain, u32 rtr)
 {
   struct top_hash_entry *e;
   e = f->hash_table[ospf_top_hash(f, domain, 0, rtr, LSA_T_RT)];
-  return find_matching_rt(e, domain, rtr);
+  return find_matching_rt3(e, domain, rtr);
 }
 
 struct top_hash_entry *
-ospf_hash_find_rt_next(struct top_hash_entry *e)
+ospf_hash_find_rt3_next(struct top_hash_entry *e)
 {
-  return find_matching_rt(e->next, e->domain, e->lsa.rt);
+  return find_matching_rt3(e->next, e->domain, e->lsa.rt);
 }
 
-#endif
+/* In OSPFv2, we don't know Router ID when looking for network LSAs.
+   There should be just one, so we find any match. */
+struct top_hash_entry *
+ospf_hash_find_net2(struct top_graph *f, u32 domain, u32 id)
+{
+  struct top_hash_entry *e;
+  e = f->hash_table[ospf_top_hash(f, domain, id, 0, LSA_T_NET)];
+
+  while (e && (e->lsa.id != id || e->lsa_type != LSA_T_NET || e->domain != domain))
+    e = e->next;
+
+  return e;
+}
 
 
 struct top_hash_entry *

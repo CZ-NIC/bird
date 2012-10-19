@@ -292,6 +292,7 @@ ospf_dump(struct proto *p)
 static struct proto *
 ospf_init(struct proto_config *c)
 {
+  struct ospf_config *oc = (struct ospf_config *) c;  
   struct proto *p = proto_new(c, sizeof(struct proto_ospf));
 
   p->make_tmp_attrs = ospf_make_tmp_attrs;
@@ -301,7 +302,7 @@ ospf_init(struct proto_config *c)
   p->accept_ra_types = RA_OPTIMAL;
   p->rt_notify = ospf_rt_notify;
   p->if_notify = ospf_if_notify;
-  p->ifa_notify = ospf_ifa_notify;
+  p->ifa_notify = oc->ospf2 ? ospf_ifa_notify2 : ospf_ifa_notify3;
   p->rte_better = ospf_rte_better;
   p->rte_same = ospf_rte_same;
 
@@ -915,14 +916,12 @@ ospf_sh_iface(struct proto *p, char *iff)
  * values
  */
 
-#ifdef OSPFv3
-
 static struct ospf_lsa_header *
 fake_lsa_from_prefix_lsa(struct ospf_lsa_header *dst, struct ospf_lsa_header *src,
 			 struct ospf_lsa_prefix *px)
 {
   dst->age = src->age;
-  dst->type = px->ref_type;
+  dst->type_raw = px->ref_type;
   dst->id = px->ref_id;
   dst->rt = px->ref_rt;
   dst->sn = src->sn;
@@ -930,9 +929,8 @@ fake_lsa_from_prefix_lsa(struct ospf_lsa_header *dst, struct ospf_lsa_header *sr
   return dst;
 }
 
-#endif
 
-static int lsa_compare_ospf3; // XXXX fixme
+static int lsa_compare_ospf3;
 
 static int
 lsa_compare_for_state(const void *p1, const void *p2)
@@ -944,27 +942,25 @@ lsa_compare_for_state(const void *p1, const void *p2)
   struct ospf_lsa_header lsatmp1, lsatmp2;
   u16 lsa1_type = he1->lsa_type;
   u16 lsa2_type = he2->lsa_type;
-  int px1 = 0;
-  int px2 = 0;
 
   if (he1->domain != he2->domain)
     return he1->domain - he2->domain;
 
-  if (lsa_compare_ospf3)
+
+  /* px1 or px2 assumes OSPFv3 */
+  int px1 = (lsa1_type == LSA_T_PREFIX);
+  int px2 = (lsa2_type == LSA_T_PREFIX);
+
+  if (px1)
   {
-    px1 = (lsa1_type == LSA_T_PREFIX);
-    px2 = (lsa2_type == LSA_T_PREFIX);
-    xxxx();
+    lsa1 = fake_lsa_from_prefix_lsa(&lsatmp1, lsa1, he1->lsa_body);
+    lsa1_type = lsa1->type_raw;	/* FIXME: handle unknown ref_type */
+  }
 
-    if (px1)
-    {
-      lsa1 = fake_lsa_from_prefix_lsa(&lsatmp1, lsa1, he1->lsa_body);
-      lsa1_type = lsa1->type;
-      px1 = 1;
-    }
-
-    if (px2)
-      lsa2 = fake_lsa_from_prefix_lsa(&lsatmp2, lsa2, he2->lsa_body);
+  if (px2)
+  {
+    lsa2 = fake_lsa_from_prefix_lsa(&lsatmp2, lsa2, he2->lsa_body);
+    lsa2_type = lsa2->type_raw;
   }
 
 
@@ -976,11 +972,9 @@ lsa_compare_for_state(const void *p1, const void *p2)
 
   if (nt1)
   {
-#ifdef OSPFv3
     /* In OSPFv3, networks are named based on ID of DR */
-    if (lsa1->rt != lsa2->rt)
+    if (lsa_compare_ospf3 && (lsa1->rt != lsa2->rt))
       return lsa1->rt - lsa2->rt;
-#endif
 
     /* For OSPFv2, this is IP of the network,
        for OSPFv3, this is interface ID */
@@ -1062,7 +1056,7 @@ show_lsa_router(struct proto_ospf *po, struct top_hash_entry *he, int verbose)
       if (ospf_is_v2(po))
       {
 	/* In OSPFv2, we try to find network-LSA to get prefix/pxlen */
-	struct top_hash_entry *net_he = ospf_hash_find_net(po->gr, he->domain, rtl.id, 0);
+	struct top_hash_entry *net_he = ospf_hash_find_net2(po->gr, he->domain, rtl.id);
 
 	if (net_he)
 	{
@@ -1163,7 +1157,7 @@ show_lsa_external(struct top_hash_entry *he, int ospf2)
 }
 
 static inline void
-show_lsa_prefix(struct top_hash_entry *he, struct ospf_lsa_header *cnode)
+show_lsa_prefix(struct top_hash_entry *he, struct top_hash_entry *cnode)
 {
   struct ospf_lsa_prefix *px = he->lsa_body;
   ip_addr pxa;
@@ -1174,13 +1168,13 @@ show_lsa_prefix(struct top_hash_entry *he, struct ospf_lsa_header *cnode)
   int i;
 
   /* We check whether given prefix-LSA is related to the current node */
-  if ((px->ref_type != cnode->type_raw) || (px->ref_rt != cnode->rt))
+  if ((px->ref_type != cnode->lsa.type_raw) || (px->ref_rt != cnode->lsa.rt))
     return;
 
   if ((px->ref_type == LSA_T_RT) && (px->ref_id != 0))
     return;
 
-  if ((px->ref_type == LSA_T_NET) && (px->ref_id != cnode->id))
+  if ((px->ref_type == LSA_T_NET) && (px->ref_id != cnode->lsa.id))
     return;
 
   buf = px->rest;
@@ -1199,7 +1193,6 @@ void
 ospf_sh_state(struct proto *p, int verbose, int reachable)
 {
   struct proto_ospf *po = (struct proto_ospf *) p;
-  struct ospf_lsa_header *cnode = NULL;
   int ospf2 = ospf_is_v2(po);
   int num = po->gr->hash_entries;
   unsigned int i, ix, j1, j2, jx;
@@ -1218,6 +1211,7 @@ ospf_sh_state(struct proto *p, int verbose, int reachable)
   struct top_hash_entry *hea[num];
   struct top_hash_entry *hex[verbose ? num : 0];
   struct top_hash_entry *he;
+  struct top_hash_entry *cnode = NULL;
 
   j1 = j2 = jx = 0;
   WALK_SLIST(he, po->lsal)
@@ -1257,6 +1251,7 @@ ospf_sh_state(struct proto *p, int verbose, int reachable)
   if ((j1 + j2) != num)
     die("Fatal mismatch");
 
+  lsa_compare_ospf3 = !ospf2;
   qsort(hea, j1, sizeof(struct top_hash_entry *), lsa_compare_for_state);
   qsort(hex, jx, sizeof(struct top_hash_entry *), ext_compare_for_state);
 
@@ -1290,7 +1285,7 @@ ospf_sh_state(struct proto *p, int verbose, int reachable)
       if (((he->lsa_type == LSA_T_RT) || (he->lsa_type == LSA_T_NET))
 	  && ((he->color == INSPF) || !reachable))
       {
-	cnode = &(he->lsa);
+	cnode = he;
 
 	if (he->domain != last_area)
 	{
@@ -1304,12 +1299,12 @@ ospf_sh_state(struct proto *p, int verbose, int reachable)
 	continue;
     }
 
-    ASSERT(cnode && (he->domain == last_area) && (he->lsa.rt == cnode->rt));
+    ASSERT(cnode && (he->domain == last_area) && (he->lsa.rt == cnode->lsa.rt));
 
     switch (he->lsa_type)
     {
       case LSA_T_RT:
-	if (he->lsa.id == cnode->id)
+	if (he->lsa.id == cnode->lsa.id)
 	  show_lsa_router(po, he, verbose);
 	break;
 
@@ -1318,12 +1313,12 @@ ospf_sh_state(struct proto *p, int verbose, int reachable)
 	break;
 
       case LSA_T_SUM_NET:
-	if (cnode->type == LSA_T_RT)
+	if (cnode->lsa_type == LSA_T_RT)
 	  show_lsa_sum_net(he, ospf2);
 	break;
 
       case LSA_T_SUM_RT:
-	if (cnode->type == LSA_T_RT)
+	if (cnode->lsa_type == LSA_T_RT)
 	  show_lsa_sum_rt(he, ospf2);
 	break;
 
@@ -1340,13 +1335,13 @@ ospf_sh_state(struct proto *p, int verbose, int reachable)
     /* In these cases, we close the current node */
     if ((i+1 == j1)
 	|| (hea[i+1]->domain != last_area)
-	|| (hea[i+1]->lsa.rt != cnode->rt)
+	|| (hea[i+1]->lsa.rt != cnode->lsa.rt)
 	|| (hea[i+1]->lsa_type == LSA_T_NET))
     {
-      while ((ix < jx) && (hex[ix]->lsa.rt < cnode->rt))
+      while ((ix < jx) && (hex[ix]->lsa.rt < cnode->lsa.rt))
 	ix++;
 
-      while ((ix < jx) && (hex[ix]->lsa.rt == cnode->rt))
+      while ((ix < jx) && (hex[ix]->lsa.rt == cnode->lsa.rt))
 	show_lsa_external(hex[ix++], ospf2);
 
       cnode = NULL;
@@ -1426,6 +1421,7 @@ ospf_sh_lsadb(struct lsadb_show_data *ld)
   unsigned int i, j;
   int last_dscope = -1;
   u32 last_domain = 0;
+  u16 type_mask = ospf_is_v2(po) ?  0x00ff : 0xffff;	/* see lsa_get_type() */
 
   if (p->proto_state != PS_UP)
   {
@@ -1452,17 +1448,18 @@ ospf_sh_lsadb(struct lsadb_show_data *ld)
   for (i = 0; i < j; i++)
   {
     struct ospf_lsa_header *lsa = &(hea[i]->lsa);
-    int dscope = LSA_SCOPE(hea[i]->lsa_type);
-
+    u16 lsa_type = lsa->type_raw & type_mask;
+    u16 dscope = LSA_SCOPE(hea[i]->lsa_type);
+    
+    /* Hack: 1 is used for LSA_SCOPE_LINK, fixed by & 0xf000 */
     if (ld->scope && (dscope != (ld->scope & 0xf000)))
       continue;
 
     if ((ld->scope == LSA_SCOPE_AREA) && (hea[i]->domain != ld->area))
       continue;
 
-    /* Ignore high nibble */
-    // XXXX check
-    if (ld->type && ((lsa->type & 0x0fff) != (ld->type & 0x0fff)))
+    /* For user convenience ignore high nibble */
+    if (ld->type && ((lsa_type & 0x0fff) != (ld->type & 0x0fff)))
       continue;
 
     if (ld->lsid && (lsa->id != ld->lsid))
@@ -1499,24 +1496,24 @@ ospf_sh_lsadb(struct lsadb_show_data *ld)
     }
 
     cli_msg(-1017," %04x  %-15R %-15R %5u  %08x    %04x",
-	    lsa->type, lsa->id, lsa->rt, lsa->age, lsa->sn, lsa->checksum);
+	    lsa_type, lsa->id, lsa->rt, lsa->age, lsa->sn, lsa->checksum);
   }
   cli_msg(0, "");
 }
 
 
 struct protocol proto_ospf = {
-  name:			"OSPF",
-  template:		"ospf%d",
-  attr_class:		EAP_OSPF,
-  preference:		DEF_PREF_OSPF,
-  init:			ospf_init,
-  dump:			ospf_dump,
-  start:		ospf_start,
-  shutdown:		ospf_shutdown,
-  reconfigure:		ospf_reconfigure,
-  get_status:		ospf_get_status,
-  get_attr:		ospf_get_attr,
-  get_route_info:	ospf_get_route_info
-  // show_proto_info:	ospf_sh
+  .name =		"OSPF",
+  .template =		"ospf%d",
+  .attr_class =		EAP_OSPF,
+  .preference =		DEF_PREF_OSPF,
+  .init =		ospf_init,
+  .dump =		ospf_dump,
+  .start =		ospf_start,
+  .shutdown =		ospf_shutdown,
+  .reconfigure =	ospf_reconfigure,
+  .get_status =		ospf_get_status,
+  .get_attr =		ospf_get_attr,
+  .get_route_info =	ospf_get_route_info
 };
+

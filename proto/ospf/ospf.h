@@ -2,6 +2,8 @@
  *	BIRD -- OSPF
  *
  *	(c) 1999--2005 Ondrej Filip <feela@network.cz>
+ *	(c) 2009--2012 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2009--2012 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -53,13 +55,6 @@ do { if ((po->proto.debug & D_PACKETS) || OSPF_FORCE_DEBUG) \
 
 #define OSPF_PROTO 89
 
-
-// XXXX
-#define OSPFv3 1
-#define OSPF_VERSION 3
-
-
-
 #define LSREFRESHTIME 1800	/* 30 minutes */
 #define MINLSINTERVAL 5
 #define MINLSARRIVAL 1
@@ -75,9 +70,10 @@ struct ospf_config
 {
   struct proto_config c;
   unsigned tick;
+  byte ospf2;
   byte rfc1583;
   byte abr;
-  int ecmp;
+  byte ecmp;
   list area_list;		/* list of struct ospf_area_config */
   list vlink_list;		/* list of struct ospf_iface_patt */
 };
@@ -314,16 +310,6 @@ static inline void ospf_pkt_set_instance_id(struct ospf_packet *pkt, u16 val)
 { pkt->vdep = htons(val << 8); }
 
 
-// XXXX
-/*
-#define LSA_T_RT	1
-#define LSA_T_NET	2
-#define LSA_T_SUM_NET	3
-#define LSA_T_SUM_RT	4
-#define LSA_T_EXT	5
-#define LSA_T_NSSA	7
-*/
-
 #define LSA_T_RT	0x2001
 #define LSA_T_NET	0x2002
 #define LSA_T_SUM_NET	0x2003
@@ -524,6 +510,12 @@ lsa_net_count(struct ospf_lsa_header *lsa)
     / sizeof(u32);
 }
 
+/* In ospf_area->rtr we store paths to routers, but we use RID (and not IP address)
+   as index, so we need to encapsulate RID to IP address */
+
+#define ipa_from_rid(x) ipa_from_u32(x)
+#define ipa_to_rid(x) ipa_to_u32(x)
+
 
 #define IPV6_PREFIX_SPACE(x) ((((x) + 63) / 32) * 4)
 #define IPV6_PREFIX_WORDS(x) (((x) + 63) / 32)
@@ -723,6 +715,7 @@ struct proto_ospf
   list area_list;
   int areano;			/* Number of area I belong to */
   struct fib rtf;		/* Routing table */
+  byte ospf2;			/* OSPF v2 or v3 */
   byte rfc1583;			/* RFC1583 compatibility */
   byte ebit;			/* Did I originate any ext lsa? */
   byte ecmp;			/* Maximal number of nexthops in ECMP route, or 0 */
@@ -776,24 +769,30 @@ void schedule_rtcalc(struct proto_ospf *po);
 void schedule_net_lsa(struct ospf_iface *ifa);
 
 static inline int ospf_is_v2(struct proto_ospf *po)
-{ return 0; } // XXXX fixme
+{ return po->ospf2; }
+
 static inline int ospf_is_v3(struct proto_ospf *po)
-{ return 1; } // XXXX fixme
+{ return ! po->ospf2; }
+
+static inline int ospf_get_version(struct proto_ospf *po)
+{ return ospf_is_v2(po) ? 2 : 3; }
 
 static inline void lsa_fix_options(struct proto_ospf *po, struct ospf_lsa_header *lsa, u8 options)
 { if (ospf_is_v2(po)) lsa_set_options(lsa, options); }
 
 struct ospf_area *ospf_find_area(struct proto_ospf *po, u32 aid);
+
 static inline struct ospf_area *ospf_main_area(struct proto_ospf *po)
 { return (po->areano == 1) ? HEAD(po->area_list) : po->backbone; }
 
 static inline int oa_is_stub(struct ospf_area *oa)
 { return (oa->options & (OPT_E | OPT_N)) == 0; }
+
 static inline int oa_is_ext(struct ospf_area *oa)
 { return oa->options & OPT_E; }
+
 static inline int oa_is_nssa(struct ospf_area *oa)
 { return oa->options & OPT_N; }
-
 
 
 void schedule_link_lsa(struct ospf_iface *ifa); // XXXX caller ?? 

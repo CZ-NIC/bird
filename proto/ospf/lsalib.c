@@ -394,7 +394,7 @@ lsa_walk_rt3(struct ospf_lsa_rt_walk *rt)
 {
   while (rt->buf >= rt->bufend)
   {
-    rt->en = ospf_hash_find_rt_next(rt->en);
+    rt->en = ospf_hash_find_rt3_next(rt->en);
     if (!rt->en)
       return 0;
 
@@ -423,7 +423,7 @@ lsa_walk_rt_init(struct proto_ospf *po, struct top_hash_entry *act, struct ospf_
   if (rt->ospf2)
     rt->en = act;
   else
-    rt->en = ospf_hash_find_rt_first(po->gr, act->domain, act->lsa.rt);
+    rt->en = ospf_hash_find_rt3_first(po->gr, act->domain, act->lsa.rt);
 
   rt->buf = rt->en->lsa_body;
   rt->bufend = rt->buf + rt->en->lsa.length - sizeof(struct ospf_lsa_header);
@@ -779,7 +779,7 @@ lsa_validate(struct ospf_lsa_header *lsa, u32 lsa_type, int ospf2, void *body)
 struct top_hash_entry *
 lsa_install_new(struct proto_ospf *po, struct ospf_lsa_header *lsa, u32 domain, void *body)
 {
-  /* LSA can be temporarrily, but body must be mb_allocated. */
+  /* LSA can be temporary, but body must be mb_allocated. */
   int change = 0;
   struct top_hash_entry *en;
 
@@ -790,13 +790,11 @@ lsa_install_new(struct proto_ospf *po, struct ospf_lsa_header *lsa, u32 domain, 
   }
   else
   {
-    if ((en->lsa.length != lsa->length)
-#ifdef OSPFv2       
-	|| (en->lsa.options != lsa->options)
-#endif
-	|| (en->lsa.age == LSA_MAXAGE)
-	|| (lsa->age == LSA_MAXAGE)
-	|| memcmp(en->lsa_body, body, lsa->length - sizeof(struct ospf_lsa_header)))
+    if ((en->lsa.length != lsa->length) ||
+	(en->lsa.type_raw != lsa->type_raw) ||	/* check for OSPFv2 options */
+	(en->lsa.age == LSA_MAXAGE) ||
+	(lsa->age == LSA_MAXAGE) ||
+	memcmp(en->lsa_body, body, lsa->length - sizeof(struct ospf_lsa_header)))
       change = 1;
 
     s_rem_node(SNODE en);

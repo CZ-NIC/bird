@@ -21,9 +21,7 @@ void ospf_send_to_agt(struct ospf_iface *ifa, u8 state);
 void ospf_send_to_bdr(struct ospf_iface *ifa);
 
 static inline void ospf_send_to_all(struct ospf_iface *ifa)
-{
-  ospf_send_to(ifa, ifa->all_routers);
-}
+{ ospf_send_to(ifa, ifa->all_routers); }
 
 static inline void ospf_send_to_des(struct ospf_iface *ifa)
 {
@@ -33,14 +31,22 @@ static inline void ospf_send_to_des(struct ospf_iface *ifa)
     ospf_send_to_bdr(ifa);
 }
 
-static inline void * ospf_tx_buffer(struct ospf_iface *ifa) { return ifa->sk->tbuf; }
+static inline unsigned ospf_pkt_hdrlen(struct proto_ospf *po)
+{
+  return ospf_is_v2(po) ?
+    (sizeof(struct ospf_packet) + sizeof(union ospf_auth)) :
+    sizeof(struct ospf_packet);
+}
 
-static inline unsigned
-ospf_pkt_bufsize(struct ospf_iface *ifa)
+
+static inline void * ospf_tx_buffer(struct ospf_iface *ifa)
+{ return ifa->sk->tbuf; }
+
+static inline unsigned ospf_pkt_bufsize(struct ospf_iface *ifa)
 {
   /* Reserve buffer space for authentication footer */
-  return ifa->sk->tbsize - 
-    (ifa->autype == OSPF_AUTH_CRYPT) ? OSPF_AUTH_CRYPT_SIZE : 0;
+  unsigned res_size = (ifa->autype == OSPF_AUTH_CRYPT) ? OSPF_AUTH_CRYPT_SIZE : 0;
+  return ifa->sk->tbsize - res_size;
 }
 
 

@@ -505,7 +505,7 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   else if (ospf_is_v3(po))
     OSPF_TRACE(D_EVENTS, "Adding interface %s (IID %d) to area %R",
 	       iface->name, ip->instance_id, oa->areaid);
-  else if (ifa->addr->flags & IA_PEER)
+  else if (addr->flags & IA_PEER)
     OSPF_TRACE(D_EVENTS, "Adding interface %s (peer %I) to area %R",
 	       iface->name, addr->opposite, oa->areaid);
   else
@@ -801,16 +801,60 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 }
 
 
-#ifdef OSPFv2
+/*
+ * Matching ifaces and addresses to OSPF ifaces/patterns
+ * ospfX_ifa_notify(), ospfX_ifaces_reconfigure()
+ *
+ * This is significantly different in OSPFv2 and OSPFv3.
+ * In OSPFv2, OSPF ifaces are created for each IP prefix (struct ifa)
+ * In OSPFv3, OSPF ifaces are created based on real iface (struct iface),
+ * but there may be several ones with different instance_id
+ */
 
 static inline struct ospf_iface_patt *
-ospf_iface_patt_find(struct ospf_area_config *ac, struct ifa *a)
+ospf_iface_patt_find2(struct ospf_area_config *ac, struct ifa *a)
 {
   return (struct ospf_iface_patt *) iface_patt_find(&ac->patt_list, a->iface, a);
 }
 
+struct ospf_iface_patt *
+ospf_iface_patt_find3(struct ospf_area_config *ac, struct iface *iface, int iid)
+{
+  struct ospf_iface_patt *pt, *res = NULL;
+
+  WALK_LIST(pt, ac->patt_list)
+    if ((pt->instance_id >= iid) && (iface_patt_match(&pt->i, iface, NULL)) &&
+	(!res || (pt->instance_id < res->instance_id)))
+      res = pt;
+
+  return res;
+}
+
+static struct ospf_iface *
+ospf_iface_find_by_key2(struct ospf_area *oa, struct ifa *a)
+{
+  struct ospf_iface *ifa;
+  WALK_LIST(ifa, oa->po->iface_list)
+    if ((ifa->addr == a) && (ifa->oa == oa) && (ifa->type != OSPF_IT_VLINK))
+      return ifa;
+
+  return NULL;
+}
+
+static struct ospf_iface *
+ospf_iface_find_by_key3(struct ospf_area *oa, struct ifa *a, int iid)
+{
+  struct ospf_iface *ifa;
+  WALK_LIST(ifa, oa->po->iface_list)
+    if ((ifa->addr == a) && (ifa->oa == oa) && (ifa->instance_id == iid) && (ifa->type != OSPF_IT_VLINK))
+      return ifa;
+
+  return NULL;
+}
+
+
 void
-ospf_ifa_notify(struct proto *p, unsigned flags, struct ifa *a)
+ospf_ifa_notify2(struct proto *p, unsigned flags, struct ifa *a)
 {
   struct proto_ospf *po = (struct proto_ospf *) p;
 
@@ -828,7 +872,7 @@ ospf_ifa_notify(struct proto *p, unsigned flags, struct ifa *a)
     WALK_LIST(oa, po->area_list)
     {
       struct ospf_iface_patt *ip;
-      if (ip = ospf_iface_patt_find(oa->ac, a))
+      if (ip = ospf_iface_patt_find2(oa->ac, a))
       {
 	if (!done)
 	  ospf_iface_new(oa, a, ip);
@@ -852,70 +896,8 @@ ospf_ifa_notify(struct proto *p, unsigned flags, struct ifa *a)
   }
 }
 
-static struct ospf_iface *
-ospf_iface_find_by_key(struct ospf_area *oa, struct ifa *a)
-{
-  struct ospf_iface *ifa;
-  WALK_LIST(ifa, oa->po->iface_list)
-    if ((ifa->addr == a) && (ifa->oa == oa) && (ifa->type != OSPF_IT_VLINK))
-      return ifa;
-
-  return NULL;
-}
-
 void
-ospf_ifaces_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
-{
-  struct ospf_iface_patt *ip;
-  struct iface *iface;
-  struct ifa *a;
-
-  WALK_LIST(iface, iface_list)
-    WALK_LIST(a, iface->addrs)
-    {
-      if (a->flags & IA_SECONDARY)
-	continue;
-
-      if (a->scope <= SCOPE_LINK)
-	continue;
-
-      if (ip = ospf_iface_patt_find(oa->ac, a))
-      {
-	/* Main inner loop */
-	struct ospf_iface *ifa = ospf_iface_find_by_key(oa, a);
-	if (ifa)
-	{
-	  if (ospf_iface_reconfigure(ifa, ip))
-	    continue;
-
-	  /* Hard restart */
-	  ospf_iface_shutdown(ifa);
-	  ospf_iface_remove(ifa);
-	}
-	
-	ospf_iface_new(oa, a, ip);
-      }
-    }
-}
-
-
-#else /* OSPFv3 */
-
-struct ospf_iface_patt *
-ospf_iface_patt_find(struct ospf_area_config *ac, struct iface *iface, int iid)
-{
-  struct ospf_iface_patt *pt, *res = NULL;
-
-  WALK_LIST(pt, ac->patt_list)
-    if ((pt->instance_id >= iid) && (iface_patt_match(&pt->i, iface, NULL)) &&
-	(!res || (pt->instance_id < res->instance_id)))
-      res = pt;
-
-  return res;
-}
-
-void
-ospf_ifa_notify(struct proto *p, unsigned flags, struct ifa *a)
+ospf_ifa_notify3(struct proto *p, unsigned flags, struct ifa *a)
 {
   struct proto_ospf *po = (struct proto_ospf *) p;
 
@@ -939,7 +921,7 @@ ospf_ifa_notify(struct proto *p, unsigned flags, struct ifa *a)
 	int iid = 0;
 
 	struct ospf_iface_patt *ip;
-	while (ip = ospf_iface_patt_find(oa->ac, a->iface, iid))
+	while (ip = ospf_iface_patt_find3(oa->ac, a->iface, iid))
 	{
 	  ospf_iface_new(oa, a, ip);
 	  if (ip->instance_id == 0)
@@ -980,19 +962,44 @@ ospf_ifa_notify(struct proto *p, unsigned flags, struct ifa *a)
   }
 }
 
-static struct ospf_iface *
-ospf_iface_find_by_key(struct ospf_area *oa, struct ifa *a, int iid)
-{
-  struct ospf_iface *ifa;
-  WALK_LIST(ifa, oa->po->iface_list)
-    if ((ifa->addr == a) && (ifa->oa == oa) && (ifa->instance_id == iid) && (ifa->type != OSPF_IT_VLINK))
-      return ifa;
 
-  return NULL;
+static void
+ospf_ifaces_reconfigure2(struct ospf_area *oa, struct ospf_area_config *nac)
+{
+  struct ospf_iface_patt *ip;
+  struct iface *iface;
+  struct ifa *a;
+
+  WALK_LIST(iface, iface_list)
+    WALK_LIST(a, iface->addrs)
+    {
+      if (a->flags & IA_SECONDARY)
+	continue;
+
+      if (a->scope <= SCOPE_LINK)
+	continue;
+
+      if (ip = ospf_iface_patt_find2(oa->ac, a))
+      {
+	/* Main inner loop */
+	struct ospf_iface *ifa = ospf_iface_find_by_key2(oa, a);
+	if (ifa)
+	{
+	  if (ospf_iface_reconfigure(ifa, ip))
+	    continue;
+
+	  /* Hard restart */
+	  ospf_iface_shutdown(ifa);
+	  ospf_iface_remove(ifa);
+	}
+	
+	ospf_iface_new(oa, a, ip);
+      }
+    }
 }
 
-void
-ospf_ifaces_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
+static void
+ospf_ifaces_reconfigure3(struct ospf_area *oa, struct ospf_area_config *nac)
 {
   struct ospf_iface_patt *ip;
   struct iface *iface;
@@ -1008,12 +1015,12 @@ ospf_ifaces_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
 	continue;
 
       int iid = 0;
-      while (ip = ospf_iface_patt_find(nac, iface, iid))
+      while (ip = ospf_iface_patt_find3(nac, iface, iid))
       {
 	iid = ip->instance_id + 1;
 
 	/* Main inner loop */
-	struct ospf_iface *ifa = ospf_iface_find_by_key(oa, a, ip->instance_id);
+	struct ospf_iface *ifa = ospf_iface_find_by_key3(oa, a, ip->instance_id);
 	if (ifa)
 	{
 	  if (ospf_iface_reconfigure(ifa, ip))
@@ -1029,7 +1036,15 @@ ospf_ifaces_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
     }
 }
 
-#endif
+void
+ospf_ifaces_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
+{
+  if (ospf_is_v2(oa->po))
+    ospf_ifaces_reconfigure2(oa, nac);
+  else
+    ospf_ifaces_reconfigure3(oa, nac);
+}
+
 
 static void
 ospf_iface_change_mtu(struct proto_ospf *po, struct ospf_iface *ifa)

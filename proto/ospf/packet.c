@@ -2,6 +2,8 @@
  *	BIRD -- OSPF
  *
  *	(c) 1999--2005 Ondrej Filip <feela@network.cz>
+ *	(c) 2009--2012 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2009--2012 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -18,7 +20,7 @@ ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type)
 
   pkt = (struct ospf_packet *) buf;
 
-  pkt->version = OSPF_VERSION;
+  pkt->version = ospf_get_version(po);
 
   pkt->type = h_type;
 
@@ -334,7 +336,7 @@ ospf_rx_hook(sock *sk, int size)
     return 1;
   }
 
-  if (pkt->version != OSPF_VERSION)
+  if (pkt->version != ospf_get_version(po))
   {
     log(L_ERR "%s%I - version %u", mesg, sk->faddr, pkt->version);
     return 1;
