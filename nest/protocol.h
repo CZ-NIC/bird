@@ -223,8 +223,9 @@ struct proto_spec {
 #define PDC_CF_RESTART		0x03	/* Restart due to reconfiguration */
 #define PDC_CMD_DISABLE		0x11	/* Result of disable command */
 #define PDC_CMD_RESTART		0x12	/* Result of restart command */
+#define PDC_CMD_SHUTDOWN	0x13	/* Result of global shutdown */
 #define PDC_IN_LIMIT_HIT	0x21	/* Route import limit reached */
-#define PDC_OUT_LIMIT_HIT	0x22	/* Route export limit reached - not implemented */
+#define PDC_OUT_LIMIT_HIT	0x22	/* Route export limit reached */
 
 
 void *proto_new(struct proto_config *, unsigned size);

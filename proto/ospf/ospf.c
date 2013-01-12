@@ -566,7 +566,7 @@ ospf_rt_notify(struct proto *p, rtable *tbl UNUSED, net * n, rte * new, rte * ol
     if (! (fn->flags & OSPF_RT_EXPORT))
       return;
 
-    flush_ext_lsa(oa, fn, 1);
+    flush_ext_lsa(oa, fn, 1, oa_is_nssa(oa));
 
     /* Old external route might blocked some NSSA translation */
     if (po->areano > 1)

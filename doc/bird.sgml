@@ -477,7 +477,7 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	problems in details of its behavior -- the number of exported
 	routes can temporarily exceed the limit without triggering it
 	during protocol reload, exported routes counter ignores route
-	blocking and block action also blocks route updates of alread
+	blocking and block action also blocks route updates of already
 	accepted routes -- and these details will probably change in
 	the future. Default: <cf/none/.
 

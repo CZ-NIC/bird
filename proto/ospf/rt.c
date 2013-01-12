@@ -975,7 +975,7 @@ check_nssa_lsa(struct proto_ospf *po, ort *nf)
     originate_ext_lsa(po->backbone, fn, EXT_NSSA, rt_metric, rt_fwaddr, rt_tag, 0);
 
   else if (fn->flags & OSPF_RT_NSSA)
-    flush_ext_lsa(po->backbone, fn, 1);
+    flush_ext_lsa(po->backbone, fn, 1, 0);
 }
 
 /* RFC 2328 16.7. p2 - find new/lost vlink endpoints */
@@ -1096,8 +1096,7 @@ ospf_rt_abr1(struct proto_ospf *po)
     if (oa_is_nssa(oa) && oa->ac->default_nssa)
       originate_ext_lsa(oa, &default_nf->fn, 0, oa->ac->default_cost, IPA_NONE, 0, 0);
     else
-      flush_ext_lsa(oa, &default_nf->fn, 0);
-
+      flush_ext_lsa(oa, &default_nf->fn, 0, 1);
 
     /* RFC 2328 16.4. (3) - precompute preferred ASBR entries */
     if (oa_is_ext(oa))

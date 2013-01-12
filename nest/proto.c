@@ -512,20 +512,22 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
 	      else if (!p->disabled && nc->disabled)
 		log(L_INFO "Disabling protocol %s", p->name);
 
-	      PD(p, "Restarting");
 	      p->down_code = nc->disabled ? PDC_CF_DISABLE : PDC_CF_RESTART;
 	      p->cf_new = nc;
 	    }
-	  else
+	  else if (!shutting_down)
 	    {
-	      if (!shutting_down)
-		log(L_INFO "Removing protocol %s", p->name);
-	      PD(p, "Unconfigured");
+	      log(L_INFO "Removing protocol %s", p->name);
 	      p->down_code = PDC_CF_REMOVE;
 	      p->cf_new = NULL;
 	    }
-	  p->reconfiguring = 1;
+	  else /* global shutdown */
+	    {
+	      p->down_code = PDC_CMD_SHUTDOWN;
+	      p->cf_new = NULL;
+	    }
 
+	  p->reconfiguring = 1;
 	  config_add_obstacle(old);
 	  proto_rethink_goal(p);
 	}

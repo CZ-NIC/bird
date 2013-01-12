@@ -70,7 +70,7 @@ void originate_sum_net_lsa(struct ospf_area *oa, struct fib_node *fn, int metric
 void originate_sum_rt_lsa(struct ospf_area *oa, struct fib_node *fn, int metric, u32 options UNUSED);
 void flush_sum_lsa(struct ospf_area *oa, struct fib_node *fn, int type);
 void originate_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src, u32 metric, ip_addr fwaddr, u32 tag, int pbit);
-void flush_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src);
+void flush_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src, int nssa);
 
 struct top_hash_entry * ospf_hash_find_rt(struct top_graph *f, u32 domain, u32 rtr);
 struct top_hash_entry * ospf_hash_find_rt3_first(struct top_graph *f, u32 domain, u32 rtr);

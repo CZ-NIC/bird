@@ -1111,12 +1111,12 @@ originate_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src,
 }
 
 void
-flush_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src)
+flush_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src, int nssa)
 {
   struct proto_ospf *po = oa->po;
   struct proto *p = &po->proto;
   struct top_hash_entry *en;
-  int nssa = oa_is_nssa(oa);
+
   u32 dom = nssa ? oa->areaid : 0;
   u32 type = nssa ? LSA_T_NSSA : LSA_T_EXT;
   u32 lsaid = fibnode_to_lsaid(po, fn);

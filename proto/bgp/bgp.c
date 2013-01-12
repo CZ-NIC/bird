@@ -870,6 +870,7 @@ bgp_shutdown(struct proto *P)
       break;
 
     case PDC_CMD_DISABLE:
+    case PDC_CMD_SHUTDOWN:
       subcode = 2; // Errcode 6, 2 - administrative shutdown
       break;
 
