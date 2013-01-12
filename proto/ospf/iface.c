@@ -973,6 +973,10 @@ ospf_ifaces_reconfigure2(struct ospf_area *oa, struct ospf_area_config *nac)
   struct ifa *a;
 
   WALK_LIST(iface, iface_list)
+  {
+    if (! (iface->flags & IF_UP))
+      continue;
+
     WALK_LIST(a, iface->addrs)
     {
       if (a->flags & IA_SECONDARY)
@@ -998,6 +1002,7 @@ ospf_ifaces_reconfigure2(struct ospf_area *oa, struct ospf_area_config *nac)
 	ospf_iface_new(oa, a, ip);
       }
     }
+  }
 }
 
 static void
@@ -1008,6 +1013,10 @@ ospf_ifaces_reconfigure3(struct ospf_area *oa, struct ospf_area_config *nac)
   struct ifa *a;
 
   WALK_LIST(iface, iface_list)
+  {
+    if (! (iface->flags & IF_UP))
+      continue;
+
     WALK_LIST(a, iface->addrs)
     {
       if (a->flags & IA_SECONDARY)
@@ -1036,6 +1045,7 @@ ospf_ifaces_reconfigure3(struct ospf_area *oa, struct ospf_area_config *nac)
 	ospf_iface_new(oa, a, ip);
       }
     }
+  }
 }
 
 void

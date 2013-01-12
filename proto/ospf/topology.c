@@ -262,8 +262,15 @@ originate_rt2_lsa_body(struct ospf_area *oa, u16 *length)
 	WALK_LIST(neigh, ifa->neigh_list)
 	  if (neigh->state == NEIGHBOR_FULL)
 	  {
-	    u32 data = (ifa->addr->flags & IA_PEER) ? ifa->iface_id : ipa_to_u32(ifa->addr->ip);
-	    add_rt2_lsa_link(po, LSART_PTP, neigh->rid, data, ifa->cost);
+	    /*
+	     * ln->data should be ifa->iface_id in case of no/ptp
+	     * address (ifa->addr->flags & IA_PEER) on PTP link (see
+	     * RFC 2328 12.4.1.1.), but the iface ID value has no use,
+	     * while using IP address even in this case is here for
+	     * compatibility with some broken implementations that use
+	     * this address as a next-hop.
+	     */
+	    add_rt2_lsa_link(po, LSART_PTP, neigh->rid, ipa_to_u32(ifa->addr->ip), ifa->cost);
 	    i++;
 	  }
 	break;
@@ -294,7 +301,7 @@ originate_rt2_lsa_body(struct ospf_area *oa, u16 *length)
     /* Now we will originate stub area if there is no primary */
     if (net_lsa ||
 	(ifa->type == OSPF_IT_VLINK) ||
-	(ifa->addr->flags & IA_PEER) ||
+	((ifa->addr->flags & IA_PEER) && ! ifa->cf->stub) ||
 	configured_stubnet(oa, ifa->addr))
       continue;
 

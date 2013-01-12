@@ -459,6 +459,14 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	works in the direction from the routing table to the protocol.
 	Default: <cf/none/.
 
+	<tag>import keep filtered <m/bool/</tag>
+	Usually, if an import filter rejects a route, the route is
+	forgotten. When this option is active, these routes are
+	kept in the routing table, but they are hidden and not
+	propagated to other protocols. But it is possible to show them
+	using <cf/show route filtered/. Note that this option does not
+	work for the pipe protocol. Default: off.
+
 	<tag>import limit <m/number/ [action warn | block | restart | disable]</tag>
 	Specify an import route limit (a maximum number of routes
 	imported from the protocol) and optionally the action to be
@@ -467,8 +475,11 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	protocol. Restart and disable actions shut the protocol down
 	like appropriate commands. Disable is the default action if an
 	action is not explicitly specified. Note that limits are reset
-	during protocol reconfigure, reload or restart.
-	Default: <cf/none/.
+	during protocol reconfigure, reload or restart. Also note that
+	if <cf/import keep filtered/ is active, filtered routes are
+	counted towards the limit and blocked routes are forgotten, as
+	the main purpose of the import limit is to protect routing
+	tables from overflow. Default: <cf/none/.
 
 	<tag>export limit <m/number/ [action warn | block | restart | disable]</tag>
 	Specify an export route limit, works similarly to
@@ -660,6 +671,9 @@ This argument can be omitted if there exists only a single instance.
 
 	<p>You can also select just routes added by a specific protocol.
 	<cf>protocol <m/p/</cf>.
+
+	<p>If BIRD is configured to keep filtered routes (see </cf/import keep filtered/
+	option), you can show them instead of routes by using </cf/filtered/ switch.
 
 	<p>The <cf/stats/ switch requests showing of route statistics (the
 	number of networks, number of routes before and after filtering). If
@@ -1640,6 +1654,15 @@ use cases that use the direct protocol (like abusing eBGP as an IGP
 routing protocol), in most cases it is not needed to have these device
 routes in BIRD routing table and to use the direct protocol.
 
+<p>There is one notable case when you definitely want to use the
+direct protocol -- running BIRD on BSD systems. Having high priority
+device routes for directly connected networks from the direct protocol
+protects kernel device routes from being overwritten or removed by IGP
+routes during some transient network conditions, because a lower
+priority IGP route for the same network is not exported to the kernel
+routing table. This is an issue on BSD systems only, as on Linux
+systems BIRD cannot change non-BIRD route in the kernel routing table.
+
 <p>The only configurable thing about direct is what interfaces it watches:
 
 <p><descrip>
@@ -2460,13 +2483,13 @@ interface definitions, prefix definitions and DNS definitions:
 	router. 0 means do not use as a default router. Default: 3 *
 	<cf/max ra interval/.
 
-	<tag>rdnss local <m/bool/</tag>
+	<tag>rdnss local <m/switch/</tag>
 	Use only local (interface-specific) RDNSS definitions for this
 	interface. Otherwise, both global and local definitions are
 	used. Could also be used to disable RDNSS for given interface
 	if no local definitons are specified. Default: no.
 
-	<tag>dnssl local <m/bool/</tag>
+	<tag>dnssl local <m/switch/</tag>
 	Use only local DNSSL definitions for this interface. See
 	<cf/rdnss local/ option above. Default: no.
 </descrip>

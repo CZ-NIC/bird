@@ -581,7 +581,7 @@ krt_flush_routes(struct krt_proto *p)
     {
       net *n = (net *) f;
       rte *e = n->routes;
-      if (e && (n->n.flags & KRF_INSTALLED))
+      if (rte_is_valid(e) && (n->n.flags & KRF_INSTALLED))
 	{
 	  /* FIXME: this does not work if gw is changed in export filter */
 	  krt_replace_rte(p, e->net, NULL, e, NULL);
@@ -657,7 +657,7 @@ krt_got_route(struct krt_proto *p, rte *e)
     }
 
   old = net->routes;
-  if ((net->n.flags & KRF_INSTALLED) && old)
+  if ((net->n.flags & KRF_INSTALLED) && rte_is_valid(old))
     {
       /* There may be changes in route attributes, we ignore that.
          Also, this does not work well if gw is changed in export filter */

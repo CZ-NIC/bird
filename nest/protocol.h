@@ -92,6 +92,7 @@ struct proto_config {
   int class;				/* SYM_PROTO or SYM_TEMPLATE */
   u32 debug, mrtdump;			/* Debugging bitfields, both use D_* constants */
   unsigned preference, disabled;	/* Generic parameters */
+  int in_keep_filtered;			/* Routes rejected in import filter are kept */
   u32 router_id;			/* Protocol specific router ID */
   struct rtable_config *table;		/* Table we're attached to */
   struct filter *in_filter, *out_filter; /* Attached filters */
@@ -107,7 +108,8 @@ struct proto_config {
 struct proto_stats {
   /* Import - from protocol to core */
   u32 imp_routes;		/* Number of routes successfully imported to the (adjacent) routing table */
-  u32 pref_routes;		/* Number of routes that are preferred, sum over all routing table */
+  u32 filt_routes;		/* Number of routes rejected in import filter but kept in the routing table */
+  u32 pref_routes;		/* Number of routes that are preferred, sum over all routing tables */
   u32 imp_updates_received;	/* Number of route updates received */
   u32 imp_updates_invalid;	/* Number of route updates rejected as invalid */
   u32 imp_updates_filtered;	/* Number of route updates rejected by filters */
@@ -411,6 +413,7 @@ struct announce_hook {
   struct proto_limit *out_limit;	/* Output limit */
   struct proto_stats *stats;		/* Per-table protocol statistics */
   struct announce_hook *next;		/* Next hook for the same protocol */
+  int in_keep_filtered;			/* Routes rejected in import filter are kept */
 };
 
 struct announce_hook *proto_add_announce_hook(struct proto *p, struct rtable *t, struct proto_stats *stats);

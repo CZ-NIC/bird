@@ -45,7 +45,7 @@ CF_DECLS
 CF_KEYWORDS(ROUTER, ID, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, TABLE, STATES, ROUTES, FILTERS)
 CF_KEYWORDS(IPV4, IPVX, VPN4, VPN6, MPLS)
-CF_KEYWORDS(LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE)
+CF_KEYWORDS(LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED)
 CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, INTERFACES)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, COMMANDS, PREEXPORT, GENERATE, ROA, AS, MAX, FLUSH)
 CF_KEYWORDS(LISTEN, BGP, V6ONLY, DUAL, ADDRESS, PORT, PASSWORDS, DESCRIPTION, SORTED)
@@ -190,6 +190,7 @@ proto_item:
  | EXPORT imexport { this_proto->out_filter = $2; }
  | IMPORT LIMIT limit_spec { this_proto->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_proto->out_limit = $3; }
+ | IMPORT KEEP FILTERED bool { this_proto->in_keep_filtered = $4; }
  | TABLE rtable {
      if (!rt_match($2->addr_type, this_proto->protocol->tables))
        cf_error("Incompatible table class");
@@ -412,7 +413,7 @@ CF_CLI(SHOW INTERFACES SUMMARY,,, [[Show summary of network interfaces]])
 { if_show_summary(); } ;
 
 CF_CLI_HELP(SHOW ROUTE, ..., [[Show routing table]])
-CF_CLI(SHOW ROUTE, r_args, [[[<prefix>|for <prefix>|for <ip>] [table <t>] [filter <f>|where <cond>] [all] [primary] [(export|preexport) <p>] [protocol <p>] [stats|count]]], [[Show routing table]])
+CF_CLI(SHOW ROUTE, r_args, [[[<prefix>|for <prefix>|for <ip>] [table <t>] [filter <f>|where <cond>] [all] [primary] [filtered] [(export|preexport) <p>] [protocol <p>] [stats|count]]], [[Show routing table]])
 { rt_show($3); } ;
 
 r_args:
@@ -457,6 +458,10 @@ r_args:
  | r_args PRIMARY {
      $$ = $1;
      $$->primary_only = 1;
+   }
+ | r_args FILTERED {
+     $$ = $1;
+     $$->filtered = 1;
    }
  | r_args export_or_preexport SYM {
      struct proto_config *c = (struct proto_config *) $3->def;

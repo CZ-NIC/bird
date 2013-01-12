@@ -1188,7 +1188,7 @@ bgp_show_proto_info(struct proto *P)
       cli_msg(-1006, "    Source address:   %I", p->source_addr);
       if (P->cf->in_limit)
 	cli_msg(-1006, "    Route limit:      %d/%d",
-		p->p.stats.imp_routes, P->cf->in_limit->limit);
+		p->p.stats.imp_routes + p->p.stats.filt_routes, P->cf->in_limit->limit);
       cli_msg(-1006, "    Hold timer:       %d/%d",
 	      tm_remains(c->hold_timer), c->hold_time);
       cli_msg(-1006, "    Keepalive timer:  %d/%d",
