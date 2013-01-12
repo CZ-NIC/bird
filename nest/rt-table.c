@@ -288,7 +288,7 @@ do_rt_notify(struct announce_hook *ah, net *net, rte *new, rte *old, ea_list *tm
   if (l && new)
     {
       if ((!old || refeed) && (stats->exp_routes >= l->limit))
-	proto_notify_limit(ah, l, stats->exp_routes);
+	proto_notify_limit(ah, l, PLD_OUT, stats->exp_routes);
 
       if (l->state == PLS_BLOCKED)
 	{
@@ -708,16 +708,22 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
       return;
     }
 
-  struct proto_limit *l = ah->in_limit;
+  int new_ok = rte_is_ok(new);
+  int old_ok = rte_is_ok(old);
+
+  struct proto_limit *l = ah->rx_limit;
   if (l && !old && new)
     {
       u32 all_routes = stats->imp_routes + stats->filt_routes;
 
       if (all_routes >= l->limit)
-	proto_notify_limit(ah, l, all_routes);
+	proto_notify_limit(ah, l, PLD_RX, all_routes);
 
       if (l->state == PLS_BLOCKED)
 	{
+	  /* In receive limit the situation is simple, old is NULL so
+	     we just free new and exit like nothing happened */
+
 	  stats->imp_updates_ignored++;
 	  rte_trace_in(D_FILTERS, p, new, "ignored [limit]");
 	  rte_free_quick(new);
@@ -725,8 +731,39 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
 	}
     }
 
-  int new_ok = rte_is_ok(new);
-  int old_ok = rte_is_ok(old);
+  l = ah->in_limit;
+  if (l && !old_ok && new_ok)
+    {
+      if (stats->imp_routes >= l->limit)
+	proto_notify_limit(ah, l, PLD_IN, stats->imp_routes);
+
+      if (l->state == PLS_BLOCKED)
+	{
+	  /* In import limit the situation is more complicated. We
+	     shouldn't just drop the route, we should handle it like
+	     it was filtered. We also have to continue the route
+	     processing if old or new is non-NULL, but we should exit
+	     if both are NULL as this case is probably assumed to be
+	     already handled. */
+
+	  stats->imp_updates_ignored++;
+	  rte_trace_in(D_FILTERS, p, new, "ignored [limit]");
+
+	  if (ah->in_keep_filtered)
+	    new->flags |= REF_FILTERED;
+	  else
+	    { rte_free_quick(new); new = NULL; }
+
+	  /* Note that old && !new could be possible when
+	     ah->in_keep_filtered changed in the recent past. */
+
+	  if (!old && !new)
+	    return;
+
+	  new_ok = 0;
+	  goto skip_stats1;
+	}
+    }
 
   if (new_ok)
     stats->imp_updates_accepted++;
@@ -734,6 +771,8 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
     stats->imp_withdraws_accepted++;
   else
     stats->imp_withdraws_ignored++;
+
+ skip_stats1:
 
   if (new)
     rte_is_filtered(new) ? stats->filt_routes++ : stats->imp_routes++;

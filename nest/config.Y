@@ -45,7 +45,7 @@ CF_DECLS
 CF_KEYWORDS(ROUTER, ID, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, TABLE, STATES, ROUTES, FILTERS)
 CF_KEYWORDS(IPV4, IPVX, VPN4, VPN6, MPLS)
-CF_KEYWORDS(LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED)
+CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED)
 CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, INTERFACES)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, COMMANDS, PREEXPORT, GENERATE, ROA, AS, MAX, FLUSH)
 CF_KEYWORDS(LISTEN, BGP, V6ONLY, DUAL, ADDRESS, PORT, PASSWORDS, DESCRIPTION, SORTED)
@@ -76,9 +76,9 @@ CF_GRAMMAR
 
 CF_ADDTO(conf, rtrid)
 
-rtrid: ROUTER ID idval ';' {
-   new_config->router_id = $3;
-   }
+rtrid: 
+   ROUTER ID idval ';' { new_config->router_id = $3; }
+ | ROUTER ID FROM iface_patt ';' { new_config->router_id_from = this_ipatt; }
  ;
 
 idval:
@@ -188,6 +188,7 @@ proto_item:
  | MRTDUMP mrtdump_mask { this_proto->mrtdump = $2; }
  | IMPORT imexport { this_proto->in_filter = $2; }
  | EXPORT imexport { this_proto->out_filter = $2; }
+ | RECEIVE LIMIT limit_spec { this_proto->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_proto->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_proto->out_limit = $3; }
  | IMPORT KEEP FILTERED bool { this_proto->in_keep_filtered = $4; }
@@ -269,6 +270,17 @@ iface_patt_node:
 iface_patt_list:
    iface_patt_node
  | iface_patt_list ',' iface_patt_node
+ ;
+
+iface_patt_init: {
+   /* Generic this_ipatt init */
+   this_ipatt = cfg_allocz(sizeof(struct iface_patt));
+   init_list(&this_ipatt->ipn_list);
+ }
+ ;
+
+iface_patt:
+   iface_patt_init iface_patt_list
  ;
 
 

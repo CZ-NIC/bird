@@ -717,6 +717,9 @@ ospf_reconfigure(struct proto *p, struct proto_config *c)
   struct ospf_iface *ifa, *ifx;
   struct ospf_iface_patt *ip;
 
+  if (proto_get_router_id(c) != po->router_id)
+    return 0;
+
   if (po->rfc1583 != new->rfc1583)
     return 0;
 

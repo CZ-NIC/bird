@@ -96,6 +96,8 @@ struct proto_config {
   u32 router_id;			/* Protocol specific router ID */
   struct rtable_config *table;		/* Table we're attached to */
   struct filter *in_filter, *out_filter; /* Attached filters */
+  struct proto_limit *rx_limit;		/* Limit for receiving routes from protocol
+					   (relevant when in_keep_filtered is active) */
   struct proto_limit *in_limit;		/* Limit for importing routes from protocol */
   struct proto_limit *out_limit;	/* Limit for exporting routes to protocol */
 
@@ -226,8 +228,9 @@ struct proto_spec {
 #define PDC_CMD_DISABLE		0x11	/* Result of disable command */
 #define PDC_CMD_RESTART		0x12	/* Result of restart command */
 #define PDC_CMD_SHUTDOWN	0x13	/* Result of global shutdown */
-#define PDC_IN_LIMIT_HIT	0x21	/* Route import limit reached */
-#define PDC_OUT_LIMIT_HIT	0x22	/* Route export limit reached */
+#define PDC_RX_LIMIT_HIT	0x21	/* Route receive limit reached */
+#define PDC_IN_LIMIT_HIT	0x22	/* Route import limit reached */
+#define PDC_OUT_LIMIT_HIT	0x23	/* Route export limit reached */
 
 
 void *proto_new(struct proto_config *, unsigned size);
@@ -374,6 +377,11 @@ extern struct proto_config *cf_dev_proto;
  * Protocol limits
  */
 
+#define PLD_RX		0	/* Receive limit */
+#define PLD_IN		1	/* Import limit */
+#define PLD_OUT		2	/* Export limit */
+#define PLD_MAX		3
+
 #define PLA_WARN	1	/* Issue log warning */
 #define PLA_BLOCK	2	/* Block new routes */
 #define PLA_RESTART	4	/* Force protocol restart */
@@ -389,7 +397,7 @@ struct proto_limit {
   byte state;			/* State of limit (PLS_*) */
 };
 
-void proto_notify_limit(struct announce_hook *ah, struct proto_limit *l, u32 rt_count);
+void proto_notify_limit(struct announce_hook *ah, struct proto_limit *l, int dir, u32 rt_count);
 
 static inline void
 proto_reset_limit(struct proto_limit *l)
@@ -409,6 +417,7 @@ struct announce_hook {
   struct proto *proto;
   struct filter *in_filter;		/* Input filter */
   struct filter *out_filter;		/* Output filter */
+  struct proto_limit *rx_limit;		/* Receive limit (for in_keep_filtered) */
   struct proto_limit *in_limit;		/* Input limit */
   struct proto_limit *out_limit;	/* Output limit */
   struct proto_stats *stats;		/* Per-table protocol statistics */

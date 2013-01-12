@@ -901,7 +901,7 @@ krt_notify(struct proto *P, struct rtable *table UNUSED, net *net,
 {
   struct krt_proto *p = (struct krt_proto *) P;
 
-  if (shutting_down)
+  if (config->shutdown)
     return;
   if (!(net->n.flags & KRF_INSTALLED))
     old = NULL;
