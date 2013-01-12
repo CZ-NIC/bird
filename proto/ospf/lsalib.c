@@ -139,13 +139,16 @@ lsa_ntoh_body(void *n, void *h, u16 len)
 
 int
 lsa_flooding_allowed(u32 type, u32 domain, struct ospf_iface *ifa)
-{    
+{   
+  /* Handle inactive vlinks */
+  if (ifa->state == OSPF_IS_DOWN)
+    return 0;
+ 
   /* 4.5.2 (Case 2) */
-
   switch (LSA_SCOPE(type))
   {
   case LSA_SCOPE_LINK:
-    return ifa->iface->index == domain;
+    return ifa->iface_id == domain;
 
   case LSA_SCOPE_AREA:
     return ifa->oa->areaid == domain;
@@ -208,7 +211,7 @@ lsa_xxxxtype(u32 itype, struct ospf_iface *ifa, u32 *otype, u32 *domain)
   switch (LSA_SCOPE(itype))
   {
   case LSA_SCOPE_LINK:
-    *domain = ifa->iface->index;
+    *domain = ifa->iface_id;
     return;
 
   case LSA_SCOPE_AREA:

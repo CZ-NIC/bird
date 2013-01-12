@@ -444,7 +444,7 @@ bdr_election(struct ospf_iface *ifa)
 
   me.dr  = ospf_is_v2(po) ? ipa_to_u32(ifa->drip) : ifa->drid;
   me.bdr = ospf_is_v2(po) ? ipa_to_u32(ifa->bdrip) : ifa->bdrid;
-  me.iface_id = ifa->iface->index;
+  me.iface_id = ifa->iface_id;
 
   add_tail(&ifa->neigh_list, NODE & me);
 

@@ -93,7 +93,6 @@ static void ospf_lsupd_dump(struct proto_ospf *po, struct ospf_packet *pkt)
     }
 }
 
-
 /**
  * ospf_lsupd_flood - send received or generated lsa to the neighbors
  * @po: OSPF protocol

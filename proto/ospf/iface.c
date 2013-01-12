@@ -560,6 +560,8 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
     log(L_WARN "%s: Cannot use interface %s as %s, forcing %s",
 	po->proto.name, iface->name, ospf_it[old_type], ospf_it[ifa->type]);
 
+  /* Assign iface ID, for vlinks, this is ugly hack */
+  ifa->iface_id = (ifa->type != OSPF_IT_VLINK) ? iface->index : oa->po->last_vlink_id++;
 
   init_list(&ifa->neigh_list);
   init_list(&ifa->nbma_list);

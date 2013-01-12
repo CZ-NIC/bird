@@ -284,7 +284,7 @@ ospf_hello_send(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
   {
     struct ospf_hello3_packet *ps = (void *) pkt;
 
-    ps->iface_id = htonl(ifa->iface->index);
+    ps->iface_id = htonl(ifa->iface_id);
     ps->priority = ifa->priority;
     ps->options3 = ifa->oa->options >> 16;
     ps->options2 = ifa->oa->options >> 8;
