@@ -185,97 +185,81 @@ rte_trace_out(unsigned int flag, struct proto *p, rte *e, char *msg)
     rte_trace(p, e, '<', msg);
 }
 
-/**
- * do_rte_announce - announce new rte to protocol
- * @ah: pointer to announce hook
- * @type: announce type (RA_ANY or RA_OPTIMAL)
- * @net: pointer to announced network
- * @new: new rte or NULL
- * @old: previous rte or NULL
- * @tmpa: new rte attributes (possibly modified by filter)
- * @refeed: whether we are refeeding protocol
- */
-static inline void
-do_rte_announce(struct announce_hook *ah, int type UNUSED, net *net, rte *new, rte *old, ea_list *tmpa, int refeed)
+static rte *
+export_filter(struct announce_hook *ah, rte *rt0, rte **rt_free, ea_list **tmpa, int silent)
 {
   struct proto *p = ah->proto;
   struct filter *filter = ah->out_filter;
   struct proto_stats *stats = ah->stats;
+  ea_list *tmpb = NULL;
+  rte *rt;
+  int v;
 
-  rte *new0 = new;
-  rte *old0 = old;
-  int ok;
+  rt = rt0;
+  *rt_free = NULL;
 
-  if (new)
+  /* If called does not care for eattrs, we prepare one internally */
+  if (!tmpa)
     {
-      stats->exp_updates_received++;
-
-      char *drop_reason = NULL;
-      if ((ok = p->import_control ? p->import_control(p, &new, &tmpa, rte_update_pool) : 0) < 0)
-	{
-	  stats->exp_updates_rejected++;
-	  drop_reason = "rejected by protocol";
-	}
-      else if (ok)
-	rte_trace_out(D_FILTERS, p, new, "forced accept by protocol");
-      else if ((filter == FILTER_REJECT) ||
-	       (filter && f_run(filter, &new, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) > F_ACCEPT))
-	{
-	  stats->exp_updates_filtered++;
-	  drop_reason = "filtered out";
-	}
-      if (drop_reason)
-	{
-	  rte_trace_out(D_FILTERS, p, new, drop_reason);
-	  if (new != new0)
-	    rte_free(new);
-	  new = NULL;
-	}
-    }
-  else
-    stats->exp_withdraws_received++;
-
-  /*
-   * This is a tricky part - we don't know whether route 'old' was
-   * exported to protocol 'p' or was filtered by the export filter.
-   * We try tu run the export filter to know this to have a correct
-   * value in 'old' argument of rte_update (and proper filter value)
-   *
-   * FIXME - this is broken because 'configure soft' may change
-   * filters but keep routes. Refeed is expected to be called after
-   * change of the filters and with old == new, therefore we do not
-   * even try to run the filter on an old route, This may lead to 
-   * 'spurious withdraws' but ensure that there are no 'missing
-   * withdraws'.
-   *
-   * This is not completely safe as there is a window between
-   * reconfiguration and the end of refeed - if a newly filtered
-   * route disappears during this period, proper withdraw is not
-   * sent (because old would be also filtered) and the route is
-   * not refeeded (because it disappeared before that).
-   */
-
-  if (old && !refeed)
-    {
-      if (filter == FILTER_REJECT)
-	old = NULL;
-      else
-	{
-	  ea_list *tmpb = p->make_tmp_attrs ? p->make_tmp_attrs(old, rte_update_pool) : NULL;
-	  ok = p->import_control ? p->import_control(p, &old, &tmpb, rte_update_pool) : 0;
-	  if (ok < 0 || (!ok && filter && f_run(filter, &old, &tmpb, rte_update_pool, FF_FORCE_TMPATTR) > F_ACCEPT))
-	    {
-	      if (old != old0)
-		rte_free(old);
-	      old = NULL;
-	    }
-	}
+      struct proto *src = rt->attrs->proto;
+      tmpb = src->make_tmp_attrs ? src->make_tmp_attrs(rt, rte_update_pool) : NULL;
+      tmpa = &tmpb;
     }
 
+  v = p->import_control ? p->import_control(p, &rt, tmpa, rte_update_pool) : 0;
+  if (v < 0)
+    {
+      if (silent)
+	goto reject;
+
+      stats->exp_updates_rejected++;
+      rte_trace_out(D_FILTERS, p, rt, "rejected by protocol");
+      goto reject;
+    }
+  if (v > 0)
+    {
+      if (!silent)
+	rte_trace_out(D_FILTERS, p, rt, "forced accept by protocol");
+      goto accept;
+    }
+
+  v = filter && ((filter == FILTER_REJECT) ||
+		 (f_run(filter, &rt, tmpa, rte_update_pool, FF_FORCE_TMPATTR) > F_ACCEPT));
+  if (v)
+    {
+      if (silent)
+	goto reject;
+
+      stats->exp_updates_filtered++;
+      rte_trace_out(D_FILTERS, p, rt, "filtered out");
+      goto reject;
+    }
+
+ accept:
+  if (rt != rt0)
+    *rt_free = rt;
+  return rt;
+
+ reject:
+  /* Discard temporary rte */
+  if (rt != rt0)
+    rte_free(rt);
+  return NULL;
+}
+
+static void
+do_rt_notify(struct announce_hook *ah, net *net, rte *new, rte *old, ea_list *tmpa, int refeed)
+{
+  struct proto *p = ah->proto;
+  struct proto_stats *stats = ah->stats;
+
+
   /*
+   * First, apply export limit.
+   *
    * Export route limits has several problems. Because exp_routes
    * counter is reset before refeed, we don't really know whether
-   * limit is breached and whether the update is new or not Therefore
+   * limit is breached and whether the update is new or not. Therefore
    * the number of really exported routes may exceed the limit
    * temporarily (routes exported before and new routes in refeed).
    *
@@ -308,15 +292,13 @@ do_rte_announce(struct announce_hook *ah, int type UNUSED, net *net, rte *new, r
 	  stats->exp_routes++;	/* see note above */
 	  stats->exp_updates_rejected++;
 	  rte_trace_out(D_FILTERS, p, new, "rejected [limit]");
-	  if (new != new0)
-	    rte_free(new);
 	  new = NULL;
+
+	  if (!old)
+	    return;
 	}
     }
 
-  /* FIXME - This is broken because of incorrect 'old' value (see above) */
-  if (!new && !old)
-    return;
 
   if (new)
     stats->exp_updates_accepted++;
@@ -352,11 +334,172 @@ do_rte_announce(struct announce_hook *ah, int type UNUSED, net *net, rte *new, r
     }
   else
     p->rt_notify(p, ah->table, net, new, old, new->attrs->eattrs);
+}
 
-  if (new && new != new0)	/* Discard temporary rte's */
-    rte_free(new);
-  if (old && old != old0)
-    rte_free(old);
+static void
+rt_notify_basic(struct announce_hook *ah, net *net, rte *new, rte *old, ea_list *tmpa, int refeed)
+{
+  // struct proto *p = ah->proto;
+  struct proto_stats *stats = ah->stats;
+
+  rte *new_free = NULL;
+  rte *old_free = NULL;
+
+  if (new)
+    stats->exp_updates_received++;
+  else
+    stats->exp_withdraws_received++;
+
+  /*
+   * This is a tricky part - we don't know whether route 'old' was
+   * exported to protocol 'p' or was filtered by the export filter.
+   * We try to run the export filter to know this to have a correct
+   * value in 'old' argument of rte_update (and proper filter value)
+   *
+   * FIXME - this is broken because 'configure soft' may change
+   * filters but keep routes. Refeed is expected to be called after
+   * change of the filters and with old == new, therefore we do not
+   * even try to run the filter on an old route, This may lead to 
+   * 'spurious withdraws' but ensure that there are no 'missing
+   * withdraws'.
+   *
+   * This is not completely safe as there is a window between
+   * reconfiguration and the end of refeed - if a newly filtered
+   * route disappears during this period, proper withdraw is not
+   * sent (because old would be also filtered) and the route is
+   * not refeeded (because it disappeared before that).
+   */
+
+  if (new)
+    new = export_filter(ah, new, &new_free, &tmpa, 0);
+
+  if (old && !refeed)
+    old = export_filter(ah, old, &old_free, NULL, 1);
+
+  /* FIXME - This is broken because of incorrect 'old' value (see above) */
+  if (!new && !old)
+    return;
+
+  do_rt_notify(ah, net, new, old, tmpa, refeed);
+
+  /* Discard temporary rte's */
+  if (new_free)
+    rte_free(new_free);
+  if (old_free)
+    rte_free(old_free);
+}
+
+static void
+rt_notify_accepted(struct announce_hook *ah, net *net, rte *new_changed, rte *old_changed, rte *before_old,
+		   ea_list *tmpa, int feed)
+{
+  // struct proto *p = ah->proto;
+  struct proto_stats *stats = ah->stats;
+
+  rte *new_best = NULL;
+  rte *old_best = NULL;
+  rte *new_free = NULL;
+  rte *old_free = NULL;
+  rte *r;
+
+  /* Used to track whether we met old_changed position. If it is NULL
+     it was the first and met it implicitly before current best route. */
+  int old_meet = (old_changed && !before_old) ? 1 : 0;
+
+  if (new_changed)
+    stats->exp_updates_received++;
+  else
+    stats->exp_withdraws_received++;
+
+  /* First, find the new_best route - first accepted by filters */
+  for (r=net->routes; r; r=r->next)
+    {
+      if (new_best = export_filter(ah, r, &new_free, &tmpa, 0))
+	break;
+
+      /* Note if we walked around the position of old_changed route */
+      if (r == before_old)
+	old_meet = 1;
+    }
+
+  /* 
+   * Second, handle the feed case. That means we do not care for
+   * old_best. It is NULL for feed, and the new_best for refeed. 
+   * For refeed, there is a hack similar to one in rt_notify_basic()
+   * to ensure withdraws in case of changed filters
+   */
+  if (feed)
+    {
+      if (feed == 2)	/* refeed */
+	old_best = new_best ? new_best : net->routes;
+      else
+	old_best = NULL;
+
+      if (!new_best && !old_best)
+	return;
+
+      goto found;
+    }
+
+  /*
+   * Now, we find the old_best route. Generally, it is the same as the
+   * new_best, unless new_best is the same as new_changed or
+   * old_changed is accepted before new_best.
+   *
+   * There are four cases:
+   *
+   * - We would find and accept old_changed before new_best, therefore
+   *   old_changed is old_best. In remaining cases we suppose this
+   *   is not true.
+   *
+   * - We found no new_best, therefore there is also no old_best and
+   *   we ignore this withdraw.
+   *
+   * - We found new_best different than new_changed, therefore
+   *   old_best is the same as new_best and we ignore this update.
+   *
+   * - We found new_best the same as new_changed, therefore it cannot
+   *   be old_best and we have to continue search for old_best.
+   */
+
+  /* First case */
+  if (old_meet)
+    if (old_best = export_filter(ah, old_changed, &old_free, NULL, 1))
+      goto found;
+
+  /* Second case */
+  if (!new_best)
+    return;
+
+  /* Third case, we use r instead of new_best, because export_filter() could change it */
+  if (r != new_changed)
+    {
+      if (new_free)
+	rte_free(new_free);
+      return;
+    }
+
+  /* Fourth case */
+  for (r=r->next; r; r=r->next)
+    {
+      if (old_best = export_filter(ah, r, &old_free, NULL, 1))
+	goto found;
+
+      if (r == before_old)
+	if (old_best = export_filter(ah, old_changed, &old_free, NULL, 1))
+	  goto found;
+    }
+
+  /* Implicitly, old_best is NULL and new_best is non-NULL */
+
+ found:
+  do_rt_notify(ah, net, new_best, old_best, tmpa, (feed == 2));
+
+  /* Discard temporary rte's */
+  if (new_free)
+    rte_free(new_free);
+  if (old_free)
+    rte_free(old_free);
 }
 
 /**
@@ -389,7 +532,7 @@ do_rte_announce(struct announce_hook *ah, int type UNUSED, net *net, rte *new, r
  * the protocol gets called.
  */
 static void
-rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old, ea_list *tmpa)
+rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old, rte *before_old, ea_list *tmpa)
 {
   struct announce_hook *a;
 
@@ -408,10 +551,12 @@ rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old, ea_list *
     {
       ASSERT(a->proto->core_state == FS_HAPPY || a->proto->core_state == FS_FEEDING);
       if (a->proto->accept_ra_types == type)
-	do_rte_announce(a, type, net, new, old, tmpa, 0);
+	if (type == RA_ACCEPTED)
+	  rt_notify_accepted(a, net, new, old, before_old, tmpa, 0);
+	else
+	  rt_notify_basic(a, net, new, old, tmpa, 0);
     }
 }
-
 
 static inline int
 rte_validate(rte *e)
@@ -479,9 +624,10 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
   struct proto *p = ah->proto;
   struct rtable *table = ah->table;
   struct proto_stats *stats = ah->stats;
+  rte *before_old = NULL;
   rte *old_best = net->routes;
   rte *old = NULL;
-  rte **k, *r, *s;
+  rte **k;
 
   k = &net->routes;			/* Find and remove original route from the same protocol */
   while (old = *k)
@@ -527,7 +673,11 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
 	  break;
 	}
       k = &old->next;
+      before_old = old;
     }
+
+  if (!old)
+    before_old = NULL;
 
   if (!old && !new)
     {
@@ -560,82 +710,93 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
   if (old)
     stats->imp_routes--;
 
-  rte_announce(table, RA_ANY, net, new, old, tmpa);
-
-  if (src->rte_recalculate && src->rte_recalculate(table, net, new, old, old_best))
-    goto do_recalculate;
-
-  if (new && rte_better(new, old_best))
+  if (table->config->sorted)
     {
-      /* The first case - the new route is cleary optimal, we link it
-	 at the first position and announce it */
-
-      rte_trace_in(D_ROUTES, p, new, "added [best]");
-      rte_announce(table, RA_OPTIMAL, net, new, old_best, tmpa);
-      new->next = net->routes;
-      net->routes = new;
-    }
-  else if (old == old_best)
-    {
-      /* The second case - the old best route disappeared, we add the
-	 new route (if we have any) to the list (we don't care about
-	 position) and then we elect the new optimal route and relink
-	 that route at the first position and announce it. New optimal
-	 route might be NULL if there is no more routes */
-
-    do_recalculate:
-      /* Add the new route to the list */
+      /* If routes are sorted, just insert new route to appropriate position */
       if (new)
 	{
-	  rte_trace_in(D_ROUTES, p, new, "added");
+	  if (before_old && !rte_better(new, before_old))
+	    k = &before_old->next;
+	  else
+	    k = &net->routes;
+
+	  for (; *k; k=&(*k)->next)
+	    if (rte_better(new, *k))
+	      break;
+
+	  new->next = *k;
+	  *k = new;
+	}
+    }
+  else
+    {
+      /* If routes are not sorted, find the best route and move it on
+	 the first position. There are several optimized cases. */
+
+      if (src->rte_recalculate && src->rte_recalculate(table, net, new, old, old_best))
+	goto do_recalculate;
+
+      if (new && rte_better(new, old_best))
+	{
+	  /* The first case - the new route is cleary optimal,
+	     we link it at the first position */
+
 	  new->next = net->routes;
 	  net->routes = new;
 	}
-
-      /* Find new optimal route */
-      r = NULL;
-      for (s=net->routes; s; s=s->next)
-	if (rte_better(s, r))
-	  r = s;
-
-      /* Announce optimal route */
-      rte_announce(table, RA_OPTIMAL, net, r, old_best, tmpa);
-
-      /* And relink it (if there is any) */
-      if (r)
+      else if (old == old_best)
 	{
-	  k = &net->routes;
-	  while (s = *k)
+	  /* The second case - the old best route disappeared, we add the
+	     new route (if we have any) to the list (we don't care about
+	     position) and then we elect the new optimal route and relink
+	     that route at the first position and announce it. New optimal
+	     route might be NULL if there is no more routes */
+
+	do_recalculate:
+	  /* Add the new route to the list */
+	  if (new)
 	    {
-	      if (s == r)
-		{
-		  *k = r->next;
-		  break;
-		}
-	      k = &s->next;
+	      new->next = net->routes;
+	      net->routes = new;
 	    }
-	  r->next = net->routes;
-	  net->routes = r;
+
+	  /* Find a new optimal route (if there is any) */
+	  if (net->routes)
+	    {
+	      rte **bp = &net->routes;
+	      for (k=&(*bp)->next; *k; k=&(*k)->next)
+		if (rte_better(*k, *bp))
+		  bp = k;
+
+	      /* And relink it */
+	      rte *best = *bp;
+	      *bp = best->next;
+	      best->next = net->routes;
+	      net->routes = best;
+	    }
 	}
-      else if (table->gc_counter++ >= table->config->gc_max_ops &&
-	       table->gc_time + table->config->gc_min_time <= now)
-	rt_schedule_gc(table);
-    }
-  else if (new)
-    {
-      /* The third case - the new route is not better than the old
-	 best route (therefore old_best != NULL) and the old best
-	 route was not removed (therefore old_best == net->routes).
-	 We just link the new route after the old best route. */
+      else if (new)
+	{
+	  /* The third case - the new route is not better than the old
+	     best route (therefore old_best != NULL) and the old best
+	     route was not removed (therefore old_best == net->routes).
+	     We just link the new route after the old best route. */
 
-      ASSERT(net->routes != NULL);
-      new->next = net->routes->next;
-      net->routes->next = new;
-      rte_trace_in(D_ROUTES, p, new, "added");
+	  ASSERT(net->routes != NULL);
+	  new->next = net->routes->next;
+	  net->routes->next = new;
+	}
+      /* The fourth (empty) case - suboptimal route was removed, nothing to do */
     }
 
-  /* Log the route removal */
-  if (!new && old && (p->debug & D_ROUTES))
+  if (new)
+    new->lastmod = now;
+
+  /* Log the route change */
+  if (new)
+    rte_trace_in(D_ROUTES, p, new, net->routes == new ? "added [best]" : "added");
+
+  if (!new && (p->debug & D_ROUTES))
     {
       if (old != old_best)
 	rte_trace_in(D_ROUTES, p, old, "removed");
@@ -645,6 +806,18 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
 	rte_trace_in(D_ROUTES, p, old, "removed [sole]");
     }
 
+  /* Propagate the route change */
+  rte_announce(table, RA_ANY, net, new, old, NULL, tmpa);
+  if (net->routes != old_best)
+    rte_announce(table, RA_OPTIMAL, net, net->routes, old_best, NULL, tmpa);
+  if (table->config->sorted)
+    rte_announce(table, RA_ACCEPTED, net, new, old, before_old, tmpa);
+
+  if (!net->routes &&
+      (table->gc_counter++ >= table->config->gc_max_ops) &&
+      (table->gc_time + table->config->gc_min_time <= now))
+    rt_schedule_gc(table);
+
   if (old)
     {
       if (p->rte_remove)
@@ -653,7 +826,6 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
     }
   if (new)
     {
-      new->lastmod = now;
       if (p->rte_insert)
 	p->rte_insert(net, new);
     }
@@ -785,7 +957,7 @@ rte_announce_i(rtable *tab, unsigned type, net *n, rte *new, rte *old)
   rte_update_lock();
   src = new->attrs->proto;
   tmpa = src->make_tmp_attrs ? src->make_tmp_attrs(new, rte_update_pool) : NULL;
-  rte_announce(tab, type, n, new, old, tmpa);
+  rte_announce(tab, type, n, new, old, NULL, tmpa);
   rte_update_unlock();
 }
 
@@ -1278,6 +1450,10 @@ rt_next_hop_update(rtable *tab)
 struct rtable_config *
 rt_new_table(struct symbol *s, int addr_type)
 {
+  /* Hack that allows to 'redefine' the master table */
+  if ((s->class == SYM_TABLE) && (s->def == new_config->master_rtc))
+    return s->def;
+
   struct rtable_config *c = cfg_allocz(sizeof(struct rtable_config));
 
   cf_define_symbol(s, SYM_TABLE, c);
@@ -1361,6 +1537,8 @@ rt_commit(struct config *new, struct config *old)
 		  r->table = ot;
 		  ot->name = r->name;
 		  ot->config = r;
+		  if (o->sorted != r->sorted)
+		    log(L_WARN "Reconfiguration of rtable sorted flag not implemented");
 		}
 	      else
 		{
@@ -1389,12 +1567,15 @@ rt_commit(struct config *new, struct config *old)
 static inline void
 do_feed_baby(struct proto *p, int type, struct announce_hook *h, net *n, rte *e)
 {
-  struct proto *q = e->attrs->proto;
+  struct proto *src = e->attrs->proto;
   ea_list *tmpa;
 
   rte_update_lock();
-  tmpa = q->make_tmp_attrs ? q->make_tmp_attrs(e, rte_update_pool) : NULL;
-  do_rte_announce(h, type, n, e, p->refeeding ? e : NULL, tmpa, p->refeeding);
+  tmpa = src->make_tmp_attrs ? src->make_tmp_attrs(e, rte_update_pool) : NULL;
+  if (type == RA_ACCEPTED)
+    rt_notify_accepted(h, n, e, NULL, NULL, tmpa, p->refeeding ? 2 : 1);
+  else
+    rt_notify_basic(h, n, e, p->refeeding ? e : NULL, tmpa, p->refeeding);
   rte_update_unlock();
 }
 
@@ -1437,12 +1618,13 @@ again:
 	  return 0;
 	}
 
-      if (p->accept_ra_types == RA_OPTIMAL)
+      if ((p->accept_ra_types == RA_OPTIMAL) ||
+	  (p->accept_ra_types == RA_ACCEPTED))
 	if (e)
 	  {
 	    if (p->core_state != FS_FEEDING)
 	      return 1;  /* In the meantime, the protocol fell down. */
-	    do_feed_baby(p, RA_OPTIMAL, h, n, e);
+	    do_feed_baby(p, p->accept_ra_types, h, n, e);
 	    max_feed--;
 	  }
 

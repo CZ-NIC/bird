@@ -140,6 +140,7 @@ struct rtable_config {
   struct proto_config *krt_attached;	/* Kernel syncer attached to this table */
   int gc_max_ops;			/* Maximum number of operations before GC is run */
   int gc_min_time;			/* Minimum time between two consecutive GC runs */
+  byte sorted;				/* Routes of network are sorted according to rte_better() */
 };
 
 typedef struct rtable {
@@ -239,7 +240,7 @@ typedef struct rte {
   } u;
 } rte;
 
-#define REF_COW 1			/* Copy this rte on write */
+#define REF_COW		1		/* Copy this rte on write */
 
 /* Types of routing tables/entries */
 #define RT_IPV4		1
@@ -265,7 +266,8 @@ typedef struct rte {
 
 /* Types of route announcement, also used as flags */
 #define RA_OPTIMAL	1		/* Announcement of optimal route change */
-#define RA_ANY		2		/* Announcement of any route change */
+#define RA_ACCEPTED	2		/* Announcement of first accepted route */
+#define RA_ANY		3		/* Announcement of any route change */
 
 struct config;
 

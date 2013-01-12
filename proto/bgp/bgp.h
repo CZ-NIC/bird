@@ -42,6 +42,7 @@ struct bgp_config {
   int advertise_ipv4;			/* Whether we should add IPv4 capability advertisement to OPEN message */
   int passive;				/* Do not initiate outgoing connection */
   int interpret_communities;		/* Hardwired handling of well-known communities */
+  int secondary;			/* Accept also non-best routes (i.e. RA_ACCEPTED) */
   unsigned connect_retry_time;
   unsigned hold_time, initial_hold_time;
   unsigned keepalive_time;

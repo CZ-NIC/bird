@@ -48,7 +48,7 @@ CF_KEYWORDS(IPV4, IPVX, VPN4, VPN6, MPLS)
 CF_KEYWORDS(LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE)
 CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, INTERFACES)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, COMMANDS, PREEXPORT, GENERATE, ROA, AS, MAX, FLUSH)
-CF_KEYWORDS(LISTEN, BGP, V6ONLY, DUAL, ADDRESS, PORT, PASSWORDS, DESCRIPTION)
+CF_KEYWORDS(LISTEN, BGP, V6ONLY, DUAL, ADDRESS, PORT, PASSWORDS, DESCRIPTION, SORTED)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC)
 
 CF_ENUM(T_ENUM_RTS, RTS_, DUMMY, STATIC, INHERIT, DEVICE, STATIC_DEVICE, REDIRECT,
@@ -66,7 +66,7 @@ CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 %type <ro> roa_args
 %type <rot> roa_table_arg
 %type <sd> sym_args
-%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_or_preexport roa_mode limit_action table_type
+%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_or_preexport roa_mode limit_action table_type table_sorted
 %type <ps> proto_patt proto_patt2
 %type <g> limit_spec
 
@@ -106,7 +106,12 @@ listen_opt:
 
 /* Creation of routing tables */
 
-CF_ADDTO(conf, newtab)
+CF_ADDTO(conf, table)
+
+table_sorted:
+          { $$ = 0; }
+ | SORTED { $$ = 1; }
+ ;
 
 table_type:
    /* empty */ { $$ = RT_IP; }
@@ -117,9 +122,12 @@ table_type:
  | MPLS { $$ = RT_MPLS; }
  ;
 
-newtab: table_type TABLE SYM {
-  rt_new_table($3, $1);
-};
+table: table_type TABLE SYM table_sorted {
+   struct rtable_config *cf;
+   cf = rt_new_table($3, $1);
+   cf->sorted = $4;
+   }
+ ;
 
 CF_ADDTO(conf, roa_table)
 

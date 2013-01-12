@@ -659,9 +659,12 @@ sockaddr_read(struct sockaddr *sa, ip_addr *a, struct iface **ifa, unsigned *por
  * This function creates a new socket resource. If you want to use it,
  * you need to fill in all the required fields of the structure and
  * call sk_open() to do the actual opening of the socket.
+ *
+ * The real function name is sock_new(), sk_new() is a macro wrapper
+ * to avoid collision with OpenSSL.
  */
 sock *
-sk_new(pool *p)
+sock_new(pool *p)
 {
   sock *s = ralloc(p, &sk_class);
   s->pool = p;

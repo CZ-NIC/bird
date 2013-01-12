@@ -162,29 +162,6 @@ cf_read(byte *dest, unsigned int len, int fd)
   return l;
 }
 
-static int
-cf_open(char *filename)
-{
-  char full_name[BIRD_FNAME_MAX];
-  char *cur = filename;
-  int ret;
-
-  if (*filename != '/') {
-    char dir[BIRD_FNAME_MAX];
-    strncpy(dir, config_name, sizeof(dir));
-    dir[sizeof(dir)-1] = 0;
-    snprintf(full_name, sizeof(full_name), "%s/%s", dirname(dir), filename);
-    full_name[sizeof(full_name)-1] = 0;
-    cur = full_name;
-  }
-
-  if ((ret = open(cur, O_RDONLY)) == -1)
-    cf_error("Unable to open included configuration file: %s", cur);
-
-  return ret;
-}
-
-
 void
 sysdep_preconfig(struct config *c)
 {
@@ -216,7 +193,6 @@ unix_read_config(struct config **cp, char *name)
   if (conf->file_fd < 0)
     return 0;
   cf_read_hook = cf_read;
-  cf_open_hook = cf_open;
   ret = config_parse(conf);
   close(conf->file_fd);
   return ret;
