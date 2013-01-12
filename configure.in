@@ -123,6 +123,8 @@ else
 				;;
 		openbsd*)	sysdesc=bsd
 				;;
+		dragonfly*)	sysdesc=bsd
+				;;
 		*)		AC_MSG_ERROR([Cannot determine correct system configuration. Please use --with-sysconfig to set it manually.])
 				;;
 		esac

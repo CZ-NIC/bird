@@ -114,12 +114,18 @@ kif_request_scan(void)
 }
 
 static inline int
-prefer_scope(struct ifa *a, struct ifa *b)
-{ return (a->scope > SCOPE_LINK) && (b->scope <= SCOPE_LINK); }
-
-static inline int
 prefer_addr(struct ifa *a, struct ifa *b)
-{ return ipa_compare(a->ip, b->ip) < 0; }
+{ 
+  int sa = a->scope > SCOPE_LINK;
+  int sb = b->scope > SCOPE_LINK;
+
+  if (sa < sb)
+    return 0;
+  else if (sa > sb)
+    return 1;
+  else
+    return ipa_compare(a->ip, b->ip) < 0;
+}
 
 static inline struct ifa *
 find_preferred_ifa(struct iface *i, ip_addr prefix, ip_addr mask)
@@ -130,7 +136,7 @@ find_preferred_ifa(struct iface *i, ip_addr prefix, ip_addr mask)
     {
       if (!(a->flags & IA_SECONDARY) &&
 	  ipa_equal(ipa_and(a->ip, mask), prefix) &&
-	  (!b || prefer_scope(a, b) || prefer_addr(a, b)))
+	  (!b || prefer_addr(a, b)))
 	b = a;
     }
 
