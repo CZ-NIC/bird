@@ -91,13 +91,14 @@ struct rip_md5_tail {	/* 20 bytes */
 
 struct rip_entry {
   struct fib_node n;
+  node gb;
 
   ip_addr whotoldme;
   ip_addr nexthop;
   int metric;
   u16 tag;
 
-  bird_clock_t updated, changed;
+  bird_clock_t updated, changed;	/* update - renewal, change - modification - need to be resent */
   int flags;
 };
 

@@ -192,10 +192,10 @@ typedef struct rte {
   union {				/* Protocol-dependent data (metrics etc.) */
 #ifdef CONFIG_RIP
     struct {
-      node garbage;			/* List for garbage collection */
+      //node garbage;			/* List for garbage collection */
       byte metric;			/* RIP metric */
       u16 tag;				/* External route tag */
-      struct rip_entry *entry;
+      //struct rip_entry *entry;
     } rip;
 #endif
 #ifdef CONFIG_OSPF

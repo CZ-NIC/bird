@@ -13,8 +13,6 @@
 		I suggest just forgetting about them.
 
 	FIXME: (nonurgent): fold rip_connection into rip_interface?
-
-	FIXME: propagation of metric=infinity into main routing table may or may not be good idea.
  */
 
 /**
@@ -162,7 +160,7 @@ rip_tx( sock *s )
     FIB_ITERATE_START(&P->rtable, &c->iter, z) {
       struct rip_entry *e = (struct rip_entry *) z;
 
-      if (!rif->triggered || (!(e->updated < now-2))) {		/* FIXME: Should be probably 1 or some different algorithm */
+      if (!rif->triggered || (e->changed >= now-2)) {		/* FIXME: Should be probably 1 or some different algorithm */
 	nullupdate = 0;
 	i = rip_tx_prepare( p, packet->block + i, e, rif, i );
 	if (i >= maxi) {
@@ -262,19 +260,8 @@ find_interface(struct proto *p, struct iface *what)
  * This part is responsible for any updates that come from network 
  */
 
-static void
-rip_rte_update_if_better(rtable *tab, net *net, struct proto *p, rte *new)
-{
-  rte *old;
-
-  old = rte_find(net, p);
-  if (!old || p->rte_better(new, old) ||
-      (ipa_equal(old->attrs->from, new->attrs->from) &&
-      (old->u.rip.metric != new->u.rip.metric)) )
-    rte_update(tab, net, p, p, new);
-  else
-    rte_free(new);
-}
+//static void
+//rip_rte_update_if_better(rtable *tab, net *net, struct proto *p, rte *new)
 
 /*
  * advertise_entry - let main routing table know about our new entry
@@ -286,35 +273,30 @@ rip_rte_update_if_better(rtable *tab, net *net, struct proto *p, rte *new)
 static void
 advertise_entry( struct proto *p, struct rip_block *b, ip_addr whotoldme, struct iface *iface )
 {
-  rta *a, A;
+  rta *a;
   rte *r;
   net *n;
   neighbor *neighbor;
   struct rip_interface *rif;
-  int pxlen;
+  int pxlen, metric;
+  ip_addr gw;
+  struct rip_entry *e;
 
-  bzero(&A, sizeof(A));
-  A.proto = p;
-  A.source = RTS_RIP;
-  A.scope = SCOPE_UNIVERSE;
-  A.cast = RTC_UNICAST;
-  A.dest = RTD_ROUTER;
-  A.flags = 0;
 #ifndef IPV6
-  A.gw = ipa_nonzero(b->nexthop) ? b->nexthop : whotoldme;
+  gw = ipa_nonzero(b->nexthop) ? b->nexthop : whotoldme;
   pxlen = ipa_mklen(b->netmask);
 #else
   /* FIXME: next hop is in other packet for v6 */
-  A.gw = whotoldme; 
+  gw = whotoldme; 
   pxlen = b->pxlen;
 #endif
-  A.from = whotoldme;
+
 
   /* No need to look if destination looks valid - ie not net 0 or 127 -- core will do for us. */
 
-  neighbor = neigh_find2( p, &A.gw, iface, 0 );
+  neighbor = neigh_find2( p, &gw, iface, 0 );
   if (!neighbor) {
-    log( L_REMOTE "%s: %I asked me to route %I/%d using not-neighbor %I.", p->name, A.from, b->network, pxlen, A.gw );
+    log( L_REMOTE "%s: %I asked me to route %I/%d using not-neighbor %I.", p->name, whotoldme, b->network, pxlen, gw );
     return;
   }
   if (neighbor->scope == SCOPE_HOST) {
@@ -322,33 +304,78 @@ advertise_entry( struct proto *p, struct rip_block *b, ip_addr whotoldme, struct
     return;
   }
 
-  A.iface = neighbor->iface;
   if (!(rif = neighbor->data)) {
-    rif = neighbor->data = find_interface(p, A.iface);
+    rif = neighbor->data = find_interface(p, neighbor->iface);
   }
   if (!rif)
     bug("Route packet using unknown interface? No.");
-    
-  /* set to: interface of nexthop */
-  a = rta_lookup(&A);
+
   if (pxlen==-1)  {
-    log( L_REMOTE "%s: %I gave me invalid pxlen/netmask for %I.", p->name, A.from, b->network );
+    log( L_REMOTE "%s: %I gave me invalid pxlen/netmask for %I.", p->name, whotoldme, b->network );
     return;
   }
-  n = net_get( p->table, b->network, pxlen );
-  r = rte_get_temp(a);
-#ifndef IPV6
-  r->u.rip.metric = ntohl(b->metric) + rif->metric;
-#else  
-  r->u.rip.metric = b->metric + rif->metric;
-#endif
 
-  r->u.rip.entry = NULL;
-  if (r->u.rip.metric > P_CF->infinity) r->u.rip.metric = P_CF->infinity;
-  r->u.rip.tag = ntohl(b->tag);
-  r->net = n;
-  r->pflags = 0; /* Here go my flags */
-  rip_rte_update_if_better( p->table, n, p, r );
+#ifndef IPV6
+  metric = ntohl(b->metric) + rif->metric;
+#else  
+  metric = b->metric + rif->metric;
+#endif
+  if ( metric > P_CF->infinity ) metric = P_CF->infinity;
+  /* set to: interface of nexthop */
+  e = fib_find(&P->rtable, &b->network, pxlen);
+
+  if (!e || (e->metric > metric) || 
+        (ipa_equal(whotoldme, e->whotoldme) &&
+        (metric != e->metric)) )
+  {
+    /* New route arrived */
+    rta A;
+    bzero(&A, sizeof(A));
+    A.proto = p;
+    A.source = RTS_RIP;
+    A.scope = SCOPE_UNIVERSE;
+    A.cast = RTC_UNICAST;
+    A.dest = RTD_ROUTER;
+    A.flags = 0;
+    A.gw = gw;
+    A.from = whotoldme;
+    A.iface = neighbor->iface;
+
+    n = net_get( p->table, b->network, pxlen );
+
+    a = rta_lookup(&A);
+    r = rte_get_temp(a);
+    r->u.rip.metric = metric;
+
+    r->u.rip.tag = ntohl(b->tag);
+    r->net = n;
+    r->pflags = 0; /* Here go my flags */
+
+    if (e) rem_node (NODE &e->gb);
+    e = fib_get( &P->rtable, &b->network, pxlen );
+
+    e->nexthop = gw;
+    e->metric = metric;
+    e->whotoldme = whotoldme;
+    e->tag = r->u.rip.tag;
+
+    e->updated = e->changed = now;
+    e->flags = 0;
+
+    add_head( &P->garbage, NODE &e->gb );
+
+    rte_update(p->table, n, p, p, r);
+    DBG("New route %I/%d from %I met=%d\n", b->network, pxlen, whotoldme, metric);
+  }
+  else
+  {
+    if ( (ipa_equal(whotoldme, e->whotoldme) &&
+        (metric == e->metric)) )
+    {
+      e->updated = now;	/* Renew */
+      DBG("Route renewed %I/%d from %I met=%d\n", b->network, pxlen, whotoldme, metric);
+    }
+  }
   DBG( "done\n" );
 }
 
@@ -530,24 +557,29 @@ rip_timer(timer *t)
   DBG( "RIP: tick tock\n" );
   
   WALK_LIST_DELSAFE( e, et, P->garbage ) {
-    rte *rte;
-    rte = SKIP_BACK( struct rte, u.rip.garbage, e );
+    rte *rte = NULL;
+    net *nt;
+    struct rip_entry *re;
+    re = SKIP_BACK( struct rip_entry, gb, e );
+
+    nt = net_find( p->table, re->n.prefix, re->n.pxlen);
+    if (nt) rte = rte_find(nt, p);
 
     CHK_MAGIC;
 
-    DBG( "Garbage: (%p)", rte ); rte_dump( rte );
+    //DBG( "Garbage: (%p)", rte ); rte_dump( rte );
 
-    if (now - rte->lastmod > P_CF->timeout_time) {
-      TRACE(D_EVENTS, "entry is too old: %I", rte->net->n.prefix );
-      if (rte->u.rip.entry) {
-	rte->u.rip.entry->metric = P_CF->infinity;
-	rte->u.rip.metric = P_CF->infinity;
-      }
+    if (re->changed && (now - re->updated > P_CF->timeout_time)) {
+      TRACE(D_EVENTS, "entry is old: %I", re->n.prefix );
+      re->metric = P_CF->infinity;
+      if (rte) rte_discard(p->table,rte);
     }
 
-    if (now - rte->lastmod > P_CF->garbage_time) {
-      TRACE(D_EVENTS, "entry is much too old: %I", rte->net->n.prefix );
-      rte_discard(p->table, rte);
+    if (re->changed && (now - re->updated > P_CF->garbage_time)) {
+      TRACE(D_EVENTS, "entry is too old: %I", re->n.prefix );
+      if (rte) rte_discard(p->table,rte);
+      rem_node(NODE &re->gb);
+      fib_delete( &P->rtable, re );
     }
   }
 
@@ -844,8 +876,8 @@ rip_gen_attrs(struct linpool *pool, int metric, u16 tag)
 static int
 rip_import_control(struct proto *p, struct rte **rt, struct ea_list **attrs, struct linpool *pool)
 {
-  if ((*rt)->attrs->proto == p)	/* My own must not be touched */
-    return 1;
+  if ((*rt)->attrs->proto == p)	/* Ignore my own routes */
+    return -1;
 
   if ((*rt)->attrs->source != RTS_RIP) {
     struct ea_list *new = rip_gen_attrs(pool, 1, 0);
@@ -880,16 +912,18 @@ rip_rt_notify(struct proto *p, struct rtable *table UNUSED, struct network *net,
   struct rip_entry *e;
 
   e = fib_find( &P->rtable, &net->n.prefix, net->n.pxlen );
-  if (e)
-    fib_delete( &P->rtable, e );
+  if (new) {	/* FIXME: Text is the current rip_entry is not better! */
+    if (e)
+    {
+      rem_node(NODE &e->gb);
+      fib_delete( &P->rtable, e );
+    }
 
-  if (new) {
     e = fib_get( &P->rtable, &net->n.prefix, net->n.pxlen );
 
     e->nexthop = new->attrs->gw;
     e->metric = 0;
     e->whotoldme = IPA_NONE;
-    new->u.rip.entry = e;
 
     e->tag = ea_get_int(attrs, EA_RIP_TAG, 0);
     e->metric = ea_get_int(attrs, EA_RIP_METRIC, 1);
@@ -902,8 +936,17 @@ rip_rt_notify(struct proto *p, struct rtable *table UNUSED, struct network *net,
     if (!e->metric)	/* That's okay: this way user can set his own value for external
 			   routes in rip. */
       e->metric = 5;
-    e->updated = e->changed = now;
+
+    e->updated = e->changed = 0; /* External routes do not age */
     e->flags = 0;
+
+    add_head( &P->garbage, NODE &e->gb );
+  } else {
+    if (e)
+    {
+      e->metric = P_CF->infinity;	/* Will be removed soon */
+      e->updated = e->changed = now - P_CF->timeout_time;	/* Allow aging */
+    }
   }
 }
 
@@ -937,34 +980,6 @@ rip_rte_better(struct rte *new, struct rte *old)
   return 0;
 }
 
-/*
- * rip_rte_insert - we maintain linked list of "our" entries in main
- * routing table, so that we can timeout them correctly. rip_timer()
- * walks the list.
- */
-static void
-rip_rte_insert(net *net UNUSED, rte *rte)
-{
-  struct proto *p = rte->attrs->proto;
-  CHK_MAGIC;
-  DBG( "rip_rte_insert: %p\n", rte );
-  add_head( &P->garbage, &rte->u.rip.garbage );
-}
-
-/*
- * rip_rte_remove - link list maintenance
- */
-static void
-rip_rte_remove(net *net UNUSED, rte *rte)
-{
-#ifdef LOCAL_DEBUG
-  struct proto *p = rte->attrs->proto;
-  CHK_MAGIC;
-  DBG( "rip_rte_remove: %p\n", rte );
-#endif
-  rem_node( &rte->u.rip.garbage );
-}
-
 void
 rip_init_instance(struct proto *p)
 {
@@ -976,8 +991,6 @@ rip_init_instance(struct proto *p)
   p->store_tmp_attrs = rip_store_tmp_attrs;
   p->rte_better = rip_rte_better;
   p->rte_same = rip_rte_same;
-  p->rte_insert = rip_rte_insert;
-  p->rte_remove = rip_rte_remove;
 }
 
 void
