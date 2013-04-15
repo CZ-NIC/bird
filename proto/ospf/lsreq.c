@@ -91,6 +91,7 @@ ospf_lsreq_send(struct ospf_neighbor *n)
   ospf_send_to(ifa, n->ip);
 }
 
+
 void
 ospf_lsreq_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 		   struct ospf_neighbor *n)
@@ -98,11 +99,6 @@ ospf_lsreq_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
   struct proto_ospf *po = ifa->oa->po;
   struct ospf_lsreq_header *lsrs;
   unsigned i, lsr_count;
-
-  struct ospf_lsreq_item *lsr_head, *lsr;
-  struct ospf_lsreq_item **lsr_pos = &lsr_head;
-  slab *upslab;
-
 
   /* No need to check length, lsreq has only basic header */
 
@@ -114,9 +110,10 @@ ospf_lsreq_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 
   ospf_neigh_sm(n, INM_HELLOREC);	/* Not in RFC */
 
-  upslab = sl_new(n->pool, sizeof(struct ospf_lsreq_item));
-
   ospf_lsreq_body(po, pkt, ntohs(pkt->length), &lsrs, &lsr_count);
+
+  struct top_hash_entry *en, *entries[lsr_count];
+
   for (i = 0; i < lsr_count; i++)
   {
     u32 id, rt, type, dom;
@@ -127,26 +124,17 @@ ospf_lsreq_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 
     DBG("Processing requested LSA: Type: %04x, Id: %R, Rt: %R\n", type, id, rt);
 
-    if (ospf_hash_find(po->gr, dom, id, rt, type) == NULL)
+    en = ospf_hash_find(po->gr, dom, id, rt, type); 
+    if (!en)
     {
-      log(L_WARN "Received bad LSREQ from %I: Type: %04x, Id: %R, Rt: %R",
-	  n->ip, type, id, rt);
+      log(L_WARN "%s: Received LSREQ from %I for missing LSA (Type: %04x, Id: %R, Rt: %R)",
+	  po->proto.name, n->ip, type, id, rt);
       ospf_neigh_sm(n, INM_BADLSREQ);
-      rfree(upslab);
       return;
     }
 
-    lsr = sl_alloc(upslab);
-    lsr->domain = dom;
-    lsr->type = type;
-    lsr->id = id;
-    lsr->rt = rt;
-
-    *lsr_pos = lsr;
-    lsr_pos = &(lsr->next);
+    entries[i] = en;
   }
-  *lsr_pos = NULL;
 
-  ospf_lsupd_send_list(n, lsr_head);
-  rfree(upslab);
+  ospf_lsupd_send(n, entries, lsr_count);
 }

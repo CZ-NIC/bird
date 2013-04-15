@@ -47,18 +47,22 @@ struct top_graph
   unsigned int hash_entries_min, hash_entries_max;
 };
 
+struct ospf_lsa_new
+{
+  u16 type;
+  u32 dom;
+  u32 id;
+  u16 opts;
+  u16 length;
+  void *body;
+
+};
+
 struct top_graph *ospf_top_new(pool *);
 void ospf_top_free(struct top_graph *);
 void ospf_top_dump(struct top_graph *, struct proto *);
 
-struct top_hash_entry *ospf_hash_find_header(struct top_graph *f, u32 domain,
-					     struct ospf_lsa_header *h);
-struct top_hash_entry *ospf_hash_get_header(struct top_graph *f, u32 domain,
-					    struct ospf_lsa_header *h);
 
-struct top_hash_entry *ospf_hash_find(struct top_graph *, u32 domain, u32 lsa, u32 rtr, u32 type);
-struct top_hash_entry *ospf_hash_get(struct top_graph *, u32 domain, u32 lsa, u32 rtr, u32 type);
-void ospf_hash_delete(struct top_graph *, struct top_hash_entry *);
 void originate_rt_lsa(struct ospf_area *oa);
 void update_rt_lsa(struct ospf_area *oa);
 void originate_net_lsa(struct ospf_iface *ifa);
@@ -71,6 +75,17 @@ void originate_sum_rt_lsa(struct ospf_area *oa, struct fib_node *fn, int metric,
 void flush_sum_lsa(struct ospf_area *oa, struct fib_node *fn, int type);
 void originate_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src, u32 metric, ip_addr fwaddr, u32 tag, int pbit);
 void flush_ext_lsa(struct ospf_area *oa, struct fib_node *fn, int src, int nssa);
+
+
+struct top_hash_entry *ospf_hash_find(struct top_graph *, u32 domain, u32 lsa, u32 rtr, u32 type);
+struct top_hash_entry *ospf_hash_get(struct top_graph *, u32 domain, u32 lsa, u32 rtr, u32 type);
+void ospf_hash_delete(struct top_graph *, struct top_hash_entry *);
+
+static inline struct top_hash_entry * ospf_hash_find_entry(struct top_graph *f, struct top_hash_entry *en)
+{ return ospf_hash_find(f, en->domain, en->lsa.id, en->lsa.rt, en->lsa_type); }
+
+static inline struct top_hash_entry * ospf_hash_get_entry(struct top_graph *f, struct top_hash_entry *en)
+{ return ospf_hash_get(f, en->domain, en->lsa.id, en->lsa.rt, en->lsa_type); }
 
 struct top_hash_entry * ospf_hash_find_rt(struct top_graph *f, u32 domain, u32 rtr);
 struct top_hash_entry * ospf_hash_find_rt3_first(struct top_graph *f, u32 domain, u32 rtr);

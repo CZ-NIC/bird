@@ -600,51 +600,30 @@ rxmt_timer_hook(timer * timer)
   // struct proto *p = &n->ifa->oa->po->proto;
   struct top_hash_entry *en;
 
-  DBG("%s: RXMT timer fired on interface %s for neigh: %I.\n",
+  DBG("%s: RXMT timer fired on interface %s for neigh %I\n",
       p->name, n->ifa->iface->name, n->ip);
 
-  if(n->state < NEIGHBOR_EXSTART) return;
-
-  if (n->state == NEIGHBOR_EXSTART)
+  switch (n->state)
   {
+  case NEIGHBOR_EXSTART:
     ospf_dbdes_send(n, 1);
     return;
-  }
 
-  if ((n->state == NEIGHBOR_EXCHANGE) && (n->myimms & DBDES_MS))	/* I'm master */
+  case NEIGHBOR_EXCHANGE:
+  if (n->myimms & DBDES_MS)
     ospf_dbdes_send(n, 0);
+  case NEIGHBOR_LOADING:
+    ospf_lsreq_send(n);
+    return;
 
+  case NEIGHBOR_FULL:
+    /* LSA retransmissions */
+    if (!EMPTY_SLIST(n->lsrtl))
+      ospf_lsupd_rxmt(n);
+    return;
 
-  if (n->state < NEIGHBOR_FULL)	
-    ospf_lsreq_send(n);	/* EXCHANGE or LOADING */
-  else
-  {
-    if (!EMPTY_SLIST(n->lsrtl))	/* FULL */
-    {
-      struct ospf_lsreq_item *lsr_head, *lsr;
-      struct ospf_lsreq_item **lsr_pos = &lsr_head;
-
-      slab *upslab = sl_new(n->pool, sizeof(struct ospf_lsreq_item));
-
-      WALK_SLIST(en, n->lsrtl)
-      {
-	if ((SNODE en)->next == (SNODE en))
-	  bug("RTList is cycled");
-
-	lsr = sl_alloc(upslab);
-	lsr->domain = en->domain;
-	lsr->type = en->lsa_type;
-	lsr->id = en->lsa.id;
-	lsr->rt = en->lsa.rt;
-
-	*lsr_pos = lsr;
-	lsr_pos = &(lsr->next);
-      }
-      *lsr_pos = NULL;
-
-      ospf_lsupd_send_list(n, lsr_head);
-      rfree(upslab);
-    }
+  default:
+    return;
   }
 }
 

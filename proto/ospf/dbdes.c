@@ -268,7 +268,7 @@ ospf_dbdes_process(struct ospf_neighbor *n, struct ospf_packet *pkt, unsigned pl
       if (ospf_hash_is_new(req))
 	s_add_tail(&(n->lsrql), SNODE req);
 
-      en->lsa = lsa;
+      en->lsa = lsa; // XXXX ??? should be req->lsa ?
     }
   }
 }

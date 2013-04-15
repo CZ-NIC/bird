@@ -586,15 +586,6 @@ struct ospf_lsreq_header
   u32 rt;
 };
 
-struct ospf_lsreq_item
-{
-  struct ospf_lsreq_item *next;
-  u32 domain;
-  u32 type;
-  u32 id;
-  u32 rt;
-};
-
 
 struct ospf_neighbor
 {
