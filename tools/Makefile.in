@@ -3,7 +3,7 @@
 
 include Rules
 
-.PHONY: all daemon birdci birdcl subdir depend clean distclean tags docs userdocs progdocs
+.PHONY: all daemon birdc birdcl subdir depend clean distclean tags docs userdocs progdocs
 
 all: sysdep/paths.h .dep-stamp subdir daemon birdcl @CLIENT@
 
@@ -17,22 +17,24 @@ bird-dep := $(addsuffix /all.o, $(static-dirs)) conf/all.o lib/birdlib.a
 
 $(bird-dep): sysdep/paths.h .dep-stamp subdir
 
-birdc-dep := client/birdc/all.o client/all.o lib/birdlib.a
+birdc-dep := client/birdc.o client/all.o lib/birdlib.a
 
 $(birdc-dep): sysdep/paths.h .dep-stamp subdir
 
-birdcl-dep := client/birdcl/all.o client/all.o lib/birdlib.a
+birdcl-dep := client/birdcl.o client/all.o lib/birdlib.a
 
 $(birdcl-dep): sysdep/paths.h .dep-stamp subdir
 
 
+export client := @CLIENT@
+
 depend: sysdep/paths.h .dir-stamp
 	set -e ; for a in $(dynamic-dirs) ; do $(MAKE) -C $$a $@ ; done
-	set -e ; for a in $(static-dirs) $(birdcl-dirs) $(birdc-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
+	set -e ; for a in $(static-dirs) $(client-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
 
 subdir: sysdep/paths.h .dir-stamp .dep-stamp
 	set -e ; for a in $(dynamic-dirs) ; do $(MAKE) -C $$a $@ ; done
-	set -e ; for a in $(static-dirs) $(birdcl-dirs) $(birdc-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
+	set -e ; for a in $(static-dirs) $(client-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
 
 $(exedir)/bird: $(bird-dep)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
@@ -44,7 +46,7 @@ $(exedir)/birdcl: $(birdcl-dep)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 .dir-stamp: sysdep/paths.h
-	mkdir -p $(static-dirs) $(birdcl-dirs) $(birdc-dirs) $(doc-dirs)
+	mkdir -p $(static-dirs) $(client-dirs) $(doc-dirs)
 	touch .dir-stamp
 
 .dep-stamp:

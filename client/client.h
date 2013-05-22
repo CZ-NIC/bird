@@ -6,12 +6,23 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-/* client.c callbacks */
 
-void cleanup(void);
+extern int init, busy, interactive;
+extern int term_lns, term_cls;
+
+/* birdc.c / birdcl.c */
+
 void input_start_list(void);
 void input_stop_list(void);
-void server_got_reply(char *x);
+
+void input_init(void);
+void input_notify(int prompt);
+void input_read(void);
+
+void more_begin(void);
+void more_end(void);
+
+void cleanup(void);
 
 /* commands.c */
 
@@ -20,16 +31,6 @@ void cmd_help(char *cmd, int len);
 int cmd_complete(char *cmd, int len, char *buf, int again);
 char *cmd_expand(char *cmd);
 
-/* client_common.c */
+/* client.c */
 
-#define STATE_PROMPT           0
-#define STATE_CMD_SERVER       1
-#define STATE_CMD_USER         2
-
-#define SERVER_READ_BUF_LEN 4096
-
-int handle_internal_command(char *cmd);
-void submit_server_command(char *cmd);
-void server_connect(void);
-void server_read(void);
-void server_send(char *cmd);
+void submit_command(char *cmd_raw);

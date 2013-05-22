@@ -623,7 +623,13 @@ codes along with the messages. You do not necessarily need to use
 -- the format of communication between BIRD and <file/birdc/ is stable
 (see the programmer's documentation).
 
-Many commands have the <m/name/ of the protocol instance as an argument.
+<p>There is also lightweight variant of BIRD client called
+<file/birdcl/, which does not support command line editing and history
+and has minimal dependencies. This is useful for running BIRD in
+resource constrained environments, where Readline library (required
+for regular BIRD client) is not available.
+
+<p>Many commands have the <m/name/ of the protocol instance as an argument.
 This argument can be omitted if there exists only a single instance.
 
 <p>Here is a brief list of supported functions:
