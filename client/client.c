@@ -29,6 +29,7 @@ static char *opt_list = "s:vr";
 static int verbose;
 static char *init_cmd;
 static int once;
+static int restricted;
 
 static char *server_path = PATH_CONTROL_SOCKET;
 static int server_fd;
@@ -70,7 +71,7 @@ parse_args(int argc, char **argv)
 	verbose++;
 	break;
       case 'r':
-	init_cmd = "restrict";
+	restricted = 1;
 	break;
       default:
 	usage();
@@ -82,9 +83,6 @@ parse_args(int argc, char **argv)
       char *tmp;
       int i;
       int len = 0;
-
-      if (init_cmd)
-	usage();
 
       for (i = optind; i < argc; i++)
 	len += strlen(argv[i]) + 1;
@@ -302,6 +300,13 @@ update_state(void)
 {
   if (nstate == cstate)
     return;
+
+  if (restricted)
+    {
+       submit_server_command("restrict");
+       restricted = 0;
+       return;
+    }
 
   if (init_cmd)
     {

@@ -478,7 +478,7 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	using <cf/show route filtered/. Note that this option does not
 	work for the pipe protocol. Default: off.
 
-	<tag>import limit <m/number/ [action warn | block | restart | disable]</tag>
+	<tag>import limit [<m/number/ | off ] [action warn | block | restart | disable]</tag>
 	Specify an import route limit (a maximum number of routes
 	imported from the protocol) and optionally the action to be
 	taken when the limit is hit. Warn action just prints warning
@@ -486,9 +486,9 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	protocol. Restart and disable actions shut the protocol down
 	like appropriate commands. Disable is the default action if an
 	action is not explicitly specified. Note that limits are reset
-	during protocol reconfigure, reload or restart. Default: <cf/none/.
+	during protocol reconfigure, reload or restart. Default: <cf/off/.
 
-	<tag>receive limit <m/number/ [action warn | block | restart | disable]</tag>
+	<tag>receive limit [<m/number/ | off ] [action warn | block | restart | disable]</tag>
 	Specify an receive route limit (a maximum number of routes
 	received from the protocol and remembered). It works almost
 	identically to <cf>import limit</cf> option, the only
@@ -498,9 +498,9 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	receive limit is to protect routing tables from
 	overflow. Import limit, on the contrary, counts accepted
 	routes only and routes blocked by the limit are handled like
-	filtered routes. Default: <cf/none/.
+	filtered routes. Default: <cf/off/.
 
-	<tag>export limit <m/number/ [action warn | block | restart | disable]</tag>
+	<tag>export limit [ <m/number/ | off ] [action warn | block | restart | disable]</tag>
 	Specify an export route limit, works similarly to
 	the <cf>import limit</cf> option, but for the routes exported
 	to the protocol. This option is experimental, there are some
@@ -509,7 +509,7 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	during protocol reload, exported routes counter ignores route
 	blocking and block action also blocks route updates of already
 	accepted routes -- and these details will probably change in
-	the future. Default: <cf/none/.
+	the future. Default: <cf/off/.
 
 	<tag>description "<m/text/"</tag> This is an optional
 	description of the protocol. It is displayed as a part of the

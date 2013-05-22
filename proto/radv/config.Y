@@ -290,8 +290,8 @@ radv_mult:
  ;
 
 radv_sensitive:
-   /* empty */ { $$ = -1 }
- | SENSITIVE bool { $$ = $2 }
+   /* empty */ { $$ = -1; }
+ | SENSITIVE bool { $$ = $2; }
  ;
 
 CF_CODE

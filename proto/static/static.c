@@ -460,7 +460,7 @@ static_reconfigure(struct proto *p, struct proto_config *new)
   WALK_LIST(r, n->iface_routes)
     {
       struct iface *ifa;
-      if (ifa = if_find_by_name(r->if_name))
+      if ((ifa = if_find_by_name(r->if_name)) && (ifa->flags & IF_UP))
 	static_install(p, r, ifa);
     }
   WALK_LIST(r, n->other_routes)
