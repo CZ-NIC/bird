@@ -2212,7 +2212,10 @@ protocol ospf &lt;name&gt; {
 	<tag>neighbors { <m/set/ } </tag>
 	 A set of neighbors to which Hello messages on NBMA or PtMP
 	 networks are to be sent. For NBMA networks, some of them
-	 could be marked as eligible.
+	 could be marked as eligible. In OSPFv3, link-local addresses
+	 should be used, using global ones is possible, but it is
+	 nonstandard and might be problematic. And definitely,
+	 link-local and global addresses should not be mixed.
 
 </descrip>
 

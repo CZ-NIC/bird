@@ -120,7 +120,7 @@ CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL)
 
 %type <t> opttext
 %type <ld> lsadb_args
-%type <i> ospf_proto_key
+%type <i> ospf_proto_key nbma_eligible
 
 CF_GRAMMAR
 
@@ -286,7 +286,7 @@ ospf_iface_item:
  | STUB bool { OSPF_PATT->stub = $2 ; }
  | CHECK LINK bool { OSPF_PATT->check_link = $3; }
  | ECMP WEIGHT expr { OSPF_PATT->ecmp_weight = $3 - 1; if (($3<1) || ($3>256)) cf_error("ECMP weight must be in range 1-256"); }
- | NEIGHBORS '{' ipa_list '}'
+ | NEIGHBORS '{' nbma_list '}'
  | AUTHENTICATION NONE { OSPF_PATT->autype = OSPF_AUTH_NONE; }
  | AUTHENTICATION SIMPLE { OSPF_PATT->autype = OSPF_AUTH_SIMPLE; ospf_check_auth(); }
  | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT; ospf_check_auth(); }
@@ -318,33 +318,24 @@ pref_opt:
  | TAG expr { this_pref->tag = $2; }
  ;
 
-ipa_list:
+nbma_list:
  /* empty */
- | ipa_list ipa_item
+ | nbma_list nbma_item
  ;
 
-ipa_item:
-    ipa_el
-  | ipa_ne;
+nbma_eligible:
+ /* empty */ { $$ = 0; }
+ | ELIGIBLE { $$ = 1; }
+ ;
  
-ipa_el: ipa ';'
+nbma_item: ipa nbma_eligible ';'
  {
    this_nbma = cfg_allocz(sizeof(struct nbma_node));
    add_tail(&OSPF_PATT->nbma_list, NODE this_nbma);
    this_nbma->ip=$1;
-   this_nbma->eligible=0;
+   this_nbma->eligible=$2;
  }
 ;
-
-ipa_ne: ipa ELIGIBLE ';'
- {
-   this_nbma = cfg_allocz(sizeof(struct nbma_node));
-   add_tail(&OSPF_PATT->nbma_list, NODE this_nbma);
-   this_nbma->ip=$1;
-   this_nbma->eligible=1;
- }
-;
-
  
 ospf_iface_start:
  {
