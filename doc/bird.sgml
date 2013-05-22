@@ -1329,6 +1329,11 @@ for each neighbor using the following configuration parameters:
 	circumvent misconfigurations of other routers.  Default:
 	disabled.
 
+	<tag>next hop keep</tag> Forward the received Next Hop
+	attribute even in situations where the local address should be
+	used instead, like when the route is sent to an interface with
+	a different subnet. Default: disabled.
+
 	<tag>missing lladdr self|drop|ignore</tag>Next Hop attribute
 	in BGP-IPv6 sometimes contains just the global IPv6 address,
 	but sometimes it has to contain both global and link-local

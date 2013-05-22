@@ -935,7 +935,8 @@ bgp_create_attrs(struct bgp_proto *p, rte *e, ea_list **attrs, struct linpool *p
       rta->dest != RTD_ROUTER ||
       ipa_equal(rta->gw, IPA_NONE) ||
       ipa_has_link_scope(rta->gw) ||
-      (!p->is_internal && (!p->neigh || (rta->iface != p->neigh->iface))))
+      (!p->is_internal && !p->cf->next_hop_keep &&
+       (!p->neigh || (rta->iface != p->neigh->iface))))
     set_next_hop(z, p->source_addr);
   else
     set_next_hop(z, rta->gw);
@@ -1003,10 +1004,13 @@ bgp_update_attrs(struct bgp_proto *p, rte *e, ea_list **attrs, struct linpool *p
   /* iBGP -> keep next_hop, eBGP multi-hop -> use source_addr,
    * eBGP single-hop -> keep next_hop if on the same iface.
    * If the next_hop is zero (i.e. link-local), keep only if on the same iface.
+   *
+   * Note that same-iface-check uses iface from route, which is based on gw.
    */
   a = ea_find(e->attrs->eattrs, EA_CODE(EAP_BGP, BA_NEXT_HOP));
   if (a && !p->cf->next_hop_self && 
-      ((p->is_internal && ipa_nonzero(*((ip_addr *) a->u.ptr->data))) ||
+      (p->cf->next_hop_keep ||
+       (p->is_internal && ipa_nonzero(*((ip_addr *) a->u.ptr->data))) ||
        (p->neigh && (e->attrs->iface == p->neigh->iface))))
     {
       /* Leave the original next hop attribute, will check later where does it point */
