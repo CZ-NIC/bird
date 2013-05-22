@@ -116,7 +116,7 @@ CF_KEYWORDS(NONE, SIMPLE, AUTHENTICATION, STRICT, CRYPTOGRAPHIC)
 CF_KEYWORDS(ELIGIBLE, POLL, NETWORKS, HIDDEN, VIRTUAL, CHECK, LINK)
 CF_KEYWORDS(RX, BUFFER, LARGE, NORMAL, STUBNET, HIDDEN, SUMMARY, TAG, EXTERNAL)
 CF_KEYWORDS(WAIT, DELAY, LSADB, ECMP, LIMIT, WEIGHT, NSSA, TRANSLATOR, STABILITY)
-CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL)
+CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL, NETMASK)
 
 %type <t> opttext
 %type <ld> lsadb_args
@@ -280,6 +280,7 @@ ospf_iface_item:
  | TYPE POINTOMULTIPOINT { OSPF_PATT->type = OSPF_IT_PTMP ; }
  | TYPE PTMP { OSPF_PATT->type = OSPF_IT_PTMP ; }
  | REAL BROADCAST bool { OSPF_PATT->real_bcast = $3; if (!ospf_cfg_is_v2()) cf_error("Real broadcast option requires OSPFv2"); }
+ | PTP NETMASK bool { OSPF_PATT->ptp_netmask = $3; if (!ospf_cfg_is_v2()) cf_error("Real netmask option requires OSPFv2"); }
  | TRANSMIT DELAY expr { OSPF_PATT->inftransdelay = $3 ; if (($3<=0) || ($3>65535)) cf_error("Transmit delay must be in range 1-65535"); }
  | PRIORITY expr { OSPF_PATT->priority = $2 ; if (($2<0) || ($2>255)) cf_error("Priority must be in range 0-255"); }
  | STRICT NONBROADCAST bool { OSPF_PATT->strictnbma = $3 ; }
@@ -354,6 +355,7 @@ ospf_iface_start:
   OSPF_PATT->type = OSPF_IT_UNDEF;
   init_list(&OSPF_PATT->nbma_list);
   OSPF_PATT->autype = OSPF_AUTH_NONE;
+  OSPF_PATT->ptp_netmask = 2; /* not specified */
   reset_passwords();
  }
 ;

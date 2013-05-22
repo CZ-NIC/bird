@@ -538,6 +538,10 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   ifa->passwords = ip->passwords;
   ifa->instance_id = ip->instance_id;
 
+  ifa->ptp_netmask = !(addr->flags & IA_PEER);
+  if (ip->ptp_netmask < 2)
+    ifa->ptp_netmask = ip->ptp_netmask;
+
   ifa->type = ospf_iface_classify(ip->type, addr);
 
   /* Check validity of interface type */

@@ -246,6 +246,7 @@ struct ospf_iface
   u16 rxbuf;			/* Buffer size */
   u8 check_link;		/* Whether iface link change is used */
   u8 ecmp_weight;		/* Weight used for ECMP */
+  u8 ptp_netmask;		/* Send real netmask for P2P */
 };
 
 struct ospf_md5
@@ -749,8 +750,9 @@ struct ospf_iface_patt
   u8 check_link;
   u8 ecmp_weight;
   u8 real_bcast;		/* Not really used in OSPFv3 */
-  list *passwords;
+  u8 ptp_netmask;		/* bool but 2 for unspecified */
   u8 instance_id;
+  list *passwords;
 };
 
 int ospf_import_control(struct proto *p, rte **new, ea_list **attrs,

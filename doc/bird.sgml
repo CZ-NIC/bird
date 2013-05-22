@@ -1940,6 +1940,7 @@ protocol ospf &lt;name&gt; {
 				nonbroadcast|nbma|pointomultipoint|ptmp];
 			strict nonbroadcast &lt;switch&gt;;
 			real broadcast &lt;switch&gt;;
+			ptp netmask &lt;switch&gt;;
 			check link &lt;switch&gt;;
 			ecmp weight &lt;num&gt;;
 			authentication [none|simple|cryptographic];
@@ -2182,6 +2183,18 @@ protocol ospf &lt;name&gt; {
 	 does not work reliably. This is a non-standard option and
 	 probably is not interoperable with other OSPF
 	 implementations. Default value is no.
+
+	<tag>ptp netmask <m/switch/</tag>
+	 In <cf/type ptp/ network configurations, OSPFv2
+	 implementations should ignore received netmask field in hello
+	 packets and should send hello packets with zero netmask field
+	 on unnumbered PtP links. But some OSPFv2 implementations
+	 perform netmask checking even for PtP links. This option
+	 specifies whether real netmask will be used in hello packets
+	 on <cf/type ptp/ interfaces. You should ignore this option
+	 unless you meet some compatibility problems related to this
+	 issue. Default value is no for unnumbered PtP links, yes
+	 otherwise.
 
 	<tag>check link <M>switch</M></tag>
 	 If set, a hardware link state (reported by OS) is taken into

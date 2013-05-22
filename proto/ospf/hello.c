@@ -267,7 +267,8 @@ ospf_hello_send(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
 
     ps->netmask = htonl(u32_mkmask(ifa->addr->pxlen));
 
-    if ((ifa->type == OSPF_IT_VLINK) || (ifa->type == OSPF_IT_PTP))
+    if ((ifa->type == OSPF_IT_VLINK) ||
+	((ifa->type == OSPF_IT_PTP) && !ifa->ptp_netmask))
       ps->netmask = 0;
 
     ps->helloint = ntohs(ifa->helloint);
