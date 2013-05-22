@@ -691,8 +691,8 @@ This argument can be omitted if there exists only a single instance.
 	<p>You can also select just routes added by a specific protocol.
 	<cf>protocol <m/p/</cf>.
 
-	<p>If BIRD is configured to keep filtered routes (see </cf/import keep filtered/
-	option), you can show them instead of routes by using </cf/filtered/ switch.
+	<p>If BIRD is configured to keep filtered routes (see <cf/import keep filtered/
+	option), you can show them instead of routes by using <cf/filtered/ switch.
 
 	<p>The <cf/stats/ switch requests showing of route statistics (the
 	number of networks, number of routes before and after filtering). If
@@ -2479,6 +2479,26 @@ interface definitions, prefix definitions and DNS definitions:
 	also as interface-specific options and there is a short
 	variant <cf>dnssl <m/domain/</cf> that just specifies one DNS
         search domain.
+
+	<label id="dsc-trigger"> <tag>trigger <m/prefix/</tag>
+	RAdv protocol could be configured to change its behavior based
+	on availability of routes. When this option is used, the
+	protocol waits in suppressed state until a <it/trigger route/
+	(for the specified network) is exported to the protocol, the
+	protocol also returnsd to suppressed state if the
+	<it/trigger route/ disappears. Note that route export depends
+	on specified export filter, as usual. This option could be
+	used, e.g., for handling failover in multihoming scenarios.
+
+	During suppressed state, router advertisements are generated,
+	but with some fields zeroed. Exact behavior depends on which
+	fields are zeroed, this can be configured by
+	<cf/sensitive/ option for appropriate fields. By default, just
+	<cf/default lifetime/ (also called <cf/router lifetime/) is
+	zeroed, which means hosts cannot use the router as a default
+	router. <cf/preferred lifetime/ and <cf/valid lifetime/ could
+	also be configured as <cf/sensitive/ for a prefix, which would
+	cause autoconfigured IPs to be deprecated or even removed.
 </descrip>
 
 <p>Interface specific options:
@@ -2525,11 +2545,12 @@ interface definitions, prefix definitions and DNS definitions:
 	This option specifies which value of Hop Limit should be used
 	by hosts. Valid values are 0-255, 0 means unspecified. Default: 64
 
-	<tag>default lifetime <m/expr/</tag>
+	<tag>default lifetime <m/expr/ [sensitive <m/switch/]</tag>
 	This option specifies the time (in seconds) how long (after
 	the receipt of RA) hosts may use the router as a default
-	router. 0 means do not use as a default router. Default: 3 *
-	<cf/max ra interval/.
+	router. 0 means do not use as a default router. For
+	<cf/sensitive/ option, see <ref id="dsc-trigger" name="trigger">.
+	Default: 3 * <cf/max ra interval/, <cf/sensitive/ yes.
 
 	<tag>rdnss local <m/switch/</tag>
 	Use only local (interface-specific) RDNSS definitions for this
@@ -2546,6 +2567,13 @@ interface definitions, prefix definitions and DNS definitions:
 <p>Prefix specific options:
 
 <descrip>
+	<tag>skip <m/switch/</tag>
+	This option allows to specify that given prefix should not be
+	advertised. This is useful for making exceptions from a
+	default policy of advertising all prefixes. Note that for
+	withdrawing an already advertised prefix it is more useful to
+	advertise it with zero valid lifetime. Default: no
+
 	<tag>onlink <m/switch/</tag>
 	This option specifies whether hosts may use the advertised
 	prefix for onlink determination. Default: yes
@@ -2554,18 +2582,20 @@ interface definitions, prefix definitions and DNS definitions:
 	This option specifies whether hosts may use the advertised
 	prefix for stateless autoconfiguration. Default: yes
 
-	<tag>valid lifetime <m/expr/</tag>
+	<tag>valid lifetime <m/expr/ [sensitive <m/switch/]</tag>
 	This option specifies the time (in seconds) how long (after
 	the receipt of RA) the prefix information is valid, i.e.,
 	autoconfigured IP addresses can be assigned and hosts with
 	that IP addresses are considered directly reachable. 0 means
-	the prefix is no longer valid. Default: 86400 (1 day)
+	the prefix is no longer valid. For <cf/sensitive/ option, see
+	<ref id="dsc-trigger" name="trigger">. Default: 86400 (1 day), <cf/sensitive/ no.
 
-	<tag>preferred lifetime <m/expr/</tag>
+	<tag>preferred lifetime <m/expr/ [sensitive <m/switch/]</tag>
 	This option specifies the time (in seconds) how long (after
 	the receipt of RA) IP addresses generated from the prefix
-	using stateless autoconfiguration remain preferred. Default:
-	14400 (4 hours)
+	using stateless autoconfiguration remain preferred. For
+	<cf/sensitive/ option, see <ref id="dsc-trigger" name="trigger">.
+	Default: 14400 (4 hours), <cf/sensitive/ no.
 </descrip>
 
 

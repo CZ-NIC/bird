@@ -1429,6 +1429,12 @@ i_same(struct f_inst *f1, struct f_inst *f2)
 int
 f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struct linpool *tmp_pool, int flags)
 {
+  if (filter == FILTER_ACCEPT)
+    return F_ACCEPT;
+
+  if (filter == FILTER_REJECT)
+    return F_REJECT;
+
   int rte_cow = ((*rte)->flags & REF_COW);
   DBG( "Running filter `%s'...", filter->name );
 

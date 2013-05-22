@@ -30,6 +30,13 @@
  * by RA_EV_* codes), and radv_timer(), which triggers sending RAs and
  * computes the next timeout.
  *
+ * The RAdv protocol could receive routes (through
+ * radv_import_control() and radv_rt_notify()), but only the
+ * configured trigger route is tracked (in &active var).  When a radv
+ * protocol is reconfigured, the connected routing table is examined
+ * (in radv_check_active()) to have proper &active value in case of
+ * the specified trigger prefix was changed.
+ *
  * Supported standards:
  * - RFC 4861 - main RA standard
  * - RFC 6106 - DNS extensions (RDDNS, DNSSL)
@@ -92,6 +99,16 @@ radv_iface_notify(struct radv_iface *ifa, int event)
 
   tm_start(ifa->timer, after);
 }
+
+static void
+radv_iface_notify_all(struct proto_radv *ra, int event)
+{
+  struct radv_iface *ifa;
+
+  WALK_LIST(ifa, ra->iface_list)
+    radv_iface_notify(ifa, event);
+}
+
 
 static struct radv_iface *
 radv_iface_find(struct proto_radv *ra, struct iface *what)
@@ -238,11 +255,68 @@ radv_ifa_notify(struct proto *p, unsigned flags, struct ifa *a)
     radv_iface_notify(ifa, RA_EV_CHANGE);
 }
 
+static inline int radv_net_match_trigger(struct radv_config *cf, net *n)
+{
+  return cf->trigger_valid &&
+    (n->n.pxlen == cf->trigger_pxlen) &&
+    ipa_equal(n->n.prefix, cf->trigger_prefix);
+}
+
+int
+radv_import_control(struct proto *p, rte **new, ea_list **attrs UNUSED, struct linpool *pool UNUSED)
+{
+  // struct proto_radv *ra = (struct proto_radv *) p;
+  struct radv_config *cf = (struct radv_config *) (p->cf);
+
+  if (radv_net_match_trigger(cf, (*new)->net))
+    return RIC_PROCESS;
+
+  return RIC_DROP;
+}
+
+static void
+radv_rt_notify(struct proto *p, rtable *tbl UNUSED, net *n, rte *new, rte *old UNUSED, ea_list *attrs UNUSED)
+{
+  struct proto_radv *ra = (struct proto_radv *) p;
+  struct radv_config *cf = (struct radv_config *) (p->cf);
+
+  if (radv_net_match_trigger(cf, n))
+  {
+    u8 old_active = ra->active;
+    ra->active = !!new;
+
+    if (ra->active == old_active)
+      return;
+
+    if (ra->active)
+      RADV_TRACE(D_EVENTS, "Triggered");
+    else
+      RADV_TRACE(D_EVENTS, "Suppressed");
+
+    radv_iface_notify_all(ra, RA_EV_CHANGE);
+  }
+}
+
+static int
+radv_check_active(struct proto_radv *ra)
+{
+  struct radv_config *cf = (struct radv_config *) (ra->p.cf);
+
+  if (! cf->trigger_valid)
+    return 1;
+
+  return rt_examine(ra->p.table, cf->trigger_prefix, cf->trigger_pxlen,
+		    &(ra->p), ra->p.cf->out_filter);
+}
+
 static struct proto *
 radv_init(struct proto_config *c)
 {
   struct proto *p = proto_new(c, sizeof(struct proto_radv));
 
+  p->accept_ra_types = RA_OPTIMAL;
+  p->import_control = radv_import_control;
+  p->rt_notify = radv_rt_notify;
   p->if_notify = radv_if_notify;
   p->ifa_notify = radv_ifa_notify;
   return p;
@@ -252,9 +326,10 @@ static int
 radv_start(struct proto *p)
 {
   struct proto_radv *ra = (struct proto_radv *) p;
-  // struct radv_config *cf = (struct radv_config *) (p->cf);
+  struct radv_config *cf = (struct radv_config *) (p->cf);
 
   init_list(&(ra->iface_list));
+  ra->active = !cf->trigger_valid;
 
   return PS_UP;
 }
@@ -292,6 +367,9 @@ radv_reconfigure(struct proto *p, struct proto_config *c)
    * protocol would lead to sending a RA with Router Lifetime 0
    * causing nodes to temporary remove their default routes.
    */
+
+  p->cf = c; /* radv_check_active() requires proper p->cf */
+  ra->active = radv_check_active(ra);
 
   struct iface *iface;
   WALK_LIST(iface, iface_list)
@@ -335,6 +413,14 @@ radv_copy_config(struct proto_config *dest, struct proto_config *src)
   cfg_copy_list(&d->pref_list, &s->pref_list, sizeof(struct radv_prefix_config));
 }
 
+static void
+radv_get_status(struct proto *p, byte *buf)
+{
+  struct proto_radv *ra = (struct proto_radv *) p;
+
+  if (!ra->active)
+    strcpy(buf, "Suppressed");
+}
 
 struct protocol proto_radv = {
   .name =		"RAdv",
@@ -343,5 +429,6 @@ struct protocol proto_radv = {
   .start =		radv_start,
   .shutdown =		radv_shutdown,
   .reconfigure =	radv_reconfigure,
-  .copy_config =	radv_copy_config
+  .copy_config =	radv_copy_config,
+  .get_status =		radv_get_status
 };

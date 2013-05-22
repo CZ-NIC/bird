@@ -30,9 +30,9 @@ CF_KEYWORDS(RADV, PREFIX, INTERFACE, MIN, MAX, RA, DELAY, INTERVAL,
 	MANAGED, OTHER, CONFIG, LINK, MTU, REACHABLE, TIME, RETRANS,
 	TIMER, CURRENT, HOP, LIMIT, DEFAULT, VALID, PREFERRED, MULT,
 	LIFETIME, SKIP, ONLINK, AUTONOMOUS, RDNSS, DNSSL, NS, DOMAIN,
-	LOCAL)
+	LOCAL, TRIGGER, SENSITIVE)
 
-%type<i> radv_mult
+%type<i> radv_mult radv_sensitive
 
 CF_GRAMMAR
 
@@ -53,6 +53,11 @@ radv_proto_item:
  | PREFIX radv_prefix { add_tail(&RADV_CFG->pref_list, NODE this_radv_prefix); }
  | RDNSS { init_list(&radv_dns_list); } radv_rdnss { add_tail_list(&RADV_CFG->rdnss_list, &radv_dns_list); }
  | DNSSL { init_list(&radv_dns_list); } radv_dnssl { add_tail_list(&RADV_CFG->dnssl_list, &radv_dns_list); }
+ | TRIGGER prefix {
+     RADV_CFG->trigger_prefix = $2.addr;
+     RADV_CFG->trigger_pxlen = $2.len;
+     RADV_CFG->trigger_valid = 1;
+   }
  ;
 
 radv_proto_opts:
@@ -78,6 +83,7 @@ radv_iface_start:
   RADV_IFACE->min_delay = DEFAULT_MIN_DELAY;
   RADV_IFACE->current_hop_limit = DEFAULT_CURRENT_HOP_LIMIT;
   RADV_IFACE->default_lifetime = -1;
+  RADV_IFACE->default_lifetime_sensitive = 1;
 };
 
 radv_iface_item:
@@ -90,7 +96,11 @@ radv_iface_item:
  | REACHABLE TIME expr { RADV_IFACE->reachable_time = $3; if (($3 < 0) || ($3 > 3600000)) cf_error("Reachable time must be in range 0-3600000"); }
  | RETRANS TIMER expr { RADV_IFACE->retrans_timer = $3; if ($3 < 0) cf_error("Retrans timer must be 0 or positive"); }
  | CURRENT HOP LIMIT expr { RADV_IFACE->current_hop_limit = $4; if (($4 < 0) || ($4 > 255))  cf_error("Current hop limit must be in range 0-255"); }
- | DEFAULT LIFETIME expr { RADV_IFACE->default_lifetime = $3; if (($3 < 0) || ($3 > 9000))  cf_error("Default lifetime must be in range 0-9000"); }
+ | DEFAULT LIFETIME expr radv_sensitive {
+     RADV_IFACE->default_lifetime = $3;
+     if (($3 < 0) || ($3 > 9000))  cf_error("Default lifetime must be in range 0-9000");
+     if ($4 != -1) RADV_IFACE->default_lifetime_sensitive = $4;
+   }
  | PREFIX radv_prefix { add_tail(&RADV_IFACE->pref_list, NODE this_radv_prefix); }
  | RDNSS { init_list(&radv_dns_list); } radv_rdnss { add_tail_list(&RADV_IFACE->rdnss_list, &radv_dns_list); }
  | DNSSL { init_list(&radv_dns_list); } radv_dnssl { add_tail_list(&RADV_IFACE->dnssl_list, &radv_dns_list); }
@@ -147,14 +157,25 @@ radv_prefix_item:
    SKIP bool { RADV_PREFIX->skip = $2; }
  | ONLINK bool { RADV_PREFIX->onlink = $2; }
  | AUTONOMOUS bool { RADV_PREFIX->autonomous = $2; }
- | VALID LIFETIME expr { RADV_PREFIX->valid_lifetime = $3; if ($3 < 0) cf_error("Valid lifetime must be 0 or positive"); }
- | PREFERRED LIFETIME expr { RADV_PREFIX->preferred_lifetime = $3; if ($3 < 0) cf_error("Preferred lifetime must be 0 or positive"); }
+ | VALID LIFETIME expr radv_sensitive {
+     RADV_PREFIX->valid_lifetime = $3;
+     if ($3 < 0) cf_error("Valid lifetime must be 0 or positive");
+     if ($4 != -1) RADV_PREFIX->valid_lifetime_sensitive = $4;
+   }
+ | PREFERRED LIFETIME expr radv_sensitive {
+     RADV_PREFIX->preferred_lifetime = $3;
+     if ($3 < 0) cf_error("Preferred lifetime must be 0 or positive");
+     if ($4 != -1) RADV_PREFIX->preferred_lifetime_sensitive = $4;
+   }
  ;
 
 radv_prefix_finish:
 {
   if (RADV_PREFIX->preferred_lifetime > RADV_PREFIX->valid_lifetime)
     cf_error("Preferred lifetime must be at most Valid lifetime");
+
+  if (RADV_PREFIX->valid_lifetime_sensitive > RADV_PREFIX->preferred_lifetime_sensitive)
+    cf_error("Valid lifetime sensitive requires that Preferred lifetime is sensitive too");
 };
 
 radv_prefix_opts:
@@ -266,6 +287,11 @@ radv_dnssl:
 radv_mult:
    expr { $$ = $1; radv_mult_val = 0; }
  | MULT expr { $$ = 0; radv_mult_val = $2; if (($2 < 1) || ($2 > 254)) cf_error("Multiplier must be in range 1-254"); }
+ ;
+
+radv_sensitive:
+   /* empty */ { $$ = -1 }
+ | SENSITIVE bool { $$ = $2 }
  ;
 
 CF_CODE

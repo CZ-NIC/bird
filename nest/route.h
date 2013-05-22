@@ -277,6 +277,12 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RA_ACCEPTED	2		/* Announcement of first accepted route */
 #define RA_ANY		3		/* Announcement of any route change */
 
+/* Return value of import_control() callback */
+#define RIC_ACCEPT	1		/* Accepted by protocol */
+#define RIC_PROCESS	0		/* Process it through import filter */
+#define RIC_REJECT	-1		/* Rejected by protocol */
+#define RIC_DROP	-2		/* Silently dropped by protocol */
+
 struct config;
 
 void rt_init(void);
@@ -292,6 +298,7 @@ rte *rte_get_temp(struct rta *);
 void rte_update2(struct announce_hook *ah, net *net, rte *new, struct proto *src);
 static inline void rte_update(rtable *tab, net *net, struct proto *p, struct proto *src, rte *new) { rte_update2(p->main_ahook, net, new, src); }
 void rte_discard(rtable *tab, rte *old);
+int rt_examine(rtable *t, ip_addr prefix, int pxlen, struct proto *p, struct filter *filter);
 void rte_dump(rte *);
 void rte_free(rte *);
 rte *rte_do_cow(rte *);

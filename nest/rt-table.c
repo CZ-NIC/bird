@@ -216,7 +216,8 @@ export_filter(struct announce_hook *ah, rte *rt0, rte **rt_free, ea_list **tmpa,
 	goto reject;
 
       stats->exp_updates_rejected++;
-      rte_trace_out(D_FILTERS, p, rt, "rejected by protocol");
+      if (v == RIC_REJECT)
+	rte_trace_out(D_FILTERS, p, rt, "rejected by protocol");
       goto reject;
     }
   if (v > 0)
@@ -1048,6 +1049,34 @@ rte_discard(rtable *t, rte *old)	/* Non-filtered route deletion, used during gar
   rte_update_lock();
   rte_recalculate(old->sender, old->net, NULL, NULL, old->attrs->proto);
   rte_update_unlock();
+}
+
+/* Check rtable for best route to given net whether it would be exported do p */
+int
+rt_examine(rtable *t, ip_addr prefix, int pxlen, struct proto *p, struct filter *filter)
+{
+  net *n = net_find(t, prefix, pxlen);
+  rte *rt = n ? n->routes : NULL;
+
+  if (!rte_is_valid(rt))
+    return 0;
+
+  rte_update_lock();
+
+  /* Rest is stripped down export_filter() */
+  struct proto *src = rt->attrs->proto;
+  ea_list *tmpa = src->make_tmp_attrs ? src->make_tmp_attrs(rt, rte_update_pool) : NULL;
+  int v = p->import_control ? p->import_control(p, &rt, &tmpa, rte_update_pool) : 0;
+  if (v == RIC_PROCESS)
+    v = (f_run(filter, &rt, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) <= F_ACCEPT);
+
+   /* Discard temporary rte */
+  if (rt != n->routes)
+    rte_free(rt);
+
+  rte_update_unlock();
+
+  return v > 0;
 }
 
 /**
@@ -2162,7 +2191,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       ee = e;
       rte_update_lock();		/* We use the update buffer for filtering */
       tmpa = p0->make_tmp_attrs ? p0->make_tmp_attrs(e, rte_update_pool) : NULL;
-      ok = (d->filter == FILTER_ACCEPT || f_run(d->filter, &e, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) <= F_ACCEPT);
+      ok = f_run(d->filter, &e, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) <= F_ACCEPT;
       if (p2 && p2 != p0) ok = 0;
       if (ok && d->export_mode)
 	{
@@ -2176,8 +2205,8 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 		 'configure soft' command may change the export filter
 		 and do not update routes */
 
-	      if ((a = proto_find_announce_hook(p1, d->table)) && ((a->out_filter == FILTER_REJECT) ||
-		  (a->out_filter && f_run(a->out_filter, &e, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) > F_ACCEPT)))
+	      if ((a = proto_find_announce_hook(p1, d->table)) && 
+		  (f_run(a->out_filter, &e, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) > F_ACCEPT))
 		ok = 0;
 	    }
 	}

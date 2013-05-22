@@ -49,6 +49,10 @@ struct radv_config
   list pref_list;		/* Global list of prefix configs (struct radv_prefix_config) */
   list rdnss_list;		/* Global list of RDNSS configs (struct radv_rdnss_config) */
   list dnssl_list;		/* Global list of DNSSL configs (struct radv_dnssl_config) */
+
+  ip_addr trigger_prefix;	/* Prefix of a trigger route, if defined */
+  u8 trigger_pxlen;		/* Pxlen of a trigger route, if defined */
+  u8 trigger_valid;		/* Whether a trigger route is defined */
 };
 
 struct radv_iface_config
@@ -72,6 +76,7 @@ struct radv_iface_config
   u32 retrans_timer;
   u32 current_hop_limit;
   u32 default_lifetime;
+  u8 default_lifetime_sensitive; /* Whether default_lifetime depends on trigger */
 };
 
 struct radv_prefix_config
@@ -85,6 +90,8 @@ struct radv_prefix_config
   u8 autonomous;
   u32 valid_lifetime;
   u32 preferred_lifetime;
+  u8 valid_lifetime_sensitive;	 /* Whether valid_lifetime depends on trigger */
+  u8 preferred_lifetime_sensitive; /* Whether preferred_lifetime depends on trigger */
 };
 
 struct radv_rdnss_config
@@ -110,6 +117,7 @@ struct proto_radv
 {
   struct proto p;
   list iface_list;		/* List of active ifaces */
+  u8 active;			/* Whether radv is active w.r.t. triggers */
 };
 
 struct radv_iface
