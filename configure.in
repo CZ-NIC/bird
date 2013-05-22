@@ -73,15 +73,17 @@ if test -z "$GCC" ; then
 	AC_MSG_ERROR([This program requires the GNU C Compiler.])
 fi
 
-AC_MSG_CHECKING([what CFLAGS should we use])
 if test "$bird_cflags_default" = yes ; then
-	BIRD_CHECK_GCC_OPTIONS
+	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_wno_pointer_sign, -Wno-pointer-sign, -Wall)
+	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_fno_strict_aliasing, -fno-strict-aliasing)
+	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_fno_strict_overflow, -fno-strict-overflow)
 
 	CFLAGS="$CFLAGS -Wall -Wstrict-prototypes -Wno-parentheses"
-	if test "$bird_cv_c_option_no_pointer_sign" = yes ; then
-		CFLAGS="$CFLAGS -Wno-pointer-sign"
-	fi
+	BIRD_ADD_GCC_OPTION(bird_cv_c_option_wno_pointer_sign, -Wno-pointer-sign)
+	BIRD_ADD_GCC_OPTION(bird_cv_c_option_fno_strict_aliasing, -fno-strict-aliasing)
+	BIRD_ADD_GCC_OPTION(bird_cv_c_option_fno_strict_overflow, -fno-strict-overflow)
 fi
+AC_MSG_CHECKING([CFLAGS])
 AC_MSG_RESULT($CFLAGS)
 
 

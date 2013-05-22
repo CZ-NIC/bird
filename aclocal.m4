@@ -133,19 +133,23 @@ if test "$bird_cv_struct_ip_mreqn" = yes ; then
 fi
 ])
 
-AC_DEFUN(BIRD_CHECK_GCC_OPTIONS,
-[AC_CACHE_VAL(bird_cv_c_option_no_pointer_sign, [
-cat >conftest.c <<EOF
-int main(void)
-{ return 0; }
-EOF
-if $CC -Wall -Wno-pointer-sign conftest.c >&AS_MESSAGE_LOG_FD 2>&1 ; then
-	bird_cv_c_option_no_pointer_sign=yes
-else
-	bird_cv_c_option_no_pointer_sign=no
-fi
-rm -rf conftest* a.out
-])])
+AC_DEFUN(BIRD_CHECK_GCC_OPTION,
+[
+  bird_tmp_cflags="$CFLAGS"
+
+  CFLAGS="$3 $2"
+  AC_CACHE_CHECK([whether CC supports $2], $1,
+    [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([])], [$1=yes], [$1=no])])
+
+  CFLAGS="$bird_tmp_cflags"
+])
+
+AC_DEFUN(BIRD_ADD_GCC_OPTION,
+[
+  if test "$$1" = yes ; then
+    CFLAGS="$CFLAGS $2"
+  fi
+])
 
 # BIRD_CHECK_PROG_FLAVOR_GNU(PROGRAM-PATH, IF-SUCCESS, [IF-FAILURE])
 # copied autoconf internal _AC_PATH_PROG_FLAVOR_GNU
