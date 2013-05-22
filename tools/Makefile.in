@@ -3,29 +3,36 @@
 
 include Rules
 
-.PHONY: all daemon client subdir depend clean distclean tags docs userdocs progdocs
+.PHONY: all daemon birdci birdcl subdir depend clean distclean tags docs userdocs progdocs
 
-all: sysdep/paths.h .dep-stamp subdir daemon @CLIENT@
+all: sysdep/paths.h .dep-stamp subdir daemon birdcl @CLIENT@
 
 daemon: $(exedir)/bird
 
-client: $(exedir)/birdc
+birdc: $(exedir)/birdc
+
+birdcl: $(exedir)/birdcl
 
 bird-dep := $(addsuffix /all.o, $(static-dirs)) conf/all.o lib/birdlib.a
 
 $(bird-dep): sysdep/paths.h .dep-stamp subdir
 
-birdc-dep := client/all.o lib/birdlib.a
+birdc-dep := client/birdc/all.o client/all.o lib/birdlib.a
 
 $(birdc-dep): sysdep/paths.h .dep-stamp subdir
 
+birdcl-dep := client/birdcl/all.o client/all.o lib/birdlib.a
+
+$(birdcl-dep): sysdep/paths.h .dep-stamp subdir
+
+
 depend: sysdep/paths.h .dir-stamp
 	set -e ; for a in $(dynamic-dirs) ; do $(MAKE) -C $$a $@ ; done
-	set -e ; for a in $(static-dirs) $(client-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
+	set -e ; for a in $(static-dirs) $(birdcl-dirs) $(birdc-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
 
 subdir: sysdep/paths.h .dir-stamp .dep-stamp
 	set -e ; for a in $(dynamic-dirs) ; do $(MAKE) -C $$a $@ ; done
-	set -e ; for a in $(static-dirs) $(client-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
+	set -e ; for a in $(static-dirs) $(birdcl-dirs) $(birdc-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
 
 $(exedir)/bird: $(bird-dep)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
@@ -33,8 +40,11 @@ $(exedir)/bird: $(bird-dep)
 $(exedir)/birdc: $(birdc-dep)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS) $(CLIENT_LIBS)
 
+$(exedir)/birdcl: $(birdcl-dep)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
 .dir-stamp: sysdep/paths.h
-	mkdir -p $(static-dirs) $(client-dirs) $(doc-dirs)
+	mkdir -p $(static-dirs) $(birdcl-dirs) $(birdc-dirs) $(doc-dirs)
 	touch .dir-stamp
 
 .dep-stamp:
@@ -58,6 +68,7 @@ tags:
 install: all
 	$(INSTALL) -d $(DESTDIR)/$(sbindir) $(DESTDIR)/$(sysconfdir) $(DESTDIR)/@runtimedir@
 	$(INSTALL_PROGRAM) -s $(exedir)/bird $(DESTDIR)/$(sbindir)/bird
+	$(INSTALL_PROGRAM) -s $(exedir)/birdcl $(DESTDIR)/$(sbindir)/birdcl
 	if test -n "@CLIENT@" ; then								\
 		$(INSTALL_PROGRAM) -s $(exedir)/birdc $(DESTDIR)/$(sbindir)/birdc ;		\
 	fi
@@ -74,7 +85,7 @@ install-docs:
 clean:
 	find . -name "*.[oa]" -o -name core -o -name depend -o -name "*.html" | xargs rm -f
 	rm -f conf/cf-lex.c conf/cf-parse.* conf/commands.h conf/keywords.h
-	rm -f $(exedir)/bird $(exedir)/birdc $(exedir)/bird.ctl $(exedir)/bird6.ctl .dep-stamp
+	rm -f $(exedir)/bird $(exedir)/birdcl $(exedir)/birdc $(exedir)/bird.ctl $(exedir)/bird6.ctl .dep-stamp
 
 distclean: clean
 	rm -f config.* configure sysdep/autoconf.h sysdep/paths.h Makefile Rules

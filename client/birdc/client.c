@@ -31,21 +31,17 @@ static char *init_cmd;
 static int once;
 static int restricted;
 
-static char *server_path = PATH_CONTROL_SOCKET;
-static int server_fd;
-static byte server_read_buf[4096];
-static byte *server_read_pos = server_read_buf;
+extern char *server_path;
+extern int server_fd;
+extern byte server_read_buf[SERVER_READ_BUF_LEN];
+extern byte *server_read_pos;
 
-#define STATE_PROMPT		0
-#define STATE_CMD_SERVER	1
-#define STATE_CMD_USER		2
+extern int input_initialized;
+extern int input_hidden_end;
+extern int cstate;
+extern int nstate;
 
-static int input_initialized;
-static int input_hidden_end;
-static int cstate = STATE_CMD_SERVER;
-static int nstate = STATE_CMD_SERVER;
-
-static int num_lines, skip_input, interactive;
+extern int num_lines, skip_input, interactive;
 
 /*** Parsing of arguments ***/
 
@@ -102,36 +98,10 @@ parse_args(int argc, char **argv)
 
 /*** Input ***/
 
-static void server_send(char *);
-
 /* HACK: libreadline internals we need to access */
 extern int _rl_vis_botlin;
 extern void _rl_move_vert(int);
 extern Function *rl_last_func;
-
-static int
-handle_internal_command(char *cmd)
-{
-  if (!strncmp(cmd, "exit", 4) || !strncmp(cmd, "quit", 4))
-    {
-      cleanup();
-      exit(0);
-    }
-  if (!strncmp(cmd, "help", 4))
-    {
-      puts("Press `?' for context sensitive help.");
-      return 1;
-    }
-  return 0;
-}
-
-void
-submit_server_command(char *cmd)
-{
-  server_send(cmd);
-  nstate = STATE_CMD_SERVER;
-  num_lines = 2;
-}
 
 static void
 add_history_dedup(char *cmd)
@@ -142,8 +112,7 @@ add_history_dedup(char *cmd)
     add_history(cmd);
 }
 
-static void
-got_line(char *cmd_buffer)
+void got_line(char *cmd_buffer)
 {
   char *cmd;
 
@@ -156,16 +125,16 @@ got_line(char *cmd_buffer)
     {
       cmd = cmd_expand(cmd_buffer);
       if (cmd)
-	{
-	  add_history_dedup(cmd);
+       {
+         add_history_dedup(cmd);
 
-	  if (!handle_internal_command(cmd))
-	    submit_server_command(cmd);
+         if (!handle_internal_command(cmd))
+           submit_server_command(cmd);
 
-	  free(cmd);
-	}
+         free(cmd);
+       }
       else
-	add_history_dedup(cmd_buffer);
+       add_history_dedup(cmd_buffer);
     }
   free(cmd_buffer);
 }
@@ -285,17 +254,6 @@ input_reveal(void)
 }
 
 void
-cleanup(void)
-{
-  if (input_initialized)
-    {
-      input_initialized = 0;
-      input_hide();
-      rl_callback_handler_remove();
-    }
-}
-
-void
 update_state(void)
 {
   if (nstate == cstate)
@@ -364,111 +322,18 @@ more(void)
   fflush(stdout);
 }
 
+void cleanup(void)
+{
+  if (input_initialized)
+    {
+      input_initialized = 0;
+      input_hide();
+      rl_callback_handler_remove();
+    }
+}
+
 
 /*** Communication with server ***/
-
-static void
-server_connect(void)
-{
-  struct sockaddr_un sa;
-
-  server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (server_fd < 0)
-    die("Cannot create socket: %m");
-
-  if (strlen(server_path) >= sizeof(sa.sun_path))
-    die("server_connect: path too long");
-
-  bzero(&sa, sizeof(sa));
-  sa.sun_family = AF_UNIX;
-  strcpy(sa.sun_path, server_path);
-  if (connect(server_fd, (struct sockaddr *) &sa, SUN_LEN(&sa)) < 0)
-    die("Unable to connect to server control socket (%s): %m", server_path);
-  if (fcntl(server_fd, F_SETFL, O_NONBLOCK) < 0)
-    die("fcntl: %m");
-}
-
-#define PRINTF(LEN, PARGS...) do { if (!skip_input) len = printf(PARGS); } while(0)
-
-static void
-server_got_reply(char *x)
-{
-  int code;
-  int len = 0;
-
-  if (*x == '+')			/* Async reply */
-    PRINTF(len, ">>> %s\n", x+1);
-  else if (x[0] == ' ')			/* Continuation */
-    PRINTF(len, "%s%s\n", verbose ? "     " : "", x+1);
-  else if (strlen(x) > 4 &&
-	   sscanf(x, "%d", &code) == 1 && code >= 0 && code < 10000 &&
-	   (x[4] == ' ' || x[4] == '-'))
-    {
-      if (code)
-	PRINTF(len, "%s\n", verbose ? x : x+5);
-      if (x[4] == ' ')
-      {
-	nstate = STATE_PROMPT;
-	skip_input = 0;
-	return;
-      }
-    }
-  else
-    PRINTF(len, "??? <%s>\n", x);
-
-  if (skip_input)
-    return;
-
-  if (interactive && input_initialized && (len > 0))
-    {
-      int lns = LINES ? LINES : 25;
-      int cls = COLS ? COLS : 80;
-      num_lines += (len + cls - 1) / cls; /* Divide and round up */
-      if ((num_lines >= lns)  && (cstate == STATE_CMD_SERVER))
-	more();
-    }
-}
-
-static void
-server_read(void)
-{
-  int c;
-  byte *start, *p;
-
- redo:
-  c = read(server_fd, server_read_pos, server_read_buf + sizeof(server_read_buf) - server_read_pos);
-  if (!c)
-    die("Connection closed by server.");
-  if (c < 0)
-    {
-      if (errno == EINTR)
-	goto redo;
-      else
-	die("Server read error: %m");
-    }
-
-  start = server_read_buf;
-  p = server_read_pos;
-  server_read_pos += c;
-  while (p < server_read_pos)
-    if (*p++ == '\n')
-      {
-	p[-1] = 0;
-	server_got_reply(start);
-	start = p;
-      }
-  if (start != server_read_buf)
-    {
-      int l = server_read_pos - start;
-      memmove(server_read_buf, start, l);
-      server_read_pos = server_read_buf + l;
-    }
-  else if (server_read_pos == server_read_buf + sizeof(server_read_buf))
-    {
-      strcpy(server_read_buf, "?<too-long>");
-      server_read_pos = server_read_buf + 11;
-    }
-}
 
 static fd_set select_fds;
 
@@ -508,56 +373,43 @@ select_loop(void)
     }
 }
 
-static void
-wait_for_write(int fd)
+#define PRINTF(LEN, PARGS...) do { if (!skip_input) len = printf(PARGS); } while(0)
+
+void server_got_reply(char *x)
 {
-  while (1)
+  int code;
+  int len = 0;
+
+  if (*x == '+')                        /* Async reply */
+    PRINTF(len, ">>> %s\n", x+1);
+  else if (x[0] == ' ')                 /* Continuation */
+    PRINTF(len, "%s%s\n", verbose ? "     " : "", x+1);
+  else if (strlen(x) > 4 &&
+           sscanf(x, "%d", &code) == 1 && code >= 0 && code < 10000 &&
+           (x[4] == ' ' || x[4] == '-'))
     {
-      int rv;
-      fd_set set;
-      FD_ZERO(&set);
-      FD_SET(fd, &set);
-
-      rv = select(fd+1, NULL, &set, NULL, NULL);
-      if (rv < 0)
-	{
-	  if (errno == EINTR)
-	    continue;
-	  else
-	    die("select: %m");
-	}
-
-      if (FD_ISSET(server_fd, &set))
-	return;
+      if (code)
+        PRINTF(len, "%s\n", verbose ? x : x+5);
+      if (x[4] == ' ')
+      {
+        nstate = STATE_PROMPT;
+        skip_input = 0;
+        return;
+      }
     }
-}
+  else
+    PRINTF(len, "??? <%s>\n", x);
 
-static void
-server_send(char *cmd)
-{
-  int l = strlen(cmd);
-  byte *z = alloca(l + 1);
+  if (skip_input)
+    return;
 
-  memcpy(z, cmd, l);
-  z[l++] = '\n';
-  while (l)
+  if (interactive && input_initialized && (len > 0))
     {
-      int cnt = write(server_fd, z, l);
-
-      if (cnt < 0)
-	{
-	  if (errno == EAGAIN)
-	    wait_for_write(server_fd);
-	  else if (errno == EINTR)
-	    continue;
-	  else
-	    die("Server write error: %m");
-	}
-      else
-	{
-	  l -= cnt;
-	  z += cnt;
-	}
+      int lns = LINES ? LINES : 25;
+      int cls = COLS ? COLS : 80;
+      num_lines += (len + cls - 1) / cls; /* Divide and round up */
+      if ((num_lines >= lns)  && (cstate == STATE_CMD_SERVER))
+        more();
     }
 }
 

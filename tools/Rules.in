@@ -11,12 +11,14 @@ static-dirs := nest filter $(addprefix proto/,$(protocols))
 static-dir-paths := $(addprefix $(srcdir)/,$(static-dirs))
 dynamic-dirs := lib conf
 dynamic-dir-paths := $(dynamic-dirs)
-client-dirs := @CLIENT@
-client-dir-paths := $(client-dirs)
+birdc-dirs := client client/@CLIENT@
+birdc-dir-paths := $(birdc-dirs)
+birdcl-dirs := client client/birdcl
+birdcl-dir-paths := $(birdcl-dirs)
 doc-dirs := doc
 doc-dir-paths := $(doc-dirs)
 
-all-dirs:=$(static-dirs) $(dynamic-dirs) $(client-dirs) $(doc-dirs)
+all-dirs:=$(static-dirs) $(dynamic-dirs) $(birdc-dirs) $(doc-dirs)
 clean-dirs:=$(all-dirs) proto sysdep
 
 CPPFLAGS=-I$(root-rel) -I$(srcdir) @CPPFLAGS@

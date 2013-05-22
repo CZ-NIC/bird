@@ -205,7 +205,7 @@ fi
 CLIENT=
 CLIENT_LIBS=
 if test "$enable_client" = yes ; then
-	CLIENT=client
+	CLIENT=birdc
 	AC_CHECK_LIB(history, add_history, CLIENT_LIBS="-lhistory")
 	AC_CHECK_LIB(ncurses, tgetent, USE_TERMCAP_LIB=-lncurses,
 		AC_CHECK_LIB(curses, tgetent, USE_TERMCAP_LIB=-lcurses,
