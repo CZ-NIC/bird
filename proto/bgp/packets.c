@@ -820,7 +820,7 @@ bgp_set_next_hop(struct bgp_proto *p, rta *a)
   ip_addr *nexthop = (ip_addr *) nh->u.ptr->data;
 
 #ifdef IPV6
-  int second = (nh->u.ptr->length == NEXT_HOP_LENGTH);
+  int second = (nh->u.ptr->length == NEXT_HOP_LENGTH) && ipa_nonzero(nexthop[1]);
 
   /* First address should not be link-local, but may be zero in direct mode */
   if (ipa_has_link_scope(*nexthop))
