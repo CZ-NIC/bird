@@ -2734,7 +2734,7 @@ other than equally configured BIRD. I have warned you.
 	<tag>period <M>number</M>
 	  </tag>specifies the number of seconds between periodic updates. Default is 30 seconds. A lower
 	  number will mean faster convergence but bigger network
-	  load. Do not use values lower than 10.
+	  load. Do not use values lower than 12.
 
 	<tag>timeout time <M>number</M>
 	  </tag>specifies how old route has to be to be considered unreachable. Default is 4*<cf/period/.
@@ -2764,7 +2764,7 @@ other than equally configured BIRD. I have warned you.
 protocol rip MyRIP_test {
         debug all;
         port 1520;
-        period 10;
+        period 12;
         garbage time 60;
         interface "eth0" { metric 3; mode multicast; };
 	interface "eth*" { metric 2; mode broadcast; };

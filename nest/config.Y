@@ -223,7 +223,7 @@ limit_spec:
      l->action = $2;
      $$ = l;
    }
- | OFF { $$ = 0; }
+ | OFF { $$ = NULL; }
  ;
 
 rtable:

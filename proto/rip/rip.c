@@ -7,14 +7,13 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  *
  	FIXME: IpV6 support: packet size
-	FIXME: (nonurgent) IpV6 support: receive "route using" blocks
-	FIXME: (nonurgent) IpV6 support: generate "nexthop" blocks
+	FIXME: (nonurgent) IPv6 support: receive "route using" blocks
+	FIXME: (nonurgent) IPv6 support: generate "nexthop" blocks
 		next hops are only advisory, and they are pretty ugly in IpV6.
 		I suggest just forgetting about them.
 
 	FIXME: (nonurgent): fold rip_connection into rip_interface?
 
-	FIXME: (nonurgent) allow bigger frequencies than 1 regular update in 6 seconds (?)
 	FIXME: propagation of metric=infinity into main routing table may or may not be good idea.
  */
 
@@ -59,7 +58,6 @@
 #include "lib/string.h"
 
 #include "rip.h"
-#include <assert.h>
 
 #define P ((struct rip_proto *) p)
 #define P_CF ((struct rip_proto_config *)p->cf)
@@ -164,7 +162,7 @@ rip_tx( sock *s )
     FIB_ITERATE_START(&P->rtable, &c->iter, z) {
       struct rip_entry *e = (struct rip_entry *) z;
 
-      if (!rif->triggered || (!(e->updated < now-5))) {
+      if (!rif->triggered || (!(e->updated < now-2))) {		/* FIXME: Should be probably 1 or some different algorithm */
 	nullupdate = 0;
 	i = rip_tx_prepare( p, packet->block + i, e, rif, i );
 	if (i >= maxi) {
@@ -559,17 +557,23 @@ rip_timer(timer *t)
   DBG( "RIP: Broadcasting routing tables\n" );
   {
     struct rip_interface *rif;
+
+    if ( P_CF->period > 2 ) {		/* Bring some randomness into sending times */
+      if (! (P->tx_count % P_CF->period)) P->rnd_count = random_u32() % 2;
+    } else P->rnd_count = P->tx_count % P_CF->period;
+
     WALK_LIST( rif, P->interfaces ) {
       struct iface *iface = rif->iface;
 
       if (!iface) continue;
       if (rif->mode & IM_QUIET) continue;
       if (!(iface->flags & IF_UP)) continue;
+      rif->triggered = P->rnd_count;
 
-      rif->triggered = (P->tx_count % 6);
       rip_sendto( p, IPA_NONE, 0, rif );
     }
-    P->tx_count ++;
+    P->tx_count++;
+    P->rnd_count--;
   }
 
   DBG( "RIP: tick tock done\n" );
@@ -584,9 +588,9 @@ rip_start(struct proto *p)
   struct rip_interface *rif;
   DBG( "RIP: starting instance...\n" );
 
-  assert( sizeof(struct rip_packet_heading) == 4);
-  assert( sizeof(struct rip_block) == 20);
-  assert( sizeof(struct rip_block_auth) == 20);
+  ASSERT(sizeof(struct rip_packet_heading) == 4);
+  ASSERT(sizeof(struct rip_block) == 20);
+  ASSERT(sizeof(struct rip_block_auth) == 20);
 
 #ifdef LOCAL_DEBUG
   P->magic = RIP_MAGIC;
@@ -597,10 +601,9 @@ rip_start(struct proto *p)
   init_list( &P->interfaces );
   P->timer = tm_new( p->pool );
   P->timer->data = p;
-  P->timer->randomize = 5;
-  P->timer->recurrent = (P_CF->period / 6)+1; 
+  P->timer->recurrent = 1;
   P->timer->hook = rip_timer;
-  tm_start( P->timer, 5 );
+  tm_start( P->timer, 2 );
   rif = new_iface(p, NULL, 0, NULL);	/* Initialize dummy interface */
   add_head( &P->interfaces, NODE rif );
   CHK_MAGIC;
@@ -950,9 +953,11 @@ rip_rte_insert(net *net UNUSED, rte *rte)
 static void
 rip_rte_remove(net *net UNUSED, rte *rte)
 {
-  // struct proto *p = rte->attrs->proto;
+#ifdef LOCAL_DEBUG
+  struct proto *p = rte->attrs->proto;
   CHK_MAGIC;
   DBG( "rip_rte_remove: %p\n", rte );
+#endif
   rem_node( &rte->u.rip.garbage );
 }
 

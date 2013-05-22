@@ -157,6 +157,7 @@ struct rip_proto {
   int magic;
 #endif
   int tx_count;		/* Do one regular update once in a while */
+  int rnd_count;	/* Randomize sending time */
 };
 
 #ifdef LOCAL_DEBUG
