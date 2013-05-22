@@ -6,10 +6,10 @@
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  *
- 	FIXME: IpV6 support: packet size
+ 	FIXME: IPv6 support: packet size
 	FIXME: (nonurgent) IPv6 support: receive "route using" blocks
 	FIXME: (nonurgent) IPv6 support: generate "nexthop" blocks
-		next hops are only advisory, and they are pretty ugly in IpV6.
+		next hops are only advisory, and they are pretty ugly in IPv6.
 		I suggest just forgetting about them.
 
 	FIXME: (nonurgent): fold rip_connection into rip_interface?
@@ -46,6 +46,7 @@
  */
 
 #undef LOCAL_DEBUG
+#define LOCAL_DEBUG 1
 
 #include "nest/bird.h"
 #include "nest/iface.h"
@@ -532,13 +533,10 @@ rip_timer(timer *t)
   WALK_LIST_DELSAFE( e, et, P->garbage ) {
     rte *rte;
     rte = SKIP_BACK( struct rte, u.rip.garbage, e );
-#ifdef LOCAL_DEBUG
-    {
-      struct proto *p = rte->attrs->proto;
-      CHK_MAGIC;
-    }
+
+    CHK_MAGIC;
+
     DBG( "Garbage: (%p)", rte ); rte_dump( rte );
-#endif
 
     if (now - rte->lastmod > P_CF->timeout_time) {
       TRACE(D_EVENTS, "entry is too old: %I", rte->net->n.prefix );

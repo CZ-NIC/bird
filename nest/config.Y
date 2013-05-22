@@ -434,7 +434,6 @@ r_args:
      $$ = cfg_allocz(sizeof(struct rt_show_data));
      $$->pxlen = 256;
      $$->filter = FILTER_ACCEPT;
-     $$->table = config->master_rtc->table;
    }
  | r_args prefix {
      $$ = $1;

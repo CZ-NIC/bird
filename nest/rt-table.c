@@ -2285,6 +2285,11 @@ rt_show(struct rt_show_data *d)
 {
   net *n;
 
+  /* Default is either a master table or a table related to a respective protocol */
+  if ((!d->table) && d->export_protocol) d->table = d->export_protocol->table;
+  if ((!d->table) && d->show_protocol) d->table = d->show_protocol->table;
+  if (!d->table) d->table = config->master_rtc->table;
+
   if (d->pxlen == 256)
     {
       FIB_ITERATE_INIT(&d->fit, &d->table->fib);
