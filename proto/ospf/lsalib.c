@@ -64,14 +64,7 @@ ospf_age(struct proto_ospf *po)
     }
     if ((en->lsa.rt == po->router_id) && (en->lsa.age >= LSREFRESHTIME))
     {
-      OSPF_TRACE(D_EVENTS, "Refreshing my LSA: Type: %u, Id: %R, Rt: %R",
-		 en->lsa_type, en->lsa.id, en->lsa.rt);
-      en->lsa.sn++;
-      en->lsa.age = 0;
-      en->inst_t = now;
-      en->ini_age = 0;
-      lsasum_calculate(&en->lsa, en->lsa_body);
-      ospf_lsupd_flood(po, NULL, NULL, &en->lsa, en->domain, 1);
+      ospf_refresh_lsa(po, en);
       continue;
     }
     if ((en->lsa.age = (en->ini_age + (now - en->inst_t))) >= LSA_MAXAGE)
@@ -766,56 +759,4 @@ lsa_validate(struct ospf_lsa_header *lsa, u32 lsa_type, int ospf2, void *body)
       return 1;	/* Unknown LSAs are OK in OSPFv3 */
     }
   }
-}
-
-/**
- * lsa_install_new - install new LSA into database
- * @po: OSPF protocol
- * @lsa: LSA header
- * @domain: domain of LSA
- * @body: pointer to LSA body
- *
- * This function ensures installing new LSA into LSA database. Old instance is
- * replaced. Several actions are taken to detect if new routing table
- * calculation is necessary. This is described in 13.2 of RFC 2328.
- */
-struct top_hash_entry *
-lsa_install_new(struct proto_ospf *po, struct ospf_lsa_header *lsa, u32 domain, void *body)
-{
-  /* LSA can be temporary, but body must be mb_allocated. */
-  int change = 0;
-  struct top_hash_entry *en;
-
-  if ((en = ospf_hash_find_header(po->gr, domain, lsa)) == NULL)
-  {
-    en = ospf_hash_get_header(po->gr, domain, lsa);
-    change = 1;
-  }
-  else
-  {
-    if ((en->lsa.length != lsa->length) ||
-	(en->lsa.type_raw != lsa->type_raw) ||	/* check for OSPFv2 options */
-	(en->lsa.age == LSA_MAXAGE) ||
-	(lsa->age == LSA_MAXAGE) ||
-	memcmp(en->lsa_body, body, lsa->length - sizeof(struct ospf_lsa_header)))
-      change = 1;
-
-    s_rem_node(SNODE en);
-  }
-
-  DBG("Inst lsa: Id: %R, Rt: %R, Type: %u, Age: %u, Sum: %u, Sn: 0x%x\n",
-      lsa->id, lsa->rt, lsa->type, lsa->age, lsa->checksum, lsa->sn);
-
-  s_add_tail(&po->lsal, SNODE en);
-  en->inst_t = now;
-  if (en->lsa_body != NULL)
-    mb_free(en->lsa_body);
-  en->lsa_body = body;
-  memcpy(&en->lsa, lsa, sizeof(struct ospf_lsa_header));
-  en->ini_age = en->lsa.age;
-
-  if (change)
-    schedule_rtcalc(po);
-
-  return en;
 }

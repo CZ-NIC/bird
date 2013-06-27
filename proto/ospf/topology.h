@@ -19,7 +19,8 @@ struct top_hash_entry
   u16 lsa_type;			/* lsa.type processed and converted to common values */	
   u32 domain;			/* Area ID for area-wide LSAs, Iface ID for link-wide LSAs */
   //  struct ospf_area *oa;
-  void *lsa_body;
+  void *lsa_body;		/* May be NULL if LSA was recently flushed */
+  void *lsa_next_body;		/* For postponed LSA origination */
   bird_clock_t inst_t;		/* Time of installation into DB */
   struct mpnh *nhs;		/* Computed nexthops - valid only in ospf_rt_spf() */
   ip_addr lb;			/* In OSPFv2, link back address. In OSPFv3, any global address in the area useful for vlinks */
@@ -54,14 +55,16 @@ struct ospf_lsa_new
   u32 id;
   u16 opts;
   u16 length;
-  void *body;
-
+  struct ospf_iface *ifa;
+  struct fib_node *fn;
 };
 
 struct top_graph *ospf_top_new(pool *);
 void ospf_top_free(struct top_graph *);
 void ospf_top_dump(struct top_graph *, struct proto *);
 
+
+struct top_hash_entry * ospf_originate_lsa(struct proto_ospf *po, struct ospf_lsa_new *lsa);
 
 void originate_rt_lsa(struct ospf_area *oa);
 void update_rt_lsa(struct ospf_area *oa);

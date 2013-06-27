@@ -103,9 +103,90 @@ static void ospf_lsupd_dump(struct proto_ospf *po, struct ospf_packet *pkt)
     }
 }
 
+
+static inline void
+ospf_lsa_lsrt_up(struct top_hash_entry *en, struct ospf_neighbor *n)
+{
+  struct top_hash_entry *ret = ospf_hash_get_entry(n->lsrth, en);
+
+  if (! ospf_hash_is_new(ret))
+    s_rem_node(SNODE ret);
+
+  s_add_tail(&n->lsrtl, SNODE ret);
+  memcpy(&ret->lsa, &en->lsa, sizeof(struct ospf_lsa_header));
+}
+
+static inline int
+ospf_lsa_lsrt_down(struct top_hash_entry *en, struct ospf_neighbor *n)
+{
+  struct top_hash_entry *ret = ospf_hash_find_entry(n->lsrth, en);
+
+  if (ret)
+  {
+    s_rem_node(SNODE ret);
+    ospf_hash_delete(n->lsrth, ret);
+    return 1;
+  }
+
+  return 0;
+}
+
+
 static void ospf_lsupd_flood_ifa(struct proto_ospf *po, struct ospf_iface *ifa, struct top_hash_entry *en);
 
 
+static inline int
+ospf_addr_is_local(struct proto_ospf *po, struct ospf_area *oa, ip_addr ip)
+{
+  struct ospf_iface *ifa;
+  WALK_LIST(ifa, po->iface_list)
+    if ((ifa->oa == oa) && ifa->addr && ipa_equal(ifa->addr->ip, ip))
+      return 1;
+
+  return 0;
+}
+
+static void
+ospf_lsupd_handle_self_originated_lsa()
+{
+  // XXXX
+
+  /* 13. (5a) - handle MinLSArrival timeout */
+
+  /* pg 145 (5f) - premature aging of self originated lsa */
+  /*
+  if ((lsa.age == LSA_MAXAGE) && (lsa.sn == LSA_MAXSEQNO))
+  {
+    ospf_lsack_enqueue(n, lsa_n, ACKL_DIRECT);
+    return;
+  }
+
+  OSPF_TRACE(D_EVENTS, "Received old self-originated LSA (Type: %04x, Id: %R, Rt: %R)",
+	     lsa_type, lsa.id, lsa.rt);
+
+  if (en)
+  {
+    OSPF_TRACE(D_EVENTS, "Reflooding new self-originated LSA with newer sequence number");
+    en->lsa.sn = lsa.sn + 1;
+    en->lsa.age = 0;
+    en->inst_t = now;
+    en->ini_age = 0;
+    lsasum_calculate(&en->lsa, en->lsa_body);
+    ospf_lsupd_flood(po, NULL, NULL, &en->lsa, lsa_domain, 1);
+  }
+  else
+  {
+    OSPF_TRACE(D_EVENTS, "Premature aging it");
+    lsa.age = LSA_MAXAGE;
+    lsa.sn = LSA_MAXSEQNO;
+    lsa_n->age = htons(LSA_MAXAGE);
+    lsa_n->sn = htonl(LSA_MAXSEQNO);
+    lsasum_check(lsa_n, (lsa_n + 1)); */	/* It also calculates chsum! */ /*
+    lsa.checksum = ntohs(lsa_n->checksum);
+    ospf_lsupd_flood(po, NULL, lsa_n, &lsa, lsa_domain, 0);
+  }
+*/
+}
 
 void
 ospf_lsupd_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
@@ -113,10 +194,8 @@ ospf_lsupd_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 {
   struct proto_ospf *po = ifa->oa->po;
   struct proto *p = &po->proto;
-  struct ospf_neighbor *ntmp;
 
-
-  unsigned sendreq = 1;
+  unsigned sendreq = 1; /* XXXX ?? */
 
   unsigned plen = ntohs(pkt->length);
   if (plen < (ospf_lsupd_hdrlen(po) + sizeof(struct ospf_lsa_header)))
@@ -141,7 +220,7 @@ ospf_lsupd_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
   for (i = 0; i < lsa_count; i++)
   {
     struct ospf_lsa_header lsa, *lsa_n;
-    struct top_hash_entry *en, *ret;
+    struct top_hash_entry *en;
     u32 lsa_len, lsa_type, lsa_domain;
 
     if (offset > bound)
@@ -213,76 +292,27 @@ ospf_lsupd_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
     /* 13. (4) - ignore maxage LSA if i have no local copy */
     if ((lsa.age == LSA_MAXAGE) && !en && can_flush_lsa(po))
     {
+      /* 13.5. - schedule ACKs (tbl 19, case 5) */ 
       ospf_lsack_enqueue(n, lsa_n, ACKL_DIRECT);
       continue;
     }
 
-    int cmp =  : CMP_NEWER;
-
     /* 13. (5) - received LSA is newer (or no local copy) */
     if (!en || (lsa_comp(&lsa, &en->lsa) == CMP_NEWER))
     {
-      struct ospf_iface *ift = NULL;
-      int self = (lsa.rt == po->router_id);
-
-#ifdef OSPFv2
-      /* 13.4 - check self-originated LSAs of NET type */
-      if ((!self) && (lsa_type == LSA_T_NET))
+      /* 13. (5f) - handle self-originated LSAs, see also 13.4. */
+      if ((lsa.rt == po->router_id) ||
+	  (ospf_is_v2(po) && (lsa_type == LSA_T_NET) && ospf_addr_is_local(po, ifa->oa, ipa_from_u32(lsa.id))))
       {
-	struct ospf_iface *nifa;
-	WALK_LIST(nifa, po->iface_list)
-	{
-	  if (!nifa->iface)
-	    continue;
-	  if (ipa_equal(nifa->addr->ip, ipa_from_u32(lsa.id)))
-	  {
-	    self = 1;
-	    break;
-	  }
-	}
-      }
-#endif
-
-      /* pg 145 (5f) - premature aging of self originated lsa */
-      if (self)
-      {
-	if ((lsa.age == LSA_MAXAGE) && (lsa.sn == LSA_MAXSEQNO))
-	{
-	  ospf_lsack_enqueue(n, lsa_n, ACKL_DIRECT);
-	  continue;
-	}
-
-	OSPF_TRACE(D_EVENTS, "Received old self-originated LSA (Type: %04x, Id: %R, Rt: %R)",
-		   lsa_type, lsa.id, lsa.rt);
-
-	if (en)
-	{
-	  OSPF_TRACE(D_EVENTS, "Reflooding new self-originated LSA with newer sequence number");
-	  en->lsa.sn = lsa.sn + 1;
-	  en->lsa.age = 0;
-	  en->inst_t = now;
-	  en->ini_age = 0;
-	  lsasum_calculate(&en->lsa, en->lsa_body);
-	  ospf_lsupd_flood(po, NULL, NULL, &en->lsa, lsa_domain, 1);
-	}
-	else
-	{
-	  OSPF_TRACE(D_EVENTS, "Premature aging it");
-	  lsa.age = LSA_MAXAGE;
-	  lsa.sn = LSA_MAXSEQNO;
-	  lsa_n->age = htons(LSA_MAXAGE);
-	  lsa_n->sn = htonl(LSA_MAXSEQNO);
-	  lsasum_check(lsa_n, (lsa_n + 1));	/* It also calculates chsum! */
-	  lsa.checksum = ntohs(lsa_n->checksum);
-	  ospf_lsupd_flood(po, NULL, lsa_n, &lsa, lsa_domain, 0);
-	}
+	ospf_lsupd_handle_self_originated_lsa();
 	continue;
       }
 
-      /* pg 144 (5a) */
-      if (en && ((now - en->inst_t) <= MINLSARRIVAL))	/* FIXME: test for flooding? */
+      /* 13. (5a) - enforce minimum time between updates */
+      /* Note that en was received via flooding, because local LSAs are handled above */
+      if (en && ((now - en->inst_t) <= MINLSARRIVAL))
       {
-	OSPF_TRACE(D_EVENTS, "Skipping LSA received in less that MINLSARRIVAL");
+	OSPF_TRACE(D_EVENTS, "Skipping LSA received in less that MinLSArrival");
 	sendreq = 0;
 	continue;
       }
@@ -290,57 +320,44 @@ ospf_lsupd_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
       /* 13. (5c) - remove old LSA from all retransmission lists */
       /* Must be done before (5b), otherwise it also removes the new entries from (5b) */
       if (en)
-	WALK_LIST(ift, po->iface_list)
-	  WALK_LIST(ntmp, ift->neigh_list)
       {
-	struct top_hash_entry *ret;
-	if (ntmp->state > NEIGHBOR_EXSTART)
-	  if ((ret = ospf_hash_find_header(ntmp->lsrth, lsa_domain, &en->lsa)) != NULL)
-	  {
-	    s_rem_node(SNODE ret);
-	    ospf_hash_delete(ntmp->lsrth, ret);
-	  }
+	struct ospf_iface *ifi;
+	struct ospf_neighbor *ni;
+
+	WALK_LIST(ifi, po->iface_list)
+	  WALK_LIST(ni, ifi->neigh_list)
+	    if (ni->state > NEIGHBOR_EXSTART)
+	      ospf_lsa_lsrt_down(en, ni);
       }
 
-      /* pg 144 (5b) */
-      if (ospf_lsupd_flood(po, n, lsa_n, &lsa, lsa_domain, 1) == 0)
-      {
-	DBG("Wasn't flooded back\n");	/* ps 144(5e), pg 153 */
-	if (ifa->state == OSPF_IS_BACKUP)
-	{
-	  if (ifa->drid == n->rid)
-	    ospf_lsack_enqueue(n, lsa_n, ACKL_DELAY);
-	}
-	else
-	  ospf_lsack_enqueue(n, lsa_n, ACKL_DELAY);
-      }
+      /* 13. (5d) - install new LSA into database */
+      int blen = lsa.length - sizeof(struct ospf_lsa_header);
+      void *body = mb_alloc(p->pool, blen);
+      lsa_ntoh_body(lsa_n + 1, body, blen);
 
-      if ((lsa.age == LSA_MAXAGE) && (lsa.sn == LSA_MAXSEQNO)
-	  && en && can_flush_lsa(po))
-      {
-	flush_lsa(en, po);
-	schedule_rtcalc(po);
-	continue;
-      }				/* FIXME lsack? */
+      en = ospf_install_lsa(po, &lsa, lsa_domain, body);
 
-      /* pg 144 (5d) */
-      void *body = mb_alloc(p->pool, lsa.length - sizeof(struct ospf_lsa_header));
-      lsa_ntoh_body(lsa_n + 1, body, lsa.length - sizeof(struct ospf_lsa_header));
+      /*
+      XXXX
 
-      /* We will do validation check after flooding and
-	 acknowledging given LSA to minimize problems
-	 when communicating with non-validating peer */
       if (lsa_validate(&lsa, lsa_type, ospf_is_v2(po), body) == 0)
       {
 	log(L_WARN "Received invalid LSA from %I", n->ip);
 	mb_free(body);
-	continue;	
+	continue;
       }
+      */
 
-      en = lsa_install_new(po, &lsa, lsa_domain, body);
-      DBG("New LSA installed in DB\n");
 
-      /* Events 6,7 from RFC 5340 4.4.3. */
+      /* 13. (5b) - flood new LSA */
+      int flood_back = ospf_lsupd_flood(po, en, n);
+
+      /* 13.5. - schedule ACKs (tbl 19, cases 1+2) */ 
+      if (! flood_back)
+	if ((ifa->state != OSPF_IS_BACKUP) || (n->rid == ifa->drid))
+	  ospf_lsack_enqueue(n, lsa_n, ACKL_DELAY);
+
+      /* RFC 5340 4.4.3. events 6+7 */
       if ((lsa_type == LSA_T_LINK) && (ifa->state == OSPF_IS_DR))
 	schedule_net_lsa(ifa);
 
@@ -352,24 +369,18 @@ ospf_lsupd_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
     /* 13. (7) - received LSA is same */
     if (lsa_comp(&lsa, &en->lsa) == CMP_SAME)
     {
-      ret = ospf_hash_find_entry(n->lsrth, en);
-      if (ret)
-      {
-	/* pg145 (7a) */
-	s_rem_node(SNODE ret);
-	ospf_hash_delete(n->lsrth, ret);
+      /* Duplicate LSA, treat as implicit ACK */
+      int implicit_ack = ospf_lsa_lsrt_down(en, n);
 
-	if (ifa->state == OSPF_IS_BACKUP)
-	{
-	  if (n->rid == ifa->drid)
-	    ospf_lsack_enqueue(n, lsa_n, ACKL_DELAY);
-	}
+      /* 13.5. - schedule ACKs (tbl 19, cases 3+4) */ 
+      if (implicit_ack)
+      {
+	if ((ifa->state == OSPF_IS_BACKUP) && (n->rid == ifa->drid))
+	  ospf_lsack_enqueue(n, lsa_n, ACKL_DELAY);
       }
       else
-      {
-	/* pg145 (7b) */
 	ospf_lsack_enqueue(n, lsa_n, ACKL_DIRECT);
-      }
+
       sendreq = 0;
       continue;
     }
@@ -400,7 +411,7 @@ ospf_lsupd_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
  * ospf_lsupd_flood - send received or generated LSA to the neighbors
  * @po: OSPF protocol
  * @en: LSA entry
- * @from: neighbor than sent this LSA (or NULL if LSI is local)
+ * @from: neighbor than sent this LSA (or NULL if LSA is local)
  *
  * return value - was the LSA flooded back?
  */
@@ -462,14 +473,7 @@ ospf_lsupd_flood(struct proto_ospf *po, struct top_hash_entry *en, struct ospf_n
 	 any optional LSA types, this is not needed yet */
 
       /* 13.3 (1d) - add LSA to the link state retransmission list */
-      {
-	struct top_hash_entry *ret = ospf_hash_get_entry(n->lsrth, en);
-	if (! ospf_hash_is_new(ret))
-	  s_rem_node(SNODE ret);
-
-	s_add_tail(&n->lsrtl, SNODE ret);
-	memcpy(&ret->lsa, hh, sizeof(struct ospf_lsa_header));
-      }
+      ospf_lsa_lsrt_up(en, n);
 
       used = 1;
     }

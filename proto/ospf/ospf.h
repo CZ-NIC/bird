@@ -772,9 +772,6 @@ static inline int ospf_is_v3(struct proto_ospf *po)
 static inline int ospf_get_version(struct proto_ospf *po)
 { return ospf_is_v2(po) ? 2 : 3; }
 
-static inline void lsa_fix_options(struct proto_ospf *po, struct ospf_lsa_header *lsa, u8 options)
-{ if (ospf_is_v2(po)) lsa_set_options(lsa, options); }
-
 struct ospf_area *ospf_find_area(struct proto_ospf *po, u32 aid);
 
 static inline struct ospf_area *ospf_main_area(struct proto_ospf *po)
