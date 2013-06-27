@@ -1231,9 +1231,9 @@ rt_addrsize(int addr_type)
   switch (addr_type)
   {
 #ifdef MPLS_VPN
-    case RT_VPNV4:
+    case RT_VPN4:
       return sizeof(vpn4_addr);
-    case RT_VPNV6:
+    case RT_VPN6:
       return sizeof(vpn6_addr);
 #endif
     case RT_IPV4:

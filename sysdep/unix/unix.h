@@ -33,10 +33,11 @@ volatile int async_config_flag;
 volatile int async_dump_flag;
 volatile int async_shutdown_flag;
 
-// XXXX
-#define BIRD_PF PF_INET6
-#define BIRD_AF AF_INET6
-static inline int sa_family_check(struct sockaddr *sa) { return sa->sa_family == AF_INET6; }
+struct sockaddr;
+struct iface;
+
+void sockaddr_fill(struct sockaddr *sa, ip_addr a, struct iface *ifa, unsigned port);
+void sockaddr_read(struct sockaddr *sa, ip_addr *a, struct iface **ifa, unsigned *port, int check);
 
 
 #ifndef SUN_LEN

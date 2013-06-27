@@ -1062,11 +1062,6 @@ krt_postconfig(struct proto_config *C)
 struct proto_config *
 krt_init_config(int class)
 {
-#ifndef CONFIG_MULTIPLE_TABLES
-  if (krt_cf)
-    cf_error("Kernel protocol already defined");
-#endif
-
   krt_cf = (struct krt_config *) proto_config_new(&proto_unix_kernel, sizeof(struct krt_config), class);
   krt_cf->scan_time = 60;
 

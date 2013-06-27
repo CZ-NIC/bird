@@ -65,6 +65,20 @@ krt_capable(rte *e)
      );
 }
 
+static int
+rt_to_af(int rt)
+{
+  if (rt == RT_IPV4)
+    return AF_INET;
+  else if (rt == RT_IPV6)
+    return AF_INET6;
+
+  /* RT_IP (0) maps to 0 (every AF) */
+
+  return 0;
+}
+
+
 #define ROUNDUP(a) \
         ((a) > 0 ? (1 + (((a) - 1) | (sizeof(long) - 1))) : sizeof(long))
 
@@ -87,10 +101,10 @@ krt_sock_send(int cmd, rte *e)
   rta *a = e->attrs;
   static int msg_seq;
   struct iface *j, *i = a->iface;
-  int l;
+  int af = 0, l;
   struct ks_msg msg;
   char *body = (char *)msg.buf;
-  sockaddr gate, mask, dst;
+  struct sockaddr_in6 gate, mask, dst;
   ip_addr gw;
 
   DBG("krt-sock: send %F via %I\n", &net->n, a->gw);
@@ -131,29 +145,43 @@ krt_sock_send(int cmd, rte *e)
 
   gw = a->gw;
 
-#ifdef IPV6
-  /* Embed interface ID to link-local address */
-  if (ipa_has_link_scope(gw))
-    _I0(gw) = 0xfe800000 | (i->index & 0x0000ffff);
-#endif
+  switch (net->n.addr_type)
+  {
+    case RT_IPV4:
+      af = AF_INET;
+      dst.sin6_family = mask.sin6_family = gate.sin6_family = af;
+      sockaddr_fill((struct sockaddr *)&dst, *FPREFIX_IP(&net->n), NULL, 0);
+      sockaddr_fill((struct sockaddr *)&mask, ipa_mkmask(net->n.pxlen), NULL, 0);
+      sockaddr_fill((struct sockaddr *)&gate, gw, NULL, 0);
 
-  fill_in_sockaddr(&dst, net->n.prefix, NULL, 0);
-  fill_in_sockaddr(&mask, ipa_mkmask(net->n.pxlen), NULL, 0);
-  fill_in_sockaddr(&gate, gw, NULL, 0);
-  /* XXXX from patch
-  if (net->n.addr_type == RT_IP)
-   {
-     fill_in_sockaddr(&dst, *FPREFIX_IP(&net->n), 0);
-     fill_in_sockaddr(&mask, ipa_mkmask(net->n.pxlen), 0);
+      if (net->n.pxlen == MAX_PREFIX_LENGTH)
+	msg.rtm.rtm_flags |= RTF_HOST;
+      else
+	msg.rtm.rtm_addrs |= RTA_NETMASK;
+      break;
 
-     if (net->n.pxlen == MAX_PREFIX_LENGTH)
-       msg.rtm.rtm_flags |= RTF_HOST;
-     else
-       msg.rtm.rtm_addrs |= RTA_NETMASK;
-   }
-  */
- 
- 
+    case RT_IPV6:
+      af = AF_INET6;
+
+      /* Embed interface ID to link-local address */
+      if (ipa_is_link_local(gw))
+	_I0(gw) = 0xfe800000 | (i->index & 0x0000ffff);
+
+      dst.sin6_family = mask.sin6_family = gate.sin6_family = af;
+      sockaddr_fill((struct sockaddr *)&dst, *FPREFIX_IP(&net->n), NULL, 0);
+      sockaddr_fill((struct sockaddr *)&mask, ipa_mkmask(net->n.pxlen), NULL, 0);
+      sockaddr_fill((struct sockaddr *)&gate, gw, NULL, 0);
+
+      if (net->n.pxlen == MAX_PREFIX_LENGTH)
+	msg.rtm.rtm_flags |= RTF_HOST;
+      else
+	msg.rtm.rtm_addrs |= RTA_NETMASK;
+      break;
+
+    default:
+      log(L_ERR "Unsupported address family: %F", FPREFIX_IP(&net->n));
+      return -1;
+  }
 
   switch (a->dest)
   {
@@ -175,12 +203,13 @@ krt_sock_send(int cmd, rte *e)
           msg.rtm.rtm_flags |= RTF_CLONING;
 #endif
 
+	// XXXX: find proper IPv4 / IPv6 address ?
         if(!i->addr) {
-          log(L_ERR "KRT: interface %s has no IP addess", i->name);
+          log(L_ERR "KRT: interface %s has no IP address", i->name);
           return -1;
         }
 
-        fill_in_sockaddr(&gate, i->addr->ip, NULL, 0);
+	sockaddr_fill((struct sockaddr *)&gate, i->addr->ip, NULL, 0);
         msg.rtm.rtm_addrs |= RTA_GATEWAY;
       }
       break;
@@ -230,15 +259,15 @@ krt_read_rt(struct ks_msg *msg, struct krt_proto *p, int scan)
 {
   rte *e;
   net *net;
-  sockaddr dst, gate, mask;
+  struct sockaddr_in6 dst, gate, mask;
   ip_addr idst, igate, imask;
   void *body = (char *)msg->buf;
   int new = (msg->rtm.rtm_type == RTM_ADD);
-  char *errmsg = "KRT: Invalid route received";
   int flags = msg->rtm.rtm_flags;
   int addrs = msg->rtm.rtm_addrs;
-  int src;
+  int af, pxlen, src;
   byte src2;
+  char *errmsg = "KRT: Invalid route received";
 
   if (!(flags & RTF_UP) && scan)
     SKIP("not up in scan\n");
@@ -253,26 +282,52 @@ krt_read_rt(struct ks_msg *msg, struct krt_proto *p, int scan)
   GETADDR(&gate, RTA_GATEWAY);
   GETADDR(&mask, RTA_NETMASK);
 
-  if (sa_family_check(&dst))
-    get_sockaddr(&dst, &idst, NULL, NULL, 0);
-  else
-    SKIP("invalid DST");
+  af = dst.sin6_family;
+
+  /* XXX: AF_MPLS */
+
+  switch (af)
+  {
+    case AF_INET:
+      /* Silently discard */
+      if (p->addr_type != RT_IPV4)
+	return;
+      break;
+
+    case AF_INET6:
+      /* Silently discard */
+      if (p->addr_type != RT_IPV6)
+	return;
+      break;
+
+    default:
+      SKIP("Invalid DST");
+  }
+
+  sockaddr_read((struct sockaddr *)&dst, &idst, NULL, NULL, 1);
 
   /* We will check later whether we have valid gateway addr */
-  if (sa_family_check(&gate))
-    get_sockaddr(&gate, &igate, NULL, NULL, 0);
+  if (gate.sin6_family == af)
+    sockaddr_read((struct sockaddr *)&gate, &igate, NULL, NULL, 0);
   else
     igate = IPA_NONE;
 
   /* We do not test family for RTA_NETMASK, because BSD sends us
      some strange values, but interpreting them as IPv4/IPv6 works */
-  get_sockaddr(&mask, &imask, NULL, NULL, 0);
+  mask.sin6_family = dst.sin6_family;
+
+  sockaddr_read((struct sockaddr *)&mask, &imask, NULL, NULL, 1);
 
   int c = ipa_classify_net(idst);
   if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
     SKIP("strange class/scope\n");
 
-  int pxlen = (flags & RTF_HOST) ? MAX_PREFIX_LENGTH : ipa_mklen(imask);
+  if (af == AF_INET6)
+    pxlen = (flags & RTF_HOST) ? MAX_PREFIX_LENGTH : ip6_masklen(&imask);
+  else
+    pxlen = (flags & RTF_HOST) ? MAX_PREFIX_LENGTH : 
+      (ip4_masklen(ipa_to_ip4(imask)) + 96); // XXXX: Hack
+
   if (pxlen < 0)
     { log(L_ERR "%s (%I) - netmask %I", errmsg, idst, imask); return; }
 
@@ -356,11 +411,12 @@ krt_read_rt(struct ks_msg *msg, struct krt_proto *p, int scan)
     a.dest = RTD_ROUTER;
     a.gw = igate;
 
-#ifdef IPV6
-    /* Clean up embedded interface ID returned in link-local address */
-    if (ipa_has_link_scope(a.gw))
-      _I0(a.gw) = 0xfe800000;
-#endif
+    if (af == AF_INET6)
+      {
+	/* Clean up embedded interface ID returned in link-local address */
+	if (ipa_is_link_local(a.gw))
+	  _I0(a.gw) = 0xfe800000;
+      }
 
     ng = neigh_find2(&p->p, &a.gw, a.iface, 0);
     if (!ng || (ng->scope == SCOPE_HOST))
@@ -503,13 +559,13 @@ krt_read_addr(struct ks_msg *msg)
 {
   struct ifa_msghdr *ifam = (struct ifa_msghdr *)&msg->rtm;
   void *body = (void *)(ifam + 1);
-  sockaddr addr, mask, brd;
+  struct sockaddr_in6 addr, mask, brd;
   struct iface *iface = NULL;
   struct ifa ifa;
   struct sockaddr null;
   ip_addr iaddr, imask, ibrd;
   int addrs = ifam->ifam_addrs;
-  int scope, masklen = -1;
+  int ipv4, scope, masklen = -1, maxlen;
   int new = (ifam->ifam_type == RTM_NEWADDR);
 
   /* Strange messages with zero (invalid) ifindex appear on OpenBSD */
@@ -531,19 +587,32 @@ krt_read_addr(struct ks_msg *msg)
   GETADDR (&null, RTA_AUTHOR);
   GETADDR (&brd, RTA_BRD);
 
-  /* Some other family address */
-  if (!sa_family_check(&addr))
+  /* Basic family check */
+  if (addr.sin6_family != AF_INET && addr.sin6_family != AF_INET6)
     return;
 
-  get_sockaddr(&addr, &iaddr, NULL, NULL, 0);
-  get_sockaddr(&mask, &imask, NULL, NULL, 0);
-  get_sockaddr(&brd, &ibrd, NULL, NULL, 0);
+  ipv4 = (addr.sin6_family == AF_INET) ? 1 : 0;
 
-  if ((masklen = ipa_mklen(imask)) < 0)
+  /*
+   * Work around (Free?)BSD bug with netmask
+   * family not being filled in IPv6 case.
+   * FreeBSD fix: r250815.
+   */
+  if (addr.sin6_family == AF_INET6 && mask.sin6_family == 0)
+	  mask.sin6_family = AF_INET6;
+
+  sockaddr_read((struct sockaddr *)&addr, &iaddr, NULL, NULL, 0);
+  sockaddr_read((struct sockaddr *)&mask, &imask, NULL, NULL, 0);
+  sockaddr_read((struct sockaddr *)&brd, &ibrd, NULL, NULL, 0);
+
+  masklen = ipv4 ? (ip4_masklen(ipa_to_ip4(imask)) + 96) : ip6_masklen(&imask);  // XXXX: Hack
+  if (masklen < 0)
   {
     log("Invalid masklen");
     return;
   }
+
+  // log("got %I/%I (%d)", iaddr, imask, masklen);
 
   bzero(&ifa, sizeof(ifa));
 
@@ -561,31 +630,25 @@ krt_read_addr(struct ks_msg *msg)
   }
   ifa.scope = scope & IADDR_SCOPE_MASK;
 
-#ifdef IPV6
   /* Clean up embedded interface ID returned in link-local address */
-  if (ipa_has_link_scope(ifa.ip))
+  if (scope & SCOPE_LINK)
     _I0(ifa.ip) = 0xfe800000;
-#endif
 
-#ifdef IPV6
-  /* Why not the same check also for IPv4? */
-  if ((iface->flags & IF_MULTIACCESS) || (masklen != BITS_PER_IP_ADDRESS))
-#else
-  if (iface->flags & IF_MULTIACCESS)
-#endif
+  // maxlen = ipv4 ? BITS_PER_IP_ADDRESS4 : BITS_PER_IP_ADDRESS6;
+  maxlen = BITS_PER_IP_ADDRESS; // XXXX: Hack
+
+  if ((iface->flags & IF_MULTIACCESS) || (masklen != maxlen))
   {
     ifa.prefix = ipa_and(ifa.ip, ipa_mkmask(masklen));
 
-    if (masklen == BITS_PER_IP_ADDRESS)
+    if (masklen == maxlen)
       ifa.flags |= IA_HOST;
 
-    if (masklen == (BITS_PER_IP_ADDRESS - 1))
+    if (masklen == (maxlen - 1))
       ifa.opposite = ipa_opposite_m1(ifa.ip);
 
-#ifndef IPV6
-    if (masklen == (BITS_PER_IP_ADDRESS - 2))
+    if (ipv4 && masklen == (maxlen - 2))
       ifa.opposite = ipa_opposite_m2(ifa.ip);
-#endif
   }
   else         /* PtP iface */
   {
@@ -627,7 +690,7 @@ krt_read_msg(struct proto *p, struct ks_msg *msg, int scan)
 }
 
 static void
-krt_sysctl_scan(struct proto *p, pool *pool, byte **buf, size_t *bl, int cmd)
+krt_sysctl_scan(struct proto *p, pool *pool, byte **buf, size_t *bl, int cmd, int af)
 {
   byte *next;
   int mib[6];
@@ -638,7 +701,7 @@ krt_sysctl_scan(struct proto *p, pool *pool, byte **buf, size_t *bl, int cmd)
   mib[0] = CTL_NET;
   mib[1] = PF_ROUTE;
   mib[2] = 0;
-  mib[3] = BIRD_PF;
+  mib[3] = af;
   mib[4] = cmd;
   mib[5] = 0;
 
@@ -686,7 +749,8 @@ static size_t kif_buflen = 4096;
 void
 krt_do_scan(struct krt_proto *p)
 {
-  krt_sysctl_scan((struct proto *)p, p->krt_pool, &krt_buffer, &krt_buflen, NET_RT_DUMP);
+  krt_sysctl_scan((struct proto *)p, p->krt_pool, &krt_buffer, &krt_buflen,
+		  NET_RT_DUMP, rt_to_af(p->addr_type));
 }
 
 void
@@ -694,7 +758,7 @@ kif_do_scan(struct kif_proto *p)
 {
   struct proto *P = (struct proto *)p;
   if_start_update();
-  krt_sysctl_scan(P, P->pool, &kif_buffer, &kif_buflen, NET_RT_IFLIST);
+  krt_sysctl_scan(P, P->pool, &kif_buffer, &kif_buflen, NET_RT_IFLIST, 0);
   if_end_update();
 }
 
@@ -745,6 +809,24 @@ krt_sys_shutdown(struct krt_proto *x UNUSED, int last UNUSED)
 
   mb_free(krt_buffer);
   krt_buffer = NULL;
+}
+
+static u32 tables;
+
+void
+krt_sys_preconfig(struct config *c UNUSED)
+{
+  tables = 0;
+}
+
+void
+krt_sys_postconfig(struct krt_config *x)
+{
+  u32 id = x->c.table->addr_type;
+
+  if (tables & (1 << id))
+    cf_error("Multiple kernel protocols defined for AF %d", id);
+  tables |= (1 << id);
 }
 
 

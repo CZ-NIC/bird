@@ -9,54 +9,22 @@
 #ifdef __DragonFly__
 #define TCP_MD5SIG	TCP_SIGNATURE_ENABLE
 #endif
-#ifdef IPV6
-
-static inline void
-set_inaddr(struct in6_addr * ia, ip_addr a)
-{
-  ipa_hton(a);
-  memcpy(ia, &a, sizeof(a));
-}
-
-static inline void
-get_inaddr(ip_addr *a, struct in6_addr *ia)
-{
-  memcpy(a, ia, sizeof(*a));
-  ipa_ntoh(*a);
-}
 
 static inline char *
-sysio_bind_to_iface(sock *s)
+sk_bind_to_iface(sock *s)
 {
   /* Unfortunately not available */
   return NULL;
 }
 
 
-#else
-
 #include <net/if.h>
 #include <net/if_dl.h>
-
-static inline void
-set_inaddr(struct in_addr * ia, ip_addr a)
-{
-  ipa_hton(a);
-  memcpy(&ia->s_addr, &a, sizeof(a));
-}
-
-static inline void
-get_inaddr(ip_addr *a, struct in_addr *ia)
-{
-  memcpy(a, &ia->s_addr, sizeof(*a));
-  ipa_ntoh(*a);
-}
-
 
 /* BSD Multicast handling for IPv4 */
 
 static inline char *
-sysio_setup_multicast(sock *s)
+sk_setup_multicast4(sock *s)
 {
 	struct in_addr m;
 	u8 zero = 0;
@@ -69,7 +37,7 @@ sysio_setup_multicast(sock *s)
 		return "IP_MULTICAST_TTL";
 
 	/* This defines where should we send _outgoing_ multicasts */
-        set_inaddr(&m, s->iface->addr->ip);
+        ipa_put_in4(&m, s->iface->addr->ip);
 	if (setsockopt(s->fd, IPPROTO_IP, IP_MULTICAST_IF, &m, sizeof(m)) < 0)
 		return "IP_MULTICAST_IF";
 
@@ -78,13 +46,13 @@ sysio_setup_multicast(sock *s)
 
 
 static inline char *
-sysio_join_group(sock *s, ip_addr maddr)
+sk_join_group4(sock *s, ip_addr maddr)
 {
 	struct ip_mreq  mreq;
 
 	bzero(&mreq, sizeof(mreq));
-	set_inaddr(&mreq.imr_interface, s->iface->addr->ip);
-	set_inaddr(&mreq.imr_multiaddr, maddr);
+	ipa_put_in4(&mreq.imr_interface, s->iface->addr->ip);
+	ipa_put_in4(&mreq.imr_multiaddr, maddr);
 
 	/* And this one sets interface for _receiving_ multicasts from */
 	if (setsockopt(s->fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
@@ -94,13 +62,13 @@ sysio_join_group(sock *s, ip_addr maddr)
 }
 
 static inline char *
-sysio_leave_group(sock *s, ip_addr maddr)
+sk_leave_group4(sock *s, ip_addr maddr)
 {
 	struct ip_mreq mreq;
 
 	bzero(&mreq, sizeof(mreq));
-	set_inaddr(&mreq.imr_interface, s->iface->addr->ip);
-	set_inaddr(&mreq.imr_multiaddr, maddr);
+	ipa_put_in4(&mreq.imr_interface, s->iface->addr->ip);
+	ipa_put_in4(&mreq.imr_multiaddr, maddr);
 
 	/* And this one sets interface for _receiving_ multicasts from */
 	if (setsockopt(s->fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
@@ -117,7 +85,7 @@ sysio_leave_group(sock *s, ip_addr maddr)
 #define CMSG_TX_SPACE CMSG_SPACE(sizeof(struct in_addr))
 
 static char *
-sysio_register_cmsgs(sock *s)
+sk_request_pktinfo4(sock *s)
 {
   int ok = 1;
   if (s->flags & SKF_LADDR_RX)
@@ -133,29 +101,18 @@ sysio_register_cmsgs(sock *s)
 }
 
 static void
-sysio_process_rx_cmsgs(sock *s, struct msghdr *msg)
+sk_process_rx_cmsg4(sock *s, struct cmsghdr *cm)
 {
-  struct cmsghdr *cm;
-
-  if (!(s->flags & SKF_LADDR_RX))
-    return;
-
-  s->laddr = IPA_NONE;
-  s->lifindex = 0;
-
-  for (cm = CMSG_FIRSTHDR(msg); cm != NULL; cm = CMSG_NXTHDR(msg, cm))
+  if (cm->cmsg_level == IPPROTO_IP && cm->cmsg_type == IP_RECVDSTADDR)
     {
-      if (cm->cmsg_level == IPPROTO_IP && cm->cmsg_type == IP_RECVDSTADDR)
-	{
-	  struct in_addr *ra = (struct in_addr *) CMSG_DATA(cm);
-	  get_inaddr(&s->laddr, ra);
-	}
+      struct in_addr *ra = (struct in_addr *) CMSG_DATA(cm);
+      s->laddr = ipa_get_in4(ra);
+    }
 
-      if (cm->cmsg_level == IPPROTO_IP && cm->cmsg_type == IP_RECVIF)
-	{
-	  struct sockaddr_dl *ri = (struct sockaddr_dl *) CMSG_DATA(cm);
-	  s->lifindex = ri->sdl_index;
-	}
+  if (cm->cmsg_level == IPPROTO_IP && cm->cmsg_type == IP_RECVIF)
+    {
+      struct sockaddr_dl *ri = (struct sockaddr_dl *) CMSG_DATA(cm);
+      s->lifindex = ri->sdl_index;
     }
 
   // log(L_WARN "RX %I %d", s->laddr, s->lifindex);
@@ -194,8 +151,6 @@ sysio_prepare_tx_cmsgs(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
 }
 */
 
-#endif
-
 
 #include <netinet/tcp.h>
 #ifndef TCP_KEYLEN_MAX
@@ -212,7 +167,7 @@ sysio_prepare_tx_cmsgs(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
  */
 
 static int
-sk_set_md5_auth_int(sock *s, sockaddr *sa, char *passwd)
+sk_set_md5_auth_int(sock *s, struct sockaddr *sa, int sa_len, char *passwd)
 {
   int enable = 0;
   if (passwd)
@@ -242,45 +197,32 @@ sk_set_md5_auth_int(sock *s, sockaddr *sa, char *passwd)
 }
 
 
-#ifndef IPV6
-
 #ifdef IP_MINTTL
 
-static int
+static inline char *
 sk_set_min_ttl4(sock *s, int ttl)
 {
   if (setsockopt(s->fd, IPPROTO_IP, IP_MINTTL, &ttl, sizeof(ttl)) < 0)
-  {
-    if (errno == ENOPROTOOPT)
-      log(L_ERR "Kernel does not support IPv4 TTL security");
-    else
-      log(L_ERR "sk_set_min_ttl4: setsockopt: %m");
+    return "IP_MINTTL";
 
-    return -1;
-  }
-
-  return 0;
+  return NULL;
 }
 
 #else /* no IP_MINTTL */
 
-static int
+static inline char *
 sk_set_min_ttl4(sock *s, int ttl)
 {
-  log(L_ERR "IPv4 TTL security not supported");
-  return -1;
+  errno = ENOPROTOOPT;
+  return "IP_MINTTL";
 }
 
 #endif
 
-#else /* IPv6 */
-
-static int
+static inline char *
 sk_set_min_ttl6(sock *s, int ttl)
 {
-  log(L_ERR "IPv6 TTL security not supported");
-  return -1;
+  errno = ENOPROTOOPT;
+  return "IP_MINTTL";
 }
-
-#endif
 

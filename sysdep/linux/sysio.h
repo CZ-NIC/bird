@@ -220,40 +220,22 @@ sysio_prepare_tx_cmsgs(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
 #define IPV6_MINHOPCOUNT 73
 #endif
 
-
-// XXXX
-#if 0
-
-static int
+static inline char *
 sk_set_min_ttl4(sock *s, int ttl)
 {
   if (setsockopt(s->fd, IPPROTO_IP, IP_MINTTL, &ttl, sizeof(ttl)) < 0)
-  {
-    if (errno == ENOPROTOOPT)
-      log(L_ERR "Kernel does not support IPv4 TTL security");
-    else
-      log(L_ERR "sk_set_min_ttl4: setsockopt: %m");
+    return "IP_MINTTL";
 
-    return -1;
-  }
-
-  return 0;
+  return NULL;
 }
 
-static int
+static inline char *
 sk_set_min_ttl6(sock *s, int ttl)
 {
   if (setsockopt(s->fd, IPPROTO_IPV6, IPV6_MINHOPCOUNT, &ttl, sizeof(ttl)) < 0)
-  {
-    if (errno == ENOPROTOOPT)
-      log(L_ERR "Kernel does not support IPv6 TTL security");
-    else
-      log(L_ERR "sk_set_min_ttl6: setsockopt: %m");
+    return "IPV6_MINHOPCOUNT";
 
-    return -1;
-  }
-
-  return 0;
+  return NULL;
 }
 
-#endif
+

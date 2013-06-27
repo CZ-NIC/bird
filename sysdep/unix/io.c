@@ -590,23 +590,29 @@ static inline int sockaddr_size(int af)
 static inline void
 sockaddr_fill4(struct sockaddr_in *sa, ip_addr a, struct iface *ifa, unsigned port)
 {
-  sa->sin_port = htons(port);
+  memset(sa, 0, sizeof(struct sockaddr_in));
 #ifdef HAVE_SIN_LEN
   sa->sin_len = sizeof(struct sockaddr_in);
 #endif
+  sa->sin_family = AF_INET;
+  sa->sin_port = htons(port);
   ipa_put_in4(&sa->sin_addr, a);
 }
 
 static inline void
 sockaddr_fill6(struct sockaddr_in6 *sa, ip_addr a, struct iface *ifa, unsigned port)
 {
-  sa->sin6_port = htons(port);
-  sa->sin6_flowinfo = 0;
+  memset(sa, 0, sizeof(struct sockaddr_in6));
 #ifdef SIN6_LEN
   sa->sin6_len = sizeof(struct sockaddr_in6);
 #endif
+  sa->sin6_family = AF_INET6;
+  sa->sin6_port = htons(port);
+  sa->sin6_flowinfo = 0;
   ipa_put_in6(&sa->sin6_addr, a);
-  sa->sin6_scope_id = (ifa && ipa_is_link_local(a)) ? ifa->index : 0;
+
+  if (ifa && ipa_is_link_local(a))
+    sa->sin6_scope_id = ifa->index;
 }
 
 void
@@ -852,24 +858,21 @@ sk_set_min_ttl(sock *s, int ttl)
   char *err;
 
   if (sk_is_ipv4(s))
-    {
-      if (setsockopt(s->fd, IPPROTO_IP, IP_MINTTL, &ttl, sizeof(ttl)) < 0)
-	ERR("IP_MINTTL");
-    }
+    err = sk_set_min_ttl4(s, ttl);
   else
-    {
-      if (setsockopt(s->fd, IPPROTO_IPV6, IPV6_MINHOPCOUNT, &ttl, sizeof(ttl)) < 0)
-	ERR("IPV6_MINHOPCOUNT");
-    }
+    err = sk_set_min_ttl6(s, ttl);
+
+  if (err)
+  {
+    if (errno == ENOPROTOOPT)
+      log(L_ERR "Kernel does not support %s TTL security", sk_is_ipv4(s) ? "IPv4" : "IPv6");
+    else
+      log(L_ERR "sk_set_min_ttl: %s: %m", err);
+
+    return -1;
+  }
 
   return 0;
-
- bad:
-  if (errno == ENOPROTOOPT)
-    log(L_ERR "Kernel does not support %s TTL security", sk_is_ipv4(s) ? "IPv4" : "IPv6");
-  else
-    log(L_ERR "sk_set_min_ttl: %s: %m", err);
-  return -1;
 }
 
 
