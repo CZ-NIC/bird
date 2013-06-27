@@ -16,8 +16,8 @@
 
 
 
-#define IP4_MIN_MTU		576	/* RFC 2328 A.1 */
-#define IP6_MIN_MTU		1280	/* RFC 5340 A.1 */
+#define IP4_MIN_MTU		576
+#define IP6_MIN_MTU		1280
 
 #define IP4_OSPF_ALL_ROUTERS	ipa_build4(224, 0, 0, 5)
 #define IP4_OSPF_DES_ROUTERS	ipa_build4(224, 0, 0, 6)
@@ -30,6 +30,8 @@
 #define IP4_NONE _MI4(0)
 #define IP6_NONE _MI6(0,0,0,0)
 #define IPA_NONE IP6_NONE
+
+#define IP_PREC_INTERNET_CONTROL 0xc0
 
 
 /*
@@ -101,6 +103,16 @@ typedef ip6_addr ip_addr;
 #define ipa_or(x,y) ip6_or(x,y)
 #define ipa_xor(x,y) ip6_xor(x,y)
 #define ipa_not(x) ip6_not(x)
+
+/* These should be used when both IPv4 and IPv6 zero addresses should be checked */
+/* Zero address is either token for invalid/unused, or prefix for default route */
+
+static inline int ipa_zero2(ip6_addr a)
+{ return  !_I0(a) && !_I1(a) && ((_I2(a) == 0) || (_I2(a) == 0xffff)) && !_I3(a); }
+
+static inline int ipa_nonzero2(ip6_addr a)
+{ return _I0(a) || _I1(a) || ((_I2(a) != 0) && (_I2(a) != 0xffff)) || _I3(a); }
+
 
 #define ip4_equal(x,y) (_I(x) == _I(y))
 #define ip4_zero(x) (!_I(x))
@@ -205,6 +217,9 @@ static inline unsigned ip6_hash(ip6_addr a)
 #define ipa_classify(x) ip6_classify(&(x))
 int ip4_classify(ip4_addr ad);
 int ip6_classify(ip6_addr *a);
+
+static inline int ipa_classify_net(ip_addr a)
+{ return ipa_zero2(a) ? (IADDR_HOST | SCOPE_UNIVERSE) : ipa_classify(a); }
 
 #define ipa_is_link_local(a) ip6_is_link_local(a)
 
@@ -387,8 +402,6 @@ char *ip_scope_text(unsigned);
  *	Network prefixes
  */
 
-static inline int ipa_classify_net(ip_addr a)
-{ return ipa_zero(a) ? (IADDR_HOST | SCOPE_UNIVERSE) : ipa_classify(a); }
 
 /*
 #define MAX_PREFIX_LENGTH 32
@@ -412,7 +425,7 @@ static inline int ipa_classify_net(ip_addr a)
 /*
 #define ip_skip_header(x, y) ipv4_skip_header(x, y)
 
-#define IP_PREC_INTERNET_CONTROL 0xc0
+
 */
 
 
@@ -422,17 +435,8 @@ struct fib_node;
 void fn_print(char *buf, int buflen, struct fib_node *n);
 
 
-
-
 /* In IPv6, SOCK_RAW does not return packet header */
 #define ip_skip_header(x, y) x
 
-
-/*
- *  RFC 1883 defines packet precendece, but RFC 2460 replaces it
- *  by generic Traffic Class ID with no defined semantics. Better
- *  not use it yet.
- */
-#define IP_PREC_INTERNET_CONTROL -1
 
 #endif
