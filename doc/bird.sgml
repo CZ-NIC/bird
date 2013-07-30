@@ -1904,6 +1904,7 @@ on nonbroadcast networks.
 <code>
 protocol ospf &lt;name&gt; {
 	rfc1583compat &lt;switch&gt;;
+	stub router &lt;switch&gt;;
 	tick &lt;num&gt;;
 	ecmp &lt;switch&gt; [limit &lt;num&gt;];
 	area &lt;id&gt; {
@@ -1982,6 +1983,15 @@ protocol ospf &lt;name&gt; {
 	 calculation with RFC 1583<htmlurl
 	 url="ftp://ftp.rfc-editor.org/in-notes/rfc1583.txt">. Default
 	 value is no.
+
+	<tag>stub router <M>switch</M></tag>
+	 This option configures the router to be a stub router, i.e.,
+	 a router that participates in the OSPF topology but does not
+	 allow transit traffic. In OSPFv2, this is implemented by
+	 advertising maximum metric for outgoing links, as suggested
+	 by RFC 3137<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc3137.txt">.
+	 In OSPFv3, the stub router behavior is announced by clearing
+	 the R-bit in the router LSA. Default value is no.
 
 	<tag>tick <M>num</M></tag>
 	 The routing table calculation and clean-up of areas' databases

@@ -148,6 +148,7 @@ ospf_proto:
 ospf_proto_item:
    proto_item
  | RFC1583COMPAT bool { OSPF_CFG->rfc1583 = $2; }
+ | STUB ROUTER bool { OSPF_CFG->stub_router = $3; }
  | ECMP bool { OSPF_CFG->ecmp = $2 ? OSPF_DEFAULT_ECMP_LIMIT : 0; }
  | ECMP bool LIMIT expr { OSPF_CFG->ecmp = $2 ? $4 : 0; if ($4 < 0) cf_error("ECMP limit cannot be negative"); }
  | TICK expr { OSPF_CFG->tick = $2; if($2<=0) cf_error("Tick must be greater than zero"); }

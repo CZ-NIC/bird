@@ -332,6 +332,10 @@ spfa_process_rt(struct ospf_area *oa, struct top_hash_entry *act)
     ri_install_rt(oa, act->lsa.rt, &nf);
   }
 
+  /* Errata 2078 to RFC 5340 4.8.1 - skip links from non-routing nodes */
+  if (ospf_is_v3(po) && (act != oa->rt) && !(rt->options & OPT_R))
+    break;
+
   /* Now process Rt links */
   for (lsa_walk_rt_init(po, act, &rtl), i = 0; lsa_walk_rt(&rtl); i++)
   {
@@ -1712,12 +1716,12 @@ add_cand(list * l, struct top_hash_entry *en, struct top_hash_entry *par,
     return;
 
   if (ospf_is_v3(po) && (en->lsa_type == LSA_T_RT))
-    {
-      /* In OSPFv3, check V6 and R flags */
-      struct ospf_lsa_rt *rt = en->lsa_body;
-      if (!(rt->options & OPT_V6) || !(rt->options & OPT_R))
-	return;
-    }
+  {
+    /* In OSPFv3, check V6 flag */
+    struct ospf_lsa_rt *rt = en->lsa_body;
+    if (!(rt->options & OPT_V6))
+      return;
+  }
 
   /* 16.1. (2c) */
   if (en->color == INSPF)

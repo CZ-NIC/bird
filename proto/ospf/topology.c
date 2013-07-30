@@ -219,6 +219,7 @@ prepare_rt2_lsa_body(struct proto_ospf *po, struct ospf_area *oa)
   WALK_LIST(ifa, po->iface_list)
   {
     int net_lsa = 0;
+    u32 link_cost = po->stub_router ? 0xffff : ifa->cost;
 
     if ((ifa->type == OSPF_IT_VLINK) && (ifa->voa == oa) &&
 	(!EMPTY_LIST(ifa->neigh_list)))
@@ -249,7 +250,7 @@ prepare_rt2_lsa_body(struct proto_ospf *po, struct ospf_area *oa)
 	     * compatibility with some broken implementations that use
 	     * this address as a next-hop.
 	     */
-	    add_rt2_lsa_link(po, LSART_PTP, neigh->rid, ipa_to_u32(ifa->addr->ip), ifa->cost);
+	    add_rt2_lsa_link(po, LSART_PTP, neigh->rid, ipa_to_u32(ifa->addr->ip), link_cost);
 	    i++;
 	  }
 	break;
@@ -258,7 +259,7 @@ prepare_rt2_lsa_body(struct proto_ospf *po, struct ospf_area *oa)
       case OSPF_IT_NBMA:
 	if (bcast_net_active(ifa))
 	  {
-	    add_rt2_lsa_link(po, LSART_NET, ipa_to_u32(ifa->drip), ipa_to_u32(ifa->addr->ip), ifa->cost);
+	    add_rt2_lsa_link(po, LSART_NET, ipa_to_u32(ifa->drip), ipa_to_u32(ifa->addr->ip), link_cost);
 	    i++;
 	    net_lsa = 1;
 	  }
@@ -267,7 +268,7 @@ prepare_rt2_lsa_body(struct proto_ospf *po, struct ospf_area *oa)
       case OSPF_IT_VLINK:
 	neigh = (struct ospf_neighbor *) HEAD(ifa->neigh_list);
 	if ((!EMPTY_LIST(ifa->neigh_list)) && (neigh->state == NEIGHBOR_FULL) && (ifa->cost <= 0xffff))
-	  add_rt2_lsa_link(po, LSART_VLNK, neigh->rid, ipa_to_u32(ifa->addr->ip), ifa->cost), i++;
+	  add_rt2_lsa_link(po, LSART_VLNK, neigh->rid, ipa_to_u32(ifa->addr->ip), link_cost), i++;
         break;
 
       default:
