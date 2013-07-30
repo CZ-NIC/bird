@@ -239,3 +239,21 @@ sk_set_min_ttl6(sock *s, int ttl)
 }
 
 
+#ifndef IPV6_TCLASS
+#define IPV6_TCLASS 67
+#endif
+
+int sk_priority_control = 7;
+
+static int
+sk_set_priority(sock *s, int prio)
+{
+  if (setsockopt(s->fd, SOL_SOCKET, SO_PRIORITY, &prio, sizeof(prio)) < 0)
+  {
+    log(L_WARN "sk_set_priority: setsockopt: %m");
+    return -1;
+  }
+
+  return 0;
+}
+

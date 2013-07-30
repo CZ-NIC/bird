@@ -739,6 +739,8 @@ struct ospf_iface_patt
   u32 priority;
   u32 voa;
   u32 vid;
+  int tx_tos;
+  int tx_priority;
   u16 rxbuf;
 #define OSPF_RXBUF_NORMAL 0
 #define OSPF_RXBUF_LARGE 1

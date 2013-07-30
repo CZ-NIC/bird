@@ -116,7 +116,7 @@ CF_KEYWORDS(NONE, SIMPLE, AUTHENTICATION, STRICT, CRYPTOGRAPHIC)
 CF_KEYWORDS(ELIGIBLE, POLL, NETWORKS, HIDDEN, VIRTUAL, CHECK, LINK)
 CF_KEYWORDS(RX, BUFFER, LARGE, NORMAL, STUBNET, HIDDEN, SUMMARY, TAG, EXTERNAL)
 CF_KEYWORDS(WAIT, DELAY, LSADB, ECMP, LIMIT, WEIGHT, NSSA, TRANSLATOR, STABILITY)
-CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL, NETMASK)
+CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL, NETMASK, TX, PRIORITY)
 
 %type <t> opttext
 %type <ld> lsadb_args
@@ -295,6 +295,8 @@ ospf_iface_item:
  | RX BUFFER LARGE { OSPF_PATT->rxbuf = OSPF_RXBUF_LARGE ; } 
  | RX BUFFER NORMAL { OSPF_PATT->rxbuf = OSPF_RXBUF_NORMAL ; } 
  | RX BUFFER expr { OSPF_PATT->rxbuf = $3 ; if (($3 < OSPF_RXBUF_MINSIZE) || ($3 > OSPF_MAX_PKT_SIZE)) cf_error("Buffer size must be in range 256-65535"); } 
+ | TX tos { OSPF_PATT->tx_tos = $2; }
+ | TX PRIORITY expr { OSPF_PATT->tx_priority = $3; }
  | password_list { ospf_check_auth(); }
  ;
 
@@ -357,6 +359,8 @@ ospf_iface_start:
   init_list(&OSPF_PATT->nbma_list);
   OSPF_PATT->autype = OSPF_AUTH_NONE;
   OSPF_PATT->ptp_netmask = 2; /* not specified */
+  OSPF_PATT->tx_tos = IP_PREC_INTERNET_CONTROL;
+  OSPF_PATT->tx_priority = sk_priority_control;
   reset_passwords();
  }
 ;

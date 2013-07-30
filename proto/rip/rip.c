@@ -709,7 +709,8 @@ new_iface(struct proto *p, struct iface *new, unsigned long flags, struct iface_
   if (new)
     {
       rif->sock->ttl = 1;
-      rif->sock->tos = IP_PREC_INTERNET_CONTROL;
+      rif->sock->tos = PATT->tx_tos;
+      rif->sock->priority = PATT->tx_priority;
       rif->sock->flags |= SKF_LADDR_RX;
     }
 
@@ -1000,7 +1001,9 @@ static int
 rip_pat_compare(struct rip_patt *a, struct rip_patt *b)
 {
   return ((a->metric == b->metric) &&
-	  (a->mode == b->mode));
+	  (a->mode == b->mode) &&
+	  (a->tx_tos == b->tx_tos) &&
+	  (a->tx_priority == b->tx_priority));
 }
 
 static int

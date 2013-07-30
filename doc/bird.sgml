@@ -567,6 +567,22 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	<cf>interface "eth*" 192.168.1.0/24;</cf> - start the protocol on all
 	ethernet interfaces that have address from 192.168.1.0/24.
 
+	<tag><label id="dsc-prio">tx class|dscp <m/num/</tag>
+        This option specifies the value of ToS/DS/Class field in IP
+        headers of the outgoing protocol packets. This may affect how the
+        protocol packets are processed by the network relative to the
+        other network traffic. With <cf/class/ keyword, the value
+        (0-255) is used for the whole ToS/Class octet (but two bits
+        reserved for ECN are ignored). With <cf/dscp/ keyword, the
+        value (0-63) is used just for the DS field in the
+        octet. Default value is 0xc0 (DSCP 0x30 - CS6).
+
+	<tag>tx priority <m/num/</tag>
+        This option specifies the local packet priority. This may
+        affect how the protocol packets are processed in the local TX
+        queues. This option is Linux specific. Default value is 7
+        (highest priority, privileged traffic).
+
 	<tag><label id="dsc-pass">password "<m/password/" [ { id <m/num/; generate from <m/time/; generate to <m/time/; accept from <m/time/; accept to <m/time/; } ]</tag>
 	Specifies a password that can be used by the protocol. Password option can
 	be used more times to specify more passwords. If more passwords are
@@ -2220,6 +2236,11 @@ protocol ospf &lt;name&gt; {
 	 prefix) is propagated. It is possible that some hardware
 	 drivers or platforms do not implement this feature. Default value is no.
 
+	<tag>tx class|dscp|priority <m/num/</tag>
+         These options specify the ToS/DiffServ/Traffic class/Priority
+         of the outgoing OSPF packets. See <ref id="dsc-prio" name="tx
+         class"> common option for detailed description.
+
 	<tag>ecmp weight <M>num</M></tag>
 	 When ECMP (multipath) routes are allowed, this value specifies
 	 a relative weight used for nexthops going through the iface.
@@ -2748,13 +2769,26 @@ makes it pretty much obsolete. (It is still usable on very small networks.)
 	  neighbors, that is not configurable. Default: never.
 </descrip>
 
-<p>There are two options that can be specified per-interface. First is <cf>metric</cf>, with
-default one.  Second is <cf>mode multicast|broadcast|quiet|nolisten|version1</cf>, it selects mode for
-rip to work in. If nothing is specified, rip runs in multicast mode. <cf>version1</cf> is
-currently equivalent to <cf>broadcast</cf>, and it makes RIP talk to a broadcast address even
-through multicast mode is possible. <cf>quiet</cf> option means that RIP will not transmit
-any periodic messages to this interface and <cf>nolisten</cf> means that RIP will send to this
-interface but not listen to it.
+<p>There are some options that can be specified per-interface:
+
+<descrip>
+	<tag>metric <m/num/</tag>
+	  This option specifies the metric of the interface. Valid
+
+	<tag>mode multicast|broadcast|quiet|nolisten|version1</tag>
+	  This option selects the mode for RIP to work in. If nothing is
+	  specified, RIP runs in multicast mode. <cf/version1/ is
+	  currently equivalent to <cf/broadcast/, and it makes RIP talk
+	  to a broadcast address even through multicast mode is
+	  possible. <cf/quiet/ option means that RIP will not transmit
+	  any periodic messages to this interface and <cf/nolisten/
+	  means that RIP will send to this interface butnot listen to it.
+
+	<tag>tx class|dscp|priority <m/num/</tag>
+          These options specify the ToS/DiffServ/Traffic class/Priority
+          of the outgoing RIP packets. See <ref id="dsc-prio" name="tx
+          class"> common option for detailed description.
+</descrip>
 
 <p>The following options generally override behavior specified in RFC. If you use any of these
 options, BIRD will no longer be RFC-compliant, which means it will not be able to talk to anything

@@ -79,7 +79,8 @@ ospf_sk_open(struct ospf_iface *ifa)
   sk->dport = OSPF_PROTO;
   sk->saddr = IPA_NONE;
 
-  sk->tos = IP_PREC_INTERNET_CONTROL;
+  sk->tos = ifa->cf->tx_tos;
+  sk->priority = ifa->cf->tx_priority;
   sk->rx_hook = ospf_rx_hook;
   sk->tx_hook = ospf_tx_hook;
   sk->err_hook = ospf_err_hook;
@@ -647,7 +648,10 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
   if (ifa->stub != new_stub)
     return 0;
 
-  if (new->real_bcast != ifa->cf->real_bcast)
+  /* Change of these options would require to reset the iface socket */
+  if ((new->real_bcast != ifa->cf->real_bcast) ||
+      (new->tx_tos != ifa->cf->tx_tos) ||
+      (new->tx_priority != ifa->cf->tx_priority))
     return 0;
 
   ifa->cf = new;

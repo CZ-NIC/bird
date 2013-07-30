@@ -123,6 +123,8 @@ struct rip_patt {
 #define IM_QUIET 4
 #define IM_NOLISTEN 8
 #define IM_VERSION1 16
+  int tx_tos;
+  int tx_priority;
 };
 
 struct rip_proto_config {

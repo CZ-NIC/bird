@@ -27,7 +27,7 @@ CF_DECLS
 CF_KEYWORDS(RIP, RIPNG, INFINITY, METRIC, PORT, PERIOD, GARBAGE, TIMEOUT,
 	    MODE, BROADCAST, MULTICAST, QUIET, NOLISTEN, VERSION1, 
 	    AUTHENTICATION, NONE, PLAINTEXT, MD5,
-	    HONOR, NEVER, NEIGHBOR, ALWAYS,
+	    HONOR, NEVER, NEIGHBOR, ALWAYS, TX, PRIORITY,
 	    RIP_METRIC, RIP_TAG)
 
 %type <i> rip_mode rip_auth
@@ -85,6 +85,8 @@ rip_mode:
 rip_iface_item:
  | METRIC expr { RIP_IPATT->metric = $2; }
  | MODE rip_mode { RIP_IPATT->mode |= $2; }
+ | TX tos { RIP_IPATT->tx_tos = $2; }
+ | TX PRIORITY expr { RIP_IPATT->tx_priority = $3; }
  ;
 
 rip_iface_opts: 
@@ -103,6 +105,8 @@ rip_iface_init:
      add_tail(&RIP_CFG->iface_list, NODE this_ipatt);
      init_list(&this_ipatt->ipn_list);
      RIP_IPATT->metric = 1;
+     RIP_IPATT->tx_tos = IP_PREC_INTERNET_CONTROL;
+     RIP_IPATT->tx_priority = sk_priority_control;
    }
  ;
 
