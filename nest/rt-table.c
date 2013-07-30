@@ -914,6 +914,26 @@ rte_update_unlock(void)
     lp_flush(rte_update_pool);
 }
 
+static inline void
+rte_hide_dummy_routes(net *net, rte **dummy)
+{
+  if (net->routes && net->routes->attrs->source == RTS_DUMMY)
+  {
+    *dummy = net->routes;
+    net->routes = (*dummy)->next;
+  }
+}
+
+static inline void
+rte_unhide_dummy_routes(net *net, rte **dummy)
+{
+  if (*dummy)
+  {
+    (*dummy)->next = net->routes;
+    net->routes = *dummy;
+  }
+}
+
 /**
  * rte_update - enter a new update to a routing table
  * @table: table to be updated
@@ -963,6 +983,7 @@ rte_update2(struct announce_hook *ah, net *net, rte *new, struct proto *src)
   struct proto_stats *stats = ah->stats;
   struct filter *filter = ah->in_filter;
   ea_list *tmpa = NULL;
+  rte *dummy = NULL;
 
   rte_update_lock();
   if (new)
@@ -1018,14 +1039,18 @@ rte_update2(struct announce_hook *ah, net *net, rte *new, struct proto *src)
   else
     stats->imp_withdraws_received++;
 
+ recalc:
+  rte_hide_dummy_routes(net, &dummy);
   rte_recalculate(ah, net, new, tmpa, src);
+  rte_unhide_dummy_routes(net, &dummy);
   rte_update_unlock();
   return;
 
-drop:
+ drop:
   rte_free(new);
-  rte_recalculate(ah, net, NULL, NULL, src);
-  rte_update_unlock();
+  new = NULL;
+  tmpa = NULL;
+  goto recalc;
 }
 
 /* Independent call to rte_announce(), used from next hop
