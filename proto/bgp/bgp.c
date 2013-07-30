@@ -840,7 +840,6 @@ bgp_start(struct proto *P)
   lock->iface = p->cf->iface;
   lock->type = OBJLOCK_TCP;
   lock->port = BGP_PORT;
-  lock->iface = NULL;
   lock->hook = bgp_start_locked;
   lock->data = p;
   olock_acquire(lock);
