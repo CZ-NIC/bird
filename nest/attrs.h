@@ -25,6 +25,8 @@
  * to 16bit slot (like in 16bit AS_PATH). See RFC 4893 for details
  */
 
+struct f_tree;
+
 struct adata *as_path_prepend(struct linpool *pool, struct adata *olda, u32 as);
 int as_path_convert_to_old(struct adata *path, byte *dst, int *new_used);
 int as_path_convert_to_new(struct adata *path, byte *dst, int req_as);
@@ -34,6 +36,7 @@ int as_path_getlen_int(struct adata *path, int bs);
 int as_path_get_first(struct adata *path, u32 *orig_as);
 int as_path_get_last(struct adata *path, u32 *last_as);
 int as_path_is_member(struct adata *path, u32 as);
+int as_path_match_set(struct adata *path, struct f_tree *set);
 
 #define PM_ASN		0
 #define PM_QUESTION	1

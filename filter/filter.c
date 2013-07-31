@@ -418,6 +418,9 @@ val_in_range(struct f_val v1, struct f_val v2)
   if ((v1.type == T_ECLIST) && (v2.type == T_SET))
     return eclist_match_set(v1.val.ad, v2.val.t);
 
+  if ((v1.type == T_PATH) && (v2.type == T_SET))
+    return as_path_match_set(v1.val.ad, v2.val.t);
+
   if (v2.type == T_SET)
     switch (v1.type) {
     case T_ENUM:
