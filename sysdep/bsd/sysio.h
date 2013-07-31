@@ -81,42 +81,56 @@ sk_leave_group4(sock *s, ip_addr maddr)
 /* BSD RX/TX packet info handling for IPv4 */
 /* it uses IP_RECVDSTADDR / IP_RECVIF socket options instead of IP_PKTINFO */
 
-#define CMSG_RX_SPACE (CMSG_SPACE(sizeof(struct in_addr)) + CMSG_SPACE(sizeof(struct sockaddr_dl)))
-#define CMSG_TX_SPACE CMSG_SPACE(sizeof(struct in_addr))
+#define CMSG_SPACE_PKTINFO4 (CMSG_SPACE(sizeof(struct in_addr)) + \
+			     CMSG_SPACE(sizeof(struct sockaddr_dl)))
+#define CMSG_SPACE_PKTINFO6 CMSG_SPACE(sizeof(struct in6_pktinfo))
 
-static char *
-sk_request_pktinfo4(sock *s)
+#define CMSG_RX_SPACE (MAX(CMSG_SPACE_PKTINFO4,CMSG_SPACE_PKTINFO6) + CMSG_SPACE(sizeof(int)))
+#define CMSG_TX_SPACE MAX(CMSG_SPACE_PKTINFO4,CMSG_SPACE_PKTINFO6)
+
+
+static inline char *
+sk_request_cmsg4_pktinfo(sock *s)
 {
   int ok = 1;
-  if (s->flags & SKF_LADDR_RX)
-    {
-      if (setsockopt(s->fd, IPPROTO_IP, IP_RECVDSTADDR, &ok, sizeof(ok)) < 0)
-	return "IP_RECVDSTADDR";
 
-      if (setsockopt(s->fd, IPPROTO_IP, IP_RECVIF, &ok, sizeof(ok)) < 0)
-	return "IP_RECVIF";
-    }
+  if (setsockopt(s->fd, IPPROTO_IP, IP_RECVDSTADDR, &ok, sizeof(ok)) < 0)
+    return "IP_RECVDSTADDR";
+
+  if (setsockopt(s->fd, IPPROTO_IP, IP_RECVIF, &ok, sizeof(ok)) < 0)
+    return "IP_RECVIF";
 
   return NULL;
 }
 
-static void
-sk_process_rx_cmsg4(sock *s, struct cmsghdr *cm)
+static inline void
+sk_process_cmsg4_pktinfo(sock *s, struct cmsghdr *cm)
 {
-  if (cm->cmsg_level == IPPROTO_IP && cm->cmsg_type == IP_RECVDSTADDR)
-    {
-      struct in_addr *ra = (struct in_addr *) CMSG_DATA(cm);
-      s->laddr = ipa_get_in4(ra);
-    }
+  if ((cm->cmsg_type == IP_RECVDSTADDR) && (s->flags & SKF_LADDR_RX))
+    s->laddr = ipa_get_in4((struct in_addr *) CMSG_DATA(cm));
 
-  if (cm->cmsg_level == IPPROTO_IP && cm->cmsg_type == IP_RECVIF)
-    {
-      struct sockaddr_dl *ri = (struct sockaddr_dl *) CMSG_DATA(cm);
-      s->lifindex = ri->sdl_index;
-    }
-
-  // log(L_WARN "RX %I %d", s->laddr, s->lifindex);
+  if ((cm->cmsg_type == IP_RECVIF) && (s->flags & SKF_LADDR_RX))
+    s->lifindex = ((struct sockaddr_dl *) CMSG_DATA(cm))->sdl_index;
 }
+
+static inline char *
+sk_request_cmsg4_ttl(sock *s)
+{
+  int ok = 1;
+
+  if (setsockopt(s->fd, IPPROTO_IP, IP_RECVTTL, &ok, sizeof(ok)) < 0)
+    return "IP_RECVTTL";
+
+  return NULL;
+}
+
+static inline void
+sk_process_cmsg4_ttl(sock *s, struct cmsghdr *cm)
+{
+  if ((cm->cmsg_type == IP_RECVTTL) && (s->flags & SKF_TTL_RX))
+    s->ttl = * (unsigned char *) CMSG_DATA(cm);
+}
+
 
 /* Unfortunately, IP_SENDSRCADDR does not work for raw IP sockets on BSD kernels */
 /*

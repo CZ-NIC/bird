@@ -89,10 +89,11 @@ extern int sk_priority_control;	/* Suggested priority for control traffic, shoul
 
 /* Socket flags */
 
-#define SKF_V4ONLY	1	/* Use IPv4 for IP sockets */
-#define SKF_V6ONLY	2	/* Use IPV6_V6ONLY socket option */
-#define SKF_LADDR_RX	4	/* Report local address for RX packets */
-#define SKF_LADDR_TX	6	/* Allow to specify local address for TX packets */
+#define SKF_V4ONLY	0x01	/* Use IPv4 for IP sockets */
+#define SKF_V6ONLY	0x02	/* Use IPV6_V6ONLY socket option */
+#define SKF_LADDR_RX	0x04	/* Report local address for RX packets */
+#define SKF_LADDR_TX	0x08	/* Allow to specify local address for TX packets */
+#define SKF_TTL_RX	0x10	/* Report TTL / Hop Limit for RX packets */
 
 
 /*

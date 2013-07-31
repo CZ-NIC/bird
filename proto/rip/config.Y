@@ -22,12 +22,15 @@ CF_DEFINES
 #define RIP_CFG ((struct rip_proto_config *) this_proto)
 #define RIP_IPATT ((struct rip_patt *) this_ipatt)
 
+static inline int rip_cfg_is_old(void) { return RIP_CFG->c.protocol == &proto_rip; }
+static inline int rip_cfg_is_ng(void)  { return RIP_CFG->c.protocol == &proto_ripng; }
+
 CF_DECLS
 
 CF_KEYWORDS(RIP, RIPNG, INFINITY, METRIC, PORT, PERIOD, GARBAGE, TIMEOUT,
 	    MODE, BROADCAST, MULTICAST, QUIET, NOLISTEN, VERSION1, 
-	    AUTHENTICATION, NONE, PLAINTEXT, MD5,
-	    HONOR, NEVER, NEIGHBOR, ALWAYS, TX, PRIORITY,
+	    AUTHENTICATION, NONE, PLAINTEXT, MD5, TTL, SECURITY,
+	    HONOR, NEVER, NEIGHBOR, ALWAYS, TX, PRIORITY, ONLY,
 	    RIP_METRIC, RIP_TAG)
 
 %type <i> rip_mode rip_auth
@@ -87,6 +90,8 @@ rip_iface_item:
  | MODE rip_mode { RIP_IPATT->mode |= $2; }
  | TX tos { RIP_IPATT->tx_tos = $2; }
  | TX PRIORITY expr { RIP_IPATT->tx_priority = $3; }
+ | TTL SECURITY bool { RIP_IPATT->ttl_security = $3; }
+ | TTL SECURITY TX ONLY { RIP_IPATT->ttl_security = 2; }
  ;
 
 rip_iface_opts: 
@@ -107,6 +112,7 @@ rip_iface_init:
      RIP_IPATT->metric = 1;
      RIP_IPATT->tx_tos = IP_PREC_INTERNET_CONTROL;
      RIP_IPATT->tx_priority = sk_priority_control;
+     RIP_IPATT->ttl_security = rip_cfg_is_ng() ? 1 : 0;
    }
  ;
 

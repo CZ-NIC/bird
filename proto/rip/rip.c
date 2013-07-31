@@ -481,6 +481,14 @@ rip_rx(sock *s, int size)
   iface = i->iface;
 
 
+  if (i->check_ttl && (s->ttl < 255))
+  {
+    log( L_REMOTE "%s: Discarding packet with TTL %d (< 255) from %I on %s",
+	 p->name, s->ttl, s->faddr, i->iface->name);
+    return 1;
+  }
+
+
   CHK_MAGIC;
   DBG( "RIP: message came: %d bytes from %I via %s\n", size, s->faddr, iface ? iface->name : "(dummy)" );
   size -= sizeof( struct rip_packet_heading );
@@ -687,6 +695,7 @@ new_iface(struct proto *p, struct iface *new, unsigned long flags, struct iface_
     rif->mode = PATT->mode;
     rif->metric = PATT->metric;
     rif->multicast = (!(PATT->mode & IM_BROADCAST)) && (flags & IF_MULTICAST);
+    rif->check_ttl = (PATT->ttl_security == 1);
   }
   /* lookup multicasts over unnumbered links - no: rip is not defined over unnumbered links */
 
@@ -708,10 +717,10 @@ new_iface(struct proto *p, struct iface *new, unsigned long flags, struct iface_
   rif->sock->flags = rip_is_old(p) ? SKF_V4ONLY : SKF_V6ONLY;
   if (new)
     {
-      rif->sock->ttl = 1;
       rif->sock->tos = PATT->tx_tos;
       rif->sock->priority = PATT->tx_priority;
-      rif->sock->flags |= SKF_LADDR_RX;
+      rif->sock->ttl = PATT->ttl_security ? 255 : 1;
+      rif->sock->flags |= SKF_LADDR_RX | (rif->check_ttl ? SKF_TTL_RX : 0);
     }
 
   if (new) {

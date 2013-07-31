@@ -470,7 +470,7 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	works in the direction from the routing table to the protocol.
 	Default: <cf/none/.
 
-	<tag>import keep filtered <m/bool/</tag>
+	<tag>import keep filtered <m/switch/</tag>
 	Usually, if an import filter rejects a route, the route is
 	forgotten. When this option is active, these routes are
 	kept in the routing table, but they are hidden and not
@@ -1966,6 +1966,9 @@ protocol ospf &lt;name&gt; {
 			ptp netmask &lt;switch&gt;;
 			check link &lt;switch&gt;;
 			ecmp weight &lt;num&gt;;
+			ttl security [&lt;switch&gt;; | tx only]
+			tx class|dscp &lt;num&gt;;
+			tx priority &lt;num&gt;;
 			authentication [none|simple|cryptographic];
 			password "&lt;text&gt;";
 			password "&lt;text&gt;" {
@@ -2235,6 +2238,20 @@ protocol ospf &lt;name&gt; {
 	 and only the address of the iface (instead of whole network
 	 prefix) is propagated. It is possible that some hardware
 	 drivers or platforms do not implement this feature. Default value is no.
+
+	<tag>ttl security [<m/switch/ | tx only]</tag>
+	 TTL security is a feature that protects routing protocols
+	 from remote spoofed packets by using TTL 255 instead of TTL 1
+	 for protocol packets destined to neighbors. Because TTL is
+	 decremented when packets are forwarded, it is non-trivial to
+	 spoof packets with TTL 255 from remote locations. Note that
+	 this option would interfere with OSPF virtual links.
+
+	 If this option is enabled, the router will send OSPF packets
+	 with TTL 255 and drop received packets with TTL less than
+	 255. If this option si set to <cf/tx only/, TTL 255 is used
+	 for sent packets, but is not checked for received
+	 packets. Default value is no.
 
 	<tag>tx class|dscp|priority <m/num/</tag>
          These options specify the ToS/DiffServ/Traffic class/Priority
@@ -2783,6 +2800,26 @@ makes it pretty much obsolete. (It is still usable on very small networks.)
 	  possible. <cf/quiet/ option means that RIP will not transmit
 	  any periodic messages to this interface and <cf/nolisten/
 	  means that RIP will send to this interface butnot listen to it.
+
+	<tag>ttl security [<m/switch/ | tx only]</tag>
+	 TTL security is a feature that protects routing protocols
+	 from remote spoofed packets by using TTL 255 instead of TTL 1
+	 for protocol packets destined to neighbors. Because TTL is
+	 decremented when packets are forwarded, it is non-trivial to
+	 spoof packets with TTL 255 from remote locations.
+
+	 If this option is enabled, the router will send RIP packets
+	 with TTL 255 and drop received packets with TTL less than
+	 255. If this option si set to <cf/tx only/, TTL 255 is used
+	 for sent packets, but is not checked for received
+	 packets. Such setting does not offer protection, but offers
+	 compatibility with neighbors regardless of whether they use
+	 ttl security.
+
+	 Note that for RIPng, TTL security is a standard behavior
+	 (required by RFC 2080), but BIRD uses <cf/tx only/ by
+	 default, for compatibility with older versions. For IPv4 RIP,
+	 default value is no.
 
 	<tag>tx class|dscp|priority <m/num/</tag>
           These options specify the ToS/DiffServ/Traffic class/Priority

@@ -157,33 +157,51 @@ sk_set_md5_auth_int(sock *s, struct sockaddr *sa, int sa_len, char *passwd)
 /* RX/TX packet info handling for IPv4 */
 /* Mostly similar to standardized IPv6 code */
 
-#define CMSG_SPACE_PKTINFO4 CMSG_SPACE(sizeof(struct in_pktinfo))
-#define CMSG_SPACE_PKTINFO6 CMSG_SPACE(sizeof(struct in6_pktinfo))
-
-#define CMSG_RX_SPACE MAX(CMSG_SPACE_PKTINFO4,CMSG_SPACE_PKTINFO6)
-#define CMSG_TX_SPACE MAX(CMSG_SPACE_PKTINFO4,CMSG_SPACE_PKTINFO6)
+#define CMSG4_SPACE_PKTINFO CMSG_SPACE(sizeof(struct in_pktinfo))
 
 static inline char *
-sk_request_pktinfo4(sock *s)
+sk_request_cmsg4_pktinfo(sock *s)
 {
   int ok = 1;
-  if (s->flags & SKF_LADDR_RX)
-    if (setsockopt(s->fd, IPPROTO_IP, IP_PKTINFO, &ok, sizeof(ok)) < 0)
-      return "IP_PKTINFO";
+
+  if (setsockopt(s->fd, IPPROTO_IP, IP_PKTINFO, &ok, sizeof(ok)) < 0)
+    return "IP_PKTINFO";
 
   return NULL;
 }
 
 static inline void
-sk_process_rx_cmsg4(sock *s, struct cmsghdr *cm)
+sk_process_cmsg4_pktinfo(sock *s, struct cmsghdr *cm)
 {
-  if (cm->cmsg_level == IPPROTO_IP && cm->cmsg_type == IP_PKTINFO)
-    {
-      struct in_pktinfo *pi = (struct in_pktinfo *) CMSG_DATA(cm);
-      s->laddr = ipa_get_in4(&pi->ipi_addr);
-      s->lifindex = pi->ipi_ifindex;
-    }
+  if ((cm->cmsg_type == IP_PKTINFO) && (s->flags & SKF_LADDR_RX))
+  {
+    struct in_pktinfo *pi = (struct in_pktinfo *) CMSG_DATA(cm);
+    s->laddr = ipa_get_in4(&pi->ipi_addr);
+    s->lifindex = pi->ipi_ifindex;
+  }
 }
+
+
+#define CMSG4_SPACE_TTL CMSG_SPACE(sizeof(int))
+
+static inline char *
+sk_request_cmsg4_ttl(sock *s)
+{
+  int ok = 1;
+
+  if (setsockopt(s->fd, IPPROTO_IP, IP_RECVTTL, &ok, sizeof(ok)) < 0)
+    return "IP_RECVTTL";
+
+  return NULL;
+}
+
+static inline void
+sk_process_cmsg4_ttl(sock *s, struct cmsghdr *cm)
+{
+  if ((cm->cmsg_type == IP_TTL) && (s->flags & SKF_TTL_RX))
+    s->ttl = * (int *) CMSG_DATA(cm);
+}
+
 
 /*
 static void

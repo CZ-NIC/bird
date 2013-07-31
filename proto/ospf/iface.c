@@ -88,7 +88,7 @@ ospf_sk_open(struct ospf_iface *ifa)
   sk->rbsize = rxbufsize(ifa);
   sk->tbsize = rxbufsize(ifa);
   sk->data = (void *) ifa;
-  sk->flags = SKF_LADDR_RX;
+  sk->flags = SKF_LADDR_RX | (ifa->check_ttl ? SKF_TTL_RX : 0);
 
   if (sk_open(sk) != 0)
     goto err;
@@ -134,7 +134,7 @@ ospf_sk_open(struct ospf_iface *ifa)
     {
       ifa->all_routers = ospf_is_v2(po) ? IP4_OSPF_ALL_ROUTERS : IP6_OSPF_ALL_ROUTERS;
       ifa->des_routers = ospf_is_v2(po) ? IP4_OSPF_DES_ROUTERS : IP6_OSPF_DES_ROUTERS;
-      sk->ttl = 1;	/* Hack, this will affect just the multicast packets */
+      sk->ttl = ifa->cf->ttl_security ? 255 : 1;
 
       if (sk_setup_multicast(sk) < 0)
         goto err;
@@ -535,6 +535,7 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   ifa->rxbuf = ip->rxbuf;
   ifa->check_link = ip->check_link;
   ifa->ecmp_weight = ip->ecmp_weight;
+  ifa->check_ttl = (ip->ttl_security == 1);
   ifa->autype = ip->autype;
   ifa->passwords = ip->passwords;
   ifa->instance_id = ip->instance_id;

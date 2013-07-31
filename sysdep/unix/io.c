@@ -700,41 +700,95 @@ sk_insert(sock *s)
 #ifndef IPV6_RECVPKTINFO
 #define IPV6_RECVPKTINFO IPV6_PKTINFO
 #endif
+/*
+ * Same goes for IPV6_HOPLIMIT -> IPV6_RECVHOPLIMIT.
+ */
+#ifndef IPV6_RECVHOPLIMIT
+#define IPV6_RECVHOPLIMIT IPV6_HOPLIMIT
+#endif
+
+
+#define CMSG6_SPACE_PKTINFO CMSG_SPACE(sizeof(struct in6_pktinfo))
 
 static inline char *
-sk_request_pktinfo6(sock *s)
+sk_request_cmsg6_pktinfo(sock *s)
 {
   int ok = 1;
-  if (s->flags & SKF_LADDR_RX)
-    if (setsockopt(s->fd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &ok, sizeof(ok)) < 0)
-      return "IPV6_RECVPKTINFO";
+
+  if (setsockopt(s->fd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &ok, sizeof(ok)) < 0)
+    return "IPV6_RECVPKTINFO";
 
   return NULL;
 }
 
+static inline void
+sk_process_cmsg6_pktinfo(sock *s, struct cmsghdr *cm)
+{
+  if ((cm->cmsg_type == IPV6_PKTINFO) && (s->flags & SKF_LADDR_RX))
+  {
+    struct in6_pktinfo *pi = (struct in6_pktinfo *) CMSG_DATA(cm);
+    s->laddr = ipa_get_in6(&pi->ipi6_addr);
+    s->lifindex = pi->ipi6_ifindex;
+  }
+}
+
+
+#define CMSG6_SPACE_TTL CMSG_SPACE(sizeof(int))
+
+static inline char *
+sk_request_cmsg6_ttl(sock *s)
+{
+  int ok = 1;
+
+  if (setsockopt(s->fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &ok, sizeof(ok)) < 0)
+    return "IPV6_RECVHOPLIMIT";
+
+  return NULL;
+}
+
+static inline void
+sk_process_cmsg6_ttl(sock *s, struct cmsghdr *cm)
+{
+  if ((cm->cmsg_type == IPV6_HOPLIMIT) && (s->flags & SKF_TTL_RX))
+    s->ttl = * (int *) CMSG_DATA(cm);
+}
+
+
+#define CMSG_RX_SPACE MAX(CMSG4_SPACE_PKTINFO+CMSG4_SPACE_TTL, \
+			  CMSG6_SPACE_PKTINFO+CMSG6_SPACE_TTL)
+#define CMSG_TX_SPACE MAX(CMSG4_SPACE_PKTINFO,CMSG6_SPACE_PKTINFO)
+
+
 static void
-sk_process_rx_cmsgs(sock *s, struct msghdr *msg)
+sk_process_cmsgs(sock *s, struct msghdr *msg)
 {
   struct cmsghdr *cm;
 
-  if (!(s->flags & SKF_LADDR_RX))
-    return;
+  if (s->flags & SKF_LADDR_RX)
+  {
+    s->laddr = IPA_NONE;
+    s->lifindex = 0;
+  }
 
-  s->laddr = IPA_NONE;
-  s->lifindex = 0;
+  if (s->flags & SKF_TTL_RX)
+    s->ttl = -1;
 
   for (cm = CMSG_FIRSTHDR(msg); cm != NULL; cm = CMSG_NXTHDR(msg, cm))
+  {
+    if ((cm->cmsg_level == IPPROTO_IP) && sk_is_ipv4(s))
     {
-      if (cm->cmsg_level == IPPROTO_IPV6 && cm->cmsg_type == IPV6_PKTINFO)
-	{
-	  struct in6_pktinfo *pi = (struct in6_pktinfo *) CMSG_DATA(cm);
-	  s->laddr = ipa_get_in6(&pi->ipi6_addr);
-	  s->lifindex = pi->ipi6_ifindex;
-	}
-
-      sk_process_rx_cmsg4(s, cm);
+      sk_process_cmsg4_pktinfo(s, cm);
+      sk_process_cmsg4_ttl(s, cm);
     }
+
+    if ((cm->cmsg_level == IPPROTO_IPV6) && sk_is_ipv6(s))
+    {
+      sk_process_cmsg6_pktinfo(s, cm);
+      sk_process_cmsg6_ttl(s, cm);
+    }
+  }
 }
+
 
 /*
 static void
@@ -794,14 +848,33 @@ sk_setup(sock *s)
   if (s->priority >= 0)
     sk_set_priority(s, s->priority);
 
-  // XXXX better error handling
   if (s->ttl >= 0)
-    sk_set_ttl(s, s->ttl);
+    if (sk_set_ttl(s, s->ttl) < 0)
+      ERR("sk_set_ttl");
 
   if (sk_is_ipv4(s))
-    err = sk_request_pktinfo4(s);
-  else
-    err = sk_request_pktinfo6(s);
+  {
+    if (s->flags & SKF_LADDR_RX)
+      if (err = sk_request_cmsg4_pktinfo(s))
+	goto bad;
+
+    if (s->flags & SKF_TTL_RX)
+      if (err = sk_request_cmsg4_ttl(s))
+	goto bad;
+  }
+
+  if (sk_is_ipv6(s))
+  {
+    if (s->flags & SKF_LADDR_RX)
+      if (err = sk_request_cmsg6_pktinfo(s))
+	goto bad;
+
+    if (s->flags & SKF_TTL_RX)
+      if (err = sk_request_cmsg6_ttl(s));
+  }
+
+  return NULL;
+
 bad:
   return err;
 }
@@ -1493,7 +1566,7 @@ sk_read(sock *s)
 	  }
 	s->rpos = s->rbuf + e;
 	sockaddr_read(sa, &s->faddr, NULL, &s->fport, 1);
-	sk_process_rx_cmsgs(s, &msg);
+	sk_process_cmsgs(s, &msg);
 
 	s->rx_hook(s, e);
 	return 1;

@@ -311,6 +311,12 @@ ospf_rx_hook(sock *sk, int size)
     return 1;
   }
 
+  if (ifa->check_ttl && (sk->ttl < 255))
+  {
+    log(L_ERR "%s%I - TTL %d (< 255)", mesg, sk->faddr, sk->ttl);
+    return 1;
+  }
+
   if ((unsigned) size < sizeof(struct ospf_packet))
   {
     log(L_ERR "%s%I - too short (%u bytes)", mesg, sk->faddr, size);
