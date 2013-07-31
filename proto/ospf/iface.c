@@ -89,6 +89,7 @@ ospf_sk_open(struct ospf_iface *ifa)
   sk->tbsize = rxbufsize(ifa);
   sk->data = (void *) ifa;
   sk->flags = SKF_LADDR_RX | (ifa->check_ttl ? SKF_TTL_RX : 0);
+  sk->ttl = ifa->cf->ttl_security ? 255 : -1;
 
   if (sk_open(sk) != 0)
     goto err;
@@ -652,7 +653,8 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
   /* Change of these options would require to reset the iface socket */
   if ((new->real_bcast != ifa->cf->real_bcast) ||
       (new->tx_tos != ifa->cf->tx_tos) ||
-      (new->tx_priority != ifa->cf->tx_priority))
+      (new->tx_priority != ifa->cf->tx_priority) ||
+      (new->ttl_security != ifa->cf->ttl_security))
     return 0;
 
   ifa->cf = new;

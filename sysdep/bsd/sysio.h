@@ -6,6 +6,18 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#ifdef __NetBSD__
+
+#ifndef IP_RECVTTL
+#define IP_RECVTTL 23
+#endif
+
+#ifndef IP_MINTTL
+#define IP_MINTTL 24
+#endif
+
+#endif
+
 #ifdef __DragonFly__
 #define TCP_MD5SIG	TCP_SIGNATURE_ENABLE
 #endif
@@ -211,8 +223,6 @@ sk_set_md5_auth_int(sock *s, struct sockaddr *sa, int sa_len, char *passwd)
 }
 
 
-#ifdef IP_MINTTL
-
 static inline char *
 sk_set_min_ttl4(sock *s, int ttl)
 {
@@ -221,17 +231,6 @@ sk_set_min_ttl4(sock *s, int ttl)
 
   return NULL;
 }
-
-#else /* no IP_MINTTL */
-
-static inline char *
-sk_set_min_ttl4(sock *s, int ttl)
-{
-  errno = ENOPROTOOPT;
-  return "IP_MINTTL";
-}
-
-#endif
 
 static inline char *
 sk_set_min_ttl6(sock *s, int ttl)
