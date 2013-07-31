@@ -52,15 +52,17 @@ struct krt_config {
 
 struct krt_proto {
   struct proto p;
-  struct krt_status sys;	/* Sysdep state */
+  struct krt_state sys;		/* Sysdep state */
+
 #ifdef KRT_ALLOW_LEARN
   struct rtable krt_table;	/* Internal table of inherited routes */
 #endif
-  pool *krt_pool;		/* Pool used for common krt data */
+
+#ifndef CONFIG_ALL_TABLES_AT_ONCE
   timer *scan_timer;
-#ifdef CONFIG_ALL_TABLES_AT_ONCE
-  node instance_node;		/* Node in krt instance list */
 #endif
+
+  node krt_node;		/* Node in krt_proto_list */
   int addr_type;		/* Kernel table address type */
   int initialized;		/* First scan has already been finished */
 };
@@ -104,7 +106,7 @@ struct kif_config {
 
 struct kif_proto {
   struct proto p;
-  struct kif_status sys;	/* Sysdep state */
+  struct kif_state sys;		/* Sysdep state */
 };
 
 #define KIF_CF ((struct kif_config *)p->p.cf)
@@ -115,8 +117,8 @@ struct proto_config * krt_init_config(int class);
 /* krt sysdep */
 
 void krt_sys_init(struct krt_proto *);
-void krt_sys_start(struct krt_proto *, int);
-void krt_sys_shutdown(struct krt_proto *, int);
+void krt_sys_start(struct krt_proto *);
+void krt_sys_shutdown(struct krt_proto *);
 int krt_sys_reconfigure(struct krt_proto *p UNUSED, struct krt_config *n, struct krt_config *o);
 
 void krt_sys_preconfig(struct config *);

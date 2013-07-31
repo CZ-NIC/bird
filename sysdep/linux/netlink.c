@@ -1102,18 +1102,16 @@ nl_open_async(void)
  */
 
 void
-krt_sys_start(struct krt_proto *p, int first)
+krt_sys_start(struct krt_proto *p)
 {
   nl_tablex_map(p->addr_type == RT_IPV4)[KRT_CF->sys.table_id] = p;
-  if (first)
-    {
-      nl_open();
-      nl_open_async();
-    }
+
+  nl_open();
+  nl_open_async();
 }
 
 void
-krt_sys_shutdown(struct krt_proto *p UNUSED, int last UNUSED)
+krt_sys_shutdown(struct krt_proto *p UNUSED)
 {
 }
 

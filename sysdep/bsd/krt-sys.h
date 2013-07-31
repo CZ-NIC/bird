@@ -15,7 +15,7 @@
 struct kif_params {
 };
 
-struct kif_status {
+struct kif_state {
 };
 
 
@@ -33,7 +33,7 @@ static inline void kif_sys_copy_config(struct kif_config *d UNUSED, struct kif_c
 struct krt_params {
 };
 
-struct krt_status {
+struct krt_state {
 };
 
 

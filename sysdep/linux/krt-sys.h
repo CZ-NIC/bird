@@ -15,7 +15,7 @@
 struct kif_params {
 };
 
-struct kif_status {
+struct kif_state {
 };
 
 
@@ -36,7 +36,7 @@ struct krt_params {
   int table_id;				/* Kernel table ID we sync with */
 };
 
-struct krt_status {
+struct krt_state {
 };
 
 

@@ -749,16 +749,16 @@ static size_t kif_buflen = 4096;
 void
 krt_do_scan(struct krt_proto *p)
 {
-  krt_sysctl_scan((struct proto *)p, p->krt_pool, &krt_buffer, &krt_buflen,
+<<<<<<< HEAD:sysdep/bsd/krt-sock.c
+  krt_sysctl_scan(&p->p, p->krt_pool, &krt_buffer, &krt_buflen,
 		  NET_RT_DUMP, rt_to_af(p->addr_type));
 }
 
 void
 kif_do_scan(struct kif_proto *p)
 {
-  struct proto *P = (struct proto *)p;
   if_start_update();
-  krt_sysctl_scan(P, P->pool, &kif_buffer, &kif_buflen, NET_RT_IFLIST, 0);
+  krt_sysctl_scan(&p->p, p->p.pool, &kif_buffer, &kif_buflen, NET_RT_IFLIST, 0);
   if_end_update();
 }
 
@@ -777,7 +777,7 @@ krt_sock_hook(sock *sk, int size UNUSED)
 }
 
 void
-krt_sys_start(struct krt_proto *x, int first UNUSED)
+krt_sys_start(struct krt_proto *x)
 {
   sock *sk_rt;
   static int ks_open_tried = 0;
@@ -802,7 +802,7 @@ krt_sys_start(struct krt_proto *x, int first UNUSED)
 }
 
 void
-krt_sys_shutdown(struct krt_proto *x UNUSED, int last UNUSED)
+krt_sys_shutdown(struct krt_proto *x UNUSED)
 {
   if (!krt_buffer)
     return;
