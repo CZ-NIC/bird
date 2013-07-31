@@ -836,14 +836,18 @@ static void
 proto_schedule_flush_loop(void)
 {
   struct proto *p;
+  struct announce_hook *h;
 
   if (flush_loop_state)
     return;
   flush_loop_state = 1;
 
-  rt_schedule_prune_all();
   WALK_LIST(p, flush_proto_list)
+  {
     p->flushing = 1;
+    for (h=p->ahooks; h; h=h->next)
+      h->table->prune_state = 1;
+  }
 
   ev_schedule(proto_flush_event);
 }

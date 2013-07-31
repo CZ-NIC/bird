@@ -395,7 +395,7 @@ static void
 radv_err_hook(sock *sk, int err)
 {
   struct radv_iface *ifa = sk->data;
-  log(L_ERR "%s: Socket error: %m", ifa->ra->p.name, err);
+  log(L_ERR "%s: Socket error on %s: %M", ifa->ra->p.name, ifa->iface->name, err);
 }
 
 int

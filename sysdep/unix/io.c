@@ -17,10 +17,10 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/fcntl.h>
 #include <sys/uio.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <netinet/icmp6.h>

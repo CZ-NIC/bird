@@ -1332,19 +1332,8 @@ rt_init(void)
 }
 
 
-/* Called from proto_schedule_flush_loop() only,
-   ensuring that all prune states are zero */
-void
-rt_schedule_prune_all(void)
-{
-  rtable *t;
-
-  WALK_LIST(t, routing_tables)
-    t->prune_state = 1;
-}
-
 static inline int
-rt_prune_step(rtable *tab, int *max_feed)
+rt_prune_step(rtable *tab, int step, int *max_feed)
 {
   struct fib_iterator *fit = &tab->prune_fit;
 
@@ -1370,14 +1359,18 @@ again:
 
     rescan:
       for (e=n->routes; e; e=e->next)
-	if (e->sender->proto->core_state != FS_HAPPY &&
-	    e->sender->proto->core_state != FS_FEEDING)
+	if (e->sender->proto->flushing ||
+	    (step && e->attrs->proto->flushing))
 	  {
 	    if (*max_feed <= 0)
 	      {
 		FIB_ITERATE_PUT(fit, fn);
 		return 0;
 	      }
+
+	    if (step)
+	      log(L_WARN "Route %I/%d from %s still in %s after flush",
+		  n->n.prefix, n->n.pxlen, e->attrs->proto->name, tab->name);
 
 	    rte_discard(tab, e);
 	    (*max_feed)--;
@@ -1403,23 +1396,42 @@ again:
 
 /**
  * rt_prune_loop - prune routing tables
- * @tab: routing table to be pruned
  *
  * The prune loop scans routing tables and removes routes belonging to
- * inactive protocols and also stale network entries. Returns 1 when
+ * flushing protocols and also stale network entries. Returns 1 when
  * all such routes are pruned. It is a part of the protocol flushing
  * loop.
+ *
+ * The prune loop runs in two steps. In the first step it prunes just
+ * the routes with flushing senders (in explicitly marked tables) so
+ * the route removal is propagated as usual. In the second step, all
+ * remaining relevant routes are removed. Ideally, there shouldn't be
+ * any, but it happens when pipe filters are changed.
  */
 int
 rt_prune_loop(void)
 {
-  rtable *t;
+  static int step = 0;
   int max_feed = 512;
+  rtable *t;
 
+ again:
   WALK_LIST(t, routing_tables)
-    if (! rt_prune_step(t, &max_feed))
+    if (! rt_prune_step(t, step, &max_feed))
       return 0;
 
+  if (step == 0)
+    {
+      /* Prepare for the second step */
+      WALK_LIST(t, routing_tables)
+	t->prune_state = 1;
+
+      step = 1;
+      goto again;
+    }
+
+  /* Done */
+  step = 0;
   return 1;
 }
 
