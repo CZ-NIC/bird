@@ -1139,6 +1139,7 @@ krt_sys_postconfig(struct krt_config *x)
 
   if (tbl[id/32] & (1 << (id%32)))
     cf_error("Multiple kernel syncers defined for table #%d", id);
+
   tbl[id/32] |= (1 << (id%32));
 }
 
