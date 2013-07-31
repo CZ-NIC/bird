@@ -24,6 +24,13 @@
 
 static struct rate_limit rl_rcv_update,  rl_snd_update;
 
+/* Table for state -> RFC 6608 FSM error subcodes */
+static byte fsm_err_subcode[BS_MAX] = {
+  [BS_OPENSENT] = 1,
+  [BS_OPENCONFIRM] = 2,
+  [BS_ESTABLISHED] = 3
+};
+
 /*
  * MRT Dump format is not semantically specified.
  * We will use these values in appropriate fields:
@@ -720,7 +727,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, int len)
 
   /* Check state */
   if (conn->state != BS_OPENSENT)
-    { bgp_error(conn, 5, 0, NULL, 0); return; }
+    { bgp_error(conn, 5, fsm_err_subcode[conn->state], NULL, 0); return; }
 
   /* Check message contents */
   if (len < 29 || len != 29 + pkt[28])
@@ -1060,7 +1067,7 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, int len)
     bgp_conn_enter_established_state(conn);
 
   if (conn->state != BS_ESTABLISHED)
-    { bgp_error(conn, 5, 0, NULL, 0); return; }
+    { bgp_error(conn, 5, fsm_err_subcode[conn->state], NULL, 0); return; }
   bgp_start_timer(conn->hold_timer, conn->hold_time);
 
   /* Find parts of the packet and check sizes */
@@ -1122,7 +1129,10 @@ static struct {
   { 3, 10, "Invalid network field" },
   { 3, 11, "Malformed AS_PATH" },
   { 4, 0, "Hold timer expired" },
-  { 5, 0, "Finite state machine error" },
+  { 5, 0, "Finite state machine error" }, /* Subcodes are according to [RFC6608] */
+  { 5, 1, "Unexpected message in OpenSent state" },
+  { 5, 2, "Unexpected message in OpenConfirm state" },
+  { 5, 3, "Unexpected message in Established state" },
   { 6, 0, "Cease" }, /* Subcodes are according to [RFC4486] */
   { 6, 1, "Maximum number of prefixes reached" },
   { 6, 2, "Administrative shutdown" },
@@ -1253,7 +1263,7 @@ bgp_rx_keepalive(struct bgp_conn *conn)
     case BS_ESTABLISHED:
       break;
     default:
-      bgp_error(conn, 5, 0, NULL, 0);
+      bgp_error(conn, 5, fsm_err_subcode[conn->state], NULL, 0);
     }
 }
 
@@ -1265,7 +1275,7 @@ bgp_rx_route_refresh(struct bgp_conn *conn, byte *pkt, int len)
   BGP_TRACE(D_PACKETS, "Got ROUTE-REFRESH");
 
   if (conn->state != BS_ESTABLISHED)
-    { bgp_error(conn, 5, 0, NULL, 0); return; }
+    { bgp_error(conn, 5, fsm_err_subcode[conn->state], NULL, 0); return; }
 
   if (!p->cf->enable_refresh)
     { bgp_error(conn, 1, 3, pkt+18, 1); return; }

@@ -282,7 +282,7 @@ protocol rip {
 	<tag>include "<m/filename/"</tag> 
 	This statement causes inclusion of a new file. The maximal depth is set to 5.
 
-	<tag>log "<m/filename/"|syslog [name <m/name/]|stderr all|{ <m/list of classes/ }</tag> 
+	<tag><label id="dsc-log">log "<m/filename/"|syslog [name <m/name/]|stderr all|{ <m/list of classes/ }</tag> 
 	Set logging of messages having the given class (either <cf/all/ or <cf/{
 	error, trace }/ etc.) into selected destination (a file specified as a filename string,
 	syslog with optional name argument, or the stderr output). Classes are:
@@ -651,9 +651,6 @@ This argument can be omitted if there exists only a single instance.
 <p>Here is a brief list of supported functions:
 
 <descrip>
-	<tag>dump resources|sockets|interfaces|neighbors|attributes|routes|protocols</tag>
-	Dump contents of internal data structures to the debugging output.
-
 	<tag>show status</tag>
 	Show router status, that is BIRD version, uptime and time from last reconfiguration.
 
@@ -812,6 +809,17 @@ This argument can be omitted if there exists only a single instance.
 
 	<tag>debug <m/protocol/|<m/pattern/|all all|off|{ states | routes | filters | events | packets }</tag>
 	Control protocol debugging.
+
+	<tag>dump resources|sockets|interfaces|neighbors|attributes|routes|protocols</tag>
+	Dump contents of internal data structures to the debugging output.
+
+	<tag>echo all|off|{ <m/list of log classes/ } [ <m/buffer-size/ ]</tag>
+	Control echoing of log messages to the command-line output.
+	See <ref id="dsc-log" name="log option"> for a list of log classes.
+
+	<tag>eval <m/expr/</tag>
+	Evaluate given expression.
+
 </descrip>
 
 <chapt>Filters

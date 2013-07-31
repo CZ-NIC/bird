@@ -13,6 +13,7 @@
 #include "nest/cmds.h"
 #include "lib/string.h"
 #include "lib/resource.h"
+#include "filter/filter.h"
 
 extern int shutting_down;
 extern int configuring;
@@ -89,4 +90,23 @@ cmd_show_memory(void)
   print_size("Protocols:", rmemsize(proto_pool));
   print_size("Total:", rmemsize(&root_pool));
   cli_msg(0, "");
+}
+
+extern const char *log_buffer_ptr;
+
+void
+cmd_eval(struct f_inst *expr)
+{
+  struct f_val v = f_eval(expr, this_cli->parser_pool);
+  log_reset();
+
+  if (v.type == T_RETURN)
+    {
+      cli_msg(8008, "runtime error");
+      return;
+    }
+
+  val_print(v);
+  cli_msg(23, "%s", log_buffer_ptr);
+  log_reset();
 }

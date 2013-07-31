@@ -109,6 +109,7 @@ struct ea_list;
 struct rte;
 
 int f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struct linpool *tmp_pool, int flags);
+struct f_val f_eval(struct f_inst *expr, struct linpool *tmp_pool);
 int f_eval_int(struct f_inst *expr);
 u32 f_eval_asn(struct f_inst *expr);
 
@@ -119,6 +120,8 @@ int i_same(struct f_inst *f1, struct f_inst *f2);
 
 int val_compare(struct f_val v1, struct f_val v2);
 int tree_compare(const void *p1, const void *p2);
+
+void val_print(struct f_val v);
 
 #define F_NOP 0
 #define F_NONL 1

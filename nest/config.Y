@@ -619,7 +619,11 @@ CF_CLI(DUMP ROUTES,,, [[Dump routing table]])
 CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])
 { protos_dump_all(); cli_msg(0, ""); } ;
 
-CF_CLI(ECHO, echo_mask echo_size, [all | off | <mask>] [<buffer-size>], [[Configure echoing of log messages]]) {
+CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]])
+{ cmd_eval($2); } ;
+
+CF_CLI_HELP(ECHO, ..., [[Control echoing of log messages]])
+CF_CLI(ECHO, echo_mask echo_size, (all | off | { debug | trace | info | remote | warning | error | auth }) [<buffer-size>], [[Control echoing of log messages]]) {
   cli_set_log_echo(this_cli, $2, $3);
   cli_msg(0, "");
 } ;
@@ -627,7 +631,7 @@ CF_CLI(ECHO, echo_mask echo_size, [all | off | <mask>] [<buffer-size>], [[Config
 echo_mask:
    ALL { $$ = ~0; }
  | OFF { $$ = 0; }
- | NUM
+ | '{' log_mask_list '}' { $$ = $2; }
  ;
 
 echo_size:

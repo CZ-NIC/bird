@@ -254,6 +254,8 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 #define BS_ESTABLISHED		5
 #define BS_CLOSE		6	/* Used during transition to BS_IDLE */
 
+#define BS_MAX			7
+
 /* BGP start states
  * 
  * Used in PS_START for fine-grained specification of starting state.

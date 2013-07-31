@@ -70,6 +70,8 @@ static char log_buffer[LOG_BUFFER_SIZE];
 static char *log_buffer_pos;
 static int log_buffer_remains;
 
+const char *log_buffer_ptr = log_buffer;
+
 
 /**
  * log_reset - reset the log buffer
