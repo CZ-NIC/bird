@@ -332,8 +332,8 @@ protocol rip {
 	expression and the name of the template. At the moment templates (and <cf/from/ expression)
 	are not implemented for OSPF protocol.
 
-	<tag>define <m/constant/ = (<m/expression/)|<m/number/|<m/IP address/</tag>
-	Define a constant. You can use it later in every place you could use a simple integer or an IP address.
+	<tag>define <m/constant/ = <m/expression/</tag>
+	Define a constant. You can use it later in every place you could use a value of the same type.
 	Besides, there are some predefined numeric constants based on /etc/iproute2/rt_* files.
 	A list of defined constants can be seen (together with other symbols) using 'show symbols' command.
 
@@ -408,8 +408,8 @@ protocol rip {
 	entries. The option may be used multiple times. Other entries
 	can be added dynamically by <cf/add roa/ command.
 
-	<tag>eval <m/expr/</tag> Evaluates given filter expression. It
-	is used by us for testing of filters.
+	<tag>eval <m/expr/</tag>
+	Evaluates given filter expression. It is used by us for	testing of filters.
 </descrip>
 
 <sect>Protocol options
@@ -443,7 +443,6 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	<cf/packets/ for packets sent and received by the protocol. Default: off.
 
 	<tag>mrtdump all|off|{ states, messages }</tag>
-
 	Set protocol MRTdump flags. MRTdump is a standard binary
 	format for logging information from routing protocols and
 	daemons.  These flags control what kind of information is
@@ -455,9 +454,9 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	state changes and <cf/messages/ logs received BGP messages.
 	Other protocols does not support MRTdump yet.
 
-	<tag>router id <m/IPv4 address/</tag> This option can be used
-	to override global router id for a given protocol. Default:
-	uses global router id.
+	<tag>router id <m/IPv4 address/</tag>
+	This option can be used to override global router id for a
+	given protocol. Default: uses global router id.
 
 	<tag>import all | none | filter <m/name/ | filter { <m/filter commands/ } | where <m/filter expression/</tag> 
 	Specify a filter to be used for filtering routes coming from
@@ -511,11 +510,12 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	accepted routes -- and these details will probably change in
 	the future. Default: <cf/off/.
 
-	<tag>description "<m/text/"</tag> This is an optional
-	description of the protocol. It is displayed as a part of the
-	output of 'show route all' command.
+	<tag>description "<m/text/"</tag>
+	This is an optional description of the protocol. It is
+	displayed as a part of the output of 'show route all' command.
 
-	<tag>table <m/name/</tag> Connect this protocol to a non-default routing table.
+	<tag>table <m/name/</tag>
+	Connect this protocol to a non-default routing table.
 </descrip>
 
 <p>There are several options that give sense only with certain protocols:
@@ -2427,7 +2427,7 @@ another one.
 	<tag>peer table <m/table/</tag> Defines secondary routing table to connect to. The
 	primary one is selected by the <cf/table/ keyword.
 
-	<tag>mode opaque|transparent</tag> Specifies the mode for the pipe to work in. Default is opaque.
+	<tag>mode opaque|transparent</tag> Specifies the mode for the pipe to work in. Default is transparent.
 </descrip>
 
 <sect1>Attributes

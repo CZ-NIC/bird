@@ -15,10 +15,10 @@
  * symbols and keywords.
  *
  * Each symbol is represented by a &symbol structure containing name
- * of the symbol, its lexical scope, symbol class (%SYM_PROTO for a name of a protocol,
- * %SYM_NUMBER for a numeric constant etc.) and class dependent data.
- * When an unknown symbol is encountered, it's automatically added to the
- * symbol table with class %SYM_VOID.
+ * of the symbol, its lexical scope, symbol class (%SYM_PROTO for a
+ * name of a protocol, %SYM_CONSTANT for a constant etc.) and class
+ * dependent data.  When an unknown symbol is encountered, it's
+ * automatically added to the symbol table with class %SYM_VOID.
  *
  * The keyword tables are generated from the grammar templates
  * using the |gen_keywords.m4| script.
@@ -613,24 +613,23 @@ cf_walk_symbols(struct config *cf, struct symbol *sym, int *pos)
 char *
 cf_symbol_class_name(struct symbol *sym)
 {
+  if ((sym->class & 0xff00) == SYM_CONSTANT)
+    return "constant";
+
   switch (sym->class)
     {
     case SYM_VOID:
       return "undefined";
     case SYM_PROTO:
       return "protocol";
-    case SYM_NUMBER:
-      return "numeric constant";
+    case SYM_TEMPLATE:
+      return "protocol template";
     case SYM_FUNCTION:
       return "function";
     case SYM_FILTER:
       return "filter";
     case SYM_TABLE:
       return "routing table";
-    case SYM_IPA:
-      return "network address";
-    case SYM_TEMPLATE:
-      return "protocol template";
     case SYM_ROA:
       return "ROA table";
     default:

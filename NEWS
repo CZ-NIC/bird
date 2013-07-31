@@ -1,3 +1,13 @@
+Version 1.3.11 (2013-07-27)
+  o OSPF stub router option (RFC 3137).
+  o TTL security for OSPF and RIP.
+  o Protocol packet priority and traffic class handling.
+  o Multiple routing tables support for FreeBSD and OpenBSD.
+  o Extends constants to all filter data types.
+  o Implements eval command.
+  o 'bgppath ~ int set' filter operation.
+  o Several bugfixes.
+
 Version 1.3.10 (2013-04-30)
   o Lightweight BIRD client for embedded environments.
   o Dynamic IPv6 router advertisements.

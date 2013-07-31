@@ -97,9 +97,10 @@ static inline void
 add_num_const(char *name, int val)
 {
   struct symbol *s = cf_find_symbol(name);
-  s->class = SYM_NUMBER;
-  s->def = NULL;
-  s->aux = val;
+  s->class = SYM_CONSTANT | T_INT;
+  s->def = cfg_allocz(sizeof(struct f_val));
+  SYM_TYPE(s) = T_INT;
+  SYM_VAL(s).i = val;
 }
 
 /* the code of read_iproute_table() is based on

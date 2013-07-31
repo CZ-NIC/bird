@@ -106,27 +106,28 @@ conf_entries:
 
 CF_ADDTO(conf, ';')
 
+
 /* Constant expressions */
+
+CF_ADDTO(conf, definition)
+definition:
+   DEFINE SYM '=' term ';' {
+     struct f_val *val = cfg_alloc(sizeof(struct f_val));
+     *val = f_eval($4, cfg_mem);
+     if (val->type == T_RETURN) cf_error("Runtime error");
+     cf_define_symbol($2, SYM_CONSTANT | val->type, val);
+   }
+ ;
 
 expr:
    NUM
  | '(' term ')' { $$ = f_eval_int($2); }
- | SYM { if ($1->class != SYM_NUMBER) cf_error("Number expected"); else $$ = $1->aux; }
+ | SYM {
+     if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number expected");
+     $$ = SYM_VAL($1).i; }
  ;
 
 /* expr_u16: expr { check_u16($1); $$ = $1; }; */
-
-CF_ADDTO(conf, definition)
-definition:
-   DEFINE SYM '=' expr ';' {
-     cf_define_symbol($2, SYM_NUMBER, NULL);
-     $2->aux = $4;
-   }
- | DEFINE SYM '=' ipa_raw ';' {
-     cf_define_symbol($2, SYM_IPA, cfg_alloc(sizeof(ip_addr)));
-     *(ip_addr *)$2->def = $4;
-   }
- ;
 
 /* Switches */
 
@@ -150,8 +151,8 @@ ipa_raw:
 ipa:
    ipa_raw
  | SYM {
-     if ($1->class != SYM_IPA) cf_error("IP address expected");
-     $$ = *(ip_addr *)$1->def;
+     if ($1->class != (SYM_CONSTANT | T_IP)) cf_error("IP address expected");
+     $$ = SYM_VAL($1).px.ip;
    }
  ;
 

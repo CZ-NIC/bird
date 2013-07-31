@@ -110,15 +110,17 @@ struct symbol {
 /* Remember to update cf_symbol_class_name() */
 #define SYM_VOID 0
 #define SYM_PROTO 1
-#define SYM_NUMBER 2
+#define SYM_TEMPLATE 2
 #define SYM_FUNCTION 3
 #define SYM_FILTER 4
 #define SYM_TABLE 5
-#define SYM_IPA 6
-#define SYM_TEMPLATE 7
-#define SYM_ROA 8
+#define SYM_ROA 6
 
 #define SYM_VARIABLE 0x100	/* 0x100-0x1ff are variable types */
+#define SYM_CONSTANT 0x200	/* 0x200-0x2ff are variable types */
+
+#define SYM_TYPE(s) (((struct f_val *) (s)->def)->type)
+#define SYM_VAL(s) (((struct f_val *) (s)->def)->val)
 
 struct include_file_stack {
   void *buffer;				/* Internal lexer state */
