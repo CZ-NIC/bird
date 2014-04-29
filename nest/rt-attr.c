@@ -58,8 +58,193 @@ pool *rta_pool;
 
 static slab *rta_slab;
 static slab *mpnh_slab;
+static slab *rte_src_slab;
+
+/* rte source ID bitmap */
+static u32 *src_ids;
+static u32 src_id_size, src_id_used, src_id_pos;
+#define SRC_ID_SIZE_DEF 4
+
+/* rte source hash */
+static struct rte_src **src_table;
+static u32 src_hash_order, src_hash_size, src_hash_count;
+#define SRC_HASH_ORDER_DEF 6
+#define SRC_HASH_ORDER_MAX 18
+#define SRC_HASH_ORDER_MIN 10
 
 struct protocol *attr_class_to_protocol[EAP_MAX];
+
+
+static void
+rte_src_init(void)
+{
+  rte_src_slab = sl_new(rta_pool, sizeof(struct rte_src));
+
+  src_id_pos = 0;
+  src_id_size = SRC_ID_SIZE_DEF;
+  src_ids = mb_allocz(rta_pool, src_id_size * sizeof(u32));
+
+ /* ID 0 is reserved */
+  src_ids[0] = 1;
+  src_id_used = 1;
+
+  src_hash_count = 0;
+  src_hash_order = SRC_HASH_ORDER_DEF;
+  src_hash_size = 1 << src_hash_order;
+  src_table = mb_allocz(rta_pool, src_hash_size * sizeof(struct rte_src *));
+}
+
+static inline int u32_cto(unsigned int x) { return ffs(~x) - 1; }
+
+static inline u32
+rte_src_alloc_id(void)
+{
+  int i, j;
+  for (i = src_id_pos; i < src_id_size; i++)
+    if (src_ids[i] != 0xffffffff)
+      goto found;
+
+  /* If we are at least 7/8 full, expand */
+  if (src_id_used > (src_id_size * 28))
+    {
+      src_id_size *= 2;
+      src_ids = mb_realloc(src_ids, src_id_size * sizeof(u32));
+      bzero(src_ids + i, (src_id_size - i) * sizeof(u32));
+      goto found;
+    }
+
+  for (i = 0; i < src_id_pos; i++)
+    if (src_ids[i] != 0xffffffff)
+      goto found;
+
+  ASSERT(0);
+
+ found:
+  ASSERT(i < 0x8000000);
+
+  src_id_pos = i;
+  j = u32_cto(src_ids[i]);
+
+  src_ids[i] |= (1 << j);
+  src_id_used++;
+  return 32 * i + j;
+}
+
+static inline void
+rte_src_free_id(u32 id)
+{
+  int i = id / 32;
+  int j = id % 32;
+
+  ASSERT((i < src_id_size) && (src_ids[i] & (1 << j)));
+  src_ids[i] &= ~(1 << j);
+  src_id_used--;
+}
+
+static inline u32 rte_src_hash(struct proto *p, u32 x, u32 order)
+{ return (x * 2902958171u) >> (32 - order); }
+
+static void
+rte_src_rehash(int step)
+{
+  struct rte_src **old_tab, *src, *src_next;
+  u32 old_size, hash, i;
+
+  old_tab = src_table;
+  old_size = src_hash_size;
+
+  src_hash_order += step;
+  src_hash_size = 1 << src_hash_order;
+  src_table = mb_allocz(rta_pool, src_hash_size * sizeof(struct rte_src *));
+  
+  for (i = 0; i < old_size; i++)
+    for (src = old_tab[i]; src; src = src_next)
+      {
+	src_next = src->next;
+	hash = rte_src_hash(src->proto, src->private_id, src_hash_order);
+	src->next = src_table[hash];
+	src_table[hash] = src;
+      }
+
+  mb_free(old_tab);
+}
+
+struct rte_src *
+rt_find_source(struct proto *p, u32 id)
+{
+  struct rte_src *src;
+  u32 hash = rte_src_hash(p, id, src_hash_order);
+
+  for (src = src_table[hash]; src; src = src->next)
+    if ((src->proto == p) && (src->private_id == id))
+      return src;
+
+  return NULL;
+}
+
+struct rte_src *
+rt_get_source(struct proto *p, u32 id)
+{
+  struct rte_src *src;
+  u32 hash = rte_src_hash(p, id, src_hash_order);
+
+  for (src = src_table[hash]; src; src = src->next)
+    if ((src->proto == p) && (src->private_id == id))
+      return src;
+
+  src = sl_alloc(rte_src_slab);
+  src->proto = p;
+  src->private_id = id;
+  src->global_id = rte_src_alloc_id();
+  src->uc = 0;
+
+  src->next = src_table[hash];
+  src_table[hash] = src;
+
+  src_hash_count++;
+  if ((src_hash_count > src_hash_size) && (src_hash_order < SRC_HASH_ORDER_MAX))
+    rte_src_rehash(1);
+
+  return src;
+}
+
+static inline void
+rt_remove_source(struct rte_src **sp)
+{
+  struct rte_src *src = *sp;
+
+  *sp = src->next;
+  rte_src_free_id(src->global_id);
+  sl_free(rte_src_slab, src);
+  src_hash_count--;
+}
+
+void
+rt_prune_sources(void)
+{
+  struct rte_src **sp;
+  int i;
+  
+  for (i = 0; i < src_hash_size; i++)
+    {
+      sp = &src_table[i];
+      while (*sp)
+	{
+	  if ((*sp)->uc == 0)
+	    rt_remove_source(sp);
+	  else
+	    sp = &(*sp)->next;
+	}
+    }
+
+  while ((src_hash_count < (src_hash_size / 4)) && (src_hash_order > SRC_HASH_ORDER_MIN))
+    rte_src_rehash(-1);
+}
+
+
+/*
+ *	Multipath Next Hop
+ */
 
 static inline unsigned int
 mpnh_hash(struct mpnh *x)
@@ -681,14 +866,14 @@ rta_alloc_hash(void)
 static inline unsigned int
 rta_hash(rta *a)
 {
-  return (a->proto->hash_key ^ ipa_hash(a->gw) ^
+  return (((unsigned) a->src) ^ ipa_hash(a->gw) ^
 	  mpnh_hash(a->nexthops) ^ ea_hash(a->eattrs)) & 0xffff;
 }
 
 static inline int
 rta_same(rta *x, rta *y)
 {
-  return (x->proto == y->proto &&
+  return (x->src == y->src &&
 	  x->source == y->source &&
 	  x->scope == y->scope &&
 	  x->cast == y->cast &&
@@ -785,6 +970,7 @@ rta_lookup(rta *o)
   r = rta_copy(o);
   r->hash_key = h;
   r->aflags = RTAF_CACHED;
+  rt_lock_source(r->src);
   rt_lock_hostentry(r->hostentry);
   rta_insert(r);
 
@@ -804,6 +990,7 @@ rta__free(rta *a)
     a->next->pprev = a->pprev;
   a->aflags = 0;		/* Poison the entry */
   rt_unlock_hostentry(a->hostentry);
+  rt_unlock_source(a->src);
   mpnh_free(a->nexthops);
   ea_free(a->eattrs);
   sl_free(rta_slab, a);
@@ -826,7 +1013,7 @@ rta_dump(rta *a)
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
   debug("p=%s uc=%d %s %s%s%s h=%04x",
-	a->proto->name, a->uc, rts[a->source], ip_scope_text(a->scope), rtc[a->cast],
+	a->src->proto->name, a->uc, rts[a->source], ip_scope_text(a->scope), rtc[a->cast],
 	rtd[a->dest], a->hash_key);
   if (!(a->aflags & RTAF_CACHED))
     debug(" !CACHED");
@@ -894,6 +1081,7 @@ rta_init(void)
   rta_slab = sl_new(rta_pool, sizeof(rta));
   mpnh_slab = sl_new(rta_pool, sizeof(struct mpnh));
   rta_alloc_hash();
+  rte_src_init();
 }
 
 /*

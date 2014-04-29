@@ -45,6 +45,7 @@ struct bgp_config {
   int passive;				/* Do not initiate outgoing connection */
   int interpret_communities;		/* Hardwired handling of well-known communities */
   int secondary;			/* Accept also non-best routes (i.e. RA_ACCEPTED) */
+  int add_path;				/* Use ADD-PATH extension [draft] */
   int allow_local_as;			/* Allow that number of local ASNs in incoming AS_PATHs */
   unsigned connect_retry_time;
   unsigned hold_time, initial_hold_time;
@@ -67,6 +68,11 @@ struct bgp_config {
 #define GW_DIRECT 1
 #define GW_RECURSIVE 2
 
+#define ADD_PATH_RX 1
+#define ADD_PATH_TX 2
+#define ADD_PATH_FULL 3
+
+
 struct bgp_conn {
   struct bgp_proto *bgp;
   struct birdsock *sk;
@@ -80,9 +86,9 @@ struct bgp_conn {
   byte *notify_data;
   u32 advertised_as;			/* Temporary value for AS number received */
   int start_state;			/* protocol start_state snapshot when connection established */
-  int want_as4_support;			/* Connection tries to establish AS4 session */
-  int peer_as4_support;			/* Peer supports 4B AS numbers [RFC4893] */
-  int peer_refresh_support;		/* Peer supports route refresh [RFC2918] */
+  u8 peer_refresh_support;		/* Peer supports route refresh [RFC2918] */
+  u8 peer_as4_support;			/* Peer supports 4B AS numbers [RFC4893] */
+  u8 peer_add_path;			/* Peer supports ADD-PATH [draft] */
   unsigned hold_time, keepalive_time;	/* Times calculated from my and neighbor's requirements */
 };
 
@@ -91,8 +97,10 @@ struct bgp_proto {
   struct bgp_config *cf;		/* Shortcut to BGP configuration */
   u32 local_as, remote_as;
   int start_state;			/* Substates that partitions BS_START */
-  int is_internal;			/* Internal BGP connection (local_as == remote_as) */
-  int as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
+  u8 is_internal;			/* Internal BGP connection (local_as == remote_as) */
+  u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
+  u8 add_path_rx;			/* Session expects receive of ADD-PATH extended NLRI */
+  u8 add_path_tx;			/* Session expects transmit of ADD-PATH extended NLRI */
   u32 local_id;				/* BGP identifier of this router */
   u32 remote_id;			/* BGP identifier of the neighbor */
   u32 rr_cluster_id;			/* Route reflector cluster ID */
@@ -110,7 +118,10 @@ struct bgp_proto {
   struct timer *startup_timer;		/* Timer used to delay protocol startup due to previous errors (startup_delay) */
   struct bgp_bucket **bucket_hash;	/* Hash table of attribute buckets */
   unsigned int hash_size, hash_count, hash_limit;
-  struct fib prefix_fib;		/* Prefixes to be sent */
+  // struct fib prefix_fib;		/* Prefixes to be sent */
+  struct bgp_prefix **prefix_table;	/* Prefixes to be sent */
+  slab *prefix_slab;			/* Slab holding prefix nodes */
+  u32 px_hash_order, px_hash_count;
   list bucket_queue;			/* Queue of buckets to send */
   struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
   unsigned startup_delay;		/* Time to delay protocol startup by due to errors */
@@ -126,7 +137,12 @@ struct bgp_proto {
 };
 
 struct bgp_prefix {
-  struct fib_node n;			/* Node in prefix fib */
+  struct {
+    ip_addr prefix;
+    int pxlen;
+  } n;
+  u32 path_id;
+  struct bgp_prefix *next;
   node bucket_node;			/* Node in per-bucket list */
 };
 
@@ -159,6 +175,9 @@ void bgp_conn_enter_close_state(struct bgp_conn *conn);
 void bgp_conn_enter_idle_state(struct bgp_conn *conn);
 void bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code);
 void bgp_stop(struct bgp_proto *p, unsigned subcode);
+
+struct rte_source *bgp_find_source(struct bgp_proto *p, u32 path_id);
+struct rte_source *bgp_get_source(struct bgp_proto *p, u32 path_id);
 
 
 
@@ -195,9 +214,11 @@ int bgp_rte_better(struct rte *, struct rte *);
 int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
 void bgp_rt_notify(struct proto *P, rtable *tbl UNUSED, net *n, rte *new, rte *old UNUSED, ea_list *attrs);
 int bgp_import_control(struct proto *, struct rte **, struct ea_list **, struct linpool *);
-void bgp_attr_init(struct bgp_proto *);
-unsigned int bgp_encode_attrs(struct bgp_proto *p, byte *w, ea_list *attrs, int remains);
+void bgp_init_bucket_table(struct bgp_proto *);
 void bgp_free_bucket(struct bgp_proto *p, struct bgp_bucket *buck);
+void bgp_init_prefix_table(struct bgp_proto *p, u32 order);
+void bgp_free_prefix(struct bgp_proto *p, struct bgp_prefix *bp);
+unsigned int bgp_encode_attrs(struct bgp_proto *p, byte *w, ea_list *attrs, int remains);
 void bgp_get_route_info(struct rte *, byte *buf, struct ea_list *attrs);
 
 inline static void bgp_attach_attr_ip(struct ea_list **to, struct linpool *pool, unsigned attr, ip_addr a)

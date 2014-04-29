@@ -58,6 +58,14 @@ static void rt_next_hop_update(rtable *tab);
 
 static inline void rt_schedule_gc(rtable *tab);
 
+static inline struct ea_list *
+make_tmp_attrs(struct rte *rt, struct linpool *pool)
+{
+  struct ea_list *(*mta)(struct rte *rt, struct linpool *pool);
+  mta = rt->attrs->src->proto->make_tmp_attrs;
+  return mta ? mta(rt, rte_update_pool) : NULL;
+}
+
 /* Like fib_route(), but skips empty net entries */
 static net *
 net_route(rtable *tab, ip_addr a, int len)
@@ -91,17 +99,17 @@ rte_init(struct fib_node *N)
 /**
  * rte_find - find a route
  * @net: network node
- * @p: protocol
+ * @src: route source
  *
  * The rte_find() function returns a route for destination @net
- * which belongs has been defined by protocol @p.
+ * which is from route source @src.
  */
 rte *
-rte_find(net *net, struct proto *p)
+rte_find(net *net, struct rte_src *src)
 {
   rte *e = net->routes;
 
-  while (e && e->attrs->proto != p)
+  while (e && e->attrs->src != src)
     e = e->next;
   return e;
 }
@@ -122,7 +130,7 @@ rte_get_temp(rta *a)
 
   e->attrs = a;
   e->flags = 0;
-  e->pref = a->proto->preference;
+  e->pref = a->src->proto->preference;
   return e;
 }
 
@@ -151,16 +159,16 @@ rte_better(rte *new, rte *old)
     return 1;
   if (new->pref < old->pref)
     return 0;
-  if (new->attrs->proto->proto != old->attrs->proto->proto)
+  if (new->attrs->src->proto->proto != old->attrs->src->proto->proto)
     {
       /*
        *  If the user has configured protocol preferences, so that two different protocols
        *  have the same preference, try to break the tie by comparing addresses. Not too
        *  useful, but keeps the ordering of routes unambiguous.
        */
-      return new->attrs->proto->proto > old->attrs->proto->proto;
+      return new->attrs->src->proto->proto > old->attrs->src->proto->proto;
     }
-  if (better = new->attrs->proto->rte_better)
+  if (better = new->attrs->src->proto->rte_better)
     return better(new, old);
   return 0;
 }
@@ -204,8 +212,7 @@ export_filter(struct announce_hook *ah, rte *rt0, rte **rt_free, ea_list **tmpa,
   /* If called does not care for eattrs, we prepare one internally */
   if (!tmpa)
     {
-      struct proto *src = rt->attrs->proto;
-      tmpb = src->make_tmp_attrs ? src->make_tmp_attrs(rt, rte_update_pool) : NULL;
+      tmpb = make_tmp_attrs(rt, rte_update_pool);
       tmpa = &tmpb;
     }
 
@@ -555,9 +562,9 @@ rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old, rte *befo
   if (type == RA_OPTIMAL)
     {
       if (new)
-	new->attrs->proto->stats.pref_routes++;
+	new->attrs->src->proto->stats.pref_routes++;
       if (old)
-	old->attrs->proto->stats.pref_routes--;
+	old->attrs->src->proto->stats.pref_routes--;
 
       if (tab->hostcache)
 	rt_notify_hostcache(tab, net);
@@ -612,7 +619,7 @@ rte_validate(rte *e)
 void
 rte_free(rte *e)
 {
-  if (e->attrs->aflags & RTAF_CACHED)
+  if (rta_is_cached(e->attrs))
     rta_free(e->attrs);
   sl_free(rte_slab, e);
 }
@@ -632,13 +639,13 @@ rte_same(rte *x, rte *y)
     x->flags == y->flags &&
     x->pflags == y->pflags &&
     x->pref == y->pref &&
-    (!x->attrs->proto->rte_same || x->attrs->proto->rte_same(x, y));
+    (!x->attrs->src->proto->rte_same || x->attrs->src->proto->rte_same(x, y));
 }
 
 static inline int rte_is_ok(rte *e) { return e && !rte_is_filtered(e); }
 
 static void
-rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, struct proto *src)
+rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, struct rte_src *src)
 {
   struct proto *p = ah->proto;
   struct rtable *table = ah->table;
@@ -652,7 +659,7 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
   k = &net->routes;			/* Find and remove original route from the same protocol */
   while (old = *k)
     {
-      if (old->attrs->proto == src)
+      if (old->attrs->src == src)
 	{
 	  /* If there is the same route in the routing table but from
 	   * a different sender, then there are two paths from the
@@ -688,8 +695,8 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
 #ifdef CONFIG_RIP
 	      /* lastmod is used internally by RIP as the last time
 		 when the route was received. */
-	      if ((src->proto == &proto_rip) ||
-		  (src->proto == &proto_ripng))
+	      if ((src->proto->proto == &proto_rip) ||
+		  (src->proto->proto == &proto_ripng))
 		old->lastmod = now;
 #endif
 	      return;
@@ -804,7 +811,7 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
       /* If routes are not sorted, find the best route and move it on
 	 the first position. There are several optimized cases. */
 
-      if (src->rte_recalculate && src->rte_recalculate(table, net, new, old, old_best))
+      if (src->proto->rte_recalculate && src->proto->rte_recalculate(table, net, new, old, old_best))
 	goto do_recalculate;
 
       if (new && rte_better(new, old_best))
@@ -978,7 +985,7 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
  */
 
 void
-rte_update2(struct announce_hook *ah, net *net, rte *new, struct proto *src)
+rte_update2(struct announce_hook *ah, net *net, rte *new, struct rte_src *src)
 {
   struct proto *p = ah->proto;
   struct proto_stats *stats = ah->stats;
@@ -1012,8 +1019,7 @@ rte_update2(struct announce_hook *ah, net *net, rte *new, struct proto *src)
 	}
       else
 	{
-	  if (src->make_tmp_attrs)
-	    tmpa = src->make_tmp_attrs(new, rte_update_pool);
+	  tmpa = make_tmp_attrs(new, rte_update_pool);
 	  if (filter && (filter != FILTER_REJECT))
 	    {
 	      ea_list *old_tmpa = tmpa;
@@ -1028,17 +1034,25 @@ rte_update2(struct announce_hook *ah, net *net, rte *new, struct proto *src)
 
 		  new->flags |= REF_FILTERED;
 		}
-	      if (tmpa != old_tmpa && src->store_tmp_attrs)
-		src->store_tmp_attrs(new, tmpa);
+	      if (tmpa != old_tmpa && src->proto->store_tmp_attrs)
+		src->proto->store_tmp_attrs(new, tmpa);
 	    }
 	}
-
-      if (!(new->attrs->aflags & RTAF_CACHED)) /* Need to copy attributes */
+      if (!rta_is_cached(new->attrs)) /* Need to copy attributes */
 	new->attrs = rta_lookup(new->attrs);
       new->flags |= REF_COW;
     }
   else
-    stats->imp_withdraws_received++;
+    {
+      stats->imp_withdraws_received++;
+
+      if (!net || !src)
+	{
+	  stats->imp_withdraws_ignored++;
+	  rte_update_unlock();
+	  return;
+	}
+    }
 
  recalc:
   rte_hide_dummy_routes(net, &dummy);
@@ -1059,12 +1073,10 @@ rte_update2(struct announce_hook *ah, net *net, rte *new, struct proto *src)
 static inline void 
 rte_announce_i(rtable *tab, unsigned type, net *n, rte *new, rte *old)
 {
-  struct proto *src;
   ea_list *tmpa;
 
   rte_update_lock();
-  src = new->attrs->proto;
-  tmpa = src->make_tmp_attrs ? src->make_tmp_attrs(new, rte_update_pool) : NULL;
+  tmpa = make_tmp_attrs(new, rte_update_pool);
   rte_announce(tab, type, n, new, old, NULL, tmpa);
   rte_update_unlock();
 }
@@ -1073,7 +1085,7 @@ void
 rte_discard(rtable *t, rte *old)	/* Non-filtered route deletion, used during garbage collection */
 {
   rte_update_lock();
-  rte_recalculate(old->sender, old->net, NULL, NULL, old->attrs->proto);
+  rte_recalculate(old->sender, old->net, NULL, NULL, old->attrs->src);
   rte_update_unlock();
 }
 
@@ -1090,8 +1102,7 @@ rt_examine(rtable *t, ip_addr prefix, int pxlen, struct proto *p, struct filter 
   rte_update_lock();
 
   /* Rest is stripped down export_filter() */
-  struct proto *src = rt->attrs->proto;
-  ea_list *tmpa = src->make_tmp_attrs ? src->make_tmp_attrs(rt, rte_update_pool) : NULL;
+  ea_list *tmpa = make_tmp_attrs(rt, rte_update_pool);
   int v = p->import_control ? p->import_control(p, &rt, &tmpa, rte_update_pool) : 0;
   if (v == RIC_PROCESS)
     v = (f_run(filter, &rt, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) <= F_ACCEPT);
@@ -1118,8 +1129,8 @@ rte_dump(rte *e)
   debug("%-1I/%2d ", n->n.prefix, n->n.pxlen);
   debug("KF=%02x PF=%02x pref=%d lm=%d ", n->n.flags, e->pflags, e->pref, now-e->lastmod);
   rta_dump(e->attrs);
-  if (e->attrs->proto->proto->dump_attrs)
-    e->attrs->proto->proto->dump_attrs(e);
+  if (e->attrs->src->proto->proto->dump_attrs)
+    e->attrs->src->proto->proto->dump_attrs(e);
   debug("\n");
 }
 
@@ -1240,7 +1251,10 @@ rt_event(void *ptr)
     rt_next_hop_update(tab);
 
   if (tab->gc_scheduled)
-    rt_prune_nets(tab);
+    {
+      rt_prune_nets(tab);
+      rt_prune_sources(); // FIXME this should be moved to independent event
+    }
 }
 
 /**
@@ -1362,7 +1376,7 @@ again:
     rescan:
       for (e=n->routes; e; e=e->next)
 	if (e->sender->proto->flushing ||
-	    (step && e->attrs->proto->flushing))
+	    (step && e->attrs->src->proto->flushing))
 	  {
 	    if (*max_feed <= 0)
 	      {
@@ -1372,7 +1386,7 @@ again:
 
 	    if (step)
 	      log_rl(&rl_flush, L_WARN "Route %I/%d from %s still in %s after flush",
-		  n->n.prefix, n->n.pxlen, e->attrs->proto->name, tab->name);
+		  n->n.prefix, n->n.pxlen, e->attrs->src->proto->name, tab->name);
 
 	    rte_discard(tab, e);
 	    (*max_feed)--;
@@ -1516,8 +1530,8 @@ rt_next_hop_update_net(rtable *tab, net *n)
 
 	/* Call a pre-comparison hook */
 	/* Not really an efficient way to compute this */
-	if (e->attrs->proto->rte_recalculate)
-	  e->attrs->proto->rte_recalculate(tab, n, new, e, NULL);
+	if (e->attrs->src->proto->rte_recalculate)
+	  e->attrs->src->proto->rte_recalculate(tab, n, new, e, NULL);
 
 	if (e != old_best)
 	  rte_free_quick(e);
@@ -1716,11 +1730,10 @@ rt_commit(struct config *new, struct config *old)
 static inline void
 do_feed_baby(struct proto *p, int type, struct announce_hook *h, net *n, rte *e)
 {
-  struct proto *src = e->attrs->proto;
   ea_list *tmpa;
 
   rte_update_lock();
-  tmpa = src->make_tmp_attrs ? src->make_tmp_attrs(e, rte_update_pool) : NULL;
+  tmpa = make_tmp_attrs(e, rte_update_pool);
   if (type == RA_ACCEPTED)
     rt_notify_accepted(h, n, e, NULL, NULL, tmpa, p->refeeding ? 2 : 1);
   else
@@ -2108,7 +2121,7 @@ rt_update_hostcache(rtable *tab)
 }
 
 static struct hostentry *
-rt_find_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
+rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
 {
   struct hostentry *he;
 
@@ -2143,8 +2156,9 @@ rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr *gw, ip_add
   if (tab->addr_type != RT_IP)
     return;
 
-  rta_apply_hostentry(a, rt_find_hostentry(tab, *gw, *ll, dep));
+  rta_apply_hostentry(a, rt_get_hostentry(tab, *gw, *ll, dep));
 }
+
 
 /*
  *  CLI commands
@@ -2175,6 +2189,7 @@ rt_show_rte(struct cli *c, byte *prefix, rte *e, struct rt_show_data *d, ea_list
   rta *a = e->attrs;
   int primary = (e->net->routes == e);
   int sync_error = (e->net->n.flags & KRF_SYNC_ERROR);
+  void (*get_route_info)(struct rte *, byte *buf, struct ea_list *attrs);
   struct mpnh *nh;
 
   rt_format_via(e, via);
@@ -2183,7 +2198,9 @@ rt_show_rte(struct cli *c, byte *prefix, rte *e, struct rt_show_data *d, ea_list
     bsprintf(from, " from %I", a->from);
   else
     from[0] = 0;
-  if (a->proto->proto->get_route_info || d->verbose)
+
+  get_route_info = a->src->proto->proto->get_route_info;
+  if (get_route_info || d->verbose)
     {
       /* Need to normalize the extended attributes */
       ea_list *t = tmpa;
@@ -2192,11 +2209,11 @@ rt_show_rte(struct cli *c, byte *prefix, rte *e, struct rt_show_data *d, ea_list
       ea_merge(t, tmpa);
       ea_sort(tmpa);
     }
-  if (a->proto->proto->get_route_info)
-    a->proto->proto->get_route_info(e, info, tmpa);
+  if (get_route_info)
+    get_route_info(e, info, tmpa);
   else
     bsprintf(info, " (%d)", e->pref);
-  cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", prefix, via, a->proto->name,
+  cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", prefix, via, a->src->proto->name,
 	     tm, from, primary ? (sync_error ? " !" : " *") : "", info);
   for (nh = a->nexthops; nh; nh = nh->next)
     cli_printf(c, -1007, "\tvia %I on %s weight %d", nh->gw, nh->iface->name, nh->weight + 1);
@@ -2220,7 +2237,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	continue;
 
       struct ea_list *tmpa;
-      struct proto *p0 = e->attrs->proto;
+      struct rte_src *src = e->attrs->src;
       struct proto *p1 = d->export_protocol;
       struct proto *p2 = d->show_protocol;
 
@@ -2229,9 +2246,9 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       d->rt_counter++;
       ee = e;
       rte_update_lock();		/* We use the update buffer for filtering */
-      tmpa = p0->make_tmp_attrs ? p0->make_tmp_attrs(e, rte_update_pool) : NULL;
+      tmpa = make_tmp_attrs(e, rte_update_pool);
       ok = f_run(d->filter, &e, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) <= F_ACCEPT;
-      if (p2 && p2 != p0) ok = 0;
+      if (p2 && p2 != src->proto) ok = 0;
       if (ok && d->export_mode)
 	{
 	  int ic;

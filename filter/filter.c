@@ -795,7 +795,7 @@ interpret(struct f_inst *what)
       case SA_GW:	res.val.px.ip = rta->gw; break;
       case SA_NET:	res.val.px.ip = (*f_rte)->net->n.prefix;
 			res.val.px.len = (*f_rte)->net->n.pxlen; break;
-      case SA_PROTO:	res.val.s = rta->proto->name; break;
+      case SA_PROTO:	res.val.s = rta->src->proto->name; break;
       case SA_SOURCE:	res.val.i = rta->source; break;
       case SA_SCOPE:	res.val.i = rta->scope; break;
       case SA_CAST:	res.val.i = rta->cast; break;
@@ -827,7 +827,7 @@ interpret(struct f_inst *what)
       case SA_GW:
 	{
 	  ip_addr ip = v1.val.px.ip;
-	  neighbor *n = neigh_find(rta->proto, &ip, 0);
+	  neighbor *n = neigh_find(rta->src->proto, &ip, 0);
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
 

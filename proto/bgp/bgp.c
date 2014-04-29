@@ -367,7 +367,9 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   p->conn = conn;
   p->last_error_class = 0;
   p->last_error_code = 0;
-  bgp_attr_init(conn->bgp);
+  bgp_init_bucket_table(p);
+  bgp_init_prefix_table(p, 8);
+
   bgp_conn_set_state(conn, BS_ESTABLISHED);
   proto_notify_state(&p->p, PS_UP);
 }
@@ -417,8 +419,11 @@ static void
 bgp_send_open(struct bgp_conn *conn)
 {
   conn->start_state = conn->bgp->start_state;
-  conn->want_as4_support = conn->bgp->cf->enable_as4 && (conn->start_state != BSS_CONNECT_NOCAP);
-  conn->peer_as4_support = 0;	// Default value, possibly changed by receiving capability.
+
+  // Default values, possibly changed by receiving capabilities.
+  conn->peer_refresh_support = 0;
+  conn->peer_as4_support = 0;
+  conn->peer_add_path = 0;
   conn->advertised_as = 0;
 
   DBG("BGP: Sending open\n");
@@ -970,19 +975,17 @@ get_igp_table(struct bgp_config *cf)
 static struct proto *
 bgp_init(struct proto_config *C)
 {
-  struct bgp_config *c = (struct bgp_config *) C;
   struct proto *P = proto_new(C, sizeof(struct bgp_proto));
+  struct bgp_config *c = (struct bgp_config *) C;
   struct bgp_proto *p = (struct bgp_proto *) P;
 
   P->accept_ra_types = c->secondary ? RA_ACCEPTED : RA_OPTIMAL;
   P->rt_notify = bgp_rt_notify;
-  P->rte_better = bgp_rte_better;
   P->import_control = bgp_import_control;
   P->neigh_notify = bgp_neigh_notify;
   P->reload_routes = bgp_reload_routes;
-
-  if (c->deterministic_med)
-    P->rte_recalculate = bgp_rte_recalculate;
+  P->rte_better = bgp_rte_better;
+  P->rte_recalculate = c->deterministic_med ? bgp_rte_recalculate : NULL;
 
   p->cf = c;
   p->local_as = c->local_as;
@@ -1238,15 +1241,19 @@ bgp_show_proto_info(struct proto *P)
   else if (P->proto_state == PS_UP)
     {
       cli_msg(-1006, "    Neighbor ID:      %R", p->remote_id);
-      cli_msg(-1006, "    Neighbor caps:   %s%s",
+      cli_msg(-1006, "    Neighbor caps:   %s%s%s%s",
 	      c->peer_refresh_support ? " refresh" : "",
-	      c->peer_as4_support ? " AS4" : "");
-      cli_msg(-1006, "    Session:          %s%s%s%s%s",
+	      c->peer_as4_support ? " AS4" : "",
+	      (c->peer_add_path & ADD_PATH_RX) ? " add-path-rx" : "",
+	      (c->peer_add_path & ADD_PATH_TX) ? " add-path-tx" : "");
+      cli_msg(-1006, "    Session:          %s%s%s%s%s%s%s",
 	      p->is_internal ? "internal" : "external",
 	      p->cf->multihop ? " multihop" : "",
 	      p->rr_client ? " route-reflector" : "",
 	      p->rs_client ? " route-server" : "",
-	      p->as4_session ? " AS4" : "");
+	      p->as4_session ? " AS4" : "",
+	      p->add_path_rx ? " add-path-rx" : "",
+	      p->add_path_tx ? " add-path-tx" : "");
       cli_msg(-1006, "    Source address:   %I", p->source_addr);
       if (P->cf->in_limit)
 	cli_msg(-1006, "    Route limit:      %d/%d",

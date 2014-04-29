@@ -188,7 +188,7 @@ struct proto {
   int (*reload_routes)(struct proto *);
 
   /*
-   *	Routing entry hooks (called only for rte's belonging to this protocol):
+   *	Routing entry hooks (called only for routes belonging to this protocol):
    *
    *	   rte_recalculate Called at the beginning of the best route selection  
    *	   rte_better	Compare two rte's and decide which one is better (1=first, 0=second).
@@ -204,6 +204,7 @@ struct proto {
   void (*rte_remove)(struct network *, struct rte *);
 
   struct rtable *table;			/* Our primary routing table */
+  struct rte_src *main_source;		/* Primary route source */
   struct announce_hook *main_ahook;	/* Primary announcement hook */
   struct announce_hook *ahooks;		/* Announcement hooks for this protocol */
 

@@ -166,6 +166,21 @@ bgp_put_cap_as4(struct bgp_conn *conn, byte *buf)
 }
 
 static byte *
+bgp_put_cap_add_path(struct bgp_conn *conn, byte *buf)
+{
+  *buf++ = 69;		/* Capability 69: Support for ADD-PATH */
+  *buf++ = 4;		/* Capability data length */
+
+  *buf++ = 0;		/* Appropriate AF */
+  *buf++ = BGP_AF;
+  *buf++ = 1;		/* SAFI 1 */
+
+  *buf++ = conn->bgp->cf->add_path;
+
+  return buf;
+}
+
+static byte *
 bgp_create_open(struct bgp_conn *conn, byte *buf)
 {
   struct bgp_proto *p = conn->bgp;
@@ -201,8 +216,11 @@ bgp_create_open(struct bgp_conn *conn, byte *buf)
   if (p->cf->enable_refresh)
     cap = bgp_put_cap_rr(conn, cap);
 
-  if (conn->want_as4_support)
+  if (p->cf->enable_as4)
     cap = bgp_put_cap_as4(conn, cap);
+
+  if (p->cf->add_path)
+    cap = bgp_put_cap_add_path(conn, cap);
 
   cap_len = cap - buf - 12;
   if (cap_len > 0)
@@ -230,6 +248,13 @@ bgp_encode_prefixes(struct bgp_proto *p, byte *w, struct bgp_bucket *buck, unsig
     {
       struct bgp_prefix *px = SKIP_BACK(struct bgp_prefix, bucket_node, HEAD(buck->prefixes));
       DBG("\tDequeued route %F\n", &px->n);
+
+      if (p->add_path_tx)
+	{
+	  put_u32(w, px->path_id);
+	  w += 4;
+	}
+
       *w++ = px->n.pxlen;
       bytes = (px->n.pxlen + 7) / 8;
       a = *FPREFIX_IP(&px->n);
@@ -238,7 +263,8 @@ bgp_encode_prefixes(struct bgp_proto *p, byte *w, struct bgp_bucket *buck, unsig
       w += bytes;
       remains -= bytes + 1;
       rem_node(&px->bucket_node);
-      fib_delete(&p->prefix_fib, px);
+      bgp_free_prefix(p, px);
+      // fib_delete(&p->prefix_fib, px);
     }
   return w - start;
 }
@@ -251,7 +277,8 @@ bgp_flush_prefixes(struct bgp_proto *p, struct bgp_bucket *buck)
       struct bgp_prefix *px = SKIP_BACK(struct bgp_prefix, bucket_node, HEAD(buck->prefixes));
       log(L_ERR "%s: - route %F skipped", p->p.name, &px->n);
       rem_node(&px->bucket_node);
-      fib_delete(&p->prefix_fib, px);
+      bgp_free_prefix(p, px);
+      // fib_delete(&p->prefix_fib, px);
     }
 }
 
@@ -633,7 +660,7 @@ void
 bgp_parse_capabilities(struct bgp_conn *conn, byte *opt, int len)
 {
   // struct bgp_proto *p = conn->bgp;
-  int cl;
+  int i, cl;
 
   while (len > 0)
     {
@@ -650,12 +677,23 @@ bgp_parse_capabilities(struct bgp_conn *conn, byte *opt, int len)
 	  conn->peer_refresh_support = 1;
 	  break;
 
-	case 65: /* AS4 capability, RFC 4893 */ 
+	case 65: /* AS4 capability, RFC 4893 */
 	  if (cl != 4)
 	    goto err;
 	  conn->peer_as4_support = 1;
-	  if (conn->want_as4_support)
+	  if (conn->bgp->cf->enable_as4)
 	    conn->advertised_as = get_u32(opt + 2);
+	  break;
+
+	case 69: /* ADD-PATH capability, draft */
+	  if (cl % 4)
+	    goto err;
+	  for (i = 0; i < cl; i += 4)
+	    if (opt[2+i+0] == 0 && opt[2+i+1] == BGP_AF && opt[2+i+2] == 1) /* Match AFI/SAFI */
+	      conn->peer_add_path = opt[2+i+3];
+	  if (conn->peer_add_path > ADD_PATH_FULL)
+	    goto err;
+
 	  break;
 
 	  /* We can safely ignore all other capabilities */
@@ -796,7 +834,12 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, int len)
   conn->hold_time = MIN(hold, p->cf->hold_time);
   conn->keepalive_time = p->cf->keepalive_time ? : conn->hold_time / 3;
   p->remote_id = id;
-  p->as4_session = conn->want_as4_support && conn->peer_as4_support;
+  p->as4_session = p->cf->enable_as4 && conn->peer_as4_support;
+  p->add_path_rx = (p->cf->add_path & ADD_PATH_RX) && (conn->peer_add_path & ADD_PATH_TX);
+  p->add_path_tx = (p->cf->add_path & ADD_PATH_TX) && (conn->peer_add_path & ADD_PATH_RX);
+
+  if (p->add_path_tx)
+    p->p.accept_ra_types = RA_ANY;
 
   DBG("BGP: Hold timer set to %d, keepalive to %d, AS to %d, ID to %x, AS4 session to %d\n", conn->hold_time, conn->keepalive_time, p->remote_as, p->remote_id, p->as4_session);
 
@@ -806,6 +849,13 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, int len)
 }
 
 #define DECODE_PREFIX(pp, ll) do {		\
+  if (p->add_path_rx)				\
+  {						\
+    if (ll < 5) { err=1; goto done; }		\
+    path_id = get_u32(pp);			\
+    pp += 4;					\
+    ll -= 4;					\
+  }						\
   int b = *pp++;				\
   int q;					\
   ll--;						\
@@ -819,6 +869,53 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, int len)
   prefix = ipa_and(prefix, ipa_mkmask(b));	\
   pxlen = b;					\
 } while (0)
+
+
+static inline void
+bgp_rte_update(struct bgp_proto *p, ip_addr prefix, int pxlen,
+	       u32 path_id, u32 *last_id, struct rte_src **src,
+	       rta *a0, rta **a)
+{
+  if (path_id != *last_id)
+    {
+      *src = rt_get_source(&p->p, path_id);
+      *last_id = path_id;
+
+      if (*a)
+	{
+	  rta_free(*a);
+	  *a = NULL;
+	}
+    }
+
+  /* Prepare cached route attributes */
+  if (!*a)
+    {
+      a0->src = *src;
+      *a = rta_lookup(a0);
+    }
+
+  net *n = net_get(p->p.table, prefix, pxlen);
+  rte *e = rte_get_temp(rta_clone(*a));
+  e->net = n;
+  e->pflags = 0;
+  e->u.bgp.suppressed = 0;
+  rte_update2(p->p.main_ahook, n, e, *src);
+}
+
+static inline void
+bgp_rte_withdraw(struct bgp_proto *p, ip_addr prefix, int pxlen,
+		 u32 path_id, u32 *last_id, struct rte_src **src)
+{
+  if (path_id != *last_id)
+    {
+      *src = rt_find_source(&p->p, path_id);
+      *last_id = path_id;
+    }
+
+  net *n = net_find(p->p.table, prefix, pxlen);
+  rte_update2( p->p.main_ahook, n, NULL, *src);
+}
 
 static inline int
 bgp_set_next_hop(struct bgp_proto *p, rta *a)
@@ -878,18 +975,20 @@ bgp_do_rx_update(struct bgp_conn *conn,
 		 byte *attrs, int attr_len)
 {
   struct bgp_proto *p = conn->bgp;
-  net *n;
-  rta *a0, *a = NULL;
+  struct rte_src *src = p->p.main_source;
+  rta *a0, *a;
   ip_addr prefix;
   int pxlen, err = 0;
+  u32 path_id = 0;
+  u32 last_id = 0;
 
   /* Withdraw routes */
   while (withdrawn_len)
     {
       DECODE_PREFIX(withdrawn, withdrawn_len);
       DBG("Withdraw %I/%d\n", prefix, pxlen);
-      if (n = net_find(p->p.table, prefix, pxlen))
-	rte_update(p->p.table, n, &p->p, &p->p, NULL);
+
+      bgp_rte_withdraw(p, prefix, pxlen, path_id, &last_id, &src);
     }
 
   if (!attr_len && !nlri_len)		/* shortcut */
@@ -900,28 +999,22 @@ bgp_do_rx_update(struct bgp_conn *conn,
   if (conn->state != BS_ESTABLISHED)	/* fatal error during decoding */
     return;
 
-  if (a0 && nlri_len && bgp_set_next_hop(p, a0))
-    a = rta_lookup(a0);
+  if (a0 && ! bgp_set_next_hop(p, a0))
+    a0 = NULL;
+
+  a = NULL;
+  last_id = 0;
+  src = p->p.main_source;
 
   while (nlri_len)
     {
       DECODE_PREFIX(nlri, nlri_len);
       DBG("Add %I/%d\n", prefix, pxlen);
 
-      if (a)
-	{
-	  rte *e = rte_get_temp(rta_clone(a));
-	  e->net = net_get(p->p.table, prefix, pxlen);
-	  e->pflags = 0;
-	  e->u.bgp.suppressed = 0;
-	  rte_update(p->p.table, e->net, &p->p, &p->p, e);
-	}
-      else
-	{
-	  /* Forced withdraw as a result of soft error */
-	  if (n = net_find(p->p.table, prefix, pxlen))
-	    rte_update(p->p.table, n, &p->p, &p->p, NULL);
-	}
+      if (a0)
+	bgp_rte_update(p, prefix, pxlen, path_id, &last_id, &src, a0, &a);
+      else /* Forced withdraw as a result of soft error */
+	bgp_rte_withdraw(p, prefix, pxlen, path_id, &last_id, &src);
     }
 
  done:
@@ -977,13 +1070,15 @@ bgp_do_rx_update(struct bgp_conn *conn,
 		 byte *attrs, int attr_len)
 {
   struct bgp_proto *p = conn->bgp;
+  struct rte_src *src = p->p.main_source;
   byte *start, *x;
   int len, len0;
   unsigned af, sub;
-  net *n;
-  rta *a0, *a = NULL;
+  rta *a0, *a;
   ip_addr prefix;
   int pxlen, err = 0;
+  u32 path_id = 0;
+  u32 last_id = 0;
 
   p->mp_reach_len = 0;
   p->mp_unreach_len = 0;
@@ -998,8 +1093,7 @@ bgp_do_rx_update(struct bgp_conn *conn,
 	{
 	  DECODE_PREFIX(x, len);
 	  DBG("Withdraw %I/%d\n", prefix, pxlen);
-	  if (n = net_find(p->p.table, prefix, pxlen))
-	    rte_update(p->p.table, n, &p->p, &p->p, NULL);
+	  bgp_rte_withdraw(p, prefix, pxlen, path_id, &last_id, &src);
 	}
     }
 
@@ -1016,28 +1110,22 @@ bgp_do_rx_update(struct bgp_conn *conn,
       len -= *x + 2;
       x += *x + 2;
 
-      if (a0 && bgp_set_next_hop(p, a0))
-	a = rta_lookup(a0);
+      if (a0 && ! bgp_set_next_hop(p, a0))
+	a0 = NULL;
+
+      a = NULL;
+      last_id = 0;
+      src = p->p.main_source;
 
       while (len)
 	{
 	  DECODE_PREFIX(x, len);
 	  DBG("Add %I/%d\n", prefix, pxlen);
 
-	  if (a)
-	    {
-	      rte *e = rte_get_temp(rta_clone(a));
-	      e->net = net_get(p->p.table, prefix, pxlen);
-	      e->pflags = 0;
-	      e->u.bgp.suppressed = 0;
-	      rte_update(p->p.table, e->net, &p->p, &p->p, e);
-	    }
-	  else
-	    {
-	      /* Forced withdraw as a result of soft error */
-	      if (n = net_find(p->p.table, prefix, pxlen))
-		rte_update(p->p.table, n, &p->p, &p->p, NULL);
-	    }
+	  if (a0)
+	    bgp_rte_update(p, prefix, pxlen, path_id, &last_id, &src, a0, &a);
+	  else /* Forced withdraw as a result of soft error */
+	    bgp_rte_withdraw(p, prefix, pxlen, path_id, &last_id, &src);
 	}
     }
 

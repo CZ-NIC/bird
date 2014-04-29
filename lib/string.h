@@ -11,6 +11,7 @@
 
 #include <stdarg.h>
 #include <string.h>
+#include <strings.h>
 
 int bsprintf(char *str, const char *fmt, ...);
 int bvsprintf(char *str, const char *fmt, va_list args);

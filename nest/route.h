@@ -293,10 +293,10 @@ void rt_unlock_table(rtable *);
 void rt_setup(pool *, rtable *, char *, struct rtable_config *);
 static inline net *net_find(rtable *tab, ip_addr addr, unsigned len) { return (net *) fib_find(&tab->fib, &addr, len); }
 static inline net *net_get(rtable *tab, ip_addr addr, unsigned len) { return (net *) fib_get(&tab->fib, &addr, len); }
-rte *rte_find(net *net, struct proto *p);
+rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
-void rte_update2(struct announce_hook *ah, net *net, rte *new, struct proto *src);
-static inline void rte_update(rtable *tab, net *net, struct proto *p, struct proto *src, rte *new) { rte_update2(p->main_ahook, net, new, src); }
+void rte_update2(struct announce_hook *ah, net *net, rte *new, struct rte_src *src);
+static inline void rte_update(struct proto *p, net *net, rte *new) { rte_update2(p->main_ahook, net, new, p->main_source); }
 void rte_discard(rtable *tab, rte *old);
 int rt_examine(rtable *t, ip_addr prefix, int pxlen, struct proto *p, struct filter *filter);
 void rte_dump(rte *);
@@ -345,9 +345,18 @@ struct mpnh {
   unsigned char weight;
 };
 
+struct rte_src {
+  struct rte_src *next;			/* Hash chain */
+  struct proto *proto;			/* Protocol the source is based on */
+  u32 private_id;			/* Private ID, assigned by the protocol */
+  u32 global_id;			/* Globally unique ID of the source */
+  unsigned uc;				/* Use count */
+};
+
+
 typedef struct rta {
   struct rta *next, **pprev;		/* Hash chain */
-  struct proto *proto;			/* Protocol instance that originally created the route */
+  struct rte_src *src;			/* Route source that created the route */
   unsigned uc;				/* Use count */
   byte source;				/* Route source (RTS_...) */
   byte scope;				/* Route scope (SCOPE_... -- see ip.h) */
@@ -466,6 +475,13 @@ typedef struct ea_list {
 #define EALF_BISECT 2			/* Use interval bisection for searching */
 #define EALF_CACHED 4			/* Attributes belonging to cached rta */
 
+struct rte_src *rt_find_source(struct proto *p, u32 id);
+struct rte_src *rt_get_source(struct proto *p, u32 id);
+static inline void rt_lock_source(struct rte_src *src) { src->uc++; }
+static inline void rt_unlock_source(struct rte_src *src) { src->uc--; }
+void rt_prune_sources(void);
+
+
 eattr *ea_find(ea_list *, unsigned ea);
 int ea_get_int(ea_list *, unsigned ea, int def);
 void ea_dump(ea_list *);
@@ -482,6 +498,7 @@ static inline int mpnh_same(struct mpnh *x, struct mpnh *y)
 
 void rta_init(void);
 rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */
+static inline int rta_is_cached(rta *r) { return r->aflags & RTAF_CACHED; }
 static inline rta *rta_clone(rta *r) { r->uc++; return r; }
 void rta__free(rta *r);
 static inline void rta_free(rta *r) { if (r && !--r->uc) rta__free(r); }

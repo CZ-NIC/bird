@@ -264,16 +264,18 @@ find_interface(struct proto *p, struct iface *what)
  * This part is responsible for any updates that come from network 
  */
 
+static int rip_rte_better(struct rte *new, struct rte *old);
+
 static void
 rip_rte_update_if_better(rtable *tab, net *net, struct proto *p, rte *new)
 {
   rte *old;
 
-  old = rte_find(net, p);
-  if (!old || p->rte_better(new, old) ||
+  old = rte_find(net, p->main_source);
+  if (!old || rip_rte_better(new, old) ||
       (ipa_equal(old->attrs->from, new->attrs->from) &&
       (old->u.rip.metric != new->u.rip.metric)) )
-    rte_update(tab, net, p, p, new);
+    rte_update(p, net, new);
   else
     rte_free(new);
 }
@@ -361,7 +363,7 @@ process_block( struct proto *p, struct rip_block *block, ip_addr from, struct if
 	prefix, pxlen, metric, from);
 
   rta A = {
-    .proto = p,
+    .src= p->main_source,
     .source = RTS_RIP,
     .scope = SCOPE_UNIVERSE,
     .cast = RTC_UNICAST,
@@ -615,18 +617,8 @@ rip_start(struct proto *p)
   add_head( &P->interfaces, NODE rif );
   CHK_MAGIC;
 
-  rip_init_instance(p);
-
   DBG( "RIP: ...done\n");
   return PS_UP;
-}
-
-static struct proto *
-rip_init(struct proto_config *cfg)
-{
-  struct proto *p = proto_new(cfg, sizeof(struct rip_proto));
-
-  return p;
 }
 
 static void
@@ -849,7 +841,7 @@ rip_gen_attrs(struct linpool *pool, int metric, u16 tag)
 static int
 rip_import_control(struct proto *p, struct rte **rt, struct ea_list **attrs, struct linpool *pool)
 {
-  if ((*rt)->attrs->proto == p)	/* My own must not be touched */
+  if ((*rt)->attrs->src->proto == p)	/* My own must not be touched */
     return 1;
 
   if ((*rt)->attrs->source != RTS_RIP) {
@@ -901,7 +893,7 @@ rip_rt_notify(struct proto *p, struct rtable *table UNUSED, struct network *net,
     if (e->metric > P_CF->infinity)
       e->metric = P_CF->infinity;
 
-    if (new->attrs->proto == p)
+    if (new->attrs->src->proto == p)
       e->whotoldme = new->attrs->from;
 
     if (!e->metric)	/* That's okay: this way user can set his own value for external
@@ -923,7 +915,7 @@ rip_rte_same(struct rte *new, struct rte *old)
 static int
 rip_rte_better(struct rte *new, struct rte *old)
 {
-  struct proto *p = new->attrs->proto;
+  struct proto *p = new->attrs->src->proto;
 
   if (ipa_equal(old->attrs->from, new->attrs->from))
     return 1;
@@ -934,7 +926,7 @@ rip_rte_better(struct rte *new, struct rte *old)
   if (old->u.rip.metric > new->u.rip.metric)
     return 1;
 
-  if (old->attrs->proto == new->attrs->proto)		/* This does not make much sense for different protocols */
+  if (old->attrs->src->proto == new->attrs->src->proto)		/* This does not make much sense for different protocols */
     if ((old->u.rip.metric == new->u.rip.metric) &&
 	((now - old->lastmod) > (P_CF->timeout_time / 2)))
       return 1;
@@ -950,7 +942,7 @@ rip_rte_better(struct rte *new, struct rte *old)
 static void
 rip_rte_insert(net *net UNUSED, rte *rte)
 {
-  struct proto *p = rte->attrs->proto;
+  struct proto *p = rte->attrs->src->proto;
   CHK_MAGIC;
   DBG( "rip_rte_insert: %p\n", rte );
   add_head( &P->garbage, &rte->u.rip.garbage );
@@ -963,16 +955,18 @@ static void
 rip_rte_remove(net *net UNUSED, rte *rte)
 {
 #ifdef LOCAL_DEBUG
-  struct proto *p = rte->attrs->proto;
+  struct proto *p = rte->attrs->src->proto;
   CHK_MAGIC;
   DBG( "rip_rte_remove: %p\n", rte );
 #endif
   rem_node( &rte->u.rip.garbage );
 }
 
-void
-rip_init_instance(struct proto *p)
+static struct proto *
+rip_init(struct proto_config *cfg)
 {
+  struct proto *p = proto_new(cfg, sizeof(struct rip_proto));
+
   p->accept_ra_types = RA_OPTIMAL;
   p->if_notify = rip_if_notify;
   p->rt_notify = rip_rt_notify;
@@ -983,6 +977,8 @@ rip_init_instance(struct proto *p)
   p->rte_same = rip_rte_same;
   p->rte_insert = rip_rte_insert;
   p->rte_remove = rip_rte_remove;
+
+  return p;
 }
 
 void

@@ -496,7 +496,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   net = net_get(p->p.table, idst, pxlen);
 
   rta a = {
-    .proto = &p->p,
+    .src = p->p.main_source,
     .source = RTS_INHERIT,
     .scope = SCOPE_UNIVERSE,
     .cast = RTC_UNICAST

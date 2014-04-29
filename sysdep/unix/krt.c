@@ -351,15 +351,14 @@ krt_learn_announce_update(struct krt_proto *p, rte *e)
   ee->pflags = 0;
   ee->pref = p->p.preference;
   ee->u.krt = e->u.krt;
-  rte_update(p->p.table, nn, &p->p, &p->p, ee);
+  rte_update(&p->p, nn, ee);
 }
 
 static void
 krt_learn_announce_delete(struct krt_proto *p, net *n)
 {
   n = fib_find(&p->p.table->fib, FPREFIX(&n->n), n->n.pxlen);
-  if (n)
-    rte_update(p->p.table, n, &p->p, &p->p, NULL);
+  rte_update(&p->p, n, NULL);
 }
 
 /* Called when alien route is discovered during scan */
@@ -698,7 +697,7 @@ krt_export_rte(struct krt_proto *p, rte **new, ea_list **tmpa)
   if (filter == FILTER_ACCEPT)
     return 1;
 
-  struct proto *src = (*new)->attrs->proto;
+  struct proto *src = (*new)->attrs->src->proto;
   *tmpa = src->make_tmp_attrs ? src->make_tmp_attrs(*new, krt_filter_lp) : NULL;
   return f_run(filter, new, tmpa, krt_filter_lp, FF_FORCE_TMPATTR) <= F_ACCEPT;
 }
@@ -940,7 +939,7 @@ krt_import_control(struct proto *P, rte **new, ea_list **attrs, struct linpool *
   struct krt_proto *p = (struct krt_proto *) P;
   rte *e = *new;
 
-  if (e->attrs->proto == P)
+  if (e->attrs->src->proto == P)
     return -1;
 
   if (!KRT_CF->devroutes && 
@@ -992,10 +991,10 @@ krt_init(struct proto_config *c)
   struct krt_proto *p = proto_new(c, sizeof(struct krt_proto));
 
   p->p.accept_ra_types = RA_OPTIMAL;
-  p->p.make_tmp_attrs = krt_make_tmp_attrs;
-  p->p.store_tmp_attrs = krt_store_tmp_attrs;
   p->p.import_control = krt_import_control;
   p->p.rt_notify = krt_notify;
+  p->p.make_tmp_attrs = krt_make_tmp_attrs;
+  p->p.store_tmp_attrs = krt_store_tmp_attrs;
   p->p.rte_same = krt_rte_same;
 
   krt_sys_init(p);

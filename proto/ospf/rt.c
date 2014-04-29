@@ -1866,10 +1866,10 @@ again1:
     if (nf->n.type) /* Add the route */
     {
       rta a0 = {
-	.proto = p,
+	.src = p->main_source,
 	.source = nf->n.type,
 	.scope = SCOPE_UNIVERSE,
-	.cast = RTC_UNICAST,
+	.cast = RTC_UNICAST
       };
 
       if (nf->n.nhs->next)
@@ -1907,7 +1907,7 @@ again1:
 
 	DBG("Mod rte type %d - %I/%d via %I on iface %s, met %d\n",
 	    a0.source, nf->fn.prefix, nf->fn.pxlen, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
-	rte_update(p->table, ne, p, p, e);
+	rte_update(p, ne, e);
       }
     }
     else if (nf->old_rta)
@@ -1917,7 +1917,7 @@ again1:
       nf->old_rta = NULL;
 
       net *ne = net_get(p->table, nf->fn.prefix, nf->fn.pxlen);
-      rte_update(p->table, ne, p, p, NULL);
+      rte_update(p, ne, NULL);
     }
 
     /* Remove unused rt entry. Entries with any flags are persistent. */
