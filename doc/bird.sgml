@@ -477,7 +477,7 @@ to zero to disable it. An empty <cf><m/switch/</cf> is equivalent to <cf/on/
 	using <cf/show route filtered/. Note that this option does not
 	work for the pipe protocol. Default: off.
 
-	<tag>import limit [<m/number/ | off ] [action warn | block | restart | disable]</tag>
+	<tag><label id="import-limit">import limit [<m/number/ | off ] [action warn | block | restart | disable]</tag>
 	Specify an import route limit (a maximum number of routes
 	imported from the protocol) and optionally the action to be
 	taken when the limit is hit. Warn action just prints warning
@@ -1509,8 +1509,9 @@ for each neighbor using the following configuration parameters:
 
 	<tag>route limit <m/number/</tag> The maximal number of routes
 	that may be imported from the protocol. If the route limit is
-	exceeded, the connection is closed with error. Limit is currently implemented as
-	<cf/import limit number exceed restart/. Default: no limit.
+	exceeded, the connection is closed with an error. Limit is currently implemented as
+	<cf/import limit <m/number/ action restart/. This option is obsolete and it is
+        replaced by <ref id="import-limit" name="import limit option">.  Default: no limit.
 
 	<tag>disable after error <m/switch/</tag> When an error is encountered (either
 	locally or by the other side), disable the instance automatically
