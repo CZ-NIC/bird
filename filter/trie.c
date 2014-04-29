@@ -293,7 +293,7 @@ trie_print(struct f_trie *t)
   logn("[");
   if (t->zero)
     {
-      logn("0.0.0.0/0");
+      logn("%I/%d", IPA_NONE, 0);
       sep = ", ";
     }
   trie_node_print(&t->root, &sep);

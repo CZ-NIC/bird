@@ -119,7 +119,7 @@ int filter_same(struct filter *new, struct filter *old);
 int i_same(struct f_inst *f1, struct f_inst *f2);
 
 int val_compare(struct f_val v1, struct f_val v2);
-int tree_compare(const void *p1, const void *p2);
+int val_same(struct f_val v1, struct f_val v2);
 
 void val_print(struct f_val v);
 

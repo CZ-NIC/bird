@@ -1077,6 +1077,8 @@ incompatible with each other (that is to prevent you from shooting in the foot).
 	  no literals of this type. There are three special operators on
 	  clists:
 
+	  <cf><m/C/.len</cf> returns the length of clist <m/C/.
+
           <cf>add(<m/C/,<m/P/)</cf> adds pair (or quad) <m/P/ to clist
 	  <m/C/ and returns the result.  If item <m/P/ is already in
 	  clist <m/C/, it does nothing. <m/P/ may also be a clist,

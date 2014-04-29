@@ -34,6 +34,12 @@
 #define NULL ((void *) 0)
 #endif
 
+#ifndef IPV6
+#define IP_VERSION 4
+#else
+#define IP_VERSION 6
+#endif
+
 /* Macros for gcc attributes */
 
 #define NORET __attribute__((noreturn))

@@ -450,6 +450,10 @@ struct adata {
   byte data[0];
 };
 
+static inline int adata_same(struct adata *a, struct adata *b)
+{ return (a->length == b->length && !memcmp(a->data, b->data, a->length)); }
+
+
 typedef struct ea_list {
   struct ea_list *next;			/* In case we have an override list */
   byte flags;				/* Flags: EALF_... */

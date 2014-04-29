@@ -69,6 +69,9 @@ int as_path_match(struct adata *path, struct f_path_mask *mask);
 static inline int int_set_get_size(struct adata *list)
 { return list->length / 4; }
 
+static inline int ec_set_get_size(struct adata *list)
+{ return list->length / 8; }
+
 static inline u32 *int_set_get_data(struct adata *list)
 { return (u32 *) list->data; }
 

@@ -58,22 +58,6 @@ adata_empty(struct linpool *pool, int l)
   return res;
 }
 
-static int
-pm_path_compare(struct f_path_mask *m1, struct f_path_mask *m2)
-{
-  while (1) {
-    if ((!m1) || (!m2))
-      return !((!m1) && (!m2));
-
-    /* FIXME: buggy, should return -1, 0, 1; but it doesn't matter */
-    if ((m1->kind != m2->kind) || (m1->val != m2->val)) return 1;
-    m1 = m1->next;
-    m2 = m2->next;
-  }
-}
-
-u32 f_eval_asn(struct f_inst *expr);
-
 static void
 pm_format(struct f_path_mask *p, byte *buf, unsigned int size)
 {
@@ -112,25 +96,22 @@ pm_format(struct f_path_mask *p, byte *buf, unsigned int size)
   *buf = 0;
 }
 
-static inline int int_cmp(int i1, int i2)
+static inline int
+int_cmp(int i1, int i2)
 {
-  if (i1 == i2) return 0;
-  if (i1 < i2) return -1;
-  else return 1;
+  return (i1 > i2) - (i1 < i2); 
 }
 
-static inline int uint_cmp(unsigned int i1, unsigned int i2)
+static inline int
+uint_cmp(unsigned int i1, unsigned int i2)
 {
-  if (i1 == i2) return 0;
-  if (i1 < i2) return -1;
-  else return 1;
+  return (int)(i1 > i2) - (int)(i1 < i2);
 }
 
-static inline int u64_cmp(u64 i1, u64 i2)
+static inline int
+u64_cmp(u64 i1, u64 i2)
 {
-  if (i1 == i2) return 0;
-  if (i1 < i2) return -1;
-  else return 1;
+  return (int)(i1 > i2) - (int)(i1 < i2);
 }
 
 /**
@@ -138,23 +119,21 @@ static inline int u64_cmp(u64 i1, u64 i2)
  * @v1: first value
  * @v2: second value
  *
- * Compares two values and returns -1, 0, 1 on <, =, > or 999 on error.
- * Tree module relies on this giving consistent results so that it can
- * build balanced trees.
+ * Compares two values and returns -1, 0, 1 on <, =, > or CMP_ERROR on
+ * error. Tree module relies on this giving consistent results so
+ * that it can be used for building balanced trees.
  */
 int
 val_compare(struct f_val v1, struct f_val v2)
 {
   int rc;
 
-  if ((v1.type == T_VOID) && (v2.type == T_VOID))
-    return 0;
-  if (v1.type == T_VOID)	/* Hack for else */
-    return -1;
-  if (v2.type == T_VOID)
-    return 1;
-
   if (v1.type != v2.type) {
+    if (v1.type == T_VOID)	/* Hack for else */
+      return -1;
+    if (v2.type == T_VOID)
+      return 1;
+
 #ifndef IPV6
     /* IP->Quad implicit conversion */
     if ((v1.type == T_QUAD) && (v2.type == T_IP))
@@ -166,7 +145,10 @@ val_compare(struct f_val v1, struct f_val v2)
     debug( "Types do not match in val_compare\n" );
     return CMP_ERROR;
   }
+
   switch (v1.type) {
+  case T_VOID:
+    return 0;
   case T_ENUM:
   case T_INT:
   case T_BOOL:
@@ -181,25 +163,63 @@ val_compare(struct f_val v1, struct f_val v2)
   case T_PREFIX:
     if (rc = ipa_compare(v1.val.px.ip, v2.val.px.ip))
       return rc;
-    if (v1.val.px.len < v2.val.px.len)
-      return -1;
-    if (v1.val.px.len > v2.val.px.len)
-      return 1;
-    return 0;
-  case T_PATH_MASK:
-    return pm_path_compare(v1.val.path_mask, v2.val.path_mask);
+    return int_cmp(v1.val.px.len, v2.val.px.len);
   case T_STRING:
     return strcmp(v1.val.s, v2.val.s);
   default:
-    debug( "Compare of unknown entities: %x\n", v1.type );
     return CMP_ERROR;
   }
 }
 
-int 
-tree_compare(const void *p1, const void *p2)
+static int
+pm_path_same(struct f_path_mask *m1, struct f_path_mask *m2)
 {
-  return val_compare((* (struct f_tree **) p1)->from, (* (struct f_tree **) p2)->from);
+  while (m1 && m2)
+  {
+    if ((m1->kind != m2->kind) || (m1->val != m2->val))
+      return 0;
+
+    m1 = m1->next;
+    m2 = m2->next;
+  }
+
+ return !m1 && !m2;
+}
+
+/**
+ * val_same - compare two values
+ * @v1: first value
+ * @v2: second value
+ *
+ * Compares two values and returns 1 if they are same and 0 if not.
+ * Comparison of values of different types is valid and returns 0.
+ */
+int
+val_same(struct f_val v1, struct f_val v2)
+{
+  int rc;
+
+  rc = val_compare(v1, v2);
+  if (rc != CMP_ERROR)
+    return !rc;
+
+  if (v1.type != v2.type)
+    return 0;
+
+  switch (v1.type) {
+  case T_PATH_MASK:
+    return pm_path_same(v1.val.path_mask, v2.val.path_mask);
+  case T_PATH:
+  case T_CLIST:
+  case T_ECLIST:
+    return adata_same(v1.val.ad, v2.val.ad);
+  case T_SET:
+    return same_tree(v1.val.t, v2.val.t);
+  case T_PREFIX_SET:
+    return trie_same(v1.val.ti, v2.val.ti);
+  default:
+    bug("Invalid type in val_same(): %x", v1.type);
+  }
 }
 
 void
@@ -218,39 +238,6 @@ fprefix_get_bounds(struct f_prefix *px, int *l, int *h)
       *l = 0xff & (px->len >> 16);
       *h = 0xff & (px->len >> 8);
     }
-}
-
-/*
- * val_simple_in_range - check if @v1 ~ @v2 for everything except sets
- */ 
-static int
-val_simple_in_range(struct f_val v1, struct f_val v2)
-{
-  if ((v1.type == T_PATH) && (v2.type == T_PATH_MASK))
-    return as_path_match(v1.val.ad, v2.val.path_mask);
-  if ((v1.type == T_INT) && (v2.type == T_PATH))
-    return as_path_is_member(v2.val.ad, v1.val.i);
-
-  if (((v1.type == T_PAIR) || (v1.type == T_QUAD)) && (v2.type == T_CLIST))
-    return int_set_contains(v2.val.ad, v1.val.i);
-#ifndef IPV6
-  /* IP->Quad implicit conversion */
-  if ((v1.type == T_IP) && (v2.type == T_CLIST))
-    return int_set_contains(v2.val.ad, ipa_to_u32(v1.val.px.ip));
-#endif
-  if ((v1.type == T_EC) && (v2.type == T_ECLIST))
-    return ec_set_contains(v2.val.ad, v1.val.ec);
-
-  if ((v1.type == T_STRING) && (v2.type == T_STRING))
-    return patmatch(v2.val.s, v1.val.s);
-
-  if ((v1.type == T_IP) && (v2.type == T_PREFIX))
-    return ipa_in_net(v1.val.px.ip, v2.val.px.ip, v2.val.px.len);
-
-  if ((v1.type == T_PREFIX) && (v2.type == T_PREFIX))
-    return net_in_net(v1.val.px.ip, v1.val.px.len, v2.val.px.ip, v2.val.px.len);
-
-  return CMP_ERROR;
 }
 
 static int
@@ -396,47 +383,57 @@ eclist_filter(struct linpool *pool, struct adata *list, struct f_val set, int po
  * @v1: element
  * @v2: set
  *
- * Checks if @v1 is element (|~| operator) of @v2. Sets are internally represented as balanced trees, see
- * |tree.c| module (this is not limited to sets, but for non-set cases, val_simple_in_range() is called early).
+ * Checks if @v1 is element (|~| operator) of @v2.
  */
 static int
 val_in_range(struct f_val v1, struct f_val v2)
 {
-  int res;
+  if ((v1.type == T_PATH) && (v2.type == T_PATH_MASK))
+    return as_path_match(v1.val.ad, v2.val.path_mask);
 
-  res = val_simple_in_range(v1, v2);
+  if ((v1.type == T_INT) && (v2.type == T_PATH))
+    return as_path_is_member(v2.val.ad, v1.val.i);
 
-  if (res != CMP_ERROR)
-    return res;
-  
+  if (((v1.type == T_PAIR) || (v1.type == T_QUAD)) && (v2.type == T_CLIST))
+    return int_set_contains(v2.val.ad, v1.val.i);
+#ifndef IPV6
+  /* IP->Quad implicit conversion */
+  if ((v1.type == T_IP) && (v2.type == T_CLIST))
+    return int_set_contains(v2.val.ad, ipa_to_u32(v1.val.px.ip));
+#endif
+
+  if ((v1.type == T_EC) && (v2.type == T_ECLIST))
+    return ec_set_contains(v2.val.ad, v1.val.ec);
+
+  if ((v1.type == T_STRING) && (v2.type == T_STRING))
+    return patmatch(v2.val.s, v1.val.s);
+
+  if ((v1.type == T_IP) && (v2.type == T_PREFIX))
+    return ipa_in_net(v1.val.px.ip, v2.val.px.ip, v2.val.px.len);
+
+  if ((v1.type == T_PREFIX) && (v2.type == T_PREFIX))
+    return net_in_net(v1.val.px.ip, v1.val.px.len, v2.val.px.ip, v2.val.px.len);
+
   if ((v1.type == T_PREFIX) && (v2.type == T_PREFIX_SET))
     return trie_match_fprefix(v2.val.ti, &v1.val.px);
 
-  if ((v1.type == T_CLIST) && (v2.type == T_SET))
+  if (v2.type != T_SET)
+    return CMP_ERROR;
+
+  /* With integrated Quad<->IP implicit conversion */
+  if ((v1.type == v2.val.t->from.type) ||
+      ((IP_VERSION == 4) && (v1.type == T_QUAD) && (v2.val.t->from.type == T_IP)))
+    return !!find_tree(v2.val.t, v1);
+
+  if (v1.type == T_CLIST)
     return clist_match_set(v1.val.ad, v2.val.t);
 
-  if ((v1.type == T_ECLIST) && (v2.type == T_SET))
+  if (v1.type == T_ECLIST)
     return eclist_match_set(v1.val.ad, v2.val.t);
 
-  if ((v1.type == T_PATH) && (v2.type == T_SET))
+  if (v1.type == T_PATH)
     return as_path_match_set(v1.val.ad, v2.val.t);
 
-  if (v2.type == T_SET)
-    switch (v1.type) {
-    case T_ENUM:
-    case T_INT:
-    case T_PAIR:
-    case T_QUAD:
-    case T_IP:
-    case T_EC:
-      {
-	struct f_tree *n;
-	n = find_tree(v2.val.t, v1);
-	if (!n)
-	  return 0;
-	return !! (val_simple_in_range(v1, n->from));	/* We turn CMP_ERROR into compared ok, and that's fine */
-      }
-    }
   return CMP_ERROR;
 }
 
@@ -717,8 +714,15 @@ interpret(struct f_inst *what)
     res.val.i = (x); \
     break;
 
-  case P('!','='): COMPARE(i!=0);
-  case P('=','='): COMPARE(i==0);
+#define SAME(x) \
+    TWOARGS; \
+    i = val_same(v1, v2); \
+    res.type = T_BOOL; \
+    res.val.i = (x); \
+    break;
+
+  case P('!','='): SAME(!i);
+  case P('=','='): SAME(i);
   case '<': COMPARE(i==-1);
   case P('<','='): COMPARE(i!=1);
 
@@ -1063,7 +1067,9 @@ interpret(struct f_inst *what)
     switch(v1.type) {
     case T_PREFIX: res.val.i = v1.val.px.len; break;
     case T_PATH:   res.val.i = as_path_getlen(v1.val.ad); break;
-    default: runtime( "Prefix or path expected" );
+    case T_CLIST:  res.val.i = int_set_get_size(v1.val.ad); break;
+    case T_ECLIST: res.val.i = ec_set_get_size(v1.val.ad); break;
+    default: runtime( "Prefix, path, clist or eclist expected" );
     }
     break;
   case P('c','p'):	/* Convert prefix to ... */
@@ -1409,33 +1415,12 @@ i_same(struct f_inst *f1, struct f_inst *f2)
       A2_SAME;
     }
     break;
-  case 'C': 
-    {
-      struct f_val *v1 = (struct f_val *) f1->a1.p;
-      struct f_val *v2 = (struct f_val *) f2->a1.p;
 
-      /* Handle some cases that are not handled by val_compare()
-         also T_PATH, T_CLIST and T_ECLIST does not work,
-         but you cannot easily create such constants */
-
-      if ((v1->type == T_SET) && (v2->type == T_SET))
-      {
-	if (!same_tree(v1->val.t, v2->val.t))
-	  return 0;
-	break;
-      }
-
-      if ((v1->type == T_PREFIX_SET) && (v2->type == T_PREFIX_SET))
-      {
-	if (!trie_same(v1->val.ti, v2->val.ti))
-	  return 0;
-	break;
-      }
-
-      if (val_compare(*v1 , *v2))
-	return 0;
-    }
+  case 'C':
+    if (!val_same(* (struct f_val *) f1->a1.p, * (struct f_val *) f2->a1.p))
+      return 0;
     break;
+
   case 'V': 
     if (strcmp((char *) f1->a2.p, (char *) f2->a2.p))
       return 0;
