@@ -75,7 +75,7 @@ static inline void
 tm2_start_max(timer2 *t, btime after)
 {
   btime rem = tm2_remains(t);
-  tm2_start(t, _MAX(rem, after));
+  tm2_start(t, MAX_(rem, after));
 }
 */
 

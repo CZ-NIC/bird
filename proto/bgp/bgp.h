@@ -11,10 +11,10 @@
 
 #include <stdint.h>
 #include "nest/route.h"
+#include "nest/bfd.h"
 
 struct linpool;
 struct eattr;
-struct bfd_request;
 
 struct bgp_config {
   struct proto_config c;

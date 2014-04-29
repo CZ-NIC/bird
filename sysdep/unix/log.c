@@ -130,6 +130,8 @@ log_commit(int class, buffer *buf)
 
   /* FIXME: cli_echo is not thread-safe */
   cli_echo(class, buf->start);
+
+  buf->pos = buf->start;
 }
 
 int buffer_vprint(buffer *buf, const char *fmt, va_list args);

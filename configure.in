@@ -68,6 +68,14 @@ if test -z "$GCC" ; then
 	AC_MSG_ERROR([This program requires the GNU C Compiler.])
 fi
 
+# Enable threads by default just in Linux and FreeBSD
+if test "$enable_pthreads" = try ; then
+	case "$host_os" in
+		(linux* | freebsd*)	enable_pthreads=try ;;
+		(*)			enable_pthreads=no ;;
+	esac
+fi
+
 if test "$enable_pthreads" != no ; then
 	BIRD_CHECK_PTHREADS
 

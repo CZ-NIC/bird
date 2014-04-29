@@ -20,14 +20,14 @@
 
 /* Utility macros */
 
-#define _MIN(a,b) (((a)<(b))?(a):(b))
-#define _MAX(a,b) (((a)>(b))?(a):(b))
+#define MIN_(a,b) (((a)<(b))?(a):(b))
+#define MAX_(a,b) (((a)>(b))?(a):(b))
 
 #ifndef PARSER
 #undef MIN
 #undef MAX
-#define MIN(a,b) _MIN(a,b)
-#define MAX(a,b) _MAX(a,b)
+#define MIN(a,b) MIN_(a,b)
+#define MAX(a,b) MAX_(a,b)
 #endif
 
 #define ABS(a)   ((a)>=0 ? (a) : -(a))
@@ -54,17 +54,17 @@
 
 typedef s64 btime;
 
-#define _S	*1000000
-#define _MS	*1000
-#define _US	*1
+#define S_	*1000000
+#define MS_	*1000
+#define US_	*1
 #define TO_S	/1000000
 #define TO_MS	/1000
 #define TO_US	/1
 
 #ifndef PARSER
-#define S	_S
-#define MS	_MS
-#define US	_US
+#define S	S_
+#define MS	MS_
+#define US	US_
 #endif
 
 

@@ -113,7 +113,7 @@ radv_iface_finish:
   struct radv_iface_config *ic = RADV_IFACE;
 
   if (ic->min_ra_int == (u32) -1)
-    ic->min_ra_int = _MAX(ic->max_ra_int / 3, 3);
+    ic->min_ra_int = MAX_(ic->max_ra_int / 3, 3);
 
   if (ic->default_lifetime == (u32) -1)
     ic->default_lifetime = 3 * ic->max_ra_int;
