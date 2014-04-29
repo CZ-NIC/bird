@@ -731,6 +731,13 @@ krt_prune(struct krt_proto *p)
 	      /* Route rejected, should not happen (KRF_INSTALLED) but to be sure .. */
 	      verdict = (verdict == KRF_CREATE) ? KRF_IGNORE : KRF_DELETE; 
 	    }
+	  else
+	    {
+	      ea_list **x = &tmpa;
+	      while (*x)
+		x = &((*x)->next);
+	      *x = new ? new->attrs->eattrs : NULL;
+	    }
 	}
 
       switch (verdict)
