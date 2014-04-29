@@ -454,7 +454,7 @@ ospf_lsupd_flood(struct proto_ospf *po, struct top_hash_entry *en, struct ospf_n
 	  {
 	    s_rem_node(SNODE req);
 	    ospf_hash_delete(n->lsrqh, req);
-	    if (EMPTY_SLIST(n->lsrql))
+	    if ((EMPTY_SLIST(n->lsrql)) && (n->state == NEIGHBOR_LOADING))
 	      ospf_neigh_sm(n, INM_LOADDONE);
 	  }
 
