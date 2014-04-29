@@ -474,8 +474,12 @@ ospf_iface_stubby(struct ospf_iface_patt *ip, struct ifa *addr)
   if (! addr)
     return 0;
 
-  /* a host/loopback address */
+  /* a host address */
   if (addr->flags & IA_HOST)
+    return 1;
+
+  /* a loopback iface */
+  if (addr->iface->flags & IF_LOOPBACK)
     return 1;
 
   /*

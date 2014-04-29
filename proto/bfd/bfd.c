@@ -1070,13 +1070,13 @@ bfd_show_sessions(struct proto *P)
 
   if (p->p.proto_state != PS_UP)
   {
-    cli_msg(-1013, "%s: is not up", p->p.name);
+    cli_msg(-1020, "%s: is not up", p->p.name);
     cli_msg(0, "");
     return;
   }
 
-  cli_msg(-1013, "%s:", p->p.name);
-  cli_msg(-1013, "%-25s %-10s %-10s %-10s  %8s %8s",
+  cli_msg(-1020, "%s:", p->p.name);
+  cli_msg(-1020, "%-25s %-10s %-10s %-10s  %8s %8s",
 	  "IP address", "Interface", "State", "Since", "Interval", "Timeout");
 
 
@@ -1092,7 +1092,7 @@ bfd_show_sessions(struct proto *P)
     state = (state < 4) ? state : 0;
     tm_format_datetime(tbuf, &config->tf_proto, s->last_state_change);
 
-    cli_msg(-1013, "%-25I %-10s %-10s %-10s  %3u.%03u  %3u.%03u",
+    cli_msg(-1020, "%-25I %-10s %-10s %-10s  %3u.%03u  %3u.%03u",
 	    s->addr, ifname, bfd_state_names[state], tbuf,
 	    tx_int / 1000, tx_int % 1000, timeout / 1000, timeout % 1000);
   }

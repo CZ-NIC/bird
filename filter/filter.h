@@ -54,7 +54,7 @@ struct f_prefix {
 struct f_val {
   int type;
   union {
-    int i;
+    uint i;
     u64 ec;
     /*    ip_addr ip; Folded into prefix */	
     struct f_prefix px;
@@ -111,7 +111,7 @@ struct rte;
 
 int f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struct linpool *tmp_pool, int flags);
 struct f_val f_eval(struct f_inst *expr, struct linpool *tmp_pool);
-int f_eval_int(struct f_inst *expr);
+uint f_eval_int(struct f_inst *expr);
 u32 f_eval_asn(struct f_inst *expr);
 
 char *filter_name(struct filter *filter);

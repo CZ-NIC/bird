@@ -159,6 +159,9 @@ kif_choose_primary(struct iface *i)
 	  return a;
     }
 
+  if (a = kif_get_primary_ip(i))
+    return a;
+
   return find_preferred_ifa(i, IPA_NONE, IPA_NONE);
 }
 

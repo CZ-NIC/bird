@@ -143,5 +143,6 @@ void kif_sys_copy_config(struct kif_config *, struct kif_config *);
 
 void kif_do_scan(struct kif_proto *);
 
+struct ifa *kif_get_primary_ip(struct iface *i);
 
 #endif

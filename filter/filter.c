@@ -91,12 +91,6 @@ pm_format(struct f_path_mask *p, buffer *buf)
 }
 
 static inline int
-int_cmp(int i1, int i2)
-{
-  return (i1 > i2) - (i1 < i2); 
-}
-
-static inline int
 uint_cmp(uint i1, uint i2)
 {
   return (int)(i1 > i2) - (int)(i1 < i2);
@@ -146,7 +140,6 @@ val_compare(struct f_val v1, struct f_val v2)
   case T_ENUM:
   case T_INT:
   case T_BOOL:
-    return int_cmp(v1.val.i, v2.val.i);
   case T_PAIR:
   case T_QUAD:
     return uint_cmp(v1.val.i, v2.val.i);
@@ -157,7 +150,7 @@ val_compare(struct f_val v1, struct f_val v2)
   case T_PREFIX:
     if (rc = ipa_compare(v1.val.px.ip, v2.val.px.ip))
       return rc;
-    return int_cmp(v1.val.px.len, v2.val.px.len);
+    return uint_cmp(v1.val.px.len, v2.val.px.len);
   case T_STRING:
     return strcmp(v1.val.s, v2.val.s);
   default:
@@ -442,16 +435,16 @@ val_format(struct f_val v, buffer *buf)
   {
   case T_VOID:	buffer_puts(buf, "(void)"); return;
   case T_BOOL:	buffer_puts(buf, v.val.i ? "TRUE" : "FALSE"); return;
-  case T_INT:	buffer_print(buf, "%d", v.val.i); return;
+  case T_INT:	buffer_print(buf, "%u", v.val.i); return;
   case T_STRING: buffer_print(buf, "%s", v.val.s); return;
   case T_IP:	buffer_print(buf, "%I", v.val.px.ip); return;
   case T_PREFIX: buffer_print(buf, "%I/%d", v.val.px.ip, v.val.px.len); return;
-  case T_PAIR:	buffer_print(buf, "(%d,%d)", v.val.i >> 16, v.val.i & 0xffff); return;
+  case T_PAIR:	buffer_print(buf, "(%u,%u)", v.val.i >> 16, v.val.i & 0xffff); return;
   case T_QUAD:	buffer_print(buf, "%R", v.val.i); return;
   case T_EC:	ec_format(buf2, v.val.ec); buffer_print(buf, "%s", buf2); return;
   case T_PREFIX_SET: trie_format(v.val.ti, buf); return;
   case T_SET:	tree_format(v.val.t, buf); return;
-  case T_ENUM:	buffer_print(buf, "(enum %x)%d", v.type, v.val.i); return;
+  case T_ENUM:	buffer_print(buf, "(enum %x)%u", v.type, v.val.i); return;
   case T_PATH:	as_path_format(v.val.ad, buf2, 1000); buffer_print(buf, "(path %s)", buf2); return;
   case T_CLIST:	int_set_format(v.val.ad, 1, -1, buf2, 1000); buffer_print(buf, "(clist %s)", buf2); return;
   case T_ECLIST: ec_set_format(v.val.ad, -1, buf2, 1000); buffer_print(buf, "(eclist %s)", buf2); return;
@@ -1167,14 +1160,14 @@ interpret(struct f_inst *what)
       /* Community (or cluster) list */
       struct f_val dummy;
       int arg_set = 0;
-      i = 0;
+      uint n = 0;
 
       if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	i = v2.val.i;
+	n = v2.val.i;
 #ifndef IPV6
       /* IP->Quad implicit conversion */
       else if (v2.type == T_IP)
-	i = ipa_to_u32(v2.val.px.ip);
+	n = ipa_to_u32(v2.val.px.ip);
 #endif
       else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy))
 	arg_set = 1;
@@ -1190,14 +1183,14 @@ interpret(struct f_inst *what)
 	if (arg_set == 1)
 	  runtime("Can't add set");
 	else if (!arg_set)
-	  res.val.ad = int_set_add(f_pool, v1.val.ad, i);
+	  res.val.ad = int_set_add(f_pool, v1.val.ad, n);
 	else 
 	  res.val.ad = int_set_union(f_pool, v1.val.ad, v2.val.ad);
 	break;
       
       case 'd':
 	if (!arg_set)
-	  res.val.ad = int_set_del(f_pool, v1.val.ad, i);
+	  res.val.ad = int_set_del(f_pool, v1.val.ad, n);
 	else
 	  res.val.ad = clist_filter(f_pool, v1.val.ad, v2, 0);
 	break;
@@ -1502,7 +1495,7 @@ f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struc
     log( L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter->name); 
     return F_ERROR;
   }
-  DBG( "done (%d)\n", res.val.i );
+  DBG( "done (%u)\n", res.val.i );
   return res.val.i;
 }
 
@@ -1519,7 +1512,7 @@ f_eval(struct f_inst *expr, struct linpool *tmp_pool)
   return interpret(expr);
 }
 
-int
+uint
 f_eval_int(struct f_inst *expr)
 {
   /* Called independently in parse-time to eval expressions */

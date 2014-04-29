@@ -53,6 +53,7 @@ Reply codes of BIRD command-line interface
 1017	Show ospf lsadb
 1018	Show memory
 1019	Show ROA list
+1020	Show BFD sessions
 
 8000	Reply too long
 8001	Route not found

@@ -14,7 +14,7 @@ CF_HDR
 CF_DECLS
 
 CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT)
-CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, BASE, NAME, CONFIRM, UNDO, CHECK, TIMEOUT)
+CF_KEYWORDS(TIMEFORMAT, ISO, OLD, SHORT, LONG, BASE, NAME, CONFIRM, UNDO, CHECK, TIMEOUT)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout
 %type <g> log_file
@@ -96,6 +96,8 @@ timeformat_spec:
  | timeformat_which TEXT expr TEXT { *$1 = (struct timeformat){$2, $4, $3}; }
  | timeformat_which ISO SHORT { *$1 = (struct timeformat){"%T", "%F", 20*3600}; }
  | timeformat_which ISO LONG  { *$1 = (struct timeformat){"%F %T", NULL, 0}; }
+ | timeformat_which OLD SHORT { *$1 = (struct timeformat){NULL, NULL, 0}; }
+ | timeformat_which OLD LONG  { *$1 = (struct timeformat){"%d-%m-%Y %T", NULL, 0}; }
  ;
 
 timeformat_base:

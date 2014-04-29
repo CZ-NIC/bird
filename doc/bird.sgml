@@ -256,7 +256,10 @@ which allows you to talk with BIRD in an extensive way.
 <p>In the config, everything on a line after <cf/#/ or inside <cf>/*
 */</cf> is a comment, whitespace characters are treated as a single space. If there's a variable number of options, they are grouped using
 the <cf/{ }/ brackets. Each option is terminated by a <cf/;/. Configuration
-is case sensitive.
+is case sensitive. There are two ways how to name symbols (like protocol names, filter names, constats etc.). You can either use
+a simple string starting with a letter followed by any combination of letters and numbers (e.g. "R123", "myfilter", "bgp5") or you
+can enclose the name into apostrophes (<cf/'/) and than you can use any combination of numbers, letters. hyphens, dots and colons
+(e.g. "'1:strange-name'", "'-NAME-'", "'cool::name'").
 
 <p>Here is an example of a simple config file. It enables
 synchronization of routing tables with OS kernel, scans for 
@@ -377,7 +380,7 @@ protocol rip {
 	"<m/format1/" is a format string using <it/strftime(3)/
 	notation (see <it/man strftime/ for details). <m/limit> and
 	"<m/format2/" allow to specify the second format string for
-	times in past deeper than <m/limit/ seconds. There are two
+	times in past deeper than <m/limit/ seconds. There are few
 	shorthands: <cf/iso long/ is a ISO 8601 date/time format
 	(YYYY-MM-DD hh:mm:ss) that can be also specified using <cf/"%F
 	%T"/. <cf/iso short/ is a variant of ISO 8601 that uses just
@@ -385,11 +388,15 @@ protocol rip {
 	the past) and the date format (YYYY-MM-DD) for far times. This
 	is a shorthand for <cf/"%T" 72000 "%F"/.
 
-	By default, BIRD uses an short, ad-hoc format for <cf/route/
-	and <cf/protocol/ times, and a <cf/iso long/ similar format
-	(DD-MM-YYYY hh:mm:ss) for <cf/base/ and <cf/log/. These
-	defaults are here for a compatibility with older versions
-	and might change in the future.
+	By default, BIRD uses the <cf/iso short/ format for <cf/route/ and
+	<cf/protocol/ times, and the <cf/iso long/ format for <cf/base/ and
+	<cf/log/ times.
+
+	In pre-1.4.0 versions, BIRD used an short, ad-hoc format for
+	<cf/route/ and <cf/protocol/ times, and a <cf/iso long/ similar format
+	(DD-MM-YYYY hh:mm:ss) for <cf/base/ and <cf/log/. These timeformats
+	could be set by <cf/old short/ and <cf/old long/ compatibility
+	shorthands.
 
 	<tag>table <m/name/ [sorted]</tag>
 	Create a new routing table. The default routing table is
@@ -922,9 +929,10 @@ incompatible with each other (that is to prevent you from shooting in the foot).
 	  <cf/true/ and <cf/false/. Boolean is the only type you can use in
 	  <cf/if/ statements.
 
-	<tag/int/ This is a general integer type, you can expect it to store
-	  signed values from -2000000000 to +2000000000. Overflows are not
-	  checked. You can use <cf/0x1234/ syntax to write hexadecimal values.
+	<tag/int/ This is a general integer type. It is an unsigned 32bit type;
+	  i.e., you can expect it to store values from 0 to 4294967295.
+	  Overflows are not checked. You can use <cf/0x1234/ syntax to write
+	  hexadecimal values.
 
 	<tag/pair/ This is a pair of two short integers. Each component can have
 	  values from 0 to 65535. Literals of this type are written as
@@ -1532,33 +1540,37 @@ This allows to set routing policy and all the other parameters differently
 for each neighbor using the following configuration parameters:
 
 <descrip>
-	<tag>local [<m/ip/] as <m/number/</tag> Define which AS we
-	are part of. (Note that contrary to other IP routers, BIRD is
-	able to act as a router located in multiple AS'es
-	simultaneously, but in such cases you need to tweak the BGP
-	paths manually in the filters to get consistent behavior.)
-	Optional <cf/ip/ argument specifies a source address,
-	equivalent to the <cf/source address/ option (see below).
+	<tag>local [<m/ip/] as <m/number/</tag> Define which AS we are part
+	of. (Note that contrary to other IP routers, BIRD is able to act as a
+	router located in multiple AS'es simultaneously, but in such cases you
+	need to tweak the BGP paths manually in the filters to get consistent
+	behavior.) Optional <cf/ip/ argument specifies a source address,
+	equivalent to the <cf/source address/ option (see below).  This
+	parameter is mandatory.
+
+	<tag>neighbor <m/ip/ as <m/number/</tag> Define neighboring router this
+	instance will be talking to and what AS it's located in. In case the
+	neighbor is in the same AS as we are, we automatically switch to iBGP.
 	This parameter is mandatory.
 
-	<tag>neighbor <m/ip/ as <m/number/</tag> Define neighboring router
-	this instance will be talking to and what AS it's located in. Unless
-	you use the <cf/multihop/ clause, it must be directly connected to one
-	of your router's interfaces. In case the neighbor is in the same AS
-	as we are, we automatically switch to iBGP. This parameter is mandatory.
+	<tag>direct</tag> Specify that the neighbor is directly connected. The
+	IP address of the neighbor must be from a directly reachable IP range
+	(i.e. associated with one of your router's interfaces), otherwise the
+	BGP session wouldn't start but it would wait for such interface to
+	appear. The alternative is the <cf/multihop/ option.  Default: enabled
+	for eBGP.
 
-	<tag>multihop [<m/number/]</tag> Configure multihop BGP
-	session to a neighbor that isn't directly connected.
-	Accurately, this option should be used if the configured
-	neighbor IP address does not match with any local network
-	subnets. Such IP address have to be reachable through system
-	routing table. For multihop BGP it is recommended to
-	explicitly configure <cf/source address/ to have it
-	stable. Optional <cf/number/ argument can be used to specify
-	the number of hops (used for TTL). Note that the number of
-	networks (edges) in a path is counted, i.e. if two BGP
-	speakers are separated by one router, the number of hops is
-	2. Default: switched off.
+	<tag>multihop [<m/number/]</tag> Configure multihop BGP session to a
+	neighbor that isn't directly connected.  Accurately, this option should
+	be used if the configured neighbor IP address does not match with any
+	local network subnets. Such IP address have to be reachable through
+	system routing table.  The alternative is the <cf/direct/ option. For
+	multihop BGP it is recommended to explicitly configure the source
+	address to have it stable. Optional <cf/number/ argument can be used to
+	specify the number of hops (used for TTL). Note that the number of
+	networks (edges) in a path is counted; i.e., if two BGP speakers are
+	separated by one router, the number of hops is 2. Default: enabled for
+	iBGP.
 
 	<tag>source address <m/ip/</tag> Define local address we
 	should use for next hop calculation and as a source address
@@ -1605,8 +1617,8 @@ for each neighbor using the following configuration parameters:
 	table, and was used in older versions of BIRD, but does not
 	handle well nontrivial iBGP setups and multihop.  Recursive
 	mode is incompatible with <ref id="dsc-sorted" name="sorted
-	tables">. Default: <cf/direct/ for singlehop eBGP,
-	<cf/recursive/ otherwise.
+	tables">. Default: <cf/direct/ for direct sessions,
+	<cf/recursive/ for multihop sessions.
 
 	<tag>igp table <m/name/</tag> Specifies a table that is used
 	as an IGP routing table. Default: the same as the table BGP is
