@@ -162,7 +162,7 @@ else: {
   return ELSECOL;
 }
 
-({ALPHA}{ALNUM}*|[']({ALNUM}|[-]|[\.])*[']) {
+({ALPHA}{ALNUM}*|[']({ALNUM}|[-]|[\.]|[:])*[']) {
   if(*yytext == '\'') {
     yytext[yyleng-1] = 0;
     yytext++;
