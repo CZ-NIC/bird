@@ -7,6 +7,7 @@
  */
 
 #include <stdio.h>
+#include <unistd.h>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
@@ -1060,11 +1061,9 @@ nl_open_async(void)
   sock *sk;
   struct sockaddr_nl sa;
   int fd;
-  static int nl_open_tried = 0;
 
-  if (nl_open_tried)
+  if (nl_async_sk)
     return;
-  nl_open_tried = 1;
 
   DBG("KRT: Opening async netlink socket\n");
 
@@ -1083,8 +1082,11 @@ nl_open_async(void)
   if (bind(fd, (struct sockaddr *) &sa, sizeof(sa)) < 0)
     {
       log(L_ERR "Unable to bind asynchronous rtnetlink socket: %m");
+      close(fd);
       return;
     }
+
+  nl_async_rx_buffer = xmalloc(NL_RX_SIZE);
 
   sk = nl_async_sk = sk_new(krt_pool);
   sk->type = SK_MAGIC;
@@ -1092,9 +1094,6 @@ nl_open_async(void)
   sk->fd = fd;
   if (sk_open(sk))
     bug("Netlink: sk_open failed");
-
-  if (!nl_async_rx_buffer)
-    nl_async_rx_buffer = xmalloc(NL_RX_SIZE);
 }
 
 /*
@@ -1113,6 +1112,7 @@ krt_sys_start(struct krt_proto *p)
 void
 krt_sys_shutdown(struct krt_proto *p UNUSED)
 {
+  nl_tablex_map(p->addr_type == RT_IPV4)[KRT_CF->sys.table_id] = NULL;
 }
 
 int

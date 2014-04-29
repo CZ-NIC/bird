@@ -230,7 +230,7 @@ neigh_up(neighbor *n, struct iface *i, int scope)
 static void
 neigh_down(neighbor *n)
 {
-  DBG("Flushing neighbor %I on %s\n", n->addr, i->name);
+  DBG("Flushing neighbor %I on %s\n", n->addr, n->iface->name);
   rem_node(&n->if_n);
   if (! (n->flags & NEF_BIND))
     n->iface = NULL;
