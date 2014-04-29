@@ -753,29 +753,37 @@ krt_read_addr(struct ks_msg *msg)
   ifa.scope = scope & IADDR_SCOPE_MASK;
 
   /* Clean up embedded interface ID returned in link-local address */
-  if (scope & SCOPE_LINK)
+  if (ipa_is_link_local(ifa.ip))
     _I0(ifa.ip) = 0xfe800000;
+  if (ipa_is_link_local(ifa.brd))
+    _I0(ifa.brd) = 0xfe800000;
+
 
   // maxlen = ipv4 ? BITS_PER_IP_ADDRESS4 : BITS_PER_IP_ADDRESS6;
   maxlen = BITS_PER_IP_ADDRESS; // XXXX: Hack
 
-  if ((iface->flags & IF_MULTIACCESS) || (masklen != maxlen))
+  if (masklen < maxlen)
   {
     ifa.prefix = ipa_and(ifa.ip, ipa_mkmask(masklen));
-
-    if (masklen == maxlen)
-      ifa.flags |= IA_HOST;
 
     if (masklen == (maxlen - 1))
       ifa.opposite = ipa_opposite_m1(ifa.ip);
 
     if (ipv4 && masklen == (maxlen - 2))
       ifa.opposite = ipa_opposite_m2(ifa.ip);
+
+    if (!(iface->flags & IF_MULTIACCESS))
+      ifa.opposite = ifa.brd;
   }
-  else         /* PtP iface */
+  else if (!(iface->flags & IF_MULTIACCESS) && ipa_nonzero(ifa.brd))
   {
-    ifa.flags |= IA_PEER;
     ifa.prefix = ifa.opposite = ifa.brd;
+    ifa.flags |= IA_PEER;
+  }
+  else
+  {
+    ifa.prefix = ifa.ip;
+    ifa.flags |= IA_HOST;
   }
 
   if (new)
