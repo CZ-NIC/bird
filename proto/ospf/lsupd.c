@@ -531,7 +531,7 @@ ospf_lsupd_prepare(struct proto_ospf *po, struct ospf_iface *ifa,
       if ((pos + len) > ospf_pkt_bufsize(ifa))
       {
 	/* Cannot fit in a tx buffer, skip that */
-	log(L_WARN "OSPF: LSA too large to send (Type: %04x, Id: %R, Rt: %R)", 
+	log(L_ERR "OSPF: LSA too large to send (Type: %04x, Id: %R, Rt: %R)", 
 	    en->lsa_type, en->lsa.id, en->lsa.rt);
 	XXXX();
 	continue;
