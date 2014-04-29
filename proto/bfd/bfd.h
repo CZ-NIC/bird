@@ -20,6 +20,7 @@
 #include "lib/socket.h"
 #include "lib/string.h"
 
+#include "nest/bfd.h"
 #include "io.h"
 
 
@@ -27,25 +28,29 @@
 #define BFD_ECHO_PORT		3785
 #define BFD_MULTI_CTL_PORT	4784
 
-#define BFD_DEFAULT_MIN_RX_INT	(10 MS)
-#define BFD_DEFAULT_MIN_TX_INT	(100 MS)
-#define BFD_DEFAULT_IDLE_TX_INT	(1 S)
+#define BFD_DEFAULT_MIN_RX_INT	(10 _MS)
+#define BFD_DEFAULT_MIN_TX_INT	(100 _MS)
+#define BFD_DEFAULT_IDLE_TX_INT	(1 _S)
 #define BFD_DEFAULT_MULTIPLIER	5
 
+
+struct bfd_iface_config;
 
 struct bfd_config
 {
   struct proto_config c;
-  list neigh_list;		/* List of struct bfd_neighbor */
+  list patt_list;		/* List of iface configs (struct bfd_iface_config) */
+  list neigh_list;		/* List of configured neighbors (struct bfd_neighbor) */
+  struct bfd_iface_config *multihop; /* Multihop pseudoiface config */
 };
 
-struct bfd_session_config
+struct bfd_iface_config
 {
+  struct iface_patt i;
   u32 min_rx_int;
   u32 min_tx_int;
   u32 idle_tx_int;
   u8 multiplier;
-  u8 multihop;
   u8 passive;
 };
 
@@ -55,9 +60,12 @@ struct bfd_neighbor
   ip_addr addr;
   ip_addr local;
   struct iface *iface;
-  struct bfd_session_config *opts;
 
-  struct bfd_session *session;
+  struct neighbor *neigh;
+  struct bfd_request *req;
+
+  u8 multihop;
+  u8 active;
 };
 
 struct bfd_proto
@@ -66,6 +74,7 @@ struct bfd_proto
   struct birdloop *loop;
   pool *tpool;
   pthread_spinlock_t lock;
+  node bfd_node;
 
   slab *session_slab;
   HASH(struct bfd_session) session_hash_id;
@@ -77,25 +86,31 @@ struct bfd_proto
 
   sock *rx_1;
   sock *rx_m;
-  list sock_list;
+  list iface_list;
 };
 
-struct bfd_socket
+struct bfd_iface
 {
   node n;
+  ip_addr local;
+  struct iface *iface;
+  struct bfd_iface_config *cf;
+  struct bfd_proto *bfd;
+
   sock *sk;
   u32 uc;
+  u8 changed;
 };
 
 struct bfd_session
 {
   node n;
   ip_addr addr;				/* Address of session */
+  struct bfd_iface *ifa;		/* Iface associated with session */
   struct bfd_session *next_id;		/* Next in bfd.session_hash_id */
   struct bfd_session *next_ip;		/* Next in bfd.session_hash_ip */
-  struct bfd_proto *bfd;
 
-  u8 opened;
+  u8 opened_unused;
   u8 passive;
   u8 poll_active;
   u8 poll_scheduled;
@@ -123,10 +138,13 @@ struct bfd_session
   timer2 *tx_timer;			/* Periodic control packet timer */
   timer2 *hold_timer;			/* Timer for session down detection time */
 
-  struct bfd_socket *bsock;		/* Socket associated with session */
+  list request_list;			/* List of client requests (struct bfd_request) */
+  bird_clock_t last_state_change;	/* Time of last state change */
+  u8 notify_running;			/* 1 if notify hooks are running */
 };
 
 
+extern const char *bfd_state_names[];
 
 #define BFD_STATE_ADMIN_DOWN	0
 #define BFD_STATE_DOWN		1
@@ -146,6 +164,7 @@ struct bfd_session
 #define BFD_POLL_TX		1
 #define BFD_POLL_RX		2
 
+#define BFD_FLAGS		0x3f
 #define BFD_FLAG_POLL		(1 << 5)
 #define BFD_FLAG_FINAL		(1 << 4)
 #define BFD_FLAG_CPI		(1 << 3)
@@ -166,10 +185,7 @@ void bfd_show_sessions(struct proto *P);
 /* packets.c */
 void bfd_send_ctl(struct bfd_proto *p, struct bfd_session *s, int final);
 sock * bfd_open_rx_sk(struct bfd_proto *p, int multihop);
-struct bfd_socket * bfd_get_socket(struct bfd_proto *p, ip_addr local, struct iface *ifa);
-void bfd_free_socket(struct bfd_socket *sk);
-
-
+sock * bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa);
 
 
 #endif /* _BIRD_BFD_H_ */

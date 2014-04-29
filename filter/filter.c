@@ -59,41 +59,35 @@ adata_empty(struct linpool *pool, int l)
 }
 
 static void
-pm_format(struct f_path_mask *p, byte *buf, unsigned int size)
+pm_format(struct f_path_mask *p, buffer *buf)
 {
-  byte *end = buf + size - 16;
+  buffer_puts(buf, "[= ");
 
   while (p)
+  {
+    switch(p->kind)
     {
-      if (buf > end)
-	{
-	  strcpy(buf, " ...");
-	  return;
-	}
+    case PM_ASN:
+      buffer_print(buf, "%u ", p->val);
+      break;
 
-      switch(p->kind)
-	{
-	case PM_ASN:
-	  buf += bsprintf(buf, " %u", p->val);
-	  break;
+    case PM_QUESTION:
+      buffer_puts(buf, "? ");
+      break;
 
-	case PM_QUESTION:
-	  buf += bsprintf(buf, " ?");
-	  break;
+    case PM_ASTERISK:
+      buffer_puts(buf, "* ");
+      break;
 
-	case PM_ASTERISK:
-	  buf += bsprintf(buf, " *");
-	  break;
-
-	case PM_ASN_EXPR:
-	  buf += bsprintf(buf, " %u", f_eval_asn((struct f_inst *) p->val));
-	  break;
-	}
-
-      p = p->next;
+    case PM_ASN_EXPR:
+      buffer_print(buf, "%u ", f_eval_asn((struct f_inst *) p->val));
+      break;
     }
 
-  *buf = 0;
+    p = p->next;
+  }
+
+  buffer_puts(buf, "=]");
 }
 
 static inline int
@@ -103,7 +97,7 @@ int_cmp(int i1, int i2)
 }
 
 static inline int
-uint_cmp(unsigned int i1, unsigned int i2)
+uint_cmp(uint i1, uint i2)
 {
   return (int)(i1 > i2) - (int)(i1 < i2);
 }
@@ -437,60 +431,32 @@ val_in_range(struct f_val v1, struct f_val v2)
   return CMP_ERROR;
 }
 
-static void
-tree_node_print(struct f_tree *t, char **sep)
-{
-  if (t == NULL)
-    return;
-
-  tree_node_print(t->left, sep);
-
-  logn(*sep);
-  val_print(t->from);
-  if (val_compare(t->from, t->to) != 0)
-    {
-      logn( ".." );
-      val_print(t->to);
-    }
-  *sep = ", ";
-
-  tree_node_print(t->right, sep);
-}
-
-static void
-tree_print(struct f_tree *t)
-{
-  char *sep = "";
-  logn( "[" );
-  tree_node_print(t, &sep);
-  logn( "] " );
-}
-
 /*
- * val_print - format filter value
+ * val_format - format filter value
  */
 void
-val_print(struct f_val v)
+val_format(struct f_val v, buffer *buf)
 {
   char buf2[1024];
-  switch (v.type) {
-  case T_VOID: logn("(void)"); return;
-  case T_BOOL: logn(v.val.i ? "TRUE" : "FALSE"); return;
-  case T_INT: logn("%d", v.val.i); return;
-  case T_STRING: logn("%s", v.val.s); return;
-  case T_IP: logn("%I", v.val.px.ip); return;
-  case T_PREFIX: logn("%I/%d", v.val.px.ip, v.val.px.len); return;
-  case T_PAIR: logn("(%d,%d)", v.val.i >> 16, v.val.i & 0xffff); return;
-  case T_QUAD: logn("%R", v.val.i); return;
-  case T_EC: ec_format(buf2, v.val.ec); logn("%s", buf2); return;
-  case T_PREFIX_SET: trie_print(v.val.ti); return;
-  case T_SET: tree_print(v.val.t); return;
-  case T_ENUM: logn("(enum %x)%d", v.type, v.val.i); return;
-  case T_PATH: as_path_format(v.val.ad, buf2, 1000); logn("(path %s)", buf2); return;
-  case T_CLIST: int_set_format(v.val.ad, 1, -1, buf2, 1000); logn("(clist %s)", buf2); return;
-  case T_ECLIST: ec_set_format(v.val.ad, -1, buf2, 1000); logn("(eclist %s)", buf2); return;
-  case T_PATH_MASK: pm_format(v.val.path_mask, buf2, 1000); logn("(pathmask%s)", buf2); return;
-  default: logn( "[unknown type %x]", v.type ); return;
+  switch (v.type)
+  {
+  case T_VOID:	buffer_puts(buf, "(void)"); return;
+  case T_BOOL:	buffer_puts(buf, v.val.i ? "TRUE" : "FALSE"); return;
+  case T_INT:	buffer_print(buf, "%d", v.val.i); return;
+  case T_STRING: buffer_print(buf, "%s", v.val.s); return;
+  case T_IP:	buffer_print(buf, "%I", v.val.px.ip); return;
+  case T_PREFIX: buffer_print(buf, "%I/%d", v.val.px.ip, v.val.px.len); return;
+  case T_PAIR:	buffer_print(buf, "(%d,%d)", v.val.i >> 16, v.val.i & 0xffff); return;
+  case T_QUAD:	buffer_print(buf, "%R", v.val.i); return;
+  case T_EC:	ec_format(buf2, v.val.ec); buffer_print(buf, "%s", buf2); return;
+  case T_PREFIX_SET: trie_format(v.val.ti, buf); return;
+  case T_SET:	tree_format(v.val.t, buf); return;
+  case T_ENUM:	buffer_print(buf, "(enum %x)%d", v.type, v.val.i); return;
+  case T_PATH:	as_path_format(v.val.ad, buf2, 1000); buffer_print(buf, "(path %s)", buf2); return;
+  case T_CLIST:	int_set_format(v.val.ad, 1, -1, buf2, 1000); buffer_print(buf, "(clist %s)", buf2); return;
+  case T_ECLIST: ec_set_format(v.val.ad, -1, buf2, 1000); buffer_print(buf, "(eclist %s)", buf2); return;
+  case T_PATH_MASK: pm_format(v.val.path_mask, buf); return;
+  default:	buffer_print(buf, "[unknown type %x]", v.type); return;
   }
 }
 
@@ -498,6 +464,7 @@ static struct rte **f_rte;
 static struct rta *f_old_rta;
 static struct ea_list **f_tmp_attrs;
 static struct linpool *f_pool;
+static struct buffer f_buf;
 static int f_flags;
 
 static inline void f_rte_cow(void)
@@ -786,7 +753,7 @@ interpret(struct f_inst *what)
     break;
   case 'p':
     ONEARG;
-    val_print(v1);
+    val_format(v1, &f_buf);
     break;
   case '?':	/* ? has really strange error value, so we can implement if ... else nicely :-) */
     ONEARG;
@@ -804,7 +771,7 @@ interpret(struct f_inst *what)
   case P('p',','):
     ONEARG;
     if (what->a2.i == F_NOP || (what->a2.i != F_NONL && what->a1.p))
-      log_commit(*L_INFO);
+      log_commit(*L_INFO, &f_buf);
 
     switch (what->a2.i) {
     case F_QUITBIRD:
@@ -1507,7 +1474,8 @@ f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struc
   f_pool = tmp_pool;
   f_flags = flags;
 
-  log_reset();
+  LOG_BUFFER_INIT(f_buf);
+
   struct f_val res = interpret(filter->root);
 
   if (f_old_rta) {
@@ -1546,7 +1514,8 @@ f_eval(struct f_inst *expr, struct linpool *tmp_pool)
   f_rte = NULL;
   f_pool = tmp_pool;
 
-  log_reset();
+  LOG_BUFFER_INIT(f_buf);
+
   return interpret(expr);
 }
 

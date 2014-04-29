@@ -537,6 +537,7 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   ifa->check_link = ip->check_link;
   ifa->ecmp_weight = ip->ecmp_weight;
   ifa->check_ttl = (ip->ttl_security == 1);
+  ifa->bfd = ip->bfd;
   ifa->autype = ip->autype;
   ifa->passwords = ip->passwords;
   ifa->instance_id = ip->instance_id;
@@ -823,6 +824,19 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 	       ifname, (int)ifa->ecmp_weight + 1, (int)new->ecmp_weight + 1);
     ifa->ecmp_weight = new->ecmp_weight;
   }
+
+  /* BFD */
+  if (ifa->bfd != new->bfd)
+  {
+    OSPF_TRACE(D_EVENTS, "%s BFD on interface %s",
+	       new->bfd ? "Enabling" : "Disabling", ifname);
+    ifa->bfd = new->bfd;
+
+    struct ospf_neighbor *n;
+    WALK_LIST(n, ifa->neigh_list)
+      ospf_neigh_update_bfd(n, ifa->bfd);
+  }
+
 
   /* instance_id is not updated - it is part of key */
 

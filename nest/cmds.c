@@ -92,13 +92,10 @@ cmd_show_memory(void)
   cli_msg(0, "");
 }
 
-extern const char *log_buffer_ptr;
-
 void
 cmd_eval(struct f_inst *expr)
 {
   struct f_val v = f_eval(expr, this_cli->parser_pool);
-  log_reset();
 
   if (v.type == T_RETURN)
     {
@@ -106,7 +103,8 @@ cmd_eval(struct f_inst *expr)
       return;
     }
 
-  val_print(v);
-  cli_msg(23, "%s", log_buffer_ptr);
-  log_reset();
+  buffer buf;
+  LOG_BUFFER_INIT(buf);
+  val_format(v, &buf);
+  cli_msg(23, "%s", buf.start);
 }

@@ -299,6 +299,7 @@ ospf_iface_item:
  | TX PRIORITY expr { OSPF_PATT->tx_priority = $3; }
  | TTL SECURITY bool { OSPF_PATT->ttl_security = $3; }
  | TTL SECURITY TX ONLY { OSPF_PATT->ttl_security = 2; }
+ | BFD bool { OSPF_PATT->bfd = $2; cf_check_bfd($2); }
  | password_list { ospf_check_auth(); }
  ;
 

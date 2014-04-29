@@ -199,7 +199,7 @@ unix_read_config(struct config **cp, char *name)
   return ret;
 }
 
-static void
+static struct config *
 read_config(void)
 {
   struct config *conf;
@@ -211,7 +211,8 @@ read_config(void)
       else
 	die("Unable to open configuration file %s: %m", config_name);
     }
-  config_commit(conf, RECONFIG_HARD, 0);
+
+  return conf;
 }
 
 void
@@ -776,7 +777,7 @@ main(int argc, char **argv)
   proto_build(&proto_unix_kernel);
   proto_build(&proto_unix_iface);
 
-  read_config();
+  struct config *conf = read_config();
 
   if (parse_and_exit)
     exit(0);
@@ -799,6 +800,8 @@ main(int argc, char **argv)
   write_pid_file();
 
   signal_init();
+
+  config_commit(conf, RECONFIG_HARD, 0);
 
 #ifdef LOCAL_DEBUG
   async_dump_flag = 1;

@@ -144,7 +144,10 @@ options. The most important ones are:
 	nonzero if there are some errors.
 
 	<tag>-s <m/name of communication socket/</tag>
-	use given filename for a  socket for communications with the client, default is <it/prefix/<file>/var/run/bird.ctl</file>.
+	use given filename for a socket for communications with the client, default is <it/prefix/<file>/var/run/bird.ctl</file>.
+
+	<tag>-P <m/name of PID file/</tag>
+	create a PID file with given filename</file>.
 
 	<tag>-u <m/user/</tag>
 	drop privileges and use that user ID, see the next section for details.
@@ -915,62 +918,63 @@ bird>
 incompatible with each other (that is to prevent you from shooting in the foot).
 
 <descrip>
-	<tag/bool/ This is a boolean type, it can have only two values, <cf/true/ and
-	  <cf/false/. Boolean is the only type you can use in <cf/if/
-	  statements.
+	<tag/bool/ This is a boolean type, it can have only two values,
+	  <cf/true/ and <cf/false/. Boolean is the only type you can use in
+	  <cf/if/ statements.
 
-	<tag/int/ This is a general integer type, you can expect it to store signed values from -2000000000
-	  to +2000000000. Overflows are not checked. You can use <cf/0x1234/ syntax to write hexadecimal values.
+	<tag/int/ This is a general integer type, you can expect it to store
+	  signed values from -2000000000 to +2000000000. Overflows are not
+	  checked. You can use <cf/0x1234/ syntax to write hexadecimal values.
 
-	<tag/pair/ This is a pair of two short integers. Each component can have values from 0 to
-	  65535. Literals of this type are written as <cf/(1234,5678)/. The same syntax can also be
-	  used to construct a pair from two arbitrary integer expressions (for example <cf/(1+2,a)/).
+	<tag/pair/ This is a pair of two short integers. Each component can have
+	  values from 0 to 65535. Literals of this type are written as
+	  <cf/(1234,5678)/. The same syntax can also be used to construct a pair
+	  from two arbitrary integer expressions (for example <cf/(1+2,a)/).
 
-	<tag/quad/ This is a dotted quad of numbers used to represent
-	  router IDs (and others).  Each component can have a value
-	  from 0 to 255. Literals of this type are written like IPv4
-	  addresses.
+	<tag/quad/ This is a dotted quad of numbers used to represent router IDs
+	  (and others).  Each component can have a value from 0 to 255. Literals
+	  of this type are written like IPv4 addresses.
 
-	<tag/string/ This is a string of characters. There are no ways
-	  to modify strings in filters. You can pass them between
-	  functions, assign them to variables of type <cf/string/,
-	  print such variables, use standard string comparison
-	  operations (e.g. <cf/=, !=, &lt;, &gt;, &lt;=, &gt;=/), but
-	  you can't concatenate two strings. String literals are
-	  written as <cf/"This is a string constant"/. Additionaly
-	  matching <cf/&tilde;/ operator could be used to match a
-	  string value against a shell pattern (represented also as a
-	  string).
+	<tag/string/ This is a string of characters. There are no ways to modify
+	  strings in filters. You can pass them between functions, assign them
+	  to variables of type <cf/string/, print such variables, use standard
+	  string comparison operations (e.g. <cf/=, !=, &lt;, &gt;, &lt;=,
+	  &gt;=/), but you can't concatenate two strings. String literals are
+	  written as <cf/"This is a string constant"/. Additionaly matching
+	  <cf/&tilde;/ operator could be used to match a string value against a
+	  shell pattern (represented also as a string).
 
-	<tag/ip/ This type can hold a single IP address. Depending on the compile-time configuration of BIRD you are using, it
-	  is either an IPv4 or IPv6 address. IP addresses are written in the standard notation (<cf/10.20.30.40/ or <cf/fec0:3:4::1/). You can apply special operator <cf>.mask(<M>num</M>)</cf>
-	  on values of type ip. It masks out all but first <cf><M>num</M></cf> bits from the IP
-	  address. So <cf/1.2.3.4.mask(8) = 1.0.0.0/ is true.
+	<tag/ip/ This type can hold a single IP address. Depending on the
+	  compile-time configuration of BIRD you are using, it is either an IPv4
+	  or IPv6 address. IP addresses are written in the standard notation
+	  (<cf/10.20.30.40/ or <cf/fec0:3:4::1/). You can apply special
+	  operator <cf>.mask(<M>num</M>)</cf> on values of type ip. It masks out
+	  all but first <cf><M>num</M></cf> bits from the IP address. So
+	  <cf/1.2.3.4.mask(8) = 1.0.0.0/ is true.
 
-	<tag/prefix/ This type can hold a network prefix consisting of IP address and prefix length. Prefix literals are written as
-	  <cf><M>ipaddress</M>/<M>pxlen</M></cf>, or
+	<tag/prefix/ This type can hold a network prefix consisting of IP
+	  address and prefix length. Prefix literals are written
+	  as <cf><M>ipaddress</M>/<M>pxlen</M></cf>, or
 	  <cf><m>ipaddress</m>/<m>netmask</m></cf>. There are two special
-	  operators on prefixes:
-	  <cf/.ip/ which extracts the IP address from the pair, and <cf/.len/, which separates prefix
-	  length from the pair. So <cf>1.2.0.0/16.pxlen = 16</cf> is true.
+	  operators on prefixes: <cf/.ip/ which extracts the IP address from the
+	  pair, and <cf/.len/, which separates prefix length from the
+	  pair. So <cf>1.2.0.0/16.pxlen = 16</cf> is true.
 
-	<tag/ec/ This is a specialized type used to represent BGP
-	  extended community values. It is essentially a 64bit value,
-	  literals of this type are usually written as <cf>(<m/kind/,
-	  <m/key/, <m/value/)</cf>, where <cf/kind/ is a kind of
-	  extended community (e.g. <cf/rt/ / <cf/ro/ for a route
-	  target / route origin communities), the format and possible
-	  values of <cf/key/ and <cf/value/ are usually integers, but
+	<tag/ec/ This is a specialized type used to represent BGP extended
+	  community values. It is essentially a 64bit value, literals of this
+	  type are usually written as <cf>(<m/kind/, <m/key/, <m/value/)</cf>,
+	  where <cf/kind/ is a kind of extended community (e.g. <cf/rt/ /
+	  <cf/ro/ for a route target / route origin communities), the format and
+	  possible values of <cf/key/ and <cf/value/ are usually integers, but
 	  it depends on the used kind. Similarly to pairs, ECs can be
-	  constructed using expressions for <cf/key/ and
-	  <cf/value/ parts, (e.g. <cf/(ro, myas, 3*10)/, where
-	  <cf/myas/ is an integer variable).
+	  constructed using expressions for <cf/key/ and <cf/value/ parts,
+	  (e.g. <cf/(ro, myas, 3*10)/, where <cf/myas/ is an integer variable).
  
-	<tag/int|pair|quad|ip|prefix|ec|enum set/
-	  Filters recognize four types of sets. Sets are similar to strings: you can pass them around
-	  but you can't modify them. Literals of type <cf>int set</cf> look like <cf>
-	  [ 1, 2, 5..7 ]</cf>. As you can see, both simple values and ranges are permitted in
-	  sets.
+	<tag/int|pair|quad|ip|prefix|ec|enum set/ Filters recognize four types
+	  of sets. Sets are similar to strings: you can pass them around but you
+	  can't modify them. Literals of type <cf>int set</cf> look like <cf> [
+	  1, 2, 5..7 ]</cf>. As you can see, both simple values and ranges are
+	  permitted in sets.
 
 	  For pair sets, expressions like <cf/(123,*)/ can be used to denote ranges (in
 	  that case <cf/(123,0)..(123,65535)/). You can also use <cf/(123,5..100)/ for range
@@ -1267,6 +1271,178 @@ undefined value is regarded as empty clist for most purposes.
 
 <chapt>Protocols
 
+<sect><label id="sect-bfd">BFD
+
+<sect1>Introduction
+
+<p>Bidirectional Forwarding Detection (BFD) is not a routing protocol itself, it
+is an independent tool providing liveness and failure detection. Routing
+protocols like OSPF and BGP use integrated periodic "hello" messages to monitor
+liveness of neighbors, but detection times of these mechanisms are high (e.g. 40
+seconds by default in OSPF, could be set down to several seconds). BFD offers
+universal, fast and low-overhead mechanism for failure detection, which could be
+attached to any routing protocol in an advisory role.
+
+<p>BFD consists of mostly independent BFD sessions. Each session monitors an
+unicast bidirectional path between two BFD-enabled routers. This is done by
+periodically sending control packets in both directions. BFD does not handle
+neighbor discovery, BFD sessions are created on demand by request of other
+protocols (like OSPF or BGP), which supply appropriate information like IP
+addresses and associated interfaces. When a session changes its state, these
+protocols are notified and act accordingly (e.g. break an OSPF adjacency when
+the BFD session went down).
+
+<p>BIRD implements basic BFD behavior as defined in
+RFC 5880<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc5880.txt">
+(some advanced features like the echo mode or authentication are not implemented),
+IP transport for BFD as defined in
+RFC 5881<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc5881.txt"> and
+RFC 5883<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc5883.txt">
+and interaction with client protocols as defined in
+RFC 5882<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc5882.txt">.
+
+<p>Note that BFD implementation in BIRD is currently a new feature in
+development, expect some rough edges and possible UI and configuration changes
+in the future. Also note that we currently support at most one protocol instance.
+
+<sect1>Configuration
+
+<p>BFD configuration consists mainly of multiple definitions of interfaces.
+Most BFD config options are session specific. When a new session is requested
+and dynamically created, it is configured from one of these definitions. For
+sessions to directly connected neighbors, <cf/interface/ definitions are chosen
+based on the interface associated with the session, while <cf/multihop/
+definition is used for multihop sessions. If no definition is relevant, the
+session is just created with the default configuration. Therefore, an empty BFD
+configuration is often sufficient.
+
+<p>Note that to use BFD for other protocols like OSPF or BGP, these protocols
+also have to be configured to request BFD sessions, usually by <cf/bfd/ option.
+
+<p>Some of BFD session options require <m/time/ value, which has to be specified
+with the appropriate unit: <m/num/ <cf/s/|<cf/ms/|<cf/us/. Although microseconds
+are allowed as units, practical minimum values are usually in order of tens of
+milliseconds.
+
+<code>
+protocol bfd [&lt;name&gt;] {
+	interface &lt;interface pattern&gt; {
+		interval &lt;time&gt;;
+		min rx interval &lt;time&gt;;
+		min tx interval &lt;time&gt;;
+		idle tx interval &lt;time&gt;;
+		multiplier &lt;num&gt;;
+		passive &lt;switch&gt;;
+	};
+	multihop {
+		interval &lt;time&gt;;
+		min rx interval &lt;time&gt;;
+		min tx interval &lt;time&gt;;
+		idle tx interval &lt;time&gt;;
+		multiplier &lt;num&gt;;
+		passive &lt;switch&gt;;
+	};
+	neighbor &lt;ip&gt; [dev "&lt;interface&gt;"] [local &lt;ip&gt;] [multihop &lt;switch&gt;];
+}
+</code>
+
+<descrip>
+	<tag>interface <m/pattern [, ...]/  { <m/options/ }</tag>
+	Interface definitions allow to specify options for sessions associated
+	with such interfaces and also may contain interface specific options.
+	See <ref id="dsc-iface" name="interface"> common option for a detailed
+	description of interface patterns. Note that contrary to the behavior of
+	<cf/interface/ definitions of other protocols, BFD protocol would accept
+	sessions (in default configuration) even on interfaces not covered by
+	such definitions.
+
+	<tag>multihop { <m/options/ }</tag>
+	Multihop definitions allow to specify options for multihop BFD sessions,
+	in the same manner as <cf/interface/ definitions are used for directly
+	connected sessions. Currently only one such definition (for all multihop
+	sessions) could be used.
+
+	<tag>neighbor <m/ip/ [dev "<m/interface/"] [local <m/ip/] [multihop <m/switch/]</tag>
+	BFD sessions are usually created on demand as requested by other
+	protocols (like OSPF or BGP). This option allows to explicitly add
+	a BFD session to the specified neighbor regardless of such requests.
+	
+	The session is identified by the IP address of the neighbor, with
+	optional specification of used interface and local IP.  By default
+	the neighbor must be directly connected, unless the the session is
+	configured as multihop. Note that local IP must be specified for
+	multihop sessions.
+</descrip>
+
+<p>Session specific options (part of <cf/interface/ and <cf/multihop/ definitions):
+
+<descrip>
+	<tag>interval <m/time/</tag>
+	BFD ensures availability of the forwarding path associated with the
+	session by periodically sending BFD control packets in both
+	directions. The rate of such packets is controlled by two options,
+	<cf/min rx interval/ and <cf/min tx interval/ (see below). This option
+	is just a shorthand to set both of these options together.
+
+	<tag>min rx interval <m/time/</tag>
+	This option specifies the minimum RX interval, which is announced to the
+	neighbor and used there to limit the neighbor's rate of generated BFD
+	control packets. Default: 10 ms.
+
+	<tag>min tx interval <m/time/</tag>
+	This option specifies the desired TX interval, which controls the rate
+	of generated BFD control packets (together with <cf/min rx interval/
+	announced by the neighbor). Note that this value is used only if the BFD
+	session is up, otherwise the value of <cf/idle tx interval/ is used
+	instead. Default: 100 ms.
+
+	<tag>idle tx interval <m/time/</tag>
+	In order to limit unnecessary traffic in cases where a neighbor is not
+	available or not running BFD, the rate of generated BFD control packets
+	is lower when the BFD session is not up. This option specifies the
+	desired TX interval in such cases instead of <cf/min tx interval/.
+	Default: 1 s.
+
+	<tag>multiplier <m/num/</tag>
+	Failure detection time for BFD sessions is based on established rate of
+	BFD control packets (<cf>min rx/tx interval</cf>) multiplied by this
+	multiplier, which is essentially (ignoring jitter) a number of missed
+	packets after which the session is declared down. Note that rates and
+	multipliers could be different in each direction of a BFD session.
+	Default: 5.
+
+	<tag>passive <m/switch/</tag>
+	Generally, both BFD session endpoinds try to establish the session by
+	sending control packets to the other side. This option allows to enable
+	passive mode, which means that the router does not send BFD packets
+	until it has received one from the other side. Default: disabled.
+</descrip>
+
+<sect1>Example
+
+<p><code>
+protocol bfd {
+	interface "eth*" {
+		min rx interval 20 ms;
+		min tx interval 50 ms;
+		idle tx interval 300 ms;
+	};
+	interface "gre*" {
+		interval 200 ms;
+		multiplier 10;
+		passive;
+	};
+	multihop {
+		interval 200 ms;
+		multiplier 10;
+	};
+
+	neighbor 192.168.1.10;
+	neighbor 192.168.2.2 dev "eth2";
+	neighbor 192.168.10.1 local 192.168.1.1 multihop;
+}
+</code>
+
 <sect>BGP
 
 <p>The Border Gateway Protocol is the routing protocol used for backbone
@@ -1281,8 +1457,8 @@ AS). Each AS is a part of the network with common management and
 common routing policy. It is identified by a unique 16-bit number
 (ASN).  Routers within each AS usually exchange AS-internal routing
 information with each other using an interior gateway protocol (IGP,
-such as OSPF or RIP). Boundary routers at the border of
-the AS communicate global (inter-AS) network reachability information with
+such as OSPF or RIP). Boundary routers at the border of the AS
+communicate global (inter-AS) network reachability information with
 their neighbors in the neighboring AS'es via exterior BGP (eBGP) and
 redistribute received information to other routers in the AS via
 interior BGP (iBGP).
@@ -1435,7 +1611,15 @@ for each neighbor using the following configuration parameters:
 	<tag>igp table <m/name/</tag> Specifies a table that is used
 	as an IGP routing table. Default: the same as the table BGP is
 	connected to.
-	
+
+	<tag>bfd <M>switch</M></tag>
+	BGP could use BFD protocol as an advisory mechanism for neighbor
+	liveness and failure detection. If enabled, BIRD setups a BFD session
+	for the BGP neighbor and tracks its liveness by it. This has an
+	advantage of an order of magnitude lower detection times in case of
+	failure. Note that BFD protocol also has to be configured, see
+	<ref id="sect-bfd" name="BFD"> section for details. Default: disabled.
+
 	<tag>ttl security <m/switch/</tag> Use GTSM (RFC 5082 - the
 	generalized TTL security mechanism). GTSM protects against
 	spoofed packets by ignoring received packets with a smaller
@@ -2020,6 +2204,7 @@ protocol ospf &lt;name&gt; {
 			real broadcast &lt;switch&gt;;
 			ptp netmask &lt;switch&gt;;
 			check link &lt;switch&gt;;
+			bfd &lt;switch&gt;;
 			ecmp weight &lt;num&gt;;
 			ttl security [&lt;switch&gt;; | tx only]
 			tx class|dscp &lt;num&gt;;
@@ -2293,6 +2478,14 @@ protocol ospf &lt;name&gt; {
 	 and only the address of the iface (instead of whole network
 	 prefix) is propagated. It is possible that some hardware
 	 drivers or platforms do not implement this feature. Default value is no.
+
+	<tag>bfd <M>switch</M></tag>
+	OSPF could use BFD protocol as an advisory mechanism for neighbor
+	liveness and failure detection. If enabled, BIRD setups a BFD session
+	for each OSPF neighbor and tracks its liveness by it. This has an
+	advantage of an order of magnitude lower detection times in case of
+	failure. Note that BFD protocol also has to be configured, see
+	<ref id="sect-bfd" name="BFD"> section for details. Default value is no.
 
 	<tag>ttl security [<m/switch/ | tx only]</tag>
 	 TTL security is a feature that protects routing protocols

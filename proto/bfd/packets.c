@@ -20,8 +20,8 @@ struct bfd_ctl_packet
   u32 req_min_echo_rx_int;
 };
 
-#define BFD_BASE_LEN sizeof(struct bfd_ctl_packet)
-
+#define BFD_BASE_LEN	sizeof(struct bfd_ctl_packet)
+#define BFD_MAX_LEN	64
 
 static inline u8 bfd_pack_vdiag(u8 version, u8 diag)
 { return (version << 5) | diag; }
@@ -43,11 +43,28 @@ static inline void bfd_pkt_set_state(struct bfd_ctl_packet *pkt, u8 val)
 { pkt->flags = val << 6; }
 
 
+char *
+bfd_format_flags(u8 flags, char *buf)
+{
+  char *bp = buf;
+  if (flags & BFD_FLAGS)	*bp++ = ' ';
+  if (flags & BFD_FLAG_POLL)	*bp++ = 'P';
+  if (flags & BFD_FLAG_FINAL)	*bp++ = 'F';
+  if (flags & BFD_FLAG_CPI)	*bp++ = 'C';
+  if (flags & BFD_FLAG_AP)	*bp++ = 'A';
+  if (flags & BFD_FLAG_DEMAND)	*bp++ = 'D';
+  if (flags & BFD_FLAG_MULTIPOINT) *bp++ = 'M';
+  *bp = 0;
+
+  return buf;
+}
+
 void
 bfd_send_ctl(struct bfd_proto *p, struct bfd_session *s, int final)
 {
-  sock *sk = s->bsock->sk;
+  sock *sk = s->ifa->sk;
   struct bfd_ctl_packet *pkt = (struct bfd_ctl_packet *) sk->tbuf;
+  char fb[8];
 
   pkt->vdiag = bfd_pack_vdiag(1, s->loc_diag);
   pkt->flags = bfd_pack_flags(s->loc_state, 0);
@@ -65,7 +82,10 @@ bfd_send_ctl(struct bfd_proto *p, struct bfd_session *s, int final)
     pkt->flags |= BFD_FLAG_POLL;
 
   if (sk->tbuf != sk->tpos)
-    log(L_ERR "%s: old packet was overwritten in TX buffer", p->p.name);
+    log(L_WARN "%s: Old packet overwritten in TX buffer", p->p.name);
+
+  TRACE(D_PACKETS, "Sending CTL to %I [%s%s]", s->addr,
+	bfd_state_names[s->loc_state], bfd_format_flags(pkt->flags, fb));
 
   sk_send_to(sk, pkt->length, s->addr, sk->dport);
 }
@@ -79,6 +99,10 @@ bfd_rx_hook(sock *sk, int len)
   struct bfd_ctl_packet *pkt = (struct bfd_ctl_packet *) sk->rbuf;
   const char *err_dsc = NULL;
   uint err_val = 0;
+  char fb[8];
+
+  if ((sk->sport == BFD_CONTROL_PORT) && (sk->ttl < 255))
+    DROP("wrong TTL", sk->ttl);
 
   if (len < BFD_BASE_LEN)
     DROP("too short", len);
@@ -93,7 +117,8 @@ bfd_rx_hook(sock *sk, int len)
   if (pkt->detect_mult == 0)
     DROP("invalid detect mult", 0);
 
-  if (pkt->flags & BFD_FLAG_MULTIPOINT)
+  if ((pkt->flags & BFD_FLAG_MULTIPOINT) ||
+      ((pkt->flags & BFD_FLAG_POLL) && (pkt->flags & BFD_FLAG_FINAL)))
     DROP("invalid flags", pkt->flags);
 
   if (pkt->snd_id == 0)
@@ -107,7 +132,7 @@ bfd_rx_hook(sock *sk, int len)
     s = bfd_find_session_by_id(p, id);
 
     if (!s)
-      DROP("unknown session", id);
+      DROP("unknown session id", id);
   }
   else
   {
@@ -118,7 +143,7 @@ bfd_rx_hook(sock *sk, int len)
     s = bfd_find_session_by_addr(p, sk->faddr);
 
     /* FIXME: better session matching and message */
-    if (!s || !s->opened)
+    if (!s)
       return 1;
   }
 
@@ -130,7 +155,7 @@ bfd_rx_hook(sock *sk, int len)
   u32 old_tx_int = s->des_min_tx_int;
   u32 old_rx_int = s->rem_min_rx_int;
 
-  s->rem_id = ntohl(pkt->snd_id);
+  s->rem_id= ntohl(pkt->snd_id);
   s->rem_state = bfd_pkt_get_state(pkt);
   s->rem_diag = bfd_pkt_get_diag(pkt);
   s->rem_demand_mode = pkt->flags & BFD_FLAG_DEMAND;
@@ -138,11 +163,14 @@ bfd_rx_hook(sock *sk, int len)
   s->rem_min_rx_int = ntohl(pkt->req_min_rx_int);
   s->rem_detect_mult = pkt->detect_mult;
 
+  TRACE(D_PACKETS, "CTL received from %I [%s%s]", sk->faddr,
+	bfd_state_names[s->rem_state], bfd_format_flags(pkt->flags, fb));
+
   bfd_session_process_ctl(s, pkt->flags, old_tx_int, old_rx_int);
   return 1;
 
  drop:
-  // log(L_WARN "%s: Bad packet from %I - %s (%u)", p->p.name, sk->faddr, err_dsc, err_val);
+  log(L_REMOTE "%s: Bad packet from %I - %s (%u)", p->p.name, sk->faddr, err_dsc, err_val);
   return 1;
 }
 
@@ -161,7 +189,7 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop)
   sk->sport = !multihop ? BFD_CONTROL_PORT : BFD_MULTI_CTL_PORT;
   sk->data = p;
 
-  sk->rbsize = 64; // XXX
+  sk->rbsize = BFD_MAX_LEN;
   sk->rx_hook = bfd_rx_hook;
   sk->err_hook = bfd_err_hook;
 
@@ -185,7 +213,7 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop)
   return NULL;
 }
 
-static inline sock *
+sock *
 bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
 {
   sock *sk = sk_new(p->tpool);
@@ -195,7 +223,7 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   sk->iface = ifa;
   sk->data = p;
 
-  sk->tbsize = 64; // XXX
+  sk->tbsize = BFD_MAX_LEN;
   sk->err_hook = bfd_err_hook;
 
   /* TODO: configurable ToS, priority and TTL security */
@@ -217,33 +245,4 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
  err:
   rfree(sk);
   return NULL;
-}
-
-struct bfd_socket *
-bfd_get_socket(struct bfd_proto *p, ip_addr local, struct iface *ifa)
-{
-  struct bfd_socket *sk;
-
-  WALK_LIST(sk, p->sock_list)
-    if (ipa_equal(sk->sk->saddr, local) && (sk->sk->iface == ifa))
-      return sk->uc++, sk;
-
-  sk = mb_allocz(p->tpool, sizeof(struct bfd_socket));
-  sk->sk = bfd_open_tx_sk(p, local, ifa);
-  sk->uc = 1;
-  add_tail(&p->sock_list, &sk->n);
-
-  return sk;
-}
-
-void
-bfd_free_socket(struct bfd_socket *sk)
-{
-  if (!sk || --sk->uc)
-    return;
-
-  rem_node(&sk->n);
-  sk_stop(sk->sk);
-  rfree(sk->sk);
-  mb_free(sk);
 }

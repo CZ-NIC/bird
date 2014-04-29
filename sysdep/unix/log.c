@@ -32,8 +32,24 @@ static FILE *dbgf;
 static list *current_log_list;
 static char *current_syslog_name; /* NULL -> syslog closed */
 
-bird_clock_t rate_limit_time = 5;
-int rate_limit_count = 5;
+static const bird_clock_t rate_limit_time = 5;
+static const int rate_limit_count = 5;
+
+
+#ifdef USE_PTHREADS
+
+#include <pthread.h>
+static pthread_mutex_t log_mutex;
+static inline void log_lock(void) { pthread_mutex_lock(&log_mutex); }
+static inline void log_unlock(void) { pthread_mutex_unlock(&log_mutex); }
+
+#else
+
+static inline void log_lock(void) {  }
+static inline void log_unlock(void) {  }
+
+#endif
+
 
 #ifdef HAVE_SYSLOG
 #include <sys/syslog.h>
@@ -65,28 +81,6 @@ static char *class_names[] = {
   "BUG"
 };
 
-#define LOG_BUFFER_SIZE 1024
-static char log_buffer[LOG_BUFFER_SIZE];
-static char *log_buffer_pos;
-static int log_buffer_remains;
-
-const char *log_buffer_ptr = log_buffer;
-
-
-/**
- * log_reset - reset the log buffer
- *
- * This function resets a log buffer and discards buffered
- * messages. Should be used before a log message is prepared
- * using logn().
- */
-void
-log_reset(void)
-{
-  log_buffer_pos = log_buffer;
-  log_buffer_remains = LOG_BUFFER_SIZE;
-  log_buffer[0] = 0;
-}
 
 /**
  * log_commit - commit a log message
@@ -101,10 +95,14 @@ log_reset(void)
  * in log(), so it should be written like *L_INFO.
  */
 void
-log_commit(int class)
+log_commit(int class, buffer *buf)
 {
   struct log_config *l;
 
+  if (buf->pos == buf->end)
+    strcpy(buf->end - 100, " ... <too long>");
+
+  log_lock();
   WALK_LIST(l, *current_log_list)
     {
       if (!(l->mask & (1 << class)))
@@ -119,47 +117,30 @@ log_commit(int class)
 	      tm_format_datetime(tbuf, &config->tf_log, now);
 	      fprintf(l->fh, "%s <%s> ", tbuf, class_names[class]);
 	    }
-	  fputs(log_buffer, l->fh);
+	  fputs(buf->start, l->fh);
 	  fputc('\n', l->fh);
 	  fflush(l->fh);
 	}
 #ifdef HAVE_SYSLOG
       else
-	syslog(syslog_priorities[class], "%s", log_buffer);
+	syslog(syslog_priorities[class], "%s", buf->start);
 #endif
     }
-  cli_echo(class, log_buffer);
+  log_unlock();
 
-  log_reset();
+  /* FIXME: cli_echo is not thread-safe */
+  cli_echo(class, buf->start);
 }
 
-static void
-log_print(const char *msg, va_list args)
-{
-  int i;
-
-  if (log_buffer_remains == 0)
-    return;
-
-  i=bvsnprintf(log_buffer_pos, log_buffer_remains, msg, args);
-  if (i < 0)
-    {
-      bsprintf(log_buffer + LOG_BUFFER_SIZE - 100, " ... <too long>");
-      log_buffer_remains = 0;
-      return;
-    }
-
-  log_buffer_pos += i;
-  log_buffer_remains -= i;
-}
-
+int buffer_vprint(buffer *buf, const char *fmt, va_list args);
 
 static void
 vlog(int class, const char *msg, va_list args)
 {
-  log_reset();
-  log_print(msg, args);
-  log_commit(class);
+  buffer buf;
+  LOG_BUFFER_INIT(buf);
+  buffer_vprint(&buf, msg, args);
+  log_commit(class, &buf);
 }
 
 
@@ -185,26 +166,6 @@ log_msg(char *msg, ...)
   if (*msg >= 1 && *msg <= 8)
     class = *msg++;
   vlog(class, msg, args);
-  va_end(args);
-}
-
-/**
- * logn - prepare a partial message in the log buffer
- * @msg: printf-like formatting string (without message class information)
- *
- * This function formats a message according to the format string @msg
- * and adds it to the log buffer. Messages in the log buffer are
- * logged when the buffer is flushed using log_commit() function. The
- * message should not contain |\n|, log_commit() also terminates a
- * line.
- */
-void
-logn(char *msg, ...)
-{
-  va_list args;
-
-  va_start(args, msg);
-  log_print(msg, args);
   va_end(args);
 }
 

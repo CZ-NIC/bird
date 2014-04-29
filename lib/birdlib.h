@@ -10,6 +10,7 @@
 #define _BIRD_BIRDLIB_H_
 
 #include "timer.h"
+#include "alloca.h"
 
 /* Ugly structure offset handling macros */
 
@@ -19,12 +20,14 @@
 
 /* Utility macros */
 
-#ifdef PARSER
 #define _MIN(a,b) (((a)<(b))?(a):(b))
 #define _MAX(a,b) (((a)>(b))?(a):(b))
-#else
-#define MIN(a,b) (((a)<(b))?(a):(b))
-#define MAX(a,b) (((a)>(b))?(a):(b))
+
+#ifndef PARSER
+#undef MIN
+#undef MAX
+#define MIN(a,b) _MIN(a,b)
+#define MAX(a,b) _MAX(a,b)
 #endif
 
 #define ABS(a)   ((a)>=0 ? (a) : -(a))
@@ -40,12 +43,51 @@
 #define IP_VERSION 6
 #endif
 
+
 /* Macros for gcc attributes */
 
 #define NORET __attribute__((noreturn))
 #define UNUSED __attribute__((unused))
 
+
+/* Microsecond time */
+
+typedef s64 btime;
+
+#define _S	*1000000
+#define _MS	*1000
+#define _US	*1
+#define TO_S	/1000000
+#define TO_MS	/1000
+#define TO_US	/1
+
+#ifndef PARSER
+#define S	_S
+#define MS	_MS
+#define US	_US
+#endif
+
+
 /* Logging and dying */
+
+typedef struct buffer {
+  byte *start;
+  byte *pos;
+  byte *end;
+} buffer;
+
+#define STACK_BUFFER_INIT(buf,size)		\
+  do {						\
+    buf.start = alloca(size);			\
+    buf.pos = buf.start;			\
+    buf.end = buf.start + size;			\
+  } while(0)
+
+#define LOG_BUFFER_INIT(buf)			\
+  STACK_BUFFER_INIT(buf, LOG_BUFFER_SIZE)
+
+#define LOG_BUFFER_SIZE 1024
+
 
 struct rate_limit {
   bird_clock_t timestamp;
@@ -53,11 +95,9 @@ struct rate_limit {
 };
 
 #define log log_msg
-void log_reset(void);
-void log_commit(int class);
+void log_commit(int class, buffer *buf);
 void log_msg(char *msg, ...);
 void log_rl(struct rate_limit *rl, char *msg, ...);
-void logn(char *msg, ...);
 void die(char *msg, ...) NORET;
 void bug(char *msg, ...) NORET;
 

@@ -699,6 +699,9 @@ proto_build(struct protocol *p)
     }
 }
 
+/* FIXME: convert this call to some protocol hook */
+extern void bfd_init_all(void);
+
 /**
  * protos_build - build a protocol list
  *
@@ -737,8 +740,10 @@ protos_build(void)
 #ifdef CONFIG_BGP
   proto_build(&proto_bgp);
 #endif
-  // XXX
+#ifdef CONFIG_BFD
   proto_build(&proto_bfd);
+  bfd_init_all();
+#endif
 
   proto_pool = rp_new(&root_pool, "Protocols");
   proto_flush_event = ev_new(proto_pool);

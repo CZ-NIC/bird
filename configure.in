@@ -9,6 +9,7 @@ AC_CONFIG_AUX_DIR(tools)
 AC_ARG_ENABLE(debug,	[  --enable-debug          enable internal debugging routines (default: disabled)],,enable_debug=no)
 AC_ARG_ENABLE(memcheck,	[  --enable-memcheck       check memory allocations when debugging (default: enabled)],,enable_memcheck=yes)
 AC_ARG_ENABLE(client,	[  --enable-client         enable building of BIRD client (default: enabled)],,enable_client=yes)
+AC_ARG_ENABLE(pthreads,	[  --enable-pthreads       enable POSIX threads support (default: detect)],,enable_pthreads=try)
 AC_ARG_WITH(sysconfig,	[  --with-sysconfig=FILE   use specified BIRD system configuration file])
 AC_ARG_WITH(protocols,	[  --with-protocols=LIST   include specified routing protocols (default: all)],,[with_protocols="all"])
 AC_ARG_WITH(sysinclude,	[  --with-sysinclude=PATH  search for system includes on specified place])
@@ -42,12 +43,6 @@ AC_SUBST(exedir)
 AC_SUBST(srcdir_rel_mf)
 AC_SUBST(runtimedir)
 
-# all_protocols=bfd,bgp,ospf,pipe,radv,rip,static
-all_protocols=pipe,radv,rip,static
-
-if test "$with_protocols" = all ; then
-	with_protocols="$all_protocols"
-fi
 
 if test "$enable_debug" = yes ; then
 	CONFIG_FILE="bird.conf"
@@ -73,12 +68,29 @@ if test -z "$GCC" ; then
 	AC_MSG_ERROR([This program requires the GNU C Compiler.])
 fi
 
+if test "$enable_pthreads" != no ; then
+	BIRD_CHECK_PTHREADS
+
+	if test "$bird_cv_lib_pthreads" = yes ; then
+		AC_DEFINE(USE_PTHREADS)
+		CFLAGS="$CFLAGS -pthread"
+		LDFLAGS="$LDFLAGS -pthread"
+		proto_bfd=bfd
+	elif test "$enable_pthreads" = yes ; then
+		AC_MSG_ERROR([POSIX threads not available.])
+	fi
+
+	if test "$enable_pthreads" = try ; then
+		enable_pthreads="$bird_cv_lib_pthreads"
+	fi
+fi
+
 if test "$bird_cflags_default" = yes ; then
 	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_wno_pointer_sign, -Wno-pointer-sign, -Wall)
 	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_fno_strict_aliasing, -fno-strict-aliasing)
 	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_fno_strict_overflow, -fno-strict-overflow)
 
-	CFLAGS="$CFLAGS -pthread -Wall -Wstrict-prototypes -Wno-parentheses"
+	CFLAGS="$CFLAGS -Wall -Wstrict-prototypes -Wno-parentheses"
 	BIRD_ADD_GCC_OPTION(bird_cv_c_option_wno_pointer_sign, -Wno-pointer-sign)
 	BIRD_ADD_GCC_OPTION(bird_cv_c_option_fno_strict_aliasing, -fno-strict-aliasing)
 	BIRD_ADD_GCC_OPTION(bird_cv_c_option_fno_strict_overflow, -fno-strict-overflow)
@@ -153,6 +165,14 @@ else iproutedir=$default_iproutedir
 fi
 
 AC_SUBST(iproutedir)
+
+# all_protocols="$proto_bfd bgp ospf pipe radv rip static"
+all_protocols="pipe radv rip static"
+all_protocols=`echo $all_protocols | sed 's/ /,/g'`
+
+if test "$with_protocols" = all ; then
+	with_protocols="$all_protocols"
+fi
 
 AC_MSG_CHECKING([protocols])
 protocols=`echo "$with_protocols" | sed 's/,/ /g'`
@@ -243,6 +263,7 @@ BIRD was configured with the following options:
 	Iproute2 directory:	$iproutedir
 	System configuration:	$sysdesc
 	Debugging:		$enable_debug
+	POSIX threads:		$enable_pthreads
 	Routing protocols:	$protocols
 	Client:			$enable_client
 EOF

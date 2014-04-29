@@ -15,16 +15,6 @@
 // #include "lib/timer.h"
 
 
-#define S	*1000000
-#define MS	*1000
-#define US	*1
-#define TO_S	/1000000
-#define TO_MS	/1000
-#define TO_US	/1
-
-
-typedef s64 btime;
-
 typedef struct timer2
 {
   resource r;
@@ -73,6 +63,13 @@ tm2_new_init(pool *p, void (*hook)(struct timer2 *), void *data, uint rec, uint 
   return t;
 }
 
+static inline void
+tm2_set_max(timer2 *t, btime when)
+{
+  if (when > t->expires)
+    tm2_set(t, when);
+}
+
 /*
 static inline void
 tm2_start_max(timer2 *t, btime after)
@@ -88,7 +85,11 @@ void sk_stop(sock *s);
 
 
 
-struct birdloop *birdloop_new(pool *p);
+struct birdloop *birdloop_new(void);
+void birdloop_start(struct birdloop *loop);
+void birdloop_stop(struct birdloop *loop);
+void birdloop_free(struct birdloop *loop);
+
 void birdloop_enter(struct birdloop *loop);
 void birdloop_leave(struct birdloop *loop);
 void birdloop_mask_wakeups(struct birdloop *loop);

@@ -90,7 +90,7 @@ CF_DECLS
 %left '!'
 %nonassoc '.'
 
-CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, XS, XMS, XUS)
+CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US)
 
 CF_GRAMMAR
 
@@ -129,11 +129,10 @@ expr:
  ;
 
 
-/* XXX fix X* symbols, they collide with macros */
 expr_us:
-   expr XS  { $$ = (u32) $1 * 1000000; }
- | expr XMS { $$ = (u32) $1 * 1000; }
- | expr XUS { $$ = (u32) $1 * 1; }
+   expr S  { $$ = (u32) $1 * 1000000; }
+ | expr MS { $$ = (u32) $1 * 1000; }
+ | expr US { $$ = (u32) $1 * 1; }
  ;
 
 /* expr_u16: expr { check_u16($1); $$ = $1; }; */

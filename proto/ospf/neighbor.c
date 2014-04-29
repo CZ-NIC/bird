@@ -560,6 +560,36 @@ ospf_neigh_remove(struct ospf_neighbor *n)
   OSPF_TRACE(D_EVENTS, "Deleting neigbor %R", rid);
 }
 
+static void
+ospf_neigh_bfd_hook(struct bfd_request *req)
+{
+  struct ospf_neighbor *n = req->data;
+  struct proto *p = &n->ifa->oa->po->proto;
+
+  if (req->down)
+  {
+    OSPF_TRACE(D_EVENTS, "BFD session down for %I on %s",
+	       n->ip, n->ifa->iface->name);
+
+    ospf_neigh_remove(n);
+  }
+}
+
+void
+ospf_neigh_update_bfd(struct ospf_neighbor *n, int use_bfd)
+{
+  if (use_bfd && !n->bfd_req)
+    n->bfd_req = bfd_request_session(n->pool, n->ip, n->ifa->addr->ip, n->ifa->iface,
+				     ospf_neigh_bfd_hook, n);
+
+  if (!use_bfd && n->bfd_req)
+  {
+    rfree(n->bfd_req);
+    n->bfd_req = NULL;
+  }
+}
+
+
 void
 ospf_sh_neigh_info(struct ospf_neighbor *n)
 {
