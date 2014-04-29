@@ -261,7 +261,8 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	SET, STRING, BGPMASK, BGPPATH, CLIST, ECLIST,
 	IF, THEN, ELSE, CASE,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
-	FROM, GW, NET, MASK, PROTO, SOURCE, SCOPE, CAST, DEST, PREFERENCE,
+	FROM, GW, NET, MASK, PROTO, SOURCE, SCOPE, CAST, DEST, IFNAME, IFINDEX,
+	PREFERENCE,
 	LEN,
 	DEFINED,
 	ADD, DELETE, CONTAINS, RESET,
@@ -680,14 +681,16 @@ symbol:
    }
 
 static_attr:
-   FROM    { $$ = f_new_inst(); $$->aux = T_IP;         $$->a2.i = OFFSETOF(struct rta, from);   $$->a1.i = 1; }
- | GW      { $$ = f_new_inst(); $$->aux = T_IP;         $$->a2.i = OFFSETOF(struct rta, gw);     $$->a1.i = 1; }
- | NET     { $$ = f_new_inst(); $$->aux = T_PREFIX;     $$->a2.i = 0x12345678; /* This is actually ok - T_PREFIX is special-cased. */ }
- | PROTO   { $$ = f_new_inst(); $$->aux = T_STRING;     $$->a2.i = 0x12345678; /* T_STRING is also special-cased. */ }
- | SOURCE  { $$ = f_new_inst(); $$->aux = T_ENUM_RTS;   $$->a2.i = OFFSETOF(struct rta, source); }
- | SCOPE   { $$ = f_new_inst(); $$->aux = T_ENUM_SCOPE; $$->a2.i = OFFSETOF(struct rta, scope);  $$->a1.i = 1; }
- | CAST    { $$ = f_new_inst(); $$->aux = T_ENUM_RTC;   $$->a2.i = OFFSETOF(struct rta, cast); }
- | DEST    { $$ = f_new_inst(); $$->aux = T_ENUM_RTD;   $$->a2.i = OFFSETOF(struct rta, dest);   $$->a1.i = 1; }
+   FROM    { $$ = f_new_inst(); $$->aux = T_IP;         $$->a2.i = SA_FROM;	$$->a1.i = 1; }
+ | GW      { $$ = f_new_inst(); $$->aux = T_IP;         $$->a2.i = SA_GW;	$$->a1.i = 1; }
+ | NET     { $$ = f_new_inst(); $$->aux = T_PREFIX;     $$->a2.i = SA_NET; }
+ | PROTO   { $$ = f_new_inst(); $$->aux = T_STRING;     $$->a2.i = SA_PROTO; }
+ | SOURCE  { $$ = f_new_inst(); $$->aux = T_ENUM_RTS;   $$->a2.i = SA_SOURCE; }
+ | SCOPE   { $$ = f_new_inst(); $$->aux = T_ENUM_SCOPE; $$->a2.i = SA_SCOPE;	$$->a1.i = 1; }
+ | CAST    { $$ = f_new_inst(); $$->aux = T_ENUM_RTC;   $$->a2.i = SA_CAST; }
+ | DEST    { $$ = f_new_inst(); $$->aux = T_ENUM_RTD;   $$->a2.i = SA_DEST;	$$->a1.i = 1; }
+ | IFNAME  { $$ = f_new_inst(); $$->aux = T_STRING;     $$->a2.i = SA_IFNAME; }
+ | IFINDEX { $$ = f_new_inst(); $$->aux = T_INT;        $$->a2.i = SA_IFINDEX; }
  ;
 
 term:

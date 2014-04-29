@@ -175,6 +175,19 @@ void val_print(struct f_val v);
 #define T_SET 0x80
 #define T_PREFIX_SET 0x81
 
+
+#define SA_FROM		 1    
+#define SA_GW		 2      
+#define SA_NET		 3     
+#define SA_PROTO	 4   
+#define SA_SOURCE	 5  
+#define SA_SCOPE	 6   
+#define SA_CAST    	 7
+#define SA_DEST    	 8
+#define SA_IFNAME  	 9
+#define SA_IFINDEX    	10
+
+
 struct f_tree {
   struct f_tree *left, *right;
   struct f_val from, to;

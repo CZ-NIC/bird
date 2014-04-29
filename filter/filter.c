@@ -824,24 +824,23 @@ interpret(struct f_inst *what)
       ACCESS_RTE;
       struct rta *rta = (*f_rte)->attrs;
       res.type = what->aux;
-      switch(res.type) {
-      case T_IP:
-	res.val.px.ip = * (ip_addr *) ((char *) rta + what->a2.i);
-	break;
-      case T_ENUM:
-	res.val.i = * ((char *) rta + what->a2.i);
-	break;
-      case T_STRING:	/* Warning: this is a special case for proto attribute */
-	res.val.s = rta->proto->name;
-	break;
-      case T_PREFIX:	/* Warning: this works only for RT_IP prefix of network */
-	{
-	  res.val.px.ip = (*f_rte)->net->n.prefix;
-	  res.val.px.len = (*f_rte)->net->n.pxlen;
-	  break;
-	}
+
+      switch (what->a2.i)
+      {
+      case SA_FROM:	res.val.px.ip = rta->from; break;
+      case SA_GW:	res.val.px.ip = rta->gw; break;
+      case SA_NET:	res.val.px.ip = (*f_rte)->net->n.prefix;
+			res.val.px.len = (*f_rte)->net->n.pxlen; break;
+      case SA_PROTO:	res.val.s = rta->proto->name; break;
+      case SA_SOURCE:	res.val.i = rta->source; break;
+      case SA_SCOPE:	res.val.i = rta->scope; break;
+      case SA_CAST:	res.val.i = rta->cast; break;
+      case SA_DEST:	res.val.i = rta->dest; break;
+      case SA_IFNAME:	res.val.s = rta->iface ? rta->iface->name : ""; break;
+      case SA_IFINDEX:	res.val.i = rta->iface ? rta->iface->index : 0; break;
+
       default:
-	bug( "Invalid type for rta access (%x)", res.type );
+	bug("Invalid static attribute access (%x)", res.type);
       }
     }
     break;
@@ -850,19 +849,20 @@ interpret(struct f_inst *what)
     ONEARG;
     if (what->aux != v1.type)
       runtime( "Attempt to set static attribute to incompatible type" );
+
     f_rta_cow();
     {
       struct rta *rta = (*f_rte)->attrs;
-      ip_addr ip;
 
-      switch (what->aux) {
+      switch (what->a2.i)
+      {
+      case SA_FROM:
+	rta->from = v1.val.px.ip;
+	break;
 
-      case T_IP:
-	ip = v1.val.px.ip;
-
-	/* "gw" attribute? */
-	if (what->a2.i == OFFSETOF(struct rta, gw))
+      case SA_GW:
 	{
+	  ip_addr ip = v1.val.px.ip;
 	  neighbor *n = neigh_find(rta->proto, &ip, 0);
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
@@ -873,16 +873,13 @@ interpret(struct f_inst *what)
 	  rta->nexthops = NULL;
 	  rta->hostentry = NULL;
 	}
-	else /* or "from" attribute? */
-	  rta->from = ip;
-
 	break;
 
-      case T_ENUM_SCOPE:
+      case SA_SCOPE:
 	rta->scope = v1.val.i;
 	break;
 
-      case T_ENUM_RTD:
+      case SA_DEST:
 	i = v1.val.i;
 	if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
 	  runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
@@ -895,7 +892,7 @@ interpret(struct f_inst *what)
 	break;
 
       default:
-	bug( "Unknown type in set of static attribute" );
+	bug("Invalid static attribute access (%x)", res.type);
       }
     }
     break;

@@ -928,10 +928,16 @@ incompatible with each other (that is to prevent you from shooting in the foot).
 	  from 0 to 255. Literals of this type are written like IPv4
 	  addresses.
 
-	<tag/string/ This is a string of characters. There are no ways to modify strings in
-	  filters. You can pass them between functions, assign them to variables of type <cf/string/, print
-	  such variables, but you can't concatenate two strings. String literals
-	  are written as <cf/"This is a string constant"/.
+	<tag/string/ This is a string of characters. There are no ways
+	  to modify strings in filters. You can pass them between
+	  functions, assign them to variables of type <cf/string/,
+	  print such variables, use standard string comparison
+	  operations (e.g. <cf/=, !=, &lt;, &gt;, &lt;=, &gt;=/), but
+	  you can't concatenate two strings. String literals are
+	  written as <cf/"This is a string constant"/. Additionaly
+	  matching <cf/&tilde;/ operator could be used to match a
+	  string value against a shell pattern (represented also as a
+	  string).
 
 	<tag/ip/ This type can hold a single IP address. Depending on the compile-time configuration of BIRD you are using, it
 	  is either an IPv4 or IPv6 address. IP addresses are written in the standard notation (<cf/10.20.30.40/ or <cf/fec0:3:4::1/). You can apply special operator <cf>.mask(<M>num</M>)</cf>
@@ -1194,7 +1200,6 @@ undefined value is regarded as empty clist for most purposes.
 	what protocol has told me about this route. Possible values: <cf/RTS_DUMMY/, <cf/RTS_STATIC/, <cf/RTS_INHERIT/, <cf/RTS_DEVICE/, <cf/RTS_STATIC_DEVICE/, <cf/RTS_REDIRECT/, <cf/RTS_RIP/, <cf/RTS_OSPF/, <cf/RTS_OSPF_IA/, <cf/RTS_OSPF_EXT1/, <cf/RTS_OSPF_EXT2/, <cf/RTS_BGP/, <cf/RTS_PIPE/.
 
 	<tag><m/enum/ cast</tag>
-
 	Route type (Currently <cf/RTC_UNICAST/ for normal routes,
 	<cf/RTC_BROADCAST/, <cf/RTC_MULTICAST/, <cf/RTC_ANYCAST/ will
 	be used in the future for broadcast, multicast and anycast
@@ -1211,6 +1216,19 @@ undefined value is regarded as empty clist for most purposes.
 	administratively prohibited messages). Can be changed, but
 	only to <cf/RTD_BLACKHOLE/, <cf/RTD_UNREACHABLE/ or
 	<cf/RTD_PROHIBIT/.
+
+	<tag><m/string/ ifname</tag>
+	Name of the outgoing interface. Sink routes (like blackhole,
+	unreachable or prohibit) and multipath routes have no interface
+	associated with them, so <cf/ifname/ returns an empty string for
+	such routes. Read-only.
+
+	<tag><m/int/ ifindex</tag>
+	Index of the outgoing interface. System wide index of the
+	interface. May be used for interface matching, however
+	indexes might change on interface creation/removal. Zero is
+	returned for routes with undefined outgoing
+	interfaces. Read-only.
 
 	<tag><m/int/ igp_metric</tag>
 	The optional attribute that can be used to specify a distance
