@@ -1413,8 +1413,31 @@ i_same(struct f_inst *f1, struct f_inst *f2)
     }
     break;
   case 'C': 
-    if (val_compare(* (struct f_val *) f1->a1.p, * (struct f_val *) f2->a1.p))
-      return 0;
+    {
+      struct f_val *v1 = (struct f_val *) f1->a1.p;
+      struct f_val *v2 = (struct f_val *) f2->a1.p;
+
+      /* Handle some cases that are not handled by val_compare()
+         also T_PATH, T_CLIST and T_ECLIST does not work,
+         but you cannot easily create such constants */
+
+      if ((v1->type == T_SET) && (v2->type == T_SET))
+      {
+	if (!same_tree(v1->val.t, v2->val.t))
+	  return 0;
+	break;
+      }
+
+      if ((v1->type == T_PREFIX_SET) && (v2->type == T_PREFIX_SET))
+      {
+	if (!trie_same(v1->val.ti, v2->val.ti))
+	  return 0;
+	break;
+      }
+
+      if (val_compare(*v1 , *v2))
+	return 0;
+    }
     break;
   case 'V': 
     if (strcmp((char *) f1->a2.p, (char *) f2->a2.p))
