@@ -853,10 +853,29 @@ interpret(struct f_inst *what)
     f_rta_cow();
     {
       struct rta *rta = (*f_rte)->attrs;
+      ip_addr ip;
+
       switch (what->aux) {
 
       case T_IP:
-	* (ip_addr *) ((char *) rta + what->a2.i) = v1.val.px.ip;
+	ip = v1.val.px.ip;
+
+	/* "gw" attribute? */
+	if (what->a2.i == OFFSETOF(struct rta, gw))
+	{
+	  neighbor *n = neigh_find(rta->proto, &ip, 0);
+	  if (!n || (n->scope == SCOPE_HOST))
+	    runtime( "Invalid gw address" );
+
+	  rta->dest = RTD_ROUTER;
+	  rta->gw = ip;
+	  rta->iface = n->iface;
+	  rta->nexthops = NULL;
+	  rta->hostentry = NULL;
+	}
+	else /* or "from" attribute? */
+	  rta->from = ip;
+
 	break;
 
       case T_ENUM_SCOPE:
@@ -867,10 +886,12 @@ interpret(struct f_inst *what)
 	i = v1.val.i;
 	if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
 	  runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
+
 	rta->dest = i;
 	rta->gw = IPA_NONE;
 	rta->iface = NULL;
 	rta->nexthops = NULL;
+	rta->hostentry = NULL;
 	break;
 
       default:

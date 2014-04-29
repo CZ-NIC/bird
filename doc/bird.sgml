@@ -1169,7 +1169,7 @@ undefined value is regarded as empty clist for most purposes.
 	Preference of the route. Valid values are 0-65535. (See the chapter about routing tables.)
 
 	<tag><m/ip/ from</tag>
-	The router which the route has originated from. Read-only.
+	The router which the route has originated from.
 	
 	<tag><m/ip/ gw</tag>
 	Next hop packets routed using this route should be forwarded to.
