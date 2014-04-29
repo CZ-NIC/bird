@@ -178,6 +178,10 @@ init_commands(void)
     }
 
   input_init();
+
+  term_lns = (term_lns > 0) ? term_lns : 25;
+  term_cls = (term_cls > 0) ? term_cls : 80;
+
   init = 0;
 }
 

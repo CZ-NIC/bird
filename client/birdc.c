@@ -148,8 +148,8 @@ input_init(void)
   rl_callback_handler_install("bird> ", input_got_line);
 
   // rl_get_screen_size();
-  term_lns = LINES ? LINES : 25;
-  term_cls = COLS ? COLS : 80;
+  term_lns = LINES;
+  term_cls = COLS;
 
   prompt_active = 1;
 
