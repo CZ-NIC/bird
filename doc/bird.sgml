@@ -707,6 +707,9 @@ This argument can be omitted if there exists only a single instance.
 	that is routes, their metrics and (in case the <cf/all/ switch is given)
 	all their attributes.
 
+	<tag>show bfd sessions [<m/name/]</tag>
+	Show information about BFD sessions.
+
 	<p>You can specify a <m/prefix/ if you want to print routes for a
 	specific network. If you use <cf>for <m/prefix or IP/</cf>, you'll get
 	the entry which will be used for forwarding of packets to the given

@@ -718,9 +718,8 @@ bgp_start_neighbor(struct bgp_proto *p)
 {
   /* Called only for single-hop BGP sessions */
 
-  /* Remove this ? */
   if (ipa_zero(p->source_addr))
-    p->source_addr = p->neigh->iface->addr->ip; 
+    p->source_addr = p->neigh->ifa->ip; 
 
 #ifdef IPV6
   {

@@ -740,7 +740,7 @@ bfd_neigh_notify(struct neighbor *nb)
 
   if ((nb->scope > 0) && !n->req)
   {
-    ip_addr local = ipa_nonzero(n->local) ? n->local : nb->iface->addr->ip;
+    ip_addr local = ipa_nonzero(n->local) ? n->local : nb->ifa->ip;
     n->req = bfd_request_session(p->p.pool, n->addr, local, nb->iface, NULL, NULL);
   }
 
