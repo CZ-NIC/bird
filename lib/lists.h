@@ -51,6 +51,7 @@ typedef struct list {			/* In fact two overlayed nodes */
 void add_tail(list *, node *);
 void add_head(list *, node *);
 void rem_node(node *);
+void rem2_node(node *);
 void add_tail_list(list *, list *);
 void init_list(list *);
 void insert_node(node *, node *);

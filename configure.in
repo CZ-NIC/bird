@@ -42,7 +42,7 @@ AC_SUBST(exedir)
 AC_SUBST(srcdir_rel_mf)
 AC_SUBST(runtimedir)
 
-# all_protocols=bgp,ospf,pipe,radv,rip,static
+# all_protocols=bfd,bgp,ospf,pipe,radv,rip,static
 all_protocols=pipe,radv,rip,static
 
 if test "$with_protocols" = all ; then
@@ -78,7 +78,7 @@ if test "$bird_cflags_default" = yes ; then
 	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_fno_strict_aliasing, -fno-strict-aliasing)
 	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_fno_strict_overflow, -fno-strict-overflow)
 
-	CFLAGS="$CFLAGS -Wall -Wstrict-prototypes -Wno-parentheses"
+	CFLAGS="$CFLAGS -pthread -Wall -Wstrict-prototypes -Wno-parentheses"
 	BIRD_ADD_GCC_OPTION(bird_cv_c_option_wno_pointer_sign, -Wno-pointer-sign)
 	BIRD_ADD_GCC_OPTION(bird_cv_c_option_fno_strict_aliasing, -fno-strict-aliasing)
 	BIRD_ADD_GCC_OPTION(bird_cv_c_option_fno_strict_overflow, -fno-strict-overflow)

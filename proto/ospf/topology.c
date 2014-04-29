@@ -87,7 +87,8 @@ lsab_alloc(struct proto_ospf *po, unsigned size)
   if (po->lsab_used > po->lsab_size)
     {
       po->lsab_size = MAX(po->lsab_used, 2 * po->lsab_size);
-      po->lsab = mb_realloc(po->proto.pool, po->lsab, po->lsab_size);
+      po->lsab = po->lsab ? mb_realloc(po->lsab, po->lsab_size):
+	mb_alloc(po->proto.pool, po->lsab_size);
     }
   return ((byte *) po->lsab) + offset;
 }

@@ -46,6 +46,7 @@ typedef struct birdsock {
 
   int fd;				/* System-dependent data */
   int af;				/* Address family (AF_INET, AF_INET6 or 0 for non-IP) of fd */
+  int index;				/* Index in poll buffer */
   node n;
   void *rbuf_alloc, *tbuf_alloc;
   char *password;				/* Password for MD5 authentication */
@@ -95,6 +96,7 @@ extern int sk_priority_control;	/* Suggested priority for control traffic, shoul
 #define SKF_LADDR_TX	0x08	/* Allow to specify local address for TX packets */
 #define SKF_TTL_RX	0x10	/* Report TTL / Hop Limit for RX packets */
 
+#define SKF_THREAD	0x100	/* Socked used in thread, Do not add to main loop */
 
 /*
  *	Socket types		     SA SP DA DP IF  TTL SendTo	(?=may, -=must not, *=must)

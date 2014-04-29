@@ -37,6 +37,7 @@ typedef INTEGER_64 s64;
 typedef unsigned INTEGER_64 u64;
 typedef u8 byte;
 typedef u16 word;
+typedef unsigned int uint;
 
 #endif
 
