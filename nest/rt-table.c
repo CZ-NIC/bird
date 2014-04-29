@@ -643,6 +643,7 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
   struct proto *p = ah->proto;
   struct rtable *table = ah->table;
   struct proto_stats *stats = ah->stats;
+  static struct rate_limit rl_pipe;
   rte *before_old = NULL;
   rte *old_best = net->routes;
   rte *old = NULL;
@@ -666,7 +667,7 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, ea_list *tmpa, str
 	    {
 	      if (new)
 		{
-		  log(L_ERR "Pipe collision detected when sending %F to table %s",
+		  log_rl(&rl_pipe, L_ERR "Pipe collision detected when sending %F to table %s",
 		      &net->n, table->name);
 		  rte_free_quick(new);
 		}
@@ -1335,6 +1336,7 @@ rt_init(void)
 static inline int
 rt_prune_step(rtable *tab, int step, int *max_feed)
 {
+  static struct rate_limit rl_flush;
   struct fib_iterator *fit = &tab->prune_fit;
 
   DBG("Pruning route table %s\n", tab->name);
@@ -1369,7 +1371,7 @@ again:
 	      }
 
 	    if (step)
-	      log(L_WARN "Route %I/%d from %s still in %s after flush",
+	      log_rl(&rl_flush, L_WARN "Route %I/%d from %s still in %s after flush",
 		  n->n.prefix, n->n.pxlen, e->attrs->proto->name, tab->name);
 
 	    rte_discard(tab, e);
