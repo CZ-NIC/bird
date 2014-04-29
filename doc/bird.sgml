@@ -1486,6 +1486,16 @@ for each neighbor using the following configuration parameters:
 	This option requires that the connected routing table is
 	<ref id="dsc-sorted" name="sorted">. Default: off.
 
+	<tag>allow local as [<m/number/]</tag> 
+	BGP prevents routing loops by rejecting received routes with
+	the local AS number in the AS path. This option allows to
+	loose or disable the check. Optional <cf/number/ argument can
+	be used to specify the maximum number of local ASNs in the AS
+	path that is allowed for received routes. When the option is
+	used without the argument, the check is completely disabled
+	and you should ensure loop-free behavior by some other means.
+	Default: 0 (no local AS number allowed).
+
 	<tag>enable route refresh <m/switch/</tag> When BGP speaker
 	changes its import filter, it has to re-examine all routes
 	received from its neighbor against the new filter. As these

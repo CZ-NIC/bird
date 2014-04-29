@@ -950,8 +950,9 @@ bgp_create_attrs(struct bgp_proto *p, rte *e, ea_list **attrs, struct linpool *p
 static inline int
 bgp_as_path_loopy(struct bgp_proto *p, rta *a)
 {
+  int num = p->cf->allow_local_as + 1;
   eattr *e = ea_find(a->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
-  return (e && as_path_is_member(e->u.ptr, p->local_as));
+  return (e && (num > 0) && as_path_contains(e->u.ptr, p->local_as, num));
 }
 
 static inline int

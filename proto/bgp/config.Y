@@ -26,7 +26,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY,
 	PREFER, OLDER, MISSING, LLADDR, DROP, IGNORE, ROUTE, REFRESH,
 	INTERPRET, COMMUNITIES, BGP_ORIGINATOR_ID, BGP_CLUSTER_LIST, IGP,
 	TABLE, GATEWAY, DIRECT, RECURSIVE, MED, TTL, SECURITY, DETERMINISTIC,
-	SECONDARY)
+	SECONDARY, ALLOW)
 
 CF_GRAMMAR
 
@@ -108,6 +108,8 @@ bgp_proto:
  | bgp_proto PASSIVE bool ';' { BGP_CFG->passive = $3; }
  | bgp_proto INTERPRET COMMUNITIES bool ';' { BGP_CFG->interpret_communities = $4; }
  | bgp_proto SECONDARY bool ';' { BGP_CFG->secondary = $3; }
+ | bgp_proto ALLOW LOCAL AS ';' { BGP_CFG->allow_local_as = -1; }
+ | bgp_proto ALLOW LOCAL AS expr ';' { BGP_CFG->allow_local_as = $5; }
  | bgp_proto IGP TABLE rtable ';' { BGP_CFG->igp_table = $4; }
  | bgp_proto TTL SECURITY bool ';' { BGP_CFG->ttl_security = $4; }
  ;

@@ -244,10 +244,11 @@ as_path_get_first(struct adata *path, u32 *last_as)
 }
 
 int
-as_path_is_member(struct adata *path, u32 as)
+as_path_contains(struct adata *path, u32 as, int min)
 {
   u8 *p = path->data;
   u8 *q = p+path->length;
+  int num = 0;
   int i, n;
 
   while (p<q)
@@ -257,7 +258,8 @@ as_path_is_member(struct adata *path, u32 as)
       for(i=0; i<n; i++)
 	{
 	  if (get_as(p) == as)
-	    return 1;
+	    if (++num == min)
+	      return 1;
 	  p += BS;
 	}
     }

@@ -392,7 +392,7 @@ val_in_range(struct f_val v1, struct f_val v2)
     return as_path_match(v1.val.ad, v2.val.path_mask);
 
   if ((v1.type == T_INT) && (v2.type == T_PATH))
-    return as_path_is_member(v2.val.ad, v1.val.i);
+    return as_path_contains(v2.val.ad, v1.val.i, 1);
 
   if (((v1.type == T_PAIR) || (v1.type == T_QUAD)) && (v2.type == T_CLIST))
     return int_set_contains(v2.val.ad, v1.val.i);
