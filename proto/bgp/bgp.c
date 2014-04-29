@@ -743,6 +743,9 @@ bgp_neigh_notify(neighbor *n)
 {
   struct bgp_proto *p = (struct bgp_proto *) n->proto;
 
+  if (! (n->flags & NEF_STICKY))
+    return;
+
   if (n->scope > 0)
     {
       if ((p->p.proto_state == PS_START) && (p->start_state == BSS_PREPARE))
