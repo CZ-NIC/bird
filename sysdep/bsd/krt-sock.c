@@ -730,19 +730,20 @@ krt_read_addr(struct ks_msg *msg)
   masklen = ipv4 ? (ip4_masklen(ipa_to_ip4(imask)) + 96) : ip6_masklen(&imask);  // XXXX: Hack
   if (masklen < 0)
   {
-    log("Invalid masklen");
+    log(L_ERR "KIF: Invalid masklen %I for %s", imask, iface->name);
     return;
   }
 
-  // log("got %I/%I (%d)", iaddr, imask, masklen);
+  /* Clean up embedded interface ID returned in link-local address */
+  if (ipa_is_link_local(ifa.ip))
+    _I0(iaddr) = 0xfe800000;
+  if (ipa_is_link_local(ifa.brd))
+    _I0(ibrd) = 0xfe800000;
 
   bzero(&ifa, sizeof(ifa));
-
   ifa.iface = iface;
-
-  memcpy(&ifa.ip, &iaddr, sizeof(ip_addr));
+  ifa.ip = iaddr;
   ifa.pxlen = masklen;
-  memcpy(&ifa.brd, &ibrd, sizeof(ip_addr));
 
   scope = ipa_classify(ifa.ip);
   if (scope < 0)
@@ -751,13 +752,6 @@ krt_read_addr(struct ks_msg *msg)
     return;
   }
   ifa.scope = scope & IADDR_SCOPE_MASK;
-
-  /* Clean up embedded interface ID returned in link-local address */
-  if (ipa_is_link_local(ifa.ip))
-    _I0(ifa.ip) = 0xfe800000;
-  if (ipa_is_link_local(ifa.brd))
-    _I0(ifa.brd) = 0xfe800000;
-
 
   // maxlen = ipv4 ? BITS_PER_IP_ADDRESS4 : BITS_PER_IP_ADDRESS6;
   maxlen = BITS_PER_IP_ADDRESS; // XXXX: Hack
@@ -772,12 +766,15 @@ krt_read_addr(struct ks_msg *msg)
     if (ipv4 && masklen == (maxlen - 2))
       ifa.opposite = ipa_opposite_m2(ifa.ip);
 
+    if (iface->flags & IF_BROADCAST)
+      ifa.brd = ibrd;
+
     if (!(iface->flags & IF_MULTIACCESS))
-      ifa.opposite = ifa.brd;
+      ifa.opposite = ibrd;
   }
-  else if (!(iface->flags & IF_MULTIACCESS) && ipa_nonzero(ifa.brd))
+  else if (!(iface->flags & IF_MULTIACCESS) && ipa_nonzero(ibrd))
   {
-    ifa.prefix = ifa.opposite = ifa.brd;
+    ifa.prefix = ifa.opposite = ibrd;
     ifa.flags |= IA_PEER;
   }
   else
