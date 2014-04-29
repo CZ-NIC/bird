@@ -1165,7 +1165,34 @@ interpret(struct f_inst *what)
 
   case P('C','a'):	/* (Extended) Community list add or delete */
     TWOARGS;
-    if (v1.type == T_CLIST)
+    if (v1.type == T_PATH)
+    {
+      struct f_tree *set = NULL;
+      u32 key = 0;
+      int pos;
+
+      if (v2.type == T_INT)
+	key = v2.val.i;
+      else if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
+	set = v2.val.t;
+      else
+	runtime("Can't delete non-integer (set)");
+
+      switch (what->aux)
+      {
+      case 'a':	runtime("Can't add to path");
+      case 'd':	pos = 0; break;
+      case 'f':	pos = 1; break;
+      default:	bug("unknown Ca operation");
+      }
+
+      if (pos && !set)
+	runtime("Can't filter integer");
+
+      res.type = T_PATH;
+      res.val.ad = as_path_filter(f_pool, v1.val.ad, set, key, pos);
+    }
+    else if (v1.type == T_CLIST)
     {
       /* Community (or cluster) list */
       struct f_val dummy;

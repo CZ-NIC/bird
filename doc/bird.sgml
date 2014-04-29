@@ -1033,10 +1033,23 @@ incompatible with each other (that is to prevent you from shooting in the foot).
 
           <cf><m/P/.len</cf> returns the length of path <m/P/.
 
-          <cf>prepend(<m/P/,<m/A/)</cf> prepends ASN <m/A/ to path <m/P/ and returns the result.
+          <cf>prepend(<m/P/,<m/A/)</cf> prepends ASN <m/A/ to path
+          <m/P/ and returns the result.
+
+          <cf>delete(<m/P/,<m/A/)</cf> deletes all instances of ASN
+	  <m/A/ from from path <m/P/ and returns the result.
+	  <m/A/ may also be an integer set, in that case the
+	  operator deletes all ASNs from path <m/P/ that are also
+	  members of set <m/A/.
+
+          <cf>filter(<m/P/,<m/A/)</cf> deletes all ASNs from path
+	  <m/P/ that are not members of integer set <m/A/.
+	  I.e., <cf/filter/ do the same as <cf/delete/ with inverted
+	  set <m/A/.
+
           Statement <cf><m/P/ = prepend(<m/P/, <m/A/);</cf> can be shortened to
           <cf><m/P/.prepend(<m/A/);</cf> if <m/P/ is appropriate route attribute
-          (for example <cf/bgp_path/).
+          (for example <cf/bgp_path/). Similarly for <cf/delete/ and <cf/filter/.
 
 	<tag/bgpmask/
 	  BGP masks are patterns used for BGP path matching
