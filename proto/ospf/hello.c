@@ -133,16 +133,31 @@ ospf_hello_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
     return;
   }
 
-  /* XXXX */
-#ifdef OSPFv2
-  if (n && (n->rid != ntohl(pkt->routerid)))
+  /* Check consistency of existing neighbor entry */
+  if (n)
   {
-    OSPF_TRACE(D_EVENTS, "Neighbor %I has changed router id from %R to %R",
-	     n->ip, n->rid, ntohl(pkt->routerid));
-    ospf_neigh_remove(n);
-    n = NULL;
+    unsigned t = ifa->type;
+    if (ospf_is_v2(po) && ((t == OSPF_IT_BCAST) || (t == OSPF_IT_NBMA) || (t == OSPF_IT_PTMP)))
+    {
+      /* Neighbor identified by IP address; Router ID may change */
+      if (n->rid != ntohl(pkt->routerid))
+      {
+	OSPF_TRACE(D_EVENTS, "Neighbor %I has changed Router ID from %R to %R",
+		   n->ip, n->rid, ntohl(pkt->routerid));
+	ospf_neigh_remove(n);
+	n = NULL;
+      }
+    }
+    else /* OSPFv3 or OSPFv2/PtP */
+    {
+      /* Neighbor identified by Router ID; IP address may change */
+      if (!ipa_equal(faddr, n->ip))
+      {
+	OSPF_TRACE(D_EVENTS, "Neighbor address changed from %I to %I", n->ip, faddr);
+	n->ip = faddr;
+      }
+    }
   }
-#endif
 
   if (!n)
   {
@@ -182,15 +197,6 @@ ospf_hello_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
     if (n->ifa->cf->bfd)
       ospf_neigh_update_bfd(n, n->ifa->bfd);
   }
-
-  /* XXXX */
-#ifdef OSPFv3	/* NOTE: this could also be relevant for OSPFv2 on PtP ifaces */
-  else if (!ipa_equal(faddr, n->ip))
-  {
-    OSPF_TRACE(D_EVENTS, "Neighbor address changed from %I to %I", n->ip, faddr);
-    n->ip = faddr;
-  }
-#endif
 
   ospf_neigh_sm(n, INM_HELLOREC);
 
