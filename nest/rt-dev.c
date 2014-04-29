@@ -34,6 +34,9 @@ dev_ifa_notify(struct proto *p, unsigned c, struct ifa *ad)
     /* Empty list is automagically treated as "*" */
     return;
 
+  if (ad->flags & IA_SECONDARY)
+    return;
+
   if (ad->scope <= SCOPE_LINK)
     return;
 
