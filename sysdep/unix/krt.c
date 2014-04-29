@@ -847,12 +847,11 @@ static void
 krt_scan_timer_start(struct krt_proto *p)
 {
   if (!krt_scan_count)
-  {
     krt_scan_timer = tm_new_set(krt_pool, krt_scan, NULL, 0, KRT_CF->scan_time);
-    tm_start(krt_scan_timer, 0);
-  }
 
   krt_scan_count++;
+
+  tm_start(krt_scan_timer, 0);
 }
 
 static void

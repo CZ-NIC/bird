@@ -151,6 +151,9 @@ options. The most important ones are:
 
 	<tag>-g <m/group/</tag>
 	use that group ID, see the next section for details.
+
+	<tag>-f</tag>
+	run bird in foreground.
 </descrip>
 
 <p>BIRD writes messages about its work to log files or syslog (according to config).

@@ -601,16 +601,17 @@ signal_init(void)
  *	Parsing of command-line arguments
  */
 
-static char *opt_list = "c:dD:ps:P:u:g:";
+static char *opt_list = "c:dD:ps:P:u:g:f";
 static int parse_and_exit;
 char *bird_name;
 static char *use_user;
 static char *use_group;
+static int run_in_foreground = 0;
 
 static void
 usage(void)
 {
-  fprintf(stderr, "Usage: %s [-c <config-file>] [-d] [-D <debug-file>] [-p] [-s <control-socket>] [-P <pid-file>] [-u <user>] [-g <group>]\n", bird_name);
+  fprintf(stderr, "Usage: %s [-c <config-file>] [-d] [-D <debug-file>] [-p] [-s <control-socket>] [-P <pid-file>] [-u <user>] [-g <group>] [-f]\n", bird_name);
   exit(1);
 }
 
@@ -718,6 +719,9 @@ parse_args(int argc, char **argv)
       case 'g':
 	use_group = optarg;
 	break;
+      case 'f':
+	run_in_foreground = 1;
+	break;
       default:
 	usage();
       }
@@ -777,7 +781,7 @@ main(int argc, char **argv)
   if (parse_and_exit)
     exit(0);
 
-  if (!debug_flag)
+  if (!(debug_flag||run_in_foreground))
     {
       pid_t pid = fork();
       if (pid < 0)
