@@ -1228,7 +1228,6 @@ ospf_sh_state(struct proto *p, int verbose, int reachable)
 {
   struct proto_ospf *po = (struct proto_ospf *) p;
   int ospf2 = ospf_is_v2(po);
-  int num = po->gr->hash_entries;
   unsigned int i, ix, j1, j2, jx;
   u32 last_area = 0xFFFFFFFF;
 
@@ -1242,6 +1241,7 @@ ospf_sh_state(struct proto *p, int verbose, int reachable)
   /* We store interesting area-scoped LSAs in array hea and 
      global-scoped (LSA_T_EXT) LSAs in array hex */
 
+  int num = po->gr->hash_entries;
   struct top_hash_entry *hea[num];
   struct top_hash_entry *hex[verbose ? num : 0];
   struct top_hash_entry *he;
