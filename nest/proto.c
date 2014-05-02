@@ -1096,7 +1096,7 @@ proto_notify_state(struct proto *p, unsigned ps)
       if ((cs == FS_FEEDING) || (cs == FS_HAPPY))
 	proto_schedule_flush(p);
 
-      if (p->proto->multitable)
+      if (!p->proto->multitable)
 	{
 	  rt_unlock_source(p->main_source);
 	  p->main_source = NULL;
