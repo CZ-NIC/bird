@@ -39,14 +39,21 @@ static const int rate_limit_count = 5;
 #ifdef USE_PTHREADS
 
 #include <pthread.h>
+
 static pthread_mutex_t log_mutex;
 static inline void log_lock(void) { pthread_mutex_lock(&log_mutex); }
 static inline void log_unlock(void) { pthread_mutex_unlock(&log_mutex); }
+
+static pthread_t main_thread;
+void main_thread_init(void) { main_thread = pthread_self(); }
+static int main_thread_self(void) { return pthread_equal(pthread_self(), main_thread); }
 
 #else
 
 static inline void log_lock(void) {  }
 static inline void log_unlock(void) {  }
+void main_thread_init(void) { }
+static int main_thread_self(void) { return 1; }
 
 #endif
 
@@ -128,8 +135,9 @@ log_commit(int class, buffer *buf)
     }
   log_unlock();
 
-  /* FIXME: cli_echo is not thread-safe */
-  cli_echo(class, buf->start);
+  /* cli_echo is not thread-safe, so call it just from the main thread */
+  if (main_thread_self())
+    cli_echo(class, buf->start);
 
   buf->pos = buf->start;
 }

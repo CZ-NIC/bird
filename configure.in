@@ -54,7 +54,8 @@ fi
 AC_SUBST(CONFIG_FILE)
 AC_SUBST(CONTROL_SOCKET)
 
-AC_SEARCH_LIBS(clock_gettime,[c rt posix4])
+AC_SEARCH_LIBS(clock_gettime, [c rt posix4], ,
+	AC_MSG_ERROR([[Function clock_gettime not available.]]))
 
 AC_CANONICAL_HOST
 
@@ -240,8 +241,9 @@ if test "$enable_client" = yes ; then
 	AC_CHECK_LIB(ncurses, tgetent, USE_TERMCAP_LIB=-lncurses,
 		AC_CHECK_LIB(curses, tgetent, USE_TERMCAP_LIB=-lcurses,
 			AC_CHECK_LIB(tinfow, tgetent, USE_TERMCAP_LIB=-ltinfow,
-				AC_CHECK_LIB(tinfo, tgetent, USE_TERMCAP_LIB=-ltinfo
-					AC_CHECK_LIB(termcap, tgetent, USE_TERMCAP_LIB=-ltermcap)))))
+				AC_CHECK_LIB(tinfo, tgetent, USE_TERMCAP_LIB=-ltinfo,
+					AC_CHECK_LIB(termcap, tgetent, USE_TERMCAP_LIB=-ltermcap,
+						AC_MSG_ERROR([[The client requires ncurses library. Either install the library or use --disable-client to compile without the client.]]))))))
 	AC_CHECK_LIB(readline, rl_callback_read_char, CLIENT_LIBS="-lreadline $CLIENT_LIBS $USE_TERMCAP_LIB",
 		AC_MSG_ERROR([[The client requires GNU readline library 2.1 or newer. Either install the library or use --disable-client to compile without the client.]]), $USE_TERMCAP_LIB)
 	AC_CHECK_LIB(readline, rl_crlf, AC_DEFINE(HAVE_RL_CRLF),,$USE_TERMCAP_LIB)
