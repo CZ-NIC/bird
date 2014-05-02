@@ -600,7 +600,7 @@ krt_read_ifannounce(struct ks_msg *msg)
 }
 
 static void
-krt_read_ifinfo(struct ks_msg *msg)
+krt_read_ifinfo(struct ks_msg *msg, int scan)
 {
   struct if_msghdr *ifm = (struct if_msghdr *)&msg->rtm;
   void *body = (void *)(ifm + 1);
@@ -673,11 +673,14 @@ krt_read_ifinfo(struct ks_msg *msg)
   else
     f.flags |= IF_MULTIACCESS;      /* NBMA */
 
-  if_update(&f);
+  iface = if_update(&f);
+
+  if (!scan)
+    if_end_partial_update(iface);
 }
 
 static void
-krt_read_addr(struct ks_msg *msg)
+krt_read_addr(struct ks_msg *msg, int scan)
 {
   struct ifa_msghdr *ifam = (struct ifa_msghdr *)&msg->rtm;
   void *body = (void *)(ifam + 1);
@@ -787,6 +790,9 @@ krt_read_addr(struct ks_msg *msg)
     ifa_update(&ifa);
   else
     ifa_delete(&ifa);
+
+  if (!scan)
+    if_end_partial_update(iface);
 }
 
 static void
@@ -806,11 +812,11 @@ krt_read_msg(struct proto *p, struct ks_msg *msg, int scan)
       krt_read_ifannounce(msg);
       break;
     case RTM_IFINFO:
-      krt_read_ifinfo(msg);
+      krt_read_ifinfo(msg, scan);
       break;
     case RTM_NEWADDR:
     case RTM_DELADDR:
-      krt_read_addr(msg);
+      krt_read_addr(msg, scan);
       break;
     default:
       break;

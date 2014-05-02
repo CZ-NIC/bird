@@ -453,12 +453,16 @@ nl_parse_link(struct nlmsghdr *h, int scan)
 	f.flags |= IF_MULTIACCESS | IF_BROADCAST | IF_MULTICAST;
       else
 	f.flags |= IF_MULTIACCESS;	/* NBMA */
-      if_update(&f);
+
+      ifi = if_update(&f);
+
+      if (!scan)
+	if_end_partial_update(ifi);
     }
 }
 
 static void
-nl_parse_addr(struct nlmsghdr *h)
+nl_parse_addr(struct nlmsghdr *h, int scan)
 {
   struct ifaddrmsg *i;
   struct rtattr *a[IFA_ANYCAST+1];
@@ -549,10 +553,15 @@ nl_parse_addr(struct nlmsghdr *h)
   DBG("KIF: IF%d(%s): %s IPA %I, flg %x, net %I/%d, brd %I, opp %I\n",
       ifa.iface->index, ifa.iface->name, new ? "added" : "removed",
       ifa.ip, ifa.flags, ifa.prefix, ifa.pxlen, ifa.brd, ifa.opposite);
+
   if (new)
     ifa_update(&ifa);
   else
     ifa_delete(&ifa);
+
+  if (!scan)
+    if_end_partial_update(ifa.iface);
+
   return;
 
  malformed:
@@ -580,14 +589,14 @@ kif_do_scan(struct kif_proto *p UNUSED)
   nl_request_dump(PF_INET, RTM_GETADDR);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
-      nl_parse_addr(h);
+      nl_parse_addr(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
 
   nl_request_dump(PF_INET6, RTM_GETADDR);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
-      nl_parse_addr(h);
+      nl_parse_addr(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
 
@@ -1000,7 +1009,7 @@ nl_async_msg(struct nlmsghdr *h)
     case RTM_NEWADDR:
     case RTM_DELADDR:
       DBG("KRT: Received async address notification (%d)\n", h->nlmsg_type);
-      nl_parse_addr(h);
+      nl_parse_addr(h, 0);
       break;
     default:
       DBG("KRT: Received unknown async notification (%d)\n", h->nlmsg_type);
