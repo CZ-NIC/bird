@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include "nest/route.h"
 #include "nest/bfd.h"
+#include "lib/hash.h"
 
 struct linpool;
 struct eattr;
@@ -118,10 +119,8 @@ struct bgp_proto {
   struct timer *startup_timer;		/* Timer used to delay protocol startup due to previous errors (startup_delay) */
   struct bgp_bucket **bucket_hash;	/* Hash table of attribute buckets */
   unsigned int hash_size, hash_count, hash_limit;
-  // struct fib prefix_fib;		/* Prefixes to be sent */
-  struct bgp_prefix **prefix_table;	/* Prefixes to be sent */
+  HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
   slab *prefix_slab;			/* Slab holding prefix nodes */
-  u32 px_hash_order, px_hash_count;
   list bucket_queue;			/* Queue of buckets to send */
   struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
   unsigned startup_delay;		/* Time to delay protocol startup by due to errors */

@@ -58,6 +58,7 @@
  * bgp_reconstruct_4b_attrs()).
  */
 
+
 static byte bgp_mandatory_attrs[] = { BA_ORIGIN, BA_AS_PATH
 #ifndef IPV6
 ,BA_NEXT_HOP
@@ -875,70 +876,40 @@ bgp_free_bucket(struct bgp_proto *p, struct bgp_bucket *buck)
 
 /* Prefix hash table */
 
-static inline u32 prefix_hash(ip_addr prefix, int pxlen, u32 path_id, u32 order)
-{
-  u32 x = ipa_hash(prefix) + pxlen + path_id;
-  return (x * 2902958171u) >> (32 - order);
-}
+#define PXH_KEY(n1)		n1->n.prefix, n1->n.pxlen, n1->path_id
+#define PXH_NEXT(n)		n->next
+#define PXH_EQ(p1,l1,i1,p2,l2,i2) ipa_equal(p1, p2) && l1 == l2 && i1 == i2
+#define PXH_FN(p,l,i)		ipa_hash32(p) ^ u32_hash((l << 16) ^ i)
 
-static inline u32 px_hash_size(struct bgp_proto *p)
-{ return 1 << p->px_hash_order; }
+#define PXH_REHASH		bgp_pxh_rehash
+#define PXH_PARAMS		/8, *2, 2, 2, 8, 20
+
+
+HASH_DEFINE_REHASH_FN(PXH, struct bgp_prefix)
 
 void
 bgp_init_prefix_table(struct bgp_proto *p, u32 order)
 {
-  p->px_hash_count = 0;
-  p->px_hash_order = order;
-  p->prefix_table = mb_allocz(p->p.pool, px_hash_size(p) * sizeof(struct bgp_prefix *));
+  HASH_INIT(p->prefix_hash, p->p.pool, order);
+
   p->prefix_slab = sl_new(p->p.pool, sizeof(struct bgp_prefix));
-}
-
-static void
-bgp_rehash_prefix_table(struct bgp_proto *p, int step)
-{
-  struct bgp_prefix **old_tab, *px, *px_next;
-  u32 old_size, hash, i;
-
-  old_tab = p->prefix_table;
-  old_size = px_hash_size(p);
-
-  p->px_hash_order += step;
-  p->prefix_table = mb_allocz(p->p.pool, px_hash_size(p) * sizeof(struct bgp_prefix *));
-  
-  for (i = 0; i < old_size; i++)
-    for (px = old_tab[i]; px; px = px_next)
-      {
-	px_next = px->next;
-	hash = prefix_hash(px->n.prefix, px->n.pxlen, px->path_id, p->px_hash_order);
-	px->next = p->prefix_table[hash];
-	p->prefix_table[hash] = px;
-      }
-
-  mb_free(old_tab);
 }
 
 static struct bgp_prefix *
 bgp_get_prefix(struct bgp_proto *p, ip_addr prefix, int pxlen, u32 path_id)
 {
-  struct bgp_prefix *bp;
-  u32 hash = prefix_hash(prefix, pxlen, path_id, p->px_hash_order);
+  struct bgp_prefix *bp = HASH_FIND(p->prefix_hash, PXH, prefix, pxlen, path_id);
 
-  for (bp = p->prefix_table[hash]; bp; bp = bp->next)
-    if (bp->n.pxlen == pxlen && ipa_equal(bp->n.prefix, prefix) && bp->path_id == path_id)
-      return bp;
+  if (bp)
+    return bp;
 
   bp = sl_alloc(p->prefix_slab);
   bp->n.prefix = prefix;
   bp->n.pxlen = pxlen;
   bp->path_id = path_id;
-  bp->next = p->prefix_table[hash];
-  p->prefix_table[hash] = bp;
-
   bp->bucket_node.next = NULL;
 
-  p->px_hash_count++;
-  if ((p->px_hash_count > px_hash_size(p)) && (p->px_hash_order < 18))
-    bgp_rehash_prefix_table(p, 1);
+  HASH_INSERT2(p->prefix_hash, PXH, p->p.pool, bp);
 
   return bp;
 }
@@ -946,19 +917,8 @@ bgp_get_prefix(struct bgp_proto *p, ip_addr prefix, int pxlen, u32 path_id)
 void
 bgp_free_prefix(struct bgp_proto *p, struct bgp_prefix *bp)
 {
-  struct bgp_prefix **bpp;
-  u32 hash = prefix_hash(bp->n.prefix, bp->n.pxlen, bp->path_id, p->px_hash_order);
-
-  for (bpp = &p->prefix_table[hash]; *bpp; *bpp = (*bpp)->next)
-    if (*bpp == bp)
-      break;
-
-  *bpp = bp->next;
+  HASH_REMOVE2(p->prefix_hash, PXH, p->p.pool, bp);
   sl_free(p->prefix_slab, bp);
-
-  p->px_hash_count--;
-  if ((p->px_hash_count < (px_hash_size(p) / 4)) && (p->px_hash_order > 10))
-    bgp_rehash_prefix_table(p, -1);
 }
 
 

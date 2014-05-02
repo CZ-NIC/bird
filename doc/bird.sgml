@@ -1677,7 +1677,7 @@ for each neighbor using the following configuration parameters:
 	attributes to be transparent (for example does not prepend its AS number to
 	AS PATH attribute and keeps MED attribute). Default: disabled.
 
-	<tag>secondary <m/switch/</tag> Usually, if an import filter
+	<tag>secondary <m/switch/</tag> Usually, if an export filter
 	rejects a selected route, no other route is propagated for
 	that network. This option allows to try the next route in
 	order until one that is accepted is found or all routes for
@@ -1686,6 +1686,15 @@ for each neighbor using the following configuration parameters:
 	not want to have these tables explicitly (to conserve memory).
 	This option requires that the connected routing table is
 	<ref id="dsc-sorted" name="sorted">. Default: off.
+
+	<tag>add paths <m/switch/|rx|tx</tag>
+	Standard BGP can propagate only one path (route) per destination network
+	(usually the selected one). This option controls the add-path protocol
+	extension, which allows to advertise any number of paths to a
+	destination. Note that to be active, add-path has to be enabled on both
+	sides of the BGP session, but it could be enabled separately for RX and
+	TX direction. When active, all available routes accepted by the export
+	filter are advertised to the neighbor. Default: off.
 
 	<tag>allow local as [<m/number/]</tag> 
 	BGP prevents routing loops by rejecting received routes with

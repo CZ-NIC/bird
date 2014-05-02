@@ -51,6 +51,7 @@
 #include "nest/cli.h"
 #include "nest/attrs.h"
 #include "lib/alloca.h"
+#include "lib/hash.h"
 #include "lib/resource.h"
 #include "lib/string.h"
 
@@ -63,14 +64,20 @@ static slab *rte_src_slab;
 /* rte source ID bitmap */
 static u32 *src_ids;
 static u32 src_id_size, src_id_used, src_id_pos;
-#define SRC_ID_SIZE_DEF 4
+#define SRC_ID_INIT_SIZE 4
 
 /* rte source hash */
-static struct rte_src **src_table;
-static u32 src_hash_order, src_hash_size, src_hash_count;
-#define SRC_HASH_ORDER_DEF 6
-#define SRC_HASH_ORDER_MAX 18
-#define SRC_HASH_ORDER_MIN 10
+
+#define RSH_KEY(n)		n->proto, n->private_id
+#define RSH_NEXT(n)		n->next
+#define RSH_EQ(p1,n1,p2,n2)	p1 == p2 && n1 == n2
+#define RSH_FN(p,n)		p->hash_key ^ u32_hash(n)
+
+#define RSH_REHASH		rte_src_rehash
+#define RSH_PARAMS		/2, *2, 1, 1, 8, 20
+#define RSH_INIT_ORDER		6
+
+static HASH(struct rte_src) src_hash;
 
 struct protocol *attr_class_to_protocol[EAP_MAX];
 
@@ -81,17 +88,14 @@ rte_src_init(void)
   rte_src_slab = sl_new(rta_pool, sizeof(struct rte_src));
 
   src_id_pos = 0;
-  src_id_size = SRC_ID_SIZE_DEF;
+  src_id_size = SRC_ID_INIT_SIZE;
   src_ids = mb_allocz(rta_pool, src_id_size * sizeof(u32));
 
  /* ID 0 is reserved */
   src_ids[0] = 1;
   src_id_used = 1;
 
-  src_hash_count = 0;
-  src_hash_order = SRC_HASH_ORDER_DEF;
-  src_hash_size = 1 << src_hash_order;
-  src_table = mb_allocz(rta_pool, src_hash_size * sizeof(struct rte_src *));
+  HASH_INIT(src_hash, rta_pool, RSH_INIT_ORDER);
 }
 
 static inline int u32_cto(unsigned int x) { return ffs(~x) - 1; }
@@ -141,104 +145,49 @@ rte_src_free_id(u32 id)
   src_id_used--;
 }
 
-static inline u32 rte_src_hash(struct proto *p, u32 x, u32 order)
-{ return (x * 2902958171u) >> (32 - order); }
 
-static void
-rte_src_rehash(int step)
-{
-  struct rte_src **old_tab, *src, *src_next;
-  u32 old_size, hash, i;
-
-  old_tab = src_table;
-  old_size = src_hash_size;
-
-  src_hash_order += step;
-  src_hash_size = 1 << src_hash_order;
-  src_table = mb_allocz(rta_pool, src_hash_size * sizeof(struct rte_src *));
-  
-  for (i = 0; i < old_size; i++)
-    for (src = old_tab[i]; src; src = src_next)
-      {
-	src_next = src->next;
-	hash = rte_src_hash(src->proto, src->private_id, src_hash_order);
-	src->next = src_table[hash];
-	src_table[hash] = src;
-      }
-
-  mb_free(old_tab);
-}
+HASH_DEFINE_REHASH_FN(RSH, struct rte_src)
 
 struct rte_src *
 rt_find_source(struct proto *p, u32 id)
 {
-  struct rte_src *src;
-  u32 hash = rte_src_hash(p, id, src_hash_order);
-
-  for (src = src_table[hash]; src; src = src->next)
-    if ((src->proto == p) && (src->private_id == id))
-      return src;
-
-  return NULL;
+  return HASH_FIND(src_hash, RSH, p, id);
 }
 
 struct rte_src *
 rt_get_source(struct proto *p, u32 id)
 {
-  struct rte_src *src;
-  u32 hash = rte_src_hash(p, id, src_hash_order);
+  struct rte_src *src = rt_find_source(p, id);
 
-  for (src = src_table[hash]; src; src = src->next)
-    if ((src->proto == p) && (src->private_id == id))
-      return src;
+  if (src)
+    return src;
 
   src = sl_alloc(rte_src_slab);
   src->proto = p;
   src->private_id = id;
   src->global_id = rte_src_alloc_id();
   src->uc = 0;
-
-  src->next = src_table[hash];
-  src_table[hash] = src;
-
-  src_hash_count++;
-  if ((src_hash_count > src_hash_size) && (src_hash_order < SRC_HASH_ORDER_MAX))
-    rte_src_rehash(1);
+  
+  HASH_INSERT2(src_hash, RSH, rta_pool, src);
 
   return src;
-}
-
-static inline void
-rt_remove_source(struct rte_src **sp)
-{
-  struct rte_src *src = *sp;
-
-  *sp = src->next;
-  rte_src_free_id(src->global_id);
-  sl_free(rte_src_slab, src);
-  src_hash_count--;
 }
 
 void
 rt_prune_sources(void)
 {
-  struct rte_src **sp;
-  int i;
-  
-  for (i = 0; i < src_hash_size; i++)
+  HASH_WALK_FILTER(src_hash, next, src, sp)
+  {
+    if (src->uc == 0)
     {
-      sp = &src_table[i];
-      while (*sp)
-	{
-	  if ((*sp)->uc == 0)
-	    rt_remove_source(sp);
-	  else
-	    sp = &(*sp)->next;
-	}
+      HASH_DO_REMOVE(src_hash, RSH, sp);
+      rte_src_free_id(src->global_id);
+      sl_free(rte_src_slab, src);
     }
+  }
+  HASH_WALK_FILTER_END;
 
-  while ((src_hash_count < (src_hash_size / 4)) && (src_hash_order > SRC_HASH_ORDER_MIN))
-    rte_src_rehash(-1);
+  HASH_MAY_RESIZE_DOWN(src_hash, RSH, rta_pool);
 }
 
 

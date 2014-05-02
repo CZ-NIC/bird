@@ -200,6 +200,15 @@ static inline unsigned ip4_hash(ip4_addr a)
   return x & 0xffff;
 }
 
+static inline u32 ip4_hash32(ip4_addr a)
+{
+  /* Returns a 32-bit value, although low-order bits are not mixed */
+  u32 x = _I(a); 
+  x ^= x << 16;
+  x ^= x << 12;
+  return x;
+}
+
 /*
  *  This hash function looks well, but once IPv6 enters
  *  mainstream use, we need to check that it has good
@@ -211,6 +220,13 @@ static inline unsigned ip6_hash(ip6_addr a)
   /* Returns a 16-bit hash key */
   u32 x = _I0(a) ^ _I1(a) ^ _I2(a) ^ _I3(a);
   return (x ^ (x >> 16) ^ (x >> 8)) & 0xffff;
+}
+
+static inline u32 ip6_hash32(ip6_addr a)
+{
+  /* Returns a 32-bit hash key, although low-order bits are not mixed */
+  u32 x = _I0(*a) ^ _I1(*a) ^ _I2(*a) ^ _I3(*a);
+  return x ^ (x << 16) ^ (x << 24);
 }
 
 
