@@ -634,8 +634,8 @@ ospf_lsupd_rxmt(struct ospf_neighbor *n)
     if (!en)
     {
       /* Probably flushed LSA, this should not happen */
-      log(L_WARN "%s: LSA disappeared (Type: %04x, Id: %R, Rt: %R)",
-	  po->proto.name, ret->lsa_type, ret->lsa.id, ret->lsa.rt);
+      // log(L_WARN "%s: LSA disappeared (Type: %04x, Id: %R, Rt: %R)",
+      //     po->proto.name, ret->lsa_type, ret->lsa.id, ret->lsa.rt);
 
       XXXX(); /* remove entry */
       continue;
