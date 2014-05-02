@@ -505,7 +505,6 @@ r_args:
      if ($$->export_mode) cf_error("Protocol specified twice");
      if ($3->class != SYM_PROTO || !c->proto) cf_error("%s is not a protocol", $3->name);
      $$->export_mode = $2;
-     $$->primary_only = 1;
      $$->export_protocol = c->proto;
      $$->running_on_config = c->proto->cf->global;
    }

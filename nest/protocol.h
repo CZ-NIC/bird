@@ -424,6 +424,7 @@ struct proto_limit {
 };
 
 void proto_notify_limit(struct announce_hook *ah, struct proto_limit *l, int dir, u32 rt_count);
+void proto_verify_limits(struct announce_hook *ah);
 
 static inline void
 proto_reset_limit(struct proto_limit *l)

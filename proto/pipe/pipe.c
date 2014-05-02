@@ -235,12 +235,14 @@ pipe_reconfigure(struct proto *P, struct proto_config *new)
     {
       P->main_ahook->out_filter = new->out_filter;
       P->main_ahook->in_limit = new->in_limit;
+      proto_verify_limits(P->main_ahook);
     }
 
   if (p->peer_ahook)
     {
       p->peer_ahook->out_filter = new->in_filter;
       p->peer_ahook->in_limit = new->out_limit;
+      proto_verify_limits(p->peer_ahook);
     }
 
   if ((P->proto_state != PS_UP) || (proto_reconfig_type == RECONFIG_SOFT))

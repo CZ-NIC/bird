@@ -2326,60 +2326,83 @@ static void
 rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 {
   rte *e, *ee;
-  byte prefix[MAX_ADDRESS_P_LENGTH];
-  struct announce_hook *a;
-  int ok;
+  byte prefix[MAX_ADDRESS_P_LENGTH+8];
+  struct ea_list *tmpa;
+  struct announce_hook *a = NULL;
+  int first = 1;
+  int pass = 0;
 
   fn_print(prefix, sizeof(prefix), &n->n);
 
-  for(e=n->routes; e; e=e->next)
+  if (d->export_mode)
+    {
+      a = proto_find_announce_hook(d->export_protocol, d->table);
+      if (!a)
+	return;
+    }
+
+  for (e = n->routes; e; e = e->next)
     {
       if (rte_is_filtered(e) != d->filtered)
 	continue;
 
-      struct ea_list *tmpa;
-      struct rte_src *src = e->attrs->src;
-      struct proto *p1 = d->export_protocol;
-      struct proto *p2 = d->show_protocol;
-
-      if (prefix[0])
-	d->net_counter++;
       d->rt_counter++;
+      d->net_counter += first;
+      first = 0;
+
+      if (pass)
+	continue;
+
       ee = e;
       rte_update_lock();		/* We use the update buffer for filtering */
       tmpa = make_tmp_attrs(e, rte_update_pool);
-      ok = f_run(d->filter, &e, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) <= F_ACCEPT;
-      if (p2 && p2 != src->proto) ok = 0;
-      if (ok && d->export_mode)
-	{
-	  int ic;
-	  if ((ic = p1->import_control ? p1->import_control(p1, &e, &tmpa, rte_update_pool) : 0) < 0)
-	    ok = 0;
-	  else if (!ic && d->export_mode > 1)
-	    {
-	      /* FIXME - this shows what should be exported according
-		 to current filters, but not what was really exported.
-		 'configure soft' command may change the export filter
-		 and do not update routes */
 
-	      if ((a = proto_find_announce_hook(p1, d->table)) && 
-		  (f_run(a->out_filter, &e, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) > F_ACCEPT))
-		ok = 0;
+      if (d->export_mode)
+	{
+	  struct proto *ep = d->export_protocol;
+	  int ic = ep->import_control ? ep->import_control(ep, &e, &tmpa, rte_update_pool) : 0;
+
+	  if (ep->accept_ra_types == RA_OPTIMAL)
+	    pass = 1;
+
+	  if (ic < 0)
+	    goto skip;
+
+	  if (d->export_mode > 1)
+	    {
+	      /*
+	       * FIXME - This shows what should be exported according to current
+	       * filters, but not what was really exported. 'configure soft'
+	       * command may change the export filter and do not update routes.
+	       */
+
+	      if (!ic && (f_run(a->out_filter, &e, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) > F_ACCEPT))
+		goto skip;
+
+	      if (ep->accept_ra_types == RA_ACCEPTED)
+		pass = 1;
 	    }
 	}
-      if (ok)
-	{
-	  d->show_counter++;
-	  if (d->stats < 2)
-	    rt_show_rte(c, prefix, e, d, tmpa);
-	  prefix[0] = '\0';
-	}
+
+      if (d->show_protocol && (d->show_protocol != e->attrs->src->proto))
+	goto skip;
+
+      if (f_run(d->filter, &e, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) > F_ACCEPT)
+	goto skip;
+
+      d->show_counter++;
+      if (d->stats < 2)
+	rt_show_rte(c, prefix, e, d, tmpa);
+      prefix[0] = '\0';
+
+    skip:
       if (e != ee)
       {
 	rte_free(e);
 	e = ee;
       }
       rte_update_unlock();
+
       if (d->primary_only)
 	break;
     }
@@ -2441,9 +2464,13 @@ rt_show(struct rt_show_data *d)
   net *n;
 
   /* Default is either a master table or a table related to a respective protocol */
-  if ((!d->table) && d->export_protocol) d->table = d->export_protocol->table;
-  if ((!d->table) && d->show_protocol) d->table = d->show_protocol->table;
+  if (!d->table && d->export_protocol) d->table = d->export_protocol->table;
+  if (!d->table && d->show_protocol) d->table = d->show_protocol->table;
   if (!d->table) d->table = config->master_rtc->table;
+
+  /* Filtered routes are neither exported nor have sensible ordering */
+  if (d->filtered && (d->export_mode || d->primary_only))
+    cli_msg(0, "");
 
   if (d->pxlen == 256)
     {
