@@ -1236,7 +1236,7 @@ proto_want_core_up(struct proto *p)
 static void
 proto_want_export_up(struct proto *p)
 {
-  ASSERT(p->core_state == CS_HAPPY);
+  ASSERT(p->core_state == FS_HAPPY);
   ASSERT(p->export_state == ES_DOWN);
 
   proto_link_ahooks(p);
@@ -1259,7 +1259,7 @@ proto_want_export_down(struct proto *p)
 static void
 proto_want_core_down(struct proto *p)
 {
-  ASSERT(p->core_state == CS_HAPPY);
+  ASSERT(p->core_state == FS_HAPPY);
   ASSERT(p->export_state == ES_DOWN);
 
   p->core_state = FS_FLUSHING;

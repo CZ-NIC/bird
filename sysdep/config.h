@@ -7,7 +7,7 @@
 #define _BIRD_CONFIG_H_
 
 /* BIRD version */
-#define BIRD_VERSION "1.4.2"
+#define BIRD_VERSION "1.4.3"
 
 // XXXX temporary define
 #define IPV1 1

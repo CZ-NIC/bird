@@ -1082,7 +1082,7 @@ bgp_do_rx_update(struct bgp_conn *conn,
 {
   struct bgp_proto *p = conn->bgp;
   struct rte_src *src = p->p.main_source;
-  rta *a0, *a;
+  rta *a0, *a = NULL;
   ip_addr prefix;
   int pxlen, err = 0;
   u32 path_id = 0;
@@ -1115,7 +1115,6 @@ bgp_do_rx_update(struct bgp_conn *conn,
   if (a0 && ! bgp_set_next_hop(p, a0))
     a0 = NULL;
 
-  a = NULL;
   last_id = 0;
   src = p->p.main_source;
 
@@ -1187,7 +1186,7 @@ bgp_do_rx_update(struct bgp_conn *conn,
   byte *start, *x;
   int len, len0;
   unsigned af, sub;
-  rta *a0, *a;
+  rta *a0, *a = NULL;
   ip_addr prefix;
   int pxlen, err = 0;
   u32 path_id = 0;
@@ -1234,7 +1233,6 @@ bgp_do_rx_update(struct bgp_conn *conn,
       if (a0 && ! bgp_set_next_hop(p, a0))
 	a0 = NULL;
 
-      a = NULL;
       last_id = 0;
       src = p->p.main_source;
 

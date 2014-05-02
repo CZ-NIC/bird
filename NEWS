@@ -1,3 +1,6 @@
+Version 1.4.3 (2014-04-14)
+  o Important bugfix in IPv6 BGP.
+
 Version 1.4.2 (2014-04-02)
   o Important bugfix in BFD.
 
