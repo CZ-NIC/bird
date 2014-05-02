@@ -24,6 +24,17 @@ static list *this_p_list;
 static struct password_item *this_p_item;
 static int password_id;
 
+static void
+iface_patt_check(void)
+{
+  struct iface_patt_node *pn;
+
+  WALK_LIST(pn, this_ipatt->ipn_list)
+    if (!pn->pattern || pn->pxlen)
+      cf_error("Interface name/mask expected, not IP prefix");
+}
+
+
 static inline void
 reset_passwords(void)
 {
@@ -278,6 +289,9 @@ iface_patt_list:
    iface_patt_node
  | iface_patt_list ',' iface_patt_node
  ;
+
+/* For name/mask-only iface patterns */
+iface_patt_list_nopx: iface_patt_list { iface_patt_check(); }
 
 iface_patt_init: {
    /* Generic this_ipatt init */

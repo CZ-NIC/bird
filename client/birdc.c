@@ -29,7 +29,6 @@ static int prompt_active;
 /* HACK: libreadline internals we need to access */
 extern int _rl_vis_botlin;
 extern void _rl_move_vert(int);
-extern Function *rl_last_func;
 
 static void
 add_history_dedup(char *cmd)

@@ -1,3 +1,14 @@
+Version 1.4.2 (2014-04-02)
+  o Important bugfix in BFD.
+
+Version 1.4.1 (2014-03-31)
+  o BGP add-path support (RFC draft).
+  o BGP graceful restart (RFC 4724).
+  o OSPF: many changes in socket layer.
+  o OSPF: support for secondary addresses in BSD.
+  o OSPF: names for vlink pseudointerfaces (vlinkX).
+  o Several bugfixes.
+
 Version 1.4.0 (2013-11-25)
   o BFD protocol (RFC 5880).
   o BFD support for OSPF and BGP.

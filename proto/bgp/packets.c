@@ -1201,7 +1201,7 @@ bgp_do_rx_update(struct bgp_conn *conn,
     return;
 
   /* Check for End-of-RIB marker */
-  if ((attr_len < 8) && !withdrawn_len && !attr_len &&
+  if ((attr_len < 8) && !withdrawn_len && !nlri_len && !p->mp_reach_len &&
       (p->mp_unreach_len == 3) && (get_u16(p->mp_unreach_start) == BGP_AF_IPV6))
     {
       bgp_rx_end_mark(p);

@@ -138,7 +138,7 @@ radv_iface_opt_list:
  ;
 
 radv_iface:
-  radv_iface_start iface_patt_list radv_iface_opt_list radv_iface_finish;
+  radv_iface_start iface_patt_list_nopx radv_iface_opt_list radv_iface_finish;
 
 
 radv_prefix_start: prefix

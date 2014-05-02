@@ -89,7 +89,7 @@ bfd_iface_opt_list:
  | '{' bfd_iface_opts '}'
  ;
 
-bfd_iface: bfd_iface_start iface_patt_list bfd_iface_opt_list
+bfd_iface: bfd_iface_start iface_patt_list_nopx bfd_iface_opt_list
 { add_tail(&BFD_CFG->patt_list, NODE this_ipatt); };
 
 bfd_multihop: bfd_iface_start bfd_iface_opt_list
@@ -130,6 +130,7 @@ bfd_neighbor: ipa bfd_neigh_iface bfd_neigh_local bfd_neigh_multihop
 };
 
 
+CF_CLI_HELP(SHOW BFD, ..., [[Show information about BFD protocol]]);
 CF_CLI(SHOW BFD SESSIONS, optsym, [<name>], [[Show information about BFD sessions]])
 { bfd_show_sessions(proto_get_named($4, &proto_bfd)); };
 

@@ -379,6 +379,10 @@ ospf_instance_id:
    }
  ;
 
+ospf_iface_patt_list:
+   iface_patt_list { if (OSPF_VERSION == 3) iface_patt_check(); } ospf_instance_id
+ ; 
+
 ospf_iface_opts:
    /* empty */
  | ospf_iface_opts ospf_iface_item ';'
@@ -390,7 +394,7 @@ ospf_iface_opt_list:
  ;
 
 ospf_iface:
-  ospf_iface_start iface_patt_list ospf_instance_id ospf_iface_opt_list { ospf_iface_finish(); }
+  ospf_iface_start ospf_iface_patt_list ospf_iface_opt_list { ospf_iface_finish(); }
  ;
 
 opttext:

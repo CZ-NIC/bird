@@ -87,6 +87,8 @@ sk_leave_group4(sock *s, ip_addr maddr)
 #define TCP_MD5SIG  14
 #define TCP_MD5SIG_MAXKEYLEN 80
 
+#include <linux/types.h>
+
 struct tcp_md5sig {
   struct  sockaddr_storage tcpm_addr;             /* address associated */
   __u16   __tcpm_pad1;                            /* zero */
