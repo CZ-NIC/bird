@@ -48,6 +48,7 @@ struct krt_config {
   int scan_time;		/* How often we re-scan routes */
   int learn;			/* Learn routes from other sources */
   int devroutes;		/* Allow export of device routes */
+  int graceful_restart;		/* Regard graceful restart recovery */
 };
 
 struct krt_proto {
@@ -64,7 +65,8 @@ struct krt_proto {
 
   node krt_node;		/* Node in krt_proto_list */
   int addr_type;		/* Kernel table address type */
-  int initialized;		/* First scan has already been finished */
+  byte ready;			/* Initial feed has been finished */
+  byte initialized;		/* First scan has been finished */
 };
 
 extern pool *krt_pool;

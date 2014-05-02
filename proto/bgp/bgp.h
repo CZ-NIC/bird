@@ -48,6 +48,8 @@ struct bgp_config {
   int secondary;			/* Accept also non-best routes (i.e. RA_ACCEPTED) */
   int add_path;				/* Use ADD-PATH extension [draft] */
   int allow_local_as;			/* Allow that number of local ASNs in incoming AS_PATHs */
+  int gr_mode;				/* Graceful restart mode (BGP_GR_*) */
+  unsigned gr_time;			/* Graceful restart timeout */
   unsigned connect_retry_time;
   unsigned hold_time, initial_hold_time;
   unsigned keepalive_time;
@@ -73,6 +75,15 @@ struct bgp_config {
 #define ADD_PATH_TX 2
 #define ADD_PATH_FULL 3
 
+#define BGP_GR_ABLE 1
+#define BGP_GR_AWARE 2
+
+/* For peer_gr_flags */
+#define BGP_GRF_RESTART 0x80
+
+/* For peer_gr_aflags */
+#define BGP_GRF_FORWARDING 0x80
+
 
 struct bgp_conn {
   struct bgp_proto *bgp;
@@ -90,6 +101,11 @@ struct bgp_conn {
   u8 peer_refresh_support;		/* Peer supports route refresh [RFC2918] */
   u8 peer_as4_support;			/* Peer supports 4B AS numbers [RFC4893] */
   u8 peer_add_path;			/* Peer supports ADD-PATH [draft] */
+  u8 peer_gr_aware;
+  u8 peer_gr_able;
+  u16 peer_gr_time;
+  u8 peer_gr_flags;
+  u8 peer_gr_aflags;
   unsigned hold_time, keepalive_time;	/* Times calculated from my and neighbor's requirements */
 };
 
@@ -107,6 +123,8 @@ struct bgp_proto {
   u32 rr_cluster_id;			/* Route reflector cluster ID */
   int rr_client;			/* Whether neighbor is RR client of me */
   int rs_client;			/* Whether neighbor is RS client of me */
+  u8 gr_ready;				/* Neighbor could do graceful restart */
+  u8 gr_active;				/* Neighbor is doing graceful restart */
   struct bgp_conn *conn;		/* Connection we have established */
   struct bgp_conn outgoing_conn;	/* Outgoing connection we're working with */
   struct bgp_conn incoming_conn;	/* Incoming connection we have neither accepted nor rejected yet */
@@ -117,12 +135,14 @@ struct bgp_proto {
   rtable *igp_table;			/* Table used for recursive next hop lookups */
   struct event *event;			/* Event for respawning and shutting process */
   struct timer *startup_timer;		/* Timer used to delay protocol startup due to previous errors (startup_delay) */
+  struct timer *gr_timer;		/* Timer waiting for reestablishment after graceful restart */
   struct bgp_bucket **bucket_hash;	/* Hash table of attribute buckets */
   unsigned int hash_size, hash_count, hash_limit;
   HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
   slab *prefix_slab;			/* Slab holding prefix nodes */
   list bucket_queue;			/* Queue of buckets to send */
   struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
+  unsigned send_end_mark;		/* End-of-RIB mark scheduled for transmit */
   unsigned startup_delay;		/* Time to delay protocol startup by due to errors */
   bird_clock_t last_proto_error;	/* Time of last error that leads to protocol stop */
   u8 last_error_class; 			/* Error class of last error */
@@ -172,6 +192,8 @@ void bgp_conn_enter_openconfirm_state(struct bgp_conn *conn);
 void bgp_conn_enter_established_state(struct bgp_conn *conn);
 void bgp_conn_enter_close_state(struct bgp_conn *conn);
 void bgp_conn_enter_idle_state(struct bgp_conn *conn);
+void bgp_handle_graceful_restart(struct bgp_proto *p);
+void bgp_graceful_restart_done(struct bgp_proto *p);
 void bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code);
 void bgp_stop(struct bgp_proto *p, unsigned subcode);
 
@@ -313,6 +335,7 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 #define BEM_INVALID_MD5		3	/* MD5 authentication kernel request failed (possibly not supported) */
 #define BEM_NO_SOCKET		4
 #define BEM_BFD_DOWN		5
+#define BEM_GRACEFUL_RESTART	6
 
 /* Automatic shutdown error codes */
 

@@ -122,7 +122,7 @@ bgp_create_notification(struct bgp_conn *conn, byte *buf)
 
 #ifdef IPV6
 static byte *
-bgp_put_cap_ipv6(struct bgp_conn *conn UNUSED, byte *buf)
+bgp_put_cap_ipv6(struct bgp_proto *p UNUSED, byte *buf)
 {
   *buf++ = 1;		/* Capability 1: Multiprotocol extensions */
   *buf++ = 4;		/* Capability data length */
@@ -136,7 +136,7 @@ bgp_put_cap_ipv6(struct bgp_conn *conn UNUSED, byte *buf)
 #else
 
 static byte *
-bgp_put_cap_ipv4(struct bgp_conn *conn UNUSED, byte *buf)
+bgp_put_cap_ipv4(struct bgp_proto *p UNUSED, byte *buf)
 {
   *buf++ = 1;		/* Capability 1: Multiprotocol extensions */
   *buf++ = 4;		/* Capability data length */
@@ -149,7 +149,7 @@ bgp_put_cap_ipv4(struct bgp_conn *conn UNUSED, byte *buf)
 #endif
 
 static byte *
-bgp_put_cap_rr(struct bgp_conn *conn UNUSED, byte *buf)
+bgp_put_cap_rr(struct bgp_proto *p UNUSED, byte *buf)
 {
   *buf++ = 2;		/* Capability 2: Support for route refresh */
   *buf++ = 0;		/* Capability data length */
@@ -157,16 +157,44 @@ bgp_put_cap_rr(struct bgp_conn *conn UNUSED, byte *buf)
 }
 
 static byte *
-bgp_put_cap_as4(struct bgp_conn *conn, byte *buf)
+bgp_put_cap_gr1(struct bgp_proto *p, byte *buf)
+{
+  *buf++ = 64;		/* Capability 64: Support for graceful restart */
+  *buf++ = 6;		/* Capability data length */
+
+  put_u16(buf, p->cf->gr_time);
+  if (p->p.gr_recovery)
+    buf[0] |= BGP_GRF_RESTART;
+  buf += 2;
+
+  *buf++ = 0;		/* Appropriate AF */
+  *buf++ = BGP_AF;
+  *buf++ = 1;		/* and SAFI 1 */
+  *buf++ = p->p.gr_recovery ? BGP_GRF_FORWARDING : 0;
+
+  return buf;
+}
+
+static byte *
+bgp_put_cap_gr2(struct bgp_proto *p, byte *buf)
+{
+  *buf++ = 64;		/* Capability 64: Support for graceful restart */
+  *buf++ = 2;		/* Capability data length */
+  put_u16(buf, 0);
+  return buf + 2;
+}
+
+static byte *
+bgp_put_cap_as4(struct bgp_proto *p, byte *buf)
 {
   *buf++ = 65;		/* Capability 65: Support for 4-octet AS number */
   *buf++ = 4;		/* Capability data length */
-  put_u32(buf, conn->bgp->local_as);
+  put_u32(buf, p->local_as);
   return buf + 4;
 }
 
 static byte *
-bgp_put_cap_add_path(struct bgp_conn *conn, byte *buf)
+bgp_put_cap_add_path(struct bgp_proto *p, byte *buf)
 {
   *buf++ = 69;		/* Capability 69: Support for ADD-PATH */
   *buf++ = 4;		/* Capability data length */
@@ -175,7 +203,7 @@ bgp_put_cap_add_path(struct bgp_conn *conn, byte *buf)
   *buf++ = BGP_AF;
   *buf++ = 1;		/* SAFI 1 */
 
-  *buf++ = conn->bgp->cf->add_path;
+  *buf++ = p->cf->add_path;
 
   return buf;
 }
@@ -206,21 +234,26 @@ bgp_create_open(struct bgp_conn *conn, byte *buf)
 
 #ifndef IPV6
   if (p->cf->advertise_ipv4)
-    cap = bgp_put_cap_ipv4(conn, cap);
+    cap = bgp_put_cap_ipv4(p, cap);
 #endif
 
 #ifdef IPV6
-  cap = bgp_put_cap_ipv6(conn, cap);
+  cap = bgp_put_cap_ipv6(p, cap);
 #endif
 
   if (p->cf->enable_refresh)
-    cap = bgp_put_cap_rr(conn, cap);
+    cap = bgp_put_cap_rr(p, cap);
+
+  if (p->cf->gr_mode == BGP_GR_ABLE)
+    cap = bgp_put_cap_gr1(p, cap);
+  else if (p->cf->gr_mode == BGP_GR_AWARE)
+    cap = bgp_put_cap_gr2(p, cap);
 
   if (p->cf->enable_as4)
-    cap = bgp_put_cap_as4(conn, cap);
+    cap = bgp_put_cap_as4(p, cap);
 
   if (p->cf->add_path)
-    cap = bgp_put_cap_add_path(conn, cap);
+    cap = bgp_put_cap_add_path(p, cap);
 
   cap_len = cap - buf - 12;
   if (cap_len > 0)
@@ -349,6 +382,16 @@ bgp_create_update(struct bgp_conn *conn, byte *buf)
     }
   else
     return NULL;
+}
+
+static byte *
+bgp_create_end_mark(struct bgp_conn *conn, byte *buf)
+{
+  struct bgp_proto *p = conn->bgp;
+  BGP_TRACE(D_PACKETS, "Sending End-of-RIB");
+
+  put_u32(buf, 0);
+  return buf+4;
 }
 
 #else		/* IPv6 version */
@@ -520,6 +563,26 @@ bgp_create_update(struct bgp_conn *conn, byte *buf)
     return NULL;
 }
 
+static byte *
+bgp_create_end_mark(struct bgp_conn *conn, byte *buf)
+{
+  struct bgp_proto *p = conn->bgp;
+  BGP_TRACE(D_PACKETS, "Sending End-of-RIB");
+
+  put_u16(buf+0, 0);
+  put_u16(buf+2, 6);	/* length 4-9 */
+  buf += 4;
+
+  /* Empty MP_UNREACH_NLRI atribute */
+  *buf++ = BAF_OPTIONAL;
+  *buf++ = BA_MP_UNREACH_NLRI;
+  *buf++ = 3;		/* Length 7-9 */
+  *buf++ = 0;		/* AFI */
+  *buf++ = BGP_AF_IPV6;
+  *buf++ = 1;		/* SAFI */
+  return buf;
+}
+
 #endif
 
 static byte *
@@ -606,10 +669,16 @@ bgp_fire_tx(struct bgp_conn *conn)
     {
       end = bgp_create_update(conn, pkt);
       type = PKT_UPDATE;
+
       if (!end)
 	{
 	  conn->packets_to_send = 0;
-	  return 0;
+
+	  if (!p->send_end_mark)
+	    return 0;
+
+	  p->send_end_mark = 0;
+	  end = bgp_create_end_mark(conn, pkt);
 	}
     }
   else
@@ -678,6 +747,22 @@ bgp_parse_capabilities(struct bgp_conn *conn, byte *opt, int len)
 	  conn->peer_refresh_support = 1;
 	  break;
 
+	case 64: /* Graceful restart capability, RFC 4724 */
+	  if (cl % 4 != 2)
+	    goto err;
+	  conn->peer_gr_aware = 1;
+	  conn->peer_gr_able = 0;
+	  conn->peer_gr_time = get_u16(opt + 2) & 0x0fff;
+	  conn->peer_gr_flags = opt[2] & 0xf0;
+	  conn->peer_gr_aflags = 0;
+	  for (i = 2; i < cl; i += 4)
+	    if (opt[2+i+0] == 0 && opt[2+i+1] == BGP_AF && opt[2+i+2] == 1) /* Match AFI/SAFI */
+	      {
+		conn->peer_gr_able = 1;
+		conn->peer_gr_aflags = opt[2+i+3];
+	      }
+	  break;
+
 	case 65: /* AS4 capability, RFC 4893 */
 	  if (cl != 4)
 	    goto err;
@@ -704,7 +789,7 @@ bgp_parse_capabilities(struct bgp_conn *conn, byte *opt, int len)
     }
   return;
 
-    err:
+ err:
   bgp_error(conn, 2, 0, NULL, 0);
   return;
 }
@@ -807,12 +892,17 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, int len)
   other = (conn == &p->outgoing_conn) ? &p->incoming_conn : &p->outgoing_conn;
   switch (other->state)
     {
-    case BS_IDLE:
     case BS_CONNECT:
     case BS_ACTIVE:
+      /* Stop outgoing connection attempts */
+      bgp_conn_enter_idle_state(other);
+      break;
+
+    case BS_IDLE:
     case BS_OPENSENT:
     case BS_CLOSE:
       break;
+
     case BS_OPENCONFIRM:
       if ((p->local_id < id) == (conn == &p->incoming_conn))
 	{
@@ -838,6 +928,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, int len)
   p->as4_session = p->cf->enable_as4 && conn->peer_as4_support;
   p->add_path_rx = (p->cf->add_path & ADD_PATH_RX) && (conn->peer_add_path & ADD_PATH_TX);
   p->add_path_tx = (p->cf->add_path & ADD_PATH_TX) && (conn->peer_add_path & ADD_PATH_RX);
+  p->gr_ready = p->cf->gr_mode && conn->peer_gr_able;
 
   if (p->add_path_tx)
     p->p.accept_ra_types = RA_ANY;
@@ -848,6 +939,20 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, int len)
   bgp_start_timer(conn->hold_timer, conn->hold_time);
   bgp_conn_enter_openconfirm_state(conn);
 }
+
+
+static inline void
+bgp_rx_end_mark(struct bgp_proto *p)
+{
+  BGP_TRACE(D_PACKETS, "Got End-of-RIB");
+
+  if (p->p.gr_recovery)
+    proto_graceful_restart_unlock(&p->p);
+
+  if (p->gr_active)
+    bgp_graceful_restart_done(p);
+}
+
 
 #define DECODE_PREFIX(pp, ll) do {		\
   if (p->add_path_rx)				\
@@ -983,6 +1088,13 @@ bgp_do_rx_update(struct bgp_conn *conn,
   u32 path_id = 0;
   u32 last_id = 0;
 
+  /* Check for End-of-RIB marker */
+  if (!withdrawn_len && !attr_len && !nlri_len)
+    {
+      bgp_rx_end_mark(p);
+      return;
+    }
+
   /* Withdraw routes */
   while (withdrawn_len)
     {
@@ -1087,6 +1199,14 @@ bgp_do_rx_update(struct bgp_conn *conn,
 
   if (conn->state != BS_ESTABLISHED)	/* fatal error during decoding */
     return;
+
+  /* Check for End-of-RIB marker */
+  if ((attr_len < 8) && !withdrawn_len && !attr_len &&
+      (p->mp_unreach_len == 3) && (get_u16(p->mp_unreach_start) == BGP_AF_IPV6))
+    {
+      bgp_rx_end_mark(p);
+      return;
+    }
 
   DO_NLRI(mp_unreach)
     {

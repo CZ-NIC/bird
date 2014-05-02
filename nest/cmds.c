@@ -7,6 +7,7 @@
  */
 
 #include "nest/bird.h"
+#include "nest/protocol.h"
 #include "nest/route.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
@@ -31,6 +32,8 @@ cmd_show_status(void)
   cli_msg(-1011, "Last reboot on %s", tim);
   tm_format_datetime(tim, &config->tf_base, config->load_time);
   cli_msg(-1011, "Last reconfiguration on %s", tim);
+
+  graceful_restart_show_status();
 
   if (shutting_down)
     cli_msg(13, "Shutdown in progress");

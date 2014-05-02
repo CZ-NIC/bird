@@ -26,7 +26,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY,
 	PREFER, OLDER, MISSING, LLADDR, DROP, IGNORE, ROUTE, REFRESH,
 	INTERPRET, COMMUNITIES, BGP_ORIGINATOR_ID, BGP_CLUSTER_LIST, IGP,
 	TABLE, GATEWAY, DIRECT, RECURSIVE, MED, TTL, SECURITY, DETERMINISTIC,
-	SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX)
+	SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX, GRACEFUL, RESTART, AWARE)
 
 CF_GRAMMAR
 
@@ -50,6 +50,8 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->advertise_ipv4 = 1;
      BGP_CFG->interpret_communities = 1;
      BGP_CFG->default_local_pref = 100;
+     BGP_CFG->gr_mode = BGP_GR_AWARE;
+     BGP_CFG->gr_time = 120;
  }
  ;
 
@@ -115,6 +117,9 @@ bgp_proto:
  | bgp_proto ADD PATHS bool ';' { BGP_CFG->add_path = $4 ? ADD_PATH_FULL : 0; }
  | bgp_proto ALLOW LOCAL AS ';' { BGP_CFG->allow_local_as = -1; }
  | bgp_proto ALLOW LOCAL AS expr ';' { BGP_CFG->allow_local_as = $5; }
+ | bgp_proto GRACEFUL RESTART bool ';' { BGP_CFG->gr_mode = $4; }
+ | bgp_proto GRACEFUL RESTART AWARE ';' { BGP_CFG->gr_mode = BGP_GR_AWARE; }
+ | bgp_proto GRACEFUL RESTART TIME expr ';' { BGP_CFG->gr_time = $5; }
  | bgp_proto IGP TABLE rtable ';' { BGP_CFG->igp_table = $4; }
  | bgp_proto TTL SECURITY bool ';' { BGP_CFG->ttl_security = $4; }
  | bgp_proto BFD bool ';' { BGP_CFG->bfd = $3; cf_check_bfd($3); }

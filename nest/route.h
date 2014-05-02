@@ -168,6 +168,10 @@ typedef struct rtable {
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
 } rtable;
 
+#define RPS_NONE	0
+#define RPS_SCHEDULED	1
+#define RPS_RUNNING	2
+
 typedef struct network {
   struct fib_node n;			/* FIB flags reserved for kernel syncer */
   struct rte *routes;			/* Available routes for this network */
@@ -242,6 +246,8 @@ typedef struct rte {
 
 #define REF_COW		1		/* Copy this rte on write */
 #define REF_FILTERED	2		/* Route is rejected by import filter */
+#define REF_STALE	4		/* Route is stale in a refresh cycle */
+#define REF_DISCARD	8		/* Route is scheduled for discard */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
 static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED); }
@@ -299,6 +305,8 @@ void rte_update2(struct announce_hook *ah, net *net, rte *new, struct rte_src *s
 static inline void rte_update(struct proto *p, net *net, rte *new) { rte_update2(p->main_ahook, net, new, p->main_source); }
 void rte_discard(rtable *tab, rte *old);
 int rt_examine(rtable *t, ip_addr prefix, int pxlen, struct proto *p, struct filter *filter);
+void rt_refresh_begin(rtable *t, struct announce_hook *ah);
+void rt_refresh_end(rtable *t, struct announce_hook *ah);
 void rte_dump(rte *);
 void rte_free(rte *);
 rte *rte_do_cow(rte *);
@@ -312,6 +320,15 @@ struct rtable_config *rt_new_table(struct symbol *s, int addr_type);
 static inline int rt_match(int rt, u32 rtlist) { return !rtlist || ((1 << rt)  & rtlist); }
 int rt_addrsize(int addr_type); // XXXX needed?
 
+
+static inline void
+rt_mark_for_prune(rtable *tab)
+{
+  if (tab->prune_state == RPS_RUNNING)
+    fit_get(&tab->fib, &tab->prune_fit);
+
+  tab->prune_state = RPS_SCHEDULED;
+}
 
 struct rt_show_data {
   ip_addr prefix;

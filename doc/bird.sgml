@@ -157,6 +157,9 @@ options. The most important ones are:
 
 	<tag>-f</tag>
 	run bird in foreground.
+
+	<tag>-R</tag>
+	apply graceful restart recovery after start.
 </descrip>
 
 <p>BIRD writes messages about its work to log files or syslog (according to config).
@@ -186,6 +189,7 @@ an environment with restricted privileges. This may need some
 configuration, but it is generally easy -- BIRD needs just the
 standard library, privileges to read the config file and create the
 control socket and the CAP_NET_* capabilities.
+
 
 <chapt>About routing tables
 
@@ -241,6 +245,20 @@ activates a way of choosing selected route that cannot be described
 using comparison and ordering). Minor advantage is that routes are
 shown sorted in <cf/show route/, minor disadvantage is that it is
 slightly more computationally expensive.
+
+<sect>Graceful restart
+
+<p>When BIRD is started after restart or crash, it repopulates routing tables in
+an uncoordinated manner, like after clean start. This may be impractical in some
+cases, because if the forwarding plane (i.e. kernel routing tables) remains
+intact, then its synchronization with BIRD would temporarily disrupt packet
+forwarding until protocols converge. Graceful restart is a mechanism that could
+help with this issue. Generally, it works by starting protocols and letting them
+repopulate routing tables while deferring route propagation until protocols
+acknowledge their convergence. Note that graceful restart behavior have to be
+configured for all relevant protocols and requires protocol-specific support
+(currently implemented for Kernel and BGP protocols), it is activated for
+particular boot by option <cf/-R/.
 
 
 <chapt>Configuration
@@ -370,6 +388,12 @@ protocol rip {
 	both IPv4 and IPv6 connections (but even in that case, BIRD
 	would accept IPv6 routes only). Such behavior was default in
 	older versions of BIRD.
+
+	<tag>graceful restart wait <m/number/</tag>
+	During graceful restart recovery, BIRD waits for convergence of routing
+	protocols. This option allows to specify a timeout for the recovery to
+	prevent waiting indefinitely if some protocols cannot converge. Default:
+	240 seconds.
 
 	<tag>timeformat route|protocol|base|log "<m/format1/" [<m/limit/ "<m/format2/"]</tag>
 	This option allows to specify a format of date/time used by
@@ -1493,6 +1517,8 @@ extended communities
 (RFC 4360<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc4360.txt">),
 route reflectors 
 (RFC 4456<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc4456.txt">),
+graceful restart
+(RFC 4724<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc4724.txt">),
 multiprotocol extensions
 (RFC 4760<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc4760.txt">),
 4B AS numbers 
@@ -1502,9 +1528,7 @@ and 4B AS numbers in extended communities
 
 
 For IPv6, it uses the standard multiprotocol extensions defined in
-RFC 2283<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc2283.txt">
-including changes described in the
-latest draft<htmlurl url="ftp://ftp.rfc-editor.org/internet-drafts/draft-ietf-idr-bgp4-multiprotocol-v2-05.txt">
+RFC 4760<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc4760.txt">
 and applied to IPv6 according to
 RFC 2545<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc2545.txt">.
 
@@ -1715,6 +1739,26 @@ for each neighbor using the following configuration parameters:
 	neighbor. This option specifies whether BIRD advertises this
 	capability and accepts such requests. Even when disabled, BIRD
 	can send route refresh requests. Default: on.
+
+	<tag>graceful restart <m/switch/|aware</tag>
+	When a BGP speaker restarts or crashes, neighbors will discard all
+	received paths from the speaker, which disrupts packet forwarding even
+	when the forwarding plane of the speaker remains intact. RFC 4724
+	specifies an optional graceful restart mechanism to alleviate this
+	issue. This option controls the mechanism. It has three states:
+	Disabled, when no support is provided. Aware, when the graceful restart
+	support is announced and the support for restarting neighbors is
+	provided, but no local graceful restart is allowed (i.e. receiving-only
+	role). Enabled, when the full graceful restart support is provided
+	(i.e. both restarting and receiving role). Note that proper support for
+	local graceful restart requires also configuration of other protocols.
+	Default: aware.
+
+	<tag>graceful restart time <m/number/</tag>
+	The restart time is announced in the BGP graceful restart capability
+	and specifies how long the neighbor would wait for the BGP session to
+	re-establish after a restart before deleting stale routes. Default:
+	120 seconds.
 
 	<tag>interpret communities <m/switch/</tag> RFC 1997 demands
 	that BGP speaker should process well-known communities like
@@ -2063,25 +2107,36 @@ overcome using another routing table and the pipe protocol.
 <sect1>Configuration
 
 <p><descrip>
-	<tag>persist <m/switch/</tag> Tell BIRD to leave all its routes in the
-	routing tables when it exits (instead of cleaning them up).
-	<tag>scan time <m/number/</tag> Time in seconds between two consecutive scans of the
-	kernel routing table.
-	<tag>learn <m/switch/</tag> Enable learning of routes added to the kernel
-	routing tables by other routing daemons or by the system administrator.
-	This is possible only on systems which support identification of route
-	authorship.
+	<tag>persist <m/switch/</tag>
+	Tell BIRD to leave all its routes in the routing tables when it exits
+	(instead of cleaning them up).
 
-	<tag>device routes <m/switch/</tag> Enable export of device
-	routes to the kernel routing table. By default, such routes
-	are rejected (with the exception of explicitly configured
-	device routes from the static protocol) regardless of the
-	export filter to protect device routes in kernel routing table
-	(managed by OS itself) from accidental overwriting or erasing.
+	<tag>scan time <m/number/</tag>
+	Time in seconds between two consecutive scans of the kernel routing
+	table.
 
-	<tag>kernel table <m/number/</tag> Select which kernel table should
-	this particular instance of the Kernel protocol work with. Available
-	only on systems supporting multiple routing tables.
+	<tag>learn <m/switch/</tag>
+	Enable learning of routes added to the kernel routing tables by other
+	routing daemons or by the system administrator. This is possible only on
+	systems which support identification of route authorship.
+
+	<tag>device routes <m/switch/</tag>
+	Enable export of device routes to the kernel routing table. By default,
+	such routes are rejected (with the exception of explicitly configured
+	device routes from the static protocol) regardless of the export filter
+	to protect device routes in kernel routing table (managed by OS itself)
+	from accidental overwriting or erasing.
+
+	<tag>kernel table <m/number/</tag>
+	Select which kernel table should this particular instance of the Kernel
+	protocol work with. Available only on systems supporting multiple
+	routing tables.
+
+	<tag>graceful restart <m/switch/</tag>
+	Participate in graceful restart recovery. If this option is enabled and
+	a graceful restart recovery is active, the Kernel protocol will defer
+	synchronization of routing tables until the end of the recovery. Note
+	that import of kernel routes to BIRD is not affected.
 </descrip>
 
 <sect1>Attributes

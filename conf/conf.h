@@ -38,6 +38,7 @@ struct config {
   struct timeformat tf_proto;		/* Time format for 'show protocol' */
   struct timeformat tf_log;		/* Time format for the logfile */
   struct timeformat tf_base;		/* Time format for other purposes */
+  u32 gr_wait;				/* Graceful restart wait timeout */
 
   int cli_debug;			/* Tracing of CLI connections and commands */
   char *err_msg;			/* Parser error message */

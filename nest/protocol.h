@@ -149,10 +149,13 @@ struct proto {
   byte disabled;			/* Manually disabled */
   byte proto_state;			/* Protocol state machine (PS_*, see below) */
   byte core_state;			/* Core state machine (FS_*, see below) */
-  byte core_goal;			/* State we want to reach (FS_*, see below) */
+  byte export_state;			/* Route export state (ES_*, see below) */	
   byte reconfiguring;			/* We're shutting down due to reconfiguration */
-  byte refeeding;			/* We are refeeding (valid only if core_state == FS_FEEDING) */
+  byte refeeding;			/* We are refeeding (valid only if export_state == ES_FEEDING) */
   byte flushing;			/* Protocol is flushed in current flush loop round */
+  byte gr_recovery;			/* Protocol should participate in graceful restart recovery */
+  byte gr_lock;				/* Graceful restart mechanism should wait for this proto */
+  byte gr_wait;				/* Route export to protocol is postponed until graceful restart */
   byte down_sched;			/* Shutdown is scheduled for later (PDS_*) */
   byte down_code;			/* Reason for shutdown (PDC_* codes) */
   u32 hash_key;				/* Random key used for hashing of neighbors */
@@ -176,6 +179,7 @@ struct proto {
    *	   reload_routes   Request protocol to reload all its routes to the core
    *			(using rte_update()). Returns: 0=reload cannot be done,
    *			1= reload is scheduled and will happen (asynchronously).
+   *	   feed_done	Notify protocol about finish of route feeding.
    */
 
   void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
@@ -186,6 +190,7 @@ struct proto {
   void (*store_tmp_attrs)(struct rte *rt, struct ea_list *attrs);
   int (*import_control)(struct proto *, struct rte **rt, struct ea_list **attrs, struct linpool *pool);
   int (*reload_routes)(struct proto *);
+  void (*feed_done)(struct proto *);
 
   /*
    *	Routing entry hooks (called only for routes belonging to this protocol):
@@ -243,6 +248,13 @@ static inline void
 proto_copy_rest(struct proto_config *dest, struct proto_config *src, unsigned size)
 { memcpy(dest + 1, src + 1, size - sizeof(struct proto_config)); }
 
+void graceful_restart_recovery(void);
+void graceful_restart_init(void);
+void graceful_restart_show_status(void);
+void proto_graceful_restart_lock(struct proto *p);
+void proto_graceful_restart_unlock(struct proto *p);
+
+#define DEFAULT_GR_WAIT	240
 
 void proto_show_limit(struct proto_limit *l, const char *dsc);
 void proto_show_basic_info(struct proto *p);
@@ -344,10 +356,17 @@ void proto_notify_state(struct proto *p, unsigned state);
  *	as a result of received ROUTE-REFRESH request).
  */
 
-#define FS_HUNGRY 0
-#define FS_FEEDING 1
-#define FS_HAPPY 2
-#define FS_FLUSHING 3
+#define FS_HUNGRY	0
+#define FS_FEEDING	1	/* obsolete */
+#define FS_HAPPY	2
+#define FS_FLUSHING	3
+
+
+#define ES_DOWN		0
+#define ES_FEEDING	1
+#define ES_READY	2
+
+
 
 /*
  *	Debugging flags
