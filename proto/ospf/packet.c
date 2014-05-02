@@ -37,14 +37,13 @@ ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type)
 unsigned
 ospf_pkt_maxsize(struct ospf_iface *ifa)
 {
-  unsigned mtu = (ifa->type == OSPF_IT_VLINK) ? OSPF_VLINK_MTU : ifa->iface->mtu;
   unsigned headers = SIZE_OF_IP_HEADER;
 
   /* For OSPFv2 */
   if (ifa->autype == OSPF_AUTH_CRYPT)
     headers += OSPF_AUTH_CRYPT_SIZE;
 
-  return mtu - headers;
+  return ifa->tx_length - headers;
 }
 
 
@@ -323,22 +322,31 @@ ospf_rx_hook(sock *sk, int size)
     return 1;
   }
 
-  unsigned plen = ntohs(pkt->length);
-  if (plen < sizeof(struct ospf_packet))
+  uint plen = ntohs(pkt->length);
+  if ((plen < sizeof(struct ospf_packet)) || ((plen % 4) != 0))
   {
-    log(L_ERR "%s%I - too low value in size field (%u bytes)", mesg, sk->faddr, plen);
+    log(L_ERR "%s%I - invalid length (%u)", mesg, sk->faddr, plen);
     return 1;
   }
 
-  if ((plen > size) || ((plen % 4) != 0))
+  if (sk->flags & SKF_TRUNCATED)
+  {
+    log(L_WARN "%s%I - too large (%d/%d)", mesg, sk->faddr, plen, size);
+
+    /* If we have dynamic buffers and received truncated message, we expand RX buffer */
+
+    uint bs = plen + 256;
+    bs = BIRD_ALIGN(bs, 1024);
+
+    if (!ifa->cf->rx_buffer && (bs > sk->rbsize))
+      sk_set_rbsize(sk, bs);
+
+    return 1;
+  }
+
+  if (plen > size)
   {
     log(L_ERR "%s%I - size field does not match (%d/%d)", mesg, sk->faddr, plen, size);
-    return 1;
-  }
-
-  if ((unsigned) size > sk->rbsize)
-  {
-    log(L_ERR "%s%I - too large (%d vs %d)", mesg, sk->faddr, size, sk->rbsize);
     return 1;
   }
 
@@ -350,8 +358,8 @@ ospf_rx_hook(sock *sk, int size)
 
   if (ospf_is_v2(po) && ospf_pkt_get_autype(pkt) != OSPF_AUTH_CRYPT)
   {
-    unsigned hlen = sizeof(struct ospf_packet) - sizeof(union ospf_auth);
-    unsigned blen = plen - hlen;
+    uint hlen = sizeof(struct ospf_packet) + sizeof(union ospf_auth);
+    uint blen = plen - hlen;
     void *body = ((void *) pkt) + hlen;
 
     if (! ipsum_verify(pkt, sizeof(struct ospf_packet), body, blen, NULL))
@@ -443,7 +451,7 @@ ospf_rx_hook(sock *sk, int size)
   if (!n && (pkt->type != HELLO_P))
   {
     log(L_WARN "OSPF: Received non-hello packet from unknown neighbor (src %I, iface %s)",
-	sk->faddr, ifa->iface->name);
+	sk->faddr, ifa->ifname);
     return 1;
   }
 
@@ -490,20 +498,30 @@ ospf_rx_hook(sock *sk, int size)
   return 1;
 }
 
+/*
 void
 ospf_tx_hook(sock * sk)
 {
   struct ospf_iface *ifa= (struct ospf_iface *) (sk->data);
 //  struct proto *p = (struct proto *) (ifa->oa->po);
-  log(L_ERR "OSPF: TX hook called on %s", ifa->iface->name);
+  log(L_ERR "OSPF: TX hook called on %s", ifa->ifname);
 }
+*/
 
 void
 ospf_err_hook(sock * sk, int err)
 {
   struct ospf_iface *ifa= (struct ospf_iface *) (sk->data);
-//  struct proto *p = (struct proto *) (ifa->oa->po);
-  log(L_ERR "OSPF: Socket error on %s: %M", ifa->iface->name, err);
+  struct proto *p = &(ifa->oa->po->proto);
+  log(L_ERR "%s: Socket error on %s: %M", p->name, ifa->ifname, err);
+}
+
+void
+ospf_verr_hook(sock *sk, int err)
+{
+  struct proto_ospf *po = (struct proto_ospf *) (sk->data);
+  struct proto *p =  &po->proto;
+  log(L_ERR "%s: Vlink socket error: %M", p->name, err);
 }
 
 void
@@ -513,9 +531,6 @@ ospf_send_to(struct ospf_iface *ifa, ip_addr dst)
   struct ospf_packet *pkt = (struct ospf_packet *) sk->tbuf;
   int plen = ntohs(pkt->length);
 
-  if (sk->tbuf != sk->tpos)
-    log(L_ERR "Aiee, old packet was overwritten in TX buffer");
-
   if (ospf_is_v2(ifa->oa->po))
   {
     if (ifa->autype == OSPF_AUTH_CRYPT)
@@ -524,7 +539,9 @@ ospf_send_to(struct ospf_iface *ifa, ip_addr dst)
     ospf_pkt_finalize(ifa, pkt);
   }
 
-  sk_send_to(sk, plen, dst, 0);
+  int done = sk_send_to(sk, plen, dst, 0);
+  if (!done)
+    log(L_WARN "OSPF: TX queue full on %s", ifa->ifname);
 }
 
 void

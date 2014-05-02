@@ -404,7 +404,7 @@ radv_sk_open(struct radv_iface *ifa)
   sock *sk = sk_new(ifa->ra->p.pool);
   sk->type = SK_IP;
   sk->dport = ICMPV6_PROTO;
-  sk->saddr = IPA_NONE;
+  sk->saddr = ifa->addr->ip;
 
   sk->ttl = 255; /* Mandatory for Neighbor Discovery packets */
   sk->rx_hook = radv_rx_hook;
@@ -418,8 +418,6 @@ radv_sk_open(struct radv_iface *ifa)
 
   if (sk_open(sk) != 0)
     goto err;
-
-  sk->saddr = ifa->addr->ip;
 
   /* We want listen just to ICMPv6 messages of type RS and RA */
   if (sk_set_icmp6_filter(sk, ICMPV6_RS, ICMPV6_RA) < 0)

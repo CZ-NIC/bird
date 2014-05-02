@@ -93,18 +93,26 @@ static void ospf_dbdes_dump(struct proto_ospf *po, struct ospf_packet *pkt)
 
 
 static void
-ospf_dbdes_prepare(struct ospf_neighbor *n, struct ospf_packet *pkt, int lsdb)
+ospf_dbdes_prepare(struct ospf_neighbor *n, int lsdb)
 {
   struct ospf_iface *ifa = n->ifa;
   struct proto_ospf *po = ifa->oa->po;
-  int i = 0;
+  struct ospf_packet *pkt;
 
+  if (n->ldd_bsize != ifa->tx_length)
+  {
+    mb_free(n->ldd_buffer);
+    n->ldd_buffer = mb_allocz(n->pool, ifa->tx_length);
+    n->ldd_bsize = ifa->tx_length;
+  }
+
+  pkt = n->ldd_buffer;
   ospf_pkt_fill_hdr(ifa, pkt, DBDES_P);
 
   if (lsdb && (n->myimms & DBDES_M))
   {
     struct ospf_lsa_header *lsas;
-    unsigned lsa_max;
+    unsigned i = 0, lsa_max;
     snode *sn;
 
     ospf_dbdes_body(po, pkt, ospf_pkt_maxsize(ifa), &lsas, &lsa_max);
@@ -179,7 +187,6 @@ ospf_dbdes_send(struct ospf_neighbor *n, int next)
   struct ospf_iface *ifa = n->ifa;
   struct ospf_area *oa = ifa->oa;
   struct proto_ospf *po = oa->po;
-  struct ospf_packet *pkt;
   unsigned length;
 
   /* FIXME ??? */
@@ -192,22 +199,25 @@ ospf_dbdes_send(struct ospf_neighbor *n, int next)
     n->myimms |= DBDES_I;
 
     /* Send empty packets */
-    pkt = ospf_tx_buffer(ifa);
-    ospf_dbdes_prepare(n, pkt, 0);
-    OSPF_PACKET(ospf_dbdes_dump, pkt, "DBDES packet sent to %I via %s", n->ip, ifa->iface->name);
+    ospf_dbdes_prepare(n, 0);
+    OSPF_PACKET(ospf_dbdes_dump, n->ldd_buffer,
+		"DBDES packet sent to %I via %s", n->ip, ifa->ifname);
+
+    sk_set_tbuf(ifa->sk, n->ldd_buffer);
     ospf_send_to(ifa, n->ip);
+    sk_set_tbuf(ifa->sk, NULL);
     break;
 
   case NEIGHBOR_EXCHANGE:
     n->myimms &= ~DBDES_I;
 
     if (next)
-      ospf_dbdes_prepare(n, n->ldbdes, 1);
+      ospf_dbdes_prepare(n, 1);
 
   case NEIGHBOR_LOADING:
   case NEIGHBOR_FULL:
 
-    length = ntohs(((struct ospf_packet *) n->ldbdes)->length);
+    length = n->ldd_buffer ? ntohs(((struct ospf_packet *) n->ldd_buffer)->length) : 0;
     if (!length)
     {
       OSPF_TRACE(D_PACKETS, "No packet in my buffer for repeating");
@@ -215,12 +225,14 @@ ospf_dbdes_send(struct ospf_neighbor *n, int next)
       return;
     }
 
-    /* Copy last sent packet again */
-    pkt = ospf_tx_buffer(ifa);
-    memcpy(pkt, n->ldbdes, length);
+    /* Send last packet from ldd buffer */
+ 
+    OSPF_PACKET(ospf_dump_dbdes, n->ldd_buffer,
+		"DBDES packet sent to %I via %s", n->ip, ifa->ifname);
 
-    OSPF_PACKET(ospf_dbdes_dump, pkt, "DBDES packet sent to %I via %s", n->ip, ifa->iface->name);
+    sk_set_tbuf(ifa->sk, n->ldd_buffer);
     ospf_send_to(ifa, n->ip);
+    sk_set_tbuf(ifa->sk, NULL);
 
     /* XXXX remove this? */
     if (n->myimms & DBDES_MS)
@@ -290,7 +302,7 @@ ospf_dbdes_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
     return;
   }
 
-  OSPF_PACKET(ospf_dbdes_dump, pkt, "DBDES packet received from %I via %s", n->ip, ifa->iface->name);
+  OSPF_PACKET(ospf_dbdes_dump, pkt, "DBDES packet received from %I via %s", n->ip, ifa->ifname);
 
   ospf_neigh_sm(n, INM_HELLOREC);
 
@@ -324,12 +336,12 @@ ospf_dbdes_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
       return;
 
   case NEIGHBOR_EXSTART:
-    if ((rcv_iface_mtu != ifa->iface->mtu) &&
+    if ((ifa->type != OSPF_IT_VLINK) &&
+	(rcv_iface_mtu != ifa->iface->mtu) &&
 	(rcv_iface_mtu != 0) &&
-	(ifa->iface->mtu != 0) && 
-	(ifa->type != OSPF_IT_VLINK))
+	(ifa->iface->mtu != 0))
       log(L_WARN "OSPF: MTU mismatch with neighbor %I on interface %s (remote %d, local %d)",
-	  n->ip, ifa->iface->name, rcv_iface_mtu, ifa->iface->mtu);
+	  n->ip, ifa->ifname, rcv_iface_mtu, ifa->iface->mtu);
 
     if ((rcv_imms == DBDES_IMMS) &&
 	(n->rid > po->router_id) &&

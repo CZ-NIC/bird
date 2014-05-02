@@ -719,7 +719,6 @@ new_iface(struct proto *p, struct iface *new, unsigned long flags, struct iface_
   if (new) {
     if (new->addr->flags & IA_PEER)
       log( L_WARN "%s: rip is not defined over unnumbered links", p->name );
-    rif->sock->saddr = IPA_NONE;
     if (rif->multicast) {
       rif->sock->daddr = rip_is_old(p) ? IP4_ALL_RIP_ROUTERS : IP6_ALL_RIP_ROUTERS;
     } else {

@@ -157,13 +157,13 @@ rfree(void *res)
 {
   resource *r = res;
 
-  if (r)
-    {
-      if (r->n.next)
-	rem_node(&r->n);
-      r->class->free(r);
-      xfree(r);
-    }
+  if (!r)
+    return;
+
+  if (r->n.next)
+    rem_node(&r->n);
+  r->class->free(r);
+  xfree(r);
 }
 
 /**
@@ -408,6 +408,9 @@ mb_realloc(void *m, unsigned size)
 void
 mb_free(void *m)
 {
+  if (!m)
+    return;
+
   struct mblock *b = SKIP_BACK(struct mblock, data, m);
   rfree(b);
 }

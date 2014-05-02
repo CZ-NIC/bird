@@ -59,6 +59,9 @@ int sk_open(sock *);			/* Open socket */
 int sk_send(sock *, unsigned len);	/* Send data, <0=err, >0=ok, 0=sleep */
 int sk_send_to(sock *, unsigned len, ip_addr to, unsigned port); /* sk_send to given destination */
 void sk_reallocate(sock *);		/* Free and allocate tbuf & rbuf */
+void sk_set_rbsize(sock *s, uint val);	/* Resize RX buffer */
+void sk_set_tbsize(sock *s, uint val);	/* Resize TX buffer, keeping content */
+void sk_set_tbuf(sock *s, void *tbuf);	/* Switch TX buffer, NULL-> return to internal */
 void sk_dump_all(void);
 int sk_set_ttl(sock *s, int ttl);	/* Set transmit TTL for given socket */
 int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given socket */
@@ -85,7 +88,6 @@ static inline int sk_is_ipv4(sock *sk)
 static inline int sk_is_ipv6(sock *sk)
 { return sk->af == AF_INET6; }
 
-
 extern int sk_priority_control;	/* Suggested priority for control traffic, should be sysdep define */
 
 /* Socket flags */
@@ -93,10 +95,13 @@ extern int sk_priority_control;	/* Suggested priority for control traffic, shoul
 #define SKF_V4ONLY	0x01	/* Use IPv4 for IP sockets */
 #define SKF_V6ONLY	0x02	/* Use IPV6_V6ONLY socket option */
 #define SKF_LADDR_RX	0x04	/* Report local address for RX packets */
-#define SKF_LADDR_TX	0x08	/* Allow to specify local address for TX packets */
-#define SKF_TTL_RX	0x10	/* Report TTL / Hop Limit for RX packets */
+#define SKF_TTL_RX	0x08	/* Report TTL / Hop Limit for RX packets */
+#define SKF_BIND	0x10	/* Bind datagram socket to given source address */
 
 #define SKF_THREAD	0x100	/* Socked used in thread, Do not add to main loop */
+#define SKF_TRUNCATED	0x200	/* Received packet was truncated, set by IO layer */
+#define SKF_HDRINCL	0x400	/* Used internally */
+#define SKF_PKTINFO	0x800	/* Used internally */
 
 /*
  *	Socket types		     SA SP DA DP IF  TTL SendTo	(?=may, -=must not, *=must)
@@ -122,6 +127,14 @@ extern int sk_priority_control;	/* Suggested priority for control traffic, shoul
  *  call sk_setup_multicast() to enable multicast on that socket,
  *  and then use sk_join_group() and sk_leave_group() to manage
  *  a set of received multicast groups.
+ *
+ *  For datagram (SK_UDP, SK_IP) sockets, there are two ways to handle
+ *  source address. The socket could be bound to it using bind()
+ *  syscall, but that also forbids the reception of multicast packets,
+ *  or the address could be set on per-packet basis using platform
+ *  dependent options (but these are not available in some corner
+ *  cases). The first way is used when SKF_BIND is specified, the
+ *  second way is used otherwise.
  */
 
 #endif

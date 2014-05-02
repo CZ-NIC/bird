@@ -41,21 +41,21 @@ void ospf_dump_common(struct proto_ospf *po, struct ospf_packet *pkt)
   log(L_TRACE "%s:     router   %R", p->name, ntohl(pkt->routerid));
 }
 
-static inline unsigned
+static inline uint
 ospf_lsupd_hdrlen(struct proto_ospf *po)
 {
   return ospf_pkt_hdrlen(po) + 4; /* + u32 lsa count field */
 }
 
 static inline u32
-ospf_lsupd_get_lsa_count(struct ospf_packet *pkt, unsigned hdrlen)
+ospf_lsupd_get_lsa_count(struct ospf_packet *pkt, uint hdrlen)
 {
   u32 *c = ((void *) pkt) + hdrlen - 4;
   return ntohl(*c);
 }
 
 static inline void
-ospf_lsupd_set_lsa_count(struct ospf_packet *pkt, unsigned hdrlen, u32 val)
+ospf_lsupd_set_lsa_count(struct ospf_packet *pkt, uint hdrlen, u32 val)
 {
   u32 *c = ((void *) pkt) + hdrlen - 4;
   *c = htonl(val);
@@ -63,9 +63,9 @@ ospf_lsupd_set_lsa_count(struct ospf_packet *pkt, unsigned hdrlen, u32 val)
 
 static inline void
 ospf_lsupd_body(struct proto_ospf *po, struct ospf_packet *pkt,
-		unsigned *offset, unsigned *bound, unsigned *lsa_count)
+		uint *offset, uint *bound, uint *lsa_count)
 {
-  unsigned hlen = ospf_lsupd_hdrlen(po);
+  uint hlen = ospf_lsupd_hdrlen(po);
   *offset = hlen;
   *bound = ntohs(pkt->length) - sizeof(struct ospf_lsa_header);
   *lsa_count = ospf_lsupd_get_lsa_count(pkt, hlen);
@@ -79,7 +79,7 @@ static void ospf_lsupd_dump(struct proto_ospf *po, struct ospf_packet *pkt)
   ospf_dump_common(po, pkt);
 
   /* We know that ntohs(pkt->length) >= sizeof(struct ospf_lsa_header) */
-  unsigned offset, bound, i, lsa_count, lsalen;
+  uint offset, bound, i, lsa_count, lsalen;
   ospf_lsupd_body(po, pkt, &offset, &bound, &lsa_count);
 
   for (i = 0; i < lsa_count; i++)
@@ -195,16 +195,16 @@ ospf_lsupd_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
   struct proto_ospf *po = ifa->oa->po;
   struct proto *p = &po->proto;
 
-  unsigned sendreq = 1; /* XXXX ?? */
+  uint sendreq = 1; /* XXXX ?? */
 
-  unsigned plen = ntohs(pkt->length);
+  uint plen = ntohs(pkt->length);
   if (plen < (ospf_lsupd_hdrlen(po) + sizeof(struct ospf_lsa_header)))
   {
     log(L_ERR "OSPF: Bad LSUPD packet from %I - too short (%u B)", n->ip, plen);
     return;
   }
 
-  OSPF_PACKET(ospf_lsupd_dump, pkt, "LSUPD packet received from %I via %s", n->ip, ifa->iface->name);
+  OSPF_PACKET(ospf_lsupd_dump, pkt, "LSUPD packet received from %I via %s", n->ip, ifa->ifname);
 
   if (n->state < NEIGHBOR_EXCHANGE)
   {
@@ -214,7 +214,7 @@ ospf_lsupd_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 
   ospf_neigh_sm(n, INM_HELLOREC);	/* Questionable */
 
-  unsigned offset, bound, i, lsa_count;
+  uint offset, bound, i, lsa_count;
   ospf_lsupd_body(po, pkt, &offset, &bound, &lsa_count);
 
   for (i = 0; i < lsa_count; i++)
@@ -504,10 +504,10 @@ ospf_lsupd_flood(struct proto_ospf *po, struct top_hash_entry *en, struct ospf_n
 
 static int
 ospf_lsupd_prepare(struct proto_ospf *po, struct ospf_iface *ifa,
-		   struct top_hash_entry **lsa_list, unsigned lsa_count)
+		   struct top_hash_entry **lsa_list, uint lsa_count)
 {
   struct ospf_packet *pkt;
-  unsigned hlen, pos, i, maxsize;
+  uint hlen, pos, i, maxsize;
 
   pkt = ospf_tx_buffer(ifa);
   hlen = ospf_lsupd_hdrlen(po);
@@ -519,7 +519,7 @@ ospf_lsupd_prepare(struct proto_ospf *po, struct ospf_iface *ifa,
   for (i = 0; i < lsa_count; i++)
   {
     struct top_hash_entry *en = lsa_list[i];
-    unsigned len = en->lsa.length;
+    uint len = en->lsa.length;
 
     if ((pos + len) > maxsize)
     {
@@ -528,14 +528,17 @@ ospf_lsupd_prepare(struct proto_ospf *po, struct ospf_iface *ifa,
 	break;
 
       /* LSA is larger than MTU, check buffer size */
-      if ((pos + len) > ospf_pkt_bufsize(ifa))
+      if (ospf_iface_assure_bufsize(ifa, pos + len) < 0)
       {
 	/* Cannot fit in a tx buffer, skip that */
-	log(L_ERR "OSPF: LSA too large to send (Type: %04x, Id: %R, Rt: %R)", 
-	    en->lsa_type, en->lsa.id, en->lsa.rt);
-	XXXX();
+	log(L_ERR "OSPF: LSA too large to send on %s (Type: %04x, Id: %R, Rt: %R)", 
+	    ifa->ifname, en->lsa_type, en->lsa.id, en->lsa.rt);
+	XXXX(); /* XXXX: handle packets with no LSA */
 	continue;
       }
+
+      /* TX buffer could be reallocated */
+      pkt = ospf_tx_buffer(ifa);
     }
 
     struct ospf_lsa_header *buf = ((void *) pkt) + pos;
@@ -560,7 +563,7 @@ ospf_lsupd_flood_ifa(struct proto_ospf *po, struct ospf_iface *ifa, struct top_h
   ospf_lsupd_prepare(po, ifa, &en, 1);
 
   OSPF_PACKET(ospf_lsupd_dump, ospf_tx_buffer(ifa),
-	      "LSUPD packet flooded via %s", ifa->iface->name);
+	      "LSUPD packet flooded via %s", ifa->ifname);
 
   switch (ifa->type)
   {
@@ -596,18 +599,18 @@ ospf_lsupd_flood_ifa(struct proto_ospf *po, struct ospf_iface *ifa, struct top_h
 }
 
 int
-ospf_lsupd_send(struct ospf_neighbor *n, struct top_hash_entry **lsa_list, unsigned lsa_count)
+ospf_lsupd_send(struct ospf_neighbor *n, struct top_hash_entry **lsa_list, uint lsa_count)
 {
   struct ospf_iface *ifa = n->ifa;
   struct proto_ospf *po = ifa->oa->po;
-  unsigned i, c;
+  uint i, c;
 
   for (i = 0; i < lsa_count; i += c)
   {
     c = ospf_lsupd_prepare(po, ifa, lsa_list + i, lsa_count - i);
 
     OSPF_PACKET(ospf_lsupd_dump, ospf_tx_buffer(ifa),
-		"LSUPD packet sent to %I via %s", n->ip, ifa->iface->name);
+		"LSUPD packet sent to %I via %s", n->ip, ifa->ifname);
 
     ospf_send_to(ifa, n->ip);
   }
@@ -620,10 +623,10 @@ ospf_lsupd_rxmt(struct ospf_neighbor *n)
 {
   struct proto_ospf *po = n->ifa->oa->po;
 
-  const unsigned max = 128;
+  const uint max = 128;
   struct top_hash_entry *entries[max];
   struct top_hash_entry *ret, *en;
-  unsigned i = 0;
+  uint i = 0;
 
   WALK_SLIST(ret, n->lsrtl)
   {

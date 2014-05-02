@@ -986,44 +986,42 @@ check_nssa_lsa(struct proto_ospf *po, ort *nf)
 static void
 ospf_check_vlinks(struct proto_ospf *po)
 {
-  struct ospf_iface *iface;
-  WALK_LIST(iface, po->iface_list)
+  struct ospf_iface *ifa;
+  WALK_LIST(ifa, po->iface_list)
   {
-    if (iface->type == OSPF_IT_VLINK)
+    if (ifa->type == OSPF_IT_VLINK)
     {
       struct top_hash_entry *tmp;
-      tmp = ospf_hash_find_rt(po->gr, iface->voa->areaid, iface->vid);
+      tmp = ospf_hash_find_rt(po->gr, ifa->voa->areaid, ifa->vid);
 
       if (tmp && (tmp->color == INSPF) && ipa_nonzero(tmp->lb) && tmp->nhs)
       {
 	struct ospf_iface *nhi = ospf_iface_find(po, tmp->nhs->iface);
 
-        if ((iface->state != OSPF_IS_PTP)
-	    || (iface->vifa != nhi)
-	    || !ipa_equal(iface->vip, tmp->lb))
+        if ((ifa->state != OSPF_IS_PTP)
+	    || (ifa->vifa != nhi)
+	    || !ipa_equal(ifa->vip, tmp->lb))
         {
           OSPF_TRACE(D_EVENTS, "Vlink peer %R found", tmp->lsa.id);
-          ospf_iface_sm(iface, ISM_DOWN);
-	  iface->vifa = nhi;
-          iface->iface = nhi->iface;
-	  iface->addr = nhi->addr;
-	  iface->sk = nhi->sk;
-	  iface->cost = tmp->dist;
-          iface->vip = tmp->lb;
-          ospf_iface_sm(iface, ISM_UP);
+          ospf_iface_sm(ifa, ISM_DOWN);
+	  ifa->vifa = nhi;
+	  ifa->addr = nhi->addr;
+	  ifa->cost = tmp->dist;
+          ifa->vip = tmp->lb;
+          ospf_iface_sm(ifa, ISM_UP);
         }
-	else if ((iface->state == OSPF_IS_PTP) && (iface->cost != tmp->dist))
+	else if ((ifa->state == OSPF_IS_PTP) && (ifa->cost != tmp->dist))
 	{
-	  iface->cost = tmp->dist;
+	  ifa->cost = tmp->dist;
 	  schedule_rt_lsa(po->backbone);
 	}
       }
       else
       {
-        if (iface->state > OSPF_IS_DOWN)
+        if (ifa->state > OSPF_IS_DOWN)
         {
-          OSPF_TRACE(D_EVENTS, "Vlink peer %R lost", iface->vid);
-	  ospf_iface_sm(iface, ISM_DOWN);
+          OSPF_TRACE(D_EVENTS, "Vlink peer %R lost", ifa->vid);
+	  ospf_iface_sm(ifa, ISM_DOWN);
         }
       }
     }

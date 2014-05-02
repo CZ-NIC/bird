@@ -86,8 +86,7 @@ ospf_lsreq_send(struct ospf_neighbor *n)
   length = ospf_pkt_hdrlen(po) + i * sizeof(struct ospf_lsreq_header);
   pkt->length = htons(length);
 
-  OSPF_PACKET(ospf_lsreq_dump, pkt, "LSREQ packet sent to %I via %s",
-	      n->ip, ifa->iface->name);
+  OSPF_PACKET(ospf_lsreq_dump, pkt, "LSREQ packet sent to %I via %s", n->ip, ifa->ifname);
   ospf_send_to(ifa, n->ip);
 }
 
@@ -102,8 +101,7 @@ ospf_lsreq_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 
   /* No need to check length, lsreq has only basic header */
 
-  OSPF_PACKET(ospf_lsreq_dump, pkt, "LSREQ packet received from %I via %s",
-	      n->ip, ifa->iface->name);
+  OSPF_PACKET(ospf_lsreq_dump, pkt, "LSREQ packet received from %I via %s", n->ip, ifa->ifname);
 
   if (n->state < NEIGHBOR_EXCHANGE)
     return;

@@ -2212,7 +2212,9 @@ protocol ospf &lt;name&gt; {
 			wait &lt;num&gt;;
 			dead count &lt;num&gt;;
 			dead &lt;num&gt;;
+			secondary &lt;switch&gt;;
 			rx buffer [normal|large|&lt;num&gt;];
+			tx length &lt;num&gt;;
 			type [broadcast|bcast|pointopoint|ptp|
 				nonbroadcast|nbma|pointomultipoint|ptmp];
 			strict nonbroadcast &lt;switch&gt;;
@@ -2419,12 +2421,32 @@ protocol ospf &lt;name&gt; {
 	<tag>dead <M>num</M></tag>
 	 When the router does not receive any messages from a neighbor in
 	 <m/dead/ seconds, it will consider the neighbor down. If both directives
-	 <m/dead count/ and <m/dead/ are used, <m/dead/ has precendence.
+	 <cf/dead count/ and <cf/dead/ are used, <cf/dead/ has precendence.
+
+	<tag>secondary <M>switch</M></tag>
+	On BSD systems, older versions of BIRD supported OSPFv2 only for the
+	primary IP address of an interface, other IP ranges on the interface
+	were handled as stub networks. Since v1.4.1, regular operation on
+	secondary IP addresses is supported, but disabled by default for
+	compatibility. This option allows to enable it. The option is a
+	transitional measure, will be removed in the next major release as the
+	behavior will be changed. On Linux systems, the option is irrelevant, as
+	operation on non-primary addresses is already the regular behavior.
 
 	<tag>rx buffer <M>num</M></tag>
-	 This sets the size of buffer used for receiving packets. The buffer should
-	 be bigger than maximal size of any packets. Value NORMAL (default)
-	 means 2*MTU, value LARGE means maximal allowed packet - 65535.
+	This option allows to specify the size of buffers used for packet
+	processing. The buffer size should be bigger than maximal size of any
+	packets. By default, buffers are dynamically resized as needed, but a
+	fixed value could be specified. Value <cf/large/ means maximal allowed
+	packet size - 65535.
+
+	<tag>tx length <M>num</M></tag>
+	Transmitted OSPF messages that contain large amount of information are
+	segmented to separate OSPF packets to avoid IP fragmentation. This
+	option specifies the soft ceiling for the length of generated OSPF
+	packets. Default value is the MTU of the network interface. Note that
+	larger OSPF packets may still be generated if underlying OSPF messages
+	cannot be splitted (e.g. when one large LSA is propagated).
 
 	<tag>type broadcast|bcast</tag>
 	 BIRD detects a type of a connected network automatically, but

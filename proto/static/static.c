@@ -64,7 +64,7 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
   DBG("Installing static route %I/%d, rtd=%d\n", r->net, r->masklen, r->dest);
 
   rta a = {
-    .src = p->main_source;
+    .src = p->main_source,
     .source = (r->dest == RTD_DEVICE) ? RTS_STATIC_DEVICE : RTS_STATIC,
     .scope = SCOPE_UNIVERSE,
     .cast = RTC_UNICAST,

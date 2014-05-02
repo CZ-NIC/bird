@@ -273,7 +273,7 @@ prepare_rt2_lsa_body(struct proto_ospf *po, struct ospf_area *oa)
         break;
 
       default:
-        log("Unknown interface type %s", ifa->iface->name);
+        log("Unknown interface type %s", ifa->ifname);
         break;
       }
 
@@ -371,7 +371,7 @@ prepare_rt3_lsa_body(struct proto_ospf *po, struct ospf_area *oa)
         break;
 
       default:
-        log("Unknown interface type %s", ifa->iface->name);
+        log("Unknown interface type %s", ifa->ifname);
         break;
       }
 
@@ -844,7 +844,10 @@ ospf_originate_link_lsa(struct ospf_iface *ifa)
 {
   struct proto_ospf *po = ifa->oa->po;
 
-  /* FIXME check for vlink and skip that? */
+  /* Vlinks do not have link-LSAs */
+  if (ifa->type == OSPF_IT_VLINK)
+    return;
+
   struct ospf_lsa_new lsa = {
     .type = LSA_T_LINK,
     .dom  = ifa->iface_id,
@@ -1674,8 +1677,7 @@ flush_net_lsa(struct ospf_iface *ifa)
   if (ifa->net_lsa == NULL)
     return;
 
-  OSPF_TRACE(D_EVENTS, "Flushing network-LSA for iface %s",
-	     ifa->iface->name);
+  OSPF_TRACE(D_EVENTS, "Flushing network-LSA for iface %s", ifa->ifname);
 
   ifa->net_lsa->lsa.sn += 1;
   ifa->net_lsa->lsa.age = LSA_MAXAGE;
@@ -1914,8 +1916,7 @@ flush_prefix_net_lsa(struct ospf_iface *ifa)
   if (en == NULL)
     return;
 
-  OSPF_TRACE(D_EVENTS, "Flushing network prefix-LSA for iface %s",
-	     ifa->iface->name);
+  OSPF_TRACE(D_EVENTS, "Flushing network prefix-LSA for iface %s", ifa->ifname);
 
   en->lsa.sn += 1;
   en->lsa.age = LSA_MAXAGE;
@@ -1945,14 +1946,14 @@ get_seqnum(struct top_hash_entry *en)
 
 
   OSPF_TRACE(D_EVENTS, "Originating router-LSA for area %R", oa->areaid);
-  OSPF_TRACE(D_EVENTS, "Originating network-LSA for iface %s", ifa->iface->name);
+  OSPF_TRACE(D_EVENTS, "Originating network-LSA for iface %s", ifa->ifname);
   OSPF_TRACE(D_EVENTS, "Originating net-summary-LSA for %I/%d (metric %d)", fn->prefix, fn->pxlen, metric);
   OSPF_TRACE(D_EVENTS, "Originating rt-summary-LSA for %R (metric %d)", rid, metric);
   OSPF_TRACE(D_EVENTS, "Originating %s-LSA for %I/%d",
 	     nssa ? "NSSA" : "AS-external", fn->prefix, fn->pxlen);
-  OSPF_TRACE(D_EVENTS, "Originating link-LSA for iface %s", ifa->iface->name);
+  OSPF_TRACE(D_EVENTS, "Originating link-LSA for iface %s", ifa->ifname);
   OSPF_TRACE(D_EVENTS, "Originating router prefix-LSA for area %R", oa->areaid);
-  OSPF_TRACE(D_EVENTS, "Originating network prefix-LSA for iface %s", ifa->iface->name);
+  OSPF_TRACE(D_EVENTS, "Originating network prefix-LSA for iface %s", ifa->ifname);
 
 
   en = ospf_hash_find(po->gr, lsa.dom, lsa.id, po->router_id, lsa.type);

@@ -67,7 +67,6 @@ ospf_neighbor_new(struct ospf_iface *ifa)
   add_tail(&ifa->neigh_list, NODE n);
   n->adj = 0;
   n->csn = 0;
-  n->ldbdes = mb_allocz(pool, ifa->iface->mtu);
   n->state = NEIGHBOR_DOWN;
 
   init_lists(n);
@@ -275,10 +274,10 @@ can_do_adj(struct ospf_neighbor *n)
     {
     case OSPF_IS_DOWN:
     case OSPF_IS_LOOP:
-      bug("%s: Iface %s in down state?", p->name, ifa->iface->name);
+      bug("%s: Iface %s in down state?", p->name, ifa->ifname);
       break;
     case OSPF_IS_WAITING:
-      DBG("%s: Neighbor? on iface %s\n", p->name, ifa->iface->name);
+      DBG("%s: Neighbor? on iface %s\n", p->name, ifa->ifname);
       break;
     case OSPF_IS_DROTHER:
       if (((n->rid == ifa->drid) || (n->rid == ifa->bdrid))
@@ -292,15 +291,15 @@ can_do_adj(struct ospf_neighbor *n)
 	i = 1;
       break;
     default:
-      bug("%s: Iface %s in unknown state?", p->name, ifa->iface->name);
+      bug("%s: Iface %s in unknown state?", p->name, ifa->ifname);
       break;
     }
     break;
   default:
-    bug("%s: Iface %s is unknown type?", p->name, ifa->iface->name);
+    bug("%s: Iface %s is unknown type?", p->name, ifa->ifname);
     break;
   }
-  DBG("%s: Iface %s can_do_adj=%d\n", p->name, ifa->iface->name, i);
+  DBG("%s: Iface %s can_do_adj=%d\n", p->name, ifa->ifname, i);
   return i;
 }
 
@@ -533,9 +532,8 @@ neighbor_timer_hook(timer * timer)
   struct ospf_iface *ifa = n->ifa;
   struct proto_ospf *po = ifa->oa->po;
 
-  OSPF_TRACE(D_EVENTS,
-	     "Inactivity timer fired on interface %s for neighbor %I.",
-	     ifa->iface->name, n->ip);
+  OSPF_TRACE(D_EVENTS, "Inactivity timer fired on interface %s for neighbor %I",
+	     ifa->ifname, n->ip);
   ospf_neigh_remove(n);
 }
 
@@ -568,9 +566,7 @@ ospf_neigh_bfd_hook(struct bfd_request *req)
 
   if (req->down)
   {
-    OSPF_TRACE(D_EVENTS, "BFD session down for %I on %s",
-	       n->ip, n->ifa->iface->name);
-
+    OSPF_TRACE(D_EVENTS, "BFD session down for %I on %s", n->ip, n->ifa->ifname);
     ospf_neigh_remove(n);
   }
 }
@@ -619,8 +615,7 @@ ospf_sh_neigh_info(struct ospf_neighbor *n)
     pos = "ptp  ";
 
   cli_msg(-1013, "%-1R\t%3u\t%s/%s\t%-5s\t%-10s %-1I", n->rid, n->priority,
-	  ospf_ns[n->state], pos, etime,
-          (ifa->type == OSPF_IT_VLINK ? "vlink" : ifa->iface->name), n->ip);
+	  ospf_ns[n->state], pos, etime, ifa->ifname, n->ip);
 }
 
 static void
@@ -631,7 +626,7 @@ rxmt_timer_hook(timer * timer)
   struct top_hash_entry *en;
 
   DBG("%s: RXMT timer fired on interface %s for neigh %I\n",
-      p->name, n->ifa->iface->name, n->ip);
+      p->name, n->ifa->ifname, n->ip);
 
   switch (n->state)
   {

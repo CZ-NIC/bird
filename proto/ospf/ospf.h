@@ -640,7 +640,6 @@ struct ospf_neighbor
    */
   slist lsrtl;			/* slist of struct top_hash_entry from n->lsrth */
   struct top_graph *lsrth;
-
   timer *rxmt_timer;		/* RXMT timer */
   list ackl[2];
 #define ACKL_DIRECT 0

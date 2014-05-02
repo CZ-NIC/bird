@@ -22,16 +22,12 @@
 #define TCP_MD5SIG	TCP_SIGNATURE_ENABLE
 #endif
 
-static inline char *
-sk_bind_to_iface(sock *s)
-{
-  /* Unfortunately not available */
-  return NULL;
-}
-
 
 #include <net/if.h>
 #include <net/if_dl.h>
+#include <netinet/in_systm.h> // Workaround for some BSDs
+#include <netinet/ip.h>
+
 
 /* BSD Multicast handling for IPv4 */
 
@@ -60,7 +56,7 @@ sk_setup_multicast4(sock *s)
 static inline char *
 sk_join_group4(sock *s, ip_addr maddr)
 {
-	struct ip_mreq  mreq;
+	struct ip_mreq mreq;
 
 	bzero(&mreq, sizeof(mreq));
 	ipa_put_in4(&mreq.imr_interface, s->iface->addr->ip);
@@ -143,27 +139,17 @@ sk_process_cmsg4_ttl(sock *s, struct cmsghdr *cm)
     s->ttl = * (unsigned char *) CMSG_DATA(cm);
 }
 
-
 /* Unfortunately, IP_SENDSRCADDR does not work for raw IP sockets on BSD kernels */
-/*
-static void
-sysio_prepare_tx_cmsgs(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
+
+static inline void
+sk_prepare_cmsgs4(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
 {
+#ifdef IP_SENDSRCADDR
   struct cmsghdr *cm;
   struct in_addr *sa;
 
-  if (!(s->flags & SKF_LADDR_TX))
-    return;
-
   msg->msg_control = cbuf;
   msg->msg_controllen = cbuflen;
-
-  if (s->iface)
-    {
-      struct in_addr m;
-      set_inaddr(&m, s->saddr);
-      setsockopt(s->fd, IPPROTO_IP, IP_MULTICAST_IF, &m, sizeof(m));
-    }
 
   cm = CMSG_FIRSTHDR(msg);
   cm->cmsg_level = IPPROTO_IP;
@@ -171,11 +157,34 @@ sysio_prepare_tx_cmsgs(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
   cm->cmsg_len = CMSG_LEN(sizeof(*sa));
 
   sa = (struct in_addr *) CMSG_DATA(cm);
-  set_inaddr(sa, s->saddr);
+  ipa_put_in4(&sa, s->saddr);
 
   msg->msg_controllen = cm->cmsg_len;
+#endif
 }
-*/
+
+
+static void
+sk_prepare_ip_header(sock *s, void *hdr, int dlen)
+{
+  struct ip *ip = hdr;
+
+  bzero(ip, 20);
+
+  ip->ip_v = 4;
+  ip->ip_hl = 5;
+  ip->ip_tos = (s->tos < 0) ? 0 : s->tos;
+  ip->ip_len = 20 + dlen;
+  ip->ip_ttl = (s->ttl < 0) ? 64 : s->ttl;
+  ip->ip_p = s->dport;
+  ipa_put_in4(&ip->ip_src, s->saddr);
+  ipa_put_in4(&ip->ip_dst, s->daddr);
+
+#ifdef __OpenBSD__
+  /* OpenBSD expects ip_len in network order, other BSDs expect host order */
+  ip->ip_len = htons(ip->ip_len);
+#endif
+}
 
 
 #include <netinet/tcp.h>

@@ -89,7 +89,7 @@ ospf_lsack_send_one(struct ospf_neighbor *n, int queue)
   length = ospf_pkt_hdrlen(po) + i * sizeof(struct ospf_lsa_header);
   pkt->length = htons(length);
 
-  OSPF_PACKET(ospf_lsack_dump, pkt, "LSACK packet sent via %s", ifa->iface->name);
+  OSPF_PACKET(ospf_lsack_dump, pkt, "LSACK packet sent via %s", ifa->ifname);
 
   /* XXXX this is very strange */
   if (ifa->type == OSPF_IT_BCAST)
@@ -130,8 +130,7 @@ ospf_lsack_receive(struct ospf_packet *pkt, struct ospf_iface *ifa,
 
   /* No need to check length, lsack has only basic header */
 
-  OSPF_PACKET(ospf_lsack_dump, pkt, "LSACK packet received from %I via %s",
-	      n->ip, ifa->iface->name);
+  OSPF_PACKET(ospf_lsack_dump, pkt, "LSACK packet received from %I via %s", n->ip, ifa->ifname);
 
   if (n->state < NEIGHBOR_EXCHANGE)
     return;
