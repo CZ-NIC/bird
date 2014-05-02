@@ -289,7 +289,9 @@ protocol rip {
 
 <p><descrip>
 	<tag>include "<m/filename/"</tag> 
-	This statement causes inclusion of a new file. The maximal depth is set to 5.
+	This statement causes inclusion of a new file. <m/Filename/ could also
+	be a wildcard. The maximal depth is 5. Note that this statement could be
+	used anywhere in the config file, not just as a top-level option.
 
 	<tag><label id="dsc-log">log "<m/filename/"|syslog [name <m/name/]|stderr all|{ <m/list of classes/ }</tag> 
 	Set logging of messages having the given class (either <cf/all/ or <cf/{
@@ -695,6 +697,9 @@ This argument can be omitted if there exists only a single instance.
 	<tag>show static [<m/name/]</tag>
 	Show detailed information about static routes.
 
+	<tag>show bfd sessions [<m/name/]</tag>
+	Show information about BFD sessions.
+
 	<tag>show interfaces [summary]</tag>
 	Show the list of interfaces. For each interface, print its type, state, MTU and addresses assigned. 
 
@@ -706,9 +711,6 @@ This argument can be omitted if there exists only a single instance.
         the table attached to a respective protocol),
 	that is routes, their metrics and (in case the <cf/all/ switch is given)
 	all their attributes.
-
-	<tag>show bfd sessions [<m/name/]</tag>
-	Show information about BFD sessions.
 
 	<p>You can specify a <m/prefix/ if you want to print routes for a
 	specific network. If you use <cf>for <m/prefix or IP/</cf>, you'll get
