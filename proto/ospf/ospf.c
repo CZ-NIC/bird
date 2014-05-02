@@ -233,6 +233,7 @@ ospf_start(struct proto *p)
   po->router_id = proto_get_router_id(p->cf);
   po->rfc1583 = c->rfc1583;
   po->stub_router = c->stub_router;
+  po->merge_external = c->merge_external;
   po->ebit = 0;
   po->ecmp = c->ecmp;
   po->tick = c->tick;
@@ -736,6 +737,7 @@ ospf_reconfigure(struct proto *p, struct proto_config *c)
     return 0;
 
   po->stub_router = new->stub_router;
+  po->merge_external = new->merge_external;
   po->ecmp = new->ecmp;
   po->tick = new->tick;
   po->disp_timer->recurrent = po->tick;

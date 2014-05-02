@@ -2291,6 +2291,7 @@ protocol ospf &lt;name&gt; {
 	stub router &lt;switch&gt;;
 	tick &lt;num&gt;;
 	ecmp &lt;switch&gt; [limit &lt;num&gt;];
+	merge external &lt;switch&gt;;
 	area &lt;id&gt; {
 		stub;
 		nssa;
@@ -2395,6 +2396,14 @@ protocol ospf &lt;name&gt; {
 	cost. This option also allows to specify a limit on maximal number of
 	nexthops in one route. By default, ECMP is disabled. If enabled,
 	default	value of the limit is 16.
+
+	<tag>merge external <M>switch</M></tag>
+	This option specifies whether OSPF should merge external routes from
+	different routers/LSAs for the same destination. When enabled together
+	with <cf/ecmp/, equal-cost external routes will be combined to multipath
+	routes in the same way as regular routes. When disabled, external routes
+	from different LSAs are treated as separate even if they represents the
+	same destination. Default value is no.
 
 	<tag>area <M>id</M></tag>
 	This defines an OSPF area with given area ID (an integer or an IPv4

@@ -117,7 +117,7 @@ CF_KEYWORDS(ELIGIBLE, POLL, NETWORKS, HIDDEN, VIRTUAL, CHECK, LINK, ONLY, BFD)
 CF_KEYWORDS(RX, BUFFER, LARGE, NORMAL, STUBNET, HIDDEN, SUMMARY, TAG, EXTERNAL)
 CF_KEYWORDS(WAIT, DELAY, LSADB, ECMP, LIMIT, WEIGHT, NSSA, TRANSLATOR, STABILITY)
 CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL, NETMASK, TX, PRIORITY, LENGTH)
-CF_KEYWORDS(SECONDARY)
+CF_KEYWORDS(SECONDARY, MERGE)
 
 %type <t> opttext
 %type <ld> lsadb_args
@@ -152,6 +152,7 @@ ospf_proto_item:
  | STUB ROUTER bool { OSPF_CFG->stub_router = $3; }
  | ECMP bool { OSPF_CFG->ecmp = $2 ? OSPF_DEFAULT_ECMP_LIMIT : 0; }
  | ECMP bool LIMIT expr { OSPF_CFG->ecmp = $2 ? $4 : 0; if ($4 < 0) cf_error("ECMP limit cannot be negative"); }
+ | MERGE EXTERNAL bool { OSPF_CFG->merge_external = $3; }
  | TICK expr { OSPF_CFG->tick = $2; if($2<=0) cf_error("Tick must be greater than zero"); }
  | ospf_area
  ;
