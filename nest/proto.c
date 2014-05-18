@@ -605,6 +605,7 @@ proto_rethink_goal(struct proto *p)
     {
       struct proto_config *nc = p->cf_new;
       DBG("%s has shut down for reconfiguration\n", p->name);
+      p->cf->proto = NULL;
       config_del_obstacle(p->cf->global);
       rem_node(&p->n);
       rem_node(&p->glob_node);
