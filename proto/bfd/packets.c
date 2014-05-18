@@ -101,8 +101,8 @@ bfd_rx_hook(sock *sk, int len)
   uint err_val = 0;
   char fb[8];
 
-  if ((sk->sport == BFD_CONTROL_PORT) && (sk->ttl < 255))
-    DROP("wrong TTL", sk->ttl);
+  if ((sk->sport == BFD_CONTROL_PORT) && (sk->rcv_ttl < 255))
+    DROP("wrong TTL", sk->rcv_ttl);
 
   if (len < BFD_BASE_LEN)
     DROP("too short", len);
@@ -209,6 +209,7 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop)
   return sk;
 
  err:
+  sk_log_error(sk, p->p.name);
   rfree(sk);
   return NULL;
 }
@@ -243,6 +244,7 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   return sk;
 
  err:
+  sk_log_error(sk, p->p.name);
   rfree(sk);
   return NULL;
 }

@@ -44,18 +44,21 @@ typedef struct birdsock {
   unsigned lifindex;			/* local interface that received the datagram */
   /* laddr and lifindex are valid only if SKF_LADDR_RX flag is set to request it */
 
-  int fd;				/* System-dependent data */
   int af;				/* Address family (AF_INET, AF_INET6 or 0 for non-IP) of fd */
+  int fd;				/* System-dependent data */
   int index;				/* Index in poll buffer */
+  int rcv_ttl;				/* TTL of last received datagram */
   node n;
   void *rbuf_alloc, *tbuf_alloc;
-  char *password;				/* Password for MD5 authentication */
+  char *password;			/* Password for MD5 authentication */
+  char *err;				/* Error message */
 } sock;
 
 sock *sock_new(pool *);			/* Allocate new socket */
 #define sk_new(X) sock_new(X)		/* Wrapper to avoid name collision with OpenSSL */
 
 int sk_open(sock *);			/* Open socket */
+int sk_rx_ready(sock *s);
 int sk_send(sock *, unsigned len);	/* Send data, <0=err, >0=ok, 0=sleep */
 int sk_send_to(sock *, unsigned len, ip_addr to, unsigned port); /* sk_send to given destination */
 void sk_reallocate(sock *);		/* Free and allocate tbuf & rbuf */
@@ -63,24 +66,10 @@ void sk_set_rbsize(sock *s, uint val);	/* Resize RX buffer */
 void sk_set_tbsize(sock *s, uint val);	/* Resize TX buffer, keeping content */
 void sk_set_tbuf(sock *s, void *tbuf);	/* Switch TX buffer, NULL-> return to internal */
 void sk_dump_all(void);
-int sk_set_ttl(sock *s, int ttl);	/* Set transmit TTL for given socket */
-int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given socket */
-
-/* Add or remove security associations for given passive socket */
-int sk_set_md5_auth(sock *s, ip_addr a, struct iface *ifa, char *passwd);
-int sk_rx_ready(sock *s);
-
-/* Prepare UDP or IP socket to multicasting. s->iface and s->ttl must be set */
-int sk_setup_multicast(sock *s);	
-int sk_join_group(sock *s, ip_addr maddr);
-int sk_leave_group(sock *s, ip_addr maddr);
-
-int sk_set_ipv6_checksum(sock *s, int offset);
-int sk_set_icmp6_filter(sock *s, int p1, int p2);
-int sk_set_broadcast(sock *s, int enable);
 
 static inline int sk_send_buffer_empty(sock *sk)
 { return sk->tbuf == sk->tpos; }
+
 
 static inline int sk_is_ipv4(sock *sk)
 { return sk->af == AF_INET; }
@@ -88,7 +77,20 @@ static inline int sk_is_ipv4(sock *sk)
 static inline int sk_is_ipv6(sock *sk)
 { return sk->af == AF_INET6; }
 
-extern int sk_priority_control;	/* Suggested priority for control traffic, should be sysdep define */
+
+int sk_setup_multicast(sock *s);	/* Prepare UDP or IP socket for multicasting */
+int sk_join_group(sock *s, ip_addr maddr);	/* Join multicast group on sk iface */
+int sk_leave_group(sock *s, ip_addr maddr);	/* Leave multicast group on sk iface */
+int sk_setup_broadcast(sock *s);
+int sk_set_ttl(sock *s, int ttl);	/* Set transmit TTL for given socket */
+int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given socket */
+int sk_set_md5_auth(sock *s, ip_addr a, struct iface *ifa, char *passwd);
+int sk_set_ipv6_checksum(sock *s, int offset);
+int sk_set_icmp6_filter(sock *s, int p1, int p2);
+void sk_log_error(sock *s, const char *p);
+
+extern int sk_priority_control;		/* Suggested priority for control traffic, should be sysdep define */
+
 
 /* Socket flags */
 

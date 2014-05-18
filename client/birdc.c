@@ -19,7 +19,6 @@
 #include "lib/resource.h"
 #include "lib/string.h"
 #include "client/client.h"
-#include "sysdep/unix/unix.h"
 
 static int input_hidden_end;
 static int prompt_active;

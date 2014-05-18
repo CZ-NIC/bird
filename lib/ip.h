@@ -149,7 +149,7 @@ static inline ip6_addr ip6_not(ip6_addr a)
 #define ipa_from_ip6(x) x
 #define ipa_from_u32(x) ipa_from_ip4(ip4_from_u32(x))
 
-#define ipa_to_ip4(x) _I3(x)
+#define ipa_to_ip4(x) _MI4(_I3(x))
 #define ipa_to_ip6(x) x
 #define ipa_to_u32(x) ip4_to_u32(ipa_to_ip4(x))
 
@@ -356,12 +356,6 @@ static inline ip6_addr ipa_get_in4(struct in_addr *in)
 static inline ip6_addr ipa_get_in6(struct in6_addr *in)
 { return ip6_ntoh(*(ip6_addr *) in); }
 
-// XXXX check callers
-static inline void ipa_put_in4(struct in_addr *in, ip6_addr a)
-{ ip6_put32_ip4(in, a); }
-
-static inline void ipa_put_in6(struct in6_addr *in, ip6_addr a)
-{ ip6_put32(in, a); }
 
 
 

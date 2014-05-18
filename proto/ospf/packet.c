@@ -310,9 +310,9 @@ ospf_rx_hook(sock *sk, int size)
     return 1;
   }
 
-  if (ifa->check_ttl && (sk->ttl < 255))
+  if (ifa->check_ttl && (sk->rcv_ttl < 255))
   {
-    log(L_ERR "%s%I - TTL %d (< 255)", mesg, sk->faddr, sk->ttl);
+    log(L_ERR "%s%I - TTL %d (< 255)", mesg, sk->faddr, sk->rcv_ttl);
     return 1;
   }
 

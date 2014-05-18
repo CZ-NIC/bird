@@ -484,10 +484,10 @@ rip_rx(sock *s, int size)
   iface = i->iface;
 
 
-  if (i->check_ttl && (s->ttl < 255))
+  if (i->check_ttl && (s->rcv_ttl < 255))
   {
     log( L_REMOTE "%s: Discarding packet with TTL %d (< 255) from %I on %s",
-	 p->name, s->ttl, s->faddr, i->iface->name);
+	 p->name, s->rcv_ttl, s->faddr, i->iface->name);
     return 1;
   }
 
@@ -731,7 +731,7 @@ new_iface(struct proto *p, struct iface *new, unsigned long flags, struct iface_
       log( L_WARN "%s: interface %s is too strange for me", p->name, rif->iface->name );
   } else {
 
-    if (sk_open(rif->sock)<0)
+    if (sk_open(rif->sock) < 0)
       goto err;
 
     if (rif->multicast)
@@ -743,7 +743,7 @@ new_iface(struct proto *p, struct iface *new, unsigned long flags, struct iface_
       }
     else
       {
-	if (sk_set_broadcast(rif->sock, 1) < 0)
+	if (sk_setup_broadcast(rif->sock) < 0)
 	  goto err;
       }
   }
@@ -753,7 +753,8 @@ new_iface(struct proto *p, struct iface *new, unsigned long flags, struct iface_
   return rif;
 
  err:
-  log( L_ERR "%s: could not create socket for %s", p->name, rif->iface ? rif->iface->name : "(dummy)" );
+  sk_log_error(rif->sock, p->name);
+  log(L_ERR "%s: Cannot open socket for %s", p->name, rif->iface ? rif->iface->name : "(dummy)" );
   if (rif->iface) {
     rfree(rif->sock);
     mb_free(rif);

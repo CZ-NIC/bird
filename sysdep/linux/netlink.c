@@ -63,7 +63,7 @@ nl_open_sock(struct nl_sock *nl)
 {
   if (nl->fd < 0)
     {
-      nl->fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+      nl->fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
       if (nl->fd < 0)
 	die("Unable to open rtnetlink socket: %m");
       nl->seq = now;
@@ -576,24 +576,24 @@ kif_do_scan(struct kif_proto *p UNUSED)
 
   if_start_update();
 
-  /* Is it important which PF_* is used for link-level interface scan?
-     It seems that some information is available only when PF_INET is used. */
+  /* Is it important which AF_* is used for link-level interface scan?
+     It seems that some information is available only when AF_INET is used. */
 
-  nl_request_dump(PF_INET, RTM_GETLINK);
+  nl_request_dump(AF_INET, RTM_GETLINK);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWLINK || h->nlmsg_type == RTM_DELLINK)
       nl_parse_link(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
 
-  nl_request_dump(PF_INET, RTM_GETADDR);
+  nl_request_dump(AF_INET, RTM_GETADDR);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
       nl_parse_addr(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
 
-  nl_request_dump(PF_INET6, RTM_GETADDR);
+  nl_request_dump(AF_INET6, RTM_GETADDR);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
       nl_parse_addr(h, 1);
@@ -969,14 +969,14 @@ krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NUL
 {
   struct nlmsghdr *h;
 
-  nl_request_dump(PF_INET, RTM_GETROUTE);
+  nl_request_dump(AF_INET, RTM_GETROUTE);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
       nl_parse_route(h, 1);
     else
       log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
 
-  nl_request_dump(PF_INET6, RTM_GETROUTE);
+  nl_request_dump(AF_INET6, RTM_GETROUTE);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
       nl_parse_route(h, 1);
@@ -1076,7 +1076,7 @@ nl_open_async(void)
 
   DBG("KRT: Opening async netlink socket\n");
 
-  fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+  fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
   if (fd < 0)
     {
       log(L_ERR "Unable to open asynchronous rtnetlink socket: %m");
@@ -1101,7 +1101,7 @@ nl_open_async(void)
   sk->type = SK_MAGIC;
   sk->rx_hook = nl_async_hook;
   sk->fd = fd;
-  if (sk_open(sk))
+  if (sk_open(sk) < 0)
     bug("Netlink: sk_open failed");
 }
 

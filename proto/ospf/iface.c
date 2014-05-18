@@ -123,7 +123,7 @@ ospf_sk_open(struct ospf_iface *ifa)
       ifa->all_routers = ifa->addr->brd;
       ifa->des_routers = IPA_NONE;
 
-      if (sk_set_broadcast(sk, 1) < 0)
+      if (sk_setup_broadcast(sk) < 0)
         goto err;
     }
     else
@@ -144,6 +144,7 @@ ospf_sk_open(struct ospf_iface *ifa)
   return 1;
 
  err:
+  sk_log_error(sk, po->proto.name);
   rfree(sk);
   return 0;
 }
@@ -154,7 +155,9 @@ ospf_sk_join_dr(struct ospf_iface *ifa)
   if (ifa->sk_dr)
     return;
 
-  sk_join_group(ifa->sk, ifa->des_routers);
+  if (sk_join_group(ifa->sk, ifa->des_routers) < 0)
+    sk_log_error(sk, ifa->oa->po->proto.name);
+
   ifa->sk_dr = 1;
 }
 
@@ -164,7 +167,9 @@ ospf_sk_leave_dr(struct ospf_iface *ifa)
   if (!ifa->sk_dr)
     return;
 
-  sk_leave_group(ifa->sk, ifa->des_routers);
+  if (sk_leave_group(ifa->sk, ifa->des_routers) < 0)
+    sk_log_error(sk, ifa->oa->po->proto.name);
+
   ifa->sk_dr = 0;
 }
 
@@ -198,8 +203,9 @@ ospf_open_vlink_sk(struct proto_ospf *po)
   return;
 
  err:
-  rfree(sk);
+  sk_log_error(sk, po->proto.name);
   log(L_ERR "%s: Cannot open virtual link socket", po->proto.name);
+  rfree(sk);
 }
 
 static void
@@ -459,7 +465,7 @@ ospf_iface_add(struct object_lock *lock)
   /* Open socket if interface is not stub */
   if (! ifa->stub && ! ospf_sk_open(ifa))
   {
-    log(L_ERR "%s: Socket open failed on interface %s, declaring as stub", p->name, ifa->ifname);
+    log(L_ERR "%s: Cannot open socket for %s, declaring as stub", p->name, ifa->ifname);
     ifa->ioprob = OSPF_I_SK;
     ifa->stub = 1;
   }

@@ -222,6 +222,16 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			continue;
 
 		case 'm':
+			if (flags & SPECIAL) {
+				if (!errno)
+					continue;
+				if (size < 2)
+					return -1;
+				*str++ = ':';
+				*str++ = ' ';
+				start += 2;
+				size -= 2;
+			}
 			s = strerror(errno);
 			goto str;
 		case 'M':
