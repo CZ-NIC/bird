@@ -1,0 +1,11 @@
+XMPP:
+	birdbot@xmppserver.com
+	passwordxmpp
+
+SUPERUSERS:
+	user123@xmpp.com
+	neco@xmpp.com
+
+RESTRICTED:
+	sup@xmpp.com
+
