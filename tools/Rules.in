@@ -13,10 +13,12 @@ dynamic-dirs := lib conf
 dynamic-dir-paths := $(dynamic-dirs)
 client-dirs := client
 client-dir-paths := $(client-dirs)
+bot-dirs := cbirdbot
+bot-dir-paths := $(bot-dirs)
 doc-dirs := doc
 doc-dir-paths := $(doc-dirs)
 
-all-dirs:=$(static-dirs) $(dynamic-dirs) $(client-dirs) $(doc-dirs)
+all-dirs:=$(static-dirs) $(dynamic-dirs) $(client-dirs) $(bot-dirs) $(doc-dirs)
 clean-dirs:=$(all-dirs) proto sysdep
 
 CPPFLAGS=-I$(root-rel) -I$(srcdir) @CPPFLAGS@
@@ -24,6 +26,7 @@ CFLAGS=$(CPPFLAGS) @CFLAGS@
 LDFLAGS=@LDFLAGS@
 LIBS=@LIBS@
 CLIENT_LIBS=@CLIENT_LIBS@
+BOT_LIBS=@BOT_LIBS@
 CC=@CC@
 M4=@M4@
 BISON=@BISON@
@@ -73,6 +76,7 @@ all.o: $(objs)
 endif
 
 %.o: $(src-path)%.c
+	@echo 'Building target: $@. First dependency is: $<'
 	$(CC) $(CFLAGS) -o $@ -c $<
 
 ifndef source-dep

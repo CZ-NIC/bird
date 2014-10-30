@@ -9,6 +9,7 @@ AC_CONFIG_AUX_DIR(tools)
 AC_ARG_ENABLE(debug,	[  --enable-debug          enable internal debugging routines (default: disabled)],,enable_debug=no)
 AC_ARG_ENABLE(memcheck,	[  --enable-memcheck       check memory allocations when debugging (default: enabled)],,enable_memcheck=yes)
 AC_ARG_ENABLE(client,	[  --enable-client         enable building of BIRD client (default: enabled)],,enable_client=yes)
+AC_ARG_ENABLE(birdbot,	[  --enable-birdbot        enable building of BIRD XMPP bot (default: disabled)],,enable_birdbot=no)
 AC_ARG_ENABLE(ipv6,	[  --enable-ipv6           enable building of IPv6 version (default: disabled)],,enable_ipv6=no)
 AC_ARG_ENABLE(pthreads,	[  --enable-pthreads       enable POSIX threads support (default: detect)],,enable_pthreads=try)
 AC_ARG_WITH(suffix,	[  --with-suffix=STRING    use specified suffix for BIRD files (default: 6 for IPv6 version)],[given_suffix="yes"])
@@ -61,12 +62,15 @@ AC_SUBST(SUFFIX)
 
 if test "$enable_debug" = yes ; then
 	CONFIG_FILE="bird$SUFFIX.conf"
+	BOT_CONFIG_FILE="birdbot$SUFFIX.conf"
 	CONTROL_SOCKET="bird$SUFFIX.ctl"
 else
 	CONFIG_FILE="\$(sysconfdir)/bird$SUFFIX.conf"
+	BOT_CONFIG_FILE="\$(sysconfdir)/birdbot$SUFFIX.conf"
 	CONTROL_SOCKET="$runtimedir/bird$SUFFIX.ctl"
 fi
 AC_SUBST(CONFIG_FILE)
+AC_SUBST(BOT_CONFIG_FILE)
 AC_SUBST(CONTROL_SOCKET)
 
 AC_SEARCH_LIBS(clock_gettime, [c rt posix4], ,
@@ -281,6 +285,18 @@ fi
 AC_SUBST(CLIENT)
 AC_SUBST(CLIENT_LIBS)
 
+BOT=
+BOT_LIBS=
+if test "$enable_birdbot" = yes ; then
+	BOT=cbirdbot	
+	AC_CHECK_LIB(pthread, main, BOT_LIBS="-lpthread",
+		AC_MSG_ERROR([[The BIRD bot requires pthread library. Either install the library or use --disable-birdbot to compile without the BIRD bot.]]))
+	AC_CHECK_LIB(strophe, main, BOT_LIBS="-lstrophe $BOT_LIBS",
+		AC_MSG_ERROR([[The BIRD bot requires libstrophe. Either install the library or use --disable-birdbot to compile without the BIRD bot.]]))
+fi
+AC_SUBST(BOT)
+AC_SUBST(BOT_LIBS)
+
 mkdir -p $objdir/sysdep
 AC_CONFIG_HEADERS([$objdir/sysdep/autoconf.h:sysdep/autoconf.h.in])
 AC_CONFIG_COMMANDS([merge],[[export CPP="$CPP"
@@ -305,5 +321,6 @@ BIRD was configured with the following options:
 	POSIX threads:		$enable_pthreads
 	Routing protocols:	$protocols
 	Client:			$enable_client
+	BIRD XMPP bot:		$enable_birdbot
 EOF
 rm -f $objdir/.*-stamp
