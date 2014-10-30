@@ -171,9 +171,10 @@ cmd_list_ambiguous(struct cmd_node *root, char *cmd, int len)
 	return out;
 }
 
-char* compose_help(struct cmd_node* m, struct cmd_node* n) {
+char* compose_help(struct cmd_node* n) {
 	int cmd_count = 0;
 	struct cmd_info* cmdinf;
+	struct cmd_node* m;
 	char* out;
 	char buf[256];
 
@@ -238,7 +239,7 @@ cmd_help(char *cmd, int len)
 		n = m;
 	}
 
-	out = compose_help(m, n);
+	out = compose_help(n);
 	return out;
 }
 
