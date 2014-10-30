@@ -308,15 +308,21 @@ char* process_bird_output(char* in) {
 	if(out == NULL)
 		return NULL;
 
-	strcpy(out, "\n");
+	out[0] = '\0';
+
+	if(in[0] == '+') {
+		//asynchroni zprava serveru
+		sprintf(out, "\n>>> %s", in + 1);
+		return out;
+	}
 
 	while((line_end = strchr(in, '\n')) != NULL) {
 		*line_end = '\0';
 		if((strlen(in) > 4) && (sscanf(in, "%04d", &code) == 1) && ((in[4] == ' ') || (in[4] == '-'))) {
 			//platny radek
 			if(strlen(in) > 5) {
-				strcat(out, in + 5);
 				strcat(out, "\n");
+				strcat(out, in + 5);
 			}
 		}
 
@@ -571,17 +577,11 @@ void send_help_html(char* jid, char* mbody) {
  * @return			0 = OK, -1 = Chyba
  */
 int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
-	conn_t* conn = find_connection(jid);
+	conn_t* conn;
+	char* s;
+	int ambig_expansion = 0;
 
-	if(strcmp(cmdtext, "haltbot") == 0) {
-		if(auth_lvl == 2) {
-			exit_clean(); //konec programu
-		}
-		else {
-			send_message(jid, "You are not authorized to kill bots.");
-			return 0;
-		}
-	}
+	conn = find_connection(jid);
 
 	if (lastnb(cmdtext, strlen(cmdtext)) == '?')
 	{
@@ -592,63 +592,69 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 		return 0;
 	}
 
+	s = cmd_expand(cmdtext, &ambig_expansion);
+
+	if(s == NULL) {
+		send_message(conn->jid, "No such command. Press `?' for help.");
+		return 0;
+	}
+
+	if(ambig_expansion) {
+		send_message(jid, s);
+		free(s);
+		return 0;
+	}
+
+	if(strcmp(s, "haltbot") == 0) {
+		if(auth_lvl == 2) {
+			free(s);
+			exit_clean(); //konec programu
+		}
+		else {
+			send_message(jid, "You are not authorized to kill bots.");
+			free(s);
+			return 0;
+		}
+	}
+
 	if(conn == NULL) {
-		if(strcmp(cmdtext, "connect") == 0) {
+		if(strcmp(s, "connect") == 0) {
 			if(create_connection(jid) == 0) {
 				conn = find_connection(jid);
 				connection_run(conn);
 				send_message(jid, "Connected.");
-				/*if(auth_lvl < 2) {
-					write(conn->sock_fd, "restrict\n", 9);
-				}*/
-				return 0;
 			}
 			else {
 				send_message(jid, "Error connecting to BIRD socket.");
+				free(s);
 				return -1;
 			}
 		}
 		else {
 			send_message(jid, "Not connected. Write 'connect' to connect.");
-			return 0;
 		}
 	}
 	else { //jsme pripojeni k BIRD socketu
-		char* s;
-		int ambig_expansion = 0;
-
-		s = cmd_expand(cmdtext, &ambig_expansion);
-		if(ambig_expansion) {
-			send_message(conn->jid, s);
+		if(strcmp(s, "connect") == 0) {
+			send_message(jid, "Already connected.");
+		}
+		else if((strcmp(s, "exit") == 0) || (strcmp(s, "quit") == 0)) {
+			connection_stop(conn);
+			send_message(jid, "Bye.");
 		}
 		else {
-			if(s == NULL) {
-				send_message(conn->jid, "No such command. Press `?' for help.");
-				return 0;
-			}
-			else if(strcmp(s, "connect") == 0) {
-				send_message(jid, "Already connected.");
-			}
-			else if((strcmp(s, "disconnect") || (strcmp(s, "quit") == 0)) == 0) {
-				connection_stop(conn);
-				send_message(jid, "Bye.");
+			if(conn->bird_ready) {
+				printf("posilam %s\n", s);
+				write(conn->sock_fd, s, strlen(s));
+				write(conn->sock_fd, "\n", 1);
 			}
 			else {
-				if(conn->bird_ready) {
-					printf("posilam %s\n", s);
-					write(conn->sock_fd, s, strlen(s));
-					write(conn->sock_fd, "\n", 1);
-				}
-				else {
-					puts("BIRD not ready");
-				}
+				puts("BIRD not ready");
 			}
 		}
-
-		free(s);
-		return 0;
 	}
 
+	free(s);
 	return 0;
 }
 
@@ -928,9 +934,9 @@ int main(int argc, char **argv)
             close(STDOUT_FILENO);
             close(STDERR_FILENO);
 
-            open ("/dev/null", O_RDWR);
-            dup (0);
-            dup (0);
+            open("/dev/null", O_RDWR);
+            dup(0);
+            dup(0);
     	}
     }
 
