@@ -21,14 +21,14 @@
 
 /****************************** SETTINGS ************************************/
 
-//#define PATH_CONTROL_SOCKET "/usr/local/var/run/bird.ctl"
+//#define PATH_CONTROL_SOCKET		"/usr/local/var/run/bird.ctl"
 
-//#define PATH_CONFIG "/etc/birdbot/birdbot.conf"
-#define PATH_CONFIG PATH_BOT_CONFIG_FILE
+//#define PATH_CONFIG				"/etc/birdbot/birdbot.conf"
+#define PATH_CONFIG				PATH_BOT_CONFIG_FILE
+
+#define PATH_LOCKFILE			"/var/run/birdbot.lock"
 
 /*****************************************************************************/
-
-static char*	server_path = PATH_CONTROL_SOCKET;
 
 char*	superusers[100];
 char*	restricted_users[100];
@@ -211,7 +211,7 @@ int create_connection(char* jid) {
 	memset(&sa, 0, sizeof(struct sockaddr_un));
 	//inet_aton(BIRD_host, &(adr.sin_addr));
 	sa.sun_family = AF_UNIX;
-	strcpy(sa.sun_path, server_path);
+	strcpy(sa.sun_path, PATH_CONTROL_SOCKET);
 	//adr.sin_port = htons(BIRD_host_port);
 
 	if(connect(conn->sock_fd, (struct sockaddr*) &sa, SUN_LEN(&sa)) < 0) {
@@ -595,7 +595,7 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 	s = cmd_expand(cmdtext, &ambig_expansion);
 
 	if(s == NULL) {
-		send_message(conn->jid, "No such command. Press `?' for help.");
+		send_message(jid, "No such command. Press `?' for help.");
 		return 0;
 	}
 
@@ -665,11 +665,19 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
  * @return		0 = Neopravnen, 1 = Restricted user, 2 = Superuser
  */
 int check_user_auth(char* jid) {
-	int user_auth_lvl;
+	int user_auth_lvl = 0;
+	char* ptr;
+	int basejid_len;
 	int i;
 
+	ptr = strchr(jid, '/'); //trim extended jid
+	if(ptr != NULL)
+		basejid_len = ptr - jid;
+	else
+		basejid_len = strlen(jid);
+
 	for(i = 0; /*i < sizeof(superusers)/sizeof(char*)*/superusers[i] != NULL; i++) {
-		if(strcmp(jid, superusers[i]) == 0) {
+		if(strncmp(jid, superusers[i], basejid_len) == 0) {
 			user_auth_lvl = 2;
 			break;
 		}
@@ -677,7 +685,7 @@ int check_user_auth(char* jid) {
 
 	if(user_auth_lvl == 0) {
 		for(i = 0; /*i < sizeof(restricted_users)/sizeof(char*)*/restricted_users[i] != NULL; i++) {
-			if(strcmp(jid, restricted_users[i]) == 0) {
+			if(strncmp(jid, restricted_users[i], basejid_len) == 0) {
 				user_auth_lvl = 1;
 				break;
 			}
@@ -693,7 +701,6 @@ int check_user_auth(char* jid) {
 int x_message_handler(xmpp_conn_t * const conn, xmpp_stanza_t * const stanza, void * const userdata)
 {
 	char* from;
-	char* ptr;
 	char *intext;
 	int user_auth_lvl = 0; // 0 = not authorized, 1 = restricted, 2 = superuser
 	//xmpp_ctx_t *ctx = (xmpp_ctx_t*)userdata;
@@ -704,9 +711,9 @@ int x_message_handler(xmpp_conn_t * const conn, xmpp_stanza_t * const stanza, vo
 	intext = xmpp_stanza_get_text(xmpp_stanza_get_child_by_name(stanza, "body"));
 	
 	from = xmpp_stanza_get_attribute(stanza, "from");
-	ptr = strchr(from, '/');
+	/*ptr = strchr(from, '/');
 	if(ptr != NULL)
-		*ptr = '\0';
+		*ptr = '\0';*/
 
 	printf("Incoming message from %s: %s\n", from, intext);
 
@@ -760,24 +767,24 @@ void x_conn_handler(xmpp_conn_t * const conn, const xmpp_conn_event_t status,
 		  const int error, xmpp_stream_error_t * const stream_error,
 		  void * const userdata)
 {
-    xmpp_ctx_t *ctx = (xmpp_ctx_t *)userdata;
+	xmpp_ctx_t *ctx = (xmpp_ctx_t *)userdata;
 
-    if (status == XMPP_CONN_CONNECT) {
-	xmpp_stanza_t* pres;
-	//fprintf(stderr, "DEBUG: connected\n");
-	xmpp_handler_add(conn,x_message_handler, NULL, "message", NULL, ctx);
-	xmpp_handler_add(conn,x_auth_handler, NULL, "presence", "subscribe", ctx);
-	
-	/* Send initial <presence/> so that we appear online to contacts */
-	pres = xmpp_stanza_new(ctx);
-	xmpp_stanza_set_name(pres, "presence");
-	xmpp_send(conn, pres);
-	xmpp_stanza_release(pres);
-    }
-    else {
-	//fprintf(stderr, "DEBUG: disconnected\n");
-	xmpp_stop(ctx);
-    }
+	if (status == XMPP_CONN_CONNECT) {
+		xmpp_stanza_t* pres;
+		fprintf(stderr, "XMPP DEBUG: connected\n");
+		xmpp_handler_add(conn,x_message_handler, NULL, "message", NULL, ctx);
+		xmpp_handler_add(conn,x_auth_handler, NULL, "presence", "subscribe", ctx);
+
+		/* Send initial <presence/> so that we appear online to contacts */
+		pres = xmpp_stanza_new(ctx);
+		xmpp_stanza_set_name(pres, "presence");
+		xmpp_send(conn, pres);
+		xmpp_stanza_release(pres);
+	}
+	else {
+		fprintf(stderr, ">>>>> XMPP DEBUG: disconnected <<<<<\n");
+		xmpp_stop(ctx);
+	}
 }
 
 /**
@@ -900,15 +907,19 @@ int main(int argc, char **argv)
     xmpp_log_t *log;
     char opt;
     pid_t pid, sid;
+    int lockfile;
+    int release_terminal = 0;
 
     struct sigaction action;
     memset(&action, 0, sizeof(struct sigaction));
     action.sa_handler = sigterm_handler;
     sigaction(SIGTERM, &action, NULL);
 
+    //load configuration
     if(load_config(PATH_CONFIG) != 0)
     	return -1;
 
+    //parse command line parameters
     while((opt = getopt(argc, argv, "d")) != -1) {
     	if(opt == 'd') {
     		//daemonize
@@ -930,14 +941,29 @@ int main(int argc, char **argv)
     		if ((chdir("/")) < 0)
     			return -1;
 
-            close(STDIN_FILENO);
-            close(STDOUT_FILENO);
-            close(STDERR_FILENO);
-
-            open("/dev/null", O_RDWR);
-            dup(0);
-            dup(0);
+    		release_terminal = 1;
+    		break;
     	}
+    }
+
+    //ensure single instance
+    lockfile = open(PATH_LOCKFILE, O_WRONLY | O_CREAT, "0666");
+    if(lockfile < 0)
+    	return -1;
+
+    if(lockf(lockfile, F_TLOCK, 0) != 0) {
+    	puts("Birdbot already running (lockfile exists), exiting.");
+    	return 1;
+    }
+
+    if(release_terminal) {
+        close(STDIN_FILENO);
+        close(STDOUT_FILENO);
+        close(STDERR_FILENO);
+
+        open("/dev/null", O_RDWR);
+        dup(0);
+        dup(0);
     }
 
     print_config();
