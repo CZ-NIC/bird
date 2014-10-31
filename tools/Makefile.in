@@ -3,7 +3,7 @@
 
 include Rules
 
-.PHONY: all daemon birdc birdcl bbot subdir depend clean distclean tags docs userdocs progdocs
+.PHONY: all daemon birdc birdcl birdbot subdir depend clean distclean tags docs userdocs progdocs
 
 all: sysdep/paths.h .dep-stamp subdir daemon birdcl @CLIENT@ @BOT@
 
@@ -13,7 +13,7 @@ birdc: $(exedir)/birdc
 
 birdcl: $(exedir)/birdcl
 
-cbirdbot: $(exedir)/bbot
+cbirdbot: $(exedir)/birdbot
 
 bird-dep := $(addsuffix /all.o, $(static-dirs)) conf/all.o lib/birdlib.a
 
@@ -52,7 +52,7 @@ $(exedir)/birdc: $(birdc-dep)
 $(exedir)/birdcl: $(birdcl-dep)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-$(exedir)/bbot: $(bot-dep)
+$(exedir)/birdbot: $(bot-dep)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS) $(BOT_LIBS)
 
 .dir-stamp: sysdep/paths.h
@@ -91,7 +91,7 @@ install: all
 		echo "Not overwriting old bird@SUFFIX@.conf" ;					\
 	fi
 	if test -n "@BOT@" ; then								\
-		$(INSTALL_PROGRAM) $(exedir)/bbot $(DESTDIR)/$(sbindir)/bbot@SUFFIX@ ;	\
+		$(INSTALL_PROGRAM) $(exedir)/birdbot $(DESTDIR)/$(sbindir)/birdbot@SUFFIX@ ;	\
 	fi
 	if ! test -f $(DESTDIR)/@BOT_CONFIG_FILE@ ; then						\
 		$(INSTALL_DATA) $(srcdir)/doc/birdbot.conf.example $(DESTDIR)/@BOT_CONFIG_FILE@ ;	\
@@ -106,7 +106,7 @@ install-docs:
 clean:
 	find . -name "*.[oa]" -o -name core -o -name depend -o -name "*.html" | xargs rm -f
 	rm -f conf/cf-lex.c conf/cf-parse.* conf/commands.h conf/keywords.h
-	rm -f $(exedir)/bird $(exedir)/birdcl $(exedir)/birdc $(exedir)/bbot $(exedir)/bird.ctl $(exedir)/bird6.ctl .dep-stamp
+	rm -f $(exedir)/bird $(exedir)/birdcl $(exedir)/birdc $(exedir)/birdbot $(exedir)/bird.ctl $(exedir)/bird6.ctl .dep-stamp
 
 distclean: clean
 	rm -f config.* configure sysdep/autoconf.h sysdep/paths.h Makefile Rules
