@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <strophe.h>
+#include <loudmouth/loudmouth.h>
 
 #include <pthread.h>
 #include <unistd.h>
@@ -33,13 +33,12 @@
 char*	superusers[100];
 char*	restricted_users[100];
 
-char*		birdbot_jid;
-char*		birdbot_pw;
+char*	birdbot_jid;
+char*	birdbot_pw;
 
-struct {
-	xmpp_ctx_t *gctx;
-	xmpp_conn_t *gconn;
-}xmppstate;
+LmConnection	*xmpp_conn;
+pthread_t		xmpp_keepalive_tid;
+GMainLoop		*main_loop = NULL;
 
 void send_message(char* jid, char* mbody);
 
@@ -267,9 +266,10 @@ int connection_stop(conn_t* conn) {
 /**
  * Korektni ukonceni programu - zavre vsechna spojeni
  */
-void exit_clean(void) {
+void exit_clean(int exitno) {
 	conn_listitem_t* c_tmp = conn_list;
 	char** ptr;
+	int timeout = 20;
 
 	while(c_tmp != NULL) {
 		connection_stop(c_tmp->connection);
@@ -291,8 +291,15 @@ void exit_clean(void) {
 		ptr++;
 	}
 
-	sleep(1);
-	exit(0);
+	pthread_kill(xmpp_keepalive_tid, SIGTERM);
+
+	//pockame na ukonceni vsech vlaken spojeni
+	while((conn_list != NULL) && timeout) {
+		usleep(100000);
+		timeout--;
+	}
+
+	exit(exitno);
 }
 
 /**
@@ -415,29 +422,17 @@ int connection_run(conn_t* conn) {
  * @param mbody		Text tela zpravy
  */
 void send_message(char* jid, char* mbody) {
-	 xmpp_stanza_t* message, *body, *text;
+    LmMessage*	msg;
 
-	 pthread_mutex_lock(&xmppmtx);
+    pthread_mutex_lock(&xmppmtx);
 
-	 message = xmpp_stanza_new(xmppstate.gctx);
-	 xmpp_stanza_set_name(message, "message");
-	 xmpp_stanza_set_type(message, "chat");
-	 xmpp_stanza_set_attribute(message, "to", jid);
+	msg = lm_message_new_with_sub_type(jid, LM_MESSAGE_TYPE_MESSAGE, LM_MESSAGE_SUB_TYPE_CHAT);
+	lm_message_node_add_child (msg->node, "body", mbody);
+	lm_connection_send(xmpp_conn, msg, NULL);
+	lm_message_unref(msg);
 
-	 body = xmpp_stanza_new(xmppstate.gctx);
-	 xmpp_stanza_set_name(body, "body");
-
-	 text = xmpp_stanza_new(xmppstate.gctx);
-	 xmpp_stanza_set_text(text, mbody);
-
-	 xmpp_stanza_add_child(body, text);
-	 xmpp_stanza_add_child(message, body);
-
-	 xmpp_send(xmppstate.gconn, message);
-	 xmpp_stanza_release(message);
-
-	 pthread_mutex_unlock(&xmppmtx);
- }
+	pthread_mutex_unlock(&xmppmtx);
+}
 
 /**
  * Posle HTML napovedu k prikazu
@@ -445,9 +440,8 @@ void send_message(char* jid, char* mbody) {
  * @param mbody		Text tela zpravy
  */
 void send_help_html(char* jid, char* mbody) {
-	xmpp_stanza_t* message, *body, *text, *html, *htmlbody, *p, *htmltext, *br;
-	xmpp_stanza_t* httags[50][3];
-	xmpp_stanza_t* httexts[50][3];
+	LmMessage*	msg;
+	LmMessageNode *html, *htbody, *p;
 	char* msg_arr[50][3];
 	char* line_end;
 	char *tab1, *tab2;
@@ -465,9 +459,6 @@ void send_help_html(char* jid, char* mbody) {
 
 	while((line_end = strchr(in, '\n')) != NULL) {
 		*line_end = '\0';
-		/*memset(msg_arr[i][0], 0, 100);
-		memset(msg_arr[i][1], 0, 100);
-		memset(msg_arr[i][2], 0, 100);*/
 
 		tab1 = strchr(in, '\t');
 		if(tab1 == NULL)
@@ -499,72 +490,27 @@ void send_help_html(char* jid, char* mbody) {
 
 	lines = i;
 
-	message = xmpp_stanza_new(xmppstate.gctx);
-	xmpp_stanza_set_name(message, "message");
-	xmpp_stanza_set_type(message, "chat");
-	xmpp_stanza_set_attribute(message, "to", jid);
+	pthread_mutex_lock(&xmppmtx);
+	msg = lm_message_new_with_sub_type(jid, LM_MESSAGE_TYPE_MESSAGE, LM_MESSAGE_SUB_TYPE_CHAT);
+	lm_message_node_add_child(msg->node, "body", mbody);
 
-	//textova cast
-	body = xmpp_stanza_new(xmppstate.gctx);
-	xmpp_stanza_set_name(body, "body");
-
-	text = xmpp_stanza_new(xmppstate.gctx);
-	xmpp_stanza_set_text(text, mbody);
-
-	xmpp_stanza_add_child(body, text);
-	xmpp_stanza_add_child(message, body);
-
-	//html cast
-	html = xmpp_stanza_new(xmppstate.gctx);
-	xmpp_stanza_set_name(html, "html");
-	xmpp_stanza_set_attribute(html, "xmlns", "http://jabber.org/protocol/xhtml-im");
-
-	htmlbody = xmpp_stanza_new(xmppstate.gctx);
-	xmpp_stanza_set_name(htmlbody, "body");
-	xmpp_stanza_set_attribute(htmlbody, "xmlns", "http://www.w3.org/1999/xhtml");
-	xmpp_stanza_set_attribute(htmlbody, "lang", "en");
-
-	p = xmpp_stanza_new(xmppstate.gctx);
-	xmpp_stanza_set_name(p, "p");
+	html = lm_message_node_add_child(msg->node, "html", NULL);
+	lm_message_node_set_attribute(html, "xmlns", "http://jabber.org/protocol/xhtml-im");
+	htbody = lm_message_node_add_child(html, "body", NULL);
+	lm_message_node_set_attribute(htbody, "xmlns", "http://www.w3.org/1999/xhtml");
+	lm_message_node_set_attribute(htbody, "lang", "en");
+	p = lm_message_node_add_child(htbody, "p", NULL);
 
 	for(i = 0; i < lines; i++) {
-		httags[i][0] = xmpp_stanza_new(xmppstate.gctx);
-		xmpp_stanza_set_name(httags[i][0], "strong");
-
-		httags[i][1] = xmpp_stanza_new(xmppstate.gctx);
-		xmpp_stanza_set_name(httags[i][1], "em");
-
-		httexts[i][0] = xmpp_stanza_new(xmppstate.gctx);
-		xmpp_stanza_set_text(httexts[i][0], msg_arr[i][0]);
-
-		httexts[i][1] = xmpp_stanza_new(xmppstate.gctx);
-		xmpp_stanza_set_text(httexts[i][1], msg_arr[i][1]);
-
-		httexts[i][2] = xmpp_stanza_new(xmppstate.gctx);
-		xmpp_stanza_set_text(httexts[i][2], msg_arr[i][2]);
+		lm_message_node_add_child(p, "br", NULL);
+		lm_message_node_add_child(p, "strong", msg_arr[i][0]);
+		lm_message_node_add_child(p, "em", msg_arr[i][1]);
+		lm_message_node_add_child(p, "span", msg_arr[i][2]);
 	}
 
-	htmltext = xmpp_stanza_new(xmppstate.gctx);
-	xmpp_stanza_set_text(htmltext, mbody);
-
-	for(i = 0; i < lines; i++) {
-		br = xmpp_stanza_new(xmppstate.gctx);
-		xmpp_stanza_set_name(br, "br");
-
-		xmpp_stanza_add_child(httags[i][0], httexts[i][0]);
-		xmpp_stanza_add_child(httags[i][1], httexts[i][1]);
-		xmpp_stanza_add_child(p, br);
-		xmpp_stanza_add_child(p, httags[i][0]);
-		xmpp_stanza_add_child(p, httags[i][1]);
-		xmpp_stanza_add_child(p, httexts[i][2]);
-	}
-
-	xmpp_stanza_add_child(htmlbody, p);
-	xmpp_stanza_add_child(html, htmlbody);
-	xmpp_stanza_add_child(message, html);
-
-	xmpp_send(xmppstate.gconn, message);
-	xmpp_stanza_release(message);
+	lm_connection_send(xmpp_conn, msg, NULL);
+	lm_message_unref(msg);
+	pthread_mutex_unlock(&xmppmtx);
 
 	free(arr);
 }
@@ -608,7 +554,7 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 	if(strcmp(s, "haltbot") == 0) {
 		if(auth_lvl == 2) {
 			free(s);
-			exit_clean(); //konec programu
+			exit_clean(0); //konec programu
 		}
 		else {
 			send_message(jid, "You are not authorized to kill bots.");
@@ -696,102 +642,10 @@ int check_user_auth(char* jid) {
 }
 
 /**
- * Callback funkce, spustena pri prijeti zpravy z XMPP
- */
-int x_message_handler(xmpp_conn_t * const conn, xmpp_stanza_t * const stanza, void * const userdata)
-{
-	char* from;
-	char *intext;
-	int user_auth_lvl = 0; // 0 = not authorized, 1 = restricted, 2 = superuser
-	//xmpp_ctx_t *ctx = (xmpp_ctx_t*)userdata;
-	
-	if(!xmpp_stanza_get_child_by_name(stanza, "body")) return 1;
-	if(xmpp_stanza_get_attribute(stanza, "type") !=NULL && !strcmp(xmpp_stanza_get_attribute(stanza, "type"), "error")) return 1;
-	
-	intext = xmpp_stanza_get_text(xmpp_stanza_get_child_by_name(stanza, "body"));
-	
-	from = xmpp_stanza_get_attribute(stanza, "from");
-	/*ptr = strchr(from, '/');
-	if(ptr != NULL)
-		*ptr = '\0';*/
-
-	printf("Incoming message from %s: %s\n", from, intext);
-
-	user_auth_lvl = check_user_auth(from);
-
-	if(user_auth_lvl == 0) {
-		send_message(from, "Not authorized.");
-		return 1;
-	}
-
-	//jsme opravneny uzivatel
-	process_cmd(from, intext, user_auth_lvl);
-
-	return 1;
-}
-
-/**
- * Callback funkce, zajistuje XMPP autorizaci opravnenych uzivatelu
- */
-int x_auth_handler(xmpp_conn_t * const conn, xmpp_stanza_t * const stanza, void * const userdata)
-{
-	xmpp_stanza_t *reply;
-	xmpp_ctx_t *ctx = (xmpp_ctx_t*)userdata;
-	char* from;
-
-	from = xmpp_stanza_get_attribute(stanza, "from");
-
-	printf("Received auth request from %s\n", from);
-
-	if(check_user_auth(from) > 0) {
-		reply = xmpp_stanza_new(ctx);
-		xmpp_stanza_set_name(reply, "presence");
-		xmpp_stanza_set_type(reply, "subscribed");
-		xmpp_stanza_set_attribute(reply, "to", from);
-
-		puts("authorizing");
-		xmpp_send(conn, reply);
-		xmpp_stanza_release(reply);
-	}
-	else {
-		puts("auth denied");
-	}
-
-	return 1;
-}
-
-/**
- * Callback funkce, obsluha udalosti spojeni s XMPP serverem
- */
-void x_conn_handler(xmpp_conn_t * const conn, const xmpp_conn_event_t status,
-		  const int error, xmpp_stream_error_t * const stream_error,
-		  void * const userdata)
-{
-	xmpp_ctx_t *ctx = (xmpp_ctx_t *)userdata;
-
-	if (status == XMPP_CONN_CONNECT) {
-		xmpp_stanza_t* pres;
-		fprintf(stderr, "XMPP DEBUG: connected\n");
-		xmpp_handler_add(conn,x_message_handler, NULL, "message", NULL, ctx);
-		xmpp_handler_add(conn,x_auth_handler, NULL, "presence", "subscribe", ctx);
-
-		/* Send initial <presence/> so that we appear online to contacts */
-		pres = xmpp_stanza_new(ctx);
-		xmpp_stanza_set_name(pres, "presence");
-		xmpp_send(conn, pres);
-		xmpp_stanza_release(pres);
-	}
-	else {
-		fprintf(stderr, ">>>>> XMPP DEBUG: disconnected <<<<<\n");
-		xmpp_stop(ctx);
-	}
-}
-
-/**
  * Reakce na SIGTERM (ciste ukonceni demona)
  */
 void sigterm_handler(int n) {
-	exit_clean();
+	exit_clean(0);
 }
 
 /**
@@ -902,9 +756,181 @@ void print_config(void) {
 	}
 }
 
+/**
+ * Ziska uzivatelske jmeno z JID
+ * @param jid	Jabber ID
+ * @return		Jmeno uzivatele (nove alokovane), NULL = Chyba
+ */
+gchar* jid_get_name(const gchar *jid) {
+    const gchar *ch;
+
+    g_return_val_if_fail (jid != NULL, NULL);
+
+    ch = strchr (jid, '@');
+    if (!ch)
+    	return NULL;
+
+    return g_strndup (jid, ch - jid);
+}
+
+/**
+ * Ziska jmeno serveru z JID
+ * @param jid	Jabber ID
+ * @return		Prvni znak nazvu serveru v JID, NULL = Chyba
+ */
+char* jid_get_server(const char* jid) {
+	char* ptr;
+	ptr = strchr(jid, '@');
+	if(ptr != NULL)
+		return ptr + 1;
+	else
+		return NULL;
+}
+
+/**
+ * Callback funkce, zajistuje prihlasovani uzivatelu k serveru
+ */
+void xmpp_conn_auth_handler(LmConnection *connection, gboolean success, gpointer user_data) {
+	if (success) {
+		LmMessage *m;
+
+		printf("XMPP: Authenticated successfully\n");
+
+		m = lm_message_new_with_sub_type(NULL, LM_MESSAGE_TYPE_PRESENCE, LM_MESSAGE_SUB_TYPE_AVAILABLE);
+		lm_connection_send(connection, m, NULL);
+		printf("XMPP: Sent presence message: %s", lm_message_node_to_string(m->node));
+		lm_message_unref(m);
+	}
+	else {
+		printf("XMPP: Failed to authenticate\n");
+		g_main_loop_quit(main_loop);
+	}
+}
+
+/**
+ * Callback funkce, obsluha udalosti spojeni s XMPP serverem
+ */
+void xmpp_conn_open_handler(LmConnection *connection, gboolean success, gpointer user_data) {
+	if(success) {
+		gchar *user;
+
+		user = jid_get_name(birdbot_jid);
+		lm_connection_authenticate(connection, user, birdbot_pw, "test-lm", xmpp_conn_auth_handler, NULL, FALSE,  NULL);
+		g_free(user);
+
+		printf("XMPP: Sent authentication message\n");
+	} else {
+		printf("XMPP: Failed to connect\n");
+		g_main_loop_quit(main_loop);
+	}
+}
+
+/**
+ * Callback funkce, obsluha udalosti spojeni s XMPP serverem
+ */
+void xmpp_conn_close_handler(LmConnection *connection, LmDisconnectReason  reason, gpointer user_data) {
+    const char *str;
+
+    switch (reason) {
+    case LM_DISCONNECT_REASON_OK:
+        str = "LM_DISCONNECT_REASON_OK";
+        break;
+    case LM_DISCONNECT_REASON_PING_TIME_OUT:
+        str = "LM_DISCONNECT_REASON_PING_TIME_OUT";
+        break;
+    case LM_DISCONNECT_REASON_HUP:
+        str = "LM_DISCONNECT_REASON_HUP";
+        break;
+    case LM_DISCONNECT_REASON_ERROR:
+        str = "LM_DISCONNECT_REASON_ERROR";
+        break;
+    case LM_DISCONNECT_REASON_UNKNOWN:
+    default:
+        str = "LM_DISCONNECT_REASON_UNKNOWN";
+        break;
+    }
+
+    printf("XMPP: Disconnected, reason: %d->'%s'\n", reason, str);
+}
+
+/**
+ * Callback funkce, spustena pri prijeti zpravy z XMPP
+ */
+LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *connection, LmMessage *m, gpointer user_data) {
+	char* from;
+	char *intext = NULL;
+	int user_auth_lvl = 0; // 0 = not authorized, 1 = restricted, 2 = superuser
+
+	if(lm_message_node_get_child(m->node, "body") == NULL)
+		return LM_HANDLER_RESULT_REMOVE_MESSAGE;
+
+	if((lm_message_node_get_attribute(m->node, "type") != NULL) && !strcmp(lm_message_node_get_attribute(m->node, "type"), "error"))
+		return LM_HANDLER_RESULT_REMOVE_MESSAGE;
+
+	from = (char*)lm_message_node_get_attribute(m->node, "from");
+
+    if(lm_message_node_get_child(m->node, "body")->value != NULL)
+    	intext = (char*)lm_message_node_get_value(lm_message_node_get_child(m->node, "body"));
+
+	printf("XMPP: Incoming message from %s: %s\n", from, intext);
+
+	user_auth_lvl = check_user_auth(from);
+	if(user_auth_lvl == 0) {
+		send_message(from, "Not authorized.");
+		return 1;
+	}
+
+	//jsme opravneny uzivatel
+	process_cmd(from, intext, user_auth_lvl);
+
+    return LM_HANDLER_RESULT_REMOVE_MESSAGE;
+}
+
+LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *connection, LmMessage *m, gpointer user_data) {
+	LmMessage* msub;
+	char* from;
+	LmMessageSubType subtype;
+
+	if(lm_message_get_sub_type(m) == LM_MESSAGE_SUB_TYPE_SUBSCRIBE) {
+		from = (char*)lm_message_node_get_attribute(m->node, "from");
+
+		if(check_user_auth(from) > 0) {
+			subtype = LM_MESSAGE_SUB_TYPE_SUBSCRIBED;
+			printf("XMPP: User %s requested authorization, allowed\n", from);
+		}
+		else {
+			subtype = LM_MESSAGE_SUB_TYPE_UNSUBSCRIBED;
+			printf("XMPP: User %s requested authorization, declined\n", from);
+		}
+
+		msub = lm_message_new_with_sub_type(from, LM_MESSAGE_TYPE_PRESENCE, subtype);
+		lm_connection_send(xmpp_conn, msub, NULL);
+		lm_message_unref(msub);
+	}
+	return LM_HANDLER_RESULT_REMOVE_MESSAGE;
+}
+
+/**
+ * XMPP whitespace keepalive, posle serveru mezeru kazdych 5 minut
+ */
+void* xmpp_keep_alive_thread(void* args) {
+	while(1) {
+		sleep(300);
+		pthread_mutex_lock(&xmppmtx);
+		lm_connection_send_raw(xmpp_conn, " ", NULL);
+		puts("XMPP: Sending keepalive");
+		pthread_mutex_unlock(&xmppmtx);
+	}
+	return NULL;
+}
+
 int main(int argc, char **argv)
 {
-    xmpp_log_t *log;
+    LmMessageHandler *handler;
+    gboolean          result;
+    GError           *error = NULL;
+    static char* xmpp_server;
+
     char opt;
     pid_t pid, sid;
     int lockfile;
@@ -915,15 +941,11 @@ int main(int argc, char **argv)
     action.sa_handler = sigterm_handler;
     sigaction(SIGTERM, &action, NULL);
 
-    //load configuration
-    if(load_config(PATH_CONFIG) != 0)
-    	return -1;
-
     //parse command line parameters
     while((opt = getopt(argc, argv, "d")) != -1) {
     	if(opt == 'd') {
     		//daemonize
-    		puts("Going to daemon mode");
+    		//puts("Going to daemon mode");
 
     		pid = fork();
     		if(pid < 0)
@@ -941,6 +963,13 @@ int main(int argc, char **argv)
     		if ((chdir("/")) < 0)
     			return -1;
 
+    		pid = fork();
+    		if(pid < 0)
+    			return -1;
+
+    		if(pid > 0)
+    			return 0;
+
     		release_terminal = 1;
     		break;
     	}
@@ -948,14 +977,17 @@ int main(int argc, char **argv)
 
     //ensure single instance
     lockfile = open(PATH_LOCKFILE, O_WRONLY | O_CREAT, "0666");
-    if(lockfile < 0)
+    if(lockfile < 0) {
+    	puts("Error opening lockfile, exiting. (Is running as root?)");
     	return -1;
+    }
 
     if(lockf(lockfile, F_TLOCK, 0) != 0) {
     	puts("Birdbot already running (lockfile exists), exiting.");
     	return 1;
     }
 
+    //close standard file descriptors
     if(release_terminal) {
         close(STDIN_FILENO);
         close(STDOUT_FILENO);
@@ -966,25 +998,48 @@ int main(int argc, char **argv)
         dup(0);
     }
 
+    //load configuration
+    if(load_config(PATH_CONFIG) != 0)
+    	return -1;
+
     print_config();
 
     cmd_build_tree();
 
-    xmpp_initialize();
+    //initialize XMPP
+    xmpp_server = jid_get_server(birdbot_jid);
+    if(xmpp_server == NULL) {
+    	printf("Invalid XMPP bot jid: %s\n", birdbot_jid);
+    	exit_clean(-1);
+    }
 
-    log = xmpp_get_default_logger(XMPP_LEVEL_ERROR);
-    xmppstate.gctx = xmpp_ctx_new(NULL, log);
-    xmppstate.gconn = xmpp_conn_new(xmppstate.gctx);
+    xmpp_conn = lm_connection_new(xmpp_server);
+    lm_connection_set_port(xmpp_conn, LM_CONNECTION_DEFAULT_PORT);
+    lm_connection_set_jid(xmpp_conn, birdbot_jid);
 
-    xmpp_conn_set_jid(xmppstate.gconn, birdbot_jid);
-    xmpp_conn_set_pass(xmppstate.gconn, birdbot_pw);
-    xmpp_connect_client(xmppstate.gconn, NULL, 0, x_conn_handler, xmppstate.gctx);
+    handler = lm_message_handler_new(xmpp_message_handler, NULL, NULL);
+    lm_connection_register_message_handler(xmpp_conn, handler, LM_MESSAGE_TYPE_MESSAGE, LM_HANDLER_PRIORITY_NORMAL);
+    lm_message_handler_unref(handler);
 
-    xmpp_run(xmppstate.gctx); //loop
+    handler = lm_message_handler_new(xmpp_presence_handler, NULL, NULL);
+    lm_connection_register_message_handler(xmpp_conn, handler, LM_MESSAGE_TYPE_PRESENCE, LM_HANDLER_PRIORITY_NORMAL);
+    lm_message_handler_unref(handler);
 
-    xmpp_conn_release(xmppstate.gconn);
-    xmpp_ctx_free(xmppstate.gctx);
-    xmpp_shutdown();
+    lm_connection_set_disconnect_function(xmpp_conn, xmpp_conn_close_handler, NULL, NULL);
+    result = lm_connection_open(xmpp_conn, (LmResultFunction)xmpp_conn_open_handler, NULL, NULL, &error);
 
+    if(!result) {
+        printf("Opening xmpp_conn failed, error: %d->'%s'\n", error->code, error->message);
+        g_free(error);
+        exit_clean(-1);
+    }
+
+    pthread_create(&xmpp_keepalive_tid, NULL, xmpp_keep_alive_thread, NULL);
+    pthread_detach(xmpp_keepalive_tid);
+
+    main_loop = g_main_loop_new(NULL, FALSE);
+    g_main_loop_run(main_loop);
+
+    exit_clean(0);
     return 0;
 }

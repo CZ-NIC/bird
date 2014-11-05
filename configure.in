@@ -285,14 +285,19 @@ fi
 AC_SUBST(CLIENT)
 AC_SUBST(CLIENT_LIBS)
 
+PKG_PROG_PKG_CONFIG
+
 BOT=
 BOT_LIBS=
 if test "$enable_birdbot" = yes ; then
 	BOT=cbirdbot	
 	AC_CHECK_LIB(pthread, main, BOT_LIBS="-lpthread",
 		AC_MSG_ERROR([[The BIRD bot requires pthread library. Either install the library or use --disable-birdbot to compile without the BIRD bot.]]))
-	AC_CHECK_LIB(strophe, main, BOT_LIBS="-lstrophe $BOT_LIBS",
-		AC_MSG_ERROR([[The BIRD bot requires libstrophe. Either install the library or use --disable-birdbot to compile without the BIRD bot.]]))
+	PKG_CHECK_MODULES(LOUDMOUTH, loudmouth-1.0,
+		BOT_LIBS="$BOT_LIBS $LOUDMOUTH_LIBS"
+		CPPFLAGS="$CPPFLAGS $LOUDMOUTH_CFLAGS",
+		AC_MSG_ERROR([[The BIRD bot requires loudmouth and glib libraries + headers. Either install the libraries and headers or use --disable-birdbot to compile without the BIRD bot.]]))	
+
 fi
 AC_SUBST(BOT)
 AC_SUBST(BOT_LIBS)
