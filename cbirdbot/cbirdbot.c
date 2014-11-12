@@ -6,12 +6,15 @@
 
 #include <pthread.h>
 #include <unistd.h>
+#include <getopt.h>
 #include <signal.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <fcntl.h>
+#include <netdb.h>
+#include <resolv.h>
 
 #include "client.h"
 #include "sysdep/paths.h"
@@ -23,6 +26,7 @@
 
 //#define PATH_CONTROL_SOCKET		"/usr/local/var/run/bird.ctl"
 
+//#define PATH_CONFIG				"/usr/local/etc/birdbot.conf"
 //#define PATH_CONFIG				"/etc/birdbot/birdbot.conf"
 #define PATH_CONFIG				PATH_BOT_CONFIG_FILE
 
@@ -35,6 +39,7 @@ char*	restricted_users[100];
 
 char*	birdbot_jid;
 char*	birdbot_pw;
+char bird_socket[108];
 
 LmConnection	*xmpp_conn;
 pthread_t		xmpp_keepalive_tid;
@@ -60,9 +65,9 @@ pthread_mutex_t listmtx = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t xmppmtx = PTHREAD_MUTEX_INITIALIZER;
 
 /**
- * Prida objekt sock. spojeni na konec seznamu
- * @param	conn Odkaz na objekt
- * @return	0 = OK, -1 = Chyba
+ * Adds socket connection object to list
+ * @param conn	Reference to object
+ * @return		0 = OK, -1 = ERROR
  */
 int list_add_end(conn_t* conn) {
 	conn_listitem_t* c_tmp;
@@ -98,9 +103,9 @@ int list_add_end(conn_t* conn) {
 }
 
 /**
- * Smaze spojeni ze seznamu
- * @param jid	JabberID uzivatele
- * @return		O = OK, -1 = Chyba
+ * Removes connection from list
+ * @param jid	JabberID of user
+ * @return		O = OK, -1 = ERROR
  */
 int list_remove(char* jid) {
 	conn_listitem_t* c_tmp;
@@ -134,9 +139,9 @@ int list_remove(char* jid) {
 }
 
 /**
- * Najde v seznamu spojeni s danym JabberID
- * @param jid	JabberID uzivatele
- * @return		Odkaz na spojeni, NULL = Chyba
+ * Finds connection with specific JabberID in the list
+ * @param jid	JabberID of user
+ * @return		Odkaz na spojeni, NULL = ERROR
  */
 conn_t* find_connection(char* jid) {
 	conn_listitem_t* c_tmp = conn_list;
@@ -156,7 +161,7 @@ conn_t* find_connection(char* jid) {
 }
 
 /**
- * Vypise seznam spojeni (DEBUG)
+ * Prints entire list of connections, for debugging purposes
  */
 void print_list(void) {
 	conn_listitem_t* c_tmp = conn_list;
@@ -168,8 +173,8 @@ void print_list(void) {
 }
 
 /**
- * Ukonci program s chybovou hlaskou
- * @param s		Text chyby
+ * Exits program with error message
+ * @param s		Error message text
  */
 void die(char* s) {
 	puts(s);
@@ -177,9 +182,9 @@ void die(char* s) {
 }
 
 /**
- * V zadanem retezci preskoci pocatecni bile znaky
- * @param str	Retezec
- * @return		Prvni viditelny znak
+ * Skips leading whitespace characters in given string
+ * @param str	String
+ * @return		Pointer to first non-white character
  */
 char* skipblank(char* str) {
 	while((*str == ' ') || (*str == '\t'))
@@ -188,9 +193,9 @@ char* skipblank(char* str) {
 }
 
 /**
- * Vytvori nove spojeni se socketem BIRD a prida ho do seznamu
- * @param jid	JabberID uzivatele
- * @return		0 = OK, -1 = Chyba
+ * Creates new connection with BIRD socket and adds it to the list
+ * @param jid	JabberID of user
+ * @return		0 = OK, -1 = ERROR
  */
 int create_connection(char* jid) {
 	struct sockaddr_un sa;
@@ -210,7 +215,8 @@ int create_connection(char* jid) {
 	memset(&sa, 0, sizeof(struct sockaddr_un));
 	//inet_aton(BIRD_host, &(adr.sin_addr));
 	sa.sun_family = AF_UNIX;
-	strcpy(sa.sun_path, PATH_CONTROL_SOCKET);
+	strncpy(sa.sun_path, bird_socket, sizeof(sa.sun_path) - 1);
+	sa.sun_path[sizeof(sa.sun_path) - 1] = '\0';
 	//adr.sin_port = htons(BIRD_host_port);
 
 	if(connect(conn->sock_fd, (struct sockaddr*) &sa, SUN_LEN(&sa)) < 0) {
@@ -224,7 +230,7 @@ int create_connection(char* jid) {
 	strcpy(conn->jid, jid);
 
 	if(pipe(conn->termpipe_fd) != 0)
-		puts("chyba vytvareni roury");
+		puts("Error creating pipe.");
 
 	list_add_end(conn);
 
@@ -252,9 +258,9 @@ int delete_connection(conn_t* conn) {
 }
 
 /**
- * Ukonci vlakno spojeni a smaze ho ze seznamu
- * @param conn	Odkaz na objekt
- * @return		0 = OK, -1 = Chyba
+ * Exits connection thread and removes it from the list
+ * @param conn	Reference to connection object
+ * @return		0 = OK, -1 = ERROR
  */
 int connection_stop(conn_t* conn) {
 	if(write(conn->termpipe_fd[PIP_WR], "stop", 5) == 5)
@@ -264,7 +270,7 @@ int connection_stop(conn_t* conn) {
 }
 
 /**
- * Korektni ukonceni programu - zavre vsechna spojeni
+ * Clean exit of program, exits the all threads and does some housekeeping
  */
 void exit_clean(int exitno) {
 	conn_listitem_t* c_tmp = conn_list;
@@ -303,9 +309,9 @@ void exit_clean(int exitno) {
 }
 
 /**
- * Zpracuje odpoved BIRD serveru
- * @param in	Retezec surovych dat ze socketu
- * @return		Cisty text (nove alokovany), NULL = Chyba
+ * Processes BIRD server response
+ * @param in	Raw data string from BIRD socket
+ * @return		Plain text (newly allocated), NULL = ERROR
  */
 char* process_bird_output(char* in) {
 	char* out = malloc(4096);
@@ -318,7 +324,7 @@ char* process_bird_output(char* in) {
 	out[0] = '\0';
 
 	if(in[0] == '+') {
-		//asynchroni zprava serveru
+		//asynchronous server response
 		sprintf(out, "\n>>> %s", in + 1);
 		return out;
 	}
@@ -326,7 +332,7 @@ char* process_bird_output(char* in) {
 	while((line_end = strchr(in, '\n')) != NULL) {
 		*line_end = '\0';
 		if((strlen(in) > 4) && (sscanf(in, "%04d", &code) == 1) && ((in[4] == ' ') || (in[4] == '-'))) {
-			//platny radek
+			//valid line
 			if(strlen(in) > 5) {
 				strcat(out, "\n");
 				strcat(out, in + 5);
@@ -353,7 +359,7 @@ void* connection_run_thread(void* args) {
 	if(conn->termpipe_fd[PIP_RD] > maxfd)
 		maxfd = conn->termpipe_fd[PIP_RD];
 
-	printf("Vytvoreno vlakno spojeni %s\n", conn->jid);
+	printf("Socket connection thread created: %s\n", conn->jid);
 	while(1) {
 		FD_ZERO(&fds);
 		FD_SET(conn->sock_fd, &fds);
@@ -373,7 +379,7 @@ void* connection_run_thread(void* args) {
 				break;
 
 			tmp[bytes] = '\0';
-			printf("Prijato ze socketu %d bytu: %s\n", bytes, tmp);
+			printf("Received from socket: %d bytes: %s\n", bytes, tmp);
 
 			msg = process_bird_output(tmp);
 
@@ -381,7 +387,10 @@ void* connection_run_thread(void* args) {
 			if(!conn->bird_ready) {
 				if(strstr(msg, "BIRD ") != NULL) {
 					if(check_user_auth(conn->jid) < 2) {
-						write(conn->sock_fd, "restrict\n", 9);
+						if(write(conn->sock_fd, "restrict\n", 9) <= 0) {
+							puts("Cannot write to socket, exiting thread.");
+							break;
+						}
 					}
 					conn->bird_ready = 1;
 				}
@@ -393,18 +402,18 @@ void* connection_run_thread(void* args) {
 	}
 
 
-	printf("Vlakno spojeni %s skonceno\n", conn->jid);
+	printf("Connection thread %s ended.\n", conn->jid);
 
 	if(delete_connection(conn) != 0)
-		puts("chyba vymazu spojeni");
+		puts("Error deleting connection");
 
 	return NULL;
 }
 
 /**
- * Spusti vlakno spojeni s BIRD socketem
- * @param conn	Odkaz na spojeni
- * @return		0 = OK, -1 = Chyba
+ * Executes specific BIRD socket connetion thread
+ * @param conn	Connection object reference
+ * @return		0 = OK, -1 = ERROR
  */
 int connection_run(conn_t* conn) {
 	pthread_t tid;
@@ -417,9 +426,9 @@ int connection_run(conn_t* conn) {
 }
 
 /**
- * Posle zpravu pres XMPP
- * @param jid		JabberID uzivatele
- * @param mbody		Text tela zpravy
+ * Sends message over XMPP
+ * @param jid		JabberID of recipient
+ * @param mbody		Message body text
  */
 void send_message(char* jid, char* mbody) {
     LmMessage*	msg;
@@ -435,9 +444,9 @@ void send_message(char* jid, char* mbody) {
 }
 
 /**
- * Posle HTML napovedu k prikazu
- * @param jid		JabberID uzivatele
- * @param mbody		Text tela zpravy
+ * Sends HTML help to specific command
+ * @param jid		JabberID of recipient
+ * @param mbody		Message body text
  */
 void send_help_html(char* jid, char* mbody) {
 	LmMessage*	msg;
@@ -469,16 +478,19 @@ void send_help_html(char* jid, char* mbody) {
 			break;
 
 		msg_arr[i][2] = alloca(100);
-		strncpy(msg_arr[i][2], tab2 + 4, 99);
+		strncpy(msg_arr[i][2], tab2 + 4, 100);
+		msg_arr[i][2][99] = '\0';
 		*tab2 = '\0';
 
 		msg_arr[i][1] = alloca(100);
 		strncpy(msg_arr[i][1], tab1 + 1, 95);
+		msg_arr[i][1][95] = '\0';
 		strcat(msg_arr[i][1], "    ");
 		*tab1 = '\0';
 
 		msg_arr[i][0] = alloca(25);
 		strncpy(msg_arr[i][0], in, 20);
+		msg_arr[i][0][20] = '\0';
 		strcat(msg_arr[i][0], "    ");
 
 		i++;
@@ -516,11 +528,11 @@ void send_help_html(char* jid, char* mbody) {
 }
 
 /**
- * Zpracuje prichozi zpravu z XMPP a pripadne odesle data na BIRD socket
- * @param jid		JabberID uzivatele
- * @param cmdtext	Text zpravy z XMPP
- * @param auth_lvl	Uroven opravneni uzivatele s danym JID (1 = Restricted, 2 = Superuser)
- * @return			0 = OK, -1 = Chyba
+ * Processes incoming message from XMPP and sends data to BIRD socket
+ * @param jid		JabberID of sender
+ * @param cmdtext	Message body text
+ * @param auth_lvl	Authentication level of user with given JID (1 = Restricted, 2 = Superuser)
+ * @return			0 = OK, -1 = ERROR
  */
 int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 	conn_t* conn;
@@ -554,7 +566,7 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 	if(strcmp(s, "haltbot") == 0) {
 		if(auth_lvl == 2) {
 			free(s);
-			exit_clean(0); //konec programu
+			exit_clean(0); //program end
 		}
 		else {
 			send_message(jid, "You are not authorized to kill bots.");
@@ -580,7 +592,7 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 			send_message(jid, "Not connected. Write 'connect' to connect.");
 		}
 	}
-	else { //jsme pripojeni k BIRD socketu
+	else { //we are connected to BIRD socket
 		if(strcmp(s, "connect") == 0) {
 			send_message(jid, "Already connected.");
 		}
@@ -590,9 +602,14 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 		}
 		else {
 			if(conn->bird_ready) {
-				printf("posilam %s\n", s);
-				write(conn->sock_fd, s, strlen(s));
-				write(conn->sock_fd, "\n", 1);
+				int len;
+				len = strlen(s);
+				s[len] = '\n';	//append newline char
+				s[++len] = '\0'; //s allocated with enough free space
+				printf("Sending: %s\n", s);
+				if(write(conn->sock_fd, s, len) <= 0) {
+					puts("Socket write error.");
+				}
 			}
 			else {
 				puts("BIRD not ready");
@@ -606,9 +623,9 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 
 
 /**
- * Zjisti, zda je zadane JID clenem superusers nebo restricted users
- * @param jid	JabberID uzivatele
- * @return		0 = Neopravnen, 1 = Restricted user, 2 = Superuser
+ * Gets user authentication level
+ * @param jid	JabberID of user
+ * @return		0 = Not allowed, 1 = Restricted user, 2 = Superuser
  */
 int check_user_auth(char* jid) {
 	int user_auth_lvl = 0;
@@ -622,7 +639,7 @@ int check_user_auth(char* jid) {
 	else
 		basejid_len = strlen(jid);
 
-	for(i = 0; /*i < sizeof(superusers)/sizeof(char*)*/superusers[i] != NULL; i++) {
+	for(i = 0; superusers[i] != NULL; i++) {
 		if(strncmp(jid, superusers[i], basejid_len) == 0) {
 			user_auth_lvl = 2;
 			break;
@@ -630,7 +647,7 @@ int check_user_auth(char* jid) {
 	}
 
 	if(user_auth_lvl == 0) {
-		for(i = 0; /*i < sizeof(restricted_users)/sizeof(char*)*/restricted_users[i] != NULL; i++) {
+		for(i = 0; restricted_users[i] != NULL; i++) {
 			if(strncmp(jid, restricted_users[i], basejid_len) == 0) {
 				user_auth_lvl = 1;
 				break;
@@ -642,16 +659,16 @@ int check_user_auth(char* jid) {
 }
 
 /**
- * Reakce na SIGTERM (ciste ukonceni demona)
+ * SIGTERM handler
  */
 void sigterm_handler(int n) {
 	exit_clean(0);
 }
 
 /**
- * Nacte nastaveni z konfiguracniho souboru
- * @param path	Cesta k souboru
- * @return		0 = OK, -1 = Chyba
+ * Reads BIRDbot setting from config file
+ * @param path	File path
+ * @return		0 = OK, -1 = ERROR
  */
 int load_config(char* path) {
 	///parse config file
@@ -676,16 +693,20 @@ int load_config(char* path) {
 	}
 
 	while(fgets(line, 100, fconf) != NULL) {
-		if((lastnb(line, strlen(line) - 1) == ':') || (line[0] == '\n') || (line[0] == '\r'))
+		lptr = skipblank(line);
+		if((lastnb(lptr, strlen(lptr) - 1) == ':') || (lptr[0] == '\n') || (lptr[0] == '\r'))
 			break;
 
-		lptr = skipblank(line);
-		ptr = malloc(strlen(lptr) + 1);
-		strncpy(ptr, lptr, strlen(lptr) - 1);
-		if(i == 0)
-			birdbot_jid = ptr;
-		else if(i == 1)
-			birdbot_pw = ptr;
+		if((i == 0) && (birdbot_jid == NULL)) {
+			birdbot_jid = malloc(strlen(lptr) + 1);
+			strncpy(birdbot_jid, lptr, strlen(lptr) - 1);
+			birdbot_jid[strlen(lptr)] = '\0';
+		}
+		else if((i == 1) && (birdbot_pw == NULL)) {
+			birdbot_pw = malloc(strlen(lptr) + 1);
+			strncpy(birdbot_pw, lptr, strlen(lptr) - 1);
+			birdbot_pw[strlen(lptr)] = '\0';
+		}
 
 		i++;
 	}
@@ -705,6 +726,7 @@ int load_config(char* path) {
 		lptr = skipblank(line);
 		ptr = malloc(strlen(lptr) + 1);
 		strncpy(ptr, lptr, strlen(lptr) - 1);
+		ptr[strlen(lptr)] = '\0';
 		if(i < 99) {
 			superusers[i] = ptr;
 			i++;
@@ -726,6 +748,7 @@ int load_config(char* path) {
 		lptr = skipblank(line);
 		ptr = malloc(strlen(lptr) + 1);
 		strncpy(ptr, lptr, strlen(lptr) - 1);
+		ptr[strlen(lptr)] = '\0';
 		if(i < 99) {
 			restricted_users[i] = ptr;
 			i++;
@@ -735,6 +758,9 @@ int load_config(char* path) {
 	return 0;
 }
 
+/**
+ * Prints BIRDbot configuration, for debugging purposes
+ */
 void print_config(void) {
 	char** ptr2;
 
@@ -757,26 +783,26 @@ void print_config(void) {
 }
 
 /**
- * Ziska uzivatelske jmeno z JID
- * @param jid	Jabber ID
- * @return		Jmeno uzivatele (nove alokovane), NULL = Chyba
+ * Gets username from JID
+ * @param jid	JabberID of user
+ * @return		Username (newly allocated), NULL = ERROR
  */
 gchar* jid_get_name(const gchar *jid) {
     const gchar *ch;
 
-    g_return_val_if_fail (jid != NULL, NULL);
+    g_return_val_if_fail(jid != NULL, NULL);
 
-    ch = strchr (jid, '@');
-    if (!ch)
+    ch = strchr(jid, '@');
+    if(!ch)
     	return NULL;
 
-    return g_strndup (jid, ch - jid);
+    return g_strndup(jid, ch - jid);
 }
 
 /**
- * Ziska jmeno serveru z JID
- * @param jid	Jabber ID
- * @return		Prvni znak nazvu serveru v JID, NULL = Chyba
+ * Gets server domain from JID
+ * @param jid	JabberID of user
+ * @return		Pointer to first character of server domain in the JID, NULL = ERROR
  */
 char* jid_get_server(const char* jid) {
 	char* ptr;
@@ -788,7 +814,7 @@ char* jid_get_server(const char* jid) {
 }
 
 /**
- * Callback funkce, zajistuje prihlasovani uzivatelu k serveru
+ * Callback, for logging users to XMPP server
  */
 void xmpp_conn_auth_handler(LmConnection *connection, gboolean success, gpointer user_data) {
 	if (success) {
@@ -808,7 +834,7 @@ void xmpp_conn_auth_handler(LmConnection *connection, gboolean success, gpointer
 }
 
 /**
- * Callback funkce, obsluha udalosti spojeni s XMPP serverem
+ * Callback, manages XMPP server connection events
  */
 void xmpp_conn_open_handler(LmConnection *connection, gboolean success, gpointer user_data) {
 	if(success) {
@@ -826,7 +852,7 @@ void xmpp_conn_open_handler(LmConnection *connection, gboolean success, gpointer
 }
 
 /**
- * Callback funkce, obsluha udalosti spojeni s XMPP serverem
+ * Callback, manages XMPP server connection events
  */
 void xmpp_conn_close_handler(LmConnection *connection, LmDisconnectReason  reason, gpointer user_data) {
     const char *str;
@@ -851,10 +877,11 @@ void xmpp_conn_close_handler(LmConnection *connection, LmDisconnectReason  reaso
     }
 
     printf("XMPP: Disconnected, reason: %d->'%s'\n", reason, str);
+    g_main_loop_quit(main_loop);
 }
 
 /**
- * Callback funkce, spustena pri prijeti zpravy z XMPP
+ * Callback for processing incoming XMPP messages
  */
 LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *connection, LmMessage *m, gpointer user_data) {
 	char* from;
@@ -880,12 +907,15 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 		return 1;
 	}
 
-	//jsme opravneny uzivatel
+	//we are an authorized user
 	process_cmd(from, intext, user_auth_lvl);
 
     return LM_HANDLER_RESULT_REMOVE_MESSAGE;
 }
 
+/**
+ * Callback, authorizes allowed users to view presence status of BIRDbot
+ */
 LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *connection, LmMessage *m, gpointer user_data) {
 	LmMessage* msub;
 	char* from;
@@ -896,11 +926,11 @@ LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *c
 
 		if(check_user_auth(from) > 0) {
 			subtype = LM_MESSAGE_SUB_TYPE_SUBSCRIBED;
-			printf("XMPP: User %s requested authorization, allowed\n", from);
+			printf("XMPP: User %s requested authorization, allowed.\n", from);
 		}
 		else {
 			subtype = LM_MESSAGE_SUB_TYPE_UNSUBSCRIBED;
-			printf("XMPP: User %s requested authorization, declined\n", from);
+			printf("XMPP: User %s requested authorization, rejected.\n", from);
 		}
 
 		msub = lm_message_new_with_sub_type(from, LM_MESSAGE_TYPE_PRESENCE, subtype);
@@ -911,7 +941,7 @@ LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *c
 }
 
 /**
- * XMPP whitespace keepalive, posle serveru mezeru kazdych 5 minut
+ * XMPP whitespace keepalive, sends space character to server every 5 minutes
  */
 void* xmpp_keep_alive_thread(void* args) {
 	while(1) {
@@ -924,54 +954,143 @@ void* xmpp_keep_alive_thread(void* args) {
 	return NULL;
 }
 
+/**
+ * Callback, handles XMPP SSL events
+ */
+LmSSLResponse xmpp_ssl_handler(LmSSL *ssl, LmSSLStatus status, gpointer ud) {
+	printf("XMPP: SSL status %d\n", status);
+
+    switch(status) {
+    case LM_SSL_STATUS_NO_CERT_FOUND:
+    	printf("XMPP: No certificate found!\n");
+        break;
+    case LM_SSL_STATUS_UNTRUSTED_CERT:
+    	printf("XMPP: Certificate is not trusted!\n");
+        break;
+    case LM_SSL_STATUS_CERT_EXPIRED:
+    	printf("XMPP: Certificate has expired!\n");
+        break;
+    case LM_SSL_STATUS_CERT_NOT_ACTIVATED:
+    	printf("XMPP: Certificate has not been activated!\n");
+        break;
+    case LM_SSL_STATUS_CERT_HOSTNAME_MISMATCH:
+    	printf("XMPP: Certificate hostname does not match expected hostname!\n");
+        break;
+    case LM_SSL_STATUS_CERT_FINGERPRINT_MISMATCH: {
+        //const char *fpr = lm_ssl_get_fingerprint (ssl);
+    	printf("XMPP: Certificate fingerprint does not match expected fingerprint!\n");
+        //print both fingerprints
+        break;
+    }
+    case LM_SSL_STATUS_GENERIC_ERROR:
+    	printf("XMPP: Generic SSL error!\n");
+        break;
+    }
+
+    return LM_SSL_RESPONSE_CONTINUE;
+}
+
+void display_opt_help(const struct option* opts, const char* helptext[]) {
+	int i = 0;
+	puts("Send commands to BIRD via XMPP.\n");
+	while(opts->name != NULL) {
+		printf("-%c | --%s\n", opts->val, opts->name);
+		if(helptext[i] != NULL) {
+			printf("%s\n\n", helptext[i]);
+			i++;
+		}
+		opts++;
+	}
+}
+
 int main(int argc, char **argv)
 {
     LmMessageHandler *handler;
     gboolean          result;
     GError           *error = NULL;
-    static char* xmpp_server;
+    static char* xmpp_domain;
 
     char opt;
+    int longopts_idx;
+    const struct option longopts[] = {
+    		{"debug", no_argument, NULL, 'd'},
+			{"force-ipv4", no_argument, NULL, '4'},
+			{"ssl", no_argument, NULL, 's'},
+			{"jid", required_argument, NULL, 'j'},
+			{"pass", required_argument, NULL, 'w'},
+			{"socket", required_argument, NULL, 'c'},
+			{"help", required_argument, NULL, 'h'},
+			{NULL, 0, NULL, 0}
+    };
+
+    const char* opthelp[] = {
+    		"Debug mode. Program will display debugging information instead of going to background.",
+			"Force IPv4 resolution of XMPP server hostname.",
+			"Use SSL connection with XMPP server. This is required by many XMPP servers.",
+			"Specify BIRDbot's bare JID. This option overrides JID set in the configuration file.",
+			"Specify BIRDbot's XMPP password. This option overrides password set in the configuration file.",
+			"Set BIRD control socket.",
+			"Display this help and exit.",
+			NULL
+    };
+
     pid_t pid, sid;
     int lockfile;
-    int release_terminal = 0;
+    int is_daemon = 1;
+    int xmpp_force_ipv4 = 0;
+    int xmpp_use_ssl = 0;
 
     struct sigaction action;
     memset(&action, 0, sizeof(struct sigaction));
     action.sa_handler = sigterm_handler;
     sigaction(SIGTERM, &action, NULL);
 
+    birdbot_jid = NULL;
+    birdbot_pw = NULL;
+    strncpy(bird_socket, PATH_CONTROL_SOCKET, sizeof(bird_socket) - 1);
+    bird_socket[sizeof(bird_socket) - 1] = '\0';
+
     //parse command line parameters
-    while((opt = getopt(argc, argv, "d")) != -1) {
-    	if(opt == 'd') {
-    		//daemonize
-    		//puts("Going to daemon mode");
-
-    		pid = fork();
-    		if(pid < 0)
+    while((opt = getopt_long(argc, argv, "d4sj:w:s:h", longopts, &longopts_idx)) != -1) {
+    	switch(opt) {
+    		case 'd': {
+    			is_daemon = 0;
+    			break;
+    		}
+    		case '4': {
+    			xmpp_force_ipv4 = 1;
+    			break;
+    		}
+    		case 's': {
+    			xmpp_use_ssl = 1;
+    			break;
+    		}
+    		case 'j': {
+    		    birdbot_jid = malloc(strlen(optarg) + 1);
+    		    strcpy(birdbot_jid, optarg);
+    		    break;
+    		}
+    		case 'w': {
+    			birdbot_pw = malloc(strlen(optarg) + 1);
+    			strcpy(birdbot_pw, optarg);
+    			break;
+    		}
+    		case 'c': {
+    			strncpy(bird_socket, optarg, sizeof(bird_socket) - 1);
+    			bird_socket[sizeof(bird_socket) - 1] = '\0';
+    			break;
+    		}
+    		case 'h': {
+    			display_opt_help(longopts, opthelp);
+    			puts("Exiting.");
+    			return 1;
+    			break;
+    		}
+    		default: {
+    			//unknown option, do not continue
     			return -1;
-
-    		if(pid > 0)
-    			return 0;
-
-    		umask(0);
-
-    		sid = setsid();
-    		if(sid < 0)
-    			return -1;
-
-    		if ((chdir("/")) < 0)
-    			return -1;
-
-    		pid = fork();
-    		if(pid < 0)
-    			return -1;
-
-    		if(pid > 0)
-    			return 0;
-
-    		release_terminal = 1;
-    		break;
+    			break;
+    		}
     	}
     }
 
@@ -987,35 +1106,179 @@ int main(int argc, char **argv)
     	return 1;
     }
 
+	//daemonize
+    if(is_daemon) {
+    	pid = fork();
+    	if(pid < 0)
+    		return -1;
+
+    	if(pid > 0)
+    		return 0;
+
+    	umask(0);
+
+    	sid = setsid();
+    	if(sid < 0)
+    		return -1;
+
+    	if ((chdir("/")) < 0)
+    		return -1;
+
+    	pid = fork();
+    	if(pid < 0)
+    		return -1;
+
+    	if(pid > 0)
+    		return 0;
+    }
+
     //close standard file descriptors
-    if(release_terminal) {
+    if(is_daemon) {
         close(STDIN_FILENO);
         close(STDOUT_FILENO);
         close(STDERR_FILENO);
 
         open("/dev/null", O_RDWR);
-        dup(0);
-        dup(0);
+        if(dup(0) == -1)
+        	return -1;
+        if(dup(0) == -1)
+        	return -1;
     }
 
     //load configuration
     if(load_config(PATH_CONFIG) != 0)
     	return -1;
 
+    //validate configuration
+    if(birdbot_jid == NULL) {
+    	puts("You must specify BIRDbot's JID in config file or as command line argument.");
+    	exit_clean(-1);
+    }
+    else {
+    	if(birdbot_pw == NULL) {
+    		if(!is_daemon) {
+    			int attempts = 3;
+    			birdbot_pw = malloc(31);
+    			do {
+    				printf("Enter XMPP account password: ");
+    			}while((scanf("%30s", birdbot_pw) != 1) && --attempts);
+    			if(attempts == 0)
+    				exit_clean(-1);
+    		}
+    		else
+    			exit_clean(-1);
+    	}
+    }
+
     print_config();
 
     cmd_build_tree();
 
     //initialize XMPP
-    xmpp_server = jid_get_server(birdbot_jid);
-    if(xmpp_server == NULL) {
+    xmpp_domain = jid_get_server(birdbot_jid);
+    if(xmpp_domain == NULL) {
     	printf("Invalid XMPP bot jid: %s\n", birdbot_jid);
     	exit_clean(-1);
     }
 
-    xmpp_conn = lm_connection_new(xmpp_server);
+
+    //resolve XMPP server's SRV record from DNS
+    char ns_buf[512];
+    char xmpp_srv_nsrecord[256];
+    char xmpp_srv_hostname[128];
+	char xmpp_ip[64];
+    int len;
+    ns_msg msg;
+    ns_rr rr;
+    struct addrinfo aihints;
+    struct addrinfo *aires, *aii;
+
+    res_init();
+
+    strcpy(xmpp_srv_nsrecord, "_xmpp-client._tcp.");
+    strncat(xmpp_srv_nsrecord, xmpp_domain, sizeof(xmpp_srv_nsrecord) - sizeof("_xmpp-client._tcp."));
+
+    len = res_query(xmpp_srv_nsrecord, ns_c_any, ns_t_srv, (u_char*)ns_buf, sizeof(ns_buf));
+    if(len < 0) {
+    	puts("NS: SRV record resolution failed.");
+    	exit_clean(-1);
+    }
+
+    ns_initparse((u_char*)ns_buf, len, &msg);
+
+    //len = ns_msg_count(msg, ns_s_an); //len = number of records found
+
+    char* c;
+    ns_parserr(&msg, ns_s_an, 0, &rr);	//0 = we take the first record
+    ns_sprintrr(&msg, &rr, NULL, NULL, xmpp_srv_nsrecord, sizeof(xmpp_srv_nsrecord));
+
+    c = strrchr(xmpp_srv_nsrecord, '.');
+    if((c != NULL) && (*(c + 1) == '\0')) {
+    	*c = '\0';
+    	c = strrchr(xmpp_srv_nsrecord, ' ');
+    	if(c != NULL) {
+    		strncpy(xmpp_srv_hostname, c + 1, sizeof(xmpp_srv_hostname) - 1);
+    		xmpp_srv_hostname[sizeof(xmpp_srv_hostname) - 1] = '\0';
+    	}
+    }
+
+    printf("NS: Resolved hostname (SRV) of XMPP server: %s\n", xmpp_srv_hostname);
+
+    xmpp_ip[0] = '\0';
+
+    memset(&aihints, 0, sizeof(aihints));
+    aihints.ai_family = AF_INET6;
+    aihints.ai_socktype = SOCK_STREAM;
+
+    /*if((getaddrinfo(xmpp_srv_hostname, "xmpp-client", &aihints, &aires) == 0) && (aires != NULL) && (!xmpp_force_ipv4)) {
+    	for(aii = aires; aii != NULL; aii = aii->ai_next) {
+    		if(getnameinfo(aii->ai_addr, aii->ai_addrlen, xmpp_ip, sizeof(xmpp_ip) - 1, NULL, 0, NI_NUMERICHOST) == 0) {
+    			printf("NI: Using xmpp IPv6: %s\n", xmpp_ip);
+    			break;
+    		}
+    	}
+    	freeaddrinfo(aires);
+    }
+    else {*/
+    	//Current version of libloudmouth does not support IPv6
+    if(xmpp_force_ipv4) {
+    	aihints.ai_family = AF_INET;
+    	if((getaddrinfo(xmpp_srv_hostname, "xmpp-client", &aihints, &aires) == 0) && (aires != NULL)) {
+    		for(aii = aires; aii != NULL; aii = aii->ai_next) {
+    			if(getnameinfo(aii->ai_addr, aii->ai_addrlen, xmpp_ip, sizeof(xmpp_ip) - 1, NULL, 0, NI_NUMERICHOST) == 0) {
+    				printf("NI: Using xmpp IPv4: %s\n", xmpp_ip);
+    				break;
+    			}
+    		}
+    		freeaddrinfo(aires);
+    	}
+    	else {
+    		puts("NI: Cannot resolve xmpp server IP, exiting.");
+    		exit_clean(-1);
+    	}
+    }
+    //}
+
+    if(xmpp_force_ipv4)
+    	xmpp_conn = lm_connection_new(xmpp_ip);
+    else
+    	xmpp_conn = lm_connection_new(xmpp_srv_hostname);
+
     lm_connection_set_port(xmpp_conn, LM_CONNECTION_DEFAULT_PORT);
     lm_connection_set_jid(xmpp_conn, birdbot_jid);
+
+    if(xmpp_use_ssl) {
+        if(lm_ssl_is_supported()) {
+        	LmSSL *ssl;
+        	ssl = lm_ssl_new(NULL, (LmSSLFunction)xmpp_ssl_handler, NULL, NULL);
+        	lm_ssl_use_starttls(ssl, TRUE, FALSE);
+        	lm_connection_set_ssl(xmpp_conn, ssl);
+        	lm_ssl_unref(ssl);
+        }
+        else {
+        	puts("XMPP: Warning. SSL is not available in current instalation of libloudmouth.");
+        }
+    }
 
     handler = lm_message_handler_new(xmpp_message_handler, NULL, NULL);
     lm_connection_register_message_handler(xmpp_conn, handler, LM_MESSAGE_TYPE_MESSAGE, LM_HANDLER_PRIORITY_NORMAL);
@@ -1040,6 +1303,7 @@ int main(int argc, char **argv)
     main_loop = g_main_loop_new(NULL, FALSE);
     g_main_loop_run(main_loop);
 
+    lm_connection_unref(xmpp_conn);
     exit_clean(0);
     return 0;
 }

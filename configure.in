@@ -289,10 +289,14 @@ PKG_PROG_PKG_CONFIG
 
 BOT=
 BOT_LIBS=
+BOT_DIRS=
 if test "$enable_birdbot" = yes ; then
-	BOT=cbirdbot	
+	BOT=cbirdbot
+	BOT_DIRS=cbirdbot
 	AC_CHECK_LIB(pthread, main, BOT_LIBS="-lpthread",
 		AC_MSG_ERROR([[The BIRD bot requires pthread library. Either install the library or use --disable-birdbot to compile without the BIRD bot.]]))
+	AC_CHECK_LIB(resolv, main, BOT_LIBS="-lresolv",
+		AC_MSG_ERROR([[The BIRD bot requires resolv library for DNS names resolution. Either install the library or use --disable-birdbot to compile without the BIRD bot.]]))
 	PKG_CHECK_MODULES(LOUDMOUTH, loudmouth-1.0,
 		BOT_LIBS="$BOT_LIBS $LOUDMOUTH_LIBS"
 		CPPFLAGS="$CPPFLAGS $LOUDMOUTH_CFLAGS",
@@ -301,6 +305,7 @@ if test "$enable_birdbot" = yes ; then
 fi
 AC_SUBST(BOT)
 AC_SUBST(BOT_LIBS)
+AC_SUBST(BOT_DIRS)
 
 mkdir -p $objdir/sysdep
 AC_CONFIG_HEADERS([$objdir/sysdep/autoconf.h:sysdep/autoconf.h.in])

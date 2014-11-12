@@ -8,7 +8,7 @@
 { "configure soft timeout", "[<sec>]", "Reload configuration with undo timeout", 1 },
 { "configure timeout", "[<sec>]", "Reload configuration with undo timeout", 1 },
 { "configure undo", "", "Undo last configuration change", 1 },
-{ "connect", "", "Connects to BIRD", 1},
+{ "connect", "", "Connect to BIRD", 1},
 { "debug", "...", "Control protocol debugging via BIRD logs", 0 },
 { "debug", "(<protocol> | <pattern> | all) (all | off | { states | routes | filters | interfaces | events | packets })", "Control protocol debugging via BIRD logs", 1 },
 { "delete", "roa ...", "Delete ROA record", 0 },

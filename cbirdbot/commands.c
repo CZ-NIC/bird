@@ -163,7 +163,7 @@ cmd_list_ambiguous(struct cmd_node *root, char *cmd, int len)
 
 		if (m->len > len && !memcmp(m->token, cmd, len)) {
 			//cmd_display_help(m->help, m->cmd);
-			sprintf(buf, "%s\t%s\t - %s\n", cmdinf->command, cmdinf->args, cmdinf->help);
+			sprintf(buf, "%.40s\t%.80s\t - %.120s\n", cmdinf->command, cmdinf->args, cmdinf->help);
 			strcat(out, buf);
 		}
 	}
@@ -188,7 +188,7 @@ char* compose_help(struct cmd_node* n) {
 	out[0] = '\0';
 
 	if(n->cmd != NULL) {
-		sprintf(buf, "%s\t%s\t - %s\n", n->cmd->command, n->cmd->args, n->cmd->help);
+		sprintf(buf, "%.40s\t%.80s\t - %.120s\n", n->cmd->command, n->cmd->args, n->cmd->help);
 		strcat(out, buf);
 	}
 
@@ -201,7 +201,7 @@ char* compose_help(struct cmd_node* n) {
 		else
 			cmdinf = m->cmd;
 
-		sprintf(buf, "%s\t%s\t - %s\n", cmdinf->command, cmdinf->args, cmdinf->help);
+		sprintf(buf, "%.40s\t%.80s\t - %.120s\n", cmdinf->command, cmdinf->args, cmdinf->help);
 		strcat(out, buf);
 	}
 
@@ -284,7 +284,7 @@ cmd_expand(char *cmd, int* is_ambig)
 		return NULL;
 	}
 
-	b = malloc(strlen(n->cmd->command) + strlen(args) + 1);
+	b = malloc(strlen(n->cmd->command) + strlen(args) + 2);
 	sprintf(b, "%s%s", n->cmd->command, args);
 	return b;
 }
