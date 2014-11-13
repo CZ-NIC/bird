@@ -24,13 +24,9 @@
 
 /****************************** SETTINGS ************************************/
 
-//#define PATH_CONTROL_SOCKET		"/usr/local/var/run/bird.ctl"
-
-//#define PATH_CONFIG				"/usr/local/etc/birdbot.conf"
-//#define PATH_CONFIG				"/etc/birdbot/birdbot.conf"
-#define PATH_CONFIG				PATH_BOT_CONFIG_FILE
-
-#define PATH_LOCKFILE			"/var/run/birdbot.lock"
+#define PATH_CONFIG					PATH_BOT_CONFIG_FILE
+#define PATH_LOCKFILE				"/var/run/birdbot.lock"
+#define XMPP_KEEPALIVE_INTERVAL		300
 
 /*****************************************************************************/
 
@@ -921,6 +917,7 @@ LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *c
 	char* from;
 	LmMessageSubType subtype;
 
+	pthread_mutex_lock(&xmppmtx);
 	if(lm_message_get_sub_type(m) == LM_MESSAGE_SUB_TYPE_SUBSCRIBE) {
 		from = (char*)lm_message_node_get_attribute(m->node, "from");
 
@@ -937,6 +934,39 @@ LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *c
 		lm_connection_send(xmpp_conn, msub, NULL);
 		lm_message_unref(msub);
 	}
+	pthread_mutex_unlock(&xmppmtx);
+
+	return LM_HANDLER_RESULT_REMOVE_MESSAGE;
+}
+
+LmHandlerResult xmpp_iq_handler(LmMessageHandler *handler, LmConnection *connection, LmMessage *m, gpointer user_data) {
+	LmMessage* msub;
+	char *from, *data, *id;
+
+	pthread_mutex_lock(&xmppmtx);
+
+	if(lm_message_get_sub_type(m) == LM_MESSAGE_SUB_TYPE_GET) {
+		from = (char*)lm_message_node_get_attribute(m->node, "from");
+		id = (char*)lm_message_node_get_attribute(m->node, "id");
+
+		if(lm_message_node_get_child(m->node, "ping") != NULL) {
+			data = lm_message_node_to_string(m->node);
+			printf("XMPP: Incoming XMPP ping: %s\n", data);
+			g_free(data);
+
+			msub = lm_message_new_with_sub_type(from, LM_MESSAGE_TYPE_IQ, LM_MESSAGE_SUB_TYPE_RESULT);
+			lm_message_node_set_attribute(msub->node, "id", id);
+			lm_connection_send(xmpp_conn, msub, NULL);
+			lm_message_unref(msub);
+		}
+	}
+	else if(lm_message_get_sub_type(m) == LM_MESSAGE_SUB_TYPE_RESULT) {
+		data = lm_message_node_to_string(m->node);
+		printf("XMPP: Incoming XMPP result: %s\n", data);
+		g_free(data);
+	}
+	pthread_mutex_unlock(&xmppmtx);
+
 	return LM_HANDLER_RESULT_REMOVE_MESSAGE;
 }
 
@@ -944,10 +974,19 @@ LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *c
  * XMPP whitespace keepalive, sends space character to server every 5 minutes
  */
 void* xmpp_keep_alive_thread(void* args) {
+	LmMessage* msg;
+	LmMessageNode* ping;
+
 	while(1) {
-		sleep(300);
+		sleep(XMPP_KEEPALIVE_INTERVAL);
 		pthread_mutex_lock(&xmppmtx);
-		lm_connection_send_raw(xmpp_conn, " ", NULL);
+		//lm_connection_send_raw(xmpp_conn, " ", NULL);
+		msg = lm_message_new_with_sub_type(jid_get_server(birdbot_jid), LM_MESSAGE_TYPE_IQ, LM_MESSAGE_SUB_TYPE_GET);
+		lm_message_node_set_attribute(msg->node, "id", "client-ping");
+		ping = lm_message_node_add_child(msg->node, "ping", NULL);
+		lm_message_node_set_attribute(ping, "xmlns", "urn:xmpp:ping");
+		lm_connection_send(xmpp_conn, msg, NULL);
+		lm_message_unref(msg);
 		puts("XMPP: Sending keepalive");
 		pthread_mutex_unlock(&xmppmtx);
 	}
@@ -1286,6 +1325,10 @@ int main(int argc, char **argv)
 
     handler = lm_message_handler_new(xmpp_presence_handler, NULL, NULL);
     lm_connection_register_message_handler(xmpp_conn, handler, LM_MESSAGE_TYPE_PRESENCE, LM_HANDLER_PRIORITY_NORMAL);
+    lm_message_handler_unref(handler);
+
+    handler = lm_message_handler_new(xmpp_iq_handler, NULL, NULL);
+    lm_connection_register_message_handler(xmpp_conn, handler, LM_MESSAGE_TYPE_IQ, LM_HANDLER_PRIORITY_NORMAL);
     lm_message_handler_unref(handler);
 
     lm_connection_set_disconnect_function(xmpp_conn, xmpp_conn_close_handler, NULL, NULL);
