@@ -546,6 +546,10 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 		return 0;
 	}
 
+	//lowercase first command letter
+	if((cmdtext[0] >= 'A') && (cmdtext[0] <= 'Z'))
+		cmdtext[0] -= 'a' - 'A';
+
 	s = cmd_expand(cmdtext, &ambig_expansion);
 
 	if(s == NULL) {
@@ -565,10 +569,16 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 			exit_clean(0); //program end
 		}
 		else {
-			send_message(jid, "You are not authorized to kill bots.");
+			send_message(jid, "Access denied.");
 			free(s);
 			return 0;
 		}
+	}
+
+	if(strcmp(s, "help") == 0) {
+		send_message(jid, "Use `?' for context-sensitive help.");
+		free(s);
+		return 0;
 	}
 
 	if(conn == NULL) {
@@ -1063,7 +1073,7 @@ int main(int argc, char **argv)
     const struct option longopts[] = {
     		{"debug", no_argument, NULL, 'd'},
 			{"force-ipv4", no_argument, NULL, '4'},
-			{"ssl", no_argument, NULL, 's'},
+			{"nossl", no_argument, NULL, 's'},
 			{"jid", required_argument, NULL, 'j'},
 			{"pass", required_argument, NULL, 'w'},
 			{"socket", required_argument, NULL, 'c'},
@@ -1074,7 +1084,7 @@ int main(int argc, char **argv)
     const char* opthelp[] = {
     		"Debug mode. Program will display debugging information instead of going to background.",
 			"Force IPv4 resolution of XMPP server hostname.",
-			"Use SSL connection with XMPP server. This is required by many XMPP servers.",
+			"Disable use of SSL connection with XMPP server.",
 			"Specify BIRDbot's bare JID. This option overrides JID set in the configuration file.",
 			"Specify BIRDbot's XMPP password. This option overrides password set in the configuration file.",
 			"Set BIRD control socket.",
@@ -1086,7 +1096,7 @@ int main(int argc, char **argv)
     int lockfile;
     int is_daemon = 1;
     int xmpp_force_ipv4 = 0;
-    int xmpp_use_ssl = 0;
+    int xmpp_use_ssl = 1;
 
     struct sigaction action;
     memset(&action, 0, sizeof(struct sigaction));
@@ -1110,7 +1120,7 @@ int main(int argc, char **argv)
     			break;
     		}
     		case 's': {
-    			xmpp_use_ssl = 1;
+    			xmpp_use_ssl = 0;
     			break;
     		}
     		case 'j': {
@@ -1142,18 +1152,6 @@ int main(int argc, char **argv)
     	}
     }
 
-    //ensure single instance
-    lockfile = open(PATH_LOCKFILE, O_WRONLY | O_CREAT, "0666");
-    if(lockfile < 0) {
-    	puts("Error opening lockfile, exiting. (Is running as root?)");
-    	return -1;
-    }
-
-    if(lockf(lockfile, F_TLOCK, 0) != 0) {
-    	puts("Birdbot already running (lockfile exists), exiting.");
-    	return 1;
-    }
-
 	//daemonize
     if(is_daemon) {
     	pid = fork();
@@ -1178,6 +1176,18 @@ int main(int argc, char **argv)
 
     	if(pid > 0)
     		return 0;
+    }
+
+    //ensure single instance
+    lockfile = open(PATH_LOCKFILE, O_WRONLY | O_CREAT, "0666");
+    if(lockfile < 0) {
+    	puts("Error opening lockfile, exiting. (Is running as root?)");
+    	return -1;
+    }
+
+    if(lockf(lockfile, F_TLOCK, 0) != 0) {
+    	puts("Birdbot already running (lockfile exists), exiting.");
+    	return 1;
     }
 
     //close standard file descriptors
