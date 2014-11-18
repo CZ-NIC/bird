@@ -548,7 +548,7 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 
 	//lowercase first command letter
 	if((cmdtext[0] >= 'A') && (cmdtext[0] <= 'Z'))
-		cmdtext[0] -= 'a' - 'A';
+		cmdtext[0] += 'a' - 'A';
 
 	s = cmd_expand(cmdtext, &ambig_expansion);
 
