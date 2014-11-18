@@ -26,7 +26,7 @@
 
 #define PATH_CONFIG					PATH_BOT_CONFIG_FILE
 #define PATH_LOCKFILE				"/var/run/birdbot.lock"
-#define XMPP_KEEPALIVE_INTERVAL		300
+#define XMPP_KEEPALIVE_INTERVAL		120
 
 /*****************************************************************************/
 
@@ -976,18 +976,27 @@ LmHandlerResult xmpp_iq_handler(LmMessageHandler *handler, LmConnection *connect
 void* xmpp_keep_alive_thread(void* args) {
 	LmMessage* msg;
 	LmMessageNode* ping;
+	int sresult;
+	GError* err;
+	time_t t;
+	struct tm tm;
 
 	while(1) {
 		sleep(XMPP_KEEPALIVE_INTERVAL);
 		pthread_mutex_lock(&xmppmtx);
-		//lm_connection_send_raw(xmpp_conn, " ", NULL);
 		msg = lm_message_new_with_sub_type(jid_get_server(birdbot_jid), LM_MESSAGE_TYPE_IQ, LM_MESSAGE_SUB_TYPE_GET);
 		lm_message_node_set_attribute(msg->node, "id", "client-ping");
 		ping = lm_message_node_add_child(msg->node, "ping", NULL);
 		lm_message_node_set_attribute(ping, "xmlns", "urn:xmpp:ping");
-		lm_connection_send(xmpp_conn, msg, NULL);
+		sresult = lm_connection_send(xmpp_conn, msg, &err);
 		lm_message_unref(msg);
-		puts("XMPP: Sending keepalive");
+		t = time(NULL);
+		tm = *localtime(&t);
+		printf("[%02d:%02d] XMPP: Sending keepalive\n", tm.tm_hour, tm.tm_min);
+		if(!sresult) {
+			printf("XMPP: Keepalive send failed, status: [%d] %s\n", err->code, err->message);
+			g_free(err);
+		}
 		pthread_mutex_unlock(&xmppmtx);
 	}
 	return NULL;
