@@ -694,42 +694,46 @@ int load_config(char* path) {
 	}
 
 	while(fgets(line, 100, fconf) != NULL) {
-		if(strstr(line, "XMPP:") != NULL)
+		if(strcmp(skipblank(line), "XMPP:\n") == 0)
 			break;
 	}
 
 	while(fgets(line, 100, fconf) != NULL) {
 		lptr = skipblank(line);
+
+		if(lptr[0] == '#')
+			continue;
 		if((lastnb(lptr, strlen(lptr) - 1) == ':') || (lptr[0] == '\n') || (lptr[0] == '\r'))
 			break;
 
-		if((i == 0) && (birdbot_jid == NULL)) {
-			birdbot_jid = malloc(strlen(lptr) + 1);
-			strncpy(birdbot_jid, lptr, strlen(lptr) - 1);
-			birdbot_jid[strlen(lptr)] = '\0';
+		if((birdbot_jid == NULL) && (strncmp(lptr, "JID=", 4) == 0)) {
+			birdbot_jid = malloc(strlen(lptr));
+			strncpy(birdbot_jid, lptr + 4, strlen(lptr) - 4 - 1);
+			birdbot_jid[strlen(lptr) - 4 - 1] = '\0';
 		}
-		else if((i == 1) && (birdbot_pw == NULL)) {
-			birdbot_pw = malloc(strlen(lptr) + 1);
-			strncpy(birdbot_pw, lptr, strlen(lptr) - 1);
-			birdbot_pw[strlen(lptr)] = '\0';
+		else if((birdbot_pw == NULL) && (strncmp(lptr, "PASS=", 5) == 0)) {
+			birdbot_pw = malloc(strlen(lptr));
+			strncpy(birdbot_pw, lptr + 5, strlen(lptr) - 5 - 1);
+			birdbot_pw[strlen(lptr) - 5 - 1] = '\0';
 		}
-
-		i++;
 	}
 
 	rewind(fconf);
 
 	i = 0;
 	while(fgets(line, 100, fconf) != NULL) {
-		if(strstr(line, "SUPERUSERS:") != NULL)
+		if(strcmp(skipblank(line), "SUPERUSERS:\n") == 0)
 			break;
 	}
 
 	while(fgets(line, 100, fconf) != NULL) {
-		if((lastnb(line, strlen(line) - 1) == ':') || (line[0] == '\n') || (line[0] == '\r'))
+		lptr = skipblank(line);
+
+		if(lptr[0] == '#')
+			continue;
+		if((lastnb(lptr, strlen(lptr) - 1) == ':') || (lptr[0] == '\n') || (lptr[0] == '\r'))
 			break;
 
-		lptr = skipblank(line);
 		ptr = malloc(strlen(lptr) + 1);
 		strncpy(ptr, lptr, strlen(lptr) - 1);
 		ptr[strlen(lptr)] = '\0';
@@ -743,15 +747,18 @@ int load_config(char* path) {
 
 	i = 0;
 	while(fgets(line, 100, fconf) != NULL) {
-		if(strstr(line, "RESTRICTED:") != NULL)
+		if(strcmp(skipblank(line), "RESTRICTED:\n") == 0)
 			break;
 	}
 
 	while(fgets(line, 100, fconf) != NULL) {
-		if((lastnb(line, strlen(line) - 1) == ':') || (line[0] == '\n') || (line[0] == '\r'))
+		lptr = skipblank(line);
+
+		if(lptr[0] == '#')
+			continue;
+		if((lastnb(lptr, strlen(lptr) - 1) == ':') || (lptr[0] == '\n') || (lptr[0] == '\r'))
 			break;
 
-		lptr = skipblank(line);
 		ptr = malloc(strlen(lptr) + 1);
 		strncpy(ptr, lptr, strlen(lptr) - 1);
 		ptr[strlen(lptr)] = '\0';
@@ -1152,6 +1159,35 @@ int main(int argc, char **argv)
     	}
     }
 
+    //load configuration
+    if(load_config(PATH_CONFIG) != 0)
+    	return -1;
+
+    //print configuration
+    if(!is_daemon)
+    	print_config();
+
+    //validate configuration
+    if(birdbot_jid == NULL) {
+    	puts("You must specify BIRDbot's JID in config file or as command line argument.");
+    	exit_clean(-1);
+    }
+    else {
+    	if(birdbot_pw == NULL) {
+    		//if(!is_daemon) {
+    			int attempts = 3;
+    			birdbot_pw = malloc(31);
+    			do {
+    				printf("Enter XMPP account password: ");
+    			}while((scanf("%30s", birdbot_pw) != 1) && --attempts);
+    			if(attempts == 0)
+    				exit_clean(-1);
+    		//}
+    		//else
+    		//	exit_clean(-1);
+    	}
+    }
+
 	//daemonize
     if(is_daemon) {
     	pid = fork();
@@ -1202,33 +1238,6 @@ int main(int argc, char **argv)
         if(dup(0) == -1)
         	return -1;
     }
-
-    //load configuration
-    if(load_config(PATH_CONFIG) != 0)
-    	return -1;
-
-    //validate configuration
-    if(birdbot_jid == NULL) {
-    	puts("You must specify BIRDbot's JID in config file or as command line argument.");
-    	exit_clean(-1);
-    }
-    else {
-    	if(birdbot_pw == NULL) {
-    		if(!is_daemon) {
-    			int attempts = 3;
-    			birdbot_pw = malloc(31);
-    			do {
-    				printf("Enter XMPP account password: ");
-    			}while((scanf("%30s", birdbot_pw) != 1) && --attempts);
-    			if(attempts == 0)
-    				exit_clean(-1);
-    		}
-    		else
-    			exit_clean(-1);
-    	}
-    }
-
-    print_config();
 
     cmd_build_tree();
 
