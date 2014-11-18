@@ -1,6 +1,6 @@
 XMPP:
-	birdbot@xmppserver.com
-	passwordxmpp
+	JID=birdbot@xmppserver.com
+	PASS=passwordxmpp
 
 SUPERUSERS:
 	user123@xmpp.com
