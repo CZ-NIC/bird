@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <loudmouth/loudmouth.h>
 
 #include <pthread.h>
@@ -16,7 +15,7 @@
 #include <netdb.h>
 #include <resolv.h>
 
-#include "client.h"
+#include "birdbot.h"
 #include "sysdep/paths.h"
 
 #define PIP_RD	0

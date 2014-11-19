@@ -1,11 +1,17 @@
+# BIRDbot example configuration file
+# Lines starting with '#' are commented out
+
+# The XMPP section defines BIRDbot's JID and password
 XMPP:
 	JID=birdbot@xmppserver.com
 	PASS=passwordxmpp
 
+# List of users with full control privilegies
 SUPERUSERS:
 	user123@xmpp.com
 	neco@xmpp.com
 
+# List of users with restricted control privilegies
 RESTRICTED:
 	sup@xmpp.com
 

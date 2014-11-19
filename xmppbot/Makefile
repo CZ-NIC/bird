@@ -1,6 +1,6 @@
 source=commands.c cbirdbot.c
 root-rel=../
-dir-name=cbirdbot
+dir-name=xmppbot
 
 bots := $(bot)
 

@@ -27,7 +27,7 @@ birdcl-dep := client/birdcl.o client/all.o lib/birdlib.a
 
 $(birdcl-dep): sysdep/paths.h .dep-stamp subdir
 
-bot-dep := cbirdbot/all.o
+bot-dep := xmppbot/all.o
 
 $(bot-dep): sysdep/paths.h .dep-stamp subdir
 

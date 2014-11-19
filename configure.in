@@ -292,7 +292,7 @@ BOT_LIBS=
 BOT_DIRS=
 if test "$enable_birdbot" = yes ; then
 	BOT=cbirdbot
-	BOT_DIRS=cbirdbot
+	BOT_DIRS=xmppbot
 	AC_CHECK_LIB(pthread, main, BOT_LIBS="-lpthread",
 		AC_MSG_ERROR([[The BIRD bot requires pthread library. Either install the library or use --disable-birdbot to compile without the BIRD bot.]]))
 	AC_CHECK_LIB(resolv, main, BOT_LIBS="-lresolv",

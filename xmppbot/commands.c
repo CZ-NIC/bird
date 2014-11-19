@@ -1,18 +1,9 @@
-/*
- *	BIRD Client -- Command Handling
- *
- *	(c) 1999--2000 Martin Mares <mj@ucw.cz>
- *	          2014 Pavel Spirek <pavel.spirek@nic.cz>
- *
- *	Can be freely distributed and used under the terms of the GNU GPL.
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include "birdbot.h"
 
-#include "client.h"
 
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof(*(a)))
 
