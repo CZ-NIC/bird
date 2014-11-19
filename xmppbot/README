@@ -1,0 +1,47 @@
+								BIRD XMPP Bot
+				(c) 2014 Pavel Spirek <pavel.spirek@nic.cz>
+===============================================================================
+
+This software allows to configure and control BIRD over XMPP protocol.
+
+INSTALLATION:
+The BIRDbot depends on loudmouth, glib-2.0, resolv and POSIX threads. It also
+requires loudmouth and glib-2.0 headers to be installed on host system.
+
+The BIRDbot is disabled by default and has to be enabled explicitly.
+
+./configure --enable-birdbot
+make
+make install
+
+CONFIGURATION:
+BIRDbot can be configured with birdbot.conf file located in <prefix>/etc/
+(see example).
+Some options can be passed as command line arguments. If no XMPP password is
+specified, neither in the .conf file nor as command line argument, BIRDbot
+will prompt for it interactively (this only works in debug mode).
+
+-d | --debug
+Debug mode. Program will display debugging information instead of going to
+background.
+
+-4 | --force-ipv4
+Force IPv4 resolution of XMPP server hostname.
+
+-s | --nossl
+Disable use of SSL connection with XMPP server.
+
+-j | --jid
+Specify BIRDbot's bare JID. This option overrides JID set in the configuration
+file.
+
+-w | --pass
+Specify BIRDbot's XMPP password. This option overrides password set in the
+configuration file.
+
+-c | --socket
+Set BIRD control socket.
+
+-h | --help
+Display this help and exit.
+
