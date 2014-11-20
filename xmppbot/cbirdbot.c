@@ -37,7 +37,8 @@ char*	birdbot_pw;
 char bird_socket[108];
 
 LmConnection	*xmpp_conn;
-pthread_t		xmpp_keepalive_tid;
+pthread_t		xmpp_keepalive_tid = -1;
+int 			xmpp_keepalive_termpipe[2] = {-1, -1};
 GMainLoop		*main_loop = NULL;
 
 void send_message(char* jid, char* mbody);
@@ -272,6 +273,7 @@ void exit_clean(int exitno) {
 	char** ptr;
 	int timeout = 20;
 
+
 	while(c_tmp != NULL) {
 		connection_stop(c_tmp->connection);
 		c_tmp = c_tmp->next;
@@ -292,14 +294,23 @@ void exit_clean(int exitno) {
 		ptr++;
 	}
 
-	pthread_kill(xmpp_keepalive_tid, SIGTERM);
-
 	//pockame na ukonceni vsech vlaken spojeni
 	while((conn_list != NULL) && timeout) {
 		usleep(100000);
 		timeout--;
 	}
 
+	if(xmpp_keepalive_tid != -1) {
+		timeout = 20;
+		if(write(xmpp_keepalive_termpipe[PIP_WR], "stop", 5))
+		{};
+		while(!pthread_kill(xmpp_keepalive_tid, 0) && timeout) {
+			usleep(100000);
+			timeout--;
+		}
+	}
+
+	puts("Program ended.");
 	exit(exitno);
 }
 
@@ -995,10 +1006,19 @@ void* xmpp_keep_alive_thread(void* args) {
 	int sresult;
 	GError* err;
 	time_t t;
+	fd_set fds;
 	struct tm tm;
+	struct timeval tv;
 
 	while(1) {
-		sleep(XMPP_KEEPALIVE_INTERVAL);
+		//sleep(XMPP_KEEPALIVE_INTERVAL);
+		FD_ZERO(&fds);
+		FD_SET(xmpp_keepalive_termpipe[PIP_RD], &fds);
+		tv.tv_sec = XMPP_KEEPALIVE_INTERVAL;
+		select(xmpp_keepalive_termpipe[PIP_RD] + 1, &fds, NULL, NULL, &tv);
+		if(FD_ISSET(xmpp_keepalive_termpipe[PIP_RD], &fds))
+			break;
+
 		pthread_mutex_lock(&xmppmtx);
 		msg = lm_message_new_with_sub_type(jid_get_server(birdbot_jid), LM_MESSAGE_TYPE_IQ, LM_MESSAGE_SUB_TYPE_GET);
 		lm_message_node_set_attribute(msg->node, "id", "client-ping");
@@ -1015,6 +1035,8 @@ void* xmpp_keep_alive_thread(void* args) {
 		}
 		pthread_mutex_unlock(&xmppmtx);
 	}
+
+	puts("XMPP: keepalive thread ended.");
 	return NULL;
 }
 
@@ -1107,6 +1129,7 @@ int main(int argc, char **argv)
     struct sigaction action;
     memset(&action, 0, sizeof(struct sigaction));
     action.sa_handler = sigterm_handler;
+    sigaction(SIGINT, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
 
     birdbot_jid = NULL;
@@ -1217,12 +1240,12 @@ int main(int argc, char **argv)
     lockfile = open(PATH_LOCKFILE, O_WRONLY | O_CREAT, "0666");
     if(lockfile < 0) {
     	puts("Error opening lockfile, exiting. (Is running as root?)");
-    	return -1;
+    	exit_clean(-1);
     }
 
     if(lockf(lockfile, F_TLOCK, 0) != 0) {
     	puts("Birdbot already running (lockfile exists), exiting.");
-    	return 1;
+    	exit_clean(1);
     }
 
     //close standard file descriptors
@@ -1233,9 +1256,9 @@ int main(int argc, char **argv)
 
         open("/dev/null", O_RDWR);
         if(dup(0) == -1)
-        	return -1;
+        	exit_clean(-1);
         if(dup(0) == -1)
-        	return -1;
+        	exit_clean(-1);
     }
 
     cmd_build_tree();
@@ -1367,6 +1390,8 @@ int main(int argc, char **argv)
         exit_clean(-1);
     }
 
+    if(pipe(xmpp_keepalive_termpipe) < 0)
+    	return -1;
     pthread_create(&xmpp_keepalive_tid, NULL, xmpp_keep_alive_thread, NULL);
     pthread_detach(xmpp_keepalive_tid);
 
