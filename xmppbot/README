@@ -28,18 +28,18 @@ background.
 -4 | --force-ipv4
 Force IPv4 resolution of XMPP server hostname.
 
--s | --nossl
+-n | --nossl
 Disable use of SSL connection with XMPP server.
 
 -j | --jid
 Specify BIRDbot's bare JID. This option overrides JID set in the configuration
 file.
 
--w | --pass
+-p | --pass
 Specify BIRDbot's XMPP password. This option overrides password set in the
 configuration file.
 
--c | --socket
+-s | --socket
 Set BIRD control socket.
 
 -h | --help

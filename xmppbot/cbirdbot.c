@@ -36,7 +36,7 @@ char*	birdbot_jid;
 char*	birdbot_pw;
 char bird_socket[108];
 
-LmConnection	*xmpp_conn;
+LmConnection	*xmpp_conn = NULL;
 pthread_t		xmpp_keepalive_tid = -1;
 int 			xmpp_keepalive_termpipe[2] = {-1, -1};
 GMainLoop		*main_loop = NULL;
@@ -205,7 +205,7 @@ int create_connection(char* jid) {
 
 	if((conn->sock_fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
 		free(conn);
-		return -1;
+		return -2;
 	}
 
 	memset(&sa, 0, sizeof(struct sockaddr_un));
@@ -217,7 +217,7 @@ int create_connection(char* jid) {
 
 	if(connect(conn->sock_fd, (struct sockaddr*) &sa, SUN_LEN(&sa)) < 0) {
 		free(conn);
-		return -1;
+		return -3;
 	}
 
 	fcntl(conn->sock_fd, F_SETFL, O_NONBLOCK);
@@ -225,8 +225,11 @@ int create_connection(char* jid) {
 	conn->jid = (char*) malloc(strlen(jid) + 1);
 	strcpy(conn->jid, jid);
 
-	if(pipe(conn->termpipe_fd) != 0)
+	if(pipe(conn->termpipe_fd) != 0) {
 		puts("Error creating pipe.");
+		free(conn);
+		return -4;
+	}
 
 	list_add_end(conn);
 
@@ -544,6 +547,7 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 	conn_t* conn;
 	char* s;
 	int ambig_expansion = 0;
+	int cc_exitno;
 
 	conn = find_connection(jid);
 
@@ -593,13 +597,14 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl) {
 
 	if(conn == NULL) {
 		if(strcmp(s, "connect") == 0) {
-			if(create_connection(jid) == 0) {
+			if((cc_exitno = create_connection(jid)) == 0) {
 				conn = find_connection(jid);
 				connection_run(conn);
 				send_message(jid, "Connected.");
 			}
 			else {
 				send_message(jid, "Error connecting to BIRD socket.");
+				printf("Error connecting to BIRD socket (%s), exitno=%d.\n", bird_socket, cc_exitno);
 				free(s);
 				return -1;
 			}
@@ -1015,6 +1020,7 @@ void* xmpp_keep_alive_thread(void* args) {
 		FD_ZERO(&fds);
 		FD_SET(xmpp_keepalive_termpipe[PIP_RD], &fds);
 		tv.tv_sec = XMPP_KEEPALIVE_INTERVAL;
+		tv.tv_usec = 0;
 		select(xmpp_keepalive_termpipe[PIP_RD] + 1, &fds, NULL, NULL, &tv);
 		if(FD_ISSET(xmpp_keepalive_termpipe[PIP_RD], &fds))
 			break;
@@ -1101,11 +1107,11 @@ int main(int argc, char **argv)
     const struct option longopts[] = {
     		{"debug", no_argument, NULL, 'd'},
 			{"force-ipv4", no_argument, NULL, '4'},
-			{"nossl", no_argument, NULL, 's'},
+			{"nossl", no_argument, NULL, 'n'},
 			{"jid", required_argument, NULL, 'j'},
-			{"pass", required_argument, NULL, 'w'},
-			{"socket", required_argument, NULL, 'c'},
-			{"help", required_argument, NULL, 'h'},
+			{"pass", required_argument, NULL, 'p'},
+			{"socket", required_argument, NULL, 's'},
+			{"help", no_argument, NULL, 'h'},
 			{NULL, 0, NULL, 0}
     };
 
@@ -1138,7 +1144,7 @@ int main(int argc, char **argv)
     bird_socket[sizeof(bird_socket) - 1] = '\0';
 
     //parse command line parameters
-    while((opt = getopt_long(argc, argv, "d4sj:w:s:h", longopts, &longopts_idx)) != -1) {
+    while((opt = getopt_long(argc, argv, "d4nhj:p:s:", longopts, &longopts_idx)) != -1) {
     	switch(opt) {
     		case 'd': {
     			is_daemon = 0;
@@ -1148,7 +1154,7 @@ int main(int argc, char **argv)
     			xmpp_force_ipv4 = 1;
     			break;
     		}
-    		case 's': {
+    		case 'n': {
     			xmpp_use_ssl = 0;
     			break;
     		}
@@ -1157,12 +1163,12 @@ int main(int argc, char **argv)
     		    strcpy(birdbot_jid, optarg);
     		    break;
     		}
-    		case 'w': {
+    		case 'p': {
     			birdbot_pw = malloc(strlen(optarg) + 1);
     			strcpy(birdbot_pw, optarg);
     			break;
     		}
-    		case 'c': {
+    		case 's': {
     			strncpy(bird_socket, optarg, sizeof(bird_socket) - 1);
     			bird_socket[sizeof(bird_socket) - 1] = '\0';
     			break;
@@ -1398,7 +1404,6 @@ int main(int argc, char **argv)
     main_loop = g_main_loop_new(NULL, FALSE);
     g_main_loop_run(main_loop);
 
-    lm_connection_unref(xmpp_conn);
     exit_clean(0);
     return 0;
 }
