@@ -358,6 +358,10 @@ char* process_bird_output(char* in) {
 				strcat(out, in + 5);
 			}
 		}
+		else if((strlen(in) > 2) && (in[0] == ' ')) {
+			strcat(out, "\n");
+			strcat(out, in + 1);
+		}
 
 		in = line_end + 1;
 	}
