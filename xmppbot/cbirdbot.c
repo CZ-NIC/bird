@@ -282,6 +282,17 @@ void exit_clean(int exitno) {
 		c_tmp = c_tmp->next;
 	}
 
+	if(xmpp_conn != NULL) {
+		lm_connection_close(xmpp_conn, NULL);
+		lm_connection_unref(xmpp_conn);
+	}
+
+	if(main_loop != NULL) {
+		g_main_loop_quit(main_loop);
+		g_main_loop_unref(main_loop);
+		g_main_loop_unref(main_loop);
+	}
+
 	free(birdbot_jid);
 	free(birdbot_pw);
 
