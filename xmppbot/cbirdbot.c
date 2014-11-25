@@ -764,10 +764,9 @@ int load_config(char* path) {
 		if((lastnb(lptr, strlen(lptr) - 1) == ':') || (lptr[0] == '\n') || (lptr[0] == '\r'))
 			break;
 
-		ptr = malloc(strlen(lptr) + 1);
-		memset(ptr, '\0', strlen(lptr) + 1);
-		strncpy(ptr, lptr, strlen(lptr) - 1);
-		ptr[strlen(lptr)] = '\0';
+		ptr = malloc(strlen(lptr));
+		strncpy(ptr, lptr, strlen(lptr)-1);
+		ptr[strlen(lptr)-1] = '\0';
 		if(i < 99) {
 			superusers[i] = ptr;
 			i++;
@@ -790,10 +789,9 @@ int load_config(char* path) {
 		if((lastnb(lptr, strlen(lptr) - 1) == ':') || (lptr[0] == '\n') || (lptr[0] == '\r'))
 			break;
 
-		ptr = malloc(strlen(lptr) + 1);
-		memset(ptr, '\0', strlen(lptr) + 1);
-		strncpy(ptr, lptr, strlen(lptr) - 1);
-		ptr[strlen(lptr)] = '\0';
+		ptr = malloc(strlen(lptr));
+		strncpy(ptr, lptr, strlen(lptr)-1);
+		ptr[strlen(lptr)-1] = '\0';
 		if(i < 99) {
 			restricted_users[i] = ptr;
 			i++;
