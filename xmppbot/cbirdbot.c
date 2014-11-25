@@ -761,6 +761,7 @@ int load_config(char* path) {
 			break;
 
 		ptr = malloc(strlen(lptr) + 1);
+		memset(ptr, '\0', strlen(lptr) + 1);
 		strncpy(ptr, lptr, strlen(lptr) - 1);
 		ptr[strlen(lptr)] = '\0';
 		if(i < 99) {
@@ -786,6 +787,7 @@ int load_config(char* path) {
 			break;
 
 		ptr = malloc(strlen(lptr) + 1);
+		memset(ptr, '\0', strlen(lptr) + 1);
 		strncpy(ptr, lptr, strlen(lptr) - 1);
 		ptr[strlen(lptr)] = '\0';
 		if(i < 99) {
