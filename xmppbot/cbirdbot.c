@@ -272,15 +272,18 @@ int connection_stop(conn_t* conn) {
  * Clean exit of program, exits the all threads and does some housekeeping
  */
 void exit_clean(int exitno) {
-	conn_listitem_t* c_tmp = conn_list;
+	conn_listitem_t* c_tmp;
 	char** ptr;
 	int timeout = 20;
 
 
+	pthread_mutex_lock(&listmtx);
+	c_tmp = conn_list;
 	while(c_tmp != NULL) {
 		connection_stop(c_tmp->connection);
 		c_tmp = c_tmp->next;
 	}
+	pthread_mutex_unlock(&listmtx);
 
 	if(xmpp_conn != NULL) {
 		lm_connection_close(xmpp_conn, NULL);
