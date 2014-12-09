@@ -9,5 +9,5 @@ char *cmd_expand(char *cmd, int* is_ambig);
 
 /* cbirdbot.c */
 
-void send_message(char* jid, char* mbody);
-int check_user_auth(char* jid);
+void send_message(char* jid, int is_muc, char* mbody);
+int check_user_auth(char* jid, int is_muc);
