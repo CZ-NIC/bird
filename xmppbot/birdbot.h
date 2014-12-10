@@ -1,3 +1,7 @@
+#define PRINTF_XMPP_RED(format, args...)	 printf("\x1B[31mXMPP:\x1B[0m "format"\n", ##args);
+#define PRINTF_XMPP_GREEN(format, args...)	 printf("\x1B[32mXMPP:\x1B[0m "format"\n", ##args);
+#define PRINTF_XMPP_YELLOW(format, args...)	 printf("\x1B[33mXMPP:\x1B[0m "format"\n", ##args);
+
 /* commands.c */
 
 int lastnb(char *str, int i);

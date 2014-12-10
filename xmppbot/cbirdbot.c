@@ -393,7 +393,7 @@ void* connection_run_thread(void* args) {
 	conn_t* conn = (conn_t*) args;
 	fd_set fds;
 	int maxfd;
-	//char* auth_jid;
+	int timeout;
 
 	maxfd = conn->sock_fd;
 	if(conn->termpipe_fd[PIP_RD] > maxfd)
@@ -437,6 +437,17 @@ void* connection_run_thread(void* args) {
 				}
 			}
 
+			if(conn->muc.is_muc) {
+				timeout = 500; //5 s
+				while((conn->muc.muc_state != XMPP_MUC_STATE_WORKING) && timeout--)
+					usleep(10000);
+				if(timeout == 0) {
+					PRINTF_XMPP_RED("MUC state != Working, exiting thread");
+					free(msg);
+					break;
+				}
+			}
+
 			send_message(conn->jid, conn->muc.is_muc, msg);
 			free(msg);
 		}
@@ -467,6 +478,45 @@ int connection_run(conn_t* conn) {
 }
 
 /**
+ * [API] Makes new connection and runs associated thread
+ * @param jid		JabberID of connection object
+ * @param is_muc	Is multi-user chat connection?
+ * @return			0 = OK, -1 = ERROR
+ */
+int connection_new(char* jid, int is_muc) {
+	conn_t* conn;
+	int cc_exitno;
+
+	if((cc_exitno = create_connection(jid, is_muc)) == 0) {
+		conn = find_connection(jid);
+		connection_run(conn);
+		return 0;
+	}
+	else {
+		printf("Error connecting room_jid BIRD socket (%s), exitno=%d.\n", bird_socket, cc_exitno);
+		return -1;
+	}
+}
+
+char* xmpp_trim_jid_by_slash(const char* jid) {
+	char *ptr, *retval;
+
+	if(jid == NULL)
+		return NULL;
+
+	retval = NULL;
+	if((ptr = strchr(jid, '/')) != NULL) {
+		retval = malloc(ptr - jid + 1);
+		strncpy(retval, jid, ptr - jid);
+		retval[ptr - jid] = '\0';
+	}
+	else {
+		retval = strdup(jid);
+	}
+	return retval;
+}
+
+/**
  * Sends message over XMPP
  * @param jid		Chat:JabberID of recipient, MUC: bare room jid, full room jid with nickname (will be trimmed)
  * @param mbody		Message body text
@@ -489,7 +539,7 @@ void send_message(char* jid, int is_muc, char* mbody) {
 
 	msg = lm_message_new_with_sub_type(jid_local, LM_MESSAGE_TYPE_MESSAGE, is_muc?LM_MESSAGE_SUB_TYPE_GROUPCHAT:LM_MESSAGE_SUB_TYPE_CHAT);
 	lm_message_node_add_child (msg->node, "body", mbody);
-	printf("XMPP: Sending message to %s (muc: %d)\n", jid_local, is_muc);
+	//printf("XMPP: Sending message to %s (muc: %d)\n", jid_local, is_muc);
 	lm_connection_send(xmpp_conn, msg, NULL);
 	lm_message_unref(msg);
 
@@ -592,14 +642,30 @@ void send_help_html(char* jid, int is_muc, char* mbody) {
 }
 
 /**
- *
- * @param room_jid
+ * Exits the MUC room
+ * @param room_jid	JID of the room to exit, bare or with some nickname (will be trimmed)
  */
-void xmpp_muc_exit_room(char* room_jid) {
+void xmpp_muc_exit_room(char* jid) {
 	LmMessage* m;
-	puts("XMPP: exiting muc room");
+	char *muc_room_bare_jid, *my_full_room_jid;
+
+	PRINTF_XMPP_GREEN("Exiting MUC room");
+
+	muc_room_bare_jid = NULL;
+    //trim full MUC JID to bare MUC JID
+    if(strchr(jid, '/')) {
+    	muc_room_bare_jid = alloca(strlen(jid));
+    	strcpy(muc_room_bare_jid, jid);
+    	*strchr(muc_room_bare_jid, '/') = '\0';
+    }
+    else
+    	muc_room_bare_jid = jid;
+
+	my_full_room_jid = alloca(strlen(muc_room_bare_jid) + 1 + strlen(birdbot_jid) + 1);
+	sprintf(my_full_room_jid, "%s/%s", muc_room_bare_jid, birdbot_jid);
+
 	pthread_mutex_lock(&xmppmtx);
-	m = lm_message_new_with_sub_type(room_jid, LM_MESSAGE_TYPE_PRESENCE, LM_MESSAGE_SUB_TYPE_UNAVAILABLE);
+	m = lm_message_new_with_sub_type(my_full_room_jid, LM_MESSAGE_TYPE_PRESENCE, LM_MESSAGE_SUB_TYPE_UNAVAILABLE);
 	lm_connection_send(xmpp_conn, m, NULL);
 	pthread_mutex_unlock(&xmppmtx);
 	lm_message_unref(m);
@@ -623,12 +689,23 @@ const char* xmpp_muc_hello(void) {
  * @param auth_lvl	Authentication level of user with given JID (1 = Restricted, 2 = Superuser)
  * @return			0 = OK, -1 = ERROR
  */
-int process_cmd(char* jid, char* cmdtext, int auth_lvl, int is_muc) {
+int process_cmd(char* sender_jid, char* cmdtext, int auth_lvl, int is_muc) {
 	conn_t* conn;
+	char* jid;
 	char* s;
 	int ambig_expansion = 0;
-	int cc_exitno;
-	char *muc_room_bare_jid, *room_jid;
+	char* ptr;
+
+	jid = sender_jid;
+
+	//if full occupant jid is passed in MUC mode, trim it to bare room jid
+	if(is_muc && ((ptr = strchr(sender_jid, '/')) != NULL)) {
+		jid = alloca(ptr - sender_jid + 1);
+		strncpy(jid, sender_jid, ptr - sender_jid);
+		jid[ptr - sender_jid] = '\0';
+	}
+
+	PRINTF_XMPP_YELLOW("JID trimmed to: %s", jid);
 
 	conn = find_connection(jid);
 
@@ -648,14 +725,8 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl, int is_muc) {
 	//handle MUC kick command
 	if(is_muc && (strncmp(cmdtext, "muckick ", 8) == 0)) {
 		if(strcmp(strchr(cmdtext, ' ') + 1, birdbot_jid) == 0) {
-			printf("jid = %s\n", jid);
-			muc_room_bare_jid = strdup(jid);
-			*strchr(muc_room_bare_jid, '/') = 0;
-			room_jid = alloca(strlen(muc_room_bare_jid) + 1 + strlen(birdbot_jid) + 1);
-			sprintf(room_jid, "%s/%s", muc_room_bare_jid, birdbot_jid);
-			send_message(jid, is_muc, "See ya!");
+			send_message(jid, 1, "See ya!");
 			xmpp_muc_exit_room(jid);
-			free(muc_room_bare_jid);
 
 			if(conn != NULL) {
 				connection_stop(conn);
@@ -699,16 +770,13 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl, int is_muc) {
 
 	if(conn == NULL) {
 		if(strcmp(s, "connect") == 0) {
-			if((cc_exitno = create_connection(jid, is_muc)) == 0) {
-				conn = find_connection(jid);
-				connection_run(conn);
-				send_message(jid, is_muc, "Connected.");
-			}
-			else {
+			if(connection_new(jid, is_muc) != 0) {
 				send_message(jid, is_muc, "Error connecting to BIRD socket.");
-				printf("Error connecting room_jid BIRD socket (%s), exitno=%d.\n", bird_socket, cc_exitno);
 				free(s);
 				return -1;
+			}
+			else {
+				send_message(jid, is_muc, "Connected.");
 			}
 		}
 		else {
@@ -719,9 +787,19 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl, int is_muc) {
 		if(strcmp(s, "connect") == 0) {
 			send_message(jid, is_muc, "Already connected.");
 		}
-		else if((strcmp(s, "exit") == 0) || (strcmp(s, "quit") == 0)) {
-			connection_stop(conn);
-			send_message(jid, is_muc, "Bye.");
+		else if((strncmp(s, "exit", 4) == 0) || (strncmp(s, "quit", 4) == 0)) {
+			if(is_muc) {
+				ptr = strchr(s, ' ');
+				if((ptr == NULL) || (strcmp(ptr + 1, birdbot_jid) == 0)) {
+					send_message(jid, is_muc, "Bye.");
+					xmpp_muc_exit_room(jid);
+					connection_stop(conn);
+				}
+			}
+			else {
+				connection_stop(conn);
+				send_message(jid, is_muc, "Bye.");
+			}
 		}
 		else {
 			if(conn->bird_ready) {
@@ -803,7 +881,7 @@ int check_user_auth(char* jid, int is_muc) {
 	//to prevent bot reactions to messages from other bots (xmpp infinite loops)
 	if(is_muc && (user_auth_lvl != 0)) {
 		if(ptr == NULL)
-			 return 0;
+			 return user_auth_lvl;	//if bare MUC room jid, verify only this bare jid
 
 		nickname = ptr + 1;
 		user_auth_lvl = 0;
@@ -997,7 +1075,7 @@ void xmpp_conn_auth_handler(LmConnection *connection, gboolean success, gpointer
 	if (success) {
 		LmMessage *m;
 
-		printf("XMPP: Authenticated successfully\n");
+		PRINTF_XMPP_GREEN("Authenticated successfully");
 
 		m = lm_message_new_with_sub_type(NULL, LM_MESSAGE_TYPE_PRESENCE, LM_MESSAGE_SUB_TYPE_AVAILABLE);
 		lm_connection_send(connection, m, NULL);
@@ -1005,7 +1083,7 @@ void xmpp_conn_auth_handler(LmConnection *connection, gboolean success, gpointer
 		lm_message_unref(m);
 	}
 	else {
-		printf("XMPP: Failed to authenticate\n");
+		PRINTF_XMPP_RED("Failed to authenticate");
 		g_main_loop_quit(main_loop);
 	}
 }
@@ -1069,8 +1147,9 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 	char *intext = NULL;
 	int user_auth_lvl = 0; // 0 = not authorized, 1 = restricted, 2 = superuser
 	int is_muc = 0;
+	conn_t* conn;
 
-	printf("received msg = \n%s\n",lm_message_node_to_string(m->node));
+	//printf("received msg = \n%s\n",lm_message_node_to_string(m->node));
 
 	//trash offline messages
 	if(lm_message_node_get_child(m->node, "delay") != NULL)
@@ -1083,13 +1162,13 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 		if(inv != NULL) {
 			muc_room_jid = (char*)lm_message_node_get_attribute(m->node, "from");
 			from = (char*)lm_message_node_get_attribute(inv, "from");
-			printf("XMPP: Processing MUC invitation from %s\n", from);
+			PRINTF_XMPP_GREEN("Processing MUC invitation from %s", from);
 
 			user_auth_lvl = check_user_auth(muc_room_jid, 0);
 			if(user_auth_lvl == 0) {
 				//refuse invitation
 				puts(from);
-				puts("Refused!");
+				PRINTF_XMPP_YELLOW("Refused :-(");
 				reply = lm_message_new(muc_room_jid, LM_MESSAGE_TYPE_MESSAGE);
 				x = lm_message_node_add_child(reply->node, "x", NULL);
 				lm_message_node_set_attribute(x, "xmlns", "http://jabber.org/protocol/muc#user");
@@ -1100,7 +1179,7 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 				lm_message_unref(reply);
 			}
 			else {
-				puts("accepted :-)");
+				PRINTF_XMPP_GREEN("Accepted :-)");
 				//accept invitation (send presence), create connection
 				to = alloca(strlen(muc_room_jid) + 1 + strlen(birdbot_jid) + 1);
 				sprintf(to, "%s/%s", muc_room_jid, birdbot_jid);
@@ -1112,6 +1191,13 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 				lm_message_node_set_attribute(history, "maxchars", "0");
 				lm_connection_send(xmpp_conn, reply, NULL);
 				lm_message_unref(reply);
+
+				connection_new(muc_room_jid, 1);
+				conn = find_connection(muc_room_jid);
+				if(conn != NULL) {
+					conn->muc.muc_state = XMPP_MUC_STATE_AWAITING_PRESENCES;
+				}
+
 			}
 			return LM_HANDLER_RESULT_REMOVE_MESSAGE;
 		}
@@ -1138,7 +1224,7 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
     if(lm_message_node_get_child(m->node, "body")->value != NULL)
     	intext = (char*)lm_message_node_get_value(lm_message_node_get_child(m->node, "body"));
 
-	printf("XMPP: Incoming message from %s: %s\n", from, intext);
+    PRINTF_XMPP_GREEN("Incoming message from %s: %s", from, intext);
 
 	if(lm_message_get_sub_type(m) == LM_MESSAGE_SUB_TYPE_GROUPCHAT) {
 		is_muc = 1;
@@ -1146,7 +1232,7 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 		if(jid_separator == NULL)	//malformed message
 			return LM_HANDLER_RESULT_REMOVE_MESSAGE;*/
 		user_auth_lvl = check_user_auth(from, is_muc);
-		printf("XMPP: Checking MUC auth: %s, lvl = %d\n", from, user_auth_lvl);
+		PRINTF_XMPP_GREEN("Checking MUC auth: %s, lvl = %d", from, user_auth_lvl);
 		if(user_auth_lvl != 0) {
 			/**jid_separator = '\0';
 			to = alloca(strlen(from) + 1 + strlen(birdbot_jid) + 1);
@@ -1176,17 +1262,26 @@ LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *c
 	LmMessage* msub;
 	LmMessageNode *x;
 	char* from;
-	char* jid_separator;
+	char *jid_separator, *jid;
 	LmMessageSubType subtype;
+	conn_t* conn;
 
-	printf("XMPP incomimg presence = \n%s\n", lm_message_node_to_string(m->node));
+	//printf("XMPP incomimg presence = \n%s\n", lm_message_node_to_string(m->node));
 	from = (char*)lm_message_node_get_attribute(m->node, "from");
+
+	//handle MUC self-presence
 	if((jid_separator = strchr(from, '/')) != NULL) {
 		if(strcmp(jid_separator + 1, birdbot_jid) == 0) {
 			x = lm_message_node_get_child(m->node, "x");
 			if(x != NULL) {
 				if(strncmp(lm_message_node_get_attribute(x, "xmlns"), "http://jabber.org/protocol/muc",
 						strlen("http://jabber.org/protocol/muc")) == 0) {
+					jid = xmpp_trim_jid_by_slash(from);
+					conn = find_connection(jid);
+					free(jid);
+					if(conn != NULL) {
+						conn->muc.muc_state = XMPP_MUC_STATE_WORKING;
+					}
 					//send hello message
 					puts("sending hello");
 					send_message(from, 1, (char*)xmpp_muc_hello());
