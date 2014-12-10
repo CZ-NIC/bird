@@ -753,38 +753,38 @@ int process_cmd(char* jid, char* cmdtext, int auth_lvl, int is_muc) {
 int check_user_auth(char* jid, int is_muc) {
 	int user_auth_lvl = 0;
 	char* ptr;
-	char* tmp_jid;
+	char *bare_jid, *nickname;
 	int barejid_len;
 	int i;
 
 	ptr = strchr(jid, '/'); //trim extended jid
 
-	if(is_muc) {
+	/*if(is_muc) {
 		if(ptr == NULL) {
 			return 0;
 		}
 		else {
 			barejid_len = strlen(ptr + 1);
-			tmp_jid = ptr + 1;
+			bare_jid = ptr + 1;
 		}
 	}
-	else {
+	else {*/
 		if(ptr == NULL) {
 			barejid_len = strlen(jid);
 		}
 		else {
 			barejid_len = ptr - jid;
 		}
-		tmp_jid = alloca(barejid_len + 1);
-		strncpy(tmp_jid, jid, barejid_len);
-		tmp_jid[barejid_len] = '\0';
-	}
+		bare_jid = alloca(barejid_len + 1);
+		strncpy(bare_jid, jid, barejid_len);
+		bare_jid[barejid_len] = '\0';
+	//}
 
 	if((barejid_len < 3) || (strchr(jid, '@') == NULL)) //malformed JID (shortest possible: a@a)
 		return 0;
 
 	for(i = 0; superusers[i] != NULL; i++) {
-		if(strcmp(tmp_jid, superusers[i]) == 0) {
+		if(strcmp(bare_jid, superusers[i]) == 0) {
 			user_auth_lvl = 2;
 			break;
 		}
@@ -792,9 +792,35 @@ int check_user_auth(char* jid, int is_muc) {
 
 	if(user_auth_lvl == 0) {
 		for(i = 0; restricted_users[i] != NULL; i++) {
-			if(strcmp(tmp_jid, restricted_users[i]) == 0) {
+			if(strcmp(bare_jid, restricted_users[i]) == 0) {
 				user_auth_lvl = 1;
 				break;
+			}
+		}
+	}
+
+	//if MUC, both room name and nickname must be specified in config file
+	//to prevent bot reactions to messages from other bots (xmpp infinite loops)
+	if(is_muc && (user_auth_lvl != 0)) {
+		if(ptr == NULL)
+			 return 0;
+
+		nickname = ptr + 1;
+		user_auth_lvl = 0;
+
+		for(i = 0; superusers[i] != NULL; i++) {
+			if(strcmp(nickname, superusers[i]) == 0) {
+				user_auth_lvl = 2;
+				break;
+			}
+		}
+
+		if(user_auth_lvl == 0) {
+			for(i = 0; restricted_users[i] != NULL; i++) {
+				if(strcmp(nickname, restricted_users[i]) == 0) {
+					user_auth_lvl = 1;
+					break;
+				}
 			}
 		}
 	}
@@ -1044,7 +1070,7 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 	int user_auth_lvl = 0; // 0 = not authorized, 1 = restricted, 2 = superuser
 	int is_muc = 0;
 
-	//printf("received msg = \n%s\n",lm_message_node_to_string(m->node));
+	printf("received msg = \n%s\n",lm_message_node_to_string(m->node));
 
 	//trash offline messages
 	if(lm_message_node_get_child(m->node, "delay") != NULL)
@@ -1059,9 +1085,11 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 			from = (char*)lm_message_node_get_attribute(inv, "from");
 			printf("XMPP: Processing MUC invitation from %s\n", from);
 
-			user_auth_lvl = check_user_auth(from, 0);
+			user_auth_lvl = check_user_auth(muc_room_jid, 0);
 			if(user_auth_lvl == 0) {
 				//refuse invitation
+				puts(from);
+				puts("Refused!");
 				reply = lm_message_new(muc_room_jid, LM_MESSAGE_TYPE_MESSAGE);
 				x = lm_message_node_add_child(reply->node, "x", NULL);
 				lm_message_node_set_attribute(x, "xmlns", "http://jabber.org/protocol/muc#user");
@@ -1072,6 +1100,7 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 				lm_message_unref(reply);
 			}
 			else {
+				puts("accepted :-)");
 				//accept invitation (send presence), create connection
 				to = alloca(strlen(muc_room_jid) + 1 + strlen(birdbot_jid) + 1);
 				sprintf(to, "%s/%s", muc_room_jid, birdbot_jid);
@@ -1150,13 +1179,14 @@ LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *c
 	char* jid_separator;
 	LmMessageSubType subtype;
 
-	//printf("XMPP incomimg presence = \n%s\n", lm_message_node_to_string(m->node));
+	printf("XMPP incomimg presence = \n%s\n", lm_message_node_to_string(m->node));
 	from = (char*)lm_message_node_get_attribute(m->node, "from");
 	if((jid_separator = strchr(from, '/')) != NULL) {
 		if(strcmp(jid_separator + 1, birdbot_jid) == 0) {
 			x = lm_message_node_get_child(m->node, "x");
 			if(x != NULL) {
-				if(strcmp(lm_message_node_get_attribute(x, "xmlns"), "http://jabber.org/protocol/muc#user") == 0) {
+				if(strncmp(lm_message_node_get_attribute(x, "xmlns"), "http://jabber.org/protocol/muc",
+						strlen("http://jabber.org/protocol/muc")) == 0) {
 					//send hello message
 					puts("sending hello");
 					send_message(from, 1, (char*)xmpp_muc_hello());
