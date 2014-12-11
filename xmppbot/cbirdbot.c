@@ -61,9 +61,6 @@ typedef struct clitem {
 	struct clitem* next;
 }conn_listitem_t;
 
-void send_message(char* jid, int is_muc, char* mbody);
-//void send_message2(conn_t* user, char* mbody);
-
 conn_listitem_t* conn_list = NULL;
 
 pthread_mutex_t listmtx = PTHREAD_MUTEX_INITIALIZER;
@@ -1079,7 +1076,7 @@ void xmpp_conn_auth_handler(LmConnection *connection, gboolean success, gpointer
 
 		m = lm_message_new_with_sub_type(NULL, LM_MESSAGE_TYPE_PRESENCE, LM_MESSAGE_SUB_TYPE_AVAILABLE);
 		lm_connection_send(connection, m, NULL);
-		printf("XMPP: Sent presence message: %s", lm_message_node_to_string(m->node));
+		PRINTF_XMPP("Sent presence message: %s", lm_message_node_to_string(m->node));
 		lm_message_unref(m);
 	}
 	else {
@@ -1099,9 +1096,9 @@ void xmpp_conn_open_handler(LmConnection *connection, gboolean success, gpointer
 		lm_connection_authenticate(connection, user, birdbot_pw, "test-lm", xmpp_conn_auth_handler, NULL, FALSE,  NULL);
 		g_free(user);
 
-		printf("XMPP: Sent authentication message\n");
+		PRINTF_XMPP("Sent authentication message\n");
 	} else {
-		printf("XMPP: Failed to connect\n");
+		PRINTF_XMPP("Failed to connect\n");
 		g_main_loop_quit(main_loop);
 	}
 }
@@ -1131,7 +1128,7 @@ void xmpp_conn_close_handler(LmConnection *connection, LmDisconnectReason  reaso
         break;
     }
 
-    printf("XMPP: Disconnected, reason: %d->'%s'\n", reason, str);
+    PRINTF_XMPP_YELLOW("Disconnected, reason: %d->'%s'\n", reason, str);
     g_main_loop_quit(main_loop);
 }
 
@@ -1149,7 +1146,7 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 	int is_muc = 0;
 	conn_t* conn;
 
-	//printf("received msg = \n%s\n",lm_message_node_to_string(m->node));
+	printf("received msg = \n%s\n",lm_message_node_to_string(m->node));
 
 	//trash offline messages
 	if(lm_message_node_get_child(m->node, "delay") != NULL)
@@ -1162,7 +1159,7 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 		if(inv != NULL) {
 			muc_room_jid = (char*)lm_message_node_get_attribute(m->node, "from");
 			from = (char*)lm_message_node_get_attribute(inv, "from");
-			PRINTF_XMPP_GREEN("Processing MUC invitation from %s", from);
+			PRINTF_XMPP("Processing MUC invitation from %s", from);
 
 			user_auth_lvl = check_user_auth(muc_room_jid, 0);
 			if(user_auth_lvl == 0) {
@@ -1203,15 +1200,6 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 		}
 	}
 
-	//react to MUC room subject
-	/*subject = lm_message_node_get_child(m->node, "subject");
-	if((subject != NULL) && (lm_message_get_sub_type(m) == LM_MESSAGE_SUB_TYPE_GROUPCHAT)) {
-		//send hello
-		puts("XMPP MUC: Sending hello message");
-		send_message((char*)lm_message_node_get_attribute(m->node, "from"), 1, (char*)xmpp_muc_hello());
-		return LM_HANDLER_RESULT_REMOVE_MESSAGE;
-	}*/
-
 	//process normal message
 	if(lm_message_node_get_child(m->node, "body") == NULL)
 		return LM_HANDLER_RESULT_REMOVE_MESSAGE;
@@ -1228,15 +1216,14 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 
 	if(lm_message_get_sub_type(m) == LM_MESSAGE_SUB_TYPE_GROUPCHAT) {
 		is_muc = 1;
-		/*jid_separator = strchr(from, '/');
-		if(jid_separator == NULL)	//malformed message
-			return LM_HANDLER_RESULT_REMOVE_MESSAGE;*/
 		user_auth_lvl = check_user_auth(from, is_muc);
-		PRINTF_XMPP_GREEN("Checking MUC auth: %s, lvl = %d", from, user_auth_lvl);
+
+		//filter messages without nickname specified
+		if(strchr(from, '/') == NULL)
+			return LM_HANDLER_RESULT_REMOVE_MESSAGE;
+
+		PRINTF_XMPP("Checking MUC auth: %s, lvl = %d", from, user_auth_lvl);
 		if(user_auth_lvl != 0) {
-			/**jid_separator = '\0';
-			to = alloca(strlen(from) + 1 + strlen(birdbot_jid) + 1);
-			sprintf(to, "%s/%s", from, birdbot_jid);*/
 			//we are an authorized user
 			process_cmd(from, intext, user_auth_lvl, is_muc);
 		}
@@ -1283,7 +1270,7 @@ LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *c
 						conn->muc.muc_state = XMPP_MUC_STATE_WORKING;
 					}
 					//send hello message
-					puts("sending hello");
+					PRINTF_XMPP("sending hello");
 					send_message(from, 1, (char*)xmpp_muc_hello());
 				}
 			}
@@ -1295,11 +1282,11 @@ LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *c
 	if(lm_message_get_sub_type(m) == LM_MESSAGE_SUB_TYPE_SUBSCRIBE) {
 		if(check_user_auth(from, 0) > 0) {
 			subtype = LM_MESSAGE_SUB_TYPE_SUBSCRIBED;
-			printf("XMPP: User %s requested authorization, allowed.\n", from);
+			PRINTF_XMPP_GREEN("User %s requested authorization, allowed.\n", from);
 		}
 		else {
 			subtype = LM_MESSAGE_SUB_TYPE_UNSUBSCRIBED;
-			printf("XMPP: User %s requested authorization, rejected.\n", from);
+			PRINTF_XMPP_YELLOW("User %s requested authorization, rejected.\n", from);
 		}
 
 		msub = lm_message_new_with_sub_type(from, LM_MESSAGE_TYPE_PRESENCE, subtype);
@@ -1323,7 +1310,7 @@ LmHandlerResult xmpp_iq_handler(LmMessageHandler *handler, LmConnection *connect
 
 		if(lm_message_node_get_child(m->node, "ping") != NULL) {
 			data = lm_message_node_to_string(m->node);
-			printf("XMPP: Incoming XMPP ping: %s\n", data);
+			PRINTF_XMPP("Incoming XMPP ping: %s\n", data);
 			g_free(data);
 
 			msub = lm_message_new_with_sub_type(from, LM_MESSAGE_TYPE_IQ, LM_MESSAGE_SUB_TYPE_RESULT);
@@ -1334,7 +1321,7 @@ LmHandlerResult xmpp_iq_handler(LmMessageHandler *handler, LmConnection *connect
 	}
 	else if(lm_message_get_sub_type(m) == LM_MESSAGE_SUB_TYPE_RESULT) {
 		data = lm_message_node_to_string(m->node);
-		printf("XMPP: Incoming XMPP result: %s\n", data);
+		PRINTF_XMPP("Incoming XMPP result: %s\n", data);
 		g_free(data);
 	}
 	pthread_mutex_unlock(&xmppmtx);
@@ -1374,15 +1361,15 @@ void* xmpp_keep_alive_thread(void* args) {
 		lm_message_unref(msg);
 		t = time(NULL);
 		tm = *localtime(&t);
-		printf("[%02d:%02d] XMPP: Sending keepalive\n", tm.tm_hour, tm.tm_min);
+		PRINTF_XMPP("[%02d:%02d] Sending keepalive\n", tm.tm_hour, tm.tm_min);
 		if(!sresult) {
-			printf("XMPP: Keepalive send failed, status: [%d] %s\n", err->code, err->message);
+			PRINTF_XMPP_RED("Keepalive send failed, status: [%d] %s\n", err->code, err->message);
 			g_free(err);
 		}
 		pthread_mutex_unlock(&xmppmtx);
 	}
 
-	puts("XMPP: keepalive thread ended.");
+	PRINTF_XMPP("keepalive thread ended.");
 	return NULL;
 }
 
@@ -1390,32 +1377,32 @@ void* xmpp_keep_alive_thread(void* args) {
  * Callback, handles XMPP SSL events
  */
 LmSSLResponse xmpp_ssl_handler(LmSSL *ssl, LmSSLStatus status, gpointer ud) {
-	printf("XMPP: SSL status %d\n", status);
+	PRINTF_XMPP("SSL status %d\n", status);
 
     switch(status) {
     case LM_SSL_STATUS_NO_CERT_FOUND:
-    	printf("XMPP: No certificate found!\n");
+    	PRINTF_XMPP("No certificate found!\n");
         break;
     case LM_SSL_STATUS_UNTRUSTED_CERT:
-    	printf("XMPP: Certificate is not trusted!\n");
+    	PRINTF_XMPP("Certificate is not trusted!\n");
         break;
     case LM_SSL_STATUS_CERT_EXPIRED:
-    	printf("XMPP: Certificate has expired!\n");
+    	PRINTF_XMPP("Certificate has expired!\n");
         break;
     case LM_SSL_STATUS_CERT_NOT_ACTIVATED:
-    	printf("XMPP: Certificate has not been activated!\n");
+    	PRINTF_XMPP("Certificate has not been activated!\n");
         break;
     case LM_SSL_STATUS_CERT_HOSTNAME_MISMATCH:
-    	printf("XMPP: Certificate hostname does not match expected hostname!\n");
+    	PRINTF_XMPP("Certificate hostname does not match expected hostname!\n");
         break;
     case LM_SSL_STATUS_CERT_FINGERPRINT_MISMATCH: {
         //const char *fpr = lm_ssl_get_fingerprint (ssl);
-    	printf("XMPP: Certificate fingerprint does not match expected fingerprint!\n");
+    	PRINTF_XMPP("Certificate fingerprint does not match expected fingerprint!\n");
         //print both fingerprints
         break;
     }
     case LM_SSL_STATUS_GENERIC_ERROR:
-    	printf("XMPP: Generic SSL error!\n");
+    	PRINTF_XMPP("Generic SSL error!\n");
         break;
     }
 
@@ -1711,7 +1698,7 @@ int main(int argc, char **argv)
         	lm_ssl_unref(ssl);
         }
         else {
-        	puts("XMPP: Warning. SSL is not available in current instalation of libloudmouth.");
+        	PRINTF_XMPP_YELLOW("Warning. SSL is not available in current instalation of libloudmouth.");
         }
     }
 
