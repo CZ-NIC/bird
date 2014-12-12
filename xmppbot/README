@@ -45,3 +45,33 @@ Set BIRD control socket.
 -h | --help
 Display this help and exit.
 
+USAGE:
+A. Single-bot XMPP chat
+
+	1. Add BIRDbot's JID to your XMPP client's roster. BIRDbot should authorize
+	you automaticaly, if you are an authorized user specified in config file.
+	2. Write "connect" for connection to BIRD
+	3. Make configuration changes
+	4. Finally, write "exit" or "quit" to disconnect from BIRD's control
+	socket.
+
+B. XMPP Multi-User Chat
+BIRDbot also has a basic support of XMPP Multi-User Chat. This allows
+configuration of more BIRD instances at the same time. This feature is
+accesible only to BIRD superusers.
+
+	1. Superuser must create a persistent MUC room on a trusted XMPP server.
+	Access permissions to this room must be restricted to invited users only.
+	Superuser must set his room nickname to his bare JID. This is used for
+	distinction between various superusers in the room. 
+	2. Add the room's JID to BIRDbot configuration file to the SUPERUSERS
+	section.
+	3. Send BIRDbot an invitation to join this MUC room. If BIRDbot has this
+	room specified in the configuration file, it should enter and connect to
+	BIRD immediately. Otherwise, it refuses the invitation. NOTE: Your XMPP
+	client must support mediated invitations (see XEP-0045).
+	4. Make configuration changes. All BIRDbots currently present in the room
+	will react to your commands.
+	5. To kick particular BIRDbot from the MUC room, just write	"exit" or
+	"quit" command followed by BIRDbot's JID. If no JID is specified, this
+	command will kick all BIRDbots present in the room.

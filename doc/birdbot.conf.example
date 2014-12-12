@@ -10,6 +10,7 @@ XMPP:
 SUPERUSERS:
 	user123@xmpp.com
 	neco@xmpp.com
+	chatroom1@conference.xmpp.com
 
 # List of users with restricted control privilegies
 RESTRICTED:

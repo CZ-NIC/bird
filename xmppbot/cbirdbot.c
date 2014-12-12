@@ -692,7 +692,7 @@ int process_cmd(char* sender_jid, char* cmdtext, int auth_lvl, int is_muc) {
 		jid[ptr - sender_jid] = '\0';
 	}
 
-	PRINTF_XMPP_YELLOW("JID trimmed to: %s", jid);
+	PRINTF_XMPP("JID trimmed to: %s", jid);
 
 	conn = find_connection(jid);
 
@@ -1152,7 +1152,7 @@ LmHandlerResult xmpp_message_handler(LmMessageHandler *handler, LmConnection *co
 			PRINTF_XMPP("Processing MUC invitation from %s", from);
 
 			user_auth_lvl = check_user_auth(muc_room_jid, 0);
-			if(user_auth_lvl == 0) {
+			if(user_auth_lvl != 2) {
 				//refuse invitation
 				puts(from);
 				PRINTF_XMPP_YELLOW("Refused :-(");
