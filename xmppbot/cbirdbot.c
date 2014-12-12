@@ -232,8 +232,6 @@ int create_connection(char* jid, int is_muc) {
 	fcntl(conn->sock_fd, F_SETFL, O_NONBLOCK);
 
 	conn->jid = strdup(jid);
-	/*if(muc_room_jid_bare)
-		conn->muc.room_jid_bare = strdup(muc_room_jid_bare);*/
 
 	if(pipe(conn->termpipe_fd) != 0) {
 		puts("Error creating pipe.");
@@ -261,8 +259,6 @@ int delete_connection(conn_t* conn) {
 	close_connection(conn);
 
 	free(conn->jid);
-	/*if(conn->muc.room_jid_bare)
-		free(conn->muc.room_jid_bare);*/
 	free(conn);
 
 	return 0;
@@ -495,6 +491,11 @@ int connection_new(char* jid, int is_muc) {
 	}
 }
 
+/**
+ * Returns the Bare JID part of Full JID
+ * @param jid	Full JID
+ * @return		Bare JID (newly allocated)
+ */
 char* xmpp_trim_jid_by_slash(const char* jid) {
 	char *ptr, *retval;
 
@@ -666,17 +667,6 @@ void xmpp_muc_exit_room(char* jid) {
 	lm_connection_send(xmpp_conn, m, NULL);
 	pthread_mutex_unlock(&xmppmtx);
 	lm_message_unref(m);
-}
-
-const char* xmpp_muc_hello(void) {
-	const char* msg_arr[] = {
-		"[Hello] BIRDbot ready!",
-		"[Hello] BIRDbot to your service!",
-		"[Hello] Listening for your commands!",
-		"[Hello] Hi gentlemen!"
-	};
-
-	return msg_arr[time(NULL) & 3];
 }
 
 /**
@@ -1269,9 +1259,6 @@ LmHandlerResult xmpp_presence_handler(LmMessageHandler *handler, LmConnection *c
 					if(conn != NULL) {
 						conn->muc.muc_state = XMPP_MUC_STATE_WORKING;
 					}
-					//send hello message
-					PRINTF_XMPP("sending hello");
-					send_message(from, 1, (char*)xmpp_muc_hello());
 				}
 			}
 		}
