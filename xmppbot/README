@@ -1,29 +1,34 @@
-								BIRD XMPP Bot
-				(c) 2014 Pavel Spirek <pavel.spirek@nic.cz>
-===============================================================================
+BIRD XMPP Bot
+(c) 2014 Pavel Spirek <pavel.spirek@nic.cz>
+===========================================
 
-This software allows to configure and control BIRD over XMPP protocol.
+This software allows to control BIRD over XMPP protocol.
 
 INSTALLATION:
-The BIRDbot depends on loudmouth, glib-2.0, resolv and POSIX threads. It also
-requires loudmouth and glib-2.0 headers to be installed on host system.
 
-The BIRDbot is disabled by default and has to be enabled explicitly.
+BIRDbot depends on loudmouth, glib-2.0, resolv and POSIX threads. It
+also requires loudmouth and glib-2.0 headers to be installed on host
+system.
+
+BIRDbot is disabled by default and has to be enabled explicitly.
 
 ./configure --enable-birdbot
 make
 make install
 
 CONFIGURATION:
-BIRDbot can be configured with birdbot.conf file located in <prefix>/etc/
-(see example).
-Some options can be passed as command line arguments. If no XMPP password is
-specified, neither in the .conf file nor as command line argument, BIRDbot
-will prompt for it interactively (this only works in debug mode).
+
+BIRDbot can be configured with birdbot.conf file located in
+<prefix>/etc/ (see example).
+
+Some options can be passed as command line arguments. If no XMPP
+password is specified, neither in the birdbot.conf file nor as command
+line argument, BIRDbot will prompt for it interactively (this only
+works in debug mode).
 
 -d | --debug
-Debug mode. Program will display debugging information instead of going to
-background.
+Debug mode. Program will display debugging information instead of
+going to background.
 
 -4 | --force-ipv4
 Force IPv4 resolution of XMPP server hostname.
@@ -32,12 +37,12 @@ Force IPv4 resolution of XMPP server hostname.
 Disable use of SSL connection with XMPP server.
 
 -j | --jid
-Specify BIRDbot's bare JID. This option overrides JID set in the configuration
-file.
+Specify BIRDbot's bare JID. This option overrides JID set in the
+configuration file.
 
 -p | --pass
-Specify BIRDbot's XMPP password. This option overrides password set in the
-configuration file.
+Specify BIRDbot's XMPP password. This option overrides password set in
+the configuration file.
 
 -s | --socket
 Set BIRD control socket.
@@ -46,32 +51,49 @@ Set BIRD control socket.
 Display this help and exit.
 
 USAGE:
+
 A. Single-bot XMPP chat
 
-	1. Add BIRDbot's JID to your XMPP client's roster. BIRDbot should authorize
-	you automaticaly, if you are an authorized user specified in config file.
-	2. Write "connect" for connection to BIRD
-	3. Make configuration changes
-	4. Finally, write "exit" or "quit" to disconnect from BIRD's control
-	socket.
+    1. Add BIRDbot's JID to your XMPP client's roster. BIRDbot should
+       authorize you automaticaly, if you are an authorized user
+       specified in config file.
+
+    2. Start the chat by sending "connect".
+
+    3. Send the same commands as in the CLI interface. Abbreviated
+       keyword are supported as well.
+
+    4. Finally, send "exit" or "quit" to disconnect from BIRD's
+       control socket.
+
+BIRDbot may be stopped by sending the command "haltbot".
 
 B. XMPP Multi-User Chat
-BIRDbot also has a basic support of XMPP Multi-User Chat. This allows
-configuration of more BIRD instances at the same time. This feature is
-accesible only to BIRD superusers.
 
-	1. Superuser must create a persistent MUC room on a trusted XMPP server.
-	Access permissions to this room must be restricted to invited users only.
-	Superuser must set his room nickname to his bare JID. This is used for
-	distinction between various superusers in the room. 
-	2. Add the room's JID to BIRDbot configuration file to the SUPERUSERS
-	section.
-	3. Send BIRDbot an invitation to join this MUC room. If BIRDbot has this
-	room specified in the configuration file, it should enter and connect to
-	BIRD immediately. Otherwise, it refuses the invitation. NOTE: Your XMPP
-	client must support mediated invitations (see XEP-0045).
-	4. Make configuration changes. All BIRDbots currently present in the room
-	will react to your commands.
-	5. To kick particular BIRDbot from the MUC room, just write	"exit" or
-	"quit" command followed by BIRDbot's JID. If no JID is specified, this
-	command will kick all BIRDbots present in the room.
+BIRDbot also has a basic support of XMPP Multi-User Chat. This allows
+for controlling multiple BIRD instances at the same time. This feature
+is accesible only to BIRD superusers.
+
+    1. A superuser must create a persistent MUC room on a trusted XMPP
+       server.  Access permissions to this room must be restricted to
+       invited users only.  A superuser must set his room nickname to
+       his bare JID. This is used for distinguishing various
+       superusers in the room.
+
+    2. Add the room's JID to the SUPERUSERS section of the BIRDbot
+       configuration file.
+
+    3. Using your Jabber client, invite any number of BIRDbots to join
+       this MUC room. A BIRDbot that has this room specified in the
+       configuration file will enter the room and be connect to the
+       BIRD socket (the "connect" command is not
+       necessary). Otherwise, it refuses the invitation. NOTE: Your
+       XMPP client must support mediated invitations (see XEP-0045).
+
+    4. Send commands as in a single-bot session. All BIRDbots
+       currently present in the room will react to them.
+
+    5. To kick particular BIRDbot out of the MUC room, just write
+       "exit" or "quit" command followed by BIRDbot's JID. If no JID
+       is specified, this command will kick all BIRDbots present in
+       the room.
