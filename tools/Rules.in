@@ -49,6 +49,17 @@ ifdef dir-name
 src-path := $(srcdir)/$(dir-name)/
 endif
 
+build-test:
+	for i in $(source); do										  \
+		test_name=`echo $$i | sed 's/\.c$$/_test/g'`						; \
+		test_source=$(src-path)$${test_name}.c							; \
+		test_obj=$${test_name}.o								; \
+		if [ -f $$test_source ]; then								  \
+			$(CC) $(CFLAGS) -I $(srcdir)/birdtest/ -o $$test_obj -c $$test_source		; \
+			$(CC) $(LDFLAGS) $$test_obj -o $$test_name $(root-rel)birdtest/birdtest.a	; \
+		fi											; \
+	done
+
 all:
 	cd $(root-rel) && make
 

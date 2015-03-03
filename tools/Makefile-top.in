@@ -3,7 +3,7 @@
 
 objdir=@objdir@
 
-all depend tags install install-docs:
+all depend tags install install-docs check:
 	$(MAKE) -C $(objdir) $@
 
 docs userdocs progdocs:
