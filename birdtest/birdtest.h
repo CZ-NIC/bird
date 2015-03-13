@@ -30,6 +30,9 @@ void bt_test_case2(int (*fn)(void), const char *id, const char *dsc, int forked,
 #define bt_note(format, ...) \
     do { if (bt_verbose) bt_log(format, ##__VA_ARGS__); } while (0)
 
+#define bt_debug(format, ...) \
+    do { if (bt_verbose > 1) printf(format, ##__VA_ARGS__); } while (0)
+
 #define bt_abort() \
     bt_abort_msg("Aborted at %s:%d", __FILE__, __LINE__)
 

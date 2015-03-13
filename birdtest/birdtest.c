@@ -35,6 +35,7 @@ bt_init(int argc, char *argv[])
 {
   int c;
 
+  bt_verbose = 0;
   bt_filename = argv[0];
 
   while ((c = getopt(argc, argv, "lcftv")) >= 0)
@@ -58,7 +59,7 @@ bt_init(int argc, char *argv[])
 	break;
 
       case 'v':
-	bt_verbose = 1;
+	bt_verbose++;
 	break;
 
       default:
@@ -83,7 +84,7 @@ bt_init(int argc, char *argv[])
   return;
 
   usage:
-  printf("Usage: %s [-l] [-c] [-f] [-t] [-v] [<test_id>]\n", argv[0]);
+  printf("Usage: %s [-l] [-c] [-f] [-t] [-vv] [<test_id>]\n", argv[0]);
   exit(3);
 }
 
