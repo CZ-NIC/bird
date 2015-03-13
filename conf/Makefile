@@ -1,5 +1,7 @@
 source=cf-parse.tab.c cf-lex.c conf.c
 root-rel=../
+dir-name=conf
+dynamic-dir=1
 
 include ../Rules
 

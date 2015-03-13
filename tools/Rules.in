@@ -41,24 +41,25 @@ sysconfdir=@sysconfdir@
 localstatedir=@localstatedir@
 docdir=@prefix@/doc
 
+test-src-path := $(srcdir)/$(dir-name)/
+
+build-tests:
+	@for i in `find $(test-src-path) -name '*_test.c'` ; do 				   \
+		testname=`basename $$i .c`							;  \
+		testobj=$${testname}.o								;  \
+		$(CC) $(CFLAGS) -I $(srcdir)/birdtest/ -o $$testobj -c $$i 			&& \
+		$(CC) $(LDFLAGS) $$testobj -o $$testname $(root-rel)birdtest/birdtest.a 	|| \
+		rm -rf $$testname								;  \
+	done
+
 ifdef source
 
 objs := $(subst .c,.o,$(source))
 
-ifdef dir-name
+
+ifndef dynamic-dir
 src-path := $(srcdir)/$(dir-name)/
 endif
-
-build-test:
-	for i in $(source); do										  \
-		test_name=`echo $$i | sed 's/\.c$$/_test/g'`						; \
-		test_source=$(src-path)$${test_name}.c							; \
-		test_obj=$${test_name}.o								; \
-		if [ -f $$test_source ]; then								  \
-			$(CC) $(CFLAGS) -I $(srcdir)/birdtest/ -o $$test_obj -c $$test_source		; \
-			$(CC) $(LDFLAGS) $$test_obj -o $$test_name $(root-rel)birdtest/birdtest.a	; \
-		fi											; \
-	done
 
 all:
 	cd $(root-rel) && make

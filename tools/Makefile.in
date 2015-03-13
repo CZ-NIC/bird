@@ -7,12 +7,9 @@ include Rules
 
 all: sysdep/paths.h .dep-stamp subdir daemon birdcl @CLIENT@
 
-check: build-tests
-	find . -name '*_test' -executable -exec {} \;
-
-build-tests: subdir birdtest/birdtest.a
-	set -e ; for a in $(dynamic-dirs) ; do $(MAKE) -C $$a build-test ; done
-	set -e ; for a in $(static-dirs) $(client-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile build-test ; done
+build-tests: birdtest/birdtest.a
+	set -e ; for a in $(dynamic-dirs) ; do $(MAKE) -C $$a $@ ; done
+	set -e ; for a in $(static-dirs) $(client-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
 
 birdtest/birdtest.a: birdtest/birdtest.o
 	$(AR) rcs $@ $^

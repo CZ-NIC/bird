@@ -52,6 +52,8 @@ cat >$LIBDIR/Makefile <<EOF
 source=$SRCS
 lib-dest=birdlib.a
 root-rel=../
+dir-name=lib
+dynamic-dir=1
 
 include ../Rules
 EOF

@@ -3,11 +3,29 @@
 
 objdir=@objdir@
 
-all depend tags install install-docs check:
+all depend tags install install-docs build-tests:
 	$(MAKE) -C $(objdir) $@
 
 docs userdocs progdocs:
 	$(MAKE) -C doc $@
+
+check: build-tests
+	@all_tests=( `find . -name '*_test' -executable` )				; \
+	test_num=1									; \
+	num_succ_tests=0								; \
+	num_fail_tests=0								; \
+	echo -e "\n== Start all $${#all_tests[@]} unit tests ==\n"			; \
+	for test in "$${all_tests[@]}" ; do						  \
+		echo -e "=[$$((test_num++))/$${#all_tests[@]}]= $$test"			; \
+		./$$test								  \
+			&& num_succ_tests=$$((num_succ_tests+1))			  \
+			|| num_fail_tests=$$((num_fail_tests+1))			; \
+	done										; \
+	echo ""										; \
+	echo "------------------------------"						; \
+	echo "  Success: $$num_succ_tests"						; \
+	echo "  Failure: $$num_fail_tests"						; \
+	echo "------------------------------"
 
 clean:
 	$(MAKE) -C $(objdir) clean
