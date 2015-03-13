@@ -42,7 +42,9 @@ bt_init(int argc, char *argv[])
     switch (c)
     {
       case 'l':
-	printf("  List of test cases:\n");
+	printf("\n"
+	       "          List of test cases  \n"
+	       "------------------------------\n");
 	list_tests = 1;
 	return;
 
@@ -93,7 +95,7 @@ bt_test_case2(int (*test_fn)(void), const char *test_id, const char *dsc, int fo
 {
   if (list_tests)
   {
-    printf("%-12s - %s\n", test_id, dsc);
+    printf("%28s : %s\n", test_id, dsc);
     return;
   }
 
@@ -110,7 +112,7 @@ bt_test_case2(int (*test_fn)(void), const char *test_id, const char *dsc, int fo
 
   bt_test_id = test_id;
 
-  bt_note("Starting");
+  bt_note("Starting %s: %s", test_id, dsc);
 
   if (!forked)
   {
@@ -151,11 +153,11 @@ bt_test_case2(int (*test_fn)(void), const char *test_id, const char *dsc, int fo
       bt_log("Core dumped");
   }
 
-  if (result)
+  if (result != BT_SUCCESS)
   {
     bt_log("Test case failed");
     exit(result);
   }
 
-  bt_note("Test case OK");
+  bt_note("OK");
 }
