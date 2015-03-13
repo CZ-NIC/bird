@@ -21,6 +21,9 @@ extern const char *bt_test_id;
 void bt_init(int argc, char **argv);
 void bt_test_case2(int (*fn)(void), const char *id, const char *dsc, int forked, int timeout);
 
+#define BT_SUCCESS 0
+#define BT_FAILURE 1
+
 #define bt_test_case(fn,dsc,f,t) \
     bt_test_case2(fn, #fn, dsc, f, t)
 
