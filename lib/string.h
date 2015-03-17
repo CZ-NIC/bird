@@ -13,6 +13,8 @@
 #include <string.h>
 #include <strings.h>
 
+#include "lib/birdlib.h"
+
 int bsprintf(char *str, const char *fmt, ...);
 int bvsprintf(char *str, const char *fmt, va_list args);
 int bsnprintf(char *str, int size, const char *fmt, ...);

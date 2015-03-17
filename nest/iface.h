@@ -10,6 +10,7 @@
 #define _BIRD_IFACE_H_
 
 #include "lib/lists.h"
+#include "lib/ip.h"
 
 extern list iface_list;
 

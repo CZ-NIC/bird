@@ -51,6 +51,7 @@ typedef struct list {			/* In fact two overlayed nodes */
 #define EMPTY_LIST(list) (!(list).head->next)
 
 
+
 #ifndef _BIRD_LISTS_C_
 #define LIST_INLINE static inline
 #include "lib/lists.c"

@@ -4,9 +4,12 @@
    FIXME: in V6, they insert additional entry whenever next hop differs. Such entry is identified by 0xff in metric.
  */
 
+#include "nest/bird.h"
 #include "nest/route.h"
 #include "nest/password.h"
 #include "nest/locks.h"
+#include "nest/iface.h"
+#include "lib/socket.h"
 
 #define EA_RIP_TAG	EA_CODE(EAP_RIP, 0)
 #define EA_RIP_METRIC	EA_CODE(EAP_RIP, 1)

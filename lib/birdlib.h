@@ -12,6 +12,7 @@
 #include "timer.h"
 #include "alloca.h"
 #include "lib/null.h"
+#include "sysdep/config.h"
 
 /* Ugly structure offset handling macros */
 
