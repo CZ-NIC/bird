@@ -1,7 +1,13 @@
-#include "lib/lists.h"
+/*
+ *	BIRD Library -- Linked Lists Tests
+ *
+ *	(c) 2015 CZ.NIC z.s.p.o.
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
+
 #include "birdtest.h"
-#include <sys/stat.h>
-#include <fcntl.h>
+#include "lib/lists.h"
 
 #define MAX_NUM 1000
 
@@ -270,12 +276,12 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_case(t_add_tail, "Adding nodes to tail of list", 1, 5);
-  bt_test_case(t_add_head, "Adding nodes to head of list", 1, 5);
-  bt_test_case(t_insert_node, "Inserting nodes to list", 1, 5);
-  bt_test_case(t_remove_node, "Removing nodes from list", 1, 5);
-  bt_test_case(t_replace_node, "Replacing nodes in list", 1, 5);
-  bt_test_case(t_add_tail_list, "At the tail of a list adding the another list", 1, 5);
+  bt_test_case(t_add_tail, "Adding nodes to tail of list");
+  bt_test_case(t_add_head, "Adding nodes to head of list");
+  bt_test_case(t_insert_node, "Inserting nodes to list");
+  bt_test_case(t_remove_node, "Removing nodes from list");
+  bt_test_case(t_replace_node, "Replacing nodes in list");
+  bt_test_case(t_add_tail_list, "At the tail of a list adding the another list");
 
   return 0;
 }

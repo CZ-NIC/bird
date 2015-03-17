@@ -1,5 +1,5 @@
 /*
- *	BIRD Internet Routing Daemon -- BIRD Unit Testing Framework
+ *	BIRD Internet Routing Daemon -- BIRD Unit Testing Framework (BIRD Test)
  *
  *	(c) 2015 Ondrej Zajicek <santiago@crfreenet.org>
  *	(c) 2015 CZ.NIC z.s.p.o.
@@ -91,7 +91,7 @@ bt_init(int argc, char *argv[])
 }
 
 void
-bt_test_case2(int (*test_fn)(void), const char *test_id, const char *dsc, int forked, int timeout)
+bt_test_case5(int (*test_fn)(void), const char *test_id, const char *dsc, int forked, int timeout)
 {
   if (list_tests)
   {

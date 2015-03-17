@@ -1,7 +1,13 @@
-#include "lib/heap.h"
+/*
+ *	BIRD Library -- Universal Heap Macros Tests
+ *
+ *	(c) 2015 CZ.NIC z.s.p.o.
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
+
 #include "birdtest.h"
-#include <sys/stat.h>
-#include <fcntl.h>
+#include "lib/heap.h"
 
 #define MAX_NUM 1000
 #define SPECIAL_KEY -3213
@@ -144,10 +150,10 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_case(t_heap_insert, "Test Inserting", 1, 5);
-  bt_test_case(t_heap_increase_decrease, "Test Increasing/Decreasing", 1, 5);
-  bt_test_case(t_heap_delete, "Test Deleting", 1, 5);
-  bt_test_case(t_heap_0, "Is heap[0] unused?", 1, 5);
+  bt_test_case(t_heap_insert, "Test Inserting");
+  bt_test_case(t_heap_increase_decrease, "Test Increasing/Decreasing");
+  bt_test_case(t_heap_delete, "Test Deleting");
+  bt_test_case(t_heap_0, "Is heap[0] unused?");
 
   return 0;
 }
