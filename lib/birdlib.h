@@ -11,6 +11,7 @@
 
 #include "timer.h"
 #include "alloca.h"
+#include "lib/null.h"
 
 /* Ugly structure offset handling macros */
 
@@ -42,10 +43,6 @@
 #define BIT32_SET(b,p)		((b)[(p)/32] |= BIT32_VAL(p))
 #define BIT32_CLR(b,p)		((b)[(p)/32] &= ~BIT32_VAL(p))
 #define BIT32_ZERO(b,l)		memset((b), 0, (l)/8)
-
-#ifndef NULL
-#define NULL ((void *) 0)
-#endif
 
 #ifndef IPV6
 #define IP_VERSION 4
