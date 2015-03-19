@@ -1,8 +1,5 @@
 /*
- *	BIRD Internet Routing Daemon -- BIRD Unit Testing Framework (BIRD Test)
- *
- *	(c) 2015 Ondrej Zajicek <santiago@crfreenet.org>
- *	(c) 2015 CZ.NIC z.s.p.o.
+ *	BIRD -- Unit Test Framework (BIRD Test)
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
