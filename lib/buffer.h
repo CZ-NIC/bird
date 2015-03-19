@@ -1,3 +1,13 @@
+/*
+ *	BIRD Library -- Buffer
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
+
+#ifndef _BIRD_BUFFER_H_
+#define _BIRD_BUFFER_H_
+
+#include "lib/resource.h"
 
 #define BUFFER(type)		struct { type *data; uint used, size; }
 
@@ -32,4 +42,4 @@
 
 #define BUFFER_FLUSH(v)		({ (v).used = 0; })
 
-
+#endif /* _BIRD_BUFFER_H_ */
