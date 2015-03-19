@@ -11,6 +11,8 @@ docs userdocs progdocs:
 
 check: build-tests
 	@all_tests=( `find . -name '*_test' -executable` )				; \
+	all_tests_source=( `find . -name '*_test.c'` )					; \
+	num_build_fail_tests=$$(($${#all_tests_source[@]} - $${#all_tests[@]}))		; \
 	test_num=1									; \
 	num_succ_tests=0								; \
 	num_fail_tests=0								; \
@@ -25,6 +27,7 @@ check: build-tests
 	echo "------------------------------"						; \
 	echo "  Success: $$num_succ_tests"						; \
 	echo "  Failure: $$num_fail_tests"						; \
+	echo "  Build-Failure: $$num_build_fail_tests"					; \
 	echo "------------------------------"
 
 clean:
