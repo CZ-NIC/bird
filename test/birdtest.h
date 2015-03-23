@@ -13,6 +13,7 @@
 #include <string.h>
 #include <errno.h>
 
+// TODO: add a pseudo random number generator with fixed seed
 
 extern int bt_verbose;
 extern const char *bt_filename;

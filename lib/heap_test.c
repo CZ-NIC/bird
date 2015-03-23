@@ -6,13 +6,19 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#include "birdtest.h"
+#include "test/birdtest.h"
 #include "lib/heap.h"
 
 #define MAX_NUM 1000
 #define SPECIAL_KEY -3213
 
 #define MY_CMP(x, y) ((x) < (y))
+
+#define MY_HEAP_SWAP(heap,a,b,t)		\
+    do {					\
+      bt_debug("swap(%d %d) ", a, b);		\
+      HEAP_SWAP(heap,a,b,t);			\
+    } while(0)
 
 static int num;
 static int heap[MAX_NUM+1];
@@ -27,16 +33,6 @@ static int heap[MAX_NUM+1];
 	 bt_debug("OK \n");			\
       else					\
 	bt_debug("NON-VALID HEAP! \n");		\
-    } while(0)
-
-
-#undef HEAP_SWAP
-#define HEAP_SWAP(heap,a,b,t) 			\
-    do {					\
-      t=heap[a];				\
-      heap[a]=heap[b];				\
-      heap[b]=t;				\
-      bt_debug("swap(%d %d) ", a, b);		\
     } while(0)
 
 static int
@@ -79,7 +75,7 @@ t_heap_insert(void)
   {
     bt_debug("ins %d at pos %d ", MAX_NUM - i, i);
     heap[i] = MAX_NUM - i;
-    HEAP_INSERT(heap, ++num, int, MY_CMP, HEAP_SWAP);
+    HEAP_INSERT(heap, ++num, int, MY_CMP, MY_HEAP_SWAP);
     SHOW_HEAP(heap);
     bt_assert(is_heap_valid(heap, num));
   }
@@ -100,13 +96,13 @@ t_heap_increase_decrease(void)
     {
       bt_debug("inc %d ", i);
       heap[i] = i;
-      HEAP_INCREASE(heap, num, int, MY_CMP, HEAP_SWAP, i);
+      HEAP_INCREASE(heap, num, int, MY_CMP, MY_HEAP_SWAP, i);
     }
     else if (i < heap[i])
     {
       bt_debug("dec %d ", i);
       heap[i] = i;
-      HEAP_INCREASE(heap, num, int, MY_CMP, HEAP_SWAP, i);
+      HEAP_INCREASE(heap, num, int, MY_CMP, MY_HEAP_SWAP, i);
     }
     SHOW_HEAP(heap);
     bt_assert(is_heap_valid(heap, num));
@@ -126,7 +122,7 @@ t_heap_delete(void)
   for(i = 1; i <= num; i++)
   {
     bt_debug("del at pos %d ", i);
-    HEAP_DELETE(heap, num, int, MY_CMP, HEAP_SWAP, i);
+    HEAP_DELETE(heap, num, int, MY_CMP, MY_HEAP_SWAP, i);
     SHOW_HEAP(heap);
     bt_assert(is_heap_valid(heap, num));
   }

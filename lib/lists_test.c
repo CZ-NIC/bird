@@ -6,7 +6,7 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#include "birdtest.h"
+#include "test/birdtest.h"
 #include "lib/lists.h"
 
 #define MAX_NUM 1000
@@ -70,7 +70,7 @@ is_empty_list_well_unlinked(void)
 }
 
 static void
-_init_list2(list *l, struct node nodes[])
+init_list_2(list *l, struct node nodes[])
 {
   init_list(l);
 
@@ -83,9 +83,9 @@ _init_list2(list *l, struct node nodes[])
 }
 
 static void
-_init_list(void)
+init_list_(void)
 {
-  _init_list2(&l, (node *) nodes);
+  init_list_2(&l, (node *) nodes);
 }
 
 static int
@@ -93,7 +93,7 @@ t_add_tail(void)
 {
   int i;
 
-  _init_list();
+  init_list_();
   for (i = 0; i < MAX_NUM; i++)
   {
     add_tail(&l, &nodes[i]);
@@ -118,7 +118,7 @@ t_add_head(void)
 {
   int i;
 
-  _init_list();
+  init_list_();
   for (i = MAX_NUM-1; i >= 0; i--)
   {
     add_head(&l, &nodes[i]);
@@ -138,7 +138,7 @@ t_add_head(void)
 }
 
 static void
-_insert_node(node *n, node *after)
+insert_node_(node *n, node *after)
 {
   insert_node(n, after);
   bt_debug(".");
@@ -149,18 +149,18 @@ t_insert_node(void)
 {
   int i;
 
-  _init_list();
+  init_list_();
 
   // add first node
-  _insert_node(&nodes[0], NODE &l.head);
+  insert_node_(&nodes[0], NODE &l.head);
 
   // add odd nodes
   for (i = 2; i < MAX_NUM; i+=2)
-    _insert_node(&nodes[i], &nodes[i-2]);
+    insert_node_(&nodes[i], &nodes[i-2]);
 
   // add even nodes
   for (i = 1; i < MAX_NUM; i+=2)
-    _insert_node(&nodes[i], &nodes[i-1]);
+    insert_node_(&nodes[i], &nodes[i-1]);
 
   bt_debug("\n");
   bt_assert(is_filled_list_well_linked());
@@ -187,7 +187,7 @@ t_remove_node(void)
 {
   int i;
 
-  _init_list();
+  init_list_();
 
   /* Fill & Remove & Check */
   fill_list();
@@ -223,7 +223,7 @@ t_remove_node(void)
 static int
 t_replace_node(void)
 {
-  _init_list();
+  init_list_();
   show_list();
   fill_list();
 
@@ -256,10 +256,10 @@ t_add_tail_list(void)
   node nodes2[MAX_NUM];
   list l2;
 
-  _init_list2(&l, (node *) nodes);
+  init_list_2(&l, (node *) nodes);
   fill_list2(&l, (node *) nodes);
 
-  _init_list2(&l2, (node *) nodes2);
+  init_list_2(&l2, (node *) nodes2);
   fill_list2(&l2, (node *) nodes2);
 
   add_tail_list(&l, &l2);

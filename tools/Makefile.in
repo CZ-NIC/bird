@@ -1,22 +1,21 @@
 # Makefile for the BIRD Internet Routing Daemon
 # (c) 1999--2000 Martin Mares <mj@ucw.cz>
 
+root-rel=./
+
 include Rules
 
 .PHONY: all daemon birdc birdcl subdir depend clean distclean tags docs userdocs progdocs
 
 all: sysdep/paths.h .dep-stamp subdir daemon birdcl @CLIENT@
 
-build-tests: birdtest/birdtest.a
+tests: test/birdtest.o
 	set -e ; for a in $(dynamic-dirs) ; do $(MAKE) -C $$a $@ ; done
 	set -e ; for a in $(static-dirs) $(client-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
 
-birdtest/birdtest.a: birdtest/birdtest.o
-	$(AR) rcs $@ $^
-
-birdtest/birdtest.o: $(srcdir)/birdtest/birdtest.c
-	mkdir -p birdtest
-	$(CC) $(CFLAGS) -I$(srcdir)/birdtest $(TARGET_ARCH) -c $^ $(LDLIBS) -o $@
+test/birdtest.o: $(srcdir)/test/birdtest.c
+	mkdir -p test
+	$(CC) $(CFLAGS) $(TARGET_ARCH) -c $^ $(LDLIBS) -o $@
 
 daemon: $(exedir)/bird
 

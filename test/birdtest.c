@@ -9,11 +9,12 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include <sys/resource.h>
 #include <sys/wait.h>
 
-#include "birdtest.h"
+#include "test/birdtest.h"
 
 
 static const char *request;
