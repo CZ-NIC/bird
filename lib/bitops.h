@@ -9,6 +9,8 @@
 #ifndef _BIRD_BITOPTS_H_
 #define _BIRD_BITOPTS_H_
 
+#include "sysdep/config.h"
+
 /*
  *	Bit mask operations:
  *

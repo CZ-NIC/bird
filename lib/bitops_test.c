@@ -1,0 +1,144 @@
+/*
+ *	BIRD Library -- Generic Bit Operations Tests
+ *
+ *	(c) 2015 CZ.NIC z.s.p.o.
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
+
+#include "test/birdtest.h"
+#include "bitops.h"
+#include "bitops.c" /* REMOVE ME */
+
+#define MAX_NUM 1000
+#define CHECK_BIT(var,pos) ((var) & (u32)(1<<(pos)))
+
+static int
+t_mkmask(void)
+{
+  int i;
+  u32 compute, expect;
+
+  for (i = 0; i <= 32; i++)
+  {
+    compute = u32_mkmask(i);
+    expect  = (u32) (0xffffffff << (32-i));
+    bt_assert_msg(compute == expect, "u32_mkmask(%d) = 0x%08X, expected 0x%08X \n", i, compute, expect);
+  }
+
+  return BT_SUCCESS;
+}
+
+static int
+u32_masklen_expected(u32 mask)
+{
+  int j, expect = 0;
+
+  int valid = 0;
+  for (j = 0; j <= 32; j++)
+    if (mask == (0xffffffff << (32-j)))
+	valid = 1;
+
+  if (!valid && mask != 0)
+    expect = -1;
+  else
+    for (j = 0; j <= 31; j++)
+      if (CHECK_BIT(mask, (31-j)))
+	expect = j+1;
+      else
+	break;
+  return expect;
+}
+
+void static
+check_mask(u32 mask)
+{
+  int compute, expect;
+
+  compute = u32_masklen_expected(mask);
+  expect = u32_masklen(mask);
+  int ok = compute == expect;
+  bt_debug("u32_masklen(Ox%08x) = %d, expected %d  %s\n", mask, u32_masklen(mask), u32_masklen_expected(mask), ok ? "OK" : "FAIL!");
+  bt_assert(compute == expect);
+}
+
+static int
+t_masklen(void)
+{
+  u32 i;
+
+  check_mask(0x82828282);
+  check_mask(0x00000000);
+
+  for (i = 0; i <= 32; i++)
+    check_mask(((u32) (0xffffffff << (32-i))) & 0xffffffff);
+
+  for (i = 0; i <= MAX_NUM; i++)
+    check_mask(bt_rand_num());
+
+  return BT_SUCCESS;
+}
+
+static u32
+pow2(u32 exp)
+{
+  u32 i, n, r;
+  n = r = 2;
+
+  if (exp == 0)
+    return 1;
+
+  for (i = 2; i <= exp; i++)
+    r *= n;
+
+  return r;
+}
+
+static void
+check_log2(u32 n)
+{
+  u32 log  = u32_log2(n);
+  u32 low  = pow2(log);
+  u32 high = pow2(log+1);
+
+  bt_debug("Test u32_log2(%u) = %u,  %u should be in <%u, %u) \n", n, log, n, low, high);
+  bt_assert(n >= low && n < high);
+}
+
+static int
+t_log2(void)
+{
+  u32 i;
+
+  u32 in[31];
+  u32 expected[31];
+  for (i = 0; i < 31; i++)
+  {
+    in[i] = pow2(i+1);
+    expected[i] = i+1;
+  }
+  bt_check(u32_log2, in, expected, 31);
+
+  u32_log2(0);
+
+  for (i = 1; i < MAX_NUM; i++)
+    check_log2(i);
+
+  for (i = 1; i < MAX_NUM; i++)
+    check_log2(bt_rand_num());
+
+  return BT_SUCCESS;
+}
+
+int
+main(int argc, char *argv[])
+{
+  bt_init(argc, argv);
+
+  bt_test_case(t_mkmask, "u32_mkmask()");
+  bt_test_case(t_masklen, "u32_masklen()");
+  bt_test_case(t_log2, "u32_log2()");
+
+
+  return 0;
+}
