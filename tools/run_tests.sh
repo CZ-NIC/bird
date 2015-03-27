@@ -3,7 +3,7 @@
 objdir=$1
 srcdir=$2
 
-all_tests=$(find $objdir -name '*_test')
+all_tests=$(find "$objdir" -name '*_test')
 
 num_all_tests=0
 for i in $all_tests; do num_all_tests=$((num_all_tests + 1)); done
@@ -20,7 +20,9 @@ for test in $all_tests ; do
 done
 
 num_all_tests_src=0
-for i in $(find $srcdir -name '*_test.c'); do num_all_tests_src=$((num_all_tests_src + 1)); done
+for dir in client conf filter lib misc nest proto sysdep; do
+	for i in $(find "$srcdir/$dir" -name '*_test.c'); do num_all_tests_src=$((num_all_tests_src + 1)); done
+done
 num_build_fail_tests=$((num_all_tests_src - num_all_tests))
 
 echo ""

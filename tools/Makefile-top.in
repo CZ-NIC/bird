@@ -10,7 +10,7 @@ docs userdocs progdocs:
 	$(MAKE) -C doc $@
 
 check: tests
-	tools/run_tests.sh $(objdir) $(srcdir)
+	tools/run_tests.sh "@objdir@" "@srcdir@"
 
 clean:
 	$(MAKE) -C $(objdir) clean
