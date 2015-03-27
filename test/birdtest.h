@@ -13,20 +13,21 @@
 #include <string.h>
 #include <errno.h>
 
-// TODO: add a pseudo random number generator with fixed seed
-
 extern int bt_verbose;
 extern const char *bt_filename;
 extern const char *bt_test_id;
 
 void bt_init(int argc, char *argv[]);
 void bt_test_case5(int (*fn)(void), const char *id, const char *dsc, int forked, int timeout);
+int  bt_rand_num(void);
 
 #define BT_SUCCESS 0
 #define BT_FAILURE 1
 
 #define BT_DEFAULT_TIMEOUT 5
 #define BT_DEFAULT_FORKING 1
+
+#define BT_RANDOM_SEED 982451653
 
 #define bt_test_case(fn,dsc) \
     bt_test_case4(fn, dsc, BT_DEFAULT_FORKING, BT_DEFAULT_TIMEOUT)
