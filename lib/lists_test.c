@@ -42,7 +42,7 @@ is_filled_list_well_linked(void)
 
   for (i = 0; i < MAX_NUM; i++)
   {
-    if(i < (MAX_NUM-1))
+    if (i < (MAX_NUM-1))
       bt_assert(nodes[i].next == &nodes[i+1]);
 
     if (i > 0)
@@ -191,7 +191,7 @@ t_remove_node(void)
 
   /* Fill & Remove & Check */
   fill_list();
-  for(i = 0; i < MAX_NUM; i++)
+  for (i = 0; i < MAX_NUM; i++)
     rem2_node(&nodes[i]);
   bt_assert(is_empty_list_well_unlinked());
 
@@ -223,11 +223,10 @@ t_remove_node(void)
 static int
 t_replace_node(void)
 {
-  init_list_();
-  show_list();
-  fill_list();
-
   node head, inside, tail;
+
+  init_list_();
+  fill_list();
 
   replace_node(&nodes[0], &head);
   bt_assert(l.head == &head);

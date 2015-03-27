@@ -23,36 +23,36 @@
 static int num;
 static int heap[MAX_NUM+1];
 
-#define SHOW_HEAP(heap) 			\
-    do {					\
-      uint _i; 					\
-      bt_debug("\nnum = %d; ", num);		\
-      for(_i = 1; _i <= num; _i++)		\
-	bt_debug("%d ", heap[_i]);		\
-      if(is_heap_valid(heap, num))		\
-	 bt_debug("OK \n");			\
-      else					\
-	bt_debug("NON-VALID HEAP! \n");		\
-    } while(0)
-
+/*
+ * A valid heap must follow these rules:
+ *   - `num >= 0`
+ *   - `heap[i] >= heap[i / 2]` for each `i` in `[2, num]`
+ */
 static int
-is_heap_valid(int heap[], uint num)
+is_heap_valid(int heap[], int num)
 {
- /*
-  * A valid heap must follow these rules:
-  *   - `num >= 0`
-  *   - `heap[i] >= heap[i / 2]` for each `i` in `[2, num]`
-  */
+  int i;
 
-  if(num < 0)
+  if (num < 0)
     return 0;
 
-  int i;
-  for(i = 2; i <= num; i++)
-    if(heap[i] < heap[i / 2])
+  for (i = 2; i <= num; i++)
+    if (heap[i] < heap[i / 2])
       return 0;
 
   return 1;
+}
+
+static void
+show_heap(void)
+{
+  int i;
+  bt_debug("\n");
+  bt_debug("numbers %d; ", num);
+  for (i = 0; i <= num; i++)
+    bt_debug("%d ", heap[i]);
+  bt_debug(is_heap_valid(heap, num) ? "OK" : "NON-VALID HEAP!");
+  bt_debug("\n");
 }
 
 static void
@@ -61,22 +61,23 @@ init_heap(void)
   int i;
   num = 0;
   heap[0] = SPECIAL_KEY;		/* heap[0] should be unused */
-  for(i = 1; i <= MAX_NUM; i++)
+  for (i = 1; i <= MAX_NUM; i++)
     heap[i] = 0;
 }
 
 static int
 t_heap_insert(void)
 {
+  int i;
+
   init_heap();
 
-  int i;
-  for(i = 1; i <= MAX_NUM; i++)
+  for (i = MAX_NUM; i >= 1; i--)
   {
-    bt_debug("ins %d at pos %d ", MAX_NUM - i, i);
-    heap[i] = MAX_NUM - i;
+    bt_debug("ins %d at pos %d ", i, MAX_NUM - i);
+    heap[MAX_NUM - i + 1] = i;
     HEAP_INSERT(heap, ++num, int, MY_CMP, MY_HEAP_SWAP);
-    SHOW_HEAP(heap);
+    show_heap();
     bt_assert(is_heap_valid(heap, num));
   }
 
@@ -86,13 +87,13 @@ t_heap_insert(void)
 static int
 t_heap_increase_decrease(void)
 {
-  init_heap();
+  int i;
+
   t_heap_insert();
 
-  int i;
-  for(i = 1; i <= MAX_NUM; i++)
+  for (i = 1; i <= MAX_NUM; i++)
   {
-    if(i > heap[i])
+    if (i > heap[i])
     {
       bt_debug("inc %d ", i);
       heap[i] = i;
@@ -104,7 +105,7 @@ t_heap_increase_decrease(void)
       heap[i] = i;
       HEAP_INCREASE(heap, num, int, MY_CMP, MY_HEAP_SWAP, i);
     }
-    SHOW_HEAP(heap);
+    show_heap();
     bt_assert(is_heap_valid(heap, num));
   }
 
@@ -114,16 +115,15 @@ t_heap_increase_decrease(void)
 static int
 t_heap_delete(void)
 {
-  init_heap();
-  t_heap_insert();
-  t_heap_increase_decrease();
-
   int i;
-  for(i = 1; i <= num; i++)
+
+  t_heap_insert();
+
+  for (i = 1; i <= num; i++)
   {
     bt_debug("del at pos %d ", i);
     HEAP_DELETE(heap, num, int, MY_CMP, MY_HEAP_SWAP, i);
-    SHOW_HEAP(heap);
+    show_heap();
     bt_assert(is_heap_valid(heap, num));
   }
 
@@ -141,15 +141,45 @@ t_heap_0(void)
   return (heap[0] == SPECIAL_KEY) ? BT_SUCCESS : BT_FAILURE;
 }
 
+static int
+t_heap_insert_random(void)
+{
+  int i, j;
+  int expected[MAX_NUM+1];
+
+  init_heap();
+
+  for (i = 1; i <= MAX_NUM; i++)
+  {
+    heap[i] = expected[i] = bt_rand_num();
+    HEAP_INSERT(heap, ++num, int, MY_CMP, MY_HEAP_SWAP);
+    show_heap();
+    bt_assert(is_heap_valid(heap, num));
+  }
+
+  for (i = 1; i <= MAX_NUM; i++)
+    for (j = 1; j <= MAX_NUM; j++)
+      if(expected[i] == heap[j])
+	break;
+      else if (j == MAX_NUM)
+      {
+	show_heap();
+	bt_abort_msg("Did not find a number %d in heap.", expected[i]);
+      }
+
+  return BT_SUCCESS;
+}
+
 int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_case(t_heap_insert, "Test Inserting");
-  bt_test_case(t_heap_increase_decrease, "Test Increasing/Decreasing");
-  bt_test_case(t_heap_delete, "Test Deleting");
-  bt_test_case(t_heap_0, "Is heap[0] unused?");
+  bt_test_case(t_heap_insert, "Inserting a descending sequence of numbers (the worst case)");
+  bt_test_case(t_heap_insert_random, "Inserting pseudo-random numbers");
+  bt_test_case(t_heap_increase_decrease, "Increasing/Decreasing");
+  bt_test_case(t_heap_delete, "Deleting");
+  bt_test_case(t_heap_0, "Is a heap[0] really unused?");
 
   return 0;
 }
