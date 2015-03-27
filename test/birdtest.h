@@ -59,4 +59,20 @@ int  bt_rand_num(void);
 #define bt_syscall(test,format, ...)			\
     do { if (test) { bt_log(format ": %s", ##__VA_ARGS__, strerror(errno)); exit(3); } } while (0)
 
+#define bt_check(fn, in_arr, expected_arr, len) 			\
+  do {									\
+    unsigned int bt_i_;							\
+    for (bt_i_ = 0; bt_i_ < len; bt_i_++)				\
+    {									\
+      bt_debug("%s(%u) = %u", #fn, in_arr[bt_i_], fn(in_arr[bt_i_]));	\
+      if(fn(in_arr[bt_i_]) != expected_arr[bt_i_])			\
+      {									\
+	bt_debug(", expected %u  FAIL! \n", expected_arr[bt_i_]);	\
+	bt_abort_msg("%s(%u) = %u, but expected %u",  #fn, in_arr[bt_i_], fn(in_arr[bt_i_]), expected_arr[bt_i_]); \
+      }									\
+      else								\
+	bt_debug("  OK \n");						\
+    }									\
+  } while(0)
+
 #endif /* _BIRDTEST_H_ */
