@@ -34,7 +34,7 @@ show_hash(unsigned char hash[MD5_BYTES])
     bt_debug("%02X", hash[i]);
 }
 
-static int
+static void
 check_md5_hash(unsigned char const *str, unsigned char const *expected)
 {
   unsigned char computed_hash[MD5_BYTES];
