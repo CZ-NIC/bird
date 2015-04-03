@@ -1,4 +1,11 @@
+/*
+ *	BIRD Library -- Hash
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
 
+#ifndef _BIRD_HASH_H_
+#define _BIRD_HASH_H_
 
 #define HASH(type)		struct { type **data; uint count, order; }
 #define HASH_TYPE(v)		typeof(** (v).data)
@@ -178,3 +185,4 @@
 
 #define HASH_WALK_FILTER_END } while (0)
 
+#endif
