@@ -101,5 +101,9 @@ main(int argc, char *argv[])
 void
 bug(const char *msg, ...)
 {
+  va_list argptr;
+  va_start(argptr, msg);
+  vfprintf(stderr, msg, argptr);
+  va_end(argptr);
   abort();
 }
