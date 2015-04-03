@@ -12,7 +12,7 @@ docs userdocs progdocs:
 check: tests
 	tools/run_tests.sh "@objdir@" "@srcdir@"
 
-clean:
+clean: clean-tests
 	$(MAKE) -C $(objdir) clean
 	find . -name "*~" -or -name "*.[oa]" -or -name "\#*\#" -or -name TAGS -or -name core -or -name depend -or -name ".#*" | xargs rm -f
 
@@ -21,3 +21,5 @@ distclean: clean
 	rm -rf $(objdir) autom4te.cache
 	rm -f config.* configure sysdep/autoconf.h sysdep/paths.h Makefile
 
+clean-tests:
+	find . -name '*_test' | xargs rm -f

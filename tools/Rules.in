@@ -47,8 +47,8 @@ tests_executables := $(notdir $(basename $(tests_sources)))
 
 tests: $(tests_executables)
 
-%_test: $(srcdir)/$(dir-name)/%_test.c
-	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@ $(root-rel)test/birdtest.o
+%_test: $(srcdir)/$(dir-name)/%_test.c $(root-rel)test/birdtest.o
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 
 ifdef source
 
@@ -90,7 +90,7 @@ source-dep := $(source)
 endif
 
 depend:
-	$(CC) $(CPPFLAGS) -MM $(addprefix $(src-path),$(source-dep)) >depend
+	$(CC) $(CPPFLAGS) -MM $(addprefix $(src-path),$(source-dep)) $(tests_sources) >depend
 
 ifneq ($(wildcard depend),)
 include depend
