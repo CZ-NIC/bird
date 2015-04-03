@@ -59,19 +59,16 @@ int  bt_rand_num(void);
 #define bt_syscall(test,format, ...)			\
     do { if (test) { bt_log(format ": %s", ##__VA_ARGS__, strerror(errno)); exit(3); } } while (0)
 
-#define bt_check(fn, in_arr, expected_arr, len) 			\
-  do {									\
-    unsigned int bt_i_;							\
-    for (bt_i_ = 0; bt_i_ < len; bt_i_++)				\
+#define bt_check(fn, in_out, in_fmt, out_fmt)				\
+  do									\
+  {									\
+    unsigned int bt_i;							\
+    for (bt_i = 0; bt_i < (sizeof(in_out)/sizeof(in_out[0])); bt_i++)	\
     {									\
-      bt_debug("%s(%u) = %u", #fn, in_arr[bt_i_], fn(in_arr[bt_i_]));	\
-      if(fn(in_arr[bt_i_]) != expected_arr[bt_i_])			\
-      {									\
-	bt_debug(", expected %u  FAIL! \n", expected_arr[bt_i_]);	\
-	bt_abort_msg("%s(%u) = %u, but expected %u",  #fn, in_arr[bt_i_], fn(in_arr[bt_i_]), expected_arr[bt_i_]); \
-      }									\
-      else								\
-	bt_debug("  OK \n");						\
+      if (fn(in_out[bt_i].in) == in_out[bt_i].out)			\
+	bt_debug    ("[ OK ] %s(" in_fmt ") got " out_fmt " \n", #fn, in_out[bt_i].in, fn(in_out[bt_i].in)); \
+      else 								\
+	bt_abort_msg("[FAIL] %s(" in_fmt ") got " out_fmt ", but was expected " out_fmt " \n", #fn, in_out[bt_i].in, fn(in_out[bt_i].in), in_out[bt_i].out); \
     }									\
   } while(0)
 

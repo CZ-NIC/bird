@@ -101,7 +101,7 @@ check_log2(u32 n)
   u32 low  = pow2(log);
   u32 high = pow2(log+1);
 
-  bt_debug("Test u32_log2(%u) = %u,  %u should be in <%u, %u) \n", n, log, n, low, high);
+  bt_debug("Test u32_log2(%u) = %u, %u should be in the range <%u, %u) \n", n, log, n, low, high);
   bt_assert(n >= low && n < high);
 }
 
@@ -110,14 +110,17 @@ t_log2(void)
 {
   u32 i;
 
-  u32 in[31];
-  u32 expected[31];
+  struct in_out_data_ {
+    u32 in;
+    u32 out;
+  } in_out_data[31];
+
   for (i = 0; i < 31; i++)
   {
-    in[i] = pow2(i+1);
-    expected[i] = i+1;
+    in_out_data[i].in  = pow2(i+1);
+    in_out_data[i].out = i+1;
   }
-  bt_check(u32_log2, in, expected, 31);
+  bt_check(u32_log2, in_out_data, "%u", "%u");
 
   u32_log2(0);
 
@@ -138,7 +141,6 @@ main(int argc, char *argv[])
   bt_test_case(t_mkmask, "u32_mkmask()");
   bt_test_case(t_masklen, "u32_masklen()");
   bt_test_case(t_log2, "u32_log2()");
-
 
   return 0;
 }
