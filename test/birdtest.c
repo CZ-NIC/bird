@@ -10,6 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <execinfo.h>
 
 #include <sys/resource.h>
 #include <sys/wait.h>
@@ -89,6 +90,16 @@ bt_init(int argc, char *argv[])
   exit(3);
 }
 
+static void
+dump_stack(void)
+{
+  static void *backbuf[50];
+  int levels;
+
+  levels = backtrace(backbuf, 50);
+  backtrace_symbols_fd(backbuf, levels, STDERR_FILENO);
+}
+
 void
 bt_test_case5(int (*test_fn)(void), const char *test_id, const char *dsc, int forked, int timeout)
 {
@@ -143,7 +154,10 @@ bt_test_case5(int (*test_fn)(void), const char *test_id, const char *dsc, int fo
       if (sn == SIGALRM)
 	bt_log("Timeout expired");
       else if (sn == SIGSEGV)
-	bt_log("Segmentation fault");
+      {
+	bt_log("Segmentation fault:");
+	dump_stack();
+      }
       else if (sn != SIGABRT)
 	bt_log("Signal %d received", sn);
     }
