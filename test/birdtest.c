@@ -28,6 +28,13 @@ int bt_verbose;
 const char *bt_filename;
 const char *bt_test_id;
 
+int
+bt_rand_num(void)
+{
+  /* Seeded in bt_init() */
+  return random();
+}
+
 void
 bt_init(int argc, char *argv[])
 {
@@ -175,8 +182,3 @@ bt_test_case5(int (*test_fn)(void), const char *test_id, const char *dsc, int fo
   bt_note("OK");
 }
 
-int
-bt_rand_num(void)
-{
-  return random();
-}
