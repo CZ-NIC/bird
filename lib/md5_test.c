@@ -14,7 +14,7 @@
 #include "lib/md5.c" /* REMOVE ME */
 
 #define MD5_BYTES 16
-#define HEX_BASE 16
+#define MD5_CHARS 32
 
 static void
 get_md5(unsigned char hash[MD5_BYTES], unsigned char const *str)
@@ -27,57 +27,59 @@ get_md5(unsigned char hash[MD5_BYTES], unsigned char const *str)
 }
 
 static void
-show_hash(unsigned char hash[MD5_BYTES])
+compute_md5(const char *str, char (*out_hash)[MD5_CHARS+1])
 {
+  unsigned char hash[MD5_BYTES];
+  get_md5(hash, str);
+
   int i;
-  for(i = 0; i < 16; i++)
-    bt_debug("%02X", hash[i]);
-}
-
-static void
-check_md5_hash(unsigned char const *str, unsigned char const *expected)
-{
-  unsigned char computed_hash[MD5_BYTES];
-  unsigned char expected_hash[MD5_BYTES];
-  int i;
-
-  for(i = 0; i < 16; i++)
-  {
-    char * pEnd;
-    unsigned char c[3] = {expected[i*2], expected[i*2 + 1], '\0'};
-    expected_hash[i] = strtoul(c, &pEnd, HEX_BASE);
-  }
-
-  get_md5(computed_hash, str);
-
-  bt_debug("MD5('%s') \n", str);
-  bt_debug("  computed: ");
-  show_hash(computed_hash);
-  bt_debug("\n");
-  bt_debug("  expected: ");
-  show_hash(expected_hash);
-
-  for(i = 0; i < 16; i++)
-  {
-    if(computed_hash[i] != expected_hash[i])
-    {
-      bt_debug("  FAIL! \n");
-      bt_abort_msg("MD5('%s') should get '%s'", str, expected);
-    }
-  }
-  bt_debug("  OK \n");
+  for(i = 0; i < MD5_BYTES; i++)
+    sprintf(*out_hash + i*2, "%02x", hash[i]);
 }
 
 static int
 t_md5(void)
 {
-  check_md5_hash("", "d41d8cd98f00b204e9800998ecf8427e");
-  check_md5_hash("a", "0cc175b9c0f1b6a831c399e269772661");
-  check_md5_hash("abc", "900150983cd24fb0d6963f7d28e17f72");
-  check_md5_hash("message digest", "f96b697d7cb7938d525a2f31aaf161d0");
-  check_md5_hash("abcdefghijklmnopqrstuvwxyz", "c3fcd3d76192e4007dfb496cca67e13b");
-  check_md5_hash("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", "d174ab98d277d9f5a5611c2c9f419d9f");
-  check_md5_hash("12345678901234567890123456789012345678901234567890123456789012345678901234567890", "57edf4a22be3c955ac49da2e2107b67a");
+  struct in_out_data_ {
+    char *in;
+    char out[MD5_CHARS+1];
+    char fn_out[MD5_CHARS+1];
+  } in_out_data[] = {
+      {
+	  .in  = "",
+	  .out = "d41d8cd98f00b204e9800998ecf8427e",
+      },
+      {
+	  .in  = "",
+	  .out = "d41d8cd98f00b204e9800998ecf8427e",
+      },
+      {
+	  .in  = "a",
+	  .out = "0cc175b9c0f1b6a831c399e269772661",
+      },
+      {
+	  .in  = "abc",
+	  .out = "900150983cd24fb0d6963f7d28e17f72",
+      },
+      {
+	  .in  = "message digest",
+	  .out = "f96b697d7cb7938d525a2f31aaf161d0",
+      },
+      {
+	  .in  = "abcdefghijklmnopqrstuvwxyz",
+	  .out = "c3fcd3d76192e4007dfb496cca67e13b",
+      },
+      {
+	  .in  = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+	  .out = "d174ab98d277d9f5a5611c2c9f419d9f",
+      },
+      {
+	  .in  = "12345678901234567890123456789012345678901234567890123456789012345678901234567890",
+	  .out = "57edf4a22be3c955ac49da2e2107b67a",
+      },
+  };
+
+  bt_assert_fn_in_out(compute_md5, in_out_data, "\"%s\"", "\"%s\"");
 
   return BT_SUCCESS;
 }
