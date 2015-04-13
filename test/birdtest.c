@@ -82,7 +82,6 @@ bt_init(int argc, char *argv[])
   if (optind != argc)
     goto usage;
 
-
   if (do_core)
   {
     struct rlimit rl = {RLIM_INFINITY, RLIM_INFINITY};
@@ -108,7 +107,7 @@ dump_stack(void)
 }
 
 void
-bt_test_case5(int (*test_fn)(void), const char *test_id, const char *dsc, int forked, int timeout)
+bt_test_suite5(int (*test_fn)(void), const char *test_id, const char *dsc, int forked, int timeout)
 {
   if (list_tests)
   {

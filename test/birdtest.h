@@ -18,7 +18,7 @@ extern const char *bt_filename;
 extern const char *bt_test_id;
 
 void bt_init(int argc, char *argv[]);
-void bt_test_case5(int (*fn)(void), const char *id, const char *dsc, int forked, int timeout);
+void bt_test_suite5(int (*fn)(void), const char *id, const char *dsc, int forked, int timeout);
 int  bt_rand_num(void);
 
 #define BT_SUCCESS 0
@@ -32,8 +32,11 @@ int  bt_rand_num(void);
 #define bt_test_case(fn,dsc) \
     bt_test_case4(fn, dsc, BT_DEFAULT_FORKING, BT_DEFAULT_TIMEOUT)
 
-#define bt_test_case4(fn,dsc,f,t) \
-    bt_test_case5(fn, #fn, dsc, f, t)
+#define bt_test_suite(fn,dsc) \
+    bt_test_suite4(fn, dsc, BT_DEFAULT_FORKING, BT_DEFAULT_TIMEOUT)
+
+#define bt_test_suite4(fn,dsc,f,t) \
+    bt_test_suite5(fn, #fn, dsc, f, t)
 
 #define bt_log(format, ...) \
     fprintf(stderr, "%s: " format "\n", bt_filename, ##__VA_ARGS__)

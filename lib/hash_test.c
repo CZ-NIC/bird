@@ -291,15 +291,15 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_case(t_insert_find, 		"HASH_INSERT and HASH_FIND");
-  bt_test_case(t_insert_find_random, 	"HASH_INSERT pseudo-random keys and HASH_FIND");
-  bt_test_case(t_insert2_find, 		"HASH_INSERT2 and HASH_FIND. HASH_INSERT2 is HASH_INSERT and a smart auto-resize function");
-  bt_test_case(t_walk, 			"HASH_WALK");
-  bt_test_case(t_walk_delsafe_delete, 	"HASH_WALK_DELSAFE and HASH_DELETE");
+  bt_test_suite(t_insert_find, 		"HASH_INSERT and HASH_FIND");
+  bt_test_suite(t_insert_find_random, 	"HASH_INSERT pseudo-random keys and HASH_FIND");
+  bt_test_suite(t_insert2_find, 	"HASH_INSERT2 and HASH_FIND. HASH_INSERT2 is HASH_INSERT and a smart auto-resize function");
+  bt_test_suite(t_walk, 		"HASH_WALK");
+  bt_test_suite(t_walk_delsafe_delete, 	"HASH_WALK_DELSAFE and HASH_DELETE");
 //bt_test_case(t_walk_delsafe_delete2,	"HASH_WALK_DELSAFE and HASH_DELETE2. HASH_DELETE2 is HASH_DELETE and smart auto-resize function");
-  bt_test_case(t_walk_delsafe_remove, 	"HASH_WALK_DELSAFE and HASH_REMOVE");
+  bt_test_suite(t_walk_delsafe_remove, 	"HASH_WALK_DELSAFE and HASH_REMOVE");
 //bt_test_case(t_walk_delsafe_remove2,	"HASH_WALK_DELSAFE and HASH_REMOVE2. HASH_REMOVE2 is HASH_REMOVE and smart auto-resize function");
-  bt_test_case(t_walk_filter,		"HASH_WALK_FILTER");
+  bt_test_suite(t_walk_filter,		"HASH_WALK_FILTER");
 
   return 0;
 }

@@ -175,11 +175,11 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_case(t_heap_insert, "Inserting a descending sequence of numbers (the worst case)");
-  bt_test_case(t_heap_insert_random, "Inserting pseudo-random numbers");
-  bt_test_case(t_heap_increase_decrease, "Increasing/Decreasing");
-  bt_test_case(t_heap_delete, "Deleting");
-  bt_test_case(t_heap_0, "Is a heap[0] really unused?");
+  bt_test_suite(t_heap_insert, "Inserting a descending sequence of numbers (the worst case)");
+  bt_test_suite(t_heap_insert_random, "Inserting pseudo-random numbers");
+  bt_test_suite(t_heap_increase_decrease, "Increasing/Decreasing");
+  bt_test_suite(t_heap_delete, "Deleting");
+  bt_test_suite(t_heap_0, "Is a heap[0] really unused?");
 
   return 0;
 }

@@ -275,12 +275,12 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_case(t_add_tail, "Adding nodes to tail of list");
-  bt_test_case(t_add_head, "Adding nodes to head of list");
-  bt_test_case(t_insert_node, "Inserting nodes to list");
-  bt_test_case(t_remove_node, "Removing nodes from list");
-  bt_test_case(t_replace_node, "Replacing nodes in list");
-  bt_test_case(t_add_tail_list, "At the tail of a list adding the another list");
+  bt_test_suite(t_add_tail, "Adding nodes to tail of list");
+  bt_test_suite(t_add_head, "Adding nodes to head of list");
+  bt_test_suite(t_insert_node, "Inserting nodes to list");
+  bt_test_suite(t_remove_node, "Removing nodes from list");
+  bt_test_suite(t_replace_node, "Replacing nodes in list");
+  bt_test_suite(t_add_tail_list, "At the tail of a list adding the another list");
 
-  return 0;
+  return bt_end();
 }

@@ -70,7 +70,7 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_case(t_ev_run_list, "Schedule and run 3 events in right order.");
+  bt_test_suite(t_ev_run_list, "Schedule and run 3 events in right order.");
 
   return 0;
 }

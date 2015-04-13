@@ -138,9 +138,9 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_case(t_mkmask, "u32_mkmask()");
-  bt_test_case(t_masklen, "u32_masklen()");
-  bt_test_case(t_log2, "u32_log2()");
+  bt_test_suite(t_mkmask, "u32_mkmask()");
+  bt_test_suite(t_masklen, "u32_masklen()");
+  bt_test_suite(t_log2, "u32_log2()");
 
   return 0;
 }

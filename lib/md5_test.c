@@ -87,7 +87,7 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_case(t_md5, "Test Suite from RFC1321");
+  bt_test_suite(t_md5, "Test Suite from RFC1321");
 
   return 0;
 }

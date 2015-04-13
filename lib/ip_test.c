@@ -18,7 +18,7 @@ build_ip4(u8 a, u8 b, u8 c, u8 d)
 }
 
 static u32
-ip4_pton_(char* s)
+ip4_pton_(char *s)
 {
   ip4_addr ip;
   ip4_pton(s,&ip);
@@ -72,7 +72,7 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_case(t_ip4_pton, "Converting IPv4 string to IPv4 ip4_addr struct");
+  bt_test_suite(t_ip4_pton, "Converting IPv4 string to ip4_addr struct");
 
   return 0;
 }

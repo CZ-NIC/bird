@@ -145,10 +145,10 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_case(t_buffer_push, "Pushing new elements");
-  bt_test_case(t_buffer_pop, "Fill whole buffer (PUSH), a half of elements POP and PUSH new elements");
-  bt_test_case(t_buffer_resize, "Init a small buffer and try overfill");
-  bt_test_case(t_buffer_flush, "Fill and flush all elements");
+  bt_test_suite(t_buffer_push, "Pushing new elements");
+  bt_test_suite(t_buffer_pop, "Fill whole buffer (PUSH), a half of elements POP and PUSH new elements");
+  bt_test_suite(t_buffer_resize, "Init a small buffer and try overfill");
+  bt_test_suite(t_buffer_flush, "Fill and flush all elements");
 
   return 0;
 }
