@@ -89,5 +89,5 @@ main(int argc, char *argv[])
 
   bt_test_suite(t_md5, "Test Suite from RFC1321");
 
-  return 0;
+  return bt_end();
 }

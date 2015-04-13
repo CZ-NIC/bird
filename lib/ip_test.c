@@ -62,9 +62,9 @@ t_ip4_pton(void)
       },
   };
 
-  bt_check(ip4_pton_, in_out_data, "%s", "0x%08X");
+  bt_assert_fn_in(ip4_pton_, in_out_data, "%s", "0x%08X");
 
-  return BT_SUCCESS;
+  return bt_test_case_success;
 }
 
 int
@@ -74,6 +74,6 @@ main(int argc, char *argv[])
 
   bt_test_suite(t_ip4_pton, "Converting IPv4 string to ip4_addr struct");
 
-  return 0;
+  return bt_end();
 }
 

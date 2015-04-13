@@ -94,7 +94,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_calculate, "Checksum of pseudo-random data");
   bt_test_suite(t_verify, "Verification of pseudo-random data.");
 
-  return 0;
+  return bt_end();
 }
 
 /* Mockup */

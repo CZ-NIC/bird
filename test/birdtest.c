@@ -4,14 +4,16 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
-#include <unistd.h>
 #include <signal.h>
+#include <unistd.h>
 #include <execinfo.h>
 
+#include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
 
@@ -28,6 +30,9 @@ int bt_verbose;
 const char *bt_filename;
 const char *bt_test_id;
 
+int bt_success;
+int bt_test_case_success;
+
 int
 bt_rand_num(void)
 {
@@ -40,10 +45,12 @@ bt_init(int argc, char *argv[])
 {
   int c;
 
+  bt_success = 1;
   srandom(BT_RANDOM_SEED);
 
   bt_verbose = 0;
   bt_filename = argv[0];
+  bt_test_id = NULL;
 
   while ((c = getopt(argc, argv, "lcftv")) >= 0)
     switch (c)
@@ -125,10 +132,12 @@ bt_test_suite5(int (*test_fn)(void), const char *test_id, const char *dsc, int f
     return;
 
   int result = 0;
+  bt_test_case_success = 1;
 
   bt_test_id = test_id;
 
-  bt_note("Starting %s: %s", test_id, dsc);
+  if (bt_verbose >= BT_VERBOSE_DEBUG)
+    bt_log("Starting");
 
   if (!forked)
   {
@@ -172,12 +181,42 @@ bt_test_suite5(int (*test_fn)(void), const char *test_id, const char *dsc, int f
       bt_log("Core dumped");
   }
 
-  if (result != BT_SUCCESS)
-  {
-    bt_log("Test case failed");
-    exit(result);
-  }
-
-  bt_note("OK");
+  bt_success &= (result == BT_SUCCESS ? 1 : 0);
+  bt_result((result == BT_SUCCESS ? BT_PROMPT_OK : BT_PROMPT_FAIL), "%s", bt_test_id);
+  bt_test_id = NULL;
 }
 
+static uint
+get_num_terminal_cols(void)
+{
+  struct winsize w;
+  ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+  return w.ws_col;
+}
+
+void
+bt_result(const char *to_right_align_msg, const char *to_left_align_msg, ...)
+{
+  if (bt_verbose)
+  {
+    va_list argptr;
+    va_start(argptr, to_left_align_msg);
+    char msg_buf[BT_BUFFER_SIZE];
+
+    snprintf(msg_buf, sizeof(msg_buf), "%s: ", bt_filename);
+    vsnprintf(msg_buf + strlen(msg_buf), sizeof(msg_buf), to_left_align_msg, argptr);
+
+    char fmt_buf[BT_BUFFER_SIZE];
+    uint line_len = strlen(msg_buf) + BT_PROMPT_OK_FAIL_LEN;
+    uint left_offset = (line_len / get_num_terminal_cols() + 1) * get_num_terminal_cols() - BT_PROMPT_OK_FAIL_LEN;
+    snprintf(fmt_buf, sizeof(fmt_buf), "%%-%us%%s\n", left_offset);
+
+    fprintf(stderr, fmt_buf, msg_buf, to_right_align_msg);
+  }
+}
+
+int
+bt_end(void)
+{
+  return !bt_success;
+}

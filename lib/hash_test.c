@@ -301,5 +301,5 @@ main(int argc, char *argv[])
 //bt_test_case(t_walk_delsafe_remove2,	"HASH_WALK_DELSAFE and HASH_REMOVE2. HASH_REMOVE2 is HASH_REMOVE and smart auto-resize function");
   bt_test_suite(t_walk_filter,		"HASH_WALK_FILTER");
 
-  return 0;
+  return bt_end();
 }

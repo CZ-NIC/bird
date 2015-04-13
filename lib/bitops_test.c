@@ -120,7 +120,7 @@ t_log2(void)
     in_out_data[i].in  = pow2(i+1);
     in_out_data[i].out = i+1;
   }
-  bt_check(u32_log2, in_out_data, "%u", "%u");
+  bt_assert_fn_in(u32_log2, in_out_data, "%u", "%u");
 
   u32_log2(0);
 
@@ -142,5 +142,5 @@ main(int argc, char *argv[])
   bt_test_suite(t_masklen, "u32_masklen()");
   bt_test_suite(t_log2, "u32_log2()");
 
-  return 0;
+  return bt_end();
 }
