@@ -13,10 +13,19 @@ num_succ_tests=0
 num_fail_tests=0
 echo -e "  == Start all $num_all_tests unit tests ==\n"
 for test in $all_tests ; do
-	echo -e "  [$((num_test++))/$num_all_tests] $test"
-	./$test							\
-		&& num_succ_tests=$((num_succ_tests+1))		\
-		|| num_fail_tests=$((num_fail_tests+1))
+	./$test ; exit_code=$?
+	cols=$(tput cols)
+	offset=$((cols-17))
+	fmt="  [%2d/%-2d] %-${offset}s"
+	printf "$fmt" $((num_test++)) $num_all_tests "$test"
+	if [ $exit_code -eq 0 ]; then
+		printf "[\e[1;32m OK \e[0m]"
+		num_succ_tests=$((num_succ_tests+1))
+	else
+		printf "[\e[1;31mFAIL\e[0m]"
+		num_fail_tests=$((num_fail_tests+1))
+	fi
+	printf "\n"
 done
 
 num_all_tests_src=0
