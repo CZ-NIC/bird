@@ -14,7 +14,7 @@
 #include <errno.h>
 
 extern int bt_success;
-extern int bt_test_case_success;
+extern int bt_test_suite_success;
 
 extern int bt_verbose;
 #define BT_VERBOSE_NOTHING		0
@@ -91,78 +91,114 @@ void bt_result(const char *result, const char *msg, ...);
 #define bt_assert(test) \
     bt_assert_msg(test, "Assertion (%s) failed at %s:%d", #test, __FILE__, __LINE__)
 
-#define bt_assert_msg(test, format, ...) \
-    do { if (!(test)) { \
-      if (bt_verbose) bt_log(format, ##__VA_ARGS__); \
-      bt_success = bt_test_case_success = 0; \
-    } } while (0)
+#define bt_equal(a, b) \
+    bt_assert_msg((a) == (b), "Assertion (%s == %s) failed at %s:%d.", #a, #b, __FILE__, __LINE__)
+
+#define bt_assert_msg(test, format, ...) 						\
+    do 											\
+    {											\
+      if (!(test))									\
+      { 										\
+	if (bt_verbose)									\
+	  bt_log(format, ##__VA_ARGS__); 						\
+	bt_success = bt_test_suite_success = 0; 					\
+      }											\
+    } while (0)
 
 #define bt_syscall(test,format, ...) \
     do { if (test) { bt_log(format ": %s", ##__VA_ARGS__, strerror(errno)); exit(3); } } while (0)
 
-#define bt_assert_fn_in(fn, in_out, in_fmt, out_fmt)					\
+
+#define bt_strncat(buf, str, ...) \
+  snprintf(buf + strlen(buf), sizeof(buf), str, ##__VA_ARGS__)
+
+void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
+
+#define bt_dump_struct(buf, data)							\
+    do											\
+    {											\
+      unsigned int i;									\
+      u32 *pc = (u32*) data;								\
+      bt_strncat(buf, "{");								\
+      for (i = 0; i < (sizeof(*data) / sizeof(typeof(*pc))); i++)			\
+	bt_strncat(buf, "%s0x%08X", (i ? ", " : ""), pc[i]);				\
+      bt_strncat(buf, "}");								\
+    } while (0)
+
+#define bt_dump(buf, data, fmt)								\
+    do											\
+    {											\
+      if (fmt == NULL)									\
+	bt_dump_struct(buf, &data);							\
+      else										\
+	bt_strncat_(buf, sizeof(buf), fmt, data);					\
+    } while (0)
+
+#define bt_print_result_line(fn, in, out, fn_out, in_fmt, out_fmt, result)		\
+    do											\
+    {											\
+      char buf[BT_BUFFER_SIZE];								\
+      strcpy(buf, "");									\
+      snprintf(buf, sizeof(buf), "%s(", #fn);						\
+      bt_dump(buf, in, in_fmt);								\
+      bt_strncat(buf, ") gives ");							\
+      bt_dump(buf, fn_out, out_fmt);							\
+      if (!result) 									\
+      {											\
+	bt_strncat(buf, BT_PROMPT_EXPECTING); 						\
+	bt_dump(buf, out, out_fmt);							\
+      } 										\
+      bt_result_check((single_test_case_success ? BT_PROMPT_OK : BT_PROMPT_FAIL), "%s", buf); \
+    } while (0)
+
+/**
+ * Usage:
+ * 	u32 my_function(const char *input_data) { ... }
+ *
+ *	struct in_out {
+ *     		char *in;
+ *   		u32  out;
+ * 	} in_out[] = { ... };
+ *
+ * 	bt_assert_out_fn_in(my_function, in_out, "%s", "%u");
+ */
+#define bt_assert_out_fn_in(fn, in_out, in_fmt, out_fmt)				\
     do											\
     {											\
       unsigned int i;									\
       for (i = 0; i < (sizeof(in_out)/sizeof(in_out[0])); i++)				\
       {											\
-	int single_test_case_success = fn(in_out[i].in) == in_out[i].out;		\
-	bt_test_case_success &= single_test_case_success;				\
-	if (single_test_case_success)							\
-	  bt_result_check_ok(BT_PROMPT_FN_GIVES(in_fmt) out_fmt, #fn, in_out[i].in, fn(in_out[i].in)); \
-	else										\
-	  bt_result_check_fail(BT_PROMPT_FN_GIVES(in_fmt) out_fmt BT_PROMPT_EXPECTING out_fmt, #fn, in_out[i].in, fn(in_out[i].in), in_out[i].out); \
+	typeof(in_out[i].out) fn_out = fn(in_out[i].in);				\
+	int single_test_case_success = (fn(in_out[i].in) == in_out[i].out);		\
+	bt_test_suite_success &= single_test_case_success;				\
+	bt_print_result_line(fn, in_out[i].in, in_out[i].out, fn_out, in_fmt, out_fmt, single_test_case_success); \
       }											\
     } while (0)
 
+/**
+ * Usage:
+ * 	void my_function(const char *input_data, u32 *output_data) { ... }
+ *
+ *	struct in_out {
+ *     		char *in;
+ *   		u32  out;
+ * 	} in_out[] = { ... };
+ *
+ * 	bt_assert_fn_in_out(my_function, in_out, "%s", "%u");
+ */
 #define bt_assert_fn_in_out(fn, in_out, in_fmt, out_fmt)				\
     do											\
     {											\
       unsigned int i;									\
       for (i = 0; i < (sizeof(in_out)/sizeof(in_out[0])); i++)				\
       {											\
-	fn(in_out[i].in, &in_out[i].fn_out);						\
-	int single_test_case_success = !memcmp(&in_out[i].fn_out, &in_out[i].out, sizeof(in_out[i].out)); \
-	bt_test_case_success &= single_test_case_success;				\
-	if (single_test_case_success)							\
-	  bt_result_check_ok  (BT_PROMPT_FN_GIVES(in_fmt) out_fmt, #fn, in_out[i].in, in_out[i].fn_out); \
-	else 										\
-	  bt_result_check_fail(BT_PROMPT_FN_GIVES(in_fmt) out_fmt BT_PROMPT_EXPECTING out_fmt, #fn, in_out[i].in, in_out[i].fn_out, in_out[i].out); \
-      }											\
-    } while (0)
-
-#define bt_strcat(buf, str, ...) snprintf(buf + strlen(buf), sizeof(buf), str, ##__VA_ARGS__)
-
-#define bt_dump_struct(buf, data)							\
-    do											\
-    {											\
-      unsigned int bt_j;								\
-      u32 *bt_pc = (u32*) data;								\
-      bt_strcat(buf, "{");								\
-      for (bt_j = 0; bt_j < (sizeof(*data) / sizeof(typeof(*bt_pc))); bt_j++)		\
-	bt_strcat(buf, "%s0x%08X", (bt_j ? ", " : ""), bt_pc[bt_j]);			\
-      bt_strcat(buf, "}");								\
-    } while (0)
-
-#define bt_assert_fn_in_out_struct(fn, in_out, in_fmt)					\
-    do											\
-    {											\
-      char bt_buf[BT_BUFFER_SIZE];							\
-      unsigned int i;									\
-      for (i = 0; i < (sizeof(in_out)/sizeof(in_out[0])); i++)				\
-      {											\
-	strcpy(bt_buf, "");								\
-	fn(in_out[i].in, &in_out[i].fn_out);						\
-	int single_test_case_success = !memcmp(&in_out[i].fn_out, in_out[i].out, sizeof(in_out[i].out)); \
-	bt_test_case_success &= single_test_case_success;				\
-	bt_strcat(bt_buf, BT_PROMPT_FN_GIVES(in_fmt), #fn, in_out[i].in);		\
-	bt_dump_struct(bt_buf, &in_out[i].fn_out); 					\
-	if (!single_test_case_success) 							\
-	{										\
-	  bt_strcat(bt_buf, BT_PROMPT_EXPECTING); 					\
-	  bt_dump_struct(bt_buf, &in_out[i].out); 					\
-	} 										\
-	bt_result_check((single_test_case_success ? BT_PROMPT_OK : BT_PROMPT_FAIL), "%s", bt_buf); \
+	typeof(in_out[i].out) fn_out;							\
+	memset(&fn_out, '\0', sizeof(fn_out));						\
+	fn(in_out[i].in, &fn_out);							\
+	int single_test_case_success = !memcmp(&fn_out, &in_out[i].out, sizeof(in_out[i].out)); \
+	bt_test_suite_success &= single_test_case_success;				\
+											\
+	bt_print_result_line(fn, in_out[i].in, in_out[i].out, fn_out, in_fmt, out_fmt, single_test_case_success); \
       }											\
     } while (0)
 

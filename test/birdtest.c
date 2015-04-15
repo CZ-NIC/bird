@@ -31,7 +31,7 @@ const char *bt_filename;
 const char *bt_test_id;
 
 int bt_success;
-int bt_test_case_success;
+int bt_test_suite_success;
 
 int
 bt_rand_num(void)
@@ -132,7 +132,7 @@ bt_test_suite5(int (*test_fn)(void), const char *test_id, const char *dsc, int f
     return;
 
   int result = 0;
-  bt_test_case_success = 1;
+  bt_test_suite_success = 1;
 
   bt_test_id = test_id;
 
@@ -143,6 +143,7 @@ bt_test_suite5(int (*test_fn)(void), const char *test_id, const char *dsc, int f
   {
     alarm(timeout);
     result = test_fn();
+    result &= bt_test_suite_success;
   }
   else
   {
@@ -153,6 +154,7 @@ bt_test_suite5(int (*test_fn)(void), const char *test_id, const char *dsc, int f
     {
       alarm(timeout);
       result = test_fn();
+      result &= bt_test_suite_success;
       _exit(result);
     }
 
@@ -199,11 +201,12 @@ bt_result(const char *to_right_align_msg, const char *to_left_align_msg, ...)
 {
   if (bt_verbose)
   {
-    va_list argptr;
-    va_start(argptr, to_left_align_msg);
     char msg_buf[BT_BUFFER_SIZE];
 
-    snprintf(msg_buf, sizeof(msg_buf), "%s: ", bt_filename);
+    snprintf(msg_buf, sizeof(char)*BT_BUFFER_SIZE, "%s: ", bt_filename);
+
+    va_list argptr;
+    va_start(argptr, to_left_align_msg);
     vsnprintf(msg_buf + strlen(msg_buf), sizeof(msg_buf), to_left_align_msg, argptr);
 
     char fmt_buf[BT_BUFFER_SIZE];
@@ -219,4 +222,15 @@ int
 bt_end(void)
 {
   return !bt_success;
+}
+
+void
+bt_strncat_(char *buf, size_t buf_size, const char *str, ...)
+{
+  if (str != NULL)
+  {
+    va_list argptr;
+    va_start(argptr, str);
+    vsnprintf(buf + strlen(buf), buf_size, str, argptr);
+  }
 }
