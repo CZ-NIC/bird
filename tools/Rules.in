@@ -47,7 +47,10 @@ tests_executables := $(notdir $(basename $(tests_sources)))
 
 tests: $(tests_executables)
 
-%_test: $(srcdir)/$(dir-name)/%_test.c $(root-rel)test/birdtest.o
+%_test.o: $(srcdir)/$(dir-name)/%_test.c
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -c -o $@
+
+%_test: $(srcdir)/$(dir-name)/%_test.o $(root-rel)test/birdtest.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 
 ifdef source

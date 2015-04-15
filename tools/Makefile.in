@@ -13,9 +13,9 @@ tests: test/birdtest.o
 	set -e ; for a in $(dynamic-dirs) ; do $(MAKE) -C $$a $@ ; done
 	set -e ; for a in $(static-dirs) $(client-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
 
-test/birdtest.o: $(srcdir)/test/birdtest.c
+test/birdtest.o: $(srcdir)/test/birdtest.c $(srcdir)/test/birdtest.h
 	mkdir -p test
-	$(CC) $(CFLAGS) $(TARGET_ARCH) -c $^ $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) $(TARGET_ARCH) -c $< $(LDLIBS) -o $@
 
 daemon: $(exedir)/bird
 
