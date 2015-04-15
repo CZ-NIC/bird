@@ -11,6 +11,8 @@
 
 #include "lib/ip.h"
 
+#define IP4_MAX_LEN	16
+
 static u32
 build_ip4(u8 a, u8 b, u8 c, u8 d)
 {
@@ -28,10 +30,10 @@ ip4_pton_(char *s)
 static int
 t_ip4_pton(void)
 {
-  struct in_out_data_ {
-    char *in;
+  struct in_out {
+    char in[IP4_MAX_LEN];
     u32 out;
-  } in_out_data[] = {
+  } in_out[] = {
       {
 	  .in  = "192.168.1.128",
 	  .out = build_ip4(192, 168, 1, 128),
@@ -44,27 +46,11 @@ t_ip4_pton(void)
 	  .in  = "0.0.0.0",
 	  .out = build_ip4(0, 0, 0, 0),
       },
-      {
-	  .in  = "00.000.0000.00000",
-	  .out = build_ip4(0, 0, 0, 0),
-      },
-      {
-	  .in  = "00.000.0000.00000",
-	  .out = build_ip4(0, 0, 0, 0),
-      },
-      {
-	  .in  = "-1",
-	  .out = build_ip4(0, 0, 0, 0),
-      },
-      {
-	  .in  = "",
-	  .out = build_ip4(0, 0, 0, 0),
-      },
   };
 
-  bt_assert_fn_in(ip4_pton_, in_out_data, "%s", "0x%08X");
+  bt_assert_out_fn_in(ip4_pton_, in_out, "'%s'", NULL);
 
-  return bt_test_case_success;
+  return bt_test_suite_success;
 }
 
 static void
@@ -80,11 +66,10 @@ ip6_pton_(char *s, u32 (*addr)[4])
 static int
 t_ip6_pton(void)
 {
-  struct in_out_data_ {
+  struct in_out {
     char *in;
     u32 out[4];
-    u32 fn_out[4];
-  } in_out_data[] = {
+  } in_out[] = {
       {
 	  .in  = "2001:0db8:0000:0000:0000:0000:1428:57ab",
 	  .out = {0x20010DB8, 0x00000000, 0x00000000, 0x142857AB},
@@ -111,12 +96,10 @@ t_ip6_pton(void)
       },
   };
 
-  bt_assert_fn_in_out_struct(ip6_pton_, in_out_data, "%s");
+  bt_assert_fn_in_out(ip6_pton_, in_out, "'%s'", NULL);
 
-  return bt_test_case_success;
+  return bt_test_suite_success;
 }
-
-#define IP4_MAX_LEN	16
 
 char *
 ip4_ntop_(ip4_addr a, char (*b)[IP4_MAX_LEN])
@@ -127,11 +110,10 @@ ip4_ntop_(ip4_addr a, char (*b)[IP4_MAX_LEN])
 static int
 t_ip4_ntop(void)
 {
-  struct in_out_data_ {
+  struct in_out {
     ip4_addr in;
     char out[IP4_MAX_LEN];
-    char fn_out[IP4_MAX_LEN];
-  } in_out_data[] = {
+  } in_out[] = {
       {
 	  .in  = { .addr = build_ip4(192, 168, 1, 128) },
 	  .out = "192.168.1.128",
@@ -147,9 +129,37 @@ t_ip4_ntop(void)
 
   };
 
-  bt_assert_fn_in_out(ip4_ntop_, in_out_data, "0x%08X", "\"%s\"");
+  bt_assert_fn_in_out(ip4_ntop_, in_out, NULL, "'%s'");
 
-  return bt_test_case_success;
+  return bt_test_suite_success;
+}
+
+char *
+ip6_ntop_(ip6_addr a, char (*b)[INET6_ADDRSTRLEN])
+{
+  return ip6_ntop(a, (char *) b);
+}
+
+static int
+t_ip6_ntop(void)
+{
+  struct in_out {
+    ip6_addr in;
+    char out[INET6_ADDRSTRLEN];
+  } in_out[] = {
+      {
+	  .in  = { .addr = {0x20010DB8, 0x00000000, 0x00000000, 0x142857AB}},
+	  .out = "2001:db8::1428:57ab",
+      },
+      {
+	  .in  = { .addr = {0x26052700, 0x00000003, 0x00000000, 0x471393E3}},
+	  .out = "2605:2700:0:3::4713:93e3",
+      },
+  };
+
+  bt_assert_fn_in_out(ip6_ntop_, in_out, NULL, "'%s'");
+
+  return bt_test_suite_success;
 }
 
 int
@@ -159,7 +169,8 @@ main(int argc, char *argv[])
 
   bt_test_suite(t_ip4_pton, "Converting IPv4 string to ip4_addr struct");
   bt_test_suite(t_ip6_pton, "Converting IPv6 string to ip6_addr struct");
-  bt_test_suite(t_ip4_ntop, "t_ip4_ntop");
+  bt_test_suite(t_ip4_ntop, "Converting ip4_addr struct to IPv4 string");
+  bt_test_suite(t_ip6_ntop, "Converting ip6_addr struct to IPv6 string");
 
   return bt_end();
 }

@@ -59,6 +59,7 @@ is_empty_list_well_unlinked(void)
 
   bt_assert(l.head == NODE &l.null);
   bt_assert(l.tail == NODE &l.head);
+  bt_assert(EMPTY_LIST(l));
 
   for (i = 0; i < MAX_NUM; i++)
   {

@@ -120,7 +120,7 @@ t_log2(void)
     in_out_data[i].in  = pow2(i+1);
     in_out_data[i].out = i+1;
   }
-  bt_assert_fn_in(u32_log2, in_out_data, "%u", "%u");
+  bt_assert_out_fn_in(u32_log2, in_out_data, "%u", "%u");
 
   u32_log2(0);
 

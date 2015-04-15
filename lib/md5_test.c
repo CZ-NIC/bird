@@ -40,15 +40,11 @@ compute_md5(const char *str, char (*out_hash)[MD5_CHARS+1])
 static int
 t_md5(void)
 {
-  struct in_out_data_ {
+  struct in_out {
     char *in;
     char out[MD5_CHARS+1];
     char fn_out[MD5_CHARS+1];
-  } in_out_data[] = {
-      {
-	  .in  = "",
-	  .out = "d41d8cd98f00b204e9800998ecf8427e",
-      },
+  } in_out[] = {
       {
 	  .in  = "",
 	  .out = "d41d8cd98f00b204e9800998ecf8427e",
@@ -79,7 +75,7 @@ t_md5(void)
       },
   };
 
-  bt_assert_fn_in_out(compute_md5, in_out_data, "\"%s\"", "\"%s\"");
+  bt_assert_fn_in_out(compute_md5, in_out, "'%s'", "'%s'");
 
   return BT_SUCCESS;
 }
