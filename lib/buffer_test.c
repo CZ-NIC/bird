@@ -8,6 +8,7 @@
 
 #include <stdlib.h>
 #include "test/birdtest.h"
+#include "sysdep/config.h"
 #include "lib/resource.h"
 #include "lib/buffer.h"
 
@@ -24,8 +25,8 @@ show_buf(buffer_int *b)
   int i;
   bt_debug(".used = %d, .size = %d\n", b->used, b->size);
 
-  for (i = 0; i < b->size; i++)
-    bt_debug("  .data[%3i] = %-16d  expected %-16d  %s\n", i, b->data[i], expected[i], (b->data[i] == expected[i] ? "OK" : "FAIL!"));
+  for (i = 0; i < b->used; i++)
+    bt_debug("  .data[%3d] = %-16d  expected %-16d  %s\n", i, b->data[i], expected[i], (b->data[i] == expected[i] ? "OK" : "FAIL!"));
 }
 
 static void

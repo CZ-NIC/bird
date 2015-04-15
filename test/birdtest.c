@@ -11,7 +11,10 @@
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+
+#ifdef HAVE_EXECINFO
 #include <execinfo.h>
+#endif
 
 #include <sys/ioctl.h>
 #include <sys/resource.h>
@@ -106,11 +109,13 @@ bt_init(int argc, char *argv[])
 static void
 dump_stack(void)
 {
+#ifdef HAVE_EXECINFO
   static void *backbuf[50];
   int levels;
 
   levels = backtrace(backbuf, 50);
   backtrace_symbols_fd(backbuf, levels, STDERR_FILENO);
+#endif
 }
 
 void

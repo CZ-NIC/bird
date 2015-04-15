@@ -117,11 +117,11 @@ void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
 #define bt_dump_struct(buf, data)							\
     do											\
     {											\
-      unsigned int i;									\
+      unsigned int k;									\
       u32 *pc = (u32*) data;								\
       bt_strncat(buf, "{");								\
-      for (i = 0; i < (sizeof(*data) / sizeof(typeof(*pc))); i++)			\
-	bt_strncat(buf, "%s0x%08X", (i ? ", " : ""), pc[i]);				\
+      for (k = 0; k < (sizeof(*data) / sizeof(typeof(*pc))); k++)			\
+	bt_strncat(buf, "%s0x%08X", (k ? ", " : ""), pc[k]);				\
       bt_strncat(buf, "}");								\
     } while (0)
 

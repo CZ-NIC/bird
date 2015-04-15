@@ -8,6 +8,7 @@
 #define _BIRD_BUFFER_H_
 
 #include "lib/resource.h"
+#include "sysdep/config.h"
 
 #define BUFFER(type)		struct { type *data; uint used, size; }
 

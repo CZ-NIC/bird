@@ -3,6 +3,24 @@
 objdir=$1
 srcdir=$2
 
+# see if it supports colors...
+ncolors=$(tput colors)
+
+if test -n "$ncolors" && test $ncolors -ge 8; then
+	bold="$(tput bold)"
+	underline="$(tput smul)"
+	standout="$(tput smso)"
+	normal="$(tput sgr0)"
+	black="$(tput setaf 0)"
+	red="$(tput setaf 1)"
+	green="$(tput setaf 2)"
+	yellow="$(tput setaf 3)"
+	blue="$(tput setaf 4)"
+	magenta="$(tput setaf 5)"
+	cyan="$(tput setaf 6)"
+	white="$(tput setaf 7)"
+fi
+
 all_tests=$(find "$objdir" -name '*_test')
 
 num_all_tests=0
@@ -17,12 +35,13 @@ for test in $all_tests ; do
 	cols=$(tput cols)
 	offset=$((cols-17))
 	fmt="  [%2d/%-2d] %-${offset}s"
-	printf "$fmt" $((num_test++)) $num_all_tests "$test"
+	printf "$fmt" $num_test $num_all_tests "$test"
+	num_test=$((num_test+1))
 	if [ $exit_code -eq 0 ]; then
-		printf "[\e[1;32m OK \e[0m]"
+		printf "[${green}${bold} OK ${normal}]"
 		num_succ_tests=$((num_succ_tests+1))
 	else
-		printf "[\e[1;31mFAIL\e[0m]"
+		printf "[${red}${bold}FAIL${normal}]"
 		num_fail_tests=$((num_fail_tests+1))
 	fi
 	printf "\n"

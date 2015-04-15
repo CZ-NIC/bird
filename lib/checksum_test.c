@@ -80,7 +80,7 @@ t_verify(void)
 
   a[MAX_NUM] = sum;
 
-  bt_assert(ipsum_verify(a, sizeof(a) + sizeof(u32), NULL));
+  bt_assert(ipsum_verify(a, sizeof(a), NULL));
 
   return BT_SUCCESS;
 }

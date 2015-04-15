@@ -7,6 +7,7 @@
  */
 
 #include "test/birdtest.h"
+#include "sysdep/config.h"
 #include "lib/heap.h"
 
 #define MAX_NUM 1000

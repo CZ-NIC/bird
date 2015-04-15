@@ -1,3 +1,4 @@
+#include "sysdep/config.h"
 #include "lib/event.c" 		/* REMOVE ME */
 #include "lib/ip.c"		/* REMOVE ME */
 #include "lib/resource.c"	/* REMOVE ME */

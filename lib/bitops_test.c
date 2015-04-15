@@ -19,7 +19,8 @@ t_mkmask(void)
   int i;
   u32 compute, expect;
 
-  for (i = 0; i <= 32; i++)
+  bt_assert(u32_mkmask(0) == 0x00000000);
+  for (i = 1; i <= 32; i++)
   {
     compute = u32_mkmask(i);
     expect  = (u32) (0xffffffff << (32-i));
