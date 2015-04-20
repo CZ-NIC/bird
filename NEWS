@@ -1,6 +1,32 @@
-Version 1.5.0pre (2014-11-05) - Not for production
-  o Major OSPF protocol redesign
-  o RFC 6549 - OSPFv2 multi-instance extension
+Version 1.5.0 (2015-04-20)
+  o Major OSPF protocol redesign.
+  o OSPFv2 multi-instance extension (RFC 6549).
+  o BGP AS-wide unique router ID (RFC 6286).
+  o BGP enhanced route refresh (RFC 7313).
+  o Link state support in BGP.
+  o Latency tracking and internal watchdog.
+  o Uses high port range for BFD on BSD.
+  o Increase max symbol length to 64.
+  o Allows to define unnamed protocols from templates.
+  o Fixes two serious bugs in BGP.
+  o Several bugfixes and minor improvements.
+  o Several minor option changes:
+     - OSPF: Protocol-wide 'instance id' option added.
+     - BGP: Parameters to option 'neighbor' extended.
+     - BGP: Separate option 'interface' added.
+     - BGP: Option 'start delay time' renamed to 'connect delay time'.
+     - BGP: Option 'route limit' deprecated.
+
+  Upgrade notes:
+
+  For OSPF, there are deep internal changes, but user-visible changes
+  are limited to log messages and minor changes in formatting of command
+  output.
+
+  For BGP, version 1.5.0 is essentially a minor release. There are two
+  deprecated options ('start delay time' and 'route limit') and some
+  minor formatting changes.
+
 
 Version 1.4.5 (2014-10-06)
   o New 'show route noexport' command option.

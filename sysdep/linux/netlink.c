@@ -436,6 +436,9 @@ nl_parse_link(struct nlmsghdr *h, int scan)
       else
 	f.flags |= IF_MULTIACCESS;	/* NBMA */
 
+      if (fl & IFF_MULTICAST)
+	f.flags |= IF_MULTICAST;
+
       ifi = if_update(&f);
 
       if (!scan)

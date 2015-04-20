@@ -1,6 +1,6 @@
 Summary: BIRD Internet Routing Daemon
 Name: bird
-Version: 1.4.5
+Version: 1.5.0
 Release: 1
 Copyright: GPL
 Group: Networking/Daemons
@@ -41,11 +41,11 @@ install $RPM_SOURCE_DIR/birdc6 usr/sbin/birdc6
 %post
 /sbin/ldconfig
 /sbin/chkconfig --add bird
- 
+
 %preun
 if [ $1 = 0 ] ; then
         /sbin/chkconfig --del bird
-fi                                                                              
+fi
 
 %files
 %attr(755,root,root) /usr/sbin/bird

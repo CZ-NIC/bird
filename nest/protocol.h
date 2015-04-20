@@ -179,7 +179,8 @@ struct proto {
    *	   reload_routes   Request protocol to reload all its routes to the core
    *			(using rte_update()). Returns: 0=reload cannot be done,
    *			1= reload is scheduled and will happen (asynchronously).
-   *	   feed_done	Notify protocol about finish of route feeding.
+   *	   feed_begin	Notify protocol about beginning of route feeding.
+   *	   feed_end	Notify protocol about finish of route feeding.
    */
 
   void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
@@ -190,7 +191,8 @@ struct proto {
   void (*store_tmp_attrs)(struct rte *rt, struct ea_list *attrs);
   int (*import_control)(struct proto *, struct rte **rt, struct ea_list **attrs, struct linpool *pool);
   int (*reload_routes)(struct proto *);
-  void (*feed_done)(struct proto *);
+  void (*feed_begin)(struct proto *, int initial);
+  void (*feed_end)(struct proto *);
 
   /*
    *	Routing entry hooks (called only for routes belonging to this protocol):

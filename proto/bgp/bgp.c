@@ -377,6 +377,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   p->conn = conn;
   p->last_error_class = 0;
   p->last_error_code = 0;
+  p->feed_state = BFS_NONE;
+  p->load_state = BFS_NONE;
   bgp_init_bucket_table(p);
   bgp_init_prefix_table(p, 8);
 
@@ -393,6 +395,12 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
   if (p->gr_active && (!conn->peer_gr_able || !(conn->peer_gr_aflags & BGP_GRF_FORWARDING)))
     bgp_graceful_restart_done(p);
+
+  /* GR capability implies that neighbor will send End-of-RIB */
+  if (conn->peer_gr_aware)
+    p->load_state = BFS_LOADING;
+
+  /* proto_notify_state() will likely call bgp_feed_begin(), setting p->feed_state */
 
   bgp_conn_set_state(conn, BS_ESTABLISHED);
   proto_notify_state(&p->p, PS_UP);
@@ -504,6 +512,47 @@ bgp_graceful_restart_timeout(timer *t)
   bgp_stop(p, 0);
 }
 
+
+/**
+ * bgp_refresh_begin - start incoming enhanced route refresh sequence
+ * @p: BGP instance
+ *
+ * This function is called when an incoming enhanced route refresh sequence is
+ * started by the neighbor, demarcated by the BoRR packet. The function updates
+ * the load state and starts the routing table refresh cycle. Note that graceful
+ * restart also uses routing table refresh cycle, but RFC 7313 and load states
+ * ensure that these two sequences do not overlap.
+ */
+void
+bgp_refresh_begin(struct bgp_proto *p)
+{
+  if (p->load_state == BFS_LOADING)
+    { log(L_WARN "%s: BEGIN-OF-RR received before END-OF-RIB, ignoring", p->p.name); return; }
+
+  p->load_state = BFS_REFRESHING;
+  rt_refresh_begin(p->p.main_ahook->table, p->p.main_ahook);
+}
+
+/**
+ * bgp_refresh_end - finish incoming enhanced route refresh sequence
+ * @p: BGP instance
+ *
+ * This function is called when an incoming enhanced route refresh sequence is
+ * finished by the neighbor, demarcated by the EoRR packet. The function updates
+ * the load state and ends the routing table refresh cycle. Routes not received
+ * during the sequence are removed by the nest.
+ */
+void
+bgp_refresh_end(struct bgp_proto *p)
+{
+  if (p->load_state != BFS_REFRESHING)
+    { log(L_WARN "%s: END-OF-RR received without prior BEGIN-OF-RR, ignoring", p->p.name); return; }
+
+  p->load_state = BFS_NONE;
+  rt_refresh_end(p->p.main_ahook->table, p->p.main_ahook);
+}
+
+
 static void
 bgp_send_open(struct bgp_conn *conn)
 {
@@ -514,6 +563,7 @@ bgp_send_open(struct bgp_conn *conn)
   conn->peer_refresh_support = 0;
   conn->peer_as4_support = 0;
   conn->peer_add_path = 0;
+  conn->peer_enhanced_refresh_support = 0;
   conn->peer_gr_aware = 0;
   conn->peer_gr_able = 0;
   conn->peer_gr_time = 0;
@@ -959,15 +1009,55 @@ bgp_reload_routes(struct proto *P)
 }
 
 static void
-bgp_feed_done(struct proto *P)
+bgp_feed_begin(struct proto *P, int initial)
 {
   struct bgp_proto *p = (struct bgp_proto *) P;
-  if (!p->conn || !p->cf->gr_mode || p->p.refeeding)
+
+  /* This should not happen */
+  if (!p->conn)
     return;
 
-  p->send_end_mark = 1;
+  if (initial && p->cf->gr_mode)
+    p->feed_state = BFS_LOADING;
+
+  /* It is refeed and both sides support enhanced route refresh */
+  if (!initial && p->cf->enable_refresh &&
+      p->conn->peer_enhanced_refresh_support)
+    {
+      /* BoRR must not be sent before End-of-RIB */
+      if (p->feed_state == BFS_LOADING || p->feed_state == BFS_LOADED)
+	return;
+
+      p->feed_state = BFS_REFRESHING;
+      bgp_schedule_packet(p->conn, PKT_BEGIN_REFRESH);
+    }
+}
+
+static void
+bgp_feed_end(struct proto *P)
+{
+  struct bgp_proto *p = (struct bgp_proto *) P;
+
+  /* This should not happen */
+  if (!p->conn)
+    return;
+
+  /* Non-demarcated feed ended, nothing to do */
+  if (p->feed_state == BFS_NONE)
+    return;
+
+  /* Schedule End-of-RIB packet */
+  if (p->feed_state == BFS_LOADING)
+    p->feed_state = BFS_LOADED;
+
+  /* Schedule EoRR packet */
+  if (p->feed_state == BFS_REFRESHING)
+    p->feed_state = BFS_REFRESHED;
+
+  /* Kick TX hook */
   bgp_schedule_packet(p->conn, PKT_UPDATE);
 }
+
 
 static void
 bgp_start_locked(struct object_lock *lock)
@@ -1150,7 +1240,8 @@ bgp_init(struct proto_config *C)
   P->import_control = bgp_import_control;
   P->neigh_notify = bgp_neigh_notify;
   P->reload_routes = bgp_reload_routes;
-  P->feed_done = bgp_feed_done;
+  P->feed_begin = bgp_feed_begin;
+  P->feed_end = bgp_feed_end;
   P->rte_better = bgp_rte_better;
   P->rte_recalculate = c->deterministic_med ? bgp_rte_recalculate : NULL;
 
@@ -1426,8 +1517,9 @@ bgp_show_proto_info(struct proto *P)
   else if (P->proto_state == PS_UP)
     {
       cli_msg(-1006, "    Neighbor ID:      %R", p->remote_id);
-      cli_msg(-1006, "    Neighbor caps:   %s%s%s%s%s",
+      cli_msg(-1006, "    Neighbor caps:   %s%s%s%s%s%s",
 	      c->peer_refresh_support ? " refresh" : "",
+	      c->peer_enhanced_refresh_support ? " enhanced-refresh" : "",
 	      c->peer_gr_able ? " restart-able" : (c->peer_gr_aware ? " restart-aware" : ""),
 	      c->peer_as4_support ? " AS4" : "",
 	      (c->peer_add_path & ADD_PATH_RX) ? " add-path-rx" : "",

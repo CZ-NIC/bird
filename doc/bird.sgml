@@ -344,6 +344,23 @@ protocol rip {
 	of connects and disconnects, 2 and higher for logging of all client
 	commands). Default: 0.
 
+	<tag>debug latency <m/switch/</tag>
+	Activate tracking of elapsed time for internal events. Recent events
+	could be examined using <cf/dump events/ command. Default: off.
+
+	<tag>debug latency limit <m/time/</tag>
+	If <cf/debug latency/ is enabled, this option allows to specify a limit
+	for elapsed time. Events exceeding the limit are logged. Default: 1 s.
+
+	<tag>watchdog warning <m/time/</tag>
+	Set time limit for I/O loop cycle. If one iteration took more time to
+	complete, a warning is logged. Default: 5 s.
+
+	<tag>watchdog timeout <m/time/</tag>
+	Set time limit for I/O loop cycle. If the limit is breached, BIRD is
+	killed by abort signal. The timeout has effective granularity of
+	seconds, zero means disabled. Default: disabled (0).
+
 	<tag>mrtdump "<m/filename/"</tag>
 	Set MRTdump file name. This option must be specified to allow MRTdump
 	feature. Default: no dump file.
@@ -1787,13 +1804,17 @@ using the following configuration parameters:
 	other means. Default: 0 (no local AS number allowed).
 
 	<tag>enable route refresh <m/switch/</tag>
-	When BGP speaker changes its import filter, it has to re-examine all
-	routes received from its neighbor against the new filter. As these
-	routes might not be available, there is a BGP protocol extension Route
-	Refresh (specified in RFC 2918) that allows BGP speaker to request
-	re-advertisement of all routes from its neighbor. This option specifies
-	whether BIRD advertises this capability and accepts such requests. Even
-	when disabled, BIRD can send route refresh requests. Default: on.
+	After the initial route exchange, BGP protocol uses incremental updates
+	to keep BGP speakers synchronized. Sometimes (e.g., if BGP speaker
+	changes its import filter, or if there is suspicion of inconsistency) it
+	is necessary to do a new complete route exchange. BGP protocol extension
+	Route Refresh (RFC 2918) allows BGP speaker to request re-advertisement
+	of all routes from its neighbor. BGP protocol extension Enhanced Route
+	Refresh (RFC 7313) specifies explicit begin and end for such exchanges,
+	therefore the receiver can remove stale routes that were not advertised
+	during the exchange. This option specifies whether BIRD advertises these
+	capabilities and supports related procedures. Note that even when
+	disabled, BIRD can send route refresh requests. Default: on.
 
 	<tag>graceful restart <m/switch/|aware</tag>
 	When a BGP speaker restarts or crashes, neighbors will discard all

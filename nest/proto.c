@@ -942,8 +942,8 @@ proto_feed_more(void *P)
       p->export_state = ES_READY;
       proto_log_state_change(p);
 
-      if (p->feed_done)
-	p->feed_done(p);
+      if (p->feed_end)
+	p->feed_end(p);
     }
   else
     {
@@ -976,6 +976,9 @@ proto_schedule_feed(struct proto *p, int initial)
 
   p->attn->hook = initial ? proto_feed_initial : proto_feed_more;
   ev_schedule(p->attn);
+
+  if (p->feed_begin)
+    p->feed_begin(p, initial);
 }
 
 /*

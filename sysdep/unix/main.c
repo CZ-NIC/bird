@@ -168,6 +168,9 @@ sysdep_preconfig(struct config *c)
 {
   init_list(&c->logfiles);
 
+  c->latency_limit = UNIX_DEFAULT_LATENCY_LIMIT;
+  c->watchdog_warning = UNIX_DEFAULT_WATCHDOG_WARNING;
+
 #ifdef PATH_IPROUTE_DIR
   read_iproute_table(PATH_IPROUTE_DIR "/rt_protos", "ipp_", 256);
   read_iproute_table(PATH_IPROUTE_DIR "/rt_realms", "ipr_", 256);
@@ -585,6 +588,8 @@ handle_sigterm(int sig UNUSED)
   async_shutdown_flag = 1;
 }
 
+void watchdog_sigalrm(int sig UNUSED);
+
 static void
 signal_init(void)
 {
@@ -600,6 +605,9 @@ signal_init(void)
   sa.sa_handler = handle_sigterm;
   sa.sa_flags = SA_RESTART;
   sigaction(SIGTERM, &sa, NULL);
+  sa.sa_handler = watchdog_sigalrm;
+  sa.sa_flags = 0;
+  sigaction(SIGALRM, &sa, NULL);
   signal(SIGPIPE, SIG_IGN);
 }
 

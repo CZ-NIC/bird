@@ -95,6 +95,8 @@ merge_nexthops(struct ospf_proto *p, struct mpnh *s1, struct mpnh *s2, int r1, i
   struct mpnh **n = &root;
   int count = p->ecmp;
 
+  ASSERT(p->ecmp);
+
   /*
    * r1, r2 signalize whether we can reuse nexthops from s1, s2.
    * New nexthops (s2, new) can be reused if they are not inherited
@@ -152,6 +154,9 @@ fix_device_nexthops(struct ospf_proto *p, const struct mpnh *n, ip_addr gw)
   struct mpnh *root2 = NULL;
   struct mpnh **nn1 = &root1;
   struct mpnh **nn2 = &root2;
+
+  if (!p->ecmp)
+    return new_nexthop(p, gw, n->iface, n->weight);
 
   /* This is a bit tricky. We cannot just copy the list and update n->gw,
      because the list should stay sorted, so we create two lists, one with new

@@ -1023,7 +1023,7 @@ krt_reload_routes(struct proto *P)
 }
 
 static void
-krt_feed_done(struct proto *P)
+krt_feed_end(struct proto *P)
 {
   struct krt_proto *p = (struct krt_proto *) P;
 
@@ -1056,7 +1056,7 @@ krt_init(struct proto_config *c)
   p->p.rt_notify = krt_rt_notify;
   p->p.if_notify = krt_if_notify;
   p->p.reload_routes = krt_reload_routes;
-  p->p.feed_done = krt_feed_done;
+  p->p.feed_end = krt_feed_end;
   p->p.make_tmp_attrs = krt_make_tmp_attrs;
   p->p.store_tmp_attrs = krt_store_tmp_attrs;
   p->p.rte_same = krt_rte_same;

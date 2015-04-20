@@ -103,6 +103,7 @@ struct bgp_conn {
   u8 peer_refresh_support;		/* Peer supports route refresh [RFC2918] */
   u8 peer_as4_support;			/* Peer supports 4B AS numbers [RFC4893] */
   u8 peer_add_path;			/* Peer supports ADD-PATH [draft] */
+  u8 peer_enhanced_refresh_support;	/* Peer supports enhanced refresh [RFC7313] */
   u8 peer_gr_aware;
   u8 peer_gr_able;
   u16 peer_gr_time;
@@ -127,6 +128,8 @@ struct bgp_proto {
   int rs_client;			/* Whether neighbor is RS client of me */
   u8 gr_ready;				/* Neighbor could do graceful restart */
   u8 gr_active;				/* Neighbor is doing graceful restart */
+  u8 feed_state;			/* Feed state (TX) for EoR, RR packets, see BFS_* */
+  u8 load_state;			/* Load state (RX) for EoR, RR packets, see BFS_* */
   struct bgp_conn *conn;		/* Connection we have established */
   struct bgp_conn outgoing_conn;	/* Outgoing connection we're working with */
   struct bgp_conn incoming_conn;	/* Incoming connection we have neither accepted nor rejected yet */
@@ -144,7 +147,6 @@ struct bgp_proto {
   slab *prefix_slab;			/* Slab holding prefix nodes */
   list bucket_queue;			/* Queue of buckets to send */
   struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
-  unsigned send_end_mark;		/* End-of-RIB mark scheduled for transmit */
   unsigned startup_delay;		/* Time to delay protocol startup by due to errors */
   bird_clock_t last_proto_error;	/* Time of last error that leads to protocol stop */
   u8 last_error_class; 			/* Error class of last error */
@@ -196,6 +198,8 @@ void bgp_conn_enter_close_state(struct bgp_conn *conn);
 void bgp_conn_enter_idle_state(struct bgp_conn *conn);
 void bgp_handle_graceful_restart(struct bgp_proto *p);
 void bgp_graceful_restart_done(struct bgp_proto *p);
+void bgp_refresh_begin(struct bgp_proto *p);
+void bgp_refresh_end(struct bgp_proto *p);
 void bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code);
 void bgp_stop(struct bgp_proto *p, unsigned subcode);
 
@@ -263,7 +267,8 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 #define PKT_UPDATE		0x02
 #define PKT_NOTIFICATION	0x03
 #define PKT_KEEPALIVE		0x04
-#define PKT_ROUTE_REFRESH	0x05
+#define PKT_ROUTE_REFRESH	0x05	/* [RFC2918] */
+#define PKT_BEGIN_REFRESH	0x1e	/* Dummy type for BoRR packet [RFC7313] */
 #define PKT_SCHEDULE_CLOSE	0x1f	/* Used internally to schedule socket close */
 
 /* Attributes */
@@ -306,19 +311,46 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 #define BS_MAX			7
 
 /* BGP start states
- * 
+ *
  * Used in PS_START for fine-grained specification of starting state.
  *
- * When BGP protocol is started by core, it goes to BSS_PREPARE. When BGP protocol
- * done what is neccessary to start itself (like acquiring the lock), it goes to BSS_CONNECT.
- * When some connection attempt failed because of option or capability error, it goes to
- * BSS_CONNECT_NOCAP.
+ * When BGP protocol is started by core, it goes to BSS_PREPARE. When BGP
+ * protocol done what is neccessary to start itself (like acquiring the lock),
+ * it goes to BSS_CONNECT.  When some connection attempt failed because of
+ * option or capability error, it goes to BSS_CONNECT_NOCAP.
  */
 
 #define BSS_PREPARE		0	/* Used before ordinary BGP started, i. e. waiting for lock */
 #define BSS_DELAY		1	/* Startup delay due to previous errors */
 #define BSS_CONNECT		2	/* Ordinary BGP connecting */
 #define BSS_CONNECT_NOCAP	3	/* Legacy BGP connecting (without capabilities) */
+
+
+/* BGP feed states (TX)
+ *
+ * RFC 4724 specifies that an initial feed should end with End-of-RIB mark.
+ *
+ * RFC 7313 specifies that a route refresh should be demarcated by BoRR and EoRR packets.
+ *
+ * These states (stored in p->feed_state) are used to keep track of these
+ * requirements. When such feed is started, BFS_LOADING / BFS_REFRESHING is
+ * set. When it ended, BFS_LOADED / BFS_REFRESHED is set to schedule End-of-RIB
+ * or EoRR packet. When the packet is sent, the state returned to BFS_NONE.
+ *
+ * Note that when a non-demarcated feed (e.g. plain RFC 4271 initial load
+ * without End-of-RIB or plain RFC 2918 route refresh without BoRR/EoRR
+ * demarcation) is active, BFS_NONE is set.
+ *
+ * BFS_NONE, BFS_LOADING and BFS_REFRESHING are also used as load states (RX)
+ * with correspondent semantics (-, expecting End-of-RIB, expecting EoRR).
+ */
+
+#define BFS_NONE		0	/* No feed or original non-demarcated feed */
+#define BFS_LOADING		1	/* Initial feed active, End-of-RIB planned */
+#define BFS_LOADED		2	/* Loading done, End-of-RIB marker scheduled */
+#define BFS_REFRESHING		3	/* Route refresh (introduced by BoRR) active */
+#define BFS_REFRESHED		4	/* Refresh done, EoRR packet scheduled */
+
 
 /* Error classes */
 

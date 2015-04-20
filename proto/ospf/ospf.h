@@ -916,9 +916,11 @@ static inline void ospf_send_to_des(struct ospf_iface *ifa)
     ospf_send_to_bdr(ifa);
 }
 
+#ifndef PARSER
 #define DROP(DSC,VAL) do { err_dsc = DSC; err_val = VAL; goto drop; } while(0)
 #define DROP1(DSC) do { err_dsc = DSC; goto drop; } while(0)
 #define SKIP(DSC) do { err_dsc = DSC; goto skip; } while(0)
+#endif
 
 static inline uint ospf_pkt_hdrlen(struct ospf_proto *p)
 { return ospf_is_v2(p) ? (sizeof(struct ospf_packet) + sizeof(union ospf_auth)) : sizeof(struct ospf_packet); }
