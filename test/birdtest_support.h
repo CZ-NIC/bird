@@ -24,3 +24,9 @@ die(const char *msg, ...)
   va_end(argptr);
   exit(3);
 };
+
+void
+io_log_event(void *hook, void *data)
+{
+  bt_debug("This is io_log_event mockup. \n");
+};
