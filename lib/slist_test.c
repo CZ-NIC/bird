@@ -65,7 +65,7 @@ is_empty_list_well_unlinked(void)
 }
 
 static void
-init_list_2(slist *l, struct snode nodes[])
+init_list__(slist *l, struct snode nodes[])
 {
   s_init_list(l);
 
@@ -80,7 +80,7 @@ init_list_2(slist *l, struct snode nodes[])
 static void
 init_list_(void)
 {
-  init_list_2(&lst, nodes);
+  init_list__(&lst, nodes);
 }
 
 static int
@@ -222,10 +222,10 @@ t_add_tail_list(void)
   snode nodes2[MAX_NUM];
   slist l2;
 
-  init_list_2(&lst, SNODE &nodes);
+  init_list__(&lst, SNODE &nodes);
   fill_list2(&lst, SNODE &nodes);
 
-  init_list_2(&l2, SNODE &nodes2);
+  init_list__(&l2, SNODE &nodes2);
   fill_list2(&l2, SNODE &nodes2);
 
   s_add_tail_list(&lst, &l2);

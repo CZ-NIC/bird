@@ -71,7 +71,7 @@ is_empty_list_well_unlinked(void)
 }
 
 static void
-init_list_2(list *l, struct node nodes[])
+init_list__(list *l, struct node nodes[])
 {
   init_list(l);
 
@@ -86,7 +86,7 @@ init_list_2(list *l, struct node nodes[])
 static void
 init_list_(void)
 {
-  init_list_2(&l, (node *) nodes);
+  init_list__(&l, (node *) nodes);
 }
 
 static int
@@ -256,10 +256,10 @@ t_add_tail_list(void)
   node nodes2[MAX_NUM];
   list l2;
 
-  init_list_2(&l, (node *) nodes);
+  init_list__(&l, (node *) nodes);
   fill_list2(&l, (node *) nodes);
 
-  init_list_2(&l2, (node *) nodes2);
+  init_list__(&l2, (node *) nodes2);
   fill_list2(&l2, (node *) nodes2);
 
   add_tail_list(&l, &l2);
