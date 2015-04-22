@@ -3,8 +3,11 @@
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
- *	Based on the code from libucw6.4
+ *	Based on the code from libucw-6.4
  *	(c) 2008--2009 Martin Mares <mj@ucw.cz>
+ *
+ *	Based on the code from libgcrypt-1.2.3, which is
+ *	(c) 1998, 2001, 2002, 2003 Free Software Foundation, Inc.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
