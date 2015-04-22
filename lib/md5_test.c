@@ -13,27 +13,21 @@
 #include "lib/md5.h"
 #include "lib/md5.c" /* REMOVE ME */
 
-#define MD5_BYTES 16
-#define MD5_CHARS 32
+#define MD5_SIZE 	16
+#define MD5_HEX_SIZE 	33
 
 static void
-get_md5(unsigned char hash[MD5_BYTES], unsigned char const *str)
+get_md5(const char *str, char (*out_hash)[MD5_HEX_SIZE])
 {
+  unsigned char hash[MD5_SIZE];
   struct MD5Context ctxt;
 
   MD5Init(&ctxt);
   MD5Update(&ctxt, str, strlen(str));
   MD5Final(hash, &ctxt);
-}
-
-static void
-compute_md5(const char *str, char (*out_hash)[MD5_CHARS+1])
-{
-  unsigned char hash[MD5_BYTES];
-  get_md5(hash, str);
 
   int i;
-  for(i = 0; i < MD5_BYTES; i++)
+  for(i = 0; i < MD5_SIZE; i++)
     sprintf(*out_hash + i*2, "%02x", hash[i]);
 }
 
@@ -42,8 +36,7 @@ t_md5(void)
 {
   struct in_out {
     char *in;
-    char out[MD5_CHARS+1];
-    char fn_out[MD5_CHARS+1];
+    char out[MD5_HEX_SIZE];
   } in_out[] = {
       {
 	  .in  = "",
@@ -75,7 +68,7 @@ t_md5(void)
       },
   };
 
-  bt_assert_fn_in_out(compute_md5, in_out, "'%s'", "'%s'");
+  bt_assert_fn_in_out(get_md5, in_out, "'%s'", "'%s'");
 
   return BT_SUCCESS;
 }
@@ -85,7 +78,7 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_suite(t_md5, "Test Suite from RFC1321");
+  bt_test_suite(t_md5, "Test Suite by RFC 1321");
 
   return bt_end();
 }
