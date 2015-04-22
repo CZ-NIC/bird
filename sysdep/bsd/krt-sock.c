@@ -336,7 +336,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   sockaddr dst, gate, mask;
   ip_addr idst, igate, imask;
   void *body = (char *)msg->buf;
-  int new = (msg->rtm.rtm_type == RTM_ADD);
+  int new = (msg->rtm.rtm_type != RTM_DELETE);
   char *errmsg = "KRT: Invalid route received";
   int flags = msg->rtm.rtm_flags;
   int addrs = msg->rtm.rtm_addrs;
@@ -732,6 +732,7 @@ krt_read_msg(struct proto *p, struct ks_msg *msg, int scan)
       if(!scan) return;
     case RTM_ADD:
     case RTM_DELETE:
+    case RTM_CHANGE:
       krt_read_route(msg, (struct krt_proto *)p, scan);
       break;
     case RTM_IFANNOUNCE:
