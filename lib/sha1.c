@@ -47,12 +47,12 @@ transform(sha1_context *hd, const byte *data)
   e = hd->h4;
 
 #ifdef CPU_BIG_ENDIAN
-  memcpy( x, data, 64 );
+  memcpy(x, data, 64);
 #else
   {
     int i;
     for (i=0; i<16; i++)
-      x[i] = get_u32_be(data+4*i);
+      x[i] = htonl(*((u32*)(data+4*i)));
   }
 #endif
 
@@ -219,7 +219,7 @@ byte *
 sha1_final(sha1_context *hd)
 {
   u32 t, msb, lsb;
-  byte *p;
+  u32 *p;
 
   sha1_update(hd, NULL, 0); /* flush */;
 
@@ -260,10 +260,10 @@ sha1_final(sha1_context *hd)
   hd->buf[61] = lsb >> 16;
   hd->buf[62] = lsb >>  8;
   hd->buf[63] = lsb	   ;
-  transform( hd, hd->buf );
+  transform(hd, hd->buf);
 
-  p = hd->buf;
-#define X(a) do { put_u32_be(p, hd->h##a); p += 4; } while(0)
+  p = (u32*) hd->buf;
+#define X(a) do { *(p++) = ntohl(hd->h##a); } while(0)
   X(0);
   X(1);
   X(2);
