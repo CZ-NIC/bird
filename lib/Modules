@@ -1,3 +1,4 @@
+sha256.c
 sha1.c
 sha1.h
 sha1_hmac.c

@@ -6,6 +6,8 @@
 #include "lib/xmalloc.c"	/* REMOVE ME */
 #include "lib/bitops.c"		/* REMOVE ME */
 
+#define bug(msg, ...)		debug("BUG: " msg, ##__VA_ARGS__)
+
 void
 debug(const char *msg, ...)
 {
