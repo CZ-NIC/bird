@@ -12,11 +12,11 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#include <string.h>
+
 #include "lib/null.h"
 #include "lib/sha1.h"
 #include "lib/unaligned.h"
-
-#include <string.h>
 
 void
 sha1_init(sha1_context *hd)
@@ -54,29 +54,27 @@ transform(sha1_context *hd, const byte *data)
     x[i] = get_u32(data+4*i);
 #endif
 
+#define K1		0x5A827999L
+#define K2		0x6ED9EBA1L
+#define K3		0x8F1BBCDCL
+#define K4  		0xCA62C1D6L
+#define F1(x,y,z)	( z ^ ( x & ( y ^ z ) ) )
+#define F2(x,y,z)	( x ^ y ^ z )
+#define F3(x,y,z)	( ( x & y ) | ( z & ( x | y ) ) )
+#define F4(x,y,z)	( x ^ y ^ z )
 
-#define K1  0x5A827999L
-#define K2  0x6ED9EBA1L
-#define K3  0x8F1BBCDCL
-#define K4  0xCA62C1D6L
-#define F1(x,y,z)   ( z ^ ( x & ( y ^ z ) ) )
-#define F2(x,y,z)   ( x ^ y ^ z )
-#define F3(x,y,z)   ( ( x & y ) | ( z & ( x | y ) ) )
-#define F4(x,y,z)   ( x ^ y ^ z )
+#define M(i) (tm = x[i&0x0f] ^ x[(i-14)&0x0f] ^ x[(i-8)&0x0f] ^ x[(i-3)&0x0f], (x[i&0x0f] = ROL(tm, 1)))
 
+/** Bitwise rotation of an unsigned int to the left **/
+#define	ROL(x, bits) (((x) << (bits)) | ((uint)(x) >> (sizeof(uint)*8 - (bits))))
 
-#define M(i) ( tm =   x[i&0x0f] ^ x[(i-14)&0x0f] \
-		    ^ x[(i-8)&0x0f] ^ x[(i-3)&0x0f] \
-	       , (x[i&0x0f] = ROL(tm, 1)) )
+  #define R(a, b, c, d, e, f, k, m)		\
+    do 						\
+    {						\
+      e += ROL(a, 5) + f(b, c, d) + k + m;	\
+      b = ROL( b, 30 );				\
+    } while(0)
 
-#define	ROL(x, bits) (((x) << (bits)) | ((uint)(x) >> (sizeof(uint)*8 - (bits))))		/** Bitwise rotation of an unsigned int to the left **/
-
-  #define R(a,b,c,d,e,f,k,m)  do { e += ROL( a, 5 )     \
-				      + f( b, c, d )  \
-				      + k	      \
-				      + m;	      \
-				 b = ROL( b, 30 );    \
-			       } while(0)
   R( a, b, c, d, e, F1, K1, x[ 0] );
   R( e, a, b, c, d, F1, K1, x[ 1] );
   R( d, e, a, b, c, F1, K1, x[ 2] );
@@ -166,7 +164,6 @@ transform(sha1_context *hd, const byte *data)
   hd->h4 += e;
 }
 
-
 /*
  * Update the message digest with the contents
  * of INBUF with length INLEN.
@@ -174,36 +171,35 @@ transform(sha1_context *hd, const byte *data)
 void
 sha1_update(sha1_context *hd, const byte *inbuf, uint inlen)
 {
-  if( hd->count == 64 )  /* flush the buffer */
+  if (hd->count == 64)  /* flush the buffer */
   {
-    transform( hd, hd->buf );
+    transform(hd, hd->buf);
     hd->count = 0;
     hd->nblocks++;
   }
-  if( !inbuf )
+  if (!inbuf)
     return;
 
-  if( hd->count )
+  if (hd->count)
   {
-    for( ; inlen && hd->count < 64; inlen-- )
+    for (; inlen && hd->count < 64; inlen--)
       hd->buf[hd->count++] = *inbuf++;
     sha1_update( hd, NULL, 0 );
-    if( !inlen )
+    if(!inlen)
       return;
   }
 
-  while( inlen >= 64 ) 
+  while (inlen >= 64)
   {
-    transform( hd, inbuf );
+    transform(hd, inbuf);
     hd->count = 0;
     hd->nblocks++;
     inlen -= 64;
     inbuf += 64;
   }
-  for( ; inlen && hd->count < 64; inlen-- )
+  for (; inlen && hd->count < 64; inlen--)
     hd->buf[hd->count++] = *inbuf++;
 }
-
 
 /*
  * The routine final terminates the computation and
@@ -212,7 +208,6 @@ sha1_update(sha1_context *hd, const byte *inbuf, uint inlen)
  * handle will the destroy the returned buffer.
  * Returns: 20 bytes representing the digest.
  */
-
 byte *
 sha1_final(sha1_context *hd)
 {
@@ -227,7 +222,7 @@ sha1_final(sha1_context *hd)
   msb = t >> 26;
   /* add the count */
   t = lsb;
-  if( (lsb += hd->count) < t )
+  if ((lsb += hd->count) < t)
     msb++;
   /* multiply by 8 to make a bit count */
   t = lsb;
@@ -235,16 +230,16 @@ sha1_final(sha1_context *hd)
   msb <<= 3;
   msb |= t >> 29;
 
-  if( hd->count < 56 )  /* enough room */
+  if (hd->count < 56)  /* enough room */
   {
     hd->buf[hd->count++] = 0x80; /* pad */
-    while( hd->count < 56 )
+    while (hd->count < 56)
       hd->buf[hd->count++] = 0;  /* pad */
   }
   else  /* need one extra block */
   {
     hd->buf[hd->count++] = 0x80; /* pad character */
-    while( hd->count < 64 )
+    while (hd->count < 64)
       hd->buf[hd->count++] = 0;
     sha1_update(hd, NULL, 0);  /* flush */;
     memset(hd->buf, 0, 56 ); /* fill next block with zeroes */

@@ -12,10 +12,10 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#include <string.h>
+
 #include "lib/sha1.h"
 #include "lib/unaligned.h"
-
-#include <string.h>
 
 void
 sha1_hmac_init(sha1_hmac_context *hd, const byte *key, uint keylen)
