@@ -49,11 +49,9 @@ transform(sha1_context *hd, const byte *data)
 #ifdef CPU_BIG_ENDIAN
   memcpy(x, data, 64);
 #else
-  {
-    int i;
-    for (i=0; i<16; i++)
-      x[i] = htonl(*((u32*)(data+4*i)));
-  }
+  int i;
+  for (i = 0; i < 16; i++)
+    x[i] = get_u32(data+4*i);
 #endif
 
 
@@ -263,7 +261,7 @@ sha1_final(sha1_context *hd)
   transform(hd, hd->buf);
 
   p = (u32*) hd->buf;
-#define X(a) do { *(p++) = ntohl(hd->h##a); } while(0)
+#define X(a) do { put_u32(p, hd->h##a); p++; } while(0)
   X(0);
   X(1);
   X(2);
