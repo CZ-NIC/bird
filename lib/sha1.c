@@ -285,28 +285,3 @@ sha1_hash_buffer(byte *outbuf, const byte *buffer, uint length)
   sha1_update(&hd, buffer, length);
   memcpy(outbuf, sha1_final(&hd), SHA1_SIZE);
 }
-
-#ifdef TEST
-
-#include <stdio.h>
-#include <unistd.h>
-#include <ucw/string.h>
-
-int main(void)
-{
-  sha1_context hd;
-  byte buf[3];
-  int cnt;
-
-  sha1_init(&hd);
-  while ((cnt = read(0, buf, sizeof(buf))) > 0)
-    sha1_update(&hd, buf, cnt);
-
-  char text[SHA1_HEX_SIZE];
-  mem_to_hex(text, sha1_final(&hd), SHA1_SIZE, 0);
-  puts(text);
-
-  return 0;
-}
-
-#endif
