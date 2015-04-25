@@ -38,7 +38,7 @@ void bt_result(const char *result, const char *msg, ...);
 
 #define BT_RANDOM_SEED 			982451653
 
-#define BT_BUFFER_SIZE 			1000
+#define BT_BUFFER_SIZE 			10000
 
 #define BT_PROMPT_GREEN 		"\e[1;32m"
 #define BT_PROMPT_RED 			"\e[1;31m"
