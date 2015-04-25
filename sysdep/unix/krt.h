@@ -66,6 +66,7 @@ struct krt_proto {
   node krt_node;		/* Node in krt_proto_list */
   byte ready;			/* Initial feed has been finished */
   byte initialized;		/* First scan has been finished */
+  byte reload;			/* Next scan is doing reload */
 };
 
 extern pool *krt_pool;

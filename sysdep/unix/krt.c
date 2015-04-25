@@ -451,7 +451,7 @@ again:
       *pbest = best->next;
       best->next = n->routes;
       n->routes = best;
-      if (best != old_best || !(n->n.flags & KRF_INSTALLED))
+      if (best != old_best || !(n->n.flags & KRF_INSTALLED) || p->reload)
 	{
 	  DBG("%I/%d: announcing (metric=%d)\n", n->n.prefix, n->n.pxlen, best->u.krt.metric);
 	  krt_learn_announce_update(p, best);
@@ -461,6 +461,8 @@ again:
 	DBG("%I/%d: uptodate (metric=%d)\n", n->n.prefix, n->n.pxlen, best->u.krt.metric);
     }
   FIB_ITERATE_END(f);
+
+  p->reload = 0;
 }
 
 static void
@@ -1031,7 +1033,10 @@ krt_reload_routes(struct proto *P)
   /* Although we keep learned routes in krt_table, we rather schedule a scan */
 
   if (KRT_CF->learn)
+  {
+    p->reload = 1;
     krt_scan_timer_kick(p);
+  }
 
   return 1;
 }
