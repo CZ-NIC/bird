@@ -961,7 +961,21 @@ krt_import_control(struct proto *P, rte **new, ea_list **attrs, struct linpool *
   rte *e = *new;
 
   if (e->attrs->src->proto == P)
+  {
+#ifdef CONFIG_SINGLE_ROUTE
+    /*
+     * Implicit withdraw - when the imported kernel route becomes the best one,
+     * we know that the previous one exported to the kernel was already removed,
+     * but if we processed the update as usual, we would send withdraw to the
+     * kernel, which would remove the new imported route instead.
+     *
+     * We will remove KRT_INSTALLED flag, which stops such withdraw to be
+     * processed in krt_rt_notify() and krt_replace_rte().
+     */
+    e->net->n.flags &= ~KRF_INSTALLED;
+#endif
     return -1;
+  }
 
   if (!KRT_CF->devroutes &&
       (e->attrs->dest == RTD_DEVICE) &&
