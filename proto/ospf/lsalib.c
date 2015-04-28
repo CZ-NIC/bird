@@ -205,7 +205,7 @@ lsasum_calculate(struct ospf_lsa_header *h, void *body)
   buf_dump("CALC", buf, length);
   */
 
-  (void) lsasum_check(h, body);
+  (void) lsasum_check(h, body, 1);
 
   //  log(L_WARN "Checksum result %4x", h->checksum);
 
@@ -214,11 +214,21 @@ lsasum_calculate(struct ospf_lsa_header *h, void *body)
 }
 
 /*
- * Note, that this function expects that LSA is in big endianity
- * It also returns value in big endian
+ * Calculates the Fletcher checksum of an OSPF LSA.
+ *
+ * If 'update' is non-zero, the checkbytes (X and Y in RFC905) are calculated
+ * and the checksum field in the header is updated. The return value is the
+ * checksum as placed in the header (in network byte order).
+ *
+ * If 'update' is zero, only C0 and C1 are calculated and the header is kept
+ * intact. The return value is a combination of C0 and C1; if the return value
+ * is exactly zero the checksum is considered valid, any non-zero value is
+ * invalid.
+ *
+ * Note that this function expects the input LSA to be in network byte order.
  */
 u16
-lsasum_check(struct ospf_lsa_header *h, void *body)
+lsasum_check(struct ospf_lsa_header *h, void *body, int update)
 {
   u8 *sp, *ep, *p, *q, *b;
   int c0 = 0, c1 = 0;
@@ -229,7 +239,7 @@ lsasum_check(struct ospf_lsa_header *h, void *body)
   sp = (char *) h;
   sp += 2; /* Skip Age field */
   length = ntohs(h->length) - 2;
-  h->checksum = 0;
+  if (update) h->checksum = 0;
 
   for (ep = sp + length; sp < ep; sp = q)
   {				/* Actually MODX is very large, do we need the for-cyclus? */
@@ -257,6 +267,14 @@ lsasum_check(struct ospf_lsa_header *h, void *body)
     }
     c0 %= 255;
     c1 %= 255;
+  }
+
+  if (!update) {
+    /*
+     * When testing the checksum, we don't need to calculate x and y. The
+     * checksum passes if c0 and c1 are both 0.
+     */
+    return (c0 << 8) | (c1 & 0xff);
   }
 
   x = (int)((length - LSA_CHECKSUM_OFFSET) * c0 - c1) % 255;

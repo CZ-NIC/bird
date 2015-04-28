@@ -531,7 +531,7 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
 	lsa_type, lsa.id, lsa.rt, lsa.sn, lsa.age, lsa.checksum);
 
     /* RFC 2328 13. (1) - validate LSA checksum */
-    if (lsa_n->checksum != lsasum_check(lsa_n, NULL))
+    if ((lsa_n->checksum == 0) || (lsasum_check(lsa_n, NULL, 0) != 0))
       SKIP("invalid checksum");
 
     /* RFC 2328 13. (2) */
