@@ -32,6 +32,7 @@ sha256_init(sha256_context *ctx)
   ctx->nblocks = 0;
   ctx->nblocks_high = 0;
   ctx->count = 0;
+  ctx->blocksize = 64;
 }
 
 void
@@ -49,6 +50,7 @@ sha224_init(sha224_context *ctx)
   ctx->nblocks = 0;
   ctx->nblocks_high = 0;
   ctx->count = 0;
+  ctx->blocksize = 64;
 }
 
 /* (4.2) same as SHA-1's F1.  */
@@ -110,7 +112,7 @@ sum1(u32 x)
     32-bit-words. See FIPS 180-2 for details.
  */
 static unsigned int
-transform(sha256_context *ctx, const unsigned char *data)
+sha256_transform_block(sha256_context *ctx, const unsigned char *data)
 {
   static const u32 K[64] = {
       0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
@@ -217,7 +219,7 @@ sha256_transform(void *ctx, const unsigned char *data, size_t nblks)
 
   do
   {
-    burn = transform(hd, data);
+    burn = sha256_transform_block(hd, data);
     data += 64;
   }
   while (--nblks);
@@ -234,8 +236,7 @@ sha256_transform(void *ctx, const unsigned char *data, size_t nblks)
 void
 sha256_update(sha256_context *ctx, const byte *in_buf, size_t in_len)
 {
-  unsigned int stack_burn = 0;
-  const unsigned int blocksize = 64;
+  const unsigned int blocksize = ctx->blocksize;
   size_t inblocks;
 
   if (sizeof(ctx->buf) < blocksize)
@@ -243,8 +244,7 @@ sha256_update(sha256_context *ctx, const byte *in_buf, size_t in_len)
 
   if (ctx->count == blocksize)  /* Flush the buffer. */
   {
-    stack_burn = sha256_transform(ctx, ctx->buf, 1);
-    stack_burn = 0;
+    sha256_transform(ctx, ctx->buf, 1);
     ctx->count = 0;
     if (!++ctx->nblocks)
       ctx->nblocks_high++;
@@ -264,7 +264,7 @@ sha256_update(sha256_context *ctx, const byte *in_buf, size_t in_len)
   if (in_len >= blocksize)
   {
     inblocks = in_len / blocksize;
-    stack_burn = sha256_transform(ctx, in_buf, inblocks);
+    sha256_transform(ctx, in_buf, inblocks);
     ctx->count = 0;
     ctx->nblocks_high += (ctx->nblocks + inblocks < inblocks);
     ctx->nblocks += inblocks;
@@ -285,7 +285,6 @@ sha256_final(sha256_context *ctx)
 {
   u32 t, th, msb, lsb;
   byte *p;
-  unsigned int burn;
 
   sha256_update(ctx, NULL, 0); /* flush */;
 
@@ -325,7 +324,7 @@ sha256_final(sha256_context *ctx)
   /* append the 64 bit count */
   put_u32(ctx->buf + 56, msb);
   put_u32(ctx->buf + 60, lsb);
-  burn = sha256_transform(ctx, ctx->buf, 1);
+  sha256_transform(ctx, ctx->buf, 1);
 
   p = ctx->buf;
 
@@ -443,7 +442,7 @@ sha256_hmac_update(sha256_hmac_context *ctx, const void *buffer, size_t length)
    the length of the digest will be stored at that address.  The
    returned value is valid as long as the context exists.  On error
    NULL is returned. */
-const byte *
+byte *
 sha256_hmac_final(sha256_hmac_context *ctx)
 {
   sha256_final(&ctx->ctx);

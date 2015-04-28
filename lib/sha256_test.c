@@ -165,10 +165,7 @@ get_sha256_hmac(const struct hmac_data_in in, char (*out_hash)[SHA256_HEX_SIZE])
   sha256_hmac_init(&ctx, in.key, in.key_len);
   sha256_hmac_update(&ctx, in.data, in.data_len);
   byte *hash_byte = sha256_hmac_final(&ctx);
-
-  int i;
-  for (i = 0; i < SHA256_SIZE; i++)
-    sprintf(*out_hash + i*2, "%02x", hash_byte[i]);
+  byte_to_hex((char*)out_hash, hash_byte, SHA256_SIZE);
 }
 
 static void
@@ -178,10 +175,7 @@ get_sha224_hmac(const struct hmac_data_in in, char (*out_hash)[SHA256_HEX_SIZE])
   sha224_hmac_init(&ctx, in.key, in.key_len);
   sha224_hmac_update(&ctx, in.data, in.data_len);
   byte *hash_byte = sha224_hmac_final(&ctx);
-
-  int i;
-  for (i = 0; i < SHA224_SIZE; i++)
-    sprintf(*out_hash + i*2, "%02x", hash_byte[i]);
+  byte_to_hex((char*)out_hash, hash_byte, SHA224_HEX_SIZE);
 }
 
 

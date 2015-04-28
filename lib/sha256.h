@@ -20,10 +20,11 @@
 
 typedef struct {
   u32  h0,h1,h2,h3,h4,h5,h6,h7;
-  byte buf[64];
+  byte buf[128];
   u32 nblocks;
   u32 nblocks_high;
   int count;
+  u32 blocksize;
 } sha256_context;
 typedef sha256_context sha224_context;
 
@@ -63,8 +64,8 @@ void sha224_hmac_update(sha224_hmac_context *ctx, const void *buf, size_t buflen
   sha256_hmac_update(ctx, buf, buflen);
 }
 
-const byte *sha256_hmac_final(sha256_hmac_context *ctx);
-const byte *sha224_hmac_final(sha224_hmac_context *ctx)
+byte *sha256_hmac_final(sha256_hmac_context *ctx);
+byte *sha224_hmac_final(sha224_hmac_context *ctx)
 {
   return sha256_hmac_final(ctx);
 }
