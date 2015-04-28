@@ -392,6 +392,45 @@ sha256_hmac_init(sha256_hmac_context *ctx, const void *key, size_t keylen)
   }
 }
 
+void sha224_hmac_init(sha224_hmac_context *ctx, const void *key, size_t keylen)
+{
+  sha224_init(&ctx->ctx);
+
+  ctx->finalized = 0;
+  ctx->use_hmac = 0;
+
+  if (key)
+  {
+    int i;
+    unsigned char ipad[64];
+
+    memset(ipad, 0, 64);
+    memset(ctx->opad, 0, 64);
+    if (keylen <= 64)
+    {
+      memcpy(ipad, key, keylen);
+      memcpy(ctx->opad, key, keylen);
+    }
+    else
+    {
+      sha224_hmac_context tmp_ctx;
+
+      sha224_hmac_init(&tmp_ctx, NULL, 0);
+      sha224_hmac_update(&tmp_ctx, key, keylen);
+      sha224_final(&tmp_ctx.ctx);
+      memcpy(ipad, tmp_ctx.ctx.buf, 32);
+      memcpy(ctx->opad, tmp_ctx.ctx.buf, 32);
+    }
+    for(i=0; i < 64; i++)
+    {
+      ipad[i] ^= 0x36;
+      ctx->opad[i] ^= 0x5c;
+    }
+    ctx->use_hmac = 1;
+    sha224_hmac_update(ctx, ipad, 64);
+  }
+}
+
 /* Update the message digest with the contents of BUFFER containing
    LENGTH bytes.  */
 void
