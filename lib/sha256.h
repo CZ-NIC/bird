@@ -42,4 +42,19 @@ byte* sha224_final(sha224_context *ctx)
   return sha256_final(ctx);
 }
 
+/*
+ *	HMAC-SHA256
+ */
+typedef struct
+{
+  sha256_context ctx;
+  int  finalized:1;
+  int  use_hmac:1;
+  byte opad[64];
+} sha256_hmac_context;
+
+void sha256_hmac_init(sha256_hmac_context *ctx, const void *key, size_t keylen);
+void sha256_hmac_update(sha256_hmac_context *ctx, const void *buf, size_t buflen);
+const byte *sha256_hmac_final(sha256_hmac_context *ctx);
+
 #endif /* _BIRD_SHA256_H_ */

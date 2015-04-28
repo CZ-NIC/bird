@@ -105,10 +105,13 @@ sum1(u32 x)
       a = t1 + t2;						\
     } while (0)
 
+/*
+    The SHA-256 core: Transform the message X which consists of 16
+    32-bit-words. See FIPS 180-2 for details.
+ */
 static unsigned int
-transform_blk(void *ctx, const unsigned char *data)
+transform(sha256_context *ctx, const unsigned char *data)
 {
-  sha256_context *hd = ctx;
   static const u32 K[64] = {
       0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
       0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -132,14 +135,14 @@ transform_blk(void *ctx, const unsigned char *data)
   u32 w[64];
   int i;
 
-  a = hd->h0;
-  b = hd->h1;
-  c = hd->h2;
-  d = hd->h3;
-  e = hd->h4;
-  f = hd->h5;
-  g = hd->h6;
-  h = hd->h7;
+  a = ctx->h0;
+  b = ctx->h1;
+  c = ctx->h2;
+  d = ctx->h3;
+  e = ctx->h4;
+  f = ctx->h5;
+  g = ctx->h6;
+  h = ctx->h7;
 
   for (i = 0; i < 16; i++)
     w[i] = get_u32(data + i * 4);
@@ -191,14 +194,14 @@ transform_blk(void *ctx, const unsigned char *data)
     i += 8;
   }
 
-  hd->h0 += a;
-  hd->h1 += b;
-  hd->h2 += c;
-  hd->h3 += d;
-  hd->h4 += e;
-  hd->h5 += f;
-  hd->h6 += g;
-  hd->h7 += h;
+  ctx->h0 += a;
+  ctx->h1 += b;
+  ctx->h2 += c;
+  ctx->h3 += d;
+  ctx->h4 += e;
+  ctx->h5 += f;
+  ctx->h6 += g;
+  ctx->h7 += h;
 
   return /*burn_stack*/ 74*4+32;
 }
@@ -214,7 +217,7 @@ sha256_transform(void *ctx, const unsigned char *data, size_t nblks)
 
   do
   {
-    burn = transform_blk(hd, data);
+    burn = transform(hd, data);
     data += 64;
   }
   while (--nblks);
@@ -339,3 +342,82 @@ sha256_final(sha256_context *ctx)
 
   return ctx->buf;
 }
+
+
+/**
+ * 	HMAC
+ */
+
+/* Create a new context.  On error NULL is returned and errno is set
+   appropriately.  If KEY is given the function computes HMAC using
+   this key; with KEY given as NULL, a plain SHA-256 digest is
+   computed.  */
+void
+sha256_hmac_init(sha256_hmac_context *ctx, const void *key, size_t keylen)
+{
+  sha256_init(&ctx->ctx);
+
+  ctx->finalized = 0;
+  ctx->use_hmac = 0;
+
+  if (key)
+  {
+    int i;
+    unsigned char ipad[64];
+
+    memset(ipad, 0, 64);
+    memset(ctx->opad, 0, 64);
+    if (keylen <= 64)
+    {
+      memcpy(ipad, key, keylen);
+      memcpy(ctx->opad, key, keylen);
+    }
+    else
+    {
+      sha256_hmac_context tmp_ctx;
+
+      sha256_hmac_init(&tmp_ctx, NULL, 0);
+      sha256_hmac_update(&tmp_ctx, key, keylen);
+      sha256_final(&tmp_ctx.ctx);
+      memcpy(ipad, tmp_ctx.ctx.buf, 32);
+      memcpy(ctx->opad, tmp_ctx.ctx.buf, 32);
+    }
+    for(i=0; i < 64; i++)
+    {
+      ipad[i] ^= 0x36;
+      ctx->opad[i] ^= 0x5c;
+    }
+    ctx->use_hmac = 1;
+    sha256_hmac_update(ctx, ipad, 64);
+  }
+}
+
+/* Update the message digest with the contents of BUFFER containing
+   LENGTH bytes.  */
+void
+sha256_hmac_update(sha256_hmac_context *ctx, const void *buffer, size_t length)
+{
+  sha256_update(&ctx->ctx, buffer, length);
+}
+
+/* Finalize an operation and return the digest.  If R_DLEN is not NULL
+   the length of the digest will be stored at that address.  The
+   returned value is valid as long as the context exists.  On error
+   NULL is returned. */
+const byte *
+sha256_hmac_final(sha256_hmac_context *ctx)
+{
+  sha256_final(&ctx->ctx);
+  if (ctx->use_hmac)
+  {
+    sha256_hmac_context tmp_ctx;
+
+    sha256_hmac_init(&tmp_ctx, NULL, 0);
+    sha256_hmac_update(&tmp_ctx, ctx->opad, 64);
+    sha256_hmac_update(&tmp_ctx, ctx->ctx.buf, 32);
+    sha256_final(&tmp_ctx.ctx);
+    memcpy(ctx->ctx.buf, tmp_ctx.ctx.buf, 32);
+  }
+  return ctx->ctx.buf;
+}
+
