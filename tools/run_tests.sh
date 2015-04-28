@@ -51,7 +51,11 @@ num_all_tests_src=0
 for dir in client conf filter lib misc nest proto sysdep; do
 	for i in $(find "$srcdir/$dir" -name '*_test.c'); do num_all_tests_src=$((num_all_tests_src + 1)); done
 done
+
 num_build_fail_tests=$((num_all_tests_src - num_all_tests))
+if [ $num_build_fail_tests -lt 0 ]; then
+	num_build_fail_tests=0
+fi
 
 echo ""
 echo "  ------------------------------"
