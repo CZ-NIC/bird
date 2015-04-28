@@ -9,8 +9,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#ifndef _BIRD_SHA256_H
-#define _BIRD_SHA256_H
+#ifndef _BIRD_SHA256_H_
+#define _BIRD_SHA256_H_
 
 #define SHA256_SIZE 		32
 #define SHA256_HEX_SIZE		65
@@ -28,7 +28,7 @@ typedef struct {
 typedef sha256_context sha224_context;
 
 void sha256_init(sha256_context *ctx);
-void sha256_init(sha224_context *ctx);
+void sha224_init(sha224_context *ctx);
 
 void sha256_update(sha256_context *ctx, const byte *in_buf, size_t in_len);
 void sha224_update(sha224_context *ctx, const byte *in_buf, size_t in_len)
@@ -42,4 +42,4 @@ byte* sha224_final(sha224_context *ctx)
   return sha256_final(ctx);
 }
 
-#endif
+#endif /* _BIRD_SHA256_H_ */

@@ -12,8 +12,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#ifndef _BIRD_SHA1_H
-#define _BIRD_SHA1_H
+#ifndef _BIRD_SHA1_H_
+#define _BIRD_SHA1_H_
 
 #include "sysdep/config.h"
 
@@ -79,8 +79,8 @@ void sha1_hmac_init(sha1_hmac_context *hd, const byte *key, uint keylen);	/** In
 void sha1_hmac_update(sha1_hmac_context *hd, const byte *data, uint datalen);	/** Hash another @datalen bytes of data. See sha1_update(). */
 byte *sha1_hmac_final(sha1_hmac_context *hd);					/** Terminate the HMAC and return a pointer to the allocated hash. See sha1_final(). */
 
-#define SHA1_SIZE 20 /** Size of the SHA1 hash in its binary representation **/
-#define SHA1_HEX_SIZE 41 /** Buffer length for a string containing SHA1 in hexadecimal format. **/
-#define SHA1_BLOCK_SIZE 64 /** SHA1 splits input to blocks of this size. **/
+#define SHA1_SIZE 20 		/** Size of the SHA1 hash in its binary representation **/
+#define SHA1_HEX_SIZE 41 	/** Buffer length for a string containing SHA1 in hexadecimal format. **/
+#define SHA1_BLOCK_SIZE 64 	/** SHA1 splits input to blocks of this size. **/
 
-#endif
+#endif /* _BIRD_SHA1_H_ */

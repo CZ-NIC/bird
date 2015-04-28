@@ -9,8 +9,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#ifndef SHA256_HMAC_H
-#define SHA256_HMAC_H
+#ifndef _BIRD_SHA256_HMAC_H_
+#define _BIRD_SHA256_HMAC_H_
 
 #define SHA256_SIZE 		32
 #define SHA256_HEX_SIZE		65
@@ -34,4 +34,4 @@ void sha256_hmac_init(sha256_hmac_context *ctx, const void *key, size_t keylen);
 void sha256_hmac_update(sha256_hmac_context *ctx, const void *buf, size_t buflen);
 const byte *sha256_hmac_final(sha256_hmac_context *ctx);
 
-#endif /* SHA256_HMAC_H */
+#endif /* _BIRD_SHA256_HMAC_H_ */
