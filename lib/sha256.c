@@ -342,120 +342,124 @@ sha256_final(sha256_context *ctx)
   return ctx->buf;
 }
 
-
 /**
- * 	HMAC
+ * 	SHA256-HMAC
  */
 
-/* Create a new context.  On error NULL is returned and errno is set
-   appropriately.  If KEY is given the function computes HMAC using
-   this key; with KEY given as NULL, a plain SHA-256 digest is
-   computed.  */
+static void
+sha256_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
+{
+  sha256_context hd_tmp;
+
+  sha256_init(&hd_tmp);
+  sha256_update(&hd_tmp, buffer, length);
+  memcpy(outbuf, sha256_final(&hd_tmp), SHA256_SIZE);
+}
+
 void
-sha256_hmac_init(sha256_hmac_context *ctx, const void *key, size_t keylen)
+sha256_hmac_init(sha256_hmac_context *ctx, const byte *key, size_t keylen)
 {
-  sha256_init(&ctx->ctx);
+  byte keybuf[SHA256_BLOCK_SIZE], buf[SHA256_BLOCK_SIZE];
 
-  ctx->finalized = 0;
-  ctx->use_hmac = 0;
-
-  if (key)
+  // Hash the key if necessary
+  if (keylen <= SHA256_BLOCK_SIZE)
   {
-    int i;
-    unsigned char ipad[64];
-
-    memset(ipad, 0, 64);
-    memset(ctx->opad, 0, 64);
-    if (keylen <= 64)
-    {
-      memcpy(ipad, key, keylen);
-      memcpy(ctx->opad, key, keylen);
-    }
-    else
-    {
-      sha256_hmac_context tmp_ctx;
-
-      sha256_hmac_init(&tmp_ctx, NULL, 0);
-      sha256_hmac_update(&tmp_ctx, key, keylen);
-      sha256_final(&tmp_ctx.ctx);
-      memcpy(ipad, tmp_ctx.ctx.buf, 32);
-      memcpy(ctx->opad, tmp_ctx.ctx.buf, 32);
-    }
-    for(i=0; i < 64; i++)
-    {
-      ipad[i] ^= 0x36;
-      ctx->opad[i] ^= 0x5c;
-    }
-    ctx->use_hmac = 1;
-    sha256_hmac_update(ctx, ipad, 64);
+    memcpy(keybuf, key, keylen);
+    bzero(keybuf + keylen, SHA256_BLOCK_SIZE - keylen);
   }
+  else
+  {
+    sha256_hash_buffer(keybuf, key, keylen);
+    bzero(keybuf + SHA256_SIZE, SHA256_BLOCK_SIZE - SHA256_SIZE);
+  }
+
+  // Initialize the inner digest
+  sha256_init(&ctx->ictx);
+  int i;
+  for (i = 0; i < SHA256_BLOCK_SIZE; i++)
+    buf[i] = keybuf[i] ^ 0x36;
+  sha256_update(&ctx->ictx, buf, SHA256_BLOCK_SIZE);
+
+  // Initialize the outer digest
+  sha256_init(&ctx->octx);
+  for (i = 0; i < SHA256_BLOCK_SIZE; i++)
+    buf[i] = keybuf[i] ^ 0x5c;
+  sha256_update(&ctx->octx, buf, SHA256_BLOCK_SIZE);
 }
 
-void sha224_hmac_init(sha224_hmac_context *ctx, const void *key, size_t keylen)
+void sha256_hmac_update(sha256_hmac_context *ctx, const byte *buf, size_t buflen)
 {
-  sha224_init(&ctx->ctx);
-
-  ctx->finalized = 0;
-  ctx->use_hmac = 0;
-
-  if (key)
-  {
-    int i;
-    unsigned char ipad[64];
-
-    memset(ipad, 0, 64);
-    memset(ctx->opad, 0, 64);
-    if (keylen <= 64)
-    {
-      memcpy(ipad, key, keylen);
-      memcpy(ctx->opad, key, keylen);
-    }
-    else
-    {
-      sha224_hmac_context tmp_ctx;
-
-      sha224_hmac_init(&tmp_ctx, NULL, 0);
-      sha224_hmac_update(&tmp_ctx, key, keylen);
-      sha224_final(&tmp_ctx.ctx);
-      memcpy(ipad, tmp_ctx.ctx.buf, 32);
-      memcpy(ctx->opad, tmp_ctx.ctx.buf, 32);
-    }
-    for(i=0; i < 64; i++)
-    {
-      ipad[i] ^= 0x36;
-      ctx->opad[i] ^= 0x5c;
-    }
-    ctx->use_hmac = 1;
-    sha224_hmac_update(ctx, ipad, 64);
-  }
+  // Just update the inner digest
+  sha256_update(&ctx->ictx, buf, buflen);
 }
 
-/* Update the message digest with the contents of BUFFER containing
-   LENGTH bytes.  */
+byte *sha256_hmac_final(sha256_hmac_context *hd)
+{
+  // Finish the inner digest
+  byte *isha = sha256_final(&hd->ictx);
+
+  // Finish the outer digest
+  sha256_update(&hd->octx, isha, SHA256_SIZE);
+  return sha256_final(&hd->octx);
+}
+
+/**
+ * 	SHA224-HMAC
+ */
+
+static void
+sha224_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
+{
+  sha224_context hd_tmp;
+
+  sha224_init(&hd_tmp);
+  sha224_update(&hd_tmp, buffer, length);
+  memcpy(outbuf, sha224_final(&hd_tmp), SHA224_SIZE);
+}
+
 void
-sha256_hmac_update(sha256_hmac_context *ctx, const void *buffer, size_t length)
+sha224_hmac_init(sha224_hmac_context *ctx, const byte *key, size_t keylen)
 {
-  sha256_update(&ctx->ctx, buffer, length);
-}
+  byte keybuf[SHA224_BLOCK_SIZE], buf[SHA224_BLOCK_SIZE];
 
-/* Finalize an operation and return the digest.  If R_DLEN is not NULL
-   the length of the digest will be stored at that address.  The
-   returned value is valid as long as the context exists.  On error
-   NULL is returned. */
-byte *
-sha256_hmac_final(sha256_hmac_context *ctx)
-{
-  sha256_final(&ctx->ctx);
-  if (ctx->use_hmac)
+  // Hash the key if necessary
+  if (keylen <= SHA224_BLOCK_SIZE)
   {
-    sha256_hmac_context tmp_ctx;
-
-    sha256_hmac_init(&tmp_ctx, NULL, 0);
-    sha256_hmac_update(&tmp_ctx, ctx->opad, 64);
-    sha256_hmac_update(&tmp_ctx, ctx->ctx.buf, 32);
-    sha256_final(&tmp_ctx.ctx);
-    memcpy(ctx->ctx.buf, tmp_ctx.ctx.buf, 32);
+    memcpy(keybuf, key, keylen);
+    bzero(keybuf + keylen, SHA224_BLOCK_SIZE - keylen);
   }
-  return ctx->ctx.buf;
+  else
+  {
+    sha224_hash_buffer(keybuf, key, keylen);
+    bzero(keybuf + SHA224_SIZE, SHA224_BLOCK_SIZE - SHA224_SIZE);
+  }
+
+  // Initialize the inner digest
+  sha224_init(&ctx->ictx);
+  int i;
+  for (i = 0; i < SHA224_BLOCK_SIZE; i++)
+    buf[i] = keybuf[i] ^ 0x36;
+  sha224_update(&ctx->ictx, buf, SHA224_BLOCK_SIZE);
+
+  // Initialize the outer digest
+  sha224_init(&ctx->octx);
+  for (i = 0; i < SHA224_BLOCK_SIZE; i++)
+    buf[i] = keybuf[i] ^ 0x5c;
+  sha224_update(&ctx->octx, buf, SHA224_BLOCK_SIZE);
 }
 
+void sha224_hmac_update(sha224_hmac_context *ctx, const byte *buf, size_t buflen)
+{
+  // Just update the inner digest
+  sha256_update(&ctx->ictx, buf, buflen);
+}
+
+byte *sha224_hmac_final(sha224_hmac_context *hd)
+{
+  // Finish the inner digest
+  byte *isha = sha224_final(&hd->ictx);
+
+  // Finish the outer digest
+  sha224_update(&hd->octx, isha, SHA224_SIZE);
+  return sha224_final(&hd->octx);
+}

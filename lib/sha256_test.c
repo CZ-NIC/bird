@@ -149,7 +149,6 @@ t_sha256_concating(void)
   return BT_SUCCESS;
 }
 
-
 #define HMAC_BUFFER_SIZE 160
 struct hmac_data_in {
   byte key[HMAC_BUFFER_SIZE];
@@ -169,13 +168,13 @@ get_sha256_hmac(const struct hmac_data_in in, char (*out_hash)[SHA256_HEX_SIZE])
 }
 
 static void
-get_sha224_hmac(const struct hmac_data_in in, char (*out_hash)[SHA256_HEX_SIZE])
+get_sha224_hmac(const struct hmac_data_in in, char (*out_hash)[SHA224_HEX_SIZE])
 {
   sha224_hmac_context ctx;
   sha224_hmac_init(&ctx, in.key, in.key_len);
   sha224_hmac_update(&ctx, in.data, in.data_len);
   byte *hash_byte = sha224_hmac_final(&ctx);
-  byte_to_hex((char*)out_hash, hash_byte, SHA224_HEX_SIZE);
+  byte_to_hex((char*)out_hash, hash_byte, SHA224_SIZE);
 }
 
 
@@ -317,7 +316,7 @@ t_sha224_hmac(void)
 {
   struct in_out {
     struct hmac_data_in in;
-    char out[SHA256_HEX_SIZE];
+    char out[SHA224_HEX_SIZE];
   } in_out[] = {
       {
 	  .in  = {
@@ -387,7 +386,7 @@ t_sha224_hmac(void)
 	      .data = "Test With Truncation",
 	      .data_len = 20,
 	  },
-	  .out = "0e2aea68a90c8d37c988bcdb9fca6fa8",
+	  .out = "0e2aea68a90c8d37c988bcdb9fca6fa8099cd857c7ec4a1815cac54c",
       },
       {
 	  .in  = {
