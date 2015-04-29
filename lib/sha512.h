@@ -15,11 +15,13 @@
 #include "sysdep/config.h"
 #include "lib/sha256.h"
 
-#define SHA512_SIZE 	64
-#define SHA512_HEX_SIZE	129
+#define SHA384_SIZE 		48
+#define SHA384_HEX_SIZE		97
+#define SHA384_BLOCK_SIZE	128
 
-#define SHA384_SIZE 	48
-#define SHA384_HEX_SIZE	97
+#define SHA512_SIZE 		64
+#define SHA512_HEX_SIZE		129
+#define SHA512_BLOCK_SIZE	128
 
 typedef struct
 {
@@ -50,5 +52,24 @@ byte* sha384_final(sha384_context *ctx)
 }
 
 static unsigned int sha512_transform(void *context, const unsigned char *data, size_t nblks);
+
+/**
+ *	HMAC-SHA512, HMAC-SHA384
+ */
+typedef struct
+{
+  sha512_context ictx;
+  sha512_context octx;
+} sha512_hmac_context;
+typedef sha512_hmac_context sha384_hmac_context;
+
+void sha512_hmac_init(sha512_hmac_context *ctx, const byte *key, size_t keylen);
+void sha384_hmac_init(sha384_hmac_context *ctx, const byte *key, size_t keylen);
+
+void sha512_hmac_update(sha512_hmac_context *ctx, const byte *buf, size_t buflen);
+void sha384_hmac_update(sha384_hmac_context *ctx, const byte *buf, size_t buflen);
+
+byte *sha512_hmac_final(sha512_hmac_context *ctx);
+byte *sha384_hmac_final(sha384_hmac_context *ctx);
 
 #endif /* _BIRD_SHA512_H_ */

@@ -491,3 +491,125 @@ sha512_final(sha512_context *ctx)
 
   return ctx->bctx.buf;
 }
+
+/**
+ * 	SHA512-HMAC
+ */
+
+static void
+sha512_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
+{
+  sha512_context hd_tmp;
+
+  sha512_init(&hd_tmp);
+  sha512_update(&hd_tmp, buffer, length);
+  memcpy(outbuf, sha512_final(&hd_tmp), SHA512_SIZE);
+}
+
+void
+sha512_hmac_init(sha512_hmac_context *ctx, const byte *key, size_t keylen)
+{
+  byte keybuf[SHA512_BLOCK_SIZE], buf[SHA512_BLOCK_SIZE];
+
+  // Hash the key if necessary
+  if (keylen <= SHA512_BLOCK_SIZE)
+  {
+    memcpy(keybuf, key, keylen);
+    bzero(keybuf + keylen, SHA512_BLOCK_SIZE - keylen);
+  }
+  else
+  {
+    sha512_hash_buffer(keybuf, key, keylen);
+    bzero(keybuf + SHA512_SIZE, SHA512_BLOCK_SIZE - SHA512_SIZE);
+  }
+
+  // Initialize the inner digest
+  sha512_init(&ctx->ictx);
+  int i;
+  for (i = 0; i < SHA512_BLOCK_SIZE; i++)
+    buf[i] = keybuf[i] ^ 0x36;
+  sha512_update(&ctx->ictx, buf, SHA512_BLOCK_SIZE);
+
+  // Initialize the outer digest
+  sha512_init(&ctx->octx);
+  for (i = 0; i < SHA512_BLOCK_SIZE; i++)
+    buf[i] = keybuf[i] ^ 0x5c;
+  sha512_update(&ctx->octx, buf, SHA512_BLOCK_SIZE);
+}
+
+void sha512_hmac_update(sha512_hmac_context *ctx, const byte *buf, size_t buflen)
+{
+  // Just update the inner digest
+  sha512_update(&ctx->ictx, buf, buflen);
+}
+
+byte *sha512_hmac_final(sha512_hmac_context *hd)
+{
+  // Finish the inner digest
+  byte *isha = sha512_final(&hd->ictx);
+
+  // Finish the outer digest
+  sha512_update(&hd->octx, isha, SHA512_SIZE);
+  return sha512_final(&hd->octx);
+}
+
+/**
+ * 	SHA384-HMAC
+ */
+
+static void
+sha384_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
+{
+  sha384_context hd_tmp;
+
+  sha384_init(&hd_tmp);
+  sha384_update(&hd_tmp, buffer, length);
+  memcpy(outbuf, sha384_final(&hd_tmp), SHA384_SIZE);
+}
+
+void
+sha384_hmac_init(sha384_hmac_context *ctx, const byte *key, size_t keylen)
+{
+  byte keybuf[SHA384_BLOCK_SIZE], buf[SHA384_BLOCK_SIZE];
+
+  // Hash the key if necessary
+  if (keylen <= SHA384_BLOCK_SIZE)
+  {
+    memcpy(keybuf, key, keylen);
+    bzero(keybuf + keylen, SHA384_BLOCK_SIZE - keylen);
+  }
+  else
+  {
+    sha384_hash_buffer(keybuf, key, keylen);
+    bzero(keybuf + SHA384_SIZE, SHA384_BLOCK_SIZE - SHA384_SIZE);
+  }
+
+  // Initialize the inner digest
+  sha384_init(&ctx->ictx);
+  int i;
+  for (i = 0; i < SHA384_BLOCK_SIZE; i++)
+    buf[i] = keybuf[i] ^ 0x36;
+  sha384_update(&ctx->ictx, buf, SHA384_BLOCK_SIZE);
+
+  // Initialize the outer digest
+  sha384_init(&ctx->octx);
+  for (i = 0; i < SHA384_BLOCK_SIZE; i++)
+    buf[i] = keybuf[i] ^ 0x5c;
+  sha384_update(&ctx->octx, buf, SHA384_BLOCK_SIZE);
+}
+
+void sha384_hmac_update(sha384_hmac_context *ctx, const byte *buf, size_t buflen)
+{
+  // Just update the inner digest
+  sha384_update(&ctx->ictx, buf, buflen);
+}
+
+byte *sha384_hmac_final(sha384_hmac_context *hd)
+{
+  // Finish the inner digest
+  byte *isha = sha384_final(&hd->ictx);
+
+  // Finish the outer digest
+  sha384_update(&hd->octx, isha, SHA384_SIZE);
+  return sha384_final(&hd->octx);
+}
