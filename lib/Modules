@@ -1,7 +1,9 @@
 sha256.c
+sha256.h
+sha512.c
+sha512.h
 sha1.c
 sha1.h
-sha1_hmac.c
 birdlib.h
 bitops.c
 bitops.h

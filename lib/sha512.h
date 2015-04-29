@@ -12,6 +12,7 @@
 #ifndef _BIRD_SHA512_H_
 #define _BIRD_SHA512_H_
 
+#include "sysdep/config.h"
 #include "lib/sha256.h"
 
 #define SHA512_SIZE 	64

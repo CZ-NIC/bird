@@ -12,6 +12,8 @@
 #ifndef _BIRD_SHA256_H_
 #define _BIRD_SHA256_H_
 
+#include "sysdep/config.h"
+
 #define SHA256_SIZE 		32
 #define SHA256_HEX_SIZE		65
 
