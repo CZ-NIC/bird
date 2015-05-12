@@ -251,7 +251,7 @@ t_sha512_hmac(void)
 	      .data = "Test With Truncation",
 	      .data_len = 20,
 	  },
-	  .out = "415fad6271580a531d4179bc891d87a6",
+	  .out = "415fad6271580a531d4179bc891d87a650188707922a4fbb36663a1eb16da008711c5b50ddd0fc235084eb9d3364a1454fb2ef67cd1d29fe6773068ea266e96b",
       },
       {
 	  .in  = {
@@ -383,7 +383,7 @@ t_sha384_hmac(void)
 	      .data = "Test With Truncation",
 	      .data_len = 20,
 	  },
-	  .out = "3abf34c3503b2a23a46efc619baef897",
+	  .out = "3abf34c3503b2a23a46efc619baef897f4c8e42c934ce55ccbae9740fcbc1af4ca62269e2a37cd88ba926341efe4aeea",
       },
       {
 	  .in  = {
@@ -431,7 +431,7 @@ t_sha384_hmac(void)
 	      .data = "This is a test using a larger than block-size key and a larger than block-size data. The key needs to be hashed before being used by the HMAC algorithm.",
 	      .data_len = 152,
 	  },
-	  .out = "4ece084485813e9088d2c63a041bc5b44f9ef1012a2b588f3cd11f05033ac4c60c2ef6ab4030fe8296248df163f44952",
+	  .out = "6617178e941f020d351e2f254e8fd32c602420feb0b8fb9adccebb82461e99c5a678cc31e799176d3860e6110c46523e",
       },
   };
 
