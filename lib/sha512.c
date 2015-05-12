@@ -67,33 +67,33 @@ void sha512_update(sha512_context *ctx, const byte *in_buf, size_t in_len)
 }
 
 static inline u64
-ROTR (u64 x, u64 n)
+ROTR(u64 x, u64 n)
 {
-  return((x >> n) | (x << (64 - n)));
+  return ((x >> n) | (x << (64 - n)));
 }
 
 static inline u64
 Ch(u64 x, u64 y, u64 z)
 {
-  return((x & y) ^ ( ~x & z));
+  return ((x & y) ^ ( ~x & z));
 }
 
 static inline u64
 Maj(u64 x, u64 y, u64 z)
 {
-  return((x & y) ^ (x & z) ^ (y & z));
+  return ((x & y) ^ (x & z) ^ (y & z));
 }
 
 static inline u64
-Sum0 (u64 x)
+Sum0(u64 x)
 {
-  return(ROTR (x, 28) ^ ROTR (x, 34) ^ ROTR (x, 39));
+  return (ROTR (x, 28) ^ ROTR (x, 34) ^ ROTR (x, 39));
 }
 
 static inline u64
 Sum1 (u64 x)
 {
-  return(ROTR (x, 14) ^ ROTR (x, 18) ^ ROTR (x, 41));
+  return (ROTR (x, 14) ^ ROTR (x, 18) ^ ROTR (x, 41));
 }
 
 static const u64 k[] =
@@ -457,18 +457,18 @@ sha512_final(sha512_context *ctx)
   msb |= t >> 61;
 
   if (ctx->bctx.count < 112)
-  {				/* enough room */
+  {						/* enough room */
     ctx->bctx.buf[ctx->bctx.count++] = 0x80;	/* pad */
     while(ctx->bctx.count < 112)
       ctx->bctx.buf[ctx->bctx.count++] = 0;	/* pad */
   }
   else
-  {				/* need one extra block */
+  {						/* need one extra block */
     ctx->bctx.buf[ctx->bctx.count++] = 0x80;	/* pad character */
     while(ctx->bctx.count < 128)
       ctx->bctx.buf[ctx->bctx.count++] = 0;
-    sha256_update(&ctx->bctx, NULL, 0); /* flush */ ;
-    memset(ctx->bctx.buf, 0, 112);	/* fill next block with zeroes */
+    sha256_update(&ctx->bctx, NULL, 0); 	/* flush */ ;
+    memset(ctx->bctx.buf, 0, 112);		/* fill next block with zeroes */
   }
   /* append the 128 bit count */
   put_u64(ctx->bctx.buf + 112, msb);
