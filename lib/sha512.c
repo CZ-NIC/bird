@@ -543,14 +543,14 @@ void sha512_hmac_update(sha512_hmac_context *ctx, const byte *buf, size_t buflen
   sha512_update(&ctx->ictx, buf, buflen);
 }
 
-byte *sha512_hmac_final(sha512_hmac_context *hd)
+byte *sha512_hmac_final(sha512_hmac_context *ctx)
 {
   // Finish the inner digest
-  byte *isha = sha512_final(&hd->ictx);
+  byte *isha = sha512_final(&ctx->ictx);
 
   // Finish the outer digest
-  sha512_update(&hd->octx, isha, SHA512_SIZE);
-  return sha512_final(&hd->octx);
+  sha512_update(&ctx->octx, isha, SHA512_SIZE);
+  return sha512_final(&ctx->octx);
 }
 
 /**
@@ -604,12 +604,12 @@ void sha384_hmac_update(sha384_hmac_context *ctx, const byte *buf, size_t buflen
   sha384_update(&ctx->ictx, buf, buflen);
 }
 
-byte *sha384_hmac_final(sha384_hmac_context *hd)
+byte *sha384_hmac_final(sha384_hmac_context *ctx)
 {
   // Finish the inner digest
-  byte *isha = sha384_final(&hd->ictx);
+  byte *isha = sha384_final(&ctx->ictx);
 
   // Finish the outer digest
-  sha384_update(&hd->octx, isha, SHA384_SIZE);
-  return sha384_final(&hd->octx);
+  sha384_update(&ctx->octx, isha, SHA384_SIZE);
+  return sha384_final(&ctx->octx);
 }

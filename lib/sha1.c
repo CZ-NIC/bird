@@ -274,15 +274,15 @@ sha1_final(sha1_context *hd)
 void
 sha1_hash_buffer(byte *outbuf, const byte *buffer, uint length)
 {
-  sha1_context hd;
+  sha1_context ctx;
 
-  sha1_init(&hd);
-  sha1_update(&hd, buffer, length);
-  memcpy(outbuf, sha1_final(&hd), SHA1_SIZE);
+  sha1_init(&ctx);
+  sha1_update(&ctx, buffer, length);
+  memcpy(outbuf, sha1_final(&ctx), SHA1_SIZE);
 }
 
 void
-sha1_hmac_init(sha1_hmac_context *hd, const byte *key, uint keylen)
+sha1_hmac_init(sha1_hmac_context *ctx, const byte *key, uint keylen)
 {
   byte keybuf[SHA1_BLOCK_SIZE], buf[SHA1_BLOCK_SIZE];
 
@@ -299,34 +299,34 @@ sha1_hmac_init(sha1_hmac_context *hd, const byte *key, uint keylen)
   }
 
   // Initialize the inner digest
-  sha1_init(&hd->ictx);
+  sha1_init(&ctx->ictx);
   int i;
   for (i = 0; i < SHA1_BLOCK_SIZE; i++)
     buf[i] = keybuf[i] ^ 0x36;
-  sha1_update(&hd->ictx, buf, SHA1_BLOCK_SIZE);
+  sha1_update(&ctx->ictx, buf, SHA1_BLOCK_SIZE);
 
   // Initialize the outer digest
-  sha1_init(&hd->octx);
+  sha1_init(&ctx->octx);
   for (i = 0; i < SHA1_BLOCK_SIZE; i++)
     buf[i] = keybuf[i] ^ 0x5c;
-  sha1_update(&hd->octx, buf, SHA1_BLOCK_SIZE);
+  sha1_update(&ctx->octx, buf, SHA1_BLOCK_SIZE);
 }
 
 void
-sha1_hmac_update(sha1_hmac_context *hd, const byte *data, uint datalen)
+sha1_hmac_update(sha1_hmac_context *ctx, const byte *data, uint datalen)
 {
   // Just update the inner digest
-  sha1_update(&hd->ictx, data, datalen);
+  sha1_update(&ctx->ictx, data, datalen);
 }
 
-byte *sha1_hmac_final(sha1_hmac_context *hd)
+byte *sha1_hmac_final(sha1_hmac_context *ctx)
 {
   // Finish the inner digest
-  byte *isha = sha1_final(&hd->ictx);
+  byte *isha = sha1_final(&ctx->ictx);
 
   // Finish the outer digest
-  sha1_update(&hd->octx, isha, SHA1_SIZE);
-  return sha1_final(&hd->octx);
+  sha1_update(&ctx->octx, isha, SHA1_SIZE);
+  return sha1_final(&ctx->octx);
 }
 
 void
