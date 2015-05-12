@@ -33,6 +33,7 @@ sha256_init(sha256_context *ctx)
   ctx->nblocks_high = 0;
   ctx->count = 0;
   ctx->blocksize = 64;
+  ctx->transform = sha256_transform;
 }
 
 void
@@ -51,6 +52,7 @@ sha224_init(sha224_context *ctx)
   ctx->nblocks_high = 0;
   ctx->count = 0;
   ctx->blocksize = 64;
+  ctx->transform = sha256_transform;
 }
 
 /* (4.2) same as SHA-1's F1.  */
@@ -244,7 +246,7 @@ sha256_update(sha256_context *ctx, const byte *in_buf, size_t in_len)
 
   if (ctx->count == blocksize)  /* Flush the buffer. */
   {
-    sha256_transform(ctx, ctx->buf, 1);
+    ctx->transform(ctx, ctx->buf, 1);
     ctx->count = 0;
     if (!++ctx->nblocks)
       ctx->nblocks_high++;
@@ -264,7 +266,7 @@ sha256_update(sha256_context *ctx, const byte *in_buf, size_t in_len)
   if (in_len >= blocksize)
   {
     inblocks = in_len / blocksize;
-    sha256_transform(ctx, in_buf, inblocks);
+    ctx->transform(ctx, in_buf, inblocks);
     ctx->count = 0;
     ctx->nblocks_high += (ctx->nblocks + inblocks < inblocks);
     ctx->nblocks += inblocks;

@@ -39,6 +39,7 @@ sha512_init(sha512_context *ctx)
   ctx->bctx.nblocks_high = 0;
   ctx->bctx.count = 0;
   ctx->bctx.blocksize = 128;
+  ctx->bctx.transform = sha512_transform;
 }
 
 void
@@ -59,6 +60,7 @@ sha384_init(sha384_context *ctx)
   ctx->bctx.nblocks_high = 0;
   ctx->bctx.count = 0;
   ctx->bctx.blocksize = 128;
+  ctx->bctx.transform = sha512_transform;
 }
 
 void sha512_update(sha512_context *ctx, const byte *in_buf, size_t in_len)
