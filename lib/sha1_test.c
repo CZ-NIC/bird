@@ -61,6 +61,10 @@ t_sha1(void)
 	  .in  = "12345678901234567890123456789012345678901234567890123456789012345678901234567890",
 	  .out = "50abf5706a150990a08b2c5ea40fa0e585554732",
       },
+      {
+	  .in  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	  .out = "6a64fcc1fb970f7339ce886601775d2efea5cd4b",
+      },
   };
 
   bt_assert_fn_in_out(get_sha1, in_out, "'%s'", "'%s'");

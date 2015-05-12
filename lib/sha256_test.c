@@ -67,8 +67,8 @@ t_sha256(void)
 	  .out = "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
       },
       {
-	  .in  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	  .out = "970d31b428de8fea74b16484d8a8adb2c9e1bd974d7c621fd04332bc3499f117",
+	  .in  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	  .out = "bf18b43b61652b5d73f41ebf3d72e5e43aebf5076f497dde31ea3de9de4998ef",
       },
   };
 
@@ -101,8 +101,8 @@ t_sha224(void)
 	  .out = "75388b16512776cc5dba5da1fd890150b0c6455cb4f58b1952522525",
       },
       {
-	  .in  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	  .out = "8a75b49f36c174693ee51a3f47c845d327dea06eab343cc15e975adf",
+	  .in  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	  .out = "cca7dd1a332a17775d8b0429bdb45055c2d4368ebaab0c7cf385586e",
       },
 
   };
