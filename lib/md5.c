@@ -247,3 +247,64 @@ void md5_transform(u32 buf[4], u32 const in[16])
     buf[2] += c;
     buf[3] += d;
 }
+
+/**
+ * 	MD5-HMAC
+ */
+
+static void
+md5_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
+{
+  md5_context hd_tmp;
+
+  md5_init(&hd_tmp);
+  md5_update(&hd_tmp, buffer, length);
+  memcpy(outbuf, md5_final(&hd_tmp), MD5_SIZE);
+}
+
+void
+md5_hmac_init(md5_hmac_context *ctx, const byte *key, size_t keylen)
+{
+  byte keybuf[MD5_BLOCK_SIZE], buf[MD5_BLOCK_SIZE];
+
+  // Hash the key if necessary
+  if (keylen <= MD5_BLOCK_SIZE)
+  {
+    memcpy(keybuf, key, keylen);
+    bzero(keybuf + keylen, MD5_BLOCK_SIZE - keylen);
+  }
+  else
+  {
+    md5_hash_buffer(keybuf, key, keylen);
+    bzero(keybuf + MD5_SIZE, MD5_BLOCK_SIZE - MD5_SIZE);
+  }
+
+  // Initialize the inner digest
+  md5_init(&ctx->ictx);
+  int i;
+  for (i = 0; i < MD5_BLOCK_SIZE; i++)
+    buf[i] = keybuf[i] ^ 0x36;
+  md5_update(&ctx->ictx, buf, MD5_BLOCK_SIZE);
+
+  // Initialize the outer digest
+  md5_init(&ctx->octx);
+  for (i = 0; i < MD5_BLOCK_SIZE; i++)
+    buf[i] = keybuf[i] ^ 0x5c;
+  md5_update(&ctx->octx, buf, MD5_BLOCK_SIZE);
+}
+
+void md5_hmac_update(md5_hmac_context *ctx, const byte *buf, size_t buflen)
+{
+  // Just update the inner digest
+  md5_update(&ctx->ictx, buf, buflen);
+}
+
+byte *md5_hmac_final(md5_hmac_context *ctx)
+{
+  // Finish the inner digest
+  byte *isha = md5_final(&ctx->ictx);
+
+  // Finish the outer digest
+  md5_update(&ctx->octx, isha, MD5_SIZE);
+  return md5_final(&ctx->octx);
+}
