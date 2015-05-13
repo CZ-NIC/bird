@@ -57,7 +57,7 @@ rip_incoming_authentication( struct proto *p, struct rip_block_auth *block, stru
     {
       struct password_item *pass = NULL, *ptmp;
       struct rip_md5_tail *tail;
-      struct MD5Context ctxt;
+      struct md5_context ctxt;
       char md5sum_packet[16];
       char md5sum_computed[16];
       struct neighbor *neigh = neigh_find(p, &whotoldme, 0);
@@ -97,9 +97,9 @@ rip_incoming_authentication( struct proto *p, struct rip_block_auth *block, stru
       memcpy(md5sum_packet, tail->md5, 16);
       strncpy(tail->md5, pass->password, 16);
 
-      MD5Init(&ctxt);
-      MD5Update(&ctxt, (char *) packet, ntohs(block->packetlen) +  sizeof(struct rip_block_auth) );
-      MD5Final(md5sum_computed, &ctxt);
+      md5_init(&ctxt);
+      md5_update(&ctxt, (char *) packet, ntohs(block->packetlen) +  sizeof(struct rip_block_auth) );
+      md5_final(md5sum_computed, &ctxt);
       if (memcmp(md5sum_packet, md5sum_computed, 16))
         return 1;
     }
@@ -136,7 +136,7 @@ rip_outgoing_authentication( struct proto *p, struct rip_block_auth *block, stru
   case AT_MD5:
     {
       struct rip_md5_tail *tail;
-      struct MD5Context ctxt;
+      struct md5_context ctxt;
       static u32 sequence = 0;
 
       if (num > PACKET_MD5_MAX)
@@ -157,9 +157,9 @@ rip_outgoing_authentication( struct proto *p, struct rip_block_auth *block, stru
       tail->mustbe0001 = 0x0100;
 
       strncpy(tail->md5, passwd->password, 16);
-      MD5Init(&ctxt);
-      MD5Update(&ctxt, (char *) packet, PACKETLEN(num) + sizeof(struct  rip_md5_tail));
-      MD5Final(tail->md5, &ctxt);
+      md5_init(&ctxt);
+      md5_update(&ctxt, (char *) packet, PACKETLEN(num) + sizeof(struct  rip_md5_tail));
+      md5_final(tail->md5, &ctxt);
       return PACKETLEN(num) + block->authlen;
     }
   default:

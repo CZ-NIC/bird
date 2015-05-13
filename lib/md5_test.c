@@ -13,18 +13,15 @@
 #include "lib/md5.h"
 #include "lib/md5.c" /* REMOVE ME */
 
-#define MD5_SIZE 	16
-#define MD5_HEX_SIZE 	33
-
 static void
 get_md5(const char *str, char (*out_hash)[MD5_HEX_SIZE])
 {
   unsigned char hash[MD5_SIZE];
-  struct MD5Context ctxt;
+  struct md5_context ctxt;
 
-  MD5Init(&ctxt);
-  MD5Update(&ctxt, str, strlen(str));
-  MD5Final(hash, &ctxt);
+  md5_init(&ctxt);
+  md5_update(&ctxt, str, strlen(str));
+  md5_final(hash, &ctxt);
 
   int i;
   for(i = 0; i < MD5_SIZE; i++)
