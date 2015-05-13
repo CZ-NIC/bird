@@ -1,5 +1,5 @@
 /*
- *	BIRD Library -- SHA512 and SHA384 Hash Functions Tests
+ *	BIRD -- SHA-512, SHA-384, HMAC-SHA-512 and HMAC-SHA-384 Tests
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *

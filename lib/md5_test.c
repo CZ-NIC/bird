@@ -1,5 +1,5 @@
 /*
- *	BIRD Library -- MD5 message-digest algorithm Tests
+ *	BIRD -- MD5 and HMAC-MD5 Tests
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *

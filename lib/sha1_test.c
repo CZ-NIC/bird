@@ -1,5 +1,5 @@
 /*
- *	BIRD Library -- SHA-1 Hash Function Tests
+ *	BIRD -- SHA-1 and HMAC-SHA-1 Tests
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *

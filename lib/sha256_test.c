@@ -1,5 +1,5 @@
 /*
- *	BIRD Library -- SHA256 and SHA224 Hash Functions Tests
+ *	BIRD -- SHA-256, SHA-224, HMAC-SHA-256 and HMAC-SHA224 Tests
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *

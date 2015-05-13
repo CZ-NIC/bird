@@ -1,5 +1,5 @@
 /*
- *	BIRD -- SHA-1 Hash Function (FIPS 180-1, RFC 3174)
+ *	BIRD -- SHA-1 Hash Function (FIPS 180-1, RFC 3174) and HMAC-SHA-1
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -266,6 +266,10 @@ sha1_final(sha1_context *hd)
 
   return hd->buf;
 }
+
+/**
+ * 	SHA1-HMAC
+ */
 
 /*
  * Shortcut function which puts the hash value of the supplied buffer

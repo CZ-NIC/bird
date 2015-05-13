@@ -1,5 +1,6 @@
 /*
- *	BIRD -- SHA256 and SHA224 Hash Functions
+ *	BIRD -- SHA-256 and SHA-224 Hash Functions,
+ *		HMAC-SHA-256 and HMAC-SHA-224 Functions
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
