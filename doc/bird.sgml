@@ -2248,7 +2248,7 @@ these attributes:
 
 	<tag>ip <cf/krt_prefsrc/</tag> (Linux)
 	The preferred source address. Used in source address selection for
- 	outgoing packets. Have to be one of IP addresses of the router.
+ 	outgoing packets. Has to be one of the IP addresses of the router.
 
 	<tag>int <cf/krt_realm/</tag> (Linux)
 	The realm of the route. Can be used for traffic classification.

@@ -417,13 +417,15 @@ typedef struct eattr {
 
 #define EA_CODE_MASK 0xffff
 #define EA_ALLOW_UNDEF 0x10000		/* ea_find: allow EAF_TYPE_UNDEF */
+#define EA_BIT(n) ((n) << 24)		/* Used in bitfield accessors */
 
 #define EAF_TYPE_MASK 0x0f		/* Mask with this to get type */
-#define EAF_TYPE_INT 0x01		/* 32-bit signed integer number */
+#define EAF_TYPE_INT 0x01		/* 32-bit unsigned integer number */
 #define EAF_TYPE_OPAQUE 0x02		/* Opaque byte string (not filterable) */
 #define EAF_TYPE_IP_ADDRESS 0x04	/* IP address */
 #define EAF_TYPE_ROUTER_ID 0x05		/* Router ID (IPv4 address) */
 #define EAF_TYPE_AS_PATH 0x06		/* BGP AS path (encoding per RFC 1771:4.3) */
+#define EAF_TYPE_BITFIELD 0x09		/* 32-bit embedded bitfield */
 #define EAF_TYPE_INT_SET 0x0a		/* Set of u32's (e.g., a community list) */
 #define EAF_TYPE_EC_SET 0x0e		/* Set of pairs of u32's - ext. community list */
 #define EAF_TYPE_UNDEF 0x0f		/* `force undefined' entry */
@@ -459,8 +461,14 @@ static inline void rt_lock_source(struct rte_src *src) { src->uc++; }
 static inline void rt_unlock_source(struct rte_src *src) { src->uc--; }
 void rt_prune_sources(void);
 
+struct ea_walk_state {
+  ea_list *eattrs;			/* Ccurrent ea_list, initially set by caller */
+  eattr *ea;				/* Current eattr, initially NULL */
+  u32 visited[4];			/* Bitfield, limiting max to 128 */
+};
 
 eattr *ea_find(ea_list *, unsigned ea);
+eattr *ea_walk(struct ea_walk_state *s, uint id, uint max);
 int ea_get_int(ea_list *, unsigned ea, int def);
 void ea_dump(ea_list *);
 void ea_sort(ea_list *);		/* Sort entries in all sub-lists */
@@ -469,6 +477,7 @@ void ea_merge(ea_list *from, ea_list *to); /* Merge sub-lists to allocated buffe
 int ea_same(ea_list *x, ea_list *y);	/* Test whether two ea_lists are identical */
 unsigned int ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
+void ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
 int mpnh__same(struct mpnh *x, struct mpnh *y); /* Compare multipath nexthops */
 static inline int mpnh_same(struct mpnh *x, struct mpnh *y)

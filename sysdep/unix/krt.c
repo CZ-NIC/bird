@@ -1191,7 +1191,7 @@ krt_copy_config(struct proto_config *dest, struct proto_config *src)
 }
 
 static int
-krt_get_attr(eattr * a, byte * buf, int buflen UNUSED)
+krt_get_attr(eattr *a, byte *buf, int buflen)
 {
   switch (a->id)
   {
@@ -1203,16 +1203,8 @@ krt_get_attr(eattr * a, byte * buf, int buflen UNUSED)
     bsprintf(buf, "metric");
     return GA_NAME;
 
-  case EA_KRT_PREFSRC:
-    bsprintf(buf, "prefsrc");
-    return GA_NAME;
-
-  case EA_KRT_REALM:
-    bsprintf(buf, "realm");
-    return GA_NAME;
-
   default:
-    return GA_UNKNOWN;
+    return krt_sys_get_attr(a, buf, buflen);
   }
 }
 

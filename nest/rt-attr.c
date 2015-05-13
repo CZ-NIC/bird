@@ -308,6 +308,82 @@ ea_find(ea_list *e, unsigned id)
 }
 
 /**
+ * ea_walk - walk through extended attributes
+ * @s: walk state structure
+ * @id: start of attribute ID interval
+ * @max: length of attribute ID interval
+ *
+ * Given an extended attribute list, ea_walk() walks through the list looking
+ * for first occurrences of attributes with ID in specified interval from @id to
+ * (@id + @max - 1), returning pointers to found &eattr structures, storing its
+ * walk state in @s for subsequent calls.
+
+ * The function ea_walk() is supposed to be called in a loop, with initially
+ * zeroed walk state structure @s with filled the initial extended attribute
+ * list, returning one found attribute in each call or %NULL when no other
+ * attribute exists. The extended attribute list or the arguments should not be
+ * modified between calls. The maximum value of @max is 128.
+ */
+eattr *
+ea_walk(struct ea_walk_state *s, uint id, uint max)
+{
+  ea_list *e = s->eattrs;
+  eattr *a = s->ea;
+  eattr *a_max;
+
+  max = id + max;
+
+  if (a)
+    goto step;
+
+  for (; e; e = e->next)
+  {
+    if (e->flags & EALF_BISECT)
+    {
+      int l, r, m;
+
+      l = 0;
+      r = e->count - 1;
+      while (l < r)
+      {
+	m = (l+r) / 2;
+	if (e->attrs[m].id < id)
+	  l = m + 1;
+	else
+	  r = m;
+      }
+      a = e->attrs + l;
+    }
+    else
+      a = e->attrs;
+
+  step:
+    a_max = e->attrs + e->count;
+    for (; a < a_max; a++)
+      if ((a->id >= id) && (a->id < max))
+      {
+	int n = a->id - id;
+
+	if (BIT32_TEST(s->visited, n))
+	  continue;
+
+	BIT32_SET(s->visited, n);
+
+	if ((a->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
+	  continue;
+
+	s->eattrs = e;
+	s->ea = a;
+	return a;
+      }
+      else if (e->flags & EALF_BISECT)
+	break;
+  }
+
+  return NULL;
+}
+
+/**
  * ea_get_int - fetch an integer attribute
  * @e: attribute list
  * @id: attribute ID
@@ -563,6 +639,32 @@ get_generic_attr(eattr *a, byte **buf, int buflen UNUSED)
   return GA_UNKNOWN;
 }
 
+void
+ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max)
+{
+  byte *bound = buf + bufsize - 32;
+  u32 data = a->u.data;
+  int i;
+
+  for (i = min; i < max; i++)
+    if ((data & (1u << i)) && names[i])
+    {
+      if (buf > bound)
+      {
+	strcpy(buf, " ...");
+	return;
+      }
+
+      buf += bsprintf(buf, " %s", names[i]);
+      data &= ~(1u << i);
+    }
+
+  if (data)
+    bsprintf(buf, " %08x", data);
+
+  return;
+}
+
 static inline void
 opaque_format(struct adata *ad, byte *buf, unsigned int size)
 {
@@ -664,6 +766,9 @@ ea_show(struct cli *c, eattr *e)
 	  break;
 	case EAF_TYPE_AS_PATH:
 	  as_path_format(ad, pos, end - pos);
+	  break;
+	case EAF_TYPE_BITFIELD:
+	  bsprintf(pos, "%08x", e->u.data);
 	  break;
 	case EAF_TYPE_INT_SET:
 	  ea_show_int_set(c, ad, 1, pos, buf, end);

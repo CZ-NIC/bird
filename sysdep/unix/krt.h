@@ -28,8 +28,6 @@ struct kif_proto;
 
 #define EA_KRT_SOURCE	EA_CODE(EAP_KRT, 0)
 #define EA_KRT_METRIC	EA_CODE(EAP_KRT, 1)
-#define EA_KRT_PREFSRC	EA_CODE(EAP_KRT, 2)
-#define EA_KRT_REALM	EA_CODE(EAP_KRT, 3)
 
 /* Whenever we recognize our own routes, we allow learing of foreign routes */
 
@@ -131,6 +129,7 @@ void krt_sys_copy_config(struct krt_config *, struct krt_config *);
 int  krt_capable(rte *e);
 void krt_do_scan(struct krt_proto *);
 void krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old, struct ea_list *eattrs);
+int krt_sys_get_attr(eattr *a, byte *buf, int buflen);
 
 
 /* kif sysdep */
