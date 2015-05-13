@@ -9,6 +9,7 @@
 #ifndef _BIRD_RESOURCE_H_
 #define _BIRD_RESOURCE_H_
 
+#include <stddef.h>
 #include "lib/lists.h"
 
 /* Resource */

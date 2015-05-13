@@ -11,6 +11,7 @@
 #include "ospf.h"
 #include "nest/password.h"
 #include "lib/md5.h"
+#include "lib/socket.h"
 
 void
 ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type)
@@ -108,11 +109,11 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt)
     char password[OSPF_AUTH_CRYPT_SIZE];
     strncpy(password, passwd->password, sizeof(password));
 
-    struct md5_context ctxt;
+    md5_context ctxt;
     md5_init(&ctxt);
     md5_update(&ctxt, (char *) pkt, plen);
     md5_update(&ctxt, password, OSPF_AUTH_CRYPT_SIZE);
-    md5_final(tail, &ctxt);
+    memcpy((byte *) tail, md5_final(&ctxt), MD5_SIZE);
     break;
 
   default:
@@ -180,11 +181,11 @@ ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_
 
     strncpy(passwd, pass->password, OSPF_AUTH_CRYPT_SIZE);
 
-    struct md5_context ctxt;
+    md5_context ctxt;
     md5_init(&ctxt);
     md5_update(&ctxt, (char *) pkt, plen);
     md5_update(&ctxt, passwd, OSPF_AUTH_CRYPT_SIZE);
-    md5_final(md5sum, &ctxt);
+    memcpy(md5sum, md5_final(&ctxt), MD5_SIZE);
 
     if (memcmp(md5sum, tail, OSPF_AUTH_CRYPT_SIZE))
       DROP("wrong MD5 digest", pass->id);

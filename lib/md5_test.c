@@ -16,12 +16,11 @@
 static void
 get_md5(const char *str, char (*out_hash)[MD5_HEX_SIZE])
 {
-  unsigned char hash[MD5_SIZE];
-  struct md5_context ctxt;
+  md5_context ctxt;
 
   md5_init(&ctxt);
   md5_update(&ctxt, str, strlen(str));
-  md5_final(hash, &ctxt);
+  byte *hash = md5_final(&ctxt);
 
   int i;
   for(i = 0; i < MD5_SIZE; i++)

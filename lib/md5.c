@@ -38,7 +38,7 @@ void byteReverse(unsigned char *buf, unsigned longs)
  * Start MD5 accumulation.  Set bit count to 0 and buffer to mysterious
  * initialization constants.
  */
-void md5_init(struct md5_context *ctx)
+void md5_init(md5_context *ctx)
 {
     ctx->buf[0] = 0x67452301;
     ctx->buf[1] = 0xefcdab89;
@@ -53,7 +53,7 @@ void md5_init(struct md5_context *ctx)
  * Update context to reflect the concatenation of another buffer full
  * of bytes.
  */
-void md5_update(struct md5_context *ctx, unsigned char const *buf, unsigned len)
+void md5_update(md5_context *ctx, unsigned char const *buf, unsigned len)
 {
     u32 t;
 
@@ -101,7 +101,7 @@ void md5_update(struct md5_context *ctx, unsigned char const *buf, unsigned len)
  * Final wrapup - pad to 64-byte boundary with the bit pattern 
  * 1 0* (64-bit count of bits processed, MSB-first)
  */
-void md5_final(unsigned char digest[16], struct md5_context *ctx)
+byte *md5_final(md5_context *ctx)
 {
     unsigned count;
     unsigned char *p;
@@ -138,8 +138,14 @@ void md5_final(unsigned char digest[16], struct md5_context *ctx)
 
     md5_transform(ctx->buf, (u32 *) ctx->in);
     byteReverse((unsigned char *) ctx->buf, 4);
-    memcpy(digest, ctx->buf, 16);
-    memset((char *) ctx, 0, sizeof(ctx));	/* In case it's sensitive */
+
+    return (byte*) ctx->buf;
+}
+
+/* I am a hard paranoid */
+void md5_erase_ctx(md5_context *ctx)
+{
+  memset((char *) ctx, 0, sizeof(*ctx));	/* In case it's sensitive */
 }
 
 /* The four core functions - F1 is optimized somewhat */

@@ -15,15 +15,17 @@
 #define MD5_HEX_SIZE	33
 #define MD5_BLOCK_SIZE	64
 
-struct md5_context {
+typedef struct
+{
   u32 buf[4];
   u32 bits[2];
   unsigned char in[64];
 } md5_context;
 
-void md5_init(struct md5_context *context);
-void md5_update(struct md5_context *context, unsigned char const *buf, unsigned len);
-void md5_final(unsigned char digest[16], struct md5_context *context);
+void md5_init(md5_context *context);
+void md5_update(md5_context *context, unsigned char const *buf, unsigned len);
+byte *md5_final(md5_context *context);
+
 void md5_transform(u32 buf[4], u32 const in[16]);
 
 
