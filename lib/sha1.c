@@ -34,7 +34,7 @@ sha1_init(sha1_context *hd)
  * Transform the message X which consists of 16 32-bit-words
  */
 static void
-transform(sha1_context *hd, const byte *data)
+sha1_transform(sha1_context *hd, const byte *data)
 {
   u32 a,b,c,d,e,tm;
   u32 x[16];
@@ -173,7 +173,7 @@ sha1_update(sha1_context *hd, const byte *inbuf, uint inlen)
 {
   if (hd->count == 64)  /* flush the buffer */
   {
-    transform(hd, hd->buf);
+    sha1_transform(hd, hd->buf);
     hd->count = 0;
     hd->nblocks++;
   }
@@ -191,7 +191,7 @@ sha1_update(sha1_context *hd, const byte *inbuf, uint inlen)
 
   while (inlen >= 64)
   {
-    transform(hd, inbuf);
+    sha1_transform(hd, inbuf);
     hd->count = 0;
     hd->nblocks++;
     inlen -= 64;
@@ -253,7 +253,7 @@ sha1_final(sha1_context *hd)
   hd->buf[61] = lsb >> 16;
   hd->buf[62] = lsb >>  8;
   hd->buf[63] = lsb	   ;
-  transform(hd, hd->buf);
+  sha1_transform(hd, hd->buf);
 
   p = (u32*) hd->buf;
 #define X(a) do { put_u32(p, hd->h##a); p++; } while(0)
