@@ -115,7 +115,7 @@ sum1(u32 x)
     32-bit-words. See FIPS 180-2 for details.
  */
 static unsigned int
-sha256_transform_block(sha256_context *ctx, const unsigned char *data)
+sha256_transform_block(sha256_context *ctx, const byte *data)
 {
   static const u32 K[64] = {
       0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
@@ -215,7 +215,7 @@ sha256_transform_block(sha256_context *ctx, const unsigned char *data)
 #undef R
 
 static unsigned int
-sha256_transform(void *ctx, const unsigned char *data, size_t nblks)
+sha256_transform(void *ctx, const byte *data, size_t nblks)
 {
   sha256_context *hd = ctx;
   unsigned int burn;

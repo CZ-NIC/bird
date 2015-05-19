@@ -147,7 +147,7 @@ static const u64 k[] =
  * Transform the message W which consists of 16 64-bit-words
  */
 static unsigned int
-sha512_transform_block(sha512_state *hd, const unsigned char *data)
+sha512_transform_block(sha512_state *hd, const byte *data)
 {
   u64 a, b, c, d, e, f, g, h;
   u64 w[16];
@@ -410,7 +410,7 @@ sha512_transform_block(sha512_state *hd, const unsigned char *data)
 }
 
 static unsigned int
-sha512_transform(void *context, const unsigned char *data, size_t nblks)
+sha512_transform(void *context, const byte *data, size_t nblks)
 {
   sha512_context *ctx = context;
   unsigned int burn;

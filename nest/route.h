@@ -320,7 +320,7 @@ struct mpnh {
   ip_addr gw;				/* Next hop */
   struct iface *iface;			/* Outgoing interface */
   struct mpnh *next;
-  unsigned char weight;
+  byte weight;
 };
 
 struct rte_src {

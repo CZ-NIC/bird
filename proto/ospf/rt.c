@@ -43,7 +43,7 @@ unresolved_vlink(ort *ort)
 }
 
 static inline struct mpnh *
-new_nexthop(struct ospf_proto *p, ip_addr gw, struct iface *iface, unsigned char weight)
+new_nexthop(struct ospf_proto *p, ip_addr gw, struct iface *iface, byte weight)
 {
   struct mpnh *nh = lp_alloc(p->nhpool, sizeof(struct mpnh));
   nh->gw = gw;

@@ -52,7 +52,7 @@ byte* sha384_final(sha384_context *ctx)
   return sha512_final(ctx);
 }
 
-static unsigned int sha512_transform(void *context, const unsigned char *data, size_t nblks);
+static unsigned int sha512_transform(void *context, const byte *data, size_t nblks);
 
 /**
  *	HMAC-SHA512, HMAC-SHA384

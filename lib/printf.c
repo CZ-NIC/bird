@@ -215,7 +215,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			if (!(flags & LEFT))
 				while (--field_width > 0)
 					*str++ = ' ';
-			*str++ = (unsigned char) va_arg(args, int);
+			*str++ = (byte) va_arg(args, int);
 			while (--field_width > 0)
 				*str++ = ' ';
 			continue;

@@ -130,7 +130,7 @@ static inline void
 sk_process_cmsg4_ttl(sock *s, struct cmsghdr *cm)
 {
   if (cm->cmsg_type == IP_RECVTTL)
-    s->rcv_ttl = * (unsigned char *) CMSG_DATA(cm);
+    s->rcv_ttl = * (byte *) CMSG_DATA(cm);
 }
 
 static inline void

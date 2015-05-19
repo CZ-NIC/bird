@@ -17,12 +17,12 @@
 #ifdef CPU_LITTLE_ENDIAN
 #define byteReverse(buf, len)	/* Nothing */
 #else
-void byteReverse(unsigned char *buf, unsigned longs);
+void byteReverse(byte *buf, unsigned longs);
 
 /*
  * Note: this code is harmless on little-endian machines.
  */
-void byteReverse(unsigned char *buf, unsigned longs)
+void byteReverse(byte *buf, unsigned longs)
 {
   u32 t;
   do {
@@ -55,7 +55,7 @@ md5_init(md5_context *ctx)
  * of bytes.
  */
 void
-md5_update(md5_context *ctx, unsigned char const *buf, unsigned len)
+md5_update(md5_context *ctx, byte const *buf, unsigned len)
 {
   u32 t;
 
@@ -72,7 +72,7 @@ md5_update(md5_context *ctx, unsigned char const *buf, unsigned len)
 
   if (t)
   {
-    unsigned char *p = (unsigned char *) ctx->in + t;
+    byte *p = (byte *) ctx->in + t;
 
     t = 64 - t;
     if (len < t)
@@ -110,7 +110,7 @@ byte *
 md5_final(md5_context *ctx)
 {
   unsigned count;
-  unsigned char *p;
+  byte *p;
 
   /* Compute number of bytes mod 64 */
   count = (ctx->bits[0] >> 3) & 0x3F;
@@ -146,7 +146,7 @@ md5_final(md5_context *ctx)
   ((u32 *) ctx->in)[15] = ctx->bits[1];
 
   md5_transform(ctx->buf, (u32 *) ctx->in);
-  byteReverse((unsigned char *) ctx->buf, 4);
+  byteReverse((byte *) ctx->buf, 4);
 
   return (byte*) ctx->buf;
 }
