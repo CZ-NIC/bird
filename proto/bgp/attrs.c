@@ -114,7 +114,7 @@ path_segment_contains(byte *p, int bs, u32 asn)
 
 /* Validates path attribute, removes AS_CONFED_* segments, and also returns path length */
 static int
-validate_path(struct bgp_proto *p, int as_path, int bs, byte *idata, unsigned int *ilength)
+validate_path(struct bgp_proto *p, int as_path, int bs, byte *idata, uint *ilength)
 {
   int res = 0;
   u8 *a, *dst;
@@ -381,7 +381,7 @@ bgp_attach_attr_wa(ea_list **to, struct linpool *pool, unsigned attr, unsigned l
 }
 
 static int
-bgp_encode_attr_hdr(byte *dst, unsigned int flags, unsigned code, int len)
+bgp_encode_attr_hdr(byte *dst, uint flags, unsigned code, int len)
 {
   int wlen;
 
@@ -473,10 +473,10 @@ bgp_get_attr_len(eattr *a)
  *
  * Result: Length of the attribute block generated or -1 if not enough space.
  */
-unsigned int
+uint
 bgp_encode_attrs(struct bgp_proto *p, byte *w, ea_list *attrs, int remains)
 {
-  unsigned int i, code, type, flags;
+  uint i, code, type, flags;
   byte *start = w;
   int len, rv;
 
@@ -1593,11 +1593,11 @@ bgp_remove_as4_attrs(struct bgp_proto *p, rta *a)
  * by a &rta.
  */
 struct rta *
-bgp_decode_attrs(struct bgp_conn *conn, byte *attr, unsigned int len, struct linpool *pool, int mandatory)
+bgp_decode_attrs(struct bgp_conn *conn, byte *attr, uint len, struct linpool *pool, int mandatory)
 {
   struct bgp_proto *bgp = conn->bgp;
   rta *a = lp_alloc(pool, sizeof(struct rta));
-  unsigned int flags, code, l, i, type;
+  uint flags, code, l, i, type;
   int errcode;
   byte *z, *attr_start;
   byte seen[256/8];
@@ -1791,7 +1791,7 @@ err:
 int
 bgp_get_attr(eattr *a, byte *buf, int buflen)
 {
-  unsigned int i = EA_ID(a->id);
+  uint i = EA_ID(a->id);
   struct attr_desc *d;
   int len;
 

@@ -124,7 +124,7 @@ as_path_convert_to_new(struct adata *path, byte *dst, int req_as)
 }
 
 void
-as_path_format(struct adata *path, byte *buf, unsigned int size)
+as_path_format(struct adata *path, byte *buf, uint size)
 {
   byte *p = path->data;
   byte *e = p + path->length;

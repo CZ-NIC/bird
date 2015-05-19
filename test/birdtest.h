@@ -117,7 +117,7 @@ void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
 #define bt_dump_struct(buf, data)							\
     do											\
     {											\
-      unsigned int k;									\
+      uint k;										\
       u32 *pc = (u32*) data;								\
       bt_strncat(buf, "{");								\
       for (k = 0; k < (sizeof(*data) / sizeof(typeof(*pc))); k++)			\
@@ -165,7 +165,7 @@ void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
 #define bt_assert_out_fn_in(fn, in_out, in_fmt, out_fmt)				\
     do											\
     {											\
-      unsigned int i;									\
+      uint i;										\
       for (i = 0; i < (sizeof(in_out)/sizeof(in_out[0])); i++)				\
       {											\
 	typeof(in_out[i].out) fn_out = fn(in_out[i].in);				\
@@ -189,7 +189,7 @@ void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
 #define bt_assert_fn_in_out(fn, in_out, in_fmt, out_fmt)				\
     do											\
     {											\
-      unsigned int i;									\
+      uint i;										\
       for (i = 0; i < (sizeof(in_out)/sizeof(in_out[0])); i++)				\
       {											\
 	typeof(in_out[i].out) fn_out;							\

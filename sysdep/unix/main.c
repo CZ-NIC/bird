@@ -155,7 +155,7 @@ read_iproute_table(char *file, char *prefix, int max)
 static char *config_name = PATH_CONFIG_FILE;
 
 static int
-cf_read(byte *dest, unsigned int len, int fd)
+cf_read(byte *dest, uint len, int fd)
 {
   int l = read(fd, dest, len);
   if (l < 0)

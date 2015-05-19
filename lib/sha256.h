@@ -23,7 +23,7 @@
 #define SHA256_HEX_SIZE		65
 #define SHA256_BLOCK_SIZE 	64
 
-typedef unsigned int sha_transform_fn (void *c, const byte *blks, size_t nblks);
+typedef uint sha_transform_fn (void *c, const byte *blks, size_t nblks);
 
 typedef struct {
   u32  h0,h1,h2,h3,h4,h5,h6,h7;
@@ -51,7 +51,7 @@ byte* sha224_final(sha224_context *ctx)
   return sha256_final(ctx);
 }
 
-static unsigned int sha256_transform(void *ctx, const byte *data, size_t nblks);
+static uint sha256_transform(void *ctx, const byte *data, size_t nblks);
 
 /**
  *	HMAC-SHA256, HMAC-SHA224

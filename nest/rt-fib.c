@@ -206,7 +206,7 @@ fib_histogram(struct fib *f)
 void *
 fib_get(struct fib *f, ip_addr *a, int len)
 {
-  unsigned int h = ipa_hash(*a);
+  uint h = ipa_hash(*a);
   struct fib_node **ee = f->hash_table + (h >> f->hash_shift);
   struct fib_node *g, *e = *ee;
   u32 uid = h << 16;
@@ -321,7 +321,7 @@ void
 fib_delete(struct fib *f, void *E)
 {
   struct fib_node *e = E;
-  unsigned int h = fib_hash(f, &e->prefix);
+  uint h = fib_hash(f, &e->prefix);
   struct fib_node **ee = f->hash_table + h;
   struct fib_iterator *it;
 
@@ -442,7 +442,7 @@ fit_put(struct fib_iterator *i, struct fib_node *n)
 void
 fib_check(struct fib *f)
 {
-  unsigned int i, ec, lo, nulls;
+  uint i, ec, lo, nulls;
 
   ec = 0;
   for(i=0; i<f->hash_size; i++)
@@ -452,7 +452,7 @@ fib_check(struct fib *f)
       for(n=f->hash_table[i]; n; n=n->next)
 	{
 	  struct fib_iterator *j, *j0;
-	  unsigned int h0 = ipa_hash(n->prefix);
+	  uint h0 = ipa_hash(n->prefix);
 	  if (h0 < lo)
 	    bug("fib_check: discord in hash chains");
 	  lo = h0;
@@ -489,7 +489,7 @@ struct fib f;
 
 void dump(char *m)
 {
-  unsigned int i;
+  uint i;
 
   debug("%s ... order=%d, size=%d, entries=%d\n", m, f.hash_order, f.hash_size, f.hash_size);
   for(i=0; i<f.hash_size; i++)

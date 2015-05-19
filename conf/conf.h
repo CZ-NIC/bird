@@ -102,7 +102,7 @@ void cfg_copy_list(list *dest, list *src, unsigned node_size);
 
 /* Lexer */
 
-extern int (*cf_read_hook)(byte *buf, unsigned int max, int fd);
+extern int (*cf_read_hook)(byte *buf, uint max, int fd);
 
 struct symbol {
   struct symbol *next;

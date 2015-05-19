@@ -471,11 +471,11 @@ int ip6_pton(char *a, ip6_addr *o);
 #define ipa_in_net(x,n,p) (ipa_zero(ipa_and(ipa_xor((n),(x)),ipa_mkmask(p))))
 #define net_in_net(n1,l1,n2,l2) (((l1) >= (l2)) && (ipa_zero(ipa_and(ipa_xor((n1),(n2)),ipa_mkmask(l2)))))
 
-char *ip_scope_text(unsigned);
+char *ip_scope_text(uint);
 
 struct prefix {
   ip_addr addr;
-  unsigned int len;
+  uint len;
 };
 
 

@@ -70,7 +70,7 @@ f3(u32 x, u32 y, u32 z)
   return ((x & y) | (z & (x|y)));
 }
 
-/* Bitwise rotation of an unsigned int to the right */
+/* Bitwise rotation of an uint to the right */
 static inline u32 ror(u32 x, int n)
 {
   return ( (x >> (n&(32-1))) | (x << ((32-n)&(32-1))) );
@@ -114,7 +114,7 @@ sum1(u32 x)
     The SHA-256 core: Transform the message X which consists of 16
     32-bit-words. See FIPS 180-2 for details.
  */
-static unsigned int
+static uint
 sha256_transform_block(sha256_context *ctx, const byte *data)
 {
   static const u32 K[64] = {
@@ -214,11 +214,11 @@ sha256_transform_block(sha256_context *ctx, const byte *data)
 #undef S1
 #undef R
 
-static unsigned int
+static uint
 sha256_transform(void *ctx, const byte *data, size_t nblks)
 {
   sha256_context *hd = ctx;
-  unsigned int burn;
+  uint burn;
 
   do
   {
@@ -239,7 +239,7 @@ sha256_transform(void *ctx, const byte *data, size_t nblks)
 void
 sha256_update(sha256_context *ctx, const byte *in_buf, size_t in_len)
 {
-  const unsigned int blocksize = ctx->blocksize;
+  const uint blocksize = ctx->blocksize;
   size_t inblocks;
 
   if (sizeof(ctx->buf) < blocksize)

@@ -182,14 +182,14 @@ rte_trace(struct proto *p, rte *e, int dir, char *msg)
 }
 
 static inline void
-rte_trace_in(unsigned int flag, struct proto *p, rte *e, char *msg)
+rte_trace_in(uint flag, struct proto *p, rte *e, char *msg)
 {
   if (p->debug & flag)
     rte_trace(p, e, '>', msg);
 }
 
 static inline void
-rte_trace_out(unsigned int flag, struct proto *p, rte *e, char *msg)
+rte_trace_out(uint flag, struct proto *p, rte *e, char *msg)
 {
   if (p->debug & flag)
     rte_trace(p, e, '<', msg);
@@ -1880,7 +1880,7 @@ hc_hash(ip_addr a, rtable *dep)
 static inline void
 hc_insert(struct hostcache *hc, struct hostentry *he)
 {
-  unsigned int k = he->hash_key >> hc->hash_shift;
+  uint k = he->hash_key >> hc->hash_shift;
   he->next = hc->hash_table[k];
   hc->hash_table[k] = he;
 }
@@ -1889,7 +1889,7 @@ static inline void
 hc_remove(struct hostcache *hc, struct hostentry *he)
 {
   struct hostentry **hep;
-  unsigned int k = he->hash_key >> hc->hash_shift;
+  uint k = he->hash_key >> hc->hash_shift;
 
   for (hep = &hc->hash_table[k]; *hep != he; hep = &(*hep)->next);
   *hep = he->next;
@@ -2154,7 +2154,7 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
   if (!tab->hostcache)
     rt_init_hostcache(tab);
 
-  unsigned int k = hc_hash(a, dep);
+  uint k = hc_hash(a, dep);
   struct hostcache *hc = tab->hostcache;
   for (he = hc->hash_table[k >> hc->hash_shift]; he != NULL; he = he->next)
     if (ipa_equal(he->addr, a) && (he->tab == dep))

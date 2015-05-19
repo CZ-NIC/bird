@@ -50,7 +50,7 @@ struct nl_sock
   u32 seq;
   byte *rx_buffer;			/* Receive buffer */
   struct nlmsghdr *last_hdr;		/* Recently received packet */
-  unsigned int last_size;
+  uint last_size;
 };
 
 #define NL_RX_SIZE 8192
@@ -443,7 +443,7 @@ nl_parse_link(struct nlmsghdr *h, int scan)
   struct iface *ifi;
   char *name;
   u32 mtu;
-  unsigned int fl;
+  uint fl;
 
   if (!(i = nl_checkin(h, sizeof(*i))) || !nl_parse_attrs(IFLA_RTA(i), a, sizeof(a)))
     return;
@@ -1088,7 +1088,7 @@ nl_async_hook(sock *sk, int size UNUSED)
   struct msghdr m = { (struct sockaddr *) &sa, sizeof(sa), &iov, 1, NULL, 0, 0 };
   struct nlmsghdr *h;
   int x;
-  unsigned int len;
+  uint len;
 
   x = recvmsg(sk->fd, &m, 0);
   if (x < 0)

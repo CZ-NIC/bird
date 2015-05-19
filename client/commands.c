@@ -38,7 +38,7 @@ static struct cmd_node cmd_root;
 void
 cmd_build_tree(void)
 {
-  unsigned int i;
+  uint i;
 
   cmd_root.plastson = &cmd_root.son;
 

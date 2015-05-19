@@ -157,7 +157,7 @@ main(int argc, char *argv[])
 
 /* Mockup */
 void *
-mb_alloc(pool *UNUSED, unsigned size) {
+mb_alloc(pool *UNUSED, uint size) {
   return (void *) malloc(size);
 };
 
@@ -166,9 +166,9 @@ mb_alloc(pool *UNUSED, unsigned size) {
 #define MIN_(a,b) (((a)<(b))?(a):(b))
 #define MIN(a,b) MIN_(a,b)
 void
-buffer_realloc(void **buf, unsigned *size, unsigned need, unsigned item_size)
+buffer_realloc(void **buf, uint *size, uint need, uint item_size)
 {
-  unsigned nsize = MIN(*size, need);
+  uint nsize = MIN(*size, need);
 
   while (nsize < need)
     nsize = STEP_UP(nsize);

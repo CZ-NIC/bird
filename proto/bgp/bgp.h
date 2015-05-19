@@ -90,7 +90,7 @@ struct bgp_config {
 struct bgp_conn {
   struct bgp_proto *bgp;
   struct birdsock *sk;
-  unsigned int state;			/* State of connection state machine */
+  uint state;				/* State of connection state machine */
   struct timer *connect_retry_timer;
   struct timer *hold_timer;
   struct timer *keepalive_timer;
@@ -142,7 +142,7 @@ struct bgp_proto {
   struct timer *startup_timer;		/* Timer used to delay protocol startup due to previous errors (startup_delay) */
   struct timer *gr_timer;		/* Timer waiting for reestablishment after graceful restart */
   struct bgp_bucket **bucket_hash;	/* Hash table of attribute buckets */
-  unsigned int hash_size, hash_count, hash_limit;
+  uint hash_size, hash_count, hash_limit;
   HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
   slab *prefix_slab;			/* Slab holding prefix nodes */
   list bucket_queue;			/* Queue of buckets to send */
@@ -235,7 +235,7 @@ static inline void set_next_hop(byte *b, ip_addr addr) { ((ip_addr *) b)[0] = ad
 
 void bgp_attach_attr(struct ea_list **to, struct linpool *pool, unsigned attr, uintptr_t val);
 byte *bgp_attach_attr_wa(struct ea_list **to, struct linpool *pool, unsigned attr, unsigned len);
-struct rta *bgp_decode_attrs(struct bgp_conn *conn, byte *a, unsigned int len, struct linpool *pool, int mandatory);
+struct rta *bgp_decode_attrs(struct bgp_conn *conn, byte *a, uint len, struct linpool *pool, int mandatory);
 int bgp_get_attr(struct eattr *e, byte *buf, int buflen);
 int bgp_rte_better(struct rte *, struct rte *);
 int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
@@ -245,7 +245,7 @@ void bgp_init_bucket_table(struct bgp_proto *);
 void bgp_free_bucket(struct bgp_proto *p, struct bgp_bucket *buck);
 void bgp_init_prefix_table(struct bgp_proto *p, u32 order);
 void bgp_free_prefix(struct bgp_proto *p, struct bgp_prefix *bp);
-unsigned int bgp_encode_attrs(struct bgp_proto *p, byte *w, ea_list *attrs, int remains);
+uint bgp_encode_attrs(struct bgp_proto *p, byte *w, ea_list *attrs, int remains);
 void bgp_get_route_info(struct rte *, byte *buf, struct ea_list *attrs);
 
 inline static void bgp_attach_attr_ip(struct ea_list **to, struct linpool *pool, unsigned attr, ip_addr a)

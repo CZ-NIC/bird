@@ -47,7 +47,7 @@ struct fib_iterator {			/* See lib/slists.h for an explanation */
   byte efef;				/* 0xff to distinguish between iterator and node */
   byte pad[3];
   struct fib_node *node;		/* Or NULL if freshly merged */
-  unsigned int hash;
+  uint hash;
 };
 
 typedef void (*fib_init_func)(struct fib_node *);
@@ -56,11 +56,11 @@ struct fib {
   pool *fib_pool;			/* Pool holding all our data */
   slab *fib_slab;			/* Slab holding all fib nodes */
   struct fib_node **hash_table;		/* Node hash table */
-  unsigned int hash_size;		/* Number of hash table entries (a power of two) */
-  unsigned int hash_order;		/* Binary logarithm of hash_size */
-  unsigned int hash_shift;		/* 16 - hash_log */
-  unsigned int entries;			/* Number of entries */
-  unsigned int entries_min, entries_max;/* Entry count limits (else start rehashing) */
+  uint hash_size;			/* Number of hash table entries (a power of two) */
+  uint hash_order;			/* Binary logarithm of hash_size */
+  uint hash_shift;			/* 16 - hash_log */
+  uint entries;				/* Number of entries */
+  uint entries_min, entries_max;	/* Entry count limits (else start rehashing) */
   fib_init_func init;			/* Constructor */
 };
 
@@ -78,7 +78,7 @@ void fit_put(struct fib_iterator *, struct fib_node *);
 
 #define FIB_WALK(fib, z) do {					\
 	struct fib_node *z, **ff = (fib)->hash_table;		\
-	unsigned int count = (fib)->hash_size;			\
+	uint count = (fib)->hash_size;			\
 	while (count--)						\
 	  for(z = *ff++; z; z=z->next)
 
@@ -88,8 +88,8 @@ void fit_put(struct fib_iterator *, struct fib_node *);
 
 #define FIB_ITERATE_START(fib, it, z) do {			\
 	struct fib_node *z = fit_get(fib, it);			\
-	unsigned int count = (fib)->hash_size;			\
-	unsigned int hpos = (it)->hash;				\
+	uint count = (fib)->hash_size;			\
+	uint hpos = (it)->hash;				\
 	for(;;) {						\
 	  if (!z)						\
             {							\
@@ -435,7 +435,7 @@ typedef struct eattr {
 #define EAF_TEMP 0x80			/* A temporary attribute (the one stored in the tmp attr list) */
 
 struct adata {
-  unsigned int length;			/* Length of data */
+  uint length;				/* Length of data */
   byte data[0];
 };
 
@@ -475,7 +475,7 @@ void ea_sort(ea_list *);		/* Sort entries in all sub-lists */
 unsigned ea_scan(ea_list *);		/* How many bytes do we need for merged ea_list */
 void ea_merge(ea_list *from, ea_list *to); /* Merge sub-lists to allocated buffer */
 int ea_same(ea_list *x, ea_list *y);	/* Test whether two ea_lists are identical */
-unsigned int ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
+uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 

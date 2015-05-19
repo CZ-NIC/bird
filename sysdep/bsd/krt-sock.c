@@ -181,7 +181,7 @@ struct ks_msg
 #define GETADDR(p, F) \
   bzero(p, sizeof(*p));\
   if ((addrs & (F)) && ((struct sockaddr *)body)->sa_len) {\
-    unsigned int l = ROUNDUP(((struct sockaddr *)body)->sa_len);\
+    uint l = ROUNDUP(((struct sockaddr *)body)->sa_len);\
     memcpy(p, body, (l > sizeof(*p) ? sizeof(*p) : l));\
     body += l;}
 
@@ -537,7 +537,7 @@ krt_read_ifinfo(struct ks_msg *msg, int scan)
   struct if_msghdr *ifm = (struct if_msghdr *)&msg->rtm;
   void *body = (void *)(ifm + 1);
   struct sockaddr_dl *dl = NULL;
-  unsigned int i;
+  uint i;
   struct iface *iface = NULL, f = {};
   int fl = ifm->ifm_flags;
   int nlen = 0;

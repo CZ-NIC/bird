@@ -289,8 +289,8 @@ bgp_create_open(struct bgp_conn *conn, byte *buf)
     }
 }
 
-static unsigned int
-bgp_encode_prefixes(struct bgp_proto *p, byte *w, struct bgp_bucket *buck, unsigned int remains)
+static uint
+bgp_encode_prefixes(struct bgp_proto *p, byte *w, struct bgp_bucket *buck, uint remains)
 {
   byte *start = w;
   ip_addr a;
@@ -648,7 +648,7 @@ bgp_create_end_refresh(struct bgp_conn *conn, byte *buf)
 
 
 static void
-bgp_create_header(byte *buf, unsigned int len, unsigned int type)
+bgp_create_header(byte *buf, uint len, uint type)
 {
   memset(buf, 0xff, 16);		/* Marker */
   put_u16(buf+16, len);
@@ -669,7 +669,7 @@ static int
 bgp_fire_tx(struct bgp_conn *conn)
 {
   struct bgp_proto *p = conn->bgp;
-  unsigned int s = conn->packets_to_send;
+  uint s = conn->packets_to_send;
   sock *sk = conn->sk;
   byte *buf, *pkt, *end;
   int type;

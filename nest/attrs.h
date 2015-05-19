@@ -30,7 +30,7 @@ struct f_tree;
 struct adata *as_path_prepend(struct linpool *pool, struct adata *olda, u32 as);
 int as_path_convert_to_old(struct adata *path, byte *dst, int *new_used);
 int as_path_convert_to_new(struct adata *path, byte *dst, int req_as);
-void as_path_format(struct adata *path, byte *buf, unsigned int size);
+void as_path_format(struct adata *path, byte *buf, uint size);
 int as_path_getlen(struct adata *path);
 int as_path_getlen_int(struct adata *path, int bs);
 int as_path_get_first(struct adata *path, u32 *orig_as);
@@ -95,9 +95,9 @@ static inline u64 ec_ip4(u64 kind, u64 key, u64 val)
 static inline u64 ec_generic(u64 key, u64 val)
 { return (key << 32) | val; }
 
-int int_set_format(struct adata *set, int way, int from, byte *buf, unsigned int size);
+int int_set_format(struct adata *set, int way, int from, byte *buf, uint size);
 int ec_format(byte *buf, u64 ec);
-int ec_set_format(struct adata *set, int from, byte *buf, unsigned int size);
+int ec_set_format(struct adata *set, int from, byte *buf, uint size);
 int int_set_contains(struct adata *list, u32 val);
 int ec_set_contains(struct adata *list, u64 val);
 struct adata *int_set_add(struct linpool *pool, struct adata *list, u32 val);

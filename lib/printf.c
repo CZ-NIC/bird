@@ -355,7 +355,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 		} else if (flags & SIGN)
 			num = va_arg(args, int);
 		else
-			num = va_arg(args, unsigned int);
+			num = va_arg(args, uint);
 		str = number(str, num, base, field_width, precision, flags, size);
 		if (!str)
 			return -1;

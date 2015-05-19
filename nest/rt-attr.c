@@ -98,7 +98,7 @@ rte_src_init(void)
   HASH_INIT(src_hash, rta_pool, RSH_INIT_ORDER);
 }
 
-static inline int u32_cto(unsigned int x) { return ffs(~x) - 1; }
+static inline int u32_cto(uint x) { return ffs(~x) - 1; }
 
 static inline u32
 rte_src_alloc_id(void)
@@ -195,10 +195,10 @@ rt_prune_sources(void)
  *	Multipath Next Hop
  */
 
-static inline unsigned int
+static inline uint
 mpnh_hash(struct mpnh *x)
 {
-  unsigned int h = 0;
+  uint h = 0;
   for (; x; x = x->next)
     h ^= ipa_hash(x->gw);
 
@@ -666,7 +666,7 @@ ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, 
 }
 
 static inline void
-opaque_format(struct adata *ad, byte *buf, unsigned int size)
+opaque_format(struct adata *ad, byte *buf, uint size)
 {
   byte *bound = buf + size - 10;
   int i;
@@ -838,7 +838,7 @@ ea_dump(ea_list *e)
  * ea_hash() takes an extended attribute list and calculated a hopefully
  * uniformly distributed hash value from its contents.
  */
-inline unsigned int
+inline uint
 ea_hash(ea_list *e)
 {
   u32 h = 0;
@@ -900,10 +900,10 @@ ea_append(ea_list *to, ea_list *what)
  *	rta's
  */
 
-static unsigned int rta_cache_count;
-static unsigned int rta_cache_size = 32;
-static unsigned int rta_cache_limit;
-static unsigned int rta_cache_mask;
+static uint rta_cache_count;
+static uint rta_cache_size = 32;
+static uint rta_cache_limit;
+static uint rta_cache_mask;
 static rta **rta_hash_table;
 
 static void
@@ -917,7 +917,7 @@ rta_alloc_hash(void)
   rta_cache_mask = rta_cache_size - 1;
 }
 
-static inline unsigned int
+static inline uint
 rta_hash(rta *a)
 {
   return (((uint) (uintptr_t) a->src) ^ ipa_hash(a->gw) ^
@@ -957,7 +957,7 @@ rta_copy(rta *o)
 static inline void
 rta_insert(rta *r)
 {
-  unsigned int h = r->hash_key & rta_cache_mask;
+  uint h = r->hash_key & rta_cache_mask;
   r->next = rta_hash_table[h];
   if (r->next)
     r->next->pprev = &r->next;
@@ -968,8 +968,8 @@ rta_insert(rta *r)
 static void
 rta_rehash(void)
 {
-  unsigned int ohs = rta_cache_size;
-  unsigned int h;
+  uint ohs = rta_cache_size;
+  uint h;
   rta *r, *n;
   rta **oht = rta_hash_table;
 
@@ -1002,7 +1002,7 @@ rta *
 rta_lookup(rta *o)
 {
   rta *r;
-  unsigned int h;
+  uint h;
 
   ASSERT(!(o->aflags & RTAF_CACHED));
   if (o->eattrs)
@@ -1093,7 +1093,7 @@ void
 rta_dump_all(void)
 {
   rta *a;
-  unsigned int h;
+  uint h;
 
   debug("Route attribute cache (%d entries, rehash at %d):\n", rta_cache_count, rta_cache_limit);
   for(h=0; h<rta_cache_size; h++)

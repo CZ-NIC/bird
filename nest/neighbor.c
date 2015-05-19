@@ -49,7 +49,7 @@
 static slab *neigh_slab;
 static list sticky_neigh_list, neigh_hash_table[NEIGH_HASH_SIZE];
 
-static inline unsigned int
+static inline uint
 neigh_hash(struct proto *p, ip_addr *a)
 {
   return (p->hash_key ^ ipa_hash(*a)) & (NEIGH_HASH_SIZE-1);
@@ -126,7 +126,7 @@ neigh_find2(struct proto *p, ip_addr *a, struct iface *ifa, unsigned flags)
 {
   neighbor *n;
   int class, scope = -1;
-  unsigned int h = neigh_hash(p, a);
+  uint h = neigh_hash(p, a);
   struct iface *i;
   struct ifa *addr;
 

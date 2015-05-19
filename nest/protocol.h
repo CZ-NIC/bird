@@ -261,15 +261,15 @@ void proto_graceful_restart_unlock(struct proto *p);
 void proto_show_limit(struct proto_limit *l, const char *dsc);
 void proto_show_basic_info(struct proto *p);
 
-void proto_cmd_show(struct proto *, unsigned int, int);
-void proto_cmd_disable(struct proto *, unsigned int, int);
-void proto_cmd_enable(struct proto *, unsigned int, int);
-void proto_cmd_restart(struct proto *, unsigned int, int);
-void proto_cmd_reload(struct proto *, unsigned int, int);
-void proto_cmd_debug(struct proto *, unsigned int, int);
-void proto_cmd_mrtdump(struct proto *, unsigned int, int);
+void proto_cmd_show(struct proto *, uint, int);
+void proto_cmd_disable(struct proto *, uint, int);
+void proto_cmd_enable(struct proto *, uint, int);
+void proto_cmd_restart(struct proto *, uint, int);
+void proto_cmd_reload(struct proto *, uint, int);
+void proto_cmd_debug(struct proto *, uint, int);
+void proto_cmd_mrtdump(struct proto *, uint, int);
 
-void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, unsigned int, int), int restricted, unsigned int arg);
+void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uint, int), int restricted, uint arg);
 struct proto *proto_get_named(struct symbol *, struct protocol *);
 
 #define CMD_RELOAD	0

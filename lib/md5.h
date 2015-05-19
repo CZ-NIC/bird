@@ -23,7 +23,7 @@ typedef struct
 } md5_context;
 
 void md5_init(md5_context *context);
-void md5_update(md5_context *context, byte const *buf, unsigned len);
+void md5_update(md5_context *context, byte const *buf, uint len);
 byte *md5_final(md5_context *context);
 
 void md5_transform(u32 buf[4], u32 const in[16]);
