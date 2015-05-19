@@ -1,5 +1,5 @@
 /*
- *	BIRD -- MD5 Hash Function and HMAC-MD5 Function
+ *	BIRD Library -- MD5 Hash Function and HMAC-MD5 Function
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -34,12 +34,14 @@ void byteReverse(byte *buf, uint longs)
 }
 #endif
 
+static void md5_transform(u32 buf[4], u32 const in[16]);
+
 /*
  * Start MD5 accumulation.  Set bit count to 0 and buffer to mysterious
  * initialization constants.
  */
 void
-md5_init(md5_context *ctx)
+md5_init(struct md5_context *ctx)
 {
   ctx->buf[0] = 0x67452301;
   ctx->buf[1] = 0xefcdab89;
@@ -55,7 +57,7 @@ md5_init(md5_context *ctx)
  * of bytes.
  */
 void
-md5_update(md5_context *ctx, byte const *buf, uint len)
+md5_update(struct md5_context *ctx, byte const *buf, uint len)
 {
   u32 t;
 
@@ -107,7 +109,7 @@ md5_update(md5_context *ctx, byte const *buf, uint len)
  * 1 0* (64-bit count of bits processed, MSB-first)
  */
 byte *
-md5_final(md5_context *ctx)
+md5_final(struct md5_context *ctx)
 {
   uint count;
   byte *p;
@@ -153,7 +155,7 @@ md5_final(md5_context *ctx)
 
 /* I am a hard paranoid */
 void
-md5_erase_ctx(md5_context *ctx)
+md5_erase_ctx(struct md5_context *ctx)
 {
   memset((char *) ctx, 0, sizeof(*ctx));	/* In case it's sensitive */
 }
@@ -259,14 +261,15 @@ md5_transform(u32 buf[4], u32 const in[16])
   buf[3] += d;
 }
 
-/**
+
+/*
  * 	MD5-HMAC
  */
 
 static void
 md5_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
 {
-  md5_context hd_tmp;
+  struct md5_context hd_tmp;
 
   md5_init(&hd_tmp);
   md5_update(&hd_tmp, buffer, length);
@@ -274,11 +277,11 @@ md5_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
 }
 
 void
-md5_hmac_init(md5_hmac_context *ctx, const byte *key, size_t keylen)
+md5_hmac_init(struct md5_hmac_context *ctx, const byte *key, size_t keylen)
 {
   byte keybuf[MD5_BLOCK_SIZE], buf[MD5_BLOCK_SIZE];
 
-  // Hash the key if necessary
+  /* Hash the key if necessary */
   if (keylen <= MD5_BLOCK_SIZE)
   {
     memcpy(keybuf, key, keylen);
@@ -290,14 +293,14 @@ md5_hmac_init(md5_hmac_context *ctx, const byte *key, size_t keylen)
     bzero(keybuf + MD5_SIZE, MD5_BLOCK_SIZE - MD5_SIZE);
   }
 
-  // Initialize the inner digest
+  /* Initialize the inner digest */
   md5_init(&ctx->ictx);
   int i;
   for (i = 0; i < MD5_BLOCK_SIZE; i++)
     buf[i] = keybuf[i] ^ 0x36;
   md5_update(&ctx->ictx, buf, MD5_BLOCK_SIZE);
 
-  // Initialize the outer digest
+  /* Initialize the outer digest */
   md5_init(&ctx->octx);
   for (i = 0; i < MD5_BLOCK_SIZE; i++)
     buf[i] = keybuf[i] ^ 0x5c;
@@ -305,19 +308,19 @@ md5_hmac_init(md5_hmac_context *ctx, const byte *key, size_t keylen)
 }
 
 void
-md5_hmac_update(md5_hmac_context *ctx, const byte *buf, size_t buflen)
+md5_hmac_update(struct md5_hmac_context *ctx, const byte *buf, size_t buflen)
 {
-  // Just update the inner digest
+  /* Just update the inner digest */
   md5_update(&ctx->ictx, buf, buflen);
 }
 
 byte *
-md5_hmac_final(md5_hmac_context *ctx)
+md5_hmac_final(struct md5_hmac_context *ctx)
 {
-  // Finish the inner digest
+  /* Finish the inner digest */
   byte *isha = md5_final(&ctx->ictx);
 
-  // Finish the outer digest
+  /* Finish the outer digest */
   md5_update(&ctx->octx, isha, MD5_SIZE);
   return md5_final(&ctx->octx);
 }

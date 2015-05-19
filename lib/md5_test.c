@@ -1,5 +1,5 @@
 /*
- *	BIRD -- MD5 and HMAC-MD5 Tests
+ *	BIRD Library -- MD5 and HMAC-MD5 Tests
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -16,7 +16,7 @@
 static void
 get_md5(const char *str, char (*out_hash)[MD5_HEX_SIZE])
 {
-  md5_context ctxt;
+  struct md5_context ctxt;
 
   md5_init(&ctxt);
   md5_update(&ctxt, str, strlen(str));
@@ -80,7 +80,7 @@ struct hmac_data_in {
 static void
 get_md5_hmac(const struct hmac_data_in in, char (*out_hash)[MD5_HEX_SIZE])
 {
-  md5_hmac_context ctx;
+  struct md5_hmac_context ctx;
   md5_hmac_init(&ctx, in.key, in.key_len);
   md5_hmac_update(&ctx, in.data, in.data_len);
   byte *hash_byte = md5_hmac_final(&ctx);

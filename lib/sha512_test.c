@@ -1,5 +1,5 @@
 /*
- *	BIRD -- SHA-512, SHA-384, HMAC-SHA-512 and HMAC-SHA-384 Tests
+ *	BIRD Library -- SHA-512, SHA-384, HMAC-SHA-512 and HMAC-SHA-384 Tests
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -25,7 +25,7 @@ byte_to_hex(char *out, const byte *in, uint len)
 static void
 get_sha512(const char *str, char (*out_hash)[SHA512_HEX_SIZE])
 {
-  sha512_context ctx;
+  struct sha512_context ctx;
   sha512_init(&ctx);
   sha512_update(&ctx, str, strlen(str));
   byte *hash = sha512_final(&ctx);
@@ -35,7 +35,7 @@ get_sha512(const char *str, char (*out_hash)[SHA512_HEX_SIZE])
 static void
 get_sha384(const char *str, char (*out_hash)[SHA384_HEX_SIZE])
 {
-  sha384_context ctx;
+  struct sha384_context ctx;
   sha384_init(&ctx);
   sha384_update(&ctx, str, strlen(str));
   byte *hash = sha384_final(&ctx);
@@ -125,13 +125,13 @@ t_sha512_concating(void)
   char *str_b5 =                       "eeeee"         ;
   char *str_b6 =                               "ffffff";
 
-  sha512_context ctx_a;
+  struct sha512_context ctx_a;
   sha512_init(&ctx_a);
   sha512_update(&ctx_a, str_a, strlen(str_a));
   byte *hash_a_ = sha512_final(&ctx_a);
   byte_to_hex(hash_a, hash_a_, SHA512_SIZE);
 
-  sha512_context ctx_b;
+  struct sha512_context ctx_b;
   sha512_init(&ctx_b);
   sha512_update(&ctx_b, str_b1, strlen(str_b1));
   sha512_update(&ctx_b, str_b2, strlen(str_b2));
@@ -159,7 +159,7 @@ struct hmac_data_in {
 static void
 get_sha512_hmac(const struct hmac_data_in in, char (*out_hash)[SHA512_HEX_SIZE])
 {
-  sha512_hmac_context ctx;
+  struct sha512_hmac_context ctx;
   sha512_hmac_init(&ctx, in.key, in.key_len);
   sha512_hmac_update(&ctx, in.data, in.data_len);
   byte *hash_byte = sha512_hmac_final(&ctx);
@@ -169,7 +169,7 @@ get_sha512_hmac(const struct hmac_data_in in, char (*out_hash)[SHA512_HEX_SIZE])
 static void
 get_sha384_hmac(const struct hmac_data_in in, char (*out_hash)[SHA384_HEX_SIZE])
 {
-  sha384_hmac_context ctx;
+  struct sha384_hmac_context ctx;
   sha384_hmac_init(&ctx, in.key, in.key_len);
   sha384_hmac_update(&ctx, in.data, in.data_len);
   byte *hash_byte = sha384_hmac_final(&ctx);

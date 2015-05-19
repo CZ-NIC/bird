@@ -1,5 +1,5 @@
 /*
- *	BIRD -- SHA-1 and HMAC-SHA-1 Tests
+ *	BIRD Library -- SHA-1 and HMAC-SHA-1 Tests
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -16,7 +16,7 @@
 static void
 get_sha1(const char *str, char (*out_hash)[SHA1_HEX_SIZE])
 {
-  sha1_context ctx;
+  struct sha1_context ctx;
   sha1_init(&ctx);
   sha1_update(&ctx, str, strlen(str));
   byte *hash = sha1_final(&ctx);
@@ -83,7 +83,7 @@ struct hmac_data_in {
 static void
 get_sha1_hmac(const struct hmac_data_in in, char (*out_hash)[SHA1_HEX_SIZE])
 {
-  sha1_hmac_context ctx;
+  struct sha1_hmac_context ctx;
   sha1_hmac_init(&ctx, in.key, in.key_len);
   sha1_hmac_update(&ctx, in.data, in.data_len);
   byte *hash_byte = sha1_hmac_final(&ctx);

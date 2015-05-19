@@ -1,6 +1,6 @@
 /*
- *	BIRD -- SHA-256 and SHA-224 Hash Functions,
- *		HMAC-SHA-256 and HMAC-SHA-224 Functions
+ *	BIRD Library -- SHA-256 and SHA-224 Hash Functions,
+ *			HMAC-SHA-256 and HMAC-SHA-224 Functions
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -18,8 +18,11 @@
 #include "lib/sha256.h"
 #include "lib/unaligned.h"
 
+
+static uint sha256_transform(void *ctx, const byte *data, size_t nblks);
+
 void
-sha256_init(sha256_context *ctx)
+sha256_init(struct sha256_context *ctx)
 {
   ctx->h0 = 0x6a09e667;
   ctx->h1 = 0xbb67ae85;
@@ -38,7 +41,7 @@ sha256_init(sha256_context *ctx)
 }
 
 void
-sha224_init(sha224_context *ctx)
+sha224_init(struct sha224_context *ctx)
 {
   ctx->h0 = 0xc1059ed8;
   ctx->h1 = 0x367cd507;
@@ -115,7 +118,7 @@ sum1(u32 x)
     32-bit-words. See FIPS 180-2 for details.
  */
 static uint
-sha256_transform_block(sha256_context *ctx, const byte *data)
+sha256_transform_block(struct sha256_context *ctx, const byte *data)
 {
   static const u32 K[64] = {
       0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
@@ -217,7 +220,7 @@ sha256_transform_block(sha256_context *ctx, const byte *data)
 static uint
 sha256_transform(void *ctx, const byte *data, size_t nblks)
 {
-  sha256_context *hd = ctx;
+  struct sha256_context *hd = ctx;
   uint burn;
 
   do
@@ -237,7 +240,7 @@ sha256_transform(void *ctx, const byte *data, size_t nblks)
    not have any meaning but writing after finalize is sometimes
    helpful to mitigate timing attacks. */
 void
-sha256_update(sha256_context *ctx, const byte *in_buf, size_t in_len)
+sha256_update(struct sha256_context *ctx, const byte *in_buf, size_t in_len)
 {
   const uint blocksize = ctx->blocksize;
   size_t inblocks;
@@ -284,7 +287,7 @@ sha256_update(sha256_context *ctx, const byte *in_buf, size_t in_len)
    to the handle will the destroy the returned buffer.  Returns: 32
    bytes with the message the digest.  */
 byte*
-sha256_final(sha256_context *ctx)
+sha256_final(struct sha256_context *ctx)
 {
   u32 t, th, msb, lsb;
   byte *p;
@@ -345,14 +348,15 @@ sha256_final(sha256_context *ctx)
   return ctx->buf;
 }
 
-/**
+
+/*
  * 	SHA256-HMAC
  */
 
 static void
 sha256_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
 {
-  sha256_context hd_tmp;
+  struct sha256_context hd_tmp;
 
   sha256_init(&hd_tmp);
   sha256_update(&hd_tmp, buffer, length);
@@ -360,11 +364,11 @@ sha256_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
 }
 
 void
-sha256_hmac_init(sha256_hmac_context *ctx, const byte *key, size_t keylen)
+sha256_hmac_init(struct sha256_hmac_context *ctx, const byte *key, size_t keylen)
 {
   byte keybuf[SHA256_BLOCK_SIZE], buf[SHA256_BLOCK_SIZE];
 
-  // Hash the key if necessary
+  /* Hash the key if necessary */
   if (keylen <= SHA256_BLOCK_SIZE)
   {
     memcpy(keybuf, key, keylen);
@@ -376,44 +380,45 @@ sha256_hmac_init(sha256_hmac_context *ctx, const byte *key, size_t keylen)
     bzero(keybuf + SHA256_SIZE, SHA256_BLOCK_SIZE - SHA256_SIZE);
   }
 
-  // Initialize the inner digest
+  /* Initialize the inner digest */
   sha256_init(&ctx->ictx);
   int i;
   for (i = 0; i < SHA256_BLOCK_SIZE; i++)
     buf[i] = keybuf[i] ^ 0x36;
   sha256_update(&ctx->ictx, buf, SHA256_BLOCK_SIZE);
 
-  // Initialize the outer digest
+  /* Initialize the outer digest */
   sha256_init(&ctx->octx);
   for (i = 0; i < SHA256_BLOCK_SIZE; i++)
     buf[i] = keybuf[i] ^ 0x5c;
   sha256_update(&ctx->octx, buf, SHA256_BLOCK_SIZE);
 }
 
-void sha256_hmac_update(sha256_hmac_context *ctx, const byte *buf, size_t buflen)
+void sha256_hmac_update(struct sha256_hmac_context *ctx, const byte *buf, size_t buflen)
 {
-  // Just update the inner digest
+  /* Just update the inner digest */
   sha256_update(&ctx->ictx, buf, buflen);
 }
 
-byte *sha256_hmac_final(sha256_hmac_context *ctx)
+byte *sha256_hmac_final(struct sha256_hmac_context *ctx)
 {
-  // Finish the inner digest
+  /* Finish the inner digest */
   byte *isha = sha256_final(&ctx->ictx);
 
-  // Finish the outer digest
+  /* Finish the outer digest */
   sha256_update(&ctx->octx, isha, SHA256_SIZE);
   return sha256_final(&ctx->octx);
 }
 
-/**
+
+/*
  * 	SHA224-HMAC
  */
 
 static void
 sha224_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
 {
-  sha224_context hd_tmp;
+  struct sha224_context hd_tmp;
 
   sha224_init(&hd_tmp);
   sha224_update(&hd_tmp, buffer, length);
@@ -421,11 +426,11 @@ sha224_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
 }
 
 void
-sha224_hmac_init(sha224_hmac_context *ctx, const byte *key, size_t keylen)
+sha224_hmac_init(struct sha224_hmac_context *ctx, const byte *key, size_t keylen)
 {
   byte keybuf[SHA224_BLOCK_SIZE], buf[SHA224_BLOCK_SIZE];
 
-  // Hash the key if necessary
+  /* Hash the key if necessary */
   if (keylen <= SHA224_BLOCK_SIZE)
   {
     memcpy(keybuf, key, keylen);
@@ -437,32 +442,32 @@ sha224_hmac_init(sha224_hmac_context *ctx, const byte *key, size_t keylen)
     bzero(keybuf + SHA224_SIZE, SHA224_BLOCK_SIZE - SHA224_SIZE);
   }
 
-  // Initialize the inner digest
+  /* Initialize the inner digest */
   sha224_init(&ctx->ictx);
   int i;
   for (i = 0; i < SHA224_BLOCK_SIZE; i++)
     buf[i] = keybuf[i] ^ 0x36;
   sha224_update(&ctx->ictx, buf, SHA224_BLOCK_SIZE);
 
-  // Initialize the outer digest
+  /* Initialize the outer digest */
   sha224_init(&ctx->octx);
   for (i = 0; i < SHA224_BLOCK_SIZE; i++)
     buf[i] = keybuf[i] ^ 0x5c;
   sha224_update(&ctx->octx, buf, SHA224_BLOCK_SIZE);
 }
 
-void sha224_hmac_update(sha224_hmac_context *ctx, const byte *buf, size_t buflen)
+void sha224_hmac_update(struct sha224_hmac_context *ctx, const byte *buf, size_t buflen)
 {
-  // Just update the inner digest
+  /* Just update the inner digest */
   sha256_update(&ctx->ictx, buf, buflen);
 }
 
-byte *sha224_hmac_final(sha224_hmac_context *ctx)
+byte *sha224_hmac_final(struct sha224_hmac_context *ctx)
 {
-  // Finish the inner digest
+  /* Finish the inner digest */
   byte *isha = sha224_final(&ctx->ictx);
 
-  // Finish the outer digest
+  /* Finish the outer digest */
   sha224_update(&ctx->octx, isha, SHA224_SIZE);
   return sha224_final(&ctx->octx);
 }

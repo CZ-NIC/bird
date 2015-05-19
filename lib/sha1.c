@@ -1,5 +1,5 @@
 /*
- *	BIRD -- SHA-1 Hash Function (FIPS 180-1, RFC 3174) and HMAC-SHA-1
+ *	BIRD Library -- SHA-1 Hash Function (FIPS 180-1, RFC 3174) and HMAC-SHA-1
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -19,7 +19,7 @@
 #include "lib/unaligned.h"
 
 void
-sha1_init(sha1_context *hd)
+sha1_init(struct sha1_context *hd)
 {
   hd->h0 = 0x67452301;
   hd->h1 = 0xefcdab89;
@@ -34,7 +34,7 @@ sha1_init(sha1_context *hd)
  * Transform the message X which consists of 16 32-bit-words
  */
 static void
-sha1_transform(sha1_context *hd, const byte *data)
+sha1_transform(struct sha1_context *hd, const byte *data)
 {
   u32 a,b,c,d,e,tm;
   u32 x[16];
@@ -65,7 +65,7 @@ sha1_transform(sha1_context *hd, const byte *data)
 
 #define M(i) (tm = x[i&0x0f] ^ x[(i-14)&0x0f] ^ x[(i-8)&0x0f] ^ x[(i-3)&0x0f], (x[i&0x0f] = ROL(tm, 1)))
 
-/** Bitwise rotation of an unsigned int to the left **/
+/* Bitwise rotation of an unsigned int to the left **/
 #define	ROL(x, bits) (((x) << (bits)) | ((uint)(x) >> (sizeof(uint)*8 - (bits))))
 
   #define R(a, b, c, d, e, f, k, m)		\
@@ -169,7 +169,7 @@ sha1_transform(sha1_context *hd, const byte *data)
  * of INBUF with length INLEN.
  */
 void
-sha1_update(sha1_context *hd, const byte *inbuf, uint inlen)
+sha1_update(struct sha1_context *hd, const byte *inbuf, uint inlen)
 {
   if (hd->count == 64)  /* flush the buffer */
   {
@@ -209,7 +209,7 @@ sha1_update(sha1_context *hd, const byte *inbuf, uint inlen)
  * Returns: 20 bytes representing the digest.
  */
 byte *
-sha1_final(sha1_context *hd)
+sha1_final(struct sha1_context *hd)
 {
   u32 t, msb, lsb;
   u32 *p;
@@ -267,7 +267,8 @@ sha1_final(sha1_context *hd)
   return hd->buf;
 }
 
-/**
+
+/*
  * 	SHA1-HMAC
  */
 
@@ -278,7 +279,7 @@ sha1_final(sha1_context *hd)
 void
 sha1_hash_buffer(byte *outbuf, const byte *buffer, uint length)
 {
-  sha1_context ctx;
+  struct sha1_context ctx;
 
   sha1_init(&ctx);
   sha1_update(&ctx, buffer, length);
@@ -286,11 +287,11 @@ sha1_hash_buffer(byte *outbuf, const byte *buffer, uint length)
 }
 
 void
-sha1_hmac_init(sha1_hmac_context *ctx, const byte *key, uint keylen)
+sha1_hmac_init(struct sha1_hmac_context *ctx, const byte *key, uint keylen)
 {
   byte keybuf[SHA1_BLOCK_SIZE], buf[SHA1_BLOCK_SIZE];
 
-  // Hash the key if necessary
+  /* Hash the key if necessary */
   if (keylen <= SHA1_BLOCK_SIZE)
   {
     memcpy(keybuf, key, keylen);
@@ -302,14 +303,14 @@ sha1_hmac_init(sha1_hmac_context *ctx, const byte *key, uint keylen)
     bzero(keybuf + SHA1_SIZE, SHA1_BLOCK_SIZE - SHA1_SIZE);
   }
 
-  // Initialize the inner digest
+  /* Initialize the inner digest */
   sha1_init(&ctx->ictx);
   int i;
   for (i = 0; i < SHA1_BLOCK_SIZE; i++)
     buf[i] = keybuf[i] ^ 0x36;
   sha1_update(&ctx->ictx, buf, SHA1_BLOCK_SIZE);
 
-  // Initialize the outer digest
+  /* Initialize the outer digest */
   sha1_init(&ctx->octx);
   for (i = 0; i < SHA1_BLOCK_SIZE; i++)
     buf[i] = keybuf[i] ^ 0x5c;
@@ -317,18 +318,18 @@ sha1_hmac_init(sha1_hmac_context *ctx, const byte *key, uint keylen)
 }
 
 void
-sha1_hmac_update(sha1_hmac_context *ctx, const byte *data, uint datalen)
+sha1_hmac_update(struct sha1_hmac_context *ctx, const byte *data, uint datalen)
 {
-  // Just update the inner digest
+  /* Just update the inner digest */
   sha1_update(&ctx->ictx, data, datalen);
 }
 
-byte *sha1_hmac_final(sha1_hmac_context *ctx)
+byte *sha1_hmac_final(struct sha1_hmac_context *ctx)
 {
-  // Finish the inner digest
+  /* Finish the inner digest */
   byte *isha = sha1_final(&ctx->ictx);
 
-  // Finish the outer digest
+  /* Finish the outer digest */
   sha1_update(&ctx->octx, isha, SHA1_SIZE);
   return sha1_final(&ctx->octx);
 }
@@ -336,7 +337,7 @@ byte *sha1_hmac_final(sha1_hmac_context *ctx)
 void
 sha1_hmac(byte *outbuf, const byte *key, uint keylen, const byte *data, uint datalen)
 {
-  sha1_hmac_context hd;
+  struct sha1_hmac_context hd;
   sha1_hmac_init(&hd, key, keylen);
   sha1_hmac_update(&hd, data, datalen);
   byte *osha = sha1_hmac_final(&hd);

@@ -109,7 +109,7 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt)
     char password[OSPF_AUTH_CRYPT_SIZE];
     strncpy(password, passwd->password, sizeof(password));
 
-    md5_context ctxt;
+    struct md5_context ctxt;
     md5_init(&ctxt);
     md5_update(&ctxt, (char *) pkt, plen);
     md5_update(&ctxt, password, OSPF_AUTH_CRYPT_SIZE);
@@ -181,7 +181,7 @@ ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_
 
     strncpy(passwd, pass->password, OSPF_AUTH_CRYPT_SIZE);
 
-    md5_context ctxt;
+    struct md5_context ctxt;
     md5_init(&ctxt);
     md5_update(&ctxt, (char *) pkt, plen);
     md5_update(&ctxt, passwd, OSPF_AUTH_CRYPT_SIZE);

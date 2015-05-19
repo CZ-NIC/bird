@@ -1,5 +1,5 @@
 /*
- *	BIRD -- SHA-256, SHA-224, HMAC-SHA-256 and HMAC-SHA224 Tests
+ *	BIRD Library -- SHA-256, SHA-224, HMAC-SHA-256 and HMAC-SHA224 Tests
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -26,7 +26,7 @@ byte_to_hex(char *out, const byte *in, uint len)
 static void
 get_sha256(const char *str, char (*out_hash)[SHA256_HEX_SIZE])
 {
-  sha256_context ctx;
+  struct sha256_context ctx;
   sha256_init(&ctx);
   sha256_update(&ctx, str, strlen(str));
   byte *hash = sha256_final(&ctx);
@@ -36,7 +36,7 @@ get_sha256(const char *str, char (*out_hash)[SHA256_HEX_SIZE])
 static void
 get_sha224(const char *str, char (*out_hash)[SHA256_HEX_SIZE])
 {
-  sha224_context ctx;
+  struct sha224_context ctx;
   sha224_init(&ctx);
   sha224_update(&ctx, str, strlen(str));
   byte *hash = sha224_final(&ctx);
@@ -126,13 +126,13 @@ t_sha256_concating(void)
   char *str_b5 =                       "eeeee"         ;
   char *str_b6 =                               "ffffff";
 
-  sha256_context ctx_a;
+  struct sha256_context ctx_a;
   sha256_init(&ctx_a);
   sha256_update(&ctx_a, str_a, strlen(str_a));
   byte *hash_a_ = sha256_final(&ctx_a);
   byte_to_hex(hash_a, hash_a_, SHA256_SIZE);
 
-  sha256_context ctx_b;
+  struct sha256_context ctx_b;
   sha256_init(&ctx_b);
   sha256_update(&ctx_b, str_b1, strlen(str_b1));
   sha256_update(&ctx_b, str_b2, strlen(str_b2));
@@ -160,7 +160,7 @@ struct hmac_data_in {
 static void
 get_sha256_hmac(const struct hmac_data_in in, char (*out_hash)[SHA256_HEX_SIZE])
 {
-  sha256_hmac_context ctx;
+  struct sha256_hmac_context ctx;
   sha256_hmac_init(&ctx, in.key, in.key_len);
   sha256_hmac_update(&ctx, in.data, in.data_len);
   byte *hash_byte = sha256_hmac_final(&ctx);
@@ -170,7 +170,7 @@ get_sha256_hmac(const struct hmac_data_in in, char (*out_hash)[SHA256_HEX_SIZE])
 static void
 get_sha224_hmac(const struct hmac_data_in in, char (*out_hash)[SHA224_HEX_SIZE])
 {
-  sha224_hmac_context ctx;
+  struct sha224_hmac_context ctx;
   sha224_hmac_init(&ctx, in.key, in.key_len);
   sha224_hmac_update(&ctx, in.data, in.data_len);
   byte *hash_byte = sha224_hmac_final(&ctx);

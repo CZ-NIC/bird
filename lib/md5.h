@@ -1,5 +1,5 @@
 /*
- *	BIRD -- MD5 Hash Function and HMAC-MD5 Function
+ *	BIRD Library -- MD5 Hash Function and HMAC-MD5 Function
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -15,30 +15,28 @@
 #define MD5_HEX_SIZE	33
 #define MD5_BLOCK_SIZE	64
 
-typedef struct
+struct md5_context
 {
   u32 buf[4];
   u32 bits[2];
   byte in[64];
-} md5_context;
+};
 
-void md5_init(md5_context *context);
-void md5_update(md5_context *context, byte const *buf, uint len);
-byte *md5_final(md5_context *context);
+void md5_init(struct md5_context *context);
+void md5_update(struct md5_context *context, byte const *buf, uint len);
+byte *md5_final(struct md5_context *context);
 
-void md5_transform(u32 buf[4], u32 const in[16]);
-
-/**
+/*
  *	HMAC-MD5
  */
-typedef struct
+struct md5_hmac_context
 {
-  md5_context ictx;
-  md5_context octx;
-} md5_hmac_context;
+  struct md5_context ictx;
+  struct md5_context octx;
+};
 
-void md5_hmac_init(md5_hmac_context *ctx, const byte *key, size_t keylen);
-void md5_hmac_update(md5_hmac_context *ctx, const byte *buf, size_t buflen);
-byte *md5_hmac_final(md5_hmac_context *ctx);
+void md5_hmac_init(struct md5_hmac_context *ctx, const byte *key, size_t keylen);
+void md5_hmac_update(struct md5_hmac_context *ctx, const byte *buf, size_t buflen);
+byte *md5_hmac_final(struct md5_hmac_context *ctx);
 
 #endif /* _BIRD_MD5_H_ */

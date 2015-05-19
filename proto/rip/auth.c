@@ -35,42 +35,42 @@
 int
 rip_incoming_authentication( struct proto *p, struct rip_block_auth *block, struct rip_packet *packet, int num, ip_addr whotoldme )
 {
-  DBG( "Incoming authentication: " );
+  DBG("Incoming authentication: " );
   switch (ntohs(block->authtype)) {	/* Authentication type */
   case AT_PLAINTEXT: 
     {
       struct password_item *passwd = password_find(P_CF->passwords, 1);
-      DBG( "Plaintext passwd" );
+      DBG("Plaintext passwd" );
       if (!passwd) {
-	log( L_AUTH "No passwords set and password authentication came" );
+	log(L_AUTH "No passwords set and password authentication came" );
 	return 1;
       }
       if (strncmp( (char *) (&block->packetlen), passwd->password, 16)) {
-	log( L_AUTH "Passwd authentication failed!" );
-	DBG( "Expected %s, got %.16s\n", passwd->password, &block->packetlen );
+	log(L_AUTH "Passwd authentication failed!" );
+	DBG("Expected %s, got %.16s\n", passwd->password, &block->packetlen );
 	return 1;
       }
     }
     break;
   case AT_MD5:
-    DBG( "md5 password" );
+    DBG("md5 password" );
     {
       struct password_item *pass = NULL, *ptmp;
       struct rip_md5_tail *tail;
-      md5_context ctxt;
+      struct md5_context ctxt;
       char md5sum_packet[16];
       char *md5sum_computed;
       struct neighbor *neigh = neigh_find(p, &whotoldme, 0);
       list *l = P_CF->passwords;
 
       if (ntohs(block->packetlen) != PACKETLEN(num) - sizeof(struct rip_md5_tail) ) {
-	log( L_ERR "Packet length in MD5 does not match computed value" );
+	log(L_ERR "Packet length in MD5 does not match computed value" );
 	return 1;
       }
 
       tail = (struct rip_md5_tail *) ((char *) packet + (ntohs(block->packetlen) ));
       if ((tail->mustbeFFFF != 0xffff) || (tail->mustbe0001 != 0x0100)) {
-	log( L_ERR "MD5 tail signature is not there" );
+	log(L_ERR "MD5 tail signature is not there" );
 	return 1;
       }
 
@@ -85,10 +85,10 @@ rip_incoming_authentication( struct proto *p, struct rip_block_auth *block, stru
       if(!pass) return 1;
 
       if (!neigh) {
-        log( L_AUTH "Non-neighbour MD5 checksummed packet?" );
+        log(L_AUTH "Non-neighbour MD5 checksummed packet?" );
       } else {
 	if (neigh->aux > block->seq) {
-	  log( L_AUTH "MD5 protected packet with lower numbers" );
+	  log(L_AUTH "MD5 protected packet with lower numbers" );
 	  return 1;
         }
 	neigh->aux = block->seq;
@@ -120,10 +120,10 @@ rip_outgoing_authentication( struct proto *p, struct rip_block_auth *block, stru
   if (!P_CF->authtype)
     return PACKETLEN(num);
 
-  DBG( "Outgoing authentication: " );
+  DBG("Outgoing authentication: " );
 
   if (!passwd) {
-    log( L_ERR "No suitable password found for authentication" );
+    log(L_ERR "No suitable password found for authentication" );
     return PACKETLEN(num);
   }
 
@@ -136,11 +136,11 @@ rip_outgoing_authentication( struct proto *p, struct rip_block_auth *block, stru
   case AT_MD5:
     {
       struct rip_md5_tail *tail;
-      md5_context ctxt;
+      struct md5_context ctxt;
       static u32 sequence = 0;
 
       if (num > PACKET_MD5_MAX)
-	bug(  "We can not add MD5 authentication to this long packet" );
+	bug("We can not add MD5 authentication to this long packet" );
 
       /* need to preset the sequence number to a sane value */
       if (!sequence)
@@ -163,6 +163,6 @@ rip_outgoing_authentication( struct proto *p, struct rip_block_auth *block, stru
       return PACKETLEN(num) + block->authlen;
     }
   default:
-    bug( "Unknown authtype in outgoing authentication?" );
+    bug("Unknown authtype in outgoing authentication?" );
   }
 }
