@@ -23,8 +23,6 @@
 #define SHA256_HEX_SIZE		65
 #define SHA256_BLOCK_SIZE 	64
 
-typedef uint sha_transform_fn (void *c, const byte *blks, size_t nblks);
-
 struct sha256_context {
   u32  h0,h1,h2,h3,h4,h5,h6,h7;
   byte buf[128];			/* 128 is for SHA384 and SHA512 support, otherwise for SHA224 and SHA256 is 64 enough */
@@ -32,7 +30,7 @@ struct sha256_context {
   u32 nblocks_high;
   int count;
   u32 blocksize;
-  sha_transform_fn *transform;
+  uint (*transform)(void *c, const byte *blks, size_t nblks);
 };
 #define sha224_context sha256_context	/* aliasing 'struct sha224_context' to 'struct sha256_context' */
 
