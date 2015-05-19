@@ -20,10 +20,10 @@ build_ip4(u8 a, u8 b, u8 c, u8 d)
 }
 
 static u32
-ip4_pton_(char *s)
+ip4_pton_(const char *s)
 {
   ip4_addr ip;
-  ip4_pton(s,&ip);
+  ip4_pton(s, &ip);
   return ip.addr;
 }
 
@@ -54,7 +54,7 @@ t_ip4_pton(void)
 }
 
 static void
-ip6_pton_(char *s, u32 (*addr)[4])
+ip6_pton_(const char *s, u32 (*addr)[4])
 {
   static ip6_addr ip;
   ip6_pton(s, &ip);

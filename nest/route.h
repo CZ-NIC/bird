@@ -72,13 +72,13 @@ void fib_delete(struct fib *, void *);	/* Remove fib entry */
 void fib_free(struct fib *);		/* Destroy the fib */
 void fib_check(struct fib *);		/* Consistency check for debugging */
 
-void fit_init(struct fib_iterator *, struct fib *); /* Internal functions, don't call */
-struct fib_node *fit_get(struct fib *, struct fib_iterator *);
+void fit_init(struct fib_iterator *, const struct fib *); /* Internal functions, don't call */
+struct fib_node *fit_get(const struct fib *, struct fib_iterator *);
 void fit_put(struct fib_iterator *, struct fib_node *);
 
 #define FIB_WALK(fib, z) do {					\
 	struct fib_node *z, **ff = (fib)->hash_table;		\
-	uint count = (fib)->hash_size;			\
+	uint count = (fib)->hash_size;				\
 	while (count--)						\
 	  for(z = *ff++; z; z=z->next)
 
@@ -88,11 +88,11 @@ void fit_put(struct fib_iterator *, struct fib_node *);
 
 #define FIB_ITERATE_START(fib, it, z) do {			\
 	struct fib_node *z = fit_get(fib, it);			\
-	uint count = (fib)->hash_size;			\
-	uint hpos = (it)->hash;				\
+	uint count = (fib)->hash_size;				\
+	uint hpos = (it)->hash;					\
 	for(;;) {						\
 	  if (!z)						\
-            {							\
+	    {							\
 	       if (++hpos >= count)				\
 		 break;						\
 	       z = (fib)->hash_table[hpos];			\

@@ -73,7 +73,7 @@ fib_ht_free(struct fib_node **h)
 }
 
 static inline unsigned
-fib_hash(struct fib *f, ip_addr *a)
+fib_hash(const struct fib *f, ip_addr *a)
 {
   return ipa_hash(*a) >> f->hash_shift;
 }
@@ -368,7 +368,7 @@ fib_free(struct fib *f)
 }
 
 void
-fit_init(struct fib_iterator *i, struct fib *f)
+fit_init(struct fib_iterator *i, const struct fib *f)
 {
   unsigned h;
   struct fib_node *n;
@@ -390,7 +390,7 @@ fit_init(struct fib_iterator *i, struct fib *f)
 }
 
 struct fib_node *
-fit_get(struct fib *f, struct fib_iterator *i)
+fit_get(const struct fib *f, struct fib_iterator *i)
 {
   struct fib_node *n;
   struct fib_iterator *j, *k;

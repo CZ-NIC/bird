@@ -316,7 +316,7 @@ log_init_debug(char *f)
 }
 
 void
-mrt_dump_message(struct proto *p, u16 type, u16 subtype, byte *buf, u32 len)
+mrt_dump_message(const struct proto *p, u16 type, u16 subtype, byte *buf, u32 len)
 {
   /* Prepare header */
   put_u32(buf+0, now_real);

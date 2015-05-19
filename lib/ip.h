@@ -446,8 +446,8 @@ static inline char * ip4_ntox(ip4_addr a, char *b)
 static inline char * ip6_ntox(ip6_addr a, char *b)
 { return b + bsprintf(b, "%08x.%08x.%08x.%08x", _I0(a), _I1(a), _I2(a), _I3(a)); }
 
-int ip4_pton(char *a, ip4_addr *o);
-int ip6_pton(char *a, ip6_addr *o);
+int ip4_pton(const char *a, ip4_addr *o);
+int ip6_pton(const char *a, ip6_addr *o);
 
 // XXXX these functions must be redesigned or removed
 #ifdef IPV6
