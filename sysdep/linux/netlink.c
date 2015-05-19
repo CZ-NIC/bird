@@ -316,7 +316,7 @@ nl_add_multipath(struct nlmsghdr *h, unsigned bufsize, struct mpnh *nh)
     rtnh->rtnh_hops = nh->weight;
     rtnh->rtnh_ifindex = nh->iface->index;
 
-    nl_add_attr_u32(h, bufsize, RTA_GATEWAY, nh->gw);
+    nl_add_attr_ipa(h, bufsize, RTA_GATEWAY, nh->gw);
 
     nl_close_nexthop(h, rtnh);
   }
