@@ -24,6 +24,6 @@ int buffer_vprint(buffer *buf, const char *fmt, va_list args);
 int buffer_print(buffer *buf, const char *fmt, ...);
 void buffer_puts(buffer *buf, const char *str);
 
-int patmatch(byte *pat, byte *str);
+int patmatch(const byte *pat, const byte *str);
 
 #endif

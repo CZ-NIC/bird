@@ -152,6 +152,7 @@ struct bgp_proto {
   u8 last_error_class; 			/* Error class of last error */
   u32 last_error_code;			/* Error code of last error. BGP protocol errors
 					   are encoded as (bgp_err_code << 16 | bgp_err_subcode) */
+  u16 mrt_peer_index;			/* Used for MRT Table Dump */
 #ifdef IPV6
   byte *mp_reach_start, *mp_unreach_start; /* Multiprotocol BGP attribute notes */
   unsigned mp_reach_len, mp_unreach_len;
@@ -183,6 +184,7 @@ struct bgp_bucket {
 #define BGP_MAX_PACKET_LENGTH	4096
 #define BGP_RX_BUFFER_SIZE	4096
 #define BGP_TX_BUFFER_SIZE	BGP_MAX_PACKET_LENGTH
+#define BGP_ATTR_BUFFER_SIZE	2048	/* Default buffer size for encoded bgp attributes */
 
 extern struct linpool *bgp_linpool;
 

@@ -70,7 +70,7 @@ void *fib_get(struct fib *, ip_addr *, int); 	/* Find or create new if nonexiste
 void *fib_route(struct fib *, ip_addr, int);	/* Longest-match routing lookup */
 void fib_delete(struct fib *, void *);	/* Remove fib entry */
 void fib_free(struct fib *);		/* Destroy the fib */
-void fib_check(struct fib *);		/* Consistency check for debugging */
+void fib_check(const struct fib *);	/* Consistency check for debugging */
 
 void fit_init(struct fib_iterator *, const struct fib *); /* Internal functions, don't call */
 struct fib_node *fit_get(const struct fib *, struct fib_iterator *);
@@ -122,6 +122,7 @@ struct rtable_config {
   int gc_max_ops;			/* Maximum number of operations before GC is run */
   int gc_min_time;			/* Minimum time between two consecutive GC runs */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
+  list mrt_table_dumps;			/* Configured MRT tables dumps (struct mrt_table_individual_config) */
 };
 
 typedef struct rtable {
@@ -607,5 +608,14 @@ void roa_preconfig(struct config *c);
 void roa_commit(struct config *new, struct config *old);
 void roa_show(struct roa_show_data *d);
 
+void mrt_table_dump_init_periodic(struct rtable *tab, list *mrt_table_dumps);
+struct mrt_table_dump_ctx *mrt_table_dump_cmd(struct mrt_table_individual_config *mrt_cfg);
+void mrt_table_cli_cmd(struct mrt_table_config *mrt_config);
+struct mrt_table_config *mrt_table_new_config(void);
+
+struct mrt_table_dump_ctx;
+int is_route_good_for_table_dump(struct mrt_table_dump_ctx *state, rte *e);
+//char *mrt_table_dump_config_get_filename_fmt(struct rtable *rtable);
+void mrt_table_dump_init_file_descriptor(struct mrt_table_dump_ctx *state);
 
 #endif

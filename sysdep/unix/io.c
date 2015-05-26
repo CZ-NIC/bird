@@ -55,11 +55,6 @@
  *	Tracked Files
  */
 
-struct rfile {
-  resource r;
-  FILE *f;
-};
-
 static void
 rf_free(resource *r)
 {
@@ -85,17 +80,17 @@ static struct resclass rf_class = {
   NULL
 };
 
-void *
-tracked_fopen(pool *p, char *name, char *mode)
+struct rfile *
+tracked_fopen(pool *p, const char *name, const char *mode)
 {
   FILE *f = fopen(name, mode);
 
-  if (f)
-    {
-      struct rfile *r = ralloc(p, &rf_class);
-      r->f = f;
-    }
-  return f;
+  if (!f)
+    return NULL;
+
+  struct rfile *r = ralloc(p, &rf_class);
+  r->f = f;
+  return r;
 }
 
 /**

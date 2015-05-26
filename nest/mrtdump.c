@@ -6,154 +6,259 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#undef LOCAL_DEBUG
+
 #include "nest/mrtdump.h"
+#include "nest/route.h"
 
-void
-mrt_msg_init(struct mrt_msg *msg, pool *mem_pool)
+/*
+ * MRTDump: Table Dump: Base
+ */
+
+static void
+mrt_buffer_reset(struct mrt_buffer *buf)
 {
-  msg->mem_pool = mem_pool;
-  msg->msg_capacity = MRT_MSG_DEFAULT_CAPACITY;
-  msg->msg_length = 0;
-  msg->msg = mb_alloc(msg->mem_pool, msg->msg_capacity);
+  buf->msg_capacity = MRT_BUFFER_DEFAULT_CAPACITY;
+  buf->msg_length = MRT_HDR_LENGTH;	/* Reserved for the main MRT header */
 }
 
 void
-mrt_msg_free(struct mrt_msg *msg)
+mrt_buffer_alloc(struct mrt_buffer *buf)
 {
-  mb_free(msg->msg);
+  mrt_buffer_reset(buf);
+  buf->msg = mb_allocz(&root_pool, buf->msg_capacity);
 }
 
+void
+mrt_buffer_free(struct mrt_buffer *buf)
+{
+  if (buf->msg != NULL)
+  {
+    mb_free(buf->msg);
+    buf->msg = NULL;
+  }
+}
+
+static void
+mrt_buffer_enlarge(struct mrt_buffer *buf, size_t min_required_capacity)
+{
+  if (min_required_capacity < buf->msg_capacity)
+  {
+    buf->msg_capacity *= 2;
+    if (min_required_capacity > buf->msg_capacity)
+      buf->msg_capacity = min_required_capacity;
+    buf->msg = mb_realloc(buf->msg, buf->msg_capacity);
+  }
+}
+
+/*
+ * Return pointer to the actual position in the msg buffer
+ */
 static byte *
-mrt_peer_index_table_get_peer_count(struct mrt_peer_index_table *pit_msg)
+mrt_buffer_get_cursor(struct mrt_buffer *buf)
 {
-  struct mrt_msg * msg = pit_msg->msg;
-  uint collector_bgp_id_size = 4;
-  uint name_length_size = 2;
-  uint name_size = pit_msg->name_length;
-  uint peer_count_offset = collector_bgp_id_size + name_length_size + name_size;
-  return &(msg->msg[peer_count_offset]);
+  return &buf->msg[buf->msg_length];
 }
 
 static void
-mrt_grow_msg_buffer(struct mrt_msg * msg, size_t min_required_capacity)
+mrt_buffer_write_show_debug(struct mrt_buffer *buf, size_t data_size)
 {
-  msg->msg_capacity *= 2;
-  if (min_required_capacity > msg->msg_capacity)
-    msg->msg_capacity = min_required_capacity;
-  msg->msg = mb_realloc(msg->msg, msg->msg_capacity);
+#if defined(LOCAL_DEBUG) || defined(GLOBAL_DEBUG)
+  byte *data = mrt_buffer_get_cursor(buf) - data_size;
+#endif
+  DBG("(%d) ", data_size);
+  u32 i;
+  for (i = 0; i < data_size; i++)
+    DBG("%02X ", data[i]);
+  DBG("| ");
 }
 
 static void
-mrt_write_to_msg(struct mrt_msg * msg, const void *data, size_t data_size)
+mrt_buffer_put_raw(struct mrt_buffer *buf, const void *data, size_t data_size)
 {
   if (data_size == 0)
     return;
 
-  u32 i;
-  for (i = 0; i < data_size; i++)
-    debug("%02X ", ((byte*)data)[i]);
-  debug("| ");
+  size_t required_size = data_size + buf->msg_length;
+  mrt_buffer_enlarge(buf, required_size);
 
-  size_t required_size = data_size + msg->msg_length;
-  if (msg->msg_capacity < required_size)
-    mrt_grow_msg_buffer(msg, required_size);
+  memcpy(mrt_buffer_get_cursor(buf), data, data_size);
+  buf->msg_length += data_size;
 
-  memcpy(&msg->msg[msg->msg_length], data, data_size);
-  msg->msg_length += data_size;
-}
-#define mrt_write_to_msg_(msg, data) mrt_write_to_msg(msg, &data, sizeof(data))
-
-void
-mrt_peer_index_table_init(struct mrt_peer_index_table *pit_msg, u32 collector_bgp_id, const char *name)
-{
-  struct mrt_msg * msg = pit_msg->msg;
-  pit_msg->peer_count = 0;
-  pit_msg->name_length = strlen(name);
-
-  mrt_write_to_msg_(msg, collector_bgp_id);
-  mrt_write_to_msg_(msg, pit_msg->name_length);
-  mrt_write_to_msg(msg, name, pit_msg->name_length);
-  mrt_write_to_msg_(msg, pit_msg->peer_count);
-  debug("\n");
+  mrt_buffer_write_show_debug(buf, data_size);
 }
 
 static void
-mrt_peer_index_table_inc_peer_count(struct mrt_peer_index_table *pit_msg)
+mrt_buffer_put_ipa(struct mrt_buffer *buf, ip_addr addr, size_t write_size)
 {
-  pit_msg->peer_count++;
-  byte *peer_count = mrt_peer_index_table_get_peer_count(pit_msg);
-  put_u16(peer_count, pit_msg->peer_count);
+  ip_addr addr_network_formatted = ipa_hton(addr);
+  mrt_buffer_put_raw(buf, &addr_network_formatted, write_size);
 }
+
+/*
+ * The data will be transformed (put_u16(), put_u32(), ...) to the network format before writing
+ */
+static void
+mrt_buffer_put_var(struct mrt_buffer *buf, const void *data, size_t data_size)
+{
+  if (data_size == 0)
+    return;
+
+  byte *actual_position;
+
+  size_t required_size = data_size + buf->msg_length;
+  mrt_buffer_enlarge(buf, required_size);
+
+  switch (data_size)
+  {
+    case 8:
+      put_u64(mrt_buffer_get_cursor(buf), *(u64*)data);
+      break;
+    case 4:
+      put_u32(mrt_buffer_get_cursor(buf), *(u32*)data);
+      break;
+    case 2:
+      put_u16(mrt_buffer_get_cursor(buf), *(u16*)data);
+      break;
+    case 1:
+      actual_position = mrt_buffer_get_cursor(buf);
+      *actual_position = *(byte*)data;
+      break;
+    default:
+      log(L_WARN "Unexpected size %zu byte(s) of data. Allowed are 1, 2, 4 or 8 bytes.", data_size);
+  }
+
+  buf->msg_length += data_size;
+  mrt_buffer_write_show_debug(buf, data_size);
+}
+#define mrt_buffer_put_var_autosize(msg, data) mrt_buffer_put_var(msg, &data, sizeof(data))
+
+/*
+ * MRTDump: Table Dump: Peer Index Table
+ */
 
 void
-mrt_peer_index_table_add_peer(struct mrt_peer_index_table *pit_msg, u32 peer_bgp_id, ip_addr *peer_ip_addr, u32 peer_as)
+mrt_peer_index_table_header(struct mrt_peer_index_table *state, u32 collector_bgp_id, const char *name)
 {
-  struct mrt_msg * msg = pit_msg->msg;
+  struct mrt_buffer *buf = &state->msg;
+  mrt_buffer_alloc(buf);
 
-  u8 peer_type = PEER_TYPE_AS_32BIT;
-  if (sizeof(*peer_ip_addr) > sizeof(ip4_addr))
-    peer_type |= PEER_TYPE_IPV6;
+  state->peer_count = 0;
+  u16 name_length = 0;
+  if (name != NULL)
+    name_length = strlen(name);
 
-  mrt_write_to_msg_(msg, peer_type);
-  mrt_write_to_msg_(msg, peer_bgp_id);
-  mrt_write_to_msg_(msg, *peer_ip_addr);
-  mrt_write_to_msg_(msg, peer_as);
-
-  mrt_peer_index_table_inc_peer_count(pit_msg);
-  debug("\n");
-}
-
-void
-mrt_rib_table_init(struct mrt_rib_table *rt_msg, u32 sequence_number, u8 prefix_length, ip_addr *prefix)
-{
-  struct mrt_msg *msg = rt_msg->msg;
-
-  rt_msg->entry_count = 0;
-
-  mrt_write_to_msg_(msg, sequence_number);
-  mrt_write_to_msg_(msg, prefix_length);
-  mrt_write_to_msg_(msg, *prefix);
-  mrt_write_to_msg_(msg, rt_msg->entry_count);
-  debug("\n");
-}
-
-static byte *
-mrt_rib_table_get_entry_count(struct mrt_rib_table *rt_msg)
-{
-  struct mrt_msg *msg = rt_msg->msg;
-  u32 sequence_number_size = 4;
-  u32 prefix_length_size = 1;
-
-  u32 prefix_size = 4;
-  if (rt_msg->type == RIB_IPV4_UNICAST)
-    prefix_size = 4;
-  else if (rt_msg->type == RIB_IPV6_UNICAST)
-    prefix_size = 16;
-  else
-    bug("mrt_rib_table_get_entry_count: unknown RIB type!");
-
-  u32 offset = sequence_number_size + prefix_length_size + prefix_size;
-  return &msg->msg[offset];
+  mrt_buffer_put_var_autosize(buf, collector_bgp_id);
+  mrt_buffer_put_var_autosize(buf, name_length);
+  mrt_buffer_put_raw(buf, name, name_length);
+  state->peer_count_offset = state->msg.msg_length;
+  mrt_buffer_put_var(buf, &state->peer_count, sizeof(u16));
+  DBG("\n");
 }
 
 static void
-mrt_rib_table_inc_entry_count(struct mrt_rib_table *rt_msg)
+mrt_peer_index_table_inc_peer_count(struct mrt_peer_index_table *state)
 {
-  rt_msg->entry_count++;
-  byte *entry_count = mrt_rib_table_get_entry_count(rt_msg);
-  put_u16(entry_count, rt_msg->entry_count);
+  state->peer_count++;
+  byte *peer_count = &state->msg.msg[state->peer_count_offset];
+  put_u16(peer_count, state->peer_count);
 }
 
 void
-mrt_rib_table_add_entry(struct mrt_rib_table *rt_msg, const struct mrt_rib_entry *rib)
+mrt_peer_index_table_add_peer(struct mrt_peer_index_table *state, u32 peer_bgp_id, u32 peer_as, ip_addr peer_ip_addr)
 {
-  struct mrt_msg *msg = rt_msg->msg;
+  struct mrt_buffer *msg = &state->msg;
 
-  mrt_write_to_msg_(msg, rib->peer_index);
-  mrt_write_to_msg_(msg, rib->originated_time);
-  mrt_write_to_msg_(msg, rib->attributes_length);
-  mrt_write_to_msg(msg, rib->attributes, rib->attributes_length);
+  u8 peer_type = MRT_PEER_TYPE_32BIT_ASN;
+  if (sizeof(peer_ip_addr) > sizeof(ip4_addr))
+    peer_type |= MRT_PEER_TYPE_IPV6;
 
-  mrt_rib_table_inc_entry_count(rt_msg);
-  debug("\n");
+  mrt_buffer_put_var_autosize(msg, peer_type);
+  mrt_buffer_put_var_autosize(msg, peer_bgp_id);
+  mrt_buffer_put_ipa(msg, peer_ip_addr, sizeof(ip_addr));
+  mrt_buffer_put_var_autosize(msg, peer_as);
+
+  mrt_peer_index_table_inc_peer_count(state);
+  DBG("\n");
+}
+
+void
+mrt_peer_index_table_dump(struct mrt_peer_index_table *state, int file_descriptor)
+{
+  byte *msg = state->msg.msg;
+  u32 msg_length = state->msg.msg_length;
+
+  mrt_dump_message(file_descriptor, MRT_TABLE_DUMP_V2, MRT_PEER_INDEX_TABLE, msg, msg_length);
+}
+
+void
+bgp_mrt_peer_index_table_free(struct mrt_peer_index_table *state)
+{
+  mrt_buffer_free(&state->msg);
+}
+
+/*
+ * MRTDump: Table Dump: RIB Table
+ */
+
+static void
+mrt_rib_table_reset(struct mrt_rib_table *state)
+{
+  state->entry_count = 0;
+  state->entry_count_offset = 0;
+  state->subtype = MRT_RIB_IPV4_UNICAST;
+  mrt_buffer_reset(&state->msg);
+}
+
+void
+mrt_rib_table_alloc(struct mrt_rib_table *state)
+{
+  mrt_buffer_alloc(&state->msg);
+  mrt_rib_table_reset(state);
+}
+
+void
+mrt_rib_table_header(struct mrt_rib_table *state, u32 sequence_number, u8 prefix_length, ip_addr prefix)
+{
+  mrt_rib_table_reset(state);
+
+#ifdef IPV6
+  state->subtype = MRT_RIB_IPV6_UNICAST;
+#else
+  state->subtype = MRT_RIB_IPV4_UNICAST;
+#endif
+
+  struct mrt_buffer *msg = &state->msg;
+  mrt_buffer_put_var_autosize(msg, sequence_number);
+  mrt_buffer_put_var_autosize(msg, prefix_length);
+
+#define CEILING(a, b) (((a)+(b)-1) / (b))
+  u32 prefix_bytes = CEILING(prefix_length, 8);
+  mrt_buffer_put_ipa(msg, prefix, prefix_bytes);
+
+  state->entry_count_offset = msg->msg_length;
+  mrt_buffer_put_var_autosize(msg, state->entry_count);
+  DBG("\n");
+}
+
+static void
+mrt_rib_table_inc_entry_count(struct mrt_rib_table *state)
+{
+  state->entry_count++;
+  byte *entry_count = &state->msg.msg[state->entry_count_offset];
+  put_u16(entry_count, state->entry_count);
+}
+
+void
+mrt_rib_table_add_entry(struct mrt_rib_table *state, const struct mrt_rib_entry *entry)
+{
+  struct mrt_buffer *msg = &state->msg;
+
+  mrt_buffer_put_var_autosize(msg, entry->peer_index);
+  mrt_buffer_put_var_autosize(msg, entry->originated_time);
+  mrt_buffer_put_var_autosize(msg, entry->attributes_length);
+  mrt_buffer_put_raw(msg, entry->attributes, entry->attributes_length);
+
+  mrt_rib_table_inc_entry_count(state);
+  DBG("\n");
 }

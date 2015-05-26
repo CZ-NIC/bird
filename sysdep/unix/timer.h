@@ -64,6 +64,12 @@ tm_new_set(pool *p, void (*hook)(struct timer *), void *data, unsigned rand, uns
   return t;
 }
 
+static inline bird_clock_t
+bird_clock_to_unix_timestamp(bird_clock_t bird_clock)
+{
+  bird_clock_t delta = now - bird_clock;
+  return (now_real - delta);
+}
 
 struct timeformat {
   char *fmt1, *fmt2;

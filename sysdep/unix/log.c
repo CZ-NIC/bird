@@ -316,14 +316,20 @@ log_init_debug(char *f)
 }
 
 void
-mrt_dump_message(const struct proto *p, u16 type, u16 subtype, byte *buf, u32 len)
+mrt_dump_message_proto(struct proto *p, u16 type, u16 subtype, byte *buf, u32 len)
+{
+  mrt_dump_message(p->cf->global->mrt_proto_file, type, subtype, buf, len);
+}
+
+void
+mrt_dump_message(int file_descriptor, u16 type, u16 subtype, byte *buf, u32 len)
 {
   /* Prepare header */
   put_u32(buf+0, now_real);
   put_u16(buf+4, type);
   put_u16(buf+6, subtype);
-  put_u32(buf+8, len - MRTDUMP_HDR_LENGTH);
+  put_u32(buf+8, len - MRT_HDR_LENGTH);
 
-  if (p->cf->global->mrtdump_file != -1)
-    write(p->cf->global->mrtdump_file, buf, len);
+  if (file_descriptor >= 0)
+    write(file_descriptor, buf, len);
 }

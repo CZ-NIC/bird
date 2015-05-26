@@ -14,8 +14,36 @@
 #include "lib/resource.h"
 #include "lib/timer.h"
 
+/* Configuration structures */
 
-/* Configuration structure */
+#define MRT_TABLE_NOT_CONFIGURED -1
+#define MRT_TABLE_DEFAULT_PERIOD 60
+#define MRT_TABLE_DEFAULT_FILENAME_FMT "%f_%F_%T.mrt"
+#define MRT_TABLE_DEFAULT_TABLENAME_PATTERN "*"
+
+struct mrt_table_common_config {
+  u32 period;				/* Time in seconds between Table Dump */
+  char *filename_fmt;
+  struct filter *filter;
+  struct cli *cli;			/* Client console or NULL */
+  struct config *config;		/* Configuration or NULL */
+};
+
+/* Template of configuration that can be apply at any table */
+struct mrt_table_config {
+  node n;				/* Node in config->mrt_table_dumps */
+  struct mrt_table_common_config c;
+  char *rtable_wildcard_name;
+};
+
+/* Configuration that is specific per table */
+struct mrt_table_individual_config {
+  node n;				/* Node in rtable_config->mrt_table_dumps */
+  struct mrt_table_common_config c;
+  timer *timer;				/* Timer for periodic dumps */
+  struct rtable_config *table_cf;
+  bird_clock_t next_dump;
+};
 
 struct config {
   pool *pool;				/* Pool the configuration is stored in */
@@ -23,9 +51,10 @@ struct config {
   list protos;				/* Configured protocol instances (struct proto_config) */
   list tables;				/* Configured routing tables (struct rtable_config) */
   list roa_tables;			/* Configured ROA tables (struct roa_table_config) */
-  list logfiles;			/* Configured log fils (sysdep) */
+  list logfiles;			/* Configured log files (sysdep) */
+  list mrt_table_dumps;			/* Configured MRT table dumps (struct mrt_table_config) */
 
-  int mrtdump_file;			/* Configured MRTDump file (sysdep, fd in unix) */
+  int mrt_proto_file;			/* Configured MRTDump file (sysdep, fd in unix) for Protocols*/
   char *syslog_name;			/* Name used for syslog (NULL -> no syslog) */
   struct rtable_config *master_rtc;	/* Configuration of master routing table */
   struct iface_patt *router_id_from;	/* Configured list of router ID iface patterns */

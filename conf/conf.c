@@ -53,6 +53,7 @@
 #include "lib/string.h"
 #include "lib/event.h"
 #include "lib/timer.h"
+#include "lib/unix.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
 
@@ -91,7 +92,7 @@ config_alloc(byte *name)
   linpool *l = lp_new(p, 4080);
   struct config *c = lp_allocz(l, sizeof(struct config));
 
-  c->mrtdump_file = -1; /* Hack, this should be sysdep-specific */
+  c->mrt_proto_file = -1; 		/* Indication that the file descriptor should not be used */
   c->pool = p;
   cfg_mem = c->mem = l;
   c->file_name = cfg_strdup(name);

@@ -35,4 +35,10 @@ io_log_event(void *hook, void *data)
   bt_debug("This is io_log_event mockup. \n");
 };
 
+void
+mrt_dump_message(int file_descriptor, u16 type, u16 subtype, byte *buf, u32 len)
+{
+  debug("mrt_dump_message: file_descriptor %d, type %02X, subtype %02X, %s (%u) \n", file_descriptor, type, subtype, buf, len);
+}
+
 #include "lib/slab.c"		/* REMOVE ME */

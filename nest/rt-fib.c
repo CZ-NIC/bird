@@ -440,7 +440,7 @@ fit_put(struct fib_iterator *i, struct fib_node *n)
  * Use when you suspect somebody of corrupting innocent data structures.
  */
 void
-fib_check(struct fib *f)
+fib_check(const struct fib *f)
 {
   uint i, ec, lo, nulls;
 

@@ -75,8 +75,10 @@
 #include "lib/socket.h"
 #include "lib/resource.h"
 #include "lib/string.h"
+#include "lib/slists.h"
 
 #include "bgp.h"
+#include "mrt.h"
 
 
 struct linpool *bgp_linpool;		/* Global temporary pool */
@@ -1252,6 +1254,7 @@ bgp_init(struct proto_config *C)
   p->rs_client = c->rs_client;
   p->rr_client = c->rr_client;
   p->igp_table = get_igp_table(c);
+  p->mrt_peer_index = 0;
 
   return P;
 }
