@@ -298,7 +298,7 @@ sha256_final(struct sha256_context *ctx)
   if (sizeof t == sizeof ctx->nblocks)
     th = ctx->nblocks_high;
   else
-    th = ctx->nblocks >> 32;
+    th = 0;
 
   /* multiply by 64 to make a byte count */
   lsb = t << 6;
