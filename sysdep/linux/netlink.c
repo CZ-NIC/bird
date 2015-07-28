@@ -100,11 +100,12 @@ nl_request_dump(int af, int cmd)
   struct {
     struct nlmsghdr nh;
     struct rtgenmsg g;
-  } req;
-  req.nh.nlmsg_type = cmd;
-  req.nh.nlmsg_len = sizeof(req);
-  req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
-  req.g.rtgen_family = af;
+  } req = {
+    .nh.nlmsg_type = cmd,
+    .nh.nlmsg_len = sizeof(req),
+    .nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP,
+    .g.rtgen_family = af
+  };
   nl_send(&nl_scan, &req.nh);
 }
 
