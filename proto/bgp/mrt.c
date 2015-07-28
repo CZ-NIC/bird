@@ -66,13 +66,13 @@ bgp_mrt_table_dump_step(struct mrt_table_dump_ctx *state)
     return;
 
   uint max_work_size = 1;
+  u32 original_rib_sequence_number = state->rib_sequence_number;
 
   FIB_ITERATE_START(&state->rtable->fib, &state->fit, f)
   {
     if (!max_work_size--)
     {
       FIB_ITERATE_PUT(&state->fit, f);
-      bgp_mrt_rib_table_dump(state);
       return;
     }
 
@@ -119,6 +119,11 @@ bgp_mrt_table_dump_step(struct mrt_table_dump_ctx *state)
 
       mrt_rib_table_add_entry(&state->rib_table, &entry);
     }
+
+    if (state->rib_table.entry_count)
+      bgp_mrt_rib_table_dump(state);
+    else
+      state->rib_sequence_number = original_rib_sequence_number;
   } FIB_ITERATE_END(f);
 
   fit_get(&state->rtable->fib, &state->fit);
