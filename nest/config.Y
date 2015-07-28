@@ -96,6 +96,7 @@ rtrid:
 
 idval:
    NUM { $$ = $1; }
+ | '(' term ')' { $$ = f_eval_int($2); }
  | RTRID
  | IPA {
 #ifndef IPV6
@@ -103,6 +104,16 @@ idval:
 #else
      cf_error("Router IDs must be entered as hexadecimal numbers or IPv4 addresses in IPv6 version");
 #endif
+   }
+ | SYM {
+     if ($1->class == (SYM_CONSTANT | T_INT) || $1->class == (SYM_CONSTANT | T_QUAD))
+       $$ = SYM_VAL($1).i;
+#ifndef IPV6
+     else if ($1->class == (SYM_CONSTANT | T_IP))
+       $$ = ipa_to_u32(SYM_VAL($1).px.ip);
+#endif
+     else
+       cf_error("Number of IPv4 address constant expected");
    }
  ;
 
@@ -185,16 +196,18 @@ proto_name:
    }
  | FROM SYM {
      struct symbol *s = cf_default_name(this_proto->protocol->template, &this_proto->protocol->name_counter);
+     s->class = this_proto->class;
+     s->def = this_proto;
      this_proto->name = s->name;
+
      if (($2->class != SYM_TEMPLATE) && ($2->class != SYM_PROTO)) cf_error("Template or protocol name expected");
      proto_copy_config(this_proto, $2->def);
    }
  | SYM FROM SYM {
-     if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
-
      cf_define_symbol($1, this_proto->class, this_proto);
      this_proto->name = $1->name;
 
+     if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
      proto_copy_config(this_proto, $3->def);
    }
  ;

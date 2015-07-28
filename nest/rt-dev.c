@@ -51,7 +51,10 @@ dev_ifa_notify(struct proto *p, unsigned c, struct ifa *ad)
 	  DBG("dev_if_notify: device shutdown: prefix not found\n");
 	  return;
 	}
-      rte_update(p, n, NULL);
+
+      /* Use iface ID as local source ID */
+      struct rte_src *src = rt_get_source(p, ad->iface->index);
+      rte_update2(p->main_ahook, n, NULL, src);
     }
   else if (c & IF_CHANGE_UP)
     {
@@ -61,8 +64,11 @@ dev_ifa_notify(struct proto *p, unsigned c, struct ifa *ad)
 
       DBG("dev_if_notify: %s:%I going up\n", ad->iface->name, ad->ip);
 
+      /* Use iface ID as local source ID */
+      struct rte_src *src = rt_get_source(p, ad->iface->index);
+
       rta a0 = {
-	.src = p->main_source,
+	.src = src,
 	.source = RTS_DEVICE,
 	.scope = SCOPE_UNIVERSE,
 	.cast = RTC_UNICAST,
@@ -75,7 +81,7 @@ dev_ifa_notify(struct proto *p, unsigned c, struct ifa *ad)
       e = rte_get_temp(a);
       e->net = n;
       e->pflags = 0;
-      rte_update(p, n, e);
+      rte_update2(p->main_ahook, n, e, src);
     }
 }
 

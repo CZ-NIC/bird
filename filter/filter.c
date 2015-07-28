@@ -471,26 +471,22 @@ static inline void f_rte_cow(void)
 static void
 f_rta_cow(void)
 {
-  if ((*f_rte)->attrs->aflags & RTAF_CACHED) {
+  if (!rta_is_cached((*f_rte)->attrs))
+    return;
 
-    /* Prepare to modify rte */
-    f_rte_cow();
+  /* Prepare to modify rte */
+  f_rte_cow();
 
-    /* Store old rta to free it later */
-    f_old_rta = (*f_rte)->attrs;
+  /* Store old rta to free it later, it stores reference from rte_cow() */
+  f_old_rta = (*f_rte)->attrs;
 
-    /*
-     * Alloc new rta, do shallow copy and update rte. Fields eattrs
-     * and nexthops of rta are shared with f_old_rta (they will be
-     * copied when the cached rta will be obtained at the end of
-     * f_run()), also the lock of hostentry is inherited (we suppose
-     * hostentry is not changed by filters).
-     */
-    rta *ra = lp_alloc(f_pool, sizeof(rta));
-    memcpy(ra, f_old_rta, sizeof(rta));
-    ra->aflags = 0;
-    (*f_rte)->attrs = ra;
-  }
+  /*
+   * Get shallow copy of rta. Fields eattrs and nexthops of rta are shared
+   * with f_old_rta (they will be copied when the cached rta will be obtained
+   * at the end of f_run()), also the lock of hostentry is inherited (we
+   * suppose hostentry is not changed by filters).
+   */
+  (*f_rte)->attrs = rta_do_cow((*f_rte)->attrs, f_pool);
 }
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
@@ -1529,6 +1525,30 @@ f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struc
   }
   DBG( "done (%u)\n", res.val.i );
   return res.val.i;
+}
+
+/* TODO: perhaps we could integrate f_eval(), f_eval_rte() and f_run() */
+
+struct f_val
+f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
+{
+  struct ea_list *tmp_attrs = NULL;
+
+  f_rte = rte;
+  f_old_rta = NULL;
+  f_tmp_attrs = &tmp_attrs;
+  f_pool = tmp_pool;
+  f_flags = 0;
+
+  LOG_BUFFER_INIT(f_buf);
+
+  /* Note that in this function we assume that rte->attrs is private / uncached */
+  struct f_val res = interpret(expr);
+
+  /* Hack to include EAF_TEMP attributes to the main list */
+  (*rte)->attrs->eattrs = ea_append(tmp_attrs, (*rte)->attrs->eattrs);
+
+  return res;
 }
 
 struct f_val

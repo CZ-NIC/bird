@@ -40,6 +40,7 @@ struct bgp_config {
   int capabilities;			/* Enable capability handshake [RFC3392] */
   int enable_refresh;			/* Enable local support for route refresh [RFC2918] */
   int enable_as4;			/* Enable local support for 4B AS numbers [RFC4893] */
+  int enable_extended_messages;		/* Enable local support for extended messages [draft] */
   u32 rr_cluster_id;			/* Route reflector cluster ID, if different from local ID */
   int rr_client;			/* Whether neighbor is RR client of me */
   int rs_client;			/* Whether neighbor is RS client of me */
@@ -109,6 +110,7 @@ struct bgp_conn {
   u16 peer_gr_time;
   u8 peer_gr_flags;
   u8 peer_gr_aflags;
+  u8 peer_ext_messages_support;		/* Peer supports extended message length [draft] */
   unsigned hold_time, keepalive_time;	/* Times calculated from my and neighbor's requirements */
 };
 
@@ -121,6 +123,7 @@ struct bgp_proto {
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
   u8 add_path_rx;			/* Session expects receive of ADD-PATH extended NLRI */
   u8 add_path_tx;			/* Session expects transmit of ADD-PATH extended NLRI */
+  u8 ext_messages;			/* Session allows to use extended messages (both sides support it) */
   u32 local_id;				/* BGP identifier of this router */
   u32 remote_id;			/* BGP identifier of the neighbor */
   u32 rr_cluster_id;			/* Route reflector cluster ID */
@@ -181,10 +184,16 @@ struct bgp_bucket {
 #define BGP_PORT		179
 #define BGP_VERSION		4
 #define BGP_HEADER_LENGTH	19
-#define BGP_MAX_PACKET_LENGTH	4096
+#define BGP_MAX_MESSAGE_LENGTH	4096
+#define BGP_MAX_EXT_MSG_LENGTH	65535
 #define BGP_RX_BUFFER_SIZE	4096
-#define BGP_TX_BUFFER_SIZE	BGP_MAX_PACKET_LENGTH
+#define BGP_TX_BUFFER_SIZE	4096
+#define BGP_RX_BUFFER_EXT_SIZE	65535
+#define BGP_TX_BUFFER_EXT_SIZE	65535
 #define BGP_ATTR_BUFFER_SIZE	2048	/* Default buffer size for encoded bgp attributes */
+
+static inline int bgp_max_packet_length(struct bgp_proto *p)
+{ return p->ext_messages ? BGP_MAX_EXT_MSG_LENGTH : BGP_MAX_MESSAGE_LENGTH; }
 
 extern struct linpool *bgp_linpool;
 
@@ -240,6 +249,7 @@ byte *bgp_attach_attr_wa(struct ea_list **to, struct linpool *pool, unsigned att
 struct rta *bgp_decode_attrs(struct bgp_conn *conn, byte *a, uint len, struct linpool *pool, int mandatory);
 int bgp_get_attr(struct eattr *e, byte *buf, int buflen);
 int bgp_rte_better(struct rte *, struct rte *);
+int bgp_rte_mergable(rte *pri, rte *sec);
 int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
 void bgp_rt_notify(struct proto *P, rtable *tbl UNUSED, net *n, rte *new, rte *old UNUSED, ea_list *attrs);
 int bgp_import_control(struct proto *, struct rte **, struct ea_list **, struct linpool *);

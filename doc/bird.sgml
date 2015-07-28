@@ -1610,7 +1610,7 @@ RFC 4271<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc4271.txt">
 It also supports the community attributes
 (RFC 1997<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc1997.txt">),
 capability negotiation
-(RFC 3392<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc3392.txt">),
+(RFC 5492<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc5492.txt">),
 MD5 password authentication
 (RFC 2385<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc2385.txt">),
 extended communities
@@ -1746,7 +1746,11 @@ using the following configuration parameters:
 	<cf/bgp_next_hop/ is used if it is directly reachable, otherwise the
 	neighbor IP address is used. Recursive mode means that the gateway is
 	computed by an IGP routing table lookup for the IP address from
-	<cf/bgp_next_hop/. Recursive mode is the behavior specified by the BGP
+	<cf/bgp_next_hop/. Note that there is just one level of indirection in
+	recursive mode - the route obtained by the lookup must not be recursive
+	itself, to prevent mutually recursive routes.
+
+	Recursive mode is the behavior specified by the BGP
 	standard. Direct mode is simpler, does not require any routes in a
 	routing table, and was used in older versions of BIRD, but does not
 	handle well nontrivial iBGP setups and multihop. Recursive mode is
@@ -2120,7 +2124,6 @@ interfaces to be defined for them to work with.
 <p><descrip>
 
 	<tag>scan time <m/number/</tag>
-
 	Time in seconds between two scans of the network interface list. On
 	systems where we are notified about interface status changes
 	asynchronously (such as newer versions of Linux), we need to scan the
@@ -2266,6 +2269,18 @@ limitations can be overcome using another routing table and the pipe protocol.
 	a graceful restart recovery is active, the Kernel protocol will defer
 	synchronization of routing tables until the end of the recovery. Note
 	that import of kernel routes to BIRD is not affected.
+
+	<tag>merge paths <M>switch</M> [limit <M>number</M>]</tag>
+	Usually, only best routes are exported to the kernel protocol. With path
+	merging enabled, both best routes and equivalent non-best routes are
+	merged during export to generate one ECMP (equal-cost multipath) route
+	for each network. This is useful e.g. for BGP multipath. Note that best
+	routes are still pivotal for route export (responsible for most
+	properties of resulting ECMP routes), while exported non-best routes are
+	responsible just for additional multipath next hops. This option also
+	allows to specify a limit on maximal number of nexthops in one route. By
+	default, multipath merging is disabled. If enabled, default value of the
+	limit is 16.
 </descrip>
 
 <sect1>Attributes
@@ -2292,6 +2307,20 @@ these attributes:
 	<tag>int <cf/krt_realm/</tag> (Linux)
 	The realm of the route. Can be used for traffic classification.
 </descrip>
+
+<p>In Linux, there is also a plenty of obscure route attributes mostly focused
+on tuning TCP performance of local connections. BIRD supports most of these
+attributes, see Linux or iproute2 documentation for their meaning. Attributes
+<cf/krt_lock_*/ and <cf/krt_feature_*/ have type bool, others have type int.
+Supported attributes are:
+
+<cf/krt_mtu/, <cf/krt_lock_mtu/, <cf/krt_window/, <cf/krt_lock_window/,
+<cf/krt_rtt/, <cf/krt_lock_rtt/, <cf/krt_rttvar/, <cf/krt_lock_rttvar/,
+<cf/krt_sstresh/, <cf/krt_lock_sstresh/, <cf/krt_cwnd/, <cf/krt_lock_cwnd/,
+<cf/krt_advmss/, <cf/krt_lock_advmss/, <cf/krt_reordering/, <cf/krt_lock_reordering/,
+<cf/krt_hoplimit/, <cf/krt_lock_hoplimit/, <cf/krt_rto_min/, <cf/krt_lock_rto_min/,
+<cf/krt_initcwnd/, <cf/krt_initrwnd/, <cf/krt_quickack/,
+<cf/krt_feature_ecn/, <cf/krt_feature_allfrag/
 
 <sect1>Example
 
@@ -3421,7 +3450,9 @@ of the protocol contains mainly a list of static routes:
 
 <descrip>
 	<tag>route <m/prefix/ via <m/ip/</tag>
-	Static route through a neighboring router.
+	Static route through a neighboring router. For link-local next hops,
+	interface can be specified as a part of the address (e.g.,
+	<cf/via fe80::1234%eth0/).
 
 	<tag>route <m/prefix/ multipath via <m/ip/ [weight <m/num/] [via ...]</tag>
 	Static multipath route. Contains several nexthops (gateways), possibly

@@ -26,6 +26,8 @@ struct kif_proto;
 #define KRF_DELETE 3			/* Should be deleted */
 #define KRF_IGNORE 4			/* To be ignored */
 
+#define KRT_DEFAULT_ECMP_LIMIT	16
+
 #define EA_KRT_SOURCE	EA_CODE(EAP_KRT, 0)
 #define EA_KRT_METRIC	EA_CODE(EAP_KRT, 1)
 
@@ -47,6 +49,7 @@ struct krt_config {
   int learn;			/* Learn routes from other sources */
   int devroutes;		/* Allow export of device routes */
   int graceful_restart;		/* Regard graceful restart recovery */
+  int merge_paths;		/* Exported routes are merged for ECMP */
 };
 
 struct krt_proto {

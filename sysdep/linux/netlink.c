@@ -100,11 +100,12 @@ nl_request_dump(int af, int cmd)
   struct {
     struct nlmsghdr nh;
     struct rtgenmsg g;
-  } req;
-  req.nh.nlmsg_type = cmd;
-  req.nh.nlmsg_len = sizeof(req);
-  req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
-  req.g.rtgen_family = af;
+  } req = {
+    .nh.nlmsg_type = cmd,
+    .nh.nlmsg_len = sizeof(req),
+    .nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP,
+    .g.rtgen_family = af
+  };
   nl_send(&nl_scan, &req.nh);
 }
 
@@ -702,6 +703,11 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
   r.r.rtm_protocol = RTPROT_BIRD;
   r.r.rtm_scope = RT_SCOPE_UNIVERSE;
   nl_add_attr_ipa(&r.h, sizeof(r), RTA_DST, net->n.prefix);
+
+  /* For route delete, we do not specify route attributes */
+  if (!new)
+    return nl_exchange(&r.h);
+
 
   if (ea = ea_find(eattrs, EA_KRT_METRIC))
     nl_add_attr_u32(&r.h, sizeof(r), RTA_PRIORITY, ea->u.data);

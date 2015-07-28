@@ -241,6 +241,7 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RA_OPTIMAL	1		/* Announcement of optimal route change */
 #define RA_ACCEPTED	2		/* Announcement of first accepted route */
 #define RA_ANY		3		/* Announcement of any route change */
+#define RA_MERGED	4		/* Announcement of optimal route merged with next ones */
 
 /* Return value of import_control() callback */
 #define RIC_ACCEPT	1		/* Accepted by protocol */
@@ -264,12 +265,14 @@ void rte_update2(struct announce_hook *ah, net *net, rte *new, struct rte_src *s
 static inline void rte_update(struct proto *p, net *net, rte *new) { rte_update2(p->main_ahook, net, new, p->main_source); }
 void rte_discard(rtable *tab, rte *old);
 int rt_examine(rtable *t, ip_addr prefix, int pxlen, struct proto *p, struct filter *filter);
+rte *rt_export_merged(struct announce_hook *ah, net *net, rte **rt_free, struct ea_list **tmpa, int silent);
 void rt_refresh_begin(rtable *t, struct announce_hook *ah);
 void rt_refresh_end(rtable *t, struct announce_hook *ah);
 void rte_dump(rte *);
 void rte_free(rte *);
 rte *rte_do_cow(rte *);
 static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }
+rte *rte_cow_rta(rte *r, linpool *lp);
 void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_baby(struct proto *p);
@@ -389,6 +392,12 @@ typedef struct rta {
 #define IGP_METRIC_UNKNOWN 0x80000000	/* Default igp_metric used when no other
 					   protocol-specific metric is availabe */
 
+
+/* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
+static inline int rte_is_reachable(rte *r)
+{ uint d = r->attrs->dest; return (d == RTD_ROUTER) || (d == RTD_DEVICE) || (d == RTD_MULTIPATH); }
+
+
 /*
  *	Extended Route Attributes
  */
@@ -483,6 +492,7 @@ void ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **na
 int mpnh__same(struct mpnh *x, struct mpnh *y); /* Compare multipath nexthops */
 static inline int mpnh_same(struct mpnh *x, struct mpnh *y)
 { return (x == y) || mpnh__same(x, y); }
+struct mpnh *mpnh_merge(struct mpnh *x, struct mpnh *y, int rx, int ry, int max, linpool *lp);
 
 void rta_init(void);
 rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */
@@ -490,6 +500,8 @@ static inline int rta_is_cached(rta *r) { return r->aflags & RTAF_CACHED; }
 static inline rta *rta_clone(rta *r) { r->uc++; return r; }
 void rta__free(rta *r);
 static inline void rta_free(rta *r) { if (r && !--r->uc) rta__free(r); }
+rta *rta_do_cow(rta *o, linpool *lp);
+static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta_do_cow(r, lp) : r; }
 void rta_dump(rta *);
 void rta_dump_all(void);
 void rta_show(struct cli *, rta *, ea_list *);

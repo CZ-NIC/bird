@@ -64,6 +64,7 @@ What do we support:
 	o  Static routes
 	o  Inter-table protocol
 	o  IPv6 router advertisements
+	o  Bidirectional Forwarding Detection (BFD)
 	o  Command-line interface (using the `birdc' client; to get
 	   some help, just press `?')
 	o  Soft reconfiguration -- no online commands for changing the

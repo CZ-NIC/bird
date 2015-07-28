@@ -167,7 +167,7 @@ rt_get_source(struct proto *p, u32 id)
   src->private_id = id;
   src->global_id = rte_src_alloc_id();
   src->uc = 0;
-  
+
   HASH_INSERT2(src_hash, RSH, rta_pool, src);
 
   return src;
@@ -214,6 +214,94 @@ mpnh__same(struct mpnh *x, struct mpnh *y)
 
   return x == y;
 }
+
+static int
+mpnh_compare_node(struct mpnh *x, struct mpnh *y)
+{
+  int r;
+
+  if (!x)
+    return 1;
+
+  if (!y)
+    return -1;
+
+  r = ((int) y->weight) - ((int) x->weight);
+  if (r)
+    return r;
+
+  r = ipa_compare(x->gw, y->gw);
+  if (r)
+    return r;
+
+  return ((int) x->iface->index) - ((int) y->iface->index);
+}
+
+static inline struct mpnh *
+mpnh_copy_node(const struct mpnh *src, linpool *lp)
+{
+  struct mpnh *n = lp_alloc(lp, sizeof(struct mpnh));
+  n->gw = src->gw;
+  n->iface = src->iface;
+  n->next = NULL;
+  n->weight = src->weight;
+  return n;
+}
+
+/**
+ * mpnh_merge - merge nexthop lists
+ * @x: list 1
+ * @y: list 2
+ * @rx: reusability of list @x
+ * @ry: reusability of list @y
+ * @max: max number of nexthops
+ * @lp: linpool for allocating nexthops
+ *
+ * The mpnh_merge() function takes two nexthop lists @x and @y and merges them,
+ * eliminating possible duplicates. The input lists must be sorted and the
+ * result is sorted too. The number of nexthops in result is limited by @max.
+ * New nodes are allocated from linpool @lp.
+ *
+ * The arguments @rx and @ry specify whether corresponding input lists may be
+ * consumed by the function (i.e. their nodes reused in the resulting list), in
+ * that case the caller should not access these lists after that. To eliminate
+ * issues with deallocation of these lists, the caller should use some form of
+ * bulk deallocation (e.g. stack or linpool) to free these nodes when the
+ * resulting list is no longer needed. When reusability is not set, the
+ * corresponding lists are not modified nor linked from the resulting list.
+ */
+struct mpnh *
+mpnh_merge(struct mpnh *x, struct mpnh *y, int rx, int ry, int max, linpool *lp)
+{
+  struct mpnh *root = NULL;
+  struct mpnh **n = &root;
+
+  while ((x || y) && max--)
+  {
+    int cmp = mpnh_compare_node(x, y);
+    if (cmp < 0)
+    {
+      *n = rx ? x : mpnh_copy_node(x, lp);
+      x = x->next;
+    }
+    else if (cmp > 0)
+    {
+      *n = ry ? y : mpnh_copy_node(y, lp);
+      y = y->next;
+    }
+    else
+    {
+      *n = rx ? x : (ry ? y : mpnh_copy_node(x, lp));
+      x = x->next;
+      y = y->next;
+    }
+    n = &((*n)->next);
+  }
+  *n = NULL;
+
+  return root;
+}
+
 
 static struct mpnh *
 mpnh_copy(struct mpnh *o)
@@ -635,7 +723,7 @@ get_generic_attr(eattr *a, byte **buf, int buflen UNUSED)
       *buf += bsprintf(*buf, "igp_metric");
       return GA_NAME;
     }
- 
+
   return GA_UNKNOWN;
 }
 
@@ -741,7 +829,7 @@ ea_show(struct cli *c, eattr *e)
     }
   else if (EA_PROTO(e->id))
     pos += bsprintf(pos, "%02x.", EA_PROTO(e->id));
-  else 
+  else
     status = get_generic_attr(e, &pos, end - pos);
 
   if (status < GA_NAME)
@@ -1048,6 +1136,16 @@ rta__free(rta *a)
   mpnh_free(a->nexthops);
   ea_free(a->eattrs);
   sl_free(rta_slab, a);
+}
+
+rta *
+rta_do_cow(rta *o, linpool *lp)
+{
+  rta *r = lp_alloc(lp, sizeof(rta));
+  memcpy(r, o, sizeof(rta));
+  r->aflags = 0;
+  r->uc = 0;
+  return r;
 }
 
 /**
