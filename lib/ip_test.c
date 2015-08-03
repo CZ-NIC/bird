@@ -14,12 +14,6 @@
 #define IP4_MAX_LEN	16
 
 static u32
-build_ip4(u8 a, u8 b, u8 c, u8 d)
-{
-  return ((u32)a << 24) + ((u32)b << 16) + ((u32)c << 8) + (u32)d;
-}
-
-static u32
 ip4_pton_(char *s)
 {
   ip4_addr ip;
@@ -36,15 +30,15 @@ t_ip4_pton(void)
   } in_out[] = {
       {
 	  .in  = "192.168.1.128",
-	  .out = build_ip4(192, 168, 1, 128),
+	  .out = ip4_to_u32(ip4_build(192, 168, 1, 128)),
       },
       {
 	  .in  = "255.255.255.255",
-	  .out = build_ip4(255, 255, 255, 255),
+	  .out = ip4_to_u32(ip4_build(255, 255, 255, 255)),
       },
       {
 	  .in  = "0.0.0.0",
-	  .out = build_ip4(0, 0, 0, 0),
+	  .out = ip4_to_u32(ip4_build(0, 0, 0, 0)),
       },
   };
 
@@ -119,15 +113,15 @@ t_ip4_ntop(void)
     char out[IP4_MAX_LEN];
   } in_out[] = {
       {
-	  .in  = ip4_from_u32(build_ip4(192, 168, 1, 128)),
+	  .in  = ip4_build(192, 168, 1, 128),
 	  .out = "192.168.1.128",
       },
       {
-	  .in  = ip4_from_u32(build_ip4(255, 255, 255, 255)),
+	  .in  = ip4_build(255, 255, 255, 255),
 	  .out = "255.255.255.255",
       },
       {
-	  .in  = ip4_from_u32(build_ip4(0, 0, 0, 1)),
+	  .in  = ip4_build(0, 0, 0, 1),
 	  .out = "0.0.0.1",
       },
 
