@@ -2858,7 +2858,7 @@ mrt_str_replace(const char *orig, const char *rep, const char *with)
    *   ins points to the next occurrence of rep in orig
    *   orig points to the remainder of orig after "end of rep"
    */
-  tmp = result = mb_alloc(&root_pool, strlen(orig) + (len_with - len_rep) * num_of_replacements + 1);
+  tmp = result = mb_alloc(rt_table_pool, strlen(orig) + (len_with - len_rep) * num_of_replacements + 1);
 
   if (!result)
     return NULL;
@@ -2890,17 +2890,17 @@ mrt_table_dump_get_realpath(const char *filename)
 void
 mrt_table_dump_init_file_descriptor(struct mrt_table_dump_ctx *state)
 {
-  struct timeformat timestamp_fmt = {
-      .fmt1 = mrt_table_dump_config_get_filename_fmt(state),
-  };
-
-  char timestamp[TM_DATETIME_BUFFER_SIZE];
-  tm_format_datetime(timestamp, &timestamp_fmt, now);
   char *tablename = state->config.table_cf->name;
-  char *filename = mrt_str_replace(timestamp, "%f", tablename);
+  char *filename_fmt = mrt_str_replace(mrt_table_dump_config_get_filename_fmt(state), "%f", tablename);
 
-  if (filename)
+  if (filename_fmt)
   {
+    struct timeformat timestamp_fmt = {
+	.fmt1 = filename_fmt,
+    };
+
+    char filename[TM_DATETIME_BUFFER_SIZE];
+    tm_format_datetime(filename, &timestamp_fmt, now);
     state->rfile = tracked_fopen(rt_table_pool, filename, "a");
 
     const char *filename_fullpath = mrt_table_dump_get_realpath(filename);
@@ -2923,14 +2923,14 @@ mrt_table_dump_init_file_descriptor(struct mrt_table_dump_ctx *state)
 	cli_msg(13, "Dump of table %s is saving into file \"%s\"", tablename, state->file_path);
       }
     }
-    mb_free(filename);
+    mb_free(filename_fmt);
   }
   else
   {
-    log(L_ERR "Parsing MRT dump filename format \"%s\" for table %s failed", timestamp_fmt.fmt1, tablename);
+    log(L_ERR "Parsing MRT dump filename filename_fmt \"%s\" for table %s failed", mrt_table_dump_config_get_filename_fmt(state), tablename);
     if (state->config.c.cli)
     {
-      cli_msg(13, "Parsing filename format \"%s\" for table %s failed", timestamp_fmt.fmt1, tablename);
+      cli_msg(13, "Parsing filename filename_fmt \"%s\" for table %s failed", mrt_table_dump_config_get_filename_fmt(state), tablename);
     }
   }
 }

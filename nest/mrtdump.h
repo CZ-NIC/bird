@@ -16,9 +16,9 @@
 #include "nest/route.h"
 #include "lib/event.h"
 
-#define MRT_HDR_LENGTH		12	   /* MRT Timestamp + MRT Type + MRT Subtype + MRT Load Length */
-#define MRT_PEER_TYPE_32BIT_ASN	0b00000010 /* MRT Table Dump: Peer Index Table: Peer Type: Use 32bit ASN */
-#define MRT_PEER_TYPE_IPV6	0b00000001 /* MRT Table Dump: Peer Index Table: Peer Type: Use IPv6 IP Address */
+#define MRT_HDR_LENGTH		12	/* MRT Timestamp + MRT Type + MRT Subtype + MRT Load Length */
+#define MRT_PEER_TYPE_32BIT_ASN	2	/* MRT Table Dump: Peer Index Table: Peer Type: Use 32bit ASN */
+#define MRT_PEER_TYPE_IPV6	1	/* MRT Table Dump: Peer Index Table: Peer Type: Use IPv6 IP Address */
 
 #ifdef PATH_MAX
 #define BIRD_PATH_MAX PATH_MAX

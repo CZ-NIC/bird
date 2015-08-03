@@ -170,8 +170,9 @@ mrt_peer_index_table_add_peer(struct mrt_peer_index_table *state, u32 peer_bgp_i
   struct mrt_buffer *msg = &state->msg;
 
   u8 peer_type = MRT_PEER_TYPE_32BIT_ASN;
-  if (sizeof(peer_ip_addr) > sizeof(ip4_addr))
+#ifdef IPV6
     peer_type |= MRT_PEER_TYPE_IPV6;
+#endif
 
   mrt_buffer_put_var_autosize(msg, peer_type);
   mrt_buffer_put_var_autosize(msg, peer_bgp_id);
