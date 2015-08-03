@@ -42,7 +42,7 @@ mrt_buffer_free(struct mrt_buffer *buf)
 static void
 mrt_buffer_enlarge(struct mrt_buffer *buf, size_t min_required_capacity)
 {
-  if (min_required_capacity < buf->msg_capacity)
+  if (min_required_capacity > buf->msg_capacity)
   {
     buf->msg_capacity *= 2;
     if (min_required_capacity > buf->msg_capacity)
