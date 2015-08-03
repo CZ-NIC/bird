@@ -20,7 +20,13 @@
 #include "lib/sha512.h"
 #include "lib/unaligned.h"
 
-#define U64_C(c) (c ## UL) /* Maybe is system dependent */
+#if SIZEOF_UNSIGNED_INT == 8
+  #define U64_C(c) (c ## U)
+#elif SIZEOF_UNSIGNED_LONG == 8
+  #define U64_C(c) (c ## UL)
+#elif SIZEOF_UNSIGNED_LONG_LONG == 8
+  #define U64_C(c) (c ## ULL)
+#endif
 
 static uint sha512_transform(void *context, const byte *data, size_t nblks);
 

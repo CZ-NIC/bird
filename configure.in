@@ -247,6 +247,10 @@ AC_TRY_COMPILE([#include <sys/types.h>
 AC_C_BIGENDIAN([AC_DEFINE(CPU_BIG_ENDIAN)], [AC_DEFINE(CPU_LITTLE_ENDIAN)],
 		 [AC_MSG_ERROR([Cannot determine CPU endianity.])])
 
+AC_CHECK_SIZEOF(unsigned int)
+AC_CHECK_SIZEOF(unsigned long)
+AC_CHECK_SIZEOF(unsigned long long)
+
 BIRD_CHECK_INTEGERS
 BIRD_CHECK_STRUCT_ALIGN
 BIRD_CHECK_TIME_T
