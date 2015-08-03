@@ -20,9 +20,8 @@ struct test_node {
 #define TEST_NEXT(n)		n->next
 #define TEST_EQ(n1,n2)		n1 == n2
 #define TEST_FN(n)		(n) ^ u32_hash((n))
-#define TEST_INIT_ORDER		13
-
-#define TEST_PARAMS		/8, *2, 2, 2, 8, 20
+#define TEST_ORDER		13
+#define TEST_PARAMS		/TEST_ORDER, *2, 2, 2, TEST_ORDER, 20
 #define TEST_REHASH		test_rehash
 
 HASH_DEFINE_REHASH_FN(TEST, struct test_node);
@@ -30,7 +29,7 @@ HASH_DEFINE_REHASH_FN(TEST, struct test_node);
 HASH(struct test_node) hash;
 struct pool *my_pool;
 
-#define MAX_NUM			(1 << (TEST_INIT_ORDER))
+#define MAX_NUM			(1 << TEST_ORDER)
 
 struct test_node nodes[MAX_NUM];
 
@@ -77,7 +76,7 @@ init_hash_(uint order)
 static void
 init_hash(void)
 {
-  init_hash_(TEST_INIT_ORDER);
+  init_hash_(TEST_ORDER);
 }
 
 static void
@@ -234,8 +233,7 @@ t_walk_delsafe_delete2(void)
 
   HASH_WALK_DELSAFE(hash, next, n)
   {
-//  HASH_DELETE2(hash, TEST, pool, n->key);	TODO: UNCOMMENT
-    bt_debug("order: %u \n", hash.order);
+    HASH_DELETE2(hash, TEST, my_pool, n->key);
   }
   HASH_WALK_DELSAFE_END;
 
@@ -252,8 +250,7 @@ t_walk_delsafe_remove2(void)
 
   HASH_WALK_DELSAFE(hash, next, n)
   {
-//  HASH_REMOVE2(hash, TEST, pool, n);		TODO: UNCOMMENT
-    bt_debug("order: %u \n", hash.order);
+    HASH_REMOVE2(hash, TEST, my_pool, n);
   }
   HASH_WALK_DELSAFE_END;
 
@@ -296,9 +293,9 @@ main(int argc, char *argv[])
   bt_test_suite(t_insert2_find, 	"HASH_INSERT2 and HASH_FIND. HASH_INSERT2 is HASH_INSERT and a smart auto-resize function");
   bt_test_suite(t_walk, 		"HASH_WALK");
   bt_test_suite(t_walk_delsafe_delete, 	"HASH_WALK_DELSAFE and HASH_DELETE");
-//bt_test_case(t_walk_delsafe_delete2,	"HASH_WALK_DELSAFE and HASH_DELETE2. HASH_DELETE2 is HASH_DELETE and smart auto-resize function");
+  bt_test_suite(t_walk_delsafe_delete2,	"HASH_WALK_DELSAFE and HASH_DELETE2. HASH_DELETE2 is HASH_DELETE and smart auto-resize function");
   bt_test_suite(t_walk_delsafe_remove, 	"HASH_WALK_DELSAFE and HASH_REMOVE");
-//bt_test_case(t_walk_delsafe_remove2,	"HASH_WALK_DELSAFE and HASH_REMOVE2. HASH_REMOVE2 is HASH_REMOVE and smart auto-resize function");
+  bt_test_suite(t_walk_delsafe_remove2,	"HASH_WALK_DELSAFE and HASH_REMOVE2. HASH_REMOVE2 is HASH_REMOVE and smart auto-resize function");
   bt_test_suite(t_walk_filter,		"HASH_WALK_FILTER");
 
   return bt_end();
