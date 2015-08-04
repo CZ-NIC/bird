@@ -15,18 +15,6 @@
 /* Include OS configuration file as chosen in autoconf.h */
 #include SYSCONF_INCLUDE
 
-/* The AC_CHECK_SIZEOF() in configure fails for some machines.
- * we provide some fallback values here */
-#ifndef SIZEOF_UNSIGNED_INT
-# define SIZEOF_UNSIGNED_INT 4
-#endif
-#ifndef SIZEOF_UNSIGNED_LONG
-# define SIZEOF_UNSIGNED_LONG 4
-#endif
-#ifndef SIZEOF_UNSIGNED_LONG_LONG
-# define SIZEOF_UNSIGNED_LONG_LONG 8
-#endif
-
 #ifndef MACROS_ONLY
 
 /*

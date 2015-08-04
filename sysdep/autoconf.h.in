@@ -66,13 +66,4 @@
 /* We have stdint.h */
 #undef HAVE_STDINT_H
 
-/* The size of `unsigned int', as computed by sizeof. */
-#undef SIZEOF_UNSIGNED_INT
-
-/* The size of `unsigned long', as computed by sizeof. */
-#undef SIZEOF_UNSIGNED_LONG
-
-/* The size of `unsigned long long', as computed by sizeof. */
-#undef SIZEOF_UNSIGNED_LONG_LONG
-
 #define CONFIG_PATH ?
