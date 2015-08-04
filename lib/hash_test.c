@@ -6,6 +6,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#undef LOCAL_DEBUG
+
 #include "test/birdtest.h"
 #include "test/birdtest_support.h"	/* REMOVE ME */
 
@@ -47,6 +49,7 @@ print_rate_of_fulfilment(void)
   bt_debug("%d (%.2f %%) chained of %d hashes \n", num_stacked_items, percent_stacked_items, MAX_NUM);
 }
 
+#ifdef LOCAL_DEBUG
 static void
 dump_nodes(void)
 {
@@ -54,6 +57,7 @@ dump_nodes(void)
   for (i = 0; i < MAX_NUM; i++)
     bt_debug("nodes[%3d] is at address %14p has .key %3d, .next %14p \n", i, &nodes[i], nodes[i].key, nodes[i].next);
 }
+#endif
 
 static void
 init_hash_(uint order)

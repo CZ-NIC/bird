@@ -13,48 +13,30 @@
 
 #define IP4_MAX_LEN	16
 
-static u32
-ip4_pton_(char *s)
-{
-  ip4_addr ip;
-  ip4_pton(s,&ip);
-  return ip4_to_u32(ip);
-}
-
 static int
 t_ip4_pton(void)
 {
   struct in_out {
     char in[IP4_MAX_LEN];
-    u32 out;
+    ip4_addr out;
   } in_out[] = {
       {
 	  .in  = "192.168.1.128",
-	  .out = ip4_to_u32(ip4_build(192, 168, 1, 128)),
+	  .out = ip4_build(192, 168, 1, 128),
       },
       {
 	  .in  = "255.255.255.255",
-	  .out = ip4_to_u32(ip4_build(255, 255, 255, 255)),
+	  .out = ip4_build(255, 255, 255, 255),
       },
       {
 	  .in  = "0.0.0.0",
-	  .out = ip4_to_u32(ip4_build(0, 0, 0, 0)),
+	  .out = ip4_build(0, 0, 0, 0),
       },
   };
 
-  bt_assert_out_fn_in(ip4_pton_, in_out, "'%s'", NULL);
+  bt_assert_fn_in_out(ip4_pton, in_out, "'%s'", NULL);
 
   return bt_test_suite_success;
-}
-
-static void
-ip6_pton_(char *s, u32 (*addr)[4])
-{
-  static ip6_addr ip;
-  ip6_pton(s, &ip);
-  int i;
-  for (i = 0; i < 4; i++)
-    (*addr)[i] = ip.addr[i];
 }
 
 static int
@@ -62,39 +44,39 @@ t_ip6_pton(void)
 {
   struct in_out {
     char *in;
-    u32 out[4];
+    ip6_addr out;
   } in_out[] = {
       {
 	  .in  = "2001:0db8:0000:0000:0000:0000:1428:57ab",
-	  .out = {0x20010DB8, 0x00000000, 0x00000000, 0x142857AB},
+	  .out = ip6_build(0x20010DB8, 0x00000000, 0x00000000, 0x142857AB),
       },
       {
 	  .in  = "2001:0db8:0000:0000:0000::1428:57ab",
-	  .out = {0x20010DB8, 0x00000000, 0x00000000, 0x142857AB},
+	  .out = ip6_build(0x20010DB8, 0x00000000, 0x00000000, 0x142857AB),
       },
       {
 	  .in  = "2001:0db8::1428:57ab",
-	  .out = {0x20010DB8, 0x00000000, 0x00000000, 0x142857AB},
+	  .out = ip6_build(0x20010DB8, 0x00000000, 0x00000000, 0x142857AB),
       },
       {
 	  .in  = "2001:db8::1428:57ab",
-	  .out = {0x20010DB8, 0x00000000, 0x00000000, 0x142857AB},
+	  .out = ip6_build(0x20010DB8, 0x00000000, 0x00000000, 0x142857AB),
       },
       {
 	  .in  = "::1",
-	  .out = {0x00000000, 0x00000000, 0x00000000, 0x00000001},
+	  .out = ip6_build(0x00000000, 0x00000000, 0x00000000, 0x00000001),
       },
       {
 	  .in  = "::",
-	  .out = {0x00000000, 0x00000000, 0x00000000, 0x00000000},
+	  .out = ip6_build(0x00000000, 0x00000000, 0x00000000, 0x00000000),
       },
       {
 	  .in  = "2605:2700:0:3::4713:93e3",
-	  .out = {0x26052700, 0x00000003, 0x00000000, 0x471393E3},
+	  .out = ip6_build(0x26052700, 0x00000003, 0x00000000, 0x471393E3),
       },
   };
 
-  bt_assert_fn_in_out(ip6_pton_, in_out, "'%s'", NULL);
+  bt_assert_fn_in_out(ip6_pton, in_out, "'%s'", NULL);
 
   return bt_test_suite_success;
 }
@@ -146,11 +128,11 @@ t_ip6_ntop(void)
     char out[INET6_ADDRSTRLEN];
   } in_out[] = {
       {
-	  .in  = { .addr = {0x20010DB8, 0x00000000, 0x00000000, 0x142857AB}},
+	  .in  = ip6_build(0x20010DB8, 0x00000000, 0x00000000, 0x142857AB),
 	  .out = "2001:db8::1428:57ab",
       },
       {
-	  .in  = { .addr = {0x26052700, 0x00000003, 0x00000000, 0x471393E3}},
+	  .in  = ip6_build(0x26052700, 0x00000003, 0x00000000, 0x471393E3),
 	  .out = "2605:2700:0:3::4713:93e3",
       },
   };
