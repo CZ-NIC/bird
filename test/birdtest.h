@@ -18,8 +18,9 @@ extern int bt_test_suite_success;
 
 extern int bt_verbose;
 #define BT_VERBOSE_NOTHING		0
-#define BT_VERBOSE_TEST_CASE		1
-#define BT_VERBOSE_DEBUG		2
+#define BT_VERBOSE_TEST_SUITE		1
+#define BT_VERBOSE_TEST_CASE		2
+#define BT_VERBOSE_DEBUG		3
 
 extern const char *bt_filename;
 extern const char *bt_test_id;
@@ -62,9 +63,6 @@ void bt_result(const char *result, const char *msg, ...);
     else \
       fprintf(stderr, "%s: %s: " format "\n", bt_filename, bt_test_id, ##__VA_ARGS__); \
   } while(0)
-
-#define bt_log_test_case(format, ...) \
-    do { if (bt_verbose >= BT_VERBOSE_TEST_CASE) bt_log(format, ##__VA_ARGS__); } while (0)
 
 #define bt_debug(format, ...) \
     do { if (bt_verbose >= BT_VERBOSE_DEBUG) printf(format, ##__VA_ARGS__); } while (0)

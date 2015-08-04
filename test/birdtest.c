@@ -102,7 +102,7 @@ bt_init(int argc, char *argv[])
   return;
 
   usage:
-  printf("Usage: %s [-l] [-c] [-f] [-t] [-vv] [<test_id>]\n", argv[0]);
+  printf("Usage: %s [-l] [-c] [-f] [-t] [-vvv] [<test_id>]\n", argv[0]);
   exit(3);
 }
 
@@ -204,7 +204,7 @@ get_num_terminal_cols(void)
 void
 bt_result(const char *to_right_align_msg, const char *to_left_align_msg, ...)
 {
-  if (bt_verbose)
+  if (bt_verbose >= BT_VERBOSE_TEST_SUITE)
   {
     char msg_buf[BT_BUFFER_SIZE];
 
