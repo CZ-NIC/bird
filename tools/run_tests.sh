@@ -3,6 +3,9 @@
 objdir=$1
 srcdir=$2
 
+[ -z "$TERM" ] && TERM=xterm
+tput init
+
 # see if it supports colors...
 ncolors=$(tput colors)
 
