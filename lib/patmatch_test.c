@@ -7,9 +7,7 @@
  */
 
 #include "test/birdtest.h"
-#include "test/birdtest_support.h"	/* REMOVE ME */
-
-#include "lib/patmatch.c"		/* REMOVE ME */
+#include "lib/string.h"
 
 #define MATCH		1
 #define NOMATCH		0

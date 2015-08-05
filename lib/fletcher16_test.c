@@ -1,15 +1,12 @@
 /*
  *	BIRD Library -- Fletcher-16 checksum Tests
  *
- *	(c) 2015 Ondrej Zajicek <santiago@crfreenet.org>
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
 #include "test/birdtest.h"
-#include "test/birdtest_support.h"	/* REMOVE ME */
-
 #include "lib/fletcher16.h"
 
 struct in {

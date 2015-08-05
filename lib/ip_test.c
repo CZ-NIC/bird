@@ -7,8 +7,6 @@
  */
 
 #include "test/birdtest.h"
-#include "test/birdtest_support.h"	/* REMOVE ME */
-
 #include "lib/ip.h"
 
 #define IP4_MAX_LEN	16

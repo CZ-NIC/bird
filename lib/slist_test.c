@@ -7,10 +7,8 @@
  */
 
 #include "test/birdtest.h"
-#include "test/birdtest_support.h"
-
 #include "lib/slists.h"
-#include "lib/slists.c"
+#include "lib/resource.h"
 
 #define MAX_NUM 1000
 

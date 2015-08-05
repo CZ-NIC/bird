@@ -8,7 +8,6 @@
 
 #include "test/birdtest.h"
 #include "bitops.h"
-#include "bitops.c" /* REMOVE ME */
 
 #define MAX_NUM 1000
 #define CHECK_BIT(var,pos) ((var) & (u32)(1<<(pos)))

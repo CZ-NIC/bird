@@ -8,9 +8,12 @@
 
 
 #include "test/birdtest.h"
-#include "test/birdtest_support.h"	/* REMOVE ME */
-
 #include "lib/event.h"
+#include "conf/conf.h"
+#include "nest/locks.h"
+#include "lib/unix.h"
+#include "nest/iface.h"
+#include "nest/route.h"
 
 #define MAX_NUM 4
 
@@ -29,7 +32,7 @@ static void event_hook_3(void *data) { event_hook_body(3); }
 
 #define schedule_event(num)			\
     do {					\
-      struct event *event_##num = ev_new(pool); \
+      struct event *event_##num = ev_new(&root_pool); \
       event_##num->hook = event_hook_##num; 	\
       ev_schedule(event_##num);			\
     } while (0)
@@ -49,8 +52,14 @@ t_ev_run_list(void)
   int i;
 
   resource_init();
-  init_list(&global_event_list);
-  struct pool *pool = rp_new(&root_pool, "Test pool");
+  olock_init();
+  io_init();
+  rt_init();
+  if_init();
+  roa_init();
+  config_init();
+  config = config_alloc("");
+
   init_event_check_points();
 
   schedule_event(1);

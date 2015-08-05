@@ -9,9 +9,8 @@
 #undef LOCAL_DEBUG
 
 #include "test/birdtest.h"
-#include "test/birdtest_support.h"	/* REMOVE ME */
-
 #include "lib/hash.h"
+#include "nest/bird.h"
 
 struct test_node {
   struct test_node *next;	/* Hash chain */

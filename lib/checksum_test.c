@@ -11,10 +11,7 @@
 #include "test/birdtest.h"
 #include "sysdep/config.h"
 #include "lib/null.h"
-
-void bug(const char *msg, ...);
 #include "lib/checksum.h"
-#include "lib/checksum.c" /* REMOVE ME */
 
 #define MAX_NUM 10000
 
@@ -95,15 +92,4 @@ main(int argc, char *argv[])
   bt_test_suite(t_verify, "Verification of pseudo-random data.");
 
   return bt_end();
-}
-
-/* Mockup */
-void
-bug(const char *msg, ...)
-{
-  va_list argptr;
-  va_start(argptr, msg);
-  vfprintf(stderr, msg, argptr);
-  va_end(argptr);
-  abort();
 }

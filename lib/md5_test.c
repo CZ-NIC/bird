@@ -11,7 +11,6 @@
 #include "test/birdtest.h"
 #include "sysdep/config.h"
 #include "lib/md5.h"
-#include "lib/md5.c" /* REMOVE ME */
 
 static void
 get_md5(const char *str, char (*out_hash)[MD5_HEX_SIZE])

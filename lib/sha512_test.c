@@ -9,10 +9,8 @@
 #include <stdlib.h>
 
 #include "test/birdtest.h"
-#include "test/birdtest_support.h"
 #include "sysdep/config.h"
 #include "lib/sha512.h"
-#include "lib/sha512.c" /* REMOVE ME */
 
 static void
 byte_to_hex(char *out, const byte *in, uint len)

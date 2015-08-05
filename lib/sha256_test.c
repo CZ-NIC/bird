@@ -9,10 +9,8 @@
 #include <stdlib.h>
 
 #include "test/birdtest.h"
-#include "test/birdtest_support.h"
 #include "sysdep/config.h"
 #include "lib/sha256.h"
-#include "lib/sha256.c" /* REMOVE ME */
 
 
 static void

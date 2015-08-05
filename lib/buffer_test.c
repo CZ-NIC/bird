@@ -7,6 +7,7 @@
  */
 
 #include <stdlib.h>
+
 #include "test/birdtest.h"
 #include "sysdep/config.h"
 #include "lib/resource.h"
@@ -41,14 +42,9 @@ fill_expected_array(void)
 static void
 init_buffer(void)
 {
-  buffer_pool = NULL;
+  resource_init();
+  buffer_pool = &root_pool;
   BUFFER_INIT(buffer, buffer_pool, MAX_NUM);
-}
-
-static void
-free_buffer(void)
-{
-  free(buffer_pool);
 }
 
 static int
@@ -73,7 +69,6 @@ t_buffer_push(void)
     BUFFER_PUSH(buffer) = expected[i];
   is_buffer_as_expected(&buffer);
 
-  free_buffer();
   return BT_SUCCESS;
 }
 
@@ -102,7 +97,6 @@ t_buffer_pop(void)
     BUFFER_PUSH(buffer) = expected[i];
   is_buffer_as_expected(&buffer);
 
-  free_buffer();
   return BT_SUCCESS;
 }
 
@@ -111,7 +105,7 @@ t_buffer_resize(void)
 {
   int i;
 
-  buffer_pool = NULL;
+  init_buffer();
   BUFFER_INIT(buffer, buffer_pool, 0);
   fill_expected_array();
 
@@ -120,7 +114,6 @@ t_buffer_resize(void)
   is_buffer_as_expected(&buffer);
   bt_assert(buffer.size >= MAX_NUM);
 
-  free_buffer();
   return BT_SUCCESS;
 }
 
@@ -137,7 +130,6 @@ t_buffer_flush(void)
   BUFFER_FLUSH(buffer);
   bt_assert(buffer.used == 0);
 
-  free_buffer();
   return BT_SUCCESS;
 }
 
@@ -152,27 +144,4 @@ main(int argc, char *argv[])
   bt_test_suite(t_buffer_flush, "Fill and flush all elements");
 
   return bt_end();
-}
-
-
-/* Mockup */
-void *
-mb_alloc(pool *UNUSED, uint size) {
-  return (void *) malloc(size);
-};
-
-/* Mockup */
-#define STEP_UP(x) ((x) + (x)/2 + 4)
-#define MIN_(a,b) (((a)<(b))?(a):(b))
-#define MIN(a,b) MIN_(a,b)
-void
-buffer_realloc(void **buf, uint *size, uint need, uint item_size)
-{
-  uint nsize = MIN(*size, need);
-
-  while (nsize < need)
-    nsize = STEP_UP(nsize);
-
-  *buf = realloc(*buf, nsize * item_size);
-  *size = nsize;
 }
