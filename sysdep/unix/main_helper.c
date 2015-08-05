@@ -8,7 +8,9 @@
 
 #undef LOCAL_DEBUG
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,9 +44,9 @@
  */
 
 #ifdef DEBUGGING
-static int debug_flag = 1;
+int debug_flag = 1;
 #else
-static int debug_flag = 0;
+int debug_flag = 0;
 #endif
 
 void
@@ -72,7 +74,7 @@ async_dump(void)
 #include "lib/syspriv.h"
 #else
 
-static inline void
+void
 drop_uid(uid_t uid)
 {
   die("Cannot change user on this platform");
@@ -80,7 +82,7 @@ drop_uid(uid_t uid)
 
 #endif
 
-static inline void
+void
 drop_gid(gid_t gid)
 {
   if (setgid(gid) < 0)
@@ -93,7 +95,7 @@ drop_gid(gid_t gid)
 
 #ifdef PATH_IPROUTE_DIR
 
-static inline void
+void
 add_num_const(char *name, int val)
 {
   struct symbol *s = cf_find_symbol(name);
@@ -105,7 +107,7 @@ add_num_const(char *name, int val)
 
 /* the code of read_iproute_table() is based on
    rtnl_tab_initialize() from iproute2 package */
-static void
+void
 read_iproute_table(char *file, char *prefix, int max)
 {
   char buf[512], namebuf[512];
@@ -152,9 +154,9 @@ read_iproute_table(char *file, char *prefix, int max)
 #endif // PATH_IPROUTE_DIR
 
 
-static char *config_name = PATH_CONFIG_FILE;
+char *config_name = PATH_CONFIG_FILE;
 
-static int
+int
 cf_read(byte *dest, uint len, int fd)
 {
   int l = read(fd, dest, len);
@@ -186,7 +188,7 @@ sysdep_commit(struct config *new, struct config *old UNUSED)
   return 0;
 }
 
-static int
+int
 unix_read_config(struct config **cp, char *name)
 {
   struct config *conf = config_alloc(name);
@@ -202,7 +204,7 @@ unix_read_config(struct config **cp, char *name)
   return ret;
 }
 
-static struct config *
+struct config *
 read_config(void)
 {
   struct config *conf;
@@ -236,7 +238,7 @@ async_config(void)
     config_commit(conf, RECONFIG_HARD, 0);
 }
 
-static struct config *
+struct config *
 cmd_read_config(char *name)
 {
   struct config *conf;
@@ -269,7 +271,7 @@ cmd_check_config(char *name)
   config_free(conf);
 }
 
-static void
+void
 cmd_reconfig_msg(int r)
 {
   switch (r)
@@ -346,11 +348,11 @@ cmd_reconfig_undo(void)
  *	Command-Line Interface
  */
 
-static sock *cli_sk;
-static char *path_control_socket = PATH_CONTROL_SOCKET;
+sock *cli_sk;
+char *path_control_socket = PATH_CONTROL_SOCKET;
 
 
-static void
+void
 cli_write(cli *c)
 {
   sock *s = c->priv;
@@ -383,7 +385,7 @@ cli_write_trigger(cli *c)
     cli_write(c);
 }
 
-static void
+void
 cli_tx(sock *s)
 {
   cli_write(s->data);
@@ -418,14 +420,14 @@ cli_get_command(cli *c)
   return 0;
 }
 
-static int
+int
 cli_rx(sock *s, int size UNUSED)
 {
   cli_kick(s->data);
   return 0;
 }
 
-static void
+void
 cli_err(sock *s, int err)
 {
   if (config->cli_debug)
@@ -438,7 +440,7 @@ cli_err(sock *s, int err)
   cli_free(s->data);
 }
 
-static int
+int
 cli_connect(sock *s, int size UNUSED)
 {
   cli *c;
@@ -456,7 +458,7 @@ cli_connect(sock *s, int size UNUSED)
   return 1;
 }
 
-static void
+void
 cli_init_unix(uid_t use_uid, gid_t use_gid)
 {
   sock *s;
@@ -485,10 +487,10 @@ cli_init_unix(uid_t use_uid, gid_t use_gid)
  *	PID file
  */
 
-static char *pid_file;
-static int pid_fd;
+char *pid_file;
+int pid_fd;
 
-static inline void
+void
 open_pid_file(void)
 {
   if (!pid_file)
@@ -499,7 +501,7 @@ open_pid_file(void)
     die("Cannot create PID file %s: %m", pid_file);
 }
 
-static inline void
+void
 write_pid_file(void)
 {
   int pl, rv;
@@ -525,7 +527,7 @@ write_pid_file(void)
   close(pid_fd);
 }
 
-static inline void
+void
 unlink_pid_file(void)
 {
   if (pid_file)
@@ -567,21 +569,21 @@ sysdep_shutdown_done(void)
  *	Signals
  */
 
-static void
+void
 handle_sighup(int sig UNUSED)
 {
   DBG("Caught SIGHUP...\n");
   async_config_flag = 1;
 }
 
-static void
+void
 handle_sigusr(int sig UNUSED)
 {
   DBG("Caught SIGUSR...\n");
   async_dump_flag = 1;
 }
 
-static void
+void
 handle_sigterm(int sig UNUSED)
 {
   DBG("Caught SIGTERM...\n");
@@ -590,7 +592,7 @@ handle_sigterm(int sig UNUSED)
 
 void watchdog_sigalrm(int sig UNUSED);
 
-static void
+void
 signal_init(void)
 {
   struct sigaction sa;
@@ -615,21 +617,21 @@ signal_init(void)
  *	Parsing of command-line arguments
  */
 
-static char *opt_list = "c:dD:ps:P:u:g:fR";
-static int parse_and_exit;
+char *opt_list = "c:dD:ps:P:u:g:fR";
+int parse_and_exit;
 char *bird_name;
-static char *use_user;
-static char *use_group;
-static int run_in_foreground = 0;
+char *use_user;
+char *use_group;
+int run_in_foreground = 0;
 
-static void
+void
 usage(void)
 {
   fprintf(stderr, "Usage: %s [-c <config-file>] [-d] [-D <debug-file>] [-p] [-s <control-socket>] [-P <pid-file>] [-u <user>] [-g <group>] [-f] [-R]\n", bird_name);
   exit(1);
 }
 
-static inline char *
+char *
 get_bird_name(char *s, char *def)
 {
   char *t;
@@ -643,7 +645,7 @@ get_bird_name(char *s, char *def)
   return t+1;
 }
 
-static inline uid_t
+uid_t
 get_uid(const char *s)
 {
   struct passwd *pw;
@@ -666,7 +668,7 @@ get_uid(const char *s)
   return pw->pw_uid;
 }
 
-static inline gid_t
+gid_t
 get_gid(const char *s)
 {
   struct group *gr;
@@ -689,7 +691,7 @@ get_gid(const char *s)
   return gr->gr_gid;
 }
 
-static void
+void
 parse_args(int argc, char **argv)
 {
   int c;

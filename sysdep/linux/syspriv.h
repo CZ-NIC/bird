@@ -1,4 +1,7 @@
+#ifndef _BIRD_SYSPRIV_H_
+#define _BIRD_SYSPRIV_H_
 
+#include <unistd.h>
 #include <sys/prctl.h>
 #include <linux/capability.h>
 
@@ -70,3 +73,5 @@ drop_uid(uid_t uid)
   if (setresuid(uid, uid, uid) < 0)
     die("setresuid: %m");
 }
+
+#endif /* _BIRD_SYSPRIV_H_ */

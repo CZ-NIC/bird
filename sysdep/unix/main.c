@@ -6,7 +6,39 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#include "lib/main_helper.c"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <signal.h>
+#include <pwd.h>
+#include <grp.h>
+#include <sys/stat.h>
+#include <libgen.h>
+
+#include "nest/bird.h"
+#include "lib/lists.h"
+#include "lib/resource.h"
+#include "lib/socket.h"
+#include "lib/event.h"
+#include "lib/string.h"
+#include "nest/route.h"
+#include "nest/protocol.h"
+#include "nest/iface.h"
+#include "nest/cli.h"
+#include "nest/locks.h"
+#include "conf/conf.h"
+#include "filter/filter.h"
+
+#include "unix.h"
+#include "krt.h"
+
+#include "lib/main_helper.h"
+
 
 /*
  *	Hic Est main()

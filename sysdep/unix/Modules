@@ -1,5 +1,6 @@
 log.c
 main_helper.c
+main_helper.h
 timer.h
 io.c
 unix.h
