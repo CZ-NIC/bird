@@ -7,7 +7,7 @@ include Rules
 
 .PHONY: all daemon birdc birdcl subdir depend clean distclean tags docs userdocs progdocs
 
-all: sysdep/paths.h .dep-stamp subdir daemon birdcl @CLIENT@
+all: sysdep/paths.h .dep-stamp subdir lib/main.o daemon birdcl @CLIENT@
 
 tests: test/birdtest.o
 	set -e ; for a in $(dynamic-dirs) ; do $(MAKE) -C $$a $@ ; done
@@ -16,6 +16,9 @@ tests: test/birdtest.o
 test/birdtest.o: $(srcdir)/test/birdtest.c $(srcdir)/test/birdtest.h
 	mkdir -p test
 	$(CC) $(CFLAGS) $(TARGET_ARCH) -c $< $(LDLIBS) -o $@
+
+lib/main.o: $(srcdir)/sysdep/unix/main.c
+	$(CC) $(CFLAGS) -o $@ -c $<
 
 daemon: $(exedir)/bird
 
@@ -46,7 +49,7 @@ subdir: sysdep/paths.h .dir-stamp .dep-stamp
 	set -e ; for a in $(dynamic-dirs) ; do $(MAKE) -C $$a $@ ; done
 	set -e ; for a in $(static-dirs) $(client-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
 
-$(exedir)/bird: $(bird-dep)
+$(exedir)/bird: $(bird-dep) lib/main.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 $(exedir)/birdc: $(birdc-dep)

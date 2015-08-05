@@ -50,7 +50,9 @@ tests: $(tests_executables)
 %_test.o: $(srcdir)/$(dir-name)/%_test.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-%_test: $(srcdir)/$(dir-name)/%_test.o $(root-rel)test/birdtest.o
+test-dep := $(addprefix $(root-rel), $(addsuffix /all.o, $(static-dirs)) conf/all.o lib/birdlib.a)
+
+%_test: $(srcdir)/$(dir-name)/%_test.o $(root-rel)test/birdtest.o $(test-dep)
 	$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
 ifdef source
