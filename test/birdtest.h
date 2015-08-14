@@ -13,10 +13,10 @@
 #include <string.h>
 #include <errno.h>
 
-extern int bt_success;
-extern int bt_test_suite_success;
+extern uint bt_success;
+extern uint bt_test_suite_success;
 
-extern int bt_verbose;
+extern uint bt_verbose;
 #define BT_VERBOSE_NOTHING		0
 #define BT_VERBOSE_TEST_SUITE		1
 #define BT_VERBOSE_TEST_CASE		2
@@ -27,12 +27,12 @@ extern const char *bt_test_id;
 
 void bt_init(int argc, char *argv[]);
 int  bt_end(void);
-void bt_test_suite5(int (*fn)(void), const char *id, const char *dsc, int forked, int timeout);
+void bt_test_suite_base(int (*test_fn)(void *), const char *test_id, void *test_fn_argument, int forked, int timeout, const char *dsc, ...);
 int  bt_rand_num(void);
 void bt_result(const char *result, const char *msg, ...);
 
-#define BT_SUCCESS 			1
-#define BT_FAILURE 			0
+#define BT_SUCCESS 			0
+#define BT_FAILURE 			1
 
 #define BT_DEFAULT_TIMEOUT 		5
 #define BT_DEFAULT_FORKING 		1
@@ -50,19 +50,25 @@ void bt_result(const char *result, const char *msg, ...);
 #define BT_PROMPT_FN_GIVES(in_fmt)	"%s(" in_fmt ") gives "
 #define BT_PROMPT_EXPECTING		", but expecting is "
 
-#define bt_test_suite(fn,dsc) \
-    bt_test_suite4(fn, dsc, BT_DEFAULT_FORKING, BT_DEFAULT_TIMEOUT)
+#define bt_test_suite(fn, dsc, ...) \
+    bt_test_suite_extra(fn, BT_DEFAULT_FORKING, BT_DEFAULT_TIMEOUT, dsc, ##__VA_ARGS__)
 
-#define bt_test_suite4(fn,dsc,f,t) \
-    bt_test_suite5(fn, #fn, dsc, f, t)
+#define bt_test_suite_extra(fn, f, t, dsc, ...) \
+    bt_test_suite_base((int (*)(void *))fn, #fn, NULL, f, t, dsc, ##__VA_ARGS__)
+
+#define bt_test_suite_arg(fn, arg, dsc, ...) \
+    bt_test_suite_arg_extra(fn, arg, BT_DEFAULT_FORKING, BT_DEFAULT_TIMEOUT, dsc, ##__VA_ARGS__)
+
+#define bt_test_suite_arg_extra(fn, arg, f, t, dsc, ...) \
+    bt_test_suite_base(fn, #fn, arg, f, t, dsc, ##__VA_ARGS__)
 
 #define bt_log(format, ...) \
-  do { \
-    if (bt_test_id == NULL) \
+    do { \
+      if (bt_test_id == NULL) \
       fprintf(stderr, "%s: " format "\n", bt_filename, ##__VA_ARGS__); \
-    else \
+      else \
       fprintf(stderr, "%s: %s: " format "\n", bt_filename, bt_test_id, ##__VA_ARGS__); \
-  } while(0)
+    } while(0)
 
 #define bt_debug(format, ...) \
     do { if (bt_verbose >= BT_VERBOSE_DEBUG) printf(format, ##__VA_ARGS__); } while (0)
@@ -75,10 +81,10 @@ void bt_result(const char *result, const char *msg, ...);
     do { if (bt_verbose >= BT_VERBOSE_TEST_CASE) bt_result_(result, format, ##__VA_ARGS__); } while (0)
 
 #define bt_result_check_ok(format, ...) \
-  do { if (bt_verbose >= BT_VERBOSE_TEST_CASE) bt_result_ok(format, ##__VA_ARGS__); } while (0)
+    do { if (bt_verbose >= BT_VERBOSE_TEST_CASE) bt_result_ok(format, ##__VA_ARGS__); } while (0)
 
 #define bt_result_check_fail(format, ...) \
-  do { if (bt_verbose >= BT_VERBOSE_TEST_CASE) bt_result_fail(format, ##__VA_ARGS__); } while (0)
+    do { if (bt_verbose >= BT_VERBOSE_TEST_CASE) bt_result_fail(format, ##__VA_ARGS__); } while (0)
 
 #define bt_abort() \
     bt_abort_msg("Aborted at %s:%d", __FILE__, __LINE__)
@@ -98,8 +104,10 @@ void bt_result(const char *result, const char *msg, ...);
       if (!(test))									\
       { 										\
 	if (bt_verbose)									\
+	{										\
 	  bt_log(format, ##__VA_ARGS__); 						\
-	bt_success = bt_test_suite_success = 0; 					\
+	}										\
+	bt_test_suite_success = BT_FAILURE; 						\
       }											\
     } while (0)
 
@@ -108,7 +116,7 @@ void bt_result(const char *result, const char *msg, ...);
 
 
 #define bt_strncat(buf, str, ...) \
-  snprintf(buf + strlen(buf), sizeof(buf), str, ##__VA_ARGS__)
+    snprintf(buf + strlen(buf), sizeof(buf), str, ##__VA_ARGS__)
 
 void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
 
@@ -119,7 +127,9 @@ void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
       u32 *pc = (u32*) data;								\
       bt_strncat(buf, "{");								\
       for (k = 0; k < (sizeof(*data) / sizeof(typeof(*pc))); k++)			\
+      {											\
 	bt_strncat(buf, "%s0x%08X", (k ? ", " : ""), pc[k]);				\
+      }											\
       bt_strncat(buf, "}");								\
     } while (0)
 
@@ -127,9 +137,13 @@ void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
     do											\
     {											\
       if (fmt == NULL)									\
+      {											\
 	bt_dump_struct(buf, &data);							\
+      }											\
       else										\
+      {											\
 	bt_strncat_(buf, sizeof(buf), fmt, data);					\
+      }											\
     } while (0)
 
 #define bt_print_result_line(fn, in, out, fn_out, in_fmt, out_fmt, result)		\
@@ -168,7 +182,10 @@ void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
       {											\
 	typeof(in_out[i].out) fn_out = fn(in_out[i].in);				\
 	int single_test_case_success = (fn(in_out[i].in) == in_out[i].out);		\
-	bt_test_suite_success &= single_test_case_success;				\
+	if (!single_test_case_success)							\
+	{										\
+	  bt_test_suite_success = BT_FAILURE;						\
+	}										\
 	bt_print_result_line(fn, in_out[i].in, in_out[i].out, fn_out, in_fmt, out_fmt, single_test_case_success); \
       }											\
     } while (0)
@@ -194,8 +211,10 @@ void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
 	memset(&fn_out, '\0', sizeof(fn_out));						\
 	fn(in_out[i].in, &fn_out);							\
 	int single_test_case_success = !memcmp(&fn_out, &in_out[i].out, sizeof(in_out[i].out)); \
-	bt_test_suite_success &= single_test_case_success;				\
-											\
+	if (!single_test_case_success)							\
+	{										\
+	  bt_test_suite_success = BT_FAILURE;						\
+	}										\
 	bt_print_result_line(fn, in_out[i].in, in_out[i].out, fn_out, in_fmt, out_fmt, single_test_case_success); \
       }											\
     } while (0)

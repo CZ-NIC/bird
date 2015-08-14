@@ -34,7 +34,7 @@ num_succ_tests=0
 num_fail_tests=0
 echo -e "  == Start all $num_all_tests unit tests ==\n"
 for test in $all_tests ; do
-	./$test ; exit_code=$?
+	./$test > /dev/null 2>&1 ; exit_code=$?
 	cols=$(tput cols)
 	offset=$((cols-17))
 	fmt="  [%2d/%-2d] %-${offset}s"

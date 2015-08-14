@@ -29,12 +29,12 @@ static int do_core;
 static int no_fork;
 static int no_timeout;
 
-int bt_verbose;
+uint bt_verbose;
 const char *bt_filename;
 const char *bt_test_id;
 
-int bt_success;
-int bt_test_suite_success;
+uint bt_success;
+uint bt_test_suite_success;
 
 int
 bt_rand_num(void)
@@ -48,7 +48,7 @@ bt_init(int argc, char *argv[])
 {
   int c;
 
-  bt_success = 1;
+  bt_success = BT_SUCCESS;
   srandom(BT_RANDOM_SEED);
 
   bt_verbose = 0;
@@ -118,12 +118,31 @@ dump_stack(void)
 #endif
 }
 
+static
+int bt_run_test_fn(int (*test_fn)(void *), void *test_fn_argument, int timeout)
+{
+  int result;
+  alarm(timeout);
+  if (test_fn_argument)
+    result = test_fn(test_fn_argument);
+  else
+    result = ((int (*)(void))test_fn)();
+  if (bt_test_suite_success == BT_FAILURE)
+    result = BT_FAILURE;
+  return result;
+}
+
 void
-bt_test_suite5(int (*test_fn)(void), const char *test_id, const char *dsc, int forked, int timeout)
+bt_test_suite_base(int (*test_fn)(void *), const char *test_id, void *test_fn_argument, int forked, int timeout, const char *dsc, ...)
 {
   if (list_tests)
   {
-    printf("%28s : %s\n", test_id, dsc);
+    printf("%28s : ", test_id);
+    va_list args;
+    va_start(args, dsc);
+    vprintf(dsc, args);
+    va_end(args);
+    printf("\n");
     return;
   }
 
@@ -136,8 +155,8 @@ bt_test_suite5(int (*test_fn)(void), const char *test_id, const char *dsc, int f
   if (request && strcmp(test_id, request))
     return;
 
-  int result = 0;
-  bt_test_suite_success = 1;
+  int result;
+  bt_test_suite_success = BT_SUCCESS;
 
   bt_test_id = test_id;
 
@@ -146,9 +165,7 @@ bt_test_suite5(int (*test_fn)(void), const char *test_id, const char *dsc, int f
 
   if (!forked)
   {
-    alarm(timeout);
-    result = test_fn();
-    result &= bt_test_suite_success;
+    result = bt_run_test_fn(test_fn, test_fn_argument, timeout);
   }
   else
   {
@@ -157,9 +174,7 @@ bt_test_suite5(int (*test_fn)(void), const char *test_id, const char *dsc, int f
 
     if (pid == 0)
     {
-      alarm(timeout);
-      result = test_fn();
-      result &= bt_test_suite_success;
+      result = bt_run_test_fn(test_fn, test_fn_argument, timeout);
       _exit(result);
     }
 
@@ -188,7 +203,9 @@ bt_test_suite5(int (*test_fn)(void), const char *test_id, const char *dsc, int f
       bt_log("Core dumped");
   }
 
-  bt_success &= (result == BT_SUCCESS ? 1 : 0);
+  if (result == BT_FAILURE)
+    bt_success = BT_FAILURE;
+
   bt_result((result == BT_SUCCESS ? BT_PROMPT_OK : BT_PROMPT_FAIL), "%s", bt_test_id);
   bt_test_id = NULL;
 }
@@ -226,7 +243,7 @@ bt_result(const char *to_right_align_msg, const char *to_left_align_msg, ...)
 int
 bt_end(void)
 {
-  return !bt_success;
+  return (bt_success == BT_SUCCESS ? 0 : 1);
 }
 
 void
