@@ -63,7 +63,7 @@ tree_compare(const void *p1, const void *p2)
  * build_tree
  * @from: degenerated tree (linked by @tree->left) to be transformed into form suitable for find_tree()
  *
- * Transforms denerated tree into balanced tree.
+ * Transforms degenerated tree into balanced tree.
  */
 struct f_tree *
 build_tree(struct f_tree *from)

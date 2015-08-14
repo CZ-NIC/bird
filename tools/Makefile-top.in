@@ -23,4 +23,5 @@ distclean: clean
 
 clean-tests:
 	find . -name '*_test' | xargs rm -f
-	rm -f $(objdir)/test/birdtest.o
+	find . -name '*_test.o' | xargs rm -f
+	rm -f $(objdir)/test/*.o

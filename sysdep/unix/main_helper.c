@@ -39,6 +39,8 @@
 #include "unix.h"
 #include "krt.h"
 
+#include "lib/main_helper.h"
+
 /*
  *	Debugging
  */

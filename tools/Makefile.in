@@ -9,11 +9,14 @@ include Rules
 
 all: sysdep/paths.h .dep-stamp subdir lib/main.o daemon birdcl @CLIENT@
 
-tests: test/birdtest.o
+tests: test/all.o
 	set -e ; for a in $(dynamic-dirs) ; do $(MAKE) -C $$a $@ ; done
 	set -e ; for a in $(static-dirs) $(client-dirs) ; do $(MAKE) -C $$a -f $(srcdir_abs)/$$a/Makefile $@ ; done
 
-test/birdtest.o: $(srcdir)/test/birdtest.c $(srcdir)/test/birdtest.h
+test/all.o: test/birdtest.o test/utils.o
+	$(CC) -nostdlib -r -o $@ $^
+
+test/%.o: $(srcdir)/test/%.c
 	mkdir -p test
 	$(CC) $(CFLAGS) $(TARGET_ARCH) -c $< $(LDLIBS) -o $@
 

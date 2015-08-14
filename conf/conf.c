@@ -47,14 +47,9 @@
 
 #include "nest/bird.h"
 #include "nest/route.h"
-#include "nest/protocol.h"
 #include "nest/iface.h"
-#include "lib/resource.h"
-#include "lib/string.h"
 #include "lib/event.h"
-#include "lib/timer.h"
-#include "conf/conf.h"
-#include "filter/filter.h"
+
 
 static jmp_buf conf_jmpbuf;
 
@@ -491,7 +486,7 @@ order_shutdown(void)
  * error in the configuration.
  */
 void
-cf_error(char *msg, ...)
+cf_error(const char *msg, ...)
 {
   char buf[1024];
   va_list args;

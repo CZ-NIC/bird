@@ -9,6 +9,10 @@
 #ifndef _BIRD_MAIN_HELPER_H_
 #define _BIRD_MAIN_HELPER_H_
 
+#include "lib/birdlib.h"
+#include "lib/socket.h"
+#include "sysdep/config.h"
+#include "nest/cli.h"
 /*
  * Global variables
  */

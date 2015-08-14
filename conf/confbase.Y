@@ -138,7 +138,7 @@ expr_us:
 /* Switches */
 
 bool:
-   expr {$$ = !!$1; }
+   expr { $$ = !!$1; }
  | ON { $$ = 1; }
  | YES { $$ = 1; }
  | OFF { $$ = 0; }
