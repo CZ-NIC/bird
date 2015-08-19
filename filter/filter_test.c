@@ -6,23 +6,28 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <string.h>
 #include <stdlib.h>
 
 #include "test/birdtest.h"
-#include "test/utils.h"
+#include <test/bt-utils.h>
 
 #include "filter/filter.h"
 #include "lib/main_helper.h"
+#include "conf/conf.h"
 
 static int
-t_filter(void)
+t_simple(void)
 {
 #define TESTING_FILTER_NAME "testing_filter"
 
   bt_bird_init();
 
-  bt_config_parse(
+  struct config *cfg = bt_config_parse(
       BT_CONFIG_PARSE_ROUTER_ID
       BT_CONFIG_PARSE_KERNEL_DEVICE
       "\n"
@@ -33,10 +38,36 @@ t_filter(void)
       "   else\n"
       "     reject;\n"
       "}\n"
+      "\n"
+      "filter " TESTING_FILTER_NAME "2\n"
+      "{\n"
+      "   if net ~ 10.0.0.0/20 then\n"
+      "     accept;\n"
+      "   else {\n"
+      "     reject; } \n"
+      "}\n"
+      "\n"
   );
 
   struct symbol *sym = NULL;
   sym = cf_find_symbol(TESTING_FILTER_NAME);
+
+  struct symbol *sym2 = NULL;
+  sym2 = cf_find_symbol(TESTING_FILTER_NAME "2");
+
+
+  struct filter *f = sym->def;
+  struct filter *f2 = sym2->def;
+  bt_assert(strcmp(filter_name(f), TESTING_FILTER_NAME) == 0);
+
+
+  bt_assert(filter_same(f,f2));
+
+  bt_debug("f_eval_asn: %u \n", f_eval_asn(f->root));
+  bt_debug("f_eval_int: %u \n", f_eval_int(f->root));
+  struct f_val v = f_eval(f->root, cfg->mem);
+  bt_debug("v type: %d \n", v.type);
+
 
   /* TODO: check the testing filter */
 
@@ -61,16 +92,17 @@ load_file(const char *filename)
 }
 
 static int
-t_example_config_files(void *filename_void)
+t_example_config_files(const void *filename_void)
 {
   bt_bird_init();
 
   const char *filename = filename_void;
+  bt_debug("Testing BIRD configuration from %s\n", filename);
+
   char *cfg_str = load_file(filename);
   bt_config_parse(cfg_str);
   mb_free(cfg_str);
 
-  bt_debug("Parsing configuration from %s\n", filename);
   config_name = filename;
   read_config();
   struct config *conf = read_config();
@@ -84,15 +116,19 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_suite(t_filter, "Test all example config files");
+  bt_test_suite(t_simple, "Simple filter testing");
 
   const char *files[] = {
     "filter/test.conf",
     "filter/test.conf2",
+    "filter/test_bgp_filtering.conf",
+#ifdef IPV6
     "filter/test6.conf",
+#endif
   };
   size_t files_arr_size = sizeof(files)/sizeof(files[0]);
-  for (size_t i = 0; i < files_arr_size; i++)
+  size_t i;
+  for (i = 0; i < files_arr_size; i++)
     bt_test_suite_arg_extra(t_example_config_files, files[i], BT_DEFAULT_FORKING, 30, "Test a example config file %s", files[i]);
 
   return bt_end();

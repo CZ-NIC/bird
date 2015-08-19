@@ -50,9 +50,9 @@ protocol static {
 	rip_metric = rip_metric + 5;
 	print rip_metric;
 	bgp_community = - empty - ; 
-	print "nazdar";
+	print "hi";
 	bgp_community = add(bgp_community, (1,2));
-	print "cau";
+	print "hello";
 	bgp_community = add(bgp_community, (2,3));
 	bgp_community.add((4,5));
 	print "community = ", bgp_community;
