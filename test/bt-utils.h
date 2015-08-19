@@ -9,6 +9,8 @@
 #ifndef _BIRDTEST_UTILS_H_
 #define _BIRDTEST_UTILS_H_
 
+#include "sysdep/config.h"
+
 #define BT_CONFIG_PARSE_ROUTER_ID       "router id 10.0.0.1; \n"
 #define BT_CONFIG_PARSE_KERNEL_DEVICE   "protocol device {} \n"
 #define BT_CONFIG_SIMPLE		BT_CONFIG_PARSE_ROUTER_ID BT_CONFIG_PARSE_KERNEL_DEVICE

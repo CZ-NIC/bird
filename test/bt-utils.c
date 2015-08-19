@@ -7,9 +7,9 @@
  */
 
 #include <stdlib.h>
-#include <test/bt-utils.h>
 
 #include "test/birdtest.h"
+#include "test/bt-utils.h"
 #include "filter/filter.h"
 #include "nest/iface.h"
 #include "nest/locks.h"
