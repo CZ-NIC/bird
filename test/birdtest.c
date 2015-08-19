@@ -36,11 +36,15 @@ const char *bt_test_id;
 uint bt_success;
 uint bt_test_suite_success;
 
-int
+long int
 bt_rand_num(void)
 {
   /* Seeded in bt_init() */
-  return random();
+  long int rand_low, rand_high;
+
+  rand_low = random();
+  rand_high = random();
+  return (rand_low & 0xffff) | ((rand_high & 0xffff) << 16);
 }
 
 void
@@ -119,7 +123,7 @@ dump_stack(void)
 }
 
 static
-int bt_run_test_fn(int (*test_fn)(void *), void *test_fn_argument, int timeout)
+int bt_run_test_fn(int (*test_fn)(const void *), const void *test_fn_argument, int timeout)
 {
   int result;
   alarm(timeout);
@@ -133,7 +137,7 @@ int bt_run_test_fn(int (*test_fn)(void *), void *test_fn_argument, int timeout)
 }
 
 void
-bt_test_suite_base(int (*test_fn)(void *), const char *test_id, void *test_fn_argument, int forked, int timeout, const char *dsc, ...)
+bt_test_suite_base(int (*test_fn)(const void *), const char *test_id, const void *test_fn_argument, int forked, int timeout, const char *dsc, ...)
 {
   if (list_tests)
   {
@@ -213,9 +217,10 @@ bt_test_suite_base(int (*test_fn)(void *), const char *test_id, void *test_fn_ar
 static uint
 get_num_terminal_cols(void)
 {
-  struct winsize w;
+  struct winsize w = {};
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-  return w.ws_col;
+  uint cols = w.ws_col;
+  return (cols > 0 ? cols : 80);
 }
 
 void
@@ -229,7 +234,7 @@ bt_result(const char *to_right_align_msg, const char *to_left_align_msg, ...)
 
     va_list argptr;
     va_start(argptr, to_left_align_msg);
-    vsnprintf(msg_buf + strlen(msg_buf), sizeof(msg_buf), to_left_align_msg, argptr);
+    vsnprintf(msg_buf + strlen((char *)msg_buf), sizeof(msg_buf), to_left_align_msg, argptr);
 
     char fmt_buf[BT_BUFFER_SIZE];
     uint line_len = strlen(msg_buf) + BT_PROMPT_OK_FAIL_LEN;

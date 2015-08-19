@@ -7,6 +7,7 @@
  */
 
 #include "test/birdtest.h"
+#include "test/bt-utils.h"
 #include "bitops.h"
 
 #define MAX_NUM 1000
@@ -79,27 +80,12 @@ t_masklen(void)
   return BT_SUCCESS;
 }
 
-static u32
-pow2(u32 exp)
-{
-  u32 i, n, r;
-  n = r = 2;
-
-  if (exp == 0)
-    return 1;
-
-  for (i = 2; i <= exp; i++)
-    r *= n;
-
-  return r;
-}
-
 static void
 check_log2(u32 n)
 {
   u32 log  = u32_log2(n);
-  u32 low  = pow2(log);
-  u32 high = pow2(log+1);
+  u32 low  = naive_pow(2, log);
+  u32 high = naive_pow(2, log+1);
 
   bt_debug("Test u32_log2(%u) = %u, %u should be in the range <%u, %u) \n", n, log, n, low, high);
   bt_assert(n >= low && n < high);
@@ -117,7 +103,7 @@ t_log2(void)
 
   for (i = 0; i < 31; i++)
   {
-    in_out_data[i].in  = pow2(i+1);
+    in_out_data[i].in  = naive_pow(2, i+1);
     in_out_data[i].out = i+1;
   }
   bt_assert_out_fn_in(u32_log2, in_out_data, "%u", "%u");
@@ -128,7 +114,7 @@ t_log2(void)
     check_log2(i);
 
   for (i = 1; i < MAX_NUM; i++)
-    check_log2(bt_rand_num());
+    check_log2(bt_rand_num() % 0xffff);
 
   return BT_SUCCESS;
 }

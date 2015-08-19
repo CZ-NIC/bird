@@ -90,7 +90,7 @@ validate_filled_hash(void)
   for (i = 0; i < MAX_NUM; i++)
   {
     node = HASH_FIND(hash, TEST, nodes[i].key);
-    bt_assert_msg(node == &nodes[i], "Hash should be filled, but we not find (%p) the node[%d] (%p) with .key = %u, .next %p \n", node, i, &nodes[i], nodes[i].key, nodes[i].next);
+    bt_assert_msg(node->key == nodes[i].key, "Hash should be filled, but we not find (%p) the node[%d] (%p) with .key = %u, .next %p \n", node, i, &nodes[i], nodes[i].key, nodes[i].next);
   }
 
   print_rate_of_fulfilment();

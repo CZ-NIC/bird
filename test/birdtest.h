@@ -27,8 +27,8 @@ extern const char *bt_test_id;
 
 void bt_init(int argc, char *argv[]);
 int  bt_end(void);
-void bt_test_suite_base(int (*test_fn)(void *), const char *test_id, void *test_fn_argument, int forked, int timeout, const char *dsc, ...);
-int  bt_rand_num(void);
+void bt_test_suite_base(int (*test_fn)(const void *), const char *test_id, const void *test_fn_argument, int forked, int timeout, const char *dsc, ...);
+long int bt_rand_num(void);
 void bt_result(const char *result, const char *msg, ...);
 
 #define BT_SUCCESS 			0
@@ -54,7 +54,7 @@ void bt_result(const char *result, const char *msg, ...);
     bt_test_suite_extra(fn, BT_DEFAULT_FORKING, BT_DEFAULT_TIMEOUT, dsc, ##__VA_ARGS__)
 
 #define bt_test_suite_extra(fn, f, t, dsc, ...) \
-    bt_test_suite_base((int (*)(void *))fn, #fn, NULL, f, t, dsc, ##__VA_ARGS__)
+    bt_test_suite_base((int (*)(const void *))fn, #fn, NULL, f, t, dsc, ##__VA_ARGS__)
 
 #define bt_test_suite_arg(fn, arg, dsc, ...) \
     bt_test_suite_arg_extra(fn, arg, BT_DEFAULT_FORKING, BT_DEFAULT_TIMEOUT, dsc, ##__VA_ARGS__)

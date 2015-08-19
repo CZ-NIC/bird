@@ -14,11 +14,11 @@
 #include "lib/buffer.h"
 
 #define MAX_NUM 33
-typedef BUFFER(int) buffer_int;
 
-int expected[MAX_NUM];
-buffer_int buffer;
-struct pool *buffer_pool;
+typedef BUFFER(int) buffer_int;
+static int expected[MAX_NUM];
+static buffer_int buffer;
+static struct pool *buffer_pool;
 
 static void
 show_buf(buffer_int *b)
