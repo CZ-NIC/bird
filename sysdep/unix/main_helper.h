@@ -30,6 +30,10 @@ extern char *bird_name;
 extern char *use_user;
 extern char *use_group;
 
+extern volatile int async_config_flag;
+extern volatile int async_dump_flag;
+extern volatile int async_shutdown_flag;
+
 /*
  * Origin 'static' functions from main.c
  */
