@@ -9,7 +9,9 @@
 
 /* Unfortunately, some glibc versions hide parts of RFC 3542 API
    if _GNU_SOURCE is not defined. */
-#define _GNU_SOURCE 1
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>

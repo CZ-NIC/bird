@@ -1,6 +1,10 @@
 #ifndef _BIRD_SYSPRIV_H_
 #define _BIRD_SYSPRIV_H_
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <unistd.h>
 #include <sys/prctl.h>
 #include <linux/capability.h>
