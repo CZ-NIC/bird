@@ -152,7 +152,7 @@ t_heap_insert_random(void)
 
   for (i = 1; i <= MAX_NUM; i++)
   {
-    heap[i] = expected[i] = bt_rand_num();
+    heap[i] = expected[i] = bt_random();
     HEAP_INSERT(heap, ++num, int, MY_CMP, MY_HEAP_SWAP);
     show_heap();
     bt_assert(is_heap_valid(heap, num));

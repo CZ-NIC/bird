@@ -48,7 +48,7 @@ t_calculate(void)
   int i;
 
   for (i = 0; i < MAX_NUM; i++)
-    a[i] = bt_rand_num();
+    a[i] = bt_random();
 
   u16 sum_calculated   = ipsum_calculate(a, sizeof(a), NULL);
   u16 sum_calculated_2 = ipsum_calculate(&a[0], sizeof(u32)*(MAX_NUM/2), &a[MAX_NUM/2], sizeof(u32)*(MAX_NUM - MAX_NUM/2), NULL);
@@ -71,7 +71,7 @@ t_verify(void)
   int i;
 
   for (i = 0; i < MAX_NUM; i++)
-    a[i] = bt_rand_num();
+    a[i] = bt_random();
 
   u16 sum = ipsum_calculate_expected(a);
 

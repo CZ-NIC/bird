@@ -141,7 +141,7 @@ t_insert_find_random(void)
   struct test_node *node;
   for (i = 0; i < MAX_NUM; i++)
   {
-    nodes[i].key = bt_rand_num();
+    nodes[i].key = bt_random();
     node = &nodes[i];
     HASH_INSERT(hash, TEST, node);
   }

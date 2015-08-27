@@ -104,7 +104,7 @@ get_random_degenerated_left_tree(uint nodes_count)
   {
     uint selected_idx;
     do {
-      selected_idx = bt_rand_num() % nodes_count;
+      selected_idx = bt_random() % nodes_count;
     } while(avaible_indexes[selected_idx] != 0);
 
     avaible_indexes[selected_idx] = 1;
@@ -127,7 +127,7 @@ get_balanced_tree_with_ranged_values(uint nodes_count)
   {
     n->from.type = n->to.type = T_INT;
     n->from.val.i = idx;
-    idx += (uint)bt_rand_num() / nodes_count;	/* (... / nodes_count) preventing overflow an uint idx */
+    idx += (uint)bt_random() / nodes_count;	/* (... / nodes_count) preventing overflow an uint idx */
     n->to.val.i = idx++;
   }
 
@@ -250,7 +250,7 @@ t_find_ranges(void)
     struct f_val looking_up_value = {
 	.type = T_INT
     };
-    for(looking_up_value.val.i = 0; looking_up_value.val.i <= max_value; looking_up_value.val.i += ((uint)bt_rand_num()/nodes_count))
+    for(looking_up_value.val.i = 0; looking_up_value.val.i <= max_value; looking_up_value.val.i += ((uint)bt_random()/nodes_count))
     {
       struct f_tree *found_tree = find_tree(tree, looking_up_value);
       bt_debug("searching: %u \n", looking_up_value.val.i);

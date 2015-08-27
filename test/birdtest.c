@@ -37,7 +37,7 @@ uint bt_success;
 uint bt_test_suite_success;
 
 long int
-bt_rand_num(void)
+bt_random(void)
 {
   /* Seeded in bt_init() */
   long int rand_low, rand_high;

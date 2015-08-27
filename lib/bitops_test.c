@@ -75,7 +75,7 @@ t_masklen(void)
     check_mask(((u32) (0xffffffff << (32-i))) & 0xffffffff);
 
   for (i = 0; i <= MAX_NUM; i++)
-    check_mask(bt_rand_num());
+    check_mask(bt_random());
 
   return BT_SUCCESS;
 }
@@ -114,7 +114,7 @@ t_log2(void)
     check_log2(i);
 
   for (i = 1; i < MAX_NUM; i++)
-    check_log2(bt_rand_num() % 0xffff);
+    check_log2(bt_random() % 0xffff);
 
   return BT_SUCCESS;
 }

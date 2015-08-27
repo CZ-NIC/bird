@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/types.h>
 
 extern uint bt_success;
 extern uint bt_test_suite_success;
@@ -28,7 +29,7 @@ extern const char *bt_test_id;
 void bt_init(int argc, char *argv[]);
 int  bt_end(void);
 void bt_test_suite_base(int (*test_fn)(const void *), const char *test_id, const void *test_fn_argument, int forked, int timeout, const char *dsc, ...);
-long int bt_rand_num(void);
+long int bt_random(void);
 void bt_result(const char *result, const char *msg, ...);
 
 #define BT_SUCCESS 			0

@@ -36,7 +36,7 @@ fill_expected_array(void)
   int i;
 
   for (i = 0; i < MAX_NUM; i++)
-    expected[i] = bt_rand_num();
+    expected[i] = bt_random();
 }
 
 static void
@@ -86,7 +86,7 @@ t_buffer_pop(void)
   for (i = MAX_NUM-1; i >= MAX_NUM/2; i--)
     BUFFER_POP(buffer);
   for (i = MAX_NUM/2; i < MAX_NUM; i++)
-    BUFFER_PUSH(buffer) = expected[i] = bt_rand_num();
+    BUFFER_PUSH(buffer) = expected[i] = bt_random();
   is_buffer_as_expected(&buffer);
 
   /* POP all of elements */
