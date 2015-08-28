@@ -1,0 +1,139 @@
+/*
+ *	BIRD -- Set/Community-list Operations Tests
+ *
+ *	(c) 2015 CZ.NIC z.s.p.o.
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
+
+#include "test/birdtest.h"
+#include "test/bt-utils.h"
+
+#include "nest/route.h"
+#include "nest/attrs.h"
+#include "lib/resource.h"
+
+#define SET_SIZE 10
+static struct adata *set_sequence;		/* <0; SET_SIZE) */
+static struct adata *set_sequence_same;		/* <0; SET_SIZE) */
+static struct adata *set_sequence_higher;	/* <SET_SIZE; 2*SET_SIZE) */
+static struct adata *set_random;
+
+#define BUFFER_SIZE 1000
+static byte buf[BUFFER_SIZE] = {};
+
+#define SET_SIZE_FOR_FORMAT_OUTPUT 10
+
+struct linpool *lp;
+
+enum set_type
+{
+  SET_TYPE_INT,
+  SET_TYPE_EC
+};
+
+static void
+generate_set_sequence(enum set_type type)
+{
+  struct adata empty_as_path = {};
+  set_sequence = set_random = &empty_as_path;
+  lp = lp_new(&root_pool, 0);
+
+  int i;
+  for (i = 0; i < SET_SIZE; i++)
+  {
+    if (type == SET_TYPE_INT)
+    {
+      set_sequence 	  = int_set_add(lp, set_sequence, i);
+      set_sequence_same   = int_set_add(lp, set_sequence_same, i);
+      set_sequence_higher = int_set_add(lp, set_sequence_higher, i + SET_SIZE);
+      set_random   	  = int_set_add(lp, set_random, bt_random());
+    }
+    else if (type == SET_TYPE_EC)
+    {
+      set_sequence 	  = ec_set_add(lp, set_sequence, i);
+      set_sequence_same   = ec_set_add(lp, set_sequence_same, i);
+      set_sequence_higher = ec_set_add(lp, set_sequence_higher, i + SET_SIZE);
+      set_random   	  = ec_set_add(lp, set_random, (bt_random() << 32 | bt_random()));
+    }
+    else
+      bt_abort_msg("This should be unreachable");
+  }
+}
+
+static int
+t_set_int_contains(void)
+{
+  int i;
+
+  resource_init();
+  generate_set_sequence(SET_TYPE_INT);
+
+  bt_assert(int_set_get_size(set_sequence) == SET_SIZE);
+
+  for (i = 0; i < SET_SIZE; i++)
+    bt_assert(int_set_contains(set_sequence, i));
+  bt_assert(int_set_contains(set_sequence, -1) == 0);
+  bt_assert(int_set_contains(set_sequence, SET_SIZE) == 0);
+
+  int *data = int_set_get_data(set_sequence);
+  for (i = 0; i < SET_SIZE; i++)
+    bt_assert_msg(data[i] == (SET_SIZE-1-i), "(data[i] = %d) != ((SET_SIZE-1-i) = %d)", data[i], SET_SIZE-1-i);
+
+  rfree(lp);
+  return BT_SUCCESS;
+}
+
+static int
+t_set_int_union(void)
+{
+  resource_init();
+  generate_set_sequence(SET_TYPE_INT);
+
+  struct adata *set_union;
+  set_union = int_set_union(lp, set_sequence, set_sequence_same);
+  bt_assert(int_set_get_size(set_union) == SET_SIZE);
+  bt_assert(int_set_format(set_union, 0, 2, buf, BUFFER_SIZE) == 0);
+
+  set_union = int_set_union(lp, set_sequence, set_sequence_higher);
+  bt_assert_msg(int_set_get_size(set_union) == SET_SIZE*2, "int_set_get_size(set_union) %d, SET_SIZE*2 %d", int_set_get_size(set_union), SET_SIZE*2);
+  bt_assert(int_set_format(set_union, 0, 2, buf, BUFFER_SIZE) == 0);
+
+  rfree(lp);
+  return BT_SUCCESS;
+}
+
+static int
+t_set_int_format(void)
+{
+  resource_init();
+  generate_set_sequence(SET_TYPE_INT);
+
+  set_sequence->length = 4 * SET_SIZE_FOR_FORMAT_OUTPUT; /* dirty */
+  bt_assert(int_set_format(set_sequence, 0, 0, buf, BUFFER_SIZE) == 0);
+  bt_assert(strcmp(buf, "0.0.0.9 0.0.0.8 0.0.0.7 0.0.0.6 0.0.0.5 0.0.0.4 0.0.0.3 0.0.0.2 0.0.0.1 0.0.0.0") == 0);
+
+  bzero(buf, BUFFER_SIZE);
+  bt_assert(int_set_format(set_sequence, 0, 2, buf, BUFFER_SIZE) == 0);
+  bt_assert(strcmp(buf, "0.0.0.7 0.0.0.6 0.0.0.5 0.0.0.4 0.0.0.3 0.0.0.2 0.0.0.1 0.0.0.0") == 0);
+
+  bzero(buf, BUFFER_SIZE);
+  bt_assert(int_set_format(set_sequence, 1, 0, buf, BUFFER_SIZE) == 0);
+  bt_assert(strcmp(buf, "(0,9) (0,8) (0,7) (0,6) (0,5) (0,4) (0,3) (0,2) (0,1) (0,0)") == 0);
+
+  rfree(lp);
+  return BT_SUCCESS;
+}
+
+
+int
+main(int argc, char *argv[])
+{
+  bt_init(argc, argv);
+
+  bt_test_suite(t_set_int_contains, "Testing  sets of integers: contains, get");
+  bt_test_suite(t_set_int_format,   "Testing  sets of integers: format");
+  bt_test_suite(t_set_int_union,    "Testing  sets of integers: union");
+
+  return bt_end();
+}
