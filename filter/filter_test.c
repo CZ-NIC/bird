@@ -28,8 +28,7 @@ t_simple(void)
   bt_bird_init();
 
   struct config *cfg = bt_config_parse(
-      BT_CONFIG_PARSE_ROUTER_ID
-      BT_CONFIG_PARSE_KERNEL_DEVICE
+      BT_CONFIG_SIMPLE
       "\n"
       "filter " TESTING_FILTER_NAME "\n"
       "{\n"
@@ -63,10 +62,10 @@ t_simple(void)
 
   bt_assert(filter_same(f,f2));
 
-  bt_debug("f_eval_asn: %u \n", f_eval_asn(f->root));
-  bt_debug("f_eval_int: %u \n", f_eval_int(f->root));
-  struct f_val v = f_eval(f->root, cfg->mem);
-  bt_debug("v type: %d \n", v.type);
+//  bt_debug("f_eval_asn: %u \n", f_eval_asn(f->root));
+//  bt_debug("f_eval_int: %u \n", f_eval_int(f->root));
+//  struct f_val v = f_eval(f->root, cfg->mem);
+//  bt_debug("v type: %d \n", v.type);
 
 
   /* TODO: check the testing filter */
@@ -96,7 +95,7 @@ t_example_config_files(const void *filename_void)
 {
   bt_bird_init();
 
-  const char *filename = filename_void;
+  char *filename = (char *)filename_void;
   bt_debug("Testing BIRD configuration from %s\n", filename);
 
   char *cfg_str = load_file(filename);
@@ -119,9 +118,9 @@ main(int argc, char *argv[])
   bt_test_suite(t_simple, "Simple filter testing");
 
   const char *files[] = {
-    "filter/test.conf",
+//    "filter/test.conf",
     "filter/test.conf2",
-    "filter/test_bgp_filtering.conf",
+//    "filter/test_bgp_filtering.conf",
 #ifdef IPV6
     "filter/test6.conf",
 #endif
