@@ -36,7 +36,7 @@ static void
 generate_set_sequence(enum set_type type)
 {
   struct adata empty_as_path = {};
-  set_sequence = set_random = &empty_as_path;
+  set_sequence = set_sequence_same = set_sequence_higher = set_random = &empty_as_path;
   lp = lp_new(&root_pool, 0);
 
   int i;
@@ -60,6 +60,10 @@ generate_set_sequence(enum set_type type)
       bt_abort_msg("This should be unreachable");
   }
 }
+
+/*
+ * SET INT TESTS
+ */
 
 static int
 t_set_int_contains(void)
@@ -125,15 +129,130 @@ t_set_int_format(void)
   return BT_SUCCESS;
 }
 
+static int
+t_set_int_delete(void)
+{
+  resource_init();
+  generate_set_sequence(SET_TYPE_INT);
+
+  struct adata *deleting_sequence = set_sequence;
+  u64 i;
+  for (i = 0; i < SET_SIZE; i++)
+  {
+    deleting_sequence = int_set_del(lp, deleting_sequence, i);
+    bt_assert_msg(int_set_get_size(deleting_sequence) == SET_SIZE-1-i,
+		  "int_set_get_size(deleting_sequence) %lu  != SET_SIZE-1-i %lu",
+		  int_set_get_size(deleting_sequence), SET_SIZE-1-i);
+  }
+
+  bt_assert(int_set_get_size(set_sequence) == SET_SIZE);
+
+  return BT_SUCCESS;
+}
+
+/*
+ * SET EC TESTS
+ */
+
+static int
+t_set_ec_contains(void)
+{
+  u64 i;
+
+  resource_init();
+  generate_set_sequence(SET_TYPE_EC);
+
+  bt_assert(ec_set_get_size(set_sequence) == SET_SIZE);
+
+  for (i = 0; i < SET_SIZE; i++)
+    bt_assert(ec_set_contains(set_sequence, i));
+  bt_assert(ec_set_contains(set_sequence, -1) == 0);
+  bt_assert(ec_set_contains(set_sequence, SET_SIZE) == 0);
+
+//  int *data = ec_set_get_data(set_sequence);
+//  for (i = 0; i < SET_SIZE; i++)
+//    bt_assert_msg(data[i] == (SET_SIZE-1-i), "(data[i] = %d) != ((SET_SIZE-1-i) = %d)", data[i], SET_SIZE-1-i);
+
+  rfree(lp);
+  return BT_SUCCESS;
+}
+
+static int
+t_set_ec_union(void)
+{
+  resource_init();
+  generate_set_sequence(SET_TYPE_EC);
+
+  struct adata *set_union;
+  set_union = ec_set_union(lp, set_sequence, set_sequence_same);
+  bt_assert(ec_set_get_size(set_union) == SET_SIZE);
+  bt_assert(ec_set_format(set_union, 0, buf, BUFFER_SIZE) == 0);
+
+  set_union = ec_set_union(lp, set_sequence, set_sequence_higher);
+  bt_assert_msg(ec_set_get_size(set_union) == SET_SIZE*2, "ec_set_get_size(set_union) %d, SET_SIZE*2 %d", ec_set_get_size(set_union), SET_SIZE*2);
+  bt_assert(ec_set_format(set_union, 0, buf, BUFFER_SIZE) == 0);
+
+  rfree(lp);
+  return BT_SUCCESS;
+}
+
+static int
+t_set_ec_format(void)
+{
+  resource_init();
+
+  struct adata empty_as_path = {};
+  set_sequence = set_sequence_same = set_sequence_higher = set_random = &empty_as_path;
+  lp = lp_new(&root_pool, 0);
+
+  u64 i = 0;
+  set_sequence = ec_set_add(lp, set_sequence, i);
+  for (i = 1; i < SET_SIZE_FOR_FORMAT_OUTPUT; i++)
+    set_sequence = ec_set_add(lp, set_sequence, i + ((i%2) ? ((u64)EC_RO << 48) : ((u64)EC_RT << 48)));
+
+  bt_assert(ec_set_format(set_sequence, 0, buf, BUFFER_SIZE) == 0);
+  bt_assert_msg(strcmp(buf, "(unknown 0x0, 0, 0) (ro, 0, 1) (rt, 0, 2) (ro, 0, 3) (rt, 0, 4) (ro, 0, 5) (rt, 0, 6) (ro, 0, 7) (rt, 0, 8) (ro, 0, 9)") == 0,
+		"ec_set_format() returns %s", buf);
+
+  rfree(lp);
+  return BT_SUCCESS;
+}
+
+static int
+t_set_ec_delete(void)
+{
+  resource_init();
+  generate_set_sequence(SET_TYPE_EC);
+
+  struct adata *deleting_sequence = set_sequence;
+  u64 i;
+  for (i = 0; i < SET_SIZE; i++)
+  {
+    deleting_sequence = ec_set_del(lp, deleting_sequence, i);
+    bt_assert_msg(ec_set_get_size(deleting_sequence) == SET_SIZE-1-i,
+		  "ec_set_get_size(deleting_sequence) %d  != SET_SIZE-1-i %d",
+		  ec_set_get_size(deleting_sequence), SET_SIZE-1-i);
+  }
+
+  bt_assert(ec_set_get_size(set_sequence) == SET_SIZE);
+
+  return BT_SUCCESS;
+}
 
 int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_suite(t_set_int_contains, "Testing  sets of integers: contains, get");
-  bt_test_suite(t_set_int_format,   "Testing  sets of integers: format");
-  bt_test_suite(t_set_int_union,    "Testing  sets of integers: union");
+  bt_test_suite(t_set_int_contains, "Testing sets of integers: contains, get_data");
+  bt_test_suite(t_set_int_format,   "Testing sets of integers: format");
+  bt_test_suite(t_set_int_union,    "Testing sets of integers: union");
+  bt_test_suite(t_set_int_delete,   "Testing sets of integers: delete");
+
+  bt_test_suite(t_set_ec_contains, "Testing sets of Extended Community values: contains, get_data");
+  bt_test_suite(t_set_ec_format,   "Testing sets of Extended Community values: format");
+  bt_test_suite(t_set_ec_union,    "Testing sets of Extended Community values: union");
+  bt_test_suite(t_set_ec_delete,   "Testing sets of Extended Community values: delete");
 
   return bt_end();
 }
