@@ -12,7 +12,11 @@
 #include "sysdep/config.h"
 
 #define PRIip4 "%d.%d.%d.%d"
-#define ARGip4(x) ((x).addr >> 24) & 0xff, ((x).addr >> 16) & 0xff, ((x).addr >> 8) & 0xff, (x).addr & 0xff
+#ifdef DEBUGGING
+#  define ARGip4(x) ((x).addr >> 24) & 0xff, ((x).addr >> 16) & 0xff, ((x).addr >> 8) & 0xff, (x).addr & 0xff
+#else
+#  define ARGip4(x) ((x) >> 24) & 0xff, ((x) >> 16) & 0xff, ((x) >> 8) & 0xff, (x) & 0xff
+#endif
 #define PRIip6 "%04X:%04X:%04X:%04X:%04X:%04X:%04X:%04X"
 #define ARGip6_HIGH(x,i) (((x).addr[(i)] >> 16) & 0xffff)
 #define ARGip6_LOW(x,i)  ((x).addr[(i)] & 0xffff)
