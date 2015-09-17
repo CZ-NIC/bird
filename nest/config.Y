@@ -76,6 +76,7 @@ CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 %type <ra> r_args
 %type <ro> roa_args
 %type <rot> roa_table_arg
+%type <rotcf> roa_table_cf
 %type <sd> sym_args
 %type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode roa_mode limit_action tab_sorted tos
 %type <ps> proto_patt proto_patt2
@@ -261,6 +262,14 @@ rtable:
      $$ = $1->def;
    }
  ;
+
+roa_table_cf:
+    SYM {
+      if ($1->class != SYM_ROA) cf_error("ROA table name expected");
+      $$ = $1->def;
+    }
+  ;
+
 
 CF_ADDTO(conf, debug_default)
 

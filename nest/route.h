@@ -612,6 +612,7 @@ struct roa_show_data {
 #define ROA_SRC_ANY	0
 #define ROA_SRC_CONFIG	1
 #define ROA_SRC_DYNAMIC	2
+#define ROA_SRC_RPKI    3
 
 #define ROA_SHOW_ALL	0
 #define ROA_SHOW_PX	1

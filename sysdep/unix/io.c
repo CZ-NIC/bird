@@ -27,6 +27,7 @@
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <netinet/icmp6.h>
+#include <libssh/libssh.h>
 
 #include "nest/bird.h"
 #include "lib/lists.h"
@@ -1060,11 +1061,33 @@ sk_free_bufs(sock *s)
 }
 
 static void
+sk_ssh_free(struct ssh_sock *ssh)
+{
+  if (ssh->channel)
+  {
+    if (ssh_channel_is_open(ssh->channel))
+	ssh_channel_close(ssh->channel);
+    ssh_channel_free(ssh->channel);
+    ssh->channel = NULL;
+  }
+
+  if (ssh->session)
+  {
+    ssh_disconnect(ssh->session);
+    ssh_free(ssh->session);
+    ssh->session = NULL;
+  }
+}
+
+static void
 sk_free(resource *r)
 {
   sock *s = (sock *) r;
 
   sk_free_bufs(s);
+  if (s->type == SK_SSH || s->type == SK_SSH_ACTIVE)
+    sk_ssh_free(s->ssh);
+
   if (s->fd >= 0)
   {
     close(s->fd);
@@ -1181,6 +1204,9 @@ sk_setup(sock *s)
   int y = 1;
   int fd = s->fd;
 
+  if (s->type == SK_SSH_ACTIVE)
+    return 0;
+
   if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0)
     ERR("O_NONBLOCK");
 
@@ -1294,6 +1320,14 @@ sk_tcp_connected(sock *s)
   s->tx_hook(s);
 }
 
+static void
+sk_ssh_connected(sock *s)
+{
+  sk_alloc_bufs(s);
+  s->type = SK_SSH;
+  s->tx_hook(s);
+}
+
 static int
 sk_passive_connected(sock *s, int type)
 {
@@ -1358,6 +1392,193 @@ sk_passive_connected(sock *s, int type)
   return 1;
 }
 
+/*
+ * Return SSH_OK or SSH_AGAIN or SSH_ERROR
+ */
+static int
+sk_ssh_connect(sock *s)
+{
+  s->fd = ssh_get_fd(s->ssh->session);
+
+  /* Big fall thru automat */
+  switch (s->ssh->state)
+  {
+    case BIRD_SSH_CONNECT:
+    {
+      switch (ssh_connect(s->ssh->session))
+      {
+	case SSH_AGAIN:
+	  return SSH_AGAIN;
+
+	case SSH_OK:
+	  break;
+
+	default:
+	  return SSH_ERROR;
+      }
+    }
+
+    case BIRD_SSH_IS_SERVER_KNOWN:
+    {
+      s->ssh->state = BIRD_SSH_IS_SERVER_KNOWN;
+
+      if (s->ssh->server_hostkey_path)
+      {
+	int server_identity_is_ok = 1;
+
+	/* Check server identity */
+	switch (ssh_is_server_known(s->ssh->session))
+	{
+#define LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s,msg,args...) log(L_WARN "SSH Identity %s@%s:%u: " msg, (s)->ssh->username, (s)->host, (s)->dport, ## args);
+	  case SSH_SERVER_KNOWN_OK:
+	    /* The server is known and has not changed. */
+	    break;
+
+	  case SSH_SERVER_NOT_KNOWN:
+	    LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "The server is unknown, its public key was not found in the known host file %s", s->ssh->server_hostkey_path);
+	    break;
+
+	  case SSH_SERVER_KNOWN_CHANGED:
+	    LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "The server key has changed. Either you are under attack or the administrator changed the key.");
+	    server_identity_is_ok = 0;
+	    break;
+
+	  case SSH_SERVER_FILE_NOT_FOUND:
+	    LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "The known host file %s does not exist", s->ssh->server_hostkey_path);
+	    server_identity_is_ok = 0;
+	    break;
+
+	  case SSH_SERVER_ERROR:
+	    LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "Some error happened");
+	    server_identity_is_ok = 0;
+	    break;
+
+	  case SSH_SERVER_FOUND_OTHER:
+	    LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "The server gave use a key of a type while we had an other type recorded. " \
+		"It is a possible attack.");
+	    server_identity_is_ok = 0;
+	    break;
+	}
+
+	if (!server_identity_is_ok)
+	  return SSH_ERROR;
+      }
+    }
+
+    case BIRD_SSH_USERAUTH_PUBLICKEY_AUTO:
+    {
+      s->ssh->state = BIRD_SSH_USERAUTH_PUBLICKEY_AUTO;
+      switch (ssh_userauth_publickey_auto(s->ssh->session, NULL, NULL))
+      {
+	case SSH_AUTH_AGAIN:
+	  return SSH_AGAIN;
+
+	case SSH_AUTH_SUCCESS:
+	  break;
+
+	default:
+	  return SSH_ERROR;
+      }
+    }
+
+    case BIRD_SSH_CHANNEL_NEW:
+    {
+      s->ssh->state = BIRD_SSH_CHANNEL_NEW;
+      s->ssh->channel = ssh_channel_new(s->ssh->session);
+      if (s->ssh->channel == NULL)
+	return SSH_ERROR;
+    }
+
+    case BIRD_SSH_CHANNEL_OPEN_SESSION:
+    {
+      s->ssh->state = BIRD_SSH_CHANNEL_OPEN_SESSION;
+      switch (ssh_channel_open_session(s->ssh->channel))
+      {
+	case SSH_AGAIN:
+	  return SSH_AGAIN;
+
+	case SSH_OK:
+	  break;
+
+	default:
+	  return SSH_ERROR;
+      }
+    }
+
+    case BIRD_SSH_CHANNEL_REQUEST_SUBSYSTEM:
+    {
+      s->ssh->state = BIRD_SSH_CHANNEL_REQUEST_SUBSYSTEM;
+      if (s->ssh->subsystem)
+      {
+	switch (ssh_channel_request_subsystem(s->ssh->channel, s->ssh->subsystem))
+	{
+	  case SSH_AGAIN:
+	    return SSH_AGAIN;
+
+	  case SSH_OK:
+	    break;
+
+	  default:
+	    return SSH_ERROR;
+	}
+      }
+    }
+
+    case BIRD_SSH_CONNECTION_ESTABLISHED:
+      s->ssh->state = BIRD_SSH_CONNECTION_ESTABLISHED;
+  }
+
+  return SSH_OK;
+}
+
+/*
+ * Return file descriptor number if success
+ * Return -1 if failed
+ */
+static int
+sk_open_ssh(sock *s)
+{
+  if (!s->ssh)
+    bug("sk_open() sock->ssh is not allocated");
+
+  s->ssh->session = ssh_new();
+  if (s->ssh->session == NULL)
+    ERR2("Cannot create a ssh session");
+
+  const int verbosity = SSH_LOG_NOLOG;
+  ssh_options_set(s->ssh->session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
+  ssh_options_set(s->ssh->session, SSH_OPTIONS_HOST, s->host);
+  ssh_options_set(s->ssh->session, SSH_OPTIONS_PORT, &(s->dport));
+  ssh_options_set(s->ssh->session, SSH_OPTIONS_USER, s->ssh->username);
+
+  if (s->ssh->server_hostkey_path)
+    ssh_options_set(s->ssh->session, SSH_OPTIONS_KNOWNHOSTS, s->ssh->server_hostkey_path);
+
+  if (s->ssh->client_privkey_path)
+    ssh_options_set(s->ssh->session, SSH_OPTIONS_IDENTITY, s->ssh->client_privkey_path);
+
+  ssh_set_blocking(s->ssh->session, 0);
+
+  switch (sk_ssh_connect(s))
+  {
+    case SSH_AGAIN:
+      break;
+
+    case SSH_OK:
+      sk_ssh_connected(s);
+      break;
+
+    case SSH_ERROR:
+      ERR2(ssh_get_error(s->ssh->session));
+      break;
+  }
+
+  return ssh_get_fd(s->ssh->session);
+
+ err:
+  return -1;
+}
+
 /**
  * sk_open - open a socket
  * @s: socket
@@ -1388,6 +1609,11 @@ sk_open(sock *s)
     bind_port = s->sport;
     bind_addr = s->saddr;
     do_bind = bind_port || ipa_nonzero(bind_addr);
+    break;
+
+  case SK_SSH_ACTIVE:
+    s->ttx = "";			/* Force s->ttx != s->tpos */
+    fd = sk_open_ssh(s);
     break;
 
   case SK_UDP:
@@ -1473,6 +1699,7 @@ sk_open(sock *s)
       ERR2("listen");
     break;
 
+  case SK_SSH_ACTIVE:
   case SK_MAGIC:
     break;
 
@@ -1482,6 +1709,7 @@ sk_open(sock *s)
 
   if (!(s->flags & SKF_THREAD))
     sk_insert(s);
+
   return 0;
 
 err:
@@ -1664,6 +1892,26 @@ sk_maybe_write(sock *s)
     reset_tx_buffer(s);
     return 1;
 
+  case SK_SSH:
+    while (s->ttx != s->tpos)
+    {
+      e = ssh_channel_write(s->ssh->channel, s->ttx, s->tpos - s->ttx);
+
+      if (e < 0)
+      {
+	s->err = ssh_get_error(s->ssh->session);
+	s->err_hook(s, ssh_get_error_code(s->ssh->session));
+
+	reset_tx_buffer(s);
+	/* EPIPE is just a connection close notification during TX */
+	s->err_hook(s, (errno != EPIPE) ? errno : 0);
+	return -1;
+      }
+      s->ttx += e;
+    }
+    reset_tx_buffer(s);
+    return 1;
+
   case SK_UDP:
   case SK_IP:
     {
@@ -1688,6 +1936,7 @@ sk_maybe_write(sock *s)
       reset_tx_buffer(s);
       return 1;
     }
+
   default:
     bug("sk_maybe_write: unknown socket type %d", s->type);
   }
@@ -1774,6 +2023,62 @@ sk_send_full(sock *s, unsigned len, struct iface *ifa,
 }
 */
 
+static void
+call_rx_hook(sock *s, int size)
+{
+  if (s->rx_hook(s, size))
+  {
+    /* We need to be careful since the socket could have been deleted by the hook */
+    if (current_sock == s)
+      s->rpos = s->rbuf;
+  }
+}
+
+static int
+sk_read_ssh(sock *s)
+{
+  ssh_channel rchans[2] = { s->ssh->channel, NULL };
+  struct timeval timev = { 1, 0 };
+
+  if (ssh_channel_select(rchans, NULL, NULL, &timev) == SSH_EINTR)
+    return 1; /* Try again */
+
+  if (ssh_channel_is_eof(s->ssh->channel) != 0)
+  {
+    /* The remote side is closing the connection */
+    s->err_hook(s, 0);
+    return 0;
+  }
+
+  if (rchans[0] == NULL)
+    return 0; /* No data is available on the socket */
+
+  const uint used_bytes = s->rpos - s->rbuf;
+  const int read_bytes = ssh_channel_read_nonblocking(s->ssh->channel, s->rpos, s->rbsize - used_bytes, 0);
+  if (read_bytes > 0)
+  {
+    /* Received data */
+    s->rpos += read_bytes;
+    call_rx_hook(s, used_bytes + read_bytes);
+    return 1;
+  }
+  else if (read_bytes == 0)
+  {
+    if (ssh_channel_is_eof(s->ssh->channel) != 0)
+    {
+	/* The remote side is closing the connection */
+	s->err_hook(s, 0);
+    }
+  }
+  else
+  {
+    s->err = ssh_get_error(s->ssh->session);
+    s->err_hook(s, ssh_get_error_code(s->ssh->session));
+  }
+
+  return 0; /* No data is available on the socket */
+}
+
  /* sk_read() and sk_write() are called from BFD's event loop */
 
 int
@@ -1802,16 +2107,14 @@ sk_read(sock *s)
       else
       {
 	s->rpos += c;
-	if (s->rx_hook(s, s->rpos - s->rbuf))
-	{
-	  /* We need to be careful since the socket could have been deleted by the hook */
-	  if (current_sock == s)
-	    s->rpos = s->rbuf;
-	}
+	call_rx_hook(s, s->rpos - s->rbuf);
 	return 1;
       }
       return 0;
     }
+
+  case SK_SSH:
+    return sk_read_ssh(s);
 
   case SK_MAGIC:
     return s->rx_hook(s, 0);
@@ -1848,6 +2151,25 @@ sk_write(sock *s)
 	sk_tcp_connected(s);
       else if (errno != EINTR && errno != EAGAIN && errno != EINPROGRESS)
 	s->err_hook(s, errno);
+      return 0;
+    }
+
+  case SK_SSH_ACTIVE:
+    {
+      switch (sk_ssh_connect(s))
+      {
+	case SSH_OK:
+	  sk_ssh_connected(s);
+	  break;
+
+	case SSH_AGAIN:
+	  return 1;
+
+	case SSH_ERROR:
+	  s->err = ssh_get_error(s->ssh->session);
+	  s->err_hook(s, ssh_get_error_code(s->ssh->session));
+	  break;
+      }
       return 0;
     }
 

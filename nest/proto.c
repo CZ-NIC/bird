@@ -919,6 +919,9 @@ protos_build(void)
   proto_build(&proto_bfd);
   bfd_init_all();
 #endif
+#ifdef CONFIG_RPKI
+  proto_build(&proto_rpki);
+#endif
 
   proto_pool = rp_new(&root_pool, "Protocols");
   proto_flush_event = ev_new(proto_pool);
