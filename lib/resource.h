@@ -37,7 +37,7 @@ struct resclass {
 typedef struct pool pool;
 
 void resource_init(void);
-pool *rp_new(pool *, char *);		/* Create new pool */
+pool *rp_new(pool *, const char *);	/* Create new pool */
 void rfree(void *);			/* Free single resource */
 void rdump(void *);			/* Dump to debug output */
 size_t rmemsize(void *res);		/* Return size of memory used by the resource */

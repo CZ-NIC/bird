@@ -168,7 +168,7 @@ fi
 AC_SUBST(iproutedir)
 
 # all_protocols="$proto_bfd babel bgp ospf pipe radv rip static"
-all_protocols="$proto_bfd ospf pipe radv rip static"
+all_protocols="$proto_bfd babel ospf pipe radv rip rpki static "
 
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
@@ -225,6 +225,10 @@ if test "$enable_debug" = yes ; then
 		fi
 	fi
 fi
+
+DAEMON_LIBS=
+AC_CHECK_LIB(dl, dlopen, DAEMON_LIBS="-ldl")
+AC_SUBST(DAEMON_LIBS)
 
 CLIENT=birdcl
 CLIENT_LIBS=

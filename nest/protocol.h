@@ -81,7 +81,7 @@ void protos_dump_all(void);
 
 extern struct protocol
   proto_device, proto_radv, proto_rip, proto_static,
-  proto_ospf, proto_pipe, proto_bgp, proto_bfd, proto_babel;
+  proto_ospf, proto_pipe, proto_bgp, proto_bfd, proto_babel, proto_rpki;
 
 /*
  *	Routing Protocol Instance
@@ -271,7 +271,7 @@ proto_get_router_id(struct proto_config *pc)
 }
 
 /* Moved from route.h to avoid dependency conflicts */
-static inline void rte_update(struct proto *p, net_addr *n, rte *new) { rte_update2(p->main_channel, n, new, p->main_source); }
+static inline void rte_update(struct proto *p, const net_addr *n, rte *new) { rte_update2(p->main_channel, n, new, p->main_source); }
 
 extern list proto_list;
 
@@ -562,11 +562,9 @@ int proto_configure_channel(struct proto *p, struct channel **c, struct channel_
 
 void channel_set_state(struct channel *c, uint state);
 
-/*
 static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }
 static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP); }
 static inline void channel_close(struct channel *c) { channel_set_state(c, CS_FLUSHING); }
-*/
 
 void channel_request_feeding(struct channel *c);
 void *channel_config_new(const struct channel_class *cc, uint net_type, struct proto_config *proto);

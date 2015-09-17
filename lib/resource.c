@@ -31,7 +31,7 @@
 struct pool {
   resource r;
   list inside;
-  char *name;
+  const char *name;
 };
 
 static void pool_dump(resource *);
@@ -61,7 +61,7 @@ static int indent;
  * parent pool.
  */
 pool *
-rp_new(pool *p, char *name)
+rp_new(pool *p, const char *name)
 {
   pool *z = ralloc(p, &pool_class);
   z->name = name;

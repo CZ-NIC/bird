@@ -10,6 +10,7 @@ CPPFLAGS=-I$(objdir) -I$(srcdir) @CPPFLAGS@
 CFLAGS=$(CPPFLAGS) @CFLAGS@
 LDFLAGS=@LDFLAGS@
 LIBS=@LIBS@
+DAEMON_LIBS=@DAEMON_LIBS@
 CLIENT_LIBS=@CLIENT_LIBS@
 CC=@CC@
 M4=@M4@
@@ -56,6 +57,8 @@ all: daemon cli
 
 daemon: $(daemon)
 cli: $(client)
+
+$(daemon): LIBS += $(DAEMON_LIBS)
 
 # Include directories
 dirs := client conf doc filter lib nest $(addprefix proto/,$(protocols)) @sysdep_dirs@

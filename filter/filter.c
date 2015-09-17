@@ -1280,12 +1280,15 @@ interpret(struct f_inst *what)
     if (!table)
       runtime("Missing ROA table");
 
-    /* Table type is either NET_ROA4 or NET_ROA6, checked in parser */
-    if (v1.val.net->type != ((table->addr_type == NET_ROA4) ? NET_IP4 : NET_IP6))
-      runtime("Incompatible net type");
+    if (table->addr_type != NET_ROA4 && table->addr_type != NET_ROA6)
+      runtime("Table type must be either ROA4 or ROA6");
 
     res.type = T_ENUM_ROA;
-    res.val.i = net_roa_check(table, v1.val.net, as);
+
+    if (table->addr_type != (v1.val.net->type == NET_IP4 ? NET_ROA4 : NET_ROA6))
+      res.val.i = ROA_UNKNOWN; /* Prefix and table type mismatch */
+    else
+      res.val.i = net_roa_check(table, v1.val.net, as);
 
     break;
 

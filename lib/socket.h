@@ -12,6 +12,24 @@
 #include <errno.h>
 
 #include "lib/resource.h"
+#include "lib/libssh.h"
+
+struct ssh_sock {
+    const char *username;		/* (Required) SSH user name */
+    const char *server_hostkey_path;	/* (Optional) Filepath to the SSH public key of remote side, can be knownhost file */
+    const char *client_privkey_path;	/* (Optional) Filepath to the SSH private key of BIRD */
+    const char *subsystem;		/* (Optional) Name of SSH subsytem */
+    ssh_session session;		/* Internal */
+    ssh_channel channel;		/* Internal */
+    int state;				/* Internal */
+#define SK_SSH_CONNECT		0	/* Start state */
+#define SK_SSH_SERVER_KNOWN	1	/* Internal */
+#define SK_SSH_USERAUTH		2	/* Internal */
+#define SK_SSH_CHANNEL		3	/* Internal */
+#define SK_SSH_SESSION		4	/* Internal */
+#define SK_SSH_SUBSYSTEM 	5	/* Internal */
+#define SK_SSH_ESTABLISHED	6	/* Final state */
+};
 
 typedef struct birdsock {
   resource r;
@@ -20,6 +38,7 @@ typedef struct birdsock {
   int subtype;				/* Socket subtype */
   void *data;				/* User data */
   ip_addr saddr, daddr;			/* IPA_NONE = unspecified */
+  const char *host;			/* Alternative to daddr, NULL = unspecified */
   uint sport, dport;			/* 0 = unspecified (for IP: protocol type) */
   int tos;				/* TOS / traffic class, -1 = default */
   int priority;				/* Local socket priority, -1 = default */
@@ -52,7 +71,8 @@ typedef struct birdsock {
   node n;
   void *rbuf_alloc, *tbuf_alloc;
   char *password;			/* Password for MD5 authentication */
-  char *err;				/* Error message */
+  const char *err;			/* Error message */
+  struct ssh_sock *ssh;			/* Used in SK_SSH */
 } sock;
 
 sock *sock_new(pool *);			/* Allocate new socket */
@@ -115,6 +135,8 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
 #define SK_MAGIC	7	   /* Internal use by sysdep code */
 #define SK_UNIX_PASSIVE	8
 #define SK_UNIX		9
+#define SK_SSH_ACTIVE	10         /* -  -  *  *  -  ?   -	DA = host */
+#define SK_SSH		11
 
 /*
  *	Socket subtypes
