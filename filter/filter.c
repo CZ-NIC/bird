@@ -1277,11 +1277,15 @@ interpret(struct f_inst *what)
     }
 
     struct rtable *table = ((struct f_inst_roa_check *) what)->rtc->table;
-    if (!table || table->addr_type != (v1.val.net->type == NET_IP4 ? NET_ROA4 : NET_ROA6))
+    if (!table || (table->addr_type != NET_ROA4 && table->addr_type != NET_ROA6))
       runtime("Missing ROA table");
 
     res.type = T_ENUM_ROA;
-    res.val.i = net_roa_check(table, v1.val.net, as);
+
+    if (table->addr_type != (v1.val.net->type == NET_IP4 ? NET_ROA4 : NET_ROA6))
+      res.val.i = ROA_UNKNOWN; /* Prefix and table type mismatch */
+    else
+      res.val.i = net_roa_check(table, v1.val.net, as);
 
     break;
 

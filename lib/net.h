@@ -25,6 +25,8 @@
 #define NB_IP6		(1 << NET_IP6)
 #define NB_VPN4		(1 << NET_VPN4)
 #define NB_VPN6		(1 << NET_VPN6)
+#define NB_ROA4		(1 << NET_ROA4)
+#define NB_ROA6		(1 << NET_ROA6)
 
 #define NB_IP		(NB_IP4 | NB_IP6)
 #define NB_ANY		0xffffffff

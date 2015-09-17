@@ -39,12 +39,10 @@ static int graceful_restart_state;
 static u32 graceful_restart_locks;
 
 static char *p_states[] = { "DOWN", "START", "UP", "STOP" };
-static char *cs_states[] = {
-    [CS_DOWN] = "DOWN",
-    [CS_START] = "START",
-    [CS_UP] = "UP",
-    [CS_FLUSHING] = "FLUSHING"
-};
+
+#if defined(LOCAL_DEBUG) || defined(GLOBAL_DEBUG)
+static char *cs_states[] = { "DOWN", "START", "UP", "FLUSHING" };
+#endif
 
 extern struct protocol proto_unix_iface;
 
@@ -1262,6 +1260,9 @@ protos_build(void)
 #ifdef CONFIG_BFD
   proto_build(&proto_bfd);
   bfd_init_all();
+#endif
+#ifdef CONFIG_RPKI
+  proto_build(&proto_rpki);
 #endif
 
   proto_pool = rp_new(&root_pool, "Protocols");

@@ -8,7 +8,9 @@ const char * const net_label[] = {
   [NET_IP4] = "ipv4",
   [NET_IP6] = "ipv6",
   [NET_VPN4] = "vpn4",
-  [NET_VPN6] = "vpn6"
+  [NET_VPN6] = "vpn6",
+  [NET_ROA4] = "roa4",
+  [NET_ROA6] = "roa6",
 };
 
 const u16 net_addr_length[] = {

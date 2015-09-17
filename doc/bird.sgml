@@ -464,7 +464,7 @@ protocol rip {
 	Create a new ROA (Route Origin Authorization) table. ROA tables can be
 	used to validate route origination of BGP routes. A ROA table contains
 	ROA entries, each consist of a network prefix, a max prefix length and
-	an AS number. A ROA entry specifies prefixes which could be originated
+	an AS (Autonomous System) number. A ROA entry specifies prefixes which could be originated
 	by that AS number. ROA tables could be filled with data from RPKI (RFC
 	6480) or from public databases like Whois. ROA tables are examined by
 	<cf/roa_check()/ operator in filters.
@@ -3493,6 +3493,136 @@ protocol rip {
         export filter { print "exporting"; accept; };
 }
 </code>
+
+<sect>RPKI
+
+<p>The Resource Public Key Infrastructure (RPKI) to Router Protocol (RFC 6810)
+is a protocol for receiving Route Origin Authorizations (ROAs) from trusted 
+caches (RPKI validators). ROAs are documents used to link a set of prefixes
+with an origin ASN.
+The ROAs could be 
+In BIRD, it is implemented only receiving prefix origin data from a trusted cache.
+RPKI-based origin validation uses some of the RPKI data to allow a router
+to version ... FIXME! srify that the autonomous system announcing an IP address prefix is in fact
+authorized to do so. This is not crypto checked so can be violated. But it
+should prevent the vast majority of accidental 'hijackings' on the internet
+
+It is possible to configure only one remote cache server per protocol yet.
+
+<code>
+protocol rpki [&lt;name&gt;] {
+        remote &lt;ip&gt; | "&lt;domain&gt;" [port &lt;num&gt;];
+        port &lt;num&gt;;
+        retry &lt;num&gt;;
+        refresh &lt;num&gt;;
+        expire &lt;num&gt;;
+        ssh encryption {
+                bird private key "&lt;/path/to/id_rsa&gt;";
+                remote public key "&lt;/path/to/known_host&gt;";
+                user "&lt;name&gt;";
+        };
+}
+</code>
+
+<sect1>RPKI protocol options
+<descrip>
+	<tag>roa table <m/name/</tag>
+	Specifies the roa table into which will import the routes from cache.
+	This option is required.
+
+	<tag>remote <m/ip/ | "<m/hostname/" [port &lt;num&gt;]</tag>
+	Specifies a destination address of the cache server.
+	Can be specified by an IP address or by full domain name.
+	Only one cache can be specified per protocol.
+
+	<tag>port <m/num/</tag>
+	Specifies the port number.
+	The default port number is 323 for transport without any encryption
+	and 22 for transport with SSH encryption.
+
+	<tag>retry <m/num/</tag>
+	Time period in seconds between a failed query and the next attempt.
+	Default: 600 seconds
+
+	<tag>refresh <m/num/</tag>
+	Time period in seconds.
+	Tells how long to wait before next attempting to poll the cache, using
+	a Serial Query or Reset Query PDU. Must be lower than 1 hour.
+	Default: 3600 seconds
+
+	<tag>expire <m/num/</tag>
+	Time period in seconds.
+	Received records are deleted if the client was unable to refresh data
+	for this time period.
+	Default: 7200 seconds
+
+	<tag>ssh encryption { <m/ssh encryption options.../ }</tag>
+	This enables a SSH encryption.
+	Default: off
+</descrip>
+
+<sect1>SSH encryption options in RPKI protocol
+<descrip>
+	<tag>bird private key "<m///path/to/id_rsa"</tag>
+	A path to the BIRD's private SSH key for authentication.
+	It can be a <cf/id_rsa/ file.
+
+	<tag>remote public key "<m///path/to/known_host"</tag>
+	A path to the cache's public SSH key for verification identity
+	of the cache server. It could be a <cf/known_host/ file.
+
+	<tag>user "<m/name/"</tag>
+	A SSH user name for authentication. This option is a required.
+</descrip>
+
+<sect1>Examples:
+<p>Typical RPKI configuration with BGP origin validation
+<code>
+roa4 table r4;
+roa6 table r6;
+
+protocol rpki {
+	debug all;
+	roa4 { table r4; };
+	roa6 { table r6; };
+	remote "rpki-validator.realmv6.org";
+}
+
+filter peer_in {
+	if (roa_check(r4, net, bgp_path.last) = ROA_INVALID ||
+	    roa_check(r6, net, bgp_path.last) = ROA_INVALID) then
+	{
+		print "ROA check failed for ", net, " ASN ", bgp_path.last;
+		reject;
+	}
+	accept;
+}
+
+protocol bgp my_peer {
+	local as 65000;
+	neighbor 192.0.2.1 as 65001;
+	import filter peer_in;
+}
+</code>
+
+<p>A configuration using SSHv2 transport encryption:
+<code>
+roa4 table r4;
+roa6 table r6;
+
+protocol rpki {
+	debug all;
+	roa4 { table r4; };
+	roa6 { table r6; };
+	remote 127.0.0.1 port 2345;
+	ssh encryption {
+		bird private key "/home/birdgeek/.ssh/id_rsa";
+		remote public key "/home/birdgeek/.ssh/known_hosts";
+		user "birdgeek";
+	};
+}
+</code>
+
 
 
 <sect>Static
