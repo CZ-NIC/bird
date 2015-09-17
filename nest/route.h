@@ -386,6 +386,7 @@ typedef struct rta {
 #define RTS_OSPF_EXT2 10		/* OSPF external route type 2 */
 #define RTS_BGP 11			/* BGP route */
 #define RTS_PIPE 12			/* Inter-table wormhole */
+#define RTS_RPKI 13			/* Route Origin Authorization */
 
 #define RTC_UNICAST 0
 #define RTC_BROADCAST 1

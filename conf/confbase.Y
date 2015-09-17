@@ -10,6 +10,8 @@ CF_HDR
 
 #define PARSER 1
 
+#include <stdio.h>
+
 #include "nest/bird.h"
 #include "conf/conf.h"
 #include "lib/resource.h"
@@ -27,10 +29,27 @@ CF_HDR
 CF_DEFINES
 
 static void
+check_u8(unsigned val)
+{
+  if (val > 0xFF)
+    cf_error("Value %d out of range (0-255)", val);
+}
+
+static void
 check_u16(unsigned val)
 {
   if (val > 0xFFFF)
     cf_error("Value %d out of range (0-65535)", val);
+}
+
+static void
+check_file_readability(const char *file_path)
+{
+  FILE *file = fopen(file_path, "r");
+  if (file)
+    fclose(file);
+  else
+    cf_error("File '%s' cannot be open for read: %m", file_path);
 }
 
 CF_DECLS

@@ -877,6 +877,7 @@ proto_build(struct protocol *p)
 
 /* FIXME: convert this call to some protocol hook */
 extern void bfd_init_all(void);
+extern void rpki_init_all(void);
 
 /**
  * protos_build - build a protocol list
@@ -918,6 +919,10 @@ protos_build(void)
 #ifdef CONFIG_BFD
   proto_build(&proto_bfd);
   bfd_init_all();
+#endif
+#ifdef CONFIG_RPKI
+  proto_build(&proto_rpki);
+  rpki_init_all();
 #endif
 
   proto_pool = rp_new(&root_pool, "Protocols");
