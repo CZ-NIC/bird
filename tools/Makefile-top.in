@@ -4,6 +4,7 @@
 objdir=@objdir@
 
 all depend tags install install-docs:
+	$(MAKE) -C rtrlib
 	$(MAKE) -C $(objdir) $@
 
 docs userdocs progdocs:

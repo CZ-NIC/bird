@@ -19,7 +19,7 @@ doc-dir-paths := $(doc-dirs)
 all-dirs:=$(static-dirs) $(dynamic-dirs) $(client-dirs) $(doc-dirs)
 clean-dirs:=$(all-dirs) proto sysdep
 
-CPPFLAGS=-I$(root-rel) -I$(srcdir) @CPPFLAGS@
+CPPFLAGS=-I$(root-rel) -I$(srcdir) -I$(srcdir)/rtrlib @CPPFLAGS@
 CFLAGS=$(CPPFLAGS) @CFLAGS@
 LDFLAGS=@LDFLAGS@
 LIBS=@LIBS@
