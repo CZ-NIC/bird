@@ -175,3 +175,19 @@ add_tail_list(list *to, list *l)
   q->next = (node *) &to->null;
   to->tail = q;
 }
+
+/**
+ * get_list_size - get count of items in list
+ * @l: list
+ */
+LIST_INLINE uint
+get_list_length(list *l)
+{
+  unsigned int size = 0;
+  node *n;
+  WALK_LIST(n, *l)
+  {
+    size++;
+  }
+  return size;
+}

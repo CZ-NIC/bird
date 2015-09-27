@@ -65,6 +65,7 @@ void rem2_node(node *);
 void add_tail_list(list *, list *);
 void init_list(list *);
 void insert_node(node *, node *);
+uint get_list_length(list *);
 #endif
 
 #endif
