@@ -1,0 +1,3 @@
+[submodule "rtrlib"]
+	path = rtrlib
+	url = git@gitlab.labs.nic.cz:ptvrdik/rtrlib.git
