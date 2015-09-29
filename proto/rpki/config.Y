@@ -25,7 +25,13 @@ CF_GRAMMAR
 CF_ADDTO(proto, rpki_proto)
 
 rpki_proto:
-   rpki_proto_start proto_name '{' rpki_proto_opts '}'
+   rpki_proto_start proto_name '{' rpki_proto_opts '}' {
+     if (RPKI_CFG->roa_table_cf == NULL)
+     {
+       cf_error("For the RPKI protocol must be specified a roa table");
+     }
+   }
+ ;
 
 rpki_proto_start:
    proto_start RPKI {
@@ -42,6 +48,7 @@ rpki_proto_opts:
 rpki_proto_item:
    proto_item
  | CACHE LIST '{' rpki_cache_list '}'
+ | ROA TABLE roa_table_cf { RPKI_CFG->roa_table_cf = $3; }
  ;
 
 rpki_cache_list:
@@ -70,8 +77,8 @@ rpki_cache_opts:
  ;
 
 rpki_cache_opts_item:
-   PORT expr 		{ bsnprintf(this_rpki_cache->port, RPKI_PORT_MAX_LENGTH_STR, "%u", (u16) $2); }
- | PREFERENCE expr	{ this_rpki_cache->preference = $2; }
+   PORT expr 		{ check_u16($2); bsnprintf(this_rpki_cache->port, RPKI_PORT_MAX_LENGTH_STR, "%u", (u16) $2); }
+ | PREFERENCE expr	{ check_u8($2); this_rpki_cache->preference = $2; }
  ;
 
 CF_CODE

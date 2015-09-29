@@ -921,6 +921,7 @@ protos_build(void)
 #endif
 #ifdef CONFIG_RPKI
   proto_build(&proto_rpki);
+  rpki_init_all();
 #endif
 
   proto_pool = rp_new(&root_pool, "Protocols");
