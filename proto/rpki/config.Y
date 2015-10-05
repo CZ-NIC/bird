@@ -18,7 +18,7 @@ static struct rpki_cache *this_rpki_cache;
 
 CF_DECLS
 
-CF_KEYWORDS(RPKI, CACHE, LIST, PREFERENCE)
+CF_KEYWORDS(RPKI, CACHE, LIST, PREFERENCE, RTRLIB)
 
 CF_GRAMMAR
 
@@ -37,6 +37,7 @@ rpki_proto_start:
    proto_start RPKI {
      this_proto = proto_config_new(&proto_rpki, $1);
      init_list(&RPKI_CFG->cache_list);
+     RPKI_CFG->rtrlib_path = RPKI_RTRLIB_PATH;
    }
  ;
 
@@ -49,6 +50,7 @@ rpki_proto_item:
    proto_item
  | CACHE LIST '{' rpki_cache_list '}'
  | ROA TABLE roa_table_cf { RPKI_CFG->roa_table_cf = $3; }
+ | RTRLIB text { RPKI_CFG->rtrlib_path = $2; }
  ;
 
 rpki_cache_list:

@@ -11,16 +11,17 @@
 
 #include <pthread.h>
 
-#include "rtrlib/rtrlib.h"
-
 #include "nest/bird.h"
 #include "nest/protocol.h"
 #include "lib/socket.h"
+#include "proto/rpki/rtrlib-mockup.h"
+
 
 #define RPKI_PORT "8282"
 #define RPKI_PORT_MAX_LENGTH_STR 6
 #define RPKI_RX_BUFFER_EXT_SIZE 0xffff
 #define RPKI_TX_BUFFER_EXT_SIZE 0xffff
+#define RPKI_RTRLIB_PATH "/usr/local/lib64/librtr.so"
 
 #define RPKI_LOG(log_level, p, msg, args...) 				\
   do { 									\
@@ -60,6 +61,7 @@ struct rpki_config {
   struct proto_config c;
   list cache_list; 	/* (struct rpki_cache *) */
   struct roa_table_config *roa_table_cf;
+  const char *rtrlib_path;
 };
 
 struct rpki_proto {

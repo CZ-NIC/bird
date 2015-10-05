@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <dlfcn.h>
 
 #include "proto/rpki/rpki.h"
 #include "lib/socket.h"
@@ -25,8 +26,8 @@ struct rpki_entry {
   node n;
   u32 asn;
   ip_addr ip;
-  u8 min_len;
-  u8 max_len;
+  u8 pxlen;
+  u8 maxlen;
   u8 added;
   struct rpki_proto *rpki;
 };
@@ -36,10 +37,93 @@ void pipe_kick(int fd); 	/* implementation in io.c */
 
 static list rpki_proto_list;
 
+static void *rtrlib;
+static struct rtr_mgr_config * (*rtr_mgr_init_fp)(
+    struct rtr_mgr_group groups[], const unsigned int groups_len,
+    const unsigned int refresh_interval, const unsigned int expire_interval,
+    const void *update_fp,
+    const void *spki_update_fp,
+    const void *status_fp,
+    void *status_fp_data);
+static int (*rtr_mgr_start_fp)(struct rtr_mgr_config *config);
+static const char * (*rtr_state_to_str_fp)(enum rtr_socket_state state);
+static const char * (*rtr_mgr_status_to_str_fp)(enum rtr_mgr_status status);
+static int (*tr_tcp_init_fp)(const struct tr_tcp_config *config, struct tr_socket *socket);
+static void (*rtr_mgr_stop_fp)(struct rtr_mgr_config *config);
+static void (*rtr_mgr_free_fp)(struct rtr_mgr_config *config);
+
+static int
+was_dlsym_ok(struct rpki_proto *p)
+{
+  char *err_buffer = dlerror();
+
+  if (err_buffer != NULL)
+  {
+    RPKI_ERROR(p, "%s. Try the latest version of RTRLib.", err_buffer);
+    return 0; /* FAIL */
+  }
+  return 1; /* OK */
+}
+
+static int
+load_rtrlib(struct rpki_proto *p)
+{
+  rtrlib = dlopen(p->cf->rtrlib_path, RTLD_LAZY);
+  if (!rtrlib)
+  {
+    RPKI_ERROR(p, "dlopen(): %s. Try specify path to the shared RTRLib (http://rpki.realmv6.org/) with 'rtrlib' option"
+		  "inside of the rpki protocol configuration", dlerror());
+    return 0; /* FAIL */
+  }
+  else
+  {
+    RPKI_TRACE(p, "Loaded RTRLib from %s", p->cf->rtrlib_path);
+  }
+
+  dlerror();    /* Clear any existing error */
+
+  rtr_mgr_init_fp = (struct rtr_mgr_config * (*)(
+      struct rtr_mgr_group groups[], const unsigned int groups_len,
+      const unsigned int refresh_interval, const unsigned int expire_interval,
+      const void *update_fp,
+      const void *spki_update_fp,
+      const void *status_fp,
+      void *status_fp_data)) dlsym(rtrlib, "rtr_mgr_init");
+  if (!was_dlsym_ok(p))
+    return 0; /* FAIL */
+
+  rtr_mgr_start_fp = (int (*)(struct rtr_mgr_config *)) dlsym(rtrlib, "rtr_mgr_start");
+  if (!was_dlsym_ok(p))
+    return 0; /* FAIL */
+
+  rtr_state_to_str_fp = (const char * (*)(enum rtr_socket_state state)) dlsym(rtrlib, "rtr_state_to_str");
+  if (!was_dlsym_ok(p))
+    return 0; /* FAIL */
+
+  rtr_mgr_status_to_str_fp = (const char * (*)(enum rtr_mgr_status status)) dlsym(rtrlib, "rtr_mgr_status_to_str");
+  if (!was_dlsym_ok(p))
+    return 0; /* FAIL */
+
+  tr_tcp_init_fp = (int (*)(const struct tr_tcp_config *config, struct tr_socket *socket)) dlsym(rtrlib, "tr_tcp_init");
+  if (!was_dlsym_ok(p))
+    return 0; /* FAIL */
+
+  rtr_mgr_stop_fp = (void (*)(struct rtr_mgr_config *config)) dlsym(rtrlib, "rtr_mgr_stop");
+  if (!was_dlsym_ok(p))
+    return 0; /* FAIL */
+
+  rtr_mgr_free_fp = (void (*)(struct rtr_mgr_config *config)) dlsym(rtrlib, "rtr_mgr_free");
+  if (!was_dlsym_ok(p))
+    return 0; /* FAIL */
+
+  return 1; /* OK */
+}
+
 void
 rpki_init_all(void)
 {
   init_list(&rpki_proto_list);
+  rtrlib = NULL;
 }
 
 static void
@@ -53,7 +137,7 @@ status_cb(const struct rtr_mgr_group *group, enum rtr_mgr_status status, const s
   }
   else
   {
-    RPKI_TRACE(p, "status: %s\t%s", rtr_mgr_status_to_str(status), rtr_state_to_str(socket->state));
+    RPKI_TRACE(p, "status: %s\t%s", (*rtr_mgr_status_to_str_fp)(status), (*rtr_state_to_str_fp)(socket->state));
   }
 }
 
@@ -85,15 +169,19 @@ log_skip_entry(struct rpki_proto *p, const struct pfx_record *rec, const bool ad
     ip6_ntop(ip6, ip_buf);
   }
 
-#define LOG_SKIP_ENTRY_FMT(operation_name) "skip unsupported IP version: " operation_name " %25s/%u-%-3u \tASN: %10u"
+#define RPKI_LOG_ADD "add"
+#define RPKI_LOG_DEL "del"
+#define RPKI_LOG_ENTRY_FMT(ip_fmt) " roa %-25" ip_fmt "/%u-%-3u ASN: %u"
+#define RPKI_LOG_FMT(operation_name)              operation_name RPKI_LOG_ENTRY_FMT("I")
+#define RPKI_LOG_SKIP_FMT(operation_name) "skip " operation_name RPKI_LOG_ENTRY_FMT("s") " (unsupported IP version)"
 
   if (added)
   {
-    RPKI_TRACE(p, LOG_SKIP_ENTRY_FMT("add"), ip_buf, rec->min_len, rec->max_len, rec->asn);
+    RPKI_TRACE(p, RPKI_LOG_SKIP_FMT(RPKI_LOG_ADD), ip_buf, rec->min_len, rec->max_len, rec->asn);
   }
   else
   {
-    RPKI_TRACE(p, LOG_SKIP_ENTRY_FMT("del"), ip_buf, rec->min_len, rec->max_len, rec->asn);
+    RPKI_TRACE(p, RPKI_LOG_SKIP_FMT(RPKI_LOG_DEL), ip_buf, rec->min_len, rec->max_len, rec->asn);
   }
 }
 
@@ -150,9 +238,18 @@ rtr_thread_update_hook(struct pfx_table *pfx_table, const struct pfx_record rec,
   e->added = added;
   e->asn = rec.asn;
   e->ip = ip;
-  e->max_len = rec.max_len;
-  e->min_len = rec.min_len;
+  e->pxlen = rec.min_len;
+  e->maxlen = rec.max_len;
   e->rpki = p;
+
+  if (e->added)
+  {
+    RPKI_TRACE(p, RPKI_LOG_FMT(RPKI_LOG_ADD), e->ip, e->pxlen, e->maxlen, e->asn);
+  }
+  else
+  {
+    RPKI_TRACE(p, RPKI_LOG_FMT(RPKI_LOG_DEL), e->ip, e->pxlen, e->maxlen, e->asn);
+  }
 
   send_data_to_main_thread(p, e);
 }
@@ -206,9 +303,9 @@ rpki_notify_hook(struct birdsock *sk, int size)
   {
     rem2_node(&entry->n);
     if (entry->added)
-      roa_add_item(p->cf->roa_table_cf->table, entry->ip, entry->min_len, entry->max_len, entry->asn, ROA_SRC_RPKI);
+      roa_add_item(p->cf->roa_table_cf->table, entry->ip, entry->pxlen, entry->maxlen, entry->asn, ROA_SRC_RPKI);
     else
-      roa_delete_item(p->cf->roa_table_cf->table, entry->ip, entry->min_len, entry->max_len, entry->asn, ROA_SRC_RPKI);
+      roa_delete_item(p->cf->roa_table_cf->table, entry->ip, entry->pxlen, entry->maxlen, entry->asn, ROA_SRC_RPKI);
   }
   rpki_unlock_sessions(p);
 }
@@ -268,6 +365,9 @@ rpki_start(struct proto *P)
 
   RPKI_TRACE(p, "------------- rpki_start -------------");
 
+  if (!rtrlib && !load_rtrlib(p))
+    return PS_DOWN;
+
   create_rw_sockets(p);
   init_list(&p->notify_list);
   pthread_spin_init(&p->notify_lock, PTHREAD_PROCESS_PRIVATE);
@@ -296,7 +396,7 @@ rpki_start(struct proto *P)
 
     tcp_config->host = cache->full_domain_name;
     tcp_config->port = cache->port;
-    tr_tcp_init(tcp_config, tr_tcp);
+    (*tr_tcp_init_fp)(tcp_config, tr_tcp);
 
     // create an rtr_socket and associate it with the transport socket
     rtr_tcp->tr_socket = tr_tcp;
@@ -306,8 +406,8 @@ rpki_start(struct proto *P)
     idx++;
   }
 
-  p->rtr_conf = rtr_mgr_init(groups, 1, 30, 520, &rtr_thread_update_hook, NULL, &status_cb, p);
-  rtr_mgr_start(p->rtr_conf);
+  p->rtr_conf = (*rtr_mgr_init_fp)(groups, 1, 30, 520, &rtr_thread_update_hook, NULL, &status_cb, p);
+  (*rtr_mgr_start_fp)(p->rtr_conf);
 
   return PS_UP;
 }
@@ -317,8 +417,8 @@ rpki_shutdown(struct proto *P)
 {
   struct rpki_proto *p = (struct rpki_proto *) P;
 
-  rtr_mgr_stop(p->rtr_conf);
-  rtr_mgr_free(p->rtr_conf);
+  (*rtr_mgr_stop_fp)(p->rtr_conf);
+  (*rtr_mgr_free_fp)(p->rtr_conf);
   mb_free(p->rtr_groups);
   mb_free(p->rtr_sockets);
 

@@ -13,7 +13,7 @@ birdc: $(exedir)/birdc
 
 birdcl: $(exedir)/birdcl
 
-bird-dep := $(addsuffix /all.o, $(static-dirs)) conf/all.o lib/birdlib.a ../rtrlib/librtr.a
+bird-dep := $(addsuffix /all.o, $(static-dirs)) conf/all.o lib/birdlib.a
 
 $(bird-dep): sysdep/paths.h .dep-stamp subdir
 
