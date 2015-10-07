@@ -877,6 +877,7 @@ proto_build(struct protocol *p)
 
 /* FIXME: convert this call to some protocol hook */
 extern void bfd_init_all(void);
+extern void rpki_init_all(void);
 
 /**
  * protos_build - build a protocol list

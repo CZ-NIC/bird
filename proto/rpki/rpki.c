@@ -1,6 +1,8 @@
 /*
  *	BIRD -- The Resource Public Key Infrastructure (RPKI) to Router Protocol
  *
+ *	Using RTRLib: http://rpki.realmv6.org/
+ *
  *	(c) 2015 CZ.NIC
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
@@ -22,6 +24,20 @@
 #include "lib/ip.h"
 #include "nest/route.h"
 
+#define RPKI_LOG_ADD "add"
+#define RPKI_LOG_DEL "del"
+#define RPKI_LOG_ENTRY_FMT(ip_fmt) " roa " ip_fmt "/%u max %u as %u"
+#define RPKI_LOG_FMT(operation_name) operation_name RPKI_LOG_ENTRY_FMT("%I")
+#define RPKI_LOG_SKIP_FMT(operation_name) "skipped (other IP version than BIRD) " operation_name RPKI_LOG_ENTRY_FMT("%s")
+
+static inline const char *
+get_rtr_socket_ident(const struct rtr_socket *socket)
+{
+  return socket->tr_socket->ident_fp(socket->tr_socket->socket);
+}
+#define RPKI_CACHE_TRACE(p, rtr_socket, msg, args...) RPKI_TRACE(p, "%s " msg, get_rtr_socket_ident(rtr_socket), ## args);
+#define RPKI_CACHE_ERROR(p, rtr_socket, msg, args...) RPKI_ERROR(p, "%s " msg, get_rtr_socket_ident(rtr_socket), ## args);
+
 struct rpki_entry {
   node n;
   u32 asn;
@@ -29,7 +45,6 @@ struct rpki_entry {
   u8 pxlen;
   u8 maxlen;
   u8 added;
-  struct rpki_proto *rpki;
 };
 
 void pipe_drain(int fd); 	/* implementation in io.c */
@@ -37,6 +52,7 @@ void pipe_kick(int fd); 	/* implementation in io.c */
 
 static list rpki_proto_list;
 
+/* RTRLib and function pointers */
 static void *rtrlib;
 static struct rtr_mgr_config * (*rtr_mgr_init_fp)(
     struct rtr_mgr_group groups[], const unsigned int groups_len,
@@ -49,38 +65,40 @@ static int (*rtr_mgr_start_fp)(struct rtr_mgr_config *config);
 static const char * (*rtr_state_to_str_fp)(enum rtr_socket_state state);
 static const char * (*rtr_mgr_status_to_str_fp)(enum rtr_mgr_status status);
 static int (*tr_tcp_init_fp)(const struct tr_tcp_config *config, struct tr_socket *socket);
+static void (*tr_free_fp)(struct tr_socket *tr_sock);
 static void (*rtr_mgr_stop_fp)(struct rtr_mgr_config *config);
 static void (*rtr_mgr_free_fp)(struct rtr_mgr_config *config);
 
-static int
-was_dlsym_ok(struct rpki_proto *p)
+/*
+ * Try load system shared library RTRLib
+ * Return NULL pointer if successful
+ * Otherwise return a pointer to a description of the error
+ */
+char *
+rpki_load_rtrlib(void)
 {
-  char *err_buffer = dlerror();
+  char *err_buf = NULL;
 
-  if (err_buffer != NULL)
-  {
-    RPKI_ERROR(p, "%s. Try the latest version of RTRLib.", err_buffer);
-    return 0; /* FAIL */
-  }
-  return 1; /* OK */
-}
+  if (rtrlib != NULL)
+    return NULL; /* OK, rtrlib is loaded already */
 
-static int
-load_rtrlib(struct rpki_proto *p)
-{
-  rtrlib = dlopen(p->cf->rtrlib_path, RTLD_LAZY);
+  const char *rtrlib_name = RPKI_LIBRTR_DEFAULT;
+
+#ifdef LIBRTR
+  rtrlib_name = LIBRTR; /* use a compile variable */
+#endif
+
+  rtrlib = dlopen(rtrlib_name, RTLD_LAZY);
   if (!rtrlib)
   {
-    RPKI_ERROR(p, "dlopen(): %s. Try specify path to the shared RTRLib (http://rpki.realmv6.org/) with 'rtrlib' option"
-		  "inside of the rpki protocol configuration", dlerror());
-    return 0; /* FAIL */
-  }
-  else
-  {
-    RPKI_TRACE(p, "Loaded RTRLib from %s", p->cf->rtrlib_path);
+    /* This could be pretty frequent problem */
+    char *help_msg = "Try recompile BIRD with CFLAGS='-DLIBRTR=\\\"/path/to/librtr.so\\\"' or see BIRD User's Guide for more information.";
+    err_buf = mb_alloc(&root_pool, 512);
+    bsnprintf(err_buf, 512, "%s. %s", dlerror(), help_msg);
+    return err_buf;
   }
 
-  dlerror();    /* Clear any existing error */
+  dlerror();    /* clear any existing error */
 
   rtr_mgr_init_fp = (struct rtr_mgr_config * (*)(
       struct rtr_mgr_group groups[], const unsigned int groups_len,
@@ -89,34 +107,38 @@ load_rtrlib(struct rpki_proto *p)
       const void *spki_update_fp,
       const void *status_fp,
       void *status_fp_data)) dlsym(rtrlib, "rtr_mgr_init");
-  if (!was_dlsym_ok(p))
-    return 0; /* FAIL */
+  if ((err_buf = dlerror()) != NULL)
+    return err_buf;
 
   rtr_mgr_start_fp = (int (*)(struct rtr_mgr_config *)) dlsym(rtrlib, "rtr_mgr_start");
-  if (!was_dlsym_ok(p))
-    return 0; /* FAIL */
+  if ((err_buf = dlerror()) != NULL)
+    return err_buf;
 
   rtr_state_to_str_fp = (const char * (*)(enum rtr_socket_state state)) dlsym(rtrlib, "rtr_state_to_str");
-  if (!was_dlsym_ok(p))
-    return 0; /* FAIL */
+  if ((err_buf = dlerror()) != NULL)
+    return err_buf;
 
   rtr_mgr_status_to_str_fp = (const char * (*)(enum rtr_mgr_status status)) dlsym(rtrlib, "rtr_mgr_status_to_str");
-  if (!was_dlsym_ok(p))
-    return 0; /* FAIL */
+  if ((err_buf = dlerror()) != NULL)
+    return err_buf;
 
   tr_tcp_init_fp = (int (*)(const struct tr_tcp_config *config, struct tr_socket *socket)) dlsym(rtrlib, "tr_tcp_init");
-  if (!was_dlsym_ok(p))
-    return 0; /* FAIL */
+  if ((err_buf = dlerror()) != NULL)
+    return err_buf;
+
+  tr_free_fp = (void (*)(struct tr_socket *)) dlsym(rtrlib, "tr_free");
+  if ((err_buf = dlerror()) != NULL)
+    return err_buf;
 
   rtr_mgr_stop_fp = (void (*)(struct rtr_mgr_config *config)) dlsym(rtrlib, "rtr_mgr_stop");
-  if (!was_dlsym_ok(p))
-    return 0; /* FAIL */
+  if ((err_buf = dlerror()) != NULL)
+    return err_buf;
 
   rtr_mgr_free_fp = (void (*)(struct rtr_mgr_config *config)) dlsym(rtrlib, "rtr_mgr_free");
-  if (!was_dlsym_ok(p))
-    return 0; /* FAIL */
+  if ((err_buf = dlerror()) != NULL)
+    return err_buf;
 
-  return 1; /* OK */
+  return NULL; /* OK */
 }
 
 void
@@ -126,33 +148,26 @@ rpki_init_all(void)
   rtrlib = NULL;
 }
 
+
 static void
-status_cb(const struct rtr_mgr_group *group, enum rtr_mgr_status status, const struct rtr_socket *socket, void *data)
+rtr_thread_status_hook(const struct rtr_mgr_group *group, enum rtr_mgr_status status, const struct rtr_socket *socket, void *data)
 {
   struct rpki_proto *p = data;
 
+#define RPKI_STATUS_CB_LOG_FMT "%s - %s"
+
   if (status == RTR_MGR_ERROR)
   {
-    RPKI_ERROR(p, "Error -> Should we here stop the protocol?"); /* FIXME */
+    RPKI_CACHE_ERROR(p, socket, RPKI_STATUS_CB_LOG_FMT, (*rtr_mgr_status_to_str_fp)(status), (*rtr_state_to_str_fp)(socket->state));
   }
   else
   {
-    RPKI_TRACE(p, "status: %s\t%s", (*rtr_mgr_status_to_str_fp)(status), (*rtr_state_to_str_fp)(socket->state));
+    RPKI_CACHE_TRACE(p, socket, RPKI_STATUS_CB_LOG_FMT, (*rtr_mgr_status_to_str_fp)(status), (*rtr_state_to_str_fp)(socket->state));
   }
 }
 
 static void
-send_data_to_main_thread(struct rpki_proto *p, struct rpki_entry *e)
-{
-  rpki_lock_sessions(p);
-  add_tail(&p->notify_list, &e->n);
-  rpki_unlock_sessions(p);
-
-  pipe_kick(p->notify_write_sk->fd);
-}
-
-static void
-log_skip_entry(struct rpki_proto *p, const struct pfx_record *rec, const bool added)
+log_skipped_entry(struct rpki_proto *p, const struct pfx_record *rec, const bool added)
 {
   char ip_buf[INET6_ADDRSTRLEN];
   ip4_addr ip4;
@@ -160,7 +175,7 @@ log_skip_entry(struct rpki_proto *p, const struct pfx_record *rec, const bool ad
 
   if (rec->prefix.ver == RTRLIB_IPV4)
   {
-    ip4 = ipa_from_u32(rec->prefix.u.addr4.addr);
+    ip4 = ip4_from_u32(rec->prefix.u.addr4.addr);
     ip4_ntop(ip4, ip_buf);
   }
   else
@@ -169,24 +184,21 @@ log_skip_entry(struct rpki_proto *p, const struct pfx_record *rec, const bool ad
     ip6_ntop(ip6, ip_buf);
   }
 
-#define RPKI_LOG_ADD "add"
-#define RPKI_LOG_DEL "del"
-#define RPKI_LOG_ENTRY_FMT(ip_fmt) " roa %-25" ip_fmt "/%u-%-3u ASN: %u"
-#define RPKI_LOG_FMT(operation_name)              operation_name RPKI_LOG_ENTRY_FMT("I")
-#define RPKI_LOG_SKIP_FMT(operation_name) "skip " operation_name RPKI_LOG_ENTRY_FMT("s") " (unsupported IP version)"
-
   if (added)
   {
-    RPKI_TRACE(p, RPKI_LOG_SKIP_FMT(RPKI_LOG_ADD), ip_buf, rec->min_len, rec->max_len, rec->asn);
+    RPKI_CACHE_TRACE(p, rec->socket, RPKI_LOG_SKIP_FMT(RPKI_LOG_ADD), ip_buf, rec->min_len, rec->max_len, rec->asn);
   }
   else
   {
-    RPKI_TRACE(p, RPKI_LOG_SKIP_FMT(RPKI_LOG_DEL), ip_buf, rec->min_len, rec->max_len, rec->asn);
+    RPKI_CACHE_TRACE(p, rec->socket, RPKI_LOG_SKIP_FMT(RPKI_LOG_DEL), ip_buf, rec->min_len, rec->max_len, rec->asn);
   }
 }
 
+/*
+ * Return (struct rpki_proto *) or NULL
+ */
 static struct rpki_proto *
-find_rpki_proto_by_rtr_socket(const struct rtr_socket *socket)
+get_rpki_proto_by_rtr_socket(const struct rtr_socket *socket)
 {
   struct rpki_proto *p_not_skipped_back;
   unsigned int i, j;
@@ -204,51 +216,58 @@ find_rpki_proto_by_rtr_socket(const struct rtr_socket *socket)
       }
     }
   }
-
-  return NULL;
+  return NULL; /* FAIL */
 }
 
 static void
-rtr_thread_update_hook(struct pfx_table *pfx_table, const struct pfx_record rec, const bool added)
+send_data_to_main_thread(struct rpki_proto *p, struct rpki_entry *e)
 {
-  struct rpki_proto *p = find_rpki_proto_by_rtr_socket(rec.socket);
+  rpki_lock_notify(p);
+  add_tail(&p->notify_list, &e->n);
+  rpki_unlock_notify(p);
+  pipe_kick(p->notify_write_sk->fd);
+}
+
+static void
+rtr_thread_update_hook(void *pfx_table, const struct pfx_record rec, const bool added)
+{
+  struct rpki_proto *p = get_rpki_proto_by_rtr_socket(rec.socket);
 
   /* process only records that are the same with BIRD IP version */
 #ifdef IPV6
   if (rec.prefix.ver != RTRLIB_IPV6)
   {
-    log_skip_entry(p, &rec);
+    log_skipped_entry(p, &rec, added);
     return;
   }
+
+  ip_addr ip = ip6_build(rec.prefix.u.addr6.addr[0], rec.prefix.u.addr6.addr[1], rec.prefix.u.addr6.addr[2], rec.prefix.u.addr6.addr[3]);
 #else
   if (rec.prefix.ver != RTRLIB_IPV4)
   {
-    log_skip_entry(p, &rec, added);
+    log_skipped_entry(p, &rec, added);
     return;
   }
+
+  ip_addr ip = ip4_from_u32(rec.prefix.u.addr4.addr);
 #endif
 
-#ifdef IPV6
-  ip_addr ip = ip6_build(rec.prefix.u.addr6.addr[0], rec.prefix.u.addr6.addr[1], rec.prefix.u.addr6.addr[2], rec.prefix.u.addr6.addr[3]);
-#else
-  ip_addr ip = ipa_from_u32(rec.prefix.u.addr4.addr);
-#endif
-
+  /* TODO: Make more effective solution with thread-safe pool/queue of rpki_entry structures
+   *       without endless allocations and frees */
   struct rpki_entry *e = mb_allocz(p->p.pool, sizeof(struct rpki_entry));
   e->added = added;
   e->asn = rec.asn;
   e->ip = ip;
   e->pxlen = rec.min_len;
   e->maxlen = rec.max_len;
-  e->rpki = p;
 
   if (e->added)
   {
-    RPKI_TRACE(p, RPKI_LOG_FMT(RPKI_LOG_ADD), e->ip, e->pxlen, e->maxlen, e->asn);
+    RPKI_CACHE_TRACE(p, rec.socket, RPKI_LOG_FMT(RPKI_LOG_ADD), e->ip, e->pxlen, e->maxlen, e->asn);
   }
   else
   {
-    RPKI_TRACE(p, RPKI_LOG_FMT(RPKI_LOG_DEL), e->ip, e->pxlen, e->maxlen, e->asn);
+    RPKI_CACHE_TRACE(p, rec.socket, RPKI_LOG_FMT(RPKI_LOG_DEL), e->ip, e->pxlen, e->maxlen, e->asn);
   }
 
   send_data_to_main_thread(p, e);
@@ -271,61 +290,62 @@ rpki_new_cache(void)
 {
   struct rpki_cache *cache = (struct rpki_cache *)cfg_allocz(sizeof(struct rpki_cache));
   strcpy(cache->port, RPKI_PORT);
-  cache->preference = ~0;
+  cache->preference = RPKI_DEFAULT_CACHE_PREFERENCE;
   return cache;
 }
 
-static void
-normalize_fulfillment_of_cache(struct rpki_cache *cache)
-{
-  if (cache->full_domain_name == NULL)
-  {
-    bsnprintf(cache->ip_buf, INET6_ADDRSTRLEN, "%I", cache->ip);
-    cache->full_domain_name = cache->ip_buf;
-  }
-
-  bzero(&cache->rtr_tcp, sizeof(struct rtr_socket));
-  bzero(&cache->tcp_config, sizeof(struct tr_tcp_config));
-  bzero(&cache->tr_tcp, sizeof(struct tr_socket));
-}
-
 static int
-rpki_notify_hook(struct birdsock *sk, int size)
+recv_data_in_main_thread(struct birdsock *sk, int size)
 {
   struct rpki_proto *p = sk->data;
-  struct rpki_entry *entry;
+  struct rpki_entry *e;
+  list tmp_list;
 
   pipe_drain(sk->fd);
 
-  rpki_lock_sessions(p);
-  /* TODO: optimize like in the BFD proto */
-  WALK_LIST_FIRST(entry, p->notify_list)
+  rpki_lock_notify(p);
+  init_list(&tmp_list);
+  add_tail_list(&tmp_list, &p->notify_list);
+  init_list(&p->notify_list);
+  rpki_unlock_notify(p);
+
+  WALK_LIST_FIRST(e, tmp_list)
   {
-    rem2_node(&entry->n);
-    if (entry->added)
-      roa_add_item(p->cf->roa_table_cf->table, entry->ip, entry->pxlen, entry->maxlen, entry->asn, ROA_SRC_RPKI);
+    rpki_lock_notify(p);
+    rem2_node(&e->n);
+    rpki_unlock_notify(p);
+
+    if (e->added)
+      roa_add_item(p->cf->roa_table_cf->table, e->ip, e->pxlen, e->maxlen, e->asn, ROA_SRC_RPKI);
     else
-      roa_delete_item(p->cf->roa_table_cf->table, entry->ip, entry->pxlen, entry->maxlen, entry->asn, ROA_SRC_RPKI);
+      roa_delete_item(p->cf->roa_table_cf->table, e->ip, e->pxlen, e->maxlen, e->asn, ROA_SRC_RPKI);
+    mb_free(e);
   }
-  rpki_unlock_sessions(p);
 }
 
 static void
-rpki_noterr_hook(struct birdsock *sk, int err)
+recv_err_in_main_thread(struct birdsock *sk, int err)
 {
   struct rpki_proto *p = sk->data;
   RPKI_ERROR(p, "Notify socket error: %m", err);
 }
 
-static void
-create_read_socket(struct rpki_proto *p, int fd)
+static sock *
+create_socket(struct rpki_proto *p, int fd)
 {
   sock *sk = sk_new(p->p.pool);
   sk->type = SK_MAGIC;
   sk->fd = fd;
-  sk->rx_hook = rpki_notify_hook;
-  sk->err_hook = rpki_noterr_hook;
   sk->data = p;
+  return sk;
+}
+
+static void
+create_read_socket(struct rpki_proto *p, int fd)
+{
+  sock *sk = create_socket(p, fd);
+  sk->rx_hook = recv_data_in_main_thread;
+  sk->err_hook = recv_err_in_main_thread;
   if (sk_open(sk) < 0)
     RPKI_DIE(p, "read socket sk_open() failed");
   p->notify_read_sk = sk;
@@ -334,11 +354,8 @@ create_read_socket(struct rpki_proto *p, int fd)
 static void
 create_write_socket(struct rpki_proto *p, int fd)
 {
-  sock *sk = sk_new(p->p.pool);
-  sk->type = SK_MAGIC;
-  sk->fd = fd;
+  sock *sk = create_socket(p, fd);
   sk->flags = SKF_THREAD;
-  sk->data = p;
   if (sk_open(sk) < 0)
     RPKI_DIE(p, "write socket sk_open() failed");
   p->notify_write_sk = sk;
@@ -357,56 +374,121 @@ create_rw_sockets(struct rpki_proto *p)
   create_write_socket(p, pipe_fildes[1]);
 }
 
+static uint
+count_number_of_various_preferences(list *cache_list)
+{
+  uint i;
+  u8 preference[256];
+  bzero(preference, sizeof(preference));
+
+  struct rpki_cache *cache;
+  WALK_LIST(cache, *cache_list)
+  {
+    preference[cache->preference]++;
+  }
+
+  uint count = 0;
+  for (i = 0; i < 256; i++)
+  {
+    if (preference[i])
+      count++;
+  }
+  return count;
+}
+
+static uint
+count_number_of_caches_with_specific_preference(list *cache_list, uint preference)
+{
+  uint count = 0;
+
+  struct rpki_cache *cache;
+  WALK_LIST(cache, *cache_list)
+  {
+    if (cache->preference == preference)
+      count++;
+  }
+
+  return count;
+}
+
+static struct rtr_socket *
+create_rtrlib_tcp_socket(struct rpki_cache *cache, pool *pool)
+{
+  struct rtr_socket *rtrlib_tcp = mb_allocz(pool, sizeof(struct rtr_socket));
+  rtrlib_tcp->tr_socket = mb_allocz(pool, sizeof(struct tr_socket));
+  struct tr_tcp_config tcp_config = {
+      .host = cache->host,
+      .port = cache->port
+  };
+
+  (*tr_tcp_init_fp)(&tcp_config, rtrlib_tcp->tr_socket);
+
+  return rtrlib_tcp;
+}
+
+struct rtr_mgr_group_crate {
+  struct rtr_mgr_group *groups;
+  uint groups_len;
+};
+
+static struct rtr_mgr_group_crate
+group_cache_list_by_preferences(list *cache_list, pool *pool)
+{
+  u8 completed_preference[256];
+  bzero(completed_preference, sizeof(completed_preference));
+
+  uint groups_len = count_number_of_various_preferences(cache_list);
+  struct rtr_mgr_group *groups = mb_allocz(pool, groups_len * sizeof(struct rtr_mgr_group));
+
+  uint group_idx = 0;
+  struct rpki_cache *first_cache_in_group;
+  WALK_LIST(first_cache_in_group, *cache_list)
+  {
+    if (completed_preference[first_cache_in_group->preference])
+      continue;
+    completed_preference[first_cache_in_group->preference] = 1;
+
+    struct rtr_mgr_group *group = &groups[group_idx];
+
+    group->preference = first_cache_in_group->preference;
+    group->sockets_len = count_number_of_caches_with_specific_preference(cache_list, first_cache_in_group->preference);
+    group->sockets = mb_allocz(pool, group->sockets_len * sizeof(struct rtr_socket *));
+
+    uint socket_idx = 0;
+    struct rpki_cache *cache;
+    WALK_LIST(cache, *cache_list)
+    {
+      if (cache->preference == groups[group_idx].preference)
+      {
+	group->sockets[socket_idx] = cache->rtr_tcp = create_rtrlib_tcp_socket(cache, pool);
+	socket_idx++;
+      }
+    }
+    group_idx++;
+  }
+
+  struct rtr_mgr_group_crate grouped_list = {
+      .groups = groups,
+      .groups_len = groups_len
+  };
+  return grouped_list;
+}
+
 static int
 rpki_start(struct proto *P)
 {
   struct rpki_proto *p = (struct rpki_proto *) P;
   struct rpki_config *cf = (struct rpki_config *) (P->cf);
 
-  RPKI_TRACE(p, "------------- rpki_start -------------");
-
-  if (!rtrlib && !load_rtrlib(p))
-    return PS_DOWN;
-
   create_rw_sockets(p);
   init_list(&p->notify_list);
-  pthread_spin_init(&p->notify_lock, PTHREAD_PROCESS_PRIVATE);
+  pthread_mutex_init(&p->notify_lock, NULL);
 
   add_tail(&rpki_proto_list, &p->rpki_node);
 
-  p->rtr_sockets_len = get_list_length(&cf->cache_list);
-  p->rtr_groups = mb_allocz(P->pool, 1 * sizeof(struct rtr_mgr_group));
-  struct rtr_mgr_group *groups = p->rtr_groups;
+  struct rtr_mgr_group_crate grouped_list = group_cache_list_by_preferences(&cf->cache_list, P->pool);
 
-  p->rtr_sockets = mb_allocz(P->pool, p->rtr_sockets_len * sizeof(struct rtr_socket *));
-  groups[0].sockets = p->rtr_sockets;
-  groups[0].sockets_len = p->rtr_sockets_len;
-  groups[0].preference = 1;
-
-  uint idx = 0;
-  struct rpki_cache *cache;
-  WALK_LIST(cache, cf->cache_list)
-  {
-    /* TODO: Make them dynamic. Reconfigure reallocate structures */
-    struct tr_tcp_config *tcp_config = &cache->tcp_config;
-    struct rtr_socket *rtr_tcp = &cache->rtr_tcp;
-    struct tr_socket *tr_tcp = &cache->tr_tcp;
-
-    normalize_fulfillment_of_cache(cache);
-
-    tcp_config->host = cache->full_domain_name;
-    tcp_config->port = cache->port;
-    (*tr_tcp_init_fp)(tcp_config, tr_tcp);
-
-    // create an rtr_socket and associate it with the transport socket
-    rtr_tcp->tr_socket = tr_tcp;
-
-    groups[0].sockets[idx] = rtr_tcp;
-
-    idx++;
-  }
-
-  p->rtr_conf = (*rtr_mgr_init_fp)(groups, 1, 30, 520, &rtr_thread_update_hook, NULL, &status_cb, p);
+  p->rtr_conf = (*rtr_mgr_init_fp)(grouped_list.groups, grouped_list.groups_len, 30, 520, &rtr_thread_update_hook, NULL, &rtr_thread_status_hook, p);
   (*rtr_mgr_start_fp)(p->rtr_conf);
 
   return PS_UP;
@@ -419,8 +501,21 @@ rpki_shutdown(struct proto *P)
 
   (*rtr_mgr_stop_fp)(p->rtr_conf);
   (*rtr_mgr_free_fp)(p->rtr_conf);
-  mb_free(p->rtr_groups);
+
+  struct rpki_cache *cache;
+  WALK_LIST(cache, p->cf->cache_list)
+  {
+    (*tr_free_fp)(cache->rtr_tcp->tr_socket);
+    mb_free(cache->rtr_tcp->tr_socket);
+    mb_free(cache->rtr_tcp);
+    if (cache->ip_buf)
+      mb_free(cache->ip_buf);
+  }
+
   mb_free(p->rtr_sockets);
+  mb_free(p->rtr_groups);
+
+  pthread_mutex_destroy(&p->notify_lock);
 
   return PS_DOWN;
 }

@@ -47,7 +47,7 @@ struct tr_socket {
     void *free_fp;	/* voided for mockuping */
     void *send_fp;	/* voided for mockuping */
     void *recv_fp;	/* voided for mockuping */
-    void *ident_fp;	/* voided for mockuping */
+    const char * (*ident_fp)(void *);	/* edited for mockuping */
 };
 
 /**
@@ -169,7 +169,7 @@ struct rtr_mgr_group {
 struct rtr_mgr_config {
     struct rtr_mgr_group *groups;
     unsigned int len;
-    /* some items deleted */
+    /* some items deleted for mockuping */
 };
 
 
