@@ -262,6 +262,10 @@ if test "$enable_debug" = yes ; then
 	fi
 fi
 
+BIRD_LIBS=
+AC_CHECK_LIB(dl, dlopen, BIRD_LIBS="-ldl")
+AC_SUBST(BIRD_LIBS)
+
 CLIENT=
 CLIENT_LIBS=
 if test "$enable_client" = yes ; then
