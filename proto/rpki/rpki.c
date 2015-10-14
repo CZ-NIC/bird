@@ -12,6 +12,11 @@
  * DOC: The Resource Public Key Infrastructure (RPKI) to Router Protocol
  */
 
+/*
+ * TODO
+ *  - Make correct log depending on protocol option 'debug all|off|{ states, routes, filters, interfaces, events, packets }'
+ */
+
 #define LOCAL_DEBUG
 
 #include <stdlib.h>
@@ -28,7 +33,7 @@
 #define RPKI_LOG_DEL "del"
 #define RPKI_LOG_ENTRY_FMT(ip_fmt) " roa " ip_fmt "/%u max %u as %u"
 #define RPKI_LOG_FMT(operation_name) operation_name RPKI_LOG_ENTRY_FMT("%I")
-#define RPKI_LOG_SKIP_FMT(operation_name) "skipped (other IP version than BIRD) " operation_name RPKI_LOG_ENTRY_FMT("%s")
+#define RPKI_LOG_SKIP_FMT(operation_name) operation_name RPKI_LOG_ENTRY_FMT("%s") " skipped incompatible IP version"
 
 static inline const char *
 get_rtr_socket_ident(const struct rtr_socket *socket)
@@ -51,6 +56,7 @@ void pipe_drain(int fd); 	/* implementation in io.c */
 void pipe_kick(int fd); 	/* implementation in io.c */
 
 static list rpki_proto_list;
+static pthread_mutex_t rpki_proto_list_lock;
 
 /* RTRLib and function pointers */
 static void *rtrlib;
@@ -65,9 +71,22 @@ static int (*rtr_mgr_start_fp)(struct rtr_mgr_config *config);
 static const char * (*rtr_state_to_str_fp)(enum rtr_socket_state state);
 static const char * (*rtr_mgr_status_to_str_fp)(enum rtr_mgr_status status);
 static int (*tr_tcp_init_fp)(const struct tr_tcp_config *config, struct tr_socket *socket);
+static int (*tr_ssh_init_fp)(const struct tr_ssh_config *config, struct tr_socket *socket);
 static void (*tr_free_fp)(struct tr_socket *tr_sock);
 static void (*rtr_mgr_stop_fp)(struct rtr_mgr_config *config);
 static void (*rtr_mgr_free_fp)(struct rtr_mgr_config *config);
+
+static inline void
+lock_rpki_proto_list(void)
+{
+  pthread_mutex_lock(&rpki_proto_list_lock);
+}
+
+static inline void
+unlock_rpki_proto_list(void)
+{
+  pthread_mutex_unlock(&rpki_proto_list_lock);
+}
 
 /*
  * Try load system shared library RTRLib
@@ -80,25 +99,26 @@ rpki_load_rtrlib(void)
   char *err_buf = NULL;
 
   if (rtrlib != NULL)
-    return NULL; /* OK, rtrlib is loaded already */
+    return NULL; /* RTRLib is loaded already */
 
   const char *rtrlib_name = RPKI_LIBRTR_DEFAULT;
 
 #ifdef LIBRTR
-  rtrlib_name = LIBRTR; /* use a compile variable */
+  rtrlib_name = LIBRTR; /* Use a compile variable */
 #endif
 
   rtrlib = dlopen(rtrlib_name, RTLD_LAZY);
   if (!rtrlib)
   {
-    /* This could be pretty frequent problem */
-    char *help_msg = "Try recompile BIRD with CFLAGS='-DLIBRTR=\\\"/path/to/librtr.so\\\"' or see BIRD User's Guide for more information.";
+    /* This would be probably often repeated problem */
+    char *help_msg = "Try recompile BIRD with CFLAGS='-DLIBRTR=\\\"/path/to/librtr.so\\\"' "
+	"or see BIRD User's Guide for more information.";
     err_buf = mb_alloc(&root_pool, 512);
     bsnprintf(err_buf, 512, "%s. %s", dlerror(), help_msg);
     return err_buf;
   }
 
-  dlerror();    /* clear any existing error */
+  dlerror(); /* Clear any existing error */
 
   rtr_mgr_init_fp = (struct rtr_mgr_config * (*)(
       struct rtr_mgr_group groups[], const unsigned int groups_len,
@@ -126,6 +146,10 @@ rpki_load_rtrlib(void)
   if ((err_buf = dlerror()) != NULL)
     return err_buf;
 
+  tr_ssh_init_fp = (int (*)(const struct tr_ssh_config *config, struct tr_socket *socket)) dlsym(rtrlib, "tr_ssh_init");
+  if ((err_buf = dlerror()) != NULL)
+    return err_buf;
+
   tr_free_fp = (void (*)(struct tr_socket *)) dlsym(rtrlib, "tr_free");
   if ((err_buf = dlerror()) != NULL)
     return err_buf;
@@ -145,13 +169,23 @@ void
 rpki_init_all(void)
 {
   init_list(&rpki_proto_list);
+  pthread_mutex_init(&rpki_proto_list_lock, NULL);
   rtrlib = NULL;
 }
-
 
 static void
 rtr_thread_status_hook(const struct rtr_mgr_group *group, enum rtr_mgr_status status, const struct rtr_socket *socket, void *data)
 {
+  /* TODO: This is weird:
+   * ...
+   * RTR_MGR_CLOSED - RTR_RESET
+   * RTR_MGR_CLOSED - RTR_SYNC
+   * RTR_MGR_CLOSED - <NULL>
+   * RTR_MGR_CLOSED - RTR_CONNECTING
+   * RTR_MGR_CLOSED - RTR_RESET
+   * RTR_MGR_CLOSED - RTR_SYNC
+   * ...
+   */
   struct rpki_proto *p = data;
 
 #define RPKI_STATUS_CB_LOG_FMT "%s - %s"
@@ -159,6 +193,7 @@ rtr_thread_status_hook(const struct rtr_mgr_group *group, enum rtr_mgr_status st
   if (status == RTR_MGR_ERROR)
   {
     RPKI_CACHE_ERROR(p, socket, RPKI_STATUS_CB_LOG_FMT, (*rtr_mgr_status_to_str_fp)(status), (*rtr_state_to_str_fp)(socket->state));
+    // TODO: Here we should set protocol to PS_DOWN state.
   }
   else
   {
@@ -203,6 +238,7 @@ get_rpki_proto_by_rtr_socket(const struct rtr_socket *socket)
   struct rpki_proto *p_not_skipped_back;
   unsigned int i, j;
 
+  lock_rpki_proto_list();
   WALK_LIST(p_not_skipped_back, rpki_proto_list)
   {
     struct rpki_proto *p = SKIP_BACK(struct rpki_proto, rpki_node, p_not_skipped_back);
@@ -212,10 +248,14 @@ get_rpki_proto_by_rtr_socket(const struct rtr_socket *socket)
       for(j = 0; j < p->rtr_conf->groups[i].sockets_len; j++)
       {
 	if (socket == p->rtr_conf->groups[i].sockets[j])
+	{
+	  unlock_rpki_proto_list();
 	  return p;
+	}
       }
     }
   }
+  unlock_rpki_proto_list();
   return NULL; /* FAIL */
 }
 
@@ -232,7 +272,11 @@ static void
 rtr_thread_update_hook(void *pfx_table, const struct pfx_record rec, const bool added)
 {
   struct rpki_proto *p = get_rpki_proto_by_rtr_socket(rec.socket);
-
+  if (!p)
+  {
+    DBG("rtr_thread_update_hook: Cannot find matching protocol for %s\n", get_rtr_socket_ident(rec.socket));
+    return;
+  }
   /* process only records that are the same with BIRD IP version */
 #ifdef IPV6
   if (rec.prefix.ver != RTRLIB_IPV6)
@@ -252,7 +296,7 @@ rtr_thread_update_hook(void *pfx_table, const struct pfx_record rec, const bool 
   ip_addr ip = ip4_from_u32(rec.prefix.u.addr4.addr);
 #endif
 
-  /* TODO: Make more effective solution with thread-safe pool/queue of rpki_entry structures
+  /* TODO: Make more effective solution with thread-safe recycle-able pool/queue of rpki_entry structures
    *       without endless allocations and frees */
   struct rpki_entry *e = mb_allocz(p->p.pool, sizeof(struct rpki_entry));
   e->added = added;
@@ -289,8 +333,8 @@ struct rpki_cache *
 rpki_new_cache(void)
 {
   struct rpki_cache *cache = (struct rpki_cache *)cfg_allocz(sizeof(struct rpki_cache));
-  strcpy(cache->port, RPKI_PORT);
   cache->preference = RPKI_DEFAULT_CACHE_PREFERENCE;
+  /* cache port will be set afterwards */
   return cache;
 }
 
@@ -416,6 +460,7 @@ create_rtrlib_tcp_socket(struct rpki_cache *cache, pool *pool)
 {
   struct rtr_socket *rtrlib_tcp = mb_allocz(pool, sizeof(struct rtr_socket));
   rtrlib_tcp->tr_socket = mb_allocz(pool, sizeof(struct tr_socket));
+
   struct tr_tcp_config tcp_config = {
       .host = cache->host,
       .port = cache->port
@@ -426,6 +471,33 @@ create_rtrlib_tcp_socket(struct rpki_cache *cache, pool *pool)
   return rtrlib_tcp;
 }
 
+static struct rtr_socket *
+create_rtrlib_ssh_socket(struct rpki_cache *cache, pool *pool)
+{
+  struct rtr_socket *rtrlib_ssh = mb_allocz(pool, sizeof(struct rtr_socket));
+  rtrlib_ssh->tr_socket = mb_allocz(pool, sizeof(struct tr_socket));
+  struct tr_ssh_config ssh_config = {
+      .host = cache->host,
+      .port = atoi(cache->port), /* TCP transport needs port in (char *) */
+      .username = cache->ssh->user,
+      .client_privkey_path = cache->ssh->bird_private_key,
+      .server_hostkey_path = cache->ssh->cache_public_key,
+  };
+
+  (*tr_ssh_init_fp)(&ssh_config, rtrlib_ssh->tr_socket);
+
+  return rtrlib_ssh;
+}
+
+static struct rtr_socket *
+create_rtrlib_socket(struct rpki_cache *cache, pool *pool)
+{
+  if (cache->ssh)
+    return create_rtrlib_ssh_socket(cache, pool);
+  else
+    return create_rtrlib_tcp_socket(cache, pool);
+}
+
 struct rtr_mgr_group_crate {
   struct rtr_mgr_group *groups;
   uint groups_len;
@@ -434,6 +506,9 @@ struct rtr_mgr_group_crate {
 static struct rtr_mgr_group_crate
 group_cache_list_by_preferences(list *cache_list, pool *pool)
 {
+  /* TODO: Improve algorithm for grouping cache servers by preferences.
+   * 	   At the beginning sort a list of caches by preferences... */
+
   u8 completed_preference[256];
   bzero(completed_preference, sizeof(completed_preference));
 
@@ -460,18 +535,27 @@ group_cache_list_by_preferences(list *cache_list, pool *pool)
     {
       if (cache->preference == groups[group_idx].preference)
       {
-	group->sockets[socket_idx] = cache->rtr_tcp = create_rtrlib_tcp_socket(cache, pool);
+	group->sockets[socket_idx] = cache->rtrlib_sock = create_rtrlib_socket(cache, pool);
 	socket_idx++;
       }
     }
     group_idx++;
   }
 
-  struct rtr_mgr_group_crate grouped_list = {
-      .groups = groups,
-      .groups_len = groups_len
-  };
-  return grouped_list;
+  return (struct rtr_mgr_group_crate) {groups, groups_len};
+}
+
+/*
+ * Return RTR_SUCCESS or RTR_ERROR
+ */
+static int
+rpki_start_rtrlib_mgr(struct rpki_proto *p, struct rpki_config *cf)
+{
+  struct rtr_mgr_group_crate grouped_list = group_cache_list_by_preferences(&cf->cache_list, p->p.pool);
+
+  p->rtr_conf = (*rtr_mgr_init_fp)(grouped_list.groups, grouped_list.groups_len, 30, 520, &rtr_thread_update_hook, NULL, &rtr_thread_status_hook, p);
+
+  return (*rtr_mgr_start_fp)(p->rtr_conf);
 }
 
 static int
@@ -484,20 +568,23 @@ rpki_start(struct proto *P)
   init_list(&p->notify_list);
   pthread_mutex_init(&p->notify_lock, NULL);
 
+  lock_rpki_proto_list();
   add_tail(&rpki_proto_list, &p->rpki_node);
+  unlock_rpki_proto_list();
 
-  struct rtr_mgr_group_crate grouped_list = group_cache_list_by_preferences(&cf->cache_list, P->pool);
+  if (rpki_start_rtrlib_mgr(p, cf) == RTR_SUCCESS)
+    return PS_UP;
 
-  p->rtr_conf = (*rtr_mgr_init_fp)(grouped_list.groups, grouped_list.groups_len, 30, 520, &rtr_thread_update_hook, NULL, &rtr_thread_status_hook, p);
-  (*rtr_mgr_start_fp)(p->rtr_conf);
+  RPKI_ERROR(p, "Cannot start RTRLib Manager");
+  /* TODO: Make RPKI_TRACE() debug dump of configuration */
 
-  return PS_UP;
+  return PS_DOWN;
 }
 
-static int
-rpki_shutdown(struct proto *P)
+static void
+rpki_stop_and_free_rtrlib_mgr(struct rpki_proto *p)
 {
-  struct rpki_proto *p = (struct rpki_proto *) P;
+  RPKI_TRACE(p, "Stopping RTRLib Manager");
 
   (*rtr_mgr_stop_fp)(p->rtr_conf);
   (*rtr_mgr_free_fp)(p->rtr_conf);
@@ -505,30 +592,123 @@ rpki_shutdown(struct proto *P)
   struct rpki_cache *cache;
   WALK_LIST(cache, p->cf->cache_list)
   {
-    (*tr_free_fp)(cache->rtr_tcp->tr_socket);
-    mb_free(cache->rtr_tcp->tr_socket);
-    mb_free(cache->rtr_tcp);
-    if (cache->ip_buf)
-      mb_free(cache->ip_buf);
+    if (cache->rtrlib_sock)
+    {
+      (*tr_free_fp)(cache->rtrlib_sock->tr_socket);
+
+      mb_free(cache->rtrlib_sock->tr_socket);
+      mb_free(cache->rtrlib_sock);
+    }
   }
 
   mb_free(p->rtr_sockets);
   mb_free(p->rtr_groups);
+}
+
+static int
+rpki_shutdown(struct proto *P)
+{
+  struct rpki_proto *p = (struct rpki_proto *) P;
+
+  log(L_DEBUG "------------- rpki_shutdown -------------");
+
+  lock_rpki_proto_list();
+  rem2_node(&p->rpki_node);
+  unlock_rpki_proto_list();
+
+  rpki_stop_and_free_rtrlib_mgr(p);
 
   pthread_mutex_destroy(&p->notify_lock);
 
   return PS_DOWN;
 }
 
-static int
-rpki_reconfigure(struct proto *p, struct proto_config *c)
+static struct rpki_cache *
+get_cache_by_host_and_port(list *cache_list, struct rpki_cache *needle)
 {
-  struct rpki_proto *rpki = (struct rpki_proto *) p;
-  struct rpki_config *new = (struct rpki_config *) c;
+  struct rpki_cache *cache;
+  WALK_LIST(cache, *cache_list)
+  {
+    if ((strcmp(needle->host, cache->host) == 0) && (strcmp(needle->port, cache->port) == 0))
+    {
+      return cache;
+    }
+  }
+  return NULL;
+}
 
-  log(L_DEBUG "------------- rpki_reconfigure -------------");
+/*
+ * Return 1 if need to restart rtrlib manager
+ * Return 0 if not need to restart rtrlib manager
+ */
+static int
+is_required_restart_rtrlib_mgr(struct rpki_proto *p, struct rpki_config *new_cf)
+{
+  struct rpki_config *old_cf = p->cf;
 
-  return 1;
+  struct rpki_cache *cache;
+  WALK_LIST(cache, old_cf->cache_list)
+  {
+    struct rpki_cache *match = get_cache_by_host_and_port(&new_cf->cache_list, cache);
+    if (!match)
+    {
+      /* some cache was deleted from old configuration */
+      RPKI_WARN(p, "reconfiguration has no match for cache %s:%s", cache->host, cache->port);
+      return 1; /* TODO: maybe can be called only rtr_stop(); without manager restart */
+    }
+
+    if (cache->preference != match->preference || (!!cache->ssh != !!match->ssh))
+      return 1;
+
+    if (cache->ssh && match->ssh)
+    {
+      if (strcmp(cache->ssh->bird_private_key, match->ssh->bird_private_key) != 0)
+	return 1;
+
+      if (strcmp(cache->ssh->cache_public_key, match->ssh->cache_public_key) != 0)
+	return 1;
+
+      if (strcmp(cache->ssh->user, match->ssh->user) != 0)
+	return 1;
+    }
+  }
+
+  WALK_LIST(cache, new_cf->cache_list)
+  {
+    struct rpki_cache *match = get_cache_by_host_and_port(&new_cf->cache_list, cache);
+    if (!match)
+    {
+      /* some cache was added to new configuration */
+      return 1;
+    }
+  }
+
+  return 0; /* no restart required */
+}
+
+static int
+rpki_reconfigure(struct proto *P, struct proto_config *c)
+{
+  struct rpki_proto *p = (struct rpki_proto *) P;
+  struct rpki_config *new_cf = (struct rpki_config *) c;
+
+  RPKI_TRACE(p, "------------- rpki_reconfigure -------------");
+
+  if (is_required_restart_rtrlib_mgr(p, new_cf))
+  {
+    RPKI_TRACE(p, "Reconfiguration: Something changed, RTRLib Manager must be restarted");
+    if (P->proto_state == PS_UP)
+      rpki_stop_and_free_rtrlib_mgr(p);
+
+    if (rpki_start_rtrlib_mgr(p, new_cf) != RTR_SUCCESS)
+    {
+      RPKI_ERROR(p, "Reconfiguration failed: Cannot start RTRLib Manager");
+      p->cf = new_cf;
+      return 0; /* FAIL */
+    }
+  }
+  p->cf = new_cf;
+  return 1; /* OK */
 }
 
 static void

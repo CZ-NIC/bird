@@ -50,6 +50,11 @@ struct tr_socket {
     const char * (*ident_fp)(void *);	/* edited for mockuping */
 };
 
+enum rtr_rtvals {
+    RTR_SUCCESS = 0,
+    RTR_ERROR = -1
+};
+
 /**
  * @brief States of the RTR socket.
  */
@@ -133,6 +138,27 @@ struct tr_tcp_config {
     char *host;
     char *port;
     char *bindaddr;
+};
+
+/**
+ * @brief A tr_ssh_config struct holds configuration data for an tr_ssh socket.
+ * @param host Hostname or IP address to connect to.
+ * @param port Port to connect to.
+ * @param bindaddr Hostname or IP address to connect from. NULL for
+ *		   determination by OS.
+ * @param username Username for authentication.
+ * @param server_hostkey_path Path to public SSH key of the server or NULL to
+                              don't verify host authenticity.
+ * @param client_privkey_path Path to private key of the authentication keypair
+ *                            or NULL to use ~/.ssh/id_rsa.
+ */
+struct tr_ssh_config {
+    char *host;
+    unsigned int port;
+    char *bindaddr;
+    char *username;
+    char *server_hostkey_path;
+    char *client_privkey_path;
 };
 
 /**

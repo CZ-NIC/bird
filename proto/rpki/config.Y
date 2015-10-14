@@ -18,7 +18,7 @@ static struct rpki_cache *this_rpki_cache;
 
 CF_DECLS
 
-CF_KEYWORDS(RPKI, CACHE, LIST, PREFERENCE)
+CF_KEYWORDS(RPKI, CACHE, LIST, PREFERENCE, BIRD, PRIVATE, PUBLIC, KEY, SSH, ENCRYPTION, USER)
 
 CF_GRAMMAR
 
@@ -37,16 +37,12 @@ rpki_proto_start:
 
 rpki_proto_finish:
 {
-  if (RPKI_CFG->roa_table_cf == NULL)
-  {
-    cf_error("For the RPKI protocol must be specified a roa table");
-  }
-
   char *rpki_err_buf = rpki_load_rtrlib();
   if (rpki_err_buf != NULL)
-  {
     cf_error("Cannot use a RPKI protocol: %s", rpki_err_buf);
-  }
+
+  if (RPKI_CFG->roa_table_cf == NULL)
+    cf_error("For the RPKI protocol must be specified a roa table");
 };
 
 rpki_proto_opts:
@@ -61,21 +57,37 @@ rpki_proto_item:
  ;
 
 rpki_cache:
-   rpki_cache_init text rpki_optional_cache_opts {
-     this_rpki_cache->host = $2;
-     add_tail(&RPKI_CFG->cache_list, &this_rpki_cache->n);
-   }
- | rpki_cache_init ipa rpki_optional_cache_opts {
-     this_rpki_cache->ip_buf = cfg_alloc(sizeof(INET6_ADDRSTRLEN));
-     bsnprintf(this_rpki_cache->ip_buf, INET6_ADDRSTRLEN, "%I", $2);
-     this_rpki_cache->host = this_rpki_cache->ip_buf;
+   rpki_cache_init rpki_cache_addr rpki_optional_cache_opts rpki_cache_finish {
      add_tail(&RPKI_CFG->cache_list, &this_rpki_cache->n);
    }
  ;
 
+rpki_cache_finish:
+{
+  if (this_rpki_cache->port[0] == 0) /* empty? */
+  {
+    if (this_rpki_cache->ssh != NULL)
+      strcpy(this_rpki_cache->port, RPKI_SSH_PORT);
+    else
+      strcpy(this_rpki_cache->port, RPKI_PORT);
+  }
+}
+;
+
 rpki_cache_init:
- {
+{
+  this_rpki_cache = rpki_new_cache();
+}
+;
+
+rpki_cache_addr:
+   text {
    this_rpki_cache = rpki_new_cache();
+   this_rpki_cache->host = $1;
+ }
+ | ipa {
+   this_rpki_cache->host = cfg_alloc(sizeof(INET6_ADDRSTRLEN));
+   bsnprintf(this_rpki_cache->host, INET6_ADDRSTRLEN, "%I", $1);
  }
  ;
 
@@ -98,7 +110,49 @@ rpki_cache_opts_item:
    check_u8($2);
    this_rpki_cache->preference = $2;
  }
+ | SSH ENCRYPTION rpki_transport_ssh_init '{' rpki_transport_ssh_opts '}' rpki_transport_ssh_finish
  ;
+
+rpki_transport_ssh_init:
+{
+  this_rpki_cache->ssh = cfg_allocz(sizeof(struct rpki_ssh_config));
+  if (strncmp(this_rpki_cache->port, RPKI_PORT, RPKI_PORT_MAX_LENGTH_STR) == 0)
+    strcpy(this_rpki_cache->port, RPKI_SSH_PORT);
+}
+;
+
+rpki_transport_ssh_opts:
+   /* empty */
+ | rpki_transport_ssh_opts rpki_transport_ssh_item ';'
+ ;
+
+rpki_transport_ssh_item:
+   BIRD PRIVATE KEY text {
+    check_file_readability($4);
+    this_rpki_cache->ssh->bird_private_key = $4;
+ }
+ | CACHE PUBLIC KEY text {
+   check_file_readability($4);
+   this_rpki_cache->ssh->cache_public_key = $4;
+ }
+ | USER text {
+   this_rpki_cache->ssh->user = $2;
+ }
+;
+
+rpki_transport_ssh_finish:
+{
+  #define RPKI_PARSE_CACHE_MISS_SSH_OPT(what) "Miss  '" what ";'  option in the %s protocol at cache server %s inside the ssh encryption block"
+
+  if (!this_rpki_cache->ssh->bird_private_key)
+     cf_error(RPKI_PARSE_CACHE_MISS_SSH_OPT("bird private key \"/path/to/ssh_key/id_rsa\""), RPKI_CFG->c.name, this_rpki_cache->host);
+
+   if (!this_rpki_cache->ssh->cache_public_key)
+     cf_error(RPKI_PARSE_CACHE_MISS_SSH_OPT("cache public key \"/path/to/ssh_key/known_hosts\""), RPKI_CFG->c.name, this_rpki_cache->host);
+
+   if (!this_rpki_cache->ssh->user)
+     cf_error(RPKI_PARSE_CACHE_MISS_SSH_OPT("user \"ssh_username\""), RPKI_CFG->c.name, this_rpki_cache->host);
+}
 
 CF_CODE
 
