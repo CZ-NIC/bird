@@ -10,7 +10,7 @@ CF_HDR
 
 #define PARSER 1
 
-#include <unistd.h>
+#include <stdio.h>
 
 #include "nest/bird.h"
 #include "conf/conf.h"
@@ -45,8 +45,11 @@ check_u16(unsigned val)
 static void
 check_file_readability(const char *file_path)
 {
-  if(access(file_path, R_OK) == -1)
-    cf_error("File %s cannot be open for read: %m", file_path);
+  FILE *file = fopen(file_path, "r");
+  if (file)
+    fclose(file);
+  else
+    cf_error("File '%s' cannot be open for read: %m", file_path);
 }
 
 CF_DECLS
