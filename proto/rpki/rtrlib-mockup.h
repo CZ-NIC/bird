@@ -120,7 +120,7 @@ struct rtr_socket {
   uint32_t serial_number;
   void *pfx_table;				/* voided for mockuping */
   pthread_t thread_id;
-  void *connection_state_fp;			/* voided for mockuping */
+  void (*connection_state_fp)(const struct rtr_socket *, const enum rtr_socket_state , void *); /* edited for mockuping */
   void *connection_state_fp_param;
   unsigned int version;
   void *spki_table;				/* voided for mockuping */
