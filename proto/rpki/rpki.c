@@ -60,21 +60,21 @@ static pthread_mutex_t rpki_proto_list_lock;
 
 /* RTRLib and function pointers */
 static void *rtrlib;
-static struct rtr_mgr_config * (*rtr_mgr_init_fp)(
+static struct rtr_mgr_config * (*rtr_mgr_init_x)(
     struct rtr_mgr_group groups[], const unsigned int groups_len,
     const unsigned int refresh_interval, const unsigned int expire_interval,
     const void *update_fp,
     const void *spki_update_fp,
     const void *status_fp,
     void *status_fp_data);
-static int (*rtr_mgr_start_fp)(struct rtr_mgr_config *config);
-static const char * (*rtr_state_to_str_fp)(enum rtr_socket_state state);
-static const char * (*rtr_mgr_status_to_str_fp)(enum rtr_mgr_status status);
-static int (*tr_tcp_init_fp)(const struct tr_tcp_config *config, struct tr_socket *socket);
-static int (*tr_ssh_init_fp)(const struct tr_ssh_config *config, struct tr_socket *socket);
-static void (*tr_free_fp)(struct tr_socket *tr_sock);
-static void (*rtr_mgr_stop_fp)(struct rtr_mgr_config *config);
-static void (*rtr_mgr_free_fp)(struct rtr_mgr_config *config);
+static int (*rtr_mgr_start_x)(struct rtr_mgr_config *config);
+static const char * (*rtr_state_to_str_x)(enum rtr_socket_state state);
+static const char * (*rtr_mgr_status_to_str_x)(enum rtr_mgr_status status);
+static int (*tr_tcp_init_x)(const struct tr_tcp_config *config, struct tr_socket *socket);
+static int (*tr_ssh_init_x)(const struct tr_ssh_config *config, struct tr_socket *socket);
+static void (*tr_free_x)(struct tr_socket *tr_sock);
+static void (*rtr_mgr_stop_x)(struct rtr_mgr_config *config);
+static void (*rtr_mgr_free_x)(struct rtr_mgr_config *config);
 
 static inline void
 lock_rpki_proto_list(void)
@@ -120,7 +120,7 @@ rpki_load_rtrlib(void)
 
   dlerror(); /* Clear any existing error */
 
-  rtr_mgr_init_fp = (struct rtr_mgr_config * (*)(
+  rtr_mgr_init_x = (struct rtr_mgr_config * (*)(
       struct rtr_mgr_group groups[], const unsigned int groups_len,
       const unsigned int refresh_interval, const unsigned int expire_interval,
       const void *update_fp,
@@ -130,35 +130,35 @@ rpki_load_rtrlib(void)
   if ((err_buf = dlerror()) != NULL)
     return err_buf;
 
-  rtr_mgr_start_fp = (int (*)(struct rtr_mgr_config *)) dlsym(rtrlib, "rtr_mgr_start");
+  rtr_mgr_start_x = (int (*)(struct rtr_mgr_config *)) dlsym(rtrlib, "rtr_mgr_start");
   if ((err_buf = dlerror()) != NULL)
     return err_buf;
 
-  rtr_state_to_str_fp = (const char * (*)(enum rtr_socket_state state)) dlsym(rtrlib, "rtr_state_to_str");
+  rtr_state_to_str_x = (const char * (*)(enum rtr_socket_state state)) dlsym(rtrlib, "rtr_state_to_str");
   if ((err_buf = dlerror()) != NULL)
     return err_buf;
 
-  rtr_mgr_status_to_str_fp = (const char * (*)(enum rtr_mgr_status status)) dlsym(rtrlib, "rtr_mgr_status_to_str");
+  rtr_mgr_status_to_str_x = (const char * (*)(enum rtr_mgr_status status)) dlsym(rtrlib, "rtr_mgr_status_to_str");
   if ((err_buf = dlerror()) != NULL)
     return err_buf;
 
-  tr_tcp_init_fp = (int (*)(const struct tr_tcp_config *config, struct tr_socket *socket)) dlsym(rtrlib, "tr_tcp_init");
+  tr_tcp_init_x = (int (*)(const struct tr_tcp_config *config, struct tr_socket *socket)) dlsym(rtrlib, "tr_tcp_init");
   if ((err_buf = dlerror()) != NULL)
     return err_buf;
 
-  tr_ssh_init_fp = (int (*)(const struct tr_ssh_config *config, struct tr_socket *socket)) dlsym(rtrlib, "tr_ssh_init");
+  tr_ssh_init_x = (int (*)(const struct tr_ssh_config *config, struct tr_socket *socket)) dlsym(rtrlib, "tr_ssh_init");
   if ((err_buf = dlerror()) != NULL)
     return err_buf;
 
-  tr_free_fp = (void (*)(struct tr_socket *)) dlsym(rtrlib, "tr_free");
+  tr_free_x = (void (*)(struct tr_socket *)) dlsym(rtrlib, "tr_free");
   if ((err_buf = dlerror()) != NULL)
     return err_buf;
 
-  rtr_mgr_stop_fp = (void (*)(struct rtr_mgr_config *config)) dlsym(rtrlib, "rtr_mgr_stop");
+  rtr_mgr_stop_x = (void (*)(struct rtr_mgr_config *config)) dlsym(rtrlib, "rtr_mgr_stop");
   if ((err_buf = dlerror()) != NULL)
     return err_buf;
 
-  rtr_mgr_free_fp = (void (*)(struct rtr_mgr_config *config)) dlsym(rtrlib, "rtr_mgr_free");
+  rtr_mgr_free_x = (void (*)(struct rtr_mgr_config *config)) dlsym(rtrlib, "rtr_mgr_free");
   if ((err_buf = dlerror()) != NULL)
     return err_buf;
 
@@ -191,15 +191,17 @@ rtr_thread_status_hook(const struct rtr_mgr_group *group, enum rtr_mgr_status st
 {
   struct rpki_proto *p = data;
 
-  RPKI_CACHE_TRACE(p, socket, "[%s] %s", (*rtr_state_to_str_fp)(socket->state), rtr_socket_states[socket->state]);
-
   switch (status)
   {
     case RTR_MGR_ERROR:
       RPKI_CACHE_ERROR(p, socket, "%s", rtr_socket_states[socket->state]);
       break;
-    case RTR_MGR_CLOSED:
-      break;
+    default:
+      RPKI_CACHE_TRACE(p, socket, "[%s] %s", rtr_state_to_str_x(socket->state), rtr_socket_states[socket->state]);
+  }
+
+  switch (status)
+  {
     case RTR_MGR_CONNECTING:
       proto_notify_state(&p->p, PS_START);
       break;
@@ -474,7 +476,7 @@ create_rtrlib_tcp_socket(struct rpki_cache *cache, pool *pool)
       .port = cache->port
   };
 
-  (*tr_tcp_init_fp)(&tcp_config, rtrlib_tcp->tr_socket);
+  tr_tcp_init_x(&tcp_config, rtrlib_tcp->tr_socket);
 
   return rtrlib_tcp;
 }
@@ -492,7 +494,7 @@ create_rtrlib_ssh_socket(struct rpki_cache *cache, pool *pool)
       .server_hostkey_path = cache->ssh->cache_public_key,
   };
 
-  (*tr_ssh_init_fp)(&ssh_config, rtrlib_ssh->tr_socket);
+  tr_ssh_init_x(&ssh_config, rtrlib_ssh->tr_socket);
 
   return rtrlib_ssh;
 }
@@ -569,9 +571,9 @@ rpki_start_rtrlib_mgr(struct rpki_proto *p, struct rpki_config *cf)
 {
   struct rtr_mgr_group_crate grouped_list = group_cache_list_by_preferences(p, &cf->cache_list, p->p.pool);
 
-  p->rtr_conf = (*rtr_mgr_init_fp)(grouped_list.groups, grouped_list.groups_len, 10, 30, &rtr_thread_update_hook, NULL, &rtr_thread_status_hook, p);
+  p->rtr_conf = rtr_mgr_init_x(grouped_list.groups, grouped_list.groups_len, 10, 30, &rtr_thread_update_hook, NULL, &rtr_mgr_thread_status_hook, p);
 
-  return (*rtr_mgr_start_fp)(p->rtr_conf);
+  return rtr_mgr_start_x(p->rtr_conf);
 }
 
 static int
@@ -602,15 +604,15 @@ rpki_stop_and_free_rtrlib_mgr(struct rpki_proto *p)
 {
   RPKI_TRACE(p, "Stopping RTRLib Manager");
 
-  (*rtr_mgr_stop_fp)(p->rtr_conf);
-  (*rtr_mgr_free_fp)(p->rtr_conf);
+  rtr_mgr_stop_x(p->rtr_conf);	/* this take long time */
+  rtr_mgr_free_x(p->rtr_conf);
 
   struct rpki_cache *cache;
   WALK_LIST(cache, p->cf->cache_list)
   {
     if (cache->rtrlib_sock)
     {
-      (*tr_free_fp)(cache->rtrlib_sock->tr_socket);
+      tr_free_x(cache->rtrlib_sock->tr_socket);
 
       mb_free(cache->rtrlib_sock->tr_socket);
       mb_free(cache->rtrlib_sock);
