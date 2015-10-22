@@ -141,7 +141,7 @@ t_set_int_delete(void)
   {
     deleting_sequence = int_set_del(lp, deleting_sequence, i);
     bt_assert_msg(int_set_get_size(deleting_sequence) == SET_SIZE-1-i,
-		  "int_set_get_size(deleting_sequence) %lu  != SET_SIZE-1-i %lu",
+		  "int_set_get_size(deleting_sequence) %d  != SET_SIZE-1-i %d",
 		  int_set_get_size(deleting_sequence), SET_SIZE-1-i);
   }
 
