@@ -27,6 +27,7 @@ t_simple(void)
 
   bt_bird_init();
 
+  /*
   struct config *cfg = bt_config_parse(
       BT_CONFIG_SIMPLE
       "\n"
@@ -47,6 +48,7 @@ t_simple(void)
       "}\n"
       "\n"
   );
+*/
 
   struct symbol *sym = NULL;
   sym = cf_find_symbol(TESTING_FILTER_NAME);
