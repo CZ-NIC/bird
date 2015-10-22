@@ -187,7 +187,7 @@ static const char *rtr_socket_states[] = {
 };
 
 static void
-rtr_thread_status_hook(const struct rtr_mgr_group *group, enum rtr_mgr_status status, const struct rtr_socket *socket, void *data)
+rtr_mgr_thread_status_hook(const struct rtr_mgr_group *group, enum rtr_mgr_status status, const struct rtr_socket *socket, void *data)
 {
   struct rpki_proto *p = data;
 
@@ -203,9 +203,42 @@ rtr_thread_status_hook(const struct rtr_mgr_group *group, enum rtr_mgr_status st
   switch (status)
   {
     case RTR_MGR_CONNECTING:
+      proto_notify_state(&p->p, PS_START);	// TODO: must be in main BIRD thread
+      break;
+    case RTR_MGR_ESTABLISHED:			// BIRD is synchronized with all cache servers within the same preference cache group
+      proto_notify_state(&p->p, PS_UP);		// TODO: must be in main BIRD thread
+      break;
+  }
+}
+
+/* This seems useless, TODO: Remove it */
+static void
+rtr_thread_status_hook(const struct rtr_socket *socket, const enum rtr_socket_state status, void *data)
+{
+  struct rpki_proto *p = data;
+
+  RPKI_CACHE_TRACE(p, socket, "[%s == %s] %s == %s", rtr_state_to_str_x(socket->state), rtr_state_to_str_x(status), rtr_socket_states[socket->state], rtr_socket_states[status]);
+
+  switch (status)
+  {
+    case RTR_SHUTDOWN:
+      break;
+
+    case RTR_ERROR_FATAL:
+    case RTR_ERROR_TRANSPORT:
+    case RTR_ERROR_NO_DATA_AVAIL: /** No validation records are available on the RTR server. */
+    case RTR_ERROR_NO_INCR_UPDATE_AVAIL: /** Server was unable to answer the last serial or reset query. */
+      RPKI_CACHE_ERROR(p, socket, "%s", rtr_socket_states[socket->state]);
+      break;
+
+    case RTR_FAST_RECONNECT:
+    case RTR_SYNC:
+    case RTR_RESET:
+    case RTR_CONNECTING:
       proto_notify_state(&p->p, PS_START);
       break;
-    case RTR_MGR_ESTABLISHED:
+
+    case RTR_ESTABLISHED:
       proto_notify_state(&p->p, PS_UP);
       break;
   }
@@ -253,9 +286,9 @@ get_rpki_proto_by_rtr_socket(const struct rtr_socket *socket)
   {
     struct rpki_proto *p = SKIP_BACK(struct rpki_proto, rpki_node, p_not_skipped_back);
 
-    for(i = 0; i < p->rtr_conf->len; i++)
+    for (i = 0; i < p->rtr_conf->len; i++)
     {
-      for(j = 0; j < p->rtr_conf->groups[i].sockets_len; j++)
+      for (j = 0; j < p->rtr_conf->groups[i].sockets_len; j++)
       {
 	if (socket == p->rtr_conf->groups[i].sockets[j])
 	{
@@ -375,6 +408,8 @@ recv_data_in_main_thread(struct birdsock *sk, int size)
       roa_delete_item(p->cf->roa_table_cf->table, e->ip, e->pxlen, e->maxlen, e->asn, ROA_SRC_RPKI);
     mb_free(e);
   }
+
+  return 0;
 }
 
 static void
@@ -571,7 +606,7 @@ rpki_start_rtrlib_mgr(struct rpki_proto *p, struct rpki_config *cf)
 {
   struct rtr_mgr_group_crate grouped_list = group_cache_list_by_preferences(p, &cf->cache_list, p->p.pool);
 
-  p->rtr_conf = rtr_mgr_init_x(grouped_list.groups, grouped_list.groups_len, 10, 30, &rtr_thread_update_hook, NULL, &rtr_mgr_thread_status_hook, p);
+  p->rtr_conf = rtr_mgr_init_x(grouped_list.groups, grouped_list.groups_len, 10, 20, &rtr_thread_update_hook, NULL, &rtr_mgr_thread_status_hook, p);
 
   return rtr_mgr_start_x(p->rtr_conf);
 }
@@ -604,7 +639,7 @@ rpki_stop_and_free_rtrlib_mgr(struct rpki_proto *p)
 {
   RPKI_TRACE(p, "Stopping RTRLib Manager");
 
-  rtr_mgr_stop_x(p->rtr_conf);	/* this take long time */
+  rtr_mgr_stop_x(p->rtr_conf);	/* this takes long time */
   rtr_mgr_free_x(p->rtr_conf);
 
   struct rpki_cache *cache;
@@ -618,9 +653,6 @@ rpki_stop_and_free_rtrlib_mgr(struct rpki_proto *p)
       mb_free(cache->rtrlib_sock);
     }
   }
-
-  mb_free(p->rtr_sockets);
-  mb_free(p->rtr_groups);
 }
 
 static int
@@ -730,36 +762,49 @@ rpki_reconfigure(struct proto *P, struct proto_config *c)
 }
 
 static void
-rpki_copy_config(struct proto_config *dest, struct proto_config *src)
+rpki_get_status(struct proto *P, byte *buf)
 {
-  struct rpki_config *d = (struct rpki_config *) dest;
-  struct rpki_config *s = (struct rpki_config *) src;
+  struct rpki_proto *p = (struct rpki_proto *) P;
+  unsigned int i, j;
 
-  log(L_DEBUG "------------- rpki_copy_config -------------");
-}
+  uint established_connections = 0;
+  uint cache_servers = 0;
 
-static void
-rpki_get_status(struct proto *p, byte *buf)
-{
-  struct proto_rpki *rpki = (struct proto_rpki *) p;
+  for (i = 0; i < p->rtr_conf->len; i++)
+  {
+    for (j = 0; j < p->rtr_conf->groups[i].sockets_len; j++)
+    {
+      cache_servers++;
+      switch (p->rtr_conf->groups[i].sockets[j]->state)
+      {
+	case RTR_ESTABLISHED:
+	case RTR_RESET:
+	case RTR_SYNC:
+	  established_connections++;
+	  break;
+      }
+    }
+  }
 
-  log(L_DEBUG "------------- rpki_get_status -------------");
+  if (established_connections == 1)
+    bsprintf(buf, "Keep synchronized with 1 cache server");
+  else if (established_connections > 1)
+    bsprintf(buf, "Keep synchronized with %u cache servers", established_connections);
+  else if (cache_servers == 0)
+    bsprintf(buf, "No cache server is configured");
+  else if (cache_servers == 1)
+    bsprintf(buf, "Cannot connect to cache server");
+  else
+    bsprintf(buf, "Cannot connect to any cache servers");
 }
 
 struct protocol proto_rpki = {
   .name = 		"RPKI",
   .template = 		"rpki%d",
-//  .attr_class = 	EAP_BGP,
-//  .preference = 	DEF_PREF_BGP,
   .config_size =	sizeof(struct rpki_config),
   .init = 		rpki_init,
   .start = 		rpki_start,
   .shutdown = 		rpki_shutdown,
-//  .cleanup = 		rpki_cleanup,
   .reconfigure = 	rpki_reconfigure,
-  .copy_config = 	rpki_copy_config,
   .get_status = 	rpki_get_status,
-//  .get_attr = 		rpki_get_attr,
-//  .get_route_info = 	rpki_get_route_info,
-//  .show_proto_info = 	rpki_show_proto_info
 };

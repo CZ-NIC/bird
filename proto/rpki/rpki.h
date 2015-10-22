@@ -70,9 +70,6 @@ struct rpki_proto {
   node rpki_node;				/* in rpki_proto_list */
 
   struct rtr_mgr_config *rtr_conf;
-  struct rtr_mgr_group *rtr_groups;
-  struct rtr_socket **rtr_sockets;
-  uint rtr_sockets_len;
 
   sock *notify_read_sk;
   sock *notify_write_sk;
