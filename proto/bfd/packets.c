@@ -39,9 +39,6 @@ static inline u8 bfd_pkt_get_diag(struct bfd_ctl_packet *pkt)
 static inline u8 bfd_pkt_get_state(struct bfd_ctl_packet *pkt)
 { return pkt->flags >> 6; }
 
-static inline void bfd_pkt_set_state(struct bfd_ctl_packet *pkt, u8 val)
-{ pkt->flags = val << 6; }
-
 
 char *
 bfd_format_flags(u8 flags, char *buf)
