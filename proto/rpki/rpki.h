@@ -79,6 +79,7 @@ struct rpki_proto {
   struct rpki_rw_sk_pair roa_update;
   list roa_update_list;
   pthread_mutex_t roa_update_lock;
+  struct rpki_rw_sk_pair status_update;
 };
 
 struct rpki_cache *rpki_new_cache(void);
