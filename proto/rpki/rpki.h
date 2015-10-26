@@ -64,6 +64,11 @@ struct rpki_config {
   struct roa_table_config *roa_table_cf;
 };
 
+struct rpki_rw_sk_pair {
+  sock *read;
+  sock *write;
+};
+
 struct rpki_proto {
   struct proto p;
   struct rpki_config *cf;
@@ -71,16 +76,15 @@ struct rpki_proto {
 
   struct rtr_mgr_config *rtr_conf;
 
-  sock *notify_read_sk;
-  sock *notify_write_sk;
-  list notify_list;
-  pthread_mutex_t notify_lock;
+  struct rpki_rw_sk_pair roa_update;
+  list roa_update_list;
+  pthread_mutex_t roa_update_lock;
 };
 
 struct rpki_cache *rpki_new_cache(void);
 
-static inline void rpki_lock_notify(struct rpki_proto *p) { pthread_mutex_lock(&p->notify_lock); }
-static inline void rpki_unlock_notify(struct rpki_proto *p) { pthread_mutex_unlock(&p->notify_lock); }
+static inline void rpki_lock_notify(struct rpki_proto *p) { pthread_mutex_lock(&p->roa_update_lock); }
+static inline void rpki_unlock_notify(struct rpki_proto *p) { pthread_mutex_unlock(&p->roa_update_lock); }
 
 void rpki_init_all(void);
 char *rpki_load_rtrlib(void);
