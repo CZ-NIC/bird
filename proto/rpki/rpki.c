@@ -255,12 +255,15 @@ status_update_rtrlib_thread_hook(const struct rtr_mgr_group *group, enum rtr_mgr
     case RTR_RESET:
     case RTR_CONNECTING:
       RPKI_CACHE_TRACE(p, socket, "[%s] %s", rtr_state_to_str_x(socket->state), rtr_socket_states_descript[socket->state]);
-      pipe_kick_data(p->status_update.write->fd, &((int){PS_START}), sizeof(int));
+      if (mgr_status == RTR_MGR_CONNECTING || mgr_status == RTR_MGR_ERROR)
+      {
+	pipe_kick_data(p->status_update.write->fd, &((int){PS_START}), sizeof(int));
+      }
       break;
     case RTR_ESTABLISHED:
+      RPKI_CACHE_TRACE(p, socket, "%s", mgr_str_status_descript[mgr_status]);
       if (mgr_status == RTR_MGR_ESTABLISHED)
       {
-	RPKI_CACHE_TRACE(p, socket, "%s", mgr_str_status_descript[mgr_status]);
 	pipe_kick_data(p->status_update.write->fd, &((int){PS_UP}), sizeof(int));
       }
       break;
@@ -408,6 +411,7 @@ static int
 status_update_bird_thread_hook(struct birdsock *sk, int size)
 {
   struct rpki_proto *p = sk->data;
+  char *p_states[] = { "DOWN", "START", "UP", "STOP" };
 
   int proto_state = -1;
   if (pipe_drain_data(sk->fd, &proto_state, sizeof(int)) > 0)
@@ -419,10 +423,14 @@ status_update_bird_thread_hook(struct birdsock *sk, int size)
       case PS_STOP:
       case PS_UP:
 	if (proto_state != p->p.proto_state)
+	{
+	  RPKI_TRACE(p, "Change protokol state %s -> %s", p_states[p->p.proto_state], p_states[proto_state]);
 	  proto_notify_state(&p->p, proto_state);
+	}
 	break;
       default:
-	RPKI_ERROR(p, "%s: we received some bullshit %d", __func__, proto_state);
+	RPKI_ERROR(p, "%s: we received some nonsense %d", __func__, proto_state);
+	abort();
     }
   }
 
@@ -692,9 +700,11 @@ rpki_start(struct proto *P)
 static void
 rpki_stop_and_free_rtrlib_mgr(struct rpki_proto *p)
 {
+  /* TODO: fire stop&free() asynchronously */
+
   RPKI_TRACE(p, "Stopping RTRLib Manager");
 
-  rtr_mgr_stop_x(p->rtr_conf);	/* this takes long time */
+  rtr_mgr_stop_x(p->rtr_conf);	/* this takes a long time */
   rtr_mgr_free_x(p->rtr_conf);
 
   struct rpki_cache *cache;
@@ -797,8 +807,6 @@ rpki_reconfigure(struct proto *P, struct proto_config *c)
   struct rpki_proto *p = (struct rpki_proto *) P;
   struct rpki_config *new_cf = (struct rpki_config *) c;
 
-  RPKI_TRACE(p, "------------- rpki_reconfigure -------------");
-
   if (is_required_restart_rtrlib_mgr(p, new_cf))
   {
     RPKI_TRACE(p, "Reconfiguration: Something changed, RTRLib Manager must be restarted");
@@ -824,7 +832,7 @@ rpki_get_status(struct proto *P, byte *buf)
 
   uint established_connections = 0;
   uint cache_servers = 0;
-  uint synchronizing = 0;
+  uint connecting = 0;
 
   pthread_mutex_lock(&p->rtr_conf->mutex);
   for (i = 0; i < p->rtr_conf->len; i++)
@@ -841,7 +849,7 @@ rpki_get_status(struct proto *P, byte *buf)
 	case RTR_SYNC:
 	case RTR_FAST_RECONNECT:
 	case RTR_CONNECTING:
-	  synchronizing++;
+	  connecting++;
 	  break;
       }
     }
@@ -850,8 +858,8 @@ rpki_get_status(struct proto *P, byte *buf)
 
   if (established_connections > 0)
     bsprintf(buf, "Keep synchronized with %u cache server%s", established_connections, (established_connections > 1) ? "s" : "");
-  else if (synchronizing > 0)
-    bsprintf(buf, "Synchronizing with %u cache server%s", synchronizing, (synchronizing > 1) ? "s" : "");
+  else if (connecting > 0)
+    bsprintf(buf, "Connecting to %u cache server%s", connecting, (connecting > 1) ? "s" : "");
   else if (cache_servers == 0)
     bsprintf(buf, "No cache server is configured");
   else if (cache_servers == 1)
@@ -866,6 +874,7 @@ struct protocol proto_rpki = {
   .config_size =	sizeof(struct rpki_config),
   .init = 		rpki_init,
   .start = 		rpki_start,
+//  .show_proto_info =	rpki_show_proto_info,	// TODO: be nice to be implemented
   .shutdown = 		rpki_shutdown,
   .reconfigure = 	rpki_reconfigure,
   .get_status = 	rpki_get_status,
