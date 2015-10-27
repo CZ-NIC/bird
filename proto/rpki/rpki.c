@@ -824,7 +824,9 @@ rpki_get_status(struct proto *P, byte *buf)
 
   uint established_connections = 0;
   uint cache_servers = 0;
+  uint synchronizing = 0;
 
+  pthread_mutex_lock(&p->rtr_conf->mutex);
   for (i = 0; i < p->rtr_conf->len; i++)
   {
     for (j = 0; j < p->rtr_conf->groups[i].sockets_len; j++)
@@ -833,22 +835,27 @@ rpki_get_status(struct proto *P, byte *buf)
       switch (p->rtr_conf->groups[i].sockets[j]->state)
       {
 	case RTR_ESTABLISHED:
+	  established_connections++;
+	  break;
 	case RTR_RESET:
 	case RTR_SYNC:
-	  established_connections++;
+	case RTR_FAST_RECONNECT:
+	case RTR_CONNECTING:
+	  synchronizing++;
 	  break;
       }
     }
   }
+  pthread_mutex_unlock(&p->rtr_conf->mutex);
 
-  if (established_connections == 1)
-    bsprintf(buf, "Keep synchronized with 1 cache server");
-  else if (established_connections > 1)
-    bsprintf(buf, "Keep synchronized with %u cache servers", established_connections);
+  if (established_connections > 0)
+    bsprintf(buf, "Keep synchronized with %u cache server%s", established_connections, (established_connections > 1) ? "s" : "");
+  else if (synchronizing > 0)
+    bsprintf(buf, "Synchronizing with %u cache server%s", synchronizing, (synchronizing > 1) ? "s" : "");
   else if (cache_servers == 0)
     bsprintf(buf, "No cache server is configured");
   else if (cache_servers == 1)
-    bsprintf(buf, "Cannot connect to cache server");
+    bsprintf(buf, "Cannot connect to a cache server");
   else
     bsprintf(buf, "Cannot connect to any cache servers");
 }

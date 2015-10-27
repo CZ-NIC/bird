@@ -195,9 +195,10 @@ struct rtr_mgr_group {
 struct rtr_mgr_config {
     struct rtr_mgr_group *groups;
     unsigned int len;
-    /* some items deleted for mockuping */
+    pthread_mutex_t mutex;
+    void *status_fp; /* voided for mockuping */
+    void *status_fp_data;
 };
-
 
 /**
  * @brief Version of the IP protocol.
