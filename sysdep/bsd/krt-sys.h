@@ -44,7 +44,7 @@ struct krt_state {
 
 static inline void krt_sys_init(struct krt_proto *p UNUSED) { }
 
-static inline int krt_sys_get_attr(eattr *a UNUSED, byte *buf UNUSED, int buflen UNUSED) { return 0; }
+static inline int krt_sys_get_attr(eattr *a UNUSED, byte *buf UNUSED, int buflen UNUSED) { return GA_UNKNOWN; }
 
 
 #endif
