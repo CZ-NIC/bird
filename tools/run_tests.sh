@@ -3,7 +3,9 @@
 objdir=$1
 srcdir=$2
 
-[ -z "$TERM" ] && TERM=xterm
+if [ -z "$TERM" ]; then
+  export TERM=xterm
+fi
 tput init
 
 # see if it supports colors...
