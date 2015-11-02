@@ -78,7 +78,7 @@ static int
 input_complete(int arg UNUSED, int key UNUSED)
 {
   static int complete_flag;
-  char buf[256];
+  char buf[BIRDC_INPUT_COMPLETE_BUFFER_LEN];
 
   if (rl_last_func != input_complete)
     complete_flag = 0;

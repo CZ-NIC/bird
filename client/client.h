@@ -10,6 +10,8 @@
 extern int init, busy, interactive;
 extern int term_lns, term_cls;
 
+#define BIRDC_INPUT_COMPLETE_BUFFER_LEN	256
+
 /* birdc.c / birdcl.c */
 
 void input_start_list(void);
