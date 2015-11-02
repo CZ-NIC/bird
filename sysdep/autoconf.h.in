@@ -66,4 +66,7 @@
 /* We have stdint.h */
 #undef HAVE_STDINT_H
 
+/* We have  <bsd/string.h> and strlcpy() */
+#undef HAVE_LIBBSD
+
 #define CONFIG_PATH ?

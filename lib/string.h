@@ -24,4 +24,10 @@ void buffer_puts(buffer *buf, const char *str);
 
 int patmatch(byte *pat, byte *str);
 
+#ifdef HAVE_LIBBSD
+#include <bsd/string.h>
+#else
+size_t strlcpy(char *dst, const char *src, size_t size);
+#endif
+
 #endif

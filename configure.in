@@ -262,6 +262,8 @@ if test "$enable_debug" = yes ; then
 	fi
 fi
 
+AC_CHECK_LIB(bsd, strlcpy, LIBS="$LIBS -lbsd"; AC_DEFINE(HAVE_LIBBSD))
+
 CLIENT=
 CLIENT_LIBS=
 if test "$enable_client" = yes ; then

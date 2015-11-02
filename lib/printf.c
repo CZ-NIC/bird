@@ -457,3 +457,32 @@ buffer_puts(buffer *buf, const char *str)
 
   buf->pos = bp;
 }
+
+#ifndef HAVE_LIBBSD
+/**
+ * strlcpy - BIRD's implementation of strlcpy()
+ *
+ * @dest: destination string
+ * @src: string must be NUL terminated
+ * @max_len: useable length in dest including the NUL terminator
+ * @return: the length of src string without the NUL terminator
+ *
+ * Size-bounded string copying and concatenation
+ */
+size_t
+strlcpy(char *dest, const char *src, size_t max_len)
+{
+  size_t len = strlen(src);
+
+  if (len < max_len)
+    memcpy(dest, src, len + 1);
+  else
+  {
+    max_len--;
+    memcpy(dest, src, max_len);
+    dest[max_len] = 0;
+  }
+
+  return len;
+}
+#endif
