@@ -151,7 +151,7 @@ void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
     do											\
     {											\
       char buf[BT_BUFFER_SIZE];								\
-      strcpy(buf, "");									\
+      bzero(buf, sizeof(buf));								\
       snprintf(buf, sizeof(buf), "%s(", #fn);						\
       bt_dump(buf, in, in_fmt);								\
       bt_strncat(buf, ") gives ");							\
@@ -209,7 +209,7 @@ void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
       for (i = 0; i < (sizeof(in_out)/sizeof(in_out[0])); i++)				\
       {											\
 	typeof(in_out[i].out) fn_out;							\
-	memset(&fn_out, '\0', sizeof(fn_out));						\
+	bzero(&fn_out, sizeof(fn_out));							\
 	fn(in_out[i].in, &fn_out);							\
 	int single_test_case_success = !memcmp(&fn_out, &in_out[i].out, sizeof(in_out[i].out)); \
 	if (!single_test_case_success)							\
