@@ -195,7 +195,7 @@ cmd_find_common_match(struct cmd_node *root, char *cmd, int len, int *pcount, ch
       (*pcount)++;
       if (best < 0)
 	{
-	  strncpy(buf, m->token + len, BIRDC_INPUT_COMPLETE_BUFFER_LEN);
+	  strlcpy(buf, m->token + len, BIRDC_INPUT_COMPLETE_BUFFER_LEN);
 	  best = m->len - len;
 	  best_prio = m->prio;
 	}
