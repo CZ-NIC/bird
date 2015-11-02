@@ -763,7 +763,7 @@ opaque_format(struct adata *ad, byte *buf, uint size)
     {
       if (buf > bound)
 	{
-	  strcpy(buf, " ...");
+	  strncpy(buf, " ...", 5);
 	  return;
 	}
       if (i)
