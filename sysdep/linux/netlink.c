@@ -911,8 +911,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 	  ra.nexthops = nl_parse_multipath(p, a[RTA_MULTIPATH]);
 	  if (!ra.nexthops)
 	    {
-	      log(L_ERR "KRT: Received strange multipath route %I/%d",
-		  net->n.prefix, net->n.pxlen);
+	      log(L_ERR "KRT: Received strange multipath route %N", net->n.addr);
 	      return;
 	    }
 
@@ -922,8 +921,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
       ra.iface = if_find_by_index(oif);
       if (!ra.iface)
 	{
-	  log(L_ERR "KRT: Received route %I/%d with unknown ifindex %u",
-	      net->n.prefix, net->n.pxlen, oif);
+	  log(L_ERR "KRT: Received route %N with unknown ifindex %u", net->n.addr, oif);
 	  return;
 	}
 
@@ -944,8 +942,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 			   (i->rtm_flags & RTNH_F_ONLINK) ? NEF_ONLINK : 0);
 	  if (!ng || (ng->scope == SCOPE_HOST))
 	    {
-	      log(L_ERR "KRT: Received route %I/%d with strange next-hop %I",
-		  net->n.prefix, net->n.pxlen, ra.gw);
+	      log(L_ERR "KRT: Received route %N with strange next-hop %I", net->n.addr, ra.gw);
 	      return;
 	    }
 	}
@@ -1020,8 +1017,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 
       if (nl_parse_metrics(a[RTA_METRICS], metrics, ARRAY_SIZE(metrics)) < 0)
         {
-	  log(L_ERR "KRT: Received route %I/%d with strange RTA_METRICS attribute",
-	      net->n.prefix, net->n.pxlen);
+	  log(L_ERR "KRT: Received route %N with strange RTA_METRICS attribute", net->n.addr);
 	  return;
 	}
 

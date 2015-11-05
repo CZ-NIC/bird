@@ -123,27 +123,15 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 }
 
 {DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+ {
-  ip4_addr a;
-  if (!ip4_pton(yytext, &a))
+  if (!ip4_pton(yytext, &cf_lval.ip4))
     cf_error("Invalid IPv4 address %s", yytext);
-
-#ifdef IPV6
-  cf_lval.i32 = ip4_to_u32(a);
-  return RTRID;
-#else
-  cf_lval.a = ipa_from_ip4(a);
-  return IPA;
-#endif
+  return IP4;
 }
 
 ({XIGIT}*::|({XIGIT}*:){3,})({XIGIT}*|{DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+) {
-#ifdef IPV6
-  if (ipa_pton(yytext, &cf_lval.a))
-    return IPA;
-  cf_error("Invalid IPv6 address %s", yytext);
-#else
-  cf_error("This is an IPv4 router, therefore IPv6 addresses are not supported");
-#endif
+  if (!ip6_pton(yytext, &cf_lval.ip6))
+    cf_error("Invalid IPv6 address %s", yytext);
+  return IP6;
 }
 
 0x{XIGIT}+ {

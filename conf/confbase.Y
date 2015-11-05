@@ -39,6 +39,8 @@ CF_DECLS
   int i;
   u32 i32;
   ip_addr a;
+  ip4_addr ip4;
+  ip6_addr ip6;
   struct symbol *s;
   char *t;
   struct rtable_config *r;
@@ -66,8 +68,8 @@ CF_DECLS
 %token GEQ LEQ NEQ AND OR
 %token PO PC
 %token <i> NUM ENUM
-%token <i32> RTRID
-%token <a> IPA
+%token <ip4> IP4
+%token <ip6> IP6
 %token <s> SYM
 %token <t> TEXT
 %type <iface> ipa_scope
@@ -75,10 +77,11 @@ CF_DECLS
 %type <i> expr bool pxlen
 %type <i32> expr_us
 %type <time> datetime
-%type <a> ipa
+%type <a> ipa ipa_raw
 %type <px> prefix prefix_or_ipa
 %type <t> text
 %type <t> text_or_none
+%type <t> opttext
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
@@ -148,8 +151,13 @@ bool:
 
 /* Addresses, prefixes and netmasks */
 
+ipa_raw:
+   IP4 { $$ = ipa_from_ip4($1); }
+ | IP6 { $$ = ipa_from_ip6($1); }
+ ;
+
 ipa:
-   IPA
+   ipa_raw
  | SYM {
      if ($1->class != (SYM_CONSTANT | T_IP)) cf_error("IP address expected");
      $$ = SYM_VAL($1).px.ip;
@@ -204,6 +212,12 @@ text_or_none:
    TEXT { $$ = $1; }
  |      { $$ = NULL; }
  ;
+
+opttext:
+    TEXT
+ | /* empty */ { $$ = NULL; }
+ ;
+
 
 CF_CODE
 

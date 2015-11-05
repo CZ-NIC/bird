@@ -132,11 +132,11 @@ struct area_net_config
 
 struct area_net
 {
-  struct fib_node fn;
   u32 metric;			/* With possible LSA_EXT3_EBIT for NSSA area nets */
   u32 tag;
   u8 hidden;
   u8 active;
+  struct fib_node fn;
 };
 
 struct ospf_stubnet_config
@@ -681,8 +681,8 @@ struct ospf_lsa_ext3
 
 struct ospf_lsa_ext_local
 {
-  ip_addr ip, fwaddr;
-  int pxlen;
+  net_addr net;
+  ip_addr fwaddr;
   u32 metric, ebit, fbit, tag, propagate;
   u8 pxopts;
 };
@@ -720,8 +720,8 @@ lsa_net_count(struct ospf_lsa_header *lsa)
 /* In ospf_area->rtr we store paths to routers, but we use RID (and not IP address)
    as index, so we need to encapsulate RID to IP address */
 
-#define ipa_from_rid(x) ipa_from_u32(x)
-#define ipa_to_rid(x) ipa_to_u32(x)
+#define net_from_rid(x) NET_ADDR_IP4(ip4_from_u32(x), IP4_MAX_PREFIX_LENGTH)
+#define rid_from_net(x) ip4_to_u32(((net_addr_ip4 *) x)->prefix)
 
 #define IPV6_PREFIX_SPACE(x) ((((x) + 63) / 32) * 4)
 #define IPV6_PREFIX_WORDS(x) (((x) + 63) / 32)
@@ -730,63 +730,63 @@ lsa_net_count(struct ospf_lsa_header *lsa)
    also should be named as ospf3_* instead of *_ipv6_* */
 
 static inline u32 *
-lsa_get_ipv6_prefix(u32 *buf, ip_addr *addr, int *pxlen, u8 *pxopts, u16 *rest)
+ospf_get_ipv6_prefix(u32 *buf, net_addr *N, u8 *pxopts, u16 *rest)
 {
-  u8 pxl = (*buf >> 24);
-  *pxopts = (*buf >> 16);
-  *rest = *buf;
-  *pxlen = pxl;
+  net_addr_ip6 *net = (void *) N;
+  u8 pxlen = (*buf >> 24);
+  *pxopts = (*buf >> 16) & 0xff;
+  if (rest) *rest = *buf & 0xffff;
   buf++;
 
-  *addr = IPA_NONE;
+  *net = NET_ADDR_IP6(IP6_NONE, pxlen);
 
-#ifdef IPV6
-  if (pxl > 0)
-    _I0(*addr) = *buf++;
-  if (pxl > 32)
-    _I1(*addr) = *buf++;
-  if (pxl > 64)
-    _I2(*addr) = *buf++;
-  if (pxl > 96)
-    _I3(*addr) = *buf++;
+  if (pxlen > 0)
+    _I0(net->prefix) = *buf++;
+  if (pxlen > 32)
+    _I1(net->prefix) = *buf++;
+  if (pxlen > 64)
+    _I2(net->prefix) = *buf++;
+  if (pxlen > 96)
+    _I3(net->prefix) = *buf++;
 
   /* Clean up remaining bits */
-  if (pxl < 128)
-    addr->addr[pxl / 32] &= u32_mkmask(pxl % 32);
-#endif
+  if (pxlen < 128)
+    net->prefix.addr[pxlen / 32] &= u32_mkmask(pxlen % 32);
 
   return buf;
 }
 
 static inline u32 *
-lsa_get_ipv6_addr(u32 *buf, ip_addr *addr)
+ospf_get_ipv6_addr(u32 *buf, ip_addr *addr)
 {
-  *addr = *(ip_addr *) buf;
+  *addr = ipa_from_ip6(*(ip6_addr *) buf);
   return buf + 4;
 }
 
 static inline u32 *
-put_ipv6_prefix(u32 *buf, ip_addr addr, u8 pxlen, u8 pxopts, u16 lh)
+ospf_put_ipv6_prefix(u32 *buf, net_addr *N, u8 pxopts, u16 rest)
 {
-#ifdef IPV6
-  *buf++ = ((pxlen << 24) | (pxopts << 16) | lh);
+  net_addr_ip6 *net = (void *) N;
+  u32 pxlen = net->pxlen;
+
+  *buf++ = ((pxlen << 24) | (pxopts << 16) | rest);
 
   if (pxlen > 0)
-    *buf++ = _I0(addr);
+    *buf++ = _I0(net->prefix);
   if (pxlen > 32)
-    *buf++ = _I1(addr);
+    *buf++ = _I1(net->prefix);
   if (pxlen > 64)
-    *buf++ = _I2(addr);
+    *buf++ = _I2(net->prefix);
   if (pxlen > 96)
-    *buf++ = _I3(addr);
-#endif
+    *buf++ = _I3(net->prefix);
+
   return buf;
 }
 
 static inline u32 *
-put_ipv6_addr(u32 *buf, ip_addr addr)
+ospf_put_ipv6_addr(u32 *buf, ip_addr addr)
 {
-  *(ip_addr *) buf = addr;
+  *(ip6_addr *) buf = ipa_to_ip6(addr);
   return buf + 4;
 }
 
@@ -896,7 +896,7 @@ void ospf_sh_neigh_info(struct ospf_neighbor *n);
 
 /* packet.c */
 void ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type);
-uint ospf_pkt_maxsize(struct ospf_iface *ifa);
+uint ospf_pkt_maxsize(struct ospf_proto *p, struct ospf_iface *ifa);
 int ospf_rx_hook(sock * sk, int size);
 // void ospf_tx_hook(sock * sk);
 void ospf_err_hook(sock * sk, int err);

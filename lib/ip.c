@@ -58,7 +58,7 @@ ip6_mkmask(uint n)
   return a;
 }
 
-int
+uint
 ip6_masklen(ip6_addr *a)
 {
   int i, j, n;
@@ -72,7 +72,7 @@ ip6_masklen(ip6_addr *a)
       n += j;
       while (++i < 4)
 	if (a->addr[i])
-	  return -1;
+	  return 255;
       break;
     }
 

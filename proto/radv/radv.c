@@ -258,9 +258,7 @@ radv_ifa_notify(struct proto *p, unsigned flags, struct ifa *a)
 
 static inline int radv_net_match_trigger(struct radv_config *cf, net *n)
 {
-  return cf->trigger_valid &&
-    (n->n.pxlen == cf->trigger_pxlen) &&
-    ipa_equal(n->n.prefix, cf->trigger_prefix);
+  return cf->trigger_valid && net_equal(n->n.addr, cf->trigger);
 }
 
 int
@@ -306,8 +304,7 @@ radv_check_active(struct proto_radv *ra)
   if (! cf->trigger_valid)
     return 1;
 
-  return rt_examine(ra->p.table, cf->trigger_prefix, cf->trigger_pxlen,
-		    &(ra->p), ra->p.cf->out_filter);
+  return rt_examine(ra->p.table, cf->trigger, &ra->p, ra->p.cf->out_filter);
 }
 
 static struct proto *

@@ -92,15 +92,6 @@ static void rip_trigger_update(struct rip_proto *p);
  *	RIP routes
  */
 
-static void
-rip_init_entry(struct fib_node *fn)
-{
-  // struct rip_entry *en = (void) *fn;
-
-  const uint offset = OFFSETOF(struct rip_entry, routes);
-  memset((byte *)fn + offset, 0, sizeof(struct rip_entry) - offset);
-}
-
 static struct rip_rte *
 rip_add_rte(struct rip_proto *p, struct rip_rte **rp, struct rip_rte *src)
 {
@@ -152,7 +143,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   if (rt)
   {
     /* Update */
-    net *n = net_get(p->p.table, en->n.prefix, en->n.pxlen);
+    net *n = net_get(p->p.table, en->n.addr);
 
     rta a0 = {
       .src = p->p.main_source,
@@ -221,7 +212,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   else
   {
     /* Withdraw */
-    net *n = net_find(p->p.table, en->n.prefix, en->n.pxlen);
+    net *n = net_find(p->p.table, en->n.addr);
     rte_update(&p->p, n, NULL);
   }
 }
@@ -229,8 +220,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 /**
  * rip_update_rte - enter a route update to RIP routing table
  * @p: RIP instance
- * @prefix: network prefix
- * @pxlen: network prefix length
+ * @addr: network address
  * @new: a &rip_rte representing the new route
  *
  * The function is called by the RIP packet processing code whenever it receives
@@ -240,9 +230,9 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
  * rip_withdraw_rte() should be called instead of rip_update_rte().
  */
 void
-rip_update_rte(struct rip_proto *p, ip_addr *prefix, int pxlen, struct rip_rte *new)
+rip_update_rte(struct rip_proto *p, net_addr *n, struct rip_rte *new)
 {
-  struct rip_entry *en = fib_get(&p->rtable, prefix, pxlen);
+  struct rip_entry *en = fib_get(&p->rtable, n);
   struct rip_rte *rt, **rp;
   int changed = 0;
 
@@ -282,8 +272,7 @@ rip_update_rte(struct rip_proto *p, ip_addr *prefix, int pxlen, struct rip_rte *
 /**
  * rip_withdraw_rte - enter a route withdraw to RIP routing table
  * @p: RIP instance
- * @prefix: network prefix
- * @pxlen: network prefix length
+ * @addr: network address
  * @from: a &rip_neighbor propagating the withdraw
  *
  * The function is called by the RIP packet processing code whenever it receives
@@ -291,9 +280,9 @@ rip_update_rte(struct rip_proto *p, ip_addr *prefix, int pxlen, struct rip_rte *
  * removed. Eventually, the change is also propagated by rip_announce_rte().
  */
 void
-rip_withdraw_rte(struct rip_proto *p, ip_addr *prefix, int pxlen, struct rip_neighbor *from)
+rip_withdraw_rte(struct rip_proto *p, net_addr *n, struct rip_neighbor *from)
 {
-  struct rip_entry *en = fib_find(&p->rtable, prefix, pxlen);
+  struct rip_entry *en = fib_find(&p->rtable, n);
   struct rip_rte *rt, **rp;
 
   if (!en)
@@ -335,15 +324,15 @@ rip_rt_notify(struct proto *P, struct rtable *table UNUSED, struct network *net,
 
     if (rt_metric > p->infinity)
     {
-      log(L_WARN "%s: Invalid rip_metric value %u for route %I/%d",
-	  p->p.name, rt_metric, net->n.prefix, net->n.pxlen);
+      log(L_WARN "%s: Invalid rip_metric value %u for route %N",
+	  p->p.name, rt_metric, net->n.addr);
       rt_metric = p->infinity;
     }
 
     if (rt_tag > 0xffff)
     {
-      log(L_WARN "%s: Invalid rip_tag value %u for route %I/%d",
-	  p->p.name, rt_tag, net->n.prefix, net->n.pxlen);
+      log(L_WARN "%s: Invalid rip_tag value %u for route %N",
+	  p->p.name, rt_tag, net->n.addr);
       rt_metric = p->infinity;
       rt_tag = 0;
     }
@@ -355,7 +344,7 @@ rip_rt_notify(struct proto *P, struct rtable *table UNUSED, struct network *net,
      * collection.
      */
 
-    en = fib_get(&p->rtable, &net->n.prefix, net->n.pxlen);
+    en = fib_get(&p->rtable, net->n.addr);
 
     old_metric = en->valid ? en->metric : -1;
 
@@ -369,7 +358,7 @@ rip_rt_notify(struct proto *P, struct rtable *table UNUSED, struct network *net,
   else
   {
     /* Withdraw */
-    en = fib_find(&p->rtable, &net->n.prefix, net->n.pxlen);
+    en = fib_find(&p->rtable, net->n.addr);
 
     if (!en || en->valid != RIP_ENTRY_VALID)
       return;
@@ -875,7 +864,7 @@ rip_timer(timer *t)
 
       if (expires <= now)
       {
-	// TRACE(D_EVENTS, "entry is too old: %I/%d", en->n.prefix, en->n.pxlen);
+	// TRACE(D_EVENTS, "entry is too old: %N", en->n.addr);
 	en->valid = 0;
       }
       else
@@ -1108,7 +1097,8 @@ rip_start(struct proto *P)
   struct rip_config *cf = (void *) (P->cf);
 
   init_list(&p->iface_list);
-  fib_init(&p->rtable, P->pool, sizeof(struct rip_entry), 0, rip_init_entry);
+  fib_init(&p->rtable, P->pool, rip_is_v2(p) ? NET_IP4 : NET_IP6,
+	   sizeof(struct rip_entry), OFFSETOF(struct rip_entry, n), 0, NULL);
   p->rte_slab = sl_new(P->pool, sizeof(struct rip_rte));
   p->timer = tm_new_set(P->pool, rip_timer, p, 0, 0);
 
@@ -1257,8 +1247,8 @@ rip_dump(struct proto *P)
   FIB_WALK(&p->rtable, e)
   {
     struct rip_entry *en = (struct rip_entry *) e;
-    debug("RIP: entry #%d: %I/%d via %I dev %s valid %d metric %d age %d s\n",
-	  i++, en->n.prefix, en->n.pxlen, en->next_hop, en->iface->name,
+    debug("RIP: entry #%d: %N via %I dev %s valid %d metric %d age %d s\n",
+	  i++, en->n.addr, en->next_hop, en->iface->name,
 	  en->valid, en->metric, now - en->changed);
   }
   FIB_WALK_END;

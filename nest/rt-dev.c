@@ -45,7 +45,7 @@ dev_ifa_notify(struct proto *p, unsigned c, struct ifa *ad)
       net *n;
 
       DBG("dev_if_notify: %s:%I going down\n", ad->iface->name, ad->ip);
-      n = net_find(p->table, ad->prefix, ad->pxlen);
+      n = net_find_ipa(p->table, ad->prefix, ad->pxlen);
       if (!n)
 	{
 	  DBG("dev_if_notify: device shutdown: prefix not found\n");
@@ -77,7 +77,7 @@ dev_ifa_notify(struct proto *p, unsigned c, struct ifa *ad)
       };
 
       a = rta_lookup(&a0);
-      n = net_get(p->table, ad->prefix, ad->pxlen);
+      n = net_get_ipa(p->table, ad->prefix, ad->pxlen);
       e = rte_get_temp(a);
       e->net = n;
       e->pflags = 0;

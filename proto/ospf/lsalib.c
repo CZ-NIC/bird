@@ -280,21 +280,19 @@ lsa_walk_rt(struct ospf_lsa_rt_walk *rt)
 
 
 void
-lsa_parse_sum_net(struct top_hash_entry *en, int ospf2, ip_addr *ip, int *pxlen, u8 *pxopts, u32 *metric)
+lsa_parse_sum_net(struct top_hash_entry *en, int ospf2, net_addr *net, u8 *pxopts, u32 *metric)
 {
   if (ospf2)
   {
     struct ospf_lsa_sum2 *ls = en->lsa_body;
-    *ip = ipa_from_u32(en->lsa.id & ls->netmask);
-    *pxlen = u32_masklen(ls->netmask);
+    net_fill_ip4(net, ip4_from_u32(en->lsa.id & ls->netmask), u32_masklen(ls->netmask));
     *pxopts = 0;
     *metric = ls->metric & LSA_METRIC_MASK;
   }
   else
   {
     struct ospf_lsa_sum3_net *ls = en->lsa_body;
-    u16 rest;
-    lsa_get_ipv6_prefix(ls->prefix, ip, pxlen, pxopts, &rest);
+    ospf_get_ipv6_prefix(ls->prefix, net, pxopts, NULL);
     *metric = ls->metric & LSA_METRIC_MASK;
   }
 }
@@ -324,8 +322,9 @@ lsa_parse_ext(struct top_hash_entry *en, int ospf2, struct ospf_lsa_ext_local *r
   if (ospf2)
   {
     struct ospf_lsa_ext2 *ext = en->lsa_body;
-    rt->ip = ipa_from_u32(en->lsa.id & ext->netmask);
-    rt->pxlen = u32_masklen(ext->netmask);
+    net_fill_ip4(&rt->net,
+		 ip4_from_u32(en->lsa.id & ext->netmask),
+		 u32_masklen(ext->netmask));
     rt->pxopts = 0;
     rt->metric = ext->metric & LSA_METRIC_MASK;
     rt->ebit = ext->metric & LSA_EXT2_EBIT;
@@ -339,14 +338,13 @@ lsa_parse_ext(struct top_hash_entry *en, int ospf2, struct ospf_lsa_ext_local *r
   else
   {
     struct ospf_lsa_ext3 *ext = en->lsa_body;
-    u16 rest;
-    u32 *buf = lsa_get_ipv6_prefix(ext->rest, &rt->ip, &rt->pxlen, &rt->pxopts, &rest);
+    u32 *buf = ospf_get_ipv6_prefix(ext->rest, &rt->net, &rt->pxopts, NULL);
     rt->metric = ext->metric & LSA_METRIC_MASK;
     rt->ebit = ext->metric & LSA_EXT3_EBIT;
 
     rt->fbit = ext->metric & LSA_EXT3_FBIT;
     if (rt->fbit)
-      buf = lsa_get_ipv6_addr(buf, &rt->fwaddr);
+      buf = ospf_get_ipv6_addr(buf, &rt->fwaddr);
     else
       rt->fwaddr = IPA_NONE;
 
@@ -452,7 +450,7 @@ lsa_validate_sum3_net(struct ospf_lsa_header *lsa, struct ospf_lsa_sum3_net *bod
     return 0;
 
   u8 pxl = pxlen(body->prefix);
-  if (pxl > MAX_PREFIX_LENGTH)
+  if (pxl > IP6_MAX_PREFIX_LENGTH)
     return 0;
 
   if (lsa->length != (HDRLEN + sizeof(struct ospf_lsa_sum3_net) +
@@ -491,7 +489,7 @@ lsa_validate_ext3(struct ospf_lsa_header *lsa, struct ospf_lsa_ext3 *body)
     return 0;
 
   u8 pxl = pxlen(body->rest);
-  if (pxl > MAX_PREFIX_LENGTH)
+  if (pxl > IP6_MAX_PREFIX_LENGTH)
     return 0;
 
   int len = IPV6_PREFIX_SPACE(pxl);
@@ -520,7 +518,7 @@ lsa_validate_pxlist(struct ospf_lsa_header *lsa, u32 pxcount, uint offset, u8 *p
 	return 0;
 
       u8 pxl = pxlen((u32 *) (pbuf + offset));
-      if (pxl > MAX_PREFIX_LENGTH)
+      if (pxl > IP6_MAX_PREFIX_LENGTH)
 	return 0;
 
       offset += IPV6_PREFIX_SPACE(pxl);

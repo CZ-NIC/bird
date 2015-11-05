@@ -107,13 +107,6 @@ static int ospf_rte_better(struct rte *new, struct rte *old);
 static int ospf_rte_same(struct rte *new, struct rte *old);
 static void ospf_disp(timer *timer);
 
-static void
-ospf_area_initfib(struct fib_node *fn)
-{
-  struct area_net *an = (struct area_net *) fn;
-  an->hidden = 0;
-  an->active = 0;
-}
 
 static void
 add_area_nets(struct ospf_area *oa, struct ospf_area_config *ac)
@@ -121,19 +114,26 @@ add_area_nets(struct ospf_area *oa, struct ospf_area_config *ac)
   struct ospf_proto *p = oa->po;
   struct area_net_config *anc;
   struct area_net *an;
+  net_addr net;
 
-  fib_init(&oa->net_fib, p->p.pool, sizeof(struct area_net), 0, ospf_area_initfib);
-  fib_init(&oa->enet_fib, p->p.pool, sizeof(struct area_net), 0, ospf_area_initfib);
+  fib_init(&oa->net_fib,  p->p.pool, ospf_is_v2(p) ? NET_IP4 : NET_IP6,
+	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL);
+  fib_init(&oa->enet_fib, p->p.pool, ospf_is_v2(p) ? NET_IP4 : NET_IP6,
+	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL);
 
   WALK_LIST(anc, ac->net_list)
   {
-    an = (struct area_net *) fib_get(&oa->net_fib, &anc->px.addr, anc->px.len);
+    /* XXXX we should dispatch by ospf version, not by px.addr */
+    net_fill_ipa(&net, anc->px.addr, anc->px.len);
+    an = fib_get(&oa->net_fib, &net);
     an->hidden = anc->hidden;
   }
 
   WALK_LIST(anc, ac->enet_list)
   {
-    an = (struct area_net *) fib_get(&oa->enet_fib, &anc->px.addr, anc->px.len);
+    /* XXXX ditto */
+    net_fill_ipa(&net, anc->px.addr, anc->px.len);
+    an = fib_get(&oa->enet_fib, &net);
     an->hidden = anc->hidden;
     an->tag = anc->tag;
   }
@@ -154,7 +154,7 @@ ospf_area_add(struct ospf_proto *p, struct ospf_area_config *ac)
   oa->areaid = ac->areaid;
   oa->rt = NULL;
   oa->po = p;
-  fib_init(&oa->rtr, p->p.pool, sizeof(ort), 0, ospf_rt_initort);
+  fib_init(&oa->rtr, p->p.pool, NET_IP4, sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
   add_area_nets(oa, ac);
 
   if (oa->areaid == 0)
@@ -243,7 +243,8 @@ ospf_start(struct proto *P)
   p->nhpool = lp_new(P->pool, 12*sizeof(struct mpnh));
   init_list(&(p->iface_list));
   init_list(&(p->area_list));
-  fib_init(&p->rtf, P->pool, sizeof(ort), 0, ospf_rt_initort);
+  fib_init(&p->rtf, P->pool, p->ospf2 ? NET_IP4 : NET_IP6,
+	   sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
   p->areano = 0;
   p->gr = ospf_top_new(p, P->pool);
   s_init_list(&(p->lsal));
@@ -803,7 +804,7 @@ ospf_sh(struct proto *P)
 	cli_msg(-1014, "\t\tArea networks:");
 	firstfib = 0;
       }
-      cli_msg(-1014, "\t\t\t%1I/%u\t%s\t%s", anet->fn.prefix, anet->fn.pxlen,
+      cli_msg(-1014, "\t\t\t%1N\t%s\t%s", anet->fn.addr,
 		anet->hidden ? "Hidden" : "Advertise", anet->active ? "Active" : "");
     }
     FIB_WALK_END;
@@ -817,7 +818,7 @@ ospf_sh(struct proto *P)
 	cli_msg(-1014, "\t\tArea external networks:");
 	firstfib = 0;
       }
-      cli_msg(-1014, "\t\t\t%1I/%u\t%s\t%s", anet->fn.prefix, anet->fn.pxlen,
+      cli_msg(-1014, "\t\t\t%1N\t%s\t%s", anet->fn.addr,
 		anet->hidden ? "Hidden" : "Advertise", anet->active ? "Active" : "");
     }
     FIB_WALK_END;
@@ -1074,13 +1075,12 @@ show_lsa_network(struct top_hash_entry *he, int ospf2)
 static inline void
 show_lsa_sum_net(struct top_hash_entry *he, int ospf2)
 {
-  ip_addr ip;
-  int pxlen;
+  net_addr net;
   u8 pxopts;
   u32 metric;
 
-  lsa_parse_sum_net(he, ospf2, &ip, &pxlen, &pxopts, &metric);
-  cli_msg(-1016, "\t\txnetwork %I/%d metric %u", ip, pxlen, metric);
+  lsa_parse_sum_net(he, ospf2, &net, &pxopts, &metric);
+  cli_msg(-1016, "\t\txnetwork %N metric %u", &net, metric);
 }
 
 static inline void
@@ -1113,19 +1113,15 @@ show_lsa_external(struct top_hash_entry *he, int ospf2)
   if (rt.tag)
     bsprintf(str_tag, " tag %08x", rt.tag);
 
-  cli_msg(-1016, "\t\t%s %I/%d metric%s %u%s%s",
+  cli_msg(-1016, "\t\t%s %N metric%s %u%s%s",
 	  (he->lsa_type == LSA_T_NSSA) ? "nssa-ext" : "external",
-	  rt.ip, rt.pxlen, rt.ebit ? "2" : "", rt.metric, str_via, str_tag);
+	  &rt.net, rt.ebit ? "2" : "", rt.metric, str_via, str_tag);
 }
 
 static inline void
 show_lsa_prefix(struct top_hash_entry *he, struct top_hash_entry *cnode)
 {
   struct ospf_lsa_prefix *px = he->lsa_body;
-  ip_addr pxa;
-  int pxlen;
-  u8 pxopts;
-  u16 metric;
   u32 *buf;
   int i;
 
@@ -1141,14 +1137,18 @@ show_lsa_prefix(struct top_hash_entry *he, struct top_hash_entry *cnode)
 
   buf = px->rest;
   for (i = 0; i < px->pxcount; i++)
-    {
-      buf = lsa_get_ipv6_prefix(buf, &pxa, &pxlen, &pxopts, &metric);
+  {
+    net_addr net;
+    u8 pxopts;
+    u16 metric;
 
-      if (px->ref_type == LSA_T_RT)
-	cli_msg(-1016, "\t\tstubnet %I/%d metric %u", pxa, pxlen, metric);
-      else
-	cli_msg(-1016, "\t\taddress %I/%d", pxa, pxlen);
-    }
+    buf = ospf_get_ipv6_prefix(buf, &net, &pxopts, &metric);
+
+    if (px->ref_type == LSA_T_RT)
+      cli_msg(-1016, "\t\tstubnet %N metric %u", &net, metric);
+    else
+      cli_msg(-1016, "\t\taddress %N", &net);
+  }
 }
 
 void

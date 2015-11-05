@@ -205,7 +205,7 @@ fi
 
 AC_SUBST(iproutedir)
 
-all_protocols="$proto_bfd bgp ospf pipe $proto_radv rip static"
+all_protocols="$proto_bfd ospf pipe $proto_radv rip static"
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
 if test "$with_protocols" = all ; then

@@ -297,14 +297,14 @@ static inline void
 krt_trace_in(struct krt_proto *p, rte *e, char *msg)
 {
   if (p->p.debug & D_PACKETS)
-    log(L_TRACE "%s: %I/%d: %s", p->p.name, e->net->n.prefix, e->net->n.pxlen, msg);
+    log(L_TRACE "%s: %N: %s", p->p.name, e->net->n.addr, msg);
 }
 
 static inline void
 krt_trace_in_rl(struct tbf *f, struct krt_proto *p, rte *e, char *msg)
 {
   if (p->p.debug & D_PACKETS)
-    log_rl(f, L_TRACE "%s: %I/%d: %s", p->p.name, e->net->n.prefix, e->net->n.pxlen, msg);
+    log_rl(f, L_TRACE "%s: %N: %s", p->p.name, e->net->n.addr, msg);
 }
 
 /*
@@ -347,7 +347,7 @@ krt_learn_announce_update(struct krt_proto *p, rte *e)
   net *n = e->net;
   rta *aa = rta_clone(e->attrs);
   rte *ee = rte_get_temp(aa);
-  net *nn = net_get(p->p.table, n->n.prefix, n->n.pxlen);
+  net *nn = net_get(p->p.table, n->n.addr);
   ee->net = nn;
   ee->pflags = 0;
   ee->pref = p->p.preference;
@@ -358,7 +358,7 @@ krt_learn_announce_update(struct krt_proto *p, rte *e)
 static void
 krt_learn_announce_delete(struct krt_proto *p, net *n)
 {
-  n = net_find(p->p.table, n->n.prefix, n->n.pxlen);
+  n = net_find(p->p.table, n->n.addr);
   rte_update(&p->p, n, NULL);
 }
 
@@ -367,7 +367,7 @@ static void
 krt_learn_scan(struct krt_proto *p, rte *e)
 {
   net *n0 = e->net;
-  net *n = net_get(&p->krt_table, n0->n.prefix, n0->n.pxlen);
+  net *n = net_get(&p->krt_table, n0->n.addr);
   rte *m, **mm;
 
   e->attrs = rta_lookup(e->attrs);
@@ -469,7 +469,7 @@ static void
 krt_learn_async(struct krt_proto *p, rte *e, int new)
 {
   net *n0 = e->net;
-  net *n = net_get(&p->krt_table, n0->n.prefix, n0->n.pxlen);
+  net *n = net_get(&p->krt_table, n0->n.addr);
   rte *g, **gg, *best, **bestp, *old_best;
 
   e->attrs = rta_lookup(e->attrs);

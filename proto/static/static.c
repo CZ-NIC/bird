@@ -112,7 +112,7 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
 
   /* We skip rta_lookup() here */
 
-  n = net_get(p->table, r->net, r->masklen);
+  n = net_get_ipa(p->table, r->net, r->masklen);
   e = rte_get_temp(&a);
   e->net = n;
   e->pflags = 0;
@@ -136,7 +136,7 @@ static_remove(struct proto *p, struct static_route *r)
     return;
 
   DBG("Removing static route %I/%d via %I\n", r->net, r->masklen, r->via);
-  n = net_find(p->table, r->net, r->masklen);
+  n = net_find_ipa(p->table, r->net, r->masklen);
   rte_update(p, n, NULL);
   r->installed = 0;
 }

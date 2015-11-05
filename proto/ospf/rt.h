@@ -78,12 +78,13 @@ typedef struct ort
    * route was not in the last update, in that case other old_* values are not
    * valid.
    */
-  struct fib_node fn;
   orta n;
   u32 old_metric1, old_metric2, old_tag, old_rid;
   rta *old_rta;
   u8 external_rte;
   u8 area_net;
+
+  struct fib_node fn;
 }
 ort;
 

@@ -67,7 +67,9 @@ ifa_flood_queue_size(struct ospf_iface *ifa)
 int
 ospf_iface_assure_bufsize(struct ospf_iface *ifa, uint plen)
 {
-  plen += SIZE_OF_IP_HEADER;
+  struct ospf_proto *p = ifa->oa->po;
+
+  plen += ospf_is_v2(p) ? IP4_HEADER_LENGTH : IP6_HEADER_LENGTH;
 
   /* This is relevant just for OSPFv2 */
   if (ifa->autype == OSPF_AUTH_CRYPT)

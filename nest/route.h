@@ -35,11 +35,9 @@ struct cli;
 struct fib_node {
   struct fib_node *next;		/* Next in hash chain */
   struct fib_iterator *readers;		/* List of readers of this node */
-  byte pxlen;
-  byte flags;				/* User-defined */
-  byte x0, x1;				/* User-defined */
-  u32 uid;				/* Unique ID based on hash */
-  ip_addr prefix;			/* In host order */
+  byte flags;				/* User-defined, will be removed */
+  u32 uid;				/* Unique ID based on hash, will be removed */
+  net_addr addr[0];
 };
 
 struct fib_iterator {			/* See lib/slists.h for an explanation */
@@ -50,7 +48,7 @@ struct fib_iterator {			/* See lib/slists.h for an explanation */
   uint hash;
 };
 
-typedef void (*fib_init_func)(struct fib_node *);
+typedef void (*fib_init_fn)(void *);
 
 struct fib {
   pool *fib_pool;			/* Pool holding all our data */
@@ -59,15 +57,18 @@ struct fib {
   uint hash_size;			/* Number of hash table entries (a power of two) */
   uint hash_order;			/* Binary logarithm of hash_size */
   uint hash_shift;			/* 16 - hash_log */
+  uint addr_type;			/* Type of address data stored in fib (NET_*) */
+  uint node_size;	/* XXXX */
+  uint node_offset;	/* XXXX */
   uint entries;				/* Number of entries */
   uint entries_min, entries_max;	/* Entry count limits (else start rehashing) */
-  fib_init_func init;			/* Constructor */
+  fib_init_fn init;			/* Constructor */
 };
 
-void fib_init(struct fib *, pool *, unsigned node_size, unsigned hash_order, fib_init_func init);
-void *fib_find(struct fib *, ip_addr *, int);	/* Find or return NULL if doesn't exist */
-void *fib_get(struct fib *, ip_addr *, int); 	/* Find or create new if nonexistent */
-void *fib_route(struct fib *, ip_addr, int);	/* Longest-match routing lookup */
+void fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offset, uint hash_order, fib_init_fn init);
+void *fib_find(struct fib *, net_addr *);	/* Find or return NULL if doesn't exist */
+void *fib_get(struct fib *, net_addr *); 	/* Find or create new if nonexistent */
+void *fib_route(struct fib *, net_addr *);	/* Longest-match routing lookup */
 void fib_delete(struct fib *, void *);	/* Remove fib entry */
 void fib_free(struct fib *);		/* Destroy the fib */
 void fib_check(struct fib *);		/* Consistency check for debugging */
@@ -77,7 +78,7 @@ struct fib_node *fit_get(struct fib *, struct fib_iterator *);
 void fit_put(struct fib_iterator *, struct fib_node *);
 void fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uint hpos);
 
-
+/* XXXX: return user entries */
 #define FIB_WALK(fib, z) do {					\
 	struct fib_node *z, **ff = (fib)->hash_table;		\
 	uint count = (fib)->hash_size;				\
@@ -126,6 +127,7 @@ struct rtable_config {
   char *name;
   struct rtable *table;
   struct proto_config *krt_attached;	/* Kernel syncer attached to this table */
+  uint addr_type;			/* Type of address data stored in table (NET_*) */
   int gc_max_ops;			/* Maximum number of operations before GC is run */
   int gc_min_time;			/* Minimum time between two consecutive GC runs */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
@@ -136,6 +138,7 @@ typedef struct rtable {
   struct fib fib;
   char *name;				/* Name of this table */
   list hooks;				/* List of announcement hooks */
+  uint addr_type;			/* Type of address data stored in table (NET_*) */
   int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
   struct hostcache *hostcache;
@@ -160,8 +163,8 @@ typedef struct rtable {
 #define RPS_RUNNING	2
 
 typedef struct network {
-  struct fib_node n;			/* FIB flags reserved for kernel syncer */
   struct rte *routes;			/* Available routes for this network */
+  struct fib_node n;			/* FIB flags reserved for kernel syncer */
 } net;
 
 struct hostcache {
@@ -262,14 +265,20 @@ void rt_commit(struct config *new, struct config *old);
 void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
 void rt_setup(pool *, rtable *, char *, struct rtable_config *);
-static inline net *net_find(rtable *tab, ip_addr addr, unsigned len) { return (net *) fib_find(&tab->fib, &addr, len); }
-static inline net *net_get(rtable *tab, ip_addr addr, unsigned len) { return (net *) fib_get(&tab->fib, &addr, len); }
+static inline net *net_find(rtable *tab, net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
+static inline net *net_get(rtable *tab, net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
+
+static inline net *net_find_ipa(rtable *tab, ip_addr px, uint pxlen)
+{ net_addr addr; net_fill_ipa(&addr, px, pxlen); return (net *) fib_find(&tab->fib, &addr); }
+static inline net *net_get_ipa(rtable *tab, ip_addr px, uint pxlen)
+{ net_addr addr; net_fill_ipa(&addr, px, pxlen); return (net *) fib_get(&tab->fib, &addr); }
+
 rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
 void rte_update2(struct announce_hook *ah, net *net, rte *new, struct rte_src *src);
 static inline void rte_update(struct proto *p, net *net, rte *new) { rte_update2(p->main_ahook, net, new, p->main_source); }
 void rte_discard(rtable *tab, rte *old);
-int rt_examine(rtable *t, ip_addr prefix, int pxlen, struct proto *p, struct filter *filter);
+int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter);
 rte *rt_export_merged(struct announce_hook *ah, net *net, rte **rt_free, struct ea_list **tmpa, int silent);
 void rt_refresh_begin(rtable *t, struct announce_hook *ah);
 void rt_refresh_end(rtable *t, struct announce_hook *ah);
@@ -283,7 +292,7 @@ void rt_dump_all(void);
 int rt_feed_baby(struct proto *p);
 void rt_feed_baby_abort(struct proto *p);
 int rt_prune_loop(void);
-struct rtable_config *rt_new_table(struct symbol *s);
+struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
 static inline void
 rt_mark_for_prune(rtable *tab)

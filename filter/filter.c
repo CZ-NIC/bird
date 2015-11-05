@@ -792,8 +792,8 @@ interpret(struct f_inst *what)
       {
       case SA_FROM:	res.val.px.ip = rta->from; break;
       case SA_GW:	res.val.px.ip = rta->gw; break;
-      case SA_NET:	res.val.px.ip = (*f_rte)->net->n.prefix;
-			res.val.px.len = (*f_rte)->net->n.pxlen; break;
+      case SA_NET:	res.val.px.ip = net_prefix((*f_rte)->net->n.addr);
+			res.val.px.len = net_pxlen((*f_rte)->net->n.addr); break;
       case SA_PROTO:	res.val.s = rta->src->proto->name; break;
       case SA_SOURCE:	res.val.i = rta->source; break;
       case SA_SCOPE:	res.val.i = rta->scope; break;
@@ -1292,8 +1292,8 @@ interpret(struct f_inst *what)
     else
     {
       ACCESS_RTE;
-      v1.val.px.ip = (*f_rte)->net->n.prefix;
-      v1.val.px.len = (*f_rte)->net->n.pxlen;
+      v1.val.px.ip = net_prefix((*f_rte)->net->n.addr);
+      v1.val.px.len = net_pxlen((*f_rte)->net->n.addr);
 
       /* We ignore temporary attributes, probably not a problem here */
       /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */

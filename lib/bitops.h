@@ -19,7 +19,7 @@
  */
 
 u32 u32_mkmask(uint n);
-int u32_masklen(u32 x);
+uint u32_masklen(u32 x);
 
 u32 u32_log2(u32 v);
 

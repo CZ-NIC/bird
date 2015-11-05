@@ -69,6 +69,7 @@ make_tmp_attrs(struct rte *rt, struct linpool *pool)
 }
 
 /* Like fib_route(), but skips empty net entries */
+/*
 static net *
 net_route(rtable *tab, ip_addr a, int len)
 {
@@ -85,15 +86,7 @@ net_route(rtable *tab, ip_addr a, int len)
     }
   return NULL;
 }
-
-static void
-rte_init(struct fib_node *N)
-{
-  net *n = (net *) N;
-
-  N->flags = 0;
-  n->routes = NULL;
-}
+*/
 
 /**
  * rte_find - find a route
@@ -230,7 +223,7 @@ rte_trace(struct proto *p, rte *e, int dir, char *msg)
   byte via[STD_ADDRESS_P_LENGTH+32];
 
   rt_format_via(e, via);
-  log(L_TRACE "%s %c %s %I/%d %s", p->name, dir, msg, e->net->n.prefix, e->net->n.pxlen, via);
+  log(L_TRACE "%s %c %s %N %s", p->name, dir, msg, e->net->n.addr, via);
 }
 
 static inline void
@@ -788,20 +781,21 @@ rte_validate(rte *e)
   int c;
   net *n = e->net;
 
-  if ((n->n.pxlen > BITS_PER_IP_ADDRESS) || !ip_is_prefix(n->n.prefix,n->n.pxlen))
-    {
-      log(L_WARN "Ignoring bogus prefix %I/%d received via %s",
-	  n->n.prefix, n->n.pxlen, e->sender->proto->name);
-      return 0;
-    }
+  // (n->n.pxlen > BITS_PER_IP_ADDRESS) || !ip_is_prefix(n->n.prefix,n->n.pxlen))
+  if (!net_validate(n->n.addr))
+  {
+    log(L_WARN "Ignoring bogus prefix %N received via %s",
+	n->n.addr, e->sender->proto->name);
+    return 0;
+  }
 
-  c = ipa_classify_net(n->n.prefix);
+  c = net_classify(n->n.addr);
   if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
-    {
-      log(L_WARN "Ignoring bogus route %I/%d received via %s",
-	  n->n.prefix, n->n.pxlen, e->sender->proto->name);
-      return 0;
-    }
+  {
+    log(L_WARN "Ignoring bogus route %N received via %s",
+	n->n.addr, e->sender->proto->name);
+    return 0;
+  }
 
   return 1;
 }
@@ -870,8 +864,8 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, struct rte_src *sr
 	    {
 	      if (new)
 		{
-		  log_rl(&rl_pipe, L_ERR "Pipe collision detected when sending %I/%d to table %s",
-		      net->n.prefix, net->n.pxlen, table->name);
+		  log_rl(&rl_pipe, L_ERR "Pipe collision detected when sending %N to table %s",
+		      net->n.addr, table->name);
 		  rte_free_quick(new);
 		}
 	      return;
@@ -1278,9 +1272,9 @@ rte_discard(rtable *t, rte *old)	/* Non-filtered route deletion, used during gar
 
 /* Check rtable for best route to given net whether it would be exported do p */
 int
-rt_examine(rtable *t, ip_addr prefix, int pxlen, struct proto *p, struct filter *filter)
+rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
 {
-  net *n = net_find(t, prefix, pxlen);
+  net *n = net_find(t, a);
   rte *rt = n ? n->routes : NULL;
 
   if (!rte_is_valid(rt))
@@ -1376,7 +1370,7 @@ void
 rte_dump(rte *e)
 {
   net *n = e->net;
-  debug("%-1I/%2d ", n->n.prefix, n->n.pxlen);
+  debug("%-1N ", n->n.addr);
   debug("KF=%02x PF=%02x pref=%d lm=%d ", n->n.flags, e->pflags, e->pref, now-e->lastmod);
   rta_dump(e->attrs);
   if (e->attrs->src->proto->proto->dump_attrs)
@@ -1527,9 +1521,10 @@ void
 rt_setup(pool *p, rtable *t, char *name, struct rtable_config *cf)
 {
   bzero(t, sizeof(*t));
-  fib_init(&t->fib, p, sizeof(net), 0, rte_init);
   t->name = name;
   t->config = cf;
+  t->addr_type = cf ? cf->addr_type : NET_IP4;
+  fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
   init_list(&t->hooks);
   if (cf)
     {
@@ -1660,7 +1655,7 @@ rt_preconfig(struct config *c)
   struct symbol *s = cf_find_symbol("master");
 
   init_list(&c->tables);
-  c->master_rtc = rt_new_table(s);
+  c->master_rtc = rt_new_table(s, NET_IP4);
 }
 
 
@@ -1817,7 +1812,7 @@ rt_next_hop_update(rtable *tab)
 
 
 struct rtable_config *
-rt_new_table(struct symbol *s)
+rt_new_table(struct symbol *s, uint addr_type)
 {
   /* Hack that allows to 'redefine' the master table */
   if ((s->class == SYM_TABLE) && (s->def == new_config->master_rtc))
@@ -1827,6 +1822,7 @@ rt_new_table(struct symbol *s)
 
   cf_define_symbol(s, SYM_TABLE, c);
   c->name = s->name;
+  c->addr_type = addr_type;
   add_tail(&new_config->tables, &c->n);
   c->gc_max_ops = 1000;
   c->gc_min_time = 5;
@@ -2196,8 +2192,9 @@ rt_notify_hostcache(rtable *tab, net *net)
   if (tab->hcu_scheduled)
     return;
 
-  if (trie_match_prefix(hc->trie, net->n.prefix, net->n.pxlen))
-    rt_schedule_hcu(tab);
+  // XXXX
+  // if (trie_match_prefix(hc->trie, net->n.prefix, net->n.pxlen))
+  // rt_schedule_hcu(tab);
 }
 
 static int
@@ -2253,18 +2250,20 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
   he->dest = RTD_UNREACHABLE;
   he->igp_metric = 0;
 
-  net *n = net_route(tab, he->addr, MAX_PREFIX_LENGTH);
+  // XXXX
+  // net *n = net_route(tab, he->addr, MAX_PREFIX_LENGTH);
+  net *n = NULL;
   if (n)
     {
       rte *e = n->routes;
       rta *a = e->attrs;
-      pxlen = n->n.pxlen;
+      pxlen = n->n.addr->pxlen;
 
       if (a->hostentry)
 	{
 	  /* Recursive route should not depend on another recursive route */
-	  log(L_WARN "Next hop address %I resolvable through recursive route for %I/%d",
-	      he->addr, n->n.prefix, pxlen);
+	  log(L_WARN "Next hop address %I resolvable through recursive route for %N",
+	      he->addr, n->n.addr);
 	  goto done;
 	}
 
@@ -2425,7 +2424,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
   int first = 1;
   int pass = 0;
 
-  bsprintf(ia, "%I/%d", n->n.prefix, n->n.pxlen);
+  bsprintf(ia, "%N", n->n.addr);
 
   if (d->export_mode)
     {
@@ -2589,10 +2588,13 @@ rt_show(struct rt_show_data *d)
     }
   else
     {
+      /* XXXX 
       if (d->show_for)
 	n = net_route(d->table, d->prefix, d->pxlen);
       else
 	n = net_find(d->table, d->prefix, d->pxlen);
+      */
+      n = NULL;
 
       if (n)
 	rt_show_net(this_cli, n, d);
@@ -2613,26 +2615,24 @@ rt_show(struct rt_show_data *d)
  * net_find - find a network entry
  * @tab: a routing table
  * @addr: address of the network
- * @len: length of the network prefix
  *
  * net_find() looks up the given network in routing table @tab and
  * returns a pointer to its &net entry or %NULL if no such network
  * exists.
  */
-static inline net *net_find(rtable *tab, ip_addr addr, unsigned len)
+static inline net *net_find(rtable *tab, net_addr *addr)
 { DUMMY; }
 
 /**
  * net_get - obtain a network entry
  * @tab: a routing table
  * @addr: address of the network
- * @len: length of the network prefix
  *
  * net_get() looks up the given network in routing table @tab and
  * returns a pointer to its &net entry. If no such entry exists, it's
  * created.
  */
-static inline net *net_get(rtable *tab, ip_addr addr, unsigned len)
+static inline net *net_get(rtable *tab, net_addr *addr)
 { DUMMY; }
 
 /**

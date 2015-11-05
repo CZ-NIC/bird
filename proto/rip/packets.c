@@ -78,8 +78,7 @@ struct rip_auth_tail
 /* Internal representation of RTE block data */
 struct rip_block
 {
-  ip_addr prefix;
-  int pxlen;
+  net_addr net;
   u32 metric;
   u16 tag;
   u16 no_af;
@@ -115,17 +114,17 @@ rip_put_block(struct rip_proto *p, byte *pos, struct rip_block *rte)
     struct rip_block_v2 *block = (void *) pos;
     block->family = rte->no_af ? 0 : htons(RIP_AF_IPV4);
     block->tag = htons(rte->tag);
-    block->network = ip4_hton(ipa_to_ip4(rte->prefix));
-    block->netmask = ip4_hton(ip4_mkmask(rte->pxlen));
+    block->network = ip4_hton(net4_prefix(&rte->net));
+    block->netmask = ip4_hton(ip4_mkmask(net4_pxlen(&rte->net)));
     block->next_hop = ip4_hton(ipa_to_ip4(rte->next_hop));
     block->metric = htonl(rte->metric);
   }
   else /* RIPng */
   {
     struct rip_block_ng *block = (void *) pos;
-    block->prefix = ip6_hton(ipa_to_ip6(rte->prefix));
+    block->prefix = ip6_hton(net6_prefix(&rte->net));
     block->tag = htons(rte->tag);
-    block->pxlen = rte->pxlen;
+    block->pxlen = net6_pxlen(&rte->net);
     block->metric = rte->metric;
   }
 }
@@ -151,8 +150,8 @@ rip_get_block(struct rip_proto *p, byte *pos, struct rip_block *rte)
     if (block->family != (rte->no_af ? 0 : htons(RIP_AF_IPV4)))
       return 0;
 
-    rte->prefix = ipa_from_ip4(ip4_ntoh(block->network));
-    rte->pxlen = ip4_masklen(ip4_ntoh(block->netmask));
+    uint pxlen = ip4_masklen(ip4_ntoh(block->netmask));
+    net_fill_ip4(&rte->net, ip4_ntoh(block->network), pxlen);
     rte->metric = ntohl(block->metric);
     rte->tag = ntohs(block->tag);
     rte->next_hop = ipa_from_ip4(ip4_ntoh(block->next_hop));
@@ -171,8 +170,8 @@ rip_get_block(struct rip_proto *p, byte *pos, struct rip_block *rte)
       return 0;
     }
 
-    rte->prefix = ipa_from_ip6(ip6_ntoh(block->prefix));
-    rte->pxlen = block->pxlen;
+    uint pxlen = (block->pxlen < IP6_MAX_PREFIX_LENGTH) ? block->pxlen : 255;
+    net_fill_ip6(&rte->net, ip6_ntoh(block->prefix), pxlen);
     rte->metric = block->metric;
     rte->tag = ntohs(block->tag);
     /* rte->next_hop is deliberately kept unmodified */;
@@ -385,8 +384,9 @@ rip_receive_request(struct rip_proto *p, struct rip_iface *ifa, struct rip_packe
   if (!rip_get_block(p, pos, &b))
     return;
 
-  /* Special case - zero prefix, infinity metric */
-  if (ipa_nonzero(b.prefix) || b.pxlen || (b.metric != p->infinity))
+  /* Special case - infinity metric, for RIPng also zero prefix */
+  if ((b.metric != p->infinity) ||
+      (rip_is_ng(p) && !net_zero_ip6((net_addr_ip6 *) &b.net)))
     return;
 
   /* We do nothing if TX is already active */
@@ -444,11 +444,11 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
     }
 
     struct rip_block rte = {
-      .prefix = en->n.prefix,
-      .pxlen = en->n.pxlen,
       .metric = en->metric,
       .tag = en->tag
     };
+
+    net_copy(&rte.net, en->n.addr);
 
     if (en->iface == ifa->iface)
       rte.next_hop = en->next_hop;
@@ -456,11 +456,11 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
     if (rip_is_v2(p) && (ifa->cf->version == RIP_V1))
     {
       /* Skipping subnets (i.e. not hosts, classful networks or default route) */
-      if (ip4_masklen(ip4_class_mask(ipa_to_ip4(en->n.prefix))) != en->n.pxlen)
+      if (ip4_masklen(ip4_class_mask(net4_prefix(&rte.net))) != rte.net.pxlen)
 	goto next_entry;
 
       rte.tag = 0;
-      rte.pxlen = 0;
+      rte.net.pxlen = 0;
       rte.next_hop = IPA_NONE;
     }
 
@@ -476,7 +476,7 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
 	goto next_entry;
     }
 
-    // TRACE(D_PACKETS, "    %I/%d -> %I metric %d", rte.prefix, rte.pxlen, rte.next_hop, rte.metric);
+    // TRACE(D_PACKETS, "    %N -> %I metric %d", &rte.net, rte.next_hop, rte.metric);
 
     /* RIPng next hop entry */
     if (rip_is_ng(p) && !ipa_equal(rte.next_hop, last_next_hop))
@@ -577,22 +577,24 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
     if (!rip_get_block(p, pos, &rte))
       continue;
 
-    int c = ipa_classify_net(rte.prefix);
-    if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
-      SKIP("invalid prefix");
-
     if (rip_is_v2(p) && (pkt->version == RIP_V1))
     {
-      if (ifa->cf->check_zero && (rte.tag || rte.pxlen || ipa_nonzero(rte.next_hop)))
+      if (ifa->cf->check_zero && (rte.tag || rte.net.pxlen || ipa_nonzero(rte.next_hop)))
 	SKIP("RIPv1 reserved field is nonzero");
 
       rte.tag = 0;
-      rte.pxlen = ip4_masklen(ip4_class_mask(ipa_to_ip4(rte.prefix)));
+      rte.net.pxlen = ip4_masklen(ip4_class_mask(net4_prefix(&rte.net)));
       rte.next_hop = IPA_NONE;
     }
 
-    if ((rte.pxlen < 0) || (rte.pxlen > MAX_PREFIX_LENGTH))
+    if (rte.net.pxlen == 255)
       SKIP("invalid prefix length");
+
+    net_normalize(&rte.net);
+
+    int c = net_classify(&rte.net);
+    if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
+      SKIP("invalid prefix");
 
     if (rte.metric > p->infinity)
       SKIP("invalid metric");
@@ -604,7 +606,7 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
 	rte.next_hop = IPA_NONE;
     }
 
-    // TRACE(D_PACKETS, "    %I/%d -> %I metric %d", rte.prefix, rte.pxlen, rte.next_hop, rte.metric);
+    // TRACE(D_PACKETS, "    %N -> %I metric %d", &rte.net.n, rte.next_hop, rte.metric);
 
     rte.metric += ifa->cf->metric;
 
@@ -618,16 +620,16 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
 	.expires = now + ifa->cf->timeout_time
       };
 
-      rip_update_rte(p, &rte.prefix, rte.pxlen, &new);
+      rip_update_rte(p, &rte.net, &new);
     }
     else
-      rip_withdraw_rte(p, &rte.prefix, rte.pxlen, from);
+      rip_withdraw_rte(p, &rte.net, from);
 
     continue;
 
   skip:
-    LOG_RTE("Ignoring route %I/%d received from %I - %s",
-	    rte.prefix, rte.pxlen, from->nbr->addr, err_dsc);
+    LOG_RTE("Ignoring route %N received from %I - %s",
+	    &rte.net, from->nbr->addr, err_dsc);
   }
 }
 

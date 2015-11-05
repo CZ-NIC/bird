@@ -60,12 +60,12 @@ pipe_rt_notify(struct proto *P, rtable *src_table, net *n, rte *new, rte *old, e
 
   if (dst_table->pipe_busy)
     {
-      log(L_ERR "Pipe loop detected when sending %I/%d to table %s",
-	  n->n.prefix, n->n.pxlen, dst_table->name);
+      log(L_ERR "Pipe loop detected when sending %N to table %s",
+	  n->n.addr, dst_table->name);
       return;
     }
 
-  nn = net_get(dst_table, n->n.prefix, n->n.pxlen);
+  nn = net_get(dst_table, n->n.addr);
   if (new)
     {
       memcpy(&a, new->attrs, sizeof(rta));

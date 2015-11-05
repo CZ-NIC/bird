@@ -330,7 +330,7 @@ ospf_prepare_lsupd(struct ospf_proto *p, struct ospf_iface *ifa,
 
   pkt = ospf_tx_buffer(ifa);
   hlen = ospf_lsupd_hdrlen(p);
-  maxsize = ospf_pkt_maxsize(ifa);
+  maxsize = ospf_pkt_maxsize(p, ifa);
 
   ospf_pkt_fill_hdr(ifa, pkt, LSUPD_P);
   pos = hlen;

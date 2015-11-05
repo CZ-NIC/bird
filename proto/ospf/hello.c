@@ -105,7 +105,7 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
   }
 
   i = 0;
-  max = (ospf_pkt_maxsize(ifa) - length) / sizeof(u32);
+  max = (ospf_pkt_maxsize(p, ifa) - length) / sizeof(u32);
 
   /* Fill all neighbors */
   if (kind != OHS_SHUTDOWN)

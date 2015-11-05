@@ -28,15 +28,15 @@ u32_mkmask(uint n)
  *
  * This function checks whether the given integer @x represents
  * a valid bit mask (binary representation contains first ones, then
- * zeroes) and returns the number of ones or -1 if the mask is invalid.
+ * zeroes) and returns the number of ones or 255 if the mask is invalid.
  */
-int
+uint
 u32_masklen(u32 x)
 {
   int l = 0;
   u32 n = ~x;
 
-  if (n & (n+1)) return -1;
+  if (n & (n+1)) return 255;
   if (x & 0x0000ffff) { x &= 0x0000ffff; l += 16; }
   if (x & 0x00ff00ff) { x &= 0x00ff00ff; l += 8; }
   if (x & 0x0f0f0f0f) { x &= 0x0f0f0f0f; l += 4; }

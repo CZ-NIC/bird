@@ -55,6 +55,7 @@ CF_DECLS
 
 CF_KEYWORDS(ROUTER, ID, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, TABLE, STATES, ROUTES, FILTERS)
+CF_KEYWORDS(IPV4, IPVX, VPN4, VPN6)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED)
 CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, INTERFACES)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, COMMANDS, PREEXPORT, NOEXPORT, GENERATE, ROA)
@@ -77,7 +78,7 @@ CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 %type <ro> roa_args
 %type <rot> roa_table_arg
 %type <sd> sym_args
-%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode roa_mode limit_action tab_sorted tos
+%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode roa_mode limit_action table_type table_sorted tos
 %type <ps> proto_patt proto_patt2
 %type <g> limit_spec
 
@@ -95,14 +96,7 @@ rtrid:
 idval:
    NUM { $$ = $1; }
  | '(' term ')' { $$ = f_eval_int($2); }
- | RTRID
- | IPA {
-#ifndef IPV6
-     $$ = ipa_to_u32($1);
-#else
-     cf_error("Router IDs must be entered as hexadecimal numbers or IPv4 addresses in IPv6 version");
-#endif
-   }
+ | IP4 { $$ = ip4_to_u32($1); }
  | SYM {
      if ($1->class == (SYM_CONSTANT | T_INT) || $1->class == (SYM_CONSTANT | T_QUAD))
        $$ = SYM_VAL($1).i;
@@ -140,17 +134,25 @@ gr_opts: GRACEFUL RESTART WAIT expr ';' { new_config->gr_wait = $4; } ;
 
 /* Creation of routing tables */
 
-tab_sorted:
+CF_ADDTO(conf, table)
+
+table_type:
+   /* empty */ { $$ = NET_IP4; }
+ | IPV4 { $$ = NET_IP4; }
+ | IPVX { $$ = NET_IP6; } /* XXXX */
+ | VPN4 { $$ = NET_VPN4; }
+ | VPN6 { $$ = NET_VPN6; }
+ ;
+
+table_sorted:
           { $$ = 0; }
  | SORTED { $$ = 1; }
  ;
 
-CF_ADDTO(conf, newtab)
-
-newtab: TABLE SYM tab_sorted {
+table: table_type TABLE SYM table_sorted {
    struct rtable_config *cf;
-   cf = rt_new_table($2);
-   cf->sorted = $3;
+   cf = rt_new_table($3, $1);
+   cf->sorted = $4;
    }
  ;
 

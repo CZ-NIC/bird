@@ -30,6 +30,9 @@
 #define IP4_NONE		_MI4(0)
 #define IP6_NONE		_MI6(0,0,0,0)
 
+#define IP4_MAX_PREFIX_LENGTH	32
+#define IP6_MAX_PREFIX_LENGTH	128
+
 #define IP4_MIN_MTU		576
 #define IP6_MIN_MTU		1280
 
@@ -39,17 +42,14 @@
 #define IP6_HEADER_LENGTH	40
 #define UDP_HEADER_LENGTH	8
 
-
 #ifdef IPV6
 #define MAX_PREFIX_LENGTH 128
 #define BITS_PER_IP_ADDRESS 128
 #define STD_ADDRESS_P_LENGTH 39
-#define SIZE_OF_IP_HEADER 40
 #else
 #define MAX_PREFIX_LENGTH 32
 #define BITS_PER_IP_ADDRESS 32
 #define STD_ADDRESS_P_LENGTH 15
-#define SIZE_OF_IP_HEADER 24
 #endif
 
 
@@ -319,11 +319,11 @@ static inline int ipa_classify_net(ip_addr a)
 static inline ip4_addr ip4_mkmask(uint n)
 { return _MI4(u32_mkmask(n)); }
 
-static inline int ip4_masklen(ip4_addr a)
+static inline uint ip4_masklen(ip4_addr a)
 { return u32_masklen(_I(a)); }
 
 ip6_addr ip6_mkmask(uint n);
-int ip6_masklen(ip6_addr *a);
+uint ip6_masklen(ip6_addr *a);
 
 /* ipX_pxlen() requires that x != y */
 static inline uint ip4_pxlen(ip4_addr a, ip4_addr b)
@@ -345,6 +345,18 @@ static inline u32 ip4_getbit(ip4_addr a, uint pos)
 static inline u32 ip6_getbit(ip6_addr a, uint pos)
 { return a.addr[pos / 32] & (0x80000000 >> (pos % 32)); }
 
+static inline u32 ip4_setbit(ip4_addr *a, uint pos)
+{ return _I(*a) |= (0x80000000 >> pos); }
+
+static inline u32 ip6_setbit(ip6_addr *a, uint pos)
+{ return a->addr[pos / 32] |= (0x80000000 >> (pos % 32)); }
+
+static inline u32 ip4_clrbit(ip4_addr *a, uint pos)
+{ return _I(*a) &= ~(0x80000000 >> pos); }
+
+static inline u32 ip6_clrbit(ip6_addr *a, uint pos)
+{ return a->addr[pos / 32] &= ~(0x80000000 >> (pos % 32)); }
+
 static inline ip4_addr ip4_opposite_m1(ip4_addr a)
 { return _MI4(_I(a) ^ 1); }
 
@@ -364,6 +376,8 @@ ip4_addr ip4_class_mask(ip4_addr ad);
 #define ipa_masklen(x) ip6_masklen(&x)
 #define ipa_pxlen(x,y) ip6_pxlen(x,y)
 #define ipa_getbit(x,n) ip6_getbit(x,n)
+#define ipa_setbit(x,n) ip6_setbit(x,n)
+#define ipa_clrbit(x,n) ip6_clrbit(x,n)
 #define ipa_opposite_m1(x) ip6_opposite_m1(x)
 #define ipa_opposite_m2(x) ip6_opposite_m2(x)
 #else
@@ -371,6 +385,8 @@ ip4_addr ip4_class_mask(ip4_addr ad);
 #define ipa_masklen(x) ip4_masklen(x)
 #define ipa_pxlen(x,y) ip4_pxlen(x,y)
 #define ipa_getbit(x,n) ip4_getbit(x,n)
+#define ipa_setbit(x,n) ip4_setbit(x,n)
+#define ipa_clrbit(x,n) ip4_clrbit(x,n)
 #define ipa_opposite_m1(x) ip4_opposite_m1(x)
 #define ipa_opposite_m2(x) ip4_opposite_m2(x)
 #endif

@@ -477,7 +477,7 @@ block:
  * Complex types, their bison value is struct f_val
  */
 fipa:
-   IPA %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.px.ip = $1; }
+   ipa_raw %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.px.ip = $1; }
  ;
 
 
@@ -491,7 +491,6 @@ fipa:
 
 set_atom:
    NUM   { $$.type = T_INT; $$.val.i = $1; }
- | RTRID { $$.type = T_QUAD; $$.val.i = $1; }
  | fipa  { $$ = $1; }
  | ENUM  { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
@@ -508,7 +507,6 @@ set_atom:
 switch_atom:
    NUM   { $$.type = T_INT; $$.val.i = $1; }
  | '(' term ')' { $$.type = T_INT; $$.val.i = f_eval_int($2); }
- | RTRID { $$.type = T_QUAD; $$.val.i = $1; }
  | fipa  { $$ = $1; }
  | ENUM  { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  ;
@@ -575,7 +573,7 @@ switch_items:
  ;
 
 fprefix_s:
-   IPA '/' NUM %prec '/' {
+   ipa_raw '/' NUM %prec '/' {
      if (($3 < 0) || ($3 > MAX_PREFIX_LENGTH) || !ip_is_prefix($1, $3)) cf_error("Invalid network prefix: %I/%d.", $1, $3);
      $$.type = T_PREFIX; $$.val.px.ip = $1; $$.val.px.len = $3;
    }
@@ -646,7 +644,6 @@ constant:
  | TEXT   { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_STRING; $$->a2.p = $1; }
  | fipa	   { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; $$->a1.p = val; *val = $1; }
  | fprefix_s {NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; $$->a1.p = val; *val = $1; }
- | RTRID  { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_QUAD;  $$->a2.i = $1; }
  | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_SET; $$->a2.p = build_tree($2); DBG( "ook\n" ); }
  | '[' fprefix_set ']' { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_PREFIX_SET;  $$->a2.p = $2; }
  | ENUM	  { $$ = f_new_inst(); $$->code = 'c'; $$->aux = $1 >> 16; $$->a2.i = $1 & 0xffff; }

@@ -149,7 +149,6 @@ struct rip_neighbor
 
 struct rip_entry
 {
-  struct fib_node n;
   struct rip_rte *routes;		/* List of incoming routes */
 
   u8 valid;				/* Entry validity state (RIP_ENTRY_*) */
@@ -160,6 +159,8 @@ struct rip_entry
   ip_addr next_hop;			/* Outgoing route next hop */
 
   bird_clock_t changed;			/* Last time when the outgoing route metric changed */
+
+  struct fib_node n;
 };
 
 struct rip_rte
@@ -211,8 +212,8 @@ rip_reset_tx_session(struct rip_proto *p, struct rip_iface *ifa)
 }
 
 /* rip.c */
-void rip_update_rte(struct rip_proto *p, ip_addr *prefix, int pxlen, struct rip_rte *new);
-void rip_withdraw_rte(struct rip_proto *p, ip_addr *prefix, int pxlen, struct rip_neighbor *from);
+void rip_update_rte(struct rip_proto *p, net_addr *n, struct rip_rte *new);
+void rip_withdraw_rte(struct rip_proto *p, net_addr *n, struct rip_neighbor *from);
 struct rip_neighbor * rip_get_neighbor(struct rip_proto *p, ip_addr *a, struct rip_iface *ifa);
 void rip_update_bfd(struct rip_proto *p, struct rip_neighbor *n);
 void rip_show_interfaces(struct proto *P, char *iff);

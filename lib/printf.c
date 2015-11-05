@@ -236,6 +236,12 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 		case 'M':
 			s = strerror(va_arg(args, int));
 			goto str;
+		case 'N':
+			if (field_width == 1)
+				field_width = STD_ADDRESS_P_LENGTH; /* XXXX */
+			net_format(va_arg(args, net_addr *), ipbuf, sizeof(ipbuf));
+			s = ipbuf;
+			goto str;
 		case 's':
 			s = va_arg(args, char *);
 			if (!s)

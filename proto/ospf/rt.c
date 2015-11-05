@@ -21,15 +21,6 @@ static inline void reset_ri(ort *ort)
   bzero(&ort->n, sizeof(orta));
 }
 
-void
-ospf_rt_initort(struct fib_node *fn)
-{
-  ort *ri = (ort *) fn;
-  reset_ri(ri);
-  ri->old_rta = NULL;
-  ri->fn.flags = 0;
-}
-
 static inline int
 nh_is_vlink(struct mpnh *nhs)
 {
@@ -334,9 +325,9 @@ ort_merge_ext(struct ospf_proto *p, ort *o, const orta *new)
 
 
 static inline void
-ri_install_net(struct ospf_proto *p, ip_addr prefix, int pxlen, const orta *new)
+ri_install_net(struct ospf_proto *p, net_addr *net, const orta *new)
 {
-  ort *old = (ort *) fib_get(&p->rtf, &prefix, pxlen);
+  ort *old = fib_get(&p->rtf, net);
   int cmp = orta_compare(p, new, &old->n);
 
   if (cmp > 0)
@@ -348,8 +339,8 @@ ri_install_net(struct ospf_proto *p, ip_addr prefix, int pxlen, const orta *new)
 static inline void
 ri_install_rt(struct ospf_area *oa, u32 rid, const orta *new)
 {
-  ip_addr addr = ipa_from_rid(rid);
-  ort *old = (ort *) fib_get(&oa->rtr, &addr, MAX_PREFIX_LENGTH);
+  net_addr_ip4 nrid = net_from_rid(rid);
+  ort *old = fib_get(&oa->rtr, (net_addr *) &nrid);
   int cmp = orta_compare(oa->po, new, &old->n);
 
   if (cmp > 0)
@@ -359,17 +350,19 @@ ri_install_rt(struct ospf_area *oa, u32 rid, const orta *new)
 }
 
 static inline void
-ri_install_asbr(struct ospf_proto *p, ip_addr *addr, const orta *new)
+ri_install_asbr(struct ospf_proto *p, u32 rid, const orta *new)
 {
-  ort *old = (ort *) fib_get(&p->backbone->rtr, addr, MAX_PREFIX_LENGTH);
+  net_addr_ip4 nrid = net_from_rid(rid);
+  ort *old = fib_get(&p->backbone->rtr, (net_addr *) &nrid);
+
   if (orta_compare_asbr(p, new, &old->n) > 0)
     ort_replace(old, new);
 }
 
 static inline void
-ri_install_ext(struct ospf_proto *p, ip_addr prefix, int pxlen, const orta *new)
+ri_install_ext(struct ospf_proto *p, net_addr *net, const orta *new)
 {
-  ort *old = (ort *) fib_get(&p->rtf, &prefix, pxlen);
+  ort *old = fib_get(&p->rtf, net);
   int cmp = orta_compare_ext(p, new, &old->n);
 
   if (cmp > 0)
@@ -404,7 +397,7 @@ px_pos_to_ifa(struct ospf_area *oa, int pos)
 
 
 static void
-add_network(struct ospf_area *oa, ip_addr px, int pxlen, int metric, struct top_hash_entry *en, int pos)
+add_network(struct ospf_area *oa, net_addr *net, int metric, struct top_hash_entry *en, int pos)
 {
   struct ospf_proto *p = oa->po;
 
@@ -419,7 +412,7 @@ add_network(struct ospf_area *oa, ip_addr px, int pxlen, int metric, struct top_
     .nhs = en->nhs
   };
 
-  if (pxlen < 0 || pxlen > MAX_PREFIX_LENGTH)
+  if (net->pxlen > MAX_PREFIX_LENGTH)
   {
     log(L_WARN "%s: Invalid prefix in LSA (Type: %04x, Id: %R, Rt: %R)",
 	p->p.name, en->lsa_type, en->lsa.id, en->lsa.rt);
@@ -441,7 +434,7 @@ add_network(struct ospf_area *oa, ip_addr px, int pxlen, int metric, struct top_
     nf.nhs = ifa ? new_nexthop(p, IPA_NONE, ifa->iface, ifa->ecmp_weight) : NULL;
   }
 
-  ri_install_net(p, px, pxlen, &nf);
+  ri_install_net(p, net, &nf);
 }
 
 
@@ -452,8 +445,7 @@ spfa_process_rt(struct ospf_proto *p, struct ospf_area *oa, struct top_hash_entr
   struct ospf_lsa_rt *rt = act->lsa_body;
   struct ospf_lsa_rt_walk rtl;
   struct top_hash_entry *tmp;
-  ip_addr prefix;
-  int pxlen, i;
+  int i;
 
   if (rt->options & OPT_RT_V)
     oa->trcap = 1;
@@ -503,9 +495,10 @@ spfa_process_rt(struct ospf_proto *p, struct ospf_area *oa, struct top_hash_entr
        * the same result by handing them here because add_network()
        * will keep the best (not the first) found route.
        */
-      prefix = ipa_from_u32(rtl.id & rtl.data);
-      pxlen = u32_masklen(rtl.data);
-      add_network(oa, prefix, pxlen, act->dist + rtl.metric, act, i);
+      net_addr_ip4 net =
+	NET_ADDR_IP4(ip4_from_u32(rtl.id & rtl.data), u32_masklen(rtl.data));
+
+      add_network(oa, (net_addr *) &net, act->dist + rtl.metric, act, i);
       break;
 
     case LSART_NET:
@@ -527,14 +520,14 @@ spfa_process_net(struct ospf_proto *p, struct ospf_area *oa, struct top_hash_ent
 {
   struct ospf_lsa_net *ln = act->lsa_body;
   struct top_hash_entry *tmp;
-  ip_addr prefix;
-  int pxlen, i, cnt;
+  int i, cnt;
 
   if (ospf_is_v2(p))
   {
-    prefix = ipa_from_u32(act->lsa.id & ln->optx);
-    pxlen = u32_masklen(ln->optx);
-    add_network(oa, prefix, pxlen, act->dist, act, -1);
+    net_addr_ip4 net =
+      NET_ADDR_IP4(ip4_from_u32(act->lsa.id & ln->optx), u32_masklen(ln->optx));
+
+    add_network(oa, (net_addr *) &net, act->dist, act, -1);
   }
 
   cnt = lsa_net_count(&act->lsa);
@@ -550,10 +543,6 @@ spfa_process_prefixes(struct ospf_proto *p, struct ospf_area *oa)
 {
   struct top_hash_entry *en, *src;
   struct ospf_lsa_prefix *px;
-  ip_addr pxa;
-  int pxlen;
-  u8 pxopts;
-  u16 metric;
   u32 *buf;
   int i;
 
@@ -588,18 +577,22 @@ spfa_process_prefixes(struct ospf_proto *p, struct ospf_area *oa)
 
     buf = px->rest;
     for (i = 0; i < px->pxcount; i++)
-      {
-	buf = lsa_get_ipv6_prefix(buf, &pxa, &pxlen, &pxopts, &metric);
+    {
+      net_addr_ip6 net;
+      u8 pxopts;
+      u16 metric;
 
-	if (pxopts & OPT_PX_NU)
-	  continue;
+      buf = ospf_get_ipv6_prefix(buf, (net_addr *) &net, &pxopts, &metric);
 
-	/* Store the first global address to use it later as a vlink endpoint */
-	if ((pxopts & OPT_PX_LA) && ipa_zero(src->lb))
-	  src->lb = pxa;
+      if (pxopts & OPT_PX_NU)
+	continue;
 
-	add_network(oa, pxa, pxlen, src->dist + metric, src, i);
-      }
+      /* Store the first global address to use it later as a vlink endpoint */
+      if ((pxopts & OPT_PX_LA) && ipa_zero(src->lb))
+	src->lb = ipa_from_ip6(net.prefix);
+
+      add_network(oa, (net_addr *) &net, src->dist + metric, src, i);
+    }
   }
 }
 
@@ -742,12 +735,11 @@ ospf_rt_sum(struct ospf_area *oa)
 {
   struct ospf_proto *p = oa->po;
   struct top_hash_entry *en;
-  ip_addr ip, abrip;
+  net_addr net;
   u32 dst_rid, metric, options;
   ort *abr;
-  int pxlen = -1, type = -1;
+  int type;
   u8 pxopts;
-
 
   OSPF_TRACE(D_EVENTS, "Starting routing table calculation for inter-area (area %R)", oa->areaid);
 
@@ -771,12 +763,12 @@ ospf_rt_sum(struct ospf_area *oa)
 
     if (en->lsa_type == LSA_T_SUM_NET)
     {
-      lsa_parse_sum_net(en, ospf_is_v2(p), &ip, &pxlen, &pxopts, &metric);
+      lsa_parse_sum_net(en, ospf_is_v2(p), &net, &pxopts, &metric);
 
       if (pxopts & OPT_PX_NU)
 	continue;
 
-      if (pxlen < 0 || pxlen > MAX_PREFIX_LENGTH)
+      if (net.pxlen > MAX_PREFIX_LENGTH)
       {
 	log(L_WARN "%s: Invalid prefix in LSA (Type: %04x, Id: %R, Rt: %R)",
 	    p->p.name, en->lsa_type, en->lsa.id, en->lsa.rt);
@@ -803,8 +795,8 @@ ospf_rt_sum(struct ospf_area *oa)
       continue;
 
     /* 16.2. (4) */
-    abrip = ipa_from_rid(en->lsa.rt);
-    abr = (ort *) fib_find(&oa->rtr, &abrip, MAX_PREFIX_LENGTH);
+    net_addr_ip4 nrid = net_from_rid(en->lsa.rt);
+    abr = fib_find(&oa->rtr, (net_addr *) &nrid);
     if (!abr || !abr->n.type)
       continue;
 
@@ -828,7 +820,7 @@ ospf_rt_sum(struct ospf_area *oa)
     };
 
     if (type == ORT_NET)
-      ri_install_net(p, ip, pxlen, &nf);
+      ri_install_net(p, &net, &nf);
     else
       ri_install_rt(oa, dst_rid, &nf);
   }
@@ -842,11 +834,7 @@ ospf_rt_sum_tr(struct ospf_area *oa)
   struct ospf_area *bb = p->backbone;
   struct top_hash_entry *en;
   ort *re, *abr;
-  ip_addr ip, abrip;
-  u32 dst_rid, metric, options;
-  int pxlen;
-  u8 pxopts;
-
+  u32 metric;
 
   if (!bb)
     return;
@@ -869,26 +857,31 @@ ospf_rt_sum_tr(struct ospf_area *oa)
 
     if (en->lsa_type == LSA_T_SUM_NET)
     {
-      lsa_parse_sum_net(en, ospf_is_v2(p), &ip, &pxlen, &pxopts, &metric);
+      net_addr net;
+      u8 pxopts;
+
+      lsa_parse_sum_net(en, ospf_is_v2(p), &net, &pxopts, &metric);
 
       if (pxopts & OPT_PX_NU)
 	continue;
 
-      if (pxlen < 0 || pxlen > MAX_PREFIX_LENGTH)
+      if (net.pxlen > MAX_PREFIX_LENGTH)
       {
 	log(L_WARN "%s: Invalid prefix in LSA (Type: %04x, Id: %R, Rt: %R)",
 	    p->p.name, en->lsa_type, en->lsa.id, en->lsa.rt);
 	continue;
       }
 
-      re = fib_find(&p->rtf, &ip, pxlen);
+      re = fib_find(&p->rtf, &net);
     }
     else // en->lsa_type == LSA_T_SUM_RT
     {
+      u32 dst_rid, options;
+
       lsa_parse_sum_rt(en, ospf_is_v2(p), &dst_rid, &metric, &options);
 
-      ip = ipa_from_rid(dst_rid);
-      re = fib_find(&bb->rtr, &ip, MAX_PREFIX_LENGTH);
+      net_addr_ip4 nrid = net_from_rid(dst_rid);
+      re = fib_find(&bb->rtr, (net_addr *) &nrid);
     }
 
     /* 16.3 (1b) */
@@ -906,8 +899,8 @@ ospf_rt_sum_tr(struct ospf_area *oa)
       continue;
 
     /* 16.3. (4) */
-    abrip = ipa_from_rid(en->lsa.rt);
-    abr = fib_find(&oa->rtr, &abrip, MAX_PREFIX_LENGTH);
+    net_addr_ip4 nrid = net_from_rid(en->lsa.rt);
+    abr = fib_find(&oa->rtr, (net_addr *) &nrid);
     if (!abr || !abr->n.type)
       continue;
 
@@ -998,7 +991,7 @@ decide_sum_lsa(struct ospf_area *oa, ort *nf, int dest)
     return 1;
 
   struct area_net *anet = (struct area_net *)
-    fib_route(&nf->n.oa->net_fib, nf->fn.prefix, nf->fn.pxlen);
+    fib_route(&nf->n.oa->net_fib, nf->fn.addr);
 
   /* Condensed area network found */
   if (anet)
@@ -1017,13 +1010,13 @@ check_sum_net_lsa(struct ospf_proto *p, ort *nf)
   if (nf->area_net)
   {
     /* It is a default route for stub areas, handled entirely in ospf_rt_abr() */
-    if (nf->fn.pxlen == 0)
+    if (nf->fn.addr->pxlen == 0)
       return;
 
     /* Find that area network */
     WALK_LIST(anet_oa, p->area_list)
     {
-      anet = (struct area_net *) fib_find(&anet_oa->net_fib, &nf->fn.prefix, nf->fn.pxlen);
+      anet = fib_find(&anet_oa->net_fib, nf->fn.addr);
       if (anet)
 	break;
     }
@@ -1042,10 +1035,12 @@ check_sum_net_lsa(struct ospf_proto *p, ort *nf)
 static inline void
 check_sum_rt_lsa(struct ospf_proto *p, ort *nf)
 {
+  u32 rid = rid_from_net(nf->fn.addr);
+
   struct ospf_area *oa;
   WALK_LIST(oa, p->area_list)
     if (decide_sum_lsa(oa, nf, ORT_ROUTER))
-      ospf_originate_sum_rt_lsa(p, oa, nf, nf->n.metric1, nf->n.options);
+      ospf_originate_sum_rt_lsa(p, oa, rid, nf->n.metric1, nf->n.options);
 }
 
 static inline int
@@ -1058,7 +1053,7 @@ decide_nssa_lsa(struct ospf_proto *p, ort *nf, struct ospf_lsa_ext_local *rt)
     return 0;
 
   /* Condensed area network found */
-  if (fib_route(&oa->enet_fib, nf->fn.prefix, nf->fn.pxlen))
+  if (fib_route(&oa->enet_fib, nf->fn.addr))
     return 0;
 
   if (!en || (en->lsa_type != LSA_T_NSSA))
@@ -1093,7 +1088,7 @@ check_nssa_lsa(struct ospf_proto *p, ort *nf)
     /* Find that area network */
     WALK_LIST(oa, p->area_list)
     {
-      anet = (struct area_net *) fib_find(&oa->enet_fib, &nf->fn.prefix, nf->fn.pxlen);
+      anet = fib_find(&oa->enet_fib, nf->fn.addr);
       if (anet)
 	break;
     }
@@ -1164,6 +1159,7 @@ ospf_rt_abr1(struct ospf_proto *p)
 {
   struct area_net *anet;
   ort *nf, *default_nf;
+  net_addr default_net;
 
   /* RFC 2328 G.3 - incomplete resolution of virtual next hops - routers */
   FIB_WALK(&p->backbone->rtr, nftmp)
@@ -1189,7 +1185,7 @@ ospf_rt_abr1(struct ospf_proto *p)
     /* Compute condensed area networks */
     if (nf->n.type == RTS_OSPF)
     {
-      anet = (struct area_net *) fib_route(&nf->n.oa->net_fib, nf->fn.prefix, nf->fn.pxlen);
+      anet = (struct area_net *) fib_route(&nf->n.oa->net_fib, nf->fn.addr);
       if (anet)
       {
 	if (!anet->active)
@@ -1197,7 +1193,7 @@ ospf_rt_abr1(struct ospf_proto *p)
 	  anet->active = 1;
 
 	  /* Get a RT entry and mark it to know that it is an area network */
-	  ort *nfi = (ort *) fib_get(&p->rtf, &anet->fn.prefix, anet->fn.pxlen);
+	  ort *nfi = fib_get(&p->rtf, anet->fn.addr);
 	  nfi->area_net = 1;
 
 	  /* 16.2. (3) */
@@ -1212,8 +1208,13 @@ ospf_rt_abr1(struct ospf_proto *p)
   }
   FIB_WALK_END;
 
-  ip_addr addr = IPA_NONE;
-  default_nf = (ort *) fib_get(&p->rtf, &addr, 0);
+
+  if (ospf_is_v2(p))
+    net_fill_ip4(&default_net, IP4_NONE, 0);
+  else
+    net_fill_ip6(&default_net, IP6_NONE, 0);
+
+  default_nf = fib_get(&p->rtf, &default_net);
   default_nf->area_net = 1;
 
   struct ospf_area *oa;
@@ -1244,7 +1245,7 @@ ospf_rt_abr1(struct ospf_proto *p)
       {
 	nf = (ort *) nftmp;
 	if (nf->n.options & ORTA_ASBR)
-	  ri_install_asbr(p, &nf->fn.prefix, &nf->n);
+	  ri_install_asbr(p, rid_from_net(nf->fn.addr), &nf->n);
       }
       FIB_WALK_END;
     }
@@ -1300,7 +1301,7 @@ ospf_rt_abr2(struct ospf_proto *p)
 	if (!nf->n.type || !(nf->n.options & ORTA_ABR))
 	  continue;
 
-	nf2 = fib_find(&bb->rtr, &nf->fn.prefix, MAX_PREFIX_LENGTH);
+	nf2 = fib_find(&bb->rtr, nf->fn.addr);
 	if (!nf2 || !nf2->n.type || !(nf2->n.options & ORTA_ABR))
 	  continue;
 
@@ -1346,7 +1347,7 @@ ospf_rt_abr2(struct ospf_proto *p)
     if (rt_is_nssa(nf) && (nf->n.options & ORTA_PROP))
     {
       struct area_net *anet = (struct area_net *)
-	fib_route(&nf->n.oa->enet_fib, nf->fn.prefix, nf->fn.pxlen);
+	fib_route(&nf->n.oa->enet_fib, nf->fn.addr);
 
       if (anet)
       {
@@ -1355,7 +1356,7 @@ ospf_rt_abr2(struct ospf_proto *p)
 	  anet->active = 1;
 
 	  /* Get a RT entry and mark it to know that it is an area network */
-	  nf2 = (ort *) fib_get(&p->rtf, &anet->fn.prefix, anet->fn.pxlen);
+	  nf2 = fib_get(&p->rtf, anet->fn.addr);
 	  nf2->area_net = 1;
 	}
 
@@ -1383,21 +1384,56 @@ ospf_rt_abr2(struct ospf_proto *p)
 
 /* Like fib_route(), but ignores dummy rt entries */
 static void *
-ospf_fib_route(struct fib *f, ip_addr a, int len)
+ospf_fib_route_ip4(struct fib *f, ip4_addr a, int len)
 {
-  ip_addr a0;
+  net_addr_ip4 net = NET_ADDR_IP4(a, len);
   ort *nf;
 
-  while (len >= 0)
+loop:
+  nf = fib_find(f, (net_addr *) &net);
+  if (nf && nf->n.type)
+    return nf;
+
+  if (net.pxlen > 0)
   {
-    a0 = ipa_and(a, ipa_mkmask(len));
-    nf = fib_find(f, &a0, len);
-    if (nf && nf->n.type)
-      return nf;
-    len--;
+    net.pxlen--;
+    ip4_clrbit(&net.prefix, net.pxlen);
+    goto loop;
   }
+
   return NULL;
 }
+
+static void *
+ospf_fib_route_ip6(struct fib *f, ip6_addr a, int len)
+{
+  net_addr_ip6 net = NET_ADDR_IP6(a, len);
+  ort *nf;
+
+loop:
+  nf = fib_find(f, (net_addr *) &net);
+  if (nf && nf->n.type)
+    return nf;
+
+  if (net.pxlen > 0)
+  {
+    net.pxlen--;
+    ip6_clrbit(&net.prefix, net.pxlen);
+    goto loop;
+  }
+
+  return NULL;
+}
+
+static void *
+ospf_fib_route(struct fib *f, ip_addr a)
+{
+  if (ospf_is_v2(p))
+    return ospf_fib_route_ip4(f, ipa_to_ip4(a), IP4_MAX_PREFIX_LENGTH);
+  else
+    return ospf_fib_route_ip6(f, ipa_to_ip6(a), IP6_MAX_PREFIX_LENGTH);
+}
+
 
 /* RFC 2328 16.4. calculating external routes */
 static void
@@ -1407,7 +1443,6 @@ ospf_ext_spf(struct ospf_proto *p)
   struct ospf_lsa_ext_local rt;
   ort *nf1, *nf2;
   orta nfa = {};
-  ip_addr rtid;
   u32 br_metric;
   struct ospf_area *atmp;
 
@@ -1437,7 +1472,7 @@ ospf_ext_spf(struct ospf_proto *p)
     if (rt.pxopts & OPT_PX_NU)
       continue;
 
-    if (rt.pxlen < 0 || rt.pxlen > MAX_PREFIX_LENGTH)
+    if (rt.net.pxlen > MAX_PREFIX_LENGTH)
     {
       log(L_WARN "%s: Invalid prefix in LSA (Type: %04x, Id: %R, Rt: %R)",
 	  p->p.name, en->lsa_type, en->lsa.id, en->lsa.rt);
@@ -1457,8 +1492,8 @@ ospf_ext_spf(struct ospf_proto *p)
     if (!atmp)
       continue;			/* Should not happen */
 
-    rtid = ipa_from_rid(en->lsa.rt);
-    nf1 = fib_find(&atmp->rtr, &rtid, MAX_PREFIX_LENGTH);
+    net_addr_ip4 nrid = net_from_rid(en->lsa.rt);
+    nf1 = fib_find(&atmp->rtr, (net_addr *) &nrid);
 
     if (!nf1 || !nf1->n.type)
       continue;			/* No AS boundary router found */
@@ -1468,7 +1503,7 @@ ospf_ext_spf(struct ospf_proto *p)
 
     /* 16.4. (3) NSSA - special rule for default routes */
     /* ABR should use default only if P-bit is set and summaries are active */
-    if ((en->lsa_type == LSA_T_NSSA) && ipa_zero(rt.ip) && (rt.pxlen == 0) &&
+    if ((en->lsa_type == LSA_T_NSSA) && (rt.net.pxlen == 0) &&
 	(p->areano > 1) && !(rt.propagate && atmp->ac->summary))
       continue;
 
@@ -1480,7 +1515,7 @@ ospf_ext_spf(struct ospf_proto *p)
     }
     else
     {
-      nf2 = ospf_fib_route(&p->rtf, rt.fwaddr, MAX_PREFIX_LENGTH);
+      nf2 = ospf_fib_route(&p->rtf, rt.fwaddr);
       if (!nf2)
 	continue;
 
@@ -1542,7 +1577,7 @@ ospf_ext_spf(struct ospf_proto *p)
     nfa.oa = atmp; /* undefined in RFC 2328 */
     nfa.en = en; /* store LSA for later (NSSA processing) */
 
-    ri_install_ext(p, rt.ip, rt.pxlen, &nfa);
+    ri_install_ext(p, &rt.net, &nfa);
   }
 }
 
@@ -1961,7 +1996,7 @@ again1:
 
       if (reload || ort_changed(nf, &a0))
       {
-	net *ne = net_get(p->p.table, nf->fn.prefix, nf->fn.pxlen);
+	net *ne = net_get(p->p.table, nf->fn.addr);
 	rta *a = rta_lookup(&a0);
 	rte *e = rte_get_temp(a);
 
@@ -1975,8 +2010,8 @@ again1:
 	e->net = ne;
 	e->pref = p->p.preference;
 
-	DBG("Mod rte type %d - %I/%d via %I on iface %s, met %d\n",
-	    a0.source, nf->fn.prefix, nf->fn.pxlen, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
+	DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
+	    a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
 	rte_update(&p->p, ne, e);
       }
     }
@@ -1986,7 +2021,7 @@ again1:
       rta_free(nf->old_rta);
       nf->old_rta = NULL;
 
-      net *ne = net_get(p->p.table, nf->fn.prefix, nf->fn.pxlen);
+      net *ne = net_get(p->p.table, nf->fn.addr);
       rte_update(&p->p, ne, NULL);
     }
 

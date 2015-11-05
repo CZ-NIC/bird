@@ -22,7 +22,7 @@ ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type)
 
   pkt->version = ospf_get_version(p);
   pkt->type = h_type;
-  pkt->length = htons(ospf_pkt_maxsize(ifa));
+  pkt->length = htons(ospf_pkt_maxsize(p, ifa));
   pkt->routerid = htonl(p->router_id);
   pkt->areaid = htonl(ifa->oa->areaid);
   pkt->checksum = 0;
@@ -31,9 +31,9 @@ ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type)
 }
 
 uint
-ospf_pkt_maxsize(struct ospf_iface *ifa)
+ospf_pkt_maxsize(struct ospf_proto *p, struct ospf_iface *ifa)
 {
-  uint headers = SIZE_OF_IP_HEADER;
+  uint headers = ospf_is_v2(p) ? IP4_HEADER_LENGTH : IP6_HEADER_LENGTH;
 
   /* Relevant just for OSPFv2 */
   if (ifa->autype == OSPF_AUTH_CRYPT)
