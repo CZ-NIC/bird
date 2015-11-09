@@ -40,7 +40,7 @@ get_rtr_socket_ident(const struct rtr_socket *socket)
 {
   return socket->tr_socket->ident_fp(socket->tr_socket->socket);
 }
-#define RPKI_CACHE_TRACE(p, rtr_socket, msg, args...) RPKI_TRACE(p, "%s " msg, get_rtr_socket_ident(rtr_socket), ## args);
+#define RPKI_CACHE_TRACE(level, p, rtr_socket, msg, args...) RPKI_TRACE(level, p, "%s " msg, get_rtr_socket_ident(rtr_socket), ## args);
 #define RPKI_CACHE_ERROR(p, rtr_socket, msg, args...) RPKI_ERROR(p, "%s " msg, get_rtr_socket_ident(rtr_socket), ## args);
 
 struct rpki_entry {
@@ -241,32 +241,38 @@ status_update_rtrlib_thread_hook(const struct rtr_mgr_group *group, enum rtr_mgr
     case RTR_SHUTDOWN:
       if (mgr_status == RTR_MGR_CLOSED)
       {
-	RPKI_CACHE_TRACE(p, socket, "%s", mgr_str_status_descript[mgr_status]);
+	RPKI_CACHE_TRACE(D_EVENTS, p, socket, "The group of cache servers is closed");
+      }
+      else
+      {
+	RPKI_CACHE_TRACE(D_EVENTS, p, socket, "[%s] %s", rtr_state_to_str_x(socket->state), mgr_str_status_descript[mgr_status]);
       }
       break;
     case RTR_ERROR_FATAL:
     case RTR_ERROR_TRANSPORT:
     case RTR_ERROR_NO_DATA_AVAIL: /** No validation records are available on the RTR server. */
     case RTR_ERROR_NO_INCR_UPDATE_AVAIL: /** Server was unable to answer the last serial or reset query. */
-      RPKI_CACHE_ERROR(p, socket, "%s", rtr_socket_states_descript[socket->state]);
+      RPKI_CACHE_TRACE(D_EVENTS, p, socket, "[%s] %s", rtr_state_to_str_x(socket->state), rtr_socket_states_descript[socket->state]);
       break;
     case RTR_FAST_RECONNECT:
     case RTR_SYNC:
     case RTR_RESET:
     case RTR_CONNECTING:
-      RPKI_CACHE_TRACE(p, socket, "[%s] %s", rtr_state_to_str_x(socket->state), rtr_socket_states_descript[socket->state]);
+      RPKI_CACHE_TRACE(D_EVENTS, p, socket, "[%s] %s", rtr_state_to_str_x(socket->state), rtr_socket_states_descript[socket->state]);
       if (mgr_status == RTR_MGR_CONNECTING || mgr_status == RTR_MGR_ERROR)
       {
 	pipe_kick_data(p->status_update.write->fd, &((int){PS_START}), sizeof(int));
       }
       break;
     case RTR_ESTABLISHED:
-      RPKI_CACHE_TRACE(p, socket, "%s", mgr_str_status_descript[mgr_status]);
+      RPKI_CACHE_TRACE(D_EVENTS, p, socket, "[%s] %s", rtr_state_to_str_x(socket->state), mgr_str_status_descript[mgr_status]);
       if (mgr_status == RTR_MGR_ESTABLISHED)
       {
 	pipe_kick_data(p->status_update.write->fd, &((int){PS_UP}), sizeof(int));
       }
       break;
+    default:
+      bug("Uncaught socket->state: %d", socket->state);
   }
 }
 
@@ -290,11 +296,11 @@ log_skipped_entry(struct rpki_proto *p, const struct pfx_record *rec, const bool
 
   if (added)
   {
-    RPKI_CACHE_TRACE(p, rec->socket, RPKI_LOG_SKIP_FMT(RPKI_LOG_ADD), ip_buf, rec->min_len, rec->max_len, rec->asn);
+    RPKI_CACHE_TRACE(D_ROUTES, p, rec->socket, RPKI_LOG_SKIP_FMT(RPKI_LOG_ADD), ip_buf, rec->min_len, rec->max_len, rec->asn);
   }
   else
   {
-    RPKI_CACHE_TRACE(p, rec->socket, RPKI_LOG_SKIP_FMT(RPKI_LOG_DEL), ip_buf, rec->min_len, rec->max_len, rec->asn);
+    RPKI_CACHE_TRACE(D_ROUTES, p, rec->socket, RPKI_LOG_SKIP_FMT(RPKI_LOG_DEL), ip_buf, rec->min_len, rec->max_len, rec->asn);
   }
 }
 
@@ -308,6 +314,7 @@ get_rpki_proto_by_rtr_socket(const struct rtr_socket *socket)
   unsigned int i, j;
 
   lock_rpki_proto_list();
+  /* TODO: Add lock for config->mutex -- It is impossible... */
   WALK_LIST(p_not_skipped_back, rpki_proto_list)
   {
     struct rpki_proto *p = SKIP_BACK(struct rpki_proto, rpki_node, p_not_skipped_back);
@@ -393,7 +400,7 @@ rpki_init(struct proto_config *C)
   struct rpki_proto *p = (struct rpki_proto *) P;
   p->cf = (struct rpki_config *) C;
 
-  RPKI_TRACE(p, "------------- rpki_init -------------");
+  RPKI_TRACE(D_EVENTS, p, "------------- rpki_init -------------");
 
   return P;
 }
@@ -424,7 +431,7 @@ status_update_bird_thread_hook(struct birdsock *sk, int size)
       case PS_UP:
 	if (proto_state != p->p.proto_state)
 	{
-	  RPKI_TRACE(p, "Change protokol state %s -> %s", p_states[p->p.proto_state], p_states[proto_state]);
+	  RPKI_TRACE(D_EVENTS, p, "Change protokol state %s -> %s", p_states[p->p.proto_state], p_states[proto_state]);
 	  proto_notify_state(&p->p, proto_state);
 	}
 	break;

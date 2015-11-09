@@ -26,14 +26,14 @@
 
 #define RPKI_DEFAULT_CACHE_PREFERENCE 		0xff /* the least preference */
 
-#define RPKI_LOG(log_level, p, msg, args...) 				\
+#define RPKI_LOG(log_level, rpki, msg, args...) 				\
   do { 									\
-    log(log_level "%s: " msg, p->p.name , ## args); 			\
+    log(log_level "%s: " msg, (rpki)->p.name , ## args); 			\
   } while(0)
-#define RPKI_TRACE(p, msg, args...) 					\
+#define RPKI_TRACE(level,rpki,msg,args...) 					\
   do {									\
-    if (p->p.debug)							\
-      RPKI_LOG(L_TRACE, p, msg, ## args);				\
+    if ((rpki)->p.debug & level)							\
+      RPKI_LOG(L_TRACE, rpki, msg, ## args);				\
   } while(0)
 #define RPKI_WARN(p, msg, args...) RPKI_LOG(L_WARN, p, msg, ## args);
 #define RPKI_ERROR(p, msg, args...) RPKI_LOG(L_ERR, p, msg, ## args);
