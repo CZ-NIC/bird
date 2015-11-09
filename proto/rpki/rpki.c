@@ -336,15 +336,6 @@ get_rpki_proto_by_rtr_socket(const struct rtr_socket *socket)
 }
 
 static void
-send_data_to_main_thread(struct rpki_proto *p, struct rpki_entry *e)
-{
-  rpki_lock_notify(p);
-  add_tail(&p->roa_update_list, &e->n);
-  rpki_unlock_notify(p);
-  pipe_kick(p->roa_update.write->fd);
-}
-
-static void
 roa_update_rtrlib_thread_hook(void *pfx_table, const struct pfx_record rec, const bool added)
 {
   struct rpki_proto *p = get_rpki_proto_by_rtr_socket(rec.socket);
@@ -360,7 +351,6 @@ roa_update_rtrlib_thread_hook(void *pfx_table, const struct pfx_record rec, cons
     log_skipped_entry(p, &rec, added);
     return;
   }
-
   ip_addr ip = ip6_build(rec.prefix.u.addr6.addr[0], rec.prefix.u.addr6.addr[1], rec.prefix.u.addr6.addr[2], rec.prefix.u.addr6.addr[3]);
 #else
   if (rec.prefix.ver != RTRLIB_IPV4)
@@ -368,29 +358,31 @@ roa_update_rtrlib_thread_hook(void *pfx_table, const struct pfx_record rec, cons
     log_skipped_entry(p, &rec, added);
     return;
   }
-
   ip_addr ip = ip4_from_u32(rec.prefix.u.addr4.addr);
 #endif
 
+  if (added)
+  {
+    RPKI_CACHE_TRACE(p, rec.socket, RPKI_LOG_FMT(RPKI_LOG_ADD), ip, rec.min_len, rec.max_len, rec.asn);
+  }
+  else
+  {
+    RPKI_CACHE_TRACE(p, rec.socket, RPKI_LOG_FMT(RPKI_LOG_DEL), ip, rec.min_len, rec.max_len, rec.asn);
+  }
+
   /* TODO: Make more effective solution with thread-safe recycle-able pool/queue of rpki_entry structures
    *       without endless allocations and frees */
-  struct rpki_entry *e = mb_allocz(p->p.pool, sizeof(struct rpki_entry));
+  rpki_lock_notify(p);
+  struct rpki_entry *e = sl_alloc(p->roa_update_slab);
   e->added = added;
   e->asn = rec.asn;
   e->ip = ip;
   e->pxlen = rec.min_len;
   e->maxlen = rec.max_len;
 
-  if (e->added)
-  {
-    RPKI_CACHE_TRACE(p, rec.socket, RPKI_LOG_FMT(RPKI_LOG_ADD), e->ip, e->pxlen, e->maxlen, e->asn);
-  }
-  else
-  {
-    RPKI_CACHE_TRACE(p, rec.socket, RPKI_LOG_FMT(RPKI_LOG_DEL), e->ip, e->pxlen, e->maxlen, e->asn);
-  }
-
-  send_data_to_main_thread(p, e);
+  add_tail(&p->roa_update_list, &e->n);
+  rpki_unlock_notify(p);
+  pipe_kick(p->roa_update.write->fd);
 }
 
 static struct proto *
@@ -449,28 +441,22 @@ roa_update_bird_thread_hook(struct birdsock *sk, int size)
 {
   struct rpki_proto *p = sk->data;
   struct rpki_entry *e;
-  list tmp_list;
 
   pipe_drain(sk->fd);
 
   rpki_lock_notify(p);
-  init_list(&tmp_list);
-  add_tail_list(&tmp_list, &p->roa_update_list);
-  init_list(&p->roa_update_list);
-  rpki_unlock_notify(p);
-
-  WALK_LIST_FIRST(e, tmp_list)
+  WALK_LIST_FIRST(e, p->roa_update_list)
   {
-    rpki_lock_notify(p);
     rem2_node(&e->n);
-    rpki_unlock_notify(p);
-
     if (e->added)
       roa_add_item(p->cf->roa_table_cf->table, e->ip, e->pxlen, e->maxlen, e->asn, ROA_SRC_RPKI);
     else
       roa_delete_item(p->cf->roa_table_cf->table, e->ip, e->pxlen, e->maxlen, e->asn, ROA_SRC_RPKI);
-    mb_free(e);
+    sl_free(p->roa_update_slab, e);
   }
+
+  init_list(&p->roa_update_list);
+  rpki_unlock_notify(p);
 
   return 0;
 }
@@ -689,6 +675,7 @@ rpki_start(struct proto *P)
 
   create_pipe_pair(p, &p->roa_update, roa_update_bird_thread_hook);
   init_list(&p->roa_update_list);
+  p->roa_update_slab = sl_new(p->p.pool, sizeof(struct rpki_entry));
   pthread_mutex_init(&p->roa_update_lock, NULL);
 
   lock_rpki_proto_list();
@@ -740,6 +727,9 @@ rpki_shutdown(struct proto *P)
   rem2_node(&p->rpki_node);
   unlock_rpki_proto_list();
 
+  rpki_lock_notify(p);
+  rfree(p->roa_update_slab);
+  rpki_unlock_notify(p);
   pthread_mutex_destroy(&p->roa_update_lock);
 
   return PS_DOWN;

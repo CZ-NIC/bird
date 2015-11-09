@@ -16,6 +16,7 @@
 #include "nest/bird.h"
 #include "nest/protocol.h"
 #include "lib/socket.h"
+#include "lib/resource.h"
 #include "proto/rpki/rtrlib-mockup.h"
 
 
@@ -77,6 +78,7 @@ struct rpki_proto {
   struct rtr_mgr_config *rtr_conf;
 
   struct rpki_rw_sk_pair roa_update;
+  slab *roa_update_slab;
   list roa_update_list;
   pthread_mutex_t roa_update_lock;
   struct rpki_rw_sk_pair status_update;
