@@ -17,7 +17,7 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(KERNEL, PERSIST, SCAN, TIME, LEARN, DEVICE, ROUTES, GRACEFUL, RESTART, KRT_SOURCE, KRT_METRIC)
+CF_KEYWORDS(KERNEL, PERSIST, SCAN, TIME, LEARN, DEVICE, ROUTES, GRACEFUL, RESTART, KRT_SOURCE, KRT_METRIC, MERGE, PATHS)
 
 CF_GRAMMAR
 
@@ -47,6 +47,8 @@ kern_item:
    }
  | DEVICE ROUTES bool { THIS_KRT->devroutes = $3; }
  | GRACEFUL RESTART bool { THIS_KRT->graceful_restart = $3; }
+ | MERGE PATHS bool { THIS_KRT->merge_paths = $3 ? KRT_DEFAULT_ECMP_LIMIT : 0; }
+ | MERGE PATHS bool LIMIT expr { THIS_KRT->merge_paths = $3 ? $5 : 0; if (($5 <= 0) || ($5 > 255)) cf_error("Merge paths limit must be in range 1-255"); }
  ;
 
 /* Kernel interface protocol */

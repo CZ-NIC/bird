@@ -569,6 +569,7 @@ bgp_send_open(struct bgp_conn *conn)
   conn->peer_gr_time = 0;
   conn->peer_gr_flags = 0;
   conn->peer_gr_aflags = 0;
+  conn->peer_ext_messages_support = 0;
 
   DBG("BGP: Sending open\n");
   conn->sk->rx_hook = bgp_rx;
@@ -733,8 +734,8 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   s->dport = p->cf->remote_port;
   s->iface = p->neigh ? p->neigh->iface : NULL;
   s->ttl = p->cf->ttl_security ? 255 : hops;
-  s->rbsize = BGP_RX_BUFFER_SIZE;
-  s->tbsize = BGP_TX_BUFFER_SIZE;
+  s->rbsize = p->cf->enable_extended_messages ? BGP_RX_BUFFER_EXT_SIZE : BGP_RX_BUFFER_SIZE;
+  s->tbsize = p->cf->enable_extended_messages ? BGP_TX_BUFFER_EXT_SIZE : BGP_TX_BUFFER_SIZE;
   s->tos = IP_PREC_INTERNET_CONTROL;
   s->password = p->cf->password;
   s->tx_hook = bgp_connected;
@@ -842,6 +843,13 @@ bgp_incoming_connection(sock *sk, int dummy UNUSED)
   if (p->cf->ttl_security)
     if (sk_set_min_ttl(sk, 256 - hops) < 0)
       goto err;
+
+  if (p->cf->enable_extended_messages)
+    {
+      sk->rbsize = BGP_RX_BUFFER_EXT_SIZE;
+      sk->tbsize = BGP_TX_BUFFER_EXT_SIZE;
+      sk_reallocate(sk);
+    }
 
   bgp_setup_conn(p, &p->incoming_conn);
   bgp_setup_sk(&p->incoming_conn, sk);
@@ -1243,6 +1251,7 @@ bgp_init(struct proto_config *C)
   P->feed_begin = bgp_feed_begin;
   P->feed_end = bgp_feed_end;
   P->rte_better = bgp_rte_better;
+  P->rte_mergable = bgp_rte_mergable;
   P->rte_recalculate = c->deterministic_med ? bgp_rte_recalculate : NULL;
 
   p->cf = c;
@@ -1517,21 +1526,23 @@ bgp_show_proto_info(struct proto *P)
   else if (P->proto_state == PS_UP)
     {
       cli_msg(-1006, "    Neighbor ID:      %R", p->remote_id);
-      cli_msg(-1006, "    Neighbor caps:   %s%s%s%s%s%s",
+      cli_msg(-1006, "    Neighbor caps:   %s%s%s%s%s%s%s",
 	      c->peer_refresh_support ? " refresh" : "",
 	      c->peer_enhanced_refresh_support ? " enhanced-refresh" : "",
 	      c->peer_gr_able ? " restart-able" : (c->peer_gr_aware ? " restart-aware" : ""),
 	      c->peer_as4_support ? " AS4" : "",
 	      (c->peer_add_path & ADD_PATH_RX) ? " add-path-rx" : "",
-	      (c->peer_add_path & ADD_PATH_TX) ? " add-path-tx" : "");
-      cli_msg(-1006, "    Session:          %s%s%s%s%s%s%s",
+	      (c->peer_add_path & ADD_PATH_TX) ? " add-path-tx" : "",
+	      c->peer_ext_messages_support ? " ext-messages" : "");
+      cli_msg(-1006, "    Session:          %s%s%s%s%s%s%s%s",
 	      p->is_internal ? "internal" : "external",
 	      p->cf->multihop ? " multihop" : "",
 	      p->rr_client ? " route-reflector" : "",
 	      p->rs_client ? " route-server" : "",
 	      p->as4_session ? " AS4" : "",
 	      p->add_path_rx ? " add-path-rx" : "",
-	      p->add_path_tx ? " add-path-tx" : "");
+	      p->add_path_tx ? " add-path-tx" : "",
+	      p->ext_messages ? " ext-messages" : "");
       cli_msg(-1006, "    Source address:   %I", p->source_addr);
       if (P->cf->in_limit)
 	cli_msg(-1006, "    Route limit:      %d/%d",

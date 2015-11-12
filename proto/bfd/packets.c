@@ -63,9 +63,13 @@ void
 bfd_send_ctl(struct bfd_proto *p, struct bfd_session *s, int final)
 {
   sock *sk = s->ifa->sk;
-  struct bfd_ctl_packet *pkt = (struct bfd_ctl_packet *) sk->tbuf;
+  struct bfd_ctl_packet *pkt;
   char fb[8];
 
+  if (!sk)
+    return;
+
+  pkt = (struct bfd_ctl_packet *) sk->tbuf;
   pkt->vdiag = bfd_pack_vdiag(1, s->loc_diag);
   pkt->flags = bfd_pack_flags(s->loc_state, 0);
   pkt->detect_mult = s->detect_mult;
@@ -139,7 +143,7 @@ bfd_rx_hook(sock *sk, int len)
     u8 ps = bfd_pkt_get_state(pkt);
     if (ps > BFD_STATE_DOWN)
       DROP("invalid init state", ps);
-      
+
     s = bfd_find_session_by_addr(p, sk->faddr);
 
     /* FIXME: better session matching and message */

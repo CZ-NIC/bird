@@ -51,10 +51,10 @@ t_simple(void)
 */
 
   struct symbol *sym = NULL;
-  sym = cf_find_symbol(TESTING_FILTER_NAME);
+  sym = cf_get_symbol(TESTING_FILTER_NAME);
 
   struct symbol *sym2 = NULL;
-  sym2 = cf_find_symbol(TESTING_FILTER_NAME "2");
+  sym2 = cf_get_symbol(TESTING_FILTER_NAME "2");
 
 
   struct filter *f = sym->def;

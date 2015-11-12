@@ -39,7 +39,6 @@
 
 #include "lib/main_helper.h"
 
-
 /*
  *	Hic Est main()
  */

@@ -450,10 +450,21 @@ ospf_import_control(struct proto *P, rte **new, ea_list **attrs, struct linpool 
   if (oa_is_stub(oa))
     return -1;			/* Do not export routes to stub areas */
 
-  eattr *ea = ea_find(e->attrs->eattrs, EA_GEN_IGP_METRIC);
-  u32 m1 = (ea && (ea->u.data < LSINFINITY)) ? ea->u.data : LSINFINITY;
+  ea_list *ea = e->attrs->eattrs;
+  u32 m0 = ea_get_int(ea, EA_GEN_IGP_METRIC, LSINFINITY);
+  u32 m1 = MIN(m0, LSINFINITY);
+  u32 m2 = 10000;
+  u32 tag = 0;
 
-  *attrs = ospf_build_attrs(*attrs, pool, m1, 10000, 0, 0);
+  /* Hack for setting attributes directly in static protocol */
+  if (e->attrs->source == RTS_STATIC)
+  {
+    m1 = ea_get_int(ea, EA_OSPF_METRIC1, m1);
+    m2 = ea_get_int(ea, EA_OSPF_METRIC2, 10000);
+    tag = ea_get_int(ea, EA_OSPF_TAG, 0);
+  }
+
+  *attrs = ospf_build_attrs(*attrs, pool, m1, m2, tag, 0);
   return 0;			/* Leave decision to the filters */
 }
 

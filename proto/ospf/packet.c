@@ -232,6 +232,10 @@ ospf_rx_hook(sock *sk, int len)
   const char *err_dsc = NULL;
   uint err_val = 0;
 
+  /* Should not happen */
+  if (ifa->state <= OSPF_IS_LOOP)
+    return 1;
+
   int src_local, dst_local, dst_mcast;
   src_local = ipa_in_net(sk->faddr, ifa->addr->prefix, ifa->addr->pxlen);
   dst_local = ipa_equal(sk->laddr, ifa->addr->ip);
