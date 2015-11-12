@@ -28,6 +28,10 @@
  * routes in order to conserve memory.
  */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+
 #undef LOCAL_DEBUG
 
 #include "nest/bird.h"
@@ -35,6 +39,7 @@
 #include "nest/protocol.h"
 #include "nest/cli.h"
 #include "nest/iface.h"
+#include "nest/mrtdump.h"
 #include "lib/resource.h"
 #include "lib/event.h"
 #include "lib/string.h"
@@ -42,6 +47,9 @@
 #include "filter/filter.h"
 #include "lib/string.h"
 #include "lib/alloca.h"
+#include "lib/unix.h"
+
+#include "proto/bgp/mrt.h"
 
 pool *rt_table_pool;
 
@@ -58,7 +66,8 @@ static void rt_next_hop_update(rtable *tab);
 static inline int rt_prune_table(rtable *tab);
 static inline void rt_schedule_gc(rtable *tab);
 static inline void rt_schedule_prune(rtable *tab);
-
+static void mrt_table_dump_stop_periodic(struct rtable *tab);
+static int mrt_table_dump_cmd_step(void *mrt_table_dump_ctx);
 
 static inline struct ea_list *
 make_tmp_attrs(struct rte *rt, struct linpool *pool)
@@ -1661,6 +1670,8 @@ rt_preconfig(struct config *c)
 
   init_list(&c->tables);
   c->master_rtc = rt_new_table(s);
+
+  init_list(&c->mrt_table_dumps);
 }
 
 
@@ -1830,6 +1841,9 @@ rt_new_table(struct symbol *s)
   add_tail(&new_config->tables, &c->n);
   c->gc_max_ops = 1000;
   c->gc_min_time = 5;
+
+  init_list(&c->mrt_table_dumps);
+
   return c;
 }
 
@@ -1896,6 +1910,7 @@ rt_commit(struct config *new, struct config *old)
       WALK_LIST(o, old->tables)
 	{
 	  rtable *ot = o->table;
+	  mrt_table_dump_stop_periodic(ot);
 	  if (!ot->deleted)
 	    {
 	      struct symbol *sym = cf_find_symbol(new, o->name);
@@ -1922,6 +1937,7 @@ rt_commit(struct config *new, struct config *old)
     }
 
   WALK_LIST(r, new->tables)
+  {
     if (!r->table)
       {
 	rtable *t = mb_alloc(rt_table_pool, sizeof(struct rtable));
@@ -1930,6 +1946,8 @@ rt_commit(struct config *new, struct config *old)
 	add_tail(&routing_tables, &t->n);
 	r->table = t;
       }
+    mrt_table_dump_init_periodic(r->table, &new->mrt_table_dumps);
+  }
   DBG("\tdone\n");
 }
 
@@ -2603,6 +2621,345 @@ rt_show(struct rt_show_data *d)
       else
 	cli_msg(8001, "Network not in table");
     }
+}
+
+/*
+ * MRTDump Table Commands
+ */
+
+struct mrt_table_config *
+mrt_table_new_config(void)
+{
+  struct mrt_table_config *mrt_cfg = cfg_allocz(sizeof(struct mrt_table_config));
+  mrt_cfg->c.period = MRT_TABLE_NOT_CONFIGURED;
+  mrt_cfg->c.filter = FILTER_ACCEPT;
+  mrt_cfg->c.config = new_config;
+  return mrt_cfg;
+}
+
+static struct filter *
+mrt_table_dump_config_get_filter(struct mrt_table_dump_ctx *state)
+{
+  if (state->config.c.filter != FILTER_ACCEPT)
+    return state->config.c.filter;
+
+  return FILTER_ACCEPT;
+}
+
+uint
+mrt_table_dump_config_get_period(struct mrt_table_individual_config *mrt_cfg)
+{
+  if (mrt_cfg->c.period && mrt_cfg->c.period != (u32)MRT_TABLE_NOT_CONFIGURED)
+    return mrt_cfg->c.period;
+
+  return MRT_TABLE_DEFAULT_PERIOD;
+}
+
+/*
+ * Writing timestamp of the next mrt dump.
+ * Return seconds for wait for next mrt dump from now.
+ */
+static uint
+mrt_table_dump_config_get_next_modular_period(struct mrt_table_individual_config *cfg)
+{
+  bird_clock_t period = (bird_clock_t)mrt_table_dump_config_get_period(cfg);
+  bird_clock_t timestamp = now;
+
+  if (cfg->next_dump != 0)
+  {
+    cfg->next_dump += period;
+  }
+  else
+  {
+    bird_clock_t time_to_wait = period - (timestamp % period);
+    cfg->next_dump = timestamp + time_to_wait;
+  }
+
+  return (uint)(cfg->next_dump - timestamp);
+}
+
+static char *
+mrt_table_dump_config_get_filename_fmt(struct mrt_table_dump_ctx *state)
+{
+  if (state->config.c.filename_fmt != NULL)
+    return state->config.c.filename_fmt;
+
+  return MRT_TABLE_DEFAULT_FILENAME_FMT;
+}
+
+static const char *
+mrt_table_dump_config_get_tablename_pattern(const struct mrt_table_config *mrt_config)
+{
+  const char *table_name_pattern = MRT_TABLE_DEFAULT_TABLENAME_PATTERN;
+  if (mrt_config->rtable_wildcard_name)
+    table_name_pattern = mrt_config->rtable_wildcard_name;
+  return table_name_pattern;
+}
+
+static void
+mrt_table_dump_timer_hook(struct timer *timer)
+{
+  if (timer->expires)
+  {
+    struct mrt_table_individual_config *cfg = (struct mrt_table_individual_config *) timer->data;
+    mrt_table_dump_cmd(cfg);
+    tm_start(timer, mrt_table_dump_config_get_next_modular_period(cfg));
+  }
+}
+
+static struct mrt_table_individual_config *
+mrt_table_new_individual_config(struct mrt_table_config *mrt_cfg, struct rtable *tab)
+{
+  struct mrt_table_individual_config *cfg = mb_allocz(rt_table_pool, sizeof(struct mrt_table_individual_config));
+  cfg->c = mrt_cfg->c;
+  cfg->table_cf = tab->config;
+  return cfg;
+}
+
+void
+mrt_table_dump_init_periodic(struct rtable *tab, list *mrt_table_dumps)
+{
+  struct mrt_table_config *mrt_cfg;
+
+  WALK_LIST(mrt_cfg, *mrt_table_dumps)
+  {
+    if (patmatch(mrt_table_dump_config_get_tablename_pattern(mrt_cfg), tab->name))
+    {
+      struct mrt_table_individual_config *cfg = mrt_table_new_individual_config(mrt_cfg, tab);
+      add_tail(&cfg->table_cf->mrt_table_dumps, &cfg->n);
+      cfg->timer = tm_new_set(rt_table_pool, mrt_table_dump_timer_hook, cfg, 0, (uint)-1);
+      tm_start(cfg->timer, mrt_table_dump_config_get_next_modular_period(cfg));
+    }
+  }
+}
+
+static int
+mrt_table_dump_cmd_step(void *mrt_table_dump_ctx)
+{
+  struct mrt_table_dump_ctx *state = mrt_table_dump_ctx;
+
+  bgp_mrt_table_dump_step(state);
+  if (state->state != MRT_STATE_COMPLETED)
+    ev_schedule(state->step);
+  else
+  {
+    rfree(state->step);
+    if (state->config.c.config)
+      config_del_obstacle(state->config.c.config);
+    log(L_INFO "MRT dump of table %s was saved into file \"%s\"", state->rtable->name, state->file_path);
+    if (state->config.c.cli)
+    {
+      cli_printf(state->config.c.cli, 13, "Dump of table %s was saved into file \"%s\"", state->rtable->name, state->file_path);
+    }
+    rt_unlock_table(state->rtable);
+    mb_free(state->file_path);
+    mb_free(state);
+    return 0;	/* End of entire mrt dump */
+  }
+  return 1;	/* End of part in mrt dump */
+}
+
+static void
+mrt_table_dump_cmd_step_void(void *mrt_table_dump_ctx)
+{
+  mrt_table_dump_cmd_step(mrt_table_dump_ctx);
+}
+
+static void
+mrt_table_dump_init(struct mrt_table_dump_ctx *state)
+{
+  struct rtable *tab = state->rtable;
+
+#ifdef DEBUGGING
+  fib_check(&tab->fib);
+#endif
+  FIB_ITERATE_INIT(&state->fit, &tab->fib);
+
+  state->state = MRT_STATE_RUNNING;
+  state->rib_sequence_number = 0;
+  mrt_table_dump_init_file_descriptor(state);
+  mrt_rib_table_alloc(&state->rib_table);
+
+  bgp_mrt_peer_index_table_dump(state);
+}
+
+struct mrt_table_dump_ctx *
+mrt_table_dump_cmd(struct mrt_table_individual_config *mrt_cfg)
+{
+  struct mrt_table_dump_ctx *state = mb_allocz(rt_table_pool, sizeof(struct mrt_table_dump_ctx));
+
+  event *step_ev = ev_new(rt_table_pool);
+  step_ev->hook = mrt_table_dump_cmd_step_void;
+  step_ev->data = state;
+  state->step = step_ev;
+  state->config = *mrt_cfg;
+  state->rtable = state->config.table_cf->table;
+  rt_lock_table(state->rtable);
+
+  if (state->config.c.config)
+    config_add_obstacle(state->config.c.config);
+
+  mrt_table_dump_init(state);
+  if (mrt_table_dump_cmd_step(state) == 0)
+    return NULL;
+
+  return state;
+}
+
+int
+is_route_good_for_table_dump(struct mrt_table_dump_ctx *state, rte *e)
+{
+  if (e->attrs->src->proto->proto_state != PS_UP)
+    return 0; /* FAIL */
+
+  struct filter *filter = mrt_table_dump_config_get_filter(state);
+  rte *rte = e;
+  struct ea_list *tmp_attrs = make_tmp_attrs(rte, rte_update_pool);
+
+  int filter_result = f_run(filter, &rte, &tmp_attrs, rte_update_pool, REF_COW);
+
+  if (filter_result >= F_REJECT)
+    return 0; /* FAIL */
+
+  return 1; /* OK */
+}
+
+/* You must free the result if result is non-NULL. */
+static char *
+mrt_str_replace(const char *orig, const char *rep, const char *with)
+{
+  if (!orig || !rep || !with)
+    return NULL;
+
+  char *result;
+  const char *ins_point;
+  char *tmp;
+  int len_rep;
+  int len_with;
+  int len_front;
+  int num_of_replacements;
+
+  len_rep = strlen(rep);
+  len_with = strlen(with);
+
+  ins_point = orig;
+  for (num_of_replacements = 0; tmp = strstr(ins_point, rep); ++num_of_replacements)
+    ins_point = tmp + len_rep;
+
+  /* first time through the loop, all the variable are set correctly
+   * from here on,
+   *   tmp points to the end of the result string
+   *   ins points to the next occurrence of rep in orig
+   *   orig points to the remainder of orig after "end of rep"
+   */
+  tmp = result = mb_alloc(rt_table_pool, strlen(orig) + (len_with - len_rep) * num_of_replacements + 1);
+
+  if (!result)
+    return NULL;
+
+  while (num_of_replacements--)
+  {
+    ins_point = strstr(orig, rep);
+    len_front = ins_point - orig;
+    tmp = strncpy(tmp, orig, len_front) + len_front;
+    tmp = strcpy(tmp, with) + len_with;
+    orig += len_front + len_rep; /* move to next "end of rep" */
+  }
+  strcpy(tmp, orig);
+  return result;
+}
+
+static const char *
+mrt_table_dump_get_realpath(const char *filename)
+{
+  static char path[BIRD_PATH_MAX];
+  if (realpath(filename, path) != path)
+  {
+    DBG("ERR: realpath(\"%s\") errno %d", filename, errno);
+    return filename;
+  }
+  return path;
+}
+
+void
+mrt_table_dump_init_file_descriptor(struct mrt_table_dump_ctx *state)
+{
+  char *tablename = state->config.table_cf->name;
+  char *filename_fmt = mrt_str_replace(mrt_table_dump_config_get_filename_fmt(state), "%f", tablename);
+
+  if (filename_fmt)
+  {
+    struct timeformat timestamp_fmt = {
+	.fmt1 = filename_fmt,
+    };
+
+    char filename[TM_DATETIME_BUFFER_SIZE];
+    tm_format_datetime(filename, &timestamp_fmt, now);
+    state->rfile = tracked_fopen(rt_table_pool, filename, "a");
+
+    const char *filename_fullpath = mrt_table_dump_get_realpath(filename);
+    state->file_path = mb_allocz(rt_table_pool, strlen(filename_fullpath)+1);
+    strcpy(state->file_path, filename_fullpath);
+
+    if (!state->rfile)
+    {
+      log(L_WARN "Unable to open file \"%s\" for MRT dump of table %s", state->file_path, tablename);
+      if (state->config.c.cli)
+      {
+	cli_msg(13, "Unable to open file \"%s\" for MRT dump of table %s", state->file_path, tablename);
+      }
+    }
+    else
+    {
+      log(L_INFO "MRT dump of table %s is saving into file \"%s\"", tablename, state->file_path);
+      if (state->config.c.cli)
+      {
+	cli_msg(13, "Dump of table %s is saving into file \"%s\"", tablename, state->file_path);
+      }
+    }
+    mb_free(filename_fmt);
+  }
+  else
+  {
+    log(L_ERR "Parsing MRT dump filename filename_fmt \"%s\" for table %s failed", mrt_table_dump_config_get_filename_fmt(state), tablename);
+    if (state->config.c.cli)
+    {
+      cli_msg(13, "Parsing filename filename_fmt \"%s\" for table %s failed", mrt_table_dump_config_get_filename_fmt(state), tablename);
+    }
+  }
+}
+
+static void
+mrt_table_dump_stop_periodic(struct rtable *tab)
+{
+  struct mrt_table_individual_config *mrt_cfg, *mrt_cfg_next;
+  WALK_LIST_DELSAFE(mrt_cfg, mrt_cfg_next, tab->config->mrt_table_dumps)
+  {
+    mrt_cfg->timer->recurrent = 0;
+    tm_stop(mrt_cfg->timer);
+    rfree(mrt_cfg->timer);
+    rem_node(&mrt_cfg->n);
+    mb_free(mrt_cfg);
+  }
+}
+
+void
+mrt_table_cli_cmd(struct mrt_table_config *mrt_cfg)
+{
+  struct rtable_config *r;
+
+  WALK_LIST(r, config->tables)
+  {
+    if (patmatch(mrt_table_dump_config_get_tablename_pattern(mrt_cfg), r->table->name))
+    {
+      struct mrt_table_individual_config *cfg = mrt_table_new_individual_config(mrt_cfg, r->table);
+      struct mrt_table_dump_ctx *state = mrt_table_dump_cmd(cfg);
+      if (state && state->state != MRT_STATE_COMPLETED)
+	while (mrt_table_dump_cmd_step(state));
+      mb_free(cfg);
+    }
+  }
+  cli_printf(mrt_cfg->c.cli, 0, "");
 }
 
 /*

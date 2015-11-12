@@ -85,14 +85,13 @@ static void
 mrt_dump_bgp_packet(struct bgp_conn *conn, byte *pkt, unsigned len)
 {
   byte *buf = alloca(128+len);	/* 128 is enough for MRT headers */
-  byte *bp = buf + MRTDUMP_HDR_LENGTH;
+  byte *bp = buf + MRT_HDR_LENGTH;
   int as4 = conn->bgp->as4_session;
 
   bp = mrt_put_bgp4_hdr(bp, conn, as4);
   memcpy(bp, pkt, len);
   bp += len;
-  mrt_dump_message(&conn->bgp->p, BGP4MP, as4 ? BGP4MP_MESSAGE_AS4 : BGP4MP_MESSAGE,
-		   buf, bp-buf);
+  mrt_dump_message_proto(&conn->bgp->p, MRT_BGP4MP, as4 ? MRT_BGP4MP_MESSAGE_AS4 : MRT_BGP4MP_MESSAGE, buf, bp-buf);
 }
 
 static inline u16
@@ -106,13 +105,13 @@ void
 mrt_dump_bgp_state_change(struct bgp_conn *conn, unsigned old, unsigned new)
 {
   byte buf[128];
-  byte *bp = buf + MRTDUMP_HDR_LENGTH;
+  byte *bp = buf + MRT_HDR_LENGTH;
 
   bp = mrt_put_bgp4_hdr(bp, conn, 1);
   put_u16(bp+0, convert_state(old));
   put_u16(bp+2, convert_state(new));
   bp += 4;
-  mrt_dump_message(&conn->bgp->p, BGP4MP, BGP4MP_STATE_CHANGE_AS4, buf, bp-buf);
+  mrt_dump_message_proto(&conn->bgp->p, MRT_BGP4MP, MRT_BGP4MP_STATE_CHANGE_AS4, buf, bp-buf);
 }
 
 static byte *

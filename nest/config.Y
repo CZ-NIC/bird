@@ -23,6 +23,7 @@ static struct roa_table_config *this_roa_table;
 static list *this_p_list;
 static struct password_item *this_p_item;
 static int password_id;
+static struct mrt_table_config *this_mrt_table_config;
 
 static void
 iface_patt_check(void)
@@ -60,7 +61,7 @@ CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, INTERFA
 CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, COMMANDS, PREEXPORT, NOEXPORT, GENERATE, ROA)
 CF_KEYWORDS(LISTEN, BGP, V6ONLY, DUAL, ADDRESS, PORT, PASSWORDS, DESCRIPTION, SORTED)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
-CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
+CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS, PERIOD, FILENAME)
 
 CF_ENUM(T_ENUM_RTS, RTS_, DUMMY, STATIC, INHERIT, DEVICE, STATIC_DEVICE, REDIRECT,
 	RIP, OSPF, OSPF_IA, OSPF_EXT1, OSPF_EXT2, BGP, PIPE)
@@ -80,6 +81,7 @@ CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 %type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode roa_mode limit_action tab_sorted tos
 %type <ps> proto_patt proto_patt2
 %type <g> limit_spec
+%type <t> mrtdump_table_config_table_option
 
 CF_GRAMMAR
 
@@ -371,7 +373,7 @@ debug_flag:
  | PACKETS	{ $$ = D_PACKETS; }
  ;
 
-/* MRTDump flags */
+/* MRTDump Protocol flags */
 
 mrtdump_mask:
    ALL { $$ = ~0; }
@@ -387,6 +389,50 @@ mrtdump_list:
 mrtdump_flag:
    STATES	{ $$ = MD_STATES; }
  | MESSAGES	{ $$ = MD_MESSAGES; }
+ ;
+
+/* MRT Table Dump */
+
+mrtdump_table_config_init:
+ {
+   this_mrt_table_config = mrt_table_new_config();
+ }
+ ;
+
+mrtdump_table_config:
+   '{' mrtdump_table_config_init mrtdump_table_config_list '}'
+ | mrtdump_table_config_init ';'
+ ;
+
+mrtdump_table_filter_option:
+   where_filter	{
+     if (this_mrt_table_config->c.filter != FILTER_ACCEPT)
+       cf_error("Filter specified twice");
+     this_mrt_table_config->c.filter = $1;
+   }
+ | FILTER filter {
+     if (this_mrt_table_config->c.filter != FILTER_ACCEPT)
+       cf_error("Filter specified twice");
+     this_mrt_table_config->c.filter = $2;
+   }
+ ;
+
+mrtdump_table_config_list:
+   /* empty */
+ | mrtdump_table_config_option ';'
+ | mrtdump_table_config_list mrtdump_table_config_option ';'
+ ;
+
+mrtdump_table_config_table_option:
+   rtable { $$ = $1->name; }
+ | TEXT   { $$ = $1; }
+ ;
+
+mrtdump_table_config_option:
+   PERIOD expr	 	{ this_mrt_table_config->c.period = $2; }
+ | FILENAME text	{ this_mrt_table_config->c.filename_fmt = $2; }
+ | TABLE mrtdump_table_config_table_option { this_mrt_table_config->rtable_wildcard_name = $2; }
+ | mrtdump_table_filter_option
  ;
 
 /* Password lists */
@@ -696,6 +742,30 @@ CF_CLI(DEBUG, proto_patt debug_mask, (<protocol> | <pattern> | all) (all | off |
 CF_CLI_HELP(MRTDUMP, ..., [[Control protocol debugging via MRTdump files]])
 CF_CLI(MRTDUMP, proto_patt mrtdump_mask, (<protocol> | <pattern> | all) (all | off | { states | messages }), [[Control protocol debugging via MRTdump format]])
 { proto_apply_cmd($2, proto_cmd_mrtdump, 1, $3); } ;
+
+CF_CLI_HELP(MRTDUMP ROUTES, [table <name>|\"<pattern>\"] [to \"<file>\"] [filter <filter>|where <where filter>] , [[Save MRT Table Dump into a file]])
+CF_CLI(MRTDUMP ROUTES, mrtdump_table_cli_config, [table <name>|\"<pattern>\"] [to \"<file>\"] [filter <filter>|where <where filter>], [[Save mrt table dump v2 of table name <t> right now]])
+{
+  this_mrt_table_config->c.cli = this_cli;
+  this_mrt_table_config->c.config = NULL;
+  mrt_table_cli_cmd(this_mrt_table_config);
+} ;
+
+mrtdump_table_cli_config:
+   mrtdump_table_config_init mrtdump_table_cli_config_list
+ ;
+
+mrtdump_table_cli_config_list:
+   /* empty */
+ | mrtdump_table_cli_config_option
+ | mrtdump_table_cli_config_list mrtdump_table_cli_config_option
+ ;
+
+mrtdump_table_cli_config_option:
+   TABLE mrtdump_table_config_table_option { this_mrt_table_config->rtable_wildcard_name = $2; }
+ | TO text		{ this_mrt_table_config->c.filename_fmt = $2; }
+ | mrtdump_table_filter_option
+ ;
 
 CF_CLI(RESTRICT,,,[[Restrict current CLI session to safe commands]])
 { this_cli->restricted = 1; cli_msg(16, "Access restricted"); } ;

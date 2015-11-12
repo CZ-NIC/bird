@@ -96,7 +96,7 @@ config_alloc(byte *name)
   char *ndup = lp_allocu(l, nlen);
   memcpy(ndup, name, nlen);
 
-  c->mrtdump_file = -1; /* Hack, this should be sysdep-specific */
+  c->mrt_proto_file = -1; 		/* Indication that the file descriptor should not be used */
   c->pool = p;
   c->mem = l;
   c->file_name = ndup;
