@@ -67,11 +67,10 @@ kif_item:
       /* Scan time of 0 means scan on startup only */
       THIS_KIF->scan_time = $3;
    }
- | PRIMARY text_or_none prefix_or_ipa {
+ | PRIMARY opttext net_or_ipa {
      struct kif_primary_item *kpi = cfg_alloc(sizeof (struct kif_primary_item));
-     kpi->pattern = $2;
-     kpi->prefix = $3.addr;
-     kpi->pxlen = $3.len;
+     kpi->prefix = IPA_NONE; /* XXXX */
+     kpi->pxlen = 0; /* XXXX */
      add_tail(&THIS_KIF->primary, &kpi->n);
    }
  ;

@@ -53,9 +53,8 @@ radv_proto_item:
  | PREFIX radv_prefix { add_tail(&RADV_CFG->pref_list, NODE this_radv_prefix); }
  | RDNSS { init_list(&radv_dns_list); } radv_rdnss { add_tail_list(&RADV_CFG->rdnss_list, &radv_dns_list); }
  | DNSSL { init_list(&radv_dns_list); } radv_dnssl { add_tail_list(&RADV_CFG->dnssl_list, &radv_dns_list); }
- | TRIGGER prefix {
-     RADV_CFG->trigger_prefix = $2.addr;
-     RADV_CFG->trigger_pxlen = $2.len;
+ | TRIGGER net_any {
+     RADV_CFG->trigger = $2;
      RADV_CFG->trigger_valid = 1;
    }
  ;
@@ -148,11 +147,10 @@ radv_iface:
   radv_iface_start iface_patt_list_nopx radv_iface_opt_list radv_iface_finish;
 
 
-radv_prefix_start: prefix
+radv_prefix_start: net_ip6
 {
   this_radv_prefix = cfg_allocz(sizeof(struct radv_prefix_config));
-  RADV_PREFIX->prefix = $1.addr;
-  RADV_PREFIX->pxlen = $1.len;
+  RADV_PREFIX->prefix = $1.ip6;
 
   RADV_PREFIX->onlink = 1;
   RADV_PREFIX->autonomous = 1;

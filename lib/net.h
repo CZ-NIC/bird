@@ -24,8 +24,8 @@ typedef struct net_addr {
   u8 type;
   u8 pxlen;
   u16 length;
+  u8 data[16];
   u64 align[0];
-  u32 space[4];
 } net_addr;
 
 typedef struct net_addr_ip4 {
@@ -206,6 +206,9 @@ int net_validate(const net_addr *N);
 int net_classify(const net_addr *N);
 char * net_format(const net_addr *N, char *buf, int buflen);
 
+
+int ipa_in_netX(const ip_addr A, const net_addr *N);
+int net_in_netX(const net_addr *A, const net_addr *N);
 
 
 #endif

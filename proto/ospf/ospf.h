@@ -125,7 +125,7 @@ struct ospf_area_config
 struct area_net_config
 {
   node n;
-  struct prefix px;
+  net_addr prefix;
   u32 tag;
   u8 hidden;
 };
@@ -142,7 +142,7 @@ struct area_net
 struct ospf_stubnet_config
 {
   node n;
-  struct prefix px;
+  net_addr prefix;
   u32 cost;
   u8 hidden;
   u8 summary;

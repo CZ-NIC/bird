@@ -30,7 +30,7 @@ iface_patt_check(void)
   struct iface_patt_node *pn;
 
   WALK_LIST(pn, this_ipatt->ipn_list)
-    if (!pn->pattern || pn->pxlen)
+    if (!pn->pattern || pn->prefix.pxlen) /* XXXX */
       cf_error("Interface name/mask expected, not IP prefix");
 }
 
@@ -284,9 +284,8 @@ iface_patt_node_init:
  ;
 
 iface_patt_node_body:
-   TEXT { this_ipn->pattern = $1; this_ipn->prefix = IPA_NONE; this_ipn->pxlen = 0; }
- | prefix_or_ipa { this_ipn->pattern = NULL; this_ipn->prefix = $1.addr; this_ipn->pxlen = $1.len; }
- | TEXT prefix_or_ipa { this_ipn->pattern = $1; this_ipn->prefix = $2.addr; this_ipn->pxlen = $2.len; }
+   TEXT { this_ipn->pattern = $1; net_fill_ip6(&this_ipn->prefix, IP6_NONE, 0); /* XXXX */ }
+ | opttext net_or_ipa { this_ipn->pattern = $1; this_ipn->prefix = $2.n; }
  ;
 
 iface_negate:
@@ -479,11 +478,11 @@ r_args:
      $$->prefix = $2.addr;
      $$->pxlen = $2.len;
    }
- | r_args FOR prefix_or_ipa {
+ | r_args FOR net_or_ipa {
      $$ = $1;
      if ($$->pxlen != 256) cf_error("Only one prefix expected");
-     $$->prefix = $3.addr;
-     $$->pxlen = $3.len;
+     $$->prefix = IPA_NONE; /* XXXX */
+     $$->pxlen = 0; /* XXXX */
      $$->show_for = 1;
    }
  | r_args TABLE SYM {

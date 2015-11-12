@@ -46,7 +46,7 @@ list iface_list;
 void
 ifa_dump(struct ifa *a)
 {
-  debug("\t%I, net %I/%-2d bc %I -> %I%s%s%s\n", a->ip, a->prefix, a->pxlen, a->brd, a->opposite,
+  debug("\t%I, net %N bc %I -> %I%s%s%s\n", a->ip, &a->prefix, a->brd, a->opposite,
 	(a->flags & IF_UP) ? "" : " DOWN",
 	(a->flags & IA_PRIMARY) ? "" : " SEC",
 	(a->flags & IA_PEER) ? "PEER" : "");
@@ -141,10 +141,9 @@ ifa_send_notify(struct proto *p, unsigned c, struct ifa *a)
   if (p->ifa_notify)
     {
       if (p->debug & D_IFACES)
-	log(L_TRACE "%s < %s address %I/%d on interface %s %s",
+	log(L_TRACE "%s < %s address %N on interface %s %s",
 	    p->name, (a->flags & IA_PRIMARY) ? "primary" : "secondary",
-	    a->prefix, a->pxlen, a->iface->name,
-	    (c & IF_CHANGE_UP) ? "added" : "removed");
+	    &a->prefix, a->iface->name, (c & IF_CHANGE_UP) ? "added" : "removed");
       p->ifa_notify(p, c, a);
     }
 }
@@ -500,8 +499,7 @@ ifa_recalc_all_primary_addresses(void)
 static inline int
 ifa_same(struct ifa *a, struct ifa *b)
 {
-  return ipa_equal(a->ip, b->ip) && ipa_equal(a->prefix, b->prefix) &&
-    a->pxlen == b->pxlen;
+  return ipa_equal(a->ip, b->ip) && net_equal(&a->prefix, &b->prefix);
 }
 
 
@@ -586,7 +584,6 @@ ifa_delete(struct ifa *a)
 u32
 if_choose_router_id(struct iface_patt *mask, u32 old_id)
 {
-#ifndef IPV6
   struct iface *i;
   struct ifa *a, *b;
 
@@ -599,6 +596,9 @@ if_choose_router_id(struct iface_patt *mask, u32 old_id)
 
       WALK_LIST(a, i->addrs)
 	{
+	  if (a->prefix.type != NET_IP4)
+	    continue;
+
 	  if (a->flags & IA_SECONDARY)
 	    continue;
 
@@ -623,10 +623,6 @@ if_choose_router_id(struct iface_patt *mask, u32 old_id)
     log(L_INFO "Chosen router ID %R according to interface %s", id, b->iface->name);
 
   return id;
-
-#else
-  return 0;
-#endif
 }
 
 /**
@@ -669,17 +665,17 @@ iface_patt_match(struct iface_patt *ifp, struct iface *i, struct ifa *a)
 	    continue;
 	}
 
-      if (p->pxlen == 0)
+      if (p->prefix.pxlen == 0)
 	return pos;
 
       if (!a)
 	continue;
 
-      if (ipa_in_net(a->ip, p->prefix, p->pxlen))
+      if (ipa_in_netX(a->ip, &p->prefix))
 	return pos;
 
       if ((a->flags & IA_PEER) &&
-	  ipa_in_net(a->opposite, p->prefix, p->pxlen))
+	  ipa_in_netX(a->opposite, &p->prefix))
 	return pos;
 
       continue;
@@ -713,8 +709,7 @@ iface_plists_equal(struct iface_patt *pa, struct iface_patt *pb)
 	  (!x->pattern && y->pattern) ||	/* This nasty lines where written by me... :-( Feela */
 	  (!y->pattern && x->pattern) ||
 	  ((x->pattern != y->pattern) && strcmp(x->pattern, y->pattern)) ||
-	  !ipa_equal(x->prefix, y->prefix) ||
-	  (x->pxlen != y->pxlen))
+	  !net_equal(&x->prefix, &y->prefix))
 	return 0;
       x = (void *) x->n.next;
       y = (void *) y->n.next;
@@ -754,7 +749,7 @@ if_show_addr(struct ifa *a)
   else
     opp[0] = 0;
   cli_msg(-1003, "\t%I/%d (%s%s, scope %s)",
-	  a->ip, a->pxlen,
+	  a->ip, a->prefix.pxlen,
 	  (a->flags & IA_PRIMARY) ? "Primary" : (a->flags & IA_SECONDARY) ? "Secondary" : "Unselected",
 	  opp, ip_scope_text(a->scope));
 }
@@ -804,7 +799,7 @@ if_show_summary(void)
   WALK_LIST(i, iface_list)
     {
       if (i->addr)
-	bsprintf(addr, "%I/%d", i->addr->ip, i->addr->pxlen);
+	bsprintf(addr, "%I/%d", i->addr->ip, i->addr->prefix.pxlen);
       else
 	addr[0] = 0;
       cli_msg(-1005, "%-9s %-5s %s", i->name, (i->flags & IF_UP) ? "up" : "DOWN", addr);

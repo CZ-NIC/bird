@@ -82,8 +82,7 @@ struct radv_iface_config
 struct radv_prefix_config
 {
   node n;
-  ip_addr prefix;
-  int pxlen;
+  net_addr_ip6 prefix;
 
   u8 skip;			/* Do not include this prefix to RA */
   u8 onlink;			/* Standard options from RFC 4261 */
@@ -99,7 +98,7 @@ struct radv_rdnss_config
   node n;
   u32 lifetime;			/* Valid if lifetime_mult is 0 */
   u16 lifetime_mult;		/* Lifetime specified as multiple of max_ra_int */
-  ip_addr server;		/* IP address of recursive DNS server */
+  ip6_addr server;		/* IP address of recursive DNS server */
 };
 
 struct radv_dnssl_config

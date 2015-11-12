@@ -74,7 +74,7 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
 	((ifa->type == OSPF_IT_PTP) && !ifa->ptp_netmask))
       ps->netmask = 0;
     else
-      ps->netmask = htonl(u32_mkmask(ifa->addr->pxlen));
+      ps->netmask = htonl(u32_mkmask(ifa->addr->prefix.pxlen));
 
     ps->helloint = ntohs(ifa->helloint);
     ps->options = ifa->oa->options;
@@ -198,7 +198,7 @@ ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa,
   /* RFC 2328 10.5 */
 
   /*
-   * We may not yet havethe associate neighbor, so we use Router ID from the
+   * We may not yet have the associate neighbor, so we use Router ID from the
    * packet instead of one from the neighbor structure for log messages.
    */
   u32 rcv_rid = ntohl(pkt->routerid);
@@ -224,7 +224,7 @@ ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa,
     int pxlen = u32_masklen(ntohl(ps->netmask));
     if ((ifa->type != OSPF_IT_VLINK) &&
 	(ifa->type != OSPF_IT_PTP) &&
-	(pxlen != ifa->addr->pxlen))
+	(pxlen != ifa->addr->prefix.pxlen))
       DROP("prefix length mismatch", pxlen);
 
     neighbors = ps->neighbors;

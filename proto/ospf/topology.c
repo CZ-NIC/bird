@@ -629,12 +629,12 @@ configured_stubnet(struct ospf_area *oa, struct ifa *a)
   {
     if (sn->summary)
     {
-      if (ipa_in_net(a->prefix, sn->px.addr, sn->px.len) && (a->pxlen >= sn->px.len))
+      if (net_in_netX(&a->prefix, &sn->prefix))
 	return 1;
     }
     else
     {
-      if (ipa_equal(a->prefix, sn->px.addr) && (a->pxlen == sn->px.len))
+      if (net_equal(&a->prefix, &sn->prefix))
 	return 1;
     }
   }
@@ -782,7 +782,8 @@ prepare_rt2_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
 	(ifa->type == OSPF_IT_PTMP))
       add_rt2_lsa_link(p, LSART_STUB, ipa_to_u32(ifa->addr->ip), 0xffffffff, 0);
     else
-      add_rt2_lsa_link(p, LSART_STUB, ipa_to_u32(ifa->addr->prefix), u32_mkmask(ifa->addr->pxlen), ifa->cost);
+      add_rt2_lsa_link(p, LSART_STUB, ip4_to_u32(net4_prefix(&ifa->addr->prefix)),
+		       u32_mkmask(net4_pxlen(&ifa->addr->prefix)), ifa->cost);
     i++;
 
     ifa->rt_pos_end = i;
@@ -791,7 +792,8 @@ prepare_rt2_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
   struct ospf_stubnet_config *sn;
   WALK_LIST(sn, oa->ac->stubnet_list)
     if (!sn->hidden)
-      add_rt2_lsa_link(p, LSART_STUB, ipa_to_u32(sn->px.addr), u32_mkmask(sn->px.len), sn->cost), i++;
+      add_rt2_lsa_link(p, LSART_STUB, ip4_to_u32(net4_prefix(&sn->prefix)),
+		       u32_mkmask(net4_pxlen(&sn->prefix)), sn->cost), i++;
 
   struct ospf_lsa_rt *rt = p->lsab;
   /* Store number of links in lower half of options */
@@ -908,7 +910,7 @@ prepare_net2_lsa_body(struct ospf_proto *p, struct ospf_iface *ifa)
   ASSERT(p->lsab_used == 0);
   net = lsab_alloc(p, sizeof(struct ospf_lsa_net) + 4 * nodes);
 
-  net->optx = u32_mkmask(ifa->addr->pxlen);
+  net->optx = u32_mkmask(ifa->addr->prefix.pxlen);
   net->routers[0] = p->router_id;
 
   WALK_LIST(n, ifa->neigh_list)
@@ -1179,7 +1181,7 @@ use_gw_for_fwaddr(struct ospf_proto *p, ip_addr gw, struct iface *iface)
 
   WALK_LIST(ifa, p->iface_list)
     if ((ifa->iface == iface) &&
-	(!ospf_is_v2(p) || ipa_in_net(gw, ifa->addr->prefix, ifa->addr->pxlen)))
+	(!ospf_is_v2(p) || ipa_in_netX(gw, &ifa->addr->prefix)))
       return 1;
 
   return 0;
@@ -1217,7 +1219,8 @@ find_surrogate_fwaddr(struct ospf_proto *p, struct ospf_area *oa)
     {
       WALK_LIST(a, ifa->iface->addrs)
       {
-	if ((a->flags & IA_SECONDARY) ||
+	if ((a->prefix.type != NET_IP6) ||
+	    (a->flags & IA_SECONDARY) ||
 	    (a->flags & IA_PEER) ||
 	    (a->scope <= SCOPE_LINK))
 	  continue;
@@ -1310,12 +1313,11 @@ ospf_rt_notify(struct proto *P, rtable *tbl UNUSED, net *n, rte *new, rte *old U
  */
 
 static inline void
-lsab_put_prefix(struct ospf_proto *p, ip6_addr prefix, u32 pxlen, u32 cost)
+lsab_put_prefix(struct ospf_proto *p, net_addr *net, u32 cost)
 {
-  net_addr_ip6 net = NET_ADDR_IP6(prefix, pxlen);
-  void *buf = lsab_alloc(p, IPV6_PREFIX_SPACE(pxlen));
-  u8 flags = (pxlen < IP6_MAX_PREFIX_LENGTH) ? 0 : OPT_PX_LA;
-  ospf_put_ipv6_prefix(buf, (net_addr *) &net, flags, cost);
+  void *buf = lsab_alloc(p, IPV6_PREFIX_SPACE(net6_pxlen(net)));
+  u8 flags = (net6_pxlen(net) < IP6_MAX_PREFIX_LENGTH) ? 0 : OPT_PX_LA;
+  ospf_put_ipv6_prefix(buf, net, flags, cost);
 }
 
 static void
@@ -1333,11 +1335,12 @@ prepare_link_lsa_body(struct ospf_proto *p, struct ospf_iface *ifa)
   struct ifa *a;
   WALK_LIST(a, ifa->iface->addrs)
   {
-    if ((a->flags & IA_SECONDARY) ||
-	(a->scope < SCOPE_SITE))
+    if ((a->prefix.type != NET_IP6) ||
+	(a->flags & IA_SECONDARY) ||
+	(a->scope <= SCOPE_LINK))
       continue;
 
-    lsab_put_prefix(p, a->prefix, a->pxlen, 0);
+    lsab_put_prefix(p, &a->prefix, 0);
     i++;
   }
 
@@ -1404,12 +1407,13 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
     struct ifa *a;
     WALK_LIST(a, ifa->iface->addrs)
     {
-      if ((a->flags & IA_SECONDARY) ||
+      if ((a->prefix.type != NET_IP6) ||
+	  (a->flags & IA_SECONDARY) ||
 	  (a->flags & IA_PEER) ||
 	  (a->scope <= SCOPE_LINK))
 	continue;
 
-      if (((a->pxlen < IP6_MAX_PREFIX_LENGTH) && net_lsa) ||
+      if (((a->prefix.pxlen < IP6_MAX_PREFIX_LENGTH) && net_lsa) ||
 	  configured_stubnet(oa, a))
 	continue;
 
@@ -1417,11 +1421,12 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
 	  (ifa->state == OSPF_IS_LOOP) ||
 	  (ifa->type == OSPF_IT_PTMP))
       {
-	lsab_put_prefix(p, a->ip, IP6_MAX_PREFIX_LENGTH, 0);
+	net_addr_ip6 net = NET_ADDR_IP6(a->ip, IP6_MAX_PREFIX_LENGTH);
+	lsab_put_prefix(p, (net_addr *) &net, 0);
 	host_addr = 1;
       }
       else
-	lsab_put_prefix(p, a->prefix, a->pxlen, ifa->cost);
+	lsab_put_prefix(p, &a->prefix, ifa->cost);
       i++;
     }
 
@@ -1432,8 +1437,8 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
   WALK_LIST(sn, oa->ac->stubnet_list)
     if (!sn->hidden)
     {
-      lsab_put_prefix(p, sn->px.addr, sn->px.len, sn->cost);
-      if (sn->px.len == IP6_MAX_PREFIX_LENGTH)
+      lsab_put_prefix(p, &sn->prefix, sn->cost);
+      if (sn->prefix.pxlen == IP6_MAX_PREFIX_LENGTH)
 	host_addr = 1;
       i++;
     }
@@ -1450,11 +1455,14 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
       struct ifa *a;
       WALK_LIST(a, ifa->iface->addrs)
       {
-	if ((a->flags & IA_SECONDARY) || (a->scope <= SCOPE_LINK))
+	if ((a->prefix.type != NET_IP6) ||
+	    (a->flags & IA_SECONDARY) ||
+	    (a->scope <= SCOPE_LINK))
 	  continue;
 
 	/* Found some IP */
-	lsab_put_prefix(p, a->ip, IP6_MAX_PREFIX_LENGTH, 0);
+	net_addr_ip6 net = NET_ADDR_IP6(a->ip, IP6_MAX_PREFIX_LENGTH);
+	lsab_put_prefix(p, (net_addr *) &net, 0);
 	i++;
 	goto done;
       }

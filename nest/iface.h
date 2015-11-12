@@ -19,9 +19,8 @@ struct pool;
 struct ifa {				/* Interface address */
   node n;
   struct iface *iface;			/* Interface this address belongs to */
+  net_addr prefix;			/* Network prefix */
   ip_addr ip;				/* IP address of this host */
-  ip_addr prefix;			/* Network prefix */
-  unsigned pxlen;			/* Prefix length */
   ip_addr brd;				/* Broadcast address */
   ip_addr opposite;			/* Opposite end of a point-to-point link */
   unsigned scope;			/* Interface address scope */
@@ -148,8 +147,7 @@ struct iface_patt_node {
   node n;
   int positive;
   byte *pattern;
-  ip_addr prefix;
-  int pxlen;
+  net_addr prefix;
 };
 
 struct iface_patt {

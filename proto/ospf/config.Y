@@ -211,10 +211,10 @@ ospf_stubnet:
  ;
 
 ospf_stubnet_start:
-   prefix {
+   net_ip {
      this_stubnet = cfg_allocz(sizeof(struct ospf_stubnet_config));
      add_tail(&this_area->stubnet_list, NODE this_stubnet);
-     this_stubnet->px = $1;
+     this_stubnet->prefix = $1.n;
      this_stubnet->cost = COST_D;
    }
  ;
@@ -321,12 +321,11 @@ pref_list:
 
 pref_item: pref_base pref_opt ';' ;
 
-pref_base: prefix
+pref_base: net_ip
  {
    this_pref = cfg_allocz(sizeof(struct area_net_config));
    add_tail(this_nets, NODE this_pref);
-   this_pref->px.addr = $1.addr;
-   this_pref->px.len = $1.len;
+   this_pref->prefix = $1.n;
  }
 ;
 

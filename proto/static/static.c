@@ -26,7 +26,7 @@
  * nodes (of dest RTD_NONE), which stores info about nexthops and are
  * connected to neighbor entries and neighbor notifications. Dummy
  * nodes are chained using mp_next, they aren't in other_routes list,
- * and abuse some fields (masklen, if_name) for other purposes.
+ * and abuse if_name field for other purposes.
  *
  * The only other thing worth mentioning is that when asked for reconfiguration,
  * Static not only compares the two configurations, but it also calculates
@@ -67,7 +67,7 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
   if (r->installed > 0)
     return;
 
-  DBG("Installing static route %I/%d, rtd=%d\n", r->net, r->masklen, r->dest);
+  DBG("Installing static route %N, rtd=%d\n", r->net, r->dest);
   bzero(&a, sizeof(a));
   a.src = p->main_source;
   a.source = (r->dest == RTD_DEVICE) ? RTS_STATIC_DEVICE : RTS_STATIC;
@@ -89,7 +89,7 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
 	    struct mpnh *nh = alloca(sizeof(struct mpnh));
 	    nh->gw = r2->via;
 	    nh->iface = r2->neigh->iface;
-	    nh->weight = r2->masklen; /* really */
+	    nh->weight = r2->weight;
 	    nh->next = NULL;
 	    *nhp = nh;
 	    nhp = &(nh->next);
@@ -112,7 +112,7 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
 
   /* We skip rta_lookup() here */
 
-  n = net_get_ipa(p->table, r->net, r->masklen);
+  n = net_get(p->table, r->net);
   e = rte_get_temp(&a);
   e->net = n;
   e->pflags = 0;
@@ -135,8 +135,8 @@ static_remove(struct proto *p, struct static_route *r)
   if (!r->installed)
     return;
 
-  DBG("Removing static route %I/%d via %I\n", r->net, r->masklen, r->via);
-  n = net_find_ipa(p->table, r->net, r->masklen);
+  DBG("Removing static route %N via %I\n", r->net, r->via);
+  n = net_find(p->table, r->net);
   rte_update(p, n, NULL);
   r->installed = 0;
 }
@@ -186,7 +186,7 @@ static_decide(struct static_config *cf, struct static_route *r)
 static void
 static_add(struct proto *p, struct static_config *cf, struct static_route *r)
 {
-  DBG("static_add(%I/%d,%d)\n", r->net, r->masklen, r->dest);
+  DBG("static_add(%N,%d)\n", r->net, r->dest);
   switch (r->dest)
     {
     case RTD_ROUTER:
@@ -388,7 +388,7 @@ static_bfd_notify(struct bfd_request *req)
 static void
 static_dump_rt(struct static_route *r)
 {
-  debug("%-1I/%2d: ", r->net, r->masklen);
+  debug("%-1N: ", r->net);
   switch (r->dest)
     {
     case RTD_ROUTER:
@@ -463,12 +463,6 @@ static_init(struct proto_config *c)
 }
 
 static inline int
-static_same_net(struct static_route *x, struct static_route *y)
-{
-  return ipa_equal(x->net, y->net) && (x->masklen == y->masklen);
-}
-
-static inline int
 static_same_dest(struct static_route *x, struct static_route *y)
 {
   if (x->dest != y->dest)
@@ -486,7 +480,10 @@ static_same_dest(struct static_route *x, struct static_route *y)
       for (x = x->mp_next, y = y->mp_next;
 	   x && y;
 	   x = x->mp_next, y = y->mp_next)
-	if (!ipa_equal(x->via, y->via) || (x->via_if != y->via_if) || (x->use_bfd != y->use_bfd))
+	if (!ipa_equal(x->via, y->via) ||
+	    (x->via_if != y->via_if) ||
+	    (x->use_bfd != y->use_bfd) ||
+	    (x->weight != y->weight))
 	  return 0;
       return !x && !y;
 
@@ -521,11 +518,11 @@ static_match(struct proto *p, struct static_route *r, struct static_config *n)
     r->neigh->data = NULL;
 
   WALK_LIST(t, n->iface_routes)
-    if (static_same_net(r, t))
+    if (net_equal(r->net, t->net))
       goto found;
 
   WALK_LIST(t, n->other_routes)
-    if (static_same_net(r, t))
+    if (net_equal(r->net, t->net))
       goto found;
 
   static_remove(p, r);
@@ -659,13 +656,13 @@ static_show_rt(struct static_route *r)
     case RTDX_RECURSIVE: bsprintf(via, "recursive %I", r->via); break;
     default:		bsprintf(via, "???");
     }
-  cli_msg(-1009, "%I/%d %s%s%s", r->net, r->masklen, via,
+  cli_msg(-1009, "%N %s%s%s", r->net, via,
 	  r->bfd_req ? " (bfd)" : "", r->installed ? "" : " (dormant)");
 
   struct static_route *r2;
   if (r->dest == RTD_MULTIPATH)
     for (r2 = r->mp_next; r2; r2 = r2->mp_next)
-      cli_msg(-1009, "\tvia %I%J weight %d%s%s", r2->via, r2->via_if, r2->masklen + 1, /* really */
+      cli_msg(-1009, "\tvia %I%J weight %d%s%s", r2->via, r2->via_if, r2->weight + 1,
 	      r2->bfd_req ? " (bfd)" : "", r2->installed ? "" : " (dormant)");
 }
 

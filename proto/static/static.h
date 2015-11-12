@@ -26,8 +26,7 @@ void static_init_config(struct static_config *);
 struct static_route {
   node n;
   struct static_route *chain;		/* Next for the same neighbor */
-  ip_addr net;				/* Network we route */
-  int masklen;				/* Mask length */
+  net_addr *net;			/* Network we route */
   int dest;				/* Destination type (RTD_*) */
   ip_addr via;				/* Destination router */
   struct iface *via_if;			/* Destination iface, for link-local vias */
@@ -37,6 +36,7 @@ struct static_route {
   struct f_inst *cmds;			/* List of commands for setting attributes */
   int installed;			/* Installed in rt table, -1 for reinstall */
   int use_bfd;				/* Configured to use BFD */
+  int weight;				/* Multipath next hop weight */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
 };
 

@@ -143,7 +143,7 @@ find_lladdr(struct iface *iface)
 {
   struct ifa *a;
   WALK_LIST(a, iface->addrs)
-    if (a->scope == SCOPE_LINK)
+    if ((a->prefix.type == NET_IP6) && (a->scope == SCOPE_LINK))
       return a;
 
   return NULL;

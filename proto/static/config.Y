@@ -52,11 +52,10 @@ static_proto:
  | static_proto stat_route stat_route_opt_list ';' { static_route_finish(); }
  ;
 
-stat_route0: ROUTE prefix {
+stat_route0: ROUTE net_any {
      this_srt = cfg_allocz(sizeof(struct static_route));
      add_tail(&STATIC_CFG->other_routes, &this_srt->n);
-     this_srt->net = $2.addr;
-     this_srt->masklen = $2.len;
+     this_srt->net = $2;
      this_srt_last_cmd = &(this_srt->cmds);
   }
  ;
@@ -72,7 +71,7 @@ stat_multipath1:
      this_srt_nh->use_bfd = -1; /* undefined */
    }
  | stat_multipath1 WEIGHT expr {
-     this_srt_nh->masklen = $3 - 1; /* really */
+     this_srt_nh->weight = $3 - 1;
      if (($3<1) || ($3>256)) cf_error("Weight must be in range 1-256"); 
    }
  | stat_multipath1 BFD bool {

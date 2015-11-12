@@ -114,7 +114,6 @@ add_area_nets(struct ospf_area *oa, struct ospf_area_config *ac)
   struct ospf_proto *p = oa->po;
   struct area_net_config *anc;
   struct area_net *an;
-  net_addr net;
 
   fib_init(&oa->net_fib,  p->p.pool, ospf_is_v2(p) ? NET_IP4 : NET_IP6,
 	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL);
@@ -123,17 +122,13 @@ add_area_nets(struct ospf_area *oa, struct ospf_area_config *ac)
 
   WALK_LIST(anc, ac->net_list)
   {
-    /* XXXX we should dispatch by ospf version, not by px.addr */
-    net_fill_ipa(&net, anc->px.addr, anc->px.len);
-    an = fib_get(&oa->net_fib, &net);
+    an = fib_get(&oa->net_fib, &anc->prefix);
     an->hidden = anc->hidden;
   }
 
   WALK_LIST(anc, ac->enet_list)
   {
-    /* XXXX ditto */
-    net_fill_ipa(&net, anc->px.addr, anc->px.len);
-    an = fib_get(&oa->enet_fib, &net);
+    an = fib_get(&oa->enet_fib, &anc->prefix);
     an->hidden = anc->hidden;
     an->tag = anc->tag;
   }

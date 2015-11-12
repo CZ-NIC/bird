@@ -41,6 +41,8 @@ CF_DECLS
   ip_addr a;
   ip4_addr ip4;
   ip6_addr ip6;
+  net_addr_union net;
+  net_addr *net_ptr;
   struct symbol *s;
   char *t;
   struct rtable_config *r;
@@ -78,10 +80,11 @@ CF_DECLS
 %type <i32> expr_us
 %type <time> datetime
 %type <a> ipa ipa_raw
-%type <px> prefix prefix_or_ipa
-%type <t> text
-%type <t> text_or_none
-%type <t> opttext
+%type <px> prefix
+%type <net> net_ip4 net_ip6 net_ip net_or_ipa
+%type <net_ptr> net_any
+
+%type <t> text opttext
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
@@ -169,16 +172,30 @@ ipa_scope:
  | '%' SYM { $$ = if_get_by_name($2->name); }
  ;
 
+
+/* XXXX - symbols and tests */
+
+net_ip4: IP4 pxlen { $$.ip4 = NET_ADDR_IP4($1, $2); }
+
+net_ip6: IP6 pxlen { $$.ip6 = NET_ADDR_IP6($1, $2); }
+
+net_ip: net_ip4 | net_ip6 ;
+
+net_any: net_ip { $$ = cfg_alloc($1.n.length); net_copy($$, &($1.n)); }
+
+net_or_ipa:
+   net_ip4
+ | net_ip6
+ | IP4 { $$.ip4 = NET_ADDR_IP4($1, IP4_MAX_PREFIX_LENGTH); }
+ | IP6 { $$.ip6 = NET_ADDR_IP6($1, IP6_MAX_PREFIX_LENGTH); }
+ ;
+
+
 prefix:
    ipa pxlen {
      if (!ip_is_prefix($1, $2)) cf_error("Invalid prefix");
      $$.addr = $1; $$.len = $2;
    }
- ;
-
-prefix_or_ipa:
-   prefix
- | ipa { $$.addr = $1; $$.len = BITS_PER_IP_ADDRESS; }
  ;
 
 pxlen:
@@ -206,11 +223,6 @@ text:
      if ($1->class != (SYM_CONSTANT | T_STRING)) cf_error("String expected");
      $$ = SYM_VAL($1).s;
    }
- ;
-
-text_or_none:
-   TEXT { $$ = $1; }
- |      { $$ = NULL; }
  ;
 
 opttext:

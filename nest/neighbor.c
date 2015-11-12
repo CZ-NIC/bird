@@ -79,7 +79,7 @@ if_connected(ip_addr *a, struct iface *i, struct ifa **ap)
 	}
       else
 	{
-	  if (ipa_in_net(*a, b->prefix, b->pxlen))
+	  if (ipa_in_netX(*a, &b->prefix))
 	    {
 #ifndef IPV6
 	      if ((b->pxlen < (BITS_PER_IP_ADDRESS - 1)) &&
