@@ -362,16 +362,49 @@ protocol rip {
 	seconds, zero means disabled. Default: disabled (0).
 
 	<tag>mrtdump "<m/filename/"</tag>
-	Set MRTdump file name. This option must be specified to allow MRTdump
-	feature. Default: no dump file.
+	Set MRTdump protocols file name. This option must be specified to allow MRTdump
+	protocols feature. Default: no dump file.
 
 	<tag>mrtdump protocols all|off|{ states, messages }</tag>
-	Set global defaults of MRTdump options. See <cf/mrtdump/ in the
+	Set global defaults of MRTdump protocol options. See <ref id="protocol-mrtdump" name="mrtdump"> in the
 	following section. Default: off.
 
-	<tag>filter <m/name local variables/{ <m/commands/ }</tag>
-	Define a filter. You can learn more about filters in the following
-	chapter.
+	<tag><label id="dsc-mrtdump-routes">mrtdump routes [ { <m/option1; option2; .../ } ]</tag>
+
+	Configure periodic <htmlurl url="https://tools.ietf.org/html/rfc6396#section-4.3" name="MRT Table Dump v2 (RFC 6396)">
+	of routes (not only BGP).
+	All mrtdump options are optional. Default: disabled
+
+	<descrip>
+		<tag/ <cf>filename "<m/format/" </cf> /
+			Configure file to output.
+			Filename format is the <it/strftime(3)/-like format (see
+			<it/man strftime/ for details) extended of a key <cf/%f/ for replacing with the name of the table.
+			Default: <cf>"%f_%F_%T.mrt"</cf>
+		<tag/ <cf>table <m/name/|"<m/pattern/" </cf> /
+			Choosing tables from which will be routes taken.
+			Can be used wildcards <cf>*</cf> and <cf>?</cf>.
+			Default: <cf>"*"</cf> for all tables
+		<tag/ <cf>period <m/num/ </cf> /
+			Configures the interval in seconds between mrt table dumps.
+			Default: <cf>60</cf> seconds
+		<tag/ <cf>filter <m/filter/ | where <m/condition/</cf> /
+			Configure filtering dumping routes. Filters are more described in <ref id="chapt-filters" name="the chapter Filters">.
+			Default: Accept all
+	</descrip>
+
+	Example:
+<p><code>
+mrtdump routes {
+	filename "%f-%s.mrt";	# dumps will be saved into files named like 'tableA-1437119435.mrt'
+	table "t*";		# only routes from tables starts with character 't'
+	period 10;		# 10 seconds interval between dumps
+	where source = RTS_BGP;	# only routes from BGP protocols
+}
+mrtdump routes;			# another mrtdump route config with default options</code>
+
+	<tag>filter <m/name local variables/ { <m/commands/ }</tag>
+	Define a filter. You can learn more about filters in <ref id="chapt-filters" name="the chapter Filters">.
 
 	<tag>function <m/name/ (<m/parameters/) <m/local variables/ { <m/commands/ }</tag>
 	Define a function. You can learn more about functions in the following chapter.
@@ -453,13 +486,13 @@ protocol rip {
 	hh:mm:ss) for <cf/base/ and <cf/log/. These timeformats could be set by
 	<cf/old short/ and <cf/old long/ compatibility shorthands.
 
-	<tag>table <m/name/ [sorted]</tag>
-	Create a new routing table. The default routing table is created
+	<tag>table <m/name/ [sorted] </tag>
+	Create a new routing table. The default <cf/master/ routing table is created
 	implicitly, other routing tables have to be added by this command.
 	Option <cf/sorted/ can be used to enable sorting of routes, see
 	<ref id="dsc-sorted" name="sorted table"> description for details.
 
-	<tag>roa table <m/name/ [ { roa table options ... } ]</tag>
+	<tag>roa table <m/name/ [ { <m/roa table options/ } ]</tag>
 	Create a new ROA (Route Origin Authorization) table. ROA tables can be
 	used to validate route origination of BGP routes. A ROA table contains
 	ROA entries, each consist of a network prefix, a max prefix length and
@@ -511,8 +544,9 @@ agreement").
 	protocol, <cf/events/ for events internal to the protocol and <cf/packets/
 	for packets sent and received by the protocol. Default: off.
 
-	<tag>mrtdump all|off|{ states, messages }</tag>
-	Set protocol MRTdump flags. MRTdump is a standard binary format for
+	<tag><label id="protocol-mrtdump">mrtdump all|off|{ states, messages }</tag>
+	Set protocol MRTdump flags. MRTdump is a standard binary format (see
+	<htmlurl url="https://tools.ietf.org/html/rfc6396#section-4.4" name="BGP4MP in RFC 6396">)) for
 	logging information from routing protocols and daemons. These flags
 	control what kind of information is logged from the protocol to the
 	MRTdump file (which must be specified by global <cf/mrtdump/ option, see
@@ -752,7 +786,7 @@ This argument can be omitted if there exists only a single instance.
 	Show the list of symbols defined in the configuration (names of
 	protocols, routing tables etc.).
 
-	<tag>show route [[for] <m/prefix/|<m/IP/] [table <m/sym/] [filter <m/f/|where <m/c/] [(export|preexport|noexport) <m/p/] [protocol <m/p/] [<m/options/]</tag>
+	<tag>show route [[for] <m/prefix/|<m/IP/] [table <m/name/] [filter <m/f/|where <m/c/] [(export|preexport|noexport) <m/p/] [protocol <m/p/] [<m/options/]</tag>
 	Show contents of a routing table (by default of the main one or the
 	table attached to a respective protocol), that is routes, their metrics
 	and (in case the <cf/all/ switch is given) all their attributes.
@@ -787,7 +821,7 @@ This argument can be omitted if there exists only a single instance.
 	number of networks, number of routes before and after filtering). If
 	you use <cf/count/ instead, only the statistics will be printed.
 
-	<tag>show roa [<m/prefix/ | in <m/prefix/ | for <m/prefix/] [as <m/num/] [table <m/t/>]</tag>
+	<tag>show roa [<m/prefix/ | in <m/prefix/ | for <m/prefix/] [as <m/num/] [table <m/name/]</tag>
 	Show contents of a ROA table (by default of the first one). You can
 	specify a <m/prefix/ to print ROA entries for a specific network. If you
 	use <cf>for <m/prefix/</cf>, you'll get all entries relevant for route
@@ -796,16 +830,16 @@ This argument can be omitted if there exists only a single instance.
 	entries covered by the network prefix. You could also use <cf/as/ option
 	to show just entries for given AS.
 
-	<tag>add roa <m/prefix/ max <m/num/] as <m/num/ [table <m/t/>]</tag>
+	<tag>add roa <m/prefix/ max <m/num/ as <m/num/ [table <m/name/]</tag>
 	Add a new ROA entry to a ROA table. Such entry is called <it/dynamic/
 	compared to <it/static/ entries specified in the config file. These
 	dynamic entries survive reconfiguration.
 
-	<tag>delete roa <m/prefix/ max <m/num/] as <m/num/ [table <m/t/>]</tag>
+	<tag>delete roa <m/prefix/ max <m/num/ as <m/num/ [table <m/name/]</tag>
 	Delete the specified ROA entry from a ROA table. Only dynamic ROA
 	entries (i.e., the ones added by <cf/add roa/ command) can be deleted.
 
-	<tag>flush roa [table <m/t/>]</tag>
+	<tag>flush roa [table <m/name/]</tag>
 	Remove all dynamic ROA entries from a ROA table.
 
 	<tag>configure [soft] ["<m/config file/"] [timeout [<m/num/]]</tag>
@@ -873,6 +907,11 @@ This argument can be omitted if there exists only a single instance.
 	<tag>dump resources|sockets|interfaces|neighbors|attributes|routes|protocols</tag>
 	Dump contents of internal data structures to the debugging output.
 
+	<tag>mrtdump routes [table <m/name/|"<m/pattern/"] [to "<m/filename/"] [filter <m/filter/ | where <m/condition/]</tag>
+
+	Once the specified routes will be saved into file(s) named based on <m/filename/ format.
+	For more details about mrtdump options see <ref id="dsc-mrtdump-routes" name="mrtdump routes in the chapter Configuration">.
+
 	<tag>echo all|off|{ <m/list of log classes/ } [ <m/buffer-size/ ]</tag>
 	Control echoing of log messages to the command-line output.
 	See <ref id="dsc-log" name="log option"> for a list of log classes.
@@ -882,7 +921,7 @@ This argument can be omitted if there exists only a single instance.
 </descrip>
 
 
-<chapt>Filters
+<chapt><label id="chapt-filters">Filters
 
 <sect>Introduction
 
