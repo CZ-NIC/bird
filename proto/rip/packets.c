@@ -240,10 +240,10 @@ rip_fill_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_p
 
     *plen += sizeof(struct rip_auth_tail) + RIP_MD5_LENGTH;
 
-    struct MD5Context ctxt;
-    MD5Init(&ctxt);
-    MD5Update(&ctxt, (byte *) pkt, *plen);
-    MD5Final(tail->auth_data, &ctxt);
+    struct md5_context ctx;
+    md5_init(&ctx);
+    md5_update(&ctx, (byte *) pkt, *plen);
+    memcpy(tail->auth_data, md5_final(&ctx), RIP_MD5_LENGTH);
     return;
 
   default:
@@ -311,15 +311,13 @@ rip_check_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_
     }
 
     char received[RIP_MD5_LENGTH];
-    char computed[RIP_MD5_LENGTH];
-
     memcpy(received, tail->auth_data, RIP_MD5_LENGTH);
     strncpy(tail->auth_data, pass->password, RIP_MD5_LENGTH);
 
-    struct MD5Context ctxt;
-    MD5Init(&ctxt);
-    MD5Update(&ctxt, (byte *) pkt, *plen);
-    MD5Final(computed, &ctxt);
+    struct md5_context ctx;
+    md5_init(&ctx);
+    md5_update(&ctx, (byte *) pkt, *plen);
+    char *computed = md5_final(&ctx);
 
     if (memcmp(received, computed, RIP_MD5_LENGTH))
       DROP("wrong MD5 digest", pass->id);

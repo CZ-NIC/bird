@@ -1328,6 +1328,18 @@ sk_passive_connected(sock *s, int type)
       log(L_WARN "SOCK: Cannot get remote IP address for TCP<");
   }
 
+  if (fd >= FD_SETSIZE)
+  {
+    /* FIXME: Call err_hook instead ? */
+    log(L_ERR "SOCK: Incoming connection from %I%J (port %d) %s",
+	t->daddr, ipa_is_link_local(t->daddr) ? t->iface : NULL,
+	t->dport, "rejected due to FD_SETSIZE limit");
+    close(fd);
+    t->fd = -1;
+    rfree(t);
+    return 1;
+  }
+
   if (sk_setup(t) < 0)
   {
     /* FIXME: Call err_hook instead ? */
@@ -1403,6 +1415,9 @@ sk_open(sock *s)
 
   if (fd < 0)
     ERR("socket");
+
+  if (fd >= FD_SETSIZE)
+    ERR2("FD_SETSIZE limit reached");
 
   s->af = af;
   s->fd = fd;

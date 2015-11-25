@@ -11,6 +11,7 @@
 #include "ospf.h"
 #include "nest/password.h"
 #include "lib/md5.h"
+#include "lib/socket.h"
 
 void
 ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type)
@@ -108,11 +109,11 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt)
     char password[OSPF_AUTH_CRYPT_SIZE];
     strncpy(password, passwd->password, sizeof(password));
 
-    struct MD5Context ctxt;
-    MD5Init(&ctxt);
-    MD5Update(&ctxt, (char *) pkt, plen);
-    MD5Update(&ctxt, password, OSPF_AUTH_CRYPT_SIZE);
-    MD5Final(tail, &ctxt);
+    struct md5_context ctx;
+    md5_init(&ctx);
+    md5_update(&ctx, (char *) pkt, plen);
+    md5_update(&ctx, password, OSPF_AUTH_CRYPT_SIZE);
+    memcpy((byte *) tail, md5_final(&ctx), MD5_SIZE);
     break;
 
   default:
@@ -174,19 +175,17 @@ ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_
     if (!pass)
       DROP("no suitable password found", auth->md5.keyid);
 
-    void *tail = ((void *) pkt) + plen;
-    char passwd[OSPF_AUTH_CRYPT_SIZE];
-    char md5sum[OSPF_AUTH_CRYPT_SIZE];
+    byte *tail = ((byte *) pkt) + plen;
+    char received[OSPF_AUTH_CRYPT_SIZE];
+    memcpy(received, tail, OSPF_AUTH_CRYPT_SIZE);
+    strncpy(tail, pass->password, OSPF_AUTH_CRYPT_SIZE);
 
-    strncpy(passwd, pass->password, OSPF_AUTH_CRYPT_SIZE);
+    struct md5_context ctx;
+    md5_init(&ctx);
+    md5_update(&ctx, (byte *) pkt, plen + OSPF_AUTH_CRYPT_SIZE);
+    char *computed = md5_final(&ctx);
 
-    struct MD5Context ctxt;
-    MD5Init(&ctxt);
-    MD5Update(&ctxt, (char *) pkt, plen);
-    MD5Update(&ctxt, passwd, OSPF_AUTH_CRYPT_SIZE);
-    MD5Final(md5sum, &ctxt);
-
-    if (memcmp(md5sum, tail, OSPF_AUTH_CRYPT_SIZE))
+    if (memcmp(received, computed, OSPF_AUTH_CRYPT_SIZE))
       DROP("wrong MD5 digest", pass->id);
 
     if (n)

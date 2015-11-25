@@ -96,7 +96,7 @@ drop_gid(gid_t gid)
 static inline void
 add_num_const(char *name, int val)
 {
-  struct symbol *s = cf_find_symbol(name);
+  struct symbol *s = cf_get_symbol(name);
   s->class = SYM_CONSTANT | T_INT;
   s->def = cfg_allocz(sizeof(struct f_val));
   SYM_TYPE(s) = T_INT;
