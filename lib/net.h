@@ -131,6 +131,8 @@ static inline uint net6_pxlen(const net_addr *a)
 static inline uint net_pxlen(const net_addr *a)
 { return a->pxlen; }
 
+ip_addr net_pxmask(const net_addr *a);
+
 
 static inline int net_equal(const net_addr *a, const net_addr *b)
 { return (a->length == b->length) && !memcmp(a, b, a->length); }
@@ -203,8 +205,9 @@ static inline void net_normalize_ip6(net_addr_ip6 *n)
 void net_normalize(net_addr *N);
 
 int net_validate(const net_addr *N);
+
 int net_classify(const net_addr *N);
-char * net_format(const net_addr *N, char *buf, int buflen);
+int net_format(const net_addr *N, char *buf, int buflen);
 
 
 int ipa_in_netX(const ip_addr A, const net_addr *N);

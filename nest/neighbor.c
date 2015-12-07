@@ -81,15 +81,15 @@ if_connected(ip_addr *a, struct iface *i, struct ifa **ap)
 	{
 	  if (ipa_in_netX(*a, &b->prefix))
 	    {
-#ifndef IPV6
-	      if ((b->pxlen < (BITS_PER_IP_ADDRESS - 1)) &&
-		  (ipa_equal(*a, b->prefix) ||	/* Network address */
+	      /* Do not allow IPv4 network and broadcast addresses */
+	      if (ipa_is_ip4(*a) &&
+		  (net_pxlen(&b->prefix) < (BITS_PER_IP_ADDRESS - 1)) &&
+		  (ipa_equal(*a, net_prefix(&b->prefix)) ||	/* Network address */
 		   ipa_equal(*a, b->brd)))	/* Broadcast */
 	      {
 		*ap = NULL;
 		return -1;
 	      }
-#endif
 
 	      return b->scope;
 	    }

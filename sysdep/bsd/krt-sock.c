@@ -207,7 +207,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   msg.rtm.rtm_addrs = RTA_DST;
   msg.rtm.rtm_flags = RTF_UP | RTF_PROTO1;
 
-  if (net->n.pxlen == MAX_PREFIX_LENGTH)
+  if (net_prefix(net->n.addr) == MAX_PREFIX_LENGTH)
     msg.rtm.rtm_flags |= RTF_HOST;
   else
     msg.rtm.rtm_addrs |= RTA_NETMASK;
@@ -251,9 +251,24 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
     _I0(gw) = 0xfe800000 | (i->index & 0x0000ffff);
 #endif
 
-  sockaddr_fill(&dst,  BIRD_AF, net->n.prefix, NULL, 0);
-  sockaddr_fill(&mask, BIRD_AF, ipa_mkmask(net->n.pxlen), NULL, 0);
-  sockaddr_fill(&gate, BIRD_AF, gw, NULL, 0);
+  int af = AF_UNSPEC;
+
+  switch (net->n.addr->type) {
+    case NET_IP4:
+      af = AF_INET;
+      break;
+    case NET_IP6:
+      af = AF_INET6;
+      break;
+    default:
+      log(L_ERR "KRT: Not sending VPN route %N to kernel", net->n.addr);
+      return -1;
+  }
+
+
+  sockaddr_fill(&dst,  af, net_prefix(net->n.addr), NULL, 0);
+  sockaddr_fill(&mask, af, net_pxmask(net->n.addr), NULL, 0);
+  sockaddr_fill(&gate, af, gw, NULL, 0);
 
   switch (a->dest)
   {
@@ -299,7 +314,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   msg.rtm.rtm_msglen = l;
 
   if ((l = write(p->sys.sk->fd, (char *)&msg, l)) < 0) {
-    log(L_ERR "KRT: Error sending route %I/%d to kernel: %m", net->n.prefix, net->n.pxlen);
+    log(L_ERR "KRT: Error sending route %N to kernel: %m", net->n.addr);
     return -1;
   }
 
@@ -335,6 +350,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   net *net;
   sockaddr dst, gate, mask;
   ip_addr idst, igate, imask;
+  net_addr ndst;
   void *body = (char *)msg->buf;
   int new = (msg->rtm.rtm_type != RTM_DELETE);
   char *errmsg = "KRT: Invalid route received";
@@ -386,8 +402,11 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   if (pxlen < 0)
     { log(L_ERR "%s (%I) - netmask %I", errmsg, idst, imask); return; }
 
+  /* XXXX */
+  net_fill_ipa(&ndst, idst, pxlen);
+
   if ((flags & RTF_GATEWAY) && ipa_zero(igate))
-    { log(L_ERR "%s (%I/%d) - missing gateway", errmsg, idst, pxlen); return; }
+    { log(L_ERR "%s (%N) - missing gateway", errmsg, ndst); return; }
 
   u32 self_mask = RTF_PROTO1;
   u32 alien_mask = RTF_STATIC | RTF_PROTO1 | RTF_GATEWAY;
@@ -426,7 +445,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   else
     src = KRT_SRC_KERNEL;
 
-  net = net_get(p->p.table, idst, pxlen);
+  net = net_get(p->p.table, &ndst);
 
   rta a = {
     .src = p->p.main_source,
@@ -455,8 +474,8 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   a.iface = if_find_by_index(msg->rtm.rtm_index);
   if (!a.iface)
     {
-      log(L_ERR "KRT: Received route %I/%d with unknown ifindex %u",
-	  net->n.prefix, net->n.pxlen, msg->rtm.rtm_index);
+      log(L_ERR "KRT: Received route %N with unknown ifindex %u",
+	  net->n.addr, msg->rtm.rtm_index);
       return;
     }
 
@@ -480,8 +499,8 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
         if (ipa_classify(a.gw) == (IADDR_HOST | SCOPE_HOST))
           return;
 
-	log(L_ERR "KRT: Received route %I/%d with strange next-hop %I",
-	    net->n.prefix, net->n.pxlen, a.gw);
+	log(L_ERR "KRT: Received route %N with strange next-hop %I",
+	    net->n.addr, a.gw);
 	return;
       }
   }
@@ -652,7 +671,7 @@ krt_read_addr(struct ks_msg *msg, int scan)
   imask = ipa_from_sa(&mask);
   ibrd  = ipa_from_sa(&brd);
 
-
+  /* XXXX */
   if ((masklen = ipa_masklen(imask)) < 0)
   {
     log(L_ERR "KIF: Invalid masklen %I for %s", imask, iface->name);
@@ -673,7 +692,6 @@ krt_read_addr(struct ks_msg *msg, int scan)
   bzero(&ifa, sizeof(ifa));
   ifa.iface = iface;
   ifa.ip = iaddr;
-  ifa.pxlen = masklen;
 
   scope = ipa_classify(ifa.ip);
   if (scope < 0)
@@ -685,7 +703,8 @@ krt_read_addr(struct ks_msg *msg, int scan)
 
   if (masklen < BITS_PER_IP_ADDRESS)
   {
-    ifa.prefix = ipa_and(ifa.ip, ipa_mkmask(masklen));
+    net_fill_ipa(&ifa.prefix, ifa.ip, masklen);
+    net_normalize(&ifa.prefix);
 
     if (masklen == (BITS_PER_IP_ADDRESS - 1))
       ifa.opposite = ipa_opposite_m1(ifa.ip);
@@ -703,12 +722,13 @@ krt_read_addr(struct ks_msg *msg, int scan)
   }
   else if (!(iface->flags & IF_MULTIACCESS) && ipa_nonzero(ibrd))
   {
-    ifa.prefix = ifa.opposite = ibrd;
+    net_fill_ipa(&ifa.prefix, ibrd, BITS_PER_IP_ADDRESS);
+    ifa.opposite = ibrd;
     ifa.flags |= IA_PEER;
   }
   else
   {
-    ifa.prefix = ifa.ip;
+    net_fill_ipa(&ifa.prefix, ifa.ip, BITS_PER_IP_ADDRESS);
     ifa.flags |= IA_HOST;
   }
 

@@ -241,7 +241,6 @@ static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
   [IFLA_WIRELESS] = { 1, 0, 0 },
 };
 
-
 #define BIRD_IFA_MAX  (IFA_ANYCAST+1)
 
 #ifndef IPV6
@@ -256,7 +255,6 @@ static struct nl_want_attrs ifa_attr_want6[BIRD_IFA_MAX] = {
   [IFA_LOCAL]	  = { 1, 1, sizeof(ip6_addr) },
 };
 #endif
-
 
 #define BIRD_RTA_MAX  (RTA_TABLE+1)
 
@@ -304,7 +302,7 @@ nl_parse_attrs(struct rtattr *a, struct nl_want_attrs *want, struct rtattr **k, 
 
       if (want[a->rta_type].checksize && (RTA_PAYLOAD(a) != want[a->rta_type].size))
 	{
-	  log(L_ERR "nl_parse_attrs: Malformed message received");
+	  log(L_ERR "nl_parse_attrs: Malformed attribute received");
 	  return 0;
 	}
 
@@ -329,6 +327,13 @@ static inline ip4_addr rta_get_ip4(struct rtattr *a)
 static inline ip6_addr rta_get_ip6(struct rtattr *a)
 { return ip6_ntoh(*(ip6_addr *) RTA_DATA(a)); }
 
+static inline ip_addr rta_get_ipa(struct rtattr *a)
+{
+  if (RTA_PAYLOAD(a) == sizeof(ip4_addr))
+    return ipa_from_ip4(rta_get_ip4(a));
+  else
+    return ipa_from_ip6(rta_get_ip6(a));
+}
 
 struct rtattr *
 nl_add_attr(struct nlmsghdr *h, uint bufsize, uint code, const void *data, uint dlen)
@@ -357,10 +362,18 @@ nl_add_attr_u32(struct nlmsghdr *h, unsigned bufsize, int code, u32 data)
 }
 
 static inline void
-nl_add_attr_ipa(struct nlmsghdr *h, unsigned bufsize, int code, ip_addr ipa)
+nl_add_attr_ipa(struct nlmsghdr *h, unsigned bufsize, int code, ip_addr ipa, int af)
 {
-  ipa_hton(ipa);
-  nl_add_attr(h, bufsize, code, &ipa, sizeof(ipa));
+  if (af == AF_INET)
+  {
+    ip4_addr ip4 = ip4_hton(ipa_to_ip4(ipa));
+    nl_add_attr(h, bufsize, code, &ip4, sizeof(ip4));
+  }
+  else
+  {
+    ip6_addr ip6 = ip6_hton(ipa_to_ip6(ipa));
+    nl_add_attr(h, bufsize, code, &ip6, sizeof(ip6));
+  }
 }
 
 static inline struct rtattr *
@@ -408,7 +421,7 @@ nl_add_multipath(struct nlmsghdr *h, unsigned bufsize, struct mpnh *nh)
     rtnh->rtnh_hops = nh->weight;
     rtnh->rtnh_ifindex = nh->iface->index;
 
-    nl_add_attr_ipa(h, bufsize, RTA_GATEWAY, nh->gw);
+    nl_add_attr_ipa(h, bufsize, RTA_GATEWAY, nh->gw, AF_INET);
 
     nl_close_nexthop(h, rtnh);
   }
@@ -598,39 +611,117 @@ nl_parse_link(struct nlmsghdr *h, int scan)
 }
 
 static void
-nl_parse_addr(struct nlmsghdr *h, int scan)
+nl_parse_addr4(struct ifaddrmsg *i, int scan, int new)
 {
-  struct ifaddrmsg *i;
   struct rtattr *a[BIRD_IFA_MAX];
-  int new = h->nlmsg_type == RTM_NEWADDR;
-  struct ifa ifa;
   struct iface *ifi;
   int scope;
 
-  if (!(i = nl_checkin(h, sizeof(*i))))
+  if (!nl_parse_attrs(IFA_RTA(i), ifa_attr_want4, a, sizeof(a)))
     return;
 
-  switch (i->ifa_family)
+  if (!a[IFA_LOCAL])
     {
-#ifndef IPV6
-      case AF_INET:
-	if (!nl_parse_attrs(IFA_RTA(i), ifa_attr_want4, a, sizeof(a)))
-	  return;
-	if (!a[IFA_LOCAL])
-	  {
-	    log(L_ERR "KIF: Malformed message received (missing IFA_LOCAL)");
-	    return;
-	  }
-	break;
-#else
-      case AF_INET6:
-	if (!nl_parse_attrs(IFA_RTA(i), ifa_attr_want6, a, sizeof(a)))
-	  return;
-	break;
-#endif
-      default:
-	return;
+      log(L_ERR "KIF: Malformed message received (missing IFA_LOCAL)");
+      return;
     }
+  if (!a[IFA_ADDRESS])
+    {
+      log(L_ERR "KIF: Malformed message received (missing IFA_ADDRESS)");
+      return;
+    }
+
+  ifi = if_find_by_index(i->ifa_index);
+  if (!ifi)
+    {
+      log(L_ERR "KIF: Received address message for unknown interface %d", i->ifa_index);
+      return;
+    }
+
+  struct ifa ifa;
+  bzero(&ifa, sizeof(ifa));
+  ifa.iface = ifi;
+  if (i->ifa_flags & IFA_F_SECONDARY)
+    ifa.flags |= IA_SECONDARY;
+
+  ifa.ip = rta_get_ipa(a[IFA_LOCAL]);
+
+  if (i->ifa_prefixlen > BITS_PER_IP_ADDRESS)
+    {
+      log(L_ERR "KIF: Invalid prefix length for interface %s: %d", ifi->name, i->ifa_prefixlen);
+      new = 0;
+    }
+  if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS)
+    {
+      ifa.brd = rta_get_ipa(a[IFA_ADDRESS]);
+      net_fill_ip4(&ifa.prefix, rta_get_ip4(a[IFA_ADDRESS]), i->ifa_prefixlen);
+
+      /* It is either a host address or a peer address */
+      if (ipa_equal(ifa.ip, ifa.brd))
+	ifa.flags |= IA_HOST;
+      else
+	{
+	  ifa.flags |= IA_PEER;
+	  ifa.opposite = ifa.brd;
+	}
+    }
+  else
+    {
+      net_fill_ip4(&ifa.prefix, ipa_to_ip4(ifa.ip), i->ifa_prefixlen);
+      net_normalize(&ifa.prefix);
+
+      if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS - 1)
+	ifa.opposite = ipa_opposite_m1(ifa.ip);
+
+      if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS - 2)
+	ifa.opposite = ipa_opposite_m2(ifa.ip);
+
+      if ((ifi->flags & IF_BROADCAST) && a[IFA_BROADCAST])
+	{
+	  ip4_addr xbrd = rta_get_ip4(a[IFA_BROADCAST]);
+	  ip4_addr ybrd = ip4_or(ipa_to_ip4(ifa.ip), ip4_not(ip4_mkmask(i->ifa_prefixlen)));
+
+	  if (ip4_equal(xbrd, net4_prefix(&ifa.prefix)) || ip4_equal(xbrd, ybrd))
+	    ifa.brd = ipa_from_ip4(xbrd);
+	  else if (ifi->flags & IF_TMP_DOWN) /* Complain only during the first scan */
+	    {
+	      log(L_ERR "KIF: Invalid broadcast address %I for %s", xbrd, ifi->name);
+	      ifa.brd = ipa_from_ip4(ybrd);
+	    }
+	}
+    }
+
+  scope = ipa_classify(ifa.ip);
+  if (scope < 0)
+    {
+      log(L_ERR "KIF: Invalid interface address %I for %s", ifa.ip, ifi->name);
+      return;
+    }
+  ifa.scope = scope & IADDR_SCOPE_MASK;
+
+  DBG("KIF: IF%d(%s): %s IPA %I, flg %x, net %N, brd %I, opp %I\n",
+      ifi->index, ifi->name,
+      new ? "added" : "removed",
+      ifa.ip, ifa.flags, ifa.prefix, ifa.brd, ifa.opposite);
+
+  if (new)
+    ifa_update(&ifa);
+  else
+    ifa_delete(&ifa);
+
+  if (!scan)
+    if_end_partial_update(ifi);
+}
+
+static void
+nl_parse_addr6(struct ifaddrmsg *i, int scan, int new)
+{
+  struct rtattr *a[BIRD_IFA_MAX];
+  struct iface *ifi;
+  int scope;
+
+  if (!nl_parse_attrs(IFA_RTA(i), ifa_attr_want6, a, sizeof(a)))
+    return;
 
   if (!a[IFA_ADDRESS])
     {
@@ -645,15 +736,16 @@ nl_parse_addr(struct nlmsghdr *h, int scan)
       return;
     }
 
+  struct ifa ifa;
   bzero(&ifa, sizeof(ifa));
   ifa.iface = ifi;
   if (i->ifa_flags & IFA_F_SECONDARY)
     ifa.flags |= IA_SECONDARY;
 
   /* IFA_LOCAL can be unset for IPv6 interfaces */
-  memcpy(&ifa.ip, RTA_DATA(a[IFA_LOCAL] ? : a[IFA_ADDRESS]), sizeof(ifa.ip));
-  ipa_ntoh(ifa.ip);
-  ifa.pxlen = i->ifa_prefixlen;
+
+  ifa.ip = rta_get_ipa(a[IFA_LOCAL] ? : a[IFA_ADDRESS]);
+
   if (i->ifa_prefixlen > BITS_PER_IP_ADDRESS)
     {
       log(L_ERR "KIF: Invalid prefix length for interface %s: %d", ifi->name, i->ifa_prefixlen);
@@ -661,43 +753,25 @@ nl_parse_addr(struct nlmsghdr *h, int scan)
     }
   if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS)
     {
-      ip_addr addr;
-      memcpy(&addr, RTA_DATA(a[IFA_ADDRESS]), sizeof(addr));
-      ipa_ntoh(addr);
-      ifa.prefix = ifa.brd = addr;
+      ifa.brd = rta_get_ipa(a[IFA_ADDRESS]);
+      net_fill_ip6(&ifa.prefix, rta_get_ip6(a[IFA_ADDRESS]), i->ifa_prefixlen);
 
       /* It is either a host address or a peer address */
-      if (ipa_equal(ifa.ip, addr))
+      if (ipa_equal(ifa.ip, ifa.brd))
 	ifa.flags |= IA_HOST;
       else
 	{
 	  ifa.flags |= IA_PEER;
-	  ifa.opposite = addr;
+	  ifa.opposite = ifa.brd;
 	}
     }
   else
     {
-      ip_addr netmask = ipa_mkmask(ifa.pxlen);
-      ifa.prefix = ipa_and(ifa.ip, netmask);
-      ifa.brd = ipa_or(ifa.ip, ipa_not(netmask));
+      net_fill_ip6(&ifa.prefix, ipa_to_ip6(ifa.ip), i->ifa_prefixlen);
+      net_normalize(&ifa.prefix);
+
       if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS - 1)
 	ifa.opposite = ipa_opposite_m1(ifa.ip);
-
-#ifndef IPV6
-      if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS - 2)
-	ifa.opposite = ipa_opposite_m2(ifa.ip);
-
-      if ((ifi->flags & IF_BROADCAST) && a[IFA_BROADCAST])
-	{
-	  ip_addr xbrd;
-	  memcpy(&xbrd, RTA_DATA(a[IFA_BROADCAST]), sizeof(xbrd));
-	  ipa_ntoh(xbrd);
-	  if (ipa_equal(xbrd, ifa.prefix) || ipa_equal(xbrd, ifa.brd))
-	    ifa.brd = xbrd;
-	  else if (ifi->flags & IF_TMP_DOWN) /* Complain only during the first scan */
-	    log(L_ERR "KIF: Invalid broadcast address %I for %s", xbrd, ifi->name);
-	}
-#endif
     }
 
   scope = ipa_classify(ifa.ip);
@@ -708,10 +782,10 @@ nl_parse_addr(struct nlmsghdr *h, int scan)
     }
   ifa.scope = scope & IADDR_SCOPE_MASK;
 
-  DBG("KIF: IF%d(%s): %s IPA %I, flg %x, net %I/%d, brd %I, opp %I\n",
+  DBG("KIF: IF%d(%s): %s IPA %I, flg %x, net %N, brd %I, opp %I\n",
       ifi->index, ifi->name,
       new ? "added" : "removed",
-      ifa.ip, ifa.flags, ifa.prefix, ifa.pxlen, ifa.brd, ifa.opposite);
+      ifa.ip, ifa.flags, ifa.prefix, ifa.brd, ifa.opposite);
 
   if (new)
     ifa_update(&ifa);
@@ -720,6 +794,28 @@ nl_parse_addr(struct nlmsghdr *h, int scan)
 
   if (!scan)
     if_end_partial_update(ifi);
+}
+
+static void
+nl_parse_addr(struct nlmsghdr *h, int scan)
+{
+  struct ifaddrmsg *i;
+
+  if (!(i = nl_checkin(h, sizeof(*i))))
+    return;
+
+  int new = (h->nlmsg_type == RTM_NEWADDR);
+
+  switch (i->ifa_family)
+    {
+#ifndef IPV6
+      case AF_INET:
+	return nl_parse_addr4(i, scan, new);
+#else
+      case AF_INET6:
+	return nl_parse_addr6(i, scan, new);
+#endif
+    }
 }
 
 void
@@ -814,7 +910,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
     char buf[128 + KRT_METRICS_MAX*8 + nh_bufsize(a->nexthops)];
   } r;
 
-  DBG("nl_send_route(%I/%d,new=%d)\n", net->n.prefix, net->n.pxlen, new);
+  DBG("nl_send_route(%N,new=%d)\n", net->n.addr, new);
 
   bzero(&r.h, sizeof(r.h));
   bzero(&r.r, sizeof(r.r));
@@ -822,11 +918,24 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
   r.h.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
   r.h.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | (new ? NLM_F_CREATE|NLM_F_EXCL : 0);
 
-  r.r.rtm_family = BIRD_AF;
-  r.r.rtm_dst_len = net->n.pxlen;
+  int af = AF_UNSPEC;
+
+  switch(net->n.addr->type) {
+    case NET_IP4:
+      af = AF_INET;
+      break;
+    case NET_IP6:
+      af = AF_INET6;
+      break;
+    default:
+      bug("should not send vpn route to kernel");
+  }
+
+  r.r.rtm_family = af;
+  r.r.rtm_dst_len = net_pxlen(net->n.addr);
   r.r.rtm_protocol = RTPROT_BIRD;
   r.r.rtm_scope = RT_SCOPE_UNIVERSE;
-  nl_add_attr_ipa(&r.h, sizeof(r), RTA_DST, net->n.prefix);
+  nl_add_attr_ipa(&r.h, sizeof(r), RTA_DST, net_prefix(net->n.addr), af);
 
   if (krt_table_id(p) < 256)
     r.r.rtm_table = krt_table_id(p);
@@ -842,7 +951,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
     nl_add_attr_u32(&r.h, sizeof(r), RTA_PRIORITY, ea->u.data);
 
   if (ea = ea_find(eattrs, EA_KRT_PREFSRC))
-    nl_add_attr_ipa(&r.h, sizeof(r), RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data);
+    nl_add_attr_ipa(&r.h, sizeof(r), RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data, af);
 
   if (ea = ea_find(eattrs, EA_KRT_REALM))
     nl_add_attr_u32(&r.h, sizeof(r), RTA_FLOW, ea->u.data);
@@ -870,7 +979,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
     case RTD_ROUTER:
       r.r.rtm_type = RTN_UNICAST;
       nl_add_attr_u32(&r.h, sizeof(r), RTA_OIF, a->iface->index);
-      nl_add_attr_ipa(&r.h, sizeof(r), RTA_GATEWAY, a->gw);
+      nl_add_attr_ipa(&r.h, sizeof(r), RTA_GATEWAY, a->gw, af);
       break;
     case RTD_DEVICE:
       r.r.rtm_type = RTN_UNICAST;
@@ -931,10 +1040,12 @@ nl_parse_route(struct nlmsghdr *h, int scan)
   struct rtattr *a[BIRD_RTA_MAX];
   int new = h->nlmsg_type == RTM_NEWROUTE;
 
-  ip_addr dst = IPA_NONE;
+  net_addr dst = { 0 };
   u32 oif = ~0;
   u32 table;
   int src;
+
+  int ipv6 = 0;
 
   if (!(i = nl_checkin(h, sizeof(*i))))
     return;
@@ -950,18 +1061,15 @@ nl_parse_route(struct nlmsghdr *h, int scan)
       case AF_INET6:
 	if (!nl_parse_attrs(RTM_RTA(i), rtm_attr_want6, a, sizeof(a)))
 	  return;
+	ipv6 = 1;
 	break;
 #endif
       default:
 	return;
     }
 
-
   if (a[RTA_DST])
-    {
-      memcpy(&dst, RTA_DATA(a[RTA_DST]), sizeof(dst));
-      ipa_ntoh(dst);
-    }
+    net_fill_ipa(&dst, rta_get_ipa(a[RTA_DST]), i->rtm_dst_len);
 
   if (a[RTA_OIF])
     oif = rta_get_u32(a[RTA_OIF]);
@@ -977,18 +1085,15 @@ nl_parse_route(struct nlmsghdr *h, int scan)
     SKIP("unknown table %d\n", table);
 
 
-#ifdef IPV6
   if (a[RTA_IIF])
     SKIP("IIF set\n");
-#else
   if (i->rtm_tos != 0)			/* We don't support TOS */
     SKIP("TOS %02x\n", i->rtm_tos);
-#endif
 
   if (scan && !new)
     SKIP("RTM_DELROUTE in scan\n");
 
-  int c = ipa_classify_net(dst);
+  int c = net_classify(&dst);
   if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
     SKIP("strange class/scope\n");
 
@@ -1020,7 +1125,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
       src = KRT_SRC_ALIEN;
     }
 
-  net *net = net_get(p->p.table, dst, i->rtm_dst_len);
+  net *net = net_get(p->p.table, &dst);
 
   rta ra = {
     .src= p->p.main_source,
@@ -1060,11 +1165,9 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 	  memcpy(&ra.gw, RTA_DATA(a[RTA_GATEWAY]), sizeof(ra.gw));
 	  ipa_ntoh(ra.gw);
 
-#ifdef IPV6
 	  /* Silently skip strange 6to4 routes */
-	  if (ipa_in_net(ra.gw, IPA_NONE, 96))
+	  if (ipv6 && ipa_in_net(ra.gw, IPA_NONE, 96))
 	    return;
-#endif
 
 	  ng = neigh_find2(&p->p, &ra.gw, ra.iface,
 			   (i->rtm_flags & RTNH_F_ONLINK) ? NEF_ONLINK : 0);
@@ -1107,9 +1210,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 
   if (a[RTA_PREFSRC])
     {
-      ip_addr ps;
-      memcpy(&ps, RTA_DATA(a[RTA_PREFSRC]), sizeof(ps));
-      ipa_ntoh(ps);
+      ip_addr ps = rta_get_ipa(a[RTA_PREFSRC]);
 
       ea_list *ea = alloca(sizeof(ea_list) + sizeof(eattr));
       ea->next = ra.eattrs;
