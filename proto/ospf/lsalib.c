@@ -493,7 +493,7 @@ lsa_validate_ext3(struct ospf_lsa_header *lsa, struct ospf_lsa_ext3 *body)
     return 0;
 
   int len = IPV6_PREFIX_SPACE(pxl);
-  if (body->metric & LSA_EXT3_FBIT) // forwardinf address
+  if (body->metric & LSA_EXT3_FBIT) // forwarding address
     len += 16;
   if (body->metric & LSA_EXT3_TBIT) // route tag
     len += 4;

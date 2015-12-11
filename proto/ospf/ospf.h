@@ -726,8 +726,15 @@ lsa_net_count(struct ospf_lsa_header *lsa)
 #define IPV6_PREFIX_SPACE(x) ((((x) + 63) / 32) * 4)
 #define IPV6_PREFIX_WORDS(x) (((x) + 63) / 32)
 
-/* FIXME: these four functions should be significantly redesigned w.r.t. integration,
+/* FIXME: these functions should be significantly redesigned w.r.t. integration,
    also should be named as ospf3_* instead of *_ipv6_* */
+
+static inline int
+ospf_valid_prefix(net_addr *n)
+{
+  /* In OSPFv2, prefix is stored as netmask; ip4_masklen() returns 255 for invalid one */
+  return n->pxlen <= IP6_MAX_PREFIX_LENGTH;
+}
 
 static inline u32 *
 ospf_get_ipv6_prefix(u32 *buf, net_addr *N, u8 *pxopts, u16 *rest)

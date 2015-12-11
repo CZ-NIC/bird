@@ -75,10 +75,8 @@ CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 %type <r> rtable
 %type <s> optsym
 %type <ra> r_args
-%type <ro> roa_args
-%type <rot> roa_table_arg
 %type <sd> sym_args
-%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode roa_mode limit_action table_type table_sorted tos
+%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action table_type table_sorted tos
 %type <ps> proto_patt proto_patt2
 %type <g> limit_spec
 
@@ -154,24 +152,6 @@ table: table_type TABLE SYM table_sorted {
    cf = rt_new_table($3, $1);
    cf->sorted = $4;
    }
- ;
-
-CF_ADDTO(conf, roa_table)
-
-roa_table_start: ROA TABLE SYM {
-  this_roa_table = roa_new_table_config($3);
-};
-
-roa_table_opts:
-   /* empty */
- | roa_table_opts ROA prefix MAX NUM AS NUM ';' {
-     roa_add_item_config(this_roa_table, $3.addr, $3.len, $5, $7);
-   }
- ;
-
-roa_table:
-   roa_table_start
- | roa_table_start '{' roa_table_opts '}'
  ;
 
 /* Definition of protocols */
@@ -469,20 +449,17 @@ CF_CLI(SHOW ROUTE, r_args, [[[<prefix>|for <prefix>|for <ip>] [table <t>] [filte
 r_args:
    /* empty */ {
      $$ = cfg_allocz(sizeof(struct rt_show_data));
-     $$->pxlen = 256;
      $$->filter = FILTER_ACCEPT;
    }
- | r_args prefix {
+ | r_args net_any {
      $$ = $1;
-     if ($$->pxlen != 256) cf_error("Only one prefix expected");
-     $$->prefix = $2.addr;
-     $$->pxlen = $2.len;
+     if ($$->prefix) cf_error("Only one prefix expected");
+     $$->prefix = $2;
    }
  | r_args FOR net_or_ipa {
      $$ = $1;
-     if ($$->pxlen != 256) cf_error("Only one prefix expected");
-     $$->prefix = IPA_NONE; /* XXXX */
-     $$->pxlen = 0; /* XXXX */
+     if ($$->prefix) cf_error("Only one prefix expected");
+     $$->prefix = &($3.n);
      $$->show_for = 1;
    }
  | r_args TABLE SYM {
@@ -546,45 +523,8 @@ export_mode:
  ;
 
 
-CF_CLI_HELP(SHOW ROA, ..., [[Show ROA table]])
-CF_CLI(SHOW ROA, roa_args, [<prefix> | in <prefix> | for <prefix>] [as <num>] [table <t>], [[Show ROA table]])
-{ roa_show($3); } ;
-
-roa_args:
-   /* empty */ {
-     $$ = cfg_allocz(sizeof(struct roa_show_data));
-     $$->mode = ROA_SHOW_ALL;
-     $$->table = roa_table_default;
-     if (roa_table_default == NULL)
-       cf_error("No ROA table defined");
-   }
- | roa_args roa_mode prefix {
-     $$ = $1;
-     if ($$->mode != ROA_SHOW_ALL) cf_error("Only one prefix expected");
-     $$->prefix = $3.addr;
-     $$->pxlen = $3.len;
-     $$->mode = $2;
-   }
- | roa_args AS NUM {
-     $$ = $1;
-     $$->asn = $3;
-   }
- | roa_args TABLE SYM {
-     $$ = $1;
-     if ($3->class != SYM_ROA) cf_error("%s is not a ROA table", $3->name);
-     $$->table = ((struct roa_table_config *)$3->def)->table;
-   }
- ;
-
-roa_mode:
-       { $$ = ROA_SHOW_PX; }
- | IN  { $$ = ROA_SHOW_IN; }
- | FOR { $$ = ROA_SHOW_FOR; }
- ;
-
-
 CF_CLI_HELP(SHOW SYMBOLS, ..., [[Show all known symbolic names]])
-CF_CLI(SHOW SYMBOLS, sym_args, [table|filter|function|protocol|template|roa|<symbol>], [[Show all known symbolic names]])
+CF_CLI(SHOW SYMBOLS, sym_args, [table|filter|function|protocol|template|<symbol>], [[Show all known symbolic names]])
 { cmd_show_symbols($3); } ;
 
 sym_args:
@@ -596,44 +536,8 @@ sym_args:
  | sym_args FILTER { $$ = $1; $$->type = SYM_FILTER; }
  | sym_args PROTOCOL { $$ = $1; $$->type = SYM_PROTO; }
  | sym_args TEMPLATE { $$ = $1; $$->type = SYM_TEMPLATE; }
- | sym_args ROA { $$ = $1; $$->type = SYM_ROA; }
  | sym_args SYM { $$ = $1; $$->sym = $2; }
  ;
-
-
-roa_table_arg:
-   /* empty */ { 
-     if (roa_table_default == NULL)
-       cf_error("No ROA table defined");
-     $$ = roa_table_default;
-   }
- | TABLE SYM {
-     if ($2->class != SYM_ROA)
-       cf_error("%s is not a ROA table", $2->name);
-     $$ = ((struct roa_table_config *)$2->def)->table;
-   }
- ;
-
-CF_CLI_HELP(ADD, roa ..., [[Add ROA record]])
-CF_CLI(ADD ROA, prefix MAX NUM AS NUM roa_table_arg, <prefix> max <num> as <num> [table <name>], [[Add ROA record]])
-{
-  if (! cli_access_restricted())
-    { roa_add_item($8, $3.addr, $3.len, $5, $7, ROA_SRC_DYNAMIC); cli_msg(0, ""); }
-};
-
-CF_CLI_HELP(DELETE, roa ..., [[Delete ROA record]])
-CF_CLI(DELETE ROA, prefix MAX NUM AS NUM roa_table_arg, <prefix> max <num> as <num> [table <name>], [[Delete ROA record]])
-{
-  if (! cli_access_restricted())
-    { roa_delete_item($8, $3.addr, $3.len, $5, $7, ROA_SRC_DYNAMIC); cli_msg(0, ""); }
-};
-
-CF_CLI_HELP(FLUSH, roa [table <name>], [[Removes all dynamic ROA records]])
-CF_CLI(FLUSH ROA, roa_table_arg, [table <name>], [[Removes all dynamic ROA records]])
-{
-  if (! cli_access_restricted())
-    { roa_flush($3, ROA_SRC_DYNAMIC); cli_msg(0, ""); }
-};
 
 
 CF_CLI_HELP(DUMP, ..., [[Dump debugging information]])

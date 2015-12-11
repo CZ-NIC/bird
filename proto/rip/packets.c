@@ -715,6 +715,7 @@ rip_open_socket(struct rip_iface *ifa)
 
   sock *sk = sk_new(p->p.pool);
   sk->type = SK_UDP;
+  sk->af = rip_is_v2(p) ? AF_INET : AF_INET6;
   sk->sport = ifa->cf->port;
   sk->dport = ifa->cf->port;
   sk->iface = ifa->iface;

@@ -3,12 +3,21 @@
 #include "lib/ip.h"
 #include "lib/net.h"
 
+
 const u16 net_addr_length[] = {
   [NET_IP4] = sizeof(net_addr_ip4),
   [NET_IP6] = sizeof(net_addr_ip6),
   [NET_VPN4] = sizeof(net_addr_vpn4),
   [NET_VPN6] = sizeof(net_addr_vpn6)
 };
+
+const u8 net_max_prefix_length[] = {
+  [NET_IP4] = IP4_MAX_PREFIX_LENGTH,
+  [NET_IP6] = IP6_MAX_PREFIX_LENGTH,
+  [NET_VPN4] = IP4_MAX_PREFIX_LENGTH,
+  [NET_VPN6] = IP4_MAX_PREFIX_LENGTH
+};
+
 
 int
 net_format(const net_addr *N, char *buf, int buflen)
@@ -30,7 +39,6 @@ net_format(const net_addr *N, char *buf, int buflen)
 
   return 0;
 }
-
 
 ip_addr
 net_pxmask(const net_addr *a)

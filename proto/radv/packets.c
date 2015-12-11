@@ -412,6 +412,7 @@ radv_sk_open(struct radv_iface *ifa)
   sk->type = SK_IP;
   sk->dport = ICMPV6_PROTO;
   sk->saddr = ifa->addr->ip;
+  sk->af = AF_INET6;
 
   sk->ttl = 255; /* Mandatory for Neighbor Discovery packets */
   sk->rx_hook = radv_rx_hook;

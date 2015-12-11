@@ -2293,9 +2293,13 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
       he->igp_metric = rt_get_igp_metric(e);
     }
 
+  /* XXXX */
  done:
   /* Add a prefix range to the trie */
-  trie_add_prefix(tab->hostcache->trie, he->addr, MAX_PREFIX_LENGTH, pxlen, MAX_PREFIX_LENGTH);
+  if (ipa_is_ip4(he->addr))
+    trie_add_prefix(tab->hostcache->trie, he->addr, IP4_MAX_PREFIX_LENGTH, pxlen, IP4_MAX_PREFIX_LENGTH);
+  else
+    trie_add_prefix(tab->hostcache->trie, he->addr, IP6_MAX_PREFIX_LENGTH, pxlen, IP6_MAX_PREFIX_LENGTH);
 
   rta_free(old_src);
   return old_src != he->src;
@@ -2580,7 +2584,7 @@ rt_show(struct rt_show_data *d)
   if (d->filtered && (d->export_mode || d->primary_only))
     cli_msg(0, "");
 
-  if (d->pxlen == 256)
+  if (!d->prefix)
     {
       FIB_ITERATE_INIT(&d->fit, &d->table->fib);
       this_cli->cont = rt_show_cont;

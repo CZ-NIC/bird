@@ -218,7 +218,7 @@ fprefix_get_bounds(struct f_prefix *px, int *l, int *h)
     *l = 0;
 
   else if (px->len & LEN_PLUS)
-    *h = MAX_PREFIX_LENGTH;
+    *h = ipa_is_ip4(px->ip) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH;
 
   else if (px->len & LEN_RANGE)
     {

@@ -646,12 +646,12 @@ nl_parse_addr4(struct ifaddrmsg *i, int scan, int new)
 
   ifa.ip = rta_get_ipa(a[IFA_LOCAL]);
 
-  if (i->ifa_prefixlen > BITS_PER_IP_ADDRESS)
+  if (i->ifa_prefixlen > IP4_MAX_PREFIX_LENGTH)
     {
       log(L_ERR "KIF: Invalid prefix length for interface %s: %d", ifi->name, i->ifa_prefixlen);
       new = 0;
     }
-  if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS)
+  if (i->ifa_prefixlen == IP4_MAX_PREFIX_LENGTH)
     {
       ifa.brd = rta_get_ipa(a[IFA_ADDRESS]);
       net_fill_ip4(&ifa.prefix, rta_get_ip4(a[IFA_ADDRESS]), i->ifa_prefixlen);
@@ -670,10 +670,10 @@ nl_parse_addr4(struct ifaddrmsg *i, int scan, int new)
       net_fill_ip4(&ifa.prefix, ipa_to_ip4(ifa.ip), i->ifa_prefixlen);
       net_normalize(&ifa.prefix);
 
-      if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS - 1)
+      if (i->ifa_prefixlen == IP4_MAX_PREFIX_LENGTH - 1)
 	ifa.opposite = ipa_opposite_m1(ifa.ip);
 
-      if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS - 2)
+      if (i->ifa_prefixlen == IP4_MAX_PREFIX_LENGTH - 2)
 	ifa.opposite = ipa_opposite_m2(ifa.ip);
 
       if ((ifi->flags & IF_BROADCAST) && a[IFA_BROADCAST])
@@ -746,12 +746,12 @@ nl_parse_addr6(struct ifaddrmsg *i, int scan, int new)
 
   ifa.ip = rta_get_ipa(a[IFA_LOCAL] ? : a[IFA_ADDRESS]);
 
-  if (i->ifa_prefixlen > BITS_PER_IP_ADDRESS)
+  if (i->ifa_prefixlen > IP6_MAX_PREFIX_LENGTH)
     {
       log(L_ERR "KIF: Invalid prefix length for interface %s: %d", ifi->name, i->ifa_prefixlen);
       new = 0;
     }
-  if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS)
+  if (i->ifa_prefixlen == IP6_MAX_PREFIX_LENGTH)
     {
       ifa.brd = rta_get_ipa(a[IFA_ADDRESS]);
       net_fill_ip6(&ifa.prefix, rta_get_ip6(a[IFA_ADDRESS]), i->ifa_prefixlen);
@@ -770,7 +770,7 @@ nl_parse_addr6(struct ifaddrmsg *i, int scan, int new)
       net_fill_ip6(&ifa.prefix, ipa_to_ip6(ifa.ip), i->ifa_prefixlen);
       net_normalize(&ifa.prefix);
 
-      if (i->ifa_prefixlen == BITS_PER_IP_ADDRESS - 1)
+      if (i->ifa_prefixlen == IP6_MAX_PREFIX_LENGTH - 1)
 	ifa.opposite = ipa_opposite_m1(ifa.ip);
     }
 
@@ -831,14 +831,21 @@ kif_do_scan(struct kif_proto *p UNUSED)
       nl_parse_link(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
-
-  nl_request_dump(BIRD_AF, RTM_GETADDR);
+#ifndef IPV6
+  nl_request_dump(AF_INET, RTM_GETADDR);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
       nl_parse_addr(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
-
+#else
+  nl_request_dump(AF_INET6, RTM_GETADDR);
+  while (h = nl_get_scan())
+    if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
+      nl_parse_addr(h, 1);
+    else
+      log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
+#endif
   if_end_update();
 }
 
@@ -1280,12 +1287,21 @@ krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NUL
 {
   struct nlmsghdr *h;
 
-  nl_request_dump(BIRD_AF, RTM_GETROUTE);
+#ifndef IPV6
+  nl_request_dump(AF_INET, RTM_GETROUTE);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
       nl_parse_route(h, 1);
     else
       log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
+#else
+  nl_request_dump(AF_INET6, RTM_GETROUTE);
+  while (h = nl_get_scan())
+    if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
+      nl_parse_route(h, 1);
+    else
+      log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
+#endif
 }
 
 /*

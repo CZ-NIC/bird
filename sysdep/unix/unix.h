@@ -47,14 +47,6 @@ typedef struct sockaddr_bird {
 } sockaddr;
 
 
-#ifdef IPV6
-#define BIRD_AF AF_INET6
-#define ipa_from_sa(x) ipa_from_sa6(x)
-#else
-#define BIRD_AF AF_INET
-#define ipa_from_sa(x) ipa_from_sa4(x)
-#endif
-
 
 /* This is sloppy hack, it should be detected by configure script */
 /* Linux systems have it defined so this is definition for BSD systems */
@@ -74,6 +66,16 @@ static inline ip_addr ipa_from_sa4(sockaddr *sa)
 
 static inline ip_addr ipa_from_sa6(sockaddr *sa)
 { return ipa_from_in6(((struct sockaddr_in6 *) sa)->sin6_addr); }
+
+static inline ip_addr ipa_from_sa(sockaddr *sa)
+{
+  switch (sa->sa.sa_family)
+  {
+  case AF_INET:		return ipa_from_sa4(sa);
+  case AF_INET6:	return ipa_from_sa6(sa);
+  default:		return IPA_NONE;
+  }
+}
 
 static inline struct in_addr ipa_to_in4(ip_addr a)
 { return (struct in_addr) { htonl(ipa_to_u32(a)) }; }

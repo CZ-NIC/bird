@@ -1311,8 +1311,8 @@ sk_passive_connected(sock *s, int type)
 
   sock *t = sk_new(s->pool);
   t->type = type;
-  t->fd = fd;
   t->af = s->af;
+  t->fd = fd;
   t->ttl = s->ttl;
   t->tos = s->tos;
   t->rbsize = s->rbsize;
@@ -1371,7 +1371,6 @@ sk_passive_connected(sock *s, int type)
 int
 sk_open(sock *s)
 {
-  int af = BIRD_AF;
   int fd = -1;
   int do_bind = 0;
   int bind_port = 0;
@@ -1384,28 +1383,28 @@ sk_open(sock *s)
     s->ttx = "";			/* Force s->ttx != s->tpos */
     /* Fall thru */
   case SK_TCP_PASSIVE:
-    fd = socket(af, SOCK_STREAM, IPPROTO_TCP);
+    fd = socket(s->af, SOCK_STREAM, IPPROTO_TCP);
     bind_port = s->sport;
     bind_addr = s->saddr;
     do_bind = bind_port || ipa_nonzero(bind_addr);
     break;
 
   case SK_UDP:
-    fd = socket(af, SOCK_DGRAM, IPPROTO_UDP);
+    fd = socket(s->af, SOCK_DGRAM, IPPROTO_UDP);
     bind_port = s->sport;
     bind_addr = (s->flags & SKF_BIND) ? s->saddr : IPA_NONE;
     do_bind = 1;
     break;
 
   case SK_IP:
-    fd = socket(af, SOCK_RAW, s->dport);
+    fd = socket(s->af, SOCK_RAW, s->dport);
     bind_port = 0;
     bind_addr = (s->flags & SKF_BIND) ? s->saddr : IPA_NONE;
     do_bind = ipa_nonzero(bind_addr);
     break;
 
   case SK_MAGIC:
-    af = 0;
+    s->af = 0;
     fd = s->fd;
     break;
 
@@ -1419,7 +1418,6 @@ sk_open(sock *s)
   if (fd >= FD_SETSIZE)
     ERR2("FD_SETSIZE limit reached");
 
-  s->af = af;
   s->fd = fd;
 
   if (sk_setup(s) < 0)
@@ -1448,7 +1446,7 @@ sk_open(sock *s)
 	if (sk_set_high_port(s) < 0)
 	  log(L_WARN "Socket error: %s%#m", s->err);
 
-    sockaddr_fill(&sa, af, bind_addr, s->iface, bind_port);
+    sockaddr_fill(&sa, s->af, bind_addr, s->iface, bind_port);
     if (bind(fd, &sa.sa, SA_LEN(sa)) < 0)
       ERR2("bind");
   }
@@ -1460,7 +1458,7 @@ sk_open(sock *s)
   switch (s->type)
   {
   case SK_TCP_ACTIVE:
-    sockaddr_fill(&sa, af, s->daddr, s->iface, s->dport);
+    sockaddr_fill(&sa, s->af, s->daddr, s->iface, s->dport);
     if (connect(fd, &sa.sa, SA_LEN(sa)) >= 0)
       sk_tcp_connected(s);
     else if (errno != EINTR && errno != EAGAIN && errno != EINPROGRESS &&

@@ -304,8 +304,7 @@ rt_mark_for_prune(rtable *tab)
 }
 
 struct rt_show_data {
-  ip_addr prefix;
-  unsigned pxlen;
+  net_addr *prefix;
   rtable *table;
   struct filter *filter;
   int verbose;

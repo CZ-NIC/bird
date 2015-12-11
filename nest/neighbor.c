@@ -83,7 +83,7 @@ if_connected(ip_addr *a, struct iface *i, struct ifa **ap)
 	    {
 	      /* Do not allow IPv4 network and broadcast addresses */
 	      if (ipa_is_ip4(*a) &&
-		  (net_pxlen(&b->prefix) < (BITS_PER_IP_ADDRESS - 1)) &&
+		  (net_pxlen(&b->prefix) < (IP4_MAX_PREFIX_LENGTH - 1)) &&
 		  (ipa_equal(*a, net_prefix(&b->prefix)) ||	/* Network address */
 		   ipa_equal(*a, b->brd)))	/* Broadcast */
 	      {

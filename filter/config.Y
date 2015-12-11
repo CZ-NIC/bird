@@ -574,7 +574,7 @@ switch_items:
 
 fprefix_s:
    ipa_raw '/' NUM %prec '/' {
-     if (($3 < 0) || ($3 > MAX_PREFIX_LENGTH) || !ip_is_prefix($1, $3)) cf_error("Invalid network prefix: %I/%d.", $1, $3);
+     if (($3 < 0) || ($3 > (ipa_is_ip4($1) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH)) || !ip_is_prefix($1, $3)) cf_error("Invalid network prefix: %I/%d.", $1, $3);
      $$.type = T_PREFIX; $$.val.px.ip = $1; $$.val.px.len = $3;
    }
  ;
@@ -584,7 +584,7 @@ fprefix:
  | fprefix_s '+' { $$ = $1; $$.val.px.len |= LEN_PLUS; }
  | fprefix_s '-' { $$ = $1; $$.val.px.len |= LEN_MINUS; }
  | fprefix_s '{' NUM ',' NUM '}' { 
-     if (! ((0 <= $3) && ($3 <= $5) && ($5 <= MAX_PREFIX_LENGTH))) cf_error("Invalid prefix pattern range: {%d, %d}.", $3, $5);
+     if (! ((0 <= $3) && ($3 <= $5) && ($5 <= (ipa_is_ip4($1.val.px.ip) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH)))) cf_error("Invalid prefix pattern range: {%d, %d}.", $3, $5);
      $$ = $1; $$.val.px.len |= LEN_RANGE | ($3 << 16) | ($5 << 8);
    }
  ;

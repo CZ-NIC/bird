@@ -76,11 +76,10 @@ CF_DECLS
 %token <t> TEXT
 %type <iface> ipa_scope
 
-%type <i> expr bool pxlen
+%type <i> expr bool pxlen4 pxlen6
 %type <i32> expr_us
 %type <time> datetime
 %type <a> ipa ipa_raw
-%type <px> prefix
 %type <net> net_ip4 net_ip6 net_ip net_or_ipa
 %type <net_ptr> net_any
 
@@ -175,9 +174,9 @@ ipa_scope:
 
 /* XXXX - symbols and tests */
 
-net_ip4: IP4 pxlen { $$.ip4 = NET_ADDR_IP4($1, $2); }
+net_ip4: IP4 pxlen4 { $$.ip4 = NET_ADDR_IP4($1, $2); }
 
-net_ip6: IP6 pxlen { $$.ip6 = NET_ADDR_IP6($1, $2); }
+net_ip6: IP6 pxlen6 { $$.ip6 = NET_ADDR_IP6($1, $2); }
 
 net_ip: net_ip4 | net_ip6 ;
 
@@ -191,21 +190,21 @@ net_or_ipa:
  ;
 
 
-prefix:
-   ipa pxlen {
-     if (!ip_is_prefix($1, $2)) cf_error("Invalid prefix");
-     $$.addr = $1; $$.len = $2;
+pxlen4:
+   '/' expr {
+     if ($2 < 0 || $2 > IP4_MAX_PREFIX_LENGTH) cf_error("Invalid prefix length %d", $2);
+     $$ = $2;
+   }
+ | ':' IP4 {
+     $$ = ip4_masklen($2);
+     if ($$ < 0) cf_error("Invalid netmask %I", $2);
    }
  ;
 
-pxlen:
+pxlen6:
    '/' expr {
-     if ($2 < 0 || $2 > BITS_PER_IP_ADDRESS) cf_error("Invalid prefix length %d", $2);
+     if ($2 < 0 || $2 > IP6_MAX_PREFIX_LENGTH) cf_error("Invalid prefix length %d", $2);
      $$ = $2;
-   }
- | ':' ipa {
-     $$ = ipa_masklen($2);
-     if ($$ < 0) cf_error("Invalid netmask %I", $2);
    }
  ;
 

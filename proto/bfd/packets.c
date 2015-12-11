@@ -202,9 +202,7 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop)
   sk->priority = sk_priority_control;
   sk->flags = SKF_THREAD | SKF_LADDR_RX | (!multihop ? SKF_TTL_RX : 0);
 
-#ifdef IPV6
-  sk->flags |= SKF_V6ONLY;
-#endif
+  sk->af = AF_INET6;
 
   if (sk_open(sk) < 0)
     goto err;
@@ -237,9 +235,7 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   sk->ttl = ifa ? 255 : -1;
   sk->flags = SKF_THREAD | SKF_BIND | SKF_HIGH_PORT;
 
-#ifdef IPV6
-  sk->flags |= SKF_V6ONLY;
-#endif
+  sk->af = AF_INET6;
 
   if (sk_open(sk) < 0)
     goto err;

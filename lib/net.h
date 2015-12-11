@@ -19,7 +19,6 @@
 #define NET_VPN6	4
 #define NET_MAX		5
 
-
 typedef struct net_addr {
   u8 type;
   u8 pxlen;
@@ -69,7 +68,7 @@ typedef union net_addr_union {
 
 
 extern const u16 net_addr_length[];
-
+extern const u8 net_max_prefix_length[];
 
 #define NET_ADDR_IP4(prefix,pxlen) \
   ((net_addr_ip4) { NET_IP4, pxlen, sizeof(net_addr_ip4), prefix })

@@ -207,7 +207,8 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   msg.rtm.rtm_addrs = RTA_DST;
   msg.rtm.rtm_flags = RTF_UP | RTF_PROTO1;
 
-  if (net_prefix(net->n.addr) == MAX_PREFIX_LENGTH)
+  /* XXXX */
+  if (net_pxlen(net->n.addr) == net_max_prefix_length[net->n.addr->type])
     msg.rtm.rtm_flags |= RTF_HOST;
   else
     msg.rtm.rtm_addrs |= RTA_NETMASK;
@@ -296,7 +297,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
           return -1;
         }
 
-	sockaddr_fill(&gate, BIRD_AF, i->addr->ip, NULL, 0);
+	sockaddr_fill(&gate, ipa_is_ip4(i->addr->ip) ? AF_INET : AF_INET6, i->addr->ip, NULL, 0);
         msg.rtm.rtm_addrs |= RTA_GATEWAY;
       }
       break;
@@ -383,12 +384,17 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   GETADDR(&gate, RTA_GATEWAY);
   GETADDR(&mask, RTA_NETMASK);
 
-  if (dst.sa.sa_family != BIRD_AF)
-    SKIP("invalid DST");
+
+  switch (dst.sa.sa_family) {
+    case AF_INET:
+    case AF_INET6: break;
+    default:
+      SKIP("invalid DST");
+  }
 
   idst  = ipa_from_sa(&dst);
-  imask = ipa_from_sa(&mask);
-  igate = (gate.sa.sa_family == BIRD_AF) ? ipa_from_sa(&gate) : IPA_NONE;
+  imask = ipa_from_sa(&mask); /* XXXX broken, see below */
+  igate = (gate.sa.sa_family == dst.sa.sa_family) ? ipa_from_sa(&gate) : IPA_NONE;
 
   /* We do not test family for RTA_NETMASK, because BSD sends us
      some strange values, but interpreting them as IPv4/IPv6 works */
@@ -398,7 +404,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
     SKIP("strange class/scope\n");
 
-  int pxlen = (flags & RTF_HOST) ? MAX_PREFIX_LENGTH : ipa_masklen(imask);
+  int pxlen = (flags & RTF_HOST) ? (ipa_is_ip4(imask) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH) : ipa_masklen(imask);
   if (pxlen < 0)
     { log(L_ERR "%s (%I) - netmask %I", errmsg, idst, imask); return; }
 
@@ -663,9 +669,13 @@ krt_read_addr(struct ks_msg *msg, int scan)
   GETADDR (&null, RTA_AUTHOR);
   GETADDR (&brd, RTA_BRD);
 
-  /* Some other family address */
-  if (addr.sa.sa_family != BIRD_AF)
-    return;
+  /* Is addr family IP4 or IP6? */
+  int ipv6;
+  switch (addr.sa.sa_family) {
+    case AF_INET: ipv6 = 0; break;
+    case AF_INET6: ipv6 = 1; break;
+    default: return;
+  }
 
   iaddr = ipa_from_sa(&addr);
   imask = ipa_from_sa(&mask);
@@ -701,16 +711,16 @@ krt_read_addr(struct ks_msg *msg, int scan)
   }
   ifa.scope = scope & IADDR_SCOPE_MASK;
 
-  if (masklen < BITS_PER_IP_ADDRESS)
+  if (masklen < (ipv6 ? IP6_MAX_PREFIX_LENGTH : IP4_MAX_PREFIX_LENGTH))
   {
     net_fill_ipa(&ifa.prefix, ifa.ip, masklen);
     net_normalize(&ifa.prefix);
 
-    if (masklen == (BITS_PER_IP_ADDRESS - 1))
+    if (masklen == ((ipv6 ? IP6_MAX_PREFIX_LENGTH : IP4_MAX_PREFIX_LENGTH) - 1))
       ifa.opposite = ipa_opposite_m1(ifa.ip);
 
 #ifndef IPV6
-    if (masklen == (BITS_PER_IP_ADDRESS - 2))
+    if (!ipv6 && masklen == IP4_MAX_PREFIX_LENGTH - 2)
       ifa.opposite = ipa_opposite_m2(ifa.ip);
 #endif
 
@@ -722,13 +732,13 @@ krt_read_addr(struct ks_msg *msg, int scan)
   }
   else if (!(iface->flags & IF_MULTIACCESS) && ipa_nonzero(ibrd))
   {
-    net_fill_ipa(&ifa.prefix, ibrd, BITS_PER_IP_ADDRESS);
+    net_fill_ipa(&ifa.prefix, ibrd, (ipv6 ? IP6_MAX_PREFIX_LENGTH : IP4_MAX_PREFIX_LENGTH));
     ifa.opposite = ibrd;
     ifa.flags |= IA_PEER;
   }
   else
   {
-    net_fill_ipa(&ifa.prefix, ifa.ip, BITS_PER_IP_ADDRESS);
+    net_fill_ipa(&ifa.prefix, ifa.ip, (ipv6 ? IP6_MAX_PREFIX_LENGTH : IP4_MAX_PREFIX_LENGTH));
     ifa.flags |= IA_HOST;
   }
 
@@ -825,7 +835,12 @@ krt_sysctl_scan(struct proto *p, int cmd, int table_id)
   mib[0] = CTL_NET;
   mib[1] = PF_ROUTE;
   mib[2] = 0;
-  mib[3] = BIRD_AF;
+  /* XXX: This value should be given from the caller */
+#ifdef IPV6
+  mib[3] = AF_INET6;
+#else
+  mib[3] = AF_INET;
+#endif
   mib[4] = cmd;
   mib[5] = 0;
   mcnt = 6;

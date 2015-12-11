@@ -412,7 +412,7 @@ add_network(struct ospf_area *oa, net_addr *net, int metric, struct top_hash_ent
     .nhs = en->nhs
   };
 
-  if (net->pxlen > MAX_PREFIX_LENGTH)
+  if (!ospf_valid_prefix(net))
   {
     log(L_WARN "%s: Invalid prefix in LSA (Type: %04x, Id: %R, Rt: %R)",
 	p->p.name, en->lsa_type, en->lsa.id, en->lsa.rt);
@@ -765,15 +765,15 @@ ospf_rt_sum(struct ospf_area *oa)
     {
       lsa_parse_sum_net(en, ospf_is_v2(p), &net, &pxopts, &metric);
 
-      if (pxopts & OPT_PX_NU)
-	continue;
-
-      if (net.pxlen > MAX_PREFIX_LENGTH)
+      if (!ospf_valid_prefix(&net))
       {
 	log(L_WARN "%s: Invalid prefix in LSA (Type: %04x, Id: %R, Rt: %R)",
 	    p->p.name, en->lsa_type, en->lsa.id, en->lsa.rt);
 	continue;
       }
+
+      if (pxopts & OPT_PX_NU)
+	continue;
 
       options = 0;
       type = ORT_NET;
@@ -862,15 +862,15 @@ ospf_rt_sum_tr(struct ospf_area *oa)
 
       lsa_parse_sum_net(en, ospf_is_v2(p), &net, &pxopts, &metric);
 
-      if (pxopts & OPT_PX_NU)
-	continue;
-
-      if (net.pxlen > MAX_PREFIX_LENGTH)
+      if (!ospf_valid_prefix(&net))
       {
 	log(L_WARN "%s: Invalid prefix in LSA (Type: %04x, Id: %R, Rt: %R)",
 	    p->p.name, en->lsa_type, en->lsa.id, en->lsa.rt);
 	continue;
       }
+
+      if (pxopts & OPT_PX_NU)
+	continue;
 
       re = fib_find(&p->rtf, &net);
     }
@@ -1466,19 +1466,18 @@ ospf_ext_spf(struct ospf_proto *p)
 
     lsa_parse_ext(en, ospf_is_v2(p), &rt);
 
-    if (rt.metric == LSINFINITY)
-      continue;
-
-    if (rt.pxopts & OPT_PX_NU)
-      continue;
-
-    if (rt.net.pxlen > MAX_PREFIX_LENGTH)
+    if (!ospf_valid_prefix(&rt.net))
     {
       log(L_WARN "%s: Invalid prefix in LSA (Type: %04x, Id: %R, Rt: %R)",
 	  p->p.name, en->lsa_type, en->lsa.id, en->lsa.rt);
       continue;
     }
 
+    if (rt.metric == LSINFINITY)
+      continue;
+
+    if (rt.pxopts & OPT_PX_NU)
+      continue;
 
     /* 16.4. (3) */
     /* If there are more areas, we already precomputed preferred ASBR
