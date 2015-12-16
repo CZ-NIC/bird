@@ -96,6 +96,23 @@ net_validate(const net_addr *N)
   }
 }
 
+void
+net_normalize(net_addr *N)
+{
+  net_addr_union *n = (void *) N;
+
+  switch (n->n.type)
+  {
+  case NET_IP4:
+  case NET_VPN4:
+    return net_normalize_ip4(&n->ip4);
+
+  case NET_IP6:
+  case NET_VPN6:
+    return net_normalize_ip6(&n->ip6);
+  }
+}
+
 int
 net_classify(const net_addr *N)
 {
@@ -113,4 +130,32 @@ net_classify(const net_addr *N)
   }
 
   return 0;
+}
+
+int
+ipa_in_netX(const ip_addr A, const net_addr *N)
+{
+  switch (N->type)
+  {
+  case NET_IP4:
+  case NET_VPN4:
+    if (!ipa_is_ip4(A)) return 0;
+    break;
+
+  case NET_IP6:
+  case NET_VPN6:
+    if (ipa_is_ip4(A)) return 0;
+    break;
+  }
+
+  return ipa_zero(ipa_and(ipa_xor(A, net_prefix(N)), ipa_mkmask(net_pxlen(N))));
+}
+
+int
+net_in_netX(const net_addr *A, const net_addr *N)
+{
+  if (A->type != N->type)
+    return 0;
+
+  return (net_pxlen(N) <= net_pxlen(A)) && ipa_in_netX(net_prefix(A), N);
 }
