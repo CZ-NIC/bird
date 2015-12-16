@@ -80,7 +80,6 @@ print_size(char *dsc, size_t val)
 
 extern pool *rt_table_pool;
 extern pool *rta_pool;
-extern pool *roa_pool;
 extern pool *proto_pool;
 
 void
@@ -89,7 +88,7 @@ cmd_show_memory(void)
   cli_msg(-1018, "BIRD memory usage");
   print_size("Routing tables:", rmemsize(rt_table_pool));
   print_size("Route attributes:", rmemsize(rta_pool));
-  print_size("ROA tables:", rmemsize(roa_pool));
+//  print_size("ROA tables:", rmemsize(roa_pool));
   print_size("Protocols:", rmemsize(proto_pool));
   print_size("Total:", rmemsize(&root_pool));
   cli_msg(0, "");

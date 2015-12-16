@@ -67,7 +67,7 @@ struct f_inst *f_new_inst(void);
 struct f_inst *f_new_dynamic_attr(int type, int f_type, int code);	/* Type as core knows it, type as filters know it, and code of dynamic attribute */
 struct f_tree *f_new_tree(void);
 struct f_inst *f_generate_complex(int operation, int operation_aux, struct f_inst *dyn, struct f_inst *argument);
-struct f_inst *f_generate_roa_check(struct symbol *sym, struct f_inst *prefix, struct f_inst *asn);
+// struct f_inst *f_generate_roa_check(struct symbol *sym, struct f_inst *prefix, struct f_inst *asn);
 
 
 struct f_tree *build_tree(struct f_tree *);
@@ -133,7 +133,7 @@ void val_format(struct f_val v, buffer *buf);
 #define T_ENUM_SCOPE 0x32
 #define T_ENUM_RTC 0x33
 #define T_ENUM_RTD 0x34
-#define T_ENUM_ROA 0x35
+/*#define T_ENUM_ROA 0x35*/
 /* new enums go here */
 #define T_ENUM_EMPTY 0x3f	/* Special hack for atomic_aggr */
 

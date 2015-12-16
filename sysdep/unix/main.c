@@ -768,7 +768,7 @@ main(int argc, char **argv)
   io_init();
   rt_init();
   if_init();
-  roa_init();
+//  roa_init();
   config_init();
 
   uid_t use_uid = get_uid(use_user);

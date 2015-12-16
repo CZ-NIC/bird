@@ -1245,6 +1245,7 @@ interpret(struct f_inst *what)
 
     break;
 
+#if 0
   case P('R','C'):	/* ROA Check */
     if (what->arg1)
     {
@@ -1277,6 +1278,7 @@ interpret(struct f_inst *what)
     res.val.i = ROA_UNKNOWN;
     // XXXX res.val.i = roa_check_net(rtc->table, &v1.val.net, as);
     break;
+#endif
 
   default:
     bug( "Unknown instruction %d (%c)", what->code, what->code & 0xff);
@@ -1404,6 +1406,7 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   case P('C','a'): TWOARGS; break;
   case P('a','f'):
   case P('a','l'): ONEARG; break;
+#if 0
   case P('R','C'):
     TWOARGS;
     /* Does not really make sense - ROA check resuls may change anyway */
@@ -1411,6 +1414,7 @@ i_same(struct f_inst *f1, struct f_inst *f2)
 	       ((struct f_inst_roa_check *) f2)->rtc->name))
       return 0;
     break;
+#endif
   default:
     bug( "Unknown instruction %d in same (%c)", f1->code, f1->code & 0xff);
   }

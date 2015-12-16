@@ -284,7 +284,6 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	DEFINED,
 	ADD, DELETE, CONTAINS, RESET,
 	PREPEND, FIRST, LAST, MATCH,
-	ROA_CHECK,
 	EMPTY,
 	FILTER, WHERE, EVAL)
 
@@ -761,8 +760,10 @@ term:
  | DELETE '(' term ',' term ')' { $$ = f_new_inst(); $$->code = P('C','a'); $$->a1.p = $3; $$->a2.p = $5; $$->aux = 'd'; }
  | FILTER '(' term ',' term ')' { $$ = f_new_inst(); $$->code = P('C','a'); $$->a1.p = $3; $$->a2.p = $5; $$->aux = 'f'; }
 
+/*
  | ROA_CHECK '(' SYM ')' { $$ = f_generate_roa_check($3, NULL, NULL); }
  | ROA_CHECK '(' SYM ',' term ',' term ')' { $$ = f_generate_roa_check($3, $5, $7); }
+*/
 
 /* | term '.' LEN { $$->code = P('P','l'); } */
 

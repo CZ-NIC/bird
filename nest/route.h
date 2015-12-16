@@ -560,6 +560,7 @@ extern struct protocol *attr_class_to_protocol[EAP_MAX];
 #define DEF_PREF_PIPE		70	/* Routes piped from other tables */
 #define DEF_PREF_INHERITED	10	/* Routes inherited from other routing daemons */
 
+#if 0
 
 /*
  *	Route Origin Authorization
@@ -639,5 +640,5 @@ void roa_preconfig(struct config *c);
 void roa_commit(struct config *new, struct config *old);
 void roa_show(struct roa_show_data *d);
 
-
+#endif
 #endif

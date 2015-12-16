@@ -54,7 +54,7 @@ f_generate_complex(int operation, int operation_aux, struct f_inst *dyn, struct 
   return set_dyn;
 }
 
-
+#if 0
 struct f_inst *
 f_generate_roa_check(struct symbol *sym, struct f_inst *prefix, struct f_inst *asn)
 {
@@ -71,6 +71,7 @@ f_generate_roa_check(struct symbol *sym, struct f_inst *prefix, struct f_inst *a
 
   return &ret->i;
 }
+#endif
 
 char *
 filter_name(struct filter *filter)

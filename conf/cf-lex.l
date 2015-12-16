@@ -674,8 +674,6 @@ cf_symbol_class_name(struct symbol *sym)
       return "filter";
     case SYM_TABLE:
       return "routing table";
-    case SYM_ROA:
-      return "ROA table";
     default:
       return "unknown type";
     }
