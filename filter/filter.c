@@ -90,17 +90,8 @@ pm_format(struct f_path_mask *p, buffer *buf)
   buffer_puts(buf, "=]");
 }
 
-static inline int
-uint_cmp(uint i1, uint i2)
-{
-  return (int)(i1 > i2) - (int)(i1 < i2);
-}
-
-static inline int
-u64_cmp(u64 i1, u64 i2)
-{
-  return (int)(i1 > i2) - (int)(i1 < i2);
-}
+static inline int val_is_ip4(const struct f_val v)
+{ return (v.type == T_IP) && ipa_is_ip4(v.val.ip); }
 
 /**
  * val_compare - compare two values
@@ -114,8 +105,6 @@ u64_cmp(u64 i1, u64 i2)
 int
 val_compare(struct f_val v1, struct f_val v2)
 {
-  int rc;
-
   if (v1.type != v2.type) {
     if (v1.type == T_VOID)	/* Hack for else */
       return -1;
@@ -124,10 +113,10 @@ val_compare(struct f_val v1, struct f_val v2)
 
 #ifndef IPV6
     /* IP->Quad implicit conversion */
-    if ((v1.type == T_QUAD) && (v2.type == T_IP))
-      return uint_cmp(v1.val.i, ipa_to_u32(v2.val.px.ip));
-    if ((v1.type == T_IP) && (v2.type == T_QUAD))
-      return uint_cmp(ipa_to_u32(v1.val.px.ip), v2.val.i);
+    if ((v1.type == T_QUAD) && val_is_ip4(v2))
+      return uint_cmp(v1.val.i, ipa_to_u32(v2.val.ip));
+    if (val_is_ip4(v1) && (v2.type == T_QUAD))
+      return uint_cmp(ipa_to_u32(v1.val.ip), v2.val.i);
 #endif
 
     debug( "Types do not match in val_compare\n" );
@@ -146,11 +135,9 @@ val_compare(struct f_val v1, struct f_val v2)
   case T_EC:
     return u64_cmp(v1.val.ec, v2.val.ec);
   case T_IP:
-    return ipa_compare(v1.val.px.ip, v2.val.px.ip);
-  case T_PREFIX:
-    if (rc = ipa_compare(v1.val.px.ip, v2.val.px.ip))
-      return rc;
-    return uint_cmp(v1.val.px.len, v2.val.px.len);
+    return ipa_compare(v1.val.ip, v2.val.ip);
+  case T_NET:
+    return net_compare(v1.val.net, v2.val.net);
   case T_STRING:
     return strcmp(v1.val.s, v2.val.s);
   default:
@@ -207,24 +194,6 @@ val_same(struct f_val v1, struct f_val v2)
   default:
     bug("Invalid type in val_same(): %x", v1.type);
   }
-}
-
-void
-fprefix_get_bounds(struct f_prefix *px, int *l, int *h)
-{
-  *l = *h = px->len & LEN_MASK;
-
-  if (px->len & LEN_MINUS)
-    *l = 0;
-
-  else if (px->len & LEN_PLUS)
-    *h = ipa_is_ip4(px->ip) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH;
-
-  else if (px->len & LEN_RANGE)
-    {
-      *l = 0xff & (px->len >> 16);
-      *h = 0xff & (px->len >> 8);
-    }
 }
 
 static int
@@ -385,8 +354,8 @@ val_in_range(struct f_val v1, struct f_val v2)
     return int_set_contains(v2.val.ad, v1.val.i);
 #ifndef IPV6
   /* IP->Quad implicit conversion */
-  if ((v1.type == T_IP) && (v2.type == T_CLIST))
-    return int_set_contains(v2.val.ad, ipa_to_u32(v1.val.px.ip));
+  if (val_is_ip4(v1) && (v2.type == T_CLIST))
+    return int_set_contains(v2.val.ad, ipa_to_u32(v1.val.ip));
 #endif
 
   if ((v1.type == T_EC) && (v2.type == T_ECLIST))
@@ -395,14 +364,14 @@ val_in_range(struct f_val v1, struct f_val v2)
   if ((v1.type == T_STRING) && (v2.type == T_STRING))
     return patmatch(v2.val.s, v1.val.s);
 
-  if ((v1.type == T_IP) && (v2.type == T_PREFIX))
-    return ipa_in_net(v1.val.px.ip, v2.val.px.ip, v2.val.px.len);
+  if ((v1.type == T_IP) && (v2.type == T_NET))
+    return ipa_in_netX(v1.val.ip, v2.val.net);
 
-  if ((v1.type == T_PREFIX) && (v2.type == T_PREFIX))
-    return net_in_net(v1.val.px.ip, v1.val.px.len, v2.val.px.ip, v2.val.px.len);
+  if ((v1.type == T_NET) && (v2.type == T_NET))
+    return net_in_netX(v1.val.net, v2.val.net);
 
-  if ((v1.type == T_PREFIX) && (v2.type == T_PREFIX_SET))
-    return trie_match_fprefix(v2.val.ti, &v1.val.px);
+  if ((v1.type == T_NET) && (v2.type == T_PREFIX_SET))
+    return trie_match_net(v2.val.ti, v1.val.net);
 
   if (v2.type != T_SET)
     return CMP_ERROR;
@@ -437,8 +406,8 @@ val_format(struct f_val v, buffer *buf)
   case T_BOOL:	buffer_puts(buf, v.val.i ? "TRUE" : "FALSE"); return;
   case T_INT:	buffer_print(buf, "%u", v.val.i); return;
   case T_STRING: buffer_print(buf, "%s", v.val.s); return;
-  case T_IP:	buffer_print(buf, "%I", v.val.px.ip); return;
-  case T_PREFIX: buffer_print(buf, "%I/%d", v.val.px.ip, v.val.px.len); return;
+  case T_IP:	buffer_print(buf, "%I", v.val.ip); return;
+  case T_NET:   buffer_print(buf, "%N", v.val.net); return;
   case T_PAIR:	buffer_print(buf, "(%u,%u)", v.val.i >> 16, v.val.i & 0xffff); return;
   case T_QUAD:	buffer_print(buf, "%R", v.val.i); return;
   case T_EC:	ec_format(buf2, v.val.ec); buffer_print(buf, "%s", buf2); return;
@@ -630,8 +599,8 @@ interpret(struct f_inst *what)
       }
 #ifndef IPV6
       /* IP->Quad implicit conversion */
-      else if (v1.type == T_IP) {
-	ipv4_used = 1; key = ipa_to_u32(v1.val.px.ip);
+      else if (val_is_ip4(v1)) {
+	ipv4_used = 1; key = ipa_to_u32(v1.val.ip);
       }
 #endif
       else
@@ -715,9 +684,10 @@ interpret(struct f_inst *what)
     if ((sym->class != (SYM_VARIABLE | v2.type)) && (v2.type != T_VOID)) {
 #ifndef IPV6
       /* IP->Quad implicit conversion */
-      if ((sym->class == (SYM_VARIABLE | T_QUAD)) && (v2.type == T_IP)) {
+      if ((sym->class == (SYM_VARIABLE | T_QUAD)) && val_is_ip4(v2))
+      {
 	vp->type = T_QUAD;
-	vp->val.i = ipa_to_u32(v2.val.px.ip);
+	vp->val.i = ipa_to_u32(v2.val.ip);
 	break;
       }
 #endif
@@ -790,10 +760,9 @@ interpret(struct f_inst *what)
 
       switch (what->a2.i)
       {
-      case SA_FROM:	res.val.px.ip = rta->from; break;
-      case SA_GW:	res.val.px.ip = rta->gw; break;
-      case SA_NET:	res.val.px.ip = net_prefix((*f_rte)->net->n.addr);
-			res.val.px.len = net_pxlen((*f_rte)->net->n.addr); break;
+      case SA_FROM:	res.val.ip = rta->from; break;
+      case SA_GW:	res.val.ip = rta->gw; break;
+      case SA_NET:	res.val.net = (*f_rte)->net->n.addr; break;
       case SA_PROTO:	res.val.s = rta->src->proto->name; break;
       case SA_SOURCE:	res.val.i = rta->source; break;
       case SA_SCOPE:	res.val.i = rta->scope; break;
@@ -820,12 +789,12 @@ interpret(struct f_inst *what)
       switch (what->a2.i)
       {
       case SA_FROM:
-	rta->from = v1.val.px.ip;
+	rta->from = v1.val.ip;
 	break;
 
       case SA_GW:
 	{
-	  ip_addr ip = v1.val.px.ip;
+	  ip_addr ip = v1.val.ip;
 	  neighbor *n = neigh_find(rta->src->proto, &ip, 0);
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
@@ -908,7 +877,7 @@ interpret(struct f_inst *what)
       case EAF_TYPE_IP_ADDRESS:
 	res.type = T_IP;
 	struct adata * ad = e->u.ptr;
-	res.val.px.ip = * (ip_addr *) ad->data;
+	res.val.ip = * (ip_addr *) ad->data;
 	break;
       case EAF_TYPE_AS_PATH:
         res.type = T_PATH;
@@ -958,8 +927,8 @@ interpret(struct f_inst *what)
       case EAF_TYPE_ROUTER_ID:
 #ifndef IPV6
 	/* IP->Quad implicit conversion */
-	if (v1.type == T_IP) {
-	  l->attrs[0].u.data = ipa_to_u32(v1.val.px.ip);
+	if (val_is_ip4(v1)) {
+	  l->attrs[0].u.data = ipa_to_u32(v1.val.ip);
 	  break;
 	}
 #endif
@@ -978,7 +947,7 @@ interpret(struct f_inst *what)
 	int len = sizeof(ip_addr);
 	struct adata *ad = lp_alloc(f_pool, sizeof(struct adata) + len);
 	ad->length = len;
-	(* (ip_addr *) ad->data) = v1.val.px.ip;
+	(* (ip_addr *) ad->data) = v1.val.ip;
 	l->attrs[0].u.ptr = ad;
 	break;
       case EAF_TYPE_AS_PATH:
@@ -1053,7 +1022,7 @@ interpret(struct f_inst *what)
     ONEARG;
     res.type = T_INT;
     switch(v1.type) {
-    case T_PREFIX: res.val.i = v1.val.px.len; break;
+    case T_NET:    res.val.i = net_pxlen(v1.val.net); break;
     case T_PATH:   res.val.i = as_path_getlen(v1.val.ad); break;
     case T_CLIST:  res.val.i = int_set_get_size(v1.val.ad); break;
     case T_ECLIST: res.val.i = ec_set_get_size(v1.val.ad); break;
@@ -1062,14 +1031,10 @@ interpret(struct f_inst *what)
     break;
   case P('c','p'):	/* Convert prefix to ... */
     ONEARG;
-    if (v1.type != T_PREFIX)
+    if (v1.type != T_NET)
       runtime( "Prefix expected" );
-    res.type = what->aux;
-    switch(res.type) {
-      /*    case T_INT:	res.val.i = v1.val.px.len; break; Not needed any more */
-    case T_IP: res.val.px.ip = v1.val.px.ip; break;
-    default: bug( "Unknown prefix to conversion" );
-    }
+    res.type = T_IP;
+    res.val.ip = net_prefix(v1.val.net);
     break;
   case P('a','f'):	/* Get first ASN from AS PATH */
     ONEARG;
@@ -1135,7 +1100,7 @@ interpret(struct f_inst *what)
     {
       ip_addr mask = ipa_mkmask(v2.val.i);
       res.type = T_IP;
-      res.val.px.ip = ipa_and(mask, v1.val.px.ip);
+      res.val.ip = ipa_and(mask, v1.val.ip);
     }
     break;
 
@@ -1195,7 +1160,7 @@ interpret(struct f_inst *what)
 #ifndef IPV6
       /* IP->Quad implicit conversion */
       else if (v2.type == T_IP)
-	n = ipa_to_u32(v2.val.px.ip);
+	n = ipa_to_u32(v2.val.ip);
 #endif
       else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy))
 	arg_set = 1;
@@ -1284,7 +1249,7 @@ interpret(struct f_inst *what)
     if (what->arg1)
     {
       TWOARGS;
-      if ((v1.type != T_PREFIX) || (v2.type != T_INT))
+      if ((v1.type != T_NET) || (v2.type != T_INT))
 	runtime("Invalid argument to roa_check()");
 
       as = v2.val.i;
@@ -1292,8 +1257,7 @@ interpret(struct f_inst *what)
     else
     {
       ACCESS_RTE;
-      v1.val.px.ip = net_prefix((*f_rte)->net->n.addr);
-      v1.val.px.len = net_pxlen((*f_rte)->net->n.addr);
+      v1.val.net = (*f_rte)->net->n.addr;
 
       /* We ignore temporary attributes, probably not a problem here */
       /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */
@@ -1310,7 +1274,8 @@ interpret(struct f_inst *what)
       runtime("Missing ROA table");
 
     res.type = T_ENUM_ROA;
-    res.val.i = roa_check(rtc->table, v1.val.px.ip, v1.val.px.len, as);
+    res.val.i = ROA_UNKNOWN;
+    // XXXX res.val.i = roa_check_net(rtc->table, &v1.val.net, as);
     break;
 
   default:

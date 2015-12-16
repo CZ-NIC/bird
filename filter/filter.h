@@ -39,13 +39,8 @@ struct f_inst_roa_check {
 };
 
 struct f_prefix {
-  ip_addr ip;
-  int len;
-#define LEN_MASK 0xff
-#define LEN_PLUS  0x1000000
-#define LEN_MINUS 0x2000000
-#define LEN_RANGE 0x4000000
-  /* If range then prefix must be in range (len >> 16 & 0xff, len >> 8 & 0xff) */
+  net_addr_union net;
+  u8 lo, hi;
 };
 
 struct f_val {
@@ -53,8 +48,8 @@ struct f_val {
   union {
     uint i;
     u64 ec;
-    /*    ip_addr ip; Folded into prefix */	
-    struct f_prefix px;
+    ip_addr ip;
+    const net_addr *net;
     char *s;
     struct f_tree *t;
     struct f_trie *ti;
@@ -81,27 +76,10 @@ int same_tree(struct f_tree *t1, struct f_tree *t2);
 void tree_format(struct f_tree *t, buffer *buf);
 
 struct f_trie *f_new_trie(linpool *lp, uint node_size);
-void *trie_add_prefix(struct f_trie *t, ip_addr px, int plen, int l, int h);
-int trie_match_prefix(struct f_trie *t, ip_addr px, int plen);
+void *trie_add_prefix(struct f_trie *t, net_addr *n, uint l, uint h);
+int trie_match_net(struct f_trie *t, const net_addr *n);
 int trie_same(struct f_trie *t1, struct f_trie *t2);
 void trie_format(struct f_trie *t, buffer *buf);
-
-void fprefix_get_bounds(struct f_prefix *px, int *l, int *h);
-
-static inline void
-trie_add_fprefix(struct f_trie *t, struct f_prefix *px)
-{
-  int l, h;
-  fprefix_get_bounds(px, &l, &h);
-  trie_add_prefix(t, px->ip, px->len & LEN_MASK, l, h);
-}
-
-static inline int
-trie_match_fprefix(struct f_trie *t, struct f_prefix *px)
-{
-  return trie_match_prefix(t, px->ip, px->len & LEN_MASK);
-}
-
 
 struct ea_list;
 struct rte;
@@ -163,7 +141,7 @@ void val_format(struct f_val v, buffer *buf);
 
 /* Bigger ones */
 #define T_IP 0x20
-#define T_PREFIX 0x21
+#define T_NET 0x21
 #define T_STRING 0x22
 #define T_PATH_MASK 0x23	/* mask for BGP path */
 #define T_PATH 0x24		/* BGP path */
@@ -176,12 +154,12 @@ void val_format(struct f_val v, buffer *buf);
 #define T_PREFIX_SET 0x81
 
 
-#define SA_FROM		 1    
-#define SA_GW		 2      
-#define SA_NET		 3     
-#define SA_PROTO	 4   
-#define SA_SOURCE	 5  
-#define SA_SCOPE	 6   
+#define SA_FROM		 1
+#define SA_GW		 2
+#define SA_NET		 3
+#define SA_PROTO	 4
+#define SA_SOURCE	 5
+#define SA_SCOPE	 6
 #define SA_CAST    	 7
 #define SA_DEST    	 8
 #define SA_IFNAME  	 9

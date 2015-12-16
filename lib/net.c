@@ -58,23 +58,30 @@ net_pxmask(const net_addr *a)
   }
 }
 
-
-static inline int net_validate_ip4(const net_addr_ip4 *n)
+int
+net_compare(const net_addr *a, const net_addr *b)
 {
-  return (n->pxlen <= IP4_MAX_PREFIX_LENGTH) &&
-    ip4_zero(ip4_and(n->prefix, ip4_not(ip4_mkmask(n->pxlen))));
-}
+  if (a->type != b->type)
+    return uint_cmp(a->type, b->type);
 
-static inline int net_validate_ip6(const net_addr_ip6 *n)
-{
-  return (n->pxlen <= IP6_MAX_PREFIX_LENGTH) &&
-    ip6_zero(ip6_and(n->prefix, ip6_not(ip6_mkmask(n->pxlen))));
+  switch (a->type)
+  {
+  case NET_IP4:
+    return net_compare_ip4((const net_addr_ip4 *) a, (const net_addr_ip4 *) b);
+  case NET_IP6:
+    return net_compare_ip6((const net_addr_ip6 *) a, (const net_addr_ip6 *) b);
+  case NET_VPN4:
+    return net_compare_vpn4((const net_addr_vpn4 *) a, (const net_addr_vpn4 *) b);
+  case NET_VPN6:
+    return net_compare_vpn6((const net_addr_vpn6 *) a, (const net_addr_vpn6 *) b);
+  }
+  return 0;
 }
 
 int
 net_validate(const net_addr *N)
 {
-  switch (a->type)
+  switch (N->type)
   {
   case NET_IP4:
   case NET_VPN4:

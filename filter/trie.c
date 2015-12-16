@@ -109,12 +109,11 @@ attach_node(struct f_trie_node *parent, struct f_trie_node *child)
 /**
  * trie_add_prefix
  * @t: trie to add to
- * @px: prefix address
- * @plen: prefix length
+ * @net: IP network prefix
  * @l: prefix lower bound
  * @h: prefix upper bound
  *
- * Adds prefix (prefix pattern) @px/@plen to trie @t.  @l and @h are lower
+ * Adds prefix (prefix pattern) @n to trie @t.  @l and @h are lower
  * and upper bounds on accepted prefix lengths, both inclusive.
  * 0 <= l, h <= 32 (128 for IPv6).
  *
@@ -124,8 +123,19 @@ attach_node(struct f_trie_node *parent, struct f_trie_node *child)
  */
 
 void *
-trie_add_prefix(struct f_trie *t, ip_addr px, int plen, int l, int h)
+trie_add_prefix(struct f_trie *t, net_addr *net, uint l, uint h)
 {
+  ip_addr px = net_prefix(net);
+  uint plen = net_pxlen(net);
+
+  if (net->type == NET_IP4)
+  {
+    const uint delta = IP6_MAX_PREFIX_LENGTH - IP4_MAX_PREFIX_LENGTH;
+    plen += delta;
+    l += delta;
+    h += delta;
+  }
+
   if (l == 0)
     t->zero = 1;
   else
@@ -140,7 +150,7 @@ trie_add_prefix(struct f_trie *t, ip_addr px, int plen, int l, int h)
   struct f_trie_node *o = NULL;
   struct f_trie_node *n = t->root;
 
-  while(n)
+  while (n)
     {
       ip_addr cmask = ipa_and(n->mask, pmask);
 
@@ -196,17 +206,7 @@ trie_add_prefix(struct f_trie *t, ip_addr px, int plen, int l, int h)
   return a;
 }
 
-/**
- * trie_match_prefix
- * @t: trie
- * @px: prefix address
- * @plen: prefix length
- *
- * Tries to find a matching prefix pattern in the trie such that
- * prefix @px/@plen matches that prefix pattern. Returns 1 if there
- * is such prefix pattern in the trie.
- */
-int
+static int
 trie_match_prefix(struct f_trie *t, ip_addr px, int plen)
 {
   ip_addr pmask = ipa_mkmask(plen);
@@ -239,6 +239,27 @@ trie_match_prefix(struct f_trie *t, ip_addr px, int plen)
     }
 
   return 0;
+}
+
+/**
+ * trie_match_net
+ * @t: trie
+ * @n: net address
+ *
+ * Tries to find a matching net in the trie such that
+ * prefix @n matches that prefix pattern. Returns 1 if there
+ * is such prefix pattern in the trie.
+ */
+int
+trie_match_net(struct f_trie *t, const net_addr *n)
+{
+  int add = 0;
+  switch (n->type) {
+    case NET_IP4:
+    case NET_VPN4: add = IP6_MAX_PREFIX_LENGTH - IP4_MAX_PREFIX_LENGTH;
+  }
+
+  return trie_match_prefix(t, net_prefix(n), net_pxlen(n) + add);
 }
 
 static int

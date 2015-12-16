@@ -162,6 +162,21 @@ static inline int net_zero_vpn6(const net_addr_vpn6 *a)
 { return !a->pxlen && ip6_zero(a->prefix) && !a->rd; }
 
 
+static inline int net_compare_ip4(const net_addr_ip4 *a, const net_addr_ip4 *b)
+{ return ip4_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen); }
+
+static inline int net_compare_ip6(const net_addr_ip6 *a, const net_addr_ip6 *b)
+{ return ip6_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen); }
+
+static inline int net_compare_vpn4(const net_addr_vpn4 *a, const net_addr_vpn4 *b)
+{ return u64_cmp(a->rd, b->rd) ?: ip4_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen); }
+
+static inline int net_compare_vpn6(const net_addr_vpn6 *a, const net_addr_vpn6 *b)
+{ return u64_cmp(a->rd, b->rd) ?: ip6_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen); }
+
+int net_compare(const net_addr *a, const net_addr *b);
+
+
 static inline void net_copy(net_addr *dst, const net_addr *src)
 { memcpy(dst, src, src->length); }
 
@@ -195,6 +210,21 @@ static inline u32 net_hash_vpn6(const net_addr_vpn6 *n)
 { return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
 
 
+static inline int net_validate_ip4(const net_addr_ip4 *n)
+{
+  return (n->pxlen <= IP4_MAX_PREFIX_LENGTH) &&
+    ip4_zero(ip4_and(n->prefix, ip4_not(ip4_mkmask(n->pxlen))));
+}
+
+static inline int net_validate_ip6(const net_addr_ip6 *n)
+{
+  return (n->pxlen <= IP6_MAX_PREFIX_LENGTH) &&
+    ip6_zero(ip6_and(n->prefix, ip6_not(ip6_mkmask(n->pxlen))));
+}
+
+int net_validate(const net_addr *N);
+
+
 static inline void net_normalize_ip4(net_addr_ip4 *n)
 { n->prefix = ip4_and(n->prefix, ip4_mkmask(n->pxlen)); }
 
@@ -203,7 +233,6 @@ static inline void net_normalize_ip6(net_addr_ip6 *n)
 
 void net_normalize(net_addr *N);
 
-int net_validate(const net_addr *N);
 
 int net_classify(const net_addr *N);
 int net_format(const net_addr *N, char *buf, int buflen);

@@ -35,6 +35,12 @@
 #define DELTA(a,b) (((a)>=(b))?(a)-(b):(b)-(a))
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof(*(a)))
 
+static inline int uint_cmp(uint i1, uint i2)
+{ return (int)(i1 > i2) - (int)(i1 < i2); }
+
+static inline int u64_cmp(u64 i1, u64 i2)
+{ return (int)(i1 > i2) - (int)(i1 < i2); }
+
 
 /* Bitfield macros */
 

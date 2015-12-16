@@ -2293,13 +2293,14 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
       he->igp_metric = rt_get_igp_metric(e);
     }
 
-  /* XXXX */
  done:
   /* Add a prefix range to the trie */
+  /* XXXX
   if (ipa_is_ip4(he->addr))
     trie_add_prefix(tab->hostcache->trie, he->addr, IP4_MAX_PREFIX_LENGTH, pxlen, IP4_MAX_PREFIX_LENGTH);
   else
     trie_add_prefix(tab->hostcache->trie, he->addr, IP6_MAX_PREFIX_LENGTH, pxlen, IP6_MAX_PREFIX_LENGTH);
+  */
 
   rta_free(old_src);
   return old_src != he->src;

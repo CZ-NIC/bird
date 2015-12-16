@@ -61,7 +61,7 @@ CF_DECLS
   struct roa_table *rot;
   void *g;
   bird_clock_t time;
-  struct prefix px;
+  struct f_prefix px;
   struct proto_spec ps;
   struct timeformat *tf;
 }
@@ -162,7 +162,7 @@ ipa:
    ipa_raw
  | SYM {
      if ($1->class != (SYM_CONSTANT | T_IP)) cf_error("IP address expected");
-     $$ = SYM_VAL($1).px.ip;
+     $$ = SYM_VAL($1).ip;
    }
  ;
 

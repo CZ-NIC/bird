@@ -134,7 +134,7 @@ f_new_ec_item(u32 kind, u32 ipv4_used, u32 key, u32 vf, u32 vt)
 
 static inline struct f_inst *
 f_generate_empty(struct f_inst *dyn)
-{ 
+{
   struct f_inst *e = f_new_inst();
   e->code = 'E';
 
@@ -217,8 +217,8 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
     else if (val->type == T_QUAD) {
       ipv4_used = 1; key = val->val.i;
     }
-    else if (val->type == T_IP) {
-      ipv4_used = 1; key = ipa_to_u32(val->val.px.ip);
+    else if ((val->type == T_IP) && ipa_is_ip4(val->val.ip)) {
+      ipv4_used = 1; key = ipa_to_u32(val->val.ip);
     }
     else
       cf_error("Can't operate with key of non-integer/IPv4 type in EC constructor");
@@ -234,7 +234,7 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
 
   if (c1 && c2) {
     u64 ec;
-  
+
     if (kind == EC_GENERIC) {
       ec = ec_generic(key, val2);
     }
@@ -253,7 +253,7 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
     NEW_F_VAL;
     rv = f_new_inst();
     rv->code = 'C';
-    rv->a1.p = val;    
+    rv->a1.p = val;
     val->type = T_EC;
     val->val.ec = ec;
   }
@@ -297,8 +297,9 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <i32> pair_atom ec_expr
 %type <e> pair_item ec_item set_item switch_item set_items switch_items switch_body
 %type <trie> fprefix_set
-%type <v> set_atom switch_atom fprefix fprefix_s fipa
-%type <s> decls declsn one_decl function_params 
+%type <v> set_atom switch_atom fipa
+%type <px> fprefix
+%type <s> decls declsn one_decl function_params
 %type <h> bgp_path bgp_path_tail1 bgp_path_tail2
 
 CF_GRAMMAR
@@ -323,7 +324,7 @@ type:
    INT { $$ = T_INT; }
  | BOOL { $$ = T_BOOL; }
  | IP { $$ = T_IP; }
- | PREFIX { $$ = T_PREFIX; }
+ | PREFIX { $$ = T_NET; }
  | PAIR { $$ = T_PAIR; }
  | QUAD { $$ = T_QUAD; }
  | EC { $$ = T_EC; }
@@ -342,7 +343,7 @@ type:
 	       $$ = T_SET;
 	       break;
 
-	  case T_PREFIX:
+	  case T_NET:
 	       $$ = T_PREFIX_SET;
 	    break;
 
@@ -477,7 +478,7 @@ block:
  * Complex types, their bison value is struct f_val
  */
 fipa:
-   ipa_raw %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.px.ip = $1; }
+   ipa_raw %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.ip = $1; }
  ;
 
 
@@ -572,26 +573,20 @@ switch_items:
  | switch_items ',' switch_item { $$ = f_merge_items($1, $3); }
  ;
 
-fprefix_s:
-   ipa_raw '/' NUM %prec '/' {
-     if (($3 < 0) || ($3 > (ipa_is_ip4($1) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH)) || !ip_is_prefix($1, $3)) cf_error("Invalid network prefix: %I/%d.", $1, $3);
-     $$.type = T_PREFIX; $$.val.px.ip = $1; $$.val.px.len = $3;
-   }
- ;
-
 fprefix:
-   fprefix_s { $$ = $1; }
- | fprefix_s '+' { $$ = $1; $$.val.px.len |= LEN_PLUS; }
- | fprefix_s '-' { $$ = $1; $$.val.px.len |= LEN_MINUS; }
- | fprefix_s '{' NUM ',' NUM '}' { 
-     if (! ((0 <= $3) && ($3 <= $5) && ($5 <= (ipa_is_ip4($1.val.px.ip) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH)))) cf_error("Invalid prefix pattern range: {%d, %d}.", $3, $5);
-     $$ = $1; $$.val.px.len |= LEN_RANGE | ($3 << 16) | ($5 << 8);
+   net_ip	{ $$.net = $1; $$.lo = $1.n.pxlen; $$.hi = $1.n.pxlen; }
+ | net_ip '+'	{ $$.net = $1; $$.lo = $1.n.pxlen; $$.hi = net_max_prefix_length[$1.n.type]; }
+ | net_ip '-'	{ $$.net = $1; $$.lo = 0; $$.hi = $1.n.pxlen; }
+ | net_ip '{' NUM ',' NUM '}' {
+     $$.net = $1; $$.lo = $3; $$.hi = $5;
+     if ((0 > $3) || ($3 > $5) || ($5 > net_max_prefix_length[$1.n.type]))
+       cf_error("Invalid prefix pattern range: {%d, %d}", $3, $5);
    }
  ;
 
 fprefix_set:
-   fprefix { $$ = f_new_trie(cfg_mem, sizeof(struct f_trie_node)); trie_add_fprefix($$, &($1.val.px)); }
- | fprefix_set ',' fprefix { $$ = $1; trie_add_fprefix($$, &($3.val.px)); }
+   fprefix { $$ = f_new_trie(cfg_mem, sizeof(struct f_trie_node)); trie_add_prefix($$, &($1.net.n), $1.lo, $1.hi); }
+ | fprefix_set ',' fprefix { $$ = $1; trie_add_prefix($$, &($3.net.n), $3.lo, $3.hi); }
  ;
 
 switch_body: /* EMPTY */ { $$ = NULL; }
@@ -602,7 +597,7 @@ switch_body: /* EMPTY */ { $$ = NULL; }
        t->data = $4;
      $$ = f_merge_items($1, $2);
    }
- | switch_body ELSECOL cmds { 
+ | switch_body ELSECOL cmds {
      struct f_tree *t = f_new_tree();
      t->from.type = t->to.type = T_VOID;
      t->right = t;
@@ -642,8 +637,8 @@ constant:
  | TRUE   { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_BOOL; $$->a2.i = 1;  }
  | FALSE  { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_BOOL; $$->a2.i = 0;  }
  | TEXT   { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_STRING; $$->a2.p = $1; }
- | fipa	   { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; $$->a1.p = val; *val = $1; }
- | fprefix_s {NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; $$->a1.p = val; *val = $1; }
+ | fipa	  { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; $$->a1.p = val; *val = $1; }
+ | net_any { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; val->type = T_NET; val->val.net = $1; $$->a1.p = val; }
  | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_SET; $$->a2.p = build_tree($2); DBG( "ook\n" ); }
  | '[' fprefix_set ']' { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_PREFIX_SET;  $$->a2.p = $2; }
  | ENUM	  { $$ = f_new_inst(); $$->code = 'c'; $$->aux = $1 >> 16; $$->a2.i = $1 & 0xffff; }
@@ -706,7 +701,7 @@ symbol:
 static_attr:
    FROM    { $$ = f_new_inst(); $$->aux = T_IP;         $$->a2.i = SA_FROM;	$$->a1.i = 1; }
  | GW      { $$ = f_new_inst(); $$->aux = T_IP;         $$->a2.i = SA_GW;	$$->a1.i = 1; }
- | NET     { $$ = f_new_inst(); $$->aux = T_PREFIX;     $$->a2.i = SA_NET; }
+ | NET     { $$ = f_new_inst(); $$->aux = T_NET;        $$->a2.i = SA_NET; }
  | PROTO   { $$ = f_new_inst(); $$->aux = T_STRING;     $$->a2.i = SA_PROTO; }
  | SOURCE  { $$ = f_new_inst(); $$->aux = T_ENUM_RTS;   $$->a2.i = SA_SOURCE; }
  | SCOPE   { $$ = f_new_inst(); $$->aux = T_ENUM_SCOPE; $$->a2.i = SA_SCOPE;	$$->a1.i = 1; }

@@ -492,10 +492,4 @@ int ip6_pton(const char *a, ip6_addr *o);
 
 char *ip_scope_text(uint);
 
-struct prefix {
-  ip_addr addr;
-  uint len;
-};
-
-
 #endif
