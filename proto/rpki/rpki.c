@@ -28,6 +28,8 @@
 #include "lib/socket.h"
 #include "lib/ip.h"
 #include "nest/route.h"
+#include "sysdep/config.h"
+#include <sys/types.h>
 
 #define RPKI_LOG_ADD "add"
 #define RPKI_LOG_DEL "del"
@@ -336,14 +338,19 @@ get_rpki_proto_by_rtr_socket(const struct rtr_socket *socket)
 }
 
 static void
-roa_update_rtrlib_thread_hook(void *pfx_table, const struct pfx_record rec, const bool added)
+roa_update_rtrlib_thread_hook(void *pfx_table, const struct pfx_record rec, const bool added, void *data)
 {
+  /*
   struct rpki_proto *p = get_rpki_proto_by_rtr_socket(rec.socket);
   if (!p)
   {
     bug("rtr_thread_update_hook: Cannot find matching protocol for %s\n", get_rtr_socket_ident(rec.socket));
     return;
   }
+  */
+
+  struct rpki_proto *p = data;
+
   /* process only records that are the same with BIRD IP version */
 #ifdef IPV6
   if (rec.prefix.ver != RTRLIB_IPV6)
@@ -691,18 +698,20 @@ rpki_start(struct proto *P)
   return PS_START;
 }
 
+struct rpki_crate_fixme {
+  struct rpki_proto *p;
+  struct rtr_mgr_config *old_rtr_conf;
+  struct rpki_config *old_cf;
+};
+
 static void
-rpki_stop_and_free_rtrlib_mgr(struct rpki_proto *p)
+rpki_rtr_mgr_stop_and_free(struct rpki_crate_fixme *data)
 {
-  /* TODO: fire stop&free() asynchronously */
-
-  RPKI_TRACE(p, "Stopping RTRLib Manager");
-
-  rtr_mgr_stop_x(p->rtr_conf);	/* this takes a long time */
-  rtr_mgr_free_x(p->rtr_conf);
+  rtr_mgr_stop_x(data->old_rtr_conf);
+  rtr_mgr_free_x(data->old_rtr_conf);
 
   struct rpki_cache *cache;
-  WALK_LIST(cache, p->cf->cache_list)
+  WALK_LIST(cache, data->old_cf->cache_list)
   {
     if (cache->rtrlib_sock)
     {
@@ -712,6 +721,23 @@ rpki_stop_and_free_rtrlib_mgr(struct rpki_proto *p)
       mb_free(cache->rtrlib_sock);
     }
   }
+
+  proto_notify_state(&data->p->p, PS_DOWN);
+  RPKI_TRACE(D_EVENTS, data->p, "RTRLib Manager configuration is stopped.");
+}
+
+static void
+rpki_stop_and_free_rtrlib_mgr_async(struct rpki_proto *p)
+{
+  RPKI_TRACE(D_EVENTS, p, "Stopping RTRLib Manager");
+
+  struct rpki_crate_fixme *data = mb_alloc(p->p.pool, sizeof(struct rpki_crate_fixme));
+  data->p = p;
+  data->old_cf = p->cf;
+  data->old_rtr_conf = p->rtr_conf;
+
+  pthread_t thread_id;
+  pthread_create(&thread_id, NULL, (void* ( *)(void *)) &rpki_rtr_mgr_stop_and_free, data);
 }
 
 static int
@@ -721,7 +747,7 @@ rpki_shutdown(struct proto *P)
 
   log(L_DEBUG "------------- rpki_shutdown -------------");
 
-  rpki_stop_and_free_rtrlib_mgr(p);
+  rpki_stop_and_free_rtrlib_mgr_async(p);
 
   lock_rpki_proto_list();
   rem2_node(&p->rpki_node);
@@ -732,7 +758,7 @@ rpki_shutdown(struct proto *P)
   rpki_unlock_notify(p);
   pthread_mutex_destroy(&p->roa_update_lock);
 
-  return PS_DOWN;
+  return PS_STOP;
 }
 
 static struct rpki_cache *
@@ -805,18 +831,8 @@ rpki_reconfigure(struct proto *P, struct proto_config *c)
   struct rpki_config *new_cf = (struct rpki_config *) c;
 
   if (is_required_restart_rtrlib_mgr(p, new_cf))
-  {
-    RPKI_TRACE(p, "Reconfiguration: Something changed, RTRLib Manager must be restarted");
-    if (P->proto_state != PS_DOWN)
-      rpki_stop_and_free_rtrlib_mgr(p);
+    return 0; /* FAIL */
 
-    if (rpki_start_rtrlib_mgr(p, new_cf) != RTR_SUCCESS)
-    {
-      RPKI_ERROR(p, "Reconfiguration failed: Cannot start RTRLib Manager");
-      p->cf = new_cf;
-      return 0; /* FAIL */
-    }
-  }
   p->cf = new_cf;
   return 1; /* OK */
 }
