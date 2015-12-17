@@ -77,14 +77,15 @@ krt_io_init(void)
   krt_pool = rp_new(&root_pool, "Kernel Syncer");
   krt_filter_lp = lp_new(krt_pool, 4080);
   init_list(&krt_proto_list);
+  krt_sys_io_init();
 }
 
 /*
  *	Interfaces
  */
 
+struct kif_proto *kif_proto;
 static struct kif_config *kif_cf;
-static struct kif_proto *kif_proto;
 static timer *kif_scan_timer;
 static bird_clock_t kif_last_shot;
 
@@ -1126,7 +1127,11 @@ krt_start(struct proto *P)
   krt_learn_init(p);
 #endif
 
-  krt_sys_start(p);
+  if (!krt_sys_start(p))
+  {
+    rem_node(&p->krt_node);
+    return PS_START;
+  }
 
   krt_scan_timer_start(p);
 
@@ -1150,8 +1155,10 @@ krt_shutdown(struct proto *P)
   p->ready = 0;
   p->initialized = 0;
 
-  krt_sys_shutdown(p);
+  if (p->p.proto_state == PS_START)
+    return PS_DOWN;
 
+  krt_sys_shutdown(p);
   rem_node(&p->krt_node);
 
   return PS_DOWN;

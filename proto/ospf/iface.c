@@ -493,8 +493,11 @@ ospf_iface_add(struct object_lock *lock)
     ifa->flood_queue = mb_allocz(ifa->pool, ifa->flood_queue_size * sizeof(void *));
   }
 
-  /* Do iface UP, unless there is no link and we use link detection */
-  ospf_iface_sm(ifa, (ifa->check_link && !(ifa->iface->flags & IF_LINK_UP)) ? ISM_LOOP : ISM_UP);
+  /* Do iface UP, unless there is no link (then wait in LOOP state) */
+  if (!ifa->check_link || (ifa->iface->flags & IF_LINK_UP))
+    ospf_iface_sm(ifa, ISM_UP);
+  else
+    ospf_iface_chstate(ifa, OSPF_IS_LOOP);
 }
 
 static inline void

@@ -67,7 +67,7 @@ cmd_build_tree(void)
 	      new->plastson = &new->son;
 	      new->len = c-d;
 	      memcpy(new->token, d, c-d);
-	      new->prio = (new->len == 3 && !memcmp(new->token, "roa", 3)) ? 0 : 1; /* Hack */
+	      new->prio = (new->len == 3 && (!memcmp(new->token, "roa", 3) || !memcmp(new->token, "rip", 3))) ? 0 : 1; /* Hack */
 	    }
 	  old = new;
 	  while (isspace(*c))

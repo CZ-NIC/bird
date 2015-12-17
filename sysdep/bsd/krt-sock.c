@@ -970,13 +970,15 @@ krt_sock_close_shared(void)
   }
 }
 
-void
+int
 krt_sys_start(struct krt_proto *p)
 {
   krt_table_map[KRT_CF->sys.table_id] = p;
 
   krt_sock_open_shared();
   p->sys.sk = krt_sock;
+
+  return 1;
 }
 
 void
@@ -992,10 +994,11 @@ krt_sys_shutdown(struct krt_proto *p)
 
 #else
 
-void
+int
 krt_sys_start(struct krt_proto *p)
 {
   p->sys.sk = krt_sock_open(p->p.pool, p, KRT_CF->sys.table_id);
+  return 1;
 }
 
 void

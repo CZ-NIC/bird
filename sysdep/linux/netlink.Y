@@ -23,8 +23,6 @@ CF_ADDTO(kern_proto, kern_proto kern_sys_item ';')
 
 kern_sys_item:
    KERNEL TABLE expr {
-	if ($3 <= 0 || $3 >= NL_NUM_TABLES)
-	  cf_error("Kernel routing table number out of range");
 	THIS_KRT->sys.table_id = $3;
    }
  ;

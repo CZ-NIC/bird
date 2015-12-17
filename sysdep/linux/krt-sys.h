@@ -84,18 +84,18 @@ static inline struct ifa * kif_get_primary_ip(struct iface *i) { return NULL; }
 #define EA_KRT_FEATURE_ALLFRAG	EA_KRT_FEATURES | EA_BIT(0x3)
 
 
-
-#define NL_NUM_TABLES 256
-
 struct krt_params {
-  int table_id;				/* Kernel table ID we sync with */
+  u32 table_id;				/* Kernel table ID we sync with */
 };
 
 struct krt_state {
+  struct krt_proto *hash_next;
 };
 
 
 static inline void krt_sys_init(struct krt_proto *p UNUSED) { }
+static inline void krt_sys_preconfig(struct config *c UNUSED) { }
+static inline void krt_sys_postconfig(struct krt_config *x UNUSED) { }
 
 
 #endif

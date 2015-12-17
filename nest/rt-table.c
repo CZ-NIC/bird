@@ -888,12 +888,6 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, struct rte_src *sr
 		}
 
 	      rte_free_quick(new);
-#ifdef CONFIG_RIP
-	      /* lastmod is used internally by RIP as the last time
-		 when the route was received. */
-	      if (src->proto->proto == &proto_rip)
-		old->lastmod = now;
-#endif
 	      return;
 	    }
 	  *k = old->next;
@@ -1663,7 +1657,7 @@ rt_prune_loop(void)
 void
 rt_preconfig(struct config *c)
 {
-  struct symbol *s = cf_find_symbol("master");
+  struct symbol *s = cf_get_symbol("master");
 
   init_list(&c->tables);
   c->master_rtc = rt_new_table(s);
@@ -1868,6 +1862,7 @@ rt_unlock_table(rtable *r)
     {
       struct config *conf = r->deleted;
       DBG("Deleting routing table %s\n", r->name);
+      r->config->table = NULL;
       if (r->hostcache)
 	rt_free_hostcache(r);
       rem_node(&r->n);
@@ -1903,7 +1898,7 @@ rt_commit(struct config *new, struct config *old)
 	  rtable *ot = o->table;
 	  if (!ot->deleted)
 	    {
-	      struct symbol *sym = cf_find_symbol(o->name);
+	      struct symbol *sym = cf_find_symbol(new, o->name);
 	      if (sym && sym->class == SYM_TABLE && !new->shutdown)
 		{
 		  DBG("\t%s: same\n", o->name);

@@ -75,6 +75,8 @@ void fib_check(struct fib *);		/* Consistency check for debugging */
 void fit_init(struct fib_iterator *, struct fib *); /* Internal functions, don't call */
 struct fib_node *fit_get(struct fib *, struct fib_iterator *);
 void fit_put(struct fib_iterator *, struct fib_node *);
+void fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uint hpos);
+
 
 #define FIB_WALK(fib, z) do {					\
 	struct fib_node *z, **ff = (fib)->hash_table;		\
@@ -102,6 +104,11 @@ void fit_put(struct fib_iterator *, struct fib_node *);
 #define FIB_ITERATE_END(z) z = z->next; } } while(0)
 
 #define FIB_ITERATE_PUT(it, z) fit_put(it, z)
+
+#define FIB_ITERATE_PUT_NEXT(it, fib, z) fit_put_next(fib, it, z, hpos)
+
+#define FIB_ITERATE_UNLINK(it, fib) fit_get(fib, it)
+
 
 /*
  *	Master Routing Tables. Generally speaking, each of them contains a FIB
@@ -174,7 +181,7 @@ struct hostentry {
   ip_addr addr;				/* IP address of host, part of key */
   ip_addr link;				/* (link-local) IP address of host, used as gw
 					   if host is directly attached */
-  struct rtable *tab;			/* Dependent table, part of key*/
+  struct rtable *tab;			/* Dependent table, part of key */
   struct hostentry *next;		/* Next in hash chain */
   unsigned hash_key;			/* Hash key */
   unsigned uc;				/* Use count */
@@ -196,10 +203,9 @@ typedef struct rte {
   union {				/* Protocol-dependent data (metrics etc.) */
 #ifdef CONFIG_RIP
     struct {
-      node garbage;			/* List for garbage collection */
-      byte metric;			/* RIP metric */
+      struct iface *from;		/* Incoming iface */
+      u8 metric;			/* RIP metric */
       u16 tag;				/* External route tag */
-      struct rip_entry *entry;
     } rip;
 #endif
 #ifdef CONFIG_OSPF
@@ -507,19 +513,25 @@ void rta_show(struct cli *, rta *, ea_list *);
 void rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr *gw, ip_addr *ll);
 
 /*
- * rta_set_recursive_next_hop() acquires hostentry from hostcache and
- * fills rta->hostentry field.  New hostentry has zero use
- * count. Cached rta locks its hostentry (increases its use count),
- * uncached rta does not lock it. Hostentry with zero use count is
- * removed asynchronously during host cache update, therefore it is
- * safe to hold such hostentry temorarily. Hostentry holds a lock for
- * a 'source' rta, mainly to share multipath nexthops. There is no
- * need to hold a lock for hostentry->dep table, because that table
- * contains routes responsible for that hostentry, and therefore is
- * non-empty if given hostentry has non-zero use count. The protocol
- * responsible for routes with recursive next hops should also hold a
- * lock for a table governing that routes (argument tab to
- * rta_set_recursive_next_hop()).
+ * rta_set_recursive_next_hop() acquires hostentry from hostcache and fills
+ * rta->hostentry field.  New hostentry has zero use count. Cached rta locks its
+ * hostentry (increases its use count), uncached rta does not lock it. Hostentry
+ * with zero use count is removed asynchronously during host cache update,
+ * therefore it is safe to hold such hostentry temorarily. Hostentry holds a
+ * lock for a 'source' rta, mainly to share multipath nexthops.
+ *
+ * There is no need to hold a lock for hostentry->dep table, because that table
+ * contains routes responsible for that hostentry, and therefore is non-empty if
+ * given hostentry has non-zero use count. If the hostentry has zero use count,
+ * the entry is removed before dep is referenced.
+ *
+ * The protocol responsible for routes with recursive next hops should hold a
+ * lock for a 'source' table governing that routes (argument tab to
+ * rta_set_recursive_next_hop()), because its routes reference hostentries
+ * (through rta) related to the governing table. When all such routes are
+ * removed, rtas are immediately removed achieving zero uc. Then the 'source'
+ * table lock could be immediately released, although hostentries may still
+ * exist - they will be freed together with the 'source' table.
  */
 
 static inline void rt_lock_hostentry(struct hostentry *he) { if (he) he->uc++; }

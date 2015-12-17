@@ -147,7 +147,9 @@ int cf_lex(void);
 void cf_lex_init(int is_cli, struct config *c);
 void cf_lex_unwind(void);
 
-struct symbol *cf_find_symbol(byte *c);
+struct symbol *cf_find_symbol(struct config *cfg, byte *c);
+
+struct symbol *cf_get_symbol(byte *c);
 struct symbol *cf_default_name(char *template, int *counter);
 struct symbol *cf_define_symbol(struct symbol *symbol, int type, void *def);
 void cf_push_scope(struct symbol *);

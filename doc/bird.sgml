@@ -2476,7 +2476,7 @@ protocol ospf &lt;name&gt; {
 	This option specifies whether OSPF is allowed to generate ECMP
 	(equal-cost multipath) routes. Such routes are used when there are
 	several directions to the destination, each with the same (computed)
-	cost. This option also allows to specify a limit on maximal number of
+	cost. This option also allows to specify a limit on maximum number of
 	nexthops in one route. By default, ECMP is disabled. If enabled,
 	default	value of the limit is 16.
 
@@ -3244,16 +3244,14 @@ one). After some time, the distance reaches infinity (that's 15 in RIP) and all
 routers know that network is unreachable. RIP tries to minimize situations where
 counting to infinity is necessary, because it is slow. Due to infinity being 16,
 you can't use RIP on networks where maximal distance is higher than 15
-hosts. You can read more about RIP at
-<HTMLURL URL="http://www.ietf.org/html.charters/rip-charter.html"
-name="http://www.ietf.org/html.charters/rip-charter.html">. Both IPv4
-(RFC 1723 <htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc1723.txt">) and IPv6
-(RFC 2080 <htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc2080.txt">) versions
-of RIP are supported by BIRD, historical RIPv1
-(RFC 1058 <htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc1058.txt">) is not
-currently supported. RIPv4 MD5 authentication
-(RFC 2082 <htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc2082.txt">) is
-supported.
+hosts.
+
+<p>BIRD supports RIPv1
+(RFC 1058<htmlurl url="http://www.rfc-editor.org/rfc/rfc1058.txt">),
+RIPv2 (RFC 2453<htmlurl url="http://www.rfc-editor.org/rfc/rfc2453.txt">),
+RIPng (RFC 2080<htmlurl url="http://www.rfc-editor.org/rfc/rfc2080.txt">),
+and RIP cryptographic authentication (SHA-1 not implemented)
+(RFC 4822<htmlurl url="http://www.rfc-editor.org/rfc/rfc4822.txt">).
 
 <p>RIP is a very simple protocol, and it has a lot of shortcomings. Slow
 convergence, big network load and inability to handle larger networks makes it
@@ -3261,39 +3259,156 @@ pretty much obsolete. It is still usable on very small networks.
 
 <sect1>Configuration
 
-<p>In addition to options common for all to other protocols, RIP supports the
-following ones:
+<p>RIP configuration consists mainly of common protocol options and interface
+definitions, most RIP options are interface specific.
+
+<code>
+protocol rip [&lt;name&gt;] {
+	infinity &lt;number&gt;;
+	ecmp &lt;switch&gt; [limit &lt;number&gt;];
+	interface &lt;interface pattern&gt; {
+		metric &lt;number&gt;;
+		mode multicast|broadcast;
+		passive &lt;switch&gt;;
+		address &lt;ip&gt;;
+		port &lt;number&gt;;
+		version 1|2;
+		split horizon &lt;switch&gt;;
+		poison reverse &lt;switch&gt;;
+		check zero &lt;switch&gt;;
+		update time &lt;number&gt;;
+		timeout time &lt;number&gt;;
+		garbage time &lt;number&gt;;
+		ecmp weight &lt;number&gt;;
+		ttl security &lt;switch&gt;; | tx only;
+		tx class|dscp &lt;number&gt;;
+		tx priority &lt;number&gt;;
+		rx buffer &lt;number&gt;;
+		tx length &lt;number&gt;;
+		check link &lt;switch&gt;;
+		authentication none|plaintext|cryptographic;
+		password "&lt;text&gt;";
+		password "&lt;text&gt;" {
+			id &lt;num&gt;;
+			generate from "&lt;date&gt;";
+			generate to "&lt;date&gt;";
+			accept from "&lt;date&gt;";
+			accept to "&lt;date&gt;";
+		};
+	};
+}
+</code>
 
 <descrip>
-	<tag>authentication none|plaintext|md5</tag>
-	Selects authentication method to be used. <cf/none/ means that packets
-	are not authenticated at all, <cf/plaintext/ means that a plaintext
-	password is embedded into each packet, and <cf/md5/ means that packets
-	are authenticated using a MD5 cryptographic hash. If you set
-	authentication to not-none, it is a good idea to add <cf>password</cf>
-	section. Default: none.
+	<tag>infinity <M>number</M></tag>
+	Selects the distance of infinity. Bigger values will make
+	protocol convergence even slower. The default value is 16.
 
-	<tag>honor always|neighbor|never</tag>
-	Specifies when should requests for dumping routing table be honored.
-	(Always, when sent from a host on a directly connected network or
-	never.) Routing table updates are honored only from neighbors, that is
-	not configurable. Default: never.
+	<tag>ecmp <M>switch</M> [limit <M>number</M>]</tag>
+	This option specifies whether RIP is allowed to generate ECMP
+	(equal-cost multipath) routes. Such routes are used when there are
+	several directions to the destination, each with the same (computed)
+	cost. This option also allows to specify a limit on maximum number of
+	nexthops in one route. By default, ECMP is disabled. If enabled,
+	default	value of the limit is 16.
+
+	<tag>interface <m/pattern [, ...]/ { <m/options/ }</tag>
+	Interface definitions specify a set of interfaces on which the
+	protocol is activated and contain interface specific options.
+	See <ref id="dsc-iface" name="interface"> common options for
+	detailed description.
 </descrip>
 
-<p>There are some options that can be specified per-interface:
+<p>Interface specific options:
 
 <descrip>
 	<tag>metric <m/num/</tag>
-	This option specifies the metric of the interface. Valid
+	This option specifies the metric of the interface. When a route is
+	received from the interface, its metric is increased by this value
+	before further processing. Valid values are 1-255, but values higher
+	than infinity has no further meaning. Default: 1.
 
-	<tag>mode multicast|broadcast|quiet|nolisten|version1</tag>
-	This option selects the mode for RIP to use on the interface. If nothing
-	is specified, RIP runs in multicast mode. <cf/version1/ is currently
-	equivalent to <cf/broadcast/, and it makes RIP talk to a broadcast
-	address even through multicast mode is possible. <cf/quiet/ option means
-	that RIP will not transmit any periodic messages to this interface and
-	<cf/nolisten/ means that RIP will send to this interface butnot listen
-	to it.
+	<tag>mode multicast|broadcast</tag>
+	This option selects the mode for RIP to use on the interface. The
+	default is multicast mode for RIPv2 and broadcast mode for RIPv1.
+	RIPng always uses the multicast mode.
+
+	<tag>passive <m/switch/</tag>
+	Passive interfaces receive routing updates but do not transmit any
+	messages. Default: no.
+
+	<tag>address <m/ip/</tag>
+	This option specifies a destination address used for multicast or
+	broadcast messages, the default is the official RIP (224.0.0.9) or RIPng
+	(ff02::9) multicast address, or an appropriate broadcast address in the
+	broadcast mode.
+
+	<tag>port <m/number/</tag>
+	This option selects an UDP port to operate on, the default is the
+	official RIP (520) or RIPng (521) port.
+
+	<tag>version 1|2</tag>
+	This option selects the version of RIP used on the interface. For RIPv1,
+	automatic subnet aggregation is not implemented, only classful network
+	routes and host routes are propagated. Note that BIRD allows RIPv1 to be
+	configured with features that are defined for RIPv2 only, like
+	authentication or using multicast sockets. The default is RIPv2 for IPv4
+	RIP, the option is not supported for RIPng, as no further versions are
+	defined.
+
+	<tag>split horizon <m/switch/</tag>
+	Split horizon is a scheme for preventing routing loops. When split
+	horizon is active, routes are not regularly propagated back to the
+	interface from which they were received. They are either not propagated
+	back at all (plain split horizon) or propagated back with an infinity
+	metric (split horizon with poisoned reverse). Therefore, other routers
+	on the interface will not consider the router as a part of an
+	independent path to the destination of the route. Default: yes.
+
+	<tag>poison reverse <m/switch/</tag>
+	When split horizon is active, this option specifies whether the poisoned
+	reverse variant (propagating routes back with an infinity metric) is
+	used. The poisoned reverse has some advantages in faster convergence,
+	but uses more network traffic. Default: yes.
+
+	<tag>check zero <m/switch/</tag>
+	Received RIPv1 packets with non-zero values in reserved fields should
+	be discarded. This option specifies whether the check is performed or
+	such packets are just processed as usual. Default: yes.
+
+	<tag>update time <m/number/</tag>
+	Specifies the number of seconds between periodic updates. A lower number
+	will mean faster convergence but bigger network load. Default: 30.
+
+	<tag>timeout time <m/number/</tag>
+	Specifies the time interval (in seconds) between the last received route
+	announcement and the route expiration. After that, the network is
+	considered unreachable, but still is propagated with infinity distance.
+	Default: 180.
+
+	<tag>garbage time <m/number/</tag>
+	Specifies the time interval (in seconds) between the route expiration
+	and the removal of the unreachable network entry. The garbage interval,
+	when a route with infinity metric is propagated, is used for both
+	internal (after expiration) and external (after withdrawal) routes.
+	Default: 120.
+
+	<tag>ecmp weight <m/number/</tag>
+	When ECMP (multipath) routes are allowed, this value specifies a
+	relative weight used for nexthops going through the iface. Valid
+	values are 1-256. Default value is 1.
+
+	<tag>authentication none|plaintext|cryptographic</tag>
+	Selects authentication method to be used. <cf/none/ means that packets
+	are not authenticated at all, <cf/plaintext/ means that a plaintext
+	password is embedded into each packet, and <cf/cryptographic/ means that
+	packets are authenticated using a MD5 cryptographic hash. If you set
+	authentication to not-none, it is a good idea to add <cf>password</cf>
+	section. Default: none.
+
+	<tag>password "<m/text/"</tag>
+	Specifies a password used for authentication. See <ref id="dsc-pass"
+	name="password"> common option for detailed description.
 
 	<tag>ttl security [<m/switch/ | tx only]</tag>
 	TTL security is a feature that protects routing protocols from remote
@@ -3309,43 +3424,31 @@ following ones:
 	compatibility with neighbors regardless of whether they use ttl
 	security.
 
-	Note that for RIPng, TTL security is a standard behavior (required by
-	RFC 2080), but BIRD uses <cf/tx only/ by default, for compatibility with
-	older versions. For IPv4 RIP, default value is no.
+	For RIPng, TTL security is a standard behavior (required by RFC 2080)
+	and therefore default value is yes. For IPv4 RIP, default value is no.
 
-	<tag>tx class|dscp|priority <m/num/</tag>
+	<tag>tx class|dscp|priority <m/number/</tag>
 	These options specify the ToS/DiffServ/Traffic class/Priority of the
 	outgoing RIP packets. See <ref id="dsc-prio" name="tx class"> common
 	option for detailed description.
-</descrip>
 
-<p>The following options generally override behavior specified in RFC. If you
-use any of these options, BIRD will no longer be RFC-compliant, which means it
-will not be able to talk to anything other than equally configured BIRD. I have
-warned you.
+	<tag>rx buffer <m/number/</tag>
+	This option specifies the size of buffers used for packet processing.
+	The buffer size should be bigger than maximal size of received packets.
+	The default value is 532 for IPv4 RIP and interface MTU value for RIPng.
 
-<descrip>
-	<tag>port <M>number</M></tag>
-	Selects IP port to operate on, default 520. (This is useful when testing
-	BIRD, if you set this to an address &gt;1024, you will not need to run
-	bird with UID==0).
+	<tag>tx length <m/number/</tag>
+	This option specifies the maximum length of generated RIP packets. To
+	avoid IP fragmentation, it should not exceed the interface MTU value.
+	The default value is 532 for IPv4 RIP and interface MTU value for RIPng.
 
-	<tag>infinity <M>number</M></tag>
-	Selects the value of infinity, default is 16. Bigger values will make
-	protocol convergence even slower.
-
-	<tag>period <M>number</M></tag>
-	Specifies the number of seconds between periodic updates. Default is 30
-	seconds. A lower number will mean faster convergence but bigger network
-	load. Do not use values lower than 12.
-
-	<tag>timeout time <M>number</M></tag>
-	Specifies how old route has to be to be considered unreachable.
-	Default is 4*<cf/period/.
-
-	<tag>garbage time <M>number</M></tag>
-	Specifies how old route has to be to be discarded. Default is
-	10*<cf/period/.
+	<tag>check link <m/switch/</tag>
+	If set, the hardware link state (as reported by OS) is taken into
+	consideration. When the link disappears (e.g. an ethernet cable is
+	unplugged), neighbors are immediately considered unreachable and all
+	routes received from them are withdrawn. It is possible that some
+	hardware drivers or platforms do not implement this feature. Default:
+	no.
 </descrip>
 
 <sect1>Attributes
@@ -3356,27 +3459,26 @@ warned you.
 	<tag>int <cf/rip_metric/</tag>
 	RIP metric of the route (ranging from 0 to <cf/infinity/).  When routes
 	from different RIP instances are available and all of them have the same
-	preference, BIRD prefers the route with lowest <cf/rip_metric/. When
-	importing a non-RIP route, the metric defaults to 5.
+	preference, BIRD prefers the route with lowest <cf/rip_metric/. When a
+	non-RIP route is exported to RIP, the default metric is 1.
 
 	<tag>int <cf/rip_tag/</tag>
 	RIP route tag: a 16-bit number which can be used to carry additional
 	information with the route (for example, an originating AS number in
-	case of external routes). When importing a non-RIP route, the tag
-	defaults to 0.
+	case of external routes). When a non-RIP route is exported to RIP, the
+	default tag is 0.
 </descrip>
 
 <sect1>Example
 
 <p><code>
-protocol rip MyRIP_test {
+protocol rip {
         debug all;
         port 1520;
         period 12;
         garbage time 60;
         interface "eth0" { metric 3; mode multicast; };
 	interface "eth*" { metric 2; mode broadcast; };
-        honor neighbor;
         authentication none;
         import filter { print "importing"; accept; };
         export filter { print "exporting"; accept; };
