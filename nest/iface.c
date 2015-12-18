@@ -742,7 +742,7 @@ iface_patts_equal(list *a, list *b, int (*comp)(struct iface_patt *, struct ifac
 static void
 if_show_addr(struct ifa *a)
 {
-  byte opp[STD_ADDRESS_P_LENGTH + 16];
+  byte opp[IPA_MAX_TEXT_LENGTH + 16];
 
   if (ipa_nonzero(a->opposite))
     bsprintf(opp, ", opposite %I", a->opposite);
@@ -793,7 +793,7 @@ void
 if_show_summary(void)
 {
   struct iface *i;
-  byte addr[STD_ADDRESS_P_LENGTH + 16];
+  byte addr[IPA_MAX_TEXT_LENGTH + 16];
 
   cli_msg(-2005, "interface state address");
   WALK_LIST(i, iface_list)

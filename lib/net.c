@@ -18,6 +18,13 @@ const u8 net_max_prefix_length[] = {
   [NET_VPN6] = IP4_MAX_PREFIX_LENGTH
 };
 
+const u16 net_max_text_length[] = {
+  [NET_IP4] = 18,	/* "255.255.255.255/32" */
+  [NET_IP6] = 43,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
+  [NET_VPN4] = 40,	/* "4294967296:4294967296 255.255.255.255/32" */
+  [NET_VPN6] = 65,	/* "4294967296:4294967296 ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
+};
+
 
 int
 net_format(const net_addr *N, char *buf, int buflen)

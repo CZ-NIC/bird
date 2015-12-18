@@ -33,6 +33,10 @@
 #define IP4_MAX_PREFIX_LENGTH	32
 #define IP6_MAX_PREFIX_LENGTH	128
 
+#define IP4_MAX_TEXT_LENGTH	15	/* "255.255.255.255" */
+#define IP6_MAX_TEXT_LENGTH	39	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff" */
+#define IPA_MAX_TEXT_LENGTH	39
+
 #define IP4_MIN_MTU		576
 #define IP6_MIN_MTU		1280
 
@@ -41,12 +45,6 @@
 #define IP4_HEADER_LENGTH	20
 #define IP6_HEADER_LENGTH	40
 #define UDP_HEADER_LENGTH	8
-
-#ifdef IPV6
-#define STD_ADDRESS_P_LENGTH 39
-#else
-#define STD_ADDRESS_P_LENGTH 15
-#endif
 
 
 #ifdef DEBUGGING

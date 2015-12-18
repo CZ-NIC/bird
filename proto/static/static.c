@@ -643,7 +643,7 @@ struct protocol proto_static = {
 static void
 static_show_rt(struct static_route *r)
 {
-  byte via[STD_ADDRESS_P_LENGTH + 16];
+  byte via[IPA_MAX_TEXT_LENGTH + 25];
 
   switch (r->dest)
     {

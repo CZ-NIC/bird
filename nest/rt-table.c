@@ -220,7 +220,7 @@ rte_mergable(rte *pri, rte *sec)
 static void
 rte_trace(struct proto *p, rte *e, int dir, char *msg)
 {
-  byte via[STD_ADDRESS_P_LENGTH+32];
+  byte via[IPA_MAX_TEXT_LENGTH+32];
 
   rt_format_via(e, via);
   log(L_TRACE "%s %c %s %N %s", p->name, dir, msg, e->net->n.addr, via);
@@ -2383,7 +2383,8 @@ rt_format_via(rte *e, byte *via)
 static void
 rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tmpa)
 {
-  byte via[STD_ADDRESS_P_LENGTH+32], from[STD_ADDRESS_P_LENGTH+8];
+  byte via[IPA_MAX_TEXT_LENGTH+32];
+  byte from[IPA_MAX_TEXT_LENGTH+8];
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
   rta *a = e->attrs;
   int primary = (e->net->routes == e);
@@ -2424,7 +2425,7 @@ static void
 rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 {
   rte *e, *ee;
-  byte ia[STD_ADDRESS_P_LENGTH+8];
+  byte ia[NET_MAX_TEXT_LENGTH+1];
   struct ea_list *tmpa;
   struct announce_hook *a = NULL;
   int first = 1;

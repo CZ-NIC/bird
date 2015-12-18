@@ -68,7 +68,11 @@ typedef union net_addr_union {
 
 
 extern const u16 net_addr_length[];
-extern const u8 net_max_prefix_length[];
+extern const u8  net_max_prefix_length[];
+extern const u16 net_max_text_length[];
+
+#define NET_MAX_TEXT_LENGTH	65
+
 
 #define NET_ADDR_IP4(prefix,pxlen) \
   ((net_addr_ip4) { NET_IP4, pxlen, sizeof(net_addr_ip4), prefix })
@@ -102,6 +106,7 @@ static inline void net_fill_ipa(net_addr *a, ip_addr prefix, uint pxlen)
   else
     net_fill_ip6(a, ipa_to_ip6(prefix), pxlen);
 }
+
 
 static inline ip4_addr net4_prefix(const net_addr *a)
 { return ((net_addr_ip4 *) a)->prefix; }
@@ -243,6 +248,3 @@ int net_in_netX(const net_addr *A, const net_addr *N);
 
 
 #endif
-
-
-

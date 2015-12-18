@@ -139,7 +139,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 	u32 x;
 	char *str, *start;
 	const char *s;
-	char ipbuf[STD_ADDRESS_P_LENGTH+1];
+	char ipbuf[NET_MAX_TEXT_LENGTH+1];
 	struct iface *iface;
 
 	int flags;		/* flags to number() */
@@ -156,7 +156,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			*str++ = *fmt;
 			continue;
 		}
-			
+
 		/* process flags */
 		flags = 0;
 		repeat:
@@ -236,12 +236,14 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 		case 'M':
 			s = strerror(va_arg(args, int));
 			goto str;
-		case 'N':
+		case 'N': {
+			net_addr *n = va_arg(args, net_addr *);
 			if (field_width == 1)
-				field_width = STD_ADDRESS_P_LENGTH; /* XXXX */
-			net_format(va_arg(args, net_addr *), ipbuf, sizeof(ipbuf));
+				field_width = net_max_text_length[n->type];
+			net_format(n, ipbuf, sizeof(ipbuf));
 			s = ipbuf;
 			goto str;
+			}
 		case 's':
 			s = va_arg(args, char *);
 			if (!s)
@@ -287,17 +289,18 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			continue;
 
 		/* IP address */
-		case 'I':
+		case 'I': {
+			ip_addr a = va_arg(args, ip_addr);
 			if (flags & SPECIAL)
-				ipa_ntox(va_arg(args, ip_addr), ipbuf);
+				ipa_ntox(a, ipbuf);
 			else {
-				ipa_ntop(va_arg(args, ip_addr), ipbuf);
+				ipa_ntop(a, ipbuf);
 				if (field_width == 1)
-					field_width = STD_ADDRESS_P_LENGTH;
+					field_width = (ipa_is_ip4(a) ? IP4_MAX_TEXT_LENGTH : IP6_MAX_TEXT_LENGTH);
 			}
 			s = ipbuf;
 			goto str;
-
+			}
 		/* Interface scope after link-local IP address */
 		case 'J':
 			iface = va_arg(args, struct iface *);

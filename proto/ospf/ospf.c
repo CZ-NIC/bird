@@ -1094,7 +1094,7 @@ static inline void
 show_lsa_external(struct top_hash_entry *he, int ospf2)
 {
   struct ospf_lsa_ext_local rt;
-  char str_via[STD_ADDRESS_P_LENGTH + 8] = "";
+  char str_via[IPA_MAX_TEXT_LENGTH + 8] = "";
   char str_tag[16] = "";
 
   if (he->lsa_type == LSA_T_EXT)
