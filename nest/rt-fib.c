@@ -81,7 +81,7 @@ fib_ht_free(struct fib_node **h)
 
 
 static u32
-fib_hash(struct fib *f, net_addr *a);
+fib_hash(struct fib *f, const net_addr *a);
 
 /**
  * fib_init - initialize a new FIB
@@ -158,7 +158,8 @@ fib_rehash(struct fib *f, int step)
   fib_ht_free(m);
 }
 
-#define CAST(t) (net_addr_##t *)
+#define CAST(t) (const net_addr_##t *)
+#define CAST2(t) (net_addr_##t *)
 
 #define FIB_HASH(f,a,t) (net_hash_##t(CAST(t) a) >> f->hash_shift)
 
@@ -179,14 +180,14 @@ fib_rehash(struct fib *f, int step)
   while ((g = *ee) && (net_hash_##t(CAST(t) g->addr) < h))		\
     ee = &g->next;							\
 									\
-  net_copy_##t(CAST(t) e->addr, CAST(t) a);				\
+  net_copy_##t(CAST2(t) e->addr, CAST(t) a);				\
   e->next = *ee;							\
   *ee = e;								\
   })
 
 
 static u32
-fib_hash(struct fib *f, net_addr *a)
+fib_hash(struct fib *f, const net_addr *a)
 {
   switch (f->addr_type)
   {
@@ -198,8 +199,16 @@ fib_hash(struct fib *f, net_addr *a)
   }
 }
 
+/**
+ * fib_find - search for FIB node by prefix
+ * @f: FIB to search in
+ * @n: network address
+ *
+ * Search for a FIB node corresponding to the given prefix, return
+ * a pointer to it or %NULL if no such node exists.
+ */
 void *
-fib_find(struct fib *f, net_addr *a)
+fib_find(struct fib *f, const net_addr *a)
 {
   ASSERT(f->addr_type == a->type);
 
@@ -214,7 +223,7 @@ fib_find(struct fib *f, net_addr *a)
 }
 
 static void
-fib_insert(struct fib *f, net_addr *a, struct fib_node *e)
+fib_insert(struct fib *f, const net_addr *a, struct fib_node *e)
 {
   switch (f->addr_type)
   {
@@ -227,39 +236,16 @@ fib_insert(struct fib *f, net_addr *a, struct fib_node *e)
 }
 
 
-
-/**
- * fib_find - search for FIB node by prefix
- * @f: FIB to search in
- * @a: pointer to IP address of the prefix
- * @len: prefix length
- *
- * Search for a FIB node corresponding to the given prefix, return
- * a pointer to it or %NULL if no such node exists.
- */
-/*
-void *
-fib_find(struct fib *f, net_addr *a)
-{
-  struct fib_node *e = f->hash_table[fib_hash(f, a)];
-
-  while (e && (e->pxlen != len || !ipa_equal(*a, e->prefix)))
-    e = e->next;
-  return e;
-}
-*/
-
 /**
  * fib_get - find or create a FIB node
  * @f: FIB to work with
- * @a: pointer to IP address of the prefix
- * @len: prefix length
+ * @n: network address
  *
  * Search for a FIB node corresponding to the given prefix and
  * return a pointer to it. If no such node exists, create it.
  */
 void *
-fib_get(struct fib *f, net_addr *a)
+fib_get(struct fib *f, const net_addr *a)
 {
   char *b = fib_find(f, a);
   if (b)
@@ -286,34 +272,68 @@ fib_get(struct fib *f, net_addr *a)
   return b;
 }
 
+static void *
+fib_route_ip4(struct fib *f, const net_addr *n0)
+{
+  net_addr net;
+  net_addr_ip4 *n = (net_addr_ip4 *) &net;
+  void *b;
+
+  net_copy(&net, n0);
+  while (!(b = fib_find(f, &net)) && (n->pxlen > 0))
+  {
+    n->pxlen--;
+    ip4_clrbit(&n->prefix, n->pxlen);
+  }
+
+  return b;
+}
+
+static void *
+fib_route_ip6(struct fib *f, const net_addr *n0)
+{
+  net_addr net;
+  net_addr_ip6 *n = (net_addr_ip6 *) &net;
+  void *b;
+
+  net_copy(&net, n0);
+  while (!(b = fib_find(f, &net)) && (n->pxlen > 0))
+  {
+    n->pxlen--;
+    ip6_clrbit(&n->prefix, n->pxlen);
+  }
+
+  return b;
+}
+
 /**
  * fib_route - CIDR routing lookup
  * @f: FIB to search in
- * @a: pointer to IP address of the prefix
- * @len: prefix length
+ * @n: network address
  *
  * Search for a FIB node with longest prefix matching the given
  * network, that is a node which a CIDR router would use for routing
  * that network.
  */
-/*
 void *
-fib_route(struct fib *f, ip_addr a, int len)
+fib_route(struct fib *f, const net_addr *n)
 {
-  ip_addr a0;
-  void *t;
+  ASSERT(f->addr_type == n->type);
 
-  while (len >= 0)
-    {
-      a0 = ipa_and(a, ipa_mkmask(len));
-      t = fib_find(f, &a0, len);
-      if (t)
-	return t;
-      len--;
-    }
-  return NULL;
+  switch (n->type)
+  {
+  case NET_IP4:
+  case NET_VPN4:
+    return fib_route_ip4(f, n);
+
+  case NET_IP6:
+  case NET_VPN6:
+    return fib_route_ip6(f, n);
+
+  default:
+    return NULL;
+  }
 }
-*/
 
 static inline void
 fib_merge_readers(struct fib_iterator *i, struct fib_node *to)
