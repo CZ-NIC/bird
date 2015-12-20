@@ -241,20 +241,20 @@ static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
   [IFLA_WIRELESS] = { 1, 0, 0 },
 };
 
+
 #define BIRD_IFA_MAX  (IFA_ANYCAST+1)
 
-#ifndef IPV6
 static struct nl_want_attrs ifa_attr_want4[BIRD_IFA_MAX] = {
   [IFA_ADDRESS]	  = { 1, 1, sizeof(ip4_addr) },
   [IFA_LOCAL]	  = { 1, 1, sizeof(ip4_addr) },
   [IFA_BROADCAST] = { 1, 1, sizeof(ip4_addr) },
 };
-#else
+
 static struct nl_want_attrs ifa_attr_want6[BIRD_IFA_MAX] = {
   [IFA_ADDRESS]	  = { 1, 1, sizeof(ip6_addr) },
   [IFA_LOCAL]	  = { 1, 1, sizeof(ip6_addr) },
 };
-#endif
+
 
 #define BIRD_RTA_MAX  (RTA_TABLE+1)
 
@@ -262,7 +262,6 @@ static struct nl_want_attrs mpnh_attr_want4[BIRD_RTA_MAX] = {
   [RTA_GATEWAY]	  = { 1, 1, sizeof(ip4_addr) },
 };
 
-#ifndef IPV6
 static struct nl_want_attrs rtm_attr_want4[BIRD_RTA_MAX] = {
   [RTA_DST]	  = { 1, 1, sizeof(ip4_addr) },
   [RTA_OIF]	  = { 1, 1, sizeof(u32) },
@@ -274,7 +273,7 @@ static struct nl_want_attrs rtm_attr_want4[BIRD_RTA_MAX] = {
   [RTA_FLOW]	  = { 1, 1, sizeof(u32) },
   [RTA_TABLE]	  = { 1, 1, sizeof(u32) },
 };
-#else
+
 static struct nl_want_attrs rtm_attr_want6[BIRD_RTA_MAX] = {
   [RTA_DST]	  = { 1, 1, sizeof(ip6_addr) },
   [RTA_IIF]	  = { 1, 1, sizeof(u32) },
@@ -286,7 +285,6 @@ static struct nl_want_attrs rtm_attr_want6[BIRD_RTA_MAX] = {
   [RTA_FLOW]	  = { 1, 1, sizeof(u32) },
   [RTA_TABLE]	  = { 1, 1, sizeof(u32) },
 };
-#endif
 
 
 static int
@@ -356,24 +354,32 @@ nl_add_attr(struct nlmsghdr *h, uint bufsize, uint code, const void *data, uint 
 }
 
 static inline void
-nl_add_attr_u32(struct nlmsghdr *h, unsigned bufsize, int code, u32 data)
+nl_add_attr_u32(struct nlmsghdr *h, uint bufsize, int code, u32 data)
 {
   nl_add_attr(h, bufsize, code, &data, 4);
 }
 
 static inline void
-nl_add_attr_ipa(struct nlmsghdr *h, unsigned bufsize, int code, ip_addr ipa, int af)
+nl_add_attr_ip4(struct nlmsghdr *h, uint bufsize, int code, ip4_addr ip4)
 {
-  if (af == AF_INET)
-  {
-    ip4_addr ip4 = ip4_hton(ipa_to_ip4(ipa));
-    nl_add_attr(h, bufsize, code, &ip4, sizeof(ip4));
-  }
+  ip4 = ip4_hton(ip4);
+  nl_add_attr(h, bufsize, code, &ip4, sizeof(ip4));
+}
+
+static inline void
+nl_add_attr_ip6(struct nlmsghdr *h, uint bufsize, int code, ip6_addr ip6)
+{
+  ip6 = ip6_hton(ip6);
+  nl_add_attr(h, bufsize, code, &ip6, sizeof(ip6));
+}
+
+static inline void
+nl_add_attr_ipa(struct nlmsghdr *h, uint bufsize, int code, ip_addr ipa)
+{
+  if (ipa_is_ip4(ipa))
+    nl_add_attr_ip4(h, bufsize, code, ipa_to_ip4(ipa));
   else
-  {
-    ip6_addr ip6 = ip6_hton(ipa_to_ip6(ipa));
-    nl_add_attr(h, bufsize, code, &ip6, sizeof(ip6));
-  }
+    nl_add_attr_ip6(h, bufsize, code, ipa_to_ip6(ipa));
 }
 
 static inline struct rtattr *
@@ -409,7 +415,7 @@ nl_close_nexthop(struct nlmsghdr *h, struct rtnexthop *nh)
 }
 
 static void
-nl_add_multipath(struct nlmsghdr *h, unsigned bufsize, struct mpnh *nh)
+nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct mpnh *nh)
 {
   struct rtattr *a = nl_open_attr(h, bufsize, RTA_MULTIPATH);
 
@@ -421,7 +427,7 @@ nl_add_multipath(struct nlmsghdr *h, unsigned bufsize, struct mpnh *nh)
     rtnh->rtnh_hops = nh->weight;
     rtnh->rtnh_ifindex = nh->iface->index;
 
-    nl_add_attr_ipa(h, bufsize, RTA_GATEWAY, nh->gw, AF_INET);
+    nl_add_attr_ipa(h, bufsize, RTA_GATEWAY, nh->gw);
 
     nl_close_nexthop(h, rtnh);
   }
@@ -808,13 +814,11 @@ nl_parse_addr(struct nlmsghdr *h, int scan)
 
   switch (i->ifa_family)
     {
-#ifndef IPV6
       case AF_INET:
 	return nl_parse_addr4(i, scan, new);
-#else
+
       case AF_INET6:
 	return nl_parse_addr6(i, scan, new);
-#endif
     }
 }
 
@@ -831,21 +835,21 @@ kif_do_scan(struct kif_proto *p UNUSED)
       nl_parse_link(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
-#ifndef IPV6
+
   nl_request_dump(AF_INET, RTM_GETADDR);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
       nl_parse_addr(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
-#else
+
   nl_request_dump(AF_INET6, RTM_GETADDR);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
       nl_parse_addr(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
-#endif
+
   if_end_update();
 }
 
@@ -861,10 +865,10 @@ krt_table_id(struct krt_proto *p)
 
 static HASH(struct krt_proto) nl_table_map;
 
-#define RTH_FN(k)	u32_hash(k)
-#define RTH_EQ(k1,k2)	k1 == k2
-#define RTH_KEY(p)	krt_table_id(p)
-#define RTH_NEXT(p)	p->sys.hash_next
+#define RTH_KEY(p)		p->af, krt_table_id(p)
+#define RTH_NEXT(p)		p->sys.hash_next
+#define RTH_EQ(a1,i1,a2,i2)	a1 == a2 && i1 == i2
+#define RTH_FN(a,i)		a ^ u32_hash(i)
 
 #define RTH_REHASH		rth_rehash
 #define RTH_PARAMS		/8, *2, 2, 2, 6, 20
@@ -925,24 +929,11 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
   r.h.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
   r.h.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | (new ? NLM_F_CREATE|NLM_F_EXCL : 0);
 
-  int af = AF_UNSPEC;
-
-  switch(net->n.addr->type) {
-    case NET_IP4:
-      af = AF_INET;
-      break;
-    case NET_IP6:
-      af = AF_INET6;
-      break;
-    default:
-      bug("should not send vpn route to kernel");
-  }
-
-  r.r.rtm_family = af;
+  r.r.rtm_family = p->af;
   r.r.rtm_dst_len = net_pxlen(net->n.addr);
   r.r.rtm_protocol = RTPROT_BIRD;
   r.r.rtm_scope = RT_SCOPE_UNIVERSE;
-  nl_add_attr_ipa(&r.h, sizeof(r), RTA_DST, net_prefix(net->n.addr), af);
+  nl_add_attr_ipa(&r.h, sizeof(r), RTA_DST, net_prefix(net->n.addr));
 
   if (krt_table_id(p) < 256)
     r.r.rtm_table = krt_table_id(p);
@@ -958,7 +949,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
     nl_add_attr_u32(&r.h, sizeof(r), RTA_PRIORITY, ea->u.data);
 
   if (ea = ea_find(eattrs, EA_KRT_PREFSRC))
-    nl_add_attr_ipa(&r.h, sizeof(r), RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data, af);
+    nl_add_attr_ipa(&r.h, sizeof(r), RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data);
 
   if (ea = ea_find(eattrs, EA_KRT_REALM))
     nl_add_attr_u32(&r.h, sizeof(r), RTA_FLOW, ea->u.data);
@@ -986,7 +977,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
     case RTD_ROUTER:
       r.r.rtm_type = RTN_UNICAST;
       nl_add_attr_u32(&r.h, sizeof(r), RTA_OIF, a->iface->index);
-      nl_add_attr_ipa(&r.h, sizeof(r), RTA_GATEWAY, a->gw, af);
+      nl_add_attr_ipa(&r.h, sizeof(r), RTA_GATEWAY, a->gw);
       break;
     case RTD_DEVICE:
       r.r.rtm_type = RTN_UNICAST;
@@ -1047,53 +1038,60 @@ nl_parse_route(struct nlmsghdr *h, int scan)
   struct rtattr *a[BIRD_RTA_MAX];
   int new = h->nlmsg_type == RTM_NEWROUTE;
 
-  net_addr dst = { 0 };
+  net_addr dst;
   u32 oif = ~0;
-  u32 table;
+  u32 table_id;
   int src;
-
-  int ipv6 = 0;
 
   if (!(i = nl_checkin(h, sizeof(*i))))
     return;
 
   switch (i->rtm_family)
     {
-#ifndef IPV6
-      case AF_INET:
-	if (!nl_parse_attrs(RTM_RTA(i), rtm_attr_want4, a, sizeof(a)))
-	  return;
-	break;
-#else
+    case AF_INET:
+      if (!nl_parse_attrs(RTM_RTA(i), rtm_attr_want4, a, sizeof(a)))
+	return;
+
+      if (a[RTA_DST])
+	net_fill_ip4(&dst, rta_get_ip4(a[RTA_DST]), i->rtm_dst_len);
+      else
+	net_fill_ip4(&dst, IP4_NONE, 0);
+      break;
+
       case AF_INET6:
 	if (!nl_parse_attrs(RTM_RTA(i), rtm_attr_want6, a, sizeof(a)))
 	  return;
-	ipv6 = 1;
-	break;
-#endif
-      default:
-	return;
+
+      if (a[RTA_DST])
+	net_fill_ip6(&dst, rta_get_ip6(a[RTA_DST]), i->rtm_dst_len);
+      else
+	net_fill_ip6(&dst, IP6_NONE, 0);
+      break;
+
+    default:
+      return;
     }
 
   if (a[RTA_DST])
-    net_fill_ipa(&dst, rta_get_ipa(a[RTA_DST]), i->rtm_dst_len);
+
 
   if (a[RTA_OIF])
     oif = rta_get_u32(a[RTA_OIF]);
 
   if (a[RTA_TABLE])
-    table = rta_get_u32(a[RTA_TABLE]);
+    table_id = rta_get_u32(a[RTA_TABLE]);
   else
-    table = i->rtm_table;
+    table_id = i->rtm_table;
 
-  p = HASH_FIND(nl_table_map, RTH, table); /* Do we know this table? */
-  DBG("KRT: Got %I/%d, type=%d, oif=%d, table=%d, prid=%d, proto=%s\n", dst, i->rtm_dst_len, i->rtm_type, oif, table, i->rtm_protocol, p ? p->p.name : "(none)");
+  /* Do we know this table? */
+  p = HASH_FIND(nl_table_map, RTH, i->rtm_family, table_id);
   if (!p)
     SKIP("unknown table %d\n", table);
 
 
   if (a[RTA_IIF])
     SKIP("IIF set\n");
+
   if (i->rtm_tos != 0)			/* We don't support TOS */
     SKIP("TOS %02x\n", i->rtm_tos);
 
@@ -1173,7 +1171,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 	  ipa_ntoh(ra.gw);
 
 	  /* Silently skip strange 6to4 routes */
-	  if (ipv6 && ipa_in_net(ra.gw, IPA_NONE, 96))
+	  if ((i->rtm_family == AF_INET6) && ipa_in_net(ra.gw, IPA_NONE, 96))
 	    return;
 
 	  ng = neigh_find2(&p->p, &ra.gw, ra.iface,
@@ -1287,21 +1285,19 @@ krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NUL
 {
   struct nlmsghdr *h;
 
-#ifndef IPV6
   nl_request_dump(AF_INET, RTM_GETROUTE);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
       nl_parse_route(h, 1);
     else
       log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
-#else
+
   nl_request_dump(AF_INET6, RTM_GETROUTE);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
       nl_parse_route(h, 1);
     else
       log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
-#endif
 }
 
 /*
@@ -1407,11 +1403,10 @@ nl_open_async(void)
 
   bzero(&sa, sizeof(sa));
   sa.nl_family = AF_NETLINK;
-#ifdef IPV6
-  sa.nl_groups = RTMGRP_LINK | RTMGRP_IPV6_IFADDR | RTMGRP_IPV6_ROUTE;
-#else
-  sa.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV4_ROUTE;
-#endif
+  sa.nl_groups = RTMGRP_LINK |
+    RTMGRP_IPV4_IFADDR | RTMGRP_IPV4_ROUTE |
+    RTMGRP_IPV6_IFADDR | RTMGRP_IPV6_ROUTE;
+
   if (bind(fd, (struct sockaddr *) &sa, sizeof(sa)) < 0)
     {
       log(L_ERR "Unable to bind asynchronous rtnetlink socket: %m");
@@ -1443,7 +1438,7 @@ krt_sys_io_init(void)
 int
 krt_sys_start(struct krt_proto *p)
 {
-  struct krt_proto *old = HASH_FIND(nl_table_map, RTH, krt_table_id(p));
+  struct krt_proto *old = HASH_FIND(nl_table_map, RTH, p->af, krt_table_id(p));
 
   if (old)
     {

@@ -1121,6 +1121,13 @@ krt_start(struct proto *P)
 {
   struct krt_proto *p = (struct krt_proto *) P;
 
+  switch (p->p.table->addr_type)
+  {
+  case NET_IP4:	p->af = AF_INET; break;
+  case NET_IP6:	p->af = AF_INET6; break;
+  default:	ASSERT(0);
+  }
+
   add_tail(&krt_proto_list, &p->krt_node);
 
 #ifdef KRT_ALLOW_LEARN

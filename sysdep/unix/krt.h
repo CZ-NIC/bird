@@ -65,6 +65,7 @@ struct krt_proto {
 #endif
 
   node krt_node;		/* Node in krt_proto_list */
+  byte af;			/* Kernel address family (AF_*) */
   byte ready;			/* Initial feed has been finished */
   byte initialized;		/* First scan has been finished */
   byte reload;			/* Next scan is doing reload */
