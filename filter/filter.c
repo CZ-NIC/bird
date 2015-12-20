@@ -111,13 +111,11 @@ val_compare(struct f_val v1, struct f_val v2)
     if (v2.type == T_VOID)
       return 1;
 
-#ifndef IPV6
     /* IP->Quad implicit conversion */
     if ((v1.type == T_QUAD) && val_is_ip4(v2))
       return uint_cmp(v1.val.i, ipa_to_u32(v2.val.ip));
     if (val_is_ip4(v1) && (v2.type == T_QUAD))
       return uint_cmp(ipa_to_u32(v1.val.ip), v2.val.i);
-#endif
 
     debug( "Types do not match in val_compare\n" );
     return CMP_ERROR;
@@ -199,17 +197,23 @@ val_same(struct f_val v1, struct f_val v2)
 static int
 clist_set_type(struct f_tree *set, struct f_val *v)
 {
- switch (set->from.type) {
+  switch (set->from.type)
+  {
   case T_PAIR:
     v->type = T_PAIR;
     return 1;
+
   case T_QUAD:
-#ifndef IPV6
-  case T_IP:
-#endif
     v->type = T_QUAD;
     return 1;
-    break;
+
+  case T_IP:
+    if (val_is_ip4(set->from) && val_is_ip4(set->to))
+    {
+      v->type = T_QUAD;
+      return 1;
+    }
+    /* Fall through */
   default:
     v->type = T_VOID;
     return 0;
@@ -352,11 +356,10 @@ val_in_range(struct f_val v1, struct f_val v2)
 
   if (((v1.type == T_PAIR) || (v1.type == T_QUAD)) && (v2.type == T_CLIST))
     return int_set_contains(v2.val.ad, v1.val.i);
-#ifndef IPV6
+
   /* IP->Quad implicit conversion */
   if (val_is_ip4(v1) && (v2.type == T_CLIST))
     return int_set_contains(v2.val.ad, ipa_to_u32(v1.val.ip));
-#endif
 
   if ((v1.type == T_EC) && (v2.type == T_ECLIST))
     return ec_set_contains(v2.val.ad, v1.val.ec);
@@ -378,7 +381,7 @@ val_in_range(struct f_val v1, struct f_val v2)
 
   /* With integrated Quad<->IP implicit conversion */
   if ((v1.type == v2.val.t->from.type) ||
-      ((IP_VERSION == 4) && (v1.type == T_QUAD) && (v2.val.t->from.type == T_IP)))
+      ((v1.type == T_QUAD) && val_is_ip4(v2.val.t->from) && val_is_ip4(v2.val.t->to)))
     return !!find_tree(v2.val.t, v1);
 
   if (v1.type == T_CLIST)
@@ -597,12 +600,10 @@ interpret(struct f_inst *what)
       else if (v1.type == T_QUAD) {
 	ipv4_used = 1; key = v1.val.i;
       }
-#ifndef IPV6
       /* IP->Quad implicit conversion */
       else if (val_is_ip4(v1)) {
 	ipv4_used = 1; key = ipa_to_u32(v1.val.ip);
       }
-#endif
       else
 	runtime("Can't operate with key of non-integer/IPv4 type in EC constructor");
 
@@ -681,8 +682,8 @@ interpret(struct f_inst *what)
     ARG(v2, a2.p);
     sym = what->a1.p;
     vp = sym->def;
-    if ((sym->class != (SYM_VARIABLE | v2.type)) && (v2.type != T_VOID)) {
-#ifndef IPV6
+    if ((sym->class != (SYM_VARIABLE | v2.type)) && (v2.type != T_VOID))
+    {
       /* IP->Quad implicit conversion */
       if ((sym->class == (SYM_VARIABLE | T_QUAD)) && val_is_ip4(v2))
       {
@@ -690,7 +691,6 @@ interpret(struct f_inst *what)
 	vp->val.i = ipa_to_u32(v2.val.ip);
 	break;
       }
-#endif
       runtime( "Assigning to variable of incompatible type" );
     }
     *vp = v2;
@@ -925,13 +925,11 @@ interpret(struct f_inst *what)
 	break;
 
       case EAF_TYPE_ROUTER_ID:
-#ifndef IPV6
 	/* IP->Quad implicit conversion */
 	if (val_is_ip4(v1)) {
 	  l->attrs[0].u.data = ipa_to_u32(v1.val.ip);
 	  break;
 	}
-#endif
 	/* T_INT for backward compatibility */
 	if ((v1.type != T_QUAD) && (v1.type != T_INT))
 	  runtime( "Setting quad attribute to non-quad value" );
@@ -1157,11 +1155,9 @@ interpret(struct f_inst *what)
 
       if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
 	n = v2.val.i;
-#ifndef IPV6
       /* IP->Quad implicit conversion */
-      else if (v2.type == T_IP)
+      else if (val_is_ip4(v2))
 	n = ipa_to_u32(v2.val.ip);
-#endif
       else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy))
 	arg_set = 1;
       else if (v2.type == T_CLIST)
