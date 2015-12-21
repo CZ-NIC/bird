@@ -10,7 +10,7 @@
 #define _BIRD_SOCKET_H_
 
 #include <errno.h>
-// #include <sys/socket.h>
+#include <sys/socket.h>
 
 #include "lib/resource.h"
 
