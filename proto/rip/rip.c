@@ -823,9 +823,8 @@ rip_timer(timer *t)
   FIB_ITERATE_INIT(&fit, &p->rtable);
 
   loop:
-  FIB_ITERATE_START(&p->rtable, &fit, node)
+  FIB_ITERATE_START(&p->rtable, &fit, struct rip_entry, en)
   {
-    struct rip_entry *en = (struct rip_entry *) node;
     struct rip_rte *rt, **rp;
     int changed = 0;
 
@@ -852,7 +851,7 @@ rip_timer(timer *t)
        * rip_rt_notify() -> p->rtable change, invalidating hidden variables.
        */
 
-      FIB_ITERATE_PUT_NEXT(&fit, &p->rtable, node);
+      FIB_ITERATE_PUT_NEXT(&fit, &p->rtable);
       rip_announce_rte(p, en);
       goto loop;
     }
@@ -874,12 +873,12 @@ rip_timer(timer *t)
     /* Remove empty nodes */
     if (!en->valid && !en->routes)
     {
-      FIB_ITERATE_PUT(&fit, node);
-      fib_delete(&p->rtable, node);
+      FIB_ITERATE_PUT(&fit);
+      fib_delete(&p->rtable, en);
       goto loop;
     }
   }
-  FIB_ITERATE_END(node);
+  FIB_ITERATE_END;
 
   p->rt_reload = 0;
 
@@ -1248,9 +1247,8 @@ rip_dump(struct proto *P)
   int i;
 
   i = 0;
-  FIB_WALK(&p->rtable, e)
+  FIB_WALK(&p->rtable, struct rip_entry, en)
   {
-    struct rip_entry *en = (struct rip_entry *) e;
     debug("RIP: entry #%d: %N via %I dev %s valid %d metric %d age %d s\n",
 	  i++, en->n.addr, en->next_hop, en->iface->name,
 	  en->valid, en->metric, now - en->changed);

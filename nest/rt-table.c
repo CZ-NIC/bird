@@ -1315,12 +1315,9 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
 void
 rt_refresh_begin(rtable *t, struct announce_hook *ah)
 {
-  net *n;
-  rte *e;
-
-  FIB_WALK(&t->fib, fn)
+  FIB_WALK(&t->fib, net, n)
     {
-      n = (net *) fn;
+      rte *e;
       for (e = n->routes; e; e = e->next)
 	if (e->sender == ah)
 	  e->flags |= REF_STALE;
@@ -1340,12 +1337,10 @@ void
 rt_refresh_end(rtable *t, struct announce_hook *ah)
 {
   int prune = 0;
-  net *n;
-  rte *e;
 
-  FIB_WALK(&t->fib, fn)
+  FIB_WALK(&t->fib, net, n)
     {
-      n = (net *) fn;
+      rte *e;
       for (e = n->routes; e; e = e->next)
 	if ((e->sender == ah) && (e->flags & REF_STALE))
 	  {
@@ -1387,21 +1382,19 @@ rte_dump(rte *e)
 void
 rt_dump(rtable *t)
 {
-  rte *e;
-  net *n;
-  struct announce_hook *a;
-
   debug("Dump of routing table <%s>\n", t->name);
 #ifdef DEBUGGING
   fib_check(&t->fib);
 #endif
-  FIB_WALK(&t->fib, fn)
+  FIB_WALK(&t->fib, net, n)
     {
-      n = (net *) fn;
+      rte *e;
       for(e=n->routes; e; e=e->next)
 	rte_dump(e);
     }
   FIB_WALK_END;
+
+  struct announce_hook *a;
   WALK_LIST(a, t->hooks)
     debug("\tAnnounces routes to protocol %s\n", a->proto->name);
   debug("\n");
@@ -1471,19 +1464,18 @@ rt_prune_nets(rtable *tab)
 
   FIB_ITERATE_INIT(&fit, &tab->fib);
 again:
-  FIB_ITERATE_START(&tab->fib, &fit, f)
+  FIB_ITERATE_START(&tab->fib, &fit, net, n)
     {
-      net *n = (net *) f;
       ncnt++;
       if (!n->routes)		/* Orphaned FIB entry */
 	{
-	  FIB_ITERATE_PUT(&fit, f);
-	  fib_delete(&tab->fib, f);
+	  FIB_ITERATE_PUT(&fit);
+	  fib_delete(&tab->fib, n);
 	  ndel++;
 	  goto again;
 	}
     }
-  FIB_ITERATE_END(f);
+  FIB_ITERATE_END;
   DBG("Pruned %d of %d networks\n", ndel, ncnt);
 
   tab->gc_counter = 0;
@@ -1572,9 +1564,8 @@ rt_prune_step(rtable *tab, int *limit)
     }
 
 again:
-  FIB_ITERATE_START(&tab->fib, fit, fn)
+  FIB_ITERATE_START(&tab->fib, fit, net, n)
     {
-      net *n = (net *) fn;
       rte *e;
 
     rescan:
@@ -1583,7 +1574,7 @@ again:
 	  {
 	    if (*limit <= 0)
 	      {
-		FIB_ITERATE_PUT(fit, fn);
+		FIB_ITERATE_PUT(fit);
 		return 0;
 	      }
 
@@ -1594,12 +1585,12 @@ again:
 	  }
       if (!n->routes)		/* Orphaned FIB entry */
 	{
-	  FIB_ITERATE_PUT(fit, fn);
-	  fib_delete(&tab->fib, fn);
+	  FIB_ITERATE_PUT(fit);
+	  fib_delete(&tab->fib, n);
 	  goto again;
 	}
     }
-  FIB_ITERATE_END(fn);
+  FIB_ITERATE_END;
 
 #ifdef DEBUGGING
   fib_check(&tab->fib);
@@ -1791,17 +1782,17 @@ rt_next_hop_update(rtable *tab)
       tab->nhu_state = 2;
     }
 
-  FIB_ITERATE_START(&tab->fib, fit, fn)
+  FIB_ITERATE_START(&tab->fib, fit, net, n)
     {
       if (max_feed <= 0)
 	{
-	  FIB_ITERATE_PUT(fit, fn);
+	  FIB_ITERATE_PUT(fit);
 	  ev_schedule(tab->rt_event);
 	  return;
 	}
-      max_feed -= rt_next_hop_update_net(tab, (net *) fn);
+      max_feed -= rt_next_hop_update_net(tab, n);
     }
-  FIB_ITERATE_END(fn);
+  FIB_ITERATE_END;
 
   /* state change 2->0, 3->1 */
   tab->nhu_state &= 1;
@@ -1971,13 +1962,12 @@ rt_feed_baby(struct proto *p)
 
 again:
   h = p->feed_ahook;
-  FIB_ITERATE_START(&h->table->fib, fit, fn)
+  FIB_ITERATE_START(&h->table->fib, fit, net, n)
     {
-      net *n = (net *) fn;
       rte *e = n->routes;
       if (max_feed <= 0)
 	{
-	  FIB_ITERATE_PUT(fit, fn);
+	  FIB_ITERATE_PUT(fit);
 	  return 0;
 	}
 
@@ -2008,7 +1998,7 @@ again:
 	    max_feed--;
 	  }
     }
-  FIB_ITERATE_END(fn);
+  FIB_ITERATE_END;
   p->feed_ahook = h->next;
   if (!p->feed_ahook)
     {
@@ -2534,9 +2524,8 @@ rt_show_cont(struct cli *c)
   struct fib *fib = &d->table->fib;
   struct fib_iterator *it = &d->fit;
 
-  FIB_ITERATE_START(fib, it, f)
+  FIB_ITERATE_START(fib, it, net, n)
     {
-      net *n = (net *) f;
       if (d->running_on_config && d->running_on_config != config)
 	{
 	  cli_printf(c, 8004, "Stopped due to reconfiguration");
@@ -2549,12 +2538,12 @@ rt_show_cont(struct cli *c)
 	}
       if (!max--)
 	{
-	  FIB_ITERATE_PUT(it, f);
+	  FIB_ITERATE_PUT(it);
 	  return;
 	}
       rt_show_net(c, n, d);
     }
-  FIB_ITERATE_END(f);
+  FIB_ITERATE_END;
   if (d->stats)
     cli_printf(c, 14, "%d of %d routes for %d networks", d->show_counter, d->rt_counter, d->net_counter);
   else

@@ -65,6 +65,12 @@ struct fib {
   fib_init_fn init;			/* Constructor */
 };
 
+static inline void * fib_node_to_user(struct fib *f, struct fib_node *e)
+{ return e ? (void *) ((char *) e - f->node_offset) : NULL; }
+
+static inline struct fib_node * fib_user_to_node(struct fib *f, void *e)
+{ return e ? (void *) ((char *) e + f->node_offset) : NULL; }
+
 void fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offset, uint hash_order, fib_init_fn init);
 void *fib_find(struct fib *, const net_addr *);	/* Find or return NULL if doesn't exist */
 void *fib_get(struct fib *, const net_addr *); 	/* Find or create new if nonexistent */
@@ -78,35 +84,38 @@ struct fib_node *fit_get(struct fib *, struct fib_iterator *);
 void fit_put(struct fib_iterator *, struct fib_node *);
 void fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uint hpos);
 
-/* XXXX: return user entries */
-#define FIB_WALK(fib, z) do {					\
-	struct fib_node *z, **ff = (fib)->hash_table;		\
-	uint count = (fib)->hash_size;				\
-	while (count--)						\
-	  for(z = *ff++; z; z=z->next)
+
+#define FIB_WALK(fib, type, z) do {				\
+	struct fib_node *fn_, **ff_ = (fib)->hash_table;	\
+	uint count_ = (fib)->hash_size;				\
+	type *z;						\
+	while (count_--)					\
+	  for (fn_ = *ff_++; z = fib_node_to_user(fib, fn_); fn_=fn_->next)
 
 #define FIB_WALK_END } while (0)
 
 #define FIB_ITERATE_INIT(it, fib) fit_init(it, fib)
 
-#define FIB_ITERATE_START(fib, it, z) do {			\
-	struct fib_node *z = fit_get(fib, it);			\
-	uint count = (fib)->hash_size;				\
-	uint hpos = (it)->hash;					\
+#define FIB_ITERATE_START(fib, it, type, z) do {		\
+	struct fib_node *fn_ = fit_get(fib, it);		\
+	uint count_ = (fib)->hash_size;				\
+	uint hpos_ = (it)->hash;				\
+	type *z;						\
 	for(;;) {						\
-	  if (!z)						\
+	  if (!fn_)						\
             {							\
-	       if (++hpos >= count)				\
+	       if (++hpos_ >= count_)				\
 		 break;						\
-	       z = (fib)->hash_table[hpos];			\
+	       fn_ = (fib)->hash_table[hpos_];			\
 	       continue;					\
-	    }
+	    }							\
+	  z = fib_node_to_user(fib, fn_);
 
-#define FIB_ITERATE_END(z) z = z->next; } } while(0)
+#define FIB_ITERATE_END fn_ = fn_->next; } } while(0)
 
-#define FIB_ITERATE_PUT(it, z) fit_put(it, z)
+#define FIB_ITERATE_PUT(it) fit_put(it, fn_)
 
-#define FIB_ITERATE_PUT_NEXT(it, fib, z) fit_put_next(fib, it, z, hpos)
+#define FIB_ITERATE_PUT_NEXT(it, fib) fit_put_next(fib, it, fn_, hpos_)
 
 #define FIB_ITERATE_UNLINK(it, fib) fit_get(fib, it)
 

@@ -502,9 +502,9 @@ ospf_shutdown(struct proto *P)
     ospf_iface_shutdown(ifa);
 
   /* Cleanup locked rta entries */
-  FIB_WALK(&p->rtf, nftmp)
+  FIB_WALK(&p->rtf, ort, nf)
   {
-    rta_free(((ort *) nftmp)->old_rta);
+    rta_free(nf->old_rta);
   }
   FIB_WALK_END;
 
@@ -745,7 +745,6 @@ ospf_sh(struct proto *P)
   struct ospf_iface *ifa;
   struct ospf_neighbor *n;
   int ifano, nno, adjno, firstfib;
-  struct area_net *anet;
 
   if (p->p.proto_state != PS_UP)
   {
@@ -794,9 +793,8 @@ ospf_sh(struct proto *P)
     cli_msg(-1014, "\t\tNumber of adjacent neighbors:\t%u", adjno);
 
     firstfib = 1;
-    FIB_WALK(&oa->net_fib, nftmp)
+    FIB_WALK(&oa->net_fib, struct area_net, anet)
     {
-      anet = (struct area_net *) nftmp;
       if(firstfib)
       {
 	cli_msg(-1014, "\t\tArea networks:");
@@ -808,9 +806,8 @@ ospf_sh(struct proto *P)
     FIB_WALK_END;
 
     firstfib = 1;
-    FIB_WALK(&oa->enet_fib, nftmp)
+    FIB_WALK(&oa->enet_fib, struct area_net, anet)
     {
-      anet = (struct area_net *) nftmp;
       if(firstfib)
       {
 	cli_msg(-1014, "\t\tArea external networks:");

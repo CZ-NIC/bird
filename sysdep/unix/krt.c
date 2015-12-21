@@ -412,9 +412,8 @@ krt_learn_prune(struct krt_proto *p)
 
   FIB_ITERATE_INIT(&fit, fib);
 again:
-  FIB_ITERATE_START(fib, &fit, f)
+  FIB_ITERATE_START(fib, &fit, net, n)
     {
-      net *n = (net *) f;
       rte *e, **ee, *best, **pbest, *old_best;
 
       old_best = n->routes;
@@ -445,8 +444,8 @@ again:
 	      krt_learn_announce_delete(p, n);
 	      n->n.flags &= ~KRF_INSTALLED;
 	    }
-	  FIB_ITERATE_PUT(&fit, f);
-	  fib_delete(fib, f);
+	  FIB_ITERATE_PUT(&fit);
+	  fib_delete(fib, n);
 	  goto again;
 	}
       *pbest = best->next;
@@ -461,7 +460,7 @@ again:
       else
 	DBG("%I/%d: uptodate (metric=%d)\n", n->n.prefix, n->n.pxlen, best->u.krt.metric);
     }
-  FIB_ITERATE_END(f);
+  FIB_ITERATE_END;
 
   p->reload = 0;
 }
@@ -579,9 +578,8 @@ krt_flush_routes(struct krt_proto *p)
   struct rtable *t = p->p.table;
 
   KRT_TRACE(p, D_EVENTS, "Flushing kernel routes");
-  FIB_WALK(&t->fib, f)
+  FIB_WALK(&t->fib, net, n)
     {
-      net *n = (net *) f;
       rte *e = n->routes;
       if (rte_is_valid(e) && (n->n.flags & KRF_INSTALLED))
 	{
@@ -751,10 +749,9 @@ krt_prune(struct krt_proto *p)
   struct rtable *t = p->p.table;
 
   KRT_TRACE(p, D_EVENTS, "Pruning table %s", t->name);
-  FIB_WALK(&t->fib, f)
+  FIB_WALK(&t->fib, net, n)
     {
-      net *n = (net *) f;
-      int verdict = f->flags & KRF_VERDICT_MASK;
+      int verdict = n->n.flags & KRF_VERDICT_MASK;
       rte *new, *old, *rt_free = NULL;
       ea_list *tmpa = NULL;
 
@@ -783,7 +780,7 @@ krt_prune(struct krt_proto *p)
       switch (verdict)
 	{
 	case KRF_CREATE:
-	  if (new && (f->flags & KRF_INSTALLED))
+	  if (new && (n->n.flags & KRF_INSTALLED))
 	    {
 	      krt_trace_in(p, new, "reinstalling");
 	      krt_replace_rte(p, n, new, NULL, tmpa);
@@ -810,7 +807,7 @@ krt_prune(struct krt_proto *p)
       if (rt_free)
 	rte_free(rt_free);
       lp_flush(krt_filter_lp);
-      f->flags &= ~KRF_VERDICT_MASK;
+      n->n.flags &= ~KRF_VERDICT_MASK;
     }
   FIB_WALK_END;
 

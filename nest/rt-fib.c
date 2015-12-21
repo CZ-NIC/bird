@@ -49,12 +49,6 @@
 #define HASH_LO_MIN 10
 
 
-static inline void * fib_node_to_user(struct fib *f, struct fib_node *e)
-{ return (void *) ((char *) e - f->node_offset); }
-
-static inline struct fib_node * fib_user_to_node(struct fib *f, void *e)
-{ return (void *) ((char *) e + f->node_offset); }
-
 static void
 fib_ht_alloc(struct fib *f)
 {
@@ -168,7 +162,7 @@ fib_rehash(struct fib *f, int step)
     struct fib_node *e = f->hash_table[FIB_HASH(f, a, t)];		\
     while (e && !net_equal_##t(CAST(t) e->addr, CAST(t) a))		\
       e = e->next;							\
-    e ? fib_node_to_user(f, e) : NULL;					\
+    fib_node_to_user(f, e);						\
   })
 
 #define FIB_INSERT(f,a,e,t)						\

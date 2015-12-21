@@ -1158,25 +1158,20 @@ static void
 ospf_rt_abr1(struct ospf_proto *p)
 {
   struct area_net *anet;
-  ort *nf, *default_nf;
+  ort *default_nf;
   net_addr default_net;
 
   /* RFC 2328 G.3 - incomplete resolution of virtual next hops - routers */
-  FIB_WALK(&p->backbone->rtr, nftmp)
+  FIB_WALK(&p->backbone->rtr, ort, nf)
   {
-    nf = (ort *) nftmp;
-
     if (nf->n.type && unresolved_vlink(nf))
       reset_ri(nf);
   }
   FIB_WALK_END;
 
 
-  FIB_WALK(&p->rtf, nftmp)
+  FIB_WALK(&p->rtf, ort, nf)
   {
-    nf = (ort *) nftmp;
-
-
     /* RFC 2328 G.3 - incomplete resolution of virtual next hops - networks */
     if (nf->n.type && unresolved_vlink(nf))
       reset_ri(nf);
@@ -1241,9 +1236,8 @@ ospf_rt_abr1(struct ospf_proto *p)
     /* RFC 2328 16.4. (3) - precompute preferred ASBR entries */
     if (oa_is_ext(oa))
     {
-      FIB_WALK(&oa->rtr, nftmp)
+      FIB_WALK(&oa->rtr, ort, nf)
       {
-	nf = (ort *) nftmp;
 	if (nf->n.options & ORTA_ASBR)
 	  ri_install_asbr(p, rid_from_net(nf->fn.addr), &nf->n);
       }
@@ -1253,9 +1247,9 @@ ospf_rt_abr1(struct ospf_proto *p)
 
 
   /* Originate or flush ASBR summary LSAs */
-  FIB_WALK(&p->backbone->rtr, nftmp)
+  FIB_WALK(&p->backbone->rtr, ort, nf)
   {
-    check_sum_rt_lsa(p, (ort *) nftmp);
+    check_sum_rt_lsa(p, nf);
   }
   FIB_WALK_END;
 
@@ -1282,8 +1276,6 @@ ospf_rt_abr2(struct ospf_proto *p)
 {
   struct ospf_area *oa;
   struct top_hash_entry *en;
-  ort *nf, *nf2;
-
 
   /* RFC 3103 3.1 - type-7 translator election */
   struct ospf_area *bb = p->backbone;
@@ -1295,13 +1287,12 @@ ospf_rt_abr2(struct ospf_proto *p)
       if (oa->ac->translator)
 	goto decided;
 
-      FIB_WALK(&oa->rtr, nftmp)
+      FIB_WALK(&oa->rtr, ort, nf)
       {
-	nf = (ort *) nftmp;
 	if (!nf->n.type || !(nf->n.options & ORTA_ABR))
 	  continue;
 
-	nf2 = fib_find(&bb->rtr, nf->fn.addr);
+	ort *nf2 = fib_find(&bb->rtr, nf->fn.addr);
 	if (!nf2 || !nf2->n.type || !(nf2->n.options & ORTA_ABR))
 	  continue;
 
@@ -1341,13 +1332,11 @@ ospf_rt_abr2(struct ospf_proto *p)
 
 
   /* Compute condensed external networks */
-  FIB_WALK(&p->rtf, nftmp)
+  FIB_WALK(&p->rtf, ort, nf)
   {
-    nf = (ort *) nftmp;
     if (rt_is_nssa(nf) && (nf->n.options & ORTA_PROP))
     {
-      struct area_net *anet = (struct area_net *)
-	fib_route(&nf->n.oa->enet_fib, nf->fn.addr);
+      struct area_net *anet = fib_route(&nf->n.oa->enet_fib, nf->fn.addr);
 
       if (anet)
       {
@@ -1356,7 +1345,7 @@ ospf_rt_abr2(struct ospf_proto *p)
 	  anet->active = 1;
 
 	  /* Get a RT entry and mark it to know that it is an area network */
-	  nf2 = fib_get(&p->rtf, anet->fn.addr);
+	  ort *nf2 = fib_get(&p->rtf, anet->fn.addr);
 	  nf2->area_net = 1;
 	}
 
@@ -1371,10 +1360,8 @@ ospf_rt_abr2(struct ospf_proto *p)
   FIB_WALK_END;
 
 
-  FIB_WALK(&p->rtf, nftmp)
+  FIB_WALK(&p->rtf, ort, nf)
   {
-    nf = (ort *) nftmp;
-
     check_sum_net_lsa(p, nf);
     check_nssa_lsa(p, nf);
   }
@@ -1586,13 +1573,10 @@ ospf_rt_reset(struct ospf_proto *p)
 {
   struct ospf_area *oa;
   struct top_hash_entry *en;
-  struct area_net *anet;
-  ort *ri;
 
   /* Reset old routing table */
-  FIB_WALK(&p->rtf, nftmp)
+  FIB_WALK(&p->rtf, ort, ri)
   {
-    ri = (ort *) nftmp;
     ri->area_net = 0;
     reset_ri(ri);
   }
@@ -1613,9 +1597,8 @@ ospf_rt_reset(struct ospf_proto *p)
   WALK_LIST(oa, p->area_list)
   {
     /* Reset ASBR routing tables */
-    FIB_WALK(&oa->rtr, nftmp)
+    FIB_WALK(&oa->rtr, ort, ri)
     {
-      ri = (ort *) nftmp;
       reset_ri(ri);
     }
     FIB_WALK_END;
@@ -1623,17 +1606,15 @@ ospf_rt_reset(struct ospf_proto *p)
     /* Reset condensed area networks */
     if (p->areano > 1)
     {
-      FIB_WALK(&oa->net_fib, nftmp)
+      FIB_WALK(&oa->net_fib, struct area_net, anet)
       {
-	anet = (struct area_net *) nftmp;
 	anet->active = 0;
 	anet->metric = 0;
       }
       FIB_WALK_END;
 
-      FIB_WALK(&oa->enet_fib, nftmp)
+      FIB_WALK(&oa->enet_fib, struct area_net, anet)
       {
-	anet = (struct area_net *) nftmp;
 	anet->active = 0;
 	anet->metric = 0;
       }
@@ -1935,7 +1916,6 @@ rt_sync(struct ospf_proto *p)
   struct top_hash_entry *en;
   struct fib_iterator fit;
   struct fib *fib = &p->rtf;
-  ort *nf;
   struct ospf_area *oa;
 
   /* This is used for forced reload of routes */
@@ -1946,10 +1926,8 @@ rt_sync(struct ospf_proto *p)
   DBG("Now syncing my rt table with nest's\n");
   FIB_ITERATE_INIT(&fit, fib);
 again1:
-  FIB_ITERATE_START(fib, &fit, nftmp)
+  FIB_ITERATE_START(fib, &fit, ort, nf)
   {
-    nf = (ort *) nftmp;
-
     /* Sanity check of next-hop addresses, failure should not happen */
     if (nf->n.type)
     {
@@ -2027,12 +2005,12 @@ again1:
     /* Remove unused rt entry, some special entries are persistent */
     if (!nf->n.type && !nf->external_rte && !nf->area_net)
     {
-      FIB_ITERATE_PUT(&fit, nftmp);
-      fib_delete(fib, nftmp);
+      FIB_ITERATE_PUT(&fit);
+      fib_delete(fib, nf);
       goto again1;
     }
   }
-  FIB_ITERATE_END(nftmp);
+  FIB_ITERATE_END;
 
 
   WALK_LIST(oa, p->area_list)
@@ -2040,18 +2018,16 @@ again1:
     /* Cleanup ASBR hash tables */
     FIB_ITERATE_INIT(&fit, &oa->rtr);
 again2:
-    FIB_ITERATE_START(&oa->rtr, &fit, nftmp)
+    FIB_ITERATE_START(&oa->rtr, &fit, ort, nf)
     {
-      nf = (ort *) nftmp;
-
       if (!nf->n.type)
       {
-	FIB_ITERATE_PUT(&fit, nftmp);
-	fib_delete(&oa->rtr, nftmp);
+	FIB_ITERATE_PUT(&fit);
+	fib_delete(&oa->rtr, nf);
 	goto again2;
       }
     }
-    FIB_ITERATE_END(nftmp);
+    FIB_ITERATE_END;
   }
 
   /* Cleanup stale LSAs */

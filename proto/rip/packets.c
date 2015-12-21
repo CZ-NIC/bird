@@ -417,10 +417,8 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
   pkt->unused = 0;
   pos += rip_pkt_hdrlen(ifa);
 
-  FIB_ITERATE_START(&p->rtable, &ifa->tx_fit, z)
+  FIB_ITERATE_START(&p->rtable, &ifa->tx_fit, struct rip_entry, en)
   {
-    struct rip_entry *en = (struct rip_entry *) z;
-
     /* Dummy entries */
     if (!en->valid)
       goto next_entry;
@@ -437,7 +435,7 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
     /* Not enough space for current entry */
     if (pos > max)
     {
-      FIB_ITERATE_PUT(&ifa->tx_fit, z);
+      FIB_ITERATE_PUT(&ifa->tx_fit);
       goto break_loop;
     }
 
@@ -490,7 +488,7 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
 
   next_entry: ;
   }
-  FIB_ITERATE_END(z);
+  FIB_ITERATE_END;
   ifa->tx_active = 0;
 
   /* Do not send empty packet */
