@@ -74,6 +74,19 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 
+
+/*
+ * In the trie code, the prefix length is internally treated as for the whole
+ * ip_addr, regardless whether it contains an IPv4 or IPv6 address. Therefore,
+ * remaining definitions make sense.
+ */
+
+#define ipa_mkmask(x) ip6_mkmask(x)
+#define ipa_masklen(x) ip6_masklen(&x)
+#define ipa_pxlen(x,y) ip6_pxlen(x,y)
+#define ipa_getbit(x,n) ip6_getbit(x,n)
+
+
 /**
  * f_new_trie - allocates and returns a new empty trie
  * @lp: linear pool to allocate items from
@@ -123,7 +136,7 @@ attach_node(struct f_trie_node *parent, struct f_trie_node *child)
  */
 
 void *
-trie_add_prefix(struct f_trie *t, net_addr *net, uint l, uint h)
+trie_add_prefix(struct f_trie *t, const net_addr *net, uint l, uint h)
 {
   ip_addr px = net_prefix(net);
   uint plen = net_pxlen(net);

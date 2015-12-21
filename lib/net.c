@@ -136,33 +136,36 @@ net_classify(const net_addr *N)
     return ip6_zero(n->ip6.prefix) ? (IADDR_HOST | SCOPE_UNIVERSE) : ip6_classify(&n->ip6.prefix);
   }
 
-  return 0;
+  return IADDR_INVALID;
 }
 
 int
-ipa_in_netX(const ip_addr A, const net_addr *N)
+ipa_in_netX(const ip_addr a, const net_addr *n)
 {
-  switch (N->type)
+  switch (n->type)
   {
   case NET_IP4:
   case NET_VPN4:
-    if (!ipa_is_ip4(A)) return 0;
-    break;
+    if (!ipa_is_ip4(a)) return 0;
+    return ip4_zero(ip4_and(ip4_xor(ipa_to_ip4(a), net4_prefix(n)),
+			    ip4_mkmask(net4_pxlen(n))));
 
   case NET_IP6:
   case NET_VPN6:
-    if (ipa_is_ip4(A)) return 0;
-    break;
-  }
+    if (ipa_is_ip4(a)) return 0;
+    return ip6_zero(ip6_and(ip6_xor(ipa_to_ip6(a), net6_prefix(n)),
+			    ip6_mkmask(net6_pxlen(n))));
 
-  return ipa_zero(ipa_and(ipa_xor(A, net_prefix(N)), ipa_mkmask(net_pxlen(N))));
+  default:
+    return 0;
+  }
 }
 
 int
-net_in_netX(const net_addr *A, const net_addr *N)
+net_in_netX(const net_addr *a, const net_addr *n)
 {
-  if (A->type != N->type)
+  if (a->type != n->type)
     return 0;
 
-  return (net_pxlen(N) <= net_pxlen(A)) && ipa_in_netX(net_prefix(A), N);
+  return (net_pxlen(n) <= net_pxlen(a)) && ipa_in_netX(net_prefix(a), n);
 }

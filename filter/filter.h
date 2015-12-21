@@ -76,7 +76,7 @@ int same_tree(struct f_tree *t1, struct f_tree *t2);
 void tree_format(struct f_tree *t, buffer *buf);
 
 struct f_trie *f_new_trie(linpool *lp, uint node_size);
-void *trie_add_prefix(struct f_trie *t, net_addr *n, uint l, uint h);
+void *trie_add_prefix(struct f_trie *t, const net_addr *n, uint l, uint h);
 int trie_match_net(struct f_trie *t, const net_addr *n);
 int trie_same(struct f_trie *t1, struct f_trie *t2);
 void trie_format(struct f_trie *t, buffer *buf);

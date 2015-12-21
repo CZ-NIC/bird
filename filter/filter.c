@@ -1095,11 +1095,11 @@ interpret(struct f_inst *what)
       runtime( "Integer expected");
     if (v1.type != T_IP)
       runtime( "You can mask only IP addresses" );
-    {
-      ip_addr mask = ipa_mkmask(v2.val.i);
-      res.type = T_IP;
-      res.val.ip = ipa_and(mask, v1.val.ip);
-    }
+
+    res.type = T_IP;
+    res.val.ip = ipa_is_ip4(v1.val.ip) ?
+      ipa_from_ip4(ip4_and(ipa_to_ip4(v1.val.ip), ip4_mkmask(v2.val.i))) :
+      ipa_from_ip6(ip6_and(ipa_to_ip6(v1.val.ip), ip6_mkmask(v2.val.i)));
     break;
 
   case 'E':	/* Create empty attribute */

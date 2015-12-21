@@ -80,14 +80,8 @@ static inline ip_addr ipa_from_sa(sockaddr *sa)
 static inline struct in_addr ipa_to_in4(ip_addr a)
 { return (struct in_addr) { htonl(ipa_to_u32(a)) }; }
 
-#ifdef IPV6
 static inline struct in6_addr ipa_to_in6(ip_addr a)
 { return (struct in6_addr) { .s6_addr32 = { htonl(_I0(a)), htonl(_I1(a)), htonl(_I2(a)), htonl(_I3(a)) } }; }
-#else
-/* Temporary dummy */
-static inline struct in6_addr ipa_to_in6(ip_addr a)
-{ return (struct in6_addr) { .s6_addr32 = { 0, 0, 0, 0 } }; }
-#endif
 
 void sockaddr_fill(sockaddr *sa, int af, ip_addr a, struct iface *ifa, uint port);
 int sockaddr_read(sockaddr *sa, int af, ip_addr *a, struct iface **ifa, uint *port);

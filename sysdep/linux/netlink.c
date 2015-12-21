@@ -1169,7 +1169,8 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 	  ra.gw = rta_get_ipa(a[RTA_GATEWAY]);
 
 	  /* Silently skip strange 6to4 routes */
-	  if ((i->rtm_family == AF_INET6) && ipa_in_net(ra.gw, IPA_NONE, 96))
+	  const net_addr_ip6 sit = NET_ADDR_IP6(IP6_NONE, 96);
+	  if ((i->rtm_family == AF_INET6) && ipa_in_netX(ra.gw, (net_addr *) &sit))
 	    return;
 
 	  neighbor *nbr;

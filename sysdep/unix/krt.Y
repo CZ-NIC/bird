@@ -69,8 +69,7 @@ kif_item:
    }
  | PRIMARY opttext net_or_ipa {
      struct kif_primary_item *kpi = cfg_alloc(sizeof (struct kif_primary_item));
-     kpi->prefix = IPA_NONE; /* XXXX */
-     kpi->pxlen = 0; /* XXXX */
+     kpi->addr = $3.n;
      add_tail(&THIS_KIF->primary, &kpi->n);
    }
  ;

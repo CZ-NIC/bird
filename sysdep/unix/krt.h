@@ -97,8 +97,7 @@ extern struct protocol proto_unix_iface;
 struct kif_primary_item {
   node n;
   byte *pattern;
-  ip_addr prefix;
-  int pxlen;
+  net_addr addr;
 };
 
 struct kif_config {

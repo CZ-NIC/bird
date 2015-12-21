@@ -185,7 +185,6 @@ struct ospf_iface_patt
   u8 ptp_netmask;		/* bool + 2 for unspecified */
   u8 ttl_security;		/* bool + 2 for TX only */
   u8 bfd;
-  u8 bsd_secondary;
   list *passwords;
 };
 

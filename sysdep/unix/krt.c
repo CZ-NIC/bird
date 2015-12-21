@@ -131,14 +131,14 @@ prefer_addr(struct ifa *a, struct ifa *b)
 }
 
 static inline struct ifa *
-find_preferred_ifa(struct iface *i, ip_addr prefix, ip_addr mask)
+find_preferred_ifa(struct iface *i, const net_addr *n)
 {
   struct ifa *a, *b = NULL;
 
   WALK_LIST(a, i->addrs)
     {
       if (!(a->flags & IA_SECONDARY) &&
-	  ipa_equal(ipa_and(a->ip, mask), prefix) &&
+	  (!n || ipa_in_netX(a->ip, n)) &&
 	  (!b || prefer_addr(a, b)))
 	b = a;
     }
@@ -156,14 +156,14 @@ kif_choose_primary(struct iface *i)
   WALK_LIST(it, cf->primary)
     {
       if (!it->pattern || patmatch(it->pattern, i->name))
-	if (a = find_preferred_ifa(i, it->prefix, ipa_mkmask(it->pxlen)))
+	if (a = find_preferred_ifa(i, &it->addr))
 	  return a;
     }
 
   if (a = kif_get_primary_ip(i))
     return a;
 
-  return find_preferred_ifa(i, IPA_NONE, IPA_NONE);
+  return find_preferred_ifa(i, NULL);
 }
 
 

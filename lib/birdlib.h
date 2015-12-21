@@ -55,12 +55,6 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define NULL ((void *) 0)
 #endif
 
-#ifndef IPV6
-#define IP_VERSION 4
-#else
-#define IP_VERSION 6
-#endif
-
 
 /* Macros for gcc attributes */
 

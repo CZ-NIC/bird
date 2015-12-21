@@ -71,6 +71,7 @@
 #define KRT_MAX_TABLES 1
 #endif
 
+#define IPV6 1
 
 
 /* Dynamic max number of tables */
