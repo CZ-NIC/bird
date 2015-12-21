@@ -532,10 +532,8 @@ ifa_update(struct ifa *a)
 	break;
       }
 
-#ifndef IPV6
-  if ((i->flags & IF_BROADCAST) && !ipa_nonzero(a->brd))
+  if ((a->prefix.type == NET_IP4) && (i->flags & IF_BROADCAST) && ipa_zero(a->brd))
     log(L_ERR "Missing broadcast address for interface %s", i->name);
-#endif
 
   b = mb_alloc(if_pool, sizeof(struct ifa));
   memcpy(b, a, sizeof(struct ifa));

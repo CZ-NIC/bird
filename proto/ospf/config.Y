@@ -130,21 +130,27 @@ CF_KEYWORDS(ELIGIBLE, POLL, NETWORKS, HIDDEN, VIRTUAL, CHECK, LINK, ONLY, BFD)
 CF_KEYWORDS(RX, BUFFER, LARGE, NORMAL, STUBNET, HIDDEN, SUMMARY, TAG, EXTERNAL)
 CF_KEYWORDS(WAIT, DELAY, LSADB, ECMP, LIMIT, WEIGHT, NSSA, TRANSLATOR, STABILITY)
 CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL, NETMASK, TX, PRIORITY, LENGTH)
-CF_KEYWORDS(SECONDARY, MERGE, LSA, SUPPRESSION)
+CF_KEYWORDS(SECONDARY, MERGE, LSA, SUPPRESSION, OSPF2, OSPF3)
 
 %type <ld> lsadb_args
-%type <i> nbma_eligible
+%type <i> ospf_variant nbma_eligible
 
 CF_GRAMMAR
 
 CF_ADDTO(proto, ospf_proto '}' { ospf_proto_finish(); } )
 
-ospf_proto_start: proto_start OSPF {
+ospf_variant:
+   OSPF  { $$ = 1; }
+ | OSPF2 { $$ = 1; }
+ | OSPF3 { $$ = 0; }
+ ;
+
+ospf_proto_start: proto_start ospf_variant {
      this_proto = proto_config_new(&proto_ospf, $1);
      init_list(&OSPF_CFG->area_list);
      init_list(&OSPF_CFG->vlink_list);
      OSPF_CFG->tick = OSPF_DEFAULT_TICK;
-     OSPF_CFG->ospf2 = OSPF_IS_V2;
+     OSPF_CFG->ospf2 = $2;
   }
  ;
 

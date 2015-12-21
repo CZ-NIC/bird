@@ -648,6 +648,9 @@ ospf_reconfigure(struct proto *P, struct proto_config *c)
   if (proto_get_router_id(c) != p->router_id)
     return 0;
 
+  if (p->ospf2 != new->ospf2)
+    return 0;
+
   if (p->rfc1583 != new->rfc1583)
     return 0;
 

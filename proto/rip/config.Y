@@ -32,24 +32,29 @@ rip_check_auth(void)
 
 CF_DECLS
 
-CF_KEYWORDS(RIP, ECMP, LIMIT, WEIGHT, INFINITY, METRIC, UPDATE, TIMEOUT,
+CF_KEYWORDS(RIP, RIPNG, ECMP, LIMIT, WEIGHT, INFINITY, METRIC, UPDATE, TIMEOUT,
 	    GARBAGE, PORT, ADDRESS, MODE, BROADCAST, MULTICAST, PASSIVE,
 	    VERSION, SPLIT, HORIZON, POISON, REVERSE, CHECK, ZERO, TIME, BFD,
 	    AUTHENTICATION, NONE, PLAINTEXT, CRYPTOGRAPHIC, MD5, TTL, SECURITY,
 	    RX, TX, BUFFER, LENGTH, PRIORITY, ONLY, LINK, RIP_METRIC, RIP_TAG)
 
-%type <i> rip_auth
+%type <i> rip_variant rip_auth
 
 CF_GRAMMAR
 
 CF_ADDTO(proto, rip_proto)
 
-rip_proto_start: proto_start RIP
+rip_variant:
+   RIP   { $$ = 1; }
+ | RIPNG { $$ = 0; }
+ ;
+
+rip_proto_start: proto_start rip_variant
 {
   this_proto = proto_config_new(&proto_rip, $1);
   init_list(&RIP_CFG->patt_list);
 
-  RIP_CFG->rip2 = RIP_IS_V2;
+  RIP_CFG->rip2 = $2;
   RIP_CFG->infinity = RIP_DEFAULT_INFINITY;
 
   RIP_CFG->min_timeout_time = 60;

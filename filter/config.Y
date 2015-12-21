@@ -205,7 +205,6 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
       cf_error("Can't operate with key of non-integer/IPv4 type in EC constructor");
   }
 
-#ifndef IPV6
   /* IP->Quad implicit conversion */
   else if (tk->code == 'C') {
     c1 = 1;
@@ -223,7 +222,6 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
     else
       cf_error("Can't operate with key of non-integer/IPv4 type in EC constructor");
   }
-#endif
 
   if (tv->code == 'c') {
     if (tv->aux != T_INT)

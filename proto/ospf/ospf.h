@@ -37,14 +37,6 @@
 #endif
 
 
-#ifdef IPV6
-#define OSPF_IS_V2 0
-#else
-#define OSPF_IS_V2 1
-#endif
-
-// FIXME: MAX_PREFIX_LENGTH
-
 #define OSPF_TRACE(flags, msg, args...) \
   do { if ((p->p.debug & flags) || OSPF_FORCE_DEBUG) \
     log(L_TRACE "%s: " msg, p->p.name , ## args ); } while(0)
@@ -837,16 +829,12 @@ static inline void ospf_notify_net_lsa(struct ospf_iface *ifa)
 static inline void ospf_notify_link_lsa(struct ospf_iface *ifa)
 { ifa->update_link_lsa = 1; }
 
-
-#define ospf_is_v2(X) OSPF_IS_V2
-#define ospf_is_v3(X) (!OSPF_IS_V2)
-/*
 static inline int ospf_is_v2(struct ospf_proto *p)
 { return p->ospf2; }
 
 static inline int ospf_is_v3(struct ospf_proto *p)
 { return ! p->ospf2; }
-*/
+
 static inline int ospf_get_version(struct ospf_proto *p)
 { return ospf_is_v2(p) ? 2 : 3; }
 

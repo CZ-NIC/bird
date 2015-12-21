@@ -477,12 +477,12 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
       nl_parse_attrs(RTNH_DATA(nh), mpnh_attr_want4, a, sizeof(a));
       if (a[RTA_GATEWAY])
 	{
-	  memcpy(&rv->gw, RTA_DATA(a[RTA_GATEWAY]), sizeof(ip_addr));
-	  ipa_ntoh(rv->gw);
+	  rv->gw = rta_get_ipa(a[RTA_GATEWAY]);
 
-	  neighbor *ng = neigh_find2(&p->p, &rv->gw, rv->iface,
-				     (nh->rtnh_flags & RTNH_F_ONLINK) ? NEF_ONLINK : 0);
-	  if (!ng || (ng->scope == SCOPE_HOST))
+	  neighbor *nbr;
+	  nbr = neigh_find2(&p->p, &rv->gw, rv->iface,
+			    (nh->rtnh_flags & RTNH_F_ONLINK) ? NEF_ONLINK : 0);
+	  if (!nbr || (nbr->scope == SCOPE_HOST))
 	    return NULL;
 	}
       else
@@ -1165,18 +1165,17 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 
       if (a[RTA_GATEWAY])
 	{
-	  neighbor *ng;
 	  ra.dest = RTD_ROUTER;
-	  memcpy(&ra.gw, RTA_DATA(a[RTA_GATEWAY]), sizeof(ra.gw));
-	  ipa_ntoh(ra.gw);
+	  ra.gw = rta_get_ipa(a[RTA_GATEWAY]);
 
 	  /* Silently skip strange 6to4 routes */
 	  if ((i->rtm_family == AF_INET6) && ipa_in_net(ra.gw, IPA_NONE, 96))
 	    return;
 
-	  ng = neigh_find2(&p->p, &ra.gw, ra.iface,
-			   (i->rtm_flags & RTNH_F_ONLINK) ? NEF_ONLINK : 0);
-	  if (!ng || (ng->scope == SCOPE_HOST))
+	  neighbor *nbr;
+	  nbr = neigh_find2(&p->p, &ra.gw, ra.iface,
+			    (i->rtm_flags & RTNH_F_ONLINK) ? NEF_ONLINK : 0);
+	  if (!nbr || (nbr->scope == SCOPE_HOST))
 	    {
 	      log(L_ERR "KRT: Received route %N with strange next-hop %I", net->n.addr, ra.gw);
 	      return;

@@ -1428,7 +1428,7 @@ loop:
 static void *
 ospf_fib_route(struct fib *f, ip_addr a)
 {
-  if (ospf_is_v2(p))
+  if (f->addr_type == NET_IP4)
     return ospf_fib_route_ip4(f, ipa_to_ip4(a), IP4_MAX_PREFIX_LENGTH);
   else
     return ospf_fib_route_ip6(f, ipa_to_ip6(a), IP6_MAX_PREFIX_LENGTH);

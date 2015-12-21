@@ -199,20 +199,20 @@ static inline void net_copy_vpn6(net_addr_vpn6 *dst, const net_addr_vpn6 *src)
 
 
 static inline u32 net_hash_ip4(const net_addr_ip4 *n)
-{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+{ return ip4_hash32(n->prefix) ^ ((u32) n->pxlen << 26); }
 
 static inline u32 net_hash_ip6(const net_addr_ip6 *n)
-{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+{ return ip6_hash32(n->prefix) ^ ((u32) n->pxlen << 26); }
 
 /* XXXX */
 static inline u32 u64_hash(u32 a)
 { return u32_hash(a); }
 
 static inline u32 net_hash_vpn4(const net_addr_vpn4 *n)
-{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
+{ return ip4_hash32(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
 
 static inline u32 net_hash_vpn6(const net_addr_vpn6 *n)
-{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
+{ return ip6_hash32(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
 
 
 static inline int net_validate_ip4(const net_addr_ip4 *n)

@@ -27,12 +27,6 @@
 #include "lib/timer.h"
 
 
-#ifdef IPV6
-#define RIP_IS_V2 0
-#else
-#define RIP_IS_V2 1
-#endif
-
 #define RIP_V1			1
 #define RIP_V2			2
 
@@ -98,6 +92,7 @@ struct rip_proto
   slab *rte_slab;			/* Slab for internal routes (struct rip_rte) */
   timer *timer;				/* Main protocol timer */
 
+  u8 rip2;				/* RIPv2 (IPv4) or RIPng (IPv6) */
   u8 ecmp;				/* Maximum number of nexthops in ECMP route, or 0 */
   u8 infinity;				/* Maximum metric value, representing infinity */
   u8 triggered;				/* Logical AND of interface want_triggered values */
@@ -190,16 +185,11 @@ struct rip_rte
 #define EA_RIP_METRIC		EA_CODE(EAP_RIP, 0)
 #define EA_RIP_TAG		EA_CODE(EAP_RIP, 1)
 
-#define rip_is_v2(X) RIP_IS_V2
-#define rip_is_ng(X) (!RIP_IS_V2)
-
-/*
 static inline int rip_is_v2(struct rip_proto *p)
 { return p->rip2; }
 
 static inline int rip_is_ng(struct rip_proto *p)
 { return ! p->rip2; }
-*/
 
 static inline void
 rip_reset_tx_session(struct rip_proto *p, struct rip_iface *ifa)

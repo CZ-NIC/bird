@@ -736,7 +736,8 @@ rip_open_socket(struct rip_iface *ifa)
   sk->tos = ifa->cf->tx_tos;
   sk->priority = ifa->cf->tx_priority;
   sk->ttl = ifa->cf->ttl_security ? 255 : 1;
-  sk->flags = SKF_LADDR_RX | ((ifa->cf->ttl_security == 1) ? SKF_TTL_RX : 0);
+  sk->flags = SKF_LADDR_RX | (rip_is_ng(p) ? SKF_V6ONLY : 0) |
+    ((ifa->cf->ttl_security == 1) ? SKF_TTL_RX : 0);
 
   /* sk->rbsize and sk->tbsize are handled in rip_iface_update_buffers() */
 

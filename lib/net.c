@@ -31,15 +31,15 @@ net_format(const net_addr *N, char *buf, int buflen)
 {
   net_addr_union *n = (void *) N;
 
-  /* FIXME: quick hack */
+  /* XXXX fix %I vs %R */
   switch (n->n.type)
   {
   case NET_IP4:
-    return bsnprintf(buf, buflen, "%I/%d", n->ip4.prefix, n->ip4.pxlen);
+    return bsnprintf(buf, buflen, "%R/%d", n->ip4.prefix, n->ip4.pxlen);
   case NET_IP6:
     return bsnprintf(buf, buflen, "%I/%d", n->ip6.prefix, n->ip6.pxlen);
   case NET_VPN4:
-    return bsnprintf(buf, buflen, "%u:%u %I/%d", (u32) (n->vpn4.rd >> 32), (u32) n->vpn4.rd, n->vpn4.prefix, n->vpn4.pxlen);
+    return bsnprintf(buf, buflen, "%u:%u %R/%d", (u32) (n->vpn4.rd >> 32), (u32) n->vpn4.rd, n->vpn4.prefix, n->vpn4.pxlen);
   case NET_VPN6:
     return bsnprintf(buf, buflen, "%u:%u %I/%d", (u32) (n->vpn6.rd >> 32), (u32) n->vpn6.rd, n->vpn6.prefix, n->vpn6.pxlen);
   }

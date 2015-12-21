@@ -1097,11 +1097,12 @@ rip_start(struct proto *P)
   struct rip_config *cf = (void *) (P->cf);
 
   init_list(&p->iface_list);
-  fib_init(&p->rtable, P->pool, rip_is_v2(p) ? NET_IP4 : NET_IP6,
+  fib_init(&p->rtable, P->pool, cf->rip2 ? NET_IP4 : NET_IP6,
 	   sizeof(struct rip_entry), OFFSETOF(struct rip_entry, n), 0, NULL);
   p->rte_slab = sl_new(P->pool, sizeof(struct rip_rte));
   p->timer = tm_new_set(P->pool, rip_timer, p, 0, 0);
 
+  p->rip2 = cf->rip2;
   p->ecmp = cf->ecmp;
   p->infinity = cf->infinity;
   p->triggered = 0;
@@ -1120,6 +1121,9 @@ rip_reconfigure(struct proto *P, struct proto_config *c)
   struct rip_proto *p = (void *) P;
   struct rip_config *new = (void *) c;
   // struct rip_config *old = (void *) (P->cf);
+
+  if (new->rip2 != p->rip2)
+    return 0;
 
   if (new->infinity != p->infinity)
     return 0;

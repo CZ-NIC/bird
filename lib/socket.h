@@ -67,18 +67,14 @@ void sk_set_tbsize(sock *s, uint val);	/* Resize TX buffer, keeping content */
 void sk_set_tbuf(sock *s, void *tbuf);	/* Switch TX buffer, NULL-> return to internal */
 void sk_dump_all(void);
 
+static inline int sk_is_ipv4(sock *s)
+{ return s->af == AF_INET; }
+
+static inline int sk_is_ipv6(sock *s)
+{ return s->af == AF_INET6; }
+
 static inline int sk_send_buffer_empty(sock *sk)
 { return sk->tbuf == sk->tpos; }
-
-
-#ifdef IPV6
-#define sk_is_ipv4(X) 0
-#define sk_is_ipv6(X) 1
-#else
-#define sk_is_ipv4(X) 1
-#define sk_is_ipv6(X) 0
-#endif
-
 
 int sk_setup_multicast(sock *s);	/* Prepare UDP or IP socket for multicasting */
 int sk_join_group(sock *s, ip_addr maddr);	/* Join multicast group on sk iface */

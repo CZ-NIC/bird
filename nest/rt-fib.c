@@ -59,7 +59,7 @@ static void
 fib_ht_alloc(struct fib *f)
 {
   f->hash_size = 1 << f->hash_order;
-  f->hash_shift = 16 - f->hash_order;
+  f->hash_shift = 32 - f->hash_order;
   if (f->hash_order > HASH_HI_MAX - HASH_HI_STEP)
     f->entries_max = ~0;
   else
@@ -168,7 +168,7 @@ fib_rehash(struct fib *f, int step)
     struct fib_node *e = f->hash_table[FIB_HASH(f, a, t)];		\
     while (e && !net_equal_##t(CAST(t) e->addr, CAST(t) a))		\
       e = e->next;							\
-    fib_node_to_user(f, e);						\
+    e ? fib_node_to_user(f, e) : NULL;					\
   })
 
 #define FIB_INSERT(f,a,e,t)						\
@@ -247,7 +247,7 @@ fib_insert(struct fib *f, const net_addr *a, struct fib_node *e)
 void *
 fib_get(struct fib *f, const net_addr *a)
 {
-  char *b = fib_find(f, a);
+  void *b = fib_find(f, a);
   if (b)
     return b;
 
@@ -256,7 +256,7 @@ fib_get(struct fib *f, const net_addr *a)
   else
     b = mb_alloc(f->fib_pool, f->node_size + a->length);
 
-  struct fib_node *e = (void *) (b + f->node_offset);
+  struct fib_node *e = fib_user_to_node(f, b);
   e->readers = NULL;
   e->flags = 0;
   e->uid = 0;
@@ -522,6 +522,7 @@ found:
 void
 fib_check(struct fib *f)
 {
+#if 0
   uint i, ec, lo, nulls;
 
   ec = 0;
@@ -557,6 +558,8 @@ fib_check(struct fib *f)
     }
   if (ec != f->entries)
     bug("fib_check: invalid entry count (%d != %d)", ec, f->entries);
+#endif
+  return;
 }
 
 /*
