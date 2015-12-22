@@ -486,9 +486,15 @@ static int rtr_send_pdu(struct rpki_cache *cache, const void *pdu, const unsigne
   return RTR_SUCCESS;
 }
 
-/*
+/**
+ * rtr_check_receive_packet - Make a basic validation of received RPKI PDU header:
+ *  - check protocol version
+ *  - check pdu type
+ *  - check size
+ *
+ * @cache cache connection
  * @param len must <= RTR_MAX_PDU_LEN bytes
- * @return RTR_SUCCESS, pdu is converted to host order byte
+ * @return RTR_SUCCESS
  * @return RTR_ERROR, error pdu was sent
  */
 static int
@@ -496,13 +502,6 @@ rtr_check_receive_packet(struct rpki_cache *cache, void *pdu, const size_t len)
 {
   struct rtr_socket *rtr_socket = cache->rtr_socket;
   struct rpki_proto *p = cache->p;
-  //error values:
-  // 0 = no_err
-  // 1 = internal error
-  // 2 = unknown pdu type
-  // 4 = pdu to big
-  // 8 = corrupt data
-  // 16 = unknown pdu version
   int error = RTR_SUCCESS;
 
   // header in hostbyte order, retain original received pdu, in case we need to detach it to an error pdu
@@ -557,15 +556,11 @@ rtr_check_receive_packet(struct rpki_cache *cache, void *pdu, const size_t len)
     goto error;
   }
 
-  memcpy(pdu, &header, sizeof(header)); //copy header in host_byte_order to pdu
-  rtr_pdu_footer_to_host_byte_order(pdu);
-
   if (header.type == IPV4_PREFIX || header.type == IPV6_PREFIX) {
     if (((struct pdu_ipv4 *) pdu)->zero != 0)
       CACHE_TRACE(D_PACKETS, cache, "Warning: Zero field of received Prefix PDU doesn't contain 0");
   }
 
-  rpki_log_packet(cache, pdu, len, RPKI_RECV);
   return RTR_SUCCESS;
 
  error:
@@ -835,6 +830,13 @@ rtr_handle_end_of_data_pdu(struct rpki_cache *cache, void *pdu)
 }
 
 static void
+rtr_transform_pdu_to_host_byte_order(byte *pdu)
+{
+  rtr_pdu_header_to_host_byte_order(pdu);
+  rtr_pdu_footer_to_host_byte_order(pdu);
+}
+
+static void
 rpki_rx_packet(struct rpki_cache *cache, byte *pdu, uint len)
 {
   struct rtr_socket *rtr_socket = cache->rtr_socket;
@@ -847,7 +849,8 @@ rpki_rx_packet(struct rpki_cache *cache, byte *pdu, uint len)
     return;
   }
 
-  /* the pdu is in host order already */
+  rtr_transform_pdu_to_host_byte_order(pdu);
+  rpki_log_packet(cache, pdu, len, RPKI_RECV);
 
   switch (type)
   {
