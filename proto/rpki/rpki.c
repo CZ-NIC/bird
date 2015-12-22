@@ -3,7 +3,7 @@
  *
  *	(c) 2015 CZ.NIC
  *
- *	Using RTRLib: http://rpki.realmv6.org/
+ *	Using RTRlib: http://rpki.realmv6.org/
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -319,12 +319,12 @@ rpki_free_cache(struct rpki_cache *cache)
   mb_free(cache->rtr_socket->tr_socket);
   mb_free(cache->rtr_socket);
 
-  /* Timers */
+  /* timers */
   tm_stop(cache->retry_timer);
   tm_stop(cache->refresh_timer);
   tm_stop(cache->expire_timer);
-
   rfree(cache->retry_timer);
+
   rfree(cache->refresh_timer);
   rfree(cache->expire_timer);
 

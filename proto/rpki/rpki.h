@@ -3,7 +3,7 @@
  *
  *	(c) 2015 CZ.NIC
  *
- *	Using RTRLib: http://rpki.realmv6.org/
+ *	Using RTRlib: http://rpki.realmv6.org/
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */

@@ -76,7 +76,7 @@ rtr_purge_records_if_outdated(struct rpki_cache *cache)
     }
 
     pfx_table_src_remove(cache);
-    CACHE_TRACE(D_EVENTS, cache, "Remove outdated records from pfx_table");
+    CACHE_TRACE(D_EVENTS, cache, "All ROA records from %s expired", get_cache_ident(cache));
     rtr_socket->request_session_id = true;
     rtr_socket->serial_number = 0;
     rtr_socket->last_update = 0;
@@ -288,7 +288,7 @@ rpki_refresh_hook(struct timer *tm)
 
     case RTR_CONNECTING:
     case RTR_SYNC:
-      /* Wait small amout of time to transite state */
+      /* Wait a small amount of time to the end of transitive state */
       tm_start(tm, 1);
       break;
 

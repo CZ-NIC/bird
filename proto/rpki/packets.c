@@ -483,7 +483,7 @@ rtr_check_receive_packet(struct rpki_cache *cache, void *pdu, const size_t len)
   struct rpki_proto *p = cache->p;
   int error = RTR_SUCCESS;
 
-  //header in hostbyte order, retain original received pdu, in case we need to detach it to an error pdu
+  // header in hostbyte order, retain original received pdu, in case we need to detach it to an error pdu
   struct pdu_header header;
   memcpy(&header, pdu, sizeof(header));
   rtr_pdu_header_to_host_byte_order(&header);
@@ -495,7 +495,7 @@ rtr_check_receive_packet(struct rpki_cache *cache, void *pdu, const size_t len)
     return RTR_ERROR;
   }
 
-  // Do dont handle error PDUs here, leave this task to rtr_handle_error_pdu()
+  // Do not handle error PDUs here, leave this task to rtr_handle_error_pdu()
   if (header.ver != rtr_socket->version && header.type != ERROR)
   {
     // If this is the first PDU we have received -> Downgrade.
