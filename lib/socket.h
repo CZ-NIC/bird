@@ -10,7 +10,6 @@
 #define _BIRD_SOCKET_H_
 
 #include <errno.h>
-#include <sys/socket.h>
 
 #include "lib/resource.h"
 
@@ -67,11 +66,8 @@ void sk_set_tbsize(sock *s, uint val);	/* Resize TX buffer, keeping content */
 void sk_set_tbuf(sock *s, void *tbuf);	/* Switch TX buffer, NULL-> return to internal */
 void sk_dump_all(void);
 
-static inline int sk_is_ipv4(sock *s)
-{ return s->af == AF_INET; }
-
-static inline int sk_is_ipv6(sock *s)
-{ return s->af == AF_INET6; }
+int sk_is_ipv4(sock *s);		/* True if socket is IPv4 */
+int sk_is_ipv6(sock *s);		/* True if socket is IPv6 */
 
 static inline int sk_send_buffer_empty(sock *sk)
 { return sk->tbuf == sk->tpos; }

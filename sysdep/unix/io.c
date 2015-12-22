@@ -1860,6 +1860,12 @@ sk_write(sock *s)
   }
 }
 
+int sk_is_ipv4(sock *s)
+{ return s->af == AF_INET; }
+
+int sk_is_ipv6(sock *s)
+{ return s->af == AF_INET6; }
+
 void
 sk_dump_all(void)
 {
