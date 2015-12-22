@@ -264,7 +264,7 @@ rpki_free_cache(struct rpki_cache *cache)
   mb_free(cache->rtr_socket->tr_socket);
   mb_free(cache->rtr_socket);
 
-  /* timers */
+  /* Timers */
   tm_stop(cache->retry_timer);
   tm_stop(cache->refresh_timer);
   tm_stop(cache->expire_timer);

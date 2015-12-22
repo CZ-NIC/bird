@@ -444,7 +444,8 @@ rpki_log_packet(struct rpki_cache *cache, const void *pdu, const size_t len, con
     DBG("\n");
 }
 
-static int rtr_send_pdu(struct rpki_cache *cache, const void *pdu, const unsigned len)
+static int
+rtr_send_pdu(struct rpki_cache *cache, const void *pdu, const unsigned len)
 {
   const struct rtr_socket *rtr_socket = cache->rtr_socket;
   struct rpki_proto *p = cache->p;
@@ -601,7 +602,8 @@ rtr_check_receive_packet(struct rpki_cache *cache, void *pdu, const size_t len)
   return RTR_ERROR;
 }
 
-static int rtr_handle_error_pdu(struct rtr_socket *rtr_socket, const void *buf)
+static int
+rtr_handle_error_pdu(struct rtr_socket *rtr_socket, const void *buf)
 {
   struct rpki_cache *cache = rtr_socket->cache;
   struct rpki_proto *p = cache->p;
@@ -771,26 +773,6 @@ rtr_update_pfx_table(struct rpki_cache *cache, const void *pdu)
     }
   }
 
-  /*
-  if (rtval == PFX_DUPLICATE_RECORD) {
-    CACHE_TRACE(D_EVENTS, cache, "Duplicate Announcement for record: %I/%u max %u as %u, received", pfxr.prefix, pfxr.min_len, pfxr.max_len, pfxr.asn);
-    rtr_send_error_pdu(cache, pdu, pdu_size, DUPLICATE_ANNOUNCEMENT , NULL, 0);
-    rtr_change_socket_state(rtr_socket, RTR_ERROR_FATAL);
-    return RTR_ERROR;
-  } else if (rtval == PFX_RECORD_NOT_FOUND) {
-    CACHE_TRACE(D_EVENTS, cache, "Withdrawal of unknown record");
-    rtr_send_error_pdu(cache, pdu, pdu_size, WITHDRAWAL_OF_UNKNOWN_RECORD, NULL, 0);
-    rtr_change_socket_state(rtr_socket, RTR_ERROR_FATAL);
-    return RTR_ERROR;
-  } else if (rtval == PFX_ERROR) {
-    const char *txt = "PFX_TABLE Error";
-    RPKI_DBG(cache, "%s", txt);
-    rtr_send_error_pdu(cache, pdu, pdu_size, INTERNAL_ERROR, txt, sizeof(txt));
-    rtr_change_socket_state(rtr_socket, RTR_ERROR_FATAL);
-    return RTR_ERROR;
-  }
-  */
-
   return RTR_SUCCESS;
 }
 
@@ -816,7 +798,7 @@ rtr_handle_end_of_data_pdu(struct rpki_cache *cache, void *pdu)
   if (eod_pdu->session_id != rtr_socket->session_id)
   {
     char txt[67];
-    snprintf(txt, sizeof(txt),"Expected session_id: %u, received session_id. %u in EOD PDU",rtr_socket->session_id, eod_pdu->session_id);
+    snprintf(txt, sizeof(txt),"Received session_id %u, but expected was session_id %u", eod_pdu->session_id, rtr_socket->session_id);
     CACHE_TRACE(D_EVENTS, cache, "%s", txt);
     rtr_send_error_pdu(cache, pdu, eod_pdu->len, CORRUPT_DATA, txt, strlen(txt) + 1);
     rtr_change_socket_state(rtr_socket, RTR_ERROR_FATAL);
@@ -865,7 +847,7 @@ rpki_rx_packet(struct rpki_cache *cache, byte *pdu, uint len)
       break;
 
     case CACHE_RESPONSE:
-      rtr_handle_cache_response_pdu(cache,pdu);
+      rtr_handle_cache_response_pdu(cache, pdu);
       break;
 
     case IPV4_PREFIX:

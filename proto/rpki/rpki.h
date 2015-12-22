@@ -13,21 +13,18 @@
 
 #include "nest/bird.h"
 #include "nest/route.h"
-
 #include "lib/socket.h"
 #include "lib/ip.h"
 
-#include "tcp_transport.h"
-#include "ssh_transport.h"
-
+#include "transport.h"
 #include "rtr.h"
 #include "packets.h"
 
 #define RPKI_DEFAULT_PORT 		8282
 #define RPKI_DEFAULT_SSH_PORT 		22
-#define RPKI_DEFAULT_RETRY_INTERVAL	10
-#define RPKI_DEFAULT_REFRESH_INTERVAL	15
-#define RPKI_DEFAULT_EXPIRE_INTERVAL	30
+#define RPKI_DEFAULT_RETRY_INTERVAL	30
+#define RPKI_DEFAULT_REFRESH_INTERVAL	600
+#define RPKI_DEFAULT_EXPIRE_INTERVAL	1200
 #define RPKI_DEFAULT_CACHE_PREFERENCE 	1	/* The most important priority */
 
 struct rpki_cache_ssh_cfg {
@@ -58,8 +55,7 @@ struct rpki_cache {
   timer *retry_timer;			/* Timer for Cache server */
   timer *refresh_timer;			/* Timer for Cache server */
   timer *expire_timer;			/* Timer for Cache server */
-  u8 state;				/* RPKI_CACHE_STATE_* */
-  u8 roa_src;				/* For kicking off all ROA learned from this cache */
+  u8 roa_src;				/* For purge ROAs learned only from this cache */
 };
 
 struct rpki_cache_group {

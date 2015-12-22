@@ -141,7 +141,7 @@ rtr_schedule_next_expire_check(struct rpki_cache *cache)
 
   unsigned time_to_wait = MAX(((int)rtr_socket->expire_interval - (int)(now - rtr_socket->last_update)), 1);
 
-  CACHE_TRACE(D_EVENTS, cache, "Next ROA expiration check will be after %u seconds again", time_to_wait);
+  CACHE_DBG(cache, "Next ROA expiration check will be after %u seconds again", time_to_wait);
   tm_stop(cache->expire_timer);
   tm_start(cache->expire_timer, time_to_wait);
 }

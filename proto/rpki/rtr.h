@@ -98,7 +98,7 @@ struct rtr_socket {
     bird_clock_t last_update;
     unsigned int retry_interval;		/* Use if the cache server is down */
     unsigned int refresh_interval;
-    unsigned int expire_interval;		/* After this period without successfull refresh will be ROAs discard */
+    unsigned int expire_interval;		/* After this period from last refresh will be ROAs discard */
     enum rtr_socket_state state;
     uint32_t session_id;
     bool request_session_id;
