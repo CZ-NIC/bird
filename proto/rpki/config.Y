@@ -19,6 +19,7 @@ static struct rpki_cache_cfg *this_rpki_cache_cfg;
 CF_DECLS
 
 CF_KEYWORDS(RPKI, CACHE, LIST, PREFERENCE, BIRD, PRIVATE, PUBLIC, KEY, SSH, ENCRYPTION, USER)
+CF_KEYWORDS(RETRY, REFRESH, EXPIRE)
 
 CF_GRAMMAR
 
@@ -93,22 +94,25 @@ rpki_optional_cache_opts:
 ;
 
 rpki_cache_opts:
-/* empty */
-| rpki_cache_opts rpki_cache_opts_item ';'
-;
+ /* empty */
+ | rpki_cache_opts rpki_cache_opts_item ';'
+ ;
 
 rpki_cache_opts_item:
-PORT expr {
+ PORT expr {
   check_u16($2);
   this_rpki_cache_cfg->port = $2;
-}
-| PREFERENCE expr {
-  if ($2 < 1 || $2 > 0xFF)
-    cf_error("Value %d is out of range (1-255)", $2);
-  this_rpki_cache_cfg->preference = $2;
-}
-| SSH ENCRYPTION rpki_transport_ssh_init '{' rpki_transport_ssh_opts '}' rpki_transport_ssh_finish
-;
+ }
+ | PREFERENCE expr {
+   if ($2 < 1 || $2 > 0xFF)
+     cf_error("Value %d is out of range (1-255)", $2);
+   this_rpki_cache_cfg->preference = $2;
+ }
+ | REFRESH expr { this_rpki_cache_cfg->refresh_interval = $2; }
+ | RETRY   expr { this_rpki_cache_cfg->retry_interval = $2;   }
+ | EXPIRE  expr { this_rpki_cache_cfg->expire_interval = $2;  }
+ | SSH ENCRYPTION rpki_transport_ssh_init '{' rpki_transport_ssh_opts '}' rpki_transport_ssh_finish
+ ;
 
 rpki_transport_ssh_init:
 {
