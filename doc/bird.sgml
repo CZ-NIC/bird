@@ -3485,6 +3485,97 @@ protocol rip {
 }
 </code>
 
+<sect>RPKI
+
+<p>The Resource Public Key Infrastructure (RPKI) to Router Protocol (RFC 6810)
+is a simple but reliable mechanism to receive Resource Public Key
+Infrastructure (RFC 6480) prefix origin data from a trusted cache.
+
+It is possible to configure only one cache server per protocol yet.
+
+<code>
+protocol rpki [&lt;name&gt;] {
+        roa table &lt;name&gt;;
+        cache &lt;ip&gt; | "&lt;domain&gt;" {
+                port &lt;num&gt;;
+                ssh encryption {
+                        bird private key "&lt;/path/to/id_rsa&gt;";
+                        cache public key "&lt;/path/to/known_host&gt;";
+                        user "&lt;name&gt;";
+                };
+        };
+}
+</code>
+
+<sect1>RPKI protocol options
+<descrip>
+	<tag>roa table <m/name/</tag>
+	Specifies the roa table into which will import the routes from cache.
+	This option is required.
+
+	<tag>cache <m/ip/ | "<m/domain/" [ { <m/cache options.../ } ]</tag>
+	Specifies a destination address of the cache server.
+	Can be specified by an IP address or by full domain name.
+	By default there is no encryption in transport.
+	Only one cache can be specified per protocol.
+</descrip>
+
+<sect1>Cache options
+<descrip>
+	<tag>port <m/num/</tag>
+	Specifies the port number.
+	The default port number is 8282 for transpoert without any encryption
+	and 22 for transport with SSH encryption.
+
+	<tag>ssh encryption { <m/ssh encryption options.../ }</tag>
+	This enables a SSH encryption.
+</descrip>
+
+<sect1>SSH encryption options
+<descrip>
+	<tag>bird private key "<m///path/to/id_rsa"</tag>
+	A path to the BIRD's private SSH key for authentication.
+	It can be a <cf/id_rsa/ file.
+
+	<tag>cache public key "<m///path/to/known_host"</tag>
+	A path to the cache's public SSH key for verification identity
+	of the cache server. It could be a <cf/known_host/ file.
+
+	<tag>user "<m/name/"</tag>
+	A SSH user name for authentication. This option is a required.
+</descrip>
+
+<sect1>Examples
+<p>A simple configuration without transport encryption:
+<code>
+roa table my_roa_table;
+protocol rpki {
+        debug all;
+        roa table my_roa_table;
+
+        cache "rpki-validator.realmv6.org";
+}
+</code>
+
+<p>A configuration using SSHv2 transport encryption:
+<code>
+roa table my_roa_table;
+protocol rpki {
+        debug all;
+        roa table my_roa_table;
+
+        cache 127.0.0.1 {
+                port 2345;
+                ssh encryption {
+                        bird private key "/home/birdgeek/.ssh/id_rsa";
+                        cache public key "/home/birdgeek/.ssh/known_hosts";
+                        user "birdgeek";
+                };
+        };
+}
+</code>
+
+
 
 <sect>Static
 
