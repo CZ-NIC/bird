@@ -3,13 +3,18 @@
  *
  *	(c) 2015 CZ.NIC
  *
- *	Using RTRLib: http://rpki.realmv6.org/
+ *	Using RTRlib: http://rpki.realmv6.org/
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
 /**
- * DOC: The Resource Public Key Infrastructure (RPKI) to Router Protocol
+ * DOC: RPKI to Router Protocol
+ *
+ * The Resource Public Key Infrastructure (RPKI) to router protocol implementation
+ * is based on the RTRlib (http://rpki.realmv6.org/). The BIRD takes over
+ * |packets.c|, |rtr.c|, |transport.c|, |tcp_transport.c| and |ssh_transport.c| files
+ * from RTRlib.
  */
 
 #undef LOCAL_DEBUG
@@ -259,11 +264,12 @@ rpki_free_cache(struct rpki_cache *cache)
   mb_free(cache->rtr_socket->tr_socket);
   mb_free(cache->rtr_socket);
 
+  /* timers */
   tm_stop(cache->retry_timer);
   tm_stop(cache->refresh_timer);
   tm_stop(cache->expire_timer);
-
   rfree(cache->retry_timer);
+
   rfree(cache->refresh_timer);
   rfree(cache->expire_timer);
 

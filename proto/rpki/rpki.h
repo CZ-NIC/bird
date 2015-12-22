@@ -3,7 +3,7 @@
  *
  *	(c) 2015 CZ.NIC
  *
- *	Using RTRLib: http://rpki.realmv6.org/
+ *	Using RTRlib: http://rpki.realmv6.org/
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -53,7 +53,7 @@ struct rpki_cache {
   node n;
   struct rpki_proto *p;
   struct rpki_cache_cfg *cfg;
-  struct rtr_socket *rtr_socket;	/* RTRLib's socket data structure */
+  struct rtr_socket *rtr_socket;	/* RTRlib's socket data structure */
   sock *sk;				/* BIRD's socket data structure */
   timer *retry_timer;			/* Timer for Cache server */
   timer *refresh_timer;			/* Timer for Cache server */
