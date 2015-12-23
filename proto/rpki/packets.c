@@ -714,11 +714,13 @@ rtr_prefix_pdu_2_pfx_record(const struct rtr_socket *rtr_socket, const void *pdu
   assert(type == IPV4_PREFIX || type == IPV6_PREFIX);
   if (type == IPV4_PREFIX)
   {
+#ifndef IPV6
     const struct pdu_ipv4 *ipv4 = pdu;
     pfxr->prefix = ip4_from_u32(ipv4->prefix);
     pfxr->asn = ipv4->asn;
     pfxr->min_len = ipv4->prefix_len;
     pfxr->max_len = ipv4->max_prefix_len;
+#endif
   }
   else if (type == IPV6_PREFIX)
   {
