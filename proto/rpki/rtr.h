@@ -129,10 +129,12 @@ void rtr_stop(struct rtr_socket *rtr_socket);
  */
 const char *rtr_state_to_str(enum rtr_socket_state state);
 
+void rtr_purge_records_if_outdated(struct rpki_cache *cache);
+void rtr_change_socket_state(struct rtr_socket *rtr_socket, const enum rtr_socket_state new_state);
+
 void rpki_retry_hook(struct timer *tm);
 void rpki_expire_hook(struct timer *tm);
 void rpki_refresh_hook(struct timer *tm);
-void rtr_purge_records_if_outdated(struct rpki_cache *cache);
 
 void rtr_schedule_next_refresh(struct rpki_cache *cache);
 void rtr_schedule_next_retry(struct rpki_cache *cache);

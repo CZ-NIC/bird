@@ -91,6 +91,99 @@ rtr_state_to_str(enum rtr_socket_state state)
   return rtr_socket_str_states[state];
 }
 
+void
+rtr_change_socket_state(struct rtr_socket *rtr_socket, const enum rtr_socket_state new_state)
+{
+  const enum rtr_socket_state old_state = rtr_socket->state;
+
+  if (old_state == new_state)
+    return;
+
+  rtr_socket->state = new_state;
+
+  struct rpki_cache *cache = rtr_socket->cache;
+  CACHE_TRACE(D_EVENTS, cache, "Change state %s -> %s", rtr_state_to_str(old_state), rtr_state_to_str(new_state));
+
+  switch (new_state)
+  {
+    case RTR_CONNECTING:
+      if (cache->sk == NULL || cache->sk->fd < 0)
+      {
+	if (rpki_open_connection(cache) == TR_SUCCESS)
+	  cache->rtr_socket->state = RTR_SYNC; /* Need call a setup the bird socket in io.c loop */
+      }
+      else
+	rtr_change_socket_state(rtr_socket, RTR_SYNC);
+      break;
+
+    case RTR_ESTABLISHED:
+      /* Connection is established, socket is waiting for a Serial Notify or expiration of the refresh_interval timer */
+      break;
+
+    case RTR_RESET:
+      /* Resetting RTR connection. */
+      rtr_socket->request_session_id = true;
+      rtr_socket->serial_number = 0;
+      rtr_change_socket_state(rtr_socket, RTR_SYNC);
+      break;
+
+    case RTR_SYNC:
+      /* Requesting for receive validation records from the RTR server.  */
+      if (rtr_socket->request_session_id)
+      {
+	//change to state RESET, if socket dont has a session_id
+	if (rtr_send_reset_query(cache) != RTR_SUCCESS)
+	  rtr_change_socket_state(rtr_socket, RTR_ERROR_FATAL);
+      }
+      else
+      {
+	//if we already have a session_id, send a serial query and start to sync
+	if (rtr_send_serial_query(cache) != RTR_SUCCESS)
+	  rtr_change_socket_state(rtr_socket, RTR_ERROR_FATAL);
+      }
+      break;
+
+    case RTR_ERROR_NO_INCR_UPDATE_AVAIL:
+      /* Server was unable to answer the last serial or reset query. */
+      rtr_purge_records_if_outdated(cache);
+      /* Fall through */
+
+    case RTR_ERROR_NO_DATA_AVAIL:
+      /* No validation records are available on the RTR server. */
+      rtr_change_socket_state(rtr_socket, RTR_RESET);
+      break;
+
+    case RTR_ERROR_FATAL:
+      /* Fatal protocol error occurred. */
+      rtr_socket->request_session_id = true;
+      rtr_socket->serial_number = 0;
+      rtr_socket->last_update = 0;
+      pfx_table_src_remove(cache);
+      /* Fall through */
+
+    case RTR_ERROR_TRANSPORT:
+      /* Error on the transport socket occurred. */
+      rpki_close_connection(cache);
+      rtr_schedule_next_retry(cache);
+      break;
+
+    case RTR_FAST_RECONNECT:
+      /* Reconnect without any waiting period */
+      rpki_close_connection(cache);
+      rtr_change_socket_state(rtr_socket, RTR_CONNECTING);
+      break;
+
+    case RTR_SHUTDOWN:
+      /* RTR Socket is stopped. */
+      rpki_close_connection(cache);
+      rtr_socket->request_session_id = true;
+      rtr_socket->serial_number = 0;
+      rtr_socket->last_update = 0;
+      pfx_table_src_remove(cache);
+      break;
+  };
+}
+
 /*
  * Timers
  */

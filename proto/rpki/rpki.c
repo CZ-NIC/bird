@@ -253,7 +253,6 @@ static void
 rpki_remove_cache_from_group(struct rpki_cache *cache)
 {
   rem2_node(&cache->n);
-
 }
 
 static void

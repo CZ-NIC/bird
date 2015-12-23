@@ -26,7 +26,6 @@
 #define RPKI_RECV_TIMEOUT 	60
 #define RPKI_SEND_TIMEOUT 	60
 
-void rtr_change_socket_state(struct rtr_socket *rtr_socket, const enum rtr_socket_state new_state);
 int rtr_sync(struct rpki_cache *cache);
 int rtr_wait_for_sync(struct rpki_cache *cache);
 int rtr_send_serial_query(struct rpki_cache *cache);
