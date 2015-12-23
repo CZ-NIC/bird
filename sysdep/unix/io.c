@@ -27,7 +27,6 @@
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <netinet/icmp6.h>
-#include <libssh/libssh.h>
 
 #include "nest/bird.h"
 #include "lib/lists.h"
@@ -36,6 +35,7 @@
 #include "lib/socket.h"
 #include "lib/event.h"
 #include "lib/string.h"
+#include "lib/libssh.h"
 #include "nest/iface.h"
 
 #include "lib/unix.h"

@@ -10,10 +10,10 @@
 #define _BIRD_SOCKET_H_
 
 #include <errno.h>
-#include <libssh/libssh.h>
 // #include <sys/socket.h>
 
 #include "lib/resource.h"
+#include "lib/libssh.h"
 
 struct ssh_sock {
     char *username;			/* (Required) SSH user name */

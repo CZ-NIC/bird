@@ -25,7 +25,6 @@
 
 #ifndef SSH_TRANSPORT_H
 #define SSH_TRANSPORT_H
-#include <libssh/libssh.h>
 #include "transport.h"
 
 /**

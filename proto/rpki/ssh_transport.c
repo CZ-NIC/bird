@@ -16,6 +16,7 @@
 #include <sys/time.h>
 #include "utils.h"
 #include "ssh_transport.h"
+#include "lib/libssh.h"
 
 #include "rpki.h"
 
@@ -29,6 +30,13 @@ int tr_ssh_open(void *socket)
   struct tr_ssh_socket *ssh_socket = socket;
   struct rpki_cache *cache = ssh_socket->cache;
   struct rpki_proto *p = cache->p;
+
+  const char *err_msg;
+  if((err_msg = load_libssh()) != NULL)
+  {
+    RPKI_ERROR(p, "%s", err_msg);
+    return TR_ERROR;
+  }
 
   sock *s = cache->sk;
   s->type = SK_SSH_ACTIVE;

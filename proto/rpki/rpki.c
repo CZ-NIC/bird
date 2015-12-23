@@ -15,6 +15,9 @@
  * is based on the RTRlib (http://rpki.realmv6.org/). The BIRD takes over
  * |packets.c|, |rtr.c|, |transport.c|, |tcp_transport.c| and |ssh_transport.c| files
  * from RTRlib.
+ *
+ * A SSH transport requires LibSSH library. LibSSH is loading dynamically using dlopen
+ * function.
  */
 
 #undef LOCAL_DEBUG
