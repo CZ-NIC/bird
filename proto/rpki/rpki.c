@@ -469,12 +469,12 @@ rpki_reconfigure_proto(struct rpki_proto *p, struct rpki_config *new_cf, struct 
   struct rpki_cache_group *g;
   WALK_LIST(g, p->group_list)
   {
-    RPKI_TRACE(D_EVENTS, p, "Group(%u)", g->preference);
+    DBG("Group(%u)", g->preference);
 
     struct rpki_cache *c;
     WALK_LIST(c, g->cache_list)
     {
-      RPKI_TRACE(D_EVENTS, p, "  Cache(%s)", get_cache_ident(c));
+      DBG("  Cache(%s)", get_cache_ident(c));
     }
   }
 

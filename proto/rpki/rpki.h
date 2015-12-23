@@ -16,7 +16,8 @@
 #include "lib/socket.h"
 #include "lib/ip.h"
 
-#include "transport.h"
+#include "ssh_transport.h"
+#include "tcp_transport.h"
 #include "rtr.h"
 #include "packets.h"
 
