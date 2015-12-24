@@ -45,6 +45,7 @@
 #include "lib/resource.h"
 
 #define NEIGH_HASH_SIZE 256
+#define NEIGH_HASH_OFFSET 24
 
 static slab *neigh_slab;
 static list sticky_neigh_list, neigh_hash_table[NEIGH_HASH_SIZE];
@@ -52,7 +53,7 @@ static list sticky_neigh_list, neigh_hash_table[NEIGH_HASH_SIZE];
 static inline uint
 neigh_hash(struct proto *p, ip_addr *a)
 {
-  return (p->hash_key ^ ipa_hash(*a)) & (NEIGH_HASH_SIZE-1);
+  return (p->hash_key ^ ipa_hash(*a)) >> NEIGH_HASH_OFFSET;
 }
 
 static int

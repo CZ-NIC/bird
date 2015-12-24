@@ -220,7 +220,7 @@ ospf_stubnet_start:
    net_ip {
      this_stubnet = cfg_allocz(sizeof(struct ospf_stubnet_config));
      add_tail(&this_area->stubnet_list, NODE this_stubnet);
-     this_stubnet->prefix = $1.n;
+     this_stubnet->prefix = $1;
      this_stubnet->cost = COST_D;
    }
  ;
@@ -330,7 +330,7 @@ pref_base: net_ip
  {
    this_pref = cfg_allocz(sizeof(struct area_net_config));
    add_tail(this_nets, NODE this_pref);
-   this_pref->prefix = $1.n;
+   this_pref->prefix = $1;
  }
 ;
 

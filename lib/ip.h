@@ -91,6 +91,9 @@ typedef ip6_addr ip_addr;
 
 #define ipa_is_ip4(a) ip6_is_v4mapped(a)
 
+#define IPA_NONE4 ipa_from_ip4(IP4_NONE)
+#define IPA_NONE6 ipa_from_ip6(IP6_NONE)
+
 
 /*
  *	Public constructors
@@ -180,16 +183,7 @@ static inline int ipa_nonzero2(ip_addr a)
  *	Hash and compare functions
  */
 
-static inline uint ip4_hash(ip4_addr a)
-{
-  /* Returns a 16-bit value */
-  u32 x = _I(a);
-  x ^= x >> 16;
-  x ^= x << 10;
-  return x & 0xffff;
-}
-
-static inline u32 ip4_hash32(ip4_addr a)
+static inline u32 ip4_hash(ip4_addr a)
 {
   /* Returns a 32-bit value, although low-order bits are not mixed */
   u32 x = _I(a);
@@ -198,14 +192,7 @@ static inline u32 ip4_hash32(ip4_addr a)
   return x;
 }
 
-static inline uint ip6_hash(ip6_addr a)
-{
-  /* Returns a 16-bit hash key */
-  u32 x = _I0(a) ^ _I1(a) ^ _I2(a) ^ _I3(a);
-  return (x ^ (x >> 16) ^ (x >> 8)) & 0xffff;
-}
-
-static inline u32 ip6_hash32(ip6_addr a)
+static inline u32 ip6_hash(ip6_addr a)
 {
   /* Returns a 32-bit hash key, although low-order bits are not mixed */
   u32 x = _I0(a) ^ _I1(a) ^ _I2(a) ^ _I3(a);
@@ -218,7 +205,6 @@ static inline int ip4_compare(ip4_addr a, ip4_addr b)
 int ip6_compare(ip6_addr a, ip6_addr b);
 
 #define ipa_hash(x) ip6_hash(x)
-#define ipa_hash32(x) ip6_hash32(x)
 #define ipa_compare(x,y) ip6_compare(x,y)
 
 

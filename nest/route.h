@@ -56,7 +56,7 @@ struct fib {
   struct fib_node **hash_table;		/* Node hash table */
   uint hash_size;			/* Number of hash table entries (a power of two) */
   uint hash_order;			/* Binary logarithm of hash_size */
-  uint hash_shift;			/* 16 - hash_log */
+  uint hash_shift;			/* 32 - hash_order */
   uint addr_type;			/* Type of address data stored in fib (NET_*) */
   uint node_size;	/* XXXX */
   uint node_offset;	/* XXXX */
@@ -277,11 +277,6 @@ void rt_setup(pool *, rtable *, char *, struct rtable_config *);
 static inline net *net_find(rtable *tab, net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
 static inline net *net_get(rtable *tab, net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
 
-static inline net *net_find_ipa(rtable *tab, ip_addr px, uint pxlen)
-{ net_addr addr; net_fill_ipa(&addr, px, pxlen); return (net *) fib_find(&tab->fib, &addr); }
-static inline net *net_get_ipa(rtable *tab, ip_addr px, uint pxlen)
-{ net_addr addr; net_fill_ipa(&addr, px, pxlen); return (net *) fib_get(&tab->fib, &addr); }
-
 rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
 void rte_update2(struct announce_hook *ah, net *net, rte *new, struct rte_src *src);
@@ -313,7 +308,7 @@ rt_mark_for_prune(rtable *tab)
 }
 
 struct rt_show_data {
-  net_addr *prefix;
+  net_addr *addr;
   rtable *table;
   struct filter *filter;
   int verbose;

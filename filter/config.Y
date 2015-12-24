@@ -475,7 +475,8 @@ block:
  * Complex types, their bison value is struct f_val
  */
 fipa:
-   ipa_raw %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.ip = $1; }
+   IP4 %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.ip = ipa_from_ip4($1); }
+ | IP6 %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.ip = ipa_from_ip6($1); }
  ;
 
 
@@ -571,19 +572,19 @@ switch_items:
  ;
 
 fprefix:
-   net_ip	{ $$.net = $1; $$.lo = $1.n.pxlen; $$.hi = $1.n.pxlen; }
- | net_ip '+'	{ $$.net = $1; $$.lo = $1.n.pxlen; $$.hi = net_max_prefix_length[$1.n.type]; }
- | net_ip '-'	{ $$.net = $1; $$.lo = 0; $$.hi = $1.n.pxlen; }
- | net_ip '{' NUM ',' NUM '}' {
+   net_ip_	{ $$.net = $1; $$.lo = $1.pxlen; $$.hi = $1.pxlen; }
+ | net_ip_ '+'	{ $$.net = $1; $$.lo = $1.pxlen; $$.hi = net_max_prefix_length[$1.type]; }
+ | net_ip_ '-'	{ $$.net = $1; $$.lo = 0; $$.hi = $1.pxlen; }
+ | net_ip_ '{' NUM ',' NUM '}' {
      $$.net = $1; $$.lo = $3; $$.hi = $5;
-     if ((0 > $3) || ($3 > $5) || ($5 > net_max_prefix_length[$1.n.type]))
+     if ((0 > $3) || ($3 > $5) || ($5 > net_max_prefix_length[$1.type]))
        cf_error("Invalid prefix pattern range: {%d, %d}", $3, $5);
    }
  ;
 
 fprefix_set:
-   fprefix { $$ = f_new_trie(cfg_mem, sizeof(struct f_trie_node)); trie_add_prefix($$, &($1.net.n), $1.lo, $1.hi); }
- | fprefix_set ',' fprefix { $$ = $1; trie_add_prefix($$, &($3.net.n), $3.lo, $3.hi); }
+   fprefix { $$ = f_new_trie(cfg_mem, sizeof(struct f_trie_node)); trie_add_prefix($$, &($1.net), $1.lo, $1.hi); }
+ | fprefix_set ',' fprefix { $$ = $1; trie_add_prefix($$, &($3.net), $3.lo, $3.hi); }
  ;
 
 switch_body: /* EMPTY */ { $$ = NULL; }
@@ -635,7 +636,7 @@ constant:
  | FALSE  { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_BOOL; $$->a2.i = 0;  }
  | TEXT   { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_STRING; $$->a2.p = $1; }
  | fipa	  { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; $$->a1.p = val; *val = $1; }
- | net_any { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; val->type = T_NET; val->val.net = $1; $$->a1.p = val; }
+ | net_   { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; val->type = T_NET; val->val.net = $1; $$->a1.p = val; }
  | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_SET; $$->a2.p = build_tree($2); DBG( "ook\n" ); }
  | '[' fprefix_set ']' { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_PREFIX_SET;  $$->a2.p = $2; }
  | ENUM	  { $$ = f_new_inst(); $$->code = 'c'; $$->aux = $1 >> 16; $$->a2.i = $1 & 0xffff; }

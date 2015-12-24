@@ -67,7 +67,7 @@ ip6_masklen(ip6_addr *a)
     if (a->addr[i] != ~0U)
     {
       j = u32_masklen(a->addr[i]);
-      if (j < 0)
+      if (j == 255)
 	return j;
       n += j;
       while (++i < 4)

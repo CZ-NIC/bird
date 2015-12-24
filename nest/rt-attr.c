@@ -195,10 +195,10 @@ rt_prune_sources(void)
  *	Multipath Next Hop
  */
 
-static inline uint
+static inline u32
 mpnh_hash(struct mpnh *x)
 {
-  uint h = 0;
+  u32 h = 0;
   for (; x; x = x->next)
     h ^= ipa_hash(x->gw);
 
@@ -1008,8 +1008,9 @@ rta_alloc_hash(void)
 static inline uint
 rta_hash(rta *a)
 {
-  return (((uint) (uintptr_t) a->src) ^ ipa_hash(a->gw) ^
-	  mpnh_hash(a->nexthops) ^ ea_hash(a->eattrs)) & 0xffff;
+  /* XXXX fully convert to u32 hashing */
+  return (((uint) (uintptr_t) a->src) ^ (ipa_hash(a->gw) >> 16) ^
+	  (mpnh_hash(a->nexthops) >> 16) ^ ea_hash(a->eattrs)) & 0xffff;
 }
 
 static inline int

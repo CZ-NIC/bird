@@ -107,6 +107,17 @@ static inline void net_fill_ipa(net_addr *a, ip_addr prefix, uint pxlen)
     net_fill_ip6(a, ipa_to_ip6(prefix), pxlen);
 }
 
+static inline void net_fill_ip_host(net_addr *a, ip_addr prefix)
+{
+  if (ipa_is_ip4(prefix))
+    net_fill_ip4(a, ipa_to_ip4(prefix), IP4_MAX_PREFIX_LENGTH);
+  else
+    net_fill_ip6(a, ipa_to_ip6(prefix), IP6_MAX_PREFIX_LENGTH);
+}
+
+static inline int net_is_ip(const net_addr *a)
+{ return (a->type == NET_IP4) || (a->type == NET_IP6); }
+
 
 static inline ip4_addr net4_prefix(const net_addr *a)
 { return ((net_addr_ip4 *) a)->prefix; }
@@ -199,20 +210,20 @@ static inline void net_copy_vpn6(net_addr_vpn6 *dst, const net_addr_vpn6 *src)
 
 
 static inline u32 net_hash_ip4(const net_addr_ip4 *n)
-{ return ip4_hash32(n->prefix) ^ ((u32) n->pxlen << 26); }
+{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
 
 static inline u32 net_hash_ip6(const net_addr_ip6 *n)
-{ return ip6_hash32(n->prefix) ^ ((u32) n->pxlen << 26); }
+{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
 
 /* XXXX */
-static inline u32 u64_hash(u32 a)
+static inline u32 u64_hash(u64 a)
 { return u32_hash(a); }
 
 static inline u32 net_hash_vpn4(const net_addr_vpn4 *n)
-{ return ip4_hash32(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
+{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
 
 static inline u32 net_hash_vpn6(const net_addr_vpn6 *n)
-{ return ip6_hash32(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
+{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
 
 
 static inline int net_validate_ip4(const net_addr_ip4 *n)

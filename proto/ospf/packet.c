@@ -500,8 +500,8 @@ ospf_send_to_agt(struct ospf_iface *ifa, u8 state)
 void
 ospf_send_to_bdr(struct ospf_iface *ifa)
 {
-  if (ipa_nonzero(ifa->drip))
+  if (ipa_nonzero2(ifa->drip))
     ospf_send_to(ifa, ifa->drip);
-  if (ipa_nonzero(ifa->bdrip))
+  if (ipa_nonzero2(ifa->bdrip))
     ospf_send_to(ifa, ifa->bdrip);
 }

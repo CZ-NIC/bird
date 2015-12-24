@@ -112,7 +112,7 @@
 #define HASH_IP_KEY(n)		n->addr
 #define HASH_IP_NEXT(n)		n->next_ip
 #define HASH_IP_EQ(a,b)		ipa_equal(a,b)
-#define HASH_IP_FN(k)		ipa_hash32(k)
+#define HASH_IP_FN(k)		ipa_hash(k)
 
 static list bfd_proto_list;
 static list bfd_wait_list;

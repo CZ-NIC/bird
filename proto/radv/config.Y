@@ -150,7 +150,7 @@ radv_iface:
 radv_prefix_start: net_ip6
 {
   this_radv_prefix = cfg_allocz(sizeof(struct radv_prefix_config));
-  RADV_PREFIX->prefix = $1.ip6;
+  RADV_PREFIX->prefix = *(net_addr_ip6 *) &($1);
 
   RADV_PREFIX->onlink = 1;
   RADV_PREFIX->autonomous = 1;

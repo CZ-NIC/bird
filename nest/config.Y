@@ -30,7 +30,7 @@ iface_patt_check(void)
   struct iface_patt_node *pn;
 
   WALK_LIST(pn, this_ipatt->ipn_list)
-    if (!pn->pattern || pn->prefix.pxlen) /* XXXX */
+    if (!pn->pattern || pn->prefix.type)
       cf_error("Interface name/mask expected, not IP prefix");
 }
 
@@ -85,7 +85,7 @@ CF_GRAMMAR
 
 CF_ADDTO(conf, rtrid)
 
-rtrid: 
+rtrid:
    ROUTER ID idval ';' { new_config->router_id = $3; }
  | ROUTER ID FROM iface_patt ';' { new_config->router_id_from = this_ipatt; }
  ;
@@ -261,8 +261,8 @@ iface_patt_node_init:
  ;
 
 iface_patt_node_body:
-   TEXT { this_ipn->pattern = $1; net_fill_ip6(&this_ipn->prefix, IP6_NONE, 0); /* XXXX */ }
- | opttext net_or_ipa { this_ipn->pattern = $1; this_ipn->prefix = $2.n; }
+   TEXT { this_ipn->pattern = $1; /* this_ipn->prefix stays zero */ }
+ | opttext net_or_ipa { this_ipn->pattern = $1; this_ipn->prefix = $2; }
  ;
 
 iface_negate:
@@ -271,7 +271,7 @@ iface_negate:
  ;
 
 iface_patt_node:
-   iface_patt_node_init iface_negate iface_patt_node_body 
+   iface_patt_node_init iface_negate iface_patt_node_body
  ;
 
 
@@ -450,14 +450,15 @@ r_args:
    }
  | r_args net_any {
      $$ = $1;
-     if ($$->prefix) cf_error("Only one prefix expected");
-     $$->prefix = $2;
+     if ($$->addr) cf_error("Only one prefix expected");
+     $$->addr = $2;
    }
  | r_args FOR net_or_ipa {
      $$ = $1;
-     if ($$->prefix) cf_error("Only one prefix expected");
-     $$->prefix = &($3.n);
+     if ($$->addr) cf_error("Only one prefix expected");
      $$->show_for = 1;
+     $$->addr = cfg_alloc($3.length);
+     net_copy($$->addr, &($3));
    }
  | r_args TABLE SYM {
      $$ = $1;

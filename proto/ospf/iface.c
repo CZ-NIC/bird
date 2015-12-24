@@ -581,6 +581,7 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   if (ip->ptp_netmask < 2)
     ifa->ptp_netmask = ip->ptp_netmask;
 
+  ifa->drip = ifa->bdrip = ospf_is_v2(p) ? IPA_NONE4 : IPA_NONE6;
 
   ifa->type = ospf_iface_classify(ip->type, addr);
 
@@ -1333,7 +1334,7 @@ ospf_iface_info(struct ospf_iface *ifa)
     else if (ifa->addr->flags & IA_PEER)
       cli_msg(-1015, "Interface %s (peer %I)", ifa->ifname, ifa->addr->opposite);
     else
-      cli_msg(-1015, "Interface %s (%N)", ifa->ifname, ifa->addr->prefix);
+      cli_msg(-1015, "Interface %s (%N)", ifa->ifname, &ifa->addr->prefix);
 
     cli_msg(-1015, "\tType: %s%s", ospf_it[ifa->type], more);
     cli_msg(-1015, "\tArea: %R (%u)", ifa->oa->areaid, ifa->oa->areaid);

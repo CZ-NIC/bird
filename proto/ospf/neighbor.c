@@ -506,13 +506,14 @@ ospf_dr_election(struct ospf_iface *ifa)
 
   u32 old_drid = ifa->drid;
   u32 old_bdrid = ifa->bdrid;
+  ip_addr none = ospf_is_v2(p) ? IPA_NONE4 : IPA_NONE6;
 
   ifa->drid = ndr ? ndr->rid : 0;
-  ifa->drip = ndr ? ndr->ip  : IPA_NONE;
+  ifa->drip = ndr ? ndr->ip  : none;
   ifa->dr_iface_id = ndr ? ndr->iface_id : 0;
 
   ifa->bdrid = nbdr ? nbdr->rid : 0;
-  ifa->bdrip = nbdr ? nbdr->ip  : IPA_NONE;
+  ifa->bdrip = nbdr ? nbdr->ip  : none;
 
   DBG("DR=%R, BDR=%R\n", ifa->drid, ifa->bdrid);
 

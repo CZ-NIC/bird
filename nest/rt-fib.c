@@ -43,7 +43,7 @@
 #define HASH_DEF_ORDER 10
 #define HASH_HI_MARK *4
 #define HASH_HI_STEP 2
-#define HASH_HI_MAX 16			/* Must be at most 16 */
+#define HASH_HI_MAX 16
 #define HASH_LO_MARK /5
 #define HASH_LO_STEP 2
 #define HASH_LO_MIN 10
@@ -266,38 +266,32 @@ fib_get(struct fib *f, const net_addr *a)
   return b;
 }
 
-static void *
-fib_route_ip4(struct fib *f, const net_addr *n0)
+static inline void *
+fib_route_ip4(struct fib *f, net_addr_ip4 *n)
 {
-  net_addr net;
-  net_addr_ip4 *n = (net_addr_ip4 *) &net;
-  void *b;
+  void *r;
 
-  net_copy(&net, n0);
-  while (!(b = fib_find(f, &net)) && (n->pxlen > 0))
+  while (!(r = fib_find(f, (net_addr *) n)) && (n->pxlen > 0))
   {
     n->pxlen--;
     ip4_clrbit(&n->prefix, n->pxlen);
   }
 
-  return b;
+  return r;
 }
 
-static void *
-fib_route_ip6(struct fib *f, const net_addr *n0)
+static inline void *
+fib_route_ip6(struct fib *f, net_addr_ip6 *n)
 {
-  net_addr net;
-  net_addr_ip6 *n = (net_addr_ip6 *) &net;
-  void *b;
+  void *r;
 
-  net_copy(&net, n0);
-  while (!(b = fib_find(f, &net)) && (n->pxlen > 0))
+  while (!(r = fib_find(f, (net_addr *) n)) && (n->pxlen > 0))
   {
     n->pxlen--;
     ip6_clrbit(&n->prefix, n->pxlen);
   }
 
-  return b;
+  return r;
 }
 
 /**
@@ -314,20 +308,24 @@ fib_route(struct fib *f, const net_addr *n)
 {
   ASSERT(f->addr_type == n->type);
 
+  net_addr *n0 = alloca(n->length);
+  net_copy(n0, n);
+
   switch (n->type)
   {
   case NET_IP4:
   case NET_VPN4:
-    return fib_route_ip4(f, n);
+    return fib_route_ip4(f, (net_addr_ip4 *) n0);
 
   case NET_IP6:
   case NET_VPN6:
-    return fib_route_ip6(f, n);
+    return fib_route_ip6(f, (net_addr_ip6 *) n0);
 
   default:
     return NULL;
   }
 }
+
 
 static inline void
 fib_merge_readers(struct fib_iterator *i, struct fib_node *to)
@@ -398,7 +396,12 @@ fib_delete(struct fib *f, void *E)
 		}
 	      fib_merge_readers(it, l);
 	    }
-	  sl_free(f->fib_slab, e);
+
+	  if (f->fib_slab)
+	    sl_free(f->fib_slab, E);
+	  else
+	    mb_free(E);
+
 	  if (f->entries-- < f->entries_min)
 	    fib_rehash(f, -HASH_LO_STEP);
 	  return;

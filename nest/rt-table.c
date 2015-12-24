@@ -68,25 +68,60 @@ make_tmp_attrs(struct rte *rt, struct linpool *pool)
   return mta ? mta(rt, rte_update_pool) : NULL;
 }
 
-/* Like fib_route(), but skips empty net entries */
-/*
-static net *
-net_route(rtable *tab, ip_addr a, int len)
-{
-  ip_addr a0;
-  net *n;
 
-  while (len >= 0)
-    {
-      a0 = ipa_and(a, ipa_mkmask(len));
-      n = fib_find(&tab->fib, &a0, len);
-      if (n && rte_is_valid(n->routes))
-	return n;
-      len--;
-    }
-  return NULL;
+/* Like fib_route(), but skips empty net entries */
+static inline void *
+net_route_ip4(struct fib *f, net_addr_ip4 *n)
+{
+  net *r;
+
+  while (r = fib_find(f, (net_addr *) n),
+	 !(r && rte_is_valid(r->routes)) && (n->pxlen > 0))
+  {
+    n->pxlen--;
+    ip4_clrbit(&n->prefix, n->pxlen);
+  }
+
+  return r;
 }
-*/
+
+static inline void *
+net_route_ip6(struct fib *f, net_addr_ip6 *n)
+{
+  net *r;
+
+  while (r = fib_find(f, (net_addr *) n),
+	 !(r && rte_is_valid(r->routes)) && (n->pxlen > 0))
+  {
+    n->pxlen--;
+    ip6_clrbit(&n->prefix, n->pxlen);
+  }
+
+  return r;
+}
+
+void *
+net_route(rtable *tab, const net_addr *n)
+{
+  ASSERT(f->addr_type == n->type);
+
+  net_addr *n0 = alloca(n->length);
+  net_copy(n0, n);
+
+  switch (n->type)
+  {
+  case NET_IP4:
+  case NET_VPN4:
+    return net_route_ip4(&tab->fib, (net_addr_ip4 *) n0);
+
+  case NET_IP6:
+  case NET_VPN6:
+    return net_route_ip6(&tab->fib, (net_addr_ip6 *) n0);
+
+  default:
+    return NULL;
+  }
+}
 
 /**
  * rte_find - find a route
@@ -2040,10 +2075,10 @@ ptr_hash(void *ptr)
   return p ^ (p << 8) ^ (p >> 16);
 }
 
-static inline unsigned
+static inline u32
 hc_hash(ip_addr a, rtable *dep)
 {
-  return (ipa_hash(a) ^ ptr_hash(dep)) & 0xffff;
+  return ipa_hash(a) ^ ptr_hash(dep);
 }
 
 static inline void
@@ -2077,7 +2112,7 @@ hc_alloc_table(struct hostcache *hc, unsigned order)
 {
   unsigned hsize = 1 << order;
   hc->hash_order = order;
-  hc->hash_shift = 16 - order;
+  hc->hash_shift = 32 - order;
   hc->hash_max = (order >= HC_HI_ORDER) ? ~0 : (hsize HC_HI_MARK);
   hc->hash_min = (order <= HC_LO_ORDER) ?  0 : (hsize HC_LO_MARK);
 
@@ -2178,14 +2213,11 @@ rt_free_hostcache(rtable *tab)
 static void
 rt_notify_hostcache(rtable *tab, net *net)
 {
-  struct hostcache *hc = tab->hostcache;
-
   if (tab->hcu_scheduled)
     return;
 
-  // XXXX
-  // if (trie_match_prefix(hc->trie, net->n.prefix, net->n.pxlen))
-  // rt_schedule_hcu(tab);
+  if (trie_match_net(tab->hostcache->trie, net->n.addr))
+    rt_schedule_hcu(tab);
 }
 
 static int
@@ -2235,15 +2267,15 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
   rta *old_src = he->src;
   int pxlen = 0;
 
-  /* Reset the hostentry */ 
+  /* Reset the hostentry */
   he->src = NULL;
   he->gw = IPA_NONE;
   he->dest = RTD_UNREACHABLE;
   he->igp_metric = 0;
 
-  // XXXX
-  // net *n = net_route(tab, he->addr, MAX_PREFIX_LENGTH);
-  net *n = NULL;
+  net_addr he_addr;
+  net_fill_ip_host(&he_addr, he->addr);
+  net *n = net_route(tab, &he_addr);
   if (n)
     {
       rte *e = n->routes;
@@ -2285,12 +2317,7 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 
  done:
   /* Add a prefix range to the trie */
-  /* XXXX
-  if (ipa_is_ip4(he->addr))
-    trie_add_prefix(tab->hostcache->trie, he->addr, IP4_MAX_PREFIX_LENGTH, pxlen, IP4_MAX_PREFIX_LENGTH);
-  else
-    trie_add_prefix(tab->hostcache->trie, he->addr, IP6_MAX_PREFIX_LENGTH, pxlen, IP6_MAX_PREFIX_LENGTH);
-  */
+  trie_add_prefix(tab->hostcache->trie, &he_addr, pxlen, he_addr.pxlen);
 
   rta_free(old_src);
   return old_src != he->src;
@@ -2331,7 +2358,7 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
   if (!tab->hostcache)
     rt_init_hostcache(tab);
 
-  uint k = hc_hash(a, dep);
+  u32 k = hc_hash(a, dep);
   struct hostcache *hc = tab->hostcache;
   for (he = hc->hash_table[k >> hc->hash_shift]; he != NULL; he = he->next)
     if (ipa_equal(he->addr, a) && (he->tab == dep))
@@ -2575,7 +2602,7 @@ rt_show(struct rt_show_data *d)
   if (d->filtered && (d->export_mode || d->primary_only))
     cli_msg(0, "");
 
-  if (!d->prefix)
+  if (!d->addr)
     {
       FIB_ITERATE_INIT(&d->fit, &d->table->fib);
       this_cli->cont = rt_show_cont;
@@ -2584,13 +2611,10 @@ rt_show(struct rt_show_data *d)
     }
   else
     {
-      /* XXXX 
       if (d->show_for)
-	n = net_route(d->table, d->prefix, d->pxlen);
+	n = net_route(d->table, d->addr);
       else
-	n = net_find(d->table, d->prefix, d->pxlen);
-      */
-      n = NULL;
+	n = net_find(d->table, d->addr);
 
       if (n)
 	rt_show_net(this_cli, n, d);

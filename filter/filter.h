@@ -39,7 +39,7 @@ struct f_inst_roa_check {
 };
 
 struct f_prefix {
-  net_addr_union net;
+  net_addr net;
   u8 lo, hi;
 };
 

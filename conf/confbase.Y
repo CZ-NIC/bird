@@ -41,7 +41,7 @@ CF_DECLS
   ip_addr a;
   ip4_addr ip4;
   ip6_addr ip6;
-  net_addr_union net;
+  net_addr net;
   net_addr *net_ptr;
   struct symbol *s;
   char *t;
@@ -76,12 +76,12 @@ CF_DECLS
 %token <t> TEXT
 %type <iface> ipa_scope
 
-%type <i> expr bool pxlen4 pxlen6
+%type <i> expr bool pxlen4
 %type <i32> expr_us
 %type <time> datetime
-%type <a> ipa ipa_raw
-%type <net> net_ip4 net_ip6 net_ip net_or_ipa
-%type <net_ptr> net_any
+%type <a> ipa
+%type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
+%type <net_ptr> net_ net_any
 
 %type <t> text opttext
 
@@ -151,15 +151,12 @@ bool:
  | /* Silence means agreement */ { $$ = 1; }
  ;
 
-/* Addresses, prefixes and netmasks */
 
-ipa_raw:
-   IP4 { $$ = ipa_from_ip4($1); }
- | IP6 { $$ = ipa_from_ip6($1); }
- ;
+/* Addresses */
 
 ipa:
-   ipa_raw
+   IP4 { $$ = ipa_from_ip4($1); }
+ | IP6 { $$ = ipa_from_ip6($1); }
  | SYM {
      if ($1->class != (SYM_CONSTANT | T_IP)) cf_error("IP address expected");
      $$ = SYM_VAL($1).ip;
@@ -172,41 +169,84 @@ ipa_scope:
  ;
 
 
-/* XXXX - symbols and tests */
-
-net_ip4: IP4 pxlen4 { $$.ip4 = NET_ADDR_IP4($1, $2); }
-
-net_ip6: IP6 pxlen6 { $$.ip6 = NET_ADDR_IP6($1, $2); }
-
-net_ip: net_ip4 | net_ip6 ;
-
-net_any: net_ip { $$ = cfg_alloc($1.n.length); net_copy($$, &($1.n)); }
-
-net_or_ipa:
-   net_ip4
- | net_ip6
- | IP4 { $$.ip4 = NET_ADDR_IP4($1, IP4_MAX_PREFIX_LENGTH); }
- | IP6 { $$.ip6 = NET_ADDR_IP6($1, IP6_MAX_PREFIX_LENGTH); }
- ;
-
+/* Networks - internal */
 
 pxlen4:
-   '/' expr {
+   '/' NUM {
      if ($2 < 0 || $2 > IP4_MAX_PREFIX_LENGTH) cf_error("Invalid prefix length %d", $2);
      $$ = $2;
    }
  | ':' IP4 {
      $$ = ip4_masklen($2);
-     if ($$ < 0) cf_error("Invalid netmask %I", $2);
+     if ($$ == 255) cf_error("Invalid netmask %I", $2); /* XXXX */
    }
  ;
 
-pxlen6:
-   '/' expr {
-     if ($2 < 0 || $2 > IP6_MAX_PREFIX_LENGTH) cf_error("Invalid prefix length %d", $2);
-     $$ = $2;
+net_ip4_: IP4 pxlen4
+{
+  net_fill_ip4(&($$), $1, $2);
+  if (!net_validate_ip4((net_addr_ip4 *) &($$)))
+    cf_error("Invalid IPv4 prefix");
+};
+
+net_ip6_: IP6 '/' NUM
+{
+  net_fill_ip6(&($$), $1, $3);
+  if ($3 < 0 || $3 > IP6_MAX_PREFIX_LENGTH)
+    cf_error("Invalid prefix length %d", $3);
+  if (!net_validate_ip6((net_addr_ip6 *) &($$)))
+    cf_error("Invalid IPv6 prefix");
+};
+
+net_ip_: net_ip4_ | net_ip6_ ;
+
+net_: net_ip_ { $$ = cfg_alloc($1.length); net_copy($$, &($1)); } ;
+
+
+/* Networks - regular */
+
+net_ip6:
+   net_ip6_
+ | SYM {
+     if (($1->class != (SYM_CONSTANT | T_NET)) || (SYM_VAL($1).net->type != NET_IP6))
+       cf_error("IPv6 network expected");
+     $$ = * SYM_VAL($1).net;
    }
  ;
+
+net_ip:
+   net_ip_
+ | SYM {
+     if (($1->class != (SYM_CONSTANT | T_NET)) || !net_is_ip(SYM_VAL($1).net))
+       cf_error("IP network expected");
+     $$ = * SYM_VAL($1).net;
+   }
+ ;
+
+net_any:
+   net_
+ | SYM {
+     if ($1->class != (SYM_CONSTANT | T_NET))
+       cf_error("Network expected");
+     $$ = (net_addr *) SYM_VAL($1).net; /* Avoid const warning */
+   }
+ ;
+
+net_or_ipa:
+   net_ip4_
+ | net_ip6_
+ | IP4 { net_fill_ip4(&($$), $1, IP4_MAX_PREFIX_LENGTH); }
+ | IP6 { net_fill_ip6(&($$), $1, IP6_MAX_PREFIX_LENGTH); }
+ | SYM {
+     if ($1->class == (SYM_CONSTANT | T_IP))
+       net_fill_ip_host(&($$), SYM_VAL($1).ip);
+     else if (($1->class == (SYM_CONSTANT | T_NET)) && net_is_ip(SYM_VAL($1).net))
+       $$ = * SYM_VAL($1).net;
+     else
+       cf_error("IP address or network expected");
+   }
+ ;
+
 
 datetime:
    TEXT {
