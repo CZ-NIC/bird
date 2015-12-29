@@ -1072,9 +1072,6 @@ nl_parse_route(struct nlmsghdr *h, int scan)
       return;
     }
 
-  if (a[RTA_DST])
-
-
   if (a[RTA_OIF])
     oif = rta_get_u32(a[RTA_OIF]);
 
