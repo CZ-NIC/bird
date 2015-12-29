@@ -118,15 +118,15 @@ static char * number(char * str, long num, int base, int size, int precision,
  * @fmt: format string
  * @args: a list of arguments to be formatted
  *
- * This functions acts like ordinary sprintf() except that it checks
- * available space to avoid buffer overflows and it allows some more
- * format specifiers: |%I| for formatting of IP addresses (any non-zero
- * width is automatically replaced by standard IP address width which
- * depends on whether we use IPv4 or IPv6; |%#I| gives hexadecimal format),
- * |%R| for Router / Network ID (u32 value printed as IPv4 address)
- * and |%m| resp. |%M| for error messages (uses strerror() to translate @errno code to
- * message text). On the other hand, it doesn't support floating
- * point numbers.
+ * This functions acts like ordinary sprintf() except that it checks available
+ * space to avoid buffer overflows and it allows some more format specifiers:
+ * |%I| for formatting of IP addresses (width of 1 is automatically replaced by
+ * standard IP address width which depends on whether we use IPv4 or IPv6; |%I4|
+ * or |%I6| can be used for explicit ip4_addr / ip6_addr arguments, |%N| for
+ * generic network addresses (net_addr *), |%R| for Router / Network ID (u32
+ * value printed as IPv4 address) and |%m| resp. |%M| for error messages (uses
+ * strerror() to translate @errno code to message text). On the other hand, it
+ * doesn't support floating point numbers.
  *
  * Result: number of characters of the output string or -1 if
  * the buffer space was insufficient.
@@ -168,7 +168,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 				case '#': flags |= SPECIAL; goto repeat;
 				case '0': flags |= ZEROPAD; goto repeat;
 				}
-		
+
 		/* get field width */
 		field_width = -1;
 		if (is_digit(*fmt))
@@ -186,7 +186,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 		/* get the precision */
 		precision = -1;
 		if (*fmt == '.') {
-			++fmt;	
+			++fmt;
 			if (is_digit(*fmt))
 				precision = skip_atoi(&fmt);
 			else if (*fmt == '*') {
@@ -289,22 +289,36 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			continue;
 
 		/* IP address */
-		case 'I': {
-			ip_addr a = va_arg(args, ip_addr);
-			if (flags & SPECIAL)
-				ip6_ntox(ipa_to_ip6(a), ipbuf);
-			else {
-				// XXXX better IPv4 / IPv6 distinction
-				if (ipa_is_ip4(a))
+		case 'I':
+			if (fmt[1] == '4') {
+				/* Explicit IPv4 address */
+				ip4_addr a = va_arg(args, ip4_addr);
+				ip4_ntop(a, ipbuf);
+				i = IP4_MAX_TEXT_LENGTH;
+			} else if (fmt[1] == '6') {
+				/* Explicit IPv6 address */
+				ip6_addr a = va_arg(args, ip6_addr);
+				ip6_ntop(a, ipbuf);
+				i = IP6_MAX_TEXT_LENGTH;
+			} else {
+				/* Just IP address */
+				ip_addr a = va_arg(args, ip_addr);
+
+				if (ipa_is_ip4(a)) {
 					ip4_ntop(ipa_to_ip4(a), ipbuf);
-				else
+					i = IP4_MAX_TEXT_LENGTH;
+				} else {
 					ip6_ntop(ipa_to_ip6(a), ipbuf);
-				if (field_width == 1)
-					field_width = (ipa_is_ip4(a) ? IP4_MAX_TEXT_LENGTH : IP6_MAX_TEXT_LENGTH);
+					i = IP6_MAX_TEXT_LENGTH;
+				}
 			}
+
 			s = ipbuf;
+			if (field_width == 1)
+				field_width = i;
+
 			goto str;
-			}
+
 		/* Interface scope after link-local IP address */
 		case 'J':
 			iface = va_arg(args, struct iface *);

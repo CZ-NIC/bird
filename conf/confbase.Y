@@ -178,7 +178,7 @@ pxlen4:
    }
  | ':' IP4 {
      $$ = ip4_masklen($2);
-     if ($$ == 255) cf_error("Invalid netmask %I", $2); /* XXXX */
+     if ($$ == 255) cf_error("Invalid netmask %I4", $2);
    }
  ;
 

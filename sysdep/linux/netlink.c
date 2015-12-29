@@ -691,7 +691,7 @@ nl_parse_addr4(struct ifaddrmsg *i, int scan, int new)
 	    ifa.brd = ipa_from_ip4(xbrd);
 	  else if (ifi->flags & IF_TMP_DOWN) /* Complain only during the first scan */
 	    {
-	      log(L_ERR "KIF: Invalid broadcast address %I for %s", xbrd, ifi->name);
+	      log(L_ERR "KIF: Invalid broadcast address %I4 for %s", xbrd, ifi->name);
 	      ifa.brd = ipa_from_ip4(ybrd);
 	    }
 	}
