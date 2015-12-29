@@ -253,7 +253,6 @@ fib_get(struct fib *f, const net_addr *a)
   struct fib_node *e = fib_user_to_node(f, b);
   e->readers = NULL;
   e->flags = 0;
-  e->uid = 0;
   fib_insert(f, a, e);
 
   memset(b, 0, f->node_offset);

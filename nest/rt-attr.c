@@ -52,6 +52,7 @@
 #include "nest/attrs.h"
 #include "lib/alloca.h"
 #include "lib/hash.h"
+#include "lib/idm.h"
 #include "lib/resource.h"
 #include "lib/string.h"
 
@@ -61,9 +62,7 @@ static slab *rta_slab;
 static slab *mpnh_slab;
 static slab *rte_src_slab;
 
-/* rte source ID bitmap */
-static u32 *src_ids;
-static u32 src_id_size, src_id_used, src_id_pos;
+static struct idm src_ids;
 #define SRC_ID_INIT_SIZE 4
 
 /* rte source hash */
@@ -87,62 +86,9 @@ rte_src_init(void)
 {
   rte_src_slab = sl_new(rta_pool, sizeof(struct rte_src));
 
-  src_id_pos = 0;
-  src_id_size = SRC_ID_INIT_SIZE;
-  src_ids = mb_allocz(rta_pool, src_id_size * sizeof(u32));
-
- /* ID 0 is reserved */
-  src_ids[0] = 1;
-  src_id_used = 1;
+  idm_init(&src_ids, rta_pool, SRC_ID_INIT_SIZE);
 
   HASH_INIT(src_hash, rta_pool, RSH_INIT_ORDER);
-}
-
-static inline int u32_cto(uint x) { return ffs(~x) - 1; }
-
-static inline u32
-rte_src_alloc_id(void)
-{
-  int i, j;
-  for (i = src_id_pos; i < src_id_size; i++)
-    if (src_ids[i] != 0xffffffff)
-      goto found;
-
-  /* If we are at least 7/8 full, expand */
-  if (src_id_used > (src_id_size * 28))
-    {
-      src_id_size *= 2;
-      src_ids = mb_realloc(src_ids, src_id_size * sizeof(u32));
-      bzero(src_ids + i, (src_id_size - i) * sizeof(u32));
-      goto found;
-    }
-
-  for (i = 0; i < src_id_pos; i++)
-    if (src_ids[i] != 0xffffffff)
-      goto found;
-
-  ASSERT(0);
-
- found:
-  ASSERT(i < 0x8000000);
-
-  src_id_pos = i;
-  j = u32_cto(src_ids[i]);
-
-  src_ids[i] |= (1 << j);
-  src_id_used++;
-  return 32 * i + j;
-}
-
-static inline void
-rte_src_free_id(u32 id)
-{
-  int i = id / 32;
-  int j = id % 32;
-
-  ASSERT((i < src_id_size) && (src_ids[i] & (1 << j)));
-  src_ids[i] &= ~(1 << j);
-  src_id_used--;
 }
 
 
@@ -165,7 +111,7 @@ rt_get_source(struct proto *p, u32 id)
   src = sl_alloc(rte_src_slab);
   src->proto = p;
   src->private_id = id;
-  src->global_id = rte_src_alloc_id();
+  src->global_id = idm_alloc(&src_ids);
   src->uc = 0;
 
   HASH_INSERT2(src_hash, RSH, rta_pool, src);
@@ -181,7 +127,7 @@ rt_prune_sources(void)
     if (src->uc == 0)
     {
       HASH_DO_REMOVE(src_hash, RSH, sp);
-      rte_src_free_id(src->global_id);
+      idm_free(&src_ids, src->global_id);
       sl_free(rte_src_slab, src);
     }
   }

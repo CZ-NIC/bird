@@ -14,7 +14,7 @@
 #include "nest/bird.h"
 
 #include "lib/checksum.h"
-#include "lib/ip.h"
+#include "lib/idm.h"
 #include "lib/lists.h"
 #include "lib/slists.h"
 #include "lib/socket.h"
@@ -78,7 +78,6 @@
 #define OSPF_MAX_PKT_SIZE 65535
 
 #define OSPF_VLINK_ID_OFFSET 0x80000000
-
 
 struct ospf_config
 {
@@ -215,6 +214,7 @@ struct ospf_proto
   int areano;			/* Number of area I belong to */
   int padj;			/* Number of neighbors in Exchange or Loading state */
   struct fib rtf;		/* Routing table */
+  struct idm idm;		/* OSPFv3 LSA ID map */
   byte ospf2;			/* OSPF v2 or v3 */
   byte rfc1583;			/* RFC1583 compatibility */
   byte stub_router;		/* Do not forward transit traffic */

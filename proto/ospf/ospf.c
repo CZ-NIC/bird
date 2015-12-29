@@ -240,6 +240,8 @@ ospf_start(struct proto *P)
   init_list(&(p->area_list));
   fib_init(&p->rtf, P->pool, p->ospf2 ? NET_IP4 : NET_IP6,
 	   sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
+  if (ospf_is_v3(p))
+    idm_init(&p->idm, P->pool, 16);
   p->areano = 0;
   p->gr = ospf_top_new(p, P->pool);
   s_init_list(&(p->lsal));

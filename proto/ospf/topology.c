@@ -513,8 +513,7 @@ ospf_update_lsadb(struct ospf_proto *p)
   }
 }
 
-
-static inline u32
+static u32
 ort_to_lsaid(struct ospf_proto *p, ort *nf)
 {
   /*
@@ -542,14 +541,17 @@ ort_to_lsaid(struct ospf_proto *p, ort *nf)
    * network appeared, we choose a different way.
    *
    * In OSPFv3, it is simpler. There is not a requirement for membership of the
-   * result in the input network, so we just use a hash-based unique ID of a
-   * routing table entry for a route that originated given LSA. For ext-LSA, it
-   * is an imported route in the nest's routing table (p->table). For summary-LSA,
-   * it is a 'source' route in the protocol internal routing table (p->rtf).
+   * result in the input network, so we just allocate a unique ID from ID map
+   * and store it in nf->lsa_id for further reference.
    */
 
   if (ospf_is_v3(p))
-    return nf->fn.uid;
+  {
+    if (!nf->lsa_id)
+      nf->lsa_id = idm_alloc(&p->idm);
+
+    return nf->lsa_id;
+  }
 
   net_addr_ip4 *net = (void *) nf->fn.addr;
   u32 id = ip4_to_u32(net->prefix);

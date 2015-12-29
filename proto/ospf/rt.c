@@ -2005,6 +2005,9 @@ again1:
     /* Remove unused rt entry, some special entries are persistent */
     if (!nf->n.type && !nf->external_rte && !nf->area_net)
     {
+      if (nf->lsa_id)
+	idm_free(&p->idm, nf->lsa_id);
+
       FIB_ITERATE_PUT(&fit);
       fib_delete(fib, nf);
       goto again1;

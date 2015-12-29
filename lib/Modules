@@ -7,8 +7,10 @@ sha1.h
 birdlib.h
 bitops.c
 bitops.h
-ip.h
+idm.c
+idm.h
 ip.c
+ip.h
 lists.c
 lists.h
 md5.c

@@ -81,6 +81,7 @@ typedef struct ort
   orta n;
   u32 old_metric1, old_metric2, old_tag, old_rid;
   rta *old_rta;
+  u32 lsa_id;
   u8 external_rte;
   u8 area_net;
 
