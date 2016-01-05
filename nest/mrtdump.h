@@ -37,6 +37,13 @@
 #define MRT_RIB_IPV6_UNICAST	4
 #define MRT_RIB_IPV6_MULTICAST 	5
 #define MRT_RIB_GENERIC		6
+#define MRT_RIB_IPV4_UNICAST_ADDPATH	8	/* Experimental draft-petrie-grow-mrt-add-paths */
+#define MRT_RIB_IPV4_MULTICAST_ADDPATH	9	/* Experimental draft-petrie-grow-mrt-add-paths */
+#define MRT_RIB_IPV6_UNICAST_ADDPATH	10	/* Experimental draft-petrie-grow-mrt-add-paths */
+#define MRT_RIB_IPV6_MULTICAST_ADDPATH 	11	/* Experimental draft-petrie-grow-mrt-add-paths */
+#define MRT_RIB_GENERIC_ADDPATH		12	/* Experimental draft-petrie-grow-mrt-add-paths */
+#define MRT_RIB_NO_ADDPATH	0
+#define MRT_RIB_ADDPATH		1
 
 /* MRT BGP4MP Subtypes */
 #define MRT_BGP4MP_MESSAGE	1
@@ -72,6 +79,7 @@ struct mrt_rib_entry
 {
   u16 peer_index;
   u32 originated_time;
+  u32 path_id;			/* draft-petrie-grow-mrt-add-paths */
   u16 attributes_length;
   byte *attributes;		/* encoded BGP attributes */
 };
@@ -98,7 +106,7 @@ void mrt_peer_index_table_add_peer(struct mrt_peer_index_table *state, u32 peer_
 void mrt_peer_index_table_dump(struct mrt_peer_index_table *state, int file_descriptor);
 
 void mrt_rib_table_alloc(struct mrt_rib_table *state);
-void mrt_rib_table_header(struct mrt_rib_table *state, u32 sequence_number, u8 prefix_length, ip_addr prefix);
+void mrt_rib_table_header(struct mrt_rib_table *state, u32 sequence_number, u8 prefix_length, ip_addr prefix, uint is_addpath);
 void mrt_rib_table_add_entry(struct mrt_rib_table *state, const struct mrt_rib_entry *entry);
 
 /* implemented in sysdep */
