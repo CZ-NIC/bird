@@ -102,7 +102,7 @@ t_rib_table(void)
   ip4_pton("12.34.56.78", &prefix);
 #endif
   mrt_rib_table_alloc(&state);
-  mrt_rib_table_header(&state, sequence_number, prefix_len, prefix);
+  mrt_rib_table_header(&state, sequence_number, prefix_len, prefix, MRT_RIB_NO_ADDPATH);
 
   u32 i;
   for(i = 0; i < 5; i++)

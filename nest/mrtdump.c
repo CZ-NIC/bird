@@ -219,14 +219,14 @@ mrt_rib_table_alloc(struct mrt_rib_table *state)
 }
 
 void
-mrt_rib_table_header(struct mrt_rib_table *state, u32 sequence_number, u8 prefix_length, ip_addr prefix)
+mrt_rib_table_header(struct mrt_rib_table *state, u32 sequence_number, u8 prefix_length, ip_addr prefix, uint is_addpath)
 {
   mrt_rib_table_reset(state);
 
 #ifdef IPV6
-  state->subtype = MRT_RIB_IPV6_UNICAST;
+  state->subtype = (is_addpath == MRT_RIB_ADDPATH) ? MRT_RIB_IPV6_UNICAST_ADDPATH : MRT_RIB_IPV6_UNICAST;
 #else
-  state->subtype = MRT_RIB_IPV4_UNICAST;
+  state->subtype = (is_addpath == MRT_RIB_ADDPATH) ? MRT_RIB_IPV4_UNICAST_ADDPATH : MRT_RIB_IPV4_UNICAST;
 #endif
 
   struct mrt_buffer *msg = &state->msg;
@@ -257,6 +257,16 @@ mrt_rib_table_add_entry(struct mrt_rib_table *state, const struct mrt_rib_entry 
 
   mrt_buffer_put_var_autosize(msg, entry->peer_index);
   mrt_buffer_put_var_autosize(msg, entry->originated_time);
+
+  switch (state->subtype)
+  {
+    case MRT_RIB_IPV4_UNICAST_ADDPATH:
+    case MRT_RIB_IPV6_UNICAST_ADDPATH:
+    case MRT_RIB_IPV4_MULTICAST_ADDPATH:
+    case MRT_RIB_IPV6_MULTICAST_ADDPATH:
+      mrt_buffer_put_var_autosize(msg, entry->path_id);
+  }
+
   mrt_buffer_put_var_autosize(msg, entry->attributes_length);
   mrt_buffer_put_raw(msg, entry->attributes, entry->attributes_length);
 

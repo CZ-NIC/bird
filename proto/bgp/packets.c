@@ -100,7 +100,7 @@ mrt_dump_bgp_packet(struct bgp_conn *conn, byte *pkt, unsigned len)
   memcpy(bp, pkt, len);
   bp += len;
 
-  mrt_dump_message(&conn->bgp->p, MRT_BGP4MP, subtype, buf, bp-buf);
+  mrt_dump_message_proto(&conn->bgp->p, MRT_BGP4MP, subtype, buf, bp-buf);
 }
 
 static inline u16
