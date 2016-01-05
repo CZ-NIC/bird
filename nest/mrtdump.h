@@ -41,7 +41,9 @@
 /* MRT BGP4MP Subtypes */
 #define MRT_BGP4MP_MESSAGE	1
 #define MRT_BGP4MP_MESSAGE_AS4	4
-#define MRT_BGP4MP_STATE_CHANGE_AS4 5
+#define MRT_BGP4MP_STATE_CHANGE_AS4 	5
+#define MRT_BGP4MP_MESSAGE_ADDPATH 	8	/* Experimental draft-petrie-grow-mrt-add-paths */
+#define MRT_BGP4MP_MESSAGE_AS4_ADDPATH 	9	/* Experimental draft-petrie-grow-mrt-add-paths */
 
 struct mrt_buffer
 {
