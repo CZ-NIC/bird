@@ -101,7 +101,11 @@ bgp_mrt_table_dump_step(struct mrt_table_dump_ctx *state)
 	  continue;
 	}
 
-	attributes_length = bgp_encode_attrs(p, attributes_buffer, e->attrs->eattrs, BGP_ATTR_BUFFER_SIZE);
+	struct bgp_proto tmp_bgp_proto = {
+	    .as4_session = 1, /* to force build AS_PATH as 32bit AS in bgp_encode_attrs() */
+	};
+
+	attributes_length = bgp_encode_attrs(&tmp_bgp_proto, attributes_buffer, e->attrs->eattrs, BGP_ATTR_BUFFER_SIZE);
 	if (attributes_length == -1)
 	{
 	  log(L_WARN "%s: MRT Table Dump for %I/%u: Attribute list too long, let it blank", p->p.name, n->n.prefix, n->n.pxlen);
