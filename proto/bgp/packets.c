@@ -88,11 +88,19 @@ mrt_dump_bgp_packet(struct bgp_conn *conn, byte *pkt, unsigned len)
   byte *bp = buf + MRT_HDR_LENGTH;
 
   int as4 = conn->bgp->as4_session;
+  int addpath = conn->bgp->add_path_rx;
+
+  u16 subtype;
+  if (addpath)
+    subtype = as4 ? MRT_BGP4MP_MESSAGE_AS4_ADDPATH : MRT_BGP4MP_MESSAGE_ADDPATH;
+  else
+    subtype = as4 ? MRT_BGP4MP_MESSAGE_AS4 : MRT_BGP4MP_MESSAGE;
 
   bp = mrt_put_bgp4_hdr(bp, conn, as4);
   memcpy(bp, pkt, len);
   bp += len;
-  mrt_dump_message_proto(&conn->bgp->p, MRT_BGP4MP, as4 ? MRT_BGP4MP_MESSAGE_AS4 : MRT_BGP4MP_MESSAGE, buf, bp-buf);
+
+  mrt_dump_message(&conn->bgp->p, MRT_BGP4MP, subtype, buf, bp-buf);
 }
 
 static inline u16
