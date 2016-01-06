@@ -37,6 +37,7 @@ int tr_tcp_open(void *tr_tcp_sock)
 
   sock *sk = cache->sk;
   sk->type = SK_TCP_ACTIVE;
+  sk->daddr = tcp_socket->config.ip;
 
   if (sk_open(sk) != 0)
     return TR_ERROR;
