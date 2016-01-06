@@ -8,13 +8,6 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-/**
- * @defgroup mod_rtr_h RTR socket
- * @brief An RTR socket implements the RPKI-RTR protocol scheme.
- * @details One rtr_socket communicates with a single RPKI-RTR server.
- * @{
- */
-
 #ifndef RTR_H
 #define RTR_H
 #include <time.h>

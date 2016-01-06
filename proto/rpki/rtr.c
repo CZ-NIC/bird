@@ -91,6 +91,24 @@ rtr_state_to_str(enum rtr_socket_state state)
   return rtr_socket_str_states[state];
 }
 
+/*
+ * Set group status to @mgr_status if all sockets of caches in the @group are @socket_state
+ */
+static void
+set_group_status_to_if_all_sockets_are(struct rpki_cache_group *group, const enum rtr_mgr_status mgr_status, const enum rtr_socket_state socket_state)
+{
+  bool do_all_sockets_pass = true;
+
+  struct rpki_cache *cache;
+  WALK_LIST(cache, group->cache_list)
+  {
+    if (cache->rtr_socket->state != socket_state)
+      do_all_sockets_pass = false;
+  }
+  if (do_all_sockets_pass)
+    group->status = mgr_status;
+}
+
 void
 rtr_change_socket_state(struct rtr_socket *rtr_socket, const enum rtr_socket_state new_state)
 {
@@ -107,6 +125,9 @@ rtr_change_socket_state(struct rtr_socket *rtr_socket, const enum rtr_socket_sta
   switch (new_state)
   {
     case RTR_CONNECTING:
+      if (old_state == RTR_SHUTDOWN)
+	cache->group->status = RTR_MGR_CONNECTING;
+
       if (cache->sk == NULL || cache->sk->fd < 0)
       {
 	if (rpki_open_connection(cache) == TR_SUCCESS)
@@ -117,7 +138,9 @@ rtr_change_socket_state(struct rtr_socket *rtr_socket, const enum rtr_socket_sta
       break;
 
     case RTR_ESTABLISHED:
-      /* Connection is established, socket is waiting for a Serial Notify or expiration of the refresh_interval timer */
+      /* set status of group to RTR_MGR_ESTABLISHED if all caches in the common group are RTR_ESTABLISHED */
+      set_group_status_to_if_all_sockets_are(cache->group, RTR_MGR_ESTABLISHED, RTR_ESTABLISHED);
+      rpki_relax_groups(cache->p);
       break;
 
     case RTR_RESET:
@@ -165,6 +188,8 @@ rtr_change_socket_state(struct rtr_socket *rtr_socket, const enum rtr_socket_sta
       /* Error on the transport socket occurred. */
       rpki_close_connection(cache);
       rtr_schedule_next_retry(cache);
+      cache->group->status = RTR_MGR_ERROR;
+      rpki_relax_groups(cache->p);
       break;
 
     case RTR_FAST_RECONNECT:
@@ -180,6 +205,10 @@ rtr_change_socket_state(struct rtr_socket *rtr_socket, const enum rtr_socket_sta
       rtr_socket->serial_number = 0;
       rtr_socket->last_update = 0;
       pfx_table_src_remove(cache);
+
+      /* set status of group to RTR_MGR_CLOSED if all caches in the common group are RTR_SHUTDOWN */
+      set_group_status_to_if_all_sockets_are(cache->group, RTR_MGR_CLOSED, RTR_SHUTDOWN);
+      rpki_relax_groups(cache->p);
       break;
   };
 }
@@ -284,6 +313,7 @@ rpki_retry_hook(struct timer *tm)
     default:
       CACHE_DBG(cache, "Retry Connecting (%s)", rtr_socket_str_states[rtr_socket->state]);
       rtr_change_socket_state(rtr_socket, RTR_CONNECTING);
+      debug_print_groups(p);
       break;
   }
 }

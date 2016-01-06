@@ -106,7 +106,8 @@ const char *tr_tcp_ident(void *socket)
 static int
 fulfill_ip_addr(struct tr_tcp_socket *tcp_socket)
 {
-  struct rpki_proto *p = tcp_socket->cache->p;
+  struct rpki_cache *cache = tcp_socket->cache;
+  struct rpki_proto *p = cache->p;
 
   struct addrinfo hints;
   struct addrinfo *res;
@@ -122,7 +123,7 @@ fulfill_ip_addr(struct tr_tcp_socket *tcp_socket)
 
   if (getaddrinfo(tcp_socket->config.host, port_buf, &hints, &res) != 0)
   {
-    RPKI_ERROR(p, "getaddrinfo error, %s", tcp_socket, gai_strerror(errno));
+    CACHE_TRACE(D_EVENTS, cache, "getaddrinfo error, %s", gai_strerror(errno));
     return TR_ERROR;
   }
 

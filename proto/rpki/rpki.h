@@ -28,6 +28,29 @@
 #define RPKI_DEFAULT_EXPIRE_INTERVAL	1200
 #define RPKI_DEFAULT_CACHE_PREFERENCE 	1	/* The most important priority */
 
+/*
+ * 		+-------------------------------------------+
+ * 		v					    |
+ * 	RTR_MGR_CLOSED <--> RTR_MGR_CONNECTING --> RTR_MGR_ESTABLISHED <--> RTR_MGR_ERROR
+ * 		^		    |					      ^   |
+ * 		|		    +-----------------------------------------+   |
+ * 		|								  |
+ * 		+-----------------------------------------------------------------+
+ */
+enum rtr_mgr_status {
+  /* RTR sockets are disconnected */
+  RTR_MGR_CLOSED,
+
+  /* RTR sockets trying to establish a connection. */
+  RTR_MGR_CONNECTING,
+
+  /* All RTR sockets of the group are synchronized with the rtr servers. */
+  RTR_MGR_ESTABLISHED,
+
+  /* Error occured on at least one RTR socket. */
+  RTR_MGR_ERROR,
+};
+
 struct rpki_cache_ssh_cfg {
   char *bird_private_key;		/* Filepath to the BIRD server private key */
   char *cache_public_key;		/* Filepath to the public key of cache server, can be file known_hosts */
@@ -51,6 +74,7 @@ struct rpki_cache {
   node n;
   struct rpki_proto *p;
   struct rpki_cache_cfg *cfg;
+  struct rpki_cache_group *group;
   struct rtr_socket *rtr_socket;	/* RTRlib's socket data structure */
   sock *sk;				/* BIRD's socket data structure */
   timer *retry_timer;			/* Timer for Cache server */
@@ -63,7 +87,7 @@ struct rpki_cache_group {
   node n;
   u8 preference;			/* Preference: the most prioritized are the lowest numbers and starts with 1 */
   list cache_list;			/* List of cache servers (struct rpki_cache) * */
-  u8 state;				/* RPKI_CACHE_GROUP_STATE_* */
+  enum rtr_mgr_status status;
 };
 
 struct rpki_config {
@@ -84,6 +108,8 @@ void rpki_init_all(void);
 void rpki_close_connection(struct rpki_cache *cache);
 int  rpki_open_connection(struct rpki_cache *cache);
 const char *get_cache_ident(struct rpki_cache *cache);
+void rpki_relax_groups(struct rpki_proto *p);
+void debug_print_groups(struct rpki_proto *p);
 
 #define RPKI_LOG(log_level, rpki, msg, args...) 			\
     do { 								\
@@ -102,23 +128,15 @@ const char *get_cache_ident(struct rpki_cache *cache);
 #define RPKI_TRACE(level,rpki,msg,args...) 				\
     do {								\
       if ((rpki)->p.debug & level)					\
-      RPKI_LOG(L_TRACE, rpki, msg, ## args);				\
+        RPKI_LOG(L_TRACE, rpki, msg, ## args);				\
     } while(0)
 
 #define CACHE_TRACE(level,cache,msg,args...)				\
     do {								\
       if ((cache)->p->p.debug & level)					\
-      RPKI_LOG(L_TRACE, (cache)->p, "%s: " msg, get_cache_ident(cache), ## args);	\
+        RPKI_LOG(L_TRACE, (cache)->p, "%s: " msg, get_cache_ident(cache), ## args);	\
     } while(0)
 
 #define RPKI_WARN(p, msg, args...) RPKI_LOG(L_WARN, p, msg, ## args);
-
-#define RPKI_ERROR(p, msg, args...) RPKI_LOG(L_ERR, p, msg, ## args);
-
-#define RPKI_DIE(p, msg, args...) 					\
-    do {								\
-      RPKI_LOG(L_FATAL, p, msg, ## args);				\
-      exit(1);								\
-    } while(0)
 
 #endif /* _BIRD_RPKI_H_ */

@@ -24,7 +24,21 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include <stdbool.h>
 #include "rpki.h"
+
+static const char *mgr_str_status[] = {
+    [RTR_MGR_CLOSED] = "RTR_MGR_CLOSED",
+    [RTR_MGR_CONNECTING] = "RTR_MGR_CONNECTING",
+    [RTR_MGR_ESTABLISHED] = "RTR_MGR_ESTABLISHED",
+    [RTR_MGR_ERROR] = "RTR_MGR_ERROR",
+};
+
+const char *
+get_group_status(struct rpki_cache_group *group)
+{
+  return mgr_str_status[group->status];
+}
 
 static struct proto *
 rpki_init(struct proto_config *C)
@@ -42,6 +56,22 @@ const char *
 get_cache_ident(struct rpki_cache *cache)
 {
   return tr_ident(cache->rtr_socket->tr_socket);
+}
+
+void
+debug_print_groups(struct rpki_proto *p)
+{
+  struct rpki_cache_group *g;
+  WALK_LIST(g, p->group_list)
+  {
+    DBG("Group(%u) %s \n", g->preference, get_group_status(g));
+
+    struct rpki_cache *c;
+    WALK_LIST(c, g->cache_list)
+    {
+      DBG("  Cache(%s) %s \n", get_cache_ident(c), rtr_state_to_str(c->rtr_socket->state));
+    }
+  }
 }
 
 static struct rpki_cache_group *
@@ -76,6 +106,7 @@ rpki_insert_cache_into_group(struct rpki_cache *cache)
     if (group_iter->preference == cache->cfg->preference)
     {
       add_tail(&group_iter->cache_list, &cache->n);
+      cache->group = group_iter;
       return;
     }
 
@@ -83,6 +114,7 @@ rpki_insert_cache_into_group(struct rpki_cache *cache)
     {
       struct rpki_cache_group *new_group = rpki_new_cache_group_before(p, group_iter, &p->group_list, cache->cfg->preference);
       add_tail(&new_group->cache_list, &cache->n);
+      cache->group = new_group;
       return;
     }
   }
@@ -90,6 +122,7 @@ rpki_insert_cache_into_group(struct rpki_cache *cache)
   struct rpki_cache_group *new_group = rpki_cache_group_alloc(p, cache->cfg->preference);
   add_tail(&p->group_list, &new_group->n);
   add_tail(&new_group->cache_list, &cache->n);
+  cache->group = new_group;
 }
 
 struct rpki_cache_cfg *
@@ -227,8 +260,11 @@ rpki_open_connection(struct rpki_cache *cache)
   return TR_SUCCESS;
 }
 
+/*
+ * Open connections to all caches in group
+ */
 static void
-rpki_open_group(struct rpki_proto *p, struct rpki_cache_group *group)
+rpki_open_group(struct rpki_cache_group *group)
 {
   struct rpki_cache *cache;
   WALK_LIST(cache, group->cache_list)
@@ -239,7 +275,7 @@ rpki_open_group(struct rpki_proto *p, struct rpki_cache_group *group)
 }
 
 static void
-rpki_close_group(struct rpki_proto *p, struct rpki_cache_group *group)
+rpki_close_group(struct rpki_cache_group *group)
 {
   struct rpki_cache *cache;
   WALK_LIST(cache, group->cache_list)
@@ -347,11 +383,8 @@ find_cache_in_proto_by_host_and_port(struct rpki_proto *p, struct rpki_cache_cfg
   return NULL;
 }
 
-/*
- * Remove empty cache groups in list
- */
 static void
-rpki_relax_group_list(struct rpki_proto *p)
+remove_empty_cache_groups(struct rpki_proto *p)
 {
   struct rpki_cache_group *group, *group_nxt;
   WALK_LIST_DELSAFE(group, group_nxt, p->group_list)
@@ -369,32 +402,55 @@ move_cache_into_group(struct rpki_cache *cache)
 {
   rpki_remove_cache_from_group(cache);
   rpki_insert_cache_into_group(cache);
-  rpki_relax_group_list(cache->p);
+  remove_empty_cache_groups(cache->p);
 }
 
 /*
- * Start connections to caches in the first (the highest priority) group
- * and shut down all connections to caches in others groups
+ * Go through the group list ordered by priority.
+ * Open the first CLOSED group or stop opening groups if the processed group state is CONNECTING or ESTABLISHED
+ * Then close all groups with the more unimportant priority
  */
-static int
+void
 rpki_relax_groups(struct rpki_proto *p)
 {
+  RPKI_TRACE(D_EVENTS, p, "rpki_relax_groups START");
+  debug_print_groups(p);
+
   if (EMPTY_LIST(p->group_list))
   {
     RPKI_WARN(p, "No cache in configuration found");
-    return 0;
+    return;
   }
+
+  bool close_all_next_groups = false;
 
   struct rpki_cache_group *group;
   WALK_LIST(group, p->group_list)
   {
-    if (group == (struct rpki_cache_group *) p->group_list.head)
-      rpki_open_group(p, group);
+    if (!close_all_next_groups)
+    {
+      switch (group->status)
+      {
+        case RTR_MGR_CLOSED:
+          RPKI_TRACE(D_EVENTS, p, "rpki_relax_groups open group(%u)", group->preference);
+          rpki_open_group(group);
+	  /* Fall through */
+        case RTR_MGR_CONNECTING:
+        case RTR_MGR_ESTABLISHED:
+          close_all_next_groups = 1;
+          break;
+
+        case RTR_MGR_ERROR:
+          break;
+      }
+    }
     else
-      rpki_close_group(p, group);
+      rpki_close_group(group);
   }
 
-  return 1;
+  debug_print_groups(p);
+  RPKI_TRACE(D_EVENTS, p, "rpki_relax_groups END");
+  return;
 }
 
 static int
@@ -466,17 +522,7 @@ rpki_reconfigure_proto(struct rpki_proto *p, struct rpki_config *new_cf, struct 
     }
   }
 
-  struct rpki_cache_group *g;
-  WALK_LIST(g, p->group_list)
-  {
-    DBG("Group(%u)", g->preference);
-
-    struct rpki_cache *c;
-    WALK_LIST(c, g->cache_list)
-    {
-      DBG("  Cache(%s)", get_cache_ident(c));
-    }
-  }
+  debug_print_groups(p);
 
   return 1;
 }

@@ -34,7 +34,7 @@ int tr_ssh_open(void *socket)
   const char *err_msg;
   if((err_msg = load_libssh()) != NULL)
   {
-    RPKI_ERROR(p, "%s", err_msg);
+    CACHE_TRACE(D_EVENTS, cache, "%s", err_msg);
     return TR_ERROR;
   }
 
