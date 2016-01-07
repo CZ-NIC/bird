@@ -204,11 +204,11 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop, int inet_version)
 
   switch (inet_version) {
     case 4:
-      sk->af = AF_INET;
+      sk->fam = SK_FAM_IPV4;
       sk->flags |= SKF_V4ONLY;
       break;
     case 6:
-      sk->af = AF_INET6;
+      sk->fam = SK_FAM_IPV6;
       sk->flags |= SKF_V6ONLY;
       break;
     default:
@@ -247,10 +247,10 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   sk->flags = SKF_THREAD | SKF_BIND | SKF_HIGH_PORT;
 
   if (ipa_is_ip4(local)) {
-    sk->af = AF_INET;
+    sk->fam = SK_FAM_IPV4;
     sk->flags |= SKF_V4ONLY;
   } else {
-    sk->af = AF_INET6;
+    sk->fam = SK_FAM_IPV6;
     sk->flags |= SKF_V6ONLY;
   }
 

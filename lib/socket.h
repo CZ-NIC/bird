@@ -43,7 +43,7 @@ typedef struct birdsock {
   uint lifindex;			/* local interface that received the datagram */
   /* laddr and lifindex are valid only if SKF_LADDR_RX flag is set to request it */
 
-  int af;				/* Address family (AF_INET, AF_INET6 or 0 for non-IP) of fd */
+  int fam;				/* Address family (SK_FAM_* or 0 for non-IP) of fd */
   int fd;				/* System-dependent data */
   int index;				/* Index in poll buffer */
   int rcv_ttl;				/* TTL of last received datagram */
@@ -114,6 +114,12 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
 #define SK_MAGIC	7	   /* Internal use by sysdep code */
 #define SK_UNIX_PASSIVE	8
 #define SK_UNIX		9
+
+/* Socket families */
+
+#define SK_FAM_NONE	0
+#define SK_FAM_IPV4	4
+#define SK_FAM_IPV6	6
 
 /*
  *  For SK_UDP or SK_IP sockets setting DA/DP allows to use sk_send(),

@@ -585,6 +585,7 @@ sockaddr_read(sockaddr *sa, int af, ip_addr *a, struct iface **ifa, uint *port)
   return -1;
 }
 
+const int fam_to_af[] = { [SK_FAM_IPV4] = AF_INET, [SK_FAM_IPV6] = AF_INET6 };
 
 /*
  *	IPv6 multicast syscalls
@@ -1184,7 +1185,7 @@ sk_setup(sock *s)
   if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0)
     ERR("O_NONBLOCK");
 
-  if (!s->af)
+  if (!s->fam)
     return 0;
 
   if (ipa_nonzero(s->saddr) && !(s->flags & SKF_BIND))
@@ -1286,7 +1287,7 @@ sk_tcp_connected(sock *s)
   int sa_len = sizeof(sa);
 
   if ((getsockname(s->fd, &sa.sa, &sa_len) < 0) ||
-      (sockaddr_read(&sa, s->af, &s->saddr, &s->iface, &s->sport) < 0))
+      (sockaddr_read(&sa, fam_to_af[s->fam], &s->saddr, &s->iface, &s->sport) < 0))
     log(L_WARN "SOCK: Cannot get local IP address for TCP>");
 
   s->type = SK_TCP;
@@ -1311,7 +1312,7 @@ sk_passive_connected(sock *s, int type)
 
   sock *t = sk_new(s->pool);
   t->type = type;
-  t->af = s->af;
+  t->fam = s->fam;
   t->fd = fd;
   t->ttl = s->ttl;
   t->tos = s->tos;
@@ -1321,10 +1322,10 @@ sk_passive_connected(sock *s, int type)
   if (type == SK_TCP)
   {
     if ((getsockname(fd, &loc_sa.sa, &loc_sa_len) < 0) ||
-	(sockaddr_read(&loc_sa, s->af, &t->saddr, &t->iface, &t->sport) < 0))
+	(sockaddr_read(&loc_sa, fam_to_af[s->fam], &t->saddr, &t->iface, &t->sport) < 0))
       log(L_WARN "SOCK: Cannot get local IP address for TCP<");
 
-    if (sockaddr_read(&rem_sa, s->af, &t->daddr, &t->iface, &t->dport) < 0)
+    if (sockaddr_read(&rem_sa, fam_to_af[s->fam], &t->daddr, &t->iface, &t->dport) < 0)
       log(L_WARN "SOCK: Cannot get remote IP address for TCP<");
   }
 
@@ -1383,28 +1384,28 @@ sk_open(sock *s)
     s->ttx = "";			/* Force s->ttx != s->tpos */
     /* Fall thru */
   case SK_TCP_PASSIVE:
-    fd = socket(s->af, SOCK_STREAM, IPPROTO_TCP);
+    fd = socket(fam_to_af[s->fam], SOCK_STREAM, IPPROTO_TCP);
     bind_port = s->sport;
     bind_addr = s->saddr;
     do_bind = bind_port || ipa_nonzero(bind_addr);
     break;
 
   case SK_UDP:
-    fd = socket(s->af, SOCK_DGRAM, IPPROTO_UDP);
+    fd = socket(fam_to_af[s->fam], SOCK_DGRAM, IPPROTO_UDP);
     bind_port = s->sport;
     bind_addr = (s->flags & SKF_BIND) ? s->saddr : IPA_NONE;
     do_bind = 1;
     break;
 
   case SK_IP:
-    fd = socket(s->af, SOCK_RAW, s->dport);
+    fd = socket(fam_to_af[s->fam], SOCK_RAW, s->dport);
     bind_port = 0;
     bind_addr = (s->flags & SKF_BIND) ? s->saddr : IPA_NONE;
     do_bind = ipa_nonzero(bind_addr);
     break;
 
   case SK_MAGIC:
-    s->af = 0;
+    s->fam = SK_FAM_NONE;
     fd = s->fd;
     break;
 
@@ -1446,7 +1447,7 @@ sk_open(sock *s)
 	if (sk_set_high_port(s) < 0)
 	  log(L_WARN "Socket error: %s%#m", s->err);
 
-    sockaddr_fill(&sa, s->af, bind_addr, s->iface, bind_port);
+    sockaddr_fill(&sa, fam_to_af[s->fam], bind_addr, s->iface, bind_port);
     if (bind(fd, &sa.sa, SA_LEN(sa)) < 0)
       ERR2("bind");
   }
@@ -1458,7 +1459,7 @@ sk_open(sock *s)
   switch (s->type)
   {
   case SK_TCP_ACTIVE:
-    sockaddr_fill(&sa, s->af, s->daddr, s->iface, s->dport);
+    sockaddr_fill(&sa, fam_to_af[s->fam], s->daddr, s->iface, s->dport);
     if (connect(fd, &sa.sa, SA_LEN(sa)) >= 0)
       sk_tcp_connected(s);
     else if (errno != EINTR && errno != EAGAIN && errno != EINPROGRESS &&
@@ -1565,7 +1566,7 @@ sk_sendmsg(sock *s)
   byte cmsg_buf[CMSG_TX_SPACE];
   sockaddr dst;
 
-  sockaddr_fill(&dst, s->af, s->daddr, s->iface, s->dport);
+  sockaddr_fill(&dst, fam_to_af[s->fam], s->daddr, s->iface, s->dport);
 
   struct msghdr msg = {
     .msg_name = &dst.sa,
@@ -1618,7 +1619,7 @@ sk_recvmsg(sock *s)
   //    rv = ipv4_skip_header(pbuf, rv);
   //endif
 
-  sockaddr_read(&src, s->af, &s->faddr, NULL, &s->fport);
+  sockaddr_read(&src, fam_to_af[s->fam], &s->faddr, NULL, &s->fport);
   sk_process_cmsgs(s, &msg);
 
   if (msg.msg_flags & MSG_TRUNC)
@@ -1840,7 +1841,7 @@ sk_write(sock *s)
   case SK_TCP_ACTIVE:
     {
       sockaddr sa;
-      sockaddr_fill(&sa, s->af, s->daddr, s->iface, s->dport);
+      sockaddr_fill(&sa, fam_to_af[s->fam], s->daddr, s->iface, s->dport);
 
       if (connect(s->fd, &sa.sa, SA_LEN(sa)) >= 0 || errno == EISCONN)
 	sk_tcp_connected(s);
@@ -1861,10 +1862,10 @@ sk_write(sock *s)
 }
 
 int sk_is_ipv4(sock *s)
-{ return s->af == AF_INET; }
+{ return s->fam == SK_FAM_IPV4; }
 
 int sk_is_ipv6(sock *s)
-{ return s->af == AF_INET6; }
+{ return s->fam == SK_FAM_IPV6; }
 
 void
 sk_dump_all(void)
