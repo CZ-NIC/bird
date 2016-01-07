@@ -71,8 +71,6 @@
 #define KRT_MAX_TABLES 1
 #endif
 
-#define IPV6 1
-
 
 /* Dynamic max number of tables */
 
@@ -137,7 +135,7 @@ extern int setfib(int fib);
 /* table_id -> krt_proto map */
 
 #ifdef KRT_SHARED_SOCKET
-static struct krt_proto *krt_table_map[KRT_MAX_TABLES];
+static struct krt_proto *krt_table_map[KRT_MAX_TABLES][2];
 #endif
 
 
@@ -247,11 +245,9 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 
   gw = a->gw;
 
-#ifdef IPV6
   /* Embed interface ID to link-local address */
   if (ipa_is_link_local(gw))
     _I0(gw) = 0xfe800000 | (i->index & 0x0000ffff);
-#endif
 
   int af = AF_UNSPEC;
 
@@ -370,46 +366,49 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   if (flags & RTF_LLINFO)
     SKIP("link-local\n");
 
+  GETADDR(&dst, RTA_DST);
+  GETADDR(&gate, RTA_GATEWAY);
+  GETADDR(&mask, RTA_NETMASK);
+
+  switch (dst.sa.sa_family) {
+    case AF_INET:
+    case AF_INET6:
+      /* We do not test family for RTA_NETMASK, because BSD sends us
+	 some strange values, but interpreting them as IPv4/IPv6 works */
+      mask.sa.sa_family = dst.sa.sa_family;
+      break;
+    default:
+      SKIP("invalid DST");
+  }
+
+  idst  = ipa_from_sa(&dst);
+  imask = ipa_from_sa(&mask);
+  igate = (gate.sa.sa_family == dst.sa.sa_family) ? ipa_from_sa(&gate) : IPA_NONE;
+
 #ifdef KRT_SHARED_SOCKET
   if (!scan)
   {
     int table_id = msg->rtm.rtm_tableid;
-    p = (table_id < KRT_MAX_TABLES) ? krt_table_map[table_id] : NULL;
+    p = (table_id < KRT_MAX_TABLES) ? krt_table_map[table_id][!ipa_is_ip4(idst)] : NULL;
 
     if (!p)
       SKIP("unknown table id %d\n", table_id);
   }
 #endif
 
-  GETADDR(&dst, RTA_DST);
-  GETADDR(&gate, RTA_GATEWAY);
-  GETADDR(&mask, RTA_NETMASK);
-
-
-  switch (dst.sa.sa_family) {
-    case AF_INET:
-    case AF_INET6: break;
-    default:
-      SKIP("invalid DST");
-  }
-
-  idst  = ipa_from_sa(&dst);
-  imask = ipa_from_sa(&mask); /* XXXX broken, see below */
-  igate = (gate.sa.sa_family == dst.sa.sa_family) ? ipa_from_sa(&gate) : IPA_NONE;
-
-  /* We do not test family for RTA_NETMASK, because BSD sends us
-     some strange values, but interpreting them as IPv4/IPv6 works */
-
-
   int c = ipa_classify_net(idst);
   if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
     SKIP("strange class/scope\n");
 
-  int pxlen = (flags & RTF_HOST) ? (ipa_is_ip4(imask) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH) : ipa_masklen(imask);
+  int pxlen;
+  if (ipa_is_ip4(imask))
+    pxlen = (flags & RTF_HOST) ? IP4_MAX_PREFIX_LENGTH : ip4_masklen(ipa_to_ip4(imask));
+  else
+    pxlen = (flags & RTF_HOST) ? IP6_MAX_PREFIX_LENGTH : ip6_masklen(&ipa_to_ip6(imask));
+
   if (pxlen < 0)
     { log(L_ERR "%s (%I) - netmask %I", errmsg, idst, imask); return; }
 
-  /* XXXX */
   net_fill_ipa(&ndst, idst, pxlen);
 
   if ((flags & RTF_GATEWAY) && ipa_zero(igate))
@@ -492,11 +491,9 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
     a.dest = RTD_ROUTER;
     a.gw = igate;
 
-#ifdef IPV6
     /* Clean up embedded interface ID returned in link-local address */
     if (ipa_is_link_local(a.gw))
       _I0(a.gw) = 0xfe800000;
-#endif
 
     ng = neigh_find2(&p->p, &a.gw, a.iface, 0);
     if (!ng || (ng->scope == SCOPE_HOST))
@@ -682,14 +679,12 @@ krt_read_addr(struct ks_msg *msg, int scan)
   imask = ipa_from_sa(&mask);
   ibrd  = ipa_from_sa(&brd);
 
-  /* XXXX */
-  if ((masklen = ipa_masklen(imask)) < 0)
+  if ((ipv6 ? (masklen = ip6_masklen(&ipa_to_ip6(imask))) : (masklen = ip4_masklen(ipa_to_ip4(imask)))) < 0)
   {
-    log(L_ERR "KIF: Invalid masklen %I for %s", imask, iface->name);
+    log(L_ERR "KIF: Invalid mask %I for %s", imask, iface->name);
     return;
   }
 
-#ifdef IPV6
   /* Clean up embedded interface ID returned in link-local address */
 
   if (ipa_is_link_local(iaddr))
@@ -697,7 +692,6 @@ krt_read_addr(struct ks_msg *msg, int scan)
 
   if (ipa_is_link_local(ibrd))
     _I0(ibrd) = 0xfe800000;
-#endif
 
 
   bzero(&ifa, sizeof(ifa));
@@ -720,10 +714,8 @@ krt_read_addr(struct ks_msg *msg, int scan)
     if (masklen == ((ipv6 ? IP6_MAX_PREFIX_LENGTH : IP4_MAX_PREFIX_LENGTH) - 1))
       ifa.opposite = ipa_opposite_m1(ifa.ip);
 
-#ifndef IPV6
-    if (!ipv6 && masklen == IP4_MAX_PREFIX_LENGTH - 2)
+    if ((!ipv6) && (masklen == IP4_MAX_PREFIX_LENGTH - 2))
       ifa.opposite = ipa_opposite_m2(ifa.ip);
-#endif
 
     if (iface->flags & IF_BROADCAST)
       ifa.brd = ibrd;
@@ -836,12 +828,7 @@ krt_sysctl_scan(struct proto *p, int cmd, int table_id)
   mib[0] = CTL_NET;
   mib[1] = PF_ROUTE;
   mib[2] = 0;
-  /* XXX: This value should be given from the caller */
-#ifdef IPV6
-  mib[3] = AF_INET6;
-#else
-  mib[3] = AF_INET;
-#endif
+  mib[3] = 0; // Set AF to 0 for all available families
   mib[4] = cmd;
   mib[5] = 0;
   mcnt = 6;
@@ -978,6 +965,7 @@ krt_sock_open(pool *pool, void *data, int table_id)
   return sk;
 }
 
+static u32 krt_table_cf[(KRT_MAX_TABLES+31) / 32][2];
 
 #ifdef KRT_SHARED_SOCKET
 
@@ -1009,7 +997,17 @@ krt_sock_close_shared(void)
 int
 krt_sys_start(struct krt_proto *p)
 {
-  krt_table_map[KRT_CF->sys.table_id] = p;
+  int id = KRT_CF->sys.table_id;
+
+  if (krt_table_cf[id/32][!!(p->af == AF_INET6)] & (1 << (id%32)))
+    {
+      log(L_ERR "%s: Multiple kernel syncers defined for table #%d", p->p.name, id);
+      return 0;
+    }
+
+  krt_table_cf[id/32][!!(p->af == AF_INET6)] |= (1 << (id%32));
+
+  krt_table_map[KRT_CF->sys.table_id][!!(p->af == AF_INET6)] = p;
 
   krt_sock_open_shared();
   p->sys.sk = krt_sock;
@@ -1020,10 +1018,12 @@ krt_sys_start(struct krt_proto *p)
 void
 krt_sys_shutdown(struct krt_proto *p)
 {
+  krt_table_cf[(KRT_CF->sys.table_id)/32][!!(p->af == AF_INET6)] &= ~(1 << ((KRT_CF->sys.table_id)%32));
+
   krt_sock_close_shared();
   p->sys.sk = NULL;
 
-  krt_table_map[KRT_CF->sys.table_id] = NULL;
+  krt_table_map[KRT_CF->sys.table_id][!!(p->af == AF_INET6)] = NULL;
 
   krt_buffer_release(&p->p);
 }
@@ -1033,6 +1033,16 @@ krt_sys_shutdown(struct krt_proto *p)
 int
 krt_sys_start(struct krt_proto *p)
 {
+  int id = KRT_CF->sys.table_id;
+
+  if (krt_table_cf[id/32][!!(p->af == AF_INET6)] & (1 << (id%32)))
+    {
+      log(L_ERR "%s: Multiple kernel syncers defined for table #%d", p->p.name, id);
+      return 0;
+    }
+
+  krt_table_cf[id/32][!!(p->af == AF_INET6)] |= (1 << (id%32));
+
   p->sys.sk = krt_sock_open(p->p.pool, p, KRT_CF->sys.table_id);
   return 1;
 }
@@ -1040,6 +1050,8 @@ krt_sys_start(struct krt_proto *p)
 void
 krt_sys_shutdown(struct krt_proto *p)
 {
+  krt_table_cf[(KRT_CF->sys.table_id)/32][!!(p->af == AF_INET6)] &= ~(1 << ((KRT_CF->sys.table_id)%32));
+
   rfree(p->sys.sk);
   p->sys.sk = NULL;
 
@@ -1050,8 +1062,6 @@ krt_sys_shutdown(struct krt_proto *p)
 
 
 /* KRT configuration callbacks */
-
-static u32 krt_table_cf[(KRT_MAX_TABLES+31) / 32];
 
 int
 krt_sys_reconfigure(struct krt_proto *p UNUSED, struct krt_config *n, struct krt_config *o)
@@ -1064,18 +1074,6 @@ krt_sys_preconfig(struct config *c UNUSED)
 {
   krt_max_tables = krt_get_max_tables();
   bzero(&krt_table_cf, sizeof(krt_table_cf));
-}
-
-void
-krt_sys_postconfig(struct krt_config *x)
-{
-  u32 *tbl = krt_table_cf;
-  int id = x->sys.table_id;
-
-  if (tbl[id/32] & (1 << (id%32)))
-    cf_error("Multiple kernel syncers defined for table #%d", id);
-
-  tbl[id/32] |= (1 << (id%32));
 }
 
 void krt_sys_init_config(struct krt_config *c)
@@ -1106,7 +1104,7 @@ kif_sys_shutdown(struct kif_proto *p)
 struct ifa *
 kif_get_primary_ip(struct iface *i)
 {
-#ifndef IPV6
+#if 0
   static int fd = -1;
   
   if (fd < 0)
