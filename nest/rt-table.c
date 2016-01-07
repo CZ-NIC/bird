@@ -112,10 +112,12 @@ net_route(rtable *tab, const net_addr *n)
   {
   case NET_IP4:
   case NET_VPN4:
+  case NET_ROA4:
     return net_route_ip4(&tab->fib, (net_addr_ip4 *) n0);
 
   case NET_IP6:
   case NET_VPN6:
+  case NET_ROA6:
     return net_route_ip6(&tab->fib, (net_addr_ip6 *) n0);
 
   default:

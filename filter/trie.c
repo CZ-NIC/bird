@@ -269,7 +269,9 @@ trie_match_net(struct f_trie *t, const net_addr *n)
   int add = 0;
   switch (n->type) {
     case NET_IP4:
-    case NET_VPN4: add = IP6_MAX_PREFIX_LENGTH - IP4_MAX_PREFIX_LENGTH;
+    case NET_VPN4:
+    case NET_ROA4:
+      add = IP6_MAX_PREFIX_LENGTH - IP4_MAX_PREFIX_LENGTH;
   }
 
   return trie_match_prefix(t, net_prefix(n), net_pxlen(n) + add);

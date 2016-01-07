@@ -8,14 +8,18 @@ const u16 net_addr_length[] = {
   [NET_IP4] = sizeof(net_addr_ip4),
   [NET_IP6] = sizeof(net_addr_ip6),
   [NET_VPN4] = sizeof(net_addr_vpn4),
-  [NET_VPN6] = sizeof(net_addr_vpn6)
+  [NET_VPN6] = sizeof(net_addr_vpn6),
+  [NET_ROA4] = sizeof(net_addr_roa4),
+  [NET_ROA6] = sizeof(net_addr_roa6)
 };
 
 const u8 net_max_prefix_length[] = {
   [NET_IP4] = IP4_MAX_PREFIX_LENGTH,
   [NET_IP6] = IP6_MAX_PREFIX_LENGTH,
   [NET_VPN4] = IP4_MAX_PREFIX_LENGTH,
-  [NET_VPN6] = IP4_MAX_PREFIX_LENGTH
+  [NET_VPN6] = IP6_MAX_PREFIX_LENGTH,
+  [NET_ROA4] = IP4_MAX_PREFIX_LENGTH,
+  [NET_ROA6] = IP6_MAX_PREFIX_LENGTH
 };
 
 const u16 net_max_text_length[] = {
@@ -23,6 +27,8 @@ const u16 net_max_text_length[] = {
   [NET_IP6] = 43,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
   [NET_VPN4] = 40,	/* "4294967296:4294967296 255.255.255.255/32" */
   [NET_VPN6] = 65,	/* "4294967296:4294967296 ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
+  [NET_ROA4] = 32,      /* "255.255.255.255/32 ASN:4294967295" */
+  [NET_ROA6] = 58,      /* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128 ASN:4294967295" */
 };
 
 
@@ -41,6 +47,10 @@ net_format(const net_addr *N, char *buf, int buflen)
     return bsnprintf(buf, buflen, "%u:%u %I4/%d", (u32) (n->vpn4.rd >> 32), (u32) n->vpn4.rd, n->vpn4.prefix, n->vpn4.pxlen);
   case NET_VPN6:
     return bsnprintf(buf, buflen, "%u:%u %I6/%d", (u32) (n->vpn6.rd >> 32), (u32) n->vpn6.rd, n->vpn6.prefix, n->vpn6.pxlen);
+  case NET_ROA4:
+    return bsnprintf(buf, buflen, "%I4/%d ASN:%u",  n->roa4.prefix, n->roa4.pxlen, n->roa4.asn);
+  case NET_ROA6:
+    return bsnprintf(buf, buflen, "%I6/%d ASN:%u",  n->roa6.prefix, n->roa6.pxlen, n->roa6.asn);
   }
 
   return 0;
@@ -53,10 +63,12 @@ net_pxmask(const net_addr *a)
   {
   case NET_IP4:
   case NET_VPN4:
+  case NET_ROA4:
     return ipa_from_ip4(ip4_mkmask(net4_pxlen(a)));
 
   case NET_IP6:
   case NET_VPN6:
+  case NET_ROA6:
     return ipa_from_ip6(ip6_mkmask(net6_pxlen(a)));
 
   default:
@@ -80,6 +92,10 @@ net_compare(const net_addr *a, const net_addr *b)
     return net_compare_vpn4((const net_addr_vpn4 *) a, (const net_addr_vpn4 *) b);
   case NET_VPN6:
     return net_compare_vpn6((const net_addr_vpn6 *) a, (const net_addr_vpn6 *) b);
+  case NET_ROA4:
+    return net_compare_roa4((const net_addr_roa4 *) a, (const net_addr_roa4 *) b);
+  case NET_ROA6:
+    return net_compare_roa6((const net_addr_roa6 *) a, (const net_addr_roa6 *) b);
   }
   return 0;
 }
@@ -91,10 +107,12 @@ net_validate(const net_addr *N)
   {
   case NET_IP4:
   case NET_VPN4:
+  case NET_ROA4:
     return net_validate_ip4((net_addr_ip4 *) N);
 
   case NET_IP6:
   case NET_VPN6:
+  case NET_ROA6:
     return net_validate_ip6((net_addr_ip6 *) N);
 
   default:
@@ -111,10 +129,12 @@ net_normalize(net_addr *N)
   {
   case NET_IP4:
   case NET_VPN4:
+  case NET_ROA4:
     return net_normalize_ip4(&n->ip4);
 
   case NET_IP6:
   case NET_VPN6:
+  case NET_ROA6:
     return net_normalize_ip6(&n->ip6);
   }
 }
@@ -128,10 +148,12 @@ net_classify(const net_addr *N)
   {
   case NET_IP4:
   case NET_VPN4:
+  case NET_ROA4:
     return ip4_zero(n->ip4.prefix) ? (IADDR_HOST | SCOPE_UNIVERSE) : ip4_classify(n->ip4.prefix);
 
   case NET_IP6:
   case NET_VPN6:
+  case NET_ROA6:
     return ip6_zero(n->ip6.prefix) ? (IADDR_HOST | SCOPE_UNIVERSE) : ip6_classify(&n->ip6.prefix);
   }
 
@@ -145,12 +167,14 @@ ipa_in_netX(const ip_addr a, const net_addr *n)
   {
   case NET_IP4:
   case NET_VPN4:
+  case NET_ROA4:
     if (!ipa_is_ip4(a)) return 0;
     return ip4_zero(ip4_and(ip4_xor(ipa_to_ip4(a), net4_prefix(n)),
 			    ip4_mkmask(net4_pxlen(n))));
 
   case NET_IP6:
   case NET_VPN6:
+  case NET_ROA6:
     if (ipa_is_ip4(a)) return 0;
     return ip6_zero(ip6_and(ip6_xor(ipa_to_ip6(a), net6_prefix(n)),
 			    ip6_mkmask(net6_pxlen(n))));
