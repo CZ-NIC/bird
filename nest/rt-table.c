@@ -103,7 +103,7 @@ net_route_ip6(struct fib *f, net_addr_ip6 *n)
 void *
 net_route(rtable *tab, const net_addr *n)
 {
-  ASSERT(f->addr_type == n->type);
+  ASSERT(tab->addr_type == n->type);
 
   net_addr *n0 = alloca(n->length);
   net_copy(n0, n);
