@@ -295,11 +295,13 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 				ip4_addr a = va_arg(args, ip4_addr);
 				ip4_ntop(a, ipbuf);
 				i = IP4_MAX_TEXT_LENGTH;
+				fmt++;
 			} else if (fmt[1] == '6') {
 				/* Explicit IPv6 address */
 				ip6_addr a = va_arg(args, ip6_addr);
 				ip6_ntop(a, ipbuf);
 				i = IP6_MAX_TEXT_LENGTH;
+				fmt++;
 			} else {
 				/* Just IP address */
 				ip_addr a = va_arg(args, ip_addr);
