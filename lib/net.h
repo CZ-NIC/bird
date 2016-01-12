@@ -64,8 +64,8 @@ typedef struct net_addr_roa4 {
   u8 pxlen;
   u16 length;
   ip4_addr prefix;
+  u8 max_pxlen;
   u32 asn;
-  u8 src;
 } net_addr_roa4;
 
 typedef struct net_addr_roa6 {
@@ -73,8 +73,8 @@ typedef struct net_addr_roa6 {
   u8 pxlen;
   u16 length;
   ip6_addr prefix;
+  u8 max_pxlen;
   u32 asn;
-  u8 src;
 } net_addr_roa6;
 
 typedef union net_addr_union {
@@ -107,6 +107,13 @@ extern const u16 net_max_text_length[];
 #define NET_ADDR_VPN6(prefix,pxlen,rd) \
   ((net_addr_vpn6) { NET_VPN6, pxlen, sizeof(net_addr_vpn6), prefix, rd })
 
+#define NET_ADDR_ROA4(prefix,pxlen,max_pxlen,asn) \
+  ((net_addr_roa4) { NET_ROA4, pxlen, sizeof(net_addr_roa4), prefix, max_pxlen, asn })
+
+#define NET_ADDR_ROA6(prefix,pxlen,max_pxlen,asn) \
+  ((net_addr_roa6) { NET_ROA6, pxlen, sizeof(net_addr_roa6), prefix, max_pxlen, asn })
+
+
 
 static inline void net_fill_ip4(net_addr *a, ip4_addr prefix, uint pxlen)
 { *(net_addr_ip4 *)a = NET_ADDR_IP4(prefix, pxlen); }
@@ -119,6 +126,12 @@ static inline void net_fill_vpn4(net_addr *a, ip4_addr prefix, uint pxlen, u64 r
 
 static inline void net_fill_vpn6(net_addr *a, ip6_addr prefix, uint pxlen, u64 rd)
 { *(net_addr_vpn6 *)a = NET_ADDR_VPN6(prefix, pxlen, rd); }
+
+static inline void net_fill_roa4(net_addr *a, ip4_addr prefix, uint pxlen, uint max_pxlen, u32 asn)
+{ *(net_addr_roa4 *)a = NET_ADDR_ROA4(prefix, pxlen, max_pxlen, asn); }
+
+static inline void net_fill_roa6(net_addr *a, ip6_addr prefix, uint pxlen, uint max_pxlen, u32 asn)
+{ *(net_addr_roa6 *)a = NET_ADDR_ROA6(prefix, pxlen, max_pxlen, asn); }
 
 static inline void net_fill_ipa(net_addr *a, ip_addr prefix, uint pxlen)
 {
@@ -212,10 +225,10 @@ static inline int net_zero_vpn6(const net_addr_vpn6 *a)
 { return !a->pxlen && ip6_zero(a->prefix) && !a->rd; }
 
 static inline int net_zero_roa4(const net_addr_roa4 *a)
-{ return !a->pxlen && ip4_zero(a->prefix) && !a->asn; }
+{ return !a->pxlen && ip4_zero(a->prefix) && !a->max_pxlen && !a->asn; }
 
 static inline int net_zero_roa6(const net_addr_roa6 *a)
-{ return !a->pxlen && ip6_zero(a->prefix) && !a->asn; }
+{ return !a->pxlen && ip6_zero(a->prefix) && !a->max_pxlen && !a->asn; }
 
 
 static inline int net_compare_ip4(const net_addr_ip4 *a, const net_addr_ip4 *b)
@@ -231,10 +244,10 @@ static inline int net_compare_vpn6(const net_addr_vpn6 *a, const net_addr_vpn6 *
 { return u64_cmp(a->rd, b->rd) ?: ip6_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen); }
 
 static inline int net_compare_roa4(const net_addr_roa4 *a, const net_addr_roa4 *b)
-{ return ip4_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen) ?: uint_cmp(a->asn, b->asn); }
+{ return ip4_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen) ?: uint_cmp(a->max_pxlen, b->max_pxlen) ?: uint_cmp(a->asn, b->asn); }
 
 static inline int net_compare_roa6(const net_addr_roa6 *a, const net_addr_roa6 *b)
-{ return ip6_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen) ?: uint_cmp(a->asn, b->asn); }
+{ return ip6_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen) ?: uint_cmp(a->max_pxlen, b->max_pxlen) ?: uint_cmp(a->asn, b->asn); }
 
 int net_compare(const net_addr *a, const net_addr *b);
 
@@ -278,10 +291,10 @@ static inline u32 net_hash_vpn6(const net_addr_vpn6 *n)
 { return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
 
 static inline u32 net_hash_roa4(const net_addr_roa4 *n)
-{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u32_hash(n->asn); }
+{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
 
 static inline u32 net_hash_roa6(const net_addr_roa6 *n)
-{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u32_hash(n->asn); }
+{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
 
 
 static inline int net_validate_ip4(const net_addr_ip4 *n)
