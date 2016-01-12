@@ -27,8 +27,8 @@ const u16 net_max_text_length[] = {
   [NET_IP6] = 43,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
   [NET_VPN4] = 40,	/* "4294967296:4294967296 255.255.255.255/32" */
   [NET_VPN6] = 65,	/* "4294967296:4294967296 ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
-  [NET_ROA4] = 32,      /* "255.255.255.255/32 ASN:4294967295" */
-  [NET_ROA6] = 58,      /* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128 ASN:4294967295" */
+  [NET_ROA4] = 30,      /* "255.255.255.255/32 AS4294967295" */
+  [NET_ROA6] = 56,      /* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128 AS4294967295" */
 };
 
 
@@ -48,9 +48,9 @@ net_format(const net_addr *N, char *buf, int buflen)
   case NET_VPN6:
     return bsnprintf(buf, buflen, "%u:%u %I6/%d", (u32) (n->vpn6.rd >> 32), (u32) n->vpn6.rd, n->vpn6.prefix, n->vpn6.pxlen);
   case NET_ROA4:
-    return bsnprintf(buf, buflen, "%I4/%d ASN:%u",  n->roa4.prefix, n->roa4.pxlen, n->roa4.asn);
+    return bsnprintf(buf, buflen, "%I4/%d AS%u",  n->roa4.prefix, n->roa4.pxlen, n->roa4.asn);
   case NET_ROA6:
-    return bsnprintf(buf, buflen, "%I6/%d ASN:%u",  n->roa6.prefix, n->roa6.pxlen, n->roa6.asn);
+    return bsnprintf(buf, buflen, "%I6/%d AS%u",  n->roa6.prefix, n->roa6.pxlen, n->roa6.asn);
   }
 
   return 0;
