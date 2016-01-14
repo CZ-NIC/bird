@@ -64,7 +64,7 @@ typedef struct net_addr_roa4 {
   u8 pxlen;
   u16 length;
   ip4_addr prefix;
-  u8 max_pxlen;
+  u32 max_pxlen;
   u32 asn;
 } net_addr_roa4;
 
@@ -73,7 +73,7 @@ typedef struct net_addr_roa6 {
   u8 pxlen;
   u16 length;
   ip6_addr prefix;
-  u8 max_pxlen;
+  u32 max_pxlen;
   u32 asn;
 } net_addr_roa6;
 
