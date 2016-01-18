@@ -36,7 +36,6 @@ int tr_tcp_open(void *tr_tcp_sock)
 
   sock *sk = cache->sk;
   sk->type = SK_TCP_ACTIVE;
-  sk->daddr = tcp_socket->config.ip;
 
   if (sk_open(sk) != 0)
     return TR_ERROR;
@@ -71,31 +70,33 @@ void tr_tcp_free(struct tr_socket *tr_sock)
 
 const char *tr_tcp_ident(void *socket)
 {
-  assert(socket != NULL);
+  ASSERT(socket != NULL);
 
-  struct tr_tcp_socket *sock = socket;
-  struct rpki_proto *p = sock->cache->p;
+  struct tr_tcp_socket *tcp = socket;
+  struct rpki_cache *cache = tcp->cache;
 
-  if (sock->ident != NULL)
-    return sock->ident;
+  if (tcp->ident != NULL)
+    return tcp->ident;
+
+  const char *host = cache->cfg->hostname;
 
   size_t colon_and_port_len = 6; /* max ":65535" */
   size_t ident_len;
-  if (sock->config.host)
-    ident_len = strlen(sock->config.host) + colon_and_port_len + 1;
+  if (host)
+    ident_len = strlen(host) + colon_and_port_len + 1;
   else
     ident_len = IPA_MAX_TEXT_LENGTH + colon_and_port_len + 1;
 
-  sock->ident = mb_allocz(p->p.pool, ident_len);
-  if (sock->ident == NULL)
+  tcp->ident = mb_allocz(cache->p->p.pool, ident_len);
+  if (tcp->ident == NULL)
     return NULL;
 
-  if (sock->config.host)
-    bsnprintf(sock->ident, ident_len, "%s:%u", sock->config.host, sock->config.port);
+  if (host)
+    bsnprintf(tcp->ident, ident_len, "%s:%u", host, cache->cfg->port);
   else
-    bsnprintf(sock->ident, ident_len, "%I:%u", sock->config.ip, sock->config.port);
+    bsnprintf(tcp->ident, ident_len, "%I:%u", cache->cfg->ip, cache->cfg->port);
 
-  return sock->ident;
+  return tcp->ident;
 }
 
 int tr_tcp_init(struct rpki_cache *cache)
@@ -111,11 +112,7 @@ int tr_tcp_init(struct rpki_cache *cache)
 
   tr_socket->socket = mb_allocz(p->p.pool, sizeof(struct tr_tcp_socket));
   struct tr_tcp_socket *tcp = tr_socket->socket;
-
   tcp->cache = cache;
-  tcp->config.host = cache_cfg->hostname;
-  tcp->config.ip = cache_cfg->ip;
-  tcp->config.port = cache_cfg->port;
 
   return TR_SUCCESS;
 }

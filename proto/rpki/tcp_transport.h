@@ -23,23 +23,8 @@
 #include "nest/bird.h"
 #include "lib/ip.h"
 
-/**
- * @brief  A tr_tcp_config struct holds configuration for a TCP connection.
- * @param host Hostname or IP address to connect to.
- * @param port Port to connect to.
- * @param bindaddr Hostname or IP address to connect from. NULL for
- *		   determination by OS.
- * to use the source address of the system's default route to the server
- */
-struct tr_tcp_config {
-  ip_addr ip;  char *host;	/* at least one of @ip or @host must be defined */
-  uint port;
-  char *bindaddr;		/* TODO: NEED THIS? */
-};
-
 struct tr_tcp_socket {
   struct rpki_cache *cache;
-  struct tr_tcp_config config;
   char *ident;
 };
 

@@ -23,7 +23,7 @@
 static int tr_ssh_open(void *tr_ssh_sock);
 static void tr_ssh_close(void *tr_ssh_sock);
 static void tr_ssh_free(struct tr_socket *tr_sock);
-static const char *tr_ssh_ident(void *tr_ssh_sock);
+static const char *tr_ssh_ident(void *socket);
 
 int tr_ssh_open(void *socket)
 {
@@ -74,6 +74,8 @@ void tr_ssh_close(void *tr_ssh_sock)
       ssh_free(sk->ssh->session);
       sk->ssh->session = NULL;
     }
+    mb_free(sk->ssh);
+    sk->ssh = NULL;
   }
 }
 
@@ -90,26 +92,25 @@ void tr_ssh_free(struct tr_socket *tr_sock)
   }
 }
 
-const char *tr_ssh_ident(void *tr_ssh_sock)
+const char *tr_ssh_ident(void *socket)
 {
-  size_t len;
-  struct tr_ssh_socket *ssh_sock = tr_ssh_sock;
-  struct rpki_cache *cache = ssh_sock->cache;
+  ASSERT(socket != NULL);
 
-  assert(ssh_sock != NULL);
+  struct tr_ssh_socket *ssh = socket;
+  struct rpki_cache *cache = ssh->cache;
 
-  if (ssh_sock->ident != NULL)
-    return ssh_sock->ident;
+  if (ssh->ident != NULL)
+    return ssh->ident;
 
   const char *username = cache->cfg->ssh->username;
   const char *host = cache->cfg->hostname;
 
-  len = strlen(username) + 1 + strlen(host) + 1 + 5 + 1; /* <user> + '@' + <host> + ':' + <port> + '\0' */
-  ssh_sock->ident = mb_alloc(cache->p->p.pool, len);
-  if (ssh_sock->ident == NULL)
+  size_t len = strlen(username) + 1 + strlen(host) + 1 + 5 + 1; /* <user> + '@' + <host> + ':' + <port> + '\0' */
+  ssh->ident = mb_alloc(cache->p->p.pool, len);
+  if (ssh->ident == NULL)
     return NULL;
-  snprintf(ssh_sock->ident, len, "%s@%s:%u", username, host, cache->cfg->port);
-  return ssh_sock->ident;
+  snprintf(ssh->ident, len, "%s@%s:%u", username, host, cache->cfg->port);
+  return ssh->ident;
 }
 
 int tr_ssh_init(struct rpki_cache *cache)
@@ -124,7 +125,6 @@ int tr_ssh_init(struct rpki_cache *cache)
 
   tr_socket->socket = mb_allocz(p->p.pool, sizeof(struct tr_ssh_socket));
   struct tr_ssh_socket *ssh = tr_socket->socket;
-
   ssh->cache = cache;
 
   return TR_SUCCESS;
