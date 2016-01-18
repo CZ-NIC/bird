@@ -427,6 +427,66 @@ move_cache_into_group(struct rpki_cache *cache)
   remove_empty_cache_groups(cache->p);
 }
 
+static enum rtr_mgr_status
+rpki_get_fresh_group_status(struct rpki_cache_group *group)
+{
+  bool all_established = true;
+  bool all_down = true;
+  bool any_error = false;
+
+  struct rpki_cache *cache;
+  WALK_LIST(cache, group->cache_list)
+  {
+    switch (cache->rtr_socket->state)
+    {
+      case RTR_ESTABLISHED:
+      case RTR_SYNC:
+	if (cache->rtr_socket->last_update)
+	  all_down = false;
+	break;
+
+      case RTR_ERROR_FATAL:
+      case RTR_ERROR_TRANSPORT:
+	any_error = true;
+	/* Fall through */
+      case RTR_OPENING:
+      case RTR_CONNECTING:
+      case RTR_RESET:
+      case RTR_FAST_RECONNECT:
+      case RTR_ERROR_NO_DATA_AVAIL:
+      case RTR_ERROR_NO_INCR_UPDATE_AVAIL:
+	all_established = false;
+	all_down = false;
+	break;
+
+      case RTR_SHUTDOWN:
+	all_established = false;
+	break;
+    }
+  }
+
+  if (all_down)
+    return RTR_MGR_CLOSED; /* for empty group too */
+
+  if (all_established)
+    return RTR_MGR_ESTABLISHED;
+
+  if (any_error)
+    return RTR_MGR_ERROR;
+
+  return RTR_MGR_CONNECTING;
+}
+
+static void
+rpki_refresh_groups_status(struct rpki_proto *p)
+{
+  struct rpki_cache_group *group;
+  WALK_LIST(group, p->group_list)
+  {
+    group->status = rpki_get_fresh_group_status(group);
+  }
+}
+
 /*
  * Go through the group list ordered by priority.
  * Open the first CLOSED group or stop opening groups if the processed group state is CONNECTING or ESTABLISHED
@@ -441,6 +501,8 @@ rpki_relax_groups(struct rpki_proto *p)
     RPKI_WARN(p, "No cache in configuration found");
     return;
   }
+
+  rpki_refresh_groups_status(p);
 
   bool close_all_next_groups = false;
 
