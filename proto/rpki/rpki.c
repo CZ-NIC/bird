@@ -474,13 +474,27 @@ rpki_relax_groups(struct rpki_proto *p)
   return;
 }
 
+static struct rpki_cache *
+rpki_replace_cache(struct rpki_cache *cache, struct rpki_cache_cfg *old, struct rpki_cache_cfg *new)
+{
+  struct rpki_proto *p = cache->p;
+
+  cache->cfg = old;
+  rpki_free_cache(cache);
+
+  struct rpki_cache *new_cache = rpki_new_cache(p, new);
+  rpki_insert_cache_into_group(new_cache);
+
+  return new_cache;
+}
+
 static int
 rpki_reconfigure_proto(struct rpki_proto *p, struct rpki_config *new_cf, struct rpki_config *old_cf)
 {
   if (old_cf->c.table && new_cf->c.table && old_cf->c.table->table != new_cf->c.table->table)
   {
     RPKI_TRACE(D_EVENTS, p, "Table changed");
-    return 0; /* Need to restart the protocol */
+    return 0; /* Have to restart the protocol */
   }
 
   struct rpki_cache_cfg *old;
@@ -509,21 +523,17 @@ rpki_reconfigure_proto(struct rpki_proto *p, struct rpki_config *new_cf, struct 
     if (!!old->ssh != !!new->ssh)
     {
       /* toggled SSH enable/disable */
-      return 0; /* Need to restart the protocol */
+      rpki_replace_cache(cache, old, new);
+      continue;
     }
-
-    if (old->ssh && new->ssh)
+    else if (old->ssh && new->ssh)
     {
-      /* TODO: RTR_FAST_RECONNECT will be probably enough */
-
-      if (strcmp(old->ssh->bird_private_key, new->ssh->bird_private_key) != 0)
-	return 0; /* Need to restart the protocol */
-
-      if (strcmp(old->ssh->cache_public_key, new->ssh->cache_public_key) != 0)
-	return 0; /* Need to restart the protocol */
-
-      if (strcmp(old->ssh->username, new->ssh->username) != 0)
-	return 0; /* Need to restart the protocol */
+      if ((strcmp(old->ssh->bird_private_key, new->ssh->bird_private_key) != 0) ||
+	  (strcmp(old->ssh->cache_public_key, new->ssh->cache_public_key) != 0) ||
+	  (strcmp(old->ssh->username, new->ssh->username) != 0))
+      {
+	rtr_change_socket_state(cache->rtr_socket, RTR_FAST_RECONNECT);
+      }
     }
   }
 
