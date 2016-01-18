@@ -31,6 +31,7 @@
 #include "lib/idm.h"
 #include "lib/string.h"
 #include "lib/unix.h"
+#include "nest/cli.h"
 
 static struct idm cache_uniq_id_generator;
 
@@ -82,7 +83,10 @@ rpki_print_groups(struct rpki_proto *p)
     struct rpki_cache *c;
     WALK_LIST(c, g->cache_list)
     {
-      DBG("  Cache(%s) %s \n", get_cache_ident(c), rtr_state_to_str(c->rtr_socket->state));
+      DBG("  Cache(%s) %s, last update was before %d sec\n",
+	  get_cache_ident(c),
+	  rtr_state_to_str(c->rtr_socket->state),
+	  (c->rtr_socket->last_update ? now - c->rtr_socket->last_update : -1));
     }
   }
 }
@@ -650,44 +654,67 @@ rpki_get_status(struct proto *P, byte *buf)
 {
   struct rpki_proto *p = (struct rpki_proto *) P;
 
-  uint established_connections = 0;
-  uint cache_servers = 0;
-  uint connecting = 0;
-
-  struct rpki_cache_group *group;
-  WALK_LIST(group, p->group_list)
+  if (P->proto_state != PS_DOWN)
+    buf[0] = 0;
+  else
   {
-    struct rpki_cache *cache;
-    WALK_LIST(cache, group->cache_list)
+    uint established_connections = 0;
+    uint cache_servers = 0;
+    uint connecting = 0;
+
+    struct rpki_cache_group *group;
+    WALK_LIST(group, p->group_list)
     {
-      cache_servers++;
-
-      switch (cache->rtr_socket->state)
+      struct rpki_cache *cache;
+      WALK_LIST(cache, group->cache_list)
       {
-	case RTR_ESTABLISHED:
-	case RTR_SYNC:
-	  established_connections++;
-	  break;
+        cache_servers++;
 
-	case RTR_SHUTDOWN:
-	  break;
+        switch (cache->rtr_socket->state)
+        {
+          case RTR_ESTABLISHED:
+          case RTR_SYNC:
+            established_connections++;
+            break;
 
-	default:
-	  connecting++;
+          case RTR_SHUTDOWN:
+            break;
+
+          default:
+            connecting++;
+        }
       }
     }
-  }
 
-  if (established_connections > 0)
-    bsprintf(buf, "Keep synchronized with %u cache server%s", established_connections, (established_connections > 1) ? "s" : "");
-  else if (connecting > 0)
-    bsprintf(buf, "Connecting to %u cache server%s", connecting, (connecting > 1) ? "s" : "");
-  else if (cache_servers == 0)
-    bsprintf(buf, "No cache server is configured");
-  else if (cache_servers == 1)
-    bsprintf(buf, "Cannot connect to a cache server");
-  else
-    bsprintf(buf, "Cannot connect to any cache servers");
+    if (established_connections > 0)
+      bsprintf(buf, "Connection established with %u cache server%s", established_connections, (established_connections > 1) ? "s" : "");
+    else if (connecting > 0)
+      bsprintf(buf, "Connecting to %u cache server%s", connecting, (connecting > 1) ? "s" : "");
+    else if (cache_servers == 0)
+      bsprintf(buf, "No cache server is configured");
+    else if (cache_servers == 1)
+      bsprintf(buf, "Cannot connect to a cache server");
+    else
+      bsprintf(buf, "Cannot connect to any cache servers");
+  }
+}
+
+static void
+rpki_show_proto_info(struct proto *P)
+{
+  struct rpki_proto *p = (struct rpki_proto *) P;
+
+  struct rpki_cache_group *g;
+  WALK_LIST(g, p->group_list)
+  {
+    cli_msg(-1006, "  Group(preference: %u) %s", g->preference, get_group_status(g));
+
+    struct rpki_cache *c;
+    WALK_LIST(c, g->cache_list)
+    {
+      cli_msg(-1006, "    Cache(%s) %s", get_cache_ident(c), rtr_state_to_str(c->rtr_socket->state));
+    }
+  }
 }
 
 static int
@@ -713,7 +740,7 @@ struct protocol proto_rpki = {
   .config_size =	sizeof(struct rpki_config),
   .init = 		rpki_init,
   .start = 		rpki_start,
-//  .show_proto_info =	rpki_show_proto_info,	// TODO: be nice to be implemented
+  .show_proto_info =	rpki_show_proto_info,
   .shutdown = 		rpki_shutdown,
   .reconfigure = 	rpki_reconfigure,
   .get_status = 	rpki_get_status,
