@@ -223,7 +223,10 @@ rpki_sock_dst_autoresolv(sock *sk)
       return TR_ERROR;
     }
 
-    sk->af = res->ai_family;
+    if (res->ai_family == AF_INET)
+      sk->fam = SK_FAM_IPV4;
+    else
+      sk->fam = SK_FAM_IPV6; /* optimistic */
 
     sockaddr sa = {
         .sa = *res->ai_addr,
@@ -237,7 +240,7 @@ rpki_sock_dst_autoresolv(sock *sk)
   else if (ipa_zero(sk->daddr) && !sk->host)
     return TR_ERROR;
   else
-    sk->af = ip6_is_v4mapped(sk->daddr) ? AF_INET : AF_INET6;
+    sk->fam = ip6_is_v4mapped(sk->daddr) ? SK_FAM_IPV4 : SK_FAM_IPV6; /* optimistic */
 
   return TR_SUCCESS;
 }
