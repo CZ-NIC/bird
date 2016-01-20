@@ -195,6 +195,15 @@ fib_hash(struct fib *f, const net_addr *a)
   }
 }
 
+void *
+fib_get_chain(struct fib *f, const net_addr *a)
+{
+  ASSERT(f->addr_type == a->type);
+
+  struct fib_node *e = f->hash_table[fib_hash(f, a)];
+  return e;
+}
+
 /**
  * fib_find - search for FIB node by prefix
  * @f: FIB to search in

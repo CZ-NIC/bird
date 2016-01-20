@@ -100,6 +100,77 @@ net_route_ip6(struct fib *f, net_addr_ip6 *n)
   return r;
 }
 
+static byte
+net_roa4_check(rtable *tab, const net_addr_ip4 *px, u32 asn)
+{
+  struct net_addr_roa4 n = NET_ADDR_ROA4(px->prefix, px->pxlen, 0, 0);
+  byte anything = 0;
+
+  struct fib_node *fn;
+  while (1)
+  {
+    for (fn = fib_get_chain(&tab->fib, (net_addr *) &n); fn; fn = fn->next)
+    {
+      net *r = fib_node_to_user(&tab->fib, fn);
+      if (rte_is_valid(r->routes) && ipa_in_netX(ipa_from_ip4(px->prefix), r->n.addr))
+      {
+	net_addr_roa4 *roa = (void *) r->n.addr;
+	anything = 1;
+	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
+	  return ROA_VALID;
+      }
+    }
+
+    if (n.pxlen == 0)
+      break;
+
+    n.pxlen--;
+    ip4_clrbit(&n.prefix, n.pxlen);
+  }
+
+  return anything ? ROA_INVALID : ROA_UNKNOWN;
+}
+
+static byte
+net_roa6_check(rtable *tab, const net_addr_ip6 *px, u32 asn)
+{
+  struct net_addr_roa6 n = NET_ADDR_ROA6(px->prefix, px->pxlen, 0, 0);
+  byte anything = 0;
+
+  struct fib_node *fn;
+  while (1)
+  {
+    for (fn = fib_get_chain(&tab->fib, (net_addr *) &n); fn; fn = fn->next)
+    {
+      net *r = fib_node_to_user(&tab->fib, fn);
+      if (rte_is_valid(r->routes) && ipa_in_netX(ipa_from_ip6(px->prefix), r->n.addr))
+      {
+	net_addr_roa6 *roa = (void *) r->n.addr;
+	anything = 1;
+	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
+	  return ROA_VALID;
+      }
+    }
+
+    if (n.pxlen == 0)
+      break;
+
+    n.pxlen--;
+    ip6_clrbit(&n.prefix, n.pxlen);
+  }
+
+  return anything ? ROA_INVALID : ROA_UNKNOWN;
+}
+
+byte
+net_roa_check(rtable *tab, const net_addr *n, u32 asn)
+{
+  if (tab->addr_type == NET_ROA4)
+    return net_roa4_check(tab, (const net_addr_ip4 *) n, asn);
+  else
+    return net_roa6_check(tab, (const net_addr_ip6 *) n, asn);
+}
+
 void *
 net_route(rtable *tab, const net_addr *n)
 {

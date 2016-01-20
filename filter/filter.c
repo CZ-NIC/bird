@@ -39,6 +39,8 @@
 #include "lib/socket.h"
 #include "lib/string.h"
 #include "lib/unaligned.h"
+#include "lib/net.h"
+#include "lib/ip.h"
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
@@ -1241,7 +1243,7 @@ interpret(struct f_inst *what)
 
     break;
 
-#if 0
+
   case P('R','C'):	/* ROA Check */
     if (what->arg1)
     {
@@ -1266,15 +1268,15 @@ interpret(struct f_inst *what)
       as_path_get_last(e->u.ptr, &as);
     }
 
-    struct roa_table_config *rtc = ((struct f_inst_roa_check *) what)->rtc;
-    if (!rtc->table)
+    struct rtable *table = ((struct f_inst_roa_check *) what)->rtc->table;
+    if (!table || table->addr_type != (v1.val.net->type == NET_IP4 ? NET_ROA4 : NET_ROA6))
       runtime("Missing ROA table");
 
     res.type = T_ENUM_ROA;
-    res.val.i = ROA_UNKNOWN;
-    // XXXX res.val.i = roa_check_net(rtc->table, &v1.val.net, as);
+    res.val.i = net_roa_check(table, v1.val.net, as);
+
     break;
-#endif
+
 
   default:
     bug( "Unknown instruction %d (%c)", what->code, what->code & 0xff);
