@@ -183,9 +183,7 @@ pfx_table_add(struct rpki_cache *cache, const net_addr_union *pfxr)
 {
   struct rpki_proto *p = cache->p;
 
-  char addr_buf[100];
-  net_format((net_addr *)pfxr, addr_buf, sizeof(addr_buf));
-  CACHE_TRACE(D_EVENTS, cache, "Import %s", addr_buf);
+  CACHE_TRACE(D_EVENTS, cache, "Import %N", pfxr);
 
   net *n = net_get(cache->p->p.table, &pfxr->n);
 
@@ -211,9 +209,7 @@ pfx_table_remove(struct rpki_cache *cache, const net_addr_union *pfxr)
 {
   struct rpki_proto *p = cache->p;
 
-  char addr_buf[100];
-  net_format((net_addr *)pfxr, addr_buf, sizeof(addr_buf));
-  CACHE_TRACE(D_EVENTS, cache, "Remove %s", addr_buf);
+  CACHE_TRACE(D_EVENTS, cache, "Remove %N", pfxr);
 
   net *n = net_get(cache->p->p.table, &pfxr->n);
   rte_update2(p->p.main_ahook, n, NULL, rt_get_source(&cache->p->p, cache->cache_id));
