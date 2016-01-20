@@ -563,6 +563,10 @@ extern struct protocol *attr_class_to_protocol[EAP_MAX];
 #define DEF_PREF_PIPE		70	/* Routes piped from other tables */
 #define DEF_PREF_INHERITED	10	/* Routes inherited from other routing daemons */
 
+#define ROA_UNKNOWN	0
+#define ROA_VALID	1
+#define ROA_INVALID	2
+
 #if 0
 
 /*
@@ -616,10 +620,6 @@ struct roa_show_data {
   byte mode;				/* ROA_SHOW_* values */
   u32 asn;				/* Filter ASN, 0 -> all */
 };
-
-#define ROA_UNKNOWN	0
-#define ROA_VALID	1
-#define ROA_INVALID	2
 
 #define ROA_SRC_ANY	0
 #define ROA_SRC_CONFIG	1
