@@ -92,6 +92,7 @@ timeformat_which:
  | PROTOCOL { $$ = &new_config->tf_proto; }
  | BASE { $$ = &new_config->tf_base; }
  | LOG { $$ = &new_config->tf_log; }
+ ;
 
 timeformat_spec:
    timeformat_which TEXT { *$1 = (struct timeformat){$2, NULL, 0}; }
