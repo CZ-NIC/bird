@@ -54,11 +54,9 @@ CF_DECLS
   struct f_path_mask *h;
   struct password_item *p;
   struct rt_show_data *ra;
-  struct roa_show_data *ro;
   struct sym_show_data *sd;
   struct lsadb_show_data *ld;
   struct iface *iface;
-  struct roa_table *rot;
   void *g;
   bird_clock_t time;
   struct f_prefix px;

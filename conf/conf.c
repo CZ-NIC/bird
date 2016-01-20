@@ -135,7 +135,6 @@ config_parse(struct config *c)
   sysdep_preconfig(c);
   protos_preconfig(c);
   rt_preconfig(c);
-/*  roa_preconfig(c); */
   cf_parse();
   protos_postconfig(c);
   if (EMPTY_LIST(c->protos))
@@ -266,7 +265,6 @@ config_do_commit(struct config *c, int type)
   force_restart |= global_commit(c, old_config);
   DBG("rt_commit\n");
   rt_commit(c, old_config);
-/*  roa_commit(c, old_config); */
   DBG("protos_commit\n");
   protos_commit(c, old_config, force_restart, type);
 

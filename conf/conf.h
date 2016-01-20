@@ -20,7 +20,6 @@ struct config {
   linpool *mem;				/* Linear pool containing configuration data */
   list protos;				/* Configured protocol instances (struct proto_config) */
   list tables;				/* Configured routing tables (struct rtable_config) */
-  list roa_tables;			/* Configured ROA tables (struct roa_table_config) */
   list logfiles;			/* Configured log fils (sysdep) */
 
   int mrtdump_file;			/* Configured MRTDump file (sysdep, fd in unix) */
