@@ -78,8 +78,8 @@ CF_DECLS
 %type <i32> expr_us
 %type <time> datetime
 %type <a> ipa
-%type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa net_roa4_ net_roa6_ net_roa_ net__
-%type <net_ptr> net_ net_any
+%type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
+%type <net_ptr> net_ net_any net_roa4_ net_roa6_ net_roa_
 
 %type <t> text opttext
 
@@ -198,14 +198,16 @@ net_ip6_: IP6 '/' NUM
 
 net_roa4_: net_ip4_ MAX NUM AS NUM
 {
-  net_fill_roa4(&($$), ((net_addr_ip4 *)&$1)->prefix, $1.pxlen, $3, $5);
+  $$ = cfg_alloc(sizeof(net_addr_roa4));
+  net_fill_roa4($$, ((net_addr_ip4 *)&$1)->prefix, $1.pxlen, $3, $5);
   if ($3 < 0 || $3 > IP4_MAX_PREFIX_LENGTH)
     cf_error("Invalid max prefix length %d", $3);
 };
 
 net_roa6_: net_ip6_ MAX NUM AS NUM
 {
-  net_fill_roa6(&($$), ((net_addr_ip6 *)&$1)->prefix, $1.pxlen, $3, $5);
+  $$ = cfg_alloc(sizeof(net_addr_roa6));
+  net_fill_roa6($$, ((net_addr_ip6 *)&$1)->prefix, $1.pxlen, $3, $5);
   if ($3 < 0 || $3 > IP6_MAX_PREFIX_LENGTH)
     cf_error("Invalid max prefix length %d", $3);
 };
@@ -213,9 +215,10 @@ net_roa6_: net_ip6_ MAX NUM AS NUM
 net_ip_: net_ip4_ | net_ip6_ ;
 net_roa_: net_roa4_ | net_roa6_ ;
 
-net__: net_ip_ | net_roa_;
-
-net_: net__ { $$ = cfg_alloc($1.length); net_copy($$, &($1)); } ;
+net_:
+   net_ip_ { $$ = cfg_alloc($1.length); net_copy($$, &($1)); }
+ | net_roa_
+ ;
 
 
 /* Networks - regular */
