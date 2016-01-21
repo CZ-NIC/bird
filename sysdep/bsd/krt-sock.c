@@ -344,6 +344,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
 {
   /* p is NULL iff KRT_SHARED_SOCKET and !scan */
 
+  int ipv6;
   rte *e;
   net *net;
   sockaddr dst, gate, mask;
@@ -372,14 +373,18 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
 
   switch (dst.sa.sa_family) {
     case AF_INET:
+      ipv6 = 0;
+      break;
     case AF_INET6:
-      /* We do not test family for RTA_NETMASK, because BSD sends us
-	 some strange values, but interpreting them as IPv4/IPv6 works */
-      mask.sa.sa_family = dst.sa.sa_family;
+      ipv6 = 1;
       break;
     default:
       SKIP("invalid DST");
   }
+
+  /* We do not test family for RTA_NETMASK, because BSD sends us
+     some strange values, but interpreting them as IPv4/IPv6 works */
+  mask.sa.sa_family = dst.sa.sa_family;
 
   idst  = ipa_from_sa(&dst);
   imask = ipa_from_sa(&mask);
@@ -389,27 +394,34 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   if (!scan)
   {
     int table_id = msg->rtm.rtm_tableid;
-    p = (table_id < KRT_MAX_TABLES) ? krt_table_map[table_id][!ipa_is_ip4(idst)] : NULL;
+    p = (table_id < KRT_MAX_TABLES) ? krt_table_map[table_id][ipv6] : NULL;
 
     if (!p)
       SKIP("unknown table id %d\n", table_id);
   }
 #endif
+  if ((!ipv6) && (p->p.table->addr_type != NET_IP4))
+    SKIP("reading only IPv4 routes");
+  if (  ipv6  && (p->p.table->addr_type != NET_IP6))
+    SKIP("reading only IPv6 routes");
 
   int c = ipa_classify_net(idst);
   if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
     SKIP("strange class/scope\n");
 
   int pxlen;
-  if (ipa_is_ip4(imask))
-    pxlen = (flags & RTF_HOST) ? IP4_MAX_PREFIX_LENGTH : ip4_masklen(ipa_to_ip4(imask));
-  else
+  if (ipv6)
     pxlen = (flags & RTF_HOST) ? IP6_MAX_PREFIX_LENGTH : ip6_masklen(&ipa_to_ip6(imask));
+  else
+    pxlen = (flags & RTF_HOST) ? IP4_MAX_PREFIX_LENGTH : ip4_masklen(ipa_to_ip4(imask));
 
   if (pxlen < 0)
     { log(L_ERR "%s (%I) - netmask %I", errmsg, idst, imask); return; }
 
-  net_fill_ipa(&ndst, idst, pxlen);
+  if (ipv6)
+    net_fill_ip6(&ndst, ipa_to_ip6(idst), pxlen);
+  else
+    net_fill_ip4(&ndst, ipa_to_ip4(idst), pxlen);
 
   if ((flags & RTF_GATEWAY) && ipa_zero(igate))
     { log(L_ERR "%s (%N) - missing gateway", errmsg, ndst); return; }

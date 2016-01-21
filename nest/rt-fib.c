@@ -183,6 +183,8 @@ fib_rehash(struct fib *f, int step)
 static u32
 fib_hash(struct fib *f, const net_addr *a)
 {
+  ASSERT(f->addr_type == a->type);
+
   switch (f->addr_type)
   {
   case NET_IP4: return FIB_HASH(f, a, ip4);
@@ -232,6 +234,8 @@ fib_find(struct fib *f, const net_addr *a)
 static void
 fib_insert(struct fib *f, const net_addr *a, struct fib_node *e)
 {
+  ASSERT(f->addr_type == a->type);
+
   switch (f->addr_type)
   {
   case NET_IP4: FIB_INSERT(f, a, e, ip4); return;
