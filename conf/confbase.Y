@@ -202,6 +202,8 @@ net_roa4_: net_ip4_ MAX NUM AS NUM
   net_fill_roa4($$, ((net_addr_ip4 *)&$1)->prefix, $1.pxlen, $3, $5);
   if ($3 < 0 || $3 > IP4_MAX_PREFIX_LENGTH)
     cf_error("Invalid max prefix length %d", $3);
+  if (((net_addr_roa4 *) $$)->max_pxlen < ($$)->pxlen)
+    cf_error("Maximum prefix length %d must be >= prefix length %d", ((net_addr_roa4 *) $$)->max_pxlen, ($$)->pxlen);
 };
 
 net_roa6_: net_ip6_ MAX NUM AS NUM
@@ -210,6 +212,8 @@ net_roa6_: net_ip6_ MAX NUM AS NUM
   net_fill_roa6($$, ((net_addr_ip6 *)&$1)->prefix, $1.pxlen, $3, $5);
   if ($3 < 0 || $3 > IP6_MAX_PREFIX_LENGTH)
     cf_error("Invalid max prefix length %d", $3);
+  if (((net_addr_roa6 *) $$)->max_pxlen < ($$)->pxlen)
+    cf_error("Maximum prefix length %d must be >= prefix length %d", ((net_addr_roa6 *) $$)->max_pxlen, ($$)->pxlen);
 };
 
 net_ip_: net_ip4_ | net_ip6_ ;
