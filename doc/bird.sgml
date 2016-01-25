@@ -3495,9 +3495,12 @@ It is possible to configure only one cache server per protocol yet.
 
 <code>
 protocol rpki [&lt;name&gt;] {
-        roa table &lt;name&gt;;
+        table &lt;name&gt;;
         cache &lt;ip&gt; | "&lt;domain&gt;" {
                 port &lt;num&gt;;
+                retry &lt;num&gt;;
+                refresh &lt;num&gt;;
+                expire &lt;num&gt;;
                 ssh encryption {
                         bird private key "&lt;/path/to/id_rsa&gt;";
                         cache public key "&lt;/path/to/known_host&gt;";
@@ -3527,8 +3530,25 @@ protocol rpki [&lt;name&gt;] {
 	The default port number is 8282 for transpoert without any encryption
 	and 22 for transport with SSH encryption.
 
+	<tag>retry <m/num/</tag>
+	Time period in seconds between a failed query and the next attempt.
+	Default: 30 seconds
+
+	<tag>refresh <m/num/</tag>
+	Time period in seconds.
+	Tells how long to wait before next attempting to poll the cache, using
+	a Serial Query or Reset Query PDU. Must be lower than 1 hour.
+	Default: 600 seconds
+
+	<tag>expire <m/num/</tag>
+	Time period in seconds.
+	Received records are deleted if the client was unable to refresh data
+	for this time period.
+	Default: 1200 seconds
+
 	<tag>ssh encryption { <m/ssh encryption options.../ }</tag>
 	This enables a SSH encryption.
+	Default: off
 </descrip>
 
 <sect1>SSH encryption options
@@ -3545,33 +3565,48 @@ protocol rpki [&lt;name&gt;] {
 	A SSH user name for authentication. This option is a required.
 </descrip>
 
-<sect1>Examples
-<p>A simple configuration without transport encryption:
+<sect1>Examples:
+<p>Typical RPKI configuration with BGP origin validation
 <code>
-roa table my_roa_table;
-protocol rpki {
-        debug all;
-        roa table my_roa_table;
+roa6 table my_roa_table;
 
-        cache "rpki-validator.realmv6.org";
+protocol rpki {
+	debug all;
+	table my_roa_table;
+	cache "rpki-validator.realmv6.org";
+}
+
+filter peer_in {
+	if roa_check(my_roa_table, net, bgp_path.last) = ROA_INVALID then
+	{
+		print "ROA check failed for ", net, " ASN ", bgp_path.last;
+		reject;
+	}
+	accept;
+}
+
+protocol bgp my_peer {
+	local as 65000;
+	neighbor 192.0.2.1 as 65001;
+	import filter peer_in;
 }
 </code>
 
 <p>A configuration using SSHv2 transport encryption:
 <code>
-roa table my_roa_table;
-protocol rpki {
-        debug all;
-        roa table my_roa_table;
+roa4 table my_roa_table;
 
-        cache 127.0.0.1 {
-                port 2345;
-                ssh encryption {
-                        bird private key "/home/birdgeek/.ssh/id_rsa";
-                        cache public key "/home/birdgeek/.ssh/known_hosts";
-                        user "birdgeek";
-                };
-        };
+protocol rpki {
+	debug all;
+	table my_roa_table;
+	cache 127.0.0.1 {
+		port 2345;
+		ssh encryption {
+			bird private key "/home/birdgeek/.ssh/id_rsa";
+			cache public key "/home/birdgeek/.ssh/known_hosts";
+			user "birdgeek";
+		};
+	};
 }
 </code>
 
