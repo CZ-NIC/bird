@@ -36,25 +36,18 @@ proto_start RPKI {
 }
 ;
 
-rpki_proto_finish:
-{
-//  if (RPKI_CFG->roa_table_cf == NULL)
-//    cf_error("For the RPKI protocol must be specified a roa table");
-};
-
 rpki_proto_opts:
-/* empty */
-| rpki_proto_opts rpki_proto_item ';'
-;
+   /* empty */
+ | rpki_proto_opts rpki_proto_item ';'
+ ;
 
 rpki_proto_item:
-proto_item
-| CACHE rpki_cache
-/* | ROA TABLE roa_table_cf { RPKI_CFG->roa_table_cf = $3; } */
-;
+   proto_item
+ | CACHE rpki_cache
+ ;
 
 rpki_cache:
-rpki_cache_init rpki_cache_addr rpki_optional_cache_opts rpki_cache_finish {
+rpki_cache_init rpki_cache_addr rpki_optional_cache_opts {
   add_tail(&RPKI_CFG->cache_cfg_list, &this_rpki_cache_cfg->n);
 }
 ;
