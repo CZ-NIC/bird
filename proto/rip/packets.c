@@ -170,7 +170,7 @@ rip_get_block(struct rip_proto *p, byte *pos, struct rip_block *rte)
       return 0;
     }
 
-    uint pxlen = (block->pxlen < IP6_MAX_PREFIX_LENGTH) ? block->pxlen : 255;
+    uint pxlen = (block->pxlen <= IP6_MAX_PREFIX_LENGTH) ? block->pxlen : 255;
     net_fill_ip6(&rte->net, ip6_ntoh(block->prefix), pxlen);
     rte->metric = block->metric;
     rte->tag = ntohs(block->tag);
