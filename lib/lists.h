@@ -39,7 +39,10 @@ typedef struct list {			/* In fact two overlayed nodes */
 #define WALK_LIST2(n,nn,list,pos) \
   for(nn=(list).head; NODE_VALID(nn) && (n=SKIP_BACK(typeof(*n),pos,nn)); nn=nn->next)
 #define WALK_LIST_DELSAFE(n,nxt,list) \
-     for(n=HEAD(list); nxt=NODE_NEXT(n); n=(void *) nxt)
+  for(n=HEAD(list); nxt=NODE_NEXT(n); n=(void *) nxt)
+#define WALK_LIST2_DELSAFE(n,nn,nxt,list,pos) \
+  for(nn=HEAD(list); (nxt=nn->next) && (n=SKIP_BACK(typeof(*n),pos,nn)); nn=nxt)
+
 /* WALK_LIST_FIRST supposes that called code removes each processed node */
 #define WALK_LIST_FIRST(n,list) \
      while(n=HEAD(list), (NODE (n))->next)

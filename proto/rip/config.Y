@@ -52,17 +52,18 @@ rip_variant:
 rip_proto_start: proto_start rip_variant
 {
   this_proto = proto_config_new(&proto_rip, $1);
-  init_list(&RIP_CFG->patt_list);
+  this_proto->net_type = $2 ? NET_IP4 : NET_IP6;
 
+  init_list(&RIP_CFG->patt_list);
   RIP_CFG->rip2 = $2;
   RIP_CFG->infinity = RIP_DEFAULT_INFINITY;
-
   RIP_CFG->min_timeout_time = 60;
   RIP_CFG->max_garbage_time = 60;
 };
 
 rip_proto_item:
    proto_item
+ | proto_channel
  | ECMP bool		{ RIP_CFG->ecmp = $2 ? RIP_DEFAULT_ECMP_LIMIT : 0; }
  | ECMP bool LIMIT expr	{ RIP_CFG->ecmp = $2 ? $4 : 0; if ($4 < 0) cf_error("ECMP limit cannot be negative"); }
  | INFINITY expr	{ RIP_CFG->infinity = $2; }

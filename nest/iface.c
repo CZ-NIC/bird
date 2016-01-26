@@ -138,7 +138,7 @@ if_copy(struct iface *to, struct iface *from)
 static inline void
 ifa_send_notify(struct proto *p, unsigned c, struct ifa *a)
 {
-  if (p->ifa_notify)
+  if (p->ifa_notify && (p->proto_state != PS_DOWN))
     {
       if (p->debug & D_IFACES)
 	log(L_TRACE "%s < %s address %N on interface %s %s",
@@ -155,7 +155,7 @@ ifa_notify_change_(unsigned c, struct ifa *a)
 
   DBG("IFA change notification (%x) for %s:%I\n", c, a->iface->name, a->ip);
 
-  WALK_LIST(p, active_proto_list)
+  WALK_LIST(p, proto_list)
     ifa_send_notify(p, c, a);
 }
 
@@ -174,7 +174,7 @@ ifa_notify_change(unsigned c, struct ifa *a)
 static inline void
 if_send_notify(struct proto *p, unsigned c, struct iface *i)
 {
-  if (p->if_notify)
+  if (p->if_notify && (p->proto_state != PS_DOWN))
     {
       if (p->debug & D_IFACES)
 	log(L_TRACE "%s < interface %s %s", p->name, i->name,
@@ -215,7 +215,7 @@ if_notify_change(unsigned c, struct iface *i)
 	ifa_notify_change_(IF_CHANGE_DOWN, a);
       }
 
-  WALK_LIST(p, active_proto_list)
+  WALK_LIST(p, proto_list)
     if_send_notify(p, c, i);
 
   if (c & IF_CHANGE_UP)

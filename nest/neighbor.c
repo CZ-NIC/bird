@@ -239,7 +239,7 @@ neigh_up(neighbor *n, struct iface *i, int scope, struct ifa *a)
   rem_node(&n->n);
   add_tail(&neigh_hash_table[neigh_hash(n->proto, &n->addr)], &n->n);
   DBG("Waking up sticky neighbor %I\n", n->addr);
-  if (n->proto->neigh_notify && n->proto->core_state != FS_FLUSHING)
+  if (n->proto->neigh_notify && (n->proto->proto_state != PS_STOP))
     n->proto->neigh_notify(n);
 }
 
@@ -252,7 +252,7 @@ neigh_down(neighbor *n)
     n->iface = NULL;
   n->ifa = NULL;
   n->scope = -1;
-  if (n->proto->neigh_notify && n->proto->core_state != FS_FLUSHING)
+  if (n->proto->neigh_notify && (n->proto->proto_state != PS_STOP))
     n->proto->neigh_notify(n);
   rem_node(&n->n);
   if (n->flags & NEF_STICKY)
@@ -333,7 +333,7 @@ neigh_if_link(struct iface *i)
   WALK_LIST_DELSAFE(x, y, i->neighbors)
     {
       neighbor *n = SKIP_BACK(neighbor, if_n, x);
-      if (n->proto->neigh_notify && n->proto->core_state != FS_FLUSHING)
+      if (n->proto->neigh_notify && (n->proto->proto_state != PS_STOP))
 	n->proto->neigh_notify(n);
     }
 }

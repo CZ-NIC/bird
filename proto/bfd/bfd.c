@@ -952,7 +952,7 @@ bfd_init_all(void)
 static struct proto *
 bfd_init(struct proto_config *c)
 {
-  struct proto *p = proto_new(c, sizeof(struct bfd_proto));
+  struct proto *p = proto_new(c);
 
   p->neigh_notify = bfd_neigh_notify;
 
@@ -1118,6 +1118,7 @@ bfd_show_sessions(struct proto *P)
 struct protocol proto_bfd = {
   .name =		"BFD",
   .template =		"bfd%d",
+  .proto_size =		sizeof(struct bfd_proto),
   .config_size =	sizeof(struct bfd_config),
   .init =		bfd_init,
   .start =		bfd_start,

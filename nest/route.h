@@ -12,10 +12,12 @@
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/timer.h"
-#include "nest/protocol.h"
+//#include "nest/protocol.h"
 
+struct ea_list;
 struct protocol;
 struct proto;
+struct rte_src;
 struct symbol;
 struct filter;
 struct cli;
@@ -57,8 +59,8 @@ struct fib {
   uint hash_order;			/* Binary logarithm of hash_size */
   uint hash_shift;			/* 32 - hash_order */
   uint addr_type;			/* Type of address data stored in fib (NET_*) */
-  uint node_size;	/* XXXX */
-  uint node_offset;	/* XXXX */
+  uint node_size;			/* FIB node size, 0 for nonuniform */
+  uint node_offset;			/* Offset of fib_node struct inside of user data */
   uint entries;				/* Number of entries */
   uint entries_min, entries_max;	/* Entry count limits (else start rehashing) */
   fib_init_fn init;			/* Constructor */
@@ -146,7 +148,7 @@ typedef struct rtable {
   node n;				/* Node in list of all tables */
   struct fib fib;
   char *name;				/* Name of this table */
-  list hooks;				/* List of announcement hooks */
+  list channels;			/* List of attached channels (struct channel) */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
   int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
@@ -159,17 +161,12 @@ typedef struct rtable {
   struct event *rt_event;		/* Routing table event */
   int gc_counter;			/* Number of operations since last GC */
   bird_clock_t gc_time;			/* Time of last GC */
-  byte gc_scheduled;			/* GC is scheduled */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
 } rtable;
-
-#define RPS_NONE	0
-#define RPS_SCHEDULED	1
-#define RPS_RUNNING	2
 
 typedef struct network {
   struct rte *routes;			/* Available routes for this network */
@@ -206,7 +203,7 @@ struct hostentry {
 typedef struct rte {
   struct rte *next;
   net *net;				/* Network this RTE belongs to */
-  struct announce_hook *sender;		/* Announce hook used to send the route to the routing table */
+  struct channel *sender;		/* Channel used to send the route to the routing table */
   struct rta *attrs;			/* Attributes of this route */
   byte flags;				/* Flags (REF_...) */
   byte pflags;				/* Protocol-specific flags */
@@ -279,13 +276,14 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 
 rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
-void rte_update2(struct announce_hook *ah, net *net, rte *new, struct rte_src *src);
-static inline void rte_update(struct proto *p, net *net, rte *new) { rte_update2(p->main_ahook, net, new, p->main_source); }
+void rte_update2(struct channel *c, net *net, rte *new, struct rte_src *src);
+/* rte_update() moved to protocol.h to avoid dependency conflicts */
 void rte_discard(rtable *tab, rte *old);
 int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter);
-rte *rt_export_merged(struct announce_hook *ah, net *net, rte **rt_free, struct ea_list **tmpa, int silent);
-void rt_refresh_begin(rtable *t, struct announce_hook *ah);
-void rt_refresh_end(rtable *t, struct announce_hook *ah);
+rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, struct ea_list **tmpa, int silent);
+void rt_refresh_begin(rtable *t, struct channel *c);
+void rt_refresh_end(rtable *t, struct channel *c);
+void rt_schedule_prune(rtable *t);
 void rte_dump(rte *);
 void rte_free(rte *);
 rte *rte_do_cow(rte *);
@@ -293,19 +291,10 @@ static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r
 rte *rte_cow_rta(rte *r, linpool *lp);
 void rt_dump(rtable *);
 void rt_dump_all(void);
-int rt_feed_baby(struct proto *p);
-void rt_feed_baby_abort(struct proto *p);
-int rt_prune_loop(void);
+int rt_feed_channel(struct channel *c);
+void rt_feed_channel_abort(struct channel *c);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
-static inline void
-rt_mark_for_prune(rtable *tab)
-{
-  if (tab->prune_state == RPS_RUNNING)
-    fit_get(&tab->fib, &tab->prune_fit);
-
-  tab->prune_state = RPS_SCHEDULED;
-}
 
 struct rt_show_data {
   net_addr *addr;
@@ -315,6 +304,7 @@ struct rt_show_data {
   struct fib_iterator fit;
   struct proto *show_protocol;
   struct proto *export_protocol;
+  struct channel *export_channel;
   int export_mode, primary_only, filtered;
   struct config *running_on_config;
   int net_counter, rt_counter, show_counter;
@@ -561,7 +551,6 @@ extern struct protocol *attr_class_to_protocol[EAP_MAX];
 #define DEF_PREF_OSPF		150	/* OSPF intra-area, inter-area and type 1 external routes */
 #define DEF_PREF_RIP		120	/* RIP */
 #define DEF_PREF_BGP		100	/* BGP */
-#define DEF_PREF_PIPE		70	/* Routes piped from other tables */
 #define DEF_PREF_INHERITED	10	/* Routes inherited from other routing daemons */
 
 /*

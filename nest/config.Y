@@ -17,6 +17,7 @@ CF_HDR
 CF_DEFINES
 
 static struct proto_config *this_proto;
+static struct channel_config *this_channel;
 static struct iface_patt *this_ipatt;
 static struct iface_patt_node *this_ipn;
 /* static struct roa_table_config *this_roa_table; */
@@ -49,6 +50,15 @@ get_passwords(void)
   return rv;
 }
 
+static void
+proto_postconfig(void)
+{
+  CALL(this_proto->protocol->postconfig, this_proto);
+  this_channel = NULL;
+  this_proto = NULL;
+}
+
+
 #define DIRECT_CFG ((struct rt_dev_config *) this_proto)
 
 CF_DECLS
@@ -76,9 +86,10 @@ CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 %type <s> optsym
 %type <ra> r_args
 %type <sd> sym_args
-%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action table_type table_sorted tos
+%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type table_sorted tos
 %type <ps> proto_patt proto_patt2
-%type <g> limit_spec
+%type <cc> channel_start proto_channel
+%type <cl> limit_spec
 
 CF_GRAMMAR
 
@@ -115,7 +126,7 @@ listen_opts:
  | listen_opts listen_opt
  ;
 
-listen_opt: 
+listen_opt:
    ADDRESS ipa { new_config->listen_bgp_addr = $2; }
  | PORT expr { new_config->listen_bgp_port = $2; }
  | V6ONLY { new_config->listen_bgp_flags = 0; }
@@ -128,13 +139,10 @@ CF_ADDTO(conf, gr_opts)
 gr_opts: GRACEFUL RESTART WAIT expr ';' { new_config->gr_wait = $4; } ;
 
 
-/* Creation of routing tables */
+/* Network types (for tables, channels) */
 
-CF_ADDTO(conf, table)
-
-table_type:
-   /* empty */ { $$ = NET_IP4; }
- | IPV4 { $$ = NET_IP4; }
+net_type:
+   IPV4 { $$ = NET_IP4; }
  | IPV6 { $$ = NET_IP6; }
  | VPN4 { $$ = NET_VPN4; }
  | VPN6 { $$ = NET_VPN6; }
@@ -142,21 +150,27 @@ table_type:
  | ROA6 { $$ = NET_ROA6; }
  ;
 
+
+/* Creation of routing tables */
+
+CF_ADDTO(conf, table)
+
 table_sorted:
           { $$ = 0; }
  | SORTED { $$ = 1; }
  ;
 
-table: table_type TABLE SYM table_sorted {
+table: net_type TABLE SYM table_sorted {
    struct rtable_config *cf;
    cf = rt_new_table($3, $1);
    cf->sorted = $4;
    }
  ;
 
+
 /* Definition of protocols */
 
-CF_ADDTO(conf, proto)
+CF_ADDTO(conf, proto { proto_postconfig(); })
 
 proto_start:
    PROTOCOL { $$ = SYM_PROTO; }
@@ -194,22 +208,60 @@ proto_name:
 
 proto_item:
    /* EMPTY */
- | PREFERENCE expr {
-     if ($2 < 0 || $2 > 0xFFFF) cf_error("Invalid preference");
-     this_proto->preference = $2;
-   }
  | DISABLED bool { this_proto->disabled = $2; }
  | DEBUG debug_mask { this_proto->debug = $2; }
  | MRTDUMP mrtdump_mask { this_proto->mrtdump = $2; }
- | IMPORT imexport { this_proto->in_filter = $2; }
- | EXPORT imexport { this_proto->out_filter = $2; }
- | RECEIVE LIMIT limit_spec { this_proto->rx_limit = $3; }
- | IMPORT LIMIT limit_spec { this_proto->in_limit = $3; }
- | EXPORT LIMIT limit_spec { this_proto->out_limit = $3; }
- | IMPORT KEEP FILTERED bool { this_proto->in_keep_filtered = $4; }
- | TABLE rtable { this_proto->table = $2; }
  | ROUTER ID idval { this_proto->router_id = $3; }
  | DESCRIPTION text { this_proto->dsc = $2; }
+ ;
+
+
+channel_start: net_type
+{
+  $$ = this_channel = channel_config_new(NULL, $1, this_proto);
+};
+
+channel_item:
+   TABLE rtable {
+     if (this_channel->net_type && ($2->addr_type != this_channel->net_type))
+       cf_error("Incompatible table type");
+     this_channel->table = $2;
+   }
+ | IMPORT imexport { this_channel->in_filter = $2; }
+ | EXPORT imexport { this_channel->out_filter = $2; }
+ | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
+ | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
+ | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
+ | PREFERENCE expr { this_channel->preference = $2; check_u16($2); }
+ | IMPORT KEEP FILTERED bool { this_channel->in_keep_filtered = $4; }
+ ;
+
+channel_opts:
+   /* empty */
+ | channel_opts channel_item ';'
+ ;
+
+channel_opt_list:
+   /* empty */
+ | '{' channel_opts '}'
+ ;
+
+channel_end:
+{
+  if (!this_channel->table)
+    cf_error("Routing table not specified");
+
+  this_channel = NULL;
+};
+
+proto_channel: channel_start channel_opt_list channel_end;
+
+
+rtable:
+   SYM {
+     if ($1->class != SYM_TABLE) cf_error("Table expected");
+     $$ = $1->def;
+   }
  ;
 
 imexport:
@@ -228,20 +280,8 @@ limit_action:
  ;
 
 limit_spec:
-   expr limit_action {
-     struct proto_limit *l = cfg_allocz(sizeof(struct proto_limit));
-     l->limit = $1;
-     l->action = $2;
-     $$ = l;
-   }
- | OFF { $$ = NULL; }
- ;
-
-rtable:
-   SYM {
-     if ($1->class != SYM_TABLE) cf_error("Table name expected");
-     $$ = $1->def;
-   }
+   expr limit_action { $$ = (struct channel_limit){ .limit = $1, $$.action = $2 }; }
+ | OFF { $$ = (struct channel_limit){}; }
  ;
 
 CF_ADDTO(conf, debug_default)
@@ -315,6 +355,7 @@ dev_proto_start: proto_start DIRECT {
 dev_proto:
    dev_proto_start proto_name '{'
  | dev_proto proto_item ';'
+ | dev_proto proto_channel ';'
  | dev_proto dev_iface_patt ';'
  ;
 

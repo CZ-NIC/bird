@@ -256,9 +256,16 @@ radv_ifa_notify(struct proto *p, unsigned flags, struct ifa *a)
     radv_iface_notify(ifa, RA_EV_CHANGE);
 }
 
-static inline int radv_net_match_trigger(struct radv_config *cf, net *n)
+static inline int
+radv_trigger_valid(struct radv_config *cf)
 {
-  return cf->trigger_valid && net_equal(n->n.addr, cf->trigger);
+  return cf->trigger.type != 0;
+}
+
+static inline int
+radv_net_match_trigger(struct radv_config *cf, net *n)
+{
+  return radv_trigger_valid(cf) && net_equal(n->n.addr, &cf->trigger);
 }
 
 int
@@ -301,22 +308,35 @@ radv_check_active(struct proto_radv *ra)
 {
   struct radv_config *cf = (struct radv_config *) (ra->p.cf);
 
-  if (! cf->trigger_valid)
+  if (!radv_trigger_valid(cf))
     return 1;
 
-  return rt_examine(ra->p.table, cf->trigger, &ra->p, ra->p.cf->out_filter);
+  struct channel *c =ra->p.main_channel;
+  return rt_examine(c->table, &cf->trigger, &ra->p, c->out_filter);
+}
+
+static void
+radv_postconfig(struct proto_config *CF)
+{
+  // struct radv_config *cf = (void *) CF;
+
+  /* Define default channel */
+  if (EMPTY_LIST(CF->channels))
+    channel_config_new(NULL, NET_IP6, CF);
 }
 
 static struct proto *
-radv_init(struct proto_config *c)
+radv_init(struct proto_config *CF)
 {
-  struct proto *p = proto_new(c, sizeof(struct proto_radv));
+  struct proto *p = proto_new(CF);
 
-  p->accept_ra_types = RA_OPTIMAL;
+  p->main_channel = proto_add_channel(p, proto_cf_main_channel(CF));
+
   p->import_control = radv_import_control;
   p->rt_notify = radv_rt_notify;
   p->if_notify = radv_if_notify;
   p->ifa_notify = radv_ifa_notify;
+
   return p;
 }
 
@@ -327,7 +347,7 @@ radv_start(struct proto *p)
   struct radv_config *cf = (struct radv_config *) (p->cf);
 
   init_list(&(ra->iface_list));
-  ra->active = !cf->trigger_valid;
+  ra->active = !radv_trigger_valid(cf);
 
   return PS_UP;
 }
@@ -352,11 +372,11 @@ radv_shutdown(struct proto *p)
 }
 
 static int
-radv_reconfigure(struct proto *p, struct proto_config *c)
+radv_reconfigure(struct proto *p, struct proto_config *CF)
 {
   struct proto_radv *ra = (struct proto_radv *) p;
   // struct radv_config *old = (struct radv_config *) (p->cf);
-  struct radv_config *new = (struct radv_config *) c;
+  struct radv_config *new = (struct radv_config *) CF;
 
   /*
    * The question is why there is a reconfigure function for RAdv if
@@ -366,7 +386,10 @@ radv_reconfigure(struct proto *p, struct proto_config *c)
    * causing nodes to temporary remove their default routes.
    */
 
-  p->cf = c; /* radv_check_active() requires proper p->cf */
+  if (!proto_configure_channel(p, &p->main_channel, proto_cf_main_channel(CF)))
+    return 0;
+
+  p->cf = CF; /* radv_check_active() requires proper p->cf */
   ra->active = radv_check_active(ra);
 
   struct iface *iface;
@@ -423,7 +446,10 @@ radv_get_status(struct proto *p, byte *buf)
 struct protocol proto_radv = {
   .name =		"RAdv",
   .template =		"radv%d",
+  .channel_mask =	NB_IP6,
+  .proto_size =		sizeof(struct proto_radv),
   .config_size =	sizeof(struct radv_config),
+  .postconfig =		radv_postconfig,
   .init =		radv_init,
   .start =		radv_start,
   .shutdown =		radv_shutdown,

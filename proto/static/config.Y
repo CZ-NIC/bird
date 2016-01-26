@@ -38,15 +38,16 @@ CF_GRAMMAR
 
 CF_ADDTO(proto, static_proto '}')
 
-static_proto_start: proto_start STATIC {
-     this_proto = proto_config_new(&proto_static, $1);
-     static_init_config((struct static_config *) this_proto);
-  }
- ;
+static_proto_start: proto_start STATIC
+{
+  this_proto = proto_config_new(&proto_static, $1);
+  static_init_config(STATIC_CFG);
+};
 
 static_proto:
    static_proto_start proto_name '{'
  | static_proto proto_item ';'
+ | static_proto proto_channel ';' { this_proto->net_type = $2->net_type; }
  | static_proto CHECK LINK bool ';' { STATIC_CFG->check_link = $4; }
  | static_proto IGP TABLE rtable ';' { STATIC_CFG->igp_table = $4; }
  | static_proto stat_route stat_route_opt_list ';' { static_route_finish(); }

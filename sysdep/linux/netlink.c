@@ -1127,7 +1127,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
       src = KRT_SRC_ALIEN;
     }
 
-  net *net = net_get(p->p.table, &dst);
+  net *net = net_get(p->p.main_channel->table, &dst);
 
   rta ra = {
     .src= p->p.main_source,

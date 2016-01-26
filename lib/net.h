@@ -21,6 +21,15 @@
 #define NET_ROA6	6
 #define NET_MAX		7
 
+#define NB_IP4		(1 << NET_IP4)
+#define NB_IP6		(1 << NET_IP6)
+#define NB_VPN4		(1 << NET_VPN4)
+#define NB_VPN6		(1 << NET_VPN6)
+
+#define NB_IP		(NB_IP4 | NB_IP6)
+#define NB_ANY		0xffffffff
+
+
 typedef struct net_addr {
   u8 type;
   u8 pxlen;
@@ -88,6 +97,7 @@ typedef union net_addr_union {
 } net_addr_union;
 
 
+extern const char * const net_label[];
 extern const u16 net_addr_length[];
 extern const u8  net_max_prefix_length[];
 extern const u16 net_max_text_length[];
@@ -148,6 +158,13 @@ static inline void net_fill_ip_host(net_addr *a, ip_addr prefix)
   else
     net_fill_ip6(a, ipa_to_ip6(prefix), IP6_MAX_PREFIX_LENGTH);
 }
+
+
+static inline int net_val_match(u8 type, u32 mask)
+{ return !!((1 << type) & mask); }
+
+static inline int net_type_match(const net_addr *a, u32 mask)
+{ return net_val_match(a->type, mask); }
 
 static inline int net_is_ip(const net_addr *a)
 { return (a->type == NET_IP4) || (a->type == NET_IP6); }

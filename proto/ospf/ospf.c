@@ -102,7 +102,7 @@
 static int ospf_import_control(struct proto *P, rte **new, ea_list **attrs, struct linpool *pool);
 static struct ea_list *ospf_make_tmp_attrs(struct rte *rt, struct linpool *pool);
 static void ospf_store_tmp_attrs(struct rte *rt, struct ea_list *attrs);
-static int ospf_reload_routes(struct proto *P);
+static void ospf_reload_routes(struct channel *C);
 static int ospf_rte_better(struct rte *new, struct rte *old);
 static int ospf_rte_same(struct rte *new, struct rte *old);
 static void ospf_disp(timer *timer);
@@ -297,15 +297,16 @@ ospf_dump(struct proto *P)
 }
 
 static struct proto *
-ospf_init(struct proto_config *c)
+ospf_init(struct proto_config *CF)
 {
-  struct ospf_config *oc = (struct ospf_config *) c;
-  struct proto *P = proto_new(c, sizeof(struct ospf_proto));
+  struct ospf_config *cf = (struct ospf_config *) CF;
+  struct proto *P = proto_new(CF);
 
-  P->accept_ra_types = RA_OPTIMAL;
+  P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
+
   P->rt_notify = ospf_rt_notify;
   P->if_notify = ospf_if_notify;
-  P->ifa_notify = oc->ospf2 ? ospf_ifa_notify2 : ospf_ifa_notify3;
+  P->ifa_notify = cf->ospf2 ? ospf_ifa_notify2 : ospf_ifa_notify3;
   P->import_control = ospf_import_control;
   P->reload_routes = ospf_reload_routes;
   P->make_tmp_attrs = ospf_make_tmp_attrs;
@@ -389,17 +390,16 @@ ospf_schedule_rtcalc(struct ospf_proto *p)
   p->calcrt = 1;
 }
 
-static int
-ospf_reload_routes(struct proto *P)
+static void
+ospf_reload_routes(struct channel *C)
 {
-  struct ospf_proto *p = (struct ospf_proto *) P;
+  struct ospf_proto *p = (struct ospf_proto *) C->proto;
 
-  if (p->calcrt != 2)
-    OSPF_TRACE(D_EVENTS, "Scheduling routing table calculation with route reload");
+  if (p->calcrt == 2)
+    return;
 
+  OSPF_TRACE(D_EVENTS, "Scheduling routing table calculation with route reload");
   p->calcrt = 2;
-
-  return 1;
 }
 
 
@@ -637,17 +637,17 @@ ospf_area_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
  * nonbroadcast network, cost of interface, etc.
  */
 static int
-ospf_reconfigure(struct proto *P, struct proto_config *c)
+ospf_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_config *old = (struct ospf_config *) (P->cf);
-  struct ospf_config *new = (struct ospf_config *) c;
+  struct ospf_config *new = (struct ospf_config *) CF;
   struct ospf_area_config *nac;
   struct ospf_area *oa, *oax;
   struct ospf_iface *ifa, *ifx;
   struct ospf_iface_patt *ip;
 
-  if (proto_get_router_id(c) != p->router_id)
+  if (proto_get_router_id(CF) != p->router_id)
     return 0;
 
   if (p->ospf2 != new->ospf2)
@@ -657,6 +657,9 @@ ospf_reconfigure(struct proto *P, struct proto_config *c)
     return 0;
 
   if (old->abr != new->abr)
+    return 0;
+
+  if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
     return 0;
 
   p->stub_router = new->stub_router;
@@ -1465,6 +1468,8 @@ struct protocol proto_ospf = {
   .template =		"ospf%d",
   .attr_class =		EAP_OSPF,
   .preference =		DEF_PREF_OSPF,
+  .channel_mask =	NB_IP,
+  .proto_size =		sizeof(struct ospf_proto),
   .config_size =	sizeof(struct ospf_config),
   .init =		ospf_init,
   .dump =		ospf_dump,

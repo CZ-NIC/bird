@@ -4,6 +4,13 @@
 #include "lib/net.h"
 
 
+const char * const net_label[] = {
+  [NET_IP4] = "ipv4",
+  [NET_IP6] = "ipv6",
+  [NET_VPN4] = "vpn4",
+  [NET_VPN6] = "vpn6"
+};
+
 const u16 net_addr_length[] = {
   [NET_IP4] = sizeof(net_addr_ip4),
   [NET_IP6] = sizeof(net_addr_ip6),

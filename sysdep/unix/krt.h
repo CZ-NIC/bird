@@ -49,7 +49,6 @@ struct krt_config {
   int learn;			/* Learn routes from other sources */
   int devroutes;		/* Allow export of device routes */
   int graceful_restart;		/* Regard graceful restart recovery */
-  int merge_paths;		/* Exported routes are merged for ECMP */
 };
 
 struct krt_proto {

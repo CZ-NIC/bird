@@ -68,6 +68,10 @@ ospf_proto_finish(void)
   if (EMPTY_LIST(cf->area_list))
     cf_error( "No configured areas in OSPF");
 
+  /* Define default channel */
+  if (EMPTY_LIST(this_proto->channels))
+    channel_config_new(NULL, this_proto->net_type, this_proto);
+
   int areano = 0;
   int backbone = 0;
   int nssa = 0;
@@ -84,7 +88,7 @@ ospf_proto_finish(void)
   cf->abr = areano > 1;
 
   /* Route export or NSSA translation (RFC 3101 3.1) */
-  cf->asbr = (this_proto->out_filter != FILTER_REJECT) || (nssa && cf->abr);
+  cf->asbr = (proto_cf_main_channel(this_proto)->out_filter != FILTER_REJECT) || (nssa && cf->abr);
 
   if (cf->abr && !backbone)
   {
@@ -145,14 +149,16 @@ ospf_variant:
  | OSPF3 { $$ = 0; }
  ;
 
-ospf_proto_start: proto_start ospf_variant {
-     this_proto = proto_config_new(&proto_ospf, $1);
-     init_list(&OSPF_CFG->area_list);
-     init_list(&OSPF_CFG->vlink_list);
-     OSPF_CFG->tick = OSPF_DEFAULT_TICK;
-     OSPF_CFG->ospf2 = $2;
-  }
- ;
+ospf_proto_start: proto_start ospf_variant
+{
+  this_proto = proto_config_new(&proto_ospf, $1);
+  this_proto->net_type = $2 ? NET_IP4 : NET_IP6;
+
+  init_list(&OSPF_CFG->area_list);
+  init_list(&OSPF_CFG->vlink_list);
+  OSPF_CFG->tick = OSPF_DEFAULT_TICK;
+  OSPF_CFG->ospf2 = $2;
+};
 
 ospf_proto:
    ospf_proto_start proto_name '{'
@@ -161,6 +167,7 @@ ospf_proto:
 
 ospf_proto_item:
    proto_item
+ | proto_channel
  | RFC1583COMPAT bool { OSPF_CFG->rfc1583 = $2; }
  | STUB ROUTER bool { OSPF_CFG->stub_router = $3; }
  | ECMP bool { OSPF_CFG->ecmp = $2 ? OSPF_DEFAULT_ECMP_LIMIT : 0; }

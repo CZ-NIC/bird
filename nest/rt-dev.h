@@ -14,4 +14,10 @@ struct rt_dev_config {
   list iface_list;		/* list of struct iface_patt */
 };
 
+struct rt_dev_proto {
+  struct proto p;
+  struct channel *ip4_channel;
+  struct channel *ip6_channel;
+};
+
 #endif

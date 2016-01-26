@@ -69,23 +69,6 @@ its state by calling the <func/proto_notify_state/ function.
 
 <p>At any time, the core code can ask the protocol to shut itself down by calling its stop() hook.
 
-<p>The <em/core state machine/ takes care of the core view of protocol state.
-The states are traversed according to changes of the protocol state machine, but
-sometimes the transitions are delayed if the core needs to finish some actions
-(for example sending of new routes to the protocol) before proceeding to the
-new state. There are the following core states:
-
-<descrip>
-	<tag/FS_HUNGRY/ The protocol is down, it doesn't have any routes and
-	doesn't want them.
-	<tag/FS_FEEDING/ The protocol has reached the <tt/PS_UP/ state, but
-	we are still busy sending the initial set of routes to it.
-	<tag/FS_HAPPY/ The protocol is up and has complete routing information.
-	<tag/FS_FLUSHING/ The protocol is shutting down (it's in either <tt/PS_STOP/
-	or <tt/PS_DOWN/ state) and we're flushing all of its routes from the
-	routing tables.
-</descrip>
-
 <sect1>Functions of the protocol module
 
 <p>The protocol module provides the following functions:

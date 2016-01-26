@@ -46,6 +46,7 @@ CF_DECLS
   struct symbol *s;
   char *t;
   struct rtable_config *r;
+  struct channel_config *cc;
   struct f_inst *x;
   struct filter *f;
   struct f_tree *e;
@@ -61,6 +62,7 @@ CF_DECLS
   bird_clock_t time;
   struct f_prefix px;
   struct proto_spec ps;
+  struct channel_limit cl;
   struct timeformat *tf;
 }
 

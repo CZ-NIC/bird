@@ -50,8 +50,7 @@ struct radv_config
   list rdnss_list;		/* Global list of RDNSS configs (struct radv_rdnss_config) */
   list dnssl_list;		/* Global list of DNSSL configs (struct radv_dnssl_config) */
 
-  net_addr *trigger;		/* Prefix of a trigger route, if defined */
-  u8 trigger_valid;		/* Whether a trigger route is defined */
+  net_addr trigger;		/* Prefix of a trigger route, if defined */
 };
 
 struct radv_iface_config

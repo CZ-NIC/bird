@@ -1372,7 +1372,6 @@ static void
 bgp_copy_config(struct proto_config *dest, struct proto_config *src)
 {
   /* Just a shallow copy */
-  proto_copy_rest(dest, src, sizeof(struct bgp_config));
 }
 
 

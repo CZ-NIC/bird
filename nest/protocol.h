@@ -11,7 +11,9 @@
 
 #include "lib/lists.h"
 #include "lib/resource.h"
+#include "lib/event.h"
 #include "lib/timer.h"
+#include "nest/route.h"
 #include "conf/conf.h"
 
 struct iface;
@@ -22,12 +24,15 @@ struct neighbor;
 struct rta;
 struct network;
 struct proto_config;
+struct channel_limit;
+struct channel_config;
 struct config;
 struct proto;
-struct event;
+struct channel;
 struct ea_list;
 struct eattr;
 struct symbol;
+
 
 /*
  *	Routing Protocol
@@ -39,9 +44,10 @@ struct protocol {
   char *template;			/* Template for automatic generation of names */
   int name_counter;			/* Counter for automatic name generation */
   int attr_class;			/* Attribute class known to this protocol */
-  int multitable;			/* Protocol handles all announce hooks itself */
   uint preference;			/* Default protocol preference */
-  uint config_size;			/* Size of protocol config */
+  uint channel_mask;			/* Mask of accepted channel types (NB_*) */
+  uint proto_size;			/* Size of protocol data structure */
+  uint config_size;			/* Size of protocol config data structure */
 
   void (*preconfig)(struct protocol *, struct config *);	/* Just before configuring */
   void (*postconfig)(struct proto_config *);			/* After configuring each instance */
@@ -62,7 +68,6 @@ struct protocol {
 void protos_build(void);
 void proto_build(struct protocol *);
 void protos_preconfig(struct config *);
-void protos_postconfig(struct config *);
 void protos_commit(struct config *new, struct config *old, int force_restart, int type);
 void protos_dump_all(void);
 
@@ -90,16 +95,12 @@ struct proto_config {
   char *name;
   char *dsc;
   int class;				/* SYM_PROTO or SYM_TEMPLATE */
+  u8 net_type;				/* Protocol network type (NET_*), 0 for undefined */
+  u8 disabled;				/* Protocol enabled/disabled by default */
   u32 debug, mrtdump;			/* Debugging bitfields, both use D_* constants */
-  unsigned preference, disabled;	/* Generic parameters */
-  int in_keep_filtered;			/* Routes rejected in import filter are kept */
   u32 router_id;			/* Protocol specific router ID */
-  struct rtable_config *table;		/* Table we're attached to */
-  struct filter *in_filter, *out_filter; /* Attached filters */
-  struct proto_limit *rx_limit;		/* Limit for receiving routes from protocol
-					   (relevant when in_keep_filtered is active) */
-  struct proto_limit *in_limit;		/* Limit for importing routes from protocol */
-  struct proto_limit *out_limit;	/* Limit for exporting routes to protocol */
+
+  list channels;			/* List of channel configs (struct channel_config) */
 
   /* Check proto_reconfigure() and proto_copy_config() after changing struct proto_config */
 
@@ -111,7 +112,6 @@ struct proto_stats {
   /* Import - from protocol to core */
   u32 imp_routes;		/* Number of routes successfully imported to the (adjacent) routing table */
   u32 filt_routes;		/* Number of routes rejected in import filter but kept in the routing table */
-  u32 pref_routes;		/* Number of routes that are preferred, sum over all routing tables */
   u32 imp_updates_received;	/* Number of route updates received */
   u32 imp_updates_invalid;	/* Number of route updates rejected as invalid */
   u32 imp_updates_filtered;	/* Number of route updates rejected by filters */
@@ -133,36 +133,34 @@ struct proto_stats {
 };
 
 struct proto {
-  node n;				/* Node in *_proto_list */
-  node glob_node;			/* Node in global proto_list */
+  node n;				/* Node in global proto_list */
   struct protocol *proto;		/* Protocol */
   struct proto_config *cf;		/* Configuration data */
   struct proto_config *cf_new;		/* Configuration we want to switch to after shutdown (NULL=delete) */
   pool *pool;				/* Pool containing local objects */
-  struct event *attn;			/* "Pay attention" event */
+  event *event;				/* Protocol event */
+
+  list channels;			/* List of channels to rtables (struct channel) */
+  struct channel *main_channel;		/* Primary channel */
+  struct rte_src *main_source;		/* Primary route source */
 
   char *name;				/* Name of this instance (== cf->name) */
   u32 debug;				/* Debugging flags */
   u32 mrtdump;				/* MRTDump flags */
-  unsigned preference;			/* Default route preference */
-  byte accept_ra_types;			/* Which types of route announcements are accepted (RA_OPTIMAL or RA_ANY) */
+  uint active_channels;			/* Number of active channels */
+  byte net_type;			/* Protocol network type (NET_*), 0 for undefined */
   byte disabled;			/* Manually disabled */
   byte proto_state;			/* Protocol state machine (PS_*, see below) */
-  byte core_state;			/* Core state machine (FS_*, see below) */
-  byte export_state;			/* Route export state (ES_*, see below) */
+  byte active;				/* From PS_START to cleanup after PS_STOP */
+  byte do_start;			/* Start actions are scheduled */
+  byte do_stop;				/* Stop actions are scheduled */
   byte reconfiguring;			/* We're shutting down due to reconfiguration */
-  byte refeeding;			/* We are refeeding (valid only if export_state == ES_FEEDING) */
-  byte flushing;			/* Protocol is flushed in current flush loop round */
   byte gr_recovery;			/* Protocol should participate in graceful restart recovery */
-  byte gr_lock;				/* Graceful restart mechanism should wait for this proto */
-  byte gr_wait;				/* Route export to protocol is postponed until graceful restart */
   byte down_sched;			/* Shutdown is scheduled for later (PDS_*) */
   byte down_code;			/* Reason for shutdown (PDC_* codes) */
-  byte merge_limit;			/* Maximal number of nexthops for RA_MERGED */
   u32 hash_key;				/* Random key used for hashing of neighbors */
   bird_clock_t last_state_change;	/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
-  struct proto_stats stats;		/* Current protocol statistics */
 
   /*
    *	General protocol hooks:
@@ -177,11 +175,11 @@ struct proto {
    *			It can construct a new rte, add private attributes and
    *			decide whether the route shall be imported: 1=yes, -1=no,
    *			0=process it through the import filter set by the user.
-   *	   reload_routes   Request protocol to reload all its routes to the core
+   *	   reload_routes   Request channel to reload all its routes to the core
    *			(using rte_update()). Returns: 0=reload cannot be done,
    *			1= reload is scheduled and will happen (asynchronously).
-   *	   feed_begin	Notify protocol about beginning of route feeding.
-   *	   feed_end	Notify protocol about finish of route feeding.
+   *	   feed_begin	Notify channel about beginning of route feeding.
+   *	   feed_end	Notify channel about finish of route feeding.
    */
 
   void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
@@ -191,9 +189,9 @@ struct proto {
   struct ea_list *(*make_tmp_attrs)(struct rte *rt, struct linpool *pool);
   void (*store_tmp_attrs)(struct rte *rt, struct ea_list *attrs);
   int (*import_control)(struct proto *, struct rte **rt, struct ea_list **attrs, struct linpool *pool);
-  int (*reload_routes)(struct proto *);
-  void (*feed_begin)(struct proto *, int initial);
-  void (*feed_end)(struct proto *);
+  void (*reload_routes)(struct channel *);
+  void (*feed_begin)(struct channel *, int initial);
+  void (*feed_end)(struct channel *);
 
   /*
    *	Routing entry hooks (called only for routes belonging to this protocol):
@@ -212,14 +210,6 @@ struct proto {
   int (*rte_mergable)(struct rte *, struct rte *);
   void (*rte_insert)(struct network *, struct rte *);
   void (*rte_remove)(struct network *, struct rte *);
-
-  struct rtable *table;			/* Our primary routing table */
-  struct rte_src *main_source;		/* Primary route source */
-  struct announce_hook *main_ahook;	/* Primary announcement hook */
-  struct announce_hook *ahooks;		/* Announcement hooks for this protocol */
-
-  struct fib_iterator *feed_iterator;	/* Routing table iterator used during protocol feeding */
-  struct announce_hook *feed_ahook;	/* Announce hook we currently feed */
 
   /* Hic sunt protocol-specific data */
 };
@@ -244,25 +234,20 @@ struct proto_spec {
 #define PDC_OUT_LIMIT_HIT	0x23	/* Route export limit reached */
 
 
-void *proto_new(struct proto_config *, unsigned size);
+void *proto_new(struct proto_config *);
 void *proto_config_new(struct protocol *, int class);
 void proto_copy_config(struct proto_config *dest, struct proto_config *src);
-void proto_request_feeding(struct proto *p);
-
-static inline void
-proto_copy_rest(struct proto_config *dest, struct proto_config *src, unsigned size)
-{ memcpy(dest + 1, src + 1, size - sizeof(struct proto_config)); }
 
 void graceful_restart_recovery(void);
 void graceful_restart_init(void);
 void graceful_restart_show_status(void);
-void proto_graceful_restart_lock(struct proto *p);
-void proto_graceful_restart_unlock(struct proto *p);
+void channel_graceful_restart_lock(struct channel *c);
+void channel_graceful_restart_unlock(struct channel *c);
 
 #define DEFAULT_GR_WAIT	240
 
-void proto_show_limit(struct proto_limit *l, const char *dsc);
-void proto_show_basic_info(struct proto *p);
+void channel_show_limit(struct channel_limit *l, const char *dsc);
+void channel_show_info(struct channel *c);
 
 void proto_cmd_show(struct proto *, uint, int);
 void proto_cmd_disable(struct proto *, uint, int);
@@ -285,7 +270,10 @@ proto_get_router_id(struct proto_config *pc)
   return pc->router_id ? pc->router_id : pc->global->router_id;
 }
 
-extern list active_proto_list;
+/* Moved from route.h to avoid dependency conflicts */
+static inline void rte_update(struct proto *p, net *net, rte *new) { rte_update2(p->main_channel, net, new, p->main_source); }
+
+extern list proto_list;
 
 /*
  *  Each protocol instance runs two different state machines:
@@ -361,16 +349,6 @@ void proto_notify_state(struct proto *p, unsigned state);
  *	as a result of received ROUTE-REFRESH request).
  */
 
-#define FS_HUNGRY	0
-#define FS_FEEDING	1	/* obsolete */
-#define FS_HAPPY	2
-#define FS_FLUSHING	3
-
-
-#define ES_DOWN		0
-#define ES_FEEDING	1
-#define ES_READY	2
-
 
 
 /*
@@ -413,6 +391,7 @@ extern struct proto_config *cf_dev_proto;
 #define PLD_OUT		2	/* Export limit */
 #define PLD_MAX		3
 
+#define PLA_NONE	0	/* No limit */
 #define PLA_WARN	1	/* Issue log warning */
 #define PLA_BLOCK	2	/* Block new routes */
 #define PLA_RESTART	4	/* Force protocol restart */
@@ -422,42 +401,176 @@ extern struct proto_config *cf_dev_proto;
 #define PLS_ACTIVE	1	/* Limit was hit */
 #define PLS_BLOCKED	2	/* Limit is active and blocking new routes */
 
-struct proto_limit {
+struct channel_limit {
   u32 limit;			/* Maximum number of prefixes */
-  byte action;			/* Action to take (PLA_*) */
-  byte state;			/* State of limit (PLS_*) */
+  u8 action;			/* Action to take (PLA_*) */
+  u8 state;			/* State of limit (PLS_*) */
 };
 
-void proto_notify_limit(struct announce_hook *ah, struct proto_limit *l, int dir, u32 rt_count);
-void proto_verify_limits(struct announce_hook *ah);
-
-static inline void
-proto_reset_limit(struct proto_limit *l)
-{
-  if (l)
-    l->state = PLS_INITIAL;
-}
+void channel_notify_limit(struct channel *c, struct channel_limit *l, int dir, u32 rt_count);
 
 
 /*
- *	Route Announcement Hook
+ *	Channels
  */
 
-struct announce_hook {
-  node n;
-  struct rtable *table;
-  struct proto *proto;
-  struct filter *in_filter;		/* Input filter */
-  struct filter *out_filter;		/* Output filter */
-  struct proto_limit *rx_limit;		/* Receive limit (for in_keep_filtered) */
-  struct proto_limit *in_limit;		/* Input limit */
-  struct proto_limit *out_limit;	/* Output limit */
-  struct proto_stats *stats;		/* Per-table protocol statistics */
-  struct announce_hook *next;		/* Next hook for the same protocol */
-  int in_keep_filtered;			/* Routes rejected in import filter are kept */
+struct channel_class {
+  uint channel_size;			/* Size of channel data structure */
+  uint config_size;			/* Size of channel config data structure */
+
+  struct channel * (*init)(struct channel *, struct channel_config *);	/* Create new instance */
+  int (*reconfigure)(struct channel *, struct channel_config *);	/* Try to reconfigure instance, returns success */
+  int (*start)(struct channel *);	/* Start the instance */
+  int (*shutdown)(struct channel *);	/* Stop the instance */
+
+  void (*copy_config)(struct channel_config *, struct channel_config *); /* Copy config from given channel instance */
+#if 0
+  void (*preconfig)(struct protocol *, struct config *);	/* Just before configuring */
+  void (*postconfig)(struct proto_config *);			/* After configuring each instance */
+
+
+  void (*dump)(struct proto *);			/* Debugging dump */
+  void (*dump_attrs)(struct rte *);		/* Dump protocol-dependent attributes */
+  void (*cleanup)(struct proto *);		/* Called after shutdown when protocol became hungry/down */
+  void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
+  void (*get_route_info)(struct rte *, byte *buf, struct ea_list *attrs); /* Get route information (for `show route' command) */
+  int (*get_attr)(struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
+  void (*show_proto_info)(struct proto *);	/* Show protocol info (for `show protocols all' command) */
+
+#endif
 };
 
-struct announce_hook *proto_add_announce_hook(struct proto *p, struct rtable *t, struct proto_stats *stats);
-struct announce_hook *proto_find_announce_hook(struct proto *p, struct rtable *t);
+struct channel_config {
+  node n;
+  const char *name;
+  const struct channel_class *channel;
+
+  struct rtable_config *table;		/* Table we're attached to */
+  struct filter *in_filter, *out_filter; /* Attached filters */
+  struct channel_limit rx_limit;	/* Limit for receiving routes from protocol
+					   (relevant when in_keep_filtered is active) */
+  struct channel_limit in_limit;	/* Limit for importing routes from protocol */
+  struct channel_limit out_limit;	/* Limit for exporting routes to protocol */
+
+  u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
+  u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
+  u16 preference;			/* Default route preference */
+  u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
+  u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
+};
+
+struct channel {
+  node n;				/* Node in proto->channels */
+  node table_node;			/* Node in table->channels */
+
+  const char *name;			/* Channel name (may be NULL) */
+  const struct channel_class *channel;
+  struct proto *proto;
+
+  struct rtable *table;
+  struct filter *in_filter;		/* Input filter */
+  struct filter *out_filter;		/* Output filter */
+  struct channel_limit rx_limit;	/* Receive limit (for in_keep_filtered) */
+  struct channel_limit in_limit;	/* Input limit */
+  struct channel_limit out_limit;	/* Output limit */
+
+  struct event *feed_event;		/* Event responsible for feeding */
+  struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
+  struct proto_stats stats;		/* Per-channel protocol statistics */
+
+  u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
+  u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
+  u16 preference;			/* Default route preference */
+  u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
+  u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
+  u8 disabled;
+
+  u8 channel_state;
+  u8 export_state;			/* Route export state (ES_*, see below) */
+  u8 feed_active;
+  u8 flush_active;
+  u8 refeeding;				/* We are refeeding (valid only if export_state == ES_FEEDING) */
+  u8 reloadable;			/* Hook reload_routes() is allowed on the channel */
+  u8 gr_lock;				/* Graceful restart mechanism should wait for this channel */
+  u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
+
+  bird_clock_t last_state_change;	/* Time of last state transition */
+};
+
+
+/*
+ * Channel states
+ *
+ * CS_DOWN - The initial and the final state of a channel. There is no route
+ * exchange between the protocol and the table. Channel is not counted as
+ * active. Channel keeps a ptr to the table, but do not lock the table and is
+ * not linked in the table. Generally, new closed channels are created in
+ * protocols' init() hooks. The protocol is expected to explicitly activate its
+ * channels (by calling channel_init() or channel_open()).
+ *
+ * CS_START - The channel as a connection between the protocol and the table is
+ * initialized (counted as active by the protocol, linked in the table and keeps
+ * the table locked), but there is no current route exchange. There still may be
+ * routes associated with the channel in the routing table if the channel falls
+ * to CS_START from CS_UP. Generally, channels are initialized in protocols'
+ * start() hooks when going to PS_START.
+ *
+ * CS_UP - The channel is initialized and the route exchange is allowed. Note
+ * that even in CS_UP state, route export may still be down (ES_DOWN) by the
+ * core decision (e.g. waiting for table convergence after graceful restart).
+ * I.e., the protocol decides to open the channel but the core decides to start
+ * route export. Route import (caused by rte_update() from the protocol) is not
+ * restricted by that and is on volition of the protocol. Generally, channels
+ * are opened in protocols' start() hooks when going to PS_UP.
+ *
+ * CS_FLUSHING - The transitional state between initialized channel and closed
+ * channel. The channel is still initialized, but no route exchange is allowed.
+ * Instead, the associated table is running flush loop to remove routes imported
+ * through the channel. After that, the channel changes state to CS_DOWN and
+ * is detached from the table (the table is unlocked and the channel is unlinked
+ * from it). Unlike other states, the CS_FLUSHING state is not explicitly
+ * entered or left by the protocol. A protocol may request to close a channel
+ * (by calling channel_close()), which causes the channel to change state to
+ * CS_FLUSHING and later to CS_DOWN. Also note that channels are closed
+ * automatically by the core when the protocol is going down.
+ *
+ * Allowed transitions:
+ *
+ * CS_DOWN	-> CS_START / CS_UP
+ * CS_START	-> CS_UP / CS_FLUSHING
+ * CS_UP	-> CS_START / CS_FLUSHING
+ * CS_FLUSHING	-> CS_DOWN (automatic)
+ */
+
+#define CS_DOWN		0
+#define CS_START	1
+#define CS_UP		2
+#define CS_FLUSHING	3
+
+#define ES_DOWN		0
+#define ES_FEEDING	1
+#define ES_READY	2
+
+
+struct channel_config *proto_cf_find_channel(struct proto_config *p, uint net_type);
+static inline struct channel_config *proto_cf_main_channel(struct proto_config *pc)
+{ struct channel_config *cc = HEAD(pc->channels); return NODE_VALID(cc) ? cc : NULL; }
+
+struct channel *proto_find_channel_by_table(struct proto *p, struct rtable *t);
+struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
+int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);
+
+void channel_set_state(struct channel *c, uint state);
+
+/*
+static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }
+static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP); }
+static inline void channel_close(struct channel *c) { channel_set_state(c, CS_FLUSHING); }
+*/
+
+void channel_request_feeding(struct channel *c);
+void *channel_config_new(const struct channel_class *cc, uint net_type, struct proto_config *proto);
+int channel_reconfigure(struct channel *c, struct channel_config *cf);
+
 
 #endif

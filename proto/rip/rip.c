@@ -143,7 +143,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   if (rt)
   {
     /* Update */
-    net *n = net_get(p->p.table, en->n.addr);
+    net *n = net_get(p->p.main_channel->table, en->n.addr);
 
     rta a0 = {
       .src = p->p.main_source,
@@ -212,7 +212,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   else
   {
     /* Withdraw */
-    net *n = net_find(p->p.table, en->n.addr);
+    net *n = net_find(p->p.main_channel->table, en->n.addr);
     rte_update(&p->p, n, NULL);
   }
 }
@@ -1027,19 +1027,17 @@ rip_import_control(struct proto *P, struct rte **rt, struct ea_list **attrs, str
   return 0;
 }
 
-static int
-rip_reload_routes(struct proto *P)
+static void
+rip_reload_routes(struct channel *C)
 {
-  struct rip_proto *p = (struct rip_proto *) P;
+  struct rip_proto *p = (struct rip_proto *) C->proto;
 
   if (p->rt_reload)
-    return 1;
+    return;
 
   TRACE(D_EVENTS, "Scheduling route reload");
   p->rt_reload = 1;
   rip_kick_timer(p);
-
-  return 1;
 }
 
 static struct ea_list *
@@ -1070,12 +1068,23 @@ rip_rte_same(struct rte *new, struct rte *old)
 }
 
 
-static struct proto *
-rip_init(struct proto_config *cfg)
+static void
+rip_postconfig(struct proto_config *CF)
 {
-  struct proto *P = proto_new(cfg, sizeof(struct rip_proto));
+  // struct rip_config *cf = (void *) CF;
 
-  P->accept_ra_types = RA_OPTIMAL;
+  /* Define default channel */
+  if (EMPTY_LIST(CF->channels))
+    channel_config_new(NULL, CF->net_type, CF);
+}
+
+static struct proto *
+rip_init(struct proto_config *CF)
+{
+  struct proto *P = proto_new(CF);
+
+  P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
+
   P->if_notify = rip_if_notify;
   P->rt_notify = rip_rt_notify;
   P->neigh_notify = rip_neigh_notify;
@@ -1115,10 +1124,10 @@ rip_start(struct proto *P)
 }
 
 static int
-rip_reconfigure(struct proto *P, struct proto_config *c)
+rip_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct rip_proto *p = (void *) P;
-  struct rip_config *new = (void *) c;
+  struct rip_config *new = (void *) CF;
   // struct rip_config *old = (void *) (P->cf);
 
   if (new->rip2 != p->rip2)
@@ -1127,9 +1136,12 @@ rip_reconfigure(struct proto *P, struct proto_config *c)
   if (new->infinity != p->infinity)
     return 0;
 
+  if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
+    return 0;
+
   TRACE(D_EVENTS, "Reconfiguring");
 
-  p->p.cf = c;
+  p->p.cf = CF;
   p->ecmp = new->ecmp;
   rip_reconfigure_ifaces(p, new);
 
@@ -1270,7 +1282,10 @@ struct protocol proto_rip = {
   .template =		"rip%d",
   .attr_class =		EAP_RIP,
   .preference =		DEF_PREF_RIP,
+  .channel_mask =	NB_IP,
+  .proto_size =		sizeof(struct rip_proto),
   .config_size =	sizeof(struct rip_config),
+  .postconfig =		rip_postconfig,
   .init =		rip_init,
   .dump =		rip_dump,
   .start =		rip_start,

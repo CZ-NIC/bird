@@ -54,7 +54,7 @@ static inline rtable *
 p_igp_table(struct proto *p)
 {
   struct static_config *cf = (void *) p->cf;
-  return cf->igp_table ? cf->igp_table->table : p->table;
+  return cf->igp_table ? cf->igp_table->table : p->main_channel->table;
 }
 
 static void
@@ -108,11 +108,11 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
     }
 
   if (r->dest == RTDX_RECURSIVE)
-    rta_set_recursive_next_hop(p->table, &a, p_igp_table(p), &r->via, &r->via);
+    rta_set_recursive_next_hop(p->main_channel->table, &a, p_igp_table(p), &r->via, &r->via);
 
   /* We skip rta_lookup() here */
 
-  n = net_get(p->table, r->net);
+  n = net_get(p->main_channel->table, r->net);
   e = rte_get_temp(&a);
   e->net = n;
   e->pflags = 0;
@@ -136,7 +136,7 @@ static_remove(struct proto *p, struct static_route *r)
     return;
 
   DBG("Removing static route %N via %I\n", r->net, r->via);
-  n = net_find(p->table, r->net);
+  n = net_find(p->main_channel->table, r->net);
   rte_update(p, n, NULL);
   r->installed = 0;
 }
@@ -309,6 +309,17 @@ static_shutdown(struct proto *p)
     r->installed = 0;
   }
 
+  /* Handle failure during channel reconfigure */
+  /* FIXME: This should be handled in a better way */
+  cf = (void *) p->cf_new;
+  if (cf)
+  {
+    WALK_LIST(r, cf->iface_routes)
+      r->installed = 0;
+    WALK_LIST(r, cf->other_routes)
+      r->installed = 0;
+  }
+
   return PS_DOWN;
 }
 
@@ -450,16 +461,40 @@ static_init_config(struct static_config *c)
   init_list(&c->other_routes);
 }
 
-static struct proto *
-static_init(struct proto_config *c)
+static void
+static_postconfig(struct proto_config *CF)
 {
-  struct proto *p = proto_new(c, sizeof(struct proto));
+  struct static_config *cf = (void *) CF;
+  struct static_route *r;
 
-  p->neigh_notify = static_neigh_notify;
-  p->if_notify = static_if_notify;
-  p->rte_mergable = static_rte_mergable;
+  if (EMPTY_LIST(CF->channels))
+    cf_error("Channel not specified");
 
-  return p;
+
+  WALK_LIST(r, cf->iface_routes)
+    if (r->net->type != CF->net_type)
+      cf_error("Route %N incompatible with channel type", r->net);
+
+  WALK_LIST(r, cf->other_routes)
+    if (r->net->type != CF->net_type)
+      cf_error("Route %N incompatible with channel type", r->net);
+}
+
+
+static struct proto *
+static_init(struct proto_config *CF)
+{
+  struct proto *P = proto_new(CF);
+  // struct static_proto *p = (void *) P;
+  // struct static_config *cf = (void *) CF;
+
+  P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
+
+  P->neigh_notify = static_neigh_notify;
+  P->if_notify = static_if_notify;
+  P->rte_mergable = static_rte_mergable;
+
+  return P;
 }
 
 static inline int
@@ -543,13 +578,16 @@ cf_igp_table(struct static_config *cf)
 }
 
 static int
-static_reconfigure(struct proto *p, struct proto_config *new)
+static_reconfigure(struct proto *p, struct proto_config *CF)
 {
   struct static_config *o = (void *) p->cf;
-  struct static_config *n = (void *) new;
+  struct static_config *n = (void *) CF;
   struct static_route *r;
 
   if (cf_igp_table(o) != cf_igp_table(n))
+    return 0;
+
+  if (!proto_configure_channel(p, &p->main_channel, proto_cf_main_channel(CF)))
     return 0;
 
   /* Delete all obsolete routes and reset neighbor entries */
@@ -617,20 +655,19 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
   struct static_config *d = (struct static_config *) dest;
   struct static_config *s = (struct static_config *) src;
 
-  /* Shallow copy of everything */
-  proto_copy_rest(dest, src, sizeof(struct static_config));
-
   /* Copy route lists */
   static_copy_routes(&d->iface_routes, &s->iface_routes);
   static_copy_routes(&d->other_routes, &s->other_routes);
 }
 
-
 struct protocol proto_static = {
   .name =		"Static",
   .template =		"static%d",
   .preference =		DEF_PREF_STATIC,
+  .channel_mask =	NB_ANY,
+  .proto_size =		sizeof(struct proto),
   .config_size =	sizeof(struct static_config),
+  .postconfig =		static_postconfig,
   .init =		static_init,
   .dump =		static_dump,
   .start =		static_start,

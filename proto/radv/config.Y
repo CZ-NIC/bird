@@ -41,6 +41,7 @@ CF_ADDTO(proto, radv_proto)
 radv_proto_start: proto_start RADV
 {
   this_proto = proto_config_new(&proto_radv, $1);
+
   init_list(&RADV_CFG->patt_list);
   init_list(&RADV_CFG->pref_list);
   init_list(&RADV_CFG->rdnss_list);
@@ -49,14 +50,12 @@ radv_proto_start: proto_start RADV
 
 radv_proto_item:
    proto_item
+ | proto_channel
  | INTERFACE radv_iface
  | PREFIX radv_prefix { add_tail(&RADV_CFG->pref_list, NODE this_radv_prefix); }
  | RDNSS { init_list(&radv_dns_list); } radv_rdnss { add_tail_list(&RADV_CFG->rdnss_list, &radv_dns_list); }
  | DNSSL { init_list(&radv_dns_list); } radv_dnssl { add_tail_list(&RADV_CFG->dnssl_list, &radv_dns_list); }
- | TRIGGER net_any {
-     RADV_CFG->trigger = $2;
-     RADV_CFG->trigger_valid = 1;
-   }
+ | TRIGGER net_ip6 { RADV_CFG->trigger = $2; }
  ;
 
 radv_proto_opts:

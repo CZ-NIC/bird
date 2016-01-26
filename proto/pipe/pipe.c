@@ -46,9 +46,8 @@
 static void
 pipe_rt_notify(struct proto *P, rtable *src_table, net *n, rte *new, rte *old, ea_list *attrs)
 {
-  struct pipe_proto *p = (struct pipe_proto *) P;
-  struct announce_hook *ah = (src_table == P->table) ? p->peer_ahook : P->main_ahook;
-  rtable *dst_table = ah->table;
+  struct pipe_proto *p = (void *) P;
+  struct channel *dst = (src_table == p->pri->table) ? p->sec : p->pri;
   struct rte_src *src;
 
   net *nn;
@@ -58,23 +57,17 @@ pipe_rt_notify(struct proto *P, rtable *src_table, net *n, rte *new, rte *old, e
   if (!new && !old)
     return;
 
-  if (dst_table->pipe_busy)
+  if (dst->table->pipe_busy)
     {
       log(L_ERR "Pipe loop detected when sending %N to table %s",
-	  n->n.addr, dst_table->name);
+	  n->n.addr, dst->table->name);
       return;
     }
 
-  nn = net_get(dst_table, n->n.addr);
+  nn = net_get(dst->table, n->n.addr);
   if (new)
     {
       memcpy(&a, new->attrs, sizeof(rta));
-
-      if (p->mode == PIPE_OPAQUE)
-	{
-	  a.src = P->main_source;
-	  a.source = RTS_PIPE;
-	}
 
       a.aflags = 0;
       a.eattrs = attrs;
@@ -83,13 +76,10 @@ pipe_rt_notify(struct proto *P, rtable *src_table, net *n, rte *new, rte *old, e
       e->net = nn;
       e->pflags = 0;
 
-      if (p->mode == PIPE_TRANSPARENT)
-	{
-	  /* Copy protocol specific embedded attributes. */
-	  memcpy(&(e->u), &(new->u), sizeof(e->u));
-	  e->pref = new->pref;
-	  e->pflags = new->pflags;
-	}
+      /* Copy protocol specific embedded attributes. */
+      memcpy(&(e->u), &(new->u), sizeof(e->u));
+      e->pref = new->pref;
+      e->pflags = new->pflags;
 
       src = a.src;
     }
@@ -100,7 +90,7 @@ pipe_rt_notify(struct proto *P, rtable *src_table, net *n, rte *new, rte *old, e
     }
 
   src_table->pipe_busy = 1;
-  rte_update2(ah, nn, e, src);
+  rte_update2(dst, nn, e, src);
   src_table->pipe_busy = 0;
 }
 
@@ -111,171 +101,117 @@ pipe_import_control(struct proto *P, rte **ee, ea_list **ea UNUSED, struct linpo
 
   if (pp == P)
     return -1;	/* Avoid local loops automatically */
+
   return 0;
 }
 
-static int
-pipe_reload_routes(struct proto *P)
+static void
+pipe_reload_routes(struct channel *C)
 {
-  struct pipe_proto *p = (struct pipe_proto *) P;
+  struct pipe_proto *p = (void *) C->proto;
 
-  /*
-   * Because the pipe protocol feeds routes from both routing tables
-   * together, both directions are reloaded during refeed and 'reload
-   * out' command works like 'reload' command. For symmetry, we also
-   * request refeed when 'reload in' command is used.
-   */
-  proto_request_feeding(P);
+  /* Route reload on one channel is just refeed on the other */
+  channel_request_feeding((C == p->pri) ? p->sec : p->pri);
+}
 
-  proto_reset_limit(P->main_ahook->in_limit);
-  proto_reset_limit(p->peer_ahook->in_limit);
 
-  return 1;
+static void
+pipe_postconfig(struct proto_config *CF)
+{
+  struct pipe_config *cf = (void *) CF;
+  struct channel_config *cc = proto_cf_main_channel(CF);
+
+  if (!cc->table)
+    cf_error("Primary routing table not specified");
+
+  if (!cf->peer)
+    cf_error("Secondary routing table not specified");
+
+  if (cc->table == cf->peer)
+    cf_error("Primary table and peer table must be different");
+
+  if (cc->table->addr_type != cf->peer->addr_type)
+    cf_error("Primary table and peer table must have the same type");
+
+  if (cc->rx_limit.action)
+    cf_error("Pipe protocol does not support receive limits");
+
+  if (cc->in_keep_filtered)
+    cf_error("Pipe protocol prohibits keeping filtered routes");
+}
+
+static int
+pipe_configure_channels(struct pipe_proto *p, struct pipe_config *cf)
+{
+  struct channel_config *cc = proto_cf_main_channel(&cf->c);
+
+  struct channel_config pri_cf = {
+    .name = "pri",
+    .channel = cc->channel,
+    .table = cc->table,
+    .out_filter = cc->out_filter,
+    .in_limit = cc->in_limit,
+    .ra_mode = RA_ANY
+  };
+
+  struct channel_config sec_cf = {
+    .name = "sec",
+    .channel = cc->channel,
+    .table = cf->peer,
+    .out_filter = cc->in_filter,
+    .in_limit = cc->out_limit,
+    .ra_mode = RA_ANY
+  };
+
+  return
+    proto_configure_channel(&p->p, &p->pri, &pri_cf) &&
+    proto_configure_channel(&p->p, &p->sec, &sec_cf);
 }
 
 static struct proto *
-pipe_init(struct proto_config *C)
+pipe_init(struct proto_config *CF)
 {
-  struct pipe_config *c = (struct pipe_config *) C;
-  struct proto *P = proto_new(C, sizeof(struct pipe_proto));
-  struct pipe_proto *p = (struct pipe_proto *) P;
+  struct proto *P = proto_new(CF);
+  struct pipe_proto *p = (void *) P;
+  struct pipe_config *cf = (void *) CF;
 
-  p->mode = c->mode;
-  p->peer_table = c->peer->table;
-  P->accept_ra_types = (p->mode == PIPE_OPAQUE) ? RA_OPTIMAL : RA_ANY;
   P->rt_notify = pipe_rt_notify;
   P->import_control = pipe_import_control;
   P->reload_routes = pipe_reload_routes;
+
+  pipe_configure_channels(p, cf);
 
   return P;
 }
 
 static int
-pipe_start(struct proto *P)
+pipe_reconfigure(struct proto *P, struct proto_config *CF)
 {
-  struct pipe_config *cf = (struct pipe_config *) P->cf;
-  struct pipe_proto *p = (struct pipe_proto *) P;
+  struct pipe_proto *p = (void *) P;
+  struct pipe_config *cf = (void *) CF;
 
-  /* Lock both tables, unlock is handled in pipe_cleanup() */
-  rt_lock_table(P->table);
-  rt_lock_table(p->peer_table);
-
-  /* Going directly to PS_UP - prepare for feeding,
-     connect the protocol to both routing tables */
-
-  P->main_ahook = proto_add_announce_hook(P, P->table, &P->stats);
-  P->main_ahook->out_filter = cf->c.out_filter;
-  P->main_ahook->in_limit = cf->c.in_limit;
-  proto_reset_limit(P->main_ahook->in_limit);
-
-  p->peer_ahook = proto_add_announce_hook(P, p->peer_table, &p->peer_stats);
-  p->peer_ahook->out_filter = cf->c.in_filter;
-  p->peer_ahook->in_limit = cf->c.out_limit;
-  proto_reset_limit(p->peer_ahook->in_limit);
-
-  if (p->mode == PIPE_OPAQUE)
-    {
-      P->main_source = rt_get_source(P, 0);
-      rt_lock_source(P->main_source);
-    }
-
-  return PS_UP;
-}
-
-static void
-pipe_cleanup(struct proto *P)
-{
-  struct pipe_proto *p = (struct pipe_proto *) P;
-
-  bzero(&P->stats, sizeof(struct proto_stats));
-  bzero(&p->peer_stats, sizeof(struct proto_stats));
-
-  P->main_ahook = NULL;
-  p->peer_ahook = NULL;
-
-  if (p->mode == PIPE_OPAQUE)
-    rt_unlock_source(P->main_source);
-  P->main_source = NULL;
-
-  rt_unlock_table(P->table);
-  rt_unlock_table(p->peer_table);
-}
-
-static void
-pipe_postconfig(struct proto_config *C)
-{
-  struct pipe_config *c = (struct pipe_config *) C;
-
-  if (!c->peer)
-    cf_error("Name of peer routing table not specified");
-  if (c->peer == C->table)
-    cf_error("Primary table and peer table must be different");
-
-  if (C->in_keep_filtered)
-    cf_error("Pipe protocol prohibits keeping filtered routes");
-  if (C->rx_limit)
-    cf_error("Pipe protocol does not support receive limits");
-}
-
-extern int proto_reconfig_type;
-
-static int
-pipe_reconfigure(struct proto *P, struct proto_config *new)
-{
-  struct pipe_proto *p = (struct pipe_proto *)P;
-  struct proto_config *old = P->cf;
-  struct pipe_config *oc = (struct pipe_config *) old;
-  struct pipe_config *nc = (struct pipe_config *) new;
-
-  if ((oc->peer->table != nc->peer->table) || (oc->mode != nc->mode))
-    return 0;
-
-  /* Update output filters in ahooks */
-  if (P->main_ahook)
-    {
-      P->main_ahook->out_filter = new->out_filter;
-      P->main_ahook->in_limit = new->in_limit;
-      proto_verify_limits(P->main_ahook);
-    }
-
-  if (p->peer_ahook)
-    {
-      p->peer_ahook->out_filter = new->in_filter;
-      p->peer_ahook->in_limit = new->out_limit;
-      proto_verify_limits(p->peer_ahook);
-    }
-
-  if ((P->proto_state != PS_UP) || (proto_reconfig_type == RECONFIG_SOFT))
-    return 1;
-
-  if ((new->preference != old->preference)
-      || ! filter_same(new->in_filter, old->in_filter)
-      || ! filter_same(new->out_filter, old->out_filter))
-    proto_request_feeding(P);
-
-  return 1;
+  return pipe_configure_channels(p, cf);
 }
 
 static void
 pipe_copy_config(struct proto_config *dest, struct proto_config *src)
 {
   /* Just a shallow copy, not many items here */
-  proto_copy_rest(dest, src, sizeof(struct pipe_config));
 }
 
 static void
 pipe_get_status(struct proto *P, byte *buf)
 {
-  struct pipe_proto *p = (struct pipe_proto *) P;
+  struct pipe_proto *p = (void *) P;
 
-  bsprintf(buf, "%c> %s", (p->mode == PIPE_OPAQUE) ? '-' : '=', p->peer_table->name);
+  bsprintf(buf, "%s <=> %s", p->pri->table->name, p->sec->table->name);
 }
 
 static void
 pipe_show_stats(struct pipe_proto *p)
 {
-  struct proto_stats *s1 = &p->p.stats;
-  struct proto_stats *s2 = &p->peer_stats;
+  struct proto_stats *s1 = &p->pri->stats;
+  struct proto_stats *s2 = &p->sec->stats;
 
   /*
    * Pipe stats (as anything related to pipes) are a bit tricky. There
@@ -318,17 +254,16 @@ pipe_show_stats(struct pipe_proto *p)
 static void
 pipe_show_proto_info(struct proto *P)
 {
-  struct pipe_proto *p = (struct pipe_proto *) P;
-  struct pipe_config *cf = (struct pipe_config *) P->cf;
+  struct pipe_proto *p = (void *) P;
 
-  // cli_msg(-1006, "  Table:          %s", P->table->name);
-  // cli_msg(-1006, "  Peer table:     %s", p->peer_table->name);
-  cli_msg(-1006, "  Preference:     %d", P->preference);
-  cli_msg(-1006, "  Input filter:   %s", filter_name(cf->c.in_filter));
-  cli_msg(-1006, "  Output filter:  %s", filter_name(cf->c.out_filter));
+  cli_msg(-1006, "  Channel %s", "main");
+  cli_msg(-1006, "    Table:          %s", p->pri->table->name);
+  cli_msg(-1006, "    Peer table:     %s", p->sec->table->name);
+  cli_msg(-1006, "    Import filter:  %s", filter_name(p->sec->out_filter));
+  cli_msg(-1006, "    Export filter:  %s", filter_name(p->pri->out_filter));
 
-  proto_show_limit(cf->c.in_limit, "Import limit:");
-  proto_show_limit(cf->c.out_limit, "Export limit:");
+  channel_show_limit(&p->pri->in_limit, "Import limit:");
+  channel_show_limit(&p->sec->in_limit, "Export limit:");
 
   if (P->proto_state != PS_DOWN)
     pipe_show_stats(p);
@@ -338,13 +273,10 @@ pipe_show_proto_info(struct proto *P)
 struct protocol proto_pipe = {
   .name =		"Pipe",
   .template =		"pipe%d",
-  .multitable =		1,
-  .preference =		DEF_PREF_PIPE,
+  .proto_size =		sizeof(struct pipe_proto),
   .config_size =	sizeof(struct pipe_config),
   .postconfig =		pipe_postconfig,
   .init =		pipe_init,
-  .start =		pipe_start,
-  .cleanup =		pipe_cleanup,
   .reconfigure =	pipe_reconfigure,
   .copy_config = 	pipe_copy_config,
   .get_status = 	pipe_get_status,
