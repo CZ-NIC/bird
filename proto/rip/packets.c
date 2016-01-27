@@ -9,6 +9,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#undef LOCAL_DEBUG
+
 #include "rip.h"
 #include "lib/md5.h"
 
@@ -517,7 +519,7 @@ break_loop:
 void
 rip_send_table(struct rip_proto *p, struct rip_iface *ifa, ip_addr addr, bird_clock_t changed)
 {
-  DBG("RIP: Opening TX session to %I on %s\n", dst, ifa->iface->name);
+  DBG("RIP: Opening TX session to %I on %s\n", addr, ifa->iface->name);
 
   rip_reset_tx_session(p, ifa);
 
