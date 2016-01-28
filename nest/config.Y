@@ -409,8 +409,10 @@ password_item_params:
    /* empty */ { } 
  | GENERATE FROM datetime ';' password_item_params { this_p_item->genfrom = $3; }
  | GENERATE TO datetime ';' password_item_params { this_p_item->gento = $3; }
+ | GENERATE FROM datetime TO datetime ';' password_item_params { this_p_item->genfrom = $3; this_p_item->gento = $5; }
  | ACCEPT FROM datetime ';' password_item_params { this_p_item->accfrom = $3; }
  | ACCEPT TO datetime ';' password_item_params { this_p_item->accto = $3; }
+ | ACCEPT FROM datetime TO datetime ';' password_item_params { this_p_item->accfrom = $3; this_p_item->accto = $5; }
  | ID expr ';' password_item_params { this_p_item->id = $2; if ($2 <= 0) cf_error("Password ID has to be greated than zero."); }
  ;
 
