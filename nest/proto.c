@@ -339,7 +339,7 @@ channel_set_state(struct channel *c, uint state)
     if (cs == CS_DOWN)
       channel_do_start(c);
 
-    if (!c->gr_wait)
+    if (!c->gr_wait && c->proto->rt_notify)
       channel_start_export(c);
 
     break;
@@ -1089,7 +1089,7 @@ graceful_restart_done(struct timer *t UNUSED)
     WALK_LIST(c, p->channels)
     {
       /* Resume postponed export of routes */
-      if ((c->channel_state == CS_UP) && c->gr_wait)
+      if ((c->channel_state == CS_UP) && c->gr_wait && c->proto->rt_notify)
 	channel_start_export(c);
 
       /* Cleanup */
