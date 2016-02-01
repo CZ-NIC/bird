@@ -400,9 +400,9 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
       SKIP("unknown table id %d\n", table_id);
   }
 #endif
-  if ((!ipv6) && (p->p.table->addr_type != NET_IP4))
+  if ((!ipv6) && (p->p.main_channel->table->addr_type != NET_IP4))
     SKIP("reading only IPv4 routes");
-  if (  ipv6  && (p->p.table->addr_type != NET_IP6))
+  if (  ipv6  && (p->p.main_channel->table->addr_type != NET_IP6))
     SKIP("reading only IPv6 routes");
 
   int c = ipa_classify_net(idst);
@@ -463,7 +463,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   else
     src = KRT_SRC_KERNEL;
 
-  net = net_get(p->p.table, &ndst);
+  net = net_get(p->p.main_channel->table, &ndst);
 
   rta a = {
     .src = p->p.main_source,
