@@ -1689,7 +1689,10 @@ again:
     if (c->flush_active)
       {
 	c->flush_active = 0;
-	channel_set_state(c, CS_DOWN);
+	struct rtable_config *rtab_cf = c->table->config;
+	channel_set_state(c, CS_DOWN); /* Can free (struct rtable *) c->table */
+	if (rtab_cf->table == NULL)
+	  break;
       }
 
   return;
