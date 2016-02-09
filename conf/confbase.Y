@@ -38,6 +38,7 @@ CF_DECLS
 %union {
   int i;
   u32 i32;
+  u64 i64;
   ip_addr a;
   ip4_addr ip4;
   ip6_addr ip6;
@@ -72,6 +73,7 @@ CF_DECLS
 %token <i> NUM ENUM
 %token <ip4> IP4
 %token <ip6> IP6
+%token <i64> VPN_RD
 %token <s> SYM
 %token <t> TEXT
 %type <iface> ipa_scope
@@ -81,7 +83,7 @@ CF_DECLS
 %type <time> datetime
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
-%type <net_ptr> net_ net_any net_roa4_ net_roa6_ net_roa_
+%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_
 
 %type <t> text opttext
 
@@ -93,7 +95,7 @@ CF_DECLS
 %left '!'
 %nonassoc '.'
 
-CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT)
+CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN)
 
 CF_GRAMMAR
 
@@ -198,6 +200,18 @@ net_ip6_: IP6 '/' NUM
     cf_error("Invalid IPv6 prefix");
 };
 
+net_vpn4_: VPN_RD net_ip4_
+{
+  $$ = cfg_alloc(sizeof(net_addr_vpn4));
+  net_fill_vpn4($$, ((net_addr_ip4 *)&$2)->prefix, $2.pxlen, $1);
+}
+
+net_vpn6_: VPN_RD net_ip6_
+{
+  $$ = cfg_alloc(sizeof(net_addr_vpn6));
+  net_fill_vpn6($$, ((net_addr_ip6 *)&$2)->prefix, $2.pxlen, $1);
+}
+
 net_roa4_: net_ip4_ MAX NUM AS NUM
 {
   $$ = cfg_alloc(sizeof(net_addr_roa4));
@@ -220,9 +234,11 @@ net_roa6_: net_ip6_ MAX NUM AS NUM
 
 net_ip_: net_ip4_ | net_ip6_ ;
 net_roa_: net_roa4_ | net_roa6_ ;
+net_vpn_: net_vpn4_ | net_vpn6_ ;
 
 net_:
    net_ip_ { $$ = cfg_alloc($1.length); net_copy($$, &($1)); }
+ | net_vpn_
  | net_roa_
  ;
 
