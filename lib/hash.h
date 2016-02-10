@@ -178,3 +178,15 @@
 
 #define HASH_WALK_FILTER_END } while (0)
 
+static inline uint
+mem_hash(void *p, int s)
+{
+  const char *pp = p;
+  const u64 multiplier = 0xb38bc09a61202731ULL;
+  u64 value = 0x001047d54778bcafULL;
+  for (int i=0;i<s;i++)
+    value = value*multiplier + pp[i];
+
+  return ((value >> 32) ^ (value & 0xffffffff));
+}
+

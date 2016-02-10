@@ -56,6 +56,8 @@
 #include "lib/resource.h"
 #include "lib/string.h"
 
+#include <stddef.h>
+
 pool *rta_pool;
 
 static slab *rta_slab;
@@ -875,7 +877,8 @@ ea_dump(ea_list *e)
 inline uint
 ea_hash(ea_list *e)
 {
-  u32 h = 0;
+  const u64 mul = 0x68576150f3d6847;
+  u64 h = 0xafcef24eda8b29;
   int i;
 
   if (e)			/* Assuming chain of length 1 */
@@ -883,29 +886,18 @@ ea_hash(ea_list *e)
       for(i=0; i<e->count; i++)
 	{
 	  struct eattr *a = &e->attrs[i];
-	  h ^= a->id;
+	  h ^= a->id; h *= mul;
 	  if (a->type & EAF_EMBEDDED)
 	    h ^= a->u.data;
 	  else
 	    {
 	      struct adata *d = a->u.ptr;
-	      int size = d->length;
-	      byte *z = d->data;
-	      while (size >= 4)
-		{
-		  h ^= *(u32 *)z;
-		  z += 4;
-		  size -= 4;
-		}
-	      while (size--)
-		h = (h >> 24) ^ (h << 8) ^ *z++;
+	      h ^= mem_hash(d->data, d->length);
 	    }
+	  h *= mul;
 	}
-      h ^= h >> 16;
-      h ^= h >> 6;
-      h &= 0xffff;
     }
-  return h;
+  return (h >> 32) ^ (h & 0xffffffff);
 }
 
 /**
@@ -954,9 +946,8 @@ rta_alloc_hash(void)
 static inline uint
 rta_hash(rta *a)
 {
-  /* XXXX fully convert to u32 hashing */
-  return (((uint) (uintptr_t) a->src) ^ (ipa_hash(a->gw) >> 16) ^
-	  (mpnh_hash(a->nexthops) >> 16) ^ ea_hash(a->eattrs)) & 0xffff;
+  return mem_hash(a + offsetof(rta, src), sizeof(rta) - offsetof(rta, src)) ^
+	 mpnh_hash(a->nexthops) ^ ea_hash(a->eattrs);
 }
 
 static inline int

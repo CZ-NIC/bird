@@ -345,22 +345,22 @@ struct rte_src {
 
 typedef struct rta {
   struct rta *next, **pprev;		/* Hash chain */
+  u32 uc;				/* Use count */
+  u32 hash_key;				/* Hash over important fields */
+  struct mpnh *nexthops;		/* Next-hops for multipath routes */
+  struct ea_list *eattrs;		/* Extended Attribute chain */
   struct rte_src *src;			/* Route source that created the route */
-  unsigned uc;				/* Use count */
+  struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
+  struct iface *iface;			/* Outgoing interface */
+  ip_addr gw;				/* Next hop */
+  ip_addr from;				/* Advertising router */
+  u32 igp_metric;			/* IGP metric to next hop (for iBGP routes) */
   byte source;				/* Route source (RTS_...) */
   byte scope;				/* Route scope (SCOPE_... -- see ip.h) */
   byte cast;				/* Casting type (RTC_...) */
   byte dest;				/* Route destination type (RTD_...) */
   byte flags;				/* Route flags (RTF_...), now unused */
   byte aflags;				/* Attribute cache flags (RTAF_...) */
-  u16 hash_key;				/* Hash over important fields */
-  u32 igp_metric;			/* IGP metric to next hop (for iBGP routes) */
-  ip_addr gw;				/* Next hop */
-  ip_addr from;				/* Advertising router */
-  struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
-  struct iface *iface;			/* Outgoing interface */
-  struct mpnh *nexthops;		/* Next-hops for multipath routes */
-  struct ea_list *eattrs;		/* Extended Attribute chain */
 } rta;
 
 #define RTS_DUMMY 0			/* Dummy route to be removed soon */
