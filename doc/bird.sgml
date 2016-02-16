@@ -1158,9 +1158,12 @@ foot).
 
 	<cf><m/P/.last</cf> returns the last ASN (the source ASN) in path <m/P/.
 
+	<cf><m/P/.last_nonaggregated</cf> returns the last ASN in the non-aggregated part of the path <m/P/.
+
 	Both <cf/first/ and <cf/last/ return zero if there is no appropriate
 	ASN, for example if the path contains an AS set element as the first (or
-	the last) part.
+	the last) part. If the path ends with an AS set, <cf/last_nonaggregated/
+	may be used to get last ASN before any AS set.
 
 	<cf><m/P/.len</cf> returns the length of path <m/P/.
 
