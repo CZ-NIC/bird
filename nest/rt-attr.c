@@ -946,7 +946,7 @@ rta_alloc_hash(void)
 static inline uint
 rta_hash(rta *a)
 {
-  return mem_hash(a + offsetof(rta, src), sizeof(rta) - offsetof(rta, src)) ^
+  return mem_hash(((void *)a) + offsetof(rta, src), sizeof(rta) - offsetof(rta, src)) ^
 	 mpnh_hash(a->nexthops) ^ ea_hash(a->eattrs);
 }
 
