@@ -599,10 +599,10 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   if (ospf_is_v2(p) && (ifa->type == OSPF_IT_NBMA) && (addr->flags & IA_PEER))
     ifa->type = OSPF_IT_PTMP;
 
-  if ((ifa->type == OSPF_IT_BCAST) && !(iface->flags & if_multi_flag))
+  if ((ifa->type == OSPF_IT_BCAST) && !(iface->flags & if_multi_flag) && !ifa->stub)
     ifa->type = OSPF_IT_NBMA;
 
-  if ((ifa->type == OSPF_IT_PTP) && !(iface->flags & if_multi_flag))
+  if ((ifa->type == OSPF_IT_PTP) && !(iface->flags & if_multi_flag) && !ifa->stub)
     ifa->type = OSPF_IT_PTMP;
 
   if (ifa->type != old_type)
