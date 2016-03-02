@@ -115,6 +115,7 @@ stat_route:
 stat_route_item:
    cmd { *this_srt_last_cmd = $1; this_srt_last_cmd = &($1->next); }
  | BFD bool ';' { this_srt->use_bfd = $2; cf_check_bfd($2); }
+ | mpls_stack ';' { this_srt->mpls_stack = $1; }
  ;
 
 stat_route_opts:

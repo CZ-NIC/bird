@@ -431,6 +431,7 @@ typedef struct eattr {
 #define EA_ID(ea) ((ea) & 0xff)
 
 #define EA_GEN_IGP_METRIC EA_CODE(EAP_GENERIC, 0)
+#define EA_GEN_MPLS_STACK EA_CODE(EAP_GENERIC, 1)
 
 #define EA_CODE_MASK 0xffff
 #define EA_ALLOW_UNDEF 0x10000		/* ea_find: allow EAF_TYPE_UNDEF */

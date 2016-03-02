@@ -16,6 +16,7 @@ CF_HDR
 #include "lib/socket.h"
 #include "lib/timer.h"
 #include "lib/string.h"
+#include "lib/mpls.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "nest/route.h"
@@ -44,6 +45,7 @@ CF_DECLS
   ip6_addr ip6;
   net_addr net;
   net_addr *net_ptr;
+  struct mpls_stack *mpls;
   struct symbol *s;
   char *t;
   struct rtable_config *r;
@@ -84,6 +86,7 @@ CF_DECLS
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_
+%type <mpls> mpls_stack_start mpls_stack
 
 %type <t> text opttext
 
@@ -95,7 +98,7 @@ CF_DECLS
 %left '!'
 %nonassoc '.'
 
-CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN)
+CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS)
 
 CF_GRAMMAR
 
@@ -286,6 +289,20 @@ net_or_ipa:
        cf_error("IP address or network expected");
    }
  ;
+
+/* MPLS stack */
+
+mpls_stack_start: MPLS NUM
+{
+  $$ = cfg_allocz(sizeof(struct mpls_stack));
+  $$->len = 1;
+  $$->label[0] = $2;
+};
+
+mpls_stack:
+    mpls_stack_start
+  | mpls_stack '/' NUM { $1->label[$1->len++] = $3; $$ = $1; }
+;
 
 
 datetime:

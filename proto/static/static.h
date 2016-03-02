@@ -37,6 +37,7 @@ struct static_route {
   int installed;			/* Installed in rt table, -1 for reinstall */
   int use_bfd;				/* Configured to use BFD */
   int weight;				/* Multipath next hop weight */
+  struct mpls_stack *mpls_stack;	/* MPLS stack to apply to routed packets */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
 };
 

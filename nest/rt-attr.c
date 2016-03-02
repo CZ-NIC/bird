@@ -671,6 +671,20 @@ get_generic_attr(eattr *a, byte **buf, int buflen UNUSED)
       *buf += bsprintf(*buf, "igp_metric");
       return GA_NAME;
     }
+  else if (a->id == EA_GEN_MPLS_STACK)
+    {
+      *buf += bsprintf(*buf, "mpls");
+      struct adata *ad = a->u.ptr;
+      u32 *z = ad->data;
+      int len = ad->length / sizeof(u32);
+      int i;
+
+      *buf += bsprintf(*buf, " %d", z[0]);
+      for (i = 1; i < len; i++)
+	*buf += bsprintf(*buf, "/%d", z[i]);
+
+      return GA_FULL;
+    }
 
   return GA_UNKNOWN;
 }

@@ -45,6 +45,7 @@
 #include "filter/filter.h"
 #include "lib/string.h"
 #include "lib/alloca.h"
+#include "lib/mpls.h"
 
 #include "static.h"
 
@@ -76,6 +77,20 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
   a.dest = r->dest;
   a.gw = r->via;
   a.iface = ifa;
+  if (r->mpls_stack) {
+    a.eattrs = lp_alloc(static_lp, sizeof(ea_list) + sizeof(eattr));
+    a.eattrs->next = NULL;
+    a.eattrs->flags = 0;
+    a.eattrs->count = 1;
+    a.eattrs->attrs[0].id = EA_GEN_MPLS_STACK;
+    a.eattrs->attrs[0].flags = 0;
+    a.eattrs->attrs[0].type = EAF_TYPE_INT_SET;
+
+    struct adata *ad = lp_alloc(static_lp, sizeof(struct adata) + r->mpls_stack->len*sizeof(u32));
+    ad->length = r->mpls_stack->len*sizeof(u32);
+    memcpy(ad->data, r->mpls_stack->label, ad->length);
+    a.eattrs->attrs[0].u.ptr = ad;
+  }
 
   if (r->dest == RTD_MULTIPATH)
     {
