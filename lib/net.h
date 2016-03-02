@@ -21,7 +21,8 @@
 #define NET_ROA6	6
 #define NET_FLOW4	7
 #define NET_FLOW6	8
-#define NET_MAX		9
+#define NET_MPLS	9
+#define NET_MAX		10
 
 #define NB_IP4		(1 << NET_IP4)
 #define NB_IP6		(1 << NET_IP6)
@@ -31,6 +32,7 @@
 #define NB_ROA6		(1 << NET_ROA6)
 #define NB_FLOW4	(1 << NET_FLOW4)
 #define NB_FLOW6	(1 << NET_FLOW6)
+#define NB_MPLS		(1 << NET_MPLS)
 
 #define NB_IP		(NB_IP4 | NB_IP6)
 #define NB_ANY		0xffffffff
@@ -108,6 +110,13 @@ typedef struct net_addr_flow6 {
   byte data[0];
 } net_addr_flow6;
 
+typedef struct net_addr_mpls {
+  u8 type;
+  u8 pxlen;
+  u16 length;
+  u32 label;
+} net_addr_mpls;
+
 typedef union net_addr_union {
   net_addr n;
   net_addr_ip4 ip4;
@@ -118,6 +127,7 @@ typedef union net_addr_union {
   net_addr_roa6 roa6;
   net_addr_flow4 flow4;
   net_addr_flow6 flow6;
+  net_addr_mpls mpls;
 } net_addr_union;
 
 
@@ -153,6 +163,8 @@ extern const u16 net_max_text_length[];
 #define NET_ADDR_FLOW6(prefix,pxlen,dlen) \
   ((net_addr_flow6) { NET_FLOW6, pxlen, sizeof(net_addr_ip6) + dlen, prefix })
 
+#define NET_ADDR_MPLS(label) \
+  ((net_addr_mpls) { NET_MPLS, 20, sizeof(net_addr_mpls), label })
 
 
 static inline void net_fill_ip4(net_addr *a, ip4_addr prefix, uint pxlen)
@@ -172,6 +184,9 @@ static inline void net_fill_roa4(net_addr *a, ip4_addr prefix, uint pxlen, uint 
 
 static inline void net_fill_roa6(net_addr *a, ip6_addr prefix, uint pxlen, uint max_pxlen, u32 asn)
 { *(net_addr_roa6 *)a = NET_ADDR_ROA6(prefix, pxlen, max_pxlen, asn); }
+
+static inline void net_fill_mpls(net_addr *a, u32 label)
+{ *(net_addr_mpls *)a = NET_ADDR_MPLS(label); }
 
 static inline void net_fill_ipa(net_addr *a, ip_addr prefix, uint pxlen)
 {
@@ -238,6 +253,7 @@ static inline ip_addr net_prefix(const net_addr *a)
   case NET_FLOW6:
     return ipa_from_ip6(net6_prefix(a));
 
+  case NET_MPLS:
   default:
     return IPA_NONE;
   }
@@ -289,6 +305,8 @@ static inline int net_equal_prefix_roa4(const net_addr_roa4 *a, const net_addr_r
 static inline int net_equal_prefix_roa6(const net_addr_roa6 *a, const net_addr_roa6 *b)
 { return ip6_equal(a->prefix, b->prefix) && (a->pxlen == b->pxlen); }
 
+static inline int net_equal_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
+{ return !memcmp(a, b, sizeof(net_addr_mpls)); }
 
 static inline int net_zero_ip4(const net_addr_ip4 *a)
 { return !a->pxlen && ip4_zero(a->prefix); }
@@ -314,6 +332,8 @@ static inline int net_zero_flow4(const net_addr_flow4 *a)
 static inline int net_zero_flow6(const net_addr_flow6 *a)
 { return !a->pxlen && ip6_zero(a->prefix) && !a->data; }
 
+static inline int net_zero_mpls(const net_addr_mpls *a)
+{ return !a->label; }
 
 
 static inline int net_compare_ip4(const net_addr_ip4 *a, const net_addr_ip4 *b)
@@ -339,6 +359,9 @@ static inline int net_compare_flow4(const net_addr_flow4 *a, const net_addr_flow
 
 static inline int net_compare_flow6(const net_addr_flow6 *a, const net_addr_flow6 *b)
 { return ip6_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen) ?: uint_cmp(a->length, b->length) ?: memcmp(a->data, b->data, a->length - sizeof(net_addr_flow6)); }
+
+static inline int net_compare_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
+{ return uint_cmp(a->label, b->label); }
 
 int net_compare(const net_addr *a, const net_addr *b);
 
@@ -370,6 +393,8 @@ static inline void net_copy_flow4(net_addr_flow4 *dst, const net_addr_flow4 *src
 static inline void net_copy_flow6(net_addr_flow6 *dst, const net_addr_flow6 *src)
 { memcpy(dst, src, src->length); }
 
+static inline void net_copy_mpls(net_addr_mpls *dst, const net_addr_mpls *src)
+{ memcpy(dst, src, sizeof(net_addr_mpls)); }
 
 static inline u32 net_hash_ip4(const net_addr_ip4 *n)
 { return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
@@ -399,6 +424,9 @@ static inline u32 net_hash_flow4(const net_addr_flow4 *n)
 static inline u32 net_hash_flow6(const net_addr_flow6 *n)
 { return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
 
+static inline u32 net_hash_mpls(const net_addr_mpls *n)
+{ return n->label; }
+
 u32 net_hash(const net_addr *a);
 
 
@@ -412,6 +440,11 @@ static inline int net_validate_ip6(const net_addr_ip6 *n)
 {
   return (n->pxlen <= IP6_MAX_PREFIX_LENGTH) &&
     ip6_zero(ip6_and(n->prefix, ip6_not(ip6_mkmask(n->pxlen))));
+}
+
+static inline int net_validate_mpls(const net_addr_mpls *n)
+{
+  return n->label < (1<<20);
 }
 
 int net_validate(const net_addr *N);
