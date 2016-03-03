@@ -85,7 +85,7 @@ CF_DECLS
 %type <time> datetime
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
-%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_
+%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_mpls_
 %type <mpls> mpls_stack_start mpls_stack
 
 %type <t> text opttext
@@ -235,6 +235,14 @@ net_roa6_: net_ip6_ MAX NUM AS NUM
     cf_error("Maximum prefix length %d must be >= prefix length %d", ((net_addr_roa6 *) $$)->max_pxlen, ($$)->pxlen);
 };
 
+net_mpls_: NUM
+{
+  $$ = cfg_alloc(sizeof(net_addr_mpls));
+  net_fill_mpls($$, $1);
+  if ($1 < 0 || $1 > (1<<20))
+    cf_error("Invalid MPLS label %d", $1);
+}
+
 net_ip_: net_ip4_ | net_ip6_ ;
 net_roa_: net_roa4_ | net_roa6_ ;
 net_vpn_: net_vpn4_ | net_vpn6_ ;
@@ -268,6 +276,7 @@ net_ip:
 
 net_any:
    net_
+ | net_mpls_
  | SYM {
      if ($1->class != (SYM_CONSTANT | T_NET))
        cf_error("Network expected");
