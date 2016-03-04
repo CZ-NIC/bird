@@ -270,7 +270,7 @@ net_or_ipa:
 
 label_stack_start: NUM
 {
-  $$ = cfg_allocz(sizeof(u32) * (NEXTHOP_MAX_LABEL_STACK+1));
+  $$ = cfg_allocz(sizeof(u32) * (MPLS_MAX_LABEL_STACK+1));
   $$[0] = 1;
   $$[1] = $1;
 };
@@ -278,7 +278,7 @@ label_stack_start: NUM
 label_stack:
     label_stack_start
   | label_stack '/' NUM {
-    if ($1[0] >= NEXTHOP_MAX_LABEL_STACK)
+    if ($1[0] >= MPLS_MAX_LABEL_STACK)
       cf_error("Too many labels in stack.");
     $1[++$1[0]] = $3;
     $$ = $1;

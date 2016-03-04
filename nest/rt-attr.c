@@ -1279,12 +1279,12 @@ rta_init(void)
   rta_slab_[0] = sl_new(rta_pool, sizeof(rta));
   rta_slab_[1] = sl_new(rta_pool, sizeof(rta) + sizeof(u32));
   rta_slab_[2] = sl_new(rta_pool, sizeof(rta) + sizeof(u32)*2);
-  rta_slab_[3] = sl_new(rta_pool, sizeof(rta) + sizeof(u32)*NEXTHOP_MAX_LABEL_STACK);
+  rta_slab_[3] = sl_new(rta_pool, sizeof(rta) + sizeof(u32)*MPLS_MAX_LABEL_STACK);
 
   nexthop_slab_[0] = sl_new(rta_pool, sizeof(struct nexthop));
   nexthop_slab_[1] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32));
   nexthop_slab_[2] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*2);
-  nexthop_slab_[3] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*NEXTHOP_MAX_LABEL_STACK);
+  nexthop_slab_[3] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK);
 
   rta_alloc_hash();
   rte_src_init();

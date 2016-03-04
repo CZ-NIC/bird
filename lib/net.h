@@ -259,6 +259,14 @@ static inline ip_addr net_prefix(const net_addr *a)
   }
 }
 
+static inline u32 net_mpls(const net_addr *a)
+{
+  if (a->type == NET_MPLS)
+    return ((net_addr_mpls *) a)->label;
+
+  bug("Can't call net_mpls on non-mpls net_addr");
+}
+
 static inline uint net4_pxlen(const net_addr *a)
 { return a->pxlen; }
 

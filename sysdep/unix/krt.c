@@ -1153,7 +1153,8 @@ krt_start(struct proto *P)
   {
   case NET_IP4:	p->af = AF_INET; break;
   case NET_IP6:	p->af = AF_INET6; break;
-  default:	ASSERT(0);
+  case NET_MPLS: p->af = AF_MPLS; break;
+  default: log(L_ERR "KRT: Tried to start with strange net type: %d", p->p.net_type); return PS_START; break;
   }
 
   add_tail(&krt_proto_list, &p->krt_node);
@@ -1264,7 +1265,7 @@ struct protocol proto_unix_kernel = {
   .template =		"kernel%d",
   .attr_class =		EAP_KRT,
   .preference =		DEF_PREF_INHERITED,
-  .channel_mask =	NB_IP,
+  .channel_mask =	NB_IP | NB_MPLS,
   .proto_size =		sizeof(struct krt_proto),
   .config_size =	sizeof(struct krt_config),
   .preconfig =		krt_preconfig,

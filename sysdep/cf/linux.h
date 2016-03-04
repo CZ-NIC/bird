@@ -21,6 +21,10 @@
 #define CONFIG_INCLUDE_SYSPRIV_H "sysdep/linux/syspriv.h"
 
 
+#ifndef AF_MPLS
+#define AF_MPLS 28
+#endif
+
 /*
 Link: sysdep/linux
 Link: sysdep/unix

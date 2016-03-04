@@ -2487,7 +2487,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
 	     tm, from, primary ? (sync_error ? " !" : " *") : "", info);
   for (nh = &(a->nh); nh; nh = nh->next)
     {
-      char ls[NEXTHOP_MAX_LABEL_STACK*8 + 5]; char *lsp = ls;
+      char ls[MPLS_MAX_LABEL_STACK*8 + 5]; char *lsp = ls;
       if (nh->labels)
 	{
 	  lsp += bsprintf(lsp, " mpls %d", nh->label[0]);
