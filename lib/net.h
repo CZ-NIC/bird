@@ -11,6 +11,7 @@
 #define _BIRD_NET_H_
 
 #include "lib/ip.h"
+#include "lib/mpls.h"
 
 
 #define NET_IP4		1
@@ -134,7 +135,7 @@ extern const u16 net_max_text_length[];
   ((net_addr_roa6) { NET_ROA6, pxlen, sizeof(net_addr_roa6), prefix, max_pxlen, asn })
 
 #define NET_ADDR_MPLS(label) \
-  ((net_addr_mpls) { NET_MPLS, 0, sizeof(net_addr_mpls), label })
+  ((net_addr_mpls) { NET_MPLS, MPLS_PXLEN, sizeof(net_addr_mpls), label })
 
 
 static inline void net_fill_ip4(net_addr *a, ip4_addr prefix, uint pxlen)
@@ -209,6 +210,18 @@ static inline ip_addr net_prefix(const net_addr *a)
   default:
     return IPA_NONE;
   }
+}
+
+static inline mpls_stack net_mpls(const net_addr *a)
+{
+  mpls_stack ms;
+  if (a->type == NET_MPLS) {
+    ms.len = 1;
+    ms.label[0] = ((net_addr_mpls *) a)->label;
+    return ms;
+  }
+
+  bug("Can't call net_mpls on non-mpls net_addr");
 }
 
 static inline uint net4_pxlen(const net_addr *a)

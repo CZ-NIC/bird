@@ -16,6 +16,10 @@
 
 #define CONFIG_RESTRICTED_PRIVILEGES
 
+#ifndef AF_MPLS
+#define AF_MPLS 28
+#endif
+
 /*
 Link: sysdep/linux
 Link: sysdep/unix
