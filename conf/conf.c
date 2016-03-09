@@ -504,7 +504,7 @@ order_shutdown(void)
  * error in the configuration.
  */
 void
-cf_error(char *msg, ...)
+cf_error(const char *msg, ...)
 {
   char buf[1024];
   va_list args;
