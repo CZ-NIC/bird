@@ -318,8 +318,9 @@ protocol rip {
 <p><descrip>
 	<tag>include "<m/filename/"</tag>
 	This statement causes inclusion of a new file. <m/Filename/ could also
-	be a wildcard. The maximal depth is 8. Note that this statement could be
-	used anywhere in the config file, not just as a top-level option.
+	be a wildcard, in that case matching files are included in alphabetic
+	order. The maximal depth is 8. Note that this statement could be used
+	anywhere in the config file, not just as a top-level option.
 
 	<tag><label id="dsc-log">log "<m/filename/"|syslog [name <m/name/]|stderr all|{ <m/list of classes/ }</tag>
 	Set logging of messages having the given class (either <cf/all/ or
@@ -2655,8 +2656,8 @@ protocol ospf &lt;name&gt; {
 	updates. Default value is 5.
 
 	<tag>priority <M>num</M></tag>
-	On every multiple access network (e.g., the Ethernet) Designed Router
-	and Backup Designed router are elected. These routers have some special
+	On every multiple access network (e.g., the Ethernet) Designated Router
+	and Backup Designated router are elected. These routers have some special
 	functions in the flooding process. Higher priority increases preferences
 	in this election. Routers with priority 0 are not eligible. Default
 	value is 1.
