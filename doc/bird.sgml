@@ -1901,6 +1901,11 @@ using the following configuration parameters:
 	in neighbor's implementation of 4B AS extension. Even when disabled
 	(off), BIRD behaves internally as AS4-aware BGP router. Default: on.
 
+	<tag>enable extended messages <m/switch/</tag>
+	The BGP protocol uses maximum message length of 4096 bytes. This option
+	provides an extension to allow extended messages with length up
+	to 65535 bytes. Default: off.
+
 	<tag>capabilities <m/switch/</tag>
 	Use capability advertisement to advertise optional capabilities. This is
 	standard behavior for newer BGP implementations, but there might be some
@@ -2096,7 +2101,7 @@ protocol bgp {
 	multihop;			     # ... which is connected indirectly
 	export filter {			     # We use non-trivial export rules
 		if source = RTS_STATIC then { # Export only static routes
-		        # Assign our community
+			# Assign our community
 			bgp_community.add((65000,64501));
 			# Artificially increase path length
 			# by advertising local AS number twice
@@ -2305,7 +2310,7 @@ these attributes:
 
 	<tag>ip <cf/krt_prefsrc/</tag> (Linux)
 	The preferred source address. Used in source address selection for
- 	outgoing packets. Has to be one of the IP addresses of the router.
+	outgoing packets. Has to be one of the IP addresses of the router.
 
 	<tag>int <cf/krt_realm/</tag> (Linux)
 	The realm of the route. Can be used for traffic classification.
