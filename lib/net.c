@@ -194,7 +194,7 @@ net_classify(const net_addr *N)
     return ip6_zero(n->ip6.prefix) ? (IADDR_HOST | SCOPE_UNIVERSE) : ip6_classify(&n->ip6.prefix);
 
   case NET_MPLS:
-    return IADDR_HOST | SCOPE_SITE;
+    return IADDR_HOST | SCOPE_UNIVERSE;
   }
 
   return IADDR_INVALID;

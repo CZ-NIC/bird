@@ -64,10 +64,6 @@
 #define RTA_ENCAP  22
 #endif
 
-#ifndef AF_MPLS
-#define AF_MPLS	 28
-#endif
-
 /*
  *	Synchronous Netlink interface
  */
@@ -281,6 +277,10 @@ static struct nl_want_attrs ifa_attr_want6[BIRD_IFA_MAX] = {
 
 static struct nl_want_attrs mpnh_attr_want4[BIRD_RTA_MAX] = {
   [RTA_GATEWAY]	  = { 1, 1, sizeof(ip4_addr) },
+};
+
+static struct nl_want_attrs encap_mpls_want[BIRD_RTA_MAX] = {
+  [RTA_DST]       = { 1, 0, 0 },
 };
 
 static struct nl_want_attrs rtm_attr_want4[BIRD_RTA_MAX] = {
@@ -1027,6 +1027,21 @@ mpls_from_ea(struct adata *ad) {
   return s;
 }
 
+#define mpls_to_ea(ms, oea) do { \
+  ea_list *ea = alloca(sizeof(ea_list) + sizeof(eattr)); \
+  ea->next = oea; \
+  oea = ea; \
+  ea->flags = EALF_SORTED; \
+  ea->count = 1; \
+  ea->attrs[0].id = EA_GEN_MPLS_STACK; \
+  ea->attrs[0].flags = 0; \
+  ea->attrs[0].type = EAF_TYPE_INT_SET; \
+  ea->attrs[0].u.ptr = alloca(sizeof(struct adata) + sizeof(u32)*ms.len); \
+  ea->attrs[0].u.ptr->length = sizeof(u32)*ms.len; \
+  for (int j = 0; j < ms.len; j++) \
+    ((u32 *)ea->attrs[0].u.ptr->data)[j] = ms.label[j]; \
+} while (0)
+
 static int
 nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
 {
@@ -1235,7 +1250,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
     SKIP("RTM_DELROUTE in scan\n");
 
   int c = net_classify(&dst);
-  if (i->rtm_family != AF_MPLS && ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK)))
+  if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
     SKIP("strange class/scope\n");
 
   // ignore rtm_scope, it is not a real scope
@@ -1355,19 +1370,26 @@ nl_parse_route(struct nlmsghdr *h, int scan)
   if ((i->rtm_family == AF_MPLS) && a[RTA_NEWDST])
     {
       mpls_stack ms = rta_get_mpls(a[RTA_NEWDST]);
+      mpls_to_ea(ms, ra.eattrs);
+    }
 
-      ea_list *ea = alloca(sizeof(ea_list) + sizeof(eattr));
-      ea->next = ra.eattrs;
-      ra.eattrs = ea;
-      ea->flags = EALF_SORTED;
-      ea->count = 1;
-      ea->attrs[0].id = EA_KRT_PREFSRC;
-      ea->attrs[0].flags = 0;
-      ea->attrs[0].type = EAF_TYPE_INT_SET;
-      ea->attrs[0].u.ptr = alloca(sizeof(struct adata) + sizeof(u32)*ms.len);
-      ea->attrs[0].u.ptr->length = sizeof(u32)*ms.len;
-      for (int j = 0; j < ms.len; j++)
-	((u32 *)ea->attrs[0].u.ptr->data)[j] = ms.label[j];
+  if (a[RTA_ENCAP] && a[RTA_ENCAP_TYPE])
+    {
+      switch (*((u16*) RTA_DATA(a[RTA_ENCAP_TYPE])))
+	{
+	  case LWTUNNEL_ENCAP_MPLS:
+	    {
+	      struct rtattr *enca[BIRD_RTA_MAX];
+	      nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
+	      nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
+	      mpls_stack ms = rta_get_mpls(enca[RTA_DST]);
+	      mpls_to_ea(ms, ra.eattrs);
+	      break;
+	    }
+	  default:
+	    SKIP("unknown encapsulation method %d\n", *((u16*) RTA_DATA(a[RTA_ENCAP_TYPE])));
+	    break;
+	}
     }
 
   if (a[RTA_PREFSRC])
