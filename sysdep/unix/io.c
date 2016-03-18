@@ -1674,19 +1674,12 @@ sk_maybe_write(sock *s)
 int
 sk_rx_ready(sock *s)
 {
-  fd_set rd, wr;
-  struct timeval timo;
   int rv;
-
-  FD_ZERO(&rd);
-  FD_ZERO(&wr);
-  FD_SET(s->fd, &rd);
-
-  timo.tv_sec = 0;
-  timo.tv_usec = 0;
+  struct pollfd pfd = { .fd = s->fd };
+  pfd.events |= POLLIN;
 
  redo:
-  rv = select(s->fd+1, &rd, &wr, NULL, &timo);
+  rv = poll(&pfd, 1, 0);
 
   if ((rv < 0) && (errno == EINTR || errno == EAGAIN))
     goto redo;
