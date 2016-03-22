@@ -88,27 +88,10 @@ insert_node(node *n, node *after)
  * rem_node - remove a node from a list
  * @n: node to be removed
  *
- * Removes a node @n from the list it's linked in.
+ * Removes a node @n from the list it's linked in. Afterwards, node @n is cleared.
  */
 LIST_INLINE void
 rem_node(node *n)
-{
-  node *z = n->prev;
-  node *x = n->next;
-
-  z->next = x;
-  x->prev = z;
-}
-
-/**
- * rem2_node - remove a node from a list, with cleanup
- * @n: node to be removed
- *
- * Removes a node @n from the list it's linked in and resets its pointers to NULL.
- * Useful if you want to distinguish between linked and unlinked nodes.
- */
-LIST_INLINE void
-rem2_node(node *n)
 {
   node *z = n->prev;
   node *x = n->next;
