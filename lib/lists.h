@@ -26,9 +26,22 @@ typedef struct node {
   struct node *next, *prev;
 } node;
 
-typedef struct list {			/* In fact two overlayed nodes */
-  struct node *head, *null, *tail;
+typedef union list {			/* In fact two overlayed nodes */
+  struct {				/* Head node */
+    struct node head_node;
+    void *head_padding;
+  };
+  struct {				/* Tail node */
+    void *tail_padding;
+    struct node tail_node;
+  };
+  struct {				/* Split to separate pointers */
+    struct node *head;
+    struct node *null;
+    struct node *tail;
+  };
 } list;
+
 
 #define NODE (node *)
 #define HEAD(list) ((void *)((list).head))

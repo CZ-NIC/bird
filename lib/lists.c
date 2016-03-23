@@ -41,7 +41,7 @@ add_tail(list *l, node *n)
 {
   node *z = l->tail;
 
-  n->next = (node *) &l->null;
+  n->next = &l->tail_node;
   n->prev = z;
   z->next = n;
   l->tail = n;
@@ -60,7 +60,7 @@ add_head(list *l, node *n)
   node *z = l->head;
 
   n->next = z;
-  n->prev = (node *) &l->head;
+  n->prev = &l->head_node;
   z->prev = n;
   l->head = n;
 }
@@ -133,9 +133,9 @@ replace_node(node *old, node *new)
 LIST_INLINE void
 init_list(list *l)
 {
-  l->head = (node *) &l->null;
+  l->head = &l->tail_node;
   l->null = NULL;
-  l->tail = (node *) &l->head;
+  l->tail = &l->head_node;
 }
 
 /**
@@ -155,6 +155,6 @@ add_tail_list(list *to, list *l)
   p->next = q;
   q->prev = p;
   q = l->tail;
-  q->next = (node *) &to->null;
+  q->next = &to->tail_node;
   to->tail = q;
 }
