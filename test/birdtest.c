@@ -230,11 +230,13 @@ bt_result(const char *to_right_align_msg, const char *to_left_align_msg, ...)
   {
     char msg_buf[BT_BUFFER_SIZE];
 
-    snprintf(msg_buf, sizeof(char)*BT_BUFFER_SIZE, "%s: ", bt_filename);
+    snprintf(msg_buf, sizeof(msg_buf), "%s: ", bt_filename);
 
     va_list argptr;
     va_start(argptr, to_left_align_msg);
-    vsnprintf(msg_buf + strlen((char *)msg_buf), sizeof(msg_buf), to_left_align_msg, argptr);
+    uint used = strlen((char *) msg_buf);
+    vsnprintf(msg_buf + used, sizeof(msg_buf) - used, to_left_align_msg, argptr);
+    va_end(argptr);
 
     char fmt_buf[BT_BUFFER_SIZE];
     uint line_len = strlen(msg_buf) + BT_PROMPT_OK_FAIL_LEN;
@@ -259,5 +261,6 @@ bt_strncat_(char *buf, size_t buf_size, const char *str, ...)
     va_list argptr;
     va_start(argptr, str);
     vsnprintf(buf + strlen(buf), buf_size, str, argptr);
+    va_end(argptr);
   }
 }
