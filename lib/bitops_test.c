@@ -37,7 +37,7 @@ u32_masklen_expected(u32 mask)
 
   int valid = 0;
   for (j = 0; j <= 32; j++)
-    if (mask == (0xffffffff << (32-j)))
+    if (mask == (j ? (0xffffffff << (32-j)) : 0)) /* Shifting 32-bit value by 32 bits is undefined behaviour */
 	valid = 1;
 
   if (!valid && mask != 0)
@@ -72,7 +72,7 @@ t_masklen(void)
   check_mask(0x00000000);
 
   for (i = 0; i <= 32; i++)
-    check_mask(((u32) (0xffffffff << (32-i))) & 0xffffffff);
+    check_mask(((u32) (i ? (0xffffffff << (32-i)) : 0)) & 0xffffffff); /* Shifting 32-bit value by 32 bits is undefined behaviour */
 
   for (i = 0; i <= MAX_NUM; i++)
     check_mask(bt_random());
