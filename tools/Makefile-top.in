@@ -3,7 +3,7 @@
 
 objdir=@objdir@
 
-all depend tags install install-docs tests:
+all depend tags install install-docs tests sockettest:
 	$(MAKE) -C $(objdir) $@
 
 docs userdocs progdocs:
