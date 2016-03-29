@@ -150,7 +150,7 @@ void bt_strncat_(char *buf, size_t buf_size, const char *str, ...);
 #define bt_print_result_line(fn, in, out, fn_out, in_fmt, out_fmt, result)		\
     do											\
     {											\
-      char buf[BT_BUFFER_SIZE] = "";							\
+      char buf[BT_BUFFER_SIZE];								\
       snprintf(buf, sizeof(buf), "%s(", #fn);						\
       bt_dump(buf, in, in_fmt);								\
       bt_strncat(buf, ") gives ");							\
