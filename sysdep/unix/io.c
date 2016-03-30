@@ -2040,7 +2040,7 @@ io_loop(void)
 {
   int poll_tout;
   time_t tout;
-  int nfds, events;
+  int nfds, events, pout;
   sock *s;
   node *n;
   int fdmax = 256;
@@ -2120,16 +2120,16 @@ io_loop(void)
 
       /* And finally enter poll() to find active sockets */
       watchdog_stop();
-      events = poll(pfd, nfds, poll_tout);
+      pout = poll(pfd, nfds, poll_tout);
       watchdog_start();
 
-      if (events < 0)
+      if (pout < 0)
 	{
 	  if (errno == EINTR || errno == EAGAIN)
 	    continue;
 	  die("poll: %m");
 	}
-      if (events)
+      if (pout)
 	{
 	  /* guaranteed to be non-empty */
 	  current_sock = SKIP_BACK(sock, n, HEAD(sock_list));
