@@ -14,7 +14,7 @@
 #include <stdlib.h>
 
 #include "test/birdtest.h"
-#include <test/bt-utils.h>
+#include "test/bt-utils.h"
 
 #include "filter/filter.h"
 #include "lib/main_helper.h"
