@@ -1205,7 +1205,7 @@ sk_setup(sock *s)
   if (s->iface)
   {
 #ifdef SO_BINDTODEVICE
-    struct ifreq ifr;
+    struct ifreq ifr = {};
     strcpy(ifr.ifr_name, s->iface->name);
     if (setsockopt(s->fd, SOL_SOCKET, SO_BINDTODEVICE, &ifr, sizeof(ifr)) < 0)
       ERR("SO_BINDTODEVICE");
@@ -1567,7 +1567,7 @@ sk_sendmsg(sock *s)
 {
   struct iovec iov = {s->tbuf, s->tpos - s->tbuf};
   byte cmsg_buf[CMSG_TX_SPACE];
-  sockaddr dst;
+  sockaddr dst = {};
 
   sockaddr_fill(&dst, s->af, s->daddr, s->iface, s->dport);
 
