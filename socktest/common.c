@@ -5,26 +5,29 @@
 
 #include "common.h"
 
-static void
-parse_addr(char *src, ip_addr *dst)
+static ip_addr
+parse_addr(char *src)
 {
-  if (!ipa_pton(src, dst))
+  ip_addr dst;
+  if (!ipa_pton(src, &dst))
   {
     printf("Invalid address %s\n", src);
     exit(-1);
   }
+  return dst;
 }
 
-static void
-parse_int(const char *src, int *dst)
+static uint
+parse_uint(const char *src)
 {
   errno = 0;
-  *dst = strtol(src, NULL, 10);
+  uint dst = strtoul(src, NULL, 10);
   if (errno)
   {
     printf("Invalid number %s\n", src);
     exit(-1);
   }
+  return dst;
 }
 
 void
@@ -46,31 +49,34 @@ skt_open(sock *s)
   if (sk_open(s) < 0)
     SKT_ERR(s->err);
 
-  sk_set_ttl(s, cf_ttl);
-
   if (cf_mcast)
-    sk_setup_multicast(s);
+  {
+    sk_setup_multicast(s);	/* transmission */
+    sk_join_group(s, s->daddr);	/* reception */
+  }
+
+  sk_set_ttl(s, cf_ttl);
 
   if (cf_bcast)
     sk_setup_broadcast(s);
 }
 
 sock *
-skt_parse_args(int argc, char **argv, int is_send)
+skt_parse_args(int argc, char *argv[], int is_send)
 {
   int is_recv = !is_send;
-  const char *opt_list = is_send ? "umbRi:l:B:p:v:t:" : "um:bRi:l:B:p:v:t:";
+  const char *opt_list = is_send ? "buBmi:l:p:v:t:c:" : "buBm:i:l:p:v:t:c:";
   int c;
 
+  /* Set defaults */
+  uint port = PKT_PORT;
   cf_value = PKT_VALUE;
   cf_ttl = 1;
-  uint port = PKT_PORT;
+  cf_mcast = cf_bcast = cf_bind = cf_count = counter = 0;
 
+  /* Create socket */
   sock *s = sk_new(&root_pool);
-
-  /* Raw socket is default type */
   s->type = SK_IP;
-
   s->err_hook = err_hook;
 
   while ((c = getopt(argc, argv, opt_list)) >= 0)
@@ -79,43 +85,45 @@ skt_parse_args(int argc, char **argv, int is_send)
     case 'u':
       s->type = SK_UDP;
       break;
+    case 'c':
+      cf_count = parse_uint(optarg);
+      break;
     case 'm':
       cf_mcast = 1;
       if (is_recv)
-	parse_addr(optarg, &s->daddr);
+	s->daddr = parse_addr(optarg);
       break;
     case 'b':
       cf_bcast = 1;
       break;
-    case 'R':
-      cf_route = 1;
-      break;
     case 'i':
       s->iface = if_get_by_name(optarg);
-      break;
-    case 'l':
-      parse_addr(optarg, &s->saddr);	/* FIXME: Cannot set local address and bind address together */
+      s->iface->index = if_nametoindex(optarg);
       break;
     case 'B':
-      parse_addr(optarg, &s->saddr);	/* FIXME: Cannot set local address and bind address together */
-      s->flags |= SKF_BIND;
       cf_bind = 1;
+      s->flags |= SKF_BIND;
+      /* fall through */
+    case 'l':
+      if (ipa_nonzero(s->saddr))
+	printf("Redefine source address, don't use -l and -B together \n");
+      s->saddr = parse_addr(optarg);
       break;
     case 'p':
-      parse_int(optarg, &port);
+      port = parse_uint(optarg);
       break;
     case 'v':
-      parse_int(optarg, &cf_value);
+      cf_value = parse_uint(optarg);
       break;
     case 't':
-      parse_int(optarg, &cf_ttl);
+      cf_ttl = parse_uint(optarg);
       break;
 
     default:
       goto usage;
     }
 
-  if (is_recv && s->type == SK_UDP)
+  if (is_recv && s->type == SK_UDP)	/* XXX: Weird */
     s->sport = port;
   else
     s->dport = port;
@@ -124,14 +132,35 @@ skt_parse_args(int argc, char **argv, int is_send)
     goto usage;
 
   if (is_send)
-    parse_addr(argv[optind], &s->daddr);
+    s->daddr = parse_addr(argv[optind]);
 
   return s;
 
  usage:
-  printf("Usage: %s [-u] [-m%s|-b] [-B baddr] [-R] [-i iface] [-l addr] [-p port] [-v value] [-t ttl]%s\n",
+  printf("Usage: %s [-u] [-c count] [-m%s|-b] [-B bind_addr] [-i iface] [-l fake_local_addr] [-p port] [-v value] [-t ttl]%s\n",
 	 argv[0], is_recv ? " maddr" : "", is_send ? " daddr" : "");
   exit(1);
+}
+
+static void
+scan_infaces(void)
+{
+  /* create mockup config */
+  struct config *c = config_alloc("mockup");
+  init_list(&c->protos);
+  cfg_mem = c->mem;
+  new_config = c;
+  new_config->master_rtc = mb_allocz(&root_pool, sizeof(struct rtable_config));
+
+  /* create mockup device protocol */
+  protos_build();
+  proto_build(&proto_unix_iface);
+  struct proto_config *kif_config = kif_init_config(SYM_PROTO);
+  kif_config->table = new_config->master_rtc;
+  struct proto *krt = proto_unix_iface.init(kif_config);
+
+  /* scan interfaces */
+  proto_unix_iface.start(krt);
 }
 
 void
@@ -140,4 +169,5 @@ bird_init(void)
   resource_init();
   io_init();
   if_init();
+  scan_infaces();
 }

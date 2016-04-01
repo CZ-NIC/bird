@@ -44,8 +44,12 @@ struct my_packet
   u32 count;
 };
 
-int cf_mcast, cf_bcast, cf_bind, cf_route;
-uint cf_value;
+int cf_mcast;		/* Set up multicast */
+int cf_bcast;		/* Enable broadcast */
+int cf_bind;		/* Bind by address */
+uint cf_count;		/* How many packets send */
+uint counter;		/* global counter of send/recv packets */
+uint cf_value;		/* a value in packet */
 uint cf_ttl;
 
 #define SKT_ERR(x) do { perror(x); exit(-1); } while(0)

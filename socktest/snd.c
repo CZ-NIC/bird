@@ -5,19 +5,22 @@ do_sendmsg(sock *s, void *pkt, size_t len)
 {
   memcpy(s->ttx, pkt, len);
   s->tpos = s->ttx + len;
+
+  if (cf_count && ++counter > cf_count)
+    exit(0);
+
   return sk_write(s);
 }
 
 void
 connected_hook(sock *s)
 {
-  printf("Iface %s \n", s->iface->name, s->iface->addr);
   printf("Start sending...\n");
   s->tx_hook = NULL;
 }
 
 int
-main(int argc, char **argv)
+main(int argc, char *argv[])
 {
   bird_init();
 
@@ -36,9 +39,8 @@ main(int argc, char **argv)
   int count = 0;
   while (1)
   {
-    pkt.count = htonl(count);
+    pkt.count = htonl(++count);
     do_sendmsg(s, &pkt, sizeof(pkt));
-    count++;
 
     usleep(200000);
   }
