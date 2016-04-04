@@ -1262,6 +1262,9 @@ protos_build(void)
   proto_build(&proto_bfd);
   bfd_init_all();
 #endif
+#ifdef CONFIG_L3VPN
+  proto_build(&proto_l3vpn);
+#endif
 
   proto_pool = rp_new(&root_pool, "Protocols");
   proto_shutdown_timer = tm_new(proto_pool);

@@ -12,6 +12,7 @@
 
 #define MPLS_STACK_LENGTH   8 /* Adjust this if you need deeper MPLS stack */
 #define MPLS_PXLEN	    20 /* Length of the label in bits. Constant. */
+#define MPLS_LABEL_MAX	    ((1<<MPLS_PXLEN)-1) /* Maximal possible label value. */
 
 /*
  *   RFC 3032 updated by RFC 5462:

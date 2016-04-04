@@ -675,7 +675,7 @@ get_generic_attr(eattr *a, byte **buf, int buflen UNUSED)
     {
       *buf += bsprintf(*buf, "mpls");
       struct adata *ad = a->u.ptr;
-      u32 *z = ad->data;
+      u32 *z = (void *) ad->data;
       int len = ad->length / sizeof(u32);
       int i;
 
