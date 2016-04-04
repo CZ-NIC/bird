@@ -1014,7 +1014,7 @@ krt_import_control(struct proto *P, rte **new, ea_list **attrs, struct linpool *
 }
 
 static void
-krt_rt_notify(struct proto *P, struct rtable *table UNUSED, net *net,
+krt_rt_notify(struct proto *P, struct channel *ch UNUSED, net *net,
 	      rte *new, rte *old, struct ea_list *eattrs)
 {
   struct krt_proto *p = (struct krt_proto *) P;

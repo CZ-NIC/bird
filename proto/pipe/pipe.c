@@ -44,10 +44,10 @@
 #include "pipe.h"
 
 static void
-pipe_rt_notify(struct proto *P, rtable *src_table, net *n, rte *new, rte *old, ea_list *attrs)
+pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *old, ea_list *attrs)
 {
   struct pipe_proto *p = (void *) P;
-  struct channel *dst = (src_table == p->pri->table) ? p->sec : p->pri;
+  struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
   struct rte_src *src;
 
   net *nn;
@@ -89,9 +89,9 @@ pipe_rt_notify(struct proto *P, rtable *src_table, net *n, rte *new, rte *old, e
       src = old->attrs->src;
     }
 
-  src_table->pipe_busy = 1;
+  src_ch->table->pipe_busy = 1;
   rte_update2(dst, nn, e, src);
-  src_table->pipe_busy = 0;
+  src_ch->table->pipe_busy = 0;
 }
 
 static int

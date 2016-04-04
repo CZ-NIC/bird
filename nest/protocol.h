@@ -184,7 +184,7 @@ struct proto {
 
   void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
   void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
-  void (*rt_notify)(struct proto *, struct rtable *table, struct network *net, struct rte *new, struct rte *old, struct ea_list *attrs);
+  void (*rt_notify)(struct proto *, struct channel *, struct network *net, struct rte *new, struct rte *old, struct ea_list *attrs);
   void (*neigh_notify)(struct neighbor *neigh);
   struct ea_list *(*make_tmp_attrs)(struct rte *rt, struct linpool *pool);
   void (*store_tmp_attrs)(struct rte *rt, struct ea_list *attrs);

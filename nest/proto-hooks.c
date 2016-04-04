@@ -189,7 +189,7 @@ void ifa_notify(struct proto *p, unsigned flags, struct ifa *a)
 /**
  * rt_notify - notify instance about routing table change
  * @p: protocol instance
- * @table: a routing table 
+ * @channel: notifying channel
  * @net: a network entry
  * @new: new route for the network
  * @old: old route for the network

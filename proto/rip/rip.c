@@ -309,7 +309,7 @@ rip_withdraw_rte(struct rip_proto *p, net_addr *n, struct rip_neighbor *from)
  * it into our data structures.
  */
 static void
-rip_rt_notify(struct proto *P, struct rtable *table UNUSED, struct network *net, struct rte *new,
+rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, struct rte *new,
 	      struct rte *old UNUSED, struct ea_list *attrs)
 {
   struct rip_proto *p = (struct rip_proto *) P;

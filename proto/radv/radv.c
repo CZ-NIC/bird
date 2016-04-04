@@ -281,7 +281,7 @@ radv_import_control(struct proto *p, rte **new, ea_list **attrs UNUSED, struct l
 }
 
 static void
-radv_rt_notify(struct proto *p, rtable *tbl UNUSED, net *n, rte *new, rte *old UNUSED, ea_list *attrs UNUSED)
+radv_rt_notify(struct proto *p, struct channel *ch UNUSED, net *n, rte *new, rte *old UNUSED, ea_list *attrs UNUSED)
 {
   struct proto_radv *ra = (struct proto_radv *) p;
   struct radv_config *cf = (struct radv_config *) (p->cf);

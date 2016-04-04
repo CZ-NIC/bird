@@ -481,18 +481,18 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, ea_list *tmpa, int
 	rte_trace_out(D_ROUTES, p, old, "removed");
     }
   if (!new)
-    p->rt_notify(p, c->table, net, NULL, old, NULL);
+    p->rt_notify(p, c, net, NULL, old, NULL);
   else if (tmpa)
     {
       ea_list *t = tmpa;
       while (t->next)
 	t = t->next;
       t->next = new->attrs->eattrs;
-      p->rt_notify(p, c->table, net, new, old, tmpa);
+      p->rt_notify(p, c, net, new, old, tmpa);
       t->next = NULL;
     }
   else
-    p->rt_notify(p, c->table, net, new, old, new->attrs->eattrs);
+    p->rt_notify(p, c, net, new, old, new->attrs->eattrs);
 }
 
 static void
@@ -552,7 +552,7 @@ rt_notify_basic(struct channel *c, net *net, rte *new0, rte *old0, int refeed)
 
 #ifdef CONFIG_PIPE
     if ((p->proto == &proto_pipe) && !new0 && (p != old0->sender->proto))
-      p->rt_notify(p, c->table, net, NULL, old0, NULL);
+      p->rt_notify(p, c, net, NULL, old0, NULL);
 #endif
 
     return;
