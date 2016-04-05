@@ -68,7 +68,7 @@ sock *
 skt_parse_args(int argc, char *argv[], int is_send)
 {
   int is_recv = !is_send;
-  const char *opt_list = is_send ? "buBmi:l:p:v:t:c:" : "buBm:i:l:p:v:t:c:";
+  const char *opt_list = is_send ? "bumi:l:p:v:t:c:B:" : "bum:i:l:p:v:t:c:B:";
   int c;
 
   /* Set defaults */
