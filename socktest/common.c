@@ -169,6 +169,7 @@ scan_infaces(void)
 void
 bird_init(void)
 {
+  log_switch(1, NULL, NULL);
   resource_init();
   io_init();
   if_init();
