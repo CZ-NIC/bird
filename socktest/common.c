@@ -102,6 +102,11 @@ skt_parse_args(int argc, char *argv[], int is_send)
     case 'i':
       s->iface = if_get_by_name(optarg);
       s->iface->index = if_nametoindex(optarg);
+      if (s->iface->index == 0)
+      {
+	printf("No interface exists with the name %s \n", optarg);
+	exit(1);
+      }
       break;
     case 'B':
       cf_bind = 1;
