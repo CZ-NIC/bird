@@ -47,7 +47,10 @@ void
 skt_open(sock *s)
 {
   if (sk_open(s) < 0)
-    SKT_ERR(s->err);
+  {
+    perror(s->err);
+    exit(1);
+  }
 
   if (cf_mcast)
   {

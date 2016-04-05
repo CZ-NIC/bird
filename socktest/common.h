@@ -52,8 +52,6 @@ uint counter;		/* global counter of send/recv packets */
 uint cf_value;		/* a value in packet */
 uint cf_ttl;
 
-#define SKT_ERR(x) do { perror(x); exit(-1); } while(0)
-
 sock *skt_parse_args(int argc, char **argv, int is_send);
 void bird_init(void);
 void skt_open(sock *s);
