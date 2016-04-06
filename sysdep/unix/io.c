@@ -2147,7 +2147,7 @@ io_loop(void)
 	      int steps;
 
 	      steps = MAX_STEPS;
-	      if ((s->type >= SK_MAGIC) && (pfd[s->index].revents & (POLLIN | POLLHUP | POLLERR)) && s->rx_hook)
+	      if (s->fast_rx && (pfd[s->index].revents & (POLLIN | POLLHUP | POLLERR)) && s->rx_hook)
 		do
 		  {
 		    steps--;
@@ -2192,7 +2192,7 @@ io_loop(void)
 		  goto next2;
 		}
 
-	      if ((s->type < SK_MAGIC) && (pfd[s->index].revents & (POLLIN | POLLHUP | POLLERR)) && s->rx_hook)
+	      if (!s->fast_rx && (pfd[s->index].revents & (POLLIN | POLLHUP | POLLERR)) && s->rx_hook)
 		{
 		  count++;
 		  io_log_event(s->rx_hook, s->data);

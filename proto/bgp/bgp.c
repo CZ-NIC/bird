@@ -376,6 +376,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   if (ipa_zero(p->source_addr))
     p->source_addr = conn->sk->saddr;
 
+  conn->sk->fast_rx = 0;
+
   p->conn = conn;
   p->last_error_class = 0;
   p->last_error_code = 0;
@@ -698,6 +700,7 @@ bgp_setup_sk(struct bgp_conn *conn, sock *s)
 {
   s->data = conn;
   s->err_hook = bgp_sock_err;
+  s->fast_rx = 1;
   conn->sk = s;
 }
 

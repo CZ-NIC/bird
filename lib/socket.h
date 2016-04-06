@@ -28,6 +28,7 @@ typedef struct birdsock {
   struct iface *iface;			/* Interface; specify this for broad/multicast sockets */
 
   byte *rbuf, *rpos;			/* NULL=allocate automatically */
+  uint fast_rx;				/* RX has higher priority in event loop */
   uint rbsize;
   int (*rx_hook)(struct birdsock *, int size); /* NULL=receiving turned off, returns 1 to clear rx buffer */
 
