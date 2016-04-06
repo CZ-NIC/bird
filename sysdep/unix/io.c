@@ -903,6 +903,11 @@ sk_setup_broadcast(sock *s)
   if (setsockopt(s->fd, SOL_SOCKET, SO_BROADCAST, &y, sizeof(y)) < 0)
     ERR("SO_BROADCAST");
 
+#ifdef __FreeBSD__
+  if (setsockopt(s->fd, IPPROTO_IP, IP_ONESBCAST, &y, sizeof(y)) < 0)
+    ERR("IP_ONESBCAST");
+#endif
+
   return 0;
 }
 
