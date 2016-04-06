@@ -58,8 +58,6 @@ skt_open(sock *s)
     sk_join_group(s, s->daddr);	/* reception */
   }
 
-  sk_set_ttl(s, cf_ttl);
-
   if (cf_bcast)
     sk_setup_broadcast(s);
 }
@@ -74,7 +72,6 @@ skt_parse_args(int argc, char *argv[], int is_send)
   /* Set defaults */
   uint port = PKT_PORT;
   cf_value = PKT_VALUE;
-  cf_ttl = 1;
   cf_mcast = cf_bcast = cf_bind = cf_count = counter = 0;
 
   /* Create socket */
@@ -124,7 +121,7 @@ skt_parse_args(int argc, char *argv[], int is_send)
       cf_value = parse_uint(optarg);
       break;
     case 't':
-      cf_ttl = parse_uint(optarg);
+      s->ttl = parse_uint(optarg);
       break;
 
     default:

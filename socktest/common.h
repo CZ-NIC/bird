@@ -50,7 +50,6 @@ int cf_bind;		/* Bind by address */
 uint cf_count;		/* How many packets send */
 uint counter;		/* global counter of send/recv packets */
 uint cf_value;		/* a value in packet */
-uint cf_ttl;
 
 sock *skt_parse_args(int argc, char **argv, int is_send);
 void bird_init(void);
