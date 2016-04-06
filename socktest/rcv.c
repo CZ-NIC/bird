@@ -5,7 +5,7 @@
  *  <src>:<port> -> <dst> ifa(<id>) <name>: pkt <value>/<count>, ttl <ttl>
  */
 static void
-rcv_print(sock *sk, struct my_packet *pkt)
+rcv_print(sock *sk, struct socktest_packet *pkt)
 {
   char ifa_name[IF_NAMESIZE];
   char buf[1024];
@@ -42,7 +42,7 @@ rcv_print(sock *sk, struct my_packet *pkt)
 static int
 rcv_hook(sock *sk, int size)
 {
-  struct my_packet *raw;
+  struct socktest_packet *raw;
 
   if (cf_count && ++counter > cf_count)
     exit(0);
@@ -52,13 +52,13 @@ rcv_hook(sock *sk, int size)
   else
     raw = (void *) sk->rbuf;
 
-  if (size != sizeof(struct my_packet))
+  if (size != sizeof(struct socktest_packet))
   {
     printf("Received a packet with unexpected length of %d bytes \n", size);
     return 1;
   }
 
-  struct my_packet pkt = {
+  struct socktest_packet pkt = {
       .magic = ntohl(raw->magic),
       .value = ntohl(raw->value),
       .count = ntohl(raw->count),
@@ -73,14 +73,14 @@ rcv_hook(sock *sk, int size)
 int
 main(int argc, char *argv[])
 {
-  bird_init();
+  socktest_bird_init();
 
-  sock *s = skt_parse_args(argc, argv, 0);
+  sock *s = socktest_parse_args(argc, argv, 0);
   s->rx_hook = rcv_hook;
   s->rbsize = 1500;
-  s->flags |= SKF_LADDR_RX | SKF_TTL_RX | SKF_PKTINFO;
+  s->flags |= SKF_LADDR_RX | SKF_TTL_RX;
 
-  skt_open(s);
+  socktest_open(s);
 
   while (1)
   {

@@ -31,13 +31,11 @@
 #include "lib/unix.h"
 
 
-//#define PKT_MAGIC 0x12345678
-#define PKT_MAGIC 42
-
 #define PKT_PORT 100
 #define PKT_VALUE 0
+#define PKT_MAGIC 0x12345678
 
-struct my_packet
+struct socktest_packet
 {
   u32 magic;
   u32 value;
@@ -48,12 +46,12 @@ int cf_mcast;		/* Set up multicast */
 int cf_bcast;		/* Enable broadcast */
 int cf_bind;		/* Bind by address */
 uint cf_count;		/* How many packets send */
-uint counter;		/* global counter of send/recv packets */
-uint cf_value;		/* a value in packet */
+uint counter;		/* Global counter of send/recv packets */
+uint cf_value;		/* Value in packet */
 
-sock *skt_parse_args(int argc, char **argv, int is_send);
-void bird_init(void);
-void skt_open(sock *s);
+sock *socktest_parse_args(int argc, char **argv, int is_send);
+void socktest_bird_init(void);
+void socktest_open(sock *s);
 
 /* implementation in io.c */
 int sk_write(sock *s);

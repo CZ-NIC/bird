@@ -39,12 +39,12 @@ err_hook(sock *s, int err)
     return;
   }
 
-  printf("Err(%d): %s \n", err, s->err);
+  perror("err_hook: ");
   exit(1);
 }
 
 void
-skt_open(sock *s)
+socktest_open(sock *s)
 {
   if (sk_open(s) < 0)
   {
@@ -63,7 +63,7 @@ skt_open(sock *s)
 }
 
 sock *
-skt_parse_args(int argc, char *argv[], int is_send)
+socktest_parse_args(int argc, char *argv[], int is_send)
 {
   int is_recv = !is_send;
   const char *opt_list = is_send ? "bumi:l:p:v:t:c:B:" : "bum:i:l:p:v:t:c:B:";
@@ -128,7 +128,7 @@ skt_parse_args(int argc, char *argv[], int is_send)
       goto usage;
     }
 
-  if (is_recv && s->type == SK_UDP)	/* XXX: Weird */
+  if (is_recv && s->type == SK_UDP)
     s->sport = port;
   else
     s->dport = port;
@@ -148,7 +148,7 @@ skt_parse_args(int argc, char *argv[], int is_send)
 }
 
 static void
-scan_infaces(void)
+scan_interfaces(void)
 {
   /* create mockup config */
   struct config *c = config_alloc("mockup");
@@ -169,11 +169,11 @@ scan_infaces(void)
 }
 
 void
-bird_init(void)
+socktest_bird_init(void)
 {
   log_switch(1, NULL, NULL);
   resource_init();
   io_init();
   if_init();
-  scan_infaces();
+  scan_interfaces();
 }

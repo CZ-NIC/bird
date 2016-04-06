@@ -1,6 +1,6 @@
 #include "common.h"
 
-int
+static int
 do_sendmsg(sock *s, void *pkt, size_t len)
 {
   memcpy(s->ttx, pkt, len);
@@ -12,7 +12,7 @@ do_sendmsg(sock *s, void *pkt, size_t len)
   return sk_write(s);
 }
 
-void
+static void
 connected_hook(sock *s)
 {
   printf("Start sending...\n");
@@ -22,16 +22,16 @@ connected_hook(sock *s)
 int
 main(int argc, char *argv[])
 {
-  bird_init();
+  socktest_bird_init();
 
-  sock *s = skt_parse_args(argc, argv, 1);
+  sock *s = socktest_parse_args(argc, argv, 1);
   s->tx_hook = connected_hook;
   s->tbsize = 1500;
   s->tos = IP_PREC_INTERNET_CONTROL;
 
-  skt_open(s);
+  socktest_open(s);
 
-  struct my_packet pkt = {
+  struct socktest_packet pkt = {
       .magic = htonl(PKT_MAGIC),
       .value = htonl(cf_value),
   };
