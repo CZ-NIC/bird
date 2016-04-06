@@ -2050,12 +2050,13 @@ io_loop(void)
   for(;;)
     {
       events = ev_run_list(&global_event_list);
+    timers:
       update_times();
       tout = tm_first_shot();
       if (tout <= now)
 	{
 	  tm_shot();
-	  continue;
+	  goto timers;
 	}
       poll_tout = (events ? 0 : MIN(tout - now, 3)) * 1000; /* Time in milliseconds */
 

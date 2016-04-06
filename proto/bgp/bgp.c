@@ -670,6 +670,10 @@ bgp_keepalive_timeout(timer *t)
 
   DBG("BGP: Keepalive timer\n");
   bgp_schedule_packet(conn, PKT_KEEPALIVE);
+
+  /* Kick TX a bit faster */
+  if (ev_active(conn->tx_ev))
+    ev_run(conn->tx_ev);
 }
 
 static void
