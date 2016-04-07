@@ -68,12 +68,12 @@
     - Správná IP na obou koncích
 
 #### Přijímání
-1.
+1. Nastaveno na *správný* interface
     - Přijmutí
     - Taková IP odesílatele, kterou jsme nastavili
     - Správně rozpoznané rozhraní, na kterém jsme packet přijmuli
     - Správná hodnota TTL
-2.
+2. Nastavenona *jiný* interface
     - Nepřijme nic
 
 ## Výsledky
@@ -82,28 +82,27 @@
 
 <table style="text-align: center;">
   <tr>
-    <th colspan="2"></td><th>Unicast</td><th>Multicast</td><th>Broadcast</td>
+    <th colspan="2"></td><th> Unicast </td><th> Multicast </td><th> Broadcast </td>
   </tr>
 
   <tr>
-    <th rowspan="2" style="vertical-align: middle">IPv4</th><th>Raw</th>
-    <td rowspan="2">OK</td>
-    <td rowspan="2">OK</td>
-    <td rowspan="2">OK</td>
+    <th rowspan="2" style="vertical-align: middle"> IPv4 </th><th> Raw </th>
+    <td rowspan="2"> OK </td>
+    <td rowspan="2"> OK </td>
+    <td rowspan="2"> OK </td>
   </tr>
   <tr>
-    <th>UDP</th>
+    <th> UDP </th>
   </tr>
 
   <tr>
-    <th rowspan="2" style="vertical-align: middle">IPv6</th><th>Raw</th>
-    <td rowspan="2">OK<sup>1</sup></td>
-    <td rowspan="2">OK<sup>1</sup></td>
-    <td rowspan="2">-</td>
+    <th rowspan="2" style="vertical-align: middle"> IPv6 </th><th> Raw </th>
+    <td rowspan="2"> OK<sup>1</sup> </td>
+    <td rowspan="2"> OK<sup>1</sup> </td>
+    <td rowspan="2"> - </td>
   </tr>
   <tr>
-    <th>UDP</th>
-
+    <th> UDP </th>
   </tr>
 </table>
 
@@ -113,28 +112,28 @@
 
 <table style="text-align: center;">
   <tr>
-    <th colspan="2"></td><th>Unicast</td><th>Multicast</td><th>Broadcast</td>
+    <th colspan="2"></td><th> Unicast </td><th> Multicast </td><th> Broadcast </td>
   </tr>
 
   <tr>
-    <th rowspan="2" style="vertical-align: middle">IPv4</th><th>Raw</th>
-    <td>OK<sup>2,4,5</sup></td>
-    <td rowspan="2">OK</td>
-    <td rowspan="2">OK<sup>2,3,4</sup></td>
+    <th rowspan="2" style="vertical-align: middle"> IPv4 </th><th> Raw </th>
+    <td> OK<sup>2,4,5</sup> </td>
+    <td rowspan="2"> OK </td>
+    <td rowspan="2"> OK<sup>2,3,4</sup> </td>
   </tr>
   <tr>
-    <th>UDP</th>
-    <td>OK<sup>2,5</sup></td>
+    <th> UDP </th>
+    <td> OK<sup>2,5</sup> </td>
   </tr>
 
   <tr>
-    <th rowspan="2" style="vertical-align: middle">IPv6</th><th>Raw</th>
-    <td rowspan="2">OK<sup>1,2,4,5</sup></td>
-    <td rowspan="2">OK<sup>1,2</sup></td>
-    <td rowspan="2">-</td>
+    <th rowspan="2" style="vertical-align: middle"> IPv6 </th><th> Raw </th>
+    <td rowspan="2"> OK<sup>1,2,4,5</sup> </td>
+    <td rowspan="2"> OK<sup>1,2</sup> </td>
+    <td rowspan="2"> - </td>
   </tr>
   <tr>
-    <th>UDP</th>
+    <th> UDP </th>
   </tr>
 </table>
 
@@ -150,30 +149,30 @@
 
 <table style="text-align: center;">
   <tr>
-    <th colspan="2"></td><th>Unicast</td><th>Multicast</td><th>Broadcast</td>
+    <th colspan="2"></td><th> Unicast </td><th> Multicast </td><th> Broadcast </td>
   </tr>
 
   <tr>
-    <th rowspan="2" style="vertical-align: middle">IPv4</th><th>Raw</th>
-    <td>OK<sup>2,5</sup></td>
-    <td>OK</td>
-    <td>OK<sup>2,7</sup></td>
+    <th rowspan="2" style="vertical-align: middle"> IPv4 </th><th> Raw </th>
+    <td> OK<sup>2,5</sup> </td>
+    <td> OK </td>
+    <td> OK<sup>2,7</sup> </td>
   </tr>
   <tr>
-    <th>UDP</th>
-    <td>OK<sup>2,5,6</sup></td>
-    <td>OK<sup>6</sup></td>
-    <td>OK<sup>2,6,7</sup></td>
+    <th> UDP </th>
+    <td> OK<sup>2,5,6</sup> </td>
+    <td> OK<sup>6</sup> </td>
+    <td> OK<sup>2,6,7</sup> </td>
   </tr>
 
   <tr>
-    <th rowspan="2" style="vertical-align: middle">IPv6</th><th>Raw</th>
-    <td rowspan="2">OK<sup>1,2,5</sup></td>
-    <td rowspan="2">OK<sup>1</sup></td>
-    <td rowspan="2">-</td>
+    <th rowspan="2" style="vertical-align: middle"> IPv6 </th><th> Raw </th>
+    <td rowspan="2"> OK<sup>1,2,5</sup> </td>
+    <td rowspan="2"> OK<sup>1</sup> </td>
+    <td rowspan="2"> - </td>
   </tr>
   <tr>
-    <th>UDP</th>
+    <th> UDP </th>
   </tr>
 </table>
 
@@ -191,30 +190,30 @@
 
 <table style="text-align: center;">
   <tr>
-    <th colspan="2"></td><th>Unicast</td><th>Multicast</td><th>Broadcast</td>
+    <th colspan="2"></td><th> Unicast </td><th> Multicast </td><th> Broadcast </td>
   </tr>
 
   <tr>
-    <th rowspan="2" style="vertical-align: middle">IPv4</th><th>Raw</th>
-    <td>OK<sup>2,5</sup></td>
-    <td>OK<sup></sup></td>
-    <td>OK<sup>5,7</sup></td>
+    <th rowspan="2" style="vertical-align: middle"> IPv4 </th><th> Raw </th>
+    <td> OK<sup>2,5</sup> </td>
+    <td> OK<sup></sup> </td>
+    <td> OK<sup>5,7</sup> </td>
   </tr>
   <tr>
-    <th>UDP</th>
-    <td>OK<sup>2,5,6</sup></td>
-    <td>OK<sup>6</sup></td>
-    <td>OK<sup>5,6,7</sup></td>
+    <th> UDP </th>
+    <td> OK<sup>2,5,6</sup> </td>
+    <td> OK<sup>6</sup> </td>
+    <td> OK<sup>5,6,7</sup> </td>
   </tr>
 
   <tr>
-    <th rowspan="2" style="vertical-align: middle">IPv6</th><th>Raw</th>
-    <td rowspan="2">OK<sup>1,2,5</sup></td>
-    <td rowspan="2">OK<sup>1,8</sup></td>
-    <td rowspan="2">-</td>
+    <th rowspan="2" style="vertical-align: middle"> IPv6 </th><th> Raw </th>
+    <td rowspan="2"> OK<sup>1,2,5</sup> </td>
+    <td rowspan="2"> OK<sup>1,8</sup> </td>
+    <td rowspan="2"> - </td>
   </tr>
   <tr>
-    <th>UDP</th>
+    <th> UDP </th>
   </tr>
 </table>
 
