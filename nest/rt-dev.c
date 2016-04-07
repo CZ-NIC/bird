@@ -34,7 +34,7 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 
   if (!EMPTY_LIST(cf->iface_list) &&
       !iface_patt_find(&cf->iface_list, ad->iface, ad->iface->addr))
-    /* Empty list is automagically treated as "*" */
+    /* Empty list is automatically treated as "*" */
     return;
 
   if (ad->flags & IA_SECONDARY)

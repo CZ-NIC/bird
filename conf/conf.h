@@ -68,7 +68,7 @@ int config_commit(struct config *, int type, int timeout);
 int config_confirm(void);
 int config_undo(void);
 void config_init(void);
-void cf_error(char *msg, ...) NORET;
+void cf_error(const char *msg, ...) NORET;
 void config_add_obstacle(struct config *);
 void config_del_obstacle(struct config *);
 void order_shutdown(void);

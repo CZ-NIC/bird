@@ -39,6 +39,12 @@ static int graceful_restart_state;
 static u32 graceful_restart_locks;
 
 static char *p_states[] = { "DOWN", "START", "UP", "STOP" };
+static char *cs_states[] = {
+    [CS_DOWN] = "DOWN",
+    [CS_START] = "START",
+    [CS_UP] = "UP",
+    [CS_FLUSHING] = "FLUSHING"
+};
 
 extern struct protocol proto_unix_iface;
 
@@ -313,7 +319,7 @@ channel_set_state(struct channel *c, uint state)
   uint cs = c->channel_state;
   uint es = c->export_state;
 
-  DBG("%s reporting state transition %s/%s -> */%s\n", p->name, c_states[cs], p_states[ops], p_states[ps]);
+  DBG("%s reporting channel %s state transition %s -> %s\n", c->proto->name, c->name, cs_states[cs], cs_states[state]);
   if (state == cs)
     return;
 
