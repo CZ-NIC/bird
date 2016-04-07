@@ -171,6 +171,11 @@ BIRD executable by configuring out routing protocols you don't use, and
 	<tag>-f</tag>
 	run bird in foreground.
 
+	<tag>-l</tag>
+	look for a configuration file and a communication socket in the current
+	working directory instead of in default system paths. However, paths
+	specified by options <cf/-c/, <cf/-s/ have higher priority.
+
 	<tag>-R</tag>
 	apply graceful restart recovery after start.
 </descrip>
