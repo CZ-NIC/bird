@@ -4,18 +4,18 @@ static void
 l3vpn_alloc_mpls_label(struct l3vpn_proto *p, struct l3vpn_ip_to_mpls *litm, ip_addr gw, struct iface *iface)
 {
   u32 label;
-  net *n;
+  net_addr_union nu;
 
   for (label = p->last_label + 1; label <= MPLS_LABEL_MAX; label++) {
-    net_addr_union nu = { .mpls = NET_ADDR_MPLS(label) };
-    n = net_get(p->mpls->table, &nu.n);
+    nu.mpls = NET_ADDR_MPLS(label);
+    net *n = net_get(p->mpls->table, &nu.n);
     if (!n->routes)
       goto have_label;
   }
 
   for (label = 16; label <= p->last_label; label++) {
-    net_addr_union nu = { .mpls = NET_ADDR_MPLS(label) };
-    n = net_get(p->mpls->table, &nu.n);
+    nu.mpls = NET_ADDR_MPLS(label);
+    net *n = net_get(p->mpls->table, &nu.n);
     if (!n->routes)
       goto have_label;
   }
@@ -29,8 +29,7 @@ have_label:;
   a.src = p->p.main_source;
   a.iface = iface;
   rte *e = rte_get_temp(rta_lookup(&a));
-  e->net = n;
-  rte_update2(p->mpls, n, e, p->p.main_source);
+  rte_update2(p->mpls, &nu.n, e, p->p.main_source);
 
   litm->ad.length = sizeof(u32);
   memcpy(litm->ad.data, &label, sizeof(u32));
@@ -141,15 +140,10 @@ l3vpn_rt_notify(struct proto *P, struct channel *ch, net *n, rte *new, rte *old,
 
   struct rte_src *src = (new ? new->attrs->src : old->attrs->src);
 
-  if (ch == p->ip) {
-    net *nn = net_get(p->vpn->table, &new_dst.n);
-    if (e) e->net = nn;
-    rte_update2(p->vpn, nn, e, src);
-  } else {
-    net *nn = net_get(p->ip->table, &new_dst.n);
-    if (e) e->net = nn;
-    rte_update2(p->ip, nn, e, src);
-  }
+  if (ch == p->ip)
+    rte_update2(p->vpn, &new_dst.n, e, src);
+  else
+    rte_update2(p->ip, &new_dst.n, e, src);
 }
 
 static struct proto *
