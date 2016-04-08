@@ -276,7 +276,7 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 
 rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
-void rte_update2(struct channel *c, net *net, rte *new, struct rte_src *src);
+void rte_update2(struct channel *c, net_addr *n, rte *new, struct rte_src *src);
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
 void rte_discard(rtable *tab, rte *old);
 int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter);

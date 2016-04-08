@@ -61,7 +61,6 @@ p_igp_table(struct proto *p)
 static void
 static_install(struct proto *p, struct static_route *r, struct iface *ifa)
 {
-  net *n;
   rta a;
   rte *e;
 
@@ -127,15 +126,13 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
 
   /* We skip rta_lookup() here */
 
-  n = net_get(p->main_channel->table, r->net);
   e = rte_get_temp(&a);
-  e->net = n;
   e->pflags = 0;
 
   if (r->cmds)
     f_eval_rte(r->cmds, &e, static_lp);
 
-  rte_update(p, n, e);
+  rte_update(p, r->net, e);
   r->installed = 1;
 
   if (r->cmds)
@@ -145,14 +142,11 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
 static void
 static_remove(struct proto *p, struct static_route *r)
 {
-  net *n;
-
   if (!r->installed)
     return;
 
   DBG("Removing static route %N via %I\n", r->net, r->via);
-  n = net_find(p->main_channel->table, r->net);
-  rte_update(p, n, NULL);
+  rte_update(p, r->net, NULL);
   r->installed = 0;
 }
 
