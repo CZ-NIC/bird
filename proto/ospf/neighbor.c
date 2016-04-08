@@ -108,6 +108,7 @@ ospf_neigh_down(struct ospf_neighbor *n)
 {
   struct ospf_iface *ifa = n->ifa;
   struct ospf_proto *p = ifa->oa->po;
+  u32 rid = n->rid;
 
   if ((ifa->type == OSPF_IT_NBMA) || (ifa->type == OSPF_IT_PTMP))
   {
@@ -121,7 +122,7 @@ ospf_neigh_down(struct ospf_neighbor *n)
   rem_node(NODE n);
   rfree(n->pool);
 
-  OSPF_TRACE(D_EVENTS, "Neighbor %R on %s removed", n->rid, ifa->ifname);
+  OSPF_TRACE(D_EVENTS, "Neighbor %R on %s removed", rid, ifa->ifname);
 }
 
 /**

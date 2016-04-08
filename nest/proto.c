@@ -264,6 +264,7 @@ channel_stop_export(struct channel *c)
     rt_feed_channel_abort(c);
 
   c->export_state = ES_DOWN;
+  c->stats.exp_routes = 0;
 }
 
 static void
@@ -299,7 +300,7 @@ channel_do_flush(struct channel *c)
 static void
 channel_do_down(struct channel *c)
 {
-  rem2_node(&c->table_node);
+  rem_node(&c->table_node);
   rt_unlock_table(c->table);
   c->proto->active_channels--;
 

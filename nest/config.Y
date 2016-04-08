@@ -112,7 +112,7 @@ idval:
      else if (($1->class == (SYM_CONSTANT | T_IP)) && ipa_is_ip4(SYM_VAL($1).ip))
        $$ = ipa_to_u32(SYM_VAL($1).ip);
      else
-       cf_error("Number of IPv4 address constant expected");
+       cf_error("Number or IPv4 address constant expected");
    }
  ;
 

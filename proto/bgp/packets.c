@@ -164,6 +164,14 @@ bgp_put_cap_rr(struct bgp_proto *p UNUSED, byte *buf)
 }
 
 static byte *
+bgp_put_cap_ext_msg(struct bgp_proto *p UNUSED, byte *buf)
+{
+  *buf++ = 6;		/* Capability 6: Support for extended messages */
+  *buf++ = 0;		/* Capability data length */
+  return buf;
+}
+
+static byte *
 bgp_put_cap_gr1(struct bgp_proto *p, byte *buf)
 {
   *buf++ = 64;		/* Capability 64: Support for graceful restart */
@@ -219,14 +227,6 @@ static byte *
 bgp_put_cap_err(struct bgp_proto *p UNUSED, byte *buf)
 {
   *buf++ = 70;		/* Capability 70: Support for enhanced route refresh */
-  *buf++ = 0;		/* Capability data length */
-  return buf;
-}
-
-static byte *
-bgp_put_cap_ext_msg(struct bgp_proto *p UNUSED, byte *buf)
-{
-  *buf++ = 230;		/* Capability TBD: Support for extended messages */
   *buf++ = 0;		/* Capability data length */
   return buf;
 }
@@ -827,6 +827,12 @@ bgp_parse_capabilities(struct bgp_conn *conn, byte *opt, int len)
 	  conn->peer_refresh_support = 1;
 	  break;
 
+	case 6: /* Extended message length capability, draft */
+	  if (cl != 0)
+	    goto err;
+	  conn->peer_ext_messages_support = 1;
+	  break;
+
 	case 64: /* Graceful restart capability, RFC 4724 */
 	  if (cl % 4 != 2)
 	    goto err;
@@ -865,12 +871,6 @@ bgp_parse_capabilities(struct bgp_conn *conn, byte *opt, int len)
 	  if (cl != 0)
 	    goto err;
 	  conn->peer_enhanced_refresh_support = 1;
-	  break;
-
-	case 230: /* Extended message length capability, draft, cap number TBD */
-	  if (cl != 0)
-	    goto err;
-	  conn->peer_ext_messages_support = 1;
 	  break;
 
 	  /* We can safely ignore all other capabilities */

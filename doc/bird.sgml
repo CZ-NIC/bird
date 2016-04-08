@@ -318,8 +318,9 @@ protocol rip {
 <p><descrip>
 	<tag>include "<m/filename/"</tag>
 	This statement causes inclusion of a new file. <m/Filename/ could also
-	be a wildcard. The maximal depth is 8. Note that this statement could be
-	used anywhere in the config file, not just as a top-level option.
+	be a wildcard, in that case matching files are included in alphabetic
+	order. The maximal depth is 8. Note that this statement could be used
+	anywhere in the config file, not just as a top-level option.
 
 	<tag><label id="dsc-log">log "<m/filename/"|syslog [name <m/name/]|stderr all|{ <m/list of classes/ }</tag>
 	Set logging of messages having the given class (either <cf/all/ or
@@ -1119,9 +1120,12 @@ foot).
 
 	<cf><m/P/.last</cf> returns the last ASN (the source ASN) in path <m/P/.
 
+	<cf><m/P/.last_nonaggregated</cf> returns the last ASN in the non-aggregated part of the path <m/P/.
+
 	Both <cf/first/ and <cf/last/ return zero if there is no appropriate
 	ASN, for example if the path contains an AS set element as the first (or
-	the last) part.
+	the last) part. If the path ends with an AS set, <cf/last_nonaggregated/
+	may be used to get last ASN before any AS set.
 
 	<cf><m/P/.len</cf> returns the length of path <m/P/.
 
@@ -1859,6 +1863,11 @@ using the following configuration parameters:
 	in neighbor's implementation of 4B AS extension. Even when disabled
 	(off), BIRD behaves internally as AS4-aware BGP router. Default: on.
 
+	<tag>enable extended messages <m/switch/</tag>
+	The BGP protocol uses maximum message length of 4096 bytes. This option
+	provides an extension to allow extended messages with length up
+	to 65535 bytes. Default: off.
+
 	<tag>capabilities <m/switch/</tag>
 	Use capability advertisement to advertise optional capabilities. This is
 	standard behavior for newer BGP implementations, but there might be some
@@ -2054,7 +2063,7 @@ protocol bgp {
 	multihop;			     # ... which is connected indirectly
 	export filter {			     # We use non-trivial export rules
 		if source = RTS_STATIC then { # Export only static routes
-		        # Assign our community
+			# Assign our community
 			bgp_community.add((65000,64501));
 			# Artificially increase path length
 			# by advertising local AS number twice
@@ -2263,7 +2272,7 @@ these attributes:
 
 	<tag>ip <cf/krt_prefsrc/</tag> (Linux)
 	The preferred source address. Used in source address selection for
- 	outgoing packets. Has to be one of the IP addresses of the router.
+	outgoing packets. Has to be one of the IP addresses of the router.
 
 	<tag>int <cf/krt_realm/</tag> (Linux)
 	The realm of the route. Can be used for traffic classification.
@@ -2608,8 +2617,8 @@ protocol ospf &lt;name&gt; {
 	updates. Default value is 5.
 
 	<tag>priority <M>num</M></tag>
-	On every multiple access network (e.g., the Ethernet) Designed Router
-	and Backup Designed router are elected. These routers have some special
+	On every multiple access network (e.g., the Ethernet) Designated Router
+	and Backup Designated router are elected. These routers have some special
 	functions in the flooding process. Higher priority increases preferences
 	in this election. Routers with priority 0 are not eligible. Default
 	value is 1.

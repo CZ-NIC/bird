@@ -374,6 +374,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   if (ipa_zero(p->source_addr))
     p->source_addr = conn->sk->saddr;
 
+  conn->sk->fast_rx = 0;
+
   p->conn = conn;
   p->last_error_class = 0;
   p->last_error_code = 0;
@@ -666,6 +668,10 @@ bgp_keepalive_timeout(timer *t)
 
   DBG("BGP: Keepalive timer\n");
   bgp_schedule_packet(conn, PKT_KEEPALIVE);
+
+  /* Kick TX a bit faster */
+  if (ev_active(conn->tx_ev))
+    ev_run(conn->tx_ev);
 }
 
 static void
@@ -696,6 +702,7 @@ bgp_setup_sk(struct bgp_conn *conn, sock *s)
 {
   s->data = conn;
   s->err_hook = bgp_sock_err;
+  s->fast_rx = 1;
   conn->sk = s;
 }
 
@@ -813,7 +820,13 @@ bgp_incoming_connection(sock *sk, int dummy UNUSED)
       return 0;
     }
 
-  /* We are in proper state and there is no other incoming connection */
+  /*
+   * BIRD should keep multiple incoming connections in OpenSent state (for
+   * details RFC 4271 8.2.1 par 3), but it keeps just one. Duplicate incoming
+   * connections are rejected istead. The exception is the case where an
+   * incoming connection triggers a graceful restart.
+   */
+
   acc = (p->p.proto_state == PS_START || p->p.proto_state == PS_UP) &&
     (p->start_state >= BSS_CONNECT) && (!p->incoming_conn.sk);
 
@@ -823,6 +836,10 @@ bgp_incoming_connection(sock *sk, int dummy UNUSED)
       bgp_handle_graceful_restart(p);
       bgp_conn_enter_idle_state(p->conn);
       acc = 1;
+
+      /* There might be separate incoming connection in OpenSent state */
+      if (p->incoming_conn.state > BS_ACTIVE)
+	bgp_close_conn(&p->incoming_conn);
     }
 
   BGP_TRACE(D_EVENTS, "Incoming connection from %I%J (port %d) %s",
