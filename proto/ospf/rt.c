@@ -1973,7 +1973,6 @@ again1:
 
       if (reload || ort_changed(nf, &a0))
       {
-	net *ne = net_get(p->p.main_channel->table, nf->fn.addr);
 	rta *a = rta_lookup(&a0);
 	rte *e = rte_get_temp(a);
 
@@ -1984,11 +1983,10 @@ again1:
 	e->u.ospf.tag = nf->old_tag = nf->n.tag;
 	e->u.ospf.router_id = nf->old_rid = nf->n.rid;
 	e->pflags = 0;
-	e->net = ne;
 
 	DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
 	    a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
-	rte_update(&p->p, ne, e);
+	rte_update(&p->p, nf->fn.addr, e);
       }
     }
     else if (nf->old_rta)
@@ -1997,8 +1995,7 @@ again1:
       rta_free(nf->old_rta);
       nf->old_rta = NULL;
 
-      net *ne = net_get(p->p.main_channel->table, nf->fn.addr);
-      rte_update(&p->p, ne, NULL);
+      rte_update(&p->p, nf->fn.addr, NULL);
     }
 
     /* Remove unused rt entry, some special entries are persistent */

@@ -143,8 +143,6 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   if (rt)
   {
     /* Update */
-    net *n = net_get(p->p.main_channel->table, en->n.addr);
-
     rta a0 = {
       .src = p->p.main_source,
       .source = RTS_RIP,
@@ -204,16 +202,14 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     e->u.rip.metric = rt_metric;
     e->u.rip.tag = rt_tag;
 
-    e->net = n;
     e->pflags = 0;
 
-    rte_update(&p->p, n, e);
+    rte_update(&p->p, en->n.addr, e);
   }
   else
   {
     /* Withdraw */
-    net *n = net_find(p->p.main_channel->table, en->n.addr);
-    rte_update(&p->p, n, NULL);
+    rte_update(&p->p, en->n.addr, NULL);
   }
 }
 
