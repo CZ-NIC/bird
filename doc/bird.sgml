@@ -2194,7 +2194,7 @@ conditions, because a lower priority IGP route for the same network is not
 exported to the kernel routing table. This is an issue on BSD systems only, as
 on Linux systems BIRD cannot change non-BIRD route in the kernel routing table.
 
-<p>The only configurable thing about direct is what interfaces it watches:
+<p>There are just few configuration options for the Direct protocol:
 
 <p><descrip>
 	<tag>interface <m/pattern [, ...]/</tag>
@@ -2205,6 +2205,12 @@ on Linux systems BIRD cannot change non-BIRD route in the kernel routing table.
 	interfaces), just use this clause. See <ref id="dsc-iface" name="interface">
 	common option for detailed description. The Direct protocol uses
 	extended interface clauses.
+
+	<tag>check link <m/switch/</tag>
+	If enabled, a hardware link state (reported by OS) is taken into
+	consideration. Routes for directly connected networks are generated only
+	if link up is reported and they are withdrawn when link disappears
+	(e.g., an ethernet cable is unplugged). Default value is no.
 </descrip>
 
 <p>Direct device routes don't contain any specific attributes.
