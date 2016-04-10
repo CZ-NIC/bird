@@ -173,7 +173,7 @@ BIRD executable by configuring out routing protocols you don't use, and
 
 	<tag>-l</tag>
 	look for a configuration file and a communication socket in the current
-	working directory instead of in default system paths. However, paths
+	working directory instead of in default system locations. However, paths
 	specified by options <cf/-c/, <cf/-s/ have higher priority.
 
 	<tag>-R</tag>
@@ -751,6 +751,10 @@ This argument can be omitted if there exists only a single instance.
 	Show router status, that is BIRD version, uptime and time from last
 	reconfiguration.
 
+	<tag>show interfaces [summary]</tag>
+	Show the list of interfaces. For each interface, print its type, state,
+	MTU and addresses assigned.
+
 	<tag>show protocols [all]</tag>
 	Show list of protocol instances along with tables they are connected to
 	and protocol status, possibly giving verbose information, if <cf/all/ is
@@ -778,15 +782,17 @@ This argument can be omitted if there exists only a single instance.
 	Show contents of an OSPF LSA database. Options could be used to filter
 	entries.
 
+	<tag>show rip interfaces [<m/name/] ["<m/interface/"]</tag>
+	Show detailed information about RIP interfaces.
+
+	<tag>show rip neighbors [<m/name/] ["<m/interface/"]</tag>
+	Show a list of RIP neighbors and associated state.
+
 	<tag>show static [<m/name/]</tag>
 	Show detailed information about static routes.
 
 	<tag>show bfd sessions [<m/name/]</tag>
 	Show information about BFD sessions.
-
-	<tag>show interfaces [summary]</tag>
-	Show the list of interfaces. For each interface, print its type, state,
-	MTU and addresses assigned.
 
 	<tag>show symbols [table|filter|function|protocol|template|roa|<m/symbol/]</tag>
 	Show the list of symbols defined in the configuration (names of
@@ -3415,6 +3421,11 @@ protocol rip [&lt;name&gt;] {
 	RIP, the option is not supported for RIPng, as no further versions are
 	defined.
 
+	<tag>version only <m/switch/</tag>
+	Regardless of RIP version configured for the interface, BIRD accepts
+	incoming packets of any RIP version. This option restrict accepted
+	packets to the configured version. Default: no.
+
 	<tag>split horizon <m/switch/</tag>
 	Split horizon is a scheme for preventing routing loops. When split
 	horizon is active, routes are not regularly propagated back to the
@@ -3559,7 +3570,7 @@ default route to prevent routing loops).
 packets to a neighboring router, multipath routes specifying several (possibly
 weighted) neighboring routers, device routes specifying forwarding to hosts on a
 directly connected network, recursive routes computing their nexthops by doing
-route table lookups for a given IP and special routes (sink, blackhole etc.)
+route table lookups for a given IP, and special routes (sink, blackhole etc.)
 which specify a special action to be done instead of forwarding the packet.
 
 <p>When the particular destination is not available (the interface is down or
@@ -3567,8 +3578,26 @@ the next hop of the route is not a neighbor at the moment), Static just
 uninstalls the route from the table it is connected to and adds it again as soon
 as the destination becomes adjacent again.
 
-<p>The Static protocol does not have many configuration options. The definition
-of the protocol contains mainly a list of static routes:
+<p>There are three classes of definitions in Static protocol configuration --
+global options, static route definitions, and per-route options. Usually, the
+definition of the protocol contains mainly a list of static routes.
+
+<p>Global options:
+
+<descrip>
+	<tag>check link <m/switch/</tag>
+	If set, hardware link states of network interfaces are taken into
+	consideration.  When link disappears (e.g. ethernet cable is unplugged),
+	static routes directing to that interface are removed. It is possible
+	that some hardware drivers or platforms do not implement this feature.
+	Default: off.
+
+	<tag>igp table <m/name/</tag>
+	Specifies a table that is used for route table lookups of recursive
+	routes. Default: the same table as the protocol is connected to.
+</descrip>
+
+<p>Route definitions (each may also contain a block of per-route options):
 
 <descrip>
 	<tag>route <m/prefix/ via <m/ip/</tag>
@@ -3576,7 +3605,7 @@ of the protocol contains mainly a list of static routes:
 	interface can be specified as a part of the address (e.g.,
 	<cf/via fe80::1234%eth0/).
 
-	<tag>route <m/prefix/ multipath via <m/ip/ [weight <m/num/] [via ...]</tag>
+	<tag>route <m/prefix/ multipath via <m/ip/ [weight <m/num/] [bfd </m/switch/] [via ...]</tag>
 	Static multipath route. Contains several nexthops (gateways), possibly
  	with their weights.
 
@@ -3592,17 +3621,33 @@ of the protocol contains mainly a list of static routes:
 	Special routes specifying to silently drop the packet, return it as
 	unreachable or return it as administratively prohibited. First two
 	targets are also known as <cf/drop/ and <cf/reject/.
+</descrip>
 
-	<tag>check link <m/switch/</tag>
-	If set, hardware link states of network interfaces are taken into
-	consideration.  When link disappears (e.g. ethernet cable is unplugged),
-	static routes directing to that interface are removed. It is possible
-	that some hardware drivers or platforms do not implement this feature.
-	Default: off.
+<p>Per-route options:
 
-	<tag>igp table <m/name/</tag>
-	Specifies a table that is used for route table lookups of recursive
-	routes. Default: the same table as the protocol is connected to.
+<descrip>
+	<tag>bfd <m/switch/</tag>
+	The Static protocol could use BFD protocol for next hop liveness
+	detection. If enabled, a BFD session to the route next hop is created
+	and the static route is BFD-controlled -- the static route is announced
+	only if the next hop liveness is confirmed by BFD. If the BFD session
+	fails, the static route is removed. Note that this is a bit different
+	compared to other protocols, which may use BFD as an advisory mechanism
+	for fast failure detection but ignores it if a BFD session is not even
+	established.
+
+	This option can be used for static routes with a direct next hop, or
+	also for for individual next hops in a static multipath route (see
+	above). Note that BFD protocol also has to be configured, see
+	<ref id="sect-bfd" name="BFD"> section for details. Default value is no.
+
+	<tag><m/filter expression/</tag>
+	This is a special option that allows filter expressions to be configured
+	on per-route basis. Can be used multiple times. These expressions are
+	evaluated when the route is originated, similarly to the import filter
+	of the static protocol. This is especially useful for configuring route
+	attributes, e.g., <cf/ospf_metric1 = 100;/ for a route that will be
+	exported to the OSPF protocol.
 </descrip>
 
 <p>Static routes have no specific attributes.
@@ -3611,14 +3656,23 @@ of the protocol contains mainly a list of static routes:
 
 <p><code>
 protocol static {
-	table testable;			 # Connect to a non-default routing table
+	table testable;			# Connect to a non-default routing table
+	check link;			# Advertise routes only if link is up
 	route 0.0.0.0/0 via 198.51.100.130; # Default route
-	route 10.0.0.0/8 multipath	 # Multipath route
+	route 10.0.0.0/8 multipath	# Multipath route
 		via 198.51.100.10 weight 2
-		via 198.51.100.20
+		via 198.51.100.20 bfd	# BFD-controlled next hop
 		via 192.0.2.1;
 	route 203.0.113.0/24 unreachable; # Sink route
-	route 10.2.0.0/24 via "arc0";	 # Secondary network
+	route 10.2.0.0/24 via "arc0";	# Secondary network
+	route 192.168.10.0/24 via 198.51.100.100 {
+		ospf_metric1 = 20;	# Set extended attribute
+	}
+	route 192.168.10.0/24 via 198.51.100.100 {
+		ospf_metric2 = 100;	# Set extended attribute
+		ospf_tag = 2;		# Set extended attribute
+		bfd;			# BFD-controlled route
+	}
 }
 </code>
 
