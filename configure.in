@@ -23,24 +23,16 @@ AC_ARG_VAR([M4], [location of the M4 program])
 if test "$srcdir" = . ; then
 	# Building in current directory => create obj directory holding all objects
 	objdir=obj
-	mkdir -p obj
-	srcdir_rel=..
-	makefiles="Makefile:tools/Makefile-top.in obj/Makefile:tools/Makefile.in obj/Rules:tools/Rules.in"
-	exedir=..
 else
 	# Building in separate directory
 	objdir=.
-	srcdir_rel=$srcdir
-	makefiles="Makefile:tools/Makefile.in Rules:tools/Rules.in"
-	exedir=.
 fi
-case $srcdir_rel in
-	/*)	srcdir_rel_mf=$srcdir_rel ;;
-	*)	srcdir_rel_mf="\$(root-rel)$srcdir_rel" ;;
-esac
+
+exedir=.
+
 AC_SUBST(objdir)
 AC_SUBST(exedir)
-AC_SUBST(srcdir_rel_mf)
+AC_SUBST(srcdir)
 AC_SUBST(runtimedir)
 
 
@@ -162,7 +154,7 @@ sysname=`echo $sysdesc | sed 's/\.h$//'`
 AC_DEFINE_UNQUOTED(SYSCONF_INCLUDE, "$sysdesc")
 
 AC_MSG_CHECKING([system-dependent directories])
-sysdep_dirs="`sed <$sysdesc '/^Link: /!d;s/^Link: \(.*\)$/\1/' | tr '\012' ' '` lib"
+sysdep_dirs="`sed <$sysdesc '/^Link: /!d;s/^Link: \(.*\)$/\1/' | tr '\012' ' '`"
 AC_MSG_RESULT($sysdep_dirs)
 AC_SUBST(sysdep_dirs)
 
@@ -234,10 +226,10 @@ if test "$enable_debug" = yes ; then
 	fi
 fi
 
-CLIENT=
+CLIENT=birdcl
 CLIENT_LIBS=
 if test "$enable_client" = yes ; then
-	CLIENT=birdc
+	CLIENT="$CLIENT birdc"
 	AC_CHECK_LIB(history, add_history, CLIENT_LIBS="-lhistory")
 	AC_CHECK_LIB(ncurses, tgetent, USE_TERMCAP_LIB=-lncurses,
 		AC_CHECK_LIB(curses, tgetent, USE_TERMCAP_LIB=-lcurses,
@@ -255,16 +247,8 @@ AC_SUBST(CLIENT_LIBS)
 
 mkdir -p $objdir/sysdep
 AC_CONFIG_HEADERS([$objdir/sysdep/autoconf.h:sysdep/autoconf.h.in])
-AC_CONFIG_COMMANDS([merge],[[export CPP="$CPP"
-$srcdir/tools/mergedirs $srcdir $srcdir_rel $objdir $sysdep_dirs]],
-	[[srcdir=$srcdir]
-	[srcdir_rel=$srcdir_rel]
-	[objdir=$objdir]
-	[sysdep_dirs="$sysdep_dirs"]])
-AC_CONFIG_FILES($makefiles)
+AC_CONFIG_FILES(Makefile:Makefile.in)
 AC_OUTPUT
-
-rm -f $objdir/sysdep/paths.h
 
 cat >&AC_FD_MSG <<EOF
 

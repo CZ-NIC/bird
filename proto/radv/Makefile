@@ -1,5 +1,4 @@
-source=radv.c packets.c
-root-rel=../../
-dir-name=proto/radv
-
-include ../../Rules
+src := packets.c radv.c
+obj := $(src-o-files)
+$(all-daemon)
+$(cf-local)

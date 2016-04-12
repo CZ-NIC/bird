@@ -1,46 +1,48 @@
-root-rel=../
-dir-name=doc
-
-ifneq ($(wildcard ../Rules),)
-include ../Rules
-else
-srcdir=$(shell cd $(root-rel) ; pwd)
-srcdir_abs=$(srcdir)
-endif
-
 # Force rebuilds
-.PHONY: prog.sgml bird.sgml
+.PHONY: progspell docs progdocs userdocs
+
+doc-srcdir := $(shell cd $(s) && pwd)
+sgml2 := $(doc-srcdir)/sgml2
 
 docs: progdocs userdocs
-progdocs: prog.html prog.ps
-userdocs: bird.html bird.ps
 
-prog.sgml:
-	$(srcdir)/tools/progdoc $(srcdir_abs)
+doc-fmt = $(1): $(o)prog.$(1) $(o)bird.$(1)
+$(call doc-fmt,html)
+$(call doc-fmt,dvi)
+$(call doc-fmt,ps)
+$(call doc-fmt,pdf)
 
-%.html: %.sgml
-	./sgml2html $<
+progdocs: $(o)prog.html $(o)prog.pdf
+userdocs: $(o)bird.html $(o)bird.pdf
+progspell: $(o)prog.spell
 
-%.dvi: %.tex
-	latex $<
-	latex $<
+$(o)prog.sgml: $(srcdir)/tools/progdoc $(objdir)/.dir-stamp
+	$(srcdir)/tools/progdoc $(srcdir) $@
 
-%.ps: %.dvi
+$(o)%.sgml: $(s)%.sgml $(objdir)/.dir-stamp
+	cp $< $@
+
+$(o)%.html: $(o)%.sgml
+	cd $(dir $@) && $(sgml2)html $(notdir $<)
+
+$(o)%.dvi: $(o)%.tex
+	cd $(dir $@) && TEXINPUTS=$(TEXINPUTS):$(doc-srcdir)/tex latex $(notdir $<)
+	cd $(dir $@) && TEXINPUTS=$(TEXINPUTS):$(doc-srcdir)/tex latex $(notdir $<)
+
+$(o)%.ps: $(o)%.dvi
 	dvips -D600 -ta4 -o $@ $<
 
-%.tex: %.sgml
-	./sgml2latex --output=tex $<
+$(o)%.pdf: $(o)%.ps
+	ps2pdf $< $@
 
-%.txt: %.sgml
-	./sgml2txt $<
+$(o)%.tex: $(o)%.sgml
+	cd $(dir $@) && $(sgml2)latex --output=tex $(notdir $<)
 
-progspell: prog.sgml
-	sed -f prog-spell.sed <prog.sgml >prog.spell
-	ispell prog.spell
+$(o)%.txt: $(o)%.sgml
+	cd $(dir $@) && $(sgml2)txt $(notdir $<)
 
-clean:
-	rm -f *.tex *.dvi *.log *.txt *.aux *.toc *.spell
-	rm -f prog.sgml
+$(o)prog.spell: $(o)prog.sgml $(s)prog-spell.sed
+	sed -f $(lastword $^) <$< >$@
+	ispell $@
 
-distclean: clean
-	rm -f *.html *.ps
+$(call clean,prog.spell $(addprefix *.,html dvi ps pdf sgml tex txt aux log toc))

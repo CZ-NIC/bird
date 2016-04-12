@@ -13,7 +13,7 @@
 #include "lib/ip.h"
 #include "lib/lists.h"
 #include "lib/socket.h"
-#include "lib/timer.h"
+#include "sysdep/unix/timer.h"
 #include "lib/resource.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"

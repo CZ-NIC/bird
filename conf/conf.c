@@ -52,7 +52,7 @@
 #include "lib/resource.h"
 #include "lib/string.h"
 #include "lib/event.h"
-#include "lib/timer.h"
+#include "sysdep/unix/timer.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
 

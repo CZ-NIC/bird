@@ -14,7 +14,7 @@ CF_HDR
 #include "conf/conf.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
-#include "lib/timer.h"
+#include "sysdep/unix/timer.h"
 #include "lib/string.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"

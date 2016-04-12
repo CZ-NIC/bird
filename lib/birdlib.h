@@ -9,8 +9,8 @@
 #ifndef _BIRD_BIRDLIB_H_
 #define _BIRD_BIRDLIB_H_
 
-#include "timer.h"
-#include "alloca.h"
+#include "sysdep/unix/timer.h"
+#include "lib/alloca.h"
 
 /* Ugly structure offset handling macros */
 

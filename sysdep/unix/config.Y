@@ -8,7 +8,7 @@
 
 CF_HDR
 
-#include "lib/unix.h"
+#include "sysdep/unix/unix.h"
 #include <stdio.h>
 
 CF_DECLS

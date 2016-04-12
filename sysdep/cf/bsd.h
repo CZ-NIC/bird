@@ -15,6 +15,9 @@
 #define CONFIG_NO_IFACE_BIND
 #define CONFIG_USE_HDRINCL
 
+#define CONFIG_INCLUDE_SYSIO_H "sysdep/bsd/sysio.h"
+#define CONFIG_INCLUDE_KRTSYS_H "sysdep/bsd/krt-sys.h"
+
 /*
 Link: sysdep/unix
 Link: sysdep/bsd

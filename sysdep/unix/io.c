@@ -31,14 +31,14 @@
 #include "nest/bird.h"
 #include "lib/lists.h"
 #include "lib/resource.h"
-#include "lib/timer.h"
+#include "sysdep/unix/timer.h"
 #include "lib/socket.h"
 #include "lib/event.h"
 #include "lib/string.h"
 #include "nest/iface.h"
 
-#include "lib/unix.h"
-#include "lib/sysio.h"
+#include "sysdep/unix/unix.h"
+#include CONFIG_INCLUDE_SYSIO_H
 
 /* Maximum number of calls of tx handler for one socket in one
  * select iteration. Should be small enough to not monopolize CPU by

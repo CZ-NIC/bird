@@ -11,7 +11,7 @@
 
 #include "lib/lists.h"
 #include "lib/resource.h"
-#include "lib/timer.h"
+#include "sysdep/unix/timer.h"
 //#include "nest/protocol.h"
 
 struct ea_list;

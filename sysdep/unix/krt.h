@@ -15,7 +15,8 @@ struct krt_proto;
 struct kif_config;
 struct kif_proto;
 
-#include "lib/krt-sys.h"
+#include "sysdep/config.h"
+#include CONFIG_INCLUDE_KRTSYS_H
 
 /* Flags stored in net->n.flags, rest are in nest/route.h */
 
@@ -111,7 +112,7 @@ struct kif_proto {
   struct kif_state sys;		/* Sysdep state */
 };
 
-struct kif_proto *kif_proto;
+extern struct kif_proto *kif_proto;
 
 #define KIF_CF ((struct kif_config *)p->p.cf)
 

@@ -8,7 +8,7 @@
 
 CF_HDR
 
-#include "lib/krt.h"
+#include "sysdep/unix/krt.h"
 
 CF_DEFINES
 
