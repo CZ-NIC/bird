@@ -1803,9 +1803,20 @@ using the following configuration parameters:
 	only. Default: disabled.
 
 	<tag>password <m/string/</tag>
-	Use this password for MD5 authentication of BGP sessions. Default: no
-	authentication. Password has to be set by external utility
-	(e.g. setkey(8)) on BSD systems.
+	Use this password for MD5 authentication of BGP sessions (RFC 2385).
+	When used on BSD systems, see also <cf/setkey/ option below. Default:
+	no authentication.
+
+	<tag>setkey <m/switch/</tag>
+	On BSD systems, keys for TCP MD5 authentication are stored in the global
+	SA/SP database, which can be accessed by external utilities (e.g.
+	setkey(8)). BIRD configures security associations in the SA/SP database
+	automatically based on <cf/password/ options (see above), this option
+	allows to disable automatic updates by BIRD when manual configuration by
+	external utilities is preferred. Note that automatic SA/SP database
+	updates are currently implemented only for FreeBSD. Passwords have to be
+	set manually by an external utility on NetBSD and OpenBSD. Default:
+	enabled (ignored on non-FreeBSD).
 
 	<tag>passive <m/switch/</tag>
 	Standard BGP behavior is both initiating outgoing connections and

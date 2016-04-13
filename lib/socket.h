@@ -87,7 +87,7 @@ int sk_leave_group(sock *s, ip_addr maddr);	/* Leave multicast group on sk iface
 int sk_setup_broadcast(sock *s);
 int sk_set_ttl(sock *s, int ttl);	/* Set transmit TTL for given socket */
 int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given socket */
-int sk_set_md5_auth(sock *s, ip_addr a, struct iface *ifa, char *passwd);
+int sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, struct iface *ifa, char *passwd, int setkey);
 int sk_set_ipv6_checksum(sock *s, int offset);
 int sk_set_icmp6_filter(sock *s, int p1, int p2);
 void sk_log_error(sock *s, const char *p);
