@@ -27,7 +27,8 @@
  * white space character.
  *
  * Reply codes starting with 0 stand for `action successfully completed' messages,
- * 1 means `table entry', 8 `runtime error' and 9 `syntax error'.
+ * 1 means `table entry', 3 means `internal message`, 8 `runtime error' and 9
+ * `syntax error'.
  *
  * Each CLI session is internally represented by a &cli structure and a
  * resource pool containing all resources associated with the connection,
@@ -67,8 +68,10 @@
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "lib/string.h"
+#include "client/reply_codes.h"
 
 pool *cli_pool;
+static list cli_client_list;
 
 static byte *
 cli_alloc_out(cli *c, int size)
@@ -197,13 +200,6 @@ cli_copy_message(cli *c)
 }
 
 static void
-cli_hello(cli *c)
-{
-  cli_printf(c, 1, "BIRD " BIRD_VERSION " ready.");
-  c->cont = NULL;
-}
-
-static void
 cli_free_out(cli *c)
 {
   struct cli_out *o, *p;
@@ -228,7 +224,7 @@ cli_written(cli *c)
   ev_schedule(c->event);
 }
 
-
+/* cli read hooks variables */
 static byte *cli_rh_pos;
 static uint cli_rh_len;
 static int cli_rh_trick_flag;
@@ -304,18 +300,18 @@ cli *
 cli_new(void *priv)
 {
   pool *p = rp_new(cli_pool, "CLI");
-  cli *c = mb_alloc(p, sizeof(cli));
+  cli *c = mb_allocz(p, sizeof(cli));
 
-  bzero(c, sizeof(cli));
   c->pool = p;
   c->priv = priv;
   c->event = ev_new(p);
   c->event->hook = cli_event;
   c->event->data = c;
-  c->cont = cli_hello;
+  c->cont = NULL;
   c->parser_pool = lp_new(c->pool, 4096);
   c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
   ev_schedule(c->event);
+  add_tail(&cli_client_list, &c->cli_client_node);
   return c;
 }
 
@@ -407,6 +403,7 @@ cli_free(cli *c)
     c->cleanup(c);
   if (c == cmd_reconfig_stored_cli)
     cmd_reconfig_stored_cli = NULL;
+  rem_node(&c->cli_client_node);
   rfree(c->pool);
 }
 
@@ -422,4 +419,23 @@ cli_init(void)
   cli_pool = rp_new(&root_pool, "CLI");
   init_list(&cli_log_hooks);
   cli_log_inited = 1;
+  init_list(&cli_client_list);
+}
+
+/**
+ * cli_notify_all_clients - send push notification to all cli clients
+ *
+ * Send a notification to all command line clients about some news.
+ * Client could then send a request for pulling symbols.
+ */
+void
+cli_notify_all_clients(void)
+{
+  struct cli *cli;
+  node *n;
+  WALK_LIST2(cli, n, cli_client_list, cli_client_node)
+  {
+    cli_printf(cli, RC_NOTIFY, "");
+    cli_write_trigger(cli);
+  }
 }

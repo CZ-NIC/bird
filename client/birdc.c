@@ -7,6 +7,7 @@
  */
 
 #include <stdio.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <termios.h>
@@ -19,6 +20,8 @@
 #include "lib/resource.h"
 #include "lib/string.h"
 #include "client/client.h"
+
+#define BIRDC_HISTORY_FILENAME 	".birdc_history"
 
 static int input_hidden_end;
 static int prompt_active;
@@ -78,7 +81,7 @@ static int
 input_complete(int arg UNUSED, int key UNUSED)
 {
   static int complete_flag;
-  char buf[256];
+  char buf[256] = {};
 
   if (rl_last_func != input_complete)
     complete_flag = 0;
@@ -137,19 +140,47 @@ input_help(int arg, int key UNUSED)
   return 0;
 }
 
+/**
+ * get_rl_history_filepath - return the string with path to readline history file
+ * @buf: buffer for writing
+ * @size: size of @buf including a |NULL| terminator at the end
+ *
+ * This function returns the string with path to readline history file ($HOME/.birdc_history).
+ * A function is copied from readline repository histfile.c from function history_filename()
+ */
+static char *
+get_rl_history_filepath(char *buf, size_t size)
+{
+  const char *home = getenv("HOME");
+  if (!home)
+    return NULL;
+
+  if (snprintf(buf, size, "%s/%s", home, BIRDC_HISTORY_FILENAME) >= size)
+    return NULL;
+
+  return buf;
+}
+
 void
 input_init(void)
 {
-  rl_readline_name = "birdc";
-  rl_add_defun("bird-complete", input_complete, '\t');
-  rl_add_defun("bird-help", input_help, '?');
-  rl_callback_handler_install("bird> ", input_got_line);
+  char path[PATH_MAX];
+  prompt_active = 0;
+
+  if (interactive)
+  {
+    prompt_active = 1;
+
+    rl_readline_name = "birdc";
+    rl_add_defun("bird-complete", input_complete, '\t');
+    rl_add_defun("bird-help", input_help, '?');
+    read_history(get_rl_history_filepath(path, sizeof(path)));
+    rl_callback_handler_install("bird> ", input_got_line);
+  }
 
   // rl_get_screen_size();
   term_lns = LINES;
   term_cls = COLS;
-
-  prompt_active = 1;
 
   // readline library does strange things when stdin is nonblocking.
   // if (fcntl(0, F_SETFL, O_NONBLOCK) < 0)
@@ -197,7 +228,10 @@ input_notify(int prompt)
 void
 input_read(void)
 {
-  rl_callback_read_char();
+  if (interactive)
+    rl_callback_read_char();
+  else
+    simple_input_read();
 }
 
 void
@@ -213,8 +247,13 @@ more_end(void)
 void
 cleanup(void)
 {
+  char path[PATH_MAX];
+
   if (init)
     return;
+
+  if (interactive)
+    write_history(get_rl_history_filepath(path, sizeof(path)));
 
   input_hide();
   rl_callback_handler_remove();
