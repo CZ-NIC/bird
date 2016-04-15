@@ -27,7 +27,8 @@
  * white space character.
  *
  * Reply codes starting with 0 stand for `action successfully completed' messages,
- * 1 means `table entry', 8 `runtime error' and 9 `syntax error'.
+ * 1 means `table entry', 3 means `internal message`, 8 `runtime error' and 9
+ * `syntax error'.
  *
  * Each CLI session is internally represented by a &cli structure and a
  * resource pool containing all resources associated with the connection,
@@ -197,13 +198,6 @@ cli_copy_message(cli *c)
 }
 
 static void
-cli_hello(cli *c)
-{
-  cli_printf(c, 1, "BIRD " BIRD_VERSION " ready.");
-  c->cont = NULL;
-}
-
-static void
 cli_free_out(cli *c)
 {
   struct cli_out *o, *p;
@@ -228,7 +222,7 @@ cli_written(cli *c)
   ev_schedule(c->event);
 }
 
-
+/* cli read hooks variables */
 static byte *cli_rh_pos;
 static uint cli_rh_len;
 static int cli_rh_trick_flag;
@@ -312,7 +306,7 @@ cli_new(void *priv)
   c->event = ev_new(p);
   c->event->hook = cli_event;
   c->event->data = c;
-  c->cont = cli_hello;
+  c->cont = NULL;
   c->parser_pool = lp_new(c->pool, 4096);
   c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
   ev_schedule(c->event);

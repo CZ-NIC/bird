@@ -78,7 +78,7 @@ static int
 input_complete(int arg UNUSED, int key UNUSED)
 {
   static int complete_flag;
-  char buf[256];
+  char buf[256] = {};
 
   if (rl_last_func != input_complete)
     complete_flag = 0;
@@ -140,6 +140,9 @@ input_help(int arg, int key UNUSED)
 void
 input_init(void)
 {
+  retrieve_symbols();
+  printf("BIRD Client " BIRD_VERSION " ready.\n");
+
   rl_readline_name = "birdc";
   rl_add_defun("bird-complete", input_complete, '\t');
   rl_add_defun("bird-help", input_help, '?');

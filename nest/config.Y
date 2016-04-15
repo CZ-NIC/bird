@@ -72,6 +72,7 @@ CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, COMMANDS, PREEXPORT, NOEXPORT, GENERATE)
 CF_KEYWORDS(LISTEN, BGP, V6ONLY, DUAL, ADDRESS, PORT, PASSWORDS, DESCRIPTION, SORTED)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
+CF_KEYWORDS(REFRESH)
 
 CF_ENUM(T_ENUM_RTS, RTS_, DUMMY, STATIC, INHERIT, DEVICE, STATIC_DEVICE, REDIRECT,
 	RIP, OSPF, OSPF_IA, OSPF_EXT1, OSPF_EXT2, BGP, PIPE)
@@ -468,10 +469,10 @@ CF_CLI(SHOW STATUS,,, [[Show router status]])
 CF_CLI(SHOW MEMORY,,, [[Show memory usage]])
 { cmd_show_memory(); } ;
 
-CF_CLI(SHOW PROTOCOLS, proto_patt2, [<protocol> | \"<pattern>\"], [[Show routing protocols]])
+CF_CLI(SHOW PROTOCOLS, proto_patt2, [<protocol> | \"<pattern>\"], [[Show routing protocols]], CLI_SF_PROTOCOL)
 { proto_apply_cmd($3, proto_cmd_show, 0, 0); } ;
 
-CF_CLI(SHOW PROTOCOLS ALL, proto_patt2, [<protocol> | \"<pattern>\"], [[Show routing protocol details]])
+CF_CLI(SHOW PROTOCOLS ALL, proto_patt2, [<protocol> | \"<pattern>\"], [[Show routing protocol details]], CLI_SF_PROTOCOL)
 { proto_apply_cmd($4, proto_cmd_show, 0, 1); } ;
 
 optsym:
@@ -488,6 +489,20 @@ CF_CLI(SHOW INTERFACES SUMMARY,,, [[Show summary of network interfaces]])
 CF_CLI_HELP(SHOW ROUTE, ..., [[Show routing table]])
 CF_CLI(SHOW ROUTE, r_args, [[[<prefix>|for <prefix>|for <ip>] [table <t>] [filter <f>|where <cond>] [all] [primary] [filtered] [(export|preexport|noexport) <p>] [protocol <p>] [stats|count]]], [[Show routing table]])
 { rt_show($3); } ;
+
+CF_CLI_HELP(SHOW ROUTE FOR, <prefix> | <ip> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER)
+CF_CLI_HELP(SHOW ROUTE TABLE, <table> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER | CLI_SF_TABLE)
+CF_CLI_HELP(SHOW ROUTE FILTER, <filter> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER | CLI_SF_FILTER)
+CF_CLI_HELP(SHOW ROUTE WHERE, <condition> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER)
+CF_CLI_HELP(SHOW ROUTE ALL, ...,, CLI_SF_OPTIONAL)
+CF_CLI_HELP(SHOW ROUTE PRIMARY, ...,, CLI_SF_OPTIONAL)
+CF_CLI_HELP(SHOW ROUTE FILTRED, ...,, CLI_SF_OPTIONAL)
+CF_CLI_HELP(SHOW ROUTE EXPORT, <protocol> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER | CLI_SF_PROTOCOL)
+CF_CLI_HELP(SHOW ROUTE PREEXPORT, <protocol> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER | CLI_SF_PROTOCOL)
+CF_CLI_HELP(SHOW ROUTE NOEXPORT, <protocol> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER | CLI_SF_PROTOCOL)
+CF_CLI_HELP(SHOW ROUTE PROTOCOL, <protocol> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER | CLI_SF_PROTOCOL)
+CF_CLI_HELP(SHOW ROUTE STATS, ...,, CLI_SF_OPTIONAL)
+CF_CLI_HELP(SHOW ROUTE COUNT, ...,, CLI_SF_OPTIONAL)
 
 r_args:
    /* empty */ {
@@ -568,8 +583,12 @@ export_mode:
 
 
 CF_CLI_HELP(SHOW SYMBOLS, ..., [[Show all known symbolic names]])
-CF_CLI(SHOW SYMBOLS, sym_args, [table|filter|function|protocol|template|<symbol>], [[Show all known symbolic names]])
+CF_CLI(SHOW SYMBOLS, sym_args, [table|filter|function|protocol|template|<symbol>], [[Show all known symbolic names]], ~CLI_SF_OPTIONAL)
 { cmd_show_symbols($3); } ;
+
+CF_CLI_HELP(REFRESH, symbols, [[Check out new symbols from daemon for autocomplete in BIRD Client]])
+CF_CLI(REFRESH SYMBOLS,,, [[Check out new symbols from daemon for autocomplete in BIRD Client]])
+{ cmd_send_symbols(); } ;
 
 sym_args:
    /* empty */ {
@@ -602,11 +621,11 @@ CF_CLI(DUMP ROUTES,,, [[Dump routing table]])
 CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])
 { protos_dump_all(); cli_msg(0, ""); } ;
 
-CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]])
+CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]], CLI_SF_CONSTANT | CLI_SF_VARIABLE)
 { cmd_eval($2); } ;
 
 CF_CLI_HELP(ECHO, ..., [[Control echoing of log messages]])
-CF_CLI(ECHO, echo_mask echo_size, (all | off | { debug | trace | info | remote | warning | error | auth }) [<buffer-size>], [[Control echoing of log messages]]) {
+CF_CLI(ECHO, echo_mask echo_size, (all | off | { debug | trace | info | remote | warning | error | auth }) [<buffer-size>], [[Control echoing of log messages]], CLI_SF_KW_ALL | CLI_SF_KW_OFF) {
   cli_set_log_echo(this_cli, $2, $3);
   cli_msg(0, "");
 } ;
@@ -625,25 +644,25 @@ echo_size:
    }
  ;
 
-CF_CLI(DISABLE, proto_patt, <protocol> | \"<pattern>\" | all, [[Disable protocol]])
+CF_CLI(DISABLE, proto_patt, <protocol> | \"<pattern>\" | all, [[Disable protocol]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
 { proto_apply_cmd($2, proto_cmd_disable, 1, 0); } ;
-CF_CLI(ENABLE, proto_patt, <protocol> | \"<pattern>\" | all, [[Enable protocol]])
+CF_CLI(ENABLE, proto_patt, <protocol> | \"<pattern>\" | all, [[Enable protocol]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
 { proto_apply_cmd($2, proto_cmd_enable, 1, 0); } ;
-CF_CLI(RESTART, proto_patt, <protocol> | \"<pattern>\" | all, [[Restart protocol]])
+CF_CLI(RESTART, proto_patt, <protocol> | \"<pattern>\" | all, [[Restart protocol]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
 { proto_apply_cmd($2, proto_cmd_restart, 1, 0); } ;
-CF_CLI(RELOAD, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol]])
+CF_CLI(RELOAD, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
 { proto_apply_cmd($2, proto_cmd_reload, 1, CMD_RELOAD); } ;
-CF_CLI(RELOAD IN, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just imported routes)]])
+CF_CLI(RELOAD IN, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just imported routes)]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
 { proto_apply_cmd($3, proto_cmd_reload, 1, CMD_RELOAD_IN); } ;
-CF_CLI(RELOAD OUT, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just exported routes)]])
+CF_CLI(RELOAD OUT, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just exported routes)]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
 { proto_apply_cmd($3, proto_cmd_reload, 1, CMD_RELOAD_OUT); } ;
 
 CF_CLI_HELP(DEBUG, ..., [[Control protocol debugging via BIRD logs]])
-CF_CLI(DEBUG, proto_patt debug_mask, (<protocol> | <pattern> | all) (all | off | { states | routes | filters | interfaces | events | packets }), [[Control protocol debugging via BIRD logs]])
+CF_CLI(DEBUG, proto_patt debug_mask, (<protocol> | <pattern> | all) (all | off | { states | routes | filters | interfaces | events | packets }), [[Control protocol debugging via BIRD logs]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL | CLI_SF_KW_OFF | CLI_SF_PARAMETER)
 { proto_apply_cmd($2, proto_cmd_debug, 1, $3); } ;
 
 CF_CLI_HELP(MRTDUMP, ..., [[Control protocol debugging via MRTdump files]])
-CF_CLI(MRTDUMP, proto_patt mrtdump_mask, (<protocol> | <pattern> | all) (all | off | { states | messages }), [[Control protocol debugging via MRTdump format]])
+CF_CLI(MRTDUMP, proto_patt mrtdump_mask, (<protocol> | <pattern> | all) (all | off | { states | messages }), [[Control protocol debugging via MRTdump format]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL | CLI_SF_KW_OFF | CLI_SF_PARAMETER)
 { proto_apply_cmd($2, proto_cmd_mrtdump, 1, $3); } ;
 
 CF_CLI(RESTRICT,,,[[Restrict current CLI session to safe commands]])

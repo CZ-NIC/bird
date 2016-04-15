@@ -136,6 +136,8 @@ input_init(void)
   if (!interactive)
     return;
 
+  printf("BIRD Client Light " BIRD_VERSION " ready.\n");
+
   if (tcgetattr(0, &stored_tty) < 0)
     die("tcgetattr: %m");
 

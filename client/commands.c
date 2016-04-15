@@ -15,10 +15,14 @@
 #include "client/client.h"
 
 struct cmd_info {
+  /* use for build tree and command cli */
   char *command;
   char *args;
   char *help;
+
+  /* only for build tree */
   int is_real_cmd;
+  u32 flags;			/* Mask of (CLI_SF_*) */
 };
 
 static struct cmd_info command_table[] = {
@@ -26,11 +30,15 @@ static struct cmd_info command_table[] = {
 };
 
 struct cmd_node {
-  struct cmd_node *sibling, *son, **plastson;
-  struct cmd_info *cmd, *help;
-  int len;
-  signed char prio;
-  char token[1];
+  struct cmd_node *sibling;
+  struct cmd_node *son;
+  struct cmd_node **plastson;	/* Helping pointer to son */
+  struct cmd_info *cmd;		/* Short info */
+  struct cmd_info *help;	/* Detailed info */
+  signed char prio; 		/* Priority */
+  int len; 			/* Length of string in token */
+  u32 flags;			/* Mask of (CLI_SF_*) */
+  char token[1];		/* Name of command */
 };
 
 static struct cmd_node cmd_root;
@@ -77,6 +85,7 @@ cmd_build_tree(void)
 	old->cmd = cmd;
       else
 	old->help = cmd;
+      old->flags |= cmd->flags;
     }
 }
 
@@ -102,6 +111,8 @@ static struct cmd_node *
 cmd_find_abbrev(struct cmd_node *root, char *cmd, int len, int *pambiguous)
 {
   struct cmd_node *m, *best = NULL, *best2 = NULL;
+  list *l_syms = cli_get_symbol_list();
+  struct cli_symbol *sym;
 
   *pambiguous = 0;
   for(m=root->son; m; m=m->sibling)
@@ -133,6 +144,14 @@ cmd_list_ambiguous(struct cmd_node *root, char *cmd, int len)
   for(m=root->son; m; m=m->sibling)
     if (m->len > len && !memcmp(m->token, cmd, len))	
       cmd_display_help(m->help, m->cmd);
+
+  struct cli_symbol *sym;
+  list *syms = cli_get_symbol_list();
+  WALK_LIST(sym, *syms)
+  {
+    if ((sym->flags & root->flags) && sym->len > len && memcmp(sym->name, cmd, len) == 0)
+      printf("%s\n", sym->name);
+  }
 }
 
 void
@@ -169,11 +188,17 @@ cmd_help(char *cmd, int len)
     cmd_display_help(m->help, m->cmd);
 }
 
+/*
+ * Return length of common prefix of all matches,
+ * Write count of all matches into pcount,
+ * Write common prefix string into buf
+ */
 static int
 cmd_find_common_match(struct cmd_node *root, char *cmd, int len, int *pcount, char *buf)
 {
   struct cmd_node *m;
-  int best, best_prio, i;
+  int best, /* len of common prefix */
+      best_prio, i;
 
   *pcount = 0;
   best = -1;
@@ -195,6 +220,7 @@ cmd_find_common_match(struct cmd_node *root, char *cmd, int len, int *pcount, ch
       (*pcount)++;
       if (best < 0)
 	{
+	  /* For a case that we'll have exactly one match */
 	  strcpy(buf, m->token + len);
 	  best = m->len - len;
 	  best_prio = m->prio;
@@ -207,6 +233,33 @@ cmd_find_common_match(struct cmd_node *root, char *cmd, int len, int *pcount, ch
 	  best = i;
 	}
     }
+
+  list *syms = cli_get_symbol_list();
+  struct cli_symbol *sym;
+  WALK_LIST(sym, *syms)
+  {
+    if (!(sym->flags & root->flags))
+      continue;
+
+    if (sym->len < len || memcmp(sym->name, cmd, len))
+      continue;
+
+    (*pcount)++;
+
+    if (best < 0)
+    {
+      strcpy(buf, sym->name + len);
+      best = sym->len - len;		/* for a case that we'll have only one match */
+    }
+    else
+    {
+      i = 0;
+      while (i < best && i < sym->len - len && buf[i] == sym->name[len+i])
+	i++;
+      best = i;
+    }
+  }
+
   return best;
 }
 
@@ -216,7 +269,7 @@ cmd_complete(char *cmd, int len, char *buf, int again)
   char *start = cmd;
   char *end = cmd + len;
   char *fin;
-  struct cmd_node *n, *m;
+  struct cmd_node *n, *m = NULL;
   char *z;
   int ambig, cnt = 0, common;
 
@@ -226,7 +279,7 @@ cmd_complete(char *cmd, int len, char *buf, int again)
 
   /* Find the context */
   n = &cmd_root;
-  while (cmd < fin && n->son)
+  while (cmd < fin)
     {
       if (isspace(*cmd))
 	{
@@ -248,12 +301,39 @@ cmd_complete(char *cmd, int len, char *buf, int again)
 	}
       if (!m)
 	return -1;
-      n = m;
+
+      /* Try skip a parameter/word */
+      if (m->flags & CLI_SF_PARAMETER)
+      {
+	z = cmd;
+
+	/* Skip spaces before parameter */
+	while (cmd < fin && isspace(*cmd))
+	  cmd++;
+
+	/* Skip one parameter/word */
+	while (cmd < fin && !isspace(*cmd))
+	  cmd++;
+
+	/* Check ending of parameter */
+	if (isspace(*cmd))
+	{
+	  if (m->flags & CLI_SF_OPTIONAL)
+	    m = n;
+	  continue;
+	}
+	else
+	  cmd = z;
+      }
+
+      /* Do not enter to optional command nodes */
+      if (!(m->flags & CLI_SF_OPTIONAL))
+	n = m;
     }
 
-  /* Completion of parameters is not yet supported */
-  if (!n->son)
-    return -1;
+  /* Enter to the last command node */
+  if (m && (m->flags & CLI_SF_PARAMETER))
+    n = m;
 
   /* We know the context, let's try to complete */
   common = cmd_find_common_match(n, fin, end-fin, &cnt, buf);
@@ -281,8 +361,8 @@ cmd_complete(char *cmd, int len, char *buf, int again)
 char *
 cmd_expand(char *cmd)
 {
-  struct cmd_node *n, *m;
-  char *c, *b, *args;
+  struct cmd_node *n, *m, *last_real_cmd = NULL;
+  char *c, *b, *args, *lrc_args = NULL;
   int ambig;
 
   args = c = cmd;
@@ -306,14 +386,27 @@ cmd_expand(char *cmd)
 	  cmd_list_ambiguous(n, b, c-b);
 	  return NULL;
 	}
+
       args = c;
       n = m;
+
+      if (m->cmd)
+      {
+	last_real_cmd = m;
+	lrc_args = c;
+      }
     }
-  if (!n->cmd)
+
+  if (!n->cmd && !last_real_cmd)
     {
       puts("No such command. Press `?' for help.");
       return NULL;
     }
+  if (last_real_cmd && last_real_cmd != n)
+  {
+    n = last_real_cmd;
+    args = lrc_args;
+  }
   b = xmalloc(strlen(n->cmd->command) + strlen(args) + 1);
   sprintf(b, "%s%s", n->cmd->command, args);
   return b;
