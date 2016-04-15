@@ -27,6 +27,7 @@ struct cli_out {
 
 typedef struct cli {
   node n;				/* Node in list of all log hooks */
+  node cli_client_node;			/* Node in list of all cli clients */
   pool *pool;
   void *priv;				/* Private to sysdep layer */
   byte *rx_buf, *rx_pos, *rx_aux;	/* sysdep */
@@ -66,6 +67,7 @@ void cli_free(cli *);
 void cli_kick(cli *);
 void cli_written(cli *);
 void cli_echo(uint class, byte *msg);
+void cli_notify_all_clients(void);
 
 static inline int cli_access_restricted(void)
 {

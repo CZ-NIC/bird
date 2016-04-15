@@ -15,6 +15,8 @@
 #include "lib/string.h"
 #include "lib/resource.h"
 #include "filter/filter.h"
+#include "client/reply_codes.h"
+#include "nest/iface.h"
 
 extern int shutting_down;
 extern int configuring;
@@ -62,6 +64,56 @@ cmd_show_symbols(struct sym_show_data *sd)
 	}
       cli_msg(0, "");
     }
+}
+
+static int
+get_cli_code_for_sym(struct symbol *sym)
+{
+  if (cf_symbol_is_constant(sym))
+    return RC_CONSTANT_NAME;
+
+  if (cf_symbol_is_variable(sym))
+    return RC_VARIABLE_NAME;
+
+  switch (sym->class & 0xff)
+  {
+  case SYM_PROTO:	return RC_PROTOCOL_NAME;
+  case SYM_TEMPLATE:	return RC_TEMPLATE_NAME;
+  case SYM_FUNCTION:	return RC_FUNCTION_NAME;
+  case SYM_FILTER:	return RC_FILTER_NAME;
+  case SYM_TABLE:	return RC_TABLE_NAME;
+  default:
+    log(L_ERR "Undefined class %d of %s", sym->class, sym->name);
+  }
+  return 0;
+}
+
+/**
+ * cmd_send_symbols - send all symbols for auto-completion interactive CLI
+ *
+ * This function sends all known symbols for auto-completion interactive BIRD's
+ * CLI. The first symbol is version of BIRD.
+ */
+void
+cmd_send_symbols(void)
+{
+  int code, pos = 0;
+  struct symbol *sym = NULL;
+
+  cli_msg(RC_BIRD_VERSION_NUM, "%s", BIRD_VERSION);
+
+  while (sym = cf_walk_symbols(config, sym, &pos))
+  {
+    code = get_cli_code_for_sym(sym);
+    cli_msg(code, "%s", sym->name);
+  }
+
+  struct iface *i;
+  WALK_LIST(i, iface_list)
+    if (!(i->flags & IF_SHUTDOWN))
+      cli_msg(RC_INTERFACE_NAME, "\"%s\"", i->name);
+
+  cli_msg(0, "");
 }
 
 static void
