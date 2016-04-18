@@ -493,9 +493,8 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   e->net = net;
   e->u.krt.src = src;
   e->u.krt.proto = src2;
-
-  /* These are probably too Linux-specific */
-  e->u.krt.type = 0;
+  e->u.krt.seen = 0;
+  e->u.krt.best = 0;
   e->u.krt.metric = 0;
 
   if (scan)

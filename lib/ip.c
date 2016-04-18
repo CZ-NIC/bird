@@ -233,7 +233,7 @@ ip6_ntop(ip6_addr a, char *b)
 }
 
 int
-ip4_pton(char *a, ip4_addr *o)
+ip4_pton(const char *a, ip4_addr *o)
 {
   int i;
   unsigned long int l;
@@ -258,11 +258,11 @@ ip4_pton(char *a, ip4_addr *o)
 }
 
 int
-ip6_pton(char *a, ip6_addr *o)
+ip6_pton(const char *a, ip6_addr *o)
 {
   u16 words[8];
   int i, j, k, l, hfil;
-  char *start;
+  const char *start;
 
   if (a[0] == ':')			/* Leading :: */
   {
@@ -364,7 +364,9 @@ ip4_class_mask(ip4_addr ad)
 {
   u32 m, a = _I(ad);
 
-  if (a < 0x80000000)
+  if (a == 0x00000000)
+    m = 0x00000000;
+  else if (a < 0x80000000)
     m = 0xff000000;
   else if (a < 0xc0000000)
     m = 0xffff0000;

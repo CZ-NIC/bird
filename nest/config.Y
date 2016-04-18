@@ -111,7 +111,7 @@ idval:
        $$ = ipa_to_u32(SYM_VAL($1).px.ip);
 #endif
      else
-       cf_error("Number of IPv4 address constant expected");
+       cf_error("Number or IPv4 address constant expected");
    }
  ;
 

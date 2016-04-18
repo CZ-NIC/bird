@@ -888,12 +888,6 @@ rte_recalculate(struct announce_hook *ah, net *net, rte *new, struct rte_src *sr
 		}
 
 	      rte_free_quick(new);
-#ifdef CONFIG_RIP
-	      /* lastmod is used internally by RIP as the last time
-		 when the route was received. */
-	      if (src->proto->proto == &proto_rip)
-		old->lastmod = now;
-#endif
 	      return;
 	    }
 	  *k = old->next;

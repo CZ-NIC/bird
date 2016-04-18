@@ -112,6 +112,8 @@ struct kif_proto {
   struct kif_state sys;		/* Sysdep state */
 };
 
+struct kif_proto *kif_proto;
+
 #define KIF_CF ((struct kif_config *)p->p.cf)
 
 struct proto_config * krt_init_config(int class);

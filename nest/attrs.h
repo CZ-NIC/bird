@@ -35,6 +35,7 @@ int as_path_getlen(struct adata *path);
 int as_path_getlen_int(struct adata *path, int bs);
 int as_path_get_first(struct adata *path, u32 *orig_as);
 int as_path_get_last(struct adata *path, u32 *last_as);
+u32 as_path_get_last_nonaggregated(struct adata *path);
 int as_path_contains(struct adata *path, u32 as, int min);
 int as_path_match_set(struct adata *path, struct f_tree *set);
 struct adata *as_path_filter(struct linpool *pool, struct adata *path, struct f_tree *set, u32 key, int pos);

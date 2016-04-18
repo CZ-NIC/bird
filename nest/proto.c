@@ -1260,6 +1260,7 @@ proto_want_export_down(struct proto *p)
     rt_feed_baby_abort(p);
 
   p->export_state = ES_DOWN;
+  p->stats.exp_routes = 0;
   proto_unlink_ahooks(p);
 }
 

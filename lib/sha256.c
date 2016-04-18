@@ -10,16 +10,11 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <netinet/in.h>
-
 #include "lib/sha256.h"
 #include "lib/unaligned.h"
 
 
-static uint sha256_transform(void *ctx, const byte *data, size_t nblks);
+// #define SHA256_UNROLLED
 
 void
 sha256_init(struct sha256_context *ctx)
@@ -34,10 +29,7 @@ sha256_init(struct sha256_context *ctx)
   ctx->h7 = 0x5be0cd19;
 
   ctx->nblocks = 0;
-  ctx->nblocks_high = 0;
   ctx->count = 0;
-  ctx->blocksize = 64;
-  ctx->transform = sha256_transform;
 }
 
 void
@@ -53,10 +45,7 @@ sha224_init(struct sha224_context *ctx)
   ctx->h7 = 0xbefa4fa4;
 
   ctx->nblocks = 0;
-  ctx->nblocks_high = 0;
   ctx->count = 0;
-  ctx->blocksize = 64;
-  ctx->transform = sha256_transform;
 }
 
 /* (4.2) same as SHA-1's F1.  */
@@ -76,7 +65,7 @@ f3(u32 x, u32 y, u32 z)
 /* Bitwise rotation of an uint to the right */
 static inline u32 ror(u32 x, int n)
 {
-  return ( (x >> (n&(32-1))) | (x << ((32-n)&(32-1))) );
+  return ((x >> (n&(32-1))) | (x << ((32-n)&(32-1))));
 }
 
 /* (4.4) */
@@ -118,7 +107,7 @@ sum1(u32 x)
     32-bit-words. See FIPS 180-2 for details.
  */
 static uint
-sha256_transform_block(struct sha256_context *ctx, const byte *data)
+sha256_transform(struct sha256_context *ctx, const byte *data)
 {
   static const u32 K[64] = {
       0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
@@ -154,52 +143,58 @@ sha256_transform_block(struct sha256_context *ctx, const byte *data)
 
   for (i = 0; i < 16; i++)
     w[i] = get_u32(data + i * 4);
+
   for (; i < 64; i++)
     w[i] = S1(w[i-2]) + w[i-7] + S0(w[i-15]) + w[i-16];
 
   for (i = 0; i < 64;)
   {
+#ifndef SHA256_UNROLLED
+    R(a,b,c,d,e,f,g,h,K[i],w[i]);
+    i++;
+#else /* Unrolled */
     t1 = h + sum1(e) + f1(e, f, g) + K[i] + w[i];
-    t2 = sum0 (a) + f3(a, b, c);
+    t2 = sum0(a) + f3(a, b, c);
     d += t1;
     h  = t1 + t2;
 
     t1 = g + sum1(d) + f1(d, e, f) + K[i+1] + w[i+1];
-    t2 = sum0 (h) + f3(h, a, b);
+    t2 = sum0(h) + f3(h, a, b);
     c += t1;
     g  = t1 + t2;
 
     t1 = f + sum1(c) + f1(c, d, e) + K[i+2] + w[i+2];
-    t2 = sum0 (g) + f3(g, h, a);
+    t2 = sum0(g) + f3(g, h, a);
     b += t1;
     f  = t1 + t2;
 
     t1 = e + sum1(b) + f1(b, c, d) + K[i+3] + w[i+3];
-    t2 = sum0 (f) + f3(f, g, h);
+    t2 = sum0(f) + f3(f, g, h);
     a += t1;
     e  = t1 + t2;
 
     t1 = d + sum1(a) + f1(a, b, c) + K[i+4] + w[i+4];
-    t2 = sum0 (e) + f3(e, f, g);
+    t2 = sum0(e) + f3(e, f, g);
     h += t1;
     d  = t1 + t2;
 
     t1 = c + sum1(h) + f1(h, a, b) + K[i+5] + w[i+5];
-    t2 = sum0 (d) + f3(d, e, f);
+    t2 = sum0(d) + f3(d, e, f);
     g += t1;
     c  = t1 + t2;
 
     t1 = b + sum1(g) + f1(g, h, a) + K[i+6] + w[i+6];
-    t2 = sum0 (c) + f3(c, d, e);
+    t2 = sum0(c) + f3(c, d, e);
     f += t1;
     b  = t1 + t2;
 
     t1 = a + sum1(f) + f1(f, g, h) + K[i+7] + w[i+7];
-    t2 = sum0 (b) + f3(b, c, d);
+    t2 = sum0(b) + f3(b, c, d);
     e += t1;
     a  = t1 + t2;
 
     i += 8;
+#endif
   }
 
   ctx->h0 += a;
@@ -217,22 +212,6 @@ sha256_transform_block(struct sha256_context *ctx, const byte *data)
 #undef S1
 #undef R
 
-static uint
-sha256_transform(void *ctx, const byte *data, size_t nblks)
-{
-  struct sha256_context *hd = ctx;
-  uint burn;
-
-  do
-  {
-    burn = sha256_transform_block(hd, data);
-    data += 64;
-  }
-  while (--nblks);
-
-  return burn;
-}
-
 /* Common function to write a chunk of data to the transform function
    of a hash algorithm.  Note that the use of the term "block" does
    not imply a fixed size block.  Note that we explicitly allow to use
@@ -240,65 +219,56 @@ sha256_transform(void *ctx, const byte *data, size_t nblks)
    not have any meaning but writing after finalize is sometimes
    helpful to mitigate timing attacks. */
 void
-sha256_update(struct sha256_context *ctx, const byte *in_buf, size_t in_len)
+sha256_update(struct sha256_context *ctx, const byte *buf, size_t len)
 {
-  const uint blocksize = ctx->blocksize;
-  size_t inblocks;
-
-  if (sizeof(ctx->buf) < blocksize)
-    debug("BUG: in file %s at line %d", __FILE__ , __LINE__);
-
-  if (ctx->count == blocksize)  /* Flush the buffer. */
-  {
-    ctx->transform(ctx, ctx->buf, 1);
-    ctx->count = 0;
-    if (!++ctx->nblocks)
-      ctx->nblocks_high++;
-  }
-  if (!in_buf)
-    return;
-
   if (ctx->count)
   {
-    for (; in_len && ctx->count < blocksize; in_len--)
-      ctx->buf[ctx->count++] = *in_buf++;
-    sha256_update(ctx, NULL, 0);
-    if (!in_len)
+    /* Fill rest of internal buffer */
+    for (; len && ctx->count < SHA256_BLOCK_SIZE; len--)
+      ctx->buf[ctx->count++] = *buf++;
+
+    if (ctx->count < SHA256_BLOCK_SIZE)
       return;
+
+    /* Process data from internal buffer */
+    sha256_transform(ctx, ctx->buf);
+    ctx->nblocks++;
+    ctx->count = 0;
   }
 
-  if (in_len >= blocksize)
+  if (!len)
+    return;
+
+  /* Process data from input buffer */
+  while (len >= SHA256_BLOCK_SIZE)
   {
-    inblocks = in_len / blocksize;
-    ctx->transform(ctx, in_buf, inblocks);
-    ctx->count = 0;
-    ctx->nblocks_high += (ctx->nblocks + inblocks < inblocks);
-    ctx->nblocks += inblocks;
-    in_len -= inblocks * blocksize;
-    in_buf += inblocks * blocksize;
+    sha256_transform(ctx, buf);
+    ctx->nblocks++;
+    buf += SHA256_BLOCK_SIZE;
+    len -= SHA256_BLOCK_SIZE;
   }
-  for (; in_len && ctx->count < blocksize; in_len--)
-    ctx->buf[ctx->count++] = *in_buf++;
+
+  /* Copy remaining data to internal buffer */
+  memcpy(ctx->buf, buf, len);
+  ctx->count = len;
 }
 
 /*
-   The routine finally terminates the computation and returns the
-   digest.  The handle is prepared for a new cycle, but adding bytes
-   to the handle will the destroy the returned buffer.  Returns: 32
-   bytes with the message the digest.  */
-byte*
+ * The routine finally terminates the computation and returns the digest.  The
+ * handle is prepared for a new cycle, but adding bytes to the handle will the
+ * destroy the returned buffer.
+ *
+ * Returns: 32 bytes with the message the digest. 28 bytes for SHA-224.
+ */
+byte *
 sha256_final(struct sha256_context *ctx)
 {
   u32 t, th, msb, lsb;
-  byte *p;
 
-  sha256_update(ctx, NULL, 0); /* flush */;
+  sha256_update(ctx, NULL, 0);	/* flush */
 
   t = ctx->nblocks;
-  if (sizeof t == sizeof ctx->nblocks)
-    th = ctx->nblocks_high;
-  else
-    th = 0;
+  th = 0;
 
   /* multiply by 64 to make a byte count */
   lsb = t << 6;
@@ -314,26 +284,28 @@ sha256_final(struct sha256_context *ctx)
   msb |= t >> 29;
 
   if (ctx->count < 56)
-  { /* enough room */
+  {
+    /* enough room */
     ctx->buf[ctx->count++] = 0x80; /* pad */
     while (ctx->count < 56)
       ctx->buf[ctx->count++] = 0;  /* pad */
   }
   else
-  { /* need one extra block */
+  {
+    /* need one extra block */
     ctx->buf[ctx->count++] = 0x80; /* pad character */
     while (ctx->count < 64)
       ctx->buf[ctx->count++] = 0;
     sha256_update(ctx, NULL, 0);  /* flush */;
-    memset (ctx->buf, 0, 56 ); /* fill next block with zeroes */
+    memset(ctx->buf, 0, 56 ); /* fill next block with zeroes */
   }
+
   /* append the 64 bit count */
   put_u32(ctx->buf + 56, msb);
   put_u32(ctx->buf + 60, lsb);
-  sha256_transform(ctx, ctx->buf, 1);
+  sha256_transform(ctx, ctx->buf);
 
-  p = ctx->buf;
-
+  byte *p = ctx->buf;
 #define X(a) do { put_u32(p, ctx->h##a); p += 4; } while(0)
   X(0);
   X(1);
@@ -350,17 +322,17 @@ sha256_final(struct sha256_context *ctx)
 
 
 /*
- * 	SHA256-HMAC
+ *	SHA256-HMAC
  */
 
 static void
 sha256_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
 {
-  struct sha256_context hd_tmp;
+  struct sha256_context ctx;
 
-  sha256_init(&hd_tmp);
-  sha256_update(&hd_tmp, buffer, length);
-  memcpy(outbuf, sha256_final(&hd_tmp), SHA256_SIZE);
+  sha256_init(&ctx);
+  sha256_update(&ctx, buffer, length);
+  memcpy(outbuf, sha256_final(&ctx), SHA256_SIZE);
 }
 
 void
@@ -372,12 +344,12 @@ sha256_hmac_init(struct sha256_hmac_context *ctx, const byte *key, size_t keylen
   if (keylen <= SHA256_BLOCK_SIZE)
   {
     memcpy(keybuf, key, keylen);
-    bzero(keybuf + keylen, SHA256_BLOCK_SIZE - keylen);
+    memset(keybuf + keylen, 0, SHA256_BLOCK_SIZE - keylen);
   }
   else
   {
     sha256_hash_buffer(keybuf, key, keylen);
-    bzero(keybuf + SHA256_SIZE, SHA256_BLOCK_SIZE - SHA256_SIZE);
+    memset(keybuf + SHA256_SIZE, 0, SHA256_BLOCK_SIZE - SHA256_SIZE);
   }
 
   /* Initialize the inner digest */
@@ -394,13 +366,15 @@ sha256_hmac_init(struct sha256_hmac_context *ctx, const byte *key, size_t keylen
   sha256_update(&ctx->octx, buf, SHA256_BLOCK_SIZE);
 }
 
-void sha256_hmac_update(struct sha256_hmac_context *ctx, const byte *buf, size_t buflen)
+void
+sha256_hmac_update(struct sha256_hmac_context *ctx, const byte *buf, size_t buflen)
 {
   /* Just update the inner digest */
   sha256_update(&ctx->ictx, buf, buflen);
 }
 
-byte *sha256_hmac_final(struct sha256_hmac_context *ctx)
+byte *
+sha256_hmac_final(struct sha256_hmac_context *ctx)
 {
   /* Finish the inner digest */
   byte *isha = sha256_final(&ctx->ictx);
@@ -412,17 +386,17 @@ byte *sha256_hmac_final(struct sha256_hmac_context *ctx)
 
 
 /*
- * 	SHA224-HMAC
+ *	SHA224-HMAC
  */
 
 static void
 sha224_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
 {
-  struct sha224_context hd_tmp;
+  struct sha224_context ctx;
 
-  sha224_init(&hd_tmp);
-  sha224_update(&hd_tmp, buffer, length);
-  memcpy(outbuf, sha224_final(&hd_tmp), SHA224_SIZE);
+  sha224_init(&ctx);
+  sha224_update(&ctx, buffer, length);
+  memcpy(outbuf, sha224_final(&ctx), SHA224_SIZE);
 }
 
 void
@@ -434,12 +408,12 @@ sha224_hmac_init(struct sha224_hmac_context *ctx, const byte *key, size_t keylen
   if (keylen <= SHA224_BLOCK_SIZE)
   {
     memcpy(keybuf, key, keylen);
-    bzero(keybuf + keylen, SHA224_BLOCK_SIZE - keylen);
+    memset(keybuf + keylen, 0, SHA224_BLOCK_SIZE - keylen);
   }
   else
   {
     sha224_hash_buffer(keybuf, key, keylen);
-    bzero(keybuf + SHA224_SIZE, SHA224_BLOCK_SIZE - SHA224_SIZE);
+    memset(keybuf + SHA224_SIZE, 0, SHA224_BLOCK_SIZE - SHA224_SIZE);
   }
 
   /* Initialize the inner digest */
@@ -456,13 +430,15 @@ sha224_hmac_init(struct sha224_hmac_context *ctx, const byte *key, size_t keylen
   sha224_update(&ctx->octx, buf, SHA224_BLOCK_SIZE);
 }
 
-void sha224_hmac_update(struct sha224_hmac_context *ctx, const byte *buf, size_t buflen)
+void
+sha224_hmac_update(struct sha224_hmac_context *ctx, const byte *buf, size_t buflen)
 {
   /* Just update the inner digest */
   sha256_update(&ctx->ictx, buf, buflen);
 }
 
-byte *sha224_hmac_final(struct sha224_hmac_context *ctx)
+byte *
+sha224_hmac_final(struct sha224_hmac_context *ctx)
 {
   /* Finish the inner digest */
   byte *isha = sha224_final(&ctx->ictx);

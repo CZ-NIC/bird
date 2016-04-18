@@ -12,39 +12,38 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#include <string.h>
-
-#include "lib/null.h"
 #include "lib/sha1.h"
 #include "lib/unaligned.h"
 
+
 void
-sha1_init(struct sha1_context *hd)
+sha1_init(struct sha1_context *ctx)
 {
-  hd->h0 = 0x67452301;
-  hd->h1 = 0xefcdab89;
-  hd->h2 = 0x98badcfe;
-  hd->h3 = 0x10325476;
-  hd->h4 = 0xc3d2e1f0;
-  hd->nblocks = 0;
-  hd->count = 0;
+  ctx->h0 = 0x67452301;
+  ctx->h1 = 0xefcdab89;
+  ctx->h2 = 0x98badcfe;
+  ctx->h3 = 0x10325476;
+  ctx->h4 = 0xc3d2e1f0;
+
+  ctx->nblocks = 0;
+  ctx->count = 0;
 }
 
 /*
  * Transform the message X which consists of 16 32-bit-words
  */
 static void
-sha1_transform(struct sha1_context *hd, const byte *data)
+sha1_transform(struct sha1_context *ctx, const byte *data)
 {
   u32 a,b,c,d,e,tm;
   u32 x[16];
 
   /* Get values from the chaining vars. */
-  a = hd->h0;
-  b = hd->h1;
-  c = hd->h2;
-  d = hd->h3;
-  e = hd->h4;
+  a = ctx->h0;
+  b = ctx->h1;
+  c = ctx->h2;
+  d = ctx->h3;
+  e = ctx->h4;
 
 #ifdef CPU_BIG_ENDIAN
   memcpy(x, data, 64);
@@ -72,7 +71,7 @@ sha1_transform(struct sha1_context *hd, const byte *data)
     do 						\
     {						\
       e += ROL(a, 5) + f(b, c, d) + k + m;	\
-      b = ROL( b, 30 );				\
+      b = ROL(b, 30);				\
     } while(0)
 
   R( a, b, c, d, e, F1, K1, x[ 0] );
@@ -157,72 +156,72 @@ sha1_transform(struct sha1_context *hd, const byte *data)
   R( b, c, d, e, a, F4, K4, M(79) );
 
   /* Update chaining vars. */
-  hd->h0 += a;
-  hd->h1 += b;
-  hd->h2 += c;
-  hd->h3 += d;
-  hd->h4 += e;
+  ctx->h0 += a;
+  ctx->h1 += b;
+  ctx->h2 += c;
+  ctx->h3 += d;
+  ctx->h4 += e;
 }
 
 /*
- * Update the message digest with the contents
- * of INBUF with length INLEN.
+ * Update the message digest with the contents of BUF with length LEN.
  */
 void
-sha1_update(struct sha1_context *hd, const byte *inbuf, uint inlen)
+sha1_update(struct sha1_context *ctx, const byte *buf, uint len)
 {
-  if (hd->count == 64)  /* flush the buffer */
+  if (ctx->count)
   {
-    sha1_transform(hd, hd->buf);
-    hd->count = 0;
-    hd->nblocks++;
+    /* Fill rest of internal buffer */
+    for (; len && ctx->count < SHA1_BLOCK_SIZE; len--)
+      ctx->buf[ctx->count++] = *buf++;
+
+    if (ctx->count < SHA1_BLOCK_SIZE)
+      return;
+
+    /* Process data from internal buffer */
+    sha1_transform(ctx, ctx->buf);
+    ctx->nblocks++;
+    ctx->count = 0;
   }
-  if (!inbuf)
+
+  if (!len)
     return;
 
-  if (hd->count)
+  /* Process data from input buffer */
+  while (len >= SHA1_BLOCK_SIZE)
   {
-    for (; inlen && hd->count < 64; inlen--)
-      hd->buf[hd->count++] = *inbuf++;
-    sha1_update( hd, NULL, 0 );
-    if(!inlen)
-      return;
+    sha1_transform(ctx, buf);
+    ctx->nblocks++;
+    buf += SHA1_BLOCK_SIZE;
+    len -= SHA1_BLOCK_SIZE;
   }
 
-  while (inlen >= 64)
-  {
-    sha1_transform(hd, inbuf);
-    hd->count = 0;
-    hd->nblocks++;
-    inlen -= 64;
-    inbuf += 64;
-  }
-  for (; inlen && hd->count < 64; inlen--)
-    hd->buf[hd->count++] = *inbuf++;
+  /* Copy remaining data to internal buffer */
+  memcpy(ctx->buf, buf, len);
+  ctx->count = len;
 }
 
 /*
- * The routine final terminates the computation and
- * returns the digest.
- * The handle is prepared for a new cycle, but adding bytes to the
- * handle will the destroy the returned buffer.
+ * The routine final terminates the computation and returns the digest. The
+ * handle is prepared for a new cycle, but adding bytes to the handle will the
+ * destroy the returned buffer.
+ *
  * Returns: 20 bytes representing the digest.
  */
 byte *
-sha1_final(struct sha1_context *hd)
+sha1_final(struct sha1_context *ctx)
 {
   u32 t, msb, lsb;
-  u32 *p;
 
-  sha1_update(hd, NULL, 0); /* flush */;
+  sha1_update(ctx, NULL, 0);	/* flush */
 
-  t = hd->nblocks;
+  t = ctx->nblocks;
   /* multiply by 64 to make a byte count */
   lsb = t << 6;
   msb = t >> 26;
   /* add the count */
   t = lsb;
-  if ((lsb += hd->count) < t)
+  if ((lsb += ctx->count) < t)
     msb++;
   /* multiply by 8 to make a bit count */
   t = lsb;
@@ -230,33 +229,36 @@ sha1_final(struct sha1_context *hd)
   msb <<= 3;
   msb |= t >> 29;
 
-  if (hd->count < 56)  /* enough room */
+  if (ctx->count < 56)
   {
-    hd->buf[hd->count++] = 0x80; /* pad */
-    while (hd->count < 56)
-      hd->buf[hd->count++] = 0;  /* pad */
+    /* enough room */
+    ctx->buf[ctx->count++] = 0x80; /* pad */
+    while (ctx->count < 56)
+      ctx->buf[ctx->count++] = 0;  /* pad */
   }
-  else  /* need one extra block */
+  else
   {
-    hd->buf[hd->count++] = 0x80; /* pad character */
-    while (hd->count < 64)
-      hd->buf[hd->count++] = 0;
-    sha1_update(hd, NULL, 0);  /* flush */;
-    memset(hd->buf, 0, 56 ); /* fill next block with zeroes */
+    /* need one extra block */
+    ctx->buf[ctx->count++] = 0x80; /* pad character */
+    while (ctx->count < 64)
+      ctx->buf[ctx->count++] = 0;
+    sha1_update(ctx, NULL, 0);	/* flush */
+    memset(ctx->buf, 0, 56); /* fill next block with zeroes */
   }
-  /* append the 64 bit count */
-  hd->buf[56] = msb >> 24;
-  hd->buf[57] = msb >> 16;
-  hd->buf[58] = msb >>  8;
-  hd->buf[59] = msb	   ;
-  hd->buf[60] = lsb >> 24;
-  hd->buf[61] = lsb >> 16;
-  hd->buf[62] = lsb >>  8;
-  hd->buf[63] = lsb	   ;
-  sha1_transform(hd, hd->buf);
 
-  p = (u32*) hd->buf;
-#define X(a) do { put_u32(p, hd->h##a); p++; } while(0)
+  /* append the 64 bit count */
+  ctx->buf[56] = msb >> 24;
+  ctx->buf[57] = msb >> 16;
+  ctx->buf[58] = msb >>  8;
+  ctx->buf[59] = msb;
+  ctx->buf[60] = lsb >> 24;
+  ctx->buf[61] = lsb >> 16;
+  ctx->buf[62] = lsb >>  8;
+  ctx->buf[63] = lsb;
+  sha1_transform(ctx, ctx->buf);
+
+  byte *p = ctx->buf;
+#define X(a) do { put_u32(p, ctx->h##a); p += 4; } while(0)
   X(0);
   X(1);
   X(2);
@@ -264,12 +266,12 @@ sha1_final(struct sha1_context *hd)
   X(4);
 #undef X
 
-  return hd->buf;
+  return ctx->buf;
 }
 
 
 /*
- * 	SHA1-HMAC
+ *	SHA1-HMAC
  */
 
 /*
@@ -295,12 +297,12 @@ sha1_hmac_init(struct sha1_hmac_context *ctx, const byte *key, uint keylen)
   if (keylen <= SHA1_BLOCK_SIZE)
   {
     memcpy(keybuf, key, keylen);
-    bzero(keybuf + keylen, SHA1_BLOCK_SIZE - keylen);
+    memset(keybuf + keylen, 0, SHA1_BLOCK_SIZE - keylen);
   }
   else
   {
     sha1_hash_buffer(keybuf, key, keylen);
-    bzero(keybuf + SHA1_SIZE, SHA1_BLOCK_SIZE - SHA1_SIZE);
+    memset(keybuf + SHA1_SIZE, 0, SHA1_BLOCK_SIZE - SHA1_SIZE);
   }
 
   /* Initialize the inner digest */
@@ -324,7 +326,8 @@ sha1_hmac_update(struct sha1_hmac_context *ctx, const byte *data, uint datalen)
   sha1_update(&ctx->ictx, data, datalen);
 }
 
-byte *sha1_hmac_final(struct sha1_hmac_context *ctx)
+byte *
+sha1_hmac_final(struct sha1_hmac_context *ctx)
 {
   /* Finish the inner digest */
   byte *isha = sha1_final(&ctx->ictx);
@@ -337,9 +340,9 @@ byte *sha1_hmac_final(struct sha1_hmac_context *ctx)
 void
 sha1_hmac(byte *outbuf, const byte *key, uint keylen, const byte *data, uint datalen)
 {
-  struct sha1_hmac_context hd;
-  sha1_hmac_init(&hd, key, keylen);
-  sha1_hmac_update(&hd, data, datalen);
-  byte *osha = sha1_hmac_final(&hd);
-  memcpy(outbuf, osha, SHA1_SIZE);
+  struct sha1_hmac_context ctx;
+
+  sha1_hmac_init(&ctx, key, keylen);
+  sha1_hmac_update(&ctx, data, datalen);
+  memcpy(outbuf, sha1_hmac_final(&ctx), SHA1_SIZE);
 }

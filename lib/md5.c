@@ -3,16 +3,14 @@
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
- *	Adapted for BIRD by Martin Mares <mj@atrey.karlin.mff.cuni.cz>
- *
  *	The code was written by Colin Plumb in 1993, no copyright is claimed.
+ *
+ *	Adapted for BIRD by Martin Mares <mj@ucw.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#include "nest/bird.h"
-#include "lib/string.h"
-#include "md5.h"
+#include "lib/md5.h"
 
 #ifdef CPU_LITTLE_ENDIAN
 #define byteReverse(buf, len)	/* Nothing */
@@ -57,7 +55,7 @@ md5_init(struct md5_context *ctx)
  * of bytes.
  */
 void
-md5_update(struct md5_context *ctx, byte const *buf, uint len)
+md5_update(struct md5_context *ctx, const byte *buf, uint len)
 {
   u32 t;
 
@@ -71,7 +69,6 @@ md5_update(struct md5_context *ctx, byte const *buf, uint len)
   t = (t >> 3) & 0x3f;	/* Bytes already in shsInfo->data */
 
   /* Handle any leading odd-sized chunks */
-
   if (t)
   {
     byte *p = (byte *) ctx->in + t;
@@ -88,8 +85,8 @@ md5_update(struct md5_context *ctx, byte const *buf, uint len)
     buf += t;
     len -= t;
   }
-  /* Process data in 64-byte chunks */
 
+  /* Process data in 64-byte chunks */
   while (len >= 64)
   {
     memcpy(ctx->in, buf, 64);
@@ -100,12 +97,11 @@ md5_update(struct md5_context *ctx, byte const *buf, uint len)
   }
 
   /* Handle any remaining bytes of data. */
-
   memcpy(ctx->in, buf, len);
 }
 
 /*
- * Final wrapup - pad to 64-byte boundary with the bit pattern 
+ * Final wrapup - pad to 64-byte boundary with the bit pattern
  * 1 0* (64-bit count of bits processed, MSB-first)
  */
 byte *

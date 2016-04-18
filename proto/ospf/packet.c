@@ -109,11 +109,11 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt)
     char password[OSPF_AUTH_CRYPT_SIZE];
     strncpy(password, passwd->password, sizeof(password));
 
-    struct md5_context ctxt;
-    md5_init(&ctxt);
-    md5_update(&ctxt, (char *) pkt, plen);
-    md5_update(&ctxt, password, OSPF_AUTH_CRYPT_SIZE);
-    memcpy((byte *) tail, md5_final(&ctxt), MD5_SIZE);
+    struct md5_context ctx;
+    md5_init(&ctx);
+    md5_update(&ctx, (char *) pkt, plen);
+    md5_update(&ctx, password, OSPF_AUTH_CRYPT_SIZE);
+    memcpy((byte *) tail, md5_final(&ctx), MD5_SIZE);
     break;
 
   default:
@@ -175,19 +175,17 @@ ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_
     if (!pass)
       DROP("no suitable password found", auth->md5.keyid);
 
-    void *tail = ((void *) pkt) + plen;
-    char passwd[OSPF_AUTH_CRYPT_SIZE];
-    char md5sum[OSPF_AUTH_CRYPT_SIZE];
+    byte *tail = ((byte *) pkt) + plen;
+    char received[OSPF_AUTH_CRYPT_SIZE];
+    memcpy(received, tail, OSPF_AUTH_CRYPT_SIZE);
+    strncpy(tail, pass->password, OSPF_AUTH_CRYPT_SIZE);
 
-    strncpy(passwd, pass->password, OSPF_AUTH_CRYPT_SIZE);
+    struct md5_context ctx;
+    md5_init(&ctx);
+    md5_update(&ctx, (byte *) pkt, plen + OSPF_AUTH_CRYPT_SIZE);
+    char *computed = md5_final(&ctx);
 
-    struct md5_context ctxt;
-    md5_init(&ctxt);
-    md5_update(&ctxt, (char *) pkt, plen);
-    md5_update(&ctxt, passwd, OSPF_AUTH_CRYPT_SIZE);
-    memcpy(md5sum, md5_final(&ctxt), MD5_SIZE);
-
-    if (memcmp(md5sum, tail, OSPF_AUTH_CRYPT_SIZE))
+    if (memcmp(received, computed, OSPF_AUTH_CRYPT_SIZE))
       DROP("wrong MD5 digest", pass->id);
 
     if (n)
@@ -224,7 +222,7 @@ ospf_rx_hook(sock *sk, int len)
     return 1;
 
   DBG("OSPF: RX hook called (iface %s, src %I, dst %I)\n",
-      sk->ifname, sk->faddr, sk->laddr);
+      sk->iface->name, sk->faddr, sk->laddr);
 
   /* Initially, the packet is associated with the 'master' iface */
   struct ospf_iface *ifa = sk->data;

@@ -283,7 +283,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	LEN,
 	DEFINED,
 	ADD, DELETE, CONTAINS, RESET,
-	PREPEND, FIRST, LAST, MATCH,
+	PREPEND, FIRST, LAST, LAST_NONAGGREGATED, MATCH,
 	ROA_CHECK,
 	EMPTY,
 	FILTER, WHERE, EVAL)
@@ -752,6 +752,7 @@ term:
  | term '.' MASK '(' term ')' { $$ = f_new_inst(); $$->code = P('i','M'); $$->a1.p = $1; $$->a2.p = $5; }
  | term '.' FIRST { $$ = f_new_inst(); $$->code = P('a','f'); $$->a1.p = $1; }
  | term '.' LAST  { $$ = f_new_inst(); $$->code = P('a','l'); $$->a1.p = $1; }
+ | term '.' LAST_NONAGGREGATED  { $$ = f_new_inst(); $$->code = P('a','L'); $$->a1.p = $1; }
 
 /* Communities */
 /* This causes one shift/reduce conflict

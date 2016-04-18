@@ -51,3 +51,18 @@ password_find_by_id(list *l, int id)
   return NULL;
 }
 
+struct password_item *
+password_find_by_value(list *l, char *pass, uint size)
+{
+  struct password_item *pi;
+
+  if (!l)
+    return NULL;
+
+  WALK_LIST(pi, *l)
+    if (password_verify(pi, pass, size) && (pi->accfrom <= now_real) && (now_real < pi->accto))
+      return pi;
+
+  return NULL;
+}
+

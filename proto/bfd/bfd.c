@@ -872,7 +872,7 @@ bfd_notify_hook(sock *sk, int len)
   WALK_LIST_FIRST(s, tmp_list)
   {
     bfd_lock_sessions(p);
-    rem2_node(&s->n);
+    rem_node(&s->n);
     state = s->loc_state;
     diag = s->loc_diag;
     bfd_unlock_sessions(p);

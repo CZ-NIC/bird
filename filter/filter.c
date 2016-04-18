@@ -1091,6 +1091,14 @@ interpret(struct f_inst *what)
     res.type = T_INT;
     res.val.i = as;
     break;
+  case P('a','L'):	/* Get last ASN from non-aggregated part of AS PATH */
+    ONEARG;
+    if (v1.type != T_PATH)
+      runtime( "AS path expected" );
+
+    res.type = T_INT;
+    res.val.i = as_path_get_last_nonaggregated(v1.val.ad);
+    break;
   case 'r':
     ONEARG;
     res = v1;
