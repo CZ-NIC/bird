@@ -193,13 +193,13 @@ t_remove_node(void)
   /* Fill & Remove & Check */
   fill_list();
   for (i = 0; i < MAX_NUM; i++)
-    rem2_node(&nodes[i]);
+    rem_node(&nodes[i]);
   bt_assert(is_empty_list_well_unlinked());
 
   /* Fill & Remove the half of nodes & Check & Remove the rest nodes & Check */
   fill_list();
   for (i = 0; i < MAX_NUM; i+=2)
-    rem2_node(&nodes[i]);
+    rem_node(&nodes[i]);
 
   int tail_node_index = (MAX_NUM % 2) ? MAX_NUM - 2 : MAX_NUM - 1;
   bt_assert(l.head == &nodes[1]);
@@ -215,7 +215,7 @@ t_remove_node(void)
   }
 
   for (i = 1; i < MAX_NUM; i+=2)
-    rem2_node(&nodes[i]);
+    rem_node(&nodes[i]);
   bt_assert(is_empty_list_well_unlinked());
 
   return BT_SUCCESS;
