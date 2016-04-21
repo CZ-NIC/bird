@@ -36,8 +36,8 @@ struct cmd_node {
   struct cmd_info *cmd;		/* Short info */
   struct cmd_info *help;	/* Detailed info */
   signed char prio; 		/* Priority */
-  int len; 			/* Length of string in token */
   u32 flags;			/* Mask of (CLI_SF_*) */
+  int len; 			/* Length of string in token */
   char token[1];		/* Name of command */
 };
 
@@ -190,6 +190,29 @@ cmd_help(char *cmd, int len)
 
 /*
  * Return length of common prefix of all matches,
+ * Write common prefix string into buf
+ */
+static int
+cmd_merge_match_with_others(int max_common_len, const char *token_name, int token_len, char *buf, int from)
+{
+  if (max_common_len < 0)
+  {
+    /* For a case that we'll have exactly one match */
+    strcpy(buf, token_name + from);
+    max_common_len = token_len - from;
+  }
+  else
+  {
+    int i = 0;
+    while (i < max_common_len && i < token_len - from && buf[i] == token_name[from+i])
+      i++;
+    max_common_len = i;
+  }
+  return max_common_len;
+}
+
+/*
+ * Return length of common prefix of all matches,
  * Write count of all matches into pcount,
  * Write common prefix string into buf
  */
@@ -197,11 +220,11 @@ static int
 cmd_find_common_match(struct cmd_node *root, char *cmd, int len, int *pcount, char *buf)
 {
   struct cmd_node *m;
-  int best, /* len of common prefix */
-      best_prio, i;
+  int max_common_len;
+  int best_prio, i;
 
   *pcount = 0;
-  best = -1;
+  max_common_len = -1;
   best_prio = -1;
   for(m=root->son; m; m=m->sibling)
     {
@@ -214,24 +237,14 @@ cmd_find_common_match(struct cmd_node *root, char *cmd, int len, int *pcount, ch
       if (best_prio < m->prio)
 	{
 	  *pcount = 0;
-	  best = -1;
+	  max_common_len = -1;
 	}
 
+      if (max_common_len < 0)
+	best_prio = m->prio;
+
       (*pcount)++;
-      if (best < 0)
-	{
-	  /* For a case that we'll have exactly one match */
-	  strcpy(buf, m->token + len);
-	  best = m->len - len;
-	  best_prio = m->prio;
-	}
-      else
-	{
-	  i = 0;
-	  while (i < best && i < m->len - len && buf[i] == m->token[len+i])
-	    i++;
-	  best = i;
-	}
+      max_common_len = cmd_merge_match_with_others(max_common_len, m->token, m->len, buf, len);
     }
 
   list *syms = cli_get_symbol_list();
@@ -245,22 +258,10 @@ cmd_find_common_match(struct cmd_node *root, char *cmd, int len, int *pcount, ch
       continue;
 
     (*pcount)++;
-
-    if (best < 0)
-    {
-      strcpy(buf, sym->name + len);
-      best = sym->len - len;		/* for a case that we'll have only one match */
-    }
-    else
-    {
-      i = 0;
-      while (i < best && i < sym->len - len && buf[i] == sym->name[len+i])
-	i++;
-      best = i;
-    }
+    max_common_len = cmd_merge_match_with_others(max_common_len, sym->name, sym->len, buf, len);
   }
 
-  return best;
+  return max_common_len;
 }
 
 int
