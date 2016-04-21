@@ -140,19 +140,24 @@ input_help(int arg, int key UNUSED)
 void
 input_init(void)
 {
-  retrieve_symbols();
-  printf("BIRD Client " BIRD_VERSION " ready.\n");
+  prompt_active = 0;
 
-  rl_readline_name = "birdc";
-  rl_add_defun("bird-complete", input_complete, '\t');
-  rl_add_defun("bird-help", input_help, '?');
-  rl_callback_handler_install("bird> ", input_got_line);
+  if (interactive)
+  {
+    prompt_active = 1;
+
+    retrieve_symbols();
+    printf("BIRD Client " BIRD_VERSION " ready.\n");
+
+    rl_readline_name = "birdc";
+    rl_add_defun("bird-complete", input_complete, '\t');
+    rl_add_defun("bird-help", input_help, '?');
+    rl_callback_handler_install("bird> ", input_got_line);
+  }
 
   // rl_get_screen_size();
   term_lns = LINES;
   term_cls = COLS;
-
-  prompt_active = 1;
 
   // readline library does strange things when stdin is nonblocking.
   // if (fcntl(0, F_SETFL, O_NONBLOCK) < 0)
@@ -200,7 +205,10 @@ input_notify(int prompt)
 void
 input_read(void)
 {
-  rl_callback_read_char();
+  if (interactive)
+    rl_callback_read_char();
+  else
+    simple_input_read();
 }
 
 void

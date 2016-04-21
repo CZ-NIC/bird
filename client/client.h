@@ -68,5 +68,6 @@ void retrieve_symbols(void);
 void add_keywords_to_symbols(void);
 list *cli_get_symbol_list(void);
 uint cli_get_symbol_maxlen(void);
+void simple_input_read(void);
 
 #endif

@@ -37,6 +37,7 @@
 #include "client/reply_codes.h"
 
 #define SERVER_READ_BUF_LEN 4096
+#define INPUT_BUF_LEN 2048
 
 static char *opt_list = "s:vr";
 static int verbose, restricted, once;
@@ -420,6 +421,51 @@ server_read(void)
       strcpy(server_read_buf, "?<too-long>");
       server_read_pos = server_read_buf + 11;
     }
+}
+
+static int
+lastnb(char *str, int i)
+{
+  while (i--)
+    if ((str[i] != ' ') && (str[i] != '\t'))
+      return str[i];
+
+  return 0;
+}
+
+void
+simple_input_read(void)
+{
+  char buf[INPUT_BUF_LEN];
+
+  if ((fgets(buf, INPUT_BUF_LEN, stdin) == NULL) || (buf[0] == 0))
+  {
+    if (interactive)
+      putchar('\n');
+    cleanup();
+    exit(0);
+  }
+
+  int l = strlen(buf);
+  if ((l+1) == INPUT_BUF_LEN)
+    {
+      printf("Input too long.\n");
+      return;
+    }
+
+  if (buf[l-1] == '\n')
+    buf[--l] = '\0';
+
+  if (l == 0)
+    return;
+
+  if (lastnb(buf, l) == '?')
+    {
+      cmd_help(buf, strlen(buf));
+      return;
+    }
+
+  submit_command(buf);
 }
 
 static void
