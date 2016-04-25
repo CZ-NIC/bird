@@ -113,8 +113,10 @@ rt_get_source(struct proto *p, u32 id)
   src = sl_alloc(rte_src_slab);
   src->proto = p;
   src->private_id = id;
-  src->global_id = idm_alloc(&src_ids);
+  src->global_id = idm_alloc(&src_ids, 1, 0xffffffff);
   src->uc = 0;
+
+  ASSERT(src->global_id); /* Couldn't allocate new ID */
 
   HASH_INSERT2(src_hash, RSH, rta_pool, src);
 

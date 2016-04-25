@@ -38,6 +38,7 @@
 
 #include "nest/bird.h"
 #include "nest/route.h"
+#include "lib/idm.h"
 #include "lib/string.h"
 
 #define HASH_DEF_ORDER 10

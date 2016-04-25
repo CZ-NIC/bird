@@ -548,7 +548,10 @@ ort_to_lsaid(struct ospf_proto *p, ort *nf)
   if (ospf_is_v3(p))
   {
     if (!nf->lsa_id)
-      nf->lsa_id = idm_alloc(&p->idm);
+      nf->lsa_id = idm_alloc(&p->idm, 0, 0xffffffff);
+
+    if (!nf->lsa_id)
+      log(L_FATAL "%s: LSA ID allocation failed, using 0 as fallback.", p->p.name);
 
     return nf->lsa_id;
   }

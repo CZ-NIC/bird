@@ -19,7 +19,7 @@ struct idm
 };
 
 void idm_init(struct idm *m, pool *p, uint size);
-u32 idm_alloc(struct idm *m);
+u32 idm_alloc(struct idm *m, u32 min, u32 max);
 void idm_free(struct idm *m, u32 id);
 
 #endif
