@@ -3,36 +3,21 @@
 static void
 l3vpn_alloc_mpls_label(struct l3vpn_proto *p, struct l3vpn_ip_to_mpls *litm, ip_addr gw, struct iface *iface)
 {
-  u32 label;
-  net_addr_union nu;
-
-  for (label = p->last_label + 1; label <= MPLS_LABEL_MAX; label++) {
-    nu.mpls = NET_ADDR_MPLS(label);
-    net *n = net_get(p->mpls->table, &nu.n);
-    if (!n->routes)
-      goto have_label;
+  net *n = net_get(p->mpls->table, NULL);
+  if (!n) {
+    log(L_ERR "%s: Couldn't allocate MPLS label.", p->p.name);
+    return;
   }
 
-  for (label = 16; label <= p->last_label; label++) {
-    nu.mpls = NET_ADDR_MPLS(label);
-    net *n = net_get(p->mpls->table, &nu.n);
-    if (!n->routes)
-      goto have_label;
-  }
-
-  return;
-
-have_label:;
-  p->last_label = label;
   rta a = {};
   a.gw = gw;
   a.src = p->p.main_source;
   a.iface = iface;
   rte *e = rte_get_temp(rta_lookup(&a));
-  rte_update2(p->mpls, &nu.n, e, p->p.main_source);
+  rte_update2(p->mpls, n->n.addr, e, p->p.main_source);
 
   litm->ad.length = sizeof(u32);
-  memcpy(litm->ad.data, &label, sizeof(u32));
+  memcpy(litm->ad.data, &((net_addr_mpls *)n->n.addr)->label, sizeof(u32));
 }
 
 static ea_list *
@@ -157,7 +142,6 @@ l3vpn_init(struct proto_config *CF)
   p->ip = proto_add_channel(P, cf->ip);
   p->mpls = proto_add_channel(P, cf->mpls);
   p->rd = cf->rd;
-  p->last_label = 16;
 
   P->rt_notify = l3vpn_rt_notify;
 

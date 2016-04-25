@@ -32,7 +32,6 @@ struct l3vpn_proto {
   struct fib iptompls;			/* FIB to lookup IP->MPLS mappings */
 
   u64 rd;				/* VPN route distinguisher */
-  u32 last_label;			/* Last allocated label */
 };
 
 extern struct protocol proto_l3vpn;
