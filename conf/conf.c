@@ -448,6 +448,7 @@ config_undo(void)
 }
 
 extern void cmd_reconfig_undo_notify(void);
+extern void cmd_reconfig_msg(int r);
 
 static void
 config_timeout(struct timer *t)
@@ -458,6 +459,8 @@ config_timeout(struct timer *t)
   int r = config_undo();
   if (r < 0)
     log(L_ERR "Undo request failed");
+
+  cmd_reconfig_msg(r);
 }
 
 void

@@ -81,6 +81,7 @@ enum reply_code {
   RC_VARIABLE_NAME = 3006,
   RC_TEMPLATE_NAME = 3007,
   RC_INTERFACE_NAME = 3008,
+  RC_NOTIFY = 3009, 		/* Daemon notifies the client about new symbol set */
 
   RC_REPLY_TOO_LONG = 8000,
   RC_ROUTE_NOT_FOUND = 8001,

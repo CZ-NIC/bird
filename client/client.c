@@ -318,12 +318,18 @@ cli_get_symbol_maxlen(void)
 }
 
 static void
-server_got_symbol(int reply_code, const char *name)
+process_internal_message(int reply_code, const char *name)
 {
   u32 flag = 0;
 
   switch (reply_code)
   {
+  case RC_NOTIFY:
+    if (interactive)
+      retrieve_symbols();
+    return;
+
+  /* Symbols */
   case RC_CONSTANT_NAME:	flag = CLI_SF_CONSTANT; break;
   case RC_VARIABLE_NAME:	flag = CLI_SF_VARIABLE; break;
   case RC_FILTER_NAME:		flag = CLI_SF_FILTER; break;
@@ -337,7 +343,8 @@ server_got_symbol(int reply_code, const char *name)
     return;
   }
 
-  add_to_symbols(flag, name);
+  if (flag && name && *name)
+    add_to_symbols(flag, name);
 }
 
 #define PRINTF(LEN, PARGS...) do { if (!skip_input) len = printf(PARGS); } while(0)
@@ -358,7 +365,7 @@ server_got_reply(char *x)
     {
       if (code >= 3000 && code < 4000)
       {
-	server_got_symbol(code, x+5);
+	process_internal_message(code, x+5);
       }
       else if (code)
       {
