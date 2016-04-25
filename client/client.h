@@ -9,8 +9,6 @@
 #ifndef _BIRD_CLIENT_H_
 #define _BIRD_CLIENT_H_
 
-#define REFRESH_SYMBOLS_CMD "refresh symbols"
-
 extern int init, busy, interactive;
 extern int term_lns, term_cls;
 

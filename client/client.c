@@ -36,8 +36,9 @@
 #include "sysdep/unix/unix.h"
 #include "client/reply_codes.h"
 
-#define SERVER_READ_BUF_LEN 4096
-#define INPUT_BUF_LEN 2048
+#define SERVER_READ_BUF_LEN 	4096
+#define INPUT_BUF_LEN 		2048
+#define REFRESH_SYMBOLS_CMD 	"refresh symbols" /* Name of cli command for retrieve new symbols from daemon */
 
 static char *opt_list = "s:vr";
 static int verbose, restricted, once;
@@ -196,7 +197,7 @@ add_to_symbols(int flag, const char *name)
 void
 retrieve_symbols(void)
 {
-  /* purge old symbols */
+  /* Purge old symbols */
   list *syms = cli_get_symbol_list();
   struct cli_symbol *sym, *next;
   WALK_LIST_DELSAFE(sym, next, *syms)
