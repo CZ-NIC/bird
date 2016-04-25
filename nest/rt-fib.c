@@ -95,6 +95,11 @@ fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offse
 {
   uint addr_length = net_addr_length[addr_type];
 
+  if (addr_type == NET_MPLS)
+  {
+    f->idm = mb_alloc(p, sizeof(*f->idm));
+    idm_init(f->idm, p, 64);
+  }
   if (!hash_order)
     hash_order = HASH_DEF_ORDER;
   f->fib_pool = p;
@@ -238,7 +243,6 @@ static void
 fib_insert(struct fib *f, const net_addr *a, struct fib_node *e)
 {
   ASSERT(f->addr_type == a->type);
-
   switch (f->addr_type)
   {
   case NET_IP4: FIB_INSERT(f, a, e, ip4); return;
@@ -252,6 +256,31 @@ fib_insert(struct fib *f, const net_addr *a, struct fib_node *e)
   }
 }
 
+net_addr * const fib_idm_alloc(struct fib *f, const net_addr *a)
+{
+  ASSERT(f->idm && (f->addr_type == NET_MPLS));
+
+  u32 label;
+  if (a)
+    label = idm_alloc(f->idm, ((net_addr_mpls *)a)->label, ((net_addr_mpls *)a)->label);
+  else
+    label = idm_alloc(f->idm, 16, (1<<20)-1);
+
+  if (!label)
+    return NULL;
+
+  static net_addr_union nu;
+  net_fill_mpls(&nu.n, label);
+  return &nu.n;
+}
+
+void fib_idm_free(struct fib *f, struct fib_node *e)
+{
+  ASSERT(f->idm);
+
+  u32 label = ((net_addr_mpls *)e->addr)->label;
+  idm_free(f->idm, label);
+}
 
 /**
  * fib_get - find or create a FIB node
@@ -264,9 +293,21 @@ fib_insert(struct fib *f, const net_addr *a, struct fib_node *e)
 void *
 fib_get(struct fib *f, const net_addr *a)
 {
-  void *b = fib_find(f, a);
-  if (b)
+  void *b;
+  if (a && (b = fib_find(f, a)))
     return b;
+
+  ASSERT(a || f->idm);
+  if (f->idm)
+  {
+    const net_addr *ag = fib_idm_alloc(f, a);
+    if (!ag)
+    {
+      ASSERT(!a);
+      return NULL;
+    }
+    a = ag;
+  }
 
   if (f->fib_slab)
     b = sl_alloc(f->fib_slab);
@@ -425,6 +466,9 @@ fib_delete(struct fib *f, void *E)
 	    sl_free(f->fib_slab, E);
 	  else
 	    mb_free(E);
+
+	  if (f->idm)
+	    fib_idm_free(f, e);
 
 	  if (f->entries-- < f->entries_min)
 	    fib_rehash(f, -HASH_LO_STEP);

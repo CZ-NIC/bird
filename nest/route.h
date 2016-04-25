@@ -9,6 +9,7 @@
 #ifndef _BIRD_ROUTE_H_
 #define _BIRD_ROUTE_H_
 
+#include "lib/idm.h"
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/timer.h"
@@ -54,6 +55,7 @@ typedef void (*fib_init_fn)(void *);
 struct fib {
   pool *fib_pool;			/* Pool holding all our data */
   slab *fib_slab;			/* Slab holding all fib nodes */
+  struct idm *idm;			/* ID Map for allocations */
   struct fib_node **hash_table;		/* Node hash table */
   uint hash_size;			/* Number of hash table entries (a power of two) */
   uint hash_order;			/* Binary logarithm of hash_size */
