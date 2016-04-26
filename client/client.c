@@ -355,8 +355,13 @@ server_got_reply(char *x)
   int code = 0;
   int len = 0;
 
-  if (*x == '+')                        /* Async reply */
+//  input_notify(0);
+
+  if (*x == '+') {                       /* Async reply */
+    busy = 1;
+    input_notify(0);
     PRINTF(len, ">>> %s\n", x+1);
+  }
   else if (x[0] == ' ')                 /* Continuation */
     PRINTF(len, "%s%s\n", verbose ? "     " : "", x+1);
   else if (strlen(x) > 4 &&
