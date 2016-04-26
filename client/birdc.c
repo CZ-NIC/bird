@@ -7,6 +7,7 @@
  */
 
 #include <stdio.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <termios.h>
@@ -19,6 +20,9 @@
 #include "lib/resource.h"
 #include "lib/string.h"
 #include "client/client.h"
+
+#define BIRDC_HISTORY_FILENAME 	".birdc_history"
+#define MAX_FILEPATH_LENGTH 	256
 
 static int input_hidden_end;
 static int prompt_active;
@@ -137,14 +141,27 @@ input_help(int arg, int key UNUSED)
   return 0;
 }
 
+static char *
+get_filepath_cli_history(char *buf, size_t size)
+{
+  char *home = getenv("HOME");
+  if (!home)
+    return NULL;
+  if (snprintf(buf, size, "%s/%s", home, BIRDC_HISTORY_FILENAME) >= sizeof(buf))
+    return NULL;
+  return buf;
+}
+
 void
 input_init(void)
 {
+  char path[MAX_FILEPATH_LENGTH];
   prompt_active = 0;
 
   if (interactive)
   {
     prompt_active = 1;
+
 
     retrieve_symbols();
     printf("BIRD Client " BIRD_VERSION " ready.\n");
@@ -152,6 +169,7 @@ input_init(void)
     rl_readline_name = "birdc";
     rl_add_defun("bird-complete", input_complete, '\t');
     rl_add_defun("bird-help", input_help, '?');
+    read_history(get_filepath_cli_history(path, sizeof(path)));
     rl_callback_handler_install("bird> ", input_got_line);
   }
 
@@ -224,8 +242,13 @@ more_end(void)
 void
 cleanup(void)
 {
+  char path[MAX_FILEPATH_LENGTH];
+
   if (init)
     return;
+
+  if (interactive)
+    write_history(get_filepath_cli_history(path, sizeof(path)));
 
   input_hide();
   rl_callback_handler_remove();
