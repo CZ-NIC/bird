@@ -42,7 +42,7 @@ input_notify(int prompt)
   if (!prompt || !interactive)
     return;
 
-  printf("bird> ");
+  printf("\rbird> ");
   fflush(stdout);
 }
 
