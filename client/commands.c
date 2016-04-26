@@ -111,8 +111,6 @@ static struct cmd_node *
 cmd_find_abbrev(struct cmd_node *root, char *cmd, int len, int *pambiguous)
 {
   struct cmd_node *m, *best = NULL, *best2 = NULL;
-  list *l_syms = cli_get_symbol_list();
-  struct cli_symbol *sym;
 
   *pambiguous = 0;
   for(m=root->son; m; m=m->sibling)
@@ -221,7 +219,7 @@ cmd_find_common_match(struct cmd_node *root, char *cmd, int len, int *pcount, ch
 {
   struct cmd_node *m;
   int max_common_len;
-  int best_prio, i;
+  int best_prio;
 
   *pcount = 0;
   max_common_len = -1;
