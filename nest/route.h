@@ -628,6 +628,6 @@ struct mrt_table_config *mrt_table_new_config(void);
 struct mrt_table_dump_ctx;
 int is_route_good_for_table_dump(struct mrt_table_dump_ctx *state, rte *e);
 //char *mrt_table_dump_config_get_filename_fmt(struct rtable *rtable);
-void mrt_table_dump_init_file_descriptor(struct mrt_table_dump_ctx *state);
+struct rfile *mrt_table_dump_init_file_descriptor(struct mrt_table_dump_ctx *state);
 
 #endif
