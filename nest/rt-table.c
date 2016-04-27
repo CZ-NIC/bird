@@ -2746,10 +2746,13 @@ mrt_table_dump_cmd_step(void *mrt_table_dump_ctx)
     rfree(state->step);
     if (state->config.c.config)
       config_del_obstacle(state->config.c.config);
-    log(L_INFO "MRT dump of table %s was saved into file \"%s\"", state->rtable->name, state->file_path);
-    if (state->config.c.cli)
+    if (state->rfile)
     {
-      cli_printf(state->config.c.cli, 13, "Dump of table %s was saved into file \"%s\"", state->rtable->name, state->file_path);
+      log(L_INFO "MRT dump of table %s was saved into file \"%s\"", state->rtable->name, state->file_path);
+      if (state->config.c.cli)
+      {
+        cli_printf(state->config.c.cli, 13, "Dump of table %s was saved into file \"%s\"", state->rtable->name, state->file_path);
+      }
     }
     rt_unlock_table(state->rtable);
     mb_free(state->file_path);
@@ -2777,10 +2780,12 @@ mrt_table_dump_init(struct mrt_table_dump_ctx *state)
 
   state->state = MRT_STATE_RUNNING;
   state->rib_sequence_number = 0;
-  mrt_table_dump_init_file_descriptor(state);
   mrt_rib_table_alloc(&state->rib_table);
 
-  bgp_mrt_peer_index_table_dump(state);
+  if (mrt_table_dump_init_file_descriptor(state))
+    bgp_mrt_peer_index_table_dump(state);
+  else
+    state->state = MRT_STATE_COMPLETED;
 }
 
 struct mrt_table_dump_ctx *
@@ -2881,7 +2886,7 @@ mrt_table_dump_get_realpath(const char *filename)
   return path;
 }
 
-void
+struct rfile *
 mrt_table_dump_init_file_descriptor(struct mrt_table_dump_ctx *state)
 {
   char *tablename = state->config.table_cf->name;
@@ -2889,12 +2894,15 @@ mrt_table_dump_init_file_descriptor(struct mrt_table_dump_ctx *state)
 
   if (filename_fmt)
   {
-    struct timeformat timestamp_fmt = {
-	.fmt1 = filename_fmt,
-    };
+    char filename[BIRD_PATH_MAX];
+    struct tm *tm = localtime(&now_real);
+    if (!strftime(filename, sizeof(filename), filename_fmt, tm))
+    {
+      log(L_ERR "Invalid filename format \"%s\"", filename_fmt);
+      mb_free(filename_fmt);
+      return NULL;
+    }
 
-    char filename[TM_DATETIME_BUFFER_SIZE];
-    tm_format_datetime(filename, &timestamp_fmt, now);
     state->rfile = tracked_fopen(rt_table_pool, filename, "a");
 
     const char *filename_fullpath = mrt_table_dump_get_realpath(filename);
@@ -2927,6 +2935,7 @@ mrt_table_dump_init_file_descriptor(struct mrt_table_dump_ctx *state)
       cli_msg(13, "Parsing filename filename_fmt \"%s\" for table %s failed", mrt_table_dump_config_get_filename_fmt(state), tablename);
     }
   }
+  return state->rfile;
 }
 
 static void
