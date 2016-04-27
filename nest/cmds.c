@@ -105,7 +105,8 @@ cmd_send_symbols(void)
 
   struct iface *i;
   WALK_LIST(i, iface_list)
-    cli_msg(RC_INTERFACE_NAME, "\"%s\"", i->name);
+    if (!(i->flags & IF_SHUTDOWN))
+      cli_msg(RC_INTERFACE_NAME, "\"%s\"", i->name);
 
   cli_msg(0, "");
 }

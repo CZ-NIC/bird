@@ -68,8 +68,10 @@
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "lib/string.h"
+#include "client/reply_codes.h"
 
 pool *cli_pool;
+static list cli_client_list;
 
 static byte *
 cli_alloc_out(cli *c, int size)
@@ -310,6 +312,7 @@ cli_new(void *priv)
   c->parser_pool = lp_new(c->pool, 4096);
   c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
   ev_schedule(c->event);
+  add_tail(&cli_client_list, &c->cli_client_node);
   return c;
 }
 
@@ -401,6 +404,7 @@ cli_free(cli *c)
     c->cleanup(c);
   if (c == cmd_reconfig_stored_cli)
     cmd_reconfig_stored_cli = NULL;
+  rem2_node(&c->cli_client_node);
   rfree(c->pool);
 }
 
@@ -416,4 +420,23 @@ cli_init(void)
   cli_pool = rp_new(&root_pool, "CLI");
   init_list(&cli_log_hooks);
   cli_log_inited = 1;
+  init_list(&cli_client_list);
+}
+
+/**
+ * cli_notify_all_clients - send push notification to all cli clients
+ *
+ * Send a notification to all command line clients about some news.
+ * Client could then send a request for pulling symbols.
+ */
+void
+cli_notify_all_clients(void)
+{
+  struct cli *cli;
+  node *n;
+  WALK_LIST2(cli, n, cli_client_list, cli_client_node)
+  {
+    cli_printf(cli, RC_NOTIFY, "");
+    cli_write_trigger(cli);
+  }
 }
