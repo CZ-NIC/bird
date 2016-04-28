@@ -1419,6 +1419,102 @@ corresponding protocol sections.
 
 <chapt>Protocols
 
+<sect>Babel
+
+<sect1>Introduction
+
+<p>The Babel protocol (RFC6126) is a loop-avoiding distance-vector routing
+protocol that is robust and efficient both in ordinary wired networks and in
+wireless mesh networks. Babel is conceptually very simple in its operation and
+"just works" in its default configuration, though some configuration is possible
+and in some cases desirable.
+
+<p>While the Babel protocol is dual stack (i.e., can carry both IPv4 and IPv6
+routes over the same IPv6 transport), BIRD presently implements only the IPv6
+subset of the protocol. No Babel extensions are implemented, but the BIRD
+implementation can coexist with implementations using the extensions (and will
+just ignore extension messages).
+
+<p>The Babel protocol implementation in BIRD is currently in alpha stage.
+
+<sect1>Configuration
+
+<p>Babel supports no global configuration options apart from those common to all
+other protocols, but supports the following per-interface configuration options:
+
+<code>
+protocol babel [<name>] {
+	interface <interface pattern> {
+		type <wired|wireless>;
+		rxcost <number>;
+		hello interval <number>;
+		update interval <number>;
+		port <number>;
+		tx class|dscp <number>;
+		tx priority <number>;
+		rx buffer <number>;
+		tx length <number>;
+		check link <switch>;
+	};
+}
+</code>
+
+<descrip>
+      <tag>type wired|wireless </tag>
+      This option specifies the interface type: Wired or wireless. Wired
+      interfaces are considered more reliable, and so the default hello
+      interval is higher, and a neighbour is considered unreachable after only
+      a small number of "hello" packets are lost. On wireless interfaces,
+      hello packets are sent more often, and the ETX link quality estimation
+      technique is used to compute the metrics of routes discovered over this
+      interface. This technique will gradually degrade the metric of routes
+      when packets are lost rather than the more binary up/down mechanism of
+      wired type links. Default: <cf/wired/.
+
+      <tag>rxcost <m/num/</tag>
+      This specifies the RX cost of the interface. The route metrics will be
+      computed from this value with a mechanism determined by the interface
+      <cf/type/. Default: 96 for wired interfaces, 256 for wireless.
+
+      <tag>hello interval <m/num/</tag>
+      Interval at which periodic "hello" messages are sent on this interface,
+      in seconds. Default: 4 seconds.
+
+      <tag>update interval <m/num/</tag>
+      Interval at which periodic (full) updates are sent. Default: 4 times the
+      hello interval.
+
+      <tag>port <m/number/</tag>
+      This option selects an UDP port to operate on. The default is to operate
+      on port 6696 as specified in the Babel RFC.
+
+      <tag>tx class|dscp|priority <m/number/</tag>
+      These options specify the ToS/DiffServ/Traffic class/Priority of the
+      outgoing Babel packets. See <ref id="dsc-prio" name="tx class"> common
+      option for detailed description.
+
+      <tag>rx buffer <m/number/</tag>
+      This option specifies the size of buffers used for packet processing.
+      The buffer size should be bigger than maximal size of received packets.
+      The default value is the interface MTU, and the value will be clamped to a
+      minimum of 512 bytes + IP packet overhead.
+
+      <tag>tx length <m/number/</tag>
+      This option specifies the maximum length of generated Babel packets. To
+      avoid IP fragmentation, it should not exceed the interface MTU value.
+      The default value is the interface MTU value, and the value will be
+      clamped to a minimum of 512 bytes + IP packet overhead.
+
+      <tag>check link <m/switch/</tag>
+      If set, the hardware link state (as reported by OS) is taken into
+      consideration. When the link disappears (e.g. an ethernet cable is
+      unplugged), neighbors are immediately considered unreachable and all
+      routes received from them are withdrawn. It is possible that some
+      hardware drivers or platforms do not implement this feature. Default:
+      yes.
+</descrip>
+
+
 <sect><label id="sect-bfd">BFD
 
 <sect1>Introduction

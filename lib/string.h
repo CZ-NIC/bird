@@ -30,4 +30,6 @@ static inline char *xbasename(const char *str)
   return s ? s+1 : (char *) str;
 }
 
+#define ROUTER_ID_64_LENGTH 23
+
 #endif
