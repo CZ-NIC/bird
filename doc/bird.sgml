@@ -3712,9 +3712,9 @@ definition of the protocol contains mainly a list of static routes.
 	interface can be specified as a part of the address (e.g.,
 	<cf/via fe80::1234%eth0/).
 
-	<tag>route <m/prefix/ multipath via <m/ip/ [weight <m/num/] [bfd </m/switch/] [via ...]</tag>
+	<tag>route <m/prefix/ multipath via <m/ip/ [weight <m/num/] [bfd <m/switch/] [via ...]</tag>
 	Static multipath route. Contains several nexthops (gateways), possibly
- 	with their weights.
+	with their weights.
 
 	<tag>route <m/prefix/ via <m/"interface"/</tag>
 	Static device route through an interface to hosts on a directly
