@@ -64,6 +64,9 @@ dev_ifa_notify(struct proto *p, unsigned c, struct ifa *ad)
 
       DBG("dev_if_notify: %s:%I going up\n", ad->iface->name, ad->ip);
 
+      if (P->check_link && !(ad->iface->flags & IF_LINK_UP))
+	return;
+
       /* Use iface ID as local source ID */
       struct rte_src *src = rt_get_source(p, ad->iface->index);
 
@@ -85,11 +88,31 @@ dev_ifa_notify(struct proto *p, unsigned c, struct ifa *ad)
     }
 }
 
+static void
+dev_if_notify(struct proto *p, uint c, struct iface *iface)
+{
+  struct rt_dev_config *cf = (void *) p->cf;
+
+  if (c & (IF_CHANGE_UP | IF_CHANGE_DOWN))
+    return;
+
+  if ((c & IF_CHANGE_LINK) && cf->check_link)
+  {
+    uint ac = (iface->flags & IF_LINK_UP) ? IF_CHANGE_UP : IF_CHANGE_DOWN;
+
+    struct ifa *a;
+    WALK_LIST(a, iface->addrs)
+      dev_ifa_notify(p, ac, a);
+  }
+}
+
+
 static struct proto *
 dev_init(struct proto_config *c)
 {
   struct proto *p = proto_new(c, sizeof(struct proto));
 
+  p->if_notify = dev_if_notify;
   p->ifa_notify = dev_ifa_notify;
   return p;
 }
@@ -100,7 +123,8 @@ dev_reconfigure(struct proto *p, struct proto_config *new)
   struct rt_dev_config *o = (struct rt_dev_config *) p->cf;
   struct rt_dev_config *n = (struct rt_dev_config *) new;
 
-  return iface_patts_equal(&o->iface_list, &n->iface_list, NULL);
+  return iface_patts_equal(&o->iface_list, &n->iface_list, NULL) &&
+    (o->check_link == n->check_link);
 }
 
 static void
@@ -115,6 +139,8 @@ dev_copy_config(struct proto_config *dest, struct proto_config *src)
    * old nodes cannot be modified (although they contain internal lists).
    */
   cfg_copy_list(&d->iface_list, &s->iface_list, sizeof(struct iface_patt));
+
+  d->check_link = s->check_link;
 }
 
 struct protocol proto_device = {

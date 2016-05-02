@@ -337,6 +337,7 @@ dev_proto:
    dev_proto_start proto_name '{'
  | dev_proto proto_item ';'
  | dev_proto dev_iface_patt ';'
+ | dev_proto CHECK LINK bool ';' { DIRECT_CFG->check_link = $4; }
  ;
 
 dev_iface_init:

@@ -1,3 +1,20 @@
+Version 1.6.0 (2016-04-29)
+  o Major RIP protocol redesign
+  o New Babel routing protocol
+  o BGP multipath support
+  o KRT: Add support for plenty of kernel route metrics
+  o KRT: Allow more than 256 routing tables
+  o Static: Allow to specify attributes for static routes
+  o Static: Support for BFD controlled static routes
+  o FreeBSD: Setup password for BGP MD5 authentication
+  o IO: Remove socket number limit
+  o Plenty of bug fixes
+
+  Upgrade notes:
+
+  For RIP, most protocol options were moved to interface blocks.
+
+
 Version 1.5.0 (2015-04-20)
   o Major OSPF protocol redesign.
   o OSPFv2 multi-instance extension (RFC 6549).

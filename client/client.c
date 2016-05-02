@@ -37,7 +37,7 @@
 
 #define SERVER_READ_BUF_LEN 4096
 
-static char *opt_list = "s:vr";
+static char *opt_list = "s:vrl";
 static int verbose, restricted, once;
 static char *init_cmd;
 
@@ -59,13 +59,14 @@ int term_lns, term_cls;
 static void
 usage(char *name)
 {
-  fprintf(stderr, "Usage: %s [-s <control-socket>] [-v] [-r]\n", name);
+  fprintf(stderr, "Usage: %s [-s <control-socket>] [-v] [-r] [-l]\n", name);
   exit(1);
 }
 
 static void
 parse_args(int argc, char **argv)
 {
+  int server_changed = 0;
   int c;
 
   while ((c = getopt(argc, argv, opt_list)) >= 0)
@@ -73,12 +74,17 @@ parse_args(int argc, char **argv)
       {
       case 's':
 	server_path = optarg;
+	server_changed = 1;
 	break;
       case 'v':
 	verbose++;
 	break;
       case 'r':
 	restricted = 1;
+	break;
+      case 'l':
+	if (!server_changed)
+	  server_path = xbasename(server_path);
 	break;
       default:
 	usage(argv[0]);
