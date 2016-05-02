@@ -521,7 +521,7 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       WALK_LIST(oc, old->protos)
 	{
 	  p = oc->proto;
-	  sym = cf_find_symbol(oc->name);
+	  sym = cf_find_symbol(new, oc->name);
 	  if (sym && sym->class == SYM_PROTO && !new->shutdown)
 	    {
 	      /* Found match, let's check if we can smoothly switch to new configuration */
@@ -1260,6 +1260,7 @@ proto_want_export_down(struct proto *p)
     rt_feed_baby_abort(p);
 
   p->export_state = ES_DOWN;
+  p->stats.exp_routes = 0;
   proto_unlink_ahooks(p);
 }
 

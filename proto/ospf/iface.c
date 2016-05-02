@@ -493,8 +493,11 @@ ospf_iface_add(struct object_lock *lock)
     ifa->flood_queue = mb_allocz(ifa->pool, ifa->flood_queue_size * sizeof(void *));
   }
 
-  /* Do iface UP, unless there is no link and we use link detection */
-  ospf_iface_sm(ifa, (ifa->check_link && !(ifa->iface->flags & IF_LINK_UP)) ? ISM_LOOP : ISM_UP);
+  /* Do iface UP, unless there is no link (then wait in LOOP state) */
+  if (!ifa->check_link || (ifa->iface->flags & IF_LINK_UP))
+    ospf_iface_sm(ifa, ISM_UP);
+  else
+    ospf_iface_chstate(ifa, OSPF_IS_LOOP);
 }
 
 static inline void
@@ -596,10 +599,10 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   if (ospf_is_v2(p) && (ifa->type == OSPF_IT_NBMA) && (addr->flags & IA_PEER))
     ifa->type = OSPF_IT_PTMP;
 
-  if ((ifa->type == OSPF_IT_BCAST) && !(iface->flags & if_multi_flag))
+  if ((ifa->type == OSPF_IT_BCAST) && !(iface->flags & if_multi_flag) && !ifa->stub)
     ifa->type = OSPF_IT_NBMA;
 
-  if ((ifa->type == OSPF_IT_PTP) && !(iface->flags & if_multi_flag))
+  if ((ifa->type == OSPF_IT_PTP) && !(iface->flags & if_multi_flag) && !ifa->stub)
     ifa->type = OSPF_IT_PTMP;
 
   if (ifa->type != old_type)

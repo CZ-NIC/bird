@@ -430,6 +430,25 @@ fit_put(struct fib_iterator *i, struct fib_node *n)
   i->prev = (struct fib_iterator *) n;
 }
 
+void
+fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uint hpos)
+{
+  if (n = n->next)
+    goto found;
+
+  while (++hpos < f->hash_size)
+    if (n = f->hash_table[hpos])
+      goto found;
+
+  /* We are at the end */
+  i->prev = i->next = NULL;
+  i->node = NULL;
+  return;
+
+found:
+  fit_put(i, n);
+}
+
 #ifdef DEBUGGING
 
 /**

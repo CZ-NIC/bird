@@ -220,7 +220,7 @@ as_path_get_last(struct adata *path, u32 *orig_as)
 	      p += BS * len;
 	    }
 	  break;
-	default: bug("as_path_get_first: Invalid path segment");
+	default: bug("Invalid path segment");
 	}
     }
 
@@ -228,6 +228,35 @@ as_path_get_last(struct adata *path, u32 *orig_as)
     *orig_as = res;
   return found;
 }
+
+u32
+as_path_get_last_nonaggregated(struct adata *path)
+{
+  u8 *p = path->data;
+  u8 *q = p+path->length;
+  u32 res = 0;
+  int len;
+
+  while (p<q)
+    {
+      switch (*p++)
+	{
+	case AS_PATH_SET:
+	  return res;
+
+	case AS_PATH_SEQUENCE:
+	  if (len = *p++)
+	    res = get_as(p + BS * (len - 1));
+	  p += BS * len;
+	  break;
+
+	default: bug("Invalid path segment");
+	}
+    }
+
+  return res;
+}
+
 
 int
 as_path_get_first(struct adata *path, u32 *last_as)

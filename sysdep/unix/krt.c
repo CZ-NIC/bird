@@ -77,14 +77,15 @@ krt_io_init(void)
   krt_pool = rp_new(&root_pool, "Kernel Syncer");
   krt_filter_lp = lp_new(krt_pool, 4080);
   init_list(&krt_proto_list);
+  krt_sys_io_init();
 }
 
 /*
  *	Interfaces
  */
 
+struct kif_proto *kif_proto;
 static struct kif_config *kif_cf;
-static struct kif_proto *kif_proto;
 static timer *kif_scan_timer;
 static bird_clock_t kif_last_shot;
 
@@ -416,46 +417,58 @@ again:
       net *n = (net *) f;
       rte *e, **ee, *best, **pbest, *old_best;
 
-      old_best = n->routes;
+      /*
+       * Note that old_best may be NULL even if there was an old best route in
+       * the previous step, because it might be replaced in krt_learn_scan().
+       * But in that case there is a new valid best route.
+       */
+
+      old_best = NULL;
       best = NULL;
       pbest = NULL;
       ee = &n->routes;
       while (e = *ee)
 	{
+	  if (e->u.krt.best)
+	    old_best = e;
+
 	  if (!e->u.krt.seen)
 	    {
 	      *ee = e->next;
 	      rte_free(e);
 	      continue;
 	    }
+
 	  if (!best || best->u.krt.metric > e->u.krt.metric)
 	    {
 	      best = e;
 	      pbest = ee;
 	    }
+
 	  e->u.krt.seen = 0;
+	  e->u.krt.best = 0;
 	  ee = &e->next;
 	}
       if (!n->routes)
 	{
 	  DBG("%I/%d: deleting\n", n->n.prefix, n->n.pxlen);
 	  if (old_best)
-	    {
-	      krt_learn_announce_delete(p, n);
-	      n->n.flags &= ~KRF_INSTALLED;
-	    }
+	    krt_learn_announce_delete(p, n);
+
 	  FIB_ITERATE_PUT(&fit, f);
 	  fib_delete(fib, f);
 	  goto again;
 	}
+
+      best->u.krt.best = 1;
       *pbest = best->next;
       best->next = n->routes;
       n->routes = best;
-      if (best != old_best || !(n->n.flags & KRF_INSTALLED) || p->reload)
+
+      if ((best != old_best) || p->reload)
 	{
 	  DBG("%I/%d: announcing (metric=%d)\n", n->n.prefix, n->n.pxlen, best->u.krt.metric);
 	  krt_learn_announce_update(p, best);
-	  n->n.flags |= KRF_INSTALLED;
 	}
       else
 	DBG("%I/%d: uptodate (metric=%d)\n", n->n.prefix, n->n.pxlen, best->u.krt.metric);
@@ -514,31 +527,31 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
   best = n->routes;
   bestp = &n->routes;
   for(gg=&n->routes; g=*gg; gg=&g->next)
+  {
     if (best->u.krt.metric > g->u.krt.metric)
       {
 	best = g;
 	bestp = gg;
       }
+
+    g->u.krt.best = 0;
+  }
+
   if (best)
     {
+      best->u.krt.best = 1;
       *bestp = best->next;
       best->next = n->routes;
       n->routes = best;
     }
+
   if (best != old_best)
     {
       DBG("krt_learn_async: distributing change\n");
       if (best)
-	{
-	  krt_learn_announce_update(p, best);
-	  n->n.flags |= KRF_INSTALLED;
-	}
+	krt_learn_announce_update(p, best);
       else
-	{
-	  n->routes = NULL;
-	  krt_learn_announce_delete(p, n);
-	  n->n.flags &= ~KRF_INSTALLED;
-	}
+	krt_learn_announce_delete(p, n);
     }
 }
 
@@ -563,7 +576,7 @@ krt_dump(struct proto *P)
 static void
 krt_dump_attrs(rte *e)
 {
-  debug(" [m=%d,p=%d,t=%d]", e->u.krt.metric, e->u.krt.proto, e->u.krt.type);
+  debug(" [m=%d,p=%d]", e->u.krt.metric, e->u.krt.proto);
 }
 
 #endif
@@ -1126,7 +1139,11 @@ krt_start(struct proto *P)
   krt_learn_init(p);
 #endif
 
-  krt_sys_start(p);
+  if (!krt_sys_start(p))
+  {
+    rem_node(&p->krt_node);
+    return PS_START;
+  }
 
   krt_scan_timer_start(p);
 
@@ -1150,8 +1167,10 @@ krt_shutdown(struct proto *P)
   p->ready = 0;
   p->initialized = 0;
 
-  krt_sys_shutdown(p);
+  if (p->p.proto_state == PS_START)
+    return PS_DOWN;
 
+  krt_sys_shutdown(p);
   rem_node(&p->krt_node);
 
   return PS_DOWN;

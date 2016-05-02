@@ -96,7 +96,7 @@ drop_gid(gid_t gid)
 static inline void
 add_num_const(char *name, int val)
 {
-  struct symbol *s = cf_find_symbol(name);
+  struct symbol *s = cf_get_symbol(name);
   s->class = SYM_CONSTANT | T_INT;
   s->def = cfg_allocz(sizeof(struct f_val));
   SYM_TYPE(s) = T_INT;
@@ -450,6 +450,7 @@ cli_connect(sock *s, int size UNUSED)
   s->err_hook = cli_err;
   s->data = c = cli_new(s);
   s->pool = c->pool;		/* We need to have all the socket buffers allocated in the cli pool */
+  s->fast_rx = 1;
   c->rx_pos = c->rx_buf;
   c->rx_aux = NULL;
   rmove(s, c->pool);
@@ -466,6 +467,7 @@ cli_init_unix(uid_t use_uid, gid_t use_gid)
   s->type = SK_UNIX_PASSIVE;
   s->rx_hook = cli_connect;
   s->rbsize = 1024;
+  s->fast_rx = 1;
 
   /* Return value intentionally ignored */
   unlink(path_control_socket);

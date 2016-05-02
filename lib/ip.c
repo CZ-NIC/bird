@@ -364,7 +364,9 @@ ip4_class_mask(ip4_addr ad)
 {
   u32 m, a = _I(ad);
 
-  if (a < 0x80000000)
+  if (a == 0x00000000)
+    m = 0x00000000;
+  else if (a < 0x80000000)
     m = 0xff000000;
   else if (a < 0xc0000000)
     m = 0xffff0000;

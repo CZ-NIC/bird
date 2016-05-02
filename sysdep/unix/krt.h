@@ -112,6 +112,8 @@ struct kif_proto {
   struct kif_state sys;		/* Sysdep state */
 };
 
+struct kif_proto *kif_proto;
+
 #define KIF_CF ((struct kif_config *)p->p.cf)
 
 struct proto_config * krt_init_config(int class);
@@ -119,8 +121,9 @@ struct proto_config * krt_init_config(int class);
 
 /* krt sysdep */
 
+void krt_sys_io_init(void);
 void krt_sys_init(struct krt_proto *);
-void krt_sys_start(struct krt_proto *);
+int krt_sys_start(struct krt_proto *);
 void krt_sys_shutdown(struct krt_proto *);
 int krt_sys_reconfigure(struct krt_proto *p UNUSED, struct krt_config *n, struct krt_config *o);
 
