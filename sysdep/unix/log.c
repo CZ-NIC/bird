@@ -323,7 +323,7 @@ mrt_dump_message_proto(struct proto *p, u16 type, u16 subtype, byte *buf, u32 le
 }
 
 void
-mrt_dump_message(int file_descriptor, u16 type, u16 subtype, byte *buf, u32 len)
+mrt_dump_message(int fd, u16 type, u16 subtype, byte *buf, u32 len)
 {
   /* Prepare header */
   put_u32(buf+0, now_real);
@@ -331,6 +331,7 @@ mrt_dump_message(int file_descriptor, u16 type, u16 subtype, byte *buf, u32 len)
   put_u16(buf+6, subtype);
   put_u32(buf+8, len - MRT_HDR_LENGTH);
 
-  if (file_descriptor >= 0)
-    write(file_descriptor, buf, len);
+  if (fd >= 0)
+    if (write(fd, buf, len) == -1)
+      log(L_ERR, "Writing into MRTDump file failed: %m"); /* TODO: name of file */
 }
