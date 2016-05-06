@@ -148,8 +148,7 @@ krt_capable(rte *e)
 
   return
     a->cast == RTC_UNICAST &&
-    (a->dest == RTD_ROUTER
-     || a->dest == RTD_DEVICE
+    ((a->dest == RTD_UNICAST && !a->nh.next) /* No multipath support */
 #ifdef RTF_REJECT
      || a->dest == RTD_UNREACHABLE
 #endif
@@ -190,7 +189,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   net *net = e->net;
   rta *a = e->attrs;
   static int msg_seq;
-  struct iface *j, *i = a->iface;
+  struct iface *j, *i = a->nh.iface;
   int l;
   struct ks_msg msg;
   char *body = (char *)msg.buf;
@@ -243,7 +242,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
     }
   }
 
-  gw = a->gw;
+  gw = a->nh.gw;
 
   /* Embed interface ID to link-local address */
   if (ipa_is_link_local(gw))
@@ -270,9 +269,28 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 
   switch (a->dest)
   {
-    case RTD_ROUTER:
-      msg.rtm.rtm_flags |= RTF_GATEWAY;
-      msg.rtm.rtm_addrs |= RTA_GATEWAY;
+    case RTD_UNICAST:
+      if (ipa_zero(gw))
+      {
+	if(i)
+	{
+#ifdef RTF_CLONING
+	  if (cmd == RTM_ADD && (i->flags & IF_MULTIACCESS) != IF_MULTIACCESS)	/* PTP */
+	    msg.rtm.rtm_flags |= RTF_CLONING;
+#endif
+
+	  if(!i->addr) {
+	    log(L_ERR "KRT: interface %s has no IP addess", i->name);
+	    return -1;
+	  }
+
+	  sockaddr_fill(&gate, ipa_is_ip4(i->addr->ip) ? AF_INET : AF_INET6, i->addr->ip, NULL, 0);
+	  msg.rtm.rtm_addrs |= RTA_GATEWAY;
+	}
+      } else {
+	msg.rtm.rtm_flags |= RTF_GATEWAY;
+	msg.rtm.rtm_addrs |= RTA_GATEWAY;
+      }
       break;
 
 #ifdef RTF_REJECT
@@ -281,23 +299,6 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 #ifdef RTF_BLACKHOLE
     case RTD_BLACKHOLE:
 #endif
-    case RTD_DEVICE:
-      if(i)
-      {
-#ifdef RTF_CLONING
-        if (cmd == RTM_ADD && (i->flags & IF_MULTIACCESS) != IF_MULTIACCESS)	/* PTP */
-          msg.rtm.rtm_flags |= RTF_CLONING;
-#endif
-
-        if(!i->addr) {
-          log(L_ERR "KRT: interface %s has no IP addess", i->name);
-          return -1;
-        }
-
-	sockaddr_fill(&gate, ipa_is_ip4(i->addr->ip) ? AF_INET : AF_INET6, i->addr->ip, NULL, 0);
-        msg.rtm.rtm_addrs |= RTA_GATEWAY;
-      }
-      break;
     default:
       bug("krt-sock: unknown flags, but not filtered");
   }
@@ -489,39 +490,40 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   }
 #endif
 
-  a.iface = if_find_by_index(msg->rtm.rtm_index);
-  if (!a.iface)
+  a.nh.iface = if_find_by_index(msg->rtm.rtm_index);
+  if (!a.nh.iface)
     {
       log(L_ERR "KRT: Received route %N with unknown ifindex %u",
 	  net->n.addr, msg->rtm.rtm_index);
       return;
     }
 
+  a.dest = RTD_UNICAST;
+  a.nh.next = NULL;
   if (flags & RTF_GATEWAY)
   {
     neighbor *ng;
-    a.dest = RTD_ROUTER;
-    a.gw = igate;
+    a.nh.gw = igate;
 
     /* Clean up embedded interface ID returned in link-local address */
-    if (ipa_is_link_local(a.gw))
-      _I0(a.gw) = 0xfe800000;
+    if (ipa_is_link_local(a.nh.gw))
+      _I0(a.nh.gw) = 0xfe800000;
 
-    ng = neigh_find2(&p->p, &a.gw, a.iface, 0);
+    ng = neigh_find2(&p->p, &a.nh.gw, a.nh.iface, 0);
     if (!ng || (ng->scope == SCOPE_HOST))
       {
 	/* Ignore routes with next-hop 127.0.0.1, host routes with such
 	   next-hop appear on OpenBSD for address aliases. */
-        if (ipa_classify(a.gw) == (IADDR_HOST | SCOPE_HOST))
+        if (ipa_classify(a.nh.gw) == (IADDR_HOST | SCOPE_HOST))
           return;
 
 	log(L_ERR "KRT: Received route %N with strange next-hop %I",
-	    net->n.addr, a.gw);
+	    net->n.addr, a.nh.gw);
 	return;
       }
   }
   else
-    a.dest = RTD_DEVICE;
+    a.nh.gw = IPA_NONE;
 
  done:
   e = rte_get_temp(&a);

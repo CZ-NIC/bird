@@ -1288,8 +1288,8 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   ip_addr fwd = IPA_NONE;
 
 
-  if ((a->dest == RTD_ROUTER) && use_gw_for_fwaddr(p, a->gw, a->iface))
-    fwd = a->gw;
+  if ((a->dest == RTD_UNICAST) && use_gw_for_fwaddr(p, a->nh.gw, a->nh.iface))
+    fwd = a->nh.gw;
 
   /* NSSA-LSA with P-bit set must have non-zero forwarding address */
   if (oa && ipa_zero(fwd))

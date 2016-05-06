@@ -235,7 +235,7 @@ ospf_start(struct proto *P)
   p->lsab_size = 256;
   p->lsab_used = 0;
   p->lsab = mb_alloc(P->pool, p->lsab_size);
-  p->nhpool = lp_new(P->pool, 12*sizeof(struct mpnh));
+  p->nhpool = lp_new(P->pool, 12*sizeof(struct nexthop));
   init_list(&(p->iface_list));
   init_list(&(p->area_list));
   fib_init(&p->rtf, P->pool, p->ospf2 ? NET_IP4 : NET_IP6,

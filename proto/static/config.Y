@@ -13,7 +13,7 @@ CF_HDR
 CF_DEFINES
 
 #define STATIC_CFG ((struct static_config *) this_proto)
-static struct static_route *this_srt, *this_srt_nh, *last_srt_nh;
+static struct static_route *this_srt, *last_srt;
 static struct f_inst **this_srt_last_cmd;
 
 static void
@@ -22,10 +22,9 @@ static_route_finish(void)
   struct static_route *r;
 
   /* Update undefined use_bfd entries in multipath nexthops */
-  if (this_srt->dest == RTD_MULTIPATH)
-    for (r = this_srt->mp_next; r; r = r->mp_next)
-      if (r->use_bfd < 0)
-        r->use_bfd = this_srt->use_bfd;
+  for (r = this_srt->mp_next; r; r = r->mp_next)
+    if (r->use_bfd < 0)
+      r->use_bfd = this_srt->use_bfd;
 }
 
 CF_DECLS
@@ -58,48 +57,50 @@ stat_route0: ROUTE net_any {
      add_tail(&STATIC_CFG->other_routes, &this_srt->n);
      this_srt->net = $2;
      this_srt_last_cmd = &(this_srt->cmds);
+     this_srt->mp_next = NULL;
+     last_srt = NULL;
   }
  ;
 
 stat_multipath1:
    VIA ipa ipa_scope {
-     last_srt_nh = this_srt_nh;
-     this_srt_nh = cfg_allocz(sizeof(struct static_route));
-     this_srt_nh->dest = RTD_NONE;
-     this_srt_nh->via = $2;
-     this_srt_nh->via_if = $3;
-     this_srt_nh->if_name = (void *) this_srt; /* really */
-     this_srt_nh->use_bfd = -1; /* undefined */
+     last_srt = last_srt ? last_srt->mp_next = cfg_allocz(sizeof(struct static_route)) : this_srt;
+
+     last_srt->dest = RTD_UNICAST;
+     last_srt->via = $2;
+     last_srt->via_if = $3;
+     last_srt->if_name = (void *) this_srt; /* really */
+     last_srt->use_bfd = -1; /* undefined */
+     last_srt->mp_next = NULL;
    }
  | stat_multipath1 WEIGHT expr {
-     this_srt_nh->weight = $3 - 1;
+     last_srt->weight = $3 - 1;
      if (($3<1) || ($3>256)) cf_error("Weight must be in range 1-256"); 
    }
  | stat_multipath1 BFD bool {
-     this_srt_nh->use_bfd = $3; cf_check_bfd($3);
+     last_srt->use_bfd = $3; cf_check_bfd($3);
    }
  ;
 
 stat_multipath:
-   stat_multipath1 { this_srt->mp_next = this_srt_nh; }
- | stat_multipath stat_multipath1 { last_srt_nh->mp_next = this_srt_nh; }
+   stat_multipath1
+ | stat_multipath stat_multipath1
  ;
 
 stat_route:
    stat_route0 VIA ipa ipa_scope {
-      this_srt->dest = RTD_ROUTER;
+      this_srt->dest = RTD_UNICAST;
       this_srt->via = $3;
       this_srt->via_if = $4;
    }
  | stat_route0 VIA TEXT {
-      this_srt->dest = RTD_DEVICE;
+      this_srt->dest = RTD_UNICAST;
+      this_srt->via = IPA_NONE;
       this_srt->if_name = $3;
       rem_node(&this_srt->n);
       add_tail(&STATIC_CFG->iface_routes, &this_srt->n);
    }
- | stat_route0 MULTIPATH stat_multipath {
-      this_srt->dest = RTD_MULTIPATH;
-   }
+ | stat_route0 MULTIPATH stat_multipath
  | stat_route0 RECURSIVE ipa {
       this_srt->dest = RTDX_RECURSIVE;
       this_srt->via = $3;

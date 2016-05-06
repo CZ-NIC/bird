@@ -1462,7 +1462,7 @@ static inline int
 rte_resolvable(rte *rt)
 {
   int rd = rt->attrs->dest;
-  return (rd == RTD_ROUTER) || (rd == RTD_DEVICE) || (rd == RTD_MULTIPATH);
+  return (rd == RTD_UNICAST);
 }
 
 int

@@ -900,15 +900,15 @@ interpret(struct f_inst *what)
       switch (what->a2.i)
       {
       case SA_FROM:	res.val.ip = rta->from; break;
-      case SA_GW:	res.val.ip = rta->gw; break;
+      case SA_GW:	res.val.ip = rta->nh.gw; break;
       case SA_NET:	res.val.net = (*f_rte)->net->n.addr; break;
       case SA_PROTO:	res.val.s = rta->src->proto->name; break;
       case SA_SOURCE:	res.val.i = rta->source; break;
       case SA_SCOPE:	res.val.i = rta->scope; break;
       case SA_CAST:	res.val.i = rta->cast; break;
       case SA_DEST:	res.val.i = rta->dest; break;
-      case SA_IFNAME:	res.val.s = rta->iface ? rta->iface->name : ""; break;
-      case SA_IFINDEX:	res.val.i = rta->iface ? rta->iface->index : 0; break;
+      case SA_IFNAME:	res.val.s = rta->nh.iface ? rta->nh.iface->name : ""; break;
+      case SA_IFINDEX:	res.val.i = rta->nh.iface ? rta->nh.iface->index : 0; break;
 
       default:
 	bug("Invalid static attribute access (%x)", res.type);
@@ -938,10 +938,10 @@ interpret(struct f_inst *what)
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
 
-	  rta->dest = RTD_ROUTER;
-	  rta->gw = ip;
-	  rta->iface = n->iface;
-	  rta->nexthops = NULL;
+	  rta->dest = RTD_UNICAST;
+	  rta->nh.gw = ip;
+	  rta->nh.iface = n->iface;
+	  rta->nh.next = NULL;
 	  rta->hostentry = NULL;
 	}
 	break;
@@ -956,9 +956,9 @@ interpret(struct f_inst *what)
 	  runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
 
 	rta->dest = i;
-	rta->gw = IPA_NONE;
-	rta->iface = NULL;
-	rta->nexthops = NULL;
+	rta->nh.gw = IPA_NONE;
+	rta->nh.iface = NULL;
+	rta->nh.next = NULL;
 	rta->hostentry = NULL;
 	break;
 

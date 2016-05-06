@@ -158,10 +158,10 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     while (rt2 && !rip_valid_rte(rt2))
       rt2 = rt2->next;
 
+    a0.dest = RTD_UNICAST;
     if (p->ecmp && rt2)
     {
       /* ECMP route */
-      struct mpnh *nhs = NULL;
       int num = 0;
 
       for (rt = en->routes; rt && (num < p->ecmp); rt = rt->next)
@@ -169,33 +169,34 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 	if (!rip_valid_rte(rt))
 	    continue;
 
-	struct mpnh *nh = alloca(sizeof(struct mpnh));
+	struct nexthop *nh = (a0.nh.next ? &(a0.nh) : alloca(sizeof(struct nexthop)));
+
 	nh->gw = rt->next_hop;
 	nh->iface = rt->from->nbr->iface;
 	nh->weight = rt->from->ifa->cf->ecmp_weight;
-	mpnh_insert(&nhs, nh);
+
+	if (a0.nh.next)
+	  nexthop_insert(&(a0.nh), nh);
+
 	num++;
 
 	if (rt->tag != rt_tag)
 	  rt_tag = 0;
       }
-
-      a0.dest = RTD_MULTIPATH;
-      a0.nexthops = nhs;
     }
     else
     {
       /* Unipath route */
-      a0.dest = RTD_ROUTER;
-      a0.gw = rt->next_hop;
-      a0.iface = rt->from->nbr->iface;
+      a0.nh.next = NULL;
+      a0.nh.gw = rt->next_hop;
+      a0.nh.iface = rt->from->nbr->iface;
       a0.from = rt->from->nbr->addr;
     }
 
     rta *a = rta_lookup(&a0);
     rte *e = rte_get_temp(a);
 
-    e->u.rip.from = a0.iface;
+    e->u.rip.from = a0.nh.iface;
     e->u.rip.metric = rt_metric;
     e->u.rip.tag = rt_tag;
 
@@ -345,8 +346,8 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
     en->metric = rt_metric;
     en->tag = rt_tag;
     en->from = (new->attrs->src->proto == P) ? new->u.rip.from : NULL;
-    en->iface = new->attrs->iface;
-    en->next_hop = new->attrs->gw;
+    en->iface = new->attrs->nh.iface;
+    en->next_hop = new->attrs->nh.gw;
   }
   else
   {

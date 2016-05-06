@@ -195,7 +195,7 @@ struct hostentry {
   unsigned hash_key;			/* Hash key */
   unsigned uc;				/* Use count */
   struct rta *src;			/* Source rta entry */
-  ip_addr gw;				/* Chosen next hop */
+  struct nexthop *nh;			/* Chosen next hop */
   byte dest;				/* Chosen route destination type (RTD_...) */
   u32 igp_metric;			/* Chosen route IGP metric */
 };
@@ -332,11 +332,11 @@ void rt_show(struct rt_show_data *);
  *	construction of BGP route attribute lists.
  */
 
-/* Multipath next-hop */
-struct mpnh {
+/* Nexthop structure */
+struct nexthop {
   ip_addr gw;				/* Next hop */
   struct iface *iface;			/* Outgoing interface */
-  struct mpnh *next;
+  struct nexthop *next;
   byte weight;
 };
 
@@ -353,20 +353,19 @@ typedef struct rta {
   struct rta *next, **pprev;		/* Hash chain */
   u32 uc;				/* Use count */
   u32 hash_key;				/* Hash over important fields */
-  struct mpnh *nexthops;		/* Next-hops for multipath routes */
   struct ea_list *eattrs;		/* Extended Attribute chain */
   struct rte_src *src;			/* Route source that created the route */
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
-  struct iface *iface;			/* Outgoing interface */
-  ip_addr gw;				/* Next hop */
   ip_addr from;				/* Advertising router */
   u32 igp_metric;			/* IGP metric to next hop (for iBGP routes) */
-  byte source;				/* Route source (RTS_...) */
-  byte scope;				/* Route scope (SCOPE_... -- see ip.h) */
-  byte cast;				/* Casting type (RTC_...) */
-  byte dest;				/* Route destination type (RTD_...) */
-  byte flags;				/* Route flags (RTF_...), now unused */
-  byte aflags;				/* Attribute cache flags (RTAF_...) */
+  u32 bf[0];
+  u32 source:6;				/* Route source (RTS_...) */
+  u32 scope:6;				/* Route scope (SCOPE_... -- see ip.h) */
+  u32 cast:6;				/* Casting type (RTC_...) */
+  u32 dest:6;				/* Route destination type (RTD_...) */
+//  u32 eflags:8;				/* Flags (RTAF_...) */
+  u32 aflags:8;
+  struct nexthop nh;			/* Next hop */
 } rta;
 
 #define RTS_DUMMY 0			/* Dummy route to be removed soon */
@@ -391,12 +390,10 @@ typedef struct rta {
 #define RTC_MULTICAST 2
 #define RTC_ANYCAST 3			/* IPv6 Anycast */
 
-#define RTD_ROUTER 0			/* Next hop is neighbor router */
-#define RTD_DEVICE 1			/* Points to device */
+#define RTD_UNICAST 0			/* Next hop is neighbor router */
 #define RTD_BLACKHOLE 2			/* Silently drop packets */
 #define RTD_UNREACHABLE 3		/* Reject as unreachable */
 #define RTD_PROHIBIT 4			/* Administratively prohibited */
-#define RTD_MULTIPATH 5			/* Multipath route (nexthops != NULL) */
 #define RTD_NONE 6			/* Invalid RTD */
 
 					/* Flags for net->n.flags, used by kernel syncer */
@@ -411,7 +408,7 @@ typedef struct rta {
 
 /* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
 static inline int rte_is_reachable(rte *r)
-{ uint d = r->attrs->dest; return (d == RTD_ROUTER) || (d == RTD_DEVICE) || (d == RTD_MULTIPATH); }
+{ uint d = r->attrs->dest; return (d == RTD_UNICAST); }
 
 
 /*
@@ -516,12 +513,14 @@ uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
-int mpnh__same(struct mpnh *x, struct mpnh *y); /* Compare multipath nexthops */
-static inline int mpnh_same(struct mpnh *x, struct mpnh *y)
-{ return (x == y) || mpnh__same(x, y); }
-struct mpnh *mpnh_merge(struct mpnh *x, struct mpnh *y, int rx, int ry, int max, linpool *lp);
-void mpnh_insert(struct mpnh **n, struct mpnh *y);
-int mpnh_is_sorted(struct mpnh *x);
+int nexthop__same(struct nexthop *x, struct nexthop *y); /* Compare multipath nexthops */
+static inline int nexthop_same(struct nexthop *x, struct nexthop *y)
+{ return (x == y) || nexthop__same(x, y); }
+struct nexthop *nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, linpool *lp);
+static inline void nexthop_link(struct rta *a, struct nexthop *from)
+{ a->nh.gw = from->gw; a->nh.iface = from->iface; a->nh.weight = from->weight; a->nh.next = from->next; }
+void nexthop_insert(struct nexthop *n, struct nexthop *y);
+int nexthop_is_sorted(struct nexthop *x);
 
 void rta_init(void);
 rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */

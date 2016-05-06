@@ -708,19 +708,17 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
 }
 
 
-static struct mpnh *
-mpnh_merge_rta(struct mpnh *nhs, rta *a, linpool *pool, int max)
+static struct nexthop *
+nexthop_merge_rta(struct nexthop *nhs, rta *a, linpool *pool, int max)
 {
-  struct mpnh nh = { .gw = a->gw, .iface = a->iface };
-  struct mpnh *nh2 = (a->dest == RTD_MULTIPATH) ? a->nexthops : &nh;
-  return mpnh_merge(nhs, nh2, 1, 0, max, pool);
+  return nexthop_merge(nhs, &(a->nh), 1, 0, max, pool);
 }
 
 rte *
 rt_export_merged(struct channel *c, net *net, rte **rt_free, ea_list **tmpa, linpool *pool, int silent)
 {
   // struct proto *p = c->proto;
-  struct mpnh *nhs = NULL;
+  struct nexthop *nhs = NULL;
   rte *best0, *best, *rt0, *rt, *tmp;
 
   best0 = net->routes;
@@ -745,7 +743,7 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, ea_list **tmpa, lin
       continue;
 
     if (rte_is_reachable(rt))
-      nhs = mpnh_merge_rta(nhs, rt->attrs, pool, c->merge_limit);
+      nhs = nexthop_merge_rta(nhs, rt->attrs, pool, c->merge_limit);
 
     if (tmp)
       rte_free(tmp);
@@ -753,13 +751,12 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, ea_list **tmpa, lin
 
   if (nhs)
   {
-    nhs = mpnh_merge_rta(nhs, best->attrs, pool, c->merge_limit);
+    nhs = nexthop_merge_rta(nhs, best->attrs, pool, c->merge_limit);
 
     if (nhs->next)
     {
       best = rte_cow_rta(best, pool);
-      best->attrs->dest = RTD_MULTIPATH;
-      best->attrs->nexthops = nhs;
+      nexthop_link(best->attrs, nhs);
     }
   }
 
@@ -922,7 +919,7 @@ rte_validate(rte *e)
     return 0;
   }
 
-  if ((e->attrs->dest == RTD_MULTIPATH) && !mpnh_is_sorted(e->attrs->nexthops))
+  if ((e->attrs->dest == RTD_UNICAST) && !nexthop_is_sorted(&(e->attrs->nh)))
     {
       log(L_WARN "Ignoring unsorted multipath route %N received via %s",
 	  n->n.addr, e->sender->proto->name);
@@ -1763,20 +1760,22 @@ rta_next_hop_outdated(rta *a)
   if (!he->src)
     return a->dest != RTD_UNREACHABLE;
 
-  return (a->iface != he->src->iface) || !ipa_equal(a->gw, he->gw) ||
-    (a->dest != he->dest) || (a->igp_metric != he->igp_metric) ||
-    !mpnh_same(a->nexthops, he->src->nexthops);
+  return (a->dest != he->dest) || (a->igp_metric != he->igp_metric) ||
+    !nexthop_same(&(a->nh), he->nh);
 }
 
 static inline void
 rta_apply_hostentry(rta *a, struct hostentry *he)
 {
   a->hostentry = he;
-  a->iface = he->src ? he->src->iface : NULL;
-  a->gw = he->gw;
+
+  a->nh.gw = ipa_nonzero(he->nh->gw) ? he->nh->gw : he->link;
+  a->nh.iface = he->nh->iface;
+  a->nh.weight = he->nh->weight;
+  a->nh.next = he->nh->next;
+  
   a->dest = he->dest;
   a->igp_metric = he->igp_metric;
-  a->nexthops = he->src ? he->src->nexthops : NULL;
 }
 
 static inline rte *
@@ -2310,8 +2309,7 @@ rt_get_igp_metric(rte *rt)
     return rt->u.rip.metric;
 #endif
 
-  /* Device routes */
-  if ((a->dest != RTD_ROUTER) && (a->dest != RTD_MULTIPATH))
+  if (a->source == RTS_DEVICE)
     return 0;
 
   return IGP_METRIC_UNKNOWN;
@@ -2325,7 +2323,6 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 
   /* Reset the hostentry */
   he->src = NULL;
-  he->gw = IPA_NONE;
   he->dest = RTD_UNREACHABLE;
   he->igp_metric = 0;
 
@@ -2346,24 +2343,24 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 	  goto done;
 	}
 
-      if (a->dest == RTD_DEVICE)
-	{
-	  if (if_local_addr(he->addr, a->iface))
+      if ((a->dest == RTD_UNICAST) && ipa_zero(a->nh.gw) && !a->next)
+	{ /* We have singlepath device route */
+	  if (if_local_addr(he->addr, a->nh.iface))
 	    {
 	      /* The host address is a local address, this is not valid */
 	      log(L_WARN "Next hop address %I is a local address of iface %s",
-		  he->addr, a->iface->name);
+		  he->addr, a->nh.iface->name);
 	      goto done;
       	    }
 
 	  /* The host is directly reachable, use link as a gateway */
-	  he->gw = he->link;
-	  he->dest = RTD_ROUTER;
+	  he->nh = NULL;
+	  he->dest = RTD_UNICAST;
 	}
       else
 	{
 	  /* The host is reachable through some route entry */
-	  he->gw = a->gw;
+	  he->nh = (&a->nh);
 	  he->dest = a->dest;
 	}
 
@@ -2442,16 +2439,21 @@ rt_format_via(rte *e)
   rta *a = e->attrs;
 
   /* Max text length w/o IP addr and interface name is 16 */
-  static byte via[IPA_MAX_TEXT_LENGTH+sizeof(a->iface->name)+16];
+  static byte via[IPA_MAX_TEXT_LENGTH+sizeof(a->nh.iface->name)+16];
 
   switch (a->dest)
     {
-    case RTD_ROUTER:	bsprintf(via, "via %I on %s", a->gw, a->iface->name); break;
-    case RTD_DEVICE:	bsprintf(via, "dev %s", a->iface->name); break;
+    case RTD_UNICAST:	if (a->nh.next)
+			  bsprintf(via, "multipath");
+			else
+			  {
+			    if (ipa_nonzero(a->nh.gw)) bsprintf(via, "via %I ", a->nh.gw);
+			    bsprintf(via, "dev %s", a->nh.iface->name);
+			  }
+			break;
     case RTD_BLACKHOLE:	bsprintf(via, "blackhole"); break;
     case RTD_UNREACHABLE:	bsprintf(via, "unreachable"); break;
     case RTD_PROHIBIT:	bsprintf(via, "prohibited"); break;
-    case RTD_MULTIPATH:	bsprintf(via, "multipath"); break;
     default:		bsprintf(via, "???");
     }
   return via;
@@ -2466,10 +2468,10 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
   int primary = (e->net->routes == e);
   int sync_error = (e->net->n.flags & KRF_SYNC_ERROR);
   void (*get_route_info)(struct rte *, byte *buf, struct ea_list *attrs);
-  struct mpnh *nh;
+  struct nexthop *nh;
 
   tm_format_datetime(tm, &config->tf_route, e->lastmod);
-  if (ipa_nonzero(a->from) && !ipa_equal(a->from, a->gw))
+  if (ipa_nonzero(a->from) && !ipa_equal(a->from, a->nh.gw))
     bsprintf(from, " from %I", a->from);
   else
     from[0] = 0;
@@ -2490,8 +2492,9 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
     bsprintf(info, " (%d)", e->pref);
   cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", ia, rt_format_via(e), a->src->proto->name,
 	     tm, from, primary ? (sync_error ? " !" : " *") : "", info);
-  for (nh = a->nexthops; nh; nh = nh->next)
-    cli_printf(c, -1007, "\tvia %I on %s weight %d", nh->gw, nh->iface->name, nh->weight + 1);
+  if (a->nh.next)
+    for (nh = &(a->nh); nh; nh = nh->next)
+      cli_printf(c, -1007, "\tvia %I on %s weight %d", nh->gw, nh->iface->name, nh->weight + 1);
   if (d->verbose)
     rta_show(c, a, tmpa);
 }

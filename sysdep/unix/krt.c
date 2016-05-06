@@ -645,17 +645,11 @@ krt_same_dest(rte *k, rte *e)
 
   if (ka->dest != ea->dest)
     return 0;
-  switch (ka->dest)
-    {
-    case RTD_ROUTER:
-      return ipa_equal(ka->gw, ea->gw);
-    case RTD_DEVICE:
-      return !strcmp(ka->iface->name, ea->iface->name);
-    case RTD_MULTIPATH:
-      return mpnh_same(ka->nexthops, ea->nexthops);
-    default:
-      return 1;
-    }
+
+  if (ka->dest == RTD_UNICAST)
+    return nexthop_same(&(ka->nh), &(ea->nh));
+
+  return 1;
 }
 
 /*
@@ -1011,10 +1005,16 @@ krt_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct li
     return -1;
   }
 
-  if (!KRT_CF->devroutes &&
-      (e->attrs->dest == RTD_DEVICE) &&
-      (e->attrs->source != RTS_STATIC_DEVICE))
-    return -1;
+  if (!KRT_CF->devroutes && (e->attrs->source != RTS_STATIC_DEVICE))
+  {
+    struct nexthop *nh = &(e->attrs->nh);
+    for (; nh; nh = nh->next)
+      if (ipa_nonzero(nh->gw))
+	break;
+
+    if (!nh) /* Gone through all the nexthops and no explicit GW found */
+      return -1;
+  }
 
   if (!krt_capable(e))
     return -1;

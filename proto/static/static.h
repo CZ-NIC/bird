@@ -32,13 +32,18 @@ struct static_route {
   struct iface *via_if;			/* Destination iface, for link-local vias */
   struct neighbor *neigh;
   byte *if_name;			/* Name for RTD_DEVICE routes */
-  struct static_route *mp_next;		/* Nexthops for RTD_MULTIPATH routes */
+  struct static_route *mp_next;		/* Nexthops for multipath routes */
   struct f_inst *cmds;			/* List of commands for setting attributes */
-  int installed;			/* Installed in rt table, -1 for reinstall */
+  u32 state;				/* Current state: STS_* */
   int use_bfd;				/* Configured to use BFD */
   int weight;				/* Multipath next hop weight */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
 };
+
+#define STS_INSTALLED		0x1
+#define STS_INSTALLED_ANY	0x2
+#define STS_WANT		0x4
+#define STS_FORCE		0x8
 
 /* Dummy nodes (parts of multipath route) abuses masklen field for weight
    and if_name field for a ptr to the master (RTD_MULTIPATH) node. */

@@ -22,7 +22,7 @@ static inline void reset_ri(ort *ort)
 }
 
 static inline int
-nh_is_vlink(struct mpnh *nhs)
+nh_is_vlink(struct nexthop *nhs)
 {
   return !nhs->iface;
 }
@@ -33,10 +33,10 @@ unresolved_vlink(ort *ort)
   return ort->n.nhs && nh_is_vlink(ort->n.nhs);
 }
 
-static inline struct mpnh *
+static inline struct nexthop *
 new_nexthop(struct ospf_proto *p, ip_addr gw, struct iface *iface, byte weight)
 {
-  struct mpnh *nh = lp_alloc(p->nhpool, sizeof(struct mpnh));
+  struct nexthop *nh = lp_alloc(p->nhpool, sizeof(struct nexthop));
   nh->gw = gw;
   nh->iface = iface;
   nh->next = NULL;
@@ -46,7 +46,7 @@ new_nexthop(struct ospf_proto *p, ip_addr gw, struct iface *iface, byte weight)
 
 /* Returns true if there are device nexthops in n */
 static inline int
-has_device_nexthops(const struct mpnh *n)
+has_device_nexthops(const struct nexthop *n)
 {
   for (; n; n = n->next)
     if (ipa_zero(n->gw))
@@ -56,13 +56,13 @@ has_device_nexthops(const struct mpnh *n)
 }
 
 /* Replace device nexthops with nexthops to gw */
-static struct mpnh *
-fix_device_nexthops(struct ospf_proto *p, const struct mpnh *n, ip_addr gw)
+static struct nexthop *
+fix_device_nexthops(struct ospf_proto *p, const struct nexthop *n, ip_addr gw)
 {
-  struct mpnh *root1 = NULL;
-  struct mpnh *root2 = NULL;
-  struct mpnh **nn1 = &root1;
-  struct mpnh **nn2 = &root2;
+  struct nexthop *root1 = NULL;
+  struct nexthop *root2 = NULL;
+  struct nexthop **nn1 = &root1;
+  struct nexthop **nn2 = &root2;
 
   if (!p->ecmp)
     return new_nexthop(p, gw, n->iface, n->weight);
@@ -73,7 +73,7 @@ fix_device_nexthops(struct ospf_proto *p, const struct mpnh *n, ip_addr gw)
 
   for (; n; n = n->next)
   {
-    struct mpnh *nn = new_nexthop(p, ipa_zero(n->gw) ? gw : n->gw, n->iface, n->weight);
+    struct nexthop *nn = new_nexthop(p, ipa_zero(n->gw) ? gw : n->gw, n->iface, n->weight);
 
     if (ipa_zero(n->gw))
     {
@@ -87,7 +87,7 @@ fix_device_nexthops(struct ospf_proto *p, const struct mpnh *n, ip_addr gw)
     }
   }
 
-  return mpnh_merge(root1, root2, 1, 1, p->ecmp, p->nhpool);
+  return nexthop_merge(root1, root2, 1, 1, p->ecmp, p->nhpool);
 }
 
 
@@ -283,7 +283,7 @@ ort_merge(struct ospf_proto *p, ort *o, const orta *new)
 
   if (old->nhs != new->nhs)
   {
-    old->nhs = mpnh_merge(old->nhs, new->nhs, old->nhs_reuse, new->nhs_reuse,
+    old->nhs = nexthop_merge(old->nhs, new->nhs, old->nhs_reuse, new->nhs_reuse,
 			  p->ecmp, p->nhpool);
     old->nhs_reuse = 1;
   }
@@ -299,7 +299,7 @@ ort_merge_ext(struct ospf_proto *p, ort *o, const orta *new)
 
   if (old->nhs != new->nhs)
   {
-    old->nhs = mpnh_merge(old->nhs, new->nhs, old->nhs_reuse, new->nhs_reuse,
+    old->nhs = nexthop_merge(old->nhs, new->nhs, old->nhs_reuse, new->nhs_reuse,
 			  p->ecmp, p->nhpool);
     old->nhs_reuse = 1;
   }
@@ -1673,18 +1673,18 @@ ospf_rt_spf(struct ospf_proto *p)
 
 
 static inline int
-inherit_nexthops(struct mpnh *pn)
+inherit_nexthops(struct nexthop *pn)
 {
   /* Proper nexthops (with defined GW) or dummy vlink nexthops (without iface) */
   return pn && (ipa_nonzero(pn->gw) || !pn->iface);
 }
 
-static struct mpnh *
+static struct nexthop *
 calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
 	      struct top_hash_entry *par, int pos)
 {
   struct ospf_proto *p = oa->po;
-  struct mpnh *pn = par->nhs;
+  struct nexthop *pn = par->nhs;
   struct ospf_iface *ifa;
   u32 rid = en->lsa.rt;
 
@@ -1812,7 +1812,7 @@ add_cand(list * l, struct top_hash_entry *en, struct top_hash_entry *par,
   if (!link_back(oa, en, par))
     return;
 
-  struct mpnh *nhs = calc_next_hop(oa, en, par, pos);
+  struct nexthop *nhs = calc_next_hop(oa, en, par, pos);
   if (!nhs)
   {
     log(L_WARN "%s: Cannot find next hop for LSA (Type: %04x, Id: %R, Rt: %R)",
@@ -1850,7 +1850,7 @@ add_cand(list * l, struct top_hash_entry *en, struct top_hash_entry *par,
 
     /* Merge old and new */
     int new_reuse = (par->nhs != nhs);
-    en->nhs = mpnh_merge(en->nhs, nhs, en->nhs_reuse, new_reuse, p->ecmp, p->nhpool);
+    en->nhs = nexthop_merge(en->nhs, nhs, en->nhs_reuse, new_reuse, p->ecmp, p->nhpool);
     en->nhs_reuse = 1;
     return;
   }
@@ -1906,8 +1906,8 @@ ort_changed(ort *nf, rta *nr)
     (nf->n.metric1 != nf->old_metric1) || (nf->n.metric2 != nf->old_metric2) ||
     (nf->n.tag != nf->old_tag) || (nf->n.rid != nf->old_rid) ||
     (nr->source != or->source) || (nr->dest != or->dest) ||
-    (nr->iface != or->iface) || !ipa_equal(nr->gw, or->gw) ||
-    !mpnh_same(nr->nexthops, or->nexthops);
+    (nr->nh.iface != or->nh.iface) || !ipa_equal(nr->nh.gw, or->nh.gw) ||
+    !nexthop_same(&(nr->nh), &(or->nh));
 }
 
 static void
@@ -1931,7 +1931,7 @@ again1:
     /* Sanity check of next-hop addresses, failure should not happen */
     if (nf->n.type)
     {
-      struct mpnh *nh;
+      struct nexthop *nh;
       for (nh = nf->n.nhs; nh; nh = nh->next)
 	if (ipa_nonzero(nh->gw))
 	{
@@ -1954,22 +1954,8 @@ again1:
 	.cast = RTC_UNICAST
       };
 
-      if (nf->n.nhs->next)
-      {
-	a0.dest = RTD_MULTIPATH;
-	a0.nexthops = nf->n.nhs;
-      }
-      else if (ipa_nonzero(nf->n.nhs->gw))
-      {
-	a0.dest = RTD_ROUTER;
-	a0.iface = nf->n.nhs->iface;
-	a0.gw = nf->n.nhs->gw;
-      }
-      else
-      {
-	a0.dest = RTD_DEVICE;
-	a0.iface = nf->n.nhs->iface;
-      }
+      nexthop_link(&a0, nf->n.nhs);
+      a0.dest = RTD_UNICAST;
 
       if (reload || ort_changed(nf, &a0))
       {
