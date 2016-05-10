@@ -1,5 +1,4 @@
-source=f-util.c filter.c tree.c trie.c
-root-rel=../
-dir-name=filter
-
-include ../Rules
+src := filter.c f-util.c tree.c trie.c
+obj := $(src-o-files)
+$(all-daemon)
+$(cf-local)

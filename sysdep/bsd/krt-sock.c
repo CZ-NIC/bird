@@ -28,9 +28,9 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "lib/timer.h"
-#include "lib/unix.h"
-#include "lib/krt.h"
+#include "sysdep/unix/timer.h"
+#include "sysdep/unix/unix.h"
+#include "sysdep/unix/krt.h"
 #include "lib/string.h"
 #include "lib/socket.h"
 

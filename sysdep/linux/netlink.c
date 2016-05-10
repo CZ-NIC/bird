@@ -6,6 +6,7 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#include <alloca.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -20,9 +21,9 @@
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "lib/alloca.h"
-#include "lib/timer.h"
-#include "lib/unix.h"
-#include "lib/krt.h"
+#include "sysdep/unix/timer.h"
+#include "sysdep/unix/unix.h"
+#include "sysdep/unix/krt.h"
 #include "lib/socket.h"
 #include "lib/string.h"
 #include "lib/hash.h"
@@ -915,44 +916,49 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
   eattr *ea;
   net *net = e->net;
   rta *a = e->attrs;
+  int bufsize = 128 + KRT_METRICS_MAX*8 + nh_bufsize(a->nexthops);
+
   struct {
     struct nlmsghdr h;
     struct rtmsg r;
-    char buf[128 + KRT_METRICS_MAX*8 + nh_bufsize(a->nexthops)];
-  } r;
+    char buf[0];
+  } *r;
+
+  int rsize = sizeof(*r) + bufsize;
+  r = alloca(rsize);
 
   DBG("nl_send_route(%N,new=%d)\n", net->n.addr, new);
 
-  bzero(&r.h, sizeof(r.h));
-  bzero(&r.r, sizeof(r.r));
-  r.h.nlmsg_type = new ? RTM_NEWROUTE : RTM_DELROUTE;
-  r.h.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
-  r.h.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | (new ? NLM_F_CREATE|NLM_F_EXCL : 0);
+  bzero(&r->h, sizeof(r->h));
+  bzero(&r->r, sizeof(r->r));
+  r->h.nlmsg_type = new ? RTM_NEWROUTE : RTM_DELROUTE;
+  r->h.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+  r->h.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | (new ? NLM_F_CREATE|NLM_F_EXCL : 0);
 
-  r.r.rtm_family = p->af;
-  r.r.rtm_dst_len = net_pxlen(net->n.addr);
-  r.r.rtm_protocol = RTPROT_BIRD;
-  r.r.rtm_scope = RT_SCOPE_UNIVERSE;
-  nl_add_attr_ipa(&r.h, sizeof(r), RTA_DST, net_prefix(net->n.addr));
+  r->r.rtm_family = p->af;
+  r->r.rtm_dst_len = net_pxlen(net->n.addr);
+  r->r.rtm_protocol = RTPROT_BIRD;
+  r->r.rtm_scope = RT_SCOPE_UNIVERSE;
+  nl_add_attr_ipa(&r->h, rsize, RTA_DST, net_prefix(net->n.addr));
 
   if (krt_table_id(p) < 256)
-    r.r.rtm_table = krt_table_id(p);
+    r->r.rtm_table = krt_table_id(p);
   else
-    nl_add_attr_u32(&r.h, sizeof(r), RTA_TABLE, krt_table_id(p));
+    nl_add_attr_u32(&r->h, rsize, RTA_TABLE, krt_table_id(p));
 
   /* For route delete, we do not specify route attributes */
   if (!new)
-    return nl_exchange(&r.h);
+    return nl_exchange(&r->h);
 
 
   if (ea = ea_find(eattrs, EA_KRT_METRIC))
-    nl_add_attr_u32(&r.h, sizeof(r), RTA_PRIORITY, ea->u.data);
+    nl_add_attr_u32(&r->h, rsize, RTA_PRIORITY, ea->u.data);
 
   if (ea = ea_find(eattrs, EA_KRT_PREFSRC))
-    nl_add_attr_ipa(&r.h, sizeof(r), RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data);
+    nl_add_attr_ipa(&r->h, rsize, RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data);
 
   if (ea = ea_find(eattrs, EA_KRT_REALM))
-    nl_add_attr_u32(&r.h, sizeof(r), RTA_FLOW, ea->u.data);
+    nl_add_attr_u32(&r->h, rsize, RTA_FLOW, ea->u.data);
 
 
   u32 metrics[KRT_METRICS_MAX];
@@ -967,7 +973,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
   }
 
   if (metrics[0])
-    nl_add_metrics(&r.h, sizeof(r), metrics, KRT_METRICS_MAX);
+    nl_add_metrics(&r->h, rsize, metrics, KRT_METRICS_MAX);
 
 
   /* a->iface != NULL checked in krt_capable() for router and device routes */
@@ -975,32 +981,32 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
   switch (a->dest)
     {
     case RTD_ROUTER:
-      r.r.rtm_type = RTN_UNICAST;
-      nl_add_attr_u32(&r.h, sizeof(r), RTA_OIF, a->iface->index);
-      nl_add_attr_ipa(&r.h, sizeof(r), RTA_GATEWAY, a->gw);
+      r->r.rtm_type = RTN_UNICAST;
+      nl_add_attr_u32(&r->h, rsize, RTA_OIF, a->iface->index);
+      nl_add_attr_ipa(&r->h, rsize, RTA_GATEWAY, a->gw);
       break;
     case RTD_DEVICE:
-      r.r.rtm_type = RTN_UNICAST;
-      nl_add_attr_u32(&r.h, sizeof(r), RTA_OIF, a->iface->index);
+      r->r.rtm_type = RTN_UNICAST;
+      nl_add_attr_u32(&r->h, rsize, RTA_OIF, a->iface->index);
       break;
     case RTD_BLACKHOLE:
-      r.r.rtm_type = RTN_BLACKHOLE;
+      r->r.rtm_type = RTN_BLACKHOLE;
       break;
     case RTD_UNREACHABLE:
-      r.r.rtm_type = RTN_UNREACHABLE;
+      r->r.rtm_type = RTN_UNREACHABLE;
       break;
     case RTD_PROHIBIT:
-      r.r.rtm_type = RTN_PROHIBIT;
+      r->r.rtm_type = RTN_PROHIBIT;
       break;
     case RTD_MULTIPATH:
-      r.r.rtm_type = RTN_UNICAST;
-      nl_add_multipath(&r.h, sizeof(r), a->nexthops);
+      r->r.rtm_type = RTN_UNICAST;
+      nl_add_multipath(&r->h, rsize, a->nexthops);
       break;
     default:
       bug("krt_capable inconsistent with nl_send_route");
     }
 
-  return nl_exchange(&r.h);
+  return nl_exchange(&r->h);
 }
 
 void

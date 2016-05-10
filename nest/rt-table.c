@@ -1267,19 +1267,23 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
  */
 
 void
-rte_update2(struct channel *c, net *net, rte *new, struct rte_src *src)
+rte_update2(struct channel *c, net_addr *n, rte *new, struct rte_src *src)
 {
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
   struct filter *filter = c->in_filter;
   ea_list *tmpa = NULL;
   rte *dummy = NULL;
+  net *nn;
 
   ASSERT(c->channel_state == CS_UP);
 
   rte_update_lock();
   if (new)
     {
+      nn = net_get(c->table, n);
+
+      new->net = nn;
       new->sender = c;
 
       if (!new->pref)
@@ -1333,7 +1337,7 @@ rte_update2(struct channel *c, net *net, rte *new, struct rte_src *src)
     {
       stats->imp_withdraws_received++;
 
-      if (!net || !src)
+      if (!(nn = net_find(c->table, n)) || !src)
 	{
 	  stats->imp_withdraws_ignored++;
 	  rte_update_unlock();
@@ -1342,9 +1346,9 @@ rte_update2(struct channel *c, net *net, rte *new, struct rte_src *src)
     }
 
  recalc:
-  rte_hide_dummy_routes(net, &dummy);
-  rte_recalculate(c, net, new, src);
-  rte_unhide_dummy_routes(net, &dummy);
+  rte_hide_dummy_routes(nn, &dummy);
+  rte_recalculate(c, nn, new, src);
+  rte_unhide_dummy_routes(nn, &dummy);
   rte_update_unlock();
   return;
 

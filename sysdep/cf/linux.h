@@ -14,7 +14,12 @@
 #define CONFIG_MC_PROPER_SRC
 #define CONFIG_UNIX_DONTROUTE
 
+#define CONFIG_INCLUDE_SYSIO_H "sysdep/linux/sysio.h"
+#define CONFIG_INCLUDE_KRTSYS_H "sysdep/linux/krt-sys.h"
+
 #define CONFIG_RESTRICTED_PRIVILEGES
+#define CONFIG_INCLUDE_SYSPRIV_H "sysdep/linux/syspriv.h"
+
 
 /*
 Link: sysdep/linux

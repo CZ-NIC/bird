@@ -56,7 +56,7 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "filter/filter.h"
-#include "lib/timer.h"
+#include "sysdep/unix/timer.h"
 #include "conf/conf.h"
 #include "lib/string.h"
 
@@ -345,18 +345,15 @@ krt_learn_announce_update(struct krt_proto *p, rte *e)
   net *n = e->net;
   rta *aa = rta_clone(e->attrs);
   rte *ee = rte_get_temp(aa);
-  net *nn = net_get(p->p.main_channel->table, n->n.addr);
-  ee->net = nn;
   ee->pflags = 0;
   ee->u.krt = e->u.krt;
-  rte_update(&p->p, nn, ee);
+  rte_update(&p->p, n->n.addr, ee);
 }
 
 static void
 krt_learn_announce_delete(struct krt_proto *p, net *n)
 {
-  n = net_find(p->p.main_channel->table, n->n.addr);
-  rte_update(&p->p, n, NULL);
+  rte_update(&p->p, n->n.addr, NULL);
 }
 
 /* Called when alien route is discovered during scan */

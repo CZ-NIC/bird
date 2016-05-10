@@ -91,9 +91,9 @@ int sockaddr_read(sockaddr *sa, int af, ip_addr *a, struct iface **ifa, uint *po
 #define SUN_LEN(ptr) ((size_t) (((struct sockaddr_un *) 0)->sun_path) + strlen ((ptr)->sun_path))
 #endif
 
-volatile int async_config_flag;
-volatile int async_dump_flag;
-volatile int async_shutdown_flag;
+extern volatile int async_config_flag;
+extern volatile int async_dump_flag;
+extern volatile int async_shutdown_flag;
 
 void io_init(void);
 void io_loop(void);

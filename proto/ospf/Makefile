@@ -1,5 +1,4 @@
-source=ospf.c topology.c packet.c hello.c neighbor.c iface.c dbdes.c lsreq.c lsupd.c lsack.c lsalib.c rt.c
-root-rel=../../
-dir-name=proto/ospf
-
-include ../../Rules
+src := dbdes.c hello.c iface.c lsack.c lsalib.c lsreq.c lsupd.c neighbor.c ospf.c packet.c rt.c topology.c
+obj := $(src-o-files)
+$(all-daemon)
+$(cf-local)

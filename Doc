@@ -1,3 +1,4 @@
+D doc/prog-head.sgml
 C doc
 C nest
 C conf
@@ -5,3 +6,4 @@ C filter
 C proto
 C sysdep
 C lib
+D doc/prog-foot.sgml

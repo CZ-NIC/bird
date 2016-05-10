@@ -69,7 +69,7 @@ async_dump(void)
  */
 
 #ifdef CONFIG_RESTRICTED_PRIVILEGES
-#include "lib/syspriv.h"
+#include CONFIG_INCLUDE_SYSPRIV_H
 #else
 
 static inline void
@@ -568,6 +568,10 @@ sysdep_shutdown_done(void)
 /*
  *	Signals
  */
+
+volatile int async_config_flag;
+volatile int async_dump_flag;
+volatile int async_shutdown_flag;
 
 static void
 handle_sighup(int sig UNUSED)

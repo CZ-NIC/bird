@@ -50,7 +50,6 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
   struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
   struct rte_src *src;
 
-  net *nn;
   rte *e;
   rta a;
 
@@ -64,7 +63,6 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
       return;
     }
 
-  nn = net_get(dst->table, n->n.addr);
   if (new)
     {
       memcpy(&a, new->attrs, sizeof(rta));
@@ -73,7 +71,6 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
       a.eattrs = attrs;
       a.hostentry = NULL;
       e = rte_get_temp(&a);
-      e->net = nn;
       e->pflags = 0;
 
       /* Copy protocol specific embedded attributes. */
@@ -90,7 +87,7 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
     }
 
   src_ch->table->pipe_busy = 1;
-  rte_update2(dst, nn, e, src);
+  rte_update2(dst, n->n.addr, e, src);
   src_ch->table->pipe_busy = 0;
 }
 

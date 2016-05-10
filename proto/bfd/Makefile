@@ -1,5 +1,4 @@
-source=bfd.c packets.c io.c
-root-rel=../../
-dir-name=proto/bfd
-
-include ../../Rules
+src := bfd.c io.c packets.c
+obj := $(src-o-files)
+$(all-daemon)
+$(cf-local)

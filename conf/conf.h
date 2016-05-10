@@ -10,7 +10,7 @@
 #define _BIRD_CONF_H_
 
 #include "lib/resource.h"
-#include "lib/timer.h"
+#include "sysdep/unix/timer.h"
 
 
 /* Configuration structure */

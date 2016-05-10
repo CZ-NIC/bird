@@ -9,7 +9,7 @@
 
 #ifndef PASSWORD_H
 #define PASSWORD_H
-#include "lib/timer.h"
+#include "sysdep/unix/timer.h"
 
 struct password_item {
   node n;

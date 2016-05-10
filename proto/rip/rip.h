@@ -24,7 +24,7 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/string.h"
-#include "lib/timer.h"
+#include "sysdep/unix/timer.h"
 
 
 #define RIP_V1			1

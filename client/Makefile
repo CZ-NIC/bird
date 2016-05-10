@@ -1,11 +1,11 @@
-source=commands.c util.c client.c
-root-rel=../
-dir-name=client
+src := commands.c util.c client.c
+obj := $(src-o-files)
 
-clients := $(client) birdcl
+$(all-client)
 
-source-dep := $(source) $(addsuffix .c,$(clients))
+$(o)commands.c.dep: $(objdir)/conf/commands.h
 
-subdir: $(addsuffix .o,$(clients))
+$(exedir)/birdc: $(o)birdc.o
+$(exedir)/birdc: LIBS += $(CLIENT_LIBS)
 
-include ../Rules
+$(exedir)/birdcl: $(o)birdcl.o

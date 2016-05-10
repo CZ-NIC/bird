@@ -9,7 +9,7 @@
 #ifndef _BIRD_IP_H_
 #define _BIRD_IP_H_
 
-#include "lib/endian.h"
+#include "sysdep/unix/endian.h"
 #include "lib/string.h"
 #include "lib/bitops.h"
 #include "lib/unaligned.h"

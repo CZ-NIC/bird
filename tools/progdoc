@@ -1,17 +1,18 @@
 #!/usr/bin/perl
 
 $srcdir = $ARGV[0];
+$out = $ARGV[1];
 
-open(OUT, ">prog.sgml") || die "Cannot create output file";
-include("doc/prog-head.sgml");
-process("");
-include("doc/prog-foot.sgml");
+open(OUT, ">", $out) || die "Cannot create output file";
+process($srcdir);
 close OUT;
+gen_deps();
 exit 0;
 
 sub include {
   my $f = shift @_;
-  open(IN, "$srcdir/$f") || die "Unable to find $f";
+  open(IN, "$f") || die "Unable to find $f";
+  push(@deps, "$f");
   while (<IN>) {
     print OUT;
   }
@@ -21,7 +22,8 @@ sub include {
 sub process {
   my $dir = shift @_;
   print "$dir/Doc\n";
-  open(IN, "$srcdir/$dir/Doc") || die "Unable to read $dir/Doc";
+  open(IN, "$dir/Doc") || die "Unable to read $dir/Doc";
+  push(@deps, "$dir/Doc");
   my @docfile = <IN>;
   close IN;
   foreach $_ (@docfile) {
@@ -36,7 +38,10 @@ sub process {
       print OUT "<chapt>$arg\n";
     } elsif ($cmd eq "S") {
       print "    $arg\n";
-      open(DOC, "cd $srcdir/$dir ; $srcdir/doc/kernel-doc -bird $arg |") || die "Unable to start kernel-doc";
+      my @files = map("$dir/$_", split(' ', $arg));
+      my $fargs = join(' ', @files);
+      open(DOC, "$srcdir/doc/kernel-doc -bird $fargs |") || die "Unable to start kernel-doc";
+      push(@deps, @files);
       while (<DOC>) { print OUT; }
       close DOC;
     } elsif ($cmd eq "D") {
@@ -44,4 +49,18 @@ sub process {
       include("$dir/$arg");
     } else { die "Unknown command: $cmd"; }
   }
+}
+
+sub gen_deps {
+  open(DEP, ">", "$out.d");
+  print DEP "$out:";
+  foreach $f (@deps) {
+    print DEP " \\\n  $f";
+  }
+  print DEP "\n\n";
+
+  foreach $f (@deps) {
+    print DEP "$f:\n\n";
+  }
+  close DEP;
 }
