@@ -271,7 +271,7 @@ proto_get_router_id(struct proto_config *pc)
 }
 
 /* Moved from route.h to avoid dependency conflicts */
-static inline void rte_update(struct proto *p, net *net, rte *new) { rte_update2(p->main_channel, net, new, p->main_source); }
+static inline void rte_update(struct proto *p, net_addr *n, rte *new) { rte_update2(p->main_channel, n, new, p->main_source); }
 
 extern list proto_list;
 

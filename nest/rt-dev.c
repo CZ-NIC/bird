@@ -55,24 +55,15 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 
   if (flags & IF_CHANGE_DOWN)
     {
-      net *n;
-
       DBG("dev_if_notify: %s:%I going down\n", ad->iface->name, ad->ip);
-      n = net_find(c->table, &ad->prefix);
-      if (!n)
-	{
-	  DBG("dev_if_notify: device shutdown: prefix not found\n");
-	  return;
-	}
 
       /* Use iface ID as local source ID */
       struct rte_src *src = rt_get_source(P, ad->iface->index);
-      rte_update2(c, n, NULL, src);
+      rte_update2(c, &ad->prefix, NULL, src);
     }
   else if (flags & IF_CHANGE_UP)
     {
       rta *a;
-      net *n;
       rte *e;
 
       DBG("dev_if_notify: %s:%I going up\n", ad->iface->name, ad->ip);
@@ -90,11 +81,9 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
       };
 
       a = rta_lookup(&a0);
-      n = net_get(c->table, &ad->prefix);
       e = rte_get_temp(a);
-      e->net = n;
       e->pflags = 0;
-      rte_update2(c, n, e, src);
+      rte_update2(c, &ad->prefix, e, src);
     }
 }
 
