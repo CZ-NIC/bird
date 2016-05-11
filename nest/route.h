@@ -299,6 +299,7 @@ struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 struct rt_show_data {
   net_addr *addr;
   rtable *table;
+  u8 all_tables;			/* Iterate through all routing tables */
   struct filter *filter;
   int verbose;
   struct fib_iterator fit;

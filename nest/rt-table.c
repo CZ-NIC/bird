@@ -2593,6 +2593,15 @@ rt_show_cont(struct cli *c)
       rt_show_net(c, n, d);
     }
   FIB_ITERATE_END;
+
+  /* If we iterate through all routing tables then jump on next routing table */
+  if (d->all_tables && NODE_VALID(NODE_NEXT(d->table)))
+  {
+    d->table = NODE_NEXT(d->table);
+    FIB_ITERATE_INIT(&d->fit, &d->table->fib);
+    return;
+  }
+
   if (d->stats)
     cli_printf(c, 14, "%d of %d routes for %d networks", d->show_counter, d->rt_counter, d->net_counter);
   else
@@ -2629,10 +2638,18 @@ rt_show(struct rt_show_data *d)
 {
   net *n;
 
+  if (EMPTY_LIST(routing_tables)) {
+    cli_msg(0, "");
+    return;
+  }
+
   /* Default is either a master table or a table related to a respective protocol */
   if (!d->table && d->export_protocol) d->table = rt_show_get_table(d->export_protocol);
   if (!d->table && d->show_protocol) d->table = rt_show_get_table(d->show_protocol);
-  if (!d->table) d->table = config->def_tables[NET_IP4]->table; /* FIXME: iterate through all tables ? */
+  if (!d->table) {
+    d->all_tables = 1;
+    d->table = HEAD(routing_tables);
+  }
 
   /* Filtered routes are neither exported nor have sensible ordering */
   if (d->filtered && (d->export_mode || d->primary_only))
