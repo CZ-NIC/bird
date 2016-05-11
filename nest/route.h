@@ -81,7 +81,7 @@ void fib_delete(struct fib *, void *);	/* Remove fib entry */
 void fib_free(struct fib *);		/* Destroy the fib */
 void fib_check(struct fib *);		/* Consistency check for debugging */
 
-void fit_init(struct fib_iterator *, struct fib *); /* Internal functions, don't call */
+void fit_init(struct fib_iterator *, const struct fib *); /* Internal functions, don't call */
 struct fib_node *fit_get(struct fib *, struct fib_iterator *);
 void fit_put(struct fib_iterator *, struct fib_node *);
 void fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uint hpos);

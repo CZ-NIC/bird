@@ -446,7 +446,7 @@ fib_free(struct fib *f)
 }
 
 void
-fit_init(struct fib_iterator *i, struct fib *f)
+fit_init(struct fib_iterator *i, const struct fib *f)
 {
   unsigned h;
   struct fib_node *n;
