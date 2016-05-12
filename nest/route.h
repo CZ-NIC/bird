@@ -273,7 +273,8 @@ void rt_unlock_table(rtable *);
 void rt_setup(pool *, rtable *, char *, struct rtable_config *);
 static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
 static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
-
+void *net_route(rtable *tab, const net_addr *n);
+int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
 void rte_update2(struct channel *c, net_addr *n, rte *new, struct rte_src *src);
@@ -560,7 +561,5 @@ extern struct protocol *attr_class_to_protocol[EAP_MAX];
 #define ROA_UNKNOWN	0
 #define ROA_VALID	1
 #define ROA_INVALID	2
-
-byte net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 
 #endif

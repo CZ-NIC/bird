@@ -98,77 +98,6 @@ net_route_ip6(struct fib *f, net_addr_ip6 *n)
   return r;
 }
 
-static byte
-net_roa4_check(rtable *tab, const net_addr_ip4 *px, u32 asn)
-{
-  struct net_addr_roa4 n = NET_ADDR_ROA4(px->prefix, px->pxlen, 0, 0);
-  byte anything = 0;
-
-  struct fib_node *fn;
-  while (1)
-  {
-    for (fn = fib_get_chain(&tab->fib, (net_addr *) &n); fn; fn = fn->next)
-    {
-      net *r = fib_node_to_user(&tab->fib, fn);
-      if (rte_is_valid(r->routes) && ipa_in_netX(ipa_from_ip4(px->prefix), r->n.addr))
-      {
-	net_addr_roa4 *roa = (void *) r->n.addr;
-	anything = 1;
-	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
-	  return ROA_VALID;
-      }
-    }
-
-    if (n.pxlen == 0)
-      break;
-
-    n.pxlen--;
-    ip4_clrbit(&n.prefix, n.pxlen);
-  }
-
-  return anything ? ROA_INVALID : ROA_UNKNOWN;
-}
-
-static byte
-net_roa6_check(rtable *tab, const net_addr_ip6 *px, u32 asn)
-{
-  struct net_addr_roa6 n = NET_ADDR_ROA6(px->prefix, px->pxlen, 0, 0);
-  byte anything = 0;
-
-  struct fib_node *fn;
-  while (1)
-  {
-    for (fn = fib_get_chain(&tab->fib, (net_addr *) &n); fn; fn = fn->next)
-    {
-      net *r = fib_node_to_user(&tab->fib, fn);
-      if (rte_is_valid(r->routes) && ipa_in_netX(ipa_from_ip6(px->prefix), r->n.addr))
-      {
-	net_addr_roa6 *roa = (void *) r->n.addr;
-	anything = 1;
-	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
-	  return ROA_VALID;
-      }
-    }
-
-    if (n.pxlen == 0)
-      break;
-
-    n.pxlen--;
-    ip6_clrbit(&n.prefix, n.pxlen);
-  }
-
-  return anything ? ROA_INVALID : ROA_UNKNOWN;
-}
-
-byte
-net_roa_check(rtable *tab, const net_addr *n, u32 asn)
-{
-  if (tab->addr_type == NET_ROA4)
-    return net_roa4_check(tab, (const net_addr_ip4 *) n, asn);
-  else
-    return net_roa6_check(tab, (const net_addr_ip6 *) n, asn);
-}
-
 void *
 net_route(rtable *tab, const net_addr *n)
 {
@@ -192,6 +121,97 @@ net_route(rtable *tab, const net_addr *n)
   default:
     return NULL;
   }
+}
+
+
+static int
+net_roa_check_ip4(rtable *tab, const net_addr_ip4 *px, u32 asn)
+{
+  struct net_addr_roa4 n = NET_ADDR_ROA4(px->prefix, px->pxlen, 0, 0);
+  struct fib_node *fn;
+  int anything = 0;
+
+  while (1)
+  {
+    for (fn = fib_get_chain(&tab->fib, (net_addr *) &n); fn; fn = fn->next)
+    {
+      net_addr_roa4 *roa = (void *) fn->addr;
+      net *r = fib_node_to_user(&tab->fib, fn);
+
+      if (net_equal_prefix_roa4(roa, &n) && rte_is_valid(r->routes))
+      {
+	anything = 1;
+	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
+	  return ROA_VALID;
+      }
+    }
+
+    if (n.pxlen == 0)
+      break;
+
+    n.pxlen--;
+    ip4_clrbit(&n.prefix, n.pxlen);
+  }
+
+  return anything ? ROA_INVALID : ROA_UNKNOWN;
+}
+
+static int
+net_roa_check_ip6(rtable *tab, const net_addr_ip6 *px, u32 asn)
+{
+  struct net_addr_roa6 n = NET_ADDR_ROA6(px->prefix, px->pxlen, 0, 0);
+  struct fib_node *fn;
+  int anything = 0;
+
+  while (1)
+  {
+    for (fn = fib_get_chain(&tab->fib, (net_addr *) &n); fn; fn = fn->next)
+    {
+      net_addr_roa6 *roa = (void *) fn->addr;
+      net *r = fib_node_to_user(&tab->fib, fn);
+
+      if (net_equal_prefix_roa6(roa, &n) && rte_is_valid(r->routes))
+      {
+	anything = 1;
+	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
+	  return ROA_VALID;
+      }
+    }
+
+    if (n.pxlen == 0)
+      break;
+
+    n.pxlen--;
+    ip6_clrbit(&n.prefix, n.pxlen);
+  }
+
+  return anything ? ROA_INVALID : ROA_UNKNOWN;
+}
+
+/**
+ * roa_check - check validity of route origination in a ROA table
+ * @tab: ROA table
+ * @n: network prefix to check
+ * @asn: AS number of network prefix
+ *
+ * Implements RFC 6483 route validation for the given network prefix. The
+ * procedure is to find all candidate ROAs - ROAs whose prefixes cover the given
+ * network prefix. If there is no candidate ROA, return ROA_UNKNOWN. If there is
+ * a candidate ROA with matching ASN and maxlen field greater than or equal to
+ * the given prefix length, return ROA_VALID. Otherwise, return ROA_INVALID. If
+ * caller cannot determine origin AS, 0 could be used (in that case ROA_VALID
+ * cannot happen). Table @tab must have type NET_ROA4 or NET_ROA6, network @n
+ * must have type NET_IP4 or NET_IP6, respectively.
+ */
+int
+net_roa_check(rtable *tab, const net_addr *n, u32 asn)
+{
+  if ((tab->addr_type == NET_ROA4) && (n->type == NET_IP4))
+    return net_roa_check_ip4(tab, (const net_addr_ip4 *) n, asn);
+  else if ((tab->addr_type == NET_ROA6) && (n->type == NET_IP6))
+    return net_roa_check_ip6(tab, (const net_addr_ip6 *) n, asn);
+  else
+    return ROA_UNKNOWN;	/* Should not happen */
 }
 
 /**
@@ -1553,6 +1573,8 @@ rt_event(void *ptr)
 {
   rtable *tab = ptr;
 
+  rt_lock_table(tab);
+
   if (tab->hcu_scheduled)
     rt_update_hostcache(tab);
 
@@ -1561,6 +1583,8 @@ rt_event(void *ptr)
 
   if (tab->prune_state)
     rt_prune_table(tab);
+
+  rt_unlock_table(tab);
 }
 
 void
@@ -1693,10 +1717,7 @@ again:
     if (c->flush_active)
       {
 	c->flush_active = 0;
-	struct rtable_config *rtab_cf = c->table->config;
-	channel_set_state(c, CS_DOWN); /* Can free (struct rtable *) c->table */
-	if (rtab_cf->table == NULL)
-	  break;
+	channel_set_state(c, CS_DOWN);
       }
 
   return;

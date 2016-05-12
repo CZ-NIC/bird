@@ -39,12 +39,7 @@ static int graceful_restart_state;
 static u32 graceful_restart_locks;
 
 static char *p_states[] = { "DOWN", "START", "UP", "STOP" };
-static char *cs_states[] = {
-    [CS_DOWN] = "DOWN",
-    [CS_START] = "START",
-    [CS_UP] = "UP",
-    [CS_FLUSHING] = "FLUSHING"
-};
+static char *c_states[] UNUSED = { "DOWN", "START", "UP", "FLUSHING" };
 
 extern struct protocol proto_unix_iface;
 
@@ -320,7 +315,7 @@ channel_set_state(struct channel *c, uint state)
   uint cs = c->channel_state;
   uint es = c->export_state;
 
-  DBG("%s reporting channel %s state transition %s -> %s\n", c->proto->name, c->name, cs_states[cs], cs_states[state]);
+  DBG("%s reporting channel %s state transition %s -> %s\n", c->proto->name, c->name, c_states[cs], c_states[state]);
   if (state == cs)
     return;
 
@@ -1016,7 +1011,7 @@ proto_rethink_goal(struct proto *p)
  * enabled protocols are marked with @gr_recovery flag before start. Such
  * protocols then decide how to proceed with graceful restart, participation is
  * voluntary. Protocols could lock the recovery for each channel by function
- * channel_graceful_restart_lock() (starte stored in @gr_lock flag), which means
+ * channel_graceful_restart_lock() (state stored in @gr_lock flag), which means
  * that they want to postpone the end of the recovery until they converge and
  * then unlock it. They also could set @gr_wait before advancing to %PS_UP,
  * which means that the core should defer route export to that channel until

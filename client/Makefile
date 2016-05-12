@@ -3,7 +3,7 @@ obj := $(src-o-files)
 
 $(all-client)
 
-$(o)commands.c.dep: $(objdir)/conf/commands.h
+$(o)commands.o: $(objdir)/conf/commands.h
 
 $(exedir)/birdc: $(o)birdc.o
 $(exedir)/birdc: LIBS += $(CLIENT_LIBS)

@@ -1547,8 +1547,7 @@ sk_sendmsg(sock *s)
 {
   struct iovec iov = {s->tbuf, s->tpos - s->tbuf};
   byte cmsg_buf[CMSG_TX_SPACE];
-  bzero(cmsg_buf, sizeof(cmsg_buf));
-  sockaddr dst = {};
+  sockaddr dst;
 
   sockaddr_fill(&dst, fam_to_af[s->fam], s->daddr, s->iface, s->dport);
 

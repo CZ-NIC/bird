@@ -25,6 +25,8 @@
 #define NB_IP6		(1 << NET_IP6)
 #define NB_VPN4		(1 << NET_VPN4)
 #define NB_VPN6		(1 << NET_VPN6)
+#define NB_ROA4		(1 << NET_ROA4)
+#define NB_ROA6		(1 << NET_ROA6)
 
 #define NB_IP		(NB_IP4 | NB_IP6)
 #define NB_ANY		0xffffffff
@@ -227,6 +229,12 @@ static inline int net_equal_roa4(const net_addr_roa4 *a, const net_addr_roa4 *b)
 
 static inline int net_equal_roa6(const net_addr_roa6 *a, const net_addr_roa6 *b)
 { return !memcmp(a, b, sizeof(net_addr_roa6)); }
+
+static inline int net_equal_prefix_roa4(const net_addr_roa4 *a, const net_addr_roa4 *b)
+{ return ip4_equal(a->prefix, b->prefix) && (a->pxlen == b->pxlen); }
+
+static inline int net_equal_prefix_roa6(const net_addr_roa6 *a, const net_addr_roa6 *b)
+{ return ip6_equal(a->prefix, b->prefix) && (a->pxlen == b->pxlen); }
 
 
 static inline int net_zero_ip4(const net_addr_ip4 *a)
