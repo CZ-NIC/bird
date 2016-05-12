@@ -248,7 +248,7 @@ server_connect(void)
 
   server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (server_fd < 0)
-    die("Cannot create socket: %m");
+    DIE("Cannot create socket");
 
   if (strlen(server_path) >= sizeof(sa.sun_path))
     die("server_connect: path too long");
@@ -257,9 +257,9 @@ server_connect(void)
   sa.sun_family = AF_UNIX;
   strcpy(sa.sun_path, server_path);
   if (connect(server_fd, (struct sockaddr *) &sa, SUN_LEN(&sa)) < 0)
-    die("Unable to connect to server control socket (%s): %m", server_path);
+    DIE("Unable to connect to server control socket (%s)", server_path);
   if (fcntl(server_fd, F_SETFL, O_NONBLOCK) < 0)
-    die("fcntl: %m");
+    DIE("fcntl");
 }
 
 
@@ -309,13 +309,13 @@ server_read(void)
  redo:
   c = read(server_fd, server_read_pos, server_read_buf + sizeof(server_read_buf) - server_read_pos);
   if (!c)
-    die("Connection closed by server.");
+    die("Connection closed by server");
   if (c < 0)
     {
       if (errno == EINTR)
 	goto redo;
       else
-	die("Server read error: %m");
+	DIE("Server read error");
     }
 
   start = server_read_buf;
@@ -366,7 +366,7 @@ select_loop(void)
 	  if (errno == EINTR)
 	    continue;
 	  else
-	    die("select: %m");
+	    DIE("select");
 	}
 
       if (FD_ISSET(0, &select_fds))
@@ -399,7 +399,7 @@ wait_for_write(int fd)
 	  if (errno == EINTR)
 	    continue;
 	  else
-	    die("select: %m");
+	    DIE("select");
 	}
 
       if (FD_ISSET(server_fd, &set))
@@ -426,7 +426,7 @@ server_send(char *cmd)
 	  else if (errno == EINTR)
 	    continue;
 	  else
-	    die("Server write error: %m");
+	    DIE("Server write error");
 	}
       else
 	{
@@ -436,19 +436,6 @@ server_send(char *cmd)
     }
 }
 
-
-/* XXXX
-
-      get_term_size();
-
-      if (tcgetattr(0, &tty_save) != 0)
-        {
-          perror("tcgetattr error");
-          return(EXIT_FAILURE);
-        }
-    }
-
- */
 int
 main(int argc, char **argv)
 {
