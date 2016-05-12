@@ -340,7 +340,7 @@ neigh_if_link(struct iface *i)
 
 /**
  * neigh_ifa_update: notify neighbor cache about interface address add or remove event
- * @ifa: interface address in question
+ * @a: interface address in question
  *
  * Tell the neighbor cache that an address was added or removed.
  *

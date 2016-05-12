@@ -124,9 +124,10 @@ static char * number(char * str, long num, int base, int size, int precision,
  * standard IP address width which depends on whether we use IPv4 or IPv6; |%I4|
  * or |%I6| can be used for explicit ip4_addr / ip6_addr arguments, |%N| for
  * generic network addresses (net_addr *), |%R| for Router / Network ID (u32
- * value printed as IPv4 address) and |%m| resp. |%M| for error messages (uses
- * strerror() to translate @errno code to message text). On the other hand, it
- * doesn't support floating point numbers.
+ * value printed as IPv4 address), |%lR| for 64bit Router / Network ID (u64
+ * value printed as eight :-separated octets) and |%m| resp. |%M| for error
+ * messages (uses strerror() to translate @errno code to message text). On the
+ * other hand, it doesn't support floating point numbers.
  *
  * Result: number of characters of the output string or -1 if
  * the buffer space was insufficient.
@@ -137,6 +138,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 	unsigned long num;
 	int i, base;
 	u32 x;
+	u64 X;
 	char *str, *start;
 	const char *s;
 	char ipbuf[NET_MAX_TEXT_LENGTH+1];
@@ -338,8 +340,23 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 
 		/* Router/Network ID - essentially IPv4 address in u32 value */
 		case 'R':
-			x = va_arg(args, u32);
-			ip4_ntop(ip4_from_u32(x), ipbuf);
+			if (qualifier == 'l') {
+				X = va_arg(args, u64);
+				bsprintf(ipbuf, "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+					((X >> 56) & 0xff),
+					((X >> 48) & 0xff),
+					((X >> 40) & 0xff),
+					((X >> 32) & 0xff),
+					((X >> 24) & 0xff),
+					((X >> 16) & 0xff),
+					((X >> 8) & 0xff),
+					(X & 0xff));
+			}
+			else
+			{
+				x = va_arg(args, u32);
+				ip4_ntop(ip4_from_u32(x), ipbuf);
+			}
 			s = ipbuf;
 			goto str;
 

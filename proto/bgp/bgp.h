@@ -51,6 +51,7 @@ struct bgp_config {
   int add_path;				/* Use ADD-PATH extension [draft] */
   int allow_local_as;			/* Allow that number of local ASNs in incoming AS_PATHs */
   int gr_mode;				/* Graceful restart mode (BGP_GR_*) */
+  int setkey;				/* Set MD5 password to system SA/SP database */
   unsigned gr_time;			/* Graceful restart timeout */
   unsigned connect_delay_time;		/* Minimum delay between connect attempts */
   unsigned connect_retry_time;		/* Timeout for connect attempts */
