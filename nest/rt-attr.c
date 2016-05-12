@@ -948,7 +948,7 @@ rta_hash(rta *a)
 {
   mem_hash_t h;
   mem_hash_init(&h);
-#define MIX(f) mem_hash_mix(&h, &(rta->f), sizeof(rta->f));
+#define MIX(f) mem_hash_mix(&h, &(a->f), sizeof(a->f));
   MIX(src);
   MIX(hostentry);
   MIX(iface);

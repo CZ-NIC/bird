@@ -178,7 +178,7 @@
 
 #define HASH_WALK_FILTER_END } while (0)
 
-typedef mem_hash_t  u64;
+typedef u64 mem_hash_t;
 
 static inline void
 mem_hash_init(mem_hash_t *h)
@@ -199,7 +199,7 @@ mem_hash_mix(mem_hash_t *h, void *p, int s)
 static inline uint
 mem_hash_value(mem_hash_t *h)
 {
-  return ((value >> 32) ^ (value & 0xffffffff));
+  return ((*h >> 32) ^ (*h & 0xffffffff));
 }
 
 static inline uint
