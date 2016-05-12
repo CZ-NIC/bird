@@ -946,8 +946,23 @@ rta_alloc_hash(void)
 static inline uint
 rta_hash(rta *a)
 {
-  return mem_hash(((void *)a) + offsetof(rta, src), sizeof(rta) - offsetof(rta, src)) ^
-	 mpnh_hash(a->nexthops) ^ ea_hash(a->eattrs);
+  mem_hash_t h;
+  mem_hash_init(&h);
+#define MIX(f) mem_hash_mix(&h, &(rta->f), sizeof(rta->f));
+  MIX(src);
+  MIX(hostentry);
+  MIX(iface);
+  MIX(gw);
+  MIX(from);
+  MIX(igp_metric);
+  MIX(source);
+  MIX(scope);
+  MIX(cast);
+  MIX(dest);
+  MIX(flags);
+  MIX(aflags);
+
+  return mem_hash_value(&h) ^ mpnh_hash(a->nexthops) ^ ea_hash(a->eattrs);
 }
 
 static inline int
