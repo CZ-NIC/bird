@@ -60,7 +60,7 @@ cmd_build_tree(void)
 	  if (!new)
 	    {
 	      int size = sizeof(struct cmd_node) + c-d;
-	      new = xmalloc(size);
+	      new = malloc(size);
 	      bzero(new, size);
 	      *old->plastson = new;
 	      old->plastson = &new->sibling;
@@ -314,7 +314,7 @@ cmd_expand(char *cmd)
       puts("No such command. Press `?' for help.");
       return NULL;
     }
-  b = xmalloc(strlen(n->cmd->command) + strlen(args) + 1);
+  b = malloc(strlen(n->cmd->command) + strlen(args) + 1);
   sprintf(b, "%s%s", n->cmd->command, args);
   return b;
 }

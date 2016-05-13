@@ -834,16 +834,20 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
  * @net: network in question
  * @new: the new route to be announced
  * @old: the previous route for the same network
+ * @new_best: the new best route for the same network
+ * @old_best: the previous best route for the same network
+ * @before_old: The previous route before @old for the same network.
+ * 		If @before_old is NULL @old was the first.
  *
  * This function gets a routing table update and announces it
  * to all protocols that acccepts given type of route announcement
  * and are connected to the same table by their announcement hooks.
  *
- * Route announcement of type RA_OPTIMAL si generated when optimal
+ * Route announcement of type %RA_OPTIMAL si generated when optimal
  * route (in routing table @tab) changes. In that case @old stores the
  * old optimal route.
  *
- * Route announcement of type RA_ANY si generated when any route (in
+ * Route announcement of type %RA_ANY si generated when any route (in
  * routing table @tab) changes In that case @old stores the old route
  * from the same protocol.
  *

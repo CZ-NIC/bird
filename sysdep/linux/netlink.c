@@ -126,7 +126,12 @@ nl_get_reply(struct nl_sock *nl)
 	{
 	  struct iovec iov = { nl->rx_buffer, NL_RX_SIZE };
 	  struct sockaddr_nl sa;
-	  struct msghdr m = { (struct sockaddr *) &sa, sizeof(sa), &iov, 1, NULL, 0, 0 };
+	  struct msghdr m = {
+	    .msg_name = &sa,
+	    .msg_namelen = sizeof(sa),
+	    .msg_iov = &iov,
+	    .msg_iovlen = 1,
+	  };
 	  int x = recvmsg(nl->fd, &m, 0);
 	  if (x < 0)
 	    die("nl_get_reply: %m");
@@ -1343,7 +1348,12 @@ nl_async_hook(sock *sk, int size UNUSED)
 {
   struct iovec iov = { nl_async_rx_buffer, NL_RX_SIZE };
   struct sockaddr_nl sa;
-  struct msghdr m = { (struct sockaddr *) &sa, sizeof(sa), &iov, 1, NULL, 0, 0 };
+  struct msghdr m = {
+    .msg_name = &sa,
+    .msg_namelen = sizeof(sa),
+    .msg_iov = &iov,
+    .msg_iovlen = 1,
+  };
   struct nlmsghdr *h;
   int x;
   uint len;

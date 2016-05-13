@@ -207,7 +207,7 @@ drop:
 /**
  * ospf_rx_hook
  * @sk: socket we received the packet.
- * @size: size of the packet
+ * @len: length of the packet
  *
  * This is the entry point for messages from neighbors. Many checks (like
  * authentication, checksums, size) are done before the packet is passed to

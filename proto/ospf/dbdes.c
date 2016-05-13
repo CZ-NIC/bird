@@ -192,6 +192,7 @@ ospf_do_send_dbdes(struct ospf_proto *p, struct ospf_neighbor *n)
 
 /**
  * ospf_send_dbdes - transmit database description packet
+ * @p: OSPF protocol instance
  * @n: neighbor
  *
  * Sending of a database description packet is described in 10.8 of RFC 2328.

@@ -563,6 +563,7 @@ cf_lex_init_kh(void)
 /**
  * cf_lex_init - initialize the lexer
  * @is_cli: true if we're going to parse CLI command, false for configuration
+ * @c: configuration structure
  *
  * cf_lex_init() initializes the lexical analyzer and prepares it for
  * parsing of a new input.

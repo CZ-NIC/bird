@@ -448,6 +448,7 @@ tm_format_reltime(char *x, struct tm *tm, bird_clock_t delta)
 /**
  * tm_format_datetime - convert date and time to textual representation
  * @x: destination buffer of size %TM_DATETIME_BUFFER_SIZE
+ * @fmt_spec: specification of resulting textual representation of the time
  * @t: time
  *
  * This function formats the given relative time value @t to a textual
@@ -952,23 +953,32 @@ sk_set_min_ttl(sock *s, int ttl)
 /**
  * sk_set_md5_auth - add / remove MD5 security association for given socket
  * @s: socket
- * @a: IP address of the other side
+ * @local: IP address of local side
+ * @remote: IP address of remote side
  * @ifa: Interface for link-local IP address
- * @passwd: password used for MD5 authentication
+ * @passwd: Password used for MD5 authentication
+ * @setkey: Update also system SA/SP database
  *
- * In TCP MD5 handling code in kernel, there is a set of pairs (address,
- * password) used to choose password according to address of the other side.
- * This function is useful for listening socket, for active sockets it is enough
- * to set s->password field.
+ * In TCP MD5 handling code in kernel, there is a set of security associations
+ * used for choosing password and other authentication parameters according to
+ * the local and remote address. This function is useful for listening socket,
+ * for active sockets it may be enough to set s->password field.
  *
  * When called with passwd != NULL, the new pair is added,
  * When called with passwd == NULL, the existing pair is removed.
+ *
+ * Note that while in Linux, the MD5 SAs are specific to socket, in BSD they are
+ * stored in global SA/SP database (but the behavior also must be enabled on
+ * per-socket basis). In case of multiple sockets to the same neighbor, the
+ * socket-specific state must be configured for each socket while global state
+ * just once per src-dst pair. The @setkey argument controls whether the global
+ * state (SA/SP database) is also updated.
  *
  * Result: 0 for success, -1 for an error.
  */
 
 int
-sk_set_md5_auth(sock *s, ip_addr a, struct iface *ifa, char *passwd)
+sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, struct iface *ifa, char *passwd, int setkey)
 { DUMMY; }
 #endif
 
@@ -1436,7 +1446,7 @@ sk_open(sock *s)
   }
 
   if (s->password)
-    if (sk_set_md5_auth(s, s->daddr, s->iface, s->password) < 0)
+    if (sk_set_md5_auth(s, s->saddr, s->daddr, s->iface, s->password, 0) < 0)
       goto err;
 
   switch (s->type)
