@@ -946,9 +946,9 @@ rta_alloc_hash(void)
 static inline uint
 rta_hash(rta *a)
 {
-  mem_hash_t h;
+  u64 h;
   mem_hash_init(&h);
-#define MIX(f) mem_hash_mix(&h, &(rta->f), sizeof(rta->f));
+#define MIX(f) mem_hash_mix(&h, &(a->f), sizeof(a->f));
   MIX(src);
   MIX(hostentry);
   MIX(iface);
@@ -961,6 +961,7 @@ rta_hash(rta *a)
   MIX(dest);
   MIX(flags);
   MIX(aflags);
+#undef MIX
 
   return mem_hash_value(&h) ^ mpnh_hash(a->nexthops) ^ ea_hash(a->eattrs);
 }
