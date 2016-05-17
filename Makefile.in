@@ -41,8 +41,10 @@ ifeq ($(objdir),.)
 endif
 
 ifeq ($(VERBOSE),)
+  E:=@
   Q:=@
 else
+  E:=@\#
   Q:=
 endif
 
@@ -85,20 +87,20 @@ include $(addsuffix /Makefile,$(addprefix $(srcdir)/,$(dirs)))
 # Generic rules
 
 $(objdir)/%.o: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
-	$(Q)echo CC -o $@ -c $<
+	$(E)echo CC -o $@ -c $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -c $<
 
 $(objdir)/%.o: $(objdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
-	$(Q)echo CC -o $@ -c $<
+	$(E)echo CC -o $@ -c $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -c $<
 
 $(objdir)/.dir-stamp:
-	$(Q)echo MKDIR -p $(addprefix $(objdir)/,$(dirs) doc)
+	$(E)echo MKDIR -p $(addprefix $(objdir)/,$(dirs) doc)
 	$(Q)mkdir -p $(addprefix $(objdir)/,$(dirs) doc)
 	$(Q)touch $@
 
 $(client) $(daemon):
-	$(Q)echo LD $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(E)echo LD $(LDFLAGS) -o $@ $^ $(LIBS)
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 $(objdir)/sysdep/paths.h: Makefile
