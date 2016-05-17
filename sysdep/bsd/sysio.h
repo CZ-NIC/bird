@@ -196,7 +196,7 @@ sk_prepare_ip_header(sock *s, void *hdr, int dlen)
 
 #if defined(__FreeBSD__)
 #define USE_MD5SIG_SETKEY
-#include "lib/setkey.h"
+#include "sysdep/bsd/setkey.h"
 #endif
 
 int

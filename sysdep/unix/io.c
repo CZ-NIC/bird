@@ -1253,8 +1253,9 @@ sk_setup(sock *s)
 
   if (sk_is_ipv6(s))
   {
-    if (setsockopt(fd, SOL_IPV6, IPV6_V6ONLY, &y, sizeof(y)) < 0)
-      ERR("IPV6_V6ONLY");
+    if (s->type != SK_IP)
+      if (setsockopt(fd, SOL_IPV6, IPV6_V6ONLY, &y, sizeof(y)) < 0)
+	ERR("IPV6_V6ONLY");
 
     if (s->flags & SKF_LADDR_RX)
       if (sk_request_cmsg6_pktinfo(s) < 0)
