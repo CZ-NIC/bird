@@ -981,10 +981,10 @@ bfd_start(struct proto *P)
   add_tail(&bfd_proto_list, &p->bfd_node);
 
   birdloop_enter(p->loop);
-  p->rx4_1 = bfd_open_rx_sk(p, 0, 4);
-  p->rx4_m = bfd_open_rx_sk(p, 1, 4);
-  p->rx6_1 = bfd_open_rx_sk(p, 0, 6);
-  p->rx6_m = bfd_open_rx_sk(p, 1, 6);
+  p->rx4_1 = bfd_open_rx_sk(p, 0, SK_IPV4);
+  p->rx4_m = bfd_open_rx_sk(p, 1, SK_IPV4);
+  p->rx6_1 = bfd_open_rx_sk(p, 0, SK_IPV6);
+  p->rx6_m = bfd_open_rx_sk(p, 1, SK_IPV6);
   birdloop_leave(p->loop);
 
   bfd_take_requests(p);

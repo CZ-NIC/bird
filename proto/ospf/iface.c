@@ -108,10 +108,10 @@ ospf_sk_open(struct ospf_iface *ifa)
 
   sock *sk = sk_new(ifa->pool);
   sk->type = SK_IP;
+  sk->subtype = ospf_is_v2(p) ? SK_IPV4 : SK_IPV6;
   sk->dport = OSPF_PROTO;
   sk->saddr = ifa->addr->ip;
   sk->iface = ifa->iface;
-  sk->fam = ospf_is_v2(p) ? SK_FAM_IPV4 : SK_FAM_IPV6;
 
   sk->tos = ifa->cf->tx_tos;
   sk->priority = ifa->cf->tx_priority;
@@ -193,8 +193,8 @@ ospf_open_vlink_sk(struct ospf_proto *p)
 {
   sock *sk = sk_new(p->p.pool);
   sk->type = SK_IP;
+  sk->subtype = ospf_is_v2(p) ? SK_IPV4 : SK_IPV6;
   sk->dport = OSPF_PROTO;
-  sk->fam = ospf_is_v2(p) ? SK_FAM_IPV4 : SK_FAM_IPV6;
 
   /* FIXME: configurable tos/priority ? */
   sk->tos = IP_PREC_INTERNET_CONTROL;

@@ -123,7 +123,7 @@ rip_iface_item:
  | MODE MULTICAST	{ RIP_IFACE->mode = RIP_IM_MULTICAST; }
  | MODE BROADCAST	{ RIP_IFACE->mode = RIP_IM_BROADCAST; if (rip_cfg_is_ng()) cf_error("Broadcast not supported in RIPng"); }
  | PASSIVE bool		{ RIP_IFACE->passive = $2; }
- | ADDRESS ipa		{ RIP_IFACE->address = $2; }
+ | ADDRESS ipa		{ RIP_IFACE->address = $2; if (ipa_is_ip4($2) != rip_cfg_is_v2()) cf_error("IP address version mismatch"); }
  | PORT expr		{ RIP_IFACE->port = $2; if (($2<1) || ($2>65535)) cf_error("Invalid port number"); }
  | VERSION expr		{ RIP_IFACE->version = $2;
 			  if (rip_cfg_is_ng()) cf_error("Version not supported in RIPng");

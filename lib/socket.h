@@ -17,6 +17,7 @@ typedef struct birdsock {
   resource r;
   pool *pool;				/* Pool where incoming connections should be allocated (for SK_xxx_PASSIVE) */
   int type;				/* Socket type */
+  int subtype;				/* Socket subtype */
   void *data;				/* User data */
   ip_addr saddr, daddr;			/* IPA_NONE = unspecified */
   uint sport, dport;			/* 0 = unspecified (for IP: protocol type) */
@@ -44,7 +45,7 @@ typedef struct birdsock {
   uint lifindex;			/* local interface that received the datagram */
   /* laddr and lifindex are valid only if SKF_LADDR_RX flag is set to request it */
 
-  int fam;				/* Address family (SK_FAM_* or 0 for non-IP) of fd */
+  int af;				/* System-dependend adress family (e.g. AF_INET) */
   int fd;				/* System-dependent data */
   int index;				/* Index in poll buffer */
   int rcv_ttl;				/* TTL of last received datagram */
@@ -91,7 +92,6 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
 
 /* Socket flags */
 
-#define SKF_V4ONLY	0x01	/* Use IPv4 for IP sockets */
 #define SKF_V6ONLY	0x02	/* Use IPV6_V6ONLY socket option */
 #define SKF_LADDR_RX	0x04	/* Report local address for RX packets */
 #define SKF_TTL_RX	0x08	/* Report TTL / Hop Limit for RX packets */
@@ -116,31 +116,35 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
 #define SK_UNIX_PASSIVE	8
 #define SK_UNIX		9
 
-/* Socket families */
+/*
+ *	Socket subtypes
+ */
 
-#define SK_FAM_NONE	0
-#define SK_FAM_IPV4	4
-#define SK_FAM_IPV6	6
+#define SK_IPV4		1
+#define SK_IPV6		2
 
 /*
- *  For SK_UDP or SK_IP sockets setting DA/DP allows to use sk_send(),
- *  otherwise sk_send_to() must be used.
+ * For TCP/IP sockets, Address family (IPv4 or IPv6) can be specified either
+ * explicitly (SK_IPV4 or SK_IPV6) or implicitly (based on saddr, daddr). But
+ * these specifications must be consistent.
  *
- *  For SK_IP sockets setting DP specifies protocol number, which is used
- *  for both receiving and sending.
+ * For SK_UDP or SK_IP sockets setting DA/DP allows to use sk_send(), otherwise
+ * sk_send_to() must be used.
  *
- *  For multicast on SK_UDP or SK_IP sockets set IF and TTL,
- *  call sk_setup_multicast() to enable multicast on that socket,
- *  and then use sk_join_group() and sk_leave_group() to manage
- *  a set of received multicast groups.
+ * For SK_IP sockets setting DP specifies protocol number, which is used for
+ * both receiving and sending.
  *
- *  For datagram (SK_UDP, SK_IP) sockets, there are two ways to handle
- *  source address. The socket could be bound to it using bind()
- *  syscall, but that also forbids the reception of multicast packets,
- *  or the address could be set on per-packet basis using platform
- *  dependent options (but these are not available in some corner
- *  cases). The first way is used when SKF_BIND is specified, the
- *  second way is used otherwise.
+ * For multicast on SK_UDP or SK_IP sockets set IF and TTL, call
+ * sk_setup_multicast() to enable multicast on that socket, and then use
+ * sk_join_group() and sk_leave_group() to manage a set of received multicast
+ * groups.
+ *
+ * For datagram (SK_UDP, SK_IP) sockets, there are two ways to handle source
+ * address. The socket could be bound to it using bind() syscall, but that also
+ * forbids the reception of multicast packets, or the address could be set on
+ * per-packet basis using platform dependent options (but these are not
+ * available in some corner cases). The first way is used when SKF_BIND is
+ * specified, the second way is used otherwise.
  */
 
 #endif

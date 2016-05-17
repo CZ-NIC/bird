@@ -186,10 +186,11 @@ bfd_err_hook(sock *sk, int err)
 }
 
 sock *
-bfd_open_rx_sk(struct bfd_proto *p, int multihop, int inet_version)
+bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
 {
   sock *sk = sk_new(p->tpool);
   sk->type = SK_UDP;
+  sk->subtype = af;
   sk->sport = !multihop ? BFD_CONTROL_PORT : BFD_MULTI_CTL_PORT;
   sk->data = p;
 
@@ -201,19 +202,6 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop, int inet_version)
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->priority = sk_priority_control;
   sk->flags = SKF_THREAD | SKF_LADDR_RX | (!multihop ? SKF_TTL_RX : 0);
-
-  switch (inet_version) {
-    case 4:
-      sk->fam = SK_FAM_IPV4;
-      sk->flags |= SKF_V4ONLY;
-      break;
-    case 6:
-      sk->fam = SK_FAM_IPV6;
-      sk->flags |= SKF_V6ONLY;
-      break;
-    default:
-      ASSERT(0);
-  }
 
   if (sk_open(sk) < 0)
     goto err;
@@ -245,14 +233,6 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   sk->priority = sk_priority_control;
   sk->ttl = ifa ? 255 : -1;
   sk->flags = SKF_THREAD | SKF_BIND | SKF_HIGH_PORT;
-
-  if (ipa_is_ip4(local)) {
-    sk->fam = SK_FAM_IPV4;
-    sk->flags |= SKF_V4ONLY;
-  } else {
-    sk->fam = SK_FAM_IPV6;
-    sk->flags |= SKF_V6ONLY;
-  }
 
   if (sk_open(sk) < 0)
     goto err;

@@ -184,7 +184,7 @@ sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote, struct iface *ifa
   struct tcp_md5sig md5;
 
   memset(&md5, 0, sizeof(md5));
-  sockaddr_fill((sockaddr *) &md5.tcpm_addr, fam_to_af[s->fam], remote, ifa, 0);
+  sockaddr_fill((sockaddr *) &md5.tcpm_addr, s->af, remote, ifa, 0);
 
   if (passwd)
   {

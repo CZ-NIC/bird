@@ -102,8 +102,6 @@ int sk_open_unix(struct birdsock *s, char *name);
 void *tracked_fopen(struct pool *, char *name, char *mode);
 void test_old_bird(char *path);
 
-extern const int fam_to_af[];
-
 /* krt.c bits */
 
 void krt_io_init(void);

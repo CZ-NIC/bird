@@ -410,9 +410,9 @@ radv_sk_open(struct radv_iface *ifa)
 {
   sock *sk = sk_new(ifa->ra->p.pool);
   sk->type = SK_IP;
+  sk->subtype = SK_IPV6;
   sk->dport = ICMPV6_PROTO;
   sk->saddr = ifa->addr->ip;
-  sk->fam = SK_FAM_IPV6;
 
   sk->ttl = 255; /* Mandatory for Neighbor Discovery packets */
   sk->rx_hook = radv_rx_hook;
