@@ -4,6 +4,14 @@
  *	(c) 2000 Martin Mares <mj@ucw.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
+ *
+ *
+ *      Code added from Parsons, Inc. (BGPSEC additions)
+ *      (c) 2013-2013
+ *
+ *	Can be used under either license:
+ *      - Freely distributed and used under the terms of the GNU GPLv2.
+ *      - Freely distributed and used under a BSD license, See README.bgpsec.
  */
 
 CF_HDR
@@ -27,7 +35,10 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY,
 	INTERPRET, COMMUNITIES, BGP_ORIGINATOR_ID, BGP_CLUSTER_LIST, IGP,
 	TABLE, GATEWAY, DIRECT, RECURSIVE, MED, TTL, SECURITY, DETERMINISTIC,
 	SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX, GRACEFUL, RESTART, AWARE,
-	CHECK, LINK, PORT)
+	CHECK, LINK, PORT,
+        BGPSEC, BGPSEC_SKI, BGPSEC_KEY_REPO_PATH, BGPSEC_PRIV_KEY_PATH,
+	BGPSEC_SAVE_BINARY_KEYS, BGPSEC_PREFER, BGPSEC_NO_PCOUNT0,
+        BGPSEC_REQUIRE, BGPSEC_NO_INVALID_ROUTES)
 
 CF_GRAMMAR
 
@@ -48,6 +59,15 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->error_delay_time_max = 300;
      BGP_CFG->enable_refresh = 1;
      BGP_CFG->enable_as4 = 1;
+     BGP_CFG->enable_bgpsec = 1;
+     BGP_CFG->bgpsec_ski = 0;
+     BGP_CFG->bgpsec_priv_key_path = 0;
+     BGP_CFG->bgpsec_key_repo_path = 0;
+     BGP_CFG->bgpsec_prefer = 1;
+     BGP_CFG->bgpsec_no_pcount0 = 1;
+     BGP_CFG->bgpsec_no_invalid_routes = 0;
+     BGP_CFG->bgpsec_require = 0;
+     BGP_CFG->bgpsec_save_binary_keys = 0;
      BGP_CFG->capabilities = 2;
      BGP_CFG->advertise_ipv4 = 1;
      BGP_CFG->interpret_communities = 1;
@@ -130,6 +150,14 @@ bgp_proto:
  | bgp_proto GRACEFUL RESTART TIME expr ';' { BGP_CFG->gr_time = $5; }
  | bgp_proto IGP TABLE rtable ';' { BGP_CFG->igp_table = $4; }
  | bgp_proto TTL SECURITY bool ';' { BGP_CFG->ttl_security = $4; }
+ | bgp_proto BGPSEC bool ';' { BGP_CFG->enable_bgpsec = $3; }
+ | bgp_proto BGPSEC_PREFER bool ';' { BGP_CFG->bgpsec_prefer = $3; }
+ | bgp_proto BGPSEC_NO_INVALID_ROUTES bool ';' { BGP_CFG->bgpsec_no_invalid_routes = $3; }
+ | bgp_proto BGPSEC_SKI text ';' { BGP_CFG->bgpsec_ski = $3; }
+ | bgp_proto BGPSEC_KEY_REPO_PATH text ';' { BGP_CFG->bgpsec_key_repo_path = $3; }
+ | bgp_proto BGPSEC_PRIV_KEY_PATH text ';' { BGP_CFG->bgpsec_priv_key_path = $3; }
+ | bgp_proto BGPSEC_SAVE_BINARY_KEYS bool ';' { BGP_CFG->bgpsec_save_binary_keys = $3; }
+ | bgp_proto BGPSEC_NO_PCOUNT0 bool ';' { BGP_CFG->bgpsec_no_pcount0 = $3; }
  | bgp_proto CHECK LINK bool ';' { BGP_CFG->check_link = $4; }
  | bgp_proto BFD bool ';' { BGP_CFG->bfd = $3; cf_check_bfd($3); }
  ;

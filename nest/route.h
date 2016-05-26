@@ -407,7 +407,8 @@ typedef struct eattr {
 #define EAP_RIP 2			/* RIP */
 #define EAP_OSPF 3			/* OSPF */
 #define EAP_KRT 4			/* Kernel route attributes */
-#define EAP_MAX 5
+#define EAP_BGPSEC 5			/* BGPSEC attributes */
+#define EAP_MAX 6
 
 #define EA_CODE(proto,id) (((proto) << 8) | (id))
 #define EA_PROTO(ea) ((ea) >> 8)

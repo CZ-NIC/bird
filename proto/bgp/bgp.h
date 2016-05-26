@@ -4,6 +4,14 @@
  *	(c) 2000 Martin Mares <mj@ucw.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
+ *
+ *
+ *      Code added from Parsons, Inc. (BGPSEC additions)
+ *      (c) 2013-2013
+ *
+ *	Can be used under either license:
+ *      - Freely distributed and used under the terms of the GNU GPLv2.
+ *      - Freely distributed and used under a BSD license, See README.bgpsec.
  */
 
 #ifndef _BIRD_BGP_H_
@@ -16,6 +24,24 @@
 
 struct linpool;
 struct eattr;
+
+#ifdef CONFIG_BGPSEC
+/* BGPSec constants */
+#define BGPSEC_VERSION	            0
+/* currently capability is arbitrary number from private use */
+#define BGPSEC_CAPABILITY           212
+#define BGPSEC_SKI_LENGTH           20
+#define BGPSEC_ALGO_ID              1   /* XXX this needs to be changed */
+#define BGPSEC_MAX_SIG_LENGTH       80
+ /* sig hash length is somewhat arbitrary,
+    = 20 + MaxASPathLength*(28 + max_sig_length).
+    As of 2016, max unique AS Path length found is 14.
+    This value will allowy for for a hash buffer that can handle an AS
+    path length ~47 long
+ */
+#define BGPSEC_SIG_HASH_LENGTH      5120
+#define BGPSEC_MAX_INFO_ATTR_LENGTH 0   /* XXX this needs to be checked */
+#endif
 
 struct bgp_config {
   struct proto_config c;
@@ -40,6 +66,20 @@ struct bgp_config {
   int capabilities;			/* Enable capability handshake [RFC3392] */
   int enable_refresh;			/* Enable local support for route refresh [RFC2918] */
   int enable_as4;			/* Enable local support for 4B AS numbers [RFC4893] */
+
+  /* BGPSec */
+  /* cannot be ifdef'd out due to config.Y compatibility */
+  int   enable_bgpsec;                  /* Whether neighbor should be a BGPSec peer */
+  int   bgpsec_prefer;                  /* Whether validly signed BGPsec routes are prefered during route selection */
+  int   bgpsec_require;                 /* Whether neighbor should be a BGPSec peer */
+  char *bgpsec_ski;                     /* local subject key id */
+  u8    bgpsec_bski[BGPSEC_SKI_LENGTH]; /* binary local SKI */
+  char *bgpsec_key_repo_path;           /* Path to the public key repository */
+  char *bgpsec_priv_key_path;           /* Path to the private key location */
+  int   bgpsec_save_binary_keys;        /* Save a copy of the binary key */
+  int   bgpsec_no_pcount0;              /* allow peer to have pcount 0, xxx current default allows */
+  int   bgpsec_no_invalid_routes;       /* should invalid routes be dropped */
+
   u32 rr_cluster_id;			/* Route reflector cluster ID, if different from local ID */
   int rr_client;			/* Whether neighbor is RR client of me */
   int rs_client;			/* Whether neighbor is RS client of me */
@@ -100,6 +140,12 @@ struct bgp_conn {
   byte *notify_data;
   u32 advertised_as;			/* Temporary value for AS number received */
   int start_state;			/* protocol start_state snapshot when connection established */
+
+#ifdef CONFIG_BGPSEC
+  /* BGPsec */
+  u8 peer_bgpsec_support;               /* Peer supports BGPSec */
+#endif
+
   u8 peer_refresh_support;		/* Peer supports route refresh [RFC2918] */
   u8 peer_as4_support;			/* Peer supports 4B AS numbers [RFC4893] */
   u8 peer_add_path;			/* Peer supports ADD-PATH [draft] */
@@ -117,6 +163,15 @@ struct bgp_proto {
   struct bgp_config *cf;		/* Shortcut to BGP configuration */
   u32 local_as, remote_as;
   int start_state;			/* Substates that partitions BS_START */
+
+#ifdef CONFIG_BGPSEC
+  /* BGPsec */
+  u8 bgpsec_send;                       /* Sender can send BGPSec messages */
+  u8 bgpsec_receive;                    /* Sender can receive BGPSec messages */
+  u8 bgpsec_ipv4;                       /* Sender uses BGPSec over iPv4 */
+  u8 bgpsec_ipv6;                       /* Sender uses BGPSec over iPv6 */
+#endif
+
   u8 is_internal;			/* Internal BGP connection (local_as == remote_as) */
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
   u8 add_path_rx;			/* Session expects receive of ADD-PATH extended NLRI */
@@ -152,7 +207,7 @@ struct bgp_proto {
   u8 last_error_class; 			/* Error class of last error */
   u32 last_error_code;			/* Error code of last error. BGP protocol errors
 					   are encoded as (bgp_err_code << 16 | bgp_err_subcode) */
-#ifdef IPV6
+#if defined(IPV6) || defined CONFIG_BGPSEC
   byte *mp_reach_start, *mp_unreach_start; /* Multiprotocol BGP attribute notes */
   unsigned mp_reach_len, mp_unreach_len;
   ip_addr local_link;			/* Link-level version of source_addr */
@@ -235,7 +290,7 @@ static inline void set_next_hop(byte *b, ip_addr addr) { ((ip_addr *) b)[0] = ad
 
 void bgp_attach_attr(struct ea_list **to, struct linpool *pool, unsigned attr, uintptr_t val);
 byte *bgp_attach_attr_wa(struct ea_list **to, struct linpool *pool, unsigned attr, unsigned len);
-struct rta *bgp_decode_attrs(struct bgp_conn *conn, byte *a, unsigned int len, struct linpool *pool, int mandatory);
+struct rta *bgp_decode_attrs(struct bgp_conn *conn, byte *attr, unsigned int len, struct linpool *pool, byte * nlri, int nlri_len);
 int bgp_get_attr(struct eattr *e, byte *buf, int buflen);
 int bgp_rte_better(struct rte *, struct rte *);
 int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
@@ -278,6 +333,8 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 #define BAF_PARTIAL		0x20
 #define BAF_EXT_LEN		0x10
 
+/* Note: these must match location in the bgp_attr_table */
+
 #define BA_ORIGIN		0x01	/* [RFC1771] */		/* WM */
 #define BA_AS_PATH		0x02				/* WM */
 #define BA_NEXT_HOP		0x03				/* WM */
@@ -287,16 +344,34 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 #define BA_AGGREGATOR		0x07				/* OT */
 #define BA_COMMUNITY		0x08	/* [RFC1997] */		/* OT */
 #define BA_ORIGINATOR_ID	0x09	/* [RFC1966] */		/* ON */
-#define BA_CLUSTER_LIST		0x0a				/* ON */
+#define BA_CLUSTER_LIST		0x0a	/* [RFC4456] */
 /* We don't support these: */
-#define BA_DPA			0x0b	/* ??? */
-#define BA_ADVERTISER		0x0c	/* [RFC1863] */
-#define BA_RCID_PATH		0x0d
-#define BA_MP_REACH_NLRI	0x0e	/* [RFC2283] */
-#define BA_MP_UNREACH_NLRI	0x0f
-#define BA_EXT_COMMUNITY	0x10	/* [RFC4360] */
-#define BA_AS4_PATH             0x11    /* [RFC4893] */
-#define BA_AS4_AGGREGATOR       0x12
+#define BA_DPA   		0x0b	/* DPA deprecated */
+#define BA_ADVERTISER		0x0c    /* [RFC1863] */
+#define BA_RCID_PATH		0x0d    /* [RFC1863] */
+/* supported? */
+#define BA_MP_REACH_NLRI	0x0e    /* [RFC4760] */
+#define BA_MP_UNREACH_NLRI      0x0f    /* [RFC4760] */
+#define BA_EXT_COMMUNITY        0x10    /* [RFC4360] */
+#define BA_AS4_PATH             0x11    /* [RFC6793] */
+#define BA_AS4_AGGREGATOR       0x12    /* [RFC6793] */
+/* not supported */
+#define BA_SSA                  0x13    /* SAFI Specific Attribute (SSA) (deprecated) */
+#define BA_CONNECTOR_ATTR       0x14   /* (deprecated) [RFC6037] */
+#define BA_AS_PATHLIMIT         0x15   /* (deprecated) 	[draft-ietf-idr-as-pathlimit] */
+#define BA_PMSI_TUNNEL          0x16   /* [RFC6514] */
+#define BA_TUNNEL_ENCAP         0x17   /* Tunnel Encapsulation [RFC5512] */
+#define BA_TUNNEL_ENGINEERING   0x18   /* Traffic Engineering [RFC5543] */
+#define BA_IPV6_EXT_COMMUNITY   0x19   /* IPv6 Address Specific Extended Community [RFC5701] */
+#define BA_AIGP                 0x1a   /* AIGP (TEMPORARY, expired 2013-04-25) 	[draft-ietf-idr-aigp][Rex_Fernando][Pradosh_Mohapatra][Eric_Rosen][James_Uttaro] */
+#define BA_PE_DIST_LABELS       0x1b   /* PE Distinguisher Labels [RFC6514] */
+#define BA_ENTROPY_LABELS       0x1c   /* BGP Entropy Label Capability Attribute [RFC6790] */
+#define BA_LS_ATTRIBUTE         0x1d   /* BGP-LS Attribute (TEMPORARY, expired 2014-03-11) [draft-ietf-idr-ls-distribution] */
+
+/* Supported */
+#define BA_BGPSEC_SIGNATURE     0x1E   /* XXX 30 is best guess, draft-ietf-sidr-bgpsec-protocol */
+/* internal use only */
+#define BA_INTERNAL_BGPSEC_VALID  0xdd
 
 /* BGP connection states */
 
@@ -376,6 +451,18 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 
 #define BEA_ROUTE_LIMIT_EXCEEDED 1
 
+/* BGP Update Error codes */
+#define BGP_UPD_ERROR_MALFORMED_ATTR   1
+#define BGP_UPD_ERROR_UNRCGNZD_WK_ATTR 2
+#define BGP_UPD_ERROR_MISSING_WK_ATTR  3
+#define BGP_UPD_ERROR_ATTR_FLAG        4
+#define BGP_UPD_ERROR_ATTR_LENGTH      5
+#define BGP_UPD_ERROR_INVALID_ORGIN    6
+#define BGP_UPD_ERROR_INVALID_HOP      8
+#define BGP_UPD_ERROR_OPT_ATTR         9
+#define BGP_UPD_ERROR_INVALID_NETWORK  10
+#define BGP_UPD_ERROR_MALFORMED_ASPATH 11
+
 /* Well-known communities */
 
 #define BGP_COMM_NO_EXPORT		0xffffff01	/* Don't export outside local AS / confed. */
@@ -398,5 +485,44 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 #else
 #define BGP_AF BGP_AF_IPV4
 #endif
+
+#define DO_NLRI(name)					\
+  start = x = p->name##_start;				\
+  len = len0 = p->name##_len;				\
+  if (len)						\
+    {							\
+      if (len < 3) { err=9; goto done; }		\
+      af = get_u16(x);					\
+      sub = x[2];					\
+      x += 3;						\
+      len -= 3;						\
+      DBG("\tNLRI AF=%d sub=%d len=%d\n", af, sub, len);\
+    }							\
+  else							\
+    af = 0;						\
+if ((af == BGP_AF_IPV6) || (af == BGP_AF_IPV4))
+
+
+#define DECODE_PREFIX(pp, ll) do {              \
+  if (p->add_path_rx)				\
+  {						\
+    if (ll < 5) { err=1; goto done; }		\
+    path_id = get_u32(pp);			\
+    pp += 4;					\
+    ll -= 4;					\
+  }						\
+  int b = *pp++;				\
+  int q;					\
+  ll--;						\
+  if (b > BITS_PER_IP_ADDRESS) { err=10; goto done; } \
+  q = (b+7) / 8;				\
+  if (ll < q) { err=1; goto done; }		\
+  memcpy(&prefix, pp, q);			\
+  pp += q;					\
+  ll -= q;					\
+  ipa_ntoh(prefix);				\
+  prefix = ipa_and(prefix, ipa_mkmask(b));	\
+  pxlen = b;					\
+} while (0)
 
 #endif
