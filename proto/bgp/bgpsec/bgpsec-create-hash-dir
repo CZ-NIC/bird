@@ -1,0 +1,190 @@
+#!/usr/bin/perl
+
+use File::Find;
+use strict;
+my %opts =
+    (
+     'openssl' => "/usr/local/openssl-ecdsa/bin",
+     'f'       => "\.cer\$",
+     'i'       => "DER",
+    );
+
+LocalGetOptions(\%opts,
+		['GUI:otherargs', '[input-directory] [output-directory]'],
+		["GUI:separator",   "Processing Configuration"],
+		["f|file-regexp=s", "Regexp of filenames to select from"],
+		["s|suffix=s",      "Use STRING as the new extension suffix"],
+		["i|input-format=s", "Input format type of files found"],
+
+		["GUI:separator",   "Basic Configuration"],
+		["openssl|openssl-path=s", "Path to OpenSSL install directory with EC support"],
+
+		["GUI:separator",   "Output Options"],
+		["v|verbose",       "Be verbose about what is being done"],
+    );
+
+my $inputDirectory = $ARGV[0];
+my $outputDirectory = $ARGV[1];
+
+my $opensslPath      	 = $opts{'openssl'};
+my $fileRegexp           = $opts{'f'};
+my $inform               = $opts{'i'};
+
+# ensure we have input and output
+if (!defined($inputDirectory) || !defined($outputDirectory)) {
+    print STDERR "Both an input and output directory are required\n";
+    exit 1;
+}
+
+# add in a separate openssl path
+if ($opensslPath) {
+    $ENV{'PATH'} = $opensslPath . ":" . $ENV{'PATH'};
+}
+
+if (! -d $outputDirectory) {
+    Verbose("creating $outputDirectory\n");
+    mkdir($outputDirectory);
+}
+
+# find and process every file of certain types
+Verbose("Searching directory $inputDirectory\n");
+find({no_chdir => 1, wanted => \&convert_file}, $inputDirectory);
+
+sub convert_file {
+    if ($File::Find::name =~ /$fileRegexp/io) {
+	my $ski;
+	# process it...
+	Verbose("Found $File::Find::name\n");
+	open(SKI, "openssl x509 -inform $inform -in $File::Find::name -text|");
+	while(<SKI>) {
+	    if (/X509v3 Subject Key Identifier/) {
+		$ski = <SKI>;
+		$ski =~ s/\s//g;
+		$ski =~s/://g;
+		last;
+	    }
+	}
+	close(SKI);
+
+	if (defined($ski)) {
+	    my $suffix;
+	    if ($opts{'s'}) {
+		$suffix = $opts{'s'};
+	    } else {
+		$suffix = $File::Find::name;
+		$suffix =~ s/.*\.//;
+	    }
+
+	    Verbose("   linking to $ski.$suffix\n");
+	    symlink($File::Find::name, "$outputDirectory/$ski.$suffix");
+	}
+    }
+}
+
+######################################################################
+# support functions
+#
+
+sub Verbose {
+    print STDERR @_ if ($opts{'v'});
+}
+
+######################################################################
+# Getopt bootstrapping
+#
+sub LocalGetOptions {
+    if (eval {require Getopt::GUI::Long;}) {
+	import Getopt::GUI::Long;
+	# optional configure call
+	Getopt::GUI::Long::Configure(qw(display_help no_gui no_ignore_case allow_zero));
+	return GetOptions(@_);
+    }
+    require Getopt::Long;
+    import Getopt::Long;
+    # optional configure call
+    Getopt::Long::Configure(qw(auto_help no_ignore_case));
+    GetOptions(LocalOptionsMap(@_));
+}
+
+sub LocalOptionsMap {
+    my ($st, $cb, @opts) = ((ref($_[0]) eq 'HASH')
+			    ? (1, 1, $_[0]) : (0, 2));
+    for (my $i = $st; $i <= $#_; $i += $cb) {
+	if ($_[$i]) {
+	    next if (ref($_[$i]) eq 'ARRAY' && $_[$i][0] =~ /^GUI:/);
+	    push @opts, ((ref($_[$i]) eq 'ARRAY') ? $_[$i][0] : $_[$i]);
+	    push @opts, $_[$i+1] if ($cb == 2);
+	}
+    }
+    return @opts;
+}
+
+1;
+
+=pod
+
+=head1 NAME
+
+bgpsec-create-hash-dir - creates a SKI-based hash directory
+
+=head1 SYNOPSIS
+
+bgpsec-create-hash-dir /path/to/rpki-authenticated-dir /path/to/hash-dir
+
+=head1 OPTIONS
+
+=head2 Processing Configuration
+
+=over 4
+
+=item  -f STRING
+
+
+
+=item  --file-regexp=STRING
+
+Regexp of filenames to select from
+
+=item  -s STRING
+
+
+
+=item  --suffix=STRING
+
+Use STRING as the new extension suffix
+
+=item  -i STRING
+
+=item --input-format=STRING
+
+Input format of files found.  Defaults to DER.
+
+=back
+
+=head2 Basic Configuration
+
+=over 4
+
+=item  --openssl=STRING
+
+
+
+=item  --openssl-path=STRING
+
+Path to OpenSSL install directory with EC support
+
+=back
+
+=head2 Output Options
+
+=over 4
+
+=item  -v
+
+
+
+=item  --verbose
+
+Be verbose about what is being done
+
+=back

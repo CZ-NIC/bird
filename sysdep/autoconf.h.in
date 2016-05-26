@@ -44,6 +44,7 @@
 #undef CONFIG_OSPF
 #undef CONFIG_PIPE
 #undef CONFIG_RPKI
+#undef CONFIG_BGPSEC
 
 /* We use multithreading */
 #undef USE_PTHREADS
