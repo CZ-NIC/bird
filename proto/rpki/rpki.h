@@ -32,6 +32,10 @@
 #define RPKI_MIN_VERSION 		0
 #define RPKI_MAX_VERSION 		1
 
+#define RPKI_SKI_SIZE 			20
+#define RPKI_SPKI_SIZE 			91
+#define RPKI_ROUTER_KEY_EXT		".key"
+
 /*
  * Used in parsing of configuration file
  */

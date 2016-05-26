@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <fcntl.h>
 
 #undef LOCAL_DEBUG
 
@@ -140,6 +141,17 @@ struct pdu_error {
   uint32_t len;
   uint32_t len_enc_pdu;
   uint8_t rest[];
+};
+
+struct pdu_router_key {
+    uint8_t ver;
+    uint8_t type;
+    uint8_t flags;
+    uint8_t zero;
+    uint32_t len;
+    uint8_t ski[RPKI_SKI_SIZE];
+    uint32_t asn;
+    uint8_t spki[RPKI_SPKI_SIZE];
 };
 
 struct pdu_reset_query {
@@ -328,6 +340,12 @@ rpki_pdu_body_to_host_byte_order(void *pdu)
   }
 
   case ROUTER_KEY:
+  {
+    struct pdu_router_key *rk = pdu;
+    rk->asn = ntohl(rk->asn);
+    break;
+  }
+
   case SERIAL_QUERY:
   case RESET_QUERY:
   case CACHE_RESPONSE:
@@ -370,6 +388,16 @@ rpki_log_packet(struct rpki_cache *cache, const void *pdu, const size_t len, con
     const struct pdu_ipv6 *ipv6 = pdu;
     ip6_addr a = ip6_build(ipv6->prefix[0], ipv6->prefix[1], ipv6->prefix[2], ipv6->prefix[3]);
     bsnprintf(detail, sizeof(detail), "(%I6/%u-%u AS%u)", a, ipv6->prefix_len, ipv6->max_prefix_len, ipv6->asn);
+    break;
+  }
+
+  case ROUTER_KEY:
+  {
+    const struct pdu_router_key *rk = pdu;
+    bsnprintf(detail, sizeof(detail), "(AS%u %02x", rk->asn, rk->ski[0]);
+    for (const u8 *x = &rk->ski[1]; x < &rk->ski[RPKI_SKI_SIZE]; x++)
+      bsnprintf(detail+strlen(detail), sizeof(detail)-strlen(detail), ":%02x", *x);
+    bsnprintf(detail+strlen(detail), sizeof(detail)-strlen(detail), ")");
     break;
   }
 
@@ -741,6 +769,43 @@ rpki_handle_prefix_pdu(struct rpki_cache *cache, const void *pdu)
   return RPKI_SUCCESS;
 }
 
+static void
+rpki_handle_router_key_pdu(struct rpki_cache *cache, const struct pdu_router_key *pdu)
+{
+  char file_name[4096]; /* PATH_MAX? */
+  char ski_hex[41];
+  const char *state_dir = config->rpki_state_dir;
+  int i;
+  int fd = -1;
+
+  for (i = 0; i < 20; i++)
+    bsnprintf(ski_hex + i*2, sizeof(ski_hex) - i*2, "%02X", pdu->ski[i]);
+
+  /* Check buffer size */
+  size_t req_size = strlen(state_dir) + 2*sizeof(pdu->ski) + 2 + strlen(RPKI_ROUTER_KEY_EXT);
+  if (req_size >= sizeof(file_name))
+  {
+    CACHE_TRACE(D_EVENTS, cache, "Buffer too small for %s/%u.%s" RPKI_ROUTER_KEY_EXT, state_dir, pdu->asn, ski_hex);
+    return;
+  }
+
+  bsnprintf(file_name, sizeof(file_name), "%s/%u.%s" RPKI_ROUTER_KEY_EXT, state_dir, pdu->asn, ski_hex);
+
+  fd = open(file_name, O_WRONLY|O_CREAT, 0664);
+  if (fd < 0)
+  {
+    CACHE_TRACE(D_EVENTS, cache, "Cannot open file %s for write router key", file_name);
+    return;
+  }
+
+  if (write(fd, pdu->spki, RPKI_SPKI_SIZE) < 0)
+    CACHE_TRACE(D_EVENTS, cache, "Cannot write into %s", file_name);
+  else
+    CACHE_TRACE(D_EVENTS, cache, "Wrote router key into file %s", file_name);
+
+  close(fd);
+}
+
 static uint
 rpki_check_interval(struct rpki_cache *cache, const char *(check_fn)(uint), uint interval)
 {
@@ -837,6 +902,10 @@ rpki_rx_packet(struct rpki_cache *cache, void *pdu, uint len)
     rpki_handle_prefix_pdu(cache, pdu);
     break;
 
+  case ROUTER_KEY:
+    rpki_handle_router_key_pdu(cache, pdu);
+    break;
+
   case END_OF_DATA:
     rpki_handle_end_of_data_pdu(cache, pdu);
     break;
@@ -853,7 +922,6 @@ rpki_rx_packet(struct rpki_cache *cache, void *pdu, uint len)
     rpki_handle_error_pdu(cache, pdu);
     break;
 
-  case ROUTER_KEY:
   default:
     CACHE_TRACE(D_PACKETS, cache, "Received unsupported type of RPKI PDU: %u", type);
   };

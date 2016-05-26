@@ -457,7 +457,10 @@ password_item_params:
  | ID expr ';' password_item_params { this_p_item->id = $2; if ($2 <= 0) cf_error("Password ID has to be greated than zero."); }
  ;
 
+/* Overwrite RPKI State Dir for BGPSEC Router Keys */
 
+CF_ADDTO(conf, rpki_state_dir)
+rpki_state_dir: RPKI STATE DIR text ';' { new_config->rpki_state_dir = $4; }
 
 /* Core commands */
 CF_CLI_HELP(SHOW, ..., [[Show status information]])

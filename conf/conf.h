@@ -31,6 +31,7 @@ struct config {
   ip_addr listen_bgp_addr;		/* Listening BGP socket should use this address */
   unsigned listen_bgp_port;		/* Listening BGP socket should use this port (0 is default) */
   u32 listen_bgp_flags;			/* Listening BGP socket should use these flags */
+  const char *rpki_state_dir;		/* File path to save Router Keys for RPKI */
   unsigned proto_default_debug;		/* Default protocol debug mask */
   unsigned proto_default_mrtdump;	/* Default protocol mrtdump mask */
   struct timeformat tf_route;		/* Time format for 'show route' */
