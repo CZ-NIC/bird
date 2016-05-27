@@ -399,6 +399,7 @@ typedef struct rta {
 #define RTS_BGP 11			/* BGP route */
 #define RTS_PIPE 12			/* Inter-table wormhole */
 #define RTS_BABEL 13			/* Babel route */
+#define RTS_IGMP 14			/* IGMP multicast request */
 
 #define RTC_UNICAST 0
 #define RTC_BROADCAST 1
