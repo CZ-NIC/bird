@@ -40,6 +40,7 @@
 
 #include "sysdep/unix/unix.h"
 #include CONFIG_INCLUDE_SYSIO_H
+#include "sysdep/unix/mkrt.h"
 
 /* Maximum number of calls of tx handler for one socket in one
  * poll iteration. Should be small enough to not monopolize CPU by
@@ -825,7 +826,7 @@ sk_skip_ip_header(byte *pkt, int *len)
 byte *
 sk_rx_buffer(sock *s, int *len)
 {
-  if (sk_is_ipv4(s) && s->type == SK_IP)
+  if (sk_is_ipv4(s) && (s->type == SK_IP || s->type == SK_IGMP))
     return sk_skip_ip_header(s->rbuf, len);
   else
     return s->rbuf;
@@ -1232,7 +1233,7 @@ sk_setup(sock *s)
     s->flags |= SKF_PKTINFO;
 
 #ifdef CONFIG_USE_HDRINCL
-  if (sk_is_ipv4(s) && (s->type == SK_IP) && (s->flags & SKF_PKTINFO))
+  if (sk_is_ipv4(s) && (s->type == SK_IP || s->type == SK_IGMP) && (s->flags & SKF_PKTINFO))
   {
     s->flags &= ~SKF_PKTINFO;
     s->flags |= SKF_HDRINCL;
@@ -1270,7 +1271,7 @@ sk_setup(sock *s)
       if (sk_request_cmsg4_ttl(s) < 0)
 	return -1;
 
-    if ((s->type == SK_UDP) || (s->type == SK_IP))
+    if ((s->type == SK_UDP) || (s->type == SK_IP) || (s->type == SK_IGMP))
       if (sk_disable_mtu_disc4(s) < 0)
 	return -1;
 
@@ -1297,7 +1298,7 @@ sk_setup(sock *s)
       if (sk_request_cmsg6_ttl(s) < 0)
 	return -1;
 
-    if ((s->type == SK_UDP) || (s->type == SK_IP))
+    if ((s->type == SK_UDP) || (s->type == SK_IP) || (s->type == SK_IGMP))
       if (sk_disable_mtu_disc6(s) < 0)
 	return -1;
 
@@ -1458,6 +1459,11 @@ sk_open(sock *s)
     do_bind = 1;
     break;
 
+  case SK_IGMP:
+    af = AF_INET;
+    s->dport = IPPROTO_IGMP;
+    s->rbsize = 0; /* read buffer is shared */
+    /* Fall thru */
   case SK_IP:
     fd = socket(af, SOCK_RAW, s->dport);
     bind_port = 0;
@@ -1537,6 +1543,12 @@ sk_open(sock *s)
   default:
     sk_alloc_bufs(s);
   }
+
+  if (s->type == SK_IGMP)
+    {
+      mkrt_listen(s);
+      return 0;
+    }
 
   if (!(s->flags & SKF_THREAD))
     sk_insert(s);
@@ -1724,6 +1736,7 @@ sk_maybe_write(sock *s)
 
   case SK_UDP:
   case SK_IP:
+  case SK_IGMP:
     {
       if (s->tbuf == s->tpos)
 	return 1;
@@ -2112,6 +2125,7 @@ io_init(void)
   init_list(&sock_list);
   init_list(&global_event_list);
   krt_io_init();
+  mkrt_io_init();
   init_times();
   update_times();
   boot_time = now;

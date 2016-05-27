@@ -33,6 +33,7 @@ struct iface {
   unsigned flags;
   unsigned mtu;
   unsigned index;			/* OS-dependent interface index */
+  unsigned vifi;			/* VIF index for multicast routing */
   list addrs;				/* Addresses assigned to this interface */
   struct ifa *addr;			/* Primary address */
   list neighbors;			/* All neighbors on this interface */
@@ -47,6 +48,7 @@ struct iface {
 #define IF_IGNORE 0x40			/* Not to be used by routing protocols (loopbacks etc.) */
 #define IF_ADMIN_UP 0x80		/* Administrative up (e.g. IFF_UP in Linux) */
 #define IF_LINK_UP 0x100		/* Link available (e.g. IFF_LOWER_UP in Linux) */
+#define IF_VIFI_ASSIGNED 0x200		/* This device is set up for multicast routing */
 
 #define IA_PRIMARY 0x10000		/* This address is primary */
 #define IA_SECONDARY 0x20000		/* This address has been reported as secondary by the kernel */
@@ -100,6 +102,12 @@ struct iface *if_find_by_index(unsigned);
 struct iface *if_find_by_name(char *);
 struct iface *if_get_by_name(char *);
 void ifa_recalc_all_primary_addresses(void);
+
+static inline int
+if_get_vifi(struct iface *iface)
+{
+  return (iface && (iface->flags & IF_VIFI_ASSIGNED)) ? iface->vifi : -1;
+}
 
 
 /* The Neighbor Cache */

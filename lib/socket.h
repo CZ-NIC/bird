@@ -116,6 +116,7 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
 #define SK_MAGIC	7	   /* Internal use by sysdep code */
 #define SK_UNIX_PASSIVE	8
 #define SK_UNIX		9
+#define SK_IGMP		10	   /* ?  -  ?  -  ?  ?   ?	*/
 
 /*
  *	Socket subtypes
@@ -146,6 +147,11 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
  * per-packet basis using platform dependent options (but these are not
  * available in some corner cases). The first way is used when SKF_BIND is
  * specified, the second way is used otherwise.
+ *
+ *  SK_IGMP sockets are just IP sockets with IPPROTO_IGMP, but does not receive
+ *  packets directly from kernel. Instead, bird forwards all packets received
+ *  on multicast routing control socket to this socket internally. That means,
+ *  all IGMP packets even for groups that noone is joined are received here.
  */
 
 #endif

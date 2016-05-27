@@ -85,6 +85,8 @@ if_dump(struct iface *i)
     debug(" IGN");
   if (i->flags & IF_TMP_DOWN)
     debug(" TDOWN");
+  if (i->flags & IF_VIFI_ASSIGNED)
+    debug(" MR");
   debug(" MTU=%d\n", i->mtu);
   WALK_LIST(a, i->addrs)
     {
@@ -115,7 +117,7 @@ if_what_changed(struct iface *i, struct iface *j)
 {
   unsigned c;
 
-  if (((i->flags ^ j->flags) & ~(IF_UP | IF_SHUTDOWN | IF_UPDATED | IF_ADMIN_UP | IF_LINK_UP | IF_TMP_DOWN | IF_JUST_CREATED))
+  if (((i->flags ^ j->flags) & ~(IF_UP | IF_SHUTDOWN | IF_UPDATED | IF_ADMIN_UP | IF_LINK_UP | IF_TMP_DOWN | IF_JUST_CREATED | IF_VIFI_ASSIGNED))
       || i->index != j->index)
     return IF_CHANGE_TOO_MUCH;
   c = 0;
@@ -131,7 +133,7 @@ if_what_changed(struct iface *i, struct iface *j)
 static inline void
 if_copy(struct iface *to, struct iface *from)
 {
-  to->flags = from->flags | (to->flags & IF_TMP_DOWN);
+  to->flags = from->flags | (to->flags & (IF_TMP_DOWN | IF_VIFI_ASSIGNED));
   to->mtu = from->mtu;
 }
 
@@ -780,10 +782,11 @@ if_show(void)
 	type = "PtP";
       else
 	type = "MultiAccess";
-      cli_msg(-1004, "\t%s%s%s Admin%s Link%s%s%s MTU=%d",
+      cli_msg(-1004, "\t%s%s%s%s Admin%s Link%s%s%s MTU=%d",
 	      type,
 	      (i->flags & IF_BROADCAST) ? " Broadcast" : "",
 	      (i->flags & IF_MULTICAST) ? " Multicast" : "",
+	      (i->flags & IF_VIFI_ASSIGNED) ? " MRoutable" : "",
 	      (i->flags & IF_ADMIN_UP) ? "Up" : "Down",
 	      (i->flags & IF_LINK_UP) ? "Up" : "Down",
 	      (i->flags & IF_LOOPBACK) ? " Loopback" : "",
