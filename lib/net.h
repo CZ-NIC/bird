@@ -19,7 +19,11 @@
 #define NET_VPN6	4
 #define NET_ROA4	5
 #define NET_ROA6	6
-#define NET_MAX		7
+#define NET_MREQ4	7
+#define NET_MREQ6	8
+#define NET_MGRP4	9
+#define NET_MGRP6	10
+#define NET_MAX		11
 
 #define NB_IP4		(1 << NET_IP4)
 #define NB_IP6		(1 << NET_IP6)
@@ -27,8 +31,16 @@
 #define NB_VPN6		(1 << NET_VPN6)
 #define NB_ROA4		(1 << NET_ROA4)
 #define NB_ROA6		(1 << NET_ROA6)
+#define NB_MREQ4	(1 << NET_MREQ4)
+#define NB_MREQ6	(1 << NET_MREQ6)
+#define NB_MGRP4	(1 << NET_MGRP4)
+#define NB_MGRP6	(1 << NET_MGRP6)
 
 #define NB_IP		(NB_IP4 | NB_IP6)
+#define NB_MREQ		(NB_MREQ4 | NB_MREQ6)
+#define NB_MGRP		(NB_MGRP4 | NB_MGRP6)
+#define NB_MCAST	(NB_MREQ | NB_MGRP)
+#define NB_6		(NB_IP6 | NB_VPN6 | NB_MREQ6 | NB_MGRP6)
 #define NB_ANY		0xffffffff
 
 
@@ -88,6 +100,36 @@ typedef struct net_addr_roa6 {
   u32 asn;
 } net_addr_roa6;
 
+typedef struct net_addr_mreq4 {
+  u8 type;
+  u8 pxlen;
+  u16 length;
+  ip4_addr ga;
+  unsigned ifindex;
+} net_addr_mreq4;
+
+typedef struct net_addr_mreq6 {
+  u8 type;
+  u8 pxlen;
+  u16 length;
+  ip6_addr ga;
+  unsigned ifindex;
+} net_addr_mreq6;
+
+typedef struct net_addr_mgrp4 {
+  u8 type;
+  u8 pxlen;
+  u16 length;
+  ip4_addr ga;
+} net_addr_mgrp4;
+
+typedef struct net_addr_mgrp6 {
+  u8 type;
+  u8 pxlen;
+  u16 length;
+  ip6_addr ga;
+} net_addr_mgrp6;
+
 typedef union net_addr_union {
   net_addr n;
   net_addr_ip4 ip4;
@@ -96,6 +138,10 @@ typedef union net_addr_union {
   net_addr_vpn6 vpn6;
   net_addr_roa4 roa4;
   net_addr_roa6 roa6;
+  net_addr_mreq4 mreq4;
+  net_addr_mreq6 mreq6;
+  net_addr_mgrp4 mgrp4;
+  net_addr_mgrp6 mgrp6;
 } net_addr_union;
 
 
@@ -125,6 +171,17 @@ extern const u16 net_max_text_length[];
 #define NET_ADDR_ROA6(prefix,pxlen,max_pxlen,asn) \
   ((net_addr_roa6) { NET_ROA6, pxlen, sizeof(net_addr_roa6), prefix, max_pxlen, asn })
 
+#define NET_ADDR_MREQ4(ga, ifindex) \
+  ((net_addr_mreq4) { NET_MREQ4, IP4_MAX_PREFIX_LENGTH, sizeof(net_addr_mreq4), ga, ifindex })
+
+#define NET_ADDR_MREQ6(ga, ifindex) \
+  ((net_addr_mreq6) { NET_MREQ6, IP6_MAX_PREFIX_LENGTH, sizeof(net_addr_mreq6), ga, ifindex })
+
+#define NET_ADDR_MGRP4(ga) \
+  ((net_addr_mgrp4) { NET_MGRP4, IP4_MAX_PREFIX_LENGTH, sizeof(net_addr_mgrp4), ga })
+
+#define NET_ADDR_MGRP6(ga) \
+  ((net_addr_mgrp6) { NET_MGRP6, IP6_MAX_PREFIX_LENGTH, sizeof(net_addr_mgrp6), ga })
 
 
 static inline void net_fill_ip4(net_addr *a, ip4_addr prefix, uint pxlen)
@@ -145,6 +202,18 @@ static inline void net_fill_roa4(net_addr *a, ip4_addr prefix, uint pxlen, uint 
 static inline void net_fill_roa6(net_addr *a, ip6_addr prefix, uint pxlen, uint max_pxlen, u32 asn)
 { *(net_addr_roa6 *)a = NET_ADDR_ROA6(prefix, pxlen, max_pxlen, asn); }
 
+static inline void net_fill_mreq4(net_addr *a, ip4_addr ga, unsigned ifindex)
+{ *(net_addr_mreq4 *)a = NET_ADDR_MREQ4(ga, ifindex); }
+
+static inline void net_fill_mreq6(net_addr *a, ip6_addr ga, unsigned ifindex)
+{ *(net_addr_mreq6 *)a = NET_ADDR_MREQ6(ga, ifindex); }
+
+static inline void net_fill_mgrp4(net_addr *a, ip4_addr ga)
+{ *(net_addr_mgrp4 *)a = NET_ADDR_MGRP4(ga); }
+
+static inline void net_fill_mgrp6(net_addr *a, ip6_addr ga)
+{ *(net_addr_mgrp6 *)a = NET_ADDR_MGRP6(ga); }
+
 static inline void net_fill_ipa(net_addr *a, ip_addr prefix, uint pxlen)
 {
   if (ipa_is_ip4(prefix))
@@ -161,6 +230,21 @@ static inline void net_fill_ip_host(net_addr *a, ip_addr prefix)
     net_fill_ip6(a, ipa_to_ip6(prefix), IP6_MAX_PREFIX_LENGTH);
 }
 
+static inline void net_fill_mreq(net_addr *a, ip_addr ga, unsigned ifindex)
+{
+  if (ipa_is_ip4(ga))
+    net_fill_mreq4(a, ipa_to_ip4(ga), ifindex);
+  else
+    net_fill_mreq6(a, ipa_to_ip6(ga), ifindex);
+}
+
+static inline void net_fill_mgrp(net_addr *a, ip_addr ga)
+{
+  if (ipa_is_ip4(ga))
+    net_fill_mgrp4(a, ipa_to_ip4(ga));
+  else
+    net_fill_mgrp6(a, ipa_to_ip6(ga));
+}
 
 static inline int net_val_match(u8 type, u32 mask)
 { return !!((1 << type) & mask); }
@@ -185,11 +269,15 @@ static inline ip_addr net_prefix(const net_addr *a)
   case NET_IP4:
   case NET_VPN4:
   case NET_ROA4:
+  case NET_MREQ4:
+  case NET_MGRP4:
     return ipa_from_ip4(net4_prefix(a));
 
   case NET_IP6:
   case NET_VPN6:
   case NET_ROA6:
+  case NET_MREQ6:
+  case NET_MGRP6:
     return ipa_from_ip6(net6_prefix(a));
 
   default:
@@ -208,6 +296,39 @@ static inline uint net_pxlen(const net_addr *a)
 
 ip_addr net_pxmask(const net_addr *a);
 
+static inline int net_is_host(const net_addr *a)
+{
+  switch (a->type)
+  {
+  case NET_IP4:
+  case NET_VPN4: return net4_pxlen(a) == IP4_MAX_PREFIX_LENGTH;
+  case NET_IP6:
+  case NET_VPN6: return net6_pxlen(a) == IP6_MAX_PREFIX_LENGTH;
+  case NET_MREQ4:
+  case NET_MREQ6:
+  case NET_MGRP4:
+  case NET_MGRP6: return 1;
+  default: return 0;
+  }
+}
+
+static inline int net_is_v6(net_addr *a)
+{
+  return net_type_match(a, NB_6);
+}
+
+static inline int net_ifindex(net_addr *a)
+{
+  switch (a->type)
+  {
+  case NET_MREQ4:
+      return ((net_addr_mreq4 *) a)->ifindex;
+  case NET_MREQ6:
+      return ((net_addr_mreq6 *) a)->ifindex;
+  default: return 0;
+  }
+
+}
 
 static inline int net_equal(const net_addr *a, const net_addr *b)
 { return (a->length == b->length) && !memcmp(a, b, a->length); }
@@ -236,6 +357,18 @@ static inline int net_equal_prefix_roa4(const net_addr_roa4 *a, const net_addr_r
 static inline int net_equal_prefix_roa6(const net_addr_roa6 *a, const net_addr_roa6 *b)
 { return ip6_equal(a->prefix, b->prefix) && (a->pxlen == b->pxlen); }
 
+static inline int net_equal_mreq4(const net_addr_mreq4 *a, const net_addr_mreq4 *b)
+{ return !memcmp(a, b, sizeof(net_addr_mreq4)); }
+
+static inline int net_equal_mreq6(const net_addr_mreq6 *a, const net_addr_mreq6 *b)
+{ return !memcmp(a, b, sizeof(net_addr_mreq6)); }
+
+static inline int net_equal_mgrp4(const net_addr_mgrp4 *a, const net_addr_mgrp4 *b)
+{ return !memcmp(a, b, sizeof(net_addr_mgrp4)); }
+
+static inline int net_equal_mgrp6(const net_addr_mgrp6 *a, const net_addr_mgrp6 *b)
+{ return !memcmp(a, b, sizeof(net_addr_mgrp6)); }
+
 
 static inline int net_zero_ip4(const net_addr_ip4 *a)
 { return !a->pxlen && ip4_zero(a->prefix); }
@@ -255,6 +388,18 @@ static inline int net_zero_roa4(const net_addr_roa4 *a)
 static inline int net_zero_roa6(const net_addr_roa6 *a)
 { return !a->pxlen && ip6_zero(a->prefix) && !a->max_pxlen && !a->asn; }
 
+static inline int net_zero_mreq4(const net_addr_mreq4 *a)
+{ return ip4_zero(a->ga) && !a->ifindex; }
+
+static inline int net_zero_mreq6(const net_addr_mreq6 *a)
+{ return ip6_zero(a->ga) && !a->ifindex; }
+
+static inline int net_zero_mgrp4(const net_addr_mgrp4 *a)
+{ return ip4_zero(a->ga); }
+
+static inline int net_zero_mgrp6(const net_addr_mgrp6 *a)
+{ return ip6_zero(a->ga); }
+
 
 static inline int net_compare_ip4(const net_addr_ip4 *a, const net_addr_ip4 *b)
 { return ip4_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen); }
@@ -273,6 +418,18 @@ static inline int net_compare_roa4(const net_addr_roa4 *a, const net_addr_roa4 *
 
 static inline int net_compare_roa6(const net_addr_roa6 *a, const net_addr_roa6 *b)
 { return ip6_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen) ?: uint_cmp(a->max_pxlen, b->max_pxlen) ?: uint_cmp(a->asn, b->asn); }
+
+static inline int net_compare_mreq4(const net_addr_mreq4 *a, const net_addr_mreq4 *b)
+{ return ip4_compare(a->ga, b->ga) ?: uint_cmp(a->ifindex, b->ifindex); }
+
+static inline int net_compare_mreq6(const net_addr_mreq6 *a, const net_addr_mreq6 *b)
+{ return ip6_compare(a->ga, b->ga) ?: uint_cmp(a->ifindex, b->ifindex); }
+
+static inline int net_compare_mgrp4(const net_addr_mgrp4 *a, const net_addr_mgrp4 *b)
+{ return ip4_compare(a->ga, b->ga); }
+
+static inline int net_compare_mgrp6(const net_addr_mgrp6 *a, const net_addr_mgrp6 *b)
+{ return ip6_compare(a->ga, b->ga); }
 
 int net_compare(const net_addr *a, const net_addr *b);
 
@@ -298,6 +455,17 @@ static inline void net_copy_roa4(net_addr_roa4 *dst, const net_addr_roa4 *src)
 static inline void net_copy_roa6(net_addr_roa6 *dst, const net_addr_roa6 *src)
 { memcpy(dst, src, sizeof(net_addr_roa6)); }
 
+static inline void net_copy_mreq4(net_addr_mreq4 *dst, const net_addr_mreq4 *src)
+{ memcpy(dst, src, sizeof(net_addr_mreq4)); }
+
+static inline void net_copy_mreq6(net_addr_mreq6 *dst, const net_addr_mreq6 *src)
+{ memcpy(dst, src, sizeof(net_addr_mreq6)); }
+
+static inline void net_copy_mgrp4(net_addr_mgrp4 *dst, const net_addr_mgrp4 *src)
+{ memcpy(dst, src, sizeof(net_addr_mgrp4)); }
+
+static inline void net_copy_mgrp6(net_addr_mgrp6 *dst, const net_addr_mgrp6 *src)
+{ memcpy(dst, src, sizeof(net_addr_mgrp6)); }
 
 static inline u32 net_hash_ip4(const net_addr_ip4 *n)
 { return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
@@ -321,6 +489,17 @@ static inline u32 net_hash_roa4(const net_addr_roa4 *n)
 static inline u32 net_hash_roa6(const net_addr_roa6 *n)
 { return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
 
+static inline u32 net_hash_mreq4(const net_addr_mreq4 *n)
+{ return ip4_hash(n->ga) ^ u64_hash(n->ifindex); }
+
+static inline u32 net_hash_mreq6(const net_addr_mreq6 *n)
+{ return ip6_hash(n->ga) ^ u64_hash(n->ifindex); }
+
+static inline u32 net_hash_mgrp4(const net_addr_mgrp4 *n)
+{ return ip4_hash(n->ga); }
+
+static inline u32 net_hash_mgrp6(const net_addr_mgrp6 *n)
+{ return ip6_hash(n->ga); }
 
 static inline int net_validate_ip4(const net_addr_ip4 *n)
 {

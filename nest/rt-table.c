@@ -900,7 +900,7 @@ rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old,
 static inline int
 rte_validate(rte *e)
 {
-  int c;
+  int c, mask;
   net *n = e->net;
 
   // (n->n.pxlen > BITS_PER_IP_ADDRESS) || !ip_is_prefix(n->n.prefix,n->n.pxlen))
@@ -911,8 +911,10 @@ rte_validate(rte *e)
     return 0;
   }
 
+  mask = net_val_match(n->n.addr->type, NB_MCAST) ? IADDR_MULTICAST : IADDR_HOST;
+
   c = net_classify(n->n.addr);
-  if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
+  if ((c < 0) || !(c & mask) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
   {
     log(L_WARN "Ignoring bogus route %N received via %s",
 	n->n.addr, e->sender->proto->name);
@@ -1406,8 +1408,15 @@ int
 rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
 {
   net *n = net_find(t, a);
-  rte *rt = n ? n->routes : NULL;
+  return rt_examine2(n, p, filter, NULL, NULL);
+}
 
+/* If rte would be exported to p, call the callback */
+int
+rt_examine2(net *n, struct proto *p, struct filter *filter, void (*callback)(struct proto *, void *, rte *), void *data)
+{
+  rte *rt = n ? n->routes : NULL;
+  
   if (!rte_is_valid(rt))
     return 0;
 
@@ -1419,6 +1428,9 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
   if (v == RIC_PROCESS)
     v = (f_run(filter, &rt, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) <= F_ACCEPT);
 
+  if (callback && v > 0)
+    callback(p, data, rt);
+  
    /* Discard temporary rte */
   if (rt != n->routes)
     rte_free(rt);
@@ -1426,6 +1438,32 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
   rte_update_unlock();
 
   return v > 0;
+
+}
+
+/* Sometimes protocols need to find one route in table without keeping their own copy.
+ * rt_route finds the best route after applying filter.
+ * As the routes may be temporary, successful find is announced by the callback.
+ * Returns 1 if the callback was called.
+ */
+int
+rt_route(struct channel *c, net_addr *n, void (*callback)(struct proto *, void *, rte *), void *data)
+{
+  net *r;
+
+  net_addr *n0 = alloca(n->length);
+  net_copy(n0, n);
+
+  while (1)
+  {
+    r = net_find(c->table, n0);
+    if (r && rte_is_valid(r->routes) && rt_examine2(r, c->proto, c->out_filter, callback, data))
+      return 1;
+    if (n0->pxlen == 0)
+      return 0;
+    n0->pxlen--;
+    net_normalize(n0);
+  }
 }
 
 
@@ -1734,6 +1772,11 @@ rt_preconfig(struct config *c)
 
   rt_new_table(cf_get_symbol("master4"), NET_IP4);
   rt_new_table(cf_get_symbol("master6"), NET_IP6);
+
+  rt_new_table(cf_get_symbol("mreq4"), NET_MREQ4);
+  rt_new_table(cf_get_symbol("mreq6"), NET_MREQ6);
+  rt_new_table(cf_get_symbol("mroute4"), NET_MGRP4);
+  rt_new_table(cf_get_symbol("mroute6"), NET_MGRP6);
 }
 
 
@@ -2278,7 +2321,7 @@ if_local_addr(ip_addr a, struct iface *i)
   return 0;
 }
 
-static u32 
+u32
 rt_get_igp_metric(rte *rt)
 {
   eattr *ea = ea_find(rt->attrs->eattrs, EA_GEN_IGP_METRIC);
@@ -2439,6 +2482,8 @@ rt_format_via(rte *e, byte *via)
     case RTD_UNREACHABLE:	bsprintf(via, "unreachable"); break;
     case RTD_PROHIBIT:	bsprintf(via, "prohibited"); break;
     case RTD_MULTIPATH:	bsprintf(via, "multipath"); break;
+    case RTD_MREQUEST:	bsprintf(via, "for %s", a->iface->name); break;
+    case RTD_MULTICAST:	bsprintf(via, "iifs: %b, oifs: %b", e->u.mkrt.iifs, e->u.mkrt.oifs); break;
     default:		bsprintf(via, "???");
     }
 }

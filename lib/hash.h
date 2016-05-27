@@ -1,4 +1,5 @@
-
+#ifndef BIRD_HASH_H
+#define BIRD_HASH_H
 
 #define HASH(type)		struct { type **data; uint count, order; }
 #define HASH_TYPE(v)		typeof(** (v).data)
@@ -212,3 +213,4 @@ mem_hash(void *p, int s)
   return mem_hash_value(&h);
 }
 
+#endif

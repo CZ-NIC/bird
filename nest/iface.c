@@ -502,6 +502,17 @@ ifa_same(struct ifa *a, struct ifa *b)
   return ipa_equal(a->ip, b->ip) && net_equal(&a->prefix, &b->prefix);
 }
 
+struct ifa *
+ifa_find_match(struct iface *i, u32 mask)
+{
+  struct ifa *a;
+
+  WALK_LIST(a, i->addrs)
+    if (net_type_match(&a->prefix, mask))
+      return a;
+
+  return NULL;
+}
 
 /**
  * ifa_update - update interface address

@@ -364,6 +364,9 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 		case 'o':
 			base = 8;
 			break;
+		case 'b':
+			base = 2;
+			break;
 
 		case 'X':
 			flags |= LARGE;

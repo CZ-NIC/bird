@@ -122,10 +122,11 @@ tracked_fopen(pool *p, char *name, char *mode)
 #define NEAR_TIMER_LIMIT 4
 
 static list near_timers, far_timers;
-static bird_clock_t first_far_timer = TIME_INFINITY;
+static btime first_far_timer = BTIME_INFINITY;
 
 /* now must be different from 0, because 0 is a special value in timer->expires */
 bird_clock_t now = 1, now_real, boot_time;
+btime now_btime = 1;
 
 static void
 update_times_plain(void)
@@ -134,10 +135,11 @@ update_times_plain(void)
   int delta = new_time - now_real;
 
   if ((delta >= 0) && (delta < 60))
-    now += delta;
+    now_btime += delta S;
   else if (now_real != 0)
    log(L_WARN "Time jump, delta %d s", delta);
 
+  now = now_btime TO_S;
   now_real = new_time;
 }
 
@@ -151,11 +153,14 @@ update_times_gettime(void)
   if (rv != 0)
     die("clock_gettime: %m");
 
-  if (ts.tv_sec != now) {
-    if (ts.tv_sec < now)
+  btime bt = (ts.tv_sec S) + (ts.tv_nsec NS);
+
+  if (bt != now_btime) {
+    if (bt < now_btime)
       log(L_ERR "Monotonic timer is broken");
 
-    now = ts.tv_sec;
+    now_btime = bt;
+    now = now_btime TO_S;
     now_real = time(NULL);
   }
 }
@@ -234,7 +239,7 @@ tm_insert_near(timer *t)
 {
   node *n = HEAD(near_timers);
 
-  while (n->next && (SKIP_BACK(timer, n, n)->expires < t->expires))
+  while (n->next && (SKIP_BACK(timer, n, n)->expires_btime < t->expires_btime))
     n = n->next;
   insert_node(&t->n, n->prev);
 }
@@ -259,17 +264,25 @@ tm_insert_near(timer *t)
 void
 tm_start(timer *t, unsigned after)
 {
-  bird_clock_t when;
-
   if (t->randomize)
     after += random() % (t->randomize + 1);
-  when = now + after;
-  if (t->expires == when)
+
+  tm_start_btime(t, after S);
+}
+
+void
+tm_start_btime(timer *t, btime after)
+{
+  btime when;
+
+  when = now_btime + after;
+  if (t->expires_btime == when)
     return;
-  if (t->expires)
+  if (t->expires_btime)
     rem_node(&t->n);
-  t->expires = when;
-  if (after <= NEAR_TIMER_LIMIT)
+  t->expires_btime = when;
+  t->expires = when TO_S;
+  if (after TO_S <= NEAR_TIMER_LIMIT)
     tm_insert_near(t);
   else
     {
@@ -289,10 +302,10 @@ tm_start(timer *t, unsigned after)
 void
 tm_stop(timer *t)
 {
-  if (t->expires)
+  if (t->expires_btime)
     {
       rem_node(&t->n);
-      t->expires = 0;
+      t->expires = t->expires_btime = 0;
     }
 }
 
@@ -319,16 +332,16 @@ tm_dump_all(void)
   tm_dump_them("Far", &far_timers);
 }
 
-static inline time_t
+static inline btime
 tm_first_shot(void)
 {
-  time_t x = first_far_timer;
+  btime x = first_far_timer;
 
   if (!EMPTY_LIST(near_timers))
     {
       timer *t = SKIP_BACK(timer, n, HEAD(near_timers));
-      if (t->expires < x)
-	x = t->expires;
+      if (t->expires_btime < x)
+	x = t->expires_btime;
     }
   return x;
 }
@@ -341,21 +354,21 @@ tm_shot(void)
   timer *t;
   node *n, *m;
 
-  if (first_far_timer <= now)
+  if (first_far_timer <= now_btime)
     {
-      bird_clock_t limit = now + NEAR_TIMER_LIMIT;
-      first_far_timer = TIME_INFINITY;
+      btime limit = now_btime + NEAR_TIMER_LIMIT S;
+      first_far_timer = BTIME_INFINITY;
       n = HEAD(far_timers);
       while (m = n->next)
 	{
 	  t = SKIP_BACK(timer, n, n);
-	  if (t->expires <= limit)
+	  if (t->expires_btime <= limit)
 	    {
 	      rem_node(n);
 	      tm_insert_near(t);
 	    }
-	  else if (t->expires < first_far_timer)
-	    first_far_timer = t->expires;
+	  else if (t->expires_btime < first_far_timer)
+	    first_far_timer = t->expires_btime;
 	  n = m;
 	}
     }
@@ -363,17 +376,17 @@ tm_shot(void)
     {
       int delay;
       t = SKIP_BACK(timer, n, n);
-      if (t->expires > now)
+      if (t->expires_btime > now_btime)
 	break;
       rem_node(n);
-      delay = t->expires - now;
-      t->expires = 0;
+      delay = t->expires_btime - now_btime;
+      t->expires = t->expires_btime = 0;
       if (t->recurrent)
 	{
-	  int i = t->recurrent - delay;
+	  int i = t->recurrent S - delay;
 	  if (i < 0)
 	    i = 0;
-	  tm_start(t, i);
+	  tm_start_btime(t, i);
 	}
       io_log_event(t->hook, t->data);
       t->hook(t);
@@ -812,7 +825,7 @@ sk_skip_ip_header(byte *pkt, int *len)
 byte *
 sk_rx_buffer(sock *s, int *len)
 {
-  if (sk_is_ipv4(s) && (s->type == SK_IP))
+  if (sk_is_ipv4(s) && s->type == SK_IP)
     return sk_skip_ip_header(s->rbuf, len);
   else
     return s->rbuf;
@@ -946,6 +959,24 @@ sk_set_min_ttl(sock *s, int ttl)
     return sk_set_min_ttl4(s, ttl);
   else
     return sk_set_min_ttl6(s, ttl);
+}
+
+/**
+ * sk_set_router_alert - set router alert option
+ * @s: socket
+ * @ra: packets with this router alert option value will be passed to the
+ * socket. Negative integer disables.
+ *
+ * Result: 0 for success, -1 for an error.
+ */
+
+int
+sk_set_router_alert(sock *s, int ra)
+{
+  if (sk_is_ipv4(s))
+    return sk_set_router_alert4(s, ra);
+  else
+    return sk_set_router_alert6(s, ra);
 }
 
 #if 0
@@ -1087,7 +1118,8 @@ sk_free(resource *r)
       current_sock = sk_next(s);
     if (s == stored_sock)
       stored_sock = sk_next(s);
-    rem_node(&s->n);
+    if (NODE_VALID(&s->n))
+      rem_node(&s->n);
   }
 }
 
@@ -2093,7 +2125,7 @@ void
 io_loop(void)
 {
   int poll_tout;
-  time_t tout;
+  btime tout;
   int nfds, events, pout;
   sock *s;
   node *n;
@@ -2107,12 +2139,12 @@ io_loop(void)
     timers:
       update_times();
       tout = tm_first_shot();
-      if (tout <= now)
+      if (tout <= now_btime)
 	{
 	  tm_shot();
 	  goto timers;
 	}
-      poll_tout = (events ? 0 : MIN(tout - now, 3)) * 1000; /* Time in milliseconds */
+      poll_tout = (events ? 0 : MIN(tout - now_btime, 3)) TO_MS; /* Time in milliseconds */
 
       io_close_event();
 

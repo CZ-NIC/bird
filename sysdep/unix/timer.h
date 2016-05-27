@@ -13,6 +13,27 @@
 
 #include "lib/resource.h"
 
+/* Microsecond time */
+
+typedef s64 btime;
+
+#define S_	*1000000
+#define MS_	*1000
+#define US_	*1
+#define NS_	/1000
+
+#define TO_S	/1000000
+#define TO_MS	/1000
+#define TO_US	/1
+#define TO_NS	*1000
+
+#ifndef PARSER
+#define S	S_
+#define MS	MS_
+#define US	US_
+#define NS	NS_
+#endif
+
 typedef time_t bird_clock_t;		/* Use instead of time_t */
 
 typedef struct timer {
@@ -22,35 +43,59 @@ typedef struct timer {
   unsigned randomize;			/* Amount of randomization */
   unsigned recurrent;			/* Timer recurrence */
   node n;				/* Internal link */
-  bird_clock_t expires;			/* 0=inactive */
+  btime expires_btime;			/* 0=inactive */
+  bird_clock_t expires;			/* == expires_btime TO_S */
 } timer;
 
 timer *tm_new(pool *);
 void tm_start(timer *, unsigned after);
+void tm_start_btime(timer *, btime after);
 void tm_stop(timer *);
 void tm_dump_all(void);
 
 extern bird_clock_t now; 		/* Relative, monotonic time in seconds */
+extern btime now_btime;			/* dtto in microseconds */
 extern bird_clock_t now_real;		/* Time in seconds since fixed known epoch */
 extern bird_clock_t boot_time;
+
 
 static inline int
 tm_active(timer *t)
 {
-  return t->expires != 0;
+  return t->expires_btime != 0;
+}
+
+static inline btime
+tm_remains_btime(timer *t)
+{
+  return t->expires_btime ? t->expires_btime - now_btime : 0;
 }
 
 static inline bird_clock_t
 tm_remains(timer *t)
 {
-  return t->expires ? t->expires - now : 0;
+  return tm_remains_btime(t) TO_S;
+}
+
+static inline void
+tm_start_max_btime(timer *t, btime after)
+{
+  btime rem = tm_remains_btime(t);
+  tm_start(t, (rem > after) ? rem : after);
+}
+
+static inline void
+tm_start_min_btime(timer *t, btime after)
+{
+  btime rem = tm_remains_btime(t);
+  if (!rem || after < rem)
+    tm_start(t, after);
 }
 
 static inline void
 tm_start_max(timer *t, unsigned after)
 {
-  bird_clock_t rem = tm_remains(t);
-  tm_start(t, (rem > after) ? rem : after);
+  tm_start_max_btime(t, after S_);
 }
 
 static inline timer *
@@ -86,5 +131,7 @@ tm_format_datetime(char *x, struct timeformat *fmt_spec, bird_clock_t t);
 #define TIME_INFINITY 0xffffffff
 #endif
 #endif
+
+#define BTIME_INFINITY 0x7fffffffffffffff
 
 #endif

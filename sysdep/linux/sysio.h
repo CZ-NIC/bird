@@ -236,6 +236,25 @@ sk_set_min_ttl6(sock *s, int ttl)
   return 0;
 }
 
+
+static inline int
+sk_set_router_alert4(sock *s, int ra)
+{
+  if (setsockopt(s->fd, SOL_IP, IP_ROUTER_ALERT, &ra, sizeof(ra)) < 0)
+    ERR("IP_ROUTER_ALER");
+
+  return 0;
+}
+
+static inline int
+sk_set_router_alert6(sock *s, int ra)
+{
+  if (setsockopt(s->fd, SOL_IPV6, IPV6_ROUTER_ALERT, &ra, sizeof(ra)) < 0)
+    ERR("IPV6_ROUTER_ALER");
+
+  return 0;
+}
+
 static inline int
 sk_disable_mtu_disc4(sock *s)
 {

@@ -64,24 +64,6 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define PACKED __attribute__((packed))
 
 
-/* Microsecond time */
-
-typedef s64 btime;
-
-#define S_	*1000000
-#define MS_	*1000
-#define US_	*1
-#define TO_S	/1000000
-#define TO_MS	/1000
-#define TO_US	/1
-
-#ifndef PARSER
-#define S	S_
-#define MS	MS_
-#define US	US_
-#endif
-
-
 /* Rate limiting */
 
 struct tbf {
