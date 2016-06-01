@@ -1,8 +1,7 @@
-source=validate.c
-root-rel=../../../
-dir-name=proto/bgp/bgpsec
-
-include ../../../Rules
+src := validate.c
+obj := $(src-o-files)
+$(all-daemon)
+$(cf-local)
 
 validate_tmp.o: ../../../../proto/bgp/bgpsec/validate.c
 	gcc -c $(CFLAGS) -DLOG_TO_STDERR -o $@ $<
