@@ -30,7 +30,9 @@
 #define MAX(a,b) MAX_(a,b)
 #endif
 
+#ifndef U64
 #define U64(c) UINT64_C(c)
+#endif
 #define ABS(a)   ((a)>=0 ? (a) : -(a))
 #define DELTA(a,b) (((a)>=(b))?(a)-(b):(b)-(a))
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof(*(a)))
