@@ -774,7 +774,7 @@ rpki_handle_router_key_pdu(struct rpki_cache *cache, const struct pdu_router_key
 {
   char file_name[4096]; /* PATH_MAX? */
   char ski_hex[41];
-  const char *state_dir = config->rpki_state_dir;
+  const char *state_dir = config->rpki_dir;
   int i;
   int fd = -1;
 

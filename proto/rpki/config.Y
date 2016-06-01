@@ -24,9 +24,16 @@ rpki_check_unused_hostname(void)
 CF_DECLS
 
 CF_KEYWORDS(RPKI, REMOTE, BIRD, PRIVATE, PUBLIC, KEY, SSH, ENCRYPTION, USER,
-	    RETRY, REFRESH, EXPIRE, STATE, DIR)
+	    RETRY, REFRESH, EXPIRE, DIR)
 
 CF_GRAMMAR
+
+/* Overwrite RPKI directory for BGPSEC Router Keys */
+
+CF_ADDTO(conf, rpki_dir)
+rpki_dir: RPKI DIR text ';' { new_config->rpki_dir = $3; }
+
+/* RPKI Protocol */
 
 CF_ADDTO(proto, rpki_proto)
 

@@ -104,7 +104,7 @@ config_alloc(byte *name)
   c->tf_route = c->tf_proto = (struct timeformat){"%T", "%F", 20*3600};
   c->tf_base = c->tf_log = (struct timeformat){"%F %T", NULL, 0};
   c->gr_wait = DEFAULT_GR_WAIT;
-  c->rpki_state_dir = PATH_RPKI_STATE_DIR;
+  c->rpki_dir = PATH_RPKI_DIR;
 
   return c;
 }
