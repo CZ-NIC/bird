@@ -22,6 +22,14 @@ int buffer_vprint(buffer *buf, const char *fmt, va_list args);
 int buffer_print(buffer *buf, const char *fmt, ...);
 void buffer_puts(buffer *buf, const char *str);
 
-int patmatch(byte *pat, byte *str);
+int patmatch(const byte *pat, const byte *str);
+
+static inline char *xbasename(const char *str)
+{
+  char *s = strrchr(str, '/');
+  return s ? s+1 : (char *) str;
+}
+
+#define ROUTER_ID_64_LENGTH 23
 
 #endif

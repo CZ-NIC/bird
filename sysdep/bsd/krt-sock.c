@@ -181,7 +181,7 @@ struct ks_msg
 #define GETADDR(p, F) \
   bzero(p, sizeof(*p));\
   if ((addrs & (F)) && ((struct sockaddr *)body)->sa_len) {\
-    unsigned int l = ROUNDUP(((struct sockaddr *)body)->sa_len);\
+    uint l = ROUNDUP(((struct sockaddr *)body)->sa_len);\
     memcpy(p, body, (l > sizeof(*p) ? sizeof(*p) : l));\
     body += l;}
 
@@ -336,7 +336,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   sockaddr dst, gate, mask;
   ip_addr idst, igate, imask;
   void *body = (char *)msg->buf;
-  int new = (msg->rtm.rtm_type == RTM_ADD);
+  int new = (msg->rtm.rtm_type != RTM_DELETE);
   char *errmsg = "KRT: Invalid route received";
   int flags = msg->rtm.rtm_flags;
   int addrs = msg->rtm.rtm_addrs;
@@ -493,9 +493,8 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   e->net = net;
   e->u.krt.src = src;
   e->u.krt.proto = src2;
-
-  /* These are probably too Linux-specific */
-  e->u.krt.type = 0;
+  e->u.krt.seen = 0;
+  e->u.krt.best = 0;
   e->u.krt.metric = 0;
 
   if (scan)
@@ -537,7 +536,7 @@ krt_read_ifinfo(struct ks_msg *msg, int scan)
   struct if_msghdr *ifm = (struct if_msghdr *)&msg->rtm;
   void *body = (void *)(ifm + 1);
   struct sockaddr_dl *dl = NULL;
-  unsigned int i;
+  uint i;
   struct iface *iface = NULL, f = {};
   int fl = ifm->ifm_flags;
   int nlen = 0;
@@ -732,6 +731,7 @@ krt_read_msg(struct proto *p, struct ks_msg *msg, int scan)
       if(!scan) return;
     case RTM_ADD:
     case RTM_DELETE:
+    case RTM_CHANGE:
       krt_read_route(msg, (struct krt_proto *)p, scan);
       break;
     case RTM_IFANNOUNCE:
@@ -969,13 +969,15 @@ krt_sock_close_shared(void)
   }
 }
 
-void
+int
 krt_sys_start(struct krt_proto *p)
 {
   krt_table_map[KRT_CF->sys.table_id] = p;
 
   krt_sock_open_shared();
   p->sys.sk = krt_sock;
+
+  return 1;
 }
 
 void
@@ -991,10 +993,11 @@ krt_sys_shutdown(struct krt_proto *p)
 
 #else
 
-void
+int
 krt_sys_start(struct krt_proto *p)
 {
   p->sys.sk = krt_sock_open(p->p.pool, p, KRT_CF->sys.table_id);
+  return 1;
 }
 
 void

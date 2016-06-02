@@ -127,7 +127,7 @@ path_segment_contains(byte *p, int bs, u32 asn)
 
 /* Validates path attribute, removes AS_CONFED_* segments, and also returns path length */
 static int
-validate_path(struct bgp_proto *p, int as_path, int bs, byte *idata, unsigned int *ilength)
+validate_path(struct bgp_proto *p, int as_path, int bs, byte *idata, uint *ilength)
 {
   int res = 0;
   u8 *a, *dst;
@@ -825,7 +825,7 @@ bgp_attach_attr_wa(ea_list **to, struct linpool *pool, unsigned attr, unsigned l
 }
 
 static int
-bgp_encode_attr_hdr(byte *dst, unsigned int flags, unsigned code, int len)
+bgp_encode_attr_hdr(byte *dst, uint flags, unsigned code, int len)
 {
   int wlen;
 
@@ -1203,10 +1203,10 @@ encode_bgpsec_attr(struct  bgp_conn  *conn,
  *
  * Result: Length of the attribute block generated or -1 if not enough space.
  */
-unsigned int
+uint
 bgp_encode_attrs(struct bgp_proto *p, byte *w, ea_list *attrs, int remains)
 {
-  unsigned int i, code, type, flags;
+  uint i, code, type, flags;
   byte *start = w;
   int len, rv;
 
@@ -2082,6 +2082,82 @@ bgp_rte_better(rte *new, rte *old)
 }
 
 
+int
+bgp_rte_mergable(rte *pri, rte *sec)
+{
+  struct bgp_proto *pri_bgp = (struct bgp_proto *) pri->attrs->src->proto;
+  struct bgp_proto *sec_bgp = (struct bgp_proto *) sec->attrs->src->proto;
+  eattr *x, *y;
+  u32 p, s;
+
+  /* Skip suppressed routes (see bgp_rte_recalculate()) */
+  if (pri->u.bgp.suppressed != sec->u.bgp.suppressed)
+    return 0;
+
+  /* RFC 4271 9.1.2.1. Route resolvability test */
+  if (!rte_resolvable(sec))
+    return 0;
+
+  /* Start with local preferences */
+  x = ea_find(pri->attrs->eattrs, EA_CODE(EAP_BGP, BA_LOCAL_PREF));
+  y = ea_find(sec->attrs->eattrs, EA_CODE(EAP_BGP, BA_LOCAL_PREF));
+  p = x ? x->u.data : pri_bgp->cf->default_local_pref;
+  s = y ? y->u.data : sec_bgp->cf->default_local_pref;
+  if (p != s)
+    return 0;
+
+  /* RFC 4271 9.1.2.2. a)  Use AS path lengths */
+  if (pri_bgp->cf->compare_path_lengths || sec_bgp->cf->compare_path_lengths)
+    {
+      x = ea_find(pri->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
+      y = ea_find(sec->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
+      p = x ? as_path_getlen(x->u.ptr) : AS_PATH_MAXLEN;
+      s = y ? as_path_getlen(y->u.ptr) : AS_PATH_MAXLEN;
+
+      if (p != s)
+	return 0;
+
+//      if (DELTA(p, s) > pri_bgp->cf->relax_multipath)
+//	return 0;
+    }
+
+  /* RFC 4271 9.1.2.2. b) Use origins */
+  x = ea_find(pri->attrs->eattrs, EA_CODE(EAP_BGP, BA_ORIGIN));
+  y = ea_find(sec->attrs->eattrs, EA_CODE(EAP_BGP, BA_ORIGIN));
+  p = x ? x->u.data : ORIGIN_INCOMPLETE;
+  s = y ? y->u.data : ORIGIN_INCOMPLETE;
+  if (p != s)
+    return 0;
+
+  /* RFC 4271 9.1.2.2. c) Compare MED's */
+  if (pri_bgp->cf->med_metric || sec_bgp->cf->med_metric ||
+      (bgp_get_neighbor(pri) == bgp_get_neighbor(sec)))
+    {
+      x = ea_find(pri->attrs->eattrs, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC));
+      y = ea_find(sec->attrs->eattrs, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC));
+      p = x ? x->u.data : pri_bgp->cf->default_med;
+      s = y ? y->u.data : sec_bgp->cf->default_med;
+      if (p != s)
+	return 0;
+    }
+
+  /* RFC 4271 9.1.2.2. d) Prefer external peers */
+  if (pri_bgp->is_internal != sec_bgp->is_internal)
+    return 0;
+
+  /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
+  p = pri_bgp->cf->igp_metric ? pri->attrs->igp_metric : 0;
+  s = sec_bgp->cf->igp_metric ? sec->attrs->igp_metric : 0;
+  if (p != s)
+    return 0;
+
+  /* Remaining criteria are ignored */
+
+  return 1;
+}
+
+
+
 static inline int
 same_group(rte *r, u32 lpref, u32 lasn)
 {
@@ -2363,19 +2439,18 @@ bgp_remove_as4_attrs(struct bgp_proto *p, rta *a)
  * by a &rta.
  */
 struct rta *
-bgp_decode_attrs(struct bgp_conn *conn, byte *attr, unsigned int len,
-                 struct linpool *pool,  byte *nlri, int nlri_len)
+bgp_decode_attrs(struct bgp_conn *conn, byte *attr, uint len, struct linpool *pool, int mandatory,
+		 byte *nlri, int nlri_len)
 {
   struct bgp_proto *bgp = conn->bgp;
   rta *a = lp_alloc(pool, sizeof(struct rta));
-  unsigned int flags, code, l, i, type;
+  uint flags, code, l, i, type;
   int errcode;
   byte *z=0, *attr_start=0;
   byte seen[256/8];
   ea_list *ea;
   struct adata *ad;
   int withdraw = 0;
-  int mandatory = nlri_len;
 #ifdef CONFIG_BGPSEC
   unsigned int  bgpsec_len   = 0;
   byte         *bgpsec_start = 0;
@@ -2617,7 +2692,7 @@ err:
 int
 bgp_get_attr(eattr *a, byte *buf, int buflen)
 {
-  unsigned int i = EA_ID(a->id);
+  uint i = EA_ID(a->id);
   struct attr_desc *d;
   int len;
 

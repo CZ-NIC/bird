@@ -521,7 +521,7 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       WALK_LIST(oc, old->protos)
 	{
 	  p = oc->proto;
-	  sym = cf_find_symbol(oc->name);
+	  sym = cf_find_symbol(new, oc->name);
 	  if (sym && sym->class == SYM_PROTO && !new->shutdown)
 	    {
 	      /* Found match, let's check if we can smoothly switch to new configuration */
@@ -919,6 +919,9 @@ protos_build(void)
   proto_build(&proto_bfd);
   bfd_init_all();
 #endif
+#ifdef CONFIG_BABEL
+  proto_build(&proto_babel);
+#endif
 
   proto_pool = rp_new(&root_pool, "Protocols");
   proto_flush_event = ev_new(proto_pool);
@@ -1260,6 +1263,7 @@ proto_want_export_down(struct proto *p)
     rt_feed_baby_abort(p);
 
   p->export_state = ES_DOWN;
+  p->stats.exp_routes = 0;
   proto_unlink_ahooks(p);
 }
 
@@ -1488,7 +1492,7 @@ proto_show_basic_info(struct proto *p)
 }
 
 void
-proto_cmd_show(struct proto *p, unsigned int verbose, int cnt)
+proto_cmd_show(struct proto *p, uint verbose, int cnt)
 {
   byte buf[256], tbuf[TM_DATETIME_BUFFER_SIZE];
 
@@ -1524,7 +1528,7 @@ proto_cmd_show(struct proto *p, unsigned int verbose, int cnt)
 }
 
 void
-proto_cmd_disable(struct proto *p, unsigned int arg UNUSED, int cnt UNUSED)
+proto_cmd_disable(struct proto *p, uint arg UNUSED, int cnt UNUSED)
 {
   if (p->disabled)
     {
@@ -1540,7 +1544,7 @@ proto_cmd_disable(struct proto *p, unsigned int arg UNUSED, int cnt UNUSED)
 }
 
 void
-proto_cmd_enable(struct proto *p, unsigned int arg UNUSED, int cnt UNUSED)
+proto_cmd_enable(struct proto *p, uint arg UNUSED, int cnt UNUSED)
 {
   if (!p->disabled)
     {
@@ -1555,7 +1559,7 @@ proto_cmd_enable(struct proto *p, unsigned int arg UNUSED, int cnt UNUSED)
 }
 
 void
-proto_cmd_restart(struct proto *p, unsigned int arg UNUSED, int cnt UNUSED)
+proto_cmd_restart(struct proto *p, uint arg UNUSED, int cnt UNUSED)
 {
   if (p->disabled)
     {
@@ -1573,7 +1577,7 @@ proto_cmd_restart(struct proto *p, unsigned int arg UNUSED, int cnt UNUSED)
 }
 
 void
-proto_cmd_reload(struct proto *p, unsigned int dir, int cnt UNUSED)
+proto_cmd_reload(struct proto *p, uint dir, int cnt UNUSED)
 {
   if (p->disabled)
     {
@@ -1615,19 +1619,19 @@ proto_cmd_reload(struct proto *p, unsigned int dir, int cnt UNUSED)
 }
 
 void
-proto_cmd_debug(struct proto *p, unsigned int mask, int cnt UNUSED)
+proto_cmd_debug(struct proto *p, uint mask, int cnt UNUSED)
 {
   p->debug = mask;
 }
 
 void
-proto_cmd_mrtdump(struct proto *p, unsigned int mask, int cnt UNUSED)
+proto_cmd_mrtdump(struct proto *p, uint mask, int cnt UNUSED)
 {
   p->mrtdump = mask;
 }
 
 static void
-proto_apply_cmd_symbol(struct symbol *s, void (* cmd)(struct proto *, unsigned int, int), unsigned int arg)
+proto_apply_cmd_symbol(struct symbol *s, void (* cmd)(struct proto *, uint, int), uint arg)
 {
   if (s->class != SYM_PROTO)
     {
@@ -1640,7 +1644,7 @@ proto_apply_cmd_symbol(struct symbol *s, void (* cmd)(struct proto *, unsigned i
 }
 
 static void
-proto_apply_cmd_patt(char *patt, void (* cmd)(struct proto *, unsigned int, int), unsigned int arg)
+proto_apply_cmd_patt(char *patt, void (* cmd)(struct proto *, uint, int), uint arg)
 {
   int cnt = 0;
 
@@ -1660,8 +1664,8 @@ proto_apply_cmd_patt(char *patt, void (* cmd)(struct proto *, unsigned int, int)
 }
 
 void
-proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, unsigned int, int),
-		int restricted, unsigned int arg)
+proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uint, int),
+		int restricted, uint arg)
 {
   if (restricted && cli_access_restricted())
     return;

@@ -46,9 +46,9 @@ static inline u32 lsa_get_etype(struct ospf_lsa_header *h, struct ospf_proto *p)
 
 
 int lsa_flooding_allowed(u32 type, u32 domain, struct ospf_iface *ifa);
+void lsa_generate_checksum(struct ospf_lsa_header *lsa, const u8 *body);
+u16 lsa_verify_checksum(const void *lsa_n, int lsa_len);
 
-void lsasum_calculate(struct ospf_lsa_header *header, void *body);
-u16 lsasum_check(struct ospf_lsa_header *h, void *body);
 #define CMP_NEWER 1
 #define CMP_SAME 0
 #define CMP_OLDER -1

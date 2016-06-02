@@ -15,14 +15,18 @@
 #include "lib/unaligned.h"
 
 
+#define IP4_ALL_NODES		ipa_build4(224, 0, 0, 1)
+#define IP4_ALL_ROUTERS		ipa_build4(224, 0, 0, 2)
 #define IP4_OSPF_ALL_ROUTERS	ipa_build4(224, 0, 0, 5)
 #define IP4_OSPF_DES_ROUTERS	ipa_build4(224, 0, 0, 6)
+#define IP4_RIP_ROUTERS		ipa_build4(224, 0, 0, 9)
 
 #define IP6_ALL_NODES		ipa_build6(0xFF020000, 0, 0, 1)
 #define IP6_ALL_ROUTERS		ipa_build6(0xFF020000, 0, 0, 2)
 #define IP6_OSPF_ALL_ROUTERS	ipa_build6(0xFF020000, 0, 0, 5)
 #define IP6_OSPF_DES_ROUTERS	ipa_build6(0xFF020000, 0, 0, 6)
 #define IP6_RIP_ROUTERS		ipa_build6(0xFF020000, 0, 0, 9)
+#define IP6_BABEL_ROUTERS	ipa_build6(0xFF020000, 0, 0, 0x00010006)
 
 #define IP4_NONE		_MI4(0)
 #define IP6_NONE		_MI6(0,0,0,0)
@@ -31,6 +35,10 @@
 #define IP6_MIN_MTU		1280
 
 #define IP_PREC_INTERNET_CONTROL 0xc0
+
+#define IP4_HEADER_LENGTH	20
+#define IP6_HEADER_LENGTH	40
+#define UDP_HEADER_LENGTH	8
 
 
 #ifdef IPV6
@@ -446,8 +454,8 @@ static inline char * ip4_ntox(ip4_addr a, char *b)
 static inline char * ip6_ntox(ip6_addr a, char *b)
 { return b + bsprintf(b, "%08x.%08x.%08x.%08x", _I0(a), _I1(a), _I2(a), _I3(a)); }
 
-int ip4_pton(char *a, ip4_addr *o);
-int ip6_pton(char *a, ip6_addr *o);
+int ip4_pton(const char *a, ip4_addr *o);
+int ip6_pton(const char *a, ip6_addr *o);
 
 // XXXX these functions must be redesigned or removed
 #ifdef IPV6
@@ -471,11 +479,11 @@ int ip6_pton(char *a, ip6_addr *o);
 #define ipa_in_net(x,n,p) (ipa_zero(ipa_and(ipa_xor((n),(x)),ipa_mkmask(p))))
 #define net_in_net(n1,l1,n2,l2) (((l1) >= (l2)) && (ipa_zero(ipa_and(ipa_xor((n1),(n2)),ipa_mkmask(l2)))))
 
-char *ip_scope_text(unsigned);
+char *ip_scope_text(uint);
 
 struct prefix {
   ip_addr addr;
-  unsigned int len;
+  uint len;
 };
 
 

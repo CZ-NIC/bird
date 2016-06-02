@@ -129,7 +129,7 @@ ospf_advance_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_ls
       en->lsa.age = 0;
       en->init_age = 0;
       en->inst_time = now;
-      lsasum_calculate(&en->lsa, en->lsa_body);
+      lsa_generate_checksum(&en->lsa, en->lsa_body);
 
       OSPF_TRACE(D_EVENTS, "Advancing LSA: Type: %04x, Id: %R, Rt: %R, Seq: %08x",
 		 en->lsa_type, en->lsa.id, en->lsa.rt, en->lsa.sn);
@@ -238,7 +238,7 @@ ospf_do_originate_lsa(struct ospf_proto *p, struct top_hash_entry *en, void *lsa
   en->lsa.age = 0;
   en->init_age = 0;
   en->inst_time = now;
-  lsasum_calculate(&en->lsa, en->lsa_body);
+  lsa_generate_checksum(&en->lsa, en->lsa_body);
 
   OSPF_TRACE(D_EVENTS, "Originating LSA: Type: %04x, Id: %R, Rt: %R, Seq: %08x",
 	     en->lsa_type, en->lsa.id, en->lsa.rt, en->lsa.sn);
@@ -278,7 +278,7 @@ ospf_originate_lsa(struct ospf_proto *p, struct ospf_new_lsa *lsa)
   if (!SNODE_VALID(en))
     s_add_tail(&p->lsal, SNODE en);
 
-  if (en->lsa_body == NULL)
+  if (!en->nf || !en->lsa_body)
     en->nf = lsa->nf;
 
   if (en->nf != lsa->nf)
@@ -382,7 +382,7 @@ ospf_refresh_lsa(struct ospf_proto *p, struct top_hash_entry *en)
   en->lsa.age = 0;
   en->init_age = 0;
   en->inst_time = now;
-  lsasum_calculate(&en->lsa, en->lsa_body);
+  lsa_generate_checksum(&en->lsa, en->lsa_body);
   ospf_flood_lsa(p, en, NULL);
 }
 

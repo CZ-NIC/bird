@@ -2,14 +2,15 @@
  *	BIRD -- OSPF
  *
  *	(c) 1999--2004 Ondrej Filip <feela@network.cz>
- *	(c) 2009--2014 Ondrej Zajicek <santiago@crfreenet.org>
- *	(c) 2009--2014 CZ.NIC z.s.p.o.
+ *	(c) 2009--2015 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2009--2015 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
 #include "ospf.h"
 
+#include "lib/fletcher16.h"
 
 #ifndef CPU_BIG_ENDIAN
 void
@@ -150,126 +151,40 @@ lsa_get_type_domain_(u32 itype, struct ospf_iface *ifa, u32 *otype, u32 *domain)
 }
 
 
-
-/*
 void
-buf_dump(const char *hdr, const byte *buf, int blen)
+lsa_generate_checksum(struct ospf_lsa_header *lsa, const u8 *body)
 {
-  char b2[1024];
-  char *bp;
-  int first = 1;
-  int i;
-
-  const char *lhdr = hdr;
-
-  bp = b2;
-  for(i = 0; i < blen; i++)
-    {
-      if ((i > 0) && ((i % 16) == 0))
-	{
-	      *bp = 0;
-	      log(L_WARN "%s\t%s", lhdr, b2);
-	      lhdr = "";
-	      bp = b2;
-	}
-
-      bp += snprintf(bp, 1022, "%02x ", buf[i]);
-
-    }
-
-  *bp = 0;
-  log(L_WARN "%s\t%s", lhdr, b2);
-}
-*/
-
-#define MODX 4102		/* larges signed value without overflow */
-
-/* Fletcher Checksum -- Refer to RFC1008. */
-#define MODX                 4102
-#define LSA_CHECKSUM_OFFSET    15
-
-/* FIXME This is VERY uneficient, I have huge endianity problems */
-void
-lsasum_calculate(struct ospf_lsa_header *h, void *body)
-{
-  u16 length = h->length;
-
-  //  log(L_WARN "Checksum %R %R %d start (len %d)", h->id, h->rt, h->type, length);
-  lsa_hton_hdr(h, h);
-  lsa_hton_body1(body, length - sizeof(struct ospf_lsa_header));
+  struct fletcher16_context ctx;
+  struct ospf_lsa_header hdr;
+  u16 len = lsa->length;
 
   /*
-  char buf[1024];
-  memcpy(buf, h, sizeof(struct ospf_lsa_header));
-  memcpy(buf + sizeof(struct ospf_lsa_header), body, length - sizeof(struct ospf_lsa_header));
-  buf_dump("CALC", buf, length);
-  */
+   * lsa and body are in the host order, we need to compute Fletcher-16 checksum
+   * for data in the network order. We also skip the initial age field.
+   */
 
-  (void) lsasum_check(h, body);
+  lsa_hton_hdr(lsa, &hdr);
+  hdr.checksum = 0;
 
-  //  log(L_WARN "Checksum result %4x", h->checksum);
-
-  lsa_ntoh_hdr(h, h);
-  lsa_ntoh_body1(body, length - sizeof(struct ospf_lsa_header));
+  fletcher16_init(&ctx);
+  fletcher16_update(&ctx, (u8 *) &hdr + 2, sizeof(struct ospf_lsa_header) - 2);
+  fletcher16_update_n32(&ctx, body, len - sizeof(struct ospf_lsa_header));
+  lsa->checksum = fletcher16_final(&ctx, len, OFFSETOF(struct ospf_lsa_header, checksum));
 }
 
-/*
- * Note, that this function expects that LSA is in big endianity
- * It also returns value in big endian
- */
 u16
-lsasum_check(struct ospf_lsa_header *h, void *body)
+lsa_verify_checksum(const void *lsa_n, int lsa_len)
 {
-  u8 *sp, *ep, *p, *q, *b;
-  int c0 = 0, c1 = 0;
-  int x, y;
-  u16 length;
+  struct fletcher16_context ctx;
 
-  b = body;
-  sp = (char *) h;
-  sp += 2; /* Skip Age field */
-  length = ntohs(h->length) - 2;
-  h->checksum = 0;
+  /* The whole LSA is at lsa_n in net order, we just skip initial age field */
 
-  for (ep = sp + length; sp < ep; sp = q)
-  {				/* Actually MODX is very large, do we need the for-cyclus? */
-    q = sp + MODX;
-    if (q > ep)
-      q = ep;
-    for (p = sp; p < q; p++)
-    {
-      /*
-       * I count with bytes from header and than from body
-       * but if there is no body, it's appended to header
-       * (probably checksum in update receiving) and I go on
-       * after header
-       */
-      if ((b == NULL) || (p < (u8 *) (h + 1)))
-      {
-	c0 += *p;
-      }
-      else
-      {
-	c0 += *(b + (p - (u8 *) (h + 1)));
-      }
+  fletcher16_init(&ctx);
+  fletcher16_update(&ctx, (u8 *) lsa_n + 2, lsa_len - 2);
 
-      c1 += c0;
-    }
-    c0 %= 255;
-    c1 %= 255;
-  }
-
-  x = (int)((length - LSA_CHECKSUM_OFFSET) * c0 - c1) % 255;
-  if (x <= 0)
-    x += 255;
-  y = 510 - c0 - x;
-  if (y > 255)
-    y -= 255;
-
-  ((u8 *) & h->checksum)[0] = x;
-  ((u8 *) & h->checksum)[1] = y;
-  return h->checksum;
+  return fletcher16_compute(&ctx) == 0;
 }
+
 
 int
 lsa_comp(struct ospf_lsa_header *l1, struct ospf_lsa_header *l2)

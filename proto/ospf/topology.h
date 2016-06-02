@@ -39,7 +39,7 @@ struct top_hash_entry
 #define INSPF 2
   u8 mode;			/* LSA generated during RT calculation (LSA_RTCALC or LSA_STALE)*/
   u8 nhs_reuse;			/* Whether nhs nodes can be reused during merging.
-				   See a note in rt.c:merge_nexthops() */
+				   See a note in rt.c:add_cand() */
 };
 
 

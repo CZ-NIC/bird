@@ -23,7 +23,7 @@ int h[65536];
  *	= ((1-1/k)^k)^a which we can approximate by e^-a.
  */
 
-unsigned int hf(unsigned int n)
+uint hf(uint n)
 {
 #if 0
 	n = (n ^ (n >> 16)) & 0xffff;
@@ -58,7 +58,7 @@ main(int argc, char **argv)
 
 	while (max--)
 	  {
-	    unsigned int i, e;
+	    uint i, e;
 	    if (scanf("%x/%d", &i, &e) != 2)
 	      if (feof(stdin))
 		break;

@@ -171,6 +171,11 @@ BIRD executable by configuring out routing protocols you don't use, and
 	<tag>-f</tag>
 	run bird in foreground.
 
+	<tag>-l</tag>
+	look for a configuration file and a communication socket in the current
+	working directory instead of in default system locations. However, paths
+	specified by options <cf/-c/, <cf/-s/ have higher priority.
+
 	<tag>-R</tag>
 	apply graceful restart recovery after start.
 </descrip>
@@ -318,8 +323,9 @@ protocol rip {
 <p><descrip>
 	<tag>include "<m/filename/"</tag>
 	This statement causes inclusion of a new file. <m/Filename/ could also
-	be a wildcard. The maximal depth is 8. Note that this statement could be
-	used anywhere in the config file, not just as a top-level option.
+	be a wildcard, in that case matching files are included in alphabetic
+	order. The maximal depth is 8. Note that this statement could be used
+	anywhere in the config file, not just as a top-level option.
 
 	<tag><label id="dsc-log">log "<m/filename/"|syslog [name <m/name/]|stderr all|{ <m/list of classes/ }</tag>
 	Set logging of messages having the given class (either <cf/all/ or
@@ -711,6 +717,10 @@ This argument can be omitted if there exists only a single instance.
 	Show router status, that is BIRD version, uptime and time from last
 	reconfiguration.
 
+	<tag>show interfaces [summary]</tag>
+	Show the list of interfaces. For each interface, print its type, state,
+	MTU and addresses assigned.
+
 	<tag>show protocols [all]</tag>
 	Show list of protocol instances along with tables they are connected to
 	and protocol status, possibly giving verbose information, if <cf/all/ is
@@ -738,15 +748,17 @@ This argument can be omitted if there exists only a single instance.
 	Show contents of an OSPF LSA database. Options could be used to filter
 	entries.
 
+	<tag>show rip interfaces [<m/name/] ["<m/interface/"]</tag>
+	Show detailed information about RIP interfaces.
+
+	<tag>show rip neighbors [<m/name/] ["<m/interface/"]</tag>
+	Show a list of RIP neighbors and associated state.
+
 	<tag>show static [<m/name/]</tag>
 	Show detailed information about static routes.
 
 	<tag>show bfd sessions [<m/name/]</tag>
 	Show information about BFD sessions.
-
-	<tag>show interfaces [summary]</tag>
-	Show the list of interfaces. For each interface, print its type, state,
-	MTU and addresses assigned.
 
 	<tag>show symbols [table|filter|function|protocol|template|roa|<m/symbol/]</tag>
 	Show the list of symbols defined in the configuration (names of
@@ -1119,9 +1131,12 @@ foot).
 
 	<cf><m/P/.last</cf> returns the last ASN (the source ASN) in path <m/P/.
 
+	<cf><m/P/.last_nonaggregated</cf> returns the last ASN in the non-aggregated part of the path <m/P/.
+
 	Both <cf/first/ and <cf/last/ return zero if there is no appropriate
 	ASN, for example if the path contains an AS set element as the first (or
-	the last) part.
+	the last) part. If the path ends with an AS set, <cf/last_nonaggregated/
+	may be used to get last ASN before any AS set.
 
 	<cf><m/P/.len</cf> returns the length of path <m/P/.
 
@@ -1365,6 +1380,102 @@ corresponding protocol sections.
 
 <chapt>Protocols
 
+<sect>Babel
+
+<sect1>Introduction
+
+<p>The Babel protocol (RFC6126) is a loop-avoiding distance-vector routing
+protocol that is robust and efficient both in ordinary wired networks and in
+wireless mesh networks. Babel is conceptually very simple in its operation and
+"just works" in its default configuration, though some configuration is possible
+and in some cases desirable.
+
+<p>While the Babel protocol is dual stack (i.e., can carry both IPv4 and IPv6
+routes over the same IPv6 transport), BIRD presently implements only the IPv6
+subset of the protocol. No Babel extensions are implemented, but the BIRD
+implementation can coexist with implementations using the extensions (and will
+just ignore extension messages).
+
+<p>The Babel protocol implementation in BIRD is currently in alpha stage.
+
+<sect1>Configuration
+
+<p>Babel supports no global configuration options apart from those common to all
+other protocols, but supports the following per-interface configuration options:
+
+<code>
+protocol babel [<name>] {
+	interface <interface pattern> {
+		type <wired|wireless>;
+		rxcost <number>;
+		hello interval <number>;
+		update interval <number>;
+		port <number>;
+		tx class|dscp <number>;
+		tx priority <number>;
+		rx buffer <number>;
+		tx length <number>;
+		check link <switch>;
+	};
+}
+</code>
+
+<descrip>
+      <tag>type wired|wireless </tag>
+      This option specifies the interface type: Wired or wireless. Wired
+      interfaces are considered more reliable, and so the default hello
+      interval is higher, and a neighbour is considered unreachable after only
+      a small number of "hello" packets are lost. On wireless interfaces,
+      hello packets are sent more often, and the ETX link quality estimation
+      technique is used to compute the metrics of routes discovered over this
+      interface. This technique will gradually degrade the metric of routes
+      when packets are lost rather than the more binary up/down mechanism of
+      wired type links. Default: <cf/wired/.
+
+      <tag>rxcost <m/num/</tag>
+      This specifies the RX cost of the interface. The route metrics will be
+      computed from this value with a mechanism determined by the interface
+      <cf/type/. Default: 96 for wired interfaces, 256 for wireless.
+
+      <tag>hello interval <m/num/</tag>
+      Interval at which periodic "hello" messages are sent on this interface,
+      in seconds. Default: 4 seconds.
+
+      <tag>update interval <m/num/</tag>
+      Interval at which periodic (full) updates are sent. Default: 4 times the
+      hello interval.
+
+      <tag>port <m/number/</tag>
+      This option selects an UDP port to operate on. The default is to operate
+      on port 6696 as specified in the Babel RFC.
+
+      <tag>tx class|dscp|priority <m/number/</tag>
+      These options specify the ToS/DiffServ/Traffic class/Priority of the
+      outgoing Babel packets. See <ref id="dsc-prio" name="tx class"> common
+      option for detailed description.
+
+      <tag>rx buffer <m/number/</tag>
+      This option specifies the size of buffers used for packet processing.
+      The buffer size should be bigger than maximal size of received packets.
+      The default value is the interface MTU, and the value will be clamped to a
+      minimum of 512 bytes + IP packet overhead.
+
+      <tag>tx length <m/number/</tag>
+      This option specifies the maximum length of generated Babel packets. To
+      avoid IP fragmentation, it should not exceed the interface MTU value.
+      The default value is the interface MTU value, and the value will be
+      clamped to a minimum of 512 bytes + IP packet overhead.
+
+      <tag>check link <m/switch/</tag>
+      If set, the hardware link state (as reported by OS) is taken into
+      consideration. When the link disappears (e.g. an ethernet cable is
+      unplugged), neighbors are immediately considered unreachable and all
+      routes received from them are withdrawn. It is possible that some
+      hardware drivers or platforms do not implement this feature. Default:
+      yes.
+</descrip>
+
+
 <sect><label id="sect-bfd">BFD
 
 <sect1>Introduction
@@ -1571,7 +1682,7 @@ RFC 4271<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc4271.txt">
 It also supports the community attributes
 (RFC 1997<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc1997.txt">),
 capability negotiation
-(RFC 3392<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc3392.txt">),
+(RFC 5492<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc5492.txt">),
 MD5 password authentication
 (RFC 2385<htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc2385.txt">),
 extended communities
@@ -1707,7 +1818,11 @@ using the following configuration parameters:
 	<cf/bgp_next_hop/ is used if it is directly reachable, otherwise the
 	neighbor IP address is used. Recursive mode means that the gateway is
 	computed by an IGP routing table lookup for the IP address from
-	<cf/bgp_next_hop/. Recursive mode is the behavior specified by the BGP
+	<cf/bgp_next_hop/. Note that there is just one level of indirection in
+	recursive mode - the route obtained by the lookup must not be recursive
+	itself, to prevent mutually recursive routes.
+
+	Recursive mode is the behavior specified by the BGP
 	standard. Direct mode is simpler, does not require any routes in a
 	routing table, and was used in older versions of BIRD, but does not
 	handle well nontrivial iBGP setups and multihop. Recursive mode is
@@ -1745,9 +1860,20 @@ using the following configuration parameters:
 	only. Default: disabled.
 
 	<tag>password <m/string/</tag>
-	Use this password for MD5 authentication of BGP sessions. Default: no
-	authentication. Password has to be set by external utility
-	(e.g. setkey(8)) on BSD systems.
+	Use this password for MD5 authentication of BGP sessions (RFC 2385).
+	When used on BSD systems, see also <cf/setkey/ option below. Default:
+	no authentication.
+
+	<tag>setkey <m/switch/</tag>
+	On BSD systems, keys for TCP MD5 authentication are stored in the global
+	SA/SP database, which can be accessed by external utilities (e.g.
+	setkey(8)). BIRD configures security associations in the SA/SP database
+	automatically based on <cf/password/ options (see above), this option
+	allows to disable automatic updates by BIRD when manual configuration by
+	external utilities is preferred. Note that automatic SA/SP database
+	updates are currently implemented only for FreeBSD. Passwords have to be
+	set manually by an external utility on NetBSD and OpenBSD. Default:
+	enabled (ignored on non-FreeBSD).
 
 	<tag>passive <m/switch/</tag>
 	Standard BGP behavior is both initiating outgoing connections and
@@ -1854,6 +1980,11 @@ using the following configuration parameters:
 	sessions with its neighbors. This might be useful for circumventing bugs
 	in neighbor's implementation of 4B AS extension. Even when disabled
 	(off), BIRD behaves internally as AS4-aware BGP router. Default: on.
+
+	<tag>enable extended messages <m/switch/</tag>
+	The BGP protocol uses maximum message length of 4096 bytes. This option
+	provides an extension to allow extended messages with length up
+	to 65535 bytes. Default: off.
 
 	<tag>capabilities <m/switch/</tag>
 	Use capability advertisement to advertise optional capabilities. This is
@@ -2050,7 +2181,7 @@ protocol bgp {
 	multihop;			     # ... which is connected indirectly
 	export filter {			     # We use non-trivial export rules
 		if source = RTS_STATIC then { # Export only static routes
-		        # Assign our community
+			# Assign our community
 			bgp_community.add((65000,64501));
 			# Artificially increase path length
 			# by advertising local AS number twice
@@ -2081,7 +2212,6 @@ interfaces to be defined for them to work with.
 <p><descrip>
 
 	<tag>scan time <m/number/</tag>
-
 	Time in seconds between two scans of the network interface list. On
 	systems where we are notified about interface status changes
 	asynchronously (such as newer versions of Linux), we need to scan the
@@ -2138,7 +2268,7 @@ conditions, because a lower priority IGP route for the same network is not
 exported to the kernel routing table. This is an issue on BSD systems only, as
 on Linux systems BIRD cannot change non-BIRD route in the kernel routing table.
 
-<p>The only configurable thing about direct is what interfaces it watches:
+<p>There are just few configuration options for the Direct protocol:
 
 <p><descrip>
 	<tag>interface <m/pattern [, ...]/</tag>
@@ -2149,6 +2279,12 @@ on Linux systems BIRD cannot change non-BIRD route in the kernel routing table.
 	interfaces), just use this clause. See <ref id="dsc-iface" name="interface">
 	common option for detailed description. The Direct protocol uses
 	extended interface clauses.
+
+	<tag>check link <m/switch/</tag>
+	If enabled, a hardware link state (reported by OS) is taken into
+	consideration. Routes for directly connected networks are generated only
+	if link up is reported and they are withdrawn when link disappears
+	(e.g., an ethernet cable is unplugged). Default value is no.
 </descrip>
 
 <p>Direct device routes don't contain any specific attributes.
@@ -2227,6 +2363,18 @@ limitations can be overcome using another routing table and the pipe protocol.
 	a graceful restart recovery is active, the Kernel protocol will defer
 	synchronization of routing tables until the end of the recovery. Note
 	that import of kernel routes to BIRD is not affected.
+
+	<tag>merge paths <M>switch</M> [limit <M>number</M>]</tag>
+	Usually, only best routes are exported to the kernel protocol. With path
+	merging enabled, both best routes and equivalent non-best routes are
+	merged during export to generate one ECMP (equal-cost multipath) route
+	for each network. This is useful e.g. for BGP multipath. Note that best
+	routes are still pivotal for route export (responsible for most
+	properties of resulting ECMP routes), while exported non-best routes are
+	responsible just for additional multipath next hops. This option also
+	allows to specify a limit on maximal number of nexthops in one route. By
+	default, multipath merging is disabled. If enabled, default value of the
+	limit is 16.
 </descrip>
 
 <sect1>Attributes
@@ -2248,11 +2396,25 @@ these attributes:
 
 	<tag>ip <cf/krt_prefsrc/</tag> (Linux)
 	The preferred source address. Used in source address selection for
- 	outgoing packets. Have to be one of IP addresses of the router.
+	outgoing packets. Has to be one of the IP addresses of the router.
 
 	<tag>int <cf/krt_realm/</tag> (Linux)
 	The realm of the route. Can be used for traffic classification.
 </descrip>
+
+<p>In Linux, there is also a plenty of obscure route attributes mostly focused
+on tuning TCP performance of local connections. BIRD supports most of these
+attributes, see Linux or iproute2 documentation for their meaning. Attributes
+<cf/krt_lock_*/ and <cf/krt_feature_*/ have type bool, others have type int.
+Supported attributes are:
+
+<cf/krt_mtu/, <cf/krt_lock_mtu/, <cf/krt_window/, <cf/krt_lock_window/,
+<cf/krt_rtt/, <cf/krt_lock_rtt/, <cf/krt_rttvar/, <cf/krt_lock_rttvar/,
+<cf/krt_sstresh/, <cf/krt_lock_sstresh/, <cf/krt_cwnd/, <cf/krt_lock_cwnd/,
+<cf/krt_advmss/, <cf/krt_lock_advmss/, <cf/krt_reordering/, <cf/krt_lock_reordering/,
+<cf/krt_hoplimit/, <cf/krt_lock_hoplimit/, <cf/krt_rto_min/, <cf/krt_lock_rto_min/,
+<cf/krt_initcwnd/, <cf/krt_initrwnd/, <cf/krt_quickack/,
+<cf/krt_feature_ecn/, <cf/krt_feature_allfrag/
 
 <sect1>Example
 
@@ -2447,7 +2609,7 @@ protocol ospf &lt;name&gt; {
 	This option specifies whether OSPF is allowed to generate ECMP
 	(equal-cost multipath) routes. Such routes are used when there are
 	several directions to the destination, each with the same (computed)
-	cost. This option also allows to specify a limit on maximal number of
+	cost. This option also allows to specify a limit on maximum number of
 	nexthops in one route. By default, ECMP is disabled. If enabled,
 	default	value of the limit is 16.
 
@@ -2579,8 +2741,8 @@ protocol ospf &lt;name&gt; {
 	updates. Default value is 5.
 
 	<tag>priority <M>num</M></tag>
-	On every multiple access network (e.g., the Ethernet) Designed Router
-	and Backup Designed router are elected. These routers have some special
+	On every multiple access network (e.g., the Ethernet) Designated Router
+	and Backup Designated router are elected. These routers have some special
 	functions in the flooding process. Higher priority increases preferences
 	in this election. Routers with priority 0 are not eligible. Default
 	value is 1.
@@ -3215,16 +3377,14 @@ one). After some time, the distance reaches infinity (that's 15 in RIP) and all
 routers know that network is unreachable. RIP tries to minimize situations where
 counting to infinity is necessary, because it is slow. Due to infinity being 16,
 you can't use RIP on networks where maximal distance is higher than 15
-hosts. You can read more about RIP at
-<HTMLURL URL="http://www.ietf.org/html.charters/rip-charter.html"
-name="http://www.ietf.org/html.charters/rip-charter.html">. Both IPv4
-(RFC 1723 <htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc1723.txt">) and IPv6
-(RFC 2080 <htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc2080.txt">) versions
-of RIP are supported by BIRD, historical RIPv1
-(RFC 1058 <htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc1058.txt">) is not
-currently supported. RIPv4 MD5 authentication
-(RFC 2082 <htmlurl url="ftp://ftp.rfc-editor.org/in-notes/rfc2082.txt">) is
-supported.
+hosts.
+
+<p>BIRD supports RIPv1
+(RFC 1058<htmlurl url="http://www.rfc-editor.org/rfc/rfc1058.txt">),
+RIPv2 (RFC 2453<htmlurl url="http://www.rfc-editor.org/rfc/rfc2453.txt">),
+RIPng (RFC 2080<htmlurl url="http://www.rfc-editor.org/rfc/rfc2080.txt">),
+and RIP cryptographic authentication (SHA-1 not implemented)
+(RFC 4822<htmlurl url="http://www.rfc-editor.org/rfc/rfc4822.txt">).
 
 <p>RIP is a very simple protocol, and it has a lot of shortcomings. Slow
 convergence, big network load and inability to handle larger networks makes it
@@ -3232,39 +3392,161 @@ pretty much obsolete. It is still usable on very small networks.
 
 <sect1>Configuration
 
-<p>In addition to options common for all to other protocols, RIP supports the
-following ones:
+<p>RIP configuration consists mainly of common protocol options and interface
+definitions, most RIP options are interface specific.
+
+<code>
+protocol rip [&lt;name&gt;] {
+	infinity &lt;number&gt;;
+	ecmp &lt;switch&gt; [limit &lt;number&gt;];
+	interface &lt;interface pattern&gt; {
+		metric &lt;number&gt;;
+		mode multicast|broadcast;
+		passive &lt;switch&gt;;
+		address &lt;ip&gt;;
+		port &lt;number&gt;;
+		version 1|2;
+		split horizon &lt;switch&gt;;
+		poison reverse &lt;switch&gt;;
+		check zero &lt;switch&gt;;
+		update time &lt;number&gt;;
+		timeout time &lt;number&gt;;
+		garbage time &lt;number&gt;;
+		ecmp weight &lt;number&gt;;
+		ttl security &lt;switch&gt;; | tx only;
+		tx class|dscp &lt;number&gt;;
+		tx priority &lt;number&gt;;
+		rx buffer &lt;number&gt;;
+		tx length &lt;number&gt;;
+		check link &lt;switch&gt;;
+		authentication none|plaintext|cryptographic;
+		password "&lt;text&gt;";
+		password "&lt;text&gt;" {
+			id &lt;num&gt;;
+			generate from "&lt;date&gt;";
+			generate to "&lt;date&gt;";
+			accept from "&lt;date&gt;";
+			accept to "&lt;date&gt;";
+		};
+	};
+}
+</code>
 
 <descrip>
-	<tag>authentication none|plaintext|md5</tag>
-	Selects authentication method to be used. <cf/none/ means that packets
-	are not authenticated at all, <cf/plaintext/ means that a plaintext
-	password is embedded into each packet, and <cf/md5/ means that packets
-	are authenticated using a MD5 cryptographic hash. If you set
-	authentication to not-none, it is a good idea to add <cf>password</cf>
-	section. Default: none.
+	<tag>infinity <M>number</M></tag>
+	Selects the distance of infinity. Bigger values will make
+	protocol convergence even slower. The default value is 16.
 
-	<tag>honor always|neighbor|never</tag>
-	Specifies when should requests for dumping routing table be honored.
-	(Always, when sent from a host on a directly connected network or
-	never.) Routing table updates are honored only from neighbors, that is
-	not configurable. Default: never.
+	<tag>ecmp <M>switch</M> [limit <M>number</M>]</tag>
+	This option specifies whether RIP is allowed to generate ECMP
+	(equal-cost multipath) routes. Such routes are used when there are
+	several directions to the destination, each with the same (computed)
+	cost. This option also allows to specify a limit on maximum number of
+	nexthops in one route. By default, ECMP is disabled. If enabled,
+	default	value of the limit is 16.
+
+	<tag>interface <m/pattern [, ...]/ { <m/options/ }</tag>
+	Interface definitions specify a set of interfaces on which the
+	protocol is activated and contain interface specific options.
+	See <ref id="dsc-iface" name="interface"> common options for
+	detailed description.
 </descrip>
 
-<p>There are some options that can be specified per-interface:
+<p>Interface specific options:
 
 <descrip>
 	<tag>metric <m/num/</tag>
-	This option specifies the metric of the interface. Valid
+	This option specifies the metric of the interface. When a route is
+	received from the interface, its metric is increased by this value
+	before further processing. Valid values are 1-255, but values higher
+	than infinity has no further meaning. Default: 1.
 
-	<tag>mode multicast|broadcast|quiet|nolisten|version1</tag>
-	This option selects the mode for RIP to use on the interface. If nothing
-	is specified, RIP runs in multicast mode. <cf/version1/ is currently
-	equivalent to <cf/broadcast/, and it makes RIP talk to a broadcast
-	address even through multicast mode is possible. <cf/quiet/ option means
-	that RIP will not transmit any periodic messages to this interface and
-	<cf/nolisten/ means that RIP will send to this interface butnot listen
-	to it.
+	<tag>mode multicast|broadcast</tag>
+	This option selects the mode for RIP to use on the interface. The
+	default is multicast mode for RIPv2 and broadcast mode for RIPv1.
+	RIPng always uses the multicast mode.
+
+	<tag>passive <m/switch/</tag>
+	Passive interfaces receive routing updates but do not transmit any
+	messages. Default: no.
+
+	<tag>address <m/ip/</tag>
+	This option specifies a destination address used for multicast or
+	broadcast messages, the default is the official RIP (224.0.0.9) or RIPng
+	(ff02::9) multicast address, or an appropriate broadcast address in the
+	broadcast mode.
+
+	<tag>port <m/number/</tag>
+	This option selects an UDP port to operate on, the default is the
+	official RIP (520) or RIPng (521) port.
+
+	<tag>version 1|2</tag>
+	This option selects the version of RIP used on the interface. For RIPv1,
+	automatic subnet aggregation is not implemented, only classful network
+	routes and host routes are propagated. Note that BIRD allows RIPv1 to be
+	configured with features that are defined for RIPv2 only, like
+	authentication or using multicast sockets. The default is RIPv2 for IPv4
+	RIP, the option is not supported for RIPng, as no further versions are
+	defined.
+
+	<tag>version only <m/switch/</tag>
+	Regardless of RIP version configured for the interface, BIRD accepts
+	incoming packets of any RIP version. This option restrict accepted
+	packets to the configured version. Default: no.
+
+	<tag>split horizon <m/switch/</tag>
+	Split horizon is a scheme for preventing routing loops. When split
+	horizon is active, routes are not regularly propagated back to the
+	interface from which they were received. They are either not propagated
+	back at all (plain split horizon) or propagated back with an infinity
+	metric (split horizon with poisoned reverse). Therefore, other routers
+	on the interface will not consider the router as a part of an
+	independent path to the destination of the route. Default: yes.
+
+	<tag>poison reverse <m/switch/</tag>
+	When split horizon is active, this option specifies whether the poisoned
+	reverse variant (propagating routes back with an infinity metric) is
+	used. The poisoned reverse has some advantages in faster convergence,
+	but uses more network traffic. Default: yes.
+
+	<tag>check zero <m/switch/</tag>
+	Received RIPv1 packets with non-zero values in reserved fields should
+	be discarded. This option specifies whether the check is performed or
+	such packets are just processed as usual. Default: yes.
+
+	<tag>update time <m/number/</tag>
+	Specifies the number of seconds between periodic updates. A lower number
+	will mean faster convergence but bigger network load. Default: 30.
+
+	<tag>timeout time <m/number/</tag>
+	Specifies the time interval (in seconds) between the last received route
+	announcement and the route expiration. After that, the network is
+	considered unreachable, but still is propagated with infinity distance.
+	Default: 180.
+
+	<tag>garbage time <m/number/</tag>
+	Specifies the time interval (in seconds) between the route expiration
+	and the removal of the unreachable network entry. The garbage interval,
+	when a route with infinity metric is propagated, is used for both
+	internal (after expiration) and external (after withdrawal) routes.
+	Default: 120.
+
+	<tag>ecmp weight <m/number/</tag>
+	When ECMP (multipath) routes are allowed, this value specifies a
+	relative weight used for nexthops going through the iface. Valid
+	values are 1-256. Default value is 1.
+
+	<tag>authentication none|plaintext|cryptographic</tag>
+	Selects authentication method to be used. <cf/none/ means that packets
+	are not authenticated at all, <cf/plaintext/ means that a plaintext
+	password is embedded into each packet, and <cf/cryptographic/ means that
+	packets are authenticated using a MD5 cryptographic hash. If you set
+	authentication to not-none, it is a good idea to add <cf>password</cf>
+	section. Default: none.
+
+	<tag>password "<m/text/"</tag>
+	Specifies a password used for authentication. See <ref id="dsc-pass"
+	name="password"> common option for detailed description.
 
 	<tag>ttl security [<m/switch/ | tx only]</tag>
 	TTL security is a feature that protects routing protocols from remote
@@ -3280,43 +3562,31 @@ following ones:
 	compatibility with neighbors regardless of whether they use ttl
 	security.
 
-	Note that for RIPng, TTL security is a standard behavior (required by
-	RFC 2080), but BIRD uses <cf/tx only/ by default, for compatibility with
-	older versions. For IPv4 RIP, default value is no.
+	For RIPng, TTL security is a standard behavior (required by RFC 2080)
+	and therefore default value is yes. For IPv4 RIP, default value is no.
 
-	<tag>tx class|dscp|priority <m/num/</tag>
+	<tag>tx class|dscp|priority <m/number/</tag>
 	These options specify the ToS/DiffServ/Traffic class/Priority of the
 	outgoing RIP packets. See <ref id="dsc-prio" name="tx class"> common
 	option for detailed description.
-</descrip>
 
-<p>The following options generally override behavior specified in RFC. If you
-use any of these options, BIRD will no longer be RFC-compliant, which means it
-will not be able to talk to anything other than equally configured BIRD. I have
-warned you.
+	<tag>rx buffer <m/number/</tag>
+	This option specifies the size of buffers used for packet processing.
+	The buffer size should be bigger than maximal size of received packets.
+	The default value is 532 for IPv4 RIP and interface MTU value for RIPng.
 
-<descrip>
-	<tag>port <M>number</M></tag>
-	Selects IP port to operate on, default 520. (This is useful when testing
-	BIRD, if you set this to an address &gt;1024, you will not need to run
-	bird with UID==0).
+	<tag>tx length <m/number/</tag>
+	This option specifies the maximum length of generated RIP packets. To
+	avoid IP fragmentation, it should not exceed the interface MTU value.
+	The default value is 532 for IPv4 RIP and interface MTU value for RIPng.
 
-	<tag>infinity <M>number</M></tag>
-	Selects the value of infinity, default is 16. Bigger values will make
-	protocol convergence even slower.
-
-	<tag>period <M>number</M></tag>
-	Specifies the number of seconds between periodic updates. Default is 30
-	seconds. A lower number will mean faster convergence but bigger network
-	load. Do not use values lower than 12.
-
-	<tag>timeout time <M>number</M></tag>
-	Specifies how old route has to be to be considered unreachable.
-	Default is 4*<cf/period/.
-
-	<tag>garbage time <M>number</M></tag>
-	Specifies how old route has to be to be discarded. Default is
-	10*<cf/period/.
+	<tag>check link <m/switch/</tag>
+	If set, the hardware link state (as reported by OS) is taken into
+	consideration. When the link disappears (e.g. an ethernet cable is
+	unplugged), neighbors are immediately considered unreachable and all
+	routes received from them are withdrawn. It is possible that some
+	hardware drivers or platforms do not implement this feature. Default:
+	no.
 </descrip>
 
 <sect1>Attributes
@@ -3327,27 +3597,26 @@ warned you.
 	<tag>int <cf/rip_metric/</tag>
 	RIP metric of the route (ranging from 0 to <cf/infinity/).  When routes
 	from different RIP instances are available and all of them have the same
-	preference, BIRD prefers the route with lowest <cf/rip_metric/. When
-	importing a non-RIP route, the metric defaults to 5.
+	preference, BIRD prefers the route with lowest <cf/rip_metric/. When a
+	non-RIP route is exported to RIP, the default metric is 1.
 
 	<tag>int <cf/rip_tag/</tag>
 	RIP route tag: a 16-bit number which can be used to carry additional
 	information with the route (for example, an originating AS number in
-	case of external routes). When importing a non-RIP route, the tag
-	defaults to 0.
+	case of external routes). When a non-RIP route is exported to RIP, the
+	default tag is 0.
 </descrip>
 
 <sect1>Example
 
 <p><code>
-protocol rip MyRIP_test {
+protocol rip {
         debug all;
         port 1520;
         period 12;
         garbage time 60;
         interface "eth0" { metric 3; mode multicast; };
 	interface "eth*" { metric 2; mode broadcast; };
-        honor neighbor;
         authentication none;
         import filter { print "importing"; accept; };
         export filter { print "exporting"; accept; };
@@ -3369,7 +3638,7 @@ default route to prevent routing loops).
 packets to a neighboring router, multipath routes specifying several (possibly
 weighted) neighboring routers, device routes specifying forwarding to hosts on a
 directly connected network, recursive routes computing their nexthops by doing
-route table lookups for a given IP and special routes (sink, blackhole etc.)
+route table lookups for a given IP, and special routes (sink, blackhole etc.)
 which specify a special action to be done instead of forwarding the packet.
 
 <p>When the particular destination is not available (the interface is down or
@@ -3377,16 +3646,36 @@ the next hop of the route is not a neighbor at the moment), Static just
 uninstalls the route from the table it is connected to and adds it again as soon
 as the destination becomes adjacent again.
 
-<p>The Static protocol does not have many configuration options. The definition
-of the protocol contains mainly a list of static routes:
+<p>There are three classes of definitions in Static protocol configuration --
+global options, static route definitions, and per-route options. Usually, the
+definition of the protocol contains mainly a list of static routes.
+
+<p>Global options:
+
+<descrip>
+	<tag>check link <m/switch/</tag>
+	If set, hardware link states of network interfaces are taken into
+	consideration.  When link disappears (e.g. ethernet cable is unplugged),
+	static routes directing to that interface are removed. It is possible
+	that some hardware drivers or platforms do not implement this feature.
+	Default: off.
+
+	<tag>igp table <m/name/</tag>
+	Specifies a table that is used for route table lookups of recursive
+	routes. Default: the same table as the protocol is connected to.
+</descrip>
+
+<p>Route definitions (each may also contain a block of per-route options):
 
 <descrip>
 	<tag>route <m/prefix/ via <m/ip/</tag>
-	Static route through a neighboring router.
+	Static route through a neighboring router. For link-local next hops,
+	interface can be specified as a part of the address (e.g.,
+	<cf/via fe80::1234%eth0/).
 
-	<tag>route <m/prefix/ multipath via <m/ip/ [weight <m/num/] [via ...]</tag>
+	<tag>route <m/prefix/ multipath via <m/ip/ [weight <m/num/] [bfd <m/switch/] [via ...]</tag>
 	Static multipath route. Contains several nexthops (gateways), possibly
- 	with their weights.
+	with their weights.
 
 	<tag>route <m/prefix/ via <m/"interface"/</tag>
 	Static device route through an interface to hosts on a directly
@@ -3400,17 +3689,33 @@ of the protocol contains mainly a list of static routes:
 	Special routes specifying to silently drop the packet, return it as
 	unreachable or return it as administratively prohibited. First two
 	targets are also known as <cf/drop/ and <cf/reject/.
+</descrip>
 
-	<tag>check link <m/switch/</tag>
-	If set, hardware link states of network interfaces are taken into
-	consideration.  When link disappears (e.g. ethernet cable is unplugged),
-	static routes directing to that interface are removed. It is possible
-	that some hardware drivers or platforms do not implement this feature.
-	Default: off.
+<p>Per-route options:
 
-	<tag>igp table <m/name/</tag>
-	Specifies a table that is used for route table lookups of recursive
-	routes. Default: the same table as the protocol is connected to.
+<descrip>
+	<tag>bfd <m/switch/</tag>
+	The Static protocol could use BFD protocol for next hop liveness
+	detection. If enabled, a BFD session to the route next hop is created
+	and the static route is BFD-controlled -- the static route is announced
+	only if the next hop liveness is confirmed by BFD. If the BFD session
+	fails, the static route is removed. Note that this is a bit different
+	compared to other protocols, which may use BFD as an advisory mechanism
+	for fast failure detection but ignores it if a BFD session is not even
+	established.
+
+	This option can be used for static routes with a direct next hop, or
+	also for for individual next hops in a static multipath route (see
+	above). Note that BFD protocol also has to be configured, see
+	<ref id="sect-bfd" name="BFD"> section for details. Default value is no.
+
+	<tag><m/filter expression/</tag>
+	This is a special option that allows filter expressions to be configured
+	on per-route basis. Can be used multiple times. These expressions are
+	evaluated when the route is originated, similarly to the import filter
+	of the static protocol. This is especially useful for configuring route
+	attributes, e.g., <cf/ospf_metric1 = 100;/ for a route that will be
+	exported to the OSPF protocol.
 </descrip>
 
 <p>Static routes have no specific attributes.
@@ -3419,14 +3724,23 @@ of the protocol contains mainly a list of static routes:
 
 <p><code>
 protocol static {
-	table testable;			 # Connect to a non-default routing table
+	table testable;			# Connect to a non-default routing table
+	check link;			# Advertise routes only if link is up
 	route 0.0.0.0/0 via 198.51.100.130; # Default route
-	route 10.0.0.0/8 multipath	 # Multipath route
+	route 10.0.0.0/8 multipath	# Multipath route
 		via 198.51.100.10 weight 2
-		via 198.51.100.20
+		via 198.51.100.20 bfd	# BFD-controlled next hop
 		via 192.0.2.1;
 	route 203.0.113.0/24 unreachable; # Sink route
-	route 10.2.0.0/24 via "arc0";	 # Secondary network
+	route 10.2.0.0/24 via "arc0";	# Secondary network
+	route 192.168.10.0/24 via 198.51.100.100 {
+		ospf_metric1 = 20;	# Set extended attribute
+	}
+	route 192.168.10.0/24 via 198.51.100.100 {
+		ospf_metric2 = 100;	# Set extended attribute
+		ospf_tag = 2;		# Set extended attribute
+		bfd;			# BFD-controlled route
+	}
 }
 </code>
 

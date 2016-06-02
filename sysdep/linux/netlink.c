@@ -25,12 +25,14 @@
 #include "lib/krt.h"
 #include "lib/socket.h"
 #include "lib/string.h"
+#include "lib/hash.h"
 #include "conf/conf.h"
 
 #include <asm/types.h>
 #include <linux/if.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
+
 
 #ifndef MSG_TRUNC			/* Hack: Several versions of glibc miss this one :( */
 #define MSG_TRUNC 0x20
@@ -39,6 +41,11 @@
 #ifndef IFF_LOWER_UP
 #define IFF_LOWER_UP 0x10000
 #endif
+
+#ifndef RTA_TABLE
+#define RTA_TABLE  15
+#endif
+
 
 /*
  *	Synchronous Netlink interface
@@ -50,7 +57,7 @@ struct nl_sock
   u32 seq;
   byte *rx_buffer;			/* Receive buffer */
   struct nlmsghdr *last_hdr;		/* Recently received packet */
-  unsigned int last_size;
+  uint last_size;
 };
 
 #define NL_RX_SIZE 8192
@@ -100,11 +107,12 @@ nl_request_dump(int af, int cmd)
   struct {
     struct nlmsghdr nh;
     struct rtgenmsg g;
-  } req;
-  req.nh.nlmsg_type = cmd;
-  req.nh.nlmsg_len = sizeof(req);
-  req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
-  req.g.rtgen_family = af;
+  } req = {
+    .nh.nlmsg_type = cmd,
+    .nh.nlmsg_len = sizeof(req),
+    .nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP,
+    .g.rtgen_family = af
+  };
   nl_send(&nl_scan, &req.nh);
 }
 
@@ -218,41 +226,128 @@ nl_checkin(struct nlmsghdr *h, int lsize)
   return NLMSG_DATA(h);
 }
 
+struct nl_want_attrs {
+  u8 defined:1;
+  u8 checksize:1;
+  u8 size;
+};
+
+
+#define BIRD_IFLA_MAX (IFLA_WIRELESS+1)
+
+static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
+  [IFLA_IFNAME]	  = { 1, 0, 0 },
+  [IFLA_MTU]	  = { 1, 1, sizeof(u32) },
+  [IFLA_WIRELESS] = { 1, 0, 0 },
+};
+
+
+#define BIRD_IFA_MAX  (IFA_ANYCAST+1)
+
+#ifndef IPV6
+static struct nl_want_attrs ifa_attr_want4[BIRD_IFA_MAX] = {
+  [IFA_ADDRESS]	  = { 1, 1, sizeof(ip4_addr) },
+  [IFA_LOCAL]	  = { 1, 1, sizeof(ip4_addr) },
+  [IFA_BROADCAST] = { 1, 1, sizeof(ip4_addr) },
+};
+#else
+static struct nl_want_attrs ifa_attr_want6[BIRD_IFA_MAX] = {
+  [IFA_ADDRESS]	  = { 1, 1, sizeof(ip6_addr) },
+  [IFA_LOCAL]	  = { 1, 1, sizeof(ip6_addr) },
+};
+#endif
+
+
+#define BIRD_RTA_MAX  (RTA_TABLE+1)
+
+static struct nl_want_attrs mpnh_attr_want4[BIRD_RTA_MAX] = {
+  [RTA_GATEWAY]	  = { 1, 1, sizeof(ip4_addr) },
+};
+
+#ifndef IPV6
+static struct nl_want_attrs rtm_attr_want4[BIRD_RTA_MAX] = {
+  [RTA_DST]	  = { 1, 1, sizeof(ip4_addr) },
+  [RTA_OIF]	  = { 1, 1, sizeof(u32) },
+  [RTA_GATEWAY]	  = { 1, 1, sizeof(ip4_addr) },
+  [RTA_PRIORITY]  = { 1, 1, sizeof(u32) },
+  [RTA_PREFSRC]	  = { 1, 1, sizeof(ip4_addr) },
+  [RTA_METRICS]	  = { 1, 0, 0 },
+  [RTA_MULTIPATH] = { 1, 0, 0 },
+  [RTA_FLOW]	  = { 1, 1, sizeof(u32) },
+  [RTA_TABLE]	  = { 1, 1, sizeof(u32) },
+};
+#else
+static struct nl_want_attrs rtm_attr_want6[BIRD_RTA_MAX] = {
+  [RTA_DST]	  = { 1, 1, sizeof(ip6_addr) },
+  [RTA_IIF]	  = { 1, 1, sizeof(u32) },
+  [RTA_OIF]	  = { 1, 1, sizeof(u32) },
+  [RTA_GATEWAY]	  = { 1, 1, sizeof(ip6_addr) },
+  [RTA_PRIORITY]  = { 1, 1, sizeof(u32) },
+  [RTA_PREFSRC]	  = { 1, 1, sizeof(ip6_addr) },
+  [RTA_METRICS]	  = { 1, 0, 0 },
+  [RTA_FLOW]	  = { 1, 1, sizeof(u32) },
+  [RTA_TABLE]	  = { 1, 1, sizeof(u32) },
+};
+#endif
+
+
 static int
-nl_parse_attrs(struct rtattr *a, struct rtattr **k, int ksize)
+nl_parse_attrs(struct rtattr *a, struct nl_want_attrs *want, struct rtattr **k, int ksize)
 {
   int max = ksize / sizeof(struct rtattr *);
   bzero(k, ksize);
-  while (RTA_OK(a, nl_attr_len))
+
+  for ( ; RTA_OK(a, nl_attr_len); a = RTA_NEXT(a, nl_attr_len))
     {
-      if (a->rta_type < max)
-	k[a->rta_type] = a;
-      a = RTA_NEXT(a, nl_attr_len);
+      if ((a->rta_type >= max) || !want[a->rta_type].defined)
+	continue;
+
+      if (want[a->rta_type].checksize && (RTA_PAYLOAD(a) != want[a->rta_type].size))
+	{
+	  log(L_ERR "nl_parse_attrs: Malformed message received");
+	  return 0;
+	}
+
+      k[a->rta_type] = a;
     }
+
   if (nl_attr_len)
     {
       log(L_ERR "nl_parse_attrs: remnant of size %d", nl_attr_len);
       return 0;
     }
-  else
-    return 1;
+
+  return 1;
 }
 
-void
-nl_add_attr(struct nlmsghdr *h, unsigned bufsize, unsigned code,
-	    void *data, unsigned dlen)
+static inline u32 rta_get_u32(struct rtattr *a)
+{ return *(u32 *) RTA_DATA(a); }
+
+static inline ip4_addr rta_get_ip4(struct rtattr *a)
+{ return ip4_ntoh(*(ip4_addr *) RTA_DATA(a)); }
+
+static inline ip6_addr rta_get_ip6(struct rtattr *a)
+{ return ip6_ntoh(*(ip6_addr *) RTA_DATA(a)); }
+
+
+struct rtattr *
+nl_add_attr(struct nlmsghdr *h, uint bufsize, uint code, const void *data, uint dlen)
 {
-  unsigned len = RTA_LENGTH(dlen);
-  unsigned pos = NLMSG_ALIGN(h->nlmsg_len);
-  struct rtattr *a;
+  uint pos = NLMSG_ALIGN(h->nlmsg_len);
+  uint len = RTA_LENGTH(dlen);
 
   if (pos + len > bufsize)
     bug("nl_add_attr: packet buffer overflow");
-  a = (struct rtattr *)((char *)h + pos);
+
+  struct rtattr *a = (struct rtattr *)((char *)h + pos);
   a->rta_type = code;
   a->rta_len = len;
   h->nlmsg_len = pos + len;
-  memcpy(RTA_DATA(a), data, dlen);
+
+  if (dlen > 0)
+    memcpy(RTA_DATA(a), data, dlen);
+
+  return a;
 }
 
 static inline void
@@ -268,48 +363,58 @@ nl_add_attr_ipa(struct nlmsghdr *h, unsigned bufsize, int code, ip_addr ipa)
   nl_add_attr(h, bufsize, code, &ipa, sizeof(ipa));
 }
 
-#define RTNH_SIZE (sizeof(struct rtnexthop) + sizeof(struct rtattr) + sizeof(ip_addr))
-
-static inline void
-add_mpnexthop(char *buf, ip_addr ipa, unsigned iface, unsigned char weight)
+static inline struct rtattr *
+nl_open_attr(struct nlmsghdr *h, uint bufsize, uint code)
 {
-  struct rtnexthop *nh = (void *) buf;
-  struct rtattr *rt = (void *) (buf + sizeof(*nh));
-  nh->rtnh_len = RTNH_SIZE;
-  nh->rtnh_flags = 0;
-  nh->rtnh_hops = weight;
-  nh->rtnh_ifindex = iface;
-  rt->rta_len = sizeof(*rt) + sizeof(ipa);
-  rt->rta_type = RTA_GATEWAY;
-  ipa_hton(ipa);
-  memcpy(buf + sizeof(*nh) + sizeof(*rt), &ipa, sizeof(ipa));
+  return nl_add_attr(h, bufsize, code, NULL, 0);
 }
 
+static inline void
+nl_close_attr(struct nlmsghdr *h, struct rtattr *a)
+{
+  a->rta_len = (void *)h + NLMSG_ALIGN(h->nlmsg_len) - (void *)a;
+}
+
+static inline struct rtnexthop *
+nl_open_nexthop(struct nlmsghdr *h, uint bufsize)
+{
+  uint pos = NLMSG_ALIGN(h->nlmsg_len);
+  uint len = RTNH_LENGTH(0);
+
+  if (pos + len > bufsize)
+    bug("nl_open_nexthop: packet buffer overflow");
+
+  h->nlmsg_len = pos + len;
+
+  return (void *)h + pos;
+}
+
+static inline void
+nl_close_nexthop(struct nlmsghdr *h, struct rtnexthop *nh)
+{
+  nh->rtnh_len = (void *)h + NLMSG_ALIGN(h->nlmsg_len) - (void *)nh;
+}
 
 static void
 nl_add_multipath(struct nlmsghdr *h, unsigned bufsize, struct mpnh *nh)
 {
-  unsigned len = sizeof(struct rtattr);
-  unsigned pos = NLMSG_ALIGN(h->nlmsg_len);
-  char *buf = (char *)h + pos;
-  struct rtattr *rt = (void *) buf;
-  buf += len;
-  
+  struct rtattr *a = nl_open_attr(h, bufsize, RTA_MULTIPATH);
+
   for (; nh; nh = nh->next)
-    {
-      len += RTNH_SIZE;
-      if (pos + len > bufsize)
-	bug("nl_add_multipath: packet buffer overflow");
+  {
+    struct rtnexthop *rtnh = nl_open_nexthop(h, bufsize);
 
-      add_mpnexthop(buf, nh->gw, nh->iface->index, nh->weight);
-      buf += RTNH_SIZE;
-    }
+    rtnh->rtnh_flags = 0;
+    rtnh->rtnh_hops = nh->weight;
+    rtnh->rtnh_ifindex = nh->iface->index;
 
-  rt->rta_type = RTA_MULTIPATH;
-  rt->rta_len = len;
-  h->nlmsg_len = pos + len;
+    nl_add_attr_ipa(h, bufsize, RTA_GATEWAY, nh->gw);
+
+    nl_close_nexthop(h, rtnh);
+  }
+
+  nl_close_attr(h, a);
 }
-
 
 static struct mpnh *
 nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
@@ -319,7 +424,7 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
   static int nh_buf_size;	/* in number of structures */
   static int nh_buf_used;
 
-  struct rtattr *a[RTA_CACHEINFO+1];
+  struct rtattr *a[BIRD_RTA_MAX];
   struct rtnexthop *nh = RTA_DATA(ra);
   struct mpnh *rv, *first, **last;
   int len = RTA_PAYLOAD(ra);
@@ -350,12 +455,9 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
 
       /* Nonexistent RTNH_PAYLOAD ?? */
       nl_attr_len = nh->rtnh_len - RTNH_LENGTH(0);
-      nl_parse_attrs(RTNH_DATA(nh), a, sizeof(a));
+      nl_parse_attrs(RTNH_DATA(nh), mpnh_attr_want4, a, sizeof(a));
       if (a[RTA_GATEWAY])
 	{
-	  if (RTA_PAYLOAD(a[RTA_GATEWAY]) != sizeof(ip_addr))
-	    return NULL;
-
 	  memcpy(&rv->gw, RTA_DATA(a[RTA_GATEWAY]), sizeof(ip_addr));
 	  ipa_ntoh(rv->gw);
 
@@ -374,6 +476,47 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
   return first;
 }
 
+static void
+nl_add_metrics(struct nlmsghdr *h, uint bufsize, u32 *metrics, int max)
+{
+  struct rtattr *a = nl_open_attr(h, bufsize, RTA_METRICS);
+  int t;
+
+  for (t = 1; t < max; t++)
+    if (metrics[0] & (1 << t))
+      nl_add_attr_u32(h, bufsize, t, metrics[t]);
+
+  nl_close_attr(h, a);
+}
+
+static int
+nl_parse_metrics(struct rtattr *hdr, u32 *metrics, int max)
+{
+  struct rtattr *a = RTA_DATA(hdr);
+  int len = RTA_PAYLOAD(hdr);
+
+  metrics[0] = 0;
+  for (; RTA_OK(a, len); a = RTA_NEXT(a, len))
+  {
+    if (a->rta_type == RTA_UNSPEC)
+      continue;
+
+    if (a->rta_type >= max)
+      continue;
+
+    if (RTA_PAYLOAD(a) != 4)
+      return -1;
+
+    metrics[0] |= 1 << a->rta_type;
+    metrics[a->rta_type] = rta_get_u32(a);
+  }
+
+  if (len > 0)
+    return -1;
+
+  return 0;
+}
+
 
 /*
  *	Scanning of interfaces
@@ -383,25 +526,33 @@ static void
 nl_parse_link(struct nlmsghdr *h, int scan)
 {
   struct ifinfomsg *i;
-  struct rtattr *a[IFLA_WIRELESS+1];
+  struct rtattr *a[BIRD_IFLA_MAX];
   int new = h->nlmsg_type == RTM_NEWLINK;
   struct iface f = {};
   struct iface *ifi;
   char *name;
   u32 mtu;
-  unsigned int fl;
+  uint fl;
 
-  if (!(i = nl_checkin(h, sizeof(*i))) || !nl_parse_attrs(IFLA_RTA(i), a, sizeof(a)))
+  if (!(i = nl_checkin(h, sizeof(*i))) || !nl_parse_attrs(IFLA_RTA(i), ifla_attr_want, a, sizeof(a)))
     return;
-  if (!a[IFLA_IFNAME] || RTA_PAYLOAD(a[IFLA_IFNAME]) < 2 ||
-      !a[IFLA_MTU] || RTA_PAYLOAD(a[IFLA_MTU]) != 4)
+  if (!a[IFLA_IFNAME] || (RTA_PAYLOAD(a[IFLA_IFNAME]) < 2) || !a[IFLA_MTU])
     {
-      if (scan || !a[IFLA_WIRELESS])
-        log(L_ERR "nl_parse_link: Malformed message received");
+      /*
+       * IFLA_IFNAME and IFLA_MTU are required, in fact, but there may also come
+       * a message with IFLA_WIRELESS set, where (e.g.) no IFLA_IFNAME exists.
+       * We simply ignore all such messages with IFLA_WIRELESS without notice.
+       */
+
+      if (a[IFLA_WIRELESS])
+	return;
+
+      log(L_ERR "KIF: Malformed message received");
       return;
     }
+
   name = RTA_DATA(a[IFLA_IFNAME]);
-  memcpy(&mtu, RTA_DATA(a[IFLA_MTU]), sizeof(u32));
+  mtu = rta_get_u32(a[IFLA_MTU]);
 
   ifi = if_find_by_index(i->ifi_index);
   if (!new)
@@ -450,26 +601,40 @@ static void
 nl_parse_addr(struct nlmsghdr *h, int scan)
 {
   struct ifaddrmsg *i;
-  struct rtattr *a[IFA_ANYCAST+1];
+  struct rtattr *a[BIRD_IFA_MAX];
   int new = h->nlmsg_type == RTM_NEWADDR;
   struct ifa ifa;
   struct iface *ifi;
   int scope;
 
-  if (!(i = nl_checkin(h, sizeof(*i))) || !nl_parse_attrs(IFA_RTA(i), a, sizeof(a)))
+  if (!(i = nl_checkin(h, sizeof(*i))))
     return;
-  if (i->ifa_family != BIRD_AF)
-    return;
-  if (!a[IFA_ADDRESS] || RTA_PAYLOAD(a[IFA_ADDRESS]) != sizeof(ip_addr)
-#ifdef IPV6
-      || a[IFA_LOCAL] && RTA_PAYLOAD(a[IFA_LOCAL]) != sizeof(ip_addr)
-#else
-      || !a[IFA_LOCAL] || RTA_PAYLOAD(a[IFA_LOCAL]) != sizeof(ip_addr)
-      || (a[IFA_BROADCAST] && RTA_PAYLOAD(a[IFA_BROADCAST]) != sizeof(ip_addr))
-#endif
-      )
+
+  switch (i->ifa_family)
     {
-      log(L_ERR "nl_parse_addr: Malformed message received");
+#ifndef IPV6
+      case AF_INET:
+	if (!nl_parse_attrs(IFA_RTA(i), ifa_attr_want4, a, sizeof(a)))
+	  return;
+	if (!a[IFA_LOCAL])
+	  {
+	    log(L_ERR "KIF: Malformed message received (missing IFA_LOCAL)");
+	    return;
+	  }
+	break;
+#else
+      case AF_INET6:
+	if (!nl_parse_attrs(IFA_RTA(i), ifa_attr_want6, a, sizeof(a)))
+	  return;
+	break;
+#endif
+      default:
+	return;
+    }
+
+  if (!a[IFA_ADDRESS])
+    {
+      log(L_ERR "KIF: Malformed message received (missing IFA_ADDRESS)");
       return;
     }
 
@@ -585,7 +750,23 @@ kif_do_scan(struct kif_proto *p UNUSED)
  *	Routes
  */
 
-static struct krt_proto *nl_table_map[NL_NUM_TABLES];
+static inline u32
+krt_table_id(struct krt_proto *p)
+{
+  return KRT_CF->sys.table_id;
+}
+
+static HASH(struct krt_proto) nl_table_map;
+
+#define RTH_FN(k)	u32_hash(k)
+#define RTH_EQ(k1,k2)	k1 == k2
+#define RTH_KEY(p)	krt_table_id(p)
+#define RTH_NEXT(p)	p->sys.hash_next
+
+#define RTH_REHASH		rth_rehash
+#define RTH_PARAMS		/8, *2, 2, 2, 6, 20
+
+HASH_DEFINE_REHASH_FN(RTH, struct krt_proto)
 
 int
 krt_capable(rte *e)
@@ -617,7 +798,7 @@ nh_bufsize(struct mpnh *nh)
 {
   int rv = 0;
   for (; nh != NULL; nh = nh->next)
-    rv += RTNH_SIZE;
+    rv += RTNH_LENGTH(RTA_LENGTH(sizeof(ip_addr)));
   return rv;
 }
 
@@ -630,7 +811,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
   struct {
     struct nlmsghdr h;
     struct rtmsg r;
-    char buf[128 + nh_bufsize(a->nexthops)];
+    char buf[128 + KRT_METRICS_MAX*8 + nh_bufsize(a->nexthops)];
   } r;
 
   DBG("nl_send_route(%I/%d,new=%d)\n", net->n.prefix, net->n.pxlen, new);
@@ -643,25 +824,44 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int new)
 
   r.r.rtm_family = BIRD_AF;
   r.r.rtm_dst_len = net->n.pxlen;
-  r.r.rtm_tos = 0;
-  r.r.rtm_table = KRT_CF->sys.table_id;
   r.r.rtm_protocol = RTPROT_BIRD;
   r.r.rtm_scope = RT_SCOPE_UNIVERSE;
   nl_add_attr_ipa(&r.h, sizeof(r), RTA_DST, net->n.prefix);
 
-  u32 metric = 0;
-  if (new && e->attrs->source == RTS_INHERIT)
-    metric = e->u.krt.metric;
+  if (krt_table_id(p) < 256)
+    r.r.rtm_table = krt_table_id(p);
+  else
+    nl_add_attr_u32(&r.h, sizeof(r), RTA_TABLE, krt_table_id(p));
+
+  /* For route delete, we do not specify route attributes */
+  if (!new)
+    return nl_exchange(&r.h);
+
+
   if (ea = ea_find(eattrs, EA_KRT_METRIC))
-    metric = ea->u.data;
-  if (metric != 0)
-    nl_add_attr_u32(&r.h, sizeof(r), RTA_PRIORITY, metric);
+    nl_add_attr_u32(&r.h, sizeof(r), RTA_PRIORITY, ea->u.data);
 
   if (ea = ea_find(eattrs, EA_KRT_PREFSRC))
     nl_add_attr_ipa(&r.h, sizeof(r), RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data);
 
   if (ea = ea_find(eattrs, EA_KRT_REALM))
     nl_add_attr_u32(&r.h, sizeof(r), RTA_FLOW, ea->u.data);
+
+
+  u32 metrics[KRT_METRICS_MAX];
+  metrics[0] = 0;
+
+  struct ea_walk_state ews = { .eattrs = eattrs };
+  while (ea = ea_walk(&ews, EA_KRT_METRICS, KRT_METRICS_MAX))
+  {
+    int id = ea->id - EA_KRT_METRICS;
+    metrics[0] |= 1 << id;
+    metrics[id] = ea->u.data;
+  }
+
+  if (metrics[0])
+    nl_add_metrics(&r.h, sizeof(r), metrics, KRT_METRICS_MAX);
+
 
   /* a->iface != NULL checked in krt_capable() for router and device routes */
 
@@ -728,30 +928,34 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 {
   struct krt_proto *p;
   struct rtmsg *i;
-  struct rtattr *a[RTA_CACHEINFO+1];
+  struct rtattr *a[BIRD_RTA_MAX];
   int new = h->nlmsg_type == RTM_NEWROUTE;
 
   ip_addr dst = IPA_NONE;
   u32 oif = ~0;
+  u32 table;
   int src;
 
-  if (!(i = nl_checkin(h, sizeof(*i))) || !nl_parse_attrs(RTM_RTA(i), a, sizeof(a)))
+  if (!(i = nl_checkin(h, sizeof(*i))))
     return;
-  if (i->rtm_family != BIRD_AF)
-    return;
-  if ((a[RTA_DST] && RTA_PAYLOAD(a[RTA_DST]) != sizeof(ip_addr)) ||
-#ifdef IPV6
-      (a[RTA_IIF] && RTA_PAYLOAD(a[RTA_IIF]) != 4) ||
-#endif
-      (a[RTA_OIF] && RTA_PAYLOAD(a[RTA_OIF]) != 4) ||
-      (a[RTA_GATEWAY] && RTA_PAYLOAD(a[RTA_GATEWAY]) != sizeof(ip_addr)) ||
-      (a[RTA_PRIORITY] && RTA_PAYLOAD(a[RTA_PRIORITY]) != 4) ||
-      (a[RTA_PREFSRC] && RTA_PAYLOAD(a[RTA_PREFSRC]) != sizeof(ip_addr)) ||
-      (a[RTA_FLOW] && RTA_PAYLOAD(a[RTA_FLOW]) != 4))
+
+  switch (i->rtm_family)
     {
-      log(L_ERR "KRT: Malformed message received");
-      return;
+#ifndef IPV6
+      case AF_INET:
+	if (!nl_parse_attrs(RTM_RTA(i), rtm_attr_want4, a, sizeof(a)))
+	  return;
+	break;
+#else
+      case AF_INET6:
+	if (!nl_parse_attrs(RTM_RTA(i), rtm_attr_want6, a, sizeof(a)))
+	  return;
+	break;
+#endif
+      default:
+	return;
     }
+
 
   if (a[RTA_DST])
     {
@@ -760,12 +964,17 @@ nl_parse_route(struct nlmsghdr *h, int scan)
     }
 
   if (a[RTA_OIF])
-    memcpy(&oif, RTA_DATA(a[RTA_OIF]), sizeof(oif));
+    oif = rta_get_u32(a[RTA_OIF]);
 
-  p = nl_table_map[i->rtm_table];	/* Do we know this table? */
-  DBG("KRT: Got %I/%d, type=%d, oif=%d, table=%d, prid=%d, proto=%s\n", dst, i->rtm_dst_len, i->rtm_type, oif, i->rtm_table, i->rtm_protocol, p ? p->p.name : "(none)");
+  if (a[RTA_TABLE])
+    table = rta_get_u32(a[RTA_TABLE]);
+  else
+    table = i->rtm_table;
+
+  p = HASH_FIND(nl_table_map, RTH, table); /* Do we know this table? */
+  DBG("KRT: Got %I/%d, type=%d, oif=%d, table=%d, prid=%d, proto=%s\n", dst, i->rtm_dst_len, i->rtm_type, oif, table, i->rtm_protocol, p ? p->p.name : "(none)");
   if (!p)
-    SKIP("unknown table %d\n", i->rtm_table);
+    SKIP("unknown table %d\n", table);
 
 
 #ifdef IPV6
@@ -824,7 +1033,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
     {
     case RTN_UNICAST:
 
-      if (a[RTA_MULTIPATH])
+      if (a[RTA_MULTIPATH] && (i->rtm_family == AF_INET))
 	{
 	  ra.dest = RTD_MULTIPATH;
 	  ra.nexthops = nl_parse_multipath(p, a[RTA_MULTIPATH]);
@@ -834,7 +1043,7 @@ nl_parse_route(struct nlmsghdr *h, int scan)
 		  net->n.prefix, net->n.pxlen);
 	      return;
 	    }
-	    
+
 	  break;
 	}
 
@@ -893,12 +1102,12 @@ nl_parse_route(struct nlmsghdr *h, int scan)
   e->net = net;
   e->u.krt.src = src;
   e->u.krt.proto = i->rtm_protocol;
-  e->u.krt.type = i->rtm_type;
+  e->u.krt.seen = 0;
+  e->u.krt.best = 0;
+  e->u.krt.metric = 0;
 
   if (a[RTA_PRIORITY])
-    memcpy(&e->u.krt.metric, RTA_DATA(a[RTA_PRIORITY]), sizeof(e->u.krt.metric)); 
-  else
-    e->u.krt.metric = 0;
+    e->u.krt.metric = rta_get_u32(a[RTA_PRIORITY]);
 
   if (a[RTA_PREFSRC])
     {
@@ -929,7 +1138,39 @@ nl_parse_route(struct nlmsghdr *h, int scan)
       ea->attrs[0].id = EA_KRT_REALM;
       ea->attrs[0].flags = 0;
       ea->attrs[0].type = EAF_TYPE_INT;
-      memcpy(&ea->attrs[0].u.data, RTA_DATA(a[RTA_FLOW]), 4);
+      ea->attrs[0].u.data = rta_get_u32(a[RTA_FLOW]);
+    }
+
+  if (a[RTA_METRICS])
+    {
+      u32 metrics[KRT_METRICS_MAX];
+      ea_list *ea = alloca(sizeof(ea_list) + KRT_METRICS_MAX * sizeof(eattr));
+      int t, n = 0;
+
+      if (nl_parse_metrics(a[RTA_METRICS], metrics, ARRAY_SIZE(metrics)) < 0)
+        {
+	  log(L_ERR "KRT: Received route %I/%d with strange RTA_METRICS attribute",
+	      net->n.prefix, net->n.pxlen);
+	  return;
+	}
+
+      for (t = 1; t < KRT_METRICS_MAX; t++)
+	if (metrics[0] & (1 << t))
+	  {
+	    ea->attrs[n].id = EA_CODE(EAP_KRT, KRT_METRICS_OFFSET + t);
+	    ea->attrs[n].flags = 0;
+	    ea->attrs[n].type = EAF_TYPE_INT; /* FIXME: Some are EAF_TYPE_BITFIELD */
+	    ea->attrs[n].u.data = metrics[t];
+	    n++;
+	  }
+
+      if (n > 0)
+        {
+	  ea->next = ra.eattrs;
+	  ea->flags = EALF_SORTED;
+	  ea->count = n;
+	  ra.eattrs = ea;
+	}
     }
 
   if (scan)
@@ -971,12 +1212,14 @@ nl_async_msg(struct nlmsghdr *h)
     case RTM_NEWLINK:
     case RTM_DELLINK:
       DBG("KRT: Received async link notification (%d)\n", h->nlmsg_type);
-      nl_parse_link(h, 0);
+      if (kif_proto)
+	nl_parse_link(h, 0);
       break;
     case RTM_NEWADDR:
     case RTM_DELADDR:
       DBG("KRT: Received async address notification (%d)\n", h->nlmsg_type);
-      nl_parse_addr(h, 0);
+      if (kif_proto)
+	nl_parse_addr(h, 0);
       break;
     default:
       DBG("KRT: Received unknown async notification (%d)\n", h->nlmsg_type);
@@ -991,7 +1234,7 @@ nl_async_hook(sock *sk, int size UNUSED)
   struct msghdr m = { (struct sockaddr *) &sa, sizeof(sa), &iov, 1, NULL, 0, 0 };
   struct nlmsghdr *h;
   int x;
-  unsigned int len;
+  uint len;
 
   x = recvmsg(sk->fd, &m, 0);
   if (x < 0)
@@ -1074,48 +1317,47 @@ nl_open_async(void)
     bug("Netlink: sk_open failed");
 }
 
+
 /*
  *	Interface to the UNIX krt module
  */
 
-static u8 nl_cf_table[(NL_NUM_TABLES+7) / 8];
-
 void
+krt_sys_io_init(void)
+{
+  HASH_INIT(nl_table_map, krt_pool, 6);
+}
+
+int
 krt_sys_start(struct krt_proto *p)
 {
-  nl_table_map[KRT_CF->sys.table_id] = p;
+  struct krt_proto *old = HASH_FIND(nl_table_map, RTH, krt_table_id(p));
+
+  if (old)
+    {
+      log(L_ERR "%s: Kernel table %u already registered by %s",
+	  p->p.name, krt_table_id(p), old->p.name);
+      return 0;
+    }
+
+  HASH_INSERT2(nl_table_map, RTH, krt_pool, p);
 
   nl_open();
   nl_open_async();
+
+  return 1;
 }
 
 void
-krt_sys_shutdown(struct krt_proto *p UNUSED)
+krt_sys_shutdown(struct krt_proto *p)
 {
-  nl_table_map[KRT_CF->sys.table_id] = NULL;
+  HASH_REMOVE2(nl_table_map, RTH, krt_pool, p);
 }
 
 int
 krt_sys_reconfigure(struct krt_proto *p UNUSED, struct krt_config *n, struct krt_config *o)
 {
   return n->sys.table_id == o->sys.table_id;
-}
-
-
-void
-krt_sys_preconfig(struct config *c UNUSED)
-{
-  bzero(&nl_cf_table, sizeof(nl_cf_table));
-}
-
-void
-krt_sys_postconfig(struct krt_config *x)
-{
-  int id = x->sys.table_id;
-
-  if (nl_cf_table[id/8] & (1 << (id%8)))
-    cf_error("Multiple kernel syncers defined for table #%d", id);
-  nl_cf_table[id/8] |= (1 << (id%8));
 }
 
 void
@@ -1128,6 +1370,50 @@ void
 krt_sys_copy_config(struct krt_config *d, struct krt_config *s)
 {
   d->sys.table_id = s->sys.table_id;
+}
+
+static const char *krt_metrics_names[KRT_METRICS_MAX] = {
+  NULL, "lock", "mtu", "window", "rtt", "rttvar", "sstresh", "cwnd", "advmss",
+  "reordering", "hoplimit", "initcwnd", "features", "rto_min", "initrwnd", "quickack"
+};
+
+static const char *krt_features_names[KRT_FEATURES_MAX] = {
+  "ecn", NULL, NULL, "allfrag"
+};
+
+int
+krt_sys_get_attr(eattr *a, byte *buf, int buflen UNUSED)
+{
+  switch (a->id)
+  {
+  case EA_KRT_PREFSRC:
+    bsprintf(buf, "prefsrc");
+    return GA_NAME;
+
+  case EA_KRT_REALM:
+    bsprintf(buf, "realm");
+    return GA_NAME;
+
+  case EA_KRT_LOCK:
+    buf += bsprintf(buf, "lock:");
+    ea_format_bitfield(a, buf, buflen, krt_metrics_names, 2, KRT_METRICS_MAX);
+    return GA_FULL;
+
+  case EA_KRT_FEATURES:
+    buf += bsprintf(buf, "features:");
+    ea_format_bitfield(a, buf, buflen, krt_features_names, 0, KRT_FEATURES_MAX);
+    return GA_FULL;
+
+  default:;
+    int id = (int)EA_ID(a->id) - KRT_METRICS_OFFSET;
+    if (id > 0 && id < KRT_METRICS_MAX)
+    {
+      bsprintf(buf, "%s", krt_metrics_names[id]);
+      return GA_NAME;
+    }
+
+    return GA_UNKNOWN;
+  }
 }
 
 

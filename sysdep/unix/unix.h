@@ -119,7 +119,7 @@ void log_switch(int debug, list *l, char *); /* Use l=NULL for initial switch */
 
 struct log_config {
   node n;
-  unsigned int mask;			/* Classes to log */
+  uint mask;				/* Classes to log */
   void *fh;				/* FILE to log to, NULL=syslog */
   int terminal_flag;
 };

@@ -133,7 +133,8 @@ bgp_open(struct bgp_proto *p)
   bgp_counter++;
 
   if (p->cf->password)
-    if (sk_set_md5_auth(bgp_listen_sk, p->cf->remote_ip, p->cf->iface, p->cf->password) < 0)
+    if (sk_set_md5_auth(bgp_listen_sk, p->cf->source_addr, p->cf->remote_ip,
+			p->cf->iface, p->cf->password, p->cf->setkey) < 0)
       {
 	sk_log_error(bgp_listen_sk, p->p.name);
 	bgp_close(p, 0);
@@ -203,7 +204,8 @@ bgp_close(struct bgp_proto *p, int apply_md5)
   bgp_counter--;
 
   if (p->cf->password && apply_md5)
-    if (sk_set_md5_auth(bgp_listen_sk, p->cf->remote_ip, p->cf->iface, NULL) < 0)
+    if (sk_set_md5_auth(bgp_listen_sk, p->cf->source_addr, p->cf->remote_ip,
+			p->cf->iface, NULL, p->cf->setkey) < 0)
       sk_log_error(bgp_listen_sk, p->p.name);
 
   if (!bgp_counter)
@@ -385,6 +387,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   /* For multi-hop BGP sessions */
   if (ipa_zero(p->source_addr))
     p->source_addr = conn->sk->saddr;
+
+  conn->sk->fast_rx = 0;
 
   p->conn = conn;
   p->last_error_class = 0;
@@ -581,6 +585,7 @@ bgp_send_open(struct bgp_conn *conn)
   conn->peer_gr_time = 0;
   conn->peer_gr_flags = 0;
   conn->peer_gr_aflags = 0;
+  conn->peer_ext_messages_support = 0;
 
   DBG("BGP: Sending open\n");
   conn->sk->rx_hook = bgp_rx;
@@ -677,6 +682,10 @@ bgp_keepalive_timeout(timer *t)
 
   DBG("BGP: Keepalive timer\n");
   bgp_schedule_packet(conn, PKT_KEEPALIVE);
+
+  /* Kick TX a bit faster */
+  if (ev_active(conn->tx_ev))
+    ev_run(conn->tx_ev);
 }
 
 static void
@@ -707,6 +716,7 @@ bgp_setup_sk(struct bgp_conn *conn, sock *s)
 {
   s->data = conn;
   s->err_hook = bgp_sock_err;
+  s->fast_rx = 1;
   conn->sk = s;
 }
 
@@ -745,8 +755,8 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   s->dport = p->cf->remote_port;
   s->iface = p->neigh ? p->neigh->iface : NULL;
   s->ttl = p->cf->ttl_security ? 255 : hops;
-  s->rbsize = BGP_RX_BUFFER_SIZE;
-  s->tbsize = BGP_TX_BUFFER_SIZE;
+  s->rbsize = p->cf->enable_extended_messages ? BGP_RX_BUFFER_EXT_SIZE : BGP_RX_BUFFER_SIZE;
+  s->tbsize = p->cf->enable_extended_messages ? BGP_TX_BUFFER_EXT_SIZE : BGP_TX_BUFFER_SIZE;
   s->tos = IP_PREC_INTERNET_CONTROL;
   s->password = p->cf->password;
   s->tx_hook = bgp_connected;
@@ -824,7 +834,13 @@ bgp_incoming_connection(sock *sk, int dummy UNUSED)
       return 0;
     }
 
-  /* We are in proper state and there is no other incoming connection */
+  /*
+   * BIRD should keep multiple incoming connections in OpenSent state (for
+   * details RFC 4271 8.2.1 par 3), but it keeps just one. Duplicate incoming
+   * connections are rejected istead. The exception is the case where an
+   * incoming connection triggers a graceful restart.
+   */
+
   acc = (p->p.proto_state == PS_START || p->p.proto_state == PS_UP) &&
     (p->start_state >= BSS_CONNECT) && (!p->incoming_conn.sk);
 
@@ -834,6 +850,10 @@ bgp_incoming_connection(sock *sk, int dummy UNUSED)
       bgp_handle_graceful_restart(p);
       bgp_conn_enter_idle_state(p->conn);
       acc = 1;
+
+      /* There might be separate incoming connection in OpenSent state */
+      if (p->incoming_conn.state > BS_ACTIVE)
+	bgp_close_conn(&p->incoming_conn);
     }
 
   BGP_TRACE(D_EVENTS, "Incoming connection from %I%J (port %d) %s",
@@ -854,6 +874,13 @@ bgp_incoming_connection(sock *sk, int dummy UNUSED)
   if (p->cf->ttl_security)
     if (sk_set_min_ttl(sk, 256 - hops) < 0)
       goto err;
+
+  if (p->cf->enable_extended_messages)
+    {
+      sk->rbsize = BGP_RX_BUFFER_EXT_SIZE;
+      sk->tbsize = BGP_TX_BUFFER_EXT_SIZE;
+      sk_reallocate(sk);
+    }
 
   bgp_setup_conn(p, &p->incoming_conn);
   bgp_setup_sk(&p->incoming_conn, sk);
@@ -1255,6 +1282,7 @@ bgp_init(struct proto_config *C)
   P->feed_begin = bgp_feed_begin;
   P->feed_end = bgp_feed_end;
   P->rte_better = bgp_rte_better;
+  P->rte_mergable = bgp_rte_mergable;
   P->rte_recalculate = c->deterministic_med ? bgp_rte_recalculate : NULL;
 
   p->cf = c;
@@ -1582,21 +1610,23 @@ bgp_show_proto_info(struct proto *P)
   else if (P->proto_state == PS_UP)
     {
       cli_msg(-1006, "    Neighbor ID:      %R", p->remote_id);
-      cli_msg(-1006, "    Neighbor caps:   %s%s%s%s%s%s",
+      cli_msg(-1006, "    Neighbor caps:   %s%s%s%s%s%s%s",
 	      c->peer_refresh_support ? " refresh" : "",
 	      c->peer_enhanced_refresh_support ? " enhanced-refresh" : "",
 	      c->peer_gr_able ? " restart-able" : (c->peer_gr_aware ? " restart-aware" : ""),
 	      c->peer_as4_support ? " AS4" : "",
 	      (c->peer_add_path & ADD_PATH_RX) ? " add-path-rx" : "",
-	      (c->peer_add_path & ADD_PATH_TX) ? " add-path-tx" : "");
-      cli_msg(-1006, "    Session:          %s%s%s%s%s%s%s",
+	      (c->peer_add_path & ADD_PATH_TX) ? " add-path-tx" : "",
+	      c->peer_ext_messages_support ? " ext-messages" : "");
+      cli_msg(-1006, "    Session:          %s%s%s%s%s%s%s%s",
 	      p->is_internal ? "internal" : "external",
 	      p->cf->multihop ? " multihop" : "",
 	      p->rr_client ? " route-reflector" : "",
 	      p->rs_client ? " route-server" : "",
 	      p->as4_session ? " AS4" : "",
 	      p->add_path_rx ? " add-path-rx" : "",
-	      p->add_path_tx ? " add-path-tx" : "");
+	      p->add_path_tx ? " add-path-tx" : "",
+	      p->ext_messages ? " ext-messages" : "");
       cli_msg(-1006, "    Source address:   %I", p->source_addr);
       if (P->cf->in_limit)
 	cli_msg(-1006, "    Route limit:      %d/%d",

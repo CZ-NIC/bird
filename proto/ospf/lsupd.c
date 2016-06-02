@@ -530,8 +530,8 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
     DBG("Update Type: %04x, Id: %R, Rt: %R, Sn: 0x%08x, Age: %u, Sum: %u\n",
 	lsa_type, lsa.id, lsa.rt, lsa.sn, lsa.age, lsa.checksum);
 
-    /* RFC 2328 13. (1) - validate LSA checksum */
-    if (lsa_n->checksum != lsasum_check(lsa_n, NULL))
+    /* RFC 2328 13. (1) - verify LSA checksum */
+    if ((lsa_n->checksum == 0) || !lsa_verify_checksum(lsa_n, lsa_len))
       SKIP("invalid checksum");
 
     /* RFC 2328 13. (2) */

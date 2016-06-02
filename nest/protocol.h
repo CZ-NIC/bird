@@ -76,7 +76,7 @@ void protos_dump_all(void);
 
 extern struct protocol
   proto_device, proto_radv, proto_rip, proto_static,
-  proto_ospf, proto_pipe, proto_bgp, proto_bgpsec,  proto_bfd;
+  proto_ospf, proto_pipe, proto_bgp, proto_bgpsec, proto_bfd, proto_babel;
 
 /*
  *	Routing Protocol Instance
@@ -158,6 +158,7 @@ struct proto {
   byte gr_wait;				/* Route export to protocol is postponed until graceful restart */
   byte down_sched;			/* Shutdown is scheduled for later (PDS_*) */
   byte down_code;			/* Reason for shutdown (PDC_* codes) */
+  byte merge_limit;			/* Maximal number of nexthops for RA_MERGED */
   u32 hash_key;				/* Random key used for hashing of neighbors */
   bird_clock_t last_state_change;	/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
@@ -200,6 +201,7 @@ struct proto {
    *	   rte_recalculate Called at the beginning of the best route selection
    *	   rte_better	Compare two rte's and decide which one is better (1=first, 0=second).
    *       rte_same	Compare two rte's and decide whether they are identical (1=yes, 0=no).
+   *       rte_mergable	Compare two rte's and decide whether they could be merged (1=yes, 0=no).
    *	   rte_insert	Called whenever a rte is inserted to a routing table.
    *	   rte_remove	Called whenever a rte is removed from the routing table.
    */
@@ -207,6 +209,7 @@ struct proto {
   int (*rte_recalculate)(struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
   int (*rte_better)(struct rte *, struct rte *);
   int (*rte_same)(struct rte *, struct rte *);
+  int (*rte_mergable)(struct rte *, struct rte *);
   void (*rte_insert)(struct network *, struct rte *);
   void (*rte_remove)(struct network *, struct rte *);
 
@@ -261,15 +264,15 @@ void proto_graceful_restart_unlock(struct proto *p);
 void proto_show_limit(struct proto_limit *l, const char *dsc);
 void proto_show_basic_info(struct proto *p);
 
-void proto_cmd_show(struct proto *, unsigned int, int);
-void proto_cmd_disable(struct proto *, unsigned int, int);
-void proto_cmd_enable(struct proto *, unsigned int, int);
-void proto_cmd_restart(struct proto *, unsigned int, int);
-void proto_cmd_reload(struct proto *, unsigned int, int);
-void proto_cmd_debug(struct proto *, unsigned int, int);
-void proto_cmd_mrtdump(struct proto *, unsigned int, int);
+void proto_cmd_show(struct proto *, uint, int);
+void proto_cmd_disable(struct proto *, uint, int);
+void proto_cmd_enable(struct proto *, uint, int);
+void proto_cmd_restart(struct proto *, uint, int);
+void proto_cmd_reload(struct proto *, uint, int);
+void proto_cmd_debug(struct proto *, uint, int);
+void proto_cmd_mrtdump(struct proto *, uint, int);
 
-void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, unsigned int, int), int restricted, unsigned int arg);
+void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uint, int), int restricted, uint arg);
 struct proto *proto_get_named(struct symbol *, struct protocol *);
 
 #define CMD_RELOAD	0

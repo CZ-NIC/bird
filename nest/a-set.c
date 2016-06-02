@@ -32,7 +32,7 @@
  * the buffer to indicate truncation.
  */
 int
-int_set_format(struct adata *set, int way, int from, byte *buf, unsigned int size)
+int_set_format(struct adata *set, int way, int from, byte *buf, uint size)
 {
   u32 *z = (u32 *) set->data;
   byte *end = buf + size - 24;
@@ -113,7 +113,7 @@ ec_format(byte *buf, u64 ec)
 }
 
 int
-ec_set_format(struct adata *set, int from, byte *buf, unsigned int size)
+ec_set_format(struct adata *set, int from, byte *buf, uint size)
 {
   u32 *z = int_set_get_data(set);
   byte *end = buf + size - 24;

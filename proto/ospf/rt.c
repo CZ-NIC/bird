@@ -43,7 +43,7 @@ unresolved_vlink(ort *ort)
 }
 
 static inline struct mpnh *
-new_nexthop(struct ospf_proto *p, ip_addr gw, struct iface *iface, unsigned char weight)
+new_nexthop(struct ospf_proto *p, ip_addr gw, struct iface *iface, byte weight)
 {
   struct mpnh *nh = lp_alloc(p->nhpool, sizeof(struct mpnh));
   nh->gw = gw;
@@ -51,88 +51,6 @@ new_nexthop(struct ospf_proto *p, ip_addr gw, struct iface *iface, unsigned char
   nh->next = NULL;
   nh->weight = weight;
   return nh;
-}
-
-static inline struct mpnh *
-copy_nexthop(struct ospf_proto *p, const struct mpnh *src)
-{
-  struct mpnh *nh = lp_alloc(p->nhpool, sizeof(struct mpnh));
-  nh->gw = src->gw;
-  nh->iface = src->iface;
-  nh->next = NULL;
-  nh->weight = src->weight;
-  return nh;
-}
-
-/* Compare nexthops during merge.
-   We need to maintain nhs sorted to eliminate duplicities */
-static int
-cmp_nhs(struct mpnh *s1, struct mpnh *s2)
-{
-  int r;
-
-  if (!s1)
-    return 1;
-
-  if (!s2)
-    return -1;
-
-  r = ((int) s2->weight) - ((int) s1->weight);
-  if (r)
-    return r;
-
-  r = ipa_compare(s1->gw, s2->gw);
-  if (r)
-    return r;
-
-  return ((int) s1->iface->index) - ((int) s2->iface->index);
-}
-
-static struct mpnh *
-merge_nexthops(struct ospf_proto *p, struct mpnh *s1, struct mpnh *s2, int r1, int r2)
-{
-  struct mpnh *root = NULL;
-  struct mpnh **n = &root;
-  int count = p->ecmp;
-
-  ASSERT(p->ecmp);
-
-  /*
-   * r1, r2 signalize whether we can reuse nexthops from s1, s2.
-   * New nexthops (s2, new) can be reused if they are not inherited
-   * from the parent (i.e. it is allocated in calc_next_hop()).
-   * Current nexthops (s1, en->nhs) can be reused if they weren't
-   * inherited in previous steps (that is stored in nhs_reuse,
-   * i.e. created by merging or allocalted in calc_next_hop()).
-   *
-   * Generally, a node first inherits shared nexthops from its
-   * parent and later possibly gets reusable copy during merging.
-   */
-
-  while ((s1 || s2) && count--)
-  {
-    int cmp = cmp_nhs(s1, s2);
-    if (cmp < 0)
-    {
-      *n = r1 ? s1 : copy_nexthop(p, s1);
-      s1 = s1->next;
-    }
-    else if (cmp > 0)
-    {
-      *n = r2 ? s2 : copy_nexthop(p, s2);
-      s2 = s2->next;
-    }
-    else
-    {
-      *n = r1 ? s1 : (r2 ? s2 : copy_nexthop(p, s1));
-      s1 = s1->next;
-      s2 = s2->next;
-    }
-    n = &((*n)->next);
-  }
-  *n = NULL;
-
-  return root;
 }
 
 /* Returns true if there are device nexthops in n */
@@ -178,7 +96,7 @@ fix_device_nexthops(struct ospf_proto *p, const struct mpnh *n, ip_addr gw)
     }
   }
 
-  return merge_nexthops(p, root1, root2, 1, 1);
+  return mpnh_merge(root1, root2, 1, 1, p->ecmp, p->nhpool);
 }
 
 
@@ -374,7 +292,8 @@ ort_merge(struct ospf_proto *p, ort *o, const orta *new)
 
   if (old->nhs != new->nhs)
   {
-    old->nhs = merge_nexthops(p, old->nhs, new->nhs, old->nhs_reuse, new->nhs_reuse);
+    old->nhs = mpnh_merge(old->nhs, new->nhs, old->nhs_reuse, new->nhs_reuse,
+			  p->ecmp, p->nhpool);
     old->nhs_reuse = 1;
   }
 
@@ -389,7 +308,8 @@ ort_merge_ext(struct ospf_proto *p, ort *o, const orta *new)
 
   if (old->nhs != new->nhs)
   {
-    old->nhs = merge_nexthops(p, old->nhs, new->nhs, old->nhs_reuse, new->nhs_reuse);
+    old->nhs = mpnh_merge(old->nhs, new->nhs, old->nhs_reuse, new->nhs_reuse,
+			  p->ecmp, p->nhpool);
     old->nhs_reuse = 1;
   }
 
@@ -1885,8 +1805,7 @@ add_cand(list * l, struct top_hash_entry *en, struct top_hash_entry *par,
     return;
   }
 
-  /* We know that en->color == CANDIDATE and en->nhs is defined. */
-
+  /* If en->dist > 0, we know that en->color == CANDIDATE and en->nhs is defined. */
   if ((dist == en->dist) && !nh_is_vlink(en->nhs))
   {
     /*
@@ -1900,7 +1819,14 @@ add_cand(list * l, struct top_hash_entry *en, struct top_hash_entry *par,
      * allocated in calc_next_hop()).
      *
      * Generally, a node first inherits shared nexthops from its parent and
-     * later possibly gets reusable copy during merging.
+     * later possibly gets reusable (private) copy during merging. This is more
+     * or less same for both top_hash_entry nodes and orta nodes.
+     *
+     * Note that when a child inherits a private nexthop from its parent, it
+     * should make the nexthop shared for both parent and child, while we only
+     * update nhs_reuse for the child node. This makes nhs_reuse field for the
+     * parent technically incorrect, but it is not a problem as parent's nhs
+     * will not be modified (and nhs_reuse examined) afterwards.
      */
 
     /* Keep old ones */
@@ -1909,7 +1835,7 @@ add_cand(list * l, struct top_hash_entry *en, struct top_hash_entry *par,
 
     /* Merge old and new */
     int new_reuse = (par->nhs != nhs);
-    en->nhs = merge_nexthops(p, en->nhs, nhs, en->nhs_reuse, new_reuse);
+    en->nhs = mpnh_merge(en->nhs, nhs, en->nhs_reuse, new_reuse, p->ecmp, p->nhpool);
     en->nhs_reuse = 1;
     return;
   }
