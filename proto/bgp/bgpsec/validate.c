@@ -129,6 +129,7 @@ int bgpsec_sign_data_with_ascii_ski(const struct bgp_config *conf,
     if (snprintf(filename, sizeof(filename), "%s/%d.%s.key", rootPath, asn, ski) >= sizeof(filename) ||
 	bgpsec_load_private_key(conf, filename, &key) != BGPSEC_SUCCESS)
     {
+	log(L_ERR "Failed to load file %s", filename);
 	return BGPSEC_FAILURE;
     }
 

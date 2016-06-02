@@ -1113,8 +1113,8 @@ encode_bgpsec_attr(struct  bgp_conn  *conn,
 						  sigBuff, BGPSEC_MAX_SIG_LENGTH);
 
   if ( 1 >= signature_len )  {
-    log(L_ERR "encode_bgpsec_attr:%c: %d > %d, Signing Failed",
-	oMark, conn->bgp->local_as, conn->bgp->remote_as);
+    log(L_ERR "encode_bgpsec_attr:%c: %d > %d, Signing Failed (SKI: %s)",
+	oMark, conn->bgp->local_as, conn->bgp->remote_as, conn->bgp->cf->bgpsec_ski);
     return -1;
   }
   else  {
