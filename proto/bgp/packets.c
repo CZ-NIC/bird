@@ -1370,7 +1370,7 @@ bgp_do_rx_update(struct bgp_conn *conn,
     return;
 
   /* Note: bgp_linpool, nlri, nlri_len needed for bgpsec decoding */
-  a0 = bgp_decode_attrs(conn, attrs, attr_len, bgp_linpool, nlri, nlri_len);
+  a0 = bgp_decode_attrs(conn, attrs, attr_len, bgp_linpool, nlri_len, nlri, nlri_len); /* XXX */
 
   if (conn->state != BS_ESTABLISHED)	/* fatal error during decoding */
     return;
@@ -1464,7 +1464,7 @@ bgp_do_rx_update(struct bgp_conn *conn,
 
   p->mp_reach_len = 0;
   p->mp_unreach_len = 0;
-  a0 = bgp_decode_attrs(conn, attrs, attr_len, bgp_linpool, nlri, nlri_len);
+  a0 = bgp_decode_attrs(conn, attrs, attr_len, bgp_linpool, 0, nlri, nlri_len);
 
   if (conn->state != BS_ESTABLISHED)	/* fatal error during decoding */
     return;

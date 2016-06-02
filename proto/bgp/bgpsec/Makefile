@@ -9,3 +9,4 @@ validate_tmp.o: ../../../../proto/bgp/bgpsec/validate.c
 
 tests: tests.o validate_tmp.o
 	gcc -o $@ $^ bgpsec.o $(LDFLAGS) $(LIBS)
+

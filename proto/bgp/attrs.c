@@ -400,7 +400,7 @@ decode_bgpsec_attr(struct bgp_proto *bgp,
      p, err, path_id, prefix, pxlen and goto 'done:'  */
   int         err = 0;
   u32     path_id = 0;
-  ip_addr  prefix = 0;
+  ip_addr  prefix = IPA_NONE;
   int       pxlen = 0;
 
   /* Is it long enough to have a minimal valid bgpseg_path_attr */
@@ -2433,14 +2433,16 @@ bgp_remove_as4_attrs(struct bgp_proto *p, rta *a)
  * @len: length of attribute block
  * @pool: linear pool to make all the allocations in
  * @mandatory: 1 iff presence of mandatory attributes has to be checked
+ * @nlri: FIXME
+ * @nlri_len: FIXME
  *
  * This function takes a BGP attribute block (a part of an Update message), checks
  * its consistency and converts it to a list of BIRD route attributes represented
  * by a &rta.
  */
 struct rta *
-bgp_decode_attrs(struct bgp_conn *conn, byte *attr, uint len, struct linpool *pool, int mandatory,
-		 byte *nlri, int nlri_len)
+bgp_decode_attrs(struct bgp_conn *conn, byte *attr, unsigned int len,
+                 struct linpool *pool,  int mandatory, byte *nlri, int nlri_len)
 {
   struct bgp_proto *bgp = conn->bgp;
   rta *a = lp_alloc(pool, sizeof(struct rta));
@@ -2754,3 +2756,6 @@ bgp_get_route_info(rte *e, byte *buf, ea_list *attrs)
     buf += bsprintf(buf, "%c", "ie?"[o->u.data]);
   strcpy(buf, "]");
 }
+
+
+

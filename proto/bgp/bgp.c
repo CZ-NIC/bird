@@ -1371,7 +1371,7 @@ bgp_check_config(struct bgp_config *c)
 #ifdef CONFIG_BGPSEC
   /* create a binary SKI from config */
   if ( c->enable_bgpsec ) {
-    if ( strnlen(c->bgpsec_ski, (2 * BGPSEC_SKI_LENGTH))
+    if ( c->bgpsec_ski == NULL || strnlen(c->bgpsec_ski, (2 * BGPSEC_SKI_LENGTH))
 	 != (BGPSEC_SKI_LENGTH * 2) ) {
       cf_error("BGPSEC: bad length of the configured SKI value");
     }
