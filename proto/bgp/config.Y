@@ -59,7 +59,7 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->error_delay_time_max = 300;
      BGP_CFG->enable_refresh = 1;
      BGP_CFG->enable_as4 = 1;
-     BGP_CFG->enable_bgpsec = 1;
+     BGP_CFG->enable_bgpsec = 0;
      BGP_CFG->bgpsec_ski = 0;
      BGP_CFG->bgpsec_priv_key_path = 0;
      BGP_CFG->bgpsec_key_repo_path = 0;
