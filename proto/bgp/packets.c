@@ -1439,7 +1439,6 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
     a->source = RTS_BGP;
     a->scope = SCOPE_UNIVERSE;
-    a->cast = RTC_UNICAST;
     a->dest = RTD_UNREACHABLE;
     a->from = s->proto->cf->remote_ip;
     a->eattrs = ea;

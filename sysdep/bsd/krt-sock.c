@@ -147,7 +147,6 @@ krt_capable(rte *e)
   rta *a = e->attrs;
 
   return
-    a->cast == RTC_UNICAST &&
     ((a->dest == RTD_UNICAST && !a->nh.next) /* No multipath support */
 #ifdef RTF_REJECT
      || a->dest == RTD_UNREACHABLE
@@ -470,7 +469,6 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
     .src = p->p.main_source,
     .source = RTS_INHERIT,
     .scope = SCOPE_UNIVERSE,
-    .cast = RTC_UNICAST
   };
 
   /* reject/blackhole routes have also set RTF_GATEWAY,

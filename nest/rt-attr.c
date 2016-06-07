@@ -1008,7 +1008,9 @@ rta_hash(rta *a)
   MIX(hostentry);
   MIX(from);
   MIX(igp_metric);
-  mem_hash_mix(&h, a->bf, sizeof(u32));
+  MIX(source);
+  MIX(scope);
+  MIX(dest);
 #undef MIX
 
   return mem_hash_value(&h) ^ nexthop_hash(&(a->nh)) ^ ea_hash(a->eattrs);
@@ -1020,7 +1022,6 @@ rta_same(rta *x, rta *y)
   return (x->src == y->src &&
 	  x->source == y->source &&
 	  x->scope == y->scope &&
-	  x->cast == y->cast &&
 	  x->dest == y->dest &&
 	  x->igp_metric == y->igp_metric &&
 	  ipa_equal(x->nh.gw, y->nh.gw) &&
@@ -1163,11 +1164,10 @@ rta_dump(rta *a)
 			 "RTS_STAT_DEV", "RTS_REDIR", "RTS_RIP",
 			 "RTS_OSPF", "RTS_OSPF_IA", "RTS_OSPF_EXT1",
                          "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };
-  static char *rtc[] = { "", " BC", " MC", " AC" };
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
-  debug("p=%s uc=%d %s %s%s%s h=%04x",
-	a->src->proto->name, a->uc, rts[a->source], ip_scope_text(a->scope), rtc[a->cast],
+  debug("p=%s uc=%d %s %s%s h=%04x",
+	a->src->proto->name, a->uc, rts[a->source], ip_scope_text(a->scope),
 	rtd[a->dest], a->hash_key);
   if (!(a->aflags & RTAF_CACHED))
     debug(" !CACHED");
@@ -1213,10 +1213,9 @@ rta_show(struct cli *c, rta *a, ea_list *eal)
 {
   static char *src_names[] = { "dummy", "static", "inherit", "device", "static-device", "redirect",
 			       "RIP", "OSPF", "OSPF-IA", "OSPF-E1", "OSPF-E2", "BGP", "pipe" };
-  static char *cast_names[] = { "unicast", "broadcast", "multicast", "anycast" };
   int i;
 
-  cli_printf(c, -1008, "\tType: %s %s %s", src_names[a->source], cast_names[a->cast], ip_scope_text(a->scope));
+  cli_printf(c, -1008, "\tType: %s %s", src_names[a->source], ip_scope_text(a->scope));
   if (!eal)
     eal = a->eattrs;
   for(; eal; eal=eal->next)

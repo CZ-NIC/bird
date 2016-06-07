@@ -78,7 +78,6 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 	.src = src,
 	.source = RTS_DEVICE,
 	.scope = SCOPE_UNIVERSE,
-	.cast = RTC_UNICAST,
 	.dest = RTD_UNICAST,
 	.nh = {
 	  .iface = ad->iface

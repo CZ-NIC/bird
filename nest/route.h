@@ -358,13 +358,10 @@ typedef struct rta {
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
   ip_addr from;				/* Advertising router */
   u32 igp_metric;			/* IGP metric to next hop (for iBGP routes) */
-  u32 bf[0];
-  u32 source:6;				/* Route source (RTS_...) */
-  u32 scope:6;				/* Route scope (SCOPE_... -- see ip.h) */
-  u32 cast:6;				/* Casting type (RTC_...) */
-  u32 dest:6;				/* Route destination type (RTD_...) */
-//  u32 eflags:8;				/* Flags (RTAF_...) */
-  u32 aflags:8;
+  u8 source;				/* Route source (RTS_...) */
+  u8 scope;				/* Route scope (SCOPE_... -- see ip.h) */
+  u8 dest;				/* Route destination type (RTD_...) */
+  u8 aflags;
   struct nexthop nh;			/* Next hop */
 } rta;
 

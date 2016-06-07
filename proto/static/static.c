@@ -71,7 +71,6 @@ static_install(struct proto *p, struct static_route *r)
   a.src = p->main_source;
   a.source = ((r->dest == RTD_UNICAST) && ipa_zero(r->via)) ? RTS_STATIC_DEVICE : RTS_STATIC;
   a.scope = SCOPE_UNIVERSE;
-  a.cast = RTC_UNICAST;
   a.dest = r->dest;
   if (r->dest == RTD_UNICAST)
     {
@@ -210,13 +209,13 @@ static_add(struct proto *p, struct static_config *cf, struct static_route *r)
 	  }
 
 	if (count)
-	  static_install(p, r, NULL);
+	  static_install(p, r);
 
 	break;
       }
 
     default:
-      static_install(p, r, NULL);
+      static_install(p, r);
     }
 }
 
@@ -300,7 +299,7 @@ static_update_rte(struct proto *p, struct static_route *r)
     return;
 
   if (static_decide((struct static_config *) p->cf, r))
-    static_install(p, r, r->neigh->iface);
+    static_install(p, r);
   else
     static_remove(p, r);
 }
@@ -367,7 +366,7 @@ static_if_notify(struct proto *p, unsigned flags, struct iface *i)
     {
       WALK_LIST(r, c->iface_routes)
 	if (!strcmp(r->if_name, i->name))
-	  static_install(p, r, i);
+	  static_install(p, r);
     }
   else if (flags & IF_CHANGE_DOWN)
     {
@@ -535,7 +534,7 @@ static_reconfigure(struct proto *p, struct proto_config *CF)
     {
       struct iface *ifa;
       if ((ifa = if_find_by_name(r->if_name)) && (ifa->flags & IF_UP))
-	static_install(p, r, ifa);
+	static_install(p, r);
     }
   WALK_LIST(r, n->other_routes)
     static_add(p, n, r);

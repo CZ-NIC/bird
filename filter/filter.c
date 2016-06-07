@@ -905,7 +905,6 @@ interpret(struct f_inst *what)
       case SA_PROTO:	res.val.s = rta->src->proto->name; break;
       case SA_SOURCE:	res.val.i = rta->source; break;
       case SA_SCOPE:	res.val.i = rta->scope; break;
-      case SA_CAST:	res.val.i = rta->cast; break;
       case SA_DEST:	res.val.i = rta->dest; break;
       case SA_IFNAME:	res.val.s = rta->nh.iface ? rta->nh.iface->name : ""; break;
       case SA_IFINDEX:	res.val.i = rta->nh.iface ? rta->nh.iface->index : 0; break;

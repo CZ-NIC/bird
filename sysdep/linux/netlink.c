@@ -952,9 +952,6 @@ krt_capable(rte *e)
 {
   rta *a = e->attrs;
 
-  if (a->cast != RTC_UNICAST)
-    return 0;
-
   switch (a->dest)
     {
     case RTD_UNICAST:
@@ -1345,7 +1342,6 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   ra->src = p->p.main_source;
   ra->source = RTS_INHERIT;
   ra->scope = SCOPE_UNIVERSE;
-  ra->cast = RTC_UNICAST;
 
   switch (i->rtm_type)
     {

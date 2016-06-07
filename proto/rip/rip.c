@@ -147,7 +147,6 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
       .src = p->p.main_source,
       .source = RTS_RIP,
       .scope = SCOPE_UNIVERSE,
-      .cast = RTC_UNICAST
     };
 
     u8 rt_metric = rt->metric;

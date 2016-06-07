@@ -124,7 +124,6 @@ rpki_table_add_roa(struct rpki_cache *cache, struct channel *channel, const net_
     .src = p->p.main_source,
     .source = RTS_RPKI,
     .scope = SCOPE_UNIVERSE,
-    .cast = RTC_UNICAST,
     .dest = RTD_BLACKHOLE,
   };
 

@@ -1951,7 +1951,6 @@ again1:
 	.src = p->p.main_source,
 	.source = nf->n.type,
 	.scope = SCOPE_UNIVERSE,
-	.cast = RTC_UNICAST
       };
 
       nexthop_link(&a0, nf->n.nhs);
