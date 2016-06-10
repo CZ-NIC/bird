@@ -88,6 +88,7 @@ static_install(struct proto *p, struct static_route *r)
 	    nh->gw = r2->via;
 	    nh->iface = r2->neigh->iface;
 	    nh->weight = r2->weight;
+	    nh->labels = 0;
 	    if (a.nh.next)
 	      nexthop_insert(&(a.nh), nh);
 	    r2->state |= STS_INSTALLED;

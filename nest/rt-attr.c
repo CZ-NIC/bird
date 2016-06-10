@@ -60,8 +60,8 @@
 
 pool *rta_pool;
 
-static slab *rta_slab;
-static slab *nexthop_slab;
+static slab *rta_slab_[4];
+static slab *nexthop_slab_[4];
 static slab *rte_src_slab;
 
 static struct idm src_ids;
@@ -148,7 +148,11 @@ nexthop_hash(struct nexthop *x)
 {
   u32 h = 0;
   for (; x; x = x->next)
-    h ^= ipa_hash(x->gw);
+  {
+    h ^= ipa_hash(x->gw) ^ (h << 5) ^ (h >> 9);
+    for (int i=0; i<x->labels; i++)
+      h ^= x->label[i] ^ (h << 6) ^ (h >> 7);
+  }
 
   return h;
 }
@@ -157,10 +161,15 @@ int
 nexthop__same(struct nexthop *x, struct nexthop *y)
 {
   for (; x && y; x = x->next, y = y->next)
-    if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) || (x->weight != y->weight))
+  {
+    if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) || (x->weight != y->weight) || (x->labels != y->labels))
       return 0;
+    for (int i=0; i<x->labels; i++)
+      if (x->label[i] != y->label[i])
+	return 0;
+  }
 
-  return x == y;
+  return 1;
 }
 
 static int
@@ -182,17 +191,28 @@ nexthop_compare_node(struct nexthop *x, struct nexthop *y)
   if (r)
     return r;
 
+  r = ((int) y->labels) - ((int) x->labels);
+  if (r)
+    return r;
+
+  for (int i=0; i<y->labels; i++)
+  {
+    r = ((int) y->label[i]) - ((int) x->label[i]);
+    if (r)
+      return r;
+  }
+
   return ((int) x->iface->index) - ((int) y->iface->index);
 }
 
 static inline struct nexthop *
 nexthop_copy_node(const struct nexthop *src, linpool *lp)
 {
-  struct nexthop *n = lp_alloc(lp, sizeof(struct nexthop));
-  n->gw = src->gw;
-  n->iface = src->iface;
+  struct nexthop *n = lp_alloc(lp, nexthop_size(src));
+
+  memcpy(n, src, nexthop_size(src));
   n->next = NULL;
-  n->weight = src->weight;
+
   return n;
 }
 
@@ -291,6 +311,12 @@ nexthop_is_sorted(struct nexthop *x)
   return 1;
 }
 
+static inline slab *
+nexthop_slab(struct nexthop *nh)
+{
+  return nexthop_slab_[nh->labels > 2 ? 3 : nh->labels];
+}
+
 static struct nexthop *
 nexthop_copy(struct nexthop *o)
 {
@@ -299,7 +325,7 @@ nexthop_copy(struct nexthop *o)
 
   for (; o; o = o->next)
     {
-      struct nexthop *n = sl_alloc(nexthop_slab);
+      struct nexthop *n = sl_alloc(nexthop_slab(o));
       n->gw = o->gw;
       n->iface = o->iface;
       n->next = NULL;
@@ -320,7 +346,7 @@ nexthop_free(struct nexthop *o)
   while (o)
     {
       n = o->next;
-      sl_free(nexthop_slab, o);
+      sl_free(nexthop_slab(o), o);
       o = n;
     }
 }
@@ -1024,20 +1050,24 @@ rta_same(rta *x, rta *y)
 	  x->scope == y->scope &&
 	  x->dest == y->dest &&
 	  x->igp_metric == y->igp_metric &&
-	  ipa_equal(x->nh.gw, y->nh.gw) &&
 	  ipa_equal(x->from, y->from) &&
-	  x->nh.iface == y->nh.iface &&
 	  x->hostentry == y->hostentry &&
 	  nexthop_same(&(x->nh), &(y->nh)) &&
 	  ea_same(x->eattrs, y->eattrs));
 }
 
+static inline slab *
+rta_slab(rta *a)
+{
+  return rta_slab_[a->nh.labels > 2 ? 3 : a->nh.labels];
+}
+
 static rta *
 rta_copy(rta *o)
 {
-  rta *r = sl_alloc(rta_slab);
+  rta *r = sl_alloc(rta_slab(o));
 
-  memcpy(r, o, sizeof(rta));
+  memcpy(r, o, rta_size(o));
   r->uc = 1;
   r->nh.next = nexthop_copy(o->nh.next);
   r->eattrs = ea_list_copy(o->eattrs);
@@ -1138,14 +1168,14 @@ rta__free(rta *a)
   if (a->nh.next)
     nexthop_free(a->nh.next);
   ea_free(a->eattrs);
-  sl_free(rta_slab, a);
+  sl_free(rta_slab(a), a);
 }
 
 rta *
 rta_do_cow(rta *o, linpool *lp)
 {
-  rta *r = lp_alloc(lp, sizeof(rta));
-  memcpy(r, o, sizeof(rta));
+  rta *r = lp_alloc(lp, rta_size(o));
+  memcpy(r, o, rta_size(o));
   r->aflags = 0;
   r->uc = 0;
   return r;
@@ -1176,6 +1206,9 @@ rta_dump(rta *a)
     for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
       {
 	if (ipa_nonzero(nh->gw)) debug(" ->%I", nh->gw);
+	if (nh->labels) debug(" L %d", nh->label[0]);
+	for (int i=1; i<nh->labels; i++)
+	  debug("/%d", nh->label[i]);
 	debug(" [%s]", nh->iface ? nh->iface->name : "???");
       }
   if (a->eattrs)
@@ -1233,8 +1266,17 @@ void
 rta_init(void)
 {
   rta_pool = rp_new(&root_pool, "Attributes");
-  rta_slab = sl_new(rta_pool, sizeof(rta));
-  nexthop_slab = sl_new(rta_pool, sizeof(struct nexthop));
+
+  rta_slab_[0] = sl_new(rta_pool, sizeof(rta));
+  rta_slab_[1] = sl_new(rta_pool, sizeof(rta) + sizeof(u32));
+  rta_slab_[2] = sl_new(rta_pool, sizeof(rta) + sizeof(u32)*2);
+  rta_slab_[3] = sl_new(rta_pool, sizeof(rta) + sizeof(u32)*NEXTHOP_MAX_LABEL_STACK);
+
+  nexthop_slab_[0] = sl_new(rta_pool, sizeof(struct nexthop));
+  nexthop_slab_[1] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32));
+  nexthop_slab_[2] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*2);
+  nexthop_slab_[3] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*NEXTHOP_MAX_LABEL_STACK);
+
   rta_alloc_hash();
   rte_src_init();
 }

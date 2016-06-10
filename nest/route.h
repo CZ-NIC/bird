@@ -338,6 +338,8 @@ struct nexthop {
   struct iface *iface;			/* Outgoing interface */
   struct nexthop *next;
   byte weight;
+  byte labels;				/* Number of labels appended */
+  u32 label[0];
 };
 
 struct rte_src {
@@ -510,16 +512,21 @@ uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
+#define NEXTHOP_MAX_LABEL_STACK 8
+
+static inline size_t nexthop_size(const struct nexthop *nh)
+{ return sizeof(struct nexthop) + sizeof(u32)*nh->labels; }
 int nexthop__same(struct nexthop *x, struct nexthop *y); /* Compare multipath nexthops */
 static inline int nexthop_same(struct nexthop *x, struct nexthop *y)
 { return (x == y) || nexthop__same(x, y); }
 struct nexthop *nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, linpool *lp);
 static inline void nexthop_link(struct rta *a, struct nexthop *from)
-{ a->nh.gw = from->gw; a->nh.iface = from->iface; a->nh.weight = from->weight; a->nh.next = from->next; }
+{ memcpy(&a->nh, from, nexthop_size(from)); }
 void nexthop_insert(struct nexthop *n, struct nexthop *y);
 int nexthop_is_sorted(struct nexthop *x);
 
 void rta_init(void);
+static inline size_t rta_size(const rta *a) { return sizeof(rta) + sizeof(u32)*a->nh.labels; }
 rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */
 static inline int rta_is_cached(rta *r) { return r->aflags & RTAF_CACHED; }
 static inline rta *rta_clone(rta *r) { r->uc++; return r; }

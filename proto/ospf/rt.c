@@ -37,6 +37,7 @@ static inline struct nexthop *
 new_nexthop(struct ospf_proto *p, ip_addr gw, struct iface *iface, byte weight)
 {
   struct nexthop *nh = lp_alloc(p->nhpool, sizeof(struct nexthop));
+  nh->labels = 0;
   nh->gw = gw;
   nh->iface = iface;
   nh->next = NULL;
