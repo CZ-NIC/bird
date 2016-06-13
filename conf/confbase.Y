@@ -64,6 +64,7 @@ CF_DECLS
   struct proto_spec ps;
   struct channel_limit cl;
   struct timeformat *tf;
+  u32 *lbl;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT
@@ -82,6 +83,7 @@ CF_DECLS
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_roa4_ net_roa6_ net_roa_
+%type <lbl> label_stack_start label_stack
 
 %type <t> text opttext
 
@@ -266,6 +268,22 @@ net_or_ipa:
    }
  ;
 
+label_stack_start: NUM
+{
+  $$ = cfg_allocz(sizeof(u32) * (NEXTHOP_MAX_LABEL_STACK+1));
+  $$[0] = 1;
+  $$[1] = $1;
+};
+
+label_stack:
+    label_stack_start
+  | label_stack '/' NUM {
+    if ($1[0] >= NEXTHOP_MAX_LABEL_STACK)
+      cf_error("Too many labels in stack.");
+    $1[++$1[0]] = $3;
+    $$ = $1;
+  }
+;
 
 datetime:
    TEXT {

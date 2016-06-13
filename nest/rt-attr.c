@@ -330,6 +330,9 @@ nexthop_copy(struct nexthop *o)
       n->iface = o->iface;
       n->next = NULL;
       n->weight = o->weight;
+      n->labels = o->labels;
+      for (int i=0; i<o->labels; i++)
+	n->label[i] = o->label[i];
 
       *last = n;
       last = &(n->next);
@@ -1176,6 +1179,12 @@ rta_do_cow(rta *o, linpool *lp)
 {
   rta *r = lp_alloc(lp, rta_size(o));
   memcpy(r, o, rta_size(o));
+  for (struct nexthop **nhn = &(r->nh.next), *nho = o->nh.next; nho; nho = nho->next)
+    {
+      *nhn = lp_alloc(lp, nexthop_size(nho));
+      memcpy(*nhn, nho, nexthop_size(nho));
+      nhn = &((*nhn)->next);
+    }
   r->aflags = 0;
   r->uc = 0;
   return r;

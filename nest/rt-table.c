@@ -2443,14 +2443,7 @@ rt_format_via(rte *e)
 
   switch (a->dest)
     {
-    case RTD_UNICAST:	if (a->nh.next)
-			  bsprintf(via, "multipath");
-			else
-			  {
-			    if (ipa_nonzero(a->nh.gw)) bsprintf(via, "via %I ", a->nh.gw);
-			    bsprintf(via, "dev %s", a->nh.iface->name);
-			  }
-			break;
+    case RTD_UNICAST:	bsprintf(via, "unicast"); break;
     case RTD_BLACKHOLE:	bsprintf(via, "blackhole"); break;
     case RTD_UNREACHABLE:	bsprintf(via, "unreachable"); break;
     case RTD_PROHIBIT:	bsprintf(via, "prohibited"); break;
@@ -2492,11 +2485,24 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
     bsprintf(info, " (%d)", e->pref);
   cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", ia, rt_format_via(e), a->src->proto->name,
 	     tm, from, primary ? (sync_error ? " !" : " *") : "", info);
-  if (a->nh.next)
-    for (nh = &(a->nh); nh; nh = nh->next)
-      cli_printf(c, -1007, "\tvia %I on %s weight %d", nh->gw, nh->iface->name, nh->weight + 1);
+  for (nh = &(a->nh); nh; nh = nh->next)
+    {
+      char ls[NEXTHOP_MAX_LABEL_STACK*8 + 5]; char *lsp = ls;
+      if (nh->labels)
+	{
+	  lsp += bsprintf(lsp, " mpls %d", nh->label[0]);
+	  for (int i=1;i<nh->labels; i++)
+	    lsp += bsprintf(lsp, "/%d", nh->label[i]);
+	  *lsp++ = '\0';
+	}
+      if (a->nh.next)
+	cli_printf(c, -1007, "\tvia %I%s on %s weight %d", nh->gw, (nh->labels ? ls : ""), nh->iface->name, nh->weight + 1);
+      else
+	cli_printf(c, -1007, "\tvia %I%s on %s", nh->gw, (nh->labels ? ls : ""), nh->iface->name);
+    }
   if (d->verbose)
     rta_show(c, a, tmpa);
+
 }
 
 static void

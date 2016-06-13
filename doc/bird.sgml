@@ -4141,8 +4141,8 @@ specific destination for them and you don't want to send them out through the
 default route to prevent routing loops).
 
 <p>There are five types of static routes: `classical' routes telling to forward
-packets to a neighboring router, multipath routes specifying several (possibly
-weighted) neighboring routers, device routes specifying forwarding to hosts on a
+packets to a neighboring router (single path or multipath, possibly weighted),
+device routes specifying forwarding to hosts on a
 directly connected network, recursive routes computing their nexthops by doing
 route table lookups for a given IP, and special routes (sink, blackhole etc.)
 which specify a special action to be done instead of forwarding the packet.
@@ -4174,14 +4174,14 @@ definition of the protocol contains mainly a list of static routes.
 <p>Route definitions (each may also contain a block of per-route options):
 
 <descrip>
-	<tag><label id="static-route-via-ip">route <m/prefix/ via <m/ip/</tag>
-	Static route through a neighboring router. For link-local next hops,
+	<tag><label id="static-route-via-ip">route <m/prefix/ via <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]]</tag>
+	Static single path route through a neighboring router. For link-local next hops,
 	interface can be specified as a part of the address (e.g.,
-	<cf/via fe80::1234%eth0/).
+	<cf/via fe80::1234%eth0/). MPLS labels should be specified in outer-first order.
 
-	<tag><label id="static-route-via-mpath">route <m/prefix/ multipath via <m/ip/ [weight <m/num/] [bfd <m/switch/] [via <m/.../]</tag>
+	<tag><label id="static-route-via-mpath">route <m/prefix/ via <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]] [weight <m/num/] [bfd <m/switch/] [via ...]</tag>
 	Static multipath route. Contains several nexthops (gateways), possibly
-	with their weights.
+	with their weights and MPLS labels.
 
 	<tag><label id="static-route-via-iface">route <m/prefix/ via <m/"interface"/</tag>
 	Static device route through an interface to hosts on a directly

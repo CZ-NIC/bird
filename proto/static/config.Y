@@ -18,19 +18,12 @@ static struct f_inst **this_srt_last_cmd;
 
 static void
 static_route_finish(void)
-{
-  struct static_route *r;
-
-  /* Update undefined use_bfd entries in multipath nexthops */
-  for (r = this_srt->mp_next; r; r = r->mp_next)
-    if (r->use_bfd < 0)
-      r->use_bfd = this_srt->use_bfd;
-}
+{ }
 
 CF_DECLS
 
 CF_KEYWORDS(STATIC, ROUTE, VIA, DROP, REJECT, PROHIBIT, PREFERENCE, CHECK, LINK)
-CF_KEYWORDS(MULTIPATH, WEIGHT, RECURSIVE, IGP, TABLE, BLACKHOLE, UNREACHABLE, BFD)
+CF_KEYWORDS(WEIGHT, RECURSIVE, IGP, TABLE, BLACKHOLE, UNREACHABLE, BFD, MPLS)
 
 
 CF_GRAMMAR
@@ -52,6 +45,50 @@ static_proto:
  | static_proto stat_route stat_route_opt_list ';' { static_route_finish(); }
  ;
 
+stat_nexthop_via: VIA
+{
+  if (last_srt)
+  {
+    last_srt = (last_srt->mp_next = cfg_allocz(sizeof(struct static_route)));
+    last_srt->net = this_srt->net;
+  }
+  else
+  {
+    last_srt = this_srt;
+    rem_node(&this_srt->n);
+  }
+
+  last_srt->mp_head = this_srt;
+  last_srt->dest = RTD_UNICAST;
+};
+
+stat_nexthop_ident:
+    stat_nexthop_via ipa ipa_scope {
+      last_srt->via = $2;
+      last_srt->iface = $3;
+      add_tail(&STATIC_CFG->neigh_routes, &last_srt->n);
+    }
+  | stat_nexthop_via TEXT {
+      last_srt->via = IPA_NONE;
+      last_srt->if_name = $2;
+      add_tail(&STATIC_CFG->iface_routes, &last_srt->n);
+    }
+  | stat_nexthop_ident MPLS label_stack {
+    last_srt->label_count = $3[0];
+    last_srt->label_stack = &($3[1]);
+  }
+  | stat_nexthop_ident WEIGHT expr {
+    last_srt->weight = $3 - 1;
+    if (($3<1) || ($3>256)) cf_error("Weight must be in range 1-256");
+  }
+  | stat_nexthop_ident BFD bool { last_srt->use_bfd = $3; cf_check_bfd($3); }
+;
+
+stat_nexthop:
+    stat_nexthop_ident
+  | stat_nexthop stat_nexthop_ident
+;
+
 stat_route0: ROUTE net_any {
      this_srt = cfg_allocz(sizeof(struct static_route));
      add_tail(&STATIC_CFG->other_routes, &this_srt->n);
@@ -62,45 +99,8 @@ stat_route0: ROUTE net_any {
   }
  ;
 
-stat_multipath1:
-   VIA ipa ipa_scope {
-     last_srt = last_srt ? last_srt->mp_next = cfg_allocz(sizeof(struct static_route)) : this_srt;
-
-     last_srt->dest = RTD_UNICAST;
-     last_srt->via = $2;
-     last_srt->via_if = $3;
-     last_srt->if_name = (void *) this_srt; /* really */
-     last_srt->use_bfd = -1; /* undefined */
-     last_srt->mp_next = NULL;
-   }
- | stat_multipath1 WEIGHT expr {
-     last_srt->weight = $3 - 1;
-     if (($3<1) || ($3>256)) cf_error("Weight must be in range 1-256"); 
-   }
- | stat_multipath1 BFD bool {
-     last_srt->use_bfd = $3; cf_check_bfd($3);
-   }
- ;
-
-stat_multipath:
-   stat_multipath1
- | stat_multipath stat_multipath1
- ;
-
 stat_route:
-   stat_route0 VIA ipa ipa_scope {
-      this_srt->dest = RTD_UNICAST;
-      this_srt->via = $3;
-      this_srt->via_if = $4;
-   }
- | stat_route0 VIA TEXT {
-      this_srt->dest = RTD_UNICAST;
-      this_srt->via = IPA_NONE;
-      this_srt->if_name = $3;
-      rem_node(&this_srt->n);
-      add_tail(&STATIC_CFG->iface_routes, &this_srt->n);
-   }
- | stat_route0 MULTIPATH stat_multipath
+   stat_route0 stat_nexthop
  | stat_route0 RECURSIVE ipa {
       this_srt->dest = RTDX_RECURSIVE;
       this_srt->via = $3;
@@ -115,7 +115,6 @@ stat_route:
 
 stat_route_item:
    cmd { *this_srt_last_cmd = $1; this_srt_last_cmd = &($1->next); }
- | BFD bool ';' { this_srt->use_bfd = $2; cf_check_bfd($2); }
  ;
 
 stat_route_opts:

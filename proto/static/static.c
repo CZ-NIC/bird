@@ -60,37 +60,51 @@ p_igp_table(struct proto *p)
 static void
 static_install(struct proto *p, struct static_route *r)
 {
-  rta a;
+  rta *ap = alloca(RTA_MAX_SIZE);
   rte *e;
 
-  if (!(r->state & STS_WANT) && r->dest != RTD_UNICAST)
-    return;
+  if (!(r->state & STS_WANT) && (r->state & (STS_INSTALLED | STS_FORCE)) && r->dest != RTD_UNICAST)
+    goto drop;
 
   DBG("Installing static route %N, rtd=%d\n", r->net, r->dest);
-  bzero(&a, sizeof(a));
-  a.src = p->main_source;
-  a.source = ((r->dest == RTD_UNICAST) && ipa_zero(r->via)) ? RTS_STATIC_DEVICE : RTS_STATIC;
-  a.scope = SCOPE_UNIVERSE;
-  a.dest = r->dest;
+  bzero(ap, RTA_MAX_SIZE);
+  ap->src = p->main_source;
+  ap->source = ((r->dest == RTD_UNICAST) && ipa_zero(r->via)) ? RTS_STATIC_DEVICE : RTS_STATIC;
+  ap->scope = SCOPE_UNIVERSE;
+  ap->dest = r->dest;
+
   if (r->dest == RTD_UNICAST)
     {
       struct static_route *r2;
-      int num = 0;
+      int num = 0, update = 0;
 
       for (r2 = r; r2; r2 = r2->mp_next)
       {
-	if ((r2->state & STS_INSTALLED) && !(r2->state & STS_FORCE))
-	  continue;
+
+	if ((r2->state & STS_FORCE) ||
+	    (!!(r2->state & STS_INSTALLED) != !!(r2->state & STS_WANT)))
+	  update++;
 
 	if (r2->state & STS_WANT)
 	  {
-	    struct nexthop *nh = (a.nh.next) ? alloca(sizeof(struct nexthop)) : &(a.nh);
-	    nh->gw = r2->via;
-	    nh->iface = r2->neigh->iface;
+	    struct nexthop *nh = (ap->nh.next) ? alloca(NEXTHOP_MAX_SIZE) : &(ap->nh);
+	    if (ipa_zero(r2->via)) // Device nexthop
+	      {
+		nh->gw = IPA_NONE;
+		nh->iface = r2->iface;
+	      }
+	    else // Router nexthop
+	      {
+		nh->gw = r2->via;
+		nh->iface = r2->neigh->iface;
+	      }
 	    nh->weight = r2->weight;
-	    nh->labels = 0;
-	    if (a.nh.next)
-	      nexthop_insert(&(a.nh), nh);
+	    nh->labels = r2->label_count;
+	    for (int i=0; i<nh->labels; i++)
+	      nh->label[i] = r2->label_stack[i];
+
+	    if (ap->nh.next)
+	      nexthop_insert(&(ap->nh), nh);
 	    r2->state |= STS_INSTALLED;
 	    num++;
 	  }
@@ -98,21 +112,27 @@ static_install(struct proto *p, struct static_route *r)
 	  r2->state = 0;
       }
 
+      if (!update) // Nothing changed
+	return;
+
+      r = r->mp_head;
+
       if (!num) // No nexthop to install
       {
-	if (r->state & STS_INSTALLED_ANY)
-	  rte_update(p, r->net, NULL);
-	
+drop:
+	rte_update(p, r->net, NULL);
 	return;
       }
     }
-
+  else
+    r->state |= STS_INSTALLED;
+  
   if (r->dest == RTDX_RECURSIVE)
-    rta_set_recursive_next_hop(p->main_channel->table, &a, p_igp_table(p), r->via, IPA_NONE);
+    rta_set_recursive_next_hop(p->main_channel->table, ap, p_igp_table(p), r->via, IPA_NONE);
 
   /* We skip rta_lookup() here */
 
-  e = rte_get_temp(&a);
+  e = rte_get_temp(ap);
   e->pflags = 0;
 
   if (r->cmds)
@@ -122,18 +142,6 @@ static_install(struct proto *p, struct static_route *r)
 
   if (r->cmds)
     lp_flush(static_lp);
-}
-
-static void
-static_remove(struct proto *p, struct static_route *r)
-{
-  if (!(r->state & STS_INSTALLED_ANY))
-    return;
-
-  DBG("Removing static route %N via %I\n", r->net, r->via);
-  rte_update(p, r->net, NULL);
-
-  r->state &= ~(STS_INSTALLED | STS_INSTALLED_ANY);
 }
 
 static void
@@ -165,6 +173,8 @@ static_decide(struct static_config *cf, struct static_route *r)
   /* r->dest != RTD_MULTIPATH, but may be RTD_NONE (part of multipath route)
      the route also have to be valid (r->neigh != NULL) */
 
+  r->state &= ~STS_WANT;
+
   if (r->neigh->scope < 0)
     return 0;
 
@@ -174,6 +184,7 @@ static_decide(struct static_config *cf, struct static_route *r)
   if (r->bfd_req && r->bfd_req->state != BFD_STATE_UP)
     return 0;
 
+  r->state |= STS_WANT;
   return 1;
 }
 
@@ -181,6 +192,9 @@ static_decide(struct static_config *cf, struct static_route *r)
 static void
 static_add(struct proto *p, struct static_config *cf, struct static_route *r)
 {
+  if (r->mp_head && r != r->mp_head)
+    return;
+
   DBG("static_add(%N,%d)\n", r->net, r->dest);
   switch (r->dest)
     {
@@ -191,7 +205,10 @@ static_add(struct proto *p, struct static_config *cf, struct static_route *r)
 
 	for (r2 = r; r2; r2 = r2->mp_next)
 	  {
-	    struct neighbor *n = neigh_find2(p, &r2->via, r2->via_if, NEF_STICKY);
+	    if (ipa_zero(r2->via)) // No struct neighbor for device routes
+	      continue;
+
+	    struct neighbor *n = neigh_find2(p, &r2->via, r2->iface, NEF_STICKY);
 	    if (n)
 	      {
 		r2->chain = n->data;
@@ -199,7 +216,7 @@ static_add(struct proto *p, struct static_config *cf, struct static_route *r)
 		r2->neigh = n;
 
 		static_update_bfd(p, r2);
-		r2->state = static_decide(cf,r2) ? STS_WANT : 0;
+		static_decide(cf,r2);
 		count++;
 	      }
 	    else
@@ -223,6 +240,9 @@ static_add(struct proto *p, struct static_config *cf, struct static_route *r)
 static void
 static_rte_cleanup(struct proto *p UNUSED, struct static_route *r)
 {
+  if (r->mp_head && (r != r->mp_head))
+    return;
+
   struct static_route *r2;
   
   for (r2 = r; r2; r2 = r2->mp_next)
@@ -250,8 +270,15 @@ static_start(struct proto *p)
   /* We have to go UP before routes could be installed */
   proto_notify_state(p, PS_UP);
 
-  WALK_LIST(r, cf->other_routes)
+  WALK_LIST(r, cf->neigh_routes)
     static_add(p, cf, r);
+
+  WALK_LIST(r, cf->iface_routes)
+    static_add(p, cf, r);
+
+  WALK_LIST(r, cf->other_routes)
+    static_install(p, r);
+
   return PS_UP;
 }
 
@@ -262,9 +289,14 @@ static_shutdown(struct proto *p)
   struct static_route *r;
 
   /* Just reset the flag, the routes will be flushed by the nest */
+  WALK_LIST(r, cf->other_routes)
+  {
+    static_rte_cleanup(p, r);
+    r->state = 0;
+  }
   WALK_LIST(r, cf->iface_routes)
     r->state = 0;
-  WALK_LIST(r, cf->other_routes)
+  WALK_LIST(r, cf->neigh_routes)
   {
     static_rte_cleanup(p, r);
     r->state = 0;
@@ -275,9 +307,11 @@ static_shutdown(struct proto *p)
   cf = (void *) p->cf_new;
   if (cf)
   {
+    WALK_LIST(r, cf->other_routes)
+      r->state = 0;
     WALK_LIST(r, cf->iface_routes)
       r->state = 0;
-    WALK_LIST(r, cf->other_routes)
+    WALK_LIST(r, cf->neigh_routes)
       r->state = 0;
   }
 
@@ -299,10 +333,8 @@ static_update_rte(struct proto *p, struct static_route *r)
   if (r->dest != RTD_UNICAST)
     return;
 
-  if (static_decide((struct static_config *) p->cf, r))
-    static_install(p, r);
-  else
-    static_remove(p, r);
+  static_decide((struct static_config *) p->cf, r);
+  static_install(p, r);
 }
 
 static void
@@ -349,11 +381,14 @@ static_dump(struct proto *p)
   struct static_config *c = (void *) p->cf;
   struct static_route *r;
 
-  debug("Independent static routes:\n");
-  WALK_LIST(r, c->other_routes)
+  debug("Independent static nexthops:\n");
+  WALK_LIST(r, c->neigh_routes)
     static_dump_rt(r);
-  debug("Device static routes:\n");
+  debug("Device static nexthops:\n");
   WALK_LIST(r, c->iface_routes)
+    static_dump_rt(r);
+  debug("Other static routes:\n");
+  WALK_LIST(r, c->other_routes)
     static_dump_rt(r);
 }
 
@@ -367,13 +402,21 @@ static_if_notify(struct proto *p, unsigned flags, struct iface *i)
     {
       WALK_LIST(r, c->iface_routes)
 	if (!strcmp(r->if_name, i->name))
+	{
+	  r->state |= STS_WANT;
+	  r->iface = i;
 	  static_install(p, r);
+	}
     }
   else if (flags & IF_CHANGE_DOWN)
     {
       WALK_LIST(r, c->iface_routes)
 	if (!strcmp(r->if_name, i->name))
-	  static_remove(p, r);
+	{
+	  r->state &= ~STS_WANT;
+	  r->iface = NULL;
+	  static_install(p, r);
+	}
     }
 }
 
@@ -386,6 +429,7 @@ static_rte_mergable(rte *pri UNUSED, rte *sec UNUSED)
 void
 static_init_config(struct static_config *c)
 {
+  init_list(&c->neigh_routes);
   init_list(&c->iface_routes);
   init_list(&c->other_routes);
 }
@@ -400,8 +444,12 @@ static_postconfig(struct proto_config *CF)
     cf_error("Channel not specified");
 
 
+  WALK_LIST(r, cf->neigh_routes)
+    if (r->net && (r->net->type != CF->net_type))
+      cf_error("Route %N incompatible with channel type", r->net);
+
   WALK_LIST(r, cf->iface_routes)
-    if (r->net->type != CF->net_type)
+    if (r->net && (r->net->type != CF->net_type))
       cf_error("Route %N incompatible with channel type", r->net);
 
   WALK_LIST(r, cf->other_routes)
@@ -442,16 +490,22 @@ static_same_dest(struct static_route *x, struct static_route *y)
 	  if (ipa_nonzero(xc->via) && ipa_nonzero(yc->via))
 	  {
 	    if (!ipa_equal(x->via, y->via) ||
-		(x->via_if != y->via_if) ||
+		(x->iface != y->iface) ||
 		(x->use_bfd != y->use_bfd) ||
-		(x->weight != y->weight))
+		(x->weight != y->weight) ||
+		(x->label_count != y->label_count))
 	      return 0;
+	    for (int i=0; i<x->label_count; i++)
+	      if (x->label_stack[i] != y->label_stack[i])
+		return 0;
 	  }
 	  else
-	    if (strcmp(x->if_name, y->if_name) ||
+	    if ((!x->if_name) || (!y->if_name) ||
+		strcmp(x->if_name, y->if_name) ||
 		(x->use_bfd != y->use_bfd) ||
 		(x->weight != y->weight))
 	      return 0;
+
 	}
 	return 1;
       }
@@ -476,6 +530,9 @@ static_match(struct proto *p, struct static_route *r, struct static_config *n)
 {
   struct static_route *t;
 
+  if (r->mp_head && (r->mp_head != r))
+    return;
+
   /*
    * For given old route *r we find whether a route to the same
    * network is also in the new route list. In that case, we keep the
@@ -486,23 +543,28 @@ static_match(struct proto *p, struct static_route *r, struct static_config *n)
   if (r->neigh)
     r->neigh->data = NULL;
 
+  WALK_LIST(t, n->neigh_routes)
+    if ((!t->mp_head || (t->mp_head == t)) && net_equal(r->net, t->net))
+      goto found;
+
   WALK_LIST(t, n->iface_routes)
-    if (net_equal(r->net, t->net))
+    if ((!t->mp_head || (t->mp_head == t)) && net_equal(r->net, t->net))
       goto found;
 
   WALK_LIST(t, n->other_routes)
     if (net_equal(r->net, t->net))
       goto found;
 
-  static_remove(p, r);
+  r->state &= ~STS_WANT;
+  static_install(p, r);
   return;
 
  found:
+  t->state = r->state;
+
   /* If destination is different, force reinstall */
-  if (r->state && !static_same_rte(r, t))
-    t->state = r->state | STS_WANT | STS_FORCE;
-  else
-    t->state = r->state;
+  if (!static_same_rte(r, t))
+    t->state |= STS_FORCE;
 }
 
 static inline rtable *
@@ -525,20 +587,34 @@ static_reconfigure(struct proto *p, struct proto_config *CF)
     return 0;
 
   /* Delete all obsolete routes and reset neighbor entries */
+  WALK_LIST(r, o->other_routes)
+    static_match(p, r, n);
   WALK_LIST(r, o->iface_routes)
     static_match(p, r, n);
-  WALK_LIST(r, o->other_routes)
+  WALK_LIST(r, o->neigh_routes)
     static_match(p, r, n);
 
   /* Now add all new routes, those not changed will be ignored by static_install() */
+  WALK_LIST(r, n->neigh_routes)
+    static_add(p, n, r);
+  WALK_LIST(r, o->neigh_routes)
+    static_rte_cleanup(p, r);
+
   WALK_LIST(r, n->iface_routes)
     {
       struct iface *ifa;
       if ((ifa = if_find_by_name(r->if_name)) && (ifa->flags & IF_UP))
-	static_install(p, r);
+	{
+	  r->iface = ifa;
+	  static_install(p, r);
+	}
     }
+
   WALK_LIST(r, n->other_routes)
-    static_add(p, n, r);
+  {
+    r->state |= STS_WANT;
+    static_install(p, r);
+  }
 
   WALK_LIST(r, o->other_routes)
     static_rte_cleanup(p, r);
@@ -555,7 +631,7 @@ static_copy_routes(list *dlst, list *slst)
   WALK_LIST(sr, *slst)
     {
       struct static_route *srr, *drr = NULL;
-      for (srr = sr; srr; srr = srr->mp_next)
+      for (srr = sr->mp_head; srr; srr = srr->mp_next)
       {
 	/* copy one route */
 	struct static_route *dr = cfg_alloc(sizeof(struct static_route));
@@ -577,6 +653,7 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
   struct static_config *s = (struct static_config *) src;
 
   /* Copy route lists */
+  static_copy_routes(&d->neigh_routes, &s->neigh_routes);
   static_copy_routes(&d->iface_routes, &s->iface_routes);
   static_copy_routes(&d->other_routes, &s->other_routes);
 }
@@ -606,7 +683,7 @@ static_format_via(struct static_route *r)
   switch (r->dest)
     {
     case RTD_UNICAST:	if (ipa_zero(r->via)) bsprintf(via, "dev %s", r->if_name);
-			else bsprintf(via, "via %I%J", r->via, r->via_if);
+			else bsprintf(via, "via %I%J", r->via, r->iface);
 			break;
     case RTD_BLACKHOLE:	bsprintf(via, "blackhole"); break;
     case RTD_UNREACHABLE: bsprintf(via, "unreachable"); break;
@@ -620,13 +697,19 @@ static_format_via(struct static_route *r)
 static void
 static_show_rt(struct static_route *r)
 {
+  if (r->mp_head && (r != r->mp_head))
+    return;
   if (r->mp_next)
   {
     cli_msg(-1009, "%N", r->net);
     struct static_route *r2;
     for (r2 = r; r2; r2 = r2->mp_next)
+    {
       cli_msg(-1009, "\t%s weight %d%s%s", static_format_via(r2), r2->weight + 1,
 	      r2->bfd_req ? " (bfd)" : "", (r2->state & STS_INSTALLED) ? "" : " (dormant)");
+      if (r2->mp_next == r)
+	break;
+    }
   }
   else
     cli_msg(-1009, "%N %s%s%s", r->net, static_format_via(r),
@@ -639,9 +722,11 @@ static_show(struct proto *P)
   struct static_config *c = (void *) P->cf;
   struct static_route *r;
 
-  WALK_LIST(r, c->other_routes)
+  WALK_LIST(r, c->neigh_routes)
     static_show_rt(r);
   WALK_LIST(r, c->iface_routes)
+    static_show_rt(r);
+  WALK_LIST(r, c->other_routes)
     static_show_rt(r);
   cli_msg(0, "");
 }
