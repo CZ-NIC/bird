@@ -2683,6 +2683,12 @@ rt_show(struct rt_show_data *d)
 	    }
 	}
 
+      if (d->table->addr_type != d->addr->type)
+      {
+	cli_msg(8001, "Incompatible type of prefix/ip with table");
+	return;
+      }
+
       if (d->show_for)
 	n = net_route(d->table, d->addr);
       else
