@@ -1029,6 +1029,16 @@ interpret(struct f_inst *what)
     default: runtime( "Prefix, path, clist or eclist expected" );
     }
     break;
+  case P('R','m'): 	/* Get ROA max prefix length */
+    ONEARG;
+    if (v1.type != T_NET || !net_is_roa(v1.val.net))
+      runtime( "ROA expected" );
+
+    res.type = T_INT;
+    res.val.i = (v1.val.net->type == NET_ROA4) ?
+      ((net_addr_roa4 *) v1.val.net)->max_pxlen :
+      ((net_addr_roa6 *) v1.val.net)->max_pxlen;
+    break;
   case P('R','a'): 	/* Get ROA ASN */
     ONEARG;
     if (v1.type != T_NET || !net_is_roa(v1.val.net))
