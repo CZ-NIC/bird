@@ -171,6 +171,9 @@ static inline int net_type_match(const net_addr *a, u32 mask)
 static inline int net_is_ip(const net_addr *a)
 { return (a->type == NET_IP4) || (a->type == NET_IP6); }
 
+static inline int net_is_roa(const net_addr *a)
+{ return (a->type == NET_ROA4) || (a->type == NET_ROA6); }
+
 
 static inline ip4_addr net4_prefix(const net_addr *a)
 { return ((net_addr_ip4 *) a)->prefix; }
