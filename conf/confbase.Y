@@ -187,17 +187,24 @@ pxlen4:
 net_ip4_: IP4 pxlen4
 {
   net_fill_ip4(&($$), $1, $2);
-  if (!net_validate_ip4((net_addr_ip4 *) &($$)))
-    cf_error("Invalid IPv4 prefix");
+
+  net_addr_ip4 *n = (void *) &($$);
+  if (!net_validate_ip4(n))
+    cf_error("Invalid IPv4 prefix %I4/%d, maybe you wanted %I4/%d",
+	     n->prefix, n->pxlen, ip4_and(n->prefix, ip4_mkmask(n->pxlen)), n->pxlen);
 };
 
 net_ip6_: IP6 '/' NUM
 {
-  net_fill_ip6(&($$), $1, $3);
   if ($3 < 0 || $3 > IP6_MAX_PREFIX_LENGTH)
     cf_error("Invalid prefix length %d", $3);
-  if (!net_validate_ip6((net_addr_ip6 *) &($$)))
-    cf_error("Invalid IPv6 prefix");
+
+  net_fill_ip6(&($$), $1, $3);
+
+  net_addr_ip6 *n = (void *) &($$);
+  if (!net_validate_ip6(n))
+    cf_error("Invalid IPv6 prefix %I6/%d, maybe you wanted %I6/%d",
+	     n->prefix, n->pxlen, ip6_and(n->prefix, ip6_mkmask(n->pxlen)), n->pxlen);
 };
 
 net_vpn4_: VPN_RD net_ip4_
