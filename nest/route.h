@@ -338,7 +338,8 @@ struct nexthop {
   struct iface *iface;			/* Outgoing interface */
   struct nexthop *next;
   byte weight;
-  byte labels;				/* Number of labels appended */
+  byte labels_append;			/* Number of labels before hostentry was applied */
+  byte labels;				/* Number of labels prepended */
   u32 label[0];
 };
 

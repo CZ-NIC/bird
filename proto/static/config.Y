@@ -105,7 +105,12 @@ stat_route:
       this_srt->dest = RTDX_RECURSIVE;
       this_srt->via = $3;
    }
-
+ | stat_route0 RECURSIVE ipa MPLS label_stack {
+      this_srt->dest = RTDX_RECURSIVE;
+      this_srt->via = $3;
+      this_srt->label_count = $5[0];
+      this_srt->label_stack = &($5[1]);
+   }
  | stat_route0 DROP		{ this_srt->dest = RTD_BLACKHOLE; }
  | stat_route0 REJECT		{ this_srt->dest = RTD_UNREACHABLE; }
  | stat_route0 BLACKHOLE	{ this_srt->dest = RTD_BLACKHOLE; }

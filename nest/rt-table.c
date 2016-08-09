@@ -1768,27 +1768,56 @@ static inline void
 rta_apply_hostentry(rta *a, struct hostentry *he)
 {
   a->hostentry = he;
-
-  a->nh.gw = ipa_nonzero(he->nh->gw) ? he->nh->gw : he->link;
-  a->nh.iface = he->nh->iface;
-  a->nh.weight = he->nh->weight;
-  a->nh.next = he->nh->next;
   
   a->dest = he->dest;
   a->igp_metric = he->igp_metric;
+
+  if (a->nh.labels_append == 0)
+  {
+    a->nh = *(he->nh);
+    a->nh.labels_append = 0;
+    return;
+  }
+
+  int labels_append = a->nh.labels_append;
+  u32 label_stack[MPLS_MAX_LABEL_STACK];
+  memcpy(label_stack, a->nh.label, labels_append * sizeof(u32));
+
+  struct nexthop *nhp = NULL;
+  for (struct nexthop *nh = he->nh; nh; nh = nh->next)
+  {
+    nhp = nhp ? (nhp->next = lp_alloc(rte_update_pool, NEXTHOP_MAX_SIZE)) : &(a->nh);
+    nhp->gw = ipa_nonzero(nh->gw) ? nh->gw : he->link;
+    nhp->iface = nh->iface; /* FIXME: This is at least strange, if not utter nonsense. */
+    nhp->weight = nh->weight;
+    nhp->labels = nh->labels + labels_append;
+    nhp->labels_append = labels_append;
+    if (nhp->labels <= MPLS_MAX_LABEL_STACK)
+    {
+      memcpy(nhp->label, nh->label, nh->labels * sizeof(u32));
+      memcpy(&(nhp->label[nh->labels]), label_stack, labels_append * sizeof(u32));
+    }
+    else
+    {
+      log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
+	  nh->labels, labels_append, nhp->labels, MPLS_MAX_LABEL_STACK);
+      a->dest = RTD_UNREACHABLE;
+      break;
+    }
+  }
 }
 
 static inline rte *
 rt_next_hop_update_rte(rtable *tab UNUSED, rte *old)
 {
-  rta a;
-  memcpy(&a, old->attrs, rta_size(old->attrs));
-  rta_apply_hostentry(&a, old->attrs->hostentry);
-  a.aflags = 0;
+  rta *ap = alloca(RTA_MAX_SIZE);
+  memcpy(ap, old->attrs, rta_size(old->attrs));
+  rta_apply_hostentry(ap, old->attrs->hostentry);
+  ap->aflags = 0;
 
   rte *e = sl_alloc(rte_slab);
   memcpy(e, old, sizeof(rte));
-  e->attrs = rta_lookup(&a);
+  e->attrs = rta_lookup(ap);
 
   return e;
 }
