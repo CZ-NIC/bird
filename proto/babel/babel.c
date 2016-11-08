@@ -565,6 +565,11 @@ babel_select_route(struct babel_entry *e)
 
       babel_send_seqno_request(e);
       babel_announce_rte(p, e);
+
+      /* Section 3.6 of the RFC forbids an infeasible from being selected. This
+	 is cleared after announcing the route to the core to make sure an
+	 unreachable route is propagated first. */
+      e->selected_in = NULL;
     }
     else
     {
@@ -783,16 +788,21 @@ babel_send_update(struct babel_iface *ifa, bird_clock_t changed)
     msg.update.prefix = e->n.prefix;
     msg.update.router_id = r->router_id;
 
-    /* Update feasibility distance */
-    struct babel_source *s = babel_get_source(e, r->router_id);
-    s->expires = now + BABEL_GARBAGE_INTERVAL;
-    if ((msg.update.seqno > s->seqno) ||
-	((msg.update.seqno == s->seqno) && (msg.update.metric < s->metric)))
-    {
-      s->seqno = msg.update.seqno;
-      s->metric = msg.update.metric;
-    }
     babel_enqueue(&msg, ifa);
+
+    /* Update feasibility distance for redistributed routes */
+    if (!OUR_ROUTE(r))
+    {
+      struct babel_source *s = babel_get_source(e, r->router_id);
+      s->expires = now + BABEL_GARBAGE_INTERVAL;
+
+      if ((msg.update.seqno > s->seqno) ||
+	  ((msg.update.seqno == s->seqno) && (msg.update.metric < s->metric)))
+      {
+	s->seqno = msg.update.seqno;
+	s->metric = msg.update.metric;
+      }
+    }
   }
   FIB_WALK_END;
 }
@@ -834,8 +844,8 @@ babel_send_retraction(struct babel_iface *ifa, ip_addr prefix, int plen)
   struct babel_proto *p = ifa->proto;
   union babel_msg msg = {};
 
-  TRACE(D_PACKETS, "Sending retraction for %I/%d router-id %lR seqno %d",
-	prefix, plen, p->router_id, p->update_seqno);
+  TRACE(D_PACKETS, "Sending retraction for %I/%d seqno %d",
+	prefix, plen, p->update_seqno);
 
   msg.type = BABEL_TLV_UPDATE;
   msg.update.plen = plen;
@@ -843,7 +853,23 @@ babel_send_retraction(struct babel_iface *ifa, ip_addr prefix, int plen)
   msg.update.seqno = p->update_seqno;
   msg.update.metric = BABEL_INFINITY;
   msg.update.prefix = prefix;
-  msg.update.router_id = p->router_id;
+
+  babel_enqueue(&msg, ifa);
+}
+
+static void
+babel_send_wildcard_retraction(struct babel_iface *ifa)
+{
+  struct babel_proto *p = ifa->proto;
+  union babel_msg msg = {};
+
+  TRACE(D_PACKETS, "Sending wildcard retraction on %s", ifa->ifname);
+
+  msg.type = BABEL_TLV_UPDATE;
+  msg.update.wildcard = 1;
+  msg.update.interval = ifa->cf->update_interval;
+  msg.update.seqno = p->update_seqno;
+  msg.update.metric = BABEL_INFINITY;
 
   babel_enqueue(&msg, ifa);
 }
@@ -1040,17 +1066,18 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
   struct babel_proto *p = ifa->proto;
   struct babel_msg_update *msg = &m->update;
 
-  struct babel_neighbor *n;
+  struct babel_neighbor *nbr;
   struct babel_entry *e;
   struct babel_source *s;
   struct babel_route *r;
+  node *n;
   int feasible;
 
   TRACE(D_PACKETS, "Handling update for %I/%d with seqno %d metric %d",
 	msg->prefix, msg->plen, msg->seqno, msg->metric);
 
-  n = babel_find_neighbor(ifa, msg->sender);
-  if (!n)
+  nbr = babel_find_neighbor(ifa, msg->sender);
+  if (!nbr)
   {
     DBG("Babel: Haven't heard from neighbor %I; ignoring update.\n", msg->sender);
     return;
@@ -1095,55 +1122,88 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
    *   of the Interval value included in the update.
    */
 
+  /* Retraction */
   if (msg->metric == BABEL_INFINITY)
-    e = babel_find_entry(p, msg->prefix, msg->plen);
-  else
-    e = babel_get_entry(p, msg->prefix, msg->plen);
+  {
+    if (msg->wildcard)
+    {
+      /*
+       * Special case: This is a retraction of all prefixes announced by this
+       * neighbour (see second-to-last paragraph of section 4.4.9 in the RFC).
+       */
+      WALK_LIST(n, nbr->routes)
+      {
+	r = SKIP_BACK(struct babel_route, neigh_route, n);
+	r->metric = BABEL_INFINITY;
+	babel_select_route(r->e);
+      }
+    }
+    else
+    {
+      e = babel_find_entry(p, msg->prefix, msg->plen);
 
-  if (!e)
+      if (!e)
+	return;
+
+      /* The route entry indexed by neighbour */
+      r = babel_find_route(e, nbr);
+
+      if (!r)
+	return;
+
+      r->metric = BABEL_INFINITY;
+      babel_select_route(e);
+    }
+
+    /* Done with retractions */
     return;
+  }
 
+  e = babel_get_entry(p, msg->prefix, msg->plen);
+  r = babel_find_route(e, nbr); /* the route entry indexed by neighbour */
   s = babel_find_source(e, msg->router_id); /* for feasibility */
-  r = babel_find_route(e, n); /* the route entry indexed by neighbour */
   feasible = babel_is_feasible(s, msg->seqno, msg->metric);
 
   if (!r)
   {
-    if (!feasible || (msg->metric == BABEL_INFINITY))
+    if (!feasible)
       return;
 
-    r = babel_get_route(e, n);
+    r = babel_get_route(e, nbr);
     r->advert_metric = msg->metric;
     r->router_id = msg->router_id;
-    r->metric = babel_compute_metric(n, msg->metric);
+    r->metric = babel_compute_metric(nbr, msg->metric);
     r->next_hop = msg->next_hop;
     r->seqno = msg->seqno;
   }
   else if (r == r->e->selected_in && !feasible)
   {
-    /* Route is installed and update is infeasible - we may lose the route, so
-       send a unicast seqno request (section 3.8.2.2 second paragraph). */
+    /*
+     * Route is installed and update is infeasible - we may lose the route,
+     * so send a unicast seqno request (section 3.8.2.2 second paragraph).
+     */
     babel_unicast_seqno_request(r);
 
-    if (msg->router_id == r->router_id) return;
-    r->metric = BABEL_INFINITY; /* retraction */
+    if (msg->router_id == r->router_id)
+      return;
+
+    /* Treat as retraction */
+    r->metric = BABEL_INFINITY;
   }
   else
   {
     /* Last paragraph above - update the entry */
     r->advert_metric = msg->metric;
-    r->metric = babel_compute_metric(n, msg->metric);
-    r->router_id = msg->router_id;
+    r->metric = babel_compute_metric(nbr, msg->metric);
     r->next_hop = msg->next_hop;
+
+    r->router_id = msg->router_id;
     r->seqno = msg->seqno;
 
-    if (msg->metric != BABEL_INFINITY)
-    {
-      r->expiry_interval = BABEL_ROUTE_EXPIRY_FACTOR(msg->interval);
-      r->expires = now + r->expiry_interval;
-      if (r->expiry_interval > BABEL_ROUTE_REFRESH_INTERVAL)
-        r->refresh_time = now + r->expiry_interval - BABEL_ROUTE_REFRESH_INTERVAL;
-    }
+    r->expiry_interval = BABEL_ROUTE_EXPIRY_FACTOR(msg->interval);
+    r->expires = now + r->expiry_interval;
+    if (r->expiry_interval > BABEL_ROUTE_REFRESH_INTERVAL)
+      r->refresh_time = now + r->expiry_interval - BABEL_ROUTE_REFRESH_INTERVAL;
 
     /* If the route is not feasible at this point, it means it is from another
        neighbour than the one currently selected; so send a unicast seqno
@@ -1313,6 +1373,7 @@ babel_iface_start(struct babel_iface *ifa)
   ifa->up = 1;
 
   babel_send_hello(ifa, 0);
+  babel_send_wildcard_retraction(ifa);
   babel_send_wildcard_request(ifa);
   babel_send_update(ifa, 0);	/* Full update */
 }
@@ -1528,6 +1589,9 @@ babel_reconfigure_iface(struct babel_proto *p, struct babel_iface *ifa, struct b
   TRACE(D_EVENTS, "Reconfiguring interface %s", ifa->iface->name);
 
   ifa->cf = new;
+
+  if (ifa->next_hello > (now + new->hello_interval))
+    ifa->next_hello = now + (random() % new->hello_interval) + 1;
 
   if (ifa->next_regular > (now + new->update_interval))
     ifa->next_regular = now + (random() % new->update_interval) + 1;
@@ -2022,6 +2086,30 @@ babel_start(struct proto *P)
   return PS_UP;
 }
 
+static inline void
+babel_iface_shutdown(struct babel_iface *ifa)
+{
+  if (ifa->sk)
+  {
+    babel_send_wildcard_retraction(ifa);
+    babel_send_queue(ifa);
+  }
+}
+
+static int
+babel_shutdown(struct proto *P)
+{
+  struct babel_proto *p = (void *) P;
+  struct babel_iface *ifa;
+
+  TRACE(D_EVENTS, "Shutdown requested");
+
+  WALK_LIST(ifa, p->interfaces)
+    babel_iface_shutdown(ifa);
+
+  return PS_DOWN;
+}
+
 static int
 babel_reconfigure(struct proto *P, struct proto_config *c)
 {
@@ -2049,6 +2137,7 @@ struct protocol proto_babel = {
   .init =		babel_init,
   .dump =		babel_dump,
   .start =		babel_start,
+  .shutdown =		babel_shutdown,
   .reconfigure =	babel_reconfigure,
   .get_route_info =	babel_get_route_info,
   .get_attr =		babel_get_attr

@@ -32,8 +32,11 @@ static inline struct ifa * kif_get_primary_ip(struct iface *i) { return NULL; }
 
 /* Kernel routes */
 
+#define KRT_ALLOW_MERGE_PATHS	1
+
 #define EA_KRT_PREFSRC		EA_CODE(EAP_KRT, 0x10)
 #define EA_KRT_REALM		EA_CODE(EAP_KRT, 0x11)
+#define EA_KRT_SCOPE		EA_CODE(EAP_KRT, 0x12)
 
 
 #define KRT_METRICS_MAX		0x10	/* RTAX_QUICKACK+1 */
@@ -86,6 +89,7 @@ static inline struct ifa * kif_get_primary_ip(struct iface *i) { return NULL; }
 
 struct krt_params {
   u32 table_id;				/* Kernel table ID we sync with */
+  u32 metric;				/* Kernel metric used for all routes */
 };
 
 struct krt_state {

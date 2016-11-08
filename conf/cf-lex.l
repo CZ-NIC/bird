@@ -30,6 +30,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <libgen.h>
 #include <glob.h>
@@ -233,6 +234,7 @@ else: {
 <CCOMM>.
 
 \!\= return NEQ;
+\!\~ return NMA;
 \<\= return LEQ;
 \>\= return GEQ;
 \&\& return AND;

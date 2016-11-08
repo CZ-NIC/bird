@@ -50,9 +50,11 @@
 #define BABEL_INITIAL_HOP_COUNT		255
 #define BABEL_MAX_SEND_INTERVAL		5
 #define BABEL_TIME_UNITS		100	/* On-wire times are counted in centiseconds */
-
 #define BABEL_SEQNO_REQUEST_EXPIRY	60
 #define BABEL_GARBAGE_INTERVAL		300
+
+/* Max interval that will not overflow when carried as 16-bit centiseconds */
+#define BABEL_MAX_INTERVAL		(0xFFFF/BABEL_TIME_UNITS)
 
 #define BABEL_OVERHEAD		(SIZE_OF_IP_HEADER+UDP_HEADER_LENGTH)
 #define BABEL_MIN_MTU		(512 + BABEL_OVERHEAD)
@@ -266,7 +268,7 @@ struct babel_msg_ihu {
 
 struct babel_msg_update {
   u8 type;
-  u8 ae;
+  u8 wildcard;
   u8 plen;
   u16 interval;
   u16 seqno;

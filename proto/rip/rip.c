@@ -162,7 +162,6 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     {
       /* ECMP route */
       struct mpnh *nhs = NULL;
-      struct mpnh **nhp = &nhs;
       int num = 0;
 
       for (rt = en->routes; rt && (num < p->ecmp); rt = rt->next)
@@ -174,9 +173,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 	nh->gw = rt->next_hop;
 	nh->iface = rt->from->nbr->iface;
 	nh->weight = rt->from->ifa->cf->ecmp_weight;
-	nh->next = NULL;
-	*nhp = nh;
-	nhp = &(nh->next);
+	mpnh_insert(&nhs, nh);
 	num++;
 
 	if (rt->tag != rt_tag)

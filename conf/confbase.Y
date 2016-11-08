@@ -87,7 +87,7 @@ CF_DECLS
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
-%nonassoc '=' '<' '>' '~' GEQ LEQ NEQ PO PC
+%nonassoc '=' '<' '>' '~' GEQ LEQ NEQ NMA PO PC
 %left '+' '-'
 %left '*' '/' '%'
 %left '!'

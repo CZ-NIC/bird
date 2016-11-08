@@ -462,7 +462,6 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
   struct babel_msg_update *msg = &m->update;
 
   msg->type = BABEL_TLV_UPDATE;
-  msg->ae = tlv->ae;
   msg->interval = get_time16(&tlv->interval);
   msg->seqno = get_u16(&tlv->seqno);
   msg->metric = get_u16(&tlv->metric);
@@ -480,7 +479,7 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     if (tlv->plen > 0)
       return PARSE_ERROR;
 
-    msg->prefix = IPA_NONE;
+    msg->wildcard = 1;
     break;
 
   case BABEL_AE_IP4:
@@ -523,7 +522,8 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     return PARSE_IGNORE;
   }
 
-  if (!state->router_id_seen)
+  /* Update must have Router ID, unless it is retraction */
+  if (!state->router_id_seen && (msg->metric != BABEL_INFINITY))
   {
     DBG("Babel: No router ID seen before update\n");
     return PARSE_ERROR;
@@ -548,8 +548,11 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
    * When needed, we write Router-ID TLV before Update TLV and return size of
    * both of them. There is enough space for the Router-ID TLV, because
    * sizeof(struct babel_tlv_router_id) == sizeof(struct babel_tlv_update).
+   *
+   * Router ID is not used for retractions, so do not us it in such case.
    */
-  if (!state->router_id_seen || (msg->router_id != state->router_id))
+  if ((msg->metric < BABEL_INFINITY) &&
+      (!state->router_id_seen || (msg->router_id != state->router_id)))
   {
     len0 = babel_write_router_id(hdr, msg->router_id, state, max_len);
     tlv = (struct babel_tlv_update *) NEXT_TLV(tlv);
@@ -562,12 +565,22 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
 
   memset(tlv, 0, sizeof(struct babel_tlv_update));
   TLV_HDR(tlv, BABEL_TLV_UPDATE, len);
-  tlv->ae = BABEL_AE_IP6;
-  tlv->plen = msg->plen;
+
+  if (msg->wildcard)
+  {
+    tlv->ae = BABEL_AE_WILDCARD;
+    tlv->plen = 0;
+  }
+  else
+  {
+    tlv->ae = BABEL_AE_IP6;
+    tlv->plen = msg->plen;
+    put_ip6_px(tlv->addr, msg->prefix, msg->plen);
+  }
+
   put_time16(&tlv->interval, msg->interval);
   put_u16(&tlv->seqno, msg->seqno);
   put_u16(&tlv->metric, msg->metric);
-  put_ip6_px(tlv->addr, msg->prefix, msg->plen);
 
   return len0 + len;
 }

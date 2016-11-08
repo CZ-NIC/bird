@@ -610,8 +610,8 @@ agreement").
 	options, in that case for given interface the first matching interface
 	option is used.
 
-	This option is allowed in BFD, Direct, OSPF, RAdv and RIP protocols, but
-	in OSPF protocol it is used in the <cf/area/ subsection.
+	This option is allowed in Babel, BFD, Direct, OSPF, RAdv and RIP
+	protocols, but in OSPF protocol it is used in the <cf/area/ subsection.
 
 	Default: none.
 
@@ -667,7 +667,7 @@ agreement").
 
 <descrip>
 	<tag>id <M>num</M></tag>
-	ID of the password, (0-255). If it's not used, BIRD will choose ID based
+	ID of the password, (1-255). If it is not used, BIRD will choose ID based
 	on an order of the password item in the interface. For example, second
 	password item in one interface will have default ID 2. ID is used by
 	some routing protocols to identify which password was used to
@@ -1016,9 +1016,9 @@ foot).
 	of type <cf/string/, print such variables, use standard string
 	comparison operations (e.g. <cf/=, !=, &lt;, &gt;, &lt;=, &gt;=/), but
 	you can't concatenate two strings. String literals are written as
-	<cf/"This is a string constant"/. Additionally matching <cf/&tilde;/
-	operator could be used to match a string value against a shell pattern
-	(represented also as a string).
+	<cf/"This is a string constant"/. Additionally matching (<cf/&tilde;,
+	!&tilde;/) operators could be used to match a string value against
+	a shell pattern (represented also as a string).
 
 	<tag/ip/
 	This type can hold a single IP address. Depending on the compile-time
@@ -1035,7 +1035,7 @@ foot).
 	or <cf><m>ipaddress</m>/<m>netmask</m></cf>. There are two special
 	operators on prefixes: <cf/.ip/ which extracts the IP address from the
 	pair, and <cf/.len/, which separates prefix length from the pair.
-	So <cf>1.2.0.0/16.pxlen = 16</cf> is true.
+	So <cf>1.2.0.0/16.len = 16</cf> is true.
 
 	<tag/ec/
 	This is a specialized type used to represent BGP extended community
@@ -1165,8 +1165,10 @@ foot).
  	is 4 3 2 1, then: <tt>bgp_path &tilde; [= * 4 3 * =]</tt> is true,
 	but <tt>bgp_path &tilde; [= * 4 5 * =]</tt> is false. BGP mask
 	expressions can also contain integer expressions enclosed in parenthesis
-	and integer variables, for example <tt>[= * 4 (1+2) a =]</tt>. There is
-	also old syntax that uses / .. / instead of [= .. =] and ? instead of *.
+	and integer variables, for example <tt>[= * 4 (1+2) a =]</tt>. You can
+        also use ranges, for example <tt>[= * 3..5 2 100..200 * =]</tt>.
+        There is also old (deprecated) syntax that uses / .. / instead of [= .. =]
+        and ? instead of *.
 
 	<tag/clist/
 	Clist is similar to a set, except that unlike other sets, it can be
@@ -1200,9 +1202,9 @@ foot).
 	<tag/eclist/
 	Eclist is a data type used for BGP extended community lists. Eclists
 	are very similar to clists, but they are sets of ECs instead of pairs.
-	The same operations (like <cf/add/, <cf/delete/, or <cf/&tilde;/
-	membership operator) can be used to modify or test eclists, with ECs
-	instead of pairs as arguments.
+	The same operations (like <cf/add/, <cf/delete/ or <cf/&tilde;/ and
+	<cf/!&tilde;/ membership operators) can be used to modify or test
+	eclists, with ECs instead of pairs as arguments.
 </descrip>
 
 
@@ -1211,19 +1213,19 @@ foot).
 <p>The filter language supports common integer operators <cf>(+,-,*,/)</cf>,
 parentheses <cf/(a*(b+c))/, comparison <cf/(a=b, a!=b, a&lt;b, a&gt;=b)/.
 Logical operations include unary not (<cf/!/), and (<cf/&amp;&amp;/) and or
-(<cf/&verbar;&verbar;/). Special operators include <cf/&tilde;/ for "is element
-of a set" operation - it can be used on element and set of elements of the same
-type (returning true if element is contained in the given set), or on two
-strings (returning true if first string matches a shell-like pattern stored in
-second string) or on IP and prefix (returning true if IP is within the range
-defined by that prefix), or on prefix and prefix (returning true if first prefix
-is more specific than second one) or on bgppath and bgpmask (returning true if
-the path matches the mask) or on number and bgppath (returning true if the
-number is in the path) or on bgppath and int (number) set (returning true if any
-ASN from the path is in the set) or on pair/quad and clist (returning true if
-the pair/quad is element of the clist) or on clist and pair/quad set (returning
-true if there is an element of the clist that is also a member of the pair/quad
-set).
+(<cf/&verbar;&verbar;/). Special operators include (<cf/&tilde;/,
+<cf/!&tilde;/) for "is (not) element of a set" operation - it can be used on
+element and set of elements of the same type (returning true if element is
+contained in the given set), or on two strings (returning true if first string
+matches a shell-like pattern stored in second string) or on IP and prefix
+(returning true if IP is within the range defined by that prefix), or on prefix
+and prefix (returning true if first prefix is more specific than second one) or
+on bgppath and bgpmask (returning true if the path matches the mask) or on
+number and bgppath (returning true if the number is in the path) or on bgppath
+and int (number) set (returning true if any ASN from the path is in the set) or
+on pair/quad and clist (returning true if the pair/quad is element of the
+clist) or on clist and pair/quad set (returning true if there is an element of
+the clist that is also a member of the pair/quad set).
 
 <p>There is one operator related to ROA infrastructure - <cf/roa_check()/. It
 examines a ROA table and does RFC 6483 route origin validation for a given
@@ -1312,7 +1314,7 @@ clist for most purposes.
 	<cf/RTS_DUMMY/, <cf/RTS_STATIC/, <cf/RTS_INHERIT/, <cf/RTS_DEVICE/,
 	<cf/RTS_STATIC_DEVICE/, <cf/RTS_REDIRECT/, <cf/RTS_RIP/, <cf/RTS_OSPF/,
 	<cf/RTS_OSPF_IA/, <cf/RTS_OSPF_EXT1/, <cf/RTS_OSPF_EXT2/, <cf/RTS_BGP/,
-	<cf/RTS_PIPE/.
+	<cf/RTS_PIPE/, <cf/RTS_BABEL/.
 
 	<tag><m/enum/ cast</tag>
 	Route type (Currently <cf/RTC_UNICAST/ for normal routes,
@@ -1475,8 +1477,37 @@ protocol babel [<name>] {
       yes.
 </descrip>
 
+<sect1>Attributes
 
-<sect><label id="sect-bfd">BFD
+<p>Babel defines just one attribute: the internal babel metric of the route. It
+is exposed as the <cf/babel_metric/ attribute and has range from 1 to infinity
+(65535).
+
+<sect1>Example
+
+<p><code>
+protocol babel {
+	interface "eth*" {
+		type wired;
+	};
+	interface "wlan0", "wlan1" {
+		type wireless;
+		hello interval 1;
+		rxcost 512;
+	};
+	interface "tap0";
+
+	# This matches the default of babeld: redistribute all addresses
+	# configured on local interfaces, plus re-distribute all routes received
+	# from other babel peers.
+
+	export where (source = RTS_DEVICE) || (source = RTS_BABEL);
+}
+</code>
+
+
+<sect>BFD
+<label id="sect-bfd">
 
 <sect1>Introduction
 
@@ -2358,6 +2389,17 @@ limitations can be overcome using another routing table and the pipe protocol.
 	protocol work with. Available only on systems supporting multiple
 	routing tables.
 
+	<tag>metric <m/number/</tag> (Linux)
+	Use specified value as a kernel metric (priority) for all routes sent to
+	the kernel. When multiple routes for the same network are in the kernel
+	routing table, the Linux kernel chooses one with lower metric. Also,
+	routes with different metrics do not clash with each other, therefore
+	using dedicated metric value is a reliable way to avoid overwriting
+	routes from other sources (e.g. kernel device routes). Metric 0 has a
+	special meaning of undefined metric, in which either OS default is used,
+	or per-route metric can be set using <cf/krt_metric/ attribute. Default:
+	0 (undefined).
+
 	<tag>graceful restart <m/switch/</tag>
 	Participate in graceful restart recovery. If this option is enabled and
 	a graceful restart recovery is active, the Kernel protocol will defer
@@ -2390,9 +2432,11 @@ these attributes:
 	route. See /etc/iproute2/rt_protos for common values. On BSD, it is
 	based on STATIC and PROTOx flags. The attribute is read-only.
 
-	<tag>int <cf/krt_metric/</tag>
+	<tag>int <cf/krt_metric/</tag> (Linux)
 	The kernel metric of the route. When multiple same routes are in a
 	kernel routing table, the Linux kernel chooses one with lower metric.
+	Note that preferred way to set kernel metric is to use protocol option
+	<cf/metric/, unless per-route metric values are needed.
 
 	<tag>ip <cf/krt_prefsrc/</tag> (Linux)
 	The preferred source address. Used in source address selection for
@@ -2400,6 +2444,15 @@ these attributes:
 
 	<tag>int <cf/krt_realm/</tag> (Linux)
 	The realm of the route. Can be used for traffic classification.
+
+	<tag>int <cf/krt_scope/</tag> (Linux IPv4)
+	The scope of the route. Valid values are 0-254, although Linux kernel
+	may reject some values depending on route type and nexthop. It is
+	supposed to represent `indirectness' of the route, where nexthops of
+	routes are resolved through routes with a higher scope, but in current
+	kernels anything below <it/link/ (253) is treated as <it/global/ (0).
+	When not present, global scope is implied for all routes except device
+	routes, where link scope is used by default.
 </descrip>
 
 <p>In Linux, there is also a plenty of obscure route attributes mostly focused

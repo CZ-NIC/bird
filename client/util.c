@@ -40,6 +40,7 @@ bug(const char *msg, ...)
   fputs("Internal error: ", stderr);
   vlog(msg, args);
   vfprintf(stderr, msg, args);
+  va_end(args);
   exit(1);
 }
 
@@ -51,5 +52,6 @@ die(const char *msg, ...)
   va_start(args, msg);
   cleanup();
   vlog(msg, args);
+  va_end(args);
   exit(1);
 }

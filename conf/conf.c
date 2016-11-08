@@ -512,6 +512,7 @@ cf_error(const char *msg, ...)
   va_start(args, msg);
   if (bvsnprintf(buf, sizeof(buf), msg, args) < 0)
     strcpy(buf, "<bug: error message too long>");
+  va_end(args);
   new_config->err_msg = cfg_strdup(buf);
   new_config->err_lino = ifs->lino;
   new_config->err_file_name = ifs->file_name;

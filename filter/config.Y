@@ -618,16 +618,17 @@ bgp_path:
  ;
 
 bgp_path_tail1:
-   NUM bgp_path_tail1 { $$ = cfg_alloc(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_ASN;      $$->val = $1; }
- | '*' bgp_path_tail1 { $$ = cfg_alloc(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_ASTERISK; $$->val  = 0; }
- | '?' bgp_path_tail1 { $$ = cfg_alloc(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_QUESTION; $$->val  = 0; }
- | bgp_path_expr bgp_path_tail1 { $$ = cfg_alloc(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_ASN_EXPR; $$->val = (uintptr_t) $1; }
- |  		      { $$ = NULL; }
+   NUM bgp_path_tail1		{ $$ = cfg_allocz(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_ASN; $$->val = $1; }
+ | NUM DDOT NUM bgp_path_tail1	{ $$ = cfg_allocz(sizeof(struct f_path_mask)); $$->next = $4; $$->kind = PM_ASN_RANGE; $$->val = $1; $$->val2 = $3; }
+ | '*' bgp_path_tail1		{ $$ = cfg_allocz(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_ASTERISK; }
+ | '?' bgp_path_tail1		{ $$ = cfg_allocz(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_QUESTION; }
+ | bgp_path_expr bgp_path_tail1	{ $$ = cfg_allocz(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_ASN_EXPR; $$->val = (uintptr_t) $1; }
+ | 				{ $$ = NULL; }
  ;
 
 bgp_path_tail2:
-   NUM bgp_path_tail2 { $$ = cfg_alloc(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_ASN;      $$->val = $1; }
- | '?' bgp_path_tail2 { $$ = cfg_alloc(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_ASTERISK; $$->val  = 0; }
+   NUM bgp_path_tail2 { $$ = cfg_allocz(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_ASN; $$->val = $1; }
+ | '?' bgp_path_tail2 { $$ = cfg_allocz(sizeof(struct f_path_mask)); $$->next = $2; $$->kind = PM_ASTERISK; }
  | 		      { $$ = NULL; }
  ;
 
@@ -725,6 +726,7 @@ term:
  | term '>' term     { $$ = f_new_inst(); $$->code = '<';        $$->a1.p = $3; $$->a2.p = $1; }
  | term GEQ term { $$ = f_new_inst(); $$->code = P('<','=');     $$->a1.p = $3; $$->a2.p = $1; }
  | term '~' term     { $$ = f_new_inst(); $$->code = '~';        $$->a1.p = $1; $$->a2.p = $3; }
+ | term NMA term { $$ = f_new_inst(); $$->code = P('!','~');     $$->a1.p = $1; $$->a2.p = $3; }
  | '!' term { $$ = f_new_inst(); $$->code = '!'; $$->a1.p = $2; }
  | DEFINED '(' term ')' { $$ = f_new_inst(); $$->code = P('d','e');  $$->a1.p = $3; }
 

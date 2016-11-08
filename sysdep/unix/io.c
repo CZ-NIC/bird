@@ -1893,6 +1893,20 @@ int sk_is_ipv6(sock *s)
 { return s->af == AF_INET6; }
 
 void
+sk_err(sock *s, int revents)
+{
+  int se = 0, sse = sizeof(se);
+  if ((s->type != SK_MAGIC) && (revents & POLLERR))
+    if (getsockopt(s->fd, SOL_SOCKET, SO_ERROR, &se, &sse) < 0)
+    {
+      log(L_ERR "IO: Socket error: SO_ERROR: %m");
+      se = 0;
+    }
+
+  s->err_hook(s, se);
+}
+
+void
 sk_dump_all(void)
 {
   node *n;
@@ -2202,7 +2216,7 @@ io_loop(void)
 	      int steps;
 
 	      steps = MAX_STEPS;
-	      if (s->fast_rx && (pfd[s->index].revents & (POLLIN | POLLHUP | POLLERR)) && s->rx_hook)
+	      if (s->fast_rx && (pfd[s->index].revents & POLLIN) && s->rx_hook)
 		do
 		  {
 		    steps--;
@@ -2224,6 +2238,7 @@ io_loop(void)
 		      goto next;
 		  }
 		while (e && steps);
+
 	      current_sock = sk_next(s);
 	    next: ;
 	    }
@@ -2247,17 +2262,25 @@ io_loop(void)
 		  goto next2;
 		}
 
-	      if (!s->fast_rx && (pfd[s->index].revents & (POLLIN | POLLHUP | POLLERR)) && s->rx_hook)
+	      if (!s->fast_rx && (pfd[s->index].revents & POLLIN) && s->rx_hook)
 		{
 		  count++;
 		  io_log_event(s->rx_hook, s->data);
 		  sk_read(s, pfd[s->index].revents);
 		  if (s != current_sock)
-		      goto next2;
+		    goto next2;
 		}
+
+	      if (pfd[s->index].revents & (POLLHUP | POLLERR))
+		{
+		  sk_err(s, pfd[s->index].revents);
+		  goto next2;
+		}
+
 	      current_sock = sk_next(s);
 	    next2: ;
 	    }
+
 
 	  stored_sock = current_sock;
 	}

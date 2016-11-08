@@ -369,7 +369,7 @@ bgp_create_update(struct bgp_conn *conn, byte *buf)
     }
   put_u16(buf, wd_size);
 
-  if (remains >= 3072)
+  if (!wd_size)
     {
       while ((buck = (struct bgp_bucket *) HEAD(p->bucket_queue))->send_node.next)
 	{
@@ -382,7 +382,7 @@ bgp_create_update(struct bgp_conn *conn, byte *buf)
 	    }
 
 	  DBG("Processing bucket %p\n", buck);
-	  a_size = bgp_encode_attrs(p, w+2, buck->eattrs, 2048);
+	  a_size = bgp_encode_attrs(p, w+2, buck->eattrs, remains - 1024);
 
 	  if (a_size < 0)
 	    {
@@ -461,8 +461,7 @@ bgp_create_update(struct bgp_conn *conn, byte *buf)
       w += size;
       remains -= size;
     }
-
-  if (remains >= 3072)
+  else
     {
       while ((buck = (struct bgp_bucket *) HEAD(p->bucket_queue))->send_node.next)
 	{
@@ -478,7 +477,7 @@ bgp_create_update(struct bgp_conn *conn, byte *buf)
 	  rem_stored = remains;
 	  w_stored = w;
 
-	  size = bgp_encode_attrs(p, w, buck->eattrs, 2048);
+	  size = bgp_encode_attrs(p, w, buck->eattrs, remains - 1024);
 	  if (size < 0)
 	    {
 	      log(L_ERR "%s: Attribute list too long, skipping corresponding routes", p->p.name);

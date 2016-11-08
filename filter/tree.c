@@ -82,7 +82,7 @@ build_tree(struct f_tree *from)
   if (len <= 1024)
     buf = alloca(len * sizeof(struct f_tree *));
   else
-    buf = malloc(len * sizeof(struct f_tree *));
+    buf = xmalloc(len * sizeof(struct f_tree *));
 
   /* Convert a degenerated tree into an sorted array */
   i = 0;
@@ -94,7 +94,7 @@ build_tree(struct f_tree *from)
   root = build_tree_rec(buf, 0, len);
 
   if (len > 1024)
-    free(buf);
+    xfree(buf);
 
   return root;
 }
@@ -163,9 +163,9 @@ tree_format(struct f_tree *t, buffer *buf)
 {
   buffer_puts(buf, "[");
  
- tree_node_format(t, buf);
+  tree_node_format(t, buf);
 
- /* Undo last separator */
+  /* Undo last separator */
   if (buf->pos[-1] != '[')
     buf->pos -= 2;
  

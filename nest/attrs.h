@@ -45,11 +45,13 @@ struct adata *as_path_filter(struct linpool *pool, struct adata *path, struct f_
 #define PM_QUESTION	1
 #define PM_ASTERISK	2
 #define PM_ASN_EXPR	3
+#define PM_ASN_RANGE	4
 
 struct f_path_mask {
   struct f_path_mask *next;
   int kind;
   uintptr_t val;
+  uintptr_t val2;
 };
 
 int as_path_match(struct adata *path, struct f_path_mask *mask);

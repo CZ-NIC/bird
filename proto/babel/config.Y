@@ -77,17 +77,18 @@ babel_iface_finish:
       BABEL_IFACE->rxcost = BABEL_RXCOST_WIRED;
   }
 
+  /* Make sure we do not overflow the 16-bit centisec fields */
   if (!BABEL_IFACE->update_interval)
-    BABEL_IFACE->update_interval = BABEL_IFACE->hello_interval*BABEL_UPDATE_INTERVAL_FACTOR;
-  BABEL_IFACE->ihu_interval = BABEL_IFACE->hello_interval*BABEL_IHU_INTERVAL_FACTOR;
+    BABEL_IFACE->update_interval = MIN_(BABEL_IFACE->hello_interval*BABEL_UPDATE_INTERVAL_FACTOR, BABEL_MAX_INTERVAL);
+  BABEL_IFACE->ihu_interval = MIN_(BABEL_IFACE->hello_interval*BABEL_IHU_INTERVAL_FACTOR, BABEL_MAX_INTERVAL);
 };
 
 
 babel_iface_item:
  | PORT expr { BABEL_IFACE->port = $2; if (($2<1) || ($2>65535)) cf_error("Invalid port number"); }
  | RXCOST expr { BABEL_IFACE->rxcost = $2; if (($2<1) || ($2>65535)) cf_error("Invalid rxcost"); }
- | HELLO INTERVAL expr { BABEL_IFACE->hello_interval = $3; if (($3<1) || ($3>65535)) cf_error("Invalid hello interval"); }
- | UPDATE INTERVAL expr { BABEL_IFACE->update_interval = $3; if (($3<1) || ($3>65535)) cf_error("Invalid hello interval"); }
+ | HELLO INTERVAL expr { BABEL_IFACE->hello_interval = $3; if (($3<1) || ($3>BABEL_MAX_INTERVAL)) cf_error("Invalid hello interval"); }
+ | UPDATE INTERVAL expr { BABEL_IFACE->update_interval = $3; if (($3<1) || ($3>BABEL_MAX_INTERVAL)) cf_error("Invalid update interval"); }
  | TYPE WIRED { BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRED; }
  | TYPE WIRELESS { BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRELESS; }
  | RX BUFFER expr { BABEL_IFACE->rx_buffer = $3; if (($3<256) || ($3>65535)) cf_error("RX buffer must be in range 256-65535"); }

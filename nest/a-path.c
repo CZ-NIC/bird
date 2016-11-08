@@ -435,18 +435,23 @@ parse_path(struct adata *path, struct pm_pos *pos)
 
 
 static int
-pm_match(struct pm_pos *pos, u32 asn)
+pm_match(struct pm_pos *pos, u32 asn, u32 asn2)
 {
+  u32 gas;
   if (! pos->set)
-    return pos->val.asn == asn;
+    return ((pos->val.asn >= asn) && (pos->val.asn <= asn2));
 
   u8 *p = pos->val.sp;
   int len = *p++;
   int i;
 
   for (i = 0; i < len; i++)
-    if (get_as(p + i * BS) == asn)
+  {
+    gas = get_as(p + i * BS);
+
+    if ((gas >= asn) && (gas <= asn2))
       return 1;
+  }
 
   return 0;
 }
@@ -490,7 +495,7 @@ pm_mark(struct pm_pos *pos, int i, int plen, int *nl, int *nh)
  * next part of mask, we advance each marked state.
  * We start with marked first position, when we
  * run out of marked positions, we reject. When
- * we process the whole mask, we accept iff final position
+ * we process the whole mask, we accept if final position
  * (auxiliary position after last real position in AS path)
  * is marked.
  */
@@ -502,6 +507,7 @@ as_path_match(struct adata *path, struct f_path_mask *mask)
   int plen = parse_path(path, pos);
   int l, h, i, nh, nl;
   u32 val = 0;
+  u32 val2 = 0;
 
   /* l and h are bound of interval of positions where
      are marked states */
@@ -525,12 +531,16 @@ as_path_match(struct adata *path, struct f_path_mask *mask)
 	  h = plen;
 	  break;
 
-	case PM_ASN:
-	  val = mask->val;
+	case PM_ASN:	/* Define single ASN as ASN..ASN - very narrow interval */
+	  val2 = val = mask->val;
 	  goto step;
 	case PM_ASN_EXPR:
-	  val = f_eval_asn((struct f_inst *) mask->val);
+	  val2 = val = f_eval_asn((struct f_inst *) mask->val);
 	  goto step;
+	case PM_ASN_RANGE:
+	  val = mask->val;
+	  val2 = mask->val2;
+          goto step;
 	case PM_QUESTION:
 	step:
 	  nh = nl = -1;
@@ -538,7 +548,7 @@ as_path_match(struct adata *path, struct f_path_mask *mask)
 	    if (pos[i].mark)
 	      {
 		pos[i].mark = 0;
-		if ((mask->kind == PM_QUESTION) || pm_match(pos + i, val))
+		if ((mask->kind == PM_QUESTION) || pm_match(pos + i, val, val2))
 		  pm_mark(pos, i, plen, &nl, &nh);
 	      }
 
