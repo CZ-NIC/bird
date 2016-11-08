@@ -63,7 +63,6 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define UNUSED __attribute__((unused))
 #define PACKED __attribute__((packed))
 
-
 /* Microsecond time */
 
 typedef s64 btime;

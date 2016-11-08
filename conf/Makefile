@@ -24,6 +24,7 @@ $(o)cf-lex.c: $(s)cf-lex.l
 	$(FLEX) $(FLEX_DEBUG) -s -B -8 -Pcf_ -o$@ $<
 
 $(o)cf-lex.o: $(o)cf-parse.tab.h $(o)keywords.h
+$(o)cf-lex.o: CFLAGS+=-Wno-sign-compare -Wno-unused-function
 
 $(addprefix $(o), cf-parse.y keywords.h commands.h cf-parse.tab.h cf-parse.tab.c cf-lex.c): $(objdir)/.dir-stamp
 

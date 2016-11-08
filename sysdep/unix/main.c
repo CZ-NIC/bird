@@ -8,7 +8,9 @@
 
 #undef LOCAL_DEBUG
 
-#define _GNU_SOURCE 1
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,7 +75,7 @@ async_dump(void)
 #else
 
 static inline void
-drop_uid(uid_t uid)
+drop_uid(uid_t uid UNUSED)
 {
   die("Cannot change user on this platform");
 }
@@ -419,7 +421,7 @@ cli_get_command(cli *c)
 }
 
 static int
-cli_rx(sock *s, int size UNUSED)
+cli_rx(sock *s, uint size UNUSED)
 {
   cli_kick(s->data);
   return 0;
@@ -439,7 +441,7 @@ cli_err(sock *s, int err)
 }
 
 static int
-cli_connect(sock *s, int size UNUSED)
+cli_connect(sock *s, uint size UNUSED)
 {
   cli *c;
 

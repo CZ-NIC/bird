@@ -461,7 +461,7 @@ lsa_validate_sum3_net(struct ospf_lsa_header *lsa, struct ospf_lsa_sum3_net *bod
 }
 
 static int
-lsa_validate_sum3_rt(struct ospf_lsa_header *lsa, struct ospf_lsa_sum3_rt *body)
+lsa_validate_sum3_rt(struct ospf_lsa_header *lsa, struct ospf_lsa_sum3_rt *body UNUSED)
 {
   if (lsa->length != (HDRLEN + sizeof(struct ospf_lsa_sum3_rt)))
     return 0;

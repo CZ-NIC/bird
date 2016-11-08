@@ -220,7 +220,7 @@ trie_add_prefix(struct f_trie *t, const net_addr *net, uint l, uint h)
 }
 
 static int
-trie_match_prefix(struct f_trie *t, ip_addr px, int plen)
+trie_match_prefix(struct f_trie *t, ip_addr px, uint plen)
 {
   ip_addr pmask = ipa_mkmask(plen);
   ip_addr paddr = ipa_and(px, pmask);
@@ -266,7 +266,8 @@ trie_match_prefix(struct f_trie *t, ip_addr px, int plen)
 int
 trie_match_net(struct f_trie *t, const net_addr *n)
 {
-  int add = 0;
+  uint add = 0;
+
   switch (n->type) {
     case NET_IP4:
     case NET_VPN4:
@@ -333,8 +334,11 @@ trie_format(struct f_trie *t, buffer *buf)
   buffer_puts(buf, "[");
 
   if (t->zero)
-    buffer_print(buf, "%I/%d", IPA_NONE, 0);
+    buffer_print(buf, "%I/%d, ", IPA_NONE, 0);
   trie_node_format(t->root, buf);
+
+  if (buf->pos == buf->end)
+    return;
 
   /* Undo last separator */
   if (buf->pos[-1] != '[')

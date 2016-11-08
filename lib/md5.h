@@ -19,29 +19,18 @@
 #define MD5_BLOCK_SIZE		64
 
 
+struct hash_context;
+
 struct md5_context {
   u32 buf[4];
   u32 bits[2];
   byte in[64];
 };
 
-void md5_init(struct md5_context *ctx);
-void md5_update(struct md5_context *ctx, const byte *buf, uint len);
-byte *md5_final(struct md5_context *ctx);
 
-
-/*
- *	HMAC-MD5
- */
-
-struct md5_hmac_context {
-  struct md5_context ictx;
-  struct md5_context octx;
-};
-
-void md5_hmac_init(struct md5_hmac_context *ctx, const byte *key, size_t keylen);
-void md5_hmac_update(struct md5_hmac_context *ctx, const byte *buf, size_t buflen);
-byte *md5_hmac_final(struct md5_hmac_context *ctx);
+void md5_init(struct hash_context *ctx);
+void md5_update(struct hash_context *ctx, const byte *buf, uint len);
+byte *md5_final(struct hash_context *ctx);
 
 
 #endif /* _BIRD_MD5_H_ */

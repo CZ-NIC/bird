@@ -34,7 +34,7 @@
 #define RIP_NG_PORT		521	/* RIPng */
 
 #define RIP_MAX_PKT_LENGTH	532	/* 512 + IP4_HEADER_LENGTH */
-#define RIP_AUTH_TAIL_LENGTH	20	/* 4 + MD5 length */
+#define RIP_AUTH_TAIL_LENGTH	4	/* Without auth_data */
 
 #define RIP_DEFAULT_ECMP_LIMIT	16
 #define RIP_DEFAULT_INFINITY	16

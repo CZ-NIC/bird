@@ -1,8 +1,18 @@
+/*
+ *	BIRD Library -- Generic Hash Table
+ *
+ *	(c) 2013 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2013 CZ.NIC z.s.p.o.
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
 
+#ifndef _BIRD_HASH_H_
+#define _BIRD_HASH_H_
 
 #define HASH(type)		struct { type **data; uint count, order; }
 #define HASH_TYPE(v)		typeof(** (v).data)
-#define HASH_SIZE(v)		(1 << (v).order)
+#define HASH_SIZE(v)		(1U << (v).order)
 
 #define HASH_EQ(v,id,k1,k2...)	(id##_EQ(k1, k2))
 #define HASH_FN(v,id,key...)	((u32) (id##_FN(key)) >> (32 - (v).order))
@@ -116,12 +126,12 @@
 
 #define HASH_MAY_RESIZE_DOWN_(v,pool,rehash_fn,args)			\
   ({                                                                    \
-    int _o = (v).order;							\
-    while (((v).count < ((1 << _o) REHASH_LO_MARK(args))) &&		\
+    uint _o = (v).order;							\
+    while (((v).count < ((1U << _o) REHASH_LO_MARK(args))) &&		\
 	   (_o > (REHASH_LO_BOUND(args))))				\
       _o -= (REHASH_LO_STEP(args));					\
     if (_o < (v).order)							\
-      rehash_fn(&(v), pool, _o - (int) (v).order);			\
+      rehash_fn(&(v), pool, _o - (v).order);				\
   })
 
 
@@ -178,6 +188,7 @@
 
 #define HASH_WALK_FILTER_END } while (0)
 
+
 static inline void
 mem_hash_init(u64 *h)
 {
@@ -185,14 +196,15 @@ mem_hash_init(u64 *h)
 }
 
 static inline void
-mem_hash_mix(u64 *h, void *p, int s)
+mem_hash_mix(u64 *h, void *p, uint s)
 {
   const u64 multiplier = 0xb38bc09a61202731ULL;
   const char *pp = p;
   uint i;
+
   for (i=0; i<s/4; i++)
     *h = *h * multiplier + ((const u32 *)pp)[i];
-  
+
   for (i=s & ~0x3; i<s; i++)
     *h = *h * multiplier + pp[i];
 }
@@ -204,7 +216,7 @@ mem_hash_value(u64 *h)
 }
 
 static inline uint
-mem_hash(void *p, int s)
+mem_hash(void *p, uint s)
 {
   static u64 h;
   mem_hash_init(&h);
@@ -212,3 +224,4 @@ mem_hash(void *p, int s)
   return mem_hash_value(&h);
 }
 
+#endif

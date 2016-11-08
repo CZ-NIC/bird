@@ -146,6 +146,7 @@ struct babel_write_state {
 #define TLV_HDR(tlv,t,l) ({ tlv->type = t; tlv->length = l - sizeof(struct babel_tlv); })
 #define TLV_HDR0(tlv,t) TLV_HDR(tlv, t, tlv_data[t].min_length)
 
+#define BYTES(n) ((((uint) n) + 7) / 8)
 
 static inline u16
 get_time16(const void *p)
@@ -161,18 +162,18 @@ put_time16(void *p, u16 v)
 }
 
 static inline ip6_addr
-get_ip6_px(const void *p, int plen)
+get_ip6_px(const void *p, uint plen)
 {
   ip6_addr addr = IPA_NONE;
-  memcpy(&addr, p, (plen + 7) / 8);
+  memcpy(&addr, p, BYTES(plen));
   return ip6_ntoh(addr);
 }
 
 static inline void
-put_ip6_px(void *p, ip6_addr addr, int plen)
+put_ip6_px(void *p, ip6_addr addr, uint plen)
 {
   addr = ip6_hton(addr);
-  memcpy(p, &addr, (plen + 7) / 8);
+  memcpy(p, &addr, BYTES(plen));
 }
 
 static inline ip6_addr
@@ -202,21 +203,21 @@ static int babel_read_update(struct babel_tlv *hdr, union babel_msg *msg, struct
 static int babel_read_route_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_parse_state *state);
 static int babel_read_seqno_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_parse_state *state);
 
-static int babel_write_ack(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, int max_len);
-static int babel_write_hello(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, int max_len);
-static int babel_write_ihu(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, int max_len);
-static int babel_write_update(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, int max_len);
-static int babel_write_route_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, int max_len);
-static int babel_write_seqno_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, int max_len);
+static uint babel_write_ack(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
+static uint babel_write_hello(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
+static uint babel_write_ihu(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
+static uint babel_write_update(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
+static uint babel_write_route_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
+static uint babel_write_seqno_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
 
 struct babel_tlv_data {
   u8 min_length;
   int (*read_tlv)(struct babel_tlv *hdr, union babel_msg *m, struct babel_parse_state *state);
-  int (*write_tlv)(struct babel_tlv *hdr, union babel_msg *m, struct babel_write_state *state, int max_len);
+  uint (*write_tlv)(struct babel_tlv *hdr, union babel_msg *m, struct babel_write_state *state, uint max_len);
   void (*handle_tlv)(union babel_msg *m, struct babel_iface *ifa);
 };
 
-const static struct babel_tlv_data tlv_data[BABEL_TLV_MAX] = {
+static const struct babel_tlv_data tlv_data[BABEL_TLV_MAX] = {
   [BABEL_TLV_ACK_REQ] = {
     sizeof(struct babel_tlv_ack_req),
     babel_read_ack_req,
@@ -291,9 +292,9 @@ babel_read_ack_req(struct babel_tlv *hdr, union babel_msg *m,
   return PARSE_SUCCESS;
 }
 
-static int
+static uint
 babel_write_ack(struct babel_tlv *hdr, union babel_msg *m,
-                struct babel_write_state *state, int max_len)
+                struct babel_write_state *state UNUSED, uint max_len UNUSED)
 {
   struct babel_tlv_ack *tlv = (void *) hdr;
   struct babel_msg_ack *msg = &m->ack;
@@ -319,9 +320,9 @@ babel_read_hello(struct babel_tlv *hdr, union babel_msg *m,
   return PARSE_SUCCESS;
 }
 
-static int
+static uint
 babel_write_hello(struct babel_tlv *hdr, union babel_msg *m,
-                  struct babel_write_state *state, int max_len)
+                  struct babel_write_state *state UNUSED, uint max_len UNUSED)
 {
   struct babel_tlv_hello *tlv = (void *) hdr;
   struct babel_msg_hello *msg = &m->hello;
@@ -363,9 +364,9 @@ babel_read_ihu(struct babel_tlv *hdr, union babel_msg *m,
   return PARSE_SUCCESS;
 }
 
-static int
+static uint
 babel_write_ihu(struct babel_tlv *hdr, union babel_msg *m,
-                struct babel_write_state *state, int max_len)
+                struct babel_write_state *state UNUSED, uint max_len)
 {
   struct babel_tlv_ihu *tlv = (void *) hdr;
   struct babel_msg_ihu *msg = &m->ihu;
@@ -401,9 +402,9 @@ babel_read_router_id(struct babel_tlv *hdr, union babel_msg *m UNUSED,
 }
 
 /* This is called directly from babel_write_update() */
-static int
+static uint
 babel_write_router_id(struct babel_tlv *hdr, u64 router_id,
-		      struct babel_write_state *state, int max_len UNUSED)
+		      struct babel_write_state *state, uint max_len UNUSED)
 {
   struct babel_tlv_router_id *tlv = (void *) hdr;
 
@@ -467,10 +468,10 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
   msg->metric = get_u16(&tlv->metric);
 
   /* Length of received prefix data without omitted part */
-  int len = (tlv->plen + 7)/8 - (int) tlv->omitted;
+  int len = BYTES(tlv->plen) - (int) tlv->omitted;
   u8 buf[16] = {};
 
-  if ((len < 0) || (len > TLV_OPT_LENGTH(tlv)))
+  if ((len < 0) || ((uint) len > TLV_OPT_LENGTH(tlv)))
     return PARSE_ERROR;
 
   switch (tlv->ae)
@@ -536,13 +537,13 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
   return PARSE_SUCCESS;
 }
 
-static int
+static uint
 babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
-                   struct babel_write_state *state, int max_len)
+                   struct babel_write_state *state, uint max_len)
 {
   struct babel_tlv_update *tlv = (void *) hdr;
   struct babel_msg_update *msg = &m->update;
-  int len0 = 0;
+  uint len0 = 0;
 
   /*
    * When needed, we write Router-ID TLV before Update TLV and return size of
@@ -558,7 +559,7 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
     tlv = (struct babel_tlv_update *) NEXT_TLV(tlv);
   }
 
-  int len = sizeof(struct babel_tlv_update) + (msg->plen + 7)/8;
+  uint len = sizeof(struct babel_tlv_update) + BYTES(msg->plen);
 
   if (len0 + len > max_len)
     return 0;
@@ -587,7 +588,7 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
 
 static int
 babel_read_route_request(struct babel_tlv *hdr, union babel_msg *m,
-                         struct babel_parse_state *state)
+                         struct babel_parse_state *state UNUSED)
 {
   struct babel_tlv_route_request *tlv = (void *) hdr;
   struct babel_msg_route_request *msg = &m->route_request;
@@ -612,7 +613,7 @@ babel_read_route_request(struct babel_tlv *hdr, union babel_msg *m,
     if (tlv->plen > MAX_PREFIX_LENGTH)
       return PARSE_ERROR;
 
-    if (TLV_OPT_LENGTH(tlv) < (tlv->plen + 7)/8)
+    if (TLV_OPT_LENGTH(tlv) < BYTES(tlv->plen))
       return PARSE_ERROR;
 
     msg->plen = tlv->plen;
@@ -629,14 +630,14 @@ babel_read_route_request(struct babel_tlv *hdr, union babel_msg *m,
   return PARSE_IGNORE;
 }
 
-static int
+static uint
 babel_write_route_request(struct babel_tlv *hdr, union babel_msg *m,
-			  struct babel_write_state *state, int max_len)
+			  struct babel_write_state *state UNUSED, uint max_len)
 {
   struct babel_tlv_route_request *tlv = (void *) hdr;
   struct babel_msg_route_request *msg = &m->route_request;
 
-  int len = sizeof(struct babel_tlv_route_request) + (msg->plen + 7)/8;
+  uint len = sizeof(struct babel_tlv_route_request) + BYTES(msg->plen);
 
   if (len > max_len)
     return 0;
@@ -687,7 +688,7 @@ babel_read_seqno_request(struct babel_tlv *hdr, union babel_msg *m,
     if (tlv->plen > MAX_PREFIX_LENGTH)
       return PARSE_ERROR;
 
-    if (TLV_OPT_LENGTH(tlv) < (tlv->plen + 7)/8)
+    if (TLV_OPT_LENGTH(tlv) < BYTES(tlv->plen))
       return PARSE_ERROR;
 
     msg->plen = tlv->plen;
@@ -704,14 +705,14 @@ babel_read_seqno_request(struct babel_tlv *hdr, union babel_msg *m,
   return PARSE_IGNORE;
 }
 
-static int
+static uint
 babel_write_seqno_request(struct babel_tlv *hdr, union babel_msg *m,
-			  struct babel_write_state *state, int max_len)
+			  struct babel_write_state *state UNUSED, uint max_len)
 {
   struct babel_tlv_seqno_request *tlv = (void *) hdr;
   struct babel_msg_seqno_request *msg = &m->seqno_request;
 
-  int len = sizeof(struct babel_tlv_seqno_request) + (msg->plen + 7)/8;
+  uint len = sizeof(struct babel_tlv_seqno_request) + BYTES(msg->plen);
 
   if (len > max_len)
     return 0;
@@ -744,11 +745,11 @@ babel_read_tlv(struct babel_tlv *hdr,
   return tlv_data[hdr->type].read_tlv(hdr, msg, state);
 }
 
-static int
+static uint
 babel_write_tlv(struct babel_tlv *hdr,
 		union babel_msg *msg,
 		struct babel_write_state *state,
-		int max_len)
+		uint max_len)
 {
   if ((msg->type <= BABEL_TLV_PADN) ||
       (msg->type >= BABEL_TLV_MAX) ||
@@ -792,7 +793,7 @@ babel_send_to(struct babel_iface *ifa, ip_addr dest)
  *
  * The TLVs in the queue are freed after they are written to the buffer.
  */
-static int
+static uint
 babel_write_queue(struct babel_iface *ifa, list *queue)
 {
   struct babel_proto *p = ifa->proto;
@@ -813,6 +814,9 @@ babel_write_queue(struct babel_iface *ifa, list *queue)
   struct babel_msg_node *msg;
   WALK_LIST_FIRST(msg, *queue)
   {
+    if (pos >= end)
+      break;
+
     int len = babel_write_tlv((struct babel_tlv *) pos, &msg->msg, &state, end - pos);
 
     if (!len)
@@ -823,7 +827,7 @@ babel_write_queue(struct babel_iface *ifa, list *queue)
     sl_free(p->msg_slab, msg);
   }
 
-  int plen = pos - (byte *) pkt;
+  uint plen = pos - (byte *) pkt;
   put_u16(&pkt->length, plen - sizeof(struct babel_pkt_header));
 
   return plen;
@@ -1027,7 +1031,7 @@ babel_tx_hook(sock *sk)
 
 
 static int
-babel_rx_hook(sock *sk, int len)
+babel_rx_hook(sock *sk, uint len)
 {
   struct babel_iface *ifa = sk->data;
   struct babel_proto *p = ifa->proto;

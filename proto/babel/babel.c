@@ -1723,7 +1723,7 @@ babel_dump(struct proto *P)
 }
 
 static void
-babel_get_route_info(rte *rte, byte *buf, ea_list *attrs)
+babel_get_route_info(rte *rte, byte *buf, ea_list *attrs UNUSED)
 {
   buf += bsprintf(buf, " (%d/%d) [%lR]", rte->pref, rte->u.babel.metric, rte->u.babel.router_id);
 }
@@ -1965,7 +1965,7 @@ babel_store_tmp_attrs(struct rte *rt, struct ea_list *attrs)
  */
 static void
 babel_rt_notify(struct proto *P, struct rtable *table UNUSED, struct network *net,
-		struct rte *new, struct rte *old, struct ea_list *attrs)
+		struct rte *new, struct rte *old UNUSED, struct ea_list *attrs UNUSED)
 {
   struct babel_proto *p = (void *) P;
   struct babel_entry *e;

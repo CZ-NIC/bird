@@ -38,6 +38,17 @@ struct f_inst_roa_check {
   struct rtable_config *rtc;
 };
 
+struct f_inst3 {
+  struct f_inst i;
+  union {
+    int i;
+    void *p;
+  } a3;
+};
+
+#define INST3(x) (((struct f_inst3 *) x)->a3)
+
+
 struct f_prefix {
   net_addr net;
   u8 lo, hi;
@@ -48,6 +59,7 @@ struct f_val {
   union {
     uint i;
     u64 ec;
+    lcomm lc;
     ip_addr ip;
     const net_addr *net;
     char *s;
@@ -146,8 +158,10 @@ void val_format(struct f_val v, buffer *buf);
 #define T_PATH_MASK 0x23	/* mask for BGP path */
 #define T_PATH 0x24		/* BGP path */
 #define T_CLIST 0x25		/* Community list */
-#define T_ECLIST 0x26		/* Extended community list */
-#define T_EC 0x27		/* Extended community value, u64 */
+#define T_EC 0x26		/* Extended community value, u64 */
+#define T_ECLIST 0x27		/* Extended community list */
+#define T_LC 0x28		/* Large community value, lcomm */
+#define T_LCLIST 0x29		/* Large community list */
 
 #define T_RETURN 0x40
 #define T_SET 0x80
@@ -160,10 +174,10 @@ void val_format(struct f_val v, buffer *buf);
 #define SA_PROTO	 4
 #define SA_SOURCE	 5
 #define SA_SCOPE	 6
-#define SA_CAST    	 7
-#define SA_DEST    	 8
-#define SA_IFNAME  	 9
-#define SA_IFINDEX    	10
+#define SA_CAST		 7
+#define SA_DEST		 8
+#define SA_IFNAME	 9
+#define SA_IFINDEX	10
 
 
 struct f_tree {
@@ -175,7 +189,7 @@ struct f_tree {
 struct f_trie_node
 {
   ip_addr addr, mask, accept;
-  int plen;
+  uint plen;
   struct f_trie_node *c[2];
 };
 

@@ -513,6 +513,7 @@ ospf_update_lsadb(struct ospf_proto *p)
   }
 }
 
+
 static u32
 ort_to_lsaid(struct ospf_proto *p, ort *nf)
 {
@@ -610,7 +611,7 @@ lsab_offset(struct ospf_proto *p, uint offset)
   return ((byte *) p->lsab) + offset;
 }
 
-static inline void *
+static inline void * UNUSED
 lsab_end(struct ospf_proto *p)
 {
   return ((byte *) p->lsab) + p->lsab_used;
@@ -1558,7 +1559,7 @@ static void
 add_link_lsa(struct ospf_proto *p, struct ospf_lsa_link *ll, int offset, int *pxc)
 {
   u32 *pxb = ll->rest;
-  int j;
+  uint j;
 
   for (j = 0; j < ll->pxcount; pxb = prefix_advance(pxb), j++)
   {

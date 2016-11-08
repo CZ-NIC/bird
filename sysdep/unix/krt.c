@@ -899,7 +899,7 @@ krt_scan_timer_start(struct krt_proto *p)
 }
 
 static void
-krt_scan_timer_stop(struct krt_proto *p)
+krt_scan_timer_stop(struct krt_proto *p UNUSED)
 {
   krt_scan_count--;
 
@@ -988,7 +988,7 @@ krt_store_tmp_attrs(rte *rt, struct ea_list *attrs)
 }
 
 static int
-krt_import_control(struct proto *P, rte **new, ea_list **attrs, struct linpool *pool)
+krt_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct linpool *pool UNUSED)
 {
   struct krt_proto *p = (struct krt_proto *) P;
   rte *e = *new;

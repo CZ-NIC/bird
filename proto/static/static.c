@@ -244,7 +244,7 @@ static_add(struct proto *p, struct static_config *cf, struct static_route *r)
 }
 
 static void
-static_rte_cleanup(struct proto *p, struct static_route *r)
+static_rte_cleanup(struct proto *p UNUSED, struct static_route *r)
 {
   struct static_route *r2;
 
@@ -440,7 +440,7 @@ static_if_notify(struct proto *p, unsigned flags, struct iface *i)
 }
 
 int
-static_rte_mergable(rte *pri, rte *sec)
+static_rte_mergable(rte *pri UNUSED, rte *sec UNUSED)
 {
   return 1;
 }

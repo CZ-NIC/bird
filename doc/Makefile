@@ -25,6 +25,9 @@ $(o)%.sgml: $(s)%.sgml $(objdir)/.dir-stamp
 $(o)%.html: $(o)%.sgml
 	cd $(dir $@) && $(sgml2)html $(notdir $<)
 
+$(o)%.tex: $(o)%.sgml
+	cd $(dir $@) && $(sgml2)latex --output=tex $(notdir $<)
+
 $(o)%.dvi: $(o)%.tex
 	cd $(dir $@) && TEXINPUTS=$(TEXINPUTS):$(doc-srcdir)/tex latex $(notdir $<)
 	cd $(dir $@) && TEXINPUTS=$(TEXINPUTS):$(doc-srcdir)/tex latex $(notdir $<)
@@ -32,11 +35,9 @@ $(o)%.dvi: $(o)%.tex
 $(o)%.ps: $(o)%.dvi
 	dvips -D600 -ta4 -o $@ $<
 
-$(o)%.pdf: $(o)%.ps
-	ps2pdf $< $@
-
-$(o)%.tex: $(o)%.sgml
-	cd $(dir $@) && $(sgml2)latex --output=tex $(notdir $<)
+$(o)%.pdf: $(o)%.tex
+	pdflatex -output-directory=$(dir $@) $<
+	pdflatex -output-directory=$(dir $@) $<
 
 $(o)%.txt: $(o)%.sgml
 	cd $(dir $@) && $(sgml2)txt $(notdir $<)

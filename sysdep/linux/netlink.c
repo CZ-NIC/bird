@@ -503,7 +503,7 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
   struct rtattr *a[BIRD_RTA_MAX];
   struct rtnexthop *nh = RTA_DATA(ra);
   struct mpnh *rv, *first, **last;
-  int len = RTA_PAYLOAD(ra);
+  unsigned len = RTA_PAYLOAD(ra);
 
   first = NULL;
   last = &first;
@@ -1584,7 +1584,7 @@ nl_async_msg(struct nlmsghdr *h)
 }
 
 static int
-nl_async_hook(sock *sk, int size UNUSED)
+nl_async_hook(sock *sk, uint size UNUSED)
 {
   struct iovec iov = { nl_async_rx_buffer, NL_RX_SIZE };
   struct sockaddr_nl sa;

@@ -288,18 +288,22 @@ log_switch(int debug, list *l, char *new_syslog_name)
   current_log_list = l;
 
 #ifdef HAVE_SYSLOG
-  char *old_syslog_name = current_syslog_name;
-  current_syslog_name = new_syslog_name;
-
-  if (old_syslog_name && new_syslog_name &&
-      !strcmp(old_syslog_name, new_syslog_name))
+  if (current_syslog_name && new_syslog_name &&
+      !strcmp(current_syslog_name, new_syslog_name))
     return;
 
-  if (old_syslog_name)
+  if (current_syslog_name)
+  {
     closelog();
+    xfree(current_syslog_name);
+    current_syslog_name = NULL;
+  }
 
   if (new_syslog_name)
-    openlog(new_syslog_name, LOG_CONS | LOG_NDELAY, LOG_DAEMON);
+  {
+    current_syslog_name = xstrdup(new_syslog_name);
+    openlog(current_syslog_name, LOG_CONS | LOG_NDELAY, LOG_DAEMON);
+  }
 #endif
 }
 

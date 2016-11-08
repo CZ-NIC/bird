@@ -42,6 +42,20 @@ ospf_iface_finish(void)
 
   if ((ip->autype == OSPF_AUTH_NONE) && (ip->passwords != NULL))
     log(L_WARN "Password option without authentication option does not make sense");
+
+  if (ip->passwords)
+  {
+    struct password_item *pass;
+    WALK_LIST(pass, *ip->passwords)
+    {
+      if (pass->alg && (ip->autype != OSPF_AUTH_CRYPT))
+	cf_error("Password algorithm option requires cryptographic authentication");
+
+      /* Set default OSPF crypto algorithms */
+      if (!pass->alg && (ip->autype == OSPF_AUTH_CRYPT))
+	pass->alg = ospf_cfg_is_v2() ? ALG_MD5 : ALG_HMAC_SHA256;
+    }
+  }
 }
 
 static void

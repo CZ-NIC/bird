@@ -105,7 +105,7 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
   }
 
   i = 0;
-  max = (ospf_pkt_maxsize(p, ifa) - length) / sizeof(u32);
+  max = (ospf_pkt_maxsize(ifa) - length) / sizeof(u32);
 
   /* Fill all neighbors */
   if (kind != OHS_SHUTDOWN)
@@ -222,9 +222,12 @@ ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa,
     rcv_priority = ps->priority;
 
     int pxlen = u32_masklen(ntohl(ps->netmask));
+    if (pxlen < 0)
+      DROP("prefix garbled", ntohl(ps->netmask));
+
     if ((ifa->type != OSPF_IT_VLINK) &&
 	(ifa->type != OSPF_IT_PTP) &&
-	(pxlen != ifa->addr->prefix.pxlen))
+	((uint) pxlen != ifa->addr->prefix.pxlen))
       DROP("prefix length mismatch", pxlen);
 
     neighbors = ps->neighbors;

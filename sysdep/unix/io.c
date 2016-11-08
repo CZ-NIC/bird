@@ -9,7 +9,9 @@
 
 /* Unfortunately, some glibc versions hide parts of RFC 3542 API
    if _GNU_SOURCE is not defined. */
-#define _GNU_SOURCE 1
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -507,11 +509,11 @@ tm_format_datetime(char *x, struct timeformat *fmt_spec, bird_clock_t t)
  *	Sockaddr helper functions
  */
 
-static inline int sockaddr_length(int af)
+static inline int UNUSED sockaddr_length(int af)
 { return (af == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6); }
 
 static inline void
-sockaddr_fill4(struct sockaddr_in *sa, ip_addr a, struct iface *ifa, uint port)
+sockaddr_fill4(struct sockaddr_in *sa, ip_addr a, uint port)
 {
   memset(sa, 0, sizeof(struct sockaddr_in));
 #ifdef HAVE_SIN_LEN
@@ -542,7 +544,7 @@ void
 sockaddr_fill(sockaddr *sa, int af, ip_addr a, struct iface *ifa, uint port)
 {
   if (af == AF_INET)
-    sockaddr_fill4((struct sockaddr_in *) sa, a, ifa, port);
+    sockaddr_fill4((struct sockaddr_in *) sa, a, port);
   else if (af == AF_INET6)
     sockaddr_fill6((struct sockaddr_in6 *) sa, a, ifa, port);
   else
@@ -550,7 +552,7 @@ sockaddr_fill(sockaddr *sa, int af, ip_addr a, struct iface *ifa, uint port)
 }
 
 static inline void
-sockaddr_read4(struct sockaddr_in *sa, ip_addr *a, struct iface **ifa, uint *port)
+sockaddr_read4(struct sockaddr_in *sa, ip_addr *a, uint *port)
 {
   *port = ntohs(sa->sin_port);
   *a = ipa_from_in4(sa->sin_addr);
@@ -573,7 +575,7 @@ sockaddr_read(sockaddr *sa, int af, ip_addr *a, struct iface **ifa, uint *port)
     goto fail;
 
   if (af == AF_INET)
-    sockaddr_read4((struct sockaddr_in *) sa, a, ifa, port);
+    sockaddr_read4((struct sockaddr_in *) sa, a, port);
   else if (af == AF_INET6)
     sockaddr_read6((struct sockaddr_in6 *) sa, a, ifa, port);
   else
@@ -770,7 +772,7 @@ sk_set_tos6(sock *s, int tos)
 }
 
 static inline int
-sk_set_high_port(sock *s)
+sk_set_high_port(sock *s UNUSED)
 {
   /* Port range setting is optional, ignore it if not supported */
 
@@ -2085,6 +2087,7 @@ watchdog_stop(void)
 
 volatile int async_config_flag;		/* Asynchronous reconfiguration/dump scheduled */
 volatile int async_dump_flag;
+volatile int async_shutdown_flag;
 
 void
 io_init(void)

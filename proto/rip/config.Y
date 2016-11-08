@@ -104,15 +104,29 @@ rip_iface_start:
 
 rip_iface_finish:
 {
+  /* Default mode is broadcast for RIPv1, multicast for RIPv2 and RIPng */
+  if (!RIP_IFACE->mode)
+    RIP_IFACE->mode = (rip_cfg_is_v2() && (RIP_IFACE->version == RIP_V1)) ?
+      RIP_IM_BROADCAST : RIP_IM_MULTICAST;
+
   RIP_IFACE->passwords = get_passwords();
 
   if (!RIP_IFACE->auth_type != !RIP_IFACE->passwords)
     log(L_WARN "Authentication and password options should be used together");
 
-  /* Default mode is broadcast for RIPv1, multicast for RIPv2 and RIPng */
-  if (!RIP_IFACE->mode)
-    RIP_IFACE->mode = (rip_cfg_is_v2() && (RIP_IFACE->version == RIP_V1)) ?
-      RIP_IM_BROADCAST : RIP_IM_MULTICAST;
+  if (RIP_IFACE->passwords)
+  {
+    struct password_item *pass;
+    WALK_LIST(pass, *RIP_IFACE->passwords)
+    {
+      if (pass->alg && (RIP_IFACE->auth_type != RIP_AUTH_CRYPTO))
+	cf_error("Password algorithm option requires cryptographic authentication");
+
+      /* Set default crypto algorithm (MD5) */
+      if (!pass->alg && (RIP_IFACE->auth_type == RIP_AUTH_CRYPTO))
+	pass->alg = ALG_MD5;
+    }
+  }
 
   RIP_CFG->min_timeout_time = MIN_(RIP_CFG->min_timeout_time, RIP_IFACE->timeout_time);
   RIP_CFG->max_garbage_time = MAX_(RIP_CFG->max_garbage_time, RIP_IFACE->garbage_time);
@@ -153,7 +167,7 @@ rip_auth:
    NONE			{ $$ = RIP_AUTH_NONE; }
  | PLAINTEXT		{ $$ = RIP_AUTH_PLAIN; }
  | CRYPTOGRAPHIC	{ $$ = RIP_AUTH_CRYPTO; }
- | MD5			{ $$ = RIP_AUTH_CRYPTO; }
+ | MD5			{ $$ = RIP_AUTH_CRYPTO; }	/* For backward compatibility */
  ;
 
 rip_iface_opts:

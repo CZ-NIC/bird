@@ -1,6 +1,5 @@
 /*
- *	BIRD Library -- SHA-256 and SHA-224 Hash Functions,
- *			HMAC-SHA-256 and HMAC-SHA-224 Functions
+ *	BIRD Library -- SHA-256 and SHA-224 Hash Functions
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -17,8 +16,10 @@
 // #define SHA256_UNROLLED
 
 void
-sha256_init(struct sha256_context *ctx)
+sha256_init(struct hash_context *CTX)
 {
+  struct sha256_context *ctx = (void *) CTX;
+
   ctx->h0 = 0x6a09e667;
   ctx->h1 = 0xbb67ae85;
   ctx->h2 = 0x3c6ef372;
@@ -33,8 +34,10 @@ sha256_init(struct sha256_context *ctx)
 }
 
 void
-sha224_init(struct sha224_context *ctx)
+sha224_init(struct hash_context *CTX)
 {
+  struct sha224_context *ctx = (void *) CTX;
+
   ctx->h0 = 0xc1059ed8;
   ctx->h1 = 0x367cd507;
   ctx->h2 = 0x3070dd17;
@@ -219,8 +222,10 @@ sha256_transform(struct sha256_context *ctx, const byte *data)
    not have any meaning but writing after finalize is sometimes
    helpful to mitigate timing attacks. */
 void
-sha256_update(struct sha256_context *ctx, const byte *buf, size_t len)
+sha256_update(struct hash_context *CTX, const byte *buf, uint len)
 {
+  struct sha256_context *ctx = (void *) CTX;
+
   if (ctx->count)
   {
     /* Fill rest of internal buffer */
@@ -261,11 +266,12 @@ sha256_update(struct sha256_context *ctx, const byte *buf, size_t len)
  * Returns: 32 bytes with the message the digest. 28 bytes for SHA-224.
  */
 byte *
-sha256_final(struct sha256_context *ctx)
+sha256_final(struct hash_context *CTX)
 {
+  struct sha256_context *ctx = (void *) CTX;
   u32 t, th, msb, lsb;
 
-  sha256_update(ctx, NULL, 0);	/* flush */
+  sha256_update(CTX, NULL, 0);	/* flush */
 
   t = ctx->nblocks;
   th = 0;
@@ -296,7 +302,7 @@ sha256_final(struct sha256_context *ctx)
     ctx->buf[ctx->count++] = 0x80; /* pad character */
     while (ctx->count < 64)
       ctx->buf[ctx->count++] = 0;
-    sha256_update(ctx, NULL, 0);  /* flush */;
+    sha256_update(CTX, NULL, 0);  /* flush */;
     memset(ctx->buf, 0, 56 ); /* fill next block with zeroes */
   }
 
@@ -318,132 +324,4 @@ sha256_final(struct sha256_context *ctx)
 #undef X
 
   return ctx->buf;
-}
-
-
-/*
- *	SHA256-HMAC
- */
-
-static void
-sha256_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
-{
-  struct sha256_context ctx;
-
-  sha256_init(&ctx);
-  sha256_update(&ctx, buffer, length);
-  memcpy(outbuf, sha256_final(&ctx), SHA256_SIZE);
-}
-
-void
-sha256_hmac_init(struct sha256_hmac_context *ctx, const byte *key, size_t keylen)
-{
-  byte keybuf[SHA256_BLOCK_SIZE], buf[SHA256_BLOCK_SIZE];
-
-  /* Hash the key if necessary */
-  if (keylen <= SHA256_BLOCK_SIZE)
-  {
-    memcpy(keybuf, key, keylen);
-    memset(keybuf + keylen, 0, SHA256_BLOCK_SIZE - keylen);
-  }
-  else
-  {
-    sha256_hash_buffer(keybuf, key, keylen);
-    memset(keybuf + SHA256_SIZE, 0, SHA256_BLOCK_SIZE - SHA256_SIZE);
-  }
-
-  /* Initialize the inner digest */
-  sha256_init(&ctx->ictx);
-  int i;
-  for (i = 0; i < SHA256_BLOCK_SIZE; i++)
-    buf[i] = keybuf[i] ^ 0x36;
-  sha256_update(&ctx->ictx, buf, SHA256_BLOCK_SIZE);
-
-  /* Initialize the outer digest */
-  sha256_init(&ctx->octx);
-  for (i = 0; i < SHA256_BLOCK_SIZE; i++)
-    buf[i] = keybuf[i] ^ 0x5c;
-  sha256_update(&ctx->octx, buf, SHA256_BLOCK_SIZE);
-}
-
-void
-sha256_hmac_update(struct sha256_hmac_context *ctx, const byte *buf, size_t buflen)
-{
-  /* Just update the inner digest */
-  sha256_update(&ctx->ictx, buf, buflen);
-}
-
-byte *
-sha256_hmac_final(struct sha256_hmac_context *ctx)
-{
-  /* Finish the inner digest */
-  byte *isha = sha256_final(&ctx->ictx);
-
-  /* Finish the outer digest */
-  sha256_update(&ctx->octx, isha, SHA256_SIZE);
-  return sha256_final(&ctx->octx);
-}
-
-
-/*
- *	SHA224-HMAC
- */
-
-static void
-sha224_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
-{
-  struct sha224_context ctx;
-
-  sha224_init(&ctx);
-  sha224_update(&ctx, buffer, length);
-  memcpy(outbuf, sha224_final(&ctx), SHA224_SIZE);
-}
-
-void
-sha224_hmac_init(struct sha224_hmac_context *ctx, const byte *key, size_t keylen)
-{
-  byte keybuf[SHA224_BLOCK_SIZE], buf[SHA224_BLOCK_SIZE];
-
-  /* Hash the key if necessary */
-  if (keylen <= SHA224_BLOCK_SIZE)
-  {
-    memcpy(keybuf, key, keylen);
-    memset(keybuf + keylen, 0, SHA224_BLOCK_SIZE - keylen);
-  }
-  else
-  {
-    sha224_hash_buffer(keybuf, key, keylen);
-    memset(keybuf + SHA224_SIZE, 0, SHA224_BLOCK_SIZE - SHA224_SIZE);
-  }
-
-  /* Initialize the inner digest */
-  sha224_init(&ctx->ictx);
-  int i;
-  for (i = 0; i < SHA224_BLOCK_SIZE; i++)
-    buf[i] = keybuf[i] ^ 0x36;
-  sha224_update(&ctx->ictx, buf, SHA224_BLOCK_SIZE);
-
-  /* Initialize the outer digest */
-  sha224_init(&ctx->octx);
-  for (i = 0; i < SHA224_BLOCK_SIZE; i++)
-    buf[i] = keybuf[i] ^ 0x5c;
-  sha224_update(&ctx->octx, buf, SHA224_BLOCK_SIZE);
-}
-
-void
-sha224_hmac_update(struct sha224_hmac_context *ctx, const byte *buf, size_t buflen)
-{
-  /* Just update the inner digest */
-  sha256_update(&ctx->ictx, buf, buflen);
-}
-
-byte *
-sha224_hmac_final(struct sha224_hmac_context *ctx)
-{
-  /* Finish the inner digest */
-  byte *isha = sha224_final(&ctx->ictx);
-
-  /* Finish the outer digest */
-  sha224_update(&ctx->octx, isha, SHA224_SIZE);
-  return sha224_final(&ctx->octx);
 }

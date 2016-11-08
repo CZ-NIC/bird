@@ -27,7 +27,7 @@ static inline void kif_sys_postconfig(struct kif_config *c UNUSED) { }
 static inline void kif_sys_init_config(struct kif_config *c UNUSED) { }
 static inline void kif_sys_copy_config(struct kif_config *d UNUSED, struct kif_config *s UNUSED) { }
 
-static inline struct ifa * kif_get_primary_ip(struct iface *i) { return NULL; }
+static inline struct ifa * kif_get_primary_ip(struct iface *i UNUSED) { return NULL; }
 
 
 /* Kernel routes */

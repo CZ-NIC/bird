@@ -53,7 +53,7 @@ idm_alloc(struct idm *m)
 
   ASSERT(0);
 
- found:
+found:
   ASSERT(i < 0x8000000);
 
   m->pos = i;

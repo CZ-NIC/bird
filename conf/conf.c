@@ -85,7 +85,7 @@ int undo_available;			/* Undo was not requested from last reconfiguration */
  * further use. Returns a pointer to the structure.
  */
 struct config *
-config_alloc(byte *name)
+config_alloc(const byte *name)
 {
   pool *p = rp_new(&root_pool, "Config");
   linpool *l = lp_new(p, 4080);
@@ -405,7 +405,7 @@ config_confirm(void)
  * if it's been queued due to another reconfiguration being in progress now,
  * %CONF_UNQUEUED if a scheduled reconfiguration is removed, %CONF_NOTHING
  * if there is no relevant configuration to undo (the previous config request
- * was config_undo() too)  or %CONF_SHUTDOWN if BIRD is in shutdown mode and 
+ * was config_undo() too)  or %CONF_SHUTDOWN if BIRD is in shutdown mode and
  * no new configuration changes  are accepted.
  */
 int
@@ -450,7 +450,7 @@ config_undo(void)
 extern void cmd_reconfig_undo_notify(void);
 
 static void
-config_timeout(struct timer *t)
+config_timeout(struct timer *t UNUSED)
 {
   log(L_INFO "Config timeout expired, starting undo");
   cmd_reconfig_undo_notify();
@@ -530,7 +530,7 @@ cf_error(const char *msg, ...)
  * and we want to preserve it for further use.
  */
 char *
-cfg_strdup(char *c)
+cfg_strdup(const char *c)
 {
   int l = strlen(c) + 1;
   char *z = cfg_allocu(l);

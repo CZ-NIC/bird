@@ -39,8 +39,10 @@ static void md5_transform(u32 buf[4], u32 const in[16]);
  * initialization constants.
  */
 void
-md5_init(struct md5_context *ctx)
+md5_init(struct hash_context *CTX)
 {
+  struct md5_context *ctx = (void *) CTX;
+
   ctx->buf[0] = 0x67452301;
   ctx->buf[1] = 0xefcdab89;
   ctx->buf[2] = 0x98badcfe;
@@ -55,8 +57,9 @@ md5_init(struct md5_context *ctx)
  * of bytes.
  */
 void
-md5_update(struct md5_context *ctx, const byte *buf, uint len)
+md5_update(struct hash_context *CTX, const byte *buf, uint len)
 {
+  struct md5_context *ctx = (void *) CTX;
   u32 t;
 
   /* Update bitcount */
@@ -105,8 +108,9 @@ md5_update(struct md5_context *ctx, const byte *buf, uint len)
  * 1 0* (64-bit count of bits processed, MSB-first)
  */
 byte *
-md5_final(struct md5_context *ctx)
+md5_final(struct hash_context *CTX)
 {
+  struct md5_context *ctx = (void *) CTX;
   uint count;
   byte *p;
 
@@ -147,13 +151,6 @@ md5_final(struct md5_context *ctx)
   byteReverse((byte *) ctx->buf, 4);
 
   return (byte*) ctx->buf;
-}
-
-/* I am a hard paranoid */
-void
-md5_erase_ctx(struct md5_context *ctx)
-{
-  memset((char *) ctx, 0, sizeof(*ctx));	/* In case it's sensitive */
 }
 
 /* The four core functions - F1 is optimized somewhat */
@@ -255,68 +252,4 @@ md5_transform(u32 buf[4], u32 const in[16])
   buf[1] += b;
   buf[2] += c;
   buf[3] += d;
-}
-
-
-/*
- * 	MD5-HMAC
- */
-
-static void
-md5_hash_buffer(byte *outbuf, const byte *buffer, size_t length)
-{
-  struct md5_context hd_tmp;
-
-  md5_init(&hd_tmp);
-  md5_update(&hd_tmp, buffer, length);
-  memcpy(outbuf, md5_final(&hd_tmp), MD5_SIZE);
-}
-
-void
-md5_hmac_init(struct md5_hmac_context *ctx, const byte *key, size_t keylen)
-{
-  byte keybuf[MD5_BLOCK_SIZE], buf[MD5_BLOCK_SIZE];
-
-  /* Hash the key if necessary */
-  if (keylen <= MD5_BLOCK_SIZE)
-  {
-    memcpy(keybuf, key, keylen);
-    bzero(keybuf + keylen, MD5_BLOCK_SIZE - keylen);
-  }
-  else
-  {
-    md5_hash_buffer(keybuf, key, keylen);
-    bzero(keybuf + MD5_SIZE, MD5_BLOCK_SIZE - MD5_SIZE);
-  }
-
-  /* Initialize the inner digest */
-  md5_init(&ctx->ictx);
-  int i;
-  for (i = 0; i < MD5_BLOCK_SIZE; i++)
-    buf[i] = keybuf[i] ^ 0x36;
-  md5_update(&ctx->ictx, buf, MD5_BLOCK_SIZE);
-
-  /* Initialize the outer digest */
-  md5_init(&ctx->octx);
-  for (i = 0; i < MD5_BLOCK_SIZE; i++)
-    buf[i] = keybuf[i] ^ 0x5c;
-  md5_update(&ctx->octx, buf, MD5_BLOCK_SIZE);
-}
-
-void
-md5_hmac_update(struct md5_hmac_context *ctx, const byte *buf, size_t buflen)
-{
-  /* Just update the inner digest */
-  md5_update(&ctx->ictx, buf, buflen);
-}
-
-byte *
-md5_hmac_final(struct md5_hmac_context *ctx)
-{
-  /* Finish the inner digest */
-  byte *isha = md5_final(&ctx->ictx);
-
-  /* Finish the outer digest */
-  md5_update(&ctx->octx, isha, MD5_SIZE);
-  return md5_final(&ctx->octx);
 }

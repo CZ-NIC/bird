@@ -370,7 +370,7 @@ as_path_filter(struct linpool *pool, struct adata *path, struct f_tree *set, u32
 	}
   }
 
-  int nl = d - buf;
+  uint nl = d - buf;
   if (nl == path->length)
     return path;
 

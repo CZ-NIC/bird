@@ -577,7 +577,7 @@ cf_lex_init(int is_cli, struct config *c)
     cf_lex_init_kh();
 
   ifs_head = ifs = push_ifs(NULL);
-  if (!is_cli) 
+  if (!is_cli)
     {
       ifs->file_name = c->file_name;
       ifs->fd = c->file_fd;

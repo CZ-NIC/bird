@@ -28,6 +28,7 @@
 #endif
 
 
+#undef  SA_LEN
 #define SA_LEN(x) (x).sa.sa_len
 
 
@@ -133,12 +134,12 @@ sk_process_cmsg4_ttl(sock *s, struct cmsghdr *cm)
     s->rcv_ttl = * (byte *) CMSG_DATA(cm);
 }
 
+#ifdef IP_SENDSRCADDR
 static inline void
 sk_prepare_cmsgs4(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
 {
   /* Unfortunately, IP_SENDSRCADDR does not work for raw IP sockets on BSD kernels */
 
-#ifdef IP_SENDSRCADDR
   struct cmsghdr *cm;
   struct in_addr *sa;
   int controllen = 0;
@@ -156,10 +157,13 @@ sk_prepare_cmsgs4(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
   *sa = ipa_to_in4(s->saddr);
 
   msg->msg_controllen = controllen;
-#endif
 }
+#else
+static inline void
+sk_prepare_cmsgs4(sock *s UNUSED, struct msghdr *msg UNUSED, void *cbuf UNUSED, size_t cbuflen UNUSED) { }
+#endif
 
-static void
+static void UNUSED
 sk_prepare_ip_header(sock *s, void *hdr, int dlen)
 {
   struct ip *ip = hdr;
@@ -200,7 +204,7 @@ sk_prepare_ip_header(sock *s, void *hdr, int dlen)
 #endif
 
 int
-sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, struct iface *ifa, char *passwd, int setkey UNUSED)
+sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote UNUSED, struct iface *ifa UNUSED, char *passwd, int setkey UNUSED)
 {
 #ifdef USE_MD5SIG_SETKEY
   if (setkey)
@@ -235,20 +239,20 @@ sk_set_min_ttl4(sock *s, int ttl)
 }
 
 static inline int
-sk_set_min_ttl6(sock *s, int ttl)
+sk_set_min_ttl6(sock *s, int ttl UNUSED)
 {
   ERR_MSG("Kernel does not support IPv6 TTL security");
 }
 
 static inline int
-sk_disable_mtu_disc4(sock *s)
+sk_disable_mtu_disc4(sock *s UNUSED)
 {
   /* TODO: Set IP_DONTFRAG to 0 ? */
   return 0;
 }
 
 static inline int
-sk_disable_mtu_disc6(sock *s)
+sk_disable_mtu_disc6(sock *s UNUSED)
 {
   /* TODO: Set IPV6_DONTFRAG to 0 ? */
   return 0;

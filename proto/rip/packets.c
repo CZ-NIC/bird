@@ -12,16 +12,14 @@
 #undef LOCAL_DEBUG
 
 #include "rip.h"
-#include "lib/md5.h"
+#include "lib/mac.h"
 
 
 #define RIP_CMD_REQUEST		1	/* want info */
 #define RIP_CMD_RESPONSE	2	/* responding to request */
 
 #define RIP_BLOCK_LENGTH	20
-
 #define RIP_PASSWD_LENGTH	16
-#define RIP_MD5_LENGTH		16
 
 #define RIP_AF_IPV4		2
 #define RIP_AF_AUTH		0xffff
@@ -74,7 +72,7 @@ struct rip_auth_tail
 {
   u16 must_be_ffff;
   u16 must_be_0001;
-  byte auth_data[];
+  byte auth_data[0];
 };
 
 /* Internal representation of RTE block data */
@@ -132,7 +130,7 @@ rip_put_block(struct rip_proto *p, byte *pos, struct rip_block *rte)
 }
 
 static inline void
-rip_put_next_hop(struct rip_proto *p, byte *pos, struct rip_block *rte)
+rip_put_next_hop(struct rip_proto *p UNUSED, byte *pos, struct rip_block *rte)
 {
   struct rip_block_ng *block = (void *) pos;
   block->prefix = ip6_hton(ipa_to_ip6(rte->next_hop));
@@ -221,15 +219,23 @@ rip_fill_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_p
     auth->auth_type = htons(RIP_AUTH_CRYPTO);
     auth->packet_len = htons(*plen);
     auth->key_id = pass->id;
-    auth->auth_len = sizeof(struct rip_auth_tail) + RIP_MD5_LENGTH;
+    auth->auth_len = mac_type_length(pass->alg);
     auth->seq_num = ifa->csn_ready ? htonl(ifa->csn) : 0;
     auth->unused1 = 0;
     auth->unused2 = 0;
     ifa->csn_ready = 1;
 
+    if (pass->alg < ALG_HMAC)
+      auth->auth_len += sizeof(struct rip_auth_tail);
+
     /*
      * Note that RFC 4822 is unclear whether auth_len should cover whole
      * authentication trailer or just auth_data length.
+     *
+     * FIXME: We should use just auth_data length by default. Currently we put
+     * the whole auth trailer length in keyed hash case to keep old behavior,
+     * but we put just auth_data length in the new HMAC case. Note that Quagga
+     * has config option for this.
      *
      * Crypto sequence numbers are increased by sender in rip_update_csn().
      * First CSN should be zero, this is handled by csn_ready.
@@ -238,14 +244,18 @@ rip_fill_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_p
     struct rip_auth_tail *tail = (void *) ((byte *) pkt + *plen);
     tail->must_be_ffff = htons(0xffff);
     tail->must_be_0001 = htons(0x0001);
-    strncpy(tail->auth_data, pass->password, RIP_MD5_LENGTH);
 
-    *plen += sizeof(struct rip_auth_tail) + RIP_MD5_LENGTH;
+    uint auth_len = mac_type_length(pass->alg);
+    *plen += sizeof(struct rip_auth_tail) + auth_len;
 
-    struct md5_context ctx;
-    md5_init(&ctx);
-    md5_update(&ctx, (byte *) pkt, *plen);
-    memcpy(tail->auth_data, md5_final(&ctx), RIP_MD5_LENGTH);
+    /* Append key for keyed hash, append padding for HMAC (RFC 4822 2.5) */
+    if (pass->alg < ALG_HMAC)
+      strncpy(tail->auth_data, pass->password, auth_len);
+    else
+      memset32(tail->auth_data, HMAC_MAGIC, auth_len / 4);
+
+    mac_fill(pass->alg, pass->password, pass->length,
+	     (byte *) pkt, *plen, tail->auth_data);
     return;
 
   default:
@@ -288,13 +298,25 @@ rip_check_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_
       DROP("no suitable password found", auth->key_id);
 
     uint data_len = ntohs(auth->packet_len);
-    uint auth_len = sizeof(struct rip_auth_tail) + RIP_MD5_LENGTH;
+    uint auth_len = mac_type_length(pass->alg);
+    uint auth_len2 = sizeof(struct rip_auth_tail) + auth_len;
 
-    if (data_len + auth_len != *plen)
-      DROP("packet length mismatch", data_len);
+    /*
+     * Ideally, first check should be check for internal consistency:
+     *   (data_len + sizeof(struct rip_auth_tail) + auth->auth_len) != *plen
+     *
+     * Second one should check expected code length:
+     *   auth->auth_len != auth_len
+     *
+     * But as auth->auth_len has two interpretations, we simplify this
+     */
 
-    if ((auth->auth_len != RIP_MD5_LENGTH) && (auth->auth_len != auth_len))
-      DROP("authentication data length mismatch", auth->auth_len);
+    if (data_len + auth_len2 != *plen)
+      DROP("packet length mismatch", *plen);
+
+    /* Warning: two interpretations of auth_len field */
+    if ((auth->auth_len != auth_len) && (auth->auth_len != auth_len2))
+      DROP("wrong authentication length", auth->auth_len);
 
     struct rip_auth_tail *tail = (void *) ((byte *) pkt + data_len);
     if ((tail->must_be_ffff != htons(0xffff)) || (tail->must_be_0001 != htons(0x0001)))
@@ -312,17 +334,18 @@ rip_check_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_
       return 0;
     }
 
-    char received[RIP_MD5_LENGTH];
-    memcpy(received, tail->auth_data, RIP_MD5_LENGTH);
-    strncpy(tail->auth_data, pass->password, RIP_MD5_LENGTH);
+    byte *auth_data = alloca(auth_len);
+    memcpy(auth_data, tail->auth_data, auth_len);
 
-    struct md5_context ctx;
-    md5_init(&ctx);
-    md5_update(&ctx, (byte *) pkt, *plen);
-    char *computed = md5_final(&ctx);
+    /* Append key for keyed hash, append padding for HMAC (RFC 4822 2.5) */
+    if (pass->alg < ALG_HMAC)
+      strncpy(tail->auth_data, pass->password, auth_len);
+    else
+      memset32(tail->auth_data, HMAC_MAGIC, auth_len / 4);
 
-    if (memcmp(received, computed, RIP_MD5_LENGTH))
-      DROP("wrong MD5 digest", pass->id);
+    if (!mac_verify(pass->alg, pass->password, pass->length,
+		    (byte *) pkt, *plen, auth_data))
+      DROP("wrong authentication code", pass->id);
 
     *plen = data_len;
     n->csn = rcv_csn;
@@ -632,7 +655,7 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
 }
 
 static int
-rip_rx_hook(sock *sk, int len)
+rip_rx_hook(sock *sk, uint len)
 {
   struct rip_iface *ifa = sk->data;
   struct rip_proto *p = ifa->rip;

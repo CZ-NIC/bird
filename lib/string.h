@@ -30,6 +30,25 @@ static inline char *xbasename(const char *str)
   return s ? s+1 : (char *) str;
 }
 
+static inline char *
+xstrdup(const char *c)
+{
+  size_t l = strlen(c) + 1;
+  char *z = xmalloc(l);
+  memcpy(z, c, l);
+  return z;
+}
+
+static inline void
+memset32(void *D, u32 val, uint n)
+{
+  u32 *dst = D;
+  uint i;
+
+  for (i = 0; i < n; i++)
+    dst[i] = val;
+}
+
 #define ROUTER_ID_64_LENGTH 23
 
 #endif

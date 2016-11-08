@@ -807,7 +807,7 @@ bgp_find_proto(sock *sk)
  * closes the new connection by sending a Notification message.
  */
 static int
-bgp_incoming_connection(sock *sk, int dummy UNUSED)
+bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 {
   struct bgp_proto *p;
   int acc, hops;

@@ -1,6 +1,5 @@
 /*
- *	BIRD Library -- SHA-256 and SHA-224 Hash Functions,
- *			HMAC-SHA-256 and HMAC-SHA-224 Functions
+ *	BIRD Library -- SHA-256 and SHA-224 Hash Functions
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -25,6 +24,8 @@
 #define SHA256_BLOCK_SIZE 	64
 
 
+struct hash_context;
+
 struct sha256_context {
   u32  h0, h1, h2, h3, h4, h5, h6, h7;
   byte buf[SHA256_BLOCK_SIZE];
@@ -35,39 +36,14 @@ struct sha256_context {
 #define sha224_context sha256_context
 
 
-void sha256_init(struct sha256_context *ctx);
-void sha224_init(struct sha224_context *ctx);
+void sha256_init(struct hash_context *ctx);
+void sha224_init(struct hash_context *ctx);
 
-void sha256_update(struct sha256_context *ctx, const byte *buf, size_t len);
-static inline void sha224_update(struct sha224_context *ctx, const byte *buf, size_t len)
-{ sha256_update(ctx, buf, len); }
+void sha256_update(struct hash_context *ctx, const byte *buf, uint len);
+#define sha224_update sha256_update
 
-byte *sha256_final(struct sha256_context *ctx);
-static inline byte *sha224_final(struct sha224_context *ctx)
-{ return sha256_final(ctx); }
-
-
-/*
- *	HMAC-SHA256, HMAC-SHA224
- */
-
-struct sha256_hmac_context
-{
-  struct sha256_context ictx;
-  struct sha256_context octx;
-};
-
-#define sha224_hmac_context sha256_hmac_context
-
-
-void sha256_hmac_init(struct sha256_hmac_context *ctx, const byte *key, size_t keylen);
-void sha224_hmac_init(struct sha224_hmac_context *ctx, const byte *key, size_t keylen);
-
-void sha256_hmac_update(struct sha256_hmac_context *ctx, const byte *buf, size_t buflen);
-void sha224_hmac_update(struct sha224_hmac_context *ctx, const byte *buf, size_t buflen);
-
-byte *sha256_hmac_final(struct sha256_hmac_context *ctx);
-byte *sha224_hmac_final(struct sha224_hmac_context *ctx);
+byte *sha256_final(struct hash_context *ctx);
+#define sha224_final sha256_final
 
 
 #endif /* _BIRD_SHA256_H_ */

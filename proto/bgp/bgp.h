@@ -191,7 +191,7 @@ struct bgp_bucket {
 #define BGP_RX_BUFFER_EXT_SIZE	65535
 #define BGP_TX_BUFFER_EXT_SIZE	65535
 
-static inline int bgp_max_packet_length(struct bgp_proto *p)
+static inline uint bgp_max_packet_length(struct bgp_proto *p)
 { return p->ext_messages ? BGP_MAX_EXT_MSG_LENGTH : BGP_MAX_MESSAGE_LENGTH; }
 
 extern struct linpool *bgp_linpool;
@@ -268,7 +268,7 @@ void mrt_dump_bgp_state_change(struct bgp_conn *conn, unsigned old, unsigned new
 void bgp_schedule_packet(struct bgp_conn *conn, int type);
 void bgp_kick_tx(void *vconn);
 void bgp_tx(struct birdsock *sk);
-int bgp_rx(struct birdsock *sk, int size);
+int bgp_rx(struct birdsock *sk, uint size);
 const char * bgp_error_dsc(unsigned code, unsigned subcode);
 void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsigned subcode, byte *data, unsigned len);
 
@@ -308,6 +308,7 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 #define BA_EXT_COMMUNITY	0x10	/* [RFC4360] */
 #define BA_AS4_PATH             0x11    /* [RFC4893] */
 #define BA_AS4_AGGREGATOR       0x12
+#define BA_LARGE_COMMUNITY	0x20	/* [draft-ietf-idr-large-community] */
 
 /* BGP connection states */
 

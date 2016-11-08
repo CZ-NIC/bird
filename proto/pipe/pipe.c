@@ -191,7 +191,7 @@ pipe_reconfigure(struct proto *P, struct proto_config *CF)
 }
 
 static void
-pipe_copy_config(struct proto_config *dest, struct proto_config *src)
+pipe_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUSED)
 {
   /* Just a shallow copy, not many items here */
 }

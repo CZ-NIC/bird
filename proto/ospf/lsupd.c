@@ -105,7 +105,7 @@ invalid:
 
 
 static inline void
-ospf_lsa_lsrq_down(struct top_hash_entry *req, struct ospf_neighbor *n, struct ospf_neighbor *from)
+ospf_lsa_lsrq_down(struct top_hash_entry *req, struct ospf_neighbor *n)
 {
   if (req == n->lsrqi)
     n->lsrqi = SNODE_NEXT(req);
@@ -188,7 +188,7 @@ ospf_enqueue_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_if
   {
     /* If we already have full queue, we send some packets */
     uint sent = ospf_flood_lsupd(p, ifa->flood_queue, ifa->flood_queue_used, ifa->flood_queue_used / 2, ifa);
-    int i;
+    uint i;
 
     for (i = 0; i < sent; i++)
       ifa->flood_queue[i]->ret_count--;
@@ -275,7 +275,7 @@ ospf_flood_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_neig
 
 	  /* If same or newer, remove LSA from the link state request list */
 	  if (cmp > CMP_OLDER)
-	    ospf_lsa_lsrq_down(req, n, from);
+	    ospf_lsa_lsrq_down(req, n);
 
 	  /* If older or same, skip processing of this neighbor */
 	  if (cmp < CMP_NEWER)
@@ -330,7 +330,7 @@ ospf_prepare_lsupd(struct ospf_proto *p, struct ospf_iface *ifa,
 
   pkt = ospf_tx_buffer(ifa);
   hlen = ospf_lsupd_hdrlen(p);
-  maxsize = ospf_pkt_maxsize(p, ifa);
+  maxsize = ospf_pkt_maxsize(ifa);
 
   ospf_pkt_fill_hdr(ifa, pkt, LSUPD_P);
   pos = hlen;

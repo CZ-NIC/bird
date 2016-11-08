@@ -11,6 +11,7 @@
 #include "ospf.h"
 #include "nest/password.h"
 #include "lib/md5.h"
+#include "lib/mac.h"
 #include "lib/socket.h"
 
 void
@@ -23,7 +24,7 @@ ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type)
 
   pkt->version = ospf_get_version(p);
   pkt->type = h_type;
-  pkt->length = htons(ospf_pkt_maxsize(p, ifa));
+  pkt->length = htons(ospf_pkt_maxsize(ifa));
   pkt->routerid = htonl(p->router_id);
   pkt->areaid = htonl(ifa->oa->areaid);
   pkt->checksum = 0;
@@ -31,25 +32,12 @@ ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type)
   pkt->autype = ifa->autype;
 }
 
-uint
-ospf_pkt_maxsize(struct ospf_proto *p, struct ospf_iface *ifa)
-{
-  uint headers = ospf_is_v2(p) ? IP4_HEADER_LENGTH : IP6_HEADER_LENGTH;
-
-  /* Relevant just for OSPFv2 */
-  if (ifa->autype == OSPF_AUTH_CRYPT)
-    headers += OSPF_AUTH_CRYPT_SIZE;
-
-  return ifa->tx_length - headers;
-}
-
 /* We assume OSPFv2 in ospf_pkt_finalize() */
 static void
-ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt)
+ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
 {
-  struct password_item *passwd = NULL;
+  struct password_item *pass = NULL;
   union ospf_auth *auth = (void *) (pkt + 1);
-  uint plen = ntohs(pkt->length);
 
   pkt->checksum = 0;
   pkt->autype = ifa->autype;
@@ -61,25 +49,25 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt)
   switch (ifa->autype)
   {
   case OSPF_AUTH_SIMPLE:
-    passwd = password_find(ifa->passwords, 1);
-    if (!passwd)
+    pass = password_find(ifa->passwords, 1);
+    if (!pass)
     {
       log(L_ERR "No suitable password found for authentication");
       return;
     }
-    strncpy(auth->password, passwd->password, sizeof(auth->password));
+    strncpy(auth->password, pass->password, sizeof(auth->password));
 
   case OSPF_AUTH_NONE:
     {
       void *body = (void *) (auth + 1);
-      uint blen = plen - sizeof(struct ospf_packet) - sizeof(union ospf_auth);
+      uint blen = *plen - sizeof(struct ospf_packet) - sizeof(union ospf_auth);
       pkt->checksum = ipsum_calculate(pkt, sizeof(struct ospf_packet), body, blen, NULL);
     }
     break;
 
   case OSPF_AUTH_CRYPT:
-    passwd = password_find(ifa->passwords, 0);
-    if (!passwd)
+    pass = password_find(ifa->passwords, 0);
+    if (!pass)
     {
       log(L_ERR "No suitable password found for authentication");
       return;
@@ -100,20 +88,25 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt)
 
     ifa->csn_use = now;
 
-    auth->md5.zero = 0;
-    auth->md5.keyid = passwd->id;
-    auth->md5.len = OSPF_AUTH_CRYPT_SIZE;
-    auth->md5.csn = htonl(ifa->csn);
+    uint auth_len = mac_type_length(pass->alg);
+    byte *auth_tail = ((byte *) pkt + *plen);
+    *plen += auth_len;
 
-    void *tail = ((void *) pkt) + plen;
-    char password[OSPF_AUTH_CRYPT_SIZE];
-    strncpy(password, passwd->password, sizeof(password));
+    ASSERT(*plen < ifa->sk->tbsize);
 
-    struct md5_context ctx;
-    md5_init(&ctx);
-    md5_update(&ctx, (char *) pkt, plen);
-    md5_update(&ctx, password, OSPF_AUTH_CRYPT_SIZE);
-    memcpy((byte *) tail, md5_final(&ctx), MD5_SIZE);
+    auth->c32.zero = 0;
+    auth->c32.keyid = pass->id;
+    auth->c32.len = auth_len;
+    auth->c32.csn = htonl(ifa->csn);
+
+    /* Append key for keyed hash, append padding for HMAC (RFC 5709 3.3) */
+    if (pass->alg < ALG_HMAC)
+      strncpy(auth_tail, pass->password, auth_len);
+    else
+      memset32(auth_tail, HMAC_MAGIC, auth_len / 4);
+
+    mac_fill(pass->alg, pass->password, pass->length,
+	     (byte *) pkt, *plen, auth_tail);
     break;
 
   default:
@@ -124,7 +117,7 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt)
 
 /* We assume OSPFv2 in ospf_pkt_checkauth() */
 static int
-ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_packet *pkt, int len)
+ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_packet *pkt, uint len)
 {
   struct ospf_proto *p = ifa->oa->po;
   union ospf_auth *auth = (void *) (pkt + 1);
@@ -154,13 +147,19 @@ ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_
     return 1;
 
   case OSPF_AUTH_CRYPT:
-    if (auth->md5.len != OSPF_AUTH_CRYPT_SIZE)
-      DROP("invalid MD5 digest length", auth->md5.len);
+    pass = password_find_by_id(ifa->passwords, auth->c32.keyid);
+    if (!pass)
+      DROP("no suitable password found", auth->c32.keyid);
 
-    if (plen + OSPF_AUTH_CRYPT_SIZE > len)
-      DROP("length mismatch", len);
+    uint auth_len = mac_type_length(pass->alg);
 
-    u32 rcv_csn = ntohl(auth->md5.csn);
+    if (plen + auth->c32.len > len)
+      DROP("packet length mismatch", len);
+
+    if (auth->c32.len != auth_len)
+      DROP("wrong authentication length", auth->c32.len);
+
+    u32 rcv_csn = ntohl(auth->c32.csn);
     if (n && (rcv_csn < n->csn))
       // DROP("lower sequence number", rcv_csn);
     {
@@ -171,22 +170,19 @@ ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_
       return 0;
     }
 
-    pass = password_find_by_id(ifa->passwords, auth->md5.keyid);
-    if (!pass)
-      DROP("no suitable password found", auth->md5.keyid);
+    byte *auth_tail = ((byte *) pkt) + plen;
+    byte *auth_data = alloca(auth_len);
+    memcpy(auth_data, auth_tail, auth_len);
 
-    byte *tail = ((byte *) pkt) + plen;
-    char received[OSPF_AUTH_CRYPT_SIZE];
-    memcpy(received, tail, OSPF_AUTH_CRYPT_SIZE);
-    strncpy(tail, pass->password, OSPF_AUTH_CRYPT_SIZE);
+    /* Append key for keyed hash, append padding for HMAC (RFC 5709 3.3) */
+    if (pass->alg < ALG_HMAC)
+      strncpy(auth_tail, pass->password, auth_len);
+    else
+      memset32(auth_tail, HMAC_MAGIC, auth_len / 4);
 
-    struct md5_context ctx;
-    md5_init(&ctx);
-    md5_update(&ctx, (byte *) pkt, plen + OSPF_AUTH_CRYPT_SIZE);
-    char *computed = md5_final(&ctx);
-
-    if (memcmp(received, computed, OSPF_AUTH_CRYPT_SIZE))
-      DROP("wrong MD5 digest", pass->id);
+    if (!mac_verify(pass->alg, pass->password, pass->length,
+		    (byte *) pkt, plen + auth_len, auth_data))
+      DROP("wrong authentication code", pass->id);
 
     if (n)
       n->csn = rcv_csn;
@@ -214,7 +210,7 @@ drop:
  * non generic functions.
  */
 int
-ospf_rx_hook(sock *sk, int len)
+ospf_rx_hook(sock *sk, uint len)
 {
   /* We want just packets from sk->iface. Unfortunately, on BSD we cannot filter
      out other packets at kernel level and we receive all packets on all sockets */
@@ -472,15 +468,10 @@ ospf_send_to(struct ospf_iface *ifa, ip_addr dst)
 {
   sock *sk = ifa->sk;
   struct ospf_packet *pkt = (struct ospf_packet *) sk->tbuf;
-  int plen = ntohs(pkt->length);
+  uint plen = ntohs(pkt->length);
 
   if (ospf_is_v2(ifa->oa->po))
-  {
-    if (ifa->autype == OSPF_AUTH_CRYPT)
-      plen += OSPF_AUTH_CRYPT_SIZE;
-
-    ospf_pkt_finalize(ifa, pkt);
-  }
+    ospf_pkt_finalize(ifa, pkt, &plen);
 
   int done = sk_send_to(sk, plen, dst, 0);
   if (!done)

@@ -240,7 +240,7 @@ radv_if_notify(struct proto *p, unsigned flags, struct iface *iface)
 }
 
 static void
-radv_ifa_notify(struct proto *p, unsigned flags, struct ifa *a)
+radv_ifa_notify(struct proto *p, unsigned flags UNUSED, struct ifa *a)
 {
   struct proto_radv *ra = (struct proto_radv *) p;
 

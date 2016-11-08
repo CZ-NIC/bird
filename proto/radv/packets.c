@@ -156,12 +156,12 @@ radv_process_domain(struct radv_dnssl_config *cf)
   char *dom = cf->domain;
   char *dom_end = dom; /* Just to  */
   u8 *dlen_save = &cf->dlen_first;
-  int len;
+  uint len;
 
   while (dom_end)
   {
     dom_end = strchr(dom, '.');
-    len = dom_end ? (dom_end - dom) : strlen(dom);
+    len = dom_end ? (uint)(dom_end - dom) : strlen(dom);
 
     if (len < 1 || len > 63)
       return -1;
@@ -349,7 +349,7 @@ radv_send_ra(struct radv_iface *ifa, int shutdown)
 
 
 static int
-radv_rx_hook(sock *sk, int size)
+radv_rx_hook(sock *sk, uint size)
 {
   struct radv_iface *ifa = sk->data;
   struct proto_radv *ra = ifa->ra;

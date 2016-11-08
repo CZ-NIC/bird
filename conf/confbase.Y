@@ -143,7 +143,7 @@ expr_us:
 /* Switches */
 
 bool:
-   expr {$$ = !!$1; }
+   expr { $$ = !!$1; }
  | ON { $$ = 1; }
  | YES { $$ = 1; }
  | OFF { $$ = 0; }
@@ -202,7 +202,7 @@ net_roa4_: net_ip4_ MAX NUM AS NUM
 {
   $$ = cfg_alloc(sizeof(net_addr_roa4));
   net_fill_roa4($$, net4_prefix(&$1), net4_pxlen(&$1), $3, $5);
-  if ($3 < net4_pxlen(&$1) || $3 > IP4_MAX_PREFIX_LENGTH)
+  if ($3 < (int) net4_pxlen(&$1) || $3 > IP4_MAX_PREFIX_LENGTH)
     cf_error("Invalid max prefix length %d", $3);
 };
 
@@ -210,7 +210,7 @@ net_roa6_: net_ip6_ MAX NUM AS NUM
 {
   $$ = cfg_alloc(sizeof(net_addr_roa6));
   net_fill_roa6($$, net6_prefix(&$1), net6_pxlen(&$1), $3, $5);
-  if ($3 < net6_pxlen(&$1) || $3 > IP6_MAX_PREFIX_LENGTH)
+  if ($3 < (int) net6_pxlen(&$1) || $3 > IP6_MAX_PREFIX_LENGTH)
     cf_error("Invalid max prefix length %d", $3);
 };
 

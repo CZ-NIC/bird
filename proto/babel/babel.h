@@ -111,7 +111,7 @@ struct babel_iface_config {
   u16 rxcost;
   u8 type;
   u8 check_link;
-  int port;
+  uint port;
   u16 hello_interval;
   u16 ihu_interval;
   u16 update_interval;

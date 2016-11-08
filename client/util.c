@@ -24,7 +24,7 @@ vlog(const char *msg, va_list args)
   int n = vsnprintf(buf, sizeof(buf), msg, args);
   if (n < 0)
     snprintf(buf, sizeof(buf), "???");
-  if (n >= sizeof(buf))
+  else if (n >= (int) sizeof(buf))
     snprintf(buf + sizeof(buf) - 100, 100, " ... <too long>");
   fputs(buf, stderr);
   fputc('\n', stderr);

@@ -1,5 +1,5 @@
 /*
- *	BIRD Library -- SHA-1 Hash Function (FIPS 180-1, RFC 3174) and HMAC-SHA-1
+ *	BIRD Library -- SHA-1 Hash Function (FIPS 180-1, RFC 3174)
  *
  *	(c) 2015 CZ.NIC z.s.p.o.
  *
@@ -17,8 +17,10 @@
 
 
 void
-sha1_init(struct sha1_context *ctx)
+sha1_init(struct hash_context *CTX)
 {
+  struct sha1_context *ctx = (void *) CTX;
+
   ctx->h0 = 0x67452301;
   ctx->h1 = 0xefcdab89;
   ctx->h2 = 0x98badcfe;
@@ -167,8 +169,10 @@ sha1_transform(struct sha1_context *ctx, const byte *data)
  * Update the message digest with the contents of BUF with length LEN.
  */
 void
-sha1_update(struct sha1_context *ctx, const byte *buf, uint len)
+sha1_update(struct hash_context *CTX, const byte *buf, uint len)
 {
+  struct sha1_context *ctx = (void *) CTX;
+
   if (ctx->count)
   {
     /* Fill rest of internal buffer */
@@ -209,11 +213,12 @@ sha1_update(struct sha1_context *ctx, const byte *buf, uint len)
  * Returns: 20 bytes representing the digest.
  */
 byte *
-sha1_final(struct sha1_context *ctx)
+sha1_final(struct hash_context *CTX)
 {
+  struct sha1_context *ctx = (void *) CTX;
   u32 t, msb, lsb;
 
-  sha1_update(ctx, NULL, 0);	/* flush */
+  sha1_update(CTX, NULL, 0);	/* flush */
 
   t = ctx->nblocks;
   /* multiply by 64 to make a byte count */
@@ -242,7 +247,7 @@ sha1_final(struct sha1_context *ctx)
     ctx->buf[ctx->count++] = 0x80; /* pad character */
     while (ctx->count < 64)
       ctx->buf[ctx->count++] = 0;
-    sha1_update(ctx, NULL, 0);	/* flush */
+    sha1_update(CTX, NULL, 0);	/* flush */
     memset(ctx->buf, 0, 56); /* fill next block with zeroes */
   }
 
@@ -267,82 +272,4 @@ sha1_final(struct sha1_context *ctx)
 #undef X
 
   return ctx->buf;
-}
-
-
-/*
- *	SHA1-HMAC
- */
-
-/*
- * Shortcut function which puts the hash value of the supplied buffer
- * into outbuf which must have a size of 20 bytes.
- */
-void
-sha1_hash_buffer(byte *outbuf, const byte *buffer, uint length)
-{
-  struct sha1_context ctx;
-
-  sha1_init(&ctx);
-  sha1_update(&ctx, buffer, length);
-  memcpy(outbuf, sha1_final(&ctx), SHA1_SIZE);
-}
-
-void
-sha1_hmac_init(struct sha1_hmac_context *ctx, const byte *key, uint keylen)
-{
-  byte keybuf[SHA1_BLOCK_SIZE], buf[SHA1_BLOCK_SIZE];
-
-  /* Hash the key if necessary */
-  if (keylen <= SHA1_BLOCK_SIZE)
-  {
-    memcpy(keybuf, key, keylen);
-    memset(keybuf + keylen, 0, SHA1_BLOCK_SIZE - keylen);
-  }
-  else
-  {
-    sha1_hash_buffer(keybuf, key, keylen);
-    memset(keybuf + SHA1_SIZE, 0, SHA1_BLOCK_SIZE - SHA1_SIZE);
-  }
-
-  /* Initialize the inner digest */
-  sha1_init(&ctx->ictx);
-  int i;
-  for (i = 0; i < SHA1_BLOCK_SIZE; i++)
-    buf[i] = keybuf[i] ^ 0x36;
-  sha1_update(&ctx->ictx, buf, SHA1_BLOCK_SIZE);
-
-  /* Initialize the outer digest */
-  sha1_init(&ctx->octx);
-  for (i = 0; i < SHA1_BLOCK_SIZE; i++)
-    buf[i] = keybuf[i] ^ 0x5c;
-  sha1_update(&ctx->octx, buf, SHA1_BLOCK_SIZE);
-}
-
-void
-sha1_hmac_update(struct sha1_hmac_context *ctx, const byte *data, uint datalen)
-{
-  /* Just update the inner digest */
-  sha1_update(&ctx->ictx, data, datalen);
-}
-
-byte *
-sha1_hmac_final(struct sha1_hmac_context *ctx)
-{
-  /* Finish the inner digest */
-  byte *isha = sha1_final(&ctx->ictx);
-
-  /* Finish the outer digest */
-  sha1_update(&ctx->octx, isha, SHA1_SIZE);
-  return sha1_final(&ctx->octx);
-}
-
-void
-sha1_hmac(byte *outbuf, const byte *key, uint keylen, const byte *data, uint datalen)
-{
-  struct sha1_hmac_context ctx;
-
-  sha1_hmac_init(&ctx, key, keylen);
-  sha1_hmac_update(&ctx, data, datalen);
-  memcpy(outbuf, sha1_hmac_final(&ctx), SHA1_SIZE);
 }

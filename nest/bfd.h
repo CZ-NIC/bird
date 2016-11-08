@@ -42,7 +42,7 @@ struct bfd_request {
 
 struct bfd_request * bfd_request_session(pool *p, ip_addr addr, ip_addr local, struct iface *iface, void (*hook)(struct bfd_request *), void *data);
 
-static inline void cf_check_bfd(int use) { }
+static inline void cf_check_bfd(int use UNUSED) { }
 
 #else
 

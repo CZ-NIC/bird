@@ -125,7 +125,7 @@ more_end(void)
 }
 
 static void
-sig_handler(int signal)
+sig_handler(int signal UNUSED)
 {
   cleanup();
   exit(0);
