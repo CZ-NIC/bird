@@ -49,12 +49,10 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "lib/resource.h"
-#include "lib/string.h"
 #include "lib/event.h"
 #include "sysdep/unix/timer.h"
 #include "conf/conf.h"
-#include "filter/filter.h"
+
 
 static jmp_buf conf_jmpbuf;
 
@@ -85,7 +83,7 @@ int undo_available;			/* Undo was not requested from last reconfiguration */
  * further use. Returns a pointer to the structure.
  */
 struct config *
-config_alloc(const byte *name)
+config_alloc(const char *name)
 {
   pool *p = rp_new(&root_pool, "Config");
   linpool *l = lp_new(p, 4080);
@@ -96,6 +94,7 @@ config_alloc(const byte *name)
   char *ndup = lp_allocu(l, nlen);
   memcpy(ndup, name, nlen);
 
+  init_list(&c->tests);
   c->mrtdump_file = -1; /* Hack, this should be sysdep-specific */
   c->pool = p;
   c->mem = l;

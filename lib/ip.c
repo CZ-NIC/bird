@@ -306,7 +306,7 @@ ip6_pton(const char *a, ip6_addr *o)
 
     if (*a == ':' && a[1])
       a++;
-    else if (*a == '.' && (i == 6 || i < 6 && hfil >= 0))
+    else if (*a == '.' && (i == 6 || (i < 6 && hfil >= 0)))
     {				/* Embedded IPv4 address */
       ip4_addr x;
       if (!ip4_pton(start, &x))

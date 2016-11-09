@@ -52,6 +52,8 @@
 
 #define CMP_ERROR 999
 
+void (*bt_assert_hook)(int result, struct f_inst *assert);
+
 static struct adata *
 adata_empty(struct linpool *pool, int l)
 {
@@ -563,8 +565,8 @@ f_rta_cow(void)
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
-#define runtime(x) do { \
-    log_rl(&rl_runtime_err, L_ERR "filters, line %d: %s", what->lineno, x); \
+#define runtime(fmt, ...) do { \
+    log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
     res.type = T_RETURN; \
     res.val.i = F_ERROR; \
     return res; \
@@ -1475,6 +1477,17 @@ interpret(struct f_inst *what)
 
     break;
 
+  case P('a', 's'):	/* Birdtest Assert */
+    ONEARG;
+
+    if (v1.type != T_BOOL)
+      runtime("Should be boolean value");
+
+    res.type = v1.type;
+    res.val = v1.val;
+
+    CALL(bt_assert_hook, res.val.i, what);
+    break;
 
   default:
     bug( "Unknown instruction %d (%c)", what->code, what->code & 0xff);

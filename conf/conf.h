@@ -9,6 +9,8 @@
 #ifndef _BIRD_CONF_H_
 #define _BIRD_CONF_H_
 
+#include "sysdep/config.h"
+#include "lib/ip.h"
 #include "lib/resource.h"
 #include "sysdep/unix/timer.h"
 
@@ -21,6 +23,7 @@ struct config {
   list protos;				/* Configured protocol instances (struct proto_config) */
   list tables;				/* Configured routing tables (struct rtable_config) */
   list logfiles;			/* Configured log files (sysdep) */
+  list tests;				/* Configured unit tests */
 
   int mrtdump_file;			/* Configured MRTDump file (sysdep, fd in unix) */
   char *syslog_name;			/* Name used for syslog (NULL -> no syslog) */
@@ -60,7 +63,7 @@ struct config {
 extern struct config *config;		/* Currently active configuration */
 extern struct config *new_config;	/* Configuration being parsed */
 
-struct config *config_alloc(const byte *name);
+struct config *config_alloc(const char *name);
 int config_parse(struct config *);
 int cli_parse(struct config *);
 void config_free(struct config *);
@@ -161,6 +164,7 @@ static inline int cf_symbol_is_constant(struct symbol *sym)
 
 /* Parser */
 
+extern char *cf_text;
 int cf_parse(void);
 
 /* Sysdep hooks */

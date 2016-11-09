@@ -16,16 +16,16 @@
 
 struct f_inst {		/* Instruction */
   struct f_inst *next;	/* Structure is 16 bytes, anyway */
-  u16 code;
-  u16 aux;
+  u16 code;		/* Instruction code, see the interpret() function and P() macro */
+  u16 aux;		/* Extension to instruction code, T_*, EA_*, EAF_*  */
   union {
     int i;
     void *p;
-  } a1;
+  } a1;			/* The first argument */
   union {
     int i;
     void *p;
-  } a2;
+  } a2;			/* The second argument */
   int lineno;
 };
 
@@ -55,7 +55,7 @@ struct f_prefix {
 };
 
 struct f_val {
-  int type;
+  int type;		/* T_*  */
   union {
     uint i;
     u64 ec;
@@ -204,5 +204,16 @@ struct f_trie
 #define NEW_F_VAL struct f_val * val; val = cfg_alloc(sizeof(struct f_val));
 
 #define FF_FORCE_TMPATTR 1		/* Force all attributes to be temporary */
+
+/* Bird Tests */
+struct f_bt_test_suite {
+  node n;			/* Node in config->tests */
+  struct f_inst *fn;		/* Root of function */
+  const char *fn_name;		/* Name of test */
+  const char *dsc;		/* Description */
+};
+
+/* Hook for call bt_assert() function in configuration */
+extern void (*bt_assert_hook)(int result, struct f_inst *assert);
 
 #endif

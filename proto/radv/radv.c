@@ -311,7 +311,7 @@ radv_check_active(struct proto_radv *ra)
   if (!radv_trigger_valid(cf))
     return 1;
 
-  struct channel *c =ra->p.main_channel;
+  struct channel *c = ra->p.main_channel;
   return rt_examine(c->table, &cf->trigger, &ra->p, c->out_filter);
 }
 

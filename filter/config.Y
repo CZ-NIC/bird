@@ -323,7 +323,71 @@ f_generate_lc(struct f_inst *t1, struct f_inst *t2, struct f_inst *t3)
   return rv;
 }
 
+/*
+ * Remove all new lines and doubled whitespaces
+ * and convert all tabulators to spaces
+ * and return a copy of string
+ */
+char *
+assert_copy_expr(const char *start, size_t len)
+{
+  /* XXX: Allocates maybe a little more memory than we really finally need */
+  char *str = cfg_alloc(len + 1);
 
+  char *dst = str;
+  const char *src = start - 1;
+  const char *end = start + len;
+  while (++src < end)
+  {
+    if (*src == '\n')
+      continue;
+
+    /* Skip doubled whitespaces */
+    if (src != start)
+    {
+      const char *prev = src - 1;
+      if ((*src == ' ' || *src == '\t') && (*prev == ' ' || *prev == '\t'))
+	continue;
+    }
+
+    if (*src == '\t')
+      *dst = ' ';
+    else
+      *dst = *src;
+
+    dst++;
+  }
+  *dst = '\0';
+
+  return str;
+}
+
+/*
+ * assert_done - create f_instruction of bt_assert
+ * @expr: expression in bt_assert()
+ * @start: pointer to first char of test expression
+ * @end: pointer to the last char of test expression
+ */
+static struct f_inst *
+assert_done(struct f_inst *expr, const char *start, const char *end)
+{
+  struct f_inst *i;
+  i = f_new_inst();
+  i->code = P('a','s');
+  i->a1.p = expr;
+
+  if (end >= start)
+  {
+    i->a2.p = assert_copy_expr(start, end - start + 1);
+  }
+  else
+  {
+    /* this is a break of lexer buffer */
+    i->a2.p = "???";
+  }
+
+  return i;
+}
 
 CF_DECLS
 
@@ -341,12 +405,13 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ADD, DELETE, CONTAINS, RESET,
 	PREPEND, FIRST, LAST, LAST_NONAGGREGATED, MATCH,
 	EMPTY,
-	FILTER, WHERE, EVAL)
+	FILTER, WHERE, EVAL,
+	BT_ASSERT, BT_TEST_SUITE)
 
 %nonassoc THEN
 %nonassoc ELSE
 
-%type <x> term block cmds cmds_int cmd function_body constant constructor print_one print_list var_list var_listn dynamic_attr static_attr function_call symbol bgp_path_expr
+%type <x> term block cmds cmds_int cmd function_body constant constructor print_one print_list var_list var_listn dynamic_attr static_attr function_call symbol bgp_path_expr bt_assert
 %type <f> filter filter_body where_filter
 %type <i> type break_command ec_kind
 %type <i32> cnum
@@ -356,6 +421,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <px> fprefix
 %type <s> decls declsn one_decl function_params
 %type <h> bgp_path bgp_path_tail1 bgp_path_tail2
+%type <t> get_cf_position
 
 CF_GRAMMAR
 
@@ -373,6 +439,21 @@ filter_def:
 CF_ADDTO(conf, filter_eval)
 filter_eval:
    EVAL term { f_eval_int($2); }
+ ;
+
+CF_ADDTO(conf, bt_test_suite)
+bt_test_suite:
+ BT_TEST_SUITE '(' SYM ',' text ')' {
+  if (!($3->class & SYM_FUNCTION))
+    cf_error("Function expected");
+
+  struct f_bt_test_suite *t = cfg_alloc(sizeof(struct f_bt_test_suite));
+  t->fn = $3->def;
+  t->fn_name = $3->name;
+  t->dsc = $5;
+
+  add_tail(&new_config->tests, &t->n);
+ }
  ;
 
 type:
@@ -835,6 +916,8 @@ term:
  | ROA_CHECK '(' rtable ')' { $$ = f_generate_roa_check($3, NULL, NULL); }
  | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_generate_roa_check($3, $5, $7); }
 
+ | bt_assert { $$ = $1; }
+
 /* | term '.' LEN { $$->code = P('P','l'); } */
 
 /* function_call is inlined here */
@@ -966,6 +1049,7 @@ cmd:
       $$->a1.p = $2;
       $$->a2.p = build_tree( $4 );
    }
+ | bt_assert ';' { $$ = $1; }
 
 
  | rtadot dynamic_attr '.' EMPTY ';' { $$ = f_generate_empty($2); }
@@ -974,5 +1058,15 @@ cmd:
  | rtadot dynamic_attr '.' DELETE '(' term ')' ';'    { $$ = f_generate_complex( P('C','a'), 'd', $2, $6 ); }
  | rtadot dynamic_attr '.' FILTER '(' term ')' ';'    { $$ = f_generate_complex( P('C','a'), 'f', $2, $6 ); }
  ;
+
+ bt_assert:
+   BT_ASSERT '(' get_cf_position term get_cf_position ')' { $$ = assert_done($4, $3 + 1, $5 - 1); }
+ ;
+
+get_cf_position:
+{
+  $$ = cf_text;
+};
+
 
 CF_END

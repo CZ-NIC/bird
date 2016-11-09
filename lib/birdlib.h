@@ -56,7 +56,6 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define NULL ((void *) 0)
 #endif
 
-
 /* Macros for gcc attributes */
 
 #define NORET __attribute__((noreturn))
@@ -150,7 +149,7 @@ void bug(const char *msg, ...) NORET;
 #define L_FATAL "\010"			/* Fatal errors */
 #define L_BUG "\011"			/* BIRD bugs */
 
-void debug(const char *msg, ...);		/* Printf to debug output */
+void debug(const char *msg, ...);	/* Printf to debug output */
 
 /* Debugging */
 

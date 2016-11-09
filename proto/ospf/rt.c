@@ -1921,7 +1921,7 @@ rt_sync(struct ospf_proto *p)
   /* This is used for forced reload of routes */
   int reload = (p->calcrt == 2);
 
-  OSPF_TRACE(D_EVENTS, "Starting routing table synchronisation");
+  OSPF_TRACE(D_EVENTS, "Starting routing table synchronization");
 
   DBG("Now syncing my rt table with nest's\n");
   FIB_ITERATE_INIT(&fit, fib);

@@ -56,7 +56,7 @@ if test "$ac_test_CFLAGS" != set ; then
 	bird_cflags_default=yes
 fi
 
-AC_PROG_CC
+AC_PROG_CC_C99
 if test -z "$GCC" ; then
 	AC_MSG_ERROR([This program requires the GNU C Compiler.])
 fi
@@ -220,6 +220,9 @@ BIRD_CHECK_STRUCT_IP_MREQN
 
 if test "$enable_debug" = yes ; then
 	AC_DEFINE(DEBUGGING)
+	AC_CHECK_HEADER(execinfo.h, [AC_SEARCH_LIBS([backtrace, backtrace_symbols], [c execinfo], [AC_DEFINE(HAVE_EXECINFO_H)])])
+	LDFLAGS="$LDFLAGS -rdynamic"
+	CFLAGS="$CFLAGS -O0 -ggdb -g3 -gdwarf-4"
 	if test "$enable_memcheck" = yes ; then
 		AC_CHECK_LIB(dmalloc, dmalloc_debug)
 		if test $ac_cv_lib_dmalloc_dmalloc_debug != yes ; then

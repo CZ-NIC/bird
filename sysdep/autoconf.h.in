@@ -67,4 +67,7 @@
 /* We have stdint.h */
 #undef HAVE_STDINT_H
 
+/* We have execinfo.h */
+#undef HAVE_EXECINFO_H
+
 #define CONFIG_PATH ?

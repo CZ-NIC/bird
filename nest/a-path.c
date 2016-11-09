@@ -20,7 +20,7 @@
 
 #define put_as put_u32
 #define get_as get_u32
-#define BS  4
+#define BS  4 /* Base (default) size of ASN (autonomous system number) */
 
 struct adata *
 as_path_prepend(struct linpool *pool, struct adata *olda, u32 as)
@@ -499,7 +499,6 @@ pm_mark(struct pm_pos *pos, int i, int plen, int *nl, int *nh)
  * (auxiliary position after last real position in AS path)
  * is marked.
  */
-
 int
 as_path_match(struct adata *path, struct f_path_mask *mask)
 {

@@ -3,6 +3,8 @@ obj := $(src-o-files)
 
 $(all-daemon)
 
+tests_objs := $(tests_objs) $(src-o-files)
+
 ifdef DEBUG
 BISON_DEBUG=-t
 #FLEX_DEBUG=-d

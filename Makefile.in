@@ -22,7 +22,7 @@ INSTALL_DATA=@INSTALL_DATA@
 
 client=$(addprefix $(exedir)/,@CLIENT@)
 daemon=$(exedir)/bird
-protocols  = @protocols@
+protocols=@protocols@
 
 prefix=@prefix@
 exec_prefix=@exec_prefix@
@@ -49,24 +49,26 @@ else
 endif
 
 # Meta rules
-cleangoals := clean distclean
 docgoals := docs userdocs progdocs
-.PHONY: all daemon cli $(cleangoals) $(docgoals) tags
+testgoals := check test tests tests_run
+cleangoals := clean distclean testsclean
+.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags
 all: daemon cli
 
 daemon: $(daemon)
 cli: $(client)
 
 # Include directories
-dirs := client conf doc filter lib nest $(addprefix proto/,$(protocols)) @sysdep_dirs@
+dirs := client conf doc filter lib nest test $(addprefix proto/,$(protocols)) @sysdep_dirs@
 
 conf-y-targets := $(addprefix $(objdir)/conf/,cf-parse.y keywords.h commands.h)
 cf-local = $(conf-y-targets): $(s)config.Y
 
 src-o-files = $(patsubst %.c,$(o)%.o,$(src))
+tests-target-files = $(patsubst %.c,$(o)%,$(tests_src))
 
-all-daemon = $(exedir)/bird: $(obj)
-all-client = $(exedir)/birdc $(exedir)/birdcl: $(obj)
+all-daemon = $(daemon): $(obj)
+all-client = $(client): $(obj)
 
 s = $(dir $(lastword $(MAKEFILE_LIST)))
 ifeq ($(srcdir),.)
@@ -109,6 +111,22 @@ $(objdir)/sysdep/paths.h: Makefile
 	echo >>$@ "#define PATH_CONTROL_SOCKET \"@CONTROL_SOCKET@\""
 	if test -n "@iproutedir@" ; then echo >>$@ "#define PATH_IPROUTE_DIR \"@iproutedir@\"" ; fi
 
+# Unit tests rules
+
+tests_targets_ok = $(addsuffix .ok,$(tests_targets))
+
+$(tests_targets): %: %.o $(tests_objs)
+	$(E)echo LD $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+$(tests_targets_ok): %.ok: %
+	$(Q)$* 2>/dev/null && touch $*.ok
+
+test: testsclean check
+check: tests tests_run
+tests: $(tests_targets)
+tests_run: $(tests_targets_ok)
+
 # Finally include the computed dependencies
 
 ifneq ($(filter-out $(cleangoals),$(MAKECMDGOALS)),)
@@ -146,6 +164,9 @@ clean::
 	rm -f $(objdir)/sysdep/paths.h
 	rm -f $(addprefix $(exedir)/,bird birdc birdcl)
 	find $(objdir) -name "*.[od]" -exec rm -f '{}' '+'
+
+testsclean:
+	rm -f $(tests_targets_ok)
 
 ifeq ($(objdir),obj)
 distclean: clean

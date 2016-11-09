@@ -1253,7 +1253,7 @@ foot).
 	<cf/!&tilde;/ membership operators) can be used to modify or test
 	eclists, with ECs instead of pairs as arguments.
 
-	<tag/lclist/
+	<tag><label id="type-lclist">lclist/</tag>
 	Lclist is a data type used for BGP large community lists. Like eclists,
 	lclists are very similar to clists, but they are sets of LCs instead of
 	pairs. The same operations (like <cf/add/, <cf/delete/ or <cf/&tilde;/
