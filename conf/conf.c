@@ -61,6 +61,8 @@ static jmp_buf conf_jmpbuf;
 
 struct config *config, *new_config;
 
+char *cf_text;				/* Actual position from parser */
+
 static struct config *old_config;	/* Old configuration */
 static struct config *future_config;	/* New config held here if recon requested during recon */
 static int old_cftype;			/* Type of transition old_config -> config (RECONFIG_SOFT/HARD) */
@@ -511,6 +513,7 @@ cf_error(const char *msg, ...)
     strcpy(buf, "<bug: error message too long>");
   va_end(args);
   new_config->err_msg = cfg_strdup(buf);
+  new_config->err_token = cfg_strdup(cf_text);
   new_config->err_lino = ifs->lino;
   new_config->err_file_name = ifs->file_name;
   cf_lex_unwind();
