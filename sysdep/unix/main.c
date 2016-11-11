@@ -213,7 +213,7 @@ read_config(void)
   if (!unix_read_config(&conf, config_name))
     {
       if (conf->err_msg)
-	die("%s, line %d: %s", conf->err_file_name, conf->err_lino, conf->err_msg);
+	die("%s, line %d (nearby '%s'): %s", conf->err_file_name, conf->err_lino, conf->err_token, conf->err_msg);
       else
 	die("Unable to open configuration file %s: %m", config_name);
     }
