@@ -187,8 +187,7 @@ get_num_terminal_cols(void)
 static void
 bt_log_result(int result, const char *fmt, va_list argptr)
 {
-  char fmt_buf[BT_BUFFER_SIZE];
-  char msg_buf[BT_BUFFER_SIZE];
+  static char msg_buf[BT_BUFFER_SIZE];
   char *pos;
 
   snprintf(msg_buf, sizeof(msg_buf), "%s%s%s%s",
@@ -200,18 +199,33 @@ bt_log_result(int result, const char *fmt, va_list argptr)
 
   vsnprintf(pos, sizeof(msg_buf) - (pos - msg_buf), fmt, argptr);
 
-  /* 'll' means here Last Line */
-  uint cols = get_num_terminal_cols();
-  uint ll_len = (strlen(msg_buf) % cols) + BT_PROMPT_OK_FAIL_STRLEN;
-  uint ll_offset = (ll_len / get_num_terminal_cols() + 1) * cols - BT_PROMPT_OK_FAIL_STRLEN;
-  uint offset = ll_offset + (strlen(msg_buf) / cols) * cols;
-  snprintf(fmt_buf, sizeof(fmt_buf), "%%-%us%%s\n", offset);
+  int chrs = 0;
+  for (int i = 0; i < strlen(msg_buf); i += get_num_terminal_cols())
+  {
+    if (i)
+      printf("\n");
+    char *stop = msg_buf + i + get_num_terminal_cols();
+    char backup = *stop;
+    *stop = 0;
+    chrs = printf("%s", msg_buf + i);
+    *stop = backup;
+  }
+
+  int offset = get_num_terminal_cols() - chrs - BT_PROMPT_OK_FAIL_STRLEN;
+  if (offset < 0)
+  {
+    printf("\n");
+    offset = get_num_terminal_cols() - BT_PROMPT_OK_FAIL_STRLEN;
+  }
+
+  for (int i = 0; i < offset; i++)
+    putchar(' ');
 
   const char *result_str = is_terminal ? BT_PROMPT_OK : BT_PROMPT_OK_NO_COLOR;
   if (result != BT_SUCCESS)
     result_str = is_terminal ? BT_PROMPT_FAIL : BT_PROMPT_FAIL_NO_COLOR;
 
-  printf(fmt_buf, msg_buf, result_str);
+  printf("%s\n", result_str);
 }
 
 /**
