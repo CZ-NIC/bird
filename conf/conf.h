@@ -49,6 +49,7 @@ struct config {
   int err_lino;				/* Line containing error */
   char *err_file_name;			/* File name containing error */
   char *file_name;			/* Name of main configuration file */
+  char *err_token;			/* Token where parser fell down */
   int file_fd;				/* File descriptor of main configuration file */
   struct symbol **sym_hash;		/* Lexer: symbol hash table */
   struct symbol **sym_fallback;		/* Lexer: fallback symbol hash table */
