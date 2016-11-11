@@ -48,20 +48,20 @@ run_function(const void *parsed_fn_def)
   rfree(tmp);
 
   if (res.type == T_RETURN && res.val.i >= F_REJECT)
-    return BT_FAILURE;
+    return 0;
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static void
 bt_assert_filter(int result, struct f_inst *assert)
 {
-  int bt_suit_case_result = BT_SUCCESS;
+  int bt_suit_case_result = 1;
   if (!result)
   {
-    bt_result = BT_FAILURE;
-    bt_suite_result = BT_FAILURE;
-    bt_suit_case_result = BT_FAILURE;
+    bt_result = 0;
+    bt_suite_result = 0;
+    bt_suit_case_result = 0;
   }
 
   bt_log_suite_case_result(bt_suit_case_result, "Assertion at line %d (%s)", assert->lineno, (char *) assert->a2.p);

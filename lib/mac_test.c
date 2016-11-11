@@ -28,7 +28,7 @@ test_##name(void *out_, const void *in_, const void *expected_out_)	\
   uint len = mac_type_length(id);					\
   bt_bytes_to_hex(out, out_bin, len);					\
 									\
-  return strncmp(out, expected_out, 2*len+1) == 0 ? BT_SUCCESS : BT_FAILURE; \
+  return strncmp(out, expected_out, 2*len+1) == 0; \
 }
 
 define_test_hash_fn(md5,	ALG_MD5)
@@ -283,8 +283,8 @@ test_##name##_hmac(void *out_, const void *in_, const void *expected_out_)	\
 									\
   uint len = mac_type_length(id);					\
   bt_bytes_to_hex(out, out_bin, len);					\
-  									\
-  return strncmp(out, expected_out, 2*len+1) == 0 ? BT_SUCCESS : BT_FAILURE; \
+									\
+  return strncmp(out, expected_out, 2*len+1) == 0; \
 }
 
 define_test_hmac_fn(md5,	ALG_HMAC_MD5)
@@ -1092,7 +1092,7 @@ t_sha256_concating(void)
   int are_hash_a_b_equal = (strncmp(hash_a, hash_b, sizeof(hash_a)) == 0);
   bt_assert_msg(are_hash_a_b_equal, "Hashes A: %s, B: %s should be same", hash_a, hash_b);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 
@@ -1130,7 +1130,7 @@ t_sha512_concating(void)
   int are_hash_a_b_equal = (strncmp(hash_a, hash_b, sizeof(hash_a)) == 0);
   bt_assert_msg(are_hash_a_b_equal, "Hashes A: %s, B: %s should be same", hash_a, hash_b);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int

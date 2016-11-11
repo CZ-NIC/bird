@@ -174,7 +174,7 @@ t_balancing(void)
     bt_assert(same_tree(balanced_tree_from_simple, expected_balanced_tree));
   }
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 
@@ -205,7 +205,7 @@ t_balancing_random(void)
     }
   }
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -231,7 +231,7 @@ t_find(void)
     }
   }
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static uint
@@ -287,7 +287,7 @@ t_find_ranges(void)
     }
   }
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int

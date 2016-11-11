@@ -28,7 +28,7 @@ t_mkmask(void)
     bt_assert_msg(compute == expect, "u32_mkmask(%d) = 0x%08X, expected 0x%08X", i, compute, expect);
   }
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -78,7 +78,7 @@ t_masklen(void)
   for (i = 0; i <= MAX_NUM; i++)
     check_mask(bt_random());
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static void
@@ -107,7 +107,7 @@ t_log2(void)
   for (i = 1; i < MAX_NUM; i++)
     check_log2(((u32) bt_random()) % 0x0fffffff);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int

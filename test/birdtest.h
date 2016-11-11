@@ -38,9 +38,6 @@ long int bt_random(void);
 void bt_log_suite_result(int result, const char *fmt, ...);
 void bt_log_suite_case_result(int result, const char *fmt, ...);
 
-#define BT_SUCCESS 			42	/* 1 is too usual, filter quitbird returns 1 too */
-#define BT_FAILURE 			0
-
 #define BT_TIMEOUT 			5	/* Default timeout in seconds */
 #define BT_FORKING 			1	/* Forking is enabled in default */
 
@@ -101,12 +98,12 @@ void bt_log_suite_case_result(int result, const char *fmt, ...);
 #define bt_assert_msg(test, format, ...)				\
   do									\
   {									\
-    int bt_suit_case_result = BT_SUCCESS;				\
+    int bt_suit_case_result = 1;				\
     if ((test) == 0) 							\
     {									\
-      bt_result = BT_FAILURE;						\
-      bt_suite_result = BT_FAILURE;					\
-      bt_suit_case_result = BT_FAILURE;					\
+      bt_result = 0;						\
+      bt_suite_result = 0;					\
+      bt_suit_case_result = 0;					\
     }									\
     bt_log_suite_case_result(bt_suit_case_result, format, ##__VA_ARGS__); \
   } while (0)
@@ -149,14 +146,13 @@ struct bt_batch {
    * @expected_out: expected data from tested function
    *
    * Input arguments should not be stringified using in_fmt() or out_fmt()
-   * function already. This function should return only BT_SUCCESS or
-   * BT_FAILURE  */
+   * function already. This function should return only 0 or 1 */
   int (*test_fn)(void *out, const void *in, const void *expected_out);
 
   /* Name of testing function @test_fn */
   const char *test_fn_name;
 
-  /* Number of items in data*/
+  /* Number of items in data */
   int ndata;
 
   /* Array of input and expected output pairs */

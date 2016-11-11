@@ -86,7 +86,7 @@ t_set_int_contains(void)
     bt_assert_msg(data[i] == i, "(data[i] = %d) == i = %d)", data[i], i);
 
   rfree(lp);
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -105,7 +105,7 @@ t_set_int_union(void)
   bt_assert(int_set_format(set_union, 0, 2, buf, BUFFER_SIZE) == 0);
 
   rfree(lp);
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -127,7 +127,7 @@ t_set_int_format(void)
   bt_assert(strcmp(buf, "(0,0) (0,1) (0,2) (0,3) (0,4) (0,5) (0,6) (0,7) (0,8) (0,9)") == 0);
 
   rfree(lp);
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -149,7 +149,7 @@ t_set_int_delete(void)
 
   bt_assert(int_set_get_size(set_sequence) == SET_SIZE);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 /*
@@ -176,7 +176,7 @@ t_set_ec_contains(void)
 //    bt_assert_msg(data[i] == (SET_SIZE-1-i), "(data[i] = %d) == ((SET_SIZE-1-i) = %d)", data[i], SET_SIZE-1-i);
 
   rfree(lp);
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -195,7 +195,7 @@ t_set_ec_union(void)
   bt_assert(ec_set_format(set_union, 0, buf, BUFFER_SIZE) == 0);
 
   rfree(lp);
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -217,7 +217,7 @@ t_set_ec_format(void)
 		"ec_set_format() returns '%s'", buf);
 
   rfree(lp);
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -238,7 +238,7 @@ t_set_ec_delete(void)
 
   bt_assert(ec_set_get_size(set_sequence) == SET_SIZE);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int

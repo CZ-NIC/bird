@@ -73,7 +73,7 @@ t_ev_run_list(void)
   for (i = 1; i < MAX_NUM; i++)
     bt_assert(event_check_points[i]);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int

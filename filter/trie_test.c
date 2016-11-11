@@ -130,7 +130,7 @@ t_match_net(void)
   }
 
   bt_bird_cleanup();
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -170,7 +170,7 @@ t_trie_same(void)
     }
   }
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int

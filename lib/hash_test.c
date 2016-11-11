@@ -129,7 +129,7 @@ t_insert_find(void)
   fill_hash();
   validate_filled_hash();
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -148,7 +148,7 @@ t_insert_find_random(void)
 
   validate_filled_hash();
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -168,7 +168,7 @@ t_insert2_find(void)
 
   validate_filled_hash();
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -191,7 +191,7 @@ t_walk(void)
   for (i = 0; i < MAX_NUM; i++)
     bt_assert(check[i] == 1);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -208,7 +208,7 @@ t_walk_delsafe_delete(void)
 
   validate_empty_hash();
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -225,7 +225,7 @@ t_walk_delsafe_remove(void)
 
   validate_empty_hash();
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -242,7 +242,7 @@ t_walk_delsafe_delete2(void)
 
   validate_empty_hash();
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -259,7 +259,7 @@ t_walk_delsafe_remove2(void)
 
   validate_empty_hash();
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -283,7 +283,7 @@ t_walk_filter(void)
   for (i = 0; i < MAX_NUM; i++)
     bt_assert(check[i] == 1);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int

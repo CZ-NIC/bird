@@ -60,7 +60,7 @@ t_calculate(void)
 
   bt_assert(sum_calculated == sum_expected);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -78,7 +78,7 @@ t_verify(void)
 
   bt_assert(ipsum_verify(a, sizeof(a), NULL));
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 

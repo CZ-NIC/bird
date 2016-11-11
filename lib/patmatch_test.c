@@ -28,7 +28,7 @@ test_matching(void *out_, const void *in_, const void *expected_out_)
 
   *out = patmatch(in->pattern, in->data);
 
-  return (*out == *expected_out) ? BT_SUCCESS : BT_FAILURE;
+  return *out == *expected_out;
 }
 
 static void

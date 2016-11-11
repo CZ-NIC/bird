@@ -56,7 +56,7 @@ t_simple(void)
   BSPRINTF(2, "-1", buf, "%d", -1);
   BSPRINTF(11, "-2147483648", buf, "%d", -2147483648);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int

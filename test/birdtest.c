@@ -63,7 +63,7 @@ bt_init(int argc, char *argv[])
 
   bt_verbose = 0;
   bt_filename = argv[0];
-  bt_result = BT_SUCCESS;
+  bt_result = 1;
   bt_test_id = NULL;
   is_terminal = isatty(fileno(stdout));
 
@@ -160,8 +160,8 @@ int bt_run_test_fn(int (*fn)(const void *), const void *fn_arg, int timeout)
   else
     result = ((int (*)(void))fn)();
 
-  if (bt_suite_result != BT_SUCCESS)
-    result = BT_FAILURE;
+  if (!bt_suite_result)
+    result = 0;
 
   return result;
 }
@@ -177,7 +177,7 @@ get_num_terminal_cols(void)
 
 /**
  * bt_log_result - pretty print of test result
- * @result: BT_SUCCESS or BT_FAILURE
+ * @result: 1 or 0
  * @fmt: a description message (could be long, over more lines)
  * @argptr: variable argument list
  *
@@ -222,7 +222,7 @@ bt_log_result(int result, const char *fmt, va_list argptr)
     putchar(' ');
 
   const char *result_str = is_terminal ? BT_PROMPT_OK : BT_PROMPT_OK_NO_COLOR;
-  if (result != BT_SUCCESS)
+  if (!result)
     result_str = is_terminal ? BT_PROMPT_FAIL : BT_PROMPT_FAIL_NO_COLOR;
 
   printf("%s\n", result_str);
@@ -230,7 +230,7 @@ bt_log_result(int result, const char *fmt, va_list argptr)
 
 /**
  * bt_log_overall_result - pretty print of suite case result
- * @result: BT_SUCCESS or BT_FAILURE
+ * @result: 1 or 0
  * @fmt: a description message (could be long, over more lines)
  * ...: variable argument list
  *
@@ -247,7 +247,7 @@ bt_log_overall_result(int result, const char *fmt, ...)
 
 /**
  * bt_log_suite_result - pretty print of suite case result
- * @result: BT_SUCCESS or BT_FAILURE
+ * @result: 1 or 0
  * @fmt: a description message (could be long, over more lines)
  * ...: variable argument list
  *
@@ -256,7 +256,7 @@ bt_log_overall_result(int result, const char *fmt, ...)
 void
 bt_log_suite_result(int result, const char *fmt, ...)
 {
-  if(bt_verbose >= BT_VERBOSE_SUITE || result == BT_FAILURE)
+  if(bt_verbose >= BT_VERBOSE_SUITE || !result)
   {
     va_list argptr;
     va_start(argptr, fmt);
@@ -267,7 +267,7 @@ bt_log_suite_result(int result, const char *fmt, ...)
 
 /**
  * bt_log_suite_case_result - pretty print of suite result
- * @result: BT_SUCCESS or BT_FAILURE
+ * @result: 1 or 0
  * @fmt: a description message (could be long, over more lines)
  * ...: variable argument list
  *
@@ -296,7 +296,7 @@ bt_test_suite_base(int (*fn)(const void *), const char *id, const void *fn_arg, 
     vprintf(dsc, args);
     va_end(args);
     printf("\n");
-    return BT_SUCCESS;
+    return 1;
   }
 
   if (no_fork)
@@ -306,9 +306,9 @@ bt_test_suite_base(int (*fn)(const void *), const char *id, const void *fn_arg, 
     timeout = 0;
 
   if (request && strcmp(id, request))
-    return BT_SUCCESS;
+    return 1;
 
-  bt_suite_result = BT_SUCCESS;
+  bt_suite_result = 1;
   bt_test_id = id;
 
   if (bt_verbose >= BT_VERBOSE_ABSOLUTELY_ALL)
@@ -341,7 +341,7 @@ bt_test_suite_base(int (*fn)(const void *), const char *id, const void *fn_arg, 
     else if (WIFSIGNALED(s))
     {
       /* Stopped by signal */
-      bt_suite_result = BT_FAILURE;
+      bt_suite_result = 0;
 
       int sn = WTERMSIG(s);
       if (sn == SIGALRM)
@@ -361,8 +361,8 @@ bt_test_suite_base(int (*fn)(const void *), const char *id, const void *fn_arg, 
       bt_log("Core dumped");
   }
 
-  if (bt_suite_result == BT_FAILURE)
-    bt_result = BT_FAILURE;
+  if (!bt_suite_result)
+    bt_result = 0;
 
   bt_log_suite_result(bt_suite_result, NULL);
   bt_test_id = NULL;
@@ -373,9 +373,9 @@ bt_test_suite_base(int (*fn)(const void *), const char *id, const void *fn_arg, 
 int
 bt_exit_value(void)
 {
-  if (!list_tests || (list_tests && bt_result != BT_SUCCESS))
+  if (!list_tests || (list_tests && !bt_result))
     bt_log_overall_result(bt_result, "");
-  return bt_result == BT_SUCCESS ? EXIT_SUCCESS : EXIT_FAILURE;
+  return bt_result ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 /**
@@ -383,7 +383,7 @@ bt_exit_value(void)
  * @opts: includes all necessary data
  *
  * Should be called using macro bt_assert_batch().
- * Returns BT_SUCCESS or BT_FAILURE.
+ * Returns 1 or 0.
  */
 int
 bt_assert_batch__(struct bt_batch *opts)
@@ -393,8 +393,8 @@ bt_assert_batch__(struct bt_batch *opts)
   {
     int bt_suit_case_result = opts->test_fn(opts->out_buf, opts->data[i].in, opts->data[i].out);
 
-    if (bt_suit_case_result == BT_FAILURE)
-      bt_suite_result = BT_FAILURE;
+    if (bt_suit_case_result == 0)
+      bt_suite_result = 0;
 
     char b[BT_BUFFER_SIZE];
     snprintf(b, sizeof(b), "%s(", opts->test_fn_name);
@@ -403,7 +403,7 @@ bt_assert_batch__(struct bt_batch *opts)
     sprintf_concat(b, ") gives ");
     opts->out_fmt(b+strlen(b), sizeof(b)-strlen(b), opts->out_buf);
 
-    if (bt_suit_case_result == BT_FAILURE)
+    if (bt_suit_case_result == 0)
     {
       sprintf_concat(b, ", but expecting is ");
       opts->out_fmt(b+strlen(b), sizeof(b)-strlen(b), opts->data[i].out);

@@ -82,7 +82,7 @@ t_heap_insert(void)
     bt_assert(is_heap_valid(heap, num));
   }
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -110,7 +110,7 @@ t_heap_increase_decrease(void)
     bt_assert(is_heap_valid(heap, num));
   }
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -128,7 +128,7 @@ t_heap_delete(void)
     bt_assert(is_heap_valid(heap, num));
   }
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -139,7 +139,7 @@ t_heap_0(void)
   t_heap_increase_decrease();
   t_heap_delete();
 
-  return (heap[0] == SPECIAL_KEY) ? BT_SUCCESS : BT_FAILURE;
+  return heap[0] == SPECIAL_KEY;
 }
 
 static int
@@ -168,7 +168,7 @@ t_heap_insert_random(void)
 	bt_abort_msg("Did not find a number %d in heap.", expected[i]);
       }
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int

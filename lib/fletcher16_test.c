@@ -55,7 +55,7 @@ test_fletcher16(void *out_, const void *in_, const void *expected_out_)
   fletcher16_update(&ctxt, in, strlen(in));
   put_u16(out, fletcher16_compute(&ctxt));
 
-  return (*out == *expected_out) ? BT_SUCCESS : BT_FAILURE;
+  return *out == *expected_out;
 }
 
 static int
@@ -72,7 +72,7 @@ test_fletcher16_checksum(void *out_, const void *in_, const void *expected_out_)
   fletcher16_update(&ctxt, in, len);
   put_u16(out, fletcher16_final(&ctxt, len, len));
 
-  return (*out == *expected_out) ? BT_SUCCESS : BT_FAILURE;
+  return *out == *expected_out;
 }
 
 static int

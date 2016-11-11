@@ -31,7 +31,7 @@ test_ipa_pton(void *out_, const void *in_, const void *expected_out_)
     /* ip_addr == ip6_addr */
   }
 
-  return ipa_equal(*out, *expected_out) ? BT_SUCCESS : BT_FAILURE;
+  return ipa_equal(*out, *expected_out);
 }
 
 static int
@@ -105,7 +105,7 @@ test_ipa_ntop(void *out_, const void *in_, const void *expected_out_)
     ip6_ntop(ipa_to_ip6(*in), out);
 
   int result = strncmp(out, expected_out, ipa_is_ip4(*in) ? IP4_MAX_TEXT_LENGTH : IP6_MAX_TEXT_LENGTH) == 0;
-  return result ? BT_SUCCESS : BT_FAILURE;
+  return result;
 }
 
 static int

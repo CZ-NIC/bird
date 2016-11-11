@@ -69,7 +69,7 @@ t_buffer_push(void)
     BUFFER_PUSH(buf) = expected[i];
   is_buffer_as_expected(&buf);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -97,7 +97,7 @@ t_buffer_pop(void)
     BUFFER_PUSH(buf) = expected[i];
   is_buffer_as_expected(&buf);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -114,7 +114,7 @@ t_buffer_resize(void)
   is_buffer_as_expected(&buf);
   bt_assert(buf.size >= MAX_NUM);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -130,7 +130,7 @@ t_buffer_flush(void)
   BUFFER_FLUSH(buf);
   bt_assert(buf.used == 0);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int

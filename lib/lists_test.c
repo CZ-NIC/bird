@@ -111,7 +111,7 @@ t_add_tail(void)
   show_list();
   bt_assert(is_filled_list_well_linked());
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -135,7 +135,7 @@ t_add_head(void)
   show_list();
   bt_assert(is_filled_list_well_linked());
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static void
@@ -166,7 +166,7 @@ t_insert_node(void)
   bt_debug("\n");
   bt_assert(is_filled_list_well_linked());
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static void
@@ -218,7 +218,7 @@ t_remove_node(void)
     rem_node(&nodes[i]);
   bt_assert(is_empty_list_well_unlinked());
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -247,7 +247,7 @@ t_replace_node(void)
   bt_assert(tail.next == NODE &l.null);
   bt_assert(nodes[MAX_NUM-2].next == &tail);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -268,7 +268,7 @@ t_add_tail_list(void)
   bt_assert(nodes2[0].prev == &nodes[MAX_NUM-1]);
   bt_assert(l.tail == &nodes2[MAX_NUM-1]);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int

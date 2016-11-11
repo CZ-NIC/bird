@@ -66,7 +66,7 @@ t_as_path_match(void)
     rfree(lp);
   }
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -97,7 +97,7 @@ t_path_format(void)
 
   rfree(lp);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -152,7 +152,7 @@ t_path_include(void)
 
   rfree(lp);
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 static int
@@ -197,7 +197,7 @@ t_as_path_converting(void)
 		   "\032\0310\030\039\030\038\030\037\030\036\030\035\030\034\030\033\030\032\030\031\030\030",
 		   22));
 
-  return BT_SUCCESS;
+  return 1;
 }
 
 int
