@@ -270,7 +270,7 @@ cli_command(struct cli *c)
   lp_flush(c->parser_pool);
   res = cli_parse(&f);
   if (!res)
-    cli_printf(c, 9001, f.err_msg);
+    cli_printf(c, 9001, "Bad command (nearby '%s'): %s", f.err_token, f.err_msg);
 
   config_free(&f);
 }
