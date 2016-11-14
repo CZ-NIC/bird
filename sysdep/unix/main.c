@@ -205,6 +205,58 @@ unix_read_config(struct config **cp, char *name)
   return ret;
 }
 
+static char *
+format_parse_config_err(buffer *b, const struct config *c)
+{
+  int lino  = 1;
+  int linew = 1;
+  int epsln = 3;
+  char bfile[1024];
+  char bnum[12];
+
+  buffer_print(b, "%s, line %d (nearby '%s'): %s\n", c->err_file_name, c->err_lino, c->err_token, c->err_msg);
+
+  int fd = open(c->err_file_name, O_RDONLY);
+  if (fd < 0)
+    goto end;
+
+  while (1)
+  {
+    int chrs = read(fd, bfile, sizeof(bfile));
+    if (chrs <= 0)
+      if (errno == EINTR)
+	continue;
+      else
+	break;
+
+    for (char *chr = bfile; chr < bfile + chrs; chr++)
+    {
+      if ((lino >= (c->err_lino - epsln)) && (lino <= (c->err_lino + epsln)))
+      {
+	if (linew)
+	{
+	  /* The space at the beginning is there for birdc line code */
+	  buffer_print(b, " %3u%s", lino, (c->err_lino == lino ? " >> " : "    "));
+	  linew = 0;
+	}
+
+	buffer_print(b, "%c", *chr);
+      }
+
+      if (*chr == '\n')
+      {
+	lino++;
+	linew = 1;
+      }
+    }
+  }
+  close(fd);
+
+ end:
+  b->pos[-1] = 0;
+  return b->start;
+}
+
 static struct config *
 read_config(void)
 {
@@ -213,9 +265,15 @@ read_config(void)
   if (!unix_read_config(&conf, config_name))
     {
       if (conf->err_msg)
-	die("%s, line %d (nearby '%s'): %s", conf->err_file_name, conf->err_lino, conf->err_token, conf->err_msg);
+      {
+	buffer b;
+	LOG_BUFFER_INIT(b);
+	die("%s", format_parse_config_err(&b, conf));
+      }
       else
+      {
 	die("Unable to open configuration file %s: %m", config_name);
+      }
     }
 
   return conf;
@@ -230,9 +288,15 @@ async_config(void)
   if (!unix_read_config(&conf, config_name))
     {
       if (conf->err_msg)
-	log(L_ERR "%s, line %d: %s", conf->err_file_name, conf->err_lino, conf->err_msg);
+      {
+	buffer b;
+	LOG_BUFFER_INIT(b);
+	log(L_ERR "%s", format_parse_config_err(&b, conf));
+      }
       else
+      {
 	log(L_ERR "Unable to open configuration file %s: %m", config_name);
+      }
       config_free(conf);
     }
   else
@@ -251,9 +315,15 @@ cmd_read_config(char *name)
   if (!unix_read_config(&conf, name))
     {
       if (conf->err_msg)
-	cli_msg(8002, "%s, line %d: %s", conf->err_file_name, conf->err_lino, conf->err_msg);
+      {
+	buffer b;
+	LOG_BUFFER_INIT(b);
+	cli_msg(8002, "%s", format_parse_config_err(&b, conf));
+      }
       else
+      {
 	cli_msg(8002, "%s: %m", name);
+      }
       config_free(conf);
       conf = NULL;
     }
