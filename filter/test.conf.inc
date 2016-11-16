@@ -1,6 +1,3 @@
 
-print "Entering include";
-print "Should be 2:  ", 1+1;
-print "Leaving include";
+bt_assert(1+1 = 2);
 i = 42;
-
