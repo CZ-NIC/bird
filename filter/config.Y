@@ -406,7 +406,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	PREPEND, FIRST, LAST, LAST_NONAGGREGATED, MATCH,
 	EMPTY,
 	FILTER, WHERE, EVAL,
-	BT_ASSERT, BT_TEST_SUITE)
+	BT_ASSERT, BT_TEST_SUITE, FORMAT)
 
 %nonassoc THEN
 %nonassoc ELSE
@@ -916,6 +916,7 @@ term:
  | ROA_CHECK '(' rtable ')' { $$ = f_generate_roa_check($3, NULL, NULL); }
  | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_generate_roa_check($3, $5, $7); }
 
+ | FORMAT '(' term ')' {  $$ = f_new_inst(); $$->code = P('f','m'); $$->a1.p = $3; }
 
 /* | term '.' LEN { $$->code = P('P','l'); } */
 

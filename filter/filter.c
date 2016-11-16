@@ -563,6 +563,14 @@ f_rta_cow(void)
   (*f_rte)->attrs = rta_do_cow((*f_rte)->attrs, f_pool);
 }
 
+static char *
+val_format_str(struct f_val v) {
+  buffer b;
+  LOG_BUFFER_INIT(b);
+  val_format(v, &b);
+  return lp_strdup(f_pool, b.start);
+}
+
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
 #define runtime(fmt, ...) do { \
@@ -1475,6 +1483,13 @@ interpret(struct f_inst *what)
     res.type = T_ENUM_ROA;
     res.val.i = net_roa_check(table, v1.val.net, as);
 
+    break;
+
+  case P('f','m'):	/* Format */
+    ONEARG;
+
+    res.type = T_STRING;
+    res.val.s = val_format_str(v1);
     break;
 
   case P('a','s'):	/* Birdtest Assert */
