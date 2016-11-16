@@ -203,6 +203,7 @@ else: {
 ["][^"\n]*["] {
   yytext[yyleng-1] = 0;
   cf_lval.t = cfg_strdup(yytext+1);
+  yytext[yyleng-1] = '"';
   return TEXT;
 }
 
