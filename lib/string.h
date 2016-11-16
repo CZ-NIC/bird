@@ -13,6 +13,8 @@
 #include <string.h>
 #include <strings.h>
 
+#include "lib/resource.h"
+
 int bsprintf(char *str, const char *fmt, ...);
 int bvsprintf(char *str, const char *fmt, va_list args);
 int bsnprintf(char *str, int size, const char *fmt, ...);
@@ -35,6 +37,15 @@ xstrdup(const char *c)
 {
   size_t l = strlen(c) + 1;
   char *z = xmalloc(l);
+  memcpy(z, c, l);
+  return z;
+}
+
+static inline char *
+lp_strdup(linpool *lp, const char *c)
+{
+  size_t l = strlen(c) + 1;
+  char *z = lp_allocu(lp, l);
   memcpy(z, c, l);
   return z;
 }
