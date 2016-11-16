@@ -411,7 +411,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc THEN
 %nonassoc ELSE
 
-%type <x> term block cmds cmds_int cmd function_body constant constructor print_one print_list var_list var_listn dynamic_attr static_attr function_call symbol bgp_path_expr bt_assert
+%type <x> term block cmds cmds_int cmd function_body constant constructor print_one print_list var_list var_listn dynamic_attr static_attr function_call symbol bgp_path_expr
 %type <f> filter filter_body where_filter
 %type <i> type break_command ec_kind
 %type <i32> cnum
@@ -916,7 +916,6 @@ term:
  | ROA_CHECK '(' rtable ')' { $$ = f_generate_roa_check($3, NULL, NULL); }
  | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_generate_roa_check($3, $5, $7); }
 
- | bt_assert { $$ = $1; }
 
 /* | term '.' LEN { $$->code = P('P','l'); } */
 
@@ -1049,18 +1048,13 @@ cmd:
       $$->a1.p = $2;
       $$->a2.p = build_tree( $4 );
    }
- | bt_assert ';' { $$ = $1; }
-
 
  | rtadot dynamic_attr '.' EMPTY ';' { $$ = f_generate_empty($2); }
  | rtadot dynamic_attr '.' PREPEND '(' term ')' ';'   { $$ = f_generate_complex( P('A','p'), 'x', $2, $6 ); }
  | rtadot dynamic_attr '.' ADD '(' term ')' ';'       { $$ = f_generate_complex( P('C','a'), 'a', $2, $6 ); }
  | rtadot dynamic_attr '.' DELETE '(' term ')' ';'    { $$ = f_generate_complex( P('C','a'), 'd', $2, $6 ); }
  | rtadot dynamic_attr '.' FILTER '(' term ')' ';'    { $$ = f_generate_complex( P('C','a'), 'f', $2, $6 ); }
- ;
-
- bt_assert:
-   BT_ASSERT '(' get_cf_position term get_cf_position ')' { $$ = assert_done($4, $3 + 1, $5 - 1); }
+ | BT_ASSERT '(' get_cf_position term get_cf_position ')' ';' { $$ = assert_done($4, $3 + 1, $5 - 1); }
  ;
 
 get_cf_position:

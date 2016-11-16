@@ -1477,7 +1477,7 @@ interpret(struct f_inst *what)
 
     break;
 
-  case P('a', 's'):	/* Birdtest Assert */
+  case P('a','s'):	/* Birdtest Assert */
     ONEARG;
 
     if (v1.type != T_BOOL)
