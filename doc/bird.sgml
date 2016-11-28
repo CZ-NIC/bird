@@ -256,17 +256,18 @@ network. Note that although most protocols are interested in receiving just
 selected routes, some protocols (e.g. the <cf/Pipe/ protocol) receive and
 process all entries in routing tables (accepted by filters).
 
-<p><label id="dsc-table-sorted">Usually, a routing table just chooses a selected route
-from a list of entries for one network. But if the <cf/sorted/ option is
-activated, these lists of entries are kept completely sorted (according to
-preference or some protocol-dependent metric). This is needed for some features
-of some protocols (e.g. <cf/secondary/ option of BGP protocol, which allows to
-accept not just a selected route, but the first route (in the sorted list) that
-is accepted by filters), but it is incompatible with some other features (e.g.
-<cf/deterministic med/ option of BGP protocol, which activates a way of choosing
-selected route that cannot be described using comparison and ordering). Minor
-advantage is that routes are shown sorted in <cf/show route/, minor disadvantage
-is that it is slightly more computationally expensive.
+<p><label id="dsc-table-sorted">Usually, a routing table just chooses a
+selected route from a list of entries for one network. But if the <cf/sorted/
+option is activated, these lists of entries are kept completely sorted
+(according to preference or some protocol-dependent metric). This is needed for
+some features of some protocols (e.g. <cf/secondary/ option of BGP protocol,
+which allows to accept not just a selected route, but the first route (in the
+sorted list) that is accepted by filters), but it is incompatible with some
+other features (e.g.  <cf/deterministic med/ option of BGP protocol, which
+activates a way of choosing selected route that cannot be described using
+comparison and ordering). Minor advantage is that routes are shown sorted in
+<cf/show route/, minor disadvantage is that it is slightly more computationally
+expensive.
 
 
 <sect>Graceful restart
@@ -301,13 +302,9 @@ extensive way.
 <p>In the config, everything on a line after <cf/#/ or inside <cf>/* */</cf> is
 a comment, whitespace characters are treated as a single space. If there's a
 variable number of options, they are grouped using the <cf/{ }/ brackets. Each
-option is terminated by a <cf/;/. Configuration is case sensitive. There are two
-ways how to name symbols (like protocol names, filter names, constants etc.). You
-can either use a simple string starting with a letter followed by any
-combination of letters and numbers (e.g. "R123", "myfilter", "bgp5") or you can
-enclose the name into apostrophes (<cf/'/) and than you can use any combination
-of numbers, letters. hyphens, dots and colons (e.g. "'1:strange-name'",
-"'-NAME-'", "'cool::name'").
+option is terminated by a <cf/;/. Pay attention that you have to put a
+semicolon <cf/;/ after <cf/{ }/ brackets inside the protocol's block but not
+after definitions of protocols. Configuration is case sensitive.
 
 <p>Here is an example of a simple config file. It enables synchronization of
 routing tables with OS kernel, scans for new network interfaces every 10 seconds
@@ -330,6 +327,89 @@ protocol rip {
 	interface "*";
 }
 </code>
+
+
+<sect>Syntax
+<label id="global-syntax">
+
+<p><descrip>
+	<tag><label id="syntax-num"><m/num/</tag>
+	<m/num/ is any number written in decimal form (e.g. <cf/42/) or
+	hexadecimal form (e.g. <cf/0x2a/).
+
+	<tag><label id="syntax-time"><m/time/</tag>
+	<m/time/ is decimal number (without units) expressing time period in
+	seconds.
+
+	<tag><label id="syntax-time-unit"><m/time_unit/</tag>
+	<m/time_unit/ is decimal number with time unit expressing time period.
+	Allowed units are <cf/us/, <cf/ms/ and <cf/s/ (e.g. <cf/500ms/).
+
+	<tag><label id="syntax-strftime"><m/strftime/</tag>
+	<m/strftime/ is a format string using <it/strftime(3)/ notation (see
+	<it/man strftime/ for details).
+
+	<tag><label id="syntax-switch"><m/switch/</tag>
+	<m/switch/ supplies a literal <cf/on/, <cf/off/, <cf/yes/ or <cf/no/.
+
+	<tag><label id="syntax-filename"><m/filename/</tag>
+	<m/filename/ is relative or absolute file path to some file. It is
+	required to close it between double quotation mark <cf/"/...<cf/"/
+
+	<tag><label id="syntax-string"><m/string/</tag>
+	<m/string/ is a sequence of any letters, numbers, spaces and other chars
+	enclosed in double quotation marks <cf/"/.
+
+	<tag><label id="syntax-name"><m/name/</tag>
+	<m/name/ is a name for symbol of any table, protocol, variable, filter
+	etc. You can either use a simple string starting with a letter followed
+	by any combination of letters and numbers (e.g.  <cf/R123/,
+	<cf/myfilter/ or <cf/bgp5/) or you can enclose the name into
+	apostrophes <cf/'/ and than you can use any combination of numbers,
+	letters, hyphens, dots and colons (e.g. <cf/'1:strange-name'/,
+	<cf/'-NAME-'/, <cf/'cool::name'/).
+
+	<tag><label id="syntax-pattern"><m/pattern/</tag>
+	<m/pattern/ is a name of symbol enclosed into double quotation mark
+	<cf/"/ extended with asterixs <cf/*/ and question marks <cf/?/. An
+	asterisk supplies any consequent sequence of chars and a question mark
+	supplies none or any but only one character.
+
+	<tag><label id="syntax-net"><m/net/</tag>
+	BIRD v2.x and higher supports various types of the protocol
+	families. <m/net/ is alias for any network of any supported protocol
+	family. A list of supported protocol families is below.
+	<itemize>
+		<item><m/inet4/ is IPv4 address and prefix length or mask (e.g.
+		    <cf>192.168.1.0/24</cf> or <cf/192.168.1.0:255.255.255.0/)
+		<item><m/inet6/ is IPv6 address and prefix length (e.g.
+		    <cf>fe80::782c:9265:cf22:c5fa/64</cf>)
+		<item><cf/vpn4/ <m/num/<cf/:/<m/num/ <m/inet4/ BGP/MPLS VPNs.
+		    (e.g. <cf>vpn4 100:120 192.168.1.0/24 }</cf>)
+		<item><cf/vpn6/ <m/num/<cf/:/<m/num/ <m/inet6/ BGP/MPLS VPNs.
+		    (e.g. <cf>vpn6 100:130 fe80::1234/64</cf>)
+		<item><cf/roa4/ <m/inet4/ <cf/max/ <m/num/ <cf/as/ <m/num/
+		    (e.g. <cf>roa4 192.168.1.0/24 max 26 as1234</cf>)
+		<item><cf/roa6/ (e.g. <cf>roa6 2001:1234::/64 </cf>)
+		<item><cf/flow4 {/ <m/option/<cf/;/ <m/.../ <cf/}/ is flow specification rules <rfc id="5575">. An argument for some <m/options/ is a sequence of one or more <m/op-value/ pairs separeted by logical operator <cf/&&/ or <cf/||/. Allowed <m/op/ are <cf/=/, <cf/!=/, <cf/</, <cf/<=/, <cf/>/, <cf/>=/, <cf/true/ and <cf/false/. It is possible to write ranges using alternative double dots <m/num/<cf/../<m/num/ notation (e.g. <cf/80..90/). Valid range of <m/value/ depends on the particular <m/option/.
+		<itemize>
+			<item><cf/dst/ <m/inet4/ matches destination prefixes (e.g. <cf>dst 192.168.0.0/16</cf>). Only this option is mandatory.
+			<item><cf/src/ <m/inet4/ matches source prefixes (e.g. <cf>src 10.0.0.0/8</cf>)
+			<item><cf/proto/ <m/op-value pair(s)/ matches a numbers of IP protocol (e.g. <cf>proto = 80</cf>)
+			<item><cf/port/ <m/op-value pair(s)/ matches source or destination TCP/UDP ports.
+			<item><cf/dport/ <m/op-value pair(s)/ a destination ports
+			<item><cf/sport/ <m/op-value pair(s)/ a source ports
+			<item><cf/icmp type/ <m/op-value pair(s)/ is used to match the type field of an ICMP packet
+			<item><cf/icmp code/ <m/op-value pair(s)/ is used to match the code field of an ICMP packet
+			<item><cf/tcp flags/ <m/value/ <cf>/</cf> <m/bitmask .../
+			<item><cf/length/ <m/op-value .../ a packet length
+			<item><cf/dscp/ <m/op-value .../ a diffserv Code Point
+			<item><cf/fragment/ <cf/dont_fragment/, <cf/is_fragment/, <cf/first_fragment/, <cf/last_fragment/
+		</itemize>
+		(e.g. <cf>flow4 { dst 10.0.0.0/8; proto = 23; dport > 24 && < 30 || 40..50,60..70,80 && >= 90; fragment dont_fragment, is_fragment || !first_fragment; }</cf>)
+		<item><m/flow6/ (e.g. <cf/flow6 { }/)
+	</itemize>
+</descrip>
 
 
 <sect>Global options
@@ -456,9 +536,9 @@ protocol rip {
 	used for other commands and <cf/log/ is used in a log file.
 
 	"<m/format1/" is a format string using <it/strftime(3)/ notation (see
-	<it/man strftime/ for details). <m/limit> and "<m/format2/" allow to
+	<it/man strftime/ for details). <m/limit/ "<m/format2/" allows to
 	specify the second format string for times in past deeper than <m/limit/
- 	seconds. There are few shorthands: <cf/iso long/ is a ISO 8601 date/time
+	seconds. There are few shorthands: <cf/iso long/ is a ISO 8601 date/time
 	format (YYYY-MM-DD hh:mm:ss) that can be also specified using <cf/"%F %T"/.
 	<cf/iso short/ is a variant of ISO 8601 that uses just the time format
 	(hh:mm:ss) for near times (up to 20 hours in the past) and the date
@@ -1754,7 +1834,7 @@ protocol bfd [&lt;name&gt;] {
 	computation.
 
 	<tag>password "<M>text</M>"</tag>
-	Specifies a password used for authentication. See <ref id="dsc-pass"
+	Specifies a password used for authentication. See <ref id="proto-pass"
 	name="password"> common option for detailed description. Note that
 	password option <cf/algorithm/ is not available in BFD protocol. The
 	algorithm is selected by <cf/authentication/ option for all passwords.
