@@ -23,7 +23,7 @@ struct config {
   list protos;				/* Configured protocol instances (struct proto_config) */
   list tables;				/* Configured routing tables (struct rtable_config) */
   list logfiles;			/* Configured log files (sysdep) */
-  list tests;				/* Configured unit tests */
+  list tests;				/* Configured unit tests (f_bt_test_suite) */
 
   int mrtdump_file;			/* Configured MRTDump file (sysdep, fd in unix) */
   char *syslog_name;			/* Name used for syslog (NULL -> no syslog) */
