@@ -20,7 +20,7 @@
 
 #define put_as put_u32
 #define get_as get_u32
-#define BS  4 /* Base (default) size of ASN (autonomous system number) */
+#define BS  4	/* Default block size of ASN (autonomous system number) */
 
 struct adata *
 as_path_prepend(struct linpool *pool, struct adata *olda, u32 as)
