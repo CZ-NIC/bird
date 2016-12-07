@@ -155,6 +155,7 @@ t_path_include(void)
   return 1;
 }
 
+#if 0
 static int
 t_as_path_converting(void)
 {
@@ -199,6 +200,7 @@ t_as_path_converting(void)
 
   return 1;
 }
+#endif
 
 int
 main(int argc, char *argv[])
@@ -208,7 +210,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_as_path_match, "Testing AS path matching and some a-path utilities.");
   bt_test_suite(t_path_format, "Testing formating as path into byte buffer");
   bt_test_suite(t_path_include, "Testing including a AS number in AS path");
-  bt_test_suite(t_as_path_converting, "Testing as_path_convert_to_*() output constancy");
+  // bt_test_suite(t_as_path_converting, "Testing as_path_convert_to_*() output constancy");
 
   return bt_exit_value();
 }
