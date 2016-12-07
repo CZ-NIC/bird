@@ -44,6 +44,7 @@
 #undef CONFIG_OSPF
 #undef CONFIG_PIPE
 #undef CONFIG_BABEL
+#undef CONFIG_RPKI
 
 /* We use multithreading */
 #undef USE_PTHREADS
@@ -69,5 +70,8 @@
 
 /* We have execinfo.h */
 #undef HAVE_EXECINFO_H
+
+/* We have LibSSH */
+#undef HAVE_LIBSSH
 
 #define CONFIG_PATH ?

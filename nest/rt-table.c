@@ -1301,7 +1301,7 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
  */
 
 void
-rte_update2(struct channel *c, net_addr *n, rte *new, struct rte_src *src)
+rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
@@ -2694,6 +2694,12 @@ rt_show(struct rt_show_data *d)
 	      return;
 	    }
 	}
+
+      if (d->table->addr_type != d->addr->type)
+      {
+	cli_msg(8001, "Incompatible type of prefix/ip with table");
+	return;
+      }
 
       if (d->show_for)
 	n = net_route(d->table, d->addr);

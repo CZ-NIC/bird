@@ -3788,8 +3788,8 @@ protocol rip [&lt;name&gt;] {
 <p>RIP defines two route attributes:
 
 <descrip>
-	<tag><label id="rta-rip-metric">int rip_metric/</tag>
-	RIP metric of the route (ranging from 0 to <cf/infinity/).  When routes
+	<tag>int <cf/rip_metric/</tag>
+	RIP metric of the route (ranging from 0 to <cf/infinity/). When routes
 	from different RIP instances are available and all of them have the same
 	preference, BIRD prefers the route with lowest <cf/rip_metric/. When a
 	non-RIP route is exported to RIP, the default metric is 1.
@@ -3818,6 +3818,184 @@ protocol rip {
         export filter { print "exporting"; accept; };
 }
 </code>
+
+<sect>RPKI
+
+<sect1>Introduction
+
+<p>The Resource Public Key Infrastructure (RPKI) is mechanism for origin
+validation of BGP routes (RFC 6480). BIRD supports only so-called RPKI-based
+origin validation. There is implemented RPKI to Router (RPKI-RTR) protocol (RFC
+6810).  It uses some of the RPKI data to allow a router to verify that the
+autonomous system announcing an IP address prefix is in fact authorized to do
+so. This is not crypto checked so can be violated. But it should prevent the
+vast majority of accidental hijackings on the Internet today, e.g. the famous
+Pakastani accidental announcement of YouTube's address space.
+
+<p>The RPKI-RTR protocol receives and maintains a set of ROAs from a cache
+server (also called validator). You can validate routes (RFC 6483) using
+function <cf/roa_check()/ in filter and set it as import filter at the BGP
+protocol. BIRD should re-validate all of affected routes after RPKI update by
+RFC 6811, but we don't support it yet! You can use a BIRD's client command
+<cf>reload in <m/bgp_protocol_name/</cf> for manual call of revalidation of all
+routes.
+
+<sect1>Supported transports
+<itemize>
+        <item>Unprotected transport over TCP uses a port 323. The cache server
+        and BIRD router should be on the same trusted and controlled network
+        for security reasons.
+        <item>SSHv2 encrypted transport connection uses the normal SSH port
+        22.
+</itemize>
+
+<sect1>Configuration
+
+<p>We currently support just one cache server per protocol. However you can
+define more RPKI protocols generally.
+
+<code>
+protocol rpki [&lt;name&gt;] {
+        roa4 { table &lt;tab&gt;; };
+        roa6 { table &lt;tab&gt;; };
+        remote &lt;ip&gt; | "&lt;domain&gt;" [port &lt;num&gt;];
+        port &lt;num&gt;;
+        refresh [keep] &lt;num&gt;;
+        retry [keep] &lt;num&gt;;
+        expire [keep] &lt;num&gt;;
+        transport tcp;
+        transport ssh {
+                bird private key "&lt;/path/to/id_rsa&gt;";
+                remote public key "&lt;/path/to/known_host&gt;";
+                user "&lt;name&gt;";
+        };
+}
+</code>
+
+<p>Alse note that you have to specify ROA table into which will be imported
+routes from a cache server. If you want to import only IPv4 prefixes you have
+to specify only roa4 table. Similarly with IPv6 prefixes only. If you want to
+fetch both IPv4 and even IPv6 ROAs you have to specify both types of ROA
+tables.
+
+<sect2>RPKI protocol options
+
+<descrip>
+        <tag>remote <m/ip/ | "<m/hostname/" [port <m/num/]</tag> Specifies
+        a destination address of the cache server.  Can be specified by an IP
+        address or by full domain name string.  Only one cache can be specified
+        per protocol. This option is required.
+
+        <tag>port <m/num/</tag> Specifies the port number. The default port
+        number is 323 for transport without any encryption and 22 for transport
+        with SSH encryption.
+
+        <tag>refresh [keep] <m/num/</tag> Time period in seconds. Tells how
+        long to wait before next attempting to poll the cache using a Serial
+        Query or a Reset Query packet. Must be lower than 86400 seconds (one
+        day). Too low value can caused a false positive detection of
+        network connection problems.  A keyword <cf/keep/ suppresses updating
+        this value by a cache server.
+        Default: 3600 seconds
+
+        <tag>retry [keep] <m/num/</tag> Time period in seconds between a failed
+        Serial/Reset Query and a next attempt.  Maximum allowed value is 7200
+        seconds (two hours). Too low value can caused a false positive
+        detection of network connection problems.  A keyword <cf/keep/
+        suppresses updating this value by a cache server.
+        Default: 600 seconds
+
+        <tag>expire [keep] <m/num/</tag> Time period in seconds. Received
+        records are deleted if the client was unable to successfully refresh
+        data for this time period.  Must be in range from 600 seconds (ten
+        minutes) to 172800 seconds (two days).  A keyword <cf/keep/
+        suppresses updating this value by a cache server.
+        Default: 7200 seconds
+
+        <tag>transport tcp</tag> Unprotected transport over TCP. It's a default
+        transport. Should be used only on secure private networks.
+        Default: tcp
+
+        <tag>transport ssh { <m/SSH transport options.../ }</tag> It enables a
+        SSHv2 transport encryption. Cannot be combined with a TCP transport.
+        Default: off
+</descrip>
+
+<sect3>SSH transport options
+<descrip>
+	<tag>bird private key "<m>/path/to/id_rsa</m>"</tag>
+	A path to the BIRD's private SSH key for authentication.
+	It can be a <cf><m>id_rsa</m></cf> file.
+
+	<tag>remote public key "<m>/path/to/known_host</m>"</tag>
+	A path to the cache's public SSH key for verification identity
+	of the cache server. It could be a path to <cf><m>known_host</m></cf> file.
+
+	<tag>user "<m/name/"</tag>
+	A SSH user name for authentication. This option is a required.
+</descrip>
+
+<sect1>Examples
+<sect2>BGP origin validation
+<p>Policy: Don't import <cf/ROA_INVALID/ routes.
+<code>
+roa4 table r4;
+roa6 table r6;
+
+protocol rpki {
+	debug all;
+	
+	roa4 { table r4; };
+	roa6 { table r6; };
+
+	# Please, do not use rpki-validator.realmv6.org in production
+	remote "rpki-validator.realmv6.org" port 8282;
+	
+	retry keep 5;
+	refresh keep 30;
+	expire 600;
+}
+
+filter peer_in {
+	if (roa_check(r4, net, bgp_path.last) = ROA_INVALID ||
+	    roa_check(r6, net, bgp_path.last) = ROA_INVALID) then
+	{
+		print "Ignore invalid ROA ", net, " for ASN ", bgp_path.last;
+		reject;
+	}
+	accept;
+}
+
+protocol bgp {
+	debug all;
+	local as 65000;
+	neighbor 192.168.2.1 as 65001;
+	import filter peer_in;
+}
+</code>
+
+<sect2>SSHv2 transport encryption
+<code>
+roa4 table r4;
+roa6 table r6;
+
+protocol rpki {
+	debug all;
+	
+	roa4 { table r4; };
+	roa6 { table r6; };
+	
+	remote 127.0.0.1 port 2345;
+	transport ssh {
+		bird private key "/home/birdgeek/.ssh/id_rsa";
+		remote public key "/home/birdgeek/.ssh/known_hosts";
+		user "birdgeek";
+	};
+	
+	# Default interval values
+}
+</code>
+
 
 
 <sect>Static
