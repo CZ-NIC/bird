@@ -12,8 +12,12 @@
 #include <errno.h>
 
 #include "lib/resource.h"
-#include "lib/libssh.h"
+#ifdef HAVE_LIBSSH
+#define LIBSSH_LEGACY_0_4
+#include <libssh/libssh.h>
+#endif
 
+#ifdef HAVE_LIBSSH
 struct ssh_sock {
     const char *username;		/* (Required) SSH user name */
     const char *server_hostkey_path;	/* (Optional) Filepath to the SSH public key of remote side, can be knownhost file */
@@ -30,6 +34,7 @@ struct ssh_sock {
 #define SK_SSH_SUBSYSTEM 	5	/* Internal */
 #define SK_SSH_ESTABLISHED	6	/* Final state */
 };
+#endif
 
 typedef struct birdsock {
   resource r;

@@ -10,6 +10,7 @@ AC_ARG_ENABLE(debug,	[  --enable-debug          enable internal debugging routin
 AC_ARG_ENABLE(memcheck,	[  --enable-memcheck       check memory allocations when debugging (default: enabled)],,enable_memcheck=yes)
 AC_ARG_ENABLE(client,	[  --enable-client         enable building of BIRD client (default: enabled)],,enable_client=yes)
 AC_ARG_ENABLE(pthreads,	[  --enable-pthreads       enable POSIX threads support (default: detect)],,enable_pthreads=try)
+AC_ARG_ENABLE(libssh,	[  --enable-libssh	   enable LibSSH support together with RPKI protocol (default: detect)],,enable_libssh=try)
 AC_ARG_WITH(sysconfig,	[  --with-sysconfig=FILE   use specified BIRD system configuration file])
 AC_ARG_WITH(protocols,	[  --with-protocols=LIST   include specified routing protocols (default: all)],,[with_protocols="all"])
 AC_ARG_WITH(sysinclude,	[  --with-sysinclude=PATH  search for system includes on specified place])
@@ -86,6 +87,21 @@ if test "$enable_pthreads" != no ; then
 	fi
 fi
 
+if test "$enable_libssh" != no ; then
+	AC_CHECK_LIB(ssh, ssh_connect)
+	if test $ac_cv_lib_ssh_ssh_connect = yes ; then
+		proto_rpki=rpki
+		enable_libssh=yes
+		AC_DEFINE(HAVE_LIBSSH)
+	else
+		if test "$enable_libssh" = yes ; then
+			AC_MSG_ERROR([LibSSH not available.])
+		else
+			enable_libssh=no
+		fi
+	fi
+fi
+	
 if test "$bird_cflags_default" = yes ; then
 	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_wno_pointer_sign, -Wno-pointer-sign, -Wall)
 	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_fno_strict_aliasing, -fno-strict-aliasing)
@@ -168,7 +184,7 @@ fi
 AC_SUBST(iproutedir)
 
 # all_protocols="$proto_bfd babel bgp ospf pipe radv rip static"
-all_protocols="$proto_bfd babel ospf pipe radv rip rpki static "
+all_protocols="$proto_bfd ospf pipe radv rip $proto_rpki static "
 
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
@@ -227,7 +243,6 @@ if test "$enable_debug" = yes ; then
 fi
 
 DAEMON_LIBS=
-AC_CHECK_LIB(dl, dlopen, DAEMON_LIBS="-ldl")
 AC_SUBST(DAEMON_LIBS)
 
 CLIENT=birdcl

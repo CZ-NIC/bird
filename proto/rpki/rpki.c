@@ -887,7 +887,7 @@ rpki_check_config(struct rpki_config *cf)
     /* Set default port numbers */
     switch (cf->tr_config.type)
     {
-    case RPKI_SSH_PORT:
+    case RPKI_TR_SSH:
       cf->port = RPKI_SSH_PORT;
       break;
     default:

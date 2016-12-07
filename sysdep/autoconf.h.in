@@ -68,4 +68,7 @@
 /* We have stdint.h */
 #undef HAVE_STDINT_H
 
+/* We have LibSSH */
+#undef HAVE_LIBSSH
+
 #define CONFIG_PATH ?

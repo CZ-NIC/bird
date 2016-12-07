@@ -1019,7 +1019,7 @@ rpki_send_error_pdu(struct rpki_cache *cache, const enum pdu_error_type error_co
 
   u32 pdu_size = 16 + err_pdu_len + msg_len;
   byte pdu[pdu_size];
-  memset(pdu, sizeof(pdu), 0);
+  memset(pdu, 0, sizeof(pdu));
 
   struct pdu_error *e = (void *) pdu;
   e->ver = cache->version;

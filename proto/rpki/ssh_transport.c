@@ -16,7 +16,6 @@
 #include <sys/time.h>
 
 #include "rpki.h"
-#include "lib/libssh.h"
 
 static int
 rpki_tr_ssh_open(struct rpki_tr_sock *tr)
@@ -25,13 +24,6 @@ rpki_tr_ssh_open(struct rpki_tr_sock *tr)
   struct rpki_config *cf = (void *) cache->p->p.cf;
   struct rpki_tr_ssh_config *ssh_cf = (void *) cf->tr_config.spec;
   sock *sk = tr->sk;
-
-  const char *err_msg;
-  if ((err_msg = load_libssh()) != NULL)
-  {
-    CACHE_TRACE(D_EVENTS, cache, "%s", err_msg);
-    return RPKI_TR_ERROR;
-  }
 
   sk->type = SK_SSH_ACTIVE;
   sk->ssh = mb_allocz(sk->pool, sizeof(struct ssh_sock));

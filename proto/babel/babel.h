@@ -23,10 +23,6 @@
 #include "lib/string.h"
 #include "sysdep/unix/timer.h"
 
-#ifndef IPV6
-#error "The Babel protocol only speaks IPv6"
-#endif
-
 #define EA_BABEL_METRIC		EA_CODE(EAP_BABEL, 0)
 #define EA_BABEL_ROUTER_ID	EA_CODE(EAP_BABEL, 1)
 

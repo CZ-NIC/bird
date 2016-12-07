@@ -36,7 +36,6 @@
 #include "lib/socket.h"
 #include "lib/event.h"
 #include "lib/string.h"
-#include "lib/libssh.h"
 #include "nest/iface.h"
 
 #include "sysdep/unix/unix.h"
@@ -1070,6 +1069,7 @@ sk_free_bufs(sock *s)
   }
 }
 
+#ifdef HAVE_LIBSSH
 static void
 sk_ssh_free(sock *s)
 {
@@ -1095,6 +1095,7 @@ sk_ssh_free(sock *s)
     ssh->session = NULL;
   }
 }
+#endif
 
 static void
 sk_free(resource *r)
@@ -1103,8 +1104,10 @@ sk_free(resource *r)
 
   sk_free_bufs(s);
 
+#ifdef HAVE_LIBSSH
   if (s->type == SK_SSH || s->type == SK_SSH_ACTIVE)
     sk_ssh_free(s);
+#endif
 
   if (s->fd < 0)
     return;
@@ -1399,6 +1402,7 @@ sk_passive_connected(sock *s, int type)
   return 1;
 }
 
+#ifdef HAVE_LIBSSH
 /*
  * Return SSH_OK or SSH_AGAIN or SSH_ERROR
  */
@@ -1591,6 +1595,7 @@ sk_open_ssh(sock *s)
  err:
   return -1;
 }
+#endif
 
 /**
  * sk_open - open a socket
@@ -1657,10 +1662,12 @@ sk_open(sock *s)
     do_bind = bind_port || ipa_nonzero(bind_addr);
     break;
 
+#ifdef HAVE_LIBSSH
   case SK_SSH_ACTIVE:
     s->ttx = "";			/* Force s->ttx != s->tpos */
     fd = sk_open_ssh(s);
     break;
+#endif
 
   case SK_UDP:
     fd = socket(af, SOCK_DGRAM, IPPROTO_UDP);
@@ -1935,6 +1942,7 @@ sk_maybe_write(sock *s)
     reset_tx_buffer(s);
     return 1;
 
+#ifdef HAVE_LIBSSH
   case SK_SSH:
     while (s->ttx != s->tpos)
     {
@@ -1954,6 +1962,7 @@ sk_maybe_write(sock *s)
     }
     reset_tx_buffer(s);
     return 1;
+#endif
 
   case SK_UDP:
   case SK_IP:
@@ -2070,6 +2079,7 @@ call_rx_hook(sock *s, int size)
   }
 }
 
+#ifdef HAVE_LIBSSH
 static int
 sk_read_ssh(sock *s)
 {
@@ -2114,6 +2124,7 @@ sk_read_ssh(sock *s)
 
   return 0; /* No data is available on the socket */
 }
+#endif
 
  /* sk_read() and sk_write() are called from BFD's event loop */
 
@@ -2154,8 +2165,10 @@ sk_read(sock *s, int revents)
       return 0;
     }
 
+#ifdef HAVE_LIBSSH
   case SK_SSH:
     return sk_read_ssh(s);
+#endif
 
   case SK_MAGIC:
     return s->rx_hook(s, 0);
@@ -2195,6 +2208,7 @@ sk_write(sock *s)
       return 0;
     }
 
+#ifdef HAVE_LIBSSH
   case SK_SSH_ACTIVE:
     {
       switch (sk_ssh_connect(s))
@@ -2213,6 +2227,7 @@ sk_write(sock *s)
       }
       return 0;
     }
+#endif
 
   default:
     if (s->ttx != s->tpos && sk_maybe_write(s) > 0)
