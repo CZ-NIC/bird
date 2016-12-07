@@ -79,7 +79,7 @@ static const char *str_pdu_type_[] = {
   [ERROR] 			= "Error"
 };
 
-static const char * const str_pdu_type(uint type) {
+static const char *str_pdu_type(uint type) {
   if (type < PDU_TYPE_MAX)
     return str_pdu_type_[type];
   else
@@ -886,7 +886,7 @@ rpki_rx_packet(struct rpki_cache *cache, struct pdu_header *pdu)
 }
 
 int
-rpki_rx_hook(struct birdsock *sk, int size)
+rpki_rx_hook(struct birdsock *sk, uint size)
 {
   struct rpki_cache *cache = sk->data;
   struct rpki_proto *p = cache->p;
@@ -894,7 +894,7 @@ rpki_rx_hook(struct birdsock *sk, int size)
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
 
-  DBG("rx hook got %d bytes \n", size);
+  DBG("rx hook got %u bytes \n", size);
 
   while (end >= pkt_start + RPKI_PDU_HEADER_LEN)
   {

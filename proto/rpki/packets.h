@@ -38,7 +38,7 @@ enum rpki_rtvals {
 
 int rpki_send_serial_query(struct rpki_cache *cache);
 int rpki_send_reset_query(struct rpki_cache *cache);
-int rpki_rx_hook(sock *sk, int size);
+int rpki_rx_hook(sock *sk, uint size);
 void rpki_connected_hook(sock *sk);
 void rpki_err_hook(sock *sk, int size);
 
