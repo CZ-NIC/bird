@@ -31,6 +31,7 @@ struct eattr;
 
 #define BGP_SAFI_UNICAST	1
 #define BGP_SAFI_MULTICAST	2
+#define BGP_SAFI_FLOW		133
 
 /* Internal AF codes */
 
@@ -42,6 +43,8 @@ struct eattr;
 #define BGP_AF_IPV6		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_UNICAST )
 #define BGP_AF_IPV4_MC		BGP_AF( BGP_AFI_IPV4, BGP_SAFI_MULTICAST )
 #define BGP_AF_IPV6_MC		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_MULTICAST )
+#define BGP_AF_FLOW4		BGP_AF( BGP_AFI_IPV4, BGP_SAFI_FLOW )
+#define BGP_AF_FLOW6		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_FLOW )
 
 
 struct bgp_write_state;

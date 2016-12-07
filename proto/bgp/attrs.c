@@ -1221,8 +1221,8 @@ bgp_init_prefix_table(struct bgp_channel *c)
 {
   HASH_INIT(c->prefix_hash, c->pool, 8);
 
-  c->prefix_slab = sl_new(c->pool, sizeof(struct bgp_prefix) +
-			  net_addr_length[c->c.net_type]);
+  uint alen = net_addr_length[c->c.net_type];
+  c->prefix_slab = alen ? sl_new(c->pool, sizeof(struct bgp_prefix) + alen) : NULL;
 }
 
 static struct bgp_prefix *
@@ -1237,7 +1237,11 @@ bgp_get_prefix(struct bgp_channel *c, net_addr *net, u32 path_id)
     return px;
   }
 
-  px = sl_alloc(c->prefix_slab);
+  if (c->prefix_slab)
+    px = sl_alloc(c->prefix_slab);
+  else
+    px = mb_alloc(c->pool, sizeof(struct bgp_prefix) + net->length);
+
   px->buck_node.next = NULL;
   px->buck_node.prev = NULL;
   px->hash = hash;
@@ -1254,7 +1258,11 @@ bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
 {
   rem_node(&px->buck_node);
   HASH_REMOVE2(c->prefix_hash, PXH, c->pool, px);
-  sl_free(c->prefix_slab, px);
+
+  if (c->prefix_slab)
+    sl_free(c->prefix_slab, px);
+  else
+    mb_free(px);
 }
 
 
