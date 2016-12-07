@@ -467,6 +467,10 @@ int
 buffer_vprint(buffer *buf, const char *fmt, va_list args)
 {
   int i = bvsnprintf((char *) buf->pos, buf->end - buf->pos, fmt, args);
+
+  if ((i < 0) && (buf->pos < buf->end))
+    *buf->pos = 0;
+
   buf->pos = (i >= 0) ? (buf->pos + i) : buf->end;
   return i;
 }
@@ -478,8 +482,11 @@ buffer_print(buffer *buf, const char *fmt, ...)
   int i;
 
   va_start(args, fmt);
-  i=bvsnprintf((char *) buf->pos, buf->end - buf->pos, fmt, args);
+  i = bvsnprintf((char *) buf->pos, buf->end - buf->pos, fmt, args);
   va_end(args);
+
+  if ((i < 0) && (buf->pos < buf->end))
+    *buf->pos = 0;
 
   buf->pos = (i >= 0) ? (buf->pos + i) : buf->end;
   return i;
@@ -489,13 +496,13 @@ void
 buffer_puts(buffer *buf, const char *str)
 {
   byte *bp = buf->pos;
-  byte *be = buf->end;
+  byte *be = buf->end - 1;
 
   while (bp < be && *str)
     *bp++ = *str++;
 
-  if (bp < be)
+  if (bp <= be)
     *bp = 0;
 
-  buf->pos = bp;
+  buf->pos = (bp < be) ? bp : buf->end;
 }

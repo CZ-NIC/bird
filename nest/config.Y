@@ -150,6 +150,8 @@ net_type:
  | VPN6 { $$ = NET_VPN6; }
  | ROA4 { $$ = NET_ROA4; }
  | ROA6 { $$ = NET_ROA6; }
+ | FLOW4{ $$ = NET_FLOW4; }
+ | FLOW6{ $$ = NET_FLOW6; }
  ;
 
 

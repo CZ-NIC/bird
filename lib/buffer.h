@@ -46,4 +46,11 @@
 
 #define BUFFER_FLUSH(v)		({ (v).used = 0; })
 
+#define BUFFER_SHALLOW_COPY(dst, src)					\
+  ({									\
+    (dst).used = (src).used;						\
+    (dst).size = (src).size;						\
+    (dst).data = (src).data;						\
+  })
+
 #endif /* _BIRD_BUFFER_H_ */

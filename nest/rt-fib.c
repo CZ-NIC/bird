@@ -193,6 +193,8 @@ fib_hash(struct fib *f, const net_addr *a)
   case NET_VPN6: return FIB_HASH(f, a, vpn6);
   case NET_ROA4: return FIB_HASH(f, a, roa4);
   case NET_ROA6: return FIB_HASH(f, a, roa6);
+  case NET_FLOW4: return FIB_HASH(f, a, flow4);
+  case NET_FLOW6: return FIB_HASH(f, a, flow6);
   default: bug("invalid type");
   }
 }
@@ -227,6 +229,8 @@ fib_find(struct fib *f, const net_addr *a)
   case NET_VPN6: return FIB_FIND(f, a, vpn6);
   case NET_ROA4: return FIB_FIND(f, a, roa4);
   case NET_ROA6: return FIB_FIND(f, a, roa6);
+  case NET_FLOW4: return FIB_FIND(f, a, flow4);
+  case NET_FLOW6: return FIB_FIND(f, a, flow6);
   default: bug("invalid type");
   }
 }
@@ -244,6 +248,8 @@ fib_insert(struct fib *f, const net_addr *a, struct fib_node *e)
   case NET_VPN6: FIB_INSERT(f, a, e, vpn6); return;
   case NET_ROA4: FIB_INSERT(f, a, e, roa4); return;
   case NET_ROA6: FIB_INSERT(f, a, e, roa6); return;
+  case NET_FLOW4: FIB_INSERT(f, a, e, flow4); return;
+  case NET_FLOW6: FIB_INSERT(f, a, e, flow6); return;
   default: bug("invalid type");
   }
 }
@@ -334,11 +340,13 @@ fib_route(struct fib *f, const net_addr *n)
   case NET_IP4:
   case NET_VPN4:
   case NET_ROA4:
+  case NET_FLOW4:
     return fib_route_ip4(f, (net_addr_ip4 *) n0);
 
   case NET_IP6:
   case NET_VPN6:
   case NET_ROA6:
+  case NET_FLOW6:
     return fib_route_ip6(f, (net_addr_ip6 *) n0);
 
   default:

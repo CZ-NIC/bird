@@ -10,7 +10,7 @@ BISON_DEBUG=-t
 #FLEX_DEBUG=-d
 endif
 
-$(conf-y-targets): $(s)confbase.Y
+$(conf-y-targets): $(s)confbase.Y $(s)flowspec.Y
 	$(M4) -P $| $^ >$@
 
 $(o)cf-parse.y: | $(s)gen_parser.m4

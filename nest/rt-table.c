@@ -2506,8 +2506,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
   int first = 1;
   int pass = 0;
 
-  bsprintf(ia, "%N", n->n.addr);
-
+  bsnprintf(ia, sizeof(ia), "%N", n->n.addr);
 
   for (e = n->routes; e; e = e->next)
     {

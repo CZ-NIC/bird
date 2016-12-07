@@ -715,6 +715,137 @@ agreement").
 
 </descrip>
 
+
+<sect>Flowspec network type
+<label id="flowspec-network-type">
+
+<p>The flow specification are rules for routers and firewalls for filtering
+purpose. It is described by <rfc id="5575">. There are 3 types of arguments:
+<m/inet4/ or <m/inet6/ prefixes, bitmasks matching expressions and numbers
+matching expressions.
+
+Bitmasks matching is written using <m/value/<cf>/</cf><m/mask/ or
+<cf/!/<m/value/<cf>/</cf><m/mask/ pairs. It means that <cf/(/<m/data/ <cf/&/
+<m/mask/<cf/)/ is or is not equal to <m/value/.
+
+Numbers matching is a matching sequence of numbers and ranges separeted by a
+commas (<cf/,/) (e.g. <cf/10,20,30/). Ranges can be written using double dots
+<cf/../ notation (e.g. <cf/80..90,120..124/). An alternative notation are
+sequence of one or more pairs of relational operators and values separated by
+logical operators <cf/&&/ or <cf/||/. Allowed relational operators are <cf/=/,
+<cf/!=/, <cf/</, <cf/<=/, <cf/>/, <cf/>=/, <cf/true/ and <cf/false/.
+
+<sect1>IPv4 Flowspec
+
+<p><descrip>
+	<tag><label id="flow-dst">dst <m/inet4/</tag>
+	Set a matching destination prefix (e.g. <cf>dst 192.168.0.0/16</cf>).
+	Only this option is mandatory in IPv4 Flowspec.
+
+	<tag><label id="flow-src">src <m/inet4/</tag>
+	Set a matching source prefix (e.g. <cf>src 10.0.0.0/8</cf>).
+
+	<tag><label id="flow-proto">proto <m/numbers-match/</tag>
+	Set a matching IP protocol numbers (e.g.  <cf/proto 6/).
+
+	<tag><label id="flow-port">port <m/numbers-match/</tag>
+	Set a matching source or destination TCP/UDP port numbers (e.g.
+	<cf>port 1..1023,1194,3306</cf>).
+
+	<tag><label id="flow-dport">dport <m/numbers-match/</tag>
+	Set a mating destination port numbers (e.g. <cf>dport 49151</cf>).
+
+	<tag><label id="flow-sport">sport <m/numbers-match/</tag>
+	Set a matching source port numbers (e.g. <cf>sport = 0</cf>).
+
+	<tag><label id="flow-icmp-type">icmp type <m/numbers-match/</tag>
+	Set a matching type field number of an ICMP packet (e.g. <cf>icmp type
+	3</cf>)
+
+	<tag><label id="flow-icmp-code">icmp code <m/numbers-match/</tag>
+	Set a matching code field number of an ICMP packet (e.g. <cf>icmp code
+	1</cf>)
+
+	<tag><label id="flow-tcp-flags">tcp flags <m/bitmask-match/</tag>
+	Set a matching bitmask for TCP header flags (aka control bits) (e.g.
+	<cf>tcp flags 0x03/0x0f;</cf>).
+
+	<tag><label id="flow-length">length <m/numbers-match/</tag>
+	Set a matching packet length (e.g. <cf>length > 1500;</cf>)
+
+	<tag><label id="flow-dscp">dscp <m/numbers-match/</tag>
+	Set a matching DiffServ Code Point number (e.g. <cf>length > 1500;</cf>).
+
+	<tag><label id="flow-fragment">fragment <m/fragmentation-type/</tag>
+	Set a matching type of packet fragmentation. Allowed fragmentation
+	types are <cf/dont_fragment/, <cf/is_fragment/, <cf/first_fragment/,
+	<cf/last_fragment/ (e.g. <cf>fragment is_fragment &&
+	!dont_fragment</cf>).
+</descrip>
+
+<p><code>
+protocol static {
+	flow4;
+
+	route flow4 {
+		dst 10.0.0.0/8;
+		port > 24 && < 30 || 40..50,60..70,80 && >= 90;
+		tcp flags 0x03/0x0f;
+		length > 1024;
+		dscp = 63;
+		fragment dont_fragment, is_fragment || !first_fragment;
+	} drop;
+}
+</code>
+
+<sect1>Differences for IPv6 Flowspec
+
+<p>Flowspec IPv6 are same as Flowspec IPv4 with a few exceptions.
+<itemize>
+	<item>Prefixes <m/inet6/ can be specified not only with prefix length,
+	but with prefix <cf/offset/ <m/num/ too (e.g.
+	<cf>::1234:5678:9800:0000/101 offset 64</cf>). Offset means to don't
+	care of <m/num/ first bits.
+	<item>IPv6 Flowspec hasn't mandatory any flowspec component.
+	<item>In IPv6 packets, there is a matching the last next header value
+	for a matching IP protocol number (e.g. <cf>next header 6</cf>).
+	<item>It is not possible to set <cf>dont_fragment</cf> as a type of
+	packet fragmentation.
+</itemize>
+
+<p><descrip>
+	<tag><label id="flow6-dst">dst <m/inet6/ [offset <m/num/]</tag>
+	Set a matching destination IPv6 prefix (e.g. <cf>dst
+	::1c77:3769:27ad:a11a/128 offset 64</cf>).
+
+	<tag><label id="flow6-src">src <m/inet6/ [offset <m/num/]</tag>
+	Set a matching source IPv6 prefix (e.g. <cf>src fe80::/64</cf>).
+
+	<tag><label id="flow6-next-header">next header <m/numbers-match/</tag>
+	Set a matching IP protocol numbers (e.g. <cf>next header != 6</cf>).
+
+	<tag><label id="flow6-label">label <m/bitmask-match/</tag>
+	Set a 20-bit bitmask for matching Flow Label field in IPv6 packets
+	(e.g. <cf>label 0x8e5/0x8e5</cf>).
+</descrip>
+
+<p><code>
+protocol static {
+	flow6;
+
+	route flow6 {
+		dst fec0:1122:3344:5566:7788:99aa:bbcc:ddee/128;
+		src 0000:0000:0000:0001:1234:5678:9800:0000/101 offset 63;
+		next header = 23;
+		sport > 24 && < 30 || = 40 || 50,60,70..80;
+		dport = 50;
+		tcp flags 0x03/0x0f, !0/0xff || 0x33/0x33;
+		fragment !is_fragment || !first_fragment;
+		label 0xaaaa/0xaaaa && 0x33/0x33;
+	} drop;
+}
+</code>
+
 <chapt>Remote control
 <label id="remote-control">
 

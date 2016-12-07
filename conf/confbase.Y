@@ -138,8 +138,6 @@ expr_us:
  | expr US { $$ = (u32) $1 * 1; }
  ;
 
-/* expr_u16: expr { check_u16($1); $$ = $1; }; */
-
 /* Switches */
 
 bool:
@@ -220,6 +218,7 @@ net_roa_: net_roa4_ | net_roa6_ ;
 net_:
    net_ip_ { $$ = cfg_alloc($1.length); net_copy($$, &($1)); }
  | net_roa_
+ | net_flow_
  ;
 
 

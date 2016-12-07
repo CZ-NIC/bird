@@ -34,6 +34,7 @@
 #define ABS(a)   ((a)>=0 ? (a) : -(a))
 #define DELTA(a,b) (((a)>=(b))?(a)-(b):(b)-(a))
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof(*(a)))
+#define BYTES(n) ((((uint) (n)) + 7) / 8)
 #define CALL(fn, args...) ({ if (fn) fn(args); })
 #define ADVANCE(w, r, l) ({ r -= l; w += l; })
 
