@@ -1065,7 +1065,7 @@ interpret(struct f_inst *what)
       l->count = 1;
       l->attrs[0].id = code;
       l->attrs[0].flags = 0;
-      l->attrs[0].type = what->aux | EAF_ORIGINATED;
+      l->attrs[0].type = what->aux | EAF_ORIGINATED | EAF_FRESH;
 
       switch (what->aux & EAF_TYPE_MASK) {
       case EAF_TYPE_INT:

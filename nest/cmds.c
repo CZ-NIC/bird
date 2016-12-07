@@ -80,7 +80,6 @@ print_size(char *dsc, size_t val)
 
 extern pool *rt_table_pool;
 extern pool *rta_pool;
-extern pool *proto_pool;
 
 void
 cmd_show_memory(void)

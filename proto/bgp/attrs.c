@@ -2,6 +2,8 @@
  *	BIRD -- BGP Attributes
  *
  *	(c) 2000 Martin Mares <mj@ucw.cz>
+ *	(c) 2008--2016 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2008--2016 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -56,869 +58,1157 @@
  * inconsistencies between AGGREGATOR and AS4_AGGREGATOR that are not
  * handled by that draft, these are logged and ignored (see
  * bgp_reconstruct_4b_attrs()).
+ *
+ * BGP attribute table has several hooks:
+ *
+ * export - Hook that validates and normalizes attribute during export phase.
+ * Receives eattr, may modify it (e.g., sort community lists for canonical
+ * representation), UNSET() it (e.g., skip empty lists), or WITHDRAW() it if
+ * necessary. May assume that eattr has value valid w.r.t. its type, but may be
+ * invalid w.r.t. BGP constraints. Optional.
+ *
+ * encode - Hook that converts internal representation to external one during
+ * packet writing. Receives eattr and puts it in the buffer (including attribute
+ * header). Returns number of bytes, or -1 if not enough space. May assume that
+ * eattr has value valid w.r.t. its type and validated by export hook. Mandatory
+ * for all known attributes that exist internally after export phase (i.e., all
+ * except pseudoattributes MP_(UN)REACH_NLRI).
+ *
+ * decode - Hook that converts external representation to internal one during
+ * packet parsing. Receives attribute data in buffer, validates it and adds
+ * attribute to ea_list. If data are invalid, steps DISCARD(), WITHDRAW() or
+ * bgp_parse_error() may be used to escape. Mandatory for all known attributes.
+ *
+ * format - Optional hook that converts eattr to textual representation.
  */
 
+// XXXX review pool usage : c->c.proto->pool
 
-static byte bgp_mandatory_attrs[] = { BA_ORIGIN, BA_AS_PATH
-#ifndef IPV6
-,BA_NEXT_HOP
-#endif
+
+struct bgp_attr_desc {
+  const char *name;
+  uint type;
+  uint flags;
+  void (*export)(struct bgp_export_state *s, eattr *a);
+  int  (*encode)(struct bgp_write_state *s, eattr *a, byte *buf, uint size);
+  void (*decode)(struct bgp_parse_state *s, uint code, uint flags, byte *data, uint len, ea_list **to);
+  void (*format)(eattr *ea, byte *buf, uint size);
 };
 
-struct attr_desc {
-  char *name;
-  int expected_length;
-  int expected_flags;
-  int type;
-  int allow_in_ebgp;
-  int (*validate)(struct bgp_proto *p, byte *attr, int len);
-  void (*format)(eattr *ea, byte *buf, int buflen);
-};
+static const struct bgp_attr_desc bgp_attr_table[];
 
-#define IGNORE -1
-#define WITHDRAW -2
+static inline int bgp_attr_known(uint code);
 
-static int
-bgp_check_origin(struct bgp_proto *p UNUSED, byte *a, int len UNUSED)
+eattr *
+bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintptr_t val)
 {
-  if (*a > 2)
-    return 6;
-  return 0;
-}
+  ASSERT(bgp_attr_known(code));
 
-static void
-bgp_format_origin(eattr *a, byte *buf, int buflen UNUSED)
-{
-  static char *bgp_origin_names[] = { "IGP", "EGP", "Incomplete" };
-
-  bsprintf(buf, bgp_origin_names[a->u.data]);
-}
-
-static int
-path_segment_contains(byte *p, int bs, u32 asn)
-{
-  int i;
-  int len = p[1];
-  p += 2;
-
-  for(i=0; i<len; i++)
-    {
-      u32 asn2 = (bs == 4) ? get_u32(p) : get_u16(p);
-      if (asn2 == asn)
-	return 1;
-      p += bs;
-    }
-
-  return 0;
-}
-
-/* Validates path attribute, removes AS_CONFED_* segments, and also returns path length */
-static int
-validate_path(struct bgp_proto *p, int as_path, int bs, byte *idata, uint *ilength)
-{
-  int res = 0;
-  u8 *a, *dst;
-  int len, plen;
-
-  dst = a = idata;
-  len = *ilength;
-
-  while (len)
-    {
-      if (len < 2)
-	return -1;
-
-      plen = 2 + bs * a[1];
-      if (len < plen)
-	return -1;
-
-      if (a[1] == 0)
-        {
-	  log(L_WARN "%s: %s_PATH attribute contains empty segment, skipping it",
-	      p->p.name, as_path ? "AS" : "AS4");
-	  goto skip;
-	}
-
-      switch (a[0])
-	{
-	case AS_PATH_SET:
-	  res++;
-	  break;
-
-	case AS_PATH_SEQUENCE:
-	  res += a[1];
-	  break;
-
-	case AS_PATH_CONFED_SEQUENCE:
-	case AS_PATH_CONFED_SET:
-	  if (as_path && path_segment_contains(a, bs, p->remote_as))
-	    {
-	      log(L_WARN "%s: AS_CONFED_* segment with peer ASN found, misconfigured confederation?", p->p.name);
-	      return -1;
-	    }
-
-	  log(L_WARN "%s: %s_PATH attribute contains AS_CONFED_* segment, skipping segment",
-	      p->p.name, as_path ? "AS" : "AS4");
-	  goto skip;
-
-	default:
-	  return -1;
-	}
-
-      if (dst != a)
-	memmove(dst, a, plen);
-      dst += plen;
-
-    skip:
-      len -= plen;
-      a += plen;
-    }
-
-  *ilength = dst - idata;
-  return res;
-}
-
-static inline int
-validate_as_path(struct bgp_proto *p, byte *a, int *len)
-{
-  return validate_path(p, 1, p->as4_session ? 4 : 2, a, len);
-}
-
-static inline int
-validate_as4_path(struct bgp_proto *p, struct adata *path)
-{
-  return validate_path(p, 0, 4, path->data, &path->length);
-}
-
-static int
-bgp_check_next_hop(struct bgp_proto *p UNUSED, byte *a UNUSED6, int len UNUSED6)
-{
-#ifdef IPV6
-  return IGNORE;
-#else
-  ip_addr addr;
-
-  memcpy(&addr, a, len);
-  ipa_ntoh(addr);
-  if (ipa_classify(addr) & IADDR_HOST)
-    return 0;
-  else
-    return 8;
-#endif
-}
-
-static void
-bgp_format_next_hop(eattr *a, byte *buf, int buflen UNUSED)
-{
-  ip_addr *ipp = (ip_addr *) a->u.ptr->data;
-#ifdef IPV6
-  /* in IPv6, we might have two addresses in NEXT HOP */
-  if ((a->u.ptr->length == NEXT_HOP_LENGTH) && ipa_nonzero(ipp[1]))
-    {
-      bsprintf(buf, "%I %I", ipp[0], ipp[1]);
-      return;
-    }
-#endif
-
-  bsprintf(buf, "%I", ipp[0]);
-}
-
-static int
-bgp_check_aggregator(struct bgp_proto *p, byte *a UNUSED, int len)
-{
-  int exp_len = p->as4_session ? 8 : 6;
-  
-  return (len == exp_len) ? 0 : WITHDRAW;
-}
-
-static void
-bgp_format_aggregator(eattr *a, byte *buf, int buflen UNUSED)
-{
-  struct adata *ad =  a->u.ptr;
-  byte *data = ad->data;
-  u32 as;
-
-  as = get_u32(data);
-  data += 4;
-
-  bsprintf(buf, "%d.%d.%d.%d AS%u", data[0], data[1], data[2], data[3], as);
-}
-
-static int
-bgp_check_community(struct bgp_proto *p UNUSED, byte *a UNUSED, int len)
-{
-  return ((len % 4) == 0) ? 0 : WITHDRAW;
-}
-
-static int
-bgp_check_cluster_list(struct bgp_proto *p UNUSED, byte *a UNUSED, int len)
-{
-  return ((len % 4) == 0) ? 0 : 5;
-}
-
-static void
-bgp_format_cluster_list(eattr *a, byte *buf, int buflen)
-{
-  /* Truncates cluster lists larger than buflen, probably not a problem */
-  int_set_format(a->u.ptr, 0, -1, buf, buflen);
-}
-
-static int
-bgp_check_reach_nlri(struct bgp_proto *p UNUSED, byte *a UNUSED, int len UNUSED)
-{
-#ifdef IPV6
-  p->mp_reach_start = a;
-  p->mp_reach_len = len;
-#endif
-  return IGNORE;
-}
-
-static int
-bgp_check_unreach_nlri(struct bgp_proto *p UNUSED, byte *a UNUSED, int len UNUSED)
-{
-#ifdef IPV6
-  p->mp_unreach_start = a;
-  p->mp_unreach_len = len;
-#endif
-  return IGNORE;
-}
-
-static int
-bgp_check_ext_community(struct bgp_proto *p UNUSED, byte *a UNUSED, int len)
-{
-  return ((len % 8) == 0) ? 0 : WITHDRAW;
-}
-
-static int
-bgp_check_large_community(struct bgp_proto *p UNUSED, byte *a UNUSED, int len)
-{
-  return ((len % 12) == 0) ? 0 : WITHDRAW;
-}
-
-
-static struct attr_desc bgp_attr_table[] = {
-  { NULL, -1, 0, 0, 0,								/* Undefined */
-    NULL, NULL },
-  { "origin", 1, BAF_TRANSITIVE, EAF_TYPE_INT, 1,				/* BA_ORIGIN */
-    bgp_check_origin, bgp_format_origin },
-  { "as_path", -1, BAF_TRANSITIVE, EAF_TYPE_AS_PATH, 1,				/* BA_AS_PATH */
-    NULL, NULL }, /* is checked by validate_as_path() as a special case */
-  { "next_hop", 4, BAF_TRANSITIVE, EAF_TYPE_IP_ADDRESS, 1,			/* BA_NEXT_HOP */
-    bgp_check_next_hop, bgp_format_next_hop },
-  { "med", 4, BAF_OPTIONAL, EAF_TYPE_INT, 1,					/* BA_MULTI_EXIT_DISC */
-    NULL, NULL },
-  { "local_pref", 4, BAF_TRANSITIVE, EAF_TYPE_INT, 0,				/* BA_LOCAL_PREF */
-    NULL, NULL },
-  { "atomic_aggr", 0, BAF_TRANSITIVE, EAF_TYPE_OPAQUE, 1,			/* BA_ATOMIC_AGGR */
-    NULL, NULL },
-  { "aggregator", -1, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_OPAQUE, 1,	/* BA_AGGREGATOR */
-    bgp_check_aggregator, bgp_format_aggregator },
-  { "community", -1, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_INT_SET, 1,	/* BA_COMMUNITY */
-    bgp_check_community, NULL },
-  { "originator_id", 4, BAF_OPTIONAL, EAF_TYPE_ROUTER_ID, 0,			/* BA_ORIGINATOR_ID */
-    NULL, NULL },
-  { "cluster_list", -1, BAF_OPTIONAL, EAF_TYPE_INT_SET, 0,			/* BA_CLUSTER_LIST */
-    bgp_check_cluster_list, bgp_format_cluster_list }, 
-  { .name = NULL },								/* BA_DPA */
-  { .name = NULL },								/* BA_ADVERTISER */
-  { .name = NULL },								/* BA_RCID_PATH */
-  { "mp_reach_nlri", -1, BAF_OPTIONAL, EAF_TYPE_OPAQUE, 1,			/* BA_MP_REACH_NLRI */
-    bgp_check_reach_nlri, NULL },
-  { "mp_unreach_nlri", -1, BAF_OPTIONAL, EAF_TYPE_OPAQUE, 1,			/* BA_MP_UNREACH_NLRI */
-    bgp_check_unreach_nlri, NULL },
-  { "ext_community", -1, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_EC_SET, 1,	/* BA_EXT_COMMUNITY */
-    bgp_check_ext_community, NULL },
-  { "as4_path", -1, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_OPAQUE, 1,		/* BA_AS4_PATH */
-    NULL, NULL },
-  { "as4_aggregator", -1, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_OPAQUE, 1,	/* BA_AS4_PATH */
-    NULL, NULL },
-  [BA_LARGE_COMMUNITY] =
-  { "large_community", -1, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_LC_SET, 1,
-    bgp_check_large_community, NULL }
-};
-
-/* BA_AS4_PATH is type EAF_TYPE_OPAQUE and not type EAF_TYPE_AS_PATH.
- * It does not matter as this attribute does not appear on routes in the routing table.
- */
-
-#define ATTR_KNOWN(code) ((code) < ARRAY_SIZE(bgp_attr_table) && bgp_attr_table[code].name)
-
-static inline struct adata *
-bgp_alloc_adata(struct linpool *pool, unsigned len)
-{
-  struct adata *ad = lp_alloc(pool, sizeof(struct adata) + len);
-  ad->length = len;
-  return ad;
-}
-
-static void
-bgp_set_attr(eattr *e, unsigned attr, uintptr_t val)
-{
-  ASSERT(ATTR_KNOWN(attr));
-  e->id = EA_CODE(EAP_BGP, attr);
-  e->type = bgp_attr_table[attr].type;
-  e->flags = bgp_attr_table[attr].expected_flags;
-  if (e->type & EAF_EMBEDDED)
-    e->u.data = val;
-  else
-    e->u.ptr = (struct adata *) val;
-}
-
-static byte *
-bgp_set_attr_wa(eattr *e, struct linpool *pool, unsigned attr, unsigned len)
-{
-  struct adata *ad = bgp_alloc_adata(pool, len);
-  bgp_set_attr(e, attr, (uintptr_t) ad);
-  return ad->data;
-}
-
-void
-bgp_attach_attr(ea_list **to, struct linpool *pool, unsigned attr, uintptr_t val)
-{
   ea_list *a = lp_alloc(pool, sizeof(ea_list) + sizeof(eattr));
-  a->next = *to;
-  *to = a;
+  eattr *e = &a->attrs[0];
+
   a->flags = EALF_SORTED;
   a->count = 1;
-  bgp_set_attr(a->attrs, attr, val);
+  a->next = *attrs;
+  *attrs = a;
+
+  e->id = EA_CODE(EAP_BGP, code);
+  e->type = bgp_attr_table[code].type;
+  e->flags = flags;
+
+  if (e->type & EAF_EMBEDDED)
+    e->u.data = (u32) val;
+  else
+    e->u.ptr = (struct adata *) val;
+
+  return e;
 }
 
-byte *
-bgp_attach_attr_wa(ea_list **to, struct linpool *pool, unsigned attr, unsigned len)
+
+
+#define REPORT(msg, args...) \
+  ({ log(L_REMOTE "%s: " msg, s->proto->p.name, ## args); })
+
+#define DISCARD(msg, args...) \
+  ({ REPORT(msg, ## args); return; })
+
+#define WITHDRAW(msg, args...) \
+  ({ REPORT(msg, ## args); s->err_withdraw = 1; return; })
+
+#define UNSET(a) \
+  ({ a->type = EAF_TYPE_UNDEF; return; })
+
+#define NEW_BGP		"Discarding %s attribute received from AS4-aware neighbor"
+#define BAD_EBGP	"Discarding %s attribute received from EBGP neighbor"
+#define BAD_LENGTH	"Malformed %s attribute - invalid length (%u)"
+#define BAD_VALUE	"Malformed %s attribute - invalid value (%u)"
+#define NO_MANDATORY	"Missing mandatory %s attribute"
+
+
+static inline int
+bgp_put_attr_hdr3(byte *buf, uint code, uint flags, uint len)
 {
-  struct adata *ad = bgp_alloc_adata(pool, len);
-  bgp_attach_attr(to, pool, attr, (uintptr_t) ad);
-  return ad->data;
+  *buf++ = flags;
+  *buf++ = code;
+  *buf++ = len;
+  return 3;
 }
 
-static int
-bgp_encode_attr_hdr(byte *dst, uint flags, unsigned code, int len)
+static inline int
+bgp_put_attr_hdr4(byte *buf, uint code, uint flags, uint len)
 {
-  int wlen;
+  *buf++ = flags | BAF_EXT_LEN;
+  *buf++ = code;
+  put_u16(buf, len);
+  return 4;
+}
 
-  DBG("\tAttribute %02x (%d bytes, flags %02x)\n", code, len, flags);
-
+static inline int
+bgp_put_attr_hdr(byte *buf, uint code, uint flags, uint len)
+{
   if (len < 256)
-    {
-      *dst++ = flags;
-      *dst++ = code;
-      *dst++ = len;
-      wlen = 3;
-    }
+    return bgp_put_attr_hdr3(buf, code, flags, len);
   else
-    {
-      *dst++ = flags | BAF_EXT_LEN;
-      *dst++ = code;
-      put_u16(dst, len);
-      wlen = 4;
-    }
-
-  return wlen;
-}
-
-static void
-aggregator_convert_to_old(struct adata *aggr, byte *dst, int *new_used)
-{
-  byte *src = aggr->data;
-  *new_used = 0;
-
-  u32 as = get_u32(src);
-  if (as > 0xFFFF) 
-    {
-      as = AS_TRANS;
-      *new_used = 1;
-    }
-  put_u16(dst, as);
-
-  /* Copy IPv4 address */
-  memcpy(dst + 2, src + 4, 4);
-}
-
-static void
-aggregator_convert_to_new(struct adata *aggr, byte *dst)
-{
-  byte *src = aggr->data;
-
-  u32 as   = get_u16(src);
-  put_u32(dst, as);
-
-  /* Copy IPv4 address */
-  memcpy(dst + 4, src + 2, 4);
+    return bgp_put_attr_hdr4(buf, code, flags, len);
 }
 
 static int
-bgp_get_attr_len(eattr *a)
+bgp_encode_u8(struct bgp_write_state *s UNUSED, eattr *a, byte *buf, uint size)
 {
-  int len;
-  if (ATTR_KNOWN(EA_ID(a->id)))
-    {
-      int code = EA_ID(a->id);
-      struct attr_desc *desc = &bgp_attr_table[code];
-      len = desc->expected_length;
-      if (len < 0)
-	{
-	  ASSERT(!(a->type & EAF_EMBEDDED));
-	  len = a->u.ptr->length;
-	}
-    }
-  else
-    {
-      ASSERT((a->type & EAF_TYPE_MASK) == EAF_TYPE_OPAQUE);
-      len = a->u.ptr->length;
-    }
-  
-  return len;
+  if (size < (3+1))
+    return -1;
+
+  bgp_put_attr_hdr3(buf, EA_ID(a->id), a->flags, 1);
+  buf[3] = a->u.data;
+
+  return 3+1;
 }
 
-#define ADVANCE(w, r, l) do { r -= l; w += l; } while (0)
+static int
+bgp_encode_u32(struct bgp_write_state *s UNUSED, eattr *a, byte *buf, uint size)
+{
+  if (size < (3+4))
+    return -1;
+
+  bgp_put_attr_hdr3(buf, EA_ID(a->id), a->flags, 4);
+  put_u32(buf+3, a->u.data);
+
+  return 3+4;
+}
+
+static int
+bgp_encode_u32s(struct bgp_write_state *s UNUSED, eattr *a, byte *buf, uint size)
+{
+  uint len = a->u.ptr->length;
+
+  if (size < (4+len))
+    return -1;
+
+  uint hdr = bgp_put_attr_hdr(buf, EA_ID(a->id), a->flags, len);
+  put_u32s(buf + hdr, (u32 *) a->u.ptr->data, len / 4);
+
+  return hdr + len;
+}
+
+static int
+bgp_put_attr(byte *buf, uint size, uint code, uint flags, byte *data, uint len)
+{
+  if (size < (4+len))
+    return -1;
+
+  uint hdr = bgp_put_attr_hdr(buf, code, flags, len);
+  memcpy(buf + hdr, data, len);
+
+  return hdr + len;
+}
+
+static int
+bgp_encode_raw(struct bgp_write_state *s UNUSED, eattr *a, byte *buf, uint size)
+{
+  return bgp_put_attr(buf, size, EA_ID(a->id), a->flags, a->u.ptr->data, a->u.ptr->length);
+}
+
+
+/*
+ *	Attribute hooks
+ */
+
+static void
+bgp_export_origin(struct bgp_export_state *s, eattr *a)
+{
+  if (a->u.data > 2)
+    WITHDRAW(BAD_VALUE, "ORIGIN", a->u.data);
+}
+
+static void
+bgp_decode_origin(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  if (len != 1)
+    WITHDRAW(BAD_LENGTH, "ORIGIN", len);
+
+  if (data[0] > 2)
+    WITHDRAW(BAD_VALUE, "ORIGIN", data[0]);
+
+  bgp_set_attr_u32(to, s->pool, BA_ORIGIN, flags, data[0]);
+}
+
+static void
+bgp_format_origin(eattr *a, byte *buf, uint size UNUSED)
+{
+  static const char *bgp_origin_names[] = { "IGP", "EGP", "Incomplete" };
+
+  bsprintf(buf, (a->u.data <= 2) ? bgp_origin_names[a->u.data] : "?");
+}
+
+
+static int
+bgp_encode_as_path(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
+{
+  byte *data = a->u.ptr->data;
+  uint len = a->u.ptr->length;
+
+  if (!s->as4_session)
+  {
+    /* Prepare 16-bit AS_PATH (from 32-bit one) in a temporary buffer */
+    byte *src = data;
+    data = alloca(len);
+    len = as_path_32to16(data, src, len);
+  }
+
+  return bgp_put_attr(buf, size, BA_AS_PATH, a->flags, data, len);
+}
+
+static void
+bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  char err[128];
+
+  if (!as_path_valid(data, len, (s->as4_session ? 4 : 2), err, sizeof(err)))
+    WITHDRAW("Malformed AS_PATH attribute - %s", err);
+
+  if (!s->as4_session)
+  {
+    /* Prepare 32-bit AS_PATH (from 16-bit one) in a temporary buffer */
+    byte *src = data;
+    data = alloca(2*len);
+    len = as_path_16to32(data, src, len);
+  }
+
+  bgp_set_attr_data(to, s->pool, BA_AS_PATH, flags, data, len);
+}
+
+
+static int
+bgp_encode_next_hop(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
+{
+  /*
+   * The NEXT_HOP attribute is used only in traditional (IPv4) BGP. In MP-BGP,
+   * the next hop is encoded as a part of the MP_REACH_NLRI attribute, so we
+   * store it and encode it later by AFI-specific hooks.
+   */
+
+  if (s->channel->afi == BGP_AF_IPV4)
+  {
+    ASSERT(a->u.ptr->length == sizeof(ip_addr));
+
+    if (size < (3+4))
+      return -1;
+
+    bgp_put_attr_hdr3(buf, BA_NEXT_HOP, a->flags, 4);
+    put_ip4(buf+3, ipa_to_ip4( *(ip_addr *) a->u.ptr->data ));
+
+    return 3+4;
+  }
+  else
+  {
+    s->mp_next_hop = a;
+    return 0;
+  }
+}
+
+static void
+bgp_decode_next_hop(struct bgp_parse_state *s, uint code UNUSED, uint flags UNUSED, byte *data, uint len, ea_list **to UNUSED)
+{
+  if (len != 4)
+    WITHDRAW(BAD_LENGTH, "NEXT_HOP", len);
+
+  /* Semantic checks are done later */
+  s->ip_next_hop_len = len;
+  s->ip_next_hop_data = data;
+}
+
+/* TODO: This function should use AF-specific hook */
+static void
+bgp_format_next_hop(eattr *a, byte *buf, uint size UNUSED)
+{
+  ip_addr *nh = (void *) a->u.ptr->data;
+  uint len = a->u.ptr->length;
+
+  ASSERT((len == 16) || (len == 32));
+
+  /* in IPv6, we may have two addresses in NEXT HOP */
+  if ((len == 16) || ipa_zero(nh[1]))
+    bsprintf(buf, "%I", nh[0]);
+  else
+    bsprintf(buf, "%I %I", nh[0], nh[1]);
+}
+
+
+static void
+bgp_decode_med(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  if (len != 4)
+    WITHDRAW(BAD_LENGTH, "MULTI_EXIT_DISC", len);
+
+  u32 val = get_u32(data);
+  bgp_set_attr_u32(to, s->pool, BA_MULTI_EXIT_DISC, flags, val);
+}
+
+
+static void
+bgp_export_local_pref(struct bgp_export_state *s, eattr *a)
+{
+  if (!s->proto->is_interior)
+    UNSET(a);
+}
+
+static void
+bgp_decode_local_pref(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  if (!s->proto->is_interior)
+    DISCARD(BAD_EBGP, "LOCAL_PREF");
+
+  if (len != 4)
+    WITHDRAW(BAD_LENGTH, "LOCAL_PREF", len);
+
+  u32 val = get_u32(data);
+  bgp_set_attr_u32(to, s->pool, BA_LOCAL_PREF, flags, val);
+}
+
+
+static void
+bgp_decode_atomic_aggr(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data UNUSED, uint len, ea_list **to)
+{
+  if (len != 0)
+    DISCARD(BAD_LENGTH, "ATOMIC_AGGR", len);
+
+  bgp_set_attr_data(to, s->pool, BA_ATOMIC_AGGR, flags, NULL, 0);
+}
+
+static int
+bgp_encode_aggregator(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
+{
+  byte *data = a->u.ptr->data;
+  uint len = a->u.ptr->length;
+
+  if (!s->as4_session)
+  {
+    /* Prepare 16-bit AGGREGATOR (from 32-bit one) in a temporary buffer */
+    byte *src = data;
+    data = alloca(6);
+    len = aggregator_32to16(data, src);
+  }
+
+  return bgp_put_attr(buf, size, BA_AGGREGATOR, a->flags, data, len);
+}
+
+static void
+bgp_decode_aggregator(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  if (len != (s->as4_session ? 8 : 6))
+    DISCARD(BAD_LENGTH, "AGGREGATOR", len);
+
+  if (!s->as4_session)
+  {
+    /* Prepare 32-bit AGGREGATOR (from 16-bit one) in a temporary buffer */
+    byte *src = data;
+    data = alloca(8);
+    len = aggregator_16to32(data, src);
+  }
+
+  bgp_set_attr_data(to, s->pool, BA_AGGREGATOR, flags, data, len);
+}
+
+static void
+bgp_format_aggregator(eattr *a, byte *buf, uint size UNUSED)
+{
+  byte *data = a->u.ptr->data;
+
+  bsprintf(buf, "%I4 AS%u", get_ip4(data+4), get_u32(data+0));
+}
+
+
+static void
+bgp_export_community(struct bgp_export_state *s, eattr *a)
+{
+  if (a->u.ptr->length == 0)
+    UNSET(a);
+
+  a->u.ptr = int_set_sort(s->pool, a->u.ptr);
+}
+
+static void
+bgp_decode_community(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  if (!len || (len % 4))
+    WITHDRAW(BAD_LENGTH, "COMMUNITY", len);
+
+  struct adata *ad = lp_alloc_adata(s->pool, len);
+  get_u32s(data, (u32 *) ad->data, len / 4);
+  bgp_set_attr_ptr(to, s->pool, BA_COMMUNITY, flags, ad);
+}
+
+
+static void
+bgp_export_originator_id(struct bgp_export_state *s, eattr *a)
+{
+  if (!s->proto->is_internal)
+    UNSET(a);
+}
+
+static void
+bgp_decode_originator_id(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  if (!s->proto->is_internal)
+    DISCARD(BAD_EBGP, "ORIGINATOR_ID");
+
+  if (len != 4)
+    WITHDRAW(BAD_LENGTH, "ORIGINATOR_ID", len);
+
+  u32 val = get_u32(data);
+  bgp_set_attr_u32(to, s->pool, BA_ORIGINATOR_ID, flags, val);
+}
+
+
+static void
+bgp_export_cluster_list(struct bgp_export_state *s UNUSED, eattr *a)
+{
+  if (!s->proto->is_internal)
+    UNSET(a);
+
+  if (a->u.ptr->length == 0)
+    UNSET(a);
+}
+
+static void
+bgp_decode_cluster_list(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  if (!s->proto->is_internal)
+    DISCARD(BAD_EBGP, "CLUSTER_LIST");
+
+  if (!len || (len % 4))
+    WITHDRAW(BAD_LENGTH, "CLUSTER_LIST", len);
+
+  struct adata *ad = lp_alloc_adata(s->pool, len);
+  get_u32s(data, (u32 *) ad->data, len / 4);
+  bgp_set_attr_ptr(to, s->pool, BA_CLUSTER_LIST, flags, ad);
+}
+
+static void
+bgp_format_cluster_list(eattr *a, byte *buf, uint size)
+{
+  /* Truncates cluster lists larger than buflen, probably not a problem */
+  int_set_format(a->u.ptr, 0, -1, buf, size);
+}
+
+
+static inline u32
+get_af3(byte *buf)
+{
+  return (get_u16(buf) << 16) | buf[2];
+}
+
+static void
+bgp_decode_mp_reach_nlri(struct bgp_parse_state *s, uint code UNUSED, uint flags UNUSED, byte *data, uint len, ea_list **to UNUSED)
+{
+  /*
+   *	2 B	MP_REACH_NLRI data - Address Family Identifier
+   *	1 B	MP_REACH_NLRI data - Subsequent Address Family Identifier
+   *	1 B	MP_REACH_NLRI data - Length of Next Hop Network Address
+   *	var	MP_REACH_NLRI data - Network Address of Next Hop
+   *	1 B	MP_REACH_NLRI data - Reserved (zero)
+   *	var	MP_REACH_NLRI data - Network Layer Reachability Information
+   */
+
+  if ((len < 5) || (len < (5 + (uint) data[3])))
+    bgp_parse_error(s, 9);
+
+  s->mp_reach_af = get_af3(data);
+  s->mp_next_hop_len = data[3];
+  s->mp_next_hop_data = data + 4;
+  s->mp_reach_len = len - 5 - s->mp_next_hop_len;
+  s->mp_reach_nlri = data + 5 + s->mp_next_hop_len;
+}
+
+
+static void
+bgp_decode_mp_unreach_nlri(struct bgp_parse_state *s, uint code UNUSED, uint flags UNUSED, byte *data, uint len, ea_list **to UNUSED)
+{
+  /*
+   *	2 B	MP_UNREACH_NLRI data - Address Family Identifier
+   *	1 B	MP_UNREACH_NLRI data - Subsequent Address Family Identifier
+   *	var	MP_UNREACH_NLRI data - Network Layer Reachability Information
+   */
+
+  if (len < 3)
+    bgp_parse_error(s, 9);
+
+  s->mp_unreach_af = get_af3(data);
+  s->mp_unreach_len = len - 3;
+  s->mp_unreach_nlri = data + 3;
+}
+
+
+static void
+bgp_export_ext_community(struct bgp_export_state *s, eattr *a)
+{
+  if (a->u.ptr->length == 0)
+    UNSET(a);
+
+  a->u.ptr = ec_set_sort(s->pool, a->u.ptr);
+}
+
+static void
+bgp_decode_ext_community(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  if (!len || (len % 8))
+    WITHDRAW(BAD_LENGTH, "EXT_COMMUNITY", len);
+
+  struct adata *ad = lp_alloc_adata(s->pool, len);
+  get_u32s(data, (u32 *) ad->data, len / 4);
+  bgp_set_attr_ptr(to, s->pool, BA_EXT_COMMUNITY, flags, ad);
+}
+
+
+static void
+bgp_decode_as4_aggregator(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  if (s->as4_session)
+    DISCARD(NEW_BGP, "AS4_AGGREGATOR");
+
+  if (len != 8)
+    DISCARD(BAD_LENGTH, "AS4_AGGREGATOR", len);
+
+  bgp_set_attr_data(to, s->pool, BA_AS4_AGGREGATOR, flags, data, len);
+}
+
+static void
+bgp_decode_as4_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  char err[128];
+
+  if (s->as4_session)
+    DISCARD(NEW_BGP, "AS4_PATH");
+
+  if (len < 6)
+    DISCARD(BAD_LENGTH, "AS4_PATH", len);
+
+  if (!as_path_valid(data, len, 4, err, sizeof(err)))
+    DISCARD("Malformed AS4_PATH attribute - %s", err);
+
+  /* XXXX remove CONFED segments */
+  bgp_set_attr_data(to, s->pool, BA_AS4_PATH, flags, data, len);
+}
+
+static void
+bgp_export_large_community(struct bgp_export_state *s, eattr *a)
+{
+  if (a->u.ptr->length == 0)
+    UNSET(a);
+
+  a->u.ptr = lc_set_sort(s->pool, a->u.ptr);
+}
+
+static void
+bgp_decode_large_community(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  if (!len || (len % 12))
+    WITHDRAW(BAD_LENGTH, "LARGE_COMMUNITY", len);
+
+  struct adata *ad = lp_alloc_adata(s->pool, len);
+  get_u32s(data, (u32 *) ad->data, len / 4);
+  bgp_set_attr_ptr(to, s->pool, BA_LARGE_COMMUNITY, flags, ad);
+}
+
+static inline void
+bgp_decode_unknown(struct bgp_parse_state *s, uint code, uint flags, byte *data, uint len, ea_list **to)
+{
+  bgp_set_attr_data(to, s->pool, code, flags, data, len);
+}
+
+
+/*
+ *	Attribute table
+ */
+
+static const struct bgp_attr_desc bgp_attr_table[] = {
+  [BA_ORIGIN] = {
+    .name = "origin",
+    .type = EAF_TYPE_INT,
+    .flags = BAF_TRANSITIVE,
+    .export = bgp_export_origin,
+    .encode = bgp_encode_u8,
+    .decode = bgp_decode_origin,
+    .format = bgp_format_origin,
+  },
+  [BA_AS_PATH] = {
+    .name = "as_path",
+    .type = EAF_TYPE_AS_PATH,
+    .flags = BAF_TRANSITIVE,
+    .encode = bgp_encode_as_path,
+    .decode = bgp_decode_as_path,
+  },
+  [BA_NEXT_HOP] = {
+    .name = "next_hop",
+    .type = EAF_TYPE_IP_ADDRESS,
+    .flags = BAF_TRANSITIVE,
+    .encode = bgp_encode_next_hop,
+    .decode = bgp_decode_next_hop,
+    .format = bgp_format_next_hop,
+  },
+  [BA_MULTI_EXIT_DISC] = {
+    .name = "med",
+    .type = EAF_TYPE_INT,
+    .flags = BAF_OPTIONAL,
+    .encode = bgp_encode_u32,
+    .decode = bgp_decode_med,
+  },
+  [BA_LOCAL_PREF] = {
+    .name = "local_pref",
+    .type = EAF_TYPE_INT,
+    .flags = BAF_TRANSITIVE,
+    .export = bgp_export_local_pref,
+    .encode = bgp_encode_u32,
+    .decode = bgp_decode_local_pref,
+  },
+  [BA_ATOMIC_AGGR] = {
+    .name = "atomic_aggr",
+    .type = EAF_TYPE_OPAQUE,
+    .flags = BAF_TRANSITIVE,
+    .encode = bgp_encode_raw,
+    .decode = bgp_decode_atomic_aggr,
+  },
+  [BA_AGGREGATOR] = {
+    .name = "aggregator",
+    .type = EAF_TYPE_OPAQUE,
+    .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
+    .encode = bgp_encode_aggregator,
+    .decode = bgp_decode_aggregator,
+    .format = bgp_format_aggregator,
+  },
+  [BA_COMMUNITY] = {
+    .name = "community",
+    .type = EAF_TYPE_INT_SET,
+    .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
+    .export = bgp_export_community,
+    .encode = bgp_encode_u32s,
+    .decode = bgp_decode_community,
+  },
+  [BA_ORIGINATOR_ID] = {
+    .name = "originator_id",
+    .type = EAF_TYPE_ROUTER_ID,
+    .flags = BAF_OPTIONAL,
+    .export = bgp_export_originator_id,
+    .encode = bgp_encode_u32,
+    .decode = bgp_decode_originator_id,
+  },
+  [BA_CLUSTER_LIST] = {
+    .name = "cluster_list",
+    .type = EAF_TYPE_INT_SET,
+    .flags = BAF_OPTIONAL,
+    .export = bgp_export_cluster_list,
+    .encode = bgp_encode_u32s,
+    .decode = bgp_decode_cluster_list,
+    .format = bgp_format_cluster_list,
+  },
+  [BA_MP_REACH_NLRI] = {
+    .name = "mp_reach_nlri",
+    .type = EAF_TYPE_OPAQUE,
+    .flags = BAF_OPTIONAL,
+    .decode = bgp_decode_mp_reach_nlri,
+  },
+  [BA_MP_UNREACH_NLRI] = {
+    .name = "mp_unreach_nlri",
+    .type = EAF_TYPE_OPAQUE,
+    .flags = BAF_OPTIONAL,
+    .decode = bgp_decode_mp_unreach_nlri,
+  },
+  [BA_EXT_COMMUNITY] = {
+    .name = "ext_community",
+    .type = EAF_TYPE_EC_SET,
+    .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
+    .export = bgp_export_ext_community,
+    .encode = bgp_encode_u32s,
+    .decode = bgp_decode_ext_community,
+  },
+  [BA_AS4_PATH] = {
+    .name = "as4_path",
+    .type = EAF_TYPE_AS_PATH,
+    .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
+    .encode = bgp_encode_raw,
+    .decode = bgp_decode_as4_path,
+  },
+  [BA_AS4_AGGREGATOR] = {
+    .name = "as4_aggregator",
+    .type = EAF_TYPE_OPAQUE,
+    .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
+    .encode = bgp_encode_raw,
+    .decode = bgp_decode_as4_aggregator,
+    .format = bgp_format_aggregator,
+  },
+  [BA_LARGE_COMMUNITY] = {
+    .name = "large_community",
+    .type = EAF_TYPE_LC_SET,
+    .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
+    .export = bgp_export_large_community,
+    .encode = bgp_encode_u32s,
+    .decode = bgp_decode_large_community,
+  },
+};
+
+static inline int
+bgp_attr_known(uint code)
+{
+  return (code < ARRAY_SIZE(bgp_attr_table)) && bgp_attr_table[code].name;
+}
+
+
+/*
+ *	Attribute export
+ */
+
+static inline void
+bgp_export_attr(struct bgp_export_state *s, eattr *a, ea_list *to)
+{
+  if (EA_PROTO(a->id) != EAP_BGP)
+    return;
+
+  uint code = EA_ID(a->id);
+
+  if (bgp_attr_known(code))
+  {
+    const struct bgp_attr_desc *desc = &bgp_attr_table[code];
+
+    /* The flags might have been zero if the attr was added by filters */
+    a->flags = (a->flags & BAF_PARTIAL) | desc->flags;
+
+    /* Set partial bit if new opt-trans attribute is attached to non-local route */
+    if ((s->src != NULL) && (a->type & EAF_ORIGINATED) &&
+	(a->flags & BAF_OPTIONAL) && (a->flags & BAF_TRANSITIVE))
+      a->flags |= BAF_PARTIAL;
+
+    /* Call specific hook */
+    CALL(desc->export, s, a);
+
+    /* Attribute might become undefined in hook */
+    if ((a->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
+      return;
+  }
+  else
+  {
+    /* Don't re-export unknown non-transitive attributes */
+    if (!(a->flags & BAF_TRANSITIVE))
+      return;
+
+    a->flags |= BAF_PARTIAL;
+  }
+
+  /* Append updated attribute */
+  to->attrs[to->count++] = *a;
+}
+
+/**
+ * bgp_export_attrs - export BGP attributes
+ * @s: BGP export state
+ * @attrs: a list of extended attributes
+ *
+ * The bgp_export_attrs() function takes a list of attributes and merges it to
+ * one newly allocated and sorted segment. Attributes are validated and
+ * normalized by type-specific export hooks and attribute flags are updated.
+ * Some attributes may be eliminated (e.g. unknown non-tranitive attributes, or
+ * empty community sets).
+ *
+ * Result: one sorted attribute list segment, or NULL if attributes are unsuitable.
+ */
+static inline ea_list *
+bgp_export_attrs(struct bgp_export_state *s, ea_list *attrs)
+{
+  /* Merge the attribute list */
+  ea_list *new = lp_alloc(s->pool, ea_scan(attrs));
+  ea_merge(attrs, new);
+  ea_sort(new);
+
+  uint i, count;
+  count = new->count;
+  new->count = 0;
+
+  /* Export each attribute */
+  for (i = 0; i < count; i++)
+    bgp_export_attr(s, &new->attrs[i], new);
+
+  if (s->err_withdraw)
+    return NULL;
+
+  return new;
+
+}
+
+
+/*
+ *	Attribute encoding
+ */
+
+static inline int
+bgp_encode_attr(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
+{
+  ASSERT(EA_PROTO(a->id) == EAP_BGP);
+
+  uint code = EA_ID(a->id);
+
+  if (bgp_attr_known(code))
+    return bgp_attr_table[code].encode(s, a, buf, size);
+  else
+    return bgp_encode_raw(s, a, buf, size);
+}
 
 /**
  * bgp_encode_attrs - encode BGP attributes
- * @p: BGP instance
- * @w: buffer
+ * @s: BGP write state
  * @attrs: a list of extended attributes
- * @remains: remaining space in the buffer
+ * @buf: buffer
+ * @end: buffer end
  *
  * The bgp_encode_attrs() function takes a list of extended attributes
  * and converts it to its BGP representation (a part of an Update message).
  *
  * Result: Length of the attribute block generated or -1 if not enough space.
  */
-uint
-bgp_encode_attrs(struct bgp_proto *p, byte *w, ea_list *attrs, int remains)
+int
+bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte *end)
 {
-  uint i, code, type, flags;
-  byte *start = w;
-  int len, rv;
+  byte *pos = buf;
+  int i, len;
 
-  for(i=0; i<attrs->count; i++)
-    {
-      eattr *a = &attrs->attrs[i];
-      ASSERT(EA_PROTO(a->id) == EAP_BGP);
-      code = EA_ID(a->id);
+  for (i = 0; i < attrs->count; i++)
+  {
+    len = bgp_encode_attr(s, &attrs->attrs[i], pos, end - pos);
 
-#ifdef IPV6
-      /* When talking multiprotocol BGP, the NEXT_HOP attributes are used only temporarily. */
-      if (code == BA_NEXT_HOP)
-	continue;
-#endif
+    if (len < 0)
+      return -1;
 
-      /* When AS4-aware BGP speaker is talking to non-AS4-aware BGP speaker,
-       * we have to convert our 4B AS_PATH to 2B AS_PATH and send our AS_PATH 
-       * as optional AS4_PATH attribute.
-       */
-      if ((code == BA_AS_PATH) && (! p->as4_session))
-	{
-	  len = a->u.ptr->length;
+    pos += len;
+  }
 
-	  if (remains < (len + 4))
-	    goto err_no_buffer;
-
-	  /* Using temporary buffer because don't know a length of created attr
-	   * and therefore a length of a header. Perhaps i should better always
-	   * use BAF_EXT_LEN. */
-	  
-	  byte buf[len];
-	  int new_used;
-	  int nl = as_path_convert_to_old(a->u.ptr, buf, &new_used);
-
-	  DBG("BGP: Encoding old AS_PATH\n");
-	  rv = bgp_encode_attr_hdr(w, BAF_TRANSITIVE, BA_AS_PATH, nl);
-	  ADVANCE(w, remains, rv);
-	  memcpy(w, buf, nl);
-	  ADVANCE(w, remains, nl);
-
-	  if (! new_used)
-	    continue;
-
-	  if (remains < (len + 4))
-	    goto err_no_buffer;
-
-	  /* We should discard AS_CONFED_SEQUENCE or AS_CONFED_SET path segments 
-	   * here but we don't support confederations and such paths we already
-	   * discarded in bgp_check_as_path().
-	   */
-
-	  DBG("BGP: Encoding AS4_PATH\n");
-	  rv = bgp_encode_attr_hdr(w, BAF_OPTIONAL | BAF_TRANSITIVE, BA_AS4_PATH, len);
-	  ADVANCE(w, remains, rv);
-	  memcpy(w, a->u.ptr->data, len);
-	  ADVANCE(w, remains, len);
-
-	  continue;
-	}
-
-      /* The same issue with AGGREGATOR attribute */
-      if ((code == BA_AGGREGATOR) && (! p->as4_session))
-	{
-	  int new_used;
-
-	  len = 6;
-	  if (remains < (len + 3))
-	    goto err_no_buffer;
-
-	  rv = bgp_encode_attr_hdr(w, BAF_OPTIONAL | BAF_TRANSITIVE, BA_AGGREGATOR, len);
-	  ADVANCE(w, remains, rv);
-	  aggregator_convert_to_old(a->u.ptr, w, &new_used);
-	  ADVANCE(w, remains, len);
-
-	  if (! new_used)
-	    continue;
-
-	  len = 8;
-	  if (remains < (len + 3))
-	    goto err_no_buffer;
-
-	  rv = bgp_encode_attr_hdr(w, BAF_OPTIONAL | BAF_TRANSITIVE, BA_AS4_AGGREGATOR, len);
-	  ADVANCE(w, remains, rv);
-	  memcpy(w, a->u.ptr->data, len);
-	  ADVANCE(w, remains, len);
-
-	  continue;
-	}
-
-      /* Standard path continues here ... */
-
-      type = a->type & EAF_TYPE_MASK;
-      flags = a->flags & (BAF_OPTIONAL | BAF_TRANSITIVE | BAF_PARTIAL);
-      len = bgp_get_attr_len(a);
-
-      /* Skip empty sets */ 
-      if (((type == EAF_TYPE_INT_SET) || (type == EAF_TYPE_EC_SET) || (type == EAF_TYPE_LC_SET)) && (len == 0))
-	continue; 
-
-      if (remains < len + 4)
-	goto err_no_buffer;
-
-      rv = bgp_encode_attr_hdr(w, flags, code, len);
-      ADVANCE(w, remains, rv);
-
-      switch (type)
-	{
-	case EAF_TYPE_INT:
-	case EAF_TYPE_ROUTER_ID:
-	  if (len == 4)
-	    put_u32(w, a->u.data);
-	  else
-	    *w = a->u.data;
-	  break;
-	case EAF_TYPE_IP_ADDRESS:
-	  {
-	    ip_addr ip = *(ip_addr *)a->u.ptr->data;
-	    ipa_hton(ip);
-	    memcpy(w, &ip, len);
-	    break;
-	  }
-	case EAF_TYPE_INT_SET:
-	case EAF_TYPE_LC_SET:
-	case EAF_TYPE_EC_SET:
-	  {
-	    u32 *z = int_set_get_data(a->u.ptr);
-	    int i;
-	    for(i=0; i<len; i+=4)
-	      put_u32(w+i, *z++);
-	    break;
-	  }
-	case EAF_TYPE_OPAQUE:
-	case EAF_TYPE_AS_PATH:
-	  memcpy(w, a->u.ptr->data, len);
-	  break;
-	default:
-	  bug("bgp_encode_attrs: unknown attribute type %02x", a->type);
-	}
-      ADVANCE(w, remains, len);
-    }
-  return w - start;
-
- err_no_buffer:
-  return -1;
+  return pos - buf;
 }
+
 
 /*
-static void
-bgp_init_prefix(struct fib_node *N)
-{
-  struct bgp_prefix *p = (struct bgp_prefix *) N;
-  p->bucket_node.next = NULL;
-}
-*/
+ *	Attribute decoding
+ */
 
-static int
-bgp_compare_u32(const u32 *x, const u32 *y)
-{
-  return (*x < *y) ? -1 : (*x > *y) ? 1 : 0;
-}
+static void bgp_process_as4_attrs(ea_list **attrs, struct linpool *pool);
 
-static inline void
-bgp_normalize_int_set(u32 *dest, u32 *src, unsigned cnt)
+static inline int
+bgp_as_path_loopy(struct bgp_proto *p, ea_list *attrs, u32 asn)
 {
-  memcpy(dest, src, sizeof(u32) * cnt);
-  qsort(dest, cnt, sizeof(u32), (int(*)(const void *, const void *)) bgp_compare_u32);
+  eattr *e = bgp_find_attr(attrs, BA_AS_PATH);
+  int num = p->cf->allow_local_as + 1;
+  return (e && (num > 0) && as_path_contains(e->u.ptr, asn, num));
 }
 
-static int
-bgp_compare_ec(const u32 *xp, const u32 *yp)
+static inline int
+bgp_originator_id_loopy(struct bgp_proto *p, ea_list *attrs)
 {
-  u64 x = ec_get(xp, 0);
-  u64 y = ec_get(yp, 0);
-  return (x < y) ? -1 : (x > y) ? 1 : 0;
+  eattr *e = bgp_find_attr(attrs, BA_ORIGINATOR_ID);
+  return (e && (e->u.data == p->local_id));
+}
+
+static inline int
+bgp_cluster_list_loopy(struct bgp_proto *p, ea_list *attrs)
+{
+  eattr *e = bgp_find_attr(attrs, BA_CLUSTER_LIST);
+  return (e && int_set_contains(e->u.ptr, p->rr_cluster_id));
 }
 
 static inline void
-bgp_normalize_ec_set(struct adata *ad, u32 *src, int internal)
+bgp_decode_attr(struct bgp_parse_state *s, uint code, uint flags, byte *data, uint len, ea_list **to)
 {
-  u32 *dst = int_set_get_data(ad);
+  /* Handle duplicate attributes; RFC 7606 3 (g) */
+  if (BIT32_TEST(s->attrs_seen, code))
+  {
+    if ((code == BA_MP_REACH_NLRI) || (code == BA_MP_UNREACH_NLRI))
+      bgp_parse_error(s, 1);
+    else
+      DISCARD("Discarding duplicate attribute (code %u)", code);
+  }
+  BIT32_SET(s->attrs_seen, code);
 
-  /* Remove non-transitive communities (EC_TBIT active) on external sessions */
-  if (! internal)
+  if (bgp_attr_known(code))
+  {
+    const struct bgp_attr_desc *desc = &bgp_attr_table[code];
+
+    /* Handle conflicting flags; RFC 7606 3 (c) */
+    if ((flags ^ desc->flags) & (BAF_OPTIONAL | BAF_TRANSITIVE))
+      WITHDRAW("Malformed %s attribute - conflicting flags (%02x)", desc->name, flags);
+
+    desc->decode(s, code, flags, data, len, to);
+  }
+  else /* Unknown attribute */
+  {
+    if (!(flags & BAF_OPTIONAL))
+      WITHDRAW("Unknown attribute (code %u) - conflicting flags (%02x)", code, flags);
+
+    bgp_decode_unknown(s, code, flags, data, len, to);
+  }
+}
+
+/**
+ * bgp_decode_attrs - check and decode BGP attributes
+ * @s: BGP parse state
+ * @data: start of attribute block
+ * @len: length of attribute block
+ *
+ * This function takes a BGP attribute block (a part of an Update message), checks
+ * its consistency and converts it to a list of BIRD route attributes represented
+ * by an (uncached) &rta.
+ */
+ea_list *
+bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
+{
+  struct bgp_proto *p = s->proto;
+  ea_list *attrs = NULL;
+  uint code, flags, alen;
+  byte *pos = data;
+
+  /* Parse the attributes */
+  while (len)
+  {
+    alen = 0;
+
+    /* Read attribute type */
+    if (len < 2)
+      goto framing_error;
+    flags = pos[0];
+    code = pos[1];
+    ADVANCE(pos, len, 2);
+
+    /* Read attribute length */
+    if (flags & BAF_EXT_LEN)
     {
-      int len = int_set_get_size(ad);
-      u32 *t = dst;
-      int i;
-
-      for (i=0; i < len; i += 2)
-	{
-	  if (src[i] & EC_TBIT)
-	    continue;
-	  
-	  *t++ = src[i];
-	  *t++ = src[i+1];
-	}
-
-      ad->length = (t - dst) * 4;
+      if (len < 2)
+	goto framing_error;
+      alen = get_u16(pos);
+      ADVANCE(pos, len, 2);
     }
-  else
-    memcpy(dst, src, ad->length);
+    else
+    {
+      if (len < 1)
+	goto framing_error;
+      alen = *pos;
+      ADVANCE(pos, len, 1);
+    }
 
-  qsort(dst, ad->length / 8, 8, (int(*)(const void *, const void *)) bgp_compare_ec);
+    if (alen > len)
+      goto framing_error;
+
+    DBG("Attr %02x %02x %u\n", code, flags, alen);
+
+    bgp_decode_attr(s, code, flags, pos, alen, &attrs);
+    ADVANCE(pos, len, alen);
+  }
+
+  if (s->err_withdraw)
+    goto withdraw;
+
+  /* If there is no reachability NLRI, we are finished */
+  if (!s->ip_reach_len && !s->mp_reach_len)
+    return NULL;
+
+
+  /* Handle missing mandatory attributes; RFC 7606 3 (d) */
+  if (!BIT32_TEST(s->attrs_seen, BA_ORIGIN))
+  { REPORT(NO_MANDATORY, "ORIGIN"); goto withdraw; }
+
+  if (!BIT32_TEST(s->attrs_seen, BA_AS_PATH))
+  { REPORT(NO_MANDATORY, "AS_PATH"); goto withdraw; }
+
+  /* When receiving attributes from non-AS4-aware BGP speaker, we have to
+     reconstruct AS_PATH and AGGREGATOR attributes; RFC 6793 4.2.3 */
+  if (!p->as4_session)
+    bgp_process_as4_attrs(&attrs, s->pool);
+
+  /* Reject routes with our ASN in AS_PATH attribute */
+  if (bgp_as_path_loopy(p, attrs, p->local_as))
+    goto withdraw;
+
+  /* Reject routes with our Confederation ID in AS_PATH attribute; RFC 5065 4 */
+  if ((p->public_as != p->local_as) && bgp_as_path_loopy(p, attrs, p->public_as))
+    goto withdraw;
+
+  /* Reject routes with our Router ID in ORIGINATOR_ID attribute; RFC 4456 8 */
+  if (p->is_internal && bgp_originator_id_loopy(p, attrs))
+    goto withdraw;
+
+  /* Reject routes with our Cluster ID in CLUSTER_LIST attribute; RFC 4456 8 */
+  if (p->rr_client && bgp_cluster_list_loopy(p, attrs))
+    goto withdraw;
+
+  /* If there is no local preference, define one */
+  if (!BIT32_TEST(s->attrs_seen, BA_LOCAL_PREF))
+    bgp_set_attr_u32(&attrs, s->pool, BA_LOCAL_PREF, 0, p->cf->default_local_pref);
+
+  return attrs;
+
+
+framing_error:
+  /* RFC 7606 4 - handle attribute framing errors */
+  REPORT("Malformed attribute list - framing error (%u/%u) at %d",
+	 alen, len, (int) (pos - s->attrs));
+
+withdraw:
+  /* RFC 7606 5.2 - handle missing NLRI during errors */
+  if (!s->ip_reach_len && !s->mp_reach_len)
+    bgp_parse_error(s, 1);
+
+  s->err_withdraw = 1;
+  return NULL;
 }
 
-static int
-bgp_compare_lc(const u32 *x, const u32 *y)
-{
-  if (x[0] != y[0])
-    return (x[0] > y[0]) ? 1 : -1;
-  if (x[1] != y[1])
-    return (x[1] > y[1]) ? 1 : -1;
-  if (x[2] != y[2])
-    return (x[2] > y[2]) ? 1 : -1;
-  return 0;
-}
 
-static inline void
-bgp_normalize_lc_set(u32 *dest, u32 *src, unsigned cnt)
-{
-  memcpy(dest, src, LCOMM_LENGTH * cnt);
-  qsort(dest, cnt, LCOMM_LENGTH, (int(*)(const void *, const void *)) bgp_compare_lc);
-}
+/*
+ *	Route bucket hash table
+ */
 
-static void
-bgp_rehash_buckets(struct bgp_proto *p)
-{
-  struct bgp_bucket **old = p->bucket_hash;
-  struct bgp_bucket **new;
-  unsigned oldn = p->hash_size;
-  unsigned i, e, mask;
-  struct bgp_bucket *b;
+#define RBH_KEY(b)		b->eattrs, b->hash
+#define RBH_NEXT(b)		b->next
+#define RBH_EQ(a1,h1,a2,h2)	h1 == h2 && ea_same(a1, a2)
+#define RBH_FN(a,h)		h
 
-  p->hash_size = p->hash_limit;
-  DBG("BGP: Rehashing bucket table from %d to %d\n", oldn, p->hash_size);
-  p->hash_limit *= 4;
-  if (p->hash_limit >= 65536)
-    p->hash_limit = ~0;
-  new = p->bucket_hash = mb_allocz(p->p.pool, p->hash_size * sizeof(struct bgp_bucket *));
-  mask = p->hash_size - 1;
-  for (i=0; i<oldn; i++)
-    while (b = old[i])
-      {
-	old[i] = b->hash_next;
-	e = b->hash & mask;
-	b->hash_next = new[e];
-	if (b->hash_next)
-	  b->hash_next->hash_prev = b;
-	b->hash_prev = NULL;
-	new[e] = b;
-      }
-  mb_free(old);
+#define RBH_REHASH		bgp_rbh_rehash
+#define RBH_PARAMS		/8, *2, 2, 2, 8, 20
+
+
+HASH_DEFINE_REHASH_FN(RBH, struct bgp_bucket)
+
+void
+bgp_init_bucket_table(struct bgp_channel *c)
+{
+  HASH_INIT(c->bucket_hash, c->pool, 8);
+
+  init_list(&c->bucket_queue);
+  c->withdraw_bucket = NULL;
 }
 
 static struct bgp_bucket *
-bgp_new_bucket(struct bgp_proto *p, ea_list *new, unsigned hash)
+bgp_get_bucket(struct bgp_channel *c, ea_list *new)
 {
-  struct bgp_bucket *b;
-  unsigned ea_size = sizeof(ea_list) + new->count * sizeof(eattr);
-  unsigned ea_size_aligned = BIRD_ALIGN(ea_size, CPU_STRUCT_ALIGN);
-  unsigned size = sizeof(struct bgp_bucket) + ea_size_aligned;
-  unsigned i;
+  /* Hash and lookup */
+  u32 hash = ea_hash(new);
+  struct bgp_bucket *b = HASH_FIND(c->bucket_hash, RBH, new, hash);
+
+  if (b)
+    return b;
+
+  uint ea_size = sizeof(ea_list) + new->count * sizeof(eattr);
+  uint ea_size_aligned = BIRD_ALIGN(ea_size, CPU_STRUCT_ALIGN);
+  uint size = sizeof(struct bgp_bucket) + ea_size_aligned;
+  uint i;
   byte *dest;
-  unsigned index = hash & (p->hash_size - 1);
 
   /* Gather total size of non-inline attributes */
-  for (i=0; i<new->count; i++)
-    {
-      eattr *a = &new->attrs[i];
-      if (!(a->type & EAF_EMBEDDED))
-	size += BIRD_ALIGN(sizeof(struct adata) + a->u.ptr->length, CPU_STRUCT_ALIGN);
-    }
+  for (i = 0; i < new->count; i++)
+  {
+    eattr *a = &new->attrs[i];
 
-  /* Create the bucket and hash it */
-  b = mb_alloc(p->p.pool, size);
-  b->hash_next = p->bucket_hash[index];
-  if (b->hash_next)
-    b->hash_next->hash_prev = b;
-  p->bucket_hash[index] = b;
-  b->hash_prev = NULL;
-  b->hash = hash;
-  add_tail(&p->bucket_queue, &b->send_node);
+    if (!(a->type & EAF_EMBEDDED))
+      size += BIRD_ALIGN(sizeof(struct adata) + a->u.ptr->length, CPU_STRUCT_ALIGN);
+  }
+
+  /* Create the bucket */
+  b = mb_alloc(c->pool, size);
   init_list(&b->prefixes);
+  b->hash = hash;
+
+  /* Copy list of extended attributes */
   memcpy(b->eattrs, new, ea_size);
-  dest = ((byte *)b->eattrs) + ea_size_aligned;
+  dest = ((byte *) b->eattrs) + ea_size_aligned;
 
   /* Copy values of non-inline attributes */
-  for (i=0; i<new->count; i++)
-    {
-      eattr *a = &b->eattrs->attrs[i];
-      if (!(a->type & EAF_EMBEDDED))
-	{
-	  struct adata *oa = a->u.ptr;
-	  struct adata *na = (struct adata *) dest;
-	  memcpy(na, oa, sizeof(struct adata) + oa->length);
-	  a->u.ptr = na;
-	  dest += BIRD_ALIGN(sizeof(struct adata) + na->length, CPU_STRUCT_ALIGN);
-	}
-    }
+  for (i = 0; i < new->count; i++)
+  {
+    eattr *a = &b->eattrs->attrs[i];
 
-  /* If needed, rehash */
-  p->hash_count++;
-  if (p->hash_count > p->hash_limit)
-    bgp_rehash_buckets(p);
+    if (!(a->type & EAF_EMBEDDED))
+    {
+      struct adata *oa = a->u.ptr;
+      struct adata *na = (struct adata *) dest;
+      memcpy(na, oa, sizeof(struct adata) + oa->length);
+      a->u.ptr = na;
+      dest += BIRD_ALIGN(sizeof(struct adata) + na->length, CPU_STRUCT_ALIGN);
+    }
+  }
+
+  /* Insert the bucket to send queue and bucket hash */
+  add_tail(&c->bucket_queue, &b->send_node);
+  HASH_INSERT2(c->bucket_hash, RBH, c->pool, b);
 
   return b;
 }
 
 static struct bgp_bucket *
-bgp_get_bucket(struct bgp_proto *p, net *n, ea_list *attrs, int originate)
+bgp_get_withdraw_bucket(struct bgp_channel *c)
 {
-  ea_list *new;
-  unsigned i, cnt, hash, code;
-  eattr *a, *d;
-  u32 seen = 0;
-  struct bgp_bucket *b;
+  if (!c->withdraw_bucket)
+  {
+    c->withdraw_bucket = mb_allocz(c->pool, sizeof(struct bgp_bucket));
+    init_list(&c->withdraw_bucket->prefixes);
+  }
 
-  /* Merge the attribute list */
-  new = alloca(ea_scan(attrs));
-  ea_merge(attrs, new);
-  ea_sort(new);
-
-  /* Normalize attributes */
-  d = new->attrs;
-  cnt = new->count;
-  new->count = 0;
-  for(i=0; i<cnt; i++)
-    {
-      a = &new->attrs[i];
-      if (EA_PROTO(a->id) != EAP_BGP)
-	continue;
-      code = EA_ID(a->id);
-      if (ATTR_KNOWN(code))
-	{
-	  if (!bgp_attr_table[code].allow_in_ebgp && !p->is_internal)
-	    continue;
-	  /* The flags might have been zero if the attr was added by filters */
-	  a->flags = (a->flags & BAF_PARTIAL) | bgp_attr_table[code].expected_flags;
-	  if (code < 32)
-	    seen |= 1 << code;
-	}
-      else
-	{
-	  /* Don't re-export unknown non-transitive attributes */
-	  if (!(a->flags & BAF_TRANSITIVE))
-	    continue;
-	}
-      *d = *a;
-      if ((d->type & EAF_ORIGINATED) && !originate && (d->flags & BAF_TRANSITIVE) && (d->flags & BAF_OPTIONAL))
-	d->flags |= BAF_PARTIAL;
-      switch (d->type & EAF_TYPE_MASK)
-	{
-	case EAF_TYPE_INT_SET:
-	  {
-	    struct adata *z = alloca(sizeof(struct adata) + d->u.ptr->length);
-	    z->length = d->u.ptr->length;
-	    bgp_normalize_int_set((u32 *) z->data, (u32 *) d->u.ptr->data, z->length / 4);
-	    d->u.ptr = z;
-	    break;
-	  }
-	case EAF_TYPE_EC_SET:
-	  {
-	    struct adata *z = alloca(sizeof(struct adata) + d->u.ptr->length);
-	    z->length = d->u.ptr->length;
-	    bgp_normalize_ec_set(z, (u32 *) d->u.ptr->data, p->is_internal);
-	    d->u.ptr = z;
-	    break;
-	  }
-	case EAF_TYPE_LC_SET:
-	  {
-	    struct adata *z = alloca(sizeof(struct adata) + d->u.ptr->length);
-	    z->length = d->u.ptr->length;
-	    bgp_normalize_lc_set((u32 *) z->data, (u32 *) d->u.ptr->data, z->length / LCOMM_LENGTH);
-	    d->u.ptr = z;
-	    break;
-	  }
-	default: ;
-	}
-      d++;
-      new->count++;
-    }
-
-  /* Hash */
-  hash = ea_hash(new);
-  for(b=p->bucket_hash[hash & (p->hash_size - 1)]; b; b=b->hash_next)
-    if (b->hash == hash && ea_same(b->eattrs, new))
-      {
-	DBG("Found bucket.\n");
-	return b;
-      }
-
-  /* Ensure that there are all mandatory attributes */
-  for(i=0; i<ARRAY_SIZE(bgp_mandatory_attrs); i++)
-    if (!(seen & (1 << bgp_mandatory_attrs[i])))
-      {
-	log(L_ERR "%s: Mandatory attribute %s missing in route %I/%d", p->p.name, bgp_attr_table[bgp_mandatory_attrs[i]].name, n->n.prefix, n->n.pxlen);
-	return NULL;
-      }
-
-  /* Check if next hop is valid */
-  a = ea_find(new, EA_CODE(EAP_BGP, BA_NEXT_HOP));
-  if (!a || ipa_equal(p->cf->remote_ip, *(ip_addr *)a->u.ptr->data))
-    {
-      log(L_ERR "%s: Invalid NEXT_HOP attribute in route %I/%d", p->p.name, n->n.prefix, n->n.pxlen);
-      return NULL;
-    }
-
-  /* Create new bucket */
-  DBG("Creating bucket.\n");
-  return bgp_new_bucket(p, new, hash);
+  return c->withdraw_bucket;
 }
 
 void
-bgp_free_bucket(struct bgp_proto *p, struct bgp_bucket *buck)
+bgp_free_bucket(struct bgp_channel *c, struct bgp_bucket *b)
 {
-  if (buck->hash_next)
-    buck->hash_next->hash_prev = buck->hash_prev;
-  if (buck->hash_prev)
-    buck->hash_prev->hash_next = buck->hash_next;
-  else
-    p->bucket_hash[buck->hash & (p->hash_size-1)] = buck->hash_next;
-  mb_free(buck);
+  rem_node(&b->send_node);
+  HASH_REMOVE2(c->bucket_hash, RBH, c->pool, b);
+  mb_free(b);
+}
+
+void
+bgp_defer_bucket(struct bgp_channel *c, struct bgp_bucket *b)
+{
+  rem_node(&b->send_node);
+  add_tail(&c->bucket_queue, &b->send_node);
+}
+
+void
+bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b)
+{
+  struct bgp_proto *p = (void *) c->c.proto;
+  struct bgp_bucket *wb = bgp_get_withdraw_bucket(c);
+
+  log(L_ERR "%s: Attribute list too long", p->p.name);
+  while (!EMPTY_LIST(b->prefixes))
+  {
+    struct bgp_prefix *px = HEAD(b->prefixes);
+
+    log(L_ERR "%s: - withdrawing %N", p->p.name, &px->net);
+    rem_node(&px->buck_node);
+    add_tail(&wb->prefixes, &px->buck_node);
+  }
 }
 
 
-/* Prefix hash table */
+/*
+ *	Prefix hash table
+ */
 
-#define PXH_KEY(n1)		n1->n.prefix, n1->n.pxlen, n1->path_id
-#define PXH_NEXT(n)		n->next
-#define PXH_EQ(p1,l1,i1,p2,l2,i2) ipa_equal(p1, p2) && l1 == l2 && i1 == i2
-#define PXH_FN(p,l,i)		ipa_hash32(p) ^ u32_hash((l << 16) ^ i)
+#define PXH_KEY(px)		px->net, px->path_id, px->hash
+#define PXH_NEXT(px)		px->next
+#define PXH_EQ(n1,i1,h1,n2,i2,h2) h1 == h2 && i1 == i2 && net_equal(n1, n2)
+#define PXH_FN(n,i,h)		h
 
 #define PXH_REHASH		bgp_pxh_rehash
 #define PXH_PARAMS		/8, *2, 2, 2, 8, 20
@@ -927,281 +1217,234 @@ bgp_free_bucket(struct bgp_proto *p, struct bgp_bucket *buck)
 HASH_DEFINE_REHASH_FN(PXH, struct bgp_prefix)
 
 void
-bgp_init_prefix_table(struct bgp_proto *p, u32 order)
+bgp_init_prefix_table(struct bgp_channel *c)
 {
-  HASH_INIT(p->prefix_hash, p->p.pool, order);
+  HASH_INIT(c->prefix_hash, c->pool, 8);
 
-  p->prefix_slab = sl_new(p->p.pool, sizeof(struct bgp_prefix));
+  c->prefix_slab = sl_new(c->pool, sizeof(struct bgp_prefix) +
+			  net_addr_length[c->c.net_type]);
 }
 
 static struct bgp_prefix *
-bgp_get_prefix(struct bgp_proto *p, ip_addr prefix, int pxlen, u32 path_id)
+bgp_get_prefix(struct bgp_channel *c, net_addr *net, u32 path_id)
 {
-  struct bgp_prefix *bp = HASH_FIND(p->prefix_hash, PXH, prefix, pxlen, path_id);
+  u32 hash = net_hash(net) ^ u32_hash(path_id);
+  struct bgp_prefix *px = HASH_FIND(c->prefix_hash, PXH, net, path_id, hash);
 
-  if (bp)
-    return bp;
+  if (px)
+  {
+    rem_node(&px->buck_node);
+    return px;
+  }
 
-  bp = sl_alloc(p->prefix_slab);
-  bp->n.prefix = prefix;
-  bp->n.pxlen = pxlen;
-  bp->path_id = path_id;
-  bp->bucket_node.next = NULL;
+  px = sl_alloc(c->prefix_slab);
+  px->buck_node.next = NULL;
+  px->buck_node.prev = NULL;
+  px->hash = hash;
+  px->path_id = path_id;
+  net_copy(px->net, net);
 
-  HASH_INSERT2(p->prefix_hash, PXH, p->p.pool, bp);
+  HASH_INSERT2(c->prefix_hash, PXH, c->pool, px);
 
-  return bp;
+  return px;
 }
 
 void
-bgp_free_prefix(struct bgp_proto *p, struct bgp_prefix *bp)
+bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
 {
-  HASH_REMOVE2(p->prefix_hash, PXH, p->p.pool, bp);
-  sl_free(p->prefix_slab, bp);
+  rem_node(&px->buck_node);
+  HASH_REMOVE2(c->prefix_hash, PXH, c->pool, px);
+  sl_free(c->prefix_slab, px);
 }
 
 
-void
-bgp_rt_notify(struct proto *P, rtable *tbl UNUSED, net *n, rte *new, rte *old UNUSED, ea_list *attrs)
+/*
+ *	BGP protocol glue
+ */
+
+int
+bgp_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct linpool *pool UNUSED)
 {
+  rte *e = *new;
+  struct proto *SRC = e->attrs->src->proto;
   struct bgp_proto *p = (struct bgp_proto *) P;
-  struct bgp_bucket *buck;
-  struct bgp_prefix *px;
-  rte *key;
-  u32 path_id;
+  struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (struct bgp_proto *) SRC : NULL;
 
-  DBG("BGP: Got route %I/%d %s\n", n->n.prefix, n->n.pxlen, new ? "up" : "down");
+  /* Reject our routes */
+  if (src == p)
+    return -1;
 
-  if (new)
-    {
-      key = new;
-      buck = bgp_get_bucket(p, n, attrs, new->attrs->source != RTS_BGP);
-      if (!buck)			/* Inconsistent attribute list */
-	return;
-    }
-  else
-    {
-      key = old;
-      if (!(buck = p->withdraw_bucket))
-	{
-	  buck = p->withdraw_bucket = mb_alloc(P->pool, sizeof(struct bgp_bucket));
-	  init_list(&buck->prefixes);
-	}
-    }
-  path_id = p->add_path_tx ? key->attrs->src->global_id : 0;
-  px = bgp_get_prefix(p, n->n.prefix, n->n.pxlen, path_id);
-  if (px->bucket_node.next)
-    {
-      DBG("\tRemoving old entry.\n");
-      rem_node(&px->bucket_node);
-    }
-  add_tail(&buck->prefixes, &px->bucket_node);
-  bgp_schedule_packet(p->conn, PKT_UPDATE);
-}
+  /* Accept non-BGP routes */
+  if (src == NULL)
+    return 0;
 
-static int
-bgp_create_attrs(struct bgp_proto *p, rte *e, ea_list **attrs, struct linpool *pool)
-{
-  ea_list *ea = lp_alloc(pool, sizeof(ea_list) + 4*sizeof(eattr));
-  rta *rta = e->attrs;
-  byte *z;
+  /* IBGP route reflection, RFC 4456 */
+  if (p->is_internal && src->is_internal && (p->local_as == src->local_as))
+  {
+    /* Rejected unless configured as route reflector */
+    if (!p->rr_client && !src->rr_client)
+      return -1;
 
-  ea->next = *attrs;
-  *attrs = ea;
-  ea->flags = EALF_SORTED;
-  ea->count = 4;
+    /* Generally, this should be handled when path is received, but we check it
+       also here as rr_cluster_id may be undefined or different in src. */
+    if (p->rr_cluster_id && bgp_cluster_list_loopy(p, e->attrs->eattrs))
+      return -1;
+  }
 
-  bgp_set_attr(ea->attrs, BA_ORIGIN,
-       ((rta->source == RTS_OSPF_EXT1) || (rta->source == RTS_OSPF_EXT2)) ? ORIGIN_INCOMPLETE : ORIGIN_IGP);
+  /* Handle well-known communities, RFC 1997 */
+  struct eattr *c;
+  if (p->cf->interpret_communities &&
+      (c = ea_find(e->attrs->eattrs, EA_CODE(EAP_BGP, BA_COMMUNITY))))
+  {
+    struct adata *d = c->u.ptr;
 
-  if (p->is_internal)
-    bgp_set_attr_wa(ea->attrs+1, pool, BA_AS_PATH, 0);
-  else
-    {
-      z = bgp_set_attr_wa(ea->attrs+1, pool, BA_AS_PATH, 6);
-      z[0] = AS_PATH_SEQUENCE;
-      z[1] = 1;				/* 1 AS */
-      put_u32(z+2, p->local_as);
-    }
+    /* Do not export anywhere */
+    if (int_set_contains(d, BGP_COMM_NO_ADVERTISE))
+      return -1;
 
-  /* iBGP -> use gw, eBGP multi-hop -> use source_addr,
-     eBGP single-hop -> use gw if on the same iface */
-  z = bgp_set_attr_wa(ea->attrs+2, pool, BA_NEXT_HOP, NEXT_HOP_LENGTH);
-  if (p->cf->next_hop_self ||
-      rta->dest != RTD_ROUTER ||
-      ipa_equal(rta->gw, IPA_NONE) ||
-      ipa_is_link_local(rta->gw) ||
-      (!p->is_internal && !p->cf->next_hop_keep &&
-       (!p->neigh || (rta->iface != p->neigh->iface))))
-    set_next_hop(z, p->source_addr);
-  else
-    set_next_hop(z, rta->gw);
+    /* Do not export outside of AS (or member-AS) */
+    if (!p->is_internal && int_set_contains(d, BGP_COMM_NO_EXPORT_SUBCONFED))
+      return -1;
 
-  bgp_set_attr(ea->attrs+3, BA_LOCAL_PREF, p->cf->default_local_pref);
-
-  return 0;				/* Leave decision to the filters */
-}
-
-
-static inline int
-bgp_as_path_loopy(struct bgp_proto *p, rta *a)
-{
-  int num = p->cf->allow_local_as + 1;
-  eattr *e = ea_find(a->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
-  return (e && (num > 0) && as_path_contains(e->u.ptr, p->local_as, num));
-}
-
-static inline int
-bgp_originator_id_loopy(struct bgp_proto *p, rta *a)
-{
-  eattr *e = ea_find(a->eattrs, EA_CODE(EAP_BGP, BA_ORIGINATOR_ID));
-  return (e && (e->u.data == p->local_id));
-}
-
-static inline int
-bgp_cluster_list_loopy(struct bgp_proto *p, rta *a)
-{
-  eattr *e = ea_find(a->eattrs, EA_CODE(EAP_BGP, BA_CLUSTER_LIST));
-  return (e && p->rr_client && int_set_contains(e->u.ptr, p->rr_cluster_id));
-}
-
-
-static inline void
-bgp_path_prepend(rte *e, ea_list **attrs, struct linpool *pool, u32 as)
-{
-  eattr *a = ea_find(e->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
-  bgp_attach_attr(attrs, pool, BA_AS_PATH, (uintptr_t) as_path_prepend(pool, a->u.ptr, as));
-}
-
-static inline void
-bgp_cluster_list_prepend(rte *e, ea_list **attrs, struct linpool *pool, u32 cid)
-{
-  eattr *a = ea_find(e->attrs->eattrs, EA_CODE(EAP_BGP, BA_CLUSTER_LIST));
-  bgp_attach_attr(attrs, pool, BA_CLUSTER_LIST, (uintptr_t) int_set_add(pool, a ? a->u.ptr : NULL, cid));
-}
-
-static int
-bgp_update_attrs(struct bgp_proto *p, rte *e, ea_list **attrs, struct linpool *pool, int rr)
-{
-  eattr *a;
-
-  if (!p->is_internal && !p->rs_client)
-    {
-      bgp_path_prepend(e, attrs, pool, p->local_as);
-
-      /* The MULTI_EXIT_DISC attribute received from a neighboring AS MUST NOT be
-       * propagated to other neighboring ASes.
-       * Perhaps it would be better to undefine it.
-       */
-      a = ea_find(e->attrs->eattrs, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC));
-      if (a)
-	bgp_attach_attr(attrs, pool, BA_MULTI_EXIT_DISC, 0);
-    }
-
-  /* iBGP -> keep next_hop, eBGP multi-hop -> use source_addr,
-   * eBGP single-hop -> keep next_hop if on the same iface.
-   * If the next_hop is zero (i.e. link-local), keep only if on the same iface.
-   *
-   * Note that same-iface-check uses iface from route, which is based on gw.
-   */
-  a = ea_find(e->attrs->eattrs, EA_CODE(EAP_BGP, BA_NEXT_HOP));
-  if (a && !p->cf->next_hop_self && 
-      (p->cf->next_hop_keep ||
-       (p->is_internal && ipa_nonzero(*((ip_addr *) a->u.ptr->data))) ||
-       (p->neigh && (e->attrs->iface == p->neigh->iface))))
-    {
-      /* Leave the original next hop attribute, will check later where does it point */
-    }
-  else
-    {
-      /* Need to create new one */
-      byte *b = bgp_attach_attr_wa(attrs, pool, BA_NEXT_HOP, NEXT_HOP_LENGTH);
-      set_next_hop(b, p->source_addr);
-    }
-
-  if (rr)
-    {
-      /* Handling route reflection, RFC 4456 */
-      struct bgp_proto *src = (struct bgp_proto *) e->attrs->src->proto;
-
-      a = ea_find(e->attrs->eattrs, EA_CODE(EAP_BGP, BA_ORIGINATOR_ID));
-      if (!a)
-	bgp_attach_attr(attrs, pool, BA_ORIGINATOR_ID, src->remote_id);
-
-      /* We attach proper cluster ID according to whether the route is entering or leaving the cluster */
-      bgp_cluster_list_prepend(e, attrs, pool, src->rr_client ? src->rr_cluster_id : p->rr_cluster_id);
-
-      /* Two RR clients with different cluster ID, hmmm */
-      if (src->rr_client && p->rr_client && (src->rr_cluster_id != p->rr_cluster_id))
-	bgp_cluster_list_prepend(e, attrs, pool, p->rr_cluster_id);
-    }
-
-  return 0;				/* Leave decision to the filters */
-}
-
-static int
-bgp_community_filter(struct bgp_proto *p, rte *e)
-{
-  eattr *a;
-  struct adata *d;
-
-  /* Check if we aren't forbidden to export the route by communities */
-  a = ea_find(e->attrs->eattrs, EA_CODE(EAP_BGP, BA_COMMUNITY));
-  if (a)
-    {
-      d = a->u.ptr;
-      if (int_set_contains(d, BGP_COMM_NO_ADVERTISE))
-	{
-	  DBG("\tNO_ADVERTISE\n");
-	  return 1;
-	}
-      if (!p->is_internal &&
-	  (int_set_contains(d, BGP_COMM_NO_EXPORT) ||
-	   int_set_contains(d, BGP_COMM_NO_EXPORT_SUBCONFED)))
-	{
-	  DBG("\tNO_EXPORT\n");
-	  return 1;
-	}
-    }
+    /* Do not export outside of AS (or confederation) */
+    if (!p->is_interior && int_set_contains(d, BGP_COMM_NO_EXPORT))
+      return -1;
+  }
 
   return 0;
 }
 
-int
-bgp_import_control(struct proto *P, rte **new, ea_list **attrs, struct linpool *pool)
+static const adata null_adata;	/* adata of length 0 */
+
+static inline void
+bgp_path_prepend(ea_list **attrs, struct linpool *pool, int seg, u32 as, int strip)
 {
-  rte *e = *new;
-  struct bgp_proto *p = (struct bgp_proto *) P;
-  struct bgp_proto *new_bgp = (e->attrs->src->proto->proto == &proto_bgp) ?
-    (struct bgp_proto *) e->attrs->src->proto : NULL;
-
-  if (p == new_bgp)			/* Poison reverse updates */
-    return -1;
-  if (new_bgp)
-    {
-      /* We should check here for cluster list loop, because the receiving BGP instance
-	 might have different cluster ID  */
-      if (bgp_cluster_list_loopy(p, e->attrs))
-	return -1;
-
-      if (p->cf->interpret_communities && bgp_community_filter(p, e))
-	return -1;
-
-      if (p->local_as == new_bgp->local_as && p->is_internal && new_bgp->is_internal)
-	{
-	  /* Redistribution of internal routes with IBGP */
-	  if (p->rr_client || new_bgp->rr_client)
-	    /* Route reflection, RFC 4456 */
-	    return bgp_update_attrs(p, e, attrs, pool, 1);
-	  else
-	    return -1;
-	}
-      else
-	return bgp_update_attrs(p, e, attrs, pool, 0);
-    }
-  else
-    return bgp_create_attrs(p, e, attrs, pool);
+  eattr *a = bgp_find_attr(*attrs, BA_AS_PATH);
+  adata *d = as_path_prepend2(pool, a ? a->u.ptr : &null_adata, seg, as, strip);
+  bgp_set_attr_ptr(attrs, pool, BA_AS_PATH, 0, d);
 }
+
+static inline void
+bgp_cluster_list_prepend(ea_list **attrs, struct linpool *pool, u32 id)
+{
+  eattr *a = bgp_find_attr(*attrs, BA_CLUSTER_LIST);
+  adata *d = int_set_add(pool, a ? a->u.ptr : NULL, id);
+  bgp_set_attr_ptr(attrs, pool, BA_CLUSTER_LIST, 0, d);
+}
+
+static ea_list *
+bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *attrs, struct linpool *pool)
+{
+  struct proto *SRC = e->attrs->src->proto;
+  struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (void *) SRC : NULL;
+  struct bgp_export_state s = { .proto = p, .channel =c, .pool = pool, .src = src, .route = e };
+  eattr *a;
+
+  /* ORIGIN attribute - mandatory, attach if missing */
+  if (! bgp_find_attr(attrs, BA_ORIGIN))
+    bgp_set_attr_u32(&attrs, pool, BA_ORIGIN, 0, src ? ORIGIN_INCOMPLETE : ORIGIN_IGP);
+
+  /* AS_PATH attribute - keep or prepend ASN */
+  if (p->is_internal ||
+      (p->rs_client && src && src->rs_client))
+  {
+    /* IBGP or route server -> just ensure there is one */
+    if (! bgp_find_attr(attrs, BA_AS_PATH))
+      bgp_set_attr_ptr(&attrs, pool, BA_AS_PATH, 0, lp_alloc_adata(pool, 0));
+  }
+  else if (p->is_interior)
+  {
+    /* Confederation -> prepend ASN as CONFED_SEQUENCE, keep CONFED_* segments */
+    bgp_path_prepend(&attrs, pool, AS_PATH_CONFED_SEQUENCE, p->public_as, 0);
+  }
+  else /* Regular EBGP (no RS, no confederation) */
+  {
+    /* Regular EBGP -> prepend ASN as regular segment, strip CONFED_* segments */
+    bgp_path_prepend(&attrs, pool, AS_PATH_SEQUENCE, p->public_as, 1);
+
+    /* MULTI_EXIT_DESC attribute - accept only if set in export filter */
+    a = bgp_find_attr(attrs, BA_MULTI_EXIT_DISC);
+    if (a && !(a->type & EAF_FRESH))
+      bgp_unset_attr(&attrs, pool, BA_MULTI_EXIT_DISC);
+  }
+
+  /* NEXT_HOP attribute - delegated to AF-specific hook */
+  a = bgp_find_attr(attrs, BA_NEXT_HOP);
+  bgp_update_next_hop(&s, a, &attrs);
+
+  /* LOCAL_PREF attribute - required for IBGP, attach if missing */
+  if (p->is_interior && ! bgp_find_attr(attrs, BA_LOCAL_PREF))
+    bgp_set_attr_u32(&attrs, pool, BA_LOCAL_PREF, 0, p->cf->default_local_pref);
+
+  /* IBGP route reflection, RFC 4456 */
+  if (src && src->is_internal && p->is_internal && (src->local_as == p->local_as))
+  {
+    /* ORIGINATOR_ID attribute - attach if not already set */
+    if (! bgp_find_attr(attrs, BA_ORIGINATOR_ID))
+      bgp_set_attr_u32(&attrs, pool, BA_ORIGINATOR_ID, 0, src->remote_id);
+
+    /* CLUSTER_LIST attribute - prepend cluster ID */
+    if (src->rr_cluster_id)
+      bgp_cluster_list_prepend(&attrs, pool, src->rr_cluster_id);
+
+    /* Handle different src and dst cluster ID - prepend both ones */
+    if (p->rr_cluster_id && (src->rr_cluster_id != p->rr_cluster_id))
+      bgp_cluster_list_prepend(&attrs, pool, p->rr_cluster_id);
+  }
+
+  /* AS4_* transition attributes, RFC 6793 4.2.2 */
+  if (! p->as4_session)
+  {
+    a = bgp_find_attr(attrs, BA_AS_PATH);
+    if (a && as_path_contains_as4(a->u.ptr))
+    {
+      bgp_set_attr_ptr(&attrs, pool, BA_AS_PATH, 0, as_path_to_old(pool, a->u.ptr));
+      bgp_set_attr_ptr(&attrs, pool, BA_AS4_PATH, 0, as_path_strip_confed(pool, a->u.ptr));
+    }
+
+    a = bgp_find_attr(attrs, BA_AGGREGATOR);
+    if (a && aggregator_contains_as4(a->u.ptr))
+    {
+      bgp_set_attr_ptr(&attrs, pool, BA_AGGREGATOR, 0, aggregator_to_old(pool, a->u.ptr));
+      bgp_set_attr_ptr(&attrs, pool, BA_AS4_AGGREGATOR, 0, a->u.ptr);
+    }
+  }
+
+  /* Apply per-attribute export hooks for validatation and normalization */
+  return bgp_export_attrs(&s, attrs);
+}
+
+void
+bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old, ea_list *attrs)
+{
+  struct bgp_proto *p = (void *) P;
+  struct bgp_channel *c = (void *) C;
+  struct bgp_bucket *buck;
+  struct bgp_prefix *px;
+  u32 path;
+
+  if (new)
+  {
+    attrs = bgp_update_attrs(p, c, new, attrs, bgp_linpool);
+
+    /* If attributes are invalid, we fail back to withdraw */
+    buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
+    path = new->attrs->src->global_id;
+
+    lp_flush(bgp_linpool);
+  }
+  else
+  {
+    buck = bgp_get_withdraw_bucket(c);
+    path = old->attrs->src->global_id;
+  }
+
+  px = bgp_get_prefix(c, n->n.addr, c->add_path_tx ? path : 0);
+  add_tail(&buck->prefixes, &px->buck_node);
+
+  bgp_schedule_packet(p->conn, c, PKT_UPDATE);
+}
+
 
 static inline u32
 bgp_get_neighbor(rte *r)
@@ -1218,7 +1461,7 @@ bgp_get_neighbor(rte *r)
 static inline int
 rte_resolvable(rte *rt)
 {
-  int rd = rt->attrs->dest;  
+  int rd = rt->attrs->dest;
   return (rd == RTD_ROUTER) || (rd == RTD_DEVICE) || (rd == RTD_MULTIPATH);
 }
 
@@ -1258,16 +1501,16 @@ bgp_rte_better(rte *new, rte *old)
 
   /* RFC 4271 9.1.2.2. a)  Use AS path lengths */
   if (new_bgp->cf->compare_path_lengths || old_bgp->cf->compare_path_lengths)
-    {
-      x = ea_find(new->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
-      y = ea_find(old->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
-      n = x ? as_path_getlen(x->u.ptr) : AS_PATH_MAXLEN;
-      o = y ? as_path_getlen(y->u.ptr) : AS_PATH_MAXLEN;
-      if (n < o)
-	return 1;
-      if (n > o)
-	return 0;
-    }
+  {
+    x = ea_find(new->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
+    y = ea_find(old->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
+    n = x ? as_path_getlen(x->u.ptr) : AS_PATH_MAXLEN;
+    o = y ? as_path_getlen(y->u.ptr) : AS_PATH_MAXLEN;
+    if (n < o)
+      return 1;
+    if (n > o)
+      return 0;
+  }
 
   /* RFC 4271 9.1.2.2. b) Use origins */
   x = ea_find(new->attrs->eattrs, EA_CODE(EAP_BGP, BA_ORIGIN));
@@ -1292,21 +1535,21 @@ bgp_rte_better(rte *new, rte *old)
    */
   if (new_bgp->cf->med_metric || old_bgp->cf->med_metric ||
       (bgp_get_neighbor(new) == bgp_get_neighbor(old)))
-    {
-      x = ea_find(new->attrs->eattrs, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC));
-      y = ea_find(old->attrs->eattrs, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC));
-      n = x ? x->u.data : new_bgp->cf->default_med;
-      o = y ? y->u.data : old_bgp->cf->default_med;
-      if (n < o)
-	return 1;
-      if (n > o)
-	return 0;
-    }
+  {
+    x = ea_find(new->attrs->eattrs, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC));
+    y = ea_find(old->attrs->eattrs, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC));
+    n = x ? x->u.data : new_bgp->cf->default_med;
+    o = y ? y->u.data : old_bgp->cf->default_med;
+    if (n < o)
+      return 1;
+    if (n > o)
+      return 0;
+  }
 
   /* RFC 4271 9.1.2.2. d) Prefer external peers */
-  if (new_bgp->is_internal > old_bgp->is_internal)
+  if (new_bgp->is_interior > old_bgp->is_interior)
     return 0;
-  if (new_bgp->is_internal < old_bgp->is_internal)
+  if (new_bgp->is_interior < old_bgp->is_interior)
     return 1;
 
   /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
@@ -1318,7 +1561,7 @@ bgp_rte_better(rte *new, rte *old)
     return 0;
 
   /* RFC 4271 9.1.2.2. f) Compare BGP identifiers */
-  /* RFC 4456 9. a) Use ORIGINATOR_ID instead of local neighor ID */
+  /* RFC 4456 9. a) Use ORIGINATOR_ID instead of local neighbor ID */
   x = ea_find(new->attrs->eattrs, EA_CODE(EAP_BGP, BA_ORIGINATOR_ID));
   y = ea_find(old->attrs->eattrs, EA_CODE(EAP_BGP, BA_ORIGINATOR_ID));
   n = x ? x->u.data : new_bgp->remote_id;
@@ -1377,18 +1620,18 @@ bgp_rte_mergable(rte *pri, rte *sec)
 
   /* RFC 4271 9.1.2.2. a)  Use AS path lengths */
   if (pri_bgp->cf->compare_path_lengths || sec_bgp->cf->compare_path_lengths)
-    {
-      x = ea_find(pri->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
-      y = ea_find(sec->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
-      p = x ? as_path_getlen(x->u.ptr) : AS_PATH_MAXLEN;
-      s = y ? as_path_getlen(y->u.ptr) : AS_PATH_MAXLEN;
+  {
+    x = ea_find(pri->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
+    y = ea_find(sec->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
+    p = x ? as_path_getlen(x->u.ptr) : AS_PATH_MAXLEN;
+    s = y ? as_path_getlen(y->u.ptr) : AS_PATH_MAXLEN;
 
-      if (p != s)
-	return 0;
+    if (p != s)
+      return 0;
 
-//      if (DELTA(p, s) > pri_bgp->cf->relax_multipath)
-//	return 0;
-    }
+//    if (DELTA(p, s) > pri_bgp->cf->relax_multipath)
+//      return 0;
+  }
 
   /* RFC 4271 9.1.2.2. b) Use origins */
   x = ea_find(pri->attrs->eattrs, EA_CODE(EAP_BGP, BA_ORIGIN));
@@ -1401,14 +1644,14 @@ bgp_rte_mergable(rte *pri, rte *sec)
   /* RFC 4271 9.1.2.2. c) Compare MED's */
   if (pri_bgp->cf->med_metric || sec_bgp->cf->med_metric ||
       (bgp_get_neighbor(pri) == bgp_get_neighbor(sec)))
-    {
-      x = ea_find(pri->attrs->eattrs, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC));
-      y = ea_find(sec->attrs->eattrs, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC));
-      p = x ? x->u.data : pri_bgp->cf->default_med;
-      s = y ? y->u.data : sec_bgp->cf->default_med;
-      if (p != s)
-	return 0;
-    }
+  {
+    x = ea_find(pri->attrs->eattrs, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC));
+    y = ea_find(sec->attrs->eattrs, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC));
+    p = x ? x->u.data : pri_bgp->cf->default_med;
+    s = y ? y->u.data : sec_bgp->cf->default_med;
+    if (p != s)
+      return 0;
+  }
 
   /* RFC 4271 9.1.2.2. d) Prefer external peers */
   if (pri_bgp->is_internal != sec_bgp->is_internal)
@@ -1424,7 +1667,6 @@ bgp_rte_mergable(rte *pri, rte *sec)
 
   return 1;
 }
-
 
 
 static inline int
@@ -1471,7 +1713,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
    * that this fn is not called for them.
    *
    * The idea is simple, the implementation is more problematic,
-   * mostly because of optimizations in rte_recalculate() that 
+   * mostly because of optimizations in rte_recalculate() that
    * avoids full recalculation in most cases.
    *
    * We can assume that at least one of new, old is non-NULL and both
@@ -1483,14 +1725,14 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
   /* If new and old are from different groups, we just process that
      as two independent events */
   if (new && old && !same_group(old, lpref, lasn))
-    {
-      int i1, i2;
-      i1 = bgp_rte_recalculate(table, net, NULL, old, old_best);
-      i2 = bgp_rte_recalculate(table, net, new, NULL, old_best);
-      return i1 || i2;
-    }
+  {
+    int i1, i2;
+    i1 = bgp_rte_recalculate(table, net, NULL, old, old_best);
+    i2 = bgp_rte_recalculate(table, net, new, NULL, old_best);
+    return i1 || i2;
+  }
 
-  /* 
+  /*
    * We could find the best-in-group and then make some shortcuts like
    * in rte_recalculate, but as we would have to walk through all
    * net->routes just to find it, it is probably not worth. So we
@@ -1502,35 +1744,35 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
     new->u.bgp.suppressed = 1;
 
   if (old)
+  {
+    old_is_group_best = !old->u.bgp.suppressed;
+    old->u.bgp.suppressed = 1;
+    int new_is_better = new && bgp_rte_better(new, old);
+
+    /* The first case - replace not best with worse (or remove not best) */
+    if (!old_is_group_best && !new_is_better)
+      return 0;
+
+    /* The second case - replace the best with better */
+    if (old_is_group_best && new_is_better)
     {
-      old_is_group_best = !old->u.bgp.suppressed;
-      old->u.bgp.suppressed = 1;
-      int new_is_better = new && bgp_rte_better(new, old);
-
-      /* The first case - replace not best with worse (or remove not best) */
-      if (!old_is_group_best && !new_is_better)
-	return 0;
-
-      /* The second case - replace the best with better */
-      if (old_is_group_best && new_is_better)
-	{
-	  /* new is best-in-group, the see discussion below - this is
-	     a special variant of NBG && OBG. From OBG we can deduce
-	     that same_group(old_best) iff (old == old_best)  */
-	  new->u.bgp.suppressed = 0;
-	  return (old == old_best);
-	}
+      /* new is best-in-group, the see discussion below - this is
+	 a special variant of NBG && OBG. From OBG we can deduce
+	 that same_group(old_best) iff (old == old_best)  */
+      new->u.bgp.suppressed = 0;
+      return (old == old_best);
     }
+  }
 
   /* The default case - find a new best-in-group route */
   r = new; /* new may not be in the list */
   for (s=net->routes; rte_is_valid(s); s=s->next)
     if (use_deterministic_med(s) && same_group(s, lpref, lasn))
-      {
-	s->u.bgp.suppressed = 1;
-	if (!r || bgp_rte_better(s, r))
-	  r = s;
-      }
+    {
+      s->u.bgp.suppressed = 1;
+      if (!r || bgp_rte_better(s, r))
+	r = s;
+    }
 
   /* Simple case - the last route in group disappears */
   if (!r)
@@ -1569,375 +1811,76 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
     return old_is_group_best;
 }
 
-static struct adata *
-bgp_aggregator_convert_to_new(struct adata *old, struct linpool *pool)
-{
-  struct adata *newa = lp_alloc(pool, sizeof(struct adata) + 8);
-  newa->length = 8;
-  aggregator_convert_to_new(old, newa->data);
-  return newa;
-}
 
-
-/* Take last req_as ASNs from path old2 (in 2B format), convert to 4B format
- * and append path old4 (in 4B format).
+/*
+ * Reconstruct AS_PATH and AGGREGATOR according to RFC 6793 4.2.3
  */
-static struct adata *
-bgp_merge_as_paths(struct adata *old2, struct adata *old4, int req_as, struct linpool *pool)
-{
-  byte buf[old2->length * 2];
-
-  int ol = as_path_convert_to_new(old2, buf, req_as);
-  int nl = ol + (old4 ? old4->length : 0);
-
-  struct adata *newa = lp_alloc(pool, sizeof(struct adata) + nl);
-  newa->length = nl;
-  memcpy(newa->data, buf, ol);
-  if (old4) memcpy(newa->data + ol, old4->data, old4->length);
-
-  return newa;
-}
-
-static int
-as4_aggregator_valid(struct adata *aggr)
-{
-  return aggr->length == 8;
-}
-
-
-/* Reconstruct 4B AS_PATH and AGGREGATOR according to RFC 4893 4.2.3 */
 static void
-bgp_reconstruct_4b_atts(struct bgp_proto *p, rta *a, struct linpool *pool)
+bgp_process_as4_attrs(ea_list **attrs, struct linpool *pool)
 {
-  eattr *p2 =ea_find(a->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
-  eattr *p4 =ea_find(a->eattrs, EA_CODE(EAP_BGP, BA_AS4_PATH));
-  eattr *a2 =ea_find(a->eattrs, EA_CODE(EAP_BGP, BA_AGGREGATOR));
-  eattr *a4 =ea_find(a->eattrs, EA_CODE(EAP_BGP, BA_AS4_AGGREGATOR));
-  int a4_removed = 0;
+  eattr *p2 = bgp_find_attr(*attrs, BA_AS_PATH);
+  eattr *p4 = bgp_find_attr(*attrs, BA_AS4_PATH);
+  eattr *a2 = bgp_find_attr(*attrs, BA_AGGREGATOR);
+  eattr *a4 = bgp_find_attr(*attrs, BA_AS4_AGGREGATOR);
 
-  if (a4 && !as4_aggregator_valid(a4->u.ptr))
-    {
-      log(L_WARN "%s: AS4_AGGREGATOR attribute is invalid, skipping attribute", p->p.name);
-      a4 = NULL;
-      a4_removed = 1;
-    }
+  /* First, unset AS4_* attributes */
+  if (p4) bgp_unset_attr(attrs, pool, BA_AS4_PATH);
+  if (a4) bgp_unset_attr(attrs, pool, BA_AS4_AGGREGATOR);
 
-  if (a2)
-    {
-      u32 a2_as = get_u16(a2->u.ptr->data);
+  /* Handle AGGREGATOR attribute */
+  if (a2 && a4)
+  {
+    u32 a2_asn = get_u32(a2->u.ptr->data);
 
-      if (a4)
-	{
-	  if (a2_as != AS_TRANS)
-	    {
-	      /* Routes were aggregated by old router and therefore AS4_PATH
-	       * and AS4_AGGREGATOR is invalid
-	       *
-	       * Convert AS_PATH and AGGREGATOR to 4B format and finish.
-	       */
+    /* If routes were aggregated by an old router, then AS4_PATH and
+       AS4_AGGREGATOR are invalid. In that case we give up. */
+    if (a2_asn != AS_TRANS)
+      return;
 
-	      a2->u.ptr = bgp_aggregator_convert_to_new(a2->u.ptr, pool);
-	      p2->u.ptr = bgp_merge_as_paths(p2->u.ptr, NULL, AS_PATH_MAXLEN, pool);
+    /* Use AS4_AGGREGATOR instead of AGGREGATOR */
+    a2->u.ptr = a4->u.ptr;
+  }
 
-	      return;
-	    }
-	  else
-	    {
-	      /* Common case, use AS4_AGGREGATOR attribute */
-	      a2->u.ptr = a4->u.ptr;
-	    }
-	}
-      else
-	{
-	  /* Common case, use old AGGREGATOR attribute */
-	  a2->u.ptr = bgp_aggregator_convert_to_new(a2->u.ptr, pool);
+  /* Handle AS_PATH attribute */
+  if (p2 && p4)
+  {
+    int p2_len = as_path_getlen(p2->u.ptr);
+    int p4_len = as_path_getlen(p4->u.ptr);
 
-	  if ((a2_as == AS_TRANS) && !a4_removed)
-	    log(L_WARN "%s: AGGREGATOR attribute contain AS_TRANS, but AS4_AGGREGATOR is missing", p->p.name);
-	}
-    }
-  else
-    if (a4)
-      log(L_WARN "%s: AS4_AGGREGATOR attribute received, but AGGREGATOR attribute is missing", p->p.name);
+    /* AS_PATH is too short, give up */
+    if (p2_len < p4_len)
+      return;
 
-  int p2_len = as_path_getlen_int(p2->u.ptr, 2);
-  int p4_len = p4 ? validate_as4_path(p, p4->u.ptr) : -1;
-
-  if (p4 && (p4_len < 0))
-    log(L_WARN "%s: AS4_PATH attribute is malformed, skipping attribute", p->p.name);
-
-  if ((p4_len <= 0) || (p2_len < p4_len))
-    p2->u.ptr = bgp_merge_as_paths(p2->u.ptr, NULL, AS_PATH_MAXLEN, pool);
-  else
-    p2->u.ptr = bgp_merge_as_paths(p2->u.ptr, p4->u.ptr, p2_len - p4_len, pool);
-}
-
-static void
-bgp_remove_as4_attrs(struct bgp_proto *p, rta *a)
-{
-  unsigned id1 = EA_CODE(EAP_BGP, BA_AS4_PATH);
-  unsigned id2 = EA_CODE(EAP_BGP, BA_AS4_AGGREGATOR);
-  ea_list **el = &(a->eattrs);
-
-  /* We know that ea_lists constructed in bgp_decode attrs have one attribute per ea_list struct */
-  while (*el != NULL)
-    {
-      unsigned fid = (*el)->attrs[0].id;
-
-      if ((fid == id1) || (fid == id2))
-	{
-	  *el = (*el)->next;
-	  if (p->as4_session)
-	    log(L_WARN "%s: Unexpected AS4_* attributes received", p->p.name);
-	}
-      else
-	el = &((*el)->next);
-    }
-}
-
-/**
- * bgp_decode_attrs - check and decode BGP attributes
- * @conn: connection
- * @attr: start of attribute block
- * @len: length of attribute block
- * @pool: linear pool to make all the allocations in
- * @mandatory: 1 iff presence of mandatory attributes has to be checked
- *
- * This function takes a BGP attribute block (a part of an Update message), checks
- * its consistency and converts it to a list of BIRD route attributes represented
- * by a &rta.
- */
-struct rta *
-bgp_decode_attrs(struct bgp_conn *conn, byte *attr, uint len, struct linpool *pool, int mandatory)
-{
-  struct bgp_proto *bgp = conn->bgp;
-  rta *a = lp_alloc(pool, sizeof(struct rta));
-  uint flags, code, l, i, type;
-  int errcode;
-  byte *z, *attr_start;
-  byte seen[256/8];
-  ea_list *ea;
-  struct adata *ad;
-  int withdraw = 0;
-
-  bzero(a, sizeof(rta));
-  a->source = RTS_BGP;
-  a->scope = SCOPE_UNIVERSE;
-  a->cast = RTC_UNICAST;
-  /* a->dest = RTD_ROUTER;  -- set in bgp_set_next_hop() */
-  a->from = bgp->cf->remote_ip;
-
-  /* Parse the attributes */
-  bzero(seen, sizeof(seen));
-  DBG("BGP: Parsing attributes\n");
-  while (len)
-    {
-      if (len < 2)
-	goto malformed;
-      attr_start = attr;
-      flags = *attr++;
-      code = *attr++;
-      len -= 2;
-      if (flags & BAF_EXT_LEN)
-	{
-	  if (len < 2)
-	    goto malformed;
-	  l = get_u16(attr);
-	  attr += 2;
-	  len -= 2;
-	}
-      else
-	{
-	  if (len < 1)
-	    goto malformed;
-	  l = *attr++;
-	  len--;
-	}
-      if (l > len)
-	goto malformed;
-      len -= l;
-      z = attr;
-      attr += l;
-      DBG("Attr %02x %02x %d\n", code, flags, l);
-      if (seen[code/8] & (1 << (code%8)))
-	goto malformed;
-      if (ATTR_KNOWN(code))
-	{
-	  struct attr_desc *desc = &bgp_attr_table[code];
-	  if (desc->expected_length >= 0 && desc->expected_length != (int) l)
-	    { errcode = 5; goto err; }
-	  if ((desc->expected_flags ^ flags) & (BAF_OPTIONAL | BAF_TRANSITIVE))
-	    { errcode = 4; goto err; }
-	  if (!desc->allow_in_ebgp && !bgp->is_internal)
-	    continue;
-	  if (desc->validate)
-	    {
-	      errcode = desc->validate(bgp, z, l);
-	      if (errcode > 0)
-		goto err;
-	      if (errcode == IGNORE)
-		continue;
-	      if (errcode <= WITHDRAW)
-		{
-		  log(L_WARN "%s: Attribute %s is malformed, withdrawing update",
-		      bgp->p.name, desc->name);
-		  withdraw = 1;
-		}
-	    }
-	  else if (code == BA_AS_PATH)
-	    {
-	      /* Special case as it might also trim the attribute */
-	      if (validate_as_path(bgp, z, &l) < 0)
-		{ errcode = 11; goto err; }
-	    }
-	  type = desc->type;
-	}
-      else				/* Unknown attribute */
-	{
-	  if (!(flags & BAF_OPTIONAL))
-	    { errcode = 2; goto err; }
-	  type = EAF_TYPE_OPAQUE;
-	}
-      
-      // Only OPTIONAL and TRANSITIVE attributes may have non-zero PARTIAL flag
-      // if (!((flags & BAF_OPTIONAL) && (flags & BAF_TRANSITIVE)) && (flags & BAF_PARTIAL))
-      //   { errcode = 4; goto err; }
-
-      seen[code/8] |= (1 << (code%8));
-      ea = lp_alloc(pool, sizeof(ea_list) + sizeof(eattr));
-      ea->next = a->eattrs;
-      a->eattrs = ea;
-      ea->flags = 0;
-      ea->count = 1;
-      ea->attrs[0].id = EA_CODE(EAP_BGP, code);
-      ea->attrs[0].flags = flags;
-      ea->attrs[0].type = type;
-      if (type & EAF_EMBEDDED)
-	ad = NULL;
-      else
-	{
-	  ad = lp_alloc(pool, sizeof(struct adata) + l);
-	  ea->attrs[0].u.ptr = ad;
-	  ad->length = l;
-	  memcpy(ad->data, z, l);
-	}
-      switch (type)
-	{
-	case EAF_TYPE_ROUTER_ID:
-	case EAF_TYPE_INT:
-	  if (l == 1)
-	    ea->attrs[0].u.data = *z;
-	  else
-	    ea->attrs[0].u.data = get_u32(z);
-	  break;
-	case EAF_TYPE_IP_ADDRESS:
-	  ipa_ntoh(*(ip_addr *)ad->data);
-	  break;
-	case EAF_TYPE_INT_SET:
-	case EAF_TYPE_LC_SET:
-	case EAF_TYPE_EC_SET:
-	  {
-	    u32 *z = (u32 *) ad->data;
-	    for(i=0; i<ad->length/4; i++)
-	      z[i] = ntohl(z[i]);
-	    break;
-	  }
-	}
-    }
-
-  if (withdraw)
-    goto withdraw;
-
-#ifdef IPV6
-  /* If we received MP_REACH_NLRI we should check mandatory attributes */
-  if (bgp->mp_reach_len != 0)
-    mandatory = 1;
-#endif
-
-  /* If there is no (reachability) NLRI, we should exit now */
-  if (! mandatory)
-    return a;
-
-  /* Check if all mandatory attributes are present */
-  for(i=0; i < ARRAY_SIZE(bgp_mandatory_attrs); i++)
-    {
-      code = bgp_mandatory_attrs[i];
-      if (!(seen[code/8] & (1 << (code%8))))
-	{
-	  bgp_error(conn, 3, 3, &bgp_mandatory_attrs[i], 1);
-	  return NULL;
-	}
-    }
-
-  /* When receiving attributes from non-AS4-aware BGP speaker,
-   * we have to reconstruct 4B AS_PATH and AGGREGATOR attributes
-   */
-  if (! bgp->as4_session)
-    bgp_reconstruct_4b_atts(bgp, a, pool);
-
-  bgp_remove_as4_attrs(bgp, a);
-
-  /* If the AS path attribute contains our AS, reject the routes */
-  if (bgp_as_path_loopy(bgp, a))
-    goto withdraw;
-
-  /* Two checks for IBGP loops caused by route reflection, RFC 4456 */ 
-  if (bgp_originator_id_loopy(bgp, a) ||
-      bgp_cluster_list_loopy(bgp, a))
-    goto withdraw;
-
-  /* If there's no local preference, define one */
-  if (!(seen[0] & (1 << BA_LOCAL_PREF)))
-    bgp_attach_attr(&a->eattrs, pool, BA_LOCAL_PREF, bgp->cf->default_local_pref);
-
-  return a;
-
-withdraw:
-  return NULL;
-
-malformed:
-  bgp_error(conn, 3, 1, NULL, 0);
-  return NULL;
-
-err:
-  bgp_error(conn, 3, errcode, attr_start, z+l-attr_start);
-  return NULL;
+    /* Merge AS_PATH and AS4_PATH */
+    as_path_cut(p2->u.ptr, p2_len - p4_len);
+    p2->u.ptr = as_path_merge(pool, p2->u.ptr, p4->u.ptr);
+  }
 }
 
 int
 bgp_get_attr(eattr *a, byte *buf, int buflen)
 {
   uint i = EA_ID(a->id);
-  struct attr_desc *d;
+  const struct bgp_attr_desc *d;
   int len;
 
-  if (ATTR_KNOWN(i))
+  if (bgp_attr_known(i))
+  {
+    d = &bgp_attr_table[i];
+    len = bsprintf(buf, "%s", d->name);
+    buf += len;
+    if (d->format)
     {
-      d = &bgp_attr_table[i];
-      len = bsprintf(buf, "%s", d->name);
-      buf += len;
-      if (d->format)
-	{
-	  *buf++ = ':';
-	  *buf++ = ' ';
-	  d->format(a, buf, buflen - len - 2);
-	  return GA_FULL;
-	}
-      return GA_NAME;
+      *buf++ = ':';
+      *buf++ = ' ';
+      d->format(a, buf, buflen - len - 2);
+      return GA_FULL;
     }
+    return GA_NAME;
+  }
+
   bsprintf(buf, "%02x%s", i, (a->flags & BAF_TRANSITIVE) ? " [t]" : "");
   return GA_NAME;
-}
-
-void
-bgp_init_bucket_table(struct bgp_proto *p)
-{
-  p->hash_size = 256;
-  p->hash_limit = p->hash_size * 4;
-  p->bucket_hash = mb_allocz(p->p.pool, p->hash_size * sizeof(struct bgp_bucket *));
-  init_list(&p->bucket_queue);
-  p->withdraw_bucket = NULL;
-  // fib_init(&p->prefix_fib, p->p.pool, sizeof(struct bgp_prefix), 0, bgp_init_prefix);
 }
 
 void
@@ -1953,14 +1896,14 @@ bgp_get_route_info(rte *e, byte *buf, ea_list *attrs)
     buf += bsprintf(buf, "-");
 
   if (e->attrs->hostentry)
-    {
-      if (!rte_resolvable(e))
-	buf += bsprintf(buf, "/-");
-      else if (e->attrs->igp_metric >= IGP_METRIC_UNKNOWN)
-	buf += bsprintf(buf, "/?");
-      else
-	buf += bsprintf(buf, "/%d", e->attrs->igp_metric);
-    }
+  {
+    if (!rte_resolvable(e))
+      buf += bsprintf(buf, "/-");
+    else if (e->attrs->igp_metric >= IGP_METRIC_UNKNOWN)
+      buf += bsprintf(buf, "/?");
+    else
+      buf += bsprintf(buf, "/%d", e->attrs->igp_metric);
+  }
   buf += bsprintf(buf, ") [");
 
   if (p && as_path_get_last(p->u.ptr, &origas))

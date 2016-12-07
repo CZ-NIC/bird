@@ -158,3 +158,15 @@ add_tail_list(list *to, list *l)
   q->next = &to->tail_node;
   to->tail = q;
 }
+
+LIST_INLINE uint
+list_length(list *l)
+{
+  uint len = 0;
+  node *n;
+
+  WALK_LIST(n, *l)
+    len++;
+
+  return len;
+}

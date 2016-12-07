@@ -109,6 +109,24 @@ net_compare(const net_addr *a, const net_addr *b)
   return 0;
 }
 
+#define NET_HASH(a,t) net_hash_##t((const net_addr_##t *) a)
+
+u32
+net_hash(const net_addr *n)
+{
+  switch (n->type)
+  {
+  case NET_IP4: return NET_HASH(n, ip4);
+  case NET_IP6: return NET_HASH(n, ip6);
+  case NET_VPN4: return NET_HASH(n, vpn4);
+  case NET_VPN6: return NET_HASH(n, vpn6);
+  case NET_ROA4: return NET_HASH(n, roa4);
+  case NET_ROA6: return NET_HASH(n, roa6);
+  default: bug("invalid type");
+  }
+}
+
+
 int
 net_validate(const net_addr *N)
 {

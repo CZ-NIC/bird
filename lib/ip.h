@@ -91,6 +91,7 @@ typedef ip6_addr ip_addr;
 #define ipa_to_u32(x) ip4_to_u32(ipa_to_ip4(x))
 
 #define ipa_is_ip4(a) ip6_is_v4mapped(a)
+#define ipa_is_ip6(a) (! ip6_is_v4mapped(a))
 
 #define IPA_NONE4 ipa_from_ip4(IP4_NONE)
 #define IPA_NONE6 ipa_from_ip6(IP6_NONE)

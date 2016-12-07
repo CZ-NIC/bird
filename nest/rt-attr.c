@@ -528,7 +528,7 @@ ea_do_prune(ea_list *e)
       if ((s0->type & EAF_TYPE_MASK) != EAF_TYPE_UNDEF)
 	{
 	  *d = *s0;
-	  d->type = (d->type & ~EAF_ORIGINATED) | (s[-1].type & EAF_ORIGINATED);
+	  d->type = (d->type & ~(EAF_ORIGINATED|EAF_FRESH)) | (s[-1].type & EAF_ORIGINATED);
 	  d++;
 	  i++;
 	}

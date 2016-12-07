@@ -35,6 +35,7 @@
 #define DELTA(a,b) (((a)>=(b))?(a)-(b):(b)-(a))
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof(*(a)))
 #define CALL(fn, args...) ({ if (fn) fn(args); })
+#define ADVANCE(w, r, l) ({ r -= l; w += l; })
 
 static inline int uint_cmp(uint i1, uint i2)
 { return (int)(i1 > i2) - (int)(i1 < i2); }

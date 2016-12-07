@@ -273,6 +273,7 @@ proto_get_router_id(struct proto_config *pc)
 /* Moved from route.h to avoid dependency conflicts */
 static inline void rte_update(struct proto *p, net_addr *n, rte *new) { rte_update2(p->main_channel, n, new, p->main_source); }
 
+extern pool *proto_pool;
 extern list proto_list;
 
 /*
@@ -418,20 +419,22 @@ struct channel_class {
   uint channel_size;			/* Size of channel data structure */
   uint config_size;			/* Size of channel config data structure */
 
-  struct channel * (*init)(struct channel *, struct channel_config *);	/* Create new instance */
+  void (*init)(struct channel *, struct channel_config *);	/* Create new instance */
   int (*reconfigure)(struct channel *, struct channel_config *);	/* Try to reconfigure instance, returns success */
   int (*start)(struct channel *);	/* Start the instance */
-  int (*shutdown)(struct channel *);	/* Stop the instance */
+  void (*shutdown)(struct channel *);	/* Stop the instance */
+  void (*cleanup)(struct channel *);	/* Channel finished flush */
 
   void (*copy_config)(struct channel_config *, struct channel_config *); /* Copy config from given channel instance */
 #if 0
+  XXXX;
   void (*preconfig)(struct protocol *, struct config *);	/* Just before configuring */
   void (*postconfig)(struct proto_config *);			/* After configuring each instance */
 
 
   void (*dump)(struct proto *);			/* Debugging dump */
   void (*dump_attrs)(struct rte *);		/* Dump protocol-dependent attributes */
-  void (*cleanup)(struct proto *);		/* Called after shutdown when protocol became hungry/down */
+
   void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
   void (*get_route_info)(struct rte *, byte *buf, struct ea_list *attrs); /* Get route information (for `show route' command) */
   int (*get_attr)(struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
@@ -439,6 +442,8 @@ struct channel_class {
 
 #endif
 };
+
+extern struct channel_class channel_bgp;
 
 struct channel_config {
   node n;
@@ -484,6 +489,7 @@ struct channel {
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
   u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
   u8 disabled;
+  u8 stale;				/* Used in reconfiguration */
 
   u8 channel_state;
   u8 export_state;			/* Route export state (ES_*, see below) */

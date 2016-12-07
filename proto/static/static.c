@@ -104,7 +104,7 @@ static_install(struct proto *p, struct static_route *r, struct iface *ifa)
     }
 
   if (r->dest == RTDX_RECURSIVE)
-    rta_set_recursive_next_hop(p->main_channel->table, &a, p_igp_table(p), &r->via, &r->via);
+    rta_set_recursive_next_hop(p->main_channel->table, &a, p_igp_table(p), r->via, IPA_NONE);
 
   /* We skip rta_lookup() here */
 

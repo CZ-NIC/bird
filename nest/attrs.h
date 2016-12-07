@@ -10,6 +10,9 @@
 #define _BIRD_ATTRS_H_
 
 #include <stdint.h>
+#include "lib/unaligned.h"
+#include "nest/route.h"
+
 
 /* a-path.c */
 
@@ -27,18 +30,28 @@
 
 struct f_tree;
 
-struct adata *as_path_prepend(struct linpool *pool, struct adata *olda, u32 as);
-int as_path_convert_to_old(struct adata *path, byte *dst, int *new_used);
-int as_path_convert_to_new(struct adata *path, byte *dst, int req_as);
-void as_path_format(struct adata *path, byte *buf, uint size);
-int as_path_getlen(struct adata *path);
-int as_path_getlen_int(struct adata *path, int bs);
-int as_path_get_first(struct adata *path, u32 *orig_as);
-int as_path_get_last(struct adata *path, u32 *last_as);
-u32 as_path_get_last_nonaggregated(struct adata *path);
-int as_path_contains(struct adata *path, u32 as, int min);
-int as_path_match_set(struct adata *path, struct f_tree *set);
+int as_path_valid(byte *data, uint len, int bs, char *err, uint elen);
+int as_path_16to32(byte *dst, byte *src, uint len);
+int as_path_32to16(byte *dst, byte *src, uint len);
+int as_path_contains_as4(const struct adata *path);
+int as_path_contains_confed(const struct adata *path);
+struct adata *as_path_strip_confed(struct linpool *pool, const struct adata *op);
+struct adata *as_path_prepend2(struct linpool *pool, const struct adata *op, int seq, u32 as, int strip);
+struct adata *as_path_to_old(struct linpool *pool, const struct adata *path);
+void as_path_cut(struct adata *path, uint num);
+struct adata *as_path_merge(struct linpool *pool, struct adata *p1, struct adata *p2);
+void as_path_format(const struct adata *path, byte *buf, uint size);
+int as_path_getlen(const struct adata *path);
+int as_path_getlen_int(const struct adata *path, int bs);
+int as_path_get_first(const struct adata *path, u32 *orig_as);
+int as_path_get_last(const struct adata *path, u32 *last_as);
+u32 as_path_get_last_nonaggregated(const struct adata *path);
+int as_path_contains(const struct adata *path, u32 as, int min);
+int as_path_match_set(const struct adata *path, struct f_tree *set);
 struct adata *as_path_filter(struct linpool *pool, struct adata *path, struct f_tree *set, u32 key, int pos);
+
+static inline struct adata *as_path_prepend(struct linpool *pool, const struct adata *path, u32 as)
+{ return as_path_prepend2(pool, path, AS_PATH_SEQUENCE, as, 0); }
 
 
 #define PM_ASN		0
@@ -54,7 +67,42 @@ struct f_path_mask {
   uintptr_t val2;
 };
 
-int as_path_match(struct adata *path, struct f_path_mask *mask);
+int as_path_match(const struct adata *path, struct f_path_mask *mask);
+
+
+/* Counterparts to appropriate as_path_* functions */
+
+static inline int
+aggregator_16to32(byte *dst, byte *src)
+{
+  put_u32(dst, get_u16(src));
+  memcpy(dst+4, src+2, 4);
+  return 8;
+}
+
+static inline int
+aggregator_32to16(byte *dst, byte *src)
+{
+  put_u16(dst, get_u32(src));
+  memcpy(dst+2, src+4, 4);
+  return 6;
+}
+
+static inline int
+aggregator_contains_as4(struct adata *a)
+{
+  return get_u32(a->data) > 0xFFFF;
+}
+
+static inline struct adata *
+aggregator_to_old(struct linpool *pool, struct adata *a)
+{
+  struct adata *d = lp_alloc_adata(pool, 8);
+  put_u32(d->data, 0xFFFF);
+  memcpy(d->data + 4, a->data + 4, 4);
+  return d;
+}
+
 
 /* a-set.c */
 
@@ -142,5 +190,9 @@ struct adata *int_set_union(struct linpool *pool, struct adata *l1, struct adata
 struct adata *ec_set_union(struct linpool *pool, struct adata *l1, struct adata *l2);
 struct adata *lc_set_union(struct linpool *pool, struct adata *l1, struct adata *l2);
 
+struct adata *ec_set_del_nontrans(struct linpool *pool, struct adata *set);
+struct adata *int_set_sort(struct linpool *pool, struct adata *src);
+struct adata *ec_set_sort(struct linpool *pool, struct adata *src);
+struct adata *lc_set_sort(struct linpool *pool, struct adata *src);
 
 #endif

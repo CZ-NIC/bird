@@ -80,6 +80,7 @@ void rem_node(node *);
 void add_tail_list(list *, list *);
 void init_list(list *);
 void insert_node(node *, node *);
+uint list_length(list *);
 #endif
 
 #endif

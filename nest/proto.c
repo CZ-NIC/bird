@@ -39,7 +39,7 @@ static int graceful_restart_state;
 static u32 graceful_restart_locks;
 
 static char *p_states[] = { "DOWN", "START", "UP", "STOP" };
-static char *c_states[] UNUSED = { "DOWN", "START", "UP", "FLUSHING" };
+static char *c_states[] = { "DOWN", "START", "UP", "FLUSHING" };
 
 extern struct protocol proto_unix_iface;
 
@@ -304,6 +304,8 @@ channel_do_down(struct channel *c)
 
   memset(&c->stats, 0, sizeof(struct proto_stats));
 
+  CALL(c->channel->cleanup, c);
+
   /* Schedule protocol shutddown */
   if (proto_is_done(c->proto))
     ev_schedule(c->proto->event);
@@ -514,7 +516,9 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
 
   channel_verify_limits(c);
 
-  CALL(c->channel->reconfigure, c, cf);
+  /* Execute channel-specific reconfigure hook */
+  if (c->channel->reconfigure && !c->channel->reconfigure(c, cf))
+    return 0;
 
   /* If the channel is not open, it has no routes and we cannot reload it anyways */
   if (c->channel_state != CS_UP)
@@ -797,7 +801,6 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
   if ((nc->protocol != oc->protocol) ||
       (nc->net_type != oc->net_type) ||
       (nc->disabled != p->disabled))
-
     return 0;
 
   p->name = nc->name;
@@ -1575,6 +1578,7 @@ void
 channel_show_info(struct channel *c)
 {
   cli_msg(-1006, "  Channel %s", c->name);
+  cli_msg(-1006, "    State:          %s", c_states[c->channel_state]);
   cli_msg(-1006, "    Table:          %s", c->table->name);
   cli_msg(-1006, "    Preference:     %d", c->preference);
   cli_msg(-1006, "    Input filter:   %s", filter_name(c->in_filter));

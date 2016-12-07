@@ -457,13 +457,22 @@ typedef struct eattr {
 #define EAF_TYPE_UNDEF 0x1f		/* `force undefined' entry */
 #define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */
 #define EAF_VAR_LENGTH 0x02		/* Attribute length is variable (part of type spec) */
-#define EAF_ORIGINATED 0x40		/* The attribute has originated locally */
+#define EAF_ORIGINATED 0x20		/* The attribute has originated locally */
+#define EAF_FRESH 0x40			/* An uncached attribute (e.g. modified in export filter) */
 #define EAF_TEMP 0x80			/* A temporary attribute (the one stored in the tmp attr list) */
 
-struct adata {
+typedef struct adata {
   uint length;				/* Length of data */
   byte data[0];
-};
+} adata;
+
+static inline struct adata *
+lp_alloc_adata(struct linpool *pool, uint len)
+{
+  struct adata *ad = lp_alloc(pool, sizeof(struct adata) + len);
+  ad->length = len;
+  return ad;
+}
 
 static inline int adata_same(struct adata *a, struct adata *b)
 { return (a->length == b->length && !memcmp(a->data, b->data, a->length)); }
@@ -523,7 +532,7 @@ static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta
 void rta_dump(rta *);
 void rta_dump_all(void);
 void rta_show(struct cli *, rta *, ea_list *);
-void rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr *gw, ip_addr *ll);
+void rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll);
 
 /*
  * rta_set_recursive_next_hop() acquires hostentry from hostcache and fills

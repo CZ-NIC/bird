@@ -1255,7 +1255,7 @@ sk_setup(sock *s)
 
   if (sk_is_ipv6(s))
   {
-    if (s->type != SK_IP)
+    if ((s->type == SK_TCP_PASSIVE) || (s->type == SK_TCP_ACTIVE) || (s->type == SK_UDP))
       if (setsockopt(fd, SOL_IPV6, IPV6_V6ONLY, &y, sizeof(y)) < 0)
 	ERR("IPV6_V6ONLY");
 

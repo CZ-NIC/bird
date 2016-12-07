@@ -69,4 +69,22 @@ put_u64(void *p, u64 x)
   memcpy(p+4, &xl, 4);
 }
 
+static inline void
+get_u32s(const void *p, u32 *x, int n)
+{
+  int i;
+  memcpy(x, p, 4*n);
+  for (i = 0; i < n; i++)
+    x[i] = ntohl(x[i]);
+}
+
+static inline void
+put_u32s(void *p, const u32 *x, int n)
+{
+  int i;
+  for (i = 0; i < n; i++)
+    put_u32((byte *) p + 4*i, x[i]);
+}
+
+
 #endif

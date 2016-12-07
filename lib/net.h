@@ -321,6 +321,8 @@ static inline u32 net_hash_roa4(const net_addr_roa4 *n)
 static inline u32 net_hash_roa6(const net_addr_roa6 *n)
 { return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
 
+u32 net_hash(const net_addr *a);
+
 
 static inline int net_validate_ip4(const net_addr_ip4 *n)
 {

@@ -7,6 +7,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#include <stdlib.h>
+
 #include "nest/bird.h"
 #include "nest/route.h"
 #include "nest/attrs.h"
@@ -454,4 +456,86 @@ lc_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
   memcpy(res->data, l1->data, l1->length);
   memcpy(res->data + l1->length, tmp, len);
   return res;
+}
+
+
+struct adata *
+ec_set_del_nontrans(struct linpool *pool, struct adata *set)
+{
+  adata *res = lp_alloc_adata(pool, set->length);
+  u32 *src = int_set_get_data(set);
+  u32 *dst = int_set_get_data(res);
+  int len = int_set_get_size(set);
+  int i;
+
+  /* Remove non-transitive communities (EC_TBIT set) */
+  for (i = 0; i < len; i += 2)
+  {
+    if (src[i] & EC_TBIT)
+      continue;
+
+    *dst++ = src[i];
+    *dst++ = src[i+1];
+  }
+
+  res->length = ((byte *) dst) - res->data;
+
+  return res;
+}
+
+static int
+int_set_cmp(const void *X, const void *Y)
+{
+  const u32 *x = X, *y = Y;
+  return (*x < *y) ? -1 : (*x > *y) ? 1 : 0;
+}
+
+struct adata *
+int_set_sort(struct linpool *pool, struct adata *src)
+{
+  struct adata *dst = lp_alloc_adata(pool, src->length);
+  memcpy(dst->data, src->data, src->length);
+  qsort(dst->data, dst->length / 4, 4, int_set_cmp);
+  return dst;
+}
+
+
+static int
+ec_set_cmp(const void *X, const void *Y)
+{
+  u64 x = ec_get(X, 0);
+  u64 y = ec_get(Y, 0);
+  return (x < y) ? -1 : (x > y) ? 1 : 0;
+}
+
+struct adata *
+ec_set_sort(struct linpool *pool, struct adata *src)
+{
+  struct adata *dst = lp_alloc_adata(pool, src->length);
+  memcpy(dst->data, src->data, src->length);
+  qsort(dst->data, dst->length / 8, 8, ec_set_cmp);
+  return dst;
+}
+
+
+static int
+lc_set_cmp(const void *X, const void *Y)
+{
+  const u32 *x = X, *y = Y;
+  if (x[0] != y[0])
+    return (x[0] > y[0]) ? 1 : -1;
+  if (x[1] != y[1])
+    return (x[1] > y[1]) ? 1 : -1;
+  if (x[2] != y[2])
+    return (x[2] > y[2]) ? 1 : -1;
+  return 0;
+}
+
+struct adata *
+lc_set_sort(struct linpool *pool, struct adata *src)
+{
+  struct adata *dst = lp_alloc_adata(pool, src->length);
+  memcpy(dst->data, src->data, src->length);
+  qsort(dst->data, dst->length / LCOMM_LENGTH, LCOMM_LENGTH, lc_set_cmp);
+  return dst;
 }

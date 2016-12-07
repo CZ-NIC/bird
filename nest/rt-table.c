@@ -2426,9 +2426,9 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
 }
 
 void
-rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr *gw, ip_addr *ll)
+rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll)
 {
-  rta_apply_hostentry(a, rt_get_hostentry(tab, *gw, *ll, dep));
+  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ipa_zero(ll) ? gw : ll, dep));
 }
 
 
