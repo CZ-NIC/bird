@@ -30,11 +30,13 @@ CF_ADDTO(proto, babel_proto)
 babel_proto_start: proto_start BABEL
 {
   this_proto = proto_config_new(&proto_babel, $1);
+  this_proto->net_type = NET_IP6;
   init_list(&BABEL_CFG->iface_list);
 };
 
 babel_proto_item:
    proto_item
+ | proto_channel
  | INTERFACE babel_iface
  ;
 

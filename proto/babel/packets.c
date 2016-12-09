@@ -146,7 +146,8 @@ struct babel_write_state {
 #define TLV_HDR(tlv,t,l) ({ tlv->type = t; tlv->length = l - sizeof(struct babel_tlv); })
 #define TLV_HDR0(tlv,t) TLV_HDR(tlv, t, tlv_data[t].min_length)
 
-#define BYTES(n) ((((uint) n) + 7) / 8)
+#define NET_SIZE(n) BYTES(net_pxlen(n))
+
 
 static inline u16
 get_time16(const void *p)
@@ -161,19 +162,19 @@ put_time16(void *p, u16 v)
   put_u16(p, v * BABEL_TIME_UNITS);
 }
 
-static inline ip6_addr
-get_ip6_px(const void *p, uint plen)
+static inline void
+read_ip6_px(net_addr *n, const void *p, uint plen)
 {
   ip6_addr addr = IPA_NONE;
   memcpy(&addr, p, BYTES(plen));
-  return ip6_ntoh(addr);
+  net_fill_ip6(n, ip6_ntoh(addr), plen);
 }
 
 static inline void
-put_ip6_px(void *p, ip6_addr addr, uint plen)
+put_ip6_px(void *p, net_addr *n)
 {
-  addr = ip6_hton(addr);
-  memcpy(p, &addr, BYTES(plen));
+  ip6_addr addr = ip6_hton(net6_prefix(n));
+  memcpy(p, &addr, NET_SIZE(n));
 }
 
 static inline ip6_addr
@@ -480,6 +481,9 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     if (tlv->plen > 0)
       return PARSE_ERROR;
 
+    if (msg->metric != 65535)
+      return PARSE_ERROR;
+
     msg->wildcard = 1;
     break;
 
@@ -488,7 +492,7 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     return PARSE_IGNORE;
 
   case BABEL_AE_IP6:
-    if (tlv->plen > MAX_PREFIX_LENGTH)
+    if (tlv->plen > IP6_MAX_PREFIX_LENGTH)
       return PARSE_ERROR;
 
     /* Cannot omit data if there is no saved prefix */
@@ -499,18 +503,18 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     memcpy(buf, state->def_ip6_prefix, tlv->omitted);
     memcpy(buf + tlv->omitted, tlv->addr, len);
 
-    msg->plen = tlv->plen;
-    msg->prefix = ipa_from_ip6(get_ip6(buf));
+    ip6_addr prefix = get_ip6(buf);
+    net_fill_ip6(&msg->net, prefix, tlv->plen);
 
     if (tlv->flags & BABEL_FLAG_DEF_PREFIX)
     {
-      put_ip6(state->def_ip6_prefix, msg->prefix);
+      put_ip6(state->def_ip6_prefix, prefix);
       state->def_ip6_prefix_seen = 1;
     }
 
     if (tlv->flags & BABEL_FLAG_ROUTER_ID)
     {
-      state->router_id = ((u64) _I2(msg->prefix)) << 32 | _I3(msg->prefix);
+      state->router_id = ((u64) _I2(prefix)) << 32 | _I3(prefix);
       state->router_id_seen = 1;
     }
     break;
@@ -559,7 +563,7 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
     tlv = (struct babel_tlv_update *) NEXT_TLV(tlv);
   }
 
-  uint len = sizeof(struct babel_tlv_update) + BYTES(msg->plen);
+  uint len = sizeof(struct babel_tlv_update) + NET_SIZE(&msg->net);
 
   if (len0 + len > max_len)
     return 0;
@@ -575,8 +579,8 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
   else
   {
     tlv->ae = BABEL_AE_IP6;
-    tlv->plen = msg->plen;
-    put_ip6_px(tlv->addr, msg->prefix, msg->plen);
+    tlv->plen = net6_pxlen(&msg->net);
+    put_ip6_px(tlv->addr, &msg->net);
   }
 
   put_time16(&tlv->interval, msg->interval);
@@ -610,14 +614,13 @@ babel_read_route_request(struct babel_tlv *hdr, union babel_msg *m,
     return PARSE_IGNORE;
 
   case BABEL_AE_IP6:
-    if (tlv->plen > MAX_PREFIX_LENGTH)
+    if (tlv->plen > IP6_MAX_PREFIX_LENGTH)
       return PARSE_ERROR;
 
     if (TLV_OPT_LENGTH(tlv) < BYTES(tlv->plen))
       return PARSE_ERROR;
 
-    msg->plen = tlv->plen;
-    msg->prefix = get_ip6_px(tlv->addr, tlv->plen);
+    read_ip6_px(&msg->net, tlv->addr, tlv->plen);
     return PARSE_SUCCESS;
 
   case BABEL_AE_IP6_LL:
@@ -637,7 +640,7 @@ babel_write_route_request(struct babel_tlv *hdr, union babel_msg *m,
   struct babel_tlv_route_request *tlv = (void *) hdr;
   struct babel_msg_route_request *msg = &m->route_request;
 
-  uint len = sizeof(struct babel_tlv_route_request) + BYTES(msg->plen);
+  uint len = sizeof(struct babel_tlv_route_request) + NET_SIZE(&msg->net);
 
   if (len > max_len)
     return 0;
@@ -652,8 +655,8 @@ babel_write_route_request(struct babel_tlv *hdr, union babel_msg *m,
   else
   {
     tlv->ae = BABEL_AE_IP6;
-    tlv->plen = msg->plen;
-    put_ip6_px(tlv->addr, msg->prefix, msg->plen);
+    tlv->plen = net6_pxlen(&msg->net);
+    put_ip6_px(tlv->addr, &msg->net);
   }
 
   return len;
@@ -685,14 +688,13 @@ babel_read_seqno_request(struct babel_tlv *hdr, union babel_msg *m,
     return PARSE_IGNORE;
 
   case BABEL_AE_IP6:
-    if (tlv->plen > MAX_PREFIX_LENGTH)
+    if (tlv->plen > IP6_MAX_PREFIX_LENGTH)
       return PARSE_ERROR;
 
     if (TLV_OPT_LENGTH(tlv) < BYTES(tlv->plen))
       return PARSE_ERROR;
 
-    msg->plen = tlv->plen;
-    msg->prefix = get_ip6_px(tlv->addr, tlv->plen);
+    read_ip6_px(&msg->net, tlv->addr, tlv->plen);
     return PARSE_SUCCESS;
 
   case BABEL_AE_IP6_LL:
@@ -712,18 +714,18 @@ babel_write_seqno_request(struct babel_tlv *hdr, union babel_msg *m,
   struct babel_tlv_seqno_request *tlv = (void *) hdr;
   struct babel_msg_seqno_request *msg = &m->seqno_request;
 
-  uint len = sizeof(struct babel_tlv_seqno_request) + BYTES(msg->plen);
+  uint len = sizeof(struct babel_tlv_seqno_request) + NET_SIZE(&msg->net);
 
   if (len > max_len)
     return 0;
 
   TLV_HDR(tlv, BABEL_TLV_SEQNO_REQUEST, len);
   tlv->ae = BABEL_AE_IP6;
-  tlv->plen = msg->plen;
+  tlv->plen = net6_pxlen(&msg->net);
   put_u16(&tlv->seqno, msg->seqno);
   tlv->hop_count = msg->hop_count;
   put_u64(&tlv->router_id, msg->router_id);
-  put_ip6_px(tlv->addr, msg->prefix, msg->plen);
+  put_ip6_px(tlv->addr, &msg->net);
 
   return len;
 }
