@@ -200,7 +200,7 @@ bt_log_result(int result, const char *fmt, va_list argptr)
   vsnprintf(pos, sizeof(msg_buf) - (pos - msg_buf), fmt, argptr);
 
   int chrs = 0;
-  for (int i = 0; i < strlen(msg_buf); i += get_num_terminal_cols())
+  for (uint i = 0; i < strlen(msg_buf); i += get_num_terminal_cols())
   {
     if (i)
       printf("\n");

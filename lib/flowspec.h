@@ -131,7 +131,7 @@ void flow6_validate_cf(net_addr_flow6 *f);
  * 	Net Formatting
  */
 
-int flow4_net_format(char *buf, uint blen, const net_addr_flow4 *f);
-int flow6_net_format(char *buf, uint blen, const net_addr_flow6 *f);
+uint flow4_net_format(char *buf, uint blen, const net_addr_flow4 *f);
+uint flow6_net_format(char *buf, uint blen, const net_addr_flow6 *f);
 
 #endif /* _BIRD_FLOWSPEC_H_ */
