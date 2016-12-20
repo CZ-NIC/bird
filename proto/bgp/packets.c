@@ -185,9 +185,6 @@ bgp_create_notification(struct bgp_conn *conn, byte *buf)
 
 /* Capability negotiation as per RFC 5492 */
 
-#define WALK_AF_CAPS(caps,ac) \
-  for (ac = caps->af_data; ac < &caps->af_data[caps->af_count]; ac++)
-
 const struct bgp_af_caps *
 bgp_find_af_caps(struct bgp_caps *caps, u32 afi)
 {

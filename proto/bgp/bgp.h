@@ -174,6 +174,10 @@ struct bgp_caps {
   struct bgp_af_caps af_data[0];	/* Per-AF capability data */
 };
 
+#define WALK_AF_CAPS(caps,ac) \
+  for (ac = caps->af_data; ac < &caps->af_data[caps->af_count]; ac++)
+
+
 struct bgp_socket {
   node n;				/* Node in global bgp_sockets */
   sock *sk;				/* Real listening socket */
