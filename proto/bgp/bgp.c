@@ -524,9 +524,13 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     c->add_path_rx = (loc->add_path & BGP_ADD_PATH_RX) && (rem->add_path & BGP_ADD_PATH_TX);
     c->add_path_tx = (loc->add_path & BGP_ADD_PATH_TX) && (rem->add_path & BGP_ADD_PATH_RX);
 
-    // XXXX reset back to non-ANY?
+    /* Update RA mode */
     if (c->add_path_tx)
       c->c.ra_mode = RA_ANY;
+    else if (c->cf->secondary)
+      c->c.ra_mode = RA_ACCEPTED;
+    else
+      c->c.ra_mode = RA_OPTIMAL;
   }
 
   p->afi_map = mb_alloc(p->p.pool, num * sizeof(u32));
@@ -1410,8 +1414,6 @@ bgp_channel_init(struct channel *C, struct channel_config *CF)
 {
   struct bgp_channel *c = (void *) C;
   struct bgp_channel_config *cf = (void *) CF;
-
-  C->ra_mode = cf->secondary ? RA_ACCEPTED : RA_OPTIMAL;
 
   c->cf = cf;
   c->afi = cf->afi;

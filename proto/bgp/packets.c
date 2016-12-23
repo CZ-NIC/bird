@@ -277,6 +277,12 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
 
   /* Create capability list in buffer */
 
+  /*
+   * Note that max length is ~ 20+14*af_count. With max 6 channels that is
+   * 104. Option limit is 253 and buffer size is 4096, so we cannot overflow
+   * unless we add new capabilities or more AFs.
+   */
+
   WALK_AF_CAPS(caps, ac)
     if (ac->ready)
     {
@@ -349,8 +355,6 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     *buf++ = 70;		/* Capability 70: Support for enhanced route refresh */
     *buf++ = 0;			/* Capability data length */
   }
-
-  /* FIXME: Should not XXXX 255 */
 
   return buf;
 }

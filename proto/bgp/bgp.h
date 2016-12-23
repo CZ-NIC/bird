@@ -453,18 +453,6 @@ bgp_unset_attr(ea_list **to, struct linpool *pool, uint code)
 { eattr *e = bgp_set_attr(to, pool, code, 0, 0); e->type = EAF_TYPE_UNDEF; }
 
 
-
-
-/* Hack: although BA_NEXT_HOP attribute has type EAF_TYPE_IP_ADDRESS, in IPv6
- * we store two addesses in it - a global address and a link local address.
- */
-#ifdef XXX
-#define NEXT_HOP_LENGTH (2*sizeof(ip_addr))
-static inline void set_next_hop(byte *b, ip_addr addr) { ((ip_addr *) b)[0] = addr; ((ip_addr *) b)[1] = IPA_NONE; }
-#define NEXT_HOP_LENGTH sizeof(ip_addr)
-static inline void set_next_hop(byte *b, ip_addr addr) { ((ip_addr *) b)[0] = addr; }
-#endif
-
 int bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte *end);
 ea_list * bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len);
 

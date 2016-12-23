@@ -152,6 +152,7 @@ bgp_channel_start: bgp_afi
 
   this_channel = channel_config_new(&channel_bgp, desc->net, this_proto);
   BGP_CC->c.name = desc->name;
+  BGP_CC->c.ra_mode = RA_UNDEF;
   BGP_CC->afi = $1;
   BGP_CC->gr_able = 0xff;	/* undefined */
 };
