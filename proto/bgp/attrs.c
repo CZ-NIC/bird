@@ -41,24 +41,6 @@
  * specifies that such updates should be ignored, but that is generally
  * a bad idea.
  *
- * Error checking of optional transitive attributes is done according to
- * draft-ietf-idr-optional-transitive-03, but errors are handled always
- * as withdraws.
- *
- * Unexpected AS_CONFED_* segments in AS_PATH are logged and removed,
- * but unknown segments cause a session drop with Malformed AS_PATH
- * error (see validate_path()). The behavior in such case is not
- * explicitly specified by RFC 4271. RFC 5065 specifies that
- * inconsistent AS_CONFED_* segments should cause a session drop, but
- * implementations that pass invalid AS_CONFED_* segments are
- * widespread.
- *
- * Error handling of AS4_* attributes is done as specified by
- * draft-ietf-idr-rfc4893bis-03. There are several possible
- * inconsistencies between AGGREGATOR and AS4_AGGREGATOR that are not
- * handled by that draft, these are logged and ignored (see
- * bgp_reconstruct_4b_attrs()).
- *
  * BGP attribute table has several hooks:
  *
  * export - Hook that validates and normalizes attribute during export phase.
@@ -281,10 +263,18 @@ bgp_encode_as_path(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
 static void
 bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
 {
+  struct bgp_proto *p = s->proto;
+  int as_length = s->as4_session ? 4 : 2;
+  int as_confed = p->cf->confederation && p->is_interior;
   char err[128];
 
-  if (!as_path_valid(data, len, (s->as4_session ? 4 : 2), err, sizeof(err)))
+  if (!as_path_valid(data, len, as_length, as_confed, err, sizeof(err)))
     WITHDRAW("Malformed AS_PATH attribute - %s", err);
+
+  /* In some circumstances check for initial AS_CONFED_SEQUENCE; RFC 5065 5.0 */
+  if (p->is_interior && !p->is_internal &&
+      ((len < 2) || (data[0] != AS_PATH_CONFED_SEQUENCE)))
+    WITHDRAW("Malformed AS_PATH attribute - %s", "missing initial AS_CONFED_SEQUENCE");
 
   if (!s->as4_session)
   {
@@ -603,11 +593,20 @@ bgp_decode_as4_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byt
   if (len < 6)
     DISCARD(BAD_LENGTH, "AS4_PATH", len);
 
-  if (!as_path_valid(data, len, 4, err, sizeof(err)))
+  if (!as_path_valid(data, len, 4, 1, err, sizeof(err)))
     DISCARD("Malformed AS4_PATH attribute - %s", err);
 
-  /* XXXX remove CONFED segments */
-  bgp_set_attr_data(to, s->pool, BA_AS4_PATH, flags, data, len);
+  struct adata *a = lp_alloc_adata(s->pool, len);
+  memcpy(a->data, data, len);
+
+  /* AS_CONFED* segments are invalid in AS4_PATH; RFC 6793 6 */
+  if (as_path_contains_confed(a))
+  {
+    REPORT("Discarding AS_CONFED* segment from AS4_PATH attribute");
+    a = as_path_strip_confed(s->pool, a);
+  }
+
+  bgp_set_attr_ptr(to, s->pool, BA_AS4_PATH, flags, a);
 }
 
 static void
@@ -1042,7 +1041,7 @@ bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
   if (bgp_as_path_loopy(p, attrs, p->local_as))
     goto withdraw;
 
-  /* Reject routes with our Confederation ID in AS_PATH attribute; RFC 5065 4 */
+  /* Reject routes with our Confederation ID in AS_PATH attribute; RFC 5065 4.0 */
   if ((p->public_as != p->local_as) && bgp_as_path_loopy(p, attrs, p->public_as))
     goto withdraw;
 
@@ -1322,15 +1321,7 @@ bgp_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct li
   return 0;
 }
 
-static const adata null_adata;	/* adata of length 0 */
-
-static inline void
-bgp_path_prepend(ea_list **attrs, struct linpool *pool, int seg, u32 as, int strip)
-{
-  eattr *a = bgp_find_attr(*attrs, BA_AS_PATH);
-  adata *d = as_path_prepend2(pool, a ? a->u.ptr : &null_adata, seg, as, strip);
-  bgp_set_attr_ptr(attrs, pool, BA_AS_PATH, 0, d);
-}
+static adata null_adata;	/* adata of length 0 */
 
 static inline void
 bgp_cluster_list_prepend(ea_list **attrs, struct linpool *pool, u32 id)
@@ -1352,23 +1343,33 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
   if (! bgp_find_attr(attrs, BA_ORIGIN))
     bgp_set_attr_u32(&attrs, pool, BA_ORIGIN, 0, src ? ORIGIN_INCOMPLETE : ORIGIN_IGP);
 
+  /* AS_PATH attribute */
+  a = bgp_find_attr(attrs, BA_AS_PATH);
+  adata *ad = a ? a->u.ptr : &null_adata;
+
+  /* AS_PATH attribute - strip AS_CONFED* segments outside confederation */
+  if ((!p->cf->confederation || !p->is_interior) && as_path_contains_confed(ad))
+    ad = as_path_strip_confed(pool, ad);
+
   /* AS_PATH attribute - keep or prepend ASN */
   if (p->is_internal ||
       (p->rs_client && src && src->rs_client))
   {
     /* IBGP or route server -> just ensure there is one */
-    if (! bgp_find_attr(attrs, BA_AS_PATH))
-      bgp_set_attr_ptr(&attrs, pool, BA_AS_PATH, 0, lp_alloc_adata(pool, 0));
+    if (!a)
+      bgp_set_attr_ptr(&attrs, pool, BA_AS_PATH, 0, &null_adata);
   }
   else if (p->is_interior)
   {
-    /* Confederation -> prepend ASN as CONFED_SEQUENCE, keep CONFED_* segments */
-    bgp_path_prepend(&attrs, pool, AS_PATH_CONFED_SEQUENCE, p->public_as, 0);
+    /* Confederation -> prepend ASN as AS_CONFED_SEQUENCE */
+    ad = as_path_prepend2(pool, ad, AS_PATH_CONFED_SEQUENCE, p->public_as);
+    bgp_set_attr_ptr(&attrs, pool, BA_AS_PATH, 0, ad);
   }
   else /* Regular EBGP (no RS, no confederation) */
   {
-    /* Regular EBGP -> prepend ASN as regular segment, strip CONFED_* segments */
-    bgp_path_prepend(&attrs, pool, AS_PATH_SEQUENCE, p->public_as, 1);
+    /* Regular EBGP -> prepend ASN as regular sequence */
+    ad = as_path_prepend2(pool, ad, AS_PATH_SEQUENCE, p->public_as);
+    bgp_set_attr_ptr(&attrs, pool, BA_AS_PATH, 0, ad);
 
     /* MULTI_EXIT_DESC attribute - accept only if set in export filter */
     a = bgp_find_attr(attrs, BA_MULTI_EXIT_DISC);
@@ -1460,10 +1461,12 @@ bgp_get_neighbor(rte *r)
   eattr *e = ea_find(r->attrs->eattrs, EA_CODE(EAP_BGP, BA_AS_PATH));
   u32 as;
 
-  if (e && as_path_get_first(e->u.ptr, &as))
+  if (e && as_path_get_first_regular(e->u.ptr, &as))
     return as;
-  else
-    return ((struct bgp_proto *) r->attrs->src->proto)->remote_as;
+
+  /* If AS_PATH is not defined, we treat rte as locally originated */
+  struct bgp_proto *p = (void *) r->attrs->src->proto;
+  return p->cf->confederation ?: p->local_as;
 }
 
 static inline int
@@ -1662,7 +1665,7 @@ bgp_rte_mergable(rte *pri, rte *sec)
   }
 
   /* RFC 4271 9.1.2.2. d) Prefer external peers */
-  if (pri_bgp->is_internal != sec_bgp->is_internal)
+  if (pri_bgp->is_interior != sec_bgp->is_interior)
     return 0;
 
   /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
@@ -1852,6 +1855,7 @@ bgp_process_as4_attrs(ea_list **attrs, struct linpool *pool)
   /* Handle AS_PATH attribute */
   if (p2 && p4)
   {
+    /* Both as_path_getlen() and as_path_cut() take AS_CONFED* as zero length */
     int p2_len = as_path_getlen(p2->u.ptr);
     int p4_len = as_path_getlen(p4->u.ptr);
 

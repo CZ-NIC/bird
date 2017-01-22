@@ -30,13 +30,13 @@
 
 struct f_tree;
 
-int as_path_valid(byte *data, uint len, int bs, char *err, uint elen);
+int as_path_valid(byte *data, uint len, int bs, int confed, char *err, uint elen);
 int as_path_16to32(byte *dst, byte *src, uint len);
 int as_path_32to16(byte *dst, byte *src, uint len);
 int as_path_contains_as4(const struct adata *path);
 int as_path_contains_confed(const struct adata *path);
 struct adata *as_path_strip_confed(struct linpool *pool, const struct adata *op);
-struct adata *as_path_prepend2(struct linpool *pool, const struct adata *op, int seq, u32 as, int strip);
+struct adata *as_path_prepend2(struct linpool *pool, const struct adata *op, int seq, u32 as);
 struct adata *as_path_to_old(struct linpool *pool, const struct adata *path);
 void as_path_cut(struct adata *path, uint num);
 struct adata *as_path_merge(struct linpool *pool, struct adata *p1, struct adata *p2);
@@ -44,6 +44,7 @@ void as_path_format(const struct adata *path, byte *buf, uint size);
 int as_path_getlen(const struct adata *path);
 int as_path_getlen_int(const struct adata *path, int bs);
 int as_path_get_first(const struct adata *path, u32 *orig_as);
+int as_path_get_first_regular(const struct adata *path, u32 *last_as);
 int as_path_get_last(const struct adata *path, u32 *last_as);
 u32 as_path_get_last_nonaggregated(const struct adata *path);
 int as_path_contains(const struct adata *path, u32 as, int min);
@@ -51,7 +52,7 @@ int as_path_match_set(const struct adata *path, struct f_tree *set);
 struct adata *as_path_filter(struct linpool *pool, struct adata *path, struct f_tree *set, u32 key, int pos);
 
 static inline struct adata *as_path_prepend(struct linpool *pool, const struct adata *path, u32 as)
-{ return as_path_prepend2(pool, path, AS_PATH_SEQUENCE, as, 0); }
+{ return as_path_prepend2(pool, path, AS_PATH_SEQUENCE, as); }
 
 
 #define PM_ASN		0

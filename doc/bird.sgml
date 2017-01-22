@@ -1945,12 +1945,11 @@ avoid routing loops.
 
 <p>BIRD supports all requirements of the BGP4 standard as defined in
 <rfc id="4271"> It also supports the community attributes (<rfc id="1997">),
-capability negotiation (<rfc id="5492">), MD5 password authentication (<rfc
-id="2385">), extended communities (<rfc id="4360">), route reflectors (<rfc
-id="4456">), graceful restart (<rfc id="4724">), multiprotocol extensions
-(<rfc id="4760">), 4B AS numbers (<rfc id="4893">), and 4B AS numbers in
-extended communities (<rfc id="5668">).
-
+capability negotiation (<rfc id="5492">), MD5 password authentication
+(<rfc id="2385">), extended communities (<rfc id="4360">), route reflectors
+(<rfc id="4456">), AS confederations (<rfc id="5065">), graceful restart
+(<rfc id="4724">), multiprotocol extensions (<rfc id="4760">), 4B AS numbers
+(<rfc id="4893">), and 4B AS numbers in extended communities (<rfc id="5668">).
 
 For IPv6, it uses the standard multiprotocol extensions defined in
 <rfc id="4760"> and applied to IPv6 according to <rfc id="2545">.
@@ -2133,6 +2132,21 @@ using the following configuration parameters:
 	Standard BGP behavior is both initiating outgoing connections and
 	accepting incoming connections. In passive mode, outgoing connections
 	are not initiated. Default: off.
+
+	<tag><label id="bgp-confederation">confederation <m/number/</tag>
+	BGP confederations (<rfc id="5065">) are collections of autonomous
+	systems that act as one entity to external systems, represented by one
+	confederation identifier (instead of AS numbers). This option allows to
+	enable BGP confederation behavior and to specify the local confederation
+	identifier. When BGP confederations are used, all BGP speakers that are
+	members of the BGP confederation should have the same confederation
+	identifier configured. Default: 0 (no confederation).
+
+	<tag><label id="bgp-confederation-member">confederation member <m/switch/</tag>
+	When BGP confederations are used, this option allows to specify whether
+	the BGP neighbor is a member of the same confederation as the local BGP
+	speaker. The option is unnecessary (and ignored) for IBGP sessions, as
+	the same AS number implies the same confederation. Default: no.
 
 	<tag><label id="bgp-rr-client">rr client</tag>
 	Be a route reflector and treat the neighbor as a route reflection
