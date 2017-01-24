@@ -228,6 +228,7 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   struct bgp_channel *c;
   struct bgp_caps *caps;
   struct bgp_af_caps *ac;
+  uint any_ext_next_hop = 0;
   uint any_add_path = 0;
   byte *data;
 
@@ -258,6 +259,9 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     ac = &caps->af_data[caps->af_count++];
     ac->afi = c->afi;
     ac->ready = 1;
+
+    ac->ext_next_hop = bgp_channel_is_ipv4(c) && c->cf->ext_next_hop;
+    any_ext_next_hop |= ac->ext_next_hop;
 
     ac->add_path = c->cf->add_path;
     any_add_path |= ac->add_path;
@@ -296,6 +300,23 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   {
     *buf++ = 2;			/* Capability 2: Support for route refresh */
     *buf++ = 0;			/* Capability data length */
+  }
+
+  if (any_ext_next_hop)
+  {
+    *buf++ = 5;			/* Capability 5: Support for extended next hop */
+    *buf++ = 0;			/* Capability data length, will be fixed later */
+    data = buf;
+
+    WALK_AF_CAPS(caps, ac)
+      if (ac->ext_next_hop)
+      {
+	put_af4(buf, ac->afi);
+	put_u16(buf+4, BGP_AFI_IPV6);
+	buf += 6;
+      }
+
+    data[-1] = buf - data;
   }
 
   if (caps->ext_messages)
@@ -392,6 +413,23 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
 	goto err;
 
       caps->route_refresh = 1;
+      break;
+
+    case  5: /* Extended next hop encoding capability, RFC 5549 */
+      if (cl % 6)
+	goto err;
+
+      for (i = 0; i < cl; i += 6)
+      {
+	/* Specified only for IPv4 prefixes with IPv6 next hops */
+	if ((get_u16(pos+2+i+0) != BGP_AFI_IPV4) ||
+	    (get_u16(pos+2+i+4) != BGP_AFI_IPV6))
+	  continue;
+
+	af = get_af4(pos+2+i);
+	ac = bgp_get_af_caps(caps, af);
+	ac->ext_next_hop = 1;
+      }
       break;
 
     case  6: /* Extended message length capability, RFC draft */

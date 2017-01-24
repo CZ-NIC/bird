@@ -123,6 +123,7 @@ struct bgp_channel_config {
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
   u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
   u8 gr_able;				/* Allow full graceful restart for the channel */
+  u8 ext_next_hop;			/* Allow both IPv4 and IPv6 next hops */
   u8 add_path;				/* Use ADD-PATH extension [RFC 7911] */
 
   struct rtable_config *igp_table;	/* Table used for recursive next hop lookups */
@@ -154,6 +155,7 @@ struct bgp_af_caps {
   u8 ready;				/* Multiprotocol capability, RFC 4760 */
   u8 gr_able;				/* Graceful restart support, RFC 4724 */
   u8 gr_af_flags;			/* Graceful restart per-AF flags */
+  u8 ext_next_hop;			/* Extended IPv6 next hop,   RFC 5549 */
   u8 add_path;				/* Multiple paths support,   RFC 7911 */
 };
 
@@ -273,6 +275,8 @@ struct bgp_channel {
 
   u8 gr_ready;				/* Neighbor could do GR on this AF */
   u8 gr_active;				/* Neighbor is doing GR and keeping fwd state */
+
+  u8 ext_next_hop;			/* Session allows both IPv4 and IPv6 next hops */
 
   u8 add_path_rx;			/* Session expects receive of ADD-PATH extended NLRI */
   u8 add_path_tx;			/* Session expects transmit of ADD-PATH extended NLRI */

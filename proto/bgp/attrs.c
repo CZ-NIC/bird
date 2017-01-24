@@ -1285,6 +1285,8 @@ bgp_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct li
   if (src == NULL)
     return 0;
 
+  // XXXX: Check next hop AF
+
   /* IBGP route reflection, RFC 4456 */
   if (p->is_internal && src->is_internal && (p->local_as == src->local_as))
   {

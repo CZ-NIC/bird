@@ -169,6 +169,7 @@ bgp_channel_item:
  | GATEWAY RECURSIVE { BGP_CC->gw_mode = GW_RECURSIVE; }
  | SECONDARY bool { BGP_CC->secondary = $2; }
  | GRACEFUL RESTART bool { BGP_CC->gr_able = $3; }
+ | EXTENDED NEXT HOP bool { BGP_CC->ext_next_hop = $4; }
  | ADD PATHS RX { BGP_CC->add_path = BGP_ADD_PATH_RX; }
  | ADD PATHS TX { BGP_CC->add_path = BGP_ADD_PATH_TX; }
  | ADD PATHS bool { BGP_CC->add_path = $3 ? BGP_ADD_PATH_FULL : 0; }

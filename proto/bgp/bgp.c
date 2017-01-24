@@ -521,6 +521,7 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     if (peer->gr_aware)
       c->load_state = BFS_LOADING;
 
+    c->ext_next_hop = c->cf->ext_next_hop && (bgp_channel_is_ipv6(c) || rem->ext_next_hop);
     c->add_path_rx = (loc->add_path & BGP_ADD_PATH_RX) && (rem->add_path & BGP_ADD_PATH_TX);
     c->add_path_tx = (loc->add_path & BGP_ADD_PATH_TX) && (rem->add_path & BGP_ADD_PATH_RX);
 
@@ -1788,6 +1789,7 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
   uint any_mp_bgp = 0;
   uint any_gr_able = 0;
   uint any_add_path = 0;
+  uint any_ext_next_hop = 0;
   u32 *afl1 = alloca(caps->af_count * sizeof(u32));
   u32 *afl2 = alloca(caps->af_count * sizeof(u32));
   uint afn1, afn2;
@@ -1797,6 +1799,7 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
     any_mp_bgp |= ac->ready;
     any_gr_able |= ac->gr_able;
     any_add_path |= ac->add_path;
+    any_ext_next_hop |= ac->ext_next_hop;
   }
 
   if (any_mp_bgp)
@@ -1813,6 +1816,18 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
 
   if (caps->route_refresh)
     cli_msg(-1006, "      Route refresh");
+
+  if (any_ext_next_hop)
+  {
+    cli_msg(-1006, "      Extended next hop");
+
+    afn1 = 0;
+    WALK_AF_CAPS(caps, ac)
+      if (ac->ext_next_hop)
+	afl1[afn1++] = ac->afi;
+
+    bgp_show_afis(-1006, "        IPv6 nexthop:", afl1, afn1);
+  }
 
   if (caps->ext_messages)
     cli_msg(-1006, "      Extended message");
