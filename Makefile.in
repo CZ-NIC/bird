@@ -7,10 +7,10 @@ MAKEFLAGS += -r
 
 # Variable definitions
 CPPFLAGS=-I$(objdir) -I$(srcdir) @CPPFLAGS@
-CFLAGS=$(CPPFLAGS) @CFLAGS@
+CFLAGS=$(CPPFLAGS) @CFLAGS@ @LUA_INCLUDE@
 LDFLAGS=@LDFLAGS@
 LIBS=@LIBS@
-DAEMON_LIBS=@DAEMON_LIBS@
+DAEMON_LIBS=@DAEMON_LIBS@ @LUA_LIB@
 CLIENT_LIBS=@CLIENT_LIBS@
 CC=@CC@
 M4=@M4@
@@ -67,7 +67,7 @@ cli: $(client)
 $(daemon): LIBS += $(DAEMON_LIBS)
 
 # Include directories
-dirs := client conf doc filter lib nest test $(addprefix proto/,$(protocols)) @sysdep_dirs@
+dirs := client conf doc filter lib lua nest test $(addprefix proto/,$(protocols)) @sysdep_dirs@
 
 conf-y-targets := $(addprefix $(objdir)/conf/,cf-parse.y keywords.h commands.h)
 cf-local = $(conf-y-targets): $(s)config.Y

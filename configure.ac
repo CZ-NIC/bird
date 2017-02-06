@@ -315,6 +315,12 @@ AC_C_BIGENDIAN(
   [AC_MSG_ERROR([Cannot determine CPU endianity.])]
 )
 
+AX_PROG_LUA(5.3)
+AX_LUA_HEADERS
+AX_LUA_LIBS
+AC_SUBST(LUA_INCLUDE)
+AC_SUBST(LUA_LIBS)
+
 if test "$enable_debug" = yes ; then
   AC_DEFINE([DEBUGGING], [1], [Define to 1 if debugging is enabled])
   LDFLAGS="$LDFLAGS -rdynamic"

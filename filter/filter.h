@@ -220,4 +220,7 @@ struct f_bt_test_suite {
 /* Hook for call bt_assert() function in configuration */
 extern void (*bt_assert_hook)(int result, struct f_inst *assert);
 
+/* Lua */
+int filter_lua_chunk(const char *chunk, struct rte **e, struct rta *a, struct ea_list **ea, struct linpool *lp);
+
 #endif

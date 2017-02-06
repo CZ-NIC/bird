@@ -1575,6 +1575,15 @@ interpret(struct f_inst *what)
     CALL(bt_assert_hook, res.val.i, what);
     break;
 
+  case P('L','C'):	/* Lua include */
+    ONEARG;
+    if (v1.type != T_STRING)
+      runtime("Lua code should be a string argument");
+
+    res.type = T_RETURN;
+    res.val.i = filter_lua_chunk(v1.val.s, f_rte, f_old_rta, f_tmp_attrs, f_pool);
+    break;
+
   default:
     bug( "Unknown instruction %d (%c)", what->code, what->code & 0xff);
   }

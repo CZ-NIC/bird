@@ -65,7 +65,7 @@ proto_postconfig(void)
 CF_DECLS
 
 CF_KEYWORDS(ROUTER, ID, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
-CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, TABLE, STATES, ROUTES, FILTERS)
+CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, LUA, NONE, VRF, TABLE, STATES, ROUTES, FILTERS)
 CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED)
 CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, INTERFACES)
@@ -262,6 +262,14 @@ rtable:
 
 imexport:
    FILTER filter { $$ = $2; }
+ | LUA constant {
+    $$ = cfg_alloc(sizeof(struct filter));
+    $$->name = NULL;
+    $$->root = f_new_inst();
+    $$->root->code = P('L','C');
+    $$->root->a1.p = $2;
+    $$->root->next = NULL;
+  }
  | where_filter
  | ALL { $$ = FILTER_ACCEPT; }
  | NONE { $$ = FILTER_REJECT; }
