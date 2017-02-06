@@ -1,5 +1,6 @@
 #include "nest/bird.h"
 #include "filter/filter.h"
+#include "lua.h"
 
 #include <lua.h>
 #include <lualib.h>
@@ -8,6 +9,7 @@
 int filter_lua_chunk(const char *chunk, struct rte **e, struct rta *a, struct ea_list **ea, struct linpool *lp) {
   lua_State *L = luaL_newstate();
   luaL_openlibs(L);
+  luaB_push_bird_table(L);
   int le = luaL_dostring(L, chunk);
   int out;
   if (le) {
