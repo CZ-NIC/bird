@@ -73,7 +73,7 @@ struct bgp_config {
   u16 local_port;			/* Local listening port */
   u16 remote_port; 			/* Neighbor destination port */
   int multihop;				/* Number of hops if multihop */
-  int strict_bind;			/* Bind listening socket to local address XXXX */
+  int strict_bind;			/* Bind listening socket to local address */
   int ttl_security;			/* Enable TTL security [RFC 5082] */
   int compare_path_lengths;		/* Use path lengths when selecting best route */
   int med_metric;			/* Compare MULTI_EXIT_DISC even between routes from differen ASes */
@@ -509,22 +509,18 @@ void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 #define BAF_PARTIAL		0x20
 #define BAF_EXT_LEN		0x10
 
-#define BA_ORIGIN		0x01	/* [RFC1771] */		/* WM */
+#define BA_ORIGIN		0x01	/* RFC 4271 */		/* WM */
 #define BA_AS_PATH		0x02				/* WM */
 #define BA_NEXT_HOP		0x03				/* WM */
 #define BA_MULTI_EXIT_DISC	0x04				/* ON */
 #define BA_LOCAL_PREF		0x05				/* WD */
 #define BA_ATOMIC_AGGR		0x06				/* WD */
 #define BA_AGGREGATOR		0x07				/* OT */
-#define BA_COMMUNITY		0x08	/* [RFC1997] */		/* OT */
-#define BA_ORIGINATOR_ID	0x09	/* [RFC1966] */		/* ON */
-#define BA_CLUSTER_LIST		0x0a				/* ON */
-/* We don't support these: */
-#define BA_DPA			0x0b	/* ??? */
-#define BA_ADVERTISER		0x0c	/* [RFC1863] */
-#define BA_RCID_PATH		0x0d
-#define BA_MP_REACH_NLRI	0x0e	/* [RFC2283] */
-#define BA_MP_UNREACH_NLRI	0x0f
+#define BA_COMMUNITY		0x08	/* RFC 1997 */		/* OT */
+#define BA_ORIGINATOR_ID	0x09	/* RFC 4456 */		/* ON */
+#define BA_CLUSTER_LIST		0x0a	/* RFC 4456 */		/* ON */
+#define BA_MP_REACH_NLRI	0x0e	/* RFC 4760 */
+#define BA_MP_UNREACH_NLRI	0x0f	/* RFC 4760 */
 #define BA_EXT_COMMUNITY	0x10	/* RFC 4360 */
 #define BA_AS4_PATH             0x11	/* RFC 6793 */
 #define BA_AS4_AGGREGATOR       0x12	/* RFC 6793 */

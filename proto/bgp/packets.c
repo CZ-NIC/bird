@@ -713,9 +713,13 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 #define REPORT(msg, args...) \
   ({ log(L_REMOTE "%s: " msg, s->proto->p.name, ## args); })
 
+#define DISCARD(msg, args...) \
+  ({ REPORT(msg, ## args); return; })
+
 #define WITHDRAW(msg, args...) \
   ({ REPORT(msg, ## args); s->err_withdraw = 1; return; })
 
+#define BAD_AFI		"Unexpected AF <%u/%u> in UPDATE"
 #define BAD_NEXT_HOP	"Invalid NEXT_HOP attribute"
 #define NO_NEXT_HOP	"Missing NEXT_HOP attribute"
 
@@ -836,21 +840,27 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
 static uint
 bgp_encode_next_hop_none(struct bgp_write_state *s UNUSED, eattr *a UNUSED, byte *buf UNUSED, uint size UNUSED)
 {
-  // FIXME
   return 0;
 }
 
 static void
 bgp_decode_next_hop_none(struct bgp_parse_state *s UNUSED, byte *data UNUSED, uint len UNUSED, rta *a UNUSED)
 {
-  // FIXME
+  /*
+   * Although we expect no next hop and RFC 7606 7.11 states that attribute
+   * MP_REACH_NLRI with unexpected next hop length is considered malformed,
+   * FlowSpec RFC 5575 4 states that next hop shall be ignored on receipt.
+   */
+
   return;
 }
 
 static void
-bgp_update_next_hop_none(struct bgp_export_state *s UNUSED, eattr *a UNUSED, ea_list **to UNUSED)
+bgp_update_next_hop_none(struct bgp_export_state *s, eattr *a, ea_list **to)
 {
-  // FIXME
+  /* NEXT_HOP shall not pass */
+  if (a)
+    bgp_unset_attr(to, s->pool, BA_NEXT_HOP);
 }
 
 
@@ -1652,15 +1662,15 @@ bgp_create_end_mark(struct bgp_channel *c, byte *buf)
 }
 
 static inline void
-bgp_rx_end_mark(struct bgp_proto *p, u32 afi)
+bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
 {
+  struct bgp_proto *p = s->proto;
   struct bgp_channel *c = bgp_get_channel(p, afi);
 
   BGP_TRACE(D_PACKETS, "Got END-OF-RIB");
 
-  /* XXXX handle unknown AF in MP_*_NLRI */
   if (!c)
-    return;
+    DISCARD(BAD_AFI, BGP_AFI(afi), BGP_SAFI(afi));
 
   if (c->load_state == BFS_LOADING)
     c->load_state = BFS_NONE;
@@ -1678,9 +1688,8 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
   struct bgp_channel *c = bgp_get_channel(s->proto, afi);
   rta *a = NULL;
 
-  /* XXXX handle unknown AF in MP_*_NLRI */
   if (!c)
-    return;
+    DISCARD(BAD_AFI, BGP_AFI(afi), BGP_SAFI(afi));
 
   s->channel = c;
   s->add_path = c->add_path_rx;
@@ -1791,12 +1800,12 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
   /* Check for End-of-RIB marker */
   if (!s.attr_len && !s.ip_unreach_len && !s.ip_reach_len)
-  { bgp_rx_end_mark(p, BGP_AF_IPV4); goto done; }
+  { bgp_rx_end_mark(&s, BGP_AF_IPV4); goto done; }
 
   /* Check for MP End-of-RIB marker */
   if ((s.attr_len < 8) && !s.ip_unreach_len && !s.ip_reach_len &&
-      !s.mp_reach_len && !s.mp_unreach_len && s.mp_unreach_af) /* XXXX  See RFC 7606 5.2 */
-  { bgp_rx_end_mark(p, s.mp_unreach_af); goto done; }
+      !s.mp_reach_len && !s.mp_unreach_len && s.mp_unreach_af)
+  { bgp_rx_end_mark(&s, s.mp_unreach_af); goto done; }
 
   if (s.ip_unreach_len)
     bgp_decode_nlri(&s, BGP_AF_IPV4, s.ip_unreach_nlri, s.ip_unreach_len, NULL, NULL, 0);

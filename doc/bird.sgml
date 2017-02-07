@@ -2040,6 +2040,16 @@ using the following configuration parameters:
 	source address for the BGP session. Default: the address of the local
 	end of the interface our neighbor is connected to.
 
+	<tag><label id="bgp-strict-bind">strict bind <m/switch/</tag>
+	Specify whether BGP listening socket should be bound to a specific local
+	address (the same as the <cf/source address/) and associated interface,
+	or to all addresses. Binding to a specific address could be useful in
+	cases like running multiple BIRD instances on a machine, each using its
+	IP address. Note that listening sockets bound to a specific address and
+	to all addresses collide, therefore either all BGP protocols (of the
+	same address family and using the same local port) should have set
+	<cf/strict bind/, or none of them. Default: disabled.
+
 	<tag><label id="bgp-next-hop-self">next hop self</tag>
 	Avoid calculation of the Next Hop attribute and always advertise our own
 	source address as a next hop. This needs to be used only occasionally to
@@ -2112,7 +2122,7 @@ using the following configuration parameters:
 	Note that full (ICMP protection, for example) <rfc id="5082"> support is
 	provided by Linux only. Default: disabled.
 
-	<tag><label id="bgp-pass">password <m/string/</tag>
+	<tag><label id="bgp-password">password <m/string/</tag>
 	Use this password for MD5 authentication of BGP sessions (<rfc id="2385">). When
 	used on BSD systems, see also <cf/setkey/ option below. Default: no
 	authentication.
@@ -2269,13 +2279,6 @@ using the following configuration parameters:
 	widespread and required by some BGP implementations (Cisco and Quagga).
 	This option is relevant to IPv4 mode with enabled capability
 	advertisement only. Default: on.
-
-	<tag><label id="bgp-route-limit">route limit <m/number/</tag>
-	The maximal number of routes that may be imported from the protocol. If
-	the route limit is exceeded, the connection is closed with an error.
-	Limit is currently implemented as <cf>import limit <m/number/ action
-	restart</cf>. This option is obsolete and it is replaced by
-	<ref id="proto-import-limit" name="import limit option">. Default: no limit.
 
 	<tag><label id="bgp-disable-after-error">disable after error <m/switch/</tag>
 	When an error is encountered (either locally or by the other side),

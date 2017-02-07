@@ -1325,29 +1325,23 @@ bgp_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct li
 
 static adata null_adata;	/* adata of length 0 */
 
-static inline void
-bgp_cluster_list_prepend(ea_list **attrs, struct linpool *pool, u32 id)
-{
-  eattr *a = bgp_find_attr(*attrs, BA_CLUSTER_LIST);
-  adata *d = int_set_add(pool, a ? a->u.ptr : NULL, id);
-  bgp_set_attr_ptr(attrs, pool, BA_CLUSTER_LIST, 0, d);
-}
-
 static ea_list *
-bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *attrs, struct linpool *pool)
+bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *attrs0, struct linpool *pool)
 {
   struct proto *SRC = e->attrs->src->proto;
   struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (void *) SRC : NULL;
   struct bgp_export_state s = { .proto = p, .channel =c, .pool = pool, .src = src, .route = e };
+  ea_list *attrs = attrs0;
   eattr *a;
+  adata *ad;
 
   /* ORIGIN attribute - mandatory, attach if missing */
-  if (! bgp_find_attr(attrs, BA_ORIGIN))
+  if (! bgp_find_attr(attrs0, BA_ORIGIN))
     bgp_set_attr_u32(&attrs, pool, BA_ORIGIN, 0, src ? ORIGIN_INCOMPLETE : ORIGIN_IGP);
 
-  /* AS_PATH attribute */
-  a = bgp_find_attr(attrs, BA_AS_PATH);
-  adata *ad = a ? a->u.ptr : &null_adata;
+  /* AS_PATH attribute - mandatory */
+  a = bgp_find_attr(attrs0, BA_AS_PATH);
+  ad = a ? a->u.ptr : &null_adata;
 
   /* AS_PATH attribute - strip AS_CONFED* segments outside confederation */
   if ((!p->cf->confederation || !p->is_interior) && as_path_contains_confed(ad))
@@ -1374,33 +1368,40 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
     bgp_set_attr_ptr(&attrs, pool, BA_AS_PATH, 0, ad);
 
     /* MULTI_EXIT_DESC attribute - accept only if set in export filter */
-    a = bgp_find_attr(attrs, BA_MULTI_EXIT_DISC);
+    a = bgp_find_attr(attrs0, BA_MULTI_EXIT_DISC);
     if (a && !(a->type & EAF_FRESH))
       bgp_unset_attr(&attrs, pool, BA_MULTI_EXIT_DISC);
   }
 
   /* NEXT_HOP attribute - delegated to AF-specific hook */
-  a = bgp_find_attr(attrs, BA_NEXT_HOP);
+  a = bgp_find_attr(attrs0, BA_NEXT_HOP);
   bgp_update_next_hop(&s, a, &attrs);
 
   /* LOCAL_PREF attribute - required for IBGP, attach if missing */
-  if (p->is_interior && ! bgp_find_attr(attrs, BA_LOCAL_PREF))
+  if (p->is_interior && ! bgp_find_attr(attrs0, BA_LOCAL_PREF))
     bgp_set_attr_u32(&attrs, pool, BA_LOCAL_PREF, 0, p->cf->default_local_pref);
 
   /* IBGP route reflection, RFC 4456 */
   if (src && src->is_internal && p->is_internal && (src->local_as == p->local_as))
   {
     /* ORIGINATOR_ID attribute - attach if not already set */
-    if (! bgp_find_attr(attrs, BA_ORIGINATOR_ID))
+    if (! bgp_find_attr(attrs0, BA_ORIGINATOR_ID))
       bgp_set_attr_u32(&attrs, pool, BA_ORIGINATOR_ID, 0, src->remote_id);
 
     /* CLUSTER_LIST attribute - prepend cluster ID */
-    if (src->rr_cluster_id)
-      bgp_cluster_list_prepend(&attrs, pool, src->rr_cluster_id);
+    a = bgp_find_attr(attrs0, BA_CLUSTER_LIST);
+    ad = a ? a->u.ptr : NULL;
 
-    /* Handle different src and dst cluster ID - prepend both ones */
+    /* Prepend src cluster ID */
+    if (src->rr_cluster_id)
+      ad = int_set_add(pool, ad, src->rr_cluster_id);
+
+    /* Prepend dst cluster ID if src and dst clusters are different */
     if (p->rr_cluster_id && (src->rr_cluster_id != p->rr_cluster_id))
-      bgp_cluster_list_prepend(&attrs, pool, p->rr_cluster_id);
+      ad = int_set_add(pool, ad, p->rr_cluster_id);
+
+    /* Should be at least one prepended cluster ID */
+    bgp_set_attr_ptr(&attrs, pool, BA_CLUSTER_LIST, 0, ad);
   }
 
   /* AS4_* transition attributes, RFC 6793 4.2.2 */
@@ -1420,6 +1421,12 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
       bgp_set_attr_ptr(&attrs, pool, BA_AS4_AGGREGATOR, 0, a->u.ptr);
     }
   }
+
+  /*
+   * Presence of mandatory attributes ORIGIN and AS_PATH is ensured by above
+   * conditions. Presence and validity of quasi-mandatory NEXT_HOP attribute
+   * should be checked in AF-specific hooks.
+   */
 
   /* Apply per-attribute export hooks for validatation and normalization */
   return bgp_export_attrs(&s, attrs);
