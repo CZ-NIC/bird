@@ -1608,6 +1608,7 @@ nl_async_hook(sock *sk, uint size UNUSED)
 	   *  One day we might react to it by asking for route table
 	   *  scan in near future.
 	   */
+	  log(L_WARN "Kernel dropped some netlink messages, will resync on next scan.");
 	  return 1;	/* More data are likely to be ready */
 	}
       else if (errno != EWOULDBLOCK)

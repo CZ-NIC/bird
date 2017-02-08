@@ -25,6 +25,12 @@
     (v).data = mb_allocz(pool, HASH_SIZE(v) * sizeof(* (v).data));	\
   })
 
+#define HASH_FREE(v)							\
+  ({									\
+    mb_free((v).data);							\
+    (v) = (typeof(v)){ };						\
+  })
+
 #define HASH_FIND(v,id,key...)						\
   ({									\
     u32 _h = HASH_FN(v, id, key);					\

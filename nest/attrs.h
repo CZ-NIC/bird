@@ -181,6 +181,7 @@ int lc_set_format(struct adata *set, int from, byte *buf, uint size);
 int int_set_contains(struct adata *list, u32 val);
 int ec_set_contains(struct adata *list, u64 val);
 int lc_set_contains(struct adata *list, lcomm val);
+struct adata *int_set_prepend(struct linpool *pool, struct adata *list, u32 val);
 struct adata *int_set_add(struct linpool *pool, struct adata *list, u32 val);
 struct adata *ec_set_add(struct linpool *pool, struct adata *list, u64 val);
 struct adata *lc_set_add(struct linpool *pool, struct adata *list, lcomm val);

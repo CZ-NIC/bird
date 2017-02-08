@@ -1579,6 +1579,7 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   case P('<','='): TWOARGS; break;
 
   case '!': ONEARG; break;
+  case P('!', '~'):
   case '~': TWOARGS; break;
   case P('d','e'): ONEARG; break;
 

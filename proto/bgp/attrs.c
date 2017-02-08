@@ -1224,6 +1224,15 @@ bgp_init_prefix_table(struct bgp_channel *c)
   c->prefix_slab = alen ? sl_new(c->pool, sizeof(struct bgp_prefix) + alen) : NULL;
 }
 
+void
+bgp_free_prefix_table(struct bgp_channel *c)
+{
+  HASH_FREE(c->prefix_hash);
+
+  rfree(c->prefix_slab);
+  c->prefix_slab = NULL;
+}
+
 static struct bgp_prefix *
 bgp_get_prefix(struct bgp_channel *c, net_addr *net, u32 path_id)
 {
@@ -1323,6 +1332,7 @@ bgp_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct li
   return 0;
 }
 
+
 static adata null_adata;	/* adata of length 0 */
 
 static ea_list *
@@ -1394,11 +1404,11 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
 
     /* Prepend src cluster ID */
     if (src->rr_cluster_id)
-      ad = int_set_add(pool, ad, src->rr_cluster_id);
+      ad = int_set_prepend(pool, ad, src->rr_cluster_id);
 
     /* Prepend dst cluster ID if src and dst clusters are different */
     if (p->rr_cluster_id && (src->rr_cluster_id != p->rr_cluster_id))
-      ad = int_set_add(pool, ad, p->rr_cluster_id);
+      ad = int_set_prepend(pool, ad, p->rr_cluster_id);
 
     /* Should be at least one prepended cluster ID */
     bgp_set_attr_ptr(&attrs, pool, BA_CLUSTER_LIST, 0, ad);
