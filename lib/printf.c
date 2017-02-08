@@ -8,6 +8,7 @@
  */
 
 #include "nest/bird.h"
+#include "conf/conf.h"
 #include "string.h"
 
 #include <errno.h>
