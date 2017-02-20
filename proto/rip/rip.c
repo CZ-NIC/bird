@@ -147,20 +147,16 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
       .src = p->p.main_source,
       .source = RTS_RIP,
       .scope = SCOPE_UNIVERSE,
+      .dest = RTD_UNICAST,
     };
 
     u8 rt_metric = rt->metric;
     u16 rt_tag = rt->tag;
-    struct rip_rte *rt2 = rt->next;
 
-    /* Find second valid rte */
-    while (rt2 && !rip_valid_rte(rt2))
-      rt2 = rt2->next;
-
-    a0.dest = RTD_UNICAST;
-    if (p->ecmp && rt2)
+    if (p->ecmp)
     {
       /* ECMP route */
+      struct nexthop *nhs = NULL;
       int num = 0;
 
       for (rt = en->routes; rt && (num < p->ecmp); rt = rt->next)
@@ -168,28 +164,27 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 	if (!rip_valid_rte(rt))
 	    continue;
 
-	struct nexthop *nh = (a0.nh.next ? &(a0.nh) : alloca(sizeof(struct nexthop)));
+	struct nexthop *nh = allocz(sizeof(struct nexthop));
 
 	nh->gw = rt->next_hop;
 	nh->iface = rt->from->nbr->iface;
 	nh->weight = rt->from->ifa->cf->ecmp_weight;
 
-	if (a0.nh.next)
-	  nexthop_insert(&(a0.nh), nh);
-
+	nexthop_insert(&nhs, nh);
 	num++;
 
 	if (rt->tag != rt_tag)
 	  rt_tag = 0;
       }
+
+      a0.nh = *nhs;
     }
     else
     {
       /* Unipath route */
-      a0.nh.next = NULL;
+      a0.from = rt->from->nbr->addr;
       a0.nh.gw = rt->next_hop;
       a0.nh.iface = rt->from->nbr->iface;
-      a0.from = rt->from->nbr->addr;
     }
 
     rta *a = rta_lookup(&a0);

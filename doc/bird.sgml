@@ -4140,12 +4140,12 @@ return packets as undeliverable if they are in your IP block, you don't have any
 specific destination for them and you don't want to send them out through the
 default route to prevent routing loops).
 
-<p>There are five types of static routes: `classical' routes telling to forward
+<p>There are four types of static routes: `classical' routes telling to forward
 packets to a neighboring router (single path or multipath, possibly weighted),
-device routes specifying forwarding to hosts on a
-directly connected network, recursive routes computing their nexthops by doing
-route table lookups for a given IP, and special routes (sink, blackhole etc.)
-which specify a special action to be done instead of forwarding the packet.
+device routes specifying forwarding to hosts on a directly connected network,
+recursive routes computing their nexthops by doing route table lookups for a
+given IP, and special routes (sink, blackhole etc.)  which specify a special
+action to be done instead of forwarding the packet.
 
 <p>When the particular destination is not available (the interface is down or
 the next hop of the route is not a neighbor at the moment), Static just

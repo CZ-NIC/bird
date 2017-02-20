@@ -43,8 +43,6 @@
 
 #include "pipe.h"
 
-#include <alloca.h>
-
 static void
 pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *old, ea_list *attrs)
 {

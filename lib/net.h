@@ -306,6 +306,9 @@ static inline int net_equal_flow4(const net_addr_flow4 *a, const net_addr_flow4 
 static inline int net_equal_flow6(const net_addr_flow6 *a, const net_addr_flow6 *b)
 { return net_equal((const net_addr *) a, (const net_addr *) b); }
 
+static inline int net_equal_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
+{ return !memcmp(a, b, sizeof(net_addr_mpls)); }
+
 
 static inline int net_equal_prefix_roa4(const net_addr_roa4 *a, const net_addr_roa4 *b)
 { return ip4_equal(a->prefix, b->prefix) && (a->pxlen == b->pxlen); }
@@ -313,8 +316,6 @@ static inline int net_equal_prefix_roa4(const net_addr_roa4 *a, const net_addr_r
 static inline int net_equal_prefix_roa6(const net_addr_roa6 *a, const net_addr_roa6 *b)
 { return ip6_equal(a->prefix, b->prefix) && (a->pxlen == b->pxlen); }
 
-static inline int net_equal_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
-{ return !memcmp(a, b, sizeof(net_addr_mpls)); }
 
 static inline int net_zero_ip4(const net_addr_ip4 *a)
 { return !a->pxlen && ip4_zero(a->prefix); }
@@ -404,15 +405,16 @@ static inline void net_copy_flow6(net_addr_flow6 *dst, const net_addr_flow6 *src
 static inline void net_copy_mpls(net_addr_mpls *dst, const net_addr_mpls *src)
 { memcpy(dst, src, sizeof(net_addr_mpls)); }
 
+
+/* XXXX */
+static inline u32 u64_hash(u64 a)
+{ return u32_hash(a); }
+
 static inline u32 net_hash_ip4(const net_addr_ip4 *n)
 { return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
 
 static inline u32 net_hash_ip6(const net_addr_ip6 *n)
 { return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
-
-/* XXXX */
-static inline u32 u64_hash(u64 a)
-{ return u32_hash(a); }
 
 static inline u32 net_hash_vpn4(const net_addr_vpn4 *n)
 { return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
@@ -452,7 +454,7 @@ static inline int net_validate_ip6(const net_addr_ip6 *n)
 
 static inline int net_validate_mpls(const net_addr_mpls *n)
 {
-  return n->label < (1<<20);
+  return n->label < (1 << 20);
 }
 
 int net_validate(const net_addr *N);

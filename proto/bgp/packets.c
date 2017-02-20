@@ -700,9 +700,7 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
       WITHDRAW(BAD_NEXT_HOP);
 
     a->dest = RTD_UNICAST;
-    a->nh.gw = nbr->addr;
-    a->nh.iface = nbr->iface;
-    a->nh.next = NULL;
+    a->nh = (struct nexthop){ .gw = nbr->addr, .iface = nbr->iface };
     a->hostentry = NULL;
     a->igp_metric = 0;
   }
@@ -749,8 +747,8 @@ bgp_use_gateway(struct bgp_export_state *s)
   if (s->channel->cf->next_hop_self)
     return 0;
 
-  /* We need valid global gateway */
-  if ((ra->dest != RTD_UNICAST) || (ra->nh.next) || ipa_zero(ra->nh.gw) || ipa_is_link_local(ra->nh.gw))
+  /* We need one valid global gateway */
+  if ((ra->dest != RTD_UNICAST) || ra->nh.next || ipa_zero(ra->nh.gw) || ipa_is_link_local(ra->nh.gw))
     return 0;
 
   /* Use it when exported to internal peers */
@@ -1434,12 +1432,10 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   if (ea)
   {
-    a = alloca(sizeof(struct rta));
-    memset(a, 0, sizeof(struct rta));
+    a = allocz(sizeof(struct rta));
 
     a->source = RTS_BGP;
     a->scope = SCOPE_UNIVERSE;
-    a->dest = RTD_UNREACHABLE;
     a->from = s->proto->cf->remote_ip;
     a->eattrs = ea;
 

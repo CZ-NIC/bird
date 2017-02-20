@@ -60,54 +60,44 @@ p_igp_table(struct proto *p)
 static void
 static_install(struct proto *p, struct static_route *r)
 {
-  rta *ap = alloca(RTA_MAX_SIZE);
+  rta *ap = allocz(RTA_MAX_SIZE);
   rte *e;
 
   if (!(r->state & STS_WANT) && (r->state & (STS_INSTALLED | STS_FORCE)) && r->dest != RTD_UNICAST)
     goto drop;
 
   DBG("Installing static route %N, rtd=%d\n", r->net, r->dest);
-  bzero(ap, RTA_MAX_SIZE);
   ap->src = p->main_source;
-  ap->source = ((r->dest == RTD_UNICAST) && ipa_zero(r->via)) ? RTS_STATIC_DEVICE : RTS_STATIC;
+  ap->source = RTS_STATIC;
   ap->scope = SCOPE_UNIVERSE;
   ap->dest = r->dest;
 
   if (r->dest == RTD_UNICAST)
     {
+      struct nexthop *nhs = NULL;
       struct static_route *r2;
-      int num = 0, update = 0;
+      int update = 0;
 
+      r = r->mp_head;
       for (r2 = r; r2; r2 = r2->mp_next)
       {
-
 	if ((r2->state & STS_FORCE) ||
 	    (!!(r2->state & STS_INSTALLED) != !!(r2->state & STS_WANT)))
 	  update++;
 
 	if (r2->state & STS_WANT)
-	  {
-	    struct nexthop *nh = (ap->nh.next) ? alloca(NEXTHOP_MAX_SIZE) : &(ap->nh);
-	    if (ipa_zero(r2->via)) // Device nexthop
-	      {
-		nh->gw = IPA_NONE;
-		nh->iface = r2->iface;
-	      }
-	    else // Router nexthop
-	      {
-		nh->gw = r2->via;
-		nh->iface = r2->neigh->iface;
-	      }
-	    nh->weight = r2->weight;
-	    nh->labels = r2->label_count;
-	    for (int i=0; i<nh->labels; i++)
-	      nh->label[i] = r2->label_stack[i];
+	{
+	  struct nexthop *nh = allocz(NEXTHOP_MAX_SIZE);
 
-	    if (ap->nh.next)
-	      nexthop_insert(&(ap->nh), nh);
-	    r2->state |= STS_INSTALLED;
-	    num++;
-	  }
+	  nh->gw = r2->via;
+	  nh->iface = r2->neigh ? r2->neigh->iface : r2->iface;
+	  nh->weight = r2->weight;
+	  nh->labels = r2->label_count;
+	  memcpy(nh->label, r2->label_stack, r2->label_count * sizeof(u32));
+
+	  r2->state |= STS_INSTALLED;
+	  nexthop_insert(&nhs, nh);
+	}
 	else
 	  r2->state = 0;
       }
@@ -115,18 +105,19 @@ static_install(struct proto *p, struct static_route *r)
       if (!update) // Nothing changed
 	return;
 
-      r = r->mp_head;
-
-      if (!num) // No nexthop to install
+      if (!nhs) // No nexthop to install
       {
 drop:
 	rte_update(p, r->net, NULL);
 	return;
       }
+
+      ap->dest = RTD_UNICAST;
+      nexthop_link(ap, nhs);
     }
   else
     r->state |= STS_INSTALLED;
-  
+
   if (r->dest == RTDX_RECURSIVE)
     {
       ap->nh.labels_append = ap->nh.labels = r->label_count;

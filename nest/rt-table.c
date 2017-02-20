@@ -1768,7 +1768,6 @@ static inline void
 rta_apply_hostentry(rta *a, struct hostentry *he)
 {
   a->hostentry = he;
-  
   a->dest = he->dest;
   a->igp_metric = he->igp_metric;
 
@@ -1810,14 +1809,14 @@ rta_apply_hostentry(rta *a, struct hostentry *he)
 static inline rte *
 rt_next_hop_update_rte(rtable *tab UNUSED, rte *old)
 {
-  rta *ap = alloca(RTA_MAX_SIZE);
-  memcpy(ap, old->attrs, rta_size(old->attrs));
-  rta_apply_hostentry(ap, old->attrs->hostentry);
-  ap->aflags = 0;
+  rta *a = alloca(RTA_MAX_SIZE);
+  memcpy(a, old->attrs, rta_size(old->attrs));
+  rta_apply_hostentry(a, old->attrs->hostentry);
+  a->aflags = 0;
 
   rte *e = sl_alloc(rte_slab);
   memcpy(e, old, sizeof(rte));
-  e->attrs = rta_lookup(ap);
+  e->attrs = rta_lookup(a);
 
   return e;
 }
@@ -2373,7 +2372,8 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 	}
 
       if ((a->dest == RTD_UNICAST) && ipa_zero(a->nh.gw) && !a->next)
-	{ /* We have singlepath device route */
+	{
+	  /* We have singlepath device route */
 	  if (if_local_addr(he->addr, a->nh.iface))
 	    {
 	      /* The host address is a local address, this is not valid */
@@ -2389,7 +2389,7 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
       else
 	{
 	  /* The host is reachable through some route entry */
-	  he->nh = (&a->nh);
+	  he->nh = &(a->nh);
 	  he->dest = a->dest;
 	}
 

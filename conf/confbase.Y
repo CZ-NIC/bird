@@ -203,13 +203,13 @@ net_ip6_: IP6 '/' NUM
 net_vpn4_: VPN_RD net_ip4_
 {
   $$ = cfg_alloc(sizeof(net_addr_vpn4));
-  net_fill_vpn4($$, ((net_addr_ip4 *)&$2)->prefix, $2.pxlen, $1);
+  net_fill_vpn4($$, net4_prefix(&$2), net4_pxlen(&$2), $1);
 }
 
 net_vpn6_: VPN_RD net_ip6_
 {
   $$ = cfg_alloc(sizeof(net_addr_vpn6));
-  net_fill_vpn6($$, ((net_addr_ip6 *)&$2)->prefix, $2.pxlen, $1);
+  net_fill_vpn6($$, net6_prefix(&$2), net6_pxlen(&$2), $1);
 }
 
 net_roa4_: net_ip4_ MAX NUM AS NUM
@@ -229,8 +229,8 @@ net_roa6_: net_ip6_ MAX NUM AS NUM
 };
 
 net_ip_: net_ip4_ | net_ip6_ ;
-net_roa_: net_roa4_ | net_roa6_ ;
 net_vpn_: net_vpn4_ | net_vpn6_ ;
+net_roa_: net_roa4_ | net_roa6_ ;
 
 net_:
    net_ip_ { $$ = cfg_alloc($1.length); net_copy($$, &($1)); }
@@ -297,8 +297,9 @@ label_stack:
     label_stack_start
   | label_stack '/' NUM {
     if ($1[0] >= MPLS_MAX_LABEL_STACK)
-      cf_error("Too many labels in stack.");
-    $1[++$1[0]] = $3;
+      cf_error("Too many labels in stack");
+    $1[0]++;
+    $1[*$1] = $3;
     $$ = $1;
   }
 ;

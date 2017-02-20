@@ -36,11 +36,9 @@ unresolved_vlink(ort *ort)
 static inline struct nexthop *
 new_nexthop(struct ospf_proto *p, ip_addr gw, struct iface *iface, byte weight)
 {
-  struct nexthop *nh = lp_alloc(p->nhpool, sizeof(struct nexthop));
-  nh->labels = 0;
+  struct nexthop *nh = lp_allocz(p->nhpool, sizeof(struct nexthop));
   nh->gw = gw;
   nh->iface = iface;
-  nh->next = NULL;
   nh->weight = weight;
   return nh;
 }
@@ -1907,7 +1905,6 @@ ort_changed(ort *nf, rta *nr)
     (nf->n.metric1 != nf->old_metric1) || (nf->n.metric2 != nf->old_metric2) ||
     (nf->n.tag != nf->old_tag) || (nf->n.rid != nf->old_rid) ||
     (nr->source != or->source) || (nr->dest != or->dest) ||
-    (nr->nh.iface != or->nh.iface) || !ipa_equal(nr->nh.gw, or->nh.gw) ||
     !nexthop_same(&(nr->nh), &(or->nh));
 }
 
@@ -1952,10 +1949,9 @@ again1:
 	.src = p->p.main_source,
 	.source = nf->n.type,
 	.scope = SCOPE_UNIVERSE,
+	.dest = RTD_UNICAST,
+	.nh = *(nf->n.nhs),
       };
-
-      nexthop_link(&a0, nf->n.nhs);
-      a0.dest = RTD_UNICAST;
 
       if (reload || ort_changed(nf, &a0))
       {

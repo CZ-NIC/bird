@@ -390,11 +390,11 @@ typedef struct rta {
 #define RTC_MULTICAST 2
 #define RTC_ANYCAST 3			/* IPv6 Anycast */
 
-#define RTD_UNICAST 0			/* Next hop is neighbor router */
+#define RTD_NONE 0			/* Undefined next hop */
+#define RTD_UNICAST 1			/* Next hop is neighbor router */
 #define RTD_BLACKHOLE 2			/* Silently drop packets */
 #define RTD_UNREACHABLE 3		/* Reject as unreachable */
 #define RTD_PROHIBIT 4			/* Administratively prohibited */
-#define RTD_NONE 6			/* Invalid RTD */
 
 					/* Flags for net->n.flags, used by kernel syncer */
 #define KRF_INSTALLED 0x80		/* This route should be installed in the kernel */
@@ -408,7 +408,7 @@ typedef struct rta {
 
 /* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
 static inline int rte_is_reachable(rte *r)
-{ uint d = r->attrs->dest; return (d == RTD_UNICAST); }
+{ return r->attrs->dest == RTD_UNICAST; }
 
 
 /*
@@ -523,7 +523,7 @@ static inline int nexthop_same(struct nexthop *x, struct nexthop *y)
 struct nexthop *nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, linpool *lp);
 static inline void nexthop_link(struct rta *a, struct nexthop *from)
 { memcpy(&a->nh, from, nexthop_size(from)); }
-void nexthop_insert(struct nexthop *n, struct nexthop *y);
+void nexthop_insert(struct nexthop **n, struct nexthop *y);
 int nexthop_is_sorted(struct nexthop *x);
 
 void rta_init(void);

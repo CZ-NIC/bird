@@ -320,6 +320,7 @@ static struct nl_want_attrs ifa_attr_want4[BIRD_IFA_MAX] = {
   [IFA_ADDRESS]	  = { 1, 1, sizeof(ip4_addr) },
   [IFA_LOCAL]	  = { 1, 1, sizeof(ip4_addr) },
   [IFA_BROADCAST] = { 1, 1, sizeof(ip4_addr) },
+  [IFA_FLAGS]     = { 1, 1, sizeof(u32) },
 };
 
 static struct nl_want_attrs ifa_attr_want6[BIRD_IFA_MAX] = {
@@ -543,18 +544,17 @@ nl_add_attr_via(struct nlmsghdr *h, uint bufsize, ip_addr ipa)
 
   h->nlmsg_len += sizeof(*via);
 
-  if (ipa_is_ip4(ipa)) {
-    ip4_addr ip4 = ipa_to_ip4(ipa);
-    ip4 = ip4_hton(ip4);
+  if (ipa_is_ip4(ipa))
+  {
     via->rtvia_family = AF_INET;
-    memcpy(via->rtvia_addr, &ip4, sizeof(ip4));
-    h->nlmsg_len += sizeof(ip4);
-  } else {
-    ip6_addr ip6 = ipa_to_ip6(ipa);
-    ip6 = ip6_hton(ip6);
+    put_ip4(via->rtvia_addr, ipa_to_ip4(ipa));
+    h->nlmsg_len += sizeof(ip4_addr);
+  }
+  else
+  {
     via->rtvia_family = AF_INET6;
-    memcpy(via->rtvia_addr, &ip6, sizeof(ip6));
-    h->nlmsg_len += sizeof(ip6);
+    put_ip6(via->rtvia_addr, ipa_to_ip6(ipa));
+    h->nlmsg_len += sizeof(ip6_addr);
   }
 
   nl_close_attr(h, nest);
@@ -669,6 +669,7 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
 	}
       else
 	rv->gw = IPA_NONE;
+
       if (a[RTA_ENCAP_TYPE])
 	{
 	  if (rta_get_u16(a[RTA_ENCAP_TYPE]) != LWTUNNEL_ENCAP_MPLS) {
@@ -1092,20 +1093,16 @@ krt_capable(rte *e)
   rta *a = e->attrs;
 
   switch (a->dest)
-    {
+  {
     case RTD_UNICAST:
-      for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
-	if (nh->iface)
-	  return 1;
-      return 0;
     case RTD_BLACKHOLE:
     case RTD_UNREACHABLE:
     case RTD_PROHIBIT:
-      break;
+      return 1;
+
     default:
       return 0;
-    }
-  return 1;
+  }
 }
 
 static inline int
@@ -1210,7 +1207,6 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int d
 
 
 dest:
-  /* a->iface != NULL checked in krt_capable() for router and device routes */
   switch (dest)
     {
     case RTD_UNICAST:
@@ -1502,6 +1498,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   switch (i->rtm_type)
     {
     case RTN_UNICAST:
+      ra->dest = RTD_UNICAST;
 
       if (a[RTA_MULTIPATH] && (i->rtm_family == AF_INET))
 	{
@@ -1512,7 +1509,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	      return;
 	    }
 
-	  nexthop_link(ra, nh);
+	  ra->nh = *nh;
 	  break;
 	}
 
@@ -1698,9 +1695,20 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   else
   {
     /* Merge next hops with the stored route */
-    rta *a = s->attrs;
+    rta *oa = s->attrs;
 
-    nexthop_insert(&a->nh, &ra->nh);
+    struct nexthop *nhs = &oa->nh;
+    nexthop_insert(&nhs, &ra->nh);
+
+    /* Perhaps new nexthop is inserted at the first position */
+    if (nhs == &ra->nh)
+    {
+      /* Swap rtas */
+      s->attrs = ra;
+
+      /* Keep old eattrs */
+      ra->eattrs = oa->eattrs;
+    }
   }
 }
 

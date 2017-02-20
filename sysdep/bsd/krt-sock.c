@@ -193,7 +193,6 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   struct ks_msg msg;
   char *body = (char *)msg.buf;
   sockaddr gate, mask, dst;
-  ip_addr gw;
 
   DBG("krt-sock: send %I/%d via %I\n", net->n.prefix, net->n.pxlen, a->gw);
 
@@ -223,14 +222,12 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
     msg.rtm.rtm_flags |= RTF_BLACKHOLE;
 #endif
 
-  /* This is really very nasty, but I'm not able
-   * to add "(reject|blackhole)" route without
-   * gateway set
+  /*
+   * This is really very nasty, but I'm not able to add reject/blackhole route
+   * without gateway address.
    */
-  if(!i)
+  if (!i)
   {
-    i = HEAD(iface_list);
-
     WALK_LIST(j, iface_list)
     {
       if (j->flags & IF_LOOPBACK)
@@ -239,13 +236,13 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
         break;
       }
     }
+
+    if (!i)
+    {
+      log(L_ERR "KRT: Cannot find loopback iface");
+      return -1;
+    }
   }
-
-  gw = a->nh.gw;
-
-  /* Embed interface ID to link-local address */
-  if (ipa_is_link_local(gw))
-    _I0(gw) = 0xfe800000 | (i->index & 0x0000ffff);
 
   int af = AF_UNSPEC;
 
@@ -261,45 +258,51 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
       return -1;
   }
 
-
   sockaddr_fill(&dst,  af, net_prefix(net->n.addr), NULL, 0);
   sockaddr_fill(&mask, af, net_pxmask(net->n.addr), NULL, 0);
-  sockaddr_fill(&gate, af, gw, NULL, 0);
 
   switch (a->dest)
   {
-    case RTD_UNICAST:
-      if (ipa_zero(gw))
-      {
-	if(i)
-	{
-#ifdef RTF_CLONING
-	  if (cmd == RTM_ADD && (i->flags & IF_MULTIACCESS) != IF_MULTIACCESS)	/* PTP */
-	    msg.rtm.rtm_flags |= RTF_CLONING;
-#endif
+  case RTD_UNICAST:
+    if (ipa_nonzero(a->nh.gw))
+    {
+      ip_addr gw = a->nh.gw;
 
-	  if(!i->addr) {
-	    log(L_ERR "KRT: interface %s has no IP addess", i->name);
-	    return -1;
-	  }
+      /* Embed interface ID to link-local address */
+      if (ipa_is_link_local(gw))
+	_I0(gw) = 0xfe800000 | (i->index & 0x0000ffff);
 
-	  sockaddr_fill(&gate, ipa_is_ip4(i->addr->ip) ? AF_INET : AF_INET6, i->addr->ip, NULL, 0);
-	  msg.rtm.rtm_addrs |= RTA_GATEWAY;
-	}
-      } else {
-	msg.rtm.rtm_flags |= RTF_GATEWAY;
-	msg.rtm.rtm_addrs |= RTA_GATEWAY;
-      }
+      sockaddr_fill(&gate, af, gw, NULL, 0);
+      msg.rtm.rtm_flags |= RTF_GATEWAY;
+      msg.rtm.rtm_addrs |= RTA_GATEWAY;
       break;
+    }
 
 #ifdef RTF_REJECT
-    case RTD_UNREACHABLE:
+  case RTD_UNREACHABLE:
 #endif
 #ifdef RTF_BLACKHOLE
-    case RTD_BLACKHOLE:
+  case RTD_BLACKHOLE:
 #endif
-    default:
-      bug("krt-sock: unknown flags, but not filtered");
+  {
+    /* Fallback for all other valid cases */
+    if (!i->addr)
+    {
+      log(L_ERR "KRT: interface %s has no IP addess", i->name);
+      return -1;
+    }
+
+#ifdef RTF_CLONING
+    if (cmd == RTM_ADD && (i->flags & IF_MULTIACCESS) != IF_MULTIACCESS)	/* PTP */
+      msg.rtm.rtm_flags |= RTF_CLONING;
+#endif
+
+    sockaddr_fill(&gate, ipa_is_ip4(i->addr->ip) ? AF_INET : AF_INET6, i->addr->ip, NULL, 0);
+    msg.rtm.rtm_addrs |= RTA_GATEWAY;
+  }
+
+  default:
+    bug("krt-sock: unknown flags, but not filtered");
   }
 
   msg.rtm.rtm_index = i->index;
@@ -497,7 +500,6 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
     }
 
   a.dest = RTD_UNICAST;
-  a.nh.next = NULL;
   if (flags & RTF_GATEWAY)
   {
     neighbor *ng;
@@ -520,8 +522,6 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
 	return;
       }
   }
-  else
-    a.nh.gw = IPA_NONE;
 
  done:
   e = rte_get_temp(&a);

@@ -15,4 +15,6 @@
 #include <stdlib.h>
 #endif
 
+#define allocz(len) ({ void *_x = alloca(len); memset(_x, 0, len); _x; })
+
 #endif

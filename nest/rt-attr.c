@@ -150,7 +150,8 @@ nexthop_hash(struct nexthop *x)
   for (; x; x = x->next)
   {
     h ^= ipa_hash(x->gw) ^ (h << 5) ^ (h >> 9);
-    for (int i=0; i<x->labels; i++)
+
+    for (int i = 0; i < x->labels; i++)
       h ^= x->label[i] ^ (h << 6) ^ (h >> 7);
   }
 
@@ -164,12 +165,13 @@ nexthop__same(struct nexthop *x, struct nexthop *y)
   {
     if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) || (x->weight != y->weight) || (x->labels != y->labels))
       return 0;
-    for (int i=0; i<x->labels; i++)
+
+    for (int i = 0; i < x->labels; i++)
       if (x->label[i] != y->label[i])
 	return 0;
   }
 
-  return 1;
+  return x == y;
 }
 
 static int
@@ -195,7 +197,7 @@ nexthop_compare_node(struct nexthop *x, struct nexthop *y)
   if (r)
     return r;
 
-  for (int i=0; i<y->labels; i++)
+  for (int i = 0; i < y->labels; i++)
   {
     r = ((int) y->label[i]) - ((int) x->label[i]);
     if (r)
@@ -271,34 +273,22 @@ nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, lin
 }
 
 void
-nexthop_insert(struct nexthop *n, struct nexthop *x)
+nexthop_insert(struct nexthop **n, struct nexthop *x)
 {
-  struct nexthop tmp;
-  memcpy(&tmp, n, sizeof(struct nexthop));
-  if (nexthop_compare_node(n, x) > 0) /* Insert to the included nexthop */
+  for (; *n; n = &((*n)->next))
   {
-    memcpy(n, x, sizeof(struct nexthop));
-    memcpy(x, &tmp, sizeof(struct nexthop));
-    n->next = x;
-    return;
-  }
-
-  for (struct nexthop **nn = &(n->next); *nn; nn = &((*nn)->next))
-  {
-    int cmp = nexthop_compare_node(*nn, x);
+    int cmp = nexthop_compare_node(*n, x);
 
     if (cmp < 0)
       continue;
-    
-    if (cmp > 0)
-    {
-      x->next = *nn;
-      *nn = x;
-    }
-    
-    return;
+    else if (cmp > 0)
+      break;
+    else
+      return;
   }
 
+  x->next = *n;
+  *n = x;
 }
 
 int
@@ -314,7 +304,7 @@ nexthop_is_sorted(struct nexthop *x)
 static inline slab *
 nexthop_slab(struct nexthop *nh)
 {
-  return nexthop_slab_[nh->labels > 2 ? 3 : nh->labels];
+  return nexthop_slab_[MIN(nh->labels, 3)];
 }
 
 static struct nexthop *

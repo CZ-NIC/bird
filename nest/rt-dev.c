@@ -79,9 +79,7 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 	.source = RTS_DEVICE,
 	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,
-	.nh = {
-	  .iface = ad->iface
-	}
+	.nh.iface = ad->iface,
       };
 
       a = rta_lookup(&a0);

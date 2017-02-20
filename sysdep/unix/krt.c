@@ -984,7 +984,7 @@ krt_store_tmp_attrs(rte *rt, struct ea_list *attrs)
 static int
 krt_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct linpool *pool UNUSED)
 {
-  struct krt_proto *p = (struct krt_proto *) P;
+  // struct krt_proto *p = (struct krt_proto *) P;
   rte *e = *new;
 
   if (e->attrs->src->proto == P)
@@ -1003,17 +1003,6 @@ krt_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct li
       e->net->n.flags &= ~KRF_INSTALLED;
 #endif
     return -1;
-  }
-
-  if (!KRT_CF->devroutes && (e->attrs->source != RTS_STATIC_DEVICE))
-  {
-    struct nexthop *nh = &(e->attrs->nh);
-    for (; nh; nh = nh->next)
-      if (ipa_nonzero(nh->gw))
-	break;
-
-    if (!nh) /* Gone through all the nexthops and no explicit GW found */
-      return -1;
   }
 
   if (!krt_capable(e))

@@ -13,8 +13,32 @@ CF_HDR
 CF_DEFINES
 
 #define STATIC_CFG ((struct static_config *) this_proto)
-static struct static_route *this_srt, *last_srt;
+static struct static_route *this_srt, *this_snh;
 static struct f_inst **this_srt_last_cmd;
+
+static struct static_route *
+static_nexthop_new(void)
+{
+  struct static_route *nh;
+
+  if (!this_snh)
+  {
+    /* First next hop */
+    nh = this_srt;
+    rem_node(&this_srt->n);
+  }
+  else
+  {
+    /* Additional next hop */
+    nh = cfg_allocz(sizeof(struct static_route));
+    nh->net = this_srt->net;
+    this_snh->mp_next = nh;
+  }
+
+  nh->dest = RTD_UNICAST;
+  nh->mp_head = this_srt;
+  return nh;
+};
 
 static void
 static_route_finish(void)
@@ -45,48 +69,35 @@ static_proto:
  | static_proto stat_route stat_route_opt_list ';' { static_route_finish(); }
  ;
 
-stat_nexthop_via: VIA
-{
-  if (last_srt)
-  {
-    last_srt = (last_srt->mp_next = cfg_allocz(sizeof(struct static_route)));
-    last_srt->net = this_srt->net;
-  }
-  else
-  {
-    last_srt = this_srt;
-    rem_node(&this_srt->n);
-  }
-
-  last_srt->mp_head = this_srt;
-  last_srt->dest = RTD_UNICAST;
-};
-
-stat_nexthop_ident:
-    stat_nexthop_via ipa ipa_scope {
-      last_srt->via = $2;
-      last_srt->iface = $3;
-      add_tail(&STATIC_CFG->neigh_routes, &last_srt->n);
+stat_nexthop:
+    VIA ipa ipa_scope {
+      this_snh = static_nexthop_new();
+      this_snh->via = $2;
+      this_snh->iface = $3;
+      add_tail(&STATIC_CFG->neigh_routes, &this_snh->n);
     }
-  | stat_nexthop_via TEXT {
-      last_srt->via = IPA_NONE;
-      last_srt->if_name = $2;
-      add_tail(&STATIC_CFG->iface_routes, &last_srt->n);
+  | VIA TEXT {
+      this_snh = static_nexthop_new();
+      this_snh->via = IPA_NONE;
+      this_snh->if_name = $2;
+      add_tail(&STATIC_CFG->iface_routes, &this_snh->n);
     }
-  | stat_nexthop_ident MPLS label_stack {
-    last_srt->label_count = $3[0];
-    last_srt->label_stack = &($3[1]);
+  | stat_nexthop MPLS label_stack {
+    this_snh->label_count = $3[0];
+    this_snh->label_stack = &($3[1]);
   }
-  | stat_nexthop_ident WEIGHT expr {
-    last_srt->weight = $3 - 1;
+  | stat_nexthop WEIGHT expr {
+    this_snh->weight = $3 - 1;
     if (($3<1) || ($3>256)) cf_error("Weight must be in range 1-256");
   }
-  | stat_nexthop_ident BFD bool { last_srt->use_bfd = $3; cf_check_bfd($3); }
+  | stat_nexthop BFD bool {
+    this_snh->use_bfd = $3; cf_check_bfd($3);
+  }
 ;
 
-stat_nexthop:
-    stat_nexthop_ident
-  | stat_nexthop stat_nexthop_ident
+stat_nexthops:
+    stat_nexthop
+  | stat_nexthops stat_nexthop
 ;
 
 stat_route0: ROUTE net_any {
@@ -95,12 +106,12 @@ stat_route0: ROUTE net_any {
      this_srt->net = $2;
      this_srt_last_cmd = &(this_srt->cmds);
      this_srt->mp_next = NULL;
-     last_srt = NULL;
+     this_snh = NULL;
   }
  ;
 
 stat_route:
-   stat_route0 stat_nexthop
+   stat_route0 stat_nexthops
  | stat_route0 RECURSIVE ipa {
       this_srt->dest = RTDX_RECURSIVE;
       this_srt->via = $3;

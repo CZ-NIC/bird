@@ -1461,8 +1461,7 @@ bgp_get_neighbor(rte *r)
 static inline int
 rte_resolvable(rte *rt)
 {
-  int rd = rt->attrs->dest;
-  return (rd == RTD_UNICAST);
+  return rt->attrs->dest == RTD_UNICAST;
 }
 
 int
