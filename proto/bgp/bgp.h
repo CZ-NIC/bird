@@ -524,7 +524,7 @@ void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 #define BA_EXT_COMMUNITY	0x10	/* RFC 4360 */
 #define BA_AS4_PATH             0x11	/* RFC 6793 */
 #define BA_AS4_AGGREGATOR       0x12	/* RFC 6793 */
-#define BA_LARGE_COMMUNITY	0x20	/* [draft-ietf-idr-large-community] */
+#define BA_LARGE_COMMUNITY	0x20	/* RFC 8092 */
 
 /* BGP connection states */
 
