@@ -118,12 +118,15 @@ typedef struct neighbor {
 					   SCOPE_HOST when it's our own address */
 } neighbor;
 
-#define NEF_STICKY 1
-#define NEF_ONLINK 2
-#define NEF_BIND 4			/* Used internally for neighbors bound to an iface */
+#define NEF_STICKY	1
+#define NEF_ONLINK	2
+#define NEF_BIND	4		/* Used internally for neighbors bound to an iface */
+#define NEF_IFACE	8		/* Neighbors bound to iface */
+
 
 neighbor *neigh_find(struct proto *, ip_addr *, unsigned flags);
 neighbor *neigh_find2(struct proto *p, ip_addr *a, struct iface *ifa, unsigned flags);
+neighbor *neigh_find_iface(struct proto *p, struct iface *ifa);
 
 static inline int neigh_connected_to(struct proto *p, ip_addr *a, struct iface *i)
 {
