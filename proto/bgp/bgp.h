@@ -31,6 +31,7 @@ struct eattr;
 
 #define BGP_SAFI_UNICAST	1
 #define BGP_SAFI_MULTICAST	2
+#define BGP_SAFI_FLOW		133
 
 /* Internal AF codes */
 
@@ -42,6 +43,8 @@ struct eattr;
 #define BGP_AF_IPV6		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_UNICAST )
 #define BGP_AF_IPV4_MC		BGP_AF( BGP_AFI_IPV4, BGP_SAFI_MULTICAST )
 #define BGP_AF_IPV6_MC		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_MULTICAST )
+#define BGP_AF_FLOW4		BGP_AF( BGP_AFI_IPV4, BGP_SAFI_FLOW )
+#define BGP_AF_FLOW6		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_FLOW )
 
 
 struct bgp_write_state;
@@ -70,7 +73,7 @@ struct bgp_config {
   u16 local_port;			/* Local listening port */
   u16 remote_port; 			/* Neighbor destination port */
   int multihop;				/* Number of hops if multihop */
-  int strict_bind;			/* Bind listening socket to local address XXXX */
+  int strict_bind;			/* Bind listening socket to local address */
   int ttl_security;			/* Enable TTL security [RFC 5082] */
   int compare_path_lengths;		/* Use path lengths when selecting best route */
   int med_metric;			/* Compare MULTI_EXIT_DISC even between routes from differen ASes */
@@ -120,6 +123,7 @@ struct bgp_channel_config {
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
   u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
   u8 gr_able;				/* Allow full graceful restart for the channel */
+  u8 ext_next_hop;			/* Allow both IPv4 and IPv6 next hops */
   u8 add_path;				/* Use ADD-PATH extension [RFC 7911] */
 
   struct rtable_config *igp_table;	/* Table used for recursive next hop lookups */
@@ -151,6 +155,7 @@ struct bgp_af_caps {
   u8 ready;				/* Multiprotocol capability, RFC 4760 */
   u8 gr_able;				/* Graceful restart support, RFC 4724 */
   u8 gr_af_flags;			/* Graceful restart per-AF flags */
+  u8 ext_next_hop;			/* Extended IPv6 next hop,   RFC 5549 */
   u8 add_path;				/* Multiple paths support,   RFC 7911 */
 };
 
@@ -170,6 +175,10 @@ struct bgp_caps {
 
   struct bgp_af_caps af_data[0];	/* Per-AF capability data */
 };
+
+#define WALK_AF_CAPS(caps,ac) \
+  for (ac = caps->af_data; ac < &caps->af_data[caps->af_count]; ac++)
+
 
 struct bgp_socket {
   node n;				/* Node in global bgp_sockets */
@@ -266,6 +275,8 @@ struct bgp_channel {
 
   u8 gr_ready;				/* Neighbor could do GR on this AF */
   u8 gr_active;				/* Neighbor is doing GR and keeping fwd state */
+
+  u8 ext_next_hop;			/* Session allows both IPv4 and IPv6 next hops */
 
   u8 add_path_rx;			/* Session expects receive of ADD-PATH extended NLRI */
   u8 add_path_tx;			/* Session expects transmit of ADD-PATH extended NLRI */
@@ -446,18 +457,6 @@ bgp_unset_attr(ea_list **to, struct linpool *pool, uint code)
 { eattr *e = bgp_set_attr(to, pool, code, 0, 0); e->type = EAF_TYPE_UNDEF; }
 
 
-
-
-/* Hack: although BA_NEXT_HOP attribute has type EAF_TYPE_IP_ADDRESS, in IPv6
- * we store two addesses in it - a global address and a link local address.
- */
-#ifdef XXX
-#define NEXT_HOP_LENGTH (2*sizeof(ip_addr))
-static inline void set_next_hop(byte *b, ip_addr addr) { ((ip_addr *) b)[0] = addr; ((ip_addr *) b)[1] = IPA_NONE; }
-#define NEXT_HOP_LENGTH sizeof(ip_addr)
-static inline void set_next_hop(byte *b, ip_addr addr) { ((ip_addr *) b)[0] = addr; }
-#endif
-
 int bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte *end);
 ea_list * bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len);
 
@@ -510,26 +509,22 @@ void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 #define BAF_PARTIAL		0x20
 #define BAF_EXT_LEN		0x10
 
-#define BA_ORIGIN		0x01	/* [RFC1771] */		/* WM */
+#define BA_ORIGIN		0x01	/* RFC 4271 */		/* WM */
 #define BA_AS_PATH		0x02				/* WM */
 #define BA_NEXT_HOP		0x03				/* WM */
 #define BA_MULTI_EXIT_DISC	0x04				/* ON */
 #define BA_LOCAL_PREF		0x05				/* WD */
 #define BA_ATOMIC_AGGR		0x06				/* WD */
 #define BA_AGGREGATOR		0x07				/* OT */
-#define BA_COMMUNITY		0x08	/* [RFC1997] */		/* OT */
-#define BA_ORIGINATOR_ID	0x09	/* [RFC1966] */		/* ON */
-#define BA_CLUSTER_LIST		0x0a				/* ON */
-/* We don't support these: */
-#define BA_DPA			0x0b	/* ??? */
-#define BA_ADVERTISER		0x0c	/* [RFC1863] */
-#define BA_RCID_PATH		0x0d
-#define BA_MP_REACH_NLRI	0x0e	/* [RFC2283] */
-#define BA_MP_UNREACH_NLRI	0x0f
+#define BA_COMMUNITY		0x08	/* RFC 1997 */		/* OT */
+#define BA_ORIGINATOR_ID	0x09	/* RFC 4456 */		/* ON */
+#define BA_CLUSTER_LIST		0x0a	/* RFC 4456 */		/* ON */
+#define BA_MP_REACH_NLRI	0x0e	/* RFC 4760 */
+#define BA_MP_UNREACH_NLRI	0x0f	/* RFC 4760 */
 #define BA_EXT_COMMUNITY	0x10	/* RFC 4360 */
 #define BA_AS4_PATH             0x11	/* RFC 6793 */
 #define BA_AS4_AGGREGATOR       0x12	/* RFC 6793 */
-#define BA_LARGE_COMMUNITY	0x20	/* [draft-ietf-idr-large-community] */
+#define BA_LARGE_COMMUNITY	0x20	/* RFC 8092 */
 
 /* BGP connection states */
 

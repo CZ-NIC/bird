@@ -30,20 +30,17 @@ t_read_length(void)
 {
   byte data[] = { 0xcc, 0xcc, 0xcc };
 
-  u16 get;
-  u16 expect;
-
   for (uint expect = 0; expect < 0xf0; expect++)
   {
     *data = expect;
-    get = flow_read_length(data);
+    uint get = flow_read_length(data);
     bt_assert_msg(get == expect, "Testing get length 0x%02x (get 0x%02x)", expect, get);
   }
 
   for (uint expect = 0; expect <= 0xfff; expect++)
   {
     put_u16(data, expect | 0xf000);
-    get = flow_read_length(data);
+    uint get = flow_read_length(data);
     bt_assert_msg(get == expect, "Testing get length 0x%03x (get 0x%03x)", expect, get);
   }
 
@@ -54,12 +51,10 @@ static int
 t_write_length(void)
 {
   byte data[] = { 0xcc, 0xcc, 0xcc };
-  uint offset;
-  byte *c;
 
   for (uint expect = 0; expect <= 0xfff; expect++)
   {
-    offset = flow_write_length(data, expect);
+    uint offset = flow_write_length(data, expect);
 
     uint set = (expect < 0xf0) ? *data : (get_u16(data) & 0x0fff);
     bt_assert_msg(set == expect, "Testing set length 0x%03x (set 0x%03x)", expect, set);

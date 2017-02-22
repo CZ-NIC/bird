@@ -85,15 +85,19 @@ t_path_format(void)
     bt_debug("Prepending ASN: %10u \n", i);
   }
 
-#define BUFFER_SIZE 26
+#define BUFFER_SIZE 120
   byte buf[BUFFER_SIZE] = {};
+
+  as_path_format(&empty_as_path, buf, BUFFER_SIZE);
+  bt_assert_msg(strcmp(buf, "") == 0, "Buffer(%zu): '%s'", strlen(buf), buf);
+
   as_path_format(as_path, buf, BUFFER_SIZE);
-  bt_assert_msg(strcmp(buf, "4294967294 4294967293 ...") == 0, "Buffer(%zu): '%s'", strlen(buf), buf);
+  bt_assert_msg(strcmp(buf, "4294967294 4294967293 4294967292 4294967291 4294967290 4294967289 4294967288 4294967287 4294967286 4294967285") == 0, "Buffer(%zu): '%s'", strlen(buf), buf);
 
 #define SMALL_BUFFER_SIZE 25
   byte buf2[SMALL_BUFFER_SIZE] = {};
   as_path_format(as_path, buf2, SMALL_BUFFER_SIZE);
-  bt_assert_msg(strcmp(buf2, "4294967294 ...") == 0, "Small Buffer(%zu): '%s'", strlen(buf2), buf2);
+  bt_assert_msg(strcmp(buf2, "4294967294 42...") == 0, "Small Buffer(%zu): '%s'", strlen(buf2), buf2);
 
   rfree(lp);
 

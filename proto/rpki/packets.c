@@ -531,8 +531,6 @@ rpki_send_pdu(struct rpki_cache *cache, const void *pdu, const uint len)
 static int
 rpki_check_receive_packet(struct rpki_cache *cache, const struct pdu_header *pdu)
 {
-  struct rpki_proto *p = cache->p;
-  int error = RPKI_SUCCESS;
   u32 pdu_len = ntohl(pdu->len);
 
   /*
@@ -557,7 +555,6 @@ rpki_check_receive_packet(struct rpki_cache *cache, const struct pdu_header *pdu
 	 */
       }
       else if (cache->last_update == 0
-		&& pdu->ver >= RPKI_MIN_VERSION
 		&& pdu->ver <= RPKI_MAX_VERSION
 		&& pdu->ver < cache->version)
       {
@@ -608,7 +605,6 @@ rpki_handle_error_pdu(struct rpki_cache *cache, const struct pdu_error *pdu)
   case UNSUPPORTED_PROTOCOL_VER:
     CACHE_TRACE(D_PACKETS, cache, "Client uses unsupported protocol version");
     if (pdu->ver <= RPKI_MAX_VERSION &&
-	pdu->ver >= RPKI_MIN_VERSION &&
 	pdu->ver < cache->version)
     {
       CACHE_TRACE(D_EVENTS, cache, "Downgrading from protocol version %d to version %d", cache->version, pdu->ver);

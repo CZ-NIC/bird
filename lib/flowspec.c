@@ -957,7 +957,7 @@ fragment_val_str(u8 val)
   return "???";
 }
 
-static int
+static uint
 net_format_flow(char *buf, uint blen, const byte *data, uint dlen, int ipv6)
 {
   buffer b = {
@@ -1125,7 +1125,7 @@ net_format_flow(char *buf, uint blen, const byte *data, uint dlen, int ipv6)
  * of written chars. If final string is too large, the string will ends the with
  * ' ...}' sequence and zero-terminator.
  */
-int
+uint
 flow4_net_format(char *buf, uint blen, const net_addr_flow4 *f)
 {
   return net_format_flow(buf, blen, f->data, f->length - sizeof(net_addr_flow4), 0);
@@ -1141,7 +1141,7 @@ flow4_net_format(char *buf, uint blen, const net_addr_flow4 *f)
  * of written chars. If final string is too large, the string will ends the with
  * ' ...}' sequence and zero-terminator.
  */
-int
+uint
 flow6_net_format(char *buf, uint blen, const net_addr_flow6 *f)
 {
   return net_format_flow(buf, blen, f->data, f->length - sizeof(net_addr_flow6), 1);

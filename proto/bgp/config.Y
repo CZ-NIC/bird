@@ -28,7 +28,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	BGP_CLUSTER_LIST, IGP, TABLE, GATEWAY, DIRECT, RECURSIVE, MED, TTL,
 	SECURITY, DETERMINISTIC, SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX,
 	GRACEFUL, RESTART, AWARE, CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY,
-	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST)
+	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6)
 
 %type <i32> bgp_afi
 
@@ -139,6 +139,8 @@ bgp_afi:
  | IPV6 { $$ = BGP_AF_IPV6; }
  | IPV4 MULTICAST { $$ = BGP_AF_IPV4_MC; }
  | IPV6 MULTICAST { $$ = BGP_AF_IPV6_MC; }
+ | FLOW4 { $$ = BGP_AF_FLOW4; }
+ | FLOW6 { $$ = BGP_AF_FLOW6; }
  ;
 
 bgp_channel_start: bgp_afi
@@ -150,6 +152,7 @@ bgp_channel_start: bgp_afi
 
   this_channel = channel_config_new(&channel_bgp, desc->net, this_proto);
   BGP_CC->c.name = desc->name;
+  BGP_CC->c.ra_mode = RA_UNDEF;
   BGP_CC->afi = $1;
   BGP_CC->gr_able = 0xff;	/* undefined */
 };
@@ -166,6 +169,7 @@ bgp_channel_item:
  | GATEWAY RECURSIVE { BGP_CC->gw_mode = GW_RECURSIVE; }
  | SECONDARY bool { BGP_CC->secondary = $2; }
  | GRACEFUL RESTART bool { BGP_CC->gr_able = $3; }
+ | EXTENDED NEXT HOP bool { BGP_CC->ext_next_hop = $4; }
  | ADD PATHS RX { BGP_CC->add_path = BGP_ADD_PATH_RX; }
  | ADD PATHS TX { BGP_CC->add_path = BGP_ADD_PATH_TX; }
  | ADD PATHS bool { BGP_CC->add_path = $3 ? BGP_ADD_PATH_FULL : 0; }

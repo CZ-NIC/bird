@@ -20,6 +20,7 @@
 #include "nest/mrtdump.h"
 #include "conf/conf.h"
 #include "lib/unaligned.h"
+#include "lib/flowspec.h"
 #include "lib/socket.h"
 
 #include "nest/cli.h"
@@ -184,9 +185,6 @@ bgp_create_notification(struct bgp_conn *conn, byte *buf)
 
 /* Capability negotiation as per RFC 5492 */
 
-#define WALK_AF_CAPS(caps,ac) \
-  for (ac = caps->af_data; ac < &caps->af_data[caps->af_count]; ac++)
-
 const struct bgp_af_caps *
 bgp_find_af_caps(struct bgp_caps *caps, u32 afi)
 {
@@ -230,6 +228,7 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   struct bgp_channel *c;
   struct bgp_caps *caps;
   struct bgp_af_caps *ac;
+  uint any_ext_next_hop = 0;
   uint any_add_path = 0;
   byte *data;
 
@@ -261,6 +260,9 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     ac->afi = c->afi;
     ac->ready = 1;
 
+    ac->ext_next_hop = bgp_channel_is_ipv4(c) && c->cf->ext_next_hop;
+    any_ext_next_hop |= ac->ext_next_hop;
+
     ac->add_path = c->cf->add_path;
     any_add_path |= ac->add_path;
 
@@ -279,6 +281,12 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
 
   /* Create capability list in buffer */
 
+  /*
+   * Note that max length is ~ 20+14*af_count. With max 6 channels that is
+   * 104. Option limit is 253 and buffer size is 4096, so we cannot overflow
+   * unless we add new capabilities or more AFs.
+   */
+
   WALK_AF_CAPS(caps, ac)
     if (ac->ready)
     {
@@ -292,6 +300,23 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   {
     *buf++ = 2;			/* Capability 2: Support for route refresh */
     *buf++ = 0;			/* Capability data length */
+  }
+
+  if (any_ext_next_hop)
+  {
+    *buf++ = 5;			/* Capability 5: Support for extended next hop */
+    *buf++ = 0;			/* Capability data length, will be fixed later */
+    data = buf;
+
+    WALK_AF_CAPS(caps, ac)
+      if (ac->ext_next_hop)
+      {
+	put_af4(buf, ac->afi);
+	put_u16(buf+4, BGP_AFI_IPV6);
+	buf += 6;
+      }
+
+    data[-1] = buf - data;
   }
 
   if (caps->ext_messages)
@@ -352,8 +377,6 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     *buf++ = 0;			/* Capability data length */
   }
 
-  /* FIXME: Should not XXXX 255 */
-
   return buf;
 }
 
@@ -390,6 +413,23 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
 	goto err;
 
       caps->route_refresh = 1;
+      break;
+
+    case  5: /* Extended next hop encoding capability, RFC 5549 */
+      if (cl % 6)
+	goto err;
+
+      for (i = 0; i < cl; i += 6)
+      {
+	/* Specified only for IPv4 prefixes with IPv6 next hops */
+	if ((get_u16(pos+2+i+0) != BGP_AFI_IPV4) ||
+	    (get_u16(pos+2+i+4) != BGP_AFI_IPV6))
+	  continue;
+
+	af = get_af4(pos+2+i);
+	ac = bgp_get_af_caps(caps, af);
+	ac->ext_next_hop = 1;
+      }
       break;
 
     case  6: /* Extended message length capability, RFC draft */
@@ -673,9 +713,13 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 #define REPORT(msg, args...) \
   ({ log(L_REMOTE "%s: " msg, s->proto->p.name, ## args); })
 
+#define DISCARD(msg, args...) \
+  ({ REPORT(msg, ## args); return; })
+
 #define WITHDRAW(msg, args...) \
   ({ REPORT(msg, ## args); s->err_withdraw = 1; return; })
 
+#define BAD_AFI		"Unexpected AF <%u/%u> in UPDATE"
 #define BAD_NEXT_HOP	"Invalid NEXT_HOP attribute"
 #define NO_NEXT_HOP	"Missing NEXT_HOP attribute"
 
@@ -790,6 +834,32 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
 
   if (ipa_equal(peer, nh[0]) || ((len == 32) && ipa_equal(peer, nh[1])))
     WITHDRAW(BAD_NEXT_HOP);
+}
+
+static uint
+bgp_encode_next_hop_none(struct bgp_write_state *s UNUSED, eattr *a UNUSED, byte *buf UNUSED, uint size UNUSED)
+{
+  return 0;
+}
+
+static void
+bgp_decode_next_hop_none(struct bgp_parse_state *s UNUSED, byte *data UNUSED, uint len UNUSED, rta *a UNUSED)
+{
+  /*
+   * Although we expect no next hop and RFC 7606 7.11 states that attribute
+   * MP_REACH_NLRI with unexpected next hop length is considered malformed,
+   * FlowSpec RFC 5575 4 states that next hop shall be ignored on receipt.
+   */
+
+  return;
+}
+
+static void
+bgp_update_next_hop_none(struct bgp_export_state *s, eattr *a, ea_list **to)
+{
+  /* NEXT_HOP shall not pass */
+  if (a)
+    bgp_unset_attr(to, s->pool, BA_NEXT_HOP);
 }
 
 
@@ -1065,6 +1135,190 @@ bgp_decode_next_hop_ip6(struct bgp_parse_state *s, byte *data, uint len, rta *a)
 }
 
 
+static uint
+bgp_encode_nlri_flow4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
+{
+  byte *pos = buf;
+
+  while (!EMPTY_LIST(buck->prefixes) && (size >= 4))
+  {
+    struct bgp_prefix *px = HEAD(buck->prefixes);
+    struct net_addr_flow4 *net = (void *) px->net;
+    uint flen = net->length - sizeof(net_addr_flow4);
+
+    /* Encode path ID */
+    if (s->add_path)
+    {
+      put_u32(pos, px->path_id);
+      ADVANCE(pos, size, 4);
+    }
+
+    if (flen > size)
+      break;
+
+    /* Copy whole flow data including length */
+    memcpy(pos, net->data, flen);
+    ADVANCE(pos, size, flen);
+
+    bgp_free_prefix(s->channel, px);
+  }
+
+  return pos - buf;
+}
+
+static void
+bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
+{
+  while (len)
+  {
+    u32 path_id = 0;
+
+    /* Decode path ID */
+    if (s->add_path)
+    {
+      if (len < 4)
+	bgp_parse_error(s, 1);
+
+      path_id = get_u32(pos);
+      ADVANCE(pos, len, 4);
+    }
+
+    if (len < 2)
+      bgp_parse_error(s, 1);
+
+    /* Decode flow length */
+    uint hlen = flow_hdr_length(pos);
+    uint dlen = flow_read_length(pos);
+    uint flen = hlen + dlen;
+    byte *data = pos + hlen;
+
+    if (len < flen)
+      bgp_parse_error(s, 1);
+
+    /* Validate flow data */
+    enum flow_validated_state r = flow4_validate(data, dlen);
+    if (r != FLOW_ST_VALID)
+    {
+      log(L_REMOTE "%s: Invalid flow route: %s", s->proto->p.name, flow_validated_state_str(r));
+      bgp_parse_error(s, 1);
+    }
+
+    if (data[0] != FLOW_TYPE_DST_PREFIX)
+    {
+      log(L_REMOTE "%s: No dst prefix at first pos", s->proto->p.name);
+      bgp_parse_error(s, 1);
+    }
+
+    /* Decode dst prefix */
+    ip4_addr px = IP4_NONE;
+    uint pxlen = data[1];
+
+    // FIXME: Use some generic function
+    memcpy(&px, data, BYTES(pxlen));
+    px = ip4_and(px, ip4_mkmask(pxlen));
+
+    /* Prepare the flow */
+    net_addr *n = alloca(sizeof(struct net_addr_flow4) + flen);
+    net_fill_flow4(n, px, pxlen, pos, flen);
+    ADVANCE(pos, len, flen);
+
+    bgp_rte_update(s, n, path_id, a);
+  }
+}
+
+
+static uint
+bgp_encode_nlri_flow6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
+{
+  byte *pos = buf;
+
+  while (!EMPTY_LIST(buck->prefixes) && (size >= 4))
+  {
+    struct bgp_prefix *px = HEAD(buck->prefixes);
+    struct net_addr_flow6 *net = (void *) px->net;
+    uint flen = net->length - sizeof(net_addr_flow6);
+
+    /* Encode path ID */
+    if (s->add_path)
+    {
+      put_u32(pos, px->path_id);
+      ADVANCE(pos, size, 4);
+    }
+
+    if (flen > size)
+      break;
+
+    /* Copy whole flow data including length */
+    memcpy(pos, net->data, flen);
+    ADVANCE(pos, size, flen);
+
+    bgp_free_prefix(s->channel, px);
+  }
+
+  return pos - buf;
+}
+
+static void
+bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
+{
+  while (len)
+  {
+    u32 path_id = 0;
+
+    /* Decode path ID */
+    if (s->add_path)
+    {
+      if (len < 4)
+	bgp_parse_error(s, 1);
+
+      path_id = get_u32(pos);
+      ADVANCE(pos, len, 4);
+    }
+
+    if (len < 2)
+      bgp_parse_error(s, 1);
+
+    /* Decode flow length */
+    uint hlen = flow_hdr_length(pos);
+    uint dlen = flow_read_length(pos);
+    uint flen = hlen + dlen;
+    byte *data = pos + hlen;
+
+    if (len < flen)
+      bgp_parse_error(s, 1);
+
+    /* Validate flow data */
+    enum flow_validated_state r = flow6_validate(data, dlen);
+    if (r != FLOW_ST_VALID)
+    {
+      log(L_REMOTE "%s: Invalid flow route: %s", s->proto->p.name, flow_validated_state_str(r));
+      bgp_parse_error(s, 1);
+    }
+
+    if (data[0] != FLOW_TYPE_DST_PREFIX)
+    {
+      log(L_REMOTE "%s: No dst prefix at first pos", s->proto->p.name);
+      bgp_parse_error(s, 1);
+    }
+
+    /* Decode dst prefix */
+    ip6_addr px = IP6_NONE;
+    uint pxlen = data[1];
+
+    // FIXME: Use some generic function
+    memcpy(&px, data, BYTES(pxlen));
+    px = ip6_and(px, ip6_mkmask(pxlen));
+
+    /* Prepare the flow */
+    net_addr *n = alloca(sizeof(struct net_addr_flow6) + flen);
+    net_fill_flow6(n, px, pxlen, pos, flen);
+    ADVANCE(pos, len, flen);
+
+    bgp_rte_update(s, n, path_id, a);
+  }
+}
+
+
 static const struct bgp_af_desc bgp_af_table[] = {
   {
     .afi = BGP_AF_IPV4,
@@ -1087,6 +1341,16 @@ static const struct bgp_af_desc bgp_af_table[] = {
     .update_next_hop = bgp_update_next_hop_ip,
   },
   {
+    .afi = BGP_AF_FLOW4,
+    .net = NET_FLOW4,
+    .name = "flow4",
+    .encode_nlri = bgp_encode_nlri_flow4,
+    .decode_nlri = bgp_decode_nlri_flow4,
+    .encode_next_hop = bgp_encode_next_hop_none,
+    .decode_next_hop = bgp_decode_next_hop_none,
+    .update_next_hop = bgp_update_next_hop_none,
+  },
+  {
     .afi = BGP_AF_IPV6,
     .net = NET_IP6,
     .name = "ipv6",
@@ -1105,6 +1369,16 @@ static const struct bgp_af_desc bgp_af_table[] = {
     .encode_next_hop = bgp_encode_next_hop_ip6,
     .decode_next_hop = bgp_decode_next_hop_ip6,
     .update_next_hop = bgp_update_next_hop_ip,
+  },
+  {
+    .afi = BGP_AF_FLOW6,
+    .net = NET_FLOW6,
+    .name = "flow6",
+    .encode_nlri = bgp_encode_nlri_flow6,
+    .decode_nlri = bgp_decode_nlri_flow6,
+    .encode_next_hop = bgp_encode_next_hop_none,
+    .decode_next_hop = bgp_decode_next_hop_none,
+    .update_next_hop = bgp_update_next_hop_none,
   },
 };
 
@@ -1387,15 +1661,15 @@ bgp_create_end_mark(struct bgp_channel *c, byte *buf)
 }
 
 static inline void
-bgp_rx_end_mark(struct bgp_proto *p, u32 afi)
+bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
 {
+  struct bgp_proto *p = s->proto;
   struct bgp_channel *c = bgp_get_channel(p, afi);
 
   BGP_TRACE(D_PACKETS, "Got END-OF-RIB");
 
-  /* XXXX handle unknown AF in MP_*_NLRI */
   if (!c)
-    return;
+    DISCARD(BAD_AFI, BGP_AFI(afi), BGP_SAFI(afi));
 
   if (c->load_state == BFS_LOADING)
     c->load_state = BFS_NONE;
@@ -1413,9 +1687,8 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
   struct bgp_channel *c = bgp_get_channel(s->proto, afi);
   rta *a = NULL;
 
-  /* XXXX handle unknown AF in MP_*_NLRI */
   if (!c)
-    return;
+    DISCARD(BAD_AFI, BGP_AFI(afi), BGP_SAFI(afi));
 
   s->channel = c;
   s->add_path = c->add_path_rx;
@@ -1523,12 +1796,12 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
   /* Check for End-of-RIB marker */
   if (!s.attr_len && !s.ip_unreach_len && !s.ip_reach_len)
-  { bgp_rx_end_mark(p, BGP_AF_IPV4); goto done; }
+  { bgp_rx_end_mark(&s, BGP_AF_IPV4); goto done; }
 
   /* Check for MP End-of-RIB marker */
   if ((s.attr_len < 8) && !s.ip_unreach_len && !s.ip_reach_len &&
-      !s.mp_reach_len && !s.mp_unreach_len && s.mp_unreach_af) /* XXXX  See RFC 7606 5.2 */
-  { bgp_rx_end_mark(p, s.mp_unreach_af); goto done; }
+      !s.mp_reach_len && !s.mp_unreach_len && s.mp_unreach_af)
+  { bgp_rx_end_mark(&s, s.mp_unreach_af); goto done; }
 
   if (s.ip_unreach_len)
     bgp_decode_nlri(&s, BGP_AF_IPV4, s.ip_unreach_nlri, s.ip_unreach_len, NULL, NULL, 0);

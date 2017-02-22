@@ -52,7 +52,7 @@
 /* Max interval that will not overflow when carried as 16-bit centiseconds */
 #define BABEL_MAX_INTERVAL		(0xFFFF/BABEL_TIME_UNITS)
 
-#define BABEL_OVERHEAD		(SIZE_OF_IP_HEADER+UDP_HEADER_LENGTH)
+#define BABEL_OVERHEAD		(IP6_HEADER_LENGTH+UDP_HEADER_LENGTH)
 #define BABEL_MIN_MTU		(512 + BABEL_OVERHEAD)
 
 
@@ -208,7 +208,6 @@ struct babel_route {
 };
 
 struct babel_entry {
-  struct fib_node n;
   struct babel_proto *proto;
   struct babel_route *selected_in;
   struct babel_route *selected_out;
@@ -217,13 +216,14 @@ struct babel_entry {
 
   list sources;				/* Source entries for this prefix (struct babel_source). */
   list routes;				/* Routes for this prefix (struct babel_route) */
+
+  struct fib_node n;
 };
 
 /* Stores forwarded seqno requests for duplicate suppression. */
 struct babel_seqno_request {
   node n;
-  ip_addr prefix;
-  u8  plen;
+  net_addr net;
   u64 router_id;
   u16 seqno;
   bird_clock_t updated;
@@ -265,12 +265,11 @@ struct babel_msg_ihu {
 struct babel_msg_update {
   u8 type;
   u8 wildcard;
-  u8 plen;
   u16 interval;
   u16 seqno;
   u16 metric;
-  ip_addr prefix;
   u64 router_id;
+  net_addr net;
   ip_addr next_hop;
   ip_addr sender;
 };
@@ -278,17 +277,15 @@ struct babel_msg_update {
 struct babel_msg_route_request {
   u8 type;
   u8 full;
-  u8 plen;
-  ip_addr prefix;
+  net_addr net;
 };
 
 struct babel_msg_seqno_request {
   u8 type;
-  u8 plen;
-  u16 seqno;
   u8 hop_count;
+  u16 seqno;
   u64 router_id;
-  ip_addr prefix;
+  net_addr net;
   ip_addr sender;
 };
 

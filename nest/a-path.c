@@ -25,7 +25,7 @@
 #define BAD(DSC, VAL) ({ err_dsc = DSC; err_val = VAL; goto bad; })
 
 int
-as_path_valid(byte *data, uint len, int bs, char *err, uint elen)
+as_path_valid(byte *data, uint len, int bs, int confed, char *err, uint elen)
 {
   byte *pos = data;
   char *err_dsc = NULL;
@@ -43,9 +43,21 @@ as_path_valid(byte *data, uint len, int bs, char *err, uint elen)
     if (len < slen)
       BAD("segment framing error", len);
 
-    /* XXXX handle CONFED segments */
-    if ((type != AS_PATH_SET) && (type != AS_PATH_SEQUENCE))
+    switch (type)
+    {
+    case AS_PATH_SET:
+    case AS_PATH_SEQUENCE:
+      break;
+
+    case AS_PATH_CONFED_SEQUENCE:
+    case AS_PATH_CONFED_SET:
+      if (!confed)
+	BAD("AS_CONFED* segment", type);
+      break;
+
+    default:
       BAD("unknown segment", type);
+    }
 
     if (pos[1] == 0)
       BAD("zero-length segment", type);
@@ -157,10 +169,13 @@ as_path_contains_confed(const struct adata *path)
   return 0;
 }
 
-static void
-as_path_strip_confed_(byte *dst, const byte *src, uint len)
+struct adata *
+as_path_strip_confed(struct linpool *pool, const struct adata *path)
 {
-  const byte *end = src + len;
+  struct adata *res = lp_alloc_adata(pool, path->length);
+  const byte *src = path->data;
+  const byte *end = src + path->length;
+  byte *dst = res->data;
 
   while (src < end)
   {
@@ -176,18 +191,15 @@ as_path_strip_confed_(byte *dst, const byte *src, uint len)
 
     src += slen;
   }
+
+  /* Fix the result length */
+  res->length = dst - res->data;
+
+  return res;
 }
 
 struct adata *
-as_path_strip_confed(struct linpool *pool, const struct adata *op)
-{
-  struct adata *np = lp_alloc_adata(pool, op->length);
-  as_path_strip_confed_(np->data, op->data, op->length);
-  return np;
-}
-
-struct adata *
-as_path_prepend2(struct linpool *pool, const struct adata *op, int seq, u32 as, int strip)
+as_path_prepend2(struct linpool *pool, const struct adata *op, int seq, u32 as)
 {
   struct adata *np;
   const byte *pos = op->data;
@@ -218,10 +230,7 @@ as_path_prepend2(struct linpool *pool, const struct adata *op, int seq, u32 as, 
   {
     byte *dst = np->data + 2 + BS * np->data[1];
 
-    if (strip)
-      as_path_strip_confed_(dst, pos, len);
-    else
-      memcpy(dst, pos, len);
+    memcpy(dst, pos, len);
   }
 
   return np;
@@ -325,46 +334,49 @@ as_path_merge(struct linpool *pool, struct adata *p1, struct adata *p2)
 }
 
 void
-as_path_format(const struct adata *path, byte *buf, uint size)
+as_path_format(const struct adata *path, byte *bb, uint size)
 {
-  const byte *p = path->data;
-  const byte *e = p + path->length;
-  byte *end = buf + size - 16;
-  int sp = 1;
-  int l, isset;
+  buffer buf = { .start = bb, .pos = bb, .end = bb + size }, *b = &buf;
+  const byte *pos = path->data;
+  const byte *end = pos + path->length;
+  const char *ops, *cls;
 
-  while (p < e)
+  b->pos[0] = 0;
+
+  while (pos < end)
+  {
+    uint type = pos[0];
+    uint len  = pos[1];
+    pos += 2;
+
+    switch (type)
     {
-      if (buf > end)
-	{
-	  strcpy(buf, " ...");
-	  return;
-	}
-      isset = (*p++ == AS_PATH_SET);
-      l = *p++;
-      if (isset)
-	{
-	  if (!sp)
-	    *buf++ = ' ';
-	  *buf++ = '{';
-	  sp = 0;
-	}
-      while (l-- && buf <= end)
-	{
-	  if (!sp)
-	    *buf++ = ' ';
-	  buf += bsprintf(buf, "%u", get_as(p));
-	  p += BS;
-	  sp = 0;
-	}
-      if (isset)
-	{
-	  *buf++ = ' ';
-	  *buf++ = '}';
-	  sp = 0;
-	}
+    case AS_PATH_SET:			ops = "{";	cls = "}";	break;
+    case AS_PATH_SEQUENCE:		ops = NULL;	cls = NULL;	break;
+    case AS_PATH_CONFED_SEQUENCE:	ops = "(";	cls = ")";	break;
+    case AS_PATH_CONFED_SET:		ops = "({";	cls = "})";	break;
+    default: bug("Invalid path segment");
     }
-  *buf = 0;
+
+    if (ops)
+      buffer_puts(b, ops);
+
+    while (len--)
+    {
+      buffer_print(b, len ? "%u " : "%u", get_as(pos));
+      pos += BS;
+    }
+
+    if (cls)
+      buffer_puts(b, cls);
+
+    if (pos < end)
+      buffer_puts(b, " ");
+  }
+
+  /* Handle overflow */
+  if (b->pos == b->end)
+    strcpy(b->end - 12, "...");
 }
 
 int
@@ -399,66 +411,80 @@ as_path_getlen(const struct adata *path)
 int
 as_path_get_last(const struct adata *path, u32 *orig_as)
 {
+  const byte *pos = path->data;
+  const byte *end = pos + path->length;
   int found = 0;
-  u32 res = 0;
-  const u8 *p = path->data;
-  const u8 *q = p+path->length;
-  int len;
+  u32 val = 0;
 
-  while (p<q)
+  while (pos < end)
+  {
+    uint type = pos[0];
+    uint len  = pos[1];
+    pos += 2;
+
+    if (!len)
+      continue;
+
+    switch (type)
     {
-      switch (*p++)
-	{
-	case AS_PATH_SET:
-	  if (len = *p++)
-	    {
-	      found = 0;
-	      p += BS * len;
-	    }
-	  break;
-	case AS_PATH_SEQUENCE:
-	  if (len = *p++)
-	    {
-	      found = 1;
-	      res = get_as(p + BS * (len - 1));
-	      p += BS * len;
-	    }
-	  break;
-	default: bug("Invalid path segment");
-	}
+    case AS_PATH_SET:
+    case AS_PATH_CONFED_SET:
+      found = 0;
+      break;
+
+    case AS_PATH_SEQUENCE:
+    case AS_PATH_CONFED_SEQUENCE:
+      val = get_as(pos + BS * (len - 1));
+      found = 1;
+      break;
+
+    default:
+      bug("Invalid path segment");
     }
 
+    pos += BS * len;
+  }
+
   if (found)
-    *orig_as = res;
+    *orig_as = val;
   return found;
 }
 
 u32
 as_path_get_last_nonaggregated(const struct adata *path)
 {
-  const u8 *p = path->data;
-  const u8 *q = p+path->length;
-  u32 res = 0;
-  int len;
+  const byte *pos = path->data;
+  const byte *end = pos + path->length;
+  u32 val = 0;
 
-  while (p<q)
+  while (pos < end)
+  {
+    uint type = pos[0];
+    uint len  = pos[1];
+    pos += 2;
+
+    if (!len)
+      continue;
+
+    switch (type)
     {
-      switch (*p++)
-	{
-	case AS_PATH_SET:
-	  return res;
+    case AS_PATH_SET:
+    case AS_PATH_CONFED_SET:
+      return val;
 
-	case AS_PATH_SEQUENCE:
-	  if (len = *p++)
-	    res = get_as(p + BS * (len - 1));
-	  p += BS * len;
-	  break;
+    case AS_PATH_SEQUENCE:
+    case AS_PATH_CONFED_SEQUENCE:
+      val = get_as(pos + BS * (len - 1));
+      break;
 
-	default: bug("Invalid path segment");
-	}
+    default:
+      bug("Invalid path segment");
     }
 
-  return res;
+    pos += BS * len;
+  }
+
+  return val;
 }
 
 int
@@ -468,11 +494,47 @@ as_path_get_first(const struct adata *path, u32 *last_as)
 
   if ((path->length == 0) || (p[0] != AS_PATH_SEQUENCE) || (p[1] == 0))
     return 0;
-  else
+
+  *last_as = get_as(p+2);
+  return 1;
+}
+
+int
+as_path_get_first_regular(const struct adata *path, u32 *last_as)
+{
+  const byte *pos = path->data;
+  const byte *end = pos + path->length;
+
+  while (pos < end)
+  {
+    uint type = pos[0];
+    uint len  = pos[1];
+    pos += 2;
+
+    switch (type)
     {
-      *last_as = get_as(p+2);
+    case AS_PATH_SET:
+      return 0;
+
+    case AS_PATH_SEQUENCE:
+      if (len == 0)
+	return 0;
+
+      *last_as = get_as(pos);
       return 1;
+
+    case AS_PATH_CONFED_SEQUENCE:
+    case AS_PATH_CONFED_SET:
+      break;
+
+    default:
+      bug("Invalid path segment");
     }
+
+    pos += BS * len;
+  }
+
+  return 0;
 }
 
 int
@@ -597,43 +659,50 @@ struct pm_pos
 };
 
 static int
-parse_path(const struct adata *path, struct pm_pos *pos)
+parse_path(const struct adata *path, struct pm_pos *pp)
 {
-  const u8 *p = path->data;
-  const u8 *q = p + path->length;
-  struct pm_pos *opos = pos;
-  int i, len;
+  const byte *pos = path->data;
+  const byte *end = pos + path->length;
+  struct pm_pos *op = pp;
+  uint i;
 
+  while (pos < end)
+  {
+    uint type = pos[0];
+    uint len  = pos[1];
+    pos += 2;
 
-  while (p < q)
-    switch (*p++)
+    switch (type)
+    {
+    case AS_PATH_SET:
+    case AS_PATH_CONFED_SET:
+      pp->set = 1;
+      pp->mark = 0;
+      pp->val.sp = pos - 1;
+      pp++;
+
+      pos += BS * len;
+      break;
+
+    case AS_PATH_SEQUENCE:
+    case AS_PATH_CONFED_SEQUENCE:
+      for (i = 0; i < len; i++)
       {
-      case AS_PATH_SET:
-	pos->set = 1;
-	pos->mark = 0;
-	pos->val.sp = p;
-	len = *p;
-	p += 1 + BS * len;
-	pos++;
-	break;
-      
-      case AS_PATH_SEQUENCE:
-	len = *p++;
-	for (i = 0; i < len; i++)
-	  {
-	    pos->set = 0;
-	    pos->mark = 0;
-	    pos->val.asn = get_as(p);
-	    p += BS;
-	    pos++;
-	  }
-	break;
+	pp->set = 0;
+	pp->mark = 0;
+	pp->val.asn = get_as(pos);
+	pp++;
 
-      default:
-	bug("as_path_match: Invalid path component");
+	pos += BS;
       }
+      break;
 
-  return pos - opos;
+    default:
+      bug("Invalid path segment");
+    }
+  }
+
+  return pp - op;
 }
 
 static int
@@ -680,7 +749,7 @@ pm_mark(struct pm_pos *pos, int i, int plen, int *nl, int *nh)
 }
 
 /* AS path matching is nontrivial. Because AS path can
- * contain sets, it is not a plain wildcard matching. A set 
+ * contain sets, it is not a plain wildcard matching. A set
  * in an AS path is interpreted as it might represent any
  * sequence of AS numbers from that set (possibly with
  * repetitions). So it is also a kind of a pattern,
@@ -718,7 +787,7 @@ as_path_match(const struct adata *path, struct f_path_mask *mask)
 
   l = h = 0;
   pos[0].mark = 1;
-  
+
   while (mask)
     {
       /* We remove this mark to not step after pos[plen] */

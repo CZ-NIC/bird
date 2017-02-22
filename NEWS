@@ -1,3 +1,26 @@
+Version 2.0.0-pre0 (2016-12-07)
+  o Integrated IPv4 + IPv6 design
+  o Major BGP protocol redesign
+  o BGP multicast support (SAFI 2)
+  o BGP flowspec support (RFC 5575)
+  o New RPKI-Router protocol
+  o New build system
+  o Unit tests
+
+  Notes:
+
+  Protocols and tables are now connected using explicit channels, most related
+  protocol options (table, import, export, ...) are now channel options. See
+  doc/bird.conf.example2 for configuration examples.
+
+
+Version 1.6.3 (2016-12-21)
+  o Large BGP communities
+  o BFD authentication (MD5, SHA1)
+  o SHA1 and SHA2 authentication for RIP and OSPF
+  o Improved documentation
+  o Several bug fixes
+
 Version 1.6.2 (2016-09-29)
   o Fixes serious bug introduced in the previous version
 

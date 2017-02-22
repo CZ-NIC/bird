@@ -42,6 +42,9 @@ const char *flow_type_str(enum flow_type type, int ipv6);
 
 uint flow_write_length(byte *data, u16 len);
 
+static inline u16 flow_hdr_length(const byte *data)
+{ return ((*data & 0xf0) == 0xf0) ? 2 : 1; }
+
 static inline u16 flow_read_length(const byte *data)
 { return ((*data & 0xf0) == 0xf0) ? get_u16(data) & 0x0fff : *data; }
 
@@ -128,7 +131,7 @@ void flow6_validate_cf(net_addr_flow6 *f);
  * 	Net Formatting
  */
 
-int flow4_net_format(char *buf, uint blen, const net_addr_flow4 *f);
-int flow6_net_format(char *buf, uint blen, const net_addr_flow6 *f);
+uint flow4_net_format(char *buf, uint blen, const net_addr_flow4 *f);
+uint flow6_net_format(char *buf, uint blen, const net_addr_flow6 *f);
 
 #endif /* _BIRD_FLOWSPEC_H_ */

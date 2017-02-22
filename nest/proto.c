@@ -490,7 +490,7 @@ int
 channel_reconfigure(struct channel *c, struct channel_config *cf)
 {
   /* FIXME: better handle these changes, also handle in_keep_filtered */
-  if ((c->table != cf->table->table) || (c->ra_mode != cf->ra_mode))
+  if ((c->table != cf->table->table) || (cf->ra_mode && (c->ra_mode != cf->ra_mode)))
     return 0;
 
   int import_changed = !filter_same(c->in_filter, cf->in_filter);

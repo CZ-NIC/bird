@@ -521,12 +521,17 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     if (peer->gr_aware)
       c->load_state = BFS_LOADING;
 
+    c->ext_next_hop = c->cf->ext_next_hop && (bgp_channel_is_ipv6(c) || rem->ext_next_hop);
     c->add_path_rx = (loc->add_path & BGP_ADD_PATH_RX) && (rem->add_path & BGP_ADD_PATH_TX);
     c->add_path_tx = (loc->add_path & BGP_ADD_PATH_TX) && (rem->add_path & BGP_ADD_PATH_RX);
 
-    // XXXX reset back to non-ANY?
+    /* Update RA mode */
     if (c->add_path_tx)
       c->c.ra_mode = RA_ANY;
+    else if (c->cf->secondary)
+      c->c.ra_mode = RA_ACCEPTED;
+    else
+      c->c.ra_mode = RA_OPTIMAL;
   }
 
   p->afi_map = mb_alloc(p->p.pool, num * sizeof(u32));
@@ -553,6 +558,10 @@ bgp_conn_leave_established_state(struct bgp_proto *p)
 {
   BGP_TRACE(D_EVENTS, "BGP session closed");
   p->conn = NULL;
+
+  // XXXX free these tables to avoid memory leak during graceful restart
+  // bgp_free_prefix_table(p);
+  // bgp_free_bucket_table(p);
 
   if (p->p.proto_state == PS_UP)
     bgp_stop(p, 0);
@@ -1411,8 +1420,6 @@ bgp_channel_init(struct channel *C, struct channel_config *CF)
   struct bgp_channel *c = (void *) C;
   struct bgp_channel_config *cf = (void *) CF;
 
-  C->ra_mode = cf->secondary ? RA_ACCEPTED : RA_OPTIMAL;
-
   c->cf = cf;
   c->afi = cf->afi;
   c->desc = bgp_get_af_desc(c->afi);
@@ -1757,10 +1764,131 @@ bgp_get_status(struct proto *P, byte *buf)
 }
 
 static void
+bgp_show_afis(int code, char *s, u32 *afis, uint count)
+{
+  buffer b;
+  LOG_BUFFER_INIT(b);
+
+  buffer_puts(&b, s);
+
+  for (u32 *af = afis; af < (afis + count); af++)
+  {
+    const struct bgp_af_desc *desc = bgp_get_af_desc(*af);
+    if (desc)
+      buffer_print(&b, " %s", desc->name);
+    else
+      buffer_print(&b, " <%u/%u>", BGP_AFI(*af), BGP_SAFI(*af));
+  }
+
+  if (b.pos == b.end)
+    strcpy(b.end - 32, " ... <too long>");
+
+  cli_msg(code, b.start);
+}
+
+static void
+bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
+{
+  struct bgp_af_caps *ac;
+  uint any_mp_bgp = 0;
+  uint any_gr_able = 0;
+  uint any_add_path = 0;
+  uint any_ext_next_hop = 0;
+  u32 *afl1 = alloca(caps->af_count * sizeof(u32));
+  u32 *afl2 = alloca(caps->af_count * sizeof(u32));
+  uint afn1, afn2;
+
+  WALK_AF_CAPS(caps, ac)
+  {
+    any_mp_bgp |= ac->ready;
+    any_gr_able |= ac->gr_able;
+    any_add_path |= ac->add_path;
+    any_ext_next_hop |= ac->ext_next_hop;
+  }
+
+  if (any_mp_bgp)
+  {
+    cli_msg(-1006, "      Multiprotocol");
+
+    afn1 = 0;
+    WALK_AF_CAPS(caps, ac)
+      if (ac->ready)
+	afl1[afn1++] = ac->afi;
+
+    bgp_show_afis(-1006, "        AF announced:", afl1, afn1);
+  }
+
+  if (caps->route_refresh)
+    cli_msg(-1006, "      Route refresh");
+
+  if (any_ext_next_hop)
+  {
+    cli_msg(-1006, "      Extended next hop");
+
+    afn1 = 0;
+    WALK_AF_CAPS(caps, ac)
+      if (ac->ext_next_hop)
+	afl1[afn1++] = ac->afi;
+
+    bgp_show_afis(-1006, "        IPv6 nexthop:", afl1, afn1);
+  }
+
+  if (caps->ext_messages)
+    cli_msg(-1006, "      Extended message");
+
+  if (caps->gr_aware)
+    cli_msg(-1006, "      Graceful restart");
+
+  if (any_gr_able)
+  {
+    /* Continues from gr_aware */
+    cli_msg(-1006, "        Restart time: %u", caps->gr_time);
+    if (caps->gr_flags & BGP_GRF_RESTART)
+      cli_msg(-1006, "        Restart recovery");
+
+    afn1 = afn2 = 0;
+    WALK_AF_CAPS(caps, ac)
+    {
+      if (ac->gr_able)
+	afl1[afn1++] = ac->afi;
+
+      if (ac->gr_af_flags & BGP_GRF_FORWARDING)
+	afl2[afn2++] = ac->afi;
+    }
+
+    bgp_show_afis(-1006, "        AF supported:", afl1, afn1);
+    bgp_show_afis(-1006, "        AF preserved:", afl2, afn2);
+  }
+
+  if (caps->as4_support)
+    cli_msg(-1006, "      4-octet AS numbers");
+
+  if (any_add_path)
+  {
+    cli_msg(-1006, "      ADD-PATH");
+
+    afn1 = afn2 = 0;
+    WALK_AF_CAPS(caps, ac)
+    {
+      if (ac->add_path & BGP_ADD_PATH_RX)
+	afl1[afn1++] = ac->afi;
+
+      if (ac->add_path & BGP_ADD_PATH_TX)
+	afl2[afn2++] = ac->afi;
+    }
+
+    bgp_show_afis(-1006, "        RX:", afl1, afn1);
+    bgp_show_afis(-1006, "        TX:", afl2, afn2);
+  }
+
+  if (caps->enhanced_refresh)
+    cli_msg(-1006, "      Enhanced refresh");
+}
+
+static void
 bgp_show_proto_info(struct proto *P)
 {
   struct bgp_proto *p = (struct bgp_proto *) P;
-  struct bgp_conn *c = p->conn;
 
   cli_msg(-1006, "  BGP state:          %s", bgp_state_dsc(p));
   cli_msg(-1006, "    Neighbor address: %I%J", p->cf->remote_ip, p->cf->iface);
@@ -1789,15 +1917,11 @@ bgp_show_proto_info(struct proto *P)
   else if (P->proto_state == PS_UP)
   {
     cli_msg(-1006, "    Neighbor ID:      %R", p->remote_id);
+    cli_msg(-1006, "    Local capabilities");
+    bgp_show_capabilities(p, p->conn->local_caps);
+    cli_msg(-1006, "    Neighbor capabilities");
+    bgp_show_capabilities(p, p->conn->remote_caps);
 /* XXXX
-      cli_msg(-1006, "    Neighbor caps:   %s%s%s%s%s%s%s",
-	      c->peer_refresh_support ? " refresh" : "",
-	      c->peer_enhanced_refresh_support ? " enhanced-refresh" : "",
-	      c->peer_gr_able ? " restart-able" : (c->peer_gr_aware ? " restart-aware" : ""),
-	      c->peer_as4_support ? " AS4" : "",
-	      (c->peer_add_path & ADD_PATH_RX) ? " add-path-rx" : "",
-	      (c->peer_add_path & ADD_PATH_TX) ? " add-path-tx" : "",
-	      c->peer_ext_messages_support ? " ext-messages" : "");
       cli_msg(-1006, "    Session:          %s%s%s%s%s%s%s%s",
 	      p->is_internal ? "internal" : "external",
 	      p->cf->multihop ? " multihop" : "",
@@ -1810,9 +1934,9 @@ bgp_show_proto_info(struct proto *P)
 */
     cli_msg(-1006, "    Source address:   %I", p->source_addr);
     cli_msg(-1006, "    Hold timer:       %d/%d",
-	    tm_remains(c->hold_timer), c->hold_time);
+	    tm_remains(p->conn->hold_timer), p->conn->hold_time);
     cli_msg(-1006, "    Keepalive timer:  %d/%d",
-	    tm_remains(c->keepalive_timer), c->keepalive_time);
+	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
   }
 
   if ((p->last_error_class != BE_NONE) &&
@@ -1846,7 +1970,7 @@ struct protocol proto_bgp = {
   .template = 		"bgp%d",
   .attr_class = 	EAP_BGP,
   .preference = 	DEF_PREF_BGP,
-  .channel_mask =	NB_IP,
+  .channel_mask =	NB_IP | NB_FLOW4 | NB_FLOW6,
   .proto_size =		sizeof(struct bgp_proto),
   .config_size =	sizeof(struct bgp_config),
   .postconfig =		bgp_postconfig,

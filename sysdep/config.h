@@ -7,7 +7,7 @@
 #define _BIRD_CONFIG_H_
 
 /* BIRD version */
-#define BIRD_VERSION "1.6.2"
+#define BIRD_VERSION "2.0.0-pre0"
 
 /* Include parameters determined by configure script */
 #include "sysdep/autoconf.h"

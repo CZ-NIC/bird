@@ -84,6 +84,7 @@ typedef struct ort
   u32 lsa_id;
   u8 external_rte;
   u8 area_net;
+  u8 keep;
 
   struct fib_node fn;
 }

@@ -357,7 +357,7 @@ rpki_stop_retry_timer_event(struct rpki_cache *cache)
   tm_stop(cache->retry_timer);
 }
 
-static void
+static void UNUSED
 rpki_stop_expire_timer_event(struct rpki_cache *cache)
 {
   CACHE_DBG(cache, "Stop");
@@ -636,7 +636,7 @@ rpki_shutdown(struct proto *P)
  */
 
 static int
-rpki_try_fast_reconnect(struct rpki_cache *cache, struct rpki_config *new, struct rpki_config *old)
+rpki_try_fast_reconnect(struct rpki_cache *cache)
 {
   if (cache->state == RPKI_CS_ESTABLISHED)
   {
@@ -660,10 +660,9 @@ rpki_try_fast_reconnect(struct rpki_cache *cache, struct rpki_config *new, struc
  * protocol.  Returns |NEED_TO_RESTART| or |SUCCESSFUL_RECONF|.
  */
 static int
-rpki_reconfigure_cache(struct rpki_proto *p, struct rpki_cache *cache, struct rpki_config *new, struct rpki_config *old)
+rpki_reconfigure_cache(struct rpki_proto *p UNUSED, struct rpki_cache *cache, struct rpki_config *new, struct rpki_config *old)
 {
   u8 try_fast_reconnect = 0;
-
 
   if (strcmp(old->hostname, new->hostname) != 0)
   {
@@ -709,7 +708,7 @@ rpki_reconfigure_cache(struct rpki_proto *p, struct rpki_cache *cache, struct rp
 #undef TEST_INTERVAL
 
   if (try_fast_reconnect)
-    return rpki_try_fast_reconnect(cache, new, old);
+    return rpki_try_fast_reconnect(cache);
 
   return SUCCESSFUL_RECONF;
 }
@@ -906,7 +905,7 @@ rpki_postconfig(struct proto_config *CF)
 static void
 rpki_copy_config(struct proto_config *dest, struct proto_config *src)
 {
-  /* Just a shallow copy */
+  /* FIXME: Should copy transport */
 }
 
 struct protocol proto_rpki = {

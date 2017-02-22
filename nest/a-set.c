@@ -233,6 +233,26 @@ lc_set_contains(struct adata *list, lcomm val)
   return 0;
 }
 
+struct adata *
+int_set_prepend(struct linpool *pool, struct adata *list, u32 val)
+{
+  struct adata *res;
+  int len;
+
+  if (int_set_contains(list, val))
+    return list;
+
+  len = list ? list->length : 0;
+  res = lp_alloc(pool, sizeof(struct adata) + len + 4);
+  res->length = len + 4;
+
+  if (list)
+    memcpy(res->data + 4, list->data, list->length);
+
+  * (u32 *) res->data = val;
+
+  return res;
+}
 
 struct adata *
 int_set_add(struct linpool *pool, struct adata *list, u32 val)
@@ -250,8 +270,7 @@ int_set_add(struct linpool *pool, struct adata *list, u32 val)
   if (list)
     memcpy(res->data, list->data, list->length);
 
-  u32 *c = (u32 *) (res->data + len);
-  *c = val;
+  * (u32 *) (res->data + len) = val;
 
   return res;
 }
