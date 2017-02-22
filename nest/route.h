@@ -168,6 +168,11 @@ typedef struct rtable {
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
 } rtable;
 
+#define NHU_CLEAN	0
+#define NHU_SCHEDULED	1
+#define NHU_RUNNING	2
+#define NHU_DIRTY	3
+
 typedef struct network {
   struct rte *routes;			/* Available routes for this network */
   struct fib_node n;			/* FIB flags reserved for kernel syncer */

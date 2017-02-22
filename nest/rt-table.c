@@ -1561,11 +1561,14 @@ rt_schedule_hcu(rtable *tab)
 static inline void
 rt_schedule_nhu(rtable *tab)
 {
-  if (tab->nhu_state == 0)
+  if (tab->nhu_state == NHU_CLEAN)
     ev_schedule(tab->rt_event);
 
-  /* state change 0->1, 2->3 */
-  tab->nhu_state |= 1;
+  /* state change:
+   *   NHU_CLEAN   -> NHU_SCHEDULED
+   *   NHU_RUNNING -> NHU_DIRTY
+   */
+  tab->nhu_state |= NHU_SCHEDULED;
 }
 
 void
@@ -1897,13 +1900,13 @@ rt_next_hop_update(rtable *tab)
   struct fib_iterator *fit = &tab->nhu_fit;
   int max_feed = 32;
 
-  if (tab->nhu_state == 0)
+  if (tab->nhu_state == NHU_CLEAN)
     return;
 
-  if (tab->nhu_state == 1)
+  if (tab->nhu_state == NHU_SCHEDULED)
     {
       FIB_ITERATE_INIT(fit, &tab->fib);
-      tab->nhu_state = 2;
+      tab->nhu_state = NHU_RUNNING;
     }
 
   FIB_ITERATE_START(&tab->fib, fit, net, n)
@@ -1918,10 +1921,13 @@ rt_next_hop_update(rtable *tab)
     }
   FIB_ITERATE_END;
 
-  /* state change 2->0, 3->1 */
+  /* State change:
+   *   NHU_DIRTY   -> NHU_SCHEDULED
+   *   NHU_RUNNING -> NHU_CLEAN
+   */
   tab->nhu_state &= 1;
 
-  if (tab->nhu_state > 0)
+  if (tab->nhu_state != NHU_CLEAN)
     ev_schedule(tab->rt_event);
 }
 
