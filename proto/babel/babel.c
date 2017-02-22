@@ -471,21 +471,20 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
 
   if (r)
   {
-    rta a0 = {
+    rta *ap0 = allocz(RTA_MAX_SIZE);
+    *ap0 = (rta) {
       .src = p->p.main_source,
       .source = RTS_BABEL,
       .scope = SCOPE_UNIVERSE,
-      .cast = RTC_UNICAST,
-      .dest = r->metric == BABEL_INFINITY ? RTD_UNREACHABLE : RTD_ROUTER,
-      .flags = 0,
+      .dest = r->metric == BABEL_INFINITY ? RTD_UNREACHABLE : RTD_UNICAST,
       .from = r->neigh->addr,
-      .iface = r->neigh->ifa->iface,
+      .nh.iface = r->neigh->ifa->iface,
     };
 
     if (r->metric < BABEL_INFINITY)
-      a0.gw = r->next_hop;
+      ap0->nh.gw = r->next_hop;
 
-    rta *a = rta_lookup(&a0);
+    rta *a = rta_lookup(ap0);
     rte *rte = rte_get_temp(a);
     rte->u.babel.metric = r->metric;
     rte->u.babel.router_id = r->router_id;
