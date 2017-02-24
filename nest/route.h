@@ -200,8 +200,8 @@ struct hostentry {
   unsigned hash_key;			/* Hash key */
   unsigned uc;				/* Use count */
   struct rta *src;			/* Source rta entry */
-  struct nexthop *nh;			/* Chosen next hop */
   byte dest;				/* Chosen route destination type (RTD_...) */
+  byte nexthop_linkable;		/* Nexthop list is completely non-device */
   u32 igp_metric;			/* Chosen route IGP metric */
 };
 
@@ -344,8 +344,8 @@ struct nexthop {
   struct iface *iface;			/* Outgoing interface */
   struct nexthop *next;
   byte weight;
-  byte labels_append;			/* Number of labels before hostentry was applied */
-  byte labels;				/* Number of labels prepended */
+  byte labels_orig;			/* Number of labels before hostentry was applied */
+  byte labels;				/* Number of all labels */
   u32 label[0];
 };
 

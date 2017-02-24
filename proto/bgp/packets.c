@@ -1705,7 +1705,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   if (ea)
   {
-    a = allocz(sizeof(struct rta));
+    a = allocz(RTA_MAX_SIZE);
 
     a->source = RTS_BGP;
     a->scope = SCOPE_UNIVERSE;

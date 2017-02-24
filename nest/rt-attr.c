@@ -1155,12 +1155,12 @@ rta__free(rta *a)
   *a->pprev = a->next;
   if (a->next)
     a->next->pprev = a->pprev;
-  a->aflags = 0;		/* Poison the entry */
   rt_unlock_hostentry(a->hostentry);
   rt_unlock_source(a->src);
   if (a->nh.next)
     nexthop_free(a->nh.next);
   ea_free(a->eattrs);
+  a->aflags = 0;		/* Poison the entry */
   sl_free(rta_slab(a), a);
 }
 

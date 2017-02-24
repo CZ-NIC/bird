@@ -1764,7 +1764,7 @@ rta_next_hop_outdated(rta *a)
     return a->dest != RTD_UNREACHABLE;
 
   return (a->dest != he->dest) || (a->igp_metric != he->igp_metric) ||
-    !nexthop_same(&(a->nh), he->nh);
+    (!he->nexthop_linkable) || !nexthop_same(&(a->nh), &(he->src->nh));
 }
 
 static inline void
@@ -1774,39 +1774,49 @@ rta_apply_hostentry(rta *a, struct hostentry *he)
   a->dest = he->dest;
   a->igp_metric = he->igp_metric;
 
-  if (a->nh.labels_append == 0)
+  if ((a->nh.labels_orig == 0) && (!a->nh.next) && he->nexthop_linkable)
   {
-    a->nh = *(he->nh);
-    a->nh.labels_append = 0;
+    a->nh = he->src->nh;
     return;
   }
 
-  int labels_append = a->nh.labels_append;
-  u32 label_stack[MPLS_MAX_LABEL_STACK];
-  memcpy(label_stack, a->nh.label, labels_append * sizeof(u32));
-
-  struct nexthop *nhp = NULL;
-  for (struct nexthop *nh = he->nh; nh; nh = nh->next)
+  struct nexthop *nhp = alloca(NEXTHOP_MAX_SIZE);
+  
+  for (struct nexthop *nhe = &(a->nh); nhe; nhe = nhe->next)
   {
-    nhp = nhp ? (nhp->next = lp_alloc(rte_update_pool, NEXTHOP_MAX_SIZE)) : &(a->nh);
-    nhp->gw = ipa_nonzero(nh->gw) ? nh->gw : he->link;
-    nhp->iface = nh->iface; /* FIXME: This is at least strange, if not utter nonsense. */
-    nhp->weight = nh->weight;
-    nhp->labels = nh->labels + labels_append;
-    nhp->labels_append = labels_append;
-    if (nhp->labels <= MPLS_MAX_LABEL_STACK)
+    int labels_orig = nhe->labels_orig;	    /* Number of labels (at the bottom of stack) */
+    u32 label_stack[MPLS_MAX_LABEL_STACK];
+    memcpy(label_stack, nhe->label, labels_orig * sizeof(u32));
+
+    for (struct nexthop *nh = &(he->src->nh); nh; nh = nh->next)
     {
-      memcpy(nhp->label, nh->label, nh->labels * sizeof(u32));
-      memcpy(&(nhp->label[nh->labels]), label_stack, labels_append * sizeof(u32));
-    }
-    else
-    {
-      log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
-	  nh->labels, labels_append, nhp->labels, MPLS_MAX_LABEL_STACK);
-      a->dest = RTD_UNREACHABLE;
-      break;
+      nhp->iface = nh->iface;
+      nhp->weight = nh->weight; /* FIXME: Ignoring the recursive nexthop's weight */
+      nhp->labels = nh->labels + labels_orig;
+      nhp->labels_orig = labels_orig;
+      if (nhp->labels <= MPLS_MAX_LABEL_STACK)
+      {
+	memcpy(nhp->label, nh->label, nh->labels * sizeof(u32)); /* First the hostentry labels */
+	memcpy(&(nhp->label[nh->labels]), label_stack, labels_orig * sizeof(u32)); /* Then the bottom labels */
+      }
+      else
+      {
+	log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
+	    nh->labels, labels_orig, nhp->labels, MPLS_MAX_LABEL_STACK);
+	continue;
+      }
+      if (ipa_nonzero(nh->gw))
+	nhp->gw = nh->gw;		/* Router nexthop */
+      else if (ipa_nonzero(he->link))
+	nhp->gw = he->link;		/* Device nexthop with link-local address known */
+      else
+	nhp->gw = he->addr;		/* Device nexthop with link-local address unknown */
+
+      nhp = (nhp->next = lp_alloc(rte_update_pool, NEXTHOP_MAX_SIZE));
     }
   }
+
+  memcpy(&(a->nh), nhp, nexthop_size(nhp));
 }
 
 static inline rte *
@@ -2231,12 +2241,12 @@ hc_new_hostentry(struct hostcache *hc, ip_addr a, ip_addr ll, rtable *dep, unsig
 {
   struct hostentry *he = sl_alloc(hc->slab);
 
-  he->addr = a;
-  he->link = ll;
-  he->tab = dep;
-  he->hash_key = k;
-  he->uc = 0;
-  he->src = NULL;
+  *he = (struct hostentry) {
+    .addr = a,
+    .link = ll,
+    .tab = dep,
+    .hash_key = k,
+  };
 
   add_tail(&hc->hostentries, &he->ln);
   hc_insert(hc, he);
@@ -2357,6 +2367,7 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 
   /* Reset the hostentry */
   he->src = NULL;
+  he->nexthop_linkable = 0;
   he->dest = RTD_UNREACHABLE;
   he->igp_metric = 0;
 
@@ -2377,28 +2388,14 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 	  goto done;
 	}
 
-      if ((a->dest == RTD_UNICAST) && ipa_zero(a->nh.gw) && !a->next)
-	{
-	  /* We have singlepath device route */
-	  if (if_local_addr(he->addr, a->nh.iface))
-	    {
-	      /* The host address is a local address, this is not valid */
-	      log(L_WARN "Next hop address %I is a local address of iface %s",
-		  he->addr, a->nh.iface->name);
-	      goto done;
-      	    }
-
-	  /* The host is directly reachable, use link as a gateway */
-	  he->nh = NULL;
-	  he->dest = RTD_UNICAST;
-	}
-      else
-	{
-	  /* The host is reachable through some route entry */
-	  he->nh = &(a->nh);
-	  he->dest = a->dest;
-	}
-
+      he->nexthop_linkable = 1;
+      for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
+	if (ipa_zero(nh->gw))
+	  {
+	    he->nexthop_linkable = 0;
+	    break;
+	  }
+  
       he->src = rta_clone(a);
       he->igp_metric = rt_get_igp_metric(e);
     }

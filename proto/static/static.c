@@ -120,7 +120,7 @@ drop:
 
   if (r->dest == RTDX_RECURSIVE)
     {
-      ap->nh.labels_append = ap->nh.labels = r->label_count;
+      ap->nh.labels_orig = ap->nh.labels = r->label_count;
       memcpy(ap->nh.label, r->label_stack, r->label_count * sizeof(u32));
       rta_set_recursive_next_hop(p->main_channel->table, ap, p_igp_table(p), r->via, IPA_NONE);
     }
