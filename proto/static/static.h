@@ -11,48 +11,57 @@
 
 #include "nest/route.h"
 #include "nest/bfd.h"
+#include "lib/buffer.h"
 
 struct static_config {
   struct proto_config c;
-  list iface_routes;		/* Routes to search on interface events */
-  list neigh_routes;		/* Routes to search on neighbor events */
-  list other_routes;		/* Non-nexthop routes */
+  list routes;				/* List of static routes (struct static_route) */
   int check_link;			/* Whether iface link state is used */
   struct rtable_config *igp_table;	/* Table used for recursive next hop lookups */
 };
 
+struct static_proto {
+  struct proto p;
 
-void static_init_config(struct static_config *);
+  struct event *event;			/* Event for announcing updated routes */
+  BUFFER(struct static_route *) marked;	/* Routes marked for reannouncement */
+};
 
 struct static_route {
   node n;
-  struct static_route *chain;		/* Next for the same neighbor */
   net_addr *net;			/* Network we route */
-  int dest;				/* Destination type (RTD_*) */
   ip_addr via;				/* Destination router */
   struct iface *iface;			/* Destination iface, for link-local vias or device routes */
-  struct neighbor *neigh;
-  byte *if_name;			/* Name for device routes */
-  struct static_route *mp_next;		/* Nexthops for multipath routes */
+  struct neighbor *neigh;		/* Associated neighbor entry */
+  struct static_route *chain;		/* Next for the same neighbor */
   struct static_route *mp_head;		/* First nexthop of this route */
+  struct static_route *mp_next;		/* Nexthops for multipath routes */
   struct f_inst *cmds;			/* List of commands for setting attributes */
-  u32 state;				/* Current state: STS_* */
-  int weight;				/* Multipath next hop weight */
+  byte dest;				/* Destination type (RTD_*) */
+  byte state;				/* State of route announcement (SRS_*) */
+  byte active;				/* Next hop is active (nbr/iface/BFD available) */
+  byte weight;				/* Multipath next hop weight */
   byte use_bfd;				/* Configured to use BFD */
   byte label_count;			/* Number of labels in stack */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   u32 *label_stack;			/* Label stack if label_count > 0 */
 };
 
-#define STS_INSTALLED		0x1
-#define STS_WANT		0x2
-#define STS_FORCE		0x4
-
-/* Dummy nodes (parts of multipath route) abuses masklen field for weight
-   and if_name field for a ptr to the master (RTD_MULTIPATH) node. */
-
+/*
+ * Note that data fields neigh, chain, state, active and bfd_req are runtime
+ * data, not real configuration data. Must be handled carefully.
+ *
+ * Regular (i.e. dest == RTD_UNICAST) routes use static_route structure for
+ * additional next hops (fields mp_head, mp_next). Note that 'state' is for
+ * whole route, while 'active' is for each next hop. Also note that fields
+ * mp_head, mp_next, active are zero for other kinds of routes.
+ */
 
 #define RTDX_RECURSIVE 0x7f		/* Phony dest value for recursive routes */
+
+#define SRS_DOWN	0		/* Route is not announced */
+#define SRS_CLEAN	1		/* Route is active and announced */
+#define SRS_DIRTY	2		/* Route changed since announcement */
 
 void static_show(struct proto *);
 

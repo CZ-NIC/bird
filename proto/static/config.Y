@@ -19,15 +19,9 @@ static struct f_inst **this_srt_last_cmd;
 static struct static_route *
 static_nexthop_new(void)
 {
-  struct static_route *nh;
+  struct static_route *nh = this_srt;
 
-  if (!this_snh)
-  {
-    /* First next hop */
-    nh = this_srt;
-    rem_node(&this_srt->n);
-  }
-  else
+  if (this_snh)
   {
     /* Additional next hop */
     nh = cfg_allocz(sizeof(struct static_route));
@@ -57,7 +51,7 @@ CF_ADDTO(proto, static_proto '}')
 static_proto_start: proto_start STATIC
 {
   this_proto = proto_config_new(&proto_static, $1);
-  static_init_config(STATIC_CFG);
+  init_list(&STATIC_CFG->routes);
 };
 
 static_proto:
@@ -74,13 +68,11 @@ stat_nexthop:
       this_snh = static_nexthop_new();
       this_snh->via = $2;
       this_snh->iface = $3;
-      add_tail(&STATIC_CFG->neigh_routes, &this_snh->n);
     }
   | VIA TEXT {
       this_snh = static_nexthop_new();
       this_snh->via = IPA_NONE;
-      this_snh->if_name = $2;
-      add_tail(&STATIC_CFG->iface_routes, &this_snh->n);
+      this_snh->iface = if_get_by_name($2);
     }
   | stat_nexthop MPLS label_stack {
     this_snh->label_count = $3[0];
@@ -102,7 +94,7 @@ stat_nexthops:
 
 stat_route0: ROUTE net_any {
      this_srt = cfg_allocz(sizeof(struct static_route));
-     add_tail(&STATIC_CFG->other_routes, &this_srt->n);
+     add_tail(&STATIC_CFG->routes, &this_srt->n);
      this_srt->net = $2;
      this_srt_last_cmd = &(this_srt->cmds);
      this_srt->mp_next = NULL;

@@ -133,6 +133,25 @@ t_buffer_flush(void)
   return 1;
 }
 
+static int
+t_buffer_walk(void)
+{
+  int i;
+
+  init_buffer();
+  fill_expected_array();
+  for (i = 0; i < MAX_NUM; i++)
+    BUFFER_PUSH(buf) = expected[i];
+
+  i = 0;
+  BUFFER_WALK(buf, v)
+    bt_assert(v == expected[i++]);
+
+  bt_assert(i == MAX_NUM);
+
+  return 1;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -142,6 +161,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_buffer_pop, "Fill whole buffer (PUSH), a half of elements POP and PUSH new elements");
   bt_test_suite(t_buffer_resize, "Init a small buffer and try overfill");
   bt_test_suite(t_buffer_flush, "Fill and flush all elements");
+  bt_test_suite(t_buffer_walk, "Fill and walk through buffer");
 
   return bt_exit_value();
 }
