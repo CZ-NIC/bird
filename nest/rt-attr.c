@@ -58,6 +58,14 @@
 
 #include <stddef.h>
 
+const char * rta_dest_names[RTD_MAX] = {
+  [RTD_NONE]		= "",
+  [RTD_UNICAST]		= "unicast",
+  [RTD_BLACKHOLE]	= "blackhole",
+  [RTD_UNREACHABLE]	= "unreachable",
+  [RTD_PROHIBIT]	= "prohibited",
+};
+
 pool *rta_pool;
 
 static slab *rta_slab_[4];

@@ -570,15 +570,6 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
   }
 }
 
-
-static const char * rta_dest_names[] = {
-  [RTD_NONE]		= "",
-  [RTD_UNICAST]		= "unicast",
-  [RTD_BLACKHOLE]	= "blackhole",
-  [RTD_UNREACHABLE]	= "unreachable",
-  [RTD_PROHIBIT]	= "prohibited",
-};
-
 static void
 static_show_rt(struct static_route *r)
 {

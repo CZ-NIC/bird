@@ -50,7 +50,6 @@ static linpool *rte_update_pool;
 
 static list routing_tables;
 
-static byte *rt_format_via(rte *e);
 static void rt_free_hostcache(rtable *tab);
 static void rt_notify_hostcache(rtable *tab, net *net);
 static void rt_update_hostcache(rtable *tab);
@@ -346,7 +345,7 @@ rte_mergable(rte *pri, rte *sec)
 static void
 rte_trace(struct proto *p, rte *e, int dir, char *msg)
 {
-  log(L_TRACE "%s %c %s %N %s", p->name, dir, msg, e->net->n.addr, rt_format_via(e));
+  log(L_TRACE "%s %c %s %N %s", p->name, dir, msg, e->net->n.addr, rta_dest_name(e->attrs->dest));
 }
 
 static inline void
@@ -2395,12 +2394,12 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 	    he->nexthop_linkable = 0;
 	    break;
 	  }
-  
+
       he->src = rta_clone(a);
       he->igp_metric = rt_get_igp_metric(e);
     }
 
- done:
+done:
   /* Add a prefix range to the trie */
   trie_add_prefix(tab->hostcache->trie, &he_addr, pxlen, he_addr.pxlen);
 
@@ -2465,25 +2464,6 @@ rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr
  *  CLI commands
  */
 
-static byte *
-rt_format_via(rte *e)
-{
-  rta *a = e->attrs;
-
-  /* Max text length w/o IP addr and interface name is 16 */
-  static byte via[IPA_MAX_TEXT_LENGTH+sizeof(a->nh.iface->name)+16];
-
-  switch (a->dest)
-    {
-    case RTD_UNICAST:	bsprintf(via, "unicast"); break;
-    case RTD_BLACKHOLE:	bsprintf(via, "blackhole"); break;
-    case RTD_UNREACHABLE:	bsprintf(via, "unreachable"); break;
-    case RTD_PROHIBIT:	bsprintf(via, "prohibited"); break;
-    default:		bsprintf(via, "???");
-    }
-  return via;
-}
-
 static void
 rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tmpa)
 {
@@ -2515,26 +2495,31 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
     get_route_info(e, info, tmpa);
   else
     bsprintf(info, " (%d)", e->pref);
-  cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", ia, rt_format_via(e), a->src->proto->name,
-	     tm, from, primary ? (sync_error ? " !" : " *") : "", info);
-  for (nh = &(a->nh); nh; nh = nh->next)
+
+  cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", ia, rta_dest_name(a->dest),
+	     a->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
+
+  if (a->dest == RTD_UNICAST)
+    for (nh = &(a->nh); nh; nh = nh->next)
     {
-      char ls[MPLS_MAX_LABEL_STACK*8 + 5]; char *lsp = ls;
+      char mpls[MPLS_MAX_LABEL_STACK*12 + 5], *lsp = mpls;
+
       if (nh->labels)
-	{
+        {
 	  lsp += bsprintf(lsp, " mpls %d", nh->label[0]);
 	  for (int i=1;i<nh->labels; i++)
 	    lsp += bsprintf(lsp, "/%d", nh->label[i]);
-	  *lsp++ = '\0';
 	}
+      *lsp = '\0';
+
       if (a->nh.next)
-	cli_printf(c, -1007, "\tvia %I%s on %s weight %d", nh->gw, (nh->labels ? ls : ""), nh->iface->name, nh->weight + 1);
+	cli_printf(c, -1007, "\tvia %I%s on %s weight %d", nh->gw, mpls, nh->iface->name, nh->weight + 1);
       else
-	cli_printf(c, -1007, "\tvia %I%s on %s", nh->gw, (nh->labels ? ls : ""), nh->iface->name);
+	cli_printf(c, -1007, "\tvia %I%s on %s", nh->gw, mpls, nh->iface->name);
     }
+
   if (d->verbose)
     rta_show(c, a, tmpa);
-
 }
 
 static void

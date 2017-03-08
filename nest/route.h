@@ -401,6 +401,7 @@ typedef struct rta {
 #define RTD_BLACKHOLE 2			/* Silently drop packets */
 #define RTD_UNREACHABLE 3		/* Reject as unreachable */
 #define RTD_PROHIBIT 4			/* Administratively prohibited */
+#define RTD_MAX 5
 
 					/* Flags for net->n.flags, used by kernel syncer */
 #define KRF_INSTALLED 0x80		/* This route should be installed in the kernel */
@@ -411,6 +412,11 @@ typedef struct rta {
 #define IGP_METRIC_UNKNOWN 0x80000000	/* Default igp_metric used when no other
 					   protocol-specific metric is availabe */
 
+
+const char * rta_dest_names[RTD_MAX];
+
+static inline const char *rta_dest_name(uint n)
+{ return (n < RTD_MAX) ? rta_dest_names[n] : "???"; }
 
 /* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
 static inline int rte_is_reachable(rte *r)
