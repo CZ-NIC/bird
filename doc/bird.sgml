@@ -2795,14 +2795,15 @@ each router detects all changes.
 <sect1>Configuration
 <label id="ospf-config">
 
-<p>In the main part of configuration, there can be multiple definitions of OSPF
-areas, each with a different id. These definitions includes many other switches
-and multiple definitions of interfaces. Definition of interface may contain many
-switches and constant definitions and list of neighbors on nonbroadcast
-networks.
+<p>First, the desired OSPF version can be specified by using <cf/ospf v2/ or
+<cf/ospf v3/ as a protocol type. By default, OSPFv2 is used. In the main part of
+configuration, there can be multiple definitions of OSPF areas, each with a
+different id. These definitions includes many other switches and multiple
+definitions of interfaces. Definition of interface may contain many switches and
+constant definitions and list of neighbors on nonbroadcast networks.
 
 <code>
-protocol ospf &lt;name&gt; {
+protocol ospf [v2|v3] &lt;name&gt; {
 	rfc1583compat &lt;switch&gt;;
 	instance id &lt;num&gt;;
 	stub router &lt;switch&gt;;
@@ -3728,10 +3729,12 @@ pretty much obsolete. It is still usable on very small networks.
 <label id="rip-config">
 
 <p>RIP configuration consists mainly of common protocol options and interface
-definitions, most RIP options are interface specific.
+definitions, most RIP options are interface specific. RIPng (RIP for IPv6)
+protocol instance can be configured by using <cf/rip ng/ instead of just
+<cf/rip/ as a protocol type.
 
 <code>
-protocol rip [&lt;name&gt;] {
+protocol rip [ng] [&lt;name&gt;] {
 	infinity &lt;number&gt;;
 	ecmp &lt;switch&gt; [limit &lt;number&gt;];
 	interface &lt;interface pattern&gt; {
