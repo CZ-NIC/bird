@@ -153,6 +153,8 @@ net_type:
  | FLOW6{ $$ = NET_FLOW6; }
  ;
 
+CF_ENUM(T_ENUM_NETTYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6)
+
 
 /* Creation of routing tables */
 

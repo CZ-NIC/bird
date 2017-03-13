@@ -393,7 +393,7 @@ CF_DECLS
 
 CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ACCEPT, REJECT, ERROR, QUITBIRD,
-	INT, BOOL, IP, PREFIX, PAIR, QUAD, EC, LC,
+	INT, BOOL, IP, TYPE, PREFIX, RD, PAIR, QUAD, EC, LC,
 	SET, STRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
@@ -460,6 +460,7 @@ type:
    INT { $$ = T_INT; }
  | BOOL { $$ = T_BOOL; }
  | IP { $$ = T_IP; }
+ | RD { $$ = T_RD; }
  | PREFIX { $$ = T_NET; }
  | PAIR { $$ = T_PAIR; }
  | QUAD { $$ = T_QUAD; }
@@ -786,6 +787,7 @@ constant:
  | FALSE  { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_BOOL; $$->a2.i = 0;  }
  | TEXT   { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_STRING; $$->a2.p = $1; }
  | fipa	  { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; $$->a1.p = val; *val = $1; }
+ | VPN_RD { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; val->type = T_RD; val->val.ec = $1; $$->a1.p = val; }
  | net_   { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; val->type = T_NET; val->val.net = $1; $$->a1.p = val; }
  | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_SET; $$->a2.p = build_tree($2); DBG( "ook\n" ); }
  | '[' fprefix_set ']' { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_PREFIX_SET;  $$->a2.p = $2; }
@@ -888,7 +890,9 @@ term:
 
  | rtadot dynamic_attr { $$ = $2; $$->code = P('e','a'); }
 
+ | term '.' TYPE { $$ = f_new_inst(); $$->code = 'T';  $$->a1.p = $1; }
  | term '.' IP { $$ = f_new_inst(); $$->code = P('c','p'); $$->a1.p = $1; $$->aux = T_IP; }
+ | term '.' RD { $$ = f_new_inst(); $$->code = P('R','D'); $$->a1.p = $1; $$->aux = T_RD; }
  | term '.' LEN { $$ = f_new_inst(); $$->code = 'L'; $$->a1.p = $1; }
  | term '.' MAXLEN { $$ = f_new_inst(); $$->code = P('R','m'); $$->a1.p = $1; }
  | term '.' ASN { $$ = f_new_inst(); $$->code = P('R','a'); $$->a1.p = $1; }

@@ -230,6 +230,9 @@ static inline int net_is_ip(const net_addr *a)
 static inline int net_is_roa(const net_addr *a)
 { return (a->type == NET_ROA4) || (a->type == NET_ROA6); }
 
+static inline int net_is_vpn(const net_addr *a)
+{ return (a->type == NET_VPN4) || (a->type == NET_VPN6); }
+
 
 static inline ip4_addr net4_prefix(const net_addr *a)
 { return ((net_addr_ip4 *) a)->prefix; }
@@ -277,6 +280,18 @@ static inline uint net_pxlen(const net_addr *a)
 { return a->pxlen; }
 
 ip_addr net_pxmask(const net_addr *a);
+
+static inline u64 net_rd(const net_addr *a)
+{
+  switch (a->type)
+  {
+  case NET_VPN4:
+    return ((net_addr_vpn4 *)a)->rd;
+  case NET_VPN6:
+    return ((net_addr_vpn6 *)a)->rd;
+  }
+  return 0;
+}
 
 
 static inline int net_equal(const net_addr *a, const net_addr *b)
@@ -471,7 +486,7 @@ void net_normalize(net_addr *N);
 
 int net_classify(const net_addr *N);
 int net_format(const net_addr *N, char *buf, int buflen);
-
+int rd_format(const u64 rd, char *buf, int buflen);
 
 int ipa_in_netX(const ip_addr A, const net_addr *N);
 int net_in_netX(const net_addr *A, const net_addr *N);
