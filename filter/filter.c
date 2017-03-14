@@ -1227,11 +1227,10 @@ interpret(struct f_inst *what)
     ONEARG;
     if (v1.type != T_NET)
       runtime( "Prefix expected" );
-    res.type = T_RD;
-    if ((1 << v1.val.net->type) & (NB_VPN4 | NB_VPN6))
-      res.val.ec = net_rd(v1.val.net);
-    else
+    if (!net_is_vpn(v1.val.net))
       runtime( "VPN address expected" );
+    res.type = T_RD;
+    res.val.ec = net_rd(v1.val.net);
     break;
   case P('a','f'):	/* Get first ASN from AS PATH */
     ONEARG;

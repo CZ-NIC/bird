@@ -81,14 +81,14 @@ net_format(const net_addr *N, char *buf, int buflen)
   case NET_VPN4:
     {
     int c = rd_format(n->vpn4.rd, buf, buflen);
-    buf += c; buflen -= c;
+    ADVANCE(buf, buflen, c);
     return bsnprintf(buf, buflen, " %I4/%d", n->vpn4.prefix, n->vpn4.pxlen);
     }
   case NET_VPN6:
     {
     /* XXX: RD format is specified for VPN4; not found any for VPN6, reusing the same as for VPN4 */
     int c = rd_format(n->vpn6.rd, buf, buflen);
-    buf += c; buflen -= c;
+    ADVANCE(buf, buflen, c);
     return bsnprintf(buf, buflen, " %I6/%d", n->vpn6.prefix, n->vpn6.pxlen);
     }
   case NET_ROA4:

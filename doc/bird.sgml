@@ -1196,27 +1196,29 @@ foot).
 	This type can hold a network prefix consisting of IP address, prefix
 	length and several other values. This is the key in route tables.
 
-	Prefices may be of several types, which can be determined by the special
-	operator <cf/.type/ of type <m/enum/. The type may be:
+	Prefixes may be of several types, which can be determined by the special
+	operator <cf/.type/. The type may be:
 
-	<cf/NET_IP4/ and <cf/NET_IP6/ prefices hold an IP prefix. The literals are 
-	written as <cf><m/ipaddress//<m/pxlen/</cf>,
+	<cf/NET_IP4/ and <cf/NET_IP6/ prefixes hold an IP prefix. The literals
+	are written as <cf><m/ipaddress//<m/pxlen/</cf>,
 	or <cf><m>ipaddress</m>/<m>netmask</m></cf>. There are two special
-	operators on IP prefices: <cf/.ip/ which extracts the IP address from the
-	pair, and <cf/.len/, which separates prefix length from the pair.
+	operators on IP prefixes: <cf/.ip/ which extracts the IP address from
+	the pair, and <cf/.len/, which separates prefix length from the pair.
 	So <cf>1.2.0.0/16.len = 16</cf> is true.
 
-	<cf/NET_VPN4/ and <cf/NET_VPN6/ prefices hold an IP prefix with
-	VPN Route Distinguisher (<rfc id="4364">). They support the same special
-	operators as IP prefices, and also <cf/.rd/ which extracts the Route Distinguisher.
-	Their literals are written as <cf><m/vpnrd/ <m/ipprefix/</cf>
+	<cf/NET_VPN4/ and <cf/NET_VPN6/ prefixes hold an IP prefix with VPN
+	Route Distinguisher (<rfc id="4364">). They support the same special
+	operators as IP prefixes, and also <cf/.rd/ which extracts the Route
+	Distinguisher. Their literals are written
+	as <cf><m/vpnrd/ <m/ipprefix/</cf>
 
-	<cf/NET_ROA4/ and <cf/NET_ROA6/ prefices hold an IP prefix range together
-	with an ASN. They support the same special operators as IP prefices, and also
-	<cf/.maxlen/ which extracts maximal prefix length, and <cf/.asn/ which extracts the ASN.
+	<cf/NET_ROA4/ and <cf/NET_ROA6/ prefixes hold an IP prefix range
+	together with an ASN. They support the same special operators as IP
+	prefixes, and also <cf/.maxlen/ which extracts maximal prefix length,
+	and <cf/.asn/ which extracts the ASN.
 
-	<cf/NET_FLOW4/ and <cf/NET_FLOW6/ hold an IP prefix together with
-	a flowspec rule. Filters currently don't support flowspec parsing.
+	<cf/NET_FLOW4/ and <cf/NET_FLOW6/ hold an IP prefix together with a
+	flowspec rule. Filters currently don't support flowspec parsing.
 
 	<tag><label id="type-ec">ec</tag>
 	This is a specialized type used to represent BGP extended community
