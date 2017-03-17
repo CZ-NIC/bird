@@ -75,8 +75,7 @@ stat_nexthop:
       this_snh->iface = if_get_by_name($2);
     }
   | stat_nexthop MPLS label_stack {
-    this_snh->label_count = $3[0];
-    this_snh->label_stack = &($3[1]);
+    this_snh->mls = $3;
   }
   | stat_nexthop WEIGHT expr {
     this_snh->weight = $3 - 1;
@@ -111,8 +110,7 @@ stat_route:
  | stat_route0 RECURSIVE ipa MPLS label_stack {
       this_srt->dest = RTDX_RECURSIVE;
       this_srt->via = $3;
-      this_srt->label_count = $5[0];
-      this_srt->label_stack = &($5[1]);
+      this_srt->mls = $5;
    }
  | stat_route0 DROP		{ this_srt->dest = RTD_BLACKHOLE; }
  | stat_route0 REJECT		{ this_srt->dest = RTD_UNREACHABLE; }

@@ -337,6 +337,8 @@ struct bgp_parse_state {
   u32 mp_reach_af;
   u32 mp_unreach_af;
 
+  mpls_label_stack mls;
+
   uint attr_len;
   uint ip_reach_len;
   uint ip_unreach_len;

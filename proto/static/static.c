@@ -79,8 +79,11 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
       nh->gw = r2->via;
       nh->iface = r2->neigh->iface;
       nh->weight = r2->weight;
-      nh->labels = r2->label_count;
-      memcpy(nh->label, r2->label_stack, r2->label_count * sizeof(u32));
+      if (r2->mls)
+      {
+	nh->labels = r2->mls->len;
+	memcpy(nh->label, r2->mls->stack, r2->mls->len * sizeof(u32));
+      }
 
       nexthop_insert(&nhs, nh);
     }
@@ -92,11 +95,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   }
 
   if (r->dest == RTDX_RECURSIVE)
-  {
-    a->nh.labels_orig = a->nh.labels = r->label_count;
-    memcpy(a->nh.label, r->label_stack, r->label_count * sizeof(u32));
-    rta_set_recursive_next_hop(p->p.main_channel->table, a, p_igp_table(p), r->via, IPA_NONE);
-  }
+    rta_set_recursive_next_hop(p->p.main_channel->table, a, p_igp_table(p), r->via, IPA_NONE, r->mls);
 
   /* Already announced */
   if (r->state == SRS_CLEAN)
@@ -274,17 +273,33 @@ static_same_dest(struct static_route *x, struct static_route *y)
 	  (x->iface != y->iface) ||
 	  (x->use_bfd != y->use_bfd) ||
 	  (x->weight != y->weight) ||
-	  (x->label_count != y->label_count))
+	  (!x->mls != !y->mls) ||
+	  ((x->mls) && (y->mls) && (x->mls->len != y->mls->len)))
 	return 0;
 
-      for (int i = 0; i < x->label_count; i++)
-	if (x->label_stack[i] != y->label_stack[i])
+      if (!x->mls)
+	continue;
+
+      for (uint i = 0; i < x->mls->len; i++)
+	if (x->mls->stack[i] != y->mls->stack[i])
 	  return 0;
     }
     return !x && !y;
 
   case RTDX_RECURSIVE:
-    return ipa_equal(x->via, y->via);
+    if (!ipa_equal(x->via, y->via) ||
+	(!x->mls != !y->mls) ||
+	((x->mls) && (y->mls) && (x->mls->len != y->mls->len)))
+      return 0;
+
+    if (!x->mls)
+      return 1;
+
+    for (uint i = 0; i < x->mls->len; i++)
+      if (x->mls->stack[i] != y->mls->stack[i])
+	return 0;
+
+    return 1;
 
   default:
     return 1;

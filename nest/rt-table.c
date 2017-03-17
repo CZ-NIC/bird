@@ -1767,55 +1767,80 @@ rta_next_hop_outdated(rta *a)
 }
 
 static inline void
-rta_apply_hostentry(rta *a, struct hostentry *he)
+rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls)
 {
   a->hostentry = he;
   a->dest = he->dest;
   a->igp_metric = he->igp_metric;
 
-  if ((a->nh.labels_orig == 0) && (!a->nh.next) && he->nexthop_linkable)
+  if (a->dest != RTD_UNICAST)
   {
-    a->nh = he->src->nh;
+    /* No nexthop */
+no_nexthop:
+    a->nh = (struct nexthop) {};
+    if (mls)
+    { /* Store the label stack for later changes */
+      a->nh.labels_orig = a->nh.labels = mls->len;
+      memcpy(a->nh.label, mls->stack, mls->len * sizeof(u32));
+    }
     return;
   }
 
-  struct nexthop *nhp = alloca(NEXTHOP_MAX_SIZE);
-  
-  for (struct nexthop *nhe = &(a->nh); nhe; nhe = nhe->next)
-  {
-    int labels_orig = nhe->labels_orig;	    /* Number of labels (at the bottom of stack) */
-    u32 label_stack[MPLS_MAX_LABEL_STACK];
-    memcpy(label_stack, nhe->label, labels_orig * sizeof(u32));
+  if (((!mls) || (!mls->len)) && he->nexthop_linkable)
+  { /* Just link the nexthop chain, no label append happens. */
+    memcpy(&(a->nh), &(he->src->nh), nexthop_size(&(he->src->nh)));
+    return;
+  }
 
-    for (struct nexthop *nh = &(he->src->nh); nh; nh = nh->next)
+  struct nexthop *nhp = NULL, *nhr = NULL;
+  int skip_nexthop = 0;
+  
+  for (struct nexthop *nh = &(he->src->nh); nh; nh = nh->next)
+  {
+    if (skip_nexthop)
+      skip_nexthop--;
+    else
     {
-      nhp->iface = nh->iface;
-      nhp->weight = nh->weight; /* FIXME: Ignoring the recursive nexthop's weight */
-      nhp->labels = nh->labels + labels_orig;
-      nhp->labels_orig = labels_orig;
+      nhr = nhp;
+      nhp = (nhp ? (nhp->next = lp_allocz(rte_update_pool, NEXTHOP_MAX_SIZE)) : &(a->nh));
+    }
+
+    nhp->iface = nh->iface;
+    nhp->weight = nh->weight;
+    if (mls)
+    {
+      nhp->labels = nh->labels + mls->len;
+      nhp->labels_orig = mls->len;
       if (nhp->labels <= MPLS_MAX_LABEL_STACK)
       {
 	memcpy(nhp->label, nh->label, nh->labels * sizeof(u32)); /* First the hostentry labels */
-	memcpy(&(nhp->label[nh->labels]), label_stack, labels_orig * sizeof(u32)); /* Then the bottom labels */
+	memcpy(&(nhp->label[nh->labels]), mls->stack, mls->len * sizeof(u32)); /* Then the bottom labels */
       }
       else
       {
 	log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
-	    nh->labels, labels_orig, nhp->labels, MPLS_MAX_LABEL_STACK);
+	    nh->labels, mls->len, nhp->labels, MPLS_MAX_LABEL_STACK);
+	skip_nexthop++;
 	continue;
       }
-      if (ipa_nonzero(nh->gw))
-	nhp->gw = nh->gw;		/* Router nexthop */
-      else if (ipa_nonzero(he->link))
-	nhp->gw = he->link;		/* Device nexthop with link-local address known */
-      else
-	nhp->gw = he->addr;		/* Device nexthop with link-local address unknown */
-
-      nhp = (nhp->next = lp_alloc(rte_update_pool, NEXTHOP_MAX_SIZE));
     }
+    if (ipa_nonzero(nh->gw))
+      nhp->gw = nh->gw;		/* Router nexthop */
+    else if (ipa_nonzero(he->link))
+      nhp->gw = he->link;		/* Device nexthop with link-local address known */
+    else
+      nhp->gw = he->addr;		/* Device nexthop with link-local address unknown */
   }
 
-  memcpy(&(a->nh), nhp, nexthop_size(nhp));
+  if (skip_nexthop)
+    if (nhr)
+      nhr->next = NULL;
+    else
+    {
+      a->dest = RTD_UNREACHABLE;
+      log(L_WARN "No valid nexthop remaining, setting route unreachable");
+      goto no_nexthop;
+    }
 }
 
 static inline rte *
@@ -1823,7 +1848,11 @@ rt_next_hop_update_rte(rtable *tab UNUSED, rte *old)
 {
   rta *a = alloca(RTA_MAX_SIZE);
   memcpy(a, old->attrs, rta_size(old->attrs));
-  rta_apply_hostentry(a, old->attrs->hostentry);
+
+  mpls_label_stack mls = { .len = a->nh.labels_orig };
+  memcpy(mls.stack, &a->nh.label[a->nh.labels - mls.len], mls.len * sizeof(u32));
+
+  rta_apply_hostentry(a, old->attrs->hostentry, &mls);
   a->aflags = 0;
 
   rte *e = sl_alloc(rte_slab);
@@ -2387,13 +2416,25 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 	  goto done;
 	}
 
+      he->dest = a->dest;
       he->nexthop_linkable = 1;
-      for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
-	if (ipa_zero(nh->gw))
-	  {
-	    he->nexthop_linkable = 0;
-	    break;
-	  }
+      if (he->dest == RTD_UNICAST)
+	{
+	  for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
+	    if (ipa_zero(nh->gw))
+	      {
+		if (if_local_addr(he->addr, nh->iface))
+		  {
+		    /* The host address is a local address, this is not valid */
+		    log(L_WARN "Next hop address %I is a local address of iface %s",
+			he->addr, nh->iface->name);
+		    goto done;
+		  }
+
+		he->nexthop_linkable = 0;
+		break;
+	      }
+	}
 
       he->src = rta_clone(a);
       he->igp_metric = rt_get_igp_metric(e);
@@ -2454,9 +2495,9 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
 }
 
 void
-rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll)
+rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, mpls_label_stack *mls)
 {
-  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ipa_zero(ll) ? gw : ll, dep));
+  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ipa_zero(ll) ? gw : ll, dep), mls);
 }
 
 

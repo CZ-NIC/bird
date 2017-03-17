@@ -753,7 +753,7 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     if (ipa_zero(gw))
       WITHDRAW(BAD_NEXT_HOP);
 
-    rta_set_recursive_next_hop(c->c.table, a, c->igp_table, gw, ll);
+    rta_set_recursive_next_hop(c->c.table, a, c->igp_table, gw, ll, &(s->mls));
   }
 }
 

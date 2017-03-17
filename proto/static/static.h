@@ -42,9 +42,8 @@ struct static_route {
   byte active;				/* Next hop is active (nbr/iface/BFD available) */
   byte weight;				/* Multipath next hop weight */
   byte use_bfd;				/* Configured to use BFD */
-  byte label_count;			/* Number of labels in stack */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
-  u32 *label_stack;			/* Label stack if label_count > 0 */
+  mpls_label_stack *mls;		/* MPLS label stack; may be NULL */
 };
 
 /*
