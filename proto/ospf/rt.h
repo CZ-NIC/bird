@@ -53,7 +53,7 @@ typedef struct orta
   struct ospf_area *oa;
   struct ospf_area *voa;	/* Used when route is replaced in ospf_rt_sum_tr(),
 				   NULL otherwise */
-  struct mpnh *nhs;		/* Next hops computed during SPF */
+  struct nexthop *nhs;		/* Next hops computed during SPF */
   struct top_hash_entry *en;	/* LSA responsible for this orta */
 }
 orta;

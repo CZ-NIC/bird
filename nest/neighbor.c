@@ -48,7 +48,7 @@
 #define NEIGH_HASH_OFFSET 24
 
 static slab *neigh_slab;
-static list sticky_neigh_list, neigh_hash_table[NEIGH_HASH_SIZE];
+static list sticky_neigh_list, iface_neigh_list, neigh_hash_table[NEIGH_HASH_SIZE];
 
 static inline uint
 neigh_hash(struct proto *p, ip_addr *a)
@@ -166,6 +166,8 @@ neigh_find2(struct proto *p, ip_addr *a, struct iface *ifa, unsigned flags)
     return NULL;
 
   n = sl_alloc(neigh_slab);
+  memset(n, 0, sizeof(neighbor));
+
   n->addr = *a;
   if (scope >= 0)
     {
@@ -187,6 +189,35 @@ neigh_find2(struct proto *p, ip_addr *a, struct iface *ifa, unsigned flags)
   return n;
 }
 
+neighbor *
+neigh_find_iface(struct proto *p, struct iface *ifa)
+{
+  neighbor *n;
+  node *nn;
+
+  /* We keep neighbors with NEF_IFACE foremost in ifa->neighbors list */
+  WALK_LIST2(n, nn, ifa->neighbors, if_n)
+  {
+    if (! (n->flags & NEF_IFACE))
+      break;
+
+    if (n->proto == p)
+      return n;
+  }
+
+  n = sl_alloc(neigh_slab);
+  memset(n, 0, sizeof(neighbor));
+
+  add_tail(&iface_neigh_list, &n->n);
+  add_head(&ifa->neighbors, &n->if_n);
+  n->iface = ifa;
+  n->proto = p;
+  n->flags = NEF_IFACE;
+  n->scope = (ifa->flags & IF_UP) ? SCOPE_HOST : -1;
+
+  return n;
+}
+
 /**
  * neigh_dump - dump specified neighbor entry.
  * @n: the entry to dump
@@ -205,6 +236,8 @@ neigh_dump(neighbor *n)
   debug("%s %p %08x scope %s", n->proto->name, n->data, n->aux, ip_scope_text(n->scope));
   if (n->flags & NEF_STICKY)
     debug(" STICKY");
+  if (n->flags & NEF_IFACE)
+    debug(" IFACE");
   debug("\n");
 }
 
@@ -223,6 +256,8 @@ neigh_dump_all(void)
   debug("Known neighbors:\n");
   WALK_LIST(n, sticky_neigh_list)
     neigh_dump(n);
+  WALK_LIST(n, iface_neigh_list)
+    neigh_dump(n);
   for(i=0; i<NEIGH_HASH_SIZE; i++)
     WALK_LIST(n, neigh_hash_table[i])
       neigh_dump(n);
@@ -232,13 +267,18 @@ neigh_dump_all(void)
 static void
 neigh_up(neighbor *n, struct iface *i, int scope, struct ifa *a)
 {
+  DBG("Waking up sticky neighbor %I\n", n->addr);
   n->iface = i;
   n->ifa = a;
   n->scope = scope;
-  add_tail(&i->neighbors, &n->if_n);
-  rem_node(&n->n);
-  add_tail(&neigh_hash_table[neigh_hash(n->proto, &n->addr)], &n->n);
-  DBG("Waking up sticky neighbor %I\n", n->addr);
+
+  if (! (n->flags & NEF_IFACE))
+  {
+    add_tail(&i->neighbors, &n->if_n);
+    rem_node(&n->n);
+    add_tail(&neigh_hash_table[neigh_hash(n->proto, &n->addr)], &n->n);
+  }
+
   if (n->proto->neigh_notify && (n->proto->proto_state != PS_STOP))
     n->proto->neigh_notify(n);
 }
@@ -247,14 +287,20 @@ static void
 neigh_down(neighbor *n)
 {
   DBG("Flushing neighbor %I on %s\n", n->addr, n->iface->name);
-  rem_node(&n->if_n);
-  if (! (n->flags & NEF_BIND))
+  if (! (n->flags & (NEF_BIND | NEF_IFACE)))
     n->iface = NULL;
   n->ifa = NULL;
   n->scope = -1;
+
+  if (! (n->flags & NEF_IFACE))
+    {
+      rem_node(&n->if_n);
+      rem_node(&n->n);
+    }
+
   if (n->proto->neigh_notify && (n->proto->proto_state != PS_STOP))
     n->proto->neigh_notify(n);
-  rem_node(&n->n);
+
   if (n->flags & NEF_STICKY)
     {
       add_tail(&sticky_neigh_list, &n->n);
@@ -272,7 +318,8 @@ neigh_down(neighbor *n)
 	      return;
 	    }
     }
-  else
+
+  if (! (n->flags & (NEF_STICKY | NEF_IFACE)))
     sl_free(neigh_slab, n);
 }
 
@@ -290,10 +337,17 @@ void
 neigh_if_up(struct iface *i)
 {
   struct ifa *a;
-  neighbor *n, *next;
+  neighbor *n;
+  node *x, *y;
   int scope;
 
-  WALK_LIST_DELSAFE(n, next, sticky_neigh_list)
+  /* Wake up all iface neighbors */
+  WALK_LIST2_DELSAFE(n, x, y, i->neighbors, if_n)
+    if ((n->scope < 0) && (n->flags & NEF_IFACE))
+      neigh_up(n, i, SCOPE_HOST, NULL);
+
+  /* Wake up appropriate sticky neighbors */
+  WALK_LIST_DELSAFE(n, x, sticky_neigh_list)
     if ((!n->iface || n->iface == i) &&
 	((scope = if_connected(&n->addr, i, &a)) >= 0))
       neigh_up(n, i, scope, a);
@@ -311,10 +365,11 @@ neigh_if_up(struct iface *i)
 void
 neigh_if_down(struct iface *i)
 {
+  neighbor *n;
   node *x, *y;
 
-  WALK_LIST_DELSAFE(x, y, i->neighbors)
-    neigh_down(SKIP_BACK(neighbor, if_n, x));
+  WALK_LIST2_DELSAFE(n, x, y, i->neighbors, if_n)
+    neigh_down(n);
 }
 
 /**
@@ -328,14 +383,12 @@ neigh_if_down(struct iface *i)
 void
 neigh_if_link(struct iface *i)
 {
+  neighbor *n;
   node *x, *y;
 
-  WALK_LIST_DELSAFE(x, y, i->neighbors)
-    {
-      neighbor *n = SKIP_BACK(neighbor, if_n, x);
-      if (n->proto->neigh_notify && (n->proto->proto_state != PS_STOP))
-	n->proto->neigh_notify(n);
-    }
+  WALK_LIST2_DELSAFE(n, x, y, i->neighbors, if_n)
+    if (n->proto->neigh_notify && (n->proto->proto_state != PS_STOP))
+      n->proto->neigh_notify(n);
 }
 
 /**
@@ -352,19 +405,21 @@ void
 neigh_ifa_update(struct ifa *a)
 {
   struct iface *i = a->iface;
+  struct ifa *aa;
   node *x, *y;
- 
+  neighbor *n;
+  int scope;
+
   /* Remove all neighbors whose scope has changed */
-  WALK_LIST_DELSAFE(x, y, i->neighbors)
-    {
-      struct ifa *aa;
-      neighbor *n = SKIP_BACK(neighbor, if_n, x);
-      if (if_connected(&n->addr, i, &aa) != n->scope)
-	neigh_down(n);
-    }
+  WALK_LIST2_DELSAFE(n, x, y, i->neighbors, if_n)
+    if (n->ifa && (if_connected(&n->addr, i, &aa) != n->scope))
+      neigh_down(n);
 
   /* Wake up all sticky neighbors that are reachable now */
-  neigh_if_up(i);
+  WALK_LIST_DELSAFE(n, x, sticky_neigh_list)
+    if ((!n->iface || n->iface == i) &&
+	((scope = if_connected(&n->addr, i, &aa)) >= 0))
+      neigh_up(n, i, scope, aa);
 }
 
 static inline void
@@ -373,7 +428,7 @@ neigh_prune_one(neighbor *n)
   if (n->proto->proto_state != PS_DOWN)
     return;
   rem_node(&n->n);
-  if (n->scope >= 0)
+  if (n->if_n.next)
     rem_node(&n->if_n);
   sl_free(neigh_slab, n);
 }
@@ -398,6 +453,8 @@ neigh_prune(void)
       neigh_prune_one(n);
   WALK_LIST_DELSAFE(n, m, sticky_neigh_list)
     neigh_prune_one(n);
+  WALK_LIST_DELSAFE(n, m, iface_neigh_list)
+    neigh_prune_one(n);
 }
 
 /**
@@ -410,10 +467,11 @@ neigh_prune(void)
 void
 neigh_init(pool *if_pool)
 {
-  int i;
-
   neigh_slab = sl_new(if_pool, sizeof(neighbor));
+
   init_list(&sticky_neigh_list);
-  for(i=0; i<NEIGH_HASH_SIZE; i++)
+  init_list(&iface_neigh_list);
+
+  for(int i = 0; i < NEIGH_HASH_SIZE; i++)
     init_list(&neigh_hash_table[i]);
 }

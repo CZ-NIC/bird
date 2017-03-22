@@ -1186,19 +1186,40 @@ foot).
 	<tag><label id="type-ip">ip</tag>
 	This type can hold a single IP address. Depending on the compile-time
 	configuration of BIRD you are using, it is either an IPv4 or IPv6
-	address. IP addresses are written in the standard notation
+	address; this may be checked by <cf>.is_ip4</cf> which returns <cf/bool/.
+        IP addresses are written in the standard notation
 	(<cf/10.20.30.40/ or <cf/fec0:3:4::1/). You can apply special operator
 	<cf>.mask(<M>num</M>)</cf> on values of type ip. It masks out all but
 	first <cf><M>num</M></cf> bits from the IP address. So
 	<cf/1.2.3.4.mask(8) = 1.0.0.0/ is true.
 
 	<tag><label id="type-prefix">prefix</tag>
-	This type can hold a network prefix consisting of IP address and prefix
-	length. Prefix literals are written as <cf><m/ipaddress//<m/pxlen/</cf>,
+	This type can hold a network prefix consisting of IP address, prefix
+	length and several other values. This is the key in route tables.
+
+	Prefixes may be of several types, which can be determined by the special
+	operator <cf/.type/. The type may be:
+
+	<cf/NET_IP4/ and <cf/NET_IP6/ prefixes hold an IP prefix. The literals
+	are written as <cf><m/ipaddress//<m/pxlen/</cf>,
 	or <cf><m>ipaddress</m>/<m>netmask</m></cf>. There are two special
-	operators on prefixes: <cf/.ip/ which extracts the IP address from the
-	pair, and <cf/.len/, which separates prefix length from the pair.
+	operators on IP prefixes: <cf/.ip/ which extracts the IP address from
+	the pair, and <cf/.len/, which separates prefix length from the pair.
 	So <cf>1.2.0.0/16.len = 16</cf> is true.
+
+	<cf/NET_VPN4/ and <cf/NET_VPN6/ prefixes hold an IP prefix with VPN
+	Route Distinguisher (<rfc id="4364">). They support the same special
+	operators as IP prefixes, and also <cf/.rd/ which extracts the Route
+	Distinguisher. Their literals are written
+	as <cf><m/vpnrd/ <m/ipprefix/</cf>
+
+	<cf/NET_ROA4/ and <cf/NET_ROA6/ prefixes hold an IP prefix range
+	together with an ASN. They support the same special operators as IP
+	prefixes, and also <cf/.maxlen/ which extracts maximal prefix length,
+	and <cf/.asn/ which extracts the ASN.
+
+	<cf/NET_FLOW4/ and <cf/NET_FLOW6/ hold an IP prefix together with a
+	flowspec rule. Filters currently don't support flowspec parsing.
 
 	<tag><label id="type-ec">ec</tag>
 	This is a specialized type used to represent BGP extended community
@@ -4160,12 +4181,12 @@ return packets as undeliverable if they are in your IP block, you don't have any
 specific destination for them and you don't want to send them out through the
 default route to prevent routing loops).
 
-<p>There are five types of static routes: `classical' routes telling to forward
-packets to a neighboring router, multipath routes specifying several (possibly
-weighted) neighboring routers, device routes specifying forwarding to hosts on a
-directly connected network, recursive routes computing their nexthops by doing
-route table lookups for a given IP, and special routes (sink, blackhole etc.)
-which specify a special action to be done instead of forwarding the packet.
+<p>There are four types of static routes: `classical' routes telling to forward
+packets to a neighboring router (single path or multipath, possibly weighted),
+device routes specifying forwarding to hosts on a directly connected network,
+recursive routes computing their nexthops by doing route table lookups for a
+given IP, and special routes (sink, blackhole etc.)  which specify a special
+action to be done instead of forwarding the packet.
 
 <p>When the particular destination is not available (the interface is down or
 the next hop of the route is not a neighbor at the moment), Static just
@@ -4194,14 +4215,14 @@ definition of the protocol contains mainly a list of static routes.
 <p>Route definitions (each may also contain a block of per-route options):
 
 <descrip>
-	<tag><label id="static-route-via-ip">route <m/prefix/ via <m/ip/</tag>
-	Static route through a neighboring router. For link-local next hops,
+	<tag><label id="static-route-via-ip">route <m/prefix/ via <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]]</tag>
+	Static single path route through a neighboring router. For link-local next hops,
 	interface can be specified as a part of the address (e.g.,
-	<cf/via fe80::1234%eth0/).
+	<cf/via fe80::1234%eth0/). MPLS labels should be specified in outer-first order.
 
-	<tag><label id="static-route-via-mpath">route <m/prefix/ multipath via <m/ip/ [weight <m/num/] [bfd <m/switch/] [via <m/.../]</tag>
+	<tag><label id="static-route-via-mpath">route <m/prefix/ via <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]] [weight <m/num/] [bfd <m/switch/] [via ...]</tag>
 	Static multipath route. Contains several nexthops (gateways), possibly
-	with their weights.
+	with their weights and MPLS labels.
 
 	<tag><label id="static-route-via-iface">route <m/prefix/ via <m/"interface"/</tag>
 	Static device route through an interface to hosts on a directly

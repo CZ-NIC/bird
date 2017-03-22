@@ -58,10 +58,18 @@
 
 #include <stddef.h>
 
+const char * rta_dest_names[RTD_MAX] = {
+  [RTD_NONE]		= "",
+  [RTD_UNICAST]		= "unicast",
+  [RTD_BLACKHOLE]	= "blackhole",
+  [RTD_UNREACHABLE]	= "unreachable",
+  [RTD_PROHIBIT]	= "prohibited",
+};
+
 pool *rta_pool;
 
-static slab *rta_slab;
-static slab *mpnh_slab;
+static slab *rta_slab_[4];
+static slab *nexthop_slab_[4];
 static slab *rte_src_slab;
 
 static struct idm src_ids;
@@ -144,27 +152,38 @@ rt_prune_sources(void)
  */
 
 static inline u32
-mpnh_hash(struct mpnh *x)
+nexthop_hash(struct nexthop *x)
 {
   u32 h = 0;
   for (; x; x = x->next)
-    h ^= ipa_hash(x->gw);
+  {
+    h ^= ipa_hash(x->gw) ^ (h << 5) ^ (h >> 9);
+
+    for (int i = 0; i < x->labels; i++)
+      h ^= x->label[i] ^ (h << 6) ^ (h >> 7);
+  }
 
   return h;
 }
 
 int
-mpnh__same(struct mpnh *x, struct mpnh *y)
+nexthop__same(struct nexthop *x, struct nexthop *y)
 {
   for (; x && y; x = x->next, y = y->next)
-    if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) || (x->weight != y->weight))
+  {
+    if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) || (x->weight != y->weight) || (x->labels != y->labels))
       return 0;
+
+    for (int i = 0; i < x->labels; i++)
+      if (x->label[i] != y->label[i])
+	return 0;
+  }
 
   return x == y;
 }
 
 static int
-mpnh_compare_node(struct mpnh *x, struct mpnh *y)
+nexthop_compare_node(struct nexthop *x, struct nexthop *y)
 {
   int r;
 
@@ -182,22 +201,33 @@ mpnh_compare_node(struct mpnh *x, struct mpnh *y)
   if (r)
     return r;
 
+  r = ((int) y->labels) - ((int) x->labels);
+  if (r)
+    return r;
+
+  for (int i = 0; i < y->labels; i++)
+  {
+    r = ((int) y->label[i]) - ((int) x->label[i]);
+    if (r)
+      return r;
+  }
+
   return ((int) x->iface->index) - ((int) y->iface->index);
 }
 
-static inline struct mpnh *
-mpnh_copy_node(const struct mpnh *src, linpool *lp)
+static inline struct nexthop *
+nexthop_copy_node(const struct nexthop *src, linpool *lp)
 {
-  struct mpnh *n = lp_alloc(lp, sizeof(struct mpnh));
-  n->gw = src->gw;
-  n->iface = src->iface;
+  struct nexthop *n = lp_alloc(lp, nexthop_size(src));
+
+  memcpy(n, src, nexthop_size(src));
   n->next = NULL;
-  n->weight = src->weight;
+
   return n;
 }
 
 /**
- * mpnh_merge - merge nexthop lists
+ * nexthop_merge - merge nexthop lists
  * @x: list 1
  * @y: list 2
  * @rx: reusability of list @x
@@ -205,7 +235,7 @@ mpnh_copy_node(const struct mpnh *src, linpool *lp)
  * @max: max number of nexthops
  * @lp: linpool for allocating nexthops
  *
- * The mpnh_merge() function takes two nexthop lists @x and @y and merges them,
+ * The nexthop_merge() function takes two nexthop lists @x and @y and merges them,
  * eliminating possible duplicates. The input lists must be sorted and the
  * result is sorted too. The number of nexthops in result is limited by @max.
  * New nodes are allocated from linpool @lp.
@@ -218,28 +248,28 @@ mpnh_copy_node(const struct mpnh *src, linpool *lp)
  * resulting list is no longer needed. When reusability is not set, the
  * corresponding lists are not modified nor linked from the resulting list.
  */
-struct mpnh *
-mpnh_merge(struct mpnh *x, struct mpnh *y, int rx, int ry, int max, linpool *lp)
+struct nexthop *
+nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, linpool *lp)
 {
-  struct mpnh *root = NULL;
-  struct mpnh **n = &root;
+  struct nexthop *root = NULL;
+  struct nexthop **n = &root;
 
   while ((x || y) && max--)
   {
-    int cmp = mpnh_compare_node(x, y);
+    int cmp = nexthop_compare_node(x, y);
     if (cmp < 0)
     {
-      *n = rx ? x : mpnh_copy_node(x, lp);
+      *n = rx ? x : nexthop_copy_node(x, lp);
       x = x->next;
     }
     else if (cmp > 0)
     {
-      *n = ry ? y : mpnh_copy_node(y, lp);
+      *n = ry ? y : nexthop_copy_node(y, lp);
       y = y->next;
     }
     else
     {
-      *n = rx ? x : (ry ? y : mpnh_copy_node(x, lp));
+      *n = rx ? x : (ry ? y : nexthop_copy_node(x, lp));
       x = x->next;
       y = y->next;
     }
@@ -251,11 +281,11 @@ mpnh_merge(struct mpnh *x, struct mpnh *y, int rx, int ry, int max, linpool *lp)
 }
 
 void
-mpnh_insert(struct mpnh **n, struct mpnh *x)
+nexthop_insert(struct nexthop **n, struct nexthop *x)
 {
   for (; *n; n = &((*n)->next))
   {
-    int cmp = mpnh_compare_node(*n, x);
+    int cmp = nexthop_compare_node(*n, x);
 
     if (cmp < 0)
       continue;
@@ -270,28 +300,37 @@ mpnh_insert(struct mpnh **n, struct mpnh *x)
 }
 
 int
-mpnh_is_sorted(struct mpnh *x)
+nexthop_is_sorted(struct nexthop *x)
 {
   for (; x && x->next; x = x->next)
-    if (mpnh_compare_node(x, x->next) >= 0)
+    if (nexthop_compare_node(x, x->next) >= 0)
       return 0;
 
   return 1;
 }
 
-static struct mpnh *
-mpnh_copy(struct mpnh *o)
+static inline slab *
+nexthop_slab(struct nexthop *nh)
 {
-  struct mpnh *first = NULL;
-  struct mpnh **last = &first;
+  return nexthop_slab_[MIN(nh->labels, 3)];
+}
+
+static struct nexthop *
+nexthop_copy(struct nexthop *o)
+{
+  struct nexthop *first = NULL;
+  struct nexthop **last = &first;
 
   for (; o; o = o->next)
     {
-      struct mpnh *n = sl_alloc(mpnh_slab);
+      struct nexthop *n = sl_alloc(nexthop_slab(o));
       n->gw = o->gw;
       n->iface = o->iface;
       n->next = NULL;
       n->weight = o->weight;
+      n->labels = o->labels;
+      for (int i=0; i<o->labels; i++)
+	n->label[i] = o->label[i];
 
       *last = n;
       last = &(n->next);
@@ -301,14 +340,14 @@ mpnh_copy(struct mpnh *o)
 }
 
 static void
-mpnh_free(struct mpnh *o)
+nexthop_free(struct nexthop *o)
 {
-  struct mpnh *n;
+  struct nexthop *n;
 
   while (o)
     {
       n = o->next;
-      sl_free(mpnh_slab, o);
+      sl_free(nexthop_slab(o), o);
       o = n;
     }
 }
@@ -994,19 +1033,14 @@ rta_hash(rta *a)
 #define MIX(f) mem_hash_mix(&h, &(a->f), sizeof(a->f));
   MIX(src);
   MIX(hostentry);
-  MIX(iface);
-  MIX(gw);
   MIX(from);
   MIX(igp_metric);
   MIX(source);
   MIX(scope);
-  MIX(cast);
   MIX(dest);
-  MIX(flags);
-  MIX(aflags);
 #undef MIX
 
-  return mem_hash_value(&h) ^ mpnh_hash(a->nexthops) ^ ea_hash(a->eattrs);
+  return mem_hash_value(&h) ^ nexthop_hash(&(a->nh)) ^ ea_hash(a->eattrs);
 }
 
 static inline int
@@ -1015,26 +1049,28 @@ rta_same(rta *x, rta *y)
   return (x->src == y->src &&
 	  x->source == y->source &&
 	  x->scope == y->scope &&
-	  x->cast == y->cast &&
 	  x->dest == y->dest &&
-	  x->flags == y->flags &&
 	  x->igp_metric == y->igp_metric &&
-	  ipa_equal(x->gw, y->gw) &&
 	  ipa_equal(x->from, y->from) &&
-	  x->iface == y->iface &&
 	  x->hostentry == y->hostentry &&
-	  mpnh_same(x->nexthops, y->nexthops) &&
+	  nexthop_same(&(x->nh), &(y->nh)) &&
 	  ea_same(x->eattrs, y->eattrs));
+}
+
+static inline slab *
+rta_slab(rta *a)
+{
+  return rta_slab_[a->nh.labels > 2 ? 3 : a->nh.labels];
 }
 
 static rta *
 rta_copy(rta *o)
 {
-  rta *r = sl_alloc(rta_slab);
+  rta *r = sl_alloc(rta_slab(o));
 
-  memcpy(r, o, sizeof(rta));
+  memcpy(r, o, rta_size(o));
   r->uc = 1;
-  r->nexthops = mpnh_copy(o->nexthops);
+  r->nh.next = nexthop_copy(o->nh.next);
   r->eattrs = ea_list_copy(o->eattrs);
   return r;
 }
@@ -1127,19 +1163,26 @@ rta__free(rta *a)
   *a->pprev = a->next;
   if (a->next)
     a->next->pprev = a->pprev;
-  a->aflags = 0;		/* Poison the entry */
   rt_unlock_hostentry(a->hostentry);
   rt_unlock_source(a->src);
-  mpnh_free(a->nexthops);
+  if (a->nh.next)
+    nexthop_free(a->nh.next);
   ea_free(a->eattrs);
-  sl_free(rta_slab, a);
+  a->aflags = 0;		/* Poison the entry */
+  sl_free(rta_slab(a), a);
 }
 
 rta *
 rta_do_cow(rta *o, linpool *lp)
 {
-  rta *r = lp_alloc(lp, sizeof(rta));
-  memcpy(r, o, sizeof(rta));
+  rta *r = lp_alloc(lp, rta_size(o));
+  memcpy(r, o, rta_size(o));
+  for (struct nexthop **nhn = &(r->nh.next), *nho = o->nh.next; nho; nho = nho->next)
+    {
+      *nhn = lp_alloc(lp, nexthop_size(nho));
+      memcpy(*nhn, nho, nexthop_size(nho));
+      nhn = &((*nhn)->next);
+    }
   r->aflags = 0;
   r->uc = 0;
   return r;
@@ -1158,19 +1201,23 @@ rta_dump(rta *a)
 			 "RTS_STAT_DEV", "RTS_REDIR", "RTS_RIP",
 			 "RTS_OSPF", "RTS_OSPF_IA", "RTS_OSPF_EXT1",
                          "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };
-  static char *rtc[] = { "", " BC", " MC", " AC" };
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
-  debug("p=%s uc=%d %s %s%s%s h=%04x",
-	a->src->proto->name, a->uc, rts[a->source], ip_scope_text(a->scope), rtc[a->cast],
+  debug("p=%s uc=%d %s %s%s h=%04x",
+	a->src->proto->name, a->uc, rts[a->source], ip_scope_text(a->scope),
 	rtd[a->dest], a->hash_key);
   if (!(a->aflags & RTAF_CACHED))
     debug(" !CACHED");
   debug(" <-%I", a->from);
-  if (a->dest == RTD_ROUTER)
-    debug(" ->%I", a->gw);
-  if (a->dest == RTD_DEVICE || a->dest == RTD_ROUTER)
-    debug(" [%s]", a->iface ? a->iface->name : "???" );
+  if (a->dest == RTD_UNICAST)
+    for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
+      {
+	if (ipa_nonzero(nh->gw)) debug(" ->%I", nh->gw);
+	if (nh->labels) debug(" L %d", nh->label[0]);
+	for (int i=1; i<nh->labels; i++)
+	  debug("/%d", nh->label[i]);
+	debug(" [%s]", nh->iface ? nh->iface->name : "???");
+      }
   if (a->eattrs)
     {
       debug(" EA: ");
@@ -1206,10 +1253,9 @@ rta_show(struct cli *c, rta *a, ea_list *eal)
 {
   static char *src_names[] = { "dummy", "static", "inherit", "device", "static-device", "redirect",
 			       "RIP", "OSPF", "OSPF-IA", "OSPF-E1", "OSPF-E2", "BGP", "pipe" };
-  static char *cast_names[] = { "unicast", "broadcast", "multicast", "anycast" };
   int i;
 
-  cli_printf(c, -1008, "\tType: %s %s %s", src_names[a->source], cast_names[a->cast], ip_scope_text(a->scope));
+  cli_printf(c, -1008, "\tType: %s %s", src_names[a->source], ip_scope_text(a->scope));
   if (!eal)
     eal = a->eattrs;
   for(; eal; eal=eal->next)
@@ -1227,8 +1273,17 @@ void
 rta_init(void)
 {
   rta_pool = rp_new(&root_pool, "Attributes");
-  rta_slab = sl_new(rta_pool, sizeof(rta));
-  mpnh_slab = sl_new(rta_pool, sizeof(struct mpnh));
+
+  rta_slab_[0] = sl_new(rta_pool, sizeof(rta));
+  rta_slab_[1] = sl_new(rta_pool, sizeof(rta) + sizeof(u32));
+  rta_slab_[2] = sl_new(rta_pool, sizeof(rta) + sizeof(u32)*2);
+  rta_slab_[3] = sl_new(rta_pool, sizeof(rta) + sizeof(u32)*MPLS_MAX_LABEL_STACK);
+
+  nexthop_slab_[0] = sl_new(rta_pool, sizeof(struct nexthop));
+  nexthop_slab_[1] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32));
+  nexthop_slab_[2] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*2);
+  nexthop_slab_[3] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK);
+
   rta_alloc_hash();
   rte_src_init();
 }

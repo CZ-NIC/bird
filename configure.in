@@ -57,6 +57,7 @@ if test "$ac_test_CFLAGS" != set ; then
 	bird_cflags_default=yes
 fi
 
+AC_PROG_CC
 AC_PROG_CC_C99
 if test -z "$GCC" ; then
 	AC_MSG_ERROR([This program requires the GNU C Compiler.])

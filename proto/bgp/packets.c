@@ -743,9 +743,8 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     if (!nbr || (nbr->scope == SCOPE_HOST))
       WITHDRAW(BAD_NEXT_HOP);
 
-    a->dest = RTD_ROUTER;
-    a->gw = nbr->addr;
-    a->iface = nbr->iface;
+    a->dest = RTD_UNICAST;
+    a->nh = (struct nexthop){ .gw = nbr->addr, .iface = nbr->iface };
     a->hostentry = NULL;
     a->igp_metric = 0;
   }
@@ -754,7 +753,7 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     if (ipa_zero(gw))
       WITHDRAW(BAD_NEXT_HOP);
 
-    rta_set_recursive_next_hop(c->c.table, a, c->igp_table, gw, ll);
+    rta_set_recursive_next_hop(c->c.table, a, c->igp_table, gw, ll, &(s->mls));
   }
 }
 
@@ -792,8 +791,8 @@ bgp_use_gateway(struct bgp_export_state *s)
   if (s->channel->cf->next_hop_self)
     return 0;
 
-  /* We need valid global gateway */
-  if ((ra->dest != RTD_ROUTER) || ipa_zero(ra->gw) || ipa_is_link_local(ra->gw))
+  /* We need one valid global gateway */
+  if ((ra->dest != RTD_UNICAST) || ra->nh.next || ipa_zero(ra->nh.gw) || ipa_is_link_local(ra->nh.gw))
     return 0;
 
   /* Use it when exported to internal peers */
@@ -801,7 +800,7 @@ bgp_use_gateway(struct bgp_export_state *s)
     return 1;
 
   /* Use it when forwarded to single-hop BGP peer on on the same iface */
-  return p->neigh && (p->neigh->iface == ra->iface);
+  return p->neigh && (p->neigh->iface == ra->nh.iface);
 }
 
 static void
@@ -811,7 +810,7 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
   {
     if (bgp_use_gateway(s))
     {
-      ip_addr nh[1] = { s->route->attrs->gw };
+      ip_addr nh[1] = { s->route->attrs->nh.gw };
       bgp_set_attr_data(to, s->pool, BA_NEXT_HOP, 0, nh, 16);
     }
     else
@@ -1706,13 +1705,10 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   if (ea)
   {
-    a = alloca(sizeof(struct rta));
-    memset(a, 0, sizeof(struct rta));
+    a = allocz(RTA_MAX_SIZE);
 
     a->source = RTS_BGP;
     a->scope = SCOPE_UNIVERSE;
-    a->cast = RTC_UNICAST;
-    a->dest = RTD_UNREACHABLE;
     a->from = s->proto->cf->remote_ip;
     a->eattrs = ea;
 

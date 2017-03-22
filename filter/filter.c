@@ -151,6 +151,7 @@ val_compare(struct f_val v1, struct f_val v2)
   case T_QUAD:
     return uint_cmp(v1.val.i, v2.val.i);
   case T_EC:
+  case T_RD:
     return u64_cmp(v1.val.ec, v2.val.ec);
   case T_LC:
     return lcomm_cmp(v1.val.lc, v2.val.lc);
@@ -515,6 +516,7 @@ val_format(struct f_val v, buffer *buf)
   case T_QUAD:	buffer_print(buf, "%R", v.val.i); return;
   case T_EC:	ec_format(buf2, v.val.ec); buffer_print(buf, "%s", buf2); return;
   case T_LC:	lc_format(buf2, v.val.lc); buffer_print(buf, "%s", buf2); return;
+  case T_RD:	rd_format(v.val.ec, buf2, 1024); buffer_print(buf, "%s", buf2); return;
   case T_PREFIX_SET: trie_format(v.val.ti, buf); return;
   case T_SET:	tree_format(v.val.t, buf); return;
   case T_ENUM:	buffer_print(buf, "(enum %x)%u", v.type, v.val.i); return;
@@ -815,6 +817,25 @@ interpret(struct f_inst *what)
     res.type = T_BOOL;
     res.val.i = (v1.type != T_VOID);
     break;
+  case 'T':
+    ONEARG;
+    switch (v1.type)
+    {
+      case T_NET:
+	res.type = T_ENUM_NETTYPE;
+	res.val.i = v1.val.net->type;
+	break;
+      default:
+	runtime( "Can't determine type of this item" );
+    }
+    break;
+  case P('I','i'):
+    ONEARG;
+    if (v1.type != T_IP)
+      runtime( "IP version check needs an IP address" );
+    res.type = T_BOOL;
+    res.val.i = ipa_is_ip4(v1.val.ip);
+    break;
 
   /* Set to indirect value, a1 = variable, a2 = value */
   case 's':
@@ -900,15 +921,14 @@ interpret(struct f_inst *what)
       switch (what->a2.i)
       {
       case SA_FROM:	res.val.ip = rta->from; break;
-      case SA_GW:	res.val.ip = rta->gw; break;
+      case SA_GW:	res.val.ip = rta->nh.gw; break;
       case SA_NET:	res.val.net = (*f_rte)->net->n.addr; break;
       case SA_PROTO:	res.val.s = rta->src->proto->name; break;
       case SA_SOURCE:	res.val.i = rta->source; break;
       case SA_SCOPE:	res.val.i = rta->scope; break;
-      case SA_CAST:	res.val.i = rta->cast; break;
       case SA_DEST:	res.val.i = rta->dest; break;
-      case SA_IFNAME:	res.val.s = rta->iface ? rta->iface->name : ""; break;
-      case SA_IFINDEX:	res.val.i = rta->iface ? rta->iface->index : 0; break;
+      case SA_IFNAME:	res.val.s = rta->nh.iface ? rta->nh.iface->name : ""; break;
+      case SA_IFINDEX:	res.val.i = rta->nh.iface ? rta->nh.iface->index : 0; break;
 
       default:
 	bug("Invalid static attribute access (%x)", res.type);
@@ -938,10 +958,10 @@ interpret(struct f_inst *what)
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
 
-	  rta->dest = RTD_ROUTER;
-	  rta->gw = ip;
-	  rta->iface = n->iface;
-	  rta->nexthops = NULL;
+	  rta->dest = RTD_UNICAST;
+	  rta->nh.gw = ip;
+	  rta->nh.iface = n->iface;
+	  rta->nh.next = NULL;
 	  rta->hostentry = NULL;
 	}
 	break;
@@ -956,9 +976,9 @@ interpret(struct f_inst *what)
 	  runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
 
 	rta->dest = i;
-	rta->gw = IPA_NONE;
-	rta->iface = NULL;
-	rta->nexthops = NULL;
+	rta->nh.gw = IPA_NONE;
+	rta->nh.iface = NULL;
+	rta->nh.next = NULL;
 	rta->hostentry = NULL;
 	break;
 
@@ -1209,6 +1229,15 @@ interpret(struct f_inst *what)
       runtime( "Prefix expected" );
     res.type = T_IP;
     res.val.ip = net_prefix(v1.val.net);
+    break;
+  case P('R','D'):
+    ONEARG;
+    if (v1.type != T_NET)
+      runtime( "Prefix expected" );
+    if (!net_is_vpn(v1.val.net))
+      runtime( "VPN address expected" );
+    res.type = T_RD;
+    res.val.ec = net_rd(v1.val.net);
     break;
   case P('a','f'):	/* Get first ASN from AS PATH */
     ONEARG;
@@ -1582,6 +1611,8 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   case P('!', '~'):
   case '~': TWOARGS; break;
   case P('d','e'): ONEARG; break;
+  case 'T': ONEARG; break;
+  case P('n','T'): break;
 
   case P('m','l'):
     TWOARGS;
@@ -1647,6 +1678,7 @@ i_same(struct f_inst *f1, struct f_inst *f2)
 
   case 'r': ONEARG; break;
   case P('c','p'): ONEARG; break;
+  case P('R','D'): ONEARG; break;
   case P('c','a'): /* Call rewriting trickery to avoid exponential behaviour */
              ONEARG;
 	     if (!i_same(f1->a2.p, f2->a2.p))

@@ -20,6 +20,7 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
+#include "lib/alloca.h"
 #include "sysdep/unix/timer.h"
 #include "sysdep/unix/unix.h"
 #include "sysdep/unix/krt.h"
@@ -30,6 +31,7 @@
 
 #include <asm/types.h>
 #include <linux/if.h>
+#include <linux/lwtunnel.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
@@ -50,6 +52,21 @@
 #define RTA_TABLE  15
 #endif
 
+#ifndef RTA_VIA
+#define RTA_VIA	 18
+#endif
+
+#ifndef RTA_NEWDST
+#define RTA_NEWDST  19
+#endif
+
+#ifndef RTA_ENCAP_TYPE
+#define RTA_ENCAP_TYPE	21
+#endif
+
+#ifndef RTA_ENCAP
+#define RTA_ENCAP  22
+#endif
 
 #define krt_ecmp6(p) ((p)->af == AF_INET6)
 
@@ -303,7 +320,7 @@ static struct nl_want_attrs ifa_attr_want4[BIRD_IFA_MAX] = {
   [IFA_ADDRESS]	  = { 1, 1, sizeof(ip4_addr) },
   [IFA_LOCAL]	  = { 1, 1, sizeof(ip4_addr) },
   [IFA_BROADCAST] = { 1, 1, sizeof(ip4_addr) },
-  [IFA_FLAGS]	  = { 1, 1, sizeof(u32) },
+  [IFA_FLAGS]     = { 1, 1, sizeof(u32) },
 };
 
 static struct nl_want_attrs ifa_attr_want6[BIRD_IFA_MAX] = {
@@ -313,10 +330,16 @@ static struct nl_want_attrs ifa_attr_want6[BIRD_IFA_MAX] = {
 };
 
 
-#define BIRD_RTA_MAX  (RTA_TABLE+1)
+#define BIRD_RTA_MAX  (RTA_ENCAP+1)
 
-static struct nl_want_attrs mpnh_attr_want4[BIRD_RTA_MAX] = {
+static struct nl_want_attrs nexthop_attr_want4[BIRD_RTA_MAX] = {
   [RTA_GATEWAY]	  = { 1, 1, sizeof(ip4_addr) },
+  [RTA_ENCAP_TYPE]= { 1, 1, sizeof(u16) },
+  [RTA_ENCAP]	  = { 1, 0, 0 },
+};
+
+static struct nl_want_attrs encap_mpls_want[BIRD_RTA_MAX] = {
+  [RTA_DST]       = { 1, 0, 0 },
 };
 
 static struct nl_want_attrs rtm_attr_want4[BIRD_RTA_MAX] = {
@@ -329,6 +352,8 @@ static struct nl_want_attrs rtm_attr_want4[BIRD_RTA_MAX] = {
   [RTA_MULTIPATH] = { 1, 0, 0 },
   [RTA_FLOW]	  = { 1, 1, sizeof(u32) },
   [RTA_TABLE]	  = { 1, 1, sizeof(u32) },
+  [RTA_ENCAP_TYPE]= { 1, 1, sizeof(u16) },
+  [RTA_ENCAP]	  = { 1, 0, 0 },
 };
 
 static struct nl_want_attrs rtm_attr_want6[BIRD_RTA_MAX] = {
@@ -341,6 +366,20 @@ static struct nl_want_attrs rtm_attr_want6[BIRD_RTA_MAX] = {
   [RTA_METRICS]	  = { 1, 0, 0 },
   [RTA_FLOW]	  = { 1, 1, sizeof(u32) },
   [RTA_TABLE]	  = { 1, 1, sizeof(u32) },
+  [RTA_ENCAP_TYPE]= { 1, 1, sizeof(u16) },
+  [RTA_ENCAP]	  = { 1, 0, 0 },
+};
+
+static struct nl_want_attrs rtm_attr_want_mpls[BIRD_RTA_MAX] = {
+  [RTA_DST]	  = { 1, 1, sizeof(u32) },
+  [RTA_IIF]	  = { 1, 1, sizeof(u32) },
+  [RTA_OIF]	  = { 1, 1, sizeof(u32) },
+  [RTA_PRIORITY]  = { 1, 1, sizeof(u32) },
+  [RTA_METRICS]	  = { 1, 0, 0 },
+  [RTA_FLOW]	  = { 1, 1, sizeof(u32) },
+  [RTA_TABLE]	  = { 1, 1, sizeof(u32) },
+  [RTA_VIA]	  = { 1, 0, 0 },
+  [RTA_NEWDST]	  = { 1, 0, 0 },
 };
 
 
@@ -373,6 +412,9 @@ nl_parse_attrs(struct rtattr *a, struct nl_want_attrs *want, struct rtattr **k, 
   return 1;
 }
 
+static inline u16 rta_get_u16(struct rtattr *a)
+{ return *(u16 *) RTA_DATA(a); }
+
 static inline u32 rta_get_u32(struct rtattr *a)
 { return *(u32 *) RTA_DATA(a); }
 
@@ -388,6 +430,25 @@ static inline ip_addr rta_get_ipa(struct rtattr *a)
     return ipa_from_ip4(rta_get_ip4(a));
   else
     return ipa_from_ip6(rta_get_ip6(a));
+}
+
+static inline ip_addr rta_get_via(struct rtattr *a)
+{
+  struct rtvia *v = RTA_DATA(a);
+  switch(v->rtvia_family) {
+    case AF_INET:  return ipa_from_ip4(ip4_ntoh(*(ip4_addr *) v->rtvia_addr));
+    case AF_INET6: return ipa_from_ip6(ip6_ntoh(*(ip6_addr *) v->rtvia_addr));
+  }
+  return IPA_NONE;
+}
+
+static u32 rta_mpls_stack[MPLS_MAX_LABEL_STACK];
+static inline int rta_get_mpls(struct rtattr *a, u32 *stack)
+{
+  if (RTA_PAYLOAD(a) % 4)
+    log(L_WARN "KRT: Strange length of received MPLS stack: %u", RTA_PAYLOAD(a));
+
+  return mpls_get(RTA_DATA(a), RTA_PAYLOAD(a) & ~0x3, stack);
 }
 
 struct rtattr *
@@ -408,6 +469,24 @@ nl_add_attr(struct nlmsghdr *h, uint bufsize, uint code, const void *data, uint 
     memcpy(RTA_DATA(a), data, dlen);
 
   return a;
+}
+
+static inline struct rtattr *
+nl_open_attr(struct nlmsghdr *h, uint bufsize, uint code)
+{
+  return nl_add_attr(h, bufsize, code, NULL, 0);
+}
+
+static inline void
+nl_close_attr(struct nlmsghdr *h, struct rtattr *a)
+{
+  a->rta_len = (void *)h + NLMSG_ALIGN(h->nlmsg_len) - (void *)a;
+}
+
+static inline void
+nl_add_attr_u16(struct nlmsghdr *h, uint bufsize, int code, u16 data)
+{
+  nl_add_attr(h, bufsize, code, &data, 2);
 }
 
 static inline void
@@ -439,16 +518,46 @@ nl_add_attr_ipa(struct nlmsghdr *h, uint bufsize, int code, ip_addr ipa)
     nl_add_attr_ip6(h, bufsize, code, ipa_to_ip6(ipa));
 }
 
-static inline struct rtattr *
-nl_open_attr(struct nlmsghdr *h, uint bufsize, uint code)
+static inline void
+nl_add_attr_mpls(struct nlmsghdr *h, uint bufsize, int code, int len, u32 *stack)
 {
-  return nl_add_attr(h, bufsize, code, NULL, 0);
+  char buf[len*4];
+  mpls_put(buf, len, stack);
+  nl_add_attr(h, bufsize, code, buf, len*4);
 }
 
 static inline void
-nl_close_attr(struct nlmsghdr *h, struct rtattr *a)
+nl_add_attr_mpls_encap(struct nlmsghdr *h, uint bufsize, int len, u32 *stack)
 {
-  a->rta_len = (void *)h + NLMSG_ALIGN(h->nlmsg_len) - (void *)a;
+  nl_add_attr_u16(h, bufsize, RTA_ENCAP_TYPE, LWTUNNEL_ENCAP_MPLS);
+
+  struct rtattr *nest = nl_open_attr(h, bufsize, RTA_ENCAP);
+  nl_add_attr_mpls(h, bufsize, RTA_DST, len, stack);
+  nl_close_attr(h, nest);
+}
+
+static inline void
+nl_add_attr_via(struct nlmsghdr *h, uint bufsize, ip_addr ipa)
+{
+  struct rtattr *nest = nl_open_attr(h, bufsize, RTA_VIA);
+  struct rtvia *via = RTA_DATA(nest);
+
+  h->nlmsg_len += sizeof(*via);
+
+  if (ipa_is_ip4(ipa))
+  {
+    via->rtvia_family = AF_INET;
+    put_ip4(via->rtvia_addr, ipa_to_ip4(ipa));
+    h->nlmsg_len += sizeof(ip4_addr);
+  }
+  else
+  {
+    via->rtvia_family = AF_INET6;
+    put_ip6(via->rtvia_addr, ipa_to_ip6(ipa));
+    h->nlmsg_len += sizeof(ip6_addr);
+  }
+
+  nl_close_attr(h, nest);
 }
 
 static inline struct rtnexthop *
@@ -471,8 +580,24 @@ nl_close_nexthop(struct nlmsghdr *h, struct rtnexthop *nh)
   nh->rtnh_len = (void *)h + NLMSG_ALIGN(h->nlmsg_len) - (void *)nh;
 }
 
+static inline void
+nl_add_nexthop(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af)
+{
+  if (nh->labels > 0)
+    if (af == AF_MPLS)
+      nl_add_attr_mpls(h, bufsize, RTA_NEWDST, nh->labels, nh->label);
+    else
+      nl_add_attr_mpls_encap(h, bufsize, nh->labels, nh->label);
+
+  if (ipa_nonzero(nh->gw))
+    if (af == AF_MPLS)
+      nl_add_attr_via(h, bufsize, nh->gw);
+    else
+      nl_add_attr_ipa(h, bufsize, RTA_GATEWAY, nh->gw);
+}
+
 static void
-nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct mpnh *nh)
+nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af)
 {
   struct rtattr *a = nl_open_attr(h, bufsize, RTA_MULTIPATH);
 
@@ -484,7 +609,7 @@ nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct mpnh *nh)
     rtnh->rtnh_hops = nh->weight;
     rtnh->rtnh_ifindex = nh->iface->index;
 
-    nl_add_attr_ipa(h, bufsize, RTA_GATEWAY, nh->gw);
+    nl_add_nexthop(h, bufsize, nh, af);
 
     nl_close_nexthop(h, rtnh);
   }
@@ -492,17 +617,17 @@ nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct mpnh *nh)
   nl_close_attr(h, a);
 }
 
-static struct mpnh *
+static struct nexthop *
 nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
 {
   /* Temporary buffer for multicast nexthops */
-  static struct mpnh *nh_buffer;
+  static struct nexthop *nh_buffer;
   static int nh_buf_size;	/* in number of structures */
   static int nh_buf_used;
 
   struct rtattr *a[BIRD_RTA_MAX];
   struct rtnexthop *nh = RTA_DATA(ra);
-  struct mpnh *rv, *first, **last;
+  struct nexthop *rv, *first, **last;
   unsigned len = RTA_PAYLOAD(ra);
 
   first = NULL;
@@ -518,7 +643,7 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
       if (nh_buf_used == nh_buf_size)
       {
 	nh_buf_size = nh_buf_size ? (nh_buf_size * 2) : 4;
-	nh_buffer = xrealloc(nh_buffer, nh_buf_size * sizeof(struct mpnh));
+	nh_buffer = xrealloc(nh_buffer, nh_buf_size * NEXTHOP_MAX_SIZE);
       }
       *last = rv = nh_buffer + nh_buf_used++;
       rv->next = NULL;
@@ -531,7 +656,7 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
 
       /* Nonexistent RTNH_PAYLOAD ?? */
       nl_attr_len = nh->rtnh_len - RTNH_LENGTH(0);
-      nl_parse_attrs(RTNH_DATA(nh), mpnh_attr_want4, a, sizeof(a));
+      nl_parse_attrs(RTNH_DATA(nh), nexthop_attr_want4, a, sizeof(a));
       if (a[RTA_GATEWAY])
 	{
 	  rv->gw = rta_get_ipa(a[RTA_GATEWAY]);
@@ -543,7 +668,22 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
 	    return NULL;
 	}
       else
-	return NULL;
+	rv->gw = IPA_NONE;
+
+      if (a[RTA_ENCAP_TYPE])
+	{
+	  if (rta_get_u16(a[RTA_ENCAP_TYPE]) != LWTUNNEL_ENCAP_MPLS) {
+	    log(L_WARN "KRT: Unknown encapsulation method %d in multipath", rta_get_u16(a[RTA_ENCAP_TYPE]));
+	    return NULL;
+	  }
+
+	  struct rtattr *enca[BIRD_RTA_MAX];
+	  nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
+	  nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
+	  rv->labels = rta_get_mpls(enca[RTA_DST], rv->label);
+	  break;
+	}
+
 
       len -= NLMSG_ALIGN(nh->rtnh_len);
       nh = RTNH_NEXT(nh);
@@ -952,28 +1092,21 @@ krt_capable(rte *e)
 {
   rta *a = e->attrs;
 
-  if (a->cast != RTC_UNICAST)
-    return 0;
-
   switch (a->dest)
-    {
-    case RTD_ROUTER:
-    case RTD_DEVICE:
-      if (a->iface == NULL)
-	return 0;
+  {
+    case RTD_UNICAST:
     case RTD_BLACKHOLE:
     case RTD_UNREACHABLE:
     case RTD_PROHIBIT:
-    case RTD_MULTIPATH:
-      break;
+      return 1;
+
     default:
       return 0;
-    }
-  return 1;
+  }
 }
 
 static inline int
-nh_bufsize(struct mpnh *nh)
+nh_bufsize(struct nexthop *nh)
 {
   int rv = 0;
   for (; nh != NULL; nh = nh->next)
@@ -982,12 +1115,12 @@ nh_bufsize(struct mpnh *nh)
 }
 
 static int
-nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int dest, ip_addr gw, struct iface *iface)
+nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int dest, struct nexthop *nh)
 {
   eattr *ea;
   net *net = e->net;
   rta *a = e->attrs;
-  int bufsize = 128 + KRT_METRICS_MAX*8 + nh_bufsize(a->nexthops);
+  int bufsize = 128 + KRT_METRICS_MAX*8 + nh_bufsize(&(a->nh));
   u32 priority = 0;
 
   struct {
@@ -1011,7 +1144,13 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int d
   r->r.rtm_dst_len = net_pxlen(net->n.addr);
   r->r.rtm_protocol = RTPROT_BIRD;
   r->r.rtm_scope = RT_SCOPE_UNIVERSE;
-  nl_add_attr_ipa(&r->h, rsize, RTA_DST, net_prefix(net->n.addr));
+  if (p->af == AF_MPLS)
+  {
+    u32 label = net_mpls(net->n.addr);
+    nl_add_attr_mpls(&r->h, rsize, RTA_DST, 1, &label);
+  }
+  else
+    nl_add_attr_ipa(&r->h, rsize, RTA_DST, net_prefix(net->n.addr));
 
   /*
    * Strange behavior for RTM_DELROUTE:
@@ -1043,7 +1182,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int d
   if (ea = ea_find(eattrs, EA_KRT_SCOPE))
     r->r.rtm_scope = ea->u.data;
   else
-    r->r.rtm_scope = (dest == RTD_DEVICE) ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE;
+    r->r.rtm_scope = (dest == RTD_UNICAST && ipa_zero(nh->gw)) ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE;
 
   if (ea = ea_find(eattrs, EA_KRT_PREFSRC))
     nl_add_attr_ipa(&r->h, rsize, RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data);
@@ -1068,17 +1207,17 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int d
 
 
 dest:
-  /* a->iface != NULL checked in krt_capable() for router and device routes */
   switch (dest)
     {
-    case RTD_ROUTER:
+    case RTD_UNICAST:
       r->r.rtm_type = RTN_UNICAST;
-      nl_add_attr_u32(&r->h, rsize, RTA_OIF, iface->index);
-      nl_add_attr_ipa(&r->h, rsize, RTA_GATEWAY, gw);
-      break;
-    case RTD_DEVICE:
-      r->r.rtm_type = RTN_UNICAST;
-      nl_add_attr_u32(&r->h, rsize, RTA_OIF, iface->index);
+      if (nh->next && !krt_ecmp6(p))
+	nl_add_multipath(&r->h, rsize, nh, p->af);
+      else
+      {
+	nl_add_attr_u32(&r->h, rsize, RTA_OIF, nh->iface->index);
+	nl_add_nexthop(&r->h, rsize, nh, p->af);
+      }
       break;
     case RTD_BLACKHOLE:
       r->r.rtm_type = RTN_BLACKHOLE;
@@ -1088,10 +1227,6 @@ dest:
       break;
     case RTD_PROHIBIT:
       r->r.rtm_type = RTN_PROHIBIT;
-      break;
-    case RTD_MULTIPATH:
-      r->r.rtm_type = RTN_UNICAST;
-      nl_add_multipath(&r->h, rsize, a->nexthops);
       break;
     case RTD_NONE:
       break;
@@ -1109,21 +1244,21 @@ nl_add_rte(struct krt_proto *p, rte *e, struct ea_list *eattrs)
   rta *a = e->attrs;
   int err = 0;
 
-  if (krt_ecmp6(p) && (a->dest == RTD_MULTIPATH))
+  if (krt_ecmp6(p) && a->nh.next)
   {
-    struct mpnh *nh = a->nexthops;
+    struct nexthop *nh = &(a->nh);
 
-    err = nl_send_route(p, e, eattrs, NL_OP_ADD, RTD_ROUTER, nh->gw, nh->iface);
+    err = nl_send_route(p, e, eattrs, NL_OP_ADD, RTD_UNICAST, nh);
     if (err < 0)
       return err;
 
     for (nh = nh->next; nh; nh = nh->next)
-      err += nl_send_route(p, e, eattrs, NL_OP_APPEND, RTD_ROUTER, nh->gw, nh->iface);
+      err += nl_send_route(p, e, eattrs, NL_OP_APPEND, RTD_UNICAST, nh);
 
     return err;
   }
 
-  return nl_send_route(p, e, eattrs, NL_OP_ADD, a->dest, a->gw, a->iface);
+  return nl_send_route(p, e, eattrs, NL_OP_ADD, a->dest, &(a->nh));
 }
 
 static inline int
@@ -1133,7 +1268,7 @@ nl_delete_rte(struct krt_proto *p, rte *e, struct ea_list *eattrs)
 
   /* For IPv6, we just repeatedly request DELETE until we get error */
   do
-    err = nl_send_route(p, e, eattrs, NL_OP_DELETE, RTD_NONE, IPA_NONE, NULL);
+    err = nl_send_route(p, e, eattrs, NL_OP_DELETE, RTD_NONE, NULL);
   while (krt_ecmp6(p) && !err);
 
   return err;
@@ -1168,10 +1303,10 @@ krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old, struct ea_list 
 }
 
 
-static inline struct mpnh *
-nl_alloc_mpnh(struct nl_parse_state *s, ip_addr gw, struct iface *iface, byte weight)
+static inline struct nexthop *
+nl_alloc_nexthop(struct nl_parse_state *s, ip_addr gw, struct iface *iface, byte weight)
 {
-  struct mpnh *nh = lp_alloc(s->pool, sizeof(struct mpnh));
+  struct nexthop *nh = lp_alloc(s->pool, sizeof(struct nexthop));
 
   nh->gw = gw;
   nh->iface = iface;
@@ -1280,6 +1415,19 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	net_fill_ip6(&dst, IP6_NONE, 0);
       break;
 
+    case AF_MPLS:
+      if (!nl_parse_attrs(RTM_RTA(i), rtm_attr_want_mpls, a, sizeof(a)))
+	return;
+
+      if (a[RTA_DST])
+	if (rta_get_mpls(a[RTA_DST], rta_mpls_stack) == 1)
+	  net_fill_mpls(&dst, rta_mpls_stack[0]);
+	else
+	  log(L_WARN "KRT: Got multi-label MPLS RTA_DST");
+      else
+	return; /* No support for MPLS routes without RTA_DST */
+      break;
+
     default:
       return;
     }
@@ -1342,59 +1490,57 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   if (s->net && !nl_mergable_route(s, net, p, priority, i->rtm_type))
     nl_announce_route(s);
 
-  rta *ra = lp_allocz(s->pool, sizeof(rta));
+  rta *ra = lp_allocz(s->pool, RTA_MAX_SIZE);
   ra->src = p->p.main_source;
   ra->source = RTS_INHERIT;
   ra->scope = SCOPE_UNIVERSE;
-  ra->cast = RTC_UNICAST;
 
   switch (i->rtm_type)
     {
     case RTN_UNICAST:
+      ra->dest = RTD_UNICAST;
 
       if (a[RTA_MULTIPATH] && (i->rtm_family == AF_INET))
 	{
-	  ra->dest = RTD_MULTIPATH;
-	  ra->nexthops = nl_parse_multipath(p, a[RTA_MULTIPATH]);
-	  if (!ra->nexthops)
+	  struct nexthop *nh = nl_parse_multipath(p, a[RTA_MULTIPATH]);
+	  if (!nh)
 	    {
 	      log(L_ERR "KRT: Received strange multipath route %N", net->n.addr);
 	      return;
 	    }
 
+	  ra->nh = *nh;
 	  break;
 	}
 
-      ra->iface = if_find_by_index(oif);
-      if (!ra->iface)
+      ra->nh.iface = if_find_by_index(oif);
+      if (!ra->nh.iface)
 	{
 	  log(L_ERR "KRT: Received route %N with unknown ifindex %u", net->n.addr, oif);
 	  return;
 	}
 
-      if (a[RTA_GATEWAY])
+      if ((i->rtm_family != AF_MPLS) && a[RTA_GATEWAY] || (i->rtm_family == AF_MPLS) && a[RTA_VIA])
 	{
-	  ra->dest = RTD_ROUTER;
-	  ra->gw = rta_get_ipa(a[RTA_GATEWAY]);
+	  if (i->rtm_family == AF_MPLS)
+	    ra->nh.gw = rta_get_via(a[RTA_VIA]);
+	  else
+	    ra->nh.gw = rta_get_ipa(a[RTA_GATEWAY]);
 
 	  /* Silently skip strange 6to4 routes */
 	  const net_addr_ip6 sit = NET_ADDR_IP6(IP6_NONE, 96);
-	  if ((i->rtm_family == AF_INET6) && ipa_in_netX(ra->gw, (net_addr *) &sit))
+	  if ((i->rtm_family == AF_INET6) && ipa_in_netX(ra->nh.gw, (net_addr *) &sit))
 	    return;
 
 	  neighbor *nbr;
-	  nbr = neigh_find2(&p->p, &ra->gw, ra->iface,
+	  nbr = neigh_find2(&p->p, &(ra->nh.gw), ra->nh.iface,
 			    (i->rtm_flags & RTNH_F_ONLINK) ? NEF_ONLINK : 0);
 	  if (!nbr || (nbr->scope == SCOPE_HOST))
 	    {
-	      log(L_ERR "KRT: Received route %N with strange next-hop %I", net->n.addr, ra->gw);
+	      log(L_ERR "KRT: Received route %N with strange next-hop %I", net->n.addr,
+                  ra->nh.gw);
 	      return;
 	    }
-	}
-      else
-	{
-	  ra->dest = RTD_DEVICE;
-	  def_scope = RT_SCOPE_LINK;
 	}
 
       break;
@@ -1413,6 +1559,44 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       return;
     }
 
+  int labels = 0;
+  if ((i->rtm_family == AF_MPLS) && a[RTA_NEWDST] && !ra->nh.next)
+    labels = rta_get_mpls(a[RTA_NEWDST], ra->nh.label);
+
+  if (a[RTA_ENCAP] && a[RTA_ENCAP_TYPE] && !ra->nh.next)
+    {
+      switch (rta_get_u16(a[RTA_ENCAP_TYPE]))
+	{
+	  case LWTUNNEL_ENCAP_MPLS:
+	    {
+	      struct rtattr *enca[BIRD_RTA_MAX];
+	      nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
+	      nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
+	      labels = rta_get_mpls(enca[RTA_DST], ra->nh.label);
+	      break;
+	    }
+	  default:
+	    SKIP("unknown encapsulation method %d\n", rta_get_u16(a[RTA_ENCAP_TYPE]));
+	    break;
+	}
+    }
+
+  if (labels < 0)
+  {
+    log(L_WARN "KRT: Too long MPLS stack received, ignoring.");
+    ra->nh.labels = 0;
+  }
+  else
+    ra->nh.labels = labels;
+
+  rte *e = rte_get_temp(ra);
+  e->net = net;
+  e->u.krt.src = src;
+  e->u.krt.proto = i->rtm_protocol;
+  e->u.krt.seen = 0;
+  e->u.krt.best = 0;
+  e->u.krt.metric = 0;
+
   if (i->rtm_scope != def_scope)
     {
       ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + sizeof(eattr));
@@ -1425,6 +1609,9 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       ea->attrs[0].type = EAF_TYPE_INT;
       ea->attrs[0].u.data = i->rtm_scope;
     }
+
+  if (a[RTA_PRIORITY])
+    e->u.krt.metric = rta_get_u32(a[RTA_PRIORITY]);
 
   if (a[RTA_PREFSRC])
     {
@@ -1508,15 +1695,20 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   else
   {
     /* Merge next hops with the stored route */
-    rta *a = s->attrs;
+    rta *oa = s->attrs;
 
-    if (a->dest != RTD_MULTIPATH)
+    struct nexthop *nhs = &oa->nh;
+    nexthop_insert(&nhs, &ra->nh);
+
+    /* Perhaps new nexthop is inserted at the first position */
+    if (nhs == &ra->nh)
     {
-      a->dest = RTD_MULTIPATH;
-      a->nexthops = nl_alloc_mpnh(s, a->gw, a->iface, 0);
-    }
+      /* Swap rtas */
+      s->attrs = ra;
 
-    mpnh_insert(&a->nexthops, nl_alloc_mpnh(s, ra->gw, ra->iface, 0));
+      /* Keep old eattrs */
+      ra->eattrs = oa->eattrs;
+    }
   }
 }
 
@@ -1537,6 +1729,15 @@ krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NUL
 
   nl_parse_begin(&s, 1, 1);
   nl_request_dump(AF_INET6, RTM_GETROUTE);
+  while (h = nl_get_scan())
+    if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
+      nl_parse_route(&s, h);
+    else
+      log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
+  nl_parse_end(&s);
+
+  nl_parse_begin(&s, 1, 1);
+  nl_request_dump(AF_MPLS, RTM_GETROUTE);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
       nl_parse_route(&s, h);

@@ -9,32 +9,31 @@
 /**
  * DOC: Static
  *
- * The Static protocol is implemented in a straightforward way. It keeps
- * two lists of static routes: one containing interface routes and one
- * holding the remaining ones. Interface routes are inserted and removed according
- * to interface events received from the core via the if_notify() hook. Routes
- * pointing to a neighboring router use a sticky node in the neighbor cache
- * to be notified about gaining or losing the neighbor. Special
- * routes like black holes or rejects are inserted all the time.
+ * The Static protocol is implemented in a straightforward way. It keeps a list
+ * of static routes. Routes of dest RTD_UNICAST have associated sticky node in
+ * the neighbor cache to be notified about gaining or losing the neighbor and
+ * about interface-related events (e.g. link down). They may also have a BFD
+ * request if associated with a BFD session. When a route is notified,
+ * static_decide() is used to see whether the route activeness is changed. In
+ * such case, the route is marked as dirty and scheduled to be announced or
+ * withdrawn, which is done asynchronously from event hook. Routes of other
+ * types (e.g. black holes) are announced all the time.
  *
- * Multipath routes are tricky. Because these routes depends on
- * several neighbors we need to integrate that to the neighbor
- * notification handling, we use dummy static_route nodes, one for
- * each nexthop. Therefore, a multipath route consists of a master
- * static_route node (of dest RTD_MULTIPATH), which specifies prefix
- * and is used in most circumstances, and a list of dummy static_route
- * nodes (of dest RTD_NONE), which stores info about nexthops and are
- * connected to neighbor entries and neighbor notifications. Dummy
- * nodes are chained using mp_next, they aren't in other_routes list,
- * and abuse if_name field for other purposes.
+ * Multipath routes are a bit tricky. To represent additional next hops, dummy
+ * static_route nodes are used, which are chained using @mp_next field and link
+ * to the master node by @mp_head field. Each next hop has a separate neighbor
+ * entry and an activeness state, but the master node is used for most purposes.
+ * Note that most functions DO NOT accept dummy nodes as arguments.
  *
  * The only other thing worth mentioning is that when asked for reconfiguration,
  * Static not only compares the two configurations, but it also calculates
- * difference between the lists of static routes and it just inserts the
- * newly added routes and removes the obsolete ones.
+ * difference between the lists of static routes and it just inserts the newly
+ * added routes, removes the obsolete ones and reannounces changed ones.
  */
 
 #undef LOCAL_DEBUG
+
+#include <stdlib.h>
 
 #include "nest/bird.h"
 #include "nest/iface.h"
@@ -51,100 +50,119 @@
 static linpool *static_lp;
 
 static inline rtable *
-p_igp_table(struct proto *p)
+p_igp_table(struct static_proto *p)
 {
-  struct static_config *cf = (void *) p->cf;
-  return cf->igp_table ? cf->igp_table->table : p->main_channel->table;
+  struct static_config *cf = (void *) p->p.cf;
+  return cf->igp_table ? cf->igp_table->table : p->p.main_channel->table;
 }
 
 static void
-static_install(struct proto *p, struct static_route *r, struct iface *ifa)
+static_announce_rte(struct static_proto *p, struct static_route *r)
 {
-  rta a;
-  rte *e;
+  rta *a = allocz(RTA_MAX_SIZE);
+  a->src = p->p.main_source;
+  a->source = RTS_STATIC;
+  a->scope = SCOPE_UNIVERSE;
+  a->dest = r->dest;
 
-  if (r->installed > 0)
-    return;
+  if (r->dest == RTD_UNICAST)
+  {
+    struct static_route *r2;
+    struct nexthop *nhs = NULL;
 
-  DBG("Installing static route %N, rtd=%d\n", r->net, r->dest);
-  bzero(&a, sizeof(a));
-  a.src = p->main_source;
-  a.source = (r->dest == RTD_DEVICE) ? RTS_STATIC_DEVICE : RTS_STATIC;
-  a.scope = SCOPE_UNIVERSE;
-  a.cast = RTC_UNICAST;
-  a.dest = r->dest;
-  a.gw = r->via;
-  a.iface = ifa;
-
-  if (r->dest == RTD_MULTIPATH)
+    for (r2 = r; r2; r2 = r2->mp_next)
     {
-      struct static_route *r2;
-      struct mpnh *nhs = NULL;
+      if (!r2->active)
+	continue;
 
-      for (r2 = r->mp_next; r2; r2 = r2->mp_next)
-	if (r2->installed)
-	  {
-	    struct mpnh *nh = alloca(sizeof(struct mpnh));
-	    nh->gw = r2->via;
-	    nh->iface = r2->neigh->iface;
-	    nh->weight = r2->weight;
-	    mpnh_insert(&nhs, nh);
-	  }
+      struct nexthop *nh = allocz(NEXTHOP_MAX_SIZE);
+      nh->gw = r2->via;
+      nh->iface = r2->neigh->iface;
+      nh->weight = r2->weight;
+      if (r2->mls)
+      {
+	nh->labels = r2->mls->len;
+	memcpy(nh->label, r2->mls->stack, r2->mls->len * sizeof(u32));
+      }
 
-      /* There is at least one nexthop */
-      if (!nhs->next)
-	{
-	  /* Fallback to unipath route for exactly one nexthop */
-	  a.dest = RTD_ROUTER;
-	  a.gw = nhs->gw;
-	  a.iface = nhs->iface;
-	}
-      else
-	a.nexthops = nhs;
+      nexthop_insert(&nhs, nh);
     }
 
+    if (!nhs)
+      goto withdraw;
+
+    nexthop_link(a, nhs);
+  }
+
   if (r->dest == RTDX_RECURSIVE)
-    rta_set_recursive_next_hop(p->main_channel->table, &a, p_igp_table(p), r->via, IPA_NONE);
+    rta_set_recursive_next_hop(p->p.main_channel->table, a, p_igp_table(p), r->via, IPA_NONE, r->mls);
+
+  /* Already announced */
+  if (r->state == SRS_CLEAN)
+    return;
 
   /* We skip rta_lookup() here */
-
-  e = rte_get_temp(&a);
+  rte *e = rte_get_temp(a);
   e->pflags = 0;
 
   if (r->cmds)
     f_eval_rte(r->cmds, &e, static_lp);
 
-  rte_update(p, r->net, e);
-  r->installed = 1;
+  rte_update(&p->p, r->net, e);
+  r->state = SRS_CLEAN;
 
   if (r->cmds)
     lp_flush(static_lp);
+
+  return;
+
+withdraw:
+  if (r->state == SRS_DOWN)
+    return;
+
+  rte_update(&p->p, r->net, NULL);
+  r->state = SRS_DOWN;
 }
 
 static void
-static_remove(struct proto *p, struct static_route *r)
+static_mark_rte(struct static_proto *p, struct static_route *r)
 {
-  if (!r->installed)
+  if (r->state == SRS_DIRTY)
     return;
 
-  DBG("Removing static route %N via %I\n", r->net, r->via);
-  rte_update(p, r->net, NULL);
-  r->installed = 0;
+  r->state = SRS_DIRTY;
+  BUFFER_PUSH(p->marked) = r;
+
+  if (!ev_active(p->event))
+    ev_schedule(p->event);
+}
+
+static void
+static_announce_marked(void *P)
+{
+  struct static_proto *p = P;
+
+  BUFFER_WALK(p->marked, r)
+    static_announce_rte(P, r);
+
+  BUFFER_FLUSH(p->marked);
 }
 
 static void
 static_bfd_notify(struct bfd_request *req);
 
 static void
-static_update_bfd(struct proto *p, struct static_route *r)
+static_update_bfd(struct static_proto *p, struct static_route *r)
 {
+  /* The @r is a RTD_UNICAST next hop, may be a dummy node */
+
   struct neighbor *nb = r->neigh;
   int bfd_up = (nb->scope > 0) && r->use_bfd;
 
   if (bfd_up && !r->bfd_req)
   {
     // ip_addr local = ipa_nonzero(r->local) ? r->local : nb->ifa->ip;
-    r->bfd_req = bfd_request_session(p->pool, r->via, nb->ifa->ip, nb->iface,
+    r->bfd_req = bfd_request_session(p->p.pool, r->via, nb->ifa->ip, nb->iface,
 				     static_bfd_notify, r);
   }
 
@@ -156,223 +174,171 @@ static_update_bfd(struct proto *p, struct static_route *r)
 }
 
 static int
-static_decide(struct static_config *cf, struct static_route *r)
+static_decide(struct static_proto *p, struct static_route *r)
 {
-  /* r->dest != RTD_MULTIPATH, but may be RTD_NONE (part of multipath route)
-     the route also have to be valid (r->neigh != NULL) */
+  /* The @r is a RTD_UNICAST next hop, may be a dummy node */
+
+  struct static_config *cf = (void *) p->p.cf;
+  uint old_active = r->active;
 
   if (r->neigh->scope < 0)
-    return 0;
+    goto fail;
 
   if (cf->check_link && !(r->neigh->iface->flags & IF_LINK_UP))
-    return 0;
+    goto fail;
 
-  if (r->bfd_req && r->bfd_req->state != BFD_STATE_UP)
-    return 0;
+  if (r->bfd_req && (r->bfd_req->state != BFD_STATE_UP))
+    goto fail;
 
-  return 1;
+  r->active = 1;
+  return !old_active;
+
+fail:
+  r->active = 0;
+  return old_active;
 }
 
-
 static void
-static_add(struct proto *p, struct static_config *cf, struct static_route *r)
+static_add_rte(struct static_proto *p, struct static_route *r)
 {
-  DBG("static_add(%N,%d)\n", r->net, r->dest);
-  switch (r->dest)
+  if (r->dest == RTD_UNICAST)
+  {
+    struct static_route *r2;
+    struct neighbor *n;
+
+    for (r2 = r; r2; r2 = r2->mp_next)
     {
-    case RTD_ROUTER:
-      {
-	struct neighbor *n = neigh_find2(p, &r->via, r->via_if, NEF_STICKY);
-	if (n)
-	  {
-	    r->chain = n->data;
-	    n->data = r;
-	    r->neigh = n;
+      n = ipa_nonzero(r2->via) ?
+	neigh_find2(&p->p, &r2->via, r2->iface, NEF_STICKY) :
+	neigh_find_iface(&p->p, r2->iface);
 
-	    static_update_bfd(p, r);
-	    if (static_decide(cf, r))
-	      static_install(p, r, n->iface);
-	    else
-	      static_remove(p, r);
-	  }
-	else
-	  {
-	    log(L_ERR "Static route destination %I is invalid. Ignoring.", r->via);
-	    static_remove(p, r);
-	  }
-	break;
+      if (!n)
+      {
+	log(L_WARN "Invalid next hop %I of static route %N", r2->via, r2->net);
+	continue;
       }
 
-    case RTD_DEVICE:
-      break;
+      r2->neigh = n;
+      r2->chain = n->data;
+      n->data = r2;
 
-    case RTD_MULTIPATH:
-      {
-	int count = 0;
-	struct static_route *r2;
-
-	for (r2 = r->mp_next; r2; r2 = r2->mp_next)
-	  {
-	    struct neighbor *n = neigh_find2(p, &r2->via, r2->via_if, NEF_STICKY);
-	    if (n)
-	      {
-		r2->chain = n->data;
-		n->data = r2;
-		r2->neigh = n;
-
-		static_update_bfd(p, r2);
-		r2->installed = static_decide(cf, r2);
-		count += r2->installed;
-	      }
-	    else
-	      {
-		log(L_ERR "Static route destination %I is invalid. Ignoring.", r2->via);
-		r2->installed = 0;
-	      }
-	  }
-
-	if (count)
-	  static_install(p, r, NULL);
-	else
-	  static_remove(p, r);
-	break;
-      }
-
-    default:
-      static_install(p, r, NULL);
+      static_update_bfd(p, r2);
+      static_decide(p, r2);
     }
+  }
+
+  static_announce_rte(p, r);
 }
 
 static void
-static_rte_cleanup(struct proto *p UNUSED, struct static_route *r)
+static_reset_rte(struct static_proto *p UNUSED, struct static_route *r)
 {
   struct static_route *r2;
 
-  if (r->bfd_req)
+  for (r2 = r; r2; r2 = r2->mp_next)
   {
-    rfree(r->bfd_req);
-    r->bfd_req = NULL;
+    r2->neigh = NULL;
+    r2->chain = NULL;
+
+    r2->state = 0;
+    r2->active = 0;
+
+    rfree(r2->bfd_req);
+    r2->bfd_req = NULL;
   }
-
-  if (r->dest == RTD_MULTIPATH)
-    for (r2 = r->mp_next; r2; r2 = r2->mp_next)
-      if (r2->bfd_req)
-      {
-	rfree(r2->bfd_req);
-	r2->bfd_req = NULL;
-      }
-}
-
-static int
-static_start(struct proto *p)
-{
-  struct static_config *cf = (void *) p->cf;
-  struct static_route *r;
-
-  DBG("Static: take off!\n");
-
-  if (!static_lp)
-    static_lp = lp_new(&root_pool, 1008);
-
-  if (cf->igp_table)
-    rt_lock_table(cf->igp_table->table);
-
-  /* We have to go UP before routes could be installed */
-  proto_notify_state(p, PS_UP);
-
-  WALK_LIST(r, cf->other_routes)
-    static_add(p, cf, r);
-  return PS_UP;
-}
-
-static int
-static_shutdown(struct proto *p)
-{
-  struct static_config *cf = (void *) p->cf;
-  struct static_route *r;
-
-  /* Just reset the flag, the routes will be flushed by the nest */
-  WALK_LIST(r, cf->iface_routes)
-    r->installed = 0;
-  WALK_LIST(r, cf->other_routes)
-  {
-    static_rte_cleanup(p, r);
-    r->installed = 0;
-  }
-
-  /* Handle failure during channel reconfigure */
-  /* FIXME: This should be handled in a better way */
-  cf = (void *) p->cf_new;
-  if (cf)
-  {
-    WALK_LIST(r, cf->iface_routes)
-      r->installed = 0;
-    WALK_LIST(r, cf->other_routes)
-      r->installed = 0;
-  }
-
-  return PS_DOWN;
 }
 
 static void
-static_cleanup(struct proto *p)
+static_remove_rte(struct static_proto *p, struct static_route *r)
 {
-  struct static_config *cf = (void *) p->cf;
+  if (r->state)
+    rte_update(&p->p, r->net, NULL);
 
-  if (cf->igp_table)
-    rt_unlock_table(cf->igp_table->table);
+  static_reset_rte(p, r);
 }
 
-static void
-static_update_rte(struct proto *p, struct static_route *r)
+
+static inline int
+static_same_dest(struct static_route *x, struct static_route *y)
 {
-  switch (r->dest)
+  if (x->dest != y->dest)
+    return 0;
+
+  switch (x->dest)
   {
-  case RTD_ROUTER:
-    if (static_decide((struct static_config *) p->cf, r))
-      static_install(p, r, r->neigh->iface);
-    else
-      static_remove(p, r);
-    break;
-
-  case RTD_NONE: /* a part of multipath route */
-  {
-    int decision = static_decide((struct static_config *) p->cf, r);
-    if (decision == r->installed)
-      break; /* no change */
-    r->installed = decision;
-
-    struct static_route *r1, *r2;
-    int count = 0;
-    r1 = (void *) r->if_name; /* really */
-    for (r2 = r1->mp_next; r2; r2 = r2->mp_next)
-      count += r2->installed;
-
-    if (count)
+  case RTD_UNICAST:
+    for (; x && y; x = x->mp_next, y = y->mp_next)
     {
-      /* Set of nexthops changed - force reinstall */
-      r1->installed = 0;
-      static_install(p, r1, NULL);
-    }
-    else
-      static_remove(p, r1);
+      if (!ipa_equal(x->via, y->via) ||
+	  (x->iface != y->iface) ||
+	  (x->use_bfd != y->use_bfd) ||
+	  (x->weight != y->weight) ||
+	  (!x->mls != !y->mls) ||
+	  ((x->mls) && (y->mls) && (x->mls->len != y->mls->len)))
+	return 0;
 
-    break;
-  }
+      if (!x->mls)
+	continue;
+
+      for (uint i = 0; i < x->mls->len; i++)
+	if (x->mls->stack[i] != y->mls->stack[i])
+	  return 0;
+    }
+    return !x && !y;
+
+  case RTDX_RECURSIVE:
+    if (!ipa_equal(x->via, y->via) ||
+	(!x->mls != !y->mls) ||
+	((x->mls) && (y->mls) && (x->mls->len != y->mls->len)))
+      return 0;
+
+    if (!x->mls)
+      return 1;
+
+    for (uint i = 0; i < x->mls->len; i++)
+      if (x->mls->stack[i] != y->mls->stack[i])
+	return 0;
+
+    return 1;
+
+  default:
+    return 1;
   }
 }
+
+static inline int
+static_same_rte(struct static_route *or, struct static_route *nr)
+{
+  /* Note that i_same() requires arguments in (new, old) order */
+  return static_same_dest(or, nr) && i_same(nr->cmds, or->cmds);
+}
+
+static void
+static_reconfigure_rte(struct static_proto *p, struct static_route *or, struct static_route *nr)
+{
+  if ((or->state == SRS_CLEAN) && !static_same_rte(or, nr))
+    nr->state = SRS_DIRTY;
+  else
+    nr->state = or->state;
+
+  static_add_rte(p, nr);
+  static_reset_rte(p, or);
+}
+
 
 static void
 static_neigh_notify(struct neighbor *n)
 {
-  struct proto *p = n->proto;
+  struct static_proto *p = (void *) n->proto;
   struct static_route *r;
 
   DBG("Static: neighbor notify for %I: iface %p\n", n->addr, n->iface);
-  for(r=n->data; r; r=r->chain)
+  for (r = n->data; r; r = r->chain)
   {
     static_update_bfd(p, r);
-    static_update_rte(p, r);
+
+    if (static_decide(p, r))
+      static_mark_rte(p, r->mp_head);
   }
 }
 
@@ -380,77 +346,20 @@ static void
 static_bfd_notify(struct bfd_request *req)
 {
   struct static_route *r = req->data;
-  struct proto *p = r->neigh->proto;
+  struct static_proto *p = (void *) r->neigh->proto;
 
   // if (req->down) TRACE(D_EVENTS, "BFD session down for nbr %I on %s", XXXX);
 
-  static_update_rte(p, r);
+  if (static_decide(p, r))
+    static_mark_rte(p, r->mp_head);
 }
 
-static void
-static_dump_rt(struct static_route *r)
-{
-  debug("%-1N: ", r->net);
-  switch (r->dest)
-    {
-    case RTD_ROUTER:
-      debug("via %I\n", r->via);
-      break;
-    case RTD_DEVICE:
-      debug("dev %s\n", r->if_name);
-      break;
-    default:
-      debug("rtd %d\n", r->dest);
-      break;
-    }
-}
-
-static void
-static_dump(struct proto *p)
-{
-  struct static_config *c = (void *) p->cf;
-  struct static_route *r;
-
-  debug("Independent static routes:\n");
-  WALK_LIST(r, c->other_routes)
-    static_dump_rt(r);
-  debug("Device static routes:\n");
-  WALK_LIST(r, c->iface_routes)
-    static_dump_rt(r);
-}
-
-static void
-static_if_notify(struct proto *p, unsigned flags, struct iface *i)
-{
-  struct static_route *r;
-  struct static_config *c = (void *) p->cf;
-
-  if (flags & IF_CHANGE_UP)
-    {
-      WALK_LIST(r, c->iface_routes)
-	if (!strcmp(r->if_name, i->name))
-	  static_install(p, r, i);
-    }
-  else if (flags & IF_CHANGE_DOWN)
-    {
-      WALK_LIST(r, c->iface_routes)
-	if (!strcmp(r->if_name, i->name))
-	  static_remove(p, r);
-    }
-}
-
-int
+static int
 static_rte_mergable(rte *pri UNUSED, rte *sec UNUSED)
 {
   return 1;
 }
 
-void
-static_init_config(struct static_config *c)
-{
-  init_list(&c->iface_routes);
-  init_list(&c->other_routes);
-}
 
 static void
 static_postconfig(struct proto_config *CF)
@@ -461,16 +370,10 @@ static_postconfig(struct proto_config *CF)
   if (EMPTY_LIST(CF->channels))
     cf_error("Channel not specified");
 
-
-  WALK_LIST(r, cf->iface_routes)
-    if (r->net->type != CF->net_type)
-      cf_error("Route %N incompatible with channel type", r->net);
-
-  WALK_LIST(r, cf->other_routes)
-    if (r->net->type != CF->net_type)
+  WALK_LIST(r, cf->routes)
+    if (r->net && (r->net->type != CF->net_type))
       cf_error("Route %N incompatible with channel type", r->net);
 }
-
 
 static struct proto *
 static_init(struct proto_config *CF)
@@ -482,84 +385,84 @@ static_init(struct proto_config *CF)
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
   P->neigh_notify = static_neigh_notify;
-  P->if_notify = static_if_notify;
   P->rte_mergable = static_rte_mergable;
 
   return P;
 }
 
-static inline int
-static_same_dest(struct static_route *x, struct static_route *y)
+static int
+static_start(struct proto *P)
 {
-  if (x->dest != y->dest)
-    return 0;
+  struct static_proto *p = (void *) P;
+  struct static_config *cf = (void *) P->cf;
+  struct static_route *r;
 
-  switch (x->dest)
-    {
-    case RTD_ROUTER:
-      return ipa_equal(x->via, y->via) && (x->via_if == y->via_if);
+  if (!static_lp)
+    static_lp = lp_new(&root_pool, 1008);
 
-    case RTD_DEVICE:
-      return !strcmp(x->if_name, y->if_name);
+  if (cf->igp_table)
+    rt_lock_table(cf->igp_table->table);
 
-    case RTD_MULTIPATH:
-      for (x = x->mp_next, y = y->mp_next;
-	   x && y;
-	   x = x->mp_next, y = y->mp_next)
-	if (!ipa_equal(x->via, y->via) ||
-	    (x->via_if != y->via_if) ||
-	    (x->use_bfd != y->use_bfd) ||
-	    (x->weight != y->weight))
-	  return 0;
-      return !x && !y;
+  p->event = ev_new(p->p.pool);
+  p->event->hook = static_announce_marked;
+  p->event->data = p;
 
-    case RTDX_RECURSIVE:
-      return ipa_equal(x->via, y->via);
+  BUFFER_INIT(p->marked, p->p.pool, 4);
 
-    default:
-      return 1;
-    }
+  /* We have to go UP before routes could be installed */
+  proto_notify_state(P, PS_UP);
+
+  WALK_LIST(r, cf->routes)
+    static_add_rte(p, r);
+
+  return PS_UP;
 }
 
-static inline int
-static_same_rte(struct static_route *x, struct static_route *y)
+static int
+static_shutdown(struct proto *P)
 {
-  return static_same_dest(x, y) && i_same(x->cmds, y->cmds);
-}
+  struct static_proto *p = (void *) P;
+  struct static_config *cf = (void *) P->cf;
+  struct static_route *r;
 
+  /* Just reset the flag, the routes will be flushed by the nest */
+  WALK_LIST(r, cf->routes)
+    static_reset_rte(p, r);
+
+  return PS_DOWN;
+}
 
 static void
-static_match(struct proto *p, struct static_route *r, struct static_config *n)
+static_cleanup(struct proto *P)
 {
-  struct static_route *t;
+  struct static_config *cf = (void *) P->cf;
 
-  /*
-   * For given old route *r we find whether a route to the same
-   * network is also in the new route list. In that case, we keep the
-   * route and possibly update the route later if destination changed.
-   * Otherwise, we remove the route.
-   */
+  if (cf->igp_table)
+    rt_unlock_table(cf->igp_table->table);
+}
 
-  if (r->neigh)
-    r->neigh->data = NULL;
-
-  WALK_LIST(t, n->iface_routes)
-    if (net_equal(r->net, t->net))
-      goto found;
-
-  WALK_LIST(t, n->other_routes)
-    if (net_equal(r->net, t->net))
-      goto found;
-
-  static_remove(p, r);
-  return;
-
- found:
-  /* If destination is different, force reinstall */
-  if ((r->installed > 0) && !static_same_rte(r, t))
-    t->installed = -1;
+static void
+static_dump_rte(struct static_route *r)
+{
+  debug("%-1N: ", r->net);
+  if (r->dest == RTD_UNICAST)
+    if (r->iface && ipa_zero(r->via))
+      debug("dev %s\n", r->iface->name);
+    else
+      debug("via %I%J\n", r->via, r->iface);
   else
-    t->installed = r->installed;
+    debug("rtd %d\n", r->dest);
+}
+
+static void
+static_dump(struct proto *P)
+{
+  struct static_config *c = (void *) P->cf;
+  struct static_route *r;
+
+  debug("Static routes:\n");
+  WALK_LIST(r, c->routes)
+    static_dump_rte(r);
 }
 
 static inline rtable *
@@ -568,76 +471,87 @@ cf_igp_table(struct static_config *cf)
   return cf->igp_table ? cf->igp_table->table : NULL;
 }
 
-static int
-static_reconfigure(struct proto *p, struct proto_config *CF)
+static inline int
+static_cmp_rte(const void *X, const void *Y)
 {
-  struct static_config *o = (void *) p->cf;
+  struct static_route *x = *(void **)X, *y = *(void **)Y;
+  return net_compare(x->net, y->net);
+}
+
+static int
+static_reconfigure(struct proto *P, struct proto_config *CF)
+{
+  struct static_proto *p = (void *) P;
+  struct static_config *o = (void *) P->cf;
   struct static_config *n = (void *) CF;
-  struct static_route *r;
+  struct static_route *r, *r2, *or, *nr;
 
   if (cf_igp_table(o) != cf_igp_table(n))
     return 0;
 
-  if (!proto_configure_channel(p, &p->main_channel, proto_cf_main_channel(CF)))
+  if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
     return 0;
 
-  /* Delete all obsolete routes and reset neighbor entries */
-  WALK_LIST(r, o->iface_routes)
-    static_match(p, r, n);
-  WALK_LIST(r, o->other_routes)
-    static_match(p, r, n);
+  p->p.cf = CF;
 
-  /* Now add all new routes, those not changed will be ignored by static_install() */
-  WALK_LIST(r, n->iface_routes)
-    {
-      struct iface *ifa;
-      if ((ifa = if_find_by_name(r->if_name)) && (ifa->flags & IF_UP))
-	static_install(p, r, ifa);
-    }
-  WALK_LIST(r, n->other_routes)
-    static_add(p, n, r);
+  /* Reset route lists in neighbor entries */
+  WALK_LIST(r, o->routes)
+    for (r2 = r; r2; r2 = r2->mp_next)
+      if (r2->neigh)
+	r2->neigh->data = NULL;
 
-  WALK_LIST(r, o->other_routes)
-    static_rte_cleanup(p, r);
+  /* Reconfigure initial matching sequence */
+  for (or = HEAD(o->routes), nr = HEAD(n->routes);
+       NODE_VALID(or) && NODE_VALID(nr) && net_equal(or->net, nr->net);
+       or = NODE_NEXT(or), nr = NODE_NEXT(nr))
+    static_reconfigure_rte(p, or, nr);
+
+  if (!NODE_VALID(or) && !NODE_VALID(nr))
+    return 1;
+
+  /* Reconfigure remaining routes, sort them to find matching pairs */
+  struct static_route *or2, *nr2, **orbuf, **nrbuf;
+  uint ornum = 0, nrnum = 0, orpos = 0, nrpos = 0, i;
+
+  for (or2 = or; NODE_VALID(or2); or2 = NODE_NEXT(or2))
+    ornum++;
+
+  for (nr2 = nr; NODE_VALID(nr2); nr2 = NODE_NEXT(nr2))
+    nrnum++;
+
+  orbuf = xmalloc(ornum * sizeof(void *));
+  nrbuf = xmalloc(nrnum * sizeof(void *));
+
+  for (i = 0, or2 = or; i < ornum; i++, or2 = NODE_NEXT(or2))
+    orbuf[i] = or2;
+
+  for (i = 0, nr2 = nr; i < nrnum; i++, nr2 = NODE_NEXT(nr2))
+    nrbuf[i] = nr2;
+
+  qsort(orbuf, ornum, sizeof(struct static_route *), static_cmp_rte);
+  qsort(nrbuf, nrnum, sizeof(struct static_route *), static_cmp_rte);
+
+  while ((orpos < ornum) && (nrpos < nrnum))
+  {
+    int x = net_compare(orbuf[orpos]->net, nrbuf[nrpos]->net);
+    if (x < 0)
+      static_remove_rte(p, orbuf[orpos++]);
+    else if (x > 0)
+      static_add_rte(p, nrbuf[nrpos++]);
+    else
+      static_reconfigure_rte(p, orbuf[orpos++], nrbuf[nrpos++]);
+  }
+
+  while (orpos < ornum)
+    static_remove_rte(p, orbuf[orpos++]);
+
+  while (nrpos < nrnum)
+    static_add_rte(p, nrbuf[nrpos++]);
+
+  xfree(orbuf);
+  xfree(nrbuf);
 
   return 1;
-}
-
-static void
-static_copy_routes(list *dlst, list *slst)
-{
-  struct static_route *dr, *sr;
-
-  init_list(dlst);
-  WALK_LIST(sr, *slst)
-    {
-      /* copy one route */
-      dr = cfg_alloc(sizeof(struct static_route));
-      memcpy(dr, sr, sizeof(struct static_route));
-
-      /* This fn is supposed to be called on fresh src routes, which have 'live'
-	 fields (like .chain, .neigh or .installed) zero, so no need to zero them */
-
-      /* We need to copy multipath chain, because there are backptrs in 'if_name' */
-      if (dr->dest == RTD_MULTIPATH)
-	{
-	  struct static_route *md, *ms, **mp_last;
-
-	  mp_last = &(dr->mp_next);
-	  for (ms = sr->mp_next; ms; ms = ms->mp_next)
-	    {
-	      md = cfg_alloc(sizeof(struct static_route));
-	      memcpy(md, ms, sizeof(struct static_route));
-	      md->if_name = (void *) dr; /* really */
-
-	      *mp_last = md;
-	      mp_last = &(md->mp_next);
-	    }
-	  *mp_last = NULL;
-	}
-
-      add_tail(dlst, (node *) dr);
-    }
 }
 
 static void
@@ -646,17 +560,84 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
   struct static_config *d = (struct static_config *) dest;
   struct static_config *s = (struct static_config *) src;
 
-  /* Copy route lists */
-  static_copy_routes(&d->iface_routes, &s->iface_routes);
-  static_copy_routes(&d->other_routes, &s->other_routes);
+  struct static_route *srt, *snh;
+
+  /* Copy route list */
+  init_list(&d->routes);
+  WALK_LIST(srt, s->routes)
+  {
+    struct static_route *drt = NULL, *dnh = NULL, **dnp = &drt;
+
+    for (snh = srt; snh; snh = snh->mp_next)
+    {
+      dnh = cfg_alloc(sizeof(struct static_route));
+      memcpy(dnh, snh, sizeof(struct static_route));
+
+      if (!drt)
+	add_tail(&d->routes, &(dnh->n));
+
+      *dnp = dnh;
+      dnp = &(dnh->mp_next);
+
+      if (snh->mp_head)
+	dnh->mp_head = drt;
+    }
+  }
 }
+
+static void
+static_show_rt(struct static_route *r)
+{
+  switch (r->dest)
+  {
+  case RTD_UNICAST:
+  {
+    struct static_route *r2;
+
+    cli_msg(-1009, "%N", r->net);
+    for (r2 = r; r2; r2 = r2->mp_next)
+    {
+      if (r2->iface && ipa_zero(r2->via))
+	cli_msg(-1009, "\tdev %s%s%s", r2->iface->name,
+		r2->bfd_req ? " (bfd)" : "", r2->active ? "" : " (dormant)");
+      else
+	cli_msg(-1009, "\tvia %I%J%s%s", r2->via, r2->iface,
+		r2->bfd_req ? " (bfd)" : "", r2->active ? "" : " (dormant)");
+    }
+    break;
+  }
+
+  case RTD_NONE:
+  case RTD_BLACKHOLE:
+  case RTD_UNREACHABLE:
+  case RTD_PROHIBIT:
+    cli_msg(-1009, "%N\t%s", r->net, rta_dest_names[r->dest]);
+    break;
+
+  case RTDX_RECURSIVE:
+    cli_msg(-1009, "%N\trecursive %I", r->net, r->via);
+    break;
+  }
+}
+
+void
+static_show(struct proto *P)
+{
+  struct static_config *c = (void *) P->cf;
+  struct static_route *r;
+
+  WALK_LIST(r, c->routes)
+    static_show_rt(r);
+  cli_msg(0, "");
+}
+
 
 struct protocol proto_static = {
   .name =		"Static",
   .template =		"static%d",
   .preference =		DEF_PREF_STATIC,
   .channel_mask =	NB_ANY,
-  .proto_size =		sizeof(struct proto),
+  .proto_size =		sizeof(struct static_proto),
   .config_size =	sizeof(struct static_config),
   .postconfig =		static_postconfig,
   .init =		static_init,
@@ -667,42 +648,3 @@ struct protocol proto_static = {
   .reconfigure =	static_reconfigure,
   .copy_config =	static_copy_config
 };
-
-static void
-static_show_rt(struct static_route *r)
-{
-  byte via[IPA_MAX_TEXT_LENGTH + 25];
-
-  switch (r->dest)
-    {
-    case RTD_ROUTER:	bsprintf(via, "via %I%J", r->via, r->via_if); break;
-    case RTD_DEVICE:	bsprintf(via, "dev %s", r->if_name); break;
-    case RTD_BLACKHOLE:	bsprintf(via, "blackhole"); break;
-    case RTD_UNREACHABLE: bsprintf(via, "unreachable"); break;
-    case RTD_PROHIBIT:	bsprintf(via, "prohibited"); break;
-    case RTD_MULTIPATH:	bsprintf(via, "multipath"); break;
-    case RTDX_RECURSIVE: bsprintf(via, "recursive %I", r->via); break;
-    default:		bsprintf(via, "???");
-    }
-  cli_msg(-1009, "%N %s%s%s", r->net, via,
-	  r->bfd_req ? " (bfd)" : "", r->installed ? "" : " (dormant)");
-
-  struct static_route *r2;
-  if (r->dest == RTD_MULTIPATH)
-    for (r2 = r->mp_next; r2; r2 = r2->mp_next)
-      cli_msg(-1009, "\tvia %I%J weight %d%s%s", r2->via, r2->via_if, r2->weight + 1,
-	      r2->bfd_req ? " (bfd)" : "", r2->installed ? "" : " (dormant)");
-}
-
-void
-static_show(struct proto *P)
-{
-  struct static_config *c = (void *) P->cf;
-  struct static_route *r;
-
-  WALK_LIST(r, c->other_routes)
-    static_show_rt(r);
-  WALK_LIST(r, c->iface_routes)
-    static_show_rt(r);
-  cli_msg(0, "");
-}

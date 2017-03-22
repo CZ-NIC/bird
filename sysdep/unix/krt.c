@@ -645,17 +645,11 @@ krt_same_dest(rte *k, rte *e)
 
   if (ka->dest != ea->dest)
     return 0;
-  switch (ka->dest)
-    {
-    case RTD_ROUTER:
-      return ipa_equal(ka->gw, ea->gw);
-    case RTD_DEVICE:
-      return !strcmp(ka->iface->name, ea->iface->name);
-    case RTD_MULTIPATH:
-      return mpnh_same(ka->nexthops, ea->nexthops);
-    default:
-      return 1;
-    }
+
+  if (ka->dest == RTD_UNICAST)
+    return nexthop_same(&(ka->nh), &(ea->nh));
+
+  return 1;
 }
 
 /*
@@ -990,7 +984,7 @@ krt_store_tmp_attrs(rte *rt, struct ea_list *attrs)
 static int
 krt_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct linpool *pool UNUSED)
 {
-  struct krt_proto *p = (struct krt_proto *) P;
+  // struct krt_proto *p = (struct krt_proto *) P;
   rte *e = *new;
 
   if (e->attrs->src->proto == P)
@@ -1010,11 +1004,6 @@ krt_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct li
 #endif
     return -1;
   }
-
-  if (!KRT_CF->devroutes &&
-      (e->attrs->dest == RTD_DEVICE) &&
-      (e->attrs->source != RTS_STATIC_DEVICE))
-    return -1;
 
   if (!krt_capable(e))
     return -1;
@@ -1153,7 +1142,8 @@ krt_start(struct proto *P)
   {
   case NET_IP4:	p->af = AF_INET; break;
   case NET_IP6:	p->af = AF_INET6; break;
-  default:	ASSERT(0);
+  case NET_MPLS: p->af = AF_MPLS; break;
+  default: log(L_ERR "KRT: Tried to start with strange net type: %d", p->p.net_type); return PS_START; break;
   }
 
   add_tail(&krt_proto_list, &p->krt_node);
@@ -1264,7 +1254,7 @@ struct protocol proto_unix_kernel = {
   .template =		"kernel%d",
   .attr_class =		EAP_KRT,
   .preference =		DEF_PREF_INHERITED,
-  .channel_mask =	NB_IP,
+  .channel_mask =	NB_IP | NB_MPLS,
   .proto_size =		sizeof(struct krt_proto),
   .config_size =	sizeof(struct krt_config),
   .preconfig =		krt_preconfig,

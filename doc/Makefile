@@ -36,8 +36,8 @@ $(o)%.ps: $(o)%.dvi
 	dvips -D600 -ta4 -o $@ $<
 
 $(o)%.pdf: $(o)%.tex
-	pdflatex -output-directory=$(dir $@) $<
-	pdflatex -output-directory=$(dir $@) $<
+	TEXINPUTS=$(TEXINPUTS):$(doc-srcdir)/tex pdflatex -output-directory=$(dir $@) $<
+	TEXINPUTS=$(TEXINPUTS):$(doc-srcdir)/tex pdflatex -output-directory=$(dir $@) $<
 
 $(o)%.txt: $(o)%.sgml
 	cd $(dir $@) && $(sgml2)txt $(notdir $<)

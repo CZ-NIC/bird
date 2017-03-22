@@ -146,6 +146,8 @@ void val_format(struct f_val v, buffer *buf);
 #define T_ENUM_RTC 0x33
 #define T_ENUM_RTD 0x34
 #define T_ENUM_ROA 0x35
+#define T_ENUM_NETTYPE 0x36
+
 /* new enums go here */
 #define T_ENUM_EMPTY 0x3f	/* Special hack for atomic_aggr */
 
@@ -162,6 +164,7 @@ void val_format(struct f_val v, buffer *buf);
 #define T_ECLIST 0x27		/* Extended community list */
 #define T_LC 0x28		/* Large community value, lcomm */
 #define T_LCLIST 0x29		/* Large community list */
+#define T_RD 0x2a		/* Route distinguisher for VPN addresses */
 
 #define T_RETURN 0x40
 #define T_SET 0x80
@@ -174,10 +177,9 @@ void val_format(struct f_val v, buffer *buf);
 #define SA_PROTO	 4
 #define SA_SOURCE	 5
 #define SA_SCOPE	 6
-#define SA_CAST		 7
-#define SA_DEST		 8
-#define SA_IFNAME	 9
-#define SA_IFINDEX	10
+#define SA_DEST    	 7
+#define SA_IFNAME  	 8
+#define SA_IFINDEX    	 9
 
 
 struct f_tree {

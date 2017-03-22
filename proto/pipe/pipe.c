@@ -51,7 +51,7 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
   struct rte_src *src;
 
   rte *e;
-  rta a;
+  rta *a;
 
   if (!new && !old)
     return;
@@ -65,12 +65,13 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
 
   if (new)
     {
-      memcpy(&a, new->attrs, sizeof(rta));
+      a = alloca(rta_size(new->attrs));
+      memcpy(a, new->attrs, rta_size(new->attrs));
 
-      a.aflags = 0;
-      a.eattrs = attrs;
-      a.hostentry = NULL;
-      e = rte_get_temp(&a);
+      a->aflags = 0;
+      a->eattrs = attrs;
+      a->hostentry = NULL;
+      e = rte_get_temp(a);
       e->pflags = 0;
 
       /* Copy protocol specific embedded attributes. */
@@ -78,7 +79,7 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
       e->pref = new->pref;
       e->pflags = new->pflags;
 
-      src = a.src;
+      src = a->src;
     }
   else
     {

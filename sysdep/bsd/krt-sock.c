@@ -147,9 +147,7 @@ krt_capable(rte *e)
   rta *a = e->attrs;
 
   return
-    a->cast == RTC_UNICAST &&
-    (a->dest == RTD_ROUTER
-     || a->dest == RTD_DEVICE
+    ((a->dest == RTD_UNICAST && !a->nh.next) /* No multipath support */
 #ifdef RTF_REJECT
      || a->dest == RTD_UNREACHABLE
 #endif
@@ -190,12 +188,11 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   net *net = e->net;
   rta *a = e->attrs;
   static int msg_seq;
-  struct iface *j, *i = a->iface;
+  struct iface *j, *i = a->nh.iface;
   int l;
   struct ks_msg msg;
   char *body = (char *)msg.buf;
   sockaddr gate, mask, dst;
-  ip_addr gw;
 
   DBG("krt-sock: send %I/%d via %I\n", net->n.prefix, net->n.pxlen, a->gw);
 
@@ -225,14 +222,12 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
     msg.rtm.rtm_flags |= RTF_BLACKHOLE;
 #endif
 
-  /* This is really very nasty, but I'm not able
-   * to add "(reject|blackhole)" route without
-   * gateway set
+  /*
+   * This is really very nasty, but I'm not able to add reject/blackhole route
+   * without gateway address.
    */
-  if(!i)
+  if (!i)
   {
-    i = HEAD(iface_list);
-
     WALK_LIST(j, iface_list)
     {
       if (j->flags & IF_LOOPBACK)
@@ -241,13 +236,13 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
         break;
       }
     }
+
+    if (!i)
+    {
+      log(L_ERR "KRT: Cannot find loopback iface");
+      return -1;
+    }
   }
-
-  gw = a->gw;
-
-  /* Embed interface ID to link-local address */
-  if (ipa_is_link_local(gw))
-    _I0(gw) = 0xfe800000 | (i->index & 0x0000ffff);
 
   int af = AF_UNSPEC;
 
@@ -263,43 +258,51 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
       return -1;
   }
 
-
   sockaddr_fill(&dst,  af, net_prefix(net->n.addr), NULL, 0);
   sockaddr_fill(&mask, af, net_pxmask(net->n.addr), NULL, 0);
-  sockaddr_fill(&gate, af, gw, NULL, 0);
 
   switch (a->dest)
   {
-    case RTD_ROUTER:
+  case RTD_UNICAST:
+    if (ipa_nonzero(a->nh.gw))
+    {
+      ip_addr gw = a->nh.gw;
+
+      /* Embed interface ID to link-local address */
+      if (ipa_is_link_local(gw))
+	_I0(gw) = 0xfe800000 | (i->index & 0x0000ffff);
+
+      sockaddr_fill(&gate, af, gw, NULL, 0);
       msg.rtm.rtm_flags |= RTF_GATEWAY;
       msg.rtm.rtm_addrs |= RTA_GATEWAY;
       break;
+    }
 
 #ifdef RTF_REJECT
-    case RTD_UNREACHABLE:
+  case RTD_UNREACHABLE:
 #endif
 #ifdef RTF_BLACKHOLE
-    case RTD_BLACKHOLE:
+  case RTD_BLACKHOLE:
 #endif
-    case RTD_DEVICE:
-      if(i)
-      {
+  {
+    /* Fallback for all other valid cases */
+    if (!i->addr)
+    {
+      log(L_ERR "KRT: interface %s has no IP addess", i->name);
+      return -1;
+    }
+
 #ifdef RTF_CLONING
-        if (cmd == RTM_ADD && (i->flags & IF_MULTIACCESS) != IF_MULTIACCESS)	/* PTP */
-          msg.rtm.rtm_flags |= RTF_CLONING;
+    if (cmd == RTM_ADD && (i->flags & IF_MULTIACCESS) != IF_MULTIACCESS)	/* PTP */
+      msg.rtm.rtm_flags |= RTF_CLONING;
 #endif
 
-        if(!i->addr) {
-          log(L_ERR "KRT: interface %s has no IP addess", i->name);
-          return -1;
-        }
+    sockaddr_fill(&gate, ipa_is_ip4(i->addr->ip) ? AF_INET : AF_INET6, i->addr->ip, NULL, 0);
+    msg.rtm.rtm_addrs |= RTA_GATEWAY;
+  }
 
-	sockaddr_fill(&gate, ipa_is_ip4(i->addr->ip) ? AF_INET : AF_INET6, i->addr->ip, NULL, 0);
-        msg.rtm.rtm_addrs |= RTA_GATEWAY;
-      }
-      break;
-    default:
-      bug("krt-sock: unknown flags, but not filtered");
+  default:
+    bug("krt-sock: unknown flags, but not filtered");
   }
 
   msg.rtm.rtm_index = i->index;
@@ -469,7 +472,6 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
     .src = p->p.main_source,
     .source = RTS_INHERIT,
     .scope = SCOPE_UNIVERSE,
-    .cast = RTC_UNICAST
   };
 
   /* reject/blackhole routes have also set RTF_GATEWAY,
@@ -489,39 +491,37 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   }
 #endif
 
-  a.iface = if_find_by_index(msg->rtm.rtm_index);
-  if (!a.iface)
+  a.nh.iface = if_find_by_index(msg->rtm.rtm_index);
+  if (!a.nh.iface)
     {
       log(L_ERR "KRT: Received route %N with unknown ifindex %u",
 	  net->n.addr, msg->rtm.rtm_index);
       return;
     }
 
+  a.dest = RTD_UNICAST;
   if (flags & RTF_GATEWAY)
   {
     neighbor *ng;
-    a.dest = RTD_ROUTER;
-    a.gw = igate;
+    a.nh.gw = igate;
 
     /* Clean up embedded interface ID returned in link-local address */
-    if (ipa_is_link_local(a.gw))
-      _I0(a.gw) = 0xfe800000;
+    if (ipa_is_link_local(a.nh.gw))
+      _I0(a.nh.gw) = 0xfe800000;
 
-    ng = neigh_find2(&p->p, &a.gw, a.iface, 0);
+    ng = neigh_find2(&p->p, &a.nh.gw, a.nh.iface, 0);
     if (!ng || (ng->scope == SCOPE_HOST))
       {
 	/* Ignore routes with next-hop 127.0.0.1, host routes with such
 	   next-hop appear on OpenBSD for address aliases. */
-        if (ipa_classify(a.gw) == (IADDR_HOST | SCOPE_HOST))
+        if (ipa_classify(a.nh.gw) == (IADDR_HOST | SCOPE_HOST))
           return;
 
 	log(L_ERR "KRT: Received route %N with strange next-hop %I",
-	    net->n.addr, a.gw);
+	    net->n.addr, a.nh.gw);
 	return;
       }
   }
-  else
-    a.dest = RTD_DEVICE;
 
  done:
   e = rte_get_temp(&a);
