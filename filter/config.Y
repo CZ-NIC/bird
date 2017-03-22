@@ -400,6 +400,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	FROM, GW, NET, MASK, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX,
 	PREFERENCE,
 	ROA_CHECK, ASN,
+	IS_V4, IS_V6,
 	LEN, MAXLEN,
 	DEFINED,
 	ADD, DELETE, CONTAINS, RESET,
@@ -890,7 +891,8 @@ term:
 
  | rtadot dynamic_attr { $$ = $2; $$->code = P('e','a'); }
 
- | term '.' TYPE { $$ = f_new_inst(); $$->code = 'T';  $$->a1.p = $1; }
+ | term '.' IS_V4 { $$ = f_new_inst(); $$->code = P('I','i'); $$->a1.p = $1; }
+ | term '.' TYPE { $$ = f_new_inst(); $$->code = 'T'; $$->a1.p = $1; }
  | term '.' IP { $$ = f_new_inst(); $$->code = P('c','p'); $$->a1.p = $1; $$->aux = T_IP; }
  | term '.' RD { $$ = f_new_inst(); $$->code = P('R','D'); $$->a1.p = $1; $$->aux = T_RD; }
  | term '.' LEN { $$ = f_new_inst(); $$->code = 'L'; $$->a1.p = $1; }

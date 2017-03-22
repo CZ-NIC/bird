@@ -1186,7 +1186,8 @@ foot).
 	<tag><label id="type-ip">ip</tag>
 	This type can hold a single IP address. Depending on the compile-time
 	configuration of BIRD you are using, it is either an IPv4 or IPv6
-	address. IP addresses are written in the standard notation
+	address; this may be checked by <cf>.is_ip4</cf> which returns <cf/bool/.
+        IP addresses are written in the standard notation
 	(<cf/10.20.30.40/ or <cf/fec0:3:4::1/). You can apply special operator
 	<cf>.mask(<M>num</M>)</cf> on values of type ip. It masks out all but
 	first <cf><M>num</M></cf> bits from the IP address. So

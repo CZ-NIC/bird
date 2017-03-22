@@ -829,6 +829,13 @@ interpret(struct f_inst *what)
 	runtime( "Can't determine type of this item" );
     }
     break;
+  case P('I','i'):
+    ONEARG;
+    if (v1.type != T_IP)
+      runtime( "IP version check needs an IP address" );
+    res.type = T_BOOL;
+    res.val.i = ipa_is_ip4(v1.val.ip);
+    break;
 
   /* Set to indirect value, a1 = variable, a2 = value */
   case 's':
