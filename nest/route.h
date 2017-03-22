@@ -551,7 +551,15 @@ static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta
 void rta_dump(rta *);
 void rta_dump_all(void);
 void rta_show(struct cli *, rta *, ea_list *);
-void rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, mpls_label_stack *mls);
+
+struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
+void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls);
+
+static inline void
+rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, mpls_label_stack *mls)
+{
+  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ll, dep), mls);
+}
 
 /*
  * rta_set_recursive_next_hop() acquires hostentry from hostcache and fills

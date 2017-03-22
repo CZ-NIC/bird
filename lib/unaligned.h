@@ -29,6 +29,13 @@ get_u16(const void *p)
 }
 
 static inline u32
+get_u24(const void *P)
+{
+  const byte *p = P;
+  return (p[0] << 16) + (p[1] << 8) + p[2];
+}
+
+static inline u32
 get_u32(const void *p)
 {
   u32 x;
@@ -50,6 +57,13 @@ put_u16(void *p, u16 x)
 {
   x = htons(x);
   memcpy(p, &x, 2);
+}
+
+static inline void
+put_u24(void *p, u32 x)
+{
+  x = htonl(x);
+  memcpy(p, ((char *) &x) + 1, 3);
 }
 
 static inline void

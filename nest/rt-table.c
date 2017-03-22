@@ -1766,7 +1766,7 @@ rta_next_hop_outdated(rta *a)
     (!he->nexthop_linkable) || !nexthop_same(&(a->nh), &(he->src->nh));
 }
 
-static inline void
+void
 rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls)
 {
   a->hostentry = he;
@@ -1794,7 +1794,7 @@ no_nexthop:
 
   struct nexthop *nhp = NULL, *nhr = NULL;
   int skip_nexthop = 0;
-  
+
   for (struct nexthop *nh = &(he->src->nh); nh; nh = nh->next)
   {
     if (skip_nexthop)
@@ -2475,7 +2475,7 @@ rt_update_hostcache(rtable *tab)
   tab->hcu_scheduled = 0;
 }
 
-static struct hostentry *
+struct hostentry *
 rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
 {
   struct hostentry *he;
@@ -2489,15 +2489,9 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
     if (ipa_equal(he->addr, a) && (he->tab == dep))
       return he;
 
-  he = hc_new_hostentry(hc, a, ll, dep, k);
+  he = hc_new_hostentry(hc, a, ipa_zero(ll) ? a : ll, dep, k);
   rt_update_hostentry(tab, he);
   return he;
-}
-
-void
-rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, mpls_label_stack *mls)
-{
-  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ipa_zero(ll) ? gw : ll, dep), mls);
 }
 
 

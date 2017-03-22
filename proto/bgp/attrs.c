@@ -629,6 +629,75 @@ bgp_decode_large_community(struct bgp_parse_state *s, uint code UNUSED, uint fla
   bgp_set_attr_ptr(to, s->pool, BA_LARGE_COMMUNITY, flags, ad);
 }
 
+static void
+bgp_export_mpls_label_stack(struct bgp_export_state *s, eattr *a)
+{
+  net_addr *n = s->route->net->n.addr;
+  u32 *labels = (u32 *) a->u.ptr->data;
+  uint lnum = a->u.ptr->length / 4;
+
+  /* Perhaps we should just ignore it? */
+  if (!s->mpls)
+    WITHDRAW("Unexpected MPLS stack");
+
+  /* Empty MPLS stack is not allowed */
+  if (!lnum)
+    WITHDRAW("Malformed MPLS stack - empty");
+
+  /* This is ugly, but we must ensure that labels fit into NLRI field */
+  if ((24*lnum + (net_is_vpn(n) ? 64 : 0) + net_pxlen(n)) > 255)
+    WITHDRAW("Malformed MPLS stack - too many labels (%u)", lnum);
+
+  for (uint i = 0; i < lnum; i++)
+  {
+    if (labels[i] > 0xfffff)
+      WITHDRAW("Malformed MPLS stack - invalid label (%u)", labels[i]);
+
+    /* TODO: Check for special-purpose label values? */
+  }
+}
+
+static int
+bgp_encode_mpls_label_stack(struct bgp_write_state *s, eattr *a, byte *buf UNUSED, uint size UNUSED)
+{
+  /*
+   * MPLS labels are encoded as a part of the NLRI in MP_REACH_NLRI attribute,
+   * so we store MPLS_LABEL_STACK and encode it later by AFI-specific hooks.
+   */
+
+  s->mpls_labels = a->u.ptr;
+  return 0;
+}
+
+static void
+bgp_decode_mpls_label_stack(struct bgp_parse_state *s, uint code UNUSED, uint flags UNUSED, byte *data UNUSED, uint len UNUSED, ea_list **to UNUSED)
+{
+  DISCARD("Discarding received attribute #0");
+}
+
+static void
+bgp_format_mpls_label_stack(eattr *a, byte *buf, uint size)
+{
+  u32 *labels = (u32 *) a->u.ptr->data;
+  uint lnum = a->u.ptr->length / 4;
+  char *pos = buf;
+
+  for (uint i = 0; i < lnum; i++)
+  {
+    if (size < 20)
+    {
+      bsprintf(pos, "...");
+      return;
+    }
+
+    uint l = bsprintf(pos, "%d/", labels[i]);
+    ADVANCE(pos, size, l);
+  }
+
+  /* Clear last slash or terminate empty string */
+  pos[lnum ? -1 : 0] = 0;
+}
+
 static inline void
 bgp_decode_unknown(struct bgp_parse_state *s, uint code, uint flags, byte *data, uint len, ea_list **to)
 {
@@ -763,6 +832,14 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
     .encode = bgp_encode_u32s,
     .decode = bgp_decode_large_community,
   },
+  [BA_MPLS_LABEL_STACK] = {
+    .name = "mpls_label_stack",
+    .type = EAF_TYPE_INT_SET,
+    .export = bgp_export_mpls_label_stack,
+    .encode = bgp_encode_mpls_label_stack,
+    .decode = bgp_decode_mpls_label_stack,
+    .format = bgp_format_mpls_label_stack,
+  },
 };
 
 static inline int
@@ -849,7 +926,6 @@ bgp_export_attrs(struct bgp_export_state *s, ea_list *attrs)
     return NULL;
 
   return new;
-
 }
 
 
@@ -1340,7 +1416,7 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
 {
   struct proto *SRC = e->attrs->src->proto;
   struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (void *) SRC : NULL;
-  struct bgp_export_state s = { .proto = p, .channel =c, .pool = pool, .src = src, .route = e };
+  struct bgp_export_state s = { .proto = p, .channel = c, .pool = pool, .src = src, .route = e, .mpls = c->desc->mpls };
   ea_list *attrs = attrs0;
   eattr *a;
   adata *ad;
@@ -1453,13 +1529,13 @@ bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old, ea
 
   if (new)
   {
-    attrs = bgp_update_attrs(p, c, new, attrs, bgp_linpool);
+    attrs = bgp_update_attrs(p, c, new, attrs, bgp_linpool2);
 
     /* If attributes are invalid, we fail back to withdraw */
     buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
     path = new->attrs->src->global_id;
 
-    lp_flush(bgp_linpool);
+    lp_flush(bgp_linpool2);
   }
   else
   {

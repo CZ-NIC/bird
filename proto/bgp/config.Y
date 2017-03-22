@@ -139,6 +139,10 @@ bgp_afi:
  | IPV6 { $$ = BGP_AF_IPV6; }
  | IPV4 MULTICAST { $$ = BGP_AF_IPV4_MC; }
  | IPV6 MULTICAST { $$ = BGP_AF_IPV6_MC; }
+ | IPV4 MPLS { $$ = BGP_AF_IPV4_MPLS; }
+ | IPV6 MPLS { $$ = BGP_AF_IPV6_MPLS; }
+ | VPN4 MPLS { $$ = BGP_AF_VPN4_MPLS; }
+ | VPN6 MPLS { $$ = BGP_AF_VPN6_MPLS; }
  | FLOW4 { $$ = BGP_AF_FLOW4; }
  | FLOW6 { $$ = BGP_AF_FLOW6; }
  ;

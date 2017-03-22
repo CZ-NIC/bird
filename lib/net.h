@@ -35,6 +35,8 @@
 #define NB_MPLS		(1 << NET_MPLS)
 
 #define NB_IP		(NB_IP4 | NB_IP6)
+#define NB_VPN		(NB_VPN4 | NB_VPN6)
+#define NB_FLOW		(NB_FLOW4 | NB_FLOW6)
 #define NB_ANY		0xffffffff
 
 
@@ -480,6 +482,12 @@ static inline void net_normalize_ip4(net_addr_ip4 *n)
 
 static inline void net_normalize_ip6(net_addr_ip6 *n)
 { n->prefix = ip6_and(n->prefix, ip6_mkmask(n->pxlen)); }
+
+static inline void net_normalize_vpn4(net_addr_vpn4 *n)
+{ net_normalize_ip4((net_addr_ip4 *) n); }
+
+static inline void net_normalize_vpn6(net_addr_vpn6 *n)
+{ net_normalize_ip6((net_addr_ip6 *) n); }
 
 void net_normalize(net_addr *N);
 

@@ -31,6 +31,8 @@ struct eattr;
 
 #define BGP_SAFI_UNICAST	1
 #define BGP_SAFI_MULTICAST	2
+#define BGP_SAFI_MPLS		4
+#define BGP_SAFI_MPLS_VPN	128
 #define BGP_SAFI_FLOW		133
 
 /* Internal AF codes */
@@ -43,6 +45,10 @@ struct eattr;
 #define BGP_AF_IPV6		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_UNICAST )
 #define BGP_AF_IPV4_MC		BGP_AF( BGP_AFI_IPV4, BGP_SAFI_MULTICAST )
 #define BGP_AF_IPV6_MC		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_MULTICAST )
+#define BGP_AF_IPV4_MPLS	BGP_AF( BGP_AFI_IPV4, BGP_SAFI_MPLS )
+#define BGP_AF_IPV6_MPLS	BGP_AF( BGP_AFI_IPV6, BGP_SAFI_MPLS )
+#define BGP_AF_VPN4_MPLS	BGP_AF( BGP_AFI_IPV4, BGP_SAFI_MPLS_VPN )
+#define BGP_AF_VPN6_MPLS	BGP_AF( BGP_AFI_IPV6, BGP_SAFI_MPLS_VPN )
 #define BGP_AF_FLOW4		BGP_AF( BGP_AFI_IPV4, BGP_SAFI_FLOW )
 #define BGP_AF_FLOW6		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_FLOW )
 
@@ -55,6 +61,7 @@ struct bgp_bucket;
 struct bgp_af_desc {
   u32 afi;
   u32 net;
+  int mpls;
   const char *name;
   uint (*encode_nlri)(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size);
   void (*decode_nlri)(struct bgp_parse_state *s, byte *pos, uint len, rta *a);
@@ -308,6 +315,7 @@ struct bgp_export_state {
 
   struct bgp_proto *src;
   rte *route;
+  int mpls;
 
   u32 attrs_seen[1];
   uint err_withdraw;
@@ -320,8 +328,10 @@ struct bgp_write_state {
 
   int as4_session;
   int add_path;
+  int mpls;
 
   eattr *mp_next_hop;
+  adata *mpls_labels;
 };
 
 struct bgp_parse_state {
@@ -331,13 +341,12 @@ struct bgp_parse_state {
 
   int as4_session;
   int add_path;
+  int mpls;
 
   u32 attrs_seen[256/32];
 
   u32 mp_reach_af;
   u32 mp_unreach_af;
-
-  mpls_label_stack mls;
 
   uint attr_len;
   uint ip_reach_len;
@@ -358,6 +367,9 @@ struct bgp_parse_state {
   uint err_withdraw;
   uint err_subcode;
   jmp_buf err_jmpbuf;
+
+  struct hostentry *hostentry;
+  adata *mpls_labels;
 
   /* Cached state for bgp_rte_update() */
   u32 last_id;
@@ -392,6 +404,7 @@ bgp_parse_error(struct bgp_parse_state *s, uint subcode)
 }
 
 extern struct linpool *bgp_linpool;
+extern struct linpool *bgp_linpool2;
 
 
 void bgp_start_timer(struct timer *t, int value);
@@ -527,6 +540,9 @@ void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 #define BA_AS4_PATH             0x11	/* RFC 6793 */
 #define BA_AS4_AGGREGATOR       0x12	/* RFC 6793 */
 #define BA_LARGE_COMMUNITY	0x20	/* RFC 8092 */
+
+/* Bird's private internal BGP attributes */
+#define BA_MPLS_LABEL_STACK	0xfe	/* MPLS label stack transfer attribute */
 
 /* BGP connection states */
 
