@@ -1291,7 +1291,7 @@ bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     }
 
     /* Encode prefix length */
-    *pos = net->pxlen;
+    *pos = 64 + net->pxlen;
     ADVANCE(pos, size, 1);
 
     /* Encode MPLS labels */
@@ -1417,7 +1417,7 @@ bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     }
 
     /* Encode prefix length */
-    *pos = net->pxlen;
+    *pos = 64 + net->pxlen;
     ADVANCE(pos, size, 1);
 
     /* Encode MPLS labels */
