@@ -61,7 +61,8 @@ struct bgp_bucket;
 struct bgp_af_desc {
   u32 afi;
   u32 net;
-  int mpls;
+  u8 mpls;
+  u8 no_igp;
   const char *name;
   uint (*encode_nlri)(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size);
   void (*decode_nlri)(struct bgp_parse_state *s, byte *pos, uint len, rta *a);
@@ -122,6 +123,7 @@ struct bgp_channel_config {
   struct channel_config c;
 
   u32 afi;
+  const struct bgp_af_desc *desc;
 
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   u8 next_hop_self;			/* Always set next hop to local IP address */
@@ -133,7 +135,9 @@ struct bgp_channel_config {
   u8 ext_next_hop;			/* Allow both IPv4 and IPv6 next hops */
   u8 add_path;				/* Use ADD-PATH extension [RFC 7911] */
 
-  struct rtable_config *igp_table;	/* Table used for recursive next hop lookups */
+  uint rest[0];				/* Remaining items are reconfigured separately */
+  struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */
+  struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
 };
 
 #define MLL_SELF 1
@@ -274,7 +278,8 @@ struct bgp_channel {
   HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
   slab *prefix_slab;			/* Slab holding prefix nodes */
 
-  rtable *igp_table;			/* Table used for recursive next hop lookups */
+  rtable *igp_table_ip4;		/* Table for recursive IPv4 next hop lookups */
+  rtable *igp_table_ip6;		/* Table for recursive IPv6 next hop lookups */
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   ip_addr link_addr;			/* Link-local version of next_hop_addr */
 
@@ -391,6 +396,12 @@ static inline int bgp_channel_is_ipv4(struct bgp_channel *c)
 { return BGP_AFI(c->afi) == BGP_AFI_IPV4; }
 
 static inline int bgp_channel_is_ipv6(struct bgp_channel *c)
+{ return BGP_AFI(c->afi) == BGP_AFI_IPV6; }
+
+static inline int bgp_cc_is_ipv4(struct bgp_channel_config *c)
+{ return BGP_AFI(c->afi) == BGP_AFI_IPV4; }
+
+static inline int bgp_cc_is_ipv6(struct bgp_channel_config *c)
 { return BGP_AFI(c->afi) == BGP_AFI_IPV6; }
 
 static inline uint bgp_max_packet_length(struct bgp_conn *conn)

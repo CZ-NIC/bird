@@ -1066,7 +1066,6 @@ bgp_start_neighbor(struct bgp_proto *p)
   {
     /* Find some link-local address for given iface */
     struct ifa *a;
-    p->link_addr = IPA_NONE;
     WALK_LIST(a, p->neigh->iface->addrs)
       if (a->scope == SCOPE_LINK)
       {
@@ -1294,6 +1293,7 @@ bgp_start(struct proto *P)
 
   p->remote_id = 0;
   p->source_addr = p->cf->local_ip;
+  p->link_addr = IPA_NONE;
 
   /* XXXX */
   if (p->p.gr_recovery && p->cf->gr_mode)
@@ -1415,12 +1415,6 @@ bgp_init(struct proto_config *CF)
   return P;
 }
 
-static inline rtable *
-get_igp_table(struct bgp_channel_config *cf)
-{
-  return cf->igp_table ? cf->igp_table->table : cf->c.table->table;
-}
-
 static void
 bgp_channel_init(struct channel *C, struct channel_config *CF)
 {
@@ -1429,8 +1423,13 @@ bgp_channel_init(struct channel *C, struct channel_config *CF)
 
   c->cf = cf;
   c->afi = cf->afi;
-  c->desc = bgp_get_af_desc(c->afi);
-  c->igp_table = get_igp_table(cf);
+  c->desc = cf->desc;
+
+  if (cf->igp_table_ip4)
+    c->igp_table_ip4 = cf->igp_table_ip4->table;
+
+  if (cf->igp_table_ip6)
+    c->igp_table_ip6 = cf->igp_table_ip6->table;
 }
 
 static int
@@ -1440,7 +1439,11 @@ bgp_channel_start(struct channel *C)
   struct bgp_channel *c = (void *) C;
   ip_addr src = p->source_addr;
 
-  rt_lock_table(c->igp_table);
+  if (c->igp_table_ip4)
+    rt_lock_table(c->igp_table_ip4);
+
+  if (c->igp_table_ip6)
+    rt_lock_table(c->igp_table_ip6);
 
   c->pool = p->p.pool; // XXXX
   bgp_init_bucket_table(c);
@@ -1453,15 +1456,22 @@ bgp_channel_start(struct channel *C)
   /* Try to use source address as next hop address */
   if (ipa_zero(c->next_hop_addr))
   {
-    if (bgp_channel_is_ipv4(c) && ipa_is_ip4(src))
+    if (bgp_channel_is_ipv4(c) && (ipa_is_ip4(src) || c->ext_next_hop))
       c->next_hop_addr = src;
 
-    if (bgp_channel_is_ipv6(c) && ipa_is_ip6(src) && !ipa_is_link_local(src))
+    if (bgp_channel_is_ipv6(c) && (ipa_is_ip6(src) || c->ext_next_hop))
       c->next_hop_addr = src;
   }
 
+  /* Exit if no feasible next hop address is found */
+  if (ipa_zero(c->next_hop_addr))
+  {
+    log(L_WARN "%s: Missing next hop address", p->p.name);
+    return 0;
+  }
+
   /* Set link-local address for IPv6 single-hop BGP */
-  if (bgp_channel_is_ipv6(c) && p->neigh)
+  if (ipa_is_ip6(c->next_hop_addr) && p->neigh)
   {
     c->link_addr = p->link_addr;
 
@@ -1469,9 +1479,9 @@ bgp_channel_start(struct channel *C)
       log(L_WARN "%s: Missing link-local address", p->p.name);
   }
 
-  /* No next hop address is valid on IPv6 link-local BGP */
-  if (ipa_zero(c->next_hop_addr) && !ipa_is_link_local(src))
-    log(L_WARN "%s: Missing next hop address", p->p.name);
+  /* Link local address is already in c->link_addr */
+  if (ipa_is_link_local(c->next_hop_addr))
+    c->next_hop_addr = IPA_NONE;
 
   return 0; /* XXXX: Currently undefined */
 }
@@ -1492,8 +1502,54 @@ bgp_channel_cleanup(struct channel *C)
 {
   struct bgp_channel *c = (void *) C;
 
-  rt_unlock_table(c->igp_table);
+  if (c->igp_table_ip4)
+    rt_unlock_table(c->igp_table_ip4);
+
+  if (c->igp_table_ip6)
+    rt_unlock_table(c->igp_table_ip6);
 }
+
+static inline struct bgp_channel_config *
+bgp_find_channel_config(struct bgp_config *cf, u32 afi)
+{
+  struct bgp_channel_config *cc;
+
+  WALK_LIST(cc, cf->c.channels)
+    if (cc->afi == afi)
+      return cc;
+
+  return NULL;
+}
+
+struct rtable_config *
+bgp_default_igp_table(struct bgp_config *cf, struct bgp_channel_config *cc, u32 type)
+{
+  struct bgp_channel_config *cc2;
+  struct rtable_config *tab;
+
+  /* First, try table connected by the channel */
+  if (cc->c.table->addr_type == type)
+    return cc->c.table;
+
+  /* Find paired channel with the same SAFI but the other AFI */
+  u32 afi2 = cc->afi ^ 0x30000;
+  cc2 = bgp_find_channel_config(cf, afi2);
+
+  /* Second, try IGP table configured in the paired channel */
+  if (cc2 && (tab = (type == NET_IP4) ? cc2->igp_table_ip4 : cc2->igp_table_ip6))
+    return tab;
+
+  /* Third, try table connected by the paired channel */
+  if (cc2 && (cc2->c.table->addr_type == type))
+    return cc2->c.table;
+
+  /* Last, try default table of given type */
+  if (tab = cf->c.global->def_tables[type])
+    return tab;
+
+  cf_error("Undefined IGP table");
+}
+
 
 void
 bgp_postconfig(struct proto_config *CF)
@@ -1568,6 +1624,15 @@ bgp_postconfig(struct proto_config *CF)
     if (cc->gr_able == 0xff)
       cc->gr_able = (cf->gr_mode == BGP_GR_ABLE);
 
+    if ((cc->gw_mode == GW_RECURSIVE) && !cc->desc->no_igp)
+    {
+      if (!cc->igp_table_ip4 && (bgp_cc_is_ipv4(cc) || cc->ext_next_hop))
+	cc->igp_table_ip4 = bgp_default_igp_table(cf, cc, NET_IP4);
+
+      if (!cc->igp_table_ip6 && (bgp_cc_is_ipv6(cc) || cc->ext_next_hop))
+	cc->igp_table_ip6 = bgp_default_igp_table(cf, cc, NET_IP6);
+    }
+
     if (cf->multihop && (cc->gw_mode == GW_DIRECT))
       cf_error("Multihop BGP cannot use direct gateway mode");
 
@@ -1637,11 +1702,17 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC)
 
   if (memcmp(((byte *) old) + sizeof(struct channel_config),
 	     ((byte *) new) + sizeof(struct channel_config),
-	     /* igp_table item is last and must be checked separately */
-	     OFFSETOF(struct bgp_channel_config, igp_table) - sizeof(struct channel_config)))
+	     /* Remaining items must be checked separately */
+	     OFFSETOF(struct bgp_channel_config, rest) - sizeof(struct channel_config)))
     return 0;
 
-  if (get_igp_table(old) != get_igp_table(new))
+  /* Check change in IGP tables */
+  rtable *old4 = old->igp_table_ip4 ? old->igp_table_ip4->table : NULL;
+  rtable *old6 = old->igp_table_ip6 ? old->igp_table_ip6->table : NULL;
+  rtable *new4 = new->igp_table_ip4 ? new->igp_table_ip4->table : NULL;
+  rtable *new6 = new->igp_table_ip6 ? new->igp_table_ip6->table : NULL;
+
+  if ((old4 != new4) || (old6 != new6))
     return 0;
 
   c->cf = new;
@@ -1956,9 +2027,17 @@ bgp_show_proto_info(struct proto *P)
 
   {
     /* XXXX ?? */
-    struct channel *c;
+    struct bgp_channel *c;
     WALK_LIST(c, p->p.channels)
-      channel_show_info(c);
+    {
+      channel_show_info(&c->c);
+
+      if (c->igp_table_ip4)
+	cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table_ip4->name);
+
+      if (c->igp_table_ip6)
+	cli_msg(-1006, "    IGP IPv6 table: %s", c->igp_table_ip6->name);
+    }
   }
 }
 

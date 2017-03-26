@@ -158,6 +158,7 @@ bgp_channel_start: bgp_afi
   BGP_CC->c.name = desc->name;
   BGP_CC->c.ra_mode = RA_UNDEF;
   BGP_CC->afi = $1;
+  BGP_CC->desc = desc;
   BGP_CC->gr_able = 0xff;	/* undefined */
 };
 
@@ -177,7 +178,12 @@ bgp_channel_item:
  | ADD PATHS RX { BGP_CC->add_path = BGP_ADD_PATH_RX; }
  | ADD PATHS TX { BGP_CC->add_path = BGP_ADD_PATH_TX; }
  | ADD PATHS bool { BGP_CC->add_path = $3 ? BGP_ADD_PATH_FULL : 0; }
- | IGP TABLE rtable { BGP_CC->igp_table = $3; }
+ | IGP TABLE rtable {
+     if (bgp_cc_is_ipv4(BGP_CC)) BGP_CC->igp_table_ip4 = $3;
+     if (bgp_cc_is_ipv6(BGP_CC)) BGP_CC->igp_table_ip6 = $3;
+   }
+ | IGP TABLE IPV4 rtable { BGP_CC->igp_table_ip4 = $4; }
+ | IGP TABLE IPV6 rtable { BGP_CC->igp_table_ip6 = $4; }
  ;
 
 bgp_channel_opts:
