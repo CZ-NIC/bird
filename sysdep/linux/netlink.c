@@ -1172,7 +1172,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int d
     priority = ea->u.data;
 
   if (priority)
-    nl_add_attr_u32(&r->h, sizeof(r), RTA_PRIORITY, priority);
+    nl_add_attr_u32(&r->h, rsize, RTA_PRIORITY, priority);
 
   /* For route delete, we do not specify remaining route attributes */
   if (op == NL_OP_DELETE)
