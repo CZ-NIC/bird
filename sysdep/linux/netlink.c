@@ -1143,7 +1143,7 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int d
   r->r.rtm_family = p->af;
   r->r.rtm_dst_len = net_pxlen(net->n.addr);
   r->r.rtm_protocol = RTPROT_BIRD;
-  r->r.rtm_scope = RT_SCOPE_UNIVERSE;
+  r->r.rtm_scope = RT_SCOPE_NOWHERE;
   if (p->af == AF_MPLS)
   {
     u32 label = net_mpls(net->n.addr);
