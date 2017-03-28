@@ -59,9 +59,12 @@ rd_format(const u64 rd, char *buf, int buflen)
 {
   switch (rd >> 48)
   {
-    case 0: return bsnprintf(buf, buflen, "0:%u:%u", (u32) (rd >> 32), (u32) rd);
-    case 1: return bsnprintf(buf, buflen, "1:%I4:%u", ip4_from_u32(rd >> 16), (u32) (rd & 0xffff));
-    case 2: return bsnprintf(buf, buflen, "2:%u:%u", (u32) (rd >> 16), (u32) (rd & 0xffff));
+    case 0: return bsnprintf(buf, buflen, "%u:%u", (u32) (rd >> 32), (u32) rd);
+    case 1: return bsnprintf(buf, buflen, "%I4:%u", ip4_from_u32(rd >> 16), (u32) (rd & 0xffff));
+    case 2: if (((u32) (rd >> 16)) >> 16)
+	      return bsnprintf(buf, buflen, "%u:%u", (u32) (rd >> 16), (u32) (rd & 0xffff));
+	    else
+	      return bsnprintf(buf, buflen, "2:%u:%u", (u32) (rd >> 16), (u32) (rd & 0xffff));
     default: return bsnprintf(buf, buflen, "X:%08x:%08x", (u32) (rd >> 32), (u32) rd);
   }
 }
