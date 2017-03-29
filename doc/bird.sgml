@@ -2698,7 +2698,7 @@ limitations can be overcome using another routing table and the pipe protocol.
 	routes from other sources (e.g. kernel device routes). Metric 0 has a
 	special meaning of undefined metric, in which either OS default is used,
 	or per-route metric can be set using <cf/krt_metric/ attribute. Default:
-	0 (undefined).
+	32.
 
 	<tag><label id="krt-graceful-restart">graceful restart <m/switch/</tag>
 	Participate in graceful restart recovery. If this option is enabled and

@@ -1935,7 +1935,7 @@ void
 krt_sys_init_config(struct krt_config *cf)
 {
   cf->sys.table_id = RT_TABLE_MAIN;
-  cf->sys.metric = 0;
+  cf->sys.metric = 32;
 }
 
 void
