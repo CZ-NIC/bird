@@ -179,11 +179,16 @@ bgp_channel_item:
  | ADD PATHS TX { BGP_CC->add_path = BGP_ADD_PATH_TX; }
  | ADD PATHS bool { BGP_CC->add_path = $3 ? BGP_ADD_PATH_FULL : 0; }
  | IGP TABLE rtable {
-     if (bgp_cc_is_ipv4(BGP_CC)) BGP_CC->igp_table_ip4 = $3;
-     if (bgp_cc_is_ipv6(BGP_CC)) BGP_CC->igp_table_ip6 = $3;
+    if (BGP_CC->desc->no_igp)
+      cf_error("IGP table not allowed here");
+
+    if ($3->addr_type == NET_IP4)
+      BGP_CC->igp_table_ip4 = $3;
+    else if ($3->addr_type == NET_IP6)
+      BGP_CC->igp_table_ip6 = $3;
+    else
+      cf_error("Mismatched IGP table type");
    }
- | IGP TABLE IPV4 rtable { BGP_CC->igp_table_ip4 = $4; }
- | IGP TABLE IPV6 rtable { BGP_CC->igp_table_ip6 = $4; }
  ;
 
 bgp_channel_opts:

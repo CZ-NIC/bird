@@ -1656,6 +1656,7 @@ bgp_postconfig(struct proto_config *CF)
     if (cc->gr_able == 0xff)
       cc->gr_able = (cf->gr_mode == BGP_GR_ABLE);
 
+    /* Default values of IGP tables */
     if ((cc->gw_mode == GW_RECURSIVE) && !cc->desc->no_igp)
     {
       if (!cc->igp_table_ip4 && (bgp_cc_is_ipv4(cc) || cc->ext_next_hop))
@@ -1663,6 +1664,12 @@ bgp_postconfig(struct proto_config *CF)
 
       if (!cc->igp_table_ip6 && (bgp_cc_is_ipv6(cc) || cc->ext_next_hop))
 	cc->igp_table_ip6 = bgp_default_igp_table(cf, cc, NET_IP6);
+
+      if (cc->igp_table_ip4 && bgp_cc_is_ipv6(cc) && !cc->ext_next_hop)
+	cf_error("Mismatched IGP table type");
+
+      if (cc->igp_table_ip6 && bgp_cc_is_ipv4(cc) && !cc->ext_next_hop)
+	cf_error("Mismatched IGP table type");
     }
 
     if (cf->multihop && (cc->gw_mode == GW_DIRECT))
