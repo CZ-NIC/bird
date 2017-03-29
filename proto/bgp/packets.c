@@ -470,7 +470,7 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
       }
       break;
 
-    case 65: /* AS4 capability, RFC 4893 */
+    case 65: /* AS4 capability, RFC 6793 */
       if (cl != 4)
 	goto err;
 

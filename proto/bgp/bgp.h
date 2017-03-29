@@ -90,9 +90,9 @@ struct bgp_config {
   int deterministic_med;		/* Use more complicated algo to have strict RFC 4271 MED comparison */
   u32 default_local_pref;		/* Default value for LOCAL_PREF attribute */
   u32 default_med;			/* Default value for MULTI_EXIT_DISC attribute */
-  int capabilities;			/* Enable capability handshake [RFC 3392] */
+  int capabilities;			/* Enable capability handshake [RFC 5492] */
   int enable_refresh;			/* Enable local support for route refresh [RFC 2918] */
-  int enable_as4;			/* Enable local support for 4B AS numbers [RFC 4893] */
+  int enable_as4;			/* Enable local support for 4B AS numbers [RFC 6793] */
   int enable_extended_messages;		/* Enable local support for extended messages [draft] */
   u32 rr_cluster_id;			/* Route reflector cluster ID, if different from local ID */
   int rr_client;			/* Whether neighbor is RR client of me */

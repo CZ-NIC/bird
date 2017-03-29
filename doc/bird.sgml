@@ -1964,16 +1964,39 @@ table it wishes to export along with complete path information (a list of AS'es
 the packet will travel through if it uses the particular route) in order to
 avoid routing loops.
 
-<p>BIRD supports all requirements of the BGP4 standard as defined in
-<rfc id="4271"> It also supports the community attributes (<rfc id="1997">),
-capability negotiation (<rfc id="5492">), MD5 password authentication
-(<rfc id="2385">), extended communities (<rfc id="4360">), route reflectors
-(<rfc id="4456">), AS confederations (<rfc id="5065">), graceful restart
-(<rfc id="4724">), multiprotocol extensions (<rfc id="4760">), 4B AS numbers
-(<rfc id="4893">), and 4B AS numbers in extended communities (<rfc id="5668">).
+<sect1>Supported standards:
+<label id="bgp-standards">
 
-For IPv6, it uses the standard multiprotocol extensions defined in
-<rfc id="4760"> and applied to IPv6 according to <rfc id="2545">.
+<itemize>
+<item> <rfc id="4271"> - Border Gateway Protocol 4 (BGP)
+<item> <rfc id="1997"> - BGP Communities Attribute
+<item> <rfc id="2385"> - Protection of BGP Sessions via TCP MD5 Signature
+<item> <rfc id="2545"> - Use of BGP Multiprotocol Extensions for IPv6
+<item> <rfc id="2918"> - Route Refresh Capability
+<item> <rfc id="3107"> - Carrying Label Information in BGP
+<item> <rfc id="4360"> - BGP Extended Communities Attribute
+<item> <rfc id="4364"> - BGP/MPLS IPv4 Virtual Private Networks
+<item> <rfc id="4456"> - BGP Route Reflection
+<item> <rfc id="4486"> - Subcodes for BGP Cease Notification Message
+<item> <rfc id="4659"> - BGP/MPLS IPv6 Virtual Private Networks
+<item> <rfc id="4724"> - Graceful Restart Mechanism for BGP
+<item> <rfc id="4760"> - Multiprotocol extensions for BGP
+<item> <rfc id="4798"> - Connecting IPv6 Islands over IPv4 MPLS
+<item> <rfc id="5065"> - AS confederations for BGP
+<item> <rfc id="5082"> - Generalized TTL Security Mechanism
+<item> <rfc id="5492"> - Capabilities Advertisement with BGP
+<item> <rfc id="5549"> - Advertising IPv4 NLRI with an IPv6 Next Hop
+<item> <rfc id="5575"> - Dissemination of Flow Specification Rules
+<item> <rfc id="5668"> - 4-Octet AS Specific BGP Extended Community
+<item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
+<item> <rfc id="6608"> - Subcodes for BGP Finite State Machine Error
+<item> <rfc id="6793"> - BGP Support for 4-Octet AS Numbers
+<item> <rfc id="7313"> - Enhanced Route Refresh Capability for BGP
+<item> <rfc id="7606"> - Revised Error Handling for BGP UPDATE Messages
+<item> <rfc id="7911"> - Advertisement of Multiple Paths in BGP
+<item> <rfc id="7947"> - Internet Exchange BGP Route Server
+<item> <rfc id="8092"> - BGP Large Communities Attribute
+</itemize>
 
 <sect1>Route selection rules
 <label id="bgp-route-select-rules">
