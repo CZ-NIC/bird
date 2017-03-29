@@ -1419,13 +1419,13 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       if (!nl_parse_attrs(RTM_RTA(i), rtm_attr_want_mpls, a, sizeof(a)))
 	return;
 
-      if (a[RTA_DST])
-	if (rta_get_mpls(a[RTA_DST], rta_mpls_stack) == 1)
-	  net_fill_mpls(&dst, rta_mpls_stack[0]);
-	else
-	  log(L_WARN "KRT: Got multi-label MPLS RTA_DST");
-      else
-	return; /* No support for MPLS routes without RTA_DST */
+      if (!a[RTA_DST])
+	SKIP("MPLS route without RTA_DST");
+
+      if (rta_get_mpls(a[RTA_DST], rta_mpls_stack) != 1)
+	SKIP("MPLS route with multi-label RTA_DST");
+
+      net_fill_mpls(&dst, rta_mpls_stack[0]);
       break;
 
     default:
