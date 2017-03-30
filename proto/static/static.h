@@ -17,7 +17,8 @@ struct static_config {
   struct proto_config c;
   list routes;				/* List of static routes (struct static_route) */
   int check_link;			/* Whether iface link state is used */
-  struct rtable_config *igp_table;	/* Table used for recursive next hop lookups */
+  struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */
+  struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
 };
 
 struct static_proto {
@@ -25,6 +26,8 @@ struct static_proto {
 
   struct event *event;			/* Event for announcing updated routes */
   BUFFER(struct static_route *) marked;	/* Routes marked for reannouncement */
+  rtable *igp_table_ip4;		/* Table for recursive IPv4 next hop lookups */
+  rtable *igp_table_ip6;		/* Table for recursive IPv6 next hop lookups */
 };
 
 struct static_route {

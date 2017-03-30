@@ -49,13 +49,6 @@
 
 static linpool *static_lp;
 
-static inline rtable *
-p_igp_table(struct static_proto *p)
-{
-  struct static_config *cf = (void *) p->p.cf;
-  return cf->igp_table ? cf->igp_table->table : p->p.main_channel->table;
-}
-
 static void
 static_announce_rte(struct static_proto *p, struct static_route *r)
 {
@@ -95,7 +88,10 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   }
 
   if (r->dest == RTDX_RECURSIVE)
-    rta_set_recursive_next_hop(p->p.main_channel->table, a, p_igp_table(p), r->via, IPA_NONE, r->mls);
+  {
+    rtable *tab = ipa_is_ip4(r->via) ? p->igp_table_ip4 : p->igp_table_ip6;
+    rta_set_recursive_next_hop(p->p.main_channel->table, a, tab, r->via, IPA_NONE, r->mls);
+  }
 
   /* Already announced */
   if (r->state == SRS_CLEAN)
@@ -370,6 +366,16 @@ static_postconfig(struct proto_config *CF)
   if (EMPTY_LIST(CF->channels))
     cf_error("Channel not specified");
 
+  struct channel_config *cc = proto_cf_main_channel(CF);
+
+  if (!cf->igp_table_ip4)
+    cf->igp_table_ip4 = (cc->table->addr_type == NET_IP4) ?
+      cc->table : cf->c.global->def_tables[NET_IP4];
+
+  if (!cf->igp_table_ip6)
+    cf->igp_table_ip6 = (cc->table->addr_type == NET_IP6) ?
+      cc->table : cf->c.global->def_tables[NET_IP6];
+
   WALK_LIST(r, cf->routes)
     if (r->net && (r->net->type != CF->net_type))
       cf_error("Route %N incompatible with channel type", r->net);
@@ -379,13 +385,19 @@ static struct proto *
 static_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
-  // struct static_proto *p = (void *) P;
-  // struct static_config *cf = (void *) CF;
+  struct static_proto *p = (void *) P;
+  struct static_config *cf = (void *) CF;
 
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
   P->neigh_notify = static_neigh_notify;
   P->rte_mergable = static_rte_mergable;
+
+  if (cf->igp_table_ip4)
+    p->igp_table_ip4 = cf->igp_table_ip4->table;
+
+  if (cf->igp_table_ip6)
+    p->igp_table_ip6 = cf->igp_table_ip6->table;
 
   return P;
 }
@@ -400,8 +412,11 @@ static_start(struct proto *P)
   if (!static_lp)
     static_lp = lp_new(&root_pool, 1008);
 
-  if (cf->igp_table)
-    rt_lock_table(cf->igp_table->table);
+  if (p->igp_table_ip4)
+    rt_lock_table(p->igp_table_ip4);
+
+  if (p->igp_table_ip6)
+    rt_lock_table(p->igp_table_ip6);
 
   p->event = ev_new(p->p.pool);
   p->event->hook = static_announce_marked;
@@ -435,10 +450,13 @@ static_shutdown(struct proto *P)
 static void
 static_cleanup(struct proto *P)
 {
-  struct static_config *cf = (void *) P->cf;
+  struct static_proto *p = (void *) P;
 
-  if (cf->igp_table)
-    rt_unlock_table(cf->igp_table->table);
+  if (p->igp_table_ip4)
+    rt_unlock_table(p->igp_table_ip4);
+
+  if (p->igp_table_ip6)
+    rt_unlock_table(p->igp_table_ip6);
 }
 
 static void
@@ -465,11 +483,7 @@ static_dump(struct proto *P)
     static_dump_rte(r);
 }
 
-static inline rtable *
-cf_igp_table(struct static_config *cf)
-{
-  return cf->igp_table ? cf->igp_table->table : NULL;
-}
+#define IGP_TABLE(cf, sym) ((cf)->igp_table_##sym ? (cf)->igp_table_##sym ->table : NULL )
 
 static inline int
 static_cmp_rte(const void *X, const void *Y)
@@ -486,7 +500,9 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
   struct static_config *n = (void *) CF;
   struct static_route *r, *r2, *or, *nr;
 
-  if (cf_igp_table(o) != cf_igp_table(n))
+  /* Check change in IGP tables */
+  if ((IGP_TABLE(o, ip4) != IGP_TABLE(n, ip4)) ||
+      (IGP_TABLE(o, ip6) != IGP_TABLE(n, ip6)))
     return 0;
 
   if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))

@@ -1732,6 +1732,8 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   return same;
 }
 
+#define IGP_TABLE(cf, sym) ((cf)->igp_table_##sym ? (cf)->igp_table_##sym ->table : NULL )
+
 static int
 bgp_channel_reconfigure(struct channel *C, struct channel_config *CC)
 {
@@ -1746,12 +1748,8 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC)
     return 0;
 
   /* Check change in IGP tables */
-  rtable *old4 = old->igp_table_ip4 ? old->igp_table_ip4->table : NULL;
-  rtable *old6 = old->igp_table_ip6 ? old->igp_table_ip6->table : NULL;
-  rtable *new4 = new->igp_table_ip4 ? new->igp_table_ip4->table : NULL;
-  rtable *new6 = new->igp_table_ip6 ? new->igp_table_ip6->table : NULL;
-
-  if ((old4 != new4) || (old6 != new6))
+  if ((IGP_TABLE(old, ip4) != IGP_TABLE(new, ip4)) ||
+      (IGP_TABLE(old, ip6) != IGP_TABLE(new, ip6)))
     return 0;
 
   c->cf = new;
