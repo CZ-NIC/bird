@@ -924,10 +924,12 @@ This argument can be omitted if there exists only a single instance.
 	Show the list of symbols defined in the configuration (names of
 	protocols, routing tables etc.).
 
-	<tag><label id="cli-show-route">show route [[for] <m/prefix/|<m/IP/] [table <m/t/] [filter <m/f/|where <m/c/] [(export|preexport|noexport) <m/p/] [protocol <m/p/] [<m/options/]</tag>
-	Show contents of a routing table (by default of the main one or the
-	table attached to a respective protocol), that is routes, their metrics
+	<tag><label id="cli-show-route">show route [[for] <m/prefix/|<m/IP/] [table (<m/t/ | all)] [filter <m/f/|where <m/c/] [(export|preexport|noexport) <m/p/] [protocol <m/p/] [(stats|count) [by table]] [<m/options/]</tag>
+	Show contents of specified routing tables, that is routes, their metrics
 	and (in case the <cf/all/ switch is given) all their attributes.
+
+	<p>More tables can be specified by repeating the <cf>table <m/t/></cf> clause.
+	To cycle over all tables, specify <cf>table all</cf>.
 
 	<p>You can specify a <m/prefix/ if you want to print routes for a
 	specific network. If you use <cf>for <m/prefix or IP/</cf>, you'll get
@@ -946,18 +948,26 @@ This argument can be omitted if there exists only a single instance.
 	With <cf/noexport/, routes rejected by the export filter are printed
 	instead. Note that routes not exported to the protocol for other reasons
 	(e.g. secondary routes or routes imported from that protocol) are not
-	printed even with <cf/noexport/.
+	printed even with <cf/noexport/. These switches magically cycle over
+	all tables connected to the protocol.
 
 	<p>You can also select just routes added by a specific protocol.
-	<cf>protocol <m/p/</cf>.
+	<cf>protocol <m/p/</cf>. This switch also magically cycles over
+	all tables connected to the protocol.
 
 	<p>If BIRD is configured to keep filtered routes (see <cf/import keep
 	filtered/ option), you can show them instead of routes by using
 	<cf/filtered/ switch.
 
+	<p>If no table is specified in any way (<cf/table/, <cf/export/, <cf/preexport/, <cf/noexport/, <cf/protocol/),
+	the default tables are listed: <cf/master4/, <cf/master6/
+	and first declared table of any other net type.
+
 	<p>The <cf/stats/ switch requests showing of route statistics (the
 	number of networks, number of routes before and after filtering). If
 	you use <cf/count/ instead, only the statistics will be printed.
+	If you use <cf/stats by table/ or <cf/count by table/, the statistics
+	will be printed also per-table.
 
 	<tag><label id="cli-show-roa">show roa [<m/prefix/ | in <m/prefix/ | for <m/prefix/] [as <m/num/] [table <m/t/]</tag>
 	Show contents of a ROA table (by default of the first one). You can

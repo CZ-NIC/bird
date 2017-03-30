@@ -70,7 +70,7 @@ CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED)
 CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512)
-CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, COMMANDS, PREEXPORT, NOEXPORT, GENERATE)
+CF_KEYWORDS(PRIMARY, STATS, COUNT, BY, FOR, COMMANDS, PREEXPORT, NOEXPORT, GENERATE)
 CF_KEYWORDS(LISTEN, BGP, V6ONLY, DUAL, ADDRESS, PORT, PASSWORDS, DESCRIPTION, SORTED)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
@@ -512,6 +512,7 @@ CF_CLI(SHOW ROUTE, r_args, [[[<prefix>|for <prefix>|for <ip>] [table <t>] [filte
 r_args:
    /* empty */ {
      $$ = cfg_allocz(sizeof(struct rt_show_data));
+     init_list(&($$->table));
      $$->filter = FILTER_ACCEPT;
    }
  | r_args net_any {
@@ -529,7 +530,15 @@ r_args:
  | r_args TABLE SYM {
      $$ = $1;
      if ($3->class != SYM_TABLE) cf_error("%s is not a table", $3->name);
-     $$->table = ((struct rtable_config *)$3->def)->table;
+     rt_show_add_table($$, ((struct rtable_config *)$3->def)->table);
+     $$->tables_defined_by = RSD_TDB_DIRECT;
+   }
+ | r_args TABLE ALL {
+     struct rtable_config *t;
+     $$ = $1;
+     WALK_LIST(t, config->tables)
+       rt_show_add_table($$, t->table);
+     $$->tables_defined_by = RSD_TDB_ALL;
    }
  | r_args FILTER filter {
      $$ = $1;
@@ -561,6 +570,7 @@ r_args:
      $$->export_mode = $2;
      $$->export_protocol = c->proto;
      $$->running_on_config = c->proto->cf->global;
+     $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
  | r_args PROTOCOL SYM {
      struct proto_config *c = (struct proto_config *) $3->def;
@@ -569,6 +579,7 @@ r_args:
      if ($3->class != SYM_PROTO || !c->proto) cf_error("%s is not a protocol", $3->name);
      $$->show_protocol = c->proto;
      $$->running_on_config = c->proto->cf->global;
+     $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
  | r_args STATS {
      $$ = $1;
@@ -577,6 +588,16 @@ r_args:
  | r_args COUNT {
      $$ = $1;
      $$->stats = 2;
+   }
+ | r_args STATS BY TABLE {
+     $$ = $1;
+     $$->stats = 1;
+     $$->stats_by_table = 1;
+   }
+ | r_args COUNT BY TABLE {
+     $$ = $1;
+     $$->stats = 2;
+     $$->stats_by_table = 1;
    }
  ;
 

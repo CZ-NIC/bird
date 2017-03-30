@@ -276,6 +276,8 @@ net_or_ipa:
  | net_vpn6_ { $$ = *$1; }
  | IP4 { net_fill_ip4(&($$), $1, IP4_MAX_PREFIX_LENGTH); }
  | IP6 { net_fill_ip6(&($$), $1, IP6_MAX_PREFIX_LENGTH); }
+ | VPN_RD IP4 { net_fill_vpn4(&($$), $2, IP4_MAX_PREFIX_LENGTH, $1); }
+ | VPN_RD IP6 { net_fill_vpn6(&($$), $2, IP6_MAX_PREFIX_LENGTH, $1); }
  | SYM {
      if ($1->class == (SYM_CONSTANT | T_IP))
        net_fill_ip_host(&($$), SYM_VAL($1).ip);
