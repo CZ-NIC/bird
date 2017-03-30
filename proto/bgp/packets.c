@@ -289,8 +289,8 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   /* Create capability list in buffer */
 
   /*
-   * Note that max length is ~ 20+14*af_count. With max 10 channels that is
-   * 160. Option limit is 253 and buffer size is 4096, so we cannot overflow
+   * Note that max length is ~ 20+14*af_count. With max 12 channels that is
+   * 188. Option limit is 253 and buffer size is 4096, so we cannot overflow
    * unless we add new capabilities or more AFs.
    */
 
@@ -1386,7 +1386,8 @@ bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     ADVANCE(pos, size, 1);
 
     /* Encode MPLS labels */
-    bgp_encode_mpls_labels(s, s->mpls_labels, &pos, &size, pos - 1);
+    if (s->mpls)
+      bgp_encode_mpls_labels(s, s->mpls_labels, &pos, &size, pos - 1);
 
     /* Encode route distinguisher */
     put_u64(pos, net->rd);
@@ -1430,7 +1431,8 @@ bgp_decode_nlri_vpn4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
       bgp_parse_error(s, 1);
 
     /* Decode MPLS labels */
-    bgp_decode_mpls_labels(s, &pos, &len, &l, a);
+    if (s->mpls)
+      bgp_decode_mpls_labels(s, &pos, &len, &l, a);
 
     /* Decode route distinguisher */
     if (l < 64)
@@ -1818,6 +1820,26 @@ static const struct bgp_af_desc bgp_af_table[] = {
     .net = NET_VPN6,
     .mpls = 1,
     .name = "vpn6-mpls",
+    .encode_nlri = bgp_encode_nlri_vpn6,
+    .decode_nlri = bgp_decode_nlri_vpn6,
+    .encode_next_hop = bgp_encode_next_hop_vpn,
+    .decode_next_hop = bgp_decode_next_hop_vpn,
+    .update_next_hop = bgp_update_next_hop_ip,
+  },
+  {
+    .afi = BGP_AF_VPN4_MC,
+    .net = NET_VPN4,
+    .name = "vpn4-mc",
+    .encode_nlri = bgp_encode_nlri_vpn4,
+    .decode_nlri = bgp_decode_nlri_vpn4,
+    .encode_next_hop = bgp_encode_next_hop_vpn,
+    .decode_next_hop = bgp_decode_next_hop_vpn,
+    .update_next_hop = bgp_update_next_hop_ip,
+  },
+  {
+    .afi = BGP_AF_VPN6_MC,
+    .net = NET_VPN6,
+    .name = "vpn6-mc",
     .encode_nlri = bgp_encode_nlri_vpn6,
     .decode_nlri = bgp_decode_nlri_vpn6,
     .encode_next_hop = bgp_encode_next_hop_vpn,
