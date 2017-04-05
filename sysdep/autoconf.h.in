@@ -77,4 +77,7 @@
 /* We have linux lwtunnel */
 #undef HAVE_LWTUNNEL
 
+/* We have struct rtvia */
+#undef HAVE_STRUCT_RTVIA
+
 #define CONFIG_PATH ?

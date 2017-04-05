@@ -219,6 +219,7 @@ esac
 AC_CHECK_HEADER(syslog.h, [AC_DEFINE(HAVE_SYSLOG)])
 AC_CHECK_HEADER(alloca.h, [AC_DEFINE(HAVE_ALLOCA_H)])
 AC_CHECK_HEADER([linux/lwtunnel.h], [AC_DEFINE(HAVE_LWTUNNEL)])
+AC_CHECK_MEMBERS([struct rtvia.rtvia_family], [AC_DEFINE(HAVE_STRUCT_RTVIA)],,[#include <linux/rtnetlink.h>])
 AC_MSG_CHECKING(whether 'struct sockaddr' has sa_len)
 AC_TRY_COMPILE([#include <sys/types.h>
   #include <sys/socket.h>

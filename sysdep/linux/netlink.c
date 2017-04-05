@@ -60,6 +60,13 @@
 #define RTA_VIA	 18
 #endif
 
+#ifndef HAVE_STRUCT_RTVIA
+struct rtvia {
+	__kernel_sa_family_t	rtvia_family;
+	__u8			rtvia_addr[0];
+};
+#endif
+
 #ifndef RTA_NEWDST
 #define RTA_NEWDST  19
 #endif
