@@ -74,4 +74,7 @@
 /* We have LibSSH */
 #undef HAVE_LIBSSH
 
+/* We have linux lwtunnel */
+#undef HAVE_LWTUNNEL
+
 #define CONFIG_PATH ?

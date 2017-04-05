@@ -31,7 +31,11 @@
 
 #include <asm/types.h>
 #include <linux/if.h>
+#ifdef HAVE_LWTUNNEL
 #include <linux/lwtunnel.h>
+#else
+#include "sysdep/linux/lwtunnel.h"
+#endif
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
