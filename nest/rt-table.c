@@ -68,12 +68,11 @@ make_tmp_attrs(struct rte *rt, struct linpool *pool)
 
 /* Like fib_route(), but skips empty net entries */
 static inline void *
-net_route_ip4(struct fib *f, net_addr_ip4 *n)
+net_route_ip4(rtable *t, net_addr_ip4 *n)
 {
   net *r;
 
-  while (r = fib_find(f, (net_addr *) n),
-	 !(r && rte_is_valid(r->routes)) && (n->pxlen > 0))
+  while (r = net_find_valid(t, (net_addr *) n), (!r) && (n->pxlen > 0))
   {
     n->pxlen--;
     ip4_clrbit(&n->prefix, n->pxlen);
@@ -83,12 +82,11 @@ net_route_ip4(struct fib *f, net_addr_ip4 *n)
 }
 
 static inline void *
-net_route_ip6(struct fib *f, net_addr_ip6 *n)
+net_route_ip6(rtable *t, net_addr_ip6 *n)
 {
   net *r;
 
-  while (r = fib_find(f, (net_addr *) n),
-	 !(r && rte_is_valid(r->routes)) && (n->pxlen > 0))
+  while (r = net_find_valid(t, (net_addr *) n), (!r) && (n->pxlen > 0))
   {
     n->pxlen--;
     ip6_clrbit(&n->prefix, n->pxlen);
@@ -110,12 +108,12 @@ net_route(rtable *tab, const net_addr *n)
   case NET_IP4:
   case NET_VPN4:
   case NET_ROA4:
-    return net_route_ip4(&tab->fib, (net_addr_ip4 *) n0);
+    return net_route_ip4(tab, (net_addr_ip4 *) n0);
 
   case NET_IP6:
   case NET_VPN6:
   case NET_ROA6:
-    return net_route_ip6(&tab->fib, (net_addr_ip6 *) n0);
+    return net_route_ip6(tab, (net_addr_ip6 *) n0);
 
   default:
     return NULL;

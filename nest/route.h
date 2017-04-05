@@ -284,6 +284,8 @@ void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
 void rt_setup(pool *, rtable *, char *, struct rtable_config *);
 static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
+static inline net *net_find_valid(rtable *tab, const net_addr *addr)
+{ net *n = net_find(tab, addr); return (n && rte_is_valid(n->routes)) ? n : NULL; }
 static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
