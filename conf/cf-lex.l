@@ -124,7 +124,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 }
 
 {DIGIT}+:{DIGIT}+ {
-  unsigned long int l, len1, len2;
+  unsigned long int l, len1 UNUSED, len2;
   char *e;
 
   errno = 0;

@@ -900,7 +900,6 @@ rte_validate(rte *e)
   int c;
   net *n = e->net;
 
-  // (n->n.pxlen > BITS_PER_IP_ADDRESS) || !ip_is_prefix(n->n.prefix,n->n.pxlen))
   if (!net_validate(n->n.addr))
   {
     log(L_WARN "Ignoring bogus prefix %N received via %s",
@@ -916,12 +915,19 @@ rte_validate(rte *e)
     return 0;
   }
 
+  if (net_type_match(n->n.addr, NB_DEST) == !e->attrs->dest)
+  {
+    log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
+	n->n.addr, e->attrs->dest, e->sender->proto->name);
+    return 0;
+  }
+
   if ((e->attrs->dest == RTD_UNICAST) && !nexthop_is_sorted(&(e->attrs->nh)))
-    {
-      log(L_WARN "Ignoring unsorted multipath route %N received via %s",
-	  n->n.addr, e->sender->proto->name);
-      return 0;
-    }
+  {
+    log(L_WARN "Ignoring unsorted multipath route %N received via %s",
+	n->n.addr, e->sender->proto->name);
+    return 0;
+  }
 
   return 1;
 }

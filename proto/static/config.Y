@@ -36,7 +36,10 @@ static_nexthop_new(void)
 
 static void
 static_route_finish(void)
-{ }
+{
+  if (net_type_match(this_srt->net, NB_DEST) == !this_srt->dest)
+    cf_error("Unexpected or missing nexthop/type");
+}
 
 CF_DECLS
 
@@ -119,6 +122,7 @@ stat_route:
       this_srt->via = $3;
       this_srt->mls = $5;
    }
+ | stat_route0			{ this_srt->dest = RTD_NONE; }
  | stat_route0 DROP		{ this_srt->dest = RTD_BLACKHOLE; }
  | stat_route0 REJECT		{ this_srt->dest = RTD_UNREACHABLE; }
  | stat_route0 BLACKHOLE	{ this_srt->dest = RTD_BLACKHOLE; }

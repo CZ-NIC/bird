@@ -37,6 +37,7 @@
 #define NB_IP		(NB_IP4 | NB_IP6)
 #define NB_VPN		(NB_VPN4 | NB_VPN6)
 #define NB_FLOW		(NB_FLOW4 | NB_FLOW6)
+#define NB_DEST		(NB_IP | NB_VPN | NB_MPLS)
 #define NB_ANY		0xffffffff
 
 
@@ -457,22 +458,51 @@ static inline u32 net_hash_mpls(const net_addr_mpls *n)
 u32 net_hash(const net_addr *a);
 
 
-static inline int net_validate_ip4(const net_addr_ip4 *n)
+static inline int net_validate_px4(const ip4_addr prefix, uint pxlen)
 {
-  return (n->pxlen <= IP4_MAX_PREFIX_LENGTH) &&
-    ip4_zero(ip4_and(n->prefix, ip4_not(ip4_mkmask(n->pxlen))));
+  return (pxlen <= IP4_MAX_PREFIX_LENGTH) &&
+    ip4_zero(ip4_and(prefix, ip4_not(ip4_mkmask(pxlen))));
 }
+
+static inline int net_validate_px6(const ip6_addr prefix, uint pxlen)
+{
+  return (pxlen <= IP6_MAX_PREFIX_LENGTH) &&
+    ip6_zero(ip6_and(prefix, ip6_not(ip6_mkmask(pxlen))));
+}
+
+static inline int net_validate_ip4(const net_addr_ip4 *n)
+{ return net_validate_px4(n->prefix, n->pxlen); }
 
 static inline int net_validate_ip6(const net_addr_ip6 *n)
+{ return net_validate_px6(n->prefix, n->pxlen); }
+
+static inline int net_validate_vpn4(const net_addr_vpn4 *n)
+{ return net_validate_px4(n->prefix, n->pxlen); }
+
+static inline int net_validate_vpn6(const net_addr_vpn6 *n)
+{ return  net_validate_px6(n->prefix, n->pxlen); }
+
+static inline int net_validate_roa4(const net_addr_roa4 *n)
 {
-  return (n->pxlen <= IP6_MAX_PREFIX_LENGTH) &&
-    ip6_zero(ip6_and(n->prefix, ip6_not(ip6_mkmask(n->pxlen))));
+  return net_validate_px4(n->prefix, n->pxlen) &&
+     (n->pxlen <= n->max_pxlen) && (n->max_pxlen <= IP4_MAX_PREFIX_LENGTH);
 }
 
-static inline int net_validate_mpls(const net_addr_mpls *n)
+static inline int net_validate_roa6(const net_addr_roa6 *n)
 {
-  return n->label < (1 << 20);
+  return net_validate_px6(n->prefix, n->pxlen) &&
+    (n->pxlen <= n->max_pxlen) && (n->max_pxlen <= IP6_MAX_PREFIX_LENGTH);
 }
+
+// FIXME: Better check, call flow_validate?
+static inline int net_validate_flow4(const net_addr_flow4 *n)
+{ return net_validate_px4(n->prefix, n->pxlen); }
+
+static inline int net_validate_flow6(const net_addr_flow6 *n)
+{ return net_validate_px6(n->prefix, n->pxlen); }
+
+static inline int net_validate_mpls(const net_addr_mpls *n)
+{ return n->label < (1 << 20); }
 
 int net_validate(const net_addr *N);
 
