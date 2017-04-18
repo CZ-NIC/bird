@@ -91,6 +91,8 @@ CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 %type <ps> proto_patt proto_patt2
 %type <cc> channel_start proto_channel
 %type <cl> limit_spec
+%type <net> r_args_for_val
+%type <net_ptr> r_args_for
 
 CF_GRAMMAR
 
@@ -520,12 +522,11 @@ r_args:
      if ($$->addr) cf_error("Only one prefix expected");
      $$->addr = $2;
    }
- | r_args FOR net_or_ipa {
+ | r_args FOR r_args_for {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      $$->show_for = 1;
-     $$->addr = cfg_alloc($3.length);
-     net_copy($$->addr, &($3));
+     $$->addr = $3;
    }
  | r_args TABLE SYM {
      $$ = $1;
@@ -600,6 +601,40 @@ r_args:
      $$->stats_by_table = 1;
    }
  ;
+
+r_args_for:
+  r_args_for_val {
+    $$ = cfg_alloc($1.length);
+    net_copy($$, &$1);
+  }
+ | net_vpn4_
+ | net_vpn6_
+ | VPN_RD IP4 {
+    $$ = cfg_alloc(sizeof(net_addr_vpn4));
+    net_fill_vpn4($$, $2, IP4_MAX_PREFIX_LENGTH, $1);
+  }
+ | VPN_RD IP6 {
+    $$ = cfg_alloc(sizeof(net_addr_vpn6));
+    net_fill_vpn6($$, $2, IP6_MAX_PREFIX_LENGTH, $1);
+  }
+ | SYM {
+     if ($1->class == (SYM_CONSTANT | T_IP))
+     {
+       $$ = cfg_alloc(ipa_is_ip4(SYM_VAL($1).ip) ? sizeof(net_addr_ip4) : sizeof(net_addr_ip6));
+       net_fill_ip_host($$, SYM_VAL($1).ip);
+     }
+     else if (($1->class == (SYM_CONSTANT | T_NET)) && net_type_match(SYM_VAL($1).net, NB_IP | NB_VPN))
+       $$ = SYM_VAL($1).net;
+     else
+       cf_error("IP address or network expected");
+   }
+ ;
+
+r_args_for_val:
+   net_ip4_
+ | net_ip6_
+ | IP4 { net_fill_ip4(&($$), $1, IP4_MAX_PREFIX_LENGTH); }
+ | IP6 { net_fill_ip6(&($$), $1, IP6_MAX_PREFIX_LENGTH); }
 
 export_mode:
    PREEXPORT	{ $$ = RSEM_PREEXPORT; }
