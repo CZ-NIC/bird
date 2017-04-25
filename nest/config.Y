@@ -75,6 +75,9 @@ CF_KEYWORDS(LISTEN, BGP, V6ONLY, DUAL, ADDRESS, PORT, PASSWORDS, DESCRIPTION, SO
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
 
+/* For r_args_channel */
+CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
+
 CF_ENUM(T_ENUM_RTS, RTS_, DUMMY, STATIC, INHERIT, DEVICE, STATIC_DEVICE, REDIRECT,
 	RIP, OSPF, OSPF_IA, OSPF_EXT1, OSPF_EXT2, BGP, PIPE, BABEL)
 CF_ENUM(T_ENUM_SCOPE, SCOPE_, HOST, LINK, SITE, ORGANIZATION, UNIVERSE, UNDEFINED)
@@ -93,6 +96,7 @@ CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 %type <cl> limit_spec
 %type <net> r_args_for_val
 %type <net_ptr> r_args_for
+%type <t> r_args_channel
 
 CF_GRAMMAR
 
@@ -514,7 +518,7 @@ CF_CLI(SHOW ROUTE, r_args, [[[<prefix>|for <prefix>|for <ip>] [table <t>] [filte
 r_args:
    /* empty */ {
      $$ = cfg_allocz(sizeof(struct rt_show_data));
-     init_list(&($$->table));
+     init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
    }
  | r_args net_any {
@@ -566,10 +570,21 @@ r_args:
  | r_args export_mode SYM {
      struct proto_config *c = (struct proto_config *) $3->def;
      $$ = $1;
-     if ($$->export_mode) cf_error("Protocol specified twice");
+     if ($$->export_mode) cf_error("Export specified twice");
      if ($3->class != SYM_PROTO || !c->proto) cf_error("%s is not a protocol", $3->name);
      $$->export_mode = $2;
      $$->export_protocol = c->proto;
+     $$->running_on_config = c->proto->cf->global;
+     $$->tables_defined_by = RSD_TDB_INDIRECT;
+   }
+ | r_args export_mode SYM '.' r_args_channel {
+     struct proto_config *c = (struct proto_config *) $3->def;
+     $$ = $1;
+     if ($$->export_mode) cf_error("Export specified twice");
+     if ($3->class != SYM_PROTO || !c->proto) cf_error("%s is not a protocol", $3->name);
+     $$->export_mode = $2;
+     $$->export_channel = proto_find_channel_by_name(c->proto, $5);
+     if (!$$->export_channel) cf_error("Export channel not found");
      $$->running_on_config = c->proto->cf->global;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
@@ -589,16 +604,6 @@ r_args:
  | r_args COUNT {
      $$ = $1;
      $$->stats = 2;
-   }
- | r_args STATS BY TABLE {
-     $$ = $1;
-     $$->stats = 1;
-     $$->stats_by_table = 1;
-   }
- | r_args COUNT BY TABLE {
-     $$ = $1;
-     $$->stats = 2;
-     $$->stats_by_table = 1;
    }
  ;
 
@@ -642,6 +647,28 @@ export_mode:
  | NOEXPORT	{ $$ = RSEM_NOEXPORT; }
  ;
 
+/* This is ugly hack */
+r_args_channel:
+   IPV4		{ $$ = "ipv4"; }
+ | IPV4_MC	{ $$ = "ipv4-mc"; }
+ | IPV4_MPLS	{ $$ = "ipv4-mpls"; }
+ | IPV6		{ $$ = "ipv6"; }
+ | IPV6_MC	{ $$ = "ipv6-mc"; }
+ | IPV6_MPLS	{ $$ = "ipv6-mpls"; }
+ | VPN4		{ $$ = "vpn4"; }
+ | VPN4_MC	{ $$ = "vpn4-mc"; }
+ | VPN4_MPLS	{ $$ = "vpn4-mpls"; }
+ | VPN6		{ $$ = "vpn6"; }
+ | VPN6_MC	{ $$ = "vpn6-mc"; }
+ | VPN6_MPLS	{ $$ = "vpn6-mpls"; }
+ | ROA4		{ $$ = "roa4"; }
+ | ROA6		{ $$ = "roa6"; }
+ | FLOW4	{ $$ = "flow4"; }
+ | FLOW6	{ $$ = "flow6"; }
+ | MPLS		{ $$ = "mpls"; }
+ | PRI		{ $$ = "pri"; }
+ | SEC		{ $$ = "sec"; }
+ ;
 
 CF_CLI_HELP(SHOW SYMBOLS, ..., [[Show all known symbolic names]])
 CF_CLI(SHOW SYMBOLS, sym_args, [table|filter|function|protocol|template|<symbol>], [[Show all known symbolic names]])
