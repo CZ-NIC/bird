@@ -105,27 +105,27 @@ protocol static flowstat4 {
 		proto = 0x12;
 		sport > 0x5678 && < 0x9abc || 0xdef0 || 0x1234,0x5678,0x9abc..0xdef0;
 		dport = 50;
-		tcp flags 0xabcd/0xbbdd;
+		tcp flags 0x000/0xf00;
 	};
 
 	route flow4 {
 		dst 12.0.0.0/32;
-		tcp flags ! 0 / 0x9999;
+		tcp flags ! 0/0x999;
 	};
 
 	route flow4 {
 		dst 220.0.254.0/24;
-		tcp flags 0x99 / 0x9999;
+		tcp flags 0x99/0x999;
 	};
 
 	route flow4 {
 		dst 220.0.254.192/28;
-		tcp flags !0xffff / 0xFFFF;
+		tcp flags ! 0xfff/0xfff;
 	};
 
 	route flow4 {
 		dst 15.0.0.0/8;
-		tcp flags !0x9999/0x9999;
+		tcp flags ! 0x999/0x999;
 	};
 }
 

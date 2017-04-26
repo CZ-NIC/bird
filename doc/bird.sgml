@@ -768,7 +768,8 @@ logical operators <cf/&&/ or <cf/||/. Allowed relational operators are <cf/=/,
 
 	<tag><label id="flow-tcp-flags">tcp flags <m/bitmask-match/</tag>
 	Set a matching bitmask for TCP header flags (aka control bits) (e.g.
-	<cf>tcp flags 0x03/0x0f;</cf>).
+	<cf>tcp flags 0x03/0x0f;</cf>). The maximum length of mask is 12 bits
+	(0xfff).
 
 	<tag><label id="flow-length">length <m/numbers-match/</tag>
 	Set a matching packet length (e.g. <cf>length > 1500;</cf>)

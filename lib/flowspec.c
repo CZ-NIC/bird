@@ -259,7 +259,8 @@ static const char* flow_validated_state_str_[] = {
   [FLOW_ST_BAD_TYPE_ORDER] 		= "Bad component order",
   [FLOW_ST_AND_BIT_SHOULD_BE_UNSET] 	= "The AND-bit should be unset",
   [FLOW_ST_ZERO_BIT_SHOULD_BE_UNSED] 	= "The Zero-bit should be unset",
-  [FLOW_ST_DEST_PREFIX_REQUIRED] 	= "Destination prefix is required to define",
+  [FLOW_ST_DEST_PREFIX_REQUIRED] 	= "Destination prefix is missing",
+  [FLOW_ST_INVALID_TCP_FLAGS]		= "TCP flags exceeding 0xfff",
   [FLOW_ST_CANNOT_USE_DONT_FRAGMENT]    = "Cannot use Don't fragment flag in IPv6 flow"
 };
 
@@ -332,8 +333,11 @@ flow_check_cf_bmk_values(struct flow_builder *fb, u8 neg, u32 val, u32 mask)
   if (neg && !(val == 0 || val == mask))
     cf_error("For negation, value must be zero or bitmask");
 
-  if (fb->this_type == FLOW_TYPE_FRAGMENT && fb->ipv6 && (mask & 0x01))
-    cf_error("Invalid mask 0x%x. Bit 0 must be 0", mask);
+  if ((fb->this_type == FLOW_TYPE_TCP_FLAGS) && (mask & 0xf000))
+    cf_error("Invalid mask 0x%x, must not exceed 0xfff", mask);
+
+  if ((fb->this_type == FLOW_TYPE_FRAGMENT) && fb->ipv6 && (mask & 0x01))
+    cf_error("Invalid mask 0x%x, bit 0 must be 0", mask);
 
   if (val & ~mask)
     cf_error("Value 0x%x outside bitmask 0x%x", val, mask);
@@ -456,15 +460,20 @@ flow_validate(const byte *nlri, uint len, int ipv6)
 	    return FLOW_ST_ZERO_BIT_SHOULD_BE_UNSED;
 	}
 
-	/* Bit-7 must be 0 [draft-ietf-idr-flow-spec-v6] */
-	if (ipv6 && type == FLOW_TYPE_FRAGMENT && (*(pos+1) & 0x01))
-	  return FLOW_ST_CANNOT_USE_DONT_FRAGMENT;
-	/* XXX: Could be a fragment component encoded in 2-bytes? */
-
 	/* Value length of operator */
 	uint len = get_value_length(pos);
 	if (len > flow_max_value_length(type, ipv6))
 	  return FLOW_ST_EXCEED_MAX_VALUE_LENGTH;
+
+	/* TCP Flags component must not check highest nibble (just 12 valid bits) */
+	if ((type == FLOW_TYPE_TCP_FLAGS) && (len == 2) && (pos[1] & 0xf0))
+	  return FLOW_ST_INVALID_TCP_FLAGS;
+
+	/* Bit-7 must be 0 [draft-ietf-idr-flow-spec-v6] */
+	if ((type == FLOW_TYPE_FRAGMENT) && ipv6 && (pos[1] & 0x01))
+	  return FLOW_ST_CANNOT_USE_DONT_FRAGMENT;
+	/* XXX: Could be a fragment component encoded in 2-bytes? */
+
 	pos += 1+len;
 
 	if (pos > end && !last)
