@@ -929,21 +929,6 @@ get_value(const byte *val, u8 len)
   return 0;
 }
 
-static int
-is_bitmask(enum flow_type type)
-{
-  switch (type)
-  {
-  case FLOW_TYPE_TCP_FLAGS:
-  case FLOW_TYPE_FRAGMENT:
-  case FLOW_TYPE_LABEL:
-    return 1;
-
-  default:
-    return 0;
-  }
-}
-
 static const char *
 fragment_val_str(u8 val)
 {
@@ -955,6 +940,147 @@ fragment_val_str(u8 val)
   case 8: return "last_fragment";
   }
   return "???";
+}
+
+static void
+net_format_flow_ip(buffer *b, const byte *part, int ipv6)
+{
+  uint pxlen = *(part+1);
+  if (ipv6)
+  {
+    uint pxoffset = *(part+2);
+    if (pxoffset)
+      buffer_print(b, "%I6/%u offset %u; ", flow_read_ip6(part+3,pxlen,pxoffset), pxlen, pxoffset);
+    else
+      buffer_print(b, "%I6/%u; ", flow_read_ip6(part+3,pxlen,0), pxlen);
+  }
+  else
+  {
+    buffer_print(b, "%I4/%u; ", flow_read_ip4(part+2,pxlen), pxlen);
+  }
+}
+
+static void
+net_format_flow_num(buffer *b, const byte *part)
+{
+  const byte *last_op = NULL;
+  const byte *op = part+1;
+  u64 val;
+  uint len;
+  uint first = 1;
+
+  while (1)
+  {
+    if (!first)
+    {
+      /* XXX: I don't like this so complicated if-tree */
+      if (!isset_and(op) &&
+	  ((num_op(     op) == FLOW_EQ) || (num_op(     op) == FLOW_GTE)) &&
+	  ((num_op(last_op) == FLOW_EQ) || (num_op(last_op) == FLOW_LTE)))
+      {
+	b->pos--; /* Remove last char (it is a space) */
+	buffer_puts(b, ",");
+      }
+      else
+      {
+	buffer_puts(b, isset_and(op) ? "&& " : "|| ");
+      }
+    }
+    first = 0;
+
+    len = get_value_length(op);
+    val = get_value(op+1, len);
+
+    if (!isset_end(op) && !isset_and(op) && isset_and(op+1+len) &&
+	(num_op(op) == FLOW_GTE) && (num_op(op+1+len) == FLOW_LTE))
+    {
+      /* Display interval */
+      buffer_print(b, "%u..", val);
+      op += 1 + len;
+      len = get_value_length(op);
+      val = get_value(op+1, len);
+      buffer_print(b, "%u", val);
+    }
+    else if (num_op(op) == FLOW_EQ)
+    {
+      buffer_print(b, "%u", val);
+    }
+    else
+    {
+      buffer_print(b, "%s %u", num_op_str(op), val);
+    }
+
+    if (isset_end(op))
+    {
+      buffer_puts(b, "; ");
+      break;
+    }
+    else
+    {
+      buffer_puts(b, " ");
+    }
+
+    last_op = op;
+    op += 1 + len;
+  }
+}
+
+static void
+net_format_flow_bitmask(buffer *b, const byte *part)
+{
+  const byte *op = part+1;
+  u64 val;
+  uint len;
+  uint first = 1;
+
+  while (1)
+  {
+    if (!first)
+    {
+      if (isset_and(op))
+      {
+	b->pos--; /* Remove last char (it is a space) */
+	buffer_puts(b, ",");
+      }
+      else
+      {
+	buffer_puts(b, "|| ");
+      }
+    }
+    first = 0;
+
+    len = get_value_length(op);
+    val = get_value(op+1, len);
+
+    /*
+     *   Not Match  Show
+     *  ------------------
+     *    0    0    !0/B
+     *    0    1     B/B
+     *    1    0     0/B
+     *    1    1    !B/B
+     */
+
+    if ((*op & 0x3) == 0x3 || (*op & 0x3) == 0)
+      buffer_puts(b, "!");
+
+    if (*part == FLOW_TYPE_FRAGMENT && (val == 1 || val == 2 || val == 4 || val == 8))
+      buffer_print(b, "%s%s", ((*op & 0x1) ? "" : "!"), fragment_val_str(val));
+    else
+      buffer_print(b, "0x%x/0x%x", ((*op & 0x1) ? val : 0), val);
+
+    if (isset_end(op))
+    {
+      buffer_puts(b, "; ");
+      break;
+    }
+    else
+    {
+      buffer_puts(b, " ");
+    }
+
+    op += 1 + len;
+  }
 }
 
 static uint
@@ -982,123 +1108,23 @@ net_format_flow(char *buf, uint blen, const byte *data, uint dlen, int ipv6)
     {
     case FLOW_TYPE_DST_PREFIX:
     case FLOW_TYPE_SRC_PREFIX:
-    {
-      uint pxlen = *(part+1);
-      if (ipv6)
-      {
-	uint pxoffset = *(part+2);
-	if (pxoffset)
-	  buffer_print(&b, "%I6/%u offset %u; ", flow_read_ip6(part+3,pxlen,pxoffset), pxlen, pxoffset);
-	else
-	  buffer_print(&b, "%I6/%u; ", flow_read_ip6(part+3,pxlen,0), pxlen);
-      }
-      else
-      {
-	buffer_print(&b, "%I4/%u; ", flow_read_ip4(part+2,pxlen), pxlen);
-      }
+      net_format_flow_ip(&b, part, ipv6);
       break;
-    }
-
     case FLOW_TYPE_IP_PROTOCOL: /* == FLOW_TYPE_NEXT_HEADER */
     case FLOW_TYPE_PORT:
     case FLOW_TYPE_DST_PORT:
     case FLOW_TYPE_SRC_PORT:
     case FLOW_TYPE_ICMP_TYPE:
     case FLOW_TYPE_ICMP_CODE:
-    case FLOW_TYPE_TCP_FLAGS:
     case FLOW_TYPE_PACKET_LENGTH:
     case FLOW_TYPE_DSCP:
+      net_format_flow_num(&b, part);
+      break;
+    case FLOW_TYPE_TCP_FLAGS:
     case FLOW_TYPE_FRAGMENT:
     case FLOW_TYPE_LABEL:
-    {
-      const byte *last_op = NULL;
-      const byte *op = part+1;
-      u64 val;
-      uint len;
-      uint first = 1;
-
-      while (1)
-      {
-	if (!first)
-	{
-	  /* XXX: I don't like this so complicated if-tree */
-	  if (!isset_and(op) && !is_bitmask(*part) &&
-	      ((num_op(     op) == FLOW_EQ) || (num_op(     op) == FLOW_GTE)) &&
-	      ((num_op(last_op) == FLOW_EQ) || (num_op(last_op) == FLOW_LTE)))
-	  {
-	    b.pos--; /* Remove last char (it is a space) */
-	    buffer_puts(&b, ",");
-	  }
-	  else if (isset_and(op) && is_bitmask(*part))
-	  {
-	    b.pos--; /* Remove last char (it is a space) */
-	    buffer_puts(&b, ",");
-	  }
-	  else
-	  {
-	    buffer_puts(&b, isset_and(op) ? "&& " : "|| ");
-	  }
-	}
-	first = 0;
-
-	len = get_value_length(op);
-	val = get_value(op+1, len);
-
-	if (is_bitmask(*part))
-	{
-	  /*
-	   *   Not Match  Show
-	   *  ------------------
-	   *    0    0    !0/B
-	   *    0    1     B/B
-	   *    1    0     0/B
-	   *    1    1    !B/B
-	   */
-
-	  if ((*op & 0x3) == 0x3 || (*op & 0x3) == 0)
-	    buffer_puts(&b, "!");
-
-	  if (*part == FLOW_TYPE_FRAGMENT && (val == 1 || val == 2 || val == 4 || val == 8))
-	    buffer_print(&b, "%s%s", ((*op & 0x1) ? "" : "!"), fragment_val_str(val));
-	  else
-	    buffer_print(&b, "0x%x/0x%x", ((*op & 0x1) ? val : 0), val);
-	}
-	else
-	{
-	  if (!isset_end(op) && !isset_and(op) && isset_and(op+1+len) &&
-	      (num_op(op) == FLOW_GTE) && (num_op(op+1+len) == FLOW_LTE))
-	  {
-	    /* Display interval */
-	    buffer_print(&b, "%u..", val);
-	    op += 1 + len;
-	    len = get_value_length(op);
-	    val = get_value(op+1, len);
-	    buffer_print(&b, "%u", val);
-	  }
-	  else if (num_op(op) == FLOW_EQ)
-	  {
-	    buffer_print(&b, "%u", val);
-	  }
-	  else
-	  {
-	    buffer_print(&b, "%s %u", num_op_str(op), val);
-	  }
-	}
-
-	if (isset_end(op))
-	{
-	  buffer_puts(&b, "; ");
-	  break;
-	}
-	else
-	{
-	  buffer_puts(&b, " ");
-	}
-
-	last_op = op;
-	op += 1 + len;
-      }
-    }
+      net_format_flow_bitmask(&b, part);
+      break;
     }
 
     part = flow_next_part(part, data+dlen, ipv6);
