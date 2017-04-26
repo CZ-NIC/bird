@@ -1693,15 +1693,13 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   case P('a','f'):
   case P('a','l'):
   case P('a','L'): ONEARG; break;
-#if 0
   case P('R','C'):
     TWOARGS;
-    /* Does not really make sense - ROA check resuls may change anyway */
+    /* Does not really make sense - ROA check results may change anyway */
     if (strcmp(((struct f_inst_roa_check *) f1)->rtc->name,
 	       ((struct f_inst_roa_check *) f2)->rtc->name))
       return 0;
     break;
-#endif
   default:
     bug( "Unknown instruction %d in same (%c)", f1->code, f1->code & 0xff);
   }

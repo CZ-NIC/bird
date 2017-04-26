@@ -313,26 +313,30 @@ struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 struct rt_show_data_rtable {
   node n;
   rtable *table;
+  struct channel *export_channel;
 };
 
 struct rt_show_data {
   net_addr *addr;
-  list table;
-  struct rt_show_data_rtable *tit;
-  struct filter *filter;
+  list tables;
+  struct rt_show_data_rtable *tab;	/* Iterator over table list */
+  struct rt_show_data_rtable *last_table; /* Last table in output */
+  struct fib_iterator fit;		/* Iterator over networks in table */
   int verbose, tables_defined_by;
-  struct fib_iterator fit;
+  struct filter *filter;
   struct proto *show_protocol;
   struct proto *export_protocol;
   struct channel *export_channel;
-  int export_mode, primary_only, filtered;
   struct config *running_on_config;
+  int export_mode, primary_only, filtered, stats, show_for;
+
+  int table_open;			/* Iteration (fit) is open */
   int net_counter, rt_counter, show_counter, table_counter;
   int net_counter_last, rt_counter_last, show_counter_last;
-  int stats, show_for, stats_by_table;
 };
+
 void rt_show(struct rt_show_data *);
-void rt_show_add_table(struct rt_show_data *d, rtable *t);
+struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t);
 
 /* Value of table definition mode in struct rt_show_data */
 #define RSD_TDB_DEFAULT	  0		/* no table specified */

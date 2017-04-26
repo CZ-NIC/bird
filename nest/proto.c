@@ -105,6 +105,25 @@ proto_find_channel_by_table(struct proto *p, struct rtable *t)
 }
 
 /**
+ * proto_find_channel_by_name - find channel by its name
+ * @p: protocol instance
+ * @n: channel name
+ *
+ * Returns pointer to channel or NULL
+ */
+struct channel *
+proto_find_channel_by_name(struct proto *p, const char *n)
+{
+  struct channel *c;
+
+  WALK_LIST(c, p->channels)
+    if (!strcmp(c->name, n))
+      return c;
+
+  return NULL;
+}
+
+/**
  * proto_add_channel - connect protocol to a routing table
  * @p: protocol instance
  * @cf: channel configuration

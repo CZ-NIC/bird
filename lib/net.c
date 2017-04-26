@@ -177,33 +177,29 @@ net_hash(const net_addr *n)
   case NET_ROA6: return NET_HASH(n, roa6);
   case NET_FLOW4: return NET_HASH(n, flow4);
   case NET_FLOW6: return NET_HASH(n, flow6);
+  case NET_MPLS: return NET_HASH(n, mpls);
   default: bug("invalid type");
   }
 }
 
 
+#define NET_VALIDATE(a,t) net_validate_##t((const net_addr_##t *) a)
+
 int
-net_validate(const net_addr *N)
+net_validate(const net_addr *n)
 {
-  switch (N->type)
+  switch (n->type)
   {
-  case NET_IP4:
-  case NET_VPN4:
-  case NET_ROA4:
-  case NET_FLOW4:
-    return net_validate_ip4((net_addr_ip4 *) N);
-
-  case NET_IP6:
-  case NET_VPN6:
-  case NET_ROA6:
-  case NET_FLOW6:
-    return net_validate_ip6((net_addr_ip6 *) N);
-
-  case NET_MPLS:
-    return net_validate_mpls((net_addr_mpls *) N);
-
-  default:
-    return 0;
+  case NET_IP4: return NET_VALIDATE(n, ip4);
+  case NET_IP6: return NET_VALIDATE(n, ip6);
+  case NET_VPN4: return NET_VALIDATE(n, vpn4);
+  case NET_VPN6: return NET_VALIDATE(n, vpn6);
+  case NET_ROA4: return NET_VALIDATE(n, roa4);
+  case NET_ROA6: return NET_VALIDATE(n, roa6);
+  case NET_FLOW4: return NET_VALIDATE(n, flow4);
+  case NET_FLOW6: return NET_VALIDATE(n, flow6);
+  case NET_MPLS: return NET_VALIDATE(n, mpls);
+  default: return 0;
   }
 }
 

@@ -900,7 +900,6 @@ rte_validate(rte *e)
   int c;
   net *n = e->net;
 
-  // (n->n.pxlen > BITS_PER_IP_ADDRESS) || !ip_is_prefix(n->n.prefix,n->n.pxlen))
   if (!net_validate(n->n.addr))
   {
     log(L_WARN "Ignoring bogus prefix %N received via %s",
@@ -916,12 +915,19 @@ rte_validate(rte *e)
     return 0;
   }
 
+  if (net_type_match(n->n.addr, NB_DEST) == !e->attrs->dest)
+  {
+    log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
+	n->n.addr, e->attrs->dest, e->sender->proto->name);
+    return 0;
+  }
+
   if ((e->attrs->dest == RTD_UNICAST) && !nexthop_is_sorted(&(e->attrs->nh)))
-    {
-      log(L_WARN "Ignoring unsorted multipath route %N received via %s",
-	  n->n.addr, e->sender->proto->name);
-      return 0;
-    }
+  {
+    log(L_WARN "Ignoring unsorted multipath route %N received via %s",
+	n->n.addr, e->sender->proto->name);
+    return 0;
+  }
 
   return 1;
 }
@@ -2498,6 +2504,18 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
  */
 
 static void
+rt_show_table(struct cli *c, struct rt_show_data *d)
+{
+  /* No table blocks in 'show route count' */
+  if (d->stats == 2)
+    return;
+
+  if (d->last_table) cli_printf(c, -1007, "");
+  cli_printf(c, -1007, "Table %s:", d->tab->table->name);
+  d->last_table = d->tab;
+}
+
+static void
 rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tmpa)
 {
   byte from[IPA_MAX_TEXT_LENGTH+8];
@@ -2529,8 +2547,8 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
   else
     bsprintf(info, " (%d)", e->pref);
 
-  if (!d->show_counter)
-    cli_printf(c, -1007, "Table %s:", d->tit->table->name);
+  if (d->last_table != d->tab)
+    rt_show_table(c, d);
 
   cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", ia, rta_dest_name(a->dest),
 	     a->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
@@ -2564,7 +2582,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
   rte *e, *ee;
   byte ia[NET_MAX_TEXT_LENGTH+1];
   struct ea_list *tmpa;
-  struct channel *ec = d->export_channel;
+  struct channel *ec = d->tab->export_channel;
   int first = 1;
   int pass = 0;
 
@@ -2586,6 +2604,10 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       rte_update_lock();		/* We use the update buffer for filtering */
       tmpa = make_tmp_attrs(e, rte_update_pool);
 
+      /* Export channel is down, do not try to export routes to it */
+      if (ec && (ec->export_state == ES_DOWN))
+	goto skip;
+
       /* Special case for merged export */
       if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
         {
@@ -2598,7 +2620,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	}
       else if (d->export_mode)
 	{
-	  struct proto *ep = d->export_protocol;
+	  struct proto *ep = ec->proto;
 	  int ic = ep->import_control ? ep->import_control(ep, &e, &tmpa, rte_update_pool) : 0;
 
 	  if (ec->ra_mode == RA_OPTIMAL || ec->ra_mode == RA_MERGED)
@@ -2650,25 +2672,19 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
     }
 }
 
-static struct channel *
-rt_show_export_channel(struct rt_show_data *d)
-{
-  if (! d->export_protocol->rt_notify)
-    return NULL;
-
-  return proto_find_channel_by_table(d->export_protocol, d->tit->table);
-}
-
 static void
 rt_show_cleanup(struct cli *c)
 {
   struct rt_show_data *d = c->rover;
+  struct rt_show_data_rtable *tab;
 
   /* Unlink the iterator */
-  fit_get(&d->tit->table->fib, &d->fit);
-  rt_unlock_table(d->tit->table);
-  while (NODE_VALID(NODE_NEXT(d->tit)))
-    rt_unlock_table((d->tit = NODE_NEXT(d->tit))->table);
+  if (d->table_open)
+    fit_get(&d->tab->table->fib, &d->fit);
+
+  /* Unlock referenced tables */
+  WALK_LIST(tab, d->tables)
+    rt_unlock_table(tab->table);
 }
 
 static void
@@ -2680,84 +2696,110 @@ rt_show_cont(struct cli *c)
 #else
   unsigned max = 64;
 #endif
-  struct fib *fib = &d->tit->table->fib;
+  struct fib *fib = &d->tab->table->fib;
   struct fib_iterator *it = &d->fit;
 
-  if (d->export_mode)
-    {
-      /* Ensure we have current export channel */
-      d->export_channel = rt_show_export_channel(d);
-      if (!d->export_channel || (d->export_channel->export_state == ES_DOWN))
-        {
-	  cli_printf(c, 8005, "Channel is down");
-	  rt_show_cleanup(c);
-	  goto done;
-	}
-    }
+  if (d->running_on_config && (d->running_on_config != config))
+  {
+    cli_printf(c, 8004, "Stopped due to reconfiguration");
+    goto done;
+  }
+
+  if (!d->table_open)
+  {
+    FIB_ITERATE_INIT(&d->fit, &d->tab->table->fib);
+    d->table_open = 1;
+    d->table_counter++;
+
+    d->show_counter_last = d->show_counter;
+    d->rt_counter_last   = d->rt_counter;
+    d->net_counter_last  = d->net_counter;
+
+    if (d->tables_defined_by & RSD_TDB_SET)
+      rt_show_table(c, d);
+  }
 
   FIB_ITERATE_START(fib, it, net, n)
+  {
+    if (!max--)
     {
-      if (!max--)
-	{
-	  FIB_ITERATE_PUT(it);
-	  return;
-	}
-      rt_show_net(c, n, d);
-    }
-  FIB_ITERATE_END;
-
-  if (!d->show_counter && (d->tables_defined_by & RSD_TDB_SET))
-    cli_printf(c, -1007, "Table %s:", d->tit->table->name);
-
-  if (d->stats && d->stats_by_table)
-    cli_printf(c, -1007, "%d of %d routes for %d networks in table %s", d->show_counter - d->show_counter_last, d->rt_counter - d->rt_counter_last, d->net_counter - d->net_counter_last, d->tit->table->name);
-
-  rt_unlock_table(d->tit->table);
-  d->table_counter++;
-  if (NODE_VALID(NODE_NEXT(d->tit)))
-    {
-      d->tit = NODE_NEXT(d->tit);
-      FIB_ITERATE_INIT(&d->fit, &d->tit->table->fib);
-      d->show_counter_last = d->show_counter;
-      d->rt_counter_last = d->rt_counter;
-      d->net_counter_last = d->net_counter;
-      d->show_counter = 0;
-      d->rt_counter = 0;
-      d->net_counter = 0;
+      FIB_ITERATE_PUT(it);
       return;
     }
+    rt_show_net(c, n, d);
+  }
+  FIB_ITERATE_END;
 
   if (d->stats)
-    cli_printf(c, 14, "Total: %d of %d routes for %d networks in %d tables", d->show_counter, d->rt_counter, d->net_counter, d->table_counter);
+  {
+    if (d->last_table != d->tab)
+      rt_show_table(c, d);
+
+    cli_printf(c, -1007, "%d of %d routes for %d networks in table %s",
+	       d->show_counter - d->show_counter_last, d->rt_counter - d->rt_counter_last,
+	       d->net_counter - d->net_counter_last, d->tab->table->name);
+  }
+
+  d->table_open = 0;
+  d->tab = NODE_NEXT(d->tab);
+
+  if (NODE_VALID(d->tab))
+    return;
+
+  if (d->stats && (d->table_counter > 1))
+  {
+    if (d->last_table) cli_printf(c, -1007, "");
+    cli_printf(c, 14, "Total: %d of %d routes for %d networks in %d tables",
+	       d->show_counter, d->rt_counter, d->net_counter, d->table_counter);
+  }
   else
     cli_printf(c, 0, "");
+
 done:
+  rt_show_cleanup(c);
   c->cont = c->cleanup = NULL;
 }
 
-void rt_show_add_table(struct rt_show_data *d, rtable *t)
+struct rt_show_data_rtable *
+rt_show_add_table(struct rt_show_data *d, rtable *t)
 {
-  struct rt_show_data_rtable *rsdr = cfg_alloc(sizeof(struct rt_show_data_rtable));
-  rsdr->table = t;
-  add_tail(&(d->table), &(rsdr->n));
+  struct rt_show_data_rtable *tab = cfg_allocz(sizeof(struct rt_show_data_rtable));
+  tab->table = t;
+  add_tail(&(d->tables), &(tab->n));
+  return tab;
 }
 
 static inline void
-rt_show_get_table(struct proto *p, struct rt_show_data *d)
+rt_show_get_default_tables(struct rt_show_data *d)
 {
   struct channel *c;
-  WALK_LIST(c, p->channels)
-    if (c->table)
-      rt_show_add_table(d, c->table);
+  struct rt_show_data_rtable *tab;
 
-}
-
-static inline void
-rt_show_get_default_table(struct rt_show_data *d)
-{
-  if (d->export_protocol || d->show_protocol)
+  if (d->export_channel)
   {
-    rt_show_get_table(d->export_protocol ?: d->show_protocol, d);
+    c = d->export_channel;
+    tab = rt_show_add_table(d, c->table);
+    tab->export_channel = c;
+    return;
+  }
+
+  if (d->export_protocol)
+  {
+    WALK_LIST(c, d->export_protocol->channels)
+    {
+      if (c->export_state == ES_DOWN)
+	continue;
+
+      tab = rt_show_add_table(d, c->table);
+      tab->export_channel = c;
+    }
+    return;
+  }
+
+  if (d->show_protocol)
+  {
+    WALK_LIST(c, d->show_protocol->channels)
+      rt_show_add_table(d, c->table);
     return;
   }
 
@@ -2766,78 +2808,96 @@ rt_show_get_default_table(struct rt_show_data *d)
       rt_show_add_table(d, config->def_tables[i]->table);
 }
 
+static inline void
+rt_show_prepare_tables(struct rt_show_data *d)
+{
+  struct rt_show_data_rtable *tab, *tabx;
+
+  /* Add implicit tables if no table is specified */
+  if (EMPTY_LIST(d->tables))
+    rt_show_get_default_tables(d);
+
+  WALK_LIST_DELSAFE(tab, tabx, d->tables)
+  {
+    /* Ensure there is defined export_channel for each table */
+    if (d->export_mode)
+    {
+      if (!tab->export_channel && d->export_channel &&
+	  (tab->table == d->export_channel->table))
+	tab->export_channel = d->export_channel;
+
+      if (!tab->export_channel && d->export_protocol)
+	tab->export_channel = proto_find_channel_by_table(d->export_protocol, tab->table);
+
+      if (!tab->export_channel)
+      {
+	if (d->tables_defined_by & RSD_TDB_NMN)
+	  cf_error("No export channel for table %s", tab->table->name);
+
+	rem_node(&(tab->n));
+	continue;
+      }
+    }
+
+    /* Ensure specified network is compatible with each table */
+    if (d->addr && (tab->table->addr_type != d->addr->type))
+    {
+      if (d->tables_defined_by & RSD_TDB_NMN)
+	cf_error("Incompatible type of prefix/ip for table %s", tab->table->name);
+
+      rem_node(&(tab->n));
+      continue;
+    }
+  }
+
+  /* Ensure there is at least one table */
+  if (EMPTY_LIST(d->tables))
+    cf_error("No valid tables");
+}
+
 void
 rt_show(struct rt_show_data *d)
 {
+  struct rt_show_data_rtable *tab;
   net *n;
-
-  /* There may be implicit tables. */
-  if (EMPTY_LIST(d->table)) rt_show_get_default_table(d);
 
   /* Filtered routes are neither exported nor have sensible ordering */
   if (d->filtered && (d->export_mode || d->primary_only))
-    cli_msg(0, "");
+    cf_error("Incompatible show route options");
+
+  rt_show_prepare_tables(d);
 
   if (!d->addr)
-    {
-      struct rt_show_data_rtable *rsdr;
-      WALK_LIST(rsdr, d->table)
-      {
-	rt_lock_table(rsdr->table);
-      }
-      d->tit = HEAD(d->table);
-      FIB_ITERATE_INIT(&d->fit, &d->tit->table->fib);
-      this_cli->cont = rt_show_cont;
-      this_cli->cleanup = rt_show_cleanup;
-      this_cli->rover = d;
-    }
+  {
+    WALK_LIST(tab, d->tables)
+      rt_lock_table(tab->table);
+
+    /* There is at least one table */
+    d->tab = HEAD(d->tables);
+    this_cli->cont = rt_show_cont;
+    this_cli->cleanup = rt_show_cleanup;
+    this_cli->rover = d;
+  }
   else
+  {
+    WALK_LIST(tab, d->tables)
     {
-      if (d->export_mode)
-        {
-	  /* Find channel associated with the export protocol */
-	  d->export_channel = rt_show_export_channel(d);
-	  if (!d->export_channel || (d->export_channel->export_state == ES_DOWN))
-	    {
-	      cli_msg(8005, "Channel is down");
-	      return;
-	    }
-	}
+      d->tab = tab;
 
-      struct rt_show_data_rtable *rsdr, *rn;
-      WALK_LIST_DELSAFE(rsdr, rn, d->table)
-      {
-	/* Check table net types matching to query */
-	if (rsdr->table->addr_type == d->addr->type)
-	  continue;
-
-	if (d->tables_defined_by & RSD_TDB_NMN)
-	{
-	  cli_msg(8001, "Incompatible type of prefix/ip with table %s", rsdr->table->name);
-	  return;
-	}
-
-	rem_node(&(rsdr->n));
-      }
-
-      WALK_LIST(rsdr, d->table)
-      {
-	d->tit = rsdr;
-
-	if (d->show_for)
-	  n = net_route(rsdr->table, d->addr);
-	else
-	  n = net_find(rsdr->table, d->addr);
-
-	if (n)
-	  rt_show_net(this_cli, n, d);
-      }
-
-      if (d->rt_counter)
-	cli_msg(0, "");
+      if (d->show_for)
+	n = net_route(tab->table, d->addr);
       else
-	cli_msg(8001, "Network not found in any specified table");
+	n = net_find(tab->table, d->addr);
+
+      if (n)
+	rt_show_net(this_cli, n, d);
     }
+
+    if (d->rt_counter)
+      cli_msg(0, "");
+    else
+      cli_msg(8001, "Network not found");
+  }
 }
 
 /*
