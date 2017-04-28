@@ -105,6 +105,7 @@ struct bgp_config {
   int passive;				/* Do not initiate outgoing connection */
   int interpret_communities;		/* Hardwired handling of well-known communities */
   int allow_local_as;			/* Allow that number of local ASNs in incoming AS_PATHs */
+  int allow_local_pref;			/* Allow LOCAL_PREF in EBGP sessions */
   int gr_mode;				/* Graceful restart mode (BGP_GR_*) */
   int setkey;				/* Set MD5 password to system SA/SP database */
   unsigned gr_time;			/* Graceful restart timeout */

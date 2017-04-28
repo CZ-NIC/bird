@@ -2047,8 +2047,9 @@ using the following configuration parameters:
 	<tag><label id="bgp-iface">interface <m/string/</tag>
 	Define interface we should use for link-local BGP IPv6 sessions.
 	Interface can also be specified as a part of <cf/neighbor address/
-	(e.g., <cf/neighbor fe80::1234%eth0 as 65000;/). It is an error to use
-	this parameter for non link-local sessions.
+	(e.g., <cf/neighbor fe80::1234%eth0 as 65000;/). The option may also be
+	used for non link-local sessions when it is necessary to explicitly
+	specify an interface, but only for direct (not multihop) sessions.
 
 	<tag><label id="bgp-direct">direct</tag>
 	Specify that the neighbor is directly connected. The IP address of the
@@ -2231,6 +2232,14 @@ using the following configuration parameters:
 	sides of the BGP session, but it could be enabled separately for RX and
 	TX direction. When active, all available routes accepted by the export
 	filter are advertised to the neighbor. Default: off.
+
+	<tag><label id="bgp-allow-local-pref">allow bgp_local_pref <m/switch/</tag>
+	A standard BGP implementation do not send the Local Preference attribute
+	to eBGP neighbors and ignore this attribute if received from eBGP
+	neighbors, as per <rfc id="4271">.  When this option is enabled on an
+	eBGP session, this attribute will be sent to and accepted from the peer,
+	which is useful for example if you have a setup like in <rfc id="7938">.
+	The option does not affect iBGP sessions. Default: off.
 
 	<tag><label id="bgp-allow-local-as">allow local as [<m/number/]</tag>
 	BGP prevents routing loops by rejecting received routes with the local
@@ -3991,16 +4000,17 @@ protocol rip [ng] [&lt;name&gt;] {
 
 <p><code>
 protocol rip {
-        debug all;
-        port 1520;
-        period 12;
-        garbage time 60;
-        interface "eth0" { metric 3; mode multicast; };
-        interface "eth*" { metric 2; mode broadcast; };
-        authentication cryptographic;
-        password "secret-shared-key" { algorithm hmac sha256; };
-        import filter { print "importing"; accept; };
-        export filter { print "exporting"; accept; };
+	import all;
+	export all;
+	interface "eth*" {
+		metric 2;
+		port 1520;
+		mode multicast;
+		update time 12;
+		timeout time 60;
+		authentication cryptographic;
+		password "secret" { algorithm hmac sha256; };
+	};
 }
 </code>
 

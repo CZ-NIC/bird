@@ -358,14 +358,14 @@ bgp_decode_med(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *da
 static void
 bgp_export_local_pref(struct bgp_export_state *s, eattr *a)
 {
-  if (!s->proto->is_interior)
+  if (!s->proto->is_interior && !s->proto->cf->allow_local_pref)
     UNSET(a);
 }
 
 static void
 bgp_decode_local_pref(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
 {
-  if (!s->proto->is_interior)
+  if (!s->proto->is_interior && !s->proto->cf->allow_local_pref)
     DISCARD(BAD_EBGP, "LOCAL_PREF");
 
   if (len != 4)
