@@ -1142,7 +1142,9 @@ krt_start(struct proto *P)
   {
   case NET_IP4:	p->af = AF_INET; break;
   case NET_IP6:	p->af = AF_INET6; break;
+#ifdef AF_MPLS
   case NET_MPLS: p->af = AF_MPLS; break;
+#endif
   default: log(L_ERR "KRT: Tried to start with strange net type: %d", p->p.net_type); return PS_START; break;
   }
 

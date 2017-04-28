@@ -629,7 +629,7 @@ r_args_for:
        net_fill_ip_host($$, SYM_VAL($1).ip);
      }
      else if (($1->class == (SYM_CONSTANT | T_NET)) && net_type_match(SYM_VAL($1).net, NB_IP | NB_VPN))
-       $$ = SYM_VAL($1).net;
+       $$ = (net_addr *) SYM_VAL($1).net; /* Avoid const warning */
      else
        cf_error("IP address or network expected");
    }

@@ -146,8 +146,9 @@ krt_capable(rte *e)
 {
   rta *a = e->attrs;
 
+  /* XXXX device routes are broken */
   return
-    ((a->dest == RTD_UNICAST && !a->nh.next) /* No multipath support */
+    ((a->dest == RTD_UNICAST && ipa_nonzero(a->nh.gw) && !a->nh.next) /* No multipath support */
 #ifdef RTF_REJECT
      || a->dest == RTD_UNREACHABLE
 #endif
@@ -254,7 +255,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
       af = AF_INET6;
       break;
     default:
-      log(L_ERR "KRT: Not sending VPN route %N to kernel", net->n.addr);
+      log(L_ERR "KRT: Not sending route %N to kernel", net->n.addr);
       return -1;
   }
 
@@ -299,6 +300,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 
     sockaddr_fill(&gate, ipa_is_ip4(i->addr->ip) ? AF_INET : AF_INET6, i->addr->ip, NULL, 0);
     msg.rtm.rtm_addrs |= RTA_GATEWAY;
+    break;
   }
 
   default:
