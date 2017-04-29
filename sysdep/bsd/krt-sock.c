@@ -688,6 +688,10 @@ krt_read_addr(struct ks_msg *msg, int scan)
     default: return;
   }
 
+  /* We do not test family for RTA_NETMASK, because BSD sends us
+     some strange values, but interpreting them as IPv4/IPv6 works */
+  mask.sa.sa_family = addr.sa.sa_family;
+
   iaddr = ipa_from_sa(&addr);
   imask = ipa_from_sa(&mask);
   ibrd  = ipa_from_sa(&brd);
