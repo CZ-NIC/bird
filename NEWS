@@ -1,3 +1,21 @@
+Version 2.0.0-pre1 (2017-04-29)
+  o Support for MPLS next hops
+  o VPNv4 and VPNv6 network types
+  o BGP with MPLS labels (RFC 3107)
+  o BGP MPLS/VPN support (RFC 4364)
+  o BGP 6PE - IPv6 NLRI over IPv4 MPLS (RFC 4798)
+  o BGP IPv4 NLRI with an IPv6 Next Hop (RFC 5549)
+  o BGP Confederations (RFC 5065)
+  o BGP: Simplify igp table options
+  o BGP: Allow exchanging LOCAL_PREF with eBGP peers
+  o BGP: Allow to specify interface for regular sessions
+  o Babel support restored
+  o Static: Minor overhaul
+  o Netlink: Default kernel metric changed to 32
+  o Flowspec: Limit tcp mask length to 12 bits
+  o Flows and ROAs no longer use phony next hops
+  o Update of show route command
+
 Version 2.0.0-pre0 (2016-12-07)
   o Integrated IPv4 + IPv6 design
   o Major BGP protocol redesign
