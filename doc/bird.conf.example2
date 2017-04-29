@@ -168,7 +168,7 @@ protocol pipe {
 	export where source = RTS_OSPF;
 }
 
-protocol ospf2 ospf4 {
+protocol ospf v2 ospf4 {
 #	ecmp;
 
 	ipv4 {
@@ -185,7 +185,7 @@ protocol ospf2 ospf4 {
 }
 
 
-protocol ospf3 ospf6 {
+protocol ospf v3 ospf6 {
 #	ecmp;
 
 	ipv6 {

@@ -13,8 +13,18 @@ Version 2.0.0-pre1 (2017-04-29)
   o Static: Minor overhaul
   o Netlink: Default kernel metric changed to 32
   o Flowspec: Limit tcp mask length to 12 bits
-  o Flows and ROAs no longer use phony next hops
   o Update of show route command
+
+  Notes:
+
+  Definitions of OSPFv2, OSPFv3 and RIP NG protocols now use keywords
+  'ospf v2', 'ospf v3' and 'rip ng' instead of 'ospf2', 'ospf3' and 'ripng'.
+
+  Flows and ROAs no longer use phony next hops, so there is no need to use
+  'drop' or 'unreachable' in their static route definitions.
+
+  See doc/bird.conf.example2 for configuration examples.
+
 
 Version 2.0.0-pre0 (2016-12-07)
   o Integrated IPv4 + IPv6 design
