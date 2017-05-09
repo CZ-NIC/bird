@@ -9,13 +9,23 @@ Default location for configuration file is /usr/local/etc/bird.conf and
 for control socket is /usr/local/var/run/bird.ctl . You can change that
 by --sysconfdir and --localstatedir configure options.
 
+To compile current development BIRD source code from Git repository, you
+also need Git (to download the source code) and Autoconf (to generate
+the configure script and associated files using 'autoreconf' tool):
+
+$ git clone git://git.nic.cz/bird.git
+$ cd bird
+$ autoreconf
+
+Then continue as in usual installation above.
+
 
 Requirements
 ============
 
 For compiling BIRD you need these programs and libraries:
 
- - GNU C Compiler
+ - GNU C Compiler (or LLVM Clang)
  - GNU Make
  - GNU Bison
  - GNU M4

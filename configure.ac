@@ -218,27 +218,10 @@ case $sysdesc in
 esac
 
 AC_CHECK_HEADERS_ONCE([alloca.h syslog.h])
+AC_CHECK_MEMBERS([struct sockaddr.sa_len], [], [], [#include <sys/socket.h>])
+
 AC_CHECK_HEADER([linux/lwtunnel.h], [AC_DEFINE([HAVE_LWTUNNEL], [1], [Define to 1 if you have the <linux/lwtunnel.h> header file.])])
 AC_CHECK_MEMBERS([struct rtvia.rtvia_family], [AC_DEFINE([HAVE_STRUCT_RTVIA], [1], [Define to 1 if you have rtvia structure.])],,[#include <linux/rtnetlink.h>])
-
-AC_MSG_CHECKING(whether 'struct sockaddr' has sa_len)
-AC_COMPILE_IFELSE([
-  AC_LANG_PROGRAM(
-    [[
-      #include <sys/types.h>
-      #include <sys/socket.h>
-    ]],
-    [[
-      static struct sockaddr sa;
-      int i = sizeof(sa.sa_len);
-    ]]
-  )],
-  [
-    AC_MSG_RESULT(yes)
-    AC_DEFINE(HAVE_SIN_LEN,,sin_len)
-  ],
-  [AC_MSG_RESULT(no)]
-)
 
 AC_C_BIGENDIAN(
   [AC_DEFINE([CPU_BIG_ENDIAN], [1], [Define to 1 if cpu is big endian])],

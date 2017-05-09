@@ -516,7 +516,7 @@ static inline void
 sockaddr_fill4(struct sockaddr_in *sa, ip_addr a, uint port)
 {
   memset(sa, 0, sizeof(struct sockaddr_in));
-#ifdef HAVE_SIN_LEN
+#ifdef HAVE_STRUCT_SOCKADDR_SA_LEN
   sa->sin_len = sizeof(struct sockaddr_in);
 #endif
   sa->sin_family = AF_INET;
