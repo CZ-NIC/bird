@@ -69,7 +69,7 @@ fi
 AC_SUBST(CONFIG_FILE)
 AC_SUBST(CONTROL_SOCKET)
 
-AC_SEARCH_LIBS(clock_gettime, [c rt posix4], ,
+AC_SEARCH_LIBS(clock_gettime, [rt posix4], ,
 	AC_MSG_ERROR([[Function clock_gettime not available.]]))
 
 AC_CANONICAL_HOST
@@ -83,14 +83,6 @@ AC_PROG_CC
 if test -z "$GCC" ; then
 	AC_MSG_ERROR([This program requires the GNU C Compiler.])
 fi
-
-# Enable threads by default just in Linux and FreeBSD
-#if test "$enable_pthreads" = try ; then
-#	case "$host_os" in
-#		(linux* | freebsd* | openbsd* | netbsd* )	enable_pthreads=try ;;
-#		(*)				enable_pthreads=no ;;
-#	esac
-#fi
 
 if test "$enable_pthreads" != no ; then
 	BIRD_CHECK_PTHREADS
@@ -248,8 +240,8 @@ case $sysdesc in
 		;;
 esac
 
-AC_CHECK_HEADER(syslog.h, [AC_DEFINE([HAVE_SYSLOG], [1], [Define to 1 if you have the <syslog.h> header file])])
-AC_CHECK_HEADER(alloca.h, [AC_DEFINE([HAVE_ALLOCA_H], [1], [Define to 1 if you have the <alloca.h> header file])])
+AC_CHECK_HEADERS_ONCE([alloca.h syslog.h])
+
 AC_MSG_CHECKING(whether 'struct sockaddr' has sa_len)
 AC_COMPILE_IFELSE([
   AC_LANG_PROGRAM(
@@ -275,10 +267,8 @@ AC_C_BIGENDIAN(
   [AC_MSG_ERROR([Cannot determine CPU endianity.])]
 )
 
-BIRD_CHECK_INTEGERS
 BIRD_CHECK_STRUCT_ALIGN
 BIRD_CHECK_TIME_T
-BIRD_CHECK_STRUCT_IP_MREQN
 
 if test "$enable_debug" = yes ; then
 	AC_DEFINE([DEBUGGING], [1], [Define to 1 if debugging is enabled])

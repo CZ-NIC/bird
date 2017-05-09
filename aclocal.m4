@@ -1,75 +1,6 @@
 dnl ** Additional Autoconf tests for BIRD configure script
 dnl ** (c) 1999 Martin Mares <mj@ucw.cz>
 
-AC_DEFUN([BIRD_CHECK_INTEGERS],
-[AC_CHECK_SIZEOF(char, 0)
-AC_CHECK_SIZEOF(short int, 0)
-AC_CHECK_SIZEOF(int, 0)
-AC_CHECK_SIZEOF(long int, 0)
-AC_CHECK_SIZEOF(long long int, 0)
-AH_TEMPLATE([INTEGER_8],  [8-bit integer type])
-AH_TEMPLATE([INTEGER_16], [16-bit integer type])
-AH_TEMPLATE([INTEGER_32], [32-bit integer type])
-AH_TEMPLATE([INTEGER_64], [64-bit integer type])
-
-for size in 1 2 4 8; do
-	bits=`expr $size "*" 8`
-	AC_MSG_CHECKING([for $bits-bit type])
-	if test $ac_cv_sizeof_int = $size ; then
-		res=int
-	elif test $ac_cv_sizeof_char = $size ; then
-		res=char
-	elif test $ac_cv_sizeof_short_int = $size ; then
-		res="short int"
-	elif test $ac_cv_sizeof_long_int = $size ; then
-		res="long int"
-	elif test $ac_cv_sizeof_long_long_int = $size ; then
-		res="long long int"
-	else
-		AC_MSG_RESULT([not found])
-		AC_MSG_ERROR([Cannot find $bits-bit integer type.])
-	fi
-	AC_MSG_RESULT($res)
-	AC_DEFINE_UNQUOTED(INTEGER_$bits, $res)
-	done
-])
-
-dnl BIRD_CHECK_ENDIAN is unused and obsolete
-AC_DEFUN([BIRD_CHECK_ENDIAN],
-[AC_CACHE_CHECK([CPU endianity], bird_cv_c_endian,[
-AC_TRY_RUN([
-#include <stdio.h>
-
-unsigned int x = 0x12345678;
-unsigned char *z = (unsigned char *) &x;
-
-int main(void)
-{
-  FILE *f = fopen("conftestresult", "w");
-  if (!f) return 10;
-  fprintf(f, "%02x %02x %02x %02x", *z, *(z+1), *(z+2), *(z+3));
-  fclose(f);
-  exit(0);
-}
-],[
-	endian=`cat conftestresult`
-	if test "$endian" = "12 34 56 78" ; then
-		bird_cv_c_endian=big-endian
-	elif test "$endian" = "78 56 34 12" ; then
-		bird_cv_c_endian=little-endian
-	fi
-],[endian="test program failed"],[endian="not available, we're cross compiling"])
-if test -z "$bird_cv_c_endian" ; then
-	AC_MSG_RESULT($endian)
-	AC_MSG_ERROR([Cannot determine CPU endianity.])
-	fi
-])
-case $bird_cv_c_endian in
-	big-endian)	AC_DEFINE(CPU_BIG_ENDIAN) ;;
-	little-endian)	AC_DEFINE(CPU_LITTLE_ENDIAN) ;;
-	esac
-])
-
 AC_DEFUN([BIRD_CHECK_STRUCT_ALIGN],
 [AC_CACHE_CHECK([usual alignment of structures],bird_cv_c_struct_align,[
 AC_TRY_RUN([
@@ -126,18 +57,6 @@ case "$bird_cv_type_time_t" in
 	esac
 ])
 
-AC_DEFUN([BIRD_CHECK_STRUCT_IP_MREQN],
-[AC_CACHE_CHECK([for struct ip_mreqn], bird_cv_struct_ip_mreqn,[
-AC_TRY_COMPILE([#include <netinet/in.h>
-],[struct ip_mreqn x;
-],[bird_cv_struct_ip_mreqn=yes
-],[bird_cv_struct_ip_mreqn=no
-])])
-if test "$bird_cv_struct_ip_mreqn" = yes ; then
-	AC_DEFINE([HAVE_STRUCT_IP_MREQN], [1], [Define to 1 if you have struct ip_mreqn])
-fi
-])
-
 AC_DEFUN([BIRD_CHECK_PTHREADS],
 [
   bird_tmp_cflags="$CFLAGS"
@@ -170,7 +89,7 @@ AC_DEFUN([BIRD_ADD_GCC_OPTION],
 
 # BIRD_CHECK_PROG_FLAVOR_GNU(PROGRAM-PATH, IF-SUCCESS, [IF-FAILURE])
 # copied autoconf internal _AC_PATH_PROG_FLAVOR_GNU
-m4_define([BIRD_CHECK_PROG_FLAVOR_GNU],
+AC_DEFUN([BIRD_CHECK_PROG_FLAVOR_GNU],
 [# Check for GNU $1
 case `"$1" --version 2>&1` in
 *GNU*)
@@ -179,4 +98,4 @@ m4_ifval([$3],
 [*)
   $3;;
 ])esac
-])#
+])
