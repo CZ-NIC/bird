@@ -56,7 +56,7 @@ static int main_thread_self(void) { return 1; }
 #endif
 
 
-#ifdef HAVE_SYSLOG
+#ifdef HAVE_SYSLOG_H
 #include <sys/syslog.h>
 
 static int syslog_priorities[] = {
@@ -127,7 +127,7 @@ log_commit(int class, buffer *buf)
 	  fputc('\n', l->fh);
 	  fflush(l->fh);
 	}
-#ifdef HAVE_SYSLOG
+#ifdef HAVE_SYSLOG_H
       else
 	syslog(syslog_priorities[class], "%s", buf->start);
 #endif
@@ -262,7 +262,7 @@ default_log_list(int debug, int init, char **syslog_name)
   init_list(&init_log_list);
   *syslog_name = NULL;
 
-#ifdef HAVE_SYSLOG
+#ifdef HAVE_SYSLOG_H
   if (!debug)
     {
       static struct log_config lc_syslog = { .mask = ~0 };
@@ -287,7 +287,7 @@ log_switch(int debug, list *l, char *new_syslog_name)
 
   current_log_list = l;
 
-#ifdef HAVE_SYSLOG
+#ifdef HAVE_SYSLOG_H
   if (current_syslog_name && new_syslog_name &&
       !strcmp(current_syslog_name, new_syslog_name))
     return;
