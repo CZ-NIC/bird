@@ -241,25 +241,7 @@ case $sysdesc in
 esac
 
 AC_CHECK_HEADERS_ONCE([alloca.h syslog.h])
-
-AC_MSG_CHECKING(whether 'struct sockaddr' has sa_len)
-AC_COMPILE_IFELSE([
-  AC_LANG_PROGRAM(
-    [[
-      #include <sys/types.h>
-      #include <sys/socket.h>
-    ]],
-    [[
-      static struct sockaddr sa;
-      int i = sizeof(sa.sa_len);
-    ]]
-  )],
-  [
-    AC_MSG_RESULT(yes)
-    AC_DEFINE(HAVE_SIN_LEN,,sin_len)
-  ],
-  [AC_MSG_RESULT(no)]
-)
+AC_CHECK_MEMBERS([struct sockaddr.sa_len], [], [], [#include <sys/socket.h>])
 
 AC_C_BIGENDIAN(
   [AC_DEFINE([CPU_BIG_ENDIAN], [1], [Define to 1 if cpu is big endian])],
