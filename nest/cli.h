@@ -38,6 +38,7 @@ typedef struct cli {
   int last_reply;
   int restricted;			/* CLI is restricted to read-only commands */
   struct linpool *parser_pool;		/* Pool used during parsing */
+  struct linpool *show_pool;		/* Pool used during route show */
   byte *ring_buf;			/* Ring buffer for asynchronous messages */
   byte *ring_end, *ring_read, *ring_write;	/* Pointers to the ring buffer */
   uint ring_overflow;			/* Counter of ring overflows */
