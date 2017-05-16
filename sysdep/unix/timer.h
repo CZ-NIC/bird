@@ -77,14 +77,12 @@ bird_clock_t tm_parse_datetime(char *);	/* Convert date to bird_clock_t */
 void
 tm_format_datetime(char *x, struct timeformat *fmt_spec, bird_clock_t t);
 
-#ifdef TIME_T_IS_64BIT
-#define TIME_INFINITY 0x7fffffffffffffff
-#else
-#ifdef TIME_T_IS_SIGNED
-#define TIME_INFINITY 0x7fffffff
-#else
-#define TIME_INFINITY 0xffffffff
-#endif
-#endif
+#define TIME_T_IS_64BIT (sizeof(time_t) == 8)
+#define TIME_T_IS_SIGNED ((time_t) -1 < 0)
+
+#define TIME_INFINITY							\
+  ((time_t) (TIME_T_IS_SIGNED ?						\
+	     (TIME_T_IS_64BIT ? 0x7fffffffffffffff : 0x7fffffff):	\
+	     (TIME_T_IS_64BIT ? 0xffffffffffffffff : 0xffffffff)))
 
 #endif

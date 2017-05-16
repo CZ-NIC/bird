@@ -5,8 +5,9 @@
 /bird
 /birdc
 /birdcl
+/bird.conf
+/bird.log
 /config.log
 /config.status
 /configure
-/bird.conf
-/bird.log
+/sysdep/autoconf.h.in

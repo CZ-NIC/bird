@@ -4,80 +4,124 @@ dnl ** (c) 1999--2000 Martin Mares <mj@ucw.cz>
 
 AC_INIT
 AC_CONFIG_SRCDIR([conf/confbase.Y])
-AC_CONFIG_AUX_DIR(tools)
+AC_CONFIG_AUX_DIR([tools])
 
-AC_ARG_ENABLE(debug,	[  --enable-debug          enable internal debugging routines (default: disabled)],,enable_debug=no)
-AC_ARG_ENABLE(memcheck,	[  --enable-memcheck       check memory allocations when debugging (default: enabled)],,enable_memcheck=yes)
-AC_ARG_ENABLE(client,	[  --enable-client         enable building of BIRD client (default: enabled)],,enable_client=yes)
-AC_ARG_ENABLE(pthreads,	[  --enable-pthreads       enable POSIX threads support (default: detect)],,enable_pthreads=try)
-AC_ARG_ENABLE(libssh,	[  --enable-libssh	   enable LibSSH support together with RPKI protocol (default: detect)],,enable_libssh=try)
-AC_ARG_WITH(sysconfig,	[  --with-sysconfig=FILE   use specified BIRD system configuration file])
-AC_ARG_WITH(protocols,	[  --with-protocols=LIST   include specified routing protocols (default: all)],,[with_protocols="all"])
-AC_ARG_WITH(sysinclude,	[  --with-sysinclude=PATH  search for system includes on specified place])
-AC_ARG_WITH(runtimedir,	[  --with-runtimedir=PATH  path for runtime files (default: $(localstatedir)/run)],[runtimedir="$with_runtimedir"],[runtimedir="\$(localstatedir)/run"])
-AC_ARG_WITH(iproutedir,	[  --with-iproutedir=PATH  path to iproute2 config files (default: /etc/iproute2)],[given_iproutedir="yes"])
+AC_ARG_ENABLE([client],
+  [AS_HELP_STRING([--enable-client], [enable building of BIRD client @<:@yes@:>@])],
+  [],
+  [enable_client=yes]
+)
+
+AC_ARG_ENABLE([debug],
+  [AS_HELP_STRING([--enable-debug], [enable internal debugging routines @<:@no@:>@])],
+  [],
+  [enable_debug=no]
+)
+
+AC_ARG_ENABLE([memcheck],
+  [AS_HELP_STRING([--enable-memcheck], [check memory allocations when debugging @<:@yes@:>@])],
+  [],
+  [enable_memcheck=yes]
+)
+
+AC_ARG_ENABLE([pthreads],
+  [AS_HELP_STRING([--enable-pthreads], [enable POSIX threads support @<:@try@:>@])],
+  [],
+  [enable_pthreads=try]
+)
+
+AC_ARG_ENABLE([libssh],
+  [AS_HELP_STRING([--enable-libssh], [enable LibSSH support together with RPKI @<:@try@:>@])],
+  [],
+  [enable_libssh=try]
+)
+
+AC_ARG_WITH([protocols],
+  [AS_HELP_STRING([--with-protocols=LIST], [include specified routing protocols @<:@all@:>@])],
+  [],
+  [with_protocols="all"]
+)
+
+AC_ARG_WITH([sysconfig],
+  [AS_HELP_STRING([--with-sysconfig=FILE], [use specified BIRD system configuration file])],
+  []
+)
+
+AC_ARG_WITH([runtimedir],
+  [AS_HELP_STRING([--with-runtimedir=PATH], [path for runtime files @<:@LOCALSTATEDIR/run@:>@])],
+  [runtimedir="$with_runtimedir"],
+  [runtimedir="\$(localstatedir)/run"]
+)
+
+AC_ARG_WITH([iproutedir],
+  [AS_HELP_STRING([--with-iproutedir=PATH], [path to iproute2 config files @<:@/etc/iproute2@:>@])],
+  [given_iproutedir="yes"]
+)
+
 AC_ARG_VAR([FLEX], [location of the Flex program])
 AC_ARG_VAR([BISON], [location of the Bison program])
 AC_ARG_VAR([M4], [location of the M4 program])
 
 
 if test "$srcdir" = . ; then
-	# Building in current directory => create obj directory holding all objects
-	objdir=obj
+  # Building in current directory => create obj directory holding all objects
+  objdir=obj
 else
-	# Building in separate directory
-	objdir=.
+  # Building in separate directory
+  objdir=.
 fi
 
 exedir=.
 
-AC_SUBST(objdir)
-AC_SUBST(exedir)
-AC_SUBST(srcdir)
-AC_SUBST(runtimedir)
+AC_SUBST([objdir])
+AC_SUBST([exedir])
+AC_SUBST([srcdir])
+AC_SUBST([runtimedir])
 
 
 if test "$enable_debug" = yes ; then
-	CONFIG_FILE="bird.conf"
-	CONTROL_SOCKET="bird.ctl"
+  CONFIG_FILE="bird.conf"
+  CONTROL_SOCKET="bird.ctl"
 else
-	CONFIG_FILE="\$(sysconfdir)/bird.conf"
-	CONTROL_SOCKET="$runtimedir/bird.ctl"
+  CONFIG_FILE="\$(sysconfdir)/bird.conf"
+  CONTROL_SOCKET="$runtimedir/bird.ctl"
 fi
-AC_SUBST(CONFIG_FILE)
-AC_SUBST(CONTROL_SOCKET)
+AC_SUBST([CONFIG_FILE])
+AC_SUBST([CONTROL_SOCKET])
 
-AC_SEARCH_LIBS(clock_gettime, [rt posix4], ,
-	AC_MSG_ERROR([[Function clock_gettime not available.]]))
+AC_SEARCH_LIBS([clock_gettime], [rt posix4],
+  [],
+  [AC_MSG_ERROR([Function clock_gettime not available.])]
+)
 
 AC_CANONICAL_HOST
 
 # Store this value because ac_test_CFLAGS is overwritten by AC_PROG_CC
 if test "$ac_test_CFLAGS" != set ; then
-	bird_cflags_default=yes
+  bird_cflags_default=yes
 fi
 
 AC_PROG_CC
 AC_PROG_CC_C99
 if test -z "$GCC" ; then
-	AC_MSG_ERROR([This program requires the GNU C Compiler.])
+  AC_MSG_ERROR([This program requires the GNU C Compiler.])
 fi
 
 if test "$enable_pthreads" != no ; then
-	BIRD_CHECK_PTHREADS
+  BIRD_CHECK_PTHREADS
 
-	if test "$bird_cv_lib_pthreads" = yes ; then
-		AC_DEFINE([USE_PTHREADS], [1], [Define to 1 if pthreads are enabled])
-		CFLAGS="$CFLAGS -pthread"
-		LDFLAGS="$LDFLAGS -pthread"
-		proto_bfd=bfd
-	elif test "$enable_pthreads" = yes ; then
-		AC_MSG_ERROR([POSIX threads not available.])
-	fi
+  if test "$bird_cv_lib_pthreads" = yes ; then
+    AC_DEFINE([USE_PTHREADS], [1], [Define to 1 if pthreads are enabled])
+    CFLAGS="$CFLAGS -pthread"
+    LDFLAGS="$LDFLAGS -pthread"
+    proto_bfd=bfd
+  elif test "$enable_pthreads" = yes ; then
+    AC_MSG_ERROR([POSIX threads not available.])
+  fi
 
-	if test "$enable_pthreads" = try ; then
-		enable_pthreads="$bird_cv_lib_pthreads"
-	fi
+  if test "$enable_pthreads" = try ; then
+    enable_pthreads="$bird_cv_lib_pthreads"
+  fi
 fi
 
 if test "$enable_libssh" != no ; then
@@ -95,78 +139,89 @@ if test "$enable_libssh" != no ; then
 fi
 	
 if test "$bird_cflags_default" = yes ; then
-	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_wno_pointer_sign, -Wno-pointer-sign, -Wall)
-	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_wno_missing_init, -Wno-missing-field-initializers, -Wall -Wextra)
-	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_fno_strict_aliasing, -fno-strict-aliasing)
-	BIRD_CHECK_GCC_OPTION(bird_cv_c_option_fno_strict_overflow, -fno-strict-overflow)
+  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_pointer_sign], [-Wno-pointer-sign], [-Wall])
+  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers], [-Wall -Wextra])
+  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_fno_strict_aliasing], [-fno-strict-aliasing])
+  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_fno_strict_overflow], [-fno-strict-overflow])
 
-	CFLAGS="$CFLAGS -Wall -Wextra -Wstrict-prototypes -Wno-parentheses"
-	BIRD_ADD_GCC_OPTION(bird_cv_c_option_wno_pointer_sign, -Wno-pointer-sign)
-	BIRD_ADD_GCC_OPTION(bird_cv_c_option_wno_missing_init, -Wno-missing-field-initializers)
-	BIRD_ADD_GCC_OPTION(bird_cv_c_option_fno_strict_aliasing, -fno-strict-aliasing)
-	BIRD_ADD_GCC_OPTION(bird_cv_c_option_fno_strict_overflow, -fno-strict-overflow)
+  CFLAGS="$CFLAGS -Wall -Wextra -Wstrict-prototypes -Wno-parentheses"
+  BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_pointer_sign], [-Wno-pointer-sign])
+  BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers])
+  BIRD_ADD_GCC_OPTION([bird_cv_c_option_fno_strict_aliasing], [-fno-strict-aliasing])
+  BIRD_ADD_GCC_OPTION([bird_cv_c_option_fno_strict_overflow], [-fno-strict-overflow])
 fi
 AC_MSG_CHECKING([CFLAGS])
-AC_MSG_RESULT($CFLAGS)
+AC_MSG_RESULT([$CFLAGS])
 
 
 AC_PROG_CPP
 AC_PROG_INSTALL
 AC_PROG_RANLIB
-AC_CHECK_PROG(FLEX, flex, flex)
-AC_CHECK_PROG(BISON, bison, bison)
-AC_CHECK_PROGS(M4, gm4 m4)
+AC_CHECK_PROG([FLEX], [flex], [flex])
+AC_CHECK_PROG([BISON], [bison], [bison])
+AC_CHECK_PROGS([M4], [gm4 m4])
 
 test -z "$FLEX"	 && AC_MSG_ERROR([Flex is missing.])
 test -z "$BISON" && AC_MSG_ERROR([Bison is missing.])
 test -z "$M4"	 && AC_MSG_ERROR([M4 is missing.])
-BIRD_CHECK_PROG_FLAVOR_GNU([$M4], , [AC_MSG_ERROR([Provided M4 is not GNU M4.])])
+
+BIRD_CHECK_PROG_FLAVOR_GNU([$M4],
+  [],
+  [AC_MSG_ERROR([Provided M4 is not GNU M4.])]
+)
 
 if test -n "$with_sysconfig" -a "$with_sysconfig" != no ; then
-	if test -f $with_sysconfig ; then
-		sysdesc=$with_sysconfig
-	else
-		sysdesc=$srcdir/sysdep/cf/$with_sysconfig
-		if ! test -f $sysdesc ; then
-			sysdesc=$sysdesc.h
-		fi
-	fi
+  if test -f $with_sysconfig ; then
+    sysdesc=$with_sysconfig
+  else
+    sysdesc=$srcdir/sysdep/cf/$with_sysconfig
+    if ! test -f $sysdesc ; then
+      sysdesc=$sysdesc.h
+    fi
+  fi
 elif test -f sysconfig.h ; then
-	sysdesc=sysconfig
+  sysdesc=sysconfig
 else
-	case "$host_os" in
-		linux*)		sysdesc=linux
-				default_iproutedir="/etc/iproute2"
-				;;
-		freebsd*)	sysdesc=bsd
-				;;
-		kfreebsd*)	sysdesc=bsd
-				;;
-		netbsd*)	sysdesc=bsd
-				CPPFLAGS="$CPPFLAGS -I/usr/pkg/include"
-				LDFLAGS="$LDFLAGS -L/usr/pkg/lib -R/usr/pkg/lib"
-				;;
-		openbsd*)	sysdesc=bsd
-				;;
-		dragonfly*)	sysdesc=bsd
-				;;
-		*)		AC_MSG_ERROR([Cannot determine correct system configuration. Please use --with-sysconfig to set it manually.])
-				;;
-		esac
-	sysdesc=$srcdir/sysdep/cf/$sysdesc.h
+  case "$host_os" in
+    linux*)
+      sysdesc=linux
+      default_iproutedir="/etc/iproute2"
+      ;;
+    freebsd*)
+      sysdesc=bsd
+      ;;
+    kfreebsd*)
+      sysdesc=bsd
+      ;;
+    netbsd*)
+      sysdesc=bsd
+      CPPFLAGS="$CPPFLAGS -I/usr/pkg/include"
+      LDFLAGS="$LDFLAGS -L/usr/pkg/lib -R/usr/pkg/lib"
+      ;;
+    openbsd*)
+      sysdesc=bsd
+      ;;
+    dragonfly*)
+      sysdesc=bsd
+      ;;
+    *)
+      AC_MSG_ERROR([Cannot determine correct system configuration. Please use --with-sysconfig to set it manually.])
+      ;;
+    esac
+    sysdesc=$srcdir/sysdep/cf/$sysdesc.h
 fi
 AC_MSG_CHECKING([which OS configuration should we use])
-AC_MSG_RESULT($sysdesc)
+AC_MSG_RESULT([$sysdesc])
 if ! test -f $sysdesc ; then
-	AC_MSG_ERROR([The system configuration file is missing.])
+  AC_MSG_ERROR([The system configuration file is missing.])
 fi
 sysname=`echo $sysdesc | sed 's/\.h$//'`
 AC_DEFINE_UNQUOTED([SYSCONF_INCLUDE], ["$sysdesc"], [Which sysdep header to include])
 
 AC_MSG_CHECKING([system-dependent directories])
 sysdep_dirs="`sed <$sysdesc '/^Link: /!d;s/^Link: \(.*\)$/\1/' | tr '\012' ' '`"
-AC_MSG_RESULT($sysdep_dirs)
-AC_SUBST(sysdep_dirs)
+AC_MSG_RESULT([$sysdep_dirs])
+AC_SUBST([sysdep_dirs])
 
 if test "$with_iproutedir" = no ; then with_iproutedir= ; fi
 
@@ -175,14 +230,14 @@ then iproutedir=$with_iproutedir
 else iproutedir=$default_iproutedir
 fi
 
-AC_SUBST(iproutedir)
+AC_SUBST([iproutedir])
 
 all_protocols="$proto_bfd babel bgp ospf pipe radv rip $proto_rpki static"
 
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
 if test "$with_protocols" = all ; then
-	with_protocols="$all_protocols"
+  with_protocols="$all_protocols"
 fi
 
 AH_TEMPLATE([CONFIG_BABEL], 	[Babel protocol])
@@ -199,29 +254,40 @@ AC_MSG_CHECKING([protocols])
 protocols=`echo "$with_protocols" | sed 's/,/ /g'`
 if test "$protocols" = no ; then protocols= ; fi
 for a in $protocols ; do
-	if ! test -f $srcdir/proto/$a/Makefile ; then
-		AC_MSG_RESULT(failed)
-		AC_MSG_ERROR([Requested protocol $a not found.])
-		fi
-	AC_DEFINE_UNQUOTED(CONFIG_`echo $a | tr 'a-z' 'A-Z'`)
-	done
-AC_MSG_RESULT(ok)
-AC_SUBST(protocols)
+  if ! test -f $srcdir/proto/$a/Makefile ; then
+    AC_MSG_RESULT([failed])
+    AC_MSG_ERROR([Requested protocol $a not found])
+  fi
+  AC_DEFINE_UNQUOTED([CONFIG_`echo $a | tr 'a-z' 'A-Z'`])
+done
+AC_MSG_RESULT([ok])
+AC_SUBST([protocols])
 
 case $sysdesc in
-	*/linux*)
-		AC_CHECK_HEADER(linux/rtnetlink.h,,[AC_MSG_ERROR([Appropriate version of Linux kernel headers not found.])],[
-#include <asm/types.h>
-#include <sys/socket.h>
-])
-		;;
+  */linux*)
+    AC_CHECK_HEADER([linux/rtnetlink.h],
+      [],
+      [AC_MSG_ERROR([Appropriate version of Linux kernel headers not found.])],
+      [
+	#include <asm/types.h>
+	#include <sys/socket.h>
+      ]
+    )
+    ;;
 esac
 
 AC_CHECK_HEADERS_ONCE([alloca.h syslog.h])
 AC_CHECK_MEMBERS([struct sockaddr.sa_len], [], [], [#include <sys/socket.h>])
 
-AC_CHECK_HEADER([linux/lwtunnel.h], [AC_DEFINE([HAVE_LWTUNNEL], [1], [Define to 1 if you have the <linux/lwtunnel.h> header file.])])
-AC_CHECK_MEMBERS([struct rtvia.rtvia_family], [AC_DEFINE([HAVE_STRUCT_RTVIA], [1], [Define to 1 if you have rtvia structure.])],,[#include <linux/rtnetlink.h>])
+AC_CHECK_HEADER([linux/lwtunnel.h],
+  [AC_DEFINE([HAVE_LWTUNNEL], [1], [Define to 1 if you have the <linux/lwtunnel.h> header file.])]
+)
+
+AC_CHECK_MEMBERS([struct rtvia.rtvia_family],
+  [AC_DEFINE([HAVE_STRUCT_RTVIA], [1], [Define to 1 if you have rtvia structure.])],
+  [],
+  [#include <linux/rtnetlink.h>]
+)
 
 AC_C_BIGENDIAN(
   [AC_DEFINE([CPU_BIG_ENDIAN], [1], [Define to 1 if cpu is big endian])],
@@ -229,20 +295,27 @@ AC_C_BIGENDIAN(
   [AC_MSG_ERROR([Cannot determine CPU endianity.])]
 )
 
-BIRD_CHECK_STRUCT_ALIGN
-BIRD_CHECK_TIME_T
-
 if test "$enable_debug" = yes ; then
-	AC_DEFINE([DEBUGGING], [1], [Define to 1 if debugging is enabled])
-	AC_CHECK_HEADER(execinfo.h, [AC_SEARCH_LIBS([backtrace, backtrace_symbols], [c execinfo], [AC_DEFINE([HAVE_EXECINFO_H], [1], [Define to 1 if you have the <execinfo.h> header file.])])])
-	LDFLAGS="$LDFLAGS -rdynamic"
-	CFLAGS="$CFLAGS -O0 -ggdb -g3 -gdwarf-4"
-	if test "$enable_memcheck" = yes ; then
-		AC_CHECK_LIB(dmalloc, dmalloc_debug)
-		if test $ac_cv_lib_dmalloc_dmalloc_debug != yes ; then
-			AC_CHECK_LIB(efence, malloc)
-		fi
-	fi
+  AC_DEFINE([DEBUGGING], [1], [Define to 1 if debugging is enabled])
+  LDFLAGS="$LDFLAGS -rdynamic"
+  CFLAGS="$CFLAGS -O0 -ggdb -g3 -gdwarf-4"
+
+  AC_CHECK_HEADER([execinfo.h],
+    [
+      AC_DEFINE([HAVE_EXECINFO_H], [1], [Define to 1 if you have the <execinfo.h> header file.])
+      AC_SEARCH_LIBS([backtrace], [execinfo],
+	[]
+	[AC_MSG_ERROR([Function backtrace not available.])]
+      )
+    ]
+  )
+
+  if test "$enable_memcheck" = yes ; then
+    AC_CHECK_LIB([dmalloc], [dmalloc_debug])
+    if test $ac_cv_lib_dmalloc_dmalloc_debug != yes ; then
+      AC_CHECK_LIB([efence], [malloc])
+    fi
+  fi
 fi
 
 DAEMON_LIBS=
@@ -251,25 +324,44 @@ AC_SUBST(DAEMON_LIBS)
 CLIENT=birdcl
 CLIENT_LIBS=
 if test "$enable_client" = yes ; then
-	CLIENT="$CLIENT birdc"
-	AC_CHECK_LIB(history, add_history, CLIENT_LIBS="-lhistory")
-	AC_CHECK_LIB(ncurses, tgetent, USE_TERMCAP_LIB=-lncurses,
-		AC_CHECK_LIB(curses, tgetent, USE_TERMCAP_LIB=-lcurses,
-			AC_CHECK_LIB(tinfow, tgetent, USE_TERMCAP_LIB=-ltinfow,
-				AC_CHECK_LIB(tinfo, tgetent, USE_TERMCAP_LIB=-ltinfo,
-					AC_CHECK_LIB(termcap, tgetent, USE_TERMCAP_LIB=-ltermcap,
-						AC_MSG_ERROR([[The client requires ncurses library. Either install the library or use --disable-client to compile without the client.]]))))))
-	AC_CHECK_LIB(readline, rl_callback_read_char, CLIENT_LIBS="-lreadline $CLIENT_LIBS $USE_TERMCAP_LIB",
-		AC_MSG_ERROR([[The client requires GNU readline library 2.1 or newer. Either install the library or use --disable-client to compile without the client.]]), $USE_TERMCAP_LIB)
-	AC_CHECK_LIB(readline, rl_crlf, AC_DEFINE([HAVE_RL_CRLF], [1], [Define to 1 if you have rl_crlf()]),,$USE_TERMCAP_LIB)
-	AC_CHECK_LIB(readline, rl_ding, AC_DEFINE([HAVE_RL_DING], [1], [Define to 1 if you have rl_ding()]),,$USE_TERMCAP_LIB)
+  CLIENT="$CLIENT birdc"
+  AC_CHECK_LIB([history], [add_history], [CLIENT_LIBS="-lhistory"])
+  AC_CHECK_LIB([ncurses], [tgetent], [USE_TERMCAP_LIB=-lncurses],
+    AC_CHECK_LIB([curses], [tgetent], [USE_TERMCAP_LIB=-lcurses],
+      AC_CHECK_LIB([tinfow], [tgetent], [USE_TERMCAP_LIB=-ltinfow],
+	AC_CHECK_LIB([tinfo], [tgetent], [USE_TERMCAP_LIB=-ltinfo],
+	  AC_CHECK_LIB([termcap], [tgetent], [USE_TERMCAP_LIB=-ltermcap],
+	    [AC_MSG_ERROR([The client requires ncurses library. Either install the library or use --disable-client to compile without the client.])]
+	  )
+	)
+      )
+    )
+  )
+
+  AC_CHECK_LIB([readline], [rl_callback_read_char],
+    [CLIENT_LIBS="-lreadline $CLIENT_LIBS $USE_TERMCAP_LIB"],
+    [AC_MSG_ERROR([The client requires GNU readline library 2.1 or newer. Either install the library or use --disable-client to compile without the client.])],
+    [$USE_TERMCAP_LIB]
+  )
+
+  AC_CHECK_LIB([readline], [rl_crlf],
+    [AC_DEFINE([HAVE_RL_CRLF], [1], [Define to 1 if you have rl_crlf()])],
+    [],
+    [$USE_TERMCAP_LIB]
+  )
+
+  AC_CHECK_LIB([readline], [rl_ding],
+    [AC_DEFINE([HAVE_RL_DING], [1], [Define to 1 if you have rl_ding()])],
+    [],
+    [$USE_TERMCAP_LIB]
+  )
 fi
-AC_SUBST(CLIENT)
-AC_SUBST(CLIENT_LIBS)
+AC_SUBST([CLIENT])
+AC_SUBST([CLIENT_LIBS])
 
 mkdir -p $objdir/sysdep
 AC_CONFIG_HEADERS([$objdir/sysdep/autoconf.h:sysdep/autoconf.h.in])
-AC_CONFIG_FILES(Makefile:Makefile.in)
+AC_CONFIG_FILES([Makefile:Makefile.in])
 AC_OUTPUT
 
 AC_MSG_RESULT()
