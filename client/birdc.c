@@ -157,7 +157,8 @@ history_init(void)
 void
 input_init(void)
 {
-  history_init();
+  if (interactive)
+    history_init();
   rl_readline_name = "birdc";
   rl_add_defun("bird-complete", input_complete, '\t');
   rl_add_defun("bird-help", input_help, '?');
@@ -235,6 +236,7 @@ cleanup(void)
     return;
 
   input_hide();
-  write_history(history_file);
+  if (interactive)
+    write_history(history_file);
   rl_callback_handler_remove();
 }
