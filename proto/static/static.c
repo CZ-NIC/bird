@@ -410,7 +410,7 @@ static_start(struct proto *P)
   struct static_route *r;
 
   if (!static_lp)
-    static_lp = lp_new(&root_pool, 1008);
+    static_lp = lp_new(&root_pool, LP_GOOD_SIZE(1024));
 
   if (p->igp_table_ip4)
     rt_lock_table(p->igp_table_ip4);

@@ -1906,7 +1906,7 @@ nl_open_async(void)
 void
 krt_sys_io_init(void)
 {
-  nl_linpool = lp_new(krt_pool, 4080);
+  nl_linpool = lp_new_default(krt_pool);
   HASH_INIT(nl_table_map, krt_pool, 6);
 }
 

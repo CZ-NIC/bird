@@ -43,7 +43,7 @@ run_function(const void *parsed_fn_def)
   /* XXX: const -> non-const */
   struct f_inst *f = (struct f_inst *) parsed_fn_def;
 
-  linpool *tmp = lp_new(&root_pool, 4096);
+  linpool *tmp = lp_new_default(&root_pool);
   struct f_val res = f_eval(f, tmp);
   rfree(tmp);
 

@@ -401,7 +401,7 @@ t_builder4(void)
   resource_init();
 
   struct flow_builder *fb = flow_builder_init(&root_pool);
-  linpool *lp = lp_new(&root_pool, 4096);
+  linpool *lp = lp_new_default(&root_pool);
 
   /* Expectation */
 
@@ -482,7 +482,7 @@ t_builder6(void)
   net_addr_ip6 ip;
 
   resource_init();
-  linpool *lp = lp_new(&root_pool, 4096);
+  linpool *lp = lp_new_default(&root_pool);
   struct flow_builder *fb = flow_builder_init(&root_pool);
   fb->ipv6 = 1;
 

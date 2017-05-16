@@ -1624,7 +1624,7 @@ rt_init(void)
 {
   rta_init();
   rt_table_pool = rp_new(&root_pool, "Routing tables");
-  rte_update_pool = lp_new(rt_table_pool, 4080);
+  rte_update_pool = lp_new_default(rt_table_pool);
   rte_slab = sl_new(rt_table_pool, sizeof(rte));
   init_list(&routing_tables);
 }
@@ -2304,7 +2304,7 @@ rt_init_hostcache(rtable *tab)
   hc_alloc_table(hc, HC_DEF_ORDER);
   hc->slab = sl_new(rt_table_pool, sizeof(struct hostentry));
 
-  hc->lp = lp_new(rt_table_pool, 1008);
+  hc->lp = lp_new(rt_table_pool, LP_GOOD_SIZE(1024));
   hc->trie = f_new_trie(hc->lp, sizeof(struct f_trie_node));
 
   tab->hostcache = hc;

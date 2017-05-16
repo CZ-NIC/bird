@@ -89,7 +89,7 @@ struct config *
 config_alloc(const char *name)
 {
   pool *p = rp_new(&root_pool, "Config");
-  linpool *l = lp_new(p, 4080);
+  linpool *l = lp_new_default(p);
   struct config *c = lp_allocz(l, sizeof(struct config));
 
   /* Duplication of name string in local linear pool */

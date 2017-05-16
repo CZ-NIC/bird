@@ -32,7 +32,7 @@ t_as_path_match(void)
     struct adata *as_path = &empty_as_path;
     u32 first_prepended, last_prepended;
     first_prepended = last_prepended = 0;
-    struct linpool *lp = lp_new(&root_pool, 0);
+    struct linpool *lp = lp_new_default(&root_pool);
 
     struct f_path_mask mask[AS_PATH_LENGTH] = {};
     int i;
@@ -76,7 +76,7 @@ t_path_format(void)
 
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
-  struct linpool *lp = lp_new(&root_pool, 0);
+  struct linpool *lp = lp_new_default(&root_pool);
 
   uint i;
   for (i = 4294967285; i <= 4294967294; i++)
@@ -122,7 +122,7 @@ t_path_include(void)
 
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
-  struct linpool *lp = lp_new(&root_pool, 0);
+  struct linpool *lp = lp_new_default(&root_pool);
 
   u32 as_nums[AS_PATH_LENGTH] = {};
   int i;
@@ -167,7 +167,7 @@ t_as_path_converting(void)
 
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
-  struct linpool *lp = lp_new(&root_pool, 0);
+  struct linpool *lp = lp_new_default(&root_pool);
 #define AS_PATH_LENGTH_FOR_CONVERTING_TEST 10
 
   int i;
