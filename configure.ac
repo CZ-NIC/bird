@@ -124,20 +124,6 @@ if test "$enable_pthreads" != no ; then
   fi
 fi
 
-if test "$enable_libssh" != no ; then
-	AC_CHECK_LIB(ssh, ssh_connect)
-	if test $ac_cv_lib_ssh_ssh_connect = yes ; then
-		proto_rpki=rpki
-		enable_libssh=yes
-	else
-		if test "$enable_libssh" = yes ; then
-			AC_MSG_ERROR([LibSSH not available.])
-		else
-			enable_libssh=no
-		fi
-	fi
-fi
-	
 if test "$bird_cflags_default" = yes ; then
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_pointer_sign], [-Wno-pointer-sign], [-Wall])
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers], [-Wall -Wextra])
@@ -232,6 +218,27 @@ fi
 
 AC_SUBST([iproutedir])
 
+DAEMON_LIBS=
+AC_SUBST(DAEMON_LIBS)
+
+if test "$enable_libssh" != no ; then
+  AC_CHECK_HEADER([libssh/libssh.h], [ ], [fail=yes], [ ])
+  AC_CHECK_LIB([ssh], [ssh_connect], [ ], [fail=yes])
+
+  if test "$fail" != yes ; then
+    AC_DEFINE([HAVE_LIBSSH], [1], [Define to 1 if you have the `ssh' library (-lssh).])
+    DAEMON_LIBS="-lssh $DAEMON_LIBS"
+    proto_rpki=rpki
+    enable_libssh=yes
+  else
+    if test "$enable_libssh" = yes ; then
+      AC_MSG_ERROR([LibSSH not available.])
+    else
+      enable_libssh=no
+    fi
+  fi
+fi
+
 all_protocols="$proto_bfd babel bgp ospf pipe radv rip $proto_rpki static"
 
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
@@ -268,10 +275,7 @@ case $sysdesc in
     AC_CHECK_HEADER([linux/rtnetlink.h],
       [],
       [AC_MSG_ERROR([Appropriate version of Linux kernel headers not found.])],
-      [
-	#include <asm/types.h>
-	#include <sys/socket.h>
-      ]
+      [] dnl Force new AC_CHECK_HEADER semantics
     )
     ;;
 esac
@@ -279,8 +283,10 @@ esac
 AC_CHECK_HEADERS_ONCE([alloca.h syslog.h])
 AC_CHECK_MEMBERS([struct sockaddr.sa_len], [], [], [#include <sys/socket.h>])
 
-AC_CHECK_HEADER([linux/lwtunnel.h],
-  [AC_DEFINE([HAVE_LWTUNNEL], [1], [Define to 1 if you have the <linux/lwtunnel.h> header file.])]
+AC_CHECK_HEADERS([linux/lwtunnel.h],
+  [AC_DEFINE([HAVE_LWTUNNEL], [1], [Define to 1 if you have the <linux/lwtunnel.h> header file.])],
+  [],
+  [] dnl Force new AC_CHECK_HEADER semantics
 )
 
 AC_CHECK_MEMBERS([struct rtvia.rtvia_family],
@@ -318,43 +324,55 @@ if test "$enable_debug" = yes ; then
   fi
 fi
 
-DAEMON_LIBS=
-AC_SUBST(DAEMON_LIBS)
-
 CLIENT=birdcl
 CLIENT_LIBS=
 if test "$enable_client" = yes ; then
   CLIENT="$CLIENT birdc"
-  AC_CHECK_LIB([history], [add_history], [CLIENT_LIBS="-lhistory"])
-  AC_CHECK_LIB([ncurses], [tgetent], [USE_TERMCAP_LIB=-lncurses],
-    AC_CHECK_LIB([curses], [tgetent], [USE_TERMCAP_LIB=-lcurses],
-      AC_CHECK_LIB([tinfow], [tgetent], [USE_TERMCAP_LIB=-ltinfow],
-	AC_CHECK_LIB([tinfo], [tgetent], [USE_TERMCAP_LIB=-ltinfo],
-	  AC_CHECK_LIB([termcap], [tgetent], [USE_TERMCAP_LIB=-ltermcap],
-	    [AC_MSG_ERROR([The client requires ncurses library. Either install the library or use --disable-client to compile without the client.])]
-	  )
-	)
-      )
-    )
+  BASE_LIBS="$LIBS"
+  LIBS=""
+
+  AC_CHECK_HEADERS([curses.h],
+    [],
+    [AC_MSG_ERROR([The client requires ncurses library. Either install the library or use --disable-client to compile without the client.])],
+    [] dnl Force new AC_CHECK_HEADER semantics
   )
 
-  AC_CHECK_LIB([readline], [rl_callback_read_char],
-    [CLIENT_LIBS="-lreadline $CLIENT_LIBS $USE_TERMCAP_LIB"],
-    [AC_MSG_ERROR([The client requires GNU readline library 2.1 or newer. Either install the library or use --disable-client to compile without the client.])],
-    [$USE_TERMCAP_LIB]
+  AC_SEARCH_LIBS([tgetent], [tinfo tinfow ncurses curses termcap],
+    [TINFO_LIBS="$LIBS"; LIBS=""],
+    [AC_MSG_ERROR([The client requires ncurses library. Either install the library or use --disable-client to compile without the client.])],
+  )
+
+  AC_CHECK_HEADERS([readline/readline.h readline/history.h],
+    [],
+    [AC_MSG_ERROR([The client requires GNU Readline library. Either install the library or use --disable-client to compile without the client.])],
+    [] dnl Force new AC_CHECK_HEADER semantics
+  )
+
+  AC_SEARCH_LIBS([add_history], [history],
+    [HISTORY_LIBS="$LIBS"; LIBS=""],
+    [AC_MSG_ERROR([The client requires GNU Readline library. Either install the library or use --disable-client to compile without the client.])],
+  )
+
+  AC_SEARCH_LIBS([rl_callback_read_char], [readline],
+    [READLINE_LIBS="$LIBS"; LIBS=""],
+    [AC_MSG_ERROR([The client requires GNU Readline library. Either install the library or use --disable-client to compile without the client.])],
+    [$TINFO_LIBS]
   )
 
   AC_CHECK_LIB([readline], [rl_crlf],
     [AC_DEFINE([HAVE_RL_CRLF], [1], [Define to 1 if you have rl_crlf()])],
     [],
-    [$USE_TERMCAP_LIB]
+    [$TINFO_LIBS]
   )
 
   AC_CHECK_LIB([readline], [rl_ding],
     [AC_DEFINE([HAVE_RL_DING], [1], [Define to 1 if you have rl_ding()])],
     [],
-    [$USE_TERMCAP_LIB]
+    [$TINFO_LIBS]
   )
+
+  LIBS="$BASE_LIBS"
+  CLIENT_LIBS="$READLINE_LIBS $HISTORY_LIBS $TINFO_LIBS"
 fi
 AC_SUBST([CLIENT])
 AC_SUBST([CLIENT_LIBS])
