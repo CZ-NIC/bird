@@ -275,7 +275,11 @@ case $sysdesc in
     AC_CHECK_HEADER([linux/rtnetlink.h],
       [],
       [AC_MSG_ERROR([Appropriate version of Linux kernel headers not found.])],
-      [] dnl Force new AC_CHECK_HEADER semantics
+      [
+	dnl Some older versions of Linux kernel headers require these includes
+	#include <asm/types.h>
+	#include <sys/socket.h>
+      ]
     )
     ;;
 esac
@@ -334,7 +338,7 @@ if test "$enable_client" = yes ; then
   AC_CHECK_HEADERS([curses.h],
     [],
     [AC_MSG_ERROR([The client requires ncurses library. Either install the library or use --disable-client to compile without the client.])],
-    [] dnl Force new AC_CHECK_HEADER semantics
+    [AC_INCLUDES_DEFAULT]
   )
 
   AC_SEARCH_LIBS([tgetent], [tinfo tinfow ncurses curses termcap],
@@ -345,16 +349,17 @@ if test "$enable_client" = yes ; then
   AC_CHECK_HEADERS([readline/readline.h readline/history.h],
     [],
     [AC_MSG_ERROR([The client requires GNU Readline library. Either install the library or use --disable-client to compile without the client.])],
-    [] dnl Force new AC_CHECK_HEADER semantics
-  )
-
-  AC_SEARCH_LIBS([add_history], [history],
-    [HISTORY_LIBS="$LIBS"; LIBS=""],
-    [AC_MSG_ERROR([The client requires GNU Readline library. Either install the library or use --disable-client to compile without the client.])],
+    [AC_INCLUDES_DEFAULT]
   )
 
   AC_SEARCH_LIBS([rl_callback_read_char], [readline],
     [READLINE_LIBS="$LIBS"; LIBS=""],
+    [AC_MSG_ERROR([The client requires GNU Readline library. Either install the library or use --disable-client to compile without the client.])],
+    [$TINFO_LIBS]
+  )
+
+  AC_SEARCH_LIBS([add_history], [history readline],
+    [HISTORY_LIBS="$LIBS"; LIBS=""],
     [AC_MSG_ERROR([The client requires GNU Readline library. Either install the library or use --disable-client to compile without the client.])],
     [$TINFO_LIBS]
   )
@@ -372,7 +377,7 @@ if test "$enable_client" = yes ; then
   )
 
   LIBS="$BASE_LIBS"
-  CLIENT_LIBS="$READLINE_LIBS $HISTORY_LIBS $TINFO_LIBS"
+  CLIENT_LIBS="$HISTORY_LIBS $READLINE_LIBS $TINFO_LIBS"
 fi
 AC_SUBST([CLIENT])
 AC_SUBST([CLIENT_LIBS])
