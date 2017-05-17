@@ -1,4 +1,4 @@
-src := commands.c util.c client.c
+src := commands.c util.c client.c complete.c
 obj := $(src-o-files)
 
 $(all-client)

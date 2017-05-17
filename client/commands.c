@@ -100,7 +100,7 @@ cmd_display_help(struct cmd_info *c1, struct cmd_info *c2)
 }
 
 static struct cmd_node *
-cmd_find_abbrev(struct cmd_node *root, char *cmd, int len, int *pambiguous)
+cmd_find_abbrev(struct cmd_node *root, const char *cmd, int len, int *pambiguous)
 {
   struct cmd_node *m, *best = NULL, *best2 = NULL;
 
@@ -127,21 +127,24 @@ cmd_find_abbrev(struct cmd_node *root, char *cmd, int len, int *pambiguous)
 }
 
 static void
-cmd_list_ambiguous(struct cmd_node *root, char *cmd, int len)
+cmd_list_ambiguous(struct cmd_node *root, const char *cmd, int len)
 {
   struct cmd_node *m;
 
   for(m=root->son; m; m=m->sibling)
-    if (m->len > len && !memcmp(m->token, cmd, len))	
-      cmd_display_help(m->help, m->cmd);
+    if (m->len > len && !memcmp(m->token, cmd, len))
+      if (complete)
+	printf("%s\n", m->token);
+      else
+	cmd_display_help(m->help, m->cmd);
 }
 
 void
-cmd_help(char *cmd, int len)
+cmd_help(const char *cmd, int len)
 {
-  char *end = cmd + len;
+  const char *end = cmd + len;
   struct cmd_node *n, *m;
-  char *z;
+  const char *z;
   int ambig;
 
   n = &cmd_root;
@@ -171,7 +174,7 @@ cmd_help(char *cmd, int len)
 }
 
 static int
-cmd_find_common_match(struct cmd_node *root, char *cmd, int len, int *pcount, char *buf)
+cmd_find_common_match(struct cmd_node *root, const char *cmd, int len, int *pcount, char *buf)
 {
   struct cmd_node *m;
   int best, best_prio, i;
@@ -212,13 +215,13 @@ cmd_find_common_match(struct cmd_node *root, char *cmd, int len, int *pcount, ch
 }
 
 int
-cmd_complete(char *cmd, int len, char *buf, int again)
+cmd_complete(const char *cmd, int len, char *buf, int again)
 {
-  char *start = cmd;
-  char *end = cmd + len;
-  char *fin;
+  const char *start = cmd;
+  const char *end = cmd + len;
+  const char *fin;
   struct cmd_node *n, *m;
-  char *z;
+  const char *z;
   int ambig, cnt = 0, common;
 
   /* Find the last word we want to complete */
@@ -242,9 +245,11 @@ cmd_complete(char *cmd, int len, char *buf, int again)
 	{
 	  if (!again)
 	    return -1;
-	  input_start_list();
+	  if (!complete)
+	    input_start_list();
 	  cmd_list_ambiguous(n, z, cmd-z);
-	  input_stop_list();
+	  if (!complete)
+	    input_stop_list();
 	  return 0;
 	}
       if (!m)
@@ -273,9 +278,11 @@ cmd_complete(char *cmd, int len, char *buf, int again)
     }
   if (!again)
     return -1;
-  input_start_list();
+  if (!complete)
+    input_start_list();
   cmd_list_ambiguous(n, fin, end-fin);
-  input_stop_list();
+  if (!complete)
+    input_stop_list();
   return 0;
 }
 

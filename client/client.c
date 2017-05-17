@@ -49,6 +49,7 @@ static byte *server_read_pos = server_read_buf;
 int init = 1;		/* During intial sequence */
 int busy = 1;		/* Executing BIRD command */
 int interactive;	/* Whether stdin is terminal */
+int complete = 0;
 
 static int num_lines, skip_input;
 int term_lns, term_cls;
@@ -69,6 +70,13 @@ parse_args(int argc, char **argv)
   int server_changed = 0;
   int c;
 
+  if ((argc > 1) && !strcmp(argv[1], "-C")) {
+    complete_init(argc-2, argv+2);
+    argv += 6;
+    argc -= 6;
+    complete = 1;
+  }
+
   while ((c = getopt(argc, argv, opt_list)) >= 0)
     switch (c)
       {
@@ -87,6 +95,8 @@ parse_args(int argc, char **argv)
 	  server_path = xbasename(server_path);
 	break;
       default:
+	if (complete)
+	  exit(0);
 	usage(argv[0]);
       }
 
@@ -442,6 +452,10 @@ main(int argc, char **argv)
   interactive = isatty(0);
   parse_args(argc, argv);
   cmd_build_tree();
+
+  if (complete)
+    return do_complete(init_cmd);
+
   server_connect();
   select_loop();
   return 0;
