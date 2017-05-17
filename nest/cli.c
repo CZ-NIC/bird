@@ -313,7 +313,8 @@ cli_new(void *priv)
   c->event->hook = cli_event;
   c->event->data = c;
   c->cont = cli_hello;
-  c->parser_pool = lp_new(c->pool, 4096);
+  c->parser_pool = lp_new_default(c->pool);
+  c->show_pool = lp_new_default(c->pool);
   c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
   ev_schedule(c->event);
   return c;

@@ -65,6 +65,11 @@ void *lp_allocu(linpool *, unsigned size);	/* Unaligned */
 void *lp_allocz(linpool *, unsigned size);	/* With clear */
 void lp_flush(linpool *);			/* Free everything, but leave linpool */
 
+extern const int lp_chunk_size;
+#define LP_GAS		    1024
+#define LP_GOOD_SIZE(x)	    (((x + LP_GAS - 1) & (~(LP_GAS - 1))) - lp_chunk_size)
+#define lp_new_default(p)   lp_new(p, LP_GOOD_SIZE(LP_GAS*4))
+
 /* Slabs */
 
 typedef struct slab slab;

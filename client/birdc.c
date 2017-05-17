@@ -29,6 +29,9 @@ static int prompt_active;
 extern int _rl_vis_botlin;
 extern void _rl_move_vert(int);
 
+#define HISTORY "/.birdc_history"
+static char *history_file;
+
 static void
 add_history_dedup(char *cmd)
 {
@@ -138,8 +141,24 @@ input_help(int arg, int key UNUSED)
 }
 
 void
+history_init(void)
+{
+  const char *homedir = getenv("HOME");
+  if (!homedir)
+    homedir = ".";
+  history_file = malloc(strlen(homedir) + sizeof(HISTORY));
+  if (!history_file)
+    die("couldn't alloc enough memory for history file name");
+
+  sprintf(history_file, "%s%s", homedir, HISTORY);
+  read_history(history_file);
+}
+
+void
 input_init(void)
 {
+  if (interactive)
+    history_init();
   rl_readline_name = "birdc";
   rl_add_defun("bird-complete", input_complete, '\t');
   rl_add_defun("bird-help", input_help, '?');
@@ -217,5 +236,7 @@ cleanup(void)
     return;
 
   input_hide();
+  if (interactive)
+    write_history(history_file);
   rl_callback_handler_remove();
 }

@@ -32,6 +32,8 @@ struct lp_chunk {
   byte data[0];
 };
 
+const int lp_chunk_size = sizeof(struct lp_chunk);
+
 struct linpool {
   resource r;
   byte *ptr, *end;

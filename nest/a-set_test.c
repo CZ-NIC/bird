@@ -38,7 +38,7 @@ generate_set_sequence(enum set_type type)
 {
   struct adata empty_as_path = {};
   set_sequence = set_sequence_same = set_sequence_higher = set_random = &empty_as_path;
-  lp = lp_new(&root_pool, 0);
+  lp = lp_new_default(&root_pool);
 
   int i;
   for (i = 0; i < SET_SIZE; i++)
@@ -205,7 +205,7 @@ t_set_ec_format(void)
 
   struct adata empty_as_path = {};
   set_sequence = set_sequence_same = set_sequence_higher = set_random = &empty_as_path;
-  lp = lp_new(&root_pool, 0);
+  lp = lp_new_default(&root_pool);
 
   u64 i = 0;
   set_sequence = ec_set_add(lp, set_sequence, i);

@@ -270,6 +270,14 @@ proto_get_router_id(struct proto_config *pc)
   return pc->router_id ? pc->router_id : pc->global->router_id;
 }
 
+static inline struct ea_list *
+rte_make_tmp_attrs(struct rte *rt, struct linpool *pool)
+{
+  struct ea_list *(*mta)(struct rte *rt, struct linpool *pool);
+  mta = rt->attrs->src->proto->make_tmp_attrs;
+  return mta ? mta(rt, pool) : NULL;
+}
+
 /* Moved from route.h to avoid dependency conflicts */
 static inline void rte_update(struct proto *p, const net_addr *n, rte *new) { rte_update2(p->main_channel, n, new, p->main_source); }
 

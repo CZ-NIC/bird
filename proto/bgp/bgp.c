@@ -185,8 +185,8 @@ bgp_open(struct bgp_proto *p)
 
   if (!bgp_linpool)
   {
-    bgp_linpool  = lp_new(proto_pool, 4080);
-    bgp_linpool2 = lp_new(proto_pool, 4080);
+    bgp_linpool  = lp_new_default(proto_pool);
+    bgp_linpool2 = lp_new_default(proto_pool);
   }
 
   return 0;
