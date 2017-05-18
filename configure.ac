@@ -222,8 +222,8 @@ DAEMON_LIBS=
 AC_SUBST(DAEMON_LIBS)
 
 if test "$enable_libssh" != no ; then
-  AC_CHECK_HEADER([libssh/libssh.h], [], [fail=yes], [ ])
-  AC_CHECK_LIB([ssh], [ssh_connect], [], [fail=yes])
+  AC_CHECK_HEADER([libssh/libssh.h], [true], [fail=yes], [ ])
+  AC_CHECK_LIB([ssh], [ssh_connect], [true], [fail=yes])
 
   if test "$fail" != yes ; then
     AC_DEFINE([HAVE_LIBSSH], [1], [Define to 1 if you have the `ssh' library (-lssh).])
