@@ -130,8 +130,11 @@ $(objdir)/sysdep/paths.h: Makefile
 tests_targets_ok = $(addsuffix .ok,$(tests_targets))
 
 $(tests_targets): %: %.o $(tests_objs)
-	$(E)echo LD $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(E)echo LD $(LDFLAGS) -o $@ $< "..." $(LIBS)
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+# Hack to avoid problems with tests linking everything
+$(tests_targets): LIBS += $(DAEMON_LIBS)
 
 $(tests_targets_ok): %.ok: %
 	$(Q)$* 2>/dev/null && touch $*.ok
