@@ -26,8 +26,6 @@ function _birdc_complete {
   NOW=$2
   PREV=$3
 
-  echo "bagr" >>xxb
-
   case $PREV in
     -*([lvr])s)
       COMPREPLY=( $(compgen -W "$(find -maxdepth 1 -type s)" -- $NOW) )
@@ -46,7 +44,7 @@ function _birdc_complete {
       ;;
   esac
 
-  COMPREPLY=( $($CMD -C "$NOW" "$COMP_TYPE" "$COMP_CWORD" "$COMP_POINT" "${COMP_WORDS[@]}") )
+  COMPREPLY=( $($CMD -C "$NOW" "$COMP_TYPE" "$COMP_CWORD" "${COMP_WORDS[@]}") )
 }
 
 complete -F _bird_complete bird

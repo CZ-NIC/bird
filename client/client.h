@@ -38,6 +38,8 @@ char *cmd_expand(char *cmd);
 
 void complete_init(int argc, char **argv);
 int do_complete(char *cmd);
+#define COMPLETE_ARGC	3
+extern const char *comp_now, *comp_last;
 
 /* die() with system error messages */
 #define DIE(x, y...) die(x ": %s", ##y, strerror(errno))

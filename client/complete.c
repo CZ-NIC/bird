@@ -14,8 +14,8 @@
 #include "nest/bird.h"
 #include "client/client.h"
 
-static const char *c_now;
-static int comp_type, comp_cword, comp_point;
+static int comp_type, comp_cword;
+const char *comp_now, *comp_last;
 
 void complete_init(int argc, char **argv) {
   /* In argv, there are:
@@ -26,9 +26,9 @@ void complete_init(int argc, char **argv) {
    * ${COMP_WORDS[@]}
    */
 
-  c_now = argv[0];
+  comp_now = argv[0];
 
-  if (argc < 4)
+  if (argc < COMPLETE_ARGC)
     die("Not enough args.");
 
   if (sscanf(argv[1], "%d", &comp_type) != 1)
@@ -37,9 +37,10 @@ void complete_init(int argc, char **argv) {
   if (sscanf(argv[2], "%d", &comp_cword) != 1)
     die("Strange COMP_CWORD=\"%s\".", argv[2]);
 
-  if (sscanf(argv[3], "%d", &comp_point) != 1)
-    die("Strange COMP_POINT=\"%s\".", argv[3]);
+  if (comp_cword + COMPLETE_ARGC >= argc)
+    die("COMP_CWORD=%d points after end of arg list.", comp_cword);
 
+  comp_last = argv[COMPLETE_ARGC + comp_cword];
   return;
 }
 
@@ -50,7 +51,7 @@ int do_complete(char *cmd) {
   char buf[256];
   int res = cmd_complete(cmd, strlen(cmd), buf, (comp_type == 63));
   if (res == 1)
-    printf("%s%s\n", c_now, buf);
+    printf("%s%s\n", comp_now, buf);
 
     
   return 0;

@@ -72,8 +72,8 @@ parse_args(int argc, char **argv)
 
   if ((argc > 1) && !strcmp(argv[1], "-C")) {
     complete_init(argc-2, argv+2);
-    argv += 6;
-    argc -= 6;
+    argv += COMPLETE_ARGC + 2;
+    argc -= COMPLETE_ARGC + 2;
     complete = 1;
   }
 
@@ -113,11 +113,18 @@ parse_args(int argc, char **argv)
       tmp = init_cmd = malloc(len);
       for (i = optind; i < argc; i++)
 	{
+	  if (complete && (argv[i] == comp_last))
+	    break;
 	  strcpy(tmp, argv[i]);
 	  tmp += strlen(tmp);
 	  *tmp++ = ' ';
 	}
-      tmp[-1] = 0;
+
+      if (complete) {
+	strcpy(tmp, comp_now);
+	tmp += strlen(comp_now);
+      } else
+	tmp[-1] = 0;
 
       once = 1;
       interactive = 0;
