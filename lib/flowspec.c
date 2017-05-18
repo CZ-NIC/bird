@@ -924,7 +924,7 @@ num_op_str(const byte *op)
   return NULL;
 }
 
-static u64
+static uint
 get_value(const byte *val, u8 len)
 {
   switch (len)
@@ -932,7 +932,8 @@ get_value(const byte *val, u8 len)
   case 1: return *val;
   case 2: return get_u16(val);
   case 4: return get_u32(val);
-  case 8: return get_u64(val);
+  // No component may have length 8
+  // case 8: return get_u64(val);
   }
 
   return 0;
@@ -974,7 +975,7 @@ net_format_flow_num(buffer *b, const byte *part)
 {
   const byte *last_op = NULL;
   const byte *op = part+1;
-  u64 val;
+  uint val;
   uint len;
   uint first = 1;
 
@@ -1038,7 +1039,7 @@ static void
 net_format_flow_bitmask(buffer *b, const byte *part)
 {
   const byte *op = part+1;
-  u64 val;
+  uint val;
   uint len;
   uint first = 1;
 
