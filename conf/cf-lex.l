@@ -124,7 +124,8 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 }
 
 {DIGIT}+:{DIGIT}+ {
-  unsigned long int l, len1 UNUSED, len2;
+  uint len1 UNUSED, len2;
+  u64 l;
   char *e;
 
   errno = 0;
@@ -155,7 +156,8 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 }
 
 [02]:{DIGIT}+:{DIGIT}+ {
-  unsigned long int l, len1, len2;
+  uint len1, len2;
+  u64 l;
   char *e;
 
   if (yytext[0] == '0')
