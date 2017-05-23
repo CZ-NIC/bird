@@ -248,7 +248,7 @@ bfd_check_authentication(struct bfd_proto *p, struct bfd_session *s, struct bfd_
     /* BFD CSNs are in 32-bit circular number space */
     u32 csn = ntohl(auth->csn);
     if (s->rx_csn_known &&
-	(((csn - s->rx_csn) > (3 * s->detect_mult)) ||
+	(((csn - s->rx_csn) > (3 * (uint) s->detect_mult)) ||
 	 (meticulous && (csn == s->rx_csn))))
     {
       /* We want to report both new and old CSN */

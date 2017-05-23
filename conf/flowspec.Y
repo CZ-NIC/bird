@@ -44,19 +44,19 @@ CF_GRAMMAR
 /* Network Flow Specification */
 
 flow_num_op:
-   TRUE		{ $$ = 0b000; }
- | '='		{ $$ = 0b001; }
- | NEQ		{ $$ = 0b110; }
- | '<'		{ $$ = 0b100; }
- | LEQ		{ $$ = 0b101; }
- | '>'		{ $$ = 0b010; }
- | GEQ		{ $$ = 0b011; }
- | FALSE	{ $$ = 0b111; }
+   TRUE		{ $$ = FLOW_OP_TRUE; }
+ | '='		{ $$ = FLOW_OP_EQ;  }
+ | NEQ		{ $$ = FLOW_OP_NEQ; }
+ | '<'		{ $$ = FLOW_OP_LT;  }
+ | LEQ		{ $$ = FLOW_OP_LEQ; }
+ | '>'		{ $$ = FLOW_OP_GT;  }
+ | GEQ		{ $$ = FLOW_OP_GEQ; }
+ | FALSE	{ $$ = FLOW_OP_FALSE; }
  ;
 
 flow_logic_op:
-   OR		{ $$ = 0x00; }
- | AND		{ $$ = 0x40; }
+   OR		{ $$ = FLOW_OP_OR; }
+ | AND		{ $$ = FLOW_OP_AND; }
  ;
 
 flow_num_type_:
@@ -97,13 +97,13 @@ flow_num_opts:
 flow_num_opt_ext_expr:
    expr {
      flow_check_cf_value_length(this_flow, $1);
-     flow_builder_add_op_val(this_flow, 0b001, $1);
+     flow_builder_add_op_val(this_flow, FLOW_OP_EQ, $1);
    }
  | expr DDOT expr {
      flow_check_cf_value_length(this_flow, $1);
      flow_check_cf_value_length(this_flow, $3);
-     flow_builder_add_op_val(this_flow, 0b011, $1); /* >= */
-     flow_builder_add_op_val(this_flow, 0x40 | 0b101, $3); /* AND <= */
+     flow_builder_add_op_val(this_flow, FLOW_OP_GEQ, $1);
+     flow_builder_add_op_val(this_flow, FLOW_OP_AND | FLOW_OP_LEQ, $3);
    }
  ;
 

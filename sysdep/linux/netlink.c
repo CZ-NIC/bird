@@ -62,8 +62,8 @@
 
 #ifndef HAVE_STRUCT_RTVIA
 struct rtvia {
-	__kernel_sa_family_t	rtvia_family;
-	__u8			rtvia_addr[0];
+	unsigned short	rtvia_family;
+	u8		rtvia_addr[0];
 };
 #endif
 

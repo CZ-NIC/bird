@@ -450,7 +450,7 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
 
     /* Stale entries that should be removed */
     if ((en->valid == RIP_ENTRY_STALE) &&
-	((en->changed + ifa->cf->garbage_time) <= now))
+	((en->changed + (bird_clock_t) ifa->cf->garbage_time) <= now))
       goto next_entry;
 
     /* Triggered updates */

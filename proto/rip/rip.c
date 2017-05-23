@@ -684,7 +684,7 @@ rip_reconfigure_iface(struct rip_proto *p, struct rip_iface *ifa, struct rip_ifa
 
   rip_iface_update_buffers(ifa);
 
-  if (ifa->next_regular > (now + new->update_time))
+  if (ifa->next_regular > (now + (bird_clock_t) new->update_time))
     ifa->next_regular = now + (random() % new->update_time) + 1;
 
   if (new->check_link != old->check_link)
