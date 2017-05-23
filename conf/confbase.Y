@@ -27,16 +27,16 @@ CF_HDR
 CF_DEFINES
 
 static void
-check_u16(unsigned val)
+check_u16(uint val)
 {
   if (val > 0xFFFF)
-    cf_error("Value %d out of range (0-65535)", val);
+    cf_error("Value %u out of range (0-65535)", val);
 }
 
 CF_DECLS
 
 %union {
-  int i;
+  uint i;
   u32 i32;
   u64 i64;
   ip_addr a;
@@ -175,7 +175,7 @@ ipa_scope:
 
 pxlen4:
    '/' NUM {
-     if ($2 < 0 || $2 > IP4_MAX_PREFIX_LENGTH) cf_error("Invalid prefix length %d", $2);
+     if ($2 > IP4_MAX_PREFIX_LENGTH) cf_error("Invalid prefix length %u", $2);
      $$ = $2;
    }
  | ':' IP4 {
@@ -196,8 +196,8 @@ net_ip4_: IP4 pxlen4
 
 net_ip6_: IP6 '/' NUM
 {
-  if ($3 < 0 || $3 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid prefix length %d", $3);
+  if ($3 > IP6_MAX_PREFIX_LENGTH)
+    cf_error("Invalid prefix length %u", $3);
 
   net_fill_ip6(&($$), $1, $3);
 
@@ -223,16 +223,16 @@ net_roa4_: net_ip4_ MAX NUM AS NUM
 {
   $$ = cfg_alloc(sizeof(net_addr_roa4));
   net_fill_roa4($$, net4_prefix(&$1), net4_pxlen(&$1), $3, $5);
-  if ($3 < (int) net4_pxlen(&$1) || $3 > IP4_MAX_PREFIX_LENGTH)
-    cf_error("Invalid max prefix length %d", $3);
+  if ($3 < net4_pxlen(&$1) || $3 > IP4_MAX_PREFIX_LENGTH)
+    cf_error("Invalid max prefix length %u", $3);
 };
 
 net_roa6_: net_ip6_ MAX NUM AS NUM
 {
   $$ = cfg_alloc(sizeof(net_addr_roa6));
   net_fill_roa6($$, net6_prefix(&$1), net6_pxlen(&$1), $3, $5);
-  if ($3 < (int) net6_pxlen(&$1) || $3 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid max prefix length %d", $3);
+  if ($3 < net6_pxlen(&$1) || $3 > IP6_MAX_PREFIX_LENGTH)
+    cf_error("Invalid max prefix length %u", $3);
 };
 
 net_ip_: net_ip4_ | net_ip6_ ;

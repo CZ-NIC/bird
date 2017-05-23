@@ -91,14 +91,14 @@ radv_iface_item:
  | MIN DELAY expr { RADV_IFACE->min_delay = $3; if ($3 <= 0) cf_error("Min delay must be positive"); }
  | MANAGED bool { RADV_IFACE->managed = $2; }
  | OTHER CONFIG bool { RADV_IFACE->other_config = $3; }
- | LINK MTU expr { RADV_IFACE->link_mtu = $3; if ($3 < 0) cf_error("Link MTU must be 0 or positive"); }
- | REACHABLE TIME expr { RADV_IFACE->reachable_time = $3; if (($3 < 0) || ($3 > 3600000)) cf_error("Reachable time must be in range 0-3600000"); }
- | RETRANS TIMER expr { RADV_IFACE->retrans_timer = $3; if ($3 < 0) cf_error("Retrans timer must be 0 or positive"); }
- | CURRENT HOP LIMIT expr { RADV_IFACE->current_hop_limit = $4; if (($4 < 0) || ($4 > 255))  cf_error("Current hop limit must be in range 0-255"); }
+ | LINK MTU expr { RADV_IFACE->link_mtu = $3; }
+ | REACHABLE TIME expr { RADV_IFACE->reachable_time = $3; if ($3 > 3600000) cf_error("Reachable time must be in range 0-3600000"); }
+ | RETRANS TIMER expr { RADV_IFACE->retrans_timer = $3; }
+ | CURRENT HOP LIMIT expr { RADV_IFACE->current_hop_limit = $4; if ($4 > 255) cf_error("Current hop limit must be in range 0-255"); }
  | DEFAULT LIFETIME expr radv_sensitive {
      RADV_IFACE->default_lifetime = $3;
-     if (($3 < 0) || ($3 > 9000))  cf_error("Default lifetime must be in range 0-9000");
-     if ($4 != -1) RADV_IFACE->default_lifetime_sensitive = $4;
+     if ($3 > 9000)  cf_error("Default lifetime must be in range 0-9000");
+     if ($4 != (uint) -1) RADV_IFACE->default_lifetime_sensitive = $4;
    }
  | DEFAULT PREFERENCE radv_preference { RADV_IFACE->default_preference = $3; }
  | PREFIX radv_prefix { add_tail(&RADV_IFACE->pref_list, NODE this_radv_prefix); }
@@ -125,7 +125,7 @@ radv_iface_finish:
 
   if ((ic->min_ra_int > 3) &&
       (ic->min_ra_int > (ic->max_ra_int * 3 / 4)))
-    cf_error("Min RA interval must be at most 3/4 * Max RA interval %d %d", ic->min_ra_int, ic->max_ra_int);
+    cf_error("Min RA interval must be at most 3/4 * Max RA interval");
 
   if ((ic->default_lifetime > 0) && (ic->default_lifetime < ic->max_ra_int))
     cf_error("Default lifetime must be either 0 or at least Max RA interval");
@@ -163,13 +163,11 @@ radv_prefix_item:
  | AUTONOMOUS bool { RADV_PREFIX->autonomous = $2; }
  | VALID LIFETIME expr radv_sensitive {
      RADV_PREFIX->valid_lifetime = $3;
-     if ($3 < 0) cf_error("Valid lifetime must be 0 or positive");
-     if ($4 != -1) RADV_PREFIX->valid_lifetime_sensitive = $4;
+     if ($4 != (uint) -1) RADV_PREFIX->valid_lifetime_sensitive = $4;
    }
  | PREFERRED LIFETIME expr radv_sensitive {
      RADV_PREFIX->preferred_lifetime = $3;
-     if ($3 < 0) cf_error("Preferred lifetime must be 0 or positive");
-     if ($4 != -1) RADV_PREFIX->preferred_lifetime_sensitive = $4;
+     if ($4 != (uint) -1) RADV_PREFIX->preferred_lifetime_sensitive = $4;
    }
  ;
 

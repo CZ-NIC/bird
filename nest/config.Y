@@ -349,8 +349,8 @@ iface_patt:
  ;
 
 tos:
-   CLASS expr { $$ = $2 & 0xfc;        if (($2 < 0) || ($2 > 255)) cf_error("TX class must be in range 0-255"); }
- | DSCP expr  { $$ = ($2 & 0x3f) << 2; if (($2 < 0) || ($2 > 63))  cf_error("TX DSCP must be in range 0-63"); }
+   CLASS expr { $$ = $2 & 0xfc;        if ($2 > 255) cf_error("TX class must be in range 0-255"); }
+ | DSCP expr  { $$ = ($2 & 0x3f) << 2; if ($2 > 63)  cf_error("TX DSCP must be in range 0-63"); }
  ;
 
 /* Direct device route protocol */
