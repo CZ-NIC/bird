@@ -48,6 +48,7 @@
 #include "conf/conf.h"
 #include "conf/cf-parse.tab.h"
 #include "lib/string.h"
+#include "lib/hash.h"
 
 struct keyword {
   byte *name;
@@ -57,21 +58,31 @@ struct keyword {
 
 #include "conf/keywords.h"
 
-#define KW_HASH_SIZE 64
-static struct keyword *kw_hash[KW_HASH_SIZE];
-static int kw_hash_inited;
 
-#define SYM_HASH_SIZE 128
+static uint cf_hash(byte *c);
 
-struct sym_scope {
-  struct sym_scope *next;		/* Next on scope stack */
-  struct symbol *name;			/* Name of this scope */
-  int active;				/* Currently entered */
-};
+#define KW_KEY(n)		n->name
+#define KW_NEXT(n)		n->next
+#define KW_EQ(a,b)		!strcmp(a,b)
+#define KW_FN(k)		cf_hash(k)
+#define KW_ORDER		8 /* Fixed */
+
+#define SYM_KEY(n)		n->name, n->scope->active
+#define SYM_NEXT(n)		n->next
+#define SYM_EQ(a,s1,b,s2)	!strcmp(a,b) && s1 == s2
+#define SYM_FN(k,s)		cf_hash(k)
+#define SYM_ORDER		6 /* Initial */
+
+#define SYM_REHASH		sym_rehash
+#define SYM_PARAMS		/8, *1, 2, 2, 6, 20
+
+
+HASH_DEFINE_REHASH_FN(SYM, struct symbol)
+
+HASH(struct keyword) kw_hash;
+
+
 static struct sym_scope *conf_this_scope;
-
-static int cf_hash(byte *c);
-static inline struct symbol * cf_get_sym(byte *c, uint h0);
 
 linpool *cfg_mem;
 
@@ -254,23 +265,20 @@ else: {
     yytext[yyleng-1] = 0;
     yytext++;
   }
-  unsigned int h = cf_hash(yytext);
-  struct keyword *k = kw_hash[h & (KW_HASH_SIZE-1)];
-  while (k)
+
+  struct keyword *k = HASH_FIND(kw_hash, KW, yytext);
+  if (k)
+  {
+    if (k->value > 0)
+      return k->value;
+    else
     {
-      if (!strcmp(k->name, yytext))
-	{
-	  if (k->value > 0)
-	    return k->value;
-	  else
-	    {
-	      cf_lval.i = -k->value;
-	      return ENUM;
-	    }
-	}
-      k=k->next;
+      cf_lval.i = -k->value;
+      return ENUM;
     }
-  cf_lval.s = cf_get_sym(yytext, h);
+  }
+
+  cf_lval.s = cf_get_symbol(yytext);
   return SYM;
 }
 
@@ -333,13 +341,13 @@ else: {
 
 %%
 
-static int
+static uint
 cf_hash(byte *c)
 {
-  unsigned int h = 13;
+  uint h = 13 << 24;
 
   while (*c)
-    h = (h * 37) + *c++;
+    h = h + (h >> 2) + (h >> 5) + ((uint) *c++ << 24);
   return h;
 }
 
@@ -504,56 +512,27 @@ check_eof(void)
 }
 
 static struct symbol *
-cf_new_sym(byte *c, uint h0)
+cf_new_symbol(byte *c)
 {
-  uint h = h0 & (SYM_HASH_SIZE-1);
-  struct symbol *s, **ht;
-  int l;
+  struct symbol *s;
 
-  if (!new_config->sym_hash)
-    new_config->sym_hash = cfg_allocz(SYM_HASH_SIZE * sizeof(struct keyword *));
-  ht = new_config->sym_hash;
-  l = strlen(c);
+  uint l = strlen(c);
   if (l > SYM_MAX_LEN)
     cf_error("Symbol too long");
+
   s = cfg_alloc(sizeof(struct symbol) + l);
-  s->next = ht[h];
-  ht[h] = s;
   s->scope = conf_this_scope;
   s->class = SYM_VOID;
   s->def = NULL;
   s->aux = 0;
   strcpy(s->name, c);
+
+  if (!new_config->sym_hash.data)
+    HASH_INIT(new_config->sym_hash, new_config->pool, SYM_ORDER);
+
+  HASH_INSERT2(new_config->sym_hash, SYM, new_config->pool, s);
+
   return s;
-}
-
-static struct symbol *
-cf_find_sym(struct config *cfg, byte *c, uint h0)
-{
-  uint h = h0 & (SYM_HASH_SIZE-1);
-  struct symbol *s, **ht;
-
-  if (ht = cfg->sym_hash)
-    {
-      for(s = ht[h]; s; s=s->next)
-	if (!strcmp(s->name, c) && s->scope->active)
-	  return s;
-    }
-  if (ht = cfg->sym_fallback)
-    {
-      /* We know only top-level scope is active */
-      for(s = ht[h]; s; s=s->next)
-	if (!strcmp(s->name, c) && s->scope->active)
-	  return s;
-    }
-
-  return NULL;
-}
-
-static inline struct symbol *
-cf_get_sym(byte *c, uint h0)
-{
-  return cf_find_sym(new_config, c, h0) ?: cf_new_sym(c, h0);
 }
 
 /**
@@ -570,7 +549,18 @@ cf_get_sym(byte *c, uint h0)
 struct symbol *
 cf_find_symbol(struct config *cfg, byte *c)
 {
-  return cf_find_sym(cfg, c, cf_hash(c));
+  struct symbol *s;
+
+  if (cfg->sym_hash.data &&
+      (s = HASH_FIND(cfg->sym_hash, SYM, c, 1)))
+    return s;
+
+  if (cfg->fallback &&
+      cfg->fallback->sym_hash.data &&
+      (s = HASH_FIND(cfg->fallback->sym_hash, SYM, c, 1)))
+    return s;
+
+  return NULL;
 }
 
 /**
@@ -585,7 +575,7 @@ cf_find_symbol(struct config *cfg, byte *c)
 struct symbol *
 cf_get_symbol(byte *c)
 {
-  return cf_get_sym(c, cf_hash(c));
+  return cf_find_symbol(new_config, c) ?: cf_new_symbol(c);
 }
 
 struct symbol *
@@ -598,7 +588,7 @@ cf_default_name(char *template, int *counter)
   for(;;)
     {
       bsprintf(buf, template, ++(*counter));
-      s = cf_get_sym(buf, cf_hash(buf));
+      s = cf_get_symbol(buf);
       if (s->class == SYM_VOID)
 	return s;
       if (!perc)
@@ -629,7 +619,7 @@ cf_define_symbol(struct symbol *sym, int type, void *def)
     {
       if (sym->scope == conf_this_scope)
 	cf_error("Symbol already defined");
-      sym = cf_new_sym(sym->name, cf_hash(sym->name));
+      sym = cf_new_symbol(sym->name);
     }
   sym->class = type;
   sym->def = def;
@@ -639,15 +629,11 @@ cf_define_symbol(struct symbol *sym, int type, void *def)
 static void
 cf_lex_init_kh(void)
 {
-  struct keyword *k;
+  HASH_INIT(kw_hash, &root_pool, KW_ORDER);
 
-  for(k=keyword_list; k->name; k++)
-    {
-      unsigned h = cf_hash(k->name) & (KW_HASH_SIZE-1);
-      k->next = kw_hash[h];
-      kw_hash[h] = k;
-    }
-  kw_hash_inited = 1;
+  struct keyword *k;
+  for (k=keyword_list; k->name; k++)
+    HASH_INSERT(kw_hash, KW, k);
 }
 
 /**
@@ -661,7 +647,7 @@ cf_lex_init_kh(void)
 void
 cf_lex_init(int is_cli, struct config *c)
 {
-  if (!kw_hash_inited)
+  if (!kw_hash.data)
     cf_lex_init_kh();
 
   ifs_head = ifs = push_ifs(NULL);
@@ -718,24 +704,6 @@ cf_pop_scope(void)
   conf_this_scope->active = 0;
   conf_this_scope = conf_this_scope->next;
   ASSERT(conf_this_scope);
-}
-
-struct symbol *
-cf_walk_symbols(struct config *cf, struct symbol *sym, int *pos)
-{
-  for(;;)
-    {
-      if (!sym)
-	{
-	  if (*pos >= SYM_HASH_SIZE)
-	    return NULL;
-	  sym = cf->sym_hash[(*pos)++];
-	}
-      else
-	sym = sym->next;
-      if (sym && sym->scope->active)
-	return sym;
-    }
 }
 
 /**

@@ -11,6 +11,7 @@
 
 #include "sysdep/config.h"
 #include "lib/ip.h"
+#include "lib/hash.h"
 #include "lib/resource.h"
 #include "sysdep/unix/timer.h"
 
@@ -52,8 +53,8 @@ struct config {
   char *err_file_name;			/* File name containing error */
   char *file_name;			/* Name of main configuration file */
   int file_fd;				/* File descriptor of main configuration file */
-  struct symbol **sym_hash;		/* Lexer: symbol hash table */
-  struct symbol **sym_fallback;		/* Lexer: fallback symbol hash table */
+  HASH(struct symbol) sym_hash;		/* Lexer: symbol hash table */
+  struct config *fallback;		/* Link to regular config for CLI parsing */
   int obstacle_count;			/* Number of items blocking freeing of this config */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
   bird_clock_t load_time;		/* When we've got this configuration */
@@ -114,6 +115,12 @@ struct symbol {
   char name[1];
 };
 
+struct sym_scope {
+  struct sym_scope *next;		/* Next on scope stack */
+  struct symbol *name;			/* Name of this scope */
+  int active;				/* Currently entered */
+};
+
 #define SYM_MAX_LEN 64
 
 /* Remember to update cf_symbol_class_name() */
@@ -155,7 +162,6 @@ struct symbol *cf_default_name(char *template, int *counter);
 struct symbol *cf_define_symbol(struct symbol *symbol, int type, void *def);
 void cf_push_scope(struct symbol *);
 void cf_pop_scope(void);
-struct symbol *cf_walk_symbols(struct config *cf, struct symbol *sym, int *pos);
 char *cf_symbol_class_name(struct symbol *sym);
 
 static inline int cf_symbol_is_constant(struct symbol *sym)
