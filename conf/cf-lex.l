@@ -58,6 +58,11 @@ struct keyword {
 
 #include "conf/keywords.h"
 
+/* Could be defined by Bison in cf-parse.tab.h, inteferes with SYM hash */
+#ifdef SYM
+#undef SYM
+#endif
+
 
 static uint cf_hash(byte *c);
 
