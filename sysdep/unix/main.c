@@ -27,6 +27,7 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/event.h"
+#include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/route.h"
 #include "nest/protocol.h"
@@ -820,6 +821,7 @@ main(int argc, char **argv)
   log_switch(debug_flag, NULL, NULL);
 
   resource_init();
+  timer_init();
   olock_init();
   io_init();
   rt_init();

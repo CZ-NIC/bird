@@ -37,6 +37,7 @@
 #include "sysdep/unix/timer.h"
 #include "lib/socket.h"
 #include "lib/event.h"
+#include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/iface.h"
 
@@ -476,6 +477,47 @@ tm_format_datetime(char *x, struct timeformat *fmt_spec, bird_clock_t t)
   int rv = strftime(x, TM_DATETIME_BUFFER_SIZE, fmt_used, tm);
   if (((rv == 0) && fmt_used[0]) || (rv == TM_DATETIME_BUFFER_SIZE))
     strcpy(x, "<too-long>");
+}
+
+
+/*
+ *	Time clock
+ */
+
+void
+times_init(struct timeloop *loop)
+{
+  struct timespec ts;
+  int rv;
+
+  rv = clock_gettime(CLOCK_MONOTONIC, &ts);
+  if (rv < 0)
+    die("Monotonic clock is missing");
+
+  if ((ts.tv_sec < 0) || (((s64) ts.tv_sec) > ((s64) 1 << 40)))
+    log(L_WARN "Monotonic clock is crazy");
+
+  loop->last_time = ((s64) ts.tv_sec S) + (ts.tv_nsec / 1000);
+  loop->real_time = 0;
+}
+
+void
+times_update(struct timeloop *loop)
+{
+  struct timespec ts;
+  int rv;
+
+  rv = clock_gettime(CLOCK_MONOTONIC, &ts);
+  if (rv < 0)
+    die("clock_gettime: %m");
+
+  btime new_time = ((s64) ts.tv_sec S) + (ts.tv_nsec / 1000);
+
+  if (new_time < loop->last_time)
+    log(L_ERR "Monotonic clock is broken");
+
+  loop->last_time = new_time;
+  loop->real_time = 0;
 }
 
 

@@ -18,10 +18,10 @@
 #include "proto/bfd/io.h"
 
 #include "lib/buffer.h"
-#include "lib/heap.h"
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
+#include "lib/timer.h"
 #include "lib/socket.h"
 
 
@@ -31,16 +31,12 @@ struct birdloop
   pthread_t thread;
   pthread_mutex_t mutex;
 
-  btime last_time;
-  btime real_time;
-  u8 use_monotonic_clock;
-
   u8 stop_called;
   u8 poll_active;
   u8 wakeup_masked;
   int wakeup_fds[2];
 
-  BUFFER(timer2 *) timers;
+  struct timeloop time;
   list event_list;
   list sock_list;
   uint sock_num;
@@ -57,6 +53,7 @@ struct birdloop
  */
 
 static pthread_key_t current_loop_key;
+extern pthread_key_t current_time_key;
 
 static inline struct birdloop *
 birdloop_current(void)
@@ -68,104 +65,13 @@ static inline void
 birdloop_set_current(struct birdloop *loop)
 {
   pthread_setspecific(current_loop_key, loop);
+  pthread_setspecific(current_time_key, loop ? &loop->time : &main_timeloop);
 }
 
 static inline void
 birdloop_init_current(void)
 {
   pthread_key_create(&current_loop_key, NULL);
-}
-
-
-/*
- *	Time clock
- */
-
-static void times_update_alt(struct birdloop *loop);
-
-static void
-times_init(struct birdloop *loop)
-{
-  struct timespec ts;
-  int rv;
-
-  rv = clock_gettime(CLOCK_MONOTONIC, &ts);
-  if (rv < 0)
-  {
-    log(L_WARN "Monotonic clock is missing");
-
-    loop->use_monotonic_clock = 0;
-    loop->last_time = 0;
-    loop->real_time = 0;
-    times_update_alt(loop);
-    return;
-  }
-
-  if ((ts.tv_sec < 0) || (((s64) ts.tv_sec) > ((s64) 1 << 40)))
-    log(L_WARN "Monotonic clock is crazy");
-
-  loop->use_monotonic_clock = 1;
-  loop->last_time = ((s64) ts.tv_sec S) + (ts.tv_nsec / 1000);
-  loop->real_time = 0;
-}
-
-static void
-times_update_pri(struct birdloop *loop)
-{
-  struct timespec ts;
-  int rv;
-
-  rv = clock_gettime(CLOCK_MONOTONIC, &ts);
-  if (rv < 0)
-    die("clock_gettime: %m");
-
-  btime new_time = ((s64) ts.tv_sec S) + (ts.tv_nsec / 1000);
-
-  if (new_time < loop->last_time)
-    log(L_ERR "Monotonic clock is broken");
-
-  loop->last_time = new_time;
-  loop->real_time = 0;
-}
-
-static void
-times_update_alt(struct birdloop *loop)
-{
-  struct timeval tv;
-  int rv;
-
-  rv = gettimeofday(&tv, NULL);
-  if (rv < 0)
-    die("gettimeofday: %m");
-
-  btime new_time = ((s64) tv.tv_sec S) + tv.tv_usec;
-  btime delta = new_time - loop->real_time;
-
-  if ((delta < 0) || (delta > (60 S)))
-  {
-    if (loop->real_time)
-      log(L_WARN "Time jump, delta %d us", (int) delta);
-
-    delta = 100 MS;
-  }
-
-  loop->last_time += delta;
-  loop->real_time = new_time;
-}
-
-static void
-times_update(struct birdloop *loop)
-{
-  if (loop->use_monotonic_clock)
-    times_update_pri(loop);
-  else
-    times_update_alt(loop);
-}
-
-btime
-current_time(void)
-{
-  return birdloop_current()->last_time;
 }
 
 
@@ -238,7 +144,7 @@ wakeup_drain(struct birdloop *loop)
 }
 
 static inline void
-wakeup_do_kick(struct birdloop *loop) 
+wakeup_do_kick(struct birdloop *loop)
 {
   pipe_kick(loop->wakeup_fds[1]);
 }
@@ -250,6 +156,16 @@ wakeup_kick(struct birdloop *loop)
     wakeup_do_kick(loop);
   else
     loop->wakeup_masked = 2;
+}
+
+/* For notifications from outside */
+void
+wakeup_kick_current(void)
+{
+  struct birdloop *loop = birdloop_current();
+
+  if (loop && loop->poll_active)
+    wakeup_kick(loop);
 }
 
 
@@ -272,7 +188,7 @@ events_init(struct birdloop *loop)
 static void
 events_fire(struct birdloop *loop)
 {
-  times_update(loop);
+  times_update(&loop->time);
   ev_run_list(&loop->event_list);
 }
 
@@ -288,154 +204,6 @@ ev2_schedule(event *e)
     rem_node(&e->n);
 
   add_tail(&loop->event_list, &e->n);
-}
-
-
-/*
- *	Timers
- */
-
-#define TIMER_LESS(a,b)		((a)->expires < (b)->expires)
-#define TIMER_SWAP(heap,a,b,t)	(t = heap[a], heap[a] = heap[b], heap[b] = t, \
-				   heap[a]->index = (a), heap[b]->index = (b))
-
-static inline uint timers_count(struct birdloop *loop)
-{ return loop->timers.used - 1; }
-
-static inline timer2 *timers_first(struct birdloop *loop)
-{ return (loop->timers.used > 1) ? loop->timers.data[1] : NULL; }
-
-
-static void
-tm2_free(resource *r)
-{
-  timer2 *t = (timer2 *) r;
-
-  tm2_stop(t);
-}
-
-static void
-tm2_dump(resource *r)
-{
-  timer2 *t = (timer2 *) r;
-
-  debug("(code %p, data %p, ", t->hook, t->data);
-  if (t->randomize)
-    debug("rand %d, ", t->randomize);
-  if (t->recurrent)
-    debug("recur %d, ", t->recurrent);
-  if (t->expires)
-    debug("expires in %d ms)\n", (t->expires - current_time()) TO_MS);
-  else
-    debug("inactive)\n");
-}
-
-
-static struct resclass tm2_class = {
-  "Timer",
-  sizeof(timer2),
-  tm2_free,
-  tm2_dump,
-  NULL,
-  NULL
-};
-
-timer2 *
-tm2_new(pool *p)
-{
-  timer2 *t = ralloc(p, &tm2_class);
-  t->index = -1;
-  return t;
-}
-
-void
-tm2_set(timer2 *t, btime when)
-{
-  struct birdloop *loop = birdloop_current();
-  uint tc = timers_count(loop);
-
-  if (!t->expires)
-  {
-    t->index = ++tc;
-    t->expires = when;
-    BUFFER_PUSH(loop->timers) = t;
-    HEAP_INSERT(loop->timers.data, tc, timer2 *, TIMER_LESS, TIMER_SWAP);
-  }
-  else if (t->expires < when)
-  {
-    t->expires = when;
-    HEAP_INCREASE(loop->timers.data, tc, timer2 *, TIMER_LESS, TIMER_SWAP, t->index);
-  }
-  else if (t->expires > when)
-  {
-    t->expires = when;
-    HEAP_DECREASE(loop->timers.data, tc, timer2 *, TIMER_LESS, TIMER_SWAP, t->index);
-  }
-
-  if (loop->poll_active && (t->index == 1))
-    wakeup_kick(loop);
-}
-
-void
-tm2_start(timer2 *t, btime after)
-{
-  tm2_set(t, current_time() + MAX(after, 0));
-}
-
-void
-tm2_stop(timer2 *t)
-{
-  if (!t->expires)
-    return;
-
-  struct birdloop *loop = birdloop_current();
-  uint tc = timers_count(loop);
-
-  HEAP_DELETE(loop->timers.data, tc, timer2 *, TIMER_LESS, TIMER_SWAP, t->index);
-  BUFFER_POP(loop->timers);
-
-  t->index = -1;
-  t->expires = 0;
-}
-
-static void
-timers_init(struct birdloop *loop)
-{
-  BUFFER_INIT(loop->timers, loop->pool, 4);
-  BUFFER_PUSH(loop->timers) = NULL;
-}
-
-static void
-timers_fire(struct birdloop *loop)
-{
-  btime base_time;
-  timer2 *t;
-
-  times_update(loop);
-  base_time = loop->last_time;
-
-  while (t = timers_first(loop))
-  {
-    if (t->expires > base_time)
-      return;
-
-    if (t->recurrent)
-    {
-      btime when = t->expires + t->recurrent;
-      
-      if (when <= loop->last_time)
-	when = loop->last_time + t->recurrent;
-
-      if (t->randomize)
-	when += random() % (t->randomize + 1);
-
-      tm2_set(t, when);
-    }
-    else
-      tm2_stop(t);
-
-    t->hook(t);
-  }
 }
 
 
@@ -586,7 +354,7 @@ sockets_fire(struct birdloop *loop)
   sock **psk = loop->poll_sk.data;
   int poll_num = loop->poll_fd.used - 1;
 
-  times_update(loop);
+  times_update(&loop->time);
 
   /* Last fd is internal wakeup fd */
   if (pfd[poll_num].revents & POLLIN)
@@ -634,11 +402,10 @@ birdloop_new(void)
   loop->pool = p;
   pthread_mutex_init(&loop->mutex, NULL);
 
-  times_init(loop);
   wakeup_init(loop);
 
   events_init(loop);
-  timers_init(loop);
+  timers_init(&loop->time, p);
   sockets_init(loop);
 
   return loop;
@@ -719,12 +486,12 @@ birdloop_main(void *arg)
   while (1)
   {
     events_fire(loop);
-    timers_fire(loop);
+    timers_fire(&loop->time);
 
-    times_update(loop);
+    times_update(&loop->time);
     if (events_waiting(loop))
       timeout = 0;
-    else if (t = timers_first(loop))
+    else if (t = timers_first(&loop->time))
       timeout = (tm2_remains(t) TO_MS) + 1;
     else
       timeout = -1;
@@ -756,7 +523,7 @@ birdloop_main(void *arg)
     if (rv)
       sockets_fire(loop);
 
-    timers_fire(loop);
+    timers_fire(&loop->time);
   }
 
   loop->stop_called = 0;
