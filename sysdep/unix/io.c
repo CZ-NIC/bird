@@ -2507,9 +2507,10 @@ static int short_loops = 0;
 void
 io_loop(void)
 {
-  int poll_tout;
+  int poll_tout, timeout;
   time_t tout;
   int nfds, events, pout;
+  timer2 *t;
   sock *s;
   node *n;
   int fdmax = 256;
@@ -2518,7 +2519,9 @@ io_loop(void)
   watchdog_start1();
   for(;;)
     {
+      times_update(&main_timeloop);
       events = ev_run_list(&global_event_list);
+      timers_fire(&main_timeloop);
     timers:
       update_times();
       tout = tm_first_shot();
@@ -2527,9 +2530,15 @@ io_loop(void)
 	  tm_shot();
 	  goto timers;
 	}
-      poll_tout = (events ? 0 : MIN(tout - now, 3)) * 1000; /* Time in milliseconds */
-
       io_close_event();
+
+      poll_tout = (events ? 0 : MIN(tout - now, 3)) * 1000; /* Time in milliseconds */
+      if (t = timers_first(&main_timeloop))
+      {
+	times_update(&main_timeloop);
+	timeout = (tm2_remains(t) TO_MS) + 1;
+	poll_tout = MIN(poll_tout, timeout);
+      }
 
       nfds = 0;
       WALK_LIST(n, sock_list)
@@ -2601,6 +2610,8 @@ io_loop(void)
 	}
       if (pout)
 	{
+	  times_update(&main_timeloop);
+
 	  /* guaranteed to be non-empty */
 	  current_sock = SKIP_BACK(sock, n, HEAD(sock_list));
 

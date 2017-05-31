@@ -166,6 +166,8 @@ timers_init(struct timeloop *loop, pool *p)
   BUFFER_PUSH(loop->timers) = NULL;
 }
 
+void io_log_event(void *hook, void *data);
+
 void
 timers_fire(struct timeloop *loop)
 {
@@ -194,6 +196,10 @@ timers_fire(struct timeloop *loop)
     }
     else
       tm2_stop(t);
+
+    /* This is ugly hack, we want to log just timers executed from the main I/O loop */
+    if (loop == &main_timeloop)
+      io_log_event(t->hook, t->data);
 
     t->hook(t);
   }
