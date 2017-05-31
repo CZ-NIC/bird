@@ -15,5 +15,6 @@ struct f_inst;
 
 void cmd_show_status(void);
 void cmd_show_symbols(struct sym_show_data *sym);
+void cmd_send_symbols(void);
 void cmd_show_memory(void);
 void cmd_eval(struct f_inst *expr);

@@ -431,13 +431,13 @@ CF_ADDTO(dynamic_attr, OSPF_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT | EAF_TEM
 CF_ADDTO(dynamic_attr, OSPF_ROUTER_ID { $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID | EAF_TEMP, T_QUAD, EA_OSPF_ROUTER_ID); })
 
 CF_CLI_HELP(SHOW OSPF, ..., [[Show information about OSPF protocol]]);
-CF_CLI(SHOW OSPF, optsym, [<name>], [[Show information about OSPF protocol XXX]])
+CF_CLI(SHOW OSPF, optsym, [<name>], [[Show information about OSPF protocol XXX]], CLI_SF_PROTOCOL)
 { ospf_sh(proto_get_named($3, &proto_ospf)); };
 
-CF_CLI(SHOW OSPF NEIGHBORS, optsym opttext, [<name>] [\"<interface>\"], [[Show information about OSPF neighbors]])
+CF_CLI(SHOW OSPF NEIGHBORS, optsym opttext, [<name>] [\"<interface>\"], [[Show information about OSPF neighbors]], CLI_SF_PROTOCOL | CLI_SF_INTERFACE | CLI_SF_PARAMETER)
 { ospf_sh_neigh(proto_get_named($4, &proto_ospf), $5); };
 
-CF_CLI(SHOW OSPF INTERFACE, optsym opttext, [<name>] [\"<interface>\"], [[Show information about interface]])
+CF_CLI(SHOW OSPF INTERFACE, optsym opttext, [<name>] [\"<interface>\"], [[Show information about interface]], CLI_SF_PROTOCOL | CLI_SF_INTERFACE | CLI_SF_PARAMETER)
 { ospf_sh_iface(proto_get_named($4, &proto_ospf), $5); };
 
 CF_CLI_HELP(SHOW OSPF TOPOLOGY, [all] [<name>], [[Show information about OSPF network topology]])
@@ -445,20 +445,27 @@ CF_CLI_HELP(SHOW OSPF TOPOLOGY, [all] [<name>], [[Show information about OSPF ne
 CF_CLI(SHOW OSPF TOPOLOGY, optsym opttext, [<name>], [[Show information about reachable OSPF network topology]])
 { ospf_sh_state(proto_get_named($4, &proto_ospf), 0, 1); };
 
-CF_CLI(SHOW OSPF TOPOLOGY ALL, optsym opttext, [<name>], [[Show information about all OSPF network topology]])
+CF_CLI(SHOW OSPF TOPOLOGY ALL, optsym opttext, [<name>], [[Show information about all OSPF network topology]], CLI_SF_PROTOCOL)
 { ospf_sh_state(proto_get_named($5, &proto_ospf), 0, 0); };
 
 CF_CLI_HELP(SHOW OSPF STATE, [all] [<name>], [[Show information about OSPF network state]])
 
-CF_CLI(SHOW OSPF STATE, optsym opttext, [<name>], [[Show information about reachable OSPF network state]])
+CF_CLI(SHOW OSPF STATE, optsym opttext, [<name>], [[Show information about reachable OSPF network state]], CLI_SF_PROTOCOL)
 { ospf_sh_state(proto_get_named($4, &proto_ospf), 1, 1); };
 
-CF_CLI(SHOW OSPF STATE ALL, optsym opttext, [<name>], [[Show information about all OSPF network state]])
+CF_CLI(SHOW OSPF STATE ALL, optsym opttext, [<name>], [[Show information about all OSPF network state]], CLI_SF_PROTOCOL)
 { ospf_sh_state(proto_get_named($5, &proto_ospf), 1, 0); };
 
-CF_CLI_HELP(SHOW OSPF LSADB, ..., [[Show content of OSPF LSA database]]);
-CF_CLI(SHOW OSPF LSADB, lsadb_args, [global | area <id> | link] [type <num>] [lsid <id>] [self | router <id>] [<proto>], [[Show content of OSPF LSA database]])
+CF_CLI_HELP(SHOW OSPF LSADB, ..., [[Show content of OSPF LSA database]])
+CF_CLI(SHOW OSPF LSADB, lsadb_args, [global | area <id> | link] [type <num>] [lsid <id>] [self | router <id>] [<proto>], [[Show content of OSPF LSA database]], CLI_SF_PROTOCOL)
 { ospf_sh_lsadb($4); };
+CF_CLI_HELP(SHOW OSPF LSADB GLOBAL, ...,, CLI_SF_OPTIONAL)
+CF_CLI_HELP(SHOW OSPF LSADB AREA, <id> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER)
+CF_CLI_HELP(SHOW OSPF LSADB LINK, ...,, CLI_SF_OPTIONAL)
+CF_CLI_HELP(SHOW OSPF LSADB TYPE, <num> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER)
+CF_CLI_HELP(SHOW OSPF LSADB LSID, <num> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER)
+CF_CLI_HELP(SHOW OSPF LSADB SELF, ...,, CLI_SF_OPTIONAL)
+CF_CLI_HELP(SHOW OSPF LSADB ROUTER, <num> ...,, CLI_SF_OPTIONAL | CLI_SF_PARAMETER)
 
 lsadb_args:
    /* empty */ {

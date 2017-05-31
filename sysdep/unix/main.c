@@ -35,6 +35,7 @@
 #include "nest/locks.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
+#include "client/reply_codes.h"
 
 #include "unix.h"
 #include "krt.h"
@@ -271,12 +272,12 @@ cmd_check_config(char *name)
   config_free(conf);
 }
 
-static void
+void
 cmd_reconfig_msg(int r)
 {
   switch (r)
     {
-    case CONF_DONE:	cli_msg( 3, "Reconfigured"); break;
+    case CONF_DONE:	cli_msg( 3, "Reconfigured"); cli_msg(RC_NOTIFY, ""); cli_msg(19, "Nothing to do"); break;
     case CONF_PROGRESS: cli_msg( 4, "Reconfiguration in progress"); break;
     case CONF_QUEUED:	cli_msg( 5, "Reconfiguration already in progress, queueing new config"); break;
     case CONF_UNQUEUED:	cli_msg(17, "Reconfiguration already in progress, removing queued config"); break;

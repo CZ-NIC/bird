@@ -34,8 +34,11 @@
 #include "lib/string.h"
 #include "client/client.h"
 #include "sysdep/unix/unix.h"
+#include "client/reply_codes.h"
 
-#define SERVER_READ_BUF_LEN 4096
+#define SERVER_READ_BUF_LEN 	4096
+#define INPUT_BUF_LEN 		2048
+#define REFRESH_SYMBOLS_CMD 	"refresh symbols" /* Name of cli command for retrieve new symbols from daemon */
 
 static char *opt_list = "s:vrl";
 static int verbose, restricted, once;
@@ -47,12 +50,17 @@ static byte server_read_buf[SERVER_READ_BUF_LEN];
 static byte *server_read_pos = server_read_buf;
 
 int init = 1;		/* During intial sequence */
-int busy = 1;		/* Executing BIRD command */
+int busy = 0;		/* Executing BIRD command */
 int interactive;	/* Whether stdin is terminal */
 int complete = 0;
+int welcomed = 0;	/* Was welcome message with BIRD version printed out? */
+int symread = 0;	/* During symbol receipt */
 
 static int num_lines, skip_input;
 int term_lns, term_cls;
+
+static list symbols;
+static uint longest_symbol_len;
 
 
 /*** Parsing of arguments ***/
@@ -124,7 +132,7 @@ parse_args(int argc, char **argv)
 	strcpy(tmp, comp_now);
 	tmp += strlen(comp_now);
       } else
-	tmp[-1] = 0;
+	tmp[-1] = 0; /* Drop last space character */
 
       once = 1;
       interactive = 0;
@@ -149,6 +157,12 @@ handle_internal_command(char *cmd)
       puts("Press `?' for context sensitive help.");
       return 1;
     }
+  if (!strncmp(cmd, REFRESH_SYMBOLS_CMD, sizeof(REFRESH_SYMBOLS_CMD)-1))
+  {
+    retrieve_symbols();
+    return 1;
+  }
+
   return 0;
 }
 
@@ -190,6 +204,41 @@ submit_command(char *cmd_raw)
 }
 
 static void
+add_to_symbols(int flag, const char *name)
+{
+  struct cli_symbol *sym = malloc(sizeof(struct cli_symbol));
+  sym->flags = flag;
+
+  sym->len = strlen(name);
+  char *name_ = malloc(sym->len + 1);
+  memcpy(name_, name, sym->len + 1);
+  sym->name = name_;
+  add_tail(&symbols, &sym->n);
+
+  if (longest_symbol_len < sym->len)
+    longest_symbol_len = sym->len;
+}
+
+void
+retrieve_symbols(void)
+{
+  /* Purge old symbols */
+  list *syms = cli_get_symbol_list();
+  struct cli_symbol *sym, *next;
+  WALK_LIST_DELSAFE(sym, next, *syms)
+  {
+    rem_node(&sym->n);
+    free((char *) sym->name);
+    free(sym);
+  }
+
+  add_to_symbols(CLI_SF_KW_ALL, "all");
+  add_to_symbols(CLI_SF_KW_OFF, "off");
+
+  submit_server_command(REFRESH_SYMBOLS_CMD);
+}
+
+static void
 init_commands(void)
 {
   if (restricted)
@@ -199,7 +248,7 @@ init_commands(void)
        return;
     }
 
-  if (init_cmd)
+  if (init_cmd && !complete)
     {
       /* First transition - client received hello from BIRD
 	 and there is waiting initial command */
@@ -208,17 +257,30 @@ init_commands(void)
       return;
     }
 
-  if (once)
+  if (once && !complete)
     {
       /* Initial command is finished and we want to exit */
       cleanup();
       exit(0);
     }
 
-  input_init();
+  init_list(&symbols);
+  longest_symbol_len = 1; /* Be careful, it's used as denominator! */
 
-  term_lns = (term_lns > 0) ? term_lns : 25;
-  term_cls = (term_cls > 0) ? term_cls : 80;
+  /* In symbol list is a BIRD version for welcome message too */
+  if (interactive || complete)
+    {
+      retrieve_symbols();
+      symread = 1;
+    }
+
+  if (!complete)
+    {
+      input_init();
+
+      term_lns = (term_lns > 0) ? term_lns : 25;
+      term_cls = (term_cls > 0) ? term_cls : 80;
+    }
 
   init = 0;
 }
@@ -279,31 +341,92 @@ server_connect(void)
     DIE("fcntl");
 }
 
+list *
+cli_get_symbol_list(void)
+{
+  return &symbols;
+}
 
-#define PRINTF(LEN, PARGS...) do { if (!skip_input) len = printf(PARGS); } while(0)
+uint
+cli_get_symbol_maxlen(void)
+{
+  return longest_symbol_len;
+}
+
+static void
+process_internal_message(int reply_code, const char *name)
+{
+  u32 flag = 0;
+
+  switch (reply_code)
+  {
+  case RC_BIRD_VERSION_NUM:
+    if (interactive && !welcomed && !complete)
+    {
+      welcomed = 1;
+      printf("BIRD %s ready.\n", name);
+    }
+    return;
+
+  case RC_NOTIFY:
+    if (interactive)
+      retrieve_symbols();
+    return;
+
+  /* Symbols */
+  case RC_CONSTANT_NAME:	flag = CLI_SF_CONSTANT; break;
+  case RC_VARIABLE_NAME:	flag = CLI_SF_VARIABLE; break;
+  case RC_FILTER_NAME:		flag = CLI_SF_FILTER; break;
+  case RC_FUNCTION_NAME:	flag = CLI_SF_FUNCTION; break;
+  case RC_PROTOCOL_NAME:	flag = CLI_SF_PROTOCOL; break;
+  case RC_TABLE_NAME:		flag = CLI_SF_TABLE; break;
+  case RC_TEMPLATE_NAME:	flag = CLI_SF_TEMPLATE; break;
+  case RC_INTERFACE_NAME:	flag = CLI_SF_INTERFACE; break;
+  default:
+    printf("Undefined %d: %s", reply_code, name);
+    return;
+  }
+
+  if (flag && name && *name) {
+    symread = 1;
+    add_to_symbols(flag, name);
+  }
+}
+
+#define PRINTF(LEN, PARGS...) do { if (!skip_input && !complete) len = printf(PARGS); } while(0)
 
 static void
 server_got_reply(char *x)
 {
-  int code;
+  int code = 0;
   int len = 0;
 
-  if (*x == '+')                        /* Async reply */
+  if (*x == '+') {                       /* Async reply */
+    busy = 1;
+    input_notify(0);
     PRINTF(len, ">>> %s\n", x+1);
+  }
   else if (x[0] == ' ')                 /* Continuation */
     PRINTF(len, "%s%s\n", verbose ? "     " : "", x+1);
   else if (strlen(x) > 4 &&
            sscanf(x, "%d", &code) == 1 && code >= 0 && code < 10000 &&
            (x[4] == ' ' || x[4] == '-'))
     {
-      if (code)
-        PRINTF(len, "%s\n", verbose ? x : x+5);
+      if (code >= 3000 && code < 4000)
+      {
+	process_internal_message(code, x+5);
+      }
+      else if (code)
+      {
+	PRINTF(len, "%s\n", verbose ? x : x+5);
+      } else if (symread)
+	symread = 0;
 
       if (x[4] == ' ')
       {
-        busy = 0;
-        skip_input = 0;
-        return;
+	busy = 0;
+	skip_input = 0;
+	return;
       }
     }
   else
@@ -358,6 +481,51 @@ server_read(void)
     }
 }
 
+static int
+lastnb(char *str, int i)
+{
+  while (i--)
+    if ((str[i] != ' ') && (str[i] != '\t'))
+      return str[i];
+
+  return 0;
+}
+
+void
+simple_input_read(void)
+{
+  char buf[INPUT_BUF_LEN];
+
+  if ((fgets(buf, INPUT_BUF_LEN, stdin) == NULL) || (buf[0] == 0))
+  {
+    if (interactive)
+      putchar('\n');
+    cleanup();
+    exit(0);
+  }
+
+  int l = strlen(buf);
+  if ((l+1) == INPUT_BUF_LEN)
+    {
+      printf("Input too long.\n");
+      return;
+    }
+
+  if (buf[l-1] == '\n')
+    buf[--l] = '\0';
+
+  if (l == 0)
+    return;
+
+  if (lastnb(buf, l) == '?')
+    {
+      cmd_help(buf, strlen(buf));
+      return;
+    }
+
+  submit_command(buf);
+}
+
 static void
 select_loop(void)
 {
@@ -370,11 +538,17 @@ select_loop(void)
       if (!init)
 	input_notify(!busy);
 
+      if (!init && !symread && complete)
+	{
+	  do_complete(init_cmd);
+	  exit(0);
+	}
+
       fd_set select_fds;
       FD_ZERO(&select_fds);
 
       FD_SET(server_fd, &select_fds);
-      if (!busy)
+      if (!busy && !complete)
 	FD_SET(0, &select_fds);
 
       rv = select(server_fd+1, &select_fds, NULL, NULL, NULL);
@@ -460,8 +634,12 @@ main(int argc, char **argv)
   parse_args(argc, argv);
   cmd_build_tree();
 
-  if (complete)
+  /* Shell completion of first word */
+  if (complete && !strchr(init_cmd, ' '))
+  {
+    init_list(&symbols);
     return do_complete(init_cmd);
+  }
 
   server_connect();
   select_loop();

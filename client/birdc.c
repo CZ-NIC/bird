@@ -81,7 +81,7 @@ static int
 input_complete(int arg UNUSED, int key UNUSED)
 {
   static int complete_flag;
-  char buf[256];
+  char buf[256] = {};
 
   if (rl_last_func != input_complete)
     complete_flag = 0;
@@ -157,18 +157,21 @@ history_init(void)
 void
 input_init(void)
 {
+  prompt_active = 0;
+
   if (interactive)
+  {
+    prompt_active = 1;
     history_init();
-  rl_readline_name = "birdc";
-  rl_add_defun("bird-complete", input_complete, '\t');
-  rl_add_defun("bird-help", input_help, '?');
-  rl_callback_handler_install("bird> ", input_got_line);
+    rl_readline_name = "birdc";
+    rl_add_defun("bird-complete", input_complete, '\t');
+    rl_add_defun("bird-help", input_help, '?');
+    rl_callback_handler_install("bird> ", input_got_line);
+  }
 
   // rl_get_screen_size();
   term_lns = LINES;
   term_cls = COLS;
-
-  prompt_active = 1;
 
   // readline library does strange things when stdin is nonblocking.
   // if (fcntl(0, F_SETFL, O_NONBLOCK) < 0)
@@ -216,7 +219,10 @@ input_notify(int prompt)
 void
 input_read(void)
 {
-  rl_callback_read_char();
+  if (interactive)
+    rl_callback_read_char();
+  else
+    simple_input_read();
 }
 
 void

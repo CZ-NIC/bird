@@ -206,27 +206,32 @@ if_notify_change(unsigned c, struct iface *i)
 #endif
 
   if (c & IF_CHANGE_DOWN)
+  {
     neigh_if_down(i);
 
-  if (c & IF_CHANGE_DOWN)
     WALK_LIST(a, i->addrs)
       {
 	a->flags = (i->flags & ~IA_FLAGS) | (a->flags & IA_FLAGS);
 	ifa_notify_change_(IF_CHANGE_DOWN, a);
       }
 
+    cli_notify_all_clients();
+  }
+
   WALK_LIST(p, proto_list)
     if_send_notify(p, c, i);
 
   if (c & IF_CHANGE_UP)
+  {
     WALK_LIST(a, i->addrs)
       {
 	a->flags = (i->flags & ~IA_FLAGS) | (a->flags & IA_FLAGS);
 	ifa_notify_change_(IF_CHANGE_UP, a);
       }
 
-  if (c & IF_CHANGE_UP)
     neigh_if_up(i);
+    cli_notify_all_clients();
+  }
 
   if ((c & (IF_CHANGE_UP | IF_CHANGE_DOWN | IF_CHANGE_LINK)) == IF_CHANGE_LINK)
     neigh_if_link(i);

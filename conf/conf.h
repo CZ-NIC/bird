@@ -161,6 +161,9 @@ char *cf_symbol_class_name(struct symbol *sym);
 static inline int cf_symbol_is_constant(struct symbol *sym)
 { return (sym->class & 0xff00) == SYM_CONSTANT; }
 
+static inline int cf_symbol_is_variable(struct symbol *sym)
+{ return (sym->class & 0xff00) == SYM_VARIABLE; }
+
 
 /* Parser */
 

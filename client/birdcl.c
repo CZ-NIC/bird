@@ -22,8 +22,6 @@
 #include "client/client.h"
 #include "sysdep/unix/unix.h"
 
-#define INPUT_BUF_LEN 2048
-
 struct termios tty_save;
 
 void
@@ -42,59 +40,17 @@ void
 input_notify(int prompt)
 {
   /* No ncurses -> no status to reveal/hide, print prompt manually. */
-  if (!prompt)
+  if (!prompt || !interactive)
     return;
 
-  printf("bird> ");
+  printf("\rbird> ");
   fflush(stdout);
-}
-
-
-static int
-lastnb(char *str, int i)
-{
-  while (i--)
-    if ((str[i] != ' ') && (str[i] != '\t'))
-      return str[i];
-
-  return 0;
 }
 
 void
 input_read(void)
 {
-  char buf[INPUT_BUF_LEN];
-
-  if ((fgets(buf, INPUT_BUF_LEN, stdin) == NULL) || (buf[0] == 0))
-  {
-    putchar('\n');
-    cleanup();
-    exit(0);
-  }
-
-  int l = strlen(buf);
-  if ((l+1) == INPUT_BUF_LEN)
-    {
-      printf("Input too long.\n");
-      return;
-    }
-
-  if (buf[l-1] == '\n')
-    buf[--l] = '\0';
-
-  if (!interactive)
-    printf("%s\n", buf);
-
-  if (l == 0)
-    return;
-
-  if (lastnb(buf, l) == '?')
-    {
-      cmd_help(buf, strlen(buf));
-      return;
-    }
-
-  submit_command(buf);
+  simple_input_read();
 }
 
 static struct termios stored_tty;
