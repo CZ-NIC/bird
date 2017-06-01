@@ -1367,7 +1367,7 @@ babel_iface_timer(timer *t)
 static inline void
 babel_iface_kick_timer(struct babel_iface *ifa)
 {
-  if (ifa->timer->expires > (now + 1))
+  if (ifa->timer->expires TO_S > (now + 1))
     tm_start(ifa->timer, 1);
 }
 
@@ -1948,7 +1948,7 @@ babel_timer(timer *t)
 static inline void
 babel_kick_timer(struct babel_proto *p)
 {
-  if (p->timer->expires > (now + 1))
+  if (p->timer->expires TO_S > (now + 1))
     tm_start(p->timer, 1);
 }
 

@@ -210,10 +210,10 @@ struct bgp_conn {
 
   struct bgp_caps *local_caps;
   struct bgp_caps *remote_caps;
-  struct timer *connect_timer;
-  struct timer *hold_timer;
-  struct timer *keepalive_timer;
-  struct event *tx_ev;
+  timer *connect_timer;
+  timer *hold_timer;
+  timer *keepalive_timer;
+  event *tx_ev;
   u32 packets_to_send;			/* Bitmap of packet types to be sent */
   u32 channels_to_send;			/* Bitmap of channels with packets to be sent */
   u8 last_channel;			/* Channel used last time for TX */
@@ -254,9 +254,9 @@ struct bgp_proto {
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   ip_addr source_addr;			/* Local address used as an advertised next hop */
   ip_addr link_addr;			/* Link-local version of source_addr */
-  struct event *event;			/* Event for respawning and shutting process */
-  struct timer *startup_timer;		/* Timer used to delay protocol startup due to previous errors (startup_delay) */
-  struct timer *gr_timer;		/* Timer waiting for reestablishment after graceful restart */
+  event *event;				/* Event for respawning and shutting process */
+  timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */
+  timer *gr_timer;			/* Timer waiting for reestablishment after graceful restart */
   unsigned startup_delay;		/* Time to delay protocol startup by due to errors */
   bird_clock_t last_proto_error;	/* Time of last error that leads to protocol stop */
   u8 last_error_class; 			/* Error class of last error */
@@ -422,7 +422,7 @@ extern struct linpool *bgp_linpool;
 extern struct linpool *bgp_linpool2;
 
 
-void bgp_start_timer(struct timer *t, int value);
+void bgp_start_timer(timer *t, int value);
 void bgp_check_config(struct bgp_config *c);
 void bgp_error(struct bgp_conn *c, unsigned code, unsigned subcode, byte *data, int len);
 void bgp_close_conn(struct bgp_conn *c);

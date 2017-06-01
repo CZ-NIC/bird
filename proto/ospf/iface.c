@@ -715,9 +715,9 @@ ospf_iface_change_timer(timer *tm, uint val)
   if (!tm)
     return;
 
-  tm->recurrent = val;
+  tm->recurrent = val S;
 
-  if (tm->expires)
+  if (tm_active(tm))
     tm_start(tm, val);
 }
 

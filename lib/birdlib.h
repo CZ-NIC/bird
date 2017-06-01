@@ -9,7 +9,6 @@
 #ifndef _BIRD_BIRDLIB_H_
 #define _BIRD_BIRDLIB_H_
 
-#include "sysdep/unix/timer.h"
 #include "lib/alloca.h"
 
 /* Ugly structure offset handling macros */
@@ -70,6 +69,7 @@ static inline int u64_cmp(u64 i1, u64 i2)
 /* Microsecond time */
 
 typedef s64 btime;
+typedef s64 bird_clock_t;
 
 #define S_	*1000000
 #define MS_	*1000

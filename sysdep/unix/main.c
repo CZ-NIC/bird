@@ -57,7 +57,7 @@ async_dump(void)
 
   rdump(&root_pool);
   sk_dump_all();
-  tm_dump_all();
+  // XXXX tm_dump_all();
   if_dump_all();
   neigh_dump_all();
   rta_dump_all();

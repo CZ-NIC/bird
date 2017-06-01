@@ -154,12 +154,7 @@ radv_iface_new(struct radv_proto *p, struct iface *iface, struct radv_iface_conf
 
   add_tail(&p->iface_list, NODE ifa);
 
-  timer *tm = tm_new(pool);
-  tm->hook = radv_timer;
-  tm->data = ifa;
-  tm->randomize = 0;
-  tm->recurrent = 0;
-  ifa->timer = tm;
+  ifa->timer = tm_new_set(pool, radv_timer, ifa, 0, 0);
 
   struct object_lock *lock = olock_new(pool);
   lock->addr = IPA_NONE;

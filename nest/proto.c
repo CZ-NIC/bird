@@ -43,7 +43,7 @@ static char *c_states[] = { "DOWN", "START", "UP", "FLUSHING" };
 
 extern struct protocol proto_unix_iface;
 
-static void proto_shutdown_loop(struct timer *);
+static void proto_shutdown_loop(timer *);
 static void proto_rethink_goal(struct proto *p);
 static char *proto_state_name(struct proto *p);
 static void channel_verify_limits(struct channel *c);
@@ -1046,7 +1046,7 @@ proto_rethink_goal(struct proto *p)
  *
  */
 
-static void graceful_restart_done(struct timer *t);
+static void graceful_restart_done(timer *t);
 
 /**
  * graceful_restart_recovery - request initial graceful restart recovery
@@ -1099,7 +1099,7 @@ graceful_restart_init(void)
  * restart wait timer fires (but there are still some locks).
  */
 static void
-graceful_restart_done(struct timer *t UNUSED)
+graceful_restart_done(timer *t UNUSED)
 {
   log(L_INFO "Graceful restart done");
   graceful_restart_state = GRS_DONE;
@@ -1298,7 +1298,7 @@ protos_build(void)
 int proto_restart;
 
 static void
-proto_shutdown_loop(struct timer *t UNUSED)
+proto_shutdown_loop(timer *t UNUSED)
 {
   struct proto *p, *p_next;
 

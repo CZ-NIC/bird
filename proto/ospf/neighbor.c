@@ -654,7 +654,7 @@ ospf_sh_neigh_info(struct ospf_neighbor *n)
   char etime[6];
   int exp, sec, min;
 
-  exp = n->inactim->expires - now;
+  exp = tm_remains(n->inactim);
   sec = exp % 60;
   min = exp / 60;
   if (min > 59)

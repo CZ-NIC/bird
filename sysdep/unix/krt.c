@@ -122,7 +122,7 @@ kif_force_scan(void)
 void
 kif_request_scan(void)
 {
-  if (kif_proto && kif_scan_timer->expires > now)
+  if (kif_proto && (kif_scan_timer->expires TO_S > (now + 1)))
     tm_start(kif_scan_timer, 1);
 }
 
@@ -147,7 +147,7 @@ kif_start(struct proto *P)
   kif_scan_timer = tm_new(P->pool);
   kif_scan_timer->hook = kif_scan;
   kif_scan_timer->data = p;
-  kif_scan_timer->recurrent = KIF_CF->scan_time;
+  kif_scan_timer->recurrent = KIF_CF->scan_time S;
   kif_scan(kif_scan_timer);
   tm_start(kif_scan_timer, KIF_CF->scan_time);
 
@@ -178,7 +178,7 @@ kif_reconfigure(struct proto *p, struct proto_config *new)
   if (o->scan_time != n->scan_time)
     {
       tm_stop(kif_scan_timer);
-      kif_scan_timer->recurrent = n->scan_time;
+      kif_scan_timer->recurrent = n->scan_time S;
       kif_scan(kif_scan_timer);
       tm_start(kif_scan_timer, n->scan_time);
     }

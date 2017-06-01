@@ -56,6 +56,17 @@ current_time(void)
   return timeloop_current()->last_time;
 }
 
+btime
+current_real_time(void)
+{
+  struct timeloop *loop = timeloop_current();
+
+  if (!loop->real_time)
+    times_update_real_time(loop);
+
+  return loop->real_time;
+}
+
 
 #define TIMER_LESS(a,b)		((a)->expires < (b)->expires)
 #define TIMER_SWAP(heap,a,b,t)	(t = heap[a], heap[a] = heap[b], heap[b] = t, \

@@ -382,7 +382,7 @@ rpki_do_we_recv_prefix_pdu_in_last_seconds(struct rpki_cache *cache)
  * |End of Data| PDU and has run by some &ERROR is occurred.
  */
 static void
-rpki_refresh_hook(struct timer *tm)
+rpki_refresh_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
 
@@ -428,7 +428,7 @@ rpki_refresh_hook(struct timer *tm)
  * ends by reaching of &ESTABLISHED state again.
  */
 static void
-rpki_retry_hook(struct timer *tm)
+rpki_retry_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
 
@@ -473,7 +473,7 @@ rpki_retry_hook(struct timer *tm)
  * of the protocol.
  */
 static void
-rpki_expire_hook(struct timer *tm)
+rpki_expire_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
 
@@ -789,8 +789,8 @@ rpki_get_status(struct proto *P, byte *buf)
 static void
 rpki_show_proto_info_timer(const char *name, uint num, timer *t)
 {
-  if (t->expires)
-    cli_msg(-1006, "  %-17s %us (remains %us)", name, num, tm_remains(t));
+  if (tm_active(t))
+    cli_msg(-1006, "  %-17s %us (remains %ds)", name, num, (int) tm_remains(t));
   else
     cli_msg(-1006, "  %-17s ---", name);
 }

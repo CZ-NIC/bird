@@ -8,6 +8,7 @@
  */
 
 #include "nest/bird.h"
+#include "lib/timer.h"
 
 void
 tbf_update(struct tbf *f)

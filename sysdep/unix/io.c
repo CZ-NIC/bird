@@ -122,10 +122,12 @@ tracked_fopen(pool *p, char *name, char *mode)
  * for the other fields see |timer.h|.
  */
 
+#if 0
 #define NEAR_TIMER_LIMIT 4
 
 static list near_timers, far_timers;
 static bird_clock_t first_far_timer = TIME_INFINITY;
+
 
 /* now must be different from 0, because 0 is a special value in timer->expires */
 bird_clock_t now = 1, now_real, boot_time;
@@ -182,7 +184,6 @@ init_times(void)
  if (!clock_monotonic_available)
    log(L_WARN "Monotonic timer is missing");
 }
-
 
 static void
 tm_free(resource *r)
@@ -382,6 +383,7 @@ tm_shot(void)
       t->hook(t);
     }
 }
+#endif
 
 /**
  * tm_parse_datetime - parse a date and time
@@ -484,6 +486,8 @@ tm_format_datetime(char *x, struct timeformat *fmt_spec, bird_clock_t t)
  *	Time clock
  */
 
+btime boot_time;
+
 void
 times_init(struct timeloop *loop)
 {
@@ -518,6 +522,19 @@ times_update(struct timeloop *loop)
 
   loop->last_time = new_time;
   loop->real_time = 0;
+}
+
+void
+times_update_real_time(struct timeloop *loop)
+{
+  struct timespec ts;
+  int rv;
+
+  rv = clock_gettime(CLOCK_REALTIME, &ts);
+  if (rv < 0)
+    die("clock_gettime: %m");
+
+  loop->real_time = ((s64) ts.tv_sec S) + (ts.tv_nsec / 1000);
 }
 
 
@@ -2349,9 +2366,6 @@ io_update_time(void)
   struct timespec ts;
   int rv;
 
-  if (!clock_monotonic_available)
-    return;
-
   /*
    * This is third time-tracking procedure (after update_times() above and
    * times_update() in BFD), dedicated to internal event log and latency
@@ -2490,14 +2504,12 @@ volatile int async_shutdown_flag;
 void
 io_init(void)
 {
-  init_list(&near_timers);
-  init_list(&far_timers);
   init_list(&sock_list);
   init_list(&global_event_list);
   krt_io_init();
-  init_times();
-  update_times();
-  boot_time = now;
+  // XXX init_times();
+  // XXX update_times();
+  boot_time = current_time();
   srandom((int) now_real);
 }
 
@@ -2508,7 +2520,6 @@ void
 io_loop(void)
 {
   int poll_tout, timeout;
-  time_t tout;
   int nfds, events, pout;
   timer2 *t;
   sock *s;
@@ -2522,17 +2533,10 @@ io_loop(void)
       times_update(&main_timeloop);
       events = ev_run_list(&global_event_list);
       timers_fire(&main_timeloop);
-    timers:
-      update_times();
-      tout = tm_first_shot();
-      if (tout <= now)
-	{
-	  tm_shot();
-	  goto timers;
-	}
       io_close_event();
 
-      poll_tout = (events ? 0 : MIN(tout - now, 3)) * 1000; /* Time in milliseconds */
+      // FIXME
+      poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
       if (t = timers_first(&main_timeloop))
       {
 	times_update(&main_timeloop);

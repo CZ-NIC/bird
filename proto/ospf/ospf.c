@@ -676,7 +676,7 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   p->asbr = new->asbr;
   p->ecmp = new->ecmp;
   p->tick = new->tick;
-  p->disp_timer->recurrent = p->tick;
+  p->disp_timer->recurrent = p->tick S;
   tm_start(p->disp_timer, 1);
 
   /* Mark all areas and ifaces */

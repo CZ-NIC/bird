@@ -28,7 +28,7 @@ cmd_show_status(void)
   tm_format_datetime(tim, &config->tf_base, now);
   cli_msg(-1011, "Router ID is %R", config->router_id);
   cli_msg(-1011, "Current server time is %s", tim);
-  tm_format_datetime(tim, &config->tf_base, boot_time);
+  tm_format_datetime(tim, &config->tf_base, boot_time TO_S);
   cli_msg(-1011, "Last reboot on %s", tim);
   tm_format_datetime(tim, &config->tf_base, config->load_time);
   cli_msg(-1011, "Last reconfiguration on %s", tim);

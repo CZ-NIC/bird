@@ -11,58 +11,38 @@
 
 #include <time.h>
 
-#include "lib/resource.h"
+#include "lib/birdlib.h"
+#include "lib/timer.h"
 
-typedef time_t bird_clock_t;		/* Use instead of time_t */
 
-typedef struct timer {
-  resource r;
-  void (*hook)(struct timer *);
-  void *data;
-  uint randomize;			/* Amount of randomization */
-  uint recurrent;			/* Timer recurrence */
-  node n;				/* Internal link */
-  bird_clock_t expires;			/* 0=inactive */
-} timer;
+typedef struct timer2 timer;
 
-timer *tm_new(pool *);
-void tm_start(timer *, uint after);
-void tm_stop(timer *);
-void tm_dump_all(void);
+static inline timer *tm_new(pool *p)
+{ return (void *) tm2_new(p); }
 
-extern bird_clock_t now; 		/* Relative, monotonic time in seconds */
-extern bird_clock_t now_real;		/* Time in seconds since fixed known epoch */
-extern bird_clock_t boot_time;
+static inline void tm_start(timer *t, bird_clock_t after)
+{ tm2_start(t, after S_); }
 
-static inline int
-tm_active(timer *t)
-{
-  return t->expires != 0;
-}
+static inline void tm_stop(timer *t)
+{ tm2_stop(t); }
 
-static inline bird_clock_t
-tm_remains(timer *t)
-{
-  return t->expires ? t->expires - now : 0;
-}
+// void tm_dump_all(void);
 
-static inline void
-tm_start_max(timer *t, bird_clock_t after)
-{
-  bird_clock_t rem = tm_remains(t);
-  tm_start(t, (rem > after) ? rem : after);
-}
+//extern bird_clock_t now; 		/* Relative, monotonic time in seconds */
+//extern bird_clock_t now_real;		/* Time in seconds since fixed known epoch */
+//extern bird_clock_t boot_time;
 
-static inline timer *
-tm_new_set(pool *p, void (*hook)(struct timer *), void *data, uint rand, uint rec)
-{
-  timer *t = tm_new(p);
-  t->hook = hook;
-  t->data = data;
-  t->randomize = rand;
-  t->recurrent = rec;
-  return t;
-}
+static inline int tm_active(timer *t)
+{ return tm2_active(t); }
+
+static inline bird_clock_t tm_remains(timer *t)
+{ return tm2_remains(t) TO_S; }
+
+static inline void tm_start_max(timer *t, bird_clock_t after)
+{ tm2_start_max(t, after S_); }
+
+static inline timer * tm_new_set(pool *p, void (*hook)(timer *), void *data, uint rand, uint rec)
+{ return tm2_new_init(p, hook, data, rec S_, rand S_); }
 
 
 struct timeformat {
@@ -77,12 +57,7 @@ bird_clock_t tm_parse_datetime(char *);	/* Convert date to bird_clock_t */
 void
 tm_format_datetime(char *x, struct timeformat *fmt_spec, bird_clock_t t);
 
-#define TIME_T_IS_64BIT (sizeof(time_t) == 8)
-#define TIME_T_IS_SIGNED ((time_t) -1 < 0)
+#define TIME_INFINITY ((s64) 0x7fffffffffffffff)
 
-#define TIME_INFINITY							\
-  ((time_t) (TIME_T_IS_SIGNED ?						\
-	     (TIME_T_IS_64BIT ? 0x7fffffffffffffff : 0x7fffffff):	\
-	     (TIME_T_IS_64BIT ? 0xffffffffffffffff : 0xffffffff)))
 
 #endif

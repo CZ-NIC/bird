@@ -44,6 +44,11 @@ static inline timer2 *timers_first(struct timeloop *loop)
 extern struct timeloop main_timeloop;
 
 btime current_time(void);
+btime current_real_time(void);
+
+#define now (current_time() TO_S)
+#define now_real (current_real_time() TO_S)
+extern btime boot_time;
 
 timer2 *tm2_new(pool *p);
 void tm2_set(timer2 *t, btime when);
@@ -59,8 +64,8 @@ tm2_active(timer2 *t)
 static inline btime
 tm2_remains(timer2 *t)
 {
-  btime now = current_time();
-  return (t->expires > now) ? (t->expires - now) : 0;
+  btime now_ = current_time();
+  return (t->expires > now_) ? (t->expires - now_) : 0;
 }
 
 static inline timer2 *
@@ -81,18 +86,17 @@ tm2_set_max(timer2 *t, btime when)
     tm2_set(t, when);
 }
 
-/*
 static inline void
 tm2_start_max(timer2 *t, btime after)
 {
   btime rem = tm2_remains(t);
   tm2_start(t, MAX_(rem, after));
 }
-*/
 
 /* In sysdep code */
 void times_init(struct timeloop *loop);
 void times_update(struct timeloop *loop);
+void times_update_real_time(struct timeloop *loop);
 
 /* For I/O loop */
 void timers_init(struct timeloop *loop, pool *p);

@@ -103,6 +103,8 @@
 
 #undef LOCAL_DEBUG
 
+#include <stdlib.h>
+
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
@@ -324,8 +326,8 @@ bgp_start_timer(timer *t, int value)
   if (value)
   {
     /* The randomization procedure is specified in RFC 1771: 9.2.3.3 */
-    t->randomize = value / 4;
-    tm_start(t, value - t->randomize);
+    int randomize = random() % ((value / 4) + 1);
+    tm_start(t, value - randomize);
   }
   else
     tm_stop(t);
@@ -2006,17 +2008,18 @@ bgp_show_proto_info(struct proto *P)
     struct bgp_conn *oc = &p->outgoing_conn;
 
     if ((p->start_state < BSS_CONNECT) &&
-	(p->startup_timer->expires))
+	(tm_active(p->startup_timer)))
       cli_msg(-1006, "    Error wait:       %d/%d",
-	      p->startup_timer->expires - now, p->startup_delay);
+	      (int) tm_remains(p->startup_timer), p->startup_delay);
 
     if ((oc->state == BS_ACTIVE) &&
-	(oc->connect_timer->expires))
+	(tm_active(oc->connect_timer)))
       cli_msg(-1006, "    Connect delay:    %d/%d",
-	      oc->connect_timer->expires - now, p->cf->connect_delay_time);
+	      (int) tm_remains(oc->connect_timer), p->cf->connect_delay_time);
 
-    if (p->gr_active_num && p->gr_timer->expires)
-      cli_msg(-1006, "    Restart timer:    %d/-", p->gr_timer->expires - now);
+    if (p->gr_active_num && tm_active(p->gr_timer))
+      cli_msg(-1006, "    Restart timer:    %d/-",
+	      (int) tm_remains(p->gr_timer));
   }
   else if (P->proto_state == PS_UP)
   {
