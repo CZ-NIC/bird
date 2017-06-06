@@ -8,6 +8,7 @@
  */
 
 
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "nest/bird.h"
@@ -221,4 +222,138 @@ timer_init(void)
 {
   timers_init(&main_timeloop, &root_pool);
   timeloop_init_current();
+}
+
+
+/**
+ * tm_parse_time - parse a date and time
+ * @x: time string
+ *
+ * tm_parse_time() takes a textual representation of a date and time
+ * (yyyy-mm-dd[ hh:mm:ss[.sss]]) and converts it to the corresponding value of
+ * type &btime.
+ */
+btime
+tm_parse_time(char *x)
+{
+  struct tm tm;
+  int usec, n1, n2, n3, r;
+
+  r = sscanf(x, "%d-%d-%d%n %d:%d:%d%n.%d%n",
+	     &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &n1,
+	     &tm.tm_hour, &tm.tm_min, &tm.tm_sec, &n2,
+	     &usec, &n3);
+
+  if ((r == 3) && !x[n1])
+    tm.tm_hour = tm.tm_min = tm.tm_sec = usec = 0;
+  else if ((r == 6) && !x[n2])
+    usec = 0;
+  else if ((r == 7) && !x[n3])
+  {
+    /* Convert subsecond digits to proper precision */
+    int digits = n3 - n2 - 1;
+    if ((usec < 0) || (usec > 999999) || (digits < 1) || (digits > 6))
+      return 0;
+
+    while (digits++ < 6)
+      usec *= 10;
+  }
+  else
+    return 0;
+
+  tm.tm_mon--;
+  tm.tm_year -= 1900;
+  s64 ts = mktime(&tm);
+  if ((ts == (s64) (time_t) -1) || (ts < 0) || (ts > ((s64) 1 << 40)))
+    return 0;
+
+  return ts S + usec;
+}
+
+/**
+ * tm_format_time - convert date and time to textual representation
+ * @x: destination buffer of size %TM_DATETIME_BUFFER_SIZE
+ * @fmt: specification of resulting textual representation of the time
+ * @t: time
+ *
+ * This function formats the given relative time value @t to a textual
+ * date/time representation (dd-mm-yyyy hh:mm:ss) in real time.
+ */
+void
+tm_format_time(char *x, struct timeformat *fmt, btime t)
+{
+  btime dt = current_time() - t;
+  btime rt = current_real_time() - dt;
+  int v1 = !fmt->limit || (dt < fmt->limit);
+
+  tm_format_real_time(x, v1 ? fmt->fmt1 : fmt->fmt2, rt);
+}
+
+/* Replace %f in format string with usec scaled to requested precision */
+static int
+strfusec(char *buf, int size, const char *fmt, uint usec)
+{
+  char *str = buf;
+  int parity = 0;
+
+  while (*fmt)
+  {
+    if (!size)
+      return 0;
+
+    if ((fmt[0] == '%') && (!parity) &&
+	((fmt[1] == 'f') || (fmt[1] >= '1') && (fmt[1] <= '6') && (fmt[2] == 'f')))
+    {
+      int digits = (fmt[1] == 'f') ? 6 : (fmt[1] - '0');
+      uint d = digits, u = usec;
+
+      /* Convert microseconds to requested precision */
+      while (d++ < 6)
+	u /= 10;
+
+      int num = bsnprintf(str, size, "%0*u", digits, u);
+      if (num < 0)
+	return 0;
+
+      fmt += (fmt[1] == 'f') ? 2 : 3;
+      ADVANCE(str, size, num);
+    }
+    else
+    {
+      /* Handle '%%' expression */
+      parity = (*fmt == '%') ? !parity : 0;
+      *str++ = *fmt++;
+      size--;
+    }
+  }
+
+  if (!size)
+    return 0;
+
+  *str = 0;
+  return str - buf;
+}
+
+void
+tm_format_real_time(char *x, const char *fmt, btime t)
+{
+  s64 t1 = t TO_S;
+  s64 t2 = t - t1 S;
+
+  time_t ts = t1;
+  struct tm tm;
+  if (!localtime_r(&ts, &tm))
+    goto err;
+
+  byte tbuf[TM_DATETIME_BUFFER_SIZE];
+  if (!strfusec(tbuf, TM_DATETIME_BUFFER_SIZE, fmt, t2))
+    goto err;
+
+  if (!strftime(x, TM_DATETIME_BUFFER_SIZE, tbuf, &tm))
+    goto err;
+
+  return;
+
+err:
+  strcpy(x, "<error>");
 }

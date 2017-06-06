@@ -45,18 +45,6 @@ static inline timer * tm_new_set(pool *p, void (*hook)(timer *), void *data, uin
 { return tm2_new_init(p, hook, data, rec S_, rand S_); }
 
 
-struct timeformat {
-  char *fmt1, *fmt2;
-  bird_clock_t limit;
-};
-
-bird_clock_t tm_parse_date(char *);	/* Convert date to bird_clock_t */
-bird_clock_t tm_parse_datetime(char *);	/* Convert date to bird_clock_t */
-
-#define TM_DATETIME_BUFFER_SIZE 32	/* Buffer size required by tm_format_datetime */
-void
-tm_format_datetime(char *x, struct timeformat *fmt_spec, bird_clock_t t);
-
 #define TIME_INFINITY ((s64) 0x7fffffffffffffff)
 
 

@@ -105,4 +105,23 @@ void timers_fire(struct timeloop *loop);
 void timer_init(void);
 
 
+struct timeformat {
+  char *fmt1, *fmt2;
+  btime limit;
+};
+
+#define TM_ISO_SHORT_S	(struct timeformat){"%T",     "%F", (s64) (20*3600) S_}
+#define TM_ISO_SHORT_MS	(struct timeformat){"%T.%3f", "%F", (s64) (20*3600) S_}
+#define TM_ISO_SHORT_US	(struct timeformat){"%T.%6f", "%F", (s64) (20*3600) S_}
+
+#define TM_ISO_LONG_S	(struct timeformat){"%F %T",     NULL, 0}
+#define TM_ISO_LONG_MS	(struct timeformat){"%F %T.%3f", NULL, 0}
+#define TM_ISO_LONG_US	(struct timeformat){"%F %T.%6f", NULL, 0}
+
+#define TM_DATETIME_BUFFER_SIZE 32	/* Buffer size required by tm_format_time() */
+
+btime tm_parse_time(char *x);
+void tm_format_time(char *x, struct timeformat *fmt, btime t);
+void tm_format_real_time(char *x, const char *fmt, btime t);
+
 #endif

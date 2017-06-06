@@ -144,7 +144,7 @@ struct bfd_session
   timer2 *hold_timer;			/* Timer for session down detection time */
 
   list request_list;			/* List of client requests (struct bfd_request) */
-  bird_clock_t last_state_change;	/* Time of last state change */
+  btime last_state_change;		/* Time of last state change */
   u8 notify_running;			/* 1 if notify hooks are running */
 
   u8 rx_csn_known;			/* Received crypto sequence number is known */

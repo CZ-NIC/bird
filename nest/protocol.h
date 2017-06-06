@@ -159,7 +159,7 @@ struct proto {
   byte down_sched;			/* Shutdown is scheduled for later (PDS_*) */
   byte down_code;			/* Reason for shutdown (PDC_* codes) */
   u32 hash_key;				/* Random key used for hashing of neighbors */
-  bird_clock_t last_state_change;	/* Time of last state transition */
+  btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
 
   /*
@@ -508,7 +508,7 @@ struct channel {
   u8 gr_lock;				/* Graceful restart mechanism should wait for this channel */
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
 
-  bird_clock_t last_state_change;	/* Time of last state transition */
+  btime last_state_change;		/* Time of last state transition */
 };
 
 

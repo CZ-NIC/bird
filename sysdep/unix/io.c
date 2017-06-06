@@ -40,6 +40,7 @@
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/iface.h"
+#include "conf/conf.h"
 
 #include "sysdep/unix/unix.h"
 #include CONFIG_INCLUDE_SYSIO_H
@@ -384,102 +385,6 @@ tm_shot(void)
     }
 }
 #endif
-
-/**
- * tm_parse_datetime - parse a date and time
- * @x: datetime string
- *
- * tm_parse_datetime() takes a textual representation of
- * a date and time (dd-mm-yyyy hh:mm:ss)
- * and converts it to the corresponding value of type &bird_clock_t.
- */
-bird_clock_t
-tm_parse_datetime(char *x)
-{
-  struct tm tm;
-  int n;
-  time_t t;
-
-  if (sscanf(x, "%d-%d-%d %d:%d:%d%n", &tm.tm_mday, &tm.tm_mon, &tm.tm_year, &tm.tm_hour, &tm.tm_min, &tm.tm_sec, &n) != 6 || x[n])
-    return tm_parse_date(x);
-  tm.tm_mon--;
-  tm.tm_year -= 1900;
-  t = mktime(&tm);
-  if (t == (time_t) -1)
-    return 0;
-  return t;
-}
-/**
- * tm_parse_date - parse a date
- * @x: date string
- *
- * tm_parse_date() takes a textual representation of a date (dd-mm-yyyy)
- * and converts it to the corresponding value of type &bird_clock_t.
- */
-bird_clock_t
-tm_parse_date(char *x)
-{
-  struct tm tm;
-  int n;
-  time_t t;
-
-  if (sscanf(x, "%d-%d-%d%n", &tm.tm_mday, &tm.tm_mon, &tm.tm_year, &n) != 3 || x[n])
-    return 0;
-  tm.tm_mon--;
-  tm.tm_year -= 1900;
-  tm.tm_hour = tm.tm_min = tm.tm_sec = 0;
-  t = mktime(&tm);
-  if (t == (time_t) -1)
-    return 0;
-  return t;
-}
-
-static void
-tm_format_reltime(char *x, struct tm *tm, bird_clock_t delta)
-{
-  static char *month_names[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-				   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
-
-  if (delta < 20*3600)
-    bsprintf(x, "%02d:%02d", tm->tm_hour, tm->tm_min);
-  else if (delta < 360*86400)
-    bsprintf(x, "%s%02d", month_names[tm->tm_mon], tm->tm_mday);
-  else
-    bsprintf(x, "%d", tm->tm_year+1900);
-}
-
-#include "conf/conf.h"
-
-/**
- * tm_format_datetime - convert date and time to textual representation
- * @x: destination buffer of size %TM_DATETIME_BUFFER_SIZE
- * @fmt_spec: specification of resulting textual representation of the time
- * @t: time
- *
- * This function formats the given relative time value @t to a textual
- * date/time representation (dd-mm-yyyy hh:mm:ss) in real time.
- */
-void
-tm_format_datetime(char *x, struct timeformat *fmt_spec, bird_clock_t t)
-{
-  const char *fmt_used;
-  struct tm *tm;
-  bird_clock_t delta = now - t;
-  t = now_real - delta;
-  tm = localtime(&t);
-
-  if (fmt_spec->fmt1 == NULL)
-    return tm_format_reltime(x, tm, delta);
-
-  if ((fmt_spec->limit == 0) || (delta < fmt_spec->limit))
-    fmt_used = fmt_spec->fmt1;
-  else
-    fmt_used = fmt_spec->fmt2;
-
-  int rv = strftime(x, TM_DATETIME_BUFFER_SIZE, fmt_used, tm);
-  if (((rv == 0) && fmt_used[0]) || (rv == TM_DATETIME_BUFFER_SIZE))
-    strcpy(x, "<too-long>");
-}
 
 
 /*

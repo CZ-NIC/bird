@@ -1173,7 +1173,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
     }
 
   if (new)
-    new->lastmod = now;
+    new->lastmod = current_time();
 
   /* Log the route change */
   if (p->debug & D_ROUTES)
@@ -1201,7 +1201,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 
   if (!net->routes &&
       (table->gc_counter++ >= table->config->gc_max_ops) &&
-      (table->gc_time + table->config->gc_min_time <= now))
+      (table->gc_time + table->config->gc_min_time <= current_time()))
     rt_schedule_prune(table);
 
   if (old_ok && p->rte_remove)
@@ -1497,7 +1497,7 @@ rte_dump(rte *e)
 {
   net *n = e->net;
   debug("%-1N ", n->n.addr);
-  debug("KF=%02x PF=%02x pref=%d lm=%d ", n->n.flags, e->pflags, e->pref, now-e->lastmod);
+  debug("KF=%02x PF=%02x pref=%d ", n->n.flags, e->pflags, e->pref);
   rta_dump(e->attrs);
   if (e->attrs->src->proto->proto->dump_attrs)
     e->attrs->src->proto->proto->dump_attrs(e);
@@ -1609,7 +1609,7 @@ rt_setup(pool *p, rtable *t, char *name, struct rtable_config *cf)
       t->rt_event = ev_new(p);
       t->rt_event->hook = rt_event;
       t->rt_event->data = t;
-      t->gc_time = now;
+      t->gc_time = current_time();
     }
 }
 
@@ -1708,7 +1708,7 @@ again:
 #endif
 
   tab->gc_counter = 0;
-  tab->gc_time = now;
+  tab->gc_time = current_time();
 
   /* state change 2->0, 3->1 */
   tab->prune_state &= 1;

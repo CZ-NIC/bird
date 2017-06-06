@@ -102,9 +102,9 @@ config_alloc(const char *name)
   c->pool = p;
   c->mem = l;
   c->file_name = ndup;
-  c->load_time = now;
-  c->tf_route = c->tf_proto = (struct timeformat){"%T", "%F", 20*3600};
-  c->tf_base = c->tf_log = (struct timeformat){"%F %T", NULL, 0};
+  c->load_time = current_time();
+  c->tf_route = c->tf_proto = TM_ISO_SHORT_MS;
+  c->tf_base = c->tf_log = TM_ISO_LONG_MS;
   c->gr_wait = DEFAULT_GR_WAIT;
 
   return c;

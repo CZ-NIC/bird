@@ -25,12 +25,12 @@ cmd_show_status(void)
   byte tim[TM_DATETIME_BUFFER_SIZE];
 
   cli_msg(-1000, "BIRD " BIRD_VERSION);
-  tm_format_datetime(tim, &config->tf_base, now);
+  tm_format_time(tim, &config->tf_base, current_time());
   cli_msg(-1011, "Router ID is %R", config->router_id);
   cli_msg(-1011, "Current server time is %s", tim);
-  tm_format_datetime(tim, &config->tf_base, boot_time TO_S);
+  tm_format_time(tim, &config->tf_base, boot_time);
   cli_msg(-1011, "Last reboot on %s", tim);
-  tm_format_datetime(tim, &config->tf_base, config->load_time);
+  tm_format_time(tim, &config->tf_base, config->load_time);
   cli_msg(-1011, "Last reconfiguration on %s", tim);
 
   graceful_restart_show_status();

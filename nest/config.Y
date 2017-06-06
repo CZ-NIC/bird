@@ -73,6 +73,7 @@ CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, BY, FOR, COMMANDS, PREEXPORT, NOEXPORT, GENERATE)
 CF_KEYWORDS(LISTEN, BGP, V6ONLY, DUAL, ADDRESS, PORT, PASSWORDS, DESCRIPTION, SORTED)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
+CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
 
 /* For r_args_channel */
@@ -295,6 +296,7 @@ limit_spec:
  | OFF { $$ = (struct channel_limit){}; }
  ;
 
+
 CF_ADDTO(conf, debug_default)
 
 debug_default:
@@ -303,6 +305,31 @@ debug_default:
  ;
 
 /* MRTDUMP PROTOCOLS is in systep/unix/config.Y */
+
+CF_ADDTO(conf, timeformat_base)
+
+timeformat_which:
+   ROUTE { $$ = &new_config->tf_route; }
+ | PROTOCOL { $$ = &new_config->tf_proto; }
+ | BASE { $$ = &new_config->tf_base; }
+ | LOG { $$ = &new_config->tf_log; }
+ ;
+
+timeformat_spec:
+   timeformat_which TEXT { *$1 = (struct timeformat){$2, NULL, 0}; }
+ | timeformat_which TEXT expr TEXT { *$1 = (struct timeformat){$2, $4, (s64) $3 S_}; }
+ | timeformat_which ISO SHORT    { *$1 = TM_ISO_SHORT_S; }
+ | timeformat_which ISO SHORT MS { *$1 = TM_ISO_SHORT_MS; }
+ | timeformat_which ISO SHORT US { *$1 = TM_ISO_SHORT_US; }
+ | timeformat_which ISO LONG    { *$1 = TM_ISO_LONG_S; }
+ | timeformat_which ISO LONG MS { *$1 = TM_ISO_LONG_MS; }
+ | timeformat_which ISO LONG US { *$1 = TM_ISO_LONG_US; }
+ ;
+
+timeformat_base:
+   TIMEFORMAT timeformat_spec ';'
+ ;
+
 
 /* Interface patterns */
 
@@ -462,12 +489,12 @@ password_item_begin:
 
 password_item_params:
    /* empty */ { }
- | GENERATE FROM datetime ';' password_item_params { this_p_item->genfrom = $3; }
- | GENERATE TO datetime ';' password_item_params { this_p_item->gento = $3; }
- | ACCEPT FROM datetime ';' password_item_params { this_p_item->accfrom = $3; }
- | ACCEPT TO datetime ';' password_item_params { this_p_item->accto = $3; }
- | FROM datetime ';' password_item_params { this_p_item->genfrom = this_p_item->accfrom = $2; }
- | TO datetime ';' password_item_params { this_p_item->gento = this_p_item->accto = $2; }
+ | GENERATE FROM time ';' password_item_params { this_p_item->genfrom = $3; }
+ | GENERATE TO time ';' password_item_params { this_p_item->gento = $3; }
+ | ACCEPT FROM time ';' password_item_params { this_p_item->accfrom = $3; }
+ | ACCEPT TO time ';' password_item_params { this_p_item->accto = $3; }
+ | FROM time ';' password_item_params { this_p_item->genfrom = this_p_item->accfrom = $2; }
+ | TO time ';' password_item_params { this_p_item->gento = this_p_item->accto = $2; }
  | ID expr ';' password_item_params { this_p_item->id = $2; if ($2 <= 0) cf_error("Password ID has to be greated than zero."); }
  | ALGORITHM password_algorithm ';' password_item_params { this_p_item->alg = $2; }
  ;

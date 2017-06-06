@@ -19,12 +19,13 @@ password_find(list *l, int first_fit)
 {
   struct password_item *pi;
   struct password_item *pf = NULL;
+  btime now_ = current_real_time();
 
   if (l)
   {
     WALK_LIST(pi, *l)
     {
-      if ((pi->genfrom < now_real) && (pi->gento > now_real))
+      if ((pi->genfrom < now_) && (pi->gento > now_))
       {
 	if (first_fit)
 	  return pi;
@@ -41,12 +42,13 @@ struct password_item *
 password_find_by_id(list *l, uint id)
 {
   struct password_item *pi;
+  btime now_ = current_real_time();
 
   if (!l)
     return NULL;
 
   WALK_LIST(pi, *l)
-    if ((pi->id == id) && (pi->accfrom <= now_real) && (now_real < pi->accto))
+    if ((pi->id == id) && (pi->accfrom <= now_) && (now_ < pi->accto))
       return pi;
 
   return NULL;
@@ -56,12 +58,13 @@ struct password_item *
 password_find_by_value(list *l, char *pass, uint size)
 {
   struct password_item *pi;
+  btime now_ = current_real_time();
 
   if (!l)
     return NULL;
 
   WALK_LIST(pi, *l)
-    if (password_verify(pi, pass, size) && (pi->accfrom <= now_real) && (now_real < pi->accto))
+    if (password_verify(pi, pass, size) && (pi->accfrom <= now_) && (now_ < pi->accto))
       return pi;
 
   return NULL;

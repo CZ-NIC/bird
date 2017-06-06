@@ -57,7 +57,7 @@ struct config {
   struct config *fallback;		/* Link to regular config for CLI parsing */
   int obstacle_count;			/* Number of items blocking freeing of this config */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
-  bird_clock_t load_time;		/* When we've got this configuration */
+  btime load_time;			/* When we've got this configuration */
 };
 
 /* Please don't use these variables in protocols. Use proto_config->global instead. */

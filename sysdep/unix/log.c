@@ -120,7 +120,7 @@ log_commit(int class, buffer *buf)
 	  else
 	    {
 	      byte tbuf[TM_DATETIME_BUFFER_SIZE];
-	      tm_format_datetime(tbuf, &config->tf_log, now);
+	      tm_format_real_time(tbuf, config->tf_log.fmt1, current_real_time());
 	      fprintf(l->fh, "%s <%s> ", tbuf, class_names[class]);
 	    }
 	  fputs(buf->start, l->fh);

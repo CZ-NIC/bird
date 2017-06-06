@@ -14,7 +14,7 @@ CF_HDR
 #include "conf/conf.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
-#include "sysdep/unix/timer.h"
+#include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
@@ -60,7 +60,7 @@ CF_DECLS
   struct lsadb_show_data *ld;
   struct iface *iface;
   void *g;
-  bird_clock_t time;
+  btime time;
   struct f_prefix px;
   struct proto_spec ps;
   struct channel_limit cl;
@@ -81,7 +81,7 @@ CF_DECLS
 
 %type <i> expr bool pxlen4
 %type <i32> expr_us
-%type <time> datetime
+%type <time> time
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_
@@ -308,11 +308,11 @@ label_stack:
   }
 ;
 
-datetime:
+time:
    TEXT {
-     $$ = tm_parse_datetime($1);
+     $$ = tm_parse_time($1);
      if (!$$)
-       cf_error("Invalid date and time");
+       cf_error("Invalid date/time");
    }
  ;
 

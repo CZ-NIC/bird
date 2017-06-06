@@ -456,23 +456,25 @@ protocol rip {
 	used for other commands and <cf/log/ is used in a log file.
 
 	"<m/format1/" is a format string using <it/strftime(3)/ notation (see
-	<it/man strftime/ for details). <m/limit> and "<m/format2/" allow to
-	specify the second format string for times in past deeper than <m/limit/
- 	seconds. There are few shorthands: <cf/iso long/ is a ISO 8601 date/time
-	format (YYYY-MM-DD hh:mm:ss) that can be also specified using <cf/"%F %T"/.
+	<it/man strftime/ for details). It is extended to support sub-second
+	time part with variable precision (up to microseconds) using "%f"
+	conversion code (e.g., "%T.%3f" is hh:mm:ss.sss time). <m/limit/ and
+	"<m/format2/" allow to specify the second format string for times in
+	past deeper than <m/limit/ seconds.
+
+	There are several shorthands: <cf/iso long/ is a ISO 8601 date/time
+	format (YYYY-MM-DD hh:mm:ss) that can be also specified using <cf/"%F
+	%T"/. Similarly, <cf/iso long ms/ and <cf/iso long us/ are ISO 8601
+	date/time formats with millisecond or microsecond precision.
 	<cf/iso short/ is a variant of ISO 8601 that uses just the time format
 	(hh:mm:ss) for near times (up to 20 hours in the past) and the date
-	format (YYYY-MM-DD) for far times. This is a shorthand for
-	<cf/"%T" 72000 "%F"/.
+	format (YYYY-MM-DD) for far times. This is a shorthand for <cf/"%T"
+	72000 "%F"/. And there are also <cf/iso short ms/ and <cf/iso short us/
+	high-precision variants of that.
 
-	By default, BIRD uses the <cf/iso short/ format for <cf/route/ and
-	<cf/protocol/ times, and the <cf/iso long/ format for <cf/base/ and
+	By default, BIRD uses the <cf/iso short ms/ format for <cf/route/ and
+	<cf/protocol/ times, and the <cf/iso long ms/ format for <cf/base/ and
 	<cf/log/ times.
-
-	In pre-1.4.0 versions, BIRD used an short, ad-hoc format for <cf/route/
-	and <cf/protocol/ times, and a <cf/iso long/ similar format (DD-MM-YYYY
-	hh:mm:ss) for <cf/base/ and <cf/log/. These timeformats could be set by
-	<cf/old short/ and <cf/old long/ compatibility shorthands.
 
 	<tag><label id="opt-table">table <m/name/ [sorted]</tag>
 	Create a new routing table. The default routing table is created

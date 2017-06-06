@@ -162,7 +162,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
 
   c->channel_state = CS_DOWN;
   c->export_state = ES_DOWN;
-  c->last_state_change = now;
+  c->last_state_change = current_time();
   c->reloadable = 1;
 
   CALL(c->channel->init, c, cf);
@@ -341,7 +341,7 @@ channel_set_state(struct channel *c, uint state)
     return;
 
   c->channel_state = state;
-  c->last_state_change = now;
+  c->last_state_change = current_time();
 
   switch (state)
   {
@@ -672,7 +672,7 @@ proto_init(struct proto_config *c, node *n)
   struct proto *p = pr->init(c);
 
   p->proto_state = PS_DOWN;
-  p->last_state_change = now;
+  p->last_state_change = current_time();
   insert_node(&p->n, n);
 
   p->event = ev_new(proto_pool);
@@ -1500,7 +1500,7 @@ proto_notify_state(struct proto *p, uint state)
     return;
 
   p->proto_state = state;
-  p->last_state_change = now;
+  p->last_state_change = current_time();
 
   switch (state)
   {
@@ -1631,7 +1631,7 @@ proto_cmd_show(struct proto *p, uint verbose, int cnt)
   buf[0] = 0;
   if (p->proto->get_status)
     p->proto->get_status(p, buf);
-  tm_format_datetime(tbuf, &config->tf_proto, p->last_state_change);
+  tm_format_time(tbuf, &config->tf_proto, p->last_state_change);
   cli_msg(-1002, "%-8s %-8s %-8s %-5s  %-10s  %s",
 	  p->name,
 	  p->proto->name,

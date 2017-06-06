@@ -159,8 +159,8 @@ typedef struct rtable {
 					 * obstacle from this routing table.
 					 */
   struct event *rt_event;		/* Routing table event */
+  btime gc_time;			/* Time of last GC */
   int gc_counter;			/* Number of operations since last GC */
-  bird_clock_t gc_time;			/* Time of last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
@@ -213,7 +213,7 @@ typedef struct rte {
   byte flags;				/* Flags (REF_...) */
   byte pflags;				/* Protocol-specific flags */
   word pref;				/* Route preference */
-  bird_clock_t lastmod;			/* Last modified */
+  btime lastmod;			/* Last modified */
   union {				/* Protocol-dependent data (metrics etc.) */
 #ifdef CONFIG_RIP
     struct {

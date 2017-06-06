@@ -145,6 +145,7 @@ bfd_session_update_state(struct bfd_session *s, uint state, uint diag)
   bfd_lock_sessions(p);
   s->loc_state = state;
   s->loc_diag = diag;
+  s->last_state_change = current_time();
 
   notify = !NODE_VALID(&s->n);
   if (notify)
@@ -438,7 +439,7 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
   bfd_session_control_tx_timer(s, 1);
 
   init_list(&s->request_list);
-  s->last_state_change = now;
+  s->last_state_change = current_time();
 
   TRACE(D_EVENTS, "Session to %I added", s->addr);
 
@@ -879,9 +880,6 @@ bfd_notify_hook(sock *sk, uint len UNUSED)
     diag = s->loc_diag;
     bfd_unlock_sessions(p);
 
-    /* FIXME: convert to btime and move to bfd_session_update_state() */
-    s->last_state_change = now;
-
     s->notify_running = 1;
     WALK_LIST_DELSAFE(n, nn, s->request_list)
       bfd_request_notify(SKIP_BACK(struct bfd_request, n, n), state, diag);
@@ -1105,7 +1103,7 @@ bfd_show_sessions(struct proto *P)
     timeout = (MAX(s->req_min_rx_int, s->rem_min_tx_int) TO_MS) * s->rem_detect_mult;
 
     state = (state < 4) ? state : 0;
-    tm_format_datetime(tbuf, &config->tf_proto, s->last_state_change);
+    tm_format_time(tbuf, &config->tf_proto, s->last_state_change);
 
     cli_msg(-1020, "%-25I %-10s %-10s %-10s  %3u.%03u  %3u.%03u",
 	    s->addr, ifname, bfd_state_names[state], tbuf,
