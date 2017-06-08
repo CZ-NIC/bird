@@ -21,7 +21,8 @@ CF_DEFINES
 CF_DECLS
 
 CF_KEYWORDS(BABEL, METRIC, RXCOST, HELLO, UPDATE, INTERVAL, PORT, WIRED,
-WIRELESS, RX, TX, BUFFER, LENGTH, CHECK, LINK, BABEL_METRIC)
+	WIRELESS, RX, TX, BUFFER, LENGTH, CHECK, LINK, BABEL_METRIC, NEXT, HOP,
+	IPV4, IPV6)
 
 CF_GRAMMAR
 
@@ -30,7 +31,6 @@ CF_ADDTO(proto, babel_proto)
 babel_proto_start: proto_start BABEL
 {
   this_proto = proto_config_new(&proto_babel, $1);
-  this_proto->net_type = NET_IP6;
   init_list(&BABEL_CFG->iface_list);
 };
 
@@ -98,6 +98,8 @@ babel_iface_item:
  | TX tos { BABEL_IFACE->tx_tos = $2; }
  | TX PRIORITY expr { BABEL_IFACE->tx_priority = $3; }
  | CHECK LINK bool { BABEL_IFACE->check_link = $3; }
+ | NEXT HOP IPV4 ipa { BABEL_IFACE->next_hop_ip4 = $4; if (!ipa_is_ip4($4)) cf_error("Must be an IPv4 address"); }
+ | NEXT HOP IPV6 ipa { BABEL_IFACE->next_hop_ip6 = $4; if (!ipa_is_ip6($4)) cf_error("Must be an IPv6 address"); }
  ;
 
 babel_iface_opts:
