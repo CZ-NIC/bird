@@ -133,6 +133,8 @@ struct babel_write_state {
   u8 router_id_seen;
   ip_addr next_hop_ip4;
   ip_addr next_hop_ip6;
+  u8 def_ip6_prefix[16];	/* Implicit IPv6 prefix in network order */
+  u8 def_ip6_pxlen;
 };
 
 
@@ -150,6 +152,14 @@ struct babel_write_state {
 
 #define NET_SIZE(n) BYTES(net_pxlen(n))
 
+static inline uint
+bytes_equal(u8 *b1, u8 *b2, uint maxlen)
+{
+  uint i;
+  for (i = 0; (i < maxlen) && (*b1 == *b2); i++, b1++, b2++)
+    ;
+  return i;
+}
 
 static inline u16
 get_time16(const void *p)
@@ -696,7 +706,29 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
   {
     tlv->ae = BABEL_AE_IP6;
     tlv->plen = net6_pxlen(&msg->net);
-    put_ip6_px(tlv->addr, &msg->net);
+
+    /* Address compression - omit initial matching bytes */
+    u8 buf[16], omit;
+    put_ip6(buf, net6_prefix(&msg->net));
+    omit = bytes_equal(buf, state->def_ip6_prefix,
+		       MIN(tlv->plen, state->def_ip6_pxlen) / 8);
+
+    if (omit > 0)
+    {
+      memcpy(tlv->addr, buf + omit, NET_SIZE(&msg->net) - omit);
+
+      tlv->omitted = omit;
+      tlv->length -= omit;
+      len -= omit;
+    }
+    else
+    {
+      put_ip6_px(tlv->addr, &msg->net);
+      tlv->flags |= BABEL_FLAG_DEF_PREFIX;
+
+      put_ip6(state->def_ip6_prefix, net6_prefix(&msg->net));
+      state->def_ip6_pxlen = tlv->plen;
+    }
   }
 
   put_time16(&tlv->interval, msg->interval);
