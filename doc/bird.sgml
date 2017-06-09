@@ -1596,13 +1596,12 @@ networks. Babel is conceptually very simple in its operation and "just works"
 in its default configuration, though some configuration is possible and in some
 cases desirable.
 
-<p>While the Babel protocol is dual stack (i.e., can carry both IPv4 and IPv6
-routes over the same IPv6 transport), BIRD presently implements only the IPv6
-subset of the protocol. No Babel extensions are implemented, but the BIRD
-implementation can coexist with implementations using the extensions (and will
-just ignore extension messages).
+<p>The Babel protocol is dual stack; i.e., it can carry both IPv4 and IPv6
+routes over the same IPv6 transport. For sending and receiving Babel packets,
+only a link-local IPv6 address is needed.
 
-<p>The Babel protocol implementation in BIRD is currently in alpha stage.
+<p>BIRD does not implement any Babel extensions, but will coexist with
+implementations using extensions (and will just ignore extension messages).
 
 <sect1>Configuration
 <label id="babel-config">
@@ -1623,6 +1622,8 @@ protocol babel [<name>] {
 		rx buffer <number>;
 		tx length <number>;
 		check link <switch>;
+		next hop ipv4 <address>;
+		next hop ipv6 <address>;
 	};
 }
 </code>
@@ -1680,6 +1681,18 @@ protocol babel [<name>] {
       routes received from them are withdrawn. It is possible that some
       hardware drivers or platforms do not implement this feature. Default:
       yes.
+
+      <tag><label id="babel-next-hop-ipv4">next hop ipv4 <m/address/</tag>
+      Set the next hop address advertised for IPv4 routes advertised on this
+      interface. If not set, the first IPv4 address found on the interface will
+      be used, so it should only be necessary to set this option if this
+      auto-detection fails or finds the wrong address.
+
+      <tag><label id="babel-next-hop-ipv6">next hop ipv6 <m/address/</tag>
+      Set the next hop address advertised for IPv6 routes advertised on this
+      interface. If not set, the same link-local address that is used as the
+      source for Babel packets will be used. In normal operation, it should not
+      be necessary to set this option.
 </descrip>
 
 <sect1>Attributes
@@ -1708,7 +1721,12 @@ protocol babel {
 	# configured on local interfaces, plus re-distribute all routes received
 	# from other babel peers.
 
-	export where (source = RTS_DEVICE) || (source = RTS_BABEL);
+	ipv4 {
+		export where (source = RTS_DEVICE) || (source = RTS_BABEL);
+	};
+	ipv6 {
+		export where (source = RTS_DEVICE) || (source = RTS_BABEL);
+	};
 }
 </code>
 
