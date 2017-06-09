@@ -78,6 +78,11 @@ enum babel_tlv_type {
   BABEL_TLV_MAX
 };
 
+enum babel_subtlv_type {
+  BABEL_SUBTLV_PAD1		= 0,
+  BABEL_SUBTLV_PADN		= 1
+};
+
 enum babel_iface_type {
   /* In practice, UNDEF and WIRED give equivalent behaviour */
   BABEL_IFACE_TYPE_UNDEF	= 0,
