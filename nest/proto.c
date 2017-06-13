@@ -1136,7 +1136,7 @@ graceful_restart_show_status(void)
 
   cli_msg(-24, "Graceful restart recovery in progress");
   cli_msg(-24, "  Waiting for %d channels to recover", graceful_restart_locks);
-  cli_msg(-24, "  Wait timer is %d/%d", tm_remains(gr_wait_timer), config->gr_wait);
+  cli_msg(-24, "  Wait timer is %t/%u", tm2_remains(gr_wait_timer), config->gr_wait);
 }
 
 /**

@@ -2009,17 +2009,17 @@ bgp_show_proto_info(struct proto *P)
 
     if ((p->start_state < BSS_CONNECT) &&
 	(tm_active(p->startup_timer)))
-      cli_msg(-1006, "    Error wait:       %d/%d",
-	      (int) tm_remains(p->startup_timer), p->startup_delay);
+      cli_msg(-1006, "    Error wait:       %t/%u",
+	      tm2_remains(p->startup_timer), p->startup_delay);
 
     if ((oc->state == BS_ACTIVE) &&
 	(tm_active(oc->connect_timer)))
-      cli_msg(-1006, "    Connect delay:    %d/%d",
-	      (int) tm_remains(oc->connect_timer), p->cf->connect_delay_time);
+      cli_msg(-1006, "    Connect delay:    %t/%u",
+	      tm2_remains(oc->connect_timer), p->cf->connect_delay_time);
 
     if (p->gr_active_num && tm_active(p->gr_timer))
-      cli_msg(-1006, "    Restart timer:    %d/-",
-	      (int) tm_remains(p->gr_timer));
+      cli_msg(-1006, "    Restart timer:    %t/-",
+	      tm2_remains(p->gr_timer));
   }
   else if (P->proto_state == PS_UP)
   {
@@ -2040,10 +2040,10 @@ bgp_show_proto_info(struct proto *P)
 	      p->ext_messages ? " ext-messages" : "");
 */
     cli_msg(-1006, "    Source address:   %I", p->source_addr);
-    cli_msg(-1006, "    Hold timer:       %d/%d",
-	    tm_remains(p->conn->hold_timer), p->conn->hold_time);
-    cli_msg(-1006, "    Keepalive timer:  %d/%d",
-	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
+    cli_msg(-1006, "    Hold timer:       %t/%u",
+	    tm2_remains(p->conn->hold_timer), p->conn->hold_time);
+    cli_msg(-1006, "    Keepalive timer:  %t/%u",
+	    tm2_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
   }
 
   if ((p->last_error_class != BE_NONE) &&

@@ -790,9 +790,9 @@ static void
 rpki_show_proto_info_timer(const char *name, uint num, timer *t)
 {
   if (tm_active(t))
-    cli_msg(-1006, "  %-17s %us (remains %ds)", name, num, (int) tm_remains(t));
+    cli_msg(-1006, "  %-16s: %t/%u", name, tm2_remains(t), num);
   else
-    cli_msg(-1006, "  %-17s ---", name);
+    cli_msg(-1006, "  %-16s: ---", name);
 }
 
 static void
@@ -836,9 +836,9 @@ rpki_show_proto_info(struct proto *P)
       cli_msg(-1006, "  Last update:      ---");
     }
 
-    rpki_show_proto_info_timer("Refresh interval:", cache->refresh_interval, cache->refresh_timer);
-    rpki_show_proto_info_timer("Retry interval:", cache->retry_interval, cache->retry_timer);
-    rpki_show_proto_info_timer("Expire interval:", cache->expire_interval, cache->expire_timer);
+    rpki_show_proto_info_timer("Refresh timer", cache->refresh_interval, cache->refresh_timer);
+    rpki_show_proto_info_timer("Retry timer", cache->retry_interval, cache->retry_timer);
+    rpki_show_proto_info_timer("Expire timer", cache->expire_interval, cache->expire_timer);
 
     if (p->roa4_channel)
       channel_show_info(p->roa4_channel);

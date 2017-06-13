@@ -651,20 +651,6 @@ ospf_sh_neigh_info(struct ospf_neighbor *n)
 {
   struct ospf_iface *ifa = n->ifa;
   char *pos = "PtP  ";
-  char etime[6];
-  int exp, sec, min;
-
-  exp = tm_remains(n->inactim);
-  sec = exp % 60;
-  min = exp / 60;
-  if (min > 59)
-  {
-    bsprintf(etime, "-Inf-");
-  }
-  else
-  {
-    bsprintf(etime, "%02u:%02u", min, sec);
-  }
 
   if ((ifa->type == OSPF_IT_BCAST) || (ifa->type == OSPF_IT_NBMA))
   {
@@ -676,6 +662,7 @@ ospf_sh_neigh_info(struct ospf_neighbor *n)
       pos = "Other";
   }
 
-  cli_msg(-1013, "%-1R\t%3u\t%s/%s\t%-5s\t%-10s %-1I", n->rid, n->priority,
-	  ospf_ns_names[n->state], pos, etime, ifa->ifname, n->ip);
+  cli_msg(-1013, "%-1R\t%3u\t%s/%s\t%7t\t%-10s %-1I",
+	  n->rid, n->priority, ospf_ns_names[n->state], pos,
+	  tm2_remains(n->inactim), ifa->ifname, n->ip);
 }
