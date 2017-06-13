@@ -62,6 +62,7 @@ bt_bird_init(void)
 
   resource_init();
   olock_init();
+  timer_init();
   io_init();
   rt_init();
   if_init();
