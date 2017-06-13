@@ -125,9 +125,10 @@ static char * number(char * str, long num, int base, int size, int precision,
  * or |%I6| can be used for explicit ip4_addr / ip6_addr arguments, |%N| for
  * generic network addresses (net_addr *), |%R| for Router / Network ID (u32
  * value printed as IPv4 address), |%lR| for 64bit Router / Network ID (u64
- * value printed as eight :-separated octets) and |%m| resp. |%M| for error
- * messages (uses strerror() to translate @errno code to message text). On the
- * other hand, it doesn't support floating point numbers.
+ * value printed as eight :-separated octets), |%t| for time values (btime) with
+ * specified subsecond precision, and |%m| resp. |%M| for error messages (uses
+ * strerror() to translate @errno code to message text). On the other hand, it
+ * doesn't support floating point numbers.
  *
  * Result: number of characters of the output string or -1 if
  * the buffer space was insufficient.
@@ -139,6 +140,8 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 	int i, base;
 	u32 x;
 	u64 X;
+	btime t;
+	s64 t1, t2;
 	char *str, *start;
 	const char *s;
 	char ipbuf[NET_MAX_TEXT_LENGTH+1];
@@ -279,7 +282,6 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 				return -1;
 			continue;
 
-
 		case 'n':
 			if (qualifier == 'l') {
 				long * ip = va_arg(args, long *);
@@ -360,6 +362,50 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			s = ipbuf;
 			goto str;
 
+		case 't':
+			t = va_arg(args, btime);
+			t1 = t TO_S;
+			t2 = t - t1 S;
+
+			if (precision < 0)
+			  precision = 3;
+
+			if (precision > 6)
+			  precision = 6;
+
+			/* Compute field_width for second part */
+			if ((precision > 0) && (field_width > 0))
+			  field_width -= (1 + precision);
+
+			if (field_width < 0)
+			  field_width = 0;
+
+			/* Print seconds */
+			flags |= SIGN;
+			str = number(str, t1, 10, field_width, 0, flags, size);
+			if (!str)
+			  return -1;
+
+			if (precision > 0)
+			{
+			  size -= (str-start);
+			  start = str;
+
+			  if ((1 + precision) > size)
+			    return -1;
+
+			  /* Convert microseconds to requested precision */
+			  for (i = precision; i < 6; i++)
+			    t2 /= 10;
+
+			  /* Print sub-seconds */
+			  *str++ = '.';
+			  str = number(str, t2, 10, precision, 0, ZEROPAD, size - 1);
+			  if (!str)
+			    return -1;
+			}
+			goto done;
+
 		/* integer number formats - set up the flags and "break" */
 		case 'o':
 			base = 8;
@@ -401,6 +447,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 		str = number(str, num, base, field_width, precision, flags, size);
 		if (!str)
 			return -1;
+	done:	;
 	}
 	if (!size)
 		return -1;
