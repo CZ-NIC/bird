@@ -318,59 +318,60 @@ rpki_cache_change_state(struct rpki_cache *cache, const enum rpki_cache_state ne
 static void
 rpki_schedule_next_refresh(struct rpki_cache *cache)
 {
-  uint time_to_wait = cache->refresh_interval;
+  btime t = (btime) cache->refresh_interval S;
 
-  CACHE_DBG(cache, "after %u seconds", time_to_wait);
-  tm_start(cache->refresh_timer, time_to_wait);
+  CACHE_DBG(cache, "after %t s", t);
+  tm2_start(cache->refresh_timer, t);
 }
 
 static void
 rpki_schedule_next_retry(struct rpki_cache *cache)
 {
-  uint time_to_wait = cache->retry_interval;
+  btime t = (btime) cache->retry_interval S;
 
-  CACHE_DBG(cache, "after %u seconds", time_to_wait);
-  tm_start(cache->retry_timer, time_to_wait);
+  CACHE_DBG(cache, "after %t s", t);
+  tm2_start(cache->retry_timer, t);
 }
 
 static void
 rpki_schedule_next_expire_check(struct rpki_cache *cache)
 {
   /* A minimum time to wait is 1 second */
-  uint time_to_wait = MAX(((int)cache->expire_interval - (int)(now - cache->last_update)), 1);
+  btime t = cache->last_update + (btime) cache->expire_interval S - current_time();
+  t = MAX(t, 1 S);
 
-  CACHE_DBG(cache, "after %u seconds", time_to_wait);
-  tm_start(cache->expire_timer, time_to_wait);
+  CACHE_DBG(cache, "after %t s", t);
+  tm2_start(cache->expire_timer, t);
 }
 
 static void
 rpki_stop_refresh_timer_event(struct rpki_cache *cache)
 {
   CACHE_DBG(cache, "Stop");
-  tm_stop(cache->refresh_timer);
+  tm2_stop(cache->refresh_timer);
 }
 
 static void
 rpki_stop_retry_timer_event(struct rpki_cache *cache)
 {
   CACHE_DBG(cache, "Stop");
-  tm_stop(cache->retry_timer);
+  tm2_stop(cache->retry_timer);
 }
 
 static void UNUSED
 rpki_stop_expire_timer_event(struct rpki_cache *cache)
 {
   CACHE_DBG(cache, "Stop");
-  tm_stop(cache->expire_timer);
+  tm2_stop(cache->expire_timer);
 }
 
 static int
 rpki_do_we_recv_prefix_pdu_in_last_seconds(struct rpki_cache *cache)
 {
-  if (cache->last_rx_prefix == 0)
+  if (!cache->last_rx_prefix)
     return 0;
 
-  return ((now - cache->last_rx_prefix) <= 2);
+  return ((current_time() - cache->last_rx_prefix) <= 2 S);
 }
 
 /**
@@ -477,19 +478,20 @@ rpki_expire_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
 
-  if (cache->last_update == 0)
+  if (!cache->last_update)
     return;
 
   CACHE_DBG(cache, "%s", rpki_cache_state_to_str(cache->state));
 
-  if ((cache->last_update + cache->expire_interval) < now)
+  btime t = cache->last_update + (btime) cache->expire_interval S - current_time();
+  if (t <= 0)
   {
     CACHE_TRACE(D_EVENTS, cache, "All ROAs expired");
     rpki_force_restart_proto(cache->p);
   }
   else
   {
-    CACHE_DBG(cache, "Remains %d seconds to become ROAs obsolete", (int)cache->expire_interval - (int)(now - cache->last_update));
+    CACHE_DBG(cache, "Remains %t seconds to become ROAs obsolete", t);
     rpki_schedule_next_expire_check(cache);
   }
 }
@@ -567,9 +569,9 @@ rpki_init_cache(struct rpki_proto *p, struct rpki_config *cf)
   cache->refresh_interval = cf->refresh_interval;
   cache->retry_interval = cf->retry_interval;
   cache->expire_interval = cf->expire_interval;
-  cache->refresh_timer = tm_new_set(pool, &rpki_refresh_hook, cache, 0, 0);
-  cache->retry_timer = tm_new_set(pool, &rpki_retry_hook, cache, 0, 0);
-  cache->expire_timer = tm_new_set(pool, &rpki_expire_hook, cache, 0, 0);
+  cache->refresh_timer = tm2_new_init(pool, &rpki_refresh_hook, cache, 0, 0);
+  cache->retry_timer = tm2_new_init(pool, &rpki_retry_hook, cache, 0, 0);
+  cache->expire_timer = tm2_new_init(pool, &rpki_expire_hook, cache, 0, 0);
 
   cache->tr_sock = mb_allocz(pool, sizeof(struct rpki_tr_sock));
   cache->tr_sock->cache = cache;
@@ -789,7 +791,7 @@ rpki_get_status(struct proto *P, byte *buf)
 static void
 rpki_show_proto_info_timer(const char *name, uint num, timer *t)
 {
-  if (tm_active(t))
+  if (tm2_active(t))
     cli_msg(-1006, "  %-16s: %t/%u", name, tm2_remains(t), num);
   else
     cli_msg(-1006, "  %-16s: ---", name);
@@ -828,7 +830,7 @@ rpki_show_proto_info(struct proto *P)
     if (cache->last_update)
     {
       cli_msg(-1006, "  Serial number:    %u", cache->serial_num);
-      cli_msg(-1006, "  Last update:      before %us", now - cache->last_update);
+      cli_msg(-1006, "  Last update:      before %t s", current_time() - cache->last_update);
     }
     else
     {
