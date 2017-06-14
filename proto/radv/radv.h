@@ -30,7 +30,7 @@
 #define ICMPV6_RA 134
 
 #define MAX_INITIAL_RTR_ADVERTISEMENTS 3
-#define MAX_INITIAL_RTR_ADVERT_INTERVAL 16
+#define MAX_INITIAL_RTR_ADVERT_INTERVAL (16 S_)
 
 #define DEFAULT_MAX_RA_INT 600
 #define DEFAULT_MIN_DELAY 3
@@ -130,7 +130,7 @@ struct radv_iface
   struct object_lock *lock;
   sock *sk;
 
-  bird_clock_t last;		/* Time of last sending of RA */
+  btime last;			/* Time of last sending of RA */
   u16 plen;			/* Length of prepared RA in tbuf, or 0 if not valid */
   byte initial;			/* List of active ifaces */
 };

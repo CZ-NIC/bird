@@ -54,17 +54,18 @@ radv_timer(timer *tm)
   radv_send_ra(ifa, 0);
 
   /* Update timer */
-  ifa->last = now;
-  unsigned after = ifa->cf->min_ra_int;
-  after += random() % (ifa->cf->max_ra_int - ifa->cf->min_ra_int + 1);
+  ifa->last = current_time();
+  btime t = (btime) ifa->cf->min_ra_int S;
+  btime r = (btime) (ifa->cf->max_ra_int - ifa->cf->min_ra_int) S;
+  t += random() % (r + 1);
 
   if (ifa->initial)
+  {
+    t = MIN(t, MAX_INITIAL_RTR_ADVERT_INTERVAL);
     ifa->initial--;
+  }
 
-  if (ifa->initial)
-    after = MIN(after, MAX_INITIAL_RTR_ADVERT_INTERVAL);
-
-  tm_start(ifa->timer, after);
+  tm2_start(ifa->timer, t);
 }
 
 static char* ev_name[] = { NULL, "Init", "Change", "RS" };
@@ -92,13 +93,8 @@ radv_iface_notify(struct radv_iface *ifa, int event)
   }
 
   /* Update timer */
-  unsigned delta = now - ifa->last;
-  unsigned after = 0;
-
-  if (delta < ifa->cf->min_delay)
-    after = ifa->cf->min_delay - delta;
-
-  tm_start(ifa->timer, after);
+  btime t = ifa->last + (btime) ifa->cf->min_delay S - current_time();
+  tm2_start(ifa->timer, t);
 }
 
 static void
@@ -154,7 +150,7 @@ radv_iface_new(struct radv_proto *p, struct iface *iface, struct radv_iface_conf
 
   add_tail(&p->iface_list, NODE ifa);
 
-  ifa->timer = tm_new_set(pool, radv_timer, ifa, 0, 0);
+  ifa->timer = tm2_new_init(pool, radv_timer, ifa, 0, 0);
 
   struct object_lock *lock = olock_new(pool);
   lock->addr = IPA_NONE;
