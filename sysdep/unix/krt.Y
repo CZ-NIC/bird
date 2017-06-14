@@ -68,7 +68,7 @@ kern_item:
  | PERSIST bool { THIS_KRT->persist = $2; }
  | SCAN TIME expr {
       /* Scan time of 0 means scan on startup only */
-      THIS_KRT->scan_time = $3;
+      THIS_KRT->scan_time = $3 S_;
    }
  | LEARN bool {
       THIS_KRT->learn = $2;
@@ -103,7 +103,7 @@ kif_item:
  | INTERFACE kif_iface
  | SCAN TIME expr {
       /* Scan time of 0 means scan on startup only */
-      THIS_KIF->scan_time = $3;
+      THIS_KIF->scan_time = $3 S_;
    }
  ;
 
