@@ -943,7 +943,7 @@ babel_read_subtlvs(struct babel_tlv *hdr,
   struct babel_tlv *tlv;
 
   for (tlv = (void *) hdr + state->current_tlv_endpos;
-       tlv < hdr + TLV_LENGTH(hdr);
+       (void *) tlv < (void *) hdr + TLV_LENGTH(hdr);
        tlv = NEXT_TLV(tlv))
   {
     /*
