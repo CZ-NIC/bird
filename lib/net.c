@@ -99,9 +99,9 @@ net_format(const net_addr *N, char *buf, int buflen)
   case NET_ROA6:
     return bsnprintf(buf, buflen, "%I6/%u-%u AS%u",  n->roa6.prefix, n->roa6.pxlen, n->roa6.max_pxlen, n->roa6.asn);
   case NET_FLOW4:
-    return flow4_net_format(buf, buflen, &n->flow4);
+    return flow4_net_format(buf, buflen, &n->flow4, " ");
   case NET_FLOW6:
-    return flow6_net_format(buf, buflen, &n->flow6);
+    return flow6_net_format(buf, buflen, &n->flow6, " ");
   case NET_MPLS:
     return bsnprintf(buf, buflen, "%u", n->mpls.label);
   }

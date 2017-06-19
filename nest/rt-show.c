@@ -15,6 +15,7 @@
 #include "nest/cli.h"
 #include "nest/iface.h"
 #include "filter/filter.h"
+#include "lib/flowspec.h"
 
 static void
 rt_show_table(struct cli *c, struct rt_show_data *d)
@@ -90,16 +91,26 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
 }
 
 static void
-rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
+rt_show_net(struct cli *c, net *n, struct rt_show_data *d, const uint addr_type)
 {
   rte *e, *ee;
-  byte ia[NET_MAX_TEXT_LENGTH+1];
+  byte ia[(net_max_text_length[addr_type] ?: 65536)];
   struct ea_list *tmpa;
   struct channel *ec = d->tab->export_channel;
   int first = 1;
   int pass = 0;
 
-  bsnprintf(ia, sizeof(ia), "%N", n->n.addr);
+  switch (addr_type)
+    {
+      case NET_FLOW4:
+	flow4_net_format(ia, sizeof(ia), (net_addr_flow4 *) n->n.addr, "\n\t");
+	break;
+      case NET_FLOW6:
+	flow6_net_format(ia, sizeof(ia), (net_addr_flow6 *) n->n.addr, "\n\t");
+	break;
+      default:
+	bsnprintf(ia, sizeof(ia), "%N", n->n.addr);
+    }
 
   for (e = n->routes; e; e = e->next)
     {
@@ -210,6 +221,7 @@ rt_show_cont(struct cli *c)
 #endif
   struct fib *fib = &d->tab->table->fib;
   struct fib_iterator *it = &d->fit;
+  uint addr_type = d->tab->table->addr_type;
 
   if (d->running_on_config && (d->running_on_config != config))
   {
@@ -238,7 +250,7 @@ rt_show_cont(struct cli *c)
       FIB_ITERATE_PUT(it);
       return;
     }
-    rt_show_net(c, n, d);
+    rt_show_net(c, n, d, addr_type);
   }
   FIB_ITERATE_END;
 
@@ -402,7 +414,7 @@ rt_show(struct rt_show_data *d)
 	n = net_find(tab->table, d->addr);
 
       if (n)
-	rt_show_net(this_cli, n, d);
+	rt_show_net(this_cli, n, d, tab->table->addr_type);
     }
 
     if (d->rt_counter)

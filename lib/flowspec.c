@@ -1086,7 +1086,7 @@ net_format_flow_bitmask(buffer *b, const byte *part)
 }
 
 static uint
-net_format_flow(char *buf, uint blen, const byte *data, uint dlen, int ipv6)
+net_format_flow(char *buf, uint blen, const byte *data, uint dlen, int ipv6, const char *sep)
 {
   buffer b = {
     .start = buf,
@@ -1098,13 +1098,13 @@ net_format_flow(char *buf, uint blen, const byte *data, uint dlen, int ipv6)
   *buf = 0;
 
   if (ipv6)
-    buffer_puts(&b, "flow6 { ");
+    buffer_puts(&b, "flow6 {");
   else
-    buffer_puts(&b, "flow4 { ");
+    buffer_puts(&b, "flow4 {");
 
   while (part)
   {
-    buffer_print(&b, "%s ", flow_type_str(*part, ipv6));
+    buffer_print(&b, "%s%s ", sep, flow_type_str(*part, ipv6));
 
     switch (*part)
     {
@@ -1132,7 +1132,7 @@ net_format_flow(char *buf, uint blen, const byte *data, uint dlen, int ipv6)
     part = flow_next_part(part, data+dlen, ipv6);
   }
 
-  buffer_puts(&b, "}");
+  buffer_print(&b, "%s}", sep);
 
   if (b.pos == b.end)
   {
@@ -1154,9 +1154,9 @@ net_format_flow(char *buf, uint blen, const byte *data, uint dlen, int ipv6)
  * ' ...}' sequence and zero-terminator.
  */
 uint
-flow4_net_format(char *buf, uint blen, const net_addr_flow4 *f)
+flow4_net_format(char *buf, uint blen, const net_addr_flow4 *f, const char *sep)
 {
-  return net_format_flow(buf, blen, f->data, f->length - sizeof(net_addr_flow4), 0);
+  return net_format_flow(buf, blen, f->data, f->length - sizeof(net_addr_flow4), 0, sep);
 }
 
 /**
@@ -1170,7 +1170,7 @@ flow4_net_format(char *buf, uint blen, const net_addr_flow4 *f)
  * ' ...}' sequence and zero-terminator.
  */
 uint
-flow6_net_format(char *buf, uint blen, const net_addr_flow6 *f)
+flow6_net_format(char *buf, uint blen, const net_addr_flow6 *f, const char *sep)
 {
-  return net_format_flow(buf, blen, f->data, f->length - sizeof(net_addr_flow6), 1);
+  return net_format_flow(buf, blen, f->data, f->length - sizeof(net_addr_flow6), 1, sep);
 }
