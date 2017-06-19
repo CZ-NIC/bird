@@ -121,42 +121,62 @@ cli_printf(cli *c, int code, char *msg, ...)
 {
   va_list args;
   byte buf[CLI_LINE_SIZE];
+  byte *head = alloca(10);
   int cd = code;
   int errcode;
-  int size, cnt;
+  int size, hsize;
 
   if (cd < 0)
     {
       cd = -cd;
       if (cd == c->last_reply)
-	size = bsprintf(buf, " ");
+	hsize = bsprintf(head, " ");
       else
-	size = bsprintf(buf, "%04d-", cd);
+	hsize = bsprintf(head, "%04d-", cd);
       errcode = -8000;
     }
   else if (cd == CLI_ASYNC_CODE)
     {
-      size = 1; buf[0] = '+'; 
+      hsize = 1; head[0] = '+';
       errcode = cd;
     }
   else
     {
-      size = bsprintf(buf, "%04d ", cd);
+      hsize = bsprintf(head, "%04d ", cd);
       errcode = 8000;
     }
 
   c->last_reply = cd;
   va_start(args, msg);
-  cnt = bvsnprintf(buf+size, sizeof(buf)-size-1, msg, args);
+  size = bvsnprintf(buf, sizeof(buf)-1, msg, args);
   va_end(args);
-  if (cnt < 0)
+  if (size < 0)
     {
       cli_printf(c, errcode, "<line overflow>");
       return;
     }
-  size += cnt;
   buf[size++] = '\n';
-  memcpy(cli_alloc_out(c, size), buf, size);
+  buf[size] = 0;
+
+  if (errcode == -8000) {
+    /* Buffer may contain multiple lines, split them. */
+    for (byte *b = buf, *e = strchr(buf, '\n'); e; b = e+1, e = strchr(b, '\n')) {
+      byte *out = cli_alloc_out(c, (e - b) + hsize + 1);
+      memcpy(out, head, hsize);
+      memcpy(out+hsize, b, (e - b) + 1);
+      head = " ";
+      hsize = 1;
+    }
+  } else {
+    /* Sanitize output for one-line versions of output. */
+    for (byte *b = strchr(buf, '\n'); (b-buf) < size-1; b = strchr(b, '\n'))
+      *b = '\t';
+
+    /* Now the output is one-line, newlines transformed to tabs. */
+    byte *out = cli_alloc_out(c, (size + hsize));
+    memcpy(out, head, hsize);
+    memcpy(out+hsize, buf, size);
+  }
 }
 
 static void
