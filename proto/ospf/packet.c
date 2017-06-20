@@ -77,16 +77,16 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
        reboot when system does not have independent RTC? */
     if (!ifa->csn)
     {
-      ifa->csn = (u32) now;
-      ifa->csn_use = now;
+      ifa->csn = (u32) (current_real_time() TO_S);
+      ifa->csn_use = current_time();
     }
 
     /* We must have sufficient delay between sending a packet and increasing
        CSN to prevent reordering of packets (in a network) with different CSNs */
-    if ((now - ifa->csn_use) > 1)
+    if ((current_time() - ifa->csn_use) > 1 S)
       ifa->csn++;
 
-    ifa->csn_use = now;
+    ifa->csn_use = current_time();
 
     uint auth_len = mac_type_length(pass->alg);
     byte *auth_tail = ((byte *) pkt + *plen);

@@ -1321,7 +1321,7 @@ ospf_rt_abr2(struct ospf_proto *p)
       if (translate && (oa->translate != TRANS_ON))
       {
 	if (oa->translate == TRANS_WAIT)
-	  tm_stop(oa->translator_timer);
+	  tm2_stop(oa->translator_timer);
 
 	oa->translate = TRANS_ON;
       }
@@ -1329,10 +1329,10 @@ ospf_rt_abr2(struct ospf_proto *p)
       if (!translate && (oa->translate == TRANS_ON))
       {
 	if (oa->translator_timer == NULL)
-	  oa->translator_timer = tm_new_set(p->p.pool, translator_timer_hook, oa, 0, 0);
+	  oa->translator_timer = tm2_new_init(p->p.pool, translator_timer_hook, oa, 0, 0);
 
 	/* Schedule the end of translation */
-	tm_start(oa->translator_timer, oa->ac->transint);
+	tm2_start(oa->translator_timer, oa->ac->transint S);
 	oa->translate = TRANS_WAIT;
       }
     }

@@ -64,10 +64,10 @@
 
 #define OSPF_PROTO 89
 
-#define LSREFRESHTIME 1800	/* 30 minutes */
-#define MINLSINTERVAL 5
-#define MINLSARRIVAL 1
-#define LSINFINITY 0xffffff
+#define LSREFRESHTIME		1800	/* 30 minutes */
+#define MINLSINTERVAL		(5 S_)
+#define MINLSARRIVAL		(1 S_)
+#define LSINFINITY		0xffffff
 
 #define OSPF_DEFAULT_TICK 1
 #define OSPF_DEFAULT_STUB_COST 1000
@@ -283,8 +283,8 @@ struct ospf_iface
 				   interface.  LSAs contained in the update */
   u16 helloint;			/* number of seconds between hello sending */
   list *passwords;
-  u32 csn;                      /* Last used crypt seq number */
-  bird_clock_t csn_use;         /* Last time when packet with that CSN was sent */
+  u32 csn;			/* Last used crypt seq number */
+  btime csn_use;		/* Last time when packet with that CSN was sent */
   ip_addr all_routers;		/* Multicast (or broadcast) address for all routers */
   ip_addr des_routers;		/* Multicast (or NULL) address for designated routers */
   ip_addr drip;			/* Designated router IP */

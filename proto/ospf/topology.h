@@ -26,7 +26,7 @@ struct top_hash_entry
   void *next_lsa_body;		/* For postponed LSA origination */
   u16 next_lsa_blen;		/* For postponed LSA origination */
   u16 next_lsa_opts;		/* For postponed LSA origination */
-  bird_clock_t inst_time;	/* Time of installation into DB */
+  btime inst_time;		/* Time of installation into DB */
   struct ort *nf;		/* Reference fibnode for sum and ext LSAs, NULL for otherwise */
   struct nexthop *nhs;		/* Computed nexthops - valid only in ospf_rt_spf() */
   ip_addr lb;			/* In OSPFv2, link back address. In OSPFv3, any global address in the area useful for vlinks */

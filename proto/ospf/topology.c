@@ -70,7 +70,7 @@ ospf_install_lsa(struct ospf_proto *p, struct ospf_lsa_header *lsa, u32 type, u3
   en->lsa_body = body;
   en->lsa = *lsa;
   en->init_age = en->lsa.age;
-  en->inst_time = now;
+  en->inst_time = current_time();
 
   /*
    * We do not set en->mode. It is either default LSA_M_BASIC, or in a special
@@ -128,7 +128,7 @@ ospf_advance_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_ls
       en->lsa.sn = lsa->sn + 1;
       en->lsa.age = 0;
       en->init_age = 0;
-      en->inst_time = now;
+      en->inst_time = current_time();
       lsa_generate_checksum(&en->lsa, en->lsa_body);
 
       OSPF_TRACE(D_EVENTS, "Advancing LSA: Type: %04x, Id: %R, Rt: %R, Seq: %08x",
@@ -160,7 +160,7 @@ ospf_advance_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_ls
       en->lsa = *lsa;
       en->lsa.age = LSA_MAXAGE;
       en->init_age = lsa->age;
-      en->inst_time = now;
+      en->inst_time = current_time();
 
       OSPF_TRACE(D_EVENTS, "Resetting LSA:  Type: %04x, Id: %R, Rt: %R, Seq: %08x",
 		 en->lsa_type, en->lsa.id, en->lsa.rt, en->lsa.sn);
@@ -196,7 +196,7 @@ static int
 ospf_do_originate_lsa(struct ospf_proto *p, struct top_hash_entry *en, void *lsa_body, u16 lsa_blen, u16 lsa_opts)
 {
   /* Enforce MinLSInterval */
-  if ((en->init_age == 0) && en->inst_time && ((en->inst_time + MINLSINTERVAL) > now))
+  if (!en->init_age && en->inst_time && (lsa_inst_age(en) < MINLSINTERVAL))
     return 0;
 
   /* Handle wrapping sequence number */
@@ -237,7 +237,7 @@ ospf_do_originate_lsa(struct ospf_proto *p, struct top_hash_entry *en, void *lsa
   en->lsa.sn++;
   en->lsa.age = 0;
   en->init_age = 0;
-  en->inst_time = now;
+  en->inst_time = current_time();
   lsa_generate_checksum(&en->lsa, en->lsa_body);
 
   OSPF_TRACE(D_EVENTS, "Originating LSA: Type: %04x, Id: %R, Rt: %R, Seq: %08x",
@@ -381,7 +381,7 @@ ospf_refresh_lsa(struct ospf_proto *p, struct top_hash_entry *en)
   en->lsa.sn++;
   en->lsa.age = 0;
   en->init_age = 0;
-  en->inst_time = now;
+  en->inst_time = current_time();
   lsa_generate_checksum(&en->lsa, en->lsa_body);
   ospf_flood_lsa(p, en, NULL);
 }
@@ -476,14 +476,15 @@ void
 ospf_update_lsadb(struct ospf_proto *p)
 {
   struct top_hash_entry *en, *nxt;
-  bird_clock_t real_age;
+  btime now_ = current_time();
+  int real_age;
 
   WALK_SLIST_DELSAFE(en, nxt, p->lsal)
   {
     if (en->next_lsa_body)
       ospf_originate_next_lsa(p, en);
 
-    real_age = en->init_age + (now - en->inst_time);
+    real_age = en->init_age + (now_ - en->inst_time) TO_S;
 
     if (en->lsa.age == LSA_MAXAGE)
     {
@@ -1636,7 +1637,7 @@ ospf_originate_prefix_net_lsa(struct ospf_proto *p, struct ospf_iface *ifa)
 }
 
 static inline int breaks_minlsinterval(struct top_hash_entry *en)
-{ return en && (en->lsa.age < LSA_MAXAGE) && ((en->inst_time + MINLSINTERVAL) > now); }
+{ return en && (en->lsa.age < LSA_MAXAGE) && (lsa_inst_age(en) < MINLSINTERVAL); }
 
 void
 ospf_update_topology(struct ospf_proto *p)

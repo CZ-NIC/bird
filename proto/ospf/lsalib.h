@@ -60,4 +60,7 @@ void lsa_parse_sum_rt(struct top_hash_entry *en, int ospf2, u32 *drid, u32 *metr
 void lsa_parse_ext(struct top_hash_entry *en, int ospf2, int af, struct ospf_lsa_ext_local *rt);
 int lsa_validate(struct ospf_lsa_header *lsa, u32 lsa_type, int ospf2, void *body);
 
+static inline btime lsa_inst_age(struct top_hash_entry *en)
+{ return current_time() - en->inst_time; }
+
 #endif /* _BIRD_OSPF_LSALIB_H_ */

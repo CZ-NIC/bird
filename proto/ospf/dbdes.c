@@ -279,8 +279,8 @@ ospf_process_dbdes(struct ospf_proto *p, struct ospf_packet *pkt, struct ospf_ne
       req->lsa = lsa;
       req->lsa_body = LSA_BODY_DUMMY;
 
-      if (!tm_active(n->lsrq_timer))
-	tm_start(n->lsrq_timer, 0);
+      if (!tm2_active(n->lsrq_timer))
+	tm2_start(n->lsrq_timer, 0);
     }
   }
 
@@ -366,7 +366,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
       n->options = rcv_options;
       n->myimms &= ~DBDES_MS;
       n->imms = rcv_imms;
-      tm_stop(n->dbdes_timer);
+      tm2_stop(n->dbdes_timer);
       ospf_neigh_sm(n, INM_NEGDONE);
       ospf_send_dbdes(p, n);
       break;
@@ -422,13 +422,13 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
 
       if (!(n->myimms & DBDES_M) && !(n->imms & DBDES_M))
       {
-	tm_stop(n->dbdes_timer);
+	tm2_stop(n->dbdes_timer);
 	ospf_neigh_sm(n, INM_EXDONE);
 	break;
       }
 
       ospf_send_dbdes(p, n);
-      tm_start(n->dbdes_timer, n->ifa->rxmtint);
+      tm2_start(n->dbdes_timer, n->ifa->rxmtint S);
     }
     else
     {

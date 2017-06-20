@@ -115,7 +115,7 @@ ospf_lsa_lsrq_down(struct top_hash_entry *req, struct ospf_neighbor *n)
 
   if (EMPTY_SLIST(n->lsrql))
   {
-    tm_stop(n->lsrq_timer);
+    tm2_stop(n->lsrq_timer);
 
     if (n->state == NEIGHBOR_LOADING)
       ospf_neigh_sm(n, INM_LOADDONE);
@@ -136,8 +136,8 @@ ospf_lsa_lsrt_up(struct top_hash_entry *en, struct ospf_neighbor *n)
   ret->lsa = en->lsa;
   ret->lsa_body = LSA_BODY_DUMMY;
 
-  if (!tm_active(n->lsrt_timer))
-    tm_start(n->lsrt_timer, n->ifa->rxmtint);
+  if (!tm2_active(n->lsrt_timer))
+    tm2_start(n->lsrt_timer, n->ifa->rxmtint S);
 }
 
 void
@@ -150,7 +150,7 @@ ospf_lsa_lsrt_down_(struct top_hash_entry *en, struct ospf_neighbor *n, struct t
   ospf_hash_delete(n->lsrth, ret);
 
   if (EMPTY_SLIST(n->lsrtl))
-    tm_stop(n->lsrt_timer);
+    tm2_stop(n->lsrt_timer);
 }
 
 static inline int
@@ -175,8 +175,8 @@ ospf_add_flushed_to_lsrt(struct ospf_proto *p, struct ospf_neighbor *n)
       ospf_lsa_lsrt_up(en, n);
 
   /* If we found any flushed LSA, we send them ASAP */
-  if (tm_active(n->lsrt_timer))
-    tm_start(n->lsrt_timer, 0);
+  if (tm2_active(n->lsrt_timer))
+    tm2_start(n->lsrt_timer, 0);
 }
 
 static int ospf_flood_lsupd(struct ospf_proto *p, struct top_hash_entry **lsa_list, uint lsa_count, uint lsa_min_count, struct ospf_iface *ifa);
@@ -572,7 +572,7 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
     {
       /* 13. (5a) - enforce minimum time between updates for received LSAs */
       /* We also use this to ratelimit reactions to received self-originated LSAs */
-      if (en && ((now - en->inst_time) < MINLSARRIVAL))
+      if (en && (lsa_inst_age(en) < MINLSARRIVAL))
       {
 	OSPF_TRACE(D_EVENTS, "Skipping LSA received in less that MinLSArrival");
 	continue;
@@ -700,7 +700,7 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
   if (!EMPTY_SLIST(n->lsrql) && (n->lsrqi == SHEAD(n->lsrql)))
   {
     ospf_send_lsreq(p, n);
-    tm_start(n->lsrq_timer, n->ifa->rxmtint);
+    tm2_start(n->lsrq_timer, n->ifa->rxmtint S);
   }
 
   return;
