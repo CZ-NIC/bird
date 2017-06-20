@@ -434,6 +434,7 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
   byte *max = rip_tx_buffer(ifa) + ifa->tx_plen -
     (rip_is_v2(p) ? RIP_BLOCK_LENGTH : 2*RIP_BLOCK_LENGTH);
   ip_addr last_next_hop = IPA_NONE;
+  btime now_ = current_time();
   int send = 0;
 
   struct rip_packet *pkt = (void *) pos;
@@ -450,7 +451,7 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
 
     /* Stale entries that should be removed */
     if ((en->valid == RIP_ENTRY_STALE) &&
-	((en->changed + (bird_clock_t) ifa->cf->garbage_time) <= now))
+	((en->changed + ifa->cf->garbage_time) <= now_))
       goto next_entry;
 
     /* Triggered updates */
@@ -540,7 +541,7 @@ break_loop:
  * activating the new one.
  */
 void
-rip_send_table(struct rip_proto *p, struct rip_iface *ifa, ip_addr addr, bird_clock_t changed)
+rip_send_table(struct rip_proto *p, struct rip_iface *ifa, ip_addr addr, btime changed)
 {
   DBG("RIP: Opening TX session to %I on %s\n", addr, ifa->iface->name);
 
@@ -591,6 +592,7 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
 
   byte *pos = (byte *) pkt + sizeof(struct rip_packet);
   byte *end = (byte *) pkt + plen;
+  btime now_ = current_time();
 
   for (; pos < end; pos += RIP_BLOCK_LENGTH)
   {
@@ -638,7 +640,7 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
 	.next_hop = ipa_nonzero(rte.next_hop) ? rte.next_hop : from->nbr->addr,
 	.metric = rte.metric,
 	.tag = rte.tag,
-	.expires = now + ifa->cf->timeout_time
+	.expires = now_ + ifa->cf->timeout_time
       };
 
       rip_update_rte(p, &rte.net, &new);
@@ -705,7 +707,7 @@ rip_rx_hook(sock *sk, uint len)
   if ((plen - sizeof(struct rip_packet)) % RIP_BLOCK_LENGTH)
     DROP("invalid length", plen);
 
-  n->last_seen = now;
+  n->last_seen = current_time();
   rip_update_bfd(p, n);
 
   switch (pkt->command)

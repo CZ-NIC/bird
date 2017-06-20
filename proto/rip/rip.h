@@ -38,9 +38,9 @@
 
 #define RIP_DEFAULT_ECMP_LIMIT	16
 #define RIP_DEFAULT_INFINITY	16
-#define RIP_DEFAULT_UPDATE_TIME	30
-#define RIP_DEFAULT_TIMEOUT_TIME 180
-#define RIP_DEFAULT_GARBAGE_TIME 120
+#define RIP_DEFAULT_UPDATE_TIME	  (30 S_)
+#define RIP_DEFAULT_TIMEOUT_TIME (180 S_)
+#define RIP_DEFAULT_GARBAGE_TIME (120 S_)
 
 
 struct rip_config
@@ -52,8 +52,8 @@ struct rip_config
   u8 ecmp;				/* Maximum number of nexthops in ECMP route, or 0 */
   u8 infinity;				/* Maximum metric value, representing infinity */
 
-  u32 min_timeout_time;			/* Minimum of interface timeout_time */
-  u32 max_garbage_time;			/* Maximum of interface garbage_time */
+  btime min_timeout_time;		/* Minimum of interface timeout_time */
+  btime max_garbage_time;		/* Maximum of interface garbage_time */
 };
 
 struct rip_iface_config
@@ -78,9 +78,9 @@ struct rip_iface_config
   u16 tx_length;			/* TX packet length limit (including headers), 0 for MTU */
   int tx_tos;
   int tx_priority;
-  u32 update_time;			/* Periodic update interval */
-  u32 timeout_time;			/* Route expiration timeout */
-  u32 garbage_time;			/* Unreachable entry GC timeout */
+  btime update_time;			/* Periodic update interval */
+  btime timeout_time;			/* Route expiration timeout */
+  btime garbage_time;			/* Unreachable entry GC timeout */
   list *passwords;			/* Passwords for authentication */
 };
 
@@ -120,14 +120,14 @@ struct rip_iface
   list neigh_list;			/* List of iface neighbors (struct rip_neighbor) */
 
   /* Update scheduling */
-  bird_clock_t next_regular;		/* Next time when regular update should be called */
-  bird_clock_t next_triggered;		/* Next time when triggerd update may be called */
-  bird_clock_t want_triggered;		/* Nonzero if triggered update is scheduled */
+  btime next_regular;			/* Next time when regular update should be called */
+  btime next_triggered;			/* Next time when triggerd update may be called */
+  btime want_triggered;			/* Nonzero if triggered update is scheduled */
 
   /* Active update */
   int tx_active;			/* Update session is active */
   ip_addr tx_addr;			/* Update session destination address */
-  bird_clock_t tx_changed;		/* Minimal changed time for triggered update */
+  btime tx_changed;			/* Minimal changed time for triggered update */
   struct fib_iterator tx_fit;		/* FIB iterator in RIP routing table (p.rtable) */
 };
 
@@ -137,7 +137,7 @@ struct rip_neighbor
   struct rip_iface *ifa;		/* Associated interface, may be NULL if stale */
   struct neighbor *nbr;			/* Associaded core neighbor, may be NULL if stale */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
-  bird_clock_t last_seen;		/* Time of last received and accepted message */
+  btime last_seen;			/* Time of last received and accepted message */
   u32 uc;				/* Use count, number of routes linking the neighbor */
   u32 csn;				/* Last received crypto sequence number */
 };
@@ -153,7 +153,7 @@ struct rip_entry
   struct iface *iface;			/* Outgoing route iface (for next hop) */
   ip_addr next_hop;			/* Outgoing route next hop */
 
-  bird_clock_t changed;			/* Last time when the outgoing route metric changed */
+  btime changed;			/* Last time when the outgoing route metric changed */
 
   struct fib_node n;
 };
@@ -167,7 +167,7 @@ struct rip_rte
   u16 metric;				/* Route metric (after increase) */
   u16 tag;				/* Route tag */
 
-  bird_clock_t expires;			/* Time of route expiration */
+  btime expires;			/* Time of route expiration */
 };
 
 
@@ -211,7 +211,7 @@ void rip_show_neighbors(struct proto *P, char *iff);
 
 /* packets.c */
 void rip_send_request(struct rip_proto *p, struct rip_iface *ifa);
-void rip_send_table(struct rip_proto *p, struct rip_iface *ifa, ip_addr addr, bird_clock_t changed);
+void rip_send_table(struct rip_proto *p, struct rip_iface *ifa, ip_addr addr, btime changed);
 int rip_open_socket(struct rip_iface *ifa);
 
 
