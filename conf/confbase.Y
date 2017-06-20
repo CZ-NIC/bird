@@ -80,8 +80,7 @@ CF_DECLS
 %type <iface> ipa_scope
 
 %type <i> expr bool pxlen4
-%type <i32> expr_us
-%type <time> time
+%type <time> expr_us time
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_
@@ -137,9 +136,9 @@ expr:
 
 
 expr_us:
-   expr S  { $$ = (u32) $1 * 1000000; }
- | expr MS { $$ = (u32) $1 * 1000; }
- | expr US { $$ = (u32) $1 * 1; }
+   expr S  { $$ = $1 S_; }
+ | expr MS { $$ = $1 MS_; }
+ | expr US { $$ = $1 US_; }
  ;
 
 /* Switches */

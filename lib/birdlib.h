@@ -71,9 +71,9 @@ static inline int u64_cmp(u64 i1, u64 i2)
 typedef s64 btime;
 typedef s64 bird_clock_t;
 
-#define S_	*1000000
-#define MS_	*1000
-#define US_	*1
+#define S_	* (btime) 1000000
+#define MS_	* (btime) 1000
+#define US_	* (btime) 1
 #define TO_S	/1000000
 #define TO_MS	/1000
 #define TO_US	/1
@@ -82,6 +82,7 @@ typedef s64 bird_clock_t;
 #define S	S_
 #define MS	MS_
 #define US	US_
+#define NS	/1000
 #endif
 
 

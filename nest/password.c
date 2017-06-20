@@ -10,6 +10,7 @@
 #include "nest/bird.h"
 #include "nest/password.h"
 #include "lib/string.h"
+#include "lib/timer.h"
 #include "lib/mac.h"
 
 struct password_item *last_password_item = NULL;

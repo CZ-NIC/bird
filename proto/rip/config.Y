@@ -147,9 +147,9 @@ rip_iface_item:
  | SPLIT HORIZON bool	{ RIP_IFACE->split_horizon = $3; }
  | POISON REVERSE bool	{ RIP_IFACE->poison_reverse = $3; }
  | CHECK ZERO bool	{ RIP_IFACE->check_zero = $3; }
- | UPDATE TIME expr	{ RIP_IFACE->update_time = (btime) $3 S_; if ($3<=0) cf_error("Update time must be positive"); }
- | TIMEOUT TIME expr	{ RIP_IFACE->timeout_time = (btime) $3 S_; if ($3<=0) cf_error("Timeout time must be positive"); }
- | GARBAGE TIME expr	{ RIP_IFACE->garbage_time = (btime) $3 S_; if ($3<=0) cf_error("Garbage time must be positive"); }
+ | UPDATE TIME expr	{ RIP_IFACE->update_time = $3 S_; if ($3<=0) cf_error("Update time must be positive"); }
+ | TIMEOUT TIME expr	{ RIP_IFACE->timeout_time = $3 S_; if ($3<=0) cf_error("Timeout time must be positive"); }
+ | GARBAGE TIME expr	{ RIP_IFACE->garbage_time = $3 S_; if ($3<=0) cf_error("Garbage time must be positive"); }
  | ECMP WEIGHT expr	{ RIP_IFACE->ecmp_weight = $3 - 1; if (($3<1) || ($3>256)) cf_error("ECMP weight must be in range 1-256"); }
  | RX BUFFER expr	{ RIP_IFACE->rx_buffer = $3; if (($3<256) || ($3>65535)) cf_error("RX length must be in range 256-65535"); }
  | TX LENGTH expr	{ RIP_IFACE->tx_length = $3; if (($3<256) || ($3>65535)) cf_error("TX length must be in range 256-65535"); }

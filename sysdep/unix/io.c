@@ -406,7 +406,7 @@ times_init(struct timeloop *loop)
   if ((ts.tv_sec < 0) || (((s64) ts.tv_sec) > ((s64) 1 << 40)))
     log(L_WARN "Monotonic clock is crazy");
 
-  loop->last_time = ((s64) ts.tv_sec S) + (ts.tv_nsec / 1000);
+  loop->last_time = ts.tv_sec S + ts.tv_nsec NS;
   loop->real_time = 0;
 }
 
@@ -420,7 +420,7 @@ times_update(struct timeloop *loop)
   if (rv < 0)
     die("clock_gettime: %m");
 
-  btime new_time = ((s64) ts.tv_sec S) + (ts.tv_nsec / 1000);
+  btime new_time = ts.tv_sec S + ts.tv_nsec NS;
 
   if (new_time < loop->last_time)
     log(L_ERR "Monotonic clock is broken");
@@ -439,7 +439,7 @@ times_update_real_time(struct timeloop *loop)
   if (rv < 0)
     die("clock_gettime: %m");
 
-  loop->real_time = ((s64) ts.tv_sec S) + (ts.tv_nsec / 1000);
+  loop->real_time = ts.tv_sec S + ts.tv_nsec NS;
 }
 
 
@@ -2281,7 +2281,7 @@ io_update_time(void)
   if (rv < 0)
     die("clock_gettime: %m");
 
-  last_time = ((s64) ts.tv_sec S) + (ts.tv_nsec / 1000);
+  last_time = ts.tv_sec S + ts.tv_nsec NS;
 
   if (event_open)
   {

@@ -55,8 +55,8 @@ radv_timer(timer *tm)
 
   /* Update timer */
   ifa->last = current_time();
-  btime t = (btime) ifa->cf->min_ra_int S;
-  btime r = (btime) (ifa->cf->max_ra_int - ifa->cf->min_ra_int) S;
+  btime t = ifa->cf->min_ra_int S;
+  btime r = (ifa->cf->max_ra_int - ifa->cf->min_ra_int) S;
   t += random() % (r + 1);
 
   if (ifa->initial)
@@ -93,7 +93,7 @@ radv_iface_notify(struct radv_iface *ifa, int event)
   }
 
   /* Update timer */
-  btime t = ifa->last + (btime) ifa->cf->min_delay S - current_time();
+  btime t = ifa->last + ifa->cf->min_delay S - current_time();
   tm2_start(ifa->timer, t);
 }
 

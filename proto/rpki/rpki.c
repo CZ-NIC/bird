@@ -318,7 +318,7 @@ rpki_cache_change_state(struct rpki_cache *cache, const enum rpki_cache_state ne
 static void
 rpki_schedule_next_refresh(struct rpki_cache *cache)
 {
-  btime t = (btime) cache->refresh_interval S;
+  btime t = cache->refresh_interval S;
 
   CACHE_DBG(cache, "after %t s", t);
   tm2_start(cache->refresh_timer, t);
@@ -327,7 +327,7 @@ rpki_schedule_next_refresh(struct rpki_cache *cache)
 static void
 rpki_schedule_next_retry(struct rpki_cache *cache)
 {
-  btime t = (btime) cache->retry_interval S;
+  btime t = cache->retry_interval S;
 
   CACHE_DBG(cache, "after %t s", t);
   tm2_start(cache->retry_timer, t);
@@ -337,7 +337,7 @@ static void
 rpki_schedule_next_expire_check(struct rpki_cache *cache)
 {
   /* A minimum time to wait is 1 second */
-  btime t = cache->last_update + (btime) cache->expire_interval S - current_time();
+  btime t = cache->last_update + cache->expire_interval S - current_time();
   t = MAX(t, 1 S);
 
   CACHE_DBG(cache, "after %t s", t);
@@ -483,7 +483,7 @@ rpki_expire_hook(timer *tm)
 
   CACHE_DBG(cache, "%s", rpki_cache_state_to_str(cache->state));
 
-  btime t = cache->last_update + (btime) cache->expire_interval S - current_time();
+  btime t = cache->last_update + cache->expire_interval S - current_time();
   if (t <= 0)
   {
     CACHE_TRACE(D_EVENTS, cache, "All ROAs expired");
