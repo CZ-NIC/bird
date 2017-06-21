@@ -1083,9 +1083,8 @@ graceful_restart_init(void)
   }
 
   graceful_restart_state = GRS_ACTIVE;
-  gr_wait_timer = tm_new(proto_pool);
-  gr_wait_timer->hook = graceful_restart_done;
-  tm_start(gr_wait_timer, config->gr_wait);
+  gr_wait_timer = tm2_new_init(proto_pool, graceful_restart_done, NULL, 0, 0);
+  tm2_start(gr_wait_timer, config->gr_wait S);
 }
 
 /**
@@ -1182,7 +1181,7 @@ channel_graceful_restart_unlock(struct channel *c)
   graceful_restart_locks--;
 
   if ((graceful_restart_state == GRS_ACTIVE) && !graceful_restart_locks)
-    tm_start(gr_wait_timer, 0);
+    tm2_start(gr_wait_timer, 0);
 }
 
 
@@ -1329,7 +1328,7 @@ proto_schedule_down(struct proto *p, byte restart, byte code)
 
   p->down_sched = restart ? PDS_RESTART : PDS_DISABLE;
   p->down_code = code;
-  tm_start_max(proto_shutdown_timer, restart ? 2 : 0);
+  tm2_start_max(proto_shutdown_timer, restart ? 250 MS : 0);
 }
 
 

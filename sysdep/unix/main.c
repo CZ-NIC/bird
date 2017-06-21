@@ -303,7 +303,7 @@ cmd_reconfig_undo_notify(void)
 }
 
 void
-cmd_reconfig(char *name, int type, int timeout)
+cmd_reconfig(char *name, int type, uint timeout)
 {
   if (cli_access_restricted())
     return;

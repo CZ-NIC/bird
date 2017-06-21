@@ -307,7 +307,7 @@ config_done(void *unused UNUSED)
  * config_commit - commit a configuration
  * @c: new configuration
  * @type: type of reconfiguration (RECONFIG_SOFT or RECONFIG_HARD)
- * @timeout: timeout for undo (or 0 for no timeout)
+ * @timeout: timeout for undo (in seconds; or 0 for no timeout)
  *
  * When a configuration is parsed and prepared for use, the
  * config_commit() function starts the process of reconfiguration.
@@ -331,7 +331,7 @@ config_done(void *unused UNUSED)
  * are accepted.
  */
 int
-config_commit(struct config *c, int type, int timeout)
+config_commit(struct config *c, int type, uint timeout)
 {
   if (shutting_down)
     {
@@ -340,10 +340,10 @@ config_commit(struct config *c, int type, int timeout)
     }
 
   undo_available = 1;
-  if (timeout > 0)
-    tm_start(config_timer, timeout);
+  if (timeout)
+    tm2_start(config_timer, timeout S);
   else
-    tm_stop(config_timer);
+    tm2_stop(config_timer);
 
   if (configuring)
     {

@@ -41,7 +41,7 @@ struct config {
   struct timeformat tf_proto;		/* Time format for 'show protocol' */
   struct timeformat tf_log;		/* Time format for the logfile */
   struct timeformat tf_base;		/* Time format for other purposes */
-  u32 gr_wait;				/* Graceful restart wait timeout */
+  u32 gr_wait;				/* Graceful restart wait timeout (sec) */
 
   int cli_debug;			/* Tracing of CLI connections and commands */
   int latency_debug;			/* I/O loop tracks duration of each event */
@@ -68,7 +68,7 @@ struct config *config_alloc(const char *name);
 int config_parse(struct config *);
 int cli_parse(struct config *);
 void config_free(struct config *);
-int config_commit(struct config *, int type, int timeout);
+int config_commit(struct config *, int type, uint timeout);
 int config_confirm(void);
 int config_undo(void);
 void config_init(void);
