@@ -108,6 +108,7 @@ struct bgp_config {
   int allow_local_pref;			/* Allow LOCAL_PREF in EBGP sessions */
   int gr_mode;				/* Graceful restart mode (BGP_GR_*) */
   int setkey;				/* Set MD5 password to system SA/SP database */
+  /* Times below are in seconds */
   unsigned gr_time;			/* Graceful restart timeout */
   unsigned connect_delay_time;		/* Minimum delay between connect attempts */
   unsigned connect_retry_time;		/* Timeout for connect attempts */
@@ -257,8 +258,8 @@ struct bgp_proto {
   event *event;				/* Event for respawning and shutting process */
   timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */
   timer *gr_timer;			/* Timer waiting for reestablishment after graceful restart */
-  unsigned startup_delay;		/* Time to delay protocol startup by due to errors */
-  bird_clock_t last_proto_error;	/* Time of last error that leads to protocol stop */
+  uint startup_delay;			/* Delay (in seconds) of protocol startup due to previous errors */
+  btime last_proto_error;		/* Time of last error that leads to protocol stop */
   u8 last_error_class; 			/* Error class of last error */
   u32 last_error_code;			/* Error code of last error. BGP protocol errors
 					   are encoded as (bgp_err_code << 16 | bgp_err_subcode) */
@@ -422,7 +423,7 @@ extern struct linpool *bgp_linpool;
 extern struct linpool *bgp_linpool2;
 
 
-void bgp_start_timer(timer *t, int value);
+void bgp_start_timer(timer *t, uint value);
 void bgp_check_config(struct bgp_config *c);
 void bgp_error(struct bgp_conn *c, unsigned code, unsigned subcode, byte *data, int len);
 void bgp_close_conn(struct bgp_conn *c);

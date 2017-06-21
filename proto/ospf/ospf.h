@@ -269,10 +269,10 @@ struct ospf_iface
   sock *sk;			/* IP socket */
   list neigh_list;		/* List of neighbors (struct ospf_neighbor) */
   u32 cost;			/* Cost of iface */
-  u32 waitint;			/* number of sec before changing state from wait */
-  u32 rxmtint;			/* number of seconds between LSA retransmissions */
-  u32 pollint;			/* Poll interval */
-  u32 deadint;			/* after "deadint" missing hellos is router dead */
+  u32 waitint;			/* Number of seconds before changing state from wait */
+  u32 rxmtint;			/* Number of seconds between LSA retransmissions */
+  u32 pollint;			/* Poll interval in seconds */
+  u32 deadint;			/* After deadint seconds without hellos is router dead */
   u32 iface_id;			/* Interface ID (iface->index or new value for vlinks) */
   u32 vid;			/* ID of peer of virtual link */
   ip_addr vip;			/* IP of peer of virtual link */
