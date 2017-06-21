@@ -7,6 +7,24 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+/**
+ * DOC: Timers
+ *
+ * Timers are resources which represent a wish of a module to call a function at
+ * the specified time. The timer code does not guarantee exact timing, only that
+ * a timer function will not be called before the requested time.
+ *
+ * In BIRD, time is represented by values of the &btime type which is signed
+ * 64-bit integer interpreted as a relative number of microseconds since some
+ * fixed time point in past. The current time can be obtained by current_time()
+ * function with reasonable accuracy and is monotonic. There is also a current
+ * 'wall-clock' real time obtainable by current_real_time() reported by OS.
+ *
+ * Each timer is described by a &timer structure containing a pointer to the
+ * handler function (@hook), data private to this function (@data), time the
+ * function should be called at (@expires, 0 for inactive timers), for the other
+ * fields see |timer.h|.
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
