@@ -80,6 +80,22 @@ flow_type_str(enum flow_type type, int ipv6)
   return ipv6 ? flow6_type_str[type] : flow4_type_str[type];
 }
 
+const char *
+flow_action_str(uint action)
+{
+#define C(c, s) case c: return s
+  switch(action) {
+    C(FLOW_ACTION_TRAFFIC_BYTERATE, "byterate");
+    C(FLOW_ACTION_TRAFFIC_ACTION, "action");
+    C(FLOW_ACTION_REDIRECT_AS2, "redirect");
+    C(FLOW_ACTION_REDIRECT_AS4, "redirect");
+    C(FLOW_ACTION_REDIRECT_IP4, "redirect");
+    C(FLOW_ACTION_TRAFFIC_MARKING, "mark");
+  }
+#undef C
+  return NULL;
+}
+
 /*
  * 	Length
  */
@@ -1173,4 +1189,88 @@ uint
 flow6_net_format(char *buf, uint blen, const net_addr_flow6 *f, const char *sep)
 {
   return net_format_flow(buf, blen, f->data, f->length - sizeof(net_addr_flow6), 1, sep);
+}
+
+/* Action */
+
+u64
+flow_action_encode_byterate(u16 asn, float rate)
+{
+  u32 urate;
+  memcpy(&urate, &rate, 4);
+  return flow_action_encode(FLOW_ACTION_TRAFFIC_BYTERATE, (((u64) asn) << 32) | ((u64) urate));
+}
+
+u64
+flow_action_encode_redirect(u64 asn, u64 val)
+{
+  if (asn < 0x10000)
+    return (((u64) FLOW_ACTION_REDIRECT_AS2) << 48) | (asn << 32) | (val & 0xffffffff);
+  else
+    return (((u64) FLOW_ACTION_REDIRECT_AS4) << 48) | (asn << 16) | (val & 0xffff);
+}
+
+
+/**
+ * Flow actions are encoded as BGP Extended Community.
+ */
+uint
+flow_action_format_part(char *buf, uint blen, u64 ec)
+{
+  int type = (ec >> 48);
+  switch (type) {
+    case FLOW_ACTION_TRAFFIC_BYTERATE:
+      {
+	float rate;
+	u32 urate = (ec & 0xffffffff);
+	memcpy(&rate, &urate, sizeof(rate));
+	int asn = (ec >> 32) & 0xffff;
+
+	rate *= 8; /* Convert from byterate to bitrate */
+	const char *rs;
+	if (rate < 2) {
+	  rs = "mbps"; rate *= 1000;
+	} else if (rate < 2000) {
+	  rs = "bps";
+	} else if (rate < 2000000) {
+	  rs = "kbps"; rate /= 1000;
+	} else if (rate < 2000000000) {
+	  rs = "Mbps"; rate /= 1000000;
+	} else if (rate < 2000000000000) {
+	  rs = "Gbps"; rate /= 1000000000;
+	} else {
+	  rs = "Tbps"; rate /= 1000000000000;
+	}
+
+	return bsnprintf(buf, blen, "rate %.3f %s asn %u;", rate, rs, asn);
+      }
+    case FLOW_ACTION_TRAFFIC_ACTION:
+      {
+	int total = 0;
+	if (ec & FLOW_ACTION_LAST) {
+	  int cnt = bsnprintf(buf, blen, "last;");
+	  if (cnt < 0)
+	    return -1;
+	  ADVANCE(buf, blen, cnt);
+	  total += cnt;
+	}
+
+	if (ec & FLOW_ACTION_SAMPLE) {
+	  int cnt = bsnprintf(buf, blen, "sample;");
+	  if (cnt < 0)
+	    return -1;
+	  ADVANCE(buf, blen, cnt);
+	  total += cnt;
+	}
+	return total;
+      }
+    case FLOW_ACTION_REDIRECT_AS2:
+      return bsnprintf(buf, blen, "rt %d,%d;", ((ec >> 32) & 0xffff), (ec & 0xffffffff));
+    case FLOW_ACTION_REDIRECT_AS4:
+      return bsnprintf(buf, blen, "rt %d,%d;", ((ec >> 16) & 0xffffffff), (ec & 0xffff));
+    case FLOW_ACTION_TRAFFIC_MARKING:
+      return bsnprintf(buf, blen, "dscp %d;", (ec & 0x3f));
+    default:
+      return 0;
+  }
 }

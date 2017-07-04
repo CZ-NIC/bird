@@ -35,16 +35,47 @@ static_nexthop_new(void)
 };
 
 static void
+static_route_start(net_addr *n)
+{
+  this_srt = cfg_allocz(sizeof(struct static_route));
+  add_tail(&STATIC_CFG->routes, &this_srt->n);
+  this_srt->net = n;
+  this_srt_last_cmd = &(this_srt->cmds);
+  this_srt->mp_next = NULL;
+  this_snh = NULL;
+}
+
+static void
 static_route_finish(void)
 {
   if (net_type_match(this_srt->net, NB_DEST) == !this_srt->dest)
     cf_error("Unexpected or missing nexthop/type");
 }
 
+static void
+static_flow_action(u64 ec)
+{
+  NEW_F_VAL;
+
+  val->type = T_EC; val->val.ec = ec;
+  struct f_inst *fic = f_new_inst();
+  fic->code = 'C'; fic->a1.p = val;
+  *this_srt_last_cmd = f_generate_complex(
+    P('C','a'), 'a',
+    f_new_dynamic_attr(EAF_TYPE_EC_SET, T_ECLIST, EA_CODE(EAP_BGP, BA_EXT_COMMUNITY)),
+    fic
+  );
+  this_srt_last_cmd = &((*this_srt_last_cmd)->next);
+}
+
 CF_DECLS
+
+%type <fl> float_rate
 
 CF_KEYWORDS(STATIC, ROUTE, VIA, DROP, REJECT, PROHIBIT, PREFERENCE, CHECK, LINK)
 CF_KEYWORDS(WEIGHT, RECURSIVE, IGP, TABLE, BLACKHOLE, UNREACHABLE, BFD, MPLS)
+CF_KEYWORDS(RATE, SAMPLE, LAST, DSCP)
+CF_KEYWORDS_CS(mBps, mbps, Bps, bps, kBps, kbps, MBps, Mbps, GBps, Gbps, TBps, Tbps)
 
 
 CF_GRAMMAR
@@ -102,12 +133,9 @@ stat_nexthops:
 ;
 
 stat_route0: ROUTE net_any {
-     this_srt = cfg_allocz(sizeof(struct static_route));
-     add_tail(&STATIC_CFG->routes, &this_srt->n);
-     this_srt->net = $2;
-     this_srt_last_cmd = &(this_srt->cmds);
-     this_srt->mp_next = NULL;
-     this_snh = NULL;
+     if (net_type_match($2, NB_FLOW))
+       cf_error("Flowspec rules are not routes. Apologize!");
+     static_route_start($2);
   }
  ;
 
@@ -128,6 +156,7 @@ stat_route:
  | stat_route0 BLACKHOLE	{ this_srt->dest = RTD_BLACKHOLE; }
  | stat_route0 UNREACHABLE	{ this_srt->dest = RTD_UNREACHABLE; }
  | stat_route0 PROHIBIT		{ this_srt->dest = RTD_PROHIBIT; }
+ | net_flow_ { static_route_start($1); } flowspec_action 
  ;
 
 stat_route_item:
@@ -144,6 +173,31 @@ stat_route_opt_list:
  | '{' stat_route_opts '}'
  ;
 
+flowspec_action: ACTION '{' flowspec_action0 '}' ;
+
+flowspec_action0:
+  /* empty */
+ | flowspec_action0 RATE float_rate ';' { static_flow_action(flow_action_encode_byterate(0, $3)); }
+ | flowspec_action0 SAMPLE ';' { static_flow_action(flow_action_encode_sample()); }
+ | flowspec_action0 LAST ';' { static_flow_action(flow_action_encode_last()); }
+ | flowspec_action0 RT cnum ',' cnum ';' { static_flow_action(flow_action_encode_redirect($3, $5)); }
+ | flowspec_action0 DSCP NUM ';' { static_flow_action(flow_action_encode_dscp($3)); }
+;
+
+float_rate:
+   NUM mBps { $$ = $1 / 1000.0; }
+ | NUM mbps { $$ = $1 / 8000.0; }
+ | NUM Bps { $$ = $1; }
+ | NUM bps { $$ = $1 / 8.0; }
+ | NUM kBps { $$ = 1000.0 * $1; }
+ | NUM kbps { $$ = 1000.0 * $1 / 8.0; }
+ | NUM MBps { $$ = 1000000.0 * $1; }
+ | NUM Mbps { $$ = 1000000.0 * $1 / 8.0; }
+ | NUM GBps { $$ = 1000000000.0 * $1; }
+ | NUM Gbps { $$ = 1000000000.0 * $1 / 8.0; }
+ | NUM TBps { $$ = 1000000000000.0 * $1; }
+ | NUM Tbps { $$ = 1000000000000.0 * $1 / 8.0; }
+;
 
 CF_CLI(SHOW STATIC, optsym, [<name>], [[Show details of static protocol]])
 { static_show(proto_get_named($3, &proto_static)); } ;

@@ -16,6 +16,7 @@
 #include "nest/iface.h"
 #include "filter/filter.h"
 #include "lib/flowspec.h"
+#include "proto/bgp/bgp.h"
 
 static void
 rt_show_table(struct cli *c, struct rt_show_data *d)
@@ -30,6 +31,46 @@ rt_show_table(struct cli *c, struct rt_show_data *d)
 }
 
 static void
+rt_flow_action_format(char *buf, uint blen, rte *e)
+{
+  int cnt;
+  cnt = bsnprintf(buf, blen, "action {\n\t");
+  ADVANCE(buf, blen, cnt);
+
+  eattr *ea = ea_find(e->attrs->eattrs, EA_CODE(EAP_BGP, BA_EXT_COMMUNITY));
+  if (!ea) goto noaction;
+
+  u32 *data = int_set_get_data(ea->u.ptr);
+  int max = int_set_get_size(ea->u.ptr);
+  int empty = 1;
+  for (int i=0; i<max; i++) {
+    cnt = flow_action_format_part(buf, blen - 4, ec_get(data, i));
+    if (cnt < 0) {
+      const char finish[] = " ... }";
+      memcpy(buf + blen - MAX(blen, sizeof(finish)), finish, sizeof(finish));
+      return;
+    }
+
+    if (!cnt)
+      continue;
+
+    buf[cnt] = '\n';
+    buf[cnt+1] = '\t';
+    ADVANCE(buf, blen, cnt+2);
+    empty = 0;
+  }
+
+  if (empty) {
+noaction:
+    buf[-2] = ' ';
+    buf[-1] = '}';
+  } else {
+    buf[-1] = '}';
+    buf[0] = 0;
+  }
+}
+
+static void
 rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tmpa)
 {
   byte from[IPA_MAX_TEXT_LENGTH+8];
@@ -39,6 +80,14 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
   int sync_error = (e->net->n.flags & KRF_SYNC_ERROR);
   void (*get_route_info)(struct rte *, byte *buf, struct ea_list *attrs);
   struct nexthop *nh;
+
+  byte ai[1024] = {0};
+  switch (e->net->n.addr->type) {
+    case NET_FLOW4:
+    case NET_FLOW6:
+      rt_flow_action_format(ai, sizeof(ai) - 1, e);
+      break;
+  }
 
   tm_format_datetime(tm, &config->tf_route, e->lastmod);
   if (ipa_nonzero(a->from) && !ipa_equal(a->from, a->nh.gw))
@@ -64,7 +113,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
   if (d->last_table != d->tab)
     rt_show_table(c, d);
 
-  cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", ia, rta_dest_name(a->dest),
+  cli_printf(c, -1007, "%-18s%s %s [%s %s%s]%s%s", ia, ai, rta_dest_name(a->dest),
 	     a->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
 
   if (a->dest == RTD_UNICAST)
@@ -103,8 +152,12 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d, const uint addr_type)
   switch (addr_type)
     {
       case NET_FLOW4:
-	flow4_net_format(ia, sizeof(ia), (net_addr_flow4 *) n->n.addr, "\n\t");
-	break;
+	{
+	  uint cnt = flow4_net_format(ia, sizeof(ia), (net_addr_flow4 *) n->n.addr, "\n\t");
+	  ia[cnt-2] = '}';
+	  ia[cnt-1] = '\n';
+	  break;
+	}
       case NET_FLOW6:
 	flow6_net_format(ia, sizeof(ia), (net_addr_flow6 *) n->n.addr, "\n\t");
 	break;

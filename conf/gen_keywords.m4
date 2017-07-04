@@ -25,8 +25,13 @@ m4_define(CF_DEFINES, `m4_divert(-1)')
 # Keywords are translated to C initializers
 m4_define(CF_handle_kw, `m4_divert(1){ "m4_translit($1,[[A-Z]],[[a-z]])", $1, NULL },
 m4_divert(-1)')
+m4_define(CF_handle_kw_cs, `m4_divert(1){ "$1", $1, NULL },
+m4_divert(-1)')
 m4_define(CF_keywd, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)CF_handle_kw($1)]])')
+m4_define(CF_keywd_cs, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)CF_handle_kw_cs($1)]])')
 m4_define(CF_KEYWORDS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd]], [[$@]])m4_ifelse(CF_toks,,,%token[[]]CF_toks
+)DNL')
+m4_define(CF_KEYWORDS_CS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd_cs]], [[$@]])m4_ifelse(CF_toks,,,%token[[]]CF_toks
 )DNL')
 
 # CLI commands generate keywords as well

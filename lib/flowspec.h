@@ -49,6 +49,33 @@ enum flow_type {
 
 const char *flow_type_str(enum flow_type type, int ipv6);
 
+#define FLOW_ACTION_TRAFFIC_BYTERATE	0x8006
+#define FLOW_ACTION_TRAFFIC_ACTION	0x8007
+#define FLOW_ACTION_REDIRECT_AS2	0x8008
+#define FLOW_ACTION_REDIRECT_IP4	0x8108	/* Not supported yet */
+#define FLOW_ACTION_REDIRECT_AS4	0x8208
+#define FLOW_ACTION_TRAFFIC_MARKING	0x8009
+
+#define FLOW_ACTION_LAST		0x000000000001ULL
+#define FLOW_ACTION_SAMPLE		0x000000000002ULL
+
+const char *flow_action_str(uint action);
+
+static inline u64 flow_action_encode(u16 key, u64 value)
+{ return value | (((u64) key) << 48); }
+u64 flow_action_encode_byterate(u16 asn, float rate);
+static inline u64 flow_action_encode_bitrate(u16 asn, float rate)
+{ return flow_action_encode_byterate(asn, rate/8); }
+static inline u64 flow_action_encode_sample(void)
+{ return flow_action_encode(FLOW_ACTION_TRAFFIC_ACTION, FLOW_ACTION_SAMPLE); }
+static inline u64 flow_action_encode_last(void)
+{ return flow_action_encode(FLOW_ACTION_TRAFFIC_ACTION, FLOW_ACTION_LAST); }
+u64 flow_action_encode_redirect(u64 asn, u64 val);
+static inline u64 flow_action_encode_dscp(u64 dscp)
+{ return (dscp & 0x3f) | (((u64) FLOW_ACTION_TRAFFIC_MARKING) << 48); }
+
+
+uint flow_action_format_part(char *buf, uint blen, u64 ec);
 
 /*
  * 	Length

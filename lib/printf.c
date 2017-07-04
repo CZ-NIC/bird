@@ -10,6 +10,7 @@
 #include "nest/bird.h"
 #include "string.h"
 
+#include <stdio.h>
 #include <errno.h>
 
 #include "nest/iface.h"
@@ -143,6 +144,8 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 	const char *s;
 	char ipbuf[NET_MAX_TEXT_LENGTH+1];
 	struct iface *iface;
+	const char *percent;
+	char fmtbuf[strlen(fmt)];
 
 	int flags;		/* flags to number() */
 
@@ -158,6 +161,8 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			*str++ = *fmt;
 			continue;
 		}
+
+		percent = fmt;
 
 		/* process flags */
 		flags = 0;
@@ -360,6 +365,12 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			s = ipbuf;
 			goto str;
 
+		/* float number formats delegated to stdio */
+		case 'f':
+			memcpy(fmtbuf, percent, (fmt - percent) + 1);
+			snprintf(ipbuf, sizeof(ipbuf), fmtbuf, va_arg(args, double));
+			s = ipbuf;
+			goto str;
 		/* integer number formats - set up the flags and "break" */
 		case 'o':
 			base = 8;

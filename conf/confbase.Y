@@ -39,6 +39,7 @@ CF_DECLS
   uint i;
   u32 i32;
   u64 i64;
+  float fl;
   ip_addr a;
   ip4_addr ip4;
   ip6_addr ip6;
