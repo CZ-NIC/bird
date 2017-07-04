@@ -70,6 +70,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
     for (nh = &(a->nh); nh; nh = nh->next)
     {
       char mpls[MPLS_MAX_LABEL_STACK*12 + 5], *lsp = mpls;
+      char *onlink = (nh->flags & RNF_ONLINK) ? " onlink" : "";
 
       if (nh->labels)
         {
@@ -80,9 +81,11 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
       *lsp = '\0';
 
       if (a->nh.next)
-	cli_printf(c, -1007, "\tvia %I%s on %s weight %d", nh->gw, mpls, nh->iface->name, nh->weight + 1);
+	cli_printf(c, -1007, "\tvia %I%s on %s%s weight %d",
+		   nh->gw, mpls, nh->iface->name, onlink, nh->weight + 1);
       else
-	cli_printf(c, -1007, "\tvia %I%s on %s", nh->gw, mpls, nh->iface->name);
+	cli_printf(c, -1007, "\tvia %I%s on %s%s",
+		   nh->gw, mpls, nh->iface->name, onlink);
     }
 
   if (d->verbose)

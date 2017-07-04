@@ -1819,7 +1819,10 @@ no_nexthop:
       }
     }
     if (ipa_nonzero(nh->gw))
-      nhp->gw = nh->gw;		/* Router nexthop */
+    {
+      nhp->gw = nh->gw;			/* Router nexthop */
+      nhp->flags |= (nh->flags & RNF_ONLINK);
+    }
     else if (ipa_nonzero(he->link))
       nhp->gw = he->link;		/* Device nexthop with link-local address known */
     else

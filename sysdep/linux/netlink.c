@@ -622,6 +622,9 @@ nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af)
 
     nl_add_nexthop(h, bufsize, nh, af);
 
+    if (nh->flags & RNF_ONLINK)
+      rtnh->rtnh_flags |= RTNH_F_ONLINK;
+
     nl_close_nexthop(h, rtnh);
   }
 
@@ -660,6 +663,7 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
       rv->next = NULL;
       last = &(rv->next);
 
+      rv->flags = 0;
       rv->weight = nh->rtnh_hops;
       rv->iface = if_find_by_index(nh->rtnh_ifindex);
       if (!rv->iface)
@@ -672,9 +676,12 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra)
 	{
 	  rv->gw = rta_get_ipa(a[RTA_GATEWAY]);
 
+	  if (nh->rtnh_flags & RTNH_F_ONLINK)
+	    rv->flags |= RNF_ONLINK;
+
 	  neighbor *nbr;
 	  nbr = neigh_find2(&p->p, &rv->gw, rv->iface,
-			    (nh->rtnh_flags & RTNH_F_ONLINK) ? NEF_ONLINK : 0);
+			    (rv->flags & RNF_ONLINK) ? NEF_ONLINK : 0);
 	  if (!nbr || (nbr->scope == SCOPE_HOST))
 	    return NULL;
 	}
@@ -1228,6 +1235,9 @@ dest:
       {
 	nl_add_attr_u32(&r->h, rsize, RTA_OIF, nh->iface->index);
 	nl_add_nexthop(&r->h, rsize, nh, p->af);
+
+	if (nh->flags & RNF_ONLINK)
+	  r->r.rtm_flags |= RTNH_F_ONLINK;
       }
       break;
     case RTD_BLACKHOLE:
@@ -1543,9 +1553,12 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	  if ((i->rtm_family == AF_INET6) && ipa_in_netX(ra->nh.gw, (net_addr *) &sit))
 	    return;
 
+	  if (i->rtm_flags & RTNH_F_ONLINK)
+	    ra->nh.flags |= RNF_ONLINK;
+
 	  neighbor *nbr;
 	  nbr = neigh_find2(&p->p, &(ra->nh.gw), ra->nh.iface,
-			    (i->rtm_flags & RTNH_F_ONLINK) ? NEF_ONLINK : 0);
+			    (ra->nh.flags & RNF_ONLINK) ? NEF_ONLINK : 0);
 	  if (!nbr || (nbr->scope == SCOPE_HOST))
 	    {
 	      log(L_ERR "KRT: Received route %N with strange next-hop %I", net->n.addr,
