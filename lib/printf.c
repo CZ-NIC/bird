@@ -145,7 +145,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 	char ipbuf[NET_MAX_TEXT_LENGTH+1];
 	struct iface *iface;
 	const char *percent;
-	char fmtbuf[strlen(fmt)];
+	char fmtbuf[13];
 
 	int flags;		/* flags to number() */
 

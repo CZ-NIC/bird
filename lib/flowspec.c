@@ -83,16 +83,14 @@ flow_type_str(enum flow_type type, int ipv6)
 const char *
 flow_action_str(uint action)
 {
-#define C(c, s) case c: return s
   switch(action) {
-    C(FLOW_ACTION_TRAFFIC_BYTERATE, "byterate");
-    C(FLOW_ACTION_TRAFFIC_ACTION, "action");
-    C(FLOW_ACTION_REDIRECT_AS2, "redirect");
-    C(FLOW_ACTION_REDIRECT_AS4, "redirect");
-    C(FLOW_ACTION_REDIRECT_IP4, "redirect");
-    C(FLOW_ACTION_TRAFFIC_MARKING, "mark");
+    case FLOW_ACTION_TRAFFIC_BYTERATE: return "byterate";
+    case FLOW_ACTION_TRAFFIC_ACTION: return "action";
+    case FLOW_ACTION_REDIRECT_AS2: return "redirect";
+    case FLOW_ACTION_REDIRECT_AS4: return "redirect";
+    case FLOW_ACTION_REDIRECT_IP4: return "redirect";
+    case FLOW_ACTION_TRAFFIC_MARKING: return "mark";
   }
-#undef C
   return NULL;
 }
 
@@ -1265,11 +1263,11 @@ flow_action_format_part(char *buf, uint blen, u64 ec)
 	return total;
       }
     case FLOW_ACTION_REDIRECT_AS2:
-      return bsnprintf(buf, blen, "rt %d,%d;", ((ec >> 32) & 0xffff), (ec & 0xffffffff));
+      return bsnprintf(buf, blen, "rt %lu,%lu;", ((ec >> 32) & 0xffff), (ec & 0xffffffff));
     case FLOW_ACTION_REDIRECT_AS4:
-      return bsnprintf(buf, blen, "rt %d,%d;", ((ec >> 16) & 0xffffffff), (ec & 0xffff));
+      return bsnprintf(buf, blen, "rt %lu,%lu;", ((ec >> 16) & 0xffffffff), (ec & 0xffff));
     case FLOW_ACTION_TRAFFIC_MARKING:
-      return bsnprintf(buf, blen, "dscp %d;", (ec & 0x3f));
+      return bsnprintf(buf, blen, "dscp %lu;", (ec & 0x3f));
     default:
       return 0;
   }
