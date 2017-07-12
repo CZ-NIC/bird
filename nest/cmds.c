@@ -99,16 +99,16 @@ get_cli_code_for_sym(struct symbol *sym)
 void
 cmd_send_symbols(void)
 {
-  int code, pos = 0;
-  struct symbol *sym = NULL;
+  int code = 0;
 
   cli_msg(RC_BIRD_VERSION_NUM, "%s", BIRD_VERSION);
 
-  while (sym = cf_walk_symbols(config, sym, &pos))
+  HASH_WALK(config->sym_hash, next, sym)
   {
     code = get_cli_code_for_sym(sym);
     cli_msg(code, "%s", sym->name);
   }
+  HASH_WALK_END;
 
   struct iface *i;
   WALK_LIST(i, iface_list)
