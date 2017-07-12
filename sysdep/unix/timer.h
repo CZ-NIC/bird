@@ -19,14 +19,14 @@ typedef struct timer {
   resource r;
   void (*hook)(struct timer *);
   void *data;
-  unsigned randomize;			/* Amount of randomization */
-  unsigned recurrent;			/* Timer recurrence */
+  uint randomize;			/* Amount of randomization */
+  uint recurrent;			/* Timer recurrence */
   node n;				/* Internal link */
   bird_clock_t expires;			/* 0=inactive */
 } timer;
 
 timer *tm_new(pool *);
-void tm_start(timer *, unsigned after);
+void tm_start(timer *, uint after);
 void tm_stop(timer *);
 void tm_dump_all(void);
 
@@ -47,14 +47,14 @@ tm_remains(timer *t)
 }
 
 static inline void
-tm_start_max(timer *t, unsigned after)
+tm_start_max(timer *t, bird_clock_t after)
 {
   bird_clock_t rem = tm_remains(t);
   tm_start(t, (rem > after) ? rem : after);
 }
 
 static inline timer *
-tm_new_set(pool *p, void (*hook)(struct timer *), void *data, unsigned rand, unsigned rec)
+tm_new_set(pool *p, void (*hook)(struct timer *), void *data, uint rand, uint rec)
 {
   timer *t = tm_new(p);
   t->hook = hook;

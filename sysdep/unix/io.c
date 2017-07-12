@@ -1344,6 +1344,7 @@ sk_tcp_connected(sock *s)
   s->tx_hook(s);
 }
 
+#ifdef HAVE_LIBSSH
 static void
 sk_ssh_connected(sock *s)
 {
@@ -1351,6 +1352,7 @@ sk_ssh_connected(sock *s)
   s->type = SK_SSH;
   s->tx_hook(s);
 }
+#endif
 
 static int
 sk_passive_connected(sock *s, int type)

@@ -126,7 +126,7 @@ static inline void
 ospf_check_defcost(int cost)
 {
   if ((cost <= 0) || (cost >= LSINFINITY))
-   cf_error("Default cost must be in range 1-%d", LSINFINITY-1);
+   cf_error("Default cost must be in range 1-%u", LSINFINITY-1);
 }
 
 static inline void
@@ -185,10 +185,10 @@ ospf_proto_item:
  | RFC1583COMPAT bool { OSPF_CFG->rfc1583 = $2; }
  | STUB ROUTER bool { OSPF_CFG->stub_router = $3; }
  | ECMP bool { OSPF_CFG->ecmp = $2 ? OSPF_DEFAULT_ECMP_LIMIT : 0; }
- | ECMP bool LIMIT expr { OSPF_CFG->ecmp = $2 ? $4 : 0; if ($4 < 0) cf_error("ECMP limit cannot be negative"); }
+ | ECMP bool LIMIT expr { OSPF_CFG->ecmp = $2 ? $4 : 0; }
  | MERGE EXTERNAL bool { OSPF_CFG->merge_external = $3; }
- | TICK expr { OSPF_CFG->tick = $2; if($2<=0) cf_error("Tick must be greater than zero"); }
- | INSTANCE ID expr { OSPF_CFG->instance_id = $3; if (($3<0) || ($3>255)) cf_error("Instance ID must be in range 0-255"); }
+ | TICK expr { OSPF_CFG->tick = $2; if($2 <= 0) cf_error("Tick must be greater than zero"); }
+ | INSTANCE ID expr { OSPF_CFG->instance_id = $3; if ($3 > 255) cf_error("Instance ID must be in range 0-255"); }
  | ospf_area
  ;
 
@@ -318,7 +318,7 @@ ospf_iface_item:
  | REAL BROADCAST bool { OSPF_PATT->real_bcast = $3; if (!ospf_cfg_is_v2()) cf_error("Real broadcast option requires OSPFv2"); }
  | PTP NETMASK bool { OSPF_PATT->ptp_netmask = $3; if (!ospf_cfg_is_v2()) cf_error("PtP netmask option requires OSPFv2"); }
  | TRANSMIT DELAY expr { OSPF_PATT->inftransdelay = $3 ; if (($3<=0) || ($3>65535)) cf_error("Transmit delay must be in range 1-65535"); }
- | PRIORITY expr { OSPF_PATT->priority = $2 ; if (($2<0) || ($2>255)) cf_error("Priority must be in range 0-255"); }
+ | PRIORITY expr { OSPF_PATT->priority = $2 ; if ($2>255) cf_error("Priority must be in range 0-255"); }
  | STRICT NONBROADCAST bool { OSPF_PATT->strictnbma = $3 ; }
  | STUB bool { OSPF_PATT->stub = $2 ; }
  | CHECK LINK bool { OSPF_PATT->check_link = $3; }
@@ -404,7 +404,7 @@ ospf_iface_start:
 
 ospf_instance_id:
    /* empty */
- | INSTANCE expr { OSPF_PATT->instance_id = $2; if (($2<0) || ($2>255)) cf_error("Instance ID must be in range 0-255"); }
+ | INSTANCE expr { OSPF_PATT->instance_id = $2; if ($2 > 255) cf_error("Instance ID must be in range 0-255"); }
  ;
 
 ospf_iface_patt_list:

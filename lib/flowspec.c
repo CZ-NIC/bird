@@ -754,7 +754,7 @@ flow_builder_add_val_mask(struct flow_builder *fb, byte op, u32 value, u32 mask)
   if (a)
   {
     flow_builder_add_op_val(fb, op ^ 0x01, a);
-    op |= 0x40;
+    op |= FLOW_OP_AND;
   }
 
   if (b)
@@ -897,34 +897,26 @@ flow_builder_clear(struct flow_builder *fb)
  */
 
 /* Flowspec operators for [op, value]+ pairs */
-#define FLOW_TRUE	0b000
-#define FLOW_EQ		0b001
-#define FLOW_GT		0b010
-#define FLOW_GTE	0b011
-#define FLOW_LT		0b100
-#define FLOW_LTE	0b101
-#define FLOW_NEQ	0b110
-#define FLOW_FALSE	0b111
 
 static const char *
 num_op_str(const byte *op)
 {
   switch (*op & 0x07)
   {
-  case FLOW_TRUE: 	return "true";
-  case FLOW_EQ: 	return "=";
-  case FLOW_GT: 	return ">";
-  case FLOW_GTE: 	return ">=";
-  case FLOW_LT: 	return "<";
-  case FLOW_LTE: 	return "<=";
-  case FLOW_NEQ: 	return "!=";
-  case FLOW_FALSE: 	return "false";
+  case FLOW_OP_TRUE:	return "true";
+  case FLOW_OP_EQ:	return "=";
+  case FLOW_OP_GT:	return ">";
+  case FLOW_OP_GEQ:	return ">=";
+  case FLOW_OP_LT:	return "<";
+  case FLOW_OP_LEQ:	return "<=";
+  case FLOW_OP_NEQ:	return "!=";
+  case FLOW_OP_FALSE:	return "false";
   }
 
   return NULL;
 }
 
-static u64
+static uint
 get_value(const byte *val, u8 len)
 {
   switch (len)
@@ -932,7 +924,8 @@ get_value(const byte *val, u8 len)
   case 1: return *val;
   case 2: return get_u16(val);
   case 4: return get_u32(val);
-  case 8: return get_u64(val);
+  // No component may have length 8
+  // case 8: return get_u64(val);
   }
 
   return 0;
@@ -974,7 +967,7 @@ net_format_flow_num(buffer *b, const byte *part)
 {
   const byte *last_op = NULL;
   const byte *op = part+1;
-  u64 val;
+  uint val;
   uint len;
   uint first = 1;
 
@@ -984,8 +977,8 @@ net_format_flow_num(buffer *b, const byte *part)
     {
       /* XXX: I don't like this so complicated if-tree */
       if (!isset_and(op) &&
-	  ((num_op(     op) == FLOW_EQ) || (num_op(     op) == FLOW_GTE)) &&
-	  ((num_op(last_op) == FLOW_EQ) || (num_op(last_op) == FLOW_LTE)))
+	  ((num_op(     op) == FLOW_OP_EQ) || (num_op(     op) == FLOW_OP_GEQ)) &&
+	  ((num_op(last_op) == FLOW_OP_EQ) || (num_op(last_op) == FLOW_OP_LEQ)))
       {
 	b->pos--; /* Remove last char (it is a space) */
 	buffer_puts(b, ",");
@@ -1001,7 +994,7 @@ net_format_flow_num(buffer *b, const byte *part)
     val = get_value(op+1, len);
 
     if (!isset_end(op) && !isset_and(op) && isset_and(op+1+len) &&
-	(num_op(op) == FLOW_GTE) && (num_op(op+1+len) == FLOW_LTE))
+	(num_op(op) == FLOW_OP_GEQ) && (num_op(op+1+len) == FLOW_OP_LEQ))
     {
       /* Display interval */
       buffer_print(b, "%u..", val);
@@ -1010,7 +1003,7 @@ net_format_flow_num(buffer *b, const byte *part)
       val = get_value(op+1, len);
       buffer_print(b, "%u", val);
     }
-    else if (num_op(op) == FLOW_EQ)
+    else if (num_op(op) == FLOW_OP_EQ)
     {
       buffer_print(b, "%u", val);
     }
@@ -1038,7 +1031,7 @@ static void
 net_format_flow_bitmask(buffer *b, const byte *part)
 {
   const byte *op = part+1;
-  u64 val;
+  uint val;
   uint len;
   uint first = 1;
 

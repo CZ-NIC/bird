@@ -47,7 +47,7 @@ static void proto_shutdown_loop(struct timer *);
 static void proto_rethink_goal(struct proto *p);
 static char *proto_state_name(struct proto *p);
 static void channel_verify_limits(struct channel *c);
-static void channel_reset_limit(struct channel_limit *l);
+static inline void channel_reset_limit(struct channel_limit *l);
 
 
 static inline int proto_is_done(struct proto *p)

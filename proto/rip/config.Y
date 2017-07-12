@@ -65,7 +65,7 @@ rip_proto_item:
    proto_item
  | proto_channel
  | ECMP bool		{ RIP_CFG->ecmp = $2 ? RIP_DEFAULT_ECMP_LIMIT : 0; }
- | ECMP bool LIMIT expr	{ RIP_CFG->ecmp = $2 ? $4 : 0; if ($4 < 0) cf_error("ECMP limit cannot be negative"); }
+ | ECMP bool LIMIT expr	{ RIP_CFG->ecmp = $2 ? $4 : 0; }
  | INFINITY expr	{ RIP_CFG->infinity = $2; }
  | INTERFACE rip_iface
  ;

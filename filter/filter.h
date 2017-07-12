@@ -19,11 +19,11 @@ struct f_inst {		/* Instruction */
   u16 code;		/* Instruction code, see the interpret() function and P() macro */
   u16 aux;		/* Extension to instruction code, T_*, EA_*, EAF_*  */
   union {
-    int i;
+    uint i;
     void *p;
   } a1;			/* The first argument */
   union {
-    int i;
+    uint i;
     void *p;
   } a2;			/* The second argument */
   int lineno;

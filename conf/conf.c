@@ -166,7 +166,7 @@ int
 cli_parse(struct config *c)
 {
   int done = 0;
-  c->sym_fallback = config->sym_hash;
+  c->fallback = config;
   new_config = c;
   cfg_mem = c->mem;
   if (setjmp(conf_jmpbuf))
@@ -177,7 +177,7 @@ cli_parse(struct config *c)
   done = 1;
 
 cleanup:
-  c->sym_fallback = NULL;
+  c->fallback = NULL;
   new_config = NULL;
   cfg_mem = NULL;
   return done;

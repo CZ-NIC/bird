@@ -728,8 +728,8 @@ fprefix:
  | net_ip_ '-'	{ $$.net = $1; $$.lo = 0; $$.hi = $1.pxlen; }
  | net_ip_ '{' NUM ',' NUM '}' {
      $$.net = $1; $$.lo = $3; $$.hi = $5;
-     if ((0 > $3) || ($3 > $5) || ($5 > net_max_prefix_length[$1.type]))
-       cf_error("Invalid prefix pattern range: {%d, %d}", $3, $5);
+     if (($3 > $5) || ($5 > net_max_prefix_length[$1.type]))
+       cf_error("Invalid prefix pattern range: {%u, %u}", $3, $5);
    }
  ;
 
