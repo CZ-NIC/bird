@@ -171,7 +171,9 @@ nexthop__same(struct nexthop *x, struct nexthop *y)
 {
   for (; x && y; x = x->next, y = y->next)
   {
-    if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) || (x->weight != y->weight) || (x->labels != y->labels))
+    if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) ||
+	(x->flags != y->flags) || (x->weight != y->weight) ||
+	(x->labels != y->labels))
       return 0;
 
     for (int i = 0; i < x->labels; i++)
@@ -192,6 +194,8 @@ nexthop_compare_node(struct nexthop *x, struct nexthop *y)
 
   if (!y)
     return -1;
+
+  /* Should we also compare flags ? */
 
   r = ((int) y->weight) - ((int) x->weight);
   if (r)

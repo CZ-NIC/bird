@@ -43,6 +43,7 @@ struct static_route {
   byte dest;				/* Destination type (RTD_*) */
   byte state;				/* State of route announcement (SRS_*) */
   byte active;				/* Next hop is active (nbr/iface/BFD available) */
+  byte onlink;				/* Gateway is onlink regardless of IP ranges */
   byte weight;				/* Multipath next hop weight */
   byte use_bfd;				/* Configured to use BFD */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */

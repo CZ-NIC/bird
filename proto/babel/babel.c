@@ -78,13 +78,15 @@ babel_init_entry(void *E)
 static inline struct babel_entry *
 babel_find_entry(struct babel_proto *p, const net_addr *n)
 {
-  return fib_find(&p->rtable, n);
+  struct fib *rtable = (n->type == NET_IP4) ? &p->ip4_rtable : &p->ip6_rtable;
+  return fib_find(rtable, n);
 }
 
 static struct babel_entry *
 babel_get_entry(struct babel_proto *p, const net_addr *n)
 {
-  struct babel_entry *e = fib_get(&p->rtable, n);
+  struct fib *rtable = (n->type == NET_IP4) ? &p->ip4_rtable : &p->ip6_rtable;
+  struct babel_entry *e = fib_get(rtable, n);
   e->proto = p;
   return e;
 }
@@ -224,15 +226,15 @@ babel_refresh_route(struct babel_route *r)
 }
 
 static void
-babel_expire_routes(struct babel_proto *p)
+babel_expire_routes_(struct babel_proto *p UNUSED, struct fib *rtable)
 {
   struct babel_route *r, *rx;
   struct fib_iterator fit;
 
-  FIB_ITERATE_INIT(&fit, &p->rtable);
+  FIB_ITERATE_INIT(&fit, rtable);
 
 loop:
-  FIB_ITERATE_START(&p->rtable, &fit, struct babel_entry, e)
+  FIB_ITERATE_START(rtable, &fit, struct babel_entry, e)
   {
     int changed = 0;
 
@@ -253,7 +255,7 @@ loop:
       /*
        * We have to restart the iteration because there may be a cascade of
        * synchronous events babel_select_route() -> nest table change ->
-       * babel_rt_notify() -> p->rtable change, invalidating hidden variables.
+       * babel_rt_notify() -> rtable change, invalidating hidden variables.
        */
 
       FIB_ITERATE_PUT(&fit);
@@ -267,11 +269,18 @@ loop:
     if (EMPTY_LIST(e->sources) && EMPTY_LIST(e->routes))
     {
       FIB_ITERATE_PUT(&fit);
-      fib_delete(&p->rtable, e);
+      fib_delete(rtable, e);
       goto loop;
     }
   }
   FIB_ITERATE_END;
+}
+
+static void
+babel_expire_routes(struct babel_proto *p)
+{
+  babel_expire_routes_(p, &p->ip4_rtable);
+  babel_expire_routes_(p, &p->ip6_rtable);
 }
 
 static struct babel_neighbor *
@@ -468,6 +477,7 @@ static void
 babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
 {
   struct babel_route *r = e->selected_in;
+  struct channel *c = (e->n.addr->type == NET_IP4) ? p->ip4_channel : p->ip6_channel;
 
   if (r)
   {
@@ -490,12 +500,12 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
     rte->u.babel.router_id = r->router_id;
     rte->pflags = 0;
 
-    rte_update(&p->p, e->n.addr, rte);
+    rte_update2(c, e->n.addr, rte, p->p.main_source);
   }
   else
   {
     /* Retraction */
-    rte_update(&p->p, e->n.addr, NULL);
+    rte_update2(c, e->n.addr, NULL, p->p.main_source);
   }
 }
 
@@ -740,11 +750,11 @@ babel_unicast_seqno_request(struct babel_route *r)
  * transmitted entry is updated.
  */
 static void
-babel_send_update(struct babel_iface *ifa, bird_clock_t changed)
+babel_send_update_(struct babel_iface *ifa, bird_clock_t changed, struct fib *rtable)
 {
   struct babel_proto *p = ifa->proto;
 
-  FIB_WALK(&p->rtable, struct babel_entry, e)
+  FIB_WALK(rtable, struct babel_entry, e)
   {
     struct babel_route *r = e->selected_out;
 
@@ -774,6 +784,9 @@ babel_send_update(struct babel_iface *ifa, bird_clock_t changed)
     msg.update.router_id = r->router_id;
     net_copy(&msg.update.net, e->n.addr);
 
+    msg.update.next_hop = ((e->n.addr->type == NET_IP4) ?
+			   ifa->next_hop_ip4 : ifa->next_hop_ip6);
+
     babel_enqueue(&msg, ifa);
 
     /* Update feasibility distance for redistributed routes */
@@ -791,6 +804,15 @@ babel_send_update(struct babel_iface *ifa, bird_clock_t changed)
     }
   }
   FIB_WALK_END;
+}
+
+static void
+babel_send_update(struct babel_iface *ifa, bird_clock_t changed)
+{
+  struct babel_proto *p = ifa->proto;
+
+  babel_send_update_(ifa, changed, &p->ip4_rtable);
+  babel_send_update_(ifa, changed, &p->ip6_rtable);
 }
 
 static void
@@ -1070,6 +1092,13 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
   if (msg->router_id == p->router_id)
   {
     DBG("Babel: Ignoring update for our own router ID.\n");
+    return;
+  }
+
+  struct channel *c = (msg->net.type == NET_IP4) ? p->ip4_channel : p->ip6_channel;
+  if (!c || (c->channel_state != CS_UP))
+  {
+    DBG("Babel: Ignoring update for inactive address family.\n");
     return;
   }
 
@@ -1475,13 +1504,25 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
 
   add_tail(&p->interfaces, NODE ifa);
 
+  ip_addr addr4 = IPA_NONE;
   struct ifa *addr;
   WALK_LIST(addr, new->addrs)
+  {
     if (ipa_is_link_local(addr->ip))
       ifa->addr = addr->ip;
 
+    if (ipa_zero(addr4) && ipa_is_ip4(addr->ip))
+      addr4 = addr->ip;
+  }
+
+  ifa->next_hop_ip4 = ipa_nonzero(ic->next_hop_ip4) ? ic->next_hop_ip4 : addr4;
+  ifa->next_hop_ip6 = ipa_nonzero(ic->next_hop_ip6) ? ic->next_hop_ip6 : ifa->addr;
+
   if (ipa_zero(ifa->addr))
     log(L_WARN "%s: Cannot find link-local addr on %s", p->p.name, new->name);
+
+  if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
+    log(L_WARN "%s: Cannot find IPv4 next hop addr on %s", p->p.name, new->name);
 
   init_list(&ifa->neigh_list);
   ifa->hello_seqno = 1;
@@ -1573,6 +1614,26 @@ babel_reconfigure_iface(struct babel_proto *p, struct babel_iface *ifa, struct b
   TRACE(D_EVENTS, "Reconfiguring interface %s", ifa->iface->name);
 
   ifa->cf = new;
+
+  if (ipa_nonzero(new->next_hop_ip4))
+    ifa->next_hop_ip4 = new->next_hop_ip4;
+  else
+  {
+    ifa->next_hop_ip4 = IPA_NONE;
+
+    struct ifa *addr;
+    WALK_LIST(addr, ifa->iface->addrs)
+      if (ipa_is_ip4(addr->ip))
+      {
+	ifa->next_hop_ip4 = addr->ip;
+	break;
+      }
+  }
+
+  ifa->next_hop_ip6 = ipa_nonzero(new->next_hop_ip6) ? new->next_hop_ip6 : ifa->addr;
+
+  if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
+    log(L_WARN "%s: Cannot find IPv4 next hop addr on %s", p->p.name, ifa->ifname);
 
   if (ifa->next_hello > (now + new->hello_interval))
     ifa->next_hello = now + (random() % new->hello_interval) + 1;
@@ -1680,9 +1741,10 @@ babel_dump_iface(struct babel_iface *ifa)
 {
   struct babel_neighbor *n;
 
-  debug("Babel: Interface %s addr %I rxcost %d type %d hello seqno %d intervals %d %d\n",
+  debug("Babel: Interface %s addr %I rxcost %d type %d hello seqno %d intervals %d %d",
 	ifa->ifname, ifa->addr, ifa->cf->rxcost, ifa->cf->type, ifa->hello_seqno,
 	ifa->cf->hello_interval, ifa->cf->update_interval);
+  debug(" next hop v4 %I next hop v6 %I\n", ifa->next_hop_ip4, ifa->next_hop_ip6);
 
   WALK_LIST(n, ifa->neigh_list)
   { debug(" "); babel_dump_neighbor(n); }
@@ -1699,7 +1761,12 @@ babel_dump(struct proto *P)
   WALK_LIST(ifa, p->interfaces)
     babel_dump_iface(ifa);
 
-  FIB_WALK(&p->rtable, struct babel_entry, e)
+  FIB_WALK(&p->ip4_rtable, struct babel_entry, e)
+  {
+    babel_dump_entry(e);
+  }
+  FIB_WALK_END;
+  FIB_WALK(&p->ip6_rtable, struct babel_entry, e)
   {
     babel_dump_entry(e);
   }
@@ -1749,8 +1816,9 @@ babel_show_interfaces(struct proto *P, char *iff)
   }
 
   cli_msg(-1023, "%s:", p->p.name);
-  cli_msg(-1023, "%-10s %-6s %7s %6s %6s",
-	  "Interface", "State", "RX cost", "Nbrs", "Timer");
+  cli_msg(-1023, "%-10s %-6s %7s %6s %6s %-15s %s",
+	  "Interface", "State", "RX cost", "Nbrs", "Timer",
+	  "Next hop (v4)", "Next hop (v6)");
 
   WALK_LIST(ifa, p->interfaces)
   {
@@ -1762,8 +1830,10 @@ babel_show_interfaces(struct proto *P, char *iff)
 	nbrs++;
 
     int timer = MIN(ifa->next_regular, ifa->next_hello) - now;
-    cli_msg(-1023, "%-10s %-6s %7u %6u %6u",
-	    ifa->iface->name, (ifa->up ? "Up" : "Down"), ifa->cf->rxcost, nbrs, MAX(timer, 0));
+    cli_msg(-1023, "%-10s %-6s %7u %6u %6u %-15I %I",
+	    ifa->iface->name, (ifa->up ? "Up" : "Down"),
+	    ifa->cf->rxcost, nbrs, MAX(timer, 0),
+	    ifa->next_hop_ip4, ifa->next_hop_ip6);
   }
 
   cli_msg(0, "");
@@ -1808,27 +1878,15 @@ babel_show_neighbors(struct proto *P, char *iff)
   cli_msg(0, "");
 }
 
-void
-babel_show_entries(struct proto *P)
+static void
+babel_show_entries_(struct babel_proto *p, struct fib *rtable)
 {
-  struct babel_proto *p = (void *) P;
   struct babel_source *s = NULL;
   struct babel_route *r = NULL;
 
   char ridbuf[ROUTER_ID_64_LENGTH+1];
 
-  if (p->p.proto_state != PS_UP)
-  {
-    cli_msg(-1025, "%s: is not up", p->p.name);
-    cli_msg(0, "");
-    return;
-  }
-
-  cli_msg(-1025, "%s:", p->p.name);
-  cli_msg(-1025, "%-29s %-23s %6s %5s %7s %7s",
-	  "Prefix", "Router ID", "Metric", "Seqno", "Expires", "Sources");
-
-  FIB_WALK(&p->rtable, struct babel_entry, e)
+  FIB_WALK(rtable, struct babel_entry, e)
   {
     r = e->selected_in ? e->selected_in : e->selected_out;
 
@@ -1853,6 +1911,26 @@ babel_show_entries(struct proto *P)
     }
   }
   FIB_WALK_END;
+}
+
+void
+babel_show_entries(struct proto *P)
+{
+  struct babel_proto *p = (void *) P;
+
+  if (p->p.proto_state != PS_UP)
+  {
+    cli_msg(-1025, "%s: is not up", p->p.name);
+    cli_msg(0, "");
+    return;
+  }
+
+  cli_msg(-1025, "%s:", p->p.name);
+  cli_msg(-1025, "%-29s %-23s %6s %5s %7s %7s",
+	  "Prefix", "Router ID", "Metric", "Seqno", "Expires", "Sources");
+
+  babel_show_entries_(p, &p->ip4_rtable);
+  babel_show_entries_(p, &p->ip6_rtable);
 
   cli_msg(0, "");
 }
@@ -2028,8 +2106,10 @@ static struct proto *
 babel_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
+  struct babel_proto *p = (void *) P;
 
-  P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
+  proto_configure_channel(P, &p->ip4_channel, proto_cf_find_channel(CF, NET_IP4));
+  proto_configure_channel(P, &p->ip6_channel, proto_cf_find_channel(CF, NET_IP6));
 
   P->if_notify = babel_if_notify;
   P->rt_notify = babel_rt_notify;
@@ -2048,8 +2128,11 @@ babel_start(struct proto *P)
   struct babel_proto *p = (void *) P;
   struct babel_config *cf = (void *) P->cf;
 
-  fib_init(&p->rtable, P->pool, NET_IP6, sizeof(struct babel_entry),
+  fib_init(&p->ip4_rtable, P->pool, NET_IP4, sizeof(struct babel_entry),
 	   OFFSETOF(struct babel_entry, n), 0, babel_init_entry);
+  fib_init(&p->ip6_rtable, P->pool, NET_IP6, sizeof(struct babel_entry),
+	   OFFSETOF(struct babel_entry, n), 0, babel_init_entry);
+
   init_list(&p->interfaces);
   p->timer = tm_new_set(P->pool, babel_timer, p, 0, 1);
   tm_start(p->timer, 2);
@@ -2099,7 +2182,8 @@ babel_reconfigure(struct proto *P, struct proto_config *CF)
 
   TRACE(D_EVENTS, "Reconfiguring");
 
-  if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
+  if (!proto_configure_channel(P, &p->ip4_channel, proto_cf_find_channel(CF, NET_IP4)) ||
+      !proto_configure_channel(P, &p->ip6_channel, proto_cf_find_channel(CF, NET_IP6)))
     return 0;
 
   p->p.cf = CF;
@@ -2117,7 +2201,7 @@ struct protocol proto_babel = {
   .template =		"babel%d",
   .attr_class =		EAP_BABEL,
   .preference =		DEF_PREF_BABEL,
-  .channel_mask =	NB_IP6,
+  .channel_mask =	NB_IP,
   .proto_size =		sizeof(struct babel_proto),
   .config_size =	sizeof(struct babel_config),
   .init =		babel_init,

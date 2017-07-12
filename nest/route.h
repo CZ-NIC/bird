@@ -366,11 +366,15 @@ struct nexthop {
   ip_addr gw;				/* Next hop */
   struct iface *iface;			/* Outgoing interface */
   struct nexthop *next;
+  byte flags;
   byte weight;
   byte labels_orig;			/* Number of labels before hostentry was applied */
   byte labels;				/* Number of all labels */
   u32 label[0];
 };
+
+#define RNF_ONLINK		0x1	/* Gateway is onlink regardless of IP ranges */
+
 
 struct rte_src {
   struct rte_src *next;			/* Hash chain */

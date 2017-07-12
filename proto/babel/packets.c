@@ -112,13 +112,15 @@ struct babel_parse_state {
   struct babel_proto *proto;
   struct babel_iface *ifa;
   ip_addr saddr;
-  ip_addr next_hop;
+  ip_addr next_hop_ip4;
+  ip_addr next_hop_ip6;
   u64 router_id;		/* Router ID used in subsequent updates */
   u8 def_ip6_prefix[16];	/* Implicit IPv6 prefix in network order */
   u8 def_ip4_prefix[4];		/* Implicit IPv4 prefix in network order */
   u8 router_id_seen;		/* router_id field is valid */
   u8 def_ip6_prefix_seen;	/* def_ip6_prefix is valid */
   u8 def_ip4_prefix_seen;	/* def_ip4_prefix is valid */
+  u8 current_tlv_endpos;	/* End of self-terminating TLVs (offset from start) */
 };
 
 enum parse_result {
@@ -130,7 +132,10 @@ enum parse_result {
 struct babel_write_state {
   u64 router_id;
   u8 router_id_seen;
-//  ip_addr next_hop;
+  ip_addr next_hop_ip4;
+  ip_addr next_hop_ip6;
+  u8 def_ip6_prefix[16];	/* Implicit IPv6 prefix in network order */
+  u8 def_ip6_pxlen;
 };
 
 
@@ -148,6 +153,14 @@ struct babel_write_state {
 
 #define NET_SIZE(n) BYTES(net_pxlen(n))
 
+static inline uint
+bytes_equal(u8 *b1, u8 *b2, uint maxlen)
+{
+  uint i;
+  for (i = 0; (i < maxlen) && (*b1 == *b2); i++, b1++, b2++)
+    ;
+  return i;
+}
 
 static inline u16
 get_time16(const void *p)
@@ -160,6 +173,21 @@ static inline void
 put_time16(void *p, u16 v)
 {
   put_u16(p, v * BABEL_TIME_UNITS);
+}
+
+static inline void
+read_ip4_px(net_addr *n, const void *p, uint plen)
+{
+  ip4_addr addr = {0};
+  memcpy(&addr, p, BYTES(plen));
+  net_fill_ip4(n, ip4_ntoh(addr), plen);
+}
+
+static inline void
+put_ip4_px(void *p, net_addr *n)
+{
+  ip4_addr addr = ip4_hton(net4_prefix(n));
+  memcpy(p, &addr, NET_SIZE(n));
 }
 
 static inline void
@@ -352,14 +380,33 @@ babel_read_ihu(struct babel_tlv *hdr, union babel_msg *m,
   if (msg->ae >= BABEL_AE_MAX)
     return PARSE_IGNORE;
 
-  // We handle link-local IPs. In every other case, the addr field will be 0 but
-  // validation will succeed. The handler takes care of these cases.
-  if (msg->ae == BABEL_AE_IP6_LL)
+  /*
+   * We only actually read link-local IPs. In every other case, the addr field
+   * will be 0 but validation will succeed. The handler takes care of these
+   * cases. We handle them here anyway because we need the length for parsing
+   * subtlvs.
+   */
+  switch (msg->ae)
   {
+  case BABEL_AE_IP4:
+    if (TLV_OPT_LENGTH(tlv) < 4)
+      return PARSE_ERROR;
+    state->current_tlv_endpos += 4;
+    break;
+
+  case BABEL_AE_IP6:
+    if (TLV_OPT_LENGTH(tlv) < 16)
+      return PARSE_ERROR;
+    state->current_tlv_endpos += 16;
+    break;
+
+  case BABEL_AE_IP6_LL:
     if (TLV_OPT_LENGTH(tlv) < 8)
       return PARSE_ERROR;
 
     msg->addr = ipa_from_ip6(get_ip6_ll(&tlv->addr));
+    state->current_tlv_endpos += 8;
+    break;
   }
 
   return PARSE_SUCCESS;
@@ -432,21 +479,27 @@ babel_read_next_hop(struct babel_tlv *hdr, union babel_msg *m UNUSED,
     return PARSE_ERROR;
 
   case BABEL_AE_IP4:
-    /* TODO */
+    if (TLV_OPT_LENGTH(tlv) < sizeof(ip4_addr))
+      return PARSE_ERROR;
+
+    state->next_hop_ip4 = ipa_from_ip4(get_ip4(&tlv->addr));
+    state->current_tlv_endpos += sizeof(ip4_addr);
     return PARSE_IGNORE;
 
   case BABEL_AE_IP6:
     if (TLV_OPT_LENGTH(tlv) < sizeof(ip6_addr))
       return PARSE_ERROR;
 
-    state->next_hop = ipa_from_ip6(get_ip6(&tlv->addr));
+    state->next_hop_ip6 = ipa_from_ip6(get_ip6(&tlv->addr));
+    state->current_tlv_endpos += sizeof(ip6_addr);
     return PARSE_IGNORE;
 
   case BABEL_AE_IP6_LL:
     if (TLV_OPT_LENGTH(tlv) < 8)
       return PARSE_ERROR;
 
-    state->next_hop = ipa_from_ip6(get_ip6_ll(&tlv->addr));
+    state->next_hop_ip6 = ipa_from_ip6(get_ip6_ll(&tlv->addr));
+    state->current_tlv_endpos += 8;
     return PARSE_IGNORE;
 
   default:
@@ -454,6 +507,51 @@ babel_read_next_hop(struct babel_tlv *hdr, union babel_msg *m UNUSED,
   }
 
   return PARSE_IGNORE;
+}
+
+/* This is called directly from babel_write_update() and returns -1 if a next
+   hop should be written but there is not enough space. */
+static int
+babel_write_next_hop(struct babel_tlv *hdr, ip_addr addr,
+		     struct babel_write_state *state, uint max_len)
+{
+  struct babel_tlv_next_hop *tlv = (void *) hdr;
+
+  if (ipa_zero(addr))
+  {
+    /* Should not happen */
+    return 0;
+  }
+  else if (ipa_is_ip4(addr) && !ipa_equal(addr, state->next_hop_ip4))
+  {
+    uint len = sizeof(struct babel_tlv_next_hop) + sizeof(ip4_addr);
+    if (len > max_len)
+      return -1;
+
+    TLV_HDR(tlv, BABEL_TLV_NEXT_HOP, len);
+
+    tlv->ae = BABEL_AE_IP4;
+    put_ip4(&tlv->addr, ipa_to_ip4(addr));
+    state->next_hop_ip4 = addr;
+
+    return len;
+  }
+  else if (ipa_is_ip6(addr) && !ipa_equal(addr, state->next_hop_ip6))
+  {
+    uint len = sizeof(struct babel_tlv_next_hop) + sizeof(ip6_addr);
+    if (len > max_len)
+      return -1;
+
+    TLV_HDR(tlv, BABEL_TLV_NEXT_HOP, len);
+
+    tlv->ae = BABEL_AE_IP6;
+    put_ip6(&tlv->addr, ipa_to_ip6(addr));
+    state->next_hop_ip6 = addr;
+
+    return len;
+  }
+
+  return 0;
 }
 
 static int
@@ -488,8 +586,33 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     break;
 
   case BABEL_AE_IP4:
-    /* TODO */
-    return PARSE_IGNORE;
+    if (tlv->plen > IP4_MAX_PREFIX_LENGTH)
+      return PARSE_ERROR;
+
+    /* Cannot omit data if there is no saved prefix */
+    if (tlv->omitted && !state->def_ip4_prefix_seen)
+      return PARSE_ERROR;
+
+    /* Need next hop for v4 routes */
+    if (ipa_zero(state->next_hop_ip4))
+      return PARSE_ERROR;
+
+    /* Merge saved prefix and received prefix parts */
+    memcpy(buf, state->def_ip4_prefix, tlv->omitted);
+    memcpy(buf + tlv->omitted, tlv->addr, len);
+
+    ip4_addr prefix4 = get_ip4(buf);
+    net_fill_ip4(&msg->net, prefix4, tlv->plen);
+
+    if (tlv->flags & BABEL_FLAG_DEF_PREFIX)
+    {
+      put_ip4(state->def_ip4_prefix, prefix4);
+      state->def_ip4_prefix_seen = 1;
+    }
+
+    msg->next_hop = state->next_hop_ip4;
+
+    break;
 
   case BABEL_AE_IP6:
     if (tlv->plen > IP6_MAX_PREFIX_LENGTH)
@@ -503,20 +626,23 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     memcpy(buf, state->def_ip6_prefix, tlv->omitted);
     memcpy(buf + tlv->omitted, tlv->addr, len);
 
-    ip6_addr prefix = get_ip6(buf);
-    net_fill_ip6(&msg->net, prefix, tlv->plen);
+    ip6_addr prefix6 = get_ip6(buf);
+    net_fill_ip6(&msg->net, prefix6, tlv->plen);
 
     if (tlv->flags & BABEL_FLAG_DEF_PREFIX)
     {
-      put_ip6(state->def_ip6_prefix, prefix);
+      put_ip6(state->def_ip6_prefix, prefix6);
       state->def_ip6_prefix_seen = 1;
     }
 
     if (tlv->flags & BABEL_FLAG_ROUTER_ID)
     {
-      state->router_id = ((u64) _I2(prefix)) << 32 | _I3(prefix);
+      state->router_id = ((u64) _I2(prefix6)) << 32 | _I3(prefix6);
       state->router_id_seen = 1;
     }
+
+    msg->next_hop = state->next_hop_ip6;
+
     break;
 
   case BABEL_AE_IP6_LL:
@@ -535,8 +661,8 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
   }
 
   msg->router_id = state->router_id;
-  msg->next_hop = state->next_hop;
   msg->sender = state->saddr;
+  state->current_tlv_endpos += len;
 
   return PARSE_SUCCESS;
 }
@@ -545,7 +671,6 @@ static uint
 babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
                    struct babel_write_state *state, uint max_len)
 {
-  struct babel_tlv_update *tlv = (void *) hdr;
   struct babel_msg_update *msg = &m->update;
   uint len0 = 0;
 
@@ -554,15 +679,34 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
    * both of them. There is enough space for the Router-ID TLV, because
    * sizeof(struct babel_tlv_router_id) == sizeof(struct babel_tlv_update).
    *
-   * Router ID is not used for retractions, so do not us it in such case.
+   * Router ID is not used for retractions, so do not use it in such case.
    */
   if ((msg->metric < BABEL_INFINITY) &&
       (!state->router_id_seen || (msg->router_id != state->router_id)))
   {
     len0 = babel_write_router_id(hdr, msg->router_id, state, max_len);
-    tlv = (struct babel_tlv_update *) NEXT_TLV(tlv);
+    hdr = NEXT_TLV(hdr);
   }
 
+  /*
+   * We also may add Next Hop TLV for regular updates. It may fail for not
+   * enough space or it may be unnecessary as the next hop is the same as the
+   * last one already announced. So we handle all three cases.
+   */
+  if (msg->metric < BABEL_INFINITY)
+  {
+    int l = babel_write_next_hop(hdr, msg->next_hop, state, max_len - len0);
+    if (l < 0)
+      return 0;
+
+    if (l)
+    {
+      len0 += l;
+      hdr = NEXT_TLV(hdr);
+    }
+  }
+
+  struct babel_tlv_update *tlv = (void *) hdr;
   uint len = sizeof(struct babel_tlv_update) + NET_SIZE(&msg->net);
 
   if (len0 + len > max_len)
@@ -576,11 +720,39 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
     tlv->ae = BABEL_AE_WILDCARD;
     tlv->plen = 0;
   }
+  else if (msg->net.type == NET_IP4)
+  {
+    tlv->ae = BABEL_AE_IP4;
+    tlv->plen = net4_pxlen(&msg->net);
+    put_ip4_px(tlv->addr, &msg->net);
+  }
   else
   {
     tlv->ae = BABEL_AE_IP6;
     tlv->plen = net6_pxlen(&msg->net);
-    put_ip6_px(tlv->addr, &msg->net);
+
+    /* Address compression - omit initial matching bytes */
+    u8 buf[16], omit;
+    put_ip6(buf, net6_prefix(&msg->net));
+    omit = bytes_equal(buf, state->def_ip6_prefix,
+		       MIN(tlv->plen, state->def_ip6_pxlen) / 8);
+
+    if (omit > 0)
+    {
+      memcpy(tlv->addr, buf + omit, NET_SIZE(&msg->net) - omit);
+
+      tlv->omitted = omit;
+      tlv->length -= omit;
+      len -= omit;
+    }
+    else
+    {
+      put_ip6_px(tlv->addr, &msg->net);
+      tlv->flags |= BABEL_FLAG_DEF_PREFIX;
+
+      put_ip6(state->def_ip6_prefix, net6_prefix(&msg->net));
+      state->def_ip6_pxlen = tlv->plen;
+    }
   }
 
   put_time16(&tlv->interval, msg->interval);
@@ -610,8 +782,15 @@ babel_read_route_request(struct babel_tlv *hdr, union babel_msg *m,
     return PARSE_SUCCESS;
 
   case BABEL_AE_IP4:
-    /* TODO */
-    return PARSE_IGNORE;
+    if (tlv->plen > IP4_MAX_PREFIX_LENGTH)
+      return PARSE_ERROR;
+
+    if (TLV_OPT_LENGTH(tlv) < BYTES(tlv->plen))
+      return PARSE_ERROR;
+
+    read_ip4_px(&msg->net, tlv->addr, tlv->plen);
+    state->current_tlv_endpos += BYTES(tlv->plen);
+    return PARSE_SUCCESS;
 
   case BABEL_AE_IP6:
     if (tlv->plen > IP6_MAX_PREFIX_LENGTH)
@@ -621,6 +800,7 @@ babel_read_route_request(struct babel_tlv *hdr, union babel_msg *m,
       return PARSE_ERROR;
 
     read_ip6_px(&msg->net, tlv->addr, tlv->plen);
+    state->current_tlv_endpos += BYTES(tlv->plen);
     return PARSE_SUCCESS;
 
   case BABEL_AE_IP6_LL:
@@ -651,6 +831,12 @@ babel_write_route_request(struct babel_tlv *hdr, union babel_msg *m,
   {
     tlv->ae = BABEL_AE_WILDCARD;
     tlv->plen = 0;
+  }
+  else if (msg->net.type == NET_IP4)
+  {
+    tlv->ae = BABEL_AE_IP4;
+    tlv->plen = net4_pxlen(&msg->net);
+    put_ip4_px(tlv->addr, &msg->net);
   }
   else
   {
@@ -684,8 +870,15 @@ babel_read_seqno_request(struct babel_tlv *hdr, union babel_msg *m,
     return PARSE_ERROR;
 
   case BABEL_AE_IP4:
-    /* TODO */
-    return PARSE_IGNORE;
+    if (tlv->plen > IP4_MAX_PREFIX_LENGTH)
+      return PARSE_ERROR;
+
+    if (TLV_OPT_LENGTH(tlv) < BYTES(tlv->plen))
+      return PARSE_ERROR;
+
+    read_ip4_px(&msg->net, tlv->addr, tlv->plen);
+    state->current_tlv_endpos += BYTES(tlv->plen);
+    return PARSE_SUCCESS;
 
   case BABEL_AE_IP6:
     if (tlv->plen > IP6_MAX_PREFIX_LENGTH)
@@ -695,6 +888,7 @@ babel_read_seqno_request(struct babel_tlv *hdr, union babel_msg *m,
       return PARSE_ERROR;
 
     read_ip6_px(&msg->net, tlv->addr, tlv->plen);
+    state->current_tlv_endpos += BYTES(tlv->plen);
     return PARSE_SUCCESS;
 
   case BABEL_AE_IP6_LL:
@@ -720,14 +914,61 @@ babel_write_seqno_request(struct babel_tlv *hdr, union babel_msg *m,
     return 0;
 
   TLV_HDR(tlv, BABEL_TLV_SEQNO_REQUEST, len);
-  tlv->ae = BABEL_AE_IP6;
-  tlv->plen = net6_pxlen(&msg->net);
+
+  if (msg->net.type == NET_IP4)
+  {
+    tlv->ae = BABEL_AE_IP4;
+    tlv->plen = net4_pxlen(&msg->net);
+    put_ip4_px(tlv->addr, &msg->net);
+  }
+  else
+  {
+    tlv->ae = BABEL_AE_IP6;
+    tlv->plen = net6_pxlen(&msg->net);
+    put_ip6_px(tlv->addr, &msg->net);
+  }
+
   put_u16(&tlv->seqno, msg->seqno);
   tlv->hop_count = msg->hop_count;
   put_u64(&tlv->router_id, msg->router_id);
-  put_ip6_px(tlv->addr, &msg->net);
 
   return len;
+}
+
+static inline int
+babel_read_subtlvs(struct babel_tlv *hdr,
+		   union babel_msg *msg UNUSED,
+		   struct babel_parse_state *state)
+{
+  struct babel_tlv *tlv;
+
+  for (tlv = (void *) hdr + state->current_tlv_endpos;
+       (void *) tlv < (void *) hdr + TLV_LENGTH(hdr);
+       tlv = NEXT_TLV(tlv))
+  {
+    /*
+     * The subtlv type space is non-contiguous (due to the mandatory bit), so
+     * use a switch for dispatch instead of the mapping array we use for TLVs
+     */
+    switch (tlv->type)
+    {
+    case BABEL_SUBTLV_PAD1:
+    case BABEL_SUBTLV_PADN:
+      /* FIXME: Framing errors in PADN are silently ignored, see babel_process_packet() */
+      break;
+
+    default:
+      /* Unknown mandatory subtlv; PARSE_IGNORE ignores the whole TLV */
+      if (tlv->type > 128)
+      {
+	DBG("Babel: Mandatory subtlv %d found; skipping TLV\n", tlv->type);
+	return PARSE_IGNORE;
+      }
+      break;
+    }
+  }
+
+  return PARSE_SUCCESS;
 }
 
 static inline int
@@ -743,8 +984,14 @@ babel_read_tlv(struct babel_tlv *hdr,
   if (TLV_LENGTH(hdr) < tlv_data[hdr->type].min_length)
     return PARSE_ERROR;
 
+  state->current_tlv_endpos = tlv_data[hdr->type].min_length;
   memset(msg, 0, sizeof(*msg));
-  return tlv_data[hdr->type].read_tlv(hdr, msg, state);
+
+  int res = tlv_data[hdr->type].read_tlv(hdr, msg, state);
+  if (res != PARSE_SUCCESS)
+    return res;
+
+  return babel_read_subtlvs(hdr, msg, state);
 }
 
 static uint
@@ -799,7 +1046,7 @@ static uint
 babel_write_queue(struct babel_iface *ifa, list *queue)
 {
   struct babel_proto *p = ifa->proto;
-  struct babel_write_state state = {};
+  struct babel_write_state state = { .next_hop_ip6 = ifa->addr };
 
   if (EMPTY_LIST(*queue))
     return 0;
@@ -935,10 +1182,10 @@ babel_process_packet(struct babel_pkt_header *pkt, int len,
   byte *end = (byte *)pkt + plen;
 
   struct babel_parse_state state = {
-    .proto	= p,
-    .ifa	= ifa,
-    .saddr	= saddr,
-    .next_hop	= saddr,
+    .proto	  = p,
+    .ifa	  = ifa,
+    .saddr	  = saddr,
+    .next_hop_ip6 = saddr,
   };
 
   if ((pkt->magic != BABEL_MAGIC) || (pkt->version != BABEL_VERSION))
