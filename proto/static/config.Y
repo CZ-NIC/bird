@@ -73,7 +73,7 @@ CF_DECLS
 %type <fl> float_rate
 
 CF_KEYWORDS(STATIC, ROUTE, VIA, DROP, REJECT, PROHIBIT, PREFERENCE, CHECK, LINK)
-CF_KEYWORDS(WEIGHT, RECURSIVE, IGP, TABLE, BLACKHOLE, UNREACHABLE, BFD, MPLS)
+CF_KEYWORDS(ONLINK, WEIGHT, RECURSIVE, IGP, TABLE, BLACKHOLE, UNREACHABLE, BFD, MPLS)
 CF_KEYWORDS(RATE, SAMPLE, LAST, DSCP)
 CF_KEYWORDS_CS(mBps, mbps, Bps, bps, kBps, kbps, MBps, Mbps, GBps, Gbps, TBps, Tbps)
 
@@ -117,6 +117,9 @@ stat_nexthop:
     }
   | stat_nexthop MPLS label_stack {
     this_snh->mls = $3;
+  }
+  | stat_nexthop ONLINK bool {
+    this_snh->onlink = $3;
   }
   | stat_nexthop WEIGHT expr {
     this_snh->weight = $3 - 1;

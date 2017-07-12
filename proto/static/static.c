@@ -71,6 +71,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
       struct nexthop *nh = allocz(NEXTHOP_MAX_SIZE);
       nh->gw = r2->via;
       nh->iface = r2->neigh->iface;
+      nh->flags = r2->onlink ? RNF_ONLINK : 0;
       nh->weight = r2->weight;
       if (r2->mls)
       {
@@ -205,7 +206,8 @@ static_add_rte(struct static_proto *p, struct static_route *r)
     for (r2 = r; r2; r2 = r2->mp_next)
     {
       n = ipa_nonzero(r2->via) ?
-	neigh_find2(&p->p, &r2->via, r2->iface, NEF_STICKY) :
+	neigh_find2(&p->p, &r2->via, r2->iface,
+		    NEF_STICKY | (r2->onlink ? NEF_ONLINK : 0)) :
 	neigh_find_iface(&p->p, r2->iface);
 
       if (!n)
@@ -267,8 +269,9 @@ static_same_dest(struct static_route *x, struct static_route *y)
     {
       if (!ipa_equal(x->via, y->via) ||
 	  (x->iface != y->iface) ||
-	  (x->use_bfd != y->use_bfd) ||
+	  (x->onlink != y->onlink) ||
 	  (x->weight != y->weight) ||
+	  (x->use_bfd != y->use_bfd) ||
 	  (!x->mls != !y->mls) ||
 	  ((x->mls) && (y->mls) && (x->mls->len != y->mls->len)))
 	return 0;
@@ -614,11 +617,13 @@ static_show_rt(struct static_route *r)
     for (r2 = r; r2; r2 = r2->mp_next)
     {
       if (r2->iface && ipa_zero(r2->via))
-	cli_msg(-1009, "\tdev %s%s%s", r2->iface->name,
-		r2->bfd_req ? " (bfd)" : "", r2->active ? "" : " (dormant)");
+	cli_msg(-1009, "\tdev %s%s", r2->iface->name,
+		r2->active ? "" : " (dormant)");
       else
-	cli_msg(-1009, "\tvia %I%J%s%s", r2->via, r2->iface,
-		r2->bfd_req ? " (bfd)" : "", r2->active ? "" : " (dormant)");
+	cli_msg(-1009, "\tvia %I%J%s%s%s", r2->via, r2->iface,
+		r2->onlink ? " onlink" : "",
+		r2->bfd_req ? " (bfd)" : "",
+		r2->active ? "" : " (dormant)");
     }
     break;
   }
