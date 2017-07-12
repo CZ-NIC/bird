@@ -113,7 +113,7 @@ cmd_send_symbols(void)
     if (!(i->flags & IF_SHUTDOWN))
       cli_msg(RC_INTERFACE_NAME, "\"%s\"", i->name);
 
-  cli_msg(0, "");
+  cli_msg(RC_DUMP_DONE, "");
 }
 
 static void

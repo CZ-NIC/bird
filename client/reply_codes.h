@@ -73,7 +73,7 @@ enum reply_code {
   RC_SHOW_RIP_INTERFACE = 1021,
   RC_SHOW_RIP_NEIGHBORS = 1022,
 
-  RC_BIRD_VERSION_NUM = 3000,
+  RC_BIRD_VERSION_NUM = 3000,   /* This begins the symbol dump */
   RC_TABLE_NAME = 3001,
   RC_PROTOCOL_NAME = 3002,
   RC_FILTER_NAME = 3003,
@@ -82,7 +82,8 @@ enum reply_code {
   RC_VARIABLE_NAME = 3006,
   RC_TEMPLATE_NAME = 3007,
   RC_INTERFACE_NAME = 3008,
-  RC_NOTIFY = 3009, 		/* Daemon notifies the client about new symbol set */
+  RC_DUMP_DONE = 3009,		/* This ends the symbol dump */
+  RC_NOTIFY = 3010, 		/* Daemon notifies the client about new symbol set */
 
   RC_REPLY_TOO_LONG = 8000,
   RC_ROUTE_NOT_FOUND = 8001,

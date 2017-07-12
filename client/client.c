@@ -366,6 +366,7 @@ process_internal_message(int reply_code, const char *name)
       welcomed = 1;
       printf("BIRD %s ready.\n", name);
     }
+    symread = 1;
     return;
 
   case RC_NOTIFY:
@@ -382,15 +383,17 @@ process_internal_message(int reply_code, const char *name)
   case RC_TABLE_NAME:		flag = CLI_SF_TABLE; break;
   case RC_TEMPLATE_NAME:	flag = CLI_SF_TEMPLATE; break;
   case RC_INTERFACE_NAME:	flag = CLI_SF_INTERFACE; break;
+  case RC_DUMP_DONE:		symread = 0; return;
   default:
     printf("Undefined %d: %s", reply_code, name);
     return;
   }
 
-  if (flag && name && *name) {
-    symread = 1;
-    add_to_symbols(flag, name);
-  }
+  if (flag && name && *name)
+    if (symread)
+      add_to_symbols(flag, name);
+    else
+      printf("Unexpected symbol definition %d: %s", reply_code, name);
 }
 
 #define PRINTF(LEN, PARGS...) do { if (!skip_input && !complete) len = printf(PARGS); } while(0)
@@ -419,8 +422,7 @@ server_got_reply(char *x)
       else if (code)
       {
 	PRINTF(len, "%s\n", verbose ? x : x+5);
-      } else if (symread)
-	symread = 0;
+      }
 
       if (x[4] == ' ')
       {
