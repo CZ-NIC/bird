@@ -1,7 +1,7 @@
 /*
  *	BIRD Internet Routing Daemon -- Command-Line Interface
  *
- *	(c) 1999--2000 Martin Mares <mj@ucw.cz>
+ *	(c) 1999--2017 Martin Mares <mj@ucw.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -60,8 +60,10 @@
  * the new one. When the consumer processes everything in the buffer
  * queue, it calls cli_written(), tha frees all buffers (except the
  * first one) and schedules cli.event .
- * 
+ *
  */
+
+#undef LOCAL_DEBUG
 
 #include "nest/bird.h"
 #include "nest/cli.h"
@@ -70,6 +72,13 @@
 #include "lib/string.h"
 
 pool *cli_pool;
+
+/* Hack for scheduled undo notification */
+extern cli *cmd_reconfig_stored_cli;
+
+/*
+ *	Output buffering
+ */
 
 static byte *
 cli_alloc_out(cli *c, int size)
@@ -222,94 +231,60 @@ cli_free_out(cli *c)
   c->async_msg_size = 0;
 }
 
-void
-cli_written(cli *c)
+static void
+cli_write(cli *c)
 {
+  sock *s = c->socket;
+
+  while (c->tx_pos)
+    {
+      struct cli_out *o = c->tx_pos;
+
+      int len = o->wpos - o->outpos;
+      s->tbuf = o->outpos;
+      o->outpos = o->wpos;
+
+      if (sk_send(s, len) <= 0)
+	return;
+
+      c->tx_pos = o->next;
+    }
+
+  /* Everything is written */
+  s->tbuf = NULL;
   cli_free_out(c);
   ev_schedule(c->event);
 }
 
-
-static byte *cli_rh_pos;
-static uint cli_rh_len;
-static int cli_rh_trick_flag;
-struct cli *this_cli;
-
-static int
-cli_cmd_read_hook(byte *buf, uint max, UNUSED int fd)
-{
-  if (!cli_rh_trick_flag)
-    {
-      cli_rh_trick_flag = 1;
-      buf[0] = '!';
-      return 1;
-    }
-  if (max > cli_rh_len)
-    max = cli_rh_len;
-  memcpy(buf, cli_rh_pos, max);
-  cli_rh_pos += max;
-  cli_rh_len -= max;
-  return max;
-}
-
 void
-cli_command(cli *c)
+cli_write_trigger(cli *c)
 {
-  struct config f;
-  int res;
-
-  if (config->cli_debug > 1)
-    log(L_TRACE "CLI: %s", c->rx_buf);
-  bzero(&f, sizeof(f));
-  f.mem = c->parser_pool;
-  f.pool = rp_new(c->pool, "Config");
-  cf_read_hook = cli_cmd_read_hook;
-  cli_rh_pos = c->rx_buf;
-  cli_rh_len = strlen(c->rx_buf);
-  cli_rh_trick_flag = 0;
-  this_cli = c;
-  lp_flush(c->parser_pool);
-  res = cli_parse(&f);
-  if (!res)
-    cli_printf(c, 9001, f.err_msg);
-
-  config_free(&f);
+  if (c->tx_pos && c->socket->tbuf == NULL)
+    cli_write(c);
 }
 
 static void
-cli_event(void *data)
+cli_tx_hook(sock *s)
 {
-  cli *c = data;
-
-  while (c->ring_read != c->ring_write &&
-      c->async_msg_size < CLI_MAX_ASYNC_QUEUE)
-    cli_copy_message(c);
-
-  cli_write_trigger(c);
-
-  if (c->sleeping_on_yield)
-    coro_resume(c->coro);
+  cli_write(s->data);
 }
 
-cli *
-cli_new(void *priv)
+static void
+cli_err_hook(sock *s, int err)
 {
-  pool *p = rp_new(cli_pool, "CLI");
-  cli *c = mb_alloc(p, sizeof(cli));
-
-  bzero(c, sizeof(cli));
-  c->pool = p;
-  c->priv = priv;
-  c->event = ev_new(p);
-  c->event->hook = cli_event;
-  c->event->data = c;
-  c->cont = cli_hello;
-  c->parser_pool = lp_new_default(c->pool);
-  c->show_pool = lp_new_default(c->pool);
-  c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
-  ev_schedule(c->event);
-  return c;
+  if (config->cli_debug)
+    {
+      if (err)
+	log(L_INFO "CLI connection dropped: %s", strerror(err));
+      else
+	log(L_INFO "CLI connection closed");
+    }
+  cli_free(s->data);
 }
+
+/*
+ *	Echoing of asynchronous messages
+ */
 
 static list cli_log_hooks;
 static int cli_log_inited;
@@ -381,12 +356,211 @@ cli_echo(uint class, byte *msg)
     }
 }
 
-/* Hack for scheduled undo notification */
-extern cli *cmd_reconfig_stored_cli;
+/*
+ *	Reading of input
+ */
+
+static int
+cli_getchar(cli *c)
+{
+  sock *s = c->socket;
+
+  if (c->rx_aux == s->rpos)
+    {
+      DBG("CLI: Waiting on read\n");
+      c->rx_aux = s->rpos = s->rbuf;
+      c->state = CLI_STATE_WAIT_RX;
+      int n = coro_sk_read(s);
+      c->state = CLI_STATE_RUN;
+      DBG("CLI: Read returned %d bytes\n", n);
+      ASSERT(n);
+    }
+  return *c->rx_aux++;
+}
+
+static int
+cli_read_line(cli *c)
+{
+  byte *d = c->rx_buf;
+  byte *dend = c->rx_buf + CLI_RX_BUF_SIZE - 2;
+  for (;;)
+    {
+      int ch = cli_getchar(c);
+      if (ch == '\r')
+	;
+      else if (ch == '\n')
+	break;
+      else if (d < dend)
+	*d++ = ch;
+    }
+
+  if (d >= dend)
+    return 0;
+
+  *d = 0;
+  return 1;
+}
+
+/*
+ *	Execution of commands
+ */
+
+static byte *cli_rh_pos;
+static uint cli_rh_len;
+static int cli_rh_trick_flag;
+struct cli *this_cli;
+
+static int
+cli_cmd_read_hook(byte *buf, uint max, UNUSED int fd)
+{
+  if (!cli_rh_trick_flag)
+    {
+      cli_rh_trick_flag = 1;
+      buf[0] = '!';
+      return 1;
+    }
+  if (max > cli_rh_len)
+    max = cli_rh_len;
+  memcpy(buf, cli_rh_pos, max);
+  cli_rh_pos += max;
+  cli_rh_len -= max;
+  return max;
+}
+
+static void
+cli_command(cli *c)
+{
+  struct config f;
+  int res;
+
+  if (config->cli_debug > 1)
+    log(L_TRACE "CLI: %s", c->rx_buf);
+  bzero(&f, sizeof(f));
+  f.mem = c->parser_pool;
+  f.pool = rp_new(c->pool, "Config");
+  cf_read_hook = cli_cmd_read_hook;
+  cli_rh_pos = c->rx_buf;
+  cli_rh_len = strlen(c->rx_buf);
+  cli_rh_trick_flag = 0;
+  this_cli = c;
+  lp_flush(c->parser_pool);
+  res = cli_parse(&f);
+  if (!res)
+    cli_printf(c, 9001, f.err_msg);
+
+  config_free(&f);
+}
+
+/*
+ *	Session control
+ */
+
+static void
+cli_event(void *data)
+{
+  cli *c = data;
+  DBG("CLI: Event in state %u\n", (int) c->state);
+
+  while (c->ring_read != c->ring_write &&
+      c->async_msg_size < CLI_MAX_ASYNC_QUEUE)
+    cli_copy_message(c);
+
+  cli_write_trigger(c);
+
+  if (c->state == CLI_STATE_YIELD ||
+      c->state == CLI_STATE_WAIT_TX && !c->tx_pos)
+    coro_resume(c->coro);
+}
+
+void
+cli_yield(cli *c)
+{
+  c->state = CLI_STATE_YIELD;
+  DBG("CLI: Yielding\n");
+  ev_schedule(c->event);
+  coro_suspend();
+  c->state = CLI_STATE_RUN;
+  DBG("CLI: Yield resumed\n");
+}
+
+static void
+cli_coroutine(void *_c)
+{
+  cli *c = _c;
+  sock *s = c->socket;
+
+  DBG("CLI: Coroutine started\n");
+  c->rx_aux = s->rbuf;
+
+  for (;;)
+    {
+      while (c->tx_pos)
+	{
+	  DBG("CLI: Sleeping on write\n");
+	  c->state = CLI_STATE_WAIT_TX;
+	  coro_suspend();
+	  c->state = CLI_STATE_RUN;
+	  DBG("CLI: Woke up on write\n");
+	}
+
+      if (c->cont)
+	{
+	  c->cont(c);
+	  cli_write_trigger(c);
+	  cli_yield(c);
+	  continue;
+	}
+
+      if (!cli_read_line(c))
+	cli_printf(c, 9000, "Command too long");
+      else
+	cli_command(c);
+      cli_write_trigger(c);
+    }
+}
+
+cli *
+cli_new(sock *s)
+{
+  pool *p = rp_new(cli_pool, "CLI session");
+  cli *c = mb_alloc(p, sizeof(cli));
+  DBG("CLI: Created new session\n");
+
+  bzero(c, sizeof(cli));
+  c->pool = p;
+  c->socket = s;
+  c->event = ev_new(p);
+  c->event->hook = cli_event;
+  c->event->data = c;
+  c->cont = cli_hello;
+  c->parser_pool = lp_new_default(c->pool);
+  c->show_pool = lp_new_default(c->pool);
+  c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
+
+  s->pool = c->pool;		/* We need to have all the socket buffers allocated in the cli pool */
+  rmove(s, c->pool);
+  s->tx_hook = cli_tx_hook;
+  s->err_hook = cli_err_hook;
+  s->data = c;
+
+  return c;
+}
+
+void
+cli_run(cli *c)
+{
+  DBG("CLI: Running\n");
+  c->state = CLI_STATE_RUN;
+  c->rx_pos = c->rx_buf;
+  c->rx_aux = NULL;
+  c->coro = coro_new(c->pool, cli_coroutine, c);
+  coro_resume(c->coro);
+}
 
 void
 cli_free(cli *c)
 {
+  DBG("CLI: Destroying session\n");
   cli_set_log_echo(c, 0, 0);
   if (c->cleanup)
     c->cleanup(c);
