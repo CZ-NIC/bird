@@ -23,6 +23,7 @@
 #include <libgen.h>
 
 #include "nest/bird.h"
+#include "lib/coroutine.h"
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
