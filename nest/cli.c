@@ -32,35 +32,36 @@
  * Each CLI session is internally represented by a &cli structure and a
  * resource pool containing all resources associated with the connection,
  * so that it can be easily freed whenever the connection gets closed, not depending
- * on the current state of command processing.
+ * on the current state of command processing. A socket is associated with
+ * the session, over which requests and replies are sent.
  *
  * The CLI commands are declared as a part of the configuration grammar
  * by using the |CF_CLI| macro. When a command is received, it is processed
  * by the same lexical analyzer and parser as used for the configuration, but
  * it's switched to a special mode by prepending a fake token to the text,
  * so that it uses only the CLI command rules. Then the parser invokes
- * an execution routine corresponding to the command, which either constructs
- * the whole reply and returns it back or (in case it expects the reply will be long)
- * it prints a partial reply and asks the CLI module (using the @cont hook)
- * to call it again when the output is transferred to the user.
+ * an execution routine corresponding to the command, which constructs the
+ * reply.
+ *
+ * Replies are buffered in memory and then sent asynchronously. Commands
+ * which produce long outputs must split them to pieces and yield to other
+ * operations between pieces. To simplify this (and possibly also complex
+ * parsing of input), the CLI session runs in a coroutine with its own
+ * execution context. At any time, cli_yield() can be called to interrupt
+ * the current coroutine and have the buffered output sent.
+ *
+ * Alternatively, a long sequence of replies can be split to parts
+ * using the @cont hook, which translates to yielding internally.
  *
  * The @this_cli variable points to a &cli structure of the session being
- * currently parsed, but it's of course available only in command handlers
- * not entered using the @cont hook.
+ * currently parsed, but it's available only before the first yield.
  *
- * TX buffer management works as follows: At cli.tx_buf there is a
- * list of TX buffers (struct cli_out), cli.tx_write is the buffer
- * currently used by the producer (cli_printf(), cli_alloc_out()) and
- * cli.tx_pos is the buffer currently used by the consumer
- * (cli_write(), in system dependent code). The producer uses
- * cli_out.wpos ptr as the current write position and the consumer
- * uses cli_out.outpos ptr as the current read position. When the
- * producer produces something, it calls cli_write_trigger(). If there
- * is not enough space in the current buffer, the producer allocates
- * the new one. When the consumer processes everything in the buffer
- * queue, it calls cli_written(), tha frees all buffers (except the
- * first one) and schedules cli.event .
- *
+ * A note on transmit buffer management: cli.tx_buf is a head of a list
+ * of TX buffers (struct cli_out). A buffer pointed to by cli.tx_write
+ * is the one currently written to using cli_printf() and cli_alloc_out(),
+ * its wpos field points to the position of the write head in that buffer.
+ * On the other side, cli.tx_pos is the buffer being set to the socket
+ * and its outpos field is the position of the read head.
  */
 
 #undef LOCAL_DEBUG
