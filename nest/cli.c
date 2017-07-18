@@ -66,8 +66,8 @@
 #include "nest/bird.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
+#include "lib/coroutine.h"
 #include "lib/string.h"
-#include "sysdep/unix/unix.h"	// FIXME
 
 pool *cli_pool;
 
