@@ -530,5 +530,4 @@ void sysdep_shutdown_done(void) {}
 
 #include "nest/cli.h"
 int cli_get_command(cli *c UNUSED) { return 0; }
-void cli_write_trigger(cli *c UNUSED) {}
 cli *cmd_reconfig_stored_cli;
