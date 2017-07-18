@@ -314,7 +314,7 @@ if test "$enable_debug" = yes ; then
     [
       AC_DEFINE([HAVE_EXECINFO_H], [1], [Define to 1 if you have the <execinfo.h> header file.])
       AC_SEARCH_LIBS([backtrace], [execinfo],
-	[]
+	[],
 	[AC_MSG_ERROR([Function backtrace not available.])]
       )
     ]
