@@ -374,6 +374,9 @@ cli_write(cli *c)
   /* Everything is written */
   s->tbuf = NULL;
   cli_written(c);
+
+  if (c->sleeping_on_tx)
+    coro_resume(c->coro);
 }
 
 void
@@ -391,42 +394,6 @@ cli_tx(sock *s)
   cli_write(s->data);
 }
 
-int
-cli_get_command(cli *c)
-{
-  sock *s = c->priv;
-  byte *t = c->rx_aux ? : s->rbuf;
-  byte *tend = s->rpos;
-  byte *d = c->rx_pos;
-  byte *dend = c->rx_buf + CLI_RX_BUF_SIZE - 2;
-
-  while (t < tend)
-    {
-      if (*t == '\r')
-	t++;
-      else if (*t == '\n')
-	{
-	  t++;
-	  c->rx_pos = c->rx_buf;
-	  c->rx_aux = t;
-	  *d = 0;
-	  return (d < dend) ? 1 : -1;
-	}
-      else if (d < dend)
-	*d++ = *t++;
-    }
-  c->rx_aux = s->rpos = s->rbuf;
-  c->rx_pos = d;
-  return 0;
-}
-
-static int
-cli_rx(sock *s, uint size UNUSED)
-{
-  cli_kick(s->data);
-  return 0;
-}
-
 static void
 cli_err(sock *s, int err)
 {
@@ -441,13 +408,92 @@ cli_err(sock *s, int err)
 }
 
 static int
+cli_getchar(cli *c)
+{
+  sock *s = c->priv;
+
+  if (c->rx_aux == s->rpos)
+    {
+      log(L_INFO "CLI wants to read");
+      c->rx_aux = s->rpos = s->rbuf;
+      int n = coro_sk_read(s);
+      log(L_INFO "CLI read %d bytes", n);
+      ASSERT(n);
+    }
+  return *c->rx_aux++;
+}
+
+static void
+cli_yield(cli *c)
+{
+  log(L_INFO "CLI: Yield");
+  c->sleeping_on_yield = 1;
+  ev_schedule(c->event);
+  coro_suspend();
+  c->sleeping_on_yield = 0;
+  log(L_INFO "CLI: Resumed after yield");
+}
+
+static void
+cli_coroutine(void *_c)
+{
+  cli *c = _c;
+  sock *s = c->priv;
+
+  log(L_INFO "CLI coroutine reached");
+  c->rx_aux = s->rbuf;
+  for (;;)
+    {
+      while (c->tx_pos)
+	{
+	  log(L_INFO "CLI sleeps on write");
+	  c->sleeping_on_tx = 1;
+	  coro_suspend();
+	  c->sleeping_on_tx = 0;
+	  log(L_INFO "CLI wakeup on write");
+	}
+
+      if (c->cont)
+	{
+	  c->cont(c);
+	  cli_write_trigger(c);
+	  cli_yield(c);
+	  continue;
+	}
+
+      byte *d = c->rx_buf;
+      byte *dend = c->rx_buf + CLI_RX_BUF_SIZE - 2;
+      for (;;)
+	{
+	  int ch = cli_getchar(c);
+	  if (ch == '\r')
+	    ;
+	  else if (ch == '\n')
+	    break;
+	  else if (d < dend)
+	    *d++ = ch;
+	}
+
+      if (d >= dend)
+	{
+	  cli_printf(c, 9000, "Command too long");
+	  cli_write_trigger(c);
+	  continue;
+	}
+
+      *d = 0;
+      cli_command(c);
+      cli_write_trigger(c);
+    }
+}
+
+static int
 cli_connect(sock *s, uint size UNUSED)
 {
   cli *c;
 
   if (config->cli_debug)
     log(L_INFO "CLI connect");
-  s->rx_hook = cli_rx;
   s->tx_hook = cli_tx;
   s->err_hook = cli_err;
   s->data = c = cli_new(s);
@@ -456,6 +502,8 @@ cli_connect(sock *s, uint size UNUSED)
   c->rx_pos = c->rx_buf;
   c->rx_aux = NULL;
   rmove(s, c->pool);
+  c->coro = coro_new(c->pool, cli_coroutine, c);
+  coro_resume(c->coro);
   return 1;
 }
 

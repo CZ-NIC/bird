@@ -36,6 +36,8 @@ struct ssh_sock {
 };
 #endif
 
+struct coroutine;
+
 typedef struct birdsock {
   resource r;
   pool *pool;				/* Pool where incoming connections should be allocated (for SK_xxx_PASSIVE) */
@@ -78,6 +80,8 @@ typedef struct birdsock {
   char *password;			/* Password for MD5 authentication */
   const char *err;			/* Error message */
   struct ssh_sock *ssh;			/* Used in SK_SSH */
+
+  struct coroutine *rx_coroutine;
 } sock;
 
 sock *sock_new(pool *);			/* Allocate new socket */

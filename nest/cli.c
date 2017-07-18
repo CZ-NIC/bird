@@ -67,6 +67,7 @@
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "lib/string.h"
+#include "sysdep/unix/unix.h"	// FIXME
 
 pool *cli_pool;
 
@@ -251,8 +252,8 @@ cli_cmd_read_hook(byte *buf, uint max, UNUSED int fd)
   return max;
 }
 
-static void
-cli_command(struct cli *c)
+void
+cli_command(cli *c)
 {
   struct config f;
   int res;
@@ -279,28 +280,15 @@ static void
 cli_event(void *data)
 {
   cli *c = data;
-  int err;
 
   while (c->ring_read != c->ring_write &&
       c->async_msg_size < CLI_MAX_ASYNC_QUEUE)
     cli_copy_message(c);
 
-  if (c->tx_pos)
-    ;
-  else if (c->cont)
-    c->cont(c);
-  else
-    {
-      err = cli_get_command(c);
-      if (!err)
-	return;
-      if (err < 0)
-	cli_printf(c, 9000, "Command too long");
-      else
-	cli_command(c);
-    }
-
   cli_write_trigger(c);
+
+  if (c->sleeping_on_yield)
+    coro_resume(c->coro);
 }
 
 cli *
@@ -321,13 +309,6 @@ cli_new(void *priv)
   c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
   ev_schedule(c->event);
   return c;
-}
-
-void
-cli_kick(cli *c)
-{
-  if (!c->cont && !c->tx_pos)
-    ev_schedule(c->event);
 }
 
 static list cli_log_hooks;

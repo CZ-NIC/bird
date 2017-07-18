@@ -25,6 +25,8 @@ struct cli_out {
   byte buf[0];
 };
 
+struct coroutine;
+
 typedef struct cli {
   node n;				/* Node in list of all log hooks */
   pool *pool;
@@ -45,6 +47,9 @@ typedef struct cli {
   uint log_mask;			/* Mask of allowed message levels */
   uint log_threshold;			/* When free < log_threshold, store only important messages */
   uint async_msg_size;			/* Total size of async messages queued in tx_buf */
+  struct coroutine *coro;
+  int sleeping_on_tx;
+  int sleeping_on_yield;
 } cli;
 
 extern pool *cli_pool;
@@ -66,6 +71,7 @@ void cli_free(cli *);
 void cli_kick(cli *);
 void cli_written(cli *);
 void cli_echo(uint class, byte *msg);
+void cli_command(cli *c);
 
 static inline int cli_access_restricted(void)
 {
