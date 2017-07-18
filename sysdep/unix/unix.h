@@ -111,13 +111,6 @@ void *rf_file(struct rfile *f);
 int rf_fileno(struct rfile *f);
 void test_old_bird(char *path);
 
-/* Co-routines */
-typedef struct coroutine coroutine;
-coroutine *coro_new(struct pool *pool, void (*entry_point)(void *arg), void *arg);
-void coro_suspend(void);
-void coro_resume(coroutine *c);
-int coro_sk_read(struct birdsock *s);
-
 /* krt.c bits */
 
 void krt_io_init(void);
