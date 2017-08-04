@@ -60,14 +60,14 @@ struct radv_iface_config
   list rdnss_list;		/* Local list of RDNSS configs (struct radv_rdnss_config) */
   list dnssl_list;		/* Local list of DNSSL configs (struct radv_dnssl_config) */
 
-  u32 min_ra_int;		/* Standard options from RFC 4261 */
+  u32 min_ra_int;		/* Standard options from RFC 4861 */
   u32 max_ra_int;
   u32 min_delay;
 
   u8 rdnss_local;		/* Global list is not used for RDNSS */
   u8 dnssl_local;		/* Global list is not used for DNSSL */
 
-  u8 managed;			/* Standard options from RFC 4261 */
+  u8 managed;			/* Standard options from RFC 4861 */
   u8 other_config;
   u32 link_mtu;
   u32 reachable_time;
@@ -84,7 +84,7 @@ struct radv_prefix_config
   net_addr_ip6 prefix;
 
   u8 skip;			/* Do not include this prefix to RA */
-  u8 onlink;			/* Standard options from RFC 4261 */
+  u8 onlink;			/* Standard options from RFC 4861 */
   u8 autonomous;
   u32 valid_lifetime;
   u32 preferred_lifetime;
