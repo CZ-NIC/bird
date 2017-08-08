@@ -111,7 +111,7 @@ struct radv_dnssl_config
 };
 
 
-struct proto_radv
+struct radv_proto
 {
   struct proto p;
   list iface_list;		/* List of active ifaces */
@@ -121,7 +121,7 @@ struct proto_radv
 struct radv_iface
 {
   node n;
-  struct proto_radv *ra;
+  struct radv_proto *ra;
   struct radv_iface_config *cf;	/* Related config, must be updated in reconfigure */
   struct iface *iface;
   struct ifa *addr;		/* Link-local address of iface */
@@ -151,8 +151,8 @@ struct radv_iface
 #else
 #define RADV_FORCE_DEBUG 0
 #endif
-#define RADV_TRACE(flags, msg, args...) do { if ((ra->p.debug & flags) || RADV_FORCE_DEBUG) \
-	log(L_TRACE "%s: " msg, ra->p.name , ## args ); } while(0)
+#define RADV_TRACE(flags, msg, args...) do { if ((p->p.debug & flags) || RADV_FORCE_DEBUG) \
+	log(L_TRACE "%s: " msg, p->p.name , ## args ); } while(0)
 
 
 /* radv.c */

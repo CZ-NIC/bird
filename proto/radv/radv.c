@@ -47,7 +47,7 @@ static void
 radv_timer(timer *tm)
 {
   struct radv_iface *ifa = tm->data;
-  struct proto_radv *ra = ifa->ra;
+  struct radv_proto *p = ifa->ra;
 
   RADV_TRACE(D_EVENTS, "Timer fired on %s", ifa->iface->name);
 
@@ -72,7 +72,7 @@ static char* ev_name[] = { NULL, "Init", "Change", "RS" };
 void
 radv_iface_notify(struct radv_iface *ifa, int event)
 {
-  struct proto_radv *ra = ifa->ra;
+  struct radv_proto *p = ifa->ra;
 
   if (!ifa->sk)
     return;
@@ -102,21 +102,21 @@ radv_iface_notify(struct radv_iface *ifa, int event)
 }
 
 static void
-radv_iface_notify_all(struct proto_radv *ra, int event)
+radv_iface_notify_all(struct radv_proto *p, int event)
 {
   struct radv_iface *ifa;
 
-  WALK_LIST(ifa, ra->iface_list)
+  WALK_LIST(ifa, p->iface_list)
     radv_iface_notify(ifa, event);
 }
 
 
 static struct radv_iface *
-radv_iface_find(struct proto_radv *ra, struct iface *what)
+radv_iface_find(struct radv_proto *p, struct iface *what)
 {
   struct radv_iface *ifa;
 
-  WALK_LIST(ifa, ra->iface_list)
+  WALK_LIST(ifa, p->iface_list)
     if (ifa->iface == what)
       return ifa;
 
@@ -127,11 +127,11 @@ static void
 radv_iface_add(struct object_lock *lock)
 {
   struct radv_iface *ifa = lock->data;
-  struct proto_radv *ra = ifa->ra;
+  struct radv_proto *p = ifa->ra;
 
   if (! radv_sk_open(ifa))
   {
-    log(L_ERR "%s: Socket open failed on interface %s", ra->p.name, ifa->iface->name);
+    log(L_ERR "%s: Socket open failed on interface %s", p->p.name, ifa->iface->name);
     return;
   }
 
@@ -150,24 +150,24 @@ find_lladdr(struct iface *iface)
 }
 
 static void
-radv_iface_new(struct proto_radv *ra, struct iface *iface, struct radv_iface_config *cf)
+radv_iface_new(struct radv_proto *p, struct iface *iface, struct radv_iface_config *cf)
 {
-  pool *pool = ra->p.pool;
+  pool *pool = p->p.pool;
   struct radv_iface *ifa;
 
   RADV_TRACE(D_EVENTS, "Adding interface %s", iface->name);
 
   ifa = mb_allocz(pool, sizeof(struct radv_iface));
-  ifa->ra = ra;
+  ifa->ra = p;
   ifa->cf = cf;
   ifa->iface = iface;
 
-  add_tail(&ra->iface_list, NODE ifa);
+  add_tail(&p->iface_list, NODE ifa);
 
   ifa->addr = find_lladdr(iface);
   if (!ifa->addr)
   {
-    log(L_ERR "%s: Cannot find link-locad addr on interface %s", ra->p.name, iface->name);
+    log(L_ERR "%s: Cannot find link-locad addr on interface %s", p->p.name, iface->name);
     return;
   }
 
@@ -193,7 +193,7 @@ radv_iface_new(struct proto_radv *ra, struct iface *iface, struct radv_iface_con
 static void
 radv_iface_remove(struct radv_iface *ifa)
 {
-  struct proto_radv *ra = ifa->ra;
+  struct radv_proto *p = ifa->ra;
   RADV_TRACE(D_EVENTS, "Removing interface %s", ifa->iface->name);
 
   rem_node(NODE ifa);
@@ -206,10 +206,10 @@ radv_iface_remove(struct radv_iface *ifa)
 }
 
 static void
-radv_if_notify(struct proto *p, unsigned flags, struct iface *iface)
+radv_if_notify(struct proto *P, unsigned flags, struct iface *iface)
 {
-  struct proto_radv *ra = (struct proto_radv *) p;
-  struct radv_config *cf = (struct radv_config *) (p->cf);
+  struct radv_proto *p = (struct radv_proto *) P;
+  struct radv_config *cf = (struct radv_config *) (P->cf);
 
   if (iface->flags & IF_IGNORE)
     return;
@@ -220,12 +220,12 @@ radv_if_notify(struct proto *p, unsigned flags, struct iface *iface)
       iface_patt_find(&cf->patt_list, iface, NULL);
 
     if (ic)
-      radv_iface_new(ra, iface, ic);
+      radv_iface_new(p, iface, ic);
 
     return;
   }
 
-  struct radv_iface *ifa = radv_iface_find(ra, iface);
+  struct radv_iface *ifa = radv_iface_find(p, iface);
   if (!ifa)
     return;
 
@@ -240,9 +240,9 @@ radv_if_notify(struct proto *p, unsigned flags, struct iface *iface)
 }
 
 static void
-radv_ifa_notify(struct proto *p, unsigned flags UNUSED, struct ifa *a)
+radv_ifa_notify(struct proto *P, unsigned flags UNUSED, struct ifa *a)
 {
-  struct proto_radv *ra = (struct proto_radv *) p;
+  struct radv_proto *p = (struct radv_proto *) P;
 
   if (a->flags & IA_SECONDARY)
     return;
@@ -250,7 +250,7 @@ radv_ifa_notify(struct proto *p, unsigned flags UNUSED, struct ifa *a)
   if (a->scope <= SCOPE_LINK)
     return;
 
-  struct radv_iface *ifa = radv_iface_find(ra, a->iface);
+  struct radv_iface *ifa = radv_iface_find(p, a->iface);
 
   if (ifa)
     radv_iface_notify(ifa, RA_EV_CHANGE);
@@ -269,10 +269,10 @@ radv_net_match_trigger(struct radv_config *cf, net *n)
 }
 
 int
-radv_import_control(struct proto *p, rte **new, ea_list **attrs UNUSED, struct linpool *pool UNUSED)
+radv_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct linpool *pool UNUSED)
 {
-  // struct proto_radv *ra = (struct proto_radv *) p;
-  struct radv_config *cf = (struct radv_config *) (p->cf);
+  // struct radv_proto *p = (struct radv_proto *) P;
+  struct radv_config *cf = (struct radv_config *) (P->cf);
 
   if (radv_net_match_trigger(cf, (*new)->net))
     return RIC_PROCESS;
@@ -281,38 +281,38 @@ radv_import_control(struct proto *p, rte **new, ea_list **attrs UNUSED, struct l
 }
 
 static void
-radv_rt_notify(struct proto *p, struct channel *ch UNUSED, net *n, rte *new, rte *old UNUSED, ea_list *attrs UNUSED)
+radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte *old UNUSED, ea_list *attrs UNUSED)
 {
-  struct proto_radv *ra = (struct proto_radv *) p;
-  struct radv_config *cf = (struct radv_config *) (p->cf);
+  struct radv_proto *p = (struct radv_proto *) P;
+  struct radv_config *cf = (struct radv_config *) (P->cf);
 
   if (radv_net_match_trigger(cf, n))
   {
-    u8 old_active = ra->active;
-    ra->active = !!new;
+    u8 old_active = p->active;
+    p->active = !!new;
 
-    if (ra->active == old_active)
+    if (p->active == old_active)
       return;
 
-    if (ra->active)
+    if (p->active)
       RADV_TRACE(D_EVENTS, "Triggered");
     else
       RADV_TRACE(D_EVENTS, "Suppressed");
 
-    radv_iface_notify_all(ra, RA_EV_CHANGE);
+    radv_iface_notify_all(p, RA_EV_CHANGE);
   }
 }
 
 static int
-radv_check_active(struct proto_radv *ra)
+radv_check_active(struct radv_proto *p)
 {
-  struct radv_config *cf = (struct radv_config *) (ra->p.cf);
+  struct radv_config *cf = (struct radv_config *) (p->p.cf);
 
   if (!radv_trigger_valid(cf))
     return 1;
 
-  struct channel *c = ra->p.main_channel;
-  return rt_examine(c->table, &cf->trigger, &ra->p, c->out_filter);
+  struct channel *c = p->p.main_channel;
+  return rt_examine(c->table, &cf->trigger, &p->p, c->out_filter);
 }
 
 static void
@@ -328,26 +328,26 @@ radv_postconfig(struct proto_config *CF)
 static struct proto *
 radv_init(struct proto_config *CF)
 {
-  struct proto *p = proto_new(CF);
+  struct proto *P = proto_new(CF);
 
-  p->main_channel = proto_add_channel(p, proto_cf_main_channel(CF));
+  P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
-  p->import_control = radv_import_control;
-  p->rt_notify = radv_rt_notify;
-  p->if_notify = radv_if_notify;
-  p->ifa_notify = radv_ifa_notify;
+  P->import_control = radv_import_control;
+  P->rt_notify = radv_rt_notify;
+  P->if_notify = radv_if_notify;
+  P->ifa_notify = radv_ifa_notify;
 
-  return p;
+  return P;
 }
 
 static int
-radv_start(struct proto *p)
+radv_start(struct proto *P)
 {
-  struct proto_radv *ra = (struct proto_radv *) p;
-  struct radv_config *cf = (struct radv_config *) (p->cf);
+  struct radv_proto *p = (struct radv_proto *) P;
+  struct radv_config *cf = (struct radv_config *) (P->cf);
 
-  init_list(&(ra->iface_list));
-  ra->active = !radv_trigger_valid(cf);
+  init_list(&(p->iface_list));
+  p->active = !radv_trigger_valid(cf);
 
   return PS_UP;
 }
@@ -360,21 +360,21 @@ radv_iface_shutdown(struct radv_iface *ifa)
 }
 
 static int
-radv_shutdown(struct proto *p)
+radv_shutdown(struct proto *P)
 {
-  struct proto_radv *ra = (struct proto_radv *) p;
+  struct radv_proto *p = (struct radv_proto *) P;
 
   struct radv_iface *ifa;
-  WALK_LIST(ifa, ra->iface_list)
+  WALK_LIST(ifa, p->iface_list)
     radv_iface_shutdown(ifa);
 
   return PS_DOWN;
 }
 
 static int
-radv_reconfigure(struct proto *p, struct proto_config *CF)
+radv_reconfigure(struct proto *P, struct proto_config *CF)
 {
-  struct proto_radv *ra = (struct proto_radv *) p;
+  struct radv_proto *p = (struct radv_proto *) P;
   // struct radv_config *old = (struct radv_config *) (p->cf);
   struct radv_config *new = (struct radv_config *) CF;
 
@@ -386,16 +386,16 @@ radv_reconfigure(struct proto *p, struct proto_config *CF)
    * causing nodes to temporary remove their default routes.
    */
 
-  if (!proto_configure_channel(p, &p->main_channel, proto_cf_main_channel(CF)))
+  if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
     return 0;
 
-  p->cf = CF; /* radv_check_active() requires proper p->cf */
-  ra->active = radv_check_active(ra);
+  P->cf = CF; /* radv_check_active() requires proper p->cf */
+  p->active = radv_check_active(p);
 
   struct iface *iface;
   WALK_LIST(iface, iface_list)
   {
-    struct radv_iface *ifa = radv_iface_find(ra, iface);
+    struct radv_iface *ifa = radv_iface_find(p, iface);
     struct radv_iface_config *ic = (struct radv_iface_config *)
       iface_patt_find(&new->patt_list, iface, NULL);
 
@@ -415,7 +415,7 @@ radv_reconfigure(struct proto *p, struct proto_config *CF)
     }
 
     if (!ifa && ic)
-      radv_iface_new(ra, iface, ic);
+      radv_iface_new(p, iface, ic);
   }
 
   return 1;
@@ -435,11 +435,11 @@ radv_copy_config(struct proto_config *dest, struct proto_config *src)
 }
 
 static void
-radv_get_status(struct proto *p, byte *buf)
+radv_get_status(struct proto *P, byte *buf)
 {
-  struct proto_radv *ra = (struct proto_radv *) p;
+  struct radv_proto *p = (struct radv_proto *) P;
 
-  if (!ra->active)
+  if (!p->active)
     strcpy(buf, "Suppressed");
 }
 
@@ -447,7 +447,7 @@ struct protocol proto_radv = {
   .name =		"RAdv",
   .template =		"radv%d",
   .channel_mask =	NB_IP6,
-  .proto_size =		sizeof(struct proto_radv),
+  .proto_size =		sizeof(struct radv_proto),
   .config_size =	sizeof(struct radv_config),
   .postconfig =		radv_postconfig,
   .init =		radv_init,
