@@ -167,7 +167,7 @@ radv_iface_new(struct radv_proto *p, struct iface *iface, struct radv_iface_conf
   ifa->addr = find_lladdr(iface);
   if (!ifa->addr)
   {
-    log(L_ERR "%s: Cannot find link-locad addr on interface %s", p->p.name, iface->name);
+    log(L_ERR "%s: Missing link-local address on interface %s", p->p.name, iface->name);
     return;
   }
 
@@ -389,7 +389,7 @@ radv_reconfigure(struct proto *P, struct proto_config *CF)
   if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
     return 0;
 
-  P->cf = CF; /* radv_check_active() requires proper p->cf */
+  P->cf = CF; /* radv_check_active() requires proper P->cf */
   p->active = radv_check_active(p);
 
   struct iface *iface;

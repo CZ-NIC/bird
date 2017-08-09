@@ -112,7 +112,7 @@ f_new_ec_item(u32 kind, u32 ipv4_used, u32 key, u32 vf, u32 vt)
 {
   u64 fm, to;
 
-  if (ipv4_used || (key >= 0x10000)) {
+  if ((kind != EC_GENERIC) && (ipv4_used || (key >= 0x10000))) {
     check_u16(vf);
     if (vt == EC_ALL)
       vt = 0xFFFF;
