@@ -46,10 +46,11 @@ list iface_list;
 void
 ifa_dump(struct ifa *a)
 {
-  debug("\t%I, net %N bc %I -> %I%s%s%s\n", a->ip, &a->prefix, a->brd, a->opposite,
-	(a->flags & IF_UP) ? "" : " DOWN",
-	(a->flags & IA_PRIMARY) ? "" : " SEC",
-	(a->flags & IA_PEER) ? "PEER" : "");
+  debug("\t%I, net %N bc %I -> %I%s%s%s%s\n", a->ip, &a->prefix, a->brd, a->opposite,
+	(a->flags & IA_PRIMARY) ? " PRIMARY" : "",
+	(a->flags & IA_SECONDARY) ? " SEC" : "",
+	(a->flags & IA_HOST) ? " HOST" : "",
+	(a->flags & IA_PEER) ? " PEER" : "");
 }
 
 /**
