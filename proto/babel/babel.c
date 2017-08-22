@@ -1570,7 +1570,7 @@ babel_if_notify(struct proto *P, unsigned flags, struct iface *iface)
 
   if (flags & IF_CHANGE_UP)
   {
-    struct babel_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, iface->addr);
+    struct babel_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
 
     /* we only speak multicast */
     if (!(iface->flags & IF_MULTICAST))
