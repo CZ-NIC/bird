@@ -1294,8 +1294,10 @@ babel_rx_hook(sock *sk, uint len)
       sk->iface->name, sk->faddr, sk->laddr);
 
   /* Silently ignore my own packets */
-  if (ipa_equal(ifa->iface->addr->ip, sk->faddr))
-    return 1;
+  struct ifa *addr;
+  WALK_LIST(addr, ifa->iface->addrs)
+    if (ipa_equal(addr->ip, sk->faddr))
+      return 1;
 
   if (!ipa_is_link_local(sk->faddr))
     DROP1("wrong src address");

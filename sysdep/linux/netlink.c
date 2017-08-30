@@ -2030,3 +2030,9 @@ void
 kif_sys_shutdown(struct kif_proto *p UNUSED)
 {
 }
+
+int
+kif_set_sysdep_ip(struct iface *i UNUSED)
+{
+  return 0;
+}

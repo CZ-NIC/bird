@@ -93,10 +93,10 @@ kif_item:
       THIS_KIF->scan_time = $3;
    }
  | PRIMARY opttext net_or_ipa {
-     struct kif_primary_item *kpi = cfg_alloc(sizeof (struct kif_primary_item));
-     kpi->pattern = $2;
-     kpi->addr = $3;
-     add_tail(&THIS_KIF->primary, &kpi->n);
+     struct iface_patt_node *ipn = cfg_alloc(sizeof (struct iface_patt_node));
+     ipn->pattern = $2;
+     ipn->prefix = $3;
+     add_tail(&THIS_KIF->primary, &ipn->n);
    }
  ;
 

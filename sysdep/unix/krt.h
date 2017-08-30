@@ -94,17 +94,11 @@ void krt_got_route_async(struct krt_proto *p, struct rte *e, int new);
 
 extern struct protocol proto_unix_iface;
 
-struct kif_primary_item {
-  node n;
-  byte *pattern;
-  net_addr addr;
-};
-
 struct kif_config {
   struct proto_config c;
   struct kif_params sys;	/* Sysdep params */
   int scan_time;		/* How often we re-scan interfaces */
-  list primary;			/* Preferences for primary addresses (struct kif_primary_item) */
+  list primary;			/* Preferences for primary addresses (struct iface_patt_node) */
 };
 
 struct kif_proto {
@@ -117,7 +111,6 @@ extern struct kif_proto *kif_proto;
 #define KIF_CF ((struct kif_config *)p->p.cf)
 
 struct proto_config * krt_init_config(int class);
-
 
 /* krt sysdep */
 
@@ -149,7 +142,5 @@ void kif_sys_init_config(struct kif_config *);
 void kif_sys_copy_config(struct kif_config *, struct kif_config *);
 
 void kif_do_scan(struct kif_proto *);
-
-struct ifa *kif_get_primary_ip(struct iface *i);
 
 #endif

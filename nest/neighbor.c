@@ -61,7 +61,7 @@ if_connected(ip_addr *a, struct iface *i, struct ifa **ap)
 {
   struct ifa *b;
 
-  if (!(i->flags & IF_UP))
+  if (!(i->flags & IF_SYSDEP_UP))
   {
     *ap = NULL;
     return -1;
@@ -213,7 +213,7 @@ neigh_find_iface(struct proto *p, struct iface *ifa)
   n->iface = ifa;
   n->proto = p;
   n->flags = NEF_IFACE;
-  n->scope = (ifa->flags & IF_UP) ? SCOPE_HOST : -1;
+  n->scope = (ifa->flags & IF_SYSDEP_UP) ? SCOPE_HOST : -1;
 
   return n;
 }

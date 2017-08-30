@@ -116,57 +116,6 @@ kif_request_scan(void)
     tm_start(kif_scan_timer, 1);
 }
 
-static inline int
-prefer_addr(struct ifa *a, struct ifa *b)
-{
-  int sa = a->scope > SCOPE_LINK;
-  int sb = b->scope > SCOPE_LINK;
-
-  if (sa < sb)
-    return 0;
-  else if (sa > sb)
-    return 1;
-  else
-    return ipa_compare(a->ip, b->ip) < 0;
-}
-
-static inline struct ifa *
-find_preferred_ifa(struct iface *i, const net_addr *n)
-{
-  struct ifa *a, *b = NULL;
-
-  WALK_LIST(a, i->addrs)
-    {
-      if (!(a->flags & IA_SECONDARY) &&
-	  (!n || ipa_in_netX(a->ip, n)) &&
-	  (!b || prefer_addr(a, b)))
-	b = a;
-    }
-
-  return b;
-}
-
-struct ifa *
-kif_choose_primary(struct iface *i)
-{
-  struct kif_config *cf = (struct kif_config *) (kif_proto->p.cf);
-  struct kif_primary_item *it;
-  struct ifa *a;
-
-  WALK_LIST(it, cf->primary)
-    {
-      if (!it->pattern || patmatch(it->pattern, i->name))
-	if (a = find_preferred_ifa(i, &it->addr))
-	  return a;
-    }
-
-  if (a = kif_get_primary_ip(i))
-    return a;
-
-  return find_preferred_ifa(i, NULL);
-}
-
-
 static struct proto *
 kif_init(struct proto_config *c)
 {
@@ -267,12 +216,18 @@ kif_copy_config(struct proto_config *dest, struct proto_config *src)
   struct kif_config *s = (struct kif_config *) src;
 
   /* Copy primary addr list */
-  cfg_copy_list(&d->primary, &s->primary, sizeof(struct kif_primary_item));
+  cfg_copy_list(&d->primary, &s->primary, sizeof(struct iface_patt_node));
 
   /* Fix sysdep parts */
   kif_sys_copy_config(d, s);
 }
 
+list
+kif_primary_list(void)
+{
+  struct kif_config *cf = (struct kif_config *) (kif_proto->p.cf);
+  return cf->primary;
+}
 
 struct protocol proto_unix_iface = {
   .name = 		"Device",

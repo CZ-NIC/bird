@@ -1124,11 +1124,9 @@ kif_sys_shutdown(struct kif_proto *p)
   krt_buffer_release(&p->p);
 }
 
-
-struct ifa *
-kif_get_primary_ip(struct iface *i UNUSED)
+int
+kif_set_sysdep_ip(struct iface *i)
 {
-#if 0
   static int fd = -1;
   
   if (fd < 0)
@@ -1140,20 +1138,15 @@ kif_get_primary_ip(struct iface *i UNUSED)
 
   int rv = ioctl(fd, SIOCGIFADDR, (char *) &ifr);
   if (rv < 0)
-    return NULL;
+    return 0;
 
-  ip_addr addr;
+  ip4_addr addr;
   struct sockaddr_in *sin = (struct sockaddr_in *) &ifr.ifr_addr;
-  memcpy(&addr, &sin->sin_addr.s_addr, sizeof(ip_addr));
+  memcpy(&addr, &sin->sin_addr.s_addr, sizeof(ip4_addr));
   ipa_ntoh(addr);
 
-  struct ifa *a;
-  WALK_LIST(a, i->addrs)
-  {
-    if (ipa_equal(a->ip, addr))
-      return a;
-  }
-#endif
+  int ret = !ip4_equal(i->sysdep, addr);
+  i->sysdep = addr;
 
-  return NULL;
+  return ret;
 }

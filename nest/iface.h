@@ -35,11 +35,13 @@ struct iface {
   unsigned mtu;
   unsigned index;			/* OS-dependent interface index */
   list addrs;				/* Addresses assigned to this interface */
-  struct ifa *addr;			/* Primary address */
+  struct ifa *addr4;			/* Primary address for IPv4 */
+  struct ifa *addr6;			/* Primary global address for IPv6 */
+  struct ifa *llv6;			/* Primary link-local address for IPv6 */
+  ip4_addr sysdep;			/* Arbitrary IPv4 address for internal sysdep use */
   list neighbors;			/* All neighbors on this interface */
 };
 
-#define IF_UP 1				/* IF_ADMIN_UP and IP address known */
 #define IF_MULTIACCESS 2
 #define IF_BROADCAST 4
 #define IF_MULTICAST 8
@@ -48,6 +50,7 @@ struct iface {
 #define IF_IGNORE 0x40			/* Not to be used by routing protocols (loopbacks etc.) */
 #define IF_ADMIN_UP 0x80		/* Administrative up (e.g. IFF_UP in Linux) */
 #define IF_LINK_UP 0x100		/* Link available (e.g. IFF_LOWER_UP in Linux) */
+#define IF_SYSDEP_UP 0x200		/* Will rename this to IF_UP: Interface up and running */
 
 #define IA_PRIMARY 0x10000		/* This address is primary */
 #define IA_SECONDARY 0x20000		/* This address has been reported as secondary by the kernel */
@@ -79,6 +82,11 @@ struct iface {
 #define IF_CHANGE_MTU 4
 #define IF_CHANGE_CREATE 8		/* Seen this interface for the first time */
 #define IF_CHANGE_LINK 0x10
+#define IF_CHANGE_ADDR4	0x100		/* Change of ->addr4 ... */
+#define IF_CHANGE_ADDR6	0x200
+#define IF_CHANGE_LLV6 0x400
+#define IF_CHANGE_ADDR_ALL (IF_CHANGE_ADDR4 | IF_CHANGE_ADDR6 | IF_CHANGE_LLV6)
+#define IF_CHANGE_SYSDEP 0x800		/* Change of ->sysdep */
 #define IF_CHANGE_TOO_MUCH 0x40000000	/* Used internally */
 
 void if_init(void);

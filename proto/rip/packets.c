@@ -670,8 +670,10 @@ rip_rx_hook(sock *sk, uint len)
 
   /* Silently ignore my own packets */
   /* FIXME: Better local address check */
-  if (ipa_equal(ifa->iface->addr->ip, sk->faddr))
-    return 1;
+  struct ifa *addr;
+  WALK_LIST(addr, ifa->iface->addrs)
+    if (ipa_equal(addr->ip, sk->faddr))
+      return 1;
 
   if (rip_is_ng(p) && !ipa_is_link_local(sk->faddr))
     DROP1("wrong src address");
@@ -749,7 +751,7 @@ rip_open_socket(struct rip_iface *ifa)
    * should choose some link-local address based on the same scope rule.
    */
   if (rip_is_v2(p))
-    sk->saddr = ifa->iface->addr->ip;
+    sk->saddr = ifa->iface->addr4->ip;
 
   sk->rx_hook = rip_rx_hook;
   sk->tx_hook = rip_tx_hook;
