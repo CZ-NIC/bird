@@ -515,7 +515,8 @@ ifa_find_preferred(struct iface *i, const net_addr *n, int done)
      ** this run is last or is chosen in this run,
      ** and is different from the stored value
      */
-    i->addr4->flags &= ~IA_PRIMARY;
+    if (i->addr4)
+      i->addr4->flags &= ~IA_PRIMARY;
     if (a4) {
       a4->flags |= IA_PRIMARY;
       rem_node(&a4->n);
@@ -526,7 +527,8 @@ ifa_find_preferred(struct iface *i, const net_addr *n, int done)
   }
 
   if (!(done & IF_CHANGE_ADDR6) && (!n || a6) && (a6 != i->addr6)) {
-    i->addr6->flags &= ~IA_PRIMARY;
+    if (i->addr6)
+      i->addr6->flags &= ~IA_PRIMARY;
     if (a6) {
       a6->flags |= IA_PRIMARY;
       rem_node(&a6->n);
@@ -537,7 +539,8 @@ ifa_find_preferred(struct iface *i, const net_addr *n, int done)
   }
 
   if (!(done & IF_CHANGE_LLV6) && (!n || ll) && (ll != i->llv6)) {
-    i->llv6->flags &= ~IA_PRIMARY;
+    if (i->llv6)
+      i->llv6->flags &= ~IA_PRIMARY;
     if (ll) {
       ll->flags |= IA_PRIMARY;
       rem_node(&ll->n);
@@ -914,7 +917,7 @@ if_show_summary(void)
       if (i->llv6)
 	bsprintf(ll, "%I/%d", i->llv6->ip, i->llv6->prefix.pxlen);
       else
-	strcpy(a6, "(no link-local IPv6 address)");
+	strcpy(ll, "(no link-local IPv6 address)");
 
       cli_msg(-1005, "%-9s %-5s %s %s %s", i->name, (i->flags & IF_SYSDEP_UP) ? "up" : "DOWN", ll, a6, a4);
     }
