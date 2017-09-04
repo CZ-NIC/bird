@@ -316,14 +316,14 @@ struct nl_want_attrs {
 };
 
 
-#define BIRD_IFLA_MAX (IFLA_WIRELESS+1)
+#define BIRD_IFLA_MAX (IFLA_OPERSTATE+1)
 
 static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
   [IFLA_IFNAME]	  = { 1, 0, 0 },
   [IFLA_MTU]	  = { 1, 1, sizeof(u32) },
   [IFLA_WIRELESS] = { 1, 0, 0 },
+  [IFLA_OPERSTATE] = { 1, 1, sizeof(u8) },
 };
-
 
 #define BIRD_IFA_MAX  (IFA_FLAGS+1)
 
@@ -422,6 +422,9 @@ nl_parse_attrs(struct rtattr *a, struct nl_want_attrs *want, struct rtattr **k, 
 
   return 1;
 }
+
+static inline u8 rta_get_u8(struct rtattr *a)
+{ return *(u8 *) RTA_DATA(a); }
 
 static inline u16 rta_get_u16(struct rtattr *a)
 { return *(u16 *) RTA_DATA(a); }
@@ -824,6 +827,26 @@ nl_parse_link(struct nlmsghdr *h, int scan)
       if (fl & IFF_MULTICAST)
 	f.flags |= IF_MULTICAST;
 
+      if (a[IFLA_OPERSTATE])
+	switch (rta_get_u8(a[IFLA_OPERSTATE]))
+	  {
+	    case 0: /* IF_OPER_UNKNOWN */
+	      goto operstate_estim;
+	      break;
+	    case 6: /* IF_OPER_UP */
+	      f.flags |= IF_SYSDEP_UP;
+	      break;
+	    default: /* IF_OPER_DOWN */
+	      break;
+	  }
+      else
+	{
+operstate_estim:
+	  /* Some drivers don't implement this, estimating from Admin Up and Link Up */
+	  if ((f.flags & IF_ADMIN_UP) && (f.flags & IF_LINK_UP))
+	    f.flags |= IF_SYSDEP_UP;
+	}
+
       ifi = if_update(&f);
 
       if (!scan)
@@ -929,7 +952,7 @@ nl_parse_addr4(struct ifaddrmsg *i, int scan, int new)
   DBG("KIF: IF%d(%s): %s IPA %I, flg %x, net %N, brd %I, opp %I\n",
       ifi->index, ifi->name,
       new ? "added" : "removed",
-      ifa.ip, ifa.flags, ifa.prefix, ifa.brd, ifa.opposite);
+      ifa.ip, ifa.flags, &ifa.prefix, ifa.brd, ifa.opposite);
 
   if (new)
     ifa_update(&ifa);
@@ -1021,7 +1044,7 @@ nl_parse_addr6(struct ifaddrmsg *i, int scan, int new)
   DBG("KIF: IF%d(%s): %s IPA %I, flg %x, net %N, brd %I, opp %I\n",
       ifi->index, ifi->name,
       new ? "added" : "removed",
-      ifa.ip, ifa.flags, ifa.prefix, ifa.brd, ifa.opposite);
+      ifa.ip, ifa.flags, &ifa.prefix, ifa.brd, ifa.opposite);
 
   if (new)
     ifa_update(&ifa);
@@ -1464,7 +1487,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   /* Do we know this table? */
   p = HASH_FIND(nl_table_map, RTH, i->rtm_family, table_id);
   if (!p)
-    SKIP("unknown table %d\n", table);
+    SKIP("unknown table %d\n", table_id);
 
   if (a[RTA_IIF])
     SKIP("IIF set\n");
