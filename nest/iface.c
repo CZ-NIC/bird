@@ -631,6 +631,7 @@ ifa_update(struct ifa *a)
   b = mb_alloc(if_pool, sizeof(struct ifa));
   memcpy(b, a, sizeof(struct ifa));
   add_tail(&i->addrs, &b->n);
+  b->flags |= IF_UPDATED;
   int ioldflags = i->flags;
   if (ifa_recalc_primary(i))
     if_change_flags(i, i->flags | IF_TMP_DOWN);
