@@ -38,12 +38,12 @@
  */
 
 #define INIT_MREQ4(maddr,ifa) \
-  { .imr_multiaddr = ipa_to_in4(maddr), .imr_interface = ipa_to_in4(ifa->addr->ip) }
+  { .imr_multiaddr = ipa_to_in4(maddr), .imr_interface = ipa_to_in4(ipa_from_ip4(ifa->sysdep)) }
 
 static inline int
 sk_setup_multicast4(sock *s)
 {
-  struct in_addr ifa = ipa_to_in4(s->iface->addr->ip);
+  struct in_addr ifa = ipa_to_in4(ipa_from_ip4(s->iface->sysdep));
   u8 ttl = s->ttl;
   u8 n = 0;
 
