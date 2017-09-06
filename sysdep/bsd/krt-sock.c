@@ -287,7 +287,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 #endif
   {
     /* Fallback for all other valid cases */
-    if (!i->sysdep)
+    if (net->n.addr->type == NET_IP4 && !i->sysdep)
     {
       log(L_ERR "KRT: interface %s has no IP addess", i->name);
       return -1;
@@ -298,8 +298,15 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
       msg.rtm.rtm_flags |= RTF_CLONING;
 #endif
 
-    sockaddr_fill(&gate, AF_INET, ipa_from_ip4(i->sysdep), NULL, 0);
-    msg.rtm.rtm_addrs |= RTA_GATEWAY;
+    if (net->n.addr->type == NET_IP4) {
+      sockaddr_fill(&gate, AF_INET, ipa_from_ip4(i->sysdep), NULL, 0);
+      log(L_INFO "KRT: sending route %N to kernel with gateway %I4", net->n.addr, i->sysdep);
+      msg.rtm.rtm_addrs |= RTA_GATEWAY;
+    } else {
+      sockaddr_fill(&gate, AF_INET6, i->llv6->ip, i, 0);
+      log(L_INFO "KRT: sending route %N to kernel with gateway %I", net->n.addr, i->llv6->ip);
+      msg.rtm.rtm_addrs |= RTA_GATEWAY;
+    }
     break;
   }
 
@@ -1147,7 +1154,7 @@ kif_set_sysdep_ip(struct iface *i)
   ip4_addr addr;
   struct sockaddr_in *sin = (struct sockaddr_in *) &ifr.ifr_addr;
   memcpy(&addr, &sin->sin_addr.s_addr, sizeof(ip4_addr));
-  ip4_ntoh(addr);
+  addr = ip4_ntoh(addr);
 
   int ret = !ip4_equal(i->sysdep, addr);
   i->sysdep = addr;
