@@ -641,6 +641,10 @@ krt_read_ifinfo(struct ks_msg *msg, int scan)
   else
     f.flags |= IF_MULTIACCESS;      /* NBMA */
 
+  /* Estimation of link up. */
+  if ((f.flags & IF_ADMIN_UP) && (f.flags & IF_LINK_UP))
+    f.flags |= IF_SYSDEP_UP;
+
   iface = if_update(&f);
 
   if (!scan)
