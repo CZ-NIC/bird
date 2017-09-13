@@ -2576,6 +2576,15 @@ interfaces to be defined for them to work with.
 
 	In all cases, an address marked by operating system as secondary cannot
 	be chosen as the primary one.
+
+	<tag><label id="device-adminup">adminup <m/pattern/ [, <m/.../]</tag>
+	If a network interface status info is inconsistent, BIRD may override
+	the information it gets from kernel by admin up/down status, ignoring
+	interface operational status or link up information.
+
+	This option allows BIRD to do this for specified interfaces.
+	See <ref id="proto-iface" name="interface"> common option for detailed
+	description of the pattern syntax.
 </descrip>
 
 <p>As the Device protocol doesn't generate any routes, it cannot have

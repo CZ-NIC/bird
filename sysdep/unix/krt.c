@@ -203,7 +203,9 @@ kif_init_config(int class)
 
   kif_cf = (struct kif_config *) proto_config_new(&proto_unix_iface, class);
   kif_cf->scan_time = 60;
+
   init_list(&kif_cf->primary);
+  init_list(&kif_cf->adminup);
 
   kif_sys_init_config(kif_cf);
   return (struct proto_config *) kif_cf;
@@ -222,11 +224,18 @@ kif_copy_config(struct proto_config *dest, struct proto_config *src)
   kif_sys_copy_config(d, s);
 }
 
-list
+list *
 kif_primary_list(void)
 {
   struct kif_config *cf = (struct kif_config *) (kif_proto->p.cf);
-  return cf->primary;
+  return &cf->primary;
+}
+
+list *
+kif_adminup_list(void)
+{
+  struct kif_config *cf = (struct kif_config *) (kif_proto->p.cf);
+  return &cf->adminup;
 }
 
 struct protocol proto_unix_iface = {

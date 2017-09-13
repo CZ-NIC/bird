@@ -99,6 +99,7 @@ struct kif_config {
   struct kif_params sys;	/* Sysdep params */
   int scan_time;		/* How often we re-scan interfaces */
   list primary;			/* Preferences for primary addresses (struct iface_patt_node) */
+  list adminup;			/* Network interfaces */
 };
 
 struct kif_proto {

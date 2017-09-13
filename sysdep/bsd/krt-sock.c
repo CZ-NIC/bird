@@ -231,7 +231,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   {
     WALK_LIST(j, iface_list)
     {
-      if (j->flags & IF_LOOPBACK)
+      if ((j->flags & IF_LOOPBACK) && (net->n.addr->type == NET_IP4 || j->llv6))
       {
         i = j;
         break;
@@ -574,6 +574,7 @@ krt_read_ifannounce(struct ks_msg *msg)
   DBG("KRT: IFANNOUNCE what: %d index %d name %s\n", ifam->ifan_what, ifam->ifan_index, ifam->ifan_name);
 }
 
+list *kif_adminup_list(void);
 static void
 krt_read_ifinfo(struct ks_msg *msg, int scan)
 {
@@ -649,7 +650,8 @@ krt_read_ifinfo(struct ks_msg *msg, int scan)
     f.flags |= IF_MULTIACCESS;      /* NBMA */
 
   /* Estimation of link up. */
-  if ((f.flags & IF_ADMIN_UP) && (f.flags & IF_LINK_UP))
+  if ((f.flags & IF_ADMIN_UP) &&
+      (iface_patt_find(kif_adminup_list(), &f, NULL) || (f.flags & IF_LINK_UP)))
     f.flags |= IF_SYSDEP_UP;
 
   iface = if_update(&f);

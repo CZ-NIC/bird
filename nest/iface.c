@@ -553,7 +553,7 @@ ifa_find_preferred(struct iface *i, const net_addr *n, int done)
   return ret;
 }
 
-list kif_primary_list(void);
+list *kif_primary_list(void);
 int kif_set_sysdep_ip(struct iface *i);
 
 static int
@@ -566,7 +566,7 @@ ifa_recalc_primary(struct iface *i)
     ret |= IF_CHANGE_SYSDEP;
 
 
-  WALK_LIST(it, kif_primary_list())
+  WALK_LIST(it, *kif_primary_list())
     {
       if (!it->pattern || patmatch(it->pattern, i->name))
 	ret |= ifa_find_preferred(i, &it->prefix, ret);

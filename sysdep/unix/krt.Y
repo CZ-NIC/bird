@@ -27,7 +27,7 @@ krt_set_merge_paths(struct channel_config *cc, uint merge, uint limit)
 
 CF_DECLS
 
-CF_KEYWORDS(KERNEL, PERSIST, SCAN, TIME, LEARN, DEVICE, ROUTES, GRACEFUL, RESTART, KRT_SOURCE, KRT_METRIC, MERGE, PATHS)
+CF_KEYWORDS(KERNEL, PERSIST, SCAN, TIME, LEARN, DEVICE, ROUTES, GRACEFUL, RESTART, KRT_SOURCE, KRT_METRIC, MERGE, PATHS, ADMINUP)
 
 %type <i> kern_mp_limit
 
@@ -98,7 +98,11 @@ kif_item:
      ipn->prefix = $3;
      add_tail(&THIS_KIF->primary, &ipn->n);
    }
+ | ADMINUP iface_patt_init iface_patt_list_nopx {
+     add_tail(&THIS_KIF->adminup, &this_ipatt->n);
+   }
  ;
+
 
 CF_ADDTO(dynamic_attr, KRT_SOURCE { $$ = f_new_dynamic_attr(EAF_TYPE_INT | EAF_TEMP, T_INT, EA_KRT_SOURCE); })
 CF_ADDTO(dynamic_attr, KRT_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT | EAF_TEMP, T_INT, EA_KRT_METRIC); })

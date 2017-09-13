@@ -759,6 +759,7 @@ nl_parse_metrics(struct rtattr *hdr, u32 *metrics, int max)
  *	Scanning of interfaces
  */
 
+list *kif_adminup_list(void);
 static void
 nl_parse_link(struct nlmsghdr *h, int scan)
 {
@@ -827,7 +828,9 @@ nl_parse_link(struct nlmsghdr *h, int scan)
       if (fl & IFF_MULTICAST)
 	f.flags |= IF_MULTICAST;
 
-      if (a[IFLA_OPERSTATE])
+      if (iface_patt_find(kif_adminup_list(), &f, NULL))
+	f.flags |= (f.flags & IF_ADMIN_UP) ? IF_SYSDEP_UP : 0;
+      else if (a[IFLA_OPERSTATE])
 	switch (rta_get_u8(a[IFLA_OPERSTATE]))
 	  {
 	    case 0: /* IF_OPER_UNKNOWN */
