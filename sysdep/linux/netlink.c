@@ -30,14 +30,12 @@
 
 #include <asm/types.h>
 #include <linux/if.h>
-#ifdef HAVE_LWTUNNEL
-#include <linux/lwtunnel.h>
-#else
-#include "sysdep/linux/lwtunnel.h"
-#endif
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
+#ifdef HAVE_MPLS_KERNEL
+#include <linux/lwtunnel.h>
+#endif
 
 #ifndef MSG_TRUNC			/* Hack: Several versions of glibc miss this one :( */
 #define MSG_TRUNC 0x20
@@ -57,13 +55,6 @@
 
 #ifndef RTA_VIA
 #define RTA_VIA	 18
-#endif
-
-#ifndef HAVE_STRUCT_RTVIA
-struct rtvia {
-	unsigned short	rtvia_family;
-	u8		rtvia_addr[0];
-};
 #endif
 
 #ifndef RTA_NEWDST
@@ -361,9 +352,11 @@ static struct nl_want_attrs nexthop_attr_want6[BIRD_RTA_MAX] = {
   [RTA_ENCAP]	  = { 1, 0, 0 },
 };
 
+#ifdef HAVE_MPLS_KERNEL
 static struct nl_want_attrs encap_mpls_want[BIRD_RTA_MAX] = {
   [RTA_DST]       = { 1, 0, 0 },
 };
+#endif
 
 static struct nl_want_attrs rtm_attr_want4[BIRD_RTA_MAX] = {
   [RTA_DST]	  = { 1, 1, sizeof(ip4_addr) },
@@ -394,6 +387,7 @@ static struct nl_want_attrs rtm_attr_want6[BIRD_RTA_MAX] = {
   [RTA_ENCAP]	  = { 1, 0, 0 },
 };
 
+#ifdef HAVE_MPLS_KERNEL
 static struct nl_want_attrs rtm_attr_want_mpls[BIRD_RTA_MAX] = {
   [RTA_DST]	  = { 1, 1, sizeof(u32) },
   [RTA_IIF]	  = { 1, 1, sizeof(u32) },
@@ -405,6 +399,7 @@ static struct nl_want_attrs rtm_attr_want_mpls[BIRD_RTA_MAX] = {
   [RTA_VIA]	  = { 1, 0, 0 },
   [RTA_NEWDST]	  = { 1, 0, 0 },
 };
+#endif
 
 
 static int
@@ -456,6 +451,7 @@ static inline ip_addr rta_get_ipa(struct rtattr *a)
     return ipa_from_ip6(rta_get_ip6(a));
 }
 
+#ifdef HAVE_MPLS_KERNEL
 static inline ip_addr rta_get_via(struct rtattr *a)
 {
   struct rtvia *v = RTA_DATA(a);
@@ -474,6 +470,7 @@ static inline int rta_get_mpls(struct rtattr *a, u32 *stack)
 
   return mpls_get(RTA_DATA(a), RTA_PAYLOAD(a) & ~0x3, stack);
 }
+#endif
 
 struct rtattr *
 nl_add_attr(struct nlmsghdr *h, uint bufsize, uint code, const void *data, uint dlen)
@@ -542,6 +539,7 @@ nl_add_attr_ipa(struct nlmsghdr *h, uint bufsize, int code, ip_addr ipa)
     nl_add_attr_ip6(h, bufsize, code, ipa_to_ip6(ipa));
 }
 
+#ifdef HAVE_MPLS_KERNEL
 static inline void
 nl_add_attr_mpls(struct nlmsghdr *h, uint bufsize, int code, int len, u32 *stack)
 {
@@ -583,6 +581,7 @@ nl_add_attr_via(struct nlmsghdr *h, uint bufsize, ip_addr ipa)
 
   nl_close_attr(h, nest);
 }
+#endif
 
 static inline struct rtnexthop *
 nl_open_nexthop(struct nlmsghdr *h, uint bufsize)
@@ -605,8 +604,9 @@ nl_close_nexthop(struct nlmsghdr *h, struct rtnexthop *nh)
 }
 
 static inline void
-nl_add_nexthop(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af)
+nl_add_nexthop(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af UNUSED)
 {
+#ifdef HAVE_MPLS_KERNEL
   if (nh->labels > 0)
     if (af == AF_MPLS)
       nl_add_attr_mpls(h, bufsize, RTA_NEWDST, nh->labels, nh->label);
@@ -618,6 +618,11 @@ nl_add_nexthop(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af)
       nl_add_attr_via(h, bufsize, nh->gw);
     else
       nl_add_attr_ipa(h, bufsize, RTA_GATEWAY, nh->gw);
+#else
+
+  if (ipa_nonzero(nh->gw))
+    nl_add_attr_ipa(h, bufsize, RTA_GATEWAY, nh->gw);
+#endif
 }
 
 static void
@@ -716,19 +721,21 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra, int af)
       else
 	rv->gw = IPA_NONE;
 
+#ifdef HAVE_MPLS_KERNEL
       if (a[RTA_ENCAP_TYPE])
-	{
-	  if (rta_get_u16(a[RTA_ENCAP_TYPE]) != LWTUNNEL_ENCAP_MPLS) {
-	    log(L_WARN "KRT: Unknown encapsulation method %d in multipath", rta_get_u16(a[RTA_ENCAP_TYPE]));
-	    return NULL;
-	  }
-
-	  struct rtattr *enca[BIRD_RTA_MAX];
-	  nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
-	  nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
-	  rv->labels = rta_get_mpls(enca[RTA_DST], rv->label);
-	  break;
+      {
+	if (rta_get_u16(a[RTA_ENCAP_TYPE]) != LWTUNNEL_ENCAP_MPLS) {
+	  log(L_WARN "KRT: Unknown encapsulation method %d in multipath", rta_get_u16(a[RTA_ENCAP_TYPE]));
+	  return NULL;
 	}
+
+	struct rtattr *enca[BIRD_RTA_MAX];
+	nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
+	nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
+	rv->labels = rta_get_mpls(enca[RTA_DST], rv->label);
+	break;
+      }
+#endif
 
 
       len -= NLMSG_ALIGN(nh->rtnh_len);
@@ -1216,12 +1223,14 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int d
   r->r.rtm_dst_len = net_pxlen(net->n.addr);
   r->r.rtm_protocol = RTPROT_BIRD;
   r->r.rtm_scope = RT_SCOPE_NOWHERE;
+#ifdef HAVE_MPLS_KERNEL
   if (p->af == AF_MPLS)
   {
     u32 label = net_mpls(net->n.addr);
     nl_add_attr_mpls(&r->h, rsize, RTA_DST, 1, &label);
   }
   else
+#endif
     nl_add_attr_ipa(&r->h, rsize, RTA_DST, net_prefix(net->n.addr));
 
   /*
@@ -1490,6 +1499,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	net_fill_ip6(&dst, IP6_NONE, 0);
       break;
 
+#ifdef HAVE_MPLS_KERNEL
     case AF_MPLS:
       if (!nl_parse_attrs(RTM_RTA(i), rtm_attr_want_mpls, a, sizeof(a)))
 	return;
@@ -1502,6 +1512,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 
       net_fill_mpls(&dst, rta_mpls_stack[0]);
       break;
+#endif
 
     default:
       return;
@@ -1595,11 +1606,17 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	  return;
 	}
 
-      if ((i->rtm_family != AF_MPLS) && a[RTA_GATEWAY] || (i->rtm_family == AF_MPLS) && a[RTA_VIA])
+      if ((i->rtm_family != AF_MPLS) && a[RTA_GATEWAY]
+#ifdef HAVE_MPLS_KERNEL
+	  || (i->rtm_family == AF_MPLS) && a[RTA_VIA]
+#endif
+	  )
 	{
+#ifdef HAVE_MPLS_KERNEL
 	  if (i->rtm_family == AF_MPLS)
 	    ra->nh.gw = rta_get_via(a[RTA_VIA]);
 	  else
+#endif
 	    ra->nh.gw = rta_get_ipa(a[RTA_GATEWAY]);
 
 	  /* Silently skip strange 6to4 routes */
@@ -1637,6 +1654,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       return;
     }
 
+#ifdef HAVE_MPLS_KERNEL
   int labels = 0;
   if ((i->rtm_family == AF_MPLS) && a[RTA_NEWDST] && !ra->nh.next)
     labels = rta_get_mpls(a[RTA_NEWDST], ra->nh.label);
@@ -1666,6 +1684,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   }
   else
     ra->nh.labels = labels;
+#endif
 
   rte *e = rte_get_temp(ra);
   e->net = net;
@@ -1816,6 +1835,7 @@ krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NUL
       log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
   nl_parse_end(&s);
 
+#ifdef HAVE_MPLS_KERNEL
   nl_parse_begin(&s, 1, 1);
   nl_request_dump(AF_MPLS, RTM_GETROUTE);
   while (h = nl_get_scan())
@@ -1824,6 +1844,7 @@ krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NUL
     else
       log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
   nl_parse_end(&s);
+#endif
 }
 
 /*

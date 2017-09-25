@@ -1211,7 +1211,11 @@ struct protocol proto_unix_kernel = {
   .template =		"kernel%d",
   .attr_class =		EAP_KRT,
   .preference =		DEF_PREF_INHERITED,
+#ifdef HAVE_MPLS_KERNEL
   .channel_mask =	NB_IP | NB_MPLS,
+#else
+  .channel_mask =	NB_IP,
+#endif
   .proto_size =		sizeof(struct krt_proto),
   .config_size =	sizeof(struct krt_config),
   .preconfig =		krt_preconfig,
