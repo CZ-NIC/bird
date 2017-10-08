@@ -92,8 +92,10 @@
  * - RFC 2328 - main OSPFv2 standard
  * - RFC 5340 - main OSPFv3 standard
  * - RFC 3101 - OSPFv2 NSSA areas
- * - RFC 6549 - OSPFv2 multi-instance extensions
- * - RFC 6987 - OSPF stub router advertisement
+ * - RFC 5709 - OSPFv2 HMAC-SHA Cryptographic Authentication
+ * - RFC 5838 - OSPFv3 Support of Address Families
+ * - RFC 6549 - OSPFv2 Multi-Instance Extensions
+ * - RFC 6987 - OSPF Stub Router Advertisement
  */
 
 #include <stdlib.h>
@@ -115,9 +117,9 @@ add_area_nets(struct ospf_area *oa, struct ospf_area_config *ac)
   struct area_net_config *anc;
   struct area_net *an;
 
-  fib_init(&oa->net_fib,  p->p.pool, ospf_is_v2(p) ? NET_IP4 : NET_IP6,
+  fib_init(&oa->net_fib,  p->p.pool, ospf_get_af(p),
 	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL);
-  fib_init(&oa->enet_fib, p->p.pool, ospf_is_v2(p) ? NET_IP4 : NET_IP6,
+  fib_init(&oa->enet_fib, p->p.pool, ospf_get_af(p),
 	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL);
 
   WALK_LIST(anc, ac->net_list)
@@ -132,6 +134,16 @@ add_area_nets(struct ospf_area *oa, struct ospf_area_config *ac)
     an->hidden = anc->hidden;
     an->tag = anc->tag;
   }
+}
+
+static inline uint
+ospf_opts(struct ospf_proto *p)
+{
+  if (ospf_is_v2(p))
+    return 0;
+
+  return ((ospf_is_ip6(p) && !p->af_mc) ? OPT_V6 : 0) |
+    (!p->stub_router ? OPT_R : 0) | (p->af_ext ? OPT_AF : 0);
 }
 
 static void
@@ -155,10 +167,7 @@ ospf_area_add(struct ospf_proto *p, struct ospf_area_config *ac)
   if (oa->areaid == 0)
     p->backbone = oa;
 
-  if (ospf_is_v2(p))
-    oa->options = ac->type;
-  else
-    oa->options = ac->type | OPT_V6 | (p->stub_router ? 0 : OPT_R);
+  oa->options = ac->type | ospf_opts(p);
 
   ospf_notify_rt_lsa(oa);
 }
@@ -224,6 +233,8 @@ ospf_start(struct proto *P)
 
   p->router_id = proto_get_router_id(P->cf);
   p->ospf2 = c->ospf2;
+  p->af_ext = c->af_ext;
+  p->af_mc = c->af_mc;
   p->rfc1583 = c->rfc1583;
   p->stub_router = c->stub_router;
   p->merge_external = c->merge_external;
@@ -238,8 +249,7 @@ ospf_start(struct proto *P)
   p->nhpool = lp_new(P->pool, 12*sizeof(struct nexthop));
   init_list(&(p->iface_list));
   init_list(&(p->area_list));
-  fib_init(&p->rtf, P->pool, p->ospf2 ? NET_IP4 : NET_IP6,
-	   sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
+  fib_init(&p->rtf, P->pool, ospf_get_af(p), sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
   if (ospf_is_v3(p))
     idm_init(&p->idm, P->pool, 16);
   p->areano = 0;
@@ -601,11 +611,7 @@ ospf_area_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
   struct ospf_iface *ifa;
 
   oa->ac = nac;
-
-  if (ospf_is_v2(p))
-    oa->options = nac->type;
-  else
-    oa->options = nac->type | OPT_V6 | (p->stub_router ? 0 : OPT_R);
+  oa->options = nac->type | ospf_opts(p);
 
   if (nac->type != oac->type)
   {
@@ -657,6 +663,9 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
     return 0;
 
   if (old->abr != new->abr)
+    return 0;
+
+  if ((p->af_ext != new->af_ext) || (p->af_mc != new->af_mc))
     return 0;
 
   if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
@@ -1073,13 +1082,13 @@ show_lsa_network(struct top_hash_entry *he, int ospf2)
 }
 
 static inline void
-show_lsa_sum_net(struct top_hash_entry *he, int ospf2)
+show_lsa_sum_net(struct top_hash_entry *he, int ospf2, int af)
 {
   net_addr net;
   u8 pxopts;
   u32 metric;
 
-  lsa_parse_sum_net(he, ospf2, &net, &pxopts, &metric);
+  lsa_parse_sum_net(he, ospf2, af, &net, &pxopts, &metric);
   cli_msg(-1016, "\t\txnetwork %N metric %u", &net, metric);
 }
 
@@ -1096,7 +1105,7 @@ show_lsa_sum_rt(struct top_hash_entry *he, int ospf2)
 
 
 static inline void
-show_lsa_external(struct top_hash_entry *he, int ospf2)
+show_lsa_external(struct top_hash_entry *he, int ospf2, int af)
 {
   struct ospf_lsa_ext_local rt;
   char str_via[IPA_MAX_TEXT_LENGTH + 8] = "";
@@ -1105,7 +1114,7 @@ show_lsa_external(struct top_hash_entry *he, int ospf2)
   if (he->lsa_type == LSA_T_EXT)
     he->domain = 0; /* Unmark the LSA */
 
-  lsa_parse_ext(he, ospf2, &rt);
+  lsa_parse_ext(he, ospf2, af, &rt);
 
   if (rt.fbit)
     bsprintf(str_via, " via %I", rt.fwaddr);
@@ -1119,7 +1128,7 @@ show_lsa_external(struct top_hash_entry *he, int ospf2)
 }
 
 static inline void
-show_lsa_prefix(struct top_hash_entry *he, struct top_hash_entry *cnode)
+show_lsa_prefix(struct top_hash_entry *he, struct top_hash_entry *cnode, int af)
 {
   struct ospf_lsa_prefix *px = he->lsa_body;
   u32 *buf;
@@ -1142,7 +1151,7 @@ show_lsa_prefix(struct top_hash_entry *he, struct top_hash_entry *cnode)
     u8 pxopts;
     u16 metric;
 
-    buf = ospf_get_ipv6_prefix(buf, &net, &pxopts, &metric);
+    buf = ospf3_get_prefix(buf, af, &net, &pxopts, &metric);
 
     if (px->ref_type == LSA_T_RT)
       cli_msg(-1016, "\t\tstubnet %N metric %u", &net, metric);
@@ -1156,6 +1165,7 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   int ospf2 = ospf_is_v2(p);
+  int af = ospf_get_af(p);
   uint i, ix, j1, jx;
   u32 last_area = 0xFFFFFFFF;
 
@@ -1276,7 +1286,7 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 
     case LSA_T_SUM_NET:
       if (cnode->lsa_type == LSA_T_RT)
-	show_lsa_sum_net(he, ospf2);
+	show_lsa_sum_net(he, ospf2, af);
       break;
 
     case LSA_T_SUM_RT:
@@ -1286,11 +1296,11 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 
     case LSA_T_EXT:
     case LSA_T_NSSA:
-      show_lsa_external(he, ospf2);
+      show_lsa_external(he, ospf2, af);
       break;
 
     case LSA_T_PREFIX:
-      show_lsa_prefix(he, cnode);
+      show_lsa_prefix(he, cnode, af);
       break;
     }
 
@@ -1304,7 +1314,7 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 	ix++;
 
       while ((ix < jx) && (hex[ix]->lsa.rt == cnode->lsa.rt))
-	show_lsa_external(hex[ix++], ospf2);
+	show_lsa_external(hex[ix++], ospf2, af);
 
       cnode = NULL;
     }
@@ -1338,7 +1348,7 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 	last_rt = he->lsa.rt;
       }
 
-      show_lsa_external(he, ospf2);
+      show_lsa_external(he, ospf2, af);
     }
   }
 

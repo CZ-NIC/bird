@@ -1008,7 +1008,7 @@ prepare_sum3_net_lsa_body(struct ospf_proto *p, ort *nf, u32 metric)
   sum = lsab_allocz(p, sizeof(struct ospf_lsa_sum3_net) +
 		    IPV6_PREFIX_SPACE(nf->fn.addr->pxlen));
   sum->metric = metric;
-  ospf_put_ipv6_prefix(sum->prefix, nf->fn.addr, 0, 0);
+  ospf3_put_prefix(sum->prefix, nf->fn.addr, 0, 0);
 }
 
 static inline void
@@ -1097,7 +1097,7 @@ prepare_ext3_lsa_body(struct ospf_proto *p, ort *nf,
   ext->metric = metric & LSA_METRIC_MASK;
   u32 *buf = ext->rest;
 
-  buf = ospf_put_ipv6_prefix(buf, nf->fn.addr, pbit ? OPT_PX_P : 0, 0);
+  buf = ospf3_put_prefix(buf, nf->fn.addr, pbit ? OPT_PX_P : 0, 0);
 
   if (ebit)
     ext->metric |= LSA_EXT3_EBIT;
@@ -1105,7 +1105,7 @@ prepare_ext3_lsa_body(struct ospf_proto *p, ort *nf,
   if (ipa_nonzero(fwaddr))
   {
     ext->metric |= LSA_EXT3_FBIT;
-    buf = ospf_put_ipv6_addr(buf, fwaddr);
+    buf = ospf3_put_addr(buf, fwaddr);
   }
 
   if (tag)
@@ -1222,7 +1222,7 @@ find_surrogate_fwaddr(struct ospf_proto *p, struct ospf_area *oa)
     {
       WALK_LIST(a, ifa->iface->addrs)
       {
-	if ((a->prefix.type != NET_IP6) ||
+	if ((a->prefix.type != ospf_get_af(p)) ||
 	    (a->flags & IA_SECONDARY) ||
 	    (a->flags & IA_PEER) ||
 	    (a->scope <= SCOPE_LINK))
@@ -1316,39 +1316,47 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
  */
 
 static inline void
-lsab_put_prefix(struct ospf_proto *p, net_addr *net, u32 cost)
+lsab_put_prefix(struct ospf_proto *p, net_addr *n, u32 cost)
 {
-  void *buf = lsab_alloc(p, IPV6_PREFIX_SPACE(net6_pxlen(net)));
-  u8 flags = (net6_pxlen(net) < IP6_MAX_PREFIX_LENGTH) ? 0 : OPT_PX_LA;
-  ospf_put_ipv6_prefix(buf, net, flags, cost);
+  void *buf = lsab_alloc(p, IPV6_PREFIX_SPACE(net_pxlen(n)));
+  uint max = (n->type == NET_IP4) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH;
+  u8 flags = (net_pxlen(n) < max) ? 0 : OPT_PX_LA;
+  ospf3_put_prefix(buf, n, flags, cost);
 }
 
 static void
 prepare_link_lsa_body(struct ospf_proto *p, struct ospf_iface *ifa)
 {
-  struct ospf_lsa_link *ll;
+  ip_addr nh = ospf_is_ip4(p) ? IPA_NONE : ifa->addr->ip;
   int i = 0;
 
+  /* Preallocating space for header */
   ASSERT(p->lsab_used == 0);
-  ll = lsab_allocz(p, sizeof(struct ospf_lsa_link));
-  ll->options = ifa->oa->options | (ifa->priority << 24);
-  ll->lladdr = ipa_to_ip6(ifa->addr->ip);
-  ll = NULL; /* buffer might be reallocated later */
+  lsab_allocz(p, sizeof(struct ospf_lsa_link));
 
   struct ifa *a;
   WALK_LIST(a, ifa->iface->addrs)
   {
-    if ((a->prefix.type != NET_IP6) ||
+    if ((a->prefix.type != ospf_get_af(p)) ||
 	(a->flags & IA_SECONDARY) ||
 	(a->scope <= SCOPE_LINK))
       continue;
+
+    if (ospf_is_ip4(p) && ipa_zero(nh))
+      nh = a->ip;
 
     lsab_put_prefix(p, &a->prefix, 0);
     i++;
   }
 
-  ll = p->lsab;
+  /* Filling the preallocated header */
+  struct ospf_lsa_link *ll = p->lsab;
+  ll->options = ifa->oa->options | (ifa->priority << 24);
+  ll->lladdr = ospf_is_ip4(p) ? ospf3_4to6(ipa_to_ip4(nh)) : ipa_to_ip6(nh);
   ll->pxcount = i;
+
+  if (ipa_zero(nh))
+    log(L_ERR "%s: Cannot find next hop address for %s", p->p.name, ifa->ifname);
 }
 
 static void
@@ -1410,7 +1418,7 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
     struct ifa *a;
     WALK_LIST(a, ifa->iface->addrs)
     {
-      if ((a->prefix.type != NET_IP6) ||
+      if ((a->prefix.type != ospf_get_af(p)) ||
 	  (a->flags & IA_SECONDARY) ||
 	  (a->flags & IA_PEER) ||
 	  (a->scope <= SCOPE_LINK))
@@ -1448,7 +1456,7 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
 
   /* If there are some configured vlinks, find some global address
      (even from another area), which will be used as a vlink endpoint. */
-  if (!EMPTY_LIST(cf->vlink_list) && !host_addr)
+  if (!EMPTY_LIST(cf->vlink_list) && !host_addr && ospf_is_ip6(p))
   {
     WALK_LIST(ifa, p->iface_list)
     {
@@ -1571,7 +1579,7 @@ add_link_lsa(struct ospf_proto *p, struct ospf_lsa_link *ll, int offset, int *px
       continue;
 
     /* Skip link-local prefixes */
-    if ((pxlen >= 10) && ((pxb[1] & 0xffc00000) == 0xfe800000))
+    if (ospf_is_ip6(p) && (pxlen >= 10) && ((pxb[1] & 0xffc00000) == 0xfe800000))
       continue;
 
     add_prefix(p, pxb, offset, pxc);

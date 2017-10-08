@@ -576,20 +576,20 @@ spfa_process_prefixes(struct ospf_proto *p, struct ospf_area *oa)
     buf = px->rest;
     for (i = 0; i < px->pxcount; i++)
     {
-      net_addr_ip6 net;
+      net_addr net;
       u8 pxopts;
       u16 metric;
 
-      buf = ospf_get_ipv6_prefix(buf, (net_addr *) &net, &pxopts, &metric);
+      buf = ospf3_get_prefix(buf, ospf_get_af(p), &net, &pxopts, &metric);
 
       if (pxopts & OPT_PX_NU)
 	continue;
 
       /* Store the first global address to use it later as a vlink endpoint */
-      if ((pxopts & OPT_PX_LA) && ipa_zero(src->lb))
-	src->lb = ipa_from_ip6(net.prefix);
+      if ((pxopts & OPT_PX_LA) && (net.type == NET_IP6) && ipa_zero(src->lb))
+	src->lb = ipa_from_ip6(net6_prefix(&net));
 
-      add_network(oa, (net_addr *) &net, src->dist + metric, src, i);
+      add_network(oa, &net, src->dist + metric, src, i);
     }
   }
 }
@@ -761,7 +761,7 @@ ospf_rt_sum(struct ospf_area *oa)
 
     if (en->lsa_type == LSA_T_SUM_NET)
     {
-      lsa_parse_sum_net(en, ospf_is_v2(p), &net, &pxopts, &metric);
+      lsa_parse_sum_net(en, ospf_is_v2(p), ospf_get_af(p), &net, &pxopts, &metric);
 
       if (!ospf_valid_prefix(&net))
       {
@@ -858,7 +858,7 @@ ospf_rt_sum_tr(struct ospf_area *oa)
       net_addr net;
       u8 pxopts;
 
-      lsa_parse_sum_net(en, ospf_is_v2(p), &net, &pxopts, &metric);
+      lsa_parse_sum_net(en, ospf_is_v2(p), ospf_get_af(p), &net, &pxopts, &metric);
 
       if (!ospf_valid_prefix(&net))
       {
@@ -1058,7 +1058,7 @@ decide_nssa_lsa(struct ospf_proto *p, ort *nf, struct ospf_lsa_ext_local *rt)
     return 0;
 
   /* We do not store needed data in struct orta, we have to parse the LSA */
-  lsa_parse_ext(en, ospf_is_v2(p), rt);
+  lsa_parse_ext(en, ospf_is_v2(p), ospf_get_af(p), rt);
 
   if (rt->pxopts & OPT_PX_NU)
     return 0;
@@ -1450,7 +1450,7 @@ ospf_ext_spf(struct ospf_proto *p)
     DBG("%s: Working on LSA. ID: %R, RT: %R, Type: %u\n",
 	p->p.name, en->lsa.id, en->lsa.rt, en->lsa_type);
 
-    lsa_parse_ext(en, ospf_is_v2(p), &rt);
+    lsa_parse_ext(en, ospf_is_v2(p), ospf_get_af(p), &rt);
 
     if (!ospf_valid_prefix(&rt.net))
     {
@@ -1765,7 +1765,11 @@ calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
       if (ip6_zero(llsa->lladdr))
 	return NULL;
 
-      return new_nexthop(p, ipa_from_ip6(llsa->lladdr), pn->iface, pn->weight);
+      ip_addr nh = ospf_is_ip4(p) ?
+	ipa_from_ip4(ospf3_6to4(llsa->lladdr)) :
+	ipa_from_ip6(llsa->lladdr);
+
+      return new_nexthop(p, nh, pn->iface, pn->weight);
     }
   }
 
@@ -1792,9 +1796,9 @@ add_cand(list * l, struct top_hash_entry *en, struct top_hash_entry *par,
   if (en->lsa.age == LSA_MAXAGE)
     return;
 
-  if (ospf_is_v3(p) && (en->lsa_type == LSA_T_RT))
+  if (ospf_is_v3(p) && (oa->options & OPT_V6) && (en->lsa_type == LSA_T_RT))
   {
-    /* In OSPFv3, check V6 flag */
+    /* In OSPFv3 IPv6 unicast, check V6 flag */
     struct ospf_lsa_rt *rt = en->lsa_body;
     if (!(rt->options & OPT_V6))
       return;

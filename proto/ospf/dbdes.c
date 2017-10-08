@@ -356,7 +356,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
       LOG_PKT_WARN("MTU mismatch with nbr %R on %s (remote %d, local %d)",
 		   n->rid, ifa->ifname, rcv_iface_mtu, ifa->iface->mtu);
 
-    if ((rcv_imms == DBDES_IMMS) &&
+    if (((rcv_imms & DBDES_IMMS) == DBDES_IMMS) &&
 	(n->rid > p->router_id) &&
 	(plen == ospf_dbdes_hdrlen(p)))
     {

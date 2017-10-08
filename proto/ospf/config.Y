@@ -78,18 +78,66 @@ static void
 ospf_proto_finish(void)
 {
   struct ospf_config *cf = OSPF_CFG;
-
-  if (EMPTY_LIST(cf->area_list))
-    cf_error( "No configured areas in OSPF");
+  struct ospf_area_config *ac;
+  struct ospf_iface_patt *ic;
 
   /* Define default channel */
   if (EMPTY_LIST(this_proto->channels))
+  {
+    this_proto->net_type = ospf_cfg_is_v2() ? NET_IP4 : NET_IP6;
     channel_config_new(NULL, this_proto->net_type, this_proto);
+  }
+
+  /* Propagate global instance ID to interfaces */
+  if (cf->instance_id_set)
+  {
+    WALK_LIST(ac, cf->area_list)
+      WALK_LIST(ic, ac->patt_list)
+	if (!ic->instance_id_set)
+	{ ic->instance_id = cf->instance_id; ic->instance_id_set = 1; }
+
+    WALK_LIST(ic, cf->vlink_list)
+      if (!ic->instance_id_set)
+      { ic->instance_id = cf->instance_id; ic->instance_id_set = 1; }
+  }
+
+  if (ospf_cfg_is_v3())
+  {
+    uint ipv4 = (this_proto->net_type == NET_IP4);
+    uint base = (ipv4 ? 64 : 0) + (cf->af_mc ? 32 : 0);
+
+    /* RFC 5838 - OSPFv3-AF */
+    if (cf->af_ext)
+    {
+      /* RFC 5838 2.1 - instance IDs based on AFs */
+      WALK_LIST(ac, cf->area_list)
+	WALK_LIST(ic, ac->patt_list)
+	{
+	  if (!ic->instance_id_set)
+	    ic->instance_id = base;
+	  else if (ic->instance_id >= 128)
+	    log(L_WARN "Instance ID %d from unassigned/private range", ic->instance_id);
+	  else if ((ic->instance_id < base) || (ic->instance_id >= (base + 32)))
+	    cf_error("Instance ID %d invalid for given channel type", ic->instance_id);
+	}
+
+      /* RFC 5838 2.8 - vlinks limited to IPv6 unicast */
+      if ((ipv4 || cf->af_mc) && !EMPTY_LIST(cf->vlink_list))
+	cf_error("Vlinks not supported in AFs other than IPv6 unicast");
+    }
+    else
+    {
+      if (ipv4 || cf->af_mc)
+	cf_error("Different channel type");
+    }
+  }
+
+  if (EMPTY_LIST(cf->area_list))
+    cf_error("No configured areas in OSPF");
 
   int areano = 0;
   int backbone = 0;
   int nssa = 0;
-  struct ospf_area_config *ac;
   WALK_LIST(ac, cf->area_list)
   {
     areano++;
@@ -148,10 +196,11 @@ CF_KEYWORDS(ELIGIBLE, POLL, NETWORKS, HIDDEN, VIRTUAL, CHECK, LINK, ONLY, BFD)
 CF_KEYWORDS(RX, BUFFER, LARGE, NORMAL, STUBNET, HIDDEN, SUMMARY, TAG, EXTERNAL)
 CF_KEYWORDS(WAIT, DELAY, LSADB, ECMP, LIMIT, WEIGHT, NSSA, TRANSLATOR, STABILITY)
 CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL, NETMASK, TX, PRIORITY, LENGTH)
-CF_KEYWORDS(SECONDARY, MERGE, LSA, SUPPRESSION)
+CF_KEYWORDS(SECONDARY, MERGE, LSA, SUPPRESSION, MULTICAST)
 
 %type <ld> lsadb_args
-%type <i> ospf_variant nbma_eligible
+%type <i> ospf_variant ospf_af_mc nbma_eligible
+%type <cc> ospf_channel_start ospf_channel
 
 CF_GRAMMAR
 
@@ -166,12 +215,13 @@ ospf_variant:
 ospf_proto_start: proto_start ospf_variant
 {
   this_proto = proto_config_new(&proto_ospf, $1);
-  this_proto->net_type = $2 ? NET_IP4 : NET_IP6;
+  this_proto->net_type = $2 ? NET_IP4 : 0;
 
   init_list(&OSPF_CFG->area_list);
   init_list(&OSPF_CFG->vlink_list);
   OSPF_CFG->tick = OSPF_DEFAULT_TICK;
   OSPF_CFG->ospf2 = $2;
+  OSPF_CFG->af_ext = !$2;
 };
 
 ospf_proto:
@@ -179,16 +229,33 @@ ospf_proto:
  | ospf_proto ospf_proto_item ';'
  ;
 
+ospf_af_mc:
+             { $$ = 0; }
+ | MULTICAST { $$ = 1; }
+ ;
+
+/* We redefine proto_channel to add multicast flag */
+ospf_channel_start: net_type ospf_af_mc
+{
+  $$ = this_channel = channel_config_new(NULL, $1, this_proto);
+
+  /* Save the multicast flag */
+  if (this_channel == proto_cf_main_channel(this_proto))
+    OSPF_CFG->af_mc = $2;
+};
+
+ospf_channel: ospf_channel_start channel_opt_list channel_end;
+
 ospf_proto_item:
    proto_item
- | proto_channel
+ | ospf_channel { this_proto->net_type = $1->net_type; }
  | RFC1583COMPAT bool { OSPF_CFG->rfc1583 = $2; }
  | STUB ROUTER bool { OSPF_CFG->stub_router = $3; }
  | ECMP bool { OSPF_CFG->ecmp = $2 ? OSPF_DEFAULT_ECMP_LIMIT : 0; }
  | ECMP bool LIMIT expr { OSPF_CFG->ecmp = $2 ? $4 : 0; }
  | MERGE EXTERNAL bool { OSPF_CFG->merge_external = $3; }
  | TICK expr { OSPF_CFG->tick = $2; if($2 <= 0) cf_error("Tick must be greater than zero"); }
- | INSTANCE ID expr { OSPF_CFG->instance_id = $3; if ($3 > 255) cf_error("Instance ID must be in range 0-255"); }
+ | INSTANCE ID expr { OSPF_CFG->instance_id = $3; OSPF_CFG->instance_id_set = 1; if ($3 > 255) cf_error("Instance ID must be in range 0-255"); }
  | ospf_area
  ;
 
@@ -293,7 +360,6 @@ ospf_vlink_start: VIRTUAL LINK idval
   OSPF_PATT->inftransdelay = INFTRANSDELAY_D;
   OSPF_PATT->deadc = DEADC_D;
   OSPF_PATT->type = OSPF_IT_VLINK;
-  OSPF_PATT->instance_id = OSPF_CFG->instance_id;
   init_list(&OSPF_PATT->nbma_list);
   reset_passwords();
  }
@@ -393,7 +459,6 @@ ospf_iface_start:
   OSPF_PATT->priority = PRIORITY_D;
   OSPF_PATT->deadc = DEADC_D;
   OSPF_PATT->type = OSPF_IT_UNDEF;
-  OSPF_PATT->instance_id = OSPF_CFG->instance_id;
   init_list(&OSPF_PATT->nbma_list);
   OSPF_PATT->ptp_netmask = 2; /* not specified */
   OSPF_PATT->tx_tos = IP_PREC_INTERNET_CONTROL;
@@ -404,7 +469,7 @@ ospf_iface_start:
 
 ospf_instance_id:
    /* empty */
- | INSTANCE expr { OSPF_PATT->instance_id = $2; if ($2 > 255) cf_error("Instance ID must be in range 0-255"); }
+ | INSTANCE expr { OSPF_PATT->instance_id = $2; OSPF_PATT->instance_id_set = 1; if ($2 > 255) cf_error("Instance ID must be in range 0-255"); }
  ;
 
 ospf_iface_patt_list:

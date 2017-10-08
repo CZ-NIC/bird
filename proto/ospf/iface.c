@@ -1113,9 +1113,6 @@ ospf_ifa_notify3(struct proto *P, uint flags, struct ifa *a)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
 
-  if (a->prefix.type != NET_IP6)
-    return;
-
   if (a->flags & IA_SECONDARY)
     return;
 
@@ -1126,6 +1123,9 @@ ospf_ifa_notify3(struct proto *P, uint flags, struct ifa *a)
      other addresses are used for link-LSA. */
   if (a->scope == SCOPE_LINK)
   {
+    if (a->prefix.type != NET_IP6)
+      return;
+
     if (flags & IF_CHANGE_UP)
     {
       struct ospf_mip_walk s = { .iface = a->iface };
@@ -1143,6 +1143,9 @@ ospf_ifa_notify3(struct proto *P, uint flags, struct ifa *a)
   }
   else
   {
+    if (a->prefix.type != ospf_get_af(p))
+      return;
+
     struct ospf_iface *ifa;
     WALK_LIST(ifa, p->iface_list)
       if (ifa->iface == a->iface)
