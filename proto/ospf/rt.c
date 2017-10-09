@@ -10,9 +10,7 @@
 
 #include "ospf.h"
 
-static void add_cand(list * l, struct top_hash_entry *en,
-		     struct top_hash_entry *par, u32 dist,
-		     struct ospf_area *oa, int i);
+static void add_cand(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry *par, u32 dist, int i, uint lif, uint nif);
 static void rt_sync(struct ospf_proto *p);
 
 
@@ -509,7 +507,7 @@ spfa_process_rt(struct ospf_proto *p, struct ospf_area *oa, struct top_hash_entr
       break;
     }
 
-    add_cand(&oa->cand, tmp, act, act->dist + rtl.metric, oa, i);
+    add_cand(oa, tmp, act, act->dist + rtl.metric, i, rtl.lif, rtl.nif);
   }
 }
 
@@ -532,7 +530,7 @@ spfa_process_net(struct ospf_proto *p, struct ospf_area *oa, struct top_hash_ent
   for (i = 0; i < cnt; i++)
   {
     tmp = ospf_hash_find_rt(p->gr, oa->areaid, ln->routers[i]);
-    add_cand(&oa->cand, tmp, act, act->dist, oa, -1);
+    add_cand(oa, tmp, act, act->dist, -1, 0, 0);
   }
 }
 
@@ -651,7 +649,8 @@ ospf_rt_spfa(struct ospf_area *oa)
 }
 
 static int
-link_back(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry *par)
+link_back(struct ospf_area *oa, struct top_hash_entry *en,
+	  struct top_hash_entry *par, uint lif, uint nif)
 {
   struct ospf_proto *p = oa->po;
   struct ospf_lsa_rt_walk rtl;
@@ -689,6 +688,10 @@ link_back(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry
 	tmp = ospf_hash_find_net(p->gr, oa->areaid, rtl.id, rtl.nif);
 	if (tmp == par)
 	{
+	  /*
+	   * Note that there may be multiple matching Rt-fields if router 'en'
+	   * have multiple interfaces to net 'par'. Perhaps we should do ECMP.
+	   */
 	  if (ospf_is_v2(p))
 	    en->lb = ipa_from_u32(rtl.data);
 	  else
@@ -700,7 +703,13 @@ link_back(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry
 
       case LSART_VLNK:
       case LSART_PTP:
-	/* Not necessary the same link, see RFC 2328 [23] */
+	/*
+	 * For OSPFv2, not necessary the same link, see RFC 2328 [23].
+	 * For OSPFv3, we verify that by comparing nif and lif fields.
+	 */
+	if (ospf_is_v3(p) && ((rtl.lif != nif) || (rtl.nif != lif)))
+	  break;
+
 	tmp = ospf_hash_find_rt(p->gr, oa->areaid, rtl.id);
 	if (tmp == par)
 	  return 1;
@@ -1679,13 +1688,27 @@ inherit_nexthops(struct nexthop *pn)
   return pn && (ipa_nonzero(pn->gw) || !pn->iface);
 }
 
+static inline ip_addr
+link_lsa_lladdr(struct ospf_proto *p, struct top_hash_entry *en)
+{
+  struct ospf_lsa_link *link_lsa = en->lsa_body;
+  ip6_addr ll = link_lsa->lladdr;
+
+  if (ip6_zero(ll))
+    return IPA_NONE;
+
+  return ospf_is_ip4(p) ? ipa_from_ip4(ospf3_6to4(ll)) : ipa_from_ip6(ll);
+}
+
 static struct nexthop *
 calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
-	      struct top_hash_entry *par, int pos)
+	      struct top_hash_entry *par, int pos, uint lif, uint nif)
 {
   struct ospf_proto *p = oa->po;
   struct nexthop *pn = par->nhs;
-  struct ospf_iface *ifa;
+  struct top_hash_entry *link = NULL;
+  struct ospf_iface *ifa = NULL;
+  ip_addr nh = IPA_NONE;
   u32 rid = en->lsa.rt;
 
   /* 16.1.1. The next hop calculation */
@@ -1710,6 +1733,9 @@ calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
     if (!ifa)
       return NULL;
 
+    if (ospf_is_v3(p) && (ifa->iface_id != lif))
+      log(L_WARN "%s: Inconsistent interface ID %u/%u", p->p.name, ifa->iface_id, lif);
+
     return new_nexthop(p, IPA_NONE, ifa->iface, ifa->ecmp_weight);
   }
 
@@ -1720,14 +1746,44 @@ calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
     if (!ifa)
       return NULL;
 
+    if (ospf_is_v3(p) && (ifa->iface_id != lif))
+      log(L_WARN "%s: Inconsistent interface ID %u/%u", p->p.name, ifa->iface_id, lif);
+
     if (ifa->type == OSPF_IT_VLINK)
       return new_nexthop(p, IPA_NONE, NULL, 0);
 
-    struct ospf_neighbor *m = find_neigh(ifa, rid);
-    if (!m || (m->state != NEIGHBOR_FULL))
-      return NULL;
+    /* FIXME: On physical PtP links we may skip next-hop altogether */
 
-    return new_nexthop(p, m->ip, ifa->iface, ifa->ecmp_weight);
+    if (ospf_is_v2(p) || ospf_is_ip6(p))
+    {
+      /*
+       * In this case, next-hop is a source address from neighbor's packets.
+       * That is necessary for OSPFv2 and practical for OSPFv3 (as it works even
+       * if neighbor uses LinkLSASuppression), but does not work with OSPFv3-AF
+       * on IPv4 topology, where src is IPv6 but next-hop should be IPv4.
+       */
+      struct ospf_neighbor *m = find_neigh(ifa, rid);
+      if (!m || (m->state != NEIGHBOR_FULL))
+	return NULL;
+
+      nh = m->ip;
+    }
+    else
+    {
+      /*
+       * Next-hop is taken from lladdr field of Link-LSA, based on Neighbor
+       * Iface ID (nif) field in our Router-LSA, which is just nbr->iface_id.
+       */
+      link = ospf_hash_find(p->gr, ifa->iface_id, nif, rid, LSA_T_LINK);
+      if (!link)
+	return NULL;
+
+      nh = link_lsa_lladdr(p, link);
+      if (ipa_zero(nh))
+	return NULL;
+    }
+
+    return new_nexthop(p, nh, ifa->iface, ifa->ecmp_weight);
   }
 
   /* The third case - bcast or nbma neighbor */
@@ -1754,20 +1810,13 @@ calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
        * Next-hop is taken from lladdr field of Link-LSA, en->lb_id
        * is computed in link_back().
        */
-      struct top_hash_entry *lhe;
-      lhe = ospf_hash_find(p->gr, pn->iface->index, en->lb_id, rid, LSA_T_LINK);
-
-      if (!lhe)
+      link = ospf_hash_find(p->gr, pn->iface->index, en->lb_id, rid, LSA_T_LINK);
+      if (!link)
 	return NULL;
 
-      struct ospf_lsa_link *llsa = lhe->lsa_body;
-
-      if (ip6_zero(llsa->lladdr))
+      nh = link_lsa_lladdr(p, link);
+      if (ipa_zero(nh))
 	return NULL;
-
-      ip_addr nh = ospf_is_ip4(p) ?
-	ipa_from_ip4(ospf3_6to4(llsa->lladdr)) :
-	ipa_from_ip6(llsa->lladdr);
 
       return new_nexthop(p, nh, pn->iface, pn->weight);
     }
@@ -1782,8 +1831,8 @@ calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
 
 /* Add LSA into list of candidates in Dijkstra's algorithm */
 static void
-add_cand(list * l, struct top_hash_entry *en, struct top_hash_entry *par,
-	 u32 dist, struct ospf_area *oa, int pos)
+add_cand(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry *par,
+	 u32 dist, int pos, uint lif, uint nif)
 {
   struct ospf_proto *p = oa->po;
   node *prev, *n;
@@ -1813,10 +1862,10 @@ add_cand(list * l, struct top_hash_entry *en, struct top_hash_entry *par,
     return;
 
   /* We should check whether there is a reverse link from en to par, */
-  if (!link_back(oa, en, par))
+  if (!link_back(oa, en, par, lif, nif))
     return;
 
-  struct nexthop *nhs = calc_next_hop(oa, en, par, pos);
+  struct nexthop *nhs = calc_next_hop(oa, en, par, pos, lif, nif);
   if (!nhs)
   {
     log(L_WARN "%s: Cannot find next hop for LSA (Type: %04x, Id: %R, Rt: %R)",
@@ -1873,20 +1922,20 @@ add_cand(list * l, struct top_hash_entry *en, struct top_hash_entry *par,
 
   prev = NULL;
 
-  if (EMPTY_LIST(*l))
+  if (EMPTY_LIST(oa->cand))
   {
-    add_head(l, &en->cn);
+    add_head(&oa->cand, &en->cn);
   }
   else
   {
-    WALK_LIST(n, *l)
+    WALK_LIST(n, oa->cand)
     {
       act = SKIP_BACK(struct top_hash_entry, cn, n);
       if ((act->dist > dist) ||
 	  ((act->dist == dist) && (act->lsa_type == LSA_T_RT)))
       {
 	if (prev == NULL)
-	  add_head(l, &en->cn);
+	  add_head(&oa->cand, &en->cn);
 	else
 	  insert_node(&en->cn, prev);
 	added = 1;
@@ -1897,7 +1946,7 @@ add_cand(list * l, struct top_hash_entry *en, struct top_hash_entry *par,
 
     if (!added)
     {
-      add_tail(l, &en->cn);
+      add_tail(&oa->cand, &en->cn);
     }
   }
 }
