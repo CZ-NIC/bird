@@ -270,9 +270,6 @@ ospf_rx_hook(sock *sk, uint len)
   if (pkt == NULL)
     DROP("bad IP header", len);
 
-  if (ifa->check_ttl && (sk->rcv_ttl < 255))
-    DROP("wrong TTL", sk->rcv_ttl);
-
   if (len < sizeof(struct ospf_packet))
     DROP("too short", len);
 
@@ -378,6 +375,10 @@ found:
 
   if (ipa_equal(sk->laddr, ifa->des_routers) && (ifa->sk_dr == 0))
     return 1;
+
+  /* TTL check must be done after instance dispatch */
+  if (ifa->check_ttl && (sk->rcv_ttl < 255))
+    DROP("wrong TTL", sk->rcv_ttl);
 
   if (rid == p->router_id)
     DROP1("my own router ID");
