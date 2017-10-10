@@ -2866,6 +2866,7 @@ constant definitions and list of neighbors on nonbroadcast networks.
 <code>
 protocol ospf [v2|v3] &lt;name&gt; {
 	rfc1583compat &lt;switch&gt;;
+	rfc5838 &lt;switch&gt;;
 	instance id &lt;num&gt;;
 	stub router &lt;switch&gt;;
 	tick &lt;num&gt;;
@@ -2966,15 +2967,23 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	This option controls compatibility of routing table calculation with
 	<rfc id="1583">. Default value is no.
 
+	<tag><label id="ospf-rfc5838">rfc5838 <m/switch/</tag>
+	Basic OSPFv3 is limited to IPv6 unicast routing. The <rfc id="5838">
+	extension defines support for more address families (IPv4, IPv6, both
+	unicast and multicast). The extension is enabled by default, but can be
+	disabled if necessary, as it restricts the range of available instance
+	IDs. Default value is yes.
+
 	<tag><label id="ospf-instance-id">instance id <m/num/</tag>
 	When multiple OSPF protocol instances are active on the same links, they
 	should use different instance IDs to distinguish their packets. Although
 	it could be done on per-interface basis, it is often preferred to set
 	one instance ID to whole OSPF domain/topology (e.g., when multiple
 	instances are used to represent separate logical topologies on the same
-	physical network). This option specifies the default instance ID for all
-	interfaces of the OSPF instance. Note that this option, if used, must
-	precede interface definitions. Default value is 0.
+	physical network). This option specifies the instance ID for all
+	interfaces of the OSPF instance, but can be overridden by
+	<cf/interface/ option. Default value is 0 unless OSPFv3-AF extended
+	address families are used, see <rfc id="5838"> for that case.
 
 	<tag><label id="ospf-stub-router">stub router <M>switch</M></tag>
 	This option configures the router to be a stub router, i.e., a router
