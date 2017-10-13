@@ -721,28 +721,24 @@ babel_send_seqno_request(struct babel_entry *e)
 }
 
 static void
-babel_unicast_seqno_request(struct babel_route *r)
+babel_unicast_seqno_request(struct babel_entry *e, struct babel_source *s, struct babel_neighbor *nbr)
 {
-  struct babel_entry *e = r->e;
   struct babel_proto *p = e->proto;
-  struct babel_iface *ifa = r->neigh->ifa;
-  struct babel_source *s = NULL;
   union babel_msg msg = {};
 
-  s = babel_find_source(e, r->router_id);
-  if (!s || !babel_cache_seqno_request(p, e->n.addr, r->router_id, s->seqno + 1))
+  if (!s || !babel_cache_seqno_request(p, e->n.addr, s->router_id, s->seqno + 1))
     return;
 
   TRACE(D_PACKETS, "Sending seqno request for %N router-id %lR seqno %d",
-	e->n.addr, r->router_id, s->seqno + 1);
+	e->n.addr, s->router_id, s->seqno + 1);
 
   msg.type = BABEL_TLV_SEQNO_REQUEST;
   msg.seqno_request.hop_count = BABEL_INITIAL_HOP_COUNT;
   msg.seqno_request.seqno = s->seqno + 1;
-  msg.seqno_request.router_id = r->router_id;
+  msg.seqno_request.router_id = s->router_id;
   net_copy(&msg.seqno_request.net, e->n.addr);
 
-  babel_send_unicast(&msg, ifa, r->neigh->addr);
+  babel_send_unicast(&msg, nbr->ifa, nbr->addr);
 }
 
 /**
@@ -1088,9 +1084,9 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
   struct babel_neighbor *nbr;
   struct babel_entry *e;
   struct babel_source *s;
-  struct babel_route *r;
+  struct babel_route *r, *best;
   node *n;
-  int feasible;
+  int feasible, metric;
 
   if (msg->wildcard)
     TRACE(D_PACKETS, "Handling wildcard retraction", msg->seqno);
@@ -1192,6 +1188,13 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
   r = babel_find_route(e, nbr); /* the route entry indexed by neighbour */
   s = babel_find_source(e, msg->router_id); /* for feasibility */
   feasible = babel_is_feasible(s, msg->seqno, msg->metric);
+  metric = babel_compute_metric(nbr, msg->metric);
+  best = e->selected_in;
+
+  /* RFC section 3.8.2.2 - Dealing with unfeasible updates */
+  if (!feasible && (metric != BABEL_INFINITY) &&
+      (!best || (r == best) || (metric < best->metric)))
+    babel_unicast_seqno_request(e, s, nbr);
 
   if (!r)
   {
@@ -1201,18 +1204,13 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
     r = babel_get_route(e, nbr);
     r->advert_metric = msg->metric;
     r->router_id = msg->router_id;
-    r->metric = babel_compute_metric(nbr, msg->metric);
+    r->metric = metric;
     r->next_hop = msg->next_hop;
     r->seqno = msg->seqno;
   }
-  else if (r == r->e->selected_in && !feasible)
+  else if (r == best && !feasible)
   {
-    /*
-     * Route is installed and update is infeasible - we may lose the route,
-     * so send a unicast seqno request (section 3.8.2.2 second paragraph).
-     */
-    babel_unicast_seqno_request(r);
-
+    /* Penultimate paragraph above - ignore or retract */
     if (msg->router_id == r->router_id)
       return;
 
@@ -1223,7 +1221,7 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
   {
     /* Last paragraph above - update the entry */
     r->advert_metric = msg->metric;
-    r->metric = babel_compute_metric(nbr, msg->metric);
+    r->metric = metric;
     r->next_hop = msg->next_hop;
 
     r->router_id = msg->router_id;
@@ -1233,12 +1231,6 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
     r->expires = current_time() + r->expiry_interval;
     if (r->expiry_interval > BABEL_ROUTE_REFRESH_INTERVAL)
       r->refresh_time = current_time() + r->expiry_interval - BABEL_ROUTE_REFRESH_INTERVAL;
-
-    /* If the route is not feasible at this point, it means it is from another
-       neighbour than the one currently selected; so send a unicast seqno
-       request to try to get a better route (section 3.8.2.2 last paragraph). */
-    if (!feasible)
-      babel_unicast_seqno_request(r);
   }
 
   babel_select_route(e);
