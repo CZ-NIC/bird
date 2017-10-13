@@ -343,6 +343,7 @@ static void
 babel_expire_ihu(struct babel_neighbor *nbr)
 {
   nbr->txcost = BABEL_INFINITY;
+  nbr->ihu_expiry = 0;
 }
 
 static void
@@ -353,7 +354,9 @@ babel_expire_hello(struct babel_neighbor *nbr)
   if (nbr->hello_cnt < 16)
     nbr->hello_cnt++;
 
-  if (!nbr->hello_map)
+  if (nbr->hello_map)
+    nbr->hello_expiry += nbr->last_hello_int;
+  else
     babel_flush_neighbor(nbr);
 }
 
@@ -929,6 +932,7 @@ babel_update_hello_history(struct babel_neighbor *n, u16 seqno, uint interval)
   n->next_hello_seqno = seqno+1;
   if (n->hello_cnt < 16) n->hello_cnt++;
   n->hello_expiry = current_time() + BABEL_HELLO_EXPIRY_FACTOR(interval);
+  n->last_hello_int = interval;
 }
 
 static void

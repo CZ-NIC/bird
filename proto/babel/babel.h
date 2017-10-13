@@ -191,6 +191,7 @@ struct babel_neighbor {
   u8 hello_cnt;
   u16 hello_map;
   u16 next_hello_seqno;
+  uint last_hello_int;
   /* expiry timers */
   btime hello_expiry;
   btime ihu_expiry;
