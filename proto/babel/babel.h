@@ -139,6 +139,7 @@ struct babel_proto {
   list interfaces;			/* Interfaces we really know about (struct babel_iface) */
   u64 router_id;
   u16 update_seqno;			/* To be increased on request */
+  u8 update_seqno_inc;			/* Request for update_seqno increase */
   u8 triggered;				/* For triggering global updates */
 
   slab *route_slab;

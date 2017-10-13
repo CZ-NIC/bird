@@ -760,6 +760,13 @@ babel_send_update_(struct babel_iface *ifa, btime changed, struct fib *rtable)
 {
   struct babel_proto *p = ifa->proto;
 
+  /* Update increase was requested */
+  if (p->update_seqno_inc)
+  {
+    p->update_seqno++;
+    p->update_seqno_inc = 0;
+  }
+
   FIB_WALK(rtable, struct babel_entry, e)
   {
     struct babel_route *r = e->selected_out;
@@ -1299,8 +1306,8 @@ babel_handle_seqno_request(union babel_msg *m, struct babel_iface *ifa)
   /* Seqno is larger; check if we own the router id */
   if (msg->router_id == p->router_id)
   {
-    /* Ours; update seqno and trigger global update */
-    p->update_seqno++;
+    /* Ours; seqno increase and trigger global update */
+    p->update_seqno_inc = 1;
     babel_trigger_update(p);
   }
   else
