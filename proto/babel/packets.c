@@ -162,17 +162,17 @@ bytes_equal(u8 *b1, u8 *b2, uint maxlen)
   return i;
 }
 
-static inline u16
+static inline uint
 get_time16(const void *p)
 {
-  u16 v = get_u16(p) / BABEL_TIME_UNITS;
-  return MAX(1, v);
+  uint v = get_u16(p) * BABEL_TIME_UNITS;
+  return MAX(BABEL_MIN_INTERVAL, v);
 }
 
 static inline void
-put_time16(void *p, u16 v)
+put_time16(void *p, uint v)
 {
-  put_u16(p, v * BABEL_TIME_UNITS);
+  put_u16(p, v / BABEL_TIME_UNITS);
 }
 
 static inline void

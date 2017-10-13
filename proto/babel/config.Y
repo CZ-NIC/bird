@@ -89,10 +89,10 @@ babel_iface_finish:
 babel_iface_item:
  | PORT expr { BABEL_IFACE->port = $2; if (($2<1) || ($2>65535)) cf_error("Invalid port number"); }
  | RXCOST expr { BABEL_IFACE->rxcost = $2; if (($2<1) || ($2>65535)) cf_error("Invalid rxcost"); }
- | HELLO INTERVAL expr { BABEL_IFACE->hello_interval = $3; if (($3<1) || ($3>BABEL_MAX_INTERVAL)) cf_error("Invalid hello interval"); }
- | UPDATE INTERVAL expr { BABEL_IFACE->update_interval = $3; if (($3<1) || ($3>BABEL_MAX_INTERVAL)) cf_error("Invalid update interval"); }
  | TYPE WIRED { BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRED; }
  | TYPE WIRELESS { BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRELESS; }
+ | HELLO INTERVAL expr_us { BABEL_IFACE->hello_interval = $3; if (($3<BABEL_MIN_INTERVAL) || ($3>BABEL_MAX_INTERVAL)) cf_error("Hello interval must be in range 10 ms - 655 s"); }
+ | UPDATE INTERVAL expr_us { BABEL_IFACE->update_interval = $3; if (($3<BABEL_MIN_INTERVAL) || ($3>BABEL_MAX_INTERVAL)) cf_error("Update interval must be in range 10 ms - 655 s"); }
  | RX BUFFER expr { BABEL_IFACE->rx_buffer = $3; if (($3<256) || ($3>65535)) cf_error("RX buffer must be in range 256-65535"); }
  | TX LENGTH expr { BABEL_IFACE->tx_length = $3; if (($3<256) || ($3>65535)) cf_error("TX length must be in range 256-65535"); }
  | TX tos { BABEL_IFACE->tx_tos = $2; }

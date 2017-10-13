@@ -70,7 +70,7 @@ babel_init_entry(void *E)
 {
   struct babel_entry *e = E;
 
-  e->updated = now;
+  e->updated = current_time();
   init_list(&e->sources);
   init_list(&e->routes);
 }
@@ -114,7 +114,7 @@ babel_get_source(struct babel_entry *e, u64 router_id)
 
   s = sl_alloc(p->source_slab);
   s->router_id = router_id;
-  s->expires = now + BABEL_GARBAGE_INTERVAL;
+  s->expires = current_time() + BABEL_GARBAGE_INTERVAL;
   s->seqno = 0;
   s->metric = BABEL_INFINITY;
   add_tail(&e->sources, NODE s);
@@ -127,10 +127,11 @@ babel_expire_sources(struct babel_entry *e)
 {
   struct babel_proto *p = e->proto;
   struct babel_source *n, *nx;
+  btime now_ = current_time();
 
   WALK_LIST_DELSAFE(n, nx, e->sources)
   {
-    if (n->expires && n->expires <= now)
+    if (n->expires && n->expires <= now_)
     {
       rem_node(NODE n);
       sl_free(p->source_slab, n);
@@ -167,7 +168,7 @@ babel_get_route(struct babel_entry *e, struct babel_neighbor *nbr)
   if (nbr)
   {
     r->neigh = nbr;
-    r->expires = now + BABEL_GARBAGE_INTERVAL;
+    r->expires = current_time() + BABEL_GARBAGE_INTERVAL;
     add_tail(&nbr->routes, NODE &r->neigh_route);
   }
 
@@ -208,7 +209,7 @@ babel_expire_route(struct babel_route *r)
   if (r->metric < BABEL_INFINITY)
   {
     r->metric = BABEL_INFINITY;
-    r->expires = now + r->expiry_interval;
+    r->expires = current_time() + r->expiry_interval;
   }
   else
   {
@@ -230,6 +231,7 @@ babel_expire_routes_(struct babel_proto *p UNUSED, struct fib *rtable)
 {
   struct babel_route *r, *rx;
   struct fib_iterator fit;
+  btime now_ = current_time();
 
   FIB_ITERATE_INIT(&fit, rtable);
 
@@ -240,10 +242,10 @@ loop:
 
     WALK_LIST_DELSAFE(r, rx, e->routes)
     {
-      if (r->refresh_time && r->refresh_time <= now)
+      if (r->refresh_time && r->refresh_time <= now_)
 	babel_refresh_route(r);
 
-      if (r->expires && r->expires <= now)
+      if (r->expires && r->expires <= now_)
       {
 	babel_expire_route(r);
 	changed = 1;
@@ -360,15 +362,16 @@ babel_expire_neighbors(struct babel_proto *p)
 {
   struct babel_iface *ifa;
   struct babel_neighbor *nbr, *nbx;
+  btime now_ = current_time();
 
   WALK_LIST(ifa, p->interfaces)
   {
     WALK_LIST_DELSAFE(nbr, nbx, ifa->neigh_list)
     {
-      if (nbr->ihu_expiry && nbr->ihu_expiry <= now)
+      if (nbr->ihu_expiry && nbr->ihu_expiry <= now_)
         babel_expire_ihu(nbr);
 
-      if (nbr->hello_expiry && nbr->hello_expiry <= now)
+      if (nbr->hello_expiry && nbr->hello_expiry <= now_)
         babel_expire_hello(nbr);
     }
   }
@@ -546,7 +549,7 @@ babel_select_route(struct babel_entry *e)
 	  e->n.addr, cur->router_id, cur->metric);
 
     e->selected_in = cur;
-    e->updated = now;
+    e->updated = current_time();
     babel_announce_rte(p, e);
   }
   else if (!cur || cur->metric == BABEL_INFINITY)
@@ -562,7 +565,7 @@ babel_select_route(struct babel_entry *e)
 	    e->n.addr);
 
       e->selected_in->metric = BABEL_INFINITY;
-      e->updated = now;
+      e->updated = current_time();
 
       babel_send_seqno_request(e);
       babel_announce_rte(p, e);
@@ -580,7 +583,7 @@ babel_select_route(struct babel_entry *e)
       TRACE(D_EVENTS, "Flushing route for prefix %N", e->n.addr);
 
       e->selected_in = NULL;
-      e->updated = now;
+      e->updated = current_time();
       babel_announce_rte(p, e);
     }
   }
@@ -614,8 +617,8 @@ babel_build_ihu(union babel_msg *msg, struct babel_iface *ifa, struct babel_neig
   msg->ihu.rxcost = babel_compute_rxcost(n);
   msg->ihu.interval = ifa->cf->ihu_interval;
 
-  TRACE(D_PACKETS, "Sending IHU for %I with rxcost %d interval %d",
-        msg->ihu.addr, msg->ihu.rxcost, msg->ihu.interval);
+  TRACE(D_PACKETS, "Sending IHU for %I with rxcost %d interval %t",
+        msg->ihu.addr, msg->ihu.rxcost, (btime) msg->ihu.interval);
 }
 
 static void
@@ -648,8 +651,8 @@ babel_send_hello(struct babel_iface *ifa, u8 send_ihu)
   msg.hello.seqno = ifa->hello_seqno++;
   msg.hello.interval = ifa->cf->hello_interval;
 
-  TRACE(D_PACKETS, "Sending hello on %s with seqno %d interval %d",
-	ifa->ifname, msg.hello.seqno, msg.hello.interval);
+  TRACE(D_PACKETS, "Sending hello on %s with seqno %d interval %t",
+	ifa->ifname, msg.hello.seqno, (btime) msg.hello.interval);
 
   babel_enqueue(&msg, ifa);
 
@@ -750,7 +753,7 @@ babel_unicast_seqno_request(struct babel_route *r)
  * transmitted entry is updated.
  */
 static void
-babel_send_update_(struct babel_iface *ifa, bird_clock_t changed, struct fib *rtable)
+babel_send_update_(struct babel_iface *ifa, btime changed, struct fib *rtable)
 {
   struct babel_proto *p = ifa->proto;
 
@@ -766,7 +769,7 @@ babel_send_update_(struct babel_iface *ifa, bird_clock_t changed, struct fib *rt
     if ((r->router_id == p->router_id) && (r->seqno < p->update_seqno))
     {
       r->seqno = p->update_seqno;
-      e->updated = now;
+      e->updated = current_time();
     }
 
     /* Skip routes that weren't updated since 'changed' time */
@@ -793,7 +796,7 @@ babel_send_update_(struct babel_iface *ifa, bird_clock_t changed, struct fib *rt
     if (!OUR_ROUTE(r))
     {
       struct babel_source *s = babel_get_source(e, r->router_id);
-      s->expires = now + BABEL_GARBAGE_INTERVAL;
+      s->expires = current_time() + BABEL_GARBAGE_INTERVAL;
 
       if ((msg.update.seqno > s->seqno) ||
 	  ((msg.update.seqno == s->seqno) && (msg.update.metric < s->metric)))
@@ -807,7 +810,7 @@ babel_send_update_(struct babel_iface *ifa, bird_clock_t changed, struct fib *rt
 }
 
 static void
-babel_send_update(struct babel_iface *ifa, bird_clock_t changed)
+babel_send_update(struct babel_iface *ifa, btime changed)
 {
   struct babel_proto *p = ifa->proto;
 
@@ -827,7 +830,7 @@ babel_trigger_iface_update(struct babel_iface *ifa)
   TRACE(D_EVENTS, "Scheduling triggered updates for %s seqno %d",
 	ifa->iface->name, p->update_seqno);
 
-  ifa->want_triggered = now;
+  ifa->want_triggered = current_time();
   babel_iface_kick_timer(ifa);
 }
 
@@ -887,7 +890,7 @@ babel_send_wildcard_retraction(struct babel_iface *ifa)
 
 /* Update hello history according to Appendix A1 of the RFC */
 static void
-babel_update_hello_history(struct babel_neighbor *n, u16 seqno, u16 interval)
+babel_update_hello_history(struct babel_neighbor *n, u16 seqno, uint interval)
 {
   /*
    * Compute the difference between expected and received seqno (modulo 2^16).
@@ -925,16 +928,18 @@ babel_update_hello_history(struct babel_neighbor *n, u16 seqno, u16 interval)
   n->hello_map = (n->hello_map << 1) | 1;
   n->next_hello_seqno = seqno+1;
   if (n->hello_cnt < 16) n->hello_cnt++;
-  n->hello_expiry = now + BABEL_HELLO_EXPIRY_FACTOR(interval);
+  n->hello_expiry = current_time() + BABEL_HELLO_EXPIRY_FACTOR(interval);
 }
 
 static void
 babel_expire_seqno_requests(struct babel_proto *p)
 {
+  btime now_ = current_time();
+
   struct babel_seqno_request *n, *nx;
   WALK_LIST_DELSAFE(n, nx, p->seqno_cache)
   {
-    if ((n->updated + BABEL_SEQNO_REQUEST_EXPIRY) <= now)
+    if ((n->updated + BABEL_SEQNO_REQUEST_EXPIRY) <= now_)
     {
       rem_node(NODE n);
       sl_free(p->seqno_slab, n);
@@ -963,7 +968,7 @@ babel_cache_seqno_request(struct babel_proto *p, net_addr *n,
   net_copy(&r->net, n);
   r->router_id = router_id;
   r->seqno = seqno;
-  r->updated = now;
+  r->updated = current_time();
   add_tail(&p->seqno_cache, NODE r);
 
   return 1;
@@ -1013,8 +1018,8 @@ babel_handle_ack_req(union babel_msg *m, struct babel_iface *ifa)
   struct babel_proto *p = ifa->proto;
   struct babel_msg_ack_req *msg = &m->ack_req;
 
-  TRACE(D_PACKETS, "Handling ACK request nonce %d interval %d",
-	msg->nonce, msg->interval);
+  TRACE(D_PACKETS, "Handling ACK request nonce %d interval %t",
+	msg->nonce, (btime) msg->interval);
 
   babel_send_ack(ifa, msg->sender, msg->nonce);
 }
@@ -1025,8 +1030,8 @@ babel_handle_hello(union babel_msg *m, struct babel_iface *ifa)
   struct babel_proto *p = ifa->proto;
   struct babel_msg_hello *msg = &m->hello;
 
-  TRACE(D_PACKETS, "Handling hello seqno %d interval %d",
-	msg->seqno, msg->interval);
+  TRACE(D_PACKETS, "Handling hello seqno %d interval %t",
+	msg->seqno, (btime) msg->interval);
 
   struct babel_neighbor *n = babel_get_neighbor(ifa, msg->sender);
   babel_update_hello_history(n, msg->seqno, msg->interval);
@@ -1044,12 +1049,12 @@ babel_handle_ihu(union babel_msg *m, struct babel_iface *ifa)
   if ((msg->ae != BABEL_AE_WILDCARD) && !ipa_equal(msg->addr, ifa->addr))
     return;
 
-  TRACE(D_PACKETS, "Handling IHU rxcost %d interval %d",
-	msg->rxcost, msg->interval);
+  TRACE(D_PACKETS, "Handling IHU rxcost %d interval %t",
+	msg->rxcost, (btime) msg->interval);
 
   struct babel_neighbor *n = babel_get_neighbor(ifa, msg->sender);
   n->txcost = msg->rxcost;
-  n->ihu_expiry = now + BABEL_IHU_EXPIRY_FACTOR(msg->interval);
+  n->ihu_expiry = current_time() + BABEL_IHU_EXPIRY_FACTOR(msg->interval);
 }
 
 /**
@@ -1214,9 +1219,9 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
     r->seqno = msg->seqno;
 
     r->expiry_interval = BABEL_ROUTE_EXPIRY_FACTOR(msg->interval);
-    r->expires = now + r->expiry_interval;
+    r->expires = current_time() + r->expiry_interval;
     if (r->expiry_interval > BABEL_ROUTE_REFRESH_INTERVAL)
-      r->refresh_time = now + r->expiry_interval - BABEL_ROUTE_REFRESH_INTERVAL;
+      r->refresh_time = current_time() + r->expiry_interval - BABEL_ROUTE_REFRESH_INTERVAL;
 
     /* If the route is not feasible at this point, it means it is from another
        neighbour than the one currently selected; so send a unicast seqno
@@ -1256,7 +1261,7 @@ babel_handle_route_request(union babel_msg *m, struct babel_iface *ifa)
   else
   {
     babel_trigger_iface_update(ifa);
-    e->updated = now;
+    e->updated = current_time();
   }
 }
 
@@ -1283,7 +1288,7 @@ babel_handle_seqno_request(union babel_msg *m, struct babel_iface *ifa)
   if ((r->router_id != msg->router_id) || ge_mod64k(r->seqno, msg->seqno))
   {
     babel_trigger_iface_update(ifa);
-    e->updated = now;
+    e->updated = current_time();
     return;
   }
 
@@ -1333,42 +1338,44 @@ babel_iface_timer(timer *t)
 {
   struct babel_iface *ifa = t->data;
   struct babel_proto *p = ifa->proto;
-  bird_clock_t hello_period = ifa->cf->hello_interval;
-  bird_clock_t update_period = ifa->cf->update_interval;
+  btime hello_period = ifa->cf->hello_interval;
+  btime update_period = ifa->cf->update_interval;
+  btime now_ = current_time();
 
-  if (now >= ifa->next_hello)
+  if (now_ >= ifa->next_hello)
   {
     babel_send_hello(ifa, (ifa->cf->type == BABEL_IFACE_TYPE_WIRELESS ||
                            ifa->hello_seqno % BABEL_IHU_INTERVAL_FACTOR == 0));
-    ifa->next_hello +=  hello_period * (1 + (now - ifa->next_hello) / hello_period);
+    ifa->next_hello += hello_period * (1 + (now_ - ifa->next_hello) / hello_period);
   }
 
-  if (now >= ifa->next_regular)
+  if (now_ >= ifa->next_regular)
   {
     TRACE(D_EVENTS, "Sending regular updates on %s", ifa->ifname);
     babel_send_update(ifa, 0);
-    ifa->next_regular += update_period * (1 + (now - ifa->next_regular) / update_period);
+    ifa->next_regular += update_period * (1 + (now_ - ifa->next_regular) / update_period);
     ifa->want_triggered = 0;
     p->triggered = 0;
   }
-  else if (ifa->want_triggered && (now >= ifa->next_triggered))
+  else if (ifa->want_triggered && (now_ >= ifa->next_triggered))
   {
     TRACE(D_EVENTS, "Sending triggered updates on %s", ifa->ifname);
     babel_send_update(ifa, ifa->want_triggered);
-    ifa->next_triggered = now + MIN(5, update_period / 2 + 1);
+    ifa->next_triggered = now_ + MIN(5 S, update_period / 2);
     ifa->want_triggered = 0;
     p->triggered = 0;
   }
 
-  bird_clock_t next_event = MIN(ifa->next_hello, ifa->next_regular);
-  tm_start(ifa->timer, ifa->want_triggered ? 1 : (next_event - now));
+  btime next_event = MIN(ifa->next_hello, ifa->next_regular);
+  if (ifa->want_triggered) next_event = MIN(next_event, ifa->next_triggered);
+  tm2_set(ifa->timer, next_event);
 }
 
 static inline void
 babel_iface_kick_timer(struct babel_iface *ifa)
 {
-  if (ifa->timer->expires TO_S > (now + 1))
-    tm_start(ifa->timer, 1);
+  if (ifa->timer->expires > (current_time() + 100 MS))
+    tm2_start(ifa->timer, 100 MS);
 }
 
 static void
@@ -1378,11 +1385,11 @@ babel_iface_start(struct babel_iface *ifa)
 
   TRACE(D_EVENTS, "Starting interface %s", ifa->ifname);
 
-  ifa->next_hello = now + (random() % ifa->cf->hello_interval) + 1;
-  ifa->next_regular = now + (random() % ifa->cf->update_interval) + 1;
-  ifa->next_triggered = now + MIN(5, ifa->cf->update_interval / 2 + 1);
+  ifa->next_hello = current_time() + (random() % ifa->cf->hello_interval);
+  ifa->next_regular = current_time() + (random() % ifa->cf->update_interval);
+  ifa->next_triggered = current_time() + MIN(5 S, ifa->cf->update_interval / 2);
   ifa->want_triggered = 0;	/* We send an immediate update (below) */
-  tm_start(ifa->timer, 1);
+  tm2_start(ifa->timer, 100 MS);
   ifa->up = 1;
 
   babel_send_hello(ifa, 0);
@@ -1398,6 +1405,7 @@ babel_iface_stop(struct babel_iface *ifa)
   struct babel_neighbor *nbr;
   struct babel_route *r;
   node *n;
+  btime now_ = current_time();
 
   TRACE(D_EVENTS, "Stopping interface %s", ifa->ifname);
 
@@ -1412,12 +1420,12 @@ babel_iface_stop(struct babel_iface *ifa)
     {
       r = SKIP_BACK(struct babel_route, neigh_route, n);
       r->metric = BABEL_INFINITY;
-      r->expires = now + r->expiry_interval;
+      r->expires = now_ + r->expiry_interval;
       babel_select_route(r->e);
     }
   }
 
-  tm_stop(ifa->timer);
+  tm2_stop(ifa->timer);
   ifa->up = 0;
 }
 
@@ -1515,7 +1523,7 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
   init_list(&ifa->neigh_list);
   ifa->hello_seqno = 1;
 
-  ifa->timer = tm_new_set(ifa->pool, babel_iface_timer, ifa, 0, 0);
+  ifa->timer = tm2_new_init(ifa->pool, babel_iface_timer, ifa, 0, 0);
 
   init_list(&ifa->msg_queue);
   ifa->send_event = ev_new(ifa->pool);
@@ -1614,11 +1622,11 @@ babel_reconfigure_iface(struct babel_proto *p, struct babel_iface *ifa, struct b
   if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
     log(L_WARN "%s: Cannot find IPv4 next hop addr on %s", p->p.name, ifa->ifname);
 
-  if (ifa->next_hello > (now + new->hello_interval))
-    ifa->next_hello = now + (random() % new->hello_interval) + 1;
+  if (ifa->next_hello > (current_time() + new->hello_interval))
+    ifa->next_hello = current_time() + (random() % new->hello_interval);
 
-  if (ifa->next_regular > (now + new->update_interval))
-    ifa->next_regular = now + (random() % new->update_interval) + 1;
+  if (ifa->next_regular > (current_time() + new->update_interval))
+    ifa->next_regular = current_time() + (random() % new->update_interval);
 
   if ((new->tx_length != old->tx_length) || (new->rx_buffer != old->rx_buffer))
     babel_iface_update_buffers(ifa);
@@ -1680,18 +1688,19 @@ babel_reconfigure_ifaces(struct babel_proto *p, struct babel_config *cf)
 static void
 babel_dump_source(struct babel_source *s)
 {
-  debug("Source router_id %lR seqno %d metric %d expires %d\n",
-	s->router_id, s->seqno, s->metric, s->expires ? s->expires-now : 0);
+  debug("Source router_id %lR seqno %d metric %d expires %t\n",
+	s->router_id, s->seqno, s->metric,
+	s->expires ? s->expires - current_time() : 0);
 }
 
 static void
 babel_dump_route(struct babel_route *r)
 {
-  debug("Route neigh %I if %s seqno %d metric %d/%d router_id %lR expires %d\n",
+  debug("Route neigh %I if %s seqno %d metric %d/%d router_id %lR expires %t\n",
 	r->neigh ? r->neigh->addr : IPA_NONE,
         r->neigh ? r->neigh->ifa->ifname : "(none)",
-        r->seqno, r->advert_metric, r->metric,
-	r->router_id, r->expires ? r->expires-now : 0);
+        r->seqno, r->advert_metric, r->metric, r->router_id,
+	r->expires ? r->expires - current_time() : 0);
 }
 
 static void
@@ -1717,10 +1726,10 @@ babel_dump_entry(struct babel_entry *e)
 static void
 babel_dump_neighbor(struct babel_neighbor *n)
 {
-  debug("Neighbor %I txcost %d hello_map %x next seqno %d expires %d/%d\n",
+  debug("Neighbor %I txcost %d hello_map %x next seqno %d expires %t/%t\n",
 	n->addr, n->txcost, n->hello_map, n->next_hello_seqno,
-        n->hello_expiry ? n->hello_expiry - now : 0,
-        n->ihu_expiry ? n->ihu_expiry - now : 0);
+	n->hello_expiry ? n->hello_expiry - current_time() : 0,
+        n->ihu_expiry ? n->ihu_expiry - current_time() : 0);
 }
 
 static void
@@ -1728,7 +1737,7 @@ babel_dump_iface(struct babel_iface *ifa)
 {
   struct babel_neighbor *n;
 
-  debug("Babel: Interface %s addr %I rxcost %d type %d hello seqno %d intervals %d %d",
+  debug("Babel: Interface %s addr %I rxcost %d type %d hello seqno %d intervals %t %t",
 	ifa->ifname, ifa->addr, ifa->cf->rxcost, ifa->cf->type, ifa->hello_seqno,
 	ifa->cf->hello_interval, ifa->cf->update_interval);
   debug(" next hop v4 %I next hop v6 %I\n", ifa->next_hop_ip4, ifa->next_hop_ip6);
@@ -1803,7 +1812,7 @@ babel_show_interfaces(struct proto *P, char *iff)
   }
 
   cli_msg(-1023, "%s:", p->p.name);
-  cli_msg(-1023, "%-10s %-6s %7s %6s %6s %-15s %s",
+  cli_msg(-1023, "%-10s %-6s %7s %6s %7s %-15s %s",
 	  "Interface", "State", "RX cost", "Nbrs", "Timer",
 	  "Next hop (v4)", "Next hop (v6)");
 
@@ -1816,8 +1825,8 @@ babel_show_interfaces(struct proto *P, char *iff)
     WALK_LIST(nbr, ifa->neigh_list)
 	nbrs++;
 
-    int timer = MIN(ifa->next_regular, ifa->next_hello) - now;
-    cli_msg(-1023, "%-10s %-6s %7u %6u %6u %-15I %I",
+    btime timer = MIN(ifa->next_regular, ifa->next_hello) - current_time();
+    cli_msg(-1023, "%-10s %-6s %7u %6u %7t %-15I %I",
 	    ifa->iface->name, (ifa->up ? "Up" : "Down"),
 	    ifa->cf->rxcost, nbrs, MAX(timer, 0),
 	    ifa->next_hop_ip4, ifa->next_hop_ip6);
@@ -1842,8 +1851,8 @@ babel_show_neighbors(struct proto *P, char *iff)
   }
 
   cli_msg(-1024, "%s:", p->p.name);
-  cli_msg(-1024, "%-25s %-10s %6s %6s %10s",
-	  "IP address", "Interface", "Metric", "Routes", "Next hello");
+  cli_msg(-1024, "%-25s %-10s %6s %6s %6s %7s",
+	  "IP address", "Interface", "Metric", "Routes", "Hellos", "Expires");
 
   WALK_LIST(ifa, p->interfaces)
   {
@@ -1856,9 +1865,10 @@ babel_show_neighbors(struct proto *P, char *iff)
       WALK_LIST(r, n->routes)
         rts++;
 
-      int timer = n->hello_expiry - now;
-      cli_msg(-1024, "%-25I %-10s %6u %6u %10u",
-	      n->addr, ifa->iface->name, n->txcost, rts, MAX(timer, 0));
+      uint hellos = u32_popcount(n->hello_map);
+      btime timer = n->hello_expiry - current_time();
+      cli_msg(-1024, "%-25I %-10s %6u %6u %6u %7t",
+	      n->addr, ifa->iface->name, n->txcost, rts, hellos, MAX(timer, 0));
     }
   }
 
@@ -1888,8 +1898,8 @@ babel_show_entries_(struct babel_proto *p, struct fib *rtable)
       else
         bsprintf(ridbuf, "%lR", r->router_id);
 
-      int time = r->expires ? r->expires - now : 0;
-      cli_msg(-1025, "%-29N %-23s %6u %5u %7u %7u",
+      btime time = r->expires ? r->expires - current_time() : 0;
+      cli_msg(-1025, "%-29N %-23s %6u %5u %7t %7u",
 	      e->n.addr, ridbuf, r->metric, r->seqno, MAX(time, 0), srcs);
     }
     else
@@ -1948,8 +1958,8 @@ babel_timer(timer *t)
 static inline void
 babel_kick_timer(struct babel_proto *p)
 {
-  if (p->timer->expires TO_S > (now + 1))
-    tm_start(p->timer, 1);
+  if (p->timer->expires > (current_time() + 100 MS))
+    tm2_start(p->timer, 100 MS);
 }
 
 
@@ -2032,9 +2042,9 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
 
     if (r != e->selected_out)
     {
-      e->selected_out = r;
-      e->updated = now;
       babel_trigger_update(p);
+      e->updated = current_time();
+      e->selected_out = r;
     }
   }
   else
@@ -2051,10 +2061,10 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
        * expiry time. This causes a retraction to be sent, and later the route
        * to be flushed once the hold time has passed.
        */
-      e->selected_out->metric = BABEL_INFINITY;
-      e->selected_out->expires = now + BABEL_HOLD_TIME;
-      e->updated = now;
       babel_trigger_update(p);
+      e->updated = current_time();
+      e->selected_out->metric = BABEL_INFINITY;
+      e->selected_out->expires = current_time() + BABEL_HOLD_TIME;
     }
     else
     {
@@ -2121,8 +2131,8 @@ babel_start(struct proto *P)
 	   OFFSETOF(struct babel_entry, n), 0, babel_init_entry);
 
   init_list(&p->interfaces);
-  p->timer = tm_new_set(P->pool, babel_timer, p, 0, 1);
-  tm_start(p->timer, 2);
+  p->timer = tm2_new_init(P->pool, babel_timer, p, 1 S, 0);
+  tm2_start(p->timer, 1 S);
   p->update_seqno = 1;
   p->router_id = proto_get_router_id(&cf->c);
 

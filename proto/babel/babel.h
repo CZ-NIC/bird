@@ -32,25 +32,26 @@
 #define BABEL_INFINITY		0xFFFF
 
 
-#define BABEL_HELLO_INTERVAL_WIRED	4	/* Default hello intervals in seconds */
-#define BABEL_HELLO_INTERVAL_WIRELESS	4
+#define BABEL_HELLO_INTERVAL_WIRED	(4 S_)	/* Default hello intervals in seconds */
+#define BABEL_HELLO_INTERVAL_WIRELESS	(4 S_)
 #define BABEL_UPDATE_INTERVAL_FACTOR	4
 #define BABEL_IHU_INTERVAL_FACTOR	3
-#define BABEL_IHU_EXPIRY_FACTOR(X)	((X)*3/2)	/* 1.5 */
-#define BABEL_HELLO_EXPIRY_FACTOR(X)	((X)*3/2)	/* 1.5 */
-#define BABEL_ROUTE_EXPIRY_FACTOR(X)	((X)*7/2)	/* 3.5 */
-#define BABEL_ROUTE_REFRESH_INTERVAL	2	/* Seconds before route expiry to send route request */
-#define BABEL_HOLD_TIME			10	/* Expiry time for our own routes */
+#define BABEL_IHU_EXPIRY_FACTOR(X)	((btime)(X)*3/2)	/* 1.5 */
+#define BABEL_HELLO_EXPIRY_FACTOR(X)	((btime)(X)*3/2)	/* 1.5 */
+#define BABEL_ROUTE_EXPIRY_FACTOR(X)	((btime)(X)*7/2)	/* 3.5 */
+#define BABEL_ROUTE_REFRESH_INTERVAL	(2 S_)	/* Time before route expiry to send route request */
+#define BABEL_HOLD_TIME			(10 S_)	/* Expiry time for our own routes */
+#define BABEL_SEQNO_REQUEST_EXPIRY	(60 S_)
+#define BABEL_GARBAGE_INTERVAL		(300 S_)
 #define BABEL_RXCOST_WIRED		96
 #define BABEL_RXCOST_WIRELESS		256
 #define BABEL_INITIAL_HOP_COUNT		255
-#define BABEL_MAX_SEND_INTERVAL		5
-#define BABEL_TIME_UNITS		100	/* On-wire times are counted in centiseconds */
-#define BABEL_SEQNO_REQUEST_EXPIRY	60
-#define BABEL_GARBAGE_INTERVAL		300
+#define BABEL_MAX_SEND_INTERVAL		5	/* Unused ? */
 
 /* Max interval that will not overflow when carried as 16-bit centiseconds */
-#define BABEL_MAX_INTERVAL		(0xFFFF/BABEL_TIME_UNITS)
+#define BABEL_TIME_UNITS		10000	/* On-wire times are counted in centiseconds */
+#define BABEL_MIN_INTERVAL		(0x0001 * BABEL_TIME_UNITS)
+#define BABEL_MAX_INTERVAL		(0xFFFF * BABEL_TIME_UNITS)
 
 #define BABEL_OVERHEAD		(IP6_HEADER_LENGTH+UDP_HEADER_LENGTH)
 #define BABEL_MIN_MTU		(512 + BABEL_OVERHEAD)
@@ -113,9 +114,9 @@ struct babel_iface_config {
   u8 type;
   u8 check_link;
   uint port;
-  u16 hello_interval;
-  u16 ihu_interval;
-  u16 update_interval;
+  uint hello_interval;			/* Hello interval, in us */
+  uint ihu_interval;			/* IHU interval, in us */
+  uint update_interval;			/* Update interval, in us */
 
   u16 rx_buffer;			/* RX buffer size, 0 for MTU */
   u16 tx_length;			/* TX packet length limit (including headers), 0 for MTU */
@@ -172,10 +173,10 @@ struct babel_iface {
 
   u16 hello_seqno;			/* To be increased on each hello */
 
-  bird_clock_t next_hello;
-  bird_clock_t next_regular;
-  bird_clock_t next_triggered;
-  bird_clock_t want_triggered;
+  btime next_hello;
+  btime next_regular;
+  btime next_triggered;
+  btime want_triggered;
 
   timer *timer;
   event *send_event;
@@ -191,8 +192,8 @@ struct babel_neighbor {
   u16 hello_map;
   u16 next_hello_seqno;
   /* expiry timers */
-  bird_clock_t hello_expiry;
-  bird_clock_t ihu_expiry;
+  btime hello_expiry;
+  btime ihu_expiry;
 
   list routes;				/* Routes this neighbour has sent us (struct babel_route) */
 };
@@ -203,7 +204,7 @@ struct babel_source {
   u64 router_id;
   u16 seqno;
   u16 metric;
-  bird_clock_t expires;
+  btime expires;
 };
 
 struct babel_route {
@@ -217,9 +218,9 @@ struct babel_route {
   u16 metric;
   u64 router_id;
   ip_addr next_hop;
-  bird_clock_t refresh_time;
-  bird_clock_t expires;
-  u16 expiry_interval;
+  btime refresh_time;
+  btime expires;
+  btime expiry_interval;
 };
 
 struct babel_entry {
@@ -227,7 +228,7 @@ struct babel_entry {
   struct babel_route *selected_in;
   struct babel_route *selected_out;
 
-  bird_clock_t updated;
+  btime updated;
 
   list sources;				/* Source entries for this prefix (struct babel_source). */
   list routes;				/* Routes for this prefix (struct babel_route) */
@@ -241,7 +242,7 @@ struct babel_seqno_request {
   net_addr net;
   u64 router_id;
   u16 seqno;
-  bird_clock_t updated;
+  btime updated;
 };
 
 
@@ -252,7 +253,7 @@ struct babel_seqno_request {
 struct babel_msg_ack_req {
   u8 type;
   u16 nonce;
-  u16 interval;
+  uint interval;
   ip_addr sender;
 };
 
@@ -264,7 +265,7 @@ struct babel_msg_ack {
 struct babel_msg_hello {
   u8 type;
   u16 seqno;
-  u16 interval;
+  uint interval;
   ip_addr sender;
 };
 
@@ -272,7 +273,7 @@ struct babel_msg_ihu {
   u8 type;
   u8 ae;
   u16 rxcost;
-  u16 interval;
+  uint interval;
   ip_addr addr;
   ip_addr sender;
 };
@@ -280,7 +281,7 @@ struct babel_msg_ihu {
 struct babel_msg_update {
   u8 type;
   u8 wildcard;
-  u16 interval;
+  uint interval;
   u16 seqno;
   u16 metric;
   u64 router_id;
