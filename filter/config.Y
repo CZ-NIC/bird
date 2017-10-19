@@ -12,8 +12,6 @@ CF_HDR
 
 CF_DEFINES
 
-#define P(a,b) ((a << 8) | b)
-
 static inline u32 pair(u32 a, u32 b) { return (a << 16) | b; }
 static inline u32 pair_a(u32 p) { return p >> 16; }
 static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
@@ -157,12 +155,11 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
 }
 
 static inline struct f_inst *
-f_generate_empty(struct f_inst *dyn)
+f_generate_empty(struct f_dynamic_attr dyn)
 {
-  struct f_inst *e = f_new_inst();
-  e->code = 'E';
+  struct f_inst *e = f_new_inst(fi_empty);
 
-  switch (dyn->aux & EAF_TYPE_MASK) {
+  switch (dyn->type & EAF_TYPE_MASK) {
     case EAF_TYPE_AS_PATH:
       e->aux = T_PATH;
       break;
@@ -179,9 +176,9 @@ f_generate_empty(struct f_inst *dyn)
       cf_error("Can't empty that attribute");
   }
 
-  dyn->code = P('e','S');
-  dyn->a1.p = e;
-  return dyn;
+  struct f_inst *s = f_new_inst(fi_ea_set, dyn);
+  s->a1.p = e;
+  return s;
 }
 
 
@@ -815,7 +812,7 @@ term:
 
  | rtadot static_attr { $$ = $2; $$->code = 'a'; }
 
- | rtadot dynamic_attr { $$ = $2; $$->code = P('e','a'); }
+ | rtadot dynamic_attr { $$ = f_new_inst(fi_ea_get, $2); }
 
  | term '.' IP { $$ = f_new_inst(); $$->code = P('c','p'); $$->a1.p = $1; $$->aux = T_IP; }
  | term '.' LEN { $$ = f_new_inst(); $$->code = 'L'; $$->a1.p = $1; }
@@ -945,8 +942,7 @@ cmd:
      $$->a1.p = $2;
    }
  | rtadot dynamic_attr '=' term ';' {
-     $$ = $2;
-     $$->code = P('e','S');
+     $$ = f_new_inst(fi_ea_set, $2);
      $$->a1.p = $4;
    }
  | rtadot static_attr '=' term ';' {
@@ -962,9 +958,8 @@ cmd:
      $$->a1.p = $3;
    }
  | UNSET '(' rtadot dynamic_attr ')' ';' {
-     $$ = $4;
+     $$ = f_new_inst(fi_ea_set, $4);
      $$->aux = EAF_TYPE_UNDEF | EAF_TEMP;
-     $$->code = P('e','S');
      $$->a1.p = NULL;
    }
  | break_command print_list ';' { $$ = f_new_inst(); $$->code = P('p',','); $$->a1.p = $2; $$->a2.i = $1; }

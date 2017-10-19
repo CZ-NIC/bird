@@ -596,6 +596,21 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
     return res; \
   } while(0)
 
+struct filter_instruction {
+  struct f_val *(*interpret)(struct f_inst *what);
+  int (*same)(struct f_inst *f1, struct f_inst *f2);
+};
+
+#define FI__DEF(code,interpret,same) \
+  static struct f_val * _filter_interpret_##code(struct f_inst *what) interpret \
+  static struct f_val * _filter_same_##code(struct f_inst *what) same
+
+static struct filter_instruction filter_instruction[] = {
+#define FI__DO(code) \
+  [FI_NUMERIC_CODE(code)] = { _filter_interpret_##code, _filter_same_##code },
+FI__LIST
+};
+
 #define ARG(x,y) \
 	x = interpret(what->y); \
 	if (x.type & T_RETURN) \
@@ -643,13 +658,13 @@ interpret(struct f_inst *what)
   if (!what)
     return res;
 
-  switch(what->code) {
-  case ',':
+  switch(what->fi_code) {
+  case fi_comma:
     TWOARGS;
     break;
 
 /* Binary operators */
-  case '+':
+  case fi_add:
     TWOARGS_C;
     switch (res.type = v1.type) {
     case T_VOID: runtime( "Can't operate with values of type void" );
@@ -657,7 +672,7 @@ interpret(struct f_inst *what)
     default: runtime( "Usage of unknown type" );
     }
     break;
-  case '-':
+  case fi_subtract:
     TWOARGS_C;
     switch (res.type = v1.type) {
     case T_VOID: runtime( "Can't operate with values of type void" );
