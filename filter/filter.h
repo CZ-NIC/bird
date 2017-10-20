@@ -51,7 +51,7 @@
   F(pref_get,		  0, 'P') \
   F(pref_set,		'P', 'S') \
   F(length,		  0, 'L') \
-  F(prefix_convert,	'c', 'p') \
+  F(ip,			'c', 'p') \
   F(as_path_first,	'a', 'f') \
   F(as_path_last,	'a', 'l') \
   F(as_path_last_nag,	'a', 'L') \
@@ -151,6 +151,8 @@ struct filter {
 };
 
 struct f_inst *f_new_inst(enum filter_instruction_code fi_code);
+struct f_inst *f_new_inst_da(enum filter_instruction_code fi_code, struct f_dynamic_attr da);
+struct f_inst *f_new_inst_sa(enum filter_instruction_code fi_code, struct f_static_attr sa);
 static inline struct f_dynamic_attr f_new_dynamic_attr(int type, int f_type, int code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */
 { return (struct f_dynamic_attr) { .type = type, .f_type = f_type, .ea_code = code }; }   /* f_type currently unused; will be handy for static type checking */
 static inline struct f_static_attr f_new_static_attr(int f_type, int code, int readonly)

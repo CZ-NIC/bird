@@ -22,11 +22,23 @@ f_new_inst(enum filter_instruction_code fi_code, struct f_dynamic_attr da)
   ret->aux = 0;
   ret->arg1 = ret->arg2 = ret->next = NULL;
   ret->lineno = ifs->lino;
-  if (da->type) {
-    ret->aux = da->type;
-    ret->a2.i = da->ea_code;
-  }
   return ret;
+}
+
+struct f_inst *
+f_new_inst_da(enum filter_instruction_code fi_code, struct f_dynamic_attr da)
+{
+  struct f_inst *ret = f_new_inst(fi_code);
+  ret->aux = da.type;
+  ret->a2.i = da.ea_code;
+}
+
+struct f_inst *
+f_new_inst_sa(enum filter_instruction_code fi_code, struct f_static_attr sa)
+{
+  struct f_inst *ret = f_new_inst(fi_code);
+  ret->aux = sa.type;
+  ret->a2.i = sa.sa_code;
 }
 
 /*

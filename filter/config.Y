@@ -176,7 +176,7 @@ f_generate_empty(struct f_dynamic_attr dyn)
       cf_error("Can't empty that attribute");
   }
 
-  struct f_inst *s = f_new_inst(fi_ea_set, dyn);
+  struct f_inst *s = f_new_inst_da(fi_ea_set, dyn);
   s->a1.p = e;
   return s;
 }
@@ -461,7 +461,7 @@ where_filter:
      rej = f_new_inst(fi_print_and_die);	/* REJECT */
      rej->a1.p = NULL;
      rej->a2.i = F_REJECT;
-     i = f_new_inst(condition);			/* IF */
+     i = f_new_inst(fi_condition);			/* IF */
      i->a1.p = $2;
      i->a2.p = acc;
      i->next = rej;
@@ -753,8 +753,8 @@ function_call:
 symbol:
    SYM {
      switch ($1->class & 0xff00) {
-       case SYM_CONSTANT: $$ = f_new_inst(constant_indirect); break;
-       case SYM_VARIABLE: $$ = f_new_inst(variable); break;
+       case SYM_CONSTANT: $$ = f_new_inst(fi_constant_indirect); break;
+       case SYM_VARIABLE: $$ = f_new_inst(fi_variable); break;
        default: cf_error("%s: variable expected.", $1->name);
      }
 
@@ -776,40 +776,40 @@ static_attr:
  ;
 
 term:
-   '(' term ')'      { $$ = $2; }
- | term '+' term     { $$ = f_new_inst(); $$->code = '+';        $$->a1.p = $1; $$->a2.p = $3; }
- | term '-' term     { $$ = f_new_inst(); $$->code = '-';        $$->a1.p = $1; $$->a2.p = $3; }
- | term '*' term     { $$ = f_new_inst(); $$->code = '*';        $$->a1.p = $1; $$->a2.p = $3; }
- | term '/' term     { $$ = f_new_inst(); $$->code = '/';        $$->a1.p = $1; $$->a2.p = $3; }
- | term AND term     { $$ = f_new_inst(); $$->code = '&';        $$->a1.p = $1; $$->a2.p = $3; }
- | term OR  term     { $$ = f_new_inst(); $$->code = '|';        $$->a1.p = $1; $$->a2.p = $3; }
- | term '=' term     { $$ = f_new_inst(); $$->code = P('=','='); $$->a1.p = $1; $$->a2.p = $3; }
- | term NEQ term { $$ = f_new_inst(); $$->code = P('!','=');     $$->a1.p = $1; $$->a2.p = $3; }
- | term '<' term     { $$ = f_new_inst(); $$->code = '<';        $$->a1.p = $1; $$->a2.p = $3; }
- | term LEQ term { $$ = f_new_inst(); $$->code = P('<','=');     $$->a1.p = $1; $$->a2.p = $3; }
- | term '>' term     { $$ = f_new_inst(); $$->code = '<';        $$->a1.p = $3; $$->a2.p = $1; }
- | term GEQ term { $$ = f_new_inst(); $$->code = P('<','=');     $$->a1.p = $3; $$->a2.p = $1; }
- | term '~' term     { $$ = f_new_inst(); $$->code = '~';        $$->a1.p = $1; $$->a2.p = $3; }
- | term NMA term { $$ = f_new_inst(); $$->code = P('!','~');     $$->a1.p = $1; $$->a2.p = $3; }
- | '!' term { $$ = f_new_inst(); $$->code = '!'; $$->a1.p = $2; }
- | DEFINED '(' term ')' { $$ = f_new_inst(); $$->code = P('d','e');  $$->a1.p = $3; }
+   '(' term ')'		{ $$ = $2; }
+ | term '+' term	{ $$ = f_new_inst(fi_add);	$$->a1.p = $1; $$->a2.p = $3; }
+ | term '-' term	{ $$ = f_new_inst(fi_subtract);	$$->a1.p = $1; $$->a2.p = $3; }
+ | term '*' term	{ $$ = f_new_inst(fi_multiply);	$$->a1.p = $1; $$->a2.p = $3; }
+ | term '/' term	{ $$ = f_new_inst(fi_divide);	$$->a1.p = $1; $$->a2.p = $3; }
+ | term AND term	{ $$ = f_new_inst(fi_and);	$$->a1.p = $1; $$->a2.p = $3; }
+ | term OR  term	{ $$ = f_new_inst(fi_or);	$$->a1.p = $1; $$->a2.p = $3; }
+ | term '=' term	{ $$ = f_new_inst(fi_eq);	$$->a1.p = $1; $$->a2.p = $3; }
+ | term NEQ term	{ $$ = f_new_inst(fi_neq);	$$->a1.p = $1; $$->a2.p = $3; }
+ | term '<' term	{ $$ = f_new_inst(fi_lt);	$$->a1.p = $1; $$->a2.p = $3; }
+ | term LEQ term	{ $$ = f_new_inst(fi_lte);	$$->a1.p = $1; $$->a2.p = $3; }
+ | term '>' term	{ $$ = f_new_inst(fi_lt);	$$->a1.p = $3; $$->a2.p = $1; }
+ | term GEQ term	{ $$ = f_new_inst(fi_lte);	$$->a1.p = $3; $$->a2.p = $1; }
+ | term '~' term	{ $$ = f_new_inst(fi_match);	$$->a1.p = $1; $$->a2.p = $3; }
+ | term NMA term	{ $$ = f_new_inst(fi_not_match);$$->a1.p = $1; $$->a2.p = $3; }
+ | '!' term		{ $$ = f_new_inst(fi_not);	$$->a1.p = $2; }
+ | DEFINED '(' term ')' { $$ = f_new_inst(fi_defined);	$$->a1.p = $3; }
 
  | symbol   { $$ = $1; }
  | constant { $$ = $1; }
  | constructor { $$ = $1; }
 
- | PREFERENCE { $$ = f_new_inst(); $$->code = 'P'; }
+ | PREFERENCE { $$ = f_new_inst(fi_pref_get); }
 
- | rtadot static_attr { $$ = $2; $$->code = 'a'; }
+ | rtadot static_attr { $$ = f_new_inst_sa(fi_rta_get, $2); }
 
- | rtadot dynamic_attr { $$ = f_new_inst(fi_ea_get, $2); }
+ | rtadot dynamic_attr { $$ = f_new_inst_da(fi_ea_get, $2); }
 
- | term '.' IP { $$ = f_new_inst(); $$->code = P('c','p'); $$->a1.p = $1; $$->aux = T_IP; }
- | term '.' LEN { $$ = f_new_inst(); $$->code = 'L'; $$->a1.p = $1; }
- | term '.' MASK '(' term ')' { $$ = f_new_inst(); $$->code = P('i','M'); $$->a1.p = $1; $$->a2.p = $5; }
- | term '.' FIRST { $$ = f_new_inst(); $$->code = P('a','f'); $$->a1.p = $1; }
- | term '.' LAST  { $$ = f_new_inst(); $$->code = P('a','l'); $$->a1.p = $1; }
- | term '.' LAST_NONAGGREGATED  { $$ = f_new_inst(); $$->code = P('a','L'); $$->a1.p = $1; }
+ | term '.' IP { $$ = f_new_inst(fi_ip); $$->a1.p = $1; $$->aux = T_IP; }
+ | term '.' LEN { $$ = f_new_inst(fi_length); $$->a1.p = $1; }
+ | term '.' MASK '(' term ')' { $$ = f_new_inst(fi_ip_mask); $$->a1.p = $1; $$->a2.p = $5; }
+ | term '.' FIRST { $$ = f_new_inst(fi_as_path_first); $$->a1.p = $1; }
+ | term '.' LAST  { $$ = f_new_inst(fi_as_path_last); $$->a1.p = $1; }
+ | term '.' LAST_NONAGGREGATED  { $$ = f_new_inst(fi_as_path_last_nag); $$->a1.p = $1; }
 
 /* Communities */
 /* This causes one shift/reduce conflict
@@ -819,19 +819,17 @@ term:
  | rtadot dynamic_attr '.' RESET{ }
 */
 
- | '+' EMPTY '+' { $$ = f_new_inst(); $$->code = 'E'; $$->aux = T_PATH; }
- | '-' EMPTY '-' { $$ = f_new_inst(); $$->code = 'E'; $$->aux = T_CLIST; }
- | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(); $$->code = 'E'; $$->aux = T_ECLIST; }
- | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(); $$->code = 'E'; $$->aux = T_LCLIST; }
- | PREPEND '(' term ',' term ')' { $$ = f_new_inst(); $$->code = P('A','p'); $$->a1.p = $3; $$->a2.p = $5; }
- | ADD '(' term ',' term ')' { $$ = f_new_inst(); $$->code = P('C','a'); $$->a1.p = $3; $$->a2.p = $5; $$->aux = 'a'; }
- | DELETE '(' term ',' term ')' { $$ = f_new_inst(); $$->code = P('C','a'); $$->a1.p = $3; $$->a2.p = $5; $$->aux = 'd'; }
- | FILTER '(' term ',' term ')' { $$ = f_new_inst(); $$->code = P('C','a'); $$->a1.p = $3; $$->a2.p = $5; $$->aux = 'f'; }
+ | '+' EMPTY '+' { $$ = f_new_inst(fi_empty); $$->aux = T_PATH; }
+ | '-' EMPTY '-' { $$ = f_new_inst(fi_empty); $$->aux = T_CLIST; }
+ | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(fi_empty); $$->aux = T_ECLIST; }
+ | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(fi_empty); $$->aux = T_LCLIST; }
+ | PREPEND '(' term ',' term ')' { $$ = f_new_inst(fi_path_prepend); $$->a1.p = $3; $$->a2.p = $5; }
+ | ADD '(' term ',' term ')' { $$ = f_new_inst(fi_clist_add_del); $$->a1.p = $3; $$->a2.p = $5; $$->aux = 'a'; }
+ | DELETE '(' term ',' term ')' { $$ = f_new_inst(fi_clist_add_del); $$->a1.p = $3; $$->a2.p = $5; $$->aux = 'd'; }
+ | FILTER '(' term ',' term ')' { $$ = f_new_inst(fi_clist_add_del); $$->a1.p = $3; $$->a2.p = $5; $$->aux = 'f'; }
 
  | ROA_CHECK '(' SYM ')' { $$ = f_generate_roa_check($3, NULL, NULL); }
  | ROA_CHECK '(' SYM ',' term ',' term ')' { $$ = f_generate_roa_check($3, $5, $7); }
-
-/* | term '.' LEN { $$->code = P('P','l'); } */
 
 /* function_call is inlined here */
  | SYM '(' var_list ')' {
@@ -840,8 +838,7 @@ term:
      if ($1->class != SYM_FUNCTION)
        cf_error("You can't call something which is not a function. Really.");
      DBG("You are calling function %s\n", $1->name);
-     $$ = f_new_inst();
-     $$->code = P('c','a');
+     $$ = f_new_inst(fi_call);
      $$->a1.p = inst;
      $$->a2.p = $1->def;
      sym = $1->aux2;
@@ -866,7 +863,7 @@ break_command:
  ;
 
 print_one:
-   term { $$ = f_new_inst(); $$->code = 'p'; $$->a1.p = $1; $$->a2.p = NULL; }
+   term { $$ = f_new_inst(fi_print); $$->a1.p = $1; $$->a2.p = NULL; }
  ;
 
 print_list: /* EMPTY */ { $$ = NULL; }
@@ -880,15 +877,13 @@ print_list: /* EMPTY */ { $$ = NULL; }
  ;
 
 var_listn: term {
-     $$ = f_new_inst();
-     $$->code = 's';
+     $$ = f_new_inst(fi_set);
      $$->a1.p = NULL;
      $$->a2.p = $1;
      $$->next = NULL;
    }
  | term ',' var_listn {
-     $$ = f_new_inst();
-     $$->code = 's';
+     $$ = f_new_inst(fi_set);
      $$->a1.p = NULL;
      $$->a2.p = $1;
      $$->next = $3;
@@ -901,34 +896,29 @@ var_list: /* EMPTY */ { $$ = NULL; }
 
 cmd:
    IF term THEN block {
-     $$ = f_new_inst();
-     $$->code = '?';
+     $$ = f_new_inst(fi_condition);
      $$->a1.p = $2;
      $$->a2.p = $4;
    }
  | IF term THEN block ELSE block {
-     struct f_inst *i = f_new_inst();
-     i->code = '?';
+     struct f_inst *i = f_new_inst(fi_condition);
      i->a1.p = $2;
      i->a2.p = $4;
-     $$ = f_new_inst();
-     $$->code = '?';
+     $$ = f_new_inst(fi_condition);
      $$->a1.p = i;
      $$->a2.p = $6;
    }
  | SYM '=' term ';' {
-     $$ = f_new_inst();
      DBG( "Ook, we'll set value\n" );
      if (($1->class & ~T_MASK) != SYM_VARIABLE)
        cf_error( "You may set only variables." );
-     $$->code = 's';
+     $$ = f_new_inst(fi_set);
      $$->a1.p = $1;
      $$->a2.p = $3;
    }
  | RETURN term ';' {
-     $$ = f_new_inst();
      DBG( "Ook, we'll return the value\n" );
-     $$->code = 'r';
+     $$ = f_new_inst(fi_return);
      $$->a1.p = $2;
    }
  | rtadot dynamic_attr '=' term ';' {
@@ -936,27 +926,24 @@ cmd:
      $$->a1.p = $4;
    }
  | rtadot static_attr '=' term ';' {
-     $$ = $2;
      if (!$$->a1.i)
        cf_error( "This static attribute is read-only.");
-     $$->code = P('a','S');
+     $$ = f_new_inst_sa(fi_rta_set, $2);
      $$->a1.p = $4;
    }
  | PREFERENCE '=' term ';' {
-     $$ = f_new_inst();
-     $$->code = P('P','S');
+     $$ = f_new_inst(fi_pref_set);
      $$->a1.p = $3;
    }
  | UNSET '(' rtadot dynamic_attr ')' ';' {
-     $$ = f_new_inst(fi_ea_set, $4);
+     $$ = f_new_inst_da(fi_ea_set, $4);
      $$->aux = EAF_TYPE_UNDEF | EAF_TEMP;
      $$->a1.p = NULL;
    }
- | break_command print_list ';' { $$ = f_new_inst(); $$->code = P('p',','); $$->a1.p = $2; $$->a2.i = $1; }
+ | break_command print_list ';' { $$ = f_new_inst(fi_print_and_die); $$->a1.p = $2; $$->a2.i = $1; }
  | function_call ';' { $$ = $1; }
  | CASE term '{' switch_body '}' {
-      $$ = f_new_inst();
-      $$->code = P('S','W');
+      $$ = f_new_inst(fi_switch);
       $$->a1.p = $2;
       $$->a2.p = build_tree( $4 );
    }
