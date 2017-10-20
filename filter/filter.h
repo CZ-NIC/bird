@@ -25,7 +25,7 @@
   F(divide,		  0, '/') \
   F(and,		  0, '&') \
   F(or,			  0, '|') \
-  F(pair_consruct,	'm', 'p') \
+  F(pair_construct,	'm', 'p') \
   F(ec_construct,	'm', 'c') \
   F(lc_construct,	'm', 'l') \
   F(neq,		'!', '=') \
@@ -139,6 +139,12 @@ struct f_dynamic_attr {
   int ea_code;
 };
 
+struct f_static_attr {
+  int f_type;
+  int sa_code;
+  int readonly;
+};
+
 struct filter {
   char *name;
   struct f_inst *root;
@@ -146,9 +152,11 @@ struct filter {
 
 struct f_inst *f_new_inst(enum filter_instruction_code fi_code);
 static inline struct f_dynamic_attr f_new_dynamic_attr(int type, int f_type, int code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */
-{ return (struct f_dynamic_attr) { .type = type, .f_type = f_type, .code = code }; }   /* f_type currently unused; will be handy for static type checking */
+{ return (struct f_dynamic_attr) { .type = type, .f_type = f_type, .ea_code = code }; }   /* f_type currently unused; will be handy for static type checking */
+static inline struct f_static_attr f_new_static_attr(int f_type, int code, int readonly)
+{ return (struct f_static_attr) { .f_type = f_type, .sa_code = code, .readonly = readonly }; }
 struct f_tree *f_new_tree(void);
-struct f_inst *f_generate_complex(int operation, int operation_aux, struct f_inst *dyn, struct f_inst *argument);
+struct f_inst *f_generate_complex(int operation, int operation_aux, struct f_dynamic_attr da, struct f_inst *argument);
 struct f_inst *f_generate_roa_check(struct symbol *sym, struct f_inst *prefix, struct f_inst *asn);
 
 

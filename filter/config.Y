@@ -159,7 +159,7 @@ f_generate_empty(struct f_dynamic_attr dyn)
 {
   struct f_inst *e = f_new_inst(fi_empty);
 
-  switch (dyn->type & EAF_TYPE_MASK) {
+  switch (dyn.type & EAF_TYPE_MASK) {
     case EAF_TYPE_AS_PATH:
       e->aux = T_PATH;
       break;
@@ -194,14 +194,12 @@ f_generate_dpair(struct f_inst *t1, struct f_inst *t2)
     check_u16(t1->a2.i);
     check_u16(t2->a2.i);
 
-    rv = f_new_inst();
-    rv->code = 'c';
+    rv = f_new_inst(fi_constant);
     rv->aux = T_PAIR;
     rv->a2.i = pair(t1->a2.i, t2->a2.i);
   }
   else {
-    rv = f_new_inst();
-    rv->code = P('m', 'p');
+    rv = f_new_inst(fi_pair_construct);
     rv->a1.p = t1;
     rv->a2.p = t2;
   }
@@ -275,15 +273,13 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
     }
 
     NEW_F_VAL;
-    rv = f_new_inst();
-    rv->code = 'C';
+    rv = f_new_inst(fi_constant_indirect);
     rv->a1.p = val;
     val->type = T_EC;
     val->val.ec = ec;
   }
   else {
-    rv = f_new_inst();
-    rv->code = P('m','c');
+    rv = f_new_inst(fi_ec_construct);
     rv->aux = kind;
     rv->a1.p = tk;
     rv->a2.p = tv;
@@ -301,8 +297,7 @@ f_generate_lc(struct f_inst *t1, struct f_inst *t2, struct f_inst *t3)
     if ((t1->aux != T_INT) || (t2->aux != T_INT) || (t3->aux != T_INT))
       cf_error( "LC - Can't operate with value of non-integer type in tuple constructor");
 
-    rv = f_new_inst();
-    rv->code = 'C';
+    rv = f_new_inst(fi_constant_indirect);
 
     NEW_F_VAL;
     rv->a1.p = val;
@@ -345,7 +340,9 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc THEN
 %nonassoc ELSE
 
-%type <x> term block cmds cmds_int cmd function_body constant constructor print_one print_list var_list var_listn dynamic_attr static_attr function_call symbol bgp_path_expr
+%type <x> term block cmds cmds_int cmd function_body constant constructor print_one print_list var_list var_listn function_call symbol bgp_path_expr
+%type <fda> dynamic_attr
+%type <fsa> static_attr
 %type <f> filter filter_body where_filter
 %type <i> type break_command ec_kind
 %type <i32> cnum
@@ -458,16 +455,13 @@ where_filter:
      /* Construct 'IF term THEN ACCEPT; REJECT;' */
      struct filter *f = cfg_alloc(sizeof(struct filter));
      struct f_inst *i, *acc, *rej;
-     acc = f_new_inst();		/* ACCEPT */
-     acc->code = P('p',',');
+     acc = f_new_inst(fi_print_and_die);	/* ACCEPT */
      acc->a1.p = NULL;
      acc->a2.i = F_ACCEPT;
-     rej = f_new_inst();		/* REJECT */
-     rej->code = P('p',',');
+     rej = f_new_inst(fi_print_and_die);	/* REJECT */
      rej->a1.p = NULL;
      rej->a2.i = F_REJECT;
-     i = f_new_inst();			/* IF */
-     i->code = '?';
+     i = f_new_inst(condition);			/* IF */
      i->a1.p = $2;
      i->a2.p = acc;
      i->next = rej;
@@ -486,8 +480,7 @@ function_body:
    decls '{' cmds '}' {
      if ($1) {
        /* Prepend instruction to clear local variables */
-       $$ = f_new_inst();
-       $$->code = P('c','v');
+       $$ = f_new_inst(fi_clear_local_vars);
        $$->a1.p = $1;
        $$->next = $3;
      } else
@@ -677,7 +670,7 @@ switch_body: /* EMPTY */ { $$ = NULL; }
  }
  ;
 
-/* CONST '(' expr ')' { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_INT; $$->a2.i = $3; } */
+/* CONST '(' expr ')' { $$ = f_new_inst(fi_constant); $$->aux = T_INT; $$->a2.i = $3; } */
 
 bgp_path_expr:
    symbol       { $$ = $1; }
@@ -705,17 +698,17 @@ bgp_path_tail2:
  ;
 
 constant:
-   NUM    { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_INT;  $$->a2.i = $1; }
- | TRUE   { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_BOOL; $$->a2.i = 1;  }
- | FALSE  { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_BOOL; $$->a2.i = 0;  }
- | TEXT   { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_STRING; $$->a2.p = $1; }
- | fipa	   { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; $$->a1.p = val; *val = $1; }
- | fprefix_s {NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; $$->a1.p = val; *val = $1; }
- | RTRID  { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_QUAD;  $$->a2.i = $1; }
- | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_SET; $$->a2.p = build_tree($2); DBG( "ook\n" ); }
- | '[' fprefix_set ']' { $$ = f_new_inst(); $$->code = 'c'; $$->aux = T_PREFIX_SET;  $$->a2.p = $2; }
- | ENUM	  { $$ = f_new_inst(); $$->code = 'c'; $$->aux = $1 >> 16; $$->a2.i = $1 & 0xffff; }
- | bgp_path { NEW_F_VAL; $$ = f_new_inst(); $$->code = 'C'; val->type = T_PATH_MASK; val->val.path_mask = $1; $$->a1.p = val; }
+   NUM    { $$ = f_new_inst(fi_constant); $$->aux = T_INT;  $$->a2.i = $1; }
+ | TRUE   { $$ = f_new_inst(fi_constant); $$->aux = T_BOOL; $$->a2.i = 1;  }
+ | FALSE  { $$ = f_new_inst(fi_constant); $$->aux = T_BOOL; $$->a2.i = 0;  }
+ | TEXT   { $$ = f_new_inst(fi_constant); $$->aux = T_STRING; $$->a2.p = $1; }
+ | fipa	   { NEW_F_VAL; $$ = f_new_inst(fi_constant_indirect); $$->a1.p = val; *val = $1; }
+ | fprefix_s {NEW_F_VAL; $$ = f_new_inst(fi_constant_indirect); $$->a1.p = val; *val = $1; }
+ | RTRID  { $$ = f_new_inst(fi_constant); $$->aux = T_QUAD;  $$->a2.i = $1; }
+ | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(fi_constant); $$->aux = T_SET; $$->a2.p = build_tree($2); DBG( "ook\n" ); }
+ | '[' fprefix_set ']' { $$ = f_new_inst(fi_constant); $$->aux = T_PREFIX_SET;  $$->a2.p = $2; }
+ | ENUM	  { $$ = f_new_inst(fi_constant); $$->aux = $1 >> 16; $$->a2.i = $1 & 0xffff; }
+ | bgp_path { NEW_F_VAL; $$ = f_new_inst(fi_constant_indirect); val->type = T_PATH_MASK; val->val.path_mask = $1; $$->a1.p = val; }
  ;
 
 constructor:
@@ -742,8 +735,7 @@ function_call:
      if ($1->class != SYM_FUNCTION)
        cf_error("You can't call something which is not a function. Really.");
      DBG("You are calling function %s\n", $1->name);
-     $$ = f_new_inst();
-     $$->code = P('c','a');
+     $$ = f_new_inst(fi_call);
      $$->a1.p = inst;
      $$->a2.p = $1->def;
      sym = $1->aux2;
@@ -760,11 +752,9 @@ function_call:
 
 symbol:
    SYM {
-     $$ = f_new_inst();
-
      switch ($1->class & 0xff00) {
-       case SYM_CONSTANT: $$->code = 'C'; break;
-       case SYM_VARIABLE: $$->code = 'V'; break;
+       case SYM_CONSTANT: $$ = f_new_inst(constant_indirect); break;
+       case SYM_VARIABLE: $$ = f_new_inst(variable); break;
        default: cf_error("%s: variable expected.", $1->name);
      }
 
@@ -773,16 +763,16 @@ symbol:
    }
 
 static_attr:
-   FROM    { $$ = f_new_inst(); $$->aux = T_IP;         $$->a2.i = SA_FROM;	$$->a1.i = 1; }
- | GW      { $$ = f_new_inst(); $$->aux = T_IP;         $$->a2.i = SA_GW;	$$->a1.i = 1; }
- | NET     { $$ = f_new_inst(); $$->aux = T_PREFIX;     $$->a2.i = SA_NET; }
- | PROTO   { $$ = f_new_inst(); $$->aux = T_STRING;     $$->a2.i = SA_PROTO; }
- | SOURCE  { $$ = f_new_inst(); $$->aux = T_ENUM_RTS;   $$->a2.i = SA_SOURCE; }
- | SCOPE   { $$ = f_new_inst(); $$->aux = T_ENUM_SCOPE; $$->a2.i = SA_SCOPE;	$$->a1.i = 1; }
- | CAST    { $$ = f_new_inst(); $$->aux = T_ENUM_RTC;   $$->a2.i = SA_CAST; }
- | DEST    { $$ = f_new_inst(); $$->aux = T_ENUM_RTD;   $$->a2.i = SA_DEST;	$$->a1.i = 1; }
- | IFNAME  { $$ = f_new_inst(); $$->aux = T_STRING;     $$->a2.i = SA_IFNAME; }
- | IFINDEX { $$ = f_new_inst(); $$->aux = T_INT;        $$->a2.i = SA_IFINDEX; }
+   FROM    { $$ = f_new_static_attr(T_IP,         SA_FROM,	1); }
+ | GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	1); }
+ | NET     { $$ = f_new_static_attr(T_PREFIX,     SA_NET,	0); }
+ | PROTO   { $$ = f_new_static_attr(T_STRING,     SA_PROTO,	0); }
+ | SOURCE  { $$ = f_new_static_attr(T_ENUM_RTS,   SA_SOURCE,	0); }
+ | SCOPE   { $$ = f_new_static_attr(T_ENUM_SCOPE, SA_SCOPE,	1); }
+ | CAST    { $$ = f_new_static_attr(T_ENUM_RTC,   SA_CAST,	0); }
+ | DEST    { $$ = f_new_static_attr(T_ENUM_RTD,   SA_DEST,	1); }
+ | IFNAME  { $$ = f_new_static_attr(T_STRING,     SA_IFNAME,	0); }
+ | IFINDEX { $$ = f_new_static_attr(T_INT,        SA_IFINDEX,	0); }
  ;
 
 term:
