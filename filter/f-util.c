@@ -14,7 +14,7 @@
 #define P(a,b) ((a<<8) | b)
 
 struct f_inst *
-f_new_inst(enum filter_instruction_code fi_code, struct f_dynamic_attr da)
+f_new_inst(enum filter_instruction_code fi_code)
 {
   struct f_inst * ret;
   ret = cfg_alloc(sizeof(struct f_inst));
@@ -31,14 +31,16 @@ f_new_inst_da(enum filter_instruction_code fi_code, struct f_dynamic_attr da)
   struct f_inst *ret = f_new_inst(fi_code);
   ret->aux = da.type;
   ret->a2.i = da.ea_code;
+  return ret;
 }
 
 struct f_inst *
 f_new_inst_sa(enum filter_instruction_code fi_code, struct f_static_attr sa)
 {
   struct f_inst *ret = f_new_inst(fi_code);
-  ret->aux = sa.type;
+  ret->aux = sa.f_type;
   ret->a2.i = sa.sa_code;
+  return ret;
 }
 
 /*
@@ -47,9 +49,9 @@ f_new_inst_sa(enum filter_instruction_code fi_code, struct f_static_attr sa)
 struct f_inst *
 f_generate_complex(int operation, int operation_aux, struct f_dynamic_attr da, struct f_inst *argument)
 {
-  struct f_inst *set_dyn = f_new_inst(fi_ea_get, da),
+  struct f_inst *set_dyn = f_new_inst_da(fi_ea_get, da),
                 *oper = f_new_inst(operation),
-                *get_dyn = f_new_inst(fi_ea_set, da);
+                *get_dyn = f_new_inst_da(fi_ea_set, da);
 
   oper->aux = operation_aux;
   oper->a1.p = get_dyn;
@@ -64,7 +66,7 @@ struct f_inst *
 f_generate_roa_check(struct symbol *sym, struct f_inst *prefix, struct f_inst *asn)
 {
   struct f_inst_roa_check *ret = cfg_allocz(sizeof(struct f_inst_roa_check));
-  ret->i.code = P('R','C');
+  ret->i.fi_code = fi_roa_check;
   ret->i.lineno = ifs->lino;
   ret->i.arg1 = prefix;
   ret->i.arg2 = asn;

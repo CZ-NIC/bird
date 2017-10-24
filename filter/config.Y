@@ -181,6 +181,27 @@ f_generate_empty(struct f_dynamic_attr dyn)
   return s;
 }
 
+static inline struct f_inst *
+f_generate_dpair(struct f_inst *t1, struct f_inst *t2)
+{
+  struct f_inst *rv = f_new_inst(fi_pair_construct);
+  rv->a1.p = t1;
+  rv->a2.p = t2;
+  return rv;
+}
+
+static inline struct f_inst *
+f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
+{
+  struct f_inst *rv = f_new_inst(fi_ec_construct);
+  rv->aux = kind;
+  rv->a1.p = tk;
+  rv->a2.p = tv;
+  return rv;
+}
+
+#if 0
+/* TODO: Convert to instructions! */
 
 static inline struct f_inst *
 f_generate_dpair(struct f_inst *t1, struct f_inst *t2)
@@ -288,11 +309,14 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
   return rv;
 }
 
+#endif
+
 static inline struct f_inst *
 f_generate_lc(struct f_inst *t1, struct f_inst *t2, struct f_inst *t3)
 {
   struct f_inst *rv;
 
+#if 0 /* TODO move constant expansion elsewhere */
   if ((t1->code == 'c') && (t2->code == 'c') && (t3->code == 'c')) {
     if ((t1->aux != T_INT) || (t2->aux != T_INT) || (t3->aux != T_INT))
       cf_error( "LC - Can't operate with value of non-integer type in tuple constructor");
@@ -305,10 +329,11 @@ f_generate_lc(struct f_inst *t1, struct f_inst *t2, struct f_inst *t3)
     val->val.lc = (lcomm) { t1->a2.i, t2->a2.i, t3->a2.i };
   }
   else
+#endif
   {
     rv = cfg_allocz(sizeof(struct f_inst3));
     rv->lineno = ifs->lino;
-    rv->code = P('m','l');
+    rv->fi_code = fi_lc_construct;
     rv->a1.p = t1;
     rv->a2.p = t2;
     INST3(rv).p = t3;
@@ -723,7 +748,7 @@ constructor:
  *  For such cases, we force the dynamic_attr list to contain
  *  at least an invalid token, so it is syntantically correct.
  */
-CF_ADDTO(dynamic_attr, INVALID_TOKEN { $$ = NULL; })
+CF_ADDTO(dynamic_attr, INVALID_TOKEN { $$ = (struct f_dynamic_attr) {}; })
 
 rtadot: /* EMPTY, we are not permitted RTA. prefix */
  ;
@@ -922,7 +947,7 @@ cmd:
      $$->a1.p = $2;
    }
  | rtadot dynamic_attr '=' term ';' {
-     $$ = f_new_inst(fi_ea_set, $2);
+     $$ = f_new_inst_da(fi_ea_set, $2);
      $$->a1.p = $4;
    }
  | rtadot static_attr '=' term ';' {
@@ -950,10 +975,10 @@ cmd:
 
 
  | rtadot dynamic_attr '.' EMPTY ';' { $$ = f_generate_empty($2); }
- | rtadot dynamic_attr '.' PREPEND '(' term ')' ';'   { $$ = f_generate_complex( P('A','p'), 'x', $2, $6 ); }
- | rtadot dynamic_attr '.' ADD '(' term ')' ';'       { $$ = f_generate_complex( P('C','a'), 'a', $2, $6 ); }
- | rtadot dynamic_attr '.' DELETE '(' term ')' ';'    { $$ = f_generate_complex( P('C','a'), 'd', $2, $6 ); }
- | rtadot dynamic_attr '.' FILTER '(' term ')' ';'    { $$ = f_generate_complex( P('C','a'), 'f', $2, $6 ); }
+ | rtadot dynamic_attr '.' PREPEND '(' term ')' ';'   { $$ = f_generate_complex( fi_path_prepend, 'x', $2, $6 ); }
+ | rtadot dynamic_attr '.' ADD '(' term ')' ';'       { $$ = f_generate_complex( fi_clist_add_del, 'a', $2, $6 ); }
+ | rtadot dynamic_attr '.' DELETE '(' term ')' ';'    { $$ = f_generate_complex( fi_clist_add_del, 'd', $2, $6 ); }
+ | rtadot dynamic_attr '.' FILTER '(' term ')' ';'    { $$ = f_generate_complex( fi_clist_add_del, 'f', $2, $6 ); }
  ;
 
 CF_END
