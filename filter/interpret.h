@@ -3,237 +3,242 @@
 
 #include "filter/filter.h"
 
-#define FI_INST_INTERPRET(inst) static struct f_val fi_interpret_##inst(struct f_inst *what)
+#define ARG(x,y) \
+	struct f_val x = interpret(what->y); \
+	if (x.type & T_RETURN) \
+		return x;
 
-#if 0
-/* Seems to be unused */
+#define RES struct f_val res
+#define ONEARG ARG(v1, a1.p)
+#define TWOARGS ARG(v1, a1.p) \
+		ARG(v2, a2.p)
+#define TWOARGS_C TWOARGS \
+                  if (v1.type != v2.type) \
+		    runtime( "Can't operate with values of incompatible types" );
+#define ACCESS_RTE \
+  do { if (!f_rte) runtime("No route to access"); } while (0)
+
+#define BITFIELD_MASK(what) \
+  (1u << (what->a2.i >> 24))
+
+#define ARG(n) \
+  struct f_val v##n = interpret((n == 3) ? (INST3(what).p) : what->a##n.p); \
+  if (v##n.type & T_RETURN) \
+    return v##n;
+
+#define AI(n) ARG(n,interpret)
+
+/* Seems to be unused 
   case fi_comma:
     TWOARGS;
     break;
-#endif
+    */
 
-/* Binary operators */
-  case fi_add:
-    TWOARGS_C;
-    switch (res.type = v1.type) {
-    case T_VOID: runtime( "Can't operate with values of type void" );
-    case T_INT: res.val.i = v1.val.i + v2.val.i; break;
-    default: runtime( "Usage of unknown type" );
-    }
-    break;
-  case fi_subtract:
-    TWOARGS_C;
-    switch (res.type = v1.type) {
-    case T_VOID: runtime( "Can't operate with values of type void" );
-    case T_INT: res.val.i = v1.val.i - v2.val.i; break;
-    default: runtime( "Usage of unknown type" );
-    }
-    break;
-  case '*':
-    TWOARGS_C;
-    switch (res.type = v1.type) {
-    case T_VOID: runtime( "Can't operate with values of type void" );
-    case T_INT: res.val.i = v1.val.i * v2.val.i; break;
-    default: runtime( "Usage of unknown type" );
-    }
-    break;
-  case '/':
-    TWOARGS_C;
-    switch (res.type = v1.type) {
-    case T_VOID: runtime( "Can't operate with values of type void" );
-    case T_INT: if (v2.val.i == 0) runtime( "Mother told me not to divide by 0" );
-      	        res.val.i = v1.val.i / v2.val.i; break;
-    default: runtime( "Usage of unknown type" );
-    }
-    break;
+#define FI_INST_INTERPRET(inst) static inline struct f_val fi_interpret_##inst(const struct f_inst *what)
+//#define FI_INST_PREPROCESS(inst) static struct f_val fi_preprocess_##inst(struct f_inst *what)
 
-  case '&':
-  case '|':
-    ARG(v1, a1.p);
-    if (v1.type != T_BOOL)
-      runtime( "Can't do boolean operation on non-booleans" );
-    if (v1.val.i == (what->code == '|')) {
-      res.type = T_BOOL;
-      res.val.i = v1.val.i;
-      break;
-    }
+#define RET(ftype,member,value) return (struct f_val) { .type = ftype, .val.member = (value) }
+#define RET_VOID return (struct f_val) { .type = T_VOID }
 
-    ARG(v2, a2.p);
-    if (v2.type != T_BOOL)
-      runtime( "Can't do boolean operation on non-booleans" );
-    res.type = T_BOOL;
-    res.val.i = v2.val.i;
-    break;
+#define FI_INST_NUMERIC_BINARY(name,op) \
+  FI_INST_INTERPRET(name) \
+  { \
+    AI(1); AI(2); \
+    if ((v1.type != T_INT) || (v2.type != T_INT)) \
+      runtime( "Incompatible types for operation " #op ); \
+    RET(T_INT, i, (v1.val.i op v2.val.i)); \
+  }
 
-  case P('m','p'):
-    TWOARGS;
-    if ((v1.type != T_INT) || (v2.type != T_INT))
-      runtime( "Can't operate with value of non-integer type in pair constructor" );
-    u1 = v1.val.i;
-    u2 = v2.val.i;
-    if ((u1 > 0xFFFF) || (u2 > 0xFFFF))
-      runtime( "Can't operate with value out of bounds in pair constructor" );
-    res.val.i = (u1 << 16) | u2;
-    res.type = T_PAIR;
-    break;
+FI_INST_NUMERIC_BINARY(add,+)
+FI_INST_NUMERIC_BINARY(subtract,-)
+FI_INST_NUMERIC_BINARY(multiply,*)
 
-  case P('m','c'):
-    {
-      TWOARGS;
+FI_INST_INTERPRET(divide)
+{
+  AI(1); AI(2);
+  if ((v1.type != T_INT) || (v2.type != T_INT))
+    runtime( "Incompatible types for operation " #op );
+  if (v2.val.i == 0)
+    runtime( "I don't believe in division by zero" );
+  RET(T_INT, i, (v1.val.i / v2.val.i));
+}
 
-      int check, ipv4_used;
-      u32 key, val;
+static inline struct f_val fi_interpret_boolbinary(const struct f_inst *what)
+{
+  AI(1);
+  if (v1.type != T_BOOL)
+    runtime ( "Incompatible type for operation &" );
+  if (v1.val.i == (what->fi_code == fi_or))
+    RET(T_BOOL, i, v1.val.i);
+  AI(2);
+  if (v2.type != T_BOOL)
+    runtime ( "Incompatible type for operation &" );
+  return v2;
+}
+#define fi_interpret_and fi_interpret_boolbinary
+#define fi_interpret_or fi_interpret_boolbinary
 
-      if (v1.type == T_INT) {
-	ipv4_used = 0; key = v1.val.i;
-      }
-      else if (v1.type == T_QUAD) {
-	ipv4_used = 1; key = v1.val.i;
-      }
+F_INST_INTERPRET(pair_construct)
+{
+  AI(1); AI(2);
+  if ((v1.type != T_INT) || (v2.type != T_INT))
+    runtime( "Can't operate with value of non-integer type in pair constructor" );
+  unsigned u1 = v1.val.i, u2 = v2.val.i;
+  if ((u1 > 0xFFFF) || (u2 > 0xFFFF))
+    runtime( "Can't operate with value out of bounds in pair constructor" );
+  RET(T_PAIR, i, (u1 << 16) | u2);
+}
+
+F_INST_INTERPRET(ec_construct)
+{
+  AI(1); AI(2);
+  int check, ipv4_used;
+  u32 key, val;
+
+  if (v1.type == T_INT) {
+    ipv4_used = 0; key = v1.val.i;
+  }
+  else if (v1.type == T_QUAD) {
+    ipv4_used = 1; key = v1.val.i;
+  }
 #ifndef IPV6
-      /* IP->Quad implicit conversion */
-      else if (v1.type == T_IP) {
-	ipv4_used = 1; key = ipa_to_u32(v1.val.px.ip);
-      }
+  /* IP->Quad implicit conversion */
+  else if (v1.type == T_IP) {
+    ipv4_used = 1; key = ipa_to_u32(v1.val.px.ip);
+  }
 #endif
-      else
-	runtime("Can't operate with key of non-integer/IPv4 type in EC constructor");
+  else
+    runtime("Can't operate with key of non-integer/IPv4 type in EC constructor");
 
-      if (v2.type != T_INT)
-	runtime("Can't operate with value of non-integer type in EC constructor");
-      val = v2.val.i;
+  if (v2.type != T_INT)
+    runtime("Can't operate with value of non-integer type in EC constructor");
+  val = v2.val.i;
 
-      /* XXXX */
-      res.type = T_EC;
+  struct f_val res = { .type = T_EC };
 
-      if (what->aux == EC_GENERIC) {
-	check = 0; res.val.ec = ec_generic(key, val);
-      }
-      else if (ipv4_used) {
-	check = 1; res.val.ec = ec_ip4(what->aux, key, val);
-      }
-      else if (key < 0x10000) {
-	check = 0; res.val.ec = ec_as2(what->aux, key, val);
-      }
-      else {
-	check = 1; res.val.ec = ec_as4(what->aux, key, val);
-      }
+  if (what->aux == EC_GENERIC) {
+    check = 0; res.val.ec = ec_generic(key, val);
+  }
+  else if (ipv4_used) {
+    check = 1; res.val.ec = ec_ip4(what->aux, key, val);
+  }
+  else if (key < 0x10000) {
+    check = 0; res.val.ec = ec_as2(what->aux, key, val);
+  }
+  else {
+    check = 1; res.val.ec = ec_as4(what->aux, key, val);
+  }
 
-      if (check && (val > 0xFFFF))
-	runtime("Can't operate with value out of bounds in EC constructor");
+  if (check && (val > 0xFFFF))
+    runtime("Can't operate with value out of bounds in EC constructor");
 
-      break;
-    }
+  return res;
+}
 
-  case P('m','l'):
-    {
-      TWOARGS;
+F_INST_INTERPRET(lc_construct)
+{
+  AI(1); AI(2); AI(3);
+  if ((v1.type != T_INT) || (v2.type != T_INT) || (v3.type != T_INT))
+    runtime( "Can't operate with value of non-integer type in LC constructor" );
 
-      /* Third argument hack */
-      struct f_val v3 = interpret(INST3(what).p);
-      if (v3.type & T_RETURN)
-	return v3;
-
-      if ((v1.type != T_INT) || (v2.type != T_INT) || (v3.type != T_INT))
-	runtime( "Can't operate with value of non-integer type in LC constructor" );
-
-      res.type = T_LC;
-      res.val.lc = (lcomm) { v1.val.i, v2.val.i, v3.val.i };
-
-      break;
-    }
+  RET(T_LC, lc, (lcomm) { v1.val.i, v2.val.i, v3.val.i });
+}
 
 /* Relational operators */
 
-#define COMPARE(x) \
-    TWOARGS; \
-    i = val_compare(v1, v2); \
-    if (i==CMP_ERROR) \
-      runtime( "Can't compare values of incompatible types" ); \
-    res.type = T_BOOL; \
-    res.val.i = (x); \
-    break;
+static inline struct f_val fi_interpret_same(const struct f_inst *what)
+{
+  AI(1); AI(2);
+  int i = val_same(v1, v2);
+  RET(T_BOOL, i, (what->fi_code == fi_eq) ? i : !i);
+}
 
-#define SAME(x) \
-    TWOARGS; \
-    i = val_same(v1, v2); \
-    res.type = T_BOOL; \
-    res.val.i = (x); \
-    break;
+static inline struct f_val fi_interpret_compare(const struct f_inst *what)
+{
+  AI(1); AI(2);
+  int i = val_compare(v1, v2);
+  if (i == CMP_ERROR)
+    runtime( "Can't compare values of incompatible types" );
+  RET(T_BOOL, i, (what->fi_code == fi_lt) ? (i == -1) : (i != 1));
+}
 
-  case P('!','='): SAME(!i);
-  case P('=','='): SAME(i);
-  case '<': COMPARE(i==-1);
-  case P('<','='): COMPARE(i!=1);
+#define fi_interpret_eq fi_interpret_same
+#define fi_interpret_neq fi_interpret_same
+#define fi_interpret_lt fi_interpret_compare
+#define fi_interpret_lte fi_interpret_compare
 
-  case '!':
-    ONEARG;
-    if (v1.type != T_BOOL)
-      runtime( "Not applied to non-boolean" );
-    res = v1;
-    res.val.i = !res.val.i;
-    break;
+F_INST_INTERPRET(not)
+{
+  AI(1);
+  if (v1.type != T_BOOL)
+    runtime( "Not applied to non-boolean" );
+  RET(T_BOOL, i, !v1.val.i);
+}
 
-  case '~':
-    TWOARGS;
-    res.type = T_BOOL;
-    res.val.i = val_in_range(v1, v2);
-    if (res.val.i == CMP_ERROR)
-      runtime( "~ applied on unknown type pair" );
-    res.val.i = !!res.val.i;
-    break;
+F_INST_INTERPRET(match)
+{
+  AI(1); AI(2);
+  int i = val_in_range(v1, v2);
+  if (i == CMP_ERROR)
+    runtime( "~ applied on unknown type pair" );
+  RET(T_BOOL, i, !!i);
+}
 
-  case P('!','~'):
-    TWOARGS;
-    res.type = T_BOOL;
-    res.val.i = val_in_range(v1, v2);
-    if (res.val.i == CMP_ERROR)
-      runtime( "!~ applied on unknown type pair" );
-    res.val.i = !res.val.i;
-    break;
+F_INST_INTERPRET(not_match)
+{
+  AI(1); AI(2);
+  int i = val_in_range(v1, v2);
+  if (i == CMP_ERROR)
+    runtime( "~ applied on unknown type pair" );
+  RET(T_BOOL, i, !i);
+}
 
-  case P('d','e'):
-    ONEARG;
-    res.type = T_BOOL;
-    res.val.i = (v1.type != T_VOID);
-    break;
+F_INST_INTERPRET(defined)
+{
+  AI(1);
+  RET(T_BOOL, i, (v1.type != T_VOID));
+}
 
+F_INST_INTERPRET(set)
+{
   /* Set to indirect value, a1 = variable, a2 = value */
-  case 's':
-    ARG(v2, a2.p);
-    sym = what->a1.p;
-    vp = sym->def;
-    if ((sym->class != (SYM_VARIABLE | v2.type)) && (v2.type != T_VOID)) {
+  AI(2);
+  struct symbol *sym = what->a1.p;
+  struct f_val *vp = sym->def;
+  if ((sym->class != (SYM_VARIABLE | v2.type)) && (v2.type != T_VOID)) {
 #ifndef IPV6
-      /* IP->Quad implicit conversion */
-      if ((sym->class == (SYM_VARIABLE | T_QUAD)) && (v2.type == T_IP)) {
-	vp->type = T_QUAD;
-	vp->val.i = ipa_to_u32(v2.val.px.ip);
-	break;
-      }
-#endif
-      runtime( "Assigning to variable of incompatible type" );
+    /* IP->Quad implicit conversion */
+    if ((sym->class == (SYM_VARIABLE | T_QUAD)) && (v2.type == T_IP)) {
+      vp->type = T_QUAD;
+      vp->val.i = ipa_to_u32(v2.val.px.ip);
+      break;
     }
-    *vp = v2;
-    break;
+#endif
+    runtime( "Assigning to variable of incompatible type" );
+  }
+  *vp = v2;
+  RET_VOID;
+}
 
-    /* some constants have value in a2, some in *a1.p, strange. */
-  case 'c':	/* integer (or simple type) constant, string, set, or prefix_set */
-    res.type = what->aux;
+F_INST_INTERPRET(constant)
+{
+  /* some constants have value in a2, some in *a1.p, strange. */
+  /* integer (or simple type) constant, string, set, or prefix_set */
+  switch (what->aux) {
+    case T_PREFIX_SET:	RET(T_PREFIX_SET, ti, what->a2.p);
+    case T_SET:		RET(T_SET, t, what->a2.p);
+    case T_STRING:	RET(T_STRING, s, what->a2.p);
+    default:		RET(what->aux, i, what->a2.p);
+  }
+}
 
-    if (res.type == T_PREFIX_SET)
-      res.val.ti = what->a2.p;
-    else if (res.type == T_SET)
-      res.val.t = what->a2.p;
-    else if (res.type == T_STRING)
-      res.val.s = what->a2.p;
-    else
-      res.val.i = what->a2.i;
-    break;
-  case 'V':
-  case 'C':
-    res = * ((struct f_val *) what->a1.p);
-    break;
+F_INST_INTERPRET(variable)
+{
+  return * ((struct f_val *) what->a1.p);
+}
+
+#define fi_interpret_constant_indirect fi_interpret_variable
+
   case 'p':
     ONEARG;
     val_format(v1, &f_buf);

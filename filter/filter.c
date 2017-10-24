@@ -46,8 +46,6 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 
-#define P(a,b) ((a<<8) | b)
-
 #define CMP_ERROR 999
 
 static struct adata *
@@ -591,9 +589,7 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
 #define runtime(x) do { \
     log_rl(&rl_runtime_err, L_ERR "filters, line %d: %s", what->lineno, x); \
-    res.type = T_RETURN; \
-    res.val.i = F_ERROR; \
-    return res; \
+    return (struct f_val) { .type = T_RETURN; .val.i = F_ERROR; }; \
   } while(0)
 
 struct filter_instruction {
@@ -611,22 +607,7 @@ static struct filter_instruction filter_instruction[] = {
 FI__LIST
 };
 
-#define ARG(x,y) \
-	x = interpret(what->y); \
-	if (x.type & T_RETURN) \
-		return x;
-
-#define ONEARG ARG(v1, a1.p)
-#define TWOARGS ARG(v1, a1.p) \
-		ARG(v2, a2.p)
-#define TWOARGS_C TWOARGS \
-                  if (v1.type != v2.type) \
-		    runtime( "Can't operate with values of incompatible types" );
-#define ACCESS_RTE \
-  do { if (!f_rte) runtime("No route to access"); } while (0)
-
-#define BITFIELD_MASK(what) \
-  (1u << (what->a2.i >> 24))
+#include "filter/interpret.h"
 
 /**
  * interpret

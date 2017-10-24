@@ -261,9 +261,12 @@ void val_format(struct f_val v, buffer *buf);
 #define T_LC 0x28		/* Large community value, lcomm */
 #define T_LCLIST 0x29		/* Large community list */
 
+#define T_TYPE 0x2f		/* T_* internal type value */
+
 #define T_RETURN 0x40
 #define T_SET 0x80
 #define T_PREFIX_SET 0x81
+
 
 
 #define SA_FROM		 1
