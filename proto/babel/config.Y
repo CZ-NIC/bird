@@ -56,6 +56,7 @@ babel_iface_start:
   init_list(&this_ipatt->ipn_list);
   BABEL_IFACE->port = BABEL_PORT;
   BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRED;
+  BABEL_IFACE->limit = BABEL_HELLO_LIMIT;
   BABEL_IFACE->tx_tos = IP_PREC_INTERNET_CONTROL;
   BABEL_IFACE->tx_priority = sk_priority_control;
   BABEL_IFACE->check_link = 1;
@@ -89,6 +90,7 @@ babel_iface_finish:
 babel_iface_item:
  | PORT expr { BABEL_IFACE->port = $2; if (($2<1) || ($2>65535)) cf_error("Invalid port number"); }
  | RXCOST expr { BABEL_IFACE->rxcost = $2; if (($2<1) || ($2>65535)) cf_error("Invalid rxcost"); }
+ | LIMIT expr { BABEL_IFACE->limit = $2; if (($2<1) || ($2>16)) cf_error("Limit must be in range 1-16"); }
  | TYPE WIRED { BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRED; }
  | TYPE WIRELESS { BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRELESS; }
  | HELLO INTERVAL expr_us { BABEL_IFACE->hello_interval = $3; if (($3<BABEL_MIN_INTERVAL) || ($3>BABEL_MAX_INTERVAL)) cf_error("Hello interval must be in range 10 ms - 655 s"); }

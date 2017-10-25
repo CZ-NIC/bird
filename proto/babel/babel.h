@@ -34,9 +34,10 @@
 
 #define BABEL_HELLO_INTERVAL_WIRED	(4 S_)	/* Default hello intervals in seconds */
 #define BABEL_HELLO_INTERVAL_WIRELESS	(4 S_)
+#define BABEL_HELLO_LIMIT		12
 #define BABEL_UPDATE_INTERVAL_FACTOR	4
 #define BABEL_IHU_INTERVAL_FACTOR	3
-#define BABEL_IHU_EXPIRY_FACTOR(X)	((btime)(X)*3/2)	/* 1.5 */
+#define BABEL_IHU_EXPIRY_FACTOR(X)	((btime)(X)*7/2)	/* 3.5 */
 #define BABEL_HELLO_EXPIRY_FACTOR(X)	((btime)(X)*3/2)	/* 1.5 */
 #define BABEL_ROUTE_EXPIRY_FACTOR(X)	((btime)(X)*7/2)	/* 3.5 */
 #define BABEL_ROUTE_REFRESH_INTERVAL	(2 S_)	/* Time before route expiry to send route request */
@@ -112,6 +113,7 @@ struct babel_iface_config {
 
   u16 rxcost;
   u8 type;
+  u8 limit;				/* Minimum number of Hellos to keep link up */
   u8 check_link;
   uint port;
   uint hello_interval;			/* Hello interval, in us */
@@ -188,7 +190,10 @@ struct babel_neighbor {
   struct babel_iface *ifa;
 
   ip_addr addr;
-  u16 txcost;
+  u16 rxcost;				/* Sent in last IHU */
+  u16 txcost;				/* Received in last IHU */
+  u16 cost;				/* Computed neighbor cost */
+  s8 ihu_cnt;				/* IHU countdown, 0 to send it */
   u8 hello_cnt;
   u16 hello_map;
   u16 next_hello_seqno;
@@ -218,6 +223,7 @@ struct babel_route {
   u16 seqno;
   u16 advert_metric;
   u16 metric;
+  u16 old_metric;
   u64 router_id;
   ip_addr next_hop;
   btime refresh_time;

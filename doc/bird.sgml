@@ -1616,6 +1616,7 @@ protocol babel [<name>] {
 	interface <interface pattern> {
 		type <wired|wireless>;
 		rxcost <number>;
+		limit <number>;
 		hello interval <number>;
 		update interval <number>;
 		port <number>;
@@ -1632,23 +1633,34 @@ protocol babel [<name>] {
 
 <descrip>
       <tag><label id="babel-type">type wired|wireless </tag>
-      This option specifies the interface type: Wired or wireless. Wired
-      interfaces are considered more reliable, and so the default hello
-      interval is higher, and a neighbour is considered unreachable after only
-      a small number of "hello" packets are lost. On wireless interfaces,
-      hello packets are sent more often, and the ETX link quality estimation
-      technique is used to compute the metrics of routes discovered over this
-      interface. This technique will gradually degrade the metric of routes
-      when packets are lost rather than the more binary up/down mechanism of
-      wired type links. Default: <cf/wired/.
+      This option specifies the interface type: Wired or wireless. On wired
+      interfaces a neighbor is considered unreachable after a small number of
+      Hello packets are lost, as described by <cf/limit/ option. On wireless
+      interfaces the ETX link quality estimation technique is used to compute
+      the metrics of routes discovered over this interface. This technique will
+      gradually degrade the metric of routes when packets are lost rather than
+      the more binary up/down mechanism of wired type links. Default:
+      <cf/wired/.
 
       <tag><label id="babel-rxcost">rxcost <m/num/</tag>
-      This specifies the RX cost of the interface. The route metrics will be
-      computed from this value with a mechanism determined by the interface
-      <cf/type/. Default: 96 for wired interfaces, 256 for wireless.
+      This option specifies the nominal RX cost of the interface. The effective
+      neighbor costs for route metrics will be computed from this value with a
+      mechanism determined by the interface <cf/type/. Note that in contrast to
+      other routing protocols like RIP or OSPF, the <cf/rxcost/ specifies the
+      cost of RX instead of TX, so it affects primarily neighbors' route
+      selection and not local route selection. Default: 96 for wired interfaces,
+      256 for wireless.
+
+      <tag><label id="babel-limit">limit <m/num/</tag>
+      BIRD keeps track of received Hello messages from each neighbor to
+      establish neighbor reachability. For wired type interfaces, this option
+      specifies how many of last 16 hellos have to be correctly received in
+      order to neighbor is assumed to be up. The option is ignored on wireless
+      type interfaces, where gradual cost degradation is used instead of sharp
+      limit. Default: 12.
 
       <tag><label id="babel-hello">hello interval <m/num/</tag>
-      Interval at which periodic "hello" messages are sent on this interface,
+      Interval at which periodic Hello messages are sent on this interface,
       in seconds. Default: 4 seconds.
 
       <tag><label id="babel-update">update interval <m/num/</tag>
