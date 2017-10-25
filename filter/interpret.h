@@ -3,18 +3,6 @@
 
 #include "filter/filter.h"
 
-#define ARG(x,y) \
-	struct f_val x = interpret(what->y); \
-	if (x.type & T_RETURN) \
-		return x;
-
-#define RES struct f_val res
-#define ONEARG ARG(v1, a1.p)
-#define TWOARGS ARG(v1, a1.p) \
-		ARG(v2, a2.p)
-#define TWOARGS_C TWOARGS \
-                  if (v1.type != v2.type) \
-		    runtime( "Can't operate with values of incompatible types" );
 #define ACCESS_RTE \
   do { if (!f_rte) runtime("No route to access"); } while (0)
 
@@ -27,12 +15,6 @@
     return v##n;
 
 #define AI(n) ARG(n,interpret)
-
-/* Seems to be unused 
-  case fi_comma:
-    TWOARGS;
-    break;
-    */
 
 #define FI_INST_INTERPRET(inst) static inline struct f_val fi_interpret_##inst(const struct f_inst *what)
 //#define FI_INST_PREPROCESS(inst) static struct f_val fi_preprocess_##inst(struct f_inst *what)
@@ -239,25 +221,79 @@ F_INST_INTERPRET(variable)
 
 #define fi_interpret_constant_indirect fi_interpret_variable
 
-  case 'p':
-    ONEARG;
-    val_format(v1, &f_buf);
-    break;
-  case '?':	/* ? has really strange error value, so we can implement if ... else nicely :-) */
-    ONEARG;
-    if (v1.type != T_BOOL)
-      runtime( "If requires boolean expression" );
-    if (v1.val.i) {
-      ARG(res,a2.p);
-      res.val.i = 0;
-    } else res.val.i = 1;
-    res.type = T_BOOL;
-    break;
-  case '0':
-    debug( "No operation\n" );
-    break;
-  case P('p',','):
-    ONEARG;
+F_INST_INTERPRET(print)
+{
+  AI(1);
+  val_format(v1, &f_buf);
+  RET_VOID;
+}
+
+F_INST_INTERPRET(condition)
+{
+  /* Structure of conditions:
+   * if (CONDITION) then TRUE_BLOCK else FALSE_BLOCK
+   * ... converts to this:
+   * 
+   * +--------------------+------------------------------------------+
+   * |                    |                                          |
+   * |  instruction code  |              fi_condition                |
+   * |                    |                                          |
+   * +--------------------+------------------------------------------+
+   * |                    |                                          |
+   * |                    |   +---------------+------------------+   |
+   * |                    |   |               |                  |   |
+   * |  argument 1        |   |  instruction  |                  |   |
+   * |                    |   |      code     |   fi_condition   |   |
+   * |                    |   |               |                  |   |
+   * |                    |   +---------------+------------------+   |
+   * |                    |   |               |                  |   |
+   * |                    |   |   argument 1  |    CONDITION     |   |
+   * |                    |   |               |                  |   |
+   * |                    |   +---------------+------------------+   |
+   * |                    |   |               |                  |   |
+   * |                    |   |   argument 2  |    TRUE block    |   |
+   * |                    |   |               |                  |   |
+   * |                    |   +---------------+------------------+   |
+   * |                    |                                          |
+   * +--------------------+------------------------------------------+
+   * |                    |                                          |
+   * |   argument 2       |    FALSE block                           |
+   * |                    |                                          |
+   * +--------------------+------------------------------------------+
+   *
+   * Procesing works this way:
+   * 1) the outer instruction is approached
+   * 2) to evaluate the condition, the inner instruction is approached
+   * 3) it CONDITION is true:
+   *	4a) the TRUE block is executed
+   *	5a) the inner instruction returns FALSE
+   *	6a) the outer instruction evaluates FALSE
+   *	7a) TRUE is returned
+   * 3) else
+   *	4b) the inner instruction returns TRUE
+   *	5b) the outer instruction evaluates TRUE
+   *	6b) the FALSE block is executed
+   *	7b) FALSE is returned
+   */
+
+  AI(1);
+  if (v1.type != T_BOOL)
+    runtime( "If requires boolean expression" );
+  if (v1.val.i) {
+    AI(2);
+    RET(T_BOOL, i, 0);
+  } else
+    RET(T_BOOL, i, 1);
+}
+
+F_INST_INTERPRET(nop)
+{
+  debug( "No operation\n" );
+}
+
+F_INST_INTERPRET(print_and_die)
+{
+  AI(1);
     if (what->a2.i == F_NOP || (what->a2.i != F_NONL && what->a1.p))
       log_commit(*L_INFO, &f_buf);
 
@@ -268,9 +304,7 @@ F_INST_INTERPRET(variable)
       /* Should take care about turning ACCEPT into MODIFY */
     case F_ERROR:
     case F_REJECT:	/* FIXME (noncritical) Should print complete route along with reason to reject route */
-      res.type = T_RETURN;
-      res.val.i = what->a2.i;
-      return res;	/* We have to return now, no more processing. */
+      RET(T_RETURN, i, what->a2.i); /* We have to return now, no more processing. */
     case F_NONL:
     case F_NOP:
       break;
