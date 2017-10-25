@@ -355,21 +355,25 @@ babel_expire_ihu(struct babel_proto *p, struct babel_neighbor *nbr)
 }
 
 static void
-babel_expire_hello(struct babel_proto *p, struct babel_neighbor *nbr)
+babel_expire_hello(struct babel_proto *p, struct babel_neighbor *nbr, btime now_)
 {
+again:
   nbr->hello_map <<= 1;
 
   if (nbr->hello_cnt < 16)
     nbr->hello_cnt++;
 
+  nbr->hello_expiry += nbr->last_hello_int;
+
+  /* We may expire multiple hellos if last_hello_int is too short */
+  if (nbr->hello_map && nbr->hello_expiry <= now_)
+    goto again;
+
   TRACE(D_EVENTS, "Hello from nbr %I on %s expired, %d left",
 	nbr->addr, nbr->ifa->iface->name, u32_popcount(nbr->hello_map));
 
   if (nbr->hello_map)
-  {
-    nbr->hello_expiry += nbr->last_hello_int;
     babel_update_cost(nbr);
-  }
   else
     babel_flush_neighbor(p, nbr);
 }
@@ -389,7 +393,7 @@ babel_expire_neighbors(struct babel_proto *p)
         babel_expire_ihu(p, nbr);
 
       if (nbr->hello_expiry && nbr->hello_expiry <= now_)
-        babel_expire_hello(p, nbr);
+        babel_expire_hello(p, nbr, now_);
     }
   }
 }
