@@ -232,7 +232,6 @@ struct babel_route {
 };
 
 struct babel_entry {
-  struct babel_proto *proto;
   struct babel_route *selected_in;
   struct babel_route *selected_out;
 
