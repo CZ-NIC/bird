@@ -21,6 +21,7 @@
 
 #define RET(ftype,member,value) return (struct f_val) { .type = ftype, .val.member = (value) }
 #define RET_VOID return (struct f_val) { .type = T_VOID }
+#define RETA(member,value) RET(what->aux, member, value)
 
 #define FI_INST_NUMERIC_BINARY(name,op) \
   FI_INST_INTERPRET(name) \
@@ -319,83 +320,84 @@ F_INST_INTERPRET(rta_get)
 {
   ACCESS_RTE;
   struct rta *rta = (*f_rte)->attrs;
-  res.type = what->aux;
 
   switch (what->a2.i)
   {
-  case SA_FROM:	res.val.px.ip = rta->from; break;
-  case SA_GW:	res.val.px.ip = rta->gw; break;
-  case SA_NET:	res.val.px.ip = (*f_rte)->net->n.prefix;
-		    res.val.px.len = (*f_rte)->net->n.pxlen; break;
-  case SA_PROTO:	res.val.s = rta->src->proto->name; break;
-  case SA_SOURCE:	res.val.i = rta->source; break;
-  case SA_SCOPE:	res.val.i = rta->scope; break;
-  case SA_CAST:	res.val.i = rta->cast; break;
-  case SA_DEST:	res.val.i = rta->dest; break;
-  case SA_IFNAME:	res.val.s = rta->iface ? rta->iface->name : ""; break;
-  case SA_IFINDEX:	res.val.i = rta->iface ? rta->iface->index : 0; break;
+  case SA_FROM:		RETA(px.ip, rta->from);
+  case SA_GW:		RETA(px.ip, rta->gw);
+  case SA_NET:		RETA(px, {
+			    .ip = (*f_rte)->net->n.prefix,
+			    .len = (*f_rte)->net->n.pxlen
+			});
+  case SA_PROTO:	RETA(s, rta->src->proto->name);
+  case SA_SOURCE:	RETA(i, rta->source);
+  case SA_SCOPE:	RETA(i, rta->scope); break;
+  case SA_CAST:		RETA(i, rta->cast); break;
+  case SA_DEST:		RETA(i, rta->dest); break;
+  case SA_IFNAME:	RETA(s, rta->iface ? rta->iface->name : "");
+  case SA_IFINDEX:	RETA(i, rta->iface ? rta->iface->index : 0);
 
   default:
-    bug("Invalid static attribute access (%x)", res.type);
+    bug("Invalid static attribute access (%x)", what->aux);
   }
-
   RET_VOID;
-
 }
-  }
+
+F_INST_INTERPRET(rta_set)
+{
+  AI(1);
+  ACCESS_RTE;
+  if (what->aux != v1.type)
+    runtime( "Attempt to set static attribute to incompatible type" );
+
+  f_rta_cow();
+  struct rta *rta = (*f_rte)->attrs;
+
+  switch (what->a2.i)
+  {
+  case SA_FROM:
+    rta->from = v1.val.px.ip;
     break;
-  case P('a','S'):
-    ACCESS_RTE;
-    ONEARG;
-    if (what->aux != v1.type)
-      runtime( "Attempt to set static attribute to incompatible type" );
 
-    f_rta_cow();
+  case SA_GW:
     {
-      struct rta *rta = (*f_rte)->attrs;
+      ip_addr ip = v1.val.px.ip;
+      neighbor *n = neigh_find(rta->src->proto, &ip, 0);
+      if (!n || (n->scope == SCOPE_HOST))
+	runtime( "Invalid gw address" );
 
-      switch (what->a2.i)
-      {
-      case SA_FROM:
-	rta->from = v1.val.px.ip;
-	break;
-
-      case SA_GW:
-	{
-	  ip_addr ip = v1.val.px.ip;
-	  neighbor *n = neigh_find(rta->src->proto, &ip, 0);
-	  if (!n || (n->scope == SCOPE_HOST))
-	    runtime( "Invalid gw address" );
-
-	  rta->dest = RTD_ROUTER;
-	  rta->gw = ip;
-	  rta->iface = n->iface;
-	  rta->nexthops = NULL;
-	  rta->hostentry = NULL;
-	}
-	break;
-
-      case SA_SCOPE:
-	rta->scope = v1.val.i;
-	break;
-
-      case SA_DEST:
-	i = v1.val.i;
-	if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
-	  runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
-
-	rta->dest = i;
-	rta->gw = IPA_NONE;
-	rta->iface = NULL;
-	rta->nexthops = NULL;
-	rta->hostentry = NULL;
-	break;
-
-      default:
-	bug("Invalid static attribute access (%x)", res.type);
-      }
+      rta->dest = RTD_ROUTER;
+      rta->gw = ip;
+      rta->iface = n->iface;
+      rta->nexthops = NULL;
+      rta->hostentry = NULL;
     }
     break;
+
+  case SA_SCOPE:
+    rta->scope = v1.val.i;
+    break;
+
+  case SA_DEST:
+    i = v1.val.i;
+    if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
+      runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
+
+    rta->dest = i;
+    rta->gw = IPA_NONE;
+    rta->iface = NULL;
+    rta->nexthops = NULL;
+    rta->hostentry = NULL;
+    break;
+
+  default:
+    bug("Invalid static attribute access (%x)", what->a2.i);
+  }
+  RET_VOID;
+}
+
+
+  break;
   case P('e','a'):	/* Access to extended attributes */
     ACCESS_RTE;
     {
