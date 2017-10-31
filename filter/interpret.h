@@ -294,48 +294,55 @@ F_INST_INTERPRET(nop)
 F_INST_INTERPRET(print_and_die)
 {
   AI(1);
-    if (what->a2.i == F_NOP || (what->a2.i != F_NONL && what->a1.p))
-      log_commit(*L_INFO, &f_buf);
+  if (what->a2.i == F_NOP || (what->a2.i != F_NONL && what->a1.p))
+    log_commit(*L_INFO, &f_buf);
 
-    switch (what->a2.i) {
-    case F_QUITBIRD:
-      die( "Filter asked me to die" );
-    case F_ACCEPT:
-      /* Should take care about turning ACCEPT into MODIFY */
-    case F_ERROR:
-    case F_REJECT:	/* FIXME (noncritical) Should print complete route along with reason to reject route */
-      RET(T_RETURN, i, what->a2.i); /* We have to return now, no more processing. */
-    case F_NONL:
-    case F_NOP:
+  switch (what->a2.i) {
+  case F_QUITBIRD:
+    die( "Filter asked me to die" );
+  case F_ACCEPT:
+    /* Should take care about turning ACCEPT into MODIFY */
+  case F_ERROR:
+  case F_REJECT:	/* FIXME (noncritical) Should print complete route along with reason to reject route */
+    RET(T_RETURN, i, what->a2.i);
+    return res;	/* We have to return now, no more processing. */
+  case F_NONL:
+  case F_NOP:
       break;
-    default:
-      bug( "unknown return type: Can't happen");
-    }
-    break;
-  case 'a':	/* rta access */
-    {
-      ACCESS_RTE;
-      struct rta *rta = (*f_rte)->attrs;
-      res.type = what->aux;
+  default:
+    bug( "unknown return type: Can't happen");
+  }
+  RET_VOID;
+}
 
-      switch (what->a2.i)
-      {
-      case SA_FROM:	res.val.px.ip = rta->from; break;
-      case SA_GW:	res.val.px.ip = rta->gw; break;
-      case SA_NET:	res.val.px.ip = (*f_rte)->net->n.prefix;
-			res.val.px.len = (*f_rte)->net->n.pxlen; break;
-      case SA_PROTO:	res.val.s = rta->src->proto->name; break;
-      case SA_SOURCE:	res.val.i = rta->source; break;
-      case SA_SCOPE:	res.val.i = rta->scope; break;
-      case SA_CAST:	res.val.i = rta->cast; break;
-      case SA_DEST:	res.val.i = rta->dest; break;
-      case SA_IFNAME:	res.val.s = rta->iface ? rta->iface->name : ""; break;
-      case SA_IFINDEX:	res.val.i = rta->iface ? rta->iface->index : 0; break;
+F_INST_INTERPRET(rta_get)
+{
+  ACCESS_RTE;
+  struct rta *rta = (*f_rte)->attrs;
+  res.type = what->aux;
 
-      default:
-	bug("Invalid static attribute access (%x)", res.type);
-      }
-    }
+  switch (what->a2.i)
+  {
+  case SA_FROM:	res.val.px.ip = rta->from; break;
+  case SA_GW:	res.val.px.ip = rta->gw; break;
+  case SA_NET:	res.val.px.ip = (*f_rte)->net->n.prefix;
+		    res.val.px.len = (*f_rte)->net->n.pxlen; break;
+  case SA_PROTO:	res.val.s = rta->src->proto->name; break;
+  case SA_SOURCE:	res.val.i = rta->source; break;
+  case SA_SCOPE:	res.val.i = rta->scope; break;
+  case SA_CAST:	res.val.i = rta->cast; break;
+  case SA_DEST:	res.val.i = rta->dest; break;
+  case SA_IFNAME:	res.val.s = rta->iface ? rta->iface->name : ""; break;
+  case SA_IFINDEX:	res.val.i = rta->iface ? rta->iface->index : 0; break;
+
+  default:
+    bug("Invalid static attribute access (%x)", res.type);
+  }
+
+  RET_VOID;
+
+}
+  }
     break;
   case P('a','S'):
     ACCESS_RTE;
