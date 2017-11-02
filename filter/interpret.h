@@ -396,282 +396,259 @@ F_INST_INTERPRET(rta_set)
   RET_VOID;
 }
 
+F_INST_INTERPRET(ea_get)
+{
+  ACCESS_RTE;
+  eattr *e = NULL;
+  u16 code = what->a2.i;
 
-  break;
-  case P('e','a'):	/* Access to extended attributes */
-    ACCESS_RTE;
+  if (!(f_flags & FF_FORCE_TMPATTR))
+    e = ea_find((*f_rte)->attrs->eattrs, code);
+  if (!e)
+    e = ea_find((*f_tmp_attrs), code);
+  if ((!e) && (f_flags & FF_FORCE_TMPATTR))
+    e = ea_find((*f_rte)->attrs->eattrs, code);
+
+  if (!e) {
+    /* A special case: undefined int_set looks like empty int_set */
+    if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_INT_SET)
+      RET(T_CLIST, ad, adata_empty(f_pool, 0));
+
+    /* The same special case for ec_set */
+    if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_EC_SET)
+      RET(T_ECLIST, ad, adata_empty(f_pool, 0));
+
+    /* The same special case for lc_set */
+    if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_LC_SET)
+      RET(T_LCLIST, ad, adata_empty(f_pool, 0));
+
+    /* Undefined value */
+    RET_VOID;
+  }
+
+  switch (what->aux & EAF_TYPE_MASK) {
+  case EAF_TYPE_INT:
+    RET(T_INT, i, e->u.data);
+  case EAF_TYPE_ROUTER_ID:
+    RET(T_QUAD, i, e->u.data);
+  case EAF_TYPE_OPAQUE:
+    RET(T_ENUM_EMPTY, i, 0);
+  case EAF_TYPE_IP_ADDRESS:
+    RET(T_IP, px.ip, * (ip_addr *) ( (struct adata *) (e->u.ptr) )->data);
+  case EAF_TYPE_AS_PATH:
+    RET(T_PATH, ad, e->u.ptr);
+  case EAF_TYPE_BITFIELD:
+    RET(T_BOOL, i, !!(e->u.data & BITFIELD_MASK(what)));
+  case EAF_TYPE_INT_SET:
+    RET(T_CLIST, ad, e->u.ptr);
+  case EAF_TYPE_EC_SET:
+    RET(T_ECLIST, ad, e->u.ptr);
+  case EAF_TYPE_LC_SET:
+    RET(T_LCLIST, ad, e->u.ptr);
+  case EAF_TYPE_UNDEF:
+    RET_VOID;
+  default:
+    bug("Unknown type in fi_ea_get");
+  }
+  RET_VOID;
+}
+
+F_INST_INTERPRET(ea_set)
+{
+  ACCESS_RTE;
+  AI(1);
+  struct ea_list *l = lp_alloc(f_pool, sizeof(struct ea_list) + sizeof(eattr));
+  u16 code = what->a2.i;
+
+  l->next = NULL;
+  l->flags = EALF_SORTED;
+  l->count = 1;
+  l->attrs[0].id = code;
+  l->attrs[0].flags = 0;
+  l->attrs[0].type = what->aux | EAF_ORIGINATED;
+
+  switch (what->aux & EAF_TYPE_MASK) {
+  case EAF_TYPE_INT:
+    // Enums are also ints, so allow them in.
+    if (v1.type != T_INT && (v1.type < T_ENUM_LO || v1.type > T_ENUM_HI))
+      runtime( "Setting int attribute to non-int value" );
+    l->attrs[0].u.data = v1.val.i;
+    break;
+
+  case EAF_TYPE_ROUTER_ID:
+#ifndef IPV6
+    /* IP->Quad implicit conversion */
+    if (v1.type == T_IP) {
+      l->attrs[0].u.data = ipa_to_u32(v1.val.px.ip);
+      break;
+    }
+#endif
+    /* T_INT for backward compatibility */
+    if ((v1.type != T_QUAD) && (v1.type != T_INT))
+      runtime( "Setting quad attribute to non-quad value" );
+    l->attrs[0].u.data = v1.val.i;
+    break;
+
+  case EAF_TYPE_OPAQUE:
+    runtime( "Setting opaque attribute is not allowed" );
+    break;
+  case EAF_TYPE_IP_ADDRESS:
+    if (v1.type != T_IP)
+      runtime( "Setting ip attribute to non-ip value" );
+    int len = sizeof(ip_addr);
+    struct adata *ad = lp_alloc(f_pool, sizeof(struct adata) + len);
+    ad->length = len;
+    (* (ip_addr *) ad->data) = v1.val.px.ip;
+    l->attrs[0].u.ptr = ad;
+    break;
+  case EAF_TYPE_AS_PATH:
+    if (v1.type != T_PATH)
+      runtime( "Setting path attribute to non-path value" );
+    l->attrs[0].u.ptr = v1.val.ad;
+    break;
+  case EAF_TYPE_BITFIELD:
+    if (v1.type != T_BOOL)
+      runtime( "Setting bit in bitfield attribute to non-bool value" );
     {
+      /* First, we have to find the old value */
       eattr *e = NULL;
-      u16 code = what->a2.i;
-
       if (!(f_flags & FF_FORCE_TMPATTR))
 	e = ea_find((*f_rte)->attrs->eattrs, code);
       if (!e)
 	e = ea_find((*f_tmp_attrs), code);
       if ((!e) && (f_flags & FF_FORCE_TMPATTR))
 	e = ea_find((*f_rte)->attrs->eattrs, code);
+      u32 data = e ? e->u.data : 0;
 
-      if (!e) {
-	/* A special case: undefined int_set looks like empty int_set */
-	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_INT_SET) {
-	  res.type = T_CLIST;
-	  res.val.ad = adata_empty(f_pool, 0);
-	  break;
-	}
-
-	/* The same special case for ec_set */
-	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_EC_SET) {
-	  res.type = T_ECLIST;
-	  res.val.ad = adata_empty(f_pool, 0);
-	  break;
-	}
-
-	/* The same special case for lc_set */
-	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_LC_SET) {
-	  res.type = T_LCLIST;
-	  res.val.ad = adata_empty(f_pool, 0);
-	  break;
-	}
-
-	/* Undefined value */
-	res.type = T_VOID;
-	break;
-      }
-
-      switch (what->aux & EAF_TYPE_MASK) {
-      case EAF_TYPE_INT:
-	res.type = T_INT;
-	res.val.i = e->u.data;
-	break;
-      case EAF_TYPE_ROUTER_ID:
-	res.type = T_QUAD;
-	res.val.i = e->u.data;
-	break;
-      case EAF_TYPE_OPAQUE:
-	res.type = T_ENUM_EMPTY;
-	res.val.i = 0;
-	break;
-      case EAF_TYPE_IP_ADDRESS:
-	res.type = T_IP;
-	struct adata * ad = e->u.ptr;
-	res.val.px.ip = * (ip_addr *) ad->data;
-	break;
-      case EAF_TYPE_AS_PATH:
-        res.type = T_PATH;
-	res.val.ad = e->u.ptr;
-	break;
-      case EAF_TYPE_BITFIELD:
-	res.type = T_BOOL;
-	res.val.i = !!(e->u.data & BITFIELD_MASK(what));
-	break;
-      case EAF_TYPE_INT_SET:
-	res.type = T_CLIST;
-	res.val.ad = e->u.ptr;
-	break;
-      case EAF_TYPE_EC_SET:
-	res.type = T_ECLIST;
-	res.val.ad = e->u.ptr;
-	break;
-      case EAF_TYPE_LC_SET:
-	res.type = T_LCLIST;
-	res.val.ad = e->u.ptr;
-	break;
-      case EAF_TYPE_UNDEF:
-	res.type = T_VOID;
-	break;
-      default:
-	bug("Unknown type in e,a");
-      }
+      if (v1.val.i)
+	l->attrs[0].u.data = data | BITFIELD_MASK(what);
+      else
+	l->attrs[0].u.data = data & ~BITFIELD_MASK(what);;
     }
     break;
-  case P('e','S'):
-    ACCESS_RTE;
-    ONEARG;
-    {
-      struct ea_list *l = lp_alloc(f_pool, sizeof(struct ea_list) + sizeof(eattr));
-      u16 code = what->a2.i;
-
-      l->next = NULL;
-      l->flags = EALF_SORTED;
-      l->count = 1;
-      l->attrs[0].id = code;
-      l->attrs[0].flags = 0;
-      l->attrs[0].type = what->aux | EAF_ORIGINATED;
-
-      switch (what->aux & EAF_TYPE_MASK) {
-      case EAF_TYPE_INT:
-	// Enums are also ints, so allow them in.
-	if (v1.type != T_INT && (v1.type < T_ENUM_LO || v1.type > T_ENUM_HI))
-	  runtime( "Setting int attribute to non-int value" );
-	l->attrs[0].u.data = v1.val.i;
-	break;
-
-      case EAF_TYPE_ROUTER_ID:
-#ifndef IPV6
-	/* IP->Quad implicit conversion */
-	if (v1.type == T_IP) {
-	  l->attrs[0].u.data = ipa_to_u32(v1.val.px.ip);
-	  break;
-	}
-#endif
-	/* T_INT for backward compatibility */
-	if ((v1.type != T_QUAD) && (v1.type != T_INT))
-	  runtime( "Setting quad attribute to non-quad value" );
-	l->attrs[0].u.data = v1.val.i;
-	break;
-
-      case EAF_TYPE_OPAQUE:
-	runtime( "Setting opaque attribute is not allowed" );
-	break;
-      case EAF_TYPE_IP_ADDRESS:
-	if (v1.type != T_IP)
-	  runtime( "Setting ip attribute to non-ip value" );
-	int len = sizeof(ip_addr);
-	struct adata *ad = lp_alloc(f_pool, sizeof(struct adata) + len);
-	ad->length = len;
-	(* (ip_addr *) ad->data) = v1.val.px.ip;
-	l->attrs[0].u.ptr = ad;
-	break;
-      case EAF_TYPE_AS_PATH:
-	if (v1.type != T_PATH)
-	  runtime( "Setting path attribute to non-path value" );
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-      case EAF_TYPE_BITFIELD:
-	if (v1.type != T_BOOL)
-	  runtime( "Setting bit in bitfield attribute to non-bool value" );
-	{
-	  /* First, we have to find the old value */
-	  eattr *e = NULL;
-	  if (!(f_flags & FF_FORCE_TMPATTR))
-	    e = ea_find((*f_rte)->attrs->eattrs, code);
-	  if (!e)
-	    e = ea_find((*f_tmp_attrs), code);
-	  if ((!e) && (f_flags & FF_FORCE_TMPATTR))
-	    e = ea_find((*f_rte)->attrs->eattrs, code);
-	  u32 data = e ? e->u.data : 0;
-
-	  if (v1.val.i)
-	    l->attrs[0].u.data = data | BITFIELD_MASK(what);
-	  else
-	    l->attrs[0].u.data = data & ~BITFIELD_MASK(what);;
-	}
-	break;
-      case EAF_TYPE_INT_SET:
-	if (v1.type != T_CLIST)
-	  runtime( "Setting clist attribute to non-clist value" );
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-      case EAF_TYPE_EC_SET:
-	if (v1.type != T_ECLIST)
-	  runtime( "Setting eclist attribute to non-eclist value" );
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-      case EAF_TYPE_LC_SET:
-	if (v1.type != T_LCLIST)
-	  runtime( "Setting lclist attribute to non-lclist value" );
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-      case EAF_TYPE_UNDEF:
-	if (v1.type != T_VOID)
-	  runtime( "Setting void attribute to non-void value" );
-	l->attrs[0].u.data = 0;
-	break;
-      default: bug("Unknown type in e,S");
-      }
-
-      if (!(what->aux & EAF_TEMP) && (!(f_flags & FF_FORCE_TMPATTR))) {
-	f_rta_cow();
-	l->next = (*f_rte)->attrs->eattrs;
-	(*f_rte)->attrs->eattrs = l;
-      } else {
-	l->next = (*f_tmp_attrs);
-	(*f_tmp_attrs) = l;
-      }
-    }
+  case EAF_TYPE_INT_SET:
+    if (v1.type != T_CLIST)
+      runtime( "Setting clist attribute to non-clist value" );
+    l->attrs[0].u.ptr = v1.val.ad;
     break;
-  case 'P':
-    ACCESS_RTE;
-    res.type = T_INT;
-    res.val.i = (*f_rte)->pref;
+  case EAF_TYPE_EC_SET:
+    if (v1.type != T_ECLIST)
+      runtime( "Setting eclist attribute to non-eclist value" );
+    l->attrs[0].u.ptr = v1.val.ad;
     break;
-  case P('P','S'):
-    ACCESS_RTE;
-    ONEARG;
-    if (v1.type != T_INT)
-      runtime( "Can't set preference to non-integer" );
-    if (v1.val.i > 0xFFFF)
-      runtime( "Setting preference value out of bounds" );
-    f_rte_cow();
-    (*f_rte)->pref = v1.val.i;
+  case EAF_TYPE_LC_SET:
+    if (v1.type != T_LCLIST)
+      runtime( "Setting lclist attribute to non-lclist value" );
+    l->attrs[0].u.ptr = v1.val.ad;
     break;
-  case 'L':	/* Get length of */
-    ONEARG;
-    res.type = T_INT;
-    switch(v1.type) {
-    case T_PREFIX: res.val.i = v1.val.px.len; break;
-    case T_PATH:   res.val.i = as_path_getlen(v1.val.ad); break;
-    case T_CLIST:  res.val.i = int_set_get_size(v1.val.ad); break;
-    case T_ECLIST: res.val.i = ec_set_get_size(v1.val.ad); break;
-    case T_LCLIST: res.val.i = lc_set_get_size(v1.val.ad); break;
-    default: runtime( "Prefix, path, clist or eclist expected" );
-    }
+  case EAF_TYPE_UNDEF:
+    if (v1.type != T_VOID)
+      runtime( "Setting void attribute to non-void value" );
+    l->attrs[0].u.data = 0;
     break;
-  case P('c','p'):	/* Convert prefix to ... */
-    ONEARG;
-    if (v1.type != T_PREFIX)
-      runtime( "Prefix expected" );
-    res.type = what->aux;
-    switch(res.type) {
-      /*    case T_INT:	res.val.i = v1.val.px.len; break; Not needed any more */
-    case T_IP: res.val.px.ip = v1.val.px.ip; break;
-    default: bug( "Unknown prefix to conversion" );
-    }
-    break;
-  case P('a','f'):	/* Get first ASN from AS PATH */
-    ONEARG;
-    if (v1.type != T_PATH)
-      runtime( "AS path expected" );
+  default: bug("Unknown type in e,S");
+  }
 
-    as = 0;
-    as_path_get_first(v1.val.ad, &as);
-    res.type = T_INT;
-    res.val.i = as;
-    break;
-  case P('a','l'):	/* Get last ASN from AS PATH */
-    ONEARG;
-    if (v1.type != T_PATH)
-      runtime( "AS path expected" );
+  if (!(what->aux & EAF_TEMP) && (!(f_flags & FF_FORCE_TMPATTR))) {
+    f_rta_cow();
+    l->next = (*f_rte)->attrs->eattrs;
+    (*f_rte)->attrs->eattrs = l;
+  } else {
+    l->next = (*f_tmp_attrs);
+    (*f_tmp_attrs) = l;
+  }
+  RET_VOID;
+}
 
-    as = 0;
-    as_path_get_last(v1.val.ad, &as);
-    res.type = T_INT;
-    res.val.i = as;
-    break;
-  case P('a','L'):	/* Get last ASN from non-aggregated part of AS PATH */
-    ONEARG;
-    if (v1.type != T_PATH)
-      runtime( "AS path expected" );
+F_INST_INTERPRET(pref_get) {
+  ACCESS_RTE;
+  RET(T_INT, i, (*f_rte)->pref);
+}
 
-    res.type = T_INT;
-    res.val.i = as_path_get_last_nonaggregated(v1.val.ad);
-    break;
-  case 'r':
-    ONEARG;
-    res = v1;
-    res.type |= T_RETURN;
+F_INST_INTERPRET(pref_set) {
+  ACCESS_RTE;
+  AI(1);
+  if (v1.type != T_INT)
+    runtime( "Can't set preference to non-integer" );
+  if (v1.val.i > 0xFFFF)
+    runtime( "Setting preference value out of bounds" );
+  f_rte_cow();
+  (*f_rte)->pref = v1.val.i;
+  RET_VOID;
+}
+
+F_INST_INTERPRET(length) {
+  AI(1);
+  switch(v1.type) {
+  case T_PREFIX: RET(T_INT, i, v1.val.px.len);
+  case T_PATH:   RET(T_INT, i, as_path_getlen(v1.val.ad));
+  case T_CLIST:  RET(T_INT, i, int_set_get_size(v1.val.ad));
+  case T_ECLIST: RET(T_INT, i, ec_set_get_size(v1.val.ad));
+  case T_LCLIST: RET(T_INT, i, lc_set_get_size(v1.val.ad));
+  default: runtime( "Prefix, path, clist or eclist expected" );
+  }
+  RET_VOID;
+}
+
+F_INST_INTERPRET(ip) {
+  AI(1);
+  if (v1.type != T_PREFIX)
+    runtime( "Prefix expected" );
+
+  RET(T_IP, px.ip, v1.val.px.ip);
+}
+
+F_INST_INTERPRET(as_path_first) {
+  AI(1);
+  if (v1.type != T_PATH)
+    runtime( "AS path expected" );
+
+  u32 as = 0;
+  as_path_get_first(v1.val.ad, &as);
+  RET(T_INT, i, as);
+}
+
+F_INST_INTERPRET(as_path_last) {
+  AI(1);
+  if (v1.type != T_PATH)
+    runtime( "AS path expected" );
+
+  u32 as = 0;
+  as_path_get_last(v1.val.ad, &as);
+  RET(T_INT, i, as);
+}
+
+F_INST_INTERPRET(as_path_last_nag) {
+  AI(1);
+  if (v1.type != T_PATH)
+    runtime( "AS path expected" );
+
+  RET(T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
+}
+
+F_INST_INTERPRET(return) {
+  AI(1);
+  v1.type |= T_RETURN;
+  return v1;
+}
+
+F_INST_INTERPRET(call) {
+  AI(1);
+  struct f_val res = interpret(what->a2.p);
+  if (res.type == T_RETURN) /* Exception */
     return res;
-  case P('c','a'): /* CALL: this is special: if T_RETURN and returning some value, mask it out  */
-    ONEARG;
-    res = interpret(what->a2.p);
-    if (res.type == T_RETURN)
-      return res;
-    res.type &= ~T_RETURN;
-    break;
-  case P('c','v'):	/* Clear local variables */
-    for (sym = what->a1.p; sym != NULL; sym = sym->aux2)
-      ((struct f_val *) sym->def)->type = T_VOID;
-    break;
+
+  res.type &= ~T_RETURN;
+  return res;
+}
+
+F_INST_INTERPRET(clear_local_vars) {
+  for (sym = what->a1.p; sym != NULL; sym = sym->aux2)
+    ((struct f_val *) sym->def)->type = T_VOID;
+  RET_VOID;
+}
+
+
   case P('S','W'):
     ONEARG;
     {

@@ -829,7 +829,7 @@ term:
 
  | rtadot dynamic_attr { $$ = f_new_inst_da(fi_ea_get, $2); }
 
- | term '.' IP { $$ = f_new_inst(fi_ip); $$->a1.p = $1; $$->aux = T_IP; }
+ | term '.' IP { $$ = f_new_inst(fi_ip); $$->a1.p = $1; }
  | term '.' LEN { $$ = f_new_inst(fi_length); $$->a1.p = $1; }
  | term '.' MASK '(' term ')' { $$ = f_new_inst(fi_ip_mask); $$->a1.p = $1; $$->a2.p = $5; }
  | term '.' FIRST { $$ = f_new_inst(fi_as_path_first); $$->a1.p = $1; }
