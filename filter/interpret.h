@@ -20,7 +20,7 @@
 //#define FI_INST_PREPROCESS(inst) static struct f_val fi_preprocess_##inst(struct f_inst *what)
 
 #define RET(ftype,member,value) return (struct f_val) { .type = ftype, .val.member = (value) }
-#define RET_VOID return (struct f_val) { .type = T_VOID }
+#define RET_VOID return F_VAL_VOID
 #define RETA(member,value) RET(what->aux, member, value)
 
 #define FI_INST_NUMERIC_BINARY(name,op) \
@@ -648,252 +648,248 @@ F_INST_INTERPRET(clear_local_vars) {
   RET_VOID;
 }
 
-
-  case P('S','W'):
-    ONEARG;
-    {
-      struct f_tree *t = find_tree(what->a2.p, v1);
-      if (!t) {
-	v1.type = T_VOID;
-	t = find_tree(what->a2.p, v1);
-	if (!t) {
-	  debug( "No else statement?\n");
-	  break;
-	}
-      }
-      /* It is actually possible to have t->data NULL */
-
-      res = interpret(t->data);
-      if (res.type & T_RETURN)
-	return res;
+F_INST_INTERPRET(switch) {
+  AI(1);
+  struct f_tree *t = find_tree(what->a2.p, v1);
+  if (!t) {
+    t = find_tree(what->a2.p, F_VAL_VOID);
+    if (!t) {
+      debug( "No else statement?\n");
+      break;
     }
-    break;
-  case P('i','M'): /* IP.MASK(val) */
-    TWOARGS;
-    if (v2.type != T_INT)
-      runtime( "Integer expected");
-    if (v1.type != T_IP)
-      runtime( "You can mask only IP addresses" );
+  }
+
+  /* It is actually possible to have t->data NULL */
+  return interpret(t->data);
+}
+
+F_INST_INTERPRET(ip_mask) {
+  AI(1); AI(2);
+
+  if (v2.type != T_INT)
+    runtime( "Integer expected");
+  if (v1.type != T_IP)
+    runtime( "You can mask only IP addresses" );
+
+  ip_addr mask = ipa_mkmask(v2.val.i);
+  RET(T_IP, px.ip, ipa_and(mask, v1.val.px.ip));
+}
+
+F_INST_INTERPRET(empty) {
+  RETA(ad, adata_empty(f_pool, 0));
+}
+
+F_INST_INTERPRET(path_prepend) {
+  AI(1); AI(2);
+  if (v1.type != T_PATH)
+    runtime("Can't prepend to non-path");
+  if (v2.type != T_INT)
+    runtime("Can't prepend non-integer");
+
+  RET(T_PATH, ad, as_path_prepend(f_pool, v1.val.ad, v2.val.i));
+}
+
+F_INST_INTERPRET(clist_add_del) {
+  AI(1); AI(2);
+  if (v1.type == T_PATH)
+  {
+    struct f_tree *set = NULL;
+    u32 key = 0;
+    int pos;
+
+    if (v2.type == T_INT)
+      key = v2.val.i;
+    else if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
+      set = v2.val.t;
+    else
+      runtime("Can't delete non-integer (set)");
+
+    switch (what->aux)
     {
-      ip_addr mask = ipa_mkmask(v2.val.i);
-      res.type = T_IP;
-      res.val.px.ip = ipa_and(mask, v1.val.px.ip);
+    case 'a':	runtime("Can't add to path");
+    case 'd':	pos = 0; break;
+    case 'f':	pos = 1; break;
+    default:	bug("unknown Ca operation");
     }
-    break;
 
-  case 'E':	/* Create empty attribute */
-    res.type = what->aux;
-    res.val.ad = adata_empty(f_pool, 0);
-    break;
-  case P('A','p'):	/* Path prepend */
-    TWOARGS;
-    if (v1.type != T_PATH)
-      runtime("Can't prepend to non-path");
-    if (v2.type != T_INT)
-      runtime("Can't prepend non-integer");
+    if (pos && !set)
+      runtime("Can't filter integer");
 
-    res.type = T_PATH;
-    res.val.ad = as_path_prepend(f_pool, v1.val.ad, v2.val.i);
-    break;
+    RET(T_PATH, ad, as_path_filter(f_pool, v1.val.ad, set, key, pos));
+  }
+  else if (v1.type == T_CLIST)
+  {
+    /* Community (or cluster) list */
+    struct f_val dummy;
+    int arg_set = 0;
+    uint n = 0;
 
-  case P('C','a'):	/* (Extended) Community list add or delete */
-    TWOARGS;
-    if (v1.type == T_PATH)
-    {
-      struct f_tree *set = NULL;
-      u32 key = 0;
-      int pos;
-
-      if (v2.type == T_INT)
-	key = v2.val.i;
-      else if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
-	set = v2.val.t;
-      else
-	runtime("Can't delete non-integer (set)");
-
-      switch (what->aux)
-      {
-      case 'a':	runtime("Can't add to path");
-      case 'd':	pos = 0; break;
-      case 'f':	pos = 1; break;
-      default:	bug("unknown Ca operation");
-      }
-
-      if (pos && !set)
-	runtime("Can't filter integer");
-
-      res.type = T_PATH;
-      res.val.ad = as_path_filter(f_pool, v1.val.ad, set, key, pos);
-    }
-    else if (v1.type == T_CLIST)
-    {
-      /* Community (or cluster) list */
-      struct f_val dummy;
-      int arg_set = 0;
-      uint n = 0;
-
-      if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	n = v2.val.i;
+    if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
+      n = v2.val.i;
 #ifndef IPV6
-      /* IP->Quad implicit conversion */
-      else if (v2.type == T_IP)
-	n = ipa_to_u32(v2.val.px.ip);
+    /* IP->Quad implicit conversion */
+    else if (v2.type == T_IP)
+      n = ipa_to_u32(v2.val.px.ip);
 #endif
-      else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy))
-	arg_set = 1;
-      else if (v2.type == T_CLIST)
-	arg_set = 2;
+    else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy))
+      arg_set = 1;
+    else if (v2.type == T_CLIST)
+      arg_set = 2;
+    else
+      runtime("Can't add/delete non-pair");
+
+    switch (what->aux)
+    {
+    case 'a':
+      if (arg_set == 1)
+	runtime("Can't add set");
+      else if (!arg_set)
+	RET(T_CLIST, ad, int_set_add(f_pool, v1.val.ad, n));
       else
-	runtime("Can't add/delete non-pair");
+	RET(T_CLIST, ad, int_set_union(f_pool, v1.val.ad, v2.val.ad));
 
-      res.type = T_CLIST;
-      switch (what->aux)
-      {
-      case 'a':
-	if (arg_set == 1)
-	  runtime("Can't add set");
-	else if (!arg_set)
-	  res.val.ad = int_set_add(f_pool, v1.val.ad, n);
-	else
-	  res.val.ad = int_set_union(f_pool, v1.val.ad, v2.val.ad);
-	break;
+    case 'd':
+      if (!arg_set)
+	RET(T_CLIST, ad, int_set_del(f_pool, v1.val.ad, n));
+      else
+	RET(T_CLIST, ad, clist_filter(f_pool, v1.val.ad, v2, 0));
 
-      case 'd':
-	if (!arg_set)
-	  res.val.ad = int_set_del(f_pool, v1.val.ad, n);
-	else
-	  res.val.ad = clist_filter(f_pool, v1.val.ad, v2, 0);
-	break;
+    case 'f':
+      if (!arg_set)
+	runtime("Can't filter pair");
+      RET(T_CLIST, ad, clist_filter(f_pool, v1.val.ad, v2, 1));
 
-      case 'f':
-	if (!arg_set)
-	  runtime("Can't filter pair");
-	res.val.ad = clist_filter(f_pool, v1.val.ad, v2, 1);
-	break;
-
-      default:
-	bug("unknown Ca operation");
-      }
+    default:
+      bug("unknown Ca operation");
     }
-    else if (v1.type == T_ECLIST)
+  }
+  else if (v1.type == T_ECLIST)
+  {
+    /* Extended community list */
+    int arg_set = 0;
+
+    /* v2.val is either EC or EC-set */
+    if ((v2.type == T_SET) && eclist_set_type(v2.val.t))
+      arg_set = 1;
+    else if (v2.type == T_ECLIST)
+      arg_set = 2;
+    else if (v2.type != T_EC)
+      runtime("Can't add/delete non-ec");
+
+    switch (what->aux)
     {
-      /* Extended community list */
-      int arg_set = 0;
+    case 'a':
+      if (arg_set == 1)
+	runtime("Can't add set");
+      else if (!arg_set)
+	RET(T_ECLIST, ad, ec_set_add(f_pool, v1.val.ad, v2.val.ec));
+      else
+	RET(T_ECLIST, ad, ec_set_union(f_pool, v1.val.ad, v2.val.ad));
 
-      /* v2.val is either EC or EC-set */
-      if ((v2.type == T_SET) && eclist_set_type(v2.val.t))
-	arg_set = 1;
-      else if (v2.type == T_ECLIST)
-	arg_set = 2;
-      else if (v2.type != T_EC)
-	runtime("Can't add/delete non-ec");
+    case 'd':
+      if (!arg_set)
+	RET(T_ECLIST, ad, ec_set_del(f_pool, v1.val.ad, v2.val.ec));
+      else
+	RET(T_ECLIST, ad, eclist_filter(f_pool, v1.val.ad, v2, 0));
 
-      res.type = T_ECLIST;
-      switch (what->aux)
-      {
-      case 'a':
-	if (arg_set == 1)
-	  runtime("Can't add set");
-	else if (!arg_set)
-	  res.val.ad = ec_set_add(f_pool, v1.val.ad, v2.val.ec);
-	else
-	  res.val.ad = ec_set_union(f_pool, v1.val.ad, v2.val.ad);
-	break;
+    case 'f':
+      if (!arg_set)
+	runtime("Can't filter ec");
+      RET(T_ECLIST, ad, eclist_filter(f_pool, v1.val.ad, v2, 1));
 
-      case 'd':
-	if (!arg_set)
-	  res.val.ad = ec_set_del(f_pool, v1.val.ad, v2.val.ec);
-	else
-	  res.val.ad = eclist_filter(f_pool, v1.val.ad, v2, 0);
-	break;
-
-      case 'f':
-	if (!arg_set)
-	  runtime("Can't filter ec");
-	res.val.ad = eclist_filter(f_pool, v1.val.ad, v2, 1);
-	break;
-
-      default:
-	bug("unknown Ca operation");
-      }
+    default:
+      bug("unknown Ca operation");
     }
-    else if (v1.type == T_LCLIST)
+  }
+  else if (v1.type == T_LCLIST)
+  {
+    /* Large community list */
+    int arg_set = 0;
+
+    /* v2.val is either LC or LC-set */
+    if ((v2.type == T_SET) && lclist_set_type(v2.val.t))
+      arg_set = 1;
+    else if (v2.type == T_LCLIST)
+      arg_set = 2;
+    else if (v2.type != T_LC)
+      runtime("Can't add/delete non-lc");
+
+    res.type = T_LCLIST;
+    switch (what->aux)
     {
-      /* Large community list */
-      int arg_set = 0;
+    case 'a':
+      if (arg_set == 1)
+	runtime("Can't add set");
+      else if (!arg_set)
+	RET(T_LCLIST, ad, lc_set_add(f_pool, v1.val.ad, v2.val.lc));
+      else
+	RET(T_LCLIST, ad,  lc_set_union(f_pool, v1.val.ad, v2.val.ad));
 
-      /* v2.val is either LC or LC-set */
-      if ((v2.type == T_SET) && lclist_set_type(v2.val.t))
-	arg_set = 1;
-      else if (v2.type == T_LCLIST)
-	arg_set = 2;
-      else if (v2.type != T_LC)
-	runtime("Can't add/delete non-lc");
+    case 'd':
+      if (!arg_set)
+	RET(T_LCLIST, ad, lc_set_del(f_pool, v1.val.ad, v2.val.lc));
+      else
+	RET(T_LCLIST, ad, lclist_filter(f_pool, v1.val.ad, v2, 0));
 
-      res.type = T_LCLIST;
-      switch (what->aux)
-      {
-      case 'a':
-	if (arg_set == 1)
-	  runtime("Can't add set");
-	else if (!arg_set)
-	  res.val.ad = lc_set_add(f_pool, v1.val.ad, v2.val.lc);
-	else
-	  res.val.ad = lc_set_union(f_pool, v1.val.ad, v2.val.ad);
-	break;
+    case 'f':
+      if (!arg_set)
+	runtime("Can't filter lc");
+      RET(T_LCLIST, ad, lclist_filter(f_pool, v1.val.ad, v2, 1));
 
-      case 'd':
-	if (!arg_set)
-	  res.val.ad = lc_set_del(f_pool, v1.val.ad, v2.val.lc);
-	else
-	  res.val.ad = lclist_filter(f_pool, v1.val.ad, v2, 0);
-	break;
-
-      case 'f':
-	if (!arg_set)
-	  runtime("Can't filter lc");
-	res.val.ad = lclist_filter(f_pool, v1.val.ad, v2, 1);
-	break;
-
-      default:
-	bug("unknown Ca operation");
-      }
+    default:
+      bug("unknown Ca operation");
     }
-    else
-      runtime("Can't add/delete to non-[e|l]clist");
+  }
+  else
+    runtime("Can't add/delete to non-[el]?clist");
+}
 
-    break;
+F_INST_INTERPRET(roa_check) {
+  u32 as;
 
-  case P('R','C'):	/* ROA Check */
-    if (what->arg1)
-    {
-      TWOARGS;
-      if ((v1.type != T_PREFIX) || (v2.type != T_INT))
-	runtime("Invalid argument to roa_check()");
+  ip_addr ip;
+  int len;
 
-      as = v2.val.i;
-    }
-    else
-    {
-      ACCESS_RTE;
-      v1.val.px.ip = (*f_rte)->net->n.prefix;
-      v1.val.px.len = (*f_rte)->net->n.pxlen;
+  if (what->arg1)
+  {
+    AI(1); AI(2);
+    if ((v1.type != T_PREFIX) || (v2.type != T_INT))
+      runtime("Invalid argument to roa_check()");
 
-      /* We ignore temporary attributes, probably not a problem here */
-      /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */
-      eattr *e = ea_find((*f_rte)->attrs->eattrs, EA_CODE(EAP_BGP, 0x02));
+    ip = v1.val.px.ip;
+    len = v1.val.px.len;
+    as = v2.val.i;
+  }
+  else
+  {
+    ACCESS_RTE;
+    ip = (*f_rte)->net->n.prefix;
+    len = (*f_rte)->net->n.pxlen;
 
-      if (!e || e->type != EAF_TYPE_AS_PATH)
-	runtime("Missing AS_PATH attribute");
+    /* We ignore temporary attributes, probably not a problem here */
+    /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */
+    eattr *e = ea_find((*f_rte)->attrs->eattrs, EA_CODE(EAP_BGP, 0x02));
 
-      as_path_get_last(e->u.ptr, &as);
-    }
+    if (!e || e->type != EAF_TYPE_AS_PATH)
+      runtime("Missing AS_PATH attribute");
 
-    struct roa_table_config *rtc = ((struct f_inst_roa_check *) what)->rtc;
-    if (!rtc->table)
-      runtime("Missing ROA table");
+    as_path_get_last(e->u.ptr, &as);
+  }
 
-    res.type = T_ENUM_ROA;
-    res.val.i = roa_check(rtc->table, v1.val.px.ip, v1.val.px.len, as);
-    break;
+  struct roa_table_config *rtc = ((struct f_inst_roa_check *) what)->rtc;
+  if (!rtc->table)
+    runtime("Missing ROA table");
 
+  RET(T_ENUM_ROA, i, roa_check(rtc->table, ip, len, as));
+}
+
+
+#undef ACCESS_RTE
+#undef BITFIELD_MASK
+#undef ARG
+#undef AI
+#undef FI_INST_INTERPRET
+#undef RET
+#undef RET_VOID
+#undef RETA
+#undef FI_INST_NUMERIC_BINARY

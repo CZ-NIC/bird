@@ -133,6 +133,8 @@ struct f_val {
   } val;
 };
 
+#define F_VAL_VOID ((struct f_val) { .type = T_VOID })
+
 struct f_dynamic_attr {
   int type;
   int f_type;
