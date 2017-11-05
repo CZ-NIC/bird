@@ -9,8 +9,8 @@
 #define BITFIELD_MASK(what) \
   (1u << (what->a2.i >> 24))
 
-#define ARG(n) \
-  struct f_val v##n = interpret((n == 3) ? (INST3(what).p) : what->a##n.p); \
+#define ARG(n,call) \
+  struct f_val v##n = call((n == 3) ? (INST3(what).p) : what->a##n.p); \
   if (v##n.type & T_RETURN) \
     return v##n;
 
@@ -28,7 +28,7 @@
   { \
     AI(1); AI(2); \
     if ((v1.type != T_INT) || (v2.type != T_INT)) \
-      runtime( "Incompatible types for operation " #op ); \
+      runtime( "Incompatible types for arithmetic operation" ); \
     RET(T_INT, i, (v1.val.i op v2.val.i)); \
   }
 
@@ -40,7 +40,7 @@ FI_INST_INTERPRET(divide)
 {
   AI(1); AI(2);
   if ((v1.type != T_INT) || (v2.type != T_INT))
-    runtime( "Incompatible types for operation " #op );
+    runtime( "Incompatible types for arithmetic operation" );
   if (v2.val.i == 0)
     runtime( "I don't believe in division by zero" );
   RET(T_INT, i, (v1.val.i / v2.val.i));

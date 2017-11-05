@@ -589,7 +589,7 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
 #define runtime(x) do { \
     log_rl(&rl_runtime_err, L_ERR "filters, line %d: %s", what->lineno, x); \
-    return (struct f_val) { .type = T_RETURN; .val.i = F_ERROR; }; \
+    return (struct f_val) { .type = T_RETURN, .val.i = F_ERROR, }; \
   } while(0)
 
 struct filter_instruction {
@@ -597,15 +597,7 @@ struct filter_instruction {
   int (*same)(struct f_inst *f1, struct f_inst *f2);
 };
 
-#define FI__DEF(code,interpret,same) \
-  static struct f_val * _filter_interpret_##code(struct f_inst *what) interpret \
-  static struct f_val * _filter_same_##code(struct f_inst *what) same
-
-static struct filter_instruction filter_instruction[] = {
-#define FI__DO(code) \
-  [FI_NUMERIC_CODE(code)] = { _filter_interpret_##code, _filter_same_##code },
-FI__LIST
-};
+static struct f_val interpret(struct f_inst *what);
 
 #include "filter/interpret.h"
 
