@@ -10,7 +10,7 @@
   (1u << (what->a2.i >> 24))
 
 #define ARG(n,call) \
-  struct f_val v##n = call((n == 3) ? (INST3(what).p) : what->a##n.p); \
+  struct f_val v##n = call(what->a##n.p); \
   if (v##n.type & T_RETURN) \
     return v##n;
 
@@ -23,6 +23,7 @@
 #define RET_VOID return F_VAL_VOID
 #define RETA(member,value) RET(what->aux, member, value)
 
+/* Interpret */
 #define FI_INST_NUMERIC_BINARY(name,op) \
   FI_INST_INTERPRET(name) \
   { \
@@ -61,7 +62,7 @@ static inline struct f_val fi_interpret_boolbinary(const struct f_inst *what)
 #define fi_interpret_and fi_interpret_boolbinary
 #define fi_interpret_or fi_interpret_boolbinary
 
-F_INST_INTERPRET(pair_construct)
+FI_INST_INTERPRET(pair_construct)
 {
   AI(1); AI(2);
   if ((v1.type != T_INT) || (v2.type != T_INT))
@@ -72,7 +73,7 @@ F_INST_INTERPRET(pair_construct)
   RET(T_PAIR, i, (u1 << 16) | u2);
 }
 
-F_INST_INTERPRET(ec_construct)
+FI_INST_INTERPRET(ec_construct)
 {
   AI(1); AI(2);
   int check, ipv4_used;
@@ -118,13 +119,13 @@ F_INST_INTERPRET(ec_construct)
   return res;
 }
 
-F_INST_INTERPRET(lc_construct)
+FI_INST_INTERPRET(lc_construct)
 {
   AI(1); AI(2); AI(3);
   if ((v1.type != T_INT) || (v2.type != T_INT) || (v3.type != T_INT))
     runtime( "Can't operate with value of non-integer type in LC constructor" );
 
-  RET(T_LC, lc, (lcomm) { v1.val.i, v2.val.i, v3.val.i });
+  RET(T_LC, lc, ((lcomm) { v1.val.i, v2.val.i, v3.val.i }));
 }
 
 /* Relational operators */
@@ -150,7 +151,7 @@ static inline struct f_val fi_interpret_compare(const struct f_inst *what)
 #define fi_interpret_lt fi_interpret_compare
 #define fi_interpret_lte fi_interpret_compare
 
-F_INST_INTERPRET(not)
+FI_INST_INTERPRET(not)
 {
   AI(1);
   if (v1.type != T_BOOL)
@@ -158,7 +159,7 @@ F_INST_INTERPRET(not)
   RET(T_BOOL, i, !v1.val.i);
 }
 
-F_INST_INTERPRET(match)
+FI_INST_INTERPRET(match)
 {
   AI(1); AI(2);
   int i = val_in_range(v1, v2);
@@ -167,7 +168,7 @@ F_INST_INTERPRET(match)
   RET(T_BOOL, i, !!i);
 }
 
-F_INST_INTERPRET(not_match)
+FI_INST_INTERPRET(not_match)
 {
   AI(1); AI(2);
   int i = val_in_range(v1, v2);
@@ -176,13 +177,13 @@ F_INST_INTERPRET(not_match)
   RET(T_BOOL, i, !i);
 }
 
-F_INST_INTERPRET(defined)
+FI_INST_INTERPRET(defined)
 {
   AI(1);
   RET(T_BOOL, i, (v1.type != T_VOID));
 }
 
-F_INST_INTERPRET(set)
+FI_INST_INTERPRET(set)
 {
   /* Set to indirect value, a1 = variable, a2 = value */
   AI(2);
@@ -194,7 +195,7 @@ F_INST_INTERPRET(set)
     if ((sym->class == (SYM_VARIABLE | T_QUAD)) && (v2.type == T_IP)) {
       vp->type = T_QUAD;
       vp->val.i = ipa_to_u32(v2.val.px.ip);
-      break;
+      RET_VOID;
     }
 #endif
     runtime( "Assigning to variable of incompatible type" );
@@ -203,7 +204,7 @@ F_INST_INTERPRET(set)
   RET_VOID;
 }
 
-F_INST_INTERPRET(constant)
+FI_INST_INTERPRET(constant)
 {
   /* some constants have value in a2, some in *a1.p, strange. */
   /* integer (or simple type) constant, string, set, or prefix_set */
@@ -211,25 +212,25 @@ F_INST_INTERPRET(constant)
     case T_PREFIX_SET:	RET(T_PREFIX_SET, ti, what->a2.p);
     case T_SET:		RET(T_SET, t, what->a2.p);
     case T_STRING:	RET(T_STRING, s, what->a2.p);
-    default:		RET(what->aux, i, what->a2.p);
+    default:		RET(what->aux, i, what->a2.i);
   }
 }
 
-F_INST_INTERPRET(variable)
+FI_INST_INTERPRET(variable)
 {
   return * ((struct f_val *) what->a1.p);
 }
 
 #define fi_interpret_constant_indirect fi_interpret_variable
 
-F_INST_INTERPRET(print)
+FI_INST_INTERPRET(print)
 {
   AI(1);
   val_format(v1, &f_buf);
   RET_VOID;
 }
 
-F_INST_INTERPRET(condition)
+FI_INST_INTERPRET(condition)
 {
   /* Structure of conditions:
    * if (CONDITION) then TRUE_BLOCK else FALSE_BLOCK
@@ -287,12 +288,13 @@ F_INST_INTERPRET(condition)
     RET(T_BOOL, i, 1);
 }
 
-F_INST_INTERPRET(nop)
+FI_INST_INTERPRET(nop)
 {
   debug( "No operation\n" );
+  RET_VOID;
 }
 
-F_INST_INTERPRET(print_and_die)
+FI_INST_INTERPRET(print_and_die)
 {
   AI(1);
   if (what->a2.i == F_NOP || (what->a2.i != F_NONL && what->a1.p))
@@ -306,7 +308,6 @@ F_INST_INTERPRET(print_and_die)
   case F_ERROR:
   case F_REJECT:	/* FIXME (noncritical) Should print complete route along with reason to reject route */
     RET(T_RETURN, i, what->a2.i);
-    return res;	/* We have to return now, no more processing. */
   case F_NONL:
   case F_NOP:
       break;
@@ -316,7 +317,7 @@ F_INST_INTERPRET(print_and_die)
   RET_VOID;
 }
 
-F_INST_INTERPRET(rta_get)
+FI_INST_INTERPRET(rta_get)
 {
   ACCESS_RTE;
   struct rta *rta = (*f_rte)->attrs;
@@ -325,10 +326,10 @@ F_INST_INTERPRET(rta_get)
   {
   case SA_FROM:		RETA(px.ip, rta->from);
   case SA_GW:		RETA(px.ip, rta->gw);
-  case SA_NET:		RETA(px, {
+  case SA_NET:		RETA(px, ((struct f_prefix) {
 			    .ip = (*f_rte)->net->n.prefix,
 			    .len = (*f_rte)->net->n.pxlen
-			});
+			}));
   case SA_PROTO:	RETA(s, rta->src->proto->name);
   case SA_SOURCE:	RETA(i, rta->source);
   case SA_SCOPE:	RETA(i, rta->scope); break;
@@ -343,7 +344,7 @@ F_INST_INTERPRET(rta_get)
   RET_VOID;
 }
 
-F_INST_INTERPRET(rta_set)
+FI_INST_INTERPRET(rta_set)
 {
   AI(1);
   ACCESS_RTE;
@@ -379,15 +380,20 @@ F_INST_INTERPRET(rta_set)
     break;
 
   case SA_DEST:
-    i = v1.val.i;
-    if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
-      runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
-
-    rta->dest = i;
-    rta->gw = IPA_NONE;
-    rta->iface = NULL;
-    rta->nexthops = NULL;
-    rta->hostentry = NULL;
+    switch(v1.val.i)
+    {
+      case RTD_BLACKHOLE:
+      case RTD_UNREACHABLE:
+      case RTD_PROHIBIT:
+	rta->dest = v1.val.i;
+	rta->gw = IPA_NONE;
+	rta->iface = NULL;
+	rta->nexthops = NULL;
+	rta->hostentry = NULL;
+	break;
+      default:
+	runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
+    }
     break;
 
   default:
@@ -396,7 +402,7 @@ F_INST_INTERPRET(rta_set)
   RET_VOID;
 }
 
-F_INST_INTERPRET(ea_get)
+FI_INST_INTERPRET(ea_get)
 {
   ACCESS_RTE;
   eattr *e = NULL;
@@ -453,7 +459,7 @@ F_INST_INTERPRET(ea_get)
   RET_VOID;
 }
 
-F_INST_INTERPRET(ea_set)
+FI_INST_INTERPRET(ea_set)
 {
   ACCESS_RTE;
   AI(1);
@@ -560,12 +566,12 @@ F_INST_INTERPRET(ea_set)
   RET_VOID;
 }
 
-F_INST_INTERPRET(pref_get) {
+FI_INST_INTERPRET(pref_get) {
   ACCESS_RTE;
   RET(T_INT, i, (*f_rte)->pref);
 }
 
-F_INST_INTERPRET(pref_set) {
+FI_INST_INTERPRET(pref_set) {
   ACCESS_RTE;
   AI(1);
   if (v1.type != T_INT)
@@ -577,7 +583,7 @@ F_INST_INTERPRET(pref_set) {
   RET_VOID;
 }
 
-F_INST_INTERPRET(length) {
+FI_INST_INTERPRET(length) {
   AI(1);
   switch(v1.type) {
   case T_PREFIX: RET(T_INT, i, v1.val.px.len);
@@ -590,7 +596,7 @@ F_INST_INTERPRET(length) {
   RET_VOID;
 }
 
-F_INST_INTERPRET(ip) {
+FI_INST_INTERPRET(ip) {
   AI(1);
   if (v1.type != T_PREFIX)
     runtime( "Prefix expected" );
@@ -598,7 +604,7 @@ F_INST_INTERPRET(ip) {
   RET(T_IP, px.ip, v1.val.px.ip);
 }
 
-F_INST_INTERPRET(as_path_first) {
+FI_INST_INTERPRET(as_path_first) {
   AI(1);
   if (v1.type != T_PATH)
     runtime( "AS path expected" );
@@ -608,7 +614,7 @@ F_INST_INTERPRET(as_path_first) {
   RET(T_INT, i, as);
 }
 
-F_INST_INTERPRET(as_path_last) {
+FI_INST_INTERPRET(as_path_last) {
   AI(1);
   if (v1.type != T_PATH)
     runtime( "AS path expected" );
@@ -618,7 +624,7 @@ F_INST_INTERPRET(as_path_last) {
   RET(T_INT, i, as);
 }
 
-F_INST_INTERPRET(as_path_last_nag) {
+FI_INST_INTERPRET(as_path_last_nag) {
   AI(1);
   if (v1.type != T_PATH)
     runtime( "AS path expected" );
@@ -626,13 +632,13 @@ F_INST_INTERPRET(as_path_last_nag) {
   RET(T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
 }
 
-F_INST_INTERPRET(return) {
+FI_INST_INTERPRET(return) {
   AI(1);
   v1.type |= T_RETURN;
   return v1;
 }
 
-F_INST_INTERPRET(call) {
+FI_INST_INTERPRET(call) {
   AI(1);
   struct f_val res = interpret(what->a2.p);
   if (res.type == T_RETURN) /* Exception */
@@ -642,20 +648,20 @@ F_INST_INTERPRET(call) {
   return res;
 }
 
-F_INST_INTERPRET(clear_local_vars) {
-  for (sym = what->a1.p; sym != NULL; sym = sym->aux2)
+FI_INST_INTERPRET(clear_local_vars) {
+  for (struct symbol *sym = what->a1.p; sym != NULL; sym = sym->aux2)
     ((struct f_val *) sym->def)->type = T_VOID;
   RET_VOID;
 }
 
-F_INST_INTERPRET(switch) {
+FI_INST_INTERPRET(switch) {
   AI(1);
   struct f_tree *t = find_tree(what->a2.p, v1);
   if (!t) {
     t = find_tree(what->a2.p, F_VAL_VOID);
     if (!t) {
       debug( "No else statement?\n");
-      break;
+      RET_VOID;
     }
   }
 
@@ -663,7 +669,7 @@ F_INST_INTERPRET(switch) {
   return interpret(t->data);
 }
 
-F_INST_INTERPRET(ip_mask) {
+FI_INST_INTERPRET(ip_mask) {
   AI(1); AI(2);
 
   if (v2.type != T_INT)
@@ -675,11 +681,11 @@ F_INST_INTERPRET(ip_mask) {
   RET(T_IP, px.ip, ipa_and(mask, v1.val.px.ip));
 }
 
-F_INST_INTERPRET(empty) {
+FI_INST_INTERPRET(empty) {
   RETA(ad, adata_empty(f_pool, 0));
 }
 
-F_INST_INTERPRET(path_prepend) {
+FI_INST_INTERPRET(path_prepend) {
   AI(1); AI(2);
   if (v1.type != T_PATH)
     runtime("Can't prepend to non-path");
@@ -689,7 +695,7 @@ F_INST_INTERPRET(path_prepend) {
   RET(T_PATH, ad, as_path_prepend(f_pool, v1.val.ad, v2.val.i));
 }
 
-F_INST_INTERPRET(clist_add_del) {
+FI_INST_INTERPRET(clist_add_del) {
   AI(1); AI(2);
   if (v1.type == T_PATH)
   {
@@ -814,7 +820,6 @@ F_INST_INTERPRET(clist_add_del) {
     else if (v2.type != T_LC)
       runtime("Can't add/delete non-lc");
 
-    res.type = T_LCLIST;
     switch (what->aux)
     {
     case 'a':
@@ -823,7 +828,7 @@ F_INST_INTERPRET(clist_add_del) {
       else if (!arg_set)
 	RET(T_LCLIST, ad, lc_set_add(f_pool, v1.val.ad, v2.val.lc));
       else
-	RET(T_LCLIST, ad,  lc_set_union(f_pool, v1.val.ad, v2.val.ad));
+	RET(T_LCLIST, ad, lc_set_union(f_pool, v1.val.ad, v2.val.ad));
 
     case 'd':
       if (!arg_set)
@@ -844,7 +849,7 @@ F_INST_INTERPRET(clist_add_del) {
     runtime("Can't add/delete to non-[el]?clist");
 }
 
-F_INST_INTERPRET(roa_check) {
+FI_INST_INTERPRET(roa_check) {
   u32 as;
 
   ip_addr ip;
@@ -893,3 +898,5 @@ F_INST_INTERPRET(roa_check) {
 #undef RET_VOID
 #undef RETA
 #undef FI_INST_NUMERIC_BINARY
+
+#endif

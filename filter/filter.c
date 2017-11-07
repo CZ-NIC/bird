@@ -621,13 +621,7 @@ static struct f_val interpret(struct f_inst *what);
 static struct f_val
 interpret(struct f_inst *what)
 {
-  struct symbol *sym;
-  struct f_val v1, v2, res, *vp;
-  unsigned u1, u2;
-  int i;
-  u32 as;
-
-  res.type = T_VOID;
+  struct f_val res = { .type = T_VOID };
   if (!what)
     return res;
 
@@ -638,7 +632,7 @@ interpret(struct f_inst *what)
     FI_LIST
 #undef F
   default:
-    bug( "Unknown instruction %d (%c)", what->code, what->code & 0xff);
+    bug( "Unknown instruction %d (%c%c)", what->fi_code, (what->fi_code & 0xff00) >> 8, what->fi_code & 0xff);
   }
   if (what->next)
     return interpret(what->next);
@@ -653,7 +647,9 @@ interpret(struct f_inst *what)
 #define ONEARG ARG(v1, a1.p)
 #define TWOARGS ARG(v1, a1.p) \
 		ARG(v2, a2.p)
-
+#define THREEARGS ARG(v1, a1.p) \
+		ARG(v2, a2.p) \
+		ARG(v3, a3.p)
 #define A2_SAME if (f1->a2.i != f2->a2.i) return 0;
 
 /*
@@ -668,38 +664,36 @@ i_same(struct f_inst *f1, struct f_inst *f2)
     return 1;
   if (f1->aux != f2->aux)
     return 0;
-  if (f1->code != f2->code)
+  if (f1->fi_code != f2->fi_code)
     return 0;
   if (f1 == f2)		/* It looks strange, but it is possible with call rewriting trickery */
     return 1;
 
-  switch(f1->code) {
-  case ',': /* fall through */
-  case '+':
-  case '-':
-  case '*':
-  case '/':
-  case '|':
-  case '&':
-  case P('m','p'):
-  case P('m','c'):
-  case P('!','='):
-  case P('=','='):
-  case '<':
-  case P('<','='): TWOARGS; break;
-
-  case '!': ONEARG; break;
-  case P('!', '~'):
-  case '~': TWOARGS; break;
-  case P('d','e'): ONEARG; break;
-
-  case P('m','l'):
-    TWOARGS;
-    if (!i_same(INST3(f1).p, INST3(f2).p))
-      return 0;
+  switch(f1->fi_code) {
+  case fi_add:
+  case fi_subtract:
+  case fi_multiply:
+  case fi_divide:
+  case fi_or:
+  case fi_and:
+  case fi_pair_construct:
+  case fi_ec_construct:
+  case fi_neq:
+  case fi_eq:
+  case fi_lt:
+  case fi_lte:
+    TWOARGS; break;
+  case fi_not:
+    ONEARG; break;
+  case fi_not_match:
+  case fi_match:
+    TWOARGS; break;
+  case fi_defined:
+    ONEARG; break;
+  case fi_lc_construct:
+    THREEARGS;
     break;
-
-  case 's':
+  case fi_set:
     ARG(v2, a2.p);
     {
       struct symbol *s1, *s2;
@@ -712,7 +706,7 @@ i_same(struct f_inst *f1, struct f_inst *f2)
     }
     break;
 
-  case 'c':
+  case fi_constant:
     switch (f1->aux) {
 
     case T_PREFIX_SET:
@@ -735,43 +729,57 @@ i_same(struct f_inst *f1, struct f_inst *f2)
     }
     break;
 
-  case 'C':
+  case fi_constant_indirect:
     if (!val_same(* (struct f_val *) f1->a1.p, * (struct f_val *) f2->a1.p))
       return 0;
     break;
 
-  case 'V':
+  case fi_variable:
     if (strcmp((char *) f1->a2.p, (char *) f2->a2.p))
       return 0;
     break;
-  case 'p': case 'L': ONEARG; break;
-  case '?': TWOARGS; break;
-  case '0': case 'E': break;
-  case P('p',','): ONEARG; A2_SAME; break;
-  case 'P':
-  case 'a': A2_SAME; break;
-  case P('e','a'): A2_SAME; break;
-  case P('P','S'):
-  case P('a','S'):
-  case P('e','S'): ONEARG; A2_SAME; break;
+  case fi_print:
+  case fi_length:
+    ONEARG; break;
+  case fi_condition:
+    TWOARGS; break;
+  case fi_nop:
+  case fi_empty:
+    break;
+  case fi_print_and_die:
+    ONEARG;
+    A2_SAME;
+    break;
+  case fi_pref_get:
+  case fi_rta_get:
+  case fi_ea_get:
+    A2_SAME;
+    break;
+  case fi_pref_set:
+  case fi_rta_set:
+  case fi_ea_set:
+    ONEARG;
+    A2_SAME;
+    break;
 
-  case 'r': ONEARG; break;
-  case P('c','p'): ONEARG; break;
-  case P('c','a'): /* Call rewriting trickery to avoid exponential behaviour */
+  case fi_return: ONEARG; break;
+  case fi_ip: ONEARG; break;
+  case fi_call: /* Call rewriting trickery to avoid exponential behaviour */
              ONEARG;
 	     if (!i_same(f1->a2.p, f2->a2.p))
 	       return 0;
 	     f2->a2.p = f1->a2.p;
 	     break;
-  case P('c','v'): break; /* internal instruction */
-  case P('S','W'): ONEARG; if (!same_tree(f1->a2.p, f2->a2.p)) return 0; break;
-  case P('i','M'): TWOARGS; break;
-  case P('A','p'): TWOARGS; break;
-  case P('C','a'): TWOARGS; break;
-  case P('a','f'):
-  case P('a','l'):
-  case P('a','L'): ONEARG; break;
-  case P('R','C'):
+  case fi_clear_local_vars: break; /* internal instruction */
+  case fi_switch: ONEARG; if (!same_tree(f1->a2.p, f2->a2.p)) return 0; break;
+  case fi_ip_mask: TWOARGS; break;
+  case fi_path_prepend: TWOARGS; break;
+  case fi_clist_add_del: TWOARGS; break;
+  case fi_as_path_first:
+  case fi_as_path_last:
+  case fi_as_path_last_nag:
+    ONEARG; break;
+  case fi_roa_check:
     TWOARGS;
     /* Does not really make sense - ROA check resuls may change anyway */
     if (strcmp(((struct f_inst_roa_check *) f1)->rtc->name,
@@ -779,7 +787,7 @@ i_same(struct f_inst *f1, struct f_inst *f2)
       return 0;
     break;
   default:
-    bug( "Unknown instruction %d in same (%c)", f1->code, f1->code & 0xff);
+    bug( "Unknown instruction %d in same (%c%c)", f1->fi_code, (f1->fi_code & 0xff00) >> 8, f1->fi_code & 0xff);
   }
   return i_same(f1->next, f2->next);
 }

@@ -331,12 +331,10 @@ f_generate_lc(struct f_inst *t1, struct f_inst *t2, struct f_inst *t3)
   else
 #endif
   {
-    rv = cfg_allocz(sizeof(struct f_inst3));
-    rv->lineno = ifs->lino;
-    rv->fi_code = fi_lc_construct;
+    rv = f_new_inst(fi_lc_construct);
     rv->a1.p = t1;
     rv->a2.p = t2;
-    INST3(rv).p = t3;
+    rv->a3.p = t3;
   }
 
   return rv;

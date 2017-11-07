@@ -18,49 +18,48 @@
 
 #define FI_TWOCHAR(a,b)	((a<<8) | b)
 #define FI_LIST \
-  F(comma,		  0, ',') \
-  F(add,		  0, '+') \
-  F(subtract,		  0, '-') \
-  F(multiply,		  0, '*') \
-  F(divide,		  0, '/') \
-  F(and,		  0, '&') \
-  F(or,			  0, '|') \
+  F(add,		' ', '+') \
+  F(subtract,		' ', '-') \
+  F(multiply,		' ', '*') \
+  F(divide,		' ', '/') \
+  F(and,		' ', '&') \
+  F(or,			' ', '|') \
   F(pair_construct,	'm', 'p') \
   F(ec_construct,	'm', 'c') \
   F(lc_construct,	'm', 'l') \
   F(neq,		'!', '=') \
   F(eq,			'=', '=') \
-  F(lt,			  0, '<') \
+  F(lt,			' ', '<') \
   F(lte,		'<', '=') \
-  F(not,		  0, '!') \
-  F(match,		  0, '~') \
+  F(not,		' ', '!') \
+  F(match,		' ', '~') \
   F(not_match,		'!', '~') \
   F(defined,		'd', 'e') \
-  F(set,		  0, 's') \
-  F(constant,		  0, 'c') \
-  F(variable,		  0, 'V') \
-  F(constant_indirect,	  0, 'C') \
-  F(print,		  0, 'p') \
-  F(condition,		  0, '?') \
-  F(nop,		  0, '0') \
+  F(set,		' ', 's') \
+  F(constant,		' ', 'c') \
+  F(variable,		' ', 'V') \
+  F(constant_indirect,	' ', 'C') \
+  F(print,		' ', 'p') \
+  F(condition,		' ', '?') \
+  F(nop,		' ', '0') \
   F(print_and_die,	'p', ',') \
-  F(rta_get,		  0, 'a') \
+  F(rta_get,		' ', 'a') \
   F(rta_set,		'a', 'S') \
   F(ea_get,		'e', 'a') \
   F(ea_set,		'e', 'S') \
-  F(pref_get,		  0, 'P') \
+  F(pref_get,		' ', 'P') \
   F(pref_set,		'P', 'S') \
-  F(length,		  0, 'L') \
+  F(length,		' ', 'L') \
   F(ip,			'c', 'p') \
   F(as_path_first,	'a', 'f') \
   F(as_path_last,	'a', 'l') \
   F(as_path_last_nag,	'a', 'L') \
-  F(return,		  0, 'r') \
+  F(return,		' ', 'r') \
   F(call,		'c', 'a') \
   F(clear_local_vars,	'c', 'V') \
   F(switch,		'S', 'W') \
   F(ip_mask,		'i', 'M') \
-  F(empty,		  0, 'E') \
+  F(empty,		' ', 'E') \
   F(path_prepend,	'A', 'p') \
   F(clist_add_del,	'C', 'a') \
   F(roa_check,		'R', 'C')
@@ -84,6 +83,10 @@ struct f_inst {		/* Instruction */
     int i;
     void *p;
   } a2;
+  union {
+    int i;
+    void *p;
+  } a3;
   int lineno;
 };
 
@@ -95,17 +98,6 @@ struct f_inst_roa_check {
   struct f_inst i;
   struct roa_table_config *rtc;
 };
-
-struct f_inst3 {
-  struct f_inst i;
-  union {
-    int i;
-    void *p;
-  } a3;
-};
-
-#define INST3(x) (((struct f_inst3 *) x)->a3)
-
 
 struct f_prefix {
   ip_addr ip;
