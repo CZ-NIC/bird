@@ -593,8 +593,8 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     if (tlv->omitted && !state->def_ip4_prefix_seen)
       return PARSE_ERROR;
 
-    /* Need next hop for v4 routes */
-    if (ipa_zero(state->next_hop_ip4))
+    /* Update must have next hop, unless it is retraction */
+    if (ipa_zero(state->next_hop_ip4) && (msg->metric != BABEL_INFINITY))
       return PARSE_ERROR;
 
     /* Merge saved prefix and received prefix parts */
