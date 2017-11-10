@@ -649,7 +649,8 @@ FI_INST_INTERPRET(call) {
 }
 
 FI_INST_INTERPRET(clear_local_vars) {
-  for (struct symbol *sym = what->a1.p; sym != NULL; sym = sym->aux2)
+  struct symbol *sym;
+  for (sym = what->a1.p; sym != NULL; sym = sym->aux2)
     ((struct f_val *) sym->def)->type = T_VOID;
   RET_VOID;
 }
