@@ -1476,7 +1476,7 @@ sk_open(sock *s)
     break;
 
   case SK_TCP_PASSIVE:
-    if (listen(fd, 8) < 0)
+    if (listen(fd, 128) < 0)
       ERR2("listen");
     break;
 
