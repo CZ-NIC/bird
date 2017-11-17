@@ -65,11 +65,20 @@
   F(roa_check,		'R', 'C')
 
 enum filter_instruction_code {
+  fi_invalid = 0,
+#define F(c,a,b) fi_##c,
+FI_LIST
+#undef F
+};
+
+/*
+enum filter_instruction_code {
 #define F(c,a,b) \
   fi_##c = FI_TWOCHAR(a,b),
 FI_LIST
 #undef F
 };
+*/
 
 struct f_inst {		/* Instruction */
   struct f_inst *next;	/* Structure is 16 bytes, anyway */
