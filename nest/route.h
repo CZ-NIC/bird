@@ -236,6 +236,7 @@ typedef struct rte {
 #endif
 #ifdef CONFIG_BABEL
     struct {
+      u16 seqno;			/* Babel seqno */
       u16 metric;			/* Babel metric */
       u64 router_id;			/* Babel router id */
     } babel;

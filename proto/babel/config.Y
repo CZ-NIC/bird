@@ -2,6 +2,8 @@
  *	BIRD -- Babel Configuration
  *
  *	Copyright (c) 2015-2016 Toke Hoiland-Jorgensen
+ * 	(c) 2016--2017 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2016--2017 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -32,6 +34,7 @@ babel_proto_start: proto_start BABEL
 {
   this_proto = proto_config_new(&proto_babel, $1);
   init_list(&BABEL_CFG->iface_list);
+  BABEL_CFG->hold_time = 1 S_;
 };
 
 babel_proto_item:
@@ -84,6 +87,8 @@ babel_iface_finish:
   if (!BABEL_IFACE->update_interval)
     BABEL_IFACE->update_interval = MIN_(BABEL_IFACE->hello_interval*BABEL_UPDATE_INTERVAL_FACTOR, BABEL_MAX_INTERVAL);
   BABEL_IFACE->ihu_interval = MIN_(BABEL_IFACE->hello_interval*BABEL_IHU_INTERVAL_FACTOR, BABEL_MAX_INTERVAL);
+
+  BABEL_CFG->hold_time = MAX_(BABEL_CFG->hold_time, BABEL_IFACE->update_interval*BABEL_HOLD_TIME_FACTOR);
 };
 
 
@@ -130,6 +135,9 @@ CF_CLI(SHOW BABEL NEIGHBORS, optsym opttext, [<name>] [\"<interface>\"], [[Show 
 
 CF_CLI(SHOW BABEL ENTRIES, optsym opttext, [<name>], [[Show information about Babel prefix entries]])
 { babel_show_entries(proto_get_named($4, &proto_babel)); };
+
+CF_CLI(SHOW BABEL ROUTES, optsym opttext, [<name>], [[Show information about Babel route entries]])
+{ babel_show_routes(proto_get_named($4, &proto_babel)); };
 
 CF_CODE
 

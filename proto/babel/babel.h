@@ -2,6 +2,8 @@
  *	BIRD -- The Babel protocol
  *
  *	Copyright (c) 2015--2016 Toke Hoiland-Jorgensen
+ * 	(c) 2016--2017 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2016--2017 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  *
@@ -37,11 +39,11 @@
 #define BABEL_HELLO_LIMIT		12
 #define BABEL_UPDATE_INTERVAL_FACTOR	4
 #define BABEL_IHU_INTERVAL_FACTOR	3
+#define BABEL_HOLD_TIME_FACTOR		4	/* How long we keep unreachable route relative to update interval */
 #define BABEL_IHU_EXPIRY_FACTOR(X)	((btime)(X)*7/2)	/* 3.5 */
 #define BABEL_HELLO_EXPIRY_FACTOR(X)	((btime)(X)*3/2)	/* 1.5 */
 #define BABEL_ROUTE_EXPIRY_FACTOR(X)	((btime)(X)*7/2)	/* 3.5 */
-#define BABEL_ROUTE_REFRESH_INTERVAL	(2 S_)	/* Time before route expiry to send route request */
-#define BABEL_HOLD_TIME			(10 S_)	/* Expiry time for our own routes */
+#define BABEL_ROUTE_REFRESH_FACTOR(X)	((btime)(X)*5/2)	/* 2.5 */
 #define BABEL_SEQNO_REQUEST_RETRY	4
 #define BABEL_SEQNO_REQUEST_EXPIRY	(2 S_)
 #define BABEL_GARBAGE_INTERVAL		(300 S_)
@@ -105,8 +107,8 @@ enum babel_ae_type {
 
 struct babel_config {
   struct proto_config c;
-
-  list iface_list;              /* Patterns configured -- keep it first; see babel_reconfigure why */
+  list iface_list;			/* List of iface configs (struct babel_iface_config) */
+  uint hold_time;			/* Time to hold stale entries and unreachable routes */
 };
 
 struct babel_iface_config {
@@ -220,15 +222,14 @@ struct babel_route {
   struct babel_entry    *e;
   struct babel_neighbor *neigh;
 
+  u8 feasible;
   u16 seqno;
-  u16 advert_metric;
   u16 metric;
-  u16 old_metric;
+  u16 advert_metric;
   u64 router_id;
   ip_addr next_hop;
   btime refresh_time;
   btime expires;
-  btime expiry_interval;
 };
 
 struct babel_seqno_request {
@@ -242,19 +243,25 @@ struct babel_seqno_request {
 };
 
 struct babel_entry {
-  struct babel_route *selected_in;
-  struct babel_route *selected_out;
+  struct babel_route *selected;
 
-  btime updated;
-
-  list requests;
-  list sources;				/* Source entries for this prefix (struct babel_source). */
   list routes;				/* Routes for this prefix (struct babel_route) */
+  list sources;				/* Source entries for this prefix (struct babel_source). */
+  list requests;
+
+  u8 valid;				/* Entry validity state (BABEL_ENTRY_*) */
+  u8 unreachable;			/* Unreachable route is announced */
+  u16 seqno;				/* Outgoing seqno */
+  u16 metric;				/* Outgoing metric */
+  u64 router_id;			/* Outgoing router ID */
+  btime updated;			/* Last change of outgoing rte, for triggered updates */
 
   struct fib_node n;
 };
 
-/* Stores forwarded seqno requests for duplicate suppression. */
+#define BABEL_ENTRY_DUMMY	0	/* No outgoing route */
+#define BABEL_ENTRY_VALID	1	/* Valid outgoing route */
+#define BABEL_ENTRY_STALE	2	/* Stale outgoing route, waiting for GC */
 
 
 /*
@@ -346,6 +353,7 @@ void babel_handle_seqno_request(union babel_msg *msg, struct babel_iface *ifa);
 void babel_show_interfaces(struct proto *P, char *iff);
 void babel_show_neighbors(struct proto *P, char *iff);
 void babel_show_entries(struct proto *P);
+void babel_show_routes(struct proto *P);
 
 /* packets.c */
 void babel_enqueue(union babel_msg *msg, struct babel_iface *ifa);
