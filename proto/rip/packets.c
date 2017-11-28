@@ -189,7 +189,10 @@ rip_update_csn(struct rip_proto *p UNUSED, struct rip_iface *ifa)
    * have the same CSN. We are using real time, but enforcing monotonicity.
    */
   if (ifa->cf->auth_type == RIP_AUTH_CRYPTO)
-    ifa->csn = (ifa->csn < (u32) now_real) ? (u32) now_real : ifa->csn + 1;
+  {
+    u32 now_real = (u32) (current_real_time() TO_S);
+    ifa->csn = (ifa->csn < now_real) ? now_real : ifa->csn + 1;
+  }
 }
 
 static void

@@ -1288,7 +1288,7 @@ protos_build(void)
 #endif
 
   proto_pool = rp_new(&root_pool, "Protocols");
-  proto_shutdown_timer = tm_new(proto_pool);
+  proto_shutdown_timer = tm2_new(proto_pool);
   proto_shutdown_timer->hook = proto_shutdown_loop;
 }
 

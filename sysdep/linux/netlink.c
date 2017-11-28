@@ -151,7 +151,7 @@ nl_open_sock(struct nl_sock *nl)
       nl->fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
       if (nl->fd < 0)
 	die("Unable to open rtnetlink socket: %m");
-      nl->seq = now;
+      nl->seq = (u32) (current_time() TO_S); /* Or perhaps random_u32() ? */
       nl->rx_buffer = xmalloc(NL_RX_SIZE);
       nl->last_hdr = NULL;
       nl->last_size = 0;

@@ -384,7 +384,7 @@ config_confirm(void)
   if (config_timer->expires == 0)
     return CONF_NOTHING;
 
-  tm_stop(config_timer);
+  tm2_stop(config_timer);
 
   return CONF_CONFIRM;
 }
@@ -420,7 +420,7 @@ config_undo(void)
     return CONF_NOTHING;
 
   undo_available = 0;
-  tm_stop(config_timer);
+  tm2_stop(config_timer);
 
   if (configuring)
     {
@@ -468,7 +468,7 @@ config_init(void)
   config_event = ev_new(&root_pool);
   config_event->hook = config_done;
 
-  config_timer = tm_new(&root_pool);
+  config_timer = tm2_new(&root_pool);
   config_timer->hook = config_timeout;
 }
 

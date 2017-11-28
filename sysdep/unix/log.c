@@ -180,19 +180,18 @@ log_msg(const char *msg, ...)
 void
 log_rl(struct tbf *f, const char *msg, ...)
 {
-  int last_hit = f->mark;
   int class = 1;
   va_list args;
 
   /* Rate limiting is a bit tricky here as it also logs '...' during the first hit */
-  if (tbf_limit(f) && last_hit)
+  if (tbf_limit(f) && (f->drop > 1))
     return;
 
   if (*msg >= 1 && *msg <= 8)
     class = *msg++;
 
   va_start(args, msg);
-  vlog(class, (f->mark ? "..." : msg), args);
+  vlog(class, (f->drop ? "..." : msg), args);
   va_end(args);
 }
 
@@ -332,7 +331,7 @@ void
 mrt_dump_message(struct proto *p, u16 type, u16 subtype, byte *buf, u32 len)
 {
   /* Prepare header */
-  put_u32(buf+0, now_real);
+  put_u32(buf+0, current_real_time() TO_S);
   put_u16(buf+4, type);
   put_u16(buf+6, subtype);
   put_u32(buf+8, len - MRTDUMP_HDR_LENGTH);

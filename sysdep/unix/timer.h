@@ -16,7 +16,7 @@
 
 
 typedef struct timer2 timer;
-
+#if 0
 static inline timer *tm_new(pool *p)
 { return (void *) tm2_new(p); }
 
@@ -44,8 +44,8 @@ static inline void tm_start_max(timer *t, bird_clock_t after)
 static inline timer * tm_new_set(pool *p, void (*hook)(timer *), void *data, uint rand, uint rec)
 { return tm2_new_init(p, hook, data, rec S_, rand S_); }
 
+#endif
 
-#define TIME_INFINITY ((s64) 0x7fffffffffffffff)
 
 
 #endif

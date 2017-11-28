@@ -46,8 +46,8 @@ extern struct timeloop main_timeloop;
 btime current_time(void);
 btime current_real_time(void);
 
-#define now (current_time() TO_S)
-#define now_real (current_real_time() TO_S)
+//#define now (current_time() TO_S)
+//#define now_real (current_real_time() TO_S)
 extern btime boot_time;
 
 timer2 *tm2_new(pool *p);

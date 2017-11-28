@@ -58,7 +58,7 @@
   log_rl(&p->log_lsa_tbf, L_REMOTE "%s: " msg, p->p.name, args)
 
 #define LOG_LSA2(msg, args...) \
-  do { if (! p->log_lsa_tbf.mark) \
+  do { if (! p->log_lsa_tbf.drop) \
     log(L_REMOTE "%s: " msg, p->p.name, args); } while(0)
 
 
