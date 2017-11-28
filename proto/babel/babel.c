@@ -1433,14 +1433,14 @@ babel_iface_timer(timer *t)
 
   btime next_event = MIN(ifa->next_hello, ifa->next_regular);
   if (ifa->want_triggered) next_event = MIN(next_event, ifa->next_triggered);
-  tm2_set(ifa->timer, next_event);
+  tm_set(ifa->timer, next_event);
 }
 
 static inline void
 babel_iface_kick_timer(struct babel_iface *ifa)
 {
   if (ifa->timer->expires > (current_time() + 100 MS))
-    tm2_start(ifa->timer, 100 MS);
+    tm_start(ifa->timer, 100 MS);
 }
 
 static void
@@ -1454,7 +1454,7 @@ babel_iface_start(struct babel_iface *ifa)
   ifa->next_regular = current_time() + (random() % ifa->cf->update_interval);
   ifa->next_triggered = current_time() + MIN(1 S, ifa->cf->update_interval / 2);
   ifa->want_triggered = 0;	/* We send an immediate update (below) */
-  tm2_start(ifa->timer, 100 MS);
+  tm_start(ifa->timer, 100 MS);
   ifa->up = 1;
 
   babel_send_hello(ifa);
@@ -1487,7 +1487,7 @@ babel_iface_stop(struct babel_iface *ifa)
     }
   }
 
-  tm2_stop(ifa->timer);
+  tm_stop(ifa->timer);
   ifa->up = 0;
 }
 
@@ -1585,7 +1585,7 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
   init_list(&ifa->neigh_list);
   ifa->hello_seqno = 1;
 
-  ifa->timer = tm2_new_init(ifa->pool, babel_iface_timer, ifa, 0, 0);
+  ifa->timer = tm_new_init(ifa->pool, babel_iface_timer, ifa, 0, 0);
 
   init_list(&ifa->msg_queue);
   ifa->send_event = ev_new(ifa->pool);
@@ -2050,7 +2050,7 @@ static inline void
 babel_kick_timer(struct babel_proto *p)
 {
   if (p->timer->expires > (current_time() + 100 MS))
-    tm2_start(p->timer, 100 MS);
+    tm_start(p->timer, 100 MS);
 }
 
 
@@ -2214,8 +2214,8 @@ babel_start(struct proto *P)
 	   OFFSETOF(struct babel_entry, n), 0, babel_init_entry);
 
   init_list(&p->interfaces);
-  p->timer = tm2_new_init(P->pool, babel_timer, p, 1 S, 0);
-  tm2_start(p->timer, 1 S);
+  p->timer = tm_new_init(P->pool, babel_timer, p, 1 S, 0);
+  tm_start(p->timer, 1 S);
   p->update_seqno = 1;
   p->router_id = proto_get_router_id(&cf->c);
 

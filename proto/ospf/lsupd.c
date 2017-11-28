@@ -115,7 +115,7 @@ ospf_lsa_lsrq_down(struct top_hash_entry *req, struct ospf_neighbor *n)
 
   if (EMPTY_SLIST(n->lsrql))
   {
-    tm2_stop(n->lsrq_timer);
+    tm_stop(n->lsrq_timer);
 
     if (n->state == NEIGHBOR_LOADING)
       ospf_neigh_sm(n, INM_LOADDONE);
@@ -136,8 +136,8 @@ ospf_lsa_lsrt_up(struct top_hash_entry *en, struct ospf_neighbor *n)
   ret->lsa = en->lsa;
   ret->lsa_body = LSA_BODY_DUMMY;
 
-  if (!tm2_active(n->lsrt_timer))
-    tm2_start(n->lsrt_timer, n->ifa->rxmtint S);
+  if (!tm_active(n->lsrt_timer))
+    tm_start(n->lsrt_timer, n->ifa->rxmtint S);
 }
 
 void
@@ -150,7 +150,7 @@ ospf_lsa_lsrt_down_(struct top_hash_entry *en, struct ospf_neighbor *n, struct t
   ospf_hash_delete(n->lsrth, ret);
 
   if (EMPTY_SLIST(n->lsrtl))
-    tm2_stop(n->lsrt_timer);
+    tm_stop(n->lsrt_timer);
 }
 
 static inline int
@@ -175,8 +175,8 @@ ospf_add_flushed_to_lsrt(struct ospf_proto *p, struct ospf_neighbor *n)
       ospf_lsa_lsrt_up(en, n);
 
   /* If we found any flushed LSA, we send them ASAP */
-  if (tm2_active(n->lsrt_timer))
-    tm2_start(n->lsrt_timer, 0);
+  if (tm_active(n->lsrt_timer))
+    tm_start(n->lsrt_timer, 0);
 }
 
 static int ospf_flood_lsupd(struct ospf_proto *p, struct top_hash_entry **lsa_list, uint lsa_count, uint lsa_min_count, struct ospf_iface *ifa);
@@ -700,7 +700,7 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
   if (!EMPTY_SLIST(n->lsrql) && (n->lsrqi == SHEAD(n->lsrql)))
   {
     ospf_send_lsreq(p, n);
-    tm2_start(n->lsrq_timer, n->ifa->rxmtint S);
+    tm_start(n->lsrq_timer, n->ifa->rxmtint S);
   }
 
   return;

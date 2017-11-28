@@ -321,7 +321,7 @@ rpki_schedule_next_refresh(struct rpki_cache *cache)
   btime t = cache->refresh_interval S;
 
   CACHE_DBG(cache, "after %t s", t);
-  tm2_start(cache->refresh_timer, t);
+  tm_start(cache->refresh_timer, t);
 }
 
 static void
@@ -330,7 +330,7 @@ rpki_schedule_next_retry(struct rpki_cache *cache)
   btime t = cache->retry_interval S;
 
   CACHE_DBG(cache, "after %t s", t);
-  tm2_start(cache->retry_timer, t);
+  tm_start(cache->retry_timer, t);
 }
 
 static void
@@ -341,28 +341,28 @@ rpki_schedule_next_expire_check(struct rpki_cache *cache)
   t = MAX(t, 1 S);
 
   CACHE_DBG(cache, "after %t s", t);
-  tm2_start(cache->expire_timer, t);
+  tm_start(cache->expire_timer, t);
 }
 
 static void
 rpki_stop_refresh_timer_event(struct rpki_cache *cache)
 {
   CACHE_DBG(cache, "Stop");
-  tm2_stop(cache->refresh_timer);
+  tm_stop(cache->refresh_timer);
 }
 
 static void
 rpki_stop_retry_timer_event(struct rpki_cache *cache)
 {
   CACHE_DBG(cache, "Stop");
-  tm2_stop(cache->retry_timer);
+  tm_stop(cache->retry_timer);
 }
 
 static void UNUSED
 rpki_stop_expire_timer_event(struct rpki_cache *cache)
 {
   CACHE_DBG(cache, "Stop");
-  tm2_stop(cache->expire_timer);
+  tm_stop(cache->expire_timer);
 }
 
 static int
@@ -569,9 +569,9 @@ rpki_init_cache(struct rpki_proto *p, struct rpki_config *cf)
   cache->refresh_interval = cf->refresh_interval;
   cache->retry_interval = cf->retry_interval;
   cache->expire_interval = cf->expire_interval;
-  cache->refresh_timer = tm2_new_init(pool, &rpki_refresh_hook, cache, 0, 0);
-  cache->retry_timer = tm2_new_init(pool, &rpki_retry_hook, cache, 0, 0);
-  cache->expire_timer = tm2_new_init(pool, &rpki_expire_hook, cache, 0, 0);
+  cache->refresh_timer = tm_new_init(pool, &rpki_refresh_hook, cache, 0, 0);
+  cache->retry_timer = tm_new_init(pool, &rpki_retry_hook, cache, 0, 0);
+  cache->expire_timer = tm_new_init(pool, &rpki_expire_hook, cache, 0, 0);
 
   cache->tr_sock = mb_allocz(pool, sizeof(struct rpki_tr_sock));
   cache->tr_sock->cache = cache;
@@ -791,8 +791,8 @@ rpki_get_status(struct proto *P, byte *buf)
 static void
 rpki_show_proto_info_timer(const char *name, uint num, timer *t)
 {
-  if (tm2_active(t))
-    cli_msg(-1006, "  %-16s: %t/%u", name, tm2_remains(t), num);
+  if (tm_active(t))
+    cli_msg(-1006, "  %-16s: %t/%u", name, tm_remains(t), num);
   else
     cli_msg(-1006, "  %-16s: ---", name);
 }

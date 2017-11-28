@@ -66,10 +66,10 @@ reset_lists(struct ospf_proto *p, struct ospf_neighbor *n)
   ospf_top_free(n->lsrth);
   ospf_reset_lsack_queue(n);
 
-  tm2_stop(n->dbdes_timer);
-  tm2_stop(n->lsrq_timer);
-  tm2_stop(n->lsrt_timer);
-  tm2_stop(n->ackd_timer);
+  tm_stop(n->dbdes_timer);
+  tm_stop(n->lsrq_timer);
+  tm_stop(n->lsrt_timer);
+  tm_stop(n->ackd_timer);
 
   init_lists(p, n);
 }
@@ -94,11 +94,11 @@ ospf_neighbor_new(struct ospf_iface *ifa)
   init_list(&n->ackl[ACKL_DIRECT]);
   init_list(&n->ackl[ACKL_DELAY]);
 
-  n->inactim = tm2_new_init(pool, inactivity_timer_hook, n, 0, 0);
-  n->dbdes_timer = tm2_new_init(pool, dbdes_timer_hook, n, ifa->rxmtint S, 0);
-  n->lsrq_timer = tm2_new_init(pool, lsrq_timer_hook, n, ifa->rxmtint S, 0);
-  n->lsrt_timer = tm2_new_init(pool, lsrt_timer_hook, n, ifa->rxmtint S, 0);
-  n->ackd_timer = tm2_new_init(pool, ackd_timer_hook, n, ifa->rxmtint S / 2, 0);
+  n->inactim = tm_new_init(pool, inactivity_timer_hook, n, 0, 0);
+  n->dbdes_timer = tm_new_init(pool, dbdes_timer_hook, n, ifa->rxmtint S, 0);
+  n->lsrq_timer = tm_new_init(pool, lsrq_timer_hook, n, ifa->rxmtint S, 0);
+  n->lsrt_timer = tm_new_init(pool, lsrt_timer_hook, n, ifa->rxmtint S, 0);
+  n->ackd_timer = tm_new_init(pool, ackd_timer_hook, n, ifa->rxmtint S / 2, 0);
 
   return (n);
 }
@@ -185,8 +185,8 @@ ospf_neigh_chstate(struct ospf_neighbor *n, u8 state)
     n->dds++;
     n->myimms = DBDES_IMMS;
 
-    tm2_start(n->dbdes_timer, 0);
-    tm2_start(n->ackd_timer, ifa->rxmtint S / 2);
+    tm_start(n->dbdes_timer, 0);
+    tm_start(n->ackd_timer, ifa->rxmtint S / 2);
   }
 
   if (state > NEIGHBOR_EXSTART)
@@ -231,7 +231,7 @@ ospf_neigh_sm(struct ospf_neighbor *n, int event)
       ospf_neigh_chstate(n, NEIGHBOR_INIT);
 
     /* Restart inactivity timer */
-    tm2_start(n->inactim, n->ifa->deadint S);
+    tm_start(n->inactim, n->ifa->deadint S);
     break;
 
   case INM_2WAYREC:
@@ -664,5 +664,5 @@ ospf_sh_neigh_info(struct ospf_neighbor *n)
 
   cli_msg(-1013, "%-1R\t%3u\t%s/%s\t%7t\t%-10s %-1I",
 	  n->rid, n->priority, ospf_ns_names[n->state], pos,
-	  tm2_remains(n->inactim), ifa->ifname, n->ip);
+	  tm_remains(n->inactim), ifa->ifname, n->ip);
 }

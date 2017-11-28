@@ -509,7 +509,7 @@ rip_iface_start(struct rip_iface *ifa)
   ifa->next_regular = current_time() + (random() % ifa->cf->update_time) + 100 MS;
   ifa->next_triggered = current_time();	/* Available immediately */
   ifa->want_triggered = 1;		/* All routes in triggered update */
-  tm2_start(ifa->timer, 100 MS);
+  tm_start(ifa->timer, 100 MS);
   ifa->up = 1;
 
   if (!ifa->cf->passive)
@@ -529,7 +529,7 @@ rip_iface_stop(struct rip_iface *ifa)
   WALK_LIST_FIRST(n, ifa->neigh_list)
     rip_remove_neighbor(p, n);
 
-  tm2_stop(ifa->timer);
+  tm_stop(ifa->timer);
   ifa->up = 0;
 }
 
@@ -642,7 +642,7 @@ rip_add_iface(struct rip_proto *p, struct iface *iface, struct rip_iface_config 
 
   add_tail(&p->iface_list, NODE ifa);
 
-  ifa->timer = tm2_new_init(p->p.pool, rip_iface_timer, ifa, 0, 0);
+  ifa->timer = tm_new_init(p->p.pool, rip_iface_timer, ifa, 0, 0);
 
   struct object_lock *lock = olock_new(p->p.pool);
   lock->type = OBJLOCK_UDP;
@@ -897,14 +897,14 @@ rip_timer(timer *t)
 	  next = MIN(next, expires);
       }
 
-  tm2_start(p->timer, MAX(next - now_, 100 MS));
+  tm_start(p->timer, MAX(next - now_, 100 MS));
 }
 
 static inline void
 rip_kick_timer(struct rip_proto *p)
 {
   if (p->timer->expires > (current_time() + 100 MS))
-    tm2_start(p->timer, 100 MS);
+    tm_start(p->timer, 100 MS);
 }
 
 /**
@@ -933,7 +933,7 @@ rip_iface_timer(timer *t)
   if (ifa->tx_active)
   {
     if (now_ < (ifa->next_regular + period))
-    { tm2_start(ifa->timer, 100 MS); return; }
+    { tm_start(ifa->timer, 100 MS); return; }
 
     /* We are too late, reset is done by rip_send_table() */
     log(L_WARN "%s: Too slow update on %s, resetting", p->p.name, ifa->iface->name);
@@ -958,14 +958,14 @@ rip_iface_timer(timer *t)
     p->triggered = 0;
   }
 
-  tm2_start(ifa->timer, ifa->want_triggered ? (1 S) : (ifa->next_regular - now_));
+  tm_start(ifa->timer, ifa->want_triggered ? (1 S) : (ifa->next_regular - now_));
 }
 
 static inline void
 rip_iface_kick_timer(struct rip_iface *ifa)
 {
   if (ifa->timer->expires > (current_time() + 100 MS))
-    tm2_start(ifa->timer, 100 MS);
+    tm_start(ifa->timer, 100 MS);
 }
 
 static void
@@ -1111,7 +1111,7 @@ rip_start(struct proto *P)
   fib_init(&p->rtable, P->pool, cf->rip2 ? NET_IP4 : NET_IP6,
 	   sizeof(struct rip_entry), OFFSETOF(struct rip_entry, n), 0, NULL);
   p->rte_slab = sl_new(P->pool, sizeof(struct rip_rte));
-  p->timer = tm2_new_init(P->pool, rip_timer, p, 0, 0);
+  p->timer = tm_new_init(P->pool, rip_timer, p, 0, 0);
 
   p->rip2 = cf->rip2;
   p->ecmp = cf->ecmp;
@@ -1121,7 +1121,7 @@ rip_start(struct proto *P)
   p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
   p->log_rte_tbf = (struct tbf){ .rate = 4, .burst = 20 };
 
-  tm2_start(p->timer, MIN(cf->min_timeout_time, cf->max_garbage_time));
+  tm_start(p->timer, MIN(cf->min_timeout_time, cf->max_garbage_time));
 
   return PS_UP;
 }

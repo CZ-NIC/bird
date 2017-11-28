@@ -328,10 +328,10 @@ bgp_start_timer(timer *t, uint value)
     /* The randomization procedure is specified in RFC 4271 section 10 */
     btime time = value S;
     btime randomize = random() % ((time / 4) + 1);
-    tm2_start(t, time - randomize);
+    tm_start(t, time - randomize);
   }
   else
-    tm2_stop(t);
+    tm_stop(t);
 }
 
 /**
@@ -517,7 +517,7 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   int peer_gr_ready = peer->gr_aware && !(peer->gr_flags & BGP_GRF_RESTART);
 
   if (p->gr_active_num)
-    tm2_stop(p->gr_timer);
+    tm_stop(p->gr_timer);
 
   /* Number of active channels */
   int num = 0;
@@ -616,7 +616,7 @@ bgp_conn_enter_close_state(struct bgp_conn *conn)
   int os = conn->state;
 
   bgp_conn_set_state(conn, BS_CLOSE);
-  tm2_stop(conn->keepalive_timer);
+  tm_stop(conn->keepalive_timer);
   conn->sk->rx_hook = NULL;
 
   /* Timeout for CLOSE state, if we cannot send notification soon then we just hangup */
@@ -779,7 +779,7 @@ bgp_send_open(struct bgp_conn *conn)
   DBG("BGP: Sending open\n");
   conn->sk->rx_hook = bgp_rx;
   conn->sk->tx_hook = bgp_tx;
-  tm2_stop(conn->connect_timer);
+  tm_stop(conn->connect_timer);
   bgp_schedule_packet(conn, NULL, PKT_OPEN);
   bgp_conn_set_state(conn, BS_OPENSENT);
   bgp_start_timer(conn->hold_timer, conn->bgp->cf->initial_hold_time);
@@ -888,9 +888,9 @@ bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn)
   conn->last_channel = 0;
   conn->last_channel_count = 0;
 
-  conn->connect_timer	= tm2_new_init(p->p.pool, bgp_connect_timeout,	 conn, 0, 0);
-  conn->hold_timer 	= tm2_new_init(p->p.pool, bgp_hold_timeout,	 conn, 0, 0);
-  conn->keepalive_timer	= tm2_new_init(p->p.pool, bgp_keepalive_timeout, conn, 0, 0);
+  conn->connect_timer	= tm_new_init(p->p.pool, bgp_connect_timeout,	 conn, 0, 0);
+  conn->hold_timer 	= tm_new_init(p->p.pool, bgp_hold_timeout,	 conn, 0, 0);
+  conn->keepalive_timer	= tm_new_init(p->p.pool, bgp_keepalive_timeout, conn, 0, 0);
 
   conn->tx_ev = ev_new(p->p.pool);
   conn->tx_ev->hook = bgp_kick_tx;
@@ -1303,8 +1303,8 @@ bgp_start(struct proto *P)
   p->event->hook = bgp_decision;
   p->event->data = p;
 
-  p->startup_timer = tm2_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
-  p->gr_timer = tm2_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
+  p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
+  p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
 
   p->local_id = proto_get_router_id(P->cf);
   if (p->rr_client)
@@ -2004,18 +2004,18 @@ bgp_show_proto_info(struct proto *P)
     struct bgp_conn *oc = &p->outgoing_conn;
 
     if ((p->start_state < BSS_CONNECT) &&
-	(tm2_active(p->startup_timer)))
+	(tm_active(p->startup_timer)))
       cli_msg(-1006, "    Error wait:       %t/%u",
-	      tm2_remains(p->startup_timer), p->startup_delay);
+	      tm_remains(p->startup_timer), p->startup_delay);
 
     if ((oc->state == BS_ACTIVE) &&
-	(tm2_active(oc->connect_timer)))
+	(tm_active(oc->connect_timer)))
       cli_msg(-1006, "    Connect delay:    %t/%u",
-	      tm2_remains(oc->connect_timer), p->cf->connect_delay_time);
+	      tm_remains(oc->connect_timer), p->cf->connect_delay_time);
 
-    if (p->gr_active_num && tm2_active(p->gr_timer))
+    if (p->gr_active_num && tm_active(p->gr_timer))
       cli_msg(-1006, "    Restart timer:    %t/-",
-	      tm2_remains(p->gr_timer));
+	      tm_remains(p->gr_timer));
   }
   else if (P->proto_state == PS_UP)
   {
@@ -2037,9 +2037,9 @@ bgp_show_proto_info(struct proto *P)
 */
     cli_msg(-1006, "    Source address:   %I", p->source_addr);
     cli_msg(-1006, "    Hold timer:       %t/%u",
-	    tm2_remains(p->conn->hold_timer), p->conn->hold_time);
+	    tm_remains(p->conn->hold_timer), p->conn->hold_time);
     cli_msg(-1006, "    Keepalive timer:  %t/%u",
-	    tm2_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
+	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
   }
 
   if ((p->last_error_class != BE_NONE) &&

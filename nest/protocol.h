@@ -12,7 +12,6 @@
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
-#include "sysdep/unix/timer.h"
 #include "nest/route.h"
 #include "conf/conf.h"
 

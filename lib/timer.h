@@ -7,18 +7,18 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#ifndef _BIRD_TIMER2_H_
-#define _BIRD_TIMER2_H_
+#ifndef _BIRD_TIMER_H_
+#define _BIRD_TIMER_H_
 
 #include "nest/bird.h"
 #include "lib/buffer.h"
 #include "lib/resource.h"
 
 
-typedef struct timer2
+typedef struct timer
 {
   resource r;
-  void (*hook)(struct timer2 *);
+  void (*hook)(struct timer *);
   void *data;
 
   btime expires;			/* 0=inactive */
@@ -26,11 +26,11 @@ typedef struct timer2
   uint recurrent;			/* Timer recurrence */
 
   int index;
-} timer2;
+} timer;
 
 struct timeloop
 {
-  BUFFER(timer2 *) timers;
+  BUFFER(timer *) timers;
   btime last_time;
   btime real_time;
 };
@@ -38,7 +38,7 @@ struct timeloop
 static inline uint timers_count(struct timeloop *loop)
 { return loop->timers.used - 1; }
 
-static inline timer2 *timers_first(struct timeloop *loop)
+static inline timer *timers_first(struct timeloop *loop)
 { return (loop->timers.used > 1) ? loop->timers.data[1] : NULL; }
 
 extern struct timeloop main_timeloop;
@@ -50,28 +50,28 @@ btime current_real_time(void);
 //#define now_real (current_real_time() TO_S)
 extern btime boot_time;
 
-timer2 *tm2_new(pool *p);
-void tm2_set(timer2 *t, btime when);
-void tm2_start(timer2 *t, btime after);
-void tm2_stop(timer2 *t);
+timer *tm_new(pool *p);
+void tm_set(timer *t, btime when);
+void tm_start(timer *t, btime after);
+void tm_stop(timer *t);
 
 static inline int
-tm2_active(timer2 *t)
+tm_active(timer *t)
 {
   return t->expires != 0;
 }
 
 static inline btime
-tm2_remains(timer2 *t)
+tm_remains(timer *t)
 {
   btime now_ = current_time();
   return (t->expires > now_) ? (t->expires - now_) : 0;
 }
 
-static inline timer2 *
-tm2_new_init(pool *p, void (*hook)(struct timer2 *), void *data, uint rec, uint rand)
+static inline timer *
+tm_new_init(pool *p, void (*hook)(struct timer *), void *data, uint rec, uint rand)
 {
-  timer2 *t = tm2_new(p);
+  timer *t = tm_new(p);
   t->hook = hook;
   t->data = data;
   t->recurrent = rec;
@@ -80,17 +80,17 @@ tm2_new_init(pool *p, void (*hook)(struct timer2 *), void *data, uint rec, uint 
 }
 
 static inline void
-tm2_set_max(timer2 *t, btime when)
+tm_set_max(timer *t, btime when)
 {
   if (when > t->expires)
-    tm2_set(t, when);
+    tm_set(t, when);
 }
 
 static inline void
-tm2_start_max(timer2 *t, btime after)
+tm_start_max(timer *t, btime after)
 {
-  btime rem = tm2_remains(t);
-  tm2_start(t, MAX_(rem, after));
+  btime rem = tm_remains(t);
+  tm_start(t, MAX_(rem, after));
 }
 
 /* In sysdep code */

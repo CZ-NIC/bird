@@ -477,7 +477,7 @@ static void *
 birdloop_main(void *arg)
 {
   struct birdloop *loop = arg;
-  timer2 *t;
+  timer *t;
   int rv, timeout;
 
   birdloop_set_current(loop);
@@ -492,7 +492,7 @@ birdloop_main(void *arg)
     if (events_waiting(loop))
       timeout = 0;
     else if (t = timers_first(&loop->time))
-      timeout = (tm2_remains(t) TO_MS) + 1;
+      timeout = (tm_remains(t) TO_MS) + 1;
     else
       timeout = -1;
 

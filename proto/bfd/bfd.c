@@ -64,16 +64,15 @@
  * ready, the protocol just creates a BFD request like any other protocol.
  *
  * The protocol uses a new generic event loop (structure &birdloop) from |io.c|,
- * which supports sockets, timers and events like the main loop. Timers
- * (structure &timer2) are new microsecond based timers, while sockets and
- * events are the same. A birdloop is associated with a thread (field @thread)
- * in which event hooks are executed. Most functions for setting event sources
- * (like sk_start() or tm2_start()) must be called from the context of that
- * thread. Birdloop allows to temporarily acquire the context of that thread for
- * the main thread by calling birdloop_enter() and then birdloop_leave(), which
- * also ensures mutual exclusion with all event hooks. Note that resources
- * associated with a birdloop (like timers) should be attached to the
- * independent resource pool, detached from the main resource tree.
+ * which supports sockets, timers and events like the main loop. A birdloop is
+ * associated with a thread (field @thread) in which event hooks are executed.
+ * Most functions for setting event sources (like sk_start() or tm_start()) must
+ * be called from the context of that thread. Birdloop allows to temporarily
+ * acquire the context of that thread for the main thread by calling
+ * birdloop_enter() and then birdloop_leave(), which also ensures mutual
+ * exclusion with all event hooks. Note that resources associated with a
+ * birdloop (like timers) should be attached to the independent resource pool,
+ * detached from the main resource tree.
  *
  * There are two kinds of interaction between the BFD core (running in the BFD
  * thread) and the rest of BFD (running in the main thread). The first kind are
@@ -177,7 +176,7 @@ bfd_session_update_tx_interval(struct bfd_session *s)
     return;
 
   /* Set timer relative to last tx_timer event */
-  tm2_set(s->tx_timer, s->last_tx + tx_int_l);
+  tm_set(s->tx_timer, s->last_tx + tx_int_l);
 }
 
 static void
@@ -191,7 +190,7 @@ bfd_session_update_detection_time(struct bfd_session *s, int kick)
   if (!s->last_rx)
     return;
 
-  tm2_set(s->hold_timer, s->last_rx + timeout);
+  tm_set(s->hold_timer, s->last_rx + timeout);
 }
 
 static void
@@ -212,16 +211,16 @@ bfd_session_control_tx_timer(struct bfd_session *s, int reset)
     goto stop;
 
   /* So TX timer should run */
-  if (reset || !tm2_active(s->tx_timer))
+  if (reset || !tm_active(s->tx_timer))
   {
     s->last_tx = 0;
-    tm2_start(s->tx_timer, 0);
+    tm_start(s->tx_timer, 0);
   }
 
   return;
 
  stop:
-  tm2_stop(s->tx_timer);
+  tm_stop(s->tx_timer);
   s->last_tx = 0;
 }
 
@@ -380,7 +379,7 @@ bfd_find_session_by_addr(struct bfd_proto *p, ip_addr addr)
 }
 
 static void
-bfd_tx_timer_hook(timer2 *t)
+bfd_tx_timer_hook(timer *t)
 {
   struct bfd_session *s = t->data;
 
@@ -389,7 +388,7 @@ bfd_tx_timer_hook(timer2 *t)
 }
 
 static void
-bfd_hold_timer_hook(timer2 *t)
+bfd_hold_timer_hook(timer *t)
 {
   bfd_session_timeout(t->data);
 }
@@ -433,8 +432,8 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
   s->passive = ifa->cf->passive;
   s->tx_csn = random_u32();
 
-  s->tx_timer = tm2_new_init(p->tpool, bfd_tx_timer_hook, s, 0, 0);
-  s->hold_timer = tm2_new_init(p->tpool, bfd_hold_timer_hook, s, 0, 0);
+  s->tx_timer = tm_new_init(p->tpool, bfd_tx_timer_hook, s, 0, 0);
+  s->hold_timer = tm_new_init(p->tpool, bfd_hold_timer_hook, s, 0, 0);
   bfd_session_update_tx_interval(s);
   bfd_session_control_tx_timer(s, 1);
 

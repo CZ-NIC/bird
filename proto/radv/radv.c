@@ -65,7 +65,7 @@ radv_timer(timer *tm)
     ifa->initial--;
   }
 
-  tm2_start(ifa->timer, t);
+  tm_start(ifa->timer, t);
 }
 
 static char* ev_name[] = { NULL, "Init", "Change", "RS" };
@@ -94,7 +94,7 @@ radv_iface_notify(struct radv_iface *ifa, int event)
 
   /* Update timer */
   btime t = ifa->last + ifa->cf->min_delay S - current_time();
-  tm2_start(ifa->timer, t);
+  tm_start(ifa->timer, t);
 }
 
 static void
@@ -150,7 +150,7 @@ radv_iface_new(struct radv_proto *p, struct iface *iface, struct radv_iface_conf
 
   add_tail(&p->iface_list, NODE ifa);
 
-  ifa->timer = tm2_new_init(pool, radv_timer, ifa, 0, 0);
+  ifa->timer = tm_new_init(pool, radv_timer, ifa, 0, 0);
 
   struct object_lock *lock = olock_new(pool);
   lock->addr = IPA_NONE;

@@ -140,8 +140,8 @@ struct bfd_session
   btime last_tx;			/* Time of last sent periodic control packet */
   btime last_rx;			/* Time of last received valid control packet */
 
-  timer2 *tx_timer;			/* Periodic control packet timer */
-  timer2 *hold_timer;			/* Timer for session down detection time */
+  timer *tx_timer;			/* Periodic control packet timer */
+  timer *hold_timer;			/* Timer for session down detection time */
 
   list request_list;			/* List of client requests (struct bfd_request) */
   btime last_state_change;		/* Time of last state change */

@@ -21,7 +21,6 @@
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "lib/alloca.h"
-#include "sysdep/unix/timer.h"
 #include "sysdep/unix/unix.h"
 #include "sysdep/unix/krt.h"
 #include "lib/socket.h"

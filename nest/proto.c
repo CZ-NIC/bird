@@ -1083,8 +1083,8 @@ graceful_restart_init(void)
   }
 
   graceful_restart_state = GRS_ACTIVE;
-  gr_wait_timer = tm2_new_init(proto_pool, graceful_restart_done, NULL, 0, 0);
-  tm2_start(gr_wait_timer, config->gr_wait S);
+  gr_wait_timer = tm_new_init(proto_pool, graceful_restart_done, NULL, 0, 0);
+  tm_start(gr_wait_timer, config->gr_wait S);
 }
 
 /**
@@ -1135,7 +1135,7 @@ graceful_restart_show_status(void)
 
   cli_msg(-24, "Graceful restart recovery in progress");
   cli_msg(-24, "  Waiting for %d channels to recover", graceful_restart_locks);
-  cli_msg(-24, "  Wait timer is %t/%u", tm2_remains(gr_wait_timer), config->gr_wait);
+  cli_msg(-24, "  Wait timer is %t/%u", tm_remains(gr_wait_timer), config->gr_wait);
 }
 
 /**
@@ -1181,7 +1181,7 @@ channel_graceful_restart_unlock(struct channel *c)
   graceful_restart_locks--;
 
   if ((graceful_restart_state == GRS_ACTIVE) && !graceful_restart_locks)
-    tm2_start(gr_wait_timer, 0);
+    tm_start(gr_wait_timer, 0);
 }
 
 
@@ -1288,7 +1288,7 @@ protos_build(void)
 #endif
 
   proto_pool = rp_new(&root_pool, "Protocols");
-  proto_shutdown_timer = tm2_new(proto_pool);
+  proto_shutdown_timer = tm_new(proto_pool);
   proto_shutdown_timer->hook = proto_shutdown_loop;
 }
 
@@ -1328,7 +1328,7 @@ proto_schedule_down(struct proto *p, byte restart, byte code)
 
   p->down_sched = restart ? PDS_RESTART : PDS_DISABLE;
   p->down_code = code;
-  tm2_start_max(proto_shutdown_timer, restart ? 250 MS : 0);
+  tm_start_max(proto_shutdown_timer, restart ? 250 MS : 0);
 }
 
 

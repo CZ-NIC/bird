@@ -56,9 +56,9 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "filter/filter.h"
-#include "sysdep/unix/timer.h"
 #include "conf/conf.h"
 #include "lib/string.h"
+#include "lib/timer.h"
 
 #include "unix.h"
 #include "krt.h"
@@ -115,7 +115,7 @@ kif_force_scan(void)
   if (kif_proto && ((kif_last_shot + 2 S) < current_time()))
     {
       kif_scan(kif_scan_timer);
-      tm2_start(kif_scan_timer, ((struct kif_config *) kif_proto->p.cf)->scan_time);
+      tm_start(kif_scan_timer, ((struct kif_config *) kif_proto->p.cf)->scan_time);
     }
 }
 
@@ -123,7 +123,7 @@ void
 kif_request_scan(void)
 {
   if (kif_proto && (kif_scan_timer->expires > (current_time() + 1 S)))
-    tm2_start(kif_scan_timer, 1 S);
+    tm_start(kif_scan_timer, 1 S);
 }
 
 static struct proto *
@@ -144,9 +144,9 @@ kif_start(struct proto *P)
   kif_sys_start(p);
 
   /* Start periodic interface scanning */
-  kif_scan_timer = tm2_new_init(P->pool, kif_scan, p, KIF_CF->scan_time, 0);
+  kif_scan_timer = tm_new_init(P->pool, kif_scan, p, KIF_CF->scan_time, 0);
   kif_scan(kif_scan_timer);
-  tm2_start(kif_scan_timer, KIF_CF->scan_time);
+  tm_start(kif_scan_timer, KIF_CF->scan_time);
 
   return PS_UP;
 }
@@ -156,7 +156,7 @@ kif_shutdown(struct proto *P)
 {
   struct kif_proto *p = (struct kif_proto *) P;
 
-  tm2_stop(kif_scan_timer);
+  tm_stop(kif_scan_timer);
   kif_sys_shutdown(p);
   kif_proto = NULL;
 
@@ -174,10 +174,10 @@ kif_reconfigure(struct proto *p, struct proto_config *new)
 
   if (o->scan_time != n->scan_time)
     {
-      tm2_stop(kif_scan_timer);
+      tm_stop(kif_scan_timer);
       kif_scan_timer->recurrent = n->scan_time;
       kif_scan(kif_scan_timer);
-      tm2_start(kif_scan_timer, n->scan_time);
+      tm_start(kif_scan_timer, n->scan_time);
     }
 
   if (!EMPTY_LIST(o->iface_list) || !EMPTY_LIST(n->iface_list))
@@ -840,11 +840,11 @@ static void
 krt_scan_timer_start(struct krt_proto *p)
 {
   if (!krt_scan_count)
-    krt_scan_timer = tm2_new_init(krt_pool, krt_scan, NULL, KRT_CF->scan_time, 0);
+    krt_scan_timer = tm_new_init(krt_pool, krt_scan, NULL, KRT_CF->scan_time, 0);
 
   krt_scan_count++;
 
-  tm2_start(krt_scan_timer, 1 S);
+  tm_start(krt_scan_timer, 1 S);
 }
 
 static void
@@ -862,7 +862,7 @@ krt_scan_timer_stop(struct krt_proto *p UNUSED)
 static void
 krt_scan_timer_kick(struct krt_proto *p UNUSED)
 {
-  tm2_start(krt_scan_timer, 0);
+  tm_start(krt_scan_timer, 0);
 }
 
 #else
@@ -882,20 +882,20 @@ krt_scan(timer *t)
 static void
 krt_scan_timer_start(struct krt_proto *p)
 {
-  p->scan_timer = tm2_new_init(p->p.pool, krt_scan, p, KRT_CF->scan_time, 0);
-  tm2_start(p->scan_timer, 1 S);
+  p->scan_timer = tm_new_init(p->p.pool, krt_scan, p, KRT_CF->scan_time, 0);
+  tm_start(p->scan_timer, 1 S);
 }
 
 static void
 krt_scan_timer_stop(struct krt_proto *p)
 {
-  tm2_stop(p->scan_timer);
+  tm_stop(p->scan_timer);
 }
 
 static void
 krt_scan_timer_kick(struct krt_proto *p)
 {
-  tm2_start(p->scan_timer, 0);
+  tm_start(p->scan_timer, 0);
 }
 
 #endif

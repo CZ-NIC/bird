@@ -93,17 +93,17 @@ current_real_time(void)
 
 
 static void
-tm2_free(resource *r)
+tm_free(resource *r)
 {
-  timer2 *t = (timer2 *) r;
+  timer *t = (void *) r;
 
-  tm2_stop(t);
+  tm_stop(t);
 }
 
 static void
-tm2_dump(resource *r)
+tm_dump(resource *r)
 {
-  timer2 *t = (timer2 *) r;
+  timer *t = (void *) r;
 
   debug("(code %p, data %p, ", t->hook, t->data);
   if (t->randomize)
@@ -117,25 +117,25 @@ tm2_dump(resource *r)
 }
 
 
-static struct resclass tm2_class = {
+static struct resclass tm_class = {
   "Timer",
-  sizeof(timer2),
-  tm2_free,
-  tm2_dump,
+  sizeof(timer),
+  tm_free,
+  tm_dump,
   NULL,
   NULL
 };
 
-timer2 *
-tm2_new(pool *p)
+timer *
+tm_new(pool *p)
 {
-  timer2 *t = ralloc(p, &tm2_class);
+  timer *t = ralloc(p, &tm_class);
   t->index = -1;
   return t;
 }
 
 void
-tm2_set(timer2 *t, btime when)
+tm_set(timer *t, btime when)
 {
   struct timeloop *loop = timeloop_current();
   uint tc = timers_count(loop);
@@ -145,17 +145,17 @@ tm2_set(timer2 *t, btime when)
     t->index = ++tc;
     t->expires = when;
     BUFFER_PUSH(loop->timers) = t;
-    HEAP_INSERT(loop->timers.data, tc, timer2 *, TIMER_LESS, TIMER_SWAP);
+    HEAP_INSERT(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP);
   }
   else if (t->expires < when)
   {
     t->expires = when;
-    HEAP_INCREASE(loop->timers.data, tc, timer2 *, TIMER_LESS, TIMER_SWAP, t->index);
+    HEAP_INCREASE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
   }
   else if (t->expires > when)
   {
     t->expires = when;
-    HEAP_DECREASE(loop->timers.data, tc, timer2 *, TIMER_LESS, TIMER_SWAP, t->index);
+    HEAP_DECREASE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
   }
 
 #ifdef CONFIG_BFD
@@ -166,13 +166,13 @@ tm2_set(timer2 *t, btime when)
 }
 
 void
-tm2_start(timer2 *t, btime after)
+tm_start(timer *t, btime after)
 {
-  tm2_set(t, current_time() + MAX(after, 0));
+  tm_set(t, current_time() + MAX(after, 0));
 }
 
 void
-tm2_stop(timer2 *t)
+tm_stop(timer *t)
 {
   if (!t->expires)
     return;
@@ -180,7 +180,7 @@ tm2_stop(timer2 *t)
   struct timeloop *loop = timeloop_current();
   uint tc = timers_count(loop);
 
-  HEAP_DELETE(loop->timers.data, tc, timer2 *, TIMER_LESS, TIMER_SWAP, t->index);
+  HEAP_DELETE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
   BUFFER_POP(loop->timers);
 
   t->index = -1;
@@ -202,7 +202,7 @@ void
 timers_fire(struct timeloop *loop)
 {
   btime base_time;
-  timer2 *t;
+  timer *t;
 
   times_update(loop);
   base_time = loop->last_time;
@@ -222,10 +222,10 @@ timers_fire(struct timeloop *loop)
       if (t->randomize)
 	when += random() % (t->randomize + 1);
 
-      tm2_set(t, when);
+      tm_set(t, when);
     }
     else
-      tm2_stop(t);
+      tm_stop(t);
 
     /* This is ugly hack, we want to log just timers executed from the main I/O loop */
     if (loop == &main_timeloop)

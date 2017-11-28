@@ -13,7 +13,7 @@
 #include "lib/ip.h"
 #include "lib/hash.h"
 #include "lib/resource.h"
-#include "sysdep/unix/timer.h"
+#include "lib/timer.h"
 
 
 /* Configuration structure */

@@ -23,7 +23,7 @@
 #include "lib/lists.h"
 #include "lib/socket.h"
 #include "lib/string.h"
-#include "sysdep/unix/timer.h"
+#include "lib/timer.h"
 
 #define EA_BABEL_METRIC		EA_CODE(EAP_BABEL, 0)
 #define EA_BABEL_ROUTER_ID	EA_CODE(EAP_BABEL, 1)

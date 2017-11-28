@@ -34,7 +34,6 @@
 #include "nest/bird.h"
 #include "lib/lists.h"
 #include "lib/resource.h"
-#include "sysdep/unix/timer.h"
 #include "lib/socket.h"
 #include "lib/event.h"
 #include "lib/timer.h"
@@ -2143,7 +2142,7 @@ io_loop(void)
 {
   int poll_tout, timeout;
   int nfds, events, pout;
-  timer2 *t;
+  timer *t;
   sock *s;
   node *n;
   int fdmax = 256;
@@ -2162,7 +2161,7 @@ io_loop(void)
       if (t = timers_first(&main_timeloop))
       {
 	times_update(&main_timeloop);
-	timeout = (tm2_remains(t) TO_MS) + 1;
+	timeout = (tm_remains(t) TO_MS) + 1;
 	poll_tout = MIN(poll_tout, timeout);
       }
 
