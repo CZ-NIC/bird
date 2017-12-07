@@ -15,6 +15,7 @@ struct krt_proto;
 struct kif_config;
 struct kif_proto;
 
+#include "nest/iface.h"
 #include "sysdep/config.h"
 #include CONFIG_INCLUDE_KRTSYS_H
 
