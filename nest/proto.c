@@ -13,6 +13,7 @@
 #include "lib/resource.h"
 #include "lib/lists.h"
 #include "lib/event.h"
+#include "lib/timer.h"
 #include "lib/string.h"
 #include "conf/conf.h"
 #include "nest/route.h"
@@ -673,6 +674,7 @@ proto_init(struct proto_config *c, node *n)
 
   p->proto_state = PS_DOWN;
   p->last_state_change = current_time();
+  p->vrf = c->vrf;
   insert_node(&p->n, n);
 
   p->event = ev_new(proto_pool);
@@ -819,7 +821,8 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
   /* If there is a too big change in core attributes, ... */
   if ((nc->protocol != oc->protocol) ||
       (nc->net_type != oc->net_type) ||
-      (nc->disabled != p->disabled))
+      (nc->disabled != p->disabled) ||
+      (nc->vrf != oc->vrf))
     return 0;
 
   p->name = nc->name;
@@ -1645,6 +1648,8 @@ proto_cmd_show(struct proto *p, uint verbose, int cnt)
       cli_msg(-1006, "  Description:    %s", p->cf->dsc);
     if (p->cf->router_id)
       cli_msg(-1006, "  Router ID:      %R", p->cf->router_id);
+    if (p->vrf)
+      cli_msg(-1006, "  VRF:            %s", p->vrf->name);
 
     if (p->proto->show_proto_info)
       p->proto->show_proto_info(p);

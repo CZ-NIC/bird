@@ -600,6 +600,15 @@ agreement").
 
 	<tag><label id="proto-table">table <m/name/</tag>
 	Connect this protocol to a non-default routing table.
+
+	<tag><label id="proto-vrf">vrf "<m/text/"</tag>
+	Associate the protocol with specific VRF. The protocol will be
+	restricted to interfaces assigned to the VRF and will use sockets bound
+	to the VRF. Appropriate VRF interface must exist on OS level. For kernel
+	protocol, an appropriate table still must be explicitly selected by
+	<cf/table/ option. Note that the VRF support in BIRD and Linux kernel
+	(4.11) is still in development and is currently problematic outside of
+	multihop BGP.
 </descrip>
 
 <p>There are several options that give sense only with certain protocols:
@@ -1331,6 +1340,8 @@ foot).
 
 	<cf><m/P/.len</cf> returns the length of path <m/P/.
 
+	<cf><m/P/.empty</cf> resets path <m/P/ to empty path.
+
 	<cf>prepend(<m/P/,<m/A/)</cf> prepends ASN <m/A/ to path <m/P/ and
 	returns the result.
 
@@ -1368,6 +1379,8 @@ foot).
 	There are three special operators on clists:
 
 	<cf><m/C/.len</cf> returns the length of clist <m/C/.
+
+	<cf><m/C/.empty</cf> resets clist <m/C/ to empty clist.
 
 	<cf>add(<m/C/,<m/P/)</cf> adds pair (or quad) <m/P/ to clist <m/C/ and
 	returns the result. If item <m/P/ is already in clist <m/C/, it does

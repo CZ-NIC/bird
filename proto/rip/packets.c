@@ -747,6 +747,7 @@ rip_open_socket(struct rip_iface *ifa)
   sk->dport = ifa->cf->port;
   sk->iface = ifa->iface;
   sk->saddr = rip_is_v2(p) ? ifa->iface->addr4->ip : ifa->iface->llv6->ip;
+  sk->vrf = p->p.vrf;
 
   sk->rx_hook = rip_rx_hook;
   sk->tx_hook = rip_tx_hook;

@@ -324,6 +324,7 @@ struct nl_want_attrs {
 static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
   [IFLA_IFNAME]	  = { 1, 0, 0 },
   [IFLA_MTU]	  = { 1, 1, sizeof(u32) },
+  [IFLA_MASTER]	  = { 1, 1, sizeof(u32) },
   [IFLA_WIRELESS] = { 1, 0, 0 },
 };
 
@@ -790,7 +791,7 @@ nl_parse_link(struct nlmsghdr *h, int scan)
   struct iface f = {};
   struct iface *ifi;
   char *name;
-  u32 mtu;
+  u32 mtu, master = 0;
   uint fl;
 
   if (!(i = nl_checkin(h, sizeof(*i))) || !nl_parse_attrs(IFLA_RTA(i), ifla_attr_want, a, sizeof(a)))
@@ -813,6 +814,9 @@ nl_parse_link(struct nlmsghdr *h, int scan)
   name = RTA_DATA(a[IFLA_IFNAME]);
   mtu = rta_get_u32(a[IFLA_MTU]);
 
+  if (a[IFLA_MASTER])
+    master = rta_get_u32(a[IFLA_MASTER]);
+
   ifi = if_find_by_index(i->ifi_index);
   if (!new)
     {
@@ -831,6 +835,9 @@ nl_parse_link(struct nlmsghdr *h, int scan)
       strncpy(f.name, name, sizeof(f.name)-1);
       f.index = i->ifi_index;
       f.mtu = mtu;
+
+      f.master_index = master;
+      f.master = if_find_by_index(master);
 
       fl = i->ifi_flags;
       if (fl & IFF_UP)
@@ -1090,6 +1097,26 @@ kif_do_scan(struct kif_proto *p UNUSED)
       nl_parse_link(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
+
+  /* Re-resolve master interface for slaves */
+  struct iface *i;
+  WALK_LIST(i, iface_list)
+    if (i->master_index)
+    {
+      struct iface f = {
+	.flags = i->flags,
+	.mtu = i->mtu,
+	.index = i->index,
+	.master_index = i->master_index,
+	.master = if_find_by_index(i->master_index)
+      };
+
+      if (f.master != i->master)
+      {
+	memcpy(f.name, i->name, sizeof(f.name));
+	if_update(&f);
+      }
+    }
 
   nl_request_dump(AF_INET, RTM_GETADDR);
   while (h = nl_get_scan())

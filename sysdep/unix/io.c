@@ -931,6 +931,18 @@ sk_setup(sock *s)
   }
 #endif
 
+  if (s->vrf && !s->iface)
+  {
+    /* Bind socket to associated VRF interface.
+       This is Linux-specific, but so is SO_BINDTODEVICE. */
+#ifdef SO_BINDTODEVICE
+    struct ifreq ifr = {};
+    strcpy(ifr.ifr_name, s->vrf->name);
+    if (setsockopt(s->fd, SOL_SOCKET, SO_BINDTODEVICE, &ifr, sizeof(ifr)) < 0)
+      ERR("SO_BINDTODEVICE");
+#endif
+  }
+
   if (s->iface)
   {
 #ifdef SO_BINDTODEVICE

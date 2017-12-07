@@ -100,6 +100,7 @@ struct proto_config {
   u32 router_id;			/* Protocol specific router ID */
 
   list channels;			/* List of channel configs (struct channel_config) */
+  struct iface *vrf;			/* Related VRF instance, NULL if global */
 
   /* Check proto_reconfigure() and proto_copy_config() after changing struct proto_config */
 
@@ -142,6 +143,7 @@ struct proto {
   list channels;			/* List of channels to rtables (struct channel) */
   struct channel *main_channel;		/* Primary channel */
   struct rte_src *main_source;		/* Primary route source */
+  struct iface *vrf;			/* Related VRF instance, NULL if global */
 
   char *name;				/* Name of this instance (== cf->name) */
   u32 debug;				/* Debugging flags */
