@@ -3660,6 +3660,12 @@ dsc-iface
 	as a default router. For <cf/sensitive/ option, see <ref id="radv-trigger" name="trigger">.
 	Default: 3 * <cf/max ra	interval/, <cf/sensitive/ yes.
 
+	<tag><label id="radv-iface-linger-time">linger time <m/expr/</tag>
+	When a prefix disappears, it is advertised for some time with 0
+	lifetime, to inform clients the prefix is no longer usable. This option
+	sets the time for how long it is advertised (in seconds). Maximum is
+	3600, 0 means disabled. Default: 300.
+
 	<tag><label id="radv-iface-default-preference-low">default preference low|medium|high</tag>
 	This option specifies the Default Router Preference value to advertise
 	to hosts. Default: medium.

@@ -35,6 +35,7 @@
 #define DEFAULT_MAX_RA_INT 600
 #define DEFAULT_MIN_DELAY 3
 #define DEFAULT_CURRENT_HOP_LIMIT 64
+#define DEFAULT_LINGER_TIME 300
 
 #define DEFAULT_VALID_LIFETIME 86400
 #define DEFAULT_PREFERRED_LIFETIME 14400
@@ -64,6 +65,9 @@ struct radv_iface_config
   u32 max_ra_int;
   u32 min_delay;
 
+  u32 linger_time;		/* How long a dead prefix should still be advertised with 0
+				   lifetime */
+
   u8 rdnss_local;		/* Global list is not used for RDNSS */
   u8 dnssl_local;		/* Global list is not used for DNSSL */
 
@@ -75,7 +79,7 @@ struct radv_iface_config
   u32 current_hop_limit;
   u32 default_lifetime;
   u8 default_lifetime_sensitive; /* Whether default_lifetime depends on trigger */
-  u8 default_preference;	/* Default Router Preference (RFC 4191) */
+  u8 default_preference;	 /* Default Router Preference (RFC 4191) */
 };
 
 struct radv_prefix_config
@@ -118,6 +122,19 @@ struct radv_proto
   u8 active;			/* Whether radv is active w.r.t. triggers */
 };
 
+struct radv_prefix		/* One prefix we advertise */
+{
+  node n;
+  net_addr_ip6 prefix;
+
+  u8 alive;			/* Is the prefix alive? If not, we advertise it
+				   with 0 lifetime, so clients stop using it */
+  u8 mark;			/* A temporary mark for processing */
+  btime expires;		/* The time when we drop this prefix from
+				   advertising. It is valid only if !alive. */
+  struct radv_prefix_config *cf; /* The config tied to this prefix */
+};
+
 struct radv_iface
 {
   node n;
@@ -125,6 +142,9 @@ struct radv_iface
   struct radv_iface_config *cf;	/* Related config, must be updated in reconfigure */
   struct iface *iface;
   struct ifa *addr;		/* Link-local address of iface */
+  struct pool *pool;		/* A pool for interface-specific things */
+  list prefixes;		/* The prefixes we advertise (struct radv_prefix) */
+  btime prefix_expires;		/* When the soonest prefix expires (0 = none dead) */
 
   timer *timer;
   struct object_lock *lock;
@@ -132,12 +152,13 @@ struct radv_iface
 
   btime last;			/* Time of last sending of RA */
   u16 plen;			/* Length of prepared RA in tbuf, or 0 if not valid */
-  byte initial;			/* List of active ifaces */
+  byte initial;			/* How many RAs are still to be sent as initial */
 };
 
 #define RA_EV_INIT 1		/* Switch to initial mode */
 #define RA_EV_CHANGE 2		/* Change of options or prefixes */
 #define RA_EV_RS 3		/* Received RS */
+#define RA_EV_GC 4		/* Internal garbage collection of prefixes */
 
 /* Default Router Preferences (RFC 4191) */
 #define RA_PREF_LOW	0x18

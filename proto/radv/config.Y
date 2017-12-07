@@ -27,7 +27,7 @@ static u8 radv_mult_val;	/* Used by radv_mult for second return value */
 CF_DECLS
 
 CF_KEYWORDS(RADV, PREFIX, INTERFACE, MIN, MAX, RA, DELAY, INTERVAL,
-	MANAGED, OTHER, CONFIG, LINK, MTU, REACHABLE, TIME, RETRANS,
+	MANAGED, OTHER, CONFIG, LINGER, LINK, MTU, REACHABLE, TIME, RETRANS,
 	TIMER, CURRENT, HOP, LIMIT, DEFAULT, VALID, PREFERRED, MULT,
 	LIFETIME, SKIP, ONLINK, AUTONOMOUS, RDNSS, DNSSL, NS, DOMAIN,
 	LOCAL, TRIGGER, SENSITIVE, PREFERENCE, LOW, MEDIUM, HIGH)
@@ -80,6 +80,7 @@ radv_iface_start:
   RADV_IFACE->max_ra_int = DEFAULT_MAX_RA_INT;
   RADV_IFACE->min_delay = DEFAULT_MIN_DELAY;
   RADV_IFACE->current_hop_limit = DEFAULT_CURRENT_HOP_LIMIT;
+  RADV_IFACE->linger_time = DEFAULT_LINGER_TIME;
   RADV_IFACE->default_lifetime = -1;
   RADV_IFACE->default_lifetime_sensitive = 1;
   RADV_IFACE->default_preference = RA_PREF_MEDIUM;
@@ -94,6 +95,7 @@ radv_iface_item:
  | LINK MTU expr { RADV_IFACE->link_mtu = $3; }
  | REACHABLE TIME expr { RADV_IFACE->reachable_time = $3; if ($3 > 3600000) cf_error("Reachable time must be in range 0-3600000"); }
  | RETRANS TIMER expr { RADV_IFACE->retrans_timer = $3; }
+ | LINGER TIME expr { RADV_IFACE->linger_time = $3; if ($3 > 3600) cf_error("Linger time must be in range 0-3600"); }
  | CURRENT HOP LIMIT expr { RADV_IFACE->current_hop_limit = $4; if ($4 > 255) cf_error("Current hop limit must be in range 0-255"); }
  | DEFAULT LIFETIME expr radv_sensitive {
      RADV_IFACE->default_lifetime = $3;

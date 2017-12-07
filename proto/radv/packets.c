@@ -70,36 +70,6 @@ struct radv_opt_dnssl
   char domain[];
 };
 
-
-static struct radv_prefix_config default_prefix = {
-  .onlink = 1,
-  .autonomous = 1,
-  .valid_lifetime = DEFAULT_VALID_LIFETIME,
-  .preferred_lifetime = DEFAULT_PREFERRED_LIFETIME
-};
-
-
-static struct radv_prefix_config *
-radv_prefix_match(struct radv_iface *ifa, struct ifa *a)
-{
-  struct radv_proto *p = ifa->ra;
-  struct radv_config *cf = (struct radv_config *) (p->p.cf);
-  struct radv_prefix_config *pc;
-
-  if (a->scope <= SCOPE_LINK)
-    return NULL;
-
-  WALK_LIST(pc, ifa->cf->pref_list)
-    if (net_in_netX(&a->prefix, (net_addr *) &pc->prefix))
-      return pc;
-
-  WALK_LIST(pc, cf->pref_list)
-    if (net_in_netX(&a->prefix, (net_addr *) &pc->prefix))
-      return pc;
-
-  return &default_prefix;
-}
-
 static int
 radv_prepare_rdnss(struct radv_iface *ifa, list *rdnss_list, char **buf, char *bufend)
 {
@@ -234,6 +204,36 @@ radv_prepare_dnssl(struct radv_iface *ifa, list *dnssl_list, char **buf, char *b
   return -1;
 }
 
+static int
+radv_prepare_prefix(struct radv_iface *ifa, struct radv_prefix *px,
+		    char **buf, char *bufend)
+{
+  struct radv_prefix_config *pc = px->cf;
+
+  if (*buf + sizeof(struct radv_opt_prefix) > bufend)
+  {
+    log(L_WARN "%s: Too many prefixes on interface %s",
+	ifa->ra->p.name, ifa->iface->name);
+    return -1;
+  }
+
+  struct radv_opt_prefix *op = (void *) *buf;
+  op->type = OPT_PREFIX;
+  op->length = 4;
+  op->pxlen = px->prefix.pxlen;
+  op->flags = (pc->onlink ? OPT_PX_ONLINK : 0) |
+    (pc->autonomous ? OPT_PX_AUTONOMOUS : 0);
+  op->valid_lifetime = (ifa->ra->active || !pc->valid_lifetime_sensitive) ?
+    htonl(pc->valid_lifetime) : 0;
+  op->preferred_lifetime = (ifa->ra->active || !pc->preferred_lifetime_sensitive) ?
+    htonl(pc->preferred_lifetime) : 0;
+  op->reserved = 0;
+  op->prefix = ip6_hton(px->prefix.prefix);
+  *buf += sizeof(*op);
+
+  return 0;
+}
+
 static void
 radv_prepare_ra(struct radv_iface *ifa)
 {
@@ -269,37 +269,11 @@ radv_prepare_ra(struct radv_iface *ifa)
     buf += sizeof (*om);
   }
 
-  struct ifa *addr;
-  WALK_LIST(addr, ifa->iface->addrs)
+  struct radv_prefix *prefix;
+  WALK_LIST(prefix, ifa->prefixes)
   {
-    if (addr->prefix.type != NET_IP6)
-      continue;
-
-    struct radv_prefix_config *pc;
-    pc = radv_prefix_match(ifa, addr);
-
-    if (!pc || pc->skip)
-      continue;
-
-    if (buf + sizeof(struct radv_opt_prefix) > bufend)
-    {
-      log(L_WARN "%s: Too many prefixes on interface %s", p->p.name, ifa->iface->name);
+    if (radv_prepare_prefix(ifa, prefix, &buf, bufend) < 0)
       goto done;
-    }
-
-    struct radv_opt_prefix *op = (void *) buf;
-    op->type = OPT_PREFIX;
-    op->length = 4;
-    op->pxlen = net6_pxlen(&addr->prefix);
-    op->flags = (pc->onlink ? OPT_PX_ONLINK : 0) |
-      (pc->autonomous ? OPT_PX_AUTONOMOUS : 0);
-    op->valid_lifetime = (p->active || !pc->valid_lifetime_sensitive) ?
-      htonl(pc->valid_lifetime) : 0;
-    op->preferred_lifetime = (p->active || !pc->preferred_lifetime_sensitive) ?
-      htonl(pc->preferred_lifetime) : 0;
-    op->reserved = 0;
-    op->prefix = ip6_hton(net6_prefix(&addr->prefix));
-    buf += sizeof(*op);
   }
 
   if (! ic->rdnss_local)
@@ -408,7 +382,7 @@ radv_err_hook(sock *sk, int err)
 int
 radv_sk_open(struct radv_iface *ifa)
 {
-  sock *sk = sk_new(ifa->ra->p.pool);
+  sock *sk = sk_new(ifa->pool);
   sk->type = SK_IP;
   sk->subtype = SK_IPV6;
   sk->dport = ICMPV6_PROTO;

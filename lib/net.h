@@ -526,6 +526,18 @@ int net_classify(const net_addr *N);
 int net_format(const net_addr *N, char *buf, int buflen);
 int rd_format(const u64 rd, char *buf, int buflen);
 
+static inline int ipa_in_net_ip4(ip4_addr a, const net_addr_ip4 *n)
+{ return ip4_zero(ip4_and(ip4_xor(a, n->prefix), ip4_mkmask(n->pxlen))); }
+
+static inline int net_in_net_ip4(const net_addr_ip4 *a, const net_addr_ip4 *b)
+{ return (a->pxlen >= b->pxlen) && ipa_in_net_ip4(a->prefix, b); }
+
+static inline int ipa_in_net_ip6(ip6_addr a, const net_addr_ip6 *n)
+{ return ip6_zero(ip6_and(ip6_xor(a, n->prefix), ip6_mkmask(n->pxlen))); }
+
+static inline int net_in_net_ip6(const net_addr_ip6 *a, const net_addr_ip6 *b)
+{ return (a->pxlen >= b->pxlen) && ipa_in_net_ip6(a->prefix, b); }
+
 int ipa_in_netX(const ip_addr A, const net_addr *N);
 int net_in_netX(const net_addr *A, const net_addr *N);
 

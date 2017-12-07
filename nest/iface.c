@@ -145,9 +145,9 @@ ifa_send_notify(struct proto *p, unsigned c, struct ifa *a)
   if (p->ifa_notify && (p->proto_state != PS_DOWN))
     {
       if (p->debug & D_IFACES)
-	log(L_TRACE "%s < %s address %N on interface %s %s",
-	    p->name, (a->flags & IA_PRIMARY) ? "primary" : "secondary",
-	    &a->prefix, a->iface->name, (c & IF_CHANGE_UP) ? "added" : "removed");
+	log(L_TRACE "%s < address %N on interface %s %s",
+	    p->name, &a->prefix, a->iface->name,
+	    (c & IF_CHANGE_UP) ? "added" : "removed");
       p->ifa_notify(p, c, a);
     }
 }
