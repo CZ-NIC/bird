@@ -1144,7 +1144,7 @@ kif_update_sysdep_addr(struct iface *i)
     return 0;
 
   ip4_addr old = i->sysdep;
-  i->sysdep = ip4_from_ipa(ipa_from_sa4(&ifr.ifr_addr);
+  i->sysdep = ipa_to_ip4(ipa_from_sa4(&ifr.ifr_addr));
 
-  return !ip4_equal(i->sysdep, addr);
+  return !ip4_equal(i->sysdep, old);
 }
