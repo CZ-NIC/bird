@@ -42,7 +42,7 @@ struct babel_tlv_ack {
 struct babel_tlv_hello {
   u8 type;
   u8 length;
-  u16 reserved;
+  u16 flags;
   u16 seqno;
   u16 interval;
 } PACKED;
@@ -106,8 +106,12 @@ struct babel_tlv_seqno_request {
 } PACKED;
 
 
-#define BABEL_FLAG_DEF_PREFIX	0x80
-#define BABEL_FLAG_ROUTER_ID	0x40
+/* Hello flags */
+#define BABEL_HF_UNICAST	0x8000
+
+/* Update flags */
+#define BABEL_UF_DEF_PREFIX	0x80
+#define BABEL_UF_ROUTER_ID	0x40
 
 
 struct babel_parse_state {
@@ -342,6 +346,11 @@ babel_read_hello(struct babel_tlv *hdr, union babel_msg *m,
 {
   struct babel_tlv_hello *tlv = (void *) hdr;
   struct babel_msg_hello *msg = &m->hello;
+
+  /* We currently don't support unicast Hello */
+  u16 flags = get_u16(&tlv->flags);
+  if (flags & BABEL_HF_UNICAST)
+    return PARSE_IGNORE;
 
   msg->type = BABEL_TLV_HELLO;
   msg->seqno = get_u16(&tlv->seqno);
@@ -606,7 +615,7 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     ip4_addr prefix4 = get_ip4(buf);
     net_fill_ip4(&msg->net, prefix4, tlv->plen);
 
-    if (tlv->flags & BABEL_FLAG_DEF_PREFIX)
+    if (tlv->flags & BABEL_UF_DEF_PREFIX)
     {
       put_ip4(state->def_ip4_prefix, prefix4);
       state->def_ip4_prefix_seen = 1;
@@ -631,13 +640,13 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     ip6_addr prefix6 = get_ip6(buf);
     net_fill_ip6(&msg->net, prefix6, tlv->plen);
 
-    if (tlv->flags & BABEL_FLAG_DEF_PREFIX)
+    if (tlv->flags & BABEL_UF_DEF_PREFIX)
     {
       put_ip6(state->def_ip6_prefix, prefix6);
       state->def_ip6_prefix_seen = 1;
     }
 
-    if (tlv->flags & BABEL_FLAG_ROUTER_ID)
+    if (tlv->flags & BABEL_UF_ROUTER_ID)
     {
       state->router_id = ((u64) _I2(prefix6)) << 32 | _I3(prefix6);
       state->router_id_seen = 1;
@@ -750,7 +759,7 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
     else
     {
       put_ip6_px(tlv->addr, &msg->net);
-      tlv->flags |= BABEL_FLAG_DEF_PREFIX;
+      tlv->flags |= BABEL_UF_DEF_PREFIX;
 
       put_ip6(state->def_ip6_prefix, net6_prefix(&msg->net));
       state->def_ip6_pxlen = tlv->plen;

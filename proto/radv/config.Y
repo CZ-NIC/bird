@@ -30,7 +30,10 @@ CF_KEYWORDS(RADV, PREFIX, INTERFACE, MIN, MAX, RA, DELAY, INTERVAL,
 	MANAGED, OTHER, CONFIG, LINGER, LINK, MTU, REACHABLE, TIME, RETRANS,
 	TIMER, CURRENT, HOP, LIMIT, DEFAULT, VALID, PREFERRED, MULT,
 	LIFETIME, SKIP, ONLINK, AUTONOMOUS, RDNSS, DNSSL, NS, DOMAIN,
-	LOCAL, TRIGGER, SENSITIVE, PREFERENCE, LOW, MEDIUM, HIGH)
+	LOCAL, TRIGGER, SENSITIVE, PREFERENCE, LOW, MEDIUM, HIGH, PROPAGATE,
+	ROUTE, ROUTES, RA_PREFERENCE, RA_LIFETIME)
+
+CF_ENUM(T_ENUM_RA_PREFERENCE, RA_PREF_, LOW, MEDIUM, HIGH)
 
 %type<i> radv_mult radv_sensitive radv_preference
 
@@ -56,6 +59,7 @@ radv_proto_item:
  | RDNSS { init_list(&radv_dns_list); } radv_rdnss { add_tail_list(&RADV_CFG->rdnss_list, &radv_dns_list); }
  | DNSSL { init_list(&radv_dns_list); } radv_dnssl { add_tail_list(&RADV_CFG->dnssl_list, &radv_dns_list); }
  | TRIGGER net_ip6 { RADV_CFG->trigger = $2; }
+ | PROPAGATE ROUTES bool { RADV_CFG->propagate_routes = $3; }
  ;
 
 radv_proto_opts:
@@ -76,14 +80,18 @@ radv_iface_start:
   init_list(&RADV_IFACE->rdnss_list);
   init_list(&RADV_IFACE->dnssl_list);
 
-  RADV_IFACE->min_ra_int = -1; /* undefined */
+  RADV_IFACE->min_ra_int = (u32) -1; /* undefined */
   RADV_IFACE->max_ra_int = DEFAULT_MAX_RA_INT;
   RADV_IFACE->min_delay = DEFAULT_MIN_DELAY;
+  RADV_IFACE->prefix_linger_time = (u32) -1;
+  RADV_IFACE->route_linger_time = (u32) -1;
   RADV_IFACE->current_hop_limit = DEFAULT_CURRENT_HOP_LIMIT;
-  RADV_IFACE->linger_time = DEFAULT_LINGER_TIME;
-  RADV_IFACE->default_lifetime = -1;
+  RADV_IFACE->default_lifetime = (u32) -1;
   RADV_IFACE->default_lifetime_sensitive = 1;
   RADV_IFACE->default_preference = RA_PREF_MEDIUM;
+  RADV_IFACE->route_lifetime = (u32) -1;
+  RADV_IFACE->route_lifetime_sensitive = 0;
+  RADV_IFACE->route_preference = RA_PREF_MEDIUM;
 };
 
 radv_iface_item:
@@ -95,14 +103,20 @@ radv_iface_item:
  | LINK MTU expr { RADV_IFACE->link_mtu = $3; }
  | REACHABLE TIME expr { RADV_IFACE->reachable_time = $3; if ($3 > 3600000) cf_error("Reachable time must be in range 0-3600000"); }
  | RETRANS TIMER expr { RADV_IFACE->retrans_timer = $3; }
- | LINGER TIME expr { RADV_IFACE->linger_time = $3; if ($3 > 3600) cf_error("Linger time must be in range 0-3600"); }
  | CURRENT HOP LIMIT expr { RADV_IFACE->current_hop_limit = $4; if ($4 > 255) cf_error("Current hop limit must be in range 0-255"); }
  | DEFAULT LIFETIME expr radv_sensitive {
      RADV_IFACE->default_lifetime = $3;
      if ($3 > 9000)  cf_error("Default lifetime must be in range 0-9000");
      if ($4 != (uint) -1) RADV_IFACE->default_lifetime_sensitive = $4;
    }
+ | ROUTE LIFETIME expr radv_sensitive {
+     RADV_IFACE->route_lifetime = $3;
+     if ($4 != (uint) -1) RADV_IFACE->route_lifetime_sensitive = $4;
+   }
  | DEFAULT PREFERENCE radv_preference { RADV_IFACE->default_preference = $3; }
+ | ROUTE PREFERENCE radv_preference { RADV_IFACE->route_preference = $3; }
+ | PREFIX LINGER TIME expr { RADV_IFACE->prefix_linger_time = $4; }
+ | ROUTE LINGER TIME expr { RADV_IFACE->route_linger_time = $4; }
  | PREFIX radv_prefix { add_tail(&RADV_IFACE->pref_list, NODE this_radv_prefix); }
  | RDNSS { init_list(&radv_dns_list); } radv_rdnss { add_tail_list(&RADV_IFACE->rdnss_list, &radv_dns_list); }
  | DNSSL { init_list(&radv_dns_list); } radv_dnssl { add_tail_list(&RADV_IFACE->dnssl_list, &radv_dns_list); }
@@ -125,12 +139,32 @@ radv_iface_finish:
   if (ic->default_lifetime == (u32) -1)
     ic->default_lifetime = 3 * ic->max_ra_int;
 
+  if (ic->route_lifetime == (u32) -1)
+    ic->route_lifetime = 3 * ic->max_ra_int;
+
+  if (ic->prefix_linger_time == (u32) -1)
+    ic->prefix_linger_time = 3 * ic->max_ra_int;
+
+  if (ic->route_linger_time == (u32) -1)
+    ic->route_linger_time = 3 * ic->max_ra_int;
+
   if ((ic->min_ra_int > 3) &&
       (ic->min_ra_int > (ic->max_ra_int * 3 / 4)))
     cf_error("Min RA interval must be at most 3/4 * Max RA interval");
 
   if ((ic->default_lifetime > 0) && (ic->default_lifetime < ic->max_ra_int))
     cf_error("Default lifetime must be either 0 or at least Max RA interval");
+
+  if ((ic->route_lifetime > 0) && (ic->route_lifetime < ic->max_ra_int))
+    cf_error("Route lifetime must be either 0 or at least Max RA interval");
+
+  if ((ic->prefix_linger_time > 0) && (ic->prefix_linger_time < ic->max_ra_int))
+    cf_error("Prefix linger time must be either 0 or at least Max RA interval");
+
+  if ((ic->route_linger_time > 0) && (ic->route_linger_time < ic->max_ra_int))
+    cf_error("Route linger time must be either 0 or at least Max RA interval");
+
+  RADV_CFG->max_linger_time = MAX_(RADV_CFG->max_linger_time, ic->route_linger_time);
 };
 
 
@@ -294,9 +328,12 @@ radv_mult:
  ;
 
 radv_sensitive:
-   /* empty */ { $$ = -1; }
+   /* empty */ { $$ = (uint) -1; }
  | SENSITIVE bool { $$ = $2; }
  ;
+
+CF_ADDTO(dynamic_attr, RA_PREFERENCE { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_RA_PREFERENCE, EA_RA_PREFERENCE); })
+CF_ADDTO(dynamic_attr, RA_LIFETIME { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_RA_LIFETIME); })
 
 CF_CODE
 

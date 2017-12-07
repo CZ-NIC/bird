@@ -35,7 +35,6 @@
 #define DEFAULT_MAX_RA_INT 600
 #define DEFAULT_MIN_DELAY 3
 #define DEFAULT_CURRENT_HOP_LIMIT 64
-#define DEFAULT_LINGER_TIME 300
 
 #define DEFAULT_VALID_LIFETIME 86400
 #define DEFAULT_PREFERRED_LIFETIME 14400
@@ -52,6 +51,8 @@ struct radv_config
   list dnssl_list;		/* Global list of DNSSL configs (struct radv_dnssl_config) */
 
   net_addr trigger;		/* Prefix of a trigger route, if defined */
+  u8 propagate_routes;		/* Do we propagate more specific routes (RFC 4191)? */
+  u32 max_linger_time;		/* Maximum of interface route_linger_time */
 };
 
 struct radv_iface_config
@@ -65,8 +66,8 @@ struct radv_iface_config
   u32 max_ra_int;
   u32 min_delay;
 
-  u32 linger_time;		/* How long a dead prefix should still be advertised with 0
-				   lifetime */
+  u32 prefix_linger_time;	/* How long we advertise dead prefixes with lifetime 0 */
+  u32 route_linger_time;	/* How long we advertise dead routes with lifetime 0 */
 
   u8 rdnss_local;		/* Global list is not used for RDNSS */
   u8 dnssl_local;		/* Global list is not used for DNSSL */
@@ -78,8 +79,11 @@ struct radv_iface_config
   u32 retrans_timer;
   u32 current_hop_limit;
   u32 default_lifetime;
+  u32 route_lifetime;		/* Lifetime for the RFC 4191 routes */
   u8 default_lifetime_sensitive; /* Whether default_lifetime depends on trigger */
-  u8 default_preference;	 /* Default Router Preference (RFC 4191) */
+  u8 route_lifetime_sensitive;	/* Whether route_lifetime depends on trigger */
+  u8 default_preference;	/* Default Router Preference (RFC 4191) */
+  u8 route_preference;		/* Specific Route Preference (RFC 4191) */
 };
 
 struct radv_prefix_config
@@ -114,12 +118,34 @@ struct radv_dnssl_config
   char *domain;			/* Domain for DNS search list, in processed form */
 };
 
+/*
+ * One more specific route as per RFC 4191.
+ *
+ * Note that it does *not* contain the next hop field. The next hop is always
+ * the router sending the advertisment and the more specific route only allows
+ * overriding the preference of the route.
+ */
+struct radv_route
+{
+  u32 lifetime;			/* Lifetime from an attribute */
+  u8 lifetime_set;		/* Whether lifetime is defined */
+  u8 preference;		/* Preference of the route, RA_PREF_* */
+  u8 preference_set;		/* Whether preference is defined */
+  u8 valid;			/* Whethe route is valid or withdrawn */
+  btime changed;		/* Last time when the route changed */
+
+  struct fib_node n;
+};
 
 struct radv_proto
 {
   struct proto p;
   list iface_list;		/* List of active ifaces */
+  u8 valid;			/* Router is valid for forwarding, used for shutdown */
   u8 active;			/* Whether radv is active w.r.t. triggers */
+  u8 fib_up;			/* FIB table (routes) is initialized */
+  struct fib routes;		/* FIB table of specific routes (struct radv_route) */
+  btime prune_time;		/* Next time of route table pruning */
 };
 
 struct radv_prefix		/* One prefix we advertise */
@@ -127,11 +153,10 @@ struct radv_prefix		/* One prefix we advertise */
   node n;
   net_addr_ip6 prefix;
 
-  u8 alive;			/* Is the prefix alive? If not, we advertise it
+  u8 valid;			/* Is the prefix valid? If not, we advertise it
 				   with 0 lifetime, so clients stop using it */
   u8 mark;			/* A temporary mark for processing */
-  btime expires;		/* The time when we drop this prefix from
-				   advertising. It is valid only if !alive. */
+  btime changed;		/* Last time when the prefix changed */
   struct radv_prefix_config *cf; /* The config tied to this prefix */
 };
 
@@ -144,7 +169,8 @@ struct radv_iface
   struct ifa *addr;		/* Link-local address of iface */
   struct pool *pool;		/* A pool for interface-specific things */
   list prefixes;		/* The prefixes we advertise (struct radv_prefix) */
-  btime prefix_expires;		/* When the soonest prefix expires (0 = none dead) */
+  btime prune_time;		/* Next time of prefix list pruning */
+  btime valid_time;		/* Cached packet is valid until first linger timeout */
 
   timer *timer;
   struct object_lock *lock;
@@ -158,7 +184,6 @@ struct radv_iface
 #define RA_EV_INIT 1		/* Switch to initial mode */
 #define RA_EV_CHANGE 2		/* Change of options or prefixes */
 #define RA_EV_RS 3		/* Received RS */
-#define RA_EV_GC 4		/* Internal garbage collection of prefixes */
 
 /* Default Router Preferences (RFC 4191) */
 #define RA_PREF_LOW	0x18
@@ -166,6 +191,9 @@ struct radv_iface
 #define RA_PREF_HIGH	0x08
 #define RA_PREF_MASK	0x18
 
+/* Attributes */
+#define EA_RA_PREFERENCE	EA_CODE(EAP_RADV, 0)
+#define EA_RA_LIFETIME		EA_CODE(EAP_RADV, 1)
 
 #ifdef LOCAL_DEBUG
 #define RADV_FORCE_DEBUG 1
@@ -181,7 +209,7 @@ void radv_iface_notify(struct radv_iface *ifa, int event);
 
 /* packets.c */
 int radv_process_domain(struct radv_dnssl_config *cf);
-void radv_send_ra(struct radv_iface *ifa, int shutdown);
+void radv_send_ra(struct radv_iface *ifa);
 int radv_sk_open(struct radv_iface *ifa);
 
 

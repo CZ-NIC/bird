@@ -162,6 +162,7 @@ struct proto {
   u32 hash_key;				/* Random key used for hashing of neighbors */
   btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
+  char *message;			/* State-change message, allocated from proto_pool */
 
   /*
    *	General protocol hooks:
@@ -238,6 +239,7 @@ struct proto_spec {
 void *proto_new(struct proto_config *);
 void *proto_config_new(struct protocol *, int class);
 void proto_copy_config(struct proto_config *dest, struct proto_config *src);
+void proto_set_message(struct proto *p, char *msg, int len);
 
 void graceful_restart_recovery(void);
 void graceful_restart_init(void);
@@ -250,15 +252,15 @@ void channel_graceful_restart_unlock(struct channel *c);
 void channel_show_limit(struct channel_limit *l, const char *dsc);
 void channel_show_info(struct channel *c);
 
-void proto_cmd_show(struct proto *, uint, int);
-void proto_cmd_disable(struct proto *, uint, int);
-void proto_cmd_enable(struct proto *, uint, int);
-void proto_cmd_restart(struct proto *, uint, int);
-void proto_cmd_reload(struct proto *, uint, int);
-void proto_cmd_debug(struct proto *, uint, int);
-void proto_cmd_mrtdump(struct proto *, uint, int);
+void proto_cmd_show(struct proto *, uintptr_t, int);
+void proto_cmd_disable(struct proto *, uintptr_t, int);
+void proto_cmd_enable(struct proto *, uintptr_t, int);
+void proto_cmd_restart(struct proto *, uintptr_t, int);
+void proto_cmd_reload(struct proto *, uintptr_t, int);
+void proto_cmd_debug(struct proto *, uintptr_t, int);
+void proto_cmd_mrtdump(struct proto *, uintptr_t, int);
 
-void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uint, int), int restricted, uint arg);
+void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, int), int restricted, uintptr_t arg);
 struct proto *proto_get_named(struct symbol *, struct protocol *);
 
 #define CMD_RELOAD	0

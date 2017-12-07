@@ -756,12 +756,12 @@ echo_size:
    }
  ;
 
-CF_CLI(DISABLE, proto_patt, <protocol> | \"<pattern>\" | all, [[Disable protocol]])
-{ proto_apply_cmd($2, proto_cmd_disable, 1, 0); } ;
-CF_CLI(ENABLE, proto_patt, <protocol> | \"<pattern>\" | all, [[Enable protocol]])
-{ proto_apply_cmd($2, proto_cmd_enable, 1, 0); } ;
-CF_CLI(RESTART, proto_patt, <protocol> | \"<pattern>\" | all, [[Restart protocol]])
-{ proto_apply_cmd($2, proto_cmd_restart, 1, 0); } ;
+CF_CLI(DISABLE, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Disable protocol]])
+{ proto_apply_cmd($2, proto_cmd_disable, 1, (uintptr_t) $3); } ;
+CF_CLI(ENABLE, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Enable protocol]])
+{ proto_apply_cmd($2, proto_cmd_enable, 1, (uintptr_t) $3); } ;
+CF_CLI(RESTART, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Restart protocol]])
+{ proto_apply_cmd($2, proto_cmd_restart, 1, (uintptr_t) $3); } ;
 CF_CLI(RELOAD, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol]])
 { proto_apply_cmd($2, proto_cmd_reload, 1, CMD_RELOAD); } ;
 CF_CLI(RELOAD IN, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just imported routes)]])
