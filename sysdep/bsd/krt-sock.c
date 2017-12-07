@@ -287,18 +287,21 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 #endif
   {
     /* Fallback for all other valid cases */
-    if (!i->addr)
-    {
-      log(L_ERR "KRT: interface %s has no IP addess", i->name);
-      return -1;
-    }
 
 #ifdef RTF_CLONING
     if (cmd == RTM_ADD && (i->flags & IF_MULTIACCESS) != IF_MULTIACCESS)	/* PTP */
       msg.rtm.rtm_flags |= RTF_CLONING;
 #endif
 
-    sockaddr_fill(&gate, ipa_is_ip4(i->addr->ip) ? AF_INET : AF_INET6, i->addr->ip, NULL, 0);
+    struct ifa *addr = (net->n.addr->type == NET_IP4) ? i->addr4 : (i->addr6 ?: i->llv6);
+
+    if (!addr)
+    {
+      log(L_ERR "KRT: interface %s has no IP addess", i->name);
+      return -1;
+    }
+
+    sockaddr_fill(&gate, af, addr->ip, i, 0);
     msg.rtm.rtm_addrs |= RTA_GATEWAY;
     break;
   }
@@ -1124,13 +1127,11 @@ kif_sys_shutdown(struct kif_proto *p)
   krt_buffer_release(&p->p);
 }
 
-
-struct ifa *
-kif_get_primary_ip(struct iface *i UNUSED)
+int
+kif_update_sysdep_addr(struct iface *i)
 {
-#if 0
   static int fd = -1;
-  
+
   if (fd < 0)
     fd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -1140,20 +1141,10 @@ kif_get_primary_ip(struct iface *i UNUSED)
 
   int rv = ioctl(fd, SIOCGIFADDR, (char *) &ifr);
   if (rv < 0)
-    return NULL;
+    return 0;
 
-  ip_addr addr;
-  struct sockaddr_in *sin = (struct sockaddr_in *) &ifr.ifr_addr;
-  memcpy(&addr, &sin->sin_addr.s_addr, sizeof(ip_addr));
-  ipa_ntoh(addr);
+  ip4_addr old = i->sysdep;
+  i->sysdep = ip4_from_ipa(ipa_from_sa4(&ifr.ifr_addr);
 
-  struct ifa *a;
-  WALK_LIST(a, i->addrs)
-  {
-    if (ipa_equal(a->ip, addr))
-      return a;
-  }
-#endif
-
-  return NULL;
+  return !ip4_equal(i->sysdep, addr);
 }

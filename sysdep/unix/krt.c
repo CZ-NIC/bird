@@ -89,6 +89,16 @@ static struct kif_config *kif_cf;
 static timer *kif_scan_timer;
 static bird_clock_t kif_last_shot;
 
+static struct kif_iface_config kif_default_iface = {};
+
+struct kif_iface_config *
+kif_get_iface_config(struct iface *iface)
+{
+  struct kif_config *cf = (void *) (kif_proto->p.cf);
+  struct kif_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
+  return ic ?: &kif_default_iface;
+}
+
 static void
 kif_scan(timer *t)
 {
@@ -115,57 +125,6 @@ kif_request_scan(void)
   if (kif_proto && kif_scan_timer->expires > now)
     tm_start(kif_scan_timer, 1);
 }
-
-static inline int
-prefer_addr(struct ifa *a, struct ifa *b)
-{
-  int sa = a->scope > SCOPE_LINK;
-  int sb = b->scope > SCOPE_LINK;
-
-  if (sa < sb)
-    return 0;
-  else if (sa > sb)
-    return 1;
-  else
-    return ipa_compare(a->ip, b->ip) < 0;
-}
-
-static inline struct ifa *
-find_preferred_ifa(struct iface *i, const net_addr *n)
-{
-  struct ifa *a, *b = NULL;
-
-  WALK_LIST(a, i->addrs)
-    {
-      if (!(a->flags & IA_SECONDARY) &&
-	  (!n || ipa_in_netX(a->ip, n)) &&
-	  (!b || prefer_addr(a, b)))
-	b = a;
-    }
-
-  return b;
-}
-
-struct ifa *
-kif_choose_primary(struct iface *i)
-{
-  struct kif_config *cf = (struct kif_config *) (kif_proto->p.cf);
-  struct kif_primary_item *it;
-  struct ifa *a;
-
-  WALK_LIST(it, cf->primary)
-    {
-      if (!it->pattern || patmatch(it->pattern, i->name))
-	if (a = find_preferred_ifa(i, &it->addr))
-	  return a;
-    }
-
-  if (a = kif_get_primary_ip(i))
-    return a;
-
-  return find_preferred_ifa(i, NULL);
-}
-
 
 static struct proto *
 kif_init(struct proto_config *c)
@@ -224,15 +183,15 @@ kif_reconfigure(struct proto *p, struct proto_config *new)
       tm_start(kif_scan_timer, n->scan_time);
     }
 
-  if (!EMPTY_LIST(o->primary) || !EMPTY_LIST(n->primary))
+  if (!EMPTY_LIST(o->iface_list) || !EMPTY_LIST(n->iface_list))
     {
       /* This is hack, we have to update a configuration
        * to the new value just now, because it is used
-       * for recalculation of primary addresses.
+       * for recalculation of preferred addresses.
        */
       p->cf = new;
 
-      ifa_recalc_all_primary_addresses();
+      if_recalc_all_preferred_addresses();
     }
 
   return 1;
@@ -254,7 +213,7 @@ kif_init_config(int class)
 
   kif_cf = (struct kif_config *) proto_config_new(&proto_unix_iface, class);
   kif_cf->scan_time = 60;
-  init_list(&kif_cf->primary);
+  init_list(&kif_cf->iface_list);
 
   kif_sys_init_config(kif_cf);
   return (struct proto_config *) kif_cf;
@@ -266,13 +225,12 @@ kif_copy_config(struct proto_config *dest, struct proto_config *src)
   struct kif_config *d = (struct kif_config *) dest;
   struct kif_config *s = (struct kif_config *) src;
 
-  /* Copy primary addr list */
-  cfg_copy_list(&d->primary, &s->primary, sizeof(struct kif_primary_item));
+  /* Copy interface config list */
+  cfg_copy_list(&d->iface_list, &s->iface_list, sizeof(struct kif_iface_config));
 
   /* Fix sysdep parts */
   kif_sys_copy_config(d, s);
 }
-
 
 struct protocol proto_unix_iface = {
   .name = 		"Device",

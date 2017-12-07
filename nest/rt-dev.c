@@ -33,7 +33,7 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
   struct channel *c;
 
   if (!EMPTY_LIST(cf->iface_list) &&
-      !iface_patt_find(&cf->iface_list, ad->iface, ad->iface->addr))
+      !iface_patt_find(&cf->iface_list, ad->iface, ad))
     /* Empty list is automatically treated as "*" */
     return;
 

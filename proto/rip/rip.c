@@ -630,7 +630,13 @@ rip_add_iface(struct rip_proto *p, struct iface *iface, struct rip_iface_config 
   else if (ic->mode == RIP_IM_MULTICAST)
     ifa->addr = rip_is_v2(p) ? IP4_RIP_ROUTERS : IP6_RIP_ROUTERS;
   else /* Broadcast */
-    ifa->addr = iface->addr->brd;
+    ifa->addr = iface->addr4->brd;
+  /*
+   * The above is just a workaround for BSD as it can't send broadcasts
+   * to 255.255.255.255. BSD systems need the network broadcast address instead.
+   *
+   * TODO: move this to sysdep code
+   */
 
   init_list(&ifa->neigh_list);
 
@@ -706,7 +712,11 @@ rip_reconfigure_ifaces(struct rip_proto *p, struct rip_config *cf)
 
   WALK_LIST(iface, iface_list)
   {
-    if (! (iface->flags & IF_UP))
+    if (!(iface->flags & IF_UP))
+      continue;
+
+    /* Ignore ifaces without appropriate address */
+    if (rip_is_v2(p) ? !iface->addr4 : !iface->llv6)
       continue;
 
     struct rip_iface *ifa = rip_find_iface(p, iface);
@@ -743,6 +753,10 @@ rip_if_notify(struct proto *P, unsigned flags, struct iface *iface)
   if (flags & IF_CHANGE_UP)
   {
     struct rip_iface_config *ic = (void *) iface_patt_find(&cf->patt_list, iface, NULL);
+
+    /* Ignore ifaces without appropriate address */
+    if (rip_is_v2(p) ? !iface->addr4 : !iface->llv6)
+      return;
 
     if (ic)
       rip_add_iface(p, iface, ic);

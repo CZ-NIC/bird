@@ -1094,19 +1094,8 @@ bgp_start_neighbor(struct bgp_proto *p)
 
   if (ipa_is_link_local(p->source_addr))
     p->link_addr = p->source_addr;
-  else
-  {
-    /* Find some link-local address for given iface */
-    struct ifa *a;
-    WALK_LIST(a, p->neigh->iface->addrs)
-      if (a->scope == SCOPE_LINK)
-      {
-	p->link_addr = a->ip;
-	break;
-      }
-
-    DBG("%s: Selected link-local address %I\n", p->p.name, p->link_addr);
-  }
+  else if (p->neigh->iface->llv6)
+    p->link_addr = p->neigh->iface->llv6->ip;
 
   bgp_initiate(p);
 }

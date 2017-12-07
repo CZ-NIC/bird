@@ -1501,25 +1501,13 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
   ifa->cf = ic;
   ifa->pool = pool;
   ifa->ifname = new->name;
+  ifa->addr = new->llv6->ip;
 
   add_tail(&p->interfaces, NODE ifa);
 
-  ip_addr addr4 = IPA_NONE;
-  struct ifa *addr;
-  WALK_LIST(addr, new->addrs)
-  {
-    if (ipa_is_link_local(addr->ip))
-      ifa->addr = addr->ip;
-
-    if (ipa_zero(addr4) && ipa_is_ip4(addr->ip))
-      addr4 = addr->ip;
-  }
-
+  ip_addr addr4 = new->addr4 ? new->addr4->ip : IPA_NONE;
   ifa->next_hop_ip4 = ipa_nonzero(ic->next_hop_ip4) ? ic->next_hop_ip4 : addr4;
   ifa->next_hop_ip6 = ipa_nonzero(ic->next_hop_ip6) ? ic->next_hop_ip6 : ifa->addr;
-
-  if (ipa_zero(ifa->addr))
-    log(L_WARN "%s: Cannot find link-local addr on %s", p->p.name, new->name);
 
   if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
     log(L_WARN "%s: Cannot find IPv4 next hop addr on %s", p->p.name, new->name);
@@ -1576,6 +1564,10 @@ babel_if_notify(struct proto *P, unsigned flags, struct iface *iface)
     if (!(iface->flags & IF_MULTICAST))
       return;
 
+    /* Ignore ifaces without link-local address */
+    if (!iface->llv6)
+      return;
+
     if (ic)
       babel_add_iface(p, iface, ic);
 
@@ -1615,21 +1607,8 @@ babel_reconfigure_iface(struct babel_proto *p, struct babel_iface *ifa, struct b
 
   ifa->cf = new;
 
-  if (ipa_nonzero(new->next_hop_ip4))
-    ifa->next_hop_ip4 = new->next_hop_ip4;
-  else
-  {
-    ifa->next_hop_ip4 = IPA_NONE;
-
-    struct ifa *addr;
-    WALK_LIST(addr, ifa->iface->addrs)
-      if (ipa_is_ip4(addr->ip))
-      {
-	ifa->next_hop_ip4 = addr->ip;
-	break;
-      }
-  }
-
+  ip_addr addr4 = ifa->iface->addr4 ? ifa->iface->addr4->ip : IPA_NONE;
+  ifa->next_hop_ip4 = ipa_nonzero(new->next_hop_ip4) ? new->next_hop_ip4 : addr4;
   ifa->next_hop_ip6 = ipa_nonzero(new->next_hop_ip6) ? new->next_hop_ip6 : ifa->addr;
 
   if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
@@ -1660,7 +1639,15 @@ babel_reconfigure_ifaces(struct babel_proto *p, struct babel_config *cf)
 
   WALK_LIST(iface, iface_list)
   {
-    if (! (iface->flags & IF_UP))
+    if (!(iface->flags & IF_UP))
+      continue;
+
+    /* Ignore non-multicast ifaces */
+    if (!(iface->flags & IF_MULTICAST))
+      continue;
+
+    /* Ignore ifaces without link-local address */
+    if (!iface->llv6)
       continue;
 
     struct babel_iface *ifa = babel_find_iface(p, iface);

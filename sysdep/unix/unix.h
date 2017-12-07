@@ -80,6 +80,9 @@ static inline ip_addr ipa_from_sa(sockaddr *sa)
 static inline struct in_addr ipa_to_in4(ip_addr a)
 { return (struct in_addr) { htonl(ipa_to_u32(a)) }; }
 
+static inline struct in_addr ip4_to_in4(ip4_addr a)
+{ return (struct in_addr) { htonl(ip4_to_u32(a)) }; }
+
 static inline struct in6_addr ipa_to_in6(ip_addr a)
 { return (struct in6_addr) { .s6_addr32 = { htonl(_I0(a)), htonl(_I1(a)), htonl(_I2(a)), htonl(_I3(a)) } }; }
 

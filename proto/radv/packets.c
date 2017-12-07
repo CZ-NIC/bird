@@ -358,7 +358,7 @@ radv_rx_hook(sock *sk, uint size)
   if (sk->lifindex != sk->iface->index)
     return 1;
 
-  if (ipa_equal(sk->faddr, ifa->addr->ip))
+  if (ipa_equal(sk->faddr, sk->saddr))
     return 1;
 
   if (size < 8)

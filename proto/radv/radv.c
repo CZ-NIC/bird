@@ -138,17 +138,6 @@ radv_iface_add(struct object_lock *lock)
   radv_iface_notify(ifa, RA_EV_INIT);
 }
 
-static inline struct ifa *
-find_lladdr(struct iface *iface)
-{
-  struct ifa *a;
-  WALK_LIST(a, iface->addrs)
-    if ((a->prefix.type == NET_IP6) && (a->scope == SCOPE_LINK))
-      return a;
-
-  return NULL;
-}
-
 static void
 radv_iface_new(struct radv_proto *p, struct iface *iface, struct radv_iface_config *cf)
 {
@@ -161,15 +150,9 @@ radv_iface_new(struct radv_proto *p, struct iface *iface, struct radv_iface_conf
   ifa->ra = p;
   ifa->cf = cf;
   ifa->iface = iface;
+  ifa->addr = iface->llv6;
 
   add_tail(&p->iface_list, NODE ifa);
-
-  ifa->addr = find_lladdr(iface);
-  if (!ifa->addr)
-  {
-    log(L_ERR "%s: Missing link-local address on interface %s", p->p.name, iface->name);
-    return;
-  }
 
   timer *tm = tm_new(pool);
   tm->hook = radv_timer;
@@ -216,8 +199,15 @@ radv_if_notify(struct proto *P, unsigned flags, struct iface *iface)
 
   if (flags & IF_CHANGE_UP)
   {
-    struct radv_iface_config *ic = (struct radv_iface_config *)
-      iface_patt_find(&cf->patt_list, iface, NULL);
+    struct radv_iface_config *ic = (void *) iface_patt_find(&cf->patt_list, iface, NULL);
+
+    /* Ignore non-multicast ifaces */
+    if (!(iface->flags & IF_MULTICAST))
+      return;
+
+    /* Ignore ifaces without link-local address */
+    if (!iface->llv6)
+      return;
 
     if (ic)
       radv_iface_new(p, iface, ic);
@@ -395,6 +385,17 @@ radv_reconfigure(struct proto *P, struct proto_config *CF)
   struct iface *iface;
   WALK_LIST(iface, iface_list)
   {
+    if (!(iface->flags & IF_UP))
+      continue;
+
+    /* Ignore non-multicast ifaces */
+    if (!(iface->flags & IF_MULTICAST))
+      continue;
+
+    /* Ignore ifaces without link-local address */
+    if (!iface->llv6)
+      continue;
+
     struct radv_iface *ifa = radv_iface_find(p, iface);
     struct radv_iface_config *ic = (struct radv_iface_config *)
       iface_patt_find(&new->patt_list, iface, NULL);

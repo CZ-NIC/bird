@@ -669,8 +669,7 @@ rip_rx_hook(sock *sk, uint len)
       sk->iface->name, sk->faddr, sk->laddr);
 
   /* Silently ignore my own packets */
-  /* FIXME: Better local address check */
-  if (ipa_equal(ifa->iface->addr->ip, sk->faddr))
+  if (ipa_equal(sk->faddr, sk->saddr))
     return 1;
 
   if (rip_is_ng(p) && !ipa_is_link_local(sk->faddr))
@@ -742,14 +741,7 @@ rip_open_socket(struct rip_iface *ifa)
   sk->sport = ifa->cf->port;
   sk->dport = ifa->cf->port;
   sk->iface = ifa->iface;
-
-  /*
-   * For RIPv2, we explicitly choose a primary address, mainly to ensure that
-   * RIP and BFD uses the same one. For RIPng, we left it to kernel, which
-   * should choose some link-local address based on the same scope rule.
-   */
-  if (rip_is_v2(p))
-    sk->saddr = ifa->iface->addr->ip;
+  sk->saddr = rip_is_v2(p) ? ifa->iface->addr4->ip : ifa->iface->llv6->ip;
 
   sk->rx_hook = rip_rx_hook;
   sk->tx_hook = rip_tx_hook;

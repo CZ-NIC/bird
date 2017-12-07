@@ -1294,7 +1294,7 @@ babel_rx_hook(sock *sk, uint len)
       sk->iface->name, sk->faddr, sk->laddr);
 
   /* Silently ignore my own packets */
-  if (ipa_equal(ifa->iface->addr->ip, sk->faddr))
+  if (ipa_equal(sk->faddr, sk->saddr))
     return 1;
 
   if (!ipa_is_link_local(sk->faddr))
@@ -1329,6 +1329,7 @@ babel_open_socket(struct babel_iface *ifa)
   sk->sport = ifa->cf->port;
   sk->dport = ifa->cf->port;
   sk->iface = ifa->iface;
+  sk->saddr = ifa->addr;
 
   sk->rx_hook = babel_rx_hook;
   sk->tx_hook = babel_tx_hook;
