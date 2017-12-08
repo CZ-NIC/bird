@@ -1662,13 +1662,14 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
 
   /* First protocol - show header */
   if (!cnt)
-    cli_msg(-2002, "name     proto    table    state  since       info");
+    cli_msg(-2002, "%-10s %-10s %-10s %-6s %-12s  %s",
+	    "Name", "Proto", "Table", "State", "Since", "Info");
 
   buf[0] = 0;
   if (p->proto->get_status)
     p->proto->get_status(p, buf);
   tm_format_time(tbuf, &config->tf_proto, p->last_state_change);
-  cli_msg(-1002, "%-8s %-8s %-8s %-5s  %-10s  %s",
+  cli_msg(-1002, "%-10s %-10s %-10s %-6s %-12s  %s",
 	  p->name,
 	  p->proto->name,
 	  p->main_channel ? p->main_channel->table->name : "---",

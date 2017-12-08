@@ -880,7 +880,7 @@ if_show_summary(void)
 {
   struct iface *i;
 
-  cli_msg(-2005,  "%-10s %-6s %-18s %s", "Interface", "State", "IPv4 address", "IPv6 address");
+  cli_msg(-2005, "%-10s %-6s %-18s %s", "Interface", "State", "IPv4 address", "IPv6 address");
   WALK_LIST(i, iface_list)
     {
       byte a4[IPA_MAX_TEXT_LENGTH + 17];
