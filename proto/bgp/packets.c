@@ -1483,7 +1483,8 @@ bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     ADVANCE(pos, size, 1);
 
     /* Encode MPLS labels */
-    bgp_encode_mpls_labels(s, s->mpls_labels, &pos, &size, pos - 1);
+    if (s->mpls)
+      bgp_encode_mpls_labels(s, s->mpls_labels, &pos, &size, pos - 1);
 
     /* Encode route distinguisher */
     put_u64(pos, net->rd);
