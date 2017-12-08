@@ -1621,6 +1621,10 @@ bgp_postconfig(struct proto_config *CF)
   if (cf->multihop < 0)
     cf->multihop = internal ? 64 : 0;
 
+  /* Link check for single-hop BGP by default */
+  if (cf->check_link < 0)
+    cf->check_link = !cf->multihop;
+
 
   if (!cf->local_as)
     cf_error("Local AS number must be set");
