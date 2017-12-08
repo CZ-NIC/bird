@@ -219,6 +219,7 @@ ospf_proto_start: proto_start ospf_variant
 
   init_list(&OSPF_CFG->area_list);
   init_list(&OSPF_CFG->vlink_list);
+  OSPF_CFG->ecmp = rt_default_ecmp;
   OSPF_CFG->tick = OSPF_DEFAULT_TICK;
   OSPF_CFG->ospf2 = $2;
   OSPF_CFG->af_ext = !$2;
@@ -461,6 +462,7 @@ ospf_iface_start:
   OSPF_PATT->deadc = DEADC_D;
   OSPF_PATT->type = OSPF_IT_UNDEF;
   init_list(&OSPF_PATT->nbma_list);
+  OSPF_PATT->check_link = 1;
   OSPF_PATT->ptp_netmask = 2; /* not specified */
   OSPF_PATT->tx_tos = IP_PREC_INTERNET_CONTROL;
   OSPF_PATT->tx_priority = sk_priority_control;

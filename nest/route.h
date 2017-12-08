@@ -309,6 +309,8 @@ int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
+/* Default limit for ECMP next hops, defined in sysdep code */
+extern const int rt_default_ecmp;
 
 struct rt_show_data_rtable {
   node n;

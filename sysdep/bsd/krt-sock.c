@@ -33,6 +33,7 @@
 #include "lib/string.h"
 #include "lib/socket.h"
 
+const int rt_default_ecmp = 0;
 
 /*
  * There are significant differences in multiple tables support between BSD variants.
@@ -145,9 +146,8 @@ krt_capable(rte *e)
 {
   rta *a = e->attrs;
 
-  /* XXXX device routes are broken */
   return
-    ((a->dest == RTD_UNICAST && ipa_nonzero(a->nh.gw) && !a->nh.next) /* No multipath support */
+    ((a->dest == RTD_UNICAST && !a->nh.next) /* No multipath support */
 #ifdef RTF_REJECT
      || a->dest == RTD_UNREACHABLE
 #endif

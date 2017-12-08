@@ -56,6 +56,7 @@ rip_proto_start: proto_start rip_variant
 
   init_list(&RIP_CFG->patt_list);
   RIP_CFG->rip2 = $2;
+  RIP_CFG->ecmp = rt_default_ecmp;
   RIP_CFG->infinity = RIP_DEFAULT_INFINITY;
   RIP_CFG->min_timeout_time = 60 S_;
   RIP_CFG->max_garbage_time = 60 S_;
@@ -92,6 +93,7 @@ rip_iface_start:
   RIP_IFACE->split_horizon = 1;
   RIP_IFACE->poison_reverse = 1;
   RIP_IFACE->check_zero = 1;
+  RIP_IFACE->check_link = 1;
   RIP_IFACE->ttl_security = rip_cfg_is_v2() ? 0 : 1;
   RIP_IFACE->rx_buffer = rip_cfg_is_v2() ? RIP_MAX_PKT_LENGTH : 0;
   RIP_IFACE->tx_length = rip_cfg_is_v2() ? RIP_MAX_PKT_LENGTH : 0;

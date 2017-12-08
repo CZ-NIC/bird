@@ -80,6 +80,8 @@ struct rtvia {
 
 #define krt_ecmp6(p) ((p)->af == AF_INET6)
 
+const int rt_default_ecmp = 16;
+
 /*
  * Structure nl_parse_state keeps state of received route processing. Ideally,
  * we could just independently parse received Netlink messages and immediately
