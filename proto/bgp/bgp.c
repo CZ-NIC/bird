@@ -1504,6 +1504,20 @@ bgp_channel_start(struct channel *C)
       c->next_hop_addr = src;
   }
 
+  /* Use preferred addresses associated with interface / source address */
+  if (ipa_zero(c->next_hop_addr))
+  {
+    /* We know the iface for single-hop, we make lookup for multihop */
+    struct neighbor *nbr = p->neigh ?: neigh_find2(&p->p, &src, NULL, 0);
+    struct iface *iface = nbr ? nbr->iface : NULL;
+
+    if (bgp_channel_is_ipv4(c) && iface && iface->addr4)
+      c->next_hop_addr = iface->addr4->ip;
+
+    if (bgp_channel_is_ipv6(c) && iface && iface->addr6)
+      c->next_hop_addr = iface->addr6->ip;
+  }
+
   /* Exit if no feasible next hop address is found */
   if (ipa_zero(c->next_hop_addr))
   {
@@ -2078,6 +2092,11 @@ bgp_show_proto_info(struct proto *P)
     WALK_LIST(c, p->p.channels)
     {
       channel_show_info(&c->c);
+
+      if (ipa_zero(c->link_addr))
+	cli_msg(-1006, "    BGP Next hop:   %I", c->next_hop_addr);
+      else
+	cli_msg(-1006, "    BGP Next hop:   %I %I", c->next_hop_addr, c->link_addr);
 
       if (c->igp_table_ip4)
 	cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table_ip4->name);
