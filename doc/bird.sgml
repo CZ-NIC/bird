@@ -2044,6 +2044,7 @@ avoid routing loops.
 <item> <rfc id="7911"> - Advertisement of Multiple Paths in BGP
 <item> <rfc id="7947"> - Internet Exchange BGP Route Server
 <item> <rfc id="8092"> - BGP Large Communities Attribute
+<item> <rfc id="8203"> - BGP Administrative Shutdown Communication
 </itemize>
 
 <sect1>Route selection rules
@@ -2257,6 +2258,20 @@ using the following configuration parameters:
 	specifies whether BIRD advertises these capabilities and supports
 	related procedures. Note that even when disabled, BIRD can send route
 	refresh requests.  Default: on.
+
+	<tag><label id="bgp-graceful-restart">graceful restart <m/switch/|aware</tag>
+	When a BGP speaker restarts or crashes, neighbors will discard all
+	received paths from the speaker, which disrupts packet forwarding even
+	when the forwarding plane of the speaker remains intact. <rfc id="4724">
+	specifies an optional graceful restart mechanism to alleviate this
+	issue. This option controls the mechanism. It has three states:
+	Disabled, when no support is provided. Aware, when the graceful restart
+	support is announced and the support for restarting neighbors is
+	provided, but no local graceful restart is allowed (i.e. receiving-only
+	role). Enabled, when the full graceful restart support is provided
+	(i.e. both restarting and receiving role). Restarting role could be also
+	configured per-channel. Note that proper support for local graceful
+	restart requires also configuration of other protocols. Default: aware.
 
 	<tag><label id="bgp-graceful-restart-time">graceful restart time <m/number/</tag>
 	The restart time is announced in the BGP graceful restart capability
@@ -2487,19 +2502,12 @@ together with their appropriate channels follows.
 	TX direction. When active, all available routes accepted by the export
 	filter are advertised to the neighbor. Default: off.
 
-	<tag><label id="bgp-graceful-restart">graceful restart <m/switch/|aware</tag>
-	When a BGP speaker restarts or crashes, neighbors will discard all
-	received paths from the speaker, which disrupts packet forwarding even
-	when the forwarding plane of the speaker remains intact. <rfc
-	id="4724"> specifies an optional graceful restart mechanism to
-	alleviate this issue. This option controls the mechanism. It has three
-	states: Disabled, when no support is provided. Aware, when the graceful
-	restart support is announced and the support for restarting neighbors
-	is provided, but no local graceful restart is allowed (i.e.
-	receiving-only role). Enabled, when the full graceful restart
-	support is provided (i.e. both restarting and receiving role). Note
-	that proper support for local graceful restart requires also
-	configuration of other protocols.  Default: aware.
+	<tag><label id="bgp-graceful-restart-c">graceful restart <m/switch/</tag>
+	Although BGP graceful restart is configured mainly by protocol-wide
+	<ref id="bgp-graceful-restart" name="options">, it is possible to
+	configure restarting role per AFI/SAFI pair by this channel option.
+	The option is ignored if graceful restart is disabled by protocol-wide
+	option. Default: off in aware mode, on in full mode.
 </descrip>
 
 <sect1>Attributes

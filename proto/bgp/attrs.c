@@ -64,8 +64,6 @@
  * format - Optional hook that converts eattr to textual representation.
  */
 
-// XXXX review pool usage : c->c.proto->pool
-
 
 struct bgp_attr_desc {
   const char *name;
@@ -1172,6 +1170,22 @@ bgp_init_bucket_table(struct bgp_channel *c)
   HASH_INIT(c->bucket_hash, c->pool, 8);
 
   init_list(&c->bucket_queue);
+  c->withdraw_bucket = NULL;
+}
+
+void
+bgp_free_bucket_table(struct bgp_channel *c)
+{
+  HASH_FREE(c->bucket_hash);
+
+  struct bgp_bucket *b;
+  WALK_LIST_FIRST(b, c->bucket_queue)
+  {
+    rem_node(&b->send_node);
+    mb_free(b);
+  }
+
+  mb_free(c->withdraw_bucket);
   c->withdraw_bucket = NULL;
 }
 

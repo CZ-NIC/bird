@@ -492,11 +492,13 @@ int bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte 
 ea_list * bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len);
 
 void bgp_init_bucket_table(struct bgp_channel *c);
+void bgp_free_bucket_table(struct bgp_channel *c);
 void bgp_free_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 void bgp_defer_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 void bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 
 void bgp_init_prefix_table(struct bgp_channel *c);
+void bgp_free_prefix_table(struct bgp_channel *c);
 void bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *bp);
 
 int bgp_rte_better(struct rte *, struct rte *);

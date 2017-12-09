@@ -849,7 +849,7 @@ if_show(void)
       else if (i->master_index)
 	bsprintf(mbuf, " master=#%u", i->master_index);
 
-      cli_msg(-1001, "%s %s (index=%d%s)", i->name, (i->flags & IF_UP) ? "Up" : "Down", i->index, mbuf);
+      cli_msg(-1001, "%s %s (index=%d%s)", i->name, (i->flags & IF_UP) ? "up" : "down", i->index, mbuf);
       if (!(i->flags & IF_MULTIACCESS))
 	type = "PtP";
       else
@@ -897,7 +897,7 @@ if_show_summary(void)
 	a6[0] = 0;
 
       cli_msg(-1005, "%-10s %-6s %-18s %s",
-	      i->name, (i->flags & IF_UP) ? "Up" : "Down", a4, a6);
+	      i->name, (i->flags & IF_UP) ? "up" : "down", a4, a6);
     }
   cli_msg(0, "");
 }

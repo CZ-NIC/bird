@@ -1637,8 +1637,8 @@ bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     uint pxlen = data[1];
 
     // FIXME: Use some generic function
-    memcpy(&px, data, BYTES(pxlen));
-    px = ip4_and(px, ip4_mkmask(pxlen));
+    memcpy(&px, data+2, BYTES(pxlen));
+    px = ip4_and(ip4_ntoh(px), ip4_mkmask(pxlen));
 
     /* Prepare the flow */
     net_addr *n = alloca(sizeof(struct net_addr_flow4) + flen);
@@ -1729,8 +1729,8 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     uint pxlen = data[1];
 
     // FIXME: Use some generic function
-    memcpy(&px, data, BYTES(pxlen));
-    px = ip6_and(px, ip6_mkmask(pxlen));
+    memcpy(&px, data+2, BYTES(pxlen));
+    px = ip6_and(ip6_ntoh(px), ip6_mkmask(pxlen));
 
     /* Prepare the flow */
     net_addr *n = alloca(sizeof(struct net_addr_flow6) + flen);

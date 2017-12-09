@@ -98,6 +98,7 @@
  * <item> <rfc id="7911"> - Advertisement of Multiple Paths in BGP
  * <item> <rfc id="7947"> - Internet Exchange BGP Route Server
  * <item> <rfc id="8092"> - BGP Large Communities Attribute
+ * <item> <rfc id="8203"> - BGP Administrative Shutdown Communication
  * </itemize>
 */
 
@@ -601,10 +602,6 @@ bgp_conn_leave_established_state(struct bgp_proto *p)
   BGP_TRACE(D_EVENTS, "BGP session closed");
   p->conn = NULL;
 
-  // XXXX free these tables to avoid memory leak during graceful restart
-  // bgp_free_prefix_table(p);
-  // bgp_free_bucket_table(p);
-
   if (p->p.proto_state == PS_UP)
     bgp_stop(p, 0, NULL, 0);
 }
@@ -664,6 +661,10 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
   struct bgp_channel *c;
   WALK_LIST(c, p->p.channels)
   {
+    /* FIXME: perhaps check for channel state instead of disabled flag? */
+    if (c->c.disabled)
+      continue;
+
     if (c->gr_ready)
     {
       if (c->gr_active)
@@ -679,6 +680,13 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
       rt_refresh_begin(c->c.table, &c->c);
       rt_refresh_end(c->c.table, &c->c);
     }
+
+    /* Reset bucket and prefix tables */
+    bgp_free_bucket_table(c);
+    bgp_free_prefix_table(c);
+    bgp_init_bucket_table(c);
+    bgp_init_prefix_table(c);
+    c->packets_to_send = 0;
   }
 
   proto_notify_state(&p->p, PS_START);
@@ -1315,7 +1323,7 @@ bgp_start(struct proto *P)
   p->source_addr = p->cf->local_ip;
   p->link_addr = IPA_NONE;
 
-  /* XXXX */
+  /* Lock all channels when in GR recovery mode */
   if (p->p.gr_recovery && p->cf->gr_mode)
   {
     struct bgp_channel *c;
@@ -1546,10 +1554,9 @@ bgp_channel_shutdown(struct channel *C)
 {
   struct bgp_channel *c = (void *) C;
 
-  /* XXXX: cleanup bucket and prefix tables */
-
   c->next_hop_addr = IPA_NONE;
   c->link_addr = IPA_NONE;
+  c->packets_to_send = 0;
 }
 
 static void
@@ -2064,17 +2071,12 @@ bgp_show_proto_info(struct proto *P)
     bgp_show_capabilities(p, p->conn->local_caps);
     cli_msg(-1006, "    Neighbor capabilities");
     bgp_show_capabilities(p, p->conn->remote_caps);
-/* XXXX
-      cli_msg(-1006, "    Session:          %s%s%s%s%s%s%s%s",
-	      p->is_internal ? "internal" : "external",
-	      p->cf->multihop ? " multihop" : "",
-	      p->rr_client ? " route-reflector" : "",
-	      p->rs_client ? " route-server" : "",
-	      p->as4_session ? " AS4" : "",
-	      p->add_path_rx ? " add-path-rx" : "",
-	      p->add_path_tx ? " add-path-tx" : "",
-	      p->ext_messages ? " ext-messages" : "");
-*/
+    cli_msg(-1006, "    Session:          %s%s%s%s%s",
+	    p->is_internal ? "internal" : "external",
+	    p->cf->multihop ? " multihop" : "",
+	    p->rr_client ? " route-reflector" : "",
+	    p->rs_client ? " route-server" : "",
+	    p->as4_session ? " AS4" : "");
     cli_msg(-1006, "    Source address:   %I", p->source_addr);
     cli_msg(-1006, "    Hold timer:       %t/%u",
 	    tm_remains(p->conn->hold_timer), p->conn->hold_time);
@@ -2091,16 +2093,18 @@ bgp_show_proto_info(struct proto *P)
   }
 
   {
-    /* XXXX ?? */
     struct bgp_channel *c;
     WALK_LIST(c, p->p.channels)
     {
       channel_show_info(&c->c);
 
-      if (ipa_zero(c->link_addr))
-	cli_msg(-1006, "    BGP Next hop:   %I", c->next_hop_addr);
-      else
-	cli_msg(-1006, "    BGP Next hop:   %I %I", c->next_hop_addr, c->link_addr);
+      if (c->c.channel_state == CS_UP)
+      {
+	if (ipa_zero(c->link_addr))
+	  cli_msg(-1006, "    BGP Next hop:   %I", c->next_hop_addr);
+	else
+	  cli_msg(-1006, "    BGP Next hop:   %I %I", c->next_hop_addr, c->link_addr);
+      }
 
       if (c->igp_table_ip4)
 	cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table_ip4->name);

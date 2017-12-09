@@ -897,7 +897,9 @@ rte_validate(rte *e)
     return 0;
   }
 
-  c = net_classify(n->n.addr);
+  /* FIXME: better handling different nettypes */
+  c = !net_is_flow(n->n.addr) ?
+    net_classify(n->n.addr): (IADDR_HOST | SCOPE_UNIVERSE);
   if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
   {
     log(L_WARN "Ignoring bogus route %N received via %s",

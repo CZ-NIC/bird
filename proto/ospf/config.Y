@@ -499,7 +499,7 @@ CF_ADDTO(dynamic_attr, OSPF_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT | EAF_TEM
 CF_ADDTO(dynamic_attr, OSPF_ROUTER_ID { $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID | EAF_TEMP, T_QUAD, EA_OSPF_ROUTER_ID); })
 
 CF_CLI_HELP(SHOW OSPF, ..., [[Show information about OSPF protocol]]);
-CF_CLI(SHOW OSPF, optsym, [<name>], [[Show information about OSPF protocol XXX]])
+CF_CLI(SHOW OSPF, optsym, [<name>], [[Show information about OSPF protocol]])
 { ospf_sh(proto_get_named($3, &proto_ospf)); };
 
 CF_CLI(SHOW OSPF NEIGHBORS, optsym opttext, [<name>] [\"<interface>\"], [[Show information about OSPF neighbors]])
