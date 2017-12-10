@@ -30,7 +30,7 @@ typedef struct timer
 
 struct timeloop
 {
-  BUFFER(timer *) timers;
+  BUFFER_(timer *) timers;
   btime last_time;
   btime real_time;
 };

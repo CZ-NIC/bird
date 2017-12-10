@@ -25,7 +25,7 @@ struct static_proto {
   struct proto p;
 
   struct event *event;			/* Event for announcing updated routes */
-  BUFFER(struct static_route *) marked;	/* Routes marked for reannouncement */
+  BUFFER_(struct static_route *) marked; /* Routes marked for reannouncement */
   rtable *igp_table_ip4;		/* Table for recursive IPv4 next hop lookups */
   rtable *igp_table_ip6;		/* Table for recursive IPv6 next hop lookups */
 };

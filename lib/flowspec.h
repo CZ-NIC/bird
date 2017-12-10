@@ -91,7 +91,7 @@ const byte *flow6_next_part(const byte *pos, const byte *end);
 
 /* A data structure for keep a state of flow builder */
 struct flow_builder {
-  BUFFER(byte) data;
+  BUFFER_(byte) data;
   enum flow_type this_type;
   enum flow_type last_type;
   u16 last_op_offset;			/* Position of last operator in data.data */
