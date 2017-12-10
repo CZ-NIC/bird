@@ -49,7 +49,7 @@ struct krt_config {
   btime scan_time;		/* How often we re-scan routes */
   int persist;			/* Keep routes when we exit */
   int learn;			/* Learn routes from other sources */
-  int devroutes;		/* Allow export of device routes */
+  int devroutes;		/* XXX: remove */
   int graceful_restart;		/* Regard graceful restart recovery */
 };
 
