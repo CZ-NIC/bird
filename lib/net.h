@@ -45,7 +45,7 @@ typedef struct net_addr {
   u8 type;
   u8 pxlen;
   u16 length;
-  u8 data[16];
+  u8 data[20];
   u64 align[0];
 } net_addr;
 
@@ -76,6 +76,7 @@ typedef struct net_addr_vpn6 {
   u8 pxlen;
   u16 length;
   ip6_addr prefix;
+  u32 padding;
   u64 rd;
 } net_addr_vpn6;
 
@@ -152,7 +153,7 @@ extern const u16 net_max_text_length[];
   ((net_addr_vpn4) { NET_VPN4, pxlen, sizeof(net_addr_vpn4), prefix, rd })
 
 #define NET_ADDR_VPN6(prefix,pxlen,rd) \
-  ((net_addr_vpn6) { NET_VPN6, pxlen, sizeof(net_addr_vpn6), prefix, rd })
+  ((net_addr_vpn6) { NET_VPN6, pxlen, sizeof(net_addr_vpn6), prefix, 0, rd })
 
 #define NET_ADDR_ROA4(prefix,pxlen,max_pxlen,asn) \
   ((net_addr_roa4) { NET_ROA4, pxlen, sizeof(net_addr_roa4), prefix, max_pxlen, asn })
@@ -544,5 +545,6 @@ static inline int net_in_net_ip6(const net_addr_ip6 *a, const net_addr_ip6 *b)
 int ipa_in_netX(const ip_addr A, const net_addr *N);
 int net_in_netX(const net_addr *A, const net_addr *N);
 
+void net_init(void);
 
 #endif

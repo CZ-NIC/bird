@@ -820,6 +820,7 @@ main(int argc, char **argv)
     log_init_debug("");
   log_switch(debug_flag, NULL, NULL);
 
+  net_init();
   resource_init();
   timer_init();
   olock_init();
