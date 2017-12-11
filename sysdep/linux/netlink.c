@@ -677,8 +677,10 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra, int af)
 	nh_buf_size = nh_buf_size ? (nh_buf_size * 2) : 4;
 	nh_buffer = xrealloc(nh_buffer, nh_buf_size * NEXTHOP_MAX_SIZE);
       }
-      *last = rv = nh_buffer + nh_buf_used++;
-      rv->next = NULL;
+      /* FIXME: This is really ugly */
+      *last = rv = (void *) (((byte *) nh_buffer) + (nh_buf_used++ * NEXTHOP_MAX_SIZE));
+      memset(rv, 0, NEXTHOP_MAX_SIZE);
+      // rv->next = NULL;
       last = &(rv->next);
 
       rv->flags = 0;
