@@ -4,26 +4,27 @@
 #  (c) 2000--2004 Martin Mares <mj@ucw.cz>
 #
 
+VERSION=`sed <sysdep/config.h '/BIRD_VERSION/!d;s/^.*"\(.*\)"$/\1/'`
+REL=bird-$VERSION
+DREL=bird-doc-$VERSION
+T=/tmp/bird
 set -e
 AC=`if [ -x /usr/bin/autoconf2.50 ] ; then echo autoconf2.50 ; else echo autoconf ; fi`
 $AC
 ./configure
 make docs
-make distclean
-$AC
-rm -rf autom4te*cache
-VERSION=`sed <sysdep/config.h '/BIRD_VERSION/!d;s/^.*"\(.*\)"$/\1/'`
-REL=bird-$VERSION
-DREL=bird-doc-$VERSION
-T=/tmp/bird
-echo Building $REL
 rm -rf $T/$REL $T/$DREL
 mkdir -p $T/$REL $T/$DREL $T/$DREL/doc
+mv obj/doc/*.pdf $T/$DREL/doc
+make distclean
+find . -name "*~" -exec rm -f '{}' '+'
+
+$AC
+rm -rf autom4te*cache
+echo Building $REL
 cp -a . $T/$REL
 echo Generating ChangeLog
 git log  >$T/$REL/ChangeLog
-mv $T/$REL/doc/*.ps $T/$DREL/doc
-mv $T/$REL/doc/*.pdf $T/$DREL/doc
 rm -f $T/$REL/bird.conf*
 rm -rf $T/$REL/.git/
 rm -rf `find $T/$REL -name CVS -o -name tmp` $T/$REL/{misc,rfc,doc/slides,doc/slt2001,doc/old,doc/*.out}
