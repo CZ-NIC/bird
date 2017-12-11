@@ -561,25 +561,20 @@ nl_add_attr_mpls_encap(struct nlmsghdr *h, uint bufsize, int len, u32 *stack)
 static inline void
 nl_add_attr_via(struct nlmsghdr *h, uint bufsize, ip_addr ipa)
 {
-  struct rtattr *nest = nl_open_attr(h, bufsize, RTA_VIA);
-  struct rtvia *via = RTA_DATA(nest);
-
-  h->nlmsg_len += sizeof(*via);
+  struct rtvia *via = alloca(sizeof(struct rtvia) + 16);
 
   if (ipa_is_ip4(ipa))
   {
     via->rtvia_family = AF_INET;
     put_ip4(via->rtvia_addr, ipa_to_ip4(ipa));
-    h->nlmsg_len += sizeof(ip4_addr);
+    nl_add_attr(h, bufsize, RTA_VIA, via, sizeof(struct rtvia) + 4);
   }
   else
   {
     via->rtvia_family = AF_INET6;
     put_ip6(via->rtvia_addr, ipa_to_ip6(ipa));
-    h->nlmsg_len += sizeof(ip6_addr);
+    nl_add_attr(h, bufsize, RTA_VIA, via, sizeof(struct rtvia) + 16);
   }
-
-  nl_close_attr(h, nest);
 }
 #endif
 
@@ -1228,8 +1223,16 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int d
 #ifdef HAVE_MPLS_KERNEL
   if (p->af == AF_MPLS)
   {
+    /*
+     * Kernel MPLS code is a bit picky. We must:
+     * 1) Always set RT_SCOPE_UNIVERSE and RTN_UNICAST (even for RTM_DELROUTE)
+     * 2) Never use RTA_PRIORITY
+     */
+
     u32 label = net_mpls(net->n.addr);
     nl_add_attr_mpls(&r->h, rsize, RTA_DST, 1, &label);
+    r->r.rtm_scope = RT_SCOPE_UNIVERSE;
+    r->r.rtm_type = RTN_UNICAST;
   }
   else
 #endif
@@ -1247,7 +1250,9 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int d
   else
     nl_add_attr_u32(&r->h, rsize, RTA_TABLE, krt_table_id(p));
 
-  if (a->source == RTS_DUMMY)
+  if (p->af == AF_MPLS)
+    priority = 0;
+  else if (a->source == RTS_DUMMY)
     priority = e->u.krt.metric;
   else if (KRT_CF->sys.metric)
     priority = KRT_CF->sys.metric;
@@ -1262,7 +1267,9 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int d
     goto dest;
 
   /* Default scope is LINK for device routes, UNIVERSE otherwise */
-  if (ea = ea_find(eattrs, EA_KRT_SCOPE))
+  if (p->af == AF_MPLS)
+    r->r.rtm_scope = RT_SCOPE_UNIVERSE;
+  else if (ea = ea_find(eattrs, EA_KRT_SCOPE))
     r->r.rtm_scope = ea->u.data;
   else
     r->r.rtm_scope = (dest == RTD_UNICAST && ipa_zero(nh->gw)) ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE;

@@ -83,7 +83,7 @@ CF_DECLS
 %type <time> expr_us time
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
-%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_
+%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_mpls_
 %type <mls> label_stack_start label_stack
 
 %type <t> text opttext
@@ -96,7 +96,7 @@ CF_DECLS
 %left '!'
 %nonassoc '.'
 
-CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN)
+CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS)
 
 CF_GRAMMAR
 
@@ -234,6 +234,12 @@ net_roa6_: net_ip6_ MAX NUM AS NUM
     cf_error("Invalid max prefix length %u", $3);
 };
 
+net_mpls_: MPLS NUM
+{
+  $$ = cfg_alloc(sizeof(net_addr_roa6));
+  net_fill_mpls($$, $2);
+}
+
 net_ip_: net_ip4_ | net_ip6_ ;
 net_vpn_: net_vpn4_ | net_vpn6_ ;
 net_roa_: net_roa4_ | net_roa6_ ;
@@ -243,6 +249,7 @@ net_:
  | net_vpn_
  | net_roa_
  | net_flow_
+ | net_mpls_
  ;
 
 

@@ -213,6 +213,7 @@ fib_hash(struct fib *f, const net_addr *a)
   case NET_ROA6: return FIB_HASH(f, a, roa6);
   case NET_FLOW4: return FIB_HASH(f, a, flow4);
   case NET_FLOW6: return FIB_HASH(f, a, flow6);
+  case NET_MPLS: return FIB_HASH(f, a, mpls);
   default: bug("invalid type");
   }
 }
@@ -249,6 +250,7 @@ fib_find(struct fib *f, const net_addr *a)
   case NET_ROA6: return FIB_FIND(f, a, roa6);
   case NET_FLOW4: return FIB_FIND(f, a, flow4);
   case NET_FLOW6: return FIB_FIND(f, a, flow6);
+  case NET_MPLS: return FIB_FIND(f, a, mpls);
   default: bug("invalid type");
   }
 }
@@ -268,6 +270,7 @@ fib_insert(struct fib *f, const net_addr *a, struct fib_node *e)
   case NET_ROA6: FIB_INSERT(f, a, e, roa6); return;
   case NET_FLOW4: FIB_INSERT(f, a, e, flow4); return;
   case NET_FLOW6: FIB_INSERT(f, a, e, flow6); return;
+  case NET_MPLS: FIB_INSERT(f, a, e, mpls); return;
   default: bug("invalid type");
   }
 }
