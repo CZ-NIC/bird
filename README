@@ -6,7 +6,7 @@
                 (c) 1998--2008  Martin Mares <mj@ucw.cz>
                 (c) 1998--2000  Pavel Machek <pavel@ucw.cz>
                 (c) 1998--2008  Ondrej Filip <feela@network.cz>
-                (c) 2009--2016  CZ.NIC z.s.p.o.
+                (c) 2009--2017  CZ.NIC z.s.p.o.
 
 ================================================================================
 
@@ -19,7 +19,7 @@ Public License.
 What do we support
 ==================
 
-	o  Both IPv4 and IPv6 (use --enable-ipv6 when configuring)
+	o  Both IPv4 and IPv6
 	o  Multiple routing tables
 	o  Border Gateway Protocol (BGPv4)
 	o  Routing Information Protocol (RIPv2, RIPng)
