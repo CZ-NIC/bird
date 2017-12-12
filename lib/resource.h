@@ -59,11 +59,18 @@ void mb_free(void *);
 
 typedef struct linpool linpool;
 
+typedef struct lp_state {
+  void *current, *large;
+  byte *ptr;
+} lp_state;
+
 linpool *lp_new(pool *, unsigned blk);
 void *lp_alloc(linpool *, unsigned size);	/* Aligned */
 void *lp_allocu(linpool *, unsigned size);	/* Unaligned */
 void *lp_allocz(linpool *, unsigned size);	/* With clear */
 void lp_flush(linpool *);			/* Free everything, but leave linpool */
+void lp_save(linpool *m, lp_state *p);		/* Save state */
+void lp_restore(linpool *m, lp_state *p);	/* Restore state */
 
 extern const int lp_chunk_size;
 #define LP_GAS		    1024
