@@ -358,10 +358,10 @@ static inline int net_zero_roa6(const net_addr_roa6 *a)
 { return !a->pxlen && ip6_zero(a->prefix) && !a->max_pxlen && !a->asn; }
 
 static inline int net_zero_flow4(const net_addr_flow4 *a)
-{ return !a->pxlen && ip4_zero(a->prefix) && !a->data; }
+{ return !a->pxlen && ip4_zero(a->prefix) && (a->length == sizeof(net_addr_flow4)); }
 
 static inline int net_zero_flow6(const net_addr_flow6 *a)
-{ return !a->pxlen && ip6_zero(a->prefix) && !a->data; }
+{ return !a->pxlen && ip6_zero(a->prefix) && (a->length == sizeof(net_addr_flow6)); }
 
 static inline int net_zero_mpls(const net_addr_mpls *a)
 { return !a->label; }
