@@ -288,3 +288,21 @@ net_in_netX(const net_addr *a, const net_addr *n)
 
   return (net_pxlen(n) <= net_pxlen(a)) && ipa_in_netX(net_prefix(a), n);
 }
+
+#define CHECK_NET(T,S) \
+  ({ if (sizeof(T) != S) die("sizeof %s is %d/%d", #T, (int) sizeof(T), S); })
+
+void
+net_init(void)
+{
+  CHECK_NET(net_addr,		24);
+  CHECK_NET(net_addr_ip4,	 8);
+  CHECK_NET(net_addr_ip6,	20);
+  CHECK_NET(net_addr_vpn4,	16);
+  CHECK_NET(net_addr_vpn6,	32);
+  CHECK_NET(net_addr_roa4,	16);
+  CHECK_NET(net_addr_roa6,	28);
+  CHECK_NET(net_addr_flow4,	 8);
+  CHECK_NET(net_addr_flow6,	20);
+  CHECK_NET(net_addr_mpls,	 8);
+}

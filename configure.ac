@@ -36,6 +36,12 @@ AC_ARG_ENABLE([libssh],
   [enable_libssh=try]
 )
 
+AC_ARG_ENABLE([mpls-kernel],
+  [AS_HELP_STRING([--enable-mpls-kernel], [enable MPLS support in kernel protocol @<:@try@:>@])],
+  [],
+  [enable_mpls_kernel=try]
+)
+
 AC_ARG_WITH([protocols],
   [AS_HELP_STRING([--with-protocols=LIST], [include specified routing protocols @<:@all@:>@])],
   [],
@@ -239,6 +245,20 @@ if test "$enable_libssh" != no ; then
   fi
 fi
 
+if test "$enable_mpls_kernel" != no ; then
+  BIRD_CHECK_MPLS_KERNEL
+
+  if test "$bird_cv_mpls_kernel" = yes ; then
+    AC_DEFINE([HAVE_MPLS_KERNEL], [1], [Define to 1 if kernel is MPLS capable])
+  elif test "$enable_mpls_kernel" = yes ; then
+    AC_MSG_ERROR([Kernel MPLS support not found.])
+  fi
+
+  if test "$enable_mpls_kernel" = try ; then
+    enable_mpls_kernel="$bird_cv_mpls_kernel"
+  fi
+fi
+
 all_protocols="$proto_bfd babel bgp ospf pipe radv rip $proto_rpki static"
 
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
@@ -287,18 +307,6 @@ esac
 AC_CHECK_HEADERS_ONCE([alloca.h syslog.h])
 AC_CHECK_MEMBERS([struct sockaddr.sa_len], [], [], [#include <sys/socket.h>])
 
-AC_CHECK_HEADERS([linux/lwtunnel.h],
-  [AC_DEFINE([HAVE_LWTUNNEL], [1], [Define to 1 if you have the <linux/lwtunnel.h> header file.])],
-  [],
-  [] dnl Force new AC_CHECK_HEADER semantics
-)
-
-AC_CHECK_MEMBERS([struct rtvia.rtvia_family],
-  [AC_DEFINE([HAVE_STRUCT_RTVIA], [1], [Define to 1 if you have rtvia structure.])],
-  [],
-  [#include <linux/rtnetlink.h>]
-)
-
 AC_C_BIGENDIAN(
   [AC_DEFINE([CPU_BIG_ENDIAN], [1], [Define to 1 if cpu is big endian])],
   [AC_DEFINE([CPU_LITTLE_ENDIAN], [1], [Define to 1 if cpu is little endian])],
@@ -314,7 +322,7 @@ if test "$enable_debug" = yes ; then
     [
       AC_DEFINE([HAVE_EXECINFO_H], [1], [Define to 1 if you have the <execinfo.h> header file.])
       AC_SEARCH_LIBS([backtrace], [execinfo],
-	[]
+	[],
 	[AC_MSG_ERROR([Function backtrace not available.])]
       )
     ]
@@ -396,6 +404,7 @@ AC_MSG_RESULT([        System configuration:	$sysdesc])
 AC_MSG_RESULT([        Debugging:		$enable_debug])
 AC_MSG_RESULT([        POSIX threads:		$enable_pthreads])
 AC_MSG_RESULT([        Routing protocols:	$protocols])
+AC_MSG_RESULT([        Kernel MPLS support:	$enable_mpls_kernel])
 AC_MSG_RESULT([        Client:			$enable_client])
 
 rm -f $objdir/.*-stamp

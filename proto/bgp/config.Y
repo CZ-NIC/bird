@@ -58,6 +58,7 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->gr_mode = BGP_GR_AWARE;
      BGP_CFG->gr_time = 120;
      BGP_CFG->setkey = 1;
+     BGP_CFG->check_link = -1;
    }
  ;
 

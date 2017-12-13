@@ -56,9 +56,9 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "filter/filter.h"
-#include "sysdep/unix/timer.h"
 #include "conf/conf.h"
 #include "lib/string.h"
+#include "lib/timer.h"
 
 #include "unix.h"
 #include "krt.h"
@@ -87,7 +87,17 @@ krt_io_init(void)
 struct kif_proto *kif_proto;
 static struct kif_config *kif_cf;
 static timer *kif_scan_timer;
-static bird_clock_t kif_last_shot;
+static btime kif_last_shot;
+
+static struct kif_iface_config kif_default_iface = {};
+
+struct kif_iface_config *
+kif_get_iface_config(struct iface *iface)
+{
+  struct kif_config *cf = (void *) (kif_proto->p.cf);
+  struct kif_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
+  return ic ?: &kif_default_iface;
+}
 
 static void
 kif_scan(timer *t)
@@ -95,14 +105,14 @@ kif_scan(timer *t)
   struct kif_proto *p = t->data;
 
   KRT_TRACE(p, D_EVENTS, "Scanning interfaces");
-  kif_last_shot = now;
+  kif_last_shot = current_time();
   kif_do_scan(p);
 }
 
 static void
 kif_force_scan(void)
 {
-  if (kif_proto && kif_last_shot + 2 < now)
+  if (kif_proto && ((kif_last_shot + 2 S) < current_time()))
     {
       kif_scan(kif_scan_timer);
       tm_start(kif_scan_timer, ((struct kif_config *) kif_proto->p.cf)->scan_time);
@@ -112,60 +122,9 @@ kif_force_scan(void)
 void
 kif_request_scan(void)
 {
-  if (kif_proto && kif_scan_timer->expires > now)
-    tm_start(kif_scan_timer, 1);
+  if (kif_proto && (kif_scan_timer->expires > (current_time() + 1 S)))
+    tm_start(kif_scan_timer, 1 S);
 }
-
-static inline int
-prefer_addr(struct ifa *a, struct ifa *b)
-{
-  int sa = a->scope > SCOPE_LINK;
-  int sb = b->scope > SCOPE_LINK;
-
-  if (sa < sb)
-    return 0;
-  else if (sa > sb)
-    return 1;
-  else
-    return ipa_compare(a->ip, b->ip) < 0;
-}
-
-static inline struct ifa *
-find_preferred_ifa(struct iface *i, const net_addr *n)
-{
-  struct ifa *a, *b = NULL;
-
-  WALK_LIST(a, i->addrs)
-    {
-      if (!(a->flags & IA_SECONDARY) &&
-	  (!n || ipa_in_netX(a->ip, n)) &&
-	  (!b || prefer_addr(a, b)))
-	b = a;
-    }
-
-  return b;
-}
-
-struct ifa *
-kif_choose_primary(struct iface *i)
-{
-  struct kif_config *cf = (struct kif_config *) (kif_proto->p.cf);
-  struct kif_primary_item *it;
-  struct ifa *a;
-
-  WALK_LIST(it, cf->primary)
-    {
-      if (!it->pattern || patmatch(it->pattern, i->name))
-	if (a = find_preferred_ifa(i, &it->addr))
-	  return a;
-    }
-
-  if (a = kif_get_primary_ip(i))
-    return a;
-
-  return find_preferred_ifa(i, NULL);
-}
-
 
 static struct proto *
 kif_init(struct proto_config *c)
@@ -185,10 +144,7 @@ kif_start(struct proto *P)
   kif_sys_start(p);
 
   /* Start periodic interface scanning */
-  kif_scan_timer = tm_new(P->pool);
-  kif_scan_timer->hook = kif_scan;
-  kif_scan_timer->data = p;
-  kif_scan_timer->recurrent = KIF_CF->scan_time;
+  kif_scan_timer = tm_new_init(P->pool, kif_scan, p, KIF_CF->scan_time, 0);
   kif_scan(kif_scan_timer);
   tm_start(kif_scan_timer, KIF_CF->scan_time);
 
@@ -224,15 +180,15 @@ kif_reconfigure(struct proto *p, struct proto_config *new)
       tm_start(kif_scan_timer, n->scan_time);
     }
 
-  if (!EMPTY_LIST(o->primary) || !EMPTY_LIST(n->primary))
+  if (!EMPTY_LIST(o->iface_list) || !EMPTY_LIST(n->iface_list))
     {
       /* This is hack, we have to update a configuration
        * to the new value just now, because it is used
-       * for recalculation of primary addresses.
+       * for recalculation of preferred addresses.
        */
       p->cf = new;
 
-      ifa_recalc_all_primary_addresses();
+      if_recalc_all_preferred_addresses();
     }
 
   return 1;
@@ -253,8 +209,8 @@ kif_init_config(int class)
     cf_error("Kernel device protocol already defined");
 
   kif_cf = (struct kif_config *) proto_config_new(&proto_unix_iface, class);
-  kif_cf->scan_time = 60;
-  init_list(&kif_cf->primary);
+  kif_cf->scan_time = 60 S;
+  init_list(&kif_cf->iface_list);
 
   kif_sys_init_config(kif_cf);
   return (struct proto_config *) kif_cf;
@@ -266,13 +222,12 @@ kif_copy_config(struct proto_config *dest, struct proto_config *src)
   struct kif_config *d = (struct kif_config *) dest;
   struct kif_config *s = (struct kif_config *) src;
 
-  /* Copy primary addr list */
-  cfg_copy_list(&d->primary, &s->primary, sizeof(struct kif_primary_item));
+  /* Copy interface config list */
+  cfg_copy_list(&d->iface_list, &s->iface_list, sizeof(struct kif_iface_config));
 
   /* Fix sysdep parts */
   kif_sys_copy_config(d, s);
 }
-
 
 struct protocol proto_unix_iface = {
   .name = 		"Device",
@@ -885,11 +840,11 @@ static void
 krt_scan_timer_start(struct krt_proto *p)
 {
   if (!krt_scan_count)
-    krt_scan_timer = tm_new_set(krt_pool, krt_scan, NULL, 0, KRT_CF->scan_time);
+    krt_scan_timer = tm_new_init(krt_pool, krt_scan, NULL, KRT_CF->scan_time, 0);
 
   krt_scan_count++;
 
-  tm_start(krt_scan_timer, 1);
+  tm_start(krt_scan_timer, 1 S);
 }
 
 static void
@@ -927,8 +882,8 @@ krt_scan(timer *t)
 static void
 krt_scan_timer_start(struct krt_proto *p)
 {
-  p->scan_timer = tm_new_set(p->p.pool, krt_scan, p, 0, KRT_CF->scan_time);
-  tm_start(p->scan_timer, 1);
+  p->scan_timer = tm_new_init(p->p.pool, krt_scan, p, KRT_CF->scan_time, 0);
+  tm_start(p->scan_timer, 1 S);
 }
 
 static void
@@ -1216,7 +1171,7 @@ krt_init_config(int class)
 #endif
 
   krt_cf = (struct krt_config *) proto_config_new(&proto_unix_kernel, class);
-  krt_cf->scan_time = 60;
+  krt_cf->scan_time = 60 S;
 
   krt_sys_init_config(krt_cf);
   return (struct proto_config *) krt_cf;
@@ -1256,7 +1211,11 @@ struct protocol proto_unix_kernel = {
   .template =		"kernel%d",
   .attr_class =		EAP_KRT,
   .preference =		DEF_PREF_INHERITED,
+#ifdef HAVE_MPLS_KERNEL
   .channel_mask =	NB_IP | NB_MPLS,
+#else
+  .channel_mask =	NB_IP,
+#endif
   .proto_size =		sizeof(struct krt_proto),
   .config_size =	sizeof(struct krt_config),
   .preconfig =		krt_preconfig,

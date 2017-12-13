@@ -70,8 +70,8 @@ t_first_part(void)
   net_addr_flow4 *f;
   NET_ADDR_FLOW4_(f, ip4_build(10,0,0,1), 24, ((byte[]) { 0x00, 0x00, 0xab }));
 
-  const byte const *under240 = &f->data[1];
-  const byte const *above240 = &f->data[2];
+  const byte *under240 = &f->data[1];
+  const byte *above240 = &f->data[2];
 
   /* Case 0x00 0x00 */
   bt_assert(flow4_first_part(f) == NULL);

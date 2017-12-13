@@ -11,7 +11,6 @@
 
 #include "lib/lists.h"
 #include "lib/resource.h"
-#include "sysdep/unix/timer.h"
 #include "lib/net.h"
 
 struct ea_list;
@@ -159,8 +158,8 @@ typedef struct rtable {
 					 * obstacle from this routing table.
 					 */
   struct event *rt_event;		/* Routing table event */
+  btime gc_time;			/* Time of last GC */
   int gc_counter;			/* Number of operations since last GC */
-  bird_clock_t gc_time;			/* Time of last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
@@ -213,7 +212,7 @@ typedef struct rte {
   byte flags;				/* Flags (REF_...) */
   byte pflags;				/* Protocol-specific flags */
   word pref;				/* Route preference */
-  bird_clock_t lastmod;			/* Last modified */
+  btime lastmod;			/* Last modified */
   union {				/* Protocol-dependent data (metrics etc.) */
 #ifdef CONFIG_RIP
     struct {
@@ -236,6 +235,7 @@ typedef struct rte {
 #endif
 #ifdef CONFIG_BABEL
     struct {
+      u16 seqno;			/* Babel seqno */
       u16 metric;			/* Babel metric */
       u64 router_id;			/* Babel router id */
     } babel;
@@ -309,6 +309,8 @@ int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
+/* Default limit for ECMP next hops, defined in sysdep code */
+extern const int rt_default_ecmp;
 
 struct rt_show_data_rtable {
   node n;
@@ -470,7 +472,8 @@ typedef struct eattr {
 #define EAP_OSPF 3			/* OSPF */
 #define EAP_KRT 4			/* Kernel route attributes */
 #define EAP_BABEL 5			/* Babel attributes */
-#define EAP_MAX 6
+#define EAP_RADV 6			/* Router advertisment attributes */
+#define EAP_MAX 7
 
 #define EA_CODE(proto,id) (((proto) << 8) | (id))
 #define EA_PROTO(ea) ((ea) >> 8)

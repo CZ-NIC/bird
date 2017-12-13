@@ -31,7 +31,7 @@ static inline void kif_sys_copy_config(struct kif_config *d UNUSED, struct kif_c
 
 /* Kernel routes */
 
-extern int krt_max_tables;
+extern uint krt_max_tables;
 
 struct krt_params {
   int table_id;				/* Kernel table ID we sync with */

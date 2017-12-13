@@ -2,6 +2,8 @@
  *	BIRD -- The Babel protocol
  *
  *	Copyright (c) 2015--2016 Toke Hoiland-Jorgensen
+ * 	(c) 2016--2017 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2016--2017 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  *
@@ -21,7 +23,7 @@
 #include "lib/lists.h"
 #include "lib/socket.h"
 #include "lib/string.h"
-#include "sysdep/unix/timer.h"
+#include "lib/timer.h"
 
 #define EA_BABEL_METRIC		EA_CODE(EAP_BABEL, 0)
 #define EA_BABEL_ROUTER_ID	EA_CODE(EAP_BABEL, 1)
@@ -32,25 +34,28 @@
 #define BABEL_INFINITY		0xFFFF
 
 
-#define BABEL_HELLO_INTERVAL_WIRED	4	/* Default hello intervals in seconds */
-#define BABEL_HELLO_INTERVAL_WIRELESS	4
+#define BABEL_HELLO_INTERVAL_WIRED	(4 S_)	/* Default hello intervals in seconds */
+#define BABEL_HELLO_INTERVAL_WIRELESS	(4 S_)
+#define BABEL_HELLO_LIMIT		12
 #define BABEL_UPDATE_INTERVAL_FACTOR	4
 #define BABEL_IHU_INTERVAL_FACTOR	3
-#define BABEL_IHU_EXPIRY_FACTOR(X)	((X)*3/2)	/* 1.5 */
-#define BABEL_HELLO_EXPIRY_FACTOR(X)	((X)*3/2)	/* 1.5 */
-#define BABEL_ROUTE_EXPIRY_FACTOR(X)	((X)*7/2)	/* 3.5 */
-#define BABEL_ROUTE_REFRESH_INTERVAL	2	/* Seconds before route expiry to send route request */
-#define BABEL_HOLD_TIME			10	/* Expiry time for our own routes */
+#define BABEL_HOLD_TIME_FACTOR		4	/* How long we keep unreachable route relative to update interval */
+#define BABEL_IHU_EXPIRY_FACTOR(X)	((btime)(X)*7/2)	/* 3.5 */
+#define BABEL_HELLO_EXPIRY_FACTOR(X)	((btime)(X)*3/2)	/* 1.5 */
+#define BABEL_ROUTE_EXPIRY_FACTOR(X)	((btime)(X)*7/2)	/* 3.5 */
+#define BABEL_ROUTE_REFRESH_FACTOR(X)	((btime)(X)*5/2)	/* 2.5 */
+#define BABEL_SEQNO_REQUEST_RETRY	4
+#define BABEL_SEQNO_REQUEST_EXPIRY	(2 S_)
+#define BABEL_GARBAGE_INTERVAL		(300 S_)
 #define BABEL_RXCOST_WIRED		96
 #define BABEL_RXCOST_WIRELESS		256
 #define BABEL_INITIAL_HOP_COUNT		255
-#define BABEL_MAX_SEND_INTERVAL		5
-#define BABEL_TIME_UNITS		100	/* On-wire times are counted in centiseconds */
-#define BABEL_SEQNO_REQUEST_EXPIRY	60
-#define BABEL_GARBAGE_INTERVAL		300
+#define BABEL_MAX_SEND_INTERVAL		5	/* Unused ? */
 
 /* Max interval that will not overflow when carried as 16-bit centiseconds */
-#define BABEL_MAX_INTERVAL		(0xFFFF/BABEL_TIME_UNITS)
+#define BABEL_TIME_UNITS		10000	/* On-wire times are counted in centiseconds */
+#define BABEL_MIN_INTERVAL		(0x0001 * BABEL_TIME_UNITS)
+#define BABEL_MAX_INTERVAL		(0xFFFF * BABEL_TIME_UNITS)
 
 #define BABEL_OVERHEAD		(IP6_HEADER_LENGTH+UDP_HEADER_LENGTH)
 #define BABEL_MIN_MTU		(512 + BABEL_OVERHEAD)
@@ -102,8 +107,8 @@ enum babel_ae_type {
 
 struct babel_config {
   struct proto_config c;
-
-  list iface_list;              /* Patterns configured -- keep it first; see babel_reconfigure why */
+  list iface_list;			/* List of iface configs (struct babel_iface_config) */
+  uint hold_time;			/* Time to hold stale entries and unreachable routes */
 };
 
 struct babel_iface_config {
@@ -111,11 +116,12 @@ struct babel_iface_config {
 
   u16 rxcost;
   u8 type;
+  u8 limit;				/* Minimum number of Hellos to keep link up */
   u8 check_link;
   uint port;
-  u16 hello_interval;
-  u16 ihu_interval;
-  u16 update_interval;
+  uint hello_interval;			/* Hello interval, in us */
+  uint ihu_interval;			/* IHU interval, in us */
+  uint update_interval;			/* Update interval, in us */
 
   u16 rx_buffer;			/* RX buffer size, 0 for MTU */
   u16 tx_length;			/* TX packet length limit (including headers), 0 for MTU */
@@ -138,14 +144,13 @@ struct babel_proto {
   list interfaces;			/* Interfaces we really know about (struct babel_iface) */
   u64 router_id;
   u16 update_seqno;			/* To be increased on request */
+  u8 update_seqno_inc;			/* Request for update_seqno increase */
   u8 triggered;				/* For triggering global updates */
 
   slab *route_slab;
   slab *source_slab;
   slab *msg_slab;
-
   slab *seqno_slab;
-  list seqno_cache;			/* Seqno requests in the cache (struct babel_seqno_request) */
 
   struct tbf log_pkt_tbf;		/* TBF for packet messages */
 };
@@ -172,10 +177,10 @@ struct babel_iface {
 
   u16 hello_seqno;			/* To be increased on each hello */
 
-  bird_clock_t next_hello;
-  bird_clock_t next_regular;
-  bird_clock_t next_triggered;
-  bird_clock_t want_triggered;
+  btime next_hello;
+  btime next_regular;
+  btime next_triggered;
+  btime want_triggered;
 
   timer *timer;
   event *send_event;
@@ -186,13 +191,18 @@ struct babel_neighbor {
   struct babel_iface *ifa;
 
   ip_addr addr;
-  u16 txcost;
+  uint uc;				/* Reference counter for seqno requests */
+  u16 rxcost;				/* Sent in last IHU */
+  u16 txcost;				/* Received in last IHU */
+  u16 cost;				/* Computed neighbor cost */
+  s8 ihu_cnt;				/* IHU countdown, 0 to send it */
   u8 hello_cnt;
   u16 hello_map;
   u16 next_hello_seqno;
+  uint last_hello_int;
   /* expiry timers */
-  bird_clock_t hello_expiry;
-  bird_clock_t ihu_expiry;
+  btime hello_expiry;
+  btime ihu_expiry;
 
   list routes;				/* Routes this neighbour has sent us (struct babel_route) */
 };
@@ -203,7 +213,7 @@ struct babel_source {
   u64 router_id;
   u16 seqno;
   u16 metric;
-  bird_clock_t expires;
+  btime expires;
 };
 
 struct babel_route {
@@ -212,37 +222,46 @@ struct babel_route {
   struct babel_entry    *e;
   struct babel_neighbor *neigh;
 
+  u8 feasible;
   u16 seqno;
-  u16 advert_metric;
   u16 metric;
+  u16 advert_metric;
   u64 router_id;
   ip_addr next_hop;
-  bird_clock_t refresh_time;
-  bird_clock_t expires;
-  u16 expiry_interval;
+  btime refresh_time;
+  btime expires;
+};
+
+struct babel_seqno_request {
+  node n;
+  u64 router_id;
+  u16 seqno;
+  u8 hop_count;
+  u8 count;
+  btime expires;
+  struct babel_neighbor *nbr;
 };
 
 struct babel_entry {
-  struct babel_proto *proto;
-  struct babel_route *selected_in;
-  struct babel_route *selected_out;
+  struct babel_route *selected;
 
-  bird_clock_t updated;
-
-  list sources;				/* Source entries for this prefix (struct babel_source). */
   list routes;				/* Routes for this prefix (struct babel_route) */
+  list sources;				/* Source entries for this prefix (struct babel_source). */
+  list requests;
+
+  u8 valid;				/* Entry validity state (BABEL_ENTRY_*) */
+  u8 unreachable;			/* Unreachable route is announced */
+  u16 seqno;				/* Outgoing seqno */
+  u16 metric;				/* Outgoing metric */
+  u64 router_id;			/* Outgoing router ID */
+  btime updated;			/* Last change of outgoing rte, for triggered updates */
 
   struct fib_node n;
 };
 
-/* Stores forwarded seqno requests for duplicate suppression. */
-struct babel_seqno_request {
-  node n;
-  net_addr net;
-  u64 router_id;
-  u16 seqno;
-  bird_clock_t updated;
-};
+#define BABEL_ENTRY_DUMMY	0	/* No outgoing route */
+#define BABEL_ENTRY_VALID	1	/* Valid outgoing route */
+#define BABEL_ENTRY_STALE	2	/* Stale outgoing route, waiting for GC */
 
 
 /*
@@ -252,7 +271,7 @@ struct babel_seqno_request {
 struct babel_msg_ack_req {
   u8 type;
   u16 nonce;
-  u16 interval;
+  uint interval;
   ip_addr sender;
 };
 
@@ -264,7 +283,7 @@ struct babel_msg_ack {
 struct babel_msg_hello {
   u8 type;
   u16 seqno;
-  u16 interval;
+  uint interval;
   ip_addr sender;
 };
 
@@ -272,7 +291,7 @@ struct babel_msg_ihu {
   u8 type;
   u8 ae;
   u16 rxcost;
-  u16 interval;
+  uint interval;
   ip_addr addr;
   ip_addr sender;
 };
@@ -280,7 +299,7 @@ struct babel_msg_ihu {
 struct babel_msg_update {
   u8 type;
   u8 wildcard;
-  u16 interval;
+  uint interval;
   u16 seqno;
   u16 metric;
   u64 router_id;
@@ -334,6 +353,7 @@ void babel_handle_seqno_request(union babel_msg *msg, struct babel_iface *ifa);
 void babel_show_interfaces(struct proto *P, char *iff);
 void babel_show_neighbors(struct proto *P, char *iff);
 void babel_show_entries(struct proto *P);
+void babel_show_routes(struct proto *P);
 
 /* packets.c */
 void babel_enqueue(union babel_msg *msg, struct babel_iface *ifa);

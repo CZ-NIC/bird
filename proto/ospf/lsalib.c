@@ -280,7 +280,7 @@ lsa_walk_rt(struct ospf_lsa_rt_walk *rt)
 
 
 void
-lsa_parse_sum_net(struct top_hash_entry *en, int ospf2, net_addr *net, u8 *pxopts, u32 *metric)
+lsa_parse_sum_net(struct top_hash_entry *en, int ospf2, int af, net_addr *net, u8 *pxopts, u32 *metric)
 {
   if (ospf2)
   {
@@ -292,7 +292,7 @@ lsa_parse_sum_net(struct top_hash_entry *en, int ospf2, net_addr *net, u8 *pxopt
   else
   {
     struct ospf_lsa_sum3_net *ls = en->lsa_body;
-    ospf_get_ipv6_prefix(ls->prefix, net, pxopts, NULL);
+    ospf3_get_prefix(ls->prefix, af, net, pxopts, NULL);
     *metric = ls->metric & LSA_METRIC_MASK;
   }
 }
@@ -317,7 +317,7 @@ lsa_parse_sum_rt(struct top_hash_entry *en, int ospf2, u32 *drid, u32 *metric, u
 }
 
 void
-lsa_parse_ext(struct top_hash_entry *en, int ospf2, struct ospf_lsa_ext_local *rt)
+lsa_parse_ext(struct top_hash_entry *en, int ospf2, int af, struct ospf_lsa_ext_local *rt)
 {
   if (ospf2)
   {
@@ -338,13 +338,13 @@ lsa_parse_ext(struct top_hash_entry *en, int ospf2, struct ospf_lsa_ext_local *r
   else
   {
     struct ospf_lsa_ext3 *ext = en->lsa_body;
-    u32 *buf = ospf_get_ipv6_prefix(ext->rest, &rt->net, &rt->pxopts, NULL);
+    u32 *buf = ospf3_get_prefix(ext->rest, af, &rt->net, &rt->pxopts, NULL);
     rt->metric = ext->metric & LSA_METRIC_MASK;
     rt->ebit = ext->metric & LSA_EXT3_EBIT;
 
     rt->fbit = ext->metric & LSA_EXT3_FBIT;
     if (rt->fbit)
-      buf = ospf_get_ipv6_addr(buf, &rt->fwaddr);
+      buf = ospf3_get_addr(buf, af, &rt->fwaddr);
     else
       rt->fwaddr = IPA_NONE;
 

@@ -65,14 +65,15 @@ proto_postconfig(void)
 CF_DECLS
 
 CF_KEYWORDS(ROUTER, ID, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
-CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, TABLE, STATES, ROUTES, FILTERS)
+CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, TABLE, STATES, ROUTES, FILTERS)
 CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED)
 CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, BY, FOR, COMMANDS, PREEXPORT, NOEXPORT, GENERATE)
-CF_KEYWORDS(LISTEN, BGP, V6ONLY, DUAL, ADDRESS, PORT, PASSWORDS, DESCRIPTION, SORTED)
+CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION, SORTED)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
+CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
 CF_KEYWORDS(REFRESH)
 
@@ -124,24 +125,6 @@ idval:
    }
  ;
 
-
-CF_ADDTO(conf, listen)
-
-listen: LISTEN BGP listen_opts ';' ;
-
-listen_opts:
-   /* Nothing */
- | listen_opts listen_opt
- ;
-
-listen_opt:
-   ADDRESS ipa { new_config->listen_bgp_addr = $2; }
- | PORT expr { new_config->listen_bgp_port = $2; }
- | V6ONLY { new_config->listen_bgp_flags = 0; }
- | DUAL { new_config->listen_bgp_flags = 1; }
- ;
-
-
 CF_ADDTO(conf, gr_opts)
 
 gr_opts: GRACEFUL RESTART WAIT expr ';' { new_config->gr_wait = $4; } ;
@@ -158,6 +141,7 @@ net_type:
  | ROA6 { $$ = NET_ROA6; }
  | FLOW4{ $$ = NET_FLOW4; }
  | FLOW6{ $$ = NET_FLOW6; }
+ | MPLS { $$ = NET_MPLS; }
  ;
 
 CF_ENUM(T_ENUM_NETTYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6)
@@ -225,6 +209,7 @@ proto_item:
  | MRTDUMP mrtdump_mask { this_proto->mrtdump = $2; }
  | ROUTER ID idval { this_proto->router_id = $3; }
  | DESCRIPTION text { this_proto->dsc = $2; }
+ | VRF text { this_proto->vrf = if_get_by_name($2); }
  ;
 
 
@@ -296,6 +281,7 @@ limit_spec:
  | OFF { $$ = (struct channel_limit){}; }
  ;
 
+
 CF_ADDTO(conf, debug_default)
 
 debug_default:
@@ -304,6 +290,31 @@ debug_default:
  ;
 
 /* MRTDUMP PROTOCOLS is in systep/unix/config.Y */
+
+CF_ADDTO(conf, timeformat_base)
+
+timeformat_which:
+   ROUTE { $$ = &new_config->tf_route; }
+ | PROTOCOL { $$ = &new_config->tf_proto; }
+ | BASE { $$ = &new_config->tf_base; }
+ | LOG { $$ = &new_config->tf_log; }
+ ;
+
+timeformat_spec:
+   timeformat_which TEXT { *$1 = (struct timeformat){$2, NULL, 0}; }
+ | timeformat_which TEXT expr TEXT { *$1 = (struct timeformat){$2, $4, (s64) $3 S_}; }
+ | timeformat_which ISO SHORT    { *$1 = TM_ISO_SHORT_S; }
+ | timeformat_which ISO SHORT MS { *$1 = TM_ISO_SHORT_MS; }
+ | timeformat_which ISO SHORT US { *$1 = TM_ISO_SHORT_US; }
+ | timeformat_which ISO LONG    { *$1 = TM_ISO_LONG_S; }
+ | timeformat_which ISO LONG MS { *$1 = TM_ISO_LONG_MS; }
+ | timeformat_which ISO LONG US { *$1 = TM_ISO_LONG_US; }
+ ;
+
+timeformat_base:
+   TIMEFORMAT timeformat_spec ';'
+ ;
+
 
 /* Interface patterns */
 
@@ -463,12 +474,12 @@ password_item_begin:
 
 password_item_params:
    /* empty */ { }
- | GENERATE FROM datetime ';' password_item_params { this_p_item->genfrom = $3; }
- | GENERATE TO datetime ';' password_item_params { this_p_item->gento = $3; }
- | ACCEPT FROM datetime ';' password_item_params { this_p_item->accfrom = $3; }
- | ACCEPT TO datetime ';' password_item_params { this_p_item->accto = $3; }
- | FROM datetime ';' password_item_params { this_p_item->genfrom = this_p_item->accfrom = $2; }
- | TO datetime ';' password_item_params { this_p_item->gento = this_p_item->accto = $2; }
+ | GENERATE FROM time ';' password_item_params { this_p_item->genfrom = $3; }
+ | GENERATE TO time ';' password_item_params { this_p_item->gento = $3; }
+ | ACCEPT FROM time ';' password_item_params { this_p_item->accfrom = $3; }
+ | ACCEPT TO time ';' password_item_params { this_p_item->accto = $3; }
+ | FROM time ';' password_item_params { this_p_item->genfrom = this_p_item->accfrom = $2; }
+ | TO time ';' password_item_params { this_p_item->gento = this_p_item->accto = $2; }
  | ID expr ';' password_item_params { this_p_item->id = $2; if ($2 <= 0) cf_error("Password ID has to be greated than zero."); }
  | ALGORITHM password_algorithm ';' password_item_params { this_p_item->alg = $2; }
  ;
@@ -747,12 +758,12 @@ echo_size:
    }
  ;
 
-CF_CLI(DISABLE, proto_patt, <protocol> | \"<pattern>\" | all, [[Disable protocol]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
-{ proto_apply_cmd($2, proto_cmd_disable, 1, 0); } ;
-CF_CLI(ENABLE, proto_patt, <protocol> | \"<pattern>\" | all, [[Enable protocol]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
-{ proto_apply_cmd($2, proto_cmd_enable, 1, 0); } ;
-CF_CLI(RESTART, proto_patt, <protocol> | \"<pattern>\" | all, [[Restart protocol]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
-{ proto_apply_cmd($2, proto_cmd_restart, 1, 0); } ;
+CF_CLI(DISABLE, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Disable protocol]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
+{ proto_apply_cmd($2, proto_cmd_disable, 1, (uintptr_t) $3); } ;
+CF_CLI(ENABLE, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Enable protocol]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
+{ proto_apply_cmd($2, proto_cmd_enable, 1, (uintptr_t) $3); } ;
+CF_CLI(RESTART, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Restart protocol]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
+{ proto_apply_cmd($2, proto_cmd_restart, 1, (uintptr_t) $3); } ;
 CF_CLI(RELOAD, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)
 { proto_apply_cmd($2, proto_cmd_reload, 1, CMD_RELOAD); } ;
 CF_CLI(RELOAD IN, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just imported routes)]], CLI_SF_PROTOCOL | CLI_SF_KW_ALL)

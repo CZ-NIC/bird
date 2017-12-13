@@ -1,45 +1,46 @@
-Version 2.0.0-pre1 (2017-04-29)
+Version 2.0.0 (2017-12-11)
+  o Integrated IPv4 + IPv6 design
   o Support for MPLS next hops
-  o VPNv4 and VPNv6 network types
+  o Support for VPNv4 and VPNv6 networks
+  o Microsecond timers infrastructure
+  o Basic VRF support
+  o Babel: Support for dual-stack IPv4/IPv6
+  o Babel: Many improvements and bugfixes
+  o Major BGP protocol redesign
+  o Full support for Multiprotocol BGP
+  o BGP multicast support (SAFI 2)
+  o BGP flowspec support (RFC 5575)
   o BGP with MPLS labels (RFC 3107)
   o BGP MPLS/VPN support (RFC 4364)
   o BGP 6PE - IPv6 NLRI over IPv4 MPLS (RFC 4798)
   o BGP IPv4 NLRI with an IPv6 Next Hop (RFC 5549)
   o BGP Confederations (RFC 5065)
-  o BGP: Simplify igp table options
+  o BGP Shutdown communication (RFC 8203)
   o BGP: Allow exchanging LOCAL_PREF with eBGP peers
   o BGP: Allow to specify interface for regular sessions
-  o Babel support restored
-  o Static: Minor overhaul
-  o Netlink: Default kernel metric changed to 32
-  o Flowspec: Limit tcp mask length to 12 bits
-  o Update of show route command
-
-  Notes:
-
-  Definitions of OSPFv2, OSPFv3 and RIP NG protocols now use keywords
-  'ospf v2', 'ospf v3' and 'rip ng' instead of 'ospf2', 'ospf3' and 'ripng'.
-
-  Flows and ROAs no longer use phony next hops, so there is no need to use
-  'drop' or 'unreachable' in their static route definitions.
-
-  See doc/bird.conf.example2 for configuration examples.
-
-
-Version 2.0.0-pre0 (2016-12-07)
-  o Integrated IPv4 + IPv6 design
-  o Major BGP protocol redesign
-  o BGP multicast support (SAFI 2)
-  o BGP flowspec support (RFC 5575)
+  o OSPF: Support of address families in OSPFv3
+  o OSPF: Enable ECMP and Link detection by default
+  o RAdv: Support for more specific routes (RFC 4191)
+  o RAdv: Proper handling of prefix retraction
+  o RIP: Enable ECMP and Link detection by default
+  o Redesign of RPKI handling
   o New RPKI-Router protocol
+  o Static: Minor overhaul
+  o Static: Support for all new route types
+  o Kenrel: Default Linux kernel metric changed to 32
+  o Kernel: Fix IPv6 ECMP handling with Linux 4.11+
+  o Update of show route command
+  o BIRD client persistent history
   o New build system
   o Unit tests
+  o ...
 
   Notes:
 
-  Protocols and tables are now connected using explicit channels, most related
-  protocol options (table, import, export, ...) are now channel options. See
-  doc/bird.conf.example2 for configuration examples.
+  Tables are now defined with appropriate net type keyword. Protocols and tables
+  are now connected by explicit channels, most related protocol options (table,
+  import, export, ...) are now channel options. See doc/bird.conf.example2 for
+  configuration examples. Some options were removed/replaced.
 
 
 Version 1.6.3 (2016-12-21)

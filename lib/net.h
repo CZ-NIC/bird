@@ -45,7 +45,7 @@ typedef struct net_addr {
   u8 type;
   u8 pxlen;
   u16 length;
-  u8 data[16];
+  u8 data[20];
   u64 align[0];
 } net_addr;
 
@@ -76,6 +76,7 @@ typedef struct net_addr_vpn6 {
   u8 pxlen;
   u16 length;
   ip6_addr prefix;
+  u32 padding;
   u64 rd;
 } net_addr_vpn6;
 
@@ -152,7 +153,7 @@ extern const u16 net_max_text_length[];
   ((net_addr_vpn4) { NET_VPN4, pxlen, sizeof(net_addr_vpn4), prefix, rd })
 
 #define NET_ADDR_VPN6(prefix,pxlen,rd) \
-  ((net_addr_vpn6) { NET_VPN6, pxlen, sizeof(net_addr_vpn6), prefix, rd })
+  ((net_addr_vpn6) { NET_VPN6, pxlen, sizeof(net_addr_vpn6), prefix, 0, rd })
 
 #define NET_ADDR_ROA4(prefix,pxlen,max_pxlen,asn) \
   ((net_addr_roa4) { NET_ROA4, pxlen, sizeof(net_addr_roa4), prefix, max_pxlen, asn })
@@ -230,11 +231,14 @@ static inline int net_type_match(const net_addr *a, u32 mask)
 static inline int net_is_ip(const net_addr *a)
 { return (a->type == NET_IP4) || (a->type == NET_IP6); }
 
+static inline int net_is_vpn(const net_addr *a)
+{ return (a->type == NET_VPN4) || (a->type == NET_VPN6); }
+
 static inline int net_is_roa(const net_addr *a)
 { return (a->type == NET_ROA4) || (a->type == NET_ROA6); }
 
-static inline int net_is_vpn(const net_addr *a)
-{ return (a->type == NET_VPN4) || (a->type == NET_VPN6); }
+static inline int net_is_flow(const net_addr *a)
+{ return (a->type == NET_FLOW4) || (a->type == NET_FLOW6); }
 
 
 static inline ip4_addr net4_prefix(const net_addr *a)
@@ -354,10 +358,10 @@ static inline int net_zero_roa6(const net_addr_roa6 *a)
 { return !a->pxlen && ip6_zero(a->prefix) && !a->max_pxlen && !a->asn; }
 
 static inline int net_zero_flow4(const net_addr_flow4 *a)
-{ return !a->pxlen && ip4_zero(a->prefix) && !a->data; }
+{ return !a->pxlen && ip4_zero(a->prefix) && (a->length == sizeof(net_addr_flow4)); }
 
 static inline int net_zero_flow6(const net_addr_flow6 *a)
-{ return !a->pxlen && ip6_zero(a->prefix) && !a->data; }
+{ return !a->pxlen && ip6_zero(a->prefix) && (a->length == sizeof(net_addr_flow6)); }
 
 static inline int net_zero_mpls(const net_addr_mpls *a)
 { return !a->label; }
@@ -526,8 +530,21 @@ int net_classify(const net_addr *N);
 int net_format(const net_addr *N, char *buf, int buflen);
 int rd_format(const u64 rd, char *buf, int buflen);
 
+static inline int ipa_in_net_ip4(ip4_addr a, const net_addr_ip4 *n)
+{ return ip4_zero(ip4_and(ip4_xor(a, n->prefix), ip4_mkmask(n->pxlen))); }
+
+static inline int net_in_net_ip4(const net_addr_ip4 *a, const net_addr_ip4 *b)
+{ return (a->pxlen >= b->pxlen) && ipa_in_net_ip4(a->prefix, b); }
+
+static inline int ipa_in_net_ip6(ip6_addr a, const net_addr_ip6 *n)
+{ return ip6_zero(ip6_and(ip6_xor(a, n->prefix), ip6_mkmask(n->pxlen))); }
+
+static inline int net_in_net_ip6(const net_addr_ip6 *a, const net_addr_ip6 *b)
+{ return (a->pxlen >= b->pxlen) && ipa_in_net_ip6(a->prefix, b); }
+
 int ipa_in_netX(const ip_addr A, const net_addr *N);
 int net_in_netX(const net_addr *A, const net_addr *N);
 
+void net_init(void);
 
 #endif

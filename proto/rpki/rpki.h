@@ -60,11 +60,11 @@ struct rpki_cache {
   u8 request_session_id;		/* 1: have to request new session id; 0: we have already received session id */
   u32 serial_num;			/* Serial number denotes the logical version of data from cache server */
   u8 version;				/* Protocol version */
-  bird_clock_t last_update;		/* Last successful synchronization with cache server */
-  bird_clock_t last_rx_prefix;		/* Last received prefix PDU */
+  btime last_update;			/* Last successful synchronization with cache server */
+  btime last_rx_prefix;			/* Last received prefix PDU */
 
   /* Intervals can be changed by cache server on the fly */
-  u32 refresh_interval;			/* Actual refresh interval */
+  u32 refresh_interval;			/* Actual refresh interval (in seconds) */
   u32 retry_interval;
   u32 expire_interval;
   timer *retry_timer;			/* Retry timer event */

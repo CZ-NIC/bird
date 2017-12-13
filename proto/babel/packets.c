@@ -2,6 +2,8 @@
  *	BIRD -- The Babel protocol
  *
  *	Copyright (c) 2015--2016 Toke Hoiland-Jorgensen
+ * 	(c) 2016--2017 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2016--2017 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  *
@@ -40,7 +42,7 @@ struct babel_tlv_ack {
 struct babel_tlv_hello {
   u8 type;
   u8 length;
-  u16 reserved;
+  u16 flags;
   u16 seqno;
   u16 interval;
 } PACKED;
@@ -104,8 +106,12 @@ struct babel_tlv_seqno_request {
 } PACKED;
 
 
-#define BABEL_FLAG_DEF_PREFIX	0x80
-#define BABEL_FLAG_ROUTER_ID	0x40
+/* Hello flags */
+#define BABEL_HF_UNICAST	0x8000
+
+/* Update flags */
+#define BABEL_UF_DEF_PREFIX	0x80
+#define BABEL_UF_ROUTER_ID	0x40
 
 
 struct babel_parse_state {
@@ -162,17 +168,17 @@ bytes_equal(u8 *b1, u8 *b2, uint maxlen)
   return i;
 }
 
-static inline u16
+static inline uint
 get_time16(const void *p)
 {
-  u16 v = get_u16(p) / BABEL_TIME_UNITS;
-  return MAX(1, v);
+  uint v = get_u16(p) * BABEL_TIME_UNITS;
+  return MAX(BABEL_MIN_INTERVAL, v);
 }
 
 static inline void
-put_time16(void *p, u16 v)
+put_time16(void *p, uint v)
 {
-  put_u16(p, v * BABEL_TIME_UNITS);
+  put_u16(p, v / BABEL_TIME_UNITS);
 }
 
 static inline void
@@ -340,6 +346,11 @@ babel_read_hello(struct babel_tlv *hdr, union babel_msg *m,
 {
   struct babel_tlv_hello *tlv = (void *) hdr;
   struct babel_msg_hello *msg = &m->hello;
+
+  /* We currently don't support unicast Hello */
+  u16 flags = get_u16(&tlv->flags);
+  if (flags & BABEL_HF_UNICAST)
+    return PARSE_IGNORE;
 
   msg->type = BABEL_TLV_HELLO;
   msg->seqno = get_u16(&tlv->seqno);
@@ -593,8 +604,8 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     if (tlv->omitted && !state->def_ip4_prefix_seen)
       return PARSE_ERROR;
 
-    /* Need next hop for v4 routes */
-    if (ipa_zero(state->next_hop_ip4))
+    /* Update must have next hop, unless it is retraction */
+    if (ipa_zero(state->next_hop_ip4) && (msg->metric != BABEL_INFINITY))
       return PARSE_ERROR;
 
     /* Merge saved prefix and received prefix parts */
@@ -604,7 +615,7 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     ip4_addr prefix4 = get_ip4(buf);
     net_fill_ip4(&msg->net, prefix4, tlv->plen);
 
-    if (tlv->flags & BABEL_FLAG_DEF_PREFIX)
+    if (tlv->flags & BABEL_UF_DEF_PREFIX)
     {
       put_ip4(state->def_ip4_prefix, prefix4);
       state->def_ip4_prefix_seen = 1;
@@ -629,13 +640,13 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     ip6_addr prefix6 = get_ip6(buf);
     net_fill_ip6(&msg->net, prefix6, tlv->plen);
 
-    if (tlv->flags & BABEL_FLAG_DEF_PREFIX)
+    if (tlv->flags & BABEL_UF_DEF_PREFIX)
     {
       put_ip6(state->def_ip6_prefix, prefix6);
       state->def_ip6_prefix_seen = 1;
     }
 
-    if (tlv->flags & BABEL_FLAG_ROUTER_ID)
+    if (tlv->flags & BABEL_UF_ROUTER_ID)
     {
       state->router_id = ((u64) _I2(prefix6)) << 32 | _I3(prefix6);
       state->router_id_seen = 1;
@@ -748,7 +759,7 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
     else
     {
       put_ip6_px(tlv->addr, &msg->net);
-      tlv->flags |= BABEL_FLAG_DEF_PREFIX;
+      tlv->flags |= BABEL_UF_DEF_PREFIX;
 
       put_ip6(state->def_ip6_prefix, net6_prefix(&msg->net));
       state->def_ip6_pxlen = tlv->plen;
@@ -1294,7 +1305,7 @@ babel_rx_hook(sock *sk, uint len)
       sk->iface->name, sk->faddr, sk->laddr);
 
   /* Silently ignore my own packets */
-  if (ipa_equal(ifa->iface->addr->ip, sk->faddr))
+  if (ipa_equal(sk->faddr, sk->saddr))
     return 1;
 
   if (!ipa_is_link_local(sk->faddr))
@@ -1329,6 +1340,8 @@ babel_open_socket(struct babel_iface *ifa)
   sk->sport = ifa->cf->port;
   sk->dport = ifa->cf->port;
   sk->iface = ifa->iface;
+  sk->saddr = ifa->addr;
+  sk->vrf = p->p.vrf;
 
   sk->rx_hook = babel_rx_hook;
   sk->tx_hook = babel_tx_hook;

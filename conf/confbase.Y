@@ -14,7 +14,7 @@ CF_HDR
 #include "conf/conf.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
-#include "sysdep/unix/timer.h"
+#include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
@@ -60,7 +60,7 @@ CF_DECLS
   struct lsadb_show_data *ld;
   struct iface *iface;
   void *g;
-  bird_clock_t time;
+  btime time;
   struct f_prefix px;
   struct proto_spec ps;
   struct channel_limit cl;
@@ -80,11 +80,10 @@ CF_DECLS
 %type <iface> ipa_scope
 
 %type <i> expr bool pxlen4
-%type <i32> expr_us
-%type <time> datetime
+%type <time> expr_us time
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
-%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_
+%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_mpls_
 %type <mls> label_stack_start label_stack
 
 %type <t> text opttext
@@ -97,7 +96,7 @@ CF_DECLS
 %left '!'
 %nonassoc '.'
 
-CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN)
+CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS)
 
 CF_GRAMMAR
 
@@ -137,9 +136,9 @@ expr:
 
 
 expr_us:
-   expr S  { $$ = (u32) $1 * 1000000; }
- | expr MS { $$ = (u32) $1 * 1000; }
- | expr US { $$ = (u32) $1 * 1; }
+   expr S  { $$ = $1 S_; }
+ | expr MS { $$ = $1 MS_; }
+ | expr US { $$ = $1 US_; }
  ;
 
 /* Switches */
@@ -235,6 +234,12 @@ net_roa6_: net_ip6_ MAX NUM AS NUM
     cf_error("Invalid max prefix length %u", $3);
 };
 
+net_mpls_: MPLS NUM
+{
+  $$ = cfg_alloc(sizeof(net_addr_roa6));
+  net_fill_mpls($$, $2);
+}
+
 net_ip_: net_ip4_ | net_ip6_ ;
 net_vpn_: net_vpn4_ | net_vpn6_ ;
 net_roa_: net_roa4_ | net_roa6_ ;
@@ -244,6 +249,7 @@ net_:
  | net_vpn_
  | net_roa_
  | net_flow_
+ | net_mpls_
  ;
 
 
@@ -308,11 +314,11 @@ label_stack:
   }
 ;
 
-datetime:
+time:
    TEXT {
-     $$ = tm_parse_datetime($1);
+     $$ = tm_parse_time($1);
      if (!$$)
-       cf_error("Invalid date and time");
+       cf_error("Invalid date/time");
    }
  ;
 

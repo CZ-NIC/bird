@@ -52,7 +52,7 @@
 #include "lib/resource.h"
 #include "lib/string.h"
 #include "lib/event.h"
-#include "sysdep/unix/timer.h"
+#include "lib/timer.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
 
@@ -102,9 +102,9 @@ config_alloc(const char *name)
   c->pool = p;
   c->mem = l;
   c->file_name = ndup;
-  c->load_time = now;
-  c->tf_route = c->tf_proto = (struct timeformat){"%T", "%F", 20*3600};
-  c->tf_base = c->tf_log = (struct timeformat){"%F %T", NULL, 0};
+  c->load_time = current_time();
+  c->tf_route = c->tf_proto = TM_ISO_SHORT_MS;
+  c->tf_base = c->tf_log = TM_ISO_LONG_MS;
   c->gr_wait = DEFAULT_GR_WAIT;
 
   return c;
@@ -219,11 +219,6 @@ global_commit(struct config *new, struct config *old)
   if (!old)
     return 0;
 
-  if (!ipa_equal(old->listen_bgp_addr, new->listen_bgp_addr) ||
-      (old->listen_bgp_port != new->listen_bgp_port) ||
-      (old->listen_bgp_flags != new->listen_bgp_flags))
-    log(L_WARN "Reconfiguration of BGP listening socket not implemented, please restart BIRD.");
-
   if (!new->router_id)
     {
       new->router_id = old->router_id;
@@ -307,7 +302,7 @@ config_done(void *unused UNUSED)
  * config_commit - commit a configuration
  * @c: new configuration
  * @type: type of reconfiguration (RECONFIG_SOFT or RECONFIG_HARD)
- * @timeout: timeout for undo (or 0 for no timeout)
+ * @timeout: timeout for undo (in seconds; or 0 for no timeout)
  *
  * When a configuration is parsed and prepared for use, the
  * config_commit() function starts the process of reconfiguration.
@@ -331,7 +326,7 @@ config_done(void *unused UNUSED)
  * are accepted.
  */
 int
-config_commit(struct config *c, int type, int timeout)
+config_commit(struct config *c, int type, uint timeout)
 {
   if (shutting_down)
     {
@@ -340,8 +335,8 @@ config_commit(struct config *c, int type, int timeout)
     }
 
   undo_available = 1;
-  if (timeout > 0)
-    tm_start(config_timer, timeout);
+  if (timeout)
+    tm_start(config_timer, timeout S);
   else
     tm_stop(config_timer);
 
@@ -453,7 +448,7 @@ extern void cmd_reconfig_undo_notify(void);
 extern void cmd_reconfig_msg(int r);
 
 static void
-config_timeout(struct timer *t UNUSED)
+config_timeout(timer *t UNUSED)
 {
   log(L_INFO "Config timeout expired, starting undo");
   cmd_reconfig_undo_notify();

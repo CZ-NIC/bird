@@ -98,10 +98,13 @@
  * <item> <rfc id="7911"> - Advertisement of Multiple Paths in BGP
  * <item> <rfc id="7947"> - Internet Exchange BGP Route Server
  * <item> <rfc id="8092"> - BGP Large Communities Attribute
+ * <item> <rfc id="8203"> - BGP Administrative Shutdown Communication
  * </itemize>
 */
 
 #undef LOCAL_DEBUG
+
+#include <stdlib.h>
 
 #include "nest/bird.h"
 #include "nest/iface.h"
@@ -312,20 +315,21 @@ err1:
 /**
  * bgp_start_timer - start a BGP timer
  * @t: timer
- * @value: time to fire (0 to disable the timer)
+ * @value: time (in seconds) to fire (0 to disable the timer)
  *
  * This functions calls tm_start() on @t with time @value and the amount of
  * randomization suggested by the BGP standard. Please use it for all BGP
  * timers.
  */
 void
-bgp_start_timer(timer *t, int value)
+bgp_start_timer(timer *t, uint value)
 {
   if (value)
   {
-    /* The randomization procedure is specified in RFC 1771: 9.2.3.3 */
-    t->randomize = value / 4;
-    tm_start(t, value - t->randomize);
+    /* The randomization procedure is specified in RFC 4271 section 10 */
+    btime time = value S;
+    btime randomize = random() % ((time / 4) + 1);
+    tm_start(t, time - randomize);
   }
   else
     tm_stop(t);
@@ -381,10 +385,10 @@ bgp_update_startup_delay(struct bgp_proto *p)
 
   DBG("BGP: Updating startup delay\n");
 
-  if (p->last_proto_error && ((now - p->last_proto_error) >= (int) cf->error_amnesia_time))
+  if (p->last_proto_error && ((current_time() - p->last_proto_error) >= cf->error_amnesia_time S))
     p->startup_delay = 0;
 
-  p->last_proto_error = now;
+  p->last_proto_error = current_time();
 
   if (cf->disable_after_error)
   {
@@ -400,7 +404,7 @@ bgp_update_startup_delay(struct bgp_proto *p)
 }
 
 static void
-bgp_graceful_close_conn(struct bgp_conn *conn, uint subcode)
+bgp_graceful_close_conn(struct bgp_conn *conn, uint subcode, byte *data, uint len)
 {
   switch (conn->state)
   {
@@ -416,7 +420,7 @@ bgp_graceful_close_conn(struct bgp_conn *conn, uint subcode)
   case BS_OPENSENT:
   case BS_OPENCONFIRM:
   case BS_ESTABLISHED:
-    bgp_error(conn, 6, subcode, NULL, 0);
+    bgp_error(conn, 6, subcode, data, len);
     return;
 
   default:
@@ -456,11 +460,11 @@ bgp_decision(void *vp)
 }
 
 void
-bgp_stop(struct bgp_proto *p, uint subcode)
+bgp_stop(struct bgp_proto *p, uint subcode, byte *data, uint len)
 {
   proto_notify_state(&p->p, PS_STOP);
-  bgp_graceful_close_conn(&p->outgoing_conn, subcode);
-  bgp_graceful_close_conn(&p->incoming_conn, subcode);
+  bgp_graceful_close_conn(&p->outgoing_conn, subcode, data, len);
+  bgp_graceful_close_conn(&p->incoming_conn, subcode, data, len);
   ev_schedule(p->event);
 }
 
@@ -598,12 +602,8 @@ bgp_conn_leave_established_state(struct bgp_proto *p)
   BGP_TRACE(D_EVENTS, "BGP session closed");
   p->conn = NULL;
 
-  // XXXX free these tables to avoid memory leak during graceful restart
-  // bgp_free_prefix_table(p);
-  // bgp_free_bucket_table(p);
-
   if (p->p.proto_state == PS_UP)
-    bgp_stop(p, 0);
+    bgp_stop(p, 0, NULL, 0);
 }
 
 void
@@ -661,6 +661,10 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
   struct bgp_channel *c;
   WALK_LIST(c, p->p.channels)
   {
+    /* FIXME: perhaps check for channel state instead of disabled flag? */
+    if (c->c.disabled)
+      continue;
+
     if (c->gr_ready)
     {
       if (c->gr_active)
@@ -676,6 +680,13 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
       rt_refresh_begin(c->c.table, &c->c);
       rt_refresh_end(c->c.table, &c->c);
     }
+
+    /* Reset bucket and prefix tables */
+    bgp_free_bucket_table(c);
+    bgp_free_prefix_table(c);
+    bgp_init_bucket_table(c);
+    bgp_init_prefix_table(c);
+    c->packets_to_send = 0;
   }
 
   proto_notify_state(&p->p, PS_START);
@@ -722,7 +733,7 @@ bgp_graceful_restart_timeout(timer *t)
   struct bgp_proto *p = t->data;
 
   BGP_TRACE(D_EVENTS, "Neighbor graceful restart timeout");
-  bgp_stop(p, 0);
+  bgp_stop(p, 0, NULL, 0);
 }
 
 
@@ -885,9 +896,9 @@ bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn)
   conn->last_channel = 0;
   conn->last_channel_count = 0;
 
-  conn->connect_timer	= tm_new_set(p->p.pool, bgp_connect_timeout,	conn, 0, 0);
-  conn->hold_timer 	= tm_new_set(p->p.pool, bgp_hold_timeout,	conn, 0, 0);
-  conn->keepalive_timer	= tm_new_set(p->p.pool, bgp_keepalive_timeout,	conn, 0, 0);
+  conn->connect_timer	= tm_new_init(p->p.pool, bgp_connect_timeout,	 conn, 0, 0);
+  conn->hold_timer 	= tm_new_init(p->p.pool, bgp_hold_timeout,	 conn, 0, 0);
+  conn->keepalive_timer	= tm_new_init(p->p.pool, bgp_keepalive_timeout, conn, 0, 0);
 
   conn->tx_ev = ev_new(p->p.pool);
   conn->tx_ev->hook = bgp_kick_tx;
@@ -936,6 +947,7 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   s->daddr = p->cf->remote_ip;
   s->dport = p->cf->remote_port;
   s->iface = p->neigh ? p->neigh->iface : NULL;
+  s->vrf = p->p.vrf;
   s->ttl = p->cf->ttl_security ? 255 : hops;
   s->rbsize = p->cf->enable_extended_messages ? BGP_RX_BUFFER_EXT_SIZE : BGP_RX_BUFFER_SIZE;
   s->tbsize = p->cf->enable_extended_messages ? BGP_TX_BUFFER_EXT_SIZE : BGP_TX_BUFFER_SIZE;
@@ -1094,19 +1106,8 @@ bgp_start_neighbor(struct bgp_proto *p)
 
   if (ipa_is_link_local(p->source_addr))
     p->link_addr = p->source_addr;
-  else
-  {
-    /* Find some link-local address for given iface */
-    struct ifa *a;
-    WALK_LIST(a, p->neigh->iface->addrs)
-      if (a->scope == SCOPE_LINK)
-      {
-	p->link_addr = a->ip;
-	break;
-      }
-
-    DBG("%s: Selected link-local address %I\n", p->p.name, p->link_addr);
-  }
+  else if (p->neigh->iface->llv6)
+    p->link_addr = p->neigh->iface->llv6->ip;
 
   bgp_initiate(p);
 }
@@ -1132,7 +1133,7 @@ bgp_neigh_notify(neighbor *n)
       BGP_TRACE(D_EVENTS, "Neighbor lost");
       bgp_store_error(p, NULL, BE_MISC, BEM_NEIGHBOR_LOST);
       /* Perhaps also run bgp_update_startup_delay(p)? */
-      bgp_stop(p, 0);
+      bgp_stop(p, 0, NULL, 0);
     }
   }
   else if (p->cf->check_link && !(n->iface->flags & IF_LINK_UP))
@@ -1143,7 +1144,7 @@ bgp_neigh_notify(neighbor *n)
       bgp_store_error(p, NULL, BE_MISC, BEM_LINK_DOWN);
       if (ps == PS_UP)
 	bgp_update_startup_delay(p);
-      bgp_stop(p, 0);
+      bgp_stop(p, 0, NULL, 0);
     }
   }
   else
@@ -1168,7 +1169,7 @@ bgp_bfd_notify(struct bfd_request *req)
     bgp_store_error(p, NULL, BE_MISC, BEM_BFD_DOWN);
     if (ps == PS_UP)
       bgp_update_startup_delay(p);
-    bgp_stop(p, 0);
+    bgp_stop(p, 0, NULL, 0);
   }
 }
 
@@ -1311,13 +1312,8 @@ bgp_start(struct proto *P)
   p->event->hook = bgp_decision;
   p->event->data = p;
 
-  p->startup_timer = tm_new(p->p.pool);
-  p->startup_timer->hook = bgp_startup_timeout;
-  p->startup_timer->data = p;
-
-  p->gr_timer = tm_new(p->p.pool);
-  p->gr_timer->hook = bgp_graceful_restart_timeout;
-  p->gr_timer->data = p;
+  p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
+  p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
 
   p->local_id = proto_get_router_id(P->cf);
   if (p->rr_client)
@@ -1327,7 +1323,7 @@ bgp_start(struct proto *P)
   p->source_addr = p->cf->local_ip;
   p->link_addr = IPA_NONE;
 
-  /* XXXX */
+  /* Lock all channels when in GR recovery mode */
   if (p->p.gr_recovery && p->cf->gr_mode)
   {
     struct bgp_channel *c;
@@ -1344,6 +1340,7 @@ bgp_start(struct proto *P)
   lock->addr = p->cf->remote_ip;
   lock->port = p->cf->remote_port;
   lock->iface = p->cf->iface;
+  lock->vrf = p->cf->iface ? NULL : p->p.vrf;
   lock->type = OBJLOCK_TCP;
   lock->hook = bgp_start_locked;
   lock->data = p;
@@ -1359,6 +1356,10 @@ bgp_shutdown(struct proto *P)
 {
   struct bgp_proto *p = (struct bgp_proto *) P;
   uint subcode = 0;
+
+  char *message = NULL;
+  byte *data = NULL;
+  uint len = 0;
 
   BGP_TRACE(D_EVENTS, "Shutdown requested");
 
@@ -1376,10 +1377,12 @@ bgp_shutdown(struct proto *P)
   case PDC_CMD_DISABLE:
   case PDC_CMD_SHUTDOWN:
     subcode = 2; // Errcode 6, 2 - administrative shutdown
+    message = P->message;
     break;
 
   case PDC_CMD_RESTART:
     subcode = 4; // Errcode 6, 4 - administrative reset
+    message = P->message;
     break;
 
   case PDC_RX_LIMIT_HIT:
@@ -1404,8 +1407,22 @@ bgp_shutdown(struct proto *P)
   bgp_store_error(p, NULL, BE_MAN_DOWN, 0);
   p->startup_delay = 0;
 
+  /* RFC 8203 - shutdown communication */
+  if (message)
+  {
+    uint msg_len = strlen(message);
+    msg_len = MIN(msg_len, 128);
+
+    /* Buffer will be freed automatically by protocol shutdown */
+    data = mb_alloc(p->p.pool, msg_len + 1);
+    len = msg_len + 1;
+
+    data[0] = msg_len;
+    memcpy(data+1, message, msg_len);
+  }
+
 done:
-  bgp_stop(p, subcode);
+  bgp_stop(p, subcode, data, len);
   return p->p.proto_state;
 }
 
@@ -1495,6 +1512,20 @@ bgp_channel_start(struct channel *C)
       c->next_hop_addr = src;
   }
 
+  /* Use preferred addresses associated with interface / source address */
+  if (ipa_zero(c->next_hop_addr))
+  {
+    /* We know the iface for single-hop, we make lookup for multihop */
+    struct neighbor *nbr = p->neigh ?: neigh_find2(&p->p, &src, NULL, 0);
+    struct iface *iface = nbr ? nbr->iface : NULL;
+
+    if (bgp_channel_is_ipv4(c) && iface && iface->addr4)
+      c->next_hop_addr = iface->addr4->ip;
+
+    if (bgp_channel_is_ipv6(c) && iface && iface->addr6)
+      c->next_hop_addr = iface->addr6->ip;
+  }
+
   /* Exit if no feasible next hop address is found */
   if (ipa_zero(c->next_hop_addr))
   {
@@ -1523,10 +1554,9 @@ bgp_channel_shutdown(struct channel *C)
 {
   struct bgp_channel *c = (void *) C;
 
-  /* XXXX: cleanup bucket and prefix tables */
-
   c->next_hop_addr = IPA_NONE;
   c->link_addr = IPA_NONE;
+  c->packets_to_send = 0;
 }
 
 static void
@@ -1597,6 +1627,10 @@ bgp_postconfig(struct proto_config *CF)
   /* EBGP direct by default, IBGP multihop by default */
   if (cf->multihop < 0)
     cf->multihop = internal ? 64 : 0;
+
+  /* Link check for single-hop BGP by default */
+  if (cf->check_link < 0)
+    cf->check_link = !cf->multihop;
 
 
   if (!cf->local_as)
@@ -1796,7 +1830,7 @@ bgp_error(struct bgp_conn *c, uint code, uint subcode, byte *data, int len)
   if (code != 6)
   {
     bgp_update_startup_delay(p);
-    bgp_stop(p, 0);
+    bgp_stop(p, 0, NULL, 0);
   }
 }
 
@@ -2017,17 +2051,18 @@ bgp_show_proto_info(struct proto *P)
     struct bgp_conn *oc = &p->outgoing_conn;
 
     if ((p->start_state < BSS_CONNECT) &&
-	(p->startup_timer->expires))
-      cli_msg(-1006, "    Error wait:       %d/%d",
-	      p->startup_timer->expires - now, p->startup_delay);
+	(tm_active(p->startup_timer)))
+      cli_msg(-1006, "    Error wait:       %t/%u",
+	      tm_remains(p->startup_timer), p->startup_delay);
 
     if ((oc->state == BS_ACTIVE) &&
-	(oc->connect_timer->expires))
-      cli_msg(-1006, "    Connect delay:    %d/%d",
-	      oc->connect_timer->expires - now, p->cf->connect_delay_time);
+	(tm_active(oc->connect_timer)))
+      cli_msg(-1006, "    Connect delay:    %t/%u",
+	      tm_remains(oc->connect_timer), p->cf->connect_delay_time);
 
-    if (p->gr_active_num && p->gr_timer->expires)
-      cli_msg(-1006, "    Restart timer:    %d/-", p->gr_timer->expires - now);
+    if (p->gr_active_num && tm_active(p->gr_timer))
+      cli_msg(-1006, "    Restart timer:    %t/-",
+	      tm_remains(p->gr_timer));
   }
   else if (P->proto_state == PS_UP)
   {
@@ -2036,21 +2071,16 @@ bgp_show_proto_info(struct proto *P)
     bgp_show_capabilities(p, p->conn->local_caps);
     cli_msg(-1006, "    Neighbor capabilities");
     bgp_show_capabilities(p, p->conn->remote_caps);
-/* XXXX
-      cli_msg(-1006, "    Session:          %s%s%s%s%s%s%s%s",
-	      p->is_internal ? "internal" : "external",
-	      p->cf->multihop ? " multihop" : "",
-	      p->rr_client ? " route-reflector" : "",
-	      p->rs_client ? " route-server" : "",
-	      p->as4_session ? " AS4" : "",
-	      p->add_path_rx ? " add-path-rx" : "",
-	      p->add_path_tx ? " add-path-tx" : "",
-	      p->ext_messages ? " ext-messages" : "");
-*/
+    cli_msg(-1006, "    Session:          %s%s%s%s%s",
+	    p->is_internal ? "internal" : "external",
+	    p->cf->multihop ? " multihop" : "",
+	    p->rr_client ? " route-reflector" : "",
+	    p->rs_client ? " route-server" : "",
+	    p->as4_session ? " AS4" : "");
     cli_msg(-1006, "    Source address:   %I", p->source_addr);
-    cli_msg(-1006, "    Hold timer:       %d/%d",
+    cli_msg(-1006, "    Hold timer:       %t/%u",
 	    tm_remains(p->conn->hold_timer), p->conn->hold_time);
-    cli_msg(-1006, "    Keepalive timer:  %d/%d",
+    cli_msg(-1006, "    Keepalive timer:  %t/%u",
 	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
   }
 
@@ -2063,11 +2093,18 @@ bgp_show_proto_info(struct proto *P)
   }
 
   {
-    /* XXXX ?? */
     struct bgp_channel *c;
     WALK_LIST(c, p->p.channels)
     {
       channel_show_info(&c->c);
+
+      if (c->c.channel_state == CS_UP)
+      {
+	if (ipa_zero(c->link_addr))
+	  cli_msg(-1006, "    BGP Next hop:   %I", c->next_hop_addr);
+	else
+	  cli_msg(-1006, "    BGP Next hop:   %I %I", c->next_hop_addr, c->link_addr);
+      }
 
       if (c->igp_table_ip4)
 	cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table_ip4->name);

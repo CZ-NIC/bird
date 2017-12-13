@@ -554,9 +554,9 @@ rpki_check_receive_packet(struct rpki_cache *cache, const struct pdu_header *pdu
 	 * (https://tools.ietf.org/html/draft-ietf-sidr-rpki-rtr-rfc6810-bis-07#section-7)
 	 */
       }
-      else if (cache->last_update == 0
-		&& pdu->ver <= RPKI_MAX_VERSION
-		&& pdu->ver < cache->version)
+      else if (!cache->last_update &&
+	       (pdu->ver <= RPKI_MAX_VERSION) &&
+	       (pdu->ver < cache->version))
       {
         CACHE_TRACE(D_EVENTS, cache, "Downgrade session to %s from %u to %u version", rpki_get_cache_ident(cache), cache->version, pdu->ver);
         cache->version = pdu->ver;
@@ -652,7 +652,7 @@ rpki_handle_cache_response_pdu(struct rpki_cache *cache, const struct pdu_cache_
 {
   if (cache->request_session_id)
   {
-    if (cache->last_update != 0)
+    if (cache->last_update)
     {
       /*
        * This isn't the first sync and we already received records. This point
@@ -748,7 +748,7 @@ rpki_handle_prefix_pdu(struct rpki_cache *cache, const struct pdu_header *pdu)
     return RPKI_ERROR;
   }
 
-  cache->last_rx_prefix = now;
+  cache->last_rx_prefix = current_time();
 
   /* A place for 'flags' is same for both data structures pdu_ipv4 or pdu_ipv6  */
   struct pdu_ipv4 *pfx = (void *) pdu;
@@ -814,7 +814,7 @@ rpki_handle_end_of_data_pdu(struct rpki_cache *cache, const struct pdu_end_of_da
       rt_refresh_end(cache->p->roa6_channel->table, cache->p->roa6_channel);
   }
 
-  cache->last_update = now;
+  cache->last_update = current_time();
   cache->serial_num = pdu->serial_num;
   rpki_cache_change_state(cache, RPKI_CS_ESTABLISHED);
 }

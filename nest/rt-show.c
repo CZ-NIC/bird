@@ -39,7 +39,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
   void (*get_route_info)(struct rte *, byte *buf, struct ea_list *attrs);
   struct nexthop *nh;
 
-  tm_format_datetime(tm, &config->tf_route, e->lastmod);
+  tm_format_time(tm, &config->tf_route, e->lastmod);
   if (ipa_nonzero(a->from) && !ipa_equal(a->from, a->nh.gw))
     bsprintf(from, " from %I", a->from);
   else
@@ -63,7 +63,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
   if (d->last_table != d->tab)
     rt_show_table(c, d);
 
-  cli_printf(c, -1007, "%-18s %s [%s %s%s]%s%s", ia, rta_dest_name(a->dest),
+  cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s", ia, rta_dest_name(a->dest),
 	     a->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
 
   if (a->dest == RTD_UNICAST)
@@ -71,6 +71,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
     {
       char mpls[MPLS_MAX_LABEL_STACK*12 + 5], *lsp = mpls;
       char *onlink = (nh->flags & RNF_ONLINK) ? " onlink" : "";
+      char weight[16] = "";
 
       if (nh->labels)
         {
@@ -81,11 +82,14 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
       *lsp = '\0';
 
       if (a->nh.next)
-	cli_printf(c, -1007, "\tvia %I%s on %s%s weight %d",
-		   nh->gw, mpls, nh->iface->name, onlink, nh->weight + 1);
+	bsprintf(weight, " weight %d", nh->weight + 1);
+
+      if (ipa_nonzero(nh->gw))
+	cli_printf(c, -1007, "\tvia %I on %s%s%s%s",
+		   nh->gw, nh->iface->name, mpls, onlink, weight);
       else
-	cli_printf(c, -1007, "\tvia %I%s on %s%s",
-		   nh->gw, mpls, nh->iface->name, onlink);
+	cli_printf(c, -1007, "\tdev %s%s%s",
+		   nh->iface->name, mpls,  onlink, weight);
     }
 
   if (d->verbose)
