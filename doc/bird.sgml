@@ -2007,9 +2007,10 @@ table it wishes to export along with complete path information (a list of AS'es
 the packet will travel through if it uses the particular route) in order to
 avoid routing loops.
 
-<sect1>Supported standards:
+<sect1>Supported standards
 <label id="bgp-standards">
 
+<p>
 <itemize>
 <item> <rfc id="4271"> - Border Gateway Protocol 4 (BGP)
 <item> <rfc id="1997"> - BGP Communities Attribute
@@ -2407,9 +2408,10 @@ using the following configuration parameters:
 announced to the peer corresponds to one channel. The table of supported AFI/SAFIs
 together with their appropriate channels follows.
 
+<table loc="h">
 <tabular ca="l|l|l|r|r">
   <bf/Channel name/   | <bf/Table nettype/ | <bf/IGP table allowed/  | <bf/AFI/ | <bf/SAFI/
-@ <hline>
+@<hline>
   <cf/ipv4/	      | <cf/ipv4/          | <cf/ipv4/ and <cf/ipv6/ | 1        | 1
 @ <cf/ipv6/           | <cf/ipv6/          | <cf/ipv4/ and <cf/ipv6/ | 2        | 1
 @ <cf/ipv4 multicast/ | <cf/ipv4/          | <cf/ipv4/ and <cf/ipv6/ | 1        | 2
@@ -2423,6 +2425,7 @@ together with their appropriate channels follows.
 @ <cf/flow4/	      | <cf/flow4/         | ---                     | 1        | 133
 @ <cf/flow6/          | <cf/flow6/         | ---                     | 2        | 133
 </tabular>
+</table>
 
 <p>BGP's channels have additional config options (together with the common ones):
 
@@ -4255,6 +4258,7 @@ RFC 6811, but we don't support it yet! You can use a BIRD's client command
 routes.
 
 <sect1>Supported transports
+<p>
 <itemize>
         <item>Unprotected transport over TCP uses a port 323. The cache server
         and BIRD router should be on the same trusted and controlled network
@@ -4292,7 +4296,7 @@ prefixes only. If you want to fetch both IPv4 and even IPv6 ROAs you have to
 specify both channels.
 
 <sect2>RPKI protocol options
-
+<p>
 <descrip>
         <tag>remote <m/ip/ | "<m/hostname/" [port <m/num/]</tag> Specifies
         a destination address of the cache server.  Can be specified by an IP
@@ -4335,6 +4339,7 @@ specify both channels.
 </descrip>
 
 <sect3>SSH transport options
+<p>
 <descrip>
 	<tag>bird private key "<m>/path/to/id_rsa</m>"</tag>
 	A path to the BIRD's private SSH key for authentication.
@@ -4387,6 +4392,7 @@ protocol bgp {
 </code>
 
 <sect2>SSHv2 transport encryption
+<p>
 <code>
 roa4 table r4;
 roa6 table r6;
@@ -4442,9 +4448,9 @@ Static routes have no specific attributes.
 
 <p>Route definitions (each may also contain a block of per-route options):
 
-<sect1>Regular routes; MPLS switching rules</sect1>
+<sect1>Regular routes; MPLS switching rules
 
-There exist several types of routes; keep in mind that <m/prefix/ syntax is
+<p>There exist several types of routes; keep in mind that <m/prefix/ syntax is
 <ref id="type-prefix" name="dependent on network type">.
 
 <descrip>
@@ -4604,6 +4610,7 @@ protocol static {
 </code>
 
 <sect1>Per-route options
+<p>
 <descrip>
 	<tag><label id="static-route-bfd">bfd <m/switch/</tag>
 	The Static protocol could use BFD protocol for next hop liveness
