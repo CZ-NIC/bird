@@ -74,11 +74,11 @@ const int rt_default_ecmp = 0;
 
 /* Dynamic max number of tables */
 
-int krt_max_tables;
+uint krt_max_tables;
 
 #ifdef KRT_USE_SYSCTL_NET_FIBS
 
-static int
+static uint
 krt_get_max_tables(void)
 {
   int fibs;
@@ -90,7 +90,11 @@ krt_get_max_tables(void)
     return 1;
   }
 
-  return MIN(fibs, KRT_MAX_TABLES);
+  /* Should not happen */
+  if (fibs < 1)
+    return 1;
+
+  return (uint) MIN(fibs, KRT_MAX_TABLES);
 }
 
 #else

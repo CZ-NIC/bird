@@ -243,107 +243,73 @@ docker_ubuntu-16_04-amd64:
   - MAKE=make
   - which gmake 2>/dev/null >/dev/null && MAKE=gmake
   - $MAKE
-  # Run tests if they are available (eg. don't fail if "check" isn't a valid make target)
-  - $MAKE check || [ "$?" = 2 ]
+  # Run tests if they are available
+  - $MAKE check
 
 build-debian-7-amd64:
-  variables:
-    IPV6: "no"
   <<: *debian-7-amd64_env
   <<: *build_job
 
 build-debian-8-amd64:
-  variables:
-    IPV6: "no"
   <<: *debian-8-amd64_env
   <<: *build_job
 
 build-debian-9-amd64:
-  variables:
-    IPV6: "no"
   <<: *debian-9-amd64_env
   <<: *build_job
 
 build-debian-testing-amd64:
-  variables:
-    IPV6: "no"
   <<: *debian-testing-amd64_env
   <<: *build_job
 
 build-fedora-25-amd64:
-  variables:
-    IPV6: "no"
   <<: *fedora-25-amd64_env
   <<: *build_job
 
 build-fedora-26-amd64:
-  variables:
-    IPV6: "no"
   <<: *fedora-26-amd64_env
   <<: *build_job
 
 build-centos-6-amd64:
-  variables:
-    IPV6: "no"
   <<: *centos-6-amd64_env
   <<: *build_job
 
 build-centos-7-amd64:
-  variables:
-    IPV6: "no"
   <<: *centos-7-amd64_env
   <<: *build_job
 
 build-opensuse-42_3-amd64:
-  variables:
-    IPV6: "no"
   <<: *opensuse-42_3-amd64_env
   <<: *build_job
 
 build-ubuntu-14_04-amd64:
-  variables:
-    IPV6: "no"
   <<: *ubuntu-14_04-amd64_env
   <<: *build_job
 
 build-ubuntu-16_04-amd64:
-  variables:
-    IPV6: "no"
   <<: *ubuntu-16_04-amd64_env
   <<: *build_job
 
 build-debian-7-i386:
-  variables:
-    IPV6: "no"
   <<: *debian-7-i386_env
   <<: *build_job
 
 build-debian-8-i386:
-  variables:
-    IPV6: "no"
   <<: *debian-8-i386_env
   <<: *build_job
 
 build-debian-9-i386:
-  variables:
-    IPV6: "no"
   <<: *debian-9-i386_env
   <<: *build_job
 
 build-debian-testing-i386:
-  variables:
-    IPV6: "no"
   <<: *debian-testing-i386_env
   <<: *build_job
 
 build-freebsd-11-amd64:
-  variables:
-    IPV6: "no"
   <<: *freebsd-11-amd64_env
   <<: *build_job
 
 build-freebsd-11-i386:
-  variables:
-    IPV6: "no"
   <<: *freebsd-11-i386_env
   <<: *build_job
