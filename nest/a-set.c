@@ -536,6 +536,13 @@ ec_set_sort(struct linpool *pool, struct adata *src)
   return dst;
 }
 
+void
+ec_set_sort_x(struct adata *set)
+{
+  /* Sort in place */
+  qsort(set->data, set->length / 8, 8, ec_set_cmp);
+}
+
 
 static int
 lc_set_cmp(const void *X, const void *Y)

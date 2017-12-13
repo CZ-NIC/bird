@@ -550,10 +550,12 @@ bgp_decode_mp_unreach_nlri(struct bgp_parse_state *s, uint code UNUSED, uint fla
 static void
 bgp_export_ext_community(struct bgp_export_state *s, eattr *a)
 {
+  a->u.ptr = ec_set_del_nontrans(s->pool, a->u.ptr);
+
   if (a->u.ptr->length == 0)
     UNSET(a);
 
-  a->u.ptr = ec_set_sort(s->pool, a->u.ptr);
+  ec_set_sort_x(a->u.ptr);
 }
 
 static void

@@ -244,6 +244,7 @@ lp_restore(linpool *m, lp_state *p)
   while ((c = m->first_large) && (c != p->large))
     {
       m->first_large = c->next;
+      m->total_large -= c->size;
       xfree(c);
     }
 }

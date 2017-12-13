@@ -197,4 +197,6 @@ struct adata *int_set_sort(struct linpool *pool, struct adata *src);
 struct adata *ec_set_sort(struct linpool *pool, struct adata *src);
 struct adata *lc_set_sort(struct linpool *pool, struct adata *src);
 
+void ec_set_sort_x(struct adata *set); /* Sort in place */
+
 #endif

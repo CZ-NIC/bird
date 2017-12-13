@@ -645,13 +645,8 @@ nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af)
 }
 
 static struct nexthop *
-nl_parse_multipath(struct krt_proto *p, struct rtattr *ra, int af)
+nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr *ra, int af)
 {
-  /* Temporary buffer for multicast nexthops */
-  static struct nexthop *nh_buffer;
-  static int nh_buf_size;	/* in number of structures */
-  static int nh_buf_used;
-
   struct rtattr *a[BIRD_RTA_MAX];
   struct rtnexthop *nh = RTA_DATA(ra);
   struct nexthop *rv, *first, **last;
@@ -659,7 +654,6 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra, int af)
 
   first = NULL;
   last = &first;
-  nh_buf_used = 0;
 
   while (len)
     {
@@ -667,18 +661,9 @@ nl_parse_multipath(struct krt_proto *p, struct rtattr *ra, int af)
       if ((len < sizeof(*nh)) || (len < nh->rtnh_len))
 	return NULL;
 
-      if (nh_buf_used == nh_buf_size)
-      {
-	nh_buf_size = nh_buf_size ? (nh_buf_size * 2) : 4;
-	nh_buffer = xrealloc(nh_buffer, nh_buf_size * NEXTHOP_MAX_SIZE);
-      }
-      /* FIXME: This is really ugly */
-      *last = rv = (void *) (((byte *) nh_buffer) + (nh_buf_used++ * NEXTHOP_MAX_SIZE));
-      memset(rv, 0, NEXTHOP_MAX_SIZE);
-      // rv->next = NULL;
+      *last = rv = lp_allocz(s->pool, NEXTHOP_MAX_SIZE);
       last = &(rv->next);
 
-      rv->flags = 0;
       rv->weight = nh->rtnh_hops;
       rv->iface = if_find_by_index(nh->rtnh_ifindex);
       if (!rv->iface)
@@ -1395,20 +1380,6 @@ krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old, struct ea_list 
     n->n.flags &= ~KRF_SYNC_ERROR;
 }
 
-
-static inline struct nexthop *
-nl_alloc_nexthop(struct nl_parse_state *s, ip_addr gw, struct iface *iface, byte weight)
-{
-  struct nexthop *nh = lp_alloc(s->pool, sizeof(struct nexthop));
-
-  nh->gw = gw;
-  nh->iface = iface;
-  nh->next = NULL;
-  nh->weight = weight;
-
-  return nh;
-}
-
 static int
 nl_mergable_route(struct nl_parse_state *s, net *net, struct krt_proto *p, uint priority, uint krt_type)
 {
@@ -1597,7 +1568,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 
       if (a[RTA_MULTIPATH])
         {
-	  struct nexthop *nh = nl_parse_multipath(p, a[RTA_MULTIPATH], i->rtm_family);
+	  struct nexthop *nh = nl_parse_multipath(s, p, a[RTA_MULTIPATH], i->rtm_family);
 	  if (!nh)
 	    {
 	      log(L_ERR "KRT: Received strange multipath route %N", net->n.addr);
@@ -1784,8 +1755,8 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
    * Ideally, now we would send the received route to the rest of kernel code.
    * But IPv6 ECMP routes before 4.11 are sent as a sequence of routes, so we
    * postpone it and merge next hops until the end of the sequence. Note that
-   * proper multipath updates are rejected by nl_mergable_route(), so it is
-   * always the first case for them.
+   * when doing merging of next hops, we expect the new route to be unipath.
+   * Otherwise, we ignore additional next hops in nexthop_insert().
    */
 
   if (!s->net)
