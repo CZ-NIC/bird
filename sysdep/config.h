@@ -6,8 +6,15 @@
 #ifndef _BIRD_CONFIG_H_
 #define _BIRD_CONFIG_H_
 
+#define XSTR2(X) #X
+#define XSTR1(X) XSTR2(X)
+
 /* BIRD version */
+#ifdef GIT_LABEL
+#define BIRD_VERSION XSTR1(GIT_LABEL)
+#else
 #define BIRD_VERSION "2.0.0"
+#endif
 
 /* Include parameters determined by configure script */
 #include "sysdep/autoconf.h"

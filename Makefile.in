@@ -21,6 +21,11 @@ INSTALL=@INSTALL@
 INSTALL_PROGRAM=@INSTALL_PROGRAM@
 INSTALL_DATA=@INSTALL_DATA@
 
+git-label:=$(strip $(shell git describe --always --dirty=-x 2>/dev/null))
+ifneq ($(git-label),)
+        CFLAGS += -DGIT_LABEL="$(git-label)"
+endif
+
 client=$(addprefix $(exedir)/,@CLIENT@)
 daemon=$(exedir)/bird
 protocols=@protocols@
