@@ -105,8 +105,11 @@ cmd_send_symbols(void)
 
   HASH_WALK(config->sym_hash, next, sym)
   {
-    code = get_cli_code_for_sym(sym);
-    cli_msg(code, "%s", sym->name);
+    if (!sym->scope->next) /* global scope */
+      {
+	code = get_cli_code_for_sym(sym);
+	cli_msg(code, "%s", sym->name);
+      }
   }
   HASH_WALK_END;
 
