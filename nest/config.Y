@@ -735,7 +735,7 @@ CF_CLI(DUMP ROUTES,,, [[Dump routing table]])
 CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])
 { protos_dump_all(); cli_msg(0, ""); } ;
 
-CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]], CLI_SF_CONSTANT | CLI_SF_VARIABLE)
+CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]], CLI_SF_CONSTANT | CLI_SF_VARIABLE | CLI_SF_FUNCTION)
 { cmd_eval($2); } ;
 
 CF_CLI_HELP(ECHO, ..., [[Control echoing of log messages]])
