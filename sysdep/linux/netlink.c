@@ -1666,14 +1666,6 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
     ra->nh.labels = labels;
 #endif
 
-  rte *e = rte_get_temp(ra);
-  e->net = net;
-  e->u.krt.src = src;
-  e->u.krt.proto = i->rtm_protocol;
-  e->u.krt.seen = 0;
-  e->u.krt.best = 0;
-  e->u.krt.metric = 0;
-
   if (i->rtm_scope != def_scope)
     {
       ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + sizeof(eattr));
@@ -1686,9 +1678,6 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       ea->attrs[0].type = EAF_TYPE_INT;
       ea->attrs[0].u.data = i->rtm_scope;
     }
-
-  if (a[RTA_PRIORITY])
-    e->u.krt.metric = rta_get_u32(a[RTA_PRIORITY]);
 
   if (a[RTA_PREFSRC])
     {
