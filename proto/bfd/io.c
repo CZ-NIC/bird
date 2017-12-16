@@ -298,7 +298,7 @@ sockets_prepare(struct birdloop *loop)
 
   struct pollfd *pfd = loop->poll_fd.data;
   sock **psk = loop->poll_sk.data;
-  int i = 0;
+  uint i = 0;
   node *n;
 
   WALK_LIST(n, loop->sock_list)

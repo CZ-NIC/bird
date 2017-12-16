@@ -568,22 +568,17 @@ found:
 void
 fib_check(struct fib *f)
 {
-#if 0
-  uint i, ec, lo, nulls;
+  uint i, ec, nulls;
 
   ec = 0;
   for(i=0; i<f->hash_size; i++)
     {
       struct fib_node *n;
-      lo = 0;
       for(n=f->hash_table[i]; n; n=n->next)
 	{
 	  struct fib_iterator *j, *j0;
-	  uint h0 = ipa_hash(n->prefix);
-	  if (h0 < lo)
-	    bug("fib_check: discord in hash chains");
-	  lo = h0;
-	  if ((h0 >> f->hash_shift) != i)
+	  uint h0 = fib_hash(f, n->addr);
+	  if (h0 != i)
 	    bug("fib_check: mishashed %x->%x (order %d)", h0, i, f->hash_order);
 	  j0 = (struct fib_iterator *) n;
 	  nulls = 0;
@@ -604,7 +599,6 @@ fib_check(struct fib *f)
     }
   if (ec != f->entries)
     bug("fib_check: invalid entry count (%d != %d)", ec, f->entries);
-#endif
   return;
 }
 

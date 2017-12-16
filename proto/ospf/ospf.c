@@ -1179,7 +1179,7 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
   /* We store interesting area-scoped LSAs in array hea and
      global-scoped (LSA_T_EXT) LSAs in array hex */
 
-  int num = p->gr->hash_entries;
+  uint num = p->gr->hash_entries;
   struct top_hash_entry *hea[num];
   struct top_hash_entry *hex[verbose ? num : 0];
   struct top_hash_entry *he;

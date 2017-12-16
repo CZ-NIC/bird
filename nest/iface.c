@@ -93,7 +93,8 @@ if_dump(struct iface *i)
   WALK_LIST(a, i->addrs)
     {
       ifa_dump(a);
-      ASSERT((a != i->addr) == !(a->flags & IA_PRIMARY));
+      ASSERT(!!(a->flags & IA_PRIMARY) ==
+	     ((a == i->addr4) || (a == i->addr6) || (a == i->llv6)));
     }
 }
 
