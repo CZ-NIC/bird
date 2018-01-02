@@ -555,6 +555,46 @@ uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
+static inline eattr *
+ea_set_attr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, uintptr_t val)
+{
+  ea_list *a = lp_alloc(pool, sizeof(ea_list) + sizeof(eattr));
+  eattr *e = &a->attrs[0];
+
+  a->flags = EALF_SORTED;
+  a->count = 1;
+  a->next = *to;
+  *to = a;
+
+  e->id = id;
+  e->type = type;
+  e->flags = flags;
+
+  if (type & EAF_EMBEDDED)
+    e->u.data = (u32) val;
+  else
+    e->u.ptr = (struct adata *) val;
+
+  return e;
+}
+
+static inline void
+ea_set_attr_u32(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, u32 val)
+{ ea_set_attr(to, pool, id, flags, type, (uintptr_t) val); }
+
+static inline void
+ea_set_attr_ptr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, struct adata *val)
+{ ea_set_attr(to, pool, id, flags, type, (uintptr_t) val); }
+
+static inline void
+ea_set_attr_data(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, void *data, uint len)
+{
+  struct adata *a = lp_alloc_adata(pool, len);
+  memcpy(a->data, data, len);
+  ea_set_attr(to, pool, id, flags, type, (uintptr_t) a);
+}
+
+
 #define NEXTHOP_MAX_SIZE (sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
 
 static inline size_t nexthop_size(const struct nexthop *nh)

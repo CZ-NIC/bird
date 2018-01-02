@@ -701,7 +701,8 @@ bgp_format_mpls_label_stack(eattr *a, byte *buf, uint size)
 static inline void
 bgp_decode_unknown(struct bgp_parse_state *s, uint code, uint flags, byte *data, uint len, ea_list **to)
 {
-  bgp_set_attr_data(to, s->pool, code, flags, data, len);
+  /* Cannot use bgp_set_attr_data() as it works on known attributes only */
+  ea_set_attr_data(to, s->pool, EA_CODE(EAP_BGP, code), flags, EAF_TYPE_OPAQUE, data, len);
 }
 
 

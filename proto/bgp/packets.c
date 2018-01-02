@@ -2284,6 +2284,8 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
   if (s.attr_len)
     ea = bgp_decode_attrs(&s, s.attrs, s.attr_len);
+  else
+    ea = NULL;
 
   /* Check for End-of-RIB marker */
   if (!s.attr_len && !s.ip_unreach_len && !s.ip_reach_len)
