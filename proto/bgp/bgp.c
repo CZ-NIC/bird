@@ -689,8 +689,11 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
     c->packets_to_send = 0;
   }
 
+  /* p->gr_ready -> at least one active channel is c->gr_ready */
+  ASSERT(p->gr_active_num > 0);
+
   proto_notify_state(&p->p, PS_START);
-  bgp_start_timer(p->gr_timer, p->conn->local_caps->gr_time);
+  bgp_start_timer(p->gr_timer, p->conn->remote_caps->gr_time);
 }
 
 /**
