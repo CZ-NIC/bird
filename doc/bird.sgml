@@ -1498,8 +1498,8 @@ if 1234 = i then printn "."; else {
 like it accesses variables. Attempts to access undefined attribute result in a
 runtime error; you can check if an attribute is defined by using the
 <cf>defined( <m>attribute</m> )</cf> operator. One notable exception to this
-rule are attributes of clist type, where undefined value is regarded as empty
-clist for most purposes.
+rule are attributes of bgppath and *clist types, where undefined value is
+regarded as empty bgppath/*clist for most purposes.
 
 <descrip>
 	<tag><label id="rta-net"><m/prefix/ net</tag>

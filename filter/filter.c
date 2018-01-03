@@ -54,6 +54,17 @@
 
 void (*bt_assert_hook)(int result, struct f_inst *assert);
 
+static struct adata undef_adata;	/* adata of length 0 used for undefined */
+
+/* Special undef value for paths and clists */
+static inline int
+undef_value(struct f_val v)
+{
+  return ((v.type == T_PATH) || (v.type == T_CLIST) ||
+	  (v.type == T_ECLIST) || (v.type == T_LCLIST)) &&
+    (v.val.ad == &undef_adata);
+}
+
 static struct adata *
 adata_empty(struct linpool *pool, int l)
 {
@@ -815,7 +826,7 @@ interpret(struct f_inst *what)
   case P('d','e'):
     ONEARG;
     res.type = T_BOOL;
-    res.val.i = (v1.type != T_VOID);
+    res.val.i = (v1.type != T_VOID) && !undef_value(v1);
     break;
   case 'T':
     ONEARG;
@@ -1001,24 +1012,31 @@ interpret(struct f_inst *what)
 	e = ea_find((*f_rte)->attrs->eattrs, code);
 
       if (!e) {
-	/* A special case: undefined int_set looks like empty int_set */
+	/* A special case: undefined as_path looks like empty as_path */
+	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_AS_PATH) {
+	  res.type = T_PATH;
+	  res.val.ad = &undef_adata;
+	  break;
+	}
+
+	/* The same special case for int_set */
 	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_INT_SET) {
 	  res.type = T_CLIST;
-	  res.val.ad = adata_empty(f_pool, 0);
+	  res.val.ad = &undef_adata;
 	  break;
 	}
 
 	/* The same special case for ec_set */
 	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_EC_SET) {
 	  res.type = T_ECLIST;
-	  res.val.ad = adata_empty(f_pool, 0);
+	  res.val.ad = &undef_adata;
 	  break;
 	}
 
 	/* The same special case for lc_set */
 	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_LC_SET) {
 	  res.type = T_LCLIST;
-	  res.val.ad = adata_empty(f_pool, 0);
+	  res.val.ad = &undef_adata;
 	  break;
 	}
 
