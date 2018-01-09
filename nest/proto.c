@@ -513,8 +513,9 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   if ((c->table != cf->table->table) || (cf->ra_mode && (c->ra_mode != cf->ra_mode)))
     return 0;
 
-  int import_changed = !filter_same(c->in_filter, cf->in_filter);
-  int export_changed = !filter_same(c->out_filter, cf->out_filter);
+  /* Note that filter_same() requires arguments in (new, old) order */
+  int import_changed = !filter_same(cf->in_filter, c->in_filter);
+  int export_changed = !filter_same(cf->out_filter, c->out_filter);
 
   if (c->preference != cf->preference)
     import_changed = 1;
