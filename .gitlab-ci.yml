@@ -211,9 +211,6 @@ docker_ubuntu-16_04-amd64:
 
 # TODO We want to copy these BSDs to our own virtual machines, to make sure someone doesn't update them by accident.
 .freebsd-11-i386: &freebsd-11-i386_env
-  variables:
-    CPPFLAGS: "-I/usr/local/include"
-    LDFLAGS: "-L/usr/local/lib"
   tags:
   - freebsd
   - i386
@@ -223,9 +220,6 @@ docker_ubuntu-16_04-amd64:
   #- tags
 
 .freebsd-11-amd64: &freebsd-11-amd64_env
-  variables:
-    CPPFLAGS: "-I/usr/local/include"
-    LDFLAGS: "-L/usr/local/lib"
   tags:
   - freebsd
   - amd64
