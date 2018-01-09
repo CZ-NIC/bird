@@ -25,7 +25,7 @@ CF_ADDTO(proto, pipe_proto '}' { this_channel = NULL; } )
 pipe_proto_start: proto_start PIPE
 {
   this_proto = proto_config_new(&proto_pipe, $1);
-  this_channel = channel_config_new(NULL, 0, this_proto);
+  this_channel = channel_config_new(NULL, NULL, 0, this_proto);
   this_channel->in_filter = FILTER_ACCEPT;
   this_channel->out_filter = FILTER_ACCEPT;
 };

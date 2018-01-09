@@ -455,11 +455,10 @@ const struct channel_class channel_basic = {
 };
 
 void *
-channel_config_new(const struct channel_class *cc, uint net_type, struct proto_config *proto)
+channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto)
 {
   struct channel_config *cf = NULL;
   struct rtable_config *tab = NULL;
-  const char *name = NULL;
 
   if (net_type)
   {
@@ -470,7 +469,6 @@ channel_config_new(const struct channel_class *cc, uint net_type, struct proto_c
       cf_error("Different channel type");
 
     tab = new_config->def_tables[net_type];
-    name = net_label[net_type];
   }
 
   if (!cc)
@@ -479,6 +477,7 @@ channel_config_new(const struct channel_class *cc, uint net_type, struct proto_c
   cf = cfg_allocz(cc->config_size);
   cf->name = name;
   cf->channel = cc;
+  cf->parent = proto;
   cf->table = tab;
   cf->out_filter = FILTER_REJECT;
 
@@ -489,6 +488,26 @@ channel_config_new(const struct channel_class *cc, uint net_type, struct proto_c
   add_tail(&proto->channels, &cf->n);
 
   return cf;
+}
+
+void *
+channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto)
+{
+  struct channel_config *cf;
+
+  /* We are using name as token, so no strcmp() */
+  WALK_LIST(cf, proto->channels)
+    if (cf->name == name)
+    {
+      /* Allow to redefine channel only if inherited from template */
+      if (cf->parent == proto)
+	cf_error("Multiple %s channels", name);
+
+      cf->parent = proto;
+      return cf;
+    }
+
+  return channel_config_new(cc, name, net_type, proto);
 }
 
 struct channel_config *

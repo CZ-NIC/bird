@@ -407,31 +407,33 @@ extensive way.
 a comment, whitespace characters are treated as a single space. If there's a
 variable number of options, they are grouped using the <cf/{ }/ brackets. Each
 option is terminated by a <cf/;/. Configuration is case sensitive. There are two
-ways how to name symbols (like protocol names, filter names, constants etc.). You
-can either use a simple string starting with a letter followed by any
-combination of letters and numbers (e.g. <cf/R123/, <cf/myfilter/, <cf/bgp5/) or you can
-enclose the name into apostrophes (<cf/'/) and than you can use any combination
-of numbers, letters. hyphens, dots and colons (e.g. <cf/'1:strange-name'/,
-<cf/'-NAME-'/, <cf/'cool::name'/).
+ways how to name symbols (like protocol names, filter names, constants etc.).
+You can either use a simple string starting with a letter followed by any
+combination of letters and numbers (e.g. <cf/R123/, <cf/myfilter/, <cf/bgp5/) or
+you can enclose the name into apostrophes (<cf/'/) and than you can use any
+combination of numbers, letters. hyphens, dots and colons (e.g.
+<cf/'1:strange-name'/, <cf/'-NAME-'/, <cf/'cool::name'/).
 
 <p>Here is an example of a simple config file. It enables synchronization of
-routing tables with OS kernel, scans for new network interfaces every 10 seconds
-and runs RIP on all network interfaces found.
+routing tables with OS kernel, learns network interfaces and runs RIP on all
+network interfaces found.
 
 <code>
 protocol kernel {
+	ipv4 {
+		export all;	# Default is export none
+	};
 	persist;		# Don't remove routes on BIRD shutdown
-	scan time 20;		# Scan kernel routing table every 20 seconds
-	export all;		# Default is export none
 }
 
 protocol device {
-	scan time 10;		# Scan interfaces every 10 seconds
 }
 
 protocol rip {
-	export all;
-	import all;
+	ipv4 {
+		import all;
+		export all;
+	};
 	interface "*";
 }
 </code>
@@ -775,8 +777,10 @@ agreement").
 <label id="channel-opts">
 
 <p>Every channel belongs to a protocol and is configured inside its block. The
-minimal channel config is empty, then it uses the default values. The name of
-the channel implies its nettype.
+minimal channel config is empty, then it uses default values. The name of the
+channel implies its nettype. Channel definitions can be inherited from protocol
+templates. Multiple definitions of the same channel are forbidden, but channels
+inherited from templates can be updated by new definitions.
 
 <descrip>
 	<tag><label id="proto-table">table <m/name/</tag>
@@ -841,7 +845,7 @@ protocol rip ng {
 }
 </code>
 
-<p>And this is a non-trivial example.
+<p>This is a non-trivial example.
 <code>
 protocol rip ng {
 	ipv6 {
@@ -853,6 +857,33 @@ protocol rip ng {
 	interface "*";
 }
 </code>
+
+<p>And this is even more complicated example using templates.
+<code>
+template bgp {
+	local 198.51.100.14 as 65000;
+
+	ipv4 {
+		table mytable4;
+		import filter { ... };
+	};
+	ipv6 {
+		table mytable6;
+		import filter { ... };
+	};
+}
+
+protocol bgp from  {
+	neighbor 198.51.100.130 as 64496;
+
+	# IPv4 channel is inherited as-is, while IPv6
+	# channel is adjusted by export filter option
+	ipv6 {
+		export filter { ... };
+	};
+}
+</code>
+
 
 <chapt>Remote control
 <label id="remote-control">
@@ -1050,6 +1081,7 @@ This argument can be omitted if there exists only a single instance.
 	<tag><label id="cli-eval">eval <m/expr/</tag>
 	Evaluate given expression.
 </descrip>
+
 
 <chapt>Filters
 <label id="filters">
@@ -2427,7 +2459,7 @@ together with their appropriate channels follows.
 </tabular>
 </table>
 
-<p>BGP's channels have additional config options (together with the common ones):
+<p>BGP channels have additional config options (together with the common ones):
 
 <descrip>
 	<tag><label id="bgp-next-hop-keep">next hop keep</tag>

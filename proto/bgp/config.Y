@@ -158,12 +158,16 @@ bgp_channel_start: bgp_afi
   if (!desc)
     cf_error("Unknown AFI/SAFI");
 
-  this_channel = channel_config_new(&channel_bgp, desc->net, this_proto);
-  BGP_CC->c.name = desc->name;
-  BGP_CC->c.ra_mode = RA_UNDEF;
-  BGP_CC->afi = $1;
-  BGP_CC->desc = desc;
-  BGP_CC->gr_able = 0xff;	/* undefined */
+  this_channel = channel_config_get(&channel_bgp, desc->name, desc->net, this_proto);
+
+  /* New channel */
+  if (!BGP_CC->desc)
+  {
+    BGP_CC->c.ra_mode = RA_UNDEF;
+    BGP_CC->afi = $1;
+    BGP_CC->desc = desc;
+    BGP_CC->gr_able = 0xff;	/* undefined */
+  }
 };
 
 bgp_channel_item:

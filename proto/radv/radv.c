@@ -569,7 +569,7 @@ radv_postconfig(struct proto_config *CF)
 
   /* Define default channel */
   if (EMPTY_LIST(CF->channels))
-    channel_config_new(NULL, NET_IP6, CF);
+    channel_config_new(NULL, net_label[NET_IP6], NET_IP6, CF);
 }
 
 static struct proto *

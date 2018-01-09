@@ -461,6 +461,7 @@ struct channel_config {
   const char *name;
   const struct channel_class *channel;
 
+  struct proto_config *parent;		/* Where channel is defined (proto or template) */
   struct rtable_config *table;		/* Table we're attached to */
   struct filter *in_filter, *out_filter; /* Attached filters */
   struct channel_limit rx_limit;	/* Limit for receiving routes from protocol
@@ -585,7 +586,8 @@ static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP)
 static inline void channel_close(struct channel *c) { channel_set_state(c, CS_FLUSHING); }
 
 void channel_request_feeding(struct channel *c);
-void *channel_config_new(const struct channel_class *cc, uint net_type, struct proto_config *proto);
+void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
+void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);
 
 

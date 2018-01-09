@@ -214,7 +214,7 @@ proto_item:
 
 channel_start: net_type
 {
-  $$ = this_channel = channel_config_new(NULL, $1, this_proto);
+  $$ = this_channel = channel_config_get(NULL, net_label[$1], $1, this_proto);
 };
 
 channel_item:

@@ -84,8 +84,8 @@ ospf_proto_finish(void)
   /* Define default channel */
   if (EMPTY_LIST(this_proto->channels))
   {
-    this_proto->net_type = ospf_cfg_is_v2() ? NET_IP4 : NET_IP6;
-    channel_config_new(NULL, this_proto->net_type, this_proto);
+    uint net_type = this_proto->net_type = ospf_cfg_is_v2() ? NET_IP4 : NET_IP6;
+    channel_config_new(NULL, net_label[net_type], net_type, this_proto);
   }
 
   /* Propagate global instance ID to interfaces */
@@ -238,7 +238,8 @@ ospf_af_mc:
 /* We redefine proto_channel to add multicast flag */
 ospf_channel_start: net_type ospf_af_mc
 {
-  $$ = this_channel = channel_config_new(NULL, $1, this_proto);
+  /* TODO: change name for multicast channels */
+  $$ = this_channel = channel_config_get(NULL, net_label[$1], $1, this_proto);
 
   /* Save the multicast flag */
   if (this_channel == proto_cf_main_channel(this_proto))
