@@ -152,9 +152,9 @@ void debug(const char *msg, ...);	/* Printf to debug output */
 #endif
 
 #ifdef DEBUGGING
-#define ASSERT(x) do { if (!(x)) bug("Assertion `%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)
+#define ASSERT(x) do { if (!(x)) bug("Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)
 #else
-#define ASSERT(x) do { } while(0)
+#define ASSERT(x) do { if (!(x)) log(L_BUG "Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)
 #endif
 
 /* Pseudorandom numbers */

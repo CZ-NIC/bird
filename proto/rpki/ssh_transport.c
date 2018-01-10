@@ -42,8 +42,6 @@ rpki_tr_ssh_open(struct rpki_tr_sock *tr)
 static const char *
 rpki_tr_ssh_ident(struct rpki_tr_sock *tr)
 {
-  ASSERT(tr != NULL);
-
   struct rpki_cache *cache = tr->cache;
   struct rpki_config *cf = (void *) cache->p->p.cf;
   struct rpki_tr_ssh_config *ssh_cf = (void *) cf->tr_config.spec;

@@ -437,7 +437,7 @@ static void
 channel_request_reload(struct channel *c)
 {
   ASSERT(c->channel_state == CS_UP);
-  // ASSERT(channel_reloadable(c));
+  ASSERT(channel_reloadable(c));
 
   c->proto->reload_routes(c);
 
