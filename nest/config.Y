@@ -262,14 +262,7 @@ rtable:
 
 imexport:
    FILTER filter { $$ = $2; }
- | LUA constant {
-    $$ = cfg_alloc(sizeof(struct filter));
-    $$->name = NULL;
-    $$->root = f_new_inst();
-    $$->root->code = P('L','C');
-    $$->root->a1.p = $2;
-    $$->root->next = NULL;
-  }
+ | lua_call
  | where_filter
  | ALL { $$ = FILTER_ACCEPT; }
  | NONE { $$ = FILTER_REJECT; }

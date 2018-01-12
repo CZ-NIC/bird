@@ -413,7 +413,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <x> term block cmds cmds_int cmd function_body constant constructor print_one print_list var_list var_listn dynamic_attr static_attr function_call symbol bgp_path_expr
-%type <f> filter filter_body where_filter
+%type <f> filter filter_body where_filter lua_call
 %type <i> type break_command ec_kind
 %type <i32> cnum
 %type <e> pair_item ec_item lc_item set_item switch_item set_items switch_items switch_body
@@ -1057,6 +1057,16 @@ cmd:
  | rtadot dynamic_attr '.' FILTER '(' term ')' ';'    { $$ = f_generate_complex( P('C','a'), 'f', $2, $6 ); }
  | BT_ASSERT '(' get_cf_position term get_cf_position ')' ';' { $$ = assert_done($4, $3 + 1, $5 - 1); }
  ;
+
+lua_call:
+  LUA constant {
+    $$ = cfg_alloc(sizeof(struct filter));
+    $$->name = NULL;
+    $$->root = f_new_inst();
+    $$->root->code = P('L','C');
+    $$->root->a1.p = $2;
+    $$->root->next = NULL;
+  }
 
 get_cf_position:
 {

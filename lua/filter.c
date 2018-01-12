@@ -6,21 +6,25 @@
 #include <lualib.h>
 #include <lauxlib.h>
 
-int filter_lua_chunk(const char *chunk, struct rte **e, struct rta *a, struct ea_list **ea, struct linpool *lp) {
+/* Docs: http://pgl.yoyo.org/luai/i/luaL_dostring */
+
+struct f_val filter_lua_chunk(const char *chunk, struct rte **e, struct rta *a, struct ea_list **ea, struct linpool *lp) {
   lua_State *L = luaL_newstate();
   luaL_openlibs(L);
-  luaB_push_bird(L);
+  lua_bird_state *lbs = luaB_init(L, lp);
   luaB_push_route(L, *e);
   int le = luaL_dostring(L, chunk);
-  int out;
-  if (le) {
-    log(L_WARN "bad lua: %s", lua_tostring(L, -1));
-    out = F_ERROR;
+  struct f_val out = F_VAL_VOID;
+  if (le && lbs->exception) {
+    out = F_VAL(T_RETURN, i, lbs->exception);
+  } else if (le) {
+    log(L_ERR "bad lua: %s", lua_tostring(L, -1));
+    out = F_VAL(T_RETURN, i, F_ERROR);
   } else if (lua_isnumber(L, -1)) {
-    out = lua_tonumber(L, -1);
+    out = F_VAL(T_INT, i, lua_tonumber(L, -1));
   } else {
-    log(L_WARN "lua return value is not a number: %s", lua_tostring(L, -1));
-    out = F_ERROR;
+    log(L_WARN "lua return value is not a number (unimplemented): %s", lua_tostring(L, -1));
+    out = F_VAL(T_RETURN, i, F_ERROR);
   }
 
   lua_close(L);

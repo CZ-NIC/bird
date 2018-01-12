@@ -206,6 +206,8 @@ struct f_trie
 };
 
 #define NEW_F_VAL struct f_val * val; val = cfg_alloc(sizeof(struct f_val));
+#define F_VAL(_type, where, value) ((struct f_val) { .type = (_type), .val.where = (value) })
+#define F_VAL_VOID ((struct f_val) { .type = T_VOID })
 
 #define FF_FORCE_TMPATTR 1		/* Force all attributes to be temporary */
 
@@ -221,6 +223,6 @@ struct f_bt_test_suite {
 extern void (*bt_assert_hook)(int result, struct f_inst *assert);
 
 /* Lua */
-int filter_lua_chunk(const char *chunk, struct rte **e, struct rta *a, struct ea_list **ea, struct linpool *lp);
+struct f_val filter_lua_chunk(const char *chunk, struct rte **e, struct rta *a, struct ea_list **ea, struct linpool *lp);
 
 #endif
