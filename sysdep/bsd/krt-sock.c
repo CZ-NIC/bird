@@ -186,6 +186,16 @@ struct ks_msg
     memcpy(p, body, (l > sizeof(*p) ? sizeof(*p) : l));\
     body += l;}
 
+static inline void
+sockaddr_fill_dl(struct sockaddr_dl *sa, struct iface *ifa)
+{
+  uint len = OFFSETOF(struct sockaddr_dl, sdl_data);
+  memset(sa, 0, len);
+  sa->sdl_len = len;
+  sa->sdl_family = AF_LINK;
+  sa->sdl_index = ifa->index;
+}
+
 static int
 krt_send_route(struct krt_proto *p, int cmd, rte *e)
 {
@@ -291,11 +301,8 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   {
     /* Fallback for all other valid cases */
 
-#ifdef RTF_CLONING
-    if (cmd == RTM_ADD && (i->flags & IF_MULTIACCESS) != IF_MULTIACCESS)	/* PTP */
-      msg.rtm.rtm_flags |= RTF_CLONING;
-#endif
-
+#if __OpenBSD__
+    /* Keeping temporarily old code for OpenBSD */
     struct ifa *addr = (net->n.addr->type == NET_IP4) ? i->addr4 : (i->addr6 ?: i->llv6);
 
     if (!addr)
@@ -304,7 +311,16 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
       return -1;
     }
 
-    sockaddr_fill(&gate, af, addr->ip, i, 0);
+    /* Embed interface ID to link-local address */
+    ip_addr gw = addr->ip;
+    if (ipa_is_link_local(gw))
+      _I0(gw) = 0xfe800000 | (i->index & 0x0000ffff);
+
+    sockaddr_fill(&gate, af, gw, i, 0);
+#else
+    sockaddr_fill_dl(&gate, i);
+#endif
+
     msg.rtm.rtm_addrs |= RTA_GATEWAY;
     break;
   }
