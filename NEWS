@@ -1,3 +1,8 @@
+Version 2.0.1 (2018-01-14)
+  o Linux MPLS kernel support
+  o Better handling of channels inherited from templates
+  o Many bugfixes
+
 Version 2.0.0 (2017-12-11)
   o Integrated IPv4 + IPv6 design
   o Support for MPLS next hops
