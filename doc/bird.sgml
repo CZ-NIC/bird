@@ -794,11 +794,13 @@ inherited from templates can be updated by new definitions.
 	<tag><label id="proto-import">import all | none | filter <m/name/ | filter { <m/filter commands/ } | where <m/boolean filter expression/</tag>
 	Specify a filter to be used for filtering routes coming from the
 	protocol to the routing table. <cf/all/ is for keeping all routes,
-	<cf/none/ is for dropping all routes. Default: <cf/all/.
+	<cf/none/ is for dropping all routes. Default: <cf/all/ (except for
+	EBGP).
 
 	<tag><label id="proto-export">export <m/filter/</tag>
 	This is similar to the <cf>import</cf> keyword, except that it works in
-	the direction from the routing table to the protocol. Default: <cf/none/.
+	the direction from the routing table to the protocol. Default: <cf/none/
+	(except for EBGP).
 
 	<tag><label id="proto-import-keep-filtered">import keep filtered <m/switch/</tag>
 	Usually, if an import filter rejects a route, the route is forgotten.
@@ -866,10 +868,12 @@ template bgp {
 	ipv4 {
 		table mytable4;
 		import filter { ... };
+		export none;
 	};
 	ipv6 {
 		table mytable6;
 		import filter { ... };
+		export none;
 	};
 }
 
@@ -2073,6 +2077,7 @@ avoid routing loops.
 <item> <rfc id="7947"> - Internet Exchange BGP Route Server
 <item> <rfc id="8092"> - BGP Large Communities Attribute
 <item> <rfc id="8203"> - BGP Administrative Shutdown Communication
+<item> <rfc id="8212"> - Default EBGP Route Propagation Behavior without Policies
 </itemize>
 
 <sect1>Route selection rules
@@ -2458,6 +2463,12 @@ together with their appropriate channels follows.
 @ <cf/flow6/          | <cf/flow6/         | ---                     | 2        | 133
 </tabular>
 </table>
+
+<p>Due to <rfc id="8212">, external BGP protocol requires explicit configuration
+of import and export policies (in contrast to other protocols, where default
+policies of <cf/import all/ and <cf/export none/ are used in absence of explicit
+configuration). Note that blanket policies like <cf/all/ or <cf/none/ can still
+be used in explicit configuration.
 
 <p>BGP channels have additional config options (together with the common ones):
 
@@ -3631,13 +3642,13 @@ protocol kernel kern2 {
 }
 
 protocol bgp bgp1 {			# The outside connections
-	ipv4 { table as1; export all; };
+	ipv4 { table as1; import all; export all; };
 	local as 1;
 	neighbor 192.168.0.1 as 1001;
 }
 
 protocol bgp bgp2 {
-	ipv4 { table as2; export all; };
+	ipv4 { table as2; import all; export all; };
 	local as 2;
 	neighbor 10.0.0.1 as 1002;
 }
@@ -4419,7 +4430,10 @@ protocol bgp {
 	debug all;
 	local as 65000;
 	neighbor 192.168.2.1 as 65001;
-	ipv4 { import filter peer_in_v4; };
+	ipv4 {
+		import filter peer_in_v4;
+		export none;
+	};
 }
 </code>
 

@@ -99,6 +99,7 @@
  * <item> <rfc id="7947"> - Internet Exchange BGP Route Server
  * <item> <rfc id="8092"> - BGP Large Communities Attribute
  * <item> <rfc id="8203"> - BGP Administrative Shutdown Communication
+ * <item> <rfc id="8212"> - Default EBGP Route Propagation Behavior without Policies
  * </itemize>
 */
 
@@ -113,6 +114,7 @@
 #include "nest/cli.h"
 #include "nest/locks.h"
 #include "conf/conf.h"
+#include "filter/filter.h"
 #include "lib/socket.h"
 #include "lib/resource.h"
 #include "lib/string.h"
@@ -1621,6 +1623,7 @@ bgp_postconfig(struct proto_config *CF)
 {
   struct bgp_config *cf = (void *) CF;
   int internal = (cf->local_as == cf->remote_as);
+  int interior = internal || cf->confederation_member;
 
   /* Do not check templates at all */
   if (cf->c.class == SYM_TEMPLATE)
@@ -1677,6 +1680,20 @@ bgp_postconfig(struct proto_config *CF)
   struct bgp_channel_config *cc;
   WALK_LIST(cc, CF->channels)
   {
+    /* Handle undefined import filter */
+    if (cc->c.in_filter == FILTER_UNDEF)
+      if (interior)
+	cc->c.in_filter = FILTER_ACCEPT;
+      else
+	cf_error("EBGP requires explicit import policy");
+
+    /* Handle undefined export filter */
+    if (cc->c.out_filter == FILTER_UNDEF)
+      if (interior)
+	cc->c.out_filter = FILTER_REJECT;
+      else
+	cf_error("EBGP requires explicit export policy");
+
     /* Disable after error incompatible with restart limit action */
     if ((cc->c.in_limit.action == PLA_RESTART) && cf->disable_after_error)
       cc->c.in_limit.action = PLA_DISABLE;

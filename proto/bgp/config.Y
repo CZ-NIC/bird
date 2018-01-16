@@ -163,6 +163,8 @@ bgp_channel_start: bgp_afi
   /* New channel */
   if (!BGP_CC->desc)
   {
+    BGP_CC->c.in_filter = FILTER_UNDEF;
+    BGP_CC->c.out_filter = FILTER_UNDEF;
     BGP_CC->c.ra_mode = RA_UNDEF;
     BGP_CC->afi = $1;
     BGP_CC->desc = desc;

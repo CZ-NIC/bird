@@ -122,6 +122,7 @@ void val_format(struct f_val v, buffer *buf);
 
 #define FILTER_ACCEPT NULL
 #define FILTER_REJECT ((void *) 1)
+#define FILTER_UNDEF  ((void *) 2)	/* Used in BGP */
 
 /* Type numbers must be in 0..0xff range */
 #define T_MASK 0xff
