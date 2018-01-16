@@ -4,7 +4,7 @@
 #  (c) 2000--2004 Martin Mares <mj@ucw.cz>
 #
 
-VERSION=`sed <sysdep/config.h '/BIRD_VERSION/!d;s/^.*"\(.*\)"$/\1/'`
+VERSION=`grep 'BIRD_VERSION \"' sysdep/config.h | sed '/BIRD_VERSION/!d;s/^.*"\(.*\)"$/\1/'`
 REL=bird-$VERSION
 DREL=bird-doc-$VERSION
 T=/tmp/bird
