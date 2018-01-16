@@ -4,6 +4,12 @@ Version 2.0.1 (2018-01-16)
   o Default EBGP Route Propagation Behavior without Policies (RFC 8212)
   o Many bugfixes
 
+  Notes:
+
+  To satisfy requirements of RFC 8212, external BGP protocols now require
+  explicit configuration of import and export policies.
+
+
 Version 2.0.0 (2017-12-11)
   o Integrated IPv4 + IPv6 design
   o Support for MPLS next hops
