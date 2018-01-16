@@ -1,6 +1,7 @@
-Version 2.0.1 (2018-01-14)
+Version 2.0.1 (2018-01-16)
   o Linux MPLS kernel support
   o Better handling of channels inherited from templates
+  o Default EBGP Route Propagation Behavior without Policies (RFC 8212)
   o Many bugfixes
 
 Version 2.0.0 (2017-12-11)
