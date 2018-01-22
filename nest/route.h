@@ -204,6 +204,8 @@ struct hostentry {
   u32 igp_metric;			/* Chosen route IGP metric */
 };
 
+#define RTE_MGRP_MAXVIFS 32
+
 typedef struct rte {
   struct rte *next;
   net *net;				/* Network this RTE belongs to */
@@ -247,6 +249,9 @@ typedef struct rte {
       u8 best;				/* Best route in network, propagated to core */
       u32 metric;			/* Kernel metric */
     } krt;
+    struct {
+      u32 iifs, oifs;			/* Bitmaps for iifs and oifs. Use RTE_MGRP_* macros to manipulate. */
+    } mkrt;
   } u;
 } rte;
 
@@ -274,6 +279,13 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RIC_PROCESS	0		/* Process it through import filter */
 #define RIC_REJECT	-1		/* Rejected by protocol */
 #define RIC_DROP	-2		/* Silently dropped by protocol */
+
+#define RTE_MGRP_SET(iface,m)	((m) |= (1 << if_get_vifi((iface))))
+#define RTE_MGRP_CLR(iface,m)	((m) &= ~(1 << if_get_vifi((iface))))
+#define RTE_MGRP_ISSET(iface,m)	((m) & (1 << if_get_vifi((iface))))
+#define RTE_MGRP_ZERO(m)	((m) = 0)
+#define RTE_MGRP_COPY(src,dst)	((dst) = (src))
+#define RTE_MGRP_SAME(m1,m2)	((m1) == (m2))
 
 struct config;
 
@@ -430,7 +442,8 @@ typedef struct rta {
 #define RTD_BLACKHOLE 2			/* Silently drop packets */
 #define RTD_UNREACHABLE 3		/* Reject as unreachable */
 #define RTD_PROHIBIT 4			/* Administratively prohibited */
-#define RTD_MAX 5
+#define RTD_MULTICAST 5			/* Multicast route */
+#define RTD_MAX 6
 
 					/* Flags for net->n.flags, used by kernel syncer */
 #define KRF_INSTALLED 0x80		/* This route should be installed in the kernel */

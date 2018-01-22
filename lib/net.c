@@ -12,8 +12,12 @@ const char * const net_label[] = {
   [NET_VPN6] 	= "vpn6",
   [NET_ROA4] 	= "roa4",
   [NET_ROA6] 	= "roa6",
-  [NET_FLOW4] 	= "flow4",
-  [NET_FLOW6] 	= "flow6",
+  [NET_FLOW4]	= "flow4",
+  [NET_FLOW6]	= "flow6",
+  [NET_MREQ4]	= "mreq4",
+  [NET_MREQ6]	= "mreq6",
+  [NET_MGRP4]	= "mgrp4",
+  [NET_MGRP6]	= "mgrp6",
   [NET_MPLS]	= "mpls",
 };
 
@@ -24,8 +28,12 @@ const u16 net_addr_length[] = {
   [NET_VPN6] 	= sizeof(net_addr_vpn6),
   [NET_ROA4] 	= sizeof(net_addr_roa4),
   [NET_ROA6] 	= sizeof(net_addr_roa6),
-  [NET_FLOW4] 	= 0,
-  [NET_FLOW6] 	= 0,
+  [NET_FLOW4]	= 0,
+  [NET_FLOW6]	= 0,
+  [NET_MREQ4]	= sizeof(net_addr_mreq4),
+  [NET_MREQ6]	= sizeof(net_addr_mreq6),
+  [NET_MGRP4]	= sizeof(net_addr_mgrp4),
+  [NET_MGRP6]	= sizeof(net_addr_mgrp6),
   [NET_MPLS]	= sizeof(net_addr_mpls),
 };
 
@@ -36,8 +44,12 @@ const u8 net_max_prefix_length[] = {
   [NET_VPN6] 	= IP6_MAX_PREFIX_LENGTH,
   [NET_ROA4] 	= IP4_MAX_PREFIX_LENGTH,
   [NET_ROA6] 	= IP6_MAX_PREFIX_LENGTH,
-  [NET_FLOW4] 	= IP4_MAX_PREFIX_LENGTH,
-  [NET_FLOW6] 	= IP6_MAX_PREFIX_LENGTH,
+  [NET_FLOW4]	= IP4_MAX_PREFIX_LENGTH,
+  [NET_FLOW6]	= IP6_MAX_PREFIX_LENGTH,
+  [NET_MREQ4]	= IP4_MAX_PREFIX_LENGTH,
+  [NET_MREQ6]	= IP6_MAX_PREFIX_LENGTH,
+  [NET_MGRP4]	= IP4_MAX_PREFIX_LENGTH,
+  [NET_MGRP6]	= IP6_MAX_PREFIX_LENGTH,
   [NET_MPLS]	= 0,
 };
 
@@ -48,8 +60,12 @@ const u16 net_max_text_length[] = {
   [NET_VPN6] 	= 65,	/* "4294967296:4294967296 ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
   [NET_ROA4] 	= 34,	/* "255.255.255.255/32-32 AS4294967295" */
   [NET_ROA6] 	= 60,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128-128 AS4294967295" */
-  [NET_FLOW4] 	= 0,	/* "flow4 { ... }" */
-  [NET_FLOW6] 	= 0,	/* "flow6 { ... }" */
+  [NET_FLOW4]	= 0,	/* "flow4 { ... }" */
+  [NET_FLOW6]	= 0,	/* "flow6 { ... }" */
+  [NET_MREQ4]	= 15,	/* "255.255.255.255" */
+  [NET_MREQ6]	= 39,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff" */
+  [NET_MGRP4]	= 15,	/* "255.255.255.255" */
+  [NET_MGRP6]	= 39,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff" */
   [NET_MPLS]	= 7,	/* "1048575" */
 };
 
@@ -102,6 +118,14 @@ net_format(const net_addr *N, char *buf, int buflen)
     return flow4_net_format(buf, buflen, &n->flow4);
   case NET_FLOW6:
     return flow6_net_format(buf, buflen, &n->flow6);
+  case NET_MREQ4:
+    return bsnprintf(buf, buflen, "%I4", n->mreq4.grp);
+  case NET_MREQ6:
+    return bsnprintf(buf, buflen, "%I6", n->mreq6.grp);
+  case NET_MGRP4:
+    return bsnprintf(buf, buflen, "%I4", n->mgrp4.grp);
+  case NET_MGRP6:
+    return bsnprintf(buf, buflen, "%I6", n->mgrp6.grp);
   case NET_MPLS:
     return bsnprintf(buf, buflen, "%u", n->mpls.label);
   }
@@ -118,12 +142,16 @@ net_pxmask(const net_addr *a)
   case NET_VPN4:
   case NET_ROA4:
   case NET_FLOW4:
+  case NET_MREQ4:
+  case NET_MGRP4:
     return ipa_from_ip4(ip4_mkmask(net4_pxlen(a)));
 
   case NET_IP6:
   case NET_VPN6:
   case NET_ROA6:
   case NET_FLOW6:
+  case NET_MREQ6:
+  case NET_MGRP6:
     return ipa_from_ip6(ip6_mkmask(net6_pxlen(a)));
 
   case NET_MPLS:
@@ -156,6 +184,14 @@ net_compare(const net_addr *a, const net_addr *b)
     return net_compare_flow4((const net_addr_flow4 *) a, (const net_addr_flow4 *) b);
   case NET_FLOW6:
     return net_compare_flow6((const net_addr_flow6 *) a, (const net_addr_flow6 *) b);
+  case NET_MREQ4:
+    return net_compare_mreq4((const net_addr_mreq4 *) a, (const net_addr_mreq4 *) b);
+  case NET_MREQ6:
+    return net_compare_mreq6((const net_addr_mreq6 *) a, (const net_addr_mreq6 *) b);
+  case NET_MGRP4:
+    return net_compare_mgrp4((const net_addr_mgrp4 *) a, (const net_addr_mgrp4 *) b);
+  case NET_MGRP6:
+    return net_compare_mgrp6((const net_addr_mgrp6 *) a, (const net_addr_mgrp6 *) b);
   case NET_MPLS:
     return net_compare_mpls((const net_addr_mpls *) a, (const net_addr_mpls *) b);
   }
@@ -177,6 +213,10 @@ net_hash(const net_addr *n)
   case NET_ROA6: return NET_HASH(n, roa6);
   case NET_FLOW4: return NET_HASH(n, flow4);
   case NET_FLOW6: return NET_HASH(n, flow6);
+  case NET_MREQ4: return NET_HASH(n, mreq4);
+  case NET_MREQ6: return NET_HASH(n, mreq6);
+  case NET_MGRP4: return NET_HASH(n, mgrp4);
+  case NET_MGRP6: return NET_HASH(n, mgrp6);
   case NET_MPLS: return NET_HASH(n, mpls);
   default: bug("invalid type");
   }
@@ -198,6 +238,10 @@ net_validate(const net_addr *n)
   case NET_ROA6: return NET_VALIDATE(n, roa6);
   case NET_FLOW4: return NET_VALIDATE(n, flow4);
   case NET_FLOW6: return NET_VALIDATE(n, flow6);
+  case NET_MREQ4: return NET_VALIDATE(n, mreq4);
+  case NET_MREQ6: return NET_VALIDATE(n, mreq6);
+  case NET_MGRP4: return NET_VALIDATE(n, mgrp4);
+  case NET_MGRP6: return NET_VALIDATE(n, mgrp6);
   case NET_MPLS: return NET_VALIDATE(n, mpls);
   default: return 0;
   }
@@ -222,6 +266,10 @@ net_normalize(net_addr *N)
   case NET_FLOW6:
     return net_normalize_ip6(&n->ip6);
 
+  case NET_MREQ4:
+  case NET_MREQ6:
+  case NET_MGRP4:
+  case NET_MGRP6:
   case NET_MPLS:
     return;
   }
@@ -238,12 +286,16 @@ net_classify(const net_addr *N)
   case NET_VPN4:
   case NET_ROA4:
   case NET_FLOW4:
+  case NET_MREQ4:
+  case NET_MGRP4:
     return ip4_zero(n->ip4.prefix) ? (IADDR_HOST | SCOPE_UNIVERSE) : ip4_classify(n->ip4.prefix);
 
   case NET_IP6:
   case NET_VPN6:
   case NET_ROA6:
   case NET_FLOW6:
+  case NET_MREQ6:
+  case NET_MGRP6:
     return ip6_zero(n->ip6.prefix) ? (IADDR_HOST | SCOPE_UNIVERSE) : ip6_classify(&n->ip6.prefix);
 
   case NET_MPLS:
@@ -273,6 +325,16 @@ ipa_in_netX(const ip_addr a, const net_addr *n)
     if (ipa_is_ip4(a)) return 0;
     return ip6_zero(ip6_and(ip6_xor(ipa_to_ip6(a), net6_prefix(n)),
 			    ip6_mkmask(net6_pxlen(n))));
+
+  case NET_MREQ4:
+  case NET_MGRP4:
+    if (!ipa_is_ip4(a)) return 0;
+    return ip4_equal(ipa_to_ip4(a), net4_prefix(n));
+
+  case NET_MREQ6:
+  case NET_MGRP6:
+    if (ipa_is_ip4(a)) return 0;
+    return ip6_equal(ipa_to_ip6(a), net6_prefix(n));
 
   case NET_MPLS:
   default:
@@ -304,5 +366,9 @@ net_init(void)
   CHECK_NET(net_addr_roa6,	28);
   CHECK_NET(net_addr_flow4,	 8);
   CHECK_NET(net_addr_flow6,	20);
+  CHECK_NET(net_addr_mreq4,	12);
+  CHECK_NET(net_addr_mreq6,	24);
+  CHECK_NET(net_addr_mgrp4,	 8);
+  CHECK_NET(net_addr_mgrp6,	20);
   CHECK_NET(net_addr_mpls,	 8);
 }

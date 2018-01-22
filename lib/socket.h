@@ -103,6 +103,7 @@ static inline int sk_send_buffer_empty(sock *sk)
 int sk_setup_multicast(sock *s);	/* Prepare UDP or IP socket for multicasting */
 int sk_join_group(sock *s, ip_addr maddr);	/* Join multicast group on sk iface */
 int sk_leave_group(sock *s, ip_addr maddr);	/* Leave multicast group on sk iface */
+int sk_set_router_alert(sock *s, int ra);
 int sk_setup_broadcast(sock *s);
 int sk_set_ttl(sock *s, int ttl);	/* Set transmit TTL for given socket */
 int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given socket */

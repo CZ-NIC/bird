@@ -630,6 +630,24 @@ sk_set_min_ttl(sock *s, int ttl)
     return sk_set_min_ttl6(s, ttl);
 }
 
+/**
+ * sk_set_router_alert - set router alert option
+ * @s: socket
+ * @ra: packets with this router alert option value will be passed to the
+ * socket. Negative integer disables.
+ *
+ * Result: 0 for success, -1 for an error.
+ */
+
+int
+sk_set_router_alert(sock *s, int ra)
+{
+  if (sk_is_ipv4(s))
+    return sk_set_router_alert4(s, ra);
+  else
+    return sk_set_router_alert6(s, ra);
+}
+
 #if 0
 /**
  * sk_set_md5_auth - add / remove MD5 security association for given socket

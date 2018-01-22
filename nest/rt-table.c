@@ -898,9 +898,10 @@ rte_validate(rte *e)
   }
 
   /* FIXME: better handling different nettypes */
-  c = !net_is_flow(n->n.addr) ?
-    net_classify(n->n.addr): (IADDR_HOST | SCOPE_UNIVERSE);
-  if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
+  /* FIXME: should be check mcast addresses here or in net_validate()? */
+  if (net_type_match(n->n.addr, NB_HOST) &&
+      (c = net_classify(n->n.addr)) &&
+      ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK)))
   {
     log(L_WARN "Ignoring bogus route %N received via %s",
 	n->n.addr, e->sender->proto->name);
@@ -1429,6 +1430,33 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
 
   return v > 0;
 }
+
+#if 0
+/* Sometimes protocols need to find one route in table without keeping their own copy.
+ * rt_route finds the best route after applying filter.
+ * As the routes may be temporary, successful find is announced by the callback.
+ * Returns 1 if the callback was called.
+ */
+int
+rt_route(struct channel *c, net_addr *n, void (*callback)(struct proto *, void *, rte *), void *data)
+{
+  net *r;
+
+  net_addr *n0 = alloca(n->length);
+  net_copy(n0, n);
+
+  while (1)
+  {
+    r = net_find(c->table, n0);
+    if (r && rte_is_valid(r->routes) && rt_examine2(r, c->proto, c->out_filter, callback, data))
+      return 1;
+    if (n0->pxlen == 0)
+      return 0;
+    n0->pxlen--;
+    net_normalize(n0);
+  }
+}
+#endif
 
 
 /**
@@ -2358,7 +2386,7 @@ if_local_addr(ip_addr a, struct iface *i)
   return 0;
 }
 
-static u32 
+static u32
 rt_get_igp_metric(rte *rt)
 {
   eattr *ea = ea_find(rt->attrs->eattrs, EA_GEN_IGP_METRIC);

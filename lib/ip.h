@@ -238,6 +238,12 @@ static inline int ip6_is_link_local(ip6_addr a)
 static inline int ip6_is_v4mapped(ip6_addr a)
 { return _I0(a) == 0 && _I1(a) == 0 && _I2(a) == 0xffff; }
 
+static inline int ip4_is_multicast(ip4_addr a)
+{ return (_I(a)  & 0xf0000000) == 0xe0000000; }
+
+static inline int ip6_is_multicast(ip6_addr a)
+{ return (_I0(a) & 0xff000000) == 0xff000000; }
+
 #define ipa_classify(x) ip6_classify(&(x))
 #define ipa_is_link_local(x) ip6_is_link_local(x)
 
