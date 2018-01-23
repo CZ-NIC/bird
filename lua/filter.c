@@ -9,6 +9,22 @@
 
 /* Docs: http://pgl.yoyo.org/luai/i/luaL_dostring */
 
+static lua_State *global_lua_state = NULL;
+
+static inline lua_State * luaB_getstate(void) {
+  if (!global_lua_state) {
+    lua_State *L = luaL_newstate();
+    luaL_openlibs(L);
+    global_lua_state = L;
+  }
+
+  return lua_newthread(global_lua_state);
+}
+
+static inline void luaB_close(lua_State *L UNUSED) {
+  lua_pop(global_lua_state, 1);
+}
+
 struct lua_new_filter_writer_data {
   struct lua_filter_chunk *first, *last;
 };
@@ -40,12 +56,11 @@ struct filter * lua_new_filter(struct f_inst *inst) {
     return NULL;
   }
 
-  lua_State *L = luaL_newstate();
-  luaL_openlibs(L);
+  lua_State *L = luaB_getstate();
   int loadres = luaL_loadstring(L, string.val.s);
   switch (loadres) {
     case LUA_ERRMEM:
-      lua_close(L);
+      luaB_close(L);
       cf_error("Memory allocation error occured when loading lua chunk");
       return NULL;
     case LUA_ERRSYNTAX:
@@ -53,7 +68,7 @@ struct filter * lua_new_filter(struct f_inst *inst) {
 	const char *e = lua_tostring(L, -1);
 	char *ec = cfg_alloc(strlen(e) + 1);
 	strcpy(ec, e);
-	lua_close(L);
+	luaB_close(L);
 	cf_error("Lua syntax error: %s", ec);
 	return NULL;
       }
@@ -63,7 +78,7 @@ struct filter * lua_new_filter(struct f_inst *inst) {
 
   struct lua_new_filter_writer_data lnfwd = {};
   lua_dump(L, lua_new_filter_writer, &lnfwd, 0); /* No error to handle */
-  lua_close(L);
+  luaB_close(L);
 
   f->lua_chunk = lnfwd.first;
   return f;
@@ -81,10 +96,11 @@ static const char *lua_interpret_reader(lua_State *L UNUSED, void *ud, size_t *s
 }
 
 struct f_val lua_interpret(struct lua_filter_chunk *chunk, struct rte **e, struct rta **a, struct ea_list **ea, struct linpool *lp, int flags) {
-  lua_State *L = luaL_newstate();
-  luaL_openlibs(L);
+  lua_State *L = luaB_getstate();
+
   lua_bird_state *lbs = luaB_init(L, lp);
   luaB_push_route(L, *e);
+
   struct lua_filter_chunk **rptr = &chunk;
   lua_load(L, lua_interpret_reader, rptr, "", "b");
   int le = lua_pcall(L, 0, LUA_MULTRET, 0);
@@ -101,7 +117,7 @@ struct f_val lua_interpret(struct lua_filter_chunk *chunk, struct rte **e, struc
     out = F_VAL(T_RETURN, i, F_ERROR);
   }
 
-  lua_close(L);
+  luaB_close(L);
   return out;
 }
 
