@@ -246,6 +246,20 @@ sk_set_min_ttl6(sock *s, int ttl UNUSED)
 }
 
 static inline int
+sk_set_router_alert4(sock *s, int ra)
+{
+  /* TODO: Set IP_ROUTER_ALERT to 1 ? */
+  return 0;
+}
+
+static inline int
+sk_set_router_alert6(sock *s, int ra)
+{
+  /* TODO: Set IPV6_ROUTER_ALERT to 1 ? */
+  return 0;
+}
+
+static inline int
 sk_disable_mtu_disc4(sock *s UNUSED)
 {
   /* TODO: Set IP_DONTFRAG to 0 ? */
