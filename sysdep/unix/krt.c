@@ -1059,10 +1059,17 @@ krt_postconfig(struct proto_config *CF)
     cf_error("All kernel syncers must use the same table scan interval");
 #endif
 
-  struct rtable_config *tab = proto_cf_main_channel(CF)->table;
+  struct channel_config *cc = proto_cf_main_channel(CF);
+  struct rtable_config *tab = cc->table;
   if (tab->krt_attached)
     cf_error("Kernel syncer (%s) already attached to table %s", tab->krt_attached->name, tab->name);
   tab->krt_attached = CF;
+
+  if (cf->merge_paths)
+  {
+    cc->ra_mode = RA_MERGED;
+    cc->merge_limit = cf->merge_paths;
+  }
 
   krt_sys_postconfig(cf);
 }

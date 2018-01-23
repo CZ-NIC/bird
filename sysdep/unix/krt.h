@@ -50,6 +50,7 @@ struct krt_config {
   int persist;			/* Keep routes when we exit */
   int learn;			/* Learn routes from other sources */
   int graceful_restart;		/* Regard graceful restart recovery */
+  int merge_paths;		/* Exported routes are merged for ECMP */
 };
 
 struct krt_proto {
