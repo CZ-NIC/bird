@@ -78,7 +78,6 @@ kern_item:
 	cf_error("Learning of kernel routes not supported on this platform");
 #endif
    }
- | DEVICE ROUTES bool { THIS_KRT->devroutes = $3; }
  | GRACEFUL RESTART bool { THIS_KRT->graceful_restart = $3; }
  | MERGE PATHS bool kern_mp_limit {
       krt_set_merge_paths(this_channel, $3, $4);

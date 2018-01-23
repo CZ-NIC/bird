@@ -1159,7 +1159,7 @@ krt_reconfigure(struct proto *p, struct proto_config *CF)
     return 0;
 
   /* persist, graceful restart need not be the same */
-  return o->scan_time == n->scan_time && o->learn == n->learn && o->devroutes == n->devroutes;
+  return o->scan_time == n->scan_time && o->learn == n->learn;
 }
 
 struct proto_config *
