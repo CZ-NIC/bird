@@ -2,6 +2,12 @@
 
 #include <lua.h>
 
+struct lua_filter_chunk {
+  size_t size;
+  void *chunk;
+  struct lua_filter_chunk *next;
+};
+
 typedef struct lua_bird_state {
   int exception;
 } lua_bird_state;

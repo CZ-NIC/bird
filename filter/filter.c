@@ -1575,14 +1575,6 @@ interpret(struct f_inst *what)
     CALL(bt_assert_hook, res.val.i, what);
     break;
 
-  case P('L','C'):	/* Lua include */
-    ONEARG;
-    if (v1.type != T_STRING)
-      runtime("Lua code should be a string argument");
-
-    res = filter_lua_chunk(v1.val.s, f_rte, f_old_rta, f_tmp_attrs, f_pool);
-    break;
-
   default:
     bug( "Unknown instruction %d (%c)", what->code, what->code & 0xff);
   }
@@ -1778,7 +1770,17 @@ f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struc
 
   LOG_BUFFER_INIT(f_buf);
 
-  struct f_val res = interpret(filter->root);
+  struct f_val res;
+  switch (filter->type) {
+    case FILTER_INTERNAL:
+      res = interpret(filter->root);
+      break;
+    case FILTER_LUA:
+      res = lua_interpret(filter->lua_chunk, rte, &f_old_rta, tmp_attrs, tmp_pool, flags);
+      break;
+    default:
+      bug("filter type not set");
+  }
 
   if (f_old_rta) {
     /*
@@ -1883,5 +1885,16 @@ filter_same(struct filter *new, struct filter *old)
   if (old == FILTER_ACCEPT || old == FILTER_REJECT ||
       new == FILTER_ACCEPT || new == FILTER_REJECT)
     return 0;
-  return i_same(new->root, old->root);
+  if (new->type != old->type)
+    return 0;
+  switch(new->type) {
+    case FILTER_INTERNAL:
+      return i_same(new->root, old->root);
+      break;
+    case FILTER_LUA:
+      return lua_filter_same(new->lua_chunk, old->lua_chunk);
+      break;
+    default:
+      bug("Unknown filter type");
+  }
 }

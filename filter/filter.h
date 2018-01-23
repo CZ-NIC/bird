@@ -71,8 +71,15 @@ struct f_val {
 };
 
 struct filter {
+  enum filter_type {
+    FILTER_INTERNAL = 1,
+    FILTER_LUA = 2,
+  } type;
   char *name;
-  struct f_inst *root;
+  union {
+    struct f_inst *root;
+    struct lua_filter_chunk *lua_chunk;
+  };
 };
 
 struct f_inst *f_new_inst(void);
@@ -223,6 +230,8 @@ struct f_bt_test_suite {
 extern void (*bt_assert_hook)(int result, struct f_inst *assert);
 
 /* Lua */
-struct f_val filter_lua_chunk(const char *chunk, struct rte **e, struct rta *a, struct ea_list **ea, struct linpool *lp);
+struct filter * lua_new_filter(struct f_inst *inst);
+struct f_val lua_interpret(struct lua_filter_chunk *chunk, struct rte **e, struct rta **a, struct ea_list **ea, struct linpool *lp, int flags);
+int lua_filter_same(struct lua_filter_chunk *new, struct lua_filter_chunk *old);
 
 #endif

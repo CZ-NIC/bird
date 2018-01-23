@@ -524,6 +524,7 @@ declsn: one_decl { $$ = $1; }
 filter_body:
    function_body {
      struct filter *f = cfg_alloc(sizeof(struct filter));
+     f->type = FILTER_INTERNAL;
      f->name = NULL;
      f->root = $1;
      $$ = f;
@@ -542,6 +543,7 @@ where_filter:
    WHERE term {
      /* Construct 'IF term THEN ACCEPT; REJECT;' */
      struct filter *f = cfg_alloc(sizeof(struct filter));
+     f->type = FILTER_INTERNAL;
      struct f_inst *i, *acc, *rej;
      acc = f_new_inst();		/* ACCEPT */
      acc->code = P('p',',');
@@ -1060,12 +1062,7 @@ cmd:
 
 lua_call:
   LUA constant {
-    $$ = cfg_alloc(sizeof(struct filter));
-    $$->name = NULL;
-    $$->root = f_new_inst();
-    $$->root->code = P('L','C');
-    $$->root->a1.p = $2;
-    $$->root->next = NULL;
+    $$ = lua_new_filter($2);
   }
 
 get_cf_position:
