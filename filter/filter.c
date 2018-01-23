@@ -587,7 +587,8 @@ val_format_str(struct f_val v) {
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
 #define runtime(fmt, ...) do { \
-    log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
+    if (!(f_flags & FF_SILENT)) \
+      log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
     res.type = T_RETURN; \
     res.val.i = F_ERROR; \
     return res; \
@@ -903,7 +904,8 @@ interpret(struct f_inst *what)
     break;
   case P('p',','):
     ONEARG;
-    if (what->a2.i == F_NOP || (what->a2.i != F_NONL && what->a1.p))
+    if ((what->a2.i == F_NOP || (what->a2.i != F_NONL && what->a1.p)) &&
+	!(f_flags & FF_SILENT))
       log_commit(*L_INFO, &f_buf);
 
     switch (what->a2.i) {
@@ -1793,7 +1795,8 @@ f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struc
 
 
   if (res.type != T_RETURN) {
-    log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter->name);
+    if (!(f_flags & FF_SILENT))
+      log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter->name);
     return F_ERROR;
   }
   DBG( "done (%u)\n", res.val.i );

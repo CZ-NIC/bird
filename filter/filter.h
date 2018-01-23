@@ -208,6 +208,7 @@ struct f_trie
 #define NEW_F_VAL struct f_val * val; val = cfg_alloc(sizeof(struct f_val));
 
 #define FF_FORCE_TMPATTR 1		/* Force all attributes to be temporary */
+#define FF_SILENT 2			/* Silent filter execution */
 
 /* Bird Tests */
 struct f_bt_test_suite {

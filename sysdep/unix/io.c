@@ -958,10 +958,6 @@ sk_setup(sock *s)
 #endif
   }
 
-  if (s->priority >= 0)
-    if (sk_set_priority(s, s->priority) < 0)
-      return -1;
-
   if (sk_is_ipv4(s))
   {
     if (s->flags & SKF_LADDR_RX)
@@ -1011,6 +1007,11 @@ sk_setup(sock *s)
       if (sk_set_tos6(s, s->tos) < 0)
 	return -1;
   }
+
+  /* Must be after sk_set_tos4() as setting ToS on Linux also mangles priority */
+  if (s->priority >= 0)
+    if (sk_set_priority(s, s->priority) < 0)
+      return -1;
 
   return 0;
 }
