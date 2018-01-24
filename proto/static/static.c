@@ -91,7 +91,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   if (r->dest == RTDX_RECURSIVE)
   {
     rtable *tab = ipa_is_ip4(r->via) ? p->igp_table_ip4 : p->igp_table_ip6;
-    rta_set_recursive_next_hop(p->p.main_channel->table, a, tab, r->via, IPA_NONE, r->mls);
+    rta_set_recursive_next_hop(p->p.main_channel->table, a, tab, r->via, IPA_NONE, r->mls, static_lp);
   }
 
   /* Already announced */

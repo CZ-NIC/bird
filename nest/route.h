@@ -295,7 +295,7 @@ rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
-int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter);
+int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter, struct linpool *pool);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
@@ -626,12 +626,12 @@ void rta_dump_all(void);
 void rta_show(struct cli *, rta *);
 
 struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
-void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls);
+void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls, struct linpool *lp);
 
 static inline void
-rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, mpls_label_stack *mls)
+rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, mpls_label_stack *mls, struct linpool *lp)
 {
-  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ll, dep), mls);
+  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ll, dep), mls, lp);
 }
 
 /*
