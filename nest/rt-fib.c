@@ -92,8 +92,7 @@ fib_ht_free(struct fib_node **h)
 }
 
 
-static u32
-fib_hash(struct fib *f, const net_addr *a);
+static inline u32 fib_hash(struct fib *f, const net_addr *a);
 
 /**
  * fib_init - initialize a new FIB
@@ -198,24 +197,11 @@ fib_rehash(struct fib *f, int step)
   })
 
 
-static u32
+static inline u32
 fib_hash(struct fib *f, const net_addr *a)
 {
-  ASSERT(f->addr_type == a->type);
-
-  switch (f->addr_type)
-  {
-  case NET_IP4: return FIB_HASH(f, a, ip4);
-  case NET_IP6: return FIB_HASH(f, a, ip6);
-  case NET_VPN4: return FIB_HASH(f, a, vpn4);
-  case NET_VPN6: return FIB_HASH(f, a, vpn6);
-  case NET_ROA4: return FIB_HASH(f, a, roa4);
-  case NET_ROA6: return FIB_HASH(f, a, roa6);
-  case NET_FLOW4: return FIB_HASH(f, a, flow4);
-  case NET_FLOW6: return FIB_HASH(f, a, flow6);
-  case NET_MPLS: return FIB_HASH(f, a, mpls);
-  default: bug("invalid type");
-  }
+  /* Same as FIB_HASH() */
+  return net_hash(a) >> f->hash_shift;
 }
 
 void *
