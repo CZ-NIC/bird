@@ -2392,12 +2392,13 @@ static int
 rt_update_hostentry(rtable *tab, struct hostentry *he)
 {
   rta *old_src = he->src;
+  int direct = 0;
   int pxlen = 0;
 
   /* Reset the hostentry */
   he->src = NULL;
-  he->nexthop_linkable = 0;
   he->dest = RTD_UNREACHABLE;
+  he->nexthop_linkable = 0;
   he->igp_metric = 0;
 
   net_addr he_addr;
@@ -2417,9 +2418,7 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 	  goto done;
 	}
 
-      he->dest = a->dest;
-      he->nexthop_linkable = 1;
-      if (he->dest == RTD_UNICAST)
+      if (a->dest == RTD_UNICAST)
 	{
 	  for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
 	    if (ipa_zero(nh->gw))
@@ -2432,12 +2431,13 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 		    goto done;
 		  }
 
-		he->nexthop_linkable = 0;
-		break;
+		direct++;
 	      }
 	}
 
       he->src = rta_clone(a);
+      he->dest = a->dest;
+      he->nexthop_linkable = !direct;
       he->igp_metric = rt_get_igp_metric(e);
     }
 
