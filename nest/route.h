@@ -282,7 +282,7 @@ void rt_preconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
 void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
-void rt_setup(pool *, rtable *, char *, struct rtable_config *);
+void rt_setup(pool *, rtable *, struct rtable_config *);
 static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
 static inline net *net_find_valid(rtable *tab, const net_addr *addr)
 { net *n = net_find(tab, addr); return (n && rte_is_valid(n->routes)) ? n : NULL; }

@@ -506,7 +506,13 @@ static void
 krt_learn_init(struct krt_proto *p)
 {
   if (KRT_CF->learn)
-    rt_setup(p->p.pool, &p->krt_table, "Inherited", NULL);
+  {
+    struct rtable_config *cf = mb_allocz(p->p.pool, sizeof(struct rtable_config));
+    cf->name = "Inherited";
+    cf->addr_type = p->p.net_type;
+
+    rt_setup(p->p.pool, &p->krt_table, cf);
+  }
 }
 
 static void

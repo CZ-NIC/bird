@@ -1599,22 +1599,19 @@ rt_event(void *ptr)
 }
 
 void
-rt_setup(pool *p, rtable *t, char *name, struct rtable_config *cf)
+rt_setup(pool *p, rtable *t, struct rtable_config *cf)
 {
   bzero(t, sizeof(*t));
-  t->name = name;
+  t->name = cf->name;
   t->config = cf;
-  t->addr_type = cf ? cf->addr_type : NET_IP4;
+  t->addr_type = cf->addr_type;
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
   init_list(&t->channels);
 
-  if (cf)
-    {
-      t->rt_event = ev_new(p);
-      t->rt_event->hook = rt_event;
-      t->rt_event->data = t;
-      t->gc_time = current_time();
-    }
+  t->rt_event = ev_new(p);
+  t->rt_event->hook = rt_event;
+  t->rt_event->data = t;
+  t->gc_time = current_time();
 }
 
 /**
@@ -2090,7 +2087,7 @@ rt_commit(struct config *new, struct config *old)
       {
 	rtable *t = mb_alloc(rt_table_pool, sizeof(struct rtable));
 	DBG("\t%s: created\n", r->name);
-	rt_setup(rt_table_pool, t, r->name, r);
+	rt_setup(rt_table_pool, t, r);
 	add_tail(&routing_tables, &t->n);
 	r->table = t;
       }
