@@ -614,9 +614,9 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
 	old_meet = 1;
     }
 
-  /* 
+  /*
    * Second, handle the feed case. That means we do not care for
-   * old_best. It is NULL for feed, and the new_best for refeed. 
+   * old_best. It is NULL for feed, and the new_best for refeed.
    * For refeed, there is a hack similar to one in rt_notify_basic()
    * to ensure withdraws in case of changed filters
    */
@@ -825,7 +825,7 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
  * @new_best: the new best route for the same network
  * @old_best: the previous best route for the same network
  * @before_old: The previous route before @old for the same network.
- * 		If @before_old is NULL @old was the first.
+ *		If @before_old is NULL @old was the first.
  *
  * This function gets a routing table update and announces it
  * to all protocols that acccepts given type of route announcement
@@ -1387,7 +1387,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
 /* Independent call to rte_announce(), used from next hop
    recalculation, outside of rte_update(). new must be non-NULL */
-static inline void 
+static inline void
 rte_announce_i(rtable *tab, unsigned type, net *net, rte *new, rte *old,
 	       rte *new_best, rte *old_best)
 {
@@ -2357,7 +2357,7 @@ if_local_addr(ip_addr a, struct iface *i)
   return 0;
 }
 
-static u32 
+static u32
 rt_get_igp_metric(rte *rt)
 {
   eattr *ea = ea_find(rt->attrs->eattrs, EA_GEN_IGP_METRIC);

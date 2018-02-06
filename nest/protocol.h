@@ -337,7 +337,7 @@ void proto_notify_state(struct proto *p, unsigned state);
  *
  *		HUNGRY    ---->   FEEDING
  *		 ^		     |
- *		 | 		     V
+ *		 |		     V
  *		FLUSHING  <----   HAPPY
  *
  *	States:	HUNGRY	Protocol either administratively down (i.e.,

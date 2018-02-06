@@ -603,7 +603,7 @@ fib_histogram(struct fib *f)
       for (e = f->hash_table[i]; e != NULL; e = e->next)
 	j++;
       if (j > 0)
-        log(L_WARN "Histogram line %d: %d", i, j);
+	log(L_WARN "Histogram line %d: %d", i, j);
     }
 
   log(L_WARN "Histogram dump end");

@@ -43,14 +43,14 @@ t_as_path_match(void)
       bt_debug("Prepending ASN: %10u \n", val);
 
       if (i == 0)
-        first_prepended = val;
+	first_prepended = val;
       if (i == AS_PATH_LENGTH-1)
-        last_prepended = val;
+	last_prepended = val;
 
       mask[i].kind = PM_ASN;
       mask[i].val  = val;
       if (i)
-        mask[i].next = &mask[i-1];
+	mask[i].next = &mask[i-1];
     }
 
     bt_assert_msg(as_path_match(as_path, &mask[AS_PATH_LENGTH-1]), "Mask should match with AS path");

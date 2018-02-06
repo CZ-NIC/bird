@@ -151,7 +151,7 @@ CF_ENUM(T_ENUM_NETTYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6)
 CF_ADDTO(conf, table)
 
 table_sorted:
-          { $$ = 0; }
+	  { $$ = 0; }
  | SORTED { $$ = 1; }
  ;
 
@@ -454,9 +454,9 @@ password_item:
 password_item_begin:
    PASSWORD text {
      if (!this_p_list) {
-     	this_p_list = cfg_alloc(sizeof(list));
-     	init_list(this_p_list);
-        password_id = 1;
+	this_p_list = cfg_alloc(sizeof(list));
+	init_list(this_p_list);
+	password_id = 1;
      }
      this_p_item = cfg_alloc(sizeof (struct password_item));
      this_p_item->password = $2;

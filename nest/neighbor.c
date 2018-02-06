@@ -156,7 +156,7 @@ neigh_find2(struct proto *p, ip_addr *a, struct iface *ifa, unsigned flags)
     WALK_LIST(i, iface_list)
       if ((!p->vrf || p->vrf == i->master) &&
 	  ((scope = if_connected(a, i, &addr)) >= 0))
-        {
+	{
 	  ifa = i;
 	  break;
 	}

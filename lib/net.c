@@ -6,50 +6,50 @@
 
 
 const char * const net_label[] = {
-  [NET_IP4] 	= "ipv4",
-  [NET_IP6] 	= "ipv6",
-  [NET_VPN4] 	= "vpn4",
-  [NET_VPN6] 	= "vpn6",
-  [NET_ROA4] 	= "roa4",
-  [NET_ROA6] 	= "roa6",
-  [NET_FLOW4] 	= "flow4",
-  [NET_FLOW6] 	= "flow6",
+  [NET_IP4]	= "ipv4",
+  [NET_IP6]	= "ipv6",
+  [NET_VPN4]	= "vpn4",
+  [NET_VPN6]	= "vpn6",
+  [NET_ROA4]	= "roa4",
+  [NET_ROA6]	= "roa6",
+  [NET_FLOW4]	= "flow4",
+  [NET_FLOW6]	= "flow6",
   [NET_MPLS]	= "mpls",
 };
 
 const u16 net_addr_length[] = {
-  [NET_IP4] 	= sizeof(net_addr_ip4),
-  [NET_IP6] 	= sizeof(net_addr_ip6),
-  [NET_VPN4] 	= sizeof(net_addr_vpn4),
-  [NET_VPN6] 	= sizeof(net_addr_vpn6),
-  [NET_ROA4] 	= sizeof(net_addr_roa4),
-  [NET_ROA6] 	= sizeof(net_addr_roa6),
-  [NET_FLOW4] 	= 0,
-  [NET_FLOW6] 	= 0,
+  [NET_IP4]	= sizeof(net_addr_ip4),
+  [NET_IP6]	= sizeof(net_addr_ip6),
+  [NET_VPN4]	= sizeof(net_addr_vpn4),
+  [NET_VPN6]	= sizeof(net_addr_vpn6),
+  [NET_ROA4]	= sizeof(net_addr_roa4),
+  [NET_ROA6]	= sizeof(net_addr_roa6),
+  [NET_FLOW4]	= 0,
+  [NET_FLOW6]	= 0,
   [NET_MPLS]	= sizeof(net_addr_mpls),
 };
 
 const u8 net_max_prefix_length[] = {
-  [NET_IP4] 	= IP4_MAX_PREFIX_LENGTH,
-  [NET_IP6] 	= IP6_MAX_PREFIX_LENGTH,
-  [NET_VPN4] 	= IP4_MAX_PREFIX_LENGTH,
-  [NET_VPN6] 	= IP6_MAX_PREFIX_LENGTH,
-  [NET_ROA4] 	= IP4_MAX_PREFIX_LENGTH,
-  [NET_ROA6] 	= IP6_MAX_PREFIX_LENGTH,
-  [NET_FLOW4] 	= IP4_MAX_PREFIX_LENGTH,
-  [NET_FLOW6] 	= IP6_MAX_PREFIX_LENGTH,
+  [NET_IP4]	= IP4_MAX_PREFIX_LENGTH,
+  [NET_IP6]	= IP6_MAX_PREFIX_LENGTH,
+  [NET_VPN4]	= IP4_MAX_PREFIX_LENGTH,
+  [NET_VPN6]	= IP6_MAX_PREFIX_LENGTH,
+  [NET_ROA4]	= IP4_MAX_PREFIX_LENGTH,
+  [NET_ROA6]	= IP6_MAX_PREFIX_LENGTH,
+  [NET_FLOW4]	= IP4_MAX_PREFIX_LENGTH,
+  [NET_FLOW6]	= IP6_MAX_PREFIX_LENGTH,
   [NET_MPLS]	= 0,
 };
 
 const u16 net_max_text_length[] = {
-  [NET_IP4] 	= 18,	/* "255.255.255.255/32" */
-  [NET_IP6] 	= 43,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
-  [NET_VPN4] 	= 40,	/* "4294967296:4294967296 255.255.255.255/32" */
-  [NET_VPN6] 	= 65,	/* "4294967296:4294967296 ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
-  [NET_ROA4] 	= 34,	/* "255.255.255.255/32-32 AS4294967295" */
-  [NET_ROA6] 	= 60,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128-128 AS4294967295" */
-  [NET_FLOW4] 	= 0,	/* "flow4 { ... }" */
-  [NET_FLOW6] 	= 0,	/* "flow6 { ... }" */
+  [NET_IP4]	= 18,	/* "255.255.255.255/32" */
+  [NET_IP6]	= 43,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
+  [NET_VPN4]	= 40,	/* "4294967296:4294967296 255.255.255.255/32" */
+  [NET_VPN6]	= 65,	/* "4294967296:4294967296 ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
+  [NET_ROA4]	= 34,	/* "255.255.255.255/32-32 AS4294967295" */
+  [NET_ROA6]	= 60,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128-128 AS4294967295" */
+  [NET_FLOW4]	= 0,	/* "flow4 { ... }" */
+  [NET_FLOW6]	= 0,	/* "flow6 { ... }" */
   [NET_MPLS]	= 7,	/* "1048575" */
 };
 

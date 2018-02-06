@@ -74,7 +74,7 @@ static inline struct fib_node * fib_user_to_node(struct fib *f, void *e)
 void fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offset, uint hash_order, fib_init_fn init);
 void *fib_find(struct fib *, const net_addr *);	/* Find or return NULL if doesn't exist */
 void *fib_get_chain(struct fib *f, const net_addr *a); /* Find first node in linked list from hash table */
-void *fib_get(struct fib *, const net_addr *); 	/* Find or create new if nonexistent */
+void *fib_get(struct fib *, const net_addr *);	/* Find or create new if nonexistent */
 void *fib_route(struct fib *, const net_addr *); /* Longest-match routing lookup */
 void fib_delete(struct fib *, void *);	/* Remove fib entry */
 void fib_free(struct fib *);		/* Destroy the fib */
@@ -104,7 +104,7 @@ void fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uin
 	type *z;						\
 	for(;;) {						\
 	  if (!fn_)						\
-            {							\
+	    {							\
 	       if (++hpos_ >= count_)				\
 		 break;						\
 	       fn_ = (fib)->hash_table[hpos_];			\
@@ -663,7 +663,7 @@ extern struct protocol *attr_class_to_protocol[EAP_MAX];
  *	Default protocol preferences
  */
 
-#define DEF_PREF_DIRECT	    	240	/* Directly connected */
+#define DEF_PREF_DIRECT		240	/* Directly connected */
 #define DEF_PREF_STATIC		200	/* Static route */
 #define DEF_PREF_OSPF		150	/* OSPF intra-area, inter-area and type 1 external routes */
 #define DEF_PREF_BABEL		130	/* Babel */

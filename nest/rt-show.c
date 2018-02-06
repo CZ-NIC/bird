@@ -74,7 +74,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
       char weight[16] = "";
 
       if (nh->labels)
-        {
+	{
 	  lsp += bsprintf(lsp, " mpls %d", nh->label[0]);
 	  for (int i=1;i<nh->labels; i++)
 	    lsp += bsprintf(lsp, "/%d", nh->label[i]);
@@ -129,7 +129,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
       /* Special case for merged export */
       if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
-        {
+	{
 	  rte *rt_free;
 	  e = rt_export_merged(ec, n, &rt_free, &tmpa, c->show_pool, 1);
 	  pass = 1;
@@ -419,4 +419,3 @@ rt_show(struct rt_show_data *d)
       cli_msg(8001, "Network not found");
   }
 }
-
