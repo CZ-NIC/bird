@@ -71,9 +71,6 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
     }
   else if (flags & IF_CHANGE_UP)
     {
-      rta *a;
-      rte *e;
-
       DBG("dev_if_notify: %s:%I going up\n", ad->iface->name, ad->ip);
 
       if (cf->check_link && !(ad->iface->flags & IF_LINK_UP))
@@ -90,10 +87,12 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 	.nh.iface = ad->iface,
       };
 
-      a = rta_lookup(&a0);
-      e = rte_get_temp(a);
-      e->pflags = 0;
-      rte_update2(c, net, e, src);
+      rte e = {
+	.pflags = 0,
+	.attrs = &a0,
+      };
+
+      rte_update2(c, net, &e, src);
     }
 }
 
