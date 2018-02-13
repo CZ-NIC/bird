@@ -12,3 +12,4 @@
 /configure
 /sysdep/autoconf.h.in
 /sysdep/autoconf.h.in~
+/cscope.*

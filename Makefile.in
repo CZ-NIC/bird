@@ -58,7 +58,7 @@ endif
 docgoals := docs userdocs progdocs
 testgoals := check test tests tests_run
 cleangoals := clean distclean testsclean
-.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags
+.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope
 all: daemon cli
 
 daemon: $(daemon)
@@ -161,6 +161,9 @@ endif
 
 tags:
 	cd $(srcdir) ; etags -lc `find $(dirs) -name *.[chY]`
+
+cscope:
+	cd $(srcdir) ; find $(dirs) -name *.[chY] > cscope.files ; cscope -b
 
 # Install
 
