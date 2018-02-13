@@ -2145,7 +2145,7 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
     e = babel_get_entry(p, net->n.addr);
 
     /* Activate triggered updates */
-    if ((e->valid |= BABEL_ENTRY_VALID) ||
+    if ((e->valid != BABEL_ENTRY_VALID) ||
 	(e->router_id != rt_router_id))
     {
       babel_trigger_update(p);
