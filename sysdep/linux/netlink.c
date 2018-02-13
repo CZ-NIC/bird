@@ -374,6 +374,7 @@ static struct nl_want_attrs rtm_attr_want4[BIRD_RTA_MAX] = {
 
 static struct nl_want_attrs rtm_attr_want6[BIRD_RTA_MAX] = {
   [RTA_DST]	  = { 1, 1, sizeof(ip6_addr) },
+  [RTA_SRC]	  = { 1, 1, sizeof(ip6_addr) },
   [RTA_IIF]	  = { 1, 1, sizeof(u32) },
   [RTA_OIF]	  = { 1, 1, sizeof(u32) },
   [RTA_GATEWAY]	  = { 1, 1, sizeof(ip6_addr) },
@@ -1221,7 +1222,17 @@ nl_send_route(struct krt_proto *p, rte *e, struct ea_list *eattrs, int op, int d
   }
   else
 #endif
+  {
     nl_add_attr_ipa(&r->h, rsize, RTA_DST, net_prefix(net->n.addr));
+
+    /* Add source address for IPv6 SADR routes */
+    if (net->n.addr->type == NET_IP6_SADR)
+    {
+      net_addr_ip6_sadr *a = (void *) &net->n.addr;
+      nl_add_attr_ip6(&r->h, rsize, RTA_SRC, a->src_prefix);
+      r->r.rtm_src_len = a->src_pxlen;
+    }
+  }
 
   /*
    * Strange behavior for RTM_DELROUTE:
@@ -1447,12 +1458,12 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   struct rtattr *a[BIRD_RTA_MAX];
   int new = h->nlmsg_type == RTM_NEWROUTE;
 
-  net_addr dst;
+  net_addr dst, src = {};
   u32 oif = ~0;
   u32 table_id;
   u32 priority = 0;
   u32 def_scope = RT_SCOPE_UNIVERSE;
-  int src;
+  int krt_src;
 
   if (!(i = nl_checkin(h, sizeof(*i))))
     return;
@@ -1477,6 +1488,11 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	net_fill_ip6(&dst, rta_get_ip6(a[RTA_DST]), i->rtm_dst_len);
       else
 	net_fill_ip6(&dst, IP6_NONE, 0);
+
+      if (a[RTA_SRC])
+	net_fill_ip6(&src, rta_get_ip6(a[RTA_SRC]), i->rtm_src_len);
+      else
+	net_fill_ip6(&src, IP6_NONE, 0);
       break;
 
 #ifdef HAVE_MPLS_KERNEL
@@ -1511,6 +1527,9 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   if (!p)
     SKIP("unknown table %d\n", table);
 
+  if (a[RTA_SRC] && (p->p.net_type != NET_IP6_SADR))
+    SKIP("src prefix for non-SADR channel\n");
+
   if (a[RTA_IIF])
     SKIP("IIF set\n");
 
@@ -1533,25 +1552,33 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       SKIP("proto unspec\n");
 
     case RTPROT_REDIRECT:
-      src = KRT_SRC_REDIRECT;
+      krt_src = KRT_SRC_REDIRECT;
       break;
 
     case RTPROT_KERNEL:
-      src = KRT_SRC_KERNEL;
+      krt_src = KRT_SRC_KERNEL;
       return;
 
     case RTPROT_BIRD:
       if (!s->scan)
 	SKIP("echo\n");
-      src = KRT_SRC_BIRD;
+      krt_src = KRT_SRC_BIRD;
       break;
 
     case RTPROT_BOOT:
     default:
-      src = KRT_SRC_ALIEN;
+      krt_src = KRT_SRC_ALIEN;
     }
 
-  net *net = net_get(p->p.main_channel->table, &dst);
+  net_addr *n = &dst;
+  if (p->p.net_type == NET_IP6_SADR)
+  {
+    n = alloca(sizeof(net_addr_ip6_sadr));
+    net_fill_ip6_sadr(n, net6_prefix(&dst), net6_pxlen(&dst),
+		      net6_prefix(&src), net6_pxlen(&src));
+  }
+
+  net *net = net_get(p->p.main_channel->table, n);
 
   if (s->net && !nl_mergable_route(s, net, p, priority, i->rtm_type))
     nl_announce_route(s);
@@ -1755,7 +1782,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
     s->attrs = ra;
     s->proto = p;
     s->new = new;
-    s->krt_src = src;
+    s->krt_src = krt_src;
     s->krt_type = i->rtm_type;
     s->krt_proto = i->rtm_protocol;
     s->krt_metric = priority;

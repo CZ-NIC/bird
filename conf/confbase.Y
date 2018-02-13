@@ -83,7 +83,7 @@ CF_DECLS
 %type <time> expr_us time
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
-%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_mpls_
+%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
 %type <mls> label_stack_start label_stack
 
 %type <t> text opttext
@@ -96,7 +96,7 @@ CF_DECLS
 %left '!'
 %nonassoc '.'
 
-CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS)
+CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM)
 
 CF_GRAMMAR
 
@@ -206,6 +206,25 @@ net_ip6_: IP6 '/' NUM
 	     n->prefix, n->pxlen, ip6_and(n->prefix, ip6_mkmask(n->pxlen)), n->pxlen);
 };
 
+net_ip6_sadr_: IP6 '/' NUM FROM IP6 '/' NUM
+{
+  if ($3 > IP6_MAX_PREFIX_LENGTH)
+    cf_error("Invalid prefix length %u", $3);
+
+  if ($7 > IP6_MAX_PREFIX_LENGTH)
+    cf_error("Invalid prefix length %u", $7);
+
+  $$ = cfg_alloc(sizeof(net_addr_ip6_sadr));
+  net_fill_ip6_sadr($$, $1, $3, $5, $7);
+
+  net_addr_ip6_sadr *n = (void *) $$;
+  if (!net_validate_ip6_sadr(n))
+    cf_error("Invalid SADR IPv6 prefix %I6/%d from %I6/%d, maybe you wanted %I6/%d from %I6/%d",
+	     n->dst_prefix, n->dst_pxlen, n->src_prefix, n->src_pxlen,
+	     ip6_and(n->dst_prefix, ip6_mkmask(n->dst_pxlen)), n->dst_pxlen,
+	     ip6_and(n->src_prefix, ip6_mkmask(n->src_pxlen)), n->src_pxlen);
+};
+
 net_vpn4_: VPN_RD net_ip4_
 {
   $$ = cfg_alloc(sizeof(net_addr_vpn4));
@@ -249,6 +268,7 @@ net_:
  | net_vpn_
  | net_roa_
  | net_flow_
+ | net_ip6_sadr_
  | net_mpls_
  ;
 

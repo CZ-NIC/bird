@@ -1108,10 +1108,11 @@ krt_start(struct proto *P)
 
   switch (p->p.net_type)
   {
-  case NET_IP4:	p->af = AF_INET; break;
-  case NET_IP6:	p->af = AF_INET6; break;
+  case NET_IP4:		p->af = AF_INET; break;
+  case NET_IP6:		p->af = AF_INET6; break;
+  case NET_IP6_SADR:	p->af = AF_INET6; break;
 #ifdef AF_MPLS
-  case NET_MPLS: p->af = AF_MPLS; break;
+  case NET_MPLS:	p->af = AF_MPLS; break;
 #endif
   default: log(L_ERR "KRT: Tried to start with strange net type: %d", p->p.net_type); return PS_START; break;
   }
@@ -1219,16 +1220,24 @@ krt_get_attr(eattr *a, byte *buf, int buflen)
 }
 
 
+#ifdef CONFIG_IP6_SADR_KERNEL
+#define MAYBE_IP6_SADR	NB_IP6_SADR
+#else
+#define MAYBE_IP6_SADR	0
+#endif
+
+#ifdef HAVE_MPLS_KERNEL
+#define MAYBE_MPLS	NB_MPLS
+#else
+#define MAYBE_MPLS	0
+#endif
+
 struct protocol proto_unix_kernel = {
   .name =		"Kernel",
   .template =		"kernel%d",
   .attr_class =		EAP_KRT,
   .preference =		DEF_PREF_INHERITED,
-#ifdef HAVE_MPLS_KERNEL
-  .channel_mask =	NB_IP | NB_MPLS,
-#else
-  .channel_mask =	NB_IP,
-#endif
+  .channel_mask =	NB_IP | MAYBE_IP6_SADR | MAYBE_MPLS,
   .proto_size =		sizeof(struct krt_proto),
   .config_size =	sizeof(struct krt_config),
   .preconfig =		krt_preconfig,

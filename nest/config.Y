@@ -66,7 +66,7 @@ CF_DECLS
 
 CF_KEYWORDS(ROUTER, ID, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, TABLE, STATES, ROUTES, FILTERS)
-CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6)
+CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED)
 CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512)
@@ -77,7 +77,7 @@ CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
 
 /* For r_args_channel */
-CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
+CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
 
 CF_ENUM(T_ENUM_RTS, RTS_, DUMMY, STATIC, INHERIT, DEVICE, STATIC_DEVICE, REDIRECT,
 	RIP, OSPF, OSPF_IA, OSPF_EXT1, OSPF_EXT2, BGP, PIPE, BABEL)
@@ -134,6 +134,7 @@ gr_opts: GRACEFUL RESTART WAIT expr ';' { new_config->gr_wait = $4; } ;
 net_type:
    IPV4 { $$ = NET_IP4; }
  | IPV6 { $$ = NET_IP6; }
+ | IPV6 SADR { $$ = NET_IP6_SADR; }
  | VPN4 { $$ = NET_VPN4; }
  | VPN6 { $$ = NET_VPN6; }
  | ROA4 { $$ = NET_ROA4; }
@@ -143,7 +144,7 @@ net_type:
  | MPLS { $$ = NET_MPLS; }
  ;
 
-CF_ENUM(T_ENUM_NETTYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6)
+CF_ENUM(T_ENUM_NETTYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, IP6_SADR)
 
 
 /* Creation of routing tables */
@@ -625,6 +626,7 @@ r_args_for:
   }
  | net_vpn4_
  | net_vpn6_
+ | net_ip6_sadr_
  | VPN_RD IP4 {
     $$ = cfg_alloc(sizeof(net_addr_vpn4));
     net_fill_vpn4($$, $2, IP4_MAX_PREFIX_LENGTH, $1);
@@ -632,6 +634,10 @@ r_args_for:
  | VPN_RD IP6 {
     $$ = cfg_alloc(sizeof(net_addr_vpn6));
     net_fill_vpn6($$, $2, IP6_MAX_PREFIX_LENGTH, $1);
+  }
+ | IP6 FROM IP6 {
+    $$ = cfg_alloc(sizeof(net_addr_ip6_sadr));
+    net_fill_ip6_sadr($$, $1, IP6_MAX_PREFIX_LENGTH, $3, IP6_MAX_PREFIX_LENGTH);
   }
  | SYM {
      if ($1->class == (SYM_CONSTANT | T_IP))
@@ -666,6 +672,7 @@ r_args_channel:
  | IPV6		{ $$ = "ipv6"; }
  | IPV6_MC	{ $$ = "ipv6-mc"; }
  | IPV6_MPLS	{ $$ = "ipv6-mpls"; }
+ | IPV6_SADR	{ $$ = "ipv6-sadr"; }
  | VPN4		{ $$ = "vpn4"; }
  | VPN4_MC	{ $$ = "vpn4-mc"; }
  | VPN4_MPLS	{ $$ = "vpn4-mpls"; }

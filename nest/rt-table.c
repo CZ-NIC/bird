@@ -85,6 +85,45 @@ net_route_ip6(rtable *t, net_addr_ip6 *n)
   return r;
 }
 
+static inline void *
+net_route_ip6_sadr(rtable *t, net_addr_ip6_sadr *n)
+{
+  struct fib_node *fn;
+
+  while (1)
+  {
+    net *best = NULL;
+    int best_pxlen = 0;
+
+    /* We need to do dst first matching. Since sadr addresses are hashed on dst
+       prefix only, find the hash table chain and go through it to find the
+       match with the smallest matching src prefix. */
+    for (fn = fib_get_chain(&t->fib, (net_addr *) n); fn; fn = fn->next)
+    {
+      net_addr_ip6_sadr *a = (void *) fn->addr;
+
+      if (net_equal_dst_ip6_sadr(n, a) &&
+	  net_in_net_src_ip6_sadr(n, a) &&
+	  (a->src_pxlen >= best_pxlen))
+      {
+	best = fib_node_to_user(&t->fib, fn);
+	best_pxlen = a->src_pxlen;
+      }
+    }
+
+    if (best)
+      return best;
+
+    if (!n->dst_pxlen)
+      break;
+
+    n->dst_pxlen--;
+    ip6_clrbit(&n->dst_prefix, n->dst_pxlen);
+  }
+
+  return NULL;
+}
+
 void *
 net_route(rtable *tab, const net_addr *n)
 {
@@ -104,6 +143,9 @@ net_route(rtable *tab, const net_addr *n)
   case NET_VPN6:
   case NET_ROA6:
     return net_route_ip6(tab, (net_addr_ip6 *) n0);
+
+  case NET_IP6_SADR:
+    return net_route_ip6_sadr(tab, (net_addr_ip6_sadr *) n0);
 
   default:
     return NULL;
