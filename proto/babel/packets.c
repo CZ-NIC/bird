@@ -105,6 +105,13 @@ struct babel_tlv_seqno_request {
   u8 addr[0];
 } PACKED;
 
+struct babel_subtlv_source_prefix {
+  u8 type;
+  u8 length;
+  u8 plen;
+  u8 addr[0];
+} PACKED;
+
 
 /* Hello flags */
 #define BABEL_HF_UNICAST	0x8000
@@ -127,6 +134,7 @@ struct babel_parse_state {
   u8 def_ip6_prefix_seen;	/* def_ip6_prefix is valid */
   u8 def_ip4_prefix_seen;	/* def_ip4_prefix is valid */
   u8 current_tlv_endpos;	/* End of self-terminating TLVs (offset from start) */
+  u8 sadr_enabled;
 };
 
 enum parse_result {
@@ -237,6 +245,7 @@ static int babel_read_next_hop(struct babel_tlv *hdr, union babel_msg *msg, stru
 static int babel_read_update(struct babel_tlv *hdr, union babel_msg *msg, struct babel_parse_state *state);
 static int babel_read_route_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_parse_state *state);
 static int babel_read_seqno_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_parse_state *state);
+static int babel_read_source_prefix(struct babel_tlv *hdr, union babel_msg *msg, struct babel_parse_state *state);
 
 static uint babel_write_ack(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
 static uint babel_write_hello(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
@@ -244,6 +253,7 @@ static uint babel_write_ihu(struct babel_tlv *hdr, union babel_msg *msg, struct 
 static uint babel_write_update(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
 static uint babel_write_route_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
 static uint babel_write_seqno_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
+static int babel_write_source_prefix(struct babel_tlv *hdr, net_addr *net, uint max_len);
 
 struct babel_tlv_data {
   u8 min_length;
@@ -640,6 +650,9 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
     ip6_addr prefix6 = get_ip6(buf);
     net_fill_ip6(&msg->net, prefix6, tlv->plen);
 
+    if (state->sadr_enabled)
+      net_make_ip6_sadr(&msg->net);
+
     if (tlv->flags & BABEL_UF_DEF_PREFIX)
     {
       put_ip6(state->def_ip6_prefix, prefix6);
@@ -770,12 +783,21 @@ babel_write_update(struct babel_tlv *hdr, union babel_msg *m,
   put_u16(&tlv->seqno, msg->seqno);
   put_u16(&tlv->metric, msg->metric);
 
+  if (msg->net.type == NET_IP6_SADR)
+  {
+    int l = babel_write_source_prefix(hdr, &msg->net, max_len - (len0 + len));
+    if (l < 0)
+      return 0;
+
+    len += l;
+  }
+
   return len0 + len;
 }
 
 static int
 babel_read_route_request(struct babel_tlv *hdr, union babel_msg *m,
-                         struct babel_parse_state *state UNUSED)
+                         struct babel_parse_state *state)
 {
   struct babel_tlv_route_request *tlv = (void *) hdr;
   struct babel_msg_route_request *msg = &m->route_request;
@@ -812,6 +834,10 @@ babel_read_route_request(struct babel_tlv *hdr, union babel_msg *m,
 
     read_ip6_px(&msg->net, tlv->addr, tlv->plen);
     state->current_tlv_endpos += BYTES(tlv->plen);
+
+    if (state->sadr_enabled)
+      net_make_ip6_sadr(&msg->net);
+
     return PARSE_SUCCESS;
 
   case BABEL_AE_IP6_LL:
@@ -854,6 +880,15 @@ babel_write_route_request(struct babel_tlv *hdr, union babel_msg *m,
     tlv->ae = BABEL_AE_IP6;
     tlv->plen = net6_pxlen(&msg->net);
     put_ip6_px(tlv->addr, &msg->net);
+  }
+
+  if (msg->net.type == NET_IP6_SADR)
+  {
+    int l = babel_write_source_prefix(hdr, &msg->net, max_len - len);
+    if (l < 0)
+      return 0;
+
+    len += l;
   }
 
   return len;
@@ -900,6 +935,10 @@ babel_read_seqno_request(struct babel_tlv *hdr, union babel_msg *m,
 
     read_ip6_px(&msg->net, tlv->addr, tlv->plen);
     state->current_tlv_endpos += BYTES(tlv->plen);
+
+    if (state->sadr_enabled)
+      net_make_ip6_sadr(&msg->net);
+
     return PARSE_SUCCESS;
 
   case BABEL_AE_IP6_LL:
@@ -943,38 +982,147 @@ babel_write_seqno_request(struct babel_tlv *hdr, union babel_msg *m,
   tlv->hop_count = msg->hop_count;
   put_u64(&tlv->router_id, msg->router_id);
 
+  if (msg->net.type == NET_IP6_SADR)
+  {
+    int l = babel_write_source_prefix(hdr, &msg->net, max_len - len);
+    if (l < 0)
+      return 0;
+
+    len += l;
+  }
+
   return len;
 }
 
+static int
+babel_read_source_prefix(struct babel_tlv *hdr, union babel_msg *msg,
+			 struct babel_parse_state *state UNUSED)
+{
+  struct babel_subtlv_source_prefix *tlv = (void *) hdr;
+  net_addr_ip6_sadr *net;
+
+  /*
+   * We would like to skip the sub-TLV if SADR is not enabled, but we do not
+   * know AF of the enclosing TLV yet. We will do that later.
+   */
+
+  /* Check internal consistency */
+  if ((tlv->length < 1) ||
+      (tlv->plen > IP6_MAX_PREFIX_LENGTH) ||
+      (tlv->length < (1 + BYTES(tlv->plen))))
+    return PARSE_ERROR;
+
+  /* Plen MUST NOT be 0 */
+  if (tlv->plen == 0)
+    return PARSE_ERROR;
+
+  switch(msg->type)
+  {
+  case BABEL_TLV_UPDATE:
+    /* Wildcard updates with source prefix MUST be silently ignored */
+    if (msg->update.wildcard)
+      return PARSE_IGNORE;
+
+    net = (void *) &msg->update.net;
+    break;
+
+  case BABEL_TLV_ROUTE_REQUEST:
+    /* Wildcard requests with source addresses MUST be silently ignored */
+    if (msg->route_request.full)
+      return PARSE_IGNORE;
+
+    net = (void *) &msg->route_request.net;
+    break;
+
+  case BABEL_TLV_SEQNO_REQUEST:
+    net = (void *) &msg->seqno_request.net;
+    break;
+
+  default:
+    return PARSE_ERROR;
+  }
+
+  /* If SADR is active, the net has appropriate type */
+  if (net->type != NET_IP6_SADR)
+    return PARSE_IGNORE;
+
+  /* Duplicate Source Prefix sub-TLV; SHOULD ignore whole TLV */
+  if (net->src_pxlen > 0)
+    return PARSE_IGNORE;
+
+  net_addr_ip6 src;
+  read_ip6_px((void *) &src, tlv->addr, tlv->plen);
+  net->src_prefix = src.prefix;
+  net->src_pxlen = src.pxlen;
+
+  return PARSE_SUCCESS;
+}
+
+static int
+babel_write_source_prefix(struct babel_tlv *hdr, net_addr *n, uint max_len)
+{
+  struct babel_subtlv_source_prefix *tlv = (void *) NEXT_TLV(hdr);
+  net_addr_ip6_sadr *net = (void *) n;
+
+  /* Do not use this sub-TLV for default prefix */
+  if (net->src_pxlen == 0)
+    return 0;
+
+  uint len = sizeof(*tlv) + BYTES(net->src_pxlen);
+
+  if (len > max_len)
+    return -1;
+
+  TLV_HDR(tlv, BABEL_SUBTLV_SOURCE_PREFIX, len);
+  hdr->length += len;
+
+  net_addr_ip6 src = NET_ADDR_IP6(net->src_prefix, net->src_pxlen);
+  tlv->plen = src.pxlen;
+  put_ip6_px(tlv->addr, (void *) &src);
+
+  return len;
+}
+
+
 static inline int
 babel_read_subtlvs(struct babel_tlv *hdr,
-		   union babel_msg *msg UNUSED,
+		   union babel_msg *msg,
 		   struct babel_parse_state *state)
 {
   struct babel_tlv *tlv;
+  byte *pos, *end = (byte *) hdr + TLV_LENGTH(hdr);
+  int res;
 
   for (tlv = (void *) hdr + state->current_tlv_endpos;
-       (void *) tlv < (void *) hdr + TLV_LENGTH(hdr);
+       (byte *) tlv < end;
        tlv = NEXT_TLV(tlv))
   {
+    /* Ugly special case */
+    if (tlv->type == BABEL_TLV_PAD1)
+      continue;
+
+    /* The end of the common TLV header */
+    pos = (byte *)tlv + sizeof(struct babel_tlv);
+    if ((pos > end) || (pos + tlv->length > end))
+      return PARSE_ERROR;
+
     /*
      * The subtlv type space is non-contiguous (due to the mandatory bit), so
      * use a switch for dispatch instead of the mapping array we use for TLVs
      */
     switch (tlv->type)
     {
-    case BABEL_SUBTLV_PAD1:
-    case BABEL_SUBTLV_PADN:
-      /* FIXME: Framing errors in PADN are silently ignored, see babel_process_packet() */
+    case BABEL_SUBTLV_SOURCE_PREFIX:
+      res = babel_read_source_prefix(tlv, msg, state);
+      if (res != PARSE_SUCCESS)
+	return res;
       break;
 
+    case BABEL_SUBTLV_PADN:
     default:
       /* Unknown mandatory subtlv; PARSE_IGNORE ignores the whole TLV */
-      if (tlv->type > 128)
-      {
-	DBG("Babel: Mandatory subtlv %d found; skipping TLV\n", tlv->type);
+      if (tlv->type >= 128)
 	return PARSE_IGNORE;
-      }
       break;
     }
   }
@@ -1197,6 +1345,7 @@ babel_process_packet(struct babel_pkt_header *pkt, int len,
     .ifa	  = ifa,
     .saddr	  = saddr,
     .next_hop_ip6 = saddr,
+    .sadr_enabled = babel_sadr_enabled(p),
   };
 
   if ((pkt->magic != BABEL_MAGIC) || (pkt->version != BABEL_VERSION))

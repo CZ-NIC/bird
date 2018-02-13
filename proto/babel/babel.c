@@ -1935,8 +1935,10 @@ babel_show_neighbors(struct proto *P, char *iff)
 }
 
 static void
-babel_show_entries_(struct babel_proto *p UNUSED, struct fib *rtable)
+babel_show_entries_(struct babel_proto *p, struct fib *rtable)
 {
+  int width = babel_sadr_enabled(p) ? -54 : -24;
+
   FIB_WALK(rtable, struct babel_entry, e)
   {
     struct babel_route *r = NULL;
@@ -1950,13 +1952,13 @@ babel_show_entries_(struct babel_proto *p UNUSED, struct fib *rtable)
       srcs++;
 
     if (e->valid)
-      cli_msg(-1025, "%-24N %-23lR %6u %5u %7u %7u",
+      cli_msg(-1025, "%-*N %-23lR %6u %5u %7u %7u", width,
 	      e->n.addr, e->router_id, e->metric, e->seqno, rts, srcs);
     else if (r = e->selected)
-      cli_msg(-1025, "%-24N %-23lR %6u %5u %7u %7u",
+      cli_msg(-1025, "%-*N %-23lR %6u %5u %7u %7u", width,
 	      e->n.addr, r->router_id, r->metric, r->seqno, rts, srcs);
     else
-      cli_msg(-1025, "%-24N %-23s %6s %5s %7u %7u",
+      cli_msg(-1025, "%-*N %-23s %6s %5s %7u %7u", width,
 	      e->n.addr, "<none>", "-", "-", rts, srcs);
   }
   FIB_WALK_END;
@@ -1966,6 +1968,7 @@ void
 babel_show_entries(struct proto *P)
 {
   struct babel_proto *p = (void *) P;
+  int width = babel_sadr_enabled(p) ? -54 : -24;
 
   if (p->p.proto_state != PS_UP)
   {
@@ -1975,7 +1978,7 @@ babel_show_entries(struct proto *P)
   }
 
   cli_msg(-1025, "%s:", p->p.name);
-  cli_msg(-1025, "%-24s %-23s %6s %5s %7s %7s",
+  cli_msg(-1025, "%-*s %-23s %6s %5s %7s %7s", width,
 	  "Prefix", "Router ID", "Metric", "Seqno", "Routes", "Sources");
 
   babel_show_entries_(p, &p->ip4_rtable);
@@ -1985,8 +1988,10 @@ babel_show_entries(struct proto *P)
 }
 
 static void
-babel_show_routes_(struct babel_proto *p UNUSED, struct fib *rtable)
+babel_show_routes_(struct babel_proto *p, struct fib *rtable)
 {
+  int width = babel_sadr_enabled(p) ? -54 : -24;
+
   FIB_WALK(rtable, struct babel_entry, e)
   {
     struct babel_route *r;
@@ -1994,7 +1999,7 @@ babel_show_routes_(struct babel_proto *p UNUSED, struct fib *rtable)
     {
       char c = (r == e->selected) ? '*' : (r->feasible ? '+' : ' ');
       btime time = r->expires ? r->expires - current_time() : 0;
-      cli_msg(-1025, "%-24N %-25I %-10s %5u %c %5u %7t",
+      cli_msg(-1025, "%-*N %-25I %-10s %5u %c %5u %7t", width,
 	      e->n.addr, r->next_hop, r->neigh->ifa->ifname,
 	      r->metric, c, r->seqno, MAX(time, 0));
     }
@@ -2006,6 +2011,7 @@ void
 babel_show_routes(struct proto *P)
 {
   struct babel_proto *p = (void *) P;
+  int width = babel_sadr_enabled(p) ? -54 : -24;
 
   if (p->p.proto_state != PS_UP)
   {
@@ -2015,7 +2021,7 @@ babel_show_routes(struct proto *P)
   }
 
   cli_msg(-1025, "%s:", p->p.name);
-  cli_msg(-1025, "%-24s %-25s %-9s %6s F %5s %7s",
+  cli_msg(-1025, "%-*s %-25s %-9s %6s F %5s %7s", width,
 	  "Prefix", "Nexthop", "Interface", "Metric", "Seqno", "Expires");
 
   babel_show_routes_(p, &p->ip4_rtable);
@@ -2182,14 +2188,32 @@ babel_rte_same(struct rte *new, struct rte *old)
 }
 
 
+static void
+babel_postconfig(struct proto_config *CF)
+{
+  struct babel_config *cf = (void *) CF;
+  struct channel_config *ip4, *ip6, *ip6_sadr;
+
+  ip4 = proto_cf_find_channel(CF, NET_IP4);
+  ip6 = proto_cf_find_channel(CF, NET_IP6);
+  ip6_sadr = proto_cf_find_channel(CF, NET_IP6_SADR);
+
+  if (ip6 && ip6_sadr)
+    cf_error("Both ipv6 and ipv6-sadr channels");
+
+  cf->ip4_channel = ip4;
+  cf->ip6_channel = ip6 ?: ip6_sadr;
+}
+
 static struct proto *
 babel_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
   struct babel_proto *p = (void *) P;
+  struct babel_config *cf = (void *) CF;
 
-  proto_configure_channel(P, &p->ip4_channel, proto_cf_find_channel(CF, NET_IP4));
-  proto_configure_channel(P, &p->ip6_channel, proto_cf_find_channel(CF, NET_IP6));
+  proto_configure_channel(P, &p->ip4_channel, cf->ip4_channel);
+  proto_configure_channel(P, &p->ip6_channel, cf->ip6_channel);
 
   P->if_notify = babel_if_notify;
   P->rt_notify = babel_rt_notify;
@@ -2207,10 +2231,11 @@ babel_start(struct proto *P)
 {
   struct babel_proto *p = (void *) P;
   struct babel_config *cf = (void *) P->cf;
+  u8 ip6_type = cf->ip6_channel ? cf->ip6_channel->net_type : NET_IP6;
 
   fib_init(&p->ip4_rtable, P->pool, NET_IP4, sizeof(struct babel_entry),
 	   OFFSETOF(struct babel_entry, n), 0, babel_init_entry);
-  fib_init(&p->ip6_rtable, P->pool, NET_IP6, sizeof(struct babel_entry),
+  fib_init(&p->ip6_rtable, P->pool, ip6_type, sizeof(struct babel_entry),
 	   OFFSETOF(struct babel_entry, n), 0, babel_init_entry);
 
   init_list(&p->interfaces);
@@ -2258,11 +2283,15 @@ babel_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct babel_proto *p = (void *) P;
   struct babel_config *new = (void *) CF;
+  u8 ip6_type = new->ip6_channel ? new->ip6_channel->net_type : NET_IP6;
 
   TRACE(D_EVENTS, "Reconfiguring");
 
-  if (!proto_configure_channel(P, &p->ip4_channel, proto_cf_find_channel(CF, NET_IP4)) ||
-      !proto_configure_channel(P, &p->ip6_channel, proto_cf_find_channel(CF, NET_IP6)))
+  if (p->ip6_rtable.addr_type != ip6_type)
+    return 0;
+
+  if (!proto_configure_channel(P, &p->ip4_channel, new->ip4_channel) ||
+      !proto_configure_channel(P, &p->ip6_channel, new->ip6_channel))
     return 0;
 
   p->p.cf = CF;
@@ -2280,9 +2309,10 @@ struct protocol proto_babel = {
   .template =		"babel%d",
   .attr_class =		EAP_BABEL,
   .preference =		DEF_PREF_BABEL,
-  .channel_mask =	NB_IP,
+  .channel_mask =	NB_IP | NB_IP6_SADR,
   .proto_size =		sizeof(struct babel_proto),
   .config_size =	sizeof(struct babel_config),
+  .postconfig =		babel_postconfig,
   .init =		babel_init,
   .dump =		babel_dump,
   .start =		babel_start,
