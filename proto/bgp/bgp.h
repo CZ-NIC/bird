@@ -533,7 +533,7 @@ int bgp_rte_mergable(rte *pri, rte *sec);
 int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
 struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
 void bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old);
-int bgp_import_control(struct proto *, struct rte **, struct linpool *);
+int bgp_preexport(struct proto *, struct rte **, struct linpool *);
 int bgp_get_attr(struct eattr *e, byte *buf, int buflen);
 void bgp_get_route_info(struct rte *, byte *buf);
 
