@@ -405,7 +405,7 @@ export_filter(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int sil
 
   rte_make_tmp_attrs(&rt, pool);
 
-  v = p->import_control ? p->import_control(p, &rt, pool) : 0;
+  v = p->preexport ? p->preexport(p, &rt, pool) : 0;
   if (v < 0)
     {
       if (silent)
@@ -865,7 +865,7 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
  * routing table @tab) changes In that case @old stores the old route
  * from the same protocol.
  *
- * For each appropriate protocol, we first call its import_control()
+ * For each appropriate protocol, we first call its preexport()
  * hook which performs basic checks on the route (each protocol has a
  * right to veto or force accept of the route before any filter is
  * asked) and adds default values of attributes specific to the new
@@ -1420,7 +1420,7 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter, struc
 
   /* Rest is stripped down export_filter() */
   rte_make_tmp_attrs(&rt, lp);
-  int v = p->import_control ? p->import_control(p, &rt, lp) : 0;
+  int v = p->preexport ? p->preexport(p, &rt, lp) : 0;
   if (v == RIC_PROCESS)
     v = (f_run(filter, &rt, lp, FF_SILENT) <= F_ACCEPT);
 

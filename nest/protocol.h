@@ -190,12 +190,12 @@ struct proto {
    *	   ifa_notify	Notify protocol about interface address changes.
    *	   rt_notify	Notify protocol about routing table updates.
    *	   neigh_notify	Notify protocol about neighbor cache events.
-   *	   make_tmp_attrs  Construct ea_list from private attrs stored in rte.
+   *	   make_tmp_attrs  Construct ea_list from private attrs stored in rta.
    *	   store_tmp_attrs Store private attrs back to rta. The route MUST NOT be cached.
-   *	   import_control  Called as the first step of the route importing process.
+   *	   preexport  Called as the first step of the route exporting process.
    *			It can construct a new rte, add private attributes and
-   *			decide whether the route shall be imported: 1=yes, -1=no,
-   *			0=process it through the import filter set by the user.
+   *			decide whether the route shall be exported: 1=yes, -1=no,
+   *			0=process it through the export filter set by the user.
    *	   reload_routes   Request channel to reload all its routes to the core
    *			(using rte_update()). Returns: 0=reload cannot be done,
    *			1= reload is scheduled and will happen (asynchronously).
@@ -209,7 +209,7 @@ struct proto {
   void (*neigh_notify)(struct neighbor *neigh);
   struct ea_list *(*make_tmp_attrs)(struct rte *rt, struct linpool *pool);
   void (*store_tmp_attrs)(struct rte *rt);
-  int (*import_control)(struct proto *, struct rte **rt, struct linpool *pool);
+  int (*preexport)(struct proto *, struct rte **rt, struct linpool *pool);
   void (*reload_routes)(struct channel *);
   void (*feed_begin)(struct channel *, int initial);
   void (*feed_end)(struct channel *);
