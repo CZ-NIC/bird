@@ -55,6 +55,7 @@ static_proto_start: proto_start STATIC
 {
   this_proto = proto_config_new(&proto_static, $1);
   init_list(&STATIC_CFG->routes);
+  init_list(&STATIC_CFG->mifs);
 };
 
 static_proto:
@@ -104,6 +105,23 @@ stat_nexthops:
   | stat_nexthops stat_nexthop
 ;
 
+stat_mif: TEXT { static_cfg_add_mif(STATIC_CFG, $1); } ;
+
+stat_mifs:
+   stat_mif
+ | stat_mifs stat_mif
+ ;
+
+stat_mcast_opt:
+   FROM stat_mifs { static_cfg_flush_mifs(STATIC_CFG, &this_srt->from, &this_srt->from_len); }
+ | TO stat_mifs { static_cfg_flush_mifs(STATIC_CFG, &this_srt->to, &this_srt->to_len); }
+ ;
+
+stat_mcast_opts:
+   stat_mcast_opt
+ | stat_mcast_opts stat_mcast_opt
+ ;
+
 stat_route0: ROUTE net_any {
      this_srt = cfg_allocz(sizeof(struct static_route));
      add_tail(&STATIC_CFG->routes, &this_srt->n);
@@ -131,6 +149,7 @@ stat_route:
  | stat_route0 BLACKHOLE	{ this_srt->dest = RTD_BLACKHOLE; }
  | stat_route0 UNREACHABLE	{ this_srt->dest = RTD_UNREACHABLE; }
  | stat_route0 PROHIBIT		{ this_srt->dest = RTD_PROHIBIT; }
+ | stat_route0 stat_mcast_opts	{ this_srt->dest = RTD_MULTICAST; }
  ;
 
 stat_route_item:

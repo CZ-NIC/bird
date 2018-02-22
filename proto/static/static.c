@@ -49,6 +49,13 @@
 
 static linpool *static_lp;
 
+static inline int static_is_mcast(struct static_proto *p)
+{ return (p->p.net_type == NET_MGRP4) || (p->p.net_type == NET_MGRP6); }
+
+static inline int static_cfg_is_mcast(struct static_config *cf)
+{ return (cf->c.net_type == NET_MGRP4) || (cf->c.net_type == NET_MGRP6); }
+
+
 static void
 static_announce_rte(struct static_proto *p, struct static_route *r)
 {
@@ -92,6 +99,15 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   {
     rtable *tab = ipa_is_ip4(r->via) ? p->igp_table_ip4 : p->igp_table_ip6;
     rta_set_recursive_next_hop(p->p.main_channel->table, a, tab, r->via, IPA_NONE, r->mls);
+  }
+
+  if (r->dest == RTD_MULTICAST)
+  {
+    if (!r->iifs || !r->oifs)
+      goto withdraw;
+
+    rta_set_iifs(a, r->iifs);
+    rta_set_oifs(a, r->oifs);
   }
 
   /* Already announced */
@@ -195,6 +211,53 @@ fail:
   return old_active;
 }
 
+static int
+static_decide_mif(struct static_proto *p, struct static_mif *mif)
+{
+  struct static_config *cf = (void *) p->p.cf;
+  uint old_active = mif->active;
+
+  if (mif->nbr->scope < 0)
+    goto fail;
+
+  if (cf->check_link && !(mif->nbr->iface->flags & IF_LINK_UP))
+    goto fail;
+
+  mif->active = 1;
+  return !old_active;
+
+fail:
+  mif->active = 0;
+  return old_active;
+
+}
+
+static int
+static_decide_mc(struct static_proto *p UNUSED, struct static_route *r)
+{
+  /* The @r is a RTD_MULTICAST next hop */
+
+  u32 old_iifs = r->iifs;
+  u32 old_oifs = r->oifs;
+  u32 iifs = 0, oifs = 0;
+
+  WALK_ARRAY(r->from, r->from_len, mif)
+    if (mif->active)
+      MIFS_SET(mif->mif, iifs);
+
+  WALK_ARRAY(r->to, r->to_len, mif)
+    if (mif->active)
+      MIFS_SET(mif->mif, oifs);
+
+  if (!iifs || !oifs)
+    iifs = oifs = 0;
+
+  r->iifs = iifs;
+  r->oifs = oifs;
+  return (r->iifs != old_iifs) || (r->oifs != old_oifs);
+}
+
+
 static void
 static_add_rte(struct static_proto *p, struct static_route *r)
 {
@@ -224,6 +287,9 @@ static_add_rte(struct static_proto *p, struct static_route *r)
       static_decide(p, r2);
     }
   }
+
+  if (r->dest == RTD_MULTICAST)
+    static_decide_mc(p, r);
 
   static_announce_rte(p, r);
 }
@@ -300,6 +366,20 @@ static_same_dest(struct static_route *x, struct static_route *y)
 
     return 1;
 
+  case RTD_MULTICAST:
+    if ((x->from_len != y->from_len) || (x->to_len != y->to_len))
+      return 0;
+
+    for (uint i = 0; i < x->from_len; i++)
+      if (x->from[i]->iface != y->from[i]->iface)
+	return 0;
+
+    for (uint i = 0; i < x->to_len; i++)
+      if (x->to[i]->iface != y->to[i]->iface)
+	return 0;
+
+    return 1;
+
   default:
     return 1;
   }
@@ -324,6 +404,119 @@ static_reconfigure_rte(struct static_proto *p, struct static_route *or, struct s
   static_reset_rte(p, or);
 }
 
+/* Find or allocate MIF and add it to the MIF stack */
+void
+static_cfg_add_mif(struct static_config *cf, char *name)
+{
+  struct static_mif *mif;
+
+  WALK_LIST(mif, cf->mifs)
+    if (!strcmp(mif->iface->name, name))
+      goto done;
+
+  mif = cfg_allocz(sizeof(struct static_mif));
+  mif->iface = if_get_by_name(name);
+  add_tail(&cf->mifs, &mif->n);
+
+done:
+  if (!cf->mif_stack.data)
+    BUFFER_INIT(cf->mif_stack, new_config->pool, 4);
+
+  BUFFER_PUSH(cf->mif_stack) = mif;
+  mif->routes.size++;
+}
+
+/* Get copy of MIF stack and flush it */
+
+void
+static_cfg_flush_mifs(struct static_config *cf, struct static_mif ***buf, u8 *blen)
+{
+  uint size = cf->mif_stack.used * sizeof(struct static_mif *);
+
+  *buf = cfg_alloc(size);
+  *blen = cf->mif_stack.used;
+  memcpy(*buf, cf->mif_stack.data, size);
+  BUFFER_FLUSH(cf->mif_stack);
+}
+
+void
+static_cfg_finish_mifs(struct static_config *cf)
+{
+  struct static_route *r;
+  struct static_mif *mif;
+
+  WALK_LIST(mif, cf->mifs)
+    BUFFER_INIT(mif->routes, new_config->pool, mif->routes.size);
+
+  WALK_LIST(r, cf->routes)
+  {
+    WALK_ARRAY(r->from, r->from_len, mif)
+      BUFFER_PUSH(mif->routes) = r;
+
+    WALK_ARRAY(r->to, r->to_len, mif)
+      BUFFER_PUSH(mif->routes) = r;
+  }
+}
+
+
+void
+static_register_mifs(struct static_proto *p, struct static_config *cf)
+{
+  struct static_mif *mif;
+
+  WALK_LIST(mif, cf->mifs)
+  {
+    mif->mif = mif_get(p->mif_group, mif->iface);
+    mif->nbr = neigh_find_iface(&p->p, mif->iface);
+    mif->nbr->data = mif;
+
+    static_decide_mif(p, mif);
+  }
+}
+
+void
+static_unregister_mifs(struct static_proto *p, struct static_config *cf)
+{
+  struct static_mif *mif;
+
+  WALK_LIST(mif, cf->mifs)
+  {
+    mif->nbr->data = NULL;
+    mif->nbr = NULL;
+
+    mif_free(p->mif_group, mif->mif);
+    mif->mif = NULL;
+
+    mif->active = 0;
+  }
+}
+
+void
+static_reconfigure_mifs(struct static_proto *p, struct static_config *o, struct static_config *n)
+{
+  struct static_mif *mif;
+
+  /*
+   * Neighbors are not shared, so we first free them from the old config. MIFs
+   * are refcounted and we want to avoid MIF index changes, so we first register
+   * them for the new config and then free them for the old config.
+   */
+
+  WALK_LIST(mif, o->mifs)
+  {
+    mif->nbr->data = NULL;
+    mif->nbr = NULL;
+  }
+
+  static_register_mifs(p, n);
+
+  WALK_LIST(mif, o->mifs)
+  {
+    mif_free(p->mif_group, mif->mif);
+    mif->mif = NULL;
+  }
+}
+
 
 static void
 static_neigh_notify(struct neighbor *n)
@@ -339,6 +532,18 @@ static_neigh_notify(struct neighbor *n)
     if (static_decide(p, r))
       static_mark_rte(p, r->mp_head);
   }
+}
+
+static void
+static_neigh_notify_mc(struct neighbor *n)
+{
+  struct static_proto *p = (void *) n->proto;
+  struct static_mif *mif = n->data;
+
+  if (static_decide_mif(p, mif))
+    BUFFER_WALK(mif->routes, r)
+      if (static_decide_mc(p, r))
+	static_mark_rte(p, r);
 }
 
 static void
@@ -382,6 +587,9 @@ static_postconfig(struct proto_config *CF)
   WALK_LIST(r, cf->routes)
     if (r->net && (r->net->type != CF->net_type))
       cf_error("Route %N incompatible with channel type", r->net);
+
+  if (static_cfg_is_mcast(cf))
+    static_cfg_finish_mifs(cf);
 }
 
 static struct proto *
@@ -393,7 +601,7 @@ static_init(struct proto_config *CF)
 
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
-  P->neigh_notify = static_neigh_notify;
+  P->neigh_notify = !static_is_mcast(p) ? static_neigh_notify : static_neigh_notify_mc;
   P->rte_mergable = static_rte_mergable;
 
   if (cf->igp_table_ip4)
@@ -401,6 +609,9 @@ static_init(struct proto_config *CF)
 
   if (cf->igp_table_ip6)
     p->igp_table_ip6 = cf->igp_table_ip6->table;
+
+  if (static_is_mcast(p))
+    p->mif_group = global_mif_group;
 
   return P;
 }
@@ -430,6 +641,9 @@ static_start(struct proto *P)
   /* We have to go UP before routes could be installed */
   proto_notify_state(P, PS_UP);
 
+  if (static_is_mcast(p))
+    static_register_mifs(p, cf);
+
   WALK_LIST(r, cf->routes)
     static_add_rte(p, r);
 
@@ -446,6 +660,9 @@ static_shutdown(struct proto *P)
   /* Just reset the flag, the routes will be flushed by the nest */
   WALK_LIST(r, cf->routes)
     static_reset_rte(p, r);
+
+  if (static_is_mcast(p))
+    static_unregister_mifs(p, cf);
 
   return PS_DOWN;
 }
@@ -512,6 +729,9 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
     return 0;
 
   p->p.cf = CF;
+
+  if (static_is_mcast(p))
+    static_reconfigure_mifs(p, o, n);
 
   /* Reset route lists in neighbor entries */
   WALK_LIST(r, o->routes)
@@ -605,6 +825,29 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
 }
 
 static void
+static_show_mifs(char *key, struct static_mif **mifs, int mlen)
+{
+  uint blen = 512;
+  char *buf = alloca(blen + 8);
+  char *pos = buf;
+  pos[0] = 0;
+
+  WALK_ARRAY(mifs, mlen, mif)
+  {
+    int i = bsnprintf(pos, blen, mif->active ? " %s" : " (%s)", mif->iface->name);
+    if (i < 0)
+    {
+      bsprintf(pos, " ...");
+      break;
+    }
+
+    ADVANCE(pos, blen, i);
+  }
+
+  cli_msg(-1009, "%s%s", key, buf);
+}
+
+static void
 static_show_rt(struct static_route *r)
 {
   switch (r->dest)
@@ -627,6 +870,12 @@ static_show_rt(struct static_route *r)
     }
     break;
   }
+
+  case RTD_MULTICAST:
+    cli_msg(-1009, "%N", r->net);
+    static_show_mifs("\tfrom", r->from, r->from_len);
+    static_show_mifs("\tto", r->to, r->to_len);
+    break;
 
   case RTD_NONE:
   case RTD_BLACKHOLE:

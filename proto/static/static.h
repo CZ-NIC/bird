@@ -19,6 +19,9 @@ struct static_config {
   int check_link;			/* Whether iface link state is used */
   struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */
   struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
+  list mifs;				/* Multicast ifaces for multicast routes */
+
+  BUFFER_(struct static_mif *) mif_stack; /* MIF stack for parser */
 };
 
 struct static_proto {
@@ -28,12 +31,16 @@ struct static_proto {
   BUFFER_(struct static_route *) marked; /* Routes marked for reannouncement */
   rtable *igp_table_ip4;		/* Table for recursive IPv4 next hop lookups */
   rtable *igp_table_ip6;		/* Table for recursive IPv6 next hop lookups */
+  struct mif_group *mif_group;		/* Associated MIF group for multicast routes */
 };
 
 struct static_route {
   node n;
   net_addr *net;			/* Network we route */
-  ip_addr via;				/* Destination router */
+  union {
+    ip_addr via;			/* Destination router */
+    struct { u32 iifs, oifs; };		/* Active IIFs and OIFs for multicast routes */
+  };
   struct iface *iface;			/* Destination iface, for link-local vias or device routes */
   struct neighbor *neigh;		/* Associated neighbor entry */
   struct static_route *chain;		/* Next for the same neighbor */
@@ -46,8 +53,20 @@ struct static_route {
   byte onlink;				/* Gateway is onlink regardless of IP ranges */
   byte weight;				/* Multipath next hop weight */
   byte use_bfd;				/* Configured to use BFD */
+  byte from_len, to_len;
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   mpls_label_stack *mls;		/* MPLS label stack; may be NULL */
+  struct static_mif **from;
+  struct static_mif **to;
+};
+
+struct static_mif {
+  node n;
+  struct iface *iface;
+  struct mif *mif;
+  struct neighbor *nbr;			/* Associated neighbor entry */
+  BUFFER_(struct static_route *) routes; /* List of routes using this MIF */
+  u8 active;
 };
 
 /*
@@ -65,6 +84,9 @@ struct static_route {
 #define SRS_DOWN	0		/* Route is not announced */
 #define SRS_CLEAN	1		/* Route is active and announced */
 #define SRS_DIRTY	2		/* Route changed since announcement */
+
+void static_cfg_add_mif(struct static_config *cf, char *name);
+void static_cfg_flush_mifs(struct static_config *cf, struct static_mif ***buf, u8 *blen);
 
 void static_show(struct proto *);
 
