@@ -280,13 +280,6 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RIC_REJECT	-1		/* Rejected by protocol */
 #define RIC_DROP	-2		/* Silently dropped by protocol */
 
-#define RTE_MGRP_SET(iface,m)	((m) |= (1 << if_get_vifi((iface))))
-#define RTE_MGRP_CLR(iface,m)	((m) &= ~(1 << if_get_vifi((iface))))
-#define RTE_MGRP_ISSET(iface,m)	((m) & (1 << if_get_vifi((iface))))
-#define RTE_MGRP_ZERO(m)	((m) = 0)
-#define RTE_MGRP_COPY(src,dst)	((dst) = (src))
-#define RTE_MGRP_SAME(m1,m2)	((m1) == (m2))
-
 struct config;
 
 void rt_init(void);
