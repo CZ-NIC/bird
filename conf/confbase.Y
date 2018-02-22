@@ -83,7 +83,7 @@ CF_DECLS
 %type <time> expr_us time
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
-%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_mpls_
+%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_mreq4_ net_mreq6_ net_mreq_ net_mgrp4_ net_mgrp6_ net_mgrp_ net_mpls_
 %type <mls> label_stack_start label_stack
 
 %type <t> text opttext
@@ -234,6 +234,30 @@ net_roa6_: net_ip6_ MAX NUM AS NUM
     cf_error("Invalid max prefix length %u", $3);
 };
 
+net_mreq4_: MREQ4 '(' '*' ',' IP4 ')'
+{
+  $$ = cfg_alloc(sizeof(net_addr_mreq4));
+  net_fill_mreq4($$, $5, 0); // XXXX
+}
+
+net_mreq6_: MREQ6 '(' '*' ',' IP6 ')'
+{
+  $$ = cfg_alloc(sizeof(net_addr_mreq6));
+  net_fill_mreq6($$, $5, 0); // XXXX
+}
+
+net_mgrp4_: MGRP4 '(' '*' ',' IP4 ')'
+{
+  $$ = cfg_alloc(sizeof(net_addr_mgrp4));
+  net_fill_mgrp4($$, $5);
+}
+
+net_mgrp6_: MGRP6 '(' '*' ',' IP6 ')'
+{
+  $$ = cfg_alloc(sizeof(net_addr_mgrp6));
+  net_fill_mgrp6($$, $5);
+}
+
 net_mpls_: MPLS NUM
 {
   $$ = cfg_alloc(sizeof(net_addr_roa6));
@@ -243,12 +267,16 @@ net_mpls_: MPLS NUM
 net_ip_: net_ip4_ | net_ip6_ ;
 net_vpn_: net_vpn4_ | net_vpn6_ ;
 net_roa_: net_roa4_ | net_roa6_ ;
+net_mreq_: net_mreq4_ | net_mreq6_ ;
+net_mgrp_: net_mgrp4_ | net_mgrp6_ ;
 
 net_:
    net_ip_ { $$ = cfg_alloc($1.length); net_copy($$, &($1)); }
  | net_vpn_
  | net_roa_
  | net_flow_
+ | net_mreq_
+ | net_mgrp_
  | net_mpls_
  ;
 

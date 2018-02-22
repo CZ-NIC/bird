@@ -40,6 +40,9 @@ struct align_probe { char x; long int y; };
 #define CALL(fn, args...) ({ if (fn) fn(args); })
 #define ADVANCE(w, r, l) ({ r -= l; w += l; })
 
+#define WALK_ARRAY(v,l,n) \
+  for (typeof(*(v)) *_n = (v), n; _n < ((v) + (l)) && (n = *_n, 1); _n++)
+
 static inline int uint_cmp(uint i1, uint i2)
 { return (int)(i1 > i2) - (int)(i1 < i2); }
 

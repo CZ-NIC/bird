@@ -13,6 +13,7 @@
 #include "lib/ip.h"
 
 extern list iface_list;
+extern struct mif_group *global_mif_group;
 
 struct proto;
 struct pool;
@@ -42,6 +43,20 @@ struct iface {
   struct ifa *llv6;			/* Primary link-local address for IPv6 */
   ip4_addr sysdep;			/* Arbitrary IPv4 address for internal sysdep use */
   list neighbors;			/* All neighbors on this interface */
+};
+
+struct mif {
+  struct iface *iface;
+  uint index;				/* MIF (VIF) index for multicast routes */
+  uint uc;				/* Use count */
+  list sockets;				/* Listening per-iface IGMP sockets */
+};
+
+struct mif_group {
+  uint indexes;
+  uint uc;				/* Use count, not implemented */
+  list sockets;				/* Listening global IGMP sockets */
+  struct mif *mifs[MIFS_MAX];
 };
 
 #define IF_UP 1				/* Currently just IF_ADMIN_UP */
@@ -114,6 +129,13 @@ struct iface *if_find_by_index(unsigned);
 struct iface *if_find_by_name(char *);
 struct iface *if_get_by_name(char *);
 void if_recalc_all_preferred_addresses(void);
+
+struct mif *mif_get(struct mif_group *grp, struct iface *iface);
+void mif_free(struct mif_group *grp, struct mif *mif);
+
+#define MIFS_SET(mif,m)		((m) |= (1 << (mif)->index))
+#define MIFS_CLR(mif,m)		((m) &= ~(1 << (mif)->index))
+#define MIFS_ISSET(mif,m)	((m) & (1 << (mif)->index))
 
 
 /* The Neighbor Cache */

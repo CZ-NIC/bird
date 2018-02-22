@@ -29,6 +29,30 @@ rt_show_table(struct cli *c, struct rt_show_data *d)
 }
 
 static void
+rt_show_mifs(char *key, struct mif_group *grp, u32 mifs)
+{
+  uint blen = 512;
+  char *buf = alloca(blen + 8);
+  char *pos = buf;
+  pos[0] = 0;
+
+  WALK_ARRAY(grp->mifs, MIFS_MAX, mif)
+    if (mif && MIFS_ISSET(mif, mifs))
+    {
+      int i = bsnprintf(pos, blen, " %s", mif->iface->name);
+      if (i < 0)
+      {
+	bsprintf(pos, " ...");
+	break;
+      }
+
+      ADVANCE(pos, blen, i);
+    }
+
+  cli_msg(-1007, "%s%s", key, buf);
+}
+
+static void
 rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tmpa)
 {
   byte from[IPA_MAX_TEXT_LENGTH+8];
@@ -90,6 +114,12 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
       else
 	cli_printf(c, -1007, "\tdev %s%s%s",
 		   nh->iface->name, mpls,  onlink, weight);
+    }
+
+  if (a->dest == RTD_MULTICAST)
+    {
+      rt_show_mifs("\tfrom", global_mif_group, rta_iifs(a));
+      rt_show_mifs("\tto", global_mif_group, rta_oifs(a));
     }
 
   if (d->verbose)

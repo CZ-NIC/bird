@@ -152,6 +152,7 @@ typedef struct rtable {
   int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
   struct hostcache *hostcache;
+  // struct mif_group *mif_group;
   struct rtable_config *config;		/* Configuration of this table */
   struct config *deleted;		/* Table doesn't exist in current configuration,
 					 * delete as soon as use_count becomes 0 and remove
@@ -249,9 +250,6 @@ typedef struct rte {
       u8 best;				/* Best route in network, propagated to core */
       u32 metric;			/* Kernel metric */
     } krt;
-    struct {
-      u32 iifs, oifs;			/* Bitmaps for iifs and oifs. Use RTE_MGRP_* macros to manipulate. */
-    } mkrt;
   } u;
 } rte;
 
@@ -636,6 +634,19 @@ rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr
 {
   rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ll, dep), mls);
 }
+
+/* For RTD_MULTICAST, we encode iifs and oifs to nh.gw */
+static inline u32 rta_iifs(rta *a)
+{ return _I0(a->nh.gw); }
+
+static inline void rta_set_iifs(rta *a, u32 val)
+{ _I0(a->nh.gw) = val; }
+
+static inline u32 rta_oifs(rta *a)
+{ return _I1(a->nh.gw); }
+
+static inline void rta_set_oifs(rta *a, u32 val)
+{ _I1(a->nh.gw) = val; }
 
 /*
  * rta_set_recursive_next_hop() acquires hostentry from hostcache and fills

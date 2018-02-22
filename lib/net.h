@@ -49,9 +49,13 @@
 #define NB_MREQ		(NB_MREQ4 | NB_MREQ6)
 #define NB_MGRP		(NB_MGRP4 | NB_MGRP6)
 
+/* FIXME: Better validation of (NET, RTD) combinations */
 #define NB_HOST		(NB_IP | NB_VPN | NB_ROA)
-#define NB_DEST		(NB_IP | NB_VPN | NB_MPLS)
+// #define NB_DEST	(NB_IP | NB_VPN | NB_MPLS)
+#define NB_DEST		(NB_IP | NB_VPN | NB_MGRP | NB_MPLS)
 #define NB_ANY		0xffffffff
+
+#define MIFS_MAX	32
 
 
 typedef struct net_addr {

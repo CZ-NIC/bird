@@ -64,8 +64,8 @@ const u16 net_max_text_length[] = {
   [NET_FLOW6]	= 0,	/* "flow6 { ... }" */
   [NET_MREQ4]	= 15,	/* "255.255.255.255" */
   [NET_MREQ6]	= 39,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff" */
-  [NET_MGRP4]	= 15,	/* "255.255.255.255" */
-  [NET_MGRP6]	= 39,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff" */
+  [NET_MGRP4]	= 20,	/* "(*, 255.255.255.255)" */
+  [NET_MGRP6]	= 44,	/* "(*, ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff)" */
   [NET_MPLS]	= 7,	/* "1048575" */
 };
 
@@ -123,9 +123,9 @@ net_format(const net_addr *N, char *buf, int buflen)
   case NET_MREQ6:
     return bsnprintf(buf, buflen, "%I6", n->mreq6.grp);
   case NET_MGRP4:
-    return bsnprintf(buf, buflen, "%I4", n->mgrp4.grp);
+    return bsnprintf(buf, buflen, "(*, %I4)", n->mgrp4.grp);
   case NET_MGRP6:
-    return bsnprintf(buf, buflen, "%I6", n->mgrp6.grp);
+    return bsnprintf(buf, buflen, "(*, %I6)", n->mgrp6.grp);
   case NET_MPLS:
     return bsnprintf(buf, buflen, "%u", n->mpls.label);
   }

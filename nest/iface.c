@@ -37,8 +37,10 @@
 static pool *if_pool;
 
 list iface_list;
+struct mif_group *global_mif_group;
 
 static void if_recalc_preferred(struct iface *i);
+static struct mif_group *mif_get_group(void);
 
 /**
  * ifa_dump - dump interface address
@@ -714,6 +716,61 @@ if_init(void)
   if_pool = rp_new(&root_pool, "Interfaces");
   init_list(&iface_list);
   neigh_init(if_pool);
+  global_mif_group = mif_get_group();
+}
+
+/*
+ *	Multicast Ifaces
+ */
+
+static struct mif_group *
+mif_get_group(void)
+{
+  struct mif_group *grp = mb_allocz(if_pool, sizeof(struct mif_group));
+  init_list(&grp->sockets);
+
+  return grp;
+}
+
+static inline int u32_cto(uint x) { return ffs(~x) - 1; }
+
+struct mif *
+mif_get(struct mif_group *grp, struct iface *iface)
+{
+  WALK_ARRAY(grp->mifs, MIFS_MAX, mif)
+    if (mif && (mif->iface == iface))
+      return mif->uc++, mif;
+
+  int i = u32_cto(grp->indexes);
+  if (i < 0)
+    return NULL;
+
+  struct mif *mif = mb_allocz(if_pool, sizeof(struct mif));
+  mif->iface = iface;
+  mif->index = i;
+  mif->uc = 1;
+  init_list(&mif->sockets);
+
+  grp->mifs[mif->index] = mif;
+  MIFS_SET(mif, grp->indexes);
+
+  return mif;
+}
+
+void
+mif_free(struct mif_group *grp, struct mif *mif)
+{
+  if (--mif->uc)
+    return;
+
+  node *n;
+  WALK_LIST_FIRST(n, mif->sockets)
+    rem_node(n);
+
+  grp->mifs[mif->index] = NULL;
+  MIFS_CLR(mif, grp->indexes);
+
+  mb_free(mif);
 }
 
 /*
