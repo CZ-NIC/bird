@@ -810,7 +810,7 @@ as_path_match(const struct adata *path, struct f_path_mask *mask)
 	case PM_ASN_RANGE:
 	  val = mask->val;
 	  val2 = mask->val2;
-          goto step;
+	  goto step;
 	case PM_QUESTION:
 	step:
 	  nh = nl = -1;

@@ -28,20 +28,15 @@ flow6 table flowtab6;
 
 
 protocol device {
-	scan time 10;
 }
 
 protocol kernel kernel4 {
-	scan time 20;
-
 	ipv4 {
 		export all;
 	};
 }
 
 protocol kernel kernel6 {
-	scan time 20;
-
 	ipv6 {
 		export all;
 	};
@@ -169,8 +164,6 @@ protocol pipe {
 }
 
 protocol ospf v2 ospf4 {
-#	ecmp;
-
 	ipv4 {
 		import all;
 #		export where source = RTS_STATIC;
@@ -186,8 +179,6 @@ protocol ospf v2 ospf4 {
 
 
 protocol ospf v3 ospf6 {
-#	ecmp;
-
 	ipv6 {
 		import all;
 #		export where source = RTS_STATIC;
@@ -251,7 +242,7 @@ protocol bgp {
 	};
 
 	# IPv6 with MPLS labels (2/4)
-	ipv6 multicast {
+	ipv6 mpls {
 		# explicit IPv6 table
 		table mtab6;
 		import all;

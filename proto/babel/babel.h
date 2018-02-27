@@ -85,7 +85,10 @@ enum babel_tlv_type {
 
 enum babel_subtlv_type {
   BABEL_SUBTLV_PAD1		= 0,
-  BABEL_SUBTLV_PADN		= 1
+  BABEL_SUBTLV_PADN		= 1,
+
+  /* Mandatory subtlvs */
+  BABEL_SUBTLV_SOURCE_PREFIX    = 128,
 };
 
 enum babel_iface_type {
@@ -109,6 +112,9 @@ struct babel_config {
   struct proto_config c;
   list iface_list;			/* List of iface configs (struct babel_iface_config) */
   uint hold_time;			/* Time to hold stale entries and unreachable routes */
+
+  struct channel_config *ip4_channel;
+  struct channel_config *ip6_channel;
 };
 
 struct babel_iface_config {
@@ -303,7 +309,10 @@ struct babel_msg_update {
   u16 seqno;
   u16 metric;
   u64 router_id;
-  net_addr net;
+  union {
+    net_addr net;
+    net_addr_ip6_sadr net_sadr;
+  };
   ip_addr next_hop;
   ip_addr sender;
 };
@@ -311,7 +320,10 @@ struct babel_msg_update {
 struct babel_msg_route_request {
   u8 type;
   u8 full;
-  net_addr net;
+  union {
+    net_addr net;
+    net_addr_ip6_sadr net_sadr;
+  };
 };
 
 struct babel_msg_seqno_request {
@@ -319,7 +331,10 @@ struct babel_msg_seqno_request {
   u8 hop_count;
   u16 seqno;
   u64 router_id;
-  net_addr net;
+  union {
+    net_addr net;
+    net_addr_ip6_sadr net_sadr;
+  };
   ip_addr sender;
 };
 
@@ -339,6 +354,8 @@ struct babel_msg_node {
   union babel_msg msg;
 };
 
+static inline int babel_sadr_enabled(struct babel_proto *p)
+{ return p->ip6_rtable.addr_type == NET_IP6_SADR; }
 
 /* babel.c */
 void babel_handle_ack_req(union babel_msg *msg, struct babel_iface *ifa);

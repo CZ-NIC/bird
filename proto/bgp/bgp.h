@@ -118,6 +118,7 @@ struct bgp_config {
   unsigned error_delay_time_min;	/* Time to wait after an error is detected */
   unsigned error_delay_time_max;
   unsigned disable_after_error;		/* Disable the protocol when error is detected */
+  u32 disable_after_cease;		/* Disable it when cease is received, bitfield */
 
   char *password;			/* Password used for MD5 authentication */
   int check_link;			/* Use iface link state for liveness detection */

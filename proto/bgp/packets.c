@@ -2772,6 +2772,16 @@ bgp_rx_notification(struct bgp_conn *conn, byte *pkt, uint len)
     bgp_update_startup_delay(p);
     bgp_stop(p, 0, NULL, 0);
   }
+  else
+  {
+    uint subcode_bit = 1 << ((subcode <= 8) ? subcode : 0);
+    if (p->cf->disable_after_cease & subcode_bit)
+    {
+      log(L_INFO "%s: Disabled after Cease notification", p->p.name);
+      p->startup_delay = 0;
+      p->p.disabled = 1;
+    }
+  }
 }
 
 static void

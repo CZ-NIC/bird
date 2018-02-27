@@ -506,7 +506,13 @@ static void
 krt_learn_init(struct krt_proto *p)
 {
   if (KRT_CF->learn)
-    rt_setup(p->p.pool, &p->krt_table, "Inherited", NULL);
+  {
+    struct rtable_config *cf = mb_allocz(p->p.pool, sizeof(struct rtable_config));
+    cf->name = "Inherited";
+    cf->addr_type = p->p.net_type;
+
+    rt_setup(p->p.pool, &p->krt_table, cf);
+  }
 }
 
 static void
@@ -578,7 +584,7 @@ krt_export_net(struct krt_proto *p, net *net, rte **rt_free, ea_list **tmpa)
   if (filter == FILTER_ACCEPT)
     goto accept;
 
-  if (f_run(filter, &rt, tmpa, krt_filter_lp, FF_FORCE_TMPATTR) > F_ACCEPT)
+  if (f_run(filter, &rt, tmpa, krt_filter_lp, FF_FORCE_TMPATTR | FF_SILENT) > F_ACCEPT)
     goto reject;
 
 
@@ -1059,10 +1065,17 @@ krt_postconfig(struct proto_config *CF)
     cf_error("All kernel syncers must use the same table scan interval");
 #endif
 
-  struct rtable_config *tab = proto_cf_main_channel(CF)->table;
+  struct channel_config *cc = proto_cf_main_channel(CF);
+  struct rtable_config *tab = cc->table;
   if (tab->krt_attached)
     cf_error("Kernel syncer (%s) already attached to table %s", tab->krt_attached->name, tab->name);
   tab->krt_attached = CF;
+
+  if (cf->merge_paths)
+  {
+    cc->ra_mode = RA_MERGED;
+    cc->merge_limit = cf->merge_paths;
+  }
 
   krt_sys_postconfig(cf);
 }
@@ -1095,10 +1108,11 @@ krt_start(struct proto *P)
 
   switch (p->p.net_type)
   {
-  case NET_IP4:	p->af = AF_INET; break;
-  case NET_IP6:	p->af = AF_INET6; break;
+  case NET_IP4:		p->af = AF_INET; break;
+  case NET_IP6:		p->af = AF_INET6; break;
+  case NET_IP6_SADR:	p->af = AF_INET6; break;
 #ifdef AF_MPLS
-  case NET_MPLS: p->af = AF_MPLS; break;
+  case NET_MPLS:	p->af = AF_MPLS; break;
 #endif
   default: log(L_ERR "KRT: Tried to start with strange net type: %d", p->p.net_type); return PS_START; break;
   }
@@ -1159,7 +1173,7 @@ krt_reconfigure(struct proto *p, struct proto_config *CF)
     return 0;
 
   /* persist, graceful restart need not be the same */
-  return o->scan_time == n->scan_time && o->learn == n->learn && o->devroutes == n->devroutes;
+  return o->scan_time == n->scan_time && o->learn == n->learn;
 }
 
 struct proto_config *
@@ -1206,16 +1220,24 @@ krt_get_attr(eattr *a, byte *buf, int buflen)
 }
 
 
+#ifdef CONFIG_IP6_SADR_KERNEL
+#define MAYBE_IP6_SADR	NB_IP6_SADR
+#else
+#define MAYBE_IP6_SADR	0
+#endif
+
+#ifdef HAVE_MPLS_KERNEL
+#define MAYBE_MPLS	NB_MPLS
+#else
+#define MAYBE_MPLS	0
+#endif
+
 struct protocol proto_unix_kernel = {
   .name =		"Kernel",
   .template =		"kernel%d",
   .attr_class =		EAP_KRT,
   .preference =		DEF_PREF_INHERITED,
-#ifdef HAVE_MPLS_KERNEL
-  .channel_mask =	NB_IP | NB_MPLS,
-#else
-  .channel_mask =	NB_IP,
-#endif
+  .channel_mask =	NB_IP | MAYBE_IP6_SADR | MAYBE_MPLS,
   .proto_size =		sizeof(struct krt_proto),
   .config_size =	sizeof(struct krt_config),
   .preconfig =		krt_preconfig,

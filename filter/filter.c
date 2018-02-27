@@ -587,7 +587,8 @@ val_format_str(struct f_val v) {
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
 #define runtime(fmt, ...) do { \
-    log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
+    if (!(f_flags & FF_SILENT)) \
+      log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
     res.type = T_RETURN; \
     res.val.i = F_ERROR; \
     return res; \
@@ -903,7 +904,8 @@ interpret(struct f_inst *what)
     break;
   case P('p',','):
     ONEARG;
-    if (what->a2.i == F_NOP || (what->a2.i != F_NONL && what->a1.p))
+    if ((what->a2.i == F_NOP || (what->a2.i != F_NONL && what->a1.p)) &&
+	!(f_flags & FF_SILENT))
       log_commit(*L_INFO, &f_buf);
 
     switch (what->a2.i) {
@@ -1003,6 +1005,7 @@ interpret(struct f_inst *what)
     {
       eattr *e = NULL;
       u16 code = what->a2.i;
+      int f_type = what->aux >> 8;
 
       if (!(f_flags & FF_FORCE_TMPATTR))
 	e = ea_find((*f_rte)->attrs->eattrs, code);
@@ -1047,7 +1050,7 @@ interpret(struct f_inst *what)
 
       switch (what->aux & EAF_TYPE_MASK) {
       case EAF_TYPE_INT:
-	res.type = T_INT;
+	res.type = f_type;
 	res.val.i = e->u.data;
 	break;
       case EAF_TYPE_ROUTER_ID:
@@ -1097,18 +1100,18 @@ interpret(struct f_inst *what)
     {
       struct ea_list *l = lp_alloc(f_pool, sizeof(struct ea_list) + sizeof(eattr));
       u16 code = what->a2.i;
+      int f_type = what->aux >> 8;
 
       l->next = NULL;
       l->flags = EALF_SORTED;
       l->count = 1;
       l->attrs[0].id = code;
       l->attrs[0].flags = 0;
-      l->attrs[0].type = what->aux | EAF_ORIGINATED | EAF_FRESH;
+      l->attrs[0].type = (what->aux & 0xff) | EAF_ORIGINATED | EAF_FRESH;
 
       switch (what->aux & EAF_TYPE_MASK) {
       case EAF_TYPE_INT:
-	// Enums are also ints, so allow them in.
-	if (v1.type != T_INT && (v1.type < T_ENUM_LO || v1.type > T_ENUM_HI))
+	if (v1.type != f_type)
 	  runtime( "Setting int attribute to non-int value" );
 	l->attrs[0].u.data = v1.val.i;
 	break;
@@ -1793,7 +1796,8 @@ f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struc
 
 
   if (res.type != T_RETURN) {
-    log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter->name);
+    if (!(f_flags & FF_SILENT))
+      log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter->name);
     return F_ERROR;
   }
   DBG( "done (%u)\n", res.val.i );

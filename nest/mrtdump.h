@@ -28,4 +28,3 @@
 void mrt_dump_message(struct proto *p, u16 type, u16 subtype, byte *buf, u32 len);
 
 #endif
-

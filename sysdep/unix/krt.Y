@@ -17,16 +17,6 @@ CF_DEFINES
 #define KIF_IFACE ((struct kif_iface_config *) this_ipatt)
 
 static void
-krt_set_merge_paths(struct channel_config *cc, uint merge, uint limit)
-{
-  if ((limit <= 0) || (limit > 255))
-    cf_error("Merge paths limit must be in range 1-255");
-
-  cc->ra_mode = merge ? RA_MERGED : RA_OPTIMAL;
-  cc->merge_limit = limit;
-}
-
-static void
 kif_set_preferred(ip_addr ip)
 {
   if (ipa_is_ip4(ip))
@@ -78,10 +68,9 @@ kern_item:
 	cf_error("Learning of kernel routes not supported on this platform");
 #endif
    }
- | DEVICE ROUTES bool { THIS_KRT->devroutes = $3; }
  | GRACEFUL RESTART bool { THIS_KRT->graceful_restart = $3; }
  | MERGE PATHS bool kern_mp_limit {
-      krt_set_merge_paths(this_channel, $3, $4);
+      THIS_KRT->merge_paths = $3 ? $4 : 0;
 #ifndef KRT_ALLOW_MERGE_PATHS
       if ($3)
 	cf_error("Path merging not supported on this platform");
