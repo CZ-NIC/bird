@@ -48,6 +48,16 @@
 
 #define CMP_ERROR 999
 
+/* Internal filter state, to be allocated on stack when executing filters */
+struct filter_state {
+  struct rte **rte;
+  struct rta *old_rta;
+  struct ea_list **tmp_attrs;
+  struct linpool *pool;
+  struct buffer buf;
+  int flags;
+};
+
 static struct adata *
 adata_empty(struct linpool *pool, int l)
 {
@@ -548,46 +558,39 @@ val_format(struct f_val v, buffer *buf)
   }
 }
 
-static struct rte **f_rte;
-static struct rta *f_old_rta;
-static struct ea_list **f_tmp_attrs;
-static struct linpool *f_pool;
-static struct buffer f_buf;
-static int f_flags;
-
-static inline void f_rte_cow(void)
+static inline void f_rte_cow(struct filter_state *fs)
 {
-  *f_rte = rte_cow(*f_rte);
+  *fs->rte = rte_cow(*fs->rte);
 }
 
 /*
  * rta_cow - prepare rta for modification by filter
  */
 static void
-f_rta_cow(void)
+f_rta_cow(struct filter_state *fs)
 {
-  if (!rta_is_cached((*f_rte)->attrs))
+  if (!rta_is_cached((*fs->rte)->attrs))
     return;
 
   /* Prepare to modify rte */
-  f_rte_cow();
+  f_rte_cow(fs);
 
   /* Store old rta to free it later, it stores reference from rte_cow() */
-  f_old_rta = (*f_rte)->attrs;
+  fs->old_rta = (*fs->rte)->attrs;
 
   /*
    * Get shallow copy of rta. Fields eattrs and nexthops of rta are shared
-   * with f_old_rta (they will be copied when the cached rta will be obtained
+   * with fs->old_rta (they will be copied when the cached rta will be obtained
    * at the end of f_run()), also the lock of hostentry is inherited (we
    * suppose hostentry is not changed by filters).
    */
-  (*f_rte)->attrs = rta_do_cow((*f_rte)->attrs, f_pool);
+  (*fs->rte)->attrs = rta_do_cow((*fs->rte)->attrs, fs->pool);
 }
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
 #define runtime(x) do { \
-    if (!(f_flags & FF_SILENT)) \
+    if (!(fs->flags & FF_SILENT)) \
       log_rl(&rl_runtime_err, L_ERR "filters, line %d: %s", what->lineno, x); \
     res.type = T_RETURN; \
     res.val.i = F_ERROR; \
@@ -595,7 +598,7 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
   } while(0)
 
 #define ARG(x,y) \
-	x = interpret(what->y); \
+	x = interpret(fs, what->y); \
 	if (x.type & T_RETURN) \
 		return x;
 
@@ -606,13 +609,14 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
                   if (v1.type != v2.type) \
 		    runtime( "Can't operate with values of incompatible types" );
 #define ACCESS_RTE \
-  do { if (!f_rte) runtime("No route to access"); } while (0)
+  do { if (!fs->rte) runtime("No route to access"); } while (0)
 
 #define BITFIELD_MASK(what) \
   (1u << (what->a2.i >> 24))
 
 /**
  * interpret
+ * @fs: filter state
  * @what: filter to interpret
  *
  * Interpret given tree of filter instructions. This is core function
@@ -629,7 +633,7 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
  * memory managment.
  */
 static struct f_val
-interpret(struct f_inst *what)
+interpret(struct filter_state *fs, struct f_inst *what)
 {
   struct symbol *sym;
   struct f_val v1, v2, res = { .type = T_VOID }, *vp;
@@ -758,7 +762,7 @@ interpret(struct f_inst *what)
       TWOARGS;
 
       /* Third argument hack */
-      struct f_val v3 = interpret(INST3(what).p);
+      struct f_val v3 = interpret(fs, INST3(what).p);
       if (v3.type & T_RETURN)
 	return v3;
 
@@ -776,9 +780,9 @@ interpret(struct f_inst *what)
       struct f_path_mask *tt = what->a1.p, *vbegin, **vv = &vbegin;
 
       while (tt) {
-	*vv = lp_alloc(f_pool, sizeof(struct f_path_mask));
+	*vv = lp_alloc(fs->pool, sizeof(struct f_path_mask));
 	if (tt->kind == PM_ASN_EXPR) {
-	  struct f_val res = interpret((struct f_inst *) tt->val);
+	  struct f_val res = interpret(fs, (struct f_inst *) tt->val);
 	  (*vv)->kind = PM_ASN;
 	  if (res.type != T_INT) {
 	    runtime( "Error resolving path mask template: value not an integer" );
@@ -890,7 +894,7 @@ interpret(struct f_inst *what)
     break;
   case FI_PRINT:
     ONEARG;
-    val_format(v1, &f_buf);
+    val_format(v1, &fs->buf);
     break;
   case FI_CONDITION:	/* ? has really strange error value, so we can implement if ... else nicely :-) */
     ONEARG;
@@ -908,8 +912,8 @@ interpret(struct f_inst *what)
   case FI_PRINT_AND_DIE:
     ONEARG;
     if ((what->a2.i == F_NOP || (what->a2.i != F_NONL && what->a1.p)) &&
-	!(f_flags & FF_SILENT))
-      log_commit(*L_INFO, &f_buf);
+	!(fs->flags & FF_SILENT))
+      log_commit(*L_INFO, &fs->buf);
 
     switch (what->a2.i) {
     case F_QUITBIRD:
@@ -931,15 +935,15 @@ interpret(struct f_inst *what)
   case FI_RTA_GET:	/* rta access */
     {
       ACCESS_RTE;
-      struct rta *rta = (*f_rte)->attrs;
+      struct rta *rta = (*fs->rte)->attrs;
       res.type = what->aux;
 
       switch (what->a2.i)
       {
       case SA_FROM:	res.val.px.ip = rta->from; break;
       case SA_GW:	res.val.px.ip = rta->gw; break;
-      case SA_NET:	res.val.px.ip = (*f_rte)->net->n.prefix;
-			res.val.px.len = (*f_rte)->net->n.pxlen; break;
+      case SA_NET:	res.val.px.ip = (*fs->rte)->net->n.prefix;
+			res.val.px.len = (*fs->rte)->net->n.pxlen; break;
       case SA_PROTO:	res.val.s = rta->src->proto->name; break;
       case SA_SOURCE:	res.val.i = rta->source; break;
       case SA_SCOPE:	res.val.i = rta->scope; break;
@@ -959,9 +963,9 @@ interpret(struct f_inst *what)
     if (what->aux != v1.type)
       runtime( "Attempt to set static attribute to incompatible type" );
 
-    f_rta_cow();
+    f_rta_cow(fs);
     {
-      struct rta *rta = (*f_rte)->attrs;
+      struct rta *rta = (*fs->rte)->attrs;
 
       switch (what->a2.i)
       {
@@ -1011,32 +1015,32 @@ interpret(struct f_inst *what)
       eattr *e = NULL;
       u16 code = what->a2.i;
 
-      if (!(f_flags & FF_FORCE_TMPATTR))
-	e = ea_find((*f_rte)->attrs->eattrs, code);
+      if (!(fs->flags & FF_FORCE_TMPATTR))
+	e = ea_find((*fs->rte)->attrs->eattrs, code);
       if (!e)
-	e = ea_find((*f_tmp_attrs), code);
-      if ((!e) && (f_flags & FF_FORCE_TMPATTR))
-	e = ea_find((*f_rte)->attrs->eattrs, code);
+	e = ea_find((*fs->tmp_attrs), code);
+      if ((!e) && (fs->flags & FF_FORCE_TMPATTR))
+	e = ea_find((*fs->rte)->attrs->eattrs, code);
 
       if (!e) {
 	/* A special case: undefined int_set looks like empty int_set */
 	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_INT_SET) {
 	  res.type = T_CLIST;
-	  res.val.ad = adata_empty(f_pool, 0);
+	  res.val.ad = adata_empty(fs->pool, 0);
 	  break;
 	}
 
 	/* The same special case for ec_set */
 	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_EC_SET) {
 	  res.type = T_ECLIST;
-	  res.val.ad = adata_empty(f_pool, 0);
+	  res.val.ad = adata_empty(fs->pool, 0);
 	  break;
 	}
 
 	/* The same special case for lc_set */
 	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_LC_SET) {
 	  res.type = T_LCLIST;
-	  res.val.ad = adata_empty(f_pool, 0);
+	  res.val.ad = adata_empty(fs->pool, 0);
 	  break;
 	}
 
@@ -1095,7 +1099,7 @@ interpret(struct f_inst *what)
     ACCESS_RTE;
     ONEARG;
     {
-      struct ea_list *l = lp_alloc(f_pool, sizeof(struct ea_list) + sizeof(eattr));
+      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
       u16 code = what->a2.i;
 
       l->next = NULL;
@@ -1134,7 +1138,7 @@ interpret(struct f_inst *what)
 	if (v1.type != T_IP)
 	  runtime( "Setting ip attribute to non-ip value" );
 	int len = sizeof(ip_addr);
-	struct adata *ad = lp_alloc(f_pool, sizeof(struct adata) + len);
+	struct adata *ad = lp_alloc(fs->pool, sizeof(struct adata) + len);
 	ad->length = len;
 	(* (ip_addr *) ad->data) = v1.val.px.ip;
 	l->attrs[0].u.ptr = ad;
@@ -1150,12 +1154,12 @@ interpret(struct f_inst *what)
 	{
 	  /* First, we have to find the old value */
 	  eattr *e = NULL;
-	  if (!(f_flags & FF_FORCE_TMPATTR))
-	    e = ea_find((*f_rte)->attrs->eattrs, code);
+	  if (!(fs->flags & FF_FORCE_TMPATTR))
+	    e = ea_find((*fs->rte)->attrs->eattrs, code);
 	  if (!e)
-	    e = ea_find((*f_tmp_attrs), code);
-	  if ((!e) && (f_flags & FF_FORCE_TMPATTR))
-	    e = ea_find((*f_rte)->attrs->eattrs, code);
+	    e = ea_find((*fs->tmp_attrs), code);
+	  if ((!e) && (fs->flags & FF_FORCE_TMPATTR))
+	    e = ea_find((*fs->rte)->attrs->eattrs, code);
 	  u32 data = e ? e->u.data : 0;
 
 	  if (v1.val.i)
@@ -1187,20 +1191,20 @@ interpret(struct f_inst *what)
       default: bug("Unknown type in e,S");
       }
 
-      if (!(what->aux & EAF_TEMP) && (!(f_flags & FF_FORCE_TMPATTR))) {
-	f_rta_cow();
-	l->next = (*f_rte)->attrs->eattrs;
-	(*f_rte)->attrs->eattrs = l;
+      if (!(what->aux & EAF_TEMP) && (!(fs->flags & FF_FORCE_TMPATTR))) {
+	f_rta_cow(fs);
+	l->next = (*fs->rte)->attrs->eattrs;
+	(*fs->rte)->attrs->eattrs = l;
       } else {
-	l->next = (*f_tmp_attrs);
-	(*f_tmp_attrs) = l;
+	l->next = (*fs->tmp_attrs);
+	(*fs->tmp_attrs) = l;
       }
     }
     break;
   case FI_PREF_GET:
     ACCESS_RTE;
     res.type = T_INT;
-    res.val.i = (*f_rte)->pref;
+    res.val.i = (*fs->rte)->pref;
     break;
   case FI_PREF_SET:
     ACCESS_RTE;
@@ -1209,8 +1213,8 @@ interpret(struct f_inst *what)
       runtime( "Can't set preference to non-integer" );
     if (v1.val.i > 0xFFFF)
       runtime( "Setting preference value out of bounds" );
-    f_rte_cow();
-    (*f_rte)->pref = v1.val.i;
+    f_rte_cow(fs);
+    (*fs->rte)->pref = v1.val.i;
     break;
   case FI_LENGTH:	/* Get length of */
     ONEARG;
@@ -1270,7 +1274,7 @@ interpret(struct f_inst *what)
     return res;
   case FI_CALL: /* CALL: this is special: if T_RETURN and returning some value, mask it out  */
     ONEARG;
-    res = interpret(what->a2.p);
+    res = interpret(fs, what->a2.p);
     if (res.type == T_RETURN)
       return res;
     res.type &= ~T_RETURN;
@@ -1293,7 +1297,7 @@ interpret(struct f_inst *what)
       }
       /* It is actually possible to have t->data NULL */
 
-      res = interpret(t->data);
+      res = interpret(fs, t->data);
       if (res.type & T_RETURN)
 	return res;
     }
@@ -1313,7 +1317,7 @@ interpret(struct f_inst *what)
 
   case FI_EMPTY:	/* Create empty attribute */
     res.type = what->aux;
-    res.val.ad = adata_empty(f_pool, 0);
+    res.val.ad = adata_empty(fs->pool, 0);
     break;
   case FI_PATH_PREPEND:	/* Path prepend */
     TWOARGS;
@@ -1323,7 +1327,7 @@ interpret(struct f_inst *what)
       runtime("Can't prepend non-integer");
 
     res.type = T_PATH;
-    res.val.ad = as_path_prepend(f_pool, v1.val.ad, v2.val.i);
+    res.val.ad = as_path_prepend(fs->pool, v1.val.ad, v2.val.i);
     break;
 
   case FI_CLIST_ADD_DEL:	/* (Extended) Community list add or delete */
@@ -1353,7 +1357,7 @@ interpret(struct f_inst *what)
 	runtime("Can't filter integer");
 
       res.type = T_PATH;
-      res.val.ad = as_path_filter(f_pool, v1.val.ad, set, key, pos);
+      res.val.ad = as_path_filter(fs->pool, v1.val.ad, set, key, pos);
     }
     else if (v1.type == T_CLIST)
     {
@@ -1383,22 +1387,22 @@ interpret(struct f_inst *what)
 	if (arg_set == 1)
 	  runtime("Can't add set");
 	else if (!arg_set)
-	  res.val.ad = int_set_add(f_pool, v1.val.ad, n);
+	  res.val.ad = int_set_add(fs->pool, v1.val.ad, n);
 	else
-	  res.val.ad = int_set_union(f_pool, v1.val.ad, v2.val.ad);
+	  res.val.ad = int_set_union(fs->pool, v1.val.ad, v2.val.ad);
 	break;
 
       case 'd':
 	if (!arg_set)
-	  res.val.ad = int_set_del(f_pool, v1.val.ad, n);
+	  res.val.ad = int_set_del(fs->pool, v1.val.ad, n);
 	else
-	  res.val.ad = clist_filter(f_pool, v1.val.ad, v2, 0);
+	  res.val.ad = clist_filter(fs->pool, v1.val.ad, v2, 0);
 	break;
 
       case 'f':
 	if (!arg_set)
 	  runtime("Can't filter pair");
-	res.val.ad = clist_filter(f_pool, v1.val.ad, v2, 1);
+	res.val.ad = clist_filter(fs->pool, v1.val.ad, v2, 1);
 	break;
 
       default:
@@ -1425,22 +1429,22 @@ interpret(struct f_inst *what)
 	if (arg_set == 1)
 	  runtime("Can't add set");
 	else if (!arg_set)
-	  res.val.ad = ec_set_add(f_pool, v1.val.ad, v2.val.ec);
+	  res.val.ad = ec_set_add(fs->pool, v1.val.ad, v2.val.ec);
 	else
-	  res.val.ad = ec_set_union(f_pool, v1.val.ad, v2.val.ad);
+	  res.val.ad = ec_set_union(fs->pool, v1.val.ad, v2.val.ad);
 	break;
 
       case 'd':
 	if (!arg_set)
-	  res.val.ad = ec_set_del(f_pool, v1.val.ad, v2.val.ec);
+	  res.val.ad = ec_set_del(fs->pool, v1.val.ad, v2.val.ec);
 	else
-	  res.val.ad = eclist_filter(f_pool, v1.val.ad, v2, 0);
+	  res.val.ad = eclist_filter(fs->pool, v1.val.ad, v2, 0);
 	break;
 
       case 'f':
 	if (!arg_set)
 	  runtime("Can't filter ec");
-	res.val.ad = eclist_filter(f_pool, v1.val.ad, v2, 1);
+	res.val.ad = eclist_filter(fs->pool, v1.val.ad, v2, 1);
 	break;
 
       default:
@@ -1467,22 +1471,22 @@ interpret(struct f_inst *what)
 	if (arg_set == 1)
 	  runtime("Can't add set");
 	else if (!arg_set)
-	  res.val.ad = lc_set_add(f_pool, v1.val.ad, v2.val.lc);
+	  res.val.ad = lc_set_add(fs->pool, v1.val.ad, v2.val.lc);
 	else
-	  res.val.ad = lc_set_union(f_pool, v1.val.ad, v2.val.ad);
+	  res.val.ad = lc_set_union(fs->pool, v1.val.ad, v2.val.ad);
 	break;
 
       case 'd':
 	if (!arg_set)
-	  res.val.ad = lc_set_del(f_pool, v1.val.ad, v2.val.lc);
+	  res.val.ad = lc_set_del(fs->pool, v1.val.ad, v2.val.lc);
 	else
-	  res.val.ad = lclist_filter(f_pool, v1.val.ad, v2, 0);
+	  res.val.ad = lclist_filter(fs->pool, v1.val.ad, v2, 0);
 	break;
 
       case 'f':
 	if (!arg_set)
 	  runtime("Can't filter lc");
-	res.val.ad = lclist_filter(f_pool, v1.val.ad, v2, 1);
+	res.val.ad = lclist_filter(fs->pool, v1.val.ad, v2, 1);
 	break;
 
       default:
@@ -1506,12 +1510,12 @@ interpret(struct f_inst *what)
     else
     {
       ACCESS_RTE;
-      v1.val.px.ip = (*f_rte)->net->n.prefix;
-      v1.val.px.len = (*f_rte)->net->n.pxlen;
+      v1.val.px.ip = (*fs->rte)->net->n.prefix;
+      v1.val.px.len = (*fs->rte)->net->n.pxlen;
 
       /* We ignore temporary attributes, probably not a problem here */
       /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */
-      eattr *e = ea_find((*f_rte)->attrs->eattrs, EA_CODE(EAP_BGP, 0x02));
+      eattr *e = ea_find((*fs->rte)->attrs->eattrs, EA_CODE(EAP_BGP, 0x02));
 
       if (!e || e->type != EAF_TYPE_AS_PATH)
 	runtime("Missing AS_PATH attribute");
@@ -1710,38 +1714,39 @@ f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struc
   int rte_cow = ((*rte)->flags & REF_COW);
   DBG( "Running filter `%s'...", filter->name );
 
-  f_rte = rte;
-  f_old_rta = NULL;
-  f_tmp_attrs = tmp_attrs;
-  f_pool = tmp_pool;
-  f_flags = flags;
+  struct filter_state fs = {
+    .rte = rte,
+    .tmp_attrs = tmp_attrs,
+    .pool = tmp_pool,
+    .flags = flags,
+  };
 
-  LOG_BUFFER_INIT(f_buf);
+  LOG_BUFFER_INIT(fs.buf);
 
-  struct f_val res = interpret(filter->root);
+  struct f_val res = interpret(&fs, filter->root);
 
-  if (f_old_rta) {
+  if (fs.old_rta) {
     /*
-     * Cached rta was modified and f_rte contains now an uncached one,
+     * Cached rta was modified and fs->rte contains now an uncached one,
      * sharing some part with the cached one. The cached rta should
-     * be freed (if rte was originally COW, f_old_rta is a clone
+     * be freed (if rte was originally COW, fs->old_rta is a clone
      * obtained during rte_cow()).
      *
      * This also implements the exception mentioned in f_run()
      * description. The reason for this is that rta reuses parts of
-     * f_old_rta, and these may be freed during rta_free(f_old_rta).
+     * fs->old_rta, and these may be freed during rta_free(fs->old_rta).
      * This is not the problem if rte was COW, because original rte
      * also holds the same rta.
      */
     if (!rte_cow)
-      (*f_rte)->attrs = rta_lookup((*f_rte)->attrs);
+      (*fs.rte)->attrs = rta_lookup((*fs.rte)->attrs);
 
-    rta_free(f_old_rta);
+    rta_free(fs.old_rta);
   }
 
 
   if (res.type != T_RETURN) {
-    if (!(f_flags & FF_SILENT))
+    if (!(fs.flags & FF_SILENT))
       log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter->name);
     return F_ERROR;
   }
@@ -1756,16 +1761,16 @@ f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
 {
   struct ea_list *tmp_attrs = NULL;
 
-  f_rte = rte;
-  f_old_rta = NULL;
-  f_tmp_attrs = &tmp_attrs;
-  f_pool = tmp_pool;
-  f_flags = 0;
+  struct filter_state fs = {
+    .rte = rte,
+    .tmp_attrs = &tmp_attrs,
+    .pool = tmp_pool,
+  };
 
-  LOG_BUFFER_INIT(f_buf);
+  LOG_BUFFER_INIT(fs.buf);
 
   /* Note that in this function we assume that rte->attrs is private / uncached */
-  struct f_val res = interpret(expr);
+  struct f_val res = interpret(&fs, expr);
 
   /* Hack to include EAF_TEMP attributes to the main list */
   (*rte)->attrs->eattrs = ea_append(tmp_attrs, (*rte)->attrs->eattrs);
@@ -1776,14 +1781,13 @@ f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
 struct f_val
 f_eval(struct f_inst *expr, struct linpool *tmp_pool)
 {
-  f_flags = 0;
-  f_tmp_attrs = NULL;
-  f_rte = NULL;
-  f_pool = tmp_pool;
+  struct filter_state fs = {
+    .pool = tmp_pool,
+  };
 
-  LOG_BUFFER_INIT(f_buf);
+  LOG_BUFFER_INIT(fs.buf);
 
-  return interpret(expr);
+  return interpret(&fs, expr);
 }
 
 uint
