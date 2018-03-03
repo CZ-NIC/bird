@@ -30,6 +30,7 @@
 #include "nest/protocol.h"
 #include "nest/cli.h"
 #include "lib/resource.h"
+#include "lib/socket.h"
 #include "lib/string.h"
 #include "conf/conf.h"
 #include "sysdep/unix/krt.h"
@@ -723,6 +724,10 @@ if_init(void)
  *	Multicast Ifaces
  */
 
+struct mkrt_proto;
+void mkrt_register_mif(struct mkrt_proto *p, struct mif *mif);
+void mkrt_unregister_mif(struct mkrt_proto *p, struct mif *mif);
+
 static struct mif_group *
 mif_get_group(void)
 {
@@ -754,6 +759,9 @@ mif_get(struct mif_group *grp, struct iface *iface)
   grp->mifs[mif->index] = mif;
   MIFS_SET(mif, grp->indexes);
 
+  if (grp->owner)
+    mkrt_register_mif((struct mkrt_proto *) grp->owner, mif);
+
   return mif;
 }
 
@@ -763,6 +771,9 @@ mif_free(struct mif_group *grp, struct mif *mif)
   if (--mif->uc)
     return;
 
+  if (grp->owner)
+    mkrt_unregister_mif((struct mkrt_proto *) grp->owner, mif);
+
   node *n;
   WALK_LIST_FIRST(n, mif->sockets)
     rem_node(n);
@@ -771,6 +782,63 @@ mif_free(struct mif_group *grp, struct mif *mif)
   MIFS_CLR(mif, grp->indexes);
 
   mb_free(mif);
+}
+
+/*
+ * Move socket from global list to MIF based lists. These lists are used to
+ * deliver IGMP messages by mif_forward_igmp().
+ */
+void
+mif_listen_igmp(struct mif_group *grp, struct mif *mif, sock *s)
+{
+  rem_node(&s->n);
+  add_tail(mif ? &mif->sockets : &grp->sockets, &s->n);
+}
+
+/*
+ * Forward a packet from one socket to another. Emulates the receiving routine.
+ * Socket is in the same state as if it received the packet itself, but must not
+ * modify it to preserve it for others.
+ */
+static void
+mif_do_forward(sock *src, sock *dst, int len)
+{
+  if (!dst->rx_hook)
+    return;
+
+  dst->faddr = src->faddr;
+  dst->laddr = src->laddr;
+  dst->lifindex = src->lifindex;
+
+  dst->rbuf = src->rbuf;
+  dst->rpos = src->rpos;
+  dst->rbsize = src->rbsize;
+
+  dst->rx_hook(dst, len);
+
+  dst->faddr = dst->laddr = IPA_NONE;
+  dst->lifindex = 0;
+
+  dst->rbuf = dst->rpos = NULL;
+  dst->rbsize = 0;
+}
+
+/*
+ * Forward a packet to all sockets registered for given MIF. It is used to
+ * deliver IGMP messages from the MRT control socket to IGMP sockets.
+ */
+void
+mif_forward_igmp(struct mif_group *grp, struct mif *mif, sock *src, int len)
+{
+  node *n, *nn;
+  sock *dst;
+
+  WALK_LIST2_DELSAFE(dst, n, nn, grp->sockets, n)
+    mif_do_forward(src, dst, len);
+
+  if (mif)
+    WALK_LIST2_DELSAFE(dst, n, nn, mif->sockets, n)
+      mif_do_forward(src, dst, len);
 }
 
 /*

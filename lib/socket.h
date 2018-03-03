@@ -17,6 +17,9 @@
 #include <libssh/libssh.h>
 #endif
 
+struct mif_group;
+struct mif;
+
 #ifdef HAVE_LIBSSH
 struct ssh_sock {
     const char *username;		/* (Required) SSH user name */
@@ -105,6 +108,7 @@ int sk_join_group(sock *s, ip_addr maddr);	/* Join multicast group on sk iface *
 int sk_leave_group(sock *s, ip_addr maddr);	/* Leave multicast group on sk iface */
 int sk_set_router_alert(sock *s, int ra);
 int sk_setup_broadcast(sock *s);
+int sk_setup_igmp(sock *s, struct mif_group *grp, struct mif *mif);
 int sk_set_ttl(sock *s, int ttl);	/* Set transmit TTL for given socket */
 int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given socket */
 int sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, struct iface *ifa, char *passwd, int setkey);

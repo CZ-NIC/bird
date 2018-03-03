@@ -39,6 +39,7 @@
 
 #include "unix.h"
 #include "krt.h"
+#include "mkrt.h"
 
 /*
  *	Debugging
@@ -851,6 +852,7 @@ main(int argc, char **argv)
   protos_build();
   proto_build(&proto_unix_kernel);
   proto_build(&proto_unix_iface);
+  proto_build(&proto_unix_mkrt);
 
   struct config *conf = read_config();
 

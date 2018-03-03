@@ -56,6 +56,7 @@ struct mif_group {
   uint indexes;
   uint uc;				/* Use count, not implemented */
   list sockets;				/* Listening global IGMP sockets */
+  struct proto *owner;			/* MKernel responsible for MIFs */
   struct mif *mifs[MIFS_MAX];
 };
 

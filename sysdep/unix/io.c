@@ -588,6 +588,39 @@ sk_setup_broadcast(sock *s)
   return 0;
 }
 
+void mif_listen_igmp(struct mif_group *grp, struct mif *mif, sock *s);
+
+/**
+ * sk_setup_igmp - enable IGMP reception for given socket
+ * @s: socket
+ * @grp: MIF group
+ * @mif: MIF iface, optional
+ *
+ * IGMP sockets need to receive all IGMP packets regardless of multicast group.
+ * The generic multicast API is insufficient for this and both Linux and BSDs
+ * handle this by passing IGMP packets to multicast routing control socket.
+ *
+ * When sk_setup_igmp() is called for a socket, the socket is transfered from
+ * general socket list to the appropriate MIF socket list and BIRD forwards all
+ * packets received on a multicast routing control socket to this socket
+ * internally. That means, all IGMP packets even for groups that no one is
+ * joined are received here. As a side effect, no packets are received when
+ * mkernel protocol is down and therefore a multicast control socket is closed.
+ *
+ * The socket must have type SK_IP, dport IPPROTO_IGMP and zero rbsize.
+ *
+ * Result: 0 for success, -1 for an error.
+ */
+
+int
+sk_setup_igmp(sock *s, struct mif_group *grp, struct mif *mif)
+{
+  ASSERT((s->type == SK_IP) && (s->dport == IPPROTO_IGMP) && !s->rbsize);
+
+  mif_listen_igmp(grp, mif, s);
+  return 0;
+}
+
 /**
  * sk_set_ttl - set transmit TTL for given socket
  * @s: socket

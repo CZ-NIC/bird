@@ -1406,9 +1406,10 @@ rte_discard(rte *old)	/* Non-filtered route deletion, used during garbage collec
 
 /* Check rtable for best route to given net whether it would be exported do p */
 int
-rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
+rt_examine(struct channel *c, net_addr *a, void (*cb)(struct proto *, void *, rte *), void *data)
 {
-  net *n = net_find(t, a);
+  struct proto *p = c->proto;
+  net *n = net_find(c->table, a);
   rte *rt = n ? n->routes : NULL;
 
   if (!rte_is_valid(rt))
@@ -1420,7 +1421,11 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
   ea_list *tmpa = rte_make_tmp_attrs(rt, rte_update_pool);
   int v = p->import_control ? p->import_control(p, &rt, &tmpa, rte_update_pool) : 0;
   if (v == RIC_PROCESS)
-    v = (f_run(filter, &rt, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) <= F_ACCEPT);
+    v = (f_run(c->out_filter, &rt, &tmpa, rte_update_pool, FF_FORCE_TMPATTR) <= F_ACCEPT);
+
+  /* Call callback when route is exported */
+  if (cb && (v > 0))
+    cb(p, data, rt);
 
    /* Discard temporary rte */
   if (rt != n->routes)

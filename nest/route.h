@@ -16,6 +16,7 @@
 struct ea_list;
 struct protocol;
 struct proto;
+struct channel;
 struct rte_src;
 struct symbol;
 struct filter;
@@ -296,7 +297,7 @@ rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
-int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter);
+int rt_examine(struct channel *c, net_addr *a, void (*cb)(struct proto *, void *, rte *), void *data);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, struct ea_list **tmpa, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
