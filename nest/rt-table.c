@@ -1436,33 +1436,6 @@ rt_examine(struct channel *c, net_addr *a, void (*cb)(struct proto *, void *, rt
   return v > 0;
 }
 
-#if 0
-/* Sometimes protocols need to find one route in table without keeping their own copy.
- * rt_route finds the best route after applying filter.
- * As the routes may be temporary, successful find is announced by the callback.
- * Returns 1 if the callback was called.
- */
-int
-rt_route(struct channel *c, net_addr *n, void (*callback)(struct proto *, void *, rte *), void *data)
-{
-  net *r;
-
-  net_addr *n0 = alloca(n->length);
-  net_copy(n0, n);
-
-  while (1)
-  {
-    r = net_find(c->table, n0);
-    if (r && rte_is_valid(r->routes) && rt_examine2(r, c->proto, c->out_filter, callback, data))
-      return 1;
-    if (n0->pxlen == 0)
-      return 0;
-    n0->pxlen--;
-    net_normalize(n0);
-  }
-}
-#endif
-
 
 /**
  * rt_refresh_begin - start a refresh cycle
