@@ -177,10 +177,6 @@ pxlen4:
      if ($2 > IP4_MAX_PREFIX_LENGTH) cf_error("Invalid prefix length %u", $2);
      $$ = $2;
    }
- | ':' IP4 {
-     $$ = ip4_masklen($2);
-     if ($$ == 255) cf_error("Invalid netmask %I4", $2);
-   }
  ;
 
 net_ip4_: IP4 pxlen4

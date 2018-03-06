@@ -1234,8 +1234,7 @@ foot).
 	operator <cf/.type/. The type may be:
 
 	<cf/NET_IP4/ and <cf/NET_IP6/ prefixes hold an IP prefix. The literals
-	are written as <cf><m/ipaddress//<m/pxlen/</cf>,
-	or <cf><m>ipaddress</m>/<m>netmask</m></cf>. There are two special
+	are written as <cf><m/ipaddress//<m/pxlen/</cf>. There are two special
 	operators on these: <cf/.ip/ which extracts the IP address from the
 	pair, and <cf/.len/, which separates prefix length from the pair.
 	So <cf>1.2.0.0/16.len = 16</cf> is true.
