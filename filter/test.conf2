@@ -55,21 +55,20 @@ protocol static {
 			rip_metric = rip_metric + 5;
 			print rip_metric;
 
-#
-# TODO: uncomment this part after finishing BGP integration version
-#
-#			bgp_community = -empty-;
-#			print "hi";
-#			bgp_community = add(bgp_community, (1,2));
-#			print "hello";
-#			bgp_community = add(bgp_community, (2,3));
-#			bgp_community.add((4,5));
-#			print "community = ", bgp_community;
-#			bgp_community.delete((2,3));
-#			print "community = ", bgp_community;
-#			bgp_community.empty;
-#			print "community = ", bgp_community;
-#			print "done";
+			bgp_community = -empty-;
+			print "hi";
+			bgp_community = add(bgp_community, (1,2));
+			print "hello";
+			bgp_community = add(bgp_community, (2,3));
+			bgp_community.add((4,5));
+			print "community = ", bgp_community;
+			bgp_community.delete((2,3));
+			print "community = ", bgp_community;
+			bgp_community.empty;
+			print "community = ", bgp_community;
+			print "done";
+
+			accept;
 		};
 	};
 	route 0.0.0.0/0 via 195.113.31.113;
