@@ -1,5 +1,6 @@
 
 #include "nest/bird.h"
+#include "nest/iface.h"
 #include "lib/ip.h"
 #include "lib/net.h"
 #include "lib/flowspec.h"
@@ -89,6 +90,7 @@ int
 net_format(const net_addr *N, char *buf, int buflen)
 {
   net_addr_union *n = (void *) N;
+  struct iface *ifa;
   buf[0] = 0;
 
   switch (n->n.type)
@@ -119,9 +121,11 @@ net_format(const net_addr *N, char *buf, int buflen)
   case NET_FLOW6:
     return flow6_net_format(buf, buflen, &n->flow6);
   case NET_MREQ4:
-    return bsnprintf(buf, buflen, "%I4", n->mreq4.grp);
+    ifa = if_find_by_index(n->mreq4.ifindex);
+    return bsnprintf(buf, buflen, "(*, %I4, %s)", n->mreq4.grp, ifa ? ifa->name : "?");
   case NET_MREQ6:
-    return bsnprintf(buf, buflen, "%I6", n->mreq6.grp);
+    ifa = if_find_by_index(n->mreq6.ifindex);
+    return bsnprintf(buf, buflen, "(*, %I6, %s)", n->mreq6.grp, ifa ? ifa->name : "?");
   case NET_MGRP4:
     return bsnprintf(buf, buflen, "(*, %I4)", n->mgrp4.grp);
   case NET_MGRP6:
