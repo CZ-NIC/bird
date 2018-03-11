@@ -305,24 +305,34 @@ mkrt_rx_hook(sock *sk, uint len)
 {
   struct mkrt_proto *p = sk->data;
   struct igmpmsg *msg = (void *) sk->rbuf;
-  u8 igmp_type = * (u8 *) sk_rx_buffer(sk, &len);
 
-  switch (igmp_type)
+  /*
+   * We need to distinguish kernel upcalls from regular traffic. This can be
+   * done with field im_mbz, which must-be-zero for upcalls, but it overlaps
+   * with protocol number in IP header so it is nonzero for regular traffic.
+   */
+  if (msg->im_mbz)
+  {
+    /* Regular IGMP messages, just delegate them */
+    struct mif *mif = mif_find_by_index(p->mif_group, sk->lifindex);
+    mif_forward_igmp(p->mif_group, mif, sk, len);
+    return 1;
+  }
+
+  /* Upcalls from kernel, handle then */
+  switch (msg->im_msgtype)
   {
   case IGMPMSG_NOCACHE:
     mkrt_resolve_mfc(p, ip4_from_in4(msg->im_src), ip4_from_in4(msg->im_dst), msg->im_vif);
-    return 1;
+    break;
 
   case IGMPMSG_WRONGVIF:
   case IGMPMSG_WHOLEPKT:
-    /* These should not happen unless some PIM-specific MRT options are enabled */
-    return 1;
-
   default:
-    // FIXME: Use sk->lifindex or msg->im_vif ?
-    mif_forward_igmp(p->mif_group, NULL, sk, len);
-    return 1;
+    /* These should not happen unless some PIM-specific MRT options are enabled */
+    break;
   }
+  return 1;
 }
 
 static void

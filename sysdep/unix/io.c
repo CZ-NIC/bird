@@ -852,7 +852,8 @@ sk_free(resource *r)
       current_sock = sk_next(s);
     if (s == stored_sock)
       stored_sock = sk_next(s);
-    rem_node(&s->n);
+    if (NODE_VALID(&s->n))
+      rem_node(&s->n);
   }
 
   if (s->type != SK_SSH && s->type != SK_SSH_ACTIVE)
