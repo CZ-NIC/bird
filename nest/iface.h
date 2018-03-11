@@ -132,6 +132,8 @@ struct iface *if_get_by_name(char *);
 void if_recalc_all_preferred_addresses(void);
 
 struct mif *mif_get(struct mif_group *grp, struct iface *iface);
+struct mif *mif_find(struct mif_group *grp, struct iface *iface);
+struct mif *mif_find_by_index(struct mif_group *grp, uint index);
 void mif_free(struct mif_group *grp, struct mif *mif);
 
 #define MIFS_SET(mif,m)		((m) |= (1 << (mif)->index))

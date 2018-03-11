@@ -765,6 +765,26 @@ mif_get(struct mif_group *grp, struct iface *iface)
   return mif;
 }
 
+struct mif *
+mif_find(struct mif_group *grp, struct iface *iface)
+{
+  WALK_ARRAY(grp->mifs, MIFS_MAX, mif)
+    if (mif && (mif->iface == iface))
+      return mif;
+
+  return NULL;
+}
+
+struct mif *
+mif_find_by_index(struct mif_group *grp, uint index)
+{
+  WALK_ARRAY(grp->mifs, MIFS_MAX, mif)
+    if (mif && (mif->iface->index == index))
+      return mif;
+
+  return NULL;
+}
+
 void
 mif_free(struct mif_group *grp, struct mif *mif)
 {
@@ -801,7 +821,7 @@ mif_listen_igmp(struct mif_group *grp, struct mif *mif, sock *s)
  * modify it to preserve it for others.
  */
 static void
-mif_do_forward(sock *src, sock *dst, int len)
+mif_do_forward(sock *src, sock *dst, uint len)
 {
   if (!dst->rx_hook)
     return;
