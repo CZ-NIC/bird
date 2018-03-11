@@ -422,7 +422,7 @@ typedef struct rta {
 #define RTS_PIPE 12			/* Inter-table wormhole */
 #define RTS_BABEL 13			/* Babel route */
 #define RTS_RPKI 14			/* Route Origin Authorization */
-
+#define RTS_IGMP 15			/* IGMP multicast request */
 
 #define RTC_UNICAST 0
 #define RTC_BROADCAST 1
@@ -688,6 +688,7 @@ extern struct protocol *attr_class_to_protocol[EAP_MAX];
 #define DEF_PREF_RIP		120	/* RIP */
 #define DEF_PREF_BGP		100	/* BGP */
 #define DEF_PREF_RPKI		100	/* RPKI */
+#define DEF_PREF_IGMP		100	/* IGMP */
 #define DEF_PREF_INHERITED	10	/* Routes inherited from other routing daemons */
 
 /*

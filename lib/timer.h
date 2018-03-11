@@ -53,6 +53,7 @@ extern btime boot_time;
 timer *tm_new(pool *p);
 void tm_set(timer *t, btime when);
 void tm_start(timer *t, btime after);
+void tm_shift(timer *t, btime delta);
 void tm_stop(timer *t);
 
 static inline int

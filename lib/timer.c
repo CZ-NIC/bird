@@ -173,6 +173,14 @@ tm_start(timer *t, btime after)
 }
 
 void
+tm_shift(timer *t, btime delta)
+{
+  btime now = current_time();
+  if (t->expires && (t->expires > now))
+    tm_set(t, MAX(now, t->expires + delta));
+}
+
+void
 tm_stop(timer *t)
 {
   if (!t->expires)
