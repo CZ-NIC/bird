@@ -27,6 +27,7 @@
   F(FI_PAIR_CONSTRUCT,		'm', 'p') \
   F(FI_EC_CONSTRUCT,		'm', 'c') \
   F(FI_LC_CONSTRUCT,		'm', 'l') \
+  F(FI_PATHMASK_CONSTRUCT,	'm', 'P') \
   F(FI_NEQ,			'!', '=') \
   F(FI_EQ,			'=', '=') \
   F(FI_LT,			  0, '<') \
@@ -181,7 +182,6 @@ int f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, s
 struct f_val f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool);
 struct f_val f_eval(struct f_inst *expr, struct linpool *tmp_pool);
 uint f_eval_int(struct f_inst *expr);
-u32 f_eval_asn(struct f_inst *expr);
 
 char *filter_name(struct filter *filter);
 int filter_same(struct filter *new, struct filter *old);
