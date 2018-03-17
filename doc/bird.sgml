@@ -293,6 +293,20 @@ routes are:
 	<item>Route next hops (see below)
 </itemize>
 
+<sect1>IPv6 source-specific routes
+<label id="ip-sadr-routes">
+
+<p>The IPv6 routes containing both destination and source prefix. They are used
+for source-specific routing (SSR), also called source-address dependent routing
+(SADR), see <rfc id="8043">. Currently limited mostly to the Babel protocol.
+Configuration keyword is <cf/ipv6 sadr/.
+
+<itemize>
+	<item>(PK) Route destination (IP prefix together with its length)
+	<item>(PK) Route source (IP prefix together with its length)
+	<item>Route next hops (see below)
+</itemize>
+
 <sect1>VPN IPv4 and IPv6 routes
 <label id="vpn-routes">
 
@@ -1239,6 +1253,12 @@ foot).
 	pair, and <cf/.len/, which separates prefix length from the pair.
 	So <cf>1.2.0.0/16.len = 16</cf> is true.
 
+	<cf/NET_IP6_SADR/ nettype holds both destination and source IPv6
+	prefix. The literals are written as <cf><m/ipaddress//<m/pxlen/ from
+	<m/ipaddress//<m/pxlen/</cf>, where the first part is the destination
+	prefix and the second art is the source prefix. They support the same
+	operators as IP prefixes, but just for the destination part.
+
 	<cf/NET_VPN4/ and <cf/NET_VPN6/ prefixes hold an IP prefix with VPN
 	Route Distinguisher (<rfc id="4364">). They support the same special
 	operators as IP prefixes, and also <cf/.rd/ which extracts the Route
@@ -1459,6 +1479,7 @@ foot).
 	lclists, with LCs instead of pairs as arguments.
 </descrip>
 
+
 <sect>Operators
 <label id="operators">
 
@@ -1651,19 +1672,25 @@ cases desirable.
 routes over the same IPv6 transport. For sending and receiving Babel packets,
 only a link-local IPv6 address is needed.
 
-<p>BIRD does not implement any Babel extensions, but will coexist with
-implementations using extensions (and will just ignore extension messages).
+<p>BIRD implements an extension for IPv6 source-specific routing (SSR or SADR),
+but must be configured accordingly to use it. SADR-enabled Babel router can
+interoperate with non-SADR Babel router, but the later would ignore routes
+with specific (non-zero) source prefix.
 
 <sect1>Configuration
 <label id="babel-config">
 
-<p>Babel supports no global configuration options apart from those common to all
-other protocols, but supports the following per-interface configuration options:
+<p>The Babel protocol support both IPv4 and IPv6 channels; both can be
+configured simultaneously. It can also be configured with <ref
+id="ip-sadr-routes" name="IPv6 SADR"> channel instead of regular IPv6
+channel, in such case SADR support is enabled. Babel supports no global
+configuration options apart from those common to all other protocols, but
+supports the following per-interface configuration options:
 
 <code>
 protocol babel [<name>] {
 	ipv4 { <channel config> };
-	ipv6 { <channel config> };
+	ipv6 [sadr] { <channel config> };
 	interface <interface pattern> {
 		type <wired|wireless>;
 		rxcost <number>;
@@ -1683,8 +1710,8 @@ protocol babel [<name>] {
 </code>
 
 <descrip>
-      <tag><label id="babel-channel">ipv4|ipv6 <m/channel config/</tag>
-      The supported channels are IPv4 and IPv6.
+      <tag><label id="babel-channel">ipv4 | ipv6 [sadr] <m/channel config/</tag>
+      The supported channels are IPv4, IPv6, and IPv6 SADR.
 
       <tag><label id="babel-type">type wired|wireless </tag>
       This option specifies the interface type: Wired or wireless. On wired
@@ -2124,7 +2151,7 @@ using the following configuration parameters:
 	but in such cases you need to tweak the BGP paths manually in the filters
 	to get consistent behavior.) Optional <cf/ip/ argument specifies a source
 	address, equivalent to the <cf/source address/ option (see below).
-	Optional </cf/port> argument specifies the local BGP port instead of
+	Optional <cf/port/ argument specifies the local BGP port instead of
 	standard port 179. The parameter may be used multiple times with
 	different sub-options (e.g., both <cf/local 10.0.0.1 as 65000;/ and
 	<cf/local 10.0.0.1; local as 65000;/ are valid). This parameter is
@@ -2745,16 +2772,17 @@ protocol device {
 <p>The Direct protocol is a simple generator of device routes for all the
 directly connected networks according to the list of interfaces provided by the
 kernel via the Device protocol. The Direct protocol supports both IPv4 and IPv6
-channels.
+channels; both can be configured simultaneously. It can also be configured with
+<ref id="ip-sadr-routes" name="IPv6 SADR"> channel instead of regular IPv6
+channel in order to be used together with SADR-enabled Babel protocol.
 
 <p>The question is whether it is a good idea to have such device routes in BIRD
 routing table. OS kernel usually handles device routes for directly connected
 networks by itself so we don't need (and don't want) to export these routes to
 the kernel protocol. OSPF protocol creates device routes for its interfaces
-itself and BGP protocol is usually used for exporting aggregate routes. Although
-there are some use cases that use the direct protocol (like abusing eBGP as an
-IGP routing protocol), in most cases it is not needed to have these device
-routes in BIRD routing table and to use the direct protocol.
+itself and BGP protocol is usually used for exporting aggregate routes. But the
+Direct protocol is necessary for distance-vector protocols like RIP or Babel to
+announce local networks.
 
 <p>There is one notable case when you definitely want to use the direct protocol
 -- running BIRD on BSD systems. Having high priority device routes for directly
@@ -2829,8 +2857,10 @@ kernel protocols to the same routing table and changing route destination
 (gateway) in an export filter of a kernel protocol does not work. Both
 limitations can be overcome using another routing table and the pipe protocol.
 
-<p>The Kernel protocol supports both IPv4 and IPv6 channels; only one of them
-can be configured in each protocol instance.
+<p>The Kernel protocol supports both IPv4 and IPv6 channels; only one channel
+can be configured in each protocol instance. On Linux, it also supports <ref
+id="ip-sadr-routes" name="IPv6 SADR"> and <ref id="mpls-routes" name="MPLS">
+channels.
 
 <sect1>Configuration
 <label id="krt-config">
@@ -4281,6 +4311,7 @@ protocol rip {
 
 
 <sect>RPKI
+<label id="rpki">
 
 <sect1>Introduction
 
