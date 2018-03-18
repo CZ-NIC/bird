@@ -2076,6 +2076,13 @@ rt_unlock_table(rtable *r)
     }
 }
 
+static struct rtable_config *
+rt_find_table_config(struct config *cf, char *name)
+{
+  struct symbol *sym = cf_find_symbol(cf, name);
+  return (sym && (sym->class == SYM_TABLE)) ? sym->def : NULL;
+}
+
 /**
  * rt_commit - commit new routing table configuration
  * @new: new configuration
@@ -2101,11 +2108,10 @@ rt_commit(struct config *new, struct config *old)
 	  rtable *ot = o->table;
 	  if (!ot->deleted)
 	    {
-	      struct symbol *sym = cf_find_symbol(new, o->name);
-	      if (sym && sym->class == SYM_TABLE && !new->shutdown)
+	      r = rt_find_table_config(new, o->name);
+	      if (r && (r->addr_type == o->addr_type) && !new->shutdown)
 		{
 		  DBG("\t%s: same\n", o->name);
-		  r = sym->def;
 		  r->table = ot;
 		  ot->name = r->name;
 		  ot->config = r;
