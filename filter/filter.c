@@ -97,8 +97,7 @@ pm_format(struct f_path_mask *p, buffer *buf)
       break;
 
     case PM_ASN_EXPR:
-      buffer_print(buf, "%u ", f_eval_asn((struct f_inst *) p->val));
-      break;
+      ASSERT(0);
     }
 
     p = p->next;
@@ -763,6 +762,32 @@ interpret(struct f_inst *what)
       res.type = T_LC;
       res.val.lc = (lcomm) { v1.val.i, v2.val.i, v3.val.i };
 
+      break;
+    }
+
+  case FI_PATHMASK_CONSTRUCT:
+    {
+      struct f_path_mask *tt = what->a1.p, *vbegin, **vv = &vbegin;
+
+      while (tt) {
+	*vv = lp_alloc(f_pool, sizeof(struct f_path_mask));
+	if (tt->kind == PM_ASN_EXPR) {
+	  struct f_val res = interpret((struct f_inst *) tt->val);
+	  (*vv)->kind = PM_ASN;
+	  if (res.type != T_INT) {
+	    runtime( "Error resolving path mask template: value not an integer" );
+	    return (struct f_val) { .type = T_VOID };
+	  }
+
+	  (*vv)->val = res.val.i;
+	} else {
+	  **vv = *tt;
+	}
+	tt = tt->next;
+	vv = &((*vv)->next);
+      }
+
+      res = (struct f_val) { .type = T_PATH_MASK, .val.path_mask = vbegin };
       break;
     }
 
@@ -1616,6 +1641,8 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   case FI_LT:
   case FI_LTE: TWOARGS; break;
 
+  case FI_PATHMASK_CONSTRUCT: if (!pm_same(f1->a1.p, f2->a1.p)) return 0; break;
+
   case FI_NOT: ONEARG; break;
   case FI_NOT_MATCH:
   case FI_MATCH: TWOARGS; break;
@@ -1837,14 +1864,6 @@ f_eval_int(struct f_inst *expr)
     cf_error("Integer expression expected");
 
   return res.val.i;
-}
-
-u32
-f_eval_asn(struct f_inst *expr)
-{
-  /* Called as a part of another interpret call, therefore no log_reset() */
-  struct f_val res = interpret(expr);
-  return (res.type == T_INT) ? res.val.i : 0;
 }
 
 /**

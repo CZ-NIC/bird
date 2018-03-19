@@ -315,6 +315,27 @@ f_generate_lc(struct f_inst *t1, struct f_inst *t2, struct f_inst *t3)
   return rv;
 }
 
+static inline struct f_inst *
+f_generate_path_mask(struct f_path_mask *t)
+{
+  for (struct f_path_mask *tt = t; tt; tt = tt->next) {
+    if (tt->kind == PM_ASN_EXPR) {
+      struct f_inst *mrv = f_new_inst(FI_PATHMASK_CONSTRUCT);
+      mrv->a1.p = t;
+      return mrv;
+    }
+  }
+
+  NEW_F_VAL;
+  val->type = T_PATH_MASK;
+  val->val.path_mask = t;
+
+  struct f_inst *rv = f_new_inst(FI_CONSTANT_INDIRECT);
+  rv->a1.p = val;
+
+  return rv;
+}
+
 /*
  * Remove all new lines and doubled whitespaces
  * and convert all tabulators to spaces
@@ -775,13 +796,13 @@ constant:
  | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(FI_CONSTANT); $$->aux = T_SET; $$->a2.p = build_tree($2); DBG( "ook\n" ); }
  | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_PREFIX_SET;  $$->a2.p = $2; }
  | ENUM	  { $$ = f_new_inst(FI_CONSTANT); $$->aux = $1 >> 16; $$->a2.i = $1 & 0xffff; }
- | bgp_path { NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); val->type = T_PATH_MASK; val->val.path_mask = $1; $$->a1.p = val; }
  ;
 
 constructor:
    '(' term ',' term ')' { $$ = f_generate_dpair($2, $4); }
  | '(' ec_kind ',' term ',' term ')' { $$ = f_generate_ec($2, $4, $6); }
  | '(' term ',' term ',' term ')' { $$ = f_generate_lc($2, $4, $6); }
+ | bgp_path { $$ = f_generate_path_mask($1); }
  ;
 
 
