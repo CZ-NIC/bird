@@ -660,9 +660,9 @@ agreement").
 	restricted to interfaces assigned to the VRF and will use sockets bound
 	to the VRF. Appropriate VRF interface must exist on OS level. For kernel
 	protocol, an appropriate table still must be explicitly selected by
-	<cf/table/ option. Note that the VRF support in BIRD and Linux kernel
-	(4.11) is still in development and is currently problematic outside of
-	multihop BGP.
+	<cf/table/ option. Note that for proper VRF support it is necessary to
+	use Linux kernel version at least 4.14, older versions have limited VRF
+	implementation.
 
 	<tag><label id="proto-channel"><m/channel name/ [{<m/channel config/}]</tag>
 	Every channel must be explicitly stated. See the protocol-specific
