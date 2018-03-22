@@ -1,4 +1,4 @@
-Version 2.0.2 (2018-03-xx)
+Version 2.0.2 (2018-03-22)
   o Source-specific routing support for Linux kernel and Babel
   o BGP: New option 'disable after cease'
   o Filter: Allow silent filter execution
