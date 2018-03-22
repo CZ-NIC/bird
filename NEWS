@@ -1,3 +1,15 @@
+Version 2.0.2 (2018-03-xx)
+  o Source-specific routing support for Linux kernel and Babel
+  o BGP: New option 'disable after cease'
+  o Filter: Allow silent filter execution
+  o Filter: Fixed stack overflow in BGP mask expressions.
+  o Several bugfixes
+
+  Notes:
+
+  Syntax prefix:netmask for IPv4 prefixes was dropped. Just use prefix/pxlen.
+
+
 Version 2.0.1 (2018-01-16)
   o Linux MPLS kernel support
   o Better handling of channels inherited from templates
