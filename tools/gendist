@@ -9,7 +9,7 @@ REL=bird-$VERSION
 DREL=bird-doc-$VERSION
 T=/tmp/bird
 set -e
-AC=`if [ -x /usr/bin/autoconf2.50 ] ; then echo autoconf2.50 ; else echo autoconf ; fi`
+AC=autoreconf
 $AC
 ./configure
 make docs
