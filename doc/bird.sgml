@@ -2587,17 +2587,17 @@ be used in explicit configuration.
 some of them (marked with `<tt/O/') are optional.
 
 <descrip>
-	<tag><label id="rta-bgp-path">bgppath bgp_path/</tag>
+	<tag><label id="rta-bgp-path">bgppath bgp_path</tag>
 	Sequence of AS numbers describing the AS path the packet will travel
 	through when forwarded according to the particular route. In case of
 	internal BGP it doesn't contain the number of the local AS.
 
-	<tag><label id="rta-bgp-local-pref">int bgp_local_pref/ [I]</tag>
+	<tag><label id="rta-bgp-local-pref">int bgp_local_pref [I]</tag>
 	Local preference value used for selection among multiple BGP routes (see
 	the selection rules above). It's used as an additional metric which is
 	propagated through the whole local AS.
 
-	<tag><label id="rta-bgp-med">int bgp_med/ [O]</tag>
+	<tag><label id="rta-bgp-med">int bgp_med [O]</tag>
 	The Multiple Exit Discriminator of the route is an optional attribute
 	which is used on external (inter-AS) links to convey to an adjacent AS
 	the optimal entry point into the local AS. The received attribute is
@@ -2608,20 +2608,20 @@ some of them (marked with `<tt/O/') are optional.
 	external BGP instance. See <rfc id="4451"> for further discussion of
 	BGP MED attribute.
 
-	<tag><label id="rta-bgp-origin">enum bgp_origin/</tag>
+	<tag><label id="rta-bgp-origin">enum bgp_origin</tag>
 	Origin of the route: either <cf/ORIGIN_IGP/ if the route has originated
 	in an interior routing protocol or <cf/ORIGIN_EGP/ if it's been imported
 	from the <tt>EGP</tt> protocol (nowadays it seems to be obsolete) or
 	<cf/ORIGIN_INCOMPLETE/ if the origin is unknown.
 
-	<tag><label id="rta-bgp-next-hop">ip bgp_next_hop/</tag>
+	<tag><label id="rta-bgp-next-hop">ip bgp_next_hop</tag>
 	Next hop to be used for forwarding of packets to this destination. On
 	internal BGP connections, it's an address of the originating router if
 	it's inside the local AS or a boundary router the packet will leave the
 	AS through if it's an exterior route, so each BGP speaker within the AS
 	has a chance to use the shortest interior path possible to this point.
 
-	<tag><label id="rta-bgp-atomic-aggr">void bgp_atomic_aggr/ [O]</tag>
+	<tag><label id="rta-bgp-atomic-aggr">void bgp_atomic_aggr [O]</tag>
 	This is an optional attribute which carries no value, but the sole
 	presence of which indicates that the route has been aggregated from
 	multiple routes by some router on the path from the originator.
@@ -2629,7 +2629,7 @@ some of them (marked with `<tt/O/') are optional.
 <!-- we don't handle aggregators right since they are of a very obscure type
 	<tag>bgp_aggregator</tag>
 -->
-	<tag><label id="rta-bgp-community">clist bgp_community/ [O]</tag>
+	<tag><label id="rta-bgp-community">clist bgp_community [O]</tag>
 	List of community values associated with the route. Each such value is a
 	pair (represented as a <cf/pair/ data type inside the filters) of 16-bit
 	integers, the first of them containing the number of the AS which
@@ -2640,14 +2640,14 @@ some of them (marked with `<tt/O/') are optional.
 	freedom about which community attributes it defines and what will their
 	semantics be.
 
-	<tag><label id="rta-bgp-ext-community">eclist bgp_ext_community/ [O]</tag>
+	<tag><label id="rta-bgp-ext-community">eclist bgp_ext_community [O]</tag>
 	List of extended community values associated with the route. Extended
 	communities have similar usage as plain communities, but they have an
 	extended range (to allow 4B ASNs) and a nontrivial structure with a type
 	field. Individual community values are represented using an <cf/ec/ data
 	type inside the filters.
 
-	<tag><label id="rta-bgp-large-community">lclist <cf/bgp_large_community/ [O]</tag>
+	<tag><label id="rta-bgp-large-community">lclist bgp_large_community [O]</tag>
 	List of large community values associated with the route. Large BGP
 	communities is another variant of communities, but contrary to extended
 	communities they behave very much the same way as regular communities,
@@ -2655,12 +2655,12 @@ some of them (marked with `<tt/O/') are optional.
 	Individual community values are represented using an <cf/lc/ data type
 	inside the filters.
 
-	<tag><label id="rta-bgp-originator-id">quad bgp_originator_id/ [I, O]</tag>
+	<tag><label id="rta-bgp-originator-id">quad bgp_originator_id [I, O]</tag>
 	This attribute is created by the route reflector when reflecting the
 	route and contains the router ID of the originator of the route in the
 	local AS.
 
-	<tag><label id="rta-bgp-cluster-list">clist bgp_cluster_list/ [I, O]</tag>
+	<tag><label id="rta-bgp-cluster-list">clist bgp_cluster_list [I, O]</tag>
 	This attribute contains a list of cluster IDs of route reflectors. Each
 	route reflector prepends its cluster ID when reflecting the route.
 </descrip>
@@ -2922,26 +2922,26 @@ translated to appropriate system (and OS-specific) route attributes. We support
 these attributes:
 
 <descrip>
-	<tag><label id="rta-krt-source">int krt_source/</tag>
+	<tag><label id="rta-krt-source">int krt_source</tag>
 	The original source of the imported kernel route. The value is
 	system-dependent. On Linux, it is a value of the protocol field of the
 	route. See /etc/iproute2/rt_protos for common values. On BSD, it is
 	based on STATIC and PROTOx flags. The attribute is read-only.
 
-	<tag><label id="rta-krt-metric">int krt_metric/</tag> (Linux)
+	<tag><label id="rta-krt-metric">int krt_metric</tag> (Linux)
 	The kernel metric of the route. When multiple same routes are in a
 	kernel routing table, the Linux kernel chooses one with lower metric.
 	Note that preferred way to set kernel metric is to use protocol option
 	<cf/metric/, unless per-route metric values are needed.
 
-	<tag><label id="rta-krt-prefsrc">ip krt_prefsrc/</tag> (Linux)
+	<tag><label id="rta-krt-prefsrc">ip krt_prefsrc</tag> (Linux)
 	The preferred source address. Used in source address selection for
 	outgoing packets. Has to be one of the IP addresses of the router.
 
-	<tag><label id="rta-krt-realm">int krt_realm/</tag> (Linux)
+	<tag><label id="rta-krt-realm">int krt_realm</tag> (Linux)
 	The realm of the route. Can be used for traffic classification.
 
-	<tag><label id="rta-krt-scope">int krt_scope/</tag> (Linux IPv4)
+	<tag><label id="rta-krt-scope">int krt_scope</tag> (Linux IPv4)
 	The scope of the route. Valid values are 0-254, although Linux kernel
 	may reject some values depending on route type and nexthop. It is
 	supposed to represent `indirectness' of the route, where nexthops of
@@ -3963,13 +3963,13 @@ definitions, prefix definitions and DNS definitions:
 <p>RAdv defines two route attributes:
 
 <descrip>
-	<tag><label id="rta-ra-preference">enum ra_preference/</tag>
+	<tag><label id="rta-ra-preference">enum ra_preference</tag>
 	The preference of the route. The value can be <it/RA_PREF_LOW/,
 	<it/RA_PREF_MEDIUM/ or <it/RA_PREF_HIGH/. If the attribute is not set,
 	the <ref id="radv-iface-route-preference" name="route preference">
 	option is used.
 
-	<tag><label id="rta-ra-lifetime">int ra_lifetime/</tag>
+	<tag><label id="rta-ra-lifetime">int ra_lifetime</tag>
 	The advertised lifetime of the route, in seconds. The special value of
 	0xffffffff represents infinity. If the attribute is not set, the
 	<ref id="radv-iface-route-lifetime" name="route lifetime">
@@ -4275,13 +4275,13 @@ protocol rip [ng] [&lt;name&gt;] {
 <p>RIP defines two route attributes:
 
 <descrip>
-	<tag>int <cf/rip_metric/</tag>
+	<tag><label id="rta-rip-metric">int rip_metric</tag>
 	RIP metric of the route (ranging from 0 to <cf/infinity/). When routes
 	from different RIP instances are available and all of them have the same
 	preference, BIRD prefers the route with lowest <cf/rip_metric/. When a
 	non-RIP route is exported to RIP, the default metric is 1.
 
-	<tag><label id="rta-rip-tag">int rip_tag/</tag>
+	<tag><label id="rta-rip-tag">int rip_tag</tag>
 	RIP route tag: a 16-bit number which can be used to carry additional
 	information with the route (for example, an originating AS number in
 	case of external routes). When a non-RIP route is exported to RIP, the
