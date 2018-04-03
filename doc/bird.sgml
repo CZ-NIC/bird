@@ -2384,6 +2384,19 @@ using the following configuration parameters:
 	disable the instance automatically and wait for an administrator to fix
 	the problem manually. Default: off.
 
+	<tag><label id="bgp-disable-after-cease">disable after cease <m/switch/|<m/set-of-flags/</tag>
+	When a Cease notification is received, disable the instance
+	automatically and wait for an administrator to fix the problem manually.
+	When used with <m/switch/ argument, it means handle every Cease subtype
+	with the exception of <cf/connection collision/. Default: off.
+
+	The <m/set-of-flags/ allows to narrow down relevant Cease subtypes. The
+	syntax is <cf>{<m/flag/ [, <m/.../] }</cf>, where flags are: <cf/cease/,
+	<cf/prefix limit hit/, <cf/administrative shutdown/,
+	<cf/peer deconfigured/, <cf/administrative reset/,
+	<cf/connection rejected/, <cf/configuration change/,
+	<cf/connection collision/, <cf/out of resources/.
+
 	<tag><label id="bgp-hold-time">hold time <m/number/</tag>
 	Time in seconds to wait for a Keepalive message from the other side
 	before considering the connection stale. Default: depends on agreement
