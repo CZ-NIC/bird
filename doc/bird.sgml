@@ -2562,6 +2562,15 @@ be used in explicit configuration.
 	explicitly (to conserve memory). This option requires that the connected
 	routing table is <ref id="dsc-table-sorted" name="sorted">. Default: off.
 
+	<tag><label id="bgp-extended-next-hop">extended next hop <m/switch/</tag>
+	BGP expects that announced next hops have the same address family as
+	associated network prefixes. This option provides an extension to use
+	IPv4 next hops with IPv6 prefixes and vice versa. For IPv4 / VPNv4
+	channels, the behavior is controlled by the Extended Next Hop Encoding
+	capability, as described in <rfc id="5549">. For IPv6 / VPNv6 channels,
+	just IPv4-mapped IPv6 addresses are used, as described in
+	<rfc id="4798"> and <rfc id="4659">. Default: off.
+
 	<tag><label id="bgp-add-paths">add paths <m/switch/|rx|tx</tag>
 	Standard BGP can propagate only one path (route) per destination network
 	(usually the selected one). This option controls the add-path protocol
