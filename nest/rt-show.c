@@ -89,7 +89,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
       break;
   }
 
-  tm_format_datetime(tm, &config->tf_route, e->lastmod);
+  tm_format_time(tm, &config->tf_route, e->lastmod);
   if (ipa_nonzero(a->from) && !ipa_equal(a->from, a->nh.gw))
     bsprintf(from, " from %I", a->from);
   else
@@ -113,7 +113,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
   if (d->last_table != d->tab)
     rt_show_table(c, d);
 
-  cli_printf(c, -1007, "%-18s%s %s [%s %s%s]%s%s", ia, ai, rta_dest_name(a->dest),
+  cli_printf(c, -1007, "%-20s%s %s [%s %s%s]%s%s", ia, ai, rta_dest_name(a->dest),
 	     a->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
 
   if (a->dest == RTD_UNICAST)
@@ -121,9 +121,10 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
     {
       char mpls[MPLS_MAX_LABEL_STACK*12 + 5], *lsp = mpls;
       char *onlink = (nh->flags & RNF_ONLINK) ? " onlink" : "";
+      char weight[16] = "";
 
       if (nh->labels)
-        {
+	{
 	  lsp += bsprintf(lsp, " mpls %d", nh->label[0]);
 	  for (int i=1;i<nh->labels; i++)
 	    lsp += bsprintf(lsp, "/%d", nh->label[i]);
@@ -131,11 +132,14 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
       *lsp = '\0';
 
       if (a->nh.next)
-	cli_printf(c, -1007, "\tvia %I%s on %s%s weight %d",
-		   nh->gw, mpls, nh->iface->name, onlink, nh->weight + 1);
+	bsprintf(weight, " weight %d", nh->weight + 1);
+
+      if (ipa_nonzero(nh->gw))
+	cli_printf(c, -1007, "\tvia %I on %s%s%s%s",
+		   nh->gw, nh->iface->name, mpls, onlink, weight);
       else
-	cli_printf(c, -1007, "\tvia %I%s on %s%s",
-		   nh->gw, mpls, nh->iface->name, onlink);
+	cli_printf(c, -1007, "\tdev %s%s%s",
+		   nh->iface->name, mpls,  onlink, weight);
     }
 
   if (d->verbose)
@@ -189,7 +193,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d, const uint addr_type)
 
       /* Special case for merged export */
       if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
-        {
+	{
 	  rte *rt_free;
 	  e = rt_export_merged(ec, n, &rt_free, &tmpa, c->show_pool, 1);
 	  pass = 1;
@@ -216,7 +220,8 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d, const uint addr_type)
 	       * command may change the export filter and do not update routes.
 	       */
 	      int do_export = (ic > 0) ||
-		(f_run(ec->out_filter, &e, &tmpa, c->show_pool, FF_FORCE_TMPATTR) <= F_ACCEPT);
+		(f_run(ec->out_filter, &e, &tmpa, c->show_pool,
+		       FF_FORCE_TMPATTR | FF_SILENT) <= F_ACCEPT);
 
 	      if (do_export != (d->export_mode == RSEM_EXPORT))
 		goto skip;
@@ -479,4 +484,3 @@ rt_show(struct rt_show_data *d)
       cli_msg(8001, "Network not found");
   }
 }
-

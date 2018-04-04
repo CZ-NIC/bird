@@ -30,7 +30,8 @@
  * when the protocol has explicitly requested it via the %NEF_STICKY
  * flag because it wishes to be notified when the node will again become
  * a neighbor. Such entries are enqueued in a special list which is walked
- * whenever an interface changes its state to up.
+ * whenever an interface changes its state to up. Neighbor entry VRF
+ * association is implied by respective protocol.
  *
  * When a neighbor event occurs (a neighbor gets disconnected or a sticky
  * inactive neighbor becomes connected), the protocol hook neigh_notify()
@@ -153,7 +154,8 @@ neigh_find2(struct proto *p, ip_addr *a, struct iface *ifa, unsigned flags)
     }
   else
     WALK_LIST(i, iface_list)
-      if ((scope = if_connected(a, i, &addr)) >= 0)
+      if ((!p->vrf || p->vrf == i->master) &&
+	  ((scope = if_connected(a, i, &addr)) >= 0))
 	{
 	  ifa = i;
 	  break;

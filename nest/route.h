@@ -11,7 +11,6 @@
 
 #include "lib/lists.h"
 #include "lib/resource.h"
-#include "sysdep/unix/timer.h"
 #include "lib/net.h"
 
 struct ea_list;
@@ -75,7 +74,7 @@ static inline struct fib_node * fib_user_to_node(struct fib *f, void *e)
 void fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offset, uint hash_order, fib_init_fn init);
 void *fib_find(struct fib *, const net_addr *);	/* Find or return NULL if doesn't exist */
 void *fib_get_chain(struct fib *f, const net_addr *a); /* Find first node in linked list from hash table */
-void *fib_get(struct fib *, const net_addr *); 	/* Find or create new if nonexistent */
+void *fib_get(struct fib *, const net_addr *);	/* Find or create new if nonexistent */
 void *fib_route(struct fib *, const net_addr *); /* Longest-match routing lookup */
 void fib_delete(struct fib *, void *);	/* Remove fib entry */
 void fib_free(struct fib *);		/* Destroy the fib */
@@ -105,7 +104,7 @@ void fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uin
 	type *z;						\
 	for(;;) {						\
 	  if (!fn_)						\
-            {							\
+	    {							\
 	       if (++hpos_ >= count_)				\
 		 break;						\
 	       fn_ = (fib)->hash_table[hpos_];			\
@@ -159,8 +158,8 @@ typedef struct rtable {
 					 * obstacle from this routing table.
 					 */
   struct event *rt_event;		/* Routing table event */
+  btime gc_time;			/* Time of last GC */
   int gc_counter;			/* Number of operations since last GC */
-  bird_clock_t gc_time;			/* Time of last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
@@ -213,7 +212,7 @@ typedef struct rte {
   byte flags;				/* Flags (REF_...) */
   byte pflags;				/* Protocol-specific flags */
   word pref;				/* Route preference */
-  bird_clock_t lastmod;			/* Last modified */
+  btime lastmod;			/* Last modified */
   union {				/* Protocol-dependent data (metrics etc.) */
 #ifdef CONFIG_RIP
     struct {
@@ -236,6 +235,7 @@ typedef struct rte {
 #endif
 #ifdef CONFIG_BABEL
     struct {
+      u16 seqno;			/* Babel seqno */
       u16 metric;			/* Babel metric */
       u64 router_id;			/* Babel router id */
     } babel;
@@ -282,7 +282,7 @@ void rt_preconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
 void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
-void rt_setup(pool *, rtable *, char *, struct rtable_config *);
+void rt_setup(pool *, rtable *, struct rtable_config *);
 static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
 static inline net *net_find_valid(rtable *tab, const net_addr *addr)
 { net *n = net_find(tab, addr); return (n && rte_is_valid(n->routes)) ? n : NULL; }
@@ -309,6 +309,8 @@ int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
+/* Default limit for ECMP next hops, defined in sysdep code */
+extern const int rt_default_ecmp;
 
 struct rt_show_data_rtable {
   node n;
@@ -470,7 +472,8 @@ typedef struct eattr {
 #define EAP_OSPF 3			/* OSPF */
 #define EAP_KRT 4			/* Kernel route attributes */
 #define EAP_BABEL 5			/* Babel attributes */
-#define EAP_MAX 6
+#define EAP_RADV 6			/* Router advertisment attributes */
+#define EAP_MAX 7
 
 #define EA_CODE(proto,id) (((proto) << 8) | (id))
 #define EA_PROTO(ea) ((ea) >> 8)
@@ -552,6 +555,46 @@ uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
+static inline eattr *
+ea_set_attr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, uintptr_t val)
+{
+  ea_list *a = lp_alloc(pool, sizeof(ea_list) + sizeof(eattr));
+  eattr *e = &a->attrs[0];
+
+  a->flags = EALF_SORTED;
+  a->count = 1;
+  a->next = *to;
+  *to = a;
+
+  e->id = id;
+  e->type = type;
+  e->flags = flags;
+
+  if (type & EAF_EMBEDDED)
+    e->u.data = (u32) val;
+  else
+    e->u.ptr = (struct adata *) val;
+
+  return e;
+}
+
+static inline void
+ea_set_attr_u32(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, u32 val)
+{ ea_set_attr(to, pool, id, flags, type, (uintptr_t) val); }
+
+static inline void
+ea_set_attr_ptr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, struct adata *val)
+{ ea_set_attr(to, pool, id, flags, type, (uintptr_t) val); }
+
+static inline void
+ea_set_attr_data(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, void *data, uint len)
+{
+  struct adata *a = lp_alloc_adata(pool, len);
+  memcpy(a->data, data, len);
+  ea_set_attr(to, pool, id, flags, type, (uintptr_t) a);
+}
+
+
 #define NEXTHOP_MAX_SIZE (sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
 
 static inline size_t nexthop_size(const struct nexthop *nh)
@@ -620,7 +663,7 @@ extern struct protocol *attr_class_to_protocol[EAP_MAX];
  *	Default protocol preferences
  */
 
-#define DEF_PREF_DIRECT	    	240	/* Directly connected */
+#define DEF_PREF_DIRECT		240	/* Directly connected */
 #define DEF_PREF_STATIC		200	/* Static route */
 #define DEF_PREF_OSPF		150	/* OSPF intra-area, inter-area and type 1 external routes */
 #define DEF_PREF_BABEL		130	/* Babel */

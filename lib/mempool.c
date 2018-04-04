@@ -11,7 +11,7 @@
  *
  * Linear memory pools are collections of memory blocks which
  * support very fast allocation of new blocks, but are able to free only
- * the whole collection at once.
+ * the whole collection at once (or in stack order).
  *
  * Example: Each configuration is described by a complex system of structures,
  * linked lists and function trees which are all allocated from a single linear
@@ -37,7 +37,7 @@ const int lp_chunk_size = sizeof(struct lp_chunk);
 struct linpool {
   resource r;
   byte *ptr, *end;
-  struct lp_chunk *first, *current, **plast;	/* Normal (reusable) chunks */
+  struct lp_chunk *first, *current;		/* Normal (reusable) chunks */
   struct lp_chunk *first_large;			/* Large chunks */
   uint chunk_size, threshold, total, total_large;
 };
@@ -69,7 +69,6 @@ linpool
 *lp_new(pool *p, uint blk)
 {
   linpool *m = ralloc(p, &lp_class);
-  m->plast = &m->first;
   m->chunk_size = blk;
   m->threshold = 3*blk/4;
   return m;
@@ -114,22 +113,25 @@ lp_alloc(linpool *m, uint size)
 	}
       else
 	{
-	  if (m->current)
+	  if (m->current && m->current->next)
 	    {
 	      /* Still have free chunks from previous incarnation (before lp_flush()) */
-	      c = m->current;
-	      m->current = c->next;
+	      c = m->current->next;
 	    }
 	  else
 	    {
 	      /* Need to allocate a new chunk */
 	      c = xmalloc(sizeof(struct lp_chunk) + m->chunk_size);
 	      m->total += m->chunk_size;
-	      *m->plast = c;
-	      m->plast = &c->next;
 	      c->next = NULL;
 	      c->size = m->chunk_size;
+
+	      if (m->current)
+		m->current->next = c;
+	      else
+		m->first = c;
 	    }
+	  m->current = c;
 	  m->ptr = c->data + size;
 	  m->end = c->data + m->chunk_size;
 	}
@@ -190,15 +192,61 @@ lp_flush(linpool *m)
 {
   struct lp_chunk *c;
 
-  /* Relink all normal chunks to free list and free all large chunks */
-  m->ptr = m->end = NULL;
-  m->current = m->first;
+  /* Move ptr to the first chunk and free all large chunks */
+  m->current = c = m->first;
+  m->ptr = c ? c->data : NULL;
+  m->end = c ? c->data + m->chunk_size : NULL;
+
   while (c = m->first_large)
     {
       m->first_large = c->next;
       xfree(c);
     }
   m->total_large = 0;
+}
+
+/**
+ * lp_save - save the state of a linear memory pool
+ * @m: linear memory pool
+ * @p: state buffer
+ *
+ * This function saves the state of a linear memory pool. Saved state can be
+ * used later to restore the pool (to free memory allocated since).
+ */
+void
+lp_save(linpool *m, lp_state *p)
+{
+  p->current = m->current;
+  p->large = m->first_large;
+  p->ptr = m->ptr;
+}
+
+/**
+ * lp_restore - restore the state of a linear memory pool
+ * @m: linear memory pool
+ * @p: saved state
+ *
+ * This function restores the state of a linear memory pool, freeing all memory
+ * allocated since the state was saved. Note that the function cannot un-free
+ * the memory, therefore the function also invalidates other states that were
+ * saved between (on the same pool).
+ */
+void
+lp_restore(linpool *m, lp_state *p)
+{
+  struct lp_chunk *c;
+
+  /* Move ptr to the saved pos and free all newer large chunks */
+  m->current = c = p->current;
+  m->ptr = p->ptr;
+  m->end = c ? c->data + m->chunk_size : NULL;
+
+  while ((c = m->first_large) && (c != p->large))
+    {
+      m->first_large = c->next;
+      m->total_large -= c->size;
+      xfree(c);
+    }
 }
 
 static void

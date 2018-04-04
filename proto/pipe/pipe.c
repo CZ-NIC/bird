@@ -249,6 +249,8 @@ pipe_show_stats(struct pipe_proto *p)
 	  s2->imp_withdraws_ignored, s2->imp_withdraws_accepted);
 }
 
+static const char *pipe_feed_state[] = { [ES_DOWN] = "down", [ES_FEEDING] = "feed", [ES_READY] = "up" };
+
 static void
 pipe_show_proto_info(struct proto *P)
 {
@@ -257,6 +259,8 @@ pipe_show_proto_info(struct proto *P)
   cli_msg(-1006, "  Channel %s", "main");
   cli_msg(-1006, "    Table:          %s", p->pri->table->name);
   cli_msg(-1006, "    Peer table:     %s", p->sec->table->name);
+  cli_msg(-1006, "    Import state:   %s", pipe_feed_state[p->sec->export_state]);
+  cli_msg(-1006, "    Export state:   %s", pipe_feed_state[p->pri->export_state]);
   cli_msg(-1006, "    Import filter:  %s", filter_name(p->sec->out_filter));
   cli_msg(-1006, "    Export filter:  %s", filter_name(p->pri->out_filter));
 

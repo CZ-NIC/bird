@@ -64,8 +64,6 @@
  * format - Optional hook that converts eattr to textual representation.
  */
 
-// XXXX review pool usage : c->c.proto->pool
-
 
 struct bgp_attr_desc {
   const char *name;
@@ -552,10 +550,12 @@ bgp_decode_mp_unreach_nlri(struct bgp_parse_state *s, uint code UNUSED, uint fla
 static void
 bgp_export_ext_community(struct bgp_export_state *s, eattr *a)
 {
+  a->u.ptr = ec_set_del_nontrans(s->pool, a->u.ptr);
+
   if (a->u.ptr->length == 0)
     UNSET(a);
 
-  a->u.ptr = ec_set_sort(s->pool, a->u.ptr);
+  ec_set_sort_x(a->u.ptr);
 }
 
 static void
@@ -701,7 +701,8 @@ bgp_format_mpls_label_stack(eattr *a, byte *buf, uint size)
 static inline void
 bgp_decode_unknown(struct bgp_parse_state *s, uint code, uint flags, byte *data, uint len, ea_list **to)
 {
-  bgp_set_attr_data(to, s->pool, code, flags, data, len);
+  /* Cannot use bgp_set_attr_data() as it works on known attributes only */
+  ea_set_attr_data(to, s->pool, EA_CODE(EAP_BGP, code), flags, EAF_TYPE_OPAQUE, data, len);
 }
 
 
@@ -1172,6 +1173,22 @@ bgp_init_bucket_table(struct bgp_channel *c)
   HASH_INIT(c->bucket_hash, c->pool, 8);
 
   init_list(&c->bucket_queue);
+  c->withdraw_bucket = NULL;
+}
+
+void
+bgp_free_bucket_table(struct bgp_channel *c)
+{
+  HASH_FREE(c->bucket_hash);
+
+  struct bgp_bucket *b;
+  WALK_LIST_FIRST(b, c->bucket_queue)
+  {
+    rem_node(&b->send_node);
+    mb_free(b);
+  }
+
+  mb_free(c->withdraw_bucket);
   c->withdraw_bucket = NULL;
 }
 

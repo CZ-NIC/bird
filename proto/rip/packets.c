@@ -189,7 +189,10 @@ rip_update_csn(struct rip_proto *p UNUSED, struct rip_iface *ifa)
    * have the same CSN. We are using real time, but enforcing monotonicity.
    */
   if (ifa->cf->auth_type == RIP_AUTH_CRYPTO)
-    ifa->csn = (ifa->csn < (u32) now_real) ? (u32) now_real : ifa->csn + 1;
+  {
+    u32 now_real = (u32) (current_real_time() TO_S);
+    ifa->csn = (ifa->csn < now_real) ? now_real : ifa->csn + 1;
+  }
 }
 
 static void
@@ -434,6 +437,7 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
   byte *max = rip_tx_buffer(ifa) + ifa->tx_plen -
     (rip_is_v2(p) ? RIP_BLOCK_LENGTH : 2*RIP_BLOCK_LENGTH);
   ip_addr last_next_hop = IPA_NONE;
+  btime now_ = current_time();
   int send = 0;
 
   struct rip_packet *pkt = (void *) pos;
@@ -450,7 +454,7 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
 
     /* Stale entries that should be removed */
     if ((en->valid == RIP_ENTRY_STALE) &&
-	((en->changed + (bird_clock_t) ifa->cf->garbage_time) <= now))
+	((en->changed + ifa->cf->garbage_time) <= now_))
       goto next_entry;
 
     /* Triggered updates */
@@ -540,7 +544,7 @@ break_loop:
  * activating the new one.
  */
 void
-rip_send_table(struct rip_proto *p, struct rip_iface *ifa, ip_addr addr, bird_clock_t changed)
+rip_send_table(struct rip_proto *p, struct rip_iface *ifa, ip_addr addr, btime changed)
 {
   DBG("RIP: Opening TX session to %I on %s\n", addr, ifa->iface->name);
 
@@ -591,6 +595,7 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
 
   byte *pos = (byte *) pkt + sizeof(struct rip_packet);
   byte *end = (byte *) pkt + plen;
+  btime now_ = current_time();
 
   for (; pos < end; pos += RIP_BLOCK_LENGTH)
   {
@@ -638,7 +643,7 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
 	.next_hop = ipa_nonzero(rte.next_hop) ? rte.next_hop : from->nbr->addr,
 	.metric = rte.metric,
 	.tag = rte.tag,
-	.expires = now + ifa->cf->timeout_time
+	.expires = now_ + ifa->cf->timeout_time
       };
 
       rip_update_rte(p, &rte.net, &new);
@@ -669,8 +674,7 @@ rip_rx_hook(sock *sk, uint len)
       sk->iface->name, sk->faddr, sk->laddr);
 
   /* Silently ignore my own packets */
-  /* FIXME: Better local address check */
-  if (ipa_equal(ifa->iface->addr->ip, sk->faddr))
+  if (ipa_equal(sk->faddr, sk->saddr))
     return 1;
 
   if (rip_is_ng(p) && !ipa_is_link_local(sk->faddr))
@@ -706,7 +710,7 @@ rip_rx_hook(sock *sk, uint len)
   if ((plen - sizeof(struct rip_packet)) % RIP_BLOCK_LENGTH)
     DROP("invalid length", plen);
 
-  n->last_seen = now;
+  n->last_seen = current_time();
   rip_update_bfd(p, n);
 
   switch (pkt->command)
@@ -742,14 +746,8 @@ rip_open_socket(struct rip_iface *ifa)
   sk->sport = ifa->cf->port;
   sk->dport = ifa->cf->port;
   sk->iface = ifa->iface;
-
-  /*
-   * For RIPv2, we explicitly choose a primary address, mainly to ensure that
-   * RIP and BFD uses the same one. For RIPng, we left it to kernel, which
-   * should choose some link-local address based on the same scope rule.
-   */
-  if (rip_is_v2(p))
-    sk->saddr = ifa->iface->addr->ip;
+  sk->saddr = rip_is_v2(p) ? ifa->iface->addr4->ip : ifa->iface->llv6->ip;
+  sk->vrf = p->p.vrf;
 
   sk->rx_hook = rip_rx_hook;
   sk->tx_hook = rip_tx_hook;

@@ -12,7 +12,6 @@
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
-#include "sysdep/unix/timer.h"
 #include "nest/route.h"
 #include "conf/conf.h"
 
@@ -101,6 +100,7 @@ struct proto_config {
   u32 router_id;			/* Protocol specific router ID */
 
   list channels;			/* List of channel configs (struct channel_config) */
+  struct iface *vrf;			/* Related VRF instance, NULL if global */
 
   /* Check proto_reconfigure() and proto_copy_config() after changing struct proto_config */
 
@@ -143,6 +143,7 @@ struct proto {
   list channels;			/* List of channels to rtables (struct channel) */
   struct channel *main_channel;		/* Primary channel */
   struct rte_src *main_source;		/* Primary route source */
+  struct iface *vrf;			/* Related VRF instance, NULL if global */
 
   char *name;				/* Name of this instance (== cf->name) */
   u32 debug;				/* Debugging flags */
@@ -159,8 +160,9 @@ struct proto {
   byte down_sched;			/* Shutdown is scheduled for later (PDS_*) */
   byte down_code;			/* Reason for shutdown (PDC_* codes) */
   u32 hash_key;				/* Random key used for hashing of neighbors */
-  bird_clock_t last_state_change;	/* Time of last state transition */
+  btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
+  char *message;			/* State-change message, allocated from proto_pool */
 
   /*
    *	General protocol hooks:
@@ -237,6 +239,7 @@ struct proto_spec {
 void *proto_new(struct proto_config *);
 void *proto_config_new(struct protocol *, int class);
 void proto_copy_config(struct proto_config *dest, struct proto_config *src);
+void proto_set_message(struct proto *p, char *msg, int len);
 
 void graceful_restart_recovery(void);
 void graceful_restart_init(void);
@@ -249,15 +252,15 @@ void channel_graceful_restart_unlock(struct channel *c);
 void channel_show_limit(struct channel_limit *l, const char *dsc);
 void channel_show_info(struct channel *c);
 
-void proto_cmd_show(struct proto *, uint, int);
-void proto_cmd_disable(struct proto *, uint, int);
-void proto_cmd_enable(struct proto *, uint, int);
-void proto_cmd_restart(struct proto *, uint, int);
-void proto_cmd_reload(struct proto *, uint, int);
-void proto_cmd_debug(struct proto *, uint, int);
-void proto_cmd_mrtdump(struct proto *, uint, int);
+void proto_cmd_show(struct proto *, uintptr_t, int);
+void proto_cmd_disable(struct proto *, uintptr_t, int);
+void proto_cmd_enable(struct proto *, uintptr_t, int);
+void proto_cmd_restart(struct proto *, uintptr_t, int);
+void proto_cmd_reload(struct proto *, uintptr_t, int);
+void proto_cmd_debug(struct proto *, uintptr_t, int);
+void proto_cmd_mrtdump(struct proto *, uintptr_t, int);
 
-void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uint, int), int restricted, uint arg);
+void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, int), int restricted, uintptr_t arg);
 struct proto *proto_get_named(struct symbol *, struct protocol *);
 
 #define CMD_RELOAD	0
@@ -334,7 +337,7 @@ void proto_notify_state(struct proto *p, unsigned state);
  *
  *		HUNGRY    ---->   FEEDING
  *		 ^		     |
- *		 | 		     V
+ *		 |		     V
  *		FLUSHING  <----   HAPPY
  *
  *	States:	HUNGRY	Protocol either administratively down (i.e.,
@@ -458,6 +461,7 @@ struct channel_config {
   const char *name;
   const struct channel_class *channel;
 
+  struct proto_config *parent;		/* Where channel is defined (proto or template) */
   struct rtable_config *table;		/* Table we're attached to */
   struct filter *in_filter, *out_filter; /* Attached filters */
   struct channel_limit rx_limit;	/* Limit for receiving routes from protocol
@@ -508,7 +512,7 @@ struct channel {
   u8 gr_lock;				/* Graceful restart mechanism should wait for this channel */
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
 
-  bird_clock_t last_state_change;	/* Time of last state transition */
+  btime last_state_change;		/* Time of last state transition */
 };
 
 
@@ -582,7 +586,8 @@ static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP)
 static inline void channel_close(struct channel *c) { channel_set_state(c, CS_FLUSHING); }
 
 void channel_request_feeding(struct channel *c);
-void *channel_config_new(const struct channel_class *cc, uint net_type, struct proto_config *proto);
+void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
+void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);
 
 

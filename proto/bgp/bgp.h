@@ -108,6 +108,7 @@ struct bgp_config {
   int allow_local_pref;			/* Allow LOCAL_PREF in EBGP sessions */
   int gr_mode;				/* Graceful restart mode (BGP_GR_*) */
   int setkey;				/* Set MD5 password to system SA/SP database */
+  /* Times below are in seconds */
   unsigned gr_time;			/* Graceful restart timeout */
   unsigned connect_delay_time;		/* Minimum delay between connect attempts */
   unsigned connect_retry_time;		/* Timeout for connect attempts */
@@ -117,6 +118,7 @@ struct bgp_config {
   unsigned error_delay_time_min;	/* Time to wait after an error is detected */
   unsigned error_delay_time_max;
   unsigned disable_after_error;		/* Disable the protocol when error is detected */
+  u32 disable_after_cease;		/* Disable it when cease is received, bitfield */
 
   char *password;			/* Password used for MD5 authentication */
   int check_link;			/* Use iface link state for liveness detection */
@@ -210,10 +212,10 @@ struct bgp_conn {
 
   struct bgp_caps *local_caps;
   struct bgp_caps *remote_caps;
-  struct timer *connect_timer;
-  struct timer *hold_timer;
-  struct timer *keepalive_timer;
-  struct event *tx_ev;
+  timer *connect_timer;
+  timer *hold_timer;
+  timer *keepalive_timer;
+  event *tx_ev;
   u32 packets_to_send;			/* Bitmap of packet types to be sent */
   u32 channels_to_send;			/* Bitmap of channels with packets to be sent */
   u8 last_channel;			/* Channel used last time for TX */
@@ -254,11 +256,11 @@ struct bgp_proto {
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   ip_addr source_addr;			/* Local address used as an advertised next hop */
   ip_addr link_addr;			/* Link-local version of source_addr */
-  struct event *event;			/* Event for respawning and shutting process */
-  struct timer *startup_timer;		/* Timer used to delay protocol startup due to previous errors (startup_delay) */
-  struct timer *gr_timer;		/* Timer waiting for reestablishment after graceful restart */
-  unsigned startup_delay;		/* Time to delay protocol startup by due to errors */
-  bird_clock_t last_proto_error;	/* Time of last error that leads to protocol stop */
+  event *event;				/* Event for respawning and shutting process */
+  timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */
+  timer *gr_timer;			/* Timer waiting for reestablishment after graceful restart */
+  uint startup_delay;			/* Delay (in seconds) of protocol startup due to previous errors */
+  btime last_proto_error;		/* Time of last error that leads to protocol stop */
   u8 last_error_class; 			/* Error class of last error */
   u32 last_error_code;			/* Error code of last error. BGP protocol errors
 					   are encoded as (bgp_err_code << 16 | bgp_err_subcode) */
@@ -422,7 +424,7 @@ extern struct linpool *bgp_linpool;
 extern struct linpool *bgp_linpool2;
 
 
-void bgp_start_timer(struct timer *t, int value);
+void bgp_start_timer(timer *t, uint value);
 void bgp_check_config(struct bgp_config *c);
 void bgp_error(struct bgp_conn *c, unsigned code, unsigned subcode, byte *data, int len);
 void bgp_close_conn(struct bgp_conn *c);
@@ -436,7 +438,7 @@ void bgp_graceful_restart_done(struct bgp_channel *c);
 void bgp_refresh_begin(struct bgp_channel *c);
 void bgp_refresh_end(struct bgp_channel *c);
 void bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code);
-void bgp_stop(struct bgp_proto *p, unsigned subcode);
+void bgp_stop(struct bgp_proto *p, uint subcode, byte *data, uint len);
 
 struct rte_source *bgp_find_source(struct bgp_proto *p, u32 path_id);
 struct rte_source *bgp_get_source(struct bgp_proto *p, u32 path_id);
@@ -491,11 +493,13 @@ int bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte 
 ea_list * bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len);
 
 void bgp_init_bucket_table(struct bgp_channel *c);
+void bgp_free_bucket_table(struct bgp_channel *c);
 void bgp_free_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 void bgp_defer_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 void bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 
 void bgp_init_prefix_table(struct bgp_channel *c);
+void bgp_free_prefix_table(struct bgp_channel *c);
 void bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *bp);
 
 int bgp_rte_better(struct rte *, struct rte *);

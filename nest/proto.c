@@ -13,6 +13,7 @@
 #include "lib/resource.h"
 #include "lib/lists.h"
 #include "lib/event.h"
+#include "lib/timer.h"
 #include "lib/string.h"
 #include "conf/conf.h"
 #include "nest/route.h"
@@ -43,7 +44,7 @@ static char *c_states[] = { "DOWN", "START", "UP", "FLUSHING" };
 
 extern struct protocol proto_unix_iface;
 
-static void proto_shutdown_loop(struct timer *);
+static void proto_shutdown_loop(timer *);
 static void proto_rethink_goal(struct proto *p);
 static char *proto_state_name(struct proto *p);
 static void channel_verify_limits(struct channel *c);
@@ -162,7 +163,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
 
   c->channel_state = CS_DOWN;
   c->export_state = ES_DOWN;
-  c->last_state_change = now;
+  c->last_state_change = current_time();
   c->reloadable = 1;
 
   CALL(c->channel->init, c, cf);
@@ -341,7 +342,7 @@ channel_set_state(struct channel *c, uint state)
     return;
 
   c->channel_state = state;
-  c->last_state_change = now;
+  c->last_state_change = current_time();
 
   switch (state)
   {
@@ -436,7 +437,7 @@ static void
 channel_request_reload(struct channel *c)
 {
   ASSERT(c->channel_state == CS_UP);
-  // ASSERT(channel_reloadable(c));
+  ASSERT(channel_reloadable(c));
 
   c->proto->reload_routes(c);
 
@@ -454,11 +455,10 @@ const struct channel_class channel_basic = {
 };
 
 void *
-channel_config_new(const struct channel_class *cc, uint net_type, struct proto_config *proto)
+channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto)
 {
   struct channel_config *cf = NULL;
   struct rtable_config *tab = NULL;
-  const char *name = NULL;
 
   if (net_type)
   {
@@ -469,7 +469,6 @@ channel_config_new(const struct channel_class *cc, uint net_type, struct proto_c
       cf_error("Different channel type");
 
     tab = new_config->def_tables[net_type];
-    name = net_label[net_type];
   }
 
   if (!cc)
@@ -478,6 +477,7 @@ channel_config_new(const struct channel_class *cc, uint net_type, struct proto_c
   cf = cfg_allocz(cc->config_size);
   cf->name = name;
   cf->channel = cc;
+  cf->parent = proto;
   cf->table = tab;
   cf->out_filter = FILTER_REJECT;
 
@@ -488,6 +488,26 @@ channel_config_new(const struct channel_class *cc, uint net_type, struct proto_c
   add_tail(&proto->channels, &cf->n);
 
   return cf;
+}
+
+void *
+channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto)
+{
+  struct channel_config *cf;
+
+  /* We are using name as token, so no strcmp() */
+  WALK_LIST(cf, proto->channels)
+    if (cf->name == name)
+    {
+      /* Allow to redefine channel only if inherited from template */
+      if (cf->parent == proto)
+	cf_error("Multiple %s channels", name);
+
+      cf->parent = proto;
+      return cf;
+    }
+
+  return channel_config_new(cc, name, net_type, proto);
 }
 
 struct channel_config *
@@ -512,8 +532,9 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   if ((c->table != cf->table->table) || (cf->ra_mode && (c->ra_mode != cf->ra_mode)))
     return 0;
 
-  int import_changed = !filter_same(c->in_filter, cf->in_filter);
-  int export_changed = !filter_same(c->out_filter, cf->out_filter);
+  /* Note that filter_same() requires arguments in (new, old) order */
+  int import_changed = !filter_same(cf->in_filter, c->in_filter);
+  int export_changed = !filter_same(cf->out_filter, c->out_filter);
 
   if (c->preference != cf->preference)
     import_changed = 1;
@@ -672,7 +693,8 @@ proto_init(struct proto_config *c, node *n)
   struct proto *p = pr->init(c);
 
   p->proto_state = PS_DOWN;
-  p->last_state_change = now;
+  p->last_state_change = current_time();
+  p->vrf = c->vrf;
   insert_node(&p->n, n);
 
   p->event = ev_new(proto_pool);
@@ -819,7 +841,8 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
   /* If there is a too big change in core attributes, ... */
   if ((nc->protocol != oc->protocol) ||
       (nc->net_type != oc->net_type) ||
-      (nc->disabled != p->disabled))
+      (nc->disabled != p->disabled) ||
+      (nc->vrf != oc->vrf))
     return 0;
 
   p->name = nc->name;
@@ -977,6 +1000,7 @@ proto_rethink_goal(struct proto *p)
     proto_remove_channels(p);
     rem_node(&p->n);
     rfree(p->event);
+    mb_free(p->message);
     mb_free(p);
     if (!nc)
       return;
@@ -1046,7 +1070,7 @@ proto_rethink_goal(struct proto *p)
  *
  */
 
-static void graceful_restart_done(struct timer *t);
+static void graceful_restart_done(timer *t);
 
 /**
  * graceful_restart_recovery - request initial graceful restart recovery
@@ -1083,9 +1107,8 @@ graceful_restart_init(void)
   }
 
   graceful_restart_state = GRS_ACTIVE;
-  gr_wait_timer = tm_new(proto_pool);
-  gr_wait_timer->hook = graceful_restart_done;
-  tm_start(gr_wait_timer, config->gr_wait);
+  gr_wait_timer = tm_new_init(proto_pool, graceful_restart_done, NULL, 0, 0);
+  tm_start(gr_wait_timer, config->gr_wait S);
 }
 
 /**
@@ -1099,7 +1122,7 @@ graceful_restart_init(void)
  * restart wait timer fires (but there are still some locks).
  */
 static void
-graceful_restart_done(struct timer *t UNUSED)
+graceful_restart_done(timer *t UNUSED)
 {
   log(L_INFO "Graceful restart done");
   graceful_restart_state = GRS_DONE;
@@ -1136,7 +1159,7 @@ graceful_restart_show_status(void)
 
   cli_msg(-24, "Graceful restart recovery in progress");
   cli_msg(-24, "  Waiting for %d channels to recover", graceful_restart_locks);
-  cli_msg(-24, "  Wait timer is %d/%d", tm_remains(gr_wait_timer), config->gr_wait);
+  cli_msg(-24, "  Wait timer is %t/%u", tm_remains(gr_wait_timer), config->gr_wait);
 }
 
 /**
@@ -1298,7 +1321,7 @@ protos_build(void)
 int proto_restart;
 
 static void
-proto_shutdown_loop(struct timer *t UNUSED)
+proto_shutdown_loop(timer *t UNUSED)
 {
   struct proto *p, *p_next;
 
@@ -1329,7 +1352,40 @@ proto_schedule_down(struct proto *p, byte restart, byte code)
 
   p->down_sched = restart ? PDS_RESTART : PDS_DISABLE;
   p->down_code = code;
-  tm_start_max(proto_shutdown_timer, restart ? 2 : 0);
+  tm_start_max(proto_shutdown_timer, restart ? 250 MS : 0);
+}
+
+/**
+ * proto_set_message - set administrative message to protocol
+ * @p: protocol
+ * @msg: message
+ * @len: message length (-1 for NULL-terminated string)
+ *
+ * The function sets administrative message (string) related to protocol state
+ * change. It is called by the nest code for manual enable/disable/restart
+ * commands all routes to the protocol, and by protocol-specific code when the
+ * protocol state change is initiated by the protocol. Using NULL message clears
+ * the last message. The message string may be either NULL-terminated or with an
+ * explicit length.
+ */
+void
+proto_set_message(struct proto *p, char *msg, int len)
+{
+  mb_free(p->message);
+  p->message = NULL;
+
+  if (!msg || !len)
+    return;
+
+  if (len < 0)
+    len = strlen(msg);
+
+  if (!len)
+    return;
+
+  p->message = mb_alloc(proto_pool, len + 1);
+  memcpy(p->message, msg, len);
+  p->message[len] = 0;
 }
 
 
@@ -1500,7 +1556,7 @@ proto_notify_state(struct proto *p, uint state)
     return;
 
   p->proto_state = state;
-  p->last_state_change = now;
+  p->last_state_change = current_time();
 
   switch (state)
   {
@@ -1620,19 +1676,20 @@ channel_show_info(struct channel *c)
 }
 
 void
-proto_cmd_show(struct proto *p, uint verbose, int cnt)
+proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
 {
   byte buf[256], tbuf[TM_DATETIME_BUFFER_SIZE];
 
   /* First protocol - show header */
   if (!cnt)
-    cli_msg(-2002, "name     proto    table    state  since       info");
+    cli_msg(-2002, "%-10s %-10s %-10s %-6s %-12s  %s",
+	    "Name", "Proto", "Table", "State", "Since", "Info");
 
   buf[0] = 0;
   if (p->proto->get_status)
     p->proto->get_status(p, buf);
-  tm_format_datetime(tbuf, &config->tf_proto, p->last_state_change);
-  cli_msg(-1002, "%-8s %-8s %-8s %-5s  %-10s  %s",
+  tm_format_time(tbuf, &config->tf_proto, p->last_state_change);
+  cli_msg(-1002, "%-10s %-10s %-10s %-6s %-12s  %s",
 	  p->name,
 	  p->proto->name,
 	  p->main_channel ? p->main_channel->table->name : "---",
@@ -1644,8 +1701,12 @@ proto_cmd_show(struct proto *p, uint verbose, int cnt)
   {
     if (p->cf->dsc)
       cli_msg(-1006, "  Description:    %s", p->cf->dsc);
+    if (p->message)
+      cli_msg(-1006, "  Message:        %s", p->message);
     if (p->cf->router_id)
       cli_msg(-1006, "  Router ID:      %R", p->cf->router_id);
+    if (p->vrf)
+      cli_msg(-1006, "  VRF:            %s", p->vrf->name);
 
     if (p->proto->show_proto_info)
       p->proto->show_proto_info(p);
@@ -1661,7 +1722,7 @@ proto_cmd_show(struct proto *p, uint verbose, int cnt)
 }
 
 void
-proto_cmd_disable(struct proto *p, uint arg UNUSED, int cnt UNUSED)
+proto_cmd_disable(struct proto *p, uintptr_t arg, int cnt UNUSED)
 {
   if (p->disabled)
   {
@@ -1672,12 +1733,13 @@ proto_cmd_disable(struct proto *p, uint arg UNUSED, int cnt UNUSED)
   log(L_INFO "Disabling protocol %s", p->name);
   p->disabled = 1;
   p->down_code = PDC_CMD_DISABLE;
+  proto_set_message(p, (char *) arg, -1);
   proto_rethink_goal(p);
   cli_msg(-9, "%s: disabled", p->name);
 }
 
 void
-proto_cmd_enable(struct proto *p, uint arg UNUSED, int cnt UNUSED)
+proto_cmd_enable(struct proto *p, uintptr_t arg, int cnt UNUSED)
 {
   if (!p->disabled)
   {
@@ -1687,12 +1749,13 @@ proto_cmd_enable(struct proto *p, uint arg UNUSED, int cnt UNUSED)
 
   log(L_INFO "Enabling protocol %s", p->name);
   p->disabled = 0;
+  proto_set_message(p, (char *) arg, -1);
   proto_rethink_goal(p);
   cli_msg(-11, "%s: enabled", p->name);
 }
 
 void
-proto_cmd_restart(struct proto *p, uint arg UNUSED, int cnt UNUSED)
+proto_cmd_restart(struct proto *p, uintptr_t arg, int cnt UNUSED)
 {
   if (p->disabled)
   {
@@ -1703,6 +1766,7 @@ proto_cmd_restart(struct proto *p, uint arg UNUSED, int cnt UNUSED)
   log(L_INFO "Restarting protocol %s", p->name);
   p->disabled = 1;
   p->down_code = PDC_CMD_RESTART;
+  proto_set_message(p, (char *) arg, -1);
   proto_rethink_goal(p);
   p->disabled = 0;
   proto_rethink_goal(p);
@@ -1710,7 +1774,7 @@ proto_cmd_restart(struct proto *p, uint arg UNUSED, int cnt UNUSED)
 }
 
 void
-proto_cmd_reload(struct proto *p, uint dir, int cnt UNUSED)
+proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
 {
   struct channel *c;
 
@@ -1749,19 +1813,19 @@ proto_cmd_reload(struct proto *p, uint dir, int cnt UNUSED)
 }
 
 void
-proto_cmd_debug(struct proto *p, uint mask, int cnt UNUSED)
+proto_cmd_debug(struct proto *p, uintptr_t mask, int cnt UNUSED)
 {
   p->debug = mask;
 }
 
 void
-proto_cmd_mrtdump(struct proto *p, uint mask, int cnt UNUSED)
+proto_cmd_mrtdump(struct proto *p, uintptr_t mask, int cnt UNUSED)
 {
   p->mrtdump = mask;
 }
 
 static void
-proto_apply_cmd_symbol(struct symbol *s, void (* cmd)(struct proto *, uint, int), uint arg)
+proto_apply_cmd_symbol(struct symbol *s, void (* cmd)(struct proto *, uintptr_t, int), uintptr_t arg)
 {
   if (s->class != SYM_PROTO)
   {
@@ -1774,7 +1838,7 @@ proto_apply_cmd_symbol(struct symbol *s, void (* cmd)(struct proto *, uint, int)
 }
 
 static void
-proto_apply_cmd_patt(char *patt, void (* cmd)(struct proto *, uint, int), uint arg)
+proto_apply_cmd_patt(char *patt, void (* cmd)(struct proto *, uintptr_t, int), uintptr_t arg)
 {
   struct proto *p;
   int cnt = 0;
@@ -1790,8 +1854,8 @@ proto_apply_cmd_patt(char *patt, void (* cmd)(struct proto *, uint, int), uint a
 }
 
 void
-proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uint, int),
-		int restricted, uint arg)
+proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, int),
+		int restricted, uintptr_t arg)
 {
   if (restricted && cli_access_restricted())
     return;

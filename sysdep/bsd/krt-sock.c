@@ -28,12 +28,12 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "sysdep/unix/timer.h"
 #include "sysdep/unix/unix.h"
 #include "sysdep/unix/krt.h"
 #include "lib/string.h"
 #include "lib/socket.h"
 
+const int rt_default_ecmp = 0;
 
 /*
  * There are significant differences in multiple tables support between BSD variants.
@@ -74,11 +74,11 @@
 
 /* Dynamic max number of tables */
 
-int krt_max_tables;
+uint krt_max_tables;
 
 #ifdef KRT_USE_SYSCTL_NET_FIBS
 
-static int
+static uint
 krt_get_max_tables(void)
 {
   int fibs;
@@ -90,7 +90,11 @@ krt_get_max_tables(void)
     return 1;
   }
 
-  return MIN(fibs, KRT_MAX_TABLES);
+  /* Should not happen */
+  if (fibs < 1)
+    return 1;
+
+  return (uint) MIN(fibs, KRT_MAX_TABLES);
 }
 
 #else
@@ -146,9 +150,8 @@ krt_capable(rte *e)
 {
   rta *a = e->attrs;
 
-  /* XXXX device routes are broken */
   return
-    ((a->dest == RTD_UNICAST && ipa_nonzero(a->nh.gw) && !a->nh.next) /* No multipath support */
+    ((a->dest == RTD_UNICAST && !a->nh.next) /* No multipath support */
 #ifdef RTF_REJECT
      || a->dest == RTD_UNREACHABLE
 #endif
@@ -166,7 +169,7 @@ struct ks_msg
 {
   struct rt_msghdr rtm;
   struct sockaddr_storage buf[RTAX_MAX];
-};
+} PACKED;
 
 #define ROUNDUP(a) \
         ((a) > 0 ? (1 + (((a) - 1) | (sizeof(long) - 1))) : sizeof(long))
@@ -182,6 +185,16 @@ struct ks_msg
     uint l = ROUNDUP(((struct sockaddr *)body)->sa_len);\
     memcpy(p, body, (l > sizeof(*p) ? sizeof(*p) : l));\
     body += l;}
+
+static inline void
+sockaddr_fill_dl(struct sockaddr_dl *sa, struct iface *ifa)
+{
+  uint len = OFFSETOF(struct sockaddr_dl, sdl_data);
+  memset(sa, 0, len);
+  sa->sdl_len = len;
+  sa->sdl_family = AF_LINK;
+  sa->sdl_index = ifa->index;
+}
 
 static int
 krt_send_route(struct krt_proto *p, int cmd, rte *e)
@@ -287,18 +300,27 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 #endif
   {
     /* Fallback for all other valid cases */
-    if (!i->addr)
+
+#if __OpenBSD__
+    /* Keeping temporarily old code for OpenBSD */
+    struct ifa *addr = (net->n.addr->type == NET_IP4) ? i->addr4 : (i->addr6 ?: i->llv6);
+
+    if (!addr)
     {
       log(L_ERR "KRT: interface %s has no IP addess", i->name);
       return -1;
     }
 
-#ifdef RTF_CLONING
-    if (cmd == RTM_ADD && (i->flags & IF_MULTIACCESS) != IF_MULTIACCESS)	/* PTP */
-      msg.rtm.rtm_flags |= RTF_CLONING;
+    /* Embed interface ID to link-local address */
+    ip_addr gw = addr->ip;
+    if (ipa_is_link_local(gw))
+      _I0(gw) = 0xfe800000 | (i->index & 0x0000ffff);
+
+    sockaddr_fill(&gate, af, gw, i, 0);
+#else
+    sockaddr_fill_dl(&gate, i);
 #endif
 
-    sockaddr_fill(&gate, ipa_is_ip4(i->addr->ip) ? AF_INET : AF_INET6, i->addr->ip, NULL, 0);
     msg.rtm.rtm_addrs |= RTA_GATEWAY;
     break;
   }
@@ -1124,13 +1146,11 @@ kif_sys_shutdown(struct kif_proto *p)
   krt_buffer_release(&p->p);
 }
 
-
-struct ifa *
-kif_get_primary_ip(struct iface *i UNUSED)
+int
+kif_update_sysdep_addr(struct iface *i)
 {
-#if 0
   static int fd = -1;
-  
+
   if (fd < 0)
     fd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -1140,20 +1160,10 @@ kif_get_primary_ip(struct iface *i UNUSED)
 
   int rv = ioctl(fd, SIOCGIFADDR, (char *) &ifr);
   if (rv < 0)
-    return NULL;
+    return 0;
 
-  ip_addr addr;
-  struct sockaddr_in *sin = (struct sockaddr_in *) &ifr.ifr_addr;
-  memcpy(&addr, &sin->sin_addr.s_addr, sizeof(ip_addr));
-  ipa_ntoh(addr);
+  ip4_addr old = i->sysdep;
+  i->sysdep = ipa_to_ip4(ipa_from_sa4(&ifr.ifr_addr));
 
-  struct ifa *a;
-  WALK_LIST(a, i->addrs)
-  {
-    if (ipa_equal(a->ip, addr))
-      return a;
-  }
-#endif
-
-  return NULL;
+  return !ip4_equal(i->sysdep, old);
 }

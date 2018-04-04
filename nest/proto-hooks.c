@@ -281,7 +281,7 @@ int import_control(struct proto *p, rte **e, ea_list **attrs, struct linpool *po
 
 /**
  * rte_recalculate - prepare routes for comparison
- * @table: a routing table 
+ * @table: a routing table
  * @net: a network entry
  * @new: new route for the network
  * @old: old route for the network

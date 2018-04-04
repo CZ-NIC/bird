@@ -27,6 +27,7 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/event.h"
+#include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/route.h"
 #include "nest/protocol.h"
@@ -56,7 +57,7 @@ async_dump(void)
 
   rdump(&root_pool);
   sk_dump_all();
-  tm_dump_all();
+  // XXXX tm_dump_all();
   if_dump_all();
   neigh_dump_all();
   rta_dump_all();
@@ -302,7 +303,7 @@ cmd_reconfig_undo_notify(void)
 }
 
 void
-cmd_reconfig(char *name, int type, int timeout)
+cmd_reconfig(char *name, int type, uint timeout)
 {
   if (cli_access_restricted())
     return;
@@ -819,7 +820,9 @@ main(int argc, char **argv)
     log_init_debug("");
   log_switch(debug_flag, NULL, NULL);
 
+  net_init();
   resource_init();
+  timer_init();
   olock_init();
   io_init();
   rt_init();

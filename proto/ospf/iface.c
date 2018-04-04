@@ -121,6 +121,7 @@ ospf_sk_open(struct ospf_iface *ifa)
   sk->dport = OSPF_PROTO;
   sk->saddr = ifa->addr->ip;
   sk->iface = ifa->iface;
+  sk->vrf = p->p.vrf;
 
   sk->tos = ifa->cf->tx_tos;
   sk->priority = ifa->cf->tx_priority;
@@ -204,6 +205,7 @@ ospf_open_vlink_sk(struct ospf_proto *p)
   sk->type = SK_IP;
   sk->subtype = ospf_is_v2(p) ? SK_IPV4 : SK_IPV6;
   sk->dport = OSPF_PROTO;
+  sk->vrf = p->p.vrf;
 
   /* FIXME: configurable tos/priority ? */
   sk->tos = IP_PREC_INTERNET_CONTROL;
@@ -396,15 +398,15 @@ ospf_iface_sm(struct ospf_iface *ifa, int event)
 	{
 	  ospf_iface_chstate(ifa, OSPF_IS_WAITING);
 	  if (ifa->wait_timer)
-	    tm_start(ifa->wait_timer, ifa->waitint);
+	    tm_start(ifa->wait_timer, ifa->waitint S);
 	}
       }
 
       if (ifa->hello_timer)
-	tm_start(ifa->hello_timer, ifa->helloint);
+	tm_start(ifa->hello_timer, ifa->helloint S);
 
       if (ifa->poll_timer)
-	tm_start(ifa->poll_timer, ifa->pollint);
+	tm_start(ifa->poll_timer, ifa->pollint S);
 
       ospf_send_hello(ifa, OHS_HELLO, NULL);
     }
@@ -494,13 +496,13 @@ ospf_iface_add(struct object_lock *lock)
 
   if (! ifa->stub)
   {
-    ifa->hello_timer = tm_new_set(ifa->pool, hello_timer_hook, ifa, 0, ifa->helloint);
+    ifa->hello_timer = tm_new_init(ifa->pool, hello_timer_hook, ifa, ifa->helloint S, 0);
 
     if (ifa->type == OSPF_IT_NBMA)
-      ifa->poll_timer = tm_new_set(ifa->pool, poll_timer_hook, ifa, 0, ifa->pollint);
+      ifa->poll_timer = tm_new_init(ifa->pool, poll_timer_hook, ifa, ifa->pollint S, 0);
 
     if ((ifa->type == OSPF_IT_BCAST) || (ifa->type == OSPF_IT_NBMA))
-      ifa->wait_timer = tm_new_set(ifa->pool, wait_timer_hook, ifa, 0, 0);
+      ifa->wait_timer = tm_new_init(ifa->pool, wait_timer_hook, ifa, 0, 0);
 
     ifa->flood_queue_size = ifa_flood_queue_size(ifa);
     ifa->flood_queue = mb_allocz(ifa->pool, ifa->flood_queue_size * sizeof(void *));
@@ -703,7 +705,7 @@ ospf_iface_new_vlink(struct ospf_proto *p, struct ospf_iface_patt *ip)
 
   add_tail(&p->iface_list, NODE ifa);
 
-  ifa->hello_timer = tm_new_set(ifa->pool, hello_timer_hook, ifa, 0, ifa->helloint);
+  ifa->hello_timer = tm_new_init(ifa->pool, hello_timer_hook, ifa, ifa->helloint S, 0);
 
   ifa->flood_queue_size = ifa_flood_queue_size(ifa);
   ifa->flood_queue = mb_allocz(ifa->pool, ifa->flood_queue_size * sizeof(void *));
@@ -715,10 +717,10 @@ ospf_iface_change_timer(timer *tm, uint val)
   if (!tm)
     return;
 
-  tm->recurrent = val;
+  tm->recurrent = val S;
 
-  if (tm->expires)
-    tm_start(tm, val);
+  if (tm_active(tm))
+    tm_start(tm, val S);
 }
 
 static inline void
@@ -801,8 +803,8 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 	       ifname, ifa->waitint, new->waitint);
 
     ifa->waitint = new->waitint;
-    if (ifa->wait_timer && ifa->wait_timer->expires)
-      tm_start(ifa->wait_timer, ifa->waitint);
+    if (ifa->wait_timer && tm_active(ifa->wait_timer))
+      tm_start(ifa->wait_timer, ifa->waitint S);
   }
 
   /* DEAD TIMER */
@@ -1113,9 +1115,6 @@ ospf_ifa_notify3(struct proto *P, uint flags, struct ifa *a)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
 
-  if (a->prefix.type != NET_IP6)
-    return;
-
   if (a->flags & IA_SECONDARY)
     return;
 
@@ -1126,6 +1125,9 @@ ospf_ifa_notify3(struct proto *P, uint flags, struct ifa *a)
      other addresses are used for link-LSA. */
   if (a->scope == SCOPE_LINK)
   {
+    if (a->prefix.type != NET_IP6)
+      return;
+
     if (flags & IF_CHANGE_UP)
     {
       struct ospf_mip_walk s = { .iface = a->iface };
@@ -1143,6 +1145,9 @@ ospf_ifa_notify3(struct proto *P, uint flags, struct ifa *a)
   }
   else
   {
+    if (a->prefix.type != ospf_get_af(p))
+      return;
+
     struct ospf_iface *ifa;
     WALK_LIST(ifa, p->iface_list)
       if (ifa->iface == a->iface)

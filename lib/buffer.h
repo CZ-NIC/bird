@@ -13,9 +13,13 @@
 #include "lib/resource.h"
 #include "sysdep/config.h"
 
-#define BUFFER(type)		struct { type *data; uint used, size; }
+#define BUFFER_(type)		struct { type *data; uint used, size; }
 #define BUFFER_TYPE(v)		typeof(* (v).data)
 #define BUFFER_SIZE(v)		((v).size * sizeof(* (v).data))
+
+#ifndef PARSER
+#define BUFFER(type) BUFFER_(type)
+#endif
 
 #define BUFFER_INIT(v,pool,isize)					\
   ({									\

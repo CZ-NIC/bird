@@ -58,10 +58,10 @@ static_flow_action(u64 ec)
   NEW_F_VAL;
 
   val->type = T_EC; val->val.ec = ec;
-  struct f_inst *fic = f_new_inst();
-  fic->code = 'C'; fic->a1.p = val;
+  struct f_inst *fic = f_new_inst(FI_CONSTANT_INDIRECT);
+  fic->a1.p = val;
   *this_srt_last_cmd = f_generate_complex(
-    P('C','a'), 'a',
+    FI_CLIST_ADD_DEL, 'a',
     f_new_dynamic_attr(EAF_TYPE_EC_SET, T_ECLIST, EA_CODE(EAP_BGP, BA_EXT_COMMUNITY)),
     fic
   );

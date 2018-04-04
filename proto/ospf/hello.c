@@ -32,10 +32,7 @@ struct ospf_hello3_packet
   struct ospf_packet hdr;
 
   u32 iface_id;
-  u8 priority;
-  u8 options3;
-  u8 options2;
-  u8 options;
+  u32 options;
   u16 helloint;
   u16 deadint;
   u32 dr;
@@ -91,10 +88,7 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
     struct ospf_hello3_packet *ps = (void *) pkt;
 
     ps->iface_id = htonl(ifa->iface_id);
-    ps->priority = ifa->priority;
-    ps->options3 = ifa->oa->options >> 16;
-    ps->options2 = ifa->oa->options >> 8;
-    ps->options = ifa->oa->options;
+    ps->options = ntohl(ifa->oa->options | (ifa->priority << 24));
     ps->helloint = ntohs(ifa->helloint);
     ps->deadint = htons(ifa->deadint);
     ps->dr = htonl(ifa->drid);
@@ -190,7 +184,8 @@ ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa,
   struct ospf_proto *p = ifa->oa->po;
   const char *err_dsc = NULL;
   u32 rcv_iface_id, rcv_helloint, rcv_deadint, rcv_dr, rcv_bdr;
-  u8 rcv_options, rcv_priority;
+  uint rcv_options, rcv_priority;
+  uint loc_options = ifa->oa->options;
   u32 *neighbors;
   u32 neigh_count;
   uint plen, i, err_val = 0;
@@ -245,8 +240,8 @@ ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa,
     rcv_deadint = ntohs(ps->deadint);
     rcv_dr = ntohl(ps->dr);
     rcv_bdr = ntohl(ps->bdr);
-    rcv_options = ps->options;
-    rcv_priority = ps->priority;
+    rcv_options = ntohl(ps->options) & 0x00FFFFFF;
+    rcv_priority = ntohl(ps->options) >> 24;
 
     neighbors = ps->neighbors;
     neigh_count = (plen - sizeof(struct ospf_hello3_packet)) / sizeof(u32);
@@ -259,8 +254,12 @@ ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa,
     DROP("dead interval mismatch", rcv_deadint);
 
   /* Check whether bits E, N match */
-  if ((rcv_options ^ ifa->oa->options) & (OPT_E | OPT_N))
+  if ((rcv_options ^ loc_options) & (OPT_E | OPT_N))
     DROP("area type mismatch", rcv_options);
+
+  /* RFC 5838 2.4 - AF-bit check unless on IPv6 unicast */
+  if ((loc_options & OPT_AF) && !(loc_options & OPT_V6) && !(rcv_options & OPT_AF))
+    DROP("AF-bit mismatch", rcv_options);
 
   /* Check consistency of existing neighbor entry */
   if (n)

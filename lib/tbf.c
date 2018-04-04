@@ -8,22 +8,30 @@
  */
 
 #include "nest/bird.h"
+#include "lib/timer.h"
 
-void
-tbf_update(struct tbf *f)
+int
+tbf_limit(struct tbf *f)
 {
-  bird_clock_t delta = now - f->timestamp;
+  btime delta = current_time() - f->timestamp;
 
-  if (delta == 0)
-    return;
-
-  f->timestamp = now;
-
-  if ((0 < delta) && (delta < f->burst))
+  if (delta > 0)
   {
-    u32 next = f->count + delta * f->rate;
-    f->count = MIN(next, f->burst);
+    u64 next = f->count + delta * f->rate;
+    u64 burst = (u64) f->burst << 20;
+    f->count = MIN(next, burst);
+    f->timestamp += delta;
+  }
+
+  if (f->count < 1000000)
+  {
+    f->drop++;
+    return 1;
   }
   else
-    f->count = f->burst;
+  {
+    f->count -= 1000000;
+    f->drop = 0;
+    return 0;
+  }
 }

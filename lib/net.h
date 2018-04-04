@@ -21,8 +21,9 @@
 #define NET_ROA6	6
 #define NET_FLOW4	7
 #define NET_FLOW6	8
-#define NET_MPLS	9
-#define NET_MAX		10
+#define NET_IP6_SADR	9
+#define NET_MPLS	10
+#define NET_MAX		11
 
 #define NB_IP4		(1 << NET_IP4)
 #define NB_IP6		(1 << NET_IP6)
@@ -32,12 +33,13 @@
 #define NB_ROA6		(1 << NET_ROA6)
 #define NB_FLOW4	(1 << NET_FLOW4)
 #define NB_FLOW6	(1 << NET_FLOW6)
+#define NB_IP6_SADR	(1 << NET_IP6_SADR)
 #define NB_MPLS		(1 << NET_MPLS)
 
 #define NB_IP		(NB_IP4 | NB_IP6)
 #define NB_VPN		(NB_VPN4 | NB_VPN6)
 #define NB_FLOW		(NB_FLOW4 | NB_FLOW6)
-#define NB_DEST		(NB_IP | NB_VPN | NB_MPLS)
+#define NB_DEST		(NB_IP | NB_IP6_SADR | NB_VPN | NB_MPLS)
 #define NB_ANY		0xffffffff
 
 
@@ -45,7 +47,7 @@ typedef struct net_addr {
   u8 type;
   u8 pxlen;
   u16 length;
-  u8 data[16];
+  u8 data[20];
   u64 align[0];
 } net_addr;
 
@@ -76,6 +78,7 @@ typedef struct net_addr_vpn6 {
   u8 pxlen;
   u16 length;
   ip6_addr prefix;
+  u32 padding;
   u64 rd;
 } net_addr_vpn6;
 
@@ -120,6 +123,15 @@ typedef struct net_addr_mpls {
   u32 label;
 } net_addr_mpls;
 
+typedef struct net_addr_ip6_sadr {
+  u8 type;
+  u8 dst_pxlen;
+  u16 length;
+  ip6_addr dst_prefix;
+  s32 src_pxlen; /* s32 to avoid padding */
+  ip6_addr src_prefix;
+} net_addr_ip6_sadr;
+
 typedef union net_addr_union {
   net_addr n;
   net_addr_ip4 ip4;
@@ -130,6 +142,7 @@ typedef union net_addr_union {
   net_addr_roa6 roa6;
   net_addr_flow4 flow4;
   net_addr_flow6 flow6;
+  net_addr_ip6_sadr ip6_sadr;
   net_addr_mpls mpls;
 } net_addr_union;
 
@@ -152,7 +165,7 @@ extern const u16 net_max_text_length[];
   ((net_addr_vpn4) { NET_VPN4, pxlen, sizeof(net_addr_vpn4), prefix, rd })
 
 #define NET_ADDR_VPN6(prefix,pxlen,rd) \
-  ((net_addr_vpn6) { NET_VPN6, pxlen, sizeof(net_addr_vpn6), prefix, rd })
+  ((net_addr_vpn6) { NET_VPN6, pxlen, sizeof(net_addr_vpn6), prefix, 0, rd })
 
 #define NET_ADDR_ROA4(prefix,pxlen,max_pxlen,asn) \
   ((net_addr_roa4) { NET_ROA4, pxlen, sizeof(net_addr_roa4), prefix, max_pxlen, asn })
@@ -165,6 +178,9 @@ extern const u16 net_max_text_length[];
 
 #define NET_ADDR_FLOW6(prefix,pxlen,dlen) \
   ((net_addr_flow6) { NET_FLOW6, pxlen, sizeof(net_addr_ip6) + dlen, prefix })
+
+#define NET_ADDR_IP6_SADR(dst_prefix,dst_pxlen,src_prefix,src_pxlen) \
+  ((net_addr_ip6_sadr) { NET_IP6_SADR, dst_pxlen, sizeof(net_addr_ip6_sadr), dst_prefix, src_pxlen, src_prefix })
 
 #define NET_ADDR_MPLS(label) \
   ((net_addr_mpls) { NET_MPLS, 20, sizeof(net_addr_mpls), label })
@@ -187,6 +203,9 @@ static inline void net_fill_roa4(net_addr *a, ip4_addr prefix, uint pxlen, uint 
 
 static inline void net_fill_roa6(net_addr *a, ip6_addr prefix, uint pxlen, uint max_pxlen, u32 asn)
 { *(net_addr_roa6 *)a = NET_ADDR_ROA6(prefix, pxlen, max_pxlen, asn); }
+
+static inline void net_fill_ip6_sadr(net_addr *a, ip6_addr dst_prefix, uint dst_pxlen, ip6_addr src_prefix, uint src_pxlen)
+{ *(net_addr_ip6_sadr *)a = NET_ADDR_IP6_SADR(dst_prefix, dst_pxlen, src_prefix, src_pxlen); }
 
 static inline void net_fill_mpls(net_addr *a, u32 label)
 { *(net_addr_mpls *)a = NET_ADDR_MPLS(label); }
@@ -221,6 +240,16 @@ static inline void net_fill_flow6(net_addr *a, ip6_addr prefix, uint pxlen, byte
   memcpy(f->data, data, dlen);
 }
 
+/* Make NET_IP6_SADR from NET_IP6, assuming there is enough space */
+static inline void net_make_ip6_sadr(net_addr *a)
+{
+  net_addr_ip6_sadr *n = (void *) a;
+  n->type = NET_IP6_SADR;
+  n->length = sizeof(net_addr_ip6_sadr);
+  n->src_pxlen = 0;
+  n->src_prefix = IP6_NONE;
+}
+
 static inline int net_val_match(u8 type, u32 mask)
 { return !!((1 << type) & mask); }
 
@@ -230,11 +259,14 @@ static inline int net_type_match(const net_addr *a, u32 mask)
 static inline int net_is_ip(const net_addr *a)
 { return (a->type == NET_IP4) || (a->type == NET_IP6); }
 
+static inline int net_is_vpn(const net_addr *a)
+{ return (a->type == NET_VPN4) || (a->type == NET_VPN6); }
+
 static inline int net_is_roa(const net_addr *a)
 { return (a->type == NET_ROA4) || (a->type == NET_ROA6); }
 
-static inline int net_is_vpn(const net_addr *a)
-{ return (a->type == NET_VPN4) || (a->type == NET_VPN6); }
+static inline int net_is_flow(const net_addr *a)
+{ return (a->type == NET_FLOW4) || (a->type == NET_FLOW6); }
 
 
 static inline ip4_addr net4_prefix(const net_addr *a)
@@ -257,6 +289,7 @@ static inline ip_addr net_prefix(const net_addr *a)
   case NET_VPN6:
   case NET_ROA6:
   case NET_FLOW6:
+  case NET_IP6_SADR:
     return ipa_from_ip6(net6_prefix(a));
 
   case NET_MPLS:
@@ -324,6 +357,9 @@ static inline int net_equal_flow4(const net_addr_flow4 *a, const net_addr_flow4 
 static inline int net_equal_flow6(const net_addr_flow6 *a, const net_addr_flow6 *b)
 { return net_equal((const net_addr *) a, (const net_addr *) b); }
 
+static inline int net_equal_ip6_sadr(const net_addr_ip6_sadr *a, const net_addr_ip6_sadr *b)
+{ return !memcmp(a, b, sizeof(net_addr_ip6_sadr)); }
+
 static inline int net_equal_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
 { return !memcmp(a, b, sizeof(net_addr_mpls)); }
 
@@ -333,6 +369,12 @@ static inline int net_equal_prefix_roa4(const net_addr_roa4 *a, const net_addr_r
 
 static inline int net_equal_prefix_roa6(const net_addr_roa6 *a, const net_addr_roa6 *b)
 { return ip6_equal(a->prefix, b->prefix) && (a->pxlen == b->pxlen); }
+
+static inline int net_equal_dst_ip6_sadr(const net_addr_ip6_sadr *a, const net_addr_ip6_sadr *b)
+{ return ip6_equal(a->dst_prefix, b->dst_prefix) && (a->dst_pxlen == b->dst_pxlen); }
+
+static inline int net_equal_src_ip6_sadr(const net_addr_ip6_sadr *a, const net_addr_ip6_sadr *b)
+{ return ip6_equal(a->src_prefix, b->src_prefix) && (a->src_pxlen == b->src_pxlen); }
 
 
 static inline int net_zero_ip4(const net_addr_ip4 *a)
@@ -354,10 +396,10 @@ static inline int net_zero_roa6(const net_addr_roa6 *a)
 { return !a->pxlen && ip6_zero(a->prefix) && !a->max_pxlen && !a->asn; }
 
 static inline int net_zero_flow4(const net_addr_flow4 *a)
-{ return !a->pxlen && ip4_zero(a->prefix) && !a->data; }
+{ return !a->pxlen && ip4_zero(a->prefix) && (a->length == sizeof(net_addr_flow4)); }
 
 static inline int net_zero_flow6(const net_addr_flow6 *a)
-{ return !a->pxlen && ip6_zero(a->prefix) && !a->data; }
+{ return !a->pxlen && ip6_zero(a->prefix) && (a->length == sizeof(net_addr_flow6)); }
 
 static inline int net_zero_mpls(const net_addr_mpls *a)
 { return !a->label; }
@@ -386,6 +428,13 @@ static inline int net_compare_flow4(const net_addr_flow4 *a, const net_addr_flow
 
 static inline int net_compare_flow6(const net_addr_flow6 *a, const net_addr_flow6 *b)
 { return ip6_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen) ?: uint_cmp(a->length, b->length) ?: memcmp(a->data, b->data, a->length - sizeof(net_addr_flow6)); }
+
+static inline int net_compare_ip6_sadr(const net_addr_ip6_sadr *a, const net_addr_ip6_sadr *b)
+{
+  return
+    ip6_compare(a->dst_prefix, b->dst_prefix) ?: uint_cmp(a->dst_pxlen, b->dst_pxlen) ?:
+    ip6_compare(a->src_prefix, b->src_prefix) ?: uint_cmp(a->src_pxlen, b->src_pxlen);
+}
 
 static inline int net_compare_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
 { return uint_cmp(a->label, b->label); }
@@ -420,6 +469,9 @@ static inline void net_copy_flow4(net_addr_flow4 *dst, const net_addr_flow4 *src
 static inline void net_copy_flow6(net_addr_flow6 *dst, const net_addr_flow6 *src)
 { memcpy(dst, src, src->length); }
 
+static inline void net_copy_ip6_sadr(net_addr_ip6_sadr *dst, const net_addr_ip6_sadr *src)
+{ memcpy(dst, src, sizeof(net_addr_ip6_sadr)); }
+
 static inline void net_copy_mpls(net_addr_mpls *dst, const net_addr_mpls *src)
 { memcpy(dst, src, sizeof(net_addr_mpls)); }
 
@@ -451,6 +503,9 @@ static inline u32 net_hash_flow4(const net_addr_flow4 *n)
 
 static inline u32 net_hash_flow6(const net_addr_flow6 *n)
 { return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+
+static inline u32 net_hash_ip6_sadr(const net_addr_ip6_sadr *n)
+{ return net_hash_ip6((net_addr_ip6 *) n); }
 
 static inline u32 net_hash_mpls(const net_addr_mpls *n)
 { return n->label; }
@@ -504,6 +559,9 @@ static inline int net_validate_flow6(const net_addr_flow6 *n)
 static inline int net_validate_mpls(const net_addr_mpls *n)
 { return n->label < (1 << 20); }
 
+static inline int net_validate_ip6_sadr(const net_addr_ip6_sadr *n)
+{ return net_validate_px6(n->dst_prefix, n->dst_pxlen) && net_validate_px6(n->src_prefix, n->src_pxlen); }
+
 int net_validate(const net_addr *N);
 
 
@@ -519,6 +577,12 @@ static inline void net_normalize_vpn4(net_addr_vpn4 *n)
 static inline void net_normalize_vpn6(net_addr_vpn6 *n)
 { net_normalize_ip6((net_addr_ip6 *) n); }
 
+static inline void net_normalize_ip6_sadr(net_addr_ip6_sadr *n)
+{
+  n->dst_prefix = ip6_and(n->dst_prefix, ip6_mkmask(n->dst_pxlen));
+  n->src_prefix = ip6_and(n->src_prefix, ip6_mkmask(n->src_pxlen));
+}
+
 void net_normalize(net_addr *N);
 
 
@@ -526,8 +590,33 @@ int net_classify(const net_addr *N);
 int net_format(const net_addr *N, char *buf, int buflen);
 int rd_format(const u64 rd, char *buf, int buflen);
 
+static inline int ipa_in_px4(ip4_addr a, ip4_addr prefix, uint pxlen)
+{ return ip4_zero(ip4_and(ip4_xor(a, prefix), ip4_mkmask(pxlen))); }
+
+static inline int ipa_in_px6(ip6_addr a, ip6_addr prefix, uint pxlen)
+{ return ip6_zero(ip6_and(ip6_xor(a, prefix), ip6_mkmask(pxlen))); }
+
+static inline int ipa_in_net_ip4(ip4_addr a, const net_addr_ip4 *n)
+{ return ipa_in_px4(a, n->prefix, n->pxlen); }
+
+static inline int ipa_in_net_ip6(ip6_addr a, const net_addr_ip6 *n)
+{ return ipa_in_px6(a, n->prefix, n->pxlen); }
+
+static inline int net_in_net_ip4(const net_addr_ip4 *a, const net_addr_ip4 *b)
+{ return (a->pxlen >= b->pxlen) && ipa_in_px4(a->prefix, b->prefix, b->pxlen); }
+
+static inline int net_in_net_ip6(const net_addr_ip6 *a, const net_addr_ip6 *b)
+{ return (a->pxlen >= b->pxlen) && ipa_in_px6(a->prefix, b->prefix, b->pxlen); }
+
+static inline int net_in_net_dst_ip6_sadr(const net_addr_ip6_sadr *a, const net_addr_ip6_sadr *b)
+{ return (a->dst_pxlen >= b->dst_pxlen) && ipa_in_px6(a->dst_prefix, b->dst_prefix, b->dst_pxlen); }
+
+static inline int net_in_net_src_ip6_sadr(const net_addr_ip6_sadr *a, const net_addr_ip6_sadr *b)
+{ return (a->src_pxlen >= b->src_pxlen) && ipa_in_px6(a->src_prefix, b->src_prefix, b->src_pxlen); }
+
 int ipa_in_netX(const ip_addr A, const net_addr *N);
 int net_in_netX(const net_addr *A, const net_addr *N);
 
+void net_init(void);
 
 #endif

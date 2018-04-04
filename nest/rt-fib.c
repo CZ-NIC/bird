@@ -32,6 +32,24 @@
  * Basic FIB operations are performed by functions defined by this module,
  * enumerating of FIB contents is accomplished by using the FIB_WALK() macro
  * or FIB_ITERATE_START() if you want to do it asynchronously.
+ *
+ * For simple iteration just place the body of the loop between FIB_WALK() and
+ * FIB_WALK_END(). You can't modify the FIB during the iteration (you can modify
+ * data in the node, but not add or remove nodes).
+ *
+ * If you need more freedom, you can use the FIB_ITERATE_*() group of macros.
+ * First, you initialize an iterator with FIB_ITERATE_INIT(). Then you can put
+ * the loop body in between FIB_ITERATE_START() and FIB_ITERATE_END(). In
+ * addition, the iteration can be suspended by calling FIB_ITERATE_PUT().
+ * This'll link the iterator inside the FIB. While suspended, you may modify the
+ * FIB, exit the current function, etc. To resume the iteration, enter the loop
+ * again. You can use FIB_ITERATE_UNLINK() to unlink the iterator (while
+ * iteration is suspended) in cases like premature end of FIB iteration.
+ *
+ * Note that the iterator must not be destroyed when the iteration is suspended,
+ * the FIB would then contain a pointer to invalid memory. Therefore, after each
+ * FIB_ITERATE_INIT() or FIB_ITERATE_PUT() there must be either
+ * FIB_ITERATE_START() or FIB_ITERATE_UNLINK() before the iterator is destroyed.
  */
 
 #undef LOCAL_DEBUG
@@ -74,8 +92,7 @@ fib_ht_free(struct fib_node **h)
 }
 
 
-static u32
-fib_hash(struct fib *f, const net_addr *a);
+static inline u32 fib_hash(struct fib *f, const net_addr *a);
 
 /**
  * fib_init - initialize a new FIB
@@ -180,23 +197,11 @@ fib_rehash(struct fib *f, int step)
   })
 
 
-static u32
+static inline u32
 fib_hash(struct fib *f, const net_addr *a)
 {
-  ASSERT(f->addr_type == a->type);
-
-  switch (f->addr_type)
-  {
-  case NET_IP4: return FIB_HASH(f, a, ip4);
-  case NET_IP6: return FIB_HASH(f, a, ip6);
-  case NET_VPN4: return FIB_HASH(f, a, vpn4);
-  case NET_VPN6: return FIB_HASH(f, a, vpn6);
-  case NET_ROA4: return FIB_HASH(f, a, roa4);
-  case NET_ROA6: return FIB_HASH(f, a, roa6);
-  case NET_FLOW4: return FIB_HASH(f, a, flow4);
-  case NET_FLOW6: return FIB_HASH(f, a, flow6);
-  default: bug("invalid type");
-  }
+  /* Same as FIB_HASH() */
+  return net_hash(a) >> f->hash_shift;
 }
 
 void *
@@ -231,6 +236,8 @@ fib_find(struct fib *f, const net_addr *a)
   case NET_ROA6: return FIB_FIND(f, a, roa6);
   case NET_FLOW4: return FIB_FIND(f, a, flow4);
   case NET_FLOW6: return FIB_FIND(f, a, flow6);
+  case NET_IP6_SADR: return FIB_FIND(f, a, ip6_sadr);
+  case NET_MPLS: return FIB_FIND(f, a, mpls);
   default: bug("invalid type");
   }
 }
@@ -250,6 +257,8 @@ fib_insert(struct fib *f, const net_addr *a, struct fib_node *e)
   case NET_ROA6: FIB_INSERT(f, a, e, roa6); return;
   case NET_FLOW4: FIB_INSERT(f, a, e, flow4); return;
   case NET_FLOW6: FIB_INSERT(f, a, e, flow6); return;
+  case NET_IP6_SADR: FIB_INSERT(f, a, e, ip6_sadr); return;
+  case NET_MPLS: FIB_INSERT(f, a, e, mpls); return;
   default: bug("invalid type");
   }
 }
@@ -547,22 +556,17 @@ found:
 void
 fib_check(struct fib *f)
 {
-#if 0
-  uint i, ec, lo, nulls;
+  uint i, ec, nulls;
 
   ec = 0;
   for(i=0; i<f->hash_size; i++)
     {
       struct fib_node *n;
-      lo = 0;
       for(n=f->hash_table[i]; n; n=n->next)
 	{
 	  struct fib_iterator *j, *j0;
-	  uint h0 = ipa_hash(n->prefix);
-	  if (h0 < lo)
-	    bug("fib_check: discord in hash chains");
-	  lo = h0;
-	  if ((h0 >> f->hash_shift) != i)
+	  uint h0 = fib_hash(f, n->addr);
+	  if (h0 != i)
 	    bug("fib_check: mishashed %x->%x (order %d)", h0, i, f->hash_order);
 	  j0 = (struct fib_iterator *) n;
 	  nulls = 0;
@@ -583,7 +587,6 @@ fib_check(struct fib *f)
     }
   if (ec != f->entries)
     bug("fib_check: invalid entry count (%d != %d)", ec, f->entries);
-#endif
   return;
 }
 
@@ -602,7 +605,7 @@ fib_histogram(struct fib *f)
       for (e = f->hash_table[i]; e != NULL; e = e->next)
 	j++;
       if (j > 0)
-        log(L_WARN "Histogram line %d: %d", i, j);
+	log(L_WARN "Histogram line %d: %d", i, j);
     }
 
   log(L_WARN "Histogram dump end");

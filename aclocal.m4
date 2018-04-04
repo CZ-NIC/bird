@@ -31,6 +31,41 @@ AC_DEFUN([BIRD_CHECK_PTHREADS],
   CFLAGS="$bird_tmp_cflags"
 ])
 
+AC_DEFUN([BIRD_CHECK_MPLS_KERNEL],
+[
+  AC_CACHE_CHECK(
+    [for Linux MPLS headers],
+    [bird_cv_mpls_kernel],
+    [
+      AC_COMPILE_IFELSE(
+	[
+	  AC_LANG_PROGRAM(
+	    [
+	      #include <linux/lwtunnel.h>
+	      #include <linux/netlink.h>
+	      #include <linux/rtnetlink.h>
+	      #include <sys/socket.h>
+	      void t(int arg);
+	    ],
+	    [
+	      t(AF_MPLS);
+	      t(RTA_VIA);
+	      t(RTA_NEWDST);
+	      t(RTA_ENCAP_TYPE);
+	      t(RTA_ENCAP);
+	      struct rtvia rtvia;
+	      t(LWTUNNEL_ENCAP_MPLS);
+	    ]
+	  )
+	],
+	[bird_cv_mpls_kernel=yes],
+	[bird_cv_mpls_kernel=no]
+      )
+    ]
+  )
+])
+
+
 AC_DEFUN([BIRD_CHECK_GCC_OPTION],
 [
   bird_tmp_cflags="$CFLAGS"

@@ -46,7 +46,7 @@ static inline void cf_check_bfd(int use UNUSED) { }
 
 #else
 
-static inline struct bfd_request * bfd_request_session(pool *p, ip_addr addr, ip_addr local, struct iface *iface, void (*hook)(struct bfd_request *), void *data) { return NULL; }
+static inline struct bfd_request * bfd_request_session(pool *p UNUSED, ip_addr addr UNUSED, ip_addr local UNUSED, struct iface *iface UNUSED, void (*hook)(struct bfd_request *) UNUSED, void *data UNUSED) { return NULL; }
 
 static inline void cf_check_bfd(int use) { if (use) cf_error("BFD not available"); }
 

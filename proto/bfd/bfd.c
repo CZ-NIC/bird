@@ -64,16 +64,15 @@
  * ready, the protocol just creates a BFD request like any other protocol.
  *
  * The protocol uses a new generic event loop (structure &birdloop) from |io.c|,
- * which supports sockets, timers and events like the main loop. Timers
- * (structure &timer2) are new microsecond based timers, while sockets and
- * events are the same. A birdloop is associated with a thread (field @thread)
- * in which event hooks are executed. Most functions for setting event sources
- * (like sk_start() or tm2_start()) must be called from the context of that
- * thread. Birdloop allows to temporarily acquire the context of that thread for
- * the main thread by calling birdloop_enter() and then birdloop_leave(), which
- * also ensures mutual exclusion with all event hooks. Note that resources
- * associated with a birdloop (like timers) should be attached to the
- * independent resource pool, detached from the main resource tree.
+ * which supports sockets, timers and events like the main loop. A birdloop is
+ * associated with a thread (field @thread) in which event hooks are executed.
+ * Most functions for setting event sources (like sk_start() or tm_start()) must
+ * be called from the context of that thread. Birdloop allows to temporarily
+ * acquire the context of that thread for the main thread by calling
+ * birdloop_enter() and then birdloop_leave(), which also ensures mutual
+ * exclusion with all event hooks. Note that resources associated with a
+ * birdloop (like timers) should be attached to the independent resource pool,
+ * detached from the main resource tree.
  *
  * There are two kinds of interaction between the BFD core (running in the BFD
  * thread) and the rest of BFD (running in the main thread). The first kind are
@@ -145,6 +144,7 @@ bfd_session_update_state(struct bfd_session *s, uint state, uint diag)
   bfd_lock_sessions(p);
   s->loc_state = state;
   s->loc_diag = diag;
+  s->last_state_change = current_time();
 
   notify = !NODE_VALID(&s->n);
   if (notify)
@@ -176,7 +176,7 @@ bfd_session_update_tx_interval(struct bfd_session *s)
     return;
 
   /* Set timer relative to last tx_timer event */
-  tm2_set(s->tx_timer, s->last_tx + tx_int_l);
+  tm_set(s->tx_timer, s->last_tx + tx_int_l);
 }
 
 static void
@@ -190,7 +190,7 @@ bfd_session_update_detection_time(struct bfd_session *s, int kick)
   if (!s->last_rx)
     return;
 
-  tm2_set(s->hold_timer, s->last_rx + timeout);
+  tm_set(s->hold_timer, s->last_rx + timeout);
 }
 
 static void
@@ -211,16 +211,16 @@ bfd_session_control_tx_timer(struct bfd_session *s, int reset)
     goto stop;
 
   /* So TX timer should run */
-  if (reset || !tm2_active(s->tx_timer))
+  if (reset || !tm_active(s->tx_timer))
   {
     s->last_tx = 0;
-    tm2_start(s->tx_timer, 0);
+    tm_start(s->tx_timer, 0);
   }
 
   return;
 
  stop:
-  tm2_stop(s->tx_timer);
+  tm_stop(s->tx_timer);
   s->last_tx = 0;
 }
 
@@ -379,7 +379,7 @@ bfd_find_session_by_addr(struct bfd_proto *p, ip_addr addr)
 }
 
 static void
-bfd_tx_timer_hook(timer2 *t)
+bfd_tx_timer_hook(timer *t)
 {
   struct bfd_session *s = t->data;
 
@@ -388,7 +388,7 @@ bfd_tx_timer_hook(timer2 *t)
 }
 
 static void
-bfd_hold_timer_hook(timer2 *t)
+bfd_hold_timer_hook(timer *t)
 {
   bfd_session_timeout(t->data);
 }
@@ -432,13 +432,13 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
   s->passive = ifa->cf->passive;
   s->tx_csn = random_u32();
 
-  s->tx_timer = tm2_new_init(p->tpool, bfd_tx_timer_hook, s, 0, 0);
-  s->hold_timer = tm2_new_init(p->tpool, bfd_hold_timer_hook, s, 0, 0);
+  s->tx_timer = tm_new_init(p->tpool, bfd_tx_timer_hook, s, 0, 0);
+  s->hold_timer = tm_new_init(p->tpool, bfd_hold_timer_hook, s, 0, 0);
   bfd_session_update_tx_interval(s);
   bfd_session_control_tx_timer(s, 1);
 
   init_list(&s->request_list);
-  s->last_state_change = now;
+  s->last_state_change = current_time();
 
   TRACE(D_EVENTS, "Session to %I added", s->addr);
 
@@ -879,9 +879,6 @@ bfd_notify_hook(sock *sk, uint len UNUSED)
     diag = s->loc_diag;
     bfd_unlock_sessions(p);
 
-    /* FIXME: convert to btime and move to bfd_session_update_state() */
-    s->last_state_change = now;
-
     s->notify_running = 1;
     WALK_LIST_DELSAFE(n, nn, s->request_list)
       bfd_request_notify(SKIP_BACK(struct bfd_request, n, n), state, diag);
@@ -1080,7 +1077,7 @@ bfd_show_sessions(struct proto *P)
   byte tbuf[TM_DATETIME_BUFFER_SIZE];
   struct bfd_proto *p = (struct bfd_proto *) P;
   uint state, diag UNUSED;
-  u32 tx_int, timeout;
+  btime tx_int, timeout;
   const char *ifname;
 
   if (p->p.proto_state != PS_UP)
@@ -1101,15 +1098,14 @@ bfd_show_sessions(struct proto *P)
     state = s->loc_state;
     diag = s->loc_diag;
     ifname = (s->ifa && s->ifa->iface) ? s->ifa->iface->name : "---";
-    tx_int = s->last_tx ? (MAX(s->des_min_tx_int, s->rem_min_rx_int) TO_MS) : 0;
-    timeout = (MAX(s->req_min_rx_int, s->rem_min_tx_int) TO_MS) * s->rem_detect_mult;
+    tx_int = s->last_tx ? MAX(s->des_min_tx_int, s->rem_min_rx_int) : 0;
+    timeout = (btime) MAX(s->req_min_rx_int, s->rem_min_tx_int) * s->rem_detect_mult;
 
     state = (state < 4) ? state : 0;
-    tm_format_datetime(tbuf, &config->tf_proto, s->last_state_change);
+    tm_format_time(tbuf, &config->tf_proto, s->last_state_change);
 
-    cli_msg(-1020, "%-25I %-10s %-10s %-10s  %3u.%03u  %3u.%03u",
-	    s->addr, ifname, bfd_state_names[state], tbuf,
-	    tx_int / 1000, tx_int % 1000, timeout / 1000, timeout % 1000);
+    cli_msg(-1020, "%-25I %-10s %-10s %-10s  %7t  %7t",
+	    s->addr, ifname, bfd_state_names[state], tbuf, tx_int, timeout);
   }
   HASH_WALK_END;
 
