@@ -373,7 +373,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			snprintf(ipbuf, sizeof(ipbuf), fmtbuf, va_arg(args, double));
 			s = ipbuf;
 			goto str;
-			
+
 		case 't':
 			t = va_arg(args, btime);
 			t1 = t TO_S;

@@ -159,7 +159,7 @@ stat_route:
  | stat_route0 BLACKHOLE	{ this_srt->dest = RTD_BLACKHOLE; }
  | stat_route0 UNREACHABLE	{ this_srt->dest = RTD_UNREACHABLE; }
  | stat_route0 PROHIBIT		{ this_srt->dest = RTD_PROHIBIT; }
- | net_flow_ { static_route_start($1); } flowspec_action 
+ | net_flow_ { static_route_start($1); } flowspec_action
  ;
 
 stat_route_item:
