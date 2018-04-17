@@ -295,7 +295,7 @@ bgp_encode_next_hop(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
    * store it and encode it later by AFI-specific hooks.
    */
 
-  if (s->channel->afi == BGP_AF_IPV4)
+  if ((s->channel->afi == BGP_AF_IPV4) && !s->channel->ext_next_hop)
   {
     ASSERT(a->u.ptr->length == sizeof(ip_addr));
 
