@@ -966,13 +966,13 @@ net_format_flow_ip(buffer *b, const byte *part, int ipv6)
   {
     uint pxoffset = *(part+2);
     if (pxoffset)
-      buffer_print(b, "%I6/%u offset %u; ", flow_read_ip6(part+3,pxlen,pxoffset), pxlen, pxoffset);
+      buffer_print(b, "%I6/%u offset %u;", flow_read_ip6(part+3,pxlen,pxoffset), pxlen, pxoffset);
     else
-      buffer_print(b, "%I6/%u; ", flow_read_ip6(part+3,pxlen,0), pxlen);
+      buffer_print(b, "%I6/%u;", flow_read_ip6(part+3,pxlen,0), pxlen);
   }
   else
   {
-    buffer_print(b, "%I4/%u; ", flow_read_ip4(part+2,pxlen), pxlen);
+    buffer_print(b, "%I4/%u;", flow_read_ip4(part+2,pxlen), pxlen);
   }
 }
 
@@ -1028,7 +1028,7 @@ net_format_flow_num(buffer *b, const byte *part)
 
     if (isset_end(op))
     {
-      buffer_puts(b, "; ");
+      buffer_puts(b, ";");
       break;
     }
     else
@@ -1087,7 +1087,7 @@ net_format_flow_bitmask(buffer *b, const byte *part)
 
     if (isset_end(op))
     {
-      buffer_puts(b, "; ");
+      buffer_puts(b, ";");
       break;
     }
     else

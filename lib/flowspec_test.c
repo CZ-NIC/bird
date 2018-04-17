@@ -584,7 +584,7 @@ t_formatting4(void)
 
   const char *expect = "flow4 { dst 10.0.0.0/8; proto 23; dport > 24 && < 30 || 40..50,60..70,80 && >= 90; sport > 24 && < 30 || 40,50,60..70,80; icmp type 80; icmp code 90; tcp flags 0x3/0x3,0x0/0xc; length 0..65535; dscp 63; fragment dont_fragment || !is_fragment; }";
 
-  bt_assert(flow4_net_format(b, sizeof(b), input) == strlen(expect));
+  bt_assert(flow4_net_format(b, sizeof(b), input, " ") == strlen(expect));
   bt_debug(" expect: '%s',\n output: '%s'\n", expect, b);
   bt_assert(strcmp(b, expect) == 0);
 
@@ -611,7 +611,7 @@ t_formatting6(void)
 
   const char *expect = "flow6 { dst ::1:1234:5678:9800:0/103 offset 61; src c000::/8; next header 6; port 20..40,273; label !0x0/0x12345678; }";
 
-  bt_assert(flow6_net_format(b, sizeof(b), input) == strlen(expect));
+  bt_assert(flow6_net_format(b, sizeof(b), input, " ") == strlen(expect));
   bt_debug(" expect: '%s',\n output: '%s'\n", expect, b);
   bt_assert(strcmp(b, expect) == 0);
 
