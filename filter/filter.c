@@ -1677,6 +1677,44 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   return i_same(f1->next, f2->next);
 }
 
+static struct f_val
+f_eval_(struct f_inst *expr, struct rte **rte, struct ea_list **tmp_attrs, struct linpool *pool, int flags)
+{
+  struct filter_state fs = {
+    .rte = rte,
+    .tmp_attrs = tmp_attrs,
+    .pool = pool,
+    .flags = flags,
+  };
+
+  int rte_cow = (flags & FF_AFTER_REPLACE_RTA) && ((*rte)->flags & REF_COW);
+
+  LOG_BUFFER_INIT(fs.buf);
+  struct f_val res = interpret(&fs, expr);
+
+  if ((flags & FF_AFTER_REPLACE_RTA) && fs.old_rta) {
+    /*
+     * Cached rta was modified and fs->rte contains now an uncached one,
+     * sharing some part with the cached one. The cached rta should
+     * be freed (if rte was originally COW, fs->old_rta is a clone
+     * obtained during rte_cow()).
+     *
+     * This also implements the exception mentioned in f_run()
+     * description. The reason for this is that rta reuses parts of
+     * fs->old_rta, and these may be freed during rta_free(fs->old_rta).
+     * This is not the problem if rte was COW, because original rte
+     * also holds the same rta.
+     */
+    if (!rte_cow)
+      (*fs.rte)->attrs = rta_lookup((*fs.rte)->attrs);
+
+    rta_free(fs.old_rta);
+  }
+
+  return res;
+}
+
+
 /**
  * f_run - run a filter for a route
  * @filter: filter to run
@@ -1711,42 +1749,12 @@ f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struc
   if (filter == FILTER_REJECT)
     return F_REJECT;
 
-  int rte_cow = ((*rte)->flags & REF_COW);
   DBG( "Running filter `%s'...", filter->name );
 
-  struct filter_state fs = {
-    .rte = rte,
-    .tmp_attrs = tmp_attrs,
-    .pool = tmp_pool,
-    .flags = flags,
-  };
-
-  LOG_BUFFER_INIT(fs.buf);
-
-  struct f_val res = interpret(&fs, filter->root);
-
-  if (fs.old_rta) {
-    /*
-     * Cached rta was modified and fs->rte contains now an uncached one,
-     * sharing some part with the cached one. The cached rta should
-     * be freed (if rte was originally COW, fs->old_rta is a clone
-     * obtained during rte_cow()).
-     *
-     * This also implements the exception mentioned in f_run()
-     * description. The reason for this is that rta reuses parts of
-     * fs->old_rta, and these may be freed during rta_free(fs->old_rta).
-     * This is not the problem if rte was COW, because original rte
-     * also holds the same rta.
-     */
-    if (!rte_cow)
-      (*fs.rte)->attrs = rta_lookup((*fs.rte)->attrs);
-
-    rta_free(fs.old_rta);
-  }
-
+  struct f_val res = f_eval_(filter->root, rte, tmp_attrs, tmp_pool, flags | FF_AFTER_REPLACE_RTA);
 
   if (res.type != T_RETURN) {
-    if (!(fs.flags & FF_SILENT))
+    if (!(flags & FF_SILENT))
       log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter->name);
     return F_ERROR;
   }
@@ -1754,23 +1762,13 @@ f_run(struct filter *filter, struct rte **rte, struct ea_list **tmp_attrs, struc
   return res.val.i;
 }
 
-/* TODO: perhaps we could integrate f_eval(), f_eval_rte() and f_run() */
-
 struct f_val
 f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
 {
   struct ea_list *tmp_attrs = NULL;
 
-  struct filter_state fs = {
-    .rte = rte,
-    .tmp_attrs = &tmp_attrs,
-    .pool = tmp_pool,
-  };
-
-  LOG_BUFFER_INIT(fs.buf);
-
   /* Note that in this function we assume that rte->attrs is private / uncached */
-  struct f_val res = interpret(&fs, expr);
+  struct f_val res = f_eval_(expr, rte, &tmp_attrs, tmp_pool, 0);
 
   /* Hack to include EAF_TEMP attributes to the main list */
   (*rte)->attrs->eattrs = ea_append(tmp_attrs, (*rte)->attrs->eattrs);
@@ -1781,13 +1779,7 @@ f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
 struct f_val
 f_eval(struct f_inst *expr, struct linpool *tmp_pool)
 {
-  struct filter_state fs = {
-    .pool = tmp_pool,
-  };
-
-  LOG_BUFFER_INIT(fs.buf);
-
-  return interpret(&fs, expr);
+  return f_eval_(expr, NULL, NULL, tmp_pool, 0);
 }
 
 uint

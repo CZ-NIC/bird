@@ -302,5 +302,6 @@ struct f_trie
 
 #define FF_FORCE_TMPATTR 1		/* Force all attributes to be temporary */
 #define FF_SILENT 2			/* Silent filter execution */
+#define FF_AFTER_REPLACE_RTA  0x10	/* After filter run, replace RTA in RTE */
 
 #endif
