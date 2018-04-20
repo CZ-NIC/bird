@@ -146,6 +146,8 @@ typedef struct buffer {
 
 #define LOG_BUFFER_SIZE 1024
 
+#define STATIC_BUFFER_INIT(buf,data)	(buf.end = sizeof(data) + (buf.pos = buf.start = data))
+
 #define log log_msg
 void log_commit(int class, buffer *buf);
 void log_msg(const char *msg, ...);

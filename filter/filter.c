@@ -54,8 +54,9 @@ struct filter_state {
   struct rta *old_rta;
   struct ea_list **tmp_attrs;
   struct linpool *pool;
-  struct buffer buf;
   int flags;
+  struct buffer buf;
+  byte bufdata[LOG_BUFFER_SIZE];
 };
 
 static struct adata *
@@ -1689,7 +1690,7 @@ f_eval_(struct f_inst *expr, struct rte **rte, struct ea_list **tmp_attrs, struc
 
   int rte_cow = (flags & FF_AFTER_REPLACE_RTA) && ((*rte)->flags & REF_COW);
 
-  LOG_BUFFER_INIT(fs.buf);
+  STATIC_BUFFER_INIT(fs.buf, fs.bufdata);
   struct f_val res = interpret(&fs, expr);
 
   if ((flags & FF_AFTER_REPLACE_RTA) && fs.old_rta) {
