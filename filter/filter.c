@@ -634,7 +634,7 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
  * memory managment.
  */
 static struct f_val
-interpret(struct filter_state *fs, struct f_inst *what)
+interpret(struct filter_state * const fs, struct f_inst *what)
 {
   struct symbol *sym;
   struct f_val v1, v2, res = { .type = T_VOID }, *vp;
