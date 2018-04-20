@@ -1681,16 +1681,23 @@ i_same(struct f_inst *f1, struct f_inst *f2)
 static struct f_val
 f_eval_(struct f_inst *expr, struct rte **rte, struct ea_list **tmp_attrs, struct linpool *pool, int flags)
 {
-  struct filter_state fs = {
+  /*
+   * In v1.x, this structure will NEVER be allocated more than once.
+   * For performance reasons, it is static.
+   */
+  static struct filter_state fs;
+  fs = (struct filter_state) {
     .rte = rte,
+    .old_rta = NULL,
     .tmp_attrs = tmp_attrs,
     .pool = pool,
     .flags = flags,
   };
 
+  STATIC_BUFFER_INIT(fs.buf, fs.bufdata);
+
   int rte_cow = (flags & FF_AFTER_REPLACE_RTA) && ((*rte)->flags & REF_COW);
 
-  STATIC_BUFFER_INIT(fs.buf, fs.bufdata);
   struct f_val res = interpret(&fs, expr);
 
   if ((flags & FF_AFTER_REPLACE_RTA) && fs.old_rta) {
