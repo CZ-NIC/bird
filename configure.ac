@@ -315,6 +315,20 @@ AC_C_BIGENDIAN(
   [AC_MSG_ERROR([Cannot determine CPU endianity.])]
 )
 
+BIRD_CHECK_ANDROID_GLOB
+if test "$bird_cv_lib_glob" = no ; then
+  AC_MSG_ERROR([glob.h not found.])
+elif test "$bird_cv_lib_glob" != yes ; then
+  LIBS="$LIBS $bird_cv_lib_glob"
+fi
+
+BIRD_CHECK_ANDROID_LOG
+if test "$bird_cv_lib_log" = no ; then
+  AC_MSG_ERROR([don't know how to link syslog.])
+elif test "$bird_cv_lib_log" != yes ; then
+  LIBS="$LIBS $bird_cv_lib_log"
+fi
+
 if test "$enable_debug" = yes ; then
   AC_DEFINE([DEBUGGING], [1], [Define to 1 if debugging is enabled])
   LDFLAGS="$LDFLAGS -rdynamic"

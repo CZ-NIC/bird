@@ -65,6 +65,71 @@ AC_DEFUN([BIRD_CHECK_MPLS_KERNEL],
   )
 ])
 
+AC_DEFUN([BIRD_CHECK_ANDROID_GLOB],
+[
+  AC_CACHE_CHECK(
+    [for glob.h],
+    [bird_cv_lib_glob],
+    AC_LINK_IFELSE([
+      AC_LANG_PROGRAM(
+        [
+	  #include <glob.h>
+	  #include <stdlib.h>
+	],
+        [ glob(NULL, 0, NULL, NULL); ]
+      )
+    ],
+    [bird_cv_lib_glob=yes],
+      [
+        bird_tmp_libs="$LIBS"
+        LIBS="$LIBS -landroid-glob"
+        AC_LINK_IFELSE([
+          AC_LANG_PROGRAM(
+            [
+	      #include <glob.h>
+	      #include <stdlib.h>
+	    ],
+            [ glob(NULL, 0, NULL, NULL); ]
+          )
+        ],
+        [bird_cv_lib_glob=-landroid-glob],
+        [bird_cv_lib_glob=no]
+        )
+        LIBS="$bird_tmp_libs"
+      ]
+    )
+  )
+])
+
+AC_DEFUN([BIRD_CHECK_ANDROID_LOG],
+[
+  AC_CACHE_CHECK(
+    [for syslog lib flags],
+    [bird_cv_lib_log],
+    AC_LINK_IFELSE([
+      AC_LANG_PROGRAM(
+        [ #include <sys/syslog.h> ],
+        [ syslog(0, ""); ]
+      )
+    ],
+    [bird_cv_lib_log=yes],
+      [
+        bird_tmp_libs="$LIBS"
+        LIBS="$LIBS -llog"
+        AC_LINK_IFELSE([
+          AC_LANG_PROGRAM(
+            [ #include <sys/syslog.h> ],
+            [ syslog(0, ""); ]
+          )
+        ],
+        [bird_cv_lib_log=-llog],
+        [bird_cv_lib_log=no]
+        )
+        LIBS="$bird_tmp_libs"
+      ]
+    )
+  )
+])
 
 AC_DEFUN([BIRD_CHECK_GCC_OPTION],
 [
