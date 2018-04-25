@@ -84,8 +84,6 @@ ospf_neighbor_new(struct ospf_iface *ifa)
   n->pool = pool;
   n->ifa = ifa;
   add_tail(&ifa->neigh_list, NODE n);
-  n->adj = 0;
-  n->csn = 0;
   n->state = NEIGHBOR_DOWN;
 
   init_lists(p, n);

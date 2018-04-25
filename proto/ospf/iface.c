@@ -61,7 +61,10 @@ ifa_tx_hdrlen(struct ospf_iface *ifa)
 
   /* Relevant just for OSPFv2 */
   if (ifa->autype == OSPF_AUTH_CRYPT)
+  {
+    hlen += ospf_is_v2(p) ? 0 : sizeof(struct ospf_auth3);
     hlen += max_mac_length(ifa->passwords);
+  }
 
   return hlen;
 }
@@ -137,7 +140,7 @@ ospf_sk_open(struct ospf_iface *ifa)
     goto err;
 
   /* 12 is an offset of the checksum in an OSPFv3 packet */
-  if (ospf_is_v3(p))
+  if (ospf_is_v3(p) && !ifa->autype)
     if (sk_set_ipv6_checksum(sk, 12) < 0)
       goto err;
 
@@ -828,6 +831,14 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
   {
     OSPF_TRACE(D_EVENTS, "Changing authentication type of %s", ifname);
     ifa->autype = new->autype;
+
+    /* For OSPFv3, we need to update checksum calculation by OS */
+    if (ospf_is_v3(p) && ifa->sk)
+      if (sk_set_ipv6_checksum(ifa->sk, ifa->autype ? -1 : 12) < 0)
+      {
+	sk_log_error(ifa->sk, p->p.name);
+	return 0;
+      }
   }
 
   /* Update passwords */

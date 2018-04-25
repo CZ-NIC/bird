@@ -37,7 +37,7 @@ ospf_iface_finish(void)
 
   ip->passwords = get_passwords();
 
-  if ((ip->autype == OSPF_AUTH_CRYPT) && (ip->helloint < 5))
+  if (ospf_cfg_is_v2() && (ip->autype == OSPF_AUTH_CRYPT) && (ip->helloint < 5))
     log(L_WARN "Hello or poll interval less that 5 makes cryptographic authenication prone to replay attacks");
 
   if ((ip->autype == OSPF_AUTH_NONE) && (ip->passwords != NULL))
@@ -54,6 +54,9 @@ ospf_iface_finish(void)
       /* Set default OSPF crypto algorithms */
       if (!pass->alg && (ip->autype == OSPF_AUTH_CRYPT))
 	pass->alg = ospf_cfg_is_v2() ? ALG_MD5 : ALG_HMAC_SHA256;
+
+      if (ospf_cfg_is_v3() && ip->autype && (pass->alg < ALG_HMAC))
+	cf_error("Keyed hash algorithms are not allowed, use HMAC algorithms");
     }
   }
 }
@@ -181,7 +184,7 @@ static inline void
 ospf_check_auth(void)
 {
   if (ospf_cfg_is_v3())
-    cf_error("Authentication not supported in OSPFv3");
+    cf_error("Plaintext authentication not supported in OSPFv3");
 }
 
 
@@ -346,8 +349,8 @@ ospf_vlink_item:
  | DEAD COUNT expr { OSPF_PATT->deadc = $3 ; if ($3<=1) cf_error("Dead count must be greater than one"); }
  | AUTHENTICATION NONE { OSPF_PATT->autype = OSPF_AUTH_NONE;  }
  | AUTHENTICATION SIMPLE { OSPF_PATT->autype = OSPF_AUTH_SIMPLE; ospf_check_auth(); }
- | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT; ospf_check_auth(); }
- | password_list { ospf_check_auth(); }
+ | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT; }
+ | password_list
  ;
 
 ospf_vlink_start: VIRTUAL LINK idval
@@ -396,7 +399,7 @@ ospf_iface_item:
  | NEIGHBORS '{' nbma_list '}'
  | AUTHENTICATION NONE { OSPF_PATT->autype = OSPF_AUTH_NONE; }
  | AUTHENTICATION SIMPLE { OSPF_PATT->autype = OSPF_AUTH_SIMPLE; ospf_check_auth(); }
- | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT; ospf_check_auth(); }
+ | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT; }
  | RX BUFFER NORMAL { OSPF_PATT->rx_buffer = 0; }
  | RX BUFFER LARGE { OSPF_PATT->rx_buffer = OSPF_MAX_PKT_SIZE; }
  | RX BUFFER expr { OSPF_PATT->rx_buffer = $3; if (($3 < OSPF_MIN_PKT_SIZE) || ($3 > OSPF_MAX_PKT_SIZE)) cf_error("Buffer size must be in range 256-65535"); }
@@ -406,7 +409,7 @@ ospf_iface_item:
  | TTL SECURITY bool { OSPF_PATT->ttl_security = $3; }
  | TTL SECURITY TX ONLY { OSPF_PATT->ttl_security = 2; }
  | BFD bool { OSPF_PATT->bfd = $2; cf_check_bfd($2); }
- | password_list { ospf_check_auth(); }
+ | password_list
  ;
 
 pref_list:

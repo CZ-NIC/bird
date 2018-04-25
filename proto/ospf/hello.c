@@ -14,7 +14,7 @@
 struct ospf_hello2_packet
 {
   struct ospf_packet hdr;
-  union ospf_auth auth;
+  union ospf_auth2 auth;
 
   u32 netmask;
   u16 helloint;
@@ -41,6 +41,13 @@ struct ospf_hello3_packet
   u32 neighbors[];
 };
 
+
+uint
+ospf_hello3_options(struct ospf_packet *pkt)
+{
+  struct ospf_hello3_packet *ps = (void *) pkt;
+  return ntohl(ps->options) & 0x00FFFFFF;
+}
 
 void
 ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
@@ -86,9 +93,10 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
   else
   {
     struct ospf_hello3_packet *ps = (void *) pkt;
+    u32 options = ifa->oa->options | (ifa->autype == OSPF_AUTH_CRYPT ? OPT_AT : 0);
 
     ps->iface_id = htonl(ifa->iface_id);
-    ps->options = ntohl(ifa->oa->options | (ifa->priority << 24));
+    ps->options = ntohl(options | (ifa->priority << 24));
     ps->helloint = ntohs(ifa->helloint);
     ps->deadint = htons(ifa->deadint);
     ps->dr = htonl(ifa->drid);
@@ -333,7 +341,6 @@ ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa,
   n->bdr = rcv_bdr;
   n->priority = rcv_priority;
   n->iface_id = rcv_iface_id;
-
 
   /* Update inactivity timer */
   ospf_neigh_sm(n, INM_HELLOREC);

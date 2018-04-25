@@ -69,6 +69,9 @@
 #define MINLSARRIVAL		(1 S_)
 #define LSINFINITY		0xffffff
 
+#define OSPF_PKT_TYPES		5	/* HELLO_P .. LSACK_P */
+#define OSPF3_CRYPTO_ID		1	/* OSPFv3 Cryptographic Protocol ID */
+
 #define OSPF_DEFAULT_TICK 1
 #define OSPF_DEFAULT_STUB_COST 1000
 #define OSPF_DEFAULT_ECMP_LIMIT 16
@@ -222,6 +225,7 @@ struct ospf_proto
   u8 merge_external;		/* Should i merge external routes? */
   u8 asbr;			/* May i originate any ext/NSSA lsa? */
   u8 ecmp;			/* Maximal number of nexthops in ECMP route, or 0 */
+  u64 csn64;			/* Last used cryptographic sequence number */
   struct ospf_area *backbone;	/* If exists */
   event *flood_event;		/* Event for flooding LS updates */
   void *lsab;			/* LSA buffer used when originating router LSAs */
@@ -253,8 +257,6 @@ struct ospf_area
   struct ospf_proto *po;
   struct fib rtr;		/* Routing tables for routers */
 };
-
-
 
 struct ospf_iface
 {
@@ -387,7 +389,8 @@ struct ospf_neighbor
   struct bfd_request *bfd_req;	/* BFD request, if BFD is used */
   void *ldd_buffer;		/* Last database description packet */
   u32 ldd_bsize;		/* Buffer size for ldd_buffer */
-  u32 csn;                      /* Last received crypt seq number (for MD5) */
+  u32 csn;			/* OSPFv2: Last received crypt seq number */
+  u64 csn64[OSPF_PKT_TYPES];	/* OSPFv3: Last received CSN for each type of packet */
 };
 
 
@@ -422,6 +425,7 @@ struct ospf_neighbor
 #define OSPF_AUTH_SIMPLE 1
 #define OSPF_AUTH_CRYPT	2
 
+#define OSPF3_AUTH_HMAC 1	/* HMAC Cryptographic Authentication */
 
 /* OSPF neighbor states */
 #define NEIGHBOR_DOWN	0
@@ -459,10 +463,12 @@ struct ospf_neighbor
 #define OPT_MC		0x0004	/* Related to MOSPF, not used and obsolete */
 #define OPT_N		0x0008	/* Related to NSSA */
 #define OPT_P		0x0008	/* OSPFv2, flags P and N share position, see NSSA RFC */
-#define OPT_EA		0x0010	/* OSPFv2, external attributes, not used and obsolete */
+#define OPT_L_V2	0x0010	/* OSPFv2, link-local signaling, not used */
 #define OPT_R		0x0010	/* OSPFv3, originator is active router */
 #define OPT_DC		0x0020	/* Related to demand circuits, not used */
 #define OPT_AF		0x0100	/* OSPFv3 Address Families (RFC 5838) */
+#define OPT_L_V3	0x0200	/* OSPFv3, link-local signaling */
+#define OPT_AT          0x0400	/* OSPFv3, authentication trailer */
 
 /* Router-LSA VEB flags are are stored together with links (OSPFv2) or options (OSPFv3) */
 #define OPT_RT_B	(0x01 << 24)
@@ -489,19 +495,37 @@ struct ospf_packet
   u8 autype;			/* Undefined for OSPFv3 */
 };
 
+struct ospf_lls
+{
+  u16 checksum;
+  u16 length;
+  byte data[0];
+};
+
 struct ospf_auth_crypto
 {
   u16 zero;
   u8 keyid;
   u8 len;
-  u32 csn;
+  u32 csn;			/* Cryptographic sequence number (32-bit) */
 };
 
-union ospf_auth
+union ospf_auth2
 {
   u8 password[8];
   struct ospf_auth_crypto c32;
 };
+
+struct ospf_auth3
+{
+  u16 type;			/* Authentication type (OSPF3_AUTH_*) */
+  u16 length;			/* Authentication trailer length (header + data) */
+  u16 reserved;
+  u16 sa_id;			/* Security association identifier (key_id) */
+  u64 csn;			/* Cryptographic sequence number (64-bit) */
+  byte data[0];			/* Authentication data */
+};
+
 
 /* Packet types */
 #define HELLO_P		1	/* Hello */
@@ -957,7 +981,7 @@ static inline void ospf_send_to_des(struct ospf_iface *ifa)
 #endif
 
 static inline uint ospf_pkt_hdrlen(struct ospf_proto *p)
-{ return ospf_is_v2(p) ? (sizeof(struct ospf_packet) + sizeof(union ospf_auth)) : sizeof(struct ospf_packet); }
+{ return ospf_is_v2(p) ? (sizeof(struct ospf_packet) + sizeof(union ospf_auth2)) : sizeof(struct ospf_packet); }
 
 static inline void * ospf_tx_buffer(struct ospf_iface *ifa)
 { return ifa->sk->tbuf; }
@@ -969,11 +993,13 @@ static inline void * ospf_tx_buffer(struct ospf_iface *ifa)
 
 void ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn);
 void ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa, struct ospf_neighbor *n, ip_addr faddr);
+uint ospf_hello3_options(struct ospf_packet *pkt);
 
 /* dbdes.c */
 void ospf_send_dbdes(struct ospf_proto *p, struct ospf_neighbor *n);
 void ospf_rxmt_dbdes(struct ospf_proto *p, struct ospf_neighbor *n);
 void ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa, struct ospf_neighbor *n);
+uint ospf_dbdes3_options(struct ospf_packet *pkt);
 
 /* lsreq.c */
 void ospf_send_lsreq(struct ospf_proto *p, struct ospf_neighbor *n);
