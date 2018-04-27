@@ -1712,7 +1712,10 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   case FI_EA_SET: ONEARG; A2_SAME; break;
 
   case FI_RETURN: ONEARG; break;
+  case FI_ROA_MAXLEN: ONEARG; break;
+  case FI_ROA_ASN: ONEARG; break;
   case FI_IP: ONEARG; break;
+  case FI_IS_V4: ONEARG; break;
   case FI_ROUTE_DISTINGUISHER: ONEARG; break;
   case FI_CALL: /* Call rewriting trickery to avoid exponential behaviour */
              ONEARG;
@@ -1735,6 +1738,8 @@ i_same(struct f_inst *f1, struct f_inst *f2)
 	       ((struct f_inst_roa_check *) f2)->rtc->name))
       return 0;
     break;
+  case FI_FORMAT: ONEARG; break;
+  case FI_ASSERT: ONEARG; break;
   default:
     bug( "Unknown instruction %d in same (%c)", f1->fi_code, f1->fi_code & 0xff);
   }
