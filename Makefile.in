@@ -95,7 +95,7 @@ clean = $(eval $(call clean_in,$(1)))
 include $(addsuffix /Makefile,$(addprefix $(srcdir)/,$(dirs)))
 
 # Generic rules
-
+# Object file rules
 $(objdir)/%.o: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
 	$(E)echo CC -o $@ -c $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -c $<
@@ -104,7 +104,16 @@ $(objdir)/%.o: $(objdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
 	$(E)echo CC -o $@ -c $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -c $<
 
+# Debug: Preprocessed source rules
+$(objdir)/%.E: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+	$(E)echo CC -o $@ -E $<
+	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -E $<
 
+$(objdir)/%.E: $(objdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+	$(E)echo CC -o $@ -E $<
+	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -E $<
+
+# Debug: Assembler object rules
 $(objdir)/%.S: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
 	$(E)echo CC -o $@ -S $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -S $<
