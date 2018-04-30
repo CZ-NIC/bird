@@ -74,7 +74,7 @@
 
 enum f_instruction_code {
 #define F(c,a,b) \
-  c = FI__TWOCHAR(a,b),
+  c,
 FI__LIST
 #undef F
 } PACKED;
