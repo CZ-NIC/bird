@@ -601,6 +601,8 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 #define TWOARGS_C TWOARGS \
                   if (v1.type != v2.type) \
 		    runtime( "Can't operate with values of incompatible types" );
+#define THREEARGS TWOARGS \
+		  ARG(v3, a3.p)
 #define ACCESS_RTE \
   do { if (!f_rte) runtime("No route to access"); } while (0)
 
@@ -628,7 +630,7 @@ static struct f_val
 interpret(struct f_inst *what)
 {
   struct symbol *sym;
-  struct f_val v1, v2, res = { .type = T_VOID }, *vp;
+  struct f_val v1, v2, v3, res = { .type = T_VOID }, *vp;
   unsigned u1, u2;
   int i;
   u32 as;
@@ -749,12 +751,7 @@ interpret(struct f_inst *what)
 
   case FI_LC_CONSTRUCT:
     {
-      TWOARGS;
-
-      /* Third argument hack */
-      struct f_val v3 = interpret(INST3(what).p);
-      if (v3.type & T_RETURN)
-	return v3;
+      THREEARGS;
 
       if ((v1.type != T_INT) || (v2.type != T_INT) || (v3.type != T_INT))
 	runtime( "Can't operate with value of non-integer type in LC constructor" );
@@ -1664,9 +1661,7 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   case FI_TYPE: ONEARG; break;
 
   case FI_LC_CONSTRUCT:
-    TWOARGS;
-    if (!i_same(INST3(f1).p, INST3(f2).p))
-      return 0;
+    THREEARGS;
     break;
 
   case FI_SET:
