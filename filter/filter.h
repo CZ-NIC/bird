@@ -92,6 +92,10 @@ struct f_inst {		/* Instruction */
     uint i;
     void *p;
   } a2;			/* The second argument */
+  union {
+    int i;
+    void *p;
+  } a3;			/* The third argument */
   int lineno;
 };
 
@@ -103,17 +107,6 @@ struct f_inst_roa_check {
   struct f_inst i;
   struct rtable_config *rtc;
 };
-
-struct f_inst3 {
-  struct f_inst i;
-  union {
-    int i;
-    void *p;
-  } a3;
-};
-
-#define INST3(x) (((struct f_inst3 *) x)->a3)
-
 
 struct f_prefix {
   net_addr net;
