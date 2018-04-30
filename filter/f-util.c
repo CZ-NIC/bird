@@ -77,6 +77,22 @@ f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct 
   return &ret->i;
 }
 
+static const char * const f_instruction_name_str[] = {
+#define F(c,a,b) \
+  [c] = #c,
+FI__LIST
+#undef F
+};
+
+const char *
+f_instruction_name(enum f_instruction_code fi)
+{
+  if (fi < FI__MAX)
+    return f_instruction_name_str[fi];
+  else
+    bug("Got unknown instruction code: %d", fi);
+}
+
 char *
 filter_name(struct filter *filter)
 {

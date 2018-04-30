@@ -77,6 +77,7 @@ enum f_instruction_code {
   c,
 FI__LIST
 #undef F
+  FI__MAX,
 } PACKED;
 
 struct f_inst {		/* Instruction */
