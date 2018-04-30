@@ -80,6 +80,8 @@ FI__LIST
   FI__MAX,
 } PACKED;
 
+const char *f_instruction_name(enum f_instruction_code fi);
+
 struct f_inst {		/* Instruction */
   struct f_inst *next;	/* Structure is 16 bytes, anyway */
   enum f_instruction_code fi_code;
