@@ -590,15 +590,17 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
     return res; \
   } while(0)
 
-#define ARG_ANY(n) \
-    v##n = interpret(what->a##n.p); \
-    if (v##n.type & T_RETURN) \
-      return v##n;
+#define ARG_ANY(n) INTERPRET(v##n, what->a##n.p)
 
 #define ARG(n,t) ARG_ANY(n) \
     if (v##n.type != t) \
       runtime("Argument %d of instruction %s must be of type %02x, got %02x", \
 	  n, f_instruction_name(what->fi_code), t, v##n.type);
+
+#define INTERPRET(val, what_) \
+    val = interpret(what_); \
+    if (val.type & T_RETURN) \
+      return val;
 
 #define ACCESS_RTE \
   do { if (!f_rte) runtime("No route to access"); } while (0)
@@ -747,7 +749,8 @@ interpret(struct f_inst *what)
       while (tt) {
 	*vv = lp_alloc(f_pool, sizeof(struct f_path_mask));
 	if (tt->kind == PM_ASN_EXPR) {
-	  struct f_val res = interpret((struct f_inst *) tt->val);
+	  struct f_val res;
+	  INTERPRET(res, (struct f_inst *) tt->val);
 	  (*vv)->kind = PM_ASN;
 	  if (res.type != T_INT) {
 	    runtime( "Error resolving path mask template: value not an integer" );
@@ -1312,9 +1315,7 @@ interpret(struct f_inst *what)
       }
       /* It is actually possible to have t->data NULL */
 
-      res = interpret(t->data);
-      if (res.type & T_RETURN)
-	return res;
+      INTERPRET(res, t->data);
     }
     break;
   case FI_IP_MASK: /* IP.MASK(val) */
