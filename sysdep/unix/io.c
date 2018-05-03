@@ -2144,7 +2144,9 @@ io_init(void)
   // XXX init_times();
   // XXX update_times();
   boot_time = current_time();
-  srandom((uint) (current_real_time() TO_S));
+
+  u64 now = (u64) current_real_time();
+  srandom((uint) (now ^ (now >> 32)));
 }
 
 static int short_loops = 0;
