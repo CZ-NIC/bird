@@ -2133,7 +2133,7 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
     uint internal = (new->attrs->src->proto == P);
     uint rt_seqno = internal ? new->u.babel.seqno : p->update_seqno;
     uint rt_metric = ea_get_int(attrs, EA_BABEL_METRIC, 0);
-    uint rt_router_id = internal ? new->u.babel.router_id : p->router_id;
+    u64 rt_router_id = internal ? new->u.babel.router_id : p->router_id;
 
     if (rt_metric > BABEL_INFINITY)
     {
