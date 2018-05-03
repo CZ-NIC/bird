@@ -2226,6 +2226,14 @@ babel_init(struct proto_config *CF)
   return P;
 }
 
+static inline void
+babel_randomize_router_id(struct babel_proto *p)
+{
+  p->router_id &= (u64) 0xffffffff;
+  p->router_id |= ((u64) random()) << 32;
+  TRACE(D_EVENTS, "Randomized router ID to %lR", p->router_id);
+}
+
 static int
 babel_start(struct proto *P)
 {
@@ -2243,6 +2251,9 @@ babel_start(struct proto *P)
   tm_start(p->timer, 1 S);
   p->update_seqno = 1;
   p->router_id = proto_get_router_id(&cf->c);
+
+  if (cf->randomize_router_id)
+    babel_randomize_router_id(p);
 
   p->route_slab = sl_new(P->pool, sizeof(struct babel_route));
   p->source_slab = sl_new(P->pool, sizeof(struct babel_source));

@@ -112,6 +112,7 @@ struct babel_config {
   struct proto_config c;
   list iface_list;			/* List of iface configs (struct babel_iface_config) */
   uint hold_time;			/* Time to hold stale entries and unreachable routes */
+  u8 randomize_router_id;
 
   struct channel_config *ip4_channel;
   struct channel_config *ip6_channel;

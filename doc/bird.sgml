@@ -1691,6 +1691,7 @@ supports the following per-interface configuration options:
 protocol babel [<name>] {
 	ipv4 { <channel config> };
 	ipv6 [sadr] { <channel config> };
+        randomize router id <switch>;
 	interface <interface pattern> {
 		type <wired|wireless>;
 		rxcost <number>;
@@ -1712,6 +1713,15 @@ protocol babel [<name>] {
 <descrip>
       <tag><label id="babel-channel">ipv4 | ipv6 [sadr] <m/channel config/</tag>
       The supported channels are IPv4, IPv6, and IPv6 SADR.
+
+      <tag><label id="babel-random-router-id">randomize router id <m/switch/</tag>
+      If enabled, Bird will randomize the top 32 bits of its router ID whenever
+      the protocol instance starts up. If a Babel node restarts, it loses its
+      sequence number, which can cause its routes to be rejected by peers until
+      the state is cleared out by other nodes in the network (which can take on
+      the order of minutes). Enabling this option causes Bird to pick a random
+      router ID every time it starts up, which avoids this problem at the cost
+      of not having stable router IDs in the network. Default: no.
 
       <tag><label id="babel-type">type wired|wireless </tag>
       This option specifies the interface type: Wired or wireless. On wired
