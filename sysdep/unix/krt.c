@@ -1235,7 +1235,7 @@ krt_get_attr(eattr *a, byte *buf, int buflen)
 struct protocol proto_unix_kernel = {
   .name =		"Kernel",
   .template =		"kernel%d",
-  .attr_class =		EAP_KRT,
+  .class =		PROTOCOL_KERNEL,
   .preference =		DEF_PREF_INHERITED,
   .channel_mask =	NB_IP | MAYBE_IP6_SADR | MAYBE_MPLS,
   .proto_size =		sizeof(struct krt_proto),
