@@ -55,6 +55,7 @@
   F(FI_LENGTH,			  0, 'L') \
   F(FI_ROA_MAXLEN,		'R', 'M') \
   F(FI_ROA_ASN,			'R', 'A') \
+  F(FI_SADR_SRC,		'n', 's') \
   F(FI_IP,			'c', 'p') \
   F(FI_ROUTE_DISTINGUISHER,	'R', 'D') \
   F(FI_AS_PATH_FIRST,		'a', 'f') \

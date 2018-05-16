@@ -411,7 +411,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
 	FROM, GW, NET, MASK, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX,
 	PREFERENCE,
-	ROA_CHECK, ASN,
+	ROA_CHECK, ASN, SRC,
 	IS_V4, IS_V6,
 	LEN, MAXLEN,
 	DEFINED,
@@ -898,6 +898,7 @@ term:
  | term '.' LEN { $$ = f_new_inst(FI_LENGTH); $$->a1.p = $1; }
  | term '.' MAXLEN { $$ = f_new_inst(FI_ROA_MAXLEN); $$->a1.p = $1; }
  | term '.' ASN { $$ = f_new_inst(FI_ROA_ASN); $$->a1.p = $1; }
+ | term '.' SRC { $$ = f_new_inst(FI_SADR_SRC); $$->a1.p = $1; }
  | term '.' MASK '(' term ')' { $$ = f_new_inst(FI_IP_MASK); $$->a1.p = $1; $$->a2.p = $5; }
  | term '.' FIRST { $$ = f_new_inst(FI_AS_PATH_FIRST); $$->a1.p = $1; }
  | term '.' LAST  { $$ = f_new_inst(FI_AS_PATH_LAST); $$->a1.p = $1; }

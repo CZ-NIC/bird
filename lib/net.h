@@ -268,6 +268,8 @@ static inline int net_is_roa(const net_addr *a)
 static inline int net_is_flow(const net_addr *a)
 { return (a->type == NET_FLOW4) || (a->type == NET_FLOW6); }
 
+static inline int net_is_sadr(const net_addr *a)
+{ return (a->type == NET_IP6_SADR); }
 
 static inline ip4_addr net4_prefix(const net_addr *a)
 { return ((net_addr_ip4 *) a)->prefix; }

@@ -1241,6 +1241,20 @@ interpret(struct f_inst *what)
     default: runtime( "Prefix, path, clist or eclist expected" );
     }
     break;
+  case FI_SADR_SRC: 	/* Get SADR src prefix */
+    ONEARG;
+    if (v1.type != T_NET || !net_is_sadr(v1.val.net))
+      runtime( "SADR expected" );
+
+    {
+      net_addr_ip6_sadr *net = (void *) v1.val.net;
+      net_addr *src = lp_alloc(f_pool, sizeof(net_addr_ip6));
+      net_fill_ip6(src, net->src_prefix, net->src_pxlen);
+
+      res.type = T_NET;
+      res.val.net = src;
+    }
+    break;
   case FI_ROA_MAXLEN: 	/* Get ROA max prefix length */
     ONEARG;
     if (v1.type != T_NET || !net_is_roa(v1.val.net))
@@ -1714,6 +1728,7 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   case FI_RETURN: ONEARG; break;
   case FI_ROA_MAXLEN: ONEARG; break;
   case FI_ROA_ASN: ONEARG; break;
+  case FI_SADR_SRC: ONEARG; break;
   case FI_IP: ONEARG; break;
   case FI_IS_V4: ONEARG; break;
   case FI_ROUTE_DISTINGUISHER: ONEARG; break;
