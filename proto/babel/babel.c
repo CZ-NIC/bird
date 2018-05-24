@@ -2087,19 +2087,13 @@ babel_prepare_attrs(struct linpool *pool, ea_list *next, uint metric, u64 router
 
 
 static int
-babel_import_control(struct proto *P, struct rte **new, struct ea_list **attrs, struct linpool *pool)
+babel_import_control(struct proto *P, struct rte **new, struct ea_list **attrs UNUSED, struct linpool *pool UNUSED)
 {
-  struct babel_proto *p = (void *) P;
-  rte *rt = *new;
+  rte *e = *new;
 
   /* Reject our own unreachable routes */
-  if ((rt->attrs->dest == RTD_UNREACHABLE) && (rt->attrs->src->proto == P))
+  if ((e->attrs->dest == RTD_UNREACHABLE) && (e->attrs->src->proto == P))
     return -1;
-
-
-  /* Prepare attributes with initial values */
-  if (rt->attrs->source != RTS_BABEL)
-    *attrs = babel_prepare_attrs(pool, NULL, 0, p->router_id);
 
   return 0;
 }

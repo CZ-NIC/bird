@@ -446,34 +446,21 @@ ospf_disp(timer * timer)
  * import to the filters.
  */
 static int
-ospf_import_control(struct proto *P, rte **new, ea_list **attrs, struct linpool *pool)
+ospf_import_control(struct proto *P, rte **new, ea_list **attrs UNUSED, struct linpool *pool UNUSED)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_area *oa = ospf_main_area(p);
   rte *e = *new;
 
+  /* Reject our own routes */
   if (e->attrs->src->proto == P)
-    return -1;			/* Reject our own routes */
+    return -1;
 
+  /* Do not export routes to stub areas */
   if (oa_is_stub(oa))
-    return -1;			/* Do not export routes to stub areas */
+    return -1;
 
-  ea_list *ea = e->attrs->eattrs;
-  u32 m0 = ea_get_int(ea, EA_GEN_IGP_METRIC, LSINFINITY);
-  u32 m1 = MIN(m0, LSINFINITY);
-  u32 m2 = 10000;
-  u32 tag = 0;
-
-  /* Hack for setting attributes directly in static protocol */
-  if (e->attrs->source == RTS_STATIC)
-  {
-    m1 = ea_get_int(ea, EA_OSPF_METRIC1, m1);
-    m2 = ea_get_int(ea, EA_OSPF_METRIC2, 10000);
-    tag = ea_get_int(ea, EA_OSPF_TAG, 0);
-  }
-
-  *attrs = ospf_build_attrs(*attrs, pool, m1, m2, tag, 0);
-  return 0;			/* Leave decision to the filters */
+  return 0;
 }
 
 static struct ea_list *

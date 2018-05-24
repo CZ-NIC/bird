@@ -1281,14 +1281,34 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
 
   /* Get route attributes */
   rta *a = new->attrs;
-  u32 m1 = ea_get_int(ea, EA_OSPF_METRIC1, LSINFINITY);
-  u32 m2 = ea_get_int(ea, EA_OSPF_METRIC2, 10000);
-  int ebit = (m1 == LSINFINITY);
-  u32 metric = ebit ? m2 : m1;
-  u32 tag = ea_get_int(ea, EA_OSPF_TAG, 0);
+  eattr *m1a = ea_find(ea, EA_OSPF_METRIC1);
+  eattr *m2a = ea_find(ea, EA_OSPF_METRIC2);
+  uint m1 = m1a ? m1a->u.data : 0;
+  uint m2 = m2a ? m2a->u.data : 10000;
+
+  if (m1 > LSINFINITY)
+  {
+    log(L_WARN "%s: Invalid ospf_metric1 value %u for route %N",
+	p->p.name, m1, n->n.addr);
+    m1 = LSINFINITY;
+  }
+
+  if (m2 > LSINFINITY)
+  {
+    log(L_WARN "%s: Invalid ospf_metric2 value %u for route %N",
+	p->p.name, m2, n->n.addr);
+    m2 = LSINFINITY;
+  }
+
+  /* Ensure monotonicity of metric if both m1 and m2 are used */
+  if ((m1 > 0) && (m2 < LSINFINITY))
+    m2++;
+
+  uint ebit = m2a || !m1a;
+  uint metric = ebit ? m2 : m1;
+  uint tag = ea_get_int(ea, EA_OSPF_TAG, 0);
+
   ip_addr fwd = IPA_NONE;
-
-
   if ((a->dest == RTD_UNICAST) && use_gw_for_fwaddr(p, a->nh.gw, a->nh.iface))
     fwd = a->nh.gw;
 

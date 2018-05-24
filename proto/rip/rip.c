@@ -1020,16 +1020,6 @@ rip_prepare_attrs(struct linpool *pool, ea_list *next, u8 metric, u16 tag)
   return l;
 }
 
-static int
-rip_import_control(struct proto *P UNUSED, struct rte **rt, struct ea_list **attrs, struct linpool *pool)
-{
-  /* Prepare attributes with initial values */
-  if ((*rt)->attrs->source != RTS_RIP)
-    *attrs = rip_prepare_attrs(pool, *attrs, 1, 0);
-
-  return 0;
-}
-
 static void
 rip_reload_routes(struct channel *C)
 {
@@ -1091,7 +1081,7 @@ rip_init(struct proto_config *CF)
   P->if_notify = rip_if_notify;
   P->rt_notify = rip_rt_notify;
   P->neigh_notify = rip_neigh_notify;
-  P->import_control = rip_import_control;
+  // P->import_control = rip_import_control;
   P->reload_routes = rip_reload_routes;
   P->make_tmp_attrs = rip_make_tmp_attrs;
   P->store_tmp_attrs = rip_store_tmp_attrs;

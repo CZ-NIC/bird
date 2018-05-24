@@ -1618,9 +1618,7 @@ regarded as empty bgppath/*clist for most purposes.
 	The optional attribute that can be used to specify a distance to the
 	network for routes that do not have a native protocol metric attribute
 	(like <cf/ospf_metric1/ for OSPF routes). It is used mainly by BGP to
-	compare internal distances to boundary routers (see below). It is also
-	used when the route is exported to OSPF as a default value for OSPF type
-	1 metric.
+	compare internal distances to boundary routers (see below).
 </descrip>
 
 <p>There also exist protocol-specific attributes which are described in the
@@ -3536,8 +3534,15 @@ protocol ospf [v2|v3] &lt;name&gt; {
 with internal <cf/metric/, a <cf/metric of type 2/ is always longer than any
 <cf/metric of type 1/ or any <cf/internal metric/. <cf/Internal metric/ or
 <cf/metric of type 1/ is stored in attribute <cf/ospf_metric1/, <cf/metric type
-2/ is stored in attribute <cf/ospf_metric2/. If you specify both metrics only
-metric1 is used.
+2/ is stored in attribute <cf/ospf_metric2/.
+
+When both metrics are specified then <cf/metric of type 2/ is used. This is
+relevant e.g. when a type 2 external route is propagated from one OSPF domain to
+another and <cf/ospf_metric1/ is an internal distance to the original ASBR,
+while <cf/ospf_metric2/ stores the type 2 metric. Note that in such cases if
+<cf/ospf_metric1/ is non-zero then <cf/ospf_metric2/ is increased by one to
+ensure monotonicity of metric, as internal distance is reset to zero when an
+external route is announced.
 
 <p>Each external route can also carry attribute <cf/ospf_tag/ which is a 32-bit
 integer which is used when exporting routes to other protocols; otherwise, it
