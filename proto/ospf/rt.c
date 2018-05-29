@@ -108,7 +108,7 @@ orta_pref(const orta *nf)
 static int
 orta_prio(const orta *nf)
 {
-  /* RFC 3103 2.5 (6e) priorities */
+  /* RFC 3101 2.5 (6e) priorities */
   u32 opts = nf->options & (ORTA_NSSA | ORTA_PROP);
 
   /* A Type-7 LSA with the P-bit set */
@@ -217,7 +217,7 @@ orta_compare_asbr(const struct ospf_proto *p, const orta *new, const orta *old)
 
 /*
  * Compare a routing table entry with a new one, for AS external routes
- * (RFC 2328 16.4) and NSSA routes (RFC 3103 2.5), Returns integer <, = or >
+ * (RFC 2328 16.4) and NSSA routes (RFC 3101 2.5), Returns integer <, = or >
  * than 0 if the new orta is less, equal or more preferred than the old orta.
  */
 static int
@@ -1078,7 +1078,7 @@ decide_nssa_lsa(struct ospf_proto *p, ort *nf, struct ospf_lsa_ext_local *rt)
   return 1;
 }
 
-/* RFC 3103 3.2 - translating Type-7 LSAs into Type-5 LSAs */
+/* RFC 3101 3.2 - translating Type-7 LSAs into Type-5 LSAs */
 static inline void
 check_nssa_lsa(struct ospf_proto *p, ort *nf)
 {
@@ -1101,12 +1101,12 @@ check_nssa_lsa(struct ospf_proto *p, ort *nf)
     }
   }
 
-  /* RFC 3103 3.2 (3) - originate the aggregated address range */
+  /* RFC 3101 3.2 (3) - originate the aggregated address range */
   if (anet && anet->active && !anet->hidden && oa->translate)
     ospf_originate_ext_lsa(p, NULL, nf, LSA_M_RTCALC, anet->metric,
 			   (anet->metric & LSA_EXT3_EBIT), IPA_NONE, anet->tag, 0);
 
-  /* RFC 3103 3.2 (2) - originate the same network */
+  /* RFC 3101 3.2 (2) - originate the same network */
   else if (decide_nssa_lsa(p, nf, &rt))
     ospf_originate_ext_lsa(p, NULL, nf, LSA_M_RTCALC, rt.metric, rt.ebit, rt.fwaddr, rt.tag, 0);
 }
@@ -1284,7 +1284,7 @@ ospf_rt_abr2(struct ospf_proto *p)
   struct ospf_area *oa;
   struct top_hash_entry *en;
 
-  /* RFC 3103 3.1 - type-7 translator election */
+  /* RFC 3101 3.1 - type-7 translator election */
   struct ospf_area *bb = p->backbone;
   WALK_LIST(oa, p->area_list)
     if (oa_is_nssa(oa))
