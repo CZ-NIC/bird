@@ -275,7 +275,10 @@ else: {
   if (k)
   {
     if (k->value > 0)
+    {
+      cf_lval.i = k->value;
       return k->value;
+    }
     else
     {
       cf_lval.i = -k->value;
