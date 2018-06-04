@@ -1283,6 +1283,28 @@ rte_discard(rte *old)	/* Non-filtered route deletion, used during garbage collec
   rte_update_unlock();
 }
 
+/* Modify existing route by protocol hook, used for long-lived graceful restart */
+static inline void
+rte_modify(rte *old)
+{
+  rte_update_lock();
+
+  rte *new = old->sender->proto->rte_modify(old, rte_update_pool);
+  if (new != old)
+  {
+    if (new)
+    {
+      if (!rta_is_cached(new->attrs))
+	new->attrs = rta_lookup(new->attrs);
+      new->flags = (old->flags & ~REF_MODIFY) | REF_COW;
+    }
+
+    rte_recalculate(old->sender, old->net, new, old->attrs->src);
+  }
+
+  rte_update_unlock();
+}
+
 /* Check rtable for best route to given net whether it would be exported do p */
 int
 rt_examine(rtable *t, ip_addr prefix, int pxlen, struct proto *p, struct filter *filter)
@@ -1364,6 +1386,29 @@ rt_refresh_end(rtable *t, struct announce_hook *ah)
 	if ((e->sender == ah) && (e->flags & REF_STALE))
 	  {
 	    e->flags |= REF_DISCARD;
+	    prune = 1;
+	  }
+    }
+  FIB_WALK_END;
+
+  if (prune)
+    rt_schedule_prune(t);
+}
+
+void
+rt_modify_stale(rtable *t, struct announce_hook *ah)
+{
+  int prune = 0;
+  net *n;
+  rte *e;
+
+  FIB_WALK(&t->fib, fn)
+    {
+      n = (net *) fn;
+      for (e = n->routes; e; e = e->next)
+	if ((e->sender == ah) && (e->flags & REF_STALE) && !(e->flags & REF_FILTERED))
+	  {
+	    e->flags |= REF_MODIFY;
 	    prune = 1;
 	  }
     }
@@ -1592,6 +1637,7 @@ again:
 
     rescan:
       for (e=n->routes; e; e=e->next)
+      {
 	if (e->sender->proto->flushing || (e->flags & REF_DISCARD))
 	  {
 	    if (*limit <= 0)
@@ -1605,6 +1651,22 @@ again:
 
 	    goto rescan;
 	  }
+
+	if (e->flags & REF_MODIFY)
+	  {
+	    if (*limit <= 0)
+	      {
+		FIB_ITERATE_PUT(fit, fn);
+		return 0;
+	      }
+
+	    rte_modify(e);
+	    (*limit)--;
+
+	    goto rescan;
+	  }
+      }
+
       if (!n->routes)		/* Orphaned FIB entry */
 	{
 	  FIB_ITERATE_PUT(fit, fn);

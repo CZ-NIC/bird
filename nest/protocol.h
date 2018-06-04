@@ -213,6 +213,7 @@ struct proto {
   int (*rte_better)(struct rte *, struct rte *);
   int (*rte_same)(struct rte *, struct rte *);
   int (*rte_mergable)(struct rte *, struct rte *);
+  struct rte * (*rte_modify)(struct rte *, struct linpool *);
   void (*rte_insert)(struct network *, struct rte *);
   void (*rte_remove)(struct network *, struct rte *);
 

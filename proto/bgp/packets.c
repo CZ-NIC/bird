@@ -231,6 +231,32 @@ bgp_put_cap_err(struct bgp_proto *p UNUSED, byte *buf)
   return buf;
 }
 
+static byte *
+bgp_put_cap_llgr1(struct bgp_proto *p, byte *buf)
+{
+  *buf++ = 71;		/* Capability 71: Support for long-lived graceful restart */
+  *buf++ = 7;		/* Capability data length */
+
+  *buf++ = 0;		/* Appropriate AF */
+  *buf++ = BGP_AF;
+  *buf++ = 1;		/* and SAFI 1 */
+
+  /* Next is 8bit flags and 24bit time */
+  put_u32(buf, p->cf->llgr_time);
+  buf[0] = p->p.gr_recovery ? BGP_LLGRF_FORWARDING : 0;
+  buf += 4;
+
+  return buf;
+}
+
+static byte *
+bgp_put_cap_llgr2(struct bgp_proto *p UNUSED, byte *buf)
+{
+  *buf++ = 71;		/* Capability 71: Support for long-lived graceful restart */
+  *buf++ = 0;		/* Capability data length */
+  return buf;
+}
+
 
 static byte *
 bgp_create_open(struct bgp_conn *conn, byte *buf)
@@ -284,6 +310,11 @@ bgp_create_open(struct bgp_conn *conn, byte *buf)
 
   if (p->cf->enable_extended_messages)
     cap = bgp_put_cap_ext_msg(p, cap);
+
+  if (p->cf->llgr_mode == BGP_LLGR_ABLE)
+    cap = bgp_put_cap_llgr1(p, cap);
+  else if (p->cf->llgr_mode == BGP_LLGR_AWARE)
+    cap = bgp_put_cap_llgr2(p, cap);
 
   cap_len = cap - buf - 12;
   if (cap_len > 0)
@@ -872,11 +903,38 @@ bgp_parse_capabilities(struct bgp_conn *conn, byte *opt, int len)
 	  conn->peer_enhanced_refresh_support = 1;
 	  break;
 
+	case 71: /* Long-lived graceful restart capability, RFC draft */
+	  if (cl % 7)
+	    goto err;
+	  conn->peer_llgr_aware = 1;
+	  conn->peer_llgr_able = 0;
+	  conn->peer_llgr_time = 0;
+	  conn->peer_llgr_aflags = 0;
+	  for (i = 0; i < cl; i += 4)
+	    if (opt[2+i+0] == 0 && opt[2+i+1] == BGP_AF && opt[2+i+2] == 1) /* Match AFI/SAFI */
+	      {
+		conn->peer_llgr_able = 1;
+		conn->peer_llgr_time = get_u32(opt + 2+i+3) & 0xffffff;
+		conn->peer_llgr_aflags = opt[2+i+3];
+	      }
+	  break;
+
 	  /* We can safely ignore all other capabilities */
 	}
       len -= 2 + cl;
       opt += 2 + cl;
     }
+
+  /* The LLGR capability must be advertised together with the GR capability,
+     otherwise it must be disregarded */
+  if (!conn->peer_gr_aware && conn->peer_llgr_aware)
+  {
+    conn->peer_llgr_aware = 0;
+    conn->peer_llgr_able = 0;
+    conn->peer_llgr_time = 0;
+    conn->peer_llgr_aflags = 0;
+  }
+
   return;
 
  err:
@@ -1034,7 +1092,8 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   p->as4_session = p->cf->enable_as4 && conn->peer_as4_support;
   p->add_path_rx = (p->cf->add_path & ADD_PATH_RX) && (conn->peer_add_path & ADD_PATH_TX);
   p->add_path_tx = (p->cf->add_path & ADD_PATH_TX) && (conn->peer_add_path & ADD_PATH_RX);
-  p->gr_ready = p->cf->gr_mode && conn->peer_gr_able;
+  p->gr_ready = (p->cf->gr_mode && conn->peer_gr_able) ||
+		(p->cf->llgr_mode && conn->peer_llgr_able);
   p->ext_messages = p->cf->enable_extended_messages && conn->peer_ext_messages_support;
 
   /* Update RA mode */
@@ -1125,6 +1184,7 @@ bgp_rte_update(struct bgp_proto *p, ip_addr prefix, int pxlen,
   e->net = n;
   e->pflags = 0;
   e->u.bgp.suppressed = 0;
+  e->u.bgp.stale = -1;
   rte_update2(p->p.main_ahook, n, e, *src);
 }
 

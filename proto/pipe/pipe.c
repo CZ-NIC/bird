@@ -89,6 +89,12 @@ pipe_rt_notify(struct proto *P, rtable *src_table, net *n, rte *new, rte *old, e
 	  memcpy(&(e->u), &(new->u), sizeof(e->u));
 	  e->pref = new->pref;
 	  e->pflags = new->pflags;
+
+#ifdef CONFIG_BGP
+	  /* Hack to cleanup cached value */
+	  if (e->attrs->src->proto->proto == &proto_bgp)
+	    e->u.bgp.stale = -1;
+#endif
 	}
 
       src = a.src;

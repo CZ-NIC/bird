@@ -27,7 +27,8 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY,
 	INTERPRET, COMMUNITIES, BGP_ORIGINATOR_ID, BGP_CLUSTER_LIST, IGP,
 	TABLE, GATEWAY, DIRECT, RECURSIVE, MED, TTL, SECURITY, DETERMINISTIC,
 	SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX, GRACEFUL, RESTART, AWARE,
-	CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY, BGP_LARGE_COMMUNITY)
+	CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY, BGP_LARGE_COMMUNITY,
+	LONG, LIVED, STALE)
 
 CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
 	CONFIGURATION, CHANGE, DECONFIGURED, CONNECTION, REJECTED, COLLISION,
@@ -60,6 +61,8 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->default_local_pref = 100;
      BGP_CFG->gr_mode = BGP_GR_AWARE;
      BGP_CFG->gr_time = 120;
+     BGP_CFG->llgr_mode = -1;
+     BGP_CFG->llgr_time = 3600;
      BGP_CFG->setkey = 1;
  }
  ;
@@ -162,6 +165,9 @@ bgp_proto:
  | bgp_proto GRACEFUL RESTART bool ';' { BGP_CFG->gr_mode = $4; }
  | bgp_proto GRACEFUL RESTART AWARE ';' { BGP_CFG->gr_mode = BGP_GR_AWARE; }
  | bgp_proto GRACEFUL RESTART TIME expr ';' { BGP_CFG->gr_time = $5; }
+ | bgp_proto LONG LIVED GRACEFUL RESTART bool ';' { BGP_CFG->llgr_mode = $6; }
+ | bgp_proto LONG LIVED GRACEFUL RESTART AWARE ';' { BGP_CFG->llgr_mode = BGP_LLGR_AWARE; }
+ | bgp_proto LONG LIVED STALE TIME expr ';' { BGP_CFG->llgr_time = $6; }
  | bgp_proto IGP TABLE rtable ';' { BGP_CFG->igp_table = $4; }
  | bgp_proto TTL SECURITY bool ';' { BGP_CFG->ttl_security = $4; }
  | bgp_proto CHECK LINK bool ';' { BGP_CFG->check_link = $4; }

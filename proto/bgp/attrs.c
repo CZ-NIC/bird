@@ -1173,6 +1173,9 @@ bgp_community_filter(struct bgp_proto *p, rte *e)
 	  DBG("\tNO_EXPORT\n");
 	  return 1;
 	}
+
+      if (!p->conn->peer_llgr_aware && int_set_contains(d, BGP_COMM_LLGR_STALE))
+	return 1;
     }
 
   return 0;
@@ -1233,6 +1236,19 @@ rte_resolvable(rte *rt)
   return (rd == RTD_ROUTER) || (rd == RTD_DEVICE) || (rd == RTD_MULTIPATH);
 }
 
+static inline int
+rte_stale(rte *r)
+{
+  if (r->u.bgp.stale < 0)
+  {
+    /* If staleness is unknown, compute and cache it */
+    eattr *a = ea_find(r->attrs->eattrs, EA_CODE(EAP_BGP, BA_COMMUNITY));
+    r->u.bgp.stale = a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE);
+  }
+
+  return r->u.bgp.stale;
+}
+
 int
 bgp_rte_better(rte *new, rte *old)
 {
@@ -1256,6 +1272,14 @@ bgp_rte_better(rte *new, rte *old)
     return 1;
   if (n < o)
     return 0;
+
+  /* LLGR draft - depreference stale routes */
+  n = rte_stale(new);
+  o = rte_stale(old);
+  if (n > o)
+    return 0;
+  if (n < o)
+    return 1;
 
   /* Start with local preferences */
   x = ea_find(new->attrs->eattrs, EA_CODE(EAP_BGP, BA_LOCAL_PREF));
@@ -1580,6 +1604,27 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
     return old_is_group_best;
 }
 
+struct rte *
+bgp_rte_modify_stale(struct rte *r, struct linpool *pool)
+{
+  eattr *a = ea_find(r->attrs->eattrs, EA_CODE(EAP_BGP, BA_COMMUNITY));
+  struct adata *ad = a ? a->u.ptr : NULL;
+
+  if (ad && int_set_contains(ad, BGP_COMM_NO_LLGR))
+    return NULL;
+
+  if (ad && int_set_contains(ad, BGP_COMM_LLGR_STALE))
+    return r;
+
+  r = rte_cow_rta(r, pool);
+  bgp_attach_attr(&(r->attrs->eattrs), pool, BA_COMMUNITY,
+		  (uintptr_t) int_set_add(pool, ad, BGP_COMM_LLGR_STALE));
+  r->u.bgp.stale = 1;
+
+  return r;
+}
+
+
 static struct adata *
 bgp_aggregator_convert_to_new(struct adata *old, struct linpool *pool)
 {
@@ -1588,7 +1633,6 @@ bgp_aggregator_convert_to_new(struct adata *old, struct linpool *pool)
   aggregator_convert_to_new(old, newa->data);
   return newa;
 }
-
 
 /* Take last req_as ASNs from path old2 (in 2B format), convert to 4B format
  * and append path old4 (in 4B format).
@@ -1984,6 +2028,9 @@ bgp_get_route_info(rte *e, byte *buf, ea_list *attrs)
 
   if (e->u.bgp.suppressed)
     buf += bsprintf(buf, "-");
+
+  if (rte_stale(e))
+    buf += bsprintf(buf, "s");
 
   if (e->attrs->hostentry)
     {
