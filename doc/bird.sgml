@@ -2108,6 +2108,25 @@ using the following configuration parameters:
 	re-establish after a restart before deleting stale routes. Default:
 	120 seconds.
 
+	<tag><label id="bgp-long-lived-graceful-restart">long lived graceful restart <m/switch/|aware</tag>
+	The long-lived graceful restart is an extension of the traditional
+	<ref id="bgp-graceful-restart" name="BGP graceful restart">, where stale
+	routes are kept even after the <ref id="bgp-graceful-restart-time"
+	name="restart time"> expires for additional long-lived stale time, but
+	they are marked with the LLGR_STALE community, depreferenced, and
+	withdrawn from routers not supporting LLGR. Like traditional BGP
+	graceful restart, it has three states: disabled, aware (receiving-only),
+	and enabled. Note that long-lived graceful restart requires at least
+	aware level of traditional BGP graceful restart. Default: aware, unless
+	graceful restart is disabled.
+
+	<tag><label id="bgp-long-lived-stale-time">long lived stale time <m/number/</tag>
+	The long-lived stale time is announced in the BGP long-lived graceful
+	restart capability and specifies how long the neighbor would keep stale
+	routes depreferenced during long-lived graceful restart until either the
+	session is re-stablished and synchronized or the stale time expires and
+	routes are removed. Default: 3600 seconds.
+
 	<tag><label id="bgp-interpret-communities">interpret communities <m/switch/</tag>
 	<rfc id="1997"> demands that BGP speaker should process well-known
 	communities like no-export (65535, 65281) or no-advertise (65535,
