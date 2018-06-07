@@ -117,10 +117,10 @@ ec_format(byte *buf, u64 ec)
 int
 ec_set_format(struct adata *set, int from, byte *buf, uint size)
 {
-  u32 *z = int_set_get_data(set);
+  u32 *z = (u32 *) set->data;
   byte *end = buf + size - 64;
   int from2 = MAX(from, 0);
-  int to = int_set_get_size(set);
+  int to = set->length / 4;
   int i;
 
   for (i = from2; i < to; i += 2)
@@ -137,7 +137,9 @@ ec_set_format(struct adata *set, int from, byte *buf, uint size)
       if (i > from2)
 	*buf++ = ' ';
 
-      buf += ec_format(buf, ec_get(z, i));
+      u64 ec;
+      memcpy(&ec, &(z[i]), sizeof(u64));
+      buf += ec_format(buf, ec);
     }
   *buf = 0;
   return 0;
@@ -181,16 +183,16 @@ lc_set_format(struct adata *set, int from, byte *buf, uint bufsize)
 }
 
 int
-set_position(struct adata *list, u32 *val, int skip)
+set_position(struct adata *list, void *val, int size)
 {
   if (!list)
     return -1;
 
-  u32 *l = int_set_get_data(list);
-  int len = list->length / (skip * 4);
+  int len = list->length / size;
+  void *l = list->data;
 
   for (int i = 0; i < len; i++)
-    if (!memcmp(&(l[i*skip]), val, skip * 4))
+    if (!memcmp(l + i * size, val, size))
       return i;
 
   return -1;
@@ -218,7 +220,7 @@ int_set_prepend(struct linpool *pool, struct adata *list, u32 val)
 }
 
 struct adata *
-set_add(struct linpool *pool, struct adata *list, u32 *val, int size)
+set_add(struct linpool *pool, struct adata *list, void *val, int size)
 {
   struct adata *res;
   int len;
@@ -227,30 +229,30 @@ set_add(struct linpool *pool, struct adata *list, u32 *val, int size)
     return list;
 
   len = list ? list->length : 0;
-  res = lp_alloc(pool, sizeof(struct adata) + len + size * 4);
-  res->length = len + size * 4;
+  res = lp_alloc(pool, sizeof(struct adata) + len + size);
+  res->length = len + size;
 
   if (list)
     memcpy(res->data, list->data, len);
 
-  memcpy(res->data + len, val, size * 4);
+  memcpy(res->data + len, val, size);
 
   return res;
 }
 
 struct adata *
-set_del(struct linpool *pool, struct adata *list, u32 *val, int size)
+set_del(struct linpool *pool, struct adata *list, void *val, int size)
 {
   int pos = set_position(list, val, size);
   if (pos == -1)
     return list;
 
-  int len = list->length - 4*size;
+  int len = list->length - size;
   struct adata *res = lp_alloc(pool, sizeof(struct adata) + len);
   res->length = len;
 
-  u32 *dest = int_set_get_data(res);
-  u32 *src = int_set_get_data(list);
+  void *dest = res->data;
+  void *src = list->data;
   memcpy(dest, src, size * pos);
   memcpy(dest + size * pos, src + size * (pos + 1), size * (len - pos));
 
@@ -267,15 +269,15 @@ set_union(struct linpool *pool, struct adata *l1, struct adata *l2, int size)
 
   /* Filter out duplicit data from l2 */
   struct adata *res;
-  int len = l2->length / (size * 4);
-  u32 *l = int_set_get_data(l2);
-  u32 tmp[len*size];
-  u32 *k = tmp;
+  int len = l2->length / size;
+  void *l = l2->data;
+  u32 tmp[len*size/sizeof(u32)];
+  void *k = tmp;
 
   for (int i = 0; i < len; i++)
     if (!set_contains(l1, l + i*size, size))
     {
-      memcpy(k, l + i*size, size * 4);
+      memcpy(k, l + i*size, size);
       k += size;
     }
 
@@ -283,7 +285,7 @@ set_union(struct linpool *pool, struct adata *l1, struct adata *l2, int size)
   if (k == tmp)
     return l1;
 
-  len = (k - tmp) * 4;
+  len = (k - (void*)tmp);
   res = lp_alloc(pool, sizeof(struct adata) + l1->length + len);
   res->length = l1->length + len;
   memcpy(res->data, l1->data, l1->length);
@@ -296,9 +298,9 @@ struct adata *
 ec_set_del_nontrans(struct linpool *pool, struct adata *set)
 {
   adata *res = lp_alloc_adata(pool, set->length);
-  u32 *src = int_set_get_data(set);
-  u32 *dst = int_set_get_data(res);
-  int len = int_set_get_size(set);
+  u32 *src = (u32 *) set->data;
+  u32 *dst = (u32 *) res->data;
+  int len = set->length / 4;
   int i;
 
   /* Remove non-transitive communities (EC_TBIT set) */
@@ -336,8 +338,8 @@ int_set_sort(struct linpool *pool, struct adata *src)
 static int
 ec_set_cmp(const void *X, const void *Y)
 {
-  u64 x = ec_get(X, 0);
-  u64 y = ec_get(Y, 0);
+  u64 x = *((u64 *) X);
+  u64 y = *((u64 *) Y);
   return (x < y) ? -1 : (x > y) ? 1 : 0;
 }
 
@@ -376,6 +378,6 @@ lc_set_sort(struct linpool *pool, struct adata *src)
 {
   struct adata *dst = lp_alloc_adata(pool, src->length);
   memcpy(dst->data, src->data, src->length);
-  qsort(dst->data, dst->length / LCOMM_LENGTH, LCOMM_LENGTH, lc_set_cmp);
+  qsort(dst->data, dst->length / sizeof(lcomm), sizeof(lcomm), lc_set_cmp);
   return dst;
 }

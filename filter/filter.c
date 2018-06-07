@@ -301,14 +301,10 @@ eclist_match_set(struct adata *list, struct f_tree *set)
   if (!eclist_set_type(set))
     return CMP_ERROR;
 
-  struct f_val v;
-  u32 *l = int_set_get_data(list);
-  int len = int_set_get_size(list);
-  int i;
-
+  struct f_val v = { .type = T_EC };
   v.type = T_EC;
-  for (i = 0; i < len; i += 2) {
-    v.val.ec = ec_get(l, i);
+  for (void *p = list->data, *end = p + list->length; p < end; p += sizeof(u64)) {
+    memcpy(&v.val.ec, p, sizeof(u64));
     if (find_tree(set, v))
       return 1;
   }
@@ -325,14 +321,10 @@ lclist_match_set(struct adata *list, struct f_tree *set)
   if (!lclist_set_type(set))
     return CMP_ERROR;
 
-  struct f_val v;
-  u32 *l = int_set_get_data(list);
-  int len = int_set_get_size(list);
-  int i;
-
+  struct f_val v = { .type = T_LC };
   v.type = T_LC;
-  for (i = 0; i < len; i += 3) {
-    v.val.lc = lc_get(l, i);
+  for (void *p = list->data, *end = p + list->length; p < end; p += sizeof(lcomm)) {
+    memcpy(&v.val.ec, p, sizeof(lcomm));
     if (find_tree(set, v))
       return 1;
   }
@@ -353,8 +345,8 @@ clist_filter(struct linpool *pool, struct adata *list, struct f_val set, int pos
   else
     v.type = T_PAIR;
 
-  int len = int_set_get_size(list);
-  u32 *l = int_set_get_data(list);
+  int len = list->length / 4;
+  u32 *l = (u32 *) list->data;
   u32 tmp[len];
   u32 *k = tmp;
   u32 *end = l + len;
@@ -384,15 +376,15 @@ eclist_filter(struct linpool *pool, struct adata *list, struct f_val set, int po
   int tree = (set.type == T_SET);	/* 1 -> set is T_SET, 0 -> set is T_CLIST */
   struct f_val v;
 
-  int len = int_set_get_size(list);
-  u32 *l = int_set_get_data(list);
+  int len = list->length / 4;
+  u32 *l = (u32 *) list->data;
   u32 tmp[len];
   u32 *k = tmp;
   int i;
 
   v.type = T_EC;
   for (i = 0; i < len; i += 2) {
-    v.val.ec = ec_get(l, i);
+    memcpy(&(v.val.ec), &(l[i]), sizeof(u64));
     /* pos && member(val, set) || !pos && !member(val, set),  member() depends on tree */
     if ((tree ? !!find_tree(set.val.t, v) : ec_set_contains(set.val.ad, v.val.ec)) == pos) {
       *k++ = l[i];
@@ -418,18 +410,21 @@ lclist_filter(struct linpool *pool, struct adata *list, struct f_val set, int po
   int tree = (set.type == T_SET);	/* 1 -> set is T_SET, 0 -> set is T_CLIST */
   struct f_val v;
 
-  int len = int_set_get_size(list);
-  u32 *l = int_set_get_data(list);
+  int len = list->length / 4;
+  u32 *l = (u32 *) list->data;
   u32 tmp[len];
   u32 *k = tmp;
   int i;
 
   v.type = T_LC;
   for (i = 0; i < len; i += 3) {
-    v.val.lc = lc_get(l, i);
+    memcpy(&(v.val.lc), &(l[i]), sizeof(lcomm));
     /* pos && member(val, set) || !pos && !member(val, set),  member() depends on tree */
-    if ((tree ? !!find_tree(set.val.t, v) : lc_set_contains(set.val.ad, v.val.lc)) == pos)
-      k = lc_copy(k, l+i);
+    if ((tree ? !!find_tree(set.val.t, v) : lc_set_contains(set.val.ad, v.val.lc)) != pos)
+      continue;
+
+    memcpy(k, &(l[i]), sizeof(lcomm));
+    k += sizeof(lcomm)/sizeof(u32);
   }
 
   uint nl = (k - tmp) * sizeof(u32);
@@ -871,9 +866,9 @@ interpret(struct f_inst *what)
 	switch(v1.type) {
 	  case T_NET:    res.val.i = net_pxlen(v1.val.net); break;
 	  case T_PATH:   res.val.i = as_path_getlen(v1.val.ad); break;
-	  case T_CLIST:  res.val.i = int_set_get_size(v1.val.ad); break;
-	  case T_ECLIST: res.val.i = ec_set_get_size(v1.val.ad); break;
-	  case T_LCLIST: res.val.i = lc_set_get_size(v1.val.ad); break;
+	  case T_CLIST:  res.val.i = v1.val.ad->length / 4; break;
+	  case T_ECLIST: res.val.i = v1.val.ad->length / 8; break;
+	  case T_LCLIST: res.val.i = v1.val.ad->length / 12; break;
 	  default: runtime( "Prefix, path, clist, eclist or lclist expected" );
 	}
 	break;

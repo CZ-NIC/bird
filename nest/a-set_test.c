@@ -69,21 +69,21 @@ generate_set_sequence(enum set_type type)
 static int
 t_set_int_contains(void)
 {
-  int i;
+  u32 i;
 
   resource_init();
   generate_set_sequence(SET_TYPE_INT);
 
-  bt_assert(int_set_get_size(set_sequence) == SET_SIZE);
+  bt_assert(set_sequence->length / 4 == SET_SIZE);
 
   for (i = 0; i < SET_SIZE; i++)
     bt_assert(int_set_contains(set_sequence, i));
   bt_assert(int_set_contains(set_sequence, -1) == 0);
   bt_assert(int_set_contains(set_sequence, SET_SIZE) == 0);
 
-  int *data = int_set_get_data(set_sequence);
+  u32 *data = (u32 *) set_sequence->data;
   for (i = 0; i < SET_SIZE; i++)
-    bt_assert_msg(data[i] == i, "(data[i] = %d) == i = %d)", data[i], i);
+    bt_assert_msg(data[i] == i, "(data[i] = %u) == i = %u)", data[i], i);
 
   rfree(lp);
   return 1;
@@ -97,11 +97,11 @@ t_set_int_union(void)
 
   struct adata *set_union;
   set_union = int_set_union(lp, set_sequence, set_sequence_same);
-  bt_assert(int_set_get_size(set_union) == SET_SIZE);
+  bt_assert(set_union->length / 4 == SET_SIZE);
   bt_assert(int_set_format(set_union, 0, 2, buf, BUFFER_SIZE) == 0);
 
   set_union = int_set_union(lp, set_sequence, set_sequence_higher);
-  bt_assert_msg(int_set_get_size(set_union) == SET_SIZE*2, "int_set_get_size(set_union) %d, SET_SIZE*2 %d", int_set_get_size(set_union), SET_SIZE*2);
+  bt_assert_msg(set_union->length / 4 == SET_SIZE*2, "set_union->length/4 %d, SET_SIZE*2 %d", set_union->length / 4, SET_SIZE*2);
   bt_assert(int_set_format(set_union, 0, 2, buf, BUFFER_SIZE) == 0);
 
   rfree(lp);
@@ -141,13 +141,13 @@ t_set_int_delete(void)
   for (i = 0; i < SET_SIZE; i++)
   {
     deleting_sequence = int_set_del(lp, deleting_sequence, i);
-    bt_assert_msg(int_set_get_size(deleting_sequence) == (int) (SET_SIZE-1-i),
-		  "int_set_get_size(deleting_sequence) %d == SET_SIZE-1-i %d",
-		  int_set_get_size(deleting_sequence),
+    bt_assert_msg(deleting_sequence->length / 4 == (uint) (SET_SIZE-1-i),
+		  "deleting_sequence->length/4 %d == SET_SIZE-1-i %d",
+		  deleting_sequence->length / 4,
 		  SET_SIZE-1-i);
   }
 
-  bt_assert(int_set_get_size(set_sequence) == SET_SIZE);
+  bt_assert(set_sequence->length/4 == SET_SIZE);
 
   return 1;
 }
@@ -164,7 +164,7 @@ t_set_ec_contains(void)
   resource_init();
   generate_set_sequence(SET_TYPE_EC);
 
-  bt_assert(ec_set_get_size(set_sequence) == SET_SIZE);
+  bt_assert(set_sequence->length/8 == SET_SIZE);
 
   for (i = 0; i < SET_SIZE; i++)
     bt_assert(ec_set_contains(set_sequence, i));
@@ -187,11 +187,11 @@ t_set_ec_union(void)
 
   struct adata *set_union;
   set_union = ec_set_union(lp, set_sequence, set_sequence_same);
-  bt_assert(ec_set_get_size(set_union) == SET_SIZE);
+  bt_assert(set_union->length/8 == SET_SIZE);
   bt_assert(ec_set_format(set_union, 0, buf, BUFFER_SIZE) == 0);
 
   set_union = ec_set_union(lp, set_sequence, set_sequence_higher);
-  bt_assert_msg(ec_set_get_size(set_union) == SET_SIZE*2, "ec_set_get_size(set_union) %d, SET_SIZE*2 %d", ec_set_get_size(set_union), SET_SIZE*2);
+  bt_assert_msg(set_union->length/8 == SET_SIZE*2, "set_union->length/8 %d, SET_SIZE*2 %d", set_union->length/8, SET_SIZE*2);
   bt_assert(ec_set_format(set_union, 0, buf, BUFFER_SIZE) == 0);
 
   rfree(lp);
@@ -231,12 +231,12 @@ t_set_ec_delete(void)
   for (i = 0; i < SET_SIZE; i++)
   {
     deleting_sequence = ec_set_del(lp, deleting_sequence, i);
-    bt_assert_msg(ec_set_get_size(deleting_sequence) == (int) (SET_SIZE-1-i),
+    bt_assert_msg(deleting_sequence->length/8 == (uint) (SET_SIZE-1-i),
 		  "ec_set_get_size(deleting_sequence) %d  == SET_SIZE-1-i %d",
-		  ec_set_get_size(deleting_sequence), SET_SIZE-1-i);
+		  deleting_sequence->length/8, SET_SIZE-1-i);
   }
 
-  bt_assert(ec_set_get_size(set_sequence) == SET_SIZE);
+  bt_assert(set_sequence->length/8 == SET_SIZE);
 
   return 1;
 }

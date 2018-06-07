@@ -119,23 +119,6 @@ aggregator_to_old(struct linpool *pool, struct adata *a)
 
 #define ECOMM_LENGTH 8
 
-static inline int int_set_get_size(struct adata *list)
-{ return list->length / 4; }
-
-static inline int ec_set_get_size(struct adata *list)
-{ return list->length / 8; }
-
-static inline int lc_set_get_size(struct adata *list)
-{ return list->length / 12; }
-
-static inline u32 *int_set_get_data(struct adata *list)
-{ return (u32 *) list->data; }
-
-static inline u32 ec_hi(u64 ec) { return ec >> 32; }
-static inline u32 ec_lo(u64 ec) { return ec; }
-static inline u64 ec_get(const u32 *l, int i)
-{ return (((u64) l[i]) << 32) | l[i+1]; }
-
 /* RFC 4360 3.1.  Two-Octet AS Specific Extended Community */
 static inline u64 ec_as2(u64 kind, u64 key, u64 val)
 { return ((kind | 0x0000) << 48) | (key << 32) | val; }
@@ -158,19 +141,8 @@ typedef struct lcomm {
   u32 ldp2;
 } lcomm;
 
-#define LCOMM_LENGTH 12
-
-static inline lcomm lc_get(const u32 *l, int i)
-{ return (lcomm) { l[i], l[i+1], l[i+2] }; }
-
-static inline void lc_put(u32 *l, lcomm v)
-{ l[0] = v.asn; l[1] = v.ldp1; l[2] = v.ldp2; }
-
-static inline int lc_match(const u32 *l, int i, lcomm v)
-{ return (l[i] == v.asn && l[i+1] == v.ldp1 && l[i+2] == v.ldp2); }
-
-static inline u32 *lc_copy(u32 *dst, const u32 *src)
-{ memcpy(dst, src, LCOMM_LENGTH); return dst + 3; }
+static inline int int_set_get_size(struct adata *set)
+{ return set->length / 4; }
 
 int int_set_format(struct adata *set, int way, int from, byte *buf, uint size);
 int ec_format(byte *buf, u64 ec);
@@ -178,59 +150,42 @@ int ec_set_format(struct adata *set, int from, byte *buf, uint size);
 int lc_format(byte *buf, lcomm lc);
 int lc_set_format(struct adata *set, int from, byte *buf, uint size);
 
-int set_position(struct adata *list, u32 *val, int skip);
-static inline int set_contains(struct adata *list, u32 *val, int skip)
-{ return set_position(list, val, skip) != -1; }
+int set_position(struct adata *list, void *val, int size);
+static inline int set_contains(struct adata *list, void *val, int size)
+{ return set_position(list, val, size) != -1; }
 static inline int int_set_contains(struct adata *list, u32 val)
-{ return set_contains(list, &val, 1); }
+{ return set_contains(list, &val, sizeof(val)); }
 static inline int ec_set_contains(struct adata *list, u64 val)
-{
-  u32 ec[2] = { ec_hi(val), ec_lo(val) };
-  return set_contains(list, ec, 2);
-}
+{ return set_contains(list, &val, sizeof(val)); }
 static inline int lc_set_contains(struct adata *list, lcomm val)
-{
-  u32 lc[3] = { val.asn, val.ldp1, val.ldp2 };
-  return set_contains(list, lc, 3);
-}
+{ return set_contains(list, &val, sizeof(val)); }
 
 struct adata *int_set_prepend(struct linpool *pool, struct adata *list, u32 val);
 
-struct adata *set_add(struct linpool *pool, struct adata *list, u32 *val, int size);
+struct adata *set_add(struct linpool *pool, struct adata *list, void *val, int size);
 static inline struct adata *int_set_add(struct linpool *pool, struct adata *list, u32 val)
-{ return set_add(pool, list, &val, 1); };
+{ return set_add(pool, list, &val, sizeof(val)); };
 static inline struct adata *ec_set_add(struct linpool *pool, struct adata *list, u64 val)
-{
-  u32 ec[2] = { ec_hi(val), ec_lo(val) };
-  return set_add(pool, list, ec, 2);
-}
+{ return set_add(pool, list, &val, sizeof(val)); };
 static inline struct adata *lc_set_add(struct linpool *pool, struct adata *list, lcomm val)
-{
-  u32 lc[3] = { val.asn, val.ldp1, val.ldp2 };
-  return set_add(pool, list, lc, 3);
-}
+{ return set_add(pool, list, &val, sizeof(val)); };
 
-struct adata *set_del(struct linpool *pool, struct adata *list, u32 *val, int size);
+struct adata *set_del(struct linpool *pool, struct adata *list, void *val, int size);
 static inline struct adata *int_set_del(struct linpool *pool, struct adata *list, u32 val)
-{ return set_del(pool, list, &val, 1); }
+{ return set_del(pool, list, &val, sizeof(val)); }
 static inline struct adata *ec_set_del(struct linpool *pool, struct adata *list, u64 val)
-{
-  u32 ec[2] = { ec_hi(val), ec_lo(val) };
-  return set_del(pool, list, ec, 2);
-}
+{ return set_del(pool, list, &val, sizeof(val)); }
 static inline struct adata *lc_set_del(struct linpool *pool, struct adata *list, lcomm val)
-{
-  u32 lc[3] = { val.asn, val.ldp1, val.ldp2 };
-  return set_del(pool, list, lc, 3);
-}
+{ return set_del(pool, list, &val, sizeof(val)); }
 
 struct adata *set_union(struct linpool *pool, struct adata *l1, struct adata *l2, int size);
 static inline struct adata *int_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
-{ return set_union(pool, l1, l2, 1); }
+{ return set_union(pool, l1, l2, sizeof(u32)); }
 static inline struct adata *ec_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
-{ return set_union(pool, l1, l2, 2); }
+{ return set_union(pool, l1, l2, sizeof(u64)); }
 static inline struct adata *lc_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
-{ return set_union(pool, l1, l2, 3); }
+{ return set_union(pool, l1, l2, sizeof(lcomm)); }
+
 
 struct adata *ec_set_del_nontrans(struct linpool *pool, struct adata *set);
 struct adata *int_set_sort(struct linpool *pool, struct adata *src);
