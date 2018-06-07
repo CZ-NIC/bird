@@ -172,25 +172,65 @@ static inline int lc_match(const u32 *l, int i, lcomm v)
 static inline u32 *lc_copy(u32 *dst, const u32 *src)
 { memcpy(dst, src, LCOMM_LENGTH); return dst + 3; }
 
-
 int int_set_format(struct adata *set, int way, int from, byte *buf, uint size);
 int ec_format(byte *buf, u64 ec);
 int ec_set_format(struct adata *set, int from, byte *buf, uint size);
 int lc_format(byte *buf, lcomm lc);
 int lc_set_format(struct adata *set, int from, byte *buf, uint size);
-int int_set_contains(struct adata *list, u32 val);
-int ec_set_contains(struct adata *list, u64 val);
-int lc_set_contains(struct adata *list, lcomm val);
+
+int set_position(struct adata *list, u32 *val, int skip);
+static inline int set_contains(struct adata *list, u32 *val, int skip)
+{ return set_position(list, val, skip) != -1; }
+static inline int int_set_contains(struct adata *list, u32 val)
+{ return set_contains(list, &val, 1); }
+static inline int ec_set_contains(struct adata *list, u64 val)
+{
+  u32 ec[2] = { ec_hi(val), ec_lo(val) };
+  return set_contains(list, ec, 2);
+}
+static inline int lc_set_contains(struct adata *list, lcomm val)
+{
+  u32 lc[3] = { val.asn, val.ldp1, val.ldp2 };
+  return set_contains(list, lc, 3);
+}
+
 struct adata *int_set_prepend(struct linpool *pool, struct adata *list, u32 val);
-struct adata *int_set_add(struct linpool *pool, struct adata *list, u32 val);
-struct adata *ec_set_add(struct linpool *pool, struct adata *list, u64 val);
-struct adata *lc_set_add(struct linpool *pool, struct adata *list, lcomm val);
-struct adata *int_set_del(struct linpool *pool, struct adata *list, u32 val);
-struct adata *ec_set_del(struct linpool *pool, struct adata *list, u64 val);
-struct adata *lc_set_del(struct linpool *pool, struct adata *list, lcomm val);
-struct adata *int_set_union(struct linpool *pool, struct adata *l1, struct adata *l2);
-struct adata *ec_set_union(struct linpool *pool, struct adata *l1, struct adata *l2);
-struct adata *lc_set_union(struct linpool *pool, struct adata *l1, struct adata *l2);
+
+struct adata *set_add(struct linpool *pool, struct adata *list, u32 *val, int size);
+static inline struct adata *int_set_add(struct linpool *pool, struct adata *list, u32 val)
+{ return set_add(pool, list, &val, 1); };
+static inline struct adata *ec_set_add(struct linpool *pool, struct adata *list, u64 val)
+{
+  u32 ec[2] = { ec_hi(val), ec_lo(val) };
+  return set_add(pool, list, ec, 2);
+}
+static inline struct adata *lc_set_add(struct linpool *pool, struct adata *list, lcomm val)
+{
+  u32 lc[3] = { val.asn, val.ldp1, val.ldp2 };
+  return set_add(pool, list, lc, 3);
+}
+
+struct adata *set_del(struct linpool *pool, struct adata *list, u32 *val, int size);
+static inline struct adata *int_set_del(struct linpool *pool, struct adata *list, u32 val)
+{ return set_del(pool, list, &val, 1); }
+static inline struct adata *ec_set_del(struct linpool *pool, struct adata *list, u64 val)
+{
+  u32 ec[2] = { ec_hi(val), ec_lo(val) };
+  return set_del(pool, list, ec, 2);
+}
+static inline struct adata *lc_set_del(struct linpool *pool, struct adata *list, lcomm val)
+{
+  u32 lc[3] = { val.asn, val.ldp1, val.ldp2 };
+  return set_del(pool, list, lc, 3);
+}
+
+struct adata *set_union(struct linpool *pool, struct adata *l1, struct adata *l2, int size);
+static inline struct adata *int_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
+{ return set_union(pool, l1, l2, 1); }
+static inline struct adata *ec_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
+{ return set_union(pool, l1, l2, 2); }
+static inline struct adata *lc_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
+{ return set_union(pool, l1, l2, 3); }
 
 struct adata *ec_set_del_nontrans(struct linpool *pool, struct adata *set);
 struct adata *int_set_sort(struct linpool *pool, struct adata *src);
