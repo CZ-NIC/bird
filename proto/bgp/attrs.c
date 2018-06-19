@@ -1109,6 +1109,9 @@ bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
   if (!BIT32_TEST(s->attrs_seen, BA_AS_PATH))
   { REPORT(NO_MANDATORY, "AS_PATH"); goto withdraw; }
 
+  if (s->ip_reach_len && !BIT32_TEST(s->attrs_seen, BA_NEXT_HOP))
+  { REPORT(NO_MANDATORY, "NEXT_HOP"); goto withdraw; }
+
   /* When receiving attributes from non-AS4-aware BGP speaker, we have to
      reconstruct AS_PATH and AGGREGATOR attributes; RFC 6793 4.2.3 */
   if (!p->as4_session)

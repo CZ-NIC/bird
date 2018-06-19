@@ -616,7 +616,7 @@ babel_read_update(struct babel_tlv *hdr, union babel_msg *m,
 
     /* Update must have next hop, unless it is retraction */
     if (ipa_zero(state->next_hop_ip4) && (msg->metric != BABEL_INFINITY))
-      return PARSE_ERROR;
+      return PARSE_IGNORE;
 
     /* Merge saved prefix and received prefix parts */
     memcpy(buf, state->def_ip4_prefix, tlv->omitted);

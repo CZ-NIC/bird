@@ -952,6 +952,10 @@ babel_send_update_(struct babel_iface *ifa, btime changed, struct fib *rtable)
     msg.update.next_hop = ((e->n.addr->type == NET_IP4) ?
 			   ifa->next_hop_ip4 : ifa->next_hop_ip6);
 
+    /* Do not send route if next hop is unknown, e.g. no configured IPv4 address */
+    if (ipa_zero(msg.update.next_hop))
+      continue;
+
     babel_enqueue(&msg, ifa);
 
     /* Update feasibility distance for redistributed routes */
@@ -1580,7 +1584,7 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
   ifa->next_hop_ip6 = ipa_nonzero(ic->next_hop_ip6) ? ic->next_hop_ip6 : ifa->addr;
 
   if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
-    log(L_WARN "%s: Cannot find IPv4 next hop addr on %s", p->p.name, new->name);
+    log(L_WARN "%s: Missing IPv4 next hop address for %s", p->p.name, new->name);
 
   init_list(&ifa->neigh_list);
   ifa->hello_seqno = 1;
@@ -1682,7 +1686,7 @@ babel_reconfigure_iface(struct babel_proto *p, struct babel_iface *ifa, struct b
   ifa->next_hop_ip6 = ipa_nonzero(new->next_hop_ip6) ? new->next_hop_ip6 : ifa->addr;
 
   if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
-    log(L_WARN "%s: Cannot find IPv4 next hop addr on %s", p->p.name, ifa->ifname);
+    log(L_WARN "%s: Missing IPv4 next hop address for %s", p->p.name, ifa->ifname);
 
   if (ifa->next_hello > (current_time() + new->hello_interval))
     ifa->next_hello = current_time() + (random() % new->hello_interval);
