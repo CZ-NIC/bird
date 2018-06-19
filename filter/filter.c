@@ -554,7 +554,6 @@ static inline void f_rte_cow(void)
     return;
 
   *f_rte = rte_do_cow(*f_rte);
-  f_eattrs = NULL;
 }
 
 /*
@@ -615,7 +614,7 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
       return val;
 
 #define ACCESS_RTE \
-  do { if (!f_rte) runtime("No route to access"); else f_cache_eattrs(); } while (0)
+  do { if (!f_rte) runtime("No route to access"); } while (0)
 
 #define ACCESS_EATTRS \
   do { if (!f_eattrs) f_cache_eattrs(); } while (0)
@@ -1753,6 +1752,7 @@ f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int fla
   DBG( "Running filter `%s'...", filter->name );
 
   f_rte = rte;
+  f_eattrs = NULL;
   f_old_rta = NULL;
   f_pool = tmp_pool;
   f_flags = flags;
@@ -1797,6 +1797,7 @@ f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
 {
 
   f_rte = rte;
+  f_eattrs = NULL;
   f_old_rta = NULL;
   f_pool = tmp_pool;
   f_flags = 0;
@@ -1813,6 +1814,7 @@ struct f_val
 f_eval(struct f_inst *expr, struct linpool *tmp_pool)
 {
   f_flags = 0;
+  f_eattrs = NULL;
   f_rte = NULL;
   f_pool = tmp_pool;
 
