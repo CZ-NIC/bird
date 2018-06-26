@@ -14,7 +14,7 @@ CF_KEYWORDS(KERNEL, TABLE)
 
 CF_GRAMMAR
 
-CF_ADDTO(kern_proto, kern_proto kern_sys_item ';')
+kern_proto: kern_proto kern_sys_item ';' ;
 
 kern_sys_item:
    KERNEL TABLE expr {

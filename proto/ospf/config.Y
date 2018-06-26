@@ -207,7 +207,7 @@ CF_KEYWORDS(SECONDARY, MERGE, LSA, SUPPRESSION, MULTICAST, RFC5838)
 
 CF_GRAMMAR
 
-CF_ADDTO(proto, ospf_proto '}' { ospf_proto_finish(); } )
+proto: ospf_proto '}' { ospf_proto_finish(); }  ;
 
 ospf_variant:
    OSPF    { $$ = 1; }
@@ -497,10 +497,10 @@ ospf_iface:
   ospf_iface_start ospf_iface_patt_list ospf_iface_opt_list { ospf_iface_finish(); }
  ;
 
-CF_ADDTO(dynamic_attr, OSPF_METRIC1 { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_METRIC1); })
-CF_ADDTO(dynamic_attr, OSPF_METRIC2 { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_METRIC2); })
-CF_ADDTO(dynamic_attr, OSPF_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_TAG); })
-CF_ADDTO(dynamic_attr, OSPF_ROUTER_ID { $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID, T_QUAD, EA_OSPF_ROUTER_ID); })
+dynamic_attr: OSPF_METRIC1 { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_METRIC1); } ;
+dynamic_attr: OSPF_METRIC2 { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_METRIC2); } ;
+dynamic_attr: OSPF_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_TAG); } ;
+dynamic_attr: OSPF_ROUTER_ID { $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID, T_QUAD, EA_OSPF_ROUTER_ID); } ;
 
 CF_CLI_HELP(SHOW OSPF, ..., [[Show information about OSPF protocol]]);
 CF_CLI(SHOW OSPF, optsym, [<name>], [[Show information about OSPF protocol]])

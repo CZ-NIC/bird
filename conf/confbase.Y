@@ -113,12 +113,13 @@ conf_entries:
  | conf_entries conf
  ;
 
-CF_ADDTO(conf, ';')
+conf: ';' ;
 
 
 /* Constant expressions */
 
-CF_ADDTO(conf, definition)
+conf: definition ;
+
 definition:
    DEFINE SYM '=' term ';' {
      struct f_val *val = cfg_alloc(sizeof(struct f_val));

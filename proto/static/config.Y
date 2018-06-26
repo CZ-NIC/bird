@@ -49,7 +49,7 @@ CF_KEYWORDS(ONLINK, WEIGHT, RECURSIVE, IGP, TABLE, BLACKHOLE, UNREACHABLE, BFD, 
 
 CF_GRAMMAR
 
-CF_ADDTO(proto, static_proto '}')
+proto: static_proto '}' ;
 
 static_proto_start: proto_start STATIC
 {

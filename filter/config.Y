@@ -438,7 +438,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 
 CF_GRAMMAR
 
-CF_ADDTO(conf, filter_def)
+conf: filter_def ;
 filter_def:
    FILTER SYM { $2 = cf_define_symbol($2, SYM_FILTER, NULL); cf_push_scope( $2 ); }
      filter_body {
@@ -449,12 +449,12 @@ filter_def:
    }
  ;
 
-CF_ADDTO(conf, filter_eval)
+conf: filter_eval ;
 filter_eval:
    EVAL term { f_eval_int($2); }
  ;
 
-CF_ADDTO(conf, bt_test_suite)
+conf: bt_test_suite ;
 bt_test_suite:
  BT_TEST_SUITE '(' SYM ',' text ')' {
   if (!($3->class & SYM_FUNCTION))
@@ -588,7 +588,7 @@ function_body:
    }
  ;
 
-CF_ADDTO(conf, function_def)
+conf: function_def ;
 function_def:
    FUNCTION SYM { DBG( "Beginning of function %s\n", $2->name );
      $2 = cf_define_symbol($2, SYM_FUNCTION, NULL);
@@ -803,13 +803,6 @@ constructor:
  | bgp_path { $$ = f_generate_path_mask($1); }
  ;
 
-
-/*
- *  Maybe there are no dynamic attributes defined by protocols.
- *  For such cases, we force the dynamic_attr list to contain
- *  at least an invalid token, so it is syntantically correct.
- */
-CF_ADDTO(dynamic_attr, INVALID_TOKEN { $$ = (struct f_dynamic_attr) {}; })
 
 rtadot: /* EMPTY, we are not permitted RTA. prefix */
  ;

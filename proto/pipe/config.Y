@@ -20,7 +20,7 @@ CF_KEYWORDS(PIPE, PEER, TABLE)
 
 CF_GRAMMAR
 
-CF_ADDTO(proto, pipe_proto '}' { this_channel = NULL; } )
+proto: pipe_proto '}' { this_channel = NULL; }  ;
 
 pipe_proto_start: proto_start PIPE
 {

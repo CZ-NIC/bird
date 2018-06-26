@@ -103,7 +103,7 @@ CF_GRAMMAR
 
 /* Setting of router ID */
 
-CF_ADDTO(conf, rtrid)
+conf: rtrid ;
 
 rtrid:
    ROUTER ID idval ';' { new_config->router_id = $3; }
@@ -124,7 +124,7 @@ idval:
    }
  ;
 
-CF_ADDTO(conf, gr_opts)
+conf: gr_opts ;
 
 gr_opts: GRACEFUL RESTART WAIT expr ';' { new_config->gr_wait = $4; } ;
 
@@ -149,7 +149,7 @@ CF_ENUM(T_ENUM_NETTYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, IP
 
 /* Creation of routing tables */
 
-CF_ADDTO(conf, table)
+conf: table ;
 
 table_sorted:
 	  { $$ = 0; }
@@ -166,7 +166,7 @@ table: net_type TABLE SYM table_sorted {
 
 /* Definition of protocols */
 
-CF_ADDTO(conf, proto { proto_postconfig(); })
+conf: proto { proto_postconfig(); } ;
 
 proto_start:
    PROTOCOL { $$ = SYM_PROTO; }
@@ -282,7 +282,7 @@ limit_spec:
  ;
 
 
-CF_ADDTO(conf, debug_default)
+conf: debug_default ;
 
 debug_default:
    DEBUG PROTOCOLS debug_mask { new_config->proto_default_debug = $3; }
@@ -291,7 +291,7 @@ debug_default:
 
 /* MRTDUMP PROTOCOLS is in systep/unix/config.Y */
 
-CF_ADDTO(conf, timeformat_base)
+conf: timeformat_base ;
 
 timeformat_which:
    ROUTE { $$ = &new_config->tf_route; }
@@ -367,7 +367,7 @@ tos:
 
 /* Direct device route protocol */
 
-CF_ADDTO(proto, dev_proto '}')
+proto: dev_proto '}' ;
 
 dev_proto_start: proto_start DIRECT {
      this_proto = proto_config_new(&proto_device, $1);
@@ -782,8 +782,7 @@ proto_patt2:
  | TEXT { $$.ptr = $1; $$.patt = 1; }
  ;
 
-CF_ADDTO(dynamic_attr, IGP_METRIC
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_GEN_IGP_METRIC); })
+dynamic_attr: IGP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_GEN_IGP_METRIC); } ;
 
 
 CF_CODE

@@ -38,15 +38,15 @@ CF_GRAMMAR
 
 /* Kernel syncer protocol */
 
-CF_ADDTO(proto, kern_proto '}')
+proto: kern_proto '}' ;
 
 kern_proto_start: proto_start KERNEL {
      this_proto = krt_init_config($1);
 }
  ;
 
-CF_ADDTO(kern_proto, kern_proto_start proto_name '{')
-CF_ADDTO(kern_proto, kern_proto kern_item ';')
+kern_proto: kern_proto_start proto_name '{' ;
+kern_proto: kern_proto kern_item ';' ;
 
 kern_mp_limit:
    /* empty */ { $$ = KRT_DEFAULT_ECMP_LIMIT; }
@@ -80,13 +80,13 @@ kern_item:
 
 /* Kernel interface protocol */
 
-CF_ADDTO(proto, kif_proto '}')
+proto: kif_proto '}' ;
 
 kif_proto_start: proto_start DEVICE { this_proto = kif_init_config($1); }
  ;
 
-CF_ADDTO(kif_proto, kif_proto_start proto_name '{')
-CF_ADDTO(kif_proto, kif_proto kif_item ';')
+kif_proto: kif_proto_start proto_name '{' ;
+kif_proto: kif_proto kif_item ';' ;
 
 kif_item:
    proto_item
@@ -122,8 +122,8 @@ kif_iface:
   kif_iface_start iface_patt_list_nopx kif_iface_opt_list;
 
 
-CF_ADDTO(dynamic_attr, KRT_SOURCE { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_SOURCE); })
-CF_ADDTO(dynamic_attr, KRT_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_METRIC); })
+dynamic_attr: KRT_SOURCE { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_SOURCE); } ;
+dynamic_attr: KRT_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_METRIC); } ;
 
 CF_CODE
 

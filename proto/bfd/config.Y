@@ -31,7 +31,7 @@ CF_KEYWORDS(BFD, MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE,
 
 CF_GRAMMAR
 
-CF_ADDTO(proto, bfd_proto)
+proto: bfd_proto ;
 
 bfd_proto_start: proto_start BFD
 {

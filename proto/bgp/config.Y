@@ -40,7 +40,7 @@ CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
 
 CF_GRAMMAR
 
-CF_ADDTO(proto, bgp_proto '}' )
+proto: bgp_proto '}'  ;
 
 bgp_proto_start: proto_start BGP {
      this_proto = proto_config_new(&proto_bgp, $1);
@@ -252,30 +252,30 @@ bgp_channel_end:
 bgp_proto_channel: bgp_channel_start bgp_channel_opt_list bgp_channel_end;
 
 
-CF_ADDTO(dynamic_attr, BGP_ORIGIN
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_BGP_ORIGIN, EA_CODE(PROTOCOL_BGP, BA_ORIGIN)); })
-CF_ADDTO(dynamic_attr, BGP_PATH
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH)); })
-CF_ADDTO(dynamic_attr, BGP_NEXT_HOP
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_IP_ADDRESS, T_IP, EA_CODE(PROTOCOL_BGP, BA_NEXT_HOP)); })
-CF_ADDTO(dynamic_attr, BGP_MED
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC)); })
-CF_ADDTO(dynamic_attr, BGP_LOCAL_PREF
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF)); })
-CF_ADDTO(dynamic_attr, BGP_ATOMIC_AGGR
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_ATOMIC_AGGR)); })
-CF_ADDTO(dynamic_attr, BGP_AGGREGATOR
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_AGGREGATOR)); })
-CF_ADDTO(dynamic_attr, BGP_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY)); })
-CF_ADDTO(dynamic_attr, BGP_ORIGINATOR_ID
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID, T_QUAD, EA_CODE(PROTOCOL_BGP, BA_ORIGINATOR_ID)); })
-CF_ADDTO(dynamic_attr, BGP_CLUSTER_LIST
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_CLUSTER_LIST)); })
-CF_ADDTO(dynamic_attr, BGP_EXT_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_EC_SET, T_ECLIST, EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY)); })
-CF_ADDTO(dynamic_attr, BGP_LARGE_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_LC_SET, T_LCLIST, EA_CODE(PROTOCOL_BGP, BA_LARGE_COMMUNITY)); })
+dynamic_attr: BGP_ORIGIN
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_BGP_ORIGIN, EA_CODE(PROTOCOL_BGP, BA_ORIGIN)); } ;
+dynamic_attr: BGP_PATH
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH)); } ;
+dynamic_attr: BGP_NEXT_HOP
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_IP_ADDRESS, T_IP, EA_CODE(PROTOCOL_BGP, BA_NEXT_HOP)); } ;
+dynamic_attr: BGP_MED
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC)); } ;
+dynamic_attr: BGP_LOCAL_PREF
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF)); } ;
+dynamic_attr: BGP_ATOMIC_AGGR
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_ATOMIC_AGGR)); } ;
+dynamic_attr: BGP_AGGREGATOR
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_AGGREGATOR)); } ;
+dynamic_attr: BGP_COMMUNITY
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY)); } ;
+dynamic_attr: BGP_ORIGINATOR_ID
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID, T_QUAD, EA_CODE(PROTOCOL_BGP, BA_ORIGINATOR_ID)); } ;
+dynamic_attr: BGP_CLUSTER_LIST
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_CLUSTER_LIST)); } ;
+dynamic_attr: BGP_EXT_COMMUNITY
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_EC_SET, T_ECLIST, EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY)); } ;
+dynamic_attr: BGP_LARGE_COMMUNITY
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_LC_SET, T_LCLIST, EA_CODE(PROTOCOL_BGP, BA_LARGE_COMMUNITY)); } ;
 
 
 

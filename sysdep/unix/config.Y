@@ -24,7 +24,7 @@ CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG
 
 CF_GRAMMAR
 
-CF_ADDTO(conf, log_config)
+conf: log_config ;
 
 log_config: LOG log_file log_mask ';' {
     struct log_config *c = cfg_allocz(sizeof(struct log_config));
@@ -72,7 +72,7 @@ log_cat:
  ;
 
 
-CF_ADDTO(conf, mrtdump_base)
+conf: mrtdump_base ;
 
 mrtdump_base:
    MRTDUMP PROTOCOLS mrtdump_mask ';' { new_config->proto_default_mrtdump = $3; }
@@ -84,7 +84,7 @@ mrtdump_base:
  ;
 
 
-CF_ADDTO(conf, debug_unix)
+conf: debug_unix ;
 
 debug_unix:
    DEBUG LATENCY bool { new_config->latency_debug = $3; }

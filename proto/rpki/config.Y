@@ -38,7 +38,7 @@ CF_KEYWORDS(RPKI, REMOTE, BIRD, PRIVATE, PUBLIC, KEY, TCP, SSH, TRANSPORT, USER,
 
 CF_GRAMMAR
 
-CF_ADDTO(proto, rpki_proto)
+proto: rpki_proto ;
 
 rpki_proto_start: proto_start RPKI {
   this_proto = proto_config_new(&proto_rpki, $1);
