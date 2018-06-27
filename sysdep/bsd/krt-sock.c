@@ -532,7 +532,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
     if (ipa_is_link_local(a.nh.gw))
       _I0(a.nh.gw) = 0xfe800000;
 
-    ng = neigh_find2(&p->p, &a.nh.gw, a.nh.iface, 0);
+    ng = neigh_find(&p->p, a.nh.gw, a.nh.iface, 0);
     if (!ng || (ng->scope == SCOPE_HOST))
       {
 	/* Ignore routes with next-hop 127.0.0.1, host routes with such
