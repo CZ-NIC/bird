@@ -55,6 +55,9 @@ static_route_finish(void)
 static void
 static_flow_action(u64 ec)
 {
+  if (!net_type_match(this_srt->net, NB_FLOW))
+    cf_error("Unexpected action block");
+
   NEW_F_VAL;
 
   val->type = T_EC; val->val.ec = ec;
@@ -136,8 +139,6 @@ stat_nexthops:
 ;
 
 stat_route0: ROUTE net_any {
-     if (net_type_match($2, NB_FLOW))
-       cf_error("Flowspec rules are not routes. Apologize!");
      static_route_start($2);
   }
  ;
@@ -159,7 +160,7 @@ stat_route:
  | stat_route0 BLACKHOLE	{ this_srt->dest = RTD_BLACKHOLE; }
  | stat_route0 UNREACHABLE	{ this_srt->dest = RTD_UNREACHABLE; }
  | stat_route0 PROHIBIT		{ this_srt->dest = RTD_PROHIBIT; }
- | net_flow_ { static_route_start($1); } flowspec_action
+ | stat_route0 flowspec_action	{ this_srt->dest = RTD_NONE; }
  ;
 
 stat_route_item:
