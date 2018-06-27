@@ -974,7 +974,7 @@ interpret(struct f_inst *what)
       case SA_GW:
 	{
 	  ip_addr ip = v1.val.ip;
-	  neighbor *n = neigh_find(rta->src->proto, &ip, 0);
+	  neighbor *n = neigh_find(rta->src->proto, ip, NULL, 0);
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
 

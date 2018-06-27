@@ -627,7 +627,7 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
 
     if (ipa_nonzero(rte.next_hop))
     {
-      neighbor *nbr = neigh_find2(&p->p, &rte.next_hop, ifa->iface, 0);
+      neighbor *nbr = neigh_find(&p->p, rte.next_hop, ifa->iface, 0);
       if (!nbr || (nbr->scope <= 0))
 	rte.next_hop = IPA_NONE;
     }

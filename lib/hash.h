@@ -230,4 +230,11 @@ mem_hash(void *p, uint s)
   return mem_hash_value(&h);
 }
 
+static inline uint
+ptr_hash(void *ptr)
+{
+  uintptr_t p = (uintptr_t) ptr;
+  return p ^ (p << 8) ^ (p >> 16);
+}
+
 #endif

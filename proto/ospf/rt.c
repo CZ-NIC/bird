@@ -1987,7 +1987,7 @@ again1:
       for (nh = nf->n.nhs; nh; nh = nh->next)
 	if (ipa_nonzero(nh->gw))
 	{
-	  neighbor *ng = neigh_find2(&p->p, &nh->gw, nh->iface, 0);
+	  neighbor *ng = neigh_find(&p->p, nh->gw, nh->iface, 0);
 	  if (!ng || (ng->scope == SCOPE_HOST))
 	    { reset_ri(nf); break; }
 	}

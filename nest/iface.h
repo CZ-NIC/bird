@@ -124,29 +124,21 @@ typedef struct neighbor {
   ip_addr addr;				/* Address of the neighbor */
   struct ifa *ifa;			/* Ifa on related iface */
   struct iface *iface;			/* Interface it's connected to */
+  struct iface *ifreq;			/* Requested iface, NULL for any */
   struct proto *proto;			/* Protocol this belongs to */
   void *data;				/* Protocol-specific data */
-  unsigned aux;				/* Protocol-specific data */
-  unsigned flags;
-  int scope;				/* Address scope, -1 for unreachable sticky neighbors,
+  uint aux;				/* Protocol-specific data */
+  u16 flags;				/* NEF_* flags */
+  s16 scope;				/* Address scope, -1 for unreachable neighbors,
 					   SCOPE_HOST when it's our own address */
 } neighbor;
 
 #define NEF_STICKY	1
 #define NEF_ONLINK	2
-#define NEF_BIND	4		/* Used internally for neighbors bound to an iface */
-#define NEF_IFACE	8		/* Neighbors bound to iface */
+#define NEF_IFACE	4		/* Entry for whole iface */
 
 
-neighbor *neigh_find(struct proto *, ip_addr *, unsigned flags);
-neighbor *neigh_find2(struct proto *p, ip_addr *a, struct iface *ifa, unsigned flags);
-neighbor *neigh_find_iface(struct proto *p, struct iface *ifa);
-
-static inline int neigh_connected_to(struct proto *p, ip_addr *a, struct iface *i)
-{
-  neighbor *n = neigh_find(p, a, 0);
-  return n && n->iface == i;
-}
+neighbor *neigh_find(struct proto *p, ip_addr a, struct iface *ifa, uint flags);
 
 void neigh_dump(neighbor *);
 void neigh_dump_all(void);

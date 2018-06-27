@@ -744,9 +744,9 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
 
     /* GW_DIRECT -> single_hop -> p->neigh != NULL */
     if (ipa_nonzero(gw))
-      nbr = neigh_find2(&p->p, &gw, NULL, 0);
+      nbr = neigh_find(&p->p, gw, NULL, 0);
     else if (ipa_nonzero(ll))
-      nbr = neigh_find2(&p->p, &ll, p->neigh->iface, 0);
+      nbr = neigh_find(&p->p, ll, p->neigh->iface, 0);
 
     if (!nbr || (nbr->scope == SCOPE_HOST))
       WITHDRAW(BAD_NEXT_HOP);

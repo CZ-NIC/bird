@@ -39,6 +39,7 @@
 #include "lib/string.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
+#include "lib/hash.h"
 #include "lib/string.h"
 #include "lib/alloca.h"
 
@@ -2218,13 +2219,6 @@ rt_feed_channel_abort(struct channel *c)
       fit_get(&c->table->fib, &c->feed_fit);
       c->feed_active = 0;
     }
-}
-
-static inline unsigned
-ptr_hash(void *ptr)
-{
-  uintptr_t p = (uintptr_t) ptr;
-  return p ^ (p << 8) ^ (p >> 16);
 }
 
 static inline u32

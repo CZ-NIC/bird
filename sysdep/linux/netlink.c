@@ -696,8 +696,8 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
 	    rv->flags |= RNF_ONLINK;
 
 	  neighbor *nbr;
-	  nbr = neigh_find2(&p->p, &rv->gw, rv->iface,
-			    (rv->flags & RNF_ONLINK) ? NEF_ONLINK : 0);
+	  nbr = neigh_find(&p->p, rv->gw, rv->iface,
+			   (rv->flags & RNF_ONLINK) ? NEF_ONLINK : 0);
 	  if (!nbr || (nbr->scope == SCOPE_HOST))
 	    return NULL;
 	}
@@ -1636,8 +1636,8 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	    ra->nh.flags |= RNF_ONLINK;
 
 	  neighbor *nbr;
-	  nbr = neigh_find2(&p->p, &(ra->nh.gw), ra->nh.iface,
-			    (ra->nh.flags & RNF_ONLINK) ? NEF_ONLINK : 0);
+	  nbr = neigh_find(&p->p, ra->nh.gw, ra->nh.iface,
+			   (ra->nh.flags & RNF_ONLINK) ? NEF_ONLINK : 0);
 	  if (!nbr || (nbr->scope == SCOPE_HOST))
 	    {
 	      log(L_ERR "KRT: Received route %N with strange next-hop %I", net->n.addr,

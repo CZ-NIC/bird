@@ -1277,7 +1277,7 @@ bgp_start_locked(struct object_lock *lock)
     return;
   }
 
-  neighbor *n = neigh_find2(&p->p, &cf->remote_ip, cf->iface, NEF_STICKY);
+  neighbor *n = neigh_find(&p->p, cf->remote_ip, cf->iface, NEF_STICKY);
   if (!n)
   {
     log(L_ERR "%s: Invalid remote address %I%J", p->p.name, cf->remote_ip, cf->iface);
@@ -1521,7 +1521,7 @@ bgp_channel_start(struct channel *C)
   if (ipa_zero(c->next_hop_addr))
   {
     /* We know the iface for single-hop, we make lookup for multihop */
-    struct neighbor *nbr = p->neigh ?: neigh_find2(&p->p, &src, NULL, 0);
+    struct neighbor *nbr = p->neigh ?: neigh_find(&p->p, src, NULL, 0);
     struct iface *iface = nbr ? nbr->iface : NULL;
 
     if (bgp_channel_is_ipv4(c) && iface && iface->addr4)

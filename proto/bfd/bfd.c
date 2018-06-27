@@ -775,7 +775,7 @@ bfd_start_neighbor(struct bfd_proto *p, struct bfd_neighbor *n)
     return;
   }
 
-  struct neighbor *nb = neigh_find2(&p->p, &n->addr, n->iface, NEF_STICKY);
+  struct neighbor *nb = neigh_find(&p->p, n->addr, n->iface, NEF_STICKY);
   if (!nb)
   {
     log(L_ERR "%s: Invalid remote address %I%J", p->p.name, n->addr, n->iface);

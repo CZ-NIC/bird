@@ -377,7 +377,7 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
 struct rip_neighbor *
 rip_get_neighbor(struct rip_proto *p, ip_addr *a, struct rip_iface *ifa)
 {
-  neighbor *nbr = neigh_find2(&p->p, a, ifa->iface, 0);
+  neighbor *nbr = neigh_find(&p->p, *a, ifa->iface, 0);
 
   if (!nbr || (nbr->scope == SCOPE_HOST) || !rip_iface_link_up(ifa))
     return NULL;
