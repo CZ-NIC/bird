@@ -84,24 +84,14 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
 {
   ASSERT(bgp_attr_known(code));
 
-  ea_list *a = lp_alloc(pool, sizeof(ea_list) + sizeof(eattr));
-  eattr *e = &a->attrs[0];
-
-  a->flags = EALF_SORTED;
-  a->count = 1;
-  a->next = *attrs;
-  *attrs = a;
-
-  e->id = EA_CODE(PROTOCOL_BGP, code);
-  e->type = bgp_attr_table[code].type;
-  e->flags = flags;
-
-  if (e->type & EAF_EMBEDDED)
-    e->u.data = (u32) val;
-  else
-    e->u.ptr = (struct adata *) val;
-
-  return e;
+  return ea_set_attr(
+      attrs,
+      pool,
+      EA_CODE(PROTOCOL_BGP, code),
+      flags,
+      bgp_attr_table[code].type,
+      val
+  );
 }
 
 
