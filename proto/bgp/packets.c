@@ -875,7 +875,10 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
 
       /* TODO: Use local MPLS assigned label */
       if (s->mpls)
-	bgp_unset_attr(to, s->pool, BA_MPLS_LABEL_STACK);
+      {
+	u32 implicit_null = BGP_MPLS_NULL;
+	bgp_set_attr_data(to, s->pool, BA_MPLS_LABEL_STACK, 0, &implicit_null, 4);
+      }
     }
   }
 
