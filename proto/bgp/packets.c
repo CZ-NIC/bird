@@ -1165,9 +1165,10 @@ bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *p
     ADVANCE(*pos, *len, 3);
     *pxlen -= 24;
 
-    /* Withdraw: Magic label stack value 0x800000 according to RFC 3107, section 3, last paragraph */
-    if (!a && !s->err_withdraw && (lnum == 1) && (label == BGP_MPLS_MAGIC))
-      break;
+    /* RFC 8277 2.4 - withdraw does not have variable-size MPLS stack but
+       fixed-size 24-bit Compatibility field, which MUST be ignored */
+    if (!a && !s->err_withdraw)
+      return;
   }
   while (!(label & BGP_MPLS_BOS));
 
