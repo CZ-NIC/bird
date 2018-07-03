@@ -446,7 +446,7 @@ ospf_disp(timer * timer)
  * import to the filters.
  */
 static int
-ospf_import_control(struct proto *P, rte **new, struct linpool *pool)
+ospf_import_control(struct proto *P, rte **new, struct linpool *pool UNUSED)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_area *oa = ospf_main_area(p);

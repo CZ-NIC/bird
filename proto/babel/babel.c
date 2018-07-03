@@ -2091,9 +2091,8 @@ babel_prepare_attrs(struct linpool *pool, ea_list *next, uint metric, u64 router
 
 
 static int
-babel_import_control(struct proto *P, struct rte **new, struct linpool *pool)
+babel_import_control(struct proto *P, struct rte **new, struct linpool *pool UNUSED)
 {
-  struct babel_proto *p = (void *) P;
   struct rta *a = (*new)->attrs;
 
   /* Reject our own unreachable routes */
