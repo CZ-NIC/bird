@@ -704,6 +704,12 @@ bgp_hold_timeout(timer *t)
 
   if (sk_rx_ready(conn->sk) > 0)
     bgp_start_timer(conn->hold_timer, 10);
+  else if ((conn->state == BS_ESTABLISHED) && p->gr_ready && conn->peer_llgr_able)
+  {
+    BGP_TRACE(D_EVENTS, "Hold timer expired");
+    bgp_handle_graceful_restart(p);
+    bgp_conn_enter_idle_state(conn);
+  }
   else
     bgp_error(conn, 4, 0, NULL, 0);
 }
@@ -1046,13 +1052,29 @@ bgp_bfd_notify(struct bfd_request *req)
   int ps = p->p.proto_state;
 
   if (req->down && ((ps == PS_START) || (ps == PS_UP)))
+  {
+    BGP_TRACE(D_EVENTS, "BFD session down");
+
+    /* Ignore if already in GR */
+    if (p->gr_active && (p->cf->bfd == BGP_BFD_GRACEFUL))
+      return;
+
+    if (p->conn && (p->conn->state == BS_ESTABLISHED) &&
+	p->gr_ready && (p->cf->bfd == BGP_BFD_GRACEFUL))
     {
-      BGP_TRACE(D_EVENTS, "BFD session down");
+      /* Trigger graceful restart */
+      bgp_handle_graceful_restart(p);
+      bgp_conn_enter_idle_state(p->conn);
+    }
+    else
+    {
+      /* Trigger session down */
       bgp_store_error(p, NULL, BE_MISC, BEM_BFD_DOWN);
       if (ps == PS_UP)
 	bgp_update_startup_delay(p);
       bgp_stop(p, 0, NULL, 0);
     }
+  }
 }
 
 static void

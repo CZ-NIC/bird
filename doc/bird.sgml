@@ -1977,13 +1977,16 @@ using the following configuration parameters:
 	immediately shut down. Note that this option cannot be used with
 	multihop BGP. Default: disabled.
 
-	<tag><label id="bgp-bfd">bfd <M>switch</M></tag>
+	<tag><label id="bgp-bfd">bfd <M>switch</M>|graceful</tag>
 	BGP could use BFD protocol as an advisory mechanism for neighbor
 	liveness and failure detection. If enabled, BIRD setups a BFD session
 	for the BGP neighbor and tracks its liveness by it. This has an
 	advantage of an order of magnitude lower detection times in case of
-	failure. Note that BFD protocol also has to be configured, see
-	<ref id="bfd" name="BFD"> section for details. Default: disabled.
+	failure. When a neighbor failure is detected, the BGP session is
+	restarted. Optionally, it can be configured (by <cf/graceful/ argument)
+	to trigger graceful restart instead of regular restart.  Note that BFD
+	protocol also has to be configured, see <ref id="bfd" name="BFD">
+	section for details. Default: disabled.
 
 	<tag><label id="bgp-ttl-security">ttl security <m/switch/</tag>
 	Use GTSM (<rfc id="5082"> - the generalized TTL security mechanism). GTSM

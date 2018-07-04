@@ -102,6 +102,8 @@ struct bgp_config {
 #define BGP_GRS_LLGR_1		2	/* Long-lived GR phase 1 (restart time) */
 #define BGP_GRS_LLGR_2		3	/* Long-lived GR phase 2 (stale time) */
 
+#define BGP_BFD_GRACEFUL	2	/* BFD down triggers graceful restart */
+
 
 struct bgp_conn {
   struct bgp_proto *bgp;
