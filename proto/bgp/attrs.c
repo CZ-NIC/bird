@@ -1402,6 +1402,10 @@ bgp_rte_mergable(rte *pri, rte *sec)
   if (!rte_resolvable(sec))
     return 0;
 
+  /* LLGR draft - depreference stale routes */
+  if (rte_stale(pri) != rte_stale(sec))
+    return 0;
+
   /* Start with local preferences */
   x = ea_find(pri->attrs->eattrs, EA_CODE(EAP_BGP, BA_LOCAL_PREF));
   y = ea_find(sec->attrs->eattrs, EA_CODE(EAP_BGP, BA_LOCAL_PREF));
