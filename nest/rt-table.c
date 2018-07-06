@@ -678,7 +678,17 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
    *
    * - We found new_best the same as new_changed, therefore it cannot
    *   be old_best and we have to continue search for old_best.
+   *
+   * There is also a hack to ensure consistency in case of changed filters.
+   * It does not find the proper old_best, just selects a non-NULL route.
    */
+
+  /* Hack for changed filters */
+  if (old_changed && (old_changed->lastmod <= c->last_tx_filter_change))
+    {
+      old_best = old_changed;
+      goto found;
+    }
 
   /* First case */
   if (old_meet)
