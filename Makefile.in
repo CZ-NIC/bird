@@ -54,6 +54,10 @@ else
   Q:=
 endif
 
+ifneq ($(COLOR),)
+  CFLAGS += -fdiagnostics-color=always
+endif
+
 # Meta rules
 docgoals := docs userdocs progdocs
 testgoals := check test tests tests_run
