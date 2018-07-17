@@ -178,6 +178,15 @@ test -z "$FLEX"	 && AC_MSG_ERROR([Flex is missing.])
 test -z "$BISON" && AC_MSG_ERROR([Bison is missing.])
 test -z "$M4"	 && AC_MSG_ERROR([M4 is missing.])
 
+AC_MSG_CHECKING([bison version])
+BIRD_CHECK_BISON_VERSION(BISON_VERSION)
+AC_MSG_RESULT([$BISON_VERSION])
+if test "$bird_bison_synclines" = yes; then
+  M4FLAGS="$M4FLAGS -s"
+fi
+
+AC_SUBST([M4FLAGS])
+
 BIRD_CHECK_PROG_FLAVOR_GNU([$M4],
   [],
   [AC_MSG_ERROR([Provided M4 is not GNU M4.])]

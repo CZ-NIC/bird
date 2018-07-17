@@ -141,3 +141,22 @@ AC_DEFUN([BIRD_CHECK_PROG_FLAVOR_GNU],
   )
   esac
 ])
+
+AC_DEFUN([BIRD_CHECK_BISON_VERSION],
+[
+  $1=`bison --version | ( read line; echo ${line##* } )`
+  case "$$1" in
+    1.* | 2.0* | 2.1* | 2.2* | 2.3*)
+      AC_MSG_ERROR([Provided Bison version $$1 is too old, need at least 2.4])
+      ;;
+    2.*)
+      bird_bison_synclines=no
+      ;;
+    3.* | 4.* | 5.* | 6.* | 7.* | 8.* | 9.*)
+      bird_bison_synclines=yes
+      ;;
+    *)
+      AC_MSG_ERROR([Couldn't parse Bison version $$1. Call the developers for help.])
+      ;;
+  esac
+])
