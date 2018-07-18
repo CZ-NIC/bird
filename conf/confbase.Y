@@ -35,6 +35,9 @@ check_u16(uint val)
 
 CF_DECLS
 
+/* %define parse.error verbose */
+%error-verbose
+
 %union {
   uint i;
   u32 i32;
