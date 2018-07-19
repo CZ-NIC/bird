@@ -174,7 +174,7 @@ radv_prepare_prefixes(struct radv_iface *ifa)
     if (pfx->valid && !pfx->mark)
     {
       RADV_TRACE(D_EVENTS, "Invalidating prefix %N on %s",
-		 pfx->prefix, ifa->iface->name);
+		 &pfx->prefix, ifa->iface->name);
 
       pfx->valid = 0;
       pfx->changed = now;
@@ -201,7 +201,7 @@ radv_prune_prefixes(struct radv_iface *ifa)
       if (expires <= now)
       {
 	RADV_TRACE(D_EVENTS, "Removing prefix %N on %s",
-		   px->prefix, ifa->iface->name);
+		   &px->prefix, ifa->iface->name);
 
 	rem_node(NODE px);
 	mb_free(px);
