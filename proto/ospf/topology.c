@@ -1248,7 +1248,6 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_area *oa = NULL;	/* non-NULL for NSSA-LSA */
   ort *nf;
-  struct ea_list *ea = new->attrs->eattrs;
 
   /*
    * There are several posibilities:
@@ -1282,8 +1281,8 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
 
   /* Get route attributes */
   rta *a = new->attrs;
-  eattr *m1a = ea_find(ea, EA_OSPF_METRIC1);
-  eattr *m2a = ea_find(ea, EA_OSPF_METRIC2);
+  eattr *m1a = ea_find(a->eattrs, EA_OSPF_METRIC1);
+  eattr *m2a = ea_find(a->eattrs, EA_OSPF_METRIC2);
   uint m1 = m1a ? m1a->u.data : 0;
   uint m2 = m2a ? m2a->u.data : 10000;
 
@@ -1307,7 +1306,7 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
 
   uint ebit = m2a || !m1a;
   uint metric = ebit ? m2 : m1;
-  uint tag = ea_get_int(ea, EA_OSPF_TAG, 0);
+  uint tag = ea_get_int(a->eattrs, EA_OSPF_TAG, 0);
 
   ip_addr fwd = IPA_NONE;
   if ((a->dest == RTD_UNICAST) && use_gw_for_fwaddr(p, a->nh.gw, a->nh.iface))
