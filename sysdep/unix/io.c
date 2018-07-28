@@ -1541,6 +1541,7 @@ sk_sendmsg(sock *s)
   struct iovec iov = {s->tbuf, s->tpos - s->tbuf};
   byte cmsg_buf[CMSG_TX_SPACE];
   sockaddr dst;
+  int flags = 0;
 
   sockaddr_fill(&dst, s->af, s->daddr, s->iface, s->dport);
 
@@ -1550,6 +1551,11 @@ sk_sendmsg(sock *s)
     .msg_iov = &iov,
     .msg_iovlen = 1
   };
+
+#ifdef CONFIG_DONTROUTE_UNICAST
+  if (ipa_is_ip4(s->daddr) && ip4_is_unicast(ipa_to_ip4(s->daddr)))
+    flags = MSG_DONTROUTE;
+#endif
 
 #ifdef CONFIG_USE_HDRINCL
   byte hdr[20];
@@ -1566,7 +1572,7 @@ sk_sendmsg(sock *s)
   if (s->flags & SKF_PKTINFO)
     sk_prepare_cmsgs(s, &msg, cmsg_buf, sizeof(cmsg_buf));
 
-  return sendmsg(s->fd, &msg, 0);
+  return sendmsg(s->fd, &msg, flags);
 }
 
 static inline int

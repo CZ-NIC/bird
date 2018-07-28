@@ -12,6 +12,11 @@
 #include <sys/param.h>
 
 
+#ifdef __FreeBSD__
+/* Should be defined in sysdep/cf/bsd.h, but it is flavor-specific */
+#define CONFIG_DONTROUTE_UNICAST
+#endif
+
 #ifdef __NetBSD__
 
 #ifndef IP_RECVTTL
