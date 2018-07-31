@@ -513,8 +513,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   p->route_refresh = peer->route_refresh;
   p->enhanced_refresh = local->enhanced_refresh && peer->enhanced_refresh;
 
-  /* Whether we may handle possible GR of peer (it has some AF GR-able) */
-  p->gr_ready = 0;	/* Updated later */
+  /* Whether we may handle possible GR/LLGR of peer (it has some AF GR-able) */
+  p->gr_ready = p->llgr_ready = 0;	/* Updated later */
 
   /* Whether peer is ready to handle our GR recovery */
   int peer_gr_ready = peer->gr_aware && !(peer->gr_flags & BGP_GRF_RESTART);
@@ -547,8 +547,15 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     c->load_state = BFS_NONE;
 
     /* Channels where peer may do GR */
-    c->gr_ready = active && local->gr_aware && rem->gr_able;
+    uint gr_ready = active && local->gr_aware && rem->gr_able;
+    uint llgr_ready = active && local->llgr_aware && rem->llgr_able;
+
+    c->gr_ready = gr_ready || llgr_ready;
     p->gr_ready = p->gr_ready || c->gr_ready;
+    p->llgr_ready = p->llgr_ready || llgr_ready;
+
+    /* Remember last LLGR stale time */
+    c->stale_time = local->llgr_aware ? rem->llgr_time : 0;
 
     /* Channels not able to recover gracefully */
     if (p->p.gr_recovery && (!active || !peer_gr_ready))
@@ -558,8 +565,14 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     if (p->p.gr_recovery && loc->gr_able && peer_gr_ready)
       c->c.gr_wait = 1;
 
-    /* Channels where peer is not able to recover gracefully */
-    if (c->gr_active && ! (c->gr_ready && (rem->gr_af_flags & BGP_GRF_FORWARDING)))
+    /* Channels where regular graceful restart failed */
+    if ((c->gr_active == BGP_GRS_ACTIVE) &&
+	!(active && rem->gr_able && (rem->gr_af_flags & BGP_GRF_FORWARDING)))
+      bgp_graceful_restart_done(c);
+
+    /* Channels where regular long-lived restart failed */
+    if ((c->gr_active == BGP_GRS_LLGR) &&
+	!(active && rem->llgr_able && (rem->gr_af_flags & BGP_LLGRF_FORWARDING)))
       bgp_graceful_restart_done(c);
 
     /* GR capability implies that neighbor will send End-of-RIB */
@@ -669,12 +682,25 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
 
     if (c->gr_ready)
     {
-      if (c->gr_active)
-	rt_refresh_end(c->c.table, &c->c);
-
-      c->gr_active = 1;
       p->gr_active_num++;
-      rt_refresh_begin(c->c.table, &c->c);
+
+      switch (c->gr_active)
+      {
+      case BGP_GRS_NONE:
+	c->gr_active = BGP_GRS_ACTIVE;
+	rt_refresh_begin(c->c.table, &c->c);
+	break;
+
+      case BGP_GRS_ACTIVE:
+	rt_refresh_end(c->c.table, &c->c);
+	rt_refresh_begin(c->c.table, &c->c);
+	break;
+
+      case BGP_GRS_LLGR:
+	rt_refresh_begin(c->c.table, &c->c);
+	rt_modify_stale(c->c.table, &c->c);
+	break;
+      }
     }
     else
     {
@@ -695,7 +721,7 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
   ASSERT(p->gr_active_num > 0);
 
   proto_notify_state(&p->p, PS_START);
-  bgp_start_timer(p->gr_timer, p->conn->remote_caps->gr_time);
+  tm_start(p->gr_timer, p->conn->remote_caps->gr_time S);
 }
 
 /**
@@ -720,6 +746,7 @@ bgp_graceful_restart_done(struct bgp_channel *c)
   if (!p->gr_active_num)
     BGP_TRACE(D_EVENTS, "Neighbor graceful restart done");
 
+  tm_stop(c->stale_timer);
   rt_refresh_end(c->c.table, &c->c);
 }
 
@@ -738,7 +765,46 @@ bgp_graceful_restart_timeout(timer *t)
   struct bgp_proto *p = t->data;
 
   BGP_TRACE(D_EVENTS, "Neighbor graceful restart timeout");
-  bgp_stop(p, 0, NULL, 0);
+
+  if (p->llgr_ready)
+  {
+    struct bgp_channel *c;
+    WALK_LIST(c, p->p.channels)
+    {
+      /* Channel is not in GR and is already flushed */
+      if (!c->gr_active)
+	continue;
+
+      /* Channel is already in LLGR from past restart */
+      if (c->gr_active == BGP_GRS_LLGR)
+	continue;
+
+      /* Channel is in GR, but does not support LLGR -> stop GR */
+      if (!c->stale_time)
+      {
+	bgp_graceful_restart_done(c);
+	continue;
+      }
+
+      /* Channel is in GR, and supports LLGR -> start LLGR */
+      c->gr_active = BGP_GRS_LLGR;
+      tm_start(c->stale_timer, c->stale_time S);
+      rt_modify_stale(c->c.table, &c->c);
+    }
+  }
+  else
+    bgp_stop(p, 0, NULL, 0);
+}
+
+static void
+bgp_long_lived_stale_timeout(timer *t)
+{
+  struct bgp_channel *c = t->data;
+  struct bgp_proto *p = (void *) c->c.proto;
+
+  BGP_TRACE(D_EVENTS, "Long-lived stale timeout");
+
+  bgp_graceful_restart_done(c);
 }
 
 
@@ -873,6 +939,12 @@ bgp_hold_timeout(timer *t)
 
   if (sk_rx_ready(conn->sk) > 0)
     bgp_start_timer(conn->hold_timer, 10);
+  else if ((conn->state == BS_ESTABLISHED) && p->llgr_ready)
+  {
+    BGP_TRACE(D_EVENTS, "Hold timer expired");
+    bgp_handle_graceful_restart(p);
+    bgp_conn_enter_idle_state(conn);
+  }
   else
     bgp_error(conn, 4, 0, NULL, 0);
 }
@@ -1172,9 +1244,26 @@ bgp_bfd_notify(struct bfd_request *req)
   {
     BGP_TRACE(D_EVENTS, "BFD session down");
     bgp_store_error(p, NULL, BE_MISC, BEM_BFD_DOWN);
-    if (ps == PS_UP)
-      bgp_update_startup_delay(p);
-    bgp_stop(p, 0, NULL, 0);
+
+    if (p->cf->bfd == BGP_BFD_GRACEFUL)
+    {
+      /* Trigger graceful restart */
+      if (p->conn && (p->conn->state == BS_ESTABLISHED) && p->gr_ready)
+	bgp_handle_graceful_restart(p);
+
+      if (p->incoming_conn.state > BS_IDLE)
+	bgp_conn_enter_idle_state(&p->incoming_conn);
+
+      if (p->outgoing_conn.state > BS_IDLE)
+	bgp_conn_enter_idle_state(&p->outgoing_conn);
+    }
+    else
+    {
+      /* Trigger session down */
+      if (ps == PS_UP)
+	bgp_update_startup_delay(p);
+      bgp_stop(p, 0, NULL, 0);
+    }
   }
 }
 
@@ -1447,6 +1536,7 @@ bgp_init(struct proto_config *CF)
   P->rte_better = bgp_rte_better;
   P->rte_mergable = bgp_rte_mergable;
   P->rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
+  P->rte_modify = bgp_rte_modify_stale;
 
   p->cf = cf;
   p->local_as = cf->local_as;
@@ -1502,6 +1592,8 @@ bgp_channel_start(struct channel *C)
   c->pool = p->p.pool; // XXXX
   bgp_init_bucket_table(c);
   bgp_init_prefix_table(c);
+
+  c->stale_timer = tm_new_init(c->pool, bgp_long_lived_stale_timeout, c, 0, 0);
 
   c->next_hop_addr = c->cf->next_hop_addr;
   c->link_addr = IPA_NONE;
@@ -1634,6 +1726,10 @@ bgp_postconfig(struct proto_config *CF)
   if (cf->multihop < 0)
     cf->multihop = internal ? 64 : 0;
 
+  /* LLGR mode default based on GR mode */
+  if (cf->llgr_mode < 0)
+    cf->llgr_mode = cf->gr_mode ? BGP_LLGR_AWARE : 0;
+
   /* Link check for single-hop BGP by default */
   if (cf->check_link < 0)
     cf->check_link = !cf->multihop;
@@ -1676,6 +1772,9 @@ bgp_postconfig(struct proto_config *CF)
   if (cf->multihop && cf->bfd && ipa_zero(cf->local_ip))
     cf_error("Multihop BGP with BFD requires specified local address");
 
+  if (!cf->gr_mode && cf->llgr_mode)
+    cf_error("Long-lived graceful restart requires basic graceful restart");
+
 
   struct bgp_channel_config *cc;
   WALK_LIST(cc, CF->channels)
@@ -1706,9 +1805,15 @@ bgp_postconfig(struct proto_config *CF)
     if (!cc->gw_mode)
       cc->gw_mode = cf->multihop ? GW_RECURSIVE : GW_DIRECT;
 
-    /* Default based on proto config */
+    /* Defaults based on proto config */
     if (cc->gr_able == 0xff)
       cc->gr_able = (cf->gr_mode == BGP_GR_ABLE);
+
+    if (cc->llgr_able == 0xff)
+      cc->llgr_able = (cf->llgr_mode == BGP_LLGR_ABLE);
+
+    if (cc->llgr_time == ~0U)
+      cc->llgr_time = cf->llgr_time;
 
     /* Default values of IGP tables */
     if ((cc->gw_mode == GW_RECURSIVE) && !cc->desc->no_igp)
@@ -1885,6 +1990,7 @@ static char *bgp_state_names[] = { "Idle", "Connect", "Active", "OpenSent", "Ope
 static char *bgp_err_classes[] = { "", "Error: ", "Socket: ", "Received: ", "BGP Error: ", "Automatic shutdown: ", ""};
 static char *bgp_misc_errors[] = { "", "Neighbor lost", "Invalid next hop", "Kernel MD5 auth failed", "No listening socket", "Link down", "BFD session down", "Graceful restart"};
 static char *bgp_auto_errors[] = { "", "Route limit exceeded"};
+static char *bgp_gr_states[] = { "None", "Regular", "Long-lived"};
 
 static const char *
 bgp_last_errmsg(struct bgp_proto *p)
@@ -1963,6 +2069,7 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
   uint any_gr_able = 0;
   uint any_add_path = 0;
   uint any_ext_next_hop = 0;
+  uint any_llgr_able = 0;
   u32 *afl1 = alloca(caps->af_count * sizeof(u32));
   u32 *afl2 = alloca(caps->af_count * sizeof(u32));
   uint afn1, afn2;
@@ -1973,6 +2080,7 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
     any_gr_able |= ac->gr_able;
     any_add_path |= ac->add_path;
     any_ext_next_hop |= ac->ext_next_hop;
+    any_llgr_able |= ac->llgr_able;
   }
 
   if (any_mp_bgp)
@@ -2052,6 +2160,32 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
 
   if (caps->enhanced_refresh)
     cli_msg(-1006, "      Enhanced refresh");
+
+  if (caps->llgr_aware)
+    cli_msg(-1006, "      Long-lived graceful restart");
+
+  if (any_llgr_able)
+  {
+    u32 stale_time = 0;
+
+    afn1 = afn2 = 0;
+    WALK_AF_CAPS(caps, ac)
+    {
+      stale_time = MAX(stale_time, ac->llgr_time);
+
+      if (ac->llgr_able && ac->llgr_time)
+	afl1[afn1++] = ac->afi;
+
+      if (ac->llgr_flags & BGP_GRF_FORWARDING)
+	afl2[afn2++] = ac->afi;
+    }
+
+    /* Continues from llgr_aware */
+    cli_msg(-1006, "        LL stale time: %u", stale_time);
+
+    bgp_show_afis(-1006, "        AF supported:", afl1, afn1);
+    bgp_show_afis(-1006, "        AF preserved:", afl2, afn2);
+  }
 }
 
 static void
@@ -2117,6 +2251,12 @@ bgp_show_proto_info(struct proto *P)
     WALK_LIST(c, p->p.channels)
     {
       channel_show_info(&c->c);
+
+      if (p->gr_active_num)
+	cli_msg(-1006, "    Neighbor GR:    %s", bgp_gr_states[c->gr_active]);
+
+      if (tm_active(c->stale_timer))
+	cli_msg(-1006, "    LL stale timer: %t/-", tm_remains(c->stale_timer));
 
       if (c->c.channel_state == CS_UP)
       {

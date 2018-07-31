@@ -260,6 +260,9 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     caps->gr_flags = p->p.gr_recovery ? BGP_GRF_RESTART : 0;
   }
 
+  if (p->cf->llgr_mode)
+    caps->llgr_aware = 1;
+
   /* Allocate and fill per-AF fields */
   WALK_LIST(c, p->p.channels)
   {
@@ -280,6 +283,15 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
       if (p->p.gr_recovery)
 	ac->gr_af_flags |= BGP_GRF_FORWARDING;
     }
+
+    if (c->cf->llgr_able)
+    {
+      ac->llgr_able = 1;
+      ac->llgr_time = c->cf->llgr_time;
+
+      if (p->p.gr_recovery)
+	ac->llgr_flags |= BGP_LLGRF_FORWARDING;
+    }
   }
 
   /* Sort capability fields by AFI/SAFI */
@@ -289,9 +301,9 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   /* Create capability list in buffer */
 
   /*
-   * Note that max length is ~ 20+14*af_count. With max 12 channels that is
-   * 188. Option limit is 253 and buffer size is 4096, so we cannot overflow
-   * unless we add new capabilities or more AFs.
+   * Note that max length is ~ 22+21*af_count. With max 12 channels that is
+   * 274. Option limit is 253 and buffer size is 4096, so we cannot overflow
+   * unless we add new capabilities or more AFs. XXXXX
    */
 
   WALK_AF_CAPS(caps, ac)
@@ -382,6 +394,24 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   {
     *buf++ = 70;		/* Capability 70: Support for enhanced route refresh */
     *buf++ = 0;			/* Capability data length */
+  }
+
+  if (caps->llgr_aware)
+  {
+    *buf++ = 71;		/* Capability 71: Support for long-lived graceful restart */
+    *buf++ = 0;			/* Capability data length, will be fixed later */
+    data = buf;
+
+    WALK_AF_CAPS(caps, ac)
+      if (ac->llgr_able)
+      {
+	put_af3(buf, ac->afi);
+	buf[3] = ac->llgr_flags;
+	put_u24(buf+4, ac->llgr_time);
+	buf += 7;
+      }
+
+    data[-1] = buf - data;
   }
 
   return buf;
@@ -508,11 +538,49 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
       caps->enhanced_refresh = 1;
       break;
 
+    case 71: /* Long lived graceful restart capability, RFC draft */
+      if (cl % 7)
+	goto err;
+
+      /* Presumably, only the last instance is valid */
+      WALK_AF_CAPS(caps, ac)
+      {
+	ac->llgr_able = 0;
+	ac->llgr_flags = 0;
+	ac->llgr_time = 0;
+      }
+
+      caps->llgr_aware = 1;
+
+      for (i = 0; i < cl; i += 7)
+      {
+	af = get_af3(pos+2+i);
+	ac = bgp_get_af_caps(caps, af);
+	ac->llgr_able = 1;
+	ac->llgr_flags = pos[2+i+3];
+	ac->llgr_time = get_u24(pos + 2+i+4);
+      }
+      break;
+
       /* We can safely ignore all other capabilities */
     }
 
     ADVANCE(pos, len, 2 + cl);
   }
+
+  /* The LLGR capability must be advertised together with the GR capability,
+     otherwise it must be disregarded */
+  if (!caps->gr_aware && caps->llgr_aware)
+  {
+    caps->llgr_aware = 0;
+    WALK_AF_CAPS(caps, ac)
+    {
+      ac->llgr_able = 0;
+      ac->llgr_flags = 0;
+      ac->llgr_time = 0;
+    }
+  }
+
   return;
 
 err:
@@ -1131,6 +1199,7 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
 
   e->pflags = 0;
   e->u.bgp.suppressed = 0;
+  e->u.bgp.stale = -1;
   rte_update2(&s->channel->c, n, e, s->last_src);
 }
 

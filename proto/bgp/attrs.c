@@ -1413,6 +1413,10 @@ bgp_import_control(struct proto *P, rte **new, struct linpool *pool UNUSED)
     /* Do not export outside of AS (or confederation) */
     if (!p->is_interior && int_set_contains(d, BGP_COMM_NO_EXPORT))
       return -1;
+
+    /* Do not export LLGR_STALE routes to LLGR-ignorant peers */
+    if (!p->conn->remote_caps->llgr_aware && int_set_contains(d, BGP_COMM_LLGR_STALE))
+      return -1;
   }
 
   return 0;
@@ -1580,6 +1584,19 @@ rte_resolvable(rte *rt)
   return rt->attrs->dest == RTD_UNICAST;
 }
 
+static inline int
+rte_stale(rte *r)
+{
+  if (r->u.bgp.stale < 0)
+  {
+    /* If staleness is unknown, compute and cache it */
+    eattr *a = ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));
+    r->u.bgp.stale = a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE);
+  }
+
+  return r->u.bgp.stale;
+}
+
 int
 bgp_rte_better(rte *new, rte *old)
 {
@@ -1604,7 +1621,15 @@ bgp_rte_better(rte *new, rte *old)
   if (n < o)
     return 0;
 
-  /* Start with local preferences */
+  /* LLGR draft - depreference stale routes */
+  n = rte_stale(new);
+  o = rte_stale(old);
+  if (n > o)
+    return 0;
+  if (n < o)
+    return 1;
+
+ /* Start with local preferences */
   x = ea_find(new->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF));
   y = ea_find(old->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF));
   n = x ? x->u.data : new_bgp->cf->default_local_pref;
@@ -1723,6 +1748,10 @@ bgp_rte_mergable(rte *pri, rte *sec)
 
   /* RFC 4271 9.1.2.1. Route resolvability test */
   if (!rte_resolvable(sec))
+    return 0;
+
+  /* LLGR draft - depreference stale routes */
+  if (rte_stale(pri) != rte_stale(sec))
     return 0;
 
   /* Start with local preferences */
@@ -1926,6 +1955,27 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
     return old_is_group_best;
 }
 
+struct rte *
+bgp_rte_modify_stale(struct rte *r, struct linpool *pool)
+{
+  eattr *a = ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));
+  struct adata *ad = a ? a->u.ptr : NULL;
+  uint flags = a ? a->flags : BAF_PARTIAL;
+
+  if (ad && int_set_contains(ad, BGP_COMM_NO_LLGR))
+    return NULL;
+
+  if (ad && int_set_contains(ad, BGP_COMM_LLGR_STALE))
+    return r;
+
+  r = rte_cow_rta(r, pool);
+  bgp_set_attr_ptr(&(r->attrs->eattrs), pool, BA_COMMUNITY, flags,
+		   int_set_add(pool, ad, BGP_COMM_LLGR_STALE));
+  r->u.bgp.stale = 1;
+
+  return r;
+}
+
 
 /*
  * Reconstruct AS_PATH and AGGREGATOR according to RFC 6793 4.2.3
@@ -2010,6 +2060,9 @@ bgp_get_route_info(rte *e, byte *buf)
 
   if (e->u.bgp.suppressed)
     buf += bsprintf(buf, "-");
+
+  if (rte_stale(e))
+    buf += bsprintf(buf, "s");
 
   if (e->attrs->hostentry)
   {

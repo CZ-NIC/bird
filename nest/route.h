@@ -231,6 +231,7 @@ typedef struct rte {
 #ifdef CONFIG_BGP
     struct {
       u8 suppressed;			/* Used for deterministic MED comparison */
+      s8 stale;				/* Route is LLGR_STALE, -1 if unknown */
     } bgp;
 #endif
 #ifdef CONFIG_BABEL
@@ -254,6 +255,7 @@ typedef struct rte {
 #define REF_FILTERED	2		/* Route is rejected by import filter */
 #define REF_STALE	4		/* Route is stale in a refresh cycle */
 #define REF_DISCARD	8		/* Route is scheduled for discard */
+#define REF_MODIFY	16		/* Route is scheduled for modify */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
 static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED); }
@@ -297,6 +299,7 @@ int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
+void rt_modify_stale(rtable *t, struct channel *c);
 void rt_schedule_prune(rtable *t);
 void rte_dump(rte *);
 void rte_free(rte *);

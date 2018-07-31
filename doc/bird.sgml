@@ -2220,13 +2220,16 @@ using the following configuration parameters:
 	immediately shut down. Note that this option cannot be used with
 	multihop BGP. Default: enabled for direct BGP, disabled otherwise.
 
-	<tag><label id="bgp-bfd">bfd <M>switch</M></tag>
+	<tag><label id="bgp-bfd">bfd <M>switch</M>|graceful</tag>
 	BGP could use BFD protocol as an advisory mechanism for neighbor
 	liveness and failure detection. If enabled, BIRD setups a BFD session
 	for the BGP neighbor and tracks its liveness by it. This has an
 	advantage of an order of magnitude lower detection times in case of
-	failure. Note that BFD protocol also has to be configured, see
-	<ref id="bfd" name="BFD"> section for details. Default: disabled.
+	failure. When a neighbor failure is detected, the BGP session is
+	restarted. Optionally, it can be configured (by <cf/graceful/ argument)
+	to trigger graceful restart instead of regular restart. Note that BFD
+	protocol also has to be configured, see <ref id="bfd" name="BFD">
+	section for details. Default: disabled.
 
 	<tag><label id="bgp-ttl-security">ttl security <m/switch/</tag>
 	Use GTSM (<rfc id="5082"> - the generalized TTL security mechanism). GTSM
@@ -2347,6 +2350,25 @@ using the following configuration parameters:
 	and specifies how long the neighbor would wait for the BGP session to
 	re-establish after a restart before deleting stale routes. Default:
 	120 seconds.
+
+	<tag><label id="bgp-long-lived-graceful-restart">long lived graceful restart <m/switch/|aware</tag>
+	The long-lived graceful restart is an extension of the traditional
+	<ref id="bgp-graceful-restart" name="BGP graceful restart">, where stale
+	routes are kept even after the <ref id="bgp-graceful-restart-time"
+	name="restart time"> expires for additional long-lived stale time, but
+	they are marked with the LLGR_STALE community, depreferenced, and
+	withdrawn from routers not supporting LLGR. Like traditional BGP
+	graceful restart, it has three states: disabled, aware (receiving-only),
+	and enabled. Note that long-lived graceful restart requires at least
+	aware level of traditional BGP graceful restart. Default: aware, unless
+	graceful restart is disabled.
+
+	<tag><label id="bgp-long-lived-stale-time">long lived stale time <m/number/</tag>
+	The long-lived stale time is announced in the BGP long-lived graceful
+	restart capability and specifies how long the neighbor would keep stale
+	routes depreferenced during long-lived graceful restart until either the
+	session is re-stablished and synchronized or the stale time expires and
+	routes are removed. Default: 3600 seconds.
 
 	<tag><label id="bgp-interpret-communities">interpret communities <m/switch/</tag>
 	<rfc id="1997"> demands that BGP speaker should process well-known
@@ -2607,6 +2629,19 @@ be used in explicit configuration.
 	configure restarting role per AFI/SAFI pair by this channel option.
 	The option is ignored if graceful restart is disabled by protocol-wide
 	option. Default: off in aware mode, on in full mode.
+
+	<tag><label id="bgp-long-lived-graceful-restart-c">long lived graceful restart <m/switch/</tag>
+	BGP long-lived graceful restart is configured mainly by protocol-wide
+	<ref id="bgp-long-lived-graceful-restart" name="options">, but the
+	restarting role can be set per AFI/SAFI pair by this channel option.
+	The option is ignored if long-lived graceful restart is disabled by
+	protocol-wide option. Default: off in aware mode, on in full mode.
+
+	<tag><label id="bgp-long-lived-stale-time-c">long lived stale time <m/number/</tag>
+	Like previous graceful restart channel options, this option allows to
+	set <ref id="bgp-long-lived-stale-time" name="long lived stale time">
+	per AFI/SAFI pair instead of per protocol. Default: set by protocol-wide
+	option.
 </descrip>
 
 <sect1>Attributes
@@ -2761,7 +2796,6 @@ interfaces to be defined for them to work with.
 	so the default time is set to a large value.
 
 	<tag><label id="device-iface">interface <m/pattern/ [, <m/.../]</tag>
-
 	By default, the Device protocol handles all interfaces without any
 	configuration. Interface definitions allow to specify optional
 	parameters for specific interfaces. See <ref id="proto-iface"

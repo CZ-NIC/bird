@@ -107,9 +107,11 @@ struct bgp_config {
   int allow_local_as;			/* Allow that number of local ASNs in incoming AS_PATHs */
   int allow_local_pref;			/* Allow LOCAL_PREF in EBGP sessions */
   int gr_mode;				/* Graceful restart mode (BGP_GR_*) */
+  int llgr_mode;			/* Long-lived graceful restart mode (BGP_LLGR_*) */
   int setkey;				/* Set MD5 password to system SA/SP database */
   /* Times below are in seconds */
   unsigned gr_time;			/* Graceful restart timeout */
+  unsigned llgr_time;			/* Long-lived graceful restart stale time */
   unsigned connect_delay_time;		/* Minimum delay between connect attempts */
   unsigned connect_retry_time;		/* Timeout for connect attempts */
   unsigned hold_time, initial_hold_time;
@@ -138,6 +140,8 @@ struct bgp_channel_config {
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
   u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
   u8 gr_able;				/* Allow full graceful restart for the channel */
+  u8 llgr_able;				/* Allow full long-lived GR for the channel */
+  uint llgr_time;			/* Long-lived graceful restart stale time */
   u8 ext_next_hop;			/* Allow both IPv4 and IPv6 next hops */
   u8 add_path;				/* Use ADD-PATH extension [RFC 7911] */
 
@@ -166,12 +170,26 @@ struct bgp_channel_config {
 /* For GR capability per-AF flags */
 #define BGP_GRF_FORWARDING 0x80
 
+#define BGP_LLGR_ABLE		1
+#define BGP_LLGR_AWARE		2
+
+#define BGP_LLGRF_FORWARDING 0x80
+
+#define BGP_GRS_NONE		0	/* No GR  */
+#define BGP_GRS_ACTIVE		1	/* Graceful restart per RFC 4724 */
+#define BGP_GRS_LLGR		2	/* Long-lived GR phase (stale timer active) */
+
+#define BGP_BFD_GRACEFUL	2	/* BFD down triggers graceful restart */
+
 
 struct bgp_af_caps {
   u32 afi;
   u8 ready;				/* Multiprotocol capability, RFC 4760 */
   u8 gr_able;				/* Graceful restart support, RFC 4724 */
   u8 gr_af_flags;			/* Graceful restart per-AF flags */
+  u8 llgr_able;				/* Long-lived GR, RFC draft */
+  u32 llgr_time;			/* Long-lived GR stale time */
+  u8 llgr_flags;			/* Long-lived GR per-AF flags */
   u8 ext_next_hop;			/* Extended IPv6 next hop,   RFC 5549 */
   u8 add_path;				/* Multiple paths support,   RFC 7911 */
 };
@@ -187,6 +205,8 @@ struct bgp_caps {
   u8 gr_aware;				/* Graceful restart capability, RFC 4724 */
   u8 gr_flags;				/* Graceful restart flags */
   u16 gr_time;				/* Graceful restart time in seconds */
+
+  u8 llgr_aware;			/* Long-lived GR capability, RFC draft */
 
   u16 af_count;				/* Number of af_data items */
 
@@ -243,6 +263,7 @@ struct bgp_proto {
   u8 route_refresh;			/* Route refresh allowed to send [RFC 2918] */
   u8 enhanced_refresh;			/* Enhanced refresh is negotiated [RFC 7313] */
   u8 gr_ready;				/* Neighbor could do graceful restart */
+  u8 llgr_ready;			/* Neighbor could do Long-lived GR, implies gr_ready */
   u8 gr_active_num;			/* Neighbor is doing GR, number of active channels */
   u8 channel_count;			/* Number of active channels */
   u32 *afi_map;				/* Map channel index -> AFI */
@@ -291,10 +312,13 @@ struct bgp_channel {
 
   u32 packets_to_send;			/* Bitmap of packet types to be sent */
 
-  u8 gr_ready;				/* Neighbor could do GR on this AF */
-  u8 gr_active;				/* Neighbor is doing GR and keeping fwd state */
-
   u8 ext_next_hop;			/* Session allows both IPv4 and IPv6 next hops */
+
+  u8 gr_ready;				/* Neighbor could do GR on this AF */
+  u8 gr_active;				/* Neighbor is doing GR (BGP_GRS_*) */
+
+  timer *stale_timer;			/* Long-lived stale timer for LLGR */
+  u32 stale_time;			/* Stored LLGR stale time from last session */
 
   u8 add_path_rx;			/* Session expects receive of ADD-PATH extended NLRI */
   u8 add_path_tx;			/* Session expects transmit of ADD-PATH extended NLRI */
@@ -505,6 +529,7 @@ void bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *bp);
 int bgp_rte_better(struct rte *, struct rte *);
 int bgp_rte_mergable(rte *pri, rte *sec);
 int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
+struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
 void bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old);
 int bgp_import_control(struct proto *, struct rte **, struct linpool *);
 int bgp_get_attr(struct eattr *e, byte *buf, int buflen);
@@ -644,6 +669,9 @@ void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 #define BGP_COMM_NO_EXPORT		0xffffff01	/* Don't export outside local AS / confed. */
 #define BGP_COMM_NO_ADVERTISE		0xffffff02	/* Don't export at all */
 #define BGP_COMM_NO_EXPORT_SUBCONFED	0xffffff03	/* NO_EXPORT even in local confederation */
+
+#define BGP_COMM_LLGR_STALE		0xffff0006	/* Route is stale according to LLGR */
+#define BGP_COMM_NO_LLGR		0xffff0007	/* Do not treat the route according to LLGR */
 
 /* Origins */
 
