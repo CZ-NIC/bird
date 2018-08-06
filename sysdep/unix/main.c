@@ -230,7 +230,7 @@ async_config(void)
   if (!unix_read_config(&conf, config_name))
     {
       if (conf->err_msg)
-	log(L_ERR "%s, line %d: %s", conf->err_file_name, conf->err_lino, conf->err_msg);
+	log(L_ERR "%s, line %d (nearby '%s'): %s", conf->err_file_name, conf->err_lino, conf->err_token, conf->err_msg);
       else
 	log(L_ERR "Unable to open configuration file %s: %m", config_name);
       config_free(conf);
@@ -251,7 +251,7 @@ cmd_read_config(char *name)
   if (!unix_read_config(&conf, name))
     {
       if (conf->err_msg)
-	cli_msg(8002, "%s, line %d: %s", conf->err_file_name, conf->err_lino, conf->err_msg);
+	cli_msg(8002, "%s, line %d (nearby '%s'): %s", conf->err_file_name, conf->err_lino, conf->err_token, conf->err_msg);
       else
 	cli_msg(8002, "%s: %m", name);
       config_free(conf);
