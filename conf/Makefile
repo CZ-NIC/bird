@@ -10,24 +10,30 @@ BISON_DEBUG=-t
 #FLEX_DEBUG=-d
 endif
 
-$(conf-y-targets): $(s)confbase.Y $(s)flowspec.Y
+$(conf-y-targets): $(s)confbase.Y $(o)symclass.Y $(s)flowspec.Y
 	$(M4) -s -P $| $^ >$@
 
 $(o)cf-parse.y: | $(s)gen_parser.m4
 $(o)keywords.h: | $(s)gen_keywords.m4
 $(o)commands.h: | $(s)gen_commands.m4 $(srcdir)/client/cmds.m4
 
+$(o)symclass.Y: $(s)gen_symclass.sh $(srcdir)/filter/filter.h $(s)conf.h $(objdir)
+	sh $^ >$@
+
+$(o)symclass_to_bison.h: $(s)gen_symclass_to_bison.sh $(srcdir)/filter/filter.h $(s)conf.h $(objdir)
+	sh $^ >$@
+
 $(o)cf-parse.tab.h: $(o)cf-parse.tab.c
 
 $(o)cf-parse.tab.c: $(o)cf-parse.y
 	$(BISON) $(BISON_DEBUG) -dv -pcf_ -b $(@:.tab.c=) $<
 
-$(o)cf-lex.c: $(s)cf-lex.l
+$(o)cf-lex.c: $(s)cf-lex.l $(o)symclass_to_bison.h
 	$(FLEX) $(FLEX_DEBUG) -s -B -8 -Pcf_ -o$@ $<
 
 $(o)cf-lex.o: $(o)cf-parse.tab.h $(o)keywords.h
 $(o)cf-lex.o: CFLAGS+=-Wno-sign-compare -Wno-unused-function
 
-$(addprefix $(o), cf-parse.y keywords.h commands.h cf-parse.tab.h cf-parse.tab.c cf-lex.c): $(objdir)/.dir-stamp
+$(addprefix $(o), symclass.Y symclass_to_bison.h cf-parse.y keywords.h commands.h cf-parse.tab.h cf-parse.tab.c cf-lex.c): $(objdir)/.dir-stamp
 
-$(call clean,cf-parse.tab.h cf-parse.tab.c cf-parse.y keywords.h commands.h cf-lex.c cf-parse.output)
+$(call clean,symclass.Y symclass_to_bison.h cf-parse.tab.h cf-parse.tab.c cf-parse.y keywords.h commands.h cf-lex.c cf-parse.output)

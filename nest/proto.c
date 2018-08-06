@@ -721,7 +721,7 @@ proto_start(struct proto *p)
 /**
  * proto_config_new - create a new protocol configuration
  * @pr: protocol the configuration will belong to
- * @class: SYM_PROTO or SYM_TEMPLATE
+ * @class: SYM_CLASS_PROTO or SYM_TEMPLATE
  *
  * Whenever the configuration file says that a new instance
  * of a routing protocol should be created, the parser calls
@@ -741,7 +741,7 @@ proto_config_new(struct protocol *pr, int class)
 {
   struct proto_config *cf = cfg_allocz(pr->config_size);
 
-  if (class == SYM_PROTO)
+  if (class == SYM_CLASS_PROTO)
     add_tail(&new_config->protos, &cf->n);
 
   cf->global = new_config;
@@ -906,7 +906,7 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
     {
       p = oc->proto;
       sym = cf_find_symbol(new, oc->name);
-      if (sym && sym->class == SYM_PROTO && !new->shutdown)
+      if (sym && sym->class == SYM_CLASS_PROTO && !new->shutdown)
       {
 	/* Found match, let's check if we can smoothly switch to new configuration */
 	/* No need to check description */
@@ -1826,7 +1826,7 @@ proto_cmd_mrtdump(struct proto *p, uintptr_t mask, int cnt UNUSED)
 static void
 proto_apply_cmd_symbol(struct symbol *s, void (* cmd)(struct proto *, uintptr_t, int), uintptr_t arg)
 {
-  if (s->class != SYM_PROTO)
+  if (s->class != SYM_CLASS_PROTO)
   {
     cli_msg(9002, "%s is not a protocol", s->name);
     return;
@@ -1872,7 +1872,7 @@ proto_get_named(struct symbol *sym, struct protocol *pr)
 
   if (sym)
   {
-    if (sym->class != SYM_PROTO)
+    if (sym->class != SYM_CLASS_PROTO)
       cf_error("%s: Not a protocol", sym->name);
 
     p = ((struct proto_config *) sym->def)->proto;

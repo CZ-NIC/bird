@@ -862,10 +862,10 @@ interpret(struct f_inst *what)
     ARG_ANY(2);
     sym = what->a1.p;
     vp = sym->def;
-    if ((sym->class != (SYM_VARIABLE | v2.type)) && (v2.type != T_VOID))
+    if ((sym->class != (SYM_CLASS_VARIABLE | v2.type)) && (v2.type != T_VOID))
     {
       /* IP->Quad implicit conversion */
-      if ((sym->class == (SYM_VARIABLE | T_QUAD)) && val_is_ip4(v2))
+      if ((sym->class == (SYM_CLASS_VARIABLE | T_QUAD)) && val_is_ip4(v2))
       {
 	vp->type = T_QUAD;
 	vp->val.i = ipa_to_u32(v2.val.ip);

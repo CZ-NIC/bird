@@ -58,12 +58,6 @@ struct keyword {
 
 #include "conf/keywords.h"
 
-/* Could be defined by Bison in cf-parse.tab.h, inteferes with SYM hash */
-#ifdef SYM
-#undef SYM
-#endif
-
-
 static uint cf_hash(byte *c);
 
 #define KW_KEY(n)		n->name
@@ -284,7 +278,11 @@ else: {
   }
 
   cf_lval.s = cf_get_symbol(yytext);
-  return SYM;
+  switch(cf_lval.s->class)
+    {
+#include "conf/symclass_to_bison.h"
+    default: cf_error("Strange symbol class %x", cf_lval.s->class);
+    }
 }
 
 <CLI>(.|\n) {

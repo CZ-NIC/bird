@@ -1626,7 +1626,7 @@ bgp_postconfig(struct proto_config *CF)
   int interior = internal || cf->confederation_member;
 
   /* Do not check templates at all */
-  if (cf->c.class == SYM_TEMPLATE)
+  if (cf->c.class == SYM_CLASS_TEMPLATE)
     return;
 
 

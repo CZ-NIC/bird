@@ -122,15 +122,15 @@ struct sym_scope {
 #define SYM_MAX_LEN 64
 
 /* Remember to update cf_symbol_class_name() */
-#define SYM_VOID 0
-#define SYM_PROTO 1
-#define SYM_TEMPLATE 2
-#define SYM_FUNCTION 3
-#define SYM_FILTER 4
-#define SYM_TABLE 5
+#define SYM_CLASS_VOID 0
+#define SYM_CLASS_PROTO 1
+#define SYM_CLASS_TEMPLATE 2
+#define SYM_CLASS_FUNCTION 3
+#define SYM_CLASS_FILTER 4
+#define SYM_CLASS_TABLE 5
 
-#define SYM_VARIABLE 0x100	/* 0x100-0x1ff are variable types */
-#define SYM_CONSTANT 0x200	/* 0x200-0x2ff are variable types */
+#define SYM_CLASS_VARIABLE 0x100	/* 0x100-0x1ff are variable types */
+#define SYM_CLASS_CONSTANT 0x200	/* 0x200-0x2ff are variable types */
 
 #define SYM_TYPE(s) (((struct f_val *) (s)->def)->type)
 #define SYM_VAL(s) (((struct f_val *) (s)->def)->val)
@@ -163,7 +163,9 @@ void cf_pop_scope(void);
 char *cf_symbol_class_name(struct symbol *sym);
 
 static inline int cf_symbol_is_constant(struct symbol *sym)
-{ return (sym->class & 0xff00) == SYM_CONSTANT; }
+{ return (sym->class & 0xff00) == SYM_CLASS_CONSTANT; }
+static inline int cf_symbol_is_variable(struct symbol *sym)
+{ return (sym->class & 0xff00) == SYM_CLASS_VARIABLE; }
 
 
 /* Parser */

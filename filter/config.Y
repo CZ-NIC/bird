@@ -510,7 +510,7 @@ one_decl:
    type SYM {
      struct f_val * val = cfg_alloc(sizeof(struct f_val));
      val->type = T_VOID;
-     $2 = cf_define_symbol($2, SYM_VARIABLE | $1, val);
+     $2 = cf_define_symbol($2, SYM_CLASS_VARIABLE | $1, val);
      DBG( "New variable %s type %x\n", $2->name, $1 );
      $2->aux2 = NULL;
      $$=$2;
@@ -832,8 +832,8 @@ function_call:
 symbol:
    SYM {
      switch ($1->class & 0xff00) {
-       case SYM_CONSTANT: $$ = f_new_inst(FI_CONSTANT_INDIRECT); break;
-       case SYM_VARIABLE: $$ = f_new_inst(FI_VARIABLE); break;
+       case SYM_CLASS_CONSTANT: $$ = f_new_inst(FI_CONSTANT_INDIRECT); break;
+       case SYM_CLASS_VARIABLE: $$ = f_new_inst(FI_VARIABLE); break;
        default: cf_error("%s: variable expected.", $1->name);
      }
 
@@ -996,10 +996,8 @@ cmd:
      $$->a1.p = i;
      $$->a2.p = $6;
    }
- | SYM '=' term ';' {
+ | SYM_VARIABLE '=' term ';' {
      DBG( "Ook, we'll set value\n" );
-     if (($1->class & ~T_MASK) != SYM_VARIABLE)
-       cf_error( "You may set only variables." );
      $$ = f_new_inst(FI_SET);
      $$->a1.p = $1;
      $$->a2.p = $3;

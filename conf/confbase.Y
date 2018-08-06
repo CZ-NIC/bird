@@ -80,7 +80,6 @@ CF_DECLS
 %token <ip4> IP4
 %token <ip6> IP6
 %token <i64> VPN_RD
-%token <s> SYM
 %token <t> TEXT
 %type <iface> ipa_scope
 
@@ -128,16 +127,14 @@ definition:
      struct f_val *val = cfg_alloc(sizeof(struct f_val));
      *val = f_eval($4, cfg_mem);
      if (val->type == T_RETURN) cf_error("Runtime error");
-     cf_define_symbol($2, SYM_CONSTANT | val->type, val);
+     cf_define_symbol($2, SYM_CLASS_CONSTANT | val->type, val);
    }
  ;
 
 expr:
    NUM
  | '(' term ')' { $$ = f_eval_int($2); }
- | SYM {
-     if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number expected");
-     $$ = SYM_VAL($1).i; }
+ | SYM_CONSTANT_INT { $$ = SYM_VAL($1).i; }
  ;
 
 
@@ -164,10 +161,7 @@ bool:
 ipa:
    IP4 { $$ = ipa_from_ip4($1); }
  | IP6 { $$ = ipa_from_ip6($1); }
- | SYM {
-     if ($1->class != (SYM_CONSTANT | T_IP)) cf_error("IP address expected");
-     $$ = SYM_VAL($1).ip;
-   }
+ | SYM_CONSTANT_IP { $$ = SYM_VAL($1).ip; }
  ;
 
 ipa_scope:
@@ -279,8 +273,8 @@ net_:
 
 net_ip6:
    net_ip6_
- | SYM {
-     if (($1->class != (SYM_CONSTANT | T_NET)) || (SYM_VAL($1).net->type != NET_IP6))
+ | SYM_CONSTANT_NET {
+     if (SYM_VAL($1).net->type != NET_IP6)
        cf_error("IPv6 network expected");
      $$ = * SYM_VAL($1).net;
    }
@@ -288,8 +282,8 @@ net_ip6:
 
 net_ip:
    net_ip_
- | SYM {
-     if (($1->class != (SYM_CONSTANT | T_NET)) || !net_is_ip(SYM_VAL($1).net))
+ | SYM_CONSTANT_NET {
+     if (!net_is_ip(SYM_VAL($1).net))
        cf_error("IP network expected");
      $$ = * SYM_VAL($1).net;
    }
@@ -297,9 +291,7 @@ net_ip:
 
 net_any:
    net_
- | SYM {
-     if ($1->class != (SYM_CONSTANT | T_NET))
-       cf_error("Network expected");
+ | SYM_CONSTANT_NET {
      $$ = (net_addr *) SYM_VAL($1).net; /* Avoid const warning */
    }
  ;
@@ -309,10 +301,9 @@ net_or_ipa:
  | net_ip6_
  | IP4 { net_fill_ip4(&($$), $1, IP4_MAX_PREFIX_LENGTH); }
  | IP6 { net_fill_ip6(&($$), $1, IP6_MAX_PREFIX_LENGTH); }
- | SYM {
-     if ($1->class == (SYM_CONSTANT | T_IP))
-       net_fill_ip_host(&($$), SYM_VAL($1).ip);
-     else if (($1->class == (SYM_CONSTANT | T_NET)) && net_is_ip(SYM_VAL($1).net))
+ | SYM_CONSTANT_IP { net_fill_ip_host(&($$), SYM_VAL($1).ip); }
+ | SYM_CONSTANT_NET {
+     if (net_is_ip(SYM_VAL($1).net))
        $$ = * SYM_VAL($1).net;
      else
        cf_error("IP address or network expected");
@@ -346,10 +337,7 @@ time:
 
 text:
    TEXT
- | SYM {
-     if ($1->class != (SYM_CONSTANT | T_STRING)) cf_error("String expected");
-     $$ = SYM_VAL($1).s;
-   }
+ | SYM_CONSTANT_STRING { $$ = SYM_VAL($1).s; }
  ;
 
 opttext:

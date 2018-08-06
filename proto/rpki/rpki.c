@@ -869,7 +869,7 @@ void
 rpki_check_config(struct rpki_config *cf)
 {
   /* Do not check templates at all */
-  if (cf->c.class == SYM_TEMPLATE)
+  if (cf->c.class == SYM_CLASS_TEMPLATE)
     return;
 
   if (ipa_zero(cf->ip) && cf->hostname == NULL)

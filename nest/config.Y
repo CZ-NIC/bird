@@ -114,10 +114,10 @@ idval:
    NUM { $$ = $1; }
  | '(' term ')' { $$ = f_eval_int($2); }
  | IP4 { $$ = ip4_to_u32($1); }
- | SYM {
-     if ($1->class == (SYM_CONSTANT | T_INT) || $1->class == (SYM_CONSTANT | T_QUAD))
-       $$ = SYM_VAL($1).i;
-     else if (($1->class == (SYM_CONSTANT | T_IP)) && ipa_is_ip4(SYM_VAL($1).ip))
+ | SYM_CONSTANT_INT { $$ = SYM_VAL($1).i; }
+ | SYM_CONSTANT_QUAD { $$ = SYM_VAL($1).i; }
+ | SYM_CONSTANT_IP {
+     if (ipa_is_ip4(SYM_VAL($1).ip))
        $$ = ipa_to_u32(SYM_VAL($1).ip);
      else
        cf_error("Number or IPv4 address constant expected");
@@ -639,17 +639,16 @@ r_args_for:
     $$ = cfg_alloc(sizeof(net_addr_ip6_sadr));
     net_fill_ip6_sadr($$, $1, IP6_MAX_PREFIX_LENGTH, $3, IP6_MAX_PREFIX_LENGTH);
   }
- | SYM {
-     if ($1->class == (SYM_CONSTANT | T_IP))
-     {
-       $$ = cfg_alloc(ipa_is_ip4(SYM_VAL($1).ip) ? sizeof(net_addr_ip4) : sizeof(net_addr_ip6));
-       net_fill_ip_host($$, SYM_VAL($1).ip);
-     }
-     else if (($1->class == (SYM_CONSTANT | T_NET)) && net_type_match(SYM_VAL($1).net, NB_IP | NB_VPN))
-       $$ = (net_addr *) SYM_VAL($1).net; /* Avoid const warning */
-     else
-       cf_error("IP address or network expected");
-   }
+ | SYM_CONSTANT_IP {
+    $$ = cfg_alloc(ipa_is_ip4(SYM_VAL($1).ip) ? sizeof(net_addr_ip4) : sizeof(net_addr_ip6));
+    net_fill_ip_host($$, SYM_VAL($1).ip);
+  }
+ | SYM_CONSTANT_NET {
+    if (net_type_match(SYM_VAL($1).net, NB_IP | NB_VPN))
+      $$ = (net_addr *) SYM_VAL($1).net; /* Avoid const warning */
+    else
+      cf_error("IP address or network expected");
+  }
  ;
 
 r_args_for_val:
