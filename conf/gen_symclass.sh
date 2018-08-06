@@ -35,4 +35,4 @@ for T in `cat $TYPE_TMP`; do
   done
 done
 
-echo "SYM: " `sed 's/^/SYM_/' $SYM_TMP` ";"
+sed 's/.*/SYM: SYM_& ;/' $SYM_TMP

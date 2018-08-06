@@ -15,10 +15,10 @@
  * symbols and keywords.
  *
  * Each symbol is represented by a &symbol structure containing name
- * of the symbol, its lexical scope, symbol class (%SYM_PROTO for a
- * name of a protocol, %SYM_CONSTANT for a constant etc.) and class
+ * of the symbol, its lexical scope, symbol class (%SYM_CLASS_PROTO for a
+ * name of a protocol, %SYM_CLASS_CONSTANT for a constant etc.) and class
  * dependent data.  When an unknown symbol is encountered, it's
- * automatically added to the symbol table with class %SYM_VOID.
+ * automatically added to the symbol table with class %SYM_CLASS_VOID.
  *
  * The keyword tables are generated from the grammar templates
  * using the |gen_keywords.m4| script.
@@ -525,7 +525,7 @@ cf_new_symbol(byte *c)
 
   s = cfg_alloc(sizeof(struct symbol) + l);
   s->scope = conf_this_scope;
-  s->class = SYM_VOID;
+  s->class = SYM_CLASS_VOID;
   s->def = NULL;
   s->aux = 0;
   strcpy(s->name, c);
@@ -572,7 +572,7 @@ cf_find_symbol(struct config *cfg, byte *c)
  *
  * This functions searches the symbol table of the currently parsed config
  * (@new_config) for a symbol of given name. It returns either the already
- * existing symbol or a newly allocated undefined (%SYM_VOID) symbol if no
+ * existing symbol or a newly allocated undefined (%SYM_CLASS_VOID) symbol if no
  * existing symbol is found.
  */
 struct symbol *
@@ -592,7 +592,7 @@ cf_default_name(char *template, int *counter)
     {
       bsprintf(buf, template, ++(*counter));
       s = cf_get_symbol(buf);
-      if (s->class == SYM_VOID)
+      if (s->class == SYM_CLASS_VOID)
 	return s;
       if (!perc)
 	break;
@@ -607,7 +607,7 @@ cf_default_name(char *template, int *counter)
  * @def: class dependent data
  *
  * Defines new meaning of a symbol. If the symbol is an undefined
- * one (%SYM_VOID), it's just re-defined to the new type. If it's defined
+ * one (%SYM_CLASS_VOID), it's just re-defined to the new type. If it's defined
  * in different scope, a new symbol in current scope is created and the
  * meaning is assigned to it. If it's already defined in the current scope,
  * an error is reported via cf_error().

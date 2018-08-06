@@ -440,7 +440,7 @@ CF_GRAMMAR
 
 conf: filter_def ;
 filter_def:
-   FILTER SYM { $2 = cf_define_symbol($2, SYM_FILTER, NULL); cf_push_scope( $2 ); }
+   FILTER SYM { $2 = cf_define_symbol($2, SYM_CLASS_FILTER, NULL); cf_push_scope( $2 ); }
      filter_body {
      $2->def = $4;
      $4->name = $2->name;
@@ -457,7 +457,7 @@ filter_eval:
 conf: bt_test_suite ;
 bt_test_suite:
  BT_TEST_SUITE '(' SYM ',' text ')' {
-  if (!($3->class & SYM_FUNCTION))
+  if (!($3->class & SYM_CLASS_FUNCTION))
     cf_error("Function expected");
 
   struct f_bt_test_suite *t = cfg_alloc(sizeof(struct f_bt_test_suite));
@@ -543,10 +543,7 @@ filter_body:
  ;
 
 filter:
-   SYM {
-     if ($1->class != SYM_FILTER) cf_error("No such filter.");
-     $$ = $1->def;
-   }
+   SYM_FILTER { $$ = $1->def; }
  | filter_body
  ;
 
@@ -591,7 +588,7 @@ function_body:
 conf: function_def ;
 function_def:
    FUNCTION SYM { DBG( "Beginning of function %s\n", $2->name );
-     $2 = cf_define_symbol($2, SYM_FUNCTION, NULL);
+     $2 = cf_define_symbol($2, SYM_CLASS_FUNCTION, NULL);
      cf_push_scope($2);
    } function_params function_body {
      $2->def = $5;
@@ -808,11 +805,9 @@ rtadot: /* EMPTY, we are not permitted RTA. prefix */
  ;
 
 function_call:
-   SYM '(' var_list ')' {
+   SYM_FUNCTION '(' var_list ')' {
      struct symbol *sym;
      struct f_inst *inst = $3;
-     if ($1->class != SYM_FUNCTION)
-       cf_error("You can't call something which is not a function. Really.");
      DBG("You are calling function %s\n", $1->name);
      $$ = f_new_inst(FI_CALL);
      $$->a1.p = inst;
@@ -920,11 +915,9 @@ term:
 /* | term '.' LEN { $$->code = P('P','l'); } */
 
 /* function_call is inlined here */
- | SYM '(' var_list ')' {
+ | SYM_FUNCTION '(' var_list ')' {
      struct symbol *sym;
      struct f_inst *inst = $3;
-     if ($1->class != SYM_FUNCTION)
-       cf_error("You can't call something which is not a function. Really.");
      DBG("You are calling function %s\n", $1->name);
      $$ = f_new_inst(FI_CALL);
      $$->a1.p = inst;

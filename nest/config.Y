@@ -169,8 +169,8 @@ table: net_type TABLE SYM table_sorted {
 conf: proto { proto_postconfig(); } ;
 
 proto_start:
-   PROTOCOL { $$ = SYM_PROTO; }
- | TEMPLATE { $$ = SYM_TEMPLATE; }
+   PROTOCOL { $$ = SYM_CLASS_PROTO; }
+ | TEMPLATE { $$ = SYM_CLASS_TEMPLATE; }
  ;
 
 proto_name:
@@ -190,14 +190,14 @@ proto_name:
      s->def = this_proto;
      this_proto->name = s->name;
 
-     if (($2->class != SYM_TEMPLATE) && ($2->class != SYM_PROTO)) cf_error("Template or protocol name expected");
+     if (($2->class != SYM_CLASS_TEMPLATE) && ($2->class != SYM_CLASS_PROTO)) cf_error("Template or protocol name expected");
      proto_copy_config(this_proto, $2->def);
    }
  | SYM FROM SYM {
      cf_define_symbol($1, this_proto->class, this_proto);
      this_proto->name = $1->name;
 
-     if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
+     if (($3->class != SYM_CLASS_TEMPLATE) && ($3->class != SYM_CLASS_PROTO)) cf_error("Template or protocol name expected");
      proto_copy_config(this_proto, $3->def);
    }
  ;
@@ -255,8 +255,7 @@ proto_channel: channel_start channel_opt_list channel_end;
 
 
 rtable:
-   SYM {
-     if ($1->class != SYM_TABLE) cf_error("Table expected");
+   SYM_TABLE {
      $$ = $1->def;
    }
  ;
@@ -544,9 +543,8 @@ r_args:
      $$->show_for = 1;
      $$->addr = $3;
    }
- | r_args TABLE SYM {
+ | r_args TABLE SYM_TABLE {
      $$ = $1;
-     if ($3->class != SYM_TABLE) cf_error("%s is not a table", $3->name);
      rt_show_add_table($$, ((struct rtable_config *)$3->def)->table);
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
@@ -579,32 +577,32 @@ r_args:
      $$ = $1;
      $$->filtered = 1;
    }
- | r_args export_mode SYM {
+ | r_args export_mode SYM_PROTO {
      struct proto_config *c = (struct proto_config *) $3->def;
      $$ = $1;
      if ($$->export_mode) cf_error("Export specified twice");
-     if ($3->class != SYM_PROTO || !c->proto) cf_error("%s is not a protocol", $3->name);
+     if (!c->proto) cf_error("%s is not a protocol", $3->name);
      $$->export_mode = $2;
      $$->export_protocol = c->proto;
      $$->running_on_config = c->proto->cf->global;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
- | r_args export_mode SYM '.' r_args_channel {
+ | r_args export_mode SYM_PROTO '.' r_args_channel {
      struct proto_config *c = (struct proto_config *) $3->def;
      $$ = $1;
      if ($$->export_mode) cf_error("Export specified twice");
-     if ($3->class != SYM_PROTO || !c->proto) cf_error("%s is not a protocol", $3->name);
+     if (!c->proto) cf_error("%s is not a protocol", $3->name);
      $$->export_mode = $2;
      $$->export_channel = proto_find_channel_by_name(c->proto, $5);
      if (!$$->export_channel) cf_error("Export channel not found");
      $$->running_on_config = c->proto->cf->global;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
- | r_args PROTOCOL SYM {
+ | r_args PROTOCOL SYM_PROTO {
      struct proto_config *c = (struct proto_config *) $3->def;
      $$ = $1;
      if ($$->show_protocol) cf_error("Protocol specified twice");
-     if ($3->class != SYM_PROTO || !c->proto) cf_error("%s is not a protocol", $3->name);
+     if (!c->proto) cf_error("%s is not a protocol", $3->name);
      $$->show_protocol = c->proto;
      $$->running_on_config = c->proto->cf->global;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
@@ -695,11 +693,11 @@ sym_args:
    /* empty */ {
      $$ = cfg_allocz(sizeof(struct sym_show_data));
    }
- | sym_args TABLE { $$ = $1; $$->type = SYM_TABLE; }
- | sym_args FUNCTION { $$ = $1; $$->type = SYM_FUNCTION; }
- | sym_args FILTER { $$ = $1; $$->type = SYM_FILTER; }
- | sym_args PROTOCOL { $$ = $1; $$->type = SYM_PROTO; }
- | sym_args TEMPLATE { $$ = $1; $$->type = SYM_TEMPLATE; }
+ | sym_args TABLE { $$ = $1; $$->type = SYM_CLASS_TABLE; }
+ | sym_args FUNCTION { $$ = $1; $$->type = SYM_CLASS_FUNCTION; }
+ | sym_args FILTER { $$ = $1; $$->type = SYM_CLASS_FILTER; }
+ | sym_args PROTOCOL { $$ = $1; $$->type = SYM_CLASS_PROTO; }
+ | sym_args TEMPLATE { $$ = $1; $$->type = SYM_CLASS_TEMPLATE; }
  | sym_args SYM { $$ = $1; $$->sym = $2; }
  ;
 
