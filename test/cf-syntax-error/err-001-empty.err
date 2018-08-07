@@ -1,0 +1,1 @@
+bird: test/cf-syntax-error/err-001-empty.conf, line 1 (nearby ''): No protocol is specified in the config file
