@@ -2848,14 +2848,6 @@ itself and BGP protocol is usually used for exporting aggregate routes. But the
 Direct protocol is necessary for distance-vector protocols like RIP or Babel to
 announce local networks.
 
-<p>There is one notable case when you definitely want to use the direct protocol
--- running BIRD on BSD systems. Having high priority device routes for directly
-connected networks from the direct protocol protects kernel device routes from
-being overwritten or removed by IGP routes during some transient network
-conditions, because a lower priority IGP route for the same network is not
-exported to the kernel routing table. This is an issue on BSD systems only, as
-on Linux systems BIRD cannot change non-BIRD route in the kernel routing table.
-
 <p>There are just few configuration options for the Direct protocol:
 
 <p><descrip>
@@ -2900,14 +2892,10 @@ interface) or whether an `alien' route has been added by someone else (depending
 on the <cf/learn/ switch, such routes are either ignored or accepted to our
 table).
 
-<p>Unfortunately, there is one thing that makes the routing table synchronization
-a bit more complicated. In the kernel routing table there are also device routes
-for directly connected networks. These routes are usually managed by OS itself
-(as a part of IP address configuration) and we don't want to touch that. They
-are completely ignored during the scan of the kernel tables and also the export
-of device routes from BIRD tables to kernel routing tables is restricted to
-prevent accidental interference. This restriction can be disabled using
-<cf/device routes/ switch.
+<p>Note that routes created by OS kernel itself, namely direct routes
+representing IP subnets of associated interfaces, are not imported even with
+<cf/learn/ enabled. You can use <ref id="direct" name="Direct protocol"> to
+generate these direct routes.
 
 <p>If your OS supports only a single routing table, you can configure only one
 instance of the Kernel protocol. If it supports multiple tables (in order to
