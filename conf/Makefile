@@ -11,7 +11,7 @@ BISON_DEBUG=-t
 endif
 
 $(conf-y-targets): $(s)confbase.Y $(s)flowspec.Y
-	$(M4) -s -P $| $^ >$@
+	$(M4) $(M4FLAGS) -P $| $^ >$@
 
 $(o)cf-parse.y: | $(s)gen_parser.m4
 $(o)keywords.h: | $(s)gen_keywords.m4
