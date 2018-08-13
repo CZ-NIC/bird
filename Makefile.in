@@ -75,7 +75,7 @@ $(daemon): LIBS += $(DAEMON_LIBS)
 # Include directories
 dirs := client conf doc filter lib nest test $(addprefix proto/,$(protocols)) @sysdep_dirs@
 
-conf-y-targets := $(addprefix $(objdir)/conf/,cf-parse.y keywords.h commands.h)
+conf-y-targets := $(addprefix $(objdir)/conf/,cf-parse.y keywords.h commands.h context.h)
 cf-local = $(conf-y-targets): $(s)config.Y
 
 src-o-files = $(patsubst %.c,$(o)%.o,$(src))
@@ -175,10 +175,10 @@ ifeq ($(MAKECMDGOALS),)
 endif
 
 tags:
-	cd $(srcdir) ; etags -lc `find $(dirs) -name *.[chY]`
+	cd $(srcdir) ; etags -lc `find $(dirs) -name *.[chYl]`
 
 cscope:
-	cd $(srcdir) ; find $(dirs) -name *.[chY] > cscope.files ; cscope -b
+	cd $(srcdir) ; find $(dirs) -name *.[chYl] > cscope.files ; cscope -b
 
 # Install
 

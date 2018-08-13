@@ -10,14 +10,19 @@ CF_HDR
 
 #include "sysdep/unix/krt.h"
 
+CF_CTX
+
+struct kif_config *kif_cf;
+struct krt_config *krt_cf;
+
 CF_DEFINES
 
-#define THIS_KRT ((struct krt_config *) this_proto)
-#define THIS_KIF ((struct kif_config *) this_proto)
-#define KIF_IFACE ((struct kif_iface_config *) this_ipatt)
+#define THIS_KRT ((struct krt_config *) ctx->this_proto)
+#define THIS_KIF ((struct kif_config *) ctx->this_proto)
+#define KIF_IFACE ((struct kif_iface_config *) ctx->this_ipatt)
 
 static void
-kif_set_preferred(ip_addr ip)
+kif_set_preferred(struct cf_context *ctx, ip_addr ip)
 {
   if (ipa_is_ip4(ip))
     KIF_IFACE->pref_v4 = ip;
@@ -26,6 +31,44 @@ kif_set_preferred(ip_addr ip)
   else
     KIF_IFACE->pref_ll = ip;
 }
+
+static struct proto_config *
+kif_init_config(struct cf_context *ctx, int class)
+{
+  if (ctx->kif_cf)
+    cf_error(ctx, "Kernel device protocol already defined");
+
+  ctx->kif_cf = (struct kif_config *) proto_config_new(ctx, &proto_unix_iface, class);
+  ctx->kif_cf->scan_time = 60 S_;
+  init_list(&ctx->kif_cf->iface_list);
+
+  kif_sys_init_config(ctx->kif_cf);
+  return (struct proto_config *) ctx->kif_cf;
+}
+
+struct proto_config *
+krt_init_config(struct cf_context *ctx, int class)
+{
+#ifndef CONFIG_MULTIPLE_TABLES
+  if (ctx->krt_cf)
+    cf_error(ctx, "Kernel protocol already defined");
+#endif
+
+  ctx->krt_cf = (struct krt_config *) proto_config_new(ctx, &proto_unix_kernel, class);
+  ctx->krt_cf->scan_time = 60 S_;
+
+  krt_sys_init_config(ctx->krt_cf);
+  return (struct proto_config *) ctx->krt_cf;
+}
+
+#ifdef CONFIG_ALL_TABLES_AT_ONCE
+void
+krt_check_scan_time(struct cf_context *ctx, struct krt_config *cf)
+{
+  if (ctx->krt_cf->scan_time != cf->scan_time)
+    cf_error(ctx, "All kernel syncers must use the same table scan interval");
+}
+#endif
 
 CF_DECLS
 
@@ -41,7 +84,7 @@ CF_GRAMMAR
 proto: kern_proto '}' ;
 
 kern_proto_start: proto_start KERNEL {
-     this_proto = krt_init_config($1);
+     ctx->this_proto = krt_init_config(ctx, $1);
 }
  ;
 
@@ -50,12 +93,12 @@ kern_proto: kern_proto kern_item ';' ;
 
 kern_mp_limit:
    /* empty */ { $$ = KRT_DEFAULT_ECMP_LIMIT; }
- | LIMIT expr  { $$ = $2; if (($2 <= 0) || ($2 > 255)) cf_error("Merge paths limit must be in range 1-255"); }
+ | LIMIT expr  { $$ = $2; if (($2 <= 0) || ($2 > 255)) cf_error(ctx, "Merge paths limit must be in range 1-255"); }
  ;
 
 kern_item:
    proto_item
- | proto_channel { this_proto->net_type = $1->net_type; }
+ | proto_channel { ctx->this_proto->net_type = $1->net_type; }
  | PERSIST bool { THIS_KRT->persist = $2; }
  | SCAN TIME expr {
       /* Scan time of 0 means scan on startup only */
@@ -65,7 +108,7 @@ kern_item:
       THIS_KRT->learn = $2;
 #ifndef KRT_ALLOW_LEARN
       if ($2)
-	cf_error("Learning of kernel routes not supported on this platform");
+	cf_error(ctx, "Learning of kernel routes not supported on this platform");
 #endif
    }
  | GRACEFUL RESTART bool { THIS_KRT->graceful_restart = $3; }
@@ -73,7 +116,7 @@ kern_item:
       THIS_KRT->merge_paths = $3 ? $4 : 0;
 #ifndef KRT_ALLOW_MERGE_PATHS
       if ($3)
-	cf_error("Path merging not supported on this platform");
+	cf_error(ctx, "Path merging not supported on this platform");
 #endif
    }
  ;
@@ -82,7 +125,7 @@ kern_item:
 
 proto: kif_proto '}' ;
 
-kif_proto_start: proto_start DEVICE { this_proto = kif_init_config($1); }
+kif_proto_start: proto_start DEVICE { ctx->this_proto = kif_init_config(ctx, $1); }
  ;
 
 kif_proto: kif_proto_start proto_name '{' ;
@@ -99,13 +142,13 @@ kif_item:
 
 kif_iface_start:
 {
-  this_ipatt = cfg_allocz(sizeof(struct kif_iface_config));
-  add_tail(&THIS_KIF->iface_list, NODE this_ipatt);
-  init_list(&this_ipatt->ipn_list);
+  ctx->this_ipatt = cfg_allocz(sizeof(struct kif_iface_config));
+  add_tail(&THIS_KIF->iface_list, NODE ctx->this_ipatt);
+  init_list(&ctx->this_ipatt->ipn_list);
 }
 
 kif_iface_item:
-   PREFERRED ipa { kif_set_preferred($2); }
+   PREFERRED ipa { kif_set_preferred(ctx, $2); }
  ;
 
 kif_iface_opts:

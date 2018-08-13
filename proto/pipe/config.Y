@@ -12,7 +12,7 @@ CF_HDR
 
 CF_DEFINES
 
-#define PIPE_CFG ((struct pipe_config *) this_proto)
+#define PIPE_CFG ((struct pipe_config *) ctx->this_proto)
 
 CF_DECLS
 
@@ -20,19 +20,19 @@ CF_KEYWORDS(PIPE, PEER, TABLE)
 
 CF_GRAMMAR
 
-proto: pipe_proto '}' { this_channel = NULL; }  ;
+proto: pipe_proto '}' { ctx->this_channel = NULL; }  ;
 
 pipe_proto_start: proto_start PIPE
 {
-  this_proto = proto_config_new(&proto_pipe, $1);
+  ctx->this_proto = proto_config_new(ctx, &proto_pipe, $1);
 }
 proto_name
 {
-  this_channel = proto_cf_main_channel(this_proto);
-  if (!this_channel) {
-    this_channel = channel_config_new(NULL, NULL, 0, this_proto);
-    this_channel->in_filter = FILTER_ACCEPT;
-    this_channel->out_filter = FILTER_ACCEPT;
+  ctx->this_channel = proto_cf_main_channel(ctx->this_proto);
+  if (!ctx->this_channel) {
+    ctx->this_channel = channel_config_new(ctx, NULL, NULL, 0, ctx->this_proto);
+    ctx->this_channel->in_filter = FILTER_ACCEPT;
+    ctx->this_channel->out_filter = FILTER_ACCEPT;
   }
 };
 

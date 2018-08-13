@@ -34,6 +34,7 @@
 #include "nest/bird.h"
 #include "lib/flowspec.h"
 #include "conf/conf.h"
+#include "conf/parser.h"
 
 
 static const char* flow4_type_str[] = {
@@ -331,16 +332,16 @@ flow_check_cf_bmk_values(struct flow_builder *fb, u8 neg, u32 val, u32 mask)
   flow_check_cf_value_length(fb, mask);
 
   if (neg && !(val == 0 || val == mask))
-    cf_error("For negation, value must be zero or bitmask");
+    cf_error(fb->ctx, "For negation, value must be zero or bitmask");
 
   if ((fb->this_type == FLOW_TYPE_TCP_FLAGS) && (mask & 0xf000))
-    cf_error("Invalid mask 0x%x, must not exceed 0xfff", mask);
+    cf_error(fb->ctx, "Invalid mask 0x%x, must not exceed 0xfff", mask);
 
   if ((fb->this_type == FLOW_TYPE_FRAGMENT) && fb->ipv6 && (mask & 0x01))
-    cf_error("Invalid mask 0x%x, bit 0 must be 0", mask);
+    cf_error(fb->ctx, "Invalid mask 0x%x, bit 0 must be 0", mask);
 
   if (val & ~mask)
-    cf_error("Value 0x%x outside bitmask 0x%x", val, mask);
+    cf_error(fb->ctx, "Value 0x%x outside bitmask 0x%x", val, mask);
 }
 
 /**
@@ -359,13 +360,13 @@ flow_check_cf_value_length(struct flow_builder *fb, u32 val)
   u8 max = flow_max_value_length(t, fb->ipv6);
 
   if (t == FLOW_TYPE_DSCP && val > 0x3f)
-    cf_error("%s value %u out of range (0-63)", flow_type_str(t, fb->ipv6), val);
+    cf_error(fb->ctx, "%s value %u out of range (0-63)", flow_type_str(t, fb->ipv6), val);
 
   if (max == 1 && (val > 0xff))
-    cf_error("%s value %u out of range (0-255)", flow_type_str(t, fb->ipv6), val);
+    cf_error(fb->ctx, "%s value %u out of range (0-255)", flow_type_str(t, fb->ipv6), val);
 
   if (max == 2 && (val > 0xffff))
-    cf_error("%s value %u out of range (0-65535)", flow_type_str(t, fb->ipv6), val);
+    cf_error(fb->ctx, "%s value %u out of range (0-65535)", flow_type_str(t, fb->ipv6), val);
 }
 
 static enum flow_validated_state
@@ -538,12 +539,12 @@ flow6_validate(const byte *nlri, uint len)
  * with a textual description of reason to failing of validation.
  */
 void
-flow4_validate_cf(net_addr_flow4 *f)
+flow4_validate_cf(struct flow_builder *fb, net_addr_flow4 *f)
 {
   enum flow_validated_state r = flow4_validate(flow4_first_part(f), flow_read_length(f->data));
 
   if (r != FLOW_ST_VALID)
-    cf_error("Invalid flow route: %s", flow_validated_state_str(r));
+    cf_error(fb->ctx, "Invalid flow route: %s", flow_validated_state_str(r));
 }
 
 /**
@@ -554,12 +555,12 @@ flow4_validate_cf(net_addr_flow4 *f)
  * with a textual description of reason to failing of validation.
  */
 void
-flow6_validate_cf(net_addr_flow6 *f)
+flow6_validate_cf(struct flow_builder *fb, net_addr_flow6 *f)
 {
   enum flow_validated_state r = flow6_validate(flow6_first_part(f), flow_read_length(f->data));
 
   if (r != FLOW_ST_VALID)
-    cf_error("Invalid flow route: %s", flow_validated_state_str(r));
+    cf_error(fb->ctx, "Invalid flow route: %s", flow_validated_state_str(r));
 }
 
 
@@ -574,10 +575,10 @@ flow6_validate_cf(net_addr_flow6 *f)
  * This function prepares flowspec builder instance using memory pool @pool.
  */
 struct flow_builder *
-flow_builder_init(pool *pool)
+flow_builder_init(struct cf_context *ctx)
 {
-  struct flow_builder *fb = mb_allocz(pool, sizeof(struct flow_builder));
-  BUFFER_INIT(fb->data, pool, 4);
+  struct flow_builder *fb = mb_allocz(ctx->new_config->pool, sizeof(struct flow_builder));
+  BUFFER_INIT(fb->data, ctx->new_config->pool, 4);
   return fb;
 }
 

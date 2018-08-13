@@ -6,6 +6,9 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#ifndef _NEST_CMDS_H_
+#define _NEST_CMDS_H_
+
 struct sym_show_data {
 	int	type;	/* Symbols type to show */
 	struct symbol	*sym;
@@ -17,3 +20,5 @@ void cmd_show_status(void);
 void cmd_show_symbols(struct sym_show_data *sym);
 void cmd_show_memory(void);
 void cmd_eval(struct f_inst *expr);
+
+#endif

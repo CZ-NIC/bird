@@ -12,21 +12,21 @@ CF_HDR
 
 CF_DEFINES
 
-#define RPKI_CFG ((struct rpki_config *) this_proto)
+#define RPKI_CFG ((struct rpki_config *) ctx->this_proto)
 #define RPKI_TR_SSH_CFG ((struct rpki_tr_ssh_config *) RPKI_CFG->tr_config.spec)
 
 static void
-rpki_check_unused_hostname(void)
+rpki_check_unused_hostname(struct cf_context *ctx)
 {
   if (RPKI_CFG->hostname != NULL)
-    cf_error("Only one cache server per protocol allowed");
+    cf_error(ctx, "Only one cache server per protocol allowed");
 }
 
 static void
-rpki_check_unused_transport(void)
+rpki_check_unused_transport(struct cf_context *ctx)
 {
   if (RPKI_CFG->tr_config.spec != NULL)
-    cf_error("At the most one transport per protocol allowed");
+    cf_error(ctx, "At the most one transport per protocol allowed");
 }
 
 CF_DECLS
@@ -41,13 +41,13 @@ CF_GRAMMAR
 proto: rpki_proto ;
 
 rpki_proto_start: proto_start RPKI {
-  this_proto = proto_config_new(&proto_rpki, $1);
+  ctx->this_proto = proto_config_new(ctx, &proto_rpki, $1);
   RPKI_CFG->retry_interval = RPKI_RETRY_INTERVAL;
   RPKI_CFG->refresh_interval = RPKI_REFRESH_INTERVAL;
   RPKI_CFG->expire_interval = RPKI_EXPIRE_INTERVAL;
 };
 
-rpki_proto: rpki_proto_start proto_name '{' rpki_proto_opts '}' { rpki_check_config(RPKI_CFG); };
+rpki_proto: rpki_proto_start proto_name '{' rpki_proto_opts '}' { rpki_check_config(ctx, RPKI_CFG); };
 
 rpki_proto_opts:
    /* empty */
@@ -63,19 +63,19 @@ rpki_proto_item:
  | TRANSPORT rpki_transport
  | REFRESH rpki_keep_interval expr {
      if (rpki_check_refresh_interval($3))
-       cf_error(rpki_check_refresh_interval($3));
+       cf_error(ctx, rpki_check_refresh_interval($3));
      RPKI_CFG->refresh_interval = $3;
      RPKI_CFG->keep_refresh_interval = $2;
    }
  | RETRY rpki_keep_interval expr {
      if (rpki_check_retry_interval($3))
-       cf_error(rpki_check_retry_interval($3));
+       cf_error(ctx, rpki_check_retry_interval($3));
      RPKI_CFG->retry_interval = $3;
      RPKI_CFG->keep_retry_interval = $2;
    }
  | EXPIRE rpki_keep_interval expr {
      if (rpki_check_expire_interval($3))
-       cf_error(rpki_check_expire_interval($3));
+       cf_error(ctx, rpki_check_expire_interval($3));
      RPKI_CFG->expire_interval = $3;
      RPKI_CFG->keep_expire_interval = $2;
    }
@@ -86,15 +86,15 @@ rpki_keep_interval:
  | KEEP { $$ = 1; }
  ;
 
-rpki_proto_item_port: PORT expr { check_u16($2); RPKI_CFG->port = $2; };
+rpki_proto_item_port: PORT expr { check_u16(ctx, $2); RPKI_CFG->port = $2; };
 
 rpki_cache_addr:
    text {
-     rpki_check_unused_hostname();
+     rpki_check_unused_hostname(ctx);
      RPKI_CFG->hostname = $1;
    }
  | ipa {
-     rpki_check_unused_hostname();
+     rpki_check_unused_hostname(ctx);
      RPKI_CFG->ip = $1;
      /* Ensure hostname is filled */
      char *hostname = cfg_allocz(sizeof(INET6_ADDRSTRLEN + 1));
@@ -110,14 +110,14 @@ rpki_transport:
 
 rpki_transport_tcp_init:
 {
-  rpki_check_unused_transport();
+  rpki_check_unused_transport(ctx);
   RPKI_CFG->tr_config.spec = cfg_allocz(sizeof(struct rpki_tr_tcp_config));
   RPKI_CFG->tr_config.type = RPKI_TR_TCP;
 };
 
 rpki_transport_ssh_init:
 {
-  rpki_check_unused_transport();
+  rpki_check_unused_transport(ctx);
   RPKI_CFG->tr_config.spec = cfg_allocz(sizeof(struct rpki_tr_ssh_config));
   RPKI_CFG->tr_config.type = RPKI_TR_SSH;
 };
@@ -136,7 +136,7 @@ rpki_transport_ssh_item:
 rpki_transport_ssh_check:
 {
   if (RPKI_TR_SSH_CFG->user == NULL)
-    cf_error("User must be set");
+    cf_error(ctx, "User must be set");
 };
 
 CF_CODE
