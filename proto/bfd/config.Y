@@ -11,8 +11,12 @@ CF_HDR
 
 CF_DEFINES
 
-#define BFD_CFG ((struct bfd_config *) this_proto)
-#define BFD_IFACE ((struct bfd_iface_config *) this_ipatt)
+/* BFD is available, override the trap in conf/confbase.Y */
+#undef BFD_CHECK
+#define BFD_CHECK(x)
+
+#define BFD_CFG ((struct bfd_config *) ctx->this_proto)
+#define BFD_IFACE ((struct bfd_iface_config *) ctx->this_ipatt)
 #define BFD_NEIGHBOR this_bfd_neighbor
 
 static struct bfd_neighbor *this_bfd_neighbor;
@@ -35,12 +39,12 @@ proto: bfd_proto ;
 
 bfd_proto_start: proto_start BFD
 {
-  this_proto = proto_config_new(&proto_bfd, $1);
+  ctx->this_proto = proto_config_new(ctx, &proto_bfd, $1);
   init_list(&BFD_CFG->patt_list);
   init_list(&BFD_CFG->neigh_list);
 
   if (bfd_cf)
-    cf_error("Only one BFD instance allowed");
+    cf_error(ctx, "Only one BFD instance allowed");
   bfd_cf = BFD_CFG;
 };
 
@@ -62,21 +66,21 @@ bfd_proto:
 
 bfd_iface_start:
 {
-  this_ipatt = cfg_allocz(sizeof(struct bfd_iface_config));
-  add_tail(&BFD_CFG->patt_list, NODE this_ipatt);
-  init_list(&this_ipatt->ipn_list);
+  ctx->this_ipatt = cfg_allocz(sizeof(struct bfd_iface_config));
+  add_tail(&BFD_CFG->patt_list, NODE ctx->this_ipatt);
+  init_list(&ctx->this_ipatt->ipn_list);
 
   BFD_IFACE->min_rx_int = BFD_DEFAULT_MIN_RX_INT;
   BFD_IFACE->min_tx_int = BFD_DEFAULT_MIN_TX_INT;
   BFD_IFACE->idle_tx_int = BFD_DEFAULT_IDLE_TX_INT;
   BFD_IFACE->multiplier = BFD_DEFAULT_MULTIPLIER;
 
-  reset_passwords();
+  reset_passwords(ctx);
 };
 
 bfd_iface_finish:
 {
-  BFD_IFACE->passwords = get_passwords();
+  BFD_IFACE->passwords = get_passwords(ctx);
 
   if (!BFD_IFACE->auth_type != !BFD_IFACE->passwords)
     log(L_WARN "Authentication and password options should be used together");
@@ -87,7 +91,7 @@ bfd_iface_finish:
     WALK_LIST(pass, *BFD_IFACE->passwords)
     {
       if (pass->alg)
-        cf_error("Password algorithm option not available in BFD protocol");
+        cf_error(ctx, "Password algorithm option not available in BFD protocol");
 
       pass->alg = bfd_auth_type_to_hash_alg[BFD_IFACE->auth_type];
     }
@@ -159,16 +163,16 @@ bfd_neighbor: ipa bfd_neigh_iface bfd_neigh_local bfd_neigh_multihop
   BFD_NEIGHBOR->multihop = $4;
 
   if ($4 && $2)
-    cf_error("Neighbor cannot set both interface and multihop");
+    cf_error(ctx, "Neighbor cannot set both interface and multihop");
 
   if ($4 && ipa_zero($3))
-    cf_error("Multihop neighbor requires specified local address");
+    cf_error(ctx, "Multihop neighbor requires specified local address");
 };
 
 
 CF_CLI_HELP(SHOW BFD, ..., [[Show information about BFD protocol]]);
 CF_CLI(SHOW BFD SESSIONS, optsym, [<name>], [[Show information about BFD sessions]])
-{ bfd_show_sessions(proto_get_named($4, &proto_bfd)); };
+{ bfd_show_sessions(proto_get_named(ctx, $4, &proto_bfd)); };
 
 CF_CODE
 

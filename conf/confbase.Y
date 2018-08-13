@@ -12,6 +12,7 @@ CF_HDR
 
 #include "nest/bird.h"
 #include "conf/conf.h"
+#include "conf/parser.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/timer.h"
@@ -24,16 +25,31 @@ CF_HDR
 
 /* FIXME: Turn on YYERROR_VERBOSE and work around lots of bison bugs? */
 
+CF_CTX
+
+void *yyscanner;
+struct sym_scope *sym_scope;
+struct config *new_config;
+jmp_buf jmpbuf;
+linpool *cfg_mem;
+struct conf_order *order;
+
 CF_DEFINES
 
-static void
-check_u16(uint val)
+#define BFD_CHECK(use) do { if (use) cf_error(ctx, "BFD not available"); } while (0)
+
+static inline void
+check_u16(struct cf_context *ctx, uint val)
 {
   if (val > 0xFFFF)
-    cf_error("Value %u out of range (0-65535)", val);
+    cf_error(ctx, "Value %u out of range (0-65535)", val);
 }
 
 CF_DECLS
+
+%define api.pure full
+%parse-param {struct cf_context *ctx}
+%param {void *yyscanner}
 
 %union {
   uint i;
@@ -123,17 +139,17 @@ conf: definition ;
 definition:
    DEFINE SYM '=' term ';' {
      struct f_val *val = cfg_alloc(sizeof(struct f_val));
-     *val = f_eval($4, cfg_mem);
-     if (val->type == T_RETURN) cf_error("Runtime error");
-     cf_define_symbol($2, SYM_CONSTANT | val->type, val);
+     *val = f_eval($4, ctx->cfg_mem);
+     if (val->type == T_RETURN) cf_error(ctx, "Runtime error");
+     cf_define_symbol(ctx, $2, SYM_CONSTANT | val->type, val);
    }
  ;
 
 expr:
    NUM
- | '(' term ')' { $$ = f_eval_int($2); }
+ | '(' term ')' { $$ = f_eval_int($2, ctx); }
  | SYM {
-     if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number expected");
+     if ($1->class != (SYM_CONSTANT | T_INT)) cf_error(ctx, "Number expected");
      $$ = SYM_VAL($1).i; }
  ;
 
@@ -162,7 +178,7 @@ ipa:
    IP4 { $$ = ipa_from_ip4($1); }
  | IP6 { $$ = ipa_from_ip6($1); }
  | SYM {
-     if ($1->class != (SYM_CONSTANT | T_IP)) cf_error("IP address expected");
+     if ($1->class != (SYM_CONSTANT | T_IP)) cf_error(ctx, "IP address expected");
      $$ = SYM_VAL($1).ip;
    }
  ;
@@ -177,7 +193,7 @@ ipa_scope:
 
 pxlen4:
    '/' NUM {
-     if ($2 > IP4_MAX_PREFIX_LENGTH) cf_error("Invalid prefix length %u", $2);
+     if ($2 > IP4_MAX_PREFIX_LENGTH) cf_error(ctx, "Invalid prefix length %u", $2);
      $$ = $2;
    }
  ;
@@ -188,37 +204,37 @@ net_ip4_: IP4 pxlen4
 
   net_addr_ip4 *n = (void *) &($$);
   if (!net_validate_ip4(n))
-    cf_error("Invalid IPv4 prefix %I4/%d, maybe you wanted %I4/%d",
+    cf_error(ctx, "Invalid IPv4 prefix %I4/%d, maybe you wanted %I4/%d",
 	     n->prefix, n->pxlen, ip4_and(n->prefix, ip4_mkmask(n->pxlen)), n->pxlen);
 };
 
 net_ip6_: IP6 '/' NUM
 {
   if ($3 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid prefix length %u", $3);
+    cf_error(ctx, "Invalid prefix length %u", $3);
 
   net_fill_ip6(&($$), $1, $3);
 
   net_addr_ip6 *n = (void *) &($$);
   if (!net_validate_ip6(n))
-    cf_error("Invalid IPv6 prefix %I6/%d, maybe you wanted %I6/%d",
+    cf_error(ctx, "Invalid IPv6 prefix %I6/%d, maybe you wanted %I6/%d",
 	     n->prefix, n->pxlen, ip6_and(n->prefix, ip6_mkmask(n->pxlen)), n->pxlen);
 };
 
 net_ip6_sadr_: IP6 '/' NUM FROM IP6 '/' NUM
 {
   if ($3 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid prefix length %u", $3);
+    cf_error(ctx, "Invalid prefix length %u", $3);
 
   if ($7 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid prefix length %u", $7);
+    cf_error(ctx, "Invalid prefix length %u", $7);
 
   $$ = cfg_alloc(sizeof(net_addr_ip6_sadr));
   net_fill_ip6_sadr($$, $1, $3, $5, $7);
 
   net_addr_ip6_sadr *n = (void *) $$;
   if (!net_validate_ip6_sadr(n))
-    cf_error("Invalid SADR IPv6 prefix %I6/%d from %I6/%d, maybe you wanted %I6/%d from %I6/%d",
+    cf_error(ctx, "Invalid SADR IPv6 prefix %I6/%d from %I6/%d, maybe you wanted %I6/%d from %I6/%d",
 	     n->dst_prefix, n->dst_pxlen, n->src_prefix, n->src_pxlen,
 	     ip6_and(n->dst_prefix, ip6_mkmask(n->dst_pxlen)), n->dst_pxlen,
 	     ip6_and(n->src_prefix, ip6_mkmask(n->src_pxlen)), n->src_pxlen);
@@ -241,7 +257,7 @@ net_roa4_: net_ip4_ MAX NUM AS NUM
   $$ = cfg_alloc(sizeof(net_addr_roa4));
   net_fill_roa4($$, net4_prefix(&$1), net4_pxlen(&$1), $3, $5);
   if ($3 < net4_pxlen(&$1) || $3 > IP4_MAX_PREFIX_LENGTH)
-    cf_error("Invalid max prefix length %u", $3);
+    cf_error(ctx, "Invalid max prefix length %u", $3);
 };
 
 net_roa6_: net_ip6_ MAX NUM AS NUM
@@ -249,7 +265,7 @@ net_roa6_: net_ip6_ MAX NUM AS NUM
   $$ = cfg_alloc(sizeof(net_addr_roa6));
   net_fill_roa6($$, net6_prefix(&$1), net6_pxlen(&$1), $3, $5);
   if ($3 < net6_pxlen(&$1) || $3 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid max prefix length %u", $3);
+    cf_error(ctx, "Invalid max prefix length %u", $3);
 };
 
 net_mpls_: MPLS NUM
@@ -278,7 +294,7 @@ net_ip6:
    net_ip6_
  | SYM {
      if (($1->class != (SYM_CONSTANT | T_NET)) || (SYM_VAL($1).net->type != NET_IP6))
-       cf_error("IPv6 network expected");
+       cf_error(ctx, "IPv6 network expected");
      $$ = * SYM_VAL($1).net;
    }
  ;
@@ -287,7 +303,7 @@ net_ip:
    net_ip_
  | SYM {
      if (($1->class != (SYM_CONSTANT | T_NET)) || !net_is_ip(SYM_VAL($1).net))
-       cf_error("IP network expected");
+       cf_error(ctx, "IP network expected");
      $$ = * SYM_VAL($1).net;
    }
  ;
@@ -296,7 +312,7 @@ net_any:
    net_
  | SYM {
      if ($1->class != (SYM_CONSTANT | T_NET))
-       cf_error("Network expected");
+       cf_error(ctx, "Network expected");
      $$ = (net_addr *) SYM_VAL($1).net; /* Avoid const warning */
    }
  ;
@@ -312,7 +328,7 @@ net_or_ipa:
      else if (($1->class == (SYM_CONSTANT | T_NET)) && net_is_ip(SYM_VAL($1).net))
        $$ = * SYM_VAL($1).net;
      else
-       cf_error("IP address or network expected");
+       cf_error(ctx, "IP address or network expected");
    }
  ;
 
@@ -327,7 +343,7 @@ label_stack:
     label_stack_start
   | label_stack '/' NUM {
     if ($1->len >= MPLS_MAX_LABEL_STACK)
-      cf_error("Too many labels in stack");
+      cf_error(ctx, "Too many labels in stack");
     $1->stack[$1->len++] = $3;
     $$ = $1;
   }
@@ -337,14 +353,14 @@ time:
    TEXT {
      $$ = tm_parse_time($1);
      if (!$$)
-       cf_error("Invalid date/time");
+       cf_error(ctx, "Invalid date/time");
    }
  ;
 
 text:
    TEXT
  | SYM {
-     if ($1->class != (SYM_CONSTANT | T_STRING)) cf_error("String expected");
+     if ($1->class != (SYM_CONSTANT | T_STRING)) cf_error(ctx, "String expected");
      $$ = SYM_VAL($1).s;
    }
  ;

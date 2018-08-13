@@ -16,6 +16,7 @@
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "conf/conf.h"
+#include "conf/parser.h"
 #include "nest/route.h"
 #include "nest/iface.h"
 #include "nest/cli.h"
@@ -457,7 +458,7 @@ const struct channel_class channel_basic = {
 };
 
 void *
-channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto)
+channel_config_new(struct cf_context *ctx, const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto)
 {
   struct channel_config *cf = NULL;
   struct rtable_config *tab = NULL;
@@ -465,12 +466,12 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
   if (net_type)
   {
     if (!net_val_match(net_type, proto->protocol->channel_mask))
-      cf_error("Unsupported channel type");
+      cf_error(ctx, "Unsupported channel type");
 
     if (proto->net_type && (net_type != proto->net_type))
-      cf_error("Different channel type");
+      cf_error(ctx, "Different channel type");
 
-    tab = new_config->def_tables[net_type];
+    tab = ctx->new_config->def_tables[net_type];
   }
 
   if (!cc)
@@ -493,7 +494,7 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
 }
 
 void *
-channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto)
+channel_config_get(struct cf_context *ctx, const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto)
 {
   struct channel_config *cf;
 
@@ -503,17 +504,17 @@ channel_config_get(const struct channel_class *cc, const char *name, uint net_ty
     {
       /* Allow to redefine channel only if inherited from template */
       if (cf->parent == proto)
-	cf_error("Multiple %s channels", name);
+	cf_error(ctx, "Multiple %s channels", name);
 
       cf->parent = proto;
       return cf;
     }
 
-  return channel_config_new(cc, name, net_type, proto);
+  return channel_config_new(ctx, cc, name, net_type, proto);
 }
 
 struct channel_config *
-channel_copy_config(struct channel_config *src, struct proto_config *proto)
+channel_copy_config(struct cf_context *ctx, struct channel_config *src, struct proto_config *proto)
 {
   struct channel_config *dst = cfg_alloc(src->channel->config_size);
 
@@ -741,19 +742,19 @@ proto_start(struct proto *p)
  * initialized during protos_commit()).
  */
 void *
-proto_config_new(struct protocol *pr, int class)
+proto_config_new(struct cf_context *ctx, struct protocol *pr, int class)
 {
   struct proto_config *cf = cfg_allocz(pr->config_size);
 
   if (class == SYM_PROTO)
-    add_tail(&new_config->protos, &cf->n);
+    add_tail(&ctx->new_config->protos, &cf->n);
 
-  cf->global = new_config;
+  cf->global = ctx->new_config;
   cf->protocol = pr;
   cf->name = pr->name;
   cf->class = class;
-  cf->debug = new_config->proto_default_debug;
-  cf->mrtdump = new_config->proto_default_mrtdump;
+  cf->debug = ctx->new_config->proto_default_debug;
+  cf->mrtdump = ctx->new_config->proto_default_mrtdump;
 
   init_list(&cf->channels);
 
@@ -773,7 +774,7 @@ proto_config_new(struct protocol *pr, int class)
  * copy_config() protocol hook is used to copy protocol-specific data.
  */
 void
-proto_copy_config(struct proto_config *dest, struct proto_config *src)
+proto_copy_config(struct cf_context *ctx, struct proto_config *dest, struct proto_config *src)
 {
   struct channel_config *cc;
   node old_node;
@@ -781,10 +782,10 @@ proto_copy_config(struct proto_config *dest, struct proto_config *src)
   char *old_name;
 
   if (dest->protocol != src->protocol)
-    cf_error("Can't copy configuration from a different protocol type");
+    cf_error(ctx, "Can't copy configuration from a different protocol type");
 
   if (dest->protocol->copy_config == NULL)
-    cf_error("Inheriting configuration for %s is not supported", src->protocol->name);
+    cf_error(ctx, "Inheriting configuration for %s is not supported", src->protocol->name);
 
   DBG("Copying configuration from %s to %s\n", src->name, dest->name);
 
@@ -805,10 +806,10 @@ proto_copy_config(struct proto_config *dest, struct proto_config *src)
   init_list(&dest->channels);
 
   WALK_LIST(cc, src->channels)
-    channel_copy_config(cc, dest);
+    channel_copy_config(ctx, cc, dest);
 
   /* FIXME: allow for undefined copy_config */
-  dest->protocol->copy_config(dest, src);
+  dest->protocol->copy_config(ctx, dest, src);
 }
 
 /**
@@ -1870,18 +1871,18 @@ proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, in
 }
 
 struct proto *
-proto_get_named(struct symbol *sym, struct protocol *pr)
+proto_get_named(struct cf_context *ctx, struct symbol *sym, struct protocol *pr)
 {
   struct proto *p, *q;
 
   if (sym)
   {
     if (sym->class != SYM_PROTO)
-      cf_error("%s: Not a protocol", sym->name);
+      cf_error(ctx, "%s: Not a protocol", sym->name);
 
     p = ((struct proto_config *) sym->def)->proto;
     if (!p || p->proto != pr)
-      cf_error("%s: Not a %s protocol", sym->name, pr->name);
+      cf_error(ctx, "%s: Not a %s protocol", sym->name, pr->name);
   }
   else
   {
@@ -1890,11 +1891,11 @@ proto_get_named(struct symbol *sym, struct protocol *pr)
       if ((q->proto == pr) && (q->proto_state != PS_DOWN))
       {
 	if (p)
-	  cf_error("There are multiple %s protocols running", pr->name);
+	  cf_error(ctx, "There are multiple %s protocols running", pr->name);
 	p = q;
       }
     if (!p)
-      cf_error("There is no %s protocol running", pr->name);
+      cf_error(ctx, "There is no %s protocol running", pr->name);
   }
 
   return p;

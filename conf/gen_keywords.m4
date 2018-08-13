@@ -12,6 +12,7 @@ m4_define(DNL, `m4_dnl')
 
 # Diversions used:
 #	1	keywords
+#	2	context
 
 # Simple iterator
 m4_define(CF_itera, `m4_ifelse($#, 1, [[CF_iter($1)]], [[CF_iter($1)[[]]CF_itera(m4_shift($@))]])')
@@ -19,6 +20,7 @@ m4_define(CF_iterate, `m4_define([[CF_iter]], m4_defn([[$1]]))CF_itera($2)')
 
 # We include all the headers
 m4_define(CF_HDR, `m4_divert(0)')
+m4_define(CF_CTX, `m4_divert(2)')
 m4_define(CF_DECLS, `m4_divert(-1)')
 m4_define(CF_DEFINES, `m4_divert(-1)')
 

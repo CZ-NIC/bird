@@ -16,17 +16,17 @@ CF_HDR
 
 CF_DEFINES
 
-#define RIP_CFG ((struct rip_config *) this_proto)
-#define RIP_IFACE ((struct rip_iface_config *) this_ipatt)
+#define RIP_CFG ((struct rip_config *) ctx->this_proto)
+#define RIP_IFACE ((struct rip_iface_config *) ctx->this_ipatt)
 
-static inline int rip_cfg_is_v2(void) { return RIP_CFG->rip2; }
-static inline int rip_cfg_is_ng(void) { return ! RIP_CFG->rip2; }
+static inline int rip_cfg_is_v2(struct cf_context *ctx) { return RIP_CFG->rip2; }
+static inline int rip_cfg_is_ng(struct cf_context *ctx) { return ! RIP_CFG->rip2; }
 
 static inline void
-rip_check_auth(void)
+rip_check_auth(struct cf_context *ctx)
 {
-  if (rip_cfg_is_ng())
-    cf_error("Authentication not supported in RIPng");
+  if (rip_cfg_is_ng(ctx))
+    cf_error(ctx, "Authentication not supported in RIPng");
 }
 
 
@@ -51,8 +51,8 @@ rip_variant:
 
 rip_proto_start: proto_start rip_variant
 {
-  this_proto = proto_config_new(&proto_rip, $1);
-  this_proto->net_type = $2 ? NET_IP4 : NET_IP6;
+  ctx->this_proto = proto_config_new(ctx, &proto_rip, $1);
+  ctx->this_proto->net_type = $2 ? NET_IP4 : NET_IP6;
 
   init_list(&RIP_CFG->patt_list);
   RIP_CFG->rip2 = $2;
@@ -82,21 +82,21 @@ rip_proto:
 
 rip_iface_start:
 {
-  this_ipatt = cfg_allocz(sizeof(struct rip_iface_config));
-  add_tail(&RIP_CFG->patt_list, NODE this_ipatt);
-  init_list(&this_ipatt->ipn_list);
-  reset_passwords();
+  ctx->this_ipatt = cfg_allocz(sizeof(struct rip_iface_config));
+  add_tail(&RIP_CFG->patt_list, NODE ctx->this_ipatt);
+  init_list(&ctx->this_ipatt->ipn_list);
+  reset_passwords(ctx);
 
   RIP_IFACE->metric = 1;
-  RIP_IFACE->port = rip_cfg_is_v2() ? RIP_PORT : RIP_NG_PORT;
-  RIP_IFACE->version = rip_cfg_is_v2() ? RIP_V2 : RIP_V1;
+  RIP_IFACE->port = rip_cfg_is_v2(ctx) ? RIP_PORT : RIP_NG_PORT;
+  RIP_IFACE->version = rip_cfg_is_v2(ctx) ? RIP_V2 : RIP_V1;
   RIP_IFACE->split_horizon = 1;
   RIP_IFACE->poison_reverse = 1;
   RIP_IFACE->check_zero = 1;
   RIP_IFACE->check_link = 1;
-  RIP_IFACE->ttl_security = rip_cfg_is_v2() ? 0 : 1;
-  RIP_IFACE->rx_buffer = rip_cfg_is_v2() ? RIP_MAX_PKT_LENGTH : 0;
-  RIP_IFACE->tx_length = rip_cfg_is_v2() ? RIP_MAX_PKT_LENGTH : 0;
+  RIP_IFACE->ttl_security = rip_cfg_is_v2(ctx) ? 0 : 1;
+  RIP_IFACE->rx_buffer = rip_cfg_is_v2(ctx) ? RIP_MAX_PKT_LENGTH : 0;
+  RIP_IFACE->tx_length = rip_cfg_is_v2(ctx) ? RIP_MAX_PKT_LENGTH : 0;
   RIP_IFACE->tx_tos = IP_PREC_INTERNET_CONTROL;
   RIP_IFACE->tx_priority = sk_priority_control;
   RIP_IFACE->update_time = RIP_DEFAULT_UPDATE_TIME;
@@ -108,10 +108,10 @@ rip_iface_finish:
 {
   /* Default mode is broadcast for RIPv1, multicast for RIPv2 and RIPng */
   if (!RIP_IFACE->mode)
-    RIP_IFACE->mode = (rip_cfg_is_v2() && (RIP_IFACE->version == RIP_V1)) ?
+    RIP_IFACE->mode = (rip_cfg_is_v2(ctx) && (RIP_IFACE->version == RIP_V1)) ?
       RIP_IM_BROADCAST : RIP_IM_MULTICAST;
 
-  RIP_IFACE->passwords = get_passwords();
+  RIP_IFACE->passwords = get_passwords(ctx);
 
   if (!RIP_IFACE->auth_type != !RIP_IFACE->passwords)
     log(L_WARN "Authentication and password options should be used together");
@@ -122,7 +122,7 @@ rip_iface_finish:
     WALK_LIST(pass, *RIP_IFACE->passwords)
     {
       if (pass->alg && (RIP_IFACE->auth_type != RIP_AUTH_CRYPTO))
-	cf_error("Password algorithm option requires cryptographic authentication");
+	cf_error(ctx, "Password algorithm option requires cryptographic authentication");
 
       /* Set default crypto algorithm (MD5) */
       if (!pass->alg && (RIP_IFACE->auth_type == RIP_AUTH_CRYPTO))
@@ -135,34 +135,34 @@ rip_iface_finish:
 };
 
 rip_iface_item:
-   METRIC expr		{ RIP_IFACE->metric = $2; if (($2<1) || ($2>255)) cf_error("Metric must be in range 1-255"); }
+   METRIC expr		{ RIP_IFACE->metric = $2; if (($2<1) || ($2>255)) cf_error(ctx, "Metric must be in range 1-255"); }
  | MODE MULTICAST	{ RIP_IFACE->mode = RIP_IM_MULTICAST; }
- | MODE BROADCAST	{ RIP_IFACE->mode = RIP_IM_BROADCAST; if (rip_cfg_is_ng()) cf_error("Broadcast not supported in RIPng"); }
+ | MODE BROADCAST	{ RIP_IFACE->mode = RIP_IM_BROADCAST; if (rip_cfg_is_ng(ctx)) cf_error(ctx, "Broadcast not supported in RIPng"); }
  | PASSIVE bool		{ RIP_IFACE->passive = $2; }
- | ADDRESS ipa		{ RIP_IFACE->address = $2; if (ipa_is_ip4($2) != rip_cfg_is_v2()) cf_error("IP address version mismatch"); }
- | PORT expr		{ RIP_IFACE->port = $2; if (($2<1) || ($2>65535)) cf_error("Invalid port number"); }
+ | ADDRESS ipa		{ RIP_IFACE->address = $2; if (ipa_is_ip4($2) != rip_cfg_is_v2(ctx)) cf_error(ctx, "IP address version mismatch"); }
+ | PORT expr		{ RIP_IFACE->port = $2; if (($2<1) || ($2>65535)) cf_error(ctx, "Invalid port number"); }
  | VERSION expr		{ RIP_IFACE->version = $2;
-			  if (rip_cfg_is_ng()) cf_error("Version not supported in RIPng");
-			  if (($2 != RIP_V1) && ($2 != RIP_V2)) cf_error("Unsupported version");
+			  if (rip_cfg_is_ng(ctx)) cf_error(ctx, "Version not supported in RIPng");
+			  if (($2 != RIP_V1) && ($2 != RIP_V2)) cf_error(ctx, "Unsupported version");
 			}
  | VERSION ONLY bool	{ RIP_IFACE->version_only = $3; }
  | SPLIT HORIZON bool	{ RIP_IFACE->split_horizon = $3; }
  | POISON REVERSE bool	{ RIP_IFACE->poison_reverse = $3; }
  | CHECK ZERO bool	{ RIP_IFACE->check_zero = $3; }
- | UPDATE TIME expr	{ RIP_IFACE->update_time = $3 S_; if ($3<=0) cf_error("Update time must be positive"); }
- | TIMEOUT TIME expr	{ RIP_IFACE->timeout_time = $3 S_; if ($3<=0) cf_error("Timeout time must be positive"); }
- | GARBAGE TIME expr	{ RIP_IFACE->garbage_time = $3 S_; if ($3<=0) cf_error("Garbage time must be positive"); }
- | ECMP WEIGHT expr	{ RIP_IFACE->ecmp_weight = $3 - 1; if (($3<1) || ($3>256)) cf_error("ECMP weight must be in range 1-256"); }
- | RX BUFFER expr	{ RIP_IFACE->rx_buffer = $3; if (($3<256) || ($3>65535)) cf_error("RX length must be in range 256-65535"); }
- | TX LENGTH expr	{ RIP_IFACE->tx_length = $3; if (($3<256) || ($3>65535)) cf_error("TX length must be in range 256-65535"); }
+ | UPDATE TIME expr	{ RIP_IFACE->update_time = $3 S_; if ($3<=0) cf_error(ctx, "Update time must be positive"); }
+ | TIMEOUT TIME expr	{ RIP_IFACE->timeout_time = $3 S_; if ($3<=0) cf_error(ctx, "Timeout time must be positive"); }
+ | GARBAGE TIME expr	{ RIP_IFACE->garbage_time = $3 S_; if ($3<=0) cf_error(ctx, "Garbage time must be positive"); }
+ | ECMP WEIGHT expr	{ RIP_IFACE->ecmp_weight = $3 - 1; if (($3<1) || ($3>256)) cf_error(ctx, "ECMP weight must be in range 1-256"); }
+ | RX BUFFER expr	{ RIP_IFACE->rx_buffer = $3; if (($3<256) || ($3>65535)) cf_error(ctx, "RX length must be in range 256-65535"); }
+ | TX LENGTH expr	{ RIP_IFACE->tx_length = $3; if (($3<256) || ($3>65535)) cf_error(ctx, "TX length must be in range 256-65535"); }
  | TX tos		{ RIP_IFACE->tx_tos = $2; }
  | TX PRIORITY expr	{ RIP_IFACE->tx_priority = $3; }
  | TTL SECURITY bool	{ RIP_IFACE->ttl_security = $3; }
  | TTL SECURITY TX ONLY	{ RIP_IFACE->ttl_security = 2; }
  | CHECK LINK bool	{ RIP_IFACE->check_link = $3; }
- | BFD bool		{ RIP_IFACE->bfd = $2; cf_check_bfd($2); }
- | AUTHENTICATION rip_auth { RIP_IFACE->auth_type = $2; if ($2) rip_check_auth(); }
- | password_list	{ rip_check_auth(); }
+ | BFD bool		{ RIP_IFACE->bfd = $2; BFD_CHECK($2); }
+ | AUTHENTICATION rip_auth { RIP_IFACE->auth_type = $2; if ($2) rip_check_auth(ctx); }
+ | password_list	{ rip_check_auth(ctx); }
 ;
 
 rip_auth:
@@ -192,10 +192,10 @@ dynamic_attr: RIP_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_RIP_TAG)
 CF_CLI_HELP(SHOW RIP, ..., [[Show information about RIP protocol]]);
 
 CF_CLI(SHOW RIP INTERFACES, optsym opttext, [<name>] [\"<interface>\"], [[Show information about RIP interfaces]])
-{ rip_show_interfaces(proto_get_named($4, &proto_rip), $5); };
+{ rip_show_interfaces(proto_get_named(ctx, $4, &proto_rip), $5); };
 
 CF_CLI(SHOW RIP NEIGHBORS, optsym opttext, [<name>] [\"<interface>\"], [[Show information about RIP neighbors]])
-{ rip_show_neighbors(proto_get_named($4, &proto_rip), $5); };
+{ rip_show_neighbors(proto_get_named(ctx, $4, &proto_rip), $5); };
 
 
 CF_CODE

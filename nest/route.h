@@ -278,9 +278,10 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RIC_DROP	-2		/* Silently dropped by protocol */
 
 struct config;
+struct cf_context;
 
 void rt_init(void);
-void rt_preconfig(struct config *);
+void rt_preconfig(struct cf_context *);
 void rt_commit(struct config *new, struct config *old);
 void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
@@ -310,7 +311,7 @@ void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
-struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
+struct rtable_config *rt_new_table(struct cf_context *ctx, struct symbol *s, uint addr_type);
 
 /* Default limit for ECMP next hops, defined in sysdep code */
 extern const int rt_default_ecmp;
@@ -324,6 +325,7 @@ struct rt_show_data_rtable {
 struct rt_show_data {
   net_addr *addr;
   list tables;
+  struct cf_context *ctx;		/* Parent parser context */
   struct rt_show_data_rtable *tab;	/* Iterator over table list */
   struct rt_show_data_rtable *last_table; /* Last table in output */
   struct fib_iterator fit;		/* Iterator over networks in table */
@@ -339,6 +341,8 @@ struct rt_show_data {
   int net_counter, rt_counter, show_counter, table_counter;
   int net_counter_last, rt_counter_last, show_counter_last;
 };
+
+struct cf_context;
 
 void rt_show(struct rt_show_data *);
 struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t);

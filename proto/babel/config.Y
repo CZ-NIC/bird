@@ -17,8 +17,8 @@ CF_HDR
 
 CF_DEFINES
 
-#define BABEL_CFG ((struct babel_config *) this_proto)
-#define BABEL_IFACE ((struct babel_iface_config *) this_ipatt)
+#define BABEL_CFG ((struct babel_config *) ctx->this_proto)
+#define BABEL_IFACE ((struct babel_iface_config *) ctx->this_ipatt)
 
 CF_DECLS
 
@@ -33,7 +33,7 @@ proto: babel_proto ;
 
 babel_proto_start: proto_start BABEL
 {
-  this_proto = proto_config_new(&proto_babel, $1);
+  ctx->this_proto = proto_config_new(ctx, &proto_babel, $1);
   init_list(&BABEL_CFG->iface_list);
   BABEL_CFG->hold_time = 1 S_;
 };
@@ -56,9 +56,9 @@ babel_proto:
 
 babel_iface_start:
 {
-  this_ipatt = cfg_allocz(sizeof(struct babel_iface_config));
-  add_tail(&BABEL_CFG->iface_list, NODE this_ipatt);
-  init_list(&this_ipatt->ipn_list);
+  ctx->this_ipatt = cfg_allocz(sizeof(struct babel_iface_config));
+  add_tail(&BABEL_CFG->iface_list, NODE ctx->this_ipatt);
+  init_list(&ctx->this_ipatt->ipn_list);
   BABEL_IFACE->port = BABEL_PORT;
   BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRED;
   BABEL_IFACE->limit = BABEL_HELLO_LIMIT;
@@ -95,20 +95,20 @@ babel_iface_finish:
 
 
 babel_iface_item:
- | PORT expr { BABEL_IFACE->port = $2; if (($2<1) || ($2>65535)) cf_error("Invalid port number"); }
- | RXCOST expr { BABEL_IFACE->rxcost = $2; if (($2<1) || ($2>65535)) cf_error("Invalid rxcost"); }
- | LIMIT expr { BABEL_IFACE->limit = $2; if (($2<1) || ($2>16)) cf_error("Limit must be in range 1-16"); }
+ | PORT expr { BABEL_IFACE->port = $2; if (($2<1) || ($2>65535)) cf_error(ctx, "Invalid port number"); }
+ | RXCOST expr { BABEL_IFACE->rxcost = $2; if (($2<1) || ($2>65535)) cf_error(ctx, "Invalid rxcost"); }
+ | LIMIT expr { BABEL_IFACE->limit = $2; if (($2<1) || ($2>16)) cf_error(ctx, "Limit must be in range 1-16"); }
  | TYPE WIRED { BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRED; }
  | TYPE WIRELESS { BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRELESS; }
- | HELLO INTERVAL expr_us { BABEL_IFACE->hello_interval = $3; if (($3<BABEL_MIN_INTERVAL) || ($3>BABEL_MAX_INTERVAL)) cf_error("Hello interval must be in range 10 ms - 655 s"); }
- | UPDATE INTERVAL expr_us { BABEL_IFACE->update_interval = $3; if (($3<BABEL_MIN_INTERVAL) || ($3>BABEL_MAX_INTERVAL)) cf_error("Update interval must be in range 10 ms - 655 s"); }
- | RX BUFFER expr { BABEL_IFACE->rx_buffer = $3; if (($3<256) || ($3>65535)) cf_error("RX buffer must be in range 256-65535"); }
- | TX LENGTH expr { BABEL_IFACE->tx_length = $3; if (($3<256) || ($3>65535)) cf_error("TX length must be in range 256-65535"); }
+ | HELLO INTERVAL expr_us { BABEL_IFACE->hello_interval = $3; if (($3<BABEL_MIN_INTERVAL) || ($3>BABEL_MAX_INTERVAL)) cf_error(ctx, "Hello interval must be in range 10 ms - 655 s"); }
+ | UPDATE INTERVAL expr_us { BABEL_IFACE->update_interval = $3; if (($3<BABEL_MIN_INTERVAL) || ($3>BABEL_MAX_INTERVAL)) cf_error(ctx, "Update interval must be in range 10 ms - 655 s"); }
+ | RX BUFFER expr { BABEL_IFACE->rx_buffer = $3; if (($3<256) || ($3>65535)) cf_error(ctx, "RX buffer must be in range 256-65535"); }
+ | TX LENGTH expr { BABEL_IFACE->tx_length = $3; if (($3<256) || ($3>65535)) cf_error(ctx, "TX length must be in range 256-65535"); }
  | TX tos { BABEL_IFACE->tx_tos = $2; }
  | TX PRIORITY expr { BABEL_IFACE->tx_priority = $3; }
  | CHECK LINK bool { BABEL_IFACE->check_link = $3; }
- | NEXT HOP IPV4 ipa { BABEL_IFACE->next_hop_ip4 = $4; if (!ipa_is_ip4($4)) cf_error("Must be an IPv4 address"); }
- | NEXT HOP IPV6 ipa { BABEL_IFACE->next_hop_ip6 = $4; if (!ipa_is_ip6($4)) cf_error("Must be an IPv6 address"); }
+ | NEXT HOP IPV4 ipa { BABEL_IFACE->next_hop_ip4 = $4; if (!ipa_is_ip4($4)) cf_error(ctx, "Must be an IPv4 address"); }
+ | NEXT HOP IPV6 ipa { BABEL_IFACE->next_hop_ip6 = $4; if (!ipa_is_ip6($4)) cf_error(ctx, "Must be an IPv6 address"); }
  ;
 
 babel_iface_opts:
@@ -130,16 +130,16 @@ dynamic_attr: BABEL_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_BAB
 CF_CLI_HELP(SHOW BABEL, ..., [[Show information about Babel protocol]]);
 
 CF_CLI(SHOW BABEL INTERFACES, optsym opttext, [<name>] [\"<interface>\"], [[Show information about Babel interfaces]])
-{ babel_show_interfaces(proto_get_named($4, &proto_babel), $5); };
+{ babel_show_interfaces(proto_get_named(ctx, $4, &proto_babel), $5); };
 
 CF_CLI(SHOW BABEL NEIGHBORS, optsym opttext, [<name>] [\"<interface>\"], [[Show information about Babel neighbors]])
-{ babel_show_neighbors(proto_get_named($4, &proto_babel), $5); };
+{ babel_show_neighbors(proto_get_named(ctx, $4, &proto_babel), $5); };
 
 CF_CLI(SHOW BABEL ENTRIES, optsym opttext, [<name>], [[Show information about Babel prefix entries]])
-{ babel_show_entries(proto_get_named($4, &proto_babel)); };
+{ babel_show_entries(proto_get_named(ctx, $4, &proto_babel)); };
 
 CF_CLI(SHOW BABEL ROUTES, optsym opttext, [<name>], [[Show information about Babel route entries]])
-{ babel_show_routes(proto_get_named($4, &proto_babel)); };
+{ babel_show_routes(proto_get_named(ctx, $4, &proto_babel)); };
 
 CF_CODE
 

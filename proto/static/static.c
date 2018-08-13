@@ -360,13 +360,13 @@ static_rte_mergable(rte *pri UNUSED, rte *sec UNUSED)
 
 
 static void
-static_postconfig(struct proto_config *CF)
+static_postconfig(struct cf_context *ctx, struct proto_config *CF)
 {
   struct static_config *cf = (void *) CF;
   struct static_route *r;
 
   if (EMPTY_LIST(CF->channels))
-    cf_error("Channel not specified");
+    cf_error(ctx, "Channel not specified");
 
   struct channel_config *cc = proto_cf_main_channel(CF);
 
@@ -380,7 +380,7 @@ static_postconfig(struct proto_config *CF)
 
   WALK_LIST(r, cf->routes)
     if (r->net && (r->net->type != CF->net_type))
-      cf_error("Route %N incompatible with channel type", r->net);
+      cf_error(ctx, "Route %N incompatible with channel type", r->net);
 }
 
 static struct proto *
@@ -573,7 +573,7 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
 }
 
 static void
-static_copy_config(struct proto_config *dest, struct proto_config *src)
+static_copy_config(struct cf_context *ctx, struct proto_config *dest, struct proto_config *src)
 {
   struct static_config *d = (struct static_config *) dest;
   struct static_config *s = (struct static_config *) src;
@@ -588,7 +588,7 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
 
     for (snh = srt; snh; snh = snh->mp_next)
     {
-      dnh = cfg_alloc(sizeof(struct static_route));
+      dnh = cf_alloc(ctx, sizeof(struct static_route));
       memcpy(dnh, snh, sizeof(struct static_route));
 
       if (!drt)

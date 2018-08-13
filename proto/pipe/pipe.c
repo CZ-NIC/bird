@@ -119,28 +119,28 @@ pipe_reload_routes(struct channel *C)
 
 
 static void
-pipe_postconfig(struct proto_config *CF)
+pipe_postconfig(struct cf_context *ctx, struct proto_config *CF)
 {
   struct pipe_config *cf = (void *) CF;
   struct channel_config *cc = proto_cf_main_channel(CF);
 
   if (!cc->table)
-    cf_error("Primary routing table not specified");
+    cf_error(ctx, "Primary routing table not specified");
 
   if (!cf->peer)
-    cf_error("Secondary routing table not specified");
+    cf_error(ctx, "Secondary routing table not specified");
 
   if (cc->table == cf->peer)
-    cf_error("Primary table and peer table must be different");
+    cf_error(ctx, "Primary table and peer table must be different");
 
   if (cc->table->addr_type != cf->peer->addr_type)
-    cf_error("Primary table and peer table must have the same type");
+    cf_error(ctx, "Primary table and peer table must have the same type");
 
   if (cc->rx_limit.action)
-    cf_error("Pipe protocol does not support receive limits");
+    cf_error(ctx, "Pipe protocol does not support receive limits");
 
   if (cc->in_keep_filtered)
-    cf_error("Pipe protocol prohibits keeping filtered routes");
+    cf_error(ctx, "Pipe protocol prohibits keeping filtered routes");
 }
 
 static int
@@ -197,7 +197,7 @@ pipe_reconfigure(struct proto *P, struct proto_config *CF)
 }
 
 static void
-pipe_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUSED)
+pipe_copy_config(struct cf_context *ctx UNUSED, struct proto_config *dest UNUSED, struct proto_config *src UNUSED)
 {
   /* Just a shallow copy, not many items here */
 }

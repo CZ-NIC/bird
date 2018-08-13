@@ -149,17 +149,6 @@ struct filter {
   struct f_inst *root;
 };
 
-struct f_inst *f_new_inst(enum f_instruction_code fi_code);
-struct f_inst *f_new_inst_da(enum f_instruction_code fi_code, struct f_dynamic_attr da);
-struct f_inst *f_new_inst_sa(enum f_instruction_code fi_code, struct f_static_attr sa);
-static inline struct f_dynamic_attr f_new_dynamic_attr(int type, int f_type, int code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */
-{ return (struct f_dynamic_attr) { .type = type, .f_type = f_type, .ea_code = code }; }   /* f_type currently unused; will be handy for static type checking */
-static inline struct f_static_attr f_new_static_attr(int f_type, int code, int readonly)
-{ return (struct f_static_attr) { .f_type = f_type, .sa_code = code, .readonly = readonly }; }
-struct f_tree *f_new_tree(void);
-struct f_inst *f_generate_complex(int operation, int operation_aux, struct f_dynamic_attr da, struct f_inst *argument);
-struct f_inst *f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn);
-
 
 struct f_tree *build_tree(struct f_tree *);
 struct f_tree *find_tree(struct f_tree *t, struct f_val val);
@@ -178,7 +167,6 @@ struct rte;
 int f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
 struct f_val f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool);
 struct f_val f_eval(struct f_inst *expr, struct linpool *tmp_pool);
-uint f_eval_int(struct f_inst *expr);
 
 char *filter_name(struct filter *filter);
 int filter_same(struct filter *new, struct filter *old);

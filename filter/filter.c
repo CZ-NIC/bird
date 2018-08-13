@@ -46,7 +46,9 @@
 #include "nest/iface.h"
 #include "nest/attrs.h"
 #include "conf/conf.h"
+#include "conf/parser.h"
 #include "filter/filter.h"
+#include "filter/f-util.h"
 
 #define CMP_ERROR 999
 
@@ -1824,13 +1826,13 @@ f_eval(struct f_inst *expr, struct linpool *tmp_pool)
 }
 
 uint
-f_eval_int(struct f_inst *expr)
+f_eval_int(struct f_inst *expr, struct cf_context *ctx)
 {
   /* Called independently in parse-time to eval expressions */
-  struct f_val res = f_eval(expr, cfg_mem);
+  struct f_val res = f_eval(expr, ctx->cfg_mem);
 
   if (res.type != T_INT)
-    cf_error("Integer expression expected");
+    cf_error(ctx, "Integer expression expected");
 
   return res.val.i;
 }

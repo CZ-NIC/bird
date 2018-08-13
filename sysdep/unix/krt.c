@@ -85,7 +85,6 @@ krt_io_init(void)
  */
 
 struct kif_proto *kif_proto;
-static struct kif_config *kif_cf;
 static timer *kif_scan_timer;
 static btime kif_last_shot;
 
@@ -198,32 +197,17 @@ kif_reconfigure(struct proto *p, struct proto_config *new)
 static void
 kif_preconfig(struct protocol *P UNUSED, struct config *c)
 {
-  kif_cf = NULL;
   kif_sys_preconfig(c);
 }
 
-struct proto_config *
-kif_init_config(int class)
-{
-  if (kif_cf)
-    cf_error("Kernel device protocol already defined");
-
-  kif_cf = (struct kif_config *) proto_config_new(&proto_unix_iface, class);
-  kif_cf->scan_time = 60 S;
-  init_list(&kif_cf->iface_list);
-
-  kif_sys_init_config(kif_cf);
-  return (struct proto_config *) kif_cf;
-}
-
 static void
-kif_copy_config(struct proto_config *dest, struct proto_config *src)
+kif_copy_config(struct cf_context *ctx, struct proto_config *dest, struct proto_config *src)
 {
   struct kif_config *d = (struct kif_config *) dest;
   struct kif_config *s = (struct kif_config *) src;
 
   /* Copy interface config list */
-  cfg_copy_list(&d->iface_list, &s->iface_list, sizeof(struct kif_iface_config));
+  cf_copy_list(ctx, &d->iface_list, &s->iface_list, sizeof(struct kif_iface_config));
 
   /* Fix sysdep parts */
   kif_sys_copy_config(d, s);
@@ -1039,32 +1023,28 @@ krt_rte_same(rte *a, rte *b)
  *	Protocol glue
  */
 
-struct krt_config *krt_cf;
-
 static void
 krt_preconfig(struct protocol *P UNUSED, struct config *c)
 {
-  krt_cf = NULL;
   krt_sys_preconfig(c);
 }
 
 static void
-krt_postconfig(struct proto_config *CF)
+krt_postconfig(struct cf_context *ctx, struct proto_config *CF)
 {
   struct krt_config *cf = (void *) CF;
 
   if (EMPTY_LIST(CF->channels))
-    cf_error("Channel not specified");
+    cf_error(ctx, "Channel not specified");
 
 #ifdef CONFIG_ALL_TABLES_AT_ONCE
-  if (krt_cf->scan_time != cf->scan_time)
-    cf_error("All kernel syncers must use the same table scan interval");
+  krt_check_scan_time(ctx, cf);
 #endif
 
   struct channel_config *cc = proto_cf_main_channel(CF);
   struct rtable_config *tab = cc->table;
   if (tab->krt_attached)
-    cf_error("Kernel syncer (%s) already attached to table %s", tab->krt_attached->name, tab->name);
+    cf_error(ctx, "Kernel syncer (%s) already attached to table %s", tab->krt_attached->name, tab->name);
   tab->krt_attached = CF;
 
   if (cf->merge_paths)
@@ -1172,23 +1152,8 @@ krt_reconfigure(struct proto *p, struct proto_config *CF)
   return o->scan_time == n->scan_time && o->learn == n->learn;
 }
 
-struct proto_config *
-krt_init_config(int class)
-{
-#ifndef CONFIG_MULTIPLE_TABLES
-  if (krt_cf)
-    cf_error("Kernel protocol already defined");
-#endif
-
-  krt_cf = (struct krt_config *) proto_config_new(&proto_unix_kernel, class);
-  krt_cf->scan_time = 60 S;
-
-  krt_sys_init_config(krt_cf);
-  return (struct proto_config *) krt_cf;
-}
-
 static void
-krt_copy_config(struct proto_config *dest, struct proto_config *src)
+krt_copy_config(struct cf_context *ctx UNUSED, struct proto_config *dest, struct proto_config *src)
 {
   struct krt_config *d = (struct krt_config *) dest;
   struct krt_config *s = (struct krt_config *) src;

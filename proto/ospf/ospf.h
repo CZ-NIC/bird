@@ -854,6 +854,7 @@ struct ospf_lsreq_header
 #define SH_ROUTER_SELF 0xffffffff
 
 struct lsadb_show_data {
+  struct cf_context *ctx; /* Config context */
   struct symbol *name;	/* Protocol to request data from */
   u16 type;		/* LSA Type, 0 -> all */
   u16 scope;		/* Scope, 0 -> all, hack to handle link scope as 1 */
