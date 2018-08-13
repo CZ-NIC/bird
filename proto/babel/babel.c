@@ -2187,7 +2187,7 @@ babel_rte_same(struct rte *new, struct rte *old)
 
 
 static void
-babel_postconfig(struct proto_config *CF)
+babel_postconfig(struct cf_context *ctx, struct proto_config *CF)
 {
   struct babel_config *cf = (void *) CF;
   struct channel_config *ip4, *ip6, *ip6_sadr;
@@ -2197,7 +2197,7 @@ babel_postconfig(struct proto_config *CF)
   ip6_sadr = proto_cf_find_channel(CF, NET_IP6_SADR);
 
   if (ip6 && ip6_sadr)
-    cf_error("Both ipv6 and ipv6-sadr channels");
+    cf_error(ctx, "Both ipv6 and ipv6-sadr channels");
 
   cf->ip4_channel = ip4;
   cf->ip6_channel = ip6 ?: ip6_sadr;

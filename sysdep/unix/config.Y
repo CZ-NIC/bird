@@ -30,7 +30,7 @@ log_config: LOG log_file log_mask ';' {
     struct log_config *c = cfg_allocz(sizeof(struct log_config));
     c->fh = $2;
     c->mask = $3;
-    add_tail(&new_config->logfiles, &c->n);
+    add_tail(&ctx->new_config->logfiles, &c->n);
   }
  ;
 
@@ -41,11 +41,11 @@ syslog_name:
 
 log_file:
    text {
-     FILE *f = tracked_fopen(new_config->pool, $1, "a");
-     if (!f) cf_error("Unable to open log file `%s': %m", $1);
+     FILE *f = tracked_fopen(ctx->new_config->pool, $1, "a");
+     if (!f) cf_error(ctx, "Unable to open log file `%s': %m", $1);
      $$ = f;
    }
- | SYSLOG syslog_name { $$ = NULL; new_config->syslog_name = $2; }
+ | SYSLOG syslog_name { $$ = NULL; ctx->new_config->syslog_name = $2; }
  | STDERR { $$ = stderr; }
  ;
 
@@ -75,11 +75,11 @@ log_cat:
 conf: mrtdump_base ;
 
 mrtdump_base:
-   MRTDUMP PROTOCOLS mrtdump_mask ';' { new_config->proto_default_mrtdump = $3; }
+   MRTDUMP PROTOCOLS mrtdump_mask ';' { ctx->new_config->proto_default_mrtdump = $3; }
  | MRTDUMP text ';' {
-     FILE *f = tracked_fopen(new_config->pool, $2, "a");
-     if (!f) cf_error("Unable to open MRTDump file '%s': %m", $2);
-     new_config->mrtdump_file = fileno(f);
+     FILE *f = tracked_fopen(ctx->new_config->pool, $2, "a");
+     if (!f) cf_error(ctx, "Unable to open MRTDump file '%s': %m", $2);
+     ctx->new_config->mrtdump_file = fileno(f);
    }
  ;
 
@@ -87,10 +87,10 @@ mrtdump_base:
 conf: debug_unix ;
 
 debug_unix:
-   DEBUG LATENCY bool { new_config->latency_debug = $3; }
- | DEBUG LATENCY LIMIT expr_us { new_config->latency_limit = $4; }
- | WATCHDOG WARNING expr_us { new_config->watchdog_warning = $3; }
- | WATCHDOG TIMEOUT expr_us { new_config->watchdog_timeout = ($3 + 999999) TO_S; }
+   DEBUG LATENCY bool { ctx->new_config->latency_debug = $3; }
+ | DEBUG LATENCY LIMIT expr_us { ctx->new_config->latency_limit = $4; }
+ | WATCHDOG WARNING expr_us { ctx->new_config->watchdog_warning = $3; }
+ | WATCHDOG TIMEOUT expr_us { ctx->new_config->watchdog_timeout = ($3 + 999999) TO_S; }
  ;
 
 

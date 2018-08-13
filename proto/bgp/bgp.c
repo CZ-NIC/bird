@@ -1681,7 +1681,7 @@ bgp_find_channel_config(struct bgp_config *cf, u32 afi)
 }
 
 struct rtable_config *
-bgp_default_igp_table(struct bgp_config *cf, struct bgp_channel_config *cc, u32 type)
+bgp_default_igp_table(struct cf_context *ctx, struct bgp_config *cf, struct bgp_channel_config *cc, u32 type)
 {
   struct bgp_channel_config *cc2;
   struct rtable_config *tab;
@@ -1706,12 +1706,12 @@ bgp_default_igp_table(struct bgp_config *cf, struct bgp_channel_config *cc, u32 
   if (tab = cf->c.global->def_tables[type])
     return tab;
 
-  cf_error("Undefined IGP table");
+  cf_error(ctx, "Undefined IGP table");
 }
 
 
 void
-bgp_postconfig(struct proto_config *CF)
+bgp_postconfig(struct cf_context *ctx, struct proto_config *CF)
 {
   struct bgp_config *cf = (void *) CF;
   int internal = (cf->local_as == cf->remote_as);
@@ -1736,44 +1736,44 @@ bgp_postconfig(struct proto_config *CF)
 
 
   if (!cf->local_as)
-    cf_error("Local AS number must be set");
+    cf_error(ctx, "Local AS number must be set");
 
   if (ipa_zero(cf->remote_ip))
-    cf_error("Neighbor must be configured");
+    cf_error(ctx, "Neighbor must be configured");
 
   if (!cf->remote_as)
-    cf_error("Remote AS number must be set");
+    cf_error(ctx, "Remote AS number must be set");
 
   if (ipa_is_link_local(cf->remote_ip) && !cf->iface)
-    cf_error("Link-local neighbor address requires specified interface");
+    cf_error(ctx, "Link-local neighbor address requires specified interface");
 
   if (!(cf->capabilities && cf->enable_as4) && (cf->remote_as > 0xFFFF))
-    cf_error("Neighbor AS number out of range (AS4 not available)");
+    cf_error(ctx, "Neighbor AS number out of range (AS4 not available)");
 
   if (!internal && cf->rr_client)
-    cf_error("Only internal neighbor can be RR client");
+    cf_error(ctx, "Only internal neighbor can be RR client");
 
   if (internal && cf->rs_client)
-    cf_error("Only external neighbor can be RS client");
+    cf_error(ctx, "Only external neighbor can be RS client");
 
   if (!cf->confederation && cf->confederation_member)
-    cf_error("Confederation ID must be set for member sessions");
+    cf_error(ctx, "Confederation ID must be set for member sessions");
 
   if (cf->multihop && (ipa_is_link_local(cf->local_ip) ||
 		       ipa_is_link_local(cf->remote_ip)))
-    cf_error("Multihop BGP cannot be used with link-local addresses");
+    cf_error(ctx, "Multihop BGP cannot be used with link-local addresses");
 
   if (cf->multihop && cf->iface)
-    cf_error("Multihop BGP cannot be bound to interface");
+    cf_error(ctx, "Multihop BGP cannot be bound to interface");
 
   if (cf->multihop && cf->check_link)
-    cf_error("Multihop BGP cannot depend on link state");
+    cf_error(ctx, "Multihop BGP cannot depend on link state");
 
   if (cf->multihop && cf->bfd && ipa_zero(cf->local_ip))
-    cf_error("Multihop BGP with BFD requires specified local address");
+    cf_error(ctx, "Multihop BGP with BFD requires specified local address");
 
   if (!cf->gr_mode && cf->llgr_mode)
-    cf_error("Long-lived graceful restart requires basic graceful restart");
+    cf_error(ctx, "Long-lived graceful restart requires basic graceful restart");
 
 
   struct bgp_channel_config *cc;
@@ -1784,14 +1784,14 @@ bgp_postconfig(struct proto_config *CF)
       if (interior)
 	cc->c.in_filter = FILTER_ACCEPT;
       else
-	cf_error("EBGP requires explicit import policy");
+	cf_error(ctx, "EBGP requires explicit import policy");
 
     /* Handle undefined export filter */
     if (cc->c.out_filter == FILTER_UNDEF)
       if (interior)
 	cc->c.out_filter = FILTER_REJECT;
       else
-	cf_error("EBGP requires explicit export policy");
+	cf_error(ctx, "EBGP requires explicit export policy");
 
     /* Disable after error incompatible with restart limit action */
     if ((cc->c.in_limit.action == PLA_RESTART) && cf->disable_after_error)
@@ -1819,29 +1819,29 @@ bgp_postconfig(struct proto_config *CF)
     if ((cc->gw_mode == GW_RECURSIVE) && !cc->desc->no_igp)
     {
       if (!cc->igp_table_ip4 && (bgp_cc_is_ipv4(cc) || cc->ext_next_hop))
-	cc->igp_table_ip4 = bgp_default_igp_table(cf, cc, NET_IP4);
+	cc->igp_table_ip4 = bgp_default_igp_table(ctx, cf, cc, NET_IP4);
 
       if (!cc->igp_table_ip6 && (bgp_cc_is_ipv6(cc) || cc->ext_next_hop))
-	cc->igp_table_ip6 = bgp_default_igp_table(cf, cc, NET_IP6);
+	cc->igp_table_ip6 = bgp_default_igp_table(ctx, cf, cc, NET_IP6);
 
       if (cc->igp_table_ip4 && bgp_cc_is_ipv6(cc) && !cc->ext_next_hop)
-	cf_error("Mismatched IGP table type");
+	cf_error(ctx, "Mismatched IGP table type");
 
       if (cc->igp_table_ip6 && bgp_cc_is_ipv4(cc) && !cc->ext_next_hop)
-	cf_error("Mismatched IGP table type");
+	cf_error(ctx, "Mismatched IGP table type");
     }
 
     if (cf->multihop && (cc->gw_mode == GW_DIRECT))
-      cf_error("Multihop BGP cannot use direct gateway mode");
+      cf_error(ctx, "Multihop BGP cannot use direct gateway mode");
 
     if ((cc->gw_mode == GW_RECURSIVE) && cc->c.table->sorted)
-      cf_error("BGP in recursive mode prohibits sorted table");
+      cf_error(ctx, "BGP in recursive mode prohibits sorted table");
 
     if (cf->deterministic_med && cc->c.table->sorted)
-      cf_error("BGP with deterministic MED prohibits sorted table");
+      cf_error(ctx, "BGP with deterministic MED prohibits sorted table");
 
     if (cc->secondary && !cc->c.table->sorted)
-      cf_error("BGP with secondary option requires sorted table");
+      cf_error(ctx, "BGP with secondary option requires sorted table");
   }
 }
 
@@ -1916,7 +1916,7 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC)
 }
 
 static void
-bgp_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUSED)
+bgp_copy_config(struct cf_context *ctx UNUSED, struct proto_config *dest UNUSED, struct proto_config *src UNUSED)
 {
   /* Just a shallow copy */
 }

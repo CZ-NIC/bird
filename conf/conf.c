@@ -54,10 +54,9 @@
 #include "lib/event.h"
 #include "lib/timer.h"
 #include "conf/conf.h"
+#include "conf/parser.h"
 #include "filter/filter.h"
 
-
-static jmp_buf conf_jmpbuf;
 
 struct config *config, *new_config;
 
@@ -85,23 +84,17 @@ int undo_available;			/* Undo was not requested from last reconfiguration */
  * pool and a linear memory pool to it and makes it available for
  * further use. Returns a pointer to the structure.
  */
-struct config *
-config_alloc(const char *name)
+static struct config *
+config_alloc(struct pool *pp, struct linpool *lp)
 {
-  pool *p = rp_new(&root_pool, "Config");
-  linpool *l = lp_new_default(p);
+  pool *p = rp_new(pp ?: &root_pool, "Config");
+  linpool *l = lp ?: lp_new_default(p);
   struct config *c = lp_allocz(l, sizeof(struct config));
-
-  /* Duplication of name string in local linear pool */
-  uint nlen = strlen(name) + 1;
-  char *ndup = lp_allocu(l, nlen);
-  memcpy(ndup, name, nlen);
 
   init_list(&c->tests);
   c->mrtdump_file = -1; /* Hack, this should be sysdep-specific */
   c->pool = p;
   c->mem = l;
-  c->file_name = ndup;
   c->load_time = current_time();
   c->tf_route = c->tf_proto = TM_ISO_SHORT_MS;
   c->tf_base = c->tf_log = TM_ISO_LONG_MS;
@@ -110,77 +103,73 @@ config_alloc(const char *name)
   return c;
 }
 
-/**
- * config_parse - parse a configuration
- * @c: configuration
- *
- * config_parse() reads input by calling a hook function pointed to
- * by @cf_read_hook and parses it according to the configuration
- * grammar. It also calls all the preconfig and postconfig hooks
- * before, resp. after parsing.
- *
- * Result: 1 if the config has been parsed successfully, 0 if any
- * error has occurred (such as anybody calling cf_error()) and
- * the @err_msg field has been set to the error message.
- */
 int
-config_parse(struct config *c)
+config_parse(struct conf_order *order)
 {
-  int done = 0;
-  DBG("Parsing configuration file `%s'\n", c->file_name);
-  new_config = c;
-  cfg_mem = c->mem;
-  if (setjmp(conf_jmpbuf))
-    goto cleanup;
+  DBG("Parsing configuration named `%s'\n", order->state->name);
 
-  cf_lex_init(0, c);
-  sysdep_preconfig(c);
-  protos_preconfig(c);
-  rt_preconfig(c);
-  cf_parse();
+  if (!order->new_config)
+    order->new_config = config_alloc(order->pool, order->lp);
 
-  if (EMPTY_LIST(c->protos))
-    cf_error("No protocol is specified in the config file");
+  struct cf_context *ctx = cf_new_context(0, order);
+  int ret;
 
-  /*
-  if (!c->router_id)
-    cf_error("Router ID must be configured manually");
-  */
+  if (setjmp(ctx->jmpbuf))
+    {
+      if (order->cf_outclude)
+	while (! order->cf_outclude(order))
+	  ;
 
-  done = 1;
+      ret = 0;
+
+      config_free(ctx->new_config);
+      order->new_config = NULL;
+
+      goto cleanup;
+    }
+
+  sysdep_preconfig(ctx);
+  protos_preconfig(ctx->new_config);
+  rt_preconfig(ctx);
+  cfx_parse(ctx, ctx->yyscanner);
+
+  if (EMPTY_LIST((ctx->new_config)->protos))
+    cf_error(ctx, "No protocol is specified in the config file");
+
+  ret = 1;
 
 cleanup:
-  new_config = NULL;
-  cfg_mem = NULL;
-  return done;
+  cf_free_context(ctx);
+  order->ctx = NULL;
+  return ret;
 }
 
-/**
- * cli_parse - parse a CLI command
- * @c: temporary config structure
- *
- * cli_parse() is similar to config_parse(), but instead of a configuration,
- * it parses a CLI command. See the CLI module for more information.
- */
 int
-cli_parse(struct config *c)
+cli_parse(struct conf_order *order)
 {
-  int done = 0;
-  c->fallback = config;
-  new_config = c;
-  cfg_mem = c->mem;
-  if (setjmp(conf_jmpbuf))
-    goto cleanup;
+  DBG("Parsing command line\n");
 
-  cf_lex_init(1, c);
-  cf_parse();
-  done = 1;
+  struct config cc = {};
+  cc.pool = rp_new(order->pool ?: &root_pool, "CLI Dummy Config");
+  cc.mem = order->lp ?: lp_new_default(cc.pool);
 
-cleanup:
-  c->fallback = NULL;
-  new_config = NULL;
-  cfg_mem = NULL;
-  return done;
+  order->new_config = &cc;
+
+  struct cf_context *ctx = cf_new_context(1, order);
+
+  int ok = 0;
+  if (setjmp(ctx->jmpbuf))
+    goto done;
+
+  cfx_parse(ctx, ctx->yyscanner);
+  ok = 1;
+
+done:
+  cf_free_context(ctx);
+  config_free(&cc);
+  order->new_config = NULL;
+  order->ctx = NULL;
+  return ok;
 }
 
 /**
@@ -465,6 +454,8 @@ config_init(void)
 
   config_timer = tm_new(&root_pool);
   config_timer->hook = config_timeout;
+
+  cf_init_kh();
 }
 
 /**
@@ -501,21 +492,42 @@ order_shutdown(void)
  * error in the configuration.
  */
 void
-cf_error(const char *msg, ...)
+cf_error(struct cf_context *ctx, const char *msg, ...)
 {
-  char buf[1024];
   va_list args;
 
   va_start(args, msg);
-  if (bvsnprintf(buf, sizeof(buf), msg, args) < 0)
-    strcpy(buf, "<bug: error message too long>");
+  ctx->order->cf_error(ctx->order, msg, args);
   va_end(args);
-  new_config->err_msg = cfg_strdup(buf);
-  new_config->err_lino = ifs->lino;
-  new_config->err_file_name = ifs->file_name;
-  cf_lex_unwind();
-  longjmp(conf_jmpbuf, 1);
+
+  longjmp(ctx->jmpbuf, 1);
 }
+
+#if 0
+  if (bvsnprintf(ctx->order->err.msg, CONF_ERROR_MSG_LEN, msg, args) < 0)
+    strcpy(ctx->order->err.msg, "<bug: error message too long>");
+
+  ctx->order->err.lino = ctx->order->state->lino;
+
+  uint fnlen = strlen(ctx->order->state->name);
+  if (fnlen >= CONF_FILENAME_LEN)
+    {
+      uint l = (CONF_FILENAME_LEN - 6) / 2;
+      uint r = CONF_FILENAME_LEN - 6 - l;
+
+      memcpy(ctx->order->err.file_name, ctx->order->state->name, l);
+      memcpy(ctx->order->err.file_name + l, " ... ", 5);
+      strncpy(ctx->order->err.file_name + l + 5, ctx->order->state->name + fnlen - r, r);
+    }
+  else
+    memcpy(ctx->order->err.file_name, ctx->order->state->name, fnlen + 1);
+
+}
+#endif
+
+void *cf_alloc(struct cf_context *ctx, unsigned size) { return cfg_alloc(size); }
+void *cf_allocu(struct cf_context *ctx, unsigned size) { return cfg_allocu(size); }
+void *cf_allocz(struct cf_context *ctx, unsigned size) { return cfg_allocz(size); }
 
 /**
  * cfg_strdup - copy a string to config memory
@@ -527,7 +539,7 @@ cf_error(const char *msg, ...)
  * and we want to preserve it for further use.
  */
 char *
-cfg_strdup(const char *c)
+cf_strdup(struct cf_context *ctx, const char *c)
 {
   int l = strlen(c) + 1;
   char *z = cfg_allocu(l);
@@ -537,7 +549,7 @@ cfg_strdup(const char *c)
 
 
 void
-cfg_copy_list(list *dest, list *src, unsigned node_size)
+cf_copy_list(struct cf_context *ctx, list *dest, list *src, unsigned node_size)
 {
   node *dn, *sn;
 

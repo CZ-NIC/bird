@@ -10,6 +10,7 @@
 #define _BIRD_CONF_H_
 
 #include "sysdep/config.h"
+#include "nest/cli.h"
 #include "lib/ip.h"
 #include "lib/hash.h"
 #include "lib/resource.h"
@@ -45,11 +46,6 @@ struct config {
   u32 latency_limit;			/* Events with longer duration are logged (us) */
   u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */
   u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
-  char *err_msg;			/* Parser error message */
-  int err_lino;				/* Line containing error */
-  char *err_file_name;			/* File name containing error */
-  char *file_name;			/* Name of main configuration file */
-  int file_fd;				/* File descriptor of main configuration file */
   HASH(struct symbol) sym_hash;		/* Lexer: symbol hash table */
   struct config *fallback;		/* Link to regular config for CLI parsing */
   int obstacle_count;			/* Number of items blocking freeing of this config */
@@ -57,19 +53,61 @@ struct config {
   btime load_time;			/* When we've got this configuration */
 };
 
+struct conf_state {
+  void *buffer;				/* Internal lexer state */
+  const char *name;			/* Current file name */
+  uint lino;				/* Current line */
+};
+
+struct conf_order {
+  struct config *new_config;		/* Store the allocated config here */
+  struct cf_context *ctx;		/* Internal config context, do not set */
+  struct conf_state *state;
+  struct pool *pool;			/* If set, use this resource pool */
+  struct linpool *lp;			/* If set, use this linpool */
+  int (*cf_read_hook)(struct conf_order *order, byte *buf, uint max);
+  void (*cf_include)(struct conf_order *order, char *name, uint len);
+  int (*cf_outclude)(struct conf_order *order);
+  void (*cf_error)(struct conf_order *order, const char *msg, va_list args);
+};
+
 /* Please don't use these variables in protocols. Use proto_config->global instead. */
 extern struct config *config;		/* Currently active configuration */
-extern struct config *new_config;	/* Configuration being parsed */
 
-struct config *config_alloc(const char *name);
-int config_parse(struct config *);
-int cli_parse(struct config *);
+/**
+ * Parse configuration
+ *
+ * Arguments:
+ * @order provides callbacks to read config files
+ *
+ * Return value:
+ * 1 on success; order->new_config is then set to the parsed config
+ * 0 on fail; order->new_config is undefined
+ **/
+int config_parse(struct conf_order *order);
+
+/**
+ * Parse CLI command
+ *
+ * Arguments:
+ * @order provides callbacks to read command line
+ *
+ * Return value:
+ * 1 on success
+ * 0 on fail
+ *
+ * Parsed config is never kept, order->new_config should be zero after return.
+ **/
+int cli_parse(struct conf_order *order);
+
+/** Callback for returning error from parser hooks */
+void cf_error(struct cf_context *, const char *msg, ...) NORET;
+
 void config_free(struct config *);
 int config_commit(struct config *, int type, uint timeout);
 int config_confirm(void);
 int config_undo(void);
 void config_init(void);
-void cf_error(const char *msg, ...) NORET;
 void config_add_obstacle(struct config *);
 void config_del_obstacle(struct config *);
 void order_shutdown(void);
@@ -87,20 +125,15 @@ void order_shutdown(void);
 #define CONF_SHUTDOWN	-1
 #define CONF_NOTHING	-2
 
-
 /* Pools */
 
-extern linpool *cfg_mem;
-
-#define cfg_alloc(size) lp_alloc(cfg_mem, size)
-#define cfg_allocu(size) lp_allocu(cfg_mem, size)
-#define cfg_allocz(size) lp_allocz(cfg_mem, size)
-char *cfg_strdup(const char *c);
-void cfg_copy_list(list *dest, list *src, unsigned node_size);
+void *cf_alloc(struct cf_context *ctx, unsigned size);
+void *cf_allocu(struct cf_context *ctx, unsigned size);
+void *cf_allocz(struct cf_context *ctx, unsigned size);
+void cf_copy_list(struct cf_context *ctx, list *dest, list *src, unsigned node_size);
+char *cf_strdup(struct cf_context *ctx, const char *c);
 
 /* Lexer */
-
-extern int (*cf_read_hook)(byte *buf, uint max, int fd);
 
 struct symbol {
   struct symbol *next;
@@ -134,45 +167,16 @@ struct sym_scope {
 #define SYM_TYPE(s) (((struct f_val *) (s)->def)->type)
 #define SYM_VAL(s) (((struct f_val *) (s)->def)->val)
 
-struct include_file_stack {
-  void *buffer;				/* Internal lexer state */
-  char *file_name;			/* File name */
-  int fd;				/* File descriptor */
-  int lino;				/* Current line num */
-  int depth;				/* Include depth, 0 = cannot include */
-
-  struct include_file_stack *prev;	/* Previous record in stack */
-  struct include_file_stack *up;	/* Parent (who included this file) */
-};
-
-extern struct include_file_stack *ifs;
-
-
-int cf_lex(void);
-void cf_lex_init(int is_cli, struct config *c);
-void cf_lex_unwind(void);
-
 struct symbol *cf_find_symbol(struct config *cfg, byte *c);
 
-struct symbol *cf_get_symbol(byte *c);
-struct symbol *cf_default_name(char *template, int *counter);
-struct symbol *cf_define_symbol(struct symbol *symbol, int type, void *def);
-void cf_push_scope(struct symbol *);
-void cf_pop_scope(void);
 char *cf_symbol_class_name(struct symbol *sym);
 
 static inline int cf_symbol_is_constant(struct symbol *sym)
 { return (sym->class & 0xff00) == SYM_CONSTANT; }
 
-
-/* Parser */
-
-extern char *cf_text;
-int cf_parse(void);
-
 /* Sysdep hooks */
 
-void sysdep_preconfig(struct config *);
+void sysdep_preconfig(struct cf_context *ctx);
 int sysdep_commit(struct config *, struct config *);
 void sysdep_shutdown_done(void);
 

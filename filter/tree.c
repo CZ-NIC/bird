@@ -9,6 +9,7 @@
 #include "lib/alloca.h"
 #include "nest/bird.h"
 #include "conf/conf.h"
+#include "conf/parser.h"
 #include "filter/filter.h"
 
 /**
@@ -100,7 +101,7 @@ build_tree(struct f_tree *from)
 }
 
 struct f_tree *
-f_new_tree(void)
+f_new_tree(struct cf_context *ctx)
 {
   struct f_tree * ret;
   ret = cfg_alloc(sizeof(struct f_tree));

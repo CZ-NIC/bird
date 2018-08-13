@@ -105,11 +105,18 @@ int sk_open_unix(struct birdsock *s, char *name);
 void *tracked_fopen(struct pool *, char *name, char *mode);
 void test_old_bird(char *path);
 
+/* conf.c */
+
+extern char *config_name;
+struct config *read_config(void);
+
 /* krt.c bits */
 
 void krt_io_init(void);
 
 /* log.c */
+
+extern int debug_flag;
 
 void main_thread_init(void);
 void log_init_debug(char *);		/* Initialize debug dump to given file (NULL=stderr, ""=off) */

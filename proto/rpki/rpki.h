@@ -127,7 +127,7 @@ struct rpki_config {
   u8 keep_expire_interval:1;		/* Do not overwrite expire interval by cache server update */
 };
 
-void rpki_check_config(struct rpki_config *cf);
+void rpki_check_config(struct cf_context *ctx, struct rpki_config *cf);
 
 
 /*

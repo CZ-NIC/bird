@@ -27,18 +27,6 @@
 %{
 #undef REJECT     /* Avoid name clashes */
 
-#include <errno.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <libgen.h>
-#include <glob.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-
 #define PARSER 1
 
 #include "nest/bird.h"
@@ -46,6 +34,7 @@
 #include "nest/protocol.h"
 #include "filter/filter.h"
 #include "conf/conf.h"
+#include "conf/parser.h"
 #include "conf/cf-parse.tab.h"
 #include "lib/string.h"
 #include "lib/hash.h"
@@ -64,7 +53,6 @@ struct keyword {
 #endif
 
 
-static uint cf_hash(byte *c);
 
 #define KW_KEY(n)		n->name
 #define KW_NEXT(n)		n->next
@@ -72,37 +60,19 @@ static uint cf_hash(byte *c);
 #define KW_FN(k)		cf_hash(k)
 #define KW_ORDER		8 /* Fixed */
 
-#define SYM_KEY(n)		n->name, n->scope->active
-#define SYM_NEXT(n)		n->next
-#define SYM_EQ(a,s1,b,s2)	!strcmp(a,b) && s1 == s2
-#define SYM_FN(k,s)		cf_hash(k)
-#define SYM_ORDER		6 /* Initial */
-
-#define SYM_REHASH		sym_rehash
-#define SYM_PARAMS		/8, *1, 2, 2, 6, 20
-
-
-HASH_DEFINE_REHASH_FN(SYM, struct symbol)
-
 HASH(struct keyword) kw_hash;
 
-
-static struct sym_scope *conf_this_scope;
-
-linpool *cfg_mem;
-
-int (*cf_read_hook)(byte *buf, unsigned int max, int fd);
-struct include_file_stack *ifs;
-static struct include_file_stack *ifs_head;
-
-#define MAX_INCLUDE_DEPTH 8
-
-#define YY_INPUT(buf,result,max) result = cf_read_hook(buf, max, ifs->fd);
 #define YY_NO_UNPUT
-#define YY_FATAL_ERROR(msg) cf_error(msg)
+#define CTX cfx_get_extra(yyscanner)
+#define COR (CTX->order)
+#define CST (CTX->order->state)
+#define YY_INPUT(buf,result,max) result = COR->cf_read_hook(COR, buf, max);
+#define YY_FATAL_ERROR(...) cf_error(CTX, __VA_ARGS__)
 
-static void cf_include(char *arg, int alen);
-static int check_eof(void);
+#define cf_lval (* (cfx_get_lval(yyscanner)))
+
+static void cf_include(char *arg, int alen, yyscan_t yyscanner);
+static int check_eof(yyscan_t yyscanner);
 
 %}
 
@@ -110,6 +80,9 @@ static int check_eof(void);
 %option noinput
 %option nounput
 %option noreject
+
+%option reentrant bison-bridge
+%option extra-type="struct cf_context *"
 
 %x COMMENT CCOMM CLI
 
@@ -124,8 +97,8 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 {include} {
   char *start, *end;
 
-  if (!ifs->depth)
-    cf_error("Include not allowed in CLI");
+  if (!COR->cf_include)
+    YY_FATAL_ERROR("Include not allowed in CLI");
 
   start = strchr(yytext, '"');
   start++;
@@ -134,9 +107,9 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   *end = 0;
 
   if (start == end)
-    cf_error("Include with empty argument");
+    YY_FATAL_ERROR("Include with empty argument");
 
-  cf_include(start, end-start);
+  cf_include(start, end-start, yyscanner);
 }
 
 {DIGIT}+:{DIGIT}+ {
@@ -147,7 +120,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   errno = 0;
   l = strtoul(yytext, &e, 10);
   if (e && (*e != ':') || (errno == ERANGE) || (l >> 32))
-    cf_error("ASN out of range");
+    YY_FATAL_ERROR("ASN out of range");
 
   if (l >> 16)
   {
@@ -165,7 +138,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   errno = 0;
   l = strtoul(e+1, &e, 10);
   if (e && *e || (errno == ERANGE) || (l >> len2))
-    cf_error("Number out of range");
+    YY_FATAL_ERROR("Number out of range");
   cf_lval.i64 |= l;
 
   return VPN_RD;
@@ -192,13 +165,13 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   errno = 0;
   l = strtoul(yytext+2, &e, 10);
   if (e && (*e != ':') || (errno == ERANGE) || (l >> len1))
-    cf_error("ASN out of range");
+    YY_FATAL_ERROR("ASN out of range");
   cf_lval.i64 |= ((u64) l) << len2;
 
   errno = 0;
   l = strtoul(e+1, &e, 10);
   if (e && *e || (errno == ERANGE) || (l >> len2))
-    cf_error("Number out of range");
+    YY_FATAL_ERROR("Number out of range");
   cf_lval.i64 |= l;
 
   return VPN_RD;
@@ -214,13 +187,13 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   e = strchr(yytext, ':');
   *e++ = '\0';
   if (!ip4_pton(yytext, &ip4))
-    cf_error("Invalid IPv4 address %s in Route Distinguisher", yytext);
+    YY_FATAL_ERROR("Invalid IPv4 address %s in Route Distinguisher", yytext);
   cf_lval.i64 |= ((u64) ip4_to_u32(ip4)) << 16;
 
   errno = 0;
   l = strtoul(e, &e, 10);
   if (e && *e || (errno == ERANGE) || (l >> 16))
-    cf_error("Number out of range");
+    YY_FATAL_ERROR("Number out of range");
   cf_lval.i64 |= l;
 
   return VPN_RD;
@@ -228,13 +201,13 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 
 {DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+ {
   if (!ip4_pton(yytext, &cf_lval.ip4))
-    cf_error("Invalid IPv4 address %s", yytext);
+    YY_FATAL_ERROR("Invalid IPv4 address %s", yytext);
   return IP4;
 }
 
 ({XIGIT}*::|({XIGIT}*:){3,})({XIGIT}*|{DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+) {
   if (!ip6_pton(yytext, &cf_lval.ip6))
-    cf_error("Invalid IPv6 address %s", yytext);
+    YY_FATAL_ERROR("Invalid IPv6 address %s", yytext);
   return IP6;
 }
 
@@ -244,7 +217,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   errno = 0;
   l = strtoul(yytext+2, &e, 16);
   if (e && *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
-    cf_error("Number out of range");
+    YY_FATAL_ERROR("Number out of range");
   cf_lval.i = l;
   return NUM;
 }
@@ -255,7 +228,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   errno = 0;
   l = strtoul(yytext, &e, 10);
   if (e && *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
-    cf_error("Number out of range");
+    YY_FATAL_ERROR("Number out of range");
   cf_lval.i = l;
   return NUM;
 }
@@ -283,7 +256,7 @@ else: {
     }
   }
 
-  cf_lval.s = cf_get_symbol(yytext);
+  cf_lval.s = cf_get_symbol(CTX, yytext);
   return SYM;
 }
 
@@ -302,36 +275,36 @@ else: {
 
 ["][^"\n]*["] {
   yytext[yyleng-1] = 0;
-  cf_lval.t = cfg_strdup(yytext+1);
+  cf_lval.t = cf_strdup(CTX, yytext+1);
   yytext[yyleng-1] = '"';
   return TEXT;
 }
 
-["][^"\n]*\n	cf_error("Unterminated string");
+["][^"\n]*\n	YY_FATAL_ERROR("Unterminated string");
 
-<INITIAL,COMMENT><<EOF>>	{ if (check_eof()) return END; }
+<INITIAL,COMMENT><<EOF>>	{ if (check_eof(yyscanner)) return END; }
 
 {WHITE}+
 
-\n	ifs->lino++;
+\n	CST->lino++;
 
 #	BEGIN(COMMENT);
 
 \/\*	BEGIN(CCOMM);
 
-.	cf_error("Unknown character");
+.	YY_FATAL_ERROR("Unknown character");
 
 <COMMENT>\n {
-  ifs->lino++;
+  CST->lino++;
   BEGIN(INITIAL);
 }
 
 <COMMENT>.
 
 <CCOMM>\*\/	BEGIN(INITIAL);
-<CCOMM>\n	ifs->lino++;
-<CCOMM>\/\*	cf_error("Comment nesting not supported");
-<CCOMM><<EOF>>	cf_error("Unterminated comment");
+<CCOMM>\n	CST->lino++;
+<CCOMM>\/\*	YY_FATAL_ERROR("Comment nesting not supported");
+<CCOMM><<EOF>>	YY_FATAL_ERROR("Unterminated comment");
 <CCOMM>.
 
 \!\= return NEQ;
@@ -346,7 +319,7 @@ else: {
 
 %%
 
-static uint
+uint
 cf_hash(byte *c)
 {
   uint h = 13 << 24;
@@ -356,283 +329,53 @@ cf_hash(byte *c)
   return h;
 }
 
-
-/*
- * IFS stack - it contains structures needed for recursive processing
- * of include in config files. On the top of the stack is a structure
- * for currently processed file. Other structures are either for
- * active files interrupted because of include directive (these have
- * fd and flex buffer) or for inactive files scheduled to be processed
- * later (when parent requested including of several files by wildcard
- * match - these do not have fd and flex buffer yet).
- *
- * FIXME: Most of these ifs and include functions are really sysdep/unix.
- */
-
-static struct include_file_stack *
-push_ifs(struct include_file_stack *old)
-{
-  struct include_file_stack *ret;
-  ret = cfg_allocz(sizeof(struct include_file_stack));
-  ret->lino = 1;
-  ret->prev = old;
-  return ret;
-}
-
-static struct include_file_stack *
-pop_ifs(struct include_file_stack *old)
-{
- yy_delete_buffer(old->buffer);
- close(old->fd);
- return old->prev;
-}
-
 static void
-enter_ifs(struct include_file_stack *new)
+cf_init_state(struct cf_context *ctx, struct conf_state *cs)
 {
-  if (!new->buffer)
-    {
-      new->fd = open(new->file_name, O_RDONLY);
-      if (new->fd < 0)
-        {
-          ifs = ifs->up;
-	  cf_error("Unable to open included file %s: %m", new->file_name);
-        }
-
-      new->buffer = yy_create_buffer(NULL, YY_BUF_SIZE);
-    }
-
-  yy_switch_to_buffer(new->buffer);
+  cs->buffer = yy_create_buffer(NULL, YY_BUF_SIZE, ctx->yyscanner);
 }
 
-/**
- * cf_lex_unwind - unwind lexer state during error
- *
- * cf_lex_unwind() frees the internal state on IFS stack when the lexical
- * analyzer is terminated by cf_error().
- */
+struct conf_state *
+cf_new_state(struct cf_context *ctx, const char *name)
+{
+  struct conf_state *cs = cfg_alloc(sizeof(struct conf_state));
+  *cs = (struct conf_state) {
+    .name = cfg_strdup(name),
+    .lino = 1,
+  };
+  cf_init_state(ctx, cs);
+  return cs;
+}
+
 void
-cf_lex_unwind(void)
+cf_free_state(struct cf_context *ctx, struct conf_state *cs)
 {
-  struct include_file_stack *n;
-
-  for (n = ifs; n != ifs_head; n = n->prev)
-    {
-      /* Memory is freed automatically */
-      if (n->buffer)
-	yy_delete_buffer(n->buffer);
-      if (n->fd)
-        close(n->fd);
-    }
-
-  ifs = ifs_head;
+  yy_delete_buffer(cs->buffer, ctx->yyscanner);
+  /* The state structure is allocated from linpool, will be auto-freed. */
 }
 
 static void
-cf_include(char *arg, int alen)
+cf_include(char *arg, int alen, yyscan_t yyscanner)
 {
-  struct include_file_stack *base_ifs = ifs;
-  int new_depth, rv, i;
-  char *patt;
-  glob_t g = {};
-
-  new_depth = ifs->depth + 1;
-  if (new_depth > MAX_INCLUDE_DEPTH)
-    cf_error("Max include depth reached");
-
-  /* expand arg to properly handle relative filenames */
-  if (*arg != '/')
-    {
-      int dlen = strlen(ifs->file_name);
-      char *dir = alloca(dlen + 1);
-      patt = alloca(dlen + alen + 2);
-      memcpy(dir, ifs->file_name, dlen + 1);
-      sprintf(patt, "%s/%s", dirname(dir), arg);
-    }
-  else
-    patt = arg;
-
-  /* Skip globbing if there are no wildcards, mainly to get proper
-     response when the included config file is missing */
-  if (!strpbrk(arg, "?*["))
-    {
-      ifs = push_ifs(ifs);
-      ifs->file_name = cfg_strdup(patt);
-      ifs->depth = new_depth;
-      ifs->up = base_ifs;
-      enter_ifs(ifs);
-      return;
-    }
-
-  /* Expand the pattern */
-  rv = glob(patt, GLOB_ERR | GLOB_NOESCAPE, NULL, &g);
-  if (rv == GLOB_ABORTED)
-    cf_error("Unable to match pattern %s: %m", patt);
-  if ((rv != 0) || (g.gl_pathc <= 0))
-    return;
-
-  /*
-   * Now we put all found files to ifs stack in reverse order, they
-   * will be activated and processed in order as ifs stack is popped
-   * by pop_ifs() and enter_ifs() in check_eof().
-   */
-  for(i = g.gl_pathc - 1; i >= 0; i--)
-    {
-      char *fname = g.gl_pathv[i];
-      struct stat fs;
-
-      if (stat(fname, &fs) < 0)
-	{
-	  globfree(&g);
-	  cf_error("Unable to stat included file %s: %m", fname);
-	}
-
-      if (fs.st_mode & S_IFDIR)
-        continue;
-
-      /* Prepare new stack item */
-      ifs = push_ifs(ifs);
-      ifs->file_name = cfg_strdup(fname);
-      ifs->depth = new_depth;
-      ifs->up = base_ifs;
-    }
-
-  globfree(&g);
-  enter_ifs(ifs);
+  COR->cf_include(COR, arg, alen);
+  yy_switch_to_buffer(CST->buffer, yyscanner);
 }
 
 static int
-check_eof(void)
+check_eof(yyscan_t yyscanner)
 {
-  if (ifs == ifs_head)
-    {
-      /* EOF in main config file */
-      ifs->lino = 1; /* Why this? */
-      return 1;
-    }
+  if (!COR->cf_outclude)
+    return 1;
 
-  ifs = pop_ifs(ifs);
-  enter_ifs(ifs);
+  if (COR->cf_outclude(COR))
+    return 1;
+
+  yy_switch_to_buffer(CST->buffer, yyscanner);
   return 0;
 }
 
-static struct symbol *
-cf_new_symbol(byte *c)
-{
-  struct symbol *s;
-
-  uint l = strlen(c);
-  if (l > SYM_MAX_LEN)
-    cf_error("Symbol too long");
-
-  s = cfg_alloc(sizeof(struct symbol) + l);
-  s->scope = conf_this_scope;
-  s->class = SYM_VOID;
-  s->def = NULL;
-  s->aux = 0;
-  strcpy(s->name, c);
-
-  if (!new_config->sym_hash.data)
-    HASH_INIT(new_config->sym_hash, new_config->pool, SYM_ORDER);
-
-  HASH_INSERT2(new_config->sym_hash, SYM, new_config->pool, s);
-
-  return s;
-}
-
-/**
- * cf_find_symbol - find a symbol by name
- * @cfg: specificed config
- * @c: symbol name
- *
- * This functions searches the symbol table in the config @cfg for a symbol of
- * given name. First it examines the current scope, then the second recent one
- * and so on until it either finds the symbol and returns a pointer to its
- * &symbol structure or reaches the end of the scope chain and returns %NULL to
- * signify no match.
- */
-struct symbol *
-cf_find_symbol(struct config *cfg, byte *c)
-{
-  struct symbol *s;
-
-  if (cfg->sym_hash.data &&
-      (s = HASH_FIND(cfg->sym_hash, SYM, c, 1)))
-    return s;
-
-  if (cfg->fallback &&
-      cfg->fallback->sym_hash.data &&
-      (s = HASH_FIND(cfg->fallback->sym_hash, SYM, c, 1)))
-    return s;
-
-  return NULL;
-}
-
-/**
- * cf_get_symbol - get a symbol by name
- * @c: symbol name
- *
- * This functions searches the symbol table of the currently parsed config
- * (@new_config) for a symbol of given name. It returns either the already
- * existing symbol or a newly allocated undefined (%SYM_VOID) symbol if no
- * existing symbol is found.
- */
-struct symbol *
-cf_get_symbol(byte *c)
-{
-  return cf_find_symbol(new_config, c) ?: cf_new_symbol(c);
-}
-
-struct symbol *
-cf_default_name(char *template, int *counter)
-{
-  char buf[SYM_MAX_LEN];
-  struct symbol *s;
-  char *perc = strchr(template, '%');
-
-  for(;;)
-    {
-      bsprintf(buf, template, ++(*counter));
-      s = cf_get_symbol(buf);
-      if (s->class == SYM_VOID)
-	return s;
-      if (!perc)
-	break;
-    }
-  cf_error("Unable to generate default name");
-}
-
-/**
- * cf_define_symbol - define meaning of a symbol
- * @sym: symbol to be defined
- * @type: symbol class to assign
- * @def: class dependent data
- *
- * Defines new meaning of a symbol. If the symbol is an undefined
- * one (%SYM_VOID), it's just re-defined to the new type. If it's defined
- * in different scope, a new symbol in current scope is created and the
- * meaning is assigned to it. If it's already defined in the current scope,
- * an error is reported via cf_error().
- *
- * Result: Pointer to the newly defined symbol. If we are in the top-level
- * scope, it's the same @sym as passed to the function.
- */
-struct symbol *
-cf_define_symbol(struct symbol *sym, int type, void *def)
-{
-  if (sym->class)
-    {
-      if (sym->scope == conf_this_scope)
-	cf_error("Symbol already defined");
-      sym = cf_new_symbol(sym->name);
-    }
-  sym->class = type;
-  sym->def = def;
-  return sym;
-}
-
-static void
-cf_lex_init_kh(void)
+void
+cf_init_kh(void)
 {
   HASH_INIT(kw_hash, &root_pool, KW_ORDER);
 
@@ -642,107 +385,45 @@ cf_lex_init_kh(void)
 }
 
 /**
- * cf_lex_init - initialize the lexer
+ * cf_new_context - initialize the lexer
  * @is_cli: true if we're going to parse CLI command, false for configuration
  * @c: configuration structure
  *
- * cf_lex_init() initializes the lexical analyzer and prepares it for
+ * cf_new_context() initializes the lexical analyzer and prepares it for
  * parsing of a new input.
  */
-void
-cf_lex_init(int is_cli, struct config *c)
+struct cf_context *
+cf_new_context(int is_cli, struct conf_order *order)
 {
-  if (!kw_hash.data)
-    cf_lex_init_kh();
+  struct cf_context *ctx = order->ctx = lp_allocz(order->new_config->mem, sizeof(struct cf_context));
+  *ctx = (struct cf_context) {
+    .new_config = order->new_config,
+    .cfg_mem = order->new_config->mem,
+    .order = order,
+  };
 
-  ifs_head = ifs = push_ifs(NULL);
-  if (!is_cli)
-    {
-      ifs->file_name = c->file_name;
-      ifs->fd = c->file_fd;
-      ifs->depth = 1;
-    }
+  cfx_lex_init_extra(ctx, &(ctx->yyscanner));
+  struct yyguts_t *yyg = ctx->yyscanner;
 
-  yyrestart(NULL);
-  ifs->buffer = YY_CURRENT_BUFFER;
+  cf_init_state(ctx, order->state);
+  yy_switch_to_buffer(order->state->buffer, yyg);
 
   if (is_cli)
     BEGIN(CLI);
   else
     BEGIN(INITIAL);
 
-  conf_this_scope = cfg_allocz(sizeof(struct sym_scope));
-  conf_this_scope->active = 1;
+  ctx->sym_scope = cfg_allocz(sizeof(struct sym_scope));
+  ctx->sym_scope->active = 1;
+
+  return ctx;
 }
 
-/**
- * cf_push_scope - enter new scope
- * @sym: symbol representing scope name
- *
- * If we want to enter a new scope to process declarations inside
- * a nested block, we can just call cf_push_scope() to push a new
- * scope onto the scope stack which will cause all new symbols to be
- * defined in this scope and all existing symbols to be sought for
- * in all scopes stored on the stack.
- */
 void
-cf_push_scope(struct symbol *sym)
+cf_free_context(struct cf_context *ctx)
 {
-  struct sym_scope *s = cfg_alloc(sizeof(struct sym_scope));
-
-  s->next = conf_this_scope;
-  conf_this_scope = s;
-  s->active = 1;
-  s->name = sym;
+  cfx_lex_destroy(ctx->yyscanner);
 }
-
-/**
- * cf_pop_scope - leave a scope
- *
- * cf_pop_scope() pops the topmost scope from the scope stack,
- * leaving all its symbols in the symbol table, but making them
- * invisible to the rest of the config.
- */
-void
-cf_pop_scope(void)
-{
-  conf_this_scope->active = 0;
-  conf_this_scope = conf_this_scope->next;
-  ASSERT(conf_this_scope);
-}
-
-/**
- * cf_symbol_class_name - get name of a symbol class
- * @sym: symbol
- *
- * This function returns a string representing the class
- * of the given symbol.
- */
-char *
-cf_symbol_class_name(struct symbol *sym)
-{
-  if (cf_symbol_is_constant(sym))
-    return "constant";
-
-  switch (sym->class)
-    {
-    case SYM_VOID:
-      return "undefined";
-    case SYM_PROTO:
-      return "protocol";
-    case SYM_TEMPLATE:
-      return "protocol template";
-    case SYM_FUNCTION:
-      return "function";
-    case SYM_FILTER:
-      return "filter";
-    case SYM_TABLE:
-      return "routing table";
-    default:
-      return "unknown type";
-    }
-}
-
 
 /**
  * DOC: Parser

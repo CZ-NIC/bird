@@ -12,8 +12,8 @@ CF_HDR
 
 CF_DEFINES
 
-#define BGP_CFG ((struct bgp_config *) this_proto)
-#define BGP_CC ((struct bgp_channel_config *) this_channel)
+#define BGP_CFG ((struct bgp_config *) ctx->this_proto)
+#define BGP_CC ((struct bgp_channel_config *) ctx->this_channel)
 
 CF_DECLS
 
@@ -44,7 +44,7 @@ CF_GRAMMAR
 proto: bgp_proto '}'  ;
 
 bgp_proto_start: proto_start BGP {
-     this_proto = proto_config_new(&proto_bgp, $1);
+     ctx->this_proto = proto_config_new(ctx, &proto_bgp, $1);
      BGP_CFG->local_port = BGP_PORT;
      BGP_CFG->remote_port = BGP_PORT;
      BGP_CFG->multihop = -1;	/* undefined */
@@ -73,13 +73,13 @@ bgp_proto_start: proto_start BGP {
 
 bgp_loc_opts:
    /* empty */
- | bgp_loc_opts PORT expr { BGP_CFG->local_port = $3; if (($3<1) || ($3>65535)) cf_error("Invalid port number"); }
+ | bgp_loc_opts PORT expr { BGP_CFG->local_port = $3; if (($3<1) || ($3>65535)) cf_error(ctx, "Invalid port number"); }
  | bgp_loc_opts AS expr { BGP_CFG->local_as = $3; }
  ;
 
 bgp_nbr_opts:
    /* empty */
- | bgp_nbr_opts PORT expr { BGP_CFG->remote_port = $3; if (($3<1) || ($3>65535)) cf_error("Invalid port number"); }
+ | bgp_nbr_opts PORT expr { BGP_CFG->remote_port = $3; if (($3<1) || ($3>65535)) cf_error(ctx, "Invalid port number"); }
  | bgp_nbr_opts AS expr { BGP_CFG->remote_as = $3; }
  ;
 
@@ -118,7 +118,7 @@ bgp_proto:
  | bgp_proto NEIGHBOR bgp_nbr_opts ';'
  | bgp_proto NEIGHBOR ipa ipa_scope bgp_nbr_opts ';' {
      if (ipa_nonzero(BGP_CFG->remote_ip))
-       cf_error("Only one neighbor per BGP instance is allowed");
+       cf_error(ctx, "Only one neighbor per BGP instance is allowed");
      BGP_CFG->remote_ip = $3;
      if ($4) BGP_CFG->iface = $4;
    }
@@ -132,7 +132,7 @@ bgp_proto:
  | bgp_proto STARTUP HOLD TIME expr ';' { BGP_CFG->initial_hold_time = $5; }
  | bgp_proto DIRECT ';' { BGP_CFG->multihop = 0; }
  | bgp_proto MULTIHOP ';' { BGP_CFG->multihop = 64; }
- | bgp_proto MULTIHOP expr ';' { BGP_CFG->multihop = $3; if (($3<1) || ($3>255)) cf_error("Multihop must be in range 1-255"); }
+ | bgp_proto MULTIHOP expr ';' { BGP_CFG->multihop = $3; if (($3<1) || ($3>255)) cf_error(ctx, "Multihop must be in range 1-255"); }
  | bgp_proto STRICT BIND bool ';' { BGP_CFG->strict_bind = $4; }
  | bgp_proto PATH METRIC bool ';' { BGP_CFG->compare_path_lengths = $4; }
  | bgp_proto MED METRIC bool ';' { BGP_CFG->med_metric = $4; }
@@ -142,7 +142,7 @@ bgp_proto:
  | bgp_proto DEFAULT BGP_MED expr ';' { BGP_CFG->default_med = $4; }
  | bgp_proto DEFAULT BGP_LOCAL_PREF expr ';' { BGP_CFG->default_local_pref = $4; }
  | bgp_proto SOURCE ADDRESS ipa ';' { BGP_CFG->local_ip = $4; }
- | bgp_proto START DELAY TIME expr ';' { BGP_CFG->connect_delay_time = $5; log(L_WARN "%s: Start delay time option is deprecated, use connect delay time", this_proto->name); }
+ | bgp_proto START DELAY TIME expr ';' { BGP_CFG->connect_delay_time = $5; log(L_WARN "%s: Start delay time option is deprecated, use connect delay time", ctx->this_proto->name); }
  | bgp_proto CONNECT DELAY TIME expr ';' { BGP_CFG->connect_delay_time = $5; }
  | bgp_proto CONNECT RETRY TIME expr ';' { BGP_CFG->connect_retry_time = $5; }
  | bgp_proto KEEPALIVE TIME expr ';' { BGP_CFG->keepalive_time = $4; }
@@ -169,8 +169,8 @@ bgp_proto:
  | bgp_proto LONG LIVED STALE TIME expr ';' { BGP_CFG->llgr_time = $6; }
  | bgp_proto TTL SECURITY bool ';' { BGP_CFG->ttl_security = $4; }
  | bgp_proto CHECK LINK bool ';' { BGP_CFG->check_link = $4; }
- | bgp_proto BFD bool ';' { BGP_CFG->bfd = $3; cf_check_bfd($3); }
- | bgp_proto BFD GRACEFUL ';' { BGP_CFG->bfd = BGP_BFD_GRACEFUL; cf_check_bfd(1); }
+ | bgp_proto BFD bool ';' { BGP_CFG->bfd = $3; BFD_CHECK($3); }
+ | bgp_proto BFD GRACEFUL ';' { BGP_CFG->bfd = BGP_BFD_GRACEFUL; BFD_CHECK(1); }
  ;
 
 bgp_afi:
@@ -193,9 +193,9 @@ bgp_channel_start: bgp_afi
   const struct bgp_af_desc *desc = bgp_get_af_desc($1);
 
   if (!desc)
-    cf_error("Unknown AFI/SAFI");
+    cf_error(ctx, "Unknown AFI/SAFI");
 
-  this_channel = channel_config_get(&channel_bgp, desc->name, desc->net, this_proto);
+  ctx->this_channel = channel_config_get(ctx, &channel_bgp, desc->name, desc->net, ctx->this_proto);
 
   /* New channel */
   if (!BGP_CC->desc)
@@ -231,14 +231,14 @@ bgp_channel_item:
  | ADD PATHS bool { BGP_CC->add_path = $3 ? BGP_ADD_PATH_FULL : 0; }
  | IGP TABLE rtable {
     if (BGP_CC->desc->no_igp)
-      cf_error("IGP table not allowed here");
+      cf_error(ctx, "IGP table not allowed here");
 
     if ($3->addr_type == NET_IP4)
       BGP_CC->igp_table_ip4 = $3;
     else if ($3->addr_type == NET_IP6)
       BGP_CC->igp_table_ip6 = $3;
     else
-      cf_error("Mismatched IGP table type");
+      cf_error(ctx, "Mismatched IGP table type");
    }
  ;
 
@@ -254,10 +254,10 @@ bgp_channel_opt_list:
 
 bgp_channel_end:
 {
-  if (!this_channel->table)
-    cf_error("Routing table not specified");
+  if (!ctx->this_channel->table)
+    cf_error(ctx, "Routing table not specified");
 
-  this_channel = NULL;
+  ctx->this_channel = NULL;
 };
 
 bgp_proto_channel: bgp_channel_start bgp_channel_opt_list bgp_channel_end;

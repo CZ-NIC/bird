@@ -19,9 +19,9 @@ kern_proto: kern_proto kern_sys_item ';' ;
 kern_sys_item:
    KERNEL TABLE expr {
 	if ($3 && (krt_max_tables == 1))
-	  cf_error("Multiple kernel routing tables not supported");
+	  cf_error(ctx, "Multiple kernel routing tables not supported");
 	if ($3 >= krt_max_tables)
-	  cf_error("Kernel table id must be in range 0-%u", krt_max_tables - 1);
+	  cf_error(ctx, "Kernel table id must be in range 0-%u", krt_max_tables - 1);
 
 	THIS_KRT->sys.table_id = $3;
    }

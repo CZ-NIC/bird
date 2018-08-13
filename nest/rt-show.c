@@ -14,6 +14,7 @@
 #include "nest/protocol.h"
 #include "nest/cli.h"
 #include "nest/iface.h"
+#include "conf/parser.h"
 #include "filter/filter.h"
 
 static void
@@ -275,6 +276,7 @@ done:
 struct rt_show_data_rtable *
 rt_show_add_table(struct rt_show_data *d, rtable *t)
 {
+  struct cf_context *ctx = d->ctx;
   struct rt_show_data_rtable *tab = cfg_allocz(sizeof(struct rt_show_data_rtable));
   tab->table = t;
   add_tail(&(d->tables), &(tab->n));
@@ -344,7 +346,7 @@ rt_show_prepare_tables(struct rt_show_data *d)
       if (!tab->export_channel)
       {
 	if (d->tables_defined_by & RSD_TDB_NMN)
-	  cf_error("No export channel for table %s", tab->table->name);
+	  cf_error(d->ctx, "No export channel for table %s", tab->table->name);
 
 	rem_node(&(tab->n));
 	continue;
@@ -355,7 +357,7 @@ rt_show_prepare_tables(struct rt_show_data *d)
     if (d->addr && (tab->table->addr_type != d->addr->type))
     {
       if (d->tables_defined_by & RSD_TDB_NMN)
-	cf_error("Incompatible type of prefix/ip for table %s", tab->table->name);
+	cf_error(d->ctx, "Incompatible type of prefix/ip for table %s", tab->table->name);
 
       rem_node(&(tab->n));
       continue;
@@ -364,7 +366,7 @@ rt_show_prepare_tables(struct rt_show_data *d)
 
   /* Ensure there is at least one table */
   if (EMPTY_LIST(d->tables))
-    cf_error("No valid tables");
+    cf_error(d->ctx, "No valid tables");
 }
 
 void
@@ -375,7 +377,7 @@ rt_show(struct rt_show_data *d)
 
   /* Filtered routes are neither exported nor have sensible ordering */
   if (d->filtered && (d->export_mode || d->primary_only))
-    cf_error("Incompatible show route options");
+    cf_error(d->ctx, "Incompatible show route options");
 
   rt_show_prepare_tables(d);
 
