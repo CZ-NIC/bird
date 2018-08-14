@@ -164,7 +164,12 @@ if test "$bird_bison_synclines" = yes; then
   M4FLAGS="$M4FLAGS -s"
 fi
 
+if test "$bird_bison_enhanced_error" = yes; then
+  BISONFLAGS="$BISONFLAGS -Dparse.lac=full -Dparse.error=verbose"
+fi
+
 AC_SUBST([M4FLAGS])
+AC_SUBST([BISONFLAGS])
 
 BIRD_CHECK_PROG_FLAVOR_GNU([$M4],
   [],

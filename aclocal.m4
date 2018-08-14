@@ -185,9 +185,11 @@ AC_DEFUN([BIRD_CHECK_BISON_VERSION],
       ;;
     2.*)
       bird_bison_synclines=no
+      bird_bison_enhanced_error=no
       ;;
     3.* | 4.* | 5.* | 6.* | 7.* | 8.* | 9.*)
       bird_bison_synclines=yes
+      bird_bison_enhanced_error=yes
       ;;
     *)
       AC_MSG_ERROR([Couldn't parse Bison version $$1. Call the developers for help.])

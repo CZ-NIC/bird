@@ -20,7 +20,7 @@ $(o)commands.h: | $(s)gen_commands.m4 $(srcdir)/client/cmds.m4
 $(o)cf-parse.tab.h: $(o)cf-parse.tab.c
 
 $(o)cf-parse.tab.c: $(o)cf-parse.y
-	$(BISON) $(BISON_DEBUG) -dv -pcf_ -b $(@:.tab.c=) $<
+	$(BISON) $(BISON_DEBUG) $(BISONFLAGS) -dv -pcf_ -b $(@:.tab.c=) $<
 
 $(o)cf-lex.c: $(s)cf-lex.l
 	$(FLEX) $(FLEX_DEBUG) -s -B -8 -Pcf_ -o$@ $<
