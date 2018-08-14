@@ -12,7 +12,7 @@ BISON_DEBUG=-t
 endif
 
 cf-parse.tab.c: cf-parse.y
-	$(BISON) -bcf-parse -dv -pcf_ $(BISON_DEBUG) cf-parse.y
+	$(BISON) $(BISONFLAGS) -bcf-parse -dv -pcf_ $(BISON_DEBUG) cf-parse.y
 
 cf-parse.y: $(conf-fragments) $(conf-src)/gen_parser.m4
 	$(M4) $(M4FLAGS) -P $(conf-src)/gen_parser.m4 $(conf-fragments) >cf-parse.y
