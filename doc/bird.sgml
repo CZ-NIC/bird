@@ -3656,18 +3656,9 @@ the filters. Export filters control export of routes from the primary table to
 the secondary one, import filters control the opposite direction. Both tables
 must be of the same nettype.
 
-<p>The Pipe protocol may work in the transparent mode mode or in the opaque
-mode. In the transparent mode, the Pipe protocol retransmits all routes from
-one table to the other table, retaining their original source and attributes.
-If import and export filters are set to accept, then both tables would have
-the same content. The transparent mode is the default mode.
-
-<p>In the opaque mode, the Pipe protocol retransmits optimal route from one
-table to the other table in a similar way like other protocols send and receive
-routes. Retransmitted route will have the source set to the Pipe protocol, which
-may limit access to protocol specific route attributes. This mode is mainly for
-compatibility, it is not suggested for new configs. The mode can be changed by
-<tt/mode/ option.
+<p>The Pipe protocol retransmits all routes from one table to the other table,
+retaining their original source and attributes. If import and export filters
+are set to accept, then both tables would have the same content.
 
 <p>The primary use of multiple routing tables and the Pipe protocol is for
 policy routing, where handling of a single packet doesn't depend only on its
