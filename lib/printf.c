@@ -270,6 +270,17 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 				*str++ = ' ';
 			continue;
 
+		case 'V': {
+			const char *vfmt = va_arg(args, const char *);
+			va_list *vargs = va_arg(args, va_list *);
+			int res = bvsnprintf(str, size, vfmt, *vargs);
+			if (res < 0)
+				return -1;
+			str += res;
+			size -= res;
+			continue;
+			}
+
 		case 'p':
 			if (field_width == -1) {
 				field_width = 2*sizeof(void *);
