@@ -270,6 +270,7 @@ else: {
 
 <CLI>(.|\n) {
   BEGIN(INITIAL);
+  yyless(0);
   return CLI_MARKER;
 }
 
