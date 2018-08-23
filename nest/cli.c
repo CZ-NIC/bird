@@ -244,24 +244,12 @@ struct cli_conf_order {
   struct cli *cli;
   const char *pos;
   uint len;
-  int lexer_hack;
 };
 
 static int
 cli_cmd_read_hook(struct conf_order *co, byte *buf, uint max)
 {
   struct cli_conf_order *cco = (struct cli_conf_order *) co;
-
-  if (cco->lexer_hack)
-    {
-      /* Lexer needs at least one character to be read
-       * to transition between states. Feeding a dummy
-       * character which is dropped to make Flex produce
-       * a dummy "CLIENT" token */
-      cco->lexer_hack = 0;
-      buf[0] = '"';
-      return 1;
-    }
 
   if (max > cco->len)
     max = cco->len;
@@ -298,7 +286,6 @@ cli_command(struct cli *c)
       .lp = c->parser_pool,
       .pool = c->pool,
     },
-    .lexer_hack = 1,
     .pos = c->rx_buf,
     .len = strlen(c->rx_buf),
     .cli = c,
