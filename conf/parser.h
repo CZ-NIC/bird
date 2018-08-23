@@ -34,6 +34,9 @@ void cf_free_context(struct cf_context *);
 struct conf_state *cf_new_state(struct cf_context *ctx, const char *name);
 void cf_free_state(struct cf_context *ctx, struct conf_state *cs);
 
+/* Lexer input is a memory buffer */
+void cf_scan_bytes(struct cf_context *, const char *, uint);
+
 /* Init keyword hash is called once from global init */
 void cf_init_kh(void);
 

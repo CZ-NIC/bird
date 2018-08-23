@@ -242,23 +242,7 @@ struct cli *this_cli;
 struct cli_conf_order {
   struct conf_order co;
   struct cli *cli;
-  const char *pos;
-  uint len;
 };
-
-static int
-cli_cmd_read_hook(struct conf_order *co, byte *buf, uint max)
-{
-  struct cli_conf_order *cco = (struct cli_conf_order *) co;
-
-  if (max > cco->len)
-    max = cco->len;
-
-  memcpy(buf, cco->pos, cco->len);
-  cco->pos += max;
-  cco->len -= max;
-  return max;
-}
 
 static void
 cli_cmd_error(struct conf_order *co, const char *msg, va_list args)
@@ -279,15 +263,14 @@ cli_command(struct cli *c)
     .co = {
       .ctx = NULL,
       .state = &state,
-      .cf_read_hook = cli_cmd_read_hook,
+      .buf = c->rx_buf,
+      .len = strlen(c->rx_buf),
       .cf_include = NULL,
       .cf_outclude = NULL,
       .cf_error = cli_cmd_error,
       .lp = c->parser_pool,
       .pool = c->pool,
     },
-    .pos = c->rx_buf,
-    .len = strlen(c->rx_buf),
     .cli = c,
   };
 

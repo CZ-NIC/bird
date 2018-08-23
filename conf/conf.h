@@ -64,6 +64,8 @@ struct conf_order {
   struct conf_state *state;
   struct pool *pool;			/* If set, use this resource pool */
   struct linpool *lp;			/* If set, use this linpool */
+  const char *buf;
+  uint len;
   int (*cf_read_hook)(struct conf_order *order, byte *buf, uint max);
   void (*cf_include)(struct conf_order *order, char *name, uint len);
   int (*cf_outclude)(struct conf_order *order);

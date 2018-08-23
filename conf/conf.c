@@ -171,6 +171,8 @@ cli_parse(struct conf_order *order)
   ctx->order = order;
   ctx->new_config = &cc;
 
+  cf_scan_bytes(ctx, order->buf, order->len);
+
   int ok = 0;
   if (setjmp(ctx->jmpbuf))
     goto done;
