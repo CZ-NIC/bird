@@ -355,6 +355,12 @@ cf_free_state(struct cf_context *ctx, struct conf_state *cs)
   /* The state structure is allocated from linpool, will be auto-freed. */
 }
 
+void
+cf_scan_bytes(struct cf_context *ctx, const char *buf, uint len)
+{
+  yy_scan_bytes(buf, len, ctx->yyscanner);
+}
+
 static void
 cf_include(char *arg, int alen, yyscan_t yyscanner)
 {

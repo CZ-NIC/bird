@@ -157,6 +157,8 @@ cli_parse(struct conf_order *order)
 
   struct cf_context *ctx = cf_new_context(1, order);
 
+  cf_scan_bytes(ctx, order->buf, order->len);
+
   int ok = 0;
   if (setjmp(ctx->jmpbuf))
     goto done;
