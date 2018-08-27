@@ -60,6 +60,7 @@ struct conf_state {
 };
 
 struct conf_order {
+  struct config *new_config;		/* Store the allocated config here */
   struct cf_context *ctx;		/* Internal config context, do not set */
   struct conf_state *state;
   struct pool *pool;			/* If set, use this resource pool */
@@ -82,10 +83,10 @@ extern struct config *config;		/* Currently active configuration */
  * @order provides callbacks to read config files
  *
  * Return value:
- * parsed struct config on success
- * NULL on fail
+ * 1 on success; order->new_config is then set to the parsed config
+ * 0 on fail; order->new_config is undefined
  **/
-struct config *config_parse(struct conf_order *order);
+int config_parse(struct conf_order *order);
 
 /**
  * Parse CLI command
@@ -96,6 +97,8 @@ struct config *config_parse(struct conf_order *order);
  * Return value:
  * 1 on success
  * 0 on fail
+ *
+ * Parsed config is never kept, order->new_config should be zero after return.
  **/
 int cli_parse(struct conf_order *order);
 

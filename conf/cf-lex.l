@@ -338,16 +338,21 @@ cf_hash(byte *c)
   return h;
 }
 
+static void
+cf_init_state(struct cf_context *ctx, struct conf_state *cs)
+{
+  cs->buffer = yy_create_buffer(NULL, YY_BUF_SIZE, ctx->yyscanner);
+}
+
 struct conf_state *
 cf_new_state(struct cf_context *ctx, const char *name)
 {
   struct conf_state *cs = cfg_alloc(sizeof(struct conf_state));
   *cs = (struct conf_state) {
-    .buffer = yy_create_buffer(NULL, YY_BUF_SIZE, ctx->yyscanner),
     .name = cfg_strdup(name),
     .lino = 1,
   };
-
+  cf_init_state(ctx, cs);
   return cs;
 }
 
@@ -403,20 +408,23 @@ cf_init_kh(void)
  * parsing of a new input.
  */
 struct cf_context *
-cf_new_context(int is_cli, struct config *c)
+cf_new_context(int is_cli, struct conf_order *order)
 {
-  struct cf_lex_context *lx = lp_allocz(c->mem, sizeof(struct cf_lex_context));
+  struct cf_lex_context *lx = lp_allocz(order->new_config->mem, sizeof(struct cf_lex_context));
   lx->ctx = (struct cf_context) {
-    .new_config = c,
-    .cfg_mem = c->mem,
+    .new_config = order->new_config,
+    .cfg_mem = order->new_config->mem,
   };
 
-  struct cf_context *ctx = &(lx->ctx);
+  struct cf_context *ctx = order->ctx = &(lx->ctx);
+  ctx->order = order;
+  ctx->new_config = order->new_config;
 
   cfx_lex_init_extra(lx, &(lx->ctx.yyscanner));
-  
-  /* This is not documented in Flex, anyway needed to use BEGIN() here */
   struct yyguts_t *yyg = lx->ctx.yyscanner;
+
+  cf_init_state(ctx, order->state);
+  yy_switch_to_buffer(order->state->buffer, yyg);
 
   if (is_cli)
     BEGIN(CLI);

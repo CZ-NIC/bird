@@ -287,7 +287,10 @@ unix_read_config(char *name, cf_error_type arg_cf_error)
     .ifs = &uifs,
   };
 
-  return config_parse(&uco.co);
+  if (config_parse(&uco.co))
+    return uco.co.new_config;
+  else
+    return NULL;
 }
 
 static void

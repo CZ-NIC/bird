@@ -103,40 +103,30 @@ config_alloc(struct pool *pp, struct linpool *lp)
   return c;
 }
 
-/**
- * config_parse - parse a configuration
- * @c: configuration
- *
- * config_parse() reads input by calling a hook function pointed to
- * by @cf_read_hook and parses it according to the configuration
- * grammar. It also calls all the preconfig and postconfig hooks
- * before, resp. after parsing.
- *
- * Result: 1 if the config has been parsed successfully, 0 if any
- * error has occurred (such as anybody calling cf_error()) and
- * the @err_msg field has been set to the error message.
- */
-struct config *
+int
 config_parse(struct conf_order *order)
 {
   DBG("Parsing configuration named `%s'\n", order->state->name);
 
-  struct config *c = config_alloc(order->pool, order->lp);
+  if (!order->new_config)
+    order->new_config = config_alloc(order->pool, order->lp);
 
-  struct cf_context *ctx = order->ctx = cf_new_context(0, c);
-  ctx->order = order;
-  ctx->new_config = c;
+  struct cf_context *ctx = cf_new_context(0, order);
+  int ret;
 
   if (setjmp(ctx->jmpbuf))
-  {
-    if (order->cf_outclude)
-      while (! order->cf_outclude(order))
-	;
+    {
+      if (order->cf_outclude)
+	while (! order->cf_outclude(order))
+	  ;
 
-    config_free(ctx->new_config);
-    cf_free_context(ctx);
-    return NULL;
-  }
+      ret = 0;
+
+      config_free(ctx->new_config);
+      order->new_config = NULL;
+
+      goto cleanup;
+    }
 
   sysdep_preconfig(ctx);
   protos_preconfig(ctx->new_config);
@@ -146,18 +136,14 @@ config_parse(struct conf_order *order)
   if (EMPTY_LIST((ctx->new_config)->protos))
     cf_error(ctx, "No protocol is specified in the config file");
 
-  c = ctx->new_config;
+  ret = 1;
+
+cleanup:
   cf_free_context(ctx);
-  return c;
+  order->ctx = NULL;
+  return ret;
 }
 
-/**
- * cli_parse - parse a CLI command
- * @c: temporary config structure
- *
- * cli_parse() is similar to config_parse(), but instead of a configuration,
- * it parses a CLI command. See the CLI module for more information.
- */
 int
 cli_parse(struct conf_order *order)
 {
@@ -167,9 +153,9 @@ cli_parse(struct conf_order *order)
   cc.pool = rp_new(order->pool ?: &root_pool, "CLI Dummy Config");
   cc.mem = order->lp ?: lp_new_default(cc.pool);
 
-  struct cf_context *ctx = order->ctx = cf_new_context(1, &cc);
-  ctx->order = order;
-  ctx->new_config = &cc;
+  order->new_config = &cc;
+
+  struct cf_context *ctx = cf_new_context(1, order);
 
   cf_scan_bytes(ctx, order->buf, order->len);
 
@@ -181,8 +167,10 @@ cli_parse(struct conf_order *order)
   ok = 1;
 
 done:
-  config_free(&cc);
   cf_free_context(ctx);
+  config_free(&cc);
+  order->new_config = NULL;
+  order->ctx = NULL;
   return ok;
 }
 
