@@ -11,7 +11,7 @@ BISON_DEBUG=-t
 endif
 
 $(conf-y-targets): $(s)confbase.Y $(s)flowspec.Y
-	$(M4) -P $| $^ >$@
+	$(M4) $(M4FLAGS) -P $| $^ >$@
 
 $(o)cf-parse.y: | $(s)gen_parser.m4
 $(o)keywords.h: | $(s)gen_keywords.m4
@@ -20,7 +20,7 @@ $(o)commands.h: | $(s)gen_commands.m4 $(srcdir)/client/cmds.m4
 $(o)cf-parse.tab.h: $(o)cf-parse.tab.c
 
 $(o)cf-parse.tab.c: $(o)cf-parse.y
-	$(BISON) $(BISON_DEBUG) -dv -pcf_ -b $(@:.tab.c=) $<
+	$(BISON) $(BISON_DEBUG) $(BISONFLAGS) -dv -pcf_ -b $(@:.tab.c=) $<
 
 $(o)cf-lex.c: $(s)cf-lex.l
 	$(FLEX) $(FLEX_DEBUG) -s -B -8 -Pcf_ -o$@ $<

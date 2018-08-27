@@ -36,6 +36,12 @@ AC_ARG_ENABLE([libssh],
   [enable_libssh=try]
 )
 
+AC_ARG_ENABLE([mpls-kernel],
+  [AS_HELP_STRING([--enable-mpls-kernel], [enable MPLS support in kernel protocol @<:@try@:>@])],
+  [],
+  [enable_mpls_kernel=try]
+)
+
 AC_ARG_WITH([protocols],
   [AS_HELP_STRING([--with-protocols=LIST], [include specified routing protocols @<:@all@:>@])],
   [],
@@ -151,6 +157,20 @@ test -z "$FLEX"	 && AC_MSG_ERROR([Flex is missing.])
 test -z "$BISON" && AC_MSG_ERROR([Bison is missing.])
 test -z "$M4"	 && AC_MSG_ERROR([M4 is missing.])
 
+AC_MSG_CHECKING([bison version])
+BIRD_CHECK_BISON_VERSION(BISON_VERSION)
+AC_MSG_RESULT([$BISON_VERSION])
+if test "$bird_bison_synclines" = yes; then
+  M4FLAGS="$M4FLAGS -s"
+fi
+
+if test "$bird_bison_enhanced_error" = yes; then
+  BISONFLAGS="$BISONFLAGS -Dparse.lac=full -Dparse.error=verbose"
+fi
+
+AC_SUBST([M4FLAGS])
+AC_SUBST([BISONFLAGS])
+
 BIRD_CHECK_PROG_FLAVOR_GNU([$M4],
   [],
   [AC_MSG_ERROR([Provided M4 is not GNU M4.])]
@@ -175,6 +195,8 @@ else
       ;;
     freebsd*)
       sysdesc=bsd
+      CPPFLAGS="$CPPFLAGS -I/usr/local/include"
+      LDFLAGS="$LDFLAGS -L/usr/local/lib"
       ;;
     kfreebsd*)
       sysdesc=bsd
@@ -239,6 +261,20 @@ if test "$enable_libssh" != no ; then
   fi
 fi
 
+if test "$enable_mpls_kernel" != no ; then
+  BIRD_CHECK_MPLS_KERNEL
+
+  if test "$bird_cv_mpls_kernel" = yes ; then
+    AC_DEFINE([HAVE_MPLS_KERNEL], [1], [Define to 1 if kernel is MPLS capable])
+  elif test "$enable_mpls_kernel" = yes ; then
+    AC_MSG_ERROR([Kernel MPLS support not found.])
+  fi
+
+  if test "$enable_mpls_kernel" = try ; then
+    enable_mpls_kernel="$bird_cv_mpls_kernel"
+  fi
+fi
+
 all_protocols="$proto_bfd babel bgp ospf pipe radv rip $proto_rpki static"
 
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
@@ -287,23 +323,25 @@ esac
 AC_CHECK_HEADERS_ONCE([alloca.h syslog.h])
 AC_CHECK_MEMBERS([struct sockaddr.sa_len], [], [], [#include <sys/socket.h>])
 
-AC_CHECK_HEADERS([linux/lwtunnel.h],
-  [AC_DEFINE([HAVE_LWTUNNEL], [1], [Define to 1 if you have the <linux/lwtunnel.h> header file.])],
-  [],
-  [] dnl Force new AC_CHECK_HEADER semantics
-)
-
-AC_CHECK_MEMBERS([struct rtvia.rtvia_family],
-  [AC_DEFINE([HAVE_STRUCT_RTVIA], [1], [Define to 1 if you have rtvia structure.])],
-  [],
-  [#include <linux/rtnetlink.h>]
-)
-
 AC_C_BIGENDIAN(
   [AC_DEFINE([CPU_BIG_ENDIAN], [1], [Define to 1 if cpu is big endian])],
   [AC_DEFINE([CPU_LITTLE_ENDIAN], [1], [Define to 1 if cpu is little endian])],
   [AC_MSG_ERROR([Cannot determine CPU endianity.])]
 )
+
+BIRD_CHECK_ANDROID_GLOB
+if test "$bird_cv_lib_glob" = no ; then
+  AC_MSG_ERROR([glob.h not found.])
+elif test "$bird_cv_lib_glob" != yes ; then
+  LIBS="$LIBS $bird_cv_lib_glob"
+fi
+
+BIRD_CHECK_ANDROID_LOG
+if test "$bird_cv_lib_log" = no ; then
+  AC_MSG_ERROR([don't know how to link syslog.])
+elif test "$bird_cv_lib_log" != yes ; then
+  LIBS="$LIBS $bird_cv_lib_log"
+fi
 
 if test "$enable_debug" = yes ; then
   AC_DEFINE([DEBUGGING], [1], [Define to 1 if debugging is enabled])
@@ -358,12 +396,6 @@ if test "$enable_client" = yes ; then
     [$TINFO_LIBS]
   )
 
-  AC_SEARCH_LIBS([add_history], [history readline],
-    [HISTORY_LIBS="$LIBS"; LIBS=""],
-    [AC_MSG_ERROR([The client requires GNU Readline library. Either install the library or use --disable-client to compile without the client.])],
-    [$TINFO_LIBS]
-  )
-
   AC_CHECK_LIB([readline], [rl_crlf],
     [AC_DEFINE([HAVE_RL_CRLF], [1], [Define to 1 if you have rl_crlf()])],
     [],
@@ -377,7 +409,7 @@ if test "$enable_client" = yes ; then
   )
 
   LIBS="$BASE_LIBS"
-  CLIENT_LIBS="$HISTORY_LIBS $READLINE_LIBS $TINFO_LIBS"
+  CLIENT_LIBS="$READLINE_LIBS $TINFO_LIBS"
 fi
 AC_SUBST([CLIENT])
 AC_SUBST([CLIENT_LIBS])
@@ -396,6 +428,7 @@ AC_MSG_RESULT([        System configuration:	$sysdesc])
 AC_MSG_RESULT([        Debugging:		$enable_debug])
 AC_MSG_RESULT([        POSIX threads:		$enable_pthreads])
 AC_MSG_RESULT([        Routing protocols:	$protocols])
+AC_MSG_RESULT([        Kernel MPLS support:	$enable_mpls_kernel])
 AC_MSG_RESULT([        Client:			$enable_client])
 
 rm -f $objdir/.*-stamp

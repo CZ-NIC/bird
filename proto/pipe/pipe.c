@@ -44,7 +44,7 @@
 #include "pipe.h"
 
 static void
-pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *old, ea_list *attrs)
+pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *old)
 {
   struct pipe_proto *p = (void *) P;
   struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
@@ -69,7 +69,6 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
       memcpy(a, new->attrs, rta_size(new->attrs));
 
       a->aflags = 0;
-      a->eattrs = attrs;
       a->hostentry = NULL;
       e = rte_get_temp(a);
       e->pflags = 0;
@@ -78,6 +77,12 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
       memcpy(&(e->u), &(new->u), sizeof(e->u));
       e->pref = new->pref;
       e->pflags = new->pflags;
+
+#ifdef CONFIG_BGP
+      /* Hack to cleanup cached value */
+      if (e->attrs->src->proto->proto == &proto_bgp)
+	e->u.bgp.stale = -1;
+#endif
 
       src = a->src;
     }
@@ -93,7 +98,7 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
 }
 
 static int
-pipe_import_control(struct proto *P, rte **ee, ea_list **ea UNUSED, struct linpool *p UNUSED)
+pipe_import_control(struct proto *P, rte **ee, struct linpool *p UNUSED)
 {
   struct proto *pp = (*ee)->sender->proto;
 
@@ -249,6 +254,8 @@ pipe_show_stats(struct pipe_proto *p)
 	  s2->imp_withdraws_ignored, s2->imp_withdraws_accepted);
 }
 
+static const char *pipe_feed_state[] = { [ES_DOWN] = "down", [ES_FEEDING] = "feed", [ES_READY] = "up" };
+
 static void
 pipe_show_proto_info(struct proto *P)
 {
@@ -257,6 +264,8 @@ pipe_show_proto_info(struct proto *P)
   cli_msg(-1006, "  Channel %s", "main");
   cli_msg(-1006, "    Table:          %s", p->pri->table->name);
   cli_msg(-1006, "    Peer table:     %s", p->sec->table->name);
+  cli_msg(-1006, "    Import state:   %s", pipe_feed_state[p->sec->export_state]);
+  cli_msg(-1006, "    Export state:   %s", pipe_feed_state[p->pri->export_state]);
   cli_msg(-1006, "    Import filter:  %s", filter_name(p->sec->out_filter));
   cli_msg(-1006, "    Export filter:  %s", filter_name(p->pri->out_filter));
 
@@ -271,6 +280,7 @@ pipe_show_proto_info(struct proto *P)
 struct protocol proto_pipe = {
   .name =		"Pipe",
   .template =		"pipe%d",
+  .class =		PROTOCOL_PIPE,
   .proto_size =		sizeof(struct pipe_proto),
   .config_size =	sizeof(struct pipe_config),
   .postconfig =		pipe_postconfig,

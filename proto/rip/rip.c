@@ -298,7 +298,7 @@ rip_withdraw_rte(struct rip_proto *p, net_addr *n, struct rip_neighbor *from)
  */
 static void
 rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, struct rte *new,
-	      struct rte *old UNUSED, struct ea_list *attrs)
+	      struct rte *old UNUSED)
 {
   struct rip_proto *p = (struct rip_proto *) P;
   struct rip_entry *en;
@@ -307,8 +307,8 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
   if (new)
   {
     /* Update */
-    u32 rt_metric = ea_get_int(attrs, EA_RIP_METRIC, 1);
-    u32 rt_tag = ea_get_int(attrs, EA_RIP_TAG, 0);
+    u32 rt_metric = ea_get_int(new->attrs->eattrs, EA_RIP_METRIC, 1);
+    u32 rt_tag = ea_get_int(new->attrs->eattrs, EA_RIP_TAG, 0);
 
     if (rt_metric > p->infinity)
     {
@@ -364,7 +364,7 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
   /* Activate triggered updates */
   if (en->metric != old_metric)
   {
-    en->changed = now;
+    en->changed = current_time();
     rip_trigger_update(p);
   }
 }
@@ -377,7 +377,7 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
 struct rip_neighbor *
 rip_get_neighbor(struct rip_proto *p, ip_addr *a, struct rip_iface *ifa)
 {
-  neighbor *nbr = neigh_find2(&p->p, a, ifa->iface, 0);
+  neighbor *nbr = neigh_find(&p->p, *a, ifa->iface, 0);
 
   if (!nbr || (nbr->scope == SCOPE_HOST) || !rip_iface_link_up(ifa))
     return NULL;
@@ -506,10 +506,10 @@ rip_iface_start(struct rip_iface *ifa)
 
   TRACE(D_EVENTS, "Starting interface %s", ifa->iface->name);
 
-  ifa->next_regular = now + (random() % ifa->cf->update_time) + 1;
-  ifa->next_triggered = now;	/* Available immediately */
-  ifa->want_triggered = 1;	/* All routes in triggered update */
-  tm_start(ifa->timer, 1);	/* Or 100 ms */
+  ifa->next_regular = current_time() + (random() % ifa->cf->update_time) + 100 MS;
+  ifa->next_triggered = current_time();	/* Available immediately */
+  ifa->want_triggered = 1;		/* All routes in triggered update */
+  tm_start(ifa->timer, 100 MS);
   ifa->up = 1;
 
   if (!ifa->cf->passive)
@@ -630,13 +630,19 @@ rip_add_iface(struct rip_proto *p, struct iface *iface, struct rip_iface_config 
   else if (ic->mode == RIP_IM_MULTICAST)
     ifa->addr = rip_is_v2(p) ? IP4_RIP_ROUTERS : IP6_RIP_ROUTERS;
   else /* Broadcast */
-    ifa->addr = iface->addr->brd;
+    ifa->addr = iface->addr4->brd;
+  /*
+   * The above is just a workaround for BSD as it can't send broadcasts
+   * to 255.255.255.255. BSD systems need the network broadcast address instead.
+   *
+   * TODO: move this to sysdep code
+   */
 
   init_list(&ifa->neigh_list);
 
   add_tail(&p->iface_list, NODE ifa);
 
-  ifa->timer = tm_new_set(p->p.pool, rip_iface_timer, ifa, 0, 0);
+  ifa->timer = tm_new_init(p->p.pool, rip_iface_timer, ifa, 0, 0);
 
   struct object_lock *lock = olock_new(p->p.pool);
   lock->type = OBJLOCK_UDP;
@@ -684,8 +690,8 @@ rip_reconfigure_iface(struct rip_proto *p, struct rip_iface *ifa, struct rip_ifa
 
   rip_iface_update_buffers(ifa);
 
-  if (ifa->next_regular > (now + (bird_clock_t) new->update_time))
-    ifa->next_regular = now + (random() % new->update_time) + 1;
+  if (ifa->next_regular > (current_time() + new->update_time))
+    ifa->next_regular = current_time() + (random() % new->update_time) + 100 MS;
 
   if (new->check_link != old->check_link)
     rip_iface_update_state(ifa);
@@ -706,7 +712,11 @@ rip_reconfigure_ifaces(struct rip_proto *p, struct rip_config *cf)
 
   WALK_LIST(iface, iface_list)
   {
-    if (! (iface->flags & IF_UP))
+    if (!(iface->flags & IF_UP))
+      continue;
+
+    /* Ignore ifaces without appropriate address */
+    if (rip_is_v2(p) ? !iface->addr4 : !iface->llv6)
       continue;
 
     struct rip_iface *ifa = rip_find_iface(p, iface);
@@ -743,6 +753,10 @@ rip_if_notify(struct proto *P, unsigned flags, struct iface *iface)
   if (flags & IF_CHANGE_UP)
   {
     struct rip_iface_config *ic = (void *) iface_patt_find(&cf->patt_list, iface, NULL);
+
+    /* Ignore ifaces without appropriate address */
+    if (rip_is_v2(p) ? !iface->addr4 : !iface->llv6)
+      return;
 
     if (ic)
       rip_add_iface(p, iface, ic);
@@ -802,8 +816,9 @@ rip_timer(timer *t)
   struct rip_iface *ifa;
   struct rip_neighbor *n, *nn;
   struct fib_iterator fit;
-  bird_clock_t next = now + MIN(cf->min_timeout_time, cf->max_garbage_time);
-  bird_clock_t expires = 0;
+  btime now_ = current_time();
+  btime next = now_ + MIN(cf->min_timeout_time, cf->max_garbage_time);
+  btime expires = 0;
 
   TRACE(D_EVENTS, "Main timer fired");
 
@@ -818,7 +833,7 @@ rip_timer(timer *t)
     /* Checking received routes for timeout and for dead neighbors */
     for (rp = &en->routes; rt = *rp; /* rp = &rt->next */)
     {
-      if (!rip_valid_rte(rt) || (rt->expires <= now))
+      if (!rip_valid_rte(rt) || (rt->expires <= now_))
       {
 	rip_remove_rte(p, rp);
 	changed = 1;
@@ -848,7 +863,7 @@ rip_timer(timer *t)
     {
       expires = en->changed + cf->max_garbage_time;
 
-      if (expires <= now)
+      if (expires <= now_)
       {
 	// TRACE(D_EVENTS, "entry is too old: %N", en->n.addr);
 	en->valid = 0;
@@ -876,20 +891,20 @@ rip_timer(timer *t)
       {
 	expires = n->last_seen + n->ifa->cf->timeout_time;
 
-	if (expires <= now)
+	if (expires <= now_)
 	  rip_remove_neighbor(p, n);
 	else
 	  next = MIN(next, expires);
       }
 
-  tm_start(p->timer, MAX(next - now, 1));
+  tm_start(p->timer, MAX(next - now_, 100 MS));
 }
 
 static inline void
 rip_kick_timer(struct rip_proto *p)
 {
-  if (p->timer->expires > (now + 1))
-    tm_start(p->timer, 1);	/* Or 100 ms */
+  if (p->timer->expires > (current_time() + 100 MS))
+    tm_start(p->timer, 100 MS);
 }
 
 /**
@@ -907,7 +922,8 @@ rip_iface_timer(timer *t)
 {
   struct rip_iface *ifa = t->data;
   struct rip_proto *p = ifa->rip;
-  bird_clock_t period = ifa->cf->update_time;
+  btime now_ = current_time();
+  btime period = ifa->cf->update_time;
 
   if (ifa->cf->passive)
     return;
@@ -916,40 +932,40 @@ rip_iface_timer(timer *t)
 
   if (ifa->tx_active)
   {
-    if (now < (ifa->next_regular + period))
-      { tm_start(ifa->timer, 1); return; }
+    if (now_ < (ifa->next_regular + period))
+    { tm_start(ifa->timer, 100 MS); return; }
 
     /* We are too late, reset is done by rip_send_table() */
     log(L_WARN "%s: Too slow update on %s, resetting", p->p.name, ifa->iface->name);
   }
 
-  if (now >= ifa->next_regular)
+  if (now_ >= ifa->next_regular)
   {
     /* Send regular update, set timer for next period (or following one if necessay) */
     TRACE(D_EVENTS, "Sending regular updates for %s", ifa->iface->name);
     rip_send_table(p, ifa, ifa->addr, 0);
-    ifa->next_regular += period * (1 + ((now - ifa->next_regular) / period));
+    ifa->next_regular += period * (1 + ((now_ - ifa->next_regular) / period));
     ifa->want_triggered = 0;
     p->triggered = 0;
   }
-  else if (ifa->want_triggered && (now >= ifa->next_triggered))
+  else if (ifa->want_triggered && (now_ >= ifa->next_triggered))
   {
     /* Send triggered update, enforce interval between triggered updates */
     TRACE(D_EVENTS, "Sending triggered updates for %s", ifa->iface->name);
     rip_send_table(p, ifa, ifa->addr, ifa->want_triggered);
-    ifa->next_triggered = now + MIN(5, period / 2 + 1);
+    ifa->next_triggered = now_ + MIN(5 S, period / 2);
     ifa->want_triggered = 0;
     p->triggered = 0;
   }
 
-  tm_start(ifa->timer, ifa->want_triggered ? 1 : (ifa->next_regular - now));
+  tm_start(ifa->timer, ifa->want_triggered ? (1 S) : (ifa->next_regular - now_));
 }
 
 static inline void
 rip_iface_kick_timer(struct rip_iface *ifa)
 {
-  if (ifa->timer->expires > (now + 1))
-    tm_start(ifa->timer, 1);	/* Or 100 ms */
+  if (ifa->timer->expires > (current_time() + 100 MS))
+    tm_start(ifa->timer, 100 MS);
 }
 
 static void
@@ -970,7 +986,7 @@ rip_trigger_update(struct rip_proto *p)
       continue;
 
     TRACE(D_EVENTS, "Scheduling triggered updates for %s", ifa->iface->name);
-    ifa->want_triggered = now;
+    ifa->want_triggered = current_time();
     rip_iface_kick_timer(ifa);
   }
 
@@ -1004,16 +1020,6 @@ rip_prepare_attrs(struct linpool *pool, ea_list *next, u8 metric, u16 tag)
   return l;
 }
 
-static int
-rip_import_control(struct proto *P UNUSED, struct rte **rt, struct ea_list **attrs, struct linpool *pool)
-{
-  /* Prepare attributes with initial values */
-  if ((*rt)->attrs->source != RTS_RIP)
-    *attrs = rip_prepare_attrs(pool, *attrs, 1, 0);
-
-  return 0;
-}
-
 static void
 rip_reload_routes(struct channel *C)
 {
@@ -1034,10 +1040,10 @@ rip_make_tmp_attrs(struct rte *rt, struct linpool *pool)
 }
 
 static void
-rip_store_tmp_attrs(struct rte *rt, struct ea_list *attrs)
+rip_store_tmp_attrs(struct rte *rt)
 {
-  rt->u.rip.metric = ea_get_int(attrs, EA_RIP_METRIC, 1);
-  rt->u.rip.tag = ea_get_int(attrs, EA_RIP_TAG, 0);
+  rt->u.rip.metric = ea_get_int(rt->attrs->eattrs, EA_RIP_METRIC, 1);
+  rt->u.rip.tag = ea_get_int(rt->attrs->eattrs, EA_RIP_TAG, 0);
 }
 
 static int
@@ -1062,7 +1068,7 @@ rip_postconfig(struct proto_config *CF)
 
   /* Define default channel */
   if (EMPTY_LIST(CF->channels))
-    channel_config_new(NULL, CF->net_type, CF);
+    channel_config_new(NULL, net_label[CF->net_type], CF->net_type, CF);
 }
 
 static struct proto *
@@ -1075,7 +1081,6 @@ rip_init(struct proto_config *CF)
   P->if_notify = rip_if_notify;
   P->rt_notify = rip_rt_notify;
   P->neigh_notify = rip_neigh_notify;
-  P->import_control = rip_import_control;
   P->reload_routes = rip_reload_routes;
   P->make_tmp_attrs = rip_make_tmp_attrs;
   P->store_tmp_attrs = rip_store_tmp_attrs;
@@ -1095,7 +1100,7 @@ rip_start(struct proto *P)
   fib_init(&p->rtable, P->pool, cf->rip2 ? NET_IP4 : NET_IP6,
 	   sizeof(struct rip_entry), OFFSETOF(struct rip_entry, n), 0, NULL);
   p->rte_slab = sl_new(P->pool, sizeof(struct rip_rte));
-  p->timer = tm_new_set(P->pool, rip_timer, p, 0, 0);
+  p->timer = tm_new_init(P->pool, rip_timer, p, 0, 0);
 
   p->rip2 = cf->rip2;
   p->ecmp = cf->ecmp;
@@ -1139,7 +1144,7 @@ rip_reconfigure(struct proto *P, struct proto_config *CF)
 }
 
 static void
-rip_get_route_info(rte *rte, byte *buf, ea_list *attrs UNUSED)
+rip_get_route_info(rte *rte, byte *buf)
 {
   buf += bsprintf(buf, " (%d/%d)", rte->pref, rte->u.rip.metric);
 
@@ -1180,7 +1185,7 @@ rip_show_interfaces(struct proto *P, char *iff)
   }
 
   cli_msg(-1021, "%s:", p->p.name);
-  cli_msg(-1021, "%-10s %-6s %6s %6s %6s",
+  cli_msg(-1021, "%-10s %-6s %6s %6s %7s",
 	  "Interface", "State", "Metric", "Nbrs", "Timer");
 
   WALK_LIST(ifa, p->iface_list)
@@ -1193,8 +1198,9 @@ rip_show_interfaces(struct proto *P, char *iff)
       if (n->last_seen)
 	nbrs++;
 
-    int timer = MAX(ifa->next_regular - now, 0);
-    cli_msg(-1021, "%-10s %-6s %6u %6u %6u",
+    btime now_ = current_time();
+    btime timer = (ifa->next_regular > now_) ? (ifa->next_regular - now_) : 0;
+    cli_msg(-1021, "%-10s %-6s %6u %6u %7t",
 	    ifa->iface->name, (ifa->up ? "Up" : "Down"), ifa->cf->metric, nbrs, timer);
   }
 
@@ -1216,7 +1222,7 @@ rip_show_neighbors(struct proto *P, char *iff)
   }
 
   cli_msg(-1022, "%s:", p->p.name);
-  cli_msg(-1022, "%-25s %-10s %6s %6s %6s",
+  cli_msg(-1022, "%-25s %-10s %6s %6s %7s",
 	  "IP address", "Interface", "Metric", "Routes", "Seen");
 
   WALK_LIST(ifa, p->iface_list)
@@ -1229,8 +1235,8 @@ rip_show_neighbors(struct proto *P, char *iff)
       if (!n->last_seen)
 	continue;
 
-      int timer = now - n->last_seen;
-      cli_msg(-1022, "%-25I %-10s %6u %6u %6u",
+      btime timer = current_time() - n->last_seen;
+      cli_msg(-1022, "%-25I %-10s %6u %6u %7t",
 	      n->nbr->addr, ifa->iface->name, ifa->cf->metric, n->uc, timer);
     }
   }
@@ -1248,9 +1254,9 @@ rip_dump(struct proto *P)
   i = 0;
   FIB_WALK(&p->rtable, struct rip_entry, en)
   {
-    debug("RIP: entry #%d: %N via %I dev %s valid %d metric %d age %d s\n",
+    debug("RIP: entry #%d: %N via %I dev %s valid %d metric %d age %t\n",
 	  i++, en->n.addr, en->next_hop, en->iface->name,
-	  en->valid, en->metric, now - en->changed);
+	  en->valid, en->metric, current_time() - en->changed);
   }
   FIB_WALK_END;
 
@@ -1267,7 +1273,7 @@ rip_dump(struct proto *P)
 struct protocol proto_rip = {
   .name =		"RIP",
   .template =		"rip%d",
-  .attr_class =		EAP_RIP,
+  .class =		PROTOCOL_RIP,
   .preference =		DEF_PREF_RIP,
   .channel_mask =	NB_IP,
   .proto_size =		sizeof(struct rip_proto),

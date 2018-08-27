@@ -28,6 +28,7 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/event.h"
+#include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/route.h"
 #include "nest/protocol.h"
@@ -57,7 +58,7 @@ async_dump(void)
 
   rdump(&root_pool);
   sk_dump_all();
-  tm_dump_all();
+  // XXXX tm_dump_all();
   if_dump_all();
   neigh_dump_all();
   rta_dump_all();
@@ -132,7 +133,7 @@ read_iproute_table(char *file, char *prefix, int max)
 
     if (*p == '#' || *p == '\n' || *p == 0)
       continue;
-   
+
     if (sscanf(p, "0x%x %s\n", &val, name) != 2 &&
 	sscanf(p, "0x%x %s #", &val, name) != 2 &&
 	sscanf(p, "%d %s\n", &val, name) != 2 &&
@@ -303,7 +304,7 @@ cmd_reconfig_undo_notify(void)
 }
 
 void
-cmd_reconfig(char *name, int type, int timeout)
+cmd_reconfig(char *name, int type, uint timeout)
 {
   if (cli_access_restricted())
     return;
@@ -427,7 +428,7 @@ write_pid_file(void)
   rv = ftruncate(pid_fd, 0);
   if (rv < 0)
     die("fruncate: %m");
-    
+
   rv = write(pid_fd, ps, pl);
   if(rv < 0)
     die("write: %m");
@@ -725,7 +726,9 @@ main(int argc, char **argv)
     log_init_debug("");
   log_switch(debug_flag, NULL, NULL);
 
+  net_init();
   resource_init();
+  timer_init();
   olock_init();
   io_init();
   rt_init();

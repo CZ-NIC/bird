@@ -28,13 +28,20 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	BGP_CLUSTER_LIST, IGP, TABLE, GATEWAY, DIRECT, RECURSIVE, MED, TTL,
 	SECURITY, DETERMINISTIC, SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX,
 	GRACEFUL, RESTART, AWARE, CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY,
-	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6)
+	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6, LONG,
+	LIVED, STALE)
 
 %type <i32> bgp_afi
 
+CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
+	CONFIGURATION, CHANGE, DECONFIGURED, CONNECTION, REJECTED, COLLISION,
+	OUT, OF, RESOURCES)
+
+%type<i> bgp_cease_mask bgp_cease_list bgp_cease_flag
+
 CF_GRAMMAR
 
-CF_ADDTO(proto, bgp_proto '}' )
+proto: bgp_proto '}'  ;
 
 bgp_proto_start: proto_start BGP {
      this_proto = proto_config_new(&proto_bgp, $1);
@@ -57,7 +64,10 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->default_local_pref = 100;
      BGP_CFG->gr_mode = BGP_GR_AWARE;
      BGP_CFG->gr_time = 120;
+     BGP_CFG->llgr_mode = -1;
+     BGP_CFG->llgr_time = 3600;
      BGP_CFG->setkey = 1;
+     BGP_CFG->check_link = -1;
    }
  ;
 
@@ -71,6 +81,29 @@ bgp_nbr_opts:
    /* empty */
  | bgp_nbr_opts PORT expr { BGP_CFG->remote_port = $3; if (($3<1) || ($3>65535)) cf_error("Invalid port number"); }
  | bgp_nbr_opts AS expr { BGP_CFG->remote_as = $3; }
+ ;
+
+bgp_cease_mask:
+   /* true -> all except connection collision */
+   bool { $$ = $1 ? ~(1 << 7) : 0; }
+ | '{' bgp_cease_list '}' { $$ = $2; }
+ ;
+
+bgp_cease_list:
+   bgp_cease_flag
+ | bgp_cease_list ',' bgp_cease_flag { $$ = $1 | $3; }
+ ;
+
+bgp_cease_flag:
+   CEASE			{ $$ = 1 << 0; }
+ | PREFIX LIMIT HIT		{ $$ = 1 << 1; }
+ | ADMINISTRATIVE SHUTDOWN	{ $$ = 1 << 2; }
+ | PEER DECONFIGURED		{ $$ = 1 << 3; }
+ | ADMINISTRATIVE RESET		{ $$ = 1 << 4; }
+ | CONNECTION REJECTED		{ $$ = 1 << 5; }
+ | CONFIGURATION CHANGE		{ $$ = 1 << 6; }
+ | CONNECTION COLLISION		{ $$ = 1 << 7; }
+ | OUT OF RESOURCES		{ $$ = 1 << 8; }
  ;
 
 bgp_proto:
@@ -116,6 +149,7 @@ bgp_proto:
  | bgp_proto ERROR FORGET TIME expr ';' { BGP_CFG->error_amnesia_time = $5; }
  | bgp_proto ERROR WAIT TIME expr ',' expr ';' { BGP_CFG->error_delay_time_min = $5; BGP_CFG->error_delay_time_max = $7; }
  | bgp_proto DISABLE AFTER ERROR bool ';' { BGP_CFG->disable_after_error = $5; }
+ | bgp_proto DISABLE AFTER CEASE bgp_cease_mask ';' { BGP_CFG->disable_after_cease = $5; }
  | bgp_proto ENABLE ROUTE REFRESH bool ';' { BGP_CFG->enable_refresh = $5; }
  | bgp_proto ENABLE AS4 bool ';' { BGP_CFG->enable_as4 = $4; }
  | bgp_proto ENABLE EXTENDED MESSAGES bool ';' { BGP_CFG->enable_extended_messages = $5; }
@@ -130,9 +164,13 @@ bgp_proto:
  | bgp_proto GRACEFUL RESTART bool ';' { BGP_CFG->gr_mode = $4; }
  | bgp_proto GRACEFUL RESTART AWARE ';' { BGP_CFG->gr_mode = BGP_GR_AWARE; }
  | bgp_proto GRACEFUL RESTART TIME expr ';' { BGP_CFG->gr_time = $5; }
+ | bgp_proto LONG LIVED GRACEFUL RESTART bool ';' { BGP_CFG->llgr_mode = $6; }
+ | bgp_proto LONG LIVED GRACEFUL RESTART AWARE ';' { BGP_CFG->llgr_mode = BGP_LLGR_AWARE; }
+ | bgp_proto LONG LIVED STALE TIME expr ';' { BGP_CFG->llgr_time = $6; }
  | bgp_proto TTL SECURITY bool ';' { BGP_CFG->ttl_security = $4; }
  | bgp_proto CHECK LINK bool ';' { BGP_CFG->check_link = $4; }
  | bgp_proto BFD bool ';' { BGP_CFG->bfd = $3; cf_check_bfd($3); }
+ | bgp_proto BFD GRACEFUL ';' { BGP_CFG->bfd = BGP_BFD_GRACEFUL; cf_check_bfd(1); }
  ;
 
 bgp_afi:
@@ -157,12 +195,20 @@ bgp_channel_start: bgp_afi
   if (!desc)
     cf_error("Unknown AFI/SAFI");
 
-  this_channel = channel_config_new(&channel_bgp, desc->net, this_proto);
-  BGP_CC->c.name = desc->name;
-  BGP_CC->c.ra_mode = RA_UNDEF;
-  BGP_CC->afi = $1;
-  BGP_CC->desc = desc;
-  BGP_CC->gr_able = 0xff;	/* undefined */
+  this_channel = channel_config_get(&channel_bgp, desc->name, desc->net, this_proto);
+
+  /* New channel */
+  if (!BGP_CC->desc)
+  {
+    BGP_CC->c.in_filter = FILTER_UNDEF;
+    BGP_CC->c.out_filter = FILTER_UNDEF;
+    BGP_CC->c.ra_mode = RA_UNDEF;
+    BGP_CC->afi = $1;
+    BGP_CC->desc = desc;
+    BGP_CC->gr_able = 0xff;	/* undefined */
+    BGP_CC->llgr_able = 0xff;	/* undefined */
+    BGP_CC->llgr_time = ~0U;	/* undefined */
+  }
 };
 
 bgp_channel_item:
@@ -177,6 +223,8 @@ bgp_channel_item:
  | GATEWAY RECURSIVE { BGP_CC->gw_mode = GW_RECURSIVE; }
  | SECONDARY bool { BGP_CC->secondary = $2; }
  | GRACEFUL RESTART bool { BGP_CC->gr_able = $3; }
+ | LONG LIVED GRACEFUL RESTART bool { BGP_CC->llgr_able = $5; }
+ | LONG LIVED STALE TIME expr { BGP_CC->llgr_time = $5; }
  | EXTENDED NEXT HOP bool { BGP_CC->ext_next_hop = $4; }
  | ADD PATHS RX { BGP_CC->add_path = BGP_ADD_PATH_RX; }
  | ADD PATHS TX { BGP_CC->add_path = BGP_ADD_PATH_TX; }
@@ -215,30 +263,30 @@ bgp_channel_end:
 bgp_proto_channel: bgp_channel_start bgp_channel_opt_list bgp_channel_end;
 
 
-CF_ADDTO(dynamic_attr, BGP_ORIGIN
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_BGP_ORIGIN, EA_CODE(EAP_BGP, BA_ORIGIN)); })
-CF_ADDTO(dynamic_attr, BGP_PATH
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH, EA_CODE(EAP_BGP, BA_AS_PATH)); })
-CF_ADDTO(dynamic_attr, BGP_NEXT_HOP
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_IP_ADDRESS, T_IP, EA_CODE(EAP_BGP, BA_NEXT_HOP)); })
-CF_ADDTO(dynamic_attr, BGP_MED
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(EAP_BGP, BA_MULTI_EXIT_DISC)); })
-CF_ADDTO(dynamic_attr, BGP_LOCAL_PREF
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(EAP_BGP, BA_LOCAL_PREF)); })
-CF_ADDTO(dynamic_attr, BGP_ATOMIC_AGGR
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(EAP_BGP, BA_ATOMIC_AGGR)); })
-CF_ADDTO(dynamic_attr, BGP_AGGREGATOR
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(EAP_BGP, BA_AGGREGATOR)); })
-CF_ADDTO(dynamic_attr, BGP_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(EAP_BGP, BA_COMMUNITY)); })
-CF_ADDTO(dynamic_attr, BGP_ORIGINATOR_ID
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID, T_QUAD, EA_CODE(EAP_BGP, BA_ORIGINATOR_ID)); })
-CF_ADDTO(dynamic_attr, BGP_CLUSTER_LIST
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(EAP_BGP, BA_CLUSTER_LIST)); })
-CF_ADDTO(dynamic_attr, BGP_EXT_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_EC_SET, T_ECLIST, EA_CODE(EAP_BGP, BA_EXT_COMMUNITY)); })
-CF_ADDTO(dynamic_attr, BGP_LARGE_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_LC_SET, T_LCLIST, EA_CODE(EAP_BGP, BA_LARGE_COMMUNITY)); })
+dynamic_attr: BGP_ORIGIN
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_BGP_ORIGIN, EA_CODE(PROTOCOL_BGP, BA_ORIGIN)); } ;
+dynamic_attr: BGP_PATH
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH)); } ;
+dynamic_attr: BGP_NEXT_HOP
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_IP_ADDRESS, T_IP, EA_CODE(PROTOCOL_BGP, BA_NEXT_HOP)); } ;
+dynamic_attr: BGP_MED
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC)); } ;
+dynamic_attr: BGP_LOCAL_PREF
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF)); } ;
+dynamic_attr: BGP_ATOMIC_AGGR
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_ATOMIC_AGGR)); } ;
+dynamic_attr: BGP_AGGREGATOR
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_AGGREGATOR)); } ;
+dynamic_attr: BGP_COMMUNITY
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY)); } ;
+dynamic_attr: BGP_ORIGINATOR_ID
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID, T_QUAD, EA_CODE(PROTOCOL_BGP, BA_ORIGINATOR_ID)); } ;
+dynamic_attr: BGP_CLUSTER_LIST
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_CLUSTER_LIST)); } ;
+dynamic_attr: BGP_EXT_COMMUNITY
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_EC_SET, T_ECLIST, EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY)); } ;
+dynamic_attr: BGP_LARGE_COMMUNITY
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_LC_SET, T_LCLIST, EA_CODE(PROTOCOL_BGP, BA_LARGE_COMMUNITY)); } ;
 
 
 

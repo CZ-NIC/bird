@@ -15,6 +15,7 @@ struct krt_proto;
 struct kif_config;
 struct kif_proto;
 
+#include "nest/iface.h"
 #include "sysdep/config.h"
 #include CONFIG_INCLUDE_KRTSYS_H
 
@@ -29,8 +30,8 @@ struct kif_proto;
 
 #define KRT_DEFAULT_ECMP_LIMIT	16
 
-#define EA_KRT_SOURCE	EA_CODE(EAP_KRT, 0)
-#define EA_KRT_METRIC	EA_CODE(EAP_KRT, 1)
+#define EA_KRT_SOURCE	EA_CODE(PROTOCOL_KERNEL, 0)
+#define EA_KRT_METRIC	EA_CODE(PROTOCOL_KERNEL, 1)
 
 /* Whenever we recognize our own routes, we allow learing of foreign routes */
 
@@ -45,11 +46,11 @@ extern struct protocol proto_unix_kernel;
 struct krt_config {
   struct proto_config c;
   struct krt_params sys;	/* Sysdep params */
+  btime scan_time;		/* How often we re-scan routes */
   int persist;			/* Keep routes when we exit */
-  int scan_time;		/* How often we re-scan routes */
   int learn;			/* Learn routes from other sources */
-  int devroutes;		/* Allow export of device routes */
   int graceful_restart;		/* Regard graceful restart recovery */
+  int merge_paths;		/* Exported routes are merged for ECMP */
 };
 
 struct krt_proto {
@@ -94,17 +95,20 @@ void krt_got_route_async(struct krt_proto *p, struct rte *e, int new);
 
 extern struct protocol proto_unix_iface;
 
-struct kif_primary_item {
-  node n;
-  byte *pattern;
-  net_addr addr;
-};
-
 struct kif_config {
   struct proto_config c;
   struct kif_params sys;	/* Sysdep params */
-  int scan_time;		/* How often we re-scan interfaces */
-  list primary;			/* Preferences for primary addresses (struct kif_primary_item) */
+
+  list iface_list;		/* List of iface configs (struct kif_iface_config) */
+  btime scan_time;		/* How often we re-scan interfaces */
+};
+
+struct kif_iface_config {
+  struct iface_patt i;
+
+  ip_addr pref_v4;
+  ip_addr pref_v6;
+  ip_addr pref_ll;
 };
 
 struct kif_proto {
@@ -116,6 +120,7 @@ extern struct kif_proto *kif_proto;
 
 #define KIF_CF ((struct kif_config *)p->p.cf)
 
+struct kif_iface_config * kif_get_iface_config(struct iface *iface);
 struct proto_config * krt_init_config(int class);
 
 
@@ -134,7 +139,7 @@ void krt_sys_copy_config(struct krt_config *, struct krt_config *);
 
 int  krt_capable(rte *e);
 void krt_do_scan(struct krt_proto *);
-void krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old, struct ea_list *eattrs);
+void krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old);
 int krt_sys_get_attr(eattr *a, byte *buf, int buflen);
 
 
@@ -150,6 +155,6 @@ void kif_sys_copy_config(struct kif_config *, struct kif_config *);
 
 void kif_do_scan(struct kif_proto *);
 
-struct ifa *kif_get_primary_ip(struct iface *i);
+int kif_update_sysdep_addr(struct iface *i);
 
 #endif

@@ -12,6 +12,11 @@
 #include <sys/param.h>
 
 
+#ifdef __FreeBSD__
+/* Should be defined in sysdep/cf/bsd.h, but it is flavor-specific */
+#define CONFIG_DONTROUTE_UNICAST
+#endif
+
 #ifdef __NetBSD__
 
 #ifndef IP_RECVTTL
@@ -38,12 +43,12 @@
  */
 
 #define INIT_MREQ4(maddr,ifa) \
-  { .imr_multiaddr = ipa_to_in4(maddr), .imr_interface = ipa_to_in4(ifa->addr->ip) }
+  { .imr_multiaddr = ipa_to_in4(maddr), .imr_interface = ip4_to_in4(ifa->sysdep) }
 
 static inline int
 sk_setup_multicast4(sock *s)
 {
-  struct in_addr ifa = ipa_to_in4(s->iface->addr->ip);
+  struct in_addr ifa = ip4_to_in4(s->iface->sysdep);
   u8 ttl = s->ttl;
   u8 n = 0;
 

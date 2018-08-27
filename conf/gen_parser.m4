@@ -34,15 +34,10 @@ m4_define(CF_keywd, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)m4_defi
 m4_define(CF_KEYWORDS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd]], [[$@]])m4_ifelse(CF_toks,,,%token[[]]CF_toks
 )DNL')
 
-# Dynamic syntax rules
-m4_define(CF_dyn_rules,)
-m4_define(CF_ADDTO, `m4_define([[CF_rule_$1]],m4_ifdef([[CF_rule_$1]],CF_rule_$1 | ,[[m4_define([[CF_dyn_rules]],CF_dyn_rules[[CF_RULE($1)
-]])]])$2)DNL')
-
 # CLI commands
 m4_define(CF_CLI, `m4_define([[CF_cmd]], cmd_[[]]m4_translit($1, [[ ]], _))DNL
 m4_divert(2)CF_KEYWORDS(m4_translit($1, [[ ]], [[,]]))
-m4_divert(3)CF_ADDTO(cli_cmd, CF_cmd)
+m4_divert(3)cli_cmd: CF_cmd
 CF_cmd: $1 $2 END')
 m4_define(CF_CLI_CMD, `')
 m4_define(CF_CLI_HELP, `')
@@ -62,10 +57,6 @@ m4_undivert(2)DNL
 %%
 m4_undivert(3)DNL
 
-/* Dynamic rules */
-
-m4_define(CF_RULE, [[$1: CF_rule_$1 ;]])
-CF_dyn_rules
 %%
 m4_undivert(4)DNL
 ')

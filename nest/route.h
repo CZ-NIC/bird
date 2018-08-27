@@ -11,7 +11,6 @@
 
 #include "lib/lists.h"
 #include "lib/resource.h"
-#include "sysdep/unix/timer.h"
 #include "lib/net.h"
 
 struct ea_list;
@@ -75,7 +74,7 @@ static inline struct fib_node * fib_user_to_node(struct fib *f, void *e)
 void fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offset, uint hash_order, fib_init_fn init);
 void *fib_find(struct fib *, const net_addr *);	/* Find or return NULL if doesn't exist */
 void *fib_get_chain(struct fib *f, const net_addr *a); /* Find first node in linked list from hash table */
-void *fib_get(struct fib *, const net_addr *); 	/* Find or create new if nonexistent */
+void *fib_get(struct fib *, const net_addr *);	/* Find or create new if nonexistent */
 void *fib_route(struct fib *, const net_addr *); /* Longest-match routing lookup */
 void fib_delete(struct fib *, void *);	/* Remove fib entry */
 void fib_free(struct fib *);		/* Destroy the fib */
@@ -105,7 +104,7 @@ void fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uin
 	type *z;						\
 	for(;;) {						\
 	  if (!fn_)						\
-            {							\
+	    {							\
 	       if (++hpos_ >= count_)				\
 		 break;						\
 	       fn_ = (fib)->hash_table[hpos_];			\
@@ -159,8 +158,8 @@ typedef struct rtable {
 					 * obstacle from this routing table.
 					 */
   struct event *rt_event;		/* Routing table event */
+  btime gc_time;			/* Time of last GC */
   int gc_counter;			/* Number of operations since last GC */
-  bird_clock_t gc_time;			/* Time of last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
@@ -213,7 +212,7 @@ typedef struct rte {
   byte flags;				/* Flags (REF_...) */
   byte pflags;				/* Protocol-specific flags */
   word pref;				/* Route preference */
-  bird_clock_t lastmod;			/* Last modified */
+  btime lastmod;			/* Last modified */
   union {				/* Protocol-dependent data (metrics etc.) */
 #ifdef CONFIG_RIP
     struct {
@@ -232,10 +231,12 @@ typedef struct rte {
 #ifdef CONFIG_BGP
     struct {
       u8 suppressed;			/* Used for deterministic MED comparison */
+      s8 stale;				/* Route is LLGR_STALE, -1 if unknown */
     } bgp;
 #endif
 #ifdef CONFIG_BABEL
     struct {
+      u16 seqno;			/* Babel seqno */
       u16 metric;			/* Babel metric */
       u64 router_id;			/* Babel router id */
     } babel;
@@ -254,6 +255,7 @@ typedef struct rte {
 #define REF_FILTERED	2		/* Route is rejected by import filter */
 #define REF_STALE	4		/* Route is stale in a refresh cycle */
 #define REF_DISCARD	8		/* Route is scheduled for discard */
+#define REF_MODIFY	16		/* Route is scheduled for modify */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
 static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED); }
@@ -282,7 +284,7 @@ void rt_preconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
 void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
-void rt_setup(pool *, rtable *, char *, struct rtable_config *);
+void rt_setup(pool *, rtable *, struct rtable_config *);
 static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
 static inline net *net_find_valid(rtable *tab, const net_addr *addr)
 { net *n = net_find(tab, addr); return (n && rte_is_valid(n->routes)) ? n : NULL; }
@@ -294,9 +296,10 @@ rte *rte_get_temp(struct rta *);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
 int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter);
-rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, struct ea_list **tmpa, linpool *pool, int silent);
+rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
+void rt_modify_stale(rtable *t, struct channel *c);
 void rt_schedule_prune(rtable *t);
 void rte_dump(rte *);
 void rte_free(rte *);
@@ -309,6 +312,8 @@ int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
+/* Default limit for ECMP next hops, defined in sysdep code */
+extern const int rt_default_ecmp;
 
 struct rt_show_data_rtable {
   node n;
@@ -455,7 +460,7 @@ static inline int rte_is_reachable(rte *r)
  */
 
 typedef struct eattr {
-  word id;				/* EA_CODE(EAP_..., protocol-dependent ID) */
+  word id;				/* EA_CODE(PROTOCOL_..., protocol-dependent ID) */
   byte flags;				/* Protocol-dependent flags */
   byte type;				/* Attribute type and several flags (EAF_...) */
   union {
@@ -464,19 +469,11 @@ typedef struct eattr {
   } u;
 } eattr;
 
-#define EAP_GENERIC 0			/* Generic attributes */
-#define EAP_BGP 1			/* BGP attributes */
-#define EAP_RIP 2			/* RIP */
-#define EAP_OSPF 3			/* OSPF */
-#define EAP_KRT 4			/* Kernel route attributes */
-#define EAP_BABEL 5			/* Babel attributes */
-#define EAP_MAX 6
-
 #define EA_CODE(proto,id) (((proto) << 8) | (id))
 #define EA_PROTO(ea) ((ea) >> 8)
 #define EA_ID(ea) ((ea) & 0xff)
 
-#define EA_GEN_IGP_METRIC EA_CODE(EAP_GENERIC, 0)
+#define EA_GEN_IGP_METRIC EA_CODE(PROTOCOL_NONE, 0)
 
 #define EA_CODE_MASK 0xffff
 #define EA_ALLOW_UNDEF 0x10000		/* ea_find: allow EAF_TYPE_UNDEF */
@@ -552,6 +549,55 @@ uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
+#define ea_normalize(ea) do { \
+  if (ea->next) { \
+    ea_list *t = alloca(ea_scan(ea)); \
+    ea_merge(ea, t); \
+    ea = t; \
+  } \
+  ea_sort(ea); \
+} while(0) \
+
+static inline eattr *
+ea_set_attr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, uintptr_t val)
+{
+  ea_list *a = lp_alloc(pool, sizeof(ea_list) + sizeof(eattr));
+  eattr *e = &a->attrs[0];
+
+  a->flags = EALF_SORTED;
+  a->count = 1;
+  a->next = *to;
+  *to = a;
+
+  e->id = id;
+  e->type = type;
+  e->flags = flags;
+
+  if (type & EAF_EMBEDDED)
+    e->u.data = (u32) val;
+  else
+    e->u.ptr = (struct adata *) val;
+
+  return e;
+}
+
+static inline void
+ea_set_attr_u32(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, u32 val)
+{ ea_set_attr(to, pool, id, flags, type, (uintptr_t) val); }
+
+static inline void
+ea_set_attr_ptr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, struct adata *val)
+{ ea_set_attr(to, pool, id, flags, type, (uintptr_t) val); }
+
+static inline void
+ea_set_attr_data(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, void *data, uint len)
+{
+  struct adata *a = lp_alloc_adata(pool, len);
+  memcpy(a->data, data, len);
+  ea_set_attr(to, pool, id, flags, type, (uintptr_t) a);
+}
+
+
 #define NEXTHOP_MAX_SIZE (sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
 
 static inline size_t nexthop_size(const struct nexthop *nh)
@@ -577,7 +623,7 @@ rta *rta_do_cow(rta *o, linpool *lp);
 static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta_do_cow(r, lp) : r; }
 void rta_dump(rta *);
 void rta_dump_all(void);
-void rta_show(struct cli *, rta *, ea_list *);
+void rta_show(struct cli *, rta *);
 
 struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
 void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls);
@@ -613,14 +659,11 @@ rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr
 static inline void rt_lock_hostentry(struct hostentry *he) { if (he) he->uc++; }
 static inline void rt_unlock_hostentry(struct hostentry *he) { if (he) he->uc--; }
 
-
-extern struct protocol *attr_class_to_protocol[EAP_MAX];
-
 /*
  *	Default protocol preferences
  */
 
-#define DEF_PREF_DIRECT	    	240	/* Directly connected */
+#define DEF_PREF_DIRECT		240	/* Directly connected */
 #define DEF_PREF_STATIC		200	/* Static route */
 #define DEF_PREF_OSPF		150	/* OSPF intra-area, inter-area and type 1 external routes */
 #define DEF_PREF_BABEL		130	/* Babel */

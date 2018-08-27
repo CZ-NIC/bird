@@ -70,7 +70,7 @@ ospf_install_lsa(struct ospf_proto *p, struct ospf_lsa_header *lsa, u32 type, u3
   en->lsa_body = body;
   en->lsa = *lsa;
   en->init_age = en->lsa.age;
-  en->inst_time = now;
+  en->inst_time = current_time();
 
   /*
    * We do not set en->mode. It is either default LSA_M_BASIC, or in a special
@@ -128,7 +128,7 @@ ospf_advance_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_ls
       en->lsa.sn = lsa->sn + 1;
       en->lsa.age = 0;
       en->init_age = 0;
-      en->inst_time = now;
+      en->inst_time = current_time();
       lsa_generate_checksum(&en->lsa, en->lsa_body);
 
       OSPF_TRACE(D_EVENTS, "Advancing LSA: Type: %04x, Id: %R, Rt: %R, Seq: %08x",
@@ -160,7 +160,7 @@ ospf_advance_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_ls
       en->lsa = *lsa;
       en->lsa.age = LSA_MAXAGE;
       en->init_age = lsa->age;
-      en->inst_time = now;
+      en->inst_time = current_time();
 
       OSPF_TRACE(D_EVENTS, "Resetting LSA:  Type: %04x, Id: %R, Rt: %R, Seq: %08x",
 		 en->lsa_type, en->lsa.id, en->lsa.rt, en->lsa.sn);
@@ -196,7 +196,7 @@ static int
 ospf_do_originate_lsa(struct ospf_proto *p, struct top_hash_entry *en, void *lsa_body, u16 lsa_blen, u16 lsa_opts)
 {
   /* Enforce MinLSInterval */
-  if ((en->init_age == 0) && en->inst_time && ((en->inst_time + MINLSINTERVAL) > now))
+  if (!en->init_age && en->inst_time && (lsa_inst_age(en) < MINLSINTERVAL))
     return 0;
 
   /* Handle wrapping sequence number */
@@ -237,7 +237,7 @@ ospf_do_originate_lsa(struct ospf_proto *p, struct top_hash_entry *en, void *lsa
   en->lsa.sn++;
   en->lsa.age = 0;
   en->init_age = 0;
-  en->inst_time = now;
+  en->inst_time = current_time();
   lsa_generate_checksum(&en->lsa, en->lsa_body);
 
   OSPF_TRACE(D_EVENTS, "Originating LSA: Type: %04x, Id: %R, Rt: %R, Seq: %08x",
@@ -381,7 +381,7 @@ ospf_refresh_lsa(struct ospf_proto *p, struct top_hash_entry *en)
   en->lsa.sn++;
   en->lsa.age = 0;
   en->init_age = 0;
-  en->inst_time = now;
+  en->inst_time = current_time();
   lsa_generate_checksum(&en->lsa, en->lsa_body);
   ospf_flood_lsa(p, en, NULL);
 }
@@ -476,14 +476,15 @@ void
 ospf_update_lsadb(struct ospf_proto *p)
 {
   struct top_hash_entry *en, *nxt;
-  bird_clock_t real_age;
+  btime now_ = current_time();
+  int real_age;
 
   WALK_SLIST_DELSAFE(en, nxt, p->lsal)
   {
     if (en->next_lsa_body)
       ospf_originate_next_lsa(p, en);
 
-    real_age = en->init_age + (now - en->inst_time);
+    real_age = en->init_age + (now_ - en->inst_time) TO_S;
 
     if (en->lsa.age == LSA_MAXAGE)
     {
@@ -1008,7 +1009,7 @@ prepare_sum3_net_lsa_body(struct ospf_proto *p, ort *nf, u32 metric)
   sum = lsab_allocz(p, sizeof(struct ospf_lsa_sum3_net) +
 		    IPV6_PREFIX_SPACE(nf->fn.addr->pxlen));
   sum->metric = metric;
-  ospf_put_ipv6_prefix(sum->prefix, nf->fn.addr, 0, 0);
+  ospf3_put_prefix(sum->prefix, nf->fn.addr, 0, 0);
 }
 
 static inline void
@@ -1097,7 +1098,7 @@ prepare_ext3_lsa_body(struct ospf_proto *p, ort *nf,
   ext->metric = metric & LSA_METRIC_MASK;
   u32 *buf = ext->rest;
 
-  buf = ospf_put_ipv6_prefix(buf, nf->fn.addr, pbit ? OPT_PX_P : 0, 0);
+  buf = ospf3_put_prefix(buf, nf->fn.addr, pbit ? OPT_PX_P : 0, 0);
 
   if (ebit)
     ext->metric |= LSA_EXT3_EBIT;
@@ -1105,7 +1106,7 @@ prepare_ext3_lsa_body(struct ospf_proto *p, ort *nf,
   if (ipa_nonzero(fwaddr))
   {
     ext->metric |= LSA_EXT3_FBIT;
-    buf = ospf_put_ipv6_addr(buf, fwaddr);
+    buf = ospf3_put_addr(buf, fwaddr);
   }
 
   if (tag)
@@ -1222,7 +1223,7 @@ find_surrogate_fwaddr(struct ospf_proto *p, struct ospf_area *oa)
     {
       WALK_LIST(a, ifa->iface->addrs)
       {
-	if ((a->prefix.type != NET_IP6) ||
+	if ((a->prefix.type != ospf_get_af(p)) ||
 	    (a->flags & IA_SECONDARY) ||
 	    (a->flags & IA_PEER) ||
 	    (a->scope <= SCOPE_LINK))
@@ -1242,7 +1243,7 @@ find_surrogate_fwaddr(struct ospf_proto *p, struct ospf_area *oa)
 }
 
 void
-ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte *old UNUSED, ea_list *ea)
+ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte *old UNUSED)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_area *oa = NULL;	/* non-NULL for NSSA-LSA */
@@ -1280,14 +1281,34 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
 
   /* Get route attributes */
   rta *a = new->attrs;
-  u32 m1 = ea_get_int(ea, EA_OSPF_METRIC1, LSINFINITY);
-  u32 m2 = ea_get_int(ea, EA_OSPF_METRIC2, 10000);
-  int ebit = (m1 == LSINFINITY);
-  u32 metric = ebit ? m2 : m1;
-  u32 tag = ea_get_int(ea, EA_OSPF_TAG, 0);
+  eattr *m1a = ea_find(a->eattrs, EA_OSPF_METRIC1);
+  eattr *m2a = ea_find(a->eattrs, EA_OSPF_METRIC2);
+  uint m1 = m1a ? m1a->u.data : 0;
+  uint m2 = m2a ? m2a->u.data : 10000;
+
+  if (m1 > LSINFINITY)
+  {
+    log(L_WARN "%s: Invalid ospf_metric1 value %u for route %N",
+	p->p.name, m1, n->n.addr);
+    m1 = LSINFINITY;
+  }
+
+  if (m2 > LSINFINITY)
+  {
+    log(L_WARN "%s: Invalid ospf_metric2 value %u for route %N",
+	p->p.name, m2, n->n.addr);
+    m2 = LSINFINITY;
+  }
+
+  /* Ensure monotonicity of metric if both m1 and m2 are used */
+  if ((m1 > 0) && (m2 < LSINFINITY))
+    m2++;
+
+  uint ebit = m2a || !m1a;
+  uint metric = ebit ? m2 : m1;
+  uint tag = ea_get_int(a->eattrs, EA_OSPF_TAG, 0);
+
   ip_addr fwd = IPA_NONE;
-
-
   if ((a->dest == RTD_UNICAST) && use_gw_for_fwaddr(p, a->nh.gw, a->nh.iface))
     fwd = a->nh.gw;
 
@@ -1316,39 +1337,47 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
  */
 
 static inline void
-lsab_put_prefix(struct ospf_proto *p, net_addr *net, u32 cost)
+lsab_put_prefix(struct ospf_proto *p, net_addr *n, u32 cost)
 {
-  void *buf = lsab_alloc(p, IPV6_PREFIX_SPACE(net6_pxlen(net)));
-  u8 flags = (net6_pxlen(net) < IP6_MAX_PREFIX_LENGTH) ? 0 : OPT_PX_LA;
-  ospf_put_ipv6_prefix(buf, net, flags, cost);
+  void *buf = lsab_alloc(p, IPV6_PREFIX_SPACE(net_pxlen(n)));
+  uint max = (n->type == NET_IP4) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH;
+  u8 flags = (net_pxlen(n) < max) ? 0 : OPT_PX_LA;
+  ospf3_put_prefix(buf, n, flags, cost);
 }
 
 static void
 prepare_link_lsa_body(struct ospf_proto *p, struct ospf_iface *ifa)
 {
-  struct ospf_lsa_link *ll;
+  ip_addr nh = ospf_is_ip4(p) ? IPA_NONE : ifa->addr->ip;
   int i = 0;
 
+  /* Preallocating space for header */
   ASSERT(p->lsab_used == 0);
-  ll = lsab_allocz(p, sizeof(struct ospf_lsa_link));
-  ll->options = ifa->oa->options | (ifa->priority << 24);
-  ll->lladdr = ipa_to_ip6(ifa->addr->ip);
-  ll = NULL; /* buffer might be reallocated later */
+  lsab_allocz(p, sizeof(struct ospf_lsa_link));
 
   struct ifa *a;
   WALK_LIST(a, ifa->iface->addrs)
   {
-    if ((a->prefix.type != NET_IP6) ||
+    if ((a->prefix.type != ospf_get_af(p)) ||
 	(a->flags & IA_SECONDARY) ||
 	(a->scope <= SCOPE_LINK))
       continue;
+
+    if (ospf_is_ip4(p) && ipa_zero(nh))
+      nh = a->ip;
 
     lsab_put_prefix(p, &a->prefix, 0);
     i++;
   }
 
-  ll = p->lsab;
+  /* Filling the preallocated header */
+  struct ospf_lsa_link *ll = p->lsab;
+  ll->options = ifa->oa->options | (ifa->priority << 24);
+  ll->lladdr = ospf_is_ip4(p) ? ospf3_4to6(ipa_to_ip4(nh)) : ipa_to_ip6(nh);
   ll->pxcount = i;
+
+  if (ipa_zero(nh))
+    log(L_ERR "%s: Cannot find next hop address for %s", p->p.name, ifa->ifname);
 }
 
 static void
@@ -1410,7 +1439,7 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
     struct ifa *a;
     WALK_LIST(a, ifa->iface->addrs)
     {
-      if ((a->prefix.type != NET_IP6) ||
+      if ((a->prefix.type != ospf_get_af(p)) ||
 	  (a->flags & IA_SECONDARY) ||
 	  (a->flags & IA_PEER) ||
 	  (a->scope <= SCOPE_LINK))
@@ -1448,7 +1477,7 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
 
   /* If there are some configured vlinks, find some global address
      (even from another area), which will be used as a vlink endpoint. */
-  if (!EMPTY_LIST(cf->vlink_list) && !host_addr)
+  if (!EMPTY_LIST(cf->vlink_list) && !host_addr && ospf_is_ip6(p))
   {
     WALK_LIST(ifa, p->iface_list)
     {
@@ -1571,7 +1600,7 @@ add_link_lsa(struct ospf_proto *p, struct ospf_lsa_link *ll, int offset, int *px
       continue;
 
     /* Skip link-local prefixes */
-    if ((pxlen >= 10) && ((pxb[1] & 0xffc00000) == 0xfe800000))
+    if (ospf_is_ip6(p) && (pxlen >= 10) && ((pxb[1] & 0xffc00000) == 0xfe800000))
       continue;
 
     add_prefix(p, pxb, offset, pxc);
@@ -1628,7 +1657,7 @@ ospf_originate_prefix_net_lsa(struct ospf_proto *p, struct ospf_iface *ifa)
 }
 
 static inline int breaks_minlsinterval(struct top_hash_entry *en)
-{ return en && (en->lsa.age < LSA_MAXAGE) && ((en->inst_time + MINLSINTERVAL) > now); }
+{ return en && (en->lsa.age < LSA_MAXAGE) && (lsa_inst_age(en) < MINLSINTERVAL); }
 
 void
 ospf_update_topology(struct ospf_proto *p)

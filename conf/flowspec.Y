@@ -11,16 +11,6 @@ CF_HDR
 #define PARSER 1
 
 #include "nest/bird.h"
-#include "conf/conf.h"
-#include "lib/resource.h"
-#include "lib/socket.h"
-#include "sysdep/unix/timer.h"
-#include "lib/string.h"
-#include "nest/protocol.h"
-#include "nest/iface.h"
-#include "nest/route.h"
-#include "nest/cli.h"
-#include "filter/filter.h"
 #include "lib/flowspec.h"
 
 

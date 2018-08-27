@@ -205,10 +205,9 @@ static_add_rte(struct static_proto *p, struct static_route *r)
 
     for (r2 = r; r2; r2 = r2->mp_next)
     {
-      n = ipa_nonzero(r2->via) ?
-	neigh_find2(&p->p, &r2->via, r2->iface,
-		    NEF_STICKY | (r2->onlink ? NEF_ONLINK : 0)) :
-	neigh_find_iface(&p->p, r2->iface);
+      n = neigh_find(&p->p, r2->via, r2->iface, NEF_STICKY |
+		     (r2->onlink ? NEF_ONLINK : 0) |
+		     (ipa_zero(r2->via) ? NEF_IFACE : 0));
 
       if (!n)
       {
@@ -656,6 +655,7 @@ static_show(struct proto *P)
 struct protocol proto_static = {
   .name =		"Static",
   .template =		"static%d",
+  .class =		PROTOCOL_STATIC,
   .preference =		DEF_PREF_STATIC,
   .channel_mask =	NB_ANY,
   .proto_size =		sizeof(struct static_proto),

@@ -29,22 +29,23 @@ ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type)
   pkt->areaid = htonl(ifa->oa->areaid);
   pkt->checksum = 0;
   pkt->instance_id = ifa->instance_id;
-  pkt->autype = ifa->autype;
+  pkt->autype = ospf_is_v2(p) ? ifa->autype : 0;
 }
 
 /* We assume OSPFv2 in ospf_pkt_finalize() */
 static void
-ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
+ospf_pkt_finalize2(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
 {
+  struct ospf_proto *p = ifa->oa->po;
   struct password_item *pass = NULL;
-  union ospf_auth *auth = (void *) (pkt + 1);
-
-  pkt->checksum = 0;
-  pkt->autype = ifa->autype;
-  bzero(auth, sizeof(union ospf_auth));
+  union ospf_auth2 *auth = (void *) (pkt + 1);
+  memset(auth, 0, sizeof(union ospf_auth2));
 
   /* Compatibility note: auth may contain anything if autype is
      none, but nonzero values do not work with Mikrotik OSPF */
+
+  pkt->checksum = 0;
+  pkt->autype = ifa->autype;
 
   switch (ifa->autype)
   {
@@ -60,7 +61,7 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
   case OSPF_AUTH_NONE:
     {
       void *body = (void *) (auth + 1);
-      uint blen = *plen - sizeof(struct ospf_packet) - sizeof(union ospf_auth);
+      uint blen = *plen - sizeof(struct ospf_packet) - sizeof(union ospf_auth2);
       pkt->checksum = ipsum_calculate(pkt, sizeof(struct ospf_packet), body, blen, NULL);
     }
     break;
@@ -69,7 +70,7 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
     pass = password_find(ifa->passwords, 0);
     if (!pass)
     {
-      log(L_ERR "No suitable password found for authentication");
+      log(L_ERR "%s: No suitable password found for authentication", p->p.name);
       return;
     }
 
@@ -77,16 +78,16 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
        reboot when system does not have independent RTC? */
     if (!ifa->csn)
     {
-      ifa->csn = (u32) now;
-      ifa->csn_use = now;
+      ifa->csn = (u32) (current_real_time() TO_S);
+      ifa->csn_use = current_time();
     }
 
     /* We must have sufficient delay between sending a packet and increasing
        CSN to prevent reordering of packets (in a network) with different CSNs */
-    if ((now - ifa->csn_use) > 1)
+    if ((current_time() - ifa->csn_use) > 1 S)
       ifa->csn++;
 
-    ifa->csn_use = now;
+    ifa->csn_use = current_time();
 
     uint auth_len = mac_type_length(pass->alg);
     byte *auth_tail = ((byte *) pkt + *plen);
@@ -105,8 +106,7 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
     else
       memset32(auth_tail, HMAC_MAGIC, auth_len / 4);
 
-    mac_fill(pass->alg, pass->password, pass->length,
-	     (byte *) pkt, *plen, auth_tail);
+    mac_fill(pass->alg, pass->password, pass->length, (byte *) pkt, *plen, auth_tail);
     break;
 
   default:
@@ -114,13 +114,63 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
   }
 }
 
-
-/* We assume OSPFv2 in ospf_pkt_checkauth() */
-static int
-ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_packet *pkt, uint len)
+/*
+ * Return an extra packet size that should be added to a final packet size
+ */
+static void
+ospf_pkt_finalize3(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen, ip_addr src)
 {
   struct ospf_proto *p = ifa->oa->po;
-  union ospf_auth *auth = (void *) (pkt + 1);
+  struct ospf_auth3 *auth = (void *) ((byte *) pkt + *plen);
+
+  pkt->checksum = 0;
+  pkt->autype = 0;
+
+  if (ifa->autype != OSPF_AUTH_CRYPT)
+    return;
+
+  struct password_item *pass = password_find(ifa->passwords, 0);
+  if (!pass)
+  {
+    log(L_ERR "%s: No suitable password found for authentication", p->p.name);
+    return;
+  }
+
+  /* FIXME: Ensure persistence */
+  p->csn64++;
+
+  uint mac_len = mac_type_length(pass->alg);
+  uint auth_len = sizeof(struct ospf_auth3) + mac_len;
+  *plen += auth_len;
+
+  ASSERT(*plen < ifa->sk->tbsize);
+
+  memset(auth, 0, sizeof(struct ospf_auth3));
+  auth->type = htons(OSPF3_AUTH_HMAC);
+  auth->length = htons(auth_len);
+  auth->reserved = 0;
+  auth->sa_id = htons(pass->id);
+  put_u64(&auth->csn, p->csn64);
+
+  /* Initialize with src IP address padded with HMAC_MAGIC */
+  put_ip6(auth->data, ipa_to_ip6(src));
+  memset32(auth->data + 16, HMAC_MAGIC, (mac_len - 16) / 4);
+
+  /* Attach OSPFv3 Cryptographic Protocol ID to the key */
+  uint pass_len = pass->length + 2;
+  byte *pass_key = alloca(pass_len);
+  memcpy(pass_key, pass->password, pass->length);
+  put_u16(pass_key + pass->length, OSPF3_CRYPTO_ID);
+
+  mac_fill(pass->alg, pass_key, pass_len, (byte *) pkt, *plen, auth->data);
+}
+
+
+static int
+ospf_pkt_checkauth2(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_packet *pkt, uint len)
+{
+  struct ospf_proto *p = ifa->oa->po;
+  union ospf_auth2 *auth = (void *) (pkt + 1);
   struct password_item *pass = NULL;
   const char *err_dsc = NULL;
   uint err_val = 0;
@@ -200,6 +250,119 @@ drop:
   return 0;
 }
 
+static int
+ospf_pkt_checkauth3(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_packet *pkt, uint len, ip_addr src)
+{
+  struct ospf_proto *p = ifa->oa->po;
+  const char *err_dsc = NULL;
+  uint err_val = 0;
+
+  uint plen = ntohs(pkt->length);
+  uint opts, lls_present, auth_present;
+
+  /*
+   * When autentication is not enabled, ignore the trailer. This is different
+   * from OSPFv2, but it is necessary in order to support migration modes. Note
+   * that regular authenticated packets do not have valid checksum and will be
+   * dropped by OS on non-authenticated ifaces.
+   */
+  if (ifa->autype != OSPF_AUTH_CRYPT)
+    return 1;
+
+  switch(pkt->type)
+  {
+  case HELLO_P:
+    opts = ospf_hello3_options(pkt);
+    lls_present = opts & OPT_L_V3;
+    auth_present = opts & OPT_AT;
+    break;
+
+  case DBDES_P:
+    opts = ospf_dbdes3_options(pkt);
+    lls_present = opts & OPT_L_V3;
+    auth_present = opts & OPT_AT;
+    break;
+
+  default:
+    lls_present = 0;
+    auth_present = n->options & OPT_AT;
+  }
+
+  if (!auth_present)
+    DROP1("missing authentication trailer");
+
+  if (lls_present)
+  {
+    if ((plen + sizeof(struct ospf_lls)) > len)
+      DROP("packet length mismatch", len);
+
+    struct ospf_lls *lls = (void *) ((byte *) pkt + plen);
+    plen += ntohs(lls->length);
+  }
+
+  if ((plen + sizeof(struct ospf_auth3)) > len)
+    DROP("packet length mismatch", len);
+
+  struct ospf_auth3 *auth = (void *) ((byte *) pkt + plen);
+
+  uint rcv_auth_type = ntohs(auth->type);
+  if (rcv_auth_type != OSPF3_AUTH_HMAC)
+    DROP("authentication method mismatch", rcv_auth_type);
+
+  uint rcv_auth_len = ntohs(auth->length);
+  if (plen + rcv_auth_len > len)
+    DROP("packet length mismatch", len);
+
+  uint rcv_key_id = ntohs(auth->sa_id);
+  struct password_item *pass = password_find_by_id(ifa->passwords, rcv_key_id);
+  if (!pass)
+    DROP("no suitable password found", rcv_key_id);
+
+  uint mac_len = mac_type_length(pass->alg);
+  if (rcv_auth_len != (sizeof(struct ospf_auth3) + mac_len))
+    DROP("wrong authentication length", rcv_auth_len);
+
+  uint pt = pkt->type - 1;
+  u64 rcv_csn = get_u64(&auth->csn);
+  if (n && (rcv_csn <= n->csn64[pt]))
+  {
+    /* We want to report both new and old CSN */
+    LOG_PKT_AUTH("Authentication failed for nbr %R on %s - "
+		 "lower sequence number (rcv %u, old %u)",
+		 n->rid, ifa->ifname, (uint) rcv_csn, (uint) n->csn64[pt]);
+    return 0;
+  }
+
+  /* Save the received authentication data */
+  byte *auth_data = alloca(mac_len);
+  memcpy(auth_data, auth->data, mac_len);
+
+  /* Initialize with src IP address padded with HMAC_MAGIC */
+  put_ip6(auth->data, ipa_to_ip6(src));
+  memset32(auth->data + 16, HMAC_MAGIC, (mac_len - 16) / 4);
+
+  /* Attach OSPFv3 Cryptographic Protocol ID to the key */
+  uint pass_len = pass->length + 2;
+  byte *pass_key = alloca(pass_len);
+  memcpy(pass_key, pass->password, pass->length);
+  put_u16(pass_key + pass->length, OSPF3_CRYPTO_ID);
+
+  if (!mac_verify(pass->alg, pass_key, pass_len,
+		  (byte *) pkt, plen + rcv_auth_len, auth_data))
+    DROP("wrong authentication code", pass->id);
+
+  if (n)
+    n->csn64[pt] = rcv_csn;
+
+  return 1;
+
+drop:
+  LOG_PKT_AUTH("Authentication failed for nbr %R on %s - %s (%u)",
+	       (n ? n->rid : ntohl(pkt->routerid)), ifa->ifname, err_dsc, err_val);
+
+  return 0;
+}
+
 /**
  * ospf_rx_hook
  * @sk: socket we received the packet.
@@ -270,9 +433,6 @@ ospf_rx_hook(sock *sk, uint len)
   if (pkt == NULL)
     DROP("bad IP header", len);
 
-  if (ifa->check_ttl && (sk->rcv_ttl < 255))
-    DROP("wrong TTL", sk->rcv_ttl);
-
   if (len < sizeof(struct ospf_packet))
     DROP("too short", len);
 
@@ -301,12 +461,12 @@ ospf_rx_hook(sock *sk, uint len)
 
   if (ospf_is_v2(p) && (pkt->autype != OSPF_AUTH_CRYPT))
   {
-    uint hlen = sizeof(struct ospf_packet) + sizeof(union ospf_auth);
+    uint hlen = sizeof(struct ospf_packet) + sizeof(union ospf_auth2);
     uint blen = plen - hlen;
     void *body = ((void *) pkt) + hlen;
 
     if (!ipsum_verify(pkt, sizeof(struct ospf_packet), body, blen, NULL))
-      DROP1("invalid checksum");
+      DROP("invalid checksum", ntohs(pkt->checksum));
   }
 
   /* Third, we resolve associated iface and handle vlinks. */
@@ -379,6 +539,10 @@ found:
   if (ipa_equal(sk->laddr, ifa->des_routers) && (ifa->sk_dr == 0))
     return 1;
 
+  /* TTL check must be done after instance dispatch */
+  if (ifa->check_ttl && (sk->rcv_ttl < 255))
+    DROP("wrong TTL", sk->rcv_ttl);
+
   if (rid == p->router_id)
     DROP1("my own router ID");
 
@@ -400,8 +564,14 @@ found:
     return 1;
   }
 
+  /* Check packet type here, ospf_pkt_checkauth3() expects valid values */
+  if (pkt->type < HELLO_P || pkt->type > LSACK_P)
+    DROP("invalid packet type", pkt->type);
+
   /* ospf_pkt_checkauth() has its own error logging */
-  if (ospf_is_v2(p) && !ospf_pkt_checkauth(n, ifa, pkt, len))
+  if ((ospf_is_v2(p) ?
+       !ospf_pkt_checkauth2(n, ifa, pkt, len) :
+       !ospf_pkt_checkauth3(n, ifa, pkt, len, sk->faddr)))
     return 1;
 
   switch (pkt->type)
@@ -425,9 +595,6 @@ found:
   case LSACK_P:
     ospf_receive_lsack(pkt, ifa, n);
     break;
-
-  default:
-    DROP("invalid packet type", pkt->type);
   };
   return 1;
 
@@ -451,7 +618,7 @@ ospf_tx_hook(sock * sk)
 void
 ospf_err_hook(sock * sk, int err)
 {
-  struct ospf_iface *ifa= (struct ospf_iface *) (sk->data);
+  struct ospf_iface *ifa = (struct ospf_iface *) (sk->data);
   struct ospf_proto *p = ifa->oa->po;
   log(L_ERR "%s: Socket error on %s: %M", p->p.name, ifa->ifname, err);
 }
@@ -471,7 +638,9 @@ ospf_send_to(struct ospf_iface *ifa, ip_addr dst)
   uint plen = ntohs(pkt->length);
 
   if (ospf_is_v2(ifa->oa->po))
-    ospf_pkt_finalize(ifa, pkt, &plen);
+    ospf_pkt_finalize2(ifa, pkt, &plen);
+  else
+    ospf_pkt_finalize3(ifa, pkt, &plen, sk->saddr);
 
   int done = sk_send_to(sk, plen, dst, 0);
   if (!done)

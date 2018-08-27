@@ -37,7 +37,7 @@ ospf_iface_finish(void)
 
   ip->passwords = get_passwords();
 
-  if ((ip->autype == OSPF_AUTH_CRYPT) && (ip->helloint < 5))
+  if (ospf_cfg_is_v2() && (ip->autype == OSPF_AUTH_CRYPT) && (ip->helloint < 5))
     log(L_WARN "Hello or poll interval less that 5 makes cryptographic authenication prone to replay attacks");
 
   if ((ip->autype == OSPF_AUTH_NONE) && (ip->passwords != NULL))
@@ -54,6 +54,9 @@ ospf_iface_finish(void)
       /* Set default OSPF crypto algorithms */
       if (!pass->alg && (ip->autype == OSPF_AUTH_CRYPT))
 	pass->alg = ospf_cfg_is_v2() ? ALG_MD5 : ALG_HMAC_SHA256;
+
+      if (ospf_cfg_is_v3() && ip->autype && (pass->alg < ALG_HMAC))
+	cf_error("Keyed hash algorithms are not allowed, use HMAC algorithms");
     }
   }
 }
@@ -78,18 +81,66 @@ static void
 ospf_proto_finish(void)
 {
   struct ospf_config *cf = OSPF_CFG;
-
-  if (EMPTY_LIST(cf->area_list))
-    cf_error( "No configured areas in OSPF");
+  struct ospf_area_config *ac;
+  struct ospf_iface_patt *ic;
 
   /* Define default channel */
   if (EMPTY_LIST(this_proto->channels))
-    channel_config_new(NULL, this_proto->net_type, this_proto);
+  {
+    uint net_type = this_proto->net_type = ospf_cfg_is_v2() ? NET_IP4 : NET_IP6;
+    channel_config_new(NULL, net_label[net_type], net_type, this_proto);
+  }
+
+  /* Propagate global instance ID to interfaces */
+  if (cf->instance_id_set)
+  {
+    WALK_LIST(ac, cf->area_list)
+      WALK_LIST(ic, ac->patt_list)
+	if (!ic->instance_id_set)
+	{ ic->instance_id = cf->instance_id; ic->instance_id_set = 1; }
+
+    WALK_LIST(ic, cf->vlink_list)
+      if (!ic->instance_id_set)
+      { ic->instance_id = cf->instance_id; ic->instance_id_set = 1; }
+  }
+
+  if (ospf_cfg_is_v3())
+  {
+    uint ipv4 = (this_proto->net_type == NET_IP4);
+    uint base = (ipv4 ? 64 : 0) + (cf->af_mc ? 32 : 0);
+
+    /* RFC 5838 - OSPFv3-AF */
+    if (cf->af_ext)
+    {
+      /* RFC 5838 2.1 - instance IDs based on AFs */
+      WALK_LIST(ac, cf->area_list)
+	WALK_LIST(ic, ac->patt_list)
+	{
+	  if (!ic->instance_id_set)
+	    ic->instance_id = base;
+	  else if (ic->instance_id >= 128)
+	    log(L_WARN "Instance ID %d from unassigned/private range", ic->instance_id);
+	  else if ((ic->instance_id < base) || (ic->instance_id >= (base + 32)))
+	    cf_error("Instance ID %d invalid for given channel type", ic->instance_id);
+	}
+
+      /* RFC 5838 2.8 - vlinks limited to IPv6 unicast */
+      if ((ipv4 || cf->af_mc) && !EMPTY_LIST(cf->vlink_list))
+	cf_error("Vlinks not supported in AFs other than IPv6 unicast");
+    }
+    else
+    {
+      if (ipv4 || cf->af_mc)
+	cf_error("Different channel type");
+    }
+  }
+
+  if (EMPTY_LIST(cf->area_list))
+    cf_error("No configured areas in OSPF");
 
   int areano = 0;
   int backbone = 0;
   int nssa = 0;
-  struct ospf_area_config *ac;
   WALK_LIST(ac, cf->area_list)
   {
     areano++;
@@ -133,7 +184,7 @@ static inline void
 ospf_check_auth(void)
 {
   if (ospf_cfg_is_v3())
-    cf_error("Authentication not supported in OSPFv3");
+    cf_error("Plaintext authentication not supported in OSPFv3");
 }
 
 
@@ -148,14 +199,15 @@ CF_KEYWORDS(ELIGIBLE, POLL, NETWORKS, HIDDEN, VIRTUAL, CHECK, LINK, ONLY, BFD)
 CF_KEYWORDS(RX, BUFFER, LARGE, NORMAL, STUBNET, HIDDEN, SUMMARY, TAG, EXTERNAL)
 CF_KEYWORDS(WAIT, DELAY, LSADB, ECMP, LIMIT, WEIGHT, NSSA, TRANSLATOR, STABILITY)
 CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL, NETMASK, TX, PRIORITY, LENGTH)
-CF_KEYWORDS(SECONDARY, MERGE, LSA, SUPPRESSION)
+CF_KEYWORDS(SECONDARY, MERGE, LSA, SUPPRESSION, MULTICAST, RFC5838)
 
 %type <ld> lsadb_args
-%type <i> ospf_variant nbma_eligible
+%type <i> ospf_variant ospf_af_mc nbma_eligible
+%type <cc> ospf_channel_start ospf_channel
 
 CF_GRAMMAR
 
-CF_ADDTO(proto, ospf_proto '}' { ospf_proto_finish(); } )
+proto: ospf_proto '}' { ospf_proto_finish(); }  ;
 
 ospf_variant:
    OSPF    { $$ = 1; }
@@ -166,12 +218,14 @@ ospf_variant:
 ospf_proto_start: proto_start ospf_variant
 {
   this_proto = proto_config_new(&proto_ospf, $1);
-  this_proto->net_type = $2 ? NET_IP4 : NET_IP6;
+  this_proto->net_type = $2 ? NET_IP4 : 0;
 
   init_list(&OSPF_CFG->area_list);
   init_list(&OSPF_CFG->vlink_list);
+  OSPF_CFG->ecmp = rt_default_ecmp;
   OSPF_CFG->tick = OSPF_DEFAULT_TICK;
   OSPF_CFG->ospf2 = $2;
+  OSPF_CFG->af_ext = !$2;
 };
 
 ospf_proto:
@@ -179,16 +233,35 @@ ospf_proto:
  | ospf_proto ospf_proto_item ';'
  ;
 
+ospf_af_mc:
+             { $$ = 0; }
+ | MULTICAST { $$ = 1; }
+ ;
+
+/* We redefine proto_channel to add multicast flag */
+ospf_channel_start: net_type ospf_af_mc
+{
+  /* TODO: change name for multicast channels */
+  $$ = this_channel = channel_config_get(NULL, net_label[$1], $1, this_proto);
+
+  /* Save the multicast flag */
+  if (this_channel == proto_cf_main_channel(this_proto))
+    OSPF_CFG->af_mc = $2;
+};
+
+ospf_channel: ospf_channel_start channel_opt_list channel_end;
+
 ospf_proto_item:
    proto_item
- | proto_channel
+ | ospf_channel { this_proto->net_type = $1->net_type; }
  | RFC1583COMPAT bool { OSPF_CFG->rfc1583 = $2; }
+ | RFC5838 bool { OSPF_CFG->af_ext = $2; if (!ospf_cfg_is_v3()) cf_error("RFC5838 option requires OSPFv3"); }
  | STUB ROUTER bool { OSPF_CFG->stub_router = $3; }
  | ECMP bool { OSPF_CFG->ecmp = $2 ? OSPF_DEFAULT_ECMP_LIMIT : 0; }
  | ECMP bool LIMIT expr { OSPF_CFG->ecmp = $2 ? $4 : 0; }
  | MERGE EXTERNAL bool { OSPF_CFG->merge_external = $3; }
  | TICK expr { OSPF_CFG->tick = $2; if($2 <= 0) cf_error("Tick must be greater than zero"); }
- | INSTANCE ID expr { OSPF_CFG->instance_id = $3; if ($3 > 255) cf_error("Instance ID must be in range 0-255"); }
+ | INSTANCE ID expr { OSPF_CFG->instance_id = $3; OSPF_CFG->instance_id_set = 1; if ($3 > 255) cf_error("Instance ID must be in range 0-255"); }
  | ospf_area
  ;
 
@@ -276,8 +349,8 @@ ospf_vlink_item:
  | DEAD COUNT expr { OSPF_PATT->deadc = $3 ; if ($3<=1) cf_error("Dead count must be greater than one"); }
  | AUTHENTICATION NONE { OSPF_PATT->autype = OSPF_AUTH_NONE;  }
  | AUTHENTICATION SIMPLE { OSPF_PATT->autype = OSPF_AUTH_SIMPLE; ospf_check_auth(); }
- | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT; ospf_check_auth(); }
- | password_list { ospf_check_auth(); }
+ | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT; }
+ | password_list
  ;
 
 ospf_vlink_start: VIRTUAL LINK idval
@@ -293,7 +366,6 @@ ospf_vlink_start: VIRTUAL LINK idval
   OSPF_PATT->inftransdelay = INFTRANSDELAY_D;
   OSPF_PATT->deadc = DEADC_D;
   OSPF_PATT->type = OSPF_IT_VLINK;
-  OSPF_PATT->instance_id = OSPF_CFG->instance_id;
   init_list(&OSPF_PATT->nbma_list);
   reset_passwords();
  }
@@ -327,7 +399,7 @@ ospf_iface_item:
  | NEIGHBORS '{' nbma_list '}'
  | AUTHENTICATION NONE { OSPF_PATT->autype = OSPF_AUTH_NONE; }
  | AUTHENTICATION SIMPLE { OSPF_PATT->autype = OSPF_AUTH_SIMPLE; ospf_check_auth(); }
- | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT; ospf_check_auth(); }
+ | AUTHENTICATION CRYPTOGRAPHIC { OSPF_PATT->autype = OSPF_AUTH_CRYPT; }
  | RX BUFFER NORMAL { OSPF_PATT->rx_buffer = 0; }
  | RX BUFFER LARGE { OSPF_PATT->rx_buffer = OSPF_MAX_PKT_SIZE; }
  | RX BUFFER expr { OSPF_PATT->rx_buffer = $3; if (($3 < OSPF_MIN_PKT_SIZE) || ($3 > OSPF_MAX_PKT_SIZE)) cf_error("Buffer size must be in range 256-65535"); }
@@ -337,7 +409,7 @@ ospf_iface_item:
  | TTL SECURITY bool { OSPF_PATT->ttl_security = $3; }
  | TTL SECURITY TX ONLY { OSPF_PATT->ttl_security = 2; }
  | BFD bool { OSPF_PATT->bfd = $2; cf_check_bfd($2); }
- | password_list { ospf_check_auth(); }
+ | password_list
  ;
 
 pref_list:
@@ -393,8 +465,8 @@ ospf_iface_start:
   OSPF_PATT->priority = PRIORITY_D;
   OSPF_PATT->deadc = DEADC_D;
   OSPF_PATT->type = OSPF_IT_UNDEF;
-  OSPF_PATT->instance_id = OSPF_CFG->instance_id;
   init_list(&OSPF_PATT->nbma_list);
+  OSPF_PATT->check_link = 1;
   OSPF_PATT->ptp_netmask = 2; /* not specified */
   OSPF_PATT->tx_tos = IP_PREC_INTERNET_CONTROL;
   OSPF_PATT->tx_priority = sk_priority_control;
@@ -404,7 +476,7 @@ ospf_iface_start:
 
 ospf_instance_id:
    /* empty */
- | INSTANCE expr { OSPF_PATT->instance_id = $2; if ($2 > 255) cf_error("Instance ID must be in range 0-255"); }
+ | INSTANCE expr { OSPF_PATT->instance_id = $2; OSPF_PATT->instance_id_set = 1; if ($2 > 255) cf_error("Instance ID must be in range 0-255"); }
  ;
 
 ospf_iface_patt_list:
@@ -425,13 +497,13 @@ ospf_iface:
   ospf_iface_start ospf_iface_patt_list ospf_iface_opt_list { ospf_iface_finish(); }
  ;
 
-CF_ADDTO(dynamic_attr, OSPF_METRIC1 { $$ = f_new_dynamic_attr(EAF_TYPE_INT | EAF_TEMP, T_INT, EA_OSPF_METRIC1); })
-CF_ADDTO(dynamic_attr, OSPF_METRIC2 { $$ = f_new_dynamic_attr(EAF_TYPE_INT | EAF_TEMP, T_INT, EA_OSPF_METRIC2); })
-CF_ADDTO(dynamic_attr, OSPF_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT | EAF_TEMP, T_INT, EA_OSPF_TAG); })
-CF_ADDTO(dynamic_attr, OSPF_ROUTER_ID { $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID | EAF_TEMP, T_QUAD, EA_OSPF_ROUTER_ID); })
+dynamic_attr: OSPF_METRIC1 { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_METRIC1); } ;
+dynamic_attr: OSPF_METRIC2 { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_METRIC2); } ;
+dynamic_attr: OSPF_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_TAG); } ;
+dynamic_attr: OSPF_ROUTER_ID { $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID, T_QUAD, EA_OSPF_ROUTER_ID); } ;
 
 CF_CLI_HELP(SHOW OSPF, ..., [[Show information about OSPF protocol]]);
-CF_CLI(SHOW OSPF, optsym, [<name>], [[Show information about OSPF protocol XXX]])
+CF_CLI(SHOW OSPF, optsym, [<name>], [[Show information about OSPF protocol]])
 { ospf_sh(proto_get_named($3, &proto_ospf)); };
 
 CF_CLI(SHOW OSPF NEIGHBORS, optsym opttext, [<name>] [\"<interface>\"], [[Show information about OSPF neighbors]])

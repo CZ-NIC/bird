@@ -26,7 +26,7 @@ struct top_hash_entry
   void *next_lsa_body;		/* For postponed LSA origination */
   u16 next_lsa_blen;		/* For postponed LSA origination */
   u16 next_lsa_opts;		/* For postponed LSA origination */
-  bird_clock_t inst_time;	/* Time of installation into DB */
+  btime inst_time;		/* Time of installation into DB */
   struct ort *nf;		/* Reference fibnode for sum and ext LSAs, NULL for otherwise */
   struct nexthop *nhs;		/* Computed nexthops - valid only in ospf_rt_spf() */
   ip_addr lb;			/* In OSPFv2, link back address. In OSPFv3, any global address in the area useful for vlinks */
@@ -188,7 +188,7 @@ void ospf_originate_sum_net_lsa(struct ospf_proto *p, struct ospf_area *oa, ort 
 void ospf_originate_sum_rt_lsa(struct ospf_proto *p, struct ospf_area *oa, u32 drid, int metric, u32 options);
 void ospf_originate_ext_lsa(struct ospf_proto *p, struct ospf_area *oa, ort *nf, u8 mode, u32 metric, u32 ebit, ip_addr fwaddr, u32 tag, int pbit);
 
-void ospf_rt_notify(struct proto *P, struct channel *ch, net *n, rte *new, rte *old, ea_list *attrs);
+void ospf_rt_notify(struct proto *P, struct channel *ch, net *n, rte *new, rte *old);
 void ospf_update_topology(struct ospf_proto *p);
 
 struct top_hash_entry *ospf_hash_find(struct top_graph *, u32 domain, u32 lsa, u32 rtr, u32 type);

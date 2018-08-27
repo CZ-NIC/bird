@@ -260,6 +260,9 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     caps->gr_flags = p->p.gr_recovery ? BGP_GRF_RESTART : 0;
   }
 
+  if (p->cf->llgr_mode)
+    caps->llgr_aware = 1;
+
   /* Allocate and fill per-AF fields */
   WALK_LIST(c, p->p.channels)
   {
@@ -280,6 +283,15 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
       if (p->p.gr_recovery)
 	ac->gr_af_flags |= BGP_GRF_FORWARDING;
     }
+
+    if (c->cf->llgr_able)
+    {
+      ac->llgr_able = 1;
+      ac->llgr_time = c->cf->llgr_time;
+
+      if (p->p.gr_recovery)
+	ac->llgr_flags |= BGP_LLGRF_FORWARDING;
+    }
   }
 
   /* Sort capability fields by AFI/SAFI */
@@ -289,9 +301,9 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   /* Create capability list in buffer */
 
   /*
-   * Note that max length is ~ 20+14*af_count. With max 12 channels that is
-   * 188. Option limit is 253 and buffer size is 4096, so we cannot overflow
-   * unless we add new capabilities or more AFs.
+   * Note that max length is ~ 22+21*af_count. With max 12 channels that is
+   * 274. Option limit is 253 and buffer size is 4096, so we cannot overflow
+   * unless we add new capabilities or more AFs. XXXXX
    */
 
   WALK_AF_CAPS(caps, ac)
@@ -382,6 +394,24 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   {
     *buf++ = 70;		/* Capability 70: Support for enhanced route refresh */
     *buf++ = 0;			/* Capability data length */
+  }
+
+  if (caps->llgr_aware)
+  {
+    *buf++ = 71;		/* Capability 71: Support for long-lived graceful restart */
+    *buf++ = 0;			/* Capability data length, will be fixed later */
+    data = buf;
+
+    WALK_AF_CAPS(caps, ac)
+      if (ac->llgr_able)
+      {
+	put_af3(buf, ac->afi);
+	buf[3] = ac->llgr_flags;
+	put_u24(buf+4, ac->llgr_time);
+	buf += 7;
+      }
+
+    data[-1] = buf - data;
   }
 
   return buf;
@@ -508,11 +538,49 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
       caps->enhanced_refresh = 1;
       break;
 
+    case 71: /* Long lived graceful restart capability, RFC draft */
+      if (cl % 7)
+	goto err;
+
+      /* Presumably, only the last instance is valid */
+      WALK_AF_CAPS(caps, ac)
+      {
+	ac->llgr_able = 0;
+	ac->llgr_flags = 0;
+	ac->llgr_time = 0;
+      }
+
+      caps->llgr_aware = 1;
+
+      for (i = 0; i < cl; i += 7)
+      {
+	af = get_af3(pos+2+i);
+	ac = bgp_get_af_caps(caps, af);
+	ac->llgr_able = 1;
+	ac->llgr_flags = pos[2+i+3];
+	ac->llgr_time = get_u24(pos + 2+i+4);
+      }
+      break;
+
       /* We can safely ignore all other capabilities */
     }
 
     ADVANCE(pos, len, 2 + cl);
   }
+
+  /* The LLGR capability must be advertised together with the GR capability,
+     otherwise it must be disregarded */
+  if (!caps->gr_aware && caps->llgr_aware)
+  {
+    caps->llgr_aware = 0;
+    WALK_AF_CAPS(caps, ac)
+    {
+      ac->llgr_able = 0;
+      ac->llgr_flags = 0;
+      ac->llgr_time = 0;
+    }
+  }
+
   return;
 
 err:
@@ -744,9 +812,9 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
 
     /* GW_DIRECT -> single_hop -> p->neigh != NULL */
     if (ipa_nonzero(gw))
-      nbr = neigh_find2(&p->p, &gw, NULL, 0);
+      nbr = neigh_find(&p->p, gw, NULL, 0);
     else if (ipa_nonzero(ll))
-      nbr = neigh_find2(&p->p, &ll, p->neigh->iface, 0);
+      nbr = neigh_find(&p->p, ll, p->neigh->iface, 0);
 
     if (!nbr || (nbr->scope == SCOPE_HOST))
       WITHDRAW(BAD_NEXT_HOP);
@@ -875,7 +943,10 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
 
       /* TODO: Use local MPLS assigned label */
       if (s->mpls)
-	bgp_unset_attr(to, s->pool, BA_MPLS_LABEL_STACK);
+      {
+	u32 implicit_null = BGP_MPLS_NULL;
+	bgp_set_attr_data(to, s->pool, BA_MPLS_LABEL_STACK, 0, &implicit_null, 4);
+      }
     }
   }
 
@@ -1128,6 +1199,7 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
 
   e->pflags = 0;
   e->u.bgp.suppressed = 0;
+  e->u.bgp.stale = -1;
   rte_update2(&s->channel->c, n, e, s->last_src);
 }
 
@@ -1165,9 +1237,10 @@ bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *p
     ADVANCE(*pos, *len, 3);
     *pxlen -= 24;
 
-    /* Withdraw: Magic label stack value 0x800000 according to RFC 3107, section 3, last paragraph */
-    if (!a && !s->err_withdraw && (lnum == 1) && (label == BGP_MPLS_MAGIC))
-      break;
+    /* RFC 8277 2.4 - withdraw does not have variable-size MPLS stack but
+       fixed-size 24-bit Compatibility field, which MUST be ignored */
+    if (!a && !s->err_withdraw)
+      return;
   }
   while (!(label & BGP_MPLS_BOS));
 
@@ -1483,7 +1556,8 @@ bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     ADVANCE(pos, size, 1);
 
     /* Encode MPLS labels */
-    bgp_encode_mpls_labels(s, s->mpls_labels, &pos, &size, pos - 1);
+    if (s->mpls)
+      bgp_encode_mpls_labels(s, s->mpls_labels, &pos, &size, pos - 1);
 
     /* Encode route distinguisher */
     put_u64(pos, net->rd);
@@ -1636,8 +1710,8 @@ bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     uint pxlen = data[1];
 
     // FIXME: Use some generic function
-    memcpy(&px, data, BYTES(pxlen));
-    px = ip4_and(px, ip4_mkmask(pxlen));
+    memcpy(&px, data+2, BYTES(pxlen));
+    px = ip4_and(ip4_ntoh(px), ip4_mkmask(pxlen));
 
     /* Prepare the flow */
     net_addr *n = alloca(sizeof(struct net_addr_flow4) + flen);
@@ -1728,8 +1802,8 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     uint pxlen = data[1];
 
     // FIXME: Use some generic function
-    memcpy(&px, data, BYTES(pxlen));
-    px = ip6_and(px, ip6_mkmask(pxlen));
+    memcpy(&px, data+2, BYTES(pxlen));
+    px = ip6_and(ip6_ntoh(px), ip6_mkmask(pxlen));
 
     /* Prepare the flow */
     net_addr *n = alloca(sizeof(struct net_addr_flow6) + flen);
@@ -2283,6 +2357,8 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
   if (s.attr_len)
     ea = bgp_decode_attrs(&s, s.attrs, s.attr_len);
+  else
+    ea = NULL;
 
   /* Check for End-of-RIB marker */
   if (!s.attr_len && !s.ip_unreach_len && !s.ip_reach_len)
@@ -2678,38 +2754,72 @@ bgp_error_dsc(uint code, uint subcode)
   return buff;
 }
 
+/* RFC 8203 - shutdown communication message */
+static int
+bgp_handle_message(struct bgp_proto *p, byte *data, uint len, byte **bp)
+{
+  byte *msg = data + 1;
+  uint msg_len = data[0];
+  uint i;
+
+  /* Handle zero length message */
+  if (msg_len == 0)
+    return 1;
+
+  /* Handle proper message */
+  if ((msg_len > 128) && (msg_len + 1 > len))
+    return 0;
+
+  /* Some elementary cleanup */
+  for (i = 0; i < msg_len; i++)
+    if (msg[i] < ' ')
+      msg[i] = ' ';
+
+  proto_set_message(&p->p, msg, msg_len);
+  *bp += bsprintf(*bp, ": \"%s\"", p->p.message);
+  return 1;
+}
+
 void
 bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode, byte *data, uint len)
 {
-  const byte *name;
-  byte *t, argbuf[36];
+  byte argbuf[256], *t = argbuf;
   uint i;
 
   /* Don't report Cease messages generated by myself */
   if (code == 6 && class == BE_BGP_TX)
     return;
 
-  name = bgp_error_dsc(code, subcode);
-  t = argbuf;
+  /* Reset shutdown message */
+  if ((code == 6) && ((subcode == 2) || (subcode == 4)))
+    proto_set_message(&p->p, NULL, 0);
+
   if (len)
     {
-      *t++ = ':';
-      *t++ = ' ';
-
+      /* Bad peer AS - we would like to print the AS */
       if ((code == 2) && (subcode == 2) && ((len == 2) || (len == 4)))
 	{
-	  /* Bad peer AS - we would like to print the AS */
-	  t += bsprintf(t, "%u", (len == 2) ? get_u16(data) : get_u32(data));
+	  t += bsprintf(t, ": %u", (len == 2) ? get_u16(data) : get_u32(data));
 	  goto done;
 	}
+
+      /* RFC 8203 - shutdown communication */
+      if (((code == 6) && ((subcode == 2) || (subcode == 4))))
+	if (bgp_handle_message(p, data, len, &t))
+	  goto done;
+
+      *t++ = ':';
+      *t++ = ' ';
       if (len > 16)
 	len = 16;
       for (i=0; i<len; i++)
 	t += bsprintf(t, "%02x", data[i]);
     }
- done:
+
+done:
   *t = 0;
-  log(L_REMOTE "%s: %s: %s%s", p->p.name, msg, name, argbuf);
+  const byte *dsc = bgp_error_dsc(code, subcode);
+  log(L_REMOTE "%s: %s: %s%s", p->p.name, msg, dsc, argbuf);
 }
 
 static void
@@ -2733,7 +2843,17 @@ bgp_rx_notification(struct bgp_conn *conn, byte *pkt, uint len)
   if (err)
   {
     bgp_update_startup_delay(p);
-    bgp_stop(p, 0);
+    bgp_stop(p, 0, NULL, 0);
+  }
+  else
+  {
+    uint subcode_bit = 1 << ((subcode <= 8) ? subcode : 0);
+    if (p->cf->disable_after_cease & subcode_bit)
+    {
+      log(L_INFO "%s: Disabled after Cease notification", p->p.name);
+      p->startup_delay = 0;
+      p->p.disabled = 1;
+    }
   }
 }
 

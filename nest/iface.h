@@ -34,12 +34,17 @@ struct iface {
   unsigned flags;
   unsigned mtu;
   unsigned index;			/* OS-dependent interface index */
+  unsigned master_index;		/* Interface index of master iface */
+  struct iface *master;			/* Master iface (e.g. for VRF) */
   list addrs;				/* Addresses assigned to this interface */
-  struct ifa *addr;			/* Primary address */
+  struct ifa *addr4;			/* Primary address for IPv4 */
+  struct ifa *addr6;			/* Primary address for IPv6 */
+  struct ifa *llv6;			/* Primary link-local address for IPv6 */
+  ip4_addr sysdep;			/* Arbitrary IPv4 address for internal sysdep use */
   list neighbors;			/* All neighbors on this interface */
 };
 
-#define IF_UP 1				/* IF_ADMIN_UP and IP address known */
+#define IF_UP 1				/* Currently just IF_ADMIN_UP */
 #define IF_MULTIACCESS 2
 #define IF_BROADCAST 4
 #define IF_MULTICAST 8
@@ -70,7 +75,10 @@ struct iface {
 
 #define IF_JUST_CREATED 0x10000000	/* Send creation event as soon as possible */
 #define IF_TMP_DOWN 0x20000000		/* Temporary shutdown due to interface reconfiguration */
-#define IF_UPDATED 0x40000000		/* Touched in last scan */
+#define IF_UPDATED 0x40000000		/* Iface touched in last scan */
+#define IF_NEEDS_RECALC	0x80000000	/* Preferred address recalculation is needed */
+
+#define IA_UPDATED IF_UPDATED		/* Address touched in last scan */
 
 /* Interface change events */
 
@@ -79,7 +87,13 @@ struct iface {
 #define IF_CHANGE_MTU 4
 #define IF_CHANGE_CREATE 8		/* Seen this interface for the first time */
 #define IF_CHANGE_LINK 0x10
+#define IF_CHANGE_ADDR4	0x100		/* Change of iface->addr4 */
+#define IF_CHANGE_ADDR6	0x200		/* ... */
+#define IF_CHANGE_LLV6 0x400
+#define IF_CHANGE_SYSDEP 0x800
 #define IF_CHANGE_TOO_MUCH 0x40000000	/* Used internally */
+
+#define IF_CHANGE_PREFERRED (IF_CHANGE_ADDR4 | IF_CHANGE_ADDR6 | IF_CHANGE_LLV6)
 
 void if_init(void);
 void if_dump(struct iface *);
@@ -99,7 +113,7 @@ void if_feed_baby(struct proto *);
 struct iface *if_find_by_index(unsigned);
 struct iface *if_find_by_name(char *);
 struct iface *if_get_by_name(char *);
-void ifa_recalc_all_primary_addresses(void);
+void if_recalc_all_preferred_addresses(void);
 
 
 /* The Neighbor Cache */
@@ -110,29 +124,21 @@ typedef struct neighbor {
   ip_addr addr;				/* Address of the neighbor */
   struct ifa *ifa;			/* Ifa on related iface */
   struct iface *iface;			/* Interface it's connected to */
+  struct iface *ifreq;			/* Requested iface, NULL for any */
   struct proto *proto;			/* Protocol this belongs to */
   void *data;				/* Protocol-specific data */
-  unsigned aux;				/* Protocol-specific data */
-  unsigned flags;
-  int scope;				/* Address scope, -1 for unreachable sticky neighbors,
+  uint aux;				/* Protocol-specific data */
+  u16 flags;				/* NEF_* flags */
+  s16 scope;				/* Address scope, -1 for unreachable neighbors,
 					   SCOPE_HOST when it's our own address */
 } neighbor;
 
 #define NEF_STICKY	1
 #define NEF_ONLINK	2
-#define NEF_BIND	4		/* Used internally for neighbors bound to an iface */
-#define NEF_IFACE	8		/* Neighbors bound to iface */
+#define NEF_IFACE	4		/* Entry for whole iface */
 
 
-neighbor *neigh_find(struct proto *, ip_addr *, unsigned flags);
-neighbor *neigh_find2(struct proto *p, ip_addr *a, struct iface *ifa, unsigned flags);
-neighbor *neigh_find_iface(struct proto *p, struct iface *ifa);
-
-static inline int neigh_connected_to(struct proto *p, ip_addr *a, struct iface *i)
-{
-  neighbor *n = neigh_find(p, a, 0);
-  return n && n->iface == i;
-}
+neighbor *neigh_find(struct proto *p, ip_addr a, struct iface *ifa, uint flags);
 
 void neigh_dump(neighbor *);
 void neigh_dump_all(void);

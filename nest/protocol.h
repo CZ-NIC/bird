@@ -12,7 +12,6 @@
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
-#include "sysdep/unix/timer.h"
 #include "nest/route.h"
 #include "conf/conf.h"
 
@@ -38,12 +37,31 @@ struct symbol;
  *	Routing Protocol
  */
 
+enum protocol_class {
+  PROTOCOL_NONE,
+  PROTOCOL_BABEL,
+  PROTOCOL_BFD,
+  PROTOCOL_BGP,
+  PROTOCOL_DEVICE,
+  PROTOCOL_DIRECT,
+  PROTOCOL_KERNEL,
+  PROTOCOL_OSPF,
+  PROTOCOL_PIPE,
+  PROTOCOL_RADV,
+  PROTOCOL_RIP,
+  PROTOCOL_RPKI,
+  PROTOCOL_STATIC,
+  PROTOCOL__MAX
+};
+
+extern struct protocol *class_to_protocol[PROTOCOL__MAX];
+
 struct protocol {
   node n;
   char *name;
   char *template;			/* Template for automatic generation of names */
   int name_counter;			/* Counter for automatic name generation */
-  int attr_class;			/* Attribute class known to this protocol */
+  enum protocol_class class;		/* Machine readable protocol class */
   uint preference;			/* Default protocol preference */
   uint channel_mask;			/* Mask of accepted channel types (NB_*) */
   uint proto_size;			/* Size of protocol data structure */
@@ -59,7 +77,7 @@ struct protocol {
   int (*shutdown)(struct proto *);		/* Stop the instance */
   void (*cleanup)(struct proto *);		/* Called after shutdown when protocol became hungry/down */
   void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
-  void (*get_route_info)(struct rte *, byte *buf, struct ea_list *attrs); /* Get route information (for `show route' command) */
+  void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */
   int (*get_attr)(struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
   void (*show_proto_info)(struct proto *);	/* Show protocol info (for `show protocols all' command) */
   void (*copy_config)(struct proto_config *, struct proto_config *);	/* Copy config from given protocol instance */
@@ -101,6 +119,7 @@ struct proto_config {
   u32 router_id;			/* Protocol specific router ID */
 
   list channels;			/* List of channel configs (struct channel_config) */
+  struct iface *vrf;			/* Related VRF instance, NULL if global */
 
   /* Check proto_reconfigure() and proto_copy_config() after changing struct proto_config */
 
@@ -143,6 +162,7 @@ struct proto {
   list channels;			/* List of channels to rtables (struct channel) */
   struct channel *main_channel;		/* Primary channel */
   struct rte_src *main_source;		/* Primary route source */
+  struct iface *vrf;			/* Related VRF instance, NULL if global */
 
   char *name;				/* Name of this instance (== cf->name) */
   u32 debug;				/* Debugging flags */
@@ -159,8 +179,9 @@ struct proto {
   byte down_sched;			/* Shutdown is scheduled for later (PDS_*) */
   byte down_code;			/* Reason for shutdown (PDC_* codes) */
   u32 hash_key;				/* Random key used for hashing of neighbors */
-  bird_clock_t last_state_change;	/* Time of last state transition */
+  btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
+  char *message;			/* State-change message, allocated from proto_pool */
 
   /*
    *	General protocol hooks:
@@ -170,7 +191,7 @@ struct proto {
    *	   rt_notify	Notify protocol about routing table updates.
    *	   neigh_notify	Notify protocol about neighbor cache events.
    *	   make_tmp_attrs  Construct ea_list from private attrs stored in rte.
-   *	   store_tmp_attrs Store private attrs back to the rte.
+   *	   store_tmp_attrs Store private attrs back to rta. The route MUST NOT be cached.
    *	   import_control  Called as the first step of the route importing process.
    *			It can construct a new rte, add private attributes and
    *			decide whether the route shall be imported: 1=yes, -1=no,
@@ -184,11 +205,11 @@ struct proto {
 
   void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
   void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
-  void (*rt_notify)(struct proto *, struct channel *, struct network *net, struct rte *new, struct rte *old, struct ea_list *attrs);
+  void (*rt_notify)(struct proto *, struct channel *, struct network *net, struct rte *new, struct rte *old);
   void (*neigh_notify)(struct neighbor *neigh);
   struct ea_list *(*make_tmp_attrs)(struct rte *rt, struct linpool *pool);
-  void (*store_tmp_attrs)(struct rte *rt, struct ea_list *attrs);
-  int (*import_control)(struct proto *, struct rte **rt, struct ea_list **attrs, struct linpool *pool);
+  void (*store_tmp_attrs)(struct rte *rt);
+  int (*import_control)(struct proto *, struct rte **rt, struct linpool *pool);
   void (*reload_routes)(struct channel *);
   void (*feed_begin)(struct channel *, int initial);
   void (*feed_end)(struct channel *);
@@ -208,6 +229,7 @@ struct proto {
   int (*rte_better)(struct rte *, struct rte *);
   int (*rte_same)(struct rte *, struct rte *);
   int (*rte_mergable)(struct rte *, struct rte *);
+  struct rte * (*rte_modify)(struct rte *, struct linpool *);
   void (*rte_insert)(struct network *, struct rte *);
   void (*rte_remove)(struct network *, struct rte *);
 
@@ -237,6 +259,7 @@ struct proto_spec {
 void *proto_new(struct proto_config *);
 void *proto_config_new(struct protocol *, int class);
 void proto_copy_config(struct proto_config *dest, struct proto_config *src);
+void proto_set_message(struct proto *p, char *msg, int len);
 
 void graceful_restart_recovery(void);
 void graceful_restart_init(void);
@@ -249,15 +272,15 @@ void channel_graceful_restart_unlock(struct channel *c);
 void channel_show_limit(struct channel_limit *l, const char *dsc);
 void channel_show_info(struct channel *c);
 
-void proto_cmd_show(struct proto *, uint, int);
-void proto_cmd_disable(struct proto *, uint, int);
-void proto_cmd_enable(struct proto *, uint, int);
-void proto_cmd_restart(struct proto *, uint, int);
-void proto_cmd_reload(struct proto *, uint, int);
-void proto_cmd_debug(struct proto *, uint, int);
-void proto_cmd_mrtdump(struct proto *, uint, int);
+void proto_cmd_show(struct proto *, uintptr_t, int);
+void proto_cmd_disable(struct proto *, uintptr_t, int);
+void proto_cmd_enable(struct proto *, uintptr_t, int);
+void proto_cmd_restart(struct proto *, uintptr_t, int);
+void proto_cmd_reload(struct proto *, uintptr_t, int);
+void proto_cmd_debug(struct proto *, uintptr_t, int);
+void proto_cmd_mrtdump(struct proto *, uintptr_t, int);
 
-void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uint, int), int restricted, uint arg);
+void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, int), int restricted, uintptr_t arg);
 struct proto *proto_get_named(struct symbol *, struct protocol *);
 
 #define CMD_RELOAD	0
@@ -270,12 +293,16 @@ proto_get_router_id(struct proto_config *pc)
   return pc->router_id ? pc->router_id : pc->global->router_id;
 }
 
-static inline struct ea_list *
-rte_make_tmp_attrs(struct rte *rt, struct linpool *pool)
+static inline void
+rte_make_tmp_attrs(struct rte **rt, struct linpool *pool)
 {
   struct ea_list *(*mta)(struct rte *rt, struct linpool *pool);
-  mta = rt->attrs->src->proto->make_tmp_attrs;
-  return mta ? mta(rt, pool) : NULL;
+  mta = (*rt)->attrs->src->proto->make_tmp_attrs;
+  if (!mta) return;
+  *rt = rte_cow_rta(*rt, pool);
+  struct ea_list *ea = mta(*rt, pool);
+  ea->next = (*rt)->attrs->eattrs;
+  (*rt)->attrs->eattrs = ea;
 }
 
 /* Moved from route.h to avoid dependency conflicts */
@@ -334,7 +361,7 @@ void proto_notify_state(struct proto *p, unsigned state);
  *
  *		HUNGRY    ---->   FEEDING
  *		 ^		     |
- *		 | 		     V
+ *		 |		     V
  *		FLUSHING  <----   HAPPY
  *
  *	States:	HUNGRY	Protocol either administratively down (i.e.,
@@ -444,7 +471,7 @@ struct channel_class {
   void (*dump_attrs)(struct rte *);		/* Dump protocol-dependent attributes */
 
   void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
-  void (*get_route_info)(struct rte *, byte *buf, struct ea_list *attrs); /* Get route information (for `show route' command) */
+  void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */
   int (*get_attr)(struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
   void (*show_proto_info)(struct proto *);	/* Show protocol info (for `show protocols all' command) */
 
@@ -458,6 +485,7 @@ struct channel_config {
   const char *name;
   const struct channel_class *channel;
 
+  struct proto_config *parent;		/* Where channel is defined (proto or template) */
   struct rtable_config *table;		/* Table we're attached to */
   struct filter *in_filter, *out_filter; /* Attached filters */
   struct channel_limit rx_limit;	/* Limit for receiving routes from protocol
@@ -508,7 +536,8 @@ struct channel {
   u8 gr_lock;				/* Graceful restart mechanism should wait for this channel */
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
 
-  bird_clock_t last_state_change;	/* Time of last state transition */
+  btime last_state_change;		/* Time of last state transition */
+  btime last_tx_filter_change;
 };
 
 
@@ -582,7 +611,8 @@ static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP)
 static inline void channel_close(struct channel *c) { channel_set_state(c, CS_FLUSHING); }
 
 void channel_request_feeding(struct channel *c);
-void *channel_config_new(const struct channel_class *cc, uint net_type, struct proto_config *proto);
+void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
+void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);
 
 

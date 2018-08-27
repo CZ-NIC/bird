@@ -88,9 +88,6 @@ static struct idm src_ids;
 
 static HASH(struct rte_src) src_hash;
 
-struct protocol *attr_class_to_protocol[EAP_MAX];
-
-
 static void
 rte_src_init(void)
 {
@@ -553,29 +550,47 @@ ea_do_sort(ea_list *e)
   while (ss);
 }
 
+/**
+ * In place discard duplicates, undefs and temporary attributes in sorted
+ * ea_list. We use stable sort for this reason.
+ **/
 static inline void
 ea_do_prune(ea_list *e)
 {
   eattr *s, *d, *l, *s0;
   int i = 0;
 
-  /* Discard duplicates and undefs. Do you remember sorting was stable? */
-  s = d = e->attrs;
-  l = e->attrs + e->count;
+  s = d = e->attrs;	    /* Beginning of the list. @s is source, @d is destination. */
+  l = e->attrs + e->count;  /* End of the list */
+
+  /* Walk from begin to end. */
   while (s < l)
     {
       s0 = s++;
+      /* Find a consecutive block of the same attribute */
       while (s < l && s->id == s[-1].id)
 	s++;
-      /* s0 is the most recent version, s[-1] the oldest one */
-      if ((s0->type & EAF_TYPE_MASK) != EAF_TYPE_UNDEF)
-	{
-	  *d = *s0;
-	  d->type = (d->type & ~(EAF_ORIGINATED|EAF_FRESH)) | (s[-1].type & EAF_ORIGINATED);
-	  d++;
-	  i++;
-	}
+
+      /* Now s0 is the most recent version, s[-1] the oldest one */
+      /* Drop undefs */
+      if ((s0->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
+	continue;
+
+      /* Drop temporary attributes */
+      if (s0->type & EAF_TEMP)
+	continue;
+
+      /* Copy the newest version to destination */
+      *d = *s0;
+
+      /* Preserve info whether it originated locally */
+      d->type = (d->type & ~(EAF_ORIGINATED|EAF_FRESH)) | (s[-1].type & EAF_ORIGINATED);
+
+      /* Next destination */
+      d++;
+      i++;
     }
+
   e->count = i;
 }
 
@@ -851,7 +866,7 @@ ea_show(struct cli *c, eattr *e)
   byte buf[CLI_MSG_SIZE];
   byte *pos = buf, *end = buf + sizeof(buf);
 
-  if (p = attr_class_to_protocol[EA_PROTO(e->id)])
+  if (p = class_to_protocol[EA_PROTO(e->id)])
     {
       pos += bsprintf(pos, "%s.", p->name);
       if (p->get_attr)
@@ -1131,15 +1146,7 @@ rta_lookup(rta *o)
 
   ASSERT(!(o->aflags & RTAF_CACHED));
   if (o->eattrs)
-    {
-      if (o->eattrs->next)	/* Multiple ea_list's, need to merge them */
-	{
-	  ea_list *ml = alloca(ea_scan(o->eattrs));
-	  ea_merge(o->eattrs, ml);
-	  o->eattrs = ml;
-	}
-      ea_sort(o->eattrs);
-    }
+    ea_normalize(o->eattrs);
 
   h = rta_hash(o);
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next)
@@ -1204,7 +1211,7 @@ rta_dump(rta *a)
   static char *rts[] = { "RTS_DUMMY", "RTS_STATIC", "RTS_INHERIT", "RTS_DEVICE",
 			 "RTS_STAT_DEV", "RTS_REDIR", "RTS_RIP",
 			 "RTS_OSPF", "RTS_OSPF_IA", "RTS_OSPF_EXT1",
-                         "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };
+			 "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
   debug("p=%s uc=%d %s %s%s h=%04x",
@@ -1253,17 +1260,15 @@ rta_dump_all(void)
 }
 
 void
-rta_show(struct cli *c, rta *a, ea_list *eal)
+rta_show(struct cli *c, rta *a)
 {
   static char *src_names[] = { "dummy", "static", "inherit", "device", "static-device", "redirect",
 			       "RIP", "OSPF", "OSPF-IA", "OSPF-E1", "OSPF-E2", "BGP", "pipe" };
-  int i;
 
   cli_printf(c, -1008, "\tType: %s %s", src_names[a->source], ip_scope_text(a->scope));
-  if (!eal)
-    eal = a->eattrs;
-  for(; eal; eal=eal->next)
-    for(i=0; i<eal->count; i++)
+
+  for(ea_list *eal = a->eattrs; eal; eal=eal->next)
+    for(int i=0; i<eal->count; i++)
       ea_show(c, &eal->attrs[i]);
 }
 

@@ -147,7 +147,7 @@ cli_printf(cli *c, int code, char *msg, ...)
     }
   else if (cd == CLI_ASYNC_CODE)
     {
-      size = 1; buf[0] = '+'; 
+      size = 1; buf[0] = '+';
       errcode = cd;
     }
   else

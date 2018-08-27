@@ -92,16 +92,18 @@
  * - RFC 2328 - main OSPFv2 standard
  * - RFC 5340 - main OSPFv3 standard
  * - RFC 3101 - OSPFv2 NSSA areas
- * - RFC 6549 - OSPFv2 multi-instance extensions
- * - RFC 6987 - OSPF stub router advertisement
+ * - RFC 5709 - OSPFv2 HMAC-SHA Cryptographic Authentication
+ * - RFC 5838 - OSPFv3 Support of Address Families
+ * - RFC 6549 - OSPFv2 Multi-Instance Extensions
+ * - RFC 6987 - OSPF Stub Router Advertisement
  */
 
 #include <stdlib.h>
 #include "ospf.h"
 
-static int ospf_import_control(struct proto *P, rte **new, ea_list **attrs, struct linpool *pool);
+static int ospf_import_control(struct proto *P, rte **new, struct linpool *pool);
 static struct ea_list *ospf_make_tmp_attrs(struct rte *rt, struct linpool *pool);
-static void ospf_store_tmp_attrs(struct rte *rt, struct ea_list *attrs);
+static void ospf_store_tmp_attrs(struct rte *rt);
 static void ospf_reload_routes(struct channel *C);
 static int ospf_rte_better(struct rte *new, struct rte *old);
 static int ospf_rte_same(struct rte *new, struct rte *old);
@@ -115,9 +117,9 @@ add_area_nets(struct ospf_area *oa, struct ospf_area_config *ac)
   struct area_net_config *anc;
   struct area_net *an;
 
-  fib_init(&oa->net_fib,  p->p.pool, ospf_is_v2(p) ? NET_IP4 : NET_IP6,
+  fib_init(&oa->net_fib,  p->p.pool, ospf_get_af(p),
 	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL);
-  fib_init(&oa->enet_fib, p->p.pool, ospf_is_v2(p) ? NET_IP4 : NET_IP6,
+  fib_init(&oa->enet_fib, p->p.pool, ospf_get_af(p),
 	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL);
 
   WALK_LIST(anc, ac->net_list)
@@ -132,6 +134,16 @@ add_area_nets(struct ospf_area *oa, struct ospf_area_config *ac)
     an->hidden = anc->hidden;
     an->tag = anc->tag;
   }
+}
+
+static inline uint
+ospf_opts(struct ospf_proto *p)
+{
+  if (ospf_is_v2(p))
+    return 0;
+
+  return ((ospf_is_ip6(p) && !p->af_mc) ? OPT_V6 : 0) |
+    (!p->stub_router ? OPT_R : 0) | (p->af_ext ? OPT_AF : 0);
 }
 
 static void
@@ -155,10 +167,7 @@ ospf_area_add(struct ospf_proto *p, struct ospf_area_config *ac)
   if (oa->areaid == 0)
     p->backbone = oa;
 
-  if (ospf_is_v2(p))
-    oa->options = ac->type;
-  else
-    oa->options = ac->type | OPT_V6 | (p->stub_router ? 0 : OPT_R);
+  oa->options = ac->type | ospf_opts(p);
 
   ospf_notify_rt_lsa(oa);
 }
@@ -224,22 +233,23 @@ ospf_start(struct proto *P)
 
   p->router_id = proto_get_router_id(P->cf);
   p->ospf2 = c->ospf2;
+  p->af_ext = c->af_ext;
+  p->af_mc = c->af_mc;
   p->rfc1583 = c->rfc1583;
   p->stub_router = c->stub_router;
   p->merge_external = c->merge_external;
   p->asbr = c->asbr;
   p->ecmp = c->ecmp;
   p->tick = c->tick;
-  p->disp_timer = tm_new_set(P->pool, ospf_disp, p, 0, p->tick);
-  tm_start(p->disp_timer, 1);
+  p->disp_timer = tm_new_init(P->pool, ospf_disp, p, p->tick S, 0);
+  tm_start(p->disp_timer, 100 MS);
   p->lsab_size = 256;
   p->lsab_used = 0;
   p->lsab = mb_alloc(P->pool, p->lsab_size);
   p->nhpool = lp_new(P->pool, 12*sizeof(struct nexthop));
   init_list(&(p->iface_list));
   init_list(&(p->area_list));
-  fib_init(&p->rtf, P->pool, p->ospf2 ? NET_IP4 : NET_IP6,
-	   sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
+  fib_init(&p->rtf, P->pool, ospf_get_af(p), sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
   if (ospf_is_v3(p))
     idm_init(&p->idm, P->pool, 16);
   p->areano = 0;
@@ -436,34 +446,21 @@ ospf_disp(timer * timer)
  * import to the filters.
  */
 static int
-ospf_import_control(struct proto *P, rte **new, ea_list **attrs, struct linpool *pool)
+ospf_import_control(struct proto *P, rte **new, struct linpool *pool UNUSED)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_area *oa = ospf_main_area(p);
   rte *e = *new;
 
+  /* Reject our own routes */
   if (e->attrs->src->proto == P)
-    return -1;			/* Reject our own routes */
+    return -1;
 
+  /* Do not export routes to stub areas */
   if (oa_is_stub(oa))
-    return -1;			/* Do not export routes to stub areas */
+    return -1;
 
-  ea_list *ea = e->attrs->eattrs;
-  u32 m0 = ea_get_int(ea, EA_GEN_IGP_METRIC, LSINFINITY);
-  u32 m1 = MIN(m0, LSINFINITY);
-  u32 m2 = 10000;
-  u32 tag = 0;
-
-  /* Hack for setting attributes directly in static protocol */
-  if (e->attrs->source == RTS_STATIC)
-  {
-    m1 = ea_get_int(ea, EA_OSPF_METRIC1, m1);
-    m2 = ea_get_int(ea, EA_OSPF_METRIC2, 10000);
-    tag = ea_get_int(ea, EA_OSPF_TAG, 0);
-  }
-
-  *attrs = ospf_build_attrs(*attrs, pool, m1, m2, tag, 0);
-  return 0;			/* Leave decision to the filters */
+  return 0;
 }
 
 static struct ea_list *
@@ -474,12 +471,12 @@ ospf_make_tmp_attrs(struct rte *rt, struct linpool *pool)
 }
 
 static void
-ospf_store_tmp_attrs(struct rte *rt, struct ea_list *attrs)
+ospf_store_tmp_attrs(struct rte *rt)
 {
-  rt->u.ospf.metric1 = ea_get_int(attrs, EA_OSPF_METRIC1, LSINFINITY);
-  rt->u.ospf.metric2 = ea_get_int(attrs, EA_OSPF_METRIC2, 10000);
-  rt->u.ospf.tag = ea_get_int(attrs, EA_OSPF_TAG, 0);
-  rt->u.ospf.router_id = ea_get_int(attrs, EA_OSPF_ROUTER_ID, 0);
+  rt->u.ospf.metric1 = ea_get_int(rt->attrs->eattrs, EA_OSPF_METRIC1, LSINFINITY);
+  rt->u.ospf.metric2 = ea_get_int(rt->attrs->eattrs, EA_OSPF_METRIC2, 10000);
+  rt->u.ospf.tag = ea_get_int(rt->attrs->eattrs, EA_OSPF_TAG, 0);
+  rt->u.ospf.router_id = ea_get_int(rt->attrs->eattrs, EA_OSPF_ROUTER_ID, 0);
 }
 
 /**
@@ -538,7 +535,7 @@ ospf_get_status(struct proto *P, byte * buf)
 }
 
 static void
-ospf_get_route_info(rte * rte, byte * buf, ea_list * attrs UNUSED)
+ospf_get_route_info(rte * rte, byte * buf)
 {
   char *type = "<bug>";
 
@@ -601,11 +598,7 @@ ospf_area_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
   struct ospf_iface *ifa;
 
   oa->ac = nac;
-
-  if (ospf_is_v2(p))
-    oa->options = nac->type;
-  else
-    oa->options = nac->type | OPT_V6 | (p->stub_router ? 0 : OPT_R);
+  oa->options = nac->type | ospf_opts(p);
 
   if (nac->type != oac->type)
   {
@@ -659,6 +652,9 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   if (old->abr != new->abr)
     return 0;
 
+  if ((p->af_ext != new->af_ext) || (p->af_mc != new->af_mc))
+    return 0;
+
   if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
     return 0;
 
@@ -667,8 +663,8 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   p->asbr = new->asbr;
   p->ecmp = new->ecmp;
   p->tick = new->tick;
-  p->disp_timer->recurrent = p->tick;
-  tm_start(p->disp_timer, 1);
+  p->disp_timer->recurrent = p->tick S;
+  tm_start(p->disp_timer, 100 MS);
 
   /* Mark all areas and ifaces */
   WALK_LIST(oa, p->area_list)
@@ -1073,13 +1069,13 @@ show_lsa_network(struct top_hash_entry *he, int ospf2)
 }
 
 static inline void
-show_lsa_sum_net(struct top_hash_entry *he, int ospf2)
+show_lsa_sum_net(struct top_hash_entry *he, int ospf2, int af)
 {
   net_addr net;
   u8 pxopts;
   u32 metric;
 
-  lsa_parse_sum_net(he, ospf2, &net, &pxopts, &metric);
+  lsa_parse_sum_net(he, ospf2, af, &net, &pxopts, &metric);
   cli_msg(-1016, "\t\txnetwork %N metric %u", &net, metric);
 }
 
@@ -1096,7 +1092,7 @@ show_lsa_sum_rt(struct top_hash_entry *he, int ospf2)
 
 
 static inline void
-show_lsa_external(struct top_hash_entry *he, int ospf2)
+show_lsa_external(struct top_hash_entry *he, int ospf2, int af)
 {
   struct ospf_lsa_ext_local rt;
   char str_via[IPA_MAX_TEXT_LENGTH + 8] = "";
@@ -1105,7 +1101,7 @@ show_lsa_external(struct top_hash_entry *he, int ospf2)
   if (he->lsa_type == LSA_T_EXT)
     he->domain = 0; /* Unmark the LSA */
 
-  lsa_parse_ext(he, ospf2, &rt);
+  lsa_parse_ext(he, ospf2, af, &rt);
 
   if (rt.fbit)
     bsprintf(str_via, " via %I", rt.fwaddr);
@@ -1119,7 +1115,7 @@ show_lsa_external(struct top_hash_entry *he, int ospf2)
 }
 
 static inline void
-show_lsa_prefix(struct top_hash_entry *he, struct top_hash_entry *cnode)
+show_lsa_prefix(struct top_hash_entry *he, struct top_hash_entry *cnode, int af)
 {
   struct ospf_lsa_prefix *px = he->lsa_body;
   u32 *buf;
@@ -1142,7 +1138,7 @@ show_lsa_prefix(struct top_hash_entry *he, struct top_hash_entry *cnode)
     u8 pxopts;
     u16 metric;
 
-    buf = ospf_get_ipv6_prefix(buf, &net, &pxopts, &metric);
+    buf = ospf3_get_prefix(buf, af, &net, &pxopts, &metric);
 
     if (px->ref_type == LSA_T_RT)
       cli_msg(-1016, "\t\tstubnet %N metric %u", &net, metric);
@@ -1156,6 +1152,7 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   int ospf2 = ospf_is_v2(p);
+  int af = ospf_get_af(p);
   uint i, ix, j1, jx;
   u32 last_area = 0xFFFFFFFF;
 
@@ -1169,7 +1166,7 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
   /* We store interesting area-scoped LSAs in array hea and
      global-scoped (LSA_T_EXT) LSAs in array hex */
 
-  int num = p->gr->hash_entries;
+  uint num = p->gr->hash_entries;
   struct top_hash_entry *hea[num];
   struct top_hash_entry *hex[verbose ? num : 0];
   struct top_hash_entry *he;
@@ -1276,7 +1273,7 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 
     case LSA_T_SUM_NET:
       if (cnode->lsa_type == LSA_T_RT)
-	show_lsa_sum_net(he, ospf2);
+	show_lsa_sum_net(he, ospf2, af);
       break;
 
     case LSA_T_SUM_RT:
@@ -1286,11 +1283,11 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 
     case LSA_T_EXT:
     case LSA_T_NSSA:
-      show_lsa_external(he, ospf2);
+      show_lsa_external(he, ospf2, af);
       break;
 
     case LSA_T_PREFIX:
-      show_lsa_prefix(he, cnode);
+      show_lsa_prefix(he, cnode, af);
       break;
     }
 
@@ -1304,7 +1301,7 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 	ix++;
 
       while ((ix < jx) && (hex[ix]->lsa.rt == cnode->lsa.rt))
-	show_lsa_external(hex[ix++], ospf2);
+	show_lsa_external(hex[ix++], ospf2, af);
 
       cnode = NULL;
     }
@@ -1338,7 +1335,7 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 	last_rt = he->lsa.rt;
       }
 
-      show_lsa_external(he, ospf2);
+      show_lsa_external(he, ospf2, af);
     }
   }
 
@@ -1466,7 +1463,7 @@ ospf_sh_lsadb(struct lsadb_show_data *ld)
 struct protocol proto_ospf = {
   .name =		"OSPF",
   .template =		"ospf%d",
-  .attr_class =		EAP_OSPF,
+  .class =		PROTOCOL_OSPF,
   .preference =		DEF_PREF_OSPF,
   .channel_mask =	NB_IP,
   .proto_size =		sizeof(struct ospf_proto),

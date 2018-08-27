@@ -56,6 +56,15 @@ t_simple(void)
   BSPRINTF(2, "-1", buf, "%d", -1);
   BSPRINTF(11, "-2147483648", buf, "%d", -2147483648);
 
+  BSPRINTF(7, "123.456", buf, "%t", (btime) 123456789);
+  BSPRINTF(7, "123.456", buf, "%2t", (btime) 123456789);
+  BSPRINTF(8, " 123.456", buf, "%8t", (btime) 123456789);
+  BSPRINTF(4, " 123", buf, "%4.0t", (btime) 123456789);
+  BSPRINTF(8, "123.4567", buf, "%8.4t", (btime) 123456789);
+  BSPRINTF(9, "0123.4567", buf, "%09.4t", (btime) 123456789);
+  BSPRINTF(12, "  123.456789", buf, "%12.10t", (btime) 123456789);
+  BSPRINTF(8, " 123.004", buf, "%8t", (btime) 123004 MS);
+
   return 1;
 }
 

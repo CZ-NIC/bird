@@ -14,8 +14,7 @@ CF_HDR
 CF_DECLS
 
 CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT)
-CF_KEYWORDS(TIMEFORMAT, ISO, OLD, SHORT, LONG, BASE, NAME, CONFIRM, UNDO, CHECK, TIMEOUT)
-CF_KEYWORDS(DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, TIMEOUT)
+CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout
 %type <g> log_file
@@ -25,7 +24,7 @@ CF_KEYWORDS(DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, TIMEOUT)
 
 CF_GRAMMAR
 
-CF_ADDTO(conf, log_config)
+conf: log_config ;
 
 log_config: LOG log_file log_mask ';' {
     struct log_config *c = cfg_allocz(sizeof(struct log_config));
@@ -73,7 +72,7 @@ log_cat:
  ;
 
 
-CF_ADDTO(conf, mrtdump_base)
+conf: mrtdump_base ;
 
 mrtdump_base:
    MRTDUMP PROTOCOLS mrtdump_mask ';' { new_config->proto_default_mrtdump = $3; }
@@ -85,30 +84,7 @@ mrtdump_base:
  ;
 
 
-CF_ADDTO(conf, timeformat_base)
-
-timeformat_which:
-   ROUTE { $$ = &new_config->tf_route; }
- | PROTOCOL { $$ = &new_config->tf_proto; }
- | BASE { $$ = &new_config->tf_base; }
- | LOG { $$ = &new_config->tf_log; }
- ;
-
-timeformat_spec:
-   timeformat_which TEXT { *$1 = (struct timeformat){$2, NULL, 0}; }
- | timeformat_which TEXT expr TEXT { *$1 = (struct timeformat){$2, $4, $3}; }
- | timeformat_which ISO SHORT { *$1 = (struct timeformat){"%T", "%F", 20*3600}; }
- | timeformat_which ISO LONG  { *$1 = (struct timeformat){"%F %T", NULL, 0}; }
- | timeformat_which OLD SHORT { *$1 = (struct timeformat){NULL, NULL, 0}; }
- | timeformat_which OLD LONG  { *$1 = (struct timeformat){"%d-%m-%Y %T", NULL, 0}; }
- ;
-
-timeformat_base:
-   TIMEFORMAT timeformat_spec ';'
- ;
-
-
-CF_ADDTO(conf, debug_unix)
+conf: debug_unix ;
 
 debug_unix:
    DEBUG LATENCY bool { new_config->latency_debug = $3; }

@@ -14,7 +14,7 @@
 struct ospf_dbdes2_packet
 {
   struct ospf_packet hdr;
-  union ospf_auth auth;
+  union ospf_auth2 auth;
 
   u16 iface_mtu;
   u8 options;
@@ -38,13 +38,19 @@ struct ospf_dbdes3_packet
 };
 
 
+uint
+ospf_dbdes3_options(struct ospf_packet *pkt)
+{
+  struct ospf_dbdes3_packet *ps = (void *) pkt;
+  return ntohl(ps->options);
+}
+
 static inline uint
 ospf_dbdes_hdrlen(struct ospf_proto *p)
 {
   return ospf_is_v2(p) ?
     sizeof(struct ospf_dbdes2_packet) : sizeof(struct ospf_dbdes3_packet);
 }
-
 
 static void
 ospf_dbdes_body(struct ospf_proto *p, struct ospf_packet *pkt,
@@ -129,7 +135,7 @@ ospf_prepare_dbdes(struct ospf_proto *p, struct ospf_neighbor *n)
   else /* OSPFv3 */
   {
     struct ospf_dbdes3_packet *ps = (void *) pkt;
-    ps->options = htonl(ifa->oa->options);
+    ps->options = htonl(ifa->oa->options | (ifa->autype == OSPF_AUTH_CRYPT ? OPT_AT : 0));
     ps->iface_mtu = htons(iface_mtu);
     ps->padding = 0;
     ps->imms = 0;	/* Will be set later */
@@ -356,7 +362,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
       LOG_PKT_WARN("MTU mismatch with nbr %R on %s (remote %d, local %d)",
 		   n->rid, ifa->ifname, rcv_iface_mtu, ifa->iface->mtu);
 
-    if ((rcv_imms == DBDES_IMMS) &&
+    if (((rcv_imms & DBDES_IMMS) == DBDES_IMMS) &&
 	(n->rid > p->router_id) &&
 	(plen == ospf_dbdes_hdrlen(p)))
     {
@@ -428,7 +434,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
       }
 
       ospf_send_dbdes(p, n);
-      tm_start(n->dbdes_timer, n->ifa->rxmtint);
+      tm_start(n->dbdes_timer, n->ifa->rxmtint S);
     }
     else
     {

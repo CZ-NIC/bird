@@ -21,9 +21,9 @@ sub include {
 
 sub process {
   my $dir = shift @_;
-  print "$dir/Doc\n";
-  open(IN, "$dir/Doc") || die "Unable to read $dir/Doc";
-  push(@deps, "$dir/Doc");
+  print "$dir/progdoc\n";
+  open(IN, "$dir/progdoc") || die "Unable to read $dir/progdoc";
+  push(@deps, "$dir/progdoc");
   my @docfile = <IN>;
   close IN;
   foreach $_ (@docfile) {

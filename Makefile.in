@@ -9,6 +9,8 @@ MAKEFLAGS += -r
 CPPFLAGS=-I$(objdir) -I$(srcdir) @CPPFLAGS@
 CFLAGS=$(CPPFLAGS) @CFLAGS@
 LDFLAGS=@LDFLAGS@
+M4FLAGS=@M4FLAGS@
+BISONFLAGS=@BISONFLAGS@
 LIBS=@LIBS@
 DAEMON_LIBS=@DAEMON_LIBS@
 CLIENT_LIBS=@CLIENT_LIBS@
@@ -37,6 +39,11 @@ srcdir := @srcdir@
 objdir := @objdir@
 exedir := @exedir@
 
+git-label:=$(strip $(shell cd $(srcdir) && [ "$$(git rev-parse --show-toplevel)" = "$$(readlink -f .)" ] && git describe --always --dirty=-x 2>/dev/null))
+ifneq ($(git-label),)
+        CFLAGS += -DGIT_LABEL="$(git-label)"
+endif
+
 ifeq ($(objdir),.)
   objdir := $(realpath .)
 endif
@@ -49,11 +56,15 @@ else
   Q:=
 endif
 
+ifneq ($(COLOR),)
+  CFLAGS += -fdiagnostics-color=always
+endif
+
 # Meta rules
 docgoals := docs userdocs progdocs
 testgoals := check test tests tests_run
 cleangoals := clean distclean testsclean
-.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags
+.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope
 all: daemon cli
 
 daemon: $(daemon)
@@ -90,7 +101,7 @@ clean = $(eval $(call clean_in,$(1)))
 include $(addsuffix /Makefile,$(addprefix $(srcdir)/,$(dirs)))
 
 # Generic rules
-
+# Object file rules
 $(objdir)/%.o: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
 	$(E)echo CC -o $@ -c $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -c $<
@@ -99,7 +110,16 @@ $(objdir)/%.o: $(objdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
 	$(E)echo CC -o $@ -c $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -c $<
 
+# Debug: Preprocessed source rules
+$(objdir)/%.E: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+	$(E)echo CC -o $@ -E $<
+	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -E $<
 
+$(objdir)/%.E: $(objdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+	$(E)echo CC -o $@ -E $<
+	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -E $<
+
+# Debug: Assembler object rules
 $(objdir)/%.S: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
 	$(E)echo CC -o $@ -S $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -S $<
@@ -156,6 +176,9 @@ endif
 
 tags:
 	cd $(srcdir) ; etags -lc `find $(dirs) -name *.[chY]`
+
+cscope:
+	cd $(srcdir) ; find $(dirs) -name *.[chY] > cscope.files ; cscope -b
 
 # Install
 
