@@ -16,11 +16,12 @@
 #include "lib/coroutine.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
+#include "lib/timer.h"
 #include "sysdep/unix/unix.h"
 
 #define CORO_STACK_SIZE 65536
 
-#if 1
+#if ! USE_PTHREADS
 
 /*
  *	Implementation of coroutines based on <ucontext.h>
@@ -170,10 +171,13 @@ static struct resclass coro_class = {
   .memsize = coro_memsize,
 };
 
+extern pthread_key_t current_time_key;
+
 static void *
 coro_do_start(void *c_)
 {
   coroutine *c = c_;
+  pthread_setspecific(current_time_key, &main_timeloop);
   while (sem_wait(&c->sem) < 0)
     ;
   coro_current = c;
