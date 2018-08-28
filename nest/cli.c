@@ -245,8 +245,7 @@ cli_write(cli *c)
       s->tbuf = o->outpos;
       o->outpos = o->wpos;
 
-      if (sk_send(s, len) <= 0)
-	return;
+      coro_sk_write(s, len);
 
       c->tx_pos = o->next;
     }
@@ -262,12 +261,6 @@ cli_write_trigger(cli *c)
 {
   if (c->tx_pos && c->socket->tbuf == NULL)
     cli_write(c);
-}
-
-static void
-cli_tx_hook(sock *s)
-{
-  cli_write(s->data);
 }
 
 static void
@@ -540,7 +533,6 @@ cli_new(sock *s)
 
   s->pool = c->pool;		/* We need to have all the socket buffers allocated in the cli pool */
   rmove(s, c->pool);
-  s->tx_hook = cli_tx_hook;
   s->err_hook = cli_err_hook;
   s->data = c;
 
