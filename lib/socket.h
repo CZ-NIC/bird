@@ -83,6 +83,7 @@ typedef struct birdsock {
   struct ssh_sock *ssh;			/* Used in SK_SSH */
 
   struct coroutine *rx_coroutine;
+  struct coroutine *tx_coroutine;
 } sock;
 
 sock *sock_new(pool *);			/* Allocate new socket */
