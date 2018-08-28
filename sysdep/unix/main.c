@@ -530,7 +530,7 @@ signal_init(void)
  *	Parsing of command-line arguments
  */
 
-static char *opt_list = "c:dD:ps:P:u:g:flRh";
+static char *opt_list = "bc:dD:ps:P:u:g:flRh";
 static int parse_and_exit;
 char *bird_name;
 static char *use_user;
@@ -551,6 +551,7 @@ display_help(void)
   fprintf(stderr,
     "\n"
     "Options: \n"
+    "  -b                   Run bird in background\n"
     "  -c <config-file>     Use given configuration file instead\n"
     "                       of prefix/etc/bird.conf\n"
     "  -d                   Enable debug messages and run bird in foreground\n"
@@ -655,16 +656,21 @@ parse_args(int argc, char **argv)
   while ((c = getopt(argc, argv, opt_list)) >= 0)
     switch (c)
       {
+      case 'b':
+	run_in_foreground = 0;
+	break;
       case 'c':
 	config_name = optarg;
 	config_changed = 1;
 	break;
       case 'd':
 	debug_flag |= 1;
+	run_in_foreground = 1;
 	break;
       case 'D':
 	log_init_debug(optarg);
 	debug_flag |= 2;
+	run_in_foreground = 1;
 	break;
       case 'p':
 	parse_and_exit = 1;
@@ -763,7 +769,7 @@ main(int argc, char **argv)
   if (parse_and_exit)
     exit(0);
 
-  if (!(debug_flag||run_in_foreground))
+  if (!run_in_foreground)
     {
       pid_t pid = fork();
       if (pid < 0)

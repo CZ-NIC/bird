@@ -653,7 +653,7 @@ agreement").
 
 	<tag><label id="proto-description">description "<m/text/"</tag>
 	This is an optional description of the protocol. It is displayed as a
-	part of the output of 'show route all' command.
+	part of the output of 'show protocols all' command.
 
 	<tag><label id="proto-vrf">vrf "<m/text/"</tag>
 	Associate the protocol with specific VRF. The protocol will be
