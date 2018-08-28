@@ -1,7 +1,7 @@
 /*
  *	BIRD Internet Routing Daemon -- Command-Line Interface
  *
- *	(c) 1999--2000 Martin Mares <mj@ucw.cz>
+ *	(c) 1999--2017 Martin Mares <mj@ucw.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -10,7 +10,9 @@
 #define _BIRD_CLI_H_
 
 #include "lib/resource.h"
+#include "lib/coroutine.h"
 #include "lib/event.h"
+#include "lib/socket.h"
 
 #define CLI_RX_BUF_SIZE 4096
 #define CLI_TX_BUF_SIZE 4096
@@ -25,20 +27,38 @@ struct cli_out {
   byte buf[0];
 };
 
+enum cli_state {
+  CLI_STATE_INIT,
+  CLI_STATE_RUN,
+  CLI_STATE_WAIT_RX,
+  CLI_STATE_WAIT_TX,
+  CLI_STATE_YIELD,
+};
+
 typedef struct cli {
   node n;				/* Node in list of all log hooks */
   pool *pool;
-  void *priv;				/* Private to sysdep layer */
-  byte *rx_buf, *rx_pos, *rx_aux;	/* sysdep */
+  coroutine *coro;
+  enum cli_state state;
+  int restricted;			/* CLI is restricted to read-only commands */
+
+  /* I/O */
+  sock *socket;
+  byte *rx_buf, *rx_pos, *rx_aux;
   struct cli_out *tx_buf, *tx_pos, *tx_write;
   event *event;
+
+  /* Continuation mechanism */
   void (*cont)(struct cli *c);
   void (*cleanup)(struct cli *c);
   void *rover;				/* Private to continuation routine */
   int last_reply;
-  int restricted;			/* CLI is restricted to read-only commands */
+
+  /* Pools */
   struct linpool *parser_pool;		/* Pool used during parsing */
   struct linpool *show_pool;		/* Pool used during route show */
+
+  /* Asynchronous messages */
   byte *ring_buf;			/* Ring buffer for asynchronous messages */
   byte *ring_end, *ring_read, *ring_write;	/* Pointers to the ring buffer */
   uint ring_overflow;			/* Counter of ring overflows */
@@ -56,15 +76,16 @@ extern struct cli *this_cli;		/* Used during parsing */
 
 void cli_printf(cli *, int, char *, ...);
 #define cli_msg(x...) cli_printf(this_cli, x)
+void cli_write_trigger(cli *c);
 void cli_set_log_echo(cli *, uint mask, uint size);
+void cli_yield(cli *c);
 
 /* Functions provided to sysdep layer */
 
-cli *cli_new(void *);
 void cli_init(void);
+cli *cli_new(sock *s);
+void cli_run(cli *);
 void cli_free(cli *);
-void cli_kick(cli *);
-void cli_written(cli *);
 void cli_echo(uint class, byte *msg);
 
 static inline int cli_access_restricted(void)
@@ -74,10 +95,5 @@ static inline int cli_access_restricted(void)
   else
     return 0;
 }
-
-/* Functions provided by sysdep layer */
-
-void cli_write_trigger(cli *);
-int cli_get_command(cli *);
 
 #endif

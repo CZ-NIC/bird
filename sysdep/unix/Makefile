@@ -1,4 +1,4 @@
-src := io.c krt.c log.c main.c random.c conf.c
+src := conf.c coroutine.c io.c krt.c log.c main.c random.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
