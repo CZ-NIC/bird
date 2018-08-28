@@ -146,6 +146,7 @@ static void
 coro_free(resource *r)
 {
   coroutine *c = (coroutine *) r;
+  ASSERT(coro_current != c);
   pthread_cancel(c->thread);
   pthread_join(c->thread, NULL);
 }
@@ -246,6 +247,14 @@ coro_sk_rx_hook(sock *sk, uint size UNUSED)
   return 0;
 }
 
+static void
+coro_sk_tx_hook(sock *sk)
+{
+  ASSERT(sk->tx_coroutine);
+  ASSERT(!coro_current);
+  coro_resume(sk->tx_coroutine);
+}
+
 int
 coro_sk_read(sock *s)
 {
@@ -255,4 +264,16 @@ coro_sk_read(sock *s)
   coro_suspend();
   s->rx_hook = NULL;
   return s->rpos - s->rbuf;
+}
+
+void
+coro_sk_write(sock *s, unsigned len)
+{
+  ASSERT(coro_current);
+  s->tx_coroutine = coro_current;
+  s->tx_hook = coro_sk_tx_hook;
+  s->ttx = s->tbuf;
+  s->tpos = s->tbuf + len;
+  coro_suspend();
+  s->tx_hook = NULL;
 }

@@ -18,5 +18,6 @@ void coro_resume(coroutine *c);
 
 struct birdsock;
 int coro_sk_read(struct birdsock *s);
+void coro_sk_write(struct birdsock *s, unsigned len);
 
 #endif
