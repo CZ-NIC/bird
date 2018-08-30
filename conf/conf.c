@@ -103,16 +103,42 @@ config_alloc(struct pool *pp, struct linpool *lp)
   return c;
 }
 
-int
-config_parse(struct conf_order *order)
+static void config_event_resume(void *arg)
 {
-  DBG("Parsing configuration named `%s'\n", order->state->name);
+  DBG("config event resume\n");
+  struct cf_context *ctx = arg;
+  coro_resume(ctx->coro);
+}
 
-  if (!order->new_config)
-    order->new_config = config_alloc(order->pool, order->lp);
+static void config_event_cleanup(void *arg)
+{
+  DBG("config event cleanup\n");
+  struct cf_context *ctx = arg;
+  struct conf_order *order = ctx->order;
 
-  struct cf_context *ctx = cf_new_context(0, order);
-  int ret;
+  rfree(ctx->coro);
+
+  cf_free_context(ctx);
+  order->ctx = NULL;
+
+  if (order->flags & CO_CLI)
+    {
+      config_free(order->new_config);
+      order->new_config = NULL;
+    }
+
+  return order->cf_done(order);
+}
+
+static void
+config_parse_coro(void *arg)
+{
+  struct cf_context *ctx = arg;
+  struct conf_order *order = ctx->order;
+  DBG("%s parse coroutine started in %s mode\n",
+      (order->flags & CO_CLI) ? "Cli" : "Conf",
+      (order->flags & CO_SYNC) ? "sync" : "async"
+      );
 
   if (setjmp(ctx->jmpbuf))
     {
@@ -120,58 +146,80 @@ config_parse(struct conf_order *order)
 	while (! order->cf_outclude(order))
 	  ;
 
-      ret = 0;
-
       config_free(ctx->new_config);
       order->new_config = NULL;
 
       goto cleanup;
     }
 
-  sysdep_preconfig(ctx);
-  protos_preconfig(ctx->new_config);
-  rt_preconfig(ctx);
   cfx_parse(ctx, ctx->yyscanner);
 
-  if (EMPTY_LIST((ctx->new_config)->protos))
+  if (!(order->flags & CO_CLI) && EMPTY_LIST(ctx->new_config->protos))
     cf_error(ctx, "No protocol is specified in the config file");
 
-  ret = 1;
-
 cleanup:
-  cf_free_context(ctx);
-  order->ctx = NULL;
-  return ret;
+  if (order->flags & CO_SYNC)
+    return;
+
+  DBG("config parse coroutine done, scheduling thread join\n");
+  coro_done(ctx->ev_cleanup);
+  bug("Resumed config when done.");
 }
 
-int
-cli_parse(struct conf_order *order)
+void
+config_parse(struct conf_order *order)
 {
-  DBG("Parsing command line\n");
+  DBG("Parsing configuration\n");
 
-  struct config cc = {};
-  cc.pool = rp_new(order->pool ?: &root_pool, "CLI Dummy Config");
-  cc.mem = order->lp ?: lp_new_default(cc.pool);
+  if (!order->new_config)
+    order->new_config = config_alloc(order->pool, order->lp);
 
-  order->new_config = &cc;
+  pool *p = order->new_config->pool;
 
-  struct cf_context *ctx = cf_new_context(1, order);
+  struct cf_context *ctx = cf_new_context(order);
 
-  cf_scan_bytes(ctx, order->buf, order->len);
+  /* CLI does no preconfig */
+  if (!(order->flags & CO_CLI))
+    {
+      sysdep_preconfig(ctx);
+      protos_preconfig(ctx->new_config);
+      rt_preconfig(ctx);
+    }
 
-  int ok = 0;
-  if (setjmp(ctx->jmpbuf))
-    goto done;
+  if (!(order->flags & CO_SYNC))
+    {
+      ctx->ev_resume = ev_new(p);
+      ctx->ev_resume->hook = config_event_resume;
+      ctx->ev_resume->data = ctx;
 
-  cfx_parse(ctx, ctx->yyscanner);
-  ok = 1;
+      ctx->ev_cleanup = ev_new(p);
+      ctx->ev_cleanup->hook = config_event_cleanup;
+      ctx->ev_cleanup->data = ctx;
+    }
 
-done:
-  cf_free_context(ctx);
-  config_free(&cc);
-  order->new_config = NULL;
-  order->ctx = NULL;
-  return ok;
+  if (order->flags & CO_FILENAME)
+    if (order->cf_include)
+      order->cf_include(order, order->buf, order->len);
+    else
+      bug("Include handler must be set to config from file");
+  else
+    cf_scan_bytes(ctx, order->buf, order->len);
+    /* Warning: Return from include will fail badly if you start with a buffer.
+     * Currently it's not supported to supply cf_include hook without CO_FILENAME flag.
+     */
+
+  if (order->flags & CO_SYNC)
+    return config_parse_coro(ctx);
+
+  ctx->coro = coro_new(p, config_parse_coro, ctx);
+  coro_resume(ctx->coro);
+}
+
+void config_yield(struct cf_context *ctx)
+{
+  DBG("Conf: Yield\n");
+  ev_schedule(ctx->ev_resume);
+  DBG("Conf: Yield resumed\n");
 }
 
 /**
@@ -319,6 +367,7 @@ config_done(void *unused UNUSED)
 int
 config_commit(struct config *c, int type, uint timeout)
 {
+  ASSERT(type != RECONFIG_CHECK);
   if (shutting_down)
     {
       config_free(c);

@@ -16,6 +16,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#undef LOCAL_DEBUG
+
 #include "nest/bird.h"
 #include "conf/conf.h"
 #include "conf/parser.h"
@@ -106,9 +108,33 @@ sysdep_commit(struct config *new, struct config *old UNUSED)
   return 0;
 }
 
+#define MAX_INCLUDE_DEPTH 8
+#define UCO struct unix_conf_order *uco = (struct unix_conf_order *) co
+
 struct unix_conf_order {
-  struct conf_order co;
-  struct unix_ifs *ifs;
+  struct conf_order co;		/* First field of struct conf_order is resource r; */
+  struct unix_ifs *ifs;		/* Input file stack; initially NULL, is inited inside config_parse() */
+  struct linpool *ifs_lp;	/* Where to allocate IFS from */
+  struct cli *cli;		/* CLI if called from CLI */
+  event *ev;			/* Start event if called from CLI */
+  int type;			/* Type of reconfig */
+  uint timeout;			/* Config timeout */
+};
+
+static void
+unix_conf_order_free(resource *r)
+{
+  struct unix_conf_order *uco = (struct unix_conf_order *) r;
+  rfree(uco->ifs_lp);
+}
+
+static struct resclass unix_conf_order_class = {
+  "Unix Conf Order",
+  sizeof(struct unix_conf_order),
+  unix_conf_order_free,
+  NULL,
+  NULL,
+  NULL,
 };
 
 struct unix_ifs {
@@ -123,7 +149,7 @@ struct unix_ifs {
 static int
 unix_cf_read(struct conf_order *co, byte *dest, uint len)
 {
-  struct unix_conf_order *uco = (struct unix_conf_order *) co;
+  UCO;
 
   ASSERT(uco->ifs->state == co->state);
 
@@ -138,7 +164,7 @@ unix_cf_read(struct conf_order *co, byte *dest, uint len)
 	cf_error(co->ctx, "Unable to open included file %s: %m", fn);
       }
     else
-      cf_error(co->ctx, "Unable to open configuration file %s: %m", co->state->name);
+      cf_error(co->ctx, "Unable to open: %m");
 
   int l = read(uco->ifs->fd, dest, len);
   if (l < 0)
@@ -147,28 +173,26 @@ unix_cf_read(struct conf_order *co, byte *dest, uint len)
 }
 
 static void
-unix_cf_include(struct conf_order *co, char *name, uint len)
+unix_cf_include(struct conf_order *co, const char *name, uint len)
 {
-  struct unix_conf_order *uco = (struct unix_conf_order *) co;
+  UCO;
 
-  if (!uco->ifs)
-    cf_error(co->ctx, "Max include depth reached");
-
-  byte new_depth = uco->ifs->depth - 1;
+  byte new_depth = uco->ifs ? (uco->ifs->depth - 1) : MAX_INCLUDE_DEPTH;
 
   /* Includes are relative to the current file unless the path is absolute.
    * Joining the current file dirname with the include relative path. */
-  char *patt;
-  if (*name != '/')
+  const char *patt;
+  if (co->state && *name != '/')
     {
       /* dlen is upper bound of current file dirname length */
       int dlen = strlen(co->state->name);
       char *dir = alloca(dlen + 1);
-      patt = alloca(dlen + len + 2);
+      char *npatt = alloca(dlen + len + 2);
 
       /* dirname() may overwrite its argument */
       memcpy(dir, co->state->name, dlen + 1);
-      sprintf(patt, "%s/%s", dirname(dir), name);
+      sprintf(npatt, "%s/%s", dirname(dir), name);
+      patt = npatt;
     }
   else
     patt = name;
@@ -177,7 +201,7 @@ unix_cf_include(struct conf_order *co, char *name, uint len)
      response when the included config file is missing */
   if (!strpbrk(name, "?*["))
     {
-      struct unix_ifs *uifs = cf_alloc(co->ctx, sizeof(struct unix_ifs));
+      struct unix_ifs *uifs = lp_alloc(uco->ifs_lp, sizeof(struct unix_ifs));
 
       *uifs = (struct unix_ifs) {
 	.next = uco->ifs,
@@ -223,7 +247,7 @@ unix_cf_include(struct conf_order *co, char *name, uint len)
         continue;
 
       /* Prepare new stack item */
-      struct unix_ifs *uifs = cf_alloc(co->ctx, sizeof(struct unix_ifs));
+      struct unix_ifs *uifs = lp_alloc(uco->ifs_lp, sizeof(struct unix_ifs));
 
       *uifs = (struct unix_ifs) {
 	.next = last_uifs,
@@ -247,7 +271,7 @@ unix_cf_include(struct conf_order *co, char *name, uint len)
 static int
 unix_cf_outclude(struct conf_order *co)
 {
-  struct unix_conf_order *uco = (struct unix_conf_order *) co;
+  UCO;
 
   close(uco->ifs->fd);
   cf_free_state(co->ctx, uco->ifs->state);
@@ -261,111 +285,200 @@ unix_cf_outclude(struct conf_order *co)
   return 0;
 }
 
-#define MAX_INCLUDE_DEPTH 8
+typedef void (*cf_error_type)(struct conf_order *co, const char *msg, va_list args);
+typedef void (*cf_done_type)(struct conf_order *co);
 
-typedef void (*cf_error_type)(struct conf_order *order, const char *msg, va_list args);
-
-static struct config *
-unix_read_config(char *name, cf_error_type arg_cf_error)
+static struct unix_conf_order *
+unix_new_conf_order(pool *p)
 {
-  struct conf_state state = { .name = name };
+  struct unix_conf_order *uco = ralloc(p, &unix_conf_order_class);
+  
+  uco->co.flags = CO_FILENAME;
+  uco->co.cf_read_hook = unix_cf_read;
+  uco->co.cf_include = unix_cf_include;
+  uco->co.cf_outclude = unix_cf_outclude;
 
-  struct unix_ifs uifs = {
-    .state = &state,
-    .depth = MAX_INCLUDE_DEPTH,
-    .fd = -1,
-  };
+  uco->ifs_lp = lp_new_default(p);
 
-  struct unix_conf_order uco = {
-    .co = {
-      .cf_read_hook = unix_cf_read,
-      .cf_include = unix_cf_include,
-      .cf_outclude = unix_cf_outclude,
-      .cf_error = arg_cf_error,
-      .state = &state,
-    },
-    .ifs = &uifs,
-  };
-
-  if (config_parse(&uco.co))
-    return uco.co.new_config;
-  else
-    return NULL;
+  return uco;
 }
 
 static void
-unix_cf_error_die(struct conf_order *order, const char *msg, va_list args)
+unix_cf_error_die(struct conf_order *co, const char *msg, va_list args)
 {
-  die("%s, line %u: %V", order->state->name, order->state->lino, msg, &args);
+  va_list cargs;
+  va_copy(cargs, args);
+  die("%s, line %u: %V", co->state->name, co->state->lino, msg, &cargs);
+  va_end(cargs);
 }
 
 struct config *
 read_config(void)
 {
-  return unix_read_config(config_name, unix_cf_error_die);
+  struct unix_conf_order *uco = unix_new_conf_order(&root_pool);
+
+  uco->co.buf = config_name;
+  uco->co.len = strlen(config_name);
+  uco->co.flags |= CO_SYNC;
+  uco->co.cf_error = unix_cf_error_die;
+
+  config_parse(&(uco->co));
+
+  struct config *c = uco->co.new_config;
+  rfree(uco);
+
+  return c;
 }
 
 static void
-unix_cf_error_log(struct conf_order *order, const char *msg, va_list args)
+unix_cf_error_log(struct conf_order *co, const char *msg, va_list args)
 {
-  log(L_ERR "%s, line %u: %V", order->state->name, order->state->lino, msg, &args);
+  va_list cargs;
+  va_copy(cargs, args);
+  log(L_ERR "%s, line %u: %V", co->state->name, co->state->lino, msg, &cargs);
+  va_end(cargs);
+}
+
+static void
+unix_cf_done_async(struct conf_order *co)
+{
+  UCO;
+  struct config *c = co->new_config;
+  if (c)
+    config_commit(c, RECONFIG_HARD, 0);
+  
+  rfree(uco);
 }
 
 void
 async_config(void)
 {
-  log(L_INFO "Reconfiguration requested by SIGHUP");
-  struct config *conf = unix_read_config(config_name, unix_cf_error_log);
+  struct unix_conf_order *uco = unix_new_conf_order(&root_pool);
 
-  if (conf)
-    config_commit(conf, RECONFIG_HARD, 0);
+  uco->co.buf = config_name;
+  uco->co.len = strlen(config_name);
+  uco->co.cf_error = unix_cf_error_log;
+  uco->co.cf_done = unix_cf_done_async;
+
+  log(L_INFO "Reconfiguration requested by SIGHUP");
+  config_parse(&(uco->co));
 }
 
 static void
-unix_cf_error_cli(struct conf_order *order, const char *msg, va_list args)
+unix_cf_error_cli(struct conf_order *co, const char *msg, va_list args)
 {
-  cli_msg(8002, "%s, line %d: %s", order->state->name, order->state->lino, msg, &args);
+  cli_msg(8002, "%s, line %d: %s", co->state->name, co->state->lino, msg, &args);
 }
 
-static struct config *
-cmd_read_config(char *name)
-{
-  if (!name)
-    name = config_name;
+static void cmd_reconfig_msg(cli *c, int r);
 
-  cli_msg(-2, "Reading configuration from %s", name);
-  return unix_read_config(name, unix_cf_error_cli);
+/* Hack for scheduled undo notification */
+cli *cmd_reconfig_stored_cli;
+
+static void
+unix_cf_done_cli(struct conf_order *co)
+{
+  DBG("unix_cf_done_cli\n");
+  UCO;
+  cli_wakeup(uco->cli);
+}
+
+static void
+cmd_done_config(struct unix_conf_order *uco)
+{
+  DBG("config done handler\n");
+  if (uco->type == RECONFIG_CHECK)
+    {
+      if (!uco->co.new_config)
+	goto cleanup;
+      
+      cli_printf(uco->cli, 20, "Configuration OK");
+      config_free(uco->co.new_config);
+    }
+  else
+    {
+      struct config *c = uco->co.new_config;
+      if (!c)
+	goto cleanup;
+
+      int r = config_commit(c, uco->type, uco->timeout);
+
+      if ((r >= 0) && (uco->timeout > 0))
+	{
+	  cmd_reconfig_stored_cli = uco->cli;
+	  cli_printf(uco->cli, -22, "Undo scheduled in %d s", uco->timeout);
+	}
+
+      cmd_reconfig_msg(uco->cli, r);
+    }
+
+cleanup:
+  DBG("config done handler: freeing the config order\n");
+  rfree(uco);
+}
+
+static void
+cmd_read_config_ev(void *data)
+{
+  struct unix_conf_order *uco = data;
+  log(L_INFO "Reading configuration from %s on CLI request: begin", uco->co.buf);
+  return config_parse(&(uco->co));
+}
+
+static void
+cmd_read_config(struct unix_conf_order *uco)
+{
+  DBG("cmd_read_config\n");
+  uco->co.buf = uco->co.buf ?: config_name;
+  uco->co.len = strlen(uco->co.buf);
+
+  uco->cli = this_cli;
+  cli_msg(-2, "Reading configuration from %s", uco->co.buf);
+  cli_write_trigger(uco->cli);
+
+  uco->co.cf_error = unix_cf_error_cli;
+  uco->co.cf_done = unix_cf_done_cli;
+
+  uco->ev = ev_new(uco->co.pool);
+  uco->ev->hook = cmd_read_config_ev;
+  uco->ev->data = uco;
+
+  ev_schedule(uco->ev);
+
+  DBG("cmd_read_config: sleeping\n");
+  cli_sleep(uco->cli);
+  DBG("cmd_read_config: woken up\n");
+
+  cmd_done_config(uco);
 }
 
 void
 cmd_check_config(char *name)
 {
-  struct config *conf = cmd_read_config(name);
-  if (!conf)
-    return;
+  struct unix_conf_order *uco = unix_new_conf_order(&root_pool);
 
-  cli_msg(20, "Configuration OK");
-  config_free(conf);
+  uco->co.buf = name;
+  uco->type = RECONFIG_CHECK;
+
+  cmd_read_config(uco);
 }
 
 static void
-cmd_reconfig_msg(int r)
+cmd_reconfig_msg(cli *c, int r)
 {
+  
   switch (r)
     {
-    case CONF_DONE:	cli_msg( 3, "Reconfigured"); break;
-    case CONF_PROGRESS: cli_msg( 4, "Reconfiguration in progress"); break;
-    case CONF_QUEUED:	cli_msg( 5, "Reconfiguration already in progress, queueing new config"); break;
-    case CONF_UNQUEUED:	cli_msg(17, "Reconfiguration already in progress, removing queued config"); break;
-    case CONF_CONFIRM:	cli_msg(18, "Reconfiguration confirmed"); break;
-    case CONF_SHUTDOWN:	cli_msg( 6, "Reconfiguration ignored, shutting down"); break;
-    case CONF_NOTHING:	cli_msg(19, "Nothing to do"); break;
+    case CONF_DONE:	cli_printf(c,  3, "Reconfigured"); break;
+    case CONF_PROGRESS: cli_printf(c,  4, "Reconfiguration in progress"); break;
+    case CONF_QUEUED:	cli_printf(c,  5, "Reconfiguration already in progress, queueing new config"); break;
+    case CONF_UNQUEUED:	cli_printf(c, 17, "Reconfiguration already in progress, removing queued config"); break;
+    case CONF_CONFIRM:	cli_printf(c, 18, "Reconfiguration confirmed"); break;
+    case CONF_SHUTDOWN:	cli_printf(c,  6, "Reconfiguration ignored, shutting down"); break;
+    case CONF_NOTHING:	cli_printf(c, 19, "Nothing to do"); break;
     default:		break;
     }
 }
-
-/* Hack for scheduled undo notification */
-cli *cmd_reconfig_stored_cli;
 
 void
 cmd_reconfig_undo_notify(void)
@@ -384,19 +497,13 @@ cmd_reconfig(char *name, int type, uint timeout)
   if (cli_access_restricted())
     return;
 
-  struct config *conf = cmd_read_config(name);
-  if (!conf)
-    return;
+  struct unix_conf_order *uco = unix_new_conf_order(&root_pool);
 
-  int r = config_commit(conf, type, timeout);
+  uco->co.buf = name;
+  uco->type = type;
+  uco->timeout = timeout;
 
-  if ((r >= 0) && (timeout > 0))
-    {
-      cmd_reconfig_stored_cli = this_cli;
-      cli_msg(-22, "Undo scheduled in %d s", timeout);
-    }
-
-  cmd_reconfig_msg(r);
+  return cmd_read_config(uco);
 }
 
 void
@@ -406,7 +513,7 @@ cmd_reconfig_confirm(void)
     return;
 
   int r = config_confirm();
-  cmd_reconfig_msg(r);
+  cmd_reconfig_msg(this_cli, r);
 }
 
 void
@@ -418,6 +525,6 @@ cmd_reconfig_undo(void)
   cli_msg(-21, "Undo requested");
 
   int r = config_undo();
-  cmd_reconfig_msg(r);
+  cmd_reconfig_msg(this_cli, r);
 }
 

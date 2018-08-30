@@ -330,12 +330,6 @@ cf_hash(byte *c)
   return h;
 }
 
-static void
-cf_init_state(struct cf_context *ctx, struct conf_state *cs)
-{
-  cs->buffer = yy_create_buffer(NULL, YY_BUF_SIZE, ctx->yyscanner);
-}
-
 struct conf_state *
 cf_new_state(struct cf_context *ctx, const char *name)
 {
@@ -344,7 +338,7 @@ cf_new_state(struct cf_context *ctx, const char *name)
     .name = cfg_strdup(name),
     .lino = 1,
   };
-  cf_init_state(ctx, cs);
+  cs->buffer = yy_create_buffer(NULL, YY_BUF_SIZE, ctx->yyscanner);
   return cs;
 }
 
@@ -400,7 +394,7 @@ cf_init_kh(void)
  * parsing of a new input.
  */
 struct cf_context *
-cf_new_context(int is_cli, struct conf_order *order)
+cf_new_context(struct conf_order *order)
 {
   struct cf_context *ctx = order->ctx = lp_allocz(order->new_config->mem, sizeof(struct cf_context));
   *ctx = (struct cf_context) {
@@ -412,10 +406,7 @@ cf_new_context(int is_cli, struct conf_order *order)
   cfx_lex_init_extra(ctx, &(ctx->yyscanner));
   struct yyguts_t *yyg = ctx->yyscanner;
 
-  cf_init_state(ctx, order->state);
-  yy_switch_to_buffer(order->state->buffer, yyg);
-
-  if (is_cli)
+  if (order->flags & CO_CLI)
     BEGIN(CLI);
   else
     BEGIN(INITIAL);

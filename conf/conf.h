@@ -59,18 +59,30 @@ struct conf_state {
   uint lino;				/* Current line */
 };
 
+enum conf_order_flag {
+  CO_CLI = 1,				/* Parse CLI, not regular config */
+  CO_SYNC = 2,				/* Run parser synchronously */
+  CO_FILENAME = 4,			/* Use the order buffer as filename */
+} PACKED;
+
+/* This struct is meant to be inherited and customized by caller */
 struct conf_order {
-  struct config *new_config;		/* Store the allocated config here */
+  resource r;
+  struct config *new_config;		/* Outputs the allocated config here */
   struct cf_context *ctx;		/* Internal config context, do not set */
-  struct conf_state *state;
+  struct conf_state *state;		/* Internal config state, do not set */
+
   struct pool *pool;			/* If set, use this resource pool */
   struct linpool *lp;			/* If set, use this linpool */
-  const char *buf;
-  uint len;
+  const char *buf;			/* Buffer to parse or filename */
+  uint len;				/* Buffer length */
+  enum conf_order_flag flags;
+
   int (*cf_read_hook)(struct conf_order *order, byte *buf, uint max);
-  void (*cf_include)(struct conf_order *order, char *name, uint len);
+  void (*cf_include)(struct conf_order *order, const char *name, uint len);
   int (*cf_outclude)(struct conf_order *order);
   void (*cf_error)(struct conf_order *order, const char *msg, va_list args);
+  void (*cf_done)(struct conf_order *order);
 };
 
 /* Please don't use these variables in protocols. Use proto_config->global instead. */
@@ -82,25 +94,12 @@ extern struct config *config;		/* Currently active configuration */
  * Arguments:
  * @order provides callbacks to read config files
  *
+ * This function queues 
  * Return value:
  * 1 on success; order->new_config is then set to the parsed config
  * 0 on fail; order->new_config is undefined
  **/
-int config_parse(struct conf_order *order);
-
-/**
- * Parse CLI command
- *
- * Arguments:
- * @order provides callbacks to read command line
- *
- * Return value:
- * 1 on success
- * 0 on fail
- *
- * Parsed config is never kept, order->new_config should be zero after return.
- **/
-int cli_parse(struct conf_order *order);
+void config_parse(struct conf_order *order);
 
 /** Callback for returning error from parser hooks */
 void cf_error(struct cf_context *, const char *msg, ...) NORET;
@@ -118,6 +117,7 @@ void order_shutdown(void);
 #define RECONFIG_HARD	1
 #define RECONFIG_SOFT	2
 #define RECONFIG_UNDO	3
+#define RECONFIG_CHECK	4
 
 #define CONF_DONE	0
 #define CONF_PROGRESS	1

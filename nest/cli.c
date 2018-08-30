@@ -442,6 +442,7 @@ cli_command(struct cli *c)
       .cf_error = cli_cmd_error,
       .lp = c->parser_pool,
       .pool = c->pool,
+      .flags = CO_CLI | CO_SYNC,
     },
     .cli = c,
   };
@@ -451,7 +452,7 @@ cli_command(struct cli *c)
   
   lp_flush(c->parser_pool);
   this_cli = c;
-  cli_parse(&(o.co));
+  config_parse(&(o.co));
 }
 
 /*
@@ -467,8 +468,6 @@ cli_event(void *data)
   while (c->ring_read != c->ring_write &&
       c->async_msg_size < CLI_MAX_ASYNC_QUEUE)
     cli_copy_message(c);
-
-  cli_write_trigger(c);
 
   if (c->state == CLI_STATE_YIELD ||
       c->state == CLI_STATE_WAIT_TX && !c->tx_pos)

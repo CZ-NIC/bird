@@ -22,6 +22,7 @@ CF_HDR
 #include "nest/route.h"
 #include "nest/cli.h"
 #include "filter/filter.h"
+#include "lib/coroutine.h"
 
 /* FIXME: Turn on YYERROR_VERBOSE and work around lots of bison bugs? */
 
@@ -33,6 +34,9 @@ struct config *new_config;
 jmp_buf jmpbuf;
 linpool *cfg_mem;
 struct conf_order *order;
+coroutine *coro;
+event *ev_resume;
+event *ev_cleanup;
 
 CF_DEFINES
 
