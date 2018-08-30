@@ -11,6 +11,8 @@
 
 #include "lib/lists.h"
 
+#include <stdlib.h>
+
 /* Resource */
 
 typedef struct resource {

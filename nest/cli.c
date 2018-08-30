@@ -440,6 +440,7 @@ cli_command(struct cli *c)
       .cf_error = cli_cmd_error,
       .lp = c->parser_pool,
       .pool = c->pool,
+      .flags = CO_CLI,
     },
     .cli = c,
   };
@@ -449,7 +450,7 @@ cli_command(struct cli *c)
   
   lp_flush(c->parser_pool);
   this_cli = c;
-  cli_parse(&(o.co));
+  config_parse(&(o.co));
 }
 
 /*

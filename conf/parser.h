@@ -27,7 +27,7 @@ union YYSTYPE;
 int cfx_lex(union YYSTYPE *, yyscan_t);
 
 /* Config context alloc and free */
-struct cf_context *cf_new_context(int, struct conf_order *);
+struct cf_context *cf_new_context(struct conf_order *);
 void cf_free_context(struct cf_context *);
 
 /* Lexer state alloc and free */

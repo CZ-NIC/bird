@@ -65,6 +65,7 @@ typedef struct cli {
   uint log_mask;			/* Mask of allowed message levels */
   uint log_threshold;			/* When free < log_threshold, store only important messages */
   uint async_msg_size;			/* Total size of async messages queued in tx_buf */
+  struct conf_order *async_config;	/* Asynchronous config pointer */
 } cli;
 
 extern pool *cli_pool;

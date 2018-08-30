@@ -408,7 +408,7 @@ cf_init_kh(void)
  * parsing of a new input.
  */
 struct cf_context *
-cf_new_context(int is_cli, struct conf_order *order)
+cf_new_context(struct conf_order *order)
 {
   struct cf_lex_context *lx = lp_allocz(order->new_config->mem, sizeof(struct cf_lex_context));
   lx->ctx = (struct cf_context) {
@@ -426,7 +426,7 @@ cf_new_context(int is_cli, struct conf_order *order)
   cf_init_state(ctx, order->state);
   yy_switch_to_buffer(order->state->buffer, yyg);
 
-  if (is_cli)
+  if (order->flags & CO_CLI)
     BEGIN(CLI);
   else
     BEGIN(INITIAL);
