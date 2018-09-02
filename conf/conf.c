@@ -149,11 +149,12 @@ config_parse_coro(void *arg)
 
   cfx_parse(ctx, ctx->yyscanner);
 
-  if (EMPTY_LIST((ctx->new_config)->protos))
+  if (!(order->flags & CO_CLI) && EMPTY_LIST(ctx->new_config->protos))
     cf_error(ctx, "No protocol is specified in the config file");
 
 cleanup:
-  ev_schedule(ctx->ev_cleanup);
+  if (!(order->flags & CO_SYNC))
+    ev_schedule(ctx->ev_cleanup);
   coro_suspend();
   bug("Resumed config when done.");
   return;
@@ -162,7 +163,7 @@ cleanup:
 void
 config_parse(struct conf_order *order)
 {
-  DBG("Parsing configuration named `%s'\n", order->state->name);
+  DBG("Parsing configuration\n");
 
   if (!order->new_config)
     order->new_config = config_alloc(order->pool, order->lp);
@@ -184,11 +185,11 @@ config_parse(struct conf_order *order)
       ctx->ev_resume = ev_new(p);
       ctx->ev_resume->hook = config_event_resume;
       ctx->ev_resume->data = ctx;
-    }
 
-  ctx->ev_cleanup = ev_new(p);
-  ctx->ev_cleanup->hook = config_event_cleanup;
-  ctx->ev_cleanup->data = ctx;
+      ctx->ev_cleanup = ev_new(p);
+      ctx->ev_cleanup->hook = config_event_cleanup;
+      ctx->ev_cleanup->data = ctx;
+    }
 
   if (order->flags & CO_FILENAME)
     if (order->cf_include)
@@ -197,6 +198,9 @@ config_parse(struct conf_order *order)
       bug("Include handler must be set to config from file");
   else
     cf_scan_bytes(ctx, order->buf, order->len);
+    /* Warning: Return from include will fail badly if you start with a buffer.
+     * Currently it's not supported to supply cf_include hook without CO_FILENAME flag.
+     */
 
   ctx->coro = coro_new(p, config_parse_coro, ctx);
   coro_resume(ctx->coro);

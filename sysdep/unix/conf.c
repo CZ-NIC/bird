@@ -181,7 +181,7 @@ unix_cf_include(struct conf_order *co, const char *name, uint len)
   /* Includes are relative to the current file unless the path is absolute.
    * Joining the current file dirname with the include relative path. */
   const char *patt;
-  if (*name != '/')
+  if (co->state && *name != '/')
     {
       /* dlen is upper bound of current file dirname length */
       int dlen = strlen(co->state->name);

@@ -338,12 +338,6 @@ cf_hash(byte *c)
   return h;
 }
 
-static void
-cf_init_state(struct cf_context *ctx, struct conf_state *cs)
-{
-  cs->buffer = yy_create_buffer(NULL, YY_BUF_SIZE, ctx->yyscanner);
-}
-
 struct conf_state *
 cf_new_state(struct cf_context *ctx, const char *name)
 {
@@ -352,7 +346,7 @@ cf_new_state(struct cf_context *ctx, const char *name)
     .name = cfg_strdup(name),
     .lino = 1,
   };
-  cf_init_state(ctx, cs);
+  cs->buffer = yy_create_buffer(NULL, YY_BUF_SIZE, ctx->yyscanner);
   return cs;
 }
 
@@ -422,9 +416,6 @@ cf_new_context(struct conf_order *order)
 
   cfx_lex_init_extra(lx, &(lx->ctx.yyscanner));
   struct yyguts_t *yyg = lx->ctx.yyscanner;
-
-  cf_init_state(ctx, order->state);
-  yy_switch_to_buffer(order->state->buffer, yyg);
 
   if (order->flags & CO_CLI)
     BEGIN(CLI);
