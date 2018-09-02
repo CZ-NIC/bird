@@ -114,6 +114,7 @@ struct unix_conf_order {
   struct unix_ifs *ifs;		/* Input file stack; initially NULL, is inited inside config_parse() */
   struct linpool *ifs_lp;	/* Where to allocate IFS from */
   struct cli *cli;		/* CLI if called from CLI */
+  event *ev;			/* Start event if called from CLI */
   int type;			/* Type of reconfig */
   uint timeout;			/* Config timeout */
 };
@@ -122,9 +123,7 @@ static void
 unix_conf_order_free(resource *r)
 {
   struct unix_conf_order *uco = (struct unix_conf_order *) r;
-
   rfree(uco->ifs_lp);
-  xfree(uco);
 }
 
 static struct resclass unix_conf_order_class = {
@@ -402,6 +401,13 @@ cleanup:
 }
 
 static void
+cmd_read_config_ev(void *data)
+{
+  struct unix_conf_order *uco = data;
+  return config_parse(&(uco->co));
+}
+
+static void
 cmd_read_config(struct unix_conf_order *uco)
 {
   uco->co.buf = uco->co.buf ?: config_name;
@@ -410,13 +416,19 @@ cmd_read_config(struct unix_conf_order *uco)
   uco->co.cf_done = unix_cf_done_cli;
 
   cli_msg(-2, "Reading configuration from %s", uco->co.buf);
-  config_parse(&(uco->co));
+  this_cli->running_config = &(uco->co);
+
+  uco->ev = ev_new(uco->co.pool);
+  uco->ev->hook = cmd_read_config_ev;
+  uco->ev->data = uco;
+
+  ev_schedule(uco->ev);
 }
 
 static inline int
 cmd_check_running_config(void)
 {
-  if (!this_cli->async_config)
+  if (!this_cli->running_config)
     return 0;
 
   /* TODO: Queue this config. */
@@ -435,8 +447,6 @@ cmd_check_config(char *name)
   uco->co.buf = name;
   uco->cli = this_cli;
   uco->type = RECONFIG_CHECK;
-
-  this_cli->async_config = &(uco->co);
 
   cmd_read_config(uco);
 }

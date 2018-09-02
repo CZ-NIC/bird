@@ -153,11 +153,12 @@ config_parse_coro(void *arg)
     cf_error(ctx, "No protocol is specified in the config file");
 
 cleanup:
-  if (!(order->flags & CO_SYNC))
-    ev_schedule(ctx->ev_cleanup);
+  if (order->flags & CO_SYNC)
+    return;
+
+  ev_schedule(ctx->ev_cleanup);
   coro_suspend();
   bug("Resumed config when done.");
-  return;
 }
 
 void
@@ -201,6 +202,9 @@ config_parse(struct conf_order *order)
     /* Warning: Return from include will fail badly if you start with a buffer.
      * Currently it's not supported to supply cf_include hook without CO_FILENAME flag.
      */
+
+  if (order->flags & CO_SYNC)
+    return config_parse_coro(ctx);
 
   ctx->coro = coro_new(p, config_parse_coro, ctx);
   coro_resume(ctx->coro);
