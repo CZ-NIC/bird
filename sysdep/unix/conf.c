@@ -362,7 +362,7 @@ unix_cf_error_cli(struct conf_order *co, const char *msg, va_list args)
   cli_msg(8002, "%s, line %d: %s", co->state->name, co->state->lino, msg, &args);
 }
 
-static void cmd_reconfig_msg(int r);
+static void cmd_reconfig_msg(cli *c, int r);
 
 /* Hack for scheduled undo notification */
 cli *cmd_reconfig_stored_cli;
@@ -371,17 +371,24 @@ static void
 unix_cf_done_cli(struct conf_order *co)
 {
   UCO;
+  ev_schedule(uco->cli->event);
+}
+
+static void
+cmd_done_config(struct unix_conf_order *uco)
+{
+  log(L_INFO "config done handler");
   if (uco->type == RECONFIG_CHECK)
     {
-      if (!co->new_config)
+      if (!uco->co.new_config)
 	goto cleanup;
       
-      cli_msg(20, "Configuration OK");
-      config_free(co->new_config);
+      cli_printf(uco->cli, 20, "Configuration OK");
+      config_free(uco->co.new_config);
     }
   else
     {
-      struct config *c = co->new_config;
+      struct config *c = uco->co.new_config;
       if (!c)
 	goto cleanup;
 
@@ -390,10 +397,10 @@ unix_cf_done_cli(struct conf_order *co)
       if ((r >= 0) && (uco->timeout > 0))
 	{
 	  cmd_reconfig_stored_cli = uco->cli;
-	  cli_msg(-22, "Undo scheduled in %d s", uco->timeout);
+	  cli_printf(uco->cli, -22, "Undo scheduled in %d s", uco->timeout);
 	}
 
-      cmd_reconfig_msg(r);
+      cmd_reconfig_msg(uco->cli, r);
     }
 
 cleanup:
@@ -404,6 +411,7 @@ static void
 cmd_read_config_ev(void *data)
 {
   struct unix_conf_order *uco = data;
+  log(L_INFO "Reading configuration from %s on CLI request: begin", uco->co.buf);
   return config_parse(&(uco->co));
 }
 
@@ -415,6 +423,8 @@ cmd_read_config(struct unix_conf_order *uco)
   uco->co.cf_error = unix_cf_error_cli;
   uco->co.cf_done = unix_cf_done_cli;
 
+  uco->cli = this_cli;
+
   cli_msg(-2, "Reading configuration from %s", uco->co.buf);
   this_cli->running_config = &(uco->co);
 
@@ -423,6 +433,10 @@ cmd_read_config(struct unix_conf_order *uco)
   uco->ev->data = uco;
 
   ev_schedule(uco->ev);
+
+  cli_yield(this_cli);
+
+  cmd_done_config(uco);
 }
 
 static inline int
@@ -445,24 +459,24 @@ cmd_check_config(char *name)
   struct unix_conf_order *uco = unix_new_conf_order(&root_pool);
 
   uco->co.buf = name;
-  uco->cli = this_cli;
   uco->type = RECONFIG_CHECK;
 
   cmd_read_config(uco);
 }
 
 static void
-cmd_reconfig_msg(int r)
+cmd_reconfig_msg(cli *c, int r)
 {
+  
   switch (r)
     {
-    case CONF_DONE:	cli_msg( 3, "Reconfigured"); break;
-    case CONF_PROGRESS: cli_msg( 4, "Reconfiguration in progress"); break;
-    case CONF_QUEUED:	cli_msg( 5, "Reconfiguration already in progress, queueing new config"); break;
-    case CONF_UNQUEUED:	cli_msg(17, "Reconfiguration already in progress, removing queued config"); break;
-    case CONF_CONFIRM:	cli_msg(18, "Reconfiguration confirmed"); break;
-    case CONF_SHUTDOWN:	cli_msg( 6, "Reconfiguration ignored, shutting down"); break;
-    case CONF_NOTHING:	cli_msg(19, "Nothing to do"); break;
+    case CONF_DONE:	cli_printf(c,  3, "Reconfigured"); break;
+    case CONF_PROGRESS: cli_printf(c,  4, "Reconfiguration in progress"); break;
+    case CONF_QUEUED:	cli_printf(c,  5, "Reconfiguration already in progress, queueing new config"); break;
+    case CONF_UNQUEUED:	cli_printf(c, 17, "Reconfiguration already in progress, removing queued config"); break;
+    case CONF_CONFIRM:	cli_printf(c, 18, "Reconfiguration confirmed"); break;
+    case CONF_SHUTDOWN:	cli_printf(c,  6, "Reconfiguration ignored, shutting down"); break;
+    case CONF_NOTHING:	cli_printf(c, 19, "Nothing to do"); break;
     default:		break;
     }
 }
@@ -503,7 +517,7 @@ cmd_reconfig_confirm(void)
     return;
 
   int r = config_confirm();
-  cmd_reconfig_msg(r);
+  cmd_reconfig_msg(this_cli, r);
 }
 
 void
@@ -515,6 +529,6 @@ cmd_reconfig_undo(void)
   cli_msg(-21, "Undo requested");
 
   int r = config_undo();
-  cmd_reconfig_msg(r);
+  cmd_reconfig_msg(this_cli, r);
 }
 

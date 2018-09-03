@@ -462,12 +462,11 @@ cli_event(void *data)
 {
   cli *c = data;
   DBG("CLI: Event in state %u\n", (int) c->state);
+  log(L_INFO "Event in state %u\n", (int) c->state);
 
   while (c->ring_read != c->ring_write &&
       c->async_msg_size < CLI_MAX_ASYNC_QUEUE)
     cli_copy_message(c);
-
-  cli_write_trigger(c);
 
   if (c->state == CLI_STATE_YIELD ||
       c->state == CLI_STATE_WAIT_TX && !c->tx_pos)

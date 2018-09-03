@@ -156,6 +156,7 @@ cleanup:
   if (order->flags & CO_SYNC)
     return;
 
+  log(L_INFO "Config done, scheduling thread join");
   ev_schedule(ctx->ev_cleanup);
   coro_suspend();
   bug("Resumed config when done.");
