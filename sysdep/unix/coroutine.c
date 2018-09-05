@@ -101,6 +101,17 @@ coro_new(pool *p, void (*entry_point)(void *), void *arg)
 }
 
 void
+coro_done(void *retval)
+{
+  ASSERT(coro_inited);
+  ASSERT(coro_current);
+  coroutine *c = coro_current;
+  c->retval = retval;
+  coro_suspend();
+  bug("Coroutine suspend after coro_done() should never return");
+}
+
+void
 coro_suspend(void)
 {
   ASSERT(coro_current);
@@ -129,12 +140,16 @@ coro_resume(coroutine *c)
 #include <pthread.h>
 #include <semaphore.h>
 
+#define CORO_STOP 1	/* The coroutine should stop at first coro_suspend(). */
+#define CORO_DONE 2	/* The coroutine has already stopped. */
+
 struct coroutine {
   resource r;
   pthread_t thread;
   void (*entry_point)(void *arg);
   void *arg;
   sem_t sem;
+  uint flags;
 };
 
 static coroutine *coro_current;		// NULL for main context
@@ -147,7 +162,11 @@ coro_free(resource *r)
 {
   coroutine *c = (coroutine *) r;
   ASSERT(coro_current != c);
-  pthread_cancel(c->thread);
+
+  c->flags |= CORO_STOP;
+  coro_resume(c);
+
+  ASSERT(c->flags & CORO_DONE);
   pthread_join(c->thread, NULL);
 }
 
@@ -211,16 +230,40 @@ coro_new(pool *p, void (*entry_point)(void *), void *arg)
   return c;
 }
 
+static inline void
+coro_check_stop(void)
+{
+  ASSERT(coro_inited);
+  ASSERT(coro_current);
+  coroutine *c = coro_current;
+  if (c->flags & CORO_STOP)
+    coro_done(NULL);
+}
+
+void
+coro_done(void *retval)
+{
+  ASSERT(coro_inited);
+  ASSERT(coro_current);
+  coroutine *c = coro_current;
+  c->flags |= CORO_DONE;
+  sem_post(&coro_main_sem);
+  pthread_exit(retval);
+  bug("pthread_exit should never return");
+}
+
 void
 coro_suspend(void)
 {
   ASSERT(coro_inited);
   ASSERT(coro_current);
   coroutine *c = coro_current;
+  coro_check_stop();
   sem_post(&coro_main_sem);
   while (sem_wait(&c->sem) < 0)
     ;
   coro_current = c;
+  coro_check_stop();
 }
 
 void
