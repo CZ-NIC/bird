@@ -277,8 +277,21 @@ trie_node_format(struct f_trie_node *t, buffer *buf)
   if (t == NULL)
     return;
 
-  if (ipa_nonzero(t->accept))
-    buffer_print(buf, "%I/%d{%I}, ", t->addr, t->plen, t->accept);
+  ip_addr amask = t->accept;
+  while (ipa_nonzero(amask))
+    {
+      int top, bottom;
+      ip_addr cmask = ipa_bitrange(amask, &top, &bottom);
+
+      if ((t->plen == top) && (t->plen == bottom-1))
+	buffer_print(buf, "%I/%d, ", t->addr, t->plen);
+      else if ((t->plen == top) && (bottom-1 == MAX_PREFIX_LENGTH))
+	buffer_print(buf, "%I/%d+, ", t->addr, t->plen);
+      else
+	buffer_print(buf, "%I/%d{%d,%d}, ", t->addr, t->plen, top, bottom-1);
+
+      amask = ipa_xor(amask, cmask);
+    }
 
   trie_node_format(t->c[0], buf);
   trie_node_format(t->c[1], buf);

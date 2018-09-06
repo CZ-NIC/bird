@@ -326,6 +326,15 @@ static inline ip4_addr ip4_mkmask(uint n)
 static inline int ip4_masklen(ip4_addr a)
 { return u32_masklen(_I(a)); }
 
+static inline ip4_addr ip4_bitrange(ip4_addr a, int *tp, int *bp)
+{
+  int t, b;
+  a = u32_bitrange(a, &t, &b);
+  if (tp) *tp = 32-t;
+  if (bp) *bp = 32-b;
+  return a;
+}
+
 ip6_addr ip6_mkmask(uint n);
 int ip6_masklen(ip6_addr *a);
 
@@ -373,6 +382,7 @@ ip4_addr ip4_class_mask(ip4_addr ad);
 #else
 #define ipa_mkmask(x) ip4_mkmask(x)
 #define ipa_masklen(x) ip4_masklen(x)
+#define ipa_bitrange(x,tp,bp) ip4_bitrange(x,tp,bp)
 #define ipa_pxlen(x,y) ip4_pxlen(x,y)
 #define ipa_getbit(x,n) ip4_getbit(x,n)
 #define ipa_opposite_m1(x) ip4_opposite_m1(x)
