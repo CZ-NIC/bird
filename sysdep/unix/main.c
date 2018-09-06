@@ -619,12 +619,13 @@ signal_init(void)
  *	Parsing of command-line arguments
  */
 
-static char *opt_list = "c:dD:ps:P:u:g:flRh";
+static char *opt_list = "c:dD:pOs:P:u:g:flRh";
 static int parse_and_exit;
 char *bird_name;
 static char *use_user;
 static char *use_group;
 static int run_in_foreground = 0;
+int trie_optimize_flag = 0;
 
 static void
 display_usage(void)
@@ -649,6 +650,7 @@ display_help(void)
     "  -h, --help           Display this information\n"
     "  -l                   Look for a configuration file and a communication socket\n"
     "                       file in the current working directory\n"
+    "  -O		    Optimize prefix sets; implies -p\n"
     "  -p                   Test configuration file and exit without start\n"
     "  -P <pid-file>        Create a PID file with given filename\n"
     "  -R                   Apply graceful restart recovery after start\n"
@@ -757,6 +759,10 @@ parse_args(int argc, char **argv)
 	break;
       case 'p':
 	parse_and_exit = 1;
+	break;
+      case 'O':
+	parse_and_exit = 1;
+	trie_optimize_flag = 1;
 	break;
       case 's':
 	path_control_socket = optarg;

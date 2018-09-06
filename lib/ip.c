@@ -79,6 +79,22 @@ ip6_masklen(ip6_addr *a)
   return n;
 }
 
+ip6_addr
+ip6_bitrange(ip6_addr *a, int *tp, int *bp)
+{
+  int tx, bx;
+  ip6_addr an;
+  for (int i=0; i<4; i++)
+    if (a->addr[i])
+    {
+      int tl, bl;
+      an.addr[i] = u32_bitrange(a->addr[i], &tl, &bl);
+ //     tl += 
+    }
+
+  return an;
+}
+
 int
 ip4_classify(ip4_addr ad)
 {

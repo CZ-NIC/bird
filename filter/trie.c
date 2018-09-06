@@ -70,9 +70,13 @@
  */
 
 #include "nest/bird.h"
+#include "lib/resource.h"
 #include "lib/string.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
+
+#include <stdio.h>
+#include <stdlib.h>
 
 /**
  * f_new_trie - allocates and returns a new empty trie
@@ -137,6 +141,7 @@ trie_add_prefix(struct f_trie *t, ip_addr px, int plen, int l, int h)
   ip_addr amask = ipa_xor(ipa_mkmask(l), ipa_mkmask(h));
   ip_addr pmask = ipa_mkmask(plen);
   ip_addr paddr = ipa_and(px, pmask);
+
   struct f_trie_node *o = NULL;
   struct f_trie_node *n = t->root;
 
@@ -146,6 +151,7 @@ trie_add_prefix(struct f_trie *t, ip_addr px, int plen, int l, int h)
 
       if (ipa_compare(ipa_and(paddr, cmask), ipa_and(n->addr, cmask)))
 	{
+	  /* We are out of path */
 	  /* We are out of path - we have to add branching node 'b'
 	     between node 'o' and node 'n', and attach new node 'a'
 	     as the other child of 'b'. */
@@ -180,6 +186,10 @@ trie_add_prefix(struct f_trie *t, ip_addr px, int plen, int l, int h)
 	  n->accept = ipa_or(n->accept, amask);
 	  return n;
 	}
+
+      /* All additional prefixes are already covered by this node. */
+      if (ipa_equal(ipa_and(n->accept, amask), amask))
+	return n;
 
       /* Update accept mask part M2 and go deeper */
       n->accept = ipa_or(n->accept, ipa_and(amask, n->mask));
@@ -258,6 +268,77 @@ trie_node_same(struct f_trie_node *t1, struct f_trie_node *t2)
   return trie_node_same(t1->c[0], t2->c[0]) && trie_node_same(t1->c[1], t2->c[1]);
 }
 
+static int
+trie_node_optimize(struct f_trie_node *t)
+{
+  int ret = 0;
+  if (t->c[0]) ret |= trie_node_optimize(t->c[0]);
+  if (t->c[1]) ret |= trie_node_optimize(t->c[1]);
+
+  if ((!t->c[0]) || (!t->c[1])) return ret;
+
+  if (t->c[0]->plen != t->plen + 1) return ret;
+  if (t->c[1]->plen != t->plen + 1) return ret;
+
+  ip_addr cmask = ipa_and(t->c[0]->accept, t->c[1]->accept);
+  if (ipa_zero(cmask)) return ret;
+
+  ip_addr lmask = ipa_xor(t->c[0]->accept, cmask);
+  ip_addr rmask = ipa_xor(t->c[1]->accept, cmask);
+
+  if (!ipa_zero(lmask) && !ipa_zero(rmask))
+    return ret;
+
+  t->c[0]->accept = lmask;
+  t->c[1]->accept = rmask;
+
+  t->accept = ipa_or(t->accept, cmask);
+  return 1;
+}
+
+static int
+trie_node_count(struct f_trie_node *t)
+{
+  int ret = 0;
+  if (t->c[0]) ret += trie_node_count(t->c[0]);
+  if (t->c[1]) ret += trie_node_count(t->c[1]);
+
+  for (
+      ip_addr amask = t->accept;
+      ipa_nonzero(amask);
+      ret++,
+      amask = ipa_xor(amask, ipa_bitrange(amask, NULL, NULL))
+      );
+
+  return ret;
+}
+
+void
+trie_optimize(struct f_inst *what)
+{
+  struct f_trie *t = what->a2.p;
+  if (!t || !t->root)
+    return;
+
+  if (!trie_node_optimize(t->root))
+    return;
+
+  int size = trie_node_count(t->root) * (STD_ADDRESS_P_LENGTH + 11);
+  char *buf = xmalloc(size);
+  buffer b = {
+    .start = buf,
+    .pos = buf,
+    .end = buf + size
+  };
+
+  printf("Prefix set in file %s at line %d: ", ifs->file_name, ifs->lino);
+
+  trie_format(t, &b);
+  buffer_puts(&b, "\n");
+  fputs(b.start, stdout);
+  xfree(buf);
+}
+
 /**
  * trie_same
  * @t1: first trie to be compared
@@ -283,7 +364,13 @@ trie_node_format(struct f_trie_node *t, buffer *buf)
       int top, bottom;
       ip_addr cmask = ipa_bitrange(amask, &top, &bottom);
 
-      buffer_print(buf, "%I/%d{%d,%d}, ", t->addr, t->plen, top, bottom-1);
+      if ((t->plen == top) && (t->plen == bottom-1))
+	buffer_print(buf, "%I/%d, ", t->addr, t->plen);
+      else if ((t->plen == top) && (bottom-1 == MAX_PREFIX_LENGTH))
+	buffer_print(buf, "%I/%d+, ", t->addr, t->plen);
+      else
+	buffer_print(buf, "%I/%d{%d,%d}, ", t->addr, t->plen, top, bottom-1);
+
       amask = ipa_xor(amask, cmask);
     }
 
