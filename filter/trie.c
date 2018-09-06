@@ -181,6 +181,10 @@ trie_add_prefix(struct f_trie *t, ip_addr px, int plen, int l, int h)
 	  return n;
 	}
 
+      /* All additional prefixes are already covered by this node. */
+      if (ipa_equal(ipa_and(n->accept, amask), amask))
+	return n;
+
       /* Update accept mask part M2 and go deeper */
       n->accept = ipa_or(n->accept, ipa_and(amask, n->mask));
 
@@ -256,6 +260,41 @@ trie_node_same(struct f_trie_node *t1, struct f_trie_node *t2)
     return 0;
 
   return trie_node_same(t1->c[0], t2->c[0]) && trie_node_same(t1->c[1], t2->c[1]);
+}
+
+static void
+trie_node_optimize(struct f_trie_node *t)
+{
+  if (!t) return;
+
+  trie_node_optimize(t->c[0]);
+  trie_node_optimize(t->c[1]);
+
+  if (!t->c[0]) return;
+  if (!t->c[1]) return;
+
+  if (t->c[0]->plen != t->plen + 1) return;
+  if (t->c[1]->plen != t->plen + 1) return;
+
+  ip_addr cmask = ipa_and(t->c[0]->accept, t->c[1]->accept);
+  if (ipa_zero(cmask)) return;
+
+  ip_addr lmask = ipa_xor(t->c[0]->accept, cmask);
+  ip_addr rmask = ipa_xor(t->c[1]->accept, cmask);
+
+  if (!ipa_zero(lmask) && !ipa_zero(rmask))
+    return;
+
+  t->c[0]->accept = lmask;
+  t->c[1]->accept = rmask;
+
+  t->accept = ipa_or(t->accept, cmask);
+}
+
+void
+trie_optimize(struct f_trie *t)
+{
+  return trie_node_optimize(t->root);
 }
 
 /**

@@ -339,6 +339,7 @@ f_generate_path_mask(struct f_path_mask *t)
   return rv;
 }
 
+static int f_trie_dump = 0;
 
 CF_DECLS
 
@@ -355,7 +356,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ADD, DELETE, CONTAINS, RESET,
 	PREPEND, FIRST, LAST, LAST_NONAGGREGATED, MATCH,
 	ROA_CHECK,
-	EMPTY,
+	EMPTY, DUMP,
 	FILTER, WHERE, EVAL)
 
 %nonassoc THEN
@@ -389,6 +390,11 @@ filter_def:
 CF_ADDTO(conf, filter_eval)
 filter_eval:
    EVAL term { f_eval_int($2); }
+ ;
+
+CF_ADDTO(conf, trie_optim)
+trie_optim:
+   PREFIX SET DUMP bool { f_trie_dump = $4; }
  ;
 
 type:
@@ -727,7 +733,7 @@ constant:
  | fprefix_s {NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); $$->a1.p = val; *val = $1; }
  | RTRID  { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_QUAD;  $$->a2.i = $1; }
  | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(FI_CONSTANT); $$->aux = T_SET; $$->a2.p = build_tree($2); DBG( "ook\n" ); }
- | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_PREFIX_SET;  $$->a2.p = $2; }
+ | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_PREFIX_SET; trie_optimize($2); $$->a2.p = $2; }
  | ENUM	  { $$ = f_new_inst(FI_CONSTANT); $$->aux = $1 >> 16; $$->a2.i = $1 & 0xffff; }
  ;
 
