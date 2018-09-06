@@ -68,3 +68,26 @@ u32_log2(u32 v)
   return r;
 }
 
+/**
+ * u32_bitrange - find a contiguos series of 1's.
+ * @v: number
+ * @tp: pointer to top index
+ * @bp: pointer to bottom index
+ *
+ * This functions finds the most significant contiguous series of 1's and returns it.
+ * If the pointers are set, the indices are also written there.
+ */
+u32
+u32_bitrange(u32 v, int *tp, int *bp)
+{
+  int ti = u32_log2(v);
+  u32 t = (1 << (ti + 1)) - 1;
+  u32 r = t ^ v;
+  int bi = (v & (v+1)) ? u32_log2(r) : -1;
+  u32 b = (1 << (bi + 1)) - 1;
+  if (tp)
+    *tp = 32-ti;
+  if (bp)
+    *bp = 32-bi;
+  return t ^ b;
+}
