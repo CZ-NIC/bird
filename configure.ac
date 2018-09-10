@@ -120,7 +120,13 @@ if test "$enable_pthreads" != no ; then
     AC_DEFINE([USE_PTHREADS], [1], [Define to 1 if pthreads are enabled])
     CFLAGS="$CFLAGS -pthread"
     LDFLAGS="$LDFLAGS -pthread"
-    proto_bfd=bfd
+
+    BIRD_CHECK_PTHREAD_SPINLOCK
+    if test "$bird_cv_lib_pthread_spinlock" = yes ; then
+      AC_DEFINE([USE_PTHREAD_SPINLOCK], [1], [Define to 1 if pthreads provide spinlocks])
+      proto_bfd=bfd
+    fi
+
   elif test "$enable_pthreads" = yes ; then
     AC_MSG_ERROR([POSIX threads not available.])
   fi
