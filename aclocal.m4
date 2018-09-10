@@ -36,8 +36,6 @@ AC_DEFUN([BIRD_CHECK_PTHREADS],
 	    [
 	      pthread_t pt;
 	      pthread_create(&pt, NULL, NULL, NULL);
-	      pthread_spinlock_t lock;
-	      pthread_spin_lock(&lock);
 	    ]
 	  )
 	],
@@ -48,6 +46,30 @@ AC_DEFUN([BIRD_CHECK_PTHREADS],
   )
 
   CFLAGS="$bird_tmp_cflags"
+])
+
+dnl ** Android API before version 24 doesn't implement spinlocks.
+AC_DEFUN([BIRD_CHECK_PTHREAD_SPINLOCK],
+[
+  AC_CACHE_CHECK(
+    [whether POSIX threads provide spinlocks],
+    [bird_cv_lib_pthread_spinlock],
+    [
+      AC_LINK_IFELSE(
+	[
+	  AC_LANG_PROGRAM(
+	    [ #include <pthread.h> ],
+	    [
+	      pthread_spinlock_t lock;
+	      pthread_spin_lock(&lock);
+	    ]
+	  )
+	],
+	[bird_cv_lib_pthread_spinlock=yes],
+	[bird_cv_lib_pthread_spinlock=no]
+      )
+    ]
+  )
 ])
 
 AC_DEFUN([BIRD_CHECK_MPLS_KERNEL],
