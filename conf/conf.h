@@ -47,6 +47,7 @@ struct config {
   u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
   char *err_msg;			/* Parser error message */
   int err_lino;				/* Line containing error */
+  int err_chno;				/* Character where the parser stopped */
   char *err_file_name;			/* File name containing error */
   char *file_name;			/* Name of main configuration file */
   int file_fd;				/* File descriptor of main configuration file */
@@ -139,6 +140,8 @@ struct include_file_stack {
   char *file_name;			/* File name */
   int fd;				/* File descriptor */
   int lino;				/* Current line num */
+  int chno;				/* Current char num (on current line) */
+  int toklen;				/* Current token length */
   int depth;				/* Include depth, 0 = cannot include */
 
   struct include_file_stack *prev;	/* Previous record in stack */
@@ -146,7 +149,6 @@ struct include_file_stack {
 };
 
 extern struct include_file_stack *ifs;
-
 
 int cf_lex(void);
 void cf_lex_init(int is_cli, struct config *c);
