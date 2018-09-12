@@ -727,7 +727,13 @@ constant:
  | fprefix_s {NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); $$->a1.p = val; *val = $1; }
  | RTRID  { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_QUAD;  $$->a2.i = $1; }
  | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(FI_CONSTANT); $$->aux = T_SET; $$->a2.p = build_tree($2); DBG( "ook\n" ); }
- | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_PREFIX_SET;  $$->a2.p = $2; }
+ | '[' fprefix_set ']' {
+      $$ = f_new_inst(FI_CONSTANT);
+      $$->aux = T_PREFIX_SET;
+      $$->a2.p = $2;
+      if (trie_optimize_flag)
+	trie_optimize($$);
+    }
  | ENUM	  { $$ = f_new_inst(FI_CONSTANT); $$->aux = $1 >> 16; $$->a2.i = $1 & 0xffff; }
  ;
 

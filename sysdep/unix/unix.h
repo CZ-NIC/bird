@@ -18,6 +18,7 @@ struct birdsock;
 /* main.c */
 
 extern char *bird_name;
+extern int trie_optimize_flag;
 void async_config(void);
 void async_dump(void);
 void async_shutdown(void);
