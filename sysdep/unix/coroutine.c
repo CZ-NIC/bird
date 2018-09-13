@@ -35,6 +35,7 @@ struct coroutine {
   void *stack;
   void (*entry_point)(void *arg);
   void *arg;
+  event *ev;
 };
 
 static ucontext_t *main_context;
@@ -101,12 +102,14 @@ coro_new(pool *p, void (*entry_point)(void *), void *arg)
 }
 
 void
-coro_done(void *retval)
+coro_done(event *e)
 {
   ASSERT(coro_inited);
   ASSERT(coro_current);
+  if (e)
+    ev_schedule(e);
+  c->ev = e;
   coroutine *c = coro_current;
-  c->retval = retval;
   coro_suspend();
   bug("Coroutine suspend after coro_done() should never return");
 }
@@ -148,6 +151,7 @@ struct coroutine {
   pthread_t thread;
   void (*entry_point)(void *arg);
   void *arg;
+  event *ev;
   sem_t sem;
   uint flags;
 };
@@ -163,8 +167,11 @@ coro_free(resource *r)
   coroutine *c = (coroutine *) r;
   ASSERT(coro_current != c);
 
-  c->flags |= CORO_STOP;
-  coro_resume(c);
+  if (!(c->flags & CORO_DONE))
+    {
+      c->flags |= CORO_STOP;
+      coro_resume(c);
+    }
 
   ASSERT(c->flags & CORO_DONE);
   pthread_join(c->thread, NULL);
@@ -241,14 +248,17 @@ coro_check_stop(void)
 }
 
 void
-coro_done(void *retval)
+coro_done(event *e)
 {
   ASSERT(coro_inited);
   ASSERT(coro_current);
   coroutine *c = coro_current;
   c->flags |= CORO_DONE;
+  c->ev = e;
+  if (e)
+    ev_schedule(e);
   sem_post(&coro_main_sem);
-  pthread_exit(retval);
+  pthread_exit(NULL);
   bug("pthread_exit should never return");
 }
 
