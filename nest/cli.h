@@ -33,6 +33,7 @@ enum cli_state {
   CLI_STATE_WAIT_RX,
   CLI_STATE_WAIT_TX,
   CLI_STATE_YIELD,
+  CLI_STATE_SLEEP,
 };
 
 typedef struct cli {
@@ -79,6 +80,8 @@ void cli_printf(cli *, int, char *, ...);
 void cli_write_trigger(cli *c);
 void cli_set_log_echo(cli *, uint mask, uint size);
 void cli_yield(cli *c);
+void cli_sleep(cli *c);
+void cli_wakeup(cli *c);
 
 /* Functions provided to sysdep layer */
 

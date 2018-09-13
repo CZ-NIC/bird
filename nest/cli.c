@@ -64,7 +64,7 @@
  * and its outpos field is the position of the read head.
  */
 
-#define LOCAL_DEBUG 1
+#undef LOCAL_DEBUG
 
 #include "nest/bird.h"
 #include "nest/cli.h"
@@ -243,6 +243,7 @@ cli_free_out(cli *c)
 static void
 cli_write(cli *c)
 {
+  DBG("CLI write begin\n");
   sock *s = c->socket;
 
   while (c->tx_pos)
@@ -261,7 +262,7 @@ cli_write(cli *c)
   /* Everything is written */
   s->tbuf = NULL;
   cli_free_out(c);
-  ev_schedule(c->event);
+  DBG("CLI write done\n");
 }
 
 void
@@ -482,6 +483,24 @@ cli_yield(cli *c)
   coro_suspend();
   c->state = CLI_STATE_RUN;
   DBG("CLI: Yield resumed\n");
+}
+
+void
+cli_sleep(cli *c)
+{
+  c->state = CLI_STATE_SLEEP;
+  DBG("CLI: Sleeping\n");
+  coro_suspend();
+  c->state = CLI_STATE_RUN;
+  DBG("CLI: Woken up\n");
+}
+
+void
+cli_wakeup(cli *c)
+{
+  ASSERT(c->state == CLI_STATE_SLEEP);
+  c->state = CLI_STATE_YIELD;
+  ev_schedule(c->event);
 }
 
 static void
