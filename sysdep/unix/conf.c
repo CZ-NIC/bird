@@ -110,6 +110,7 @@ sysdep_commit(struct config *new, struct config *old UNUSED)
 
 #define MAX_INCLUDE_DEPTH 8
 #define UCO struct unix_conf_order *uco = (struct unix_conf_order *) co
+#define YIELD_AFTER 1048576
 
 struct unix_conf_order {
   struct conf_order co;		/* First field of struct conf_order is resource r; */
@@ -119,6 +120,7 @@ struct unix_conf_order {
   event *ev;			/* Start event if called from CLI */
   int type;			/* Type of reconfig */
   uint timeout;			/* Config timeout */
+  uint bytecount;		/* Have read this number of bytes since last yield */
 };
 
 static void
@@ -150,8 +152,13 @@ static int
 unix_cf_read(struct conf_order *co, byte *dest, uint len)
 {
   UCO;
-
   ASSERT(uco->ifs->state == co->state);
+
+  if (uco->bytecount > YIELD_AFTER)
+    {
+      uco->bytecount -= YIELD_AFTER;
+      config_yield(co);
+    }
 
   if (uco->ifs->fd == -1)
     uco->ifs->fd = open(co->state->name, O_RDONLY);
@@ -169,6 +176,8 @@ unix_cf_read(struct conf_order *co, byte *dest, uint len)
   int l = read(uco->ifs->fd, dest, len);
   if (l < 0)
     cf_error(co->ctx, "Read error: %m");
+
+  uco->bytecount += l;
   return l;
 }
 

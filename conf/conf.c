@@ -215,11 +215,17 @@ config_parse(struct conf_order *order)
   coro_resume(ctx->coro);
 }
 
-void config_yield(struct cf_context *ctx)
+void config_yield(struct conf_order *order)
 {
-  DBG("Conf: Yield\n");
-  ev_schedule(ctx->ev_resume);
-  DBG("Conf: Yield resumed\n");
+  if (order->flags & CO_SYNC)
+    return;
+
+  ASSERT(order->ctx);
+  ASSERT(order->ctx->ev_resume);
+  DBG("Conf %p: Yield\n", order);
+  ev_schedule(order->ctx->ev_resume);
+  coro_suspend();
+  DBG("Conf %p: Resumed\n", order);
 }
 
 /**

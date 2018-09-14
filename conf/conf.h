@@ -104,6 +104,9 @@ void config_parse(struct conf_order *order);
 /** Callback for returning error from parser hooks */
 void cf_error(struct cf_context *, const char *msg, ...) NORET;
 
+/** Yield callable from conf_order callbacks */
+void config_yield(struct conf_order *order);
+
 void config_free(struct config *);
 int config_commit(struct config *, int type, uint timeout);
 int config_confirm(void);
