@@ -65,6 +65,7 @@
  */
 
 #undef LOCAL_DEBUG
+#define CLI_DBG(fmt, y...) DBG("CLI %p: " fmt, c, ##y)
 
 #include "nest/bird.h"
 #include "nest/cli.h"
@@ -243,7 +244,7 @@ cli_free_out(cli *c)
 static void
 cli_write(cli *c)
 {
-  DBG("CLI write begin\n");
+  CLI_DBG("Write begin\n");
   sock *s = c->socket;
 
   while (c->tx_pos)
@@ -262,7 +263,7 @@ cli_write(cli *c)
   /* Everything is written */
   s->tbuf = NULL;
   cli_free_out(c);
-  DBG("CLI write done\n");
+  CLI_DBG("Write done\n");
 }
 
 void
@@ -370,12 +371,12 @@ cli_getchar(cli *c)
 
   if (c->rx_aux == s->rpos)
     {
-      DBG("CLI: Waiting on read\n");
+      CLI_DBG("Waiting on read\n");
       c->rx_aux = s->rpos = s->rbuf;
       c->state = CLI_STATE_WAIT_RX;
       int n = coro_sk_read(s);
       c->state = CLI_STATE_RUN;
-      DBG("CLI: Read returned %d bytes\n", n);
+      CLI_DBG("Read returned %d bytes\n", n);
       ASSERT(n);
     }
   return *c->rx_aux++;
@@ -461,7 +462,7 @@ static void
 cli_event(void *data)
 {
   cli *c = data;
-  DBG("CLI: Event in state %u\n", (int) c->state);
+  CLI_DBG("Event in state %u\n", (int) c->state);
 
   while (c->ring_read != c->ring_write &&
       c->async_msg_size < CLI_MAX_ASYNC_QUEUE)
@@ -478,27 +479,28 @@ void
 cli_yield(cli *c)
 {
   c->state = CLI_STATE_YIELD;
-  DBG("CLI: Yielding\n");
+  CLI_DBG("Yielding\n");
   ev_schedule(c->event);
   coro_suspend();
   c->state = CLI_STATE_RUN;
-  DBG("CLI: Yield resumed\n");
+  CLI_DBG("Yield resumed\n");
 }
 
 void
 cli_sleep(cli *c)
 {
   c->state = CLI_STATE_SLEEP;
-  DBG("CLI: Sleeping\n");
+  CLI_DBG("Sleeping\n");
   coro_suspend();
   c->state = CLI_STATE_RUN;
-  DBG("CLI: Woken up\n");
+  CLI_DBG("Woken up\n");
 }
 
 void
 cli_wakeup(cli *c)
 {
   ASSERT(c->state == CLI_STATE_SLEEP);
+  CLI_DBG("CLI: Waking up\n");
   c->state = CLI_STATE_YIELD;
   ev_schedule(c->event);
 }
@@ -509,18 +511,18 @@ cli_coroutine(void *_c)
   cli *c = _c;
   sock *s = c->socket;
 
-  DBG("CLI: Coroutine started\n");
+  CLI_DBG("Coroutine started\n");
   c->rx_aux = s->rbuf;
 
   for (;;)
     {
       while (c->tx_pos)
 	{
-	  DBG("CLI: Sleeping on write\n");
+	  CLI_DBG("Sleeping on write\n");
 	  c->state = CLI_STATE_WAIT_TX;
 	  coro_suspend();
 	  c->state = CLI_STATE_RUN;
-	  DBG("CLI: Woke up on write\n");
+	  CLI_DBG("Woke up on write\n");
 	}
 
       if (c->cont)
@@ -544,7 +546,7 @@ cli_new(sock *s)
 {
   pool *p = rp_new(cli_pool, "CLI session");
   cli *c = mb_alloc(p, sizeof(cli));
-  DBG("CLI: Created new session\n");
+  CLI_DBG("Created new session\n");
 
   bzero(c, sizeof(cli));
   c->pool = p;
@@ -568,7 +570,7 @@ cli_new(sock *s)
 void
 cli_run(cli *c)
 {
-  DBG("CLI: Running\n");
+  CLI_DBG("Running\n");
   c->state = CLI_STATE_RUN;
   c->rx_pos = c->rx_buf;
   c->rx_aux = NULL;
@@ -579,7 +581,7 @@ cli_run(cli *c)
 void
 cli_free(cli *c)
 {
-  DBG("CLI: Destroying session\n");
+  CLI_DBG("Destroying session\n");
   cli_set_log_echo(c, 0, 0);
   if (c->cleanup)
     c->cleanup(c);
