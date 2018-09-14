@@ -23,6 +23,7 @@
 #include <libgen.h>
 
 #include "nest/bird.h"
+#include "lib/coroutine.h"
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
@@ -98,95 +99,6 @@ drop_gid(gid_t gid)
 static sock *cli_sk;
 static char *path_control_socket = PATH_CONTROL_SOCKET;
 
-
-static void
-cli_write(cli *c)
-{
-  sock *s = c->priv;
-
-  while (c->tx_pos)
-    {
-      struct cli_out *o = c->tx_pos;
-
-      int len = o->wpos - o->outpos;
-      s->tbuf = o->outpos;
-      o->outpos = o->wpos;
-
-      if (sk_send(s, len) <= 0)
-	return;
-
-      c->tx_pos = o->next;
-    }
-
-  /* Everything is written */
-  s->tbuf = NULL;
-  cli_written(c);
-}
-
-void
-cli_write_trigger(cli *c)
-{
-  sock *s = c->priv;
-
-  if (s->tbuf == NULL)
-    cli_write(c);
-}
-
-static void
-cli_tx(sock *s)
-{
-  cli_write(s->data);
-}
-
-int
-cli_get_command(cli *c)
-{
-  sock *s = c->priv;
-  byte *t = c->rx_aux ? : s->rbuf;
-  byte *tend = s->rpos;
-  byte *d = c->rx_pos;
-  byte *dend = c->rx_buf + CLI_RX_BUF_SIZE - 2;
-
-  while (t < tend)
-    {
-      if (*t == '\r')
-	t++;
-      else if (*t == '\n')
-	{
-	  t++;
-	  c->rx_pos = c->rx_buf;
-	  c->rx_aux = t;
-	  *d = 0;
-	  return (d < dend) ? 1 : -1;
-	}
-      else if (d < dend)
-	*d++ = *t++;
-    }
-  c->rx_aux = s->rpos = s->rbuf;
-  c->rx_pos = d;
-  return 0;
-}
-
-static int
-cli_rx(sock *s, uint size UNUSED)
-{
-  cli_kick(s->data);
-  return 0;
-}
-
-static void
-cli_err(sock *s, int err)
-{
-  if (config->cli_debug)
-    {
-      if (err)
-	log(L_INFO "CLI connection dropped: %s", strerror(err));
-      else
-	log(L_INFO "CLI connection closed");
-    }
-  cli_free(s->data);
-}
-
 static int
 cli_connect(sock *s, uint size UNUSED)
 {
@@ -194,15 +106,9 @@ cli_connect(sock *s, uint size UNUSED)
 
   if (config->cli_debug)
     log(L_INFO "CLI connect");
-  s->rx_hook = cli_rx;
-  s->tx_hook = cli_tx;
-  s->err_hook = cli_err;
-  s->data = c = cli_new(s);
-  s->pool = c->pool;		/* We need to have all the socket buffers allocated in the cli pool */
+  c = cli_new(s);
   s->fast_rx = 1;
-  c->rx_pos = c->rx_buf;
-  c->rx_aux = NULL;
-  rmove(s, c->pool);
+  cli_run(c);
   return 1;
 }
 
@@ -370,7 +276,7 @@ signal_init(void)
  *	Parsing of command-line arguments
  */
 
-static char *opt_list = "c:dD:ps:P:u:g:flRh";
+static char *opt_list = "bc:dD:ps:P:u:g:flRh";
 static int parse_and_exit;
 char *bird_name;
 static char *use_user;
@@ -391,6 +297,7 @@ display_help(void)
   fprintf(stderr,
     "\n"
     "Options: \n"
+    "  -b                   Run bird in background\n"
     "  -c <config-file>     Use given configuration file instead\n"
     "                       of prefix/etc/bird.conf\n"
     "  -d                   Enable debug messages and run bird in foreground\n"
@@ -495,16 +402,21 @@ parse_args(int argc, char **argv)
   while ((c = getopt(argc, argv, opt_list)) >= 0)
     switch (c)
       {
+      case 'b':
+	run_in_foreground = 0;
+	break;
       case 'c':
 	config_name = optarg;
 	config_changed = 1;
 	break;
       case 'd':
 	debug_flag |= 1;
+	run_in_foreground = 1;
 	break;
       case 'D':
 	log_init_debug(optarg);
 	debug_flag |= 2;
+	run_in_foreground = 1;
 	break;
       case 'p':
 	parse_and_exit = 1;
@@ -603,7 +515,7 @@ main(int argc, char **argv)
   if (parse_and_exit)
     exit(0);
 
-  if (!(debug_flag||run_in_foreground))
+  if (!run_in_foreground)
     {
       pid_t pid = fork();
       if (pid < 0)
