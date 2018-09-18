@@ -230,6 +230,7 @@ radv_iface_notify(struct radv_iface *ifa, int event)
   {
   case RA_EV_CHANGE:
     radv_invalidate(ifa);
+    /* fallthrough */
   case RA_EV_INIT:
     ifa->initial = MAX_INITIAL_RTR_ADVERTISEMENTS;
     radv_prepare_prefixes(ifa);

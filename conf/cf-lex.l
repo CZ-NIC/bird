@@ -100,6 +100,7 @@ static struct include_file_stack *ifs_head;
 #define YY_INPUT(buf,result,max) result = cf_read_hook(buf, max, ifs->fd);
 #define YY_NO_UNPUT
 #define YY_FATAL_ERROR(msg) cf_error(msg)
+#define YY_USER_ACTION ifs->chno += yyleng; ifs->toklen = yyleng;
 
 static void cf_include(char *arg, int alen);
 static int check_eof(void);
@@ -313,7 +314,7 @@ else: {
 
 {WHITE}+
 
-\n	ifs->lino++;
+\n	ifs->lino++; ifs->chno = 0;
 
 #	BEGIN(COMMENT);
 
@@ -323,13 +324,14 @@ else: {
 
 <COMMENT>\n {
   ifs->lino++;
+  ifs->chno = 0;
   BEGIN(INITIAL);
 }
 
 <COMMENT>.
 
 <CCOMM>\*\/	BEGIN(INITIAL);
-<CCOMM>\n	ifs->lino++;
+<CCOMM>\n	ifs->lino++; ifs->chno = 0;
 <CCOMM>\/\*	cf_error("Comment nesting not supported");
 <CCOMM><<EOF>>	cf_error("Unterminated comment");
 <CCOMM>.

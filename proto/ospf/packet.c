@@ -57,6 +57,7 @@ ospf_pkt_finalize2(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
       return;
     }
     strncpy(auth->password, pass->password, sizeof(auth->password));
+    /* fallthrough */
 
   case OSPF_AUTH_NONE:
     {
