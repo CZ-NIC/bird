@@ -352,6 +352,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
     ospf_neigh_sm(n, INM_2WAYREC);
     if (n->state != NEIGHBOR_EXSTART)
       return;
+    /* fallthrough */
 
   case NEIGHBOR_EXSTART:
     if ((ifa->type != OSPF_IT_VLINK) &&

@@ -805,7 +805,7 @@ as_path_match(const struct adata *path, struct f_path_mask *mask)
 	  val2 = val = mask->val;
 	  goto step;
 	case PM_ASN_EXPR:
-	  ASSERT(0);
+	  bug("Expressions should be evaluated on AS path mask construction.");
 	case PM_ASN_RANGE:
 	  val = mask->val;
 	  val2 = mask->val2;

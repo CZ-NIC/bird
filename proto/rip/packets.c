@@ -58,13 +58,17 @@ struct rip_block_auth
 {
   u16 must_be_ffff;
   u16 auth_type;
-  char password[0];
-  u16 packet_len;
-  u8 key_id;
-  u8 auth_len;
-  u32 seq_num;
-  u32 unused1;
-  u32 unused2;
+  union {
+    char password[16];
+    struct {
+      u16 packet_len;
+      u8 key_id;
+      u8 auth_len;
+      u32 seq_num;
+      u32 unused1;
+      u32 unused2;
+    };
+  };
 };
 
 /* Authentication tail, RFC 4822 */
