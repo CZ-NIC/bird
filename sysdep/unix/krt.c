@@ -784,7 +784,8 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new)
   switch (e->u.krt.src)
     {
     case KRT_SRC_BIRD:
-      ASSERT(0);			/* Should be filtered by the back end */
+      /* Should be filtered by the back end */
+      bug("BIRD originated routes should not get here.");
 
     case KRT_SRC_REDIRECT:
       if (new)

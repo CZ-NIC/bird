@@ -1128,7 +1128,7 @@ sk_ssh_connect(sock *s)
     default:
       return SSH_ERROR;
     }
-  }
+  } /* fallthrough */
 
   case SK_SSH_SERVER_KNOWN:
   {
@@ -1175,7 +1175,7 @@ sk_ssh_connect(sock *s)
       if (!server_identity_is_ok)
 	return SSH_ERROR;
     }
-  }
+  } /* fallthrough */
 
   case SK_SSH_USERAUTH:
   {
@@ -1191,7 +1191,7 @@ sk_ssh_connect(sock *s)
     default:
       return SSH_ERROR;
     }
-  }
+  } /* fallthrough */
 
   case SK_SSH_CHANNEL:
   {
@@ -1199,7 +1199,7 @@ sk_ssh_connect(sock *s)
     s->ssh->channel = ssh_channel_new(s->ssh->session);
     if (s->ssh->channel == NULL)
       return SSH_ERROR;
-  }
+  } /* fallthrough */
 
   case SK_SSH_SESSION:
   {
@@ -1215,7 +1215,7 @@ sk_ssh_connect(sock *s)
     default:
       return SSH_ERROR;
     }
-  }
+  } /* fallthrough */
 
   case SK_SSH_SUBSYSTEM:
   {
@@ -1234,7 +1234,7 @@ sk_ssh_connect(sock *s)
 	return SSH_ERROR;
       }
     }
-  }
+  } /* fallthrough */
 
   case SK_SSH_ESTABLISHED:
     s->ssh->state = SK_SSH_ESTABLISHED;
