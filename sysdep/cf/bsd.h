@@ -18,6 +18,8 @@
 #define CONFIG_INCLUDE_SYSIO_H "sysdep/bsd/sysio.h"
 #define CONFIG_INCLUDE_KRTSYS_H "sysdep/bsd/krt-sys.h"
 
+#define CONFIG_INCLUDE_LOCKING_H "sysdep/unix/locking.h"
+
 /*
 Link: sysdep/unix
 Link: sysdep/bsd

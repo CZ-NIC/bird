@@ -77,6 +77,14 @@ current_time(void)
 }
 
 btime
+current_fresh_time(void)
+{
+  struct timeloop *loop = timeloop_current();
+  times_update(loop);
+  return loop->last_time;
+}
+
+btime
 current_real_time(void)
 {
   struct timeloop *loop = timeloop_current();

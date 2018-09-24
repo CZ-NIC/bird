@@ -21,6 +21,7 @@
 #define CONFIG_RESTRICTED_PRIVILEGES
 #define CONFIG_INCLUDE_SYSPRIV_H "sysdep/linux/syspriv.h"
 
+#define CONFIG_INCLUDE_LOCKING_H "sysdep/unix/locking.h"
 
 #ifndef AF_MPLS
 #define AF_MPLS 28

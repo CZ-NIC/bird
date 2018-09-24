@@ -115,6 +115,8 @@ times_init(struct timeloop *loop)
   struct timespec ts;
   int rv;
 
+  mutex_init(&loop->update_lock);
+
   rv = clock_gettime(CLOCK_MONOTONIC, &ts);
   if (rv < 0)
     die("Monotonic clock is missing");
@@ -132,6 +134,8 @@ times_update(struct timeloop *loop)
   struct timespec ts;
   int rv;
 
+  mutex_lock(&loop->update_lock);
+
   rv = clock_gettime(CLOCK_MONOTONIC, &ts);
   if (rv < 0)
     die("clock_gettime: %m");
@@ -143,6 +147,8 @@ times_update(struct timeloop *loop)
 
   loop->last_time = new_time;
   loop->real_time = 0;
+
+  mutex_unlock(&loop->update_lock);
 }
 
 void
@@ -151,11 +157,15 @@ times_update_real_time(struct timeloop *loop)
   struct timespec ts;
   int rv;
 
+  mutex_lock(&loop->update_lock);
+
   rv = clock_gettime(CLOCK_REALTIME, &ts);
   if (rv < 0)
     die("clock_gettime: %m");
 
   loop->real_time = ts.tv_sec S + ts.tv_nsec NS;
+
+  mutex_unlock(&loop->update_lock);
 }
 
 

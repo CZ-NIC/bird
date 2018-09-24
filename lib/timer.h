@@ -13,10 +13,9 @@
 #include "nest/bird.h"
 #include "lib/buffer.h"
 #include "lib/resource.h"
+#include CONFIG_INCLUDE_LOCKING_H
 
-
-typedef struct timer
-{
+typedef struct timer {
   resource r;
   void (*hook)(struct timer *);
   void *data;
@@ -28,11 +27,11 @@ typedef struct timer
   int index;
 } timer;
 
-struct timeloop
-{
+struct timeloop {
   BUFFER_(timer *) timers;
   btime last_time;
   btime real_time;
+  mutex update_lock;
 };
 
 static inline uint timers_count(struct timeloop *loop)
@@ -44,6 +43,7 @@ static inline timer *timers_first(struct timeloop *loop)
 extern struct timeloop main_timeloop;
 
 btime current_time(void);
+btime current_fresh_time(void);
 btime current_real_time(void);
 
 //#define now (current_time() TO_S)
