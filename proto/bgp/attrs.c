@@ -1365,7 +1365,7 @@ bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
  */
 
 int
-bgp_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
+bgp_preexport(struct proto *P, rte **new)
 {
   rte *e = *new;
   struct proto *SRC = e->attrs->src->proto;

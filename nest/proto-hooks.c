@@ -261,22 +261,20 @@ void store_tmp_attrs(rte *e, ea_list *attrs)
  * preexport - pre-filtering decisions before route export
  * @p: protocol instance the route is going to be exported to
  * @e: the route in question
- * @attrs: extended attributes of the route
- * @pool: linear pool for allocation of all temporary data
  *
  * The preexport() hook is called as the first step of a exporting
- * a route from a routing table to the protocol instance. It can modify
- * route attributes and force acceptance or rejection of the route before
+ * a route from a routing table to the protocol instance. It can
+ * force acceptance or rejection of the route before
  * the user-specified filters are run. See rte_announce() for a complete description
  * of the route distribution process.
  *
  * The standard use of this hook is to reject routes having originated
- * from the same instance and to set default values of the protocol's metrics.
+ * from the same instance.
  *
  * Result: 1 if the route has to be accepted, -1 if rejected and 0 if it
  * should be passed to the filters.
  */
-int preexport(struct proto *p, rte **e, ea_list **attrs, struct linpool *pool)
+int preexport(struct proto *p, rte **e)
 { DUMMY; }
 
 /**

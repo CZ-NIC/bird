@@ -2095,7 +2095,7 @@ babel_prepare_attrs(struct linpool *pool, ea_list *next, uint metric, u64 router
 
 
 static int
-babel_preexport(struct proto *P, struct rte **new, struct linpool *pool UNUSED)
+babel_preexport(struct proto *P, struct rte **new)
 {
   struct rta *a = (*new)->attrs;
 

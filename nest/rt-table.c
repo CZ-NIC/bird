@@ -405,7 +405,7 @@ export_filter(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int sil
 
   rte_make_tmp_attrs(&rt, pool);
 
-  v = p->preexport ? p->preexport(p, &rt, pool) : 0;
+  v = p->preexport ? p->preexport(p, &rt) : 0;
   if (v < 0)
     {
       if (silent)
@@ -1420,7 +1420,7 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter, struc
 
   /* Rest is stripped down export_filter() */
   rte_make_tmp_attrs(&rt, lp);
-  int v = p->preexport ? p->preexport(p, &rt, lp) : 0;
+  int v = p->preexport ? p->preexport(p, &rt) : 0;
   if (v == RIC_PROCESS)
     v = (f_run(filter, &rt, lp, FF_SILENT) <= F_ACCEPT);
 
