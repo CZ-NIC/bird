@@ -310,7 +310,12 @@ void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
+int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
+int rt_reload_channel(struct channel *c);
+void rt_reload_channel_abort(struct channel *c);
+void rt_prune_sync(rtable *t, int all);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
+
 
 /* Default limit for ECMP next hops, defined in sysdep code */
 extern const int rt_default_ecmp;
