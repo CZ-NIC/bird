@@ -545,7 +545,7 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
     int active = loc->ready && rem->ready;
     c->c.disabled = !active;
-    c->c.reloadable = p->route_refresh;
+    c->c.reloadable = p->route_refresh || c->cf->import_table;
 
     c->index = active ? num++ : 0;
 
@@ -838,6 +838,9 @@ bgp_refresh_begin(struct bgp_channel *c)
 
   c->load_state = BFS_REFRESHING;
   rt_refresh_begin(c->c.table, &c->c);
+
+  if (c->c.in_table)
+    rt_refresh_begin(c->c.in_table, &c->c);
 }
 
 /**
@@ -859,6 +862,9 @@ bgp_refresh_end(struct bgp_channel *c)
 
   c->load_state = BFS_NONE;
   rt_refresh_end(c->c.table, &c->c);
+
+  if (c->c.in_table)
+    rt_prune_sync(c->c.in_table, 0);
 }
 
 
@@ -1296,9 +1302,12 @@ bgp_reload_routes(struct channel *C)
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
 
-  ASSERT(p->conn && p->route_refresh);
+  ASSERT(p->conn && (p->route_refresh || c->c.in_table));
 
-  bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
+  if (c->c.in_table)
+    channel_schedule_reload(C);
+  else
+    bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
 }
 
 static void
@@ -1597,6 +1606,9 @@ bgp_channel_start(struct channel *C)
   c->pool = p->p.pool; // XXXX
   bgp_init_bucket_table(c);
   bgp_init_prefix_table(c);
+
+  if (c->cf->import_table)
+    channel_setup_in_table(C);
 
   c->stale_timer = tm_new_init(c->pool, bgp_long_lived_stale_timeout, c, 0, 0);
 
