@@ -420,9 +420,7 @@ static_start(struct proto *P)
   if (p->igp_table_ip6)
     rt_lock_table(p->igp_table_ip6);
 
-  p->event = ev_new(p->p.pool);
-  p->event->hook = static_announce_marked;
-  p->event->data = p;
+  p->event = ev_new_init(p->p.pool, static_announce_marked, p);
 
   BUFFER_INIT(p->marked, p->p.pool, 4);
 

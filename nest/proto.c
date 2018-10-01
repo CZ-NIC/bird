@@ -291,9 +291,7 @@ channel_do_start(struct channel *c)
   add_tail(&c->table->channels, &c->table_node);
   c->proto->active_channels++;
 
-  c->feed_event = ev_new(c->proto->pool);
-  c->feed_event->data = c;
-  c->feed_event->hook = channel_feed_loop;
+  c->feed_event = ev_new_init(c->proto->pool, channel_feed_loop, c);
 
   channel_reset_limit(&c->rx_limit);
   channel_reset_limit(&c->in_limit);
@@ -702,9 +700,7 @@ proto_init(struct proto_config *c, node *n)
   p->vrf = c->vrf;
   insert_node(&p->n, n);
 
-  p->event = ev_new(proto_pool);
-  p->event->hook = proto_event;
-  p->event->data = p;
+  p->event = ev_new_init(proto_pool, proto_event, p);
 
   PD(p, "Initializing%s", p->disabled ? " [disabled]" : "");
 

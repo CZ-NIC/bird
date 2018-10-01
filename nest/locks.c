@@ -191,6 +191,5 @@ olock_init(void)
 {
   DBG("olock: init\n");
   init_list(&olock_list);
-  olock_event = ev_new(&root_pool);
-  olock_event->hook = olock_run_event;
+  olock_event = ev_new_init(&root_pool, olock_run_event, NULL);
 }

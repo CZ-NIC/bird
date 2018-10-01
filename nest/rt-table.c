@@ -1682,9 +1682,7 @@ rt_setup(pool *p, rtable *t, struct rtable_config *cf)
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
   init_list(&t->channels);
 
-  t->rt_event = ev_new(p);
-  t->rt_event->hook = rt_event;
-  t->rt_event->data = t;
+  t->rt_event = ev_new_init(p, rt_event, t);
   t->gc_time = current_time();
 }
 

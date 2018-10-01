@@ -256,9 +256,7 @@ ospf_start(struct proto *P)
   p->gr = ospf_top_new(p, P->pool);
   s_init_list(&(p->lsal));
 
-  p->flood_event = ev_new(P->pool);
-  p->flood_event->hook = ospf_flood_event;
-  p->flood_event->data = p;
+  p->flood_event = ev_new_init(P->pool, ospf_flood_event, p);
 
   p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
   p->log_lsa_tbf = (struct tbf){ .rate = 4, .burst = 20 };

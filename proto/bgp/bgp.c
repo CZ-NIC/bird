@@ -977,9 +977,7 @@ bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn)
   conn->hold_timer 	= tm_new_init(p->p.pool, bgp_hold_timeout,	 conn, 0, 0);
   conn->keepalive_timer	= tm_new_init(p->p.pool, bgp_keepalive_timeout, conn, 0, 0);
 
-  conn->tx_ev = ev_new(p->p.pool);
-  conn->tx_ev->hook = bgp_kick_tx;
-  conn->tx_ev->data = conn;
+  conn->tx_ev = ev_new_init(p->p.pool, bgp_kick_tx, conn);
 }
 
 static void
@@ -1402,10 +1400,7 @@ bgp_start(struct proto *P)
   p->gr_ready = 0;
   p->gr_active_num = 0;
 
-  p->event = ev_new(p->p.pool);
-  p->event->hook = bgp_decision;
-  p->event->data = p;
-
+  p->event = ev_new_init(p->p.pool, bgp_decision, p);
   p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
   p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
 

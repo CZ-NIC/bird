@@ -1592,9 +1592,7 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
   ifa->timer = tm_new_init(ifa->pool, babel_iface_timer, ifa, 0, 0);
 
   init_list(&ifa->msg_queue);
-  ifa->send_event = ev_new(ifa->pool);
-  ifa->send_event->hook = babel_send_queue;
-  ifa->send_event->data = ifa;
+  ifa->send_event = ev_new_init(ifa->pool, babel_send_queue, ifa);
 
   struct object_lock *lock = olock_new(ifa->pool);
   lock->type = OBJLOCK_UDP;
