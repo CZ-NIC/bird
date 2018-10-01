@@ -2255,7 +2255,7 @@ bgp_show_proto_info(struct proto *P)
       if (p->gr_active_num)
 	cli_msg(-1006, "    Neighbor GR:    %s", bgp_gr_states[c->gr_active]);
 
-      if (tm_active(c->stale_timer))
+      if (c->stale_timer && tm_active(c->stale_timer))
 	cli_msg(-1006, "    LL stale timer: %t/-", tm_remains(c->stale_timer));
 
       if (c->c.channel_state == CS_UP)
