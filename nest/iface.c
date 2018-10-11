@@ -887,6 +887,9 @@ if_show_summary(void)
       byte a4[IPA_MAX_TEXT_LENGTH + 17];
       byte a6[IPA_MAX_TEXT_LENGTH + 17];
 
+      if (i->flags & IF_SHUTDOWN)
+	continue;
+
       if (i->addr4)
 	bsprintf(a4, "%I/%d", i->addr4->ip, i->addr4->prefix.pxlen);
       else
