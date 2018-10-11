@@ -184,11 +184,9 @@ cscope:
 
 install: all
 	$(INSTALL) -d $(DESTDIR)/$(sbindir) $(DESTDIR)/$(sysconfdir) $(DESTDIR)/@runtimedir@
-	$(INSTALL_PROGRAM) $(exedir)/bird $(DESTDIR)/$(sbindir)/bird
-	$(INSTALL_PROGRAM) $(exedir)/birdcl $(DESTDIR)/$(sbindir)/birdcl
-	if test -n "@CLIENT@" ; then								\
-		$(INSTALL_PROGRAM) $(exedir)/birdc $(DESTDIR)/$(sbindir)/birdc ;		\
-	fi
+	for BIN in bird @CLIENT@ ; do								\
+		$(INSTALL_PROGRAM) $(exedir)/$$BIN $(DESTDIR)/$(sbindir)/$$BIN ;		\
+	done
 	if ! test -f $(DESTDIR)/@CONFIG_FILE@ ; then						\
 		$(INSTALL_DATA) $(srcdir)/doc/bird.conf.example $(DESTDIR)/@CONFIG_FILE@ ;	\
 	else											\
