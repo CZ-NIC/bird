@@ -110,6 +110,7 @@ ospf_receive_lsreq(struct ospf_packet *pkt, struct ospf_iface *ifa,
   if (n->state < NEIGHBOR_EXCHANGE)
   {
     OSPF_TRACE(D_PACKETS, "LSREQ packet ignored - lesser state than Exchange");
+    STATS2(bad_state, dropped);
     return;
   }
 
@@ -134,6 +135,7 @@ ospf_receive_lsreq(struct ospf_packet *pkt, struct ospf_iface *ifa,
     {
       LOG_LSA1("Bad LSR (Type: %04x, Id: %R, Rt: %R) in LSREQ", type, id, rt);
       LOG_LSA2("  received from nbr %R on %s - LSA is missing", n->rid, ifa->ifname);
+      STATS2(bad_lsreq, dropped);
 
       ospf_neigh_sm(n, INM_BADLSREQ);
       return;

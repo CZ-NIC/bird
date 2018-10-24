@@ -487,6 +487,7 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
   if (plen < ospf_lsupd_hdrlen(p))
   {
     LOG_PKT("Bad LSUPD packet from nbr %R on %s - %s (%u)", n->rid, ifa->ifname, "too short", plen);
+    STATS2(bad_pkt, dropped);
     return;
   }
 
@@ -495,6 +496,7 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
   if (n->state < NEIGHBOR_EXCHANGE)
   {
     OSPF_TRACE(D_PACKETS, "LSUPD packet ignored - lesser state than Exchange");
+    STATS2(bad_state, dropped);
     return;
   }
 
@@ -510,7 +512,7 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
     u32 lsa_len, lsa_type, lsa_domain;
 
     if ((offset + sizeof(struct ospf_lsa_header)) > plen)
-      DROP("too short", plen);
+      DROP(bad_pkt, "too short", plen);
 
     /* LSA header in network order */
     lsa_n = ((void *) pkt) + offset;
@@ -518,10 +520,10 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
     offset += lsa_len;
 
     if (offset > plen)
-      DROP("too short", plen);
+      DROP(bad_pkt, "too short", plen);
 
     if (((lsa_len % 4) != 0) || (lsa_len <= sizeof(struct ospf_lsa_header)))
-      DROP("invalid LSA length", lsa_len);
+      DROP(bad_pkt, "invalid LSA length", lsa_len);
 
     /* LSA header in host order */
     lsa_ntoh_hdr(lsa_n, &lsa);
@@ -643,7 +645,7 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
 
     /* 13. (6) - received LSA is in Link state request list (but not newer) */
     if (ospf_hash_find_entry(n->lsrqh, en) != NULL)
-      DROP1("error in LSA database exchange");
+      DROP1(bad_lsupd, "error in LSA database exchange");
 
     /* 13. (7) - received LSA is same */
     if (lsa_comp(&lsa, &en->lsa) == CMP_SAME)
@@ -679,6 +681,7 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
   skip:
     LOG_LSA1("Bad LSA (Type: %04x, Id: %R, Rt: %R) in LSUPD", lsa_type, lsa.id, lsa.rt);
     LOG_LSA2("  received from nbr %R on %s - %s", n->rid, ifa->ifname, err_dsc);
+    STATS(bad_lsa);
   }
 
   /* Send direct LSACKs */

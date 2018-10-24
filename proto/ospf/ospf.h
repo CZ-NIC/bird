@@ -69,6 +69,8 @@
 #define MINLSARRIVAL		(1 S_)
 #define LSINFINITY		0xffffff
 
+#define OSPF_PKT_TYPES		5	/* HELLO_P .. LSACK_P */
+
 #define OSPF_DEFAULT_TICK 1
 #define OSPF_DEFAULT_STUB_COST 1000
 #define OSPF_DEFAULT_ECMP_LIMIT 16
@@ -197,6 +199,14 @@ struct ospf_iface_patt
 #define WAIT_DMH 4
   /* Value of Wait timer - not found it in RFC * - using 4*HELLO */
 
+struct ospf_iface_stats
+{
+  uint rx_pkts[OSPF_PKT_TYPES], tx_pkts[OSPF_PKT_TYPES], rx_vlink, tx_vlink;
+  uint dropped, bad_pkt, bad_ver, bad_au_type, bad_auth, bad_check;
+  uint bad_ttl, bad_src, bad_area, bad_rid, bad_nbr, bad_pkt_type;
+  uint bad_hello, bad_dbdes, bad_lsreq, bad_lsupd, bad_lsack, bad_state;
+  uint bad_lsa, sk_error, tx_queue_full, tx_no_key;
+};
 
 
 struct ospf_proto
@@ -230,6 +240,8 @@ struct ospf_proto
   sock *vlink_sk;		/* IP socket used for vlink TX */
   u32 router_id;
   u32 last_vlink_id;		/* Interface IDs for vlinks (starts at 0x80000000) */
+  struct ospf_iface_stats iface_stats;
+  uint spf_count;		/* Number of SPF calculations */
   struct tbf log_pkt_tbf;	/* TBF for packet messages */
   struct tbf log_lsa_tbf;	/* TBF for LSA messages */
 };
@@ -311,6 +323,7 @@ struct ospf_iface
   struct top_hash_entry *net_lsa;	/* Originated network LSA */
   struct top_hash_entry *pxn_lsa;	/* Originated prefix LSA */
   struct top_hash_entry **flood_queue;	/* LSAs queued for LSUPD */
+  struct ospf_iface_stats stats; /* Packet statistics */
   u8 update_link_lsa;
   u8 update_net_lsa;
   u16 flood_queue_used;		/* The current number of LSAs in flood_queue */
@@ -903,6 +916,7 @@ struct ospf_iface *ospf_iface_find(struct ospf_proto *p, struct iface *what);
 void ospf_if_notify(struct proto *P, uint flags, struct iface *iface);
 void ospf_ifa_notify2(struct proto *P, uint flags, struct ifa *a);
 void ospf_ifa_notify3(struct proto *P, uint flags, struct ifa *a);
+void ospf_iface_stats(int c, struct ospf_iface_stats *s);
 void ospf_iface_info(struct ospf_iface *ifa);
 void ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *ip);
 void ospf_iface_new_vlink(struct ospf_proto *p, struct ospf_iface_patt *ip);
@@ -951,8 +965,10 @@ static inline void ospf_send_to_des(struct ospf_iface *ifa)
 }
 
 #ifndef PARSER
-#define DROP(DSC,VAL) do { err_dsc = DSC; err_val = VAL; goto drop; } while(0)
-#define DROP1(DSC) do { err_dsc = DSC; goto drop; } while(0)
+#define STATS(KEY) do { ifa->stats.KEY++; p->iface_stats.KEY++; } while(0)
+#define STATS2(KEY1, KEY2) do { STATS(KEY1); STATS(KEY2); } while(0)
+#define DROP(KEY,DSC,VAL) do { STATS(KEY); STATS(dropped); err_dsc = DSC; err_val = VAL; goto drop; } while(0)
+#define DROP1(KEY,DSC) do { STATS(KEY); STATS(dropped); err_dsc = DSC; goto drop; } while(0)
 #define SKIP(DSC) do { err_dsc = DSC; goto skip; } while(0)
 #endif
 

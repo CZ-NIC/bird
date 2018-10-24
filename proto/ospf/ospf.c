@@ -256,6 +256,9 @@ ospf_start(struct proto *P)
   p->gr = ospf_top_new(p, P->pool);
   s_init_list(&(p->lsal));
 
+  memset(&(p->iface_stats), 0, sizeof(struct ospf_iface_stats));
+  p->spf_count = 0;
+
   p->flood_event = ev_new(P->pool);
   p->flood_event->hook = ospf_flood_event;
   p->flood_event->data = p;
@@ -772,11 +775,15 @@ ospf_sh(struct proto *P)
   cli_msg(-1014, "Stub router: %s", (p->stub_router ? "Yes" : "No"));
   cli_msg(-1014, "RT scheduler tick: %d", p->tick);
   cli_msg(-1014, "Number of areas: %u", p->areano);
-  cli_msg(-1014, "Number of LSAs in DB:\t%u", p->gr->hash_entries);
+  cli_msg(-1014, "Number of LSAs in DB: %u", p->gr->hash_entries);
+  cli_msg(-1014, "Number of SPF runs: %u", p->spf_count);
+
+  cli_msg(-1014, "Statistics:");
+  ospf_iface_stats(-1014, &p->iface_stats);
 
   WALK_LIST(oa, p->area_list)
   {
-    cli_msg(-1014, "\tArea: %R (%u) %s", oa->areaid, oa->areaid,
+    cli_msg(-1014, "Area: %R (%u) %s", oa->areaid, oa->areaid,
 	    oa->areaid == 0 ? "[BACKBONE]" : "");
     ifano = 0;
     nno = 0;
@@ -795,26 +802,26 @@ ospf_sh(struct proto *P)
       }
     }
 
-    cli_msg(-1014, "\t\tStub:\t%s", oa_is_stub(oa) ? "Yes" : "No");
-    cli_msg(-1014, "\t\tNSSA:\t%s", oa_is_nssa(oa) ? "Yes" : "No");
-    cli_msg(-1014, "\t\tTransit:\t%s", oa->trcap ? "Yes" : "No");
+    cli_msg(-1014, "\tStub:\t%s", oa_is_stub(oa) ? "Yes" : "No");
+    cli_msg(-1014, "\tNSSA:\t%s", oa_is_nssa(oa) ? "Yes" : "No");
+    cli_msg(-1014, "\tTransit:\t%s", oa->trcap ? "Yes" : "No");
 
     if (oa_is_nssa(oa))
-      cli_msg(-1014, "\t\tNSSA translation:\t%s%s", oa->translate ? "Yes" : "No",
+      cli_msg(-1014, "\tNSSA translation:\t%s%s", oa->translate ? "Yes" : "No",
 	      oa->translate == TRANS_WAIT ? " (run down)" : "");
-    cli_msg(-1014, "\t\tNumber of interfaces:\t%u", ifano);
-    cli_msg(-1014, "\t\tNumber of neighbors:\t%u", nno);
-    cli_msg(-1014, "\t\tNumber of adjacent neighbors:\t%u", adjno);
+    cli_msg(-1014, "\tNumber of interfaces:\t%u", ifano);
+    cli_msg(-1014, "\tNumber of neighbors:\t%u", nno);
+    cli_msg(-1014, "\tNumber of adjacent neighbors:\t%u", adjno);
 
     firstfib = 1;
     FIB_WALK(&oa->net_fib, struct area_net, anet)
     {
       if(firstfib)
       {
-	cli_msg(-1014, "\t\tArea networks:");
+	cli_msg(-1014, "\tArea networks:");
 	firstfib = 0;
       }
-      cli_msg(-1014, "\t\t\t%1N\t%s\t%s", anet->fn.addr,
+      cli_msg(-1014, "\t\t%1N\t%s\t%s", anet->fn.addr,
 		anet->hidden ? "Hidden" : "Advertise", anet->active ? "Active" : "");
     }
     FIB_WALK_END;
@@ -824,10 +831,10 @@ ospf_sh(struct proto *P)
     {
       if(firstfib)
       {
-	cli_msg(-1014, "\t\tArea external networks:");
+	cli_msg(-1014, "\tArea external networks:");
 	firstfib = 0;
       }
-      cli_msg(-1014, "\t\t\t%1N\t%s\t%s", anet->fn.addr,
+      cli_msg(-1014, "\t\t%1N\t%s\t%s", anet->fn.addr,
 		anet->hidden ? "Hidden" : "Advertise", anet->active ? "Active" : "");
     }
     FIB_WALK_END;

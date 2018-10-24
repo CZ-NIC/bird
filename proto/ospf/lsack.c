@@ -133,7 +133,7 @@ ospf_receive_lsack(struct ospf_packet *pkt, struct ospf_iface *ifa,
   struct ospf_proto *p = ifa->oa->po;
   struct ospf_lsa_header lsa, *lsas;
   struct top_hash_entry *ret, *en;
-  uint i, lsa_count;
+  uint i, lsa_count, bad = 0;
   u32 lsa_type, lsa_domain;
 
   /* RFC 2328 13.7 */
@@ -145,6 +145,7 @@ ospf_receive_lsack(struct ospf_packet *pkt, struct ospf_iface *ifa,
   if (n->state < NEIGHBOR_EXCHANGE)
   {
     OSPF_TRACE(D_PACKETS, "LSACK packet ignored - lesser state than Exchange");
+    STATS2(bad_state, dropped);
     return;
   }
 
@@ -169,6 +170,10 @@ ospf_receive_lsack(struct ospf_packet *pkt, struct ospf_iface *ifa,
 		 ret->lsa.sn, ret->lsa.age, ret->lsa.checksum);
       OSPF_TRACE(D_PACKETS, "    It has: Seq: %08x, Age: %4u, Sum: %04x",
 		 lsa.sn, lsa.age, lsa.checksum);
+
+      if (!bad++)
+	STATS(bad_lsack);
+
       continue;
     }
 

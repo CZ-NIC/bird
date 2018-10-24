@@ -218,11 +218,15 @@ ospf_send_dbdes(struct ospf_proto *p, struct ospf_neighbor *n)
 void
 ospf_rxmt_dbdes(struct ospf_proto *p, struct ospf_neighbor *n)
 {
+  struct ospf_iface *ifa = n->ifa;
+
   ASSERT(n->state > NEIGHBOR_EXSTART);
 
   if (!n->ldd_buffer)
   {
     log(L_WARN "%s: No DBDES packet for retransmit", p->p.name);
+    STATS(bad_dbdes);
+
     ospf_neigh_sm(n, INM_SEQMIS);
     return;
   }
@@ -251,18 +255,18 @@ ospf_process_dbdes(struct ospf_proto *p, struct ospf_packet *pkt, struct ospf_ne
     /* RFC 2328 10.6 and RFC 5340 4.2.2 */
 
     if (!lsa_type)
-      DROP1("LSA of unknown type");
+      DROP1(bad_dbdes, "LSA of unknown type");
 
     if (!oa_is_ext(ifa->oa) && (LSA_SCOPE(lsa_type) == LSA_SCOPE_AS))
-      DROP1("LSA with AS scope in stub area");
+      DROP1(bad_dbdes, "LSA with AS scope in stub area");
 
     /* Errata 3746 to RFC 2328 - rt-summary-LSAs forbidden in stub areas */
     if (!oa_is_ext(ifa->oa) && (lsa_type == LSA_T_SUM_RT))
-      DROP1("rt-summary-LSA in stub area");
+      DROP1(bad_dbdes, "rt-summary-LSA in stub area");
 
     /* Not explicitly mentioned in RFC 5340 4.2.2 but makes sense */
     if (LSA_SCOPE(lsa_type) == LSA_SCOPE_RES)
-      DROP1("LSA with invalid scope");
+      DROP1(bad_dbdes, "LSA with invalid scope");
 
     en = ospf_hash_find(p->gr, lsa_domain, lsa.id, lsa.rt, lsa_type);
     if (!en || (lsa_comp(&lsa, &(en->lsa)) == CMP_NEWER))
@@ -311,6 +315,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
   if (plen < ospf_dbdes_hdrlen(p))
   {
     LOG_PKT("Bad DBDES packet from nbr %R on %s - %s (%u)", n->rid, ifa->ifname, "too short", plen);
+    STATS2(bad_pkt, dropped);
     return;
   }
 
@@ -397,13 +402,13 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
       goto duplicate;
 
     if ((rcv_imms & DBDES_MS) != (n->imms & DBDES_MS))
-      DROP("MS-bit mismatch", rcv_imms);
+      DROP(bad_dbdes, "MS-bit mismatch", rcv_imms);
 
     if (rcv_imms & DBDES_I)
-      DROP("I-bit mismatch", rcv_imms);
+      DROP(bad_dbdes, "I-bit mismatch", rcv_imms);
 
     if (rcv_options != n->options)
-      DROP("options mismatch", rcv_options);
+      DROP(bad_dbdes, "options mismatch", rcv_options);
 
     n->ddr = rcv_ddseq;
     n->imms = rcv_imms;
@@ -413,7 +418,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
       /* MASTER */
 
       if (rcv_ddseq != n->dds)
-	DROP("DD sequence number mismatch", rcv_ddseq);
+	DROP(bad_dbdes, "DD sequence number mismatch", rcv_ddseq);
 
       n->dds++;
 
@@ -435,7 +440,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
       /* SLAVE */
 
       if (rcv_ddseq != (n->dds + 1))
-	DROP("DD sequence number mismatch", rcv_ddseq);
+	DROP(bad_dbdes, "DD sequence number mismatch", rcv_ddseq);
 
       n->ddr = rcv_ddseq;
       n->dds = rcv_ddseq;
@@ -457,7 +462,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
 	(rcv_ddseq == n->ddr))
       goto duplicate;
 
-    DROP("too late for DD exchange", n->state);
+    DROP(bad_dbdes, "too late for DD exchange", n->state);
 
   default:
     bug("Undefined interface state");

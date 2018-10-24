@@ -36,6 +36,7 @@ ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type)
 static void
 ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
 {
+  struct ospf_proto *p = ifa->oa->po;
   struct password_item *pass = NULL;
   union ospf_auth *auth = (void *) (pkt + 1);
 
@@ -52,7 +53,8 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
     pass = password_find(ifa->passwords, 1);
     if (!pass)
     {
-      log(L_ERR "No suitable password found for authentication");
+      log(L_ERR "%s: No suitable password found for authentication", p->p.name);
+      STATS(tx_no_key);
       return;
     }
     strncpy(auth->password, pass->password, sizeof(auth->password));
@@ -69,7 +71,8 @@ ospf_pkt_finalize(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
     pass = password_find(ifa->passwords, 0);
     if (!pass)
     {
-      log(L_ERR "No suitable password found for authentication");
+      log(L_ERR "%s: No suitable password found for authentication", p->p.name);
+      STATS(tx_no_key);
       return;
     }
 
@@ -129,7 +132,7 @@ ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_
   u8 autype = pkt->autype;
 
   if (autype != ifa->autype)
-    DROP("authentication method mismatch", autype);
+    DROP(bad_au_type, "authentication method mismatch", autype);
 
   switch (autype)
   {
@@ -139,25 +142,25 @@ ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_
   case OSPF_AUTH_SIMPLE:
     pass = password_find(ifa->passwords, 1);
     if (!pass)
-      DROP1("no password found");
+      DROP1(bad_auth, "no password found");
 
     if (!password_verify(pass, auth->password, sizeof(auth->password)))
-      DROP("wrong password", pass->id);
+      DROP(bad_auth, "wrong password", pass->id);
 
     return 1;
 
   case OSPF_AUTH_CRYPT:
     pass = password_find_by_id(ifa->passwords, auth->c32.keyid);
     if (!pass)
-      DROP("no suitable password found", auth->c32.keyid);
+      DROP(bad_auth, "no suitable password found", auth->c32.keyid);
 
     uint auth_len = mac_type_length(pass->alg);
 
     if (plen + auth->c32.len > len)
-      DROP("packet length mismatch", len);
+      DROP(bad_pkt, "packet length mismatch", len);
 
     if (auth->c32.len != auth_len)
-      DROP("wrong authentication length", auth->c32.len);
+      DROP(bad_auth, "wrong authentication length", auth->c32.len);
 
     u32 rcv_csn = ntohl(auth->c32.csn);
     if (n && (rcv_csn < n->csn))
@@ -167,6 +170,7 @@ ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_
       LOG_PKT_AUTH("Authentication failed for nbr %R on %s - "
 		   "lower sequence number (rcv %u, old %u)",
 		   n->rid, ifa->ifname, rcv_csn, n->csn);
+      STATS2(bad_auth, dropped);
       return 0;
     }
 
@@ -182,7 +186,7 @@ ospf_pkt_checkauth(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf_
 
     if (!mac_verify(pass->alg, pass->password, pass->length,
 		    (byte *) pkt, plen + auth_len, auth_data))
-      DROP("wrong authentication code", pass->id);
+      DROP(bad_auth, "wrong authentication code", pass->id);
 
     if (n)
       n->csn = rcv_csn;
@@ -268,17 +272,17 @@ ospf_rx_hook(sock *sk, uint len)
 
 
   if (pkt == NULL)
-    DROP("bad IP header", len);
+    DROP(bad_pkt, "bad IP header", len);
 
   if (len < sizeof(struct ospf_packet))
-    DROP("too short", len);
+    DROP(bad_pkt, "too short", len);
 
   if (pkt->version != ospf_get_version(p))
-    DROP("version mismatch", pkt->version);
+    DROP(bad_ver, "version mismatch", pkt->version);
 
   uint plen = ntohs(pkt->length);
   if ((plen < sizeof(struct ospf_packet)) || ((plen % 4) != 0))
-    DROP("invalid length", plen);
+    DROP(bad_pkt, "invalid length", plen);
 
   if (sk->flags & SKF_TRUNCATED)
   {
@@ -290,11 +294,11 @@ ospf_rx_hook(sock *sk, uint len)
     if (!ifa->cf->rx_buffer && (bs > sk->rbsize))
       sk_set_rbsize(sk, bs);
 
-    DROP("truncated", plen);
+    DROP(sk_error, "truncated", plen);
   }
 
   if (plen > len)
-    DROP("length mismatch", plen);
+    DROP(bad_pkt, "length mismatch", plen);
 
   if (ospf_is_v2(p) && (pkt->autype != OSPF_AUTH_CRYPT))
   {
@@ -303,7 +307,7 @@ ospf_rx_hook(sock *sk, uint len)
     void *body = ((void *) pkt) + hlen;
 
     if (!ipsum_verify(pkt, sizeof(struct ospf_packet), body, blen, NULL))
-      DROP1("invalid checksum");
+      DROP1(bad_check, "invalid checksum");
   }
 
   /* Third, we resolve associated iface and handle vlinks. */
@@ -321,7 +325,7 @@ ospf_rx_hook(sock *sk, uint len)
 
     /* It is real iface, source should be local (in OSPFv2) */
     if (ospf_is_v2(p) && !src_local)
-      DROP1("strange source address");
+      DROP1(bad_src, "strange source address");
 
     goto found;
   }
@@ -365,7 +369,7 @@ ospf_rx_hook(sock *sk, uint len)
     if (instance_id != ifa->instance_id)
       return 1;
 
-    DROP("area mismatch", areaid);
+    DROP(bad_area, "area mismatch", areaid);
   }
 
 
@@ -378,13 +382,13 @@ found:
 
   /* TTL check must be done after instance dispatch */
   if (ifa->check_ttl && (sk->rcv_ttl < 255))
-    DROP("wrong TTL", sk->rcv_ttl);
+    DROP(bad_ttl, "wrong TTL", sk->rcv_ttl);
 
   if (rid == p->router_id)
-    DROP1("my own router ID");
+    DROP1(bad_nbr, "my own router ID");
 
   if (rid == 0)
-    DROP1("zero router ID");
+    DROP1(bad_nbr, "zero router ID");
 
   /* In OSPFv2, neighbors are identified by either IP or Router ID, based on network type */
   uint t = ifa->type;
@@ -398,12 +402,22 @@ found:
   {
     OSPF_TRACE(D_PACKETS, "Non-HELLO packet received from unknown nbr %R on %s, src %I",
 	       rid, ifa->ifname, sk->faddr);
+    STATS2(bad_nbr, dropped);
     return 1;
   }
+
+  /* Check packet type here, ospf_pkt_checkauth3() expects valid values */
+  if (pkt->type < HELLO_P || pkt->type > LSACK_P)
+    DROP(bad_pkt_type, "invalid packet type", pkt->type);
 
   /* ospf_pkt_checkauth() has its own error logging */
   if (ospf_is_v2(p) && !ospf_pkt_checkauth(n, ifa, pkt, len))
     return 1;
+
+  STATS(rx_pkts[pkt->type - 1]);
+
+  if (ifa->type == OSPF_IT_VLINK)
+    STATS(rx_vlink);
 
   switch (pkt->type)
   {
@@ -426,9 +440,6 @@ found:
   case LSACK_P:
     ospf_receive_lsack(pkt, ifa, n);
     break;
-
-  default:
-    DROP("invalid packet type", pkt->type);
   };
   return 1;
 
@@ -455,6 +466,7 @@ ospf_err_hook(sock * sk, int err)
   struct ospf_iface *ifa= (struct ospf_iface *) (sk->data);
   struct ospf_proto *p = ifa->oa->po;
   log(L_ERR "%s: Socket error on %s: %M", p->p.name, ifa->ifname, err);
+  STATS(sk_error);
 }
 
 void
@@ -462,6 +474,9 @@ ospf_verr_hook(sock *sk, int err)
 {
   struct ospf_proto *p = (struct ospf_proto *) (sk->data);
   log(L_ERR "%s: Vlink socket error: %M", p->p.name, err);
+
+  /* Cannot use STATS() as there is no specific iface */
+  p->iface_stats.sk_error++;
 }
 
 void
@@ -469,6 +484,7 @@ ospf_send_to(struct ospf_iface *ifa, ip_addr dst)
 {
   sock *sk = ifa->sk;
   struct ospf_packet *pkt = (struct ospf_packet *) sk->tbuf;
+  struct ospf_proto *p = ifa->oa->po;
   uint plen = ntohs(pkt->length);
 
   if (ospf_is_v2(ifa->oa->po))
@@ -476,7 +492,16 @@ ospf_send_to(struct ospf_iface *ifa, ip_addr dst)
 
   int done = sk_send_to(sk, plen, dst, 0);
   if (!done)
-    log(L_WARN "OSPF: TX queue full on %s", ifa->ifname);
+  {
+    log(L_WARN "%s: TX queue full on %s", p->p.name, ifa->ifname);
+    STATS(tx_queue_full);
+    return;
+  }
+
+  STATS(tx_pkts[pkt->type - 1]);
+
+  if (ifa->type == OSPF_IT_VLINK)
+    STATS(tx_vlink);
 }
 
 void

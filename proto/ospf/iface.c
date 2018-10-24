@@ -1328,6 +1328,23 @@ ospf_if_notify(struct proto *P, uint flags, struct iface *iface)
 }
 
 void
+ospf_iface_stats(int c, struct ospf_iface_stats *s)
+{
+  cli_msg(c, "\trx-hello %u rx-dbdes %u rx-lsreq %u rx-lsupd %u rx-lsack %u rx-vlink %u",
+	  s->rx_pkts[0], s->rx_pkts[1], s->rx_pkts[2], s->rx_pkts[3], s->rx_pkts[4], s->rx_vlink);
+  cli_msg(c, "\ttx-hello %u tx-dbdes %u tx-lsreq %u tx-lsupd %u tx-lsack %u tx-vlink %u",
+	  s->tx_pkts[0], s->tx_pkts[1], s->tx_pkts[2], s->tx_pkts[3], s->tx_pkts[4], s->tx_vlink);
+  cli_msg(c, "\tdropped %u bad-pkt %u bad-ver %u bad-au-type %u bad-auth %u bad-chksum %u",
+	  s->dropped, s->bad_pkt, s->bad_ver, s->bad_au_type, s->bad_auth, s->bad_check);
+  cli_msg(c, "\tbad-ttl %u bad-src %u bad-area %u bad-nbr %u bad-pkt-type %u bad-state %u",
+	  s->bad_ttl, s->bad_src, s->bad_area, s->bad_nbr, s->bad_pkt_type, s->bad_state);
+  cli_msg(c, "\tbad-hello %u bad-dbdes %u bad-lsreq %u bad-lsupd %u bad-lsack %u bad-lsa %u",
+	  s->bad_hello, s->bad_dbdes, s->bad_lsreq, s->bad_lsupd, s->bad_lsack, s->bad_lsa);
+  cli_msg(c, "\tsk-error %u tx-queue-full %u tx-no-key %u",
+	  s->sk_error, s->tx_queue_full, s->tx_no_key);
+}
+
+void
 ospf_iface_info(struct ospf_iface *ifa)
 {
   char *more = "";
@@ -1379,4 +1396,7 @@ ospf_iface_info(struct ospf_iface *ifa)
     cli_msg(-1015, "\tBackup designated router (ID): %R", ifa->bdrid);
     cli_msg(-1015, "\tBackup designated router (IP): %I", ifa->bdrip);
   }
+
+  cli_msg(-1015, "\tStatistics:");
+  ospf_iface_stats(-1015, &ifa->stats);
 }

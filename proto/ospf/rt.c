@@ -1649,6 +1649,7 @@ ospf_rt_spf(struct ospf_proto *p)
     return;
 
   OSPF_TRACE(D_EVENTS, "Starting routing table calculation");
+  p->spf_count++;
 
   /* 16. (1) */
   ospf_rt_reset(p);
