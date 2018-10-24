@@ -666,6 +666,7 @@ extern struct protocol *attr_class_to_protocol[EAP_MAX];
 
 /*
  *	Default protocol preferences
+ *	(effective values are 250-X of these)
  */
 
 #define DEF_PREF_DIRECT		240	/* Directly connected */

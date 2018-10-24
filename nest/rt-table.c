@@ -335,9 +335,9 @@ rte_better(rte *new, rte *old)
   if (!rte_is_valid(new))
     return 0;
 
-  if (new->pref > old->pref)
-    return 1;
   if (new->pref < old->pref)
+    return 1;
+  if (new->pref > old->pref)
     return 0;
   if (new->attrs->src->proto->proto != old->attrs->src->proto->proto)
     {

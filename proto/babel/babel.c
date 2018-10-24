@@ -664,7 +664,7 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
     rte *rte = rte_get_temp(a);
     memset(&rte->u.babel, 0, sizeof(rte->u.babel));
     rte->pflags = 0;
-    rte->pref = 1;
+    rte->pref = 65535;
 
     e->unreachable = 1;
     rte_update2(c, e->n.addr, rte, p->p.main_source);
