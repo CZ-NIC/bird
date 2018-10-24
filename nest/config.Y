@@ -74,7 +74,7 @@ CF_KEYWORDS(PRIMARY, STATS, COUNT, BY, FOR, COMMANDS, PREEXPORT, NOEXPORT, GENER
 CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION, SORTED)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
-CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
+CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS, STATISTICS)
 
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
@@ -87,7 +87,7 @@ CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 
 %type <i32> idval
 %type <f> imexport
-%type <r> rtable
+%type <r> rtable rtable_spec
 %type <s> optsym
 %type <ra> r_args
 %type <sd> sym_args
@@ -686,6 +686,14 @@ r_args_channel:
  | MPLS		{ $$ = "mpls"; }
  | PRI		{ $$ = "pri"; }
  | SEC		{ $$ = "sec"; }
+ ;
+
+CF_CLI(SHOW TABLE STATISTICS, rtable_spec, (<table> | all), [[Show routing table details]])
+{ cmd_show_table_stats($4); } ;
+
+rtable_spec:
+   rtable  { $$ = $1; }
+ | ALL  { $$ = NULL; }
  ;
 
 CF_CLI_HELP(SHOW SYMBOLS, ..., [[Show all known symbolic names]])

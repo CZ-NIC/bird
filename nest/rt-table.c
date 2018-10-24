@@ -34,6 +34,7 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
+#include "nest/cli.h"
 #include "lib/resource.h"
 #include "lib/event.h"
 #include "lib/string.h"
@@ -1125,13 +1126,18 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
     }
 
   if (new_ok)
-    stats->imp_updates_accepted++;
+  { stats->imp_updates_accepted++; table->route_updates++; }
   else if (old_ok)
-    stats->imp_withdraws_accepted++;
+  { stats->imp_withdraws_accepted++; table->route_withdraws++; }
   else
     stats->imp_withdraws_ignored++;
 
  skip_stats1:
+
+  if (new_ok)
+    table->route_count++;
+  if (old_ok)
+    table->route_count--;
 
   if (new)
     rte_is_filtered(new) ? stats->filt_routes++ : stats->imp_routes++;
@@ -2540,6 +2546,51 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
   return he;
 }
 
+
+static void
+rt_show_table_stats(rtable *tab)
+{
+  cli_msg(-1026, "%s:", tab->name);
+  cli_msg(-1026, "Table type:\t\t%s", net_label[tab->addr_type]);
+  cli_msg(-1026, "Hash table size:\t%u", tab->fib.hash_size);
+  cli_msg(-1026, "Hash entry count:\t%u", tab->fib.entries);
+  cli_msg(-1026, "Total route count:\t%u", tab->route_count);
+  cli_msg(-1026, "Route updates:\t\t%u", tab->route_updates);
+  cli_msg(-1026, "Route withdraws:\t%u", tab->route_withdraws);
+
+  cli_msg(-1026, "");
+  cli_msg(-1026, "%-16s %10s %10s %10s", "Protocol", "Routes", "Updates", "Withdraws");
+
+  struct channel *c; node *n;
+  WALK_LIST2(c, n, tab->channels, table_node)
+  {
+    if (c->channel_state == CS_DOWN)
+      continue;
+
+    cli_msg(-1026, "%-16s %10u %10u %10u", c->proto->name, c->stats.imp_routes,
+	    c->stats.imp_updates_accepted, c->stats.imp_withdraws_accepted);
+  }
+  cli_msg(-1026, "");
+}
+
+void
+cmd_show_table_stats(struct rtable_config *tab)
+{
+  if (tab && tab->table)
+  {
+    rt_show_table_stats(tab->table);
+    cli_msg(0, "");
+    return;
+  }
+
+  ASSERT(!tab);
+
+  rtable *t;
+  WALK_LIST(t, routing_tables)
+    rt_show_table_stats(t);
+
+  cli_msg(0, "");
+}
 
 /*
  *  Documentation for functions declared inline in route.h

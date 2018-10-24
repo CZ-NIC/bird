@@ -151,6 +151,9 @@ typedef struct rtable {
   uint addr_type;			/* Type of address data stored in table (NET_*) */
   int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
+  uint route_count;			/* Number of routes in the table */
+  uint route_updates;			/* Number of accepted route updates */
+  uint route_withdraws;			/* Number of accepted route withdraws */
   struct hostcache *hostcache;
   struct rtable_config *config;		/* Configuration of this table */
   struct config *deleted;		/* Table doesn't exist in current configuration,
@@ -308,6 +311,8 @@ void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
+void cmd_show_table_stats(struct rtable_config *tab);
+
 
 /* Default limit for ECMP next hops, defined in sysdep code */
 extern const int rt_default_ecmp;
