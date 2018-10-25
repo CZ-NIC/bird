@@ -1523,7 +1523,7 @@ interpret(struct f_inst *what)
       /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */
       eattr *e = ea_find(*f_eattrs, EA_CODE(PROTOCOL_BGP, 0x02));
 
-      if (!e || e->type != EAF_TYPE_AS_PATH)
+      if (!e || ((e->type & EAF_TYPE_MASK) != EAF_TYPE_AS_PATH))
 	runtime("Missing AS_PATH attribute");
 
       as_path_get_last(e->u.ptr, &as);
