@@ -35,6 +35,7 @@ f_valid_set_type(int type)
   case T_IP:
   case T_EC:
   case T_LC:
+  case T_RD:
     return 1;
 
   default:
@@ -492,6 +493,7 @@ type:
 	  case T_QUAD:
 	  case T_EC:
 	  case T_LC:
+	  case T_RD:
 	  case T_IP:
 	       $$ = T_SET;
 	       break;
@@ -641,9 +643,10 @@ fipa:
  */
 
 set_atom:
-   NUM   { $$.type = T_INT; $$.val.i = $1; }
- | fipa  { $$ = $1; }
- | ENUM  { $$.type = pair_a($1); $$.val.i = pair_b($1); }
+   NUM    { $$.type = T_INT; $$.val.i = $1; }
+ | fipa   { $$ = $1; }
+ | VPN_RD { $$.type = T_RD; $$.val.ec = $1; }
+ | ENUM   { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
      $$ = f_eval($2, cfg_mem);
      if (!f_valid_set_type($$.type)) cf_error("Set-incompatible type");
