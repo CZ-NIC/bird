@@ -1278,7 +1278,8 @@ ospf_iface_change_mtu(struct ospf_proto *p, struct ospf_iface *ifa)
 {
   /* ifa is not vlink */
 
-  OSPF_TRACE(D_EVENTS, "Interface %s changed MTU to %d", ifa->iface->mtu);
+  OSPF_TRACE(D_EVENTS, "Interface %s changed MTU to %d",
+	     ifa->ifname, ifa->iface->mtu);
 
   ifa->tx_length = ifa_tx_length(ifa);
 
