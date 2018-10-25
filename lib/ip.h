@@ -61,7 +61,7 @@ typedef struct ip4_addr {
 
 typedef u32 ip4_addr;
 
-#define _MI4(x) (x)
+#define _MI4(x) ((u32) (x))
 #define _I(x) (x)
 
 #endif
