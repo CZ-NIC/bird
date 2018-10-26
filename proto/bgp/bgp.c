@@ -159,7 +159,8 @@ bgp_open(struct bgp_proto *p)
   /* We assume that cf->iface is defined iff cf->local_ip is link-local */
 
   WALK_LIST(bs, bgp_sockets)
-    if (ipa_equal(bs->sk->saddr, addr) && (bs->sk->iface == ifa) && (bs->sk->sport == port))
+    if (ipa_equal(bs->sk->saddr, addr) && (bs->sk->sport == port) &&
+	(bs->sk->iface == ifa) && (bs->sk->vrf == p->p.vrf))
     {
       bs->uc++;
       p->sock = bs;
@@ -171,6 +172,8 @@ bgp_open(struct bgp_proto *p)
   sk->ttl = 255;
   sk->saddr = addr;
   sk->sport = port;
+  sk->iface = ifa;
+  sk->vrf = p->p.vrf;
   sk->flags = 0;
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->rbsize = BGP_RX_BUFFER_SIZE;
