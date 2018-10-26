@@ -271,7 +271,7 @@ if test "$enable_mpls_kernel" != no ; then
   fi
 fi
 
-all_protocols="$proto_bfd babel bgp mrt ospf pipe radv rip $proto_rpki static"
+all_protocols="$proto_bfd babel bgp mrt ospf perf pipe radv rip $proto_rpki static"
 
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 

@@ -25,7 +25,7 @@ configuration - something in config which is not keyword.
 Ondrej Filip <it/&lt;feela@network.cz&gt;/,
 Pavel Machek <it/&lt;pavel@ucw.cz&gt;/,
 Martin Mares <it/&lt;mj@ucw.cz&gt;/,
-Maria Jan Matejka <it/&lt;mq@jmq.cz&gt;/,
+Maria Matejka <it/&lt;mq@jmq.cz&gt;/,
 Ondrej Zajicek <it/&lt;santiago@crfreenet.org&gt;/
 </author>
 
@@ -3749,6 +3749,44 @@ protocol ospf MyOSPF {
 }
 </code>
 
+<sect>Perf
+<label id="perf">
+
+<sect1>Introduction
+<label id="perf-intro">
+
+<p>The Perf protocol is a generator of fake routes together with a time measurement
+framework. Its purpose is to check BIRD performance and to benchmark filters.
+
+<p>This protocol runs in several steps. In each step, it generates 2^x routes,
+imports them into the appropriate table and withdraws them. The exponent x is configurable.
+It runs the benchmark several times for the same x, then it increases x by one
+until it gets too high, then it stops.
+
+<p>Output data is logged on info level. There is a Perl script <cf>proto/perf/parse.pl</cf>
+which may be handy to parse the data and draw some plots.
+
+<p>Implementation of this protocol is experimental. Use with caution and do not keep
+any instance of Perf in production configs.
+
+<sect1>Configuration
+<label id="perf-config">
+
+<p><descrip>
+	<tag><label id="perf-repeat">repeat <m/number/</tag>
+	Run this amount of iterations of the benchmark for every amount step. Default: 4
+
+	<tag><label id="perf-from">exp from <m/number/</tag>
+	Begin benchmarking on this exponent for number of generated routes in one step.
+	Default: 10
+
+	<tag><label id="perf-to">exp to <m/number/</tag>
+	Stop benchmarking on this exponent. Default: 20
+
+	<tag><label id="perf-threshold">threshold <m/time/</tag>
+	If every run for the given exponent took at least this time for route import,
+	stop benchmarking. Default: 500 ms
+</descrip>
 
 <sect>Pipe
 <label id="pipe">
