@@ -1375,6 +1375,9 @@ protos_build(void)
 #ifdef CONFIG_RPKI
   proto_build(&proto_rpki);
 #endif
+#ifdef CONFIG_PERF
+  proto_build(&proto_perf);
+#endif
 
   proto_pool = rp_new(&root_pool, "Protocols");
   proto_shutdown_timer = tm_new(proto_pool);
