@@ -251,14 +251,14 @@ static inline void
 krt_trace_in(struct krt_proto *p, rte *e, char *msg)
 {
   if (p->p.debug & D_PACKETS)
-    log(L_TRACE "%s: %N: %s", p->p.name, e->net->n.addr, msg);
+    log(L_TRACE "%s: %N: %s", p->p.name, e->netA, msg);
 }
 
 static inline void
 krt_trace_in_rl(struct tbf *f, struct krt_proto *p, rte *e, char *msg)
 {
   if (p->p.debug & D_PACKETS)
-    log_rl(f, L_TRACE "%s: %N: %s", p->p.name, e->net->n.addr, msg);
+    log_rl(f, L_TRACE "%s: %N: %s", p->p.name, e->netA, msg);
 }
 
 /*
@@ -298,26 +298,24 @@ krt_uptodate(rte *a, rte *b)
 static void
 krt_learn_announce_update(struct krt_proto *p, rte *e)
 {
-  net *n = e->net;
   rta *aa = rta_clone(e->attrs);
   rte *ee = rte_get_temp(aa);
   ee->pflags = 0;
   ee->u.krt = e->u.krt;
-  rte_update(&p->p, n->n.addr, ee);
+  rte_update(&p->p, e->netA, ee);
 }
 
 static void
-krt_learn_announce_delete(struct krt_proto *p, net *n)
+krt_learn_announce_delete(struct krt_proto *p, net_addr *n)
 {
-  rte_update(&p->p, n->n.addr, NULL);
+  rte_update(&p->p, n, NULL);
 }
 
 /* Called when alien route is discovered during scan */
 static void
 krt_learn_scan(struct krt_proto *p, rte *e)
 {
-  net *n0 = e->net;
-  net *n = net_get(&p->krt_table, n0->n.addr);
+  net *n = net_get(&p->krt_table, e->netA);
   rte *m, **mm;
 
   e->attrs = rta_lookup(e->attrs);
@@ -401,7 +399,7 @@ again:
 	{
 	  DBG("%I/%d: deleting\n", n->n.prefix, n->n.pxlen);
 	  if (old_best)
-	    krt_learn_announce_delete(p, n);
+	    krt_learn_announce_delete(p, n->n.addr);
 
 	  FIB_ITERATE_PUT(&fit);
 	  fib_delete(fib, n);
@@ -429,8 +427,7 @@ again:
 static void
 krt_learn_async(struct krt_proto *p, rte *e, int new)
 {
-  net *n0 = e->net;
-  net *n = net_get(&p->krt_table, n0->n.addr);
+  net *n = net_get(&p->krt_table, e->netA);
   rte *g, **gg, *best, **bestp, *old_best;
 
   e->attrs = rta_lookup(e->attrs);
@@ -499,7 +496,7 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
       if (best)
 	krt_learn_announce_update(p, best);
       else
-	krt_learn_announce_delete(p, n);
+	krt_learn_announce_delete(p, n->n.addr);
     }
 }
 
@@ -551,7 +548,7 @@ krt_flush_routes(struct krt_proto *p)
       if (rte_is_valid(e) && (n->n.flags & KRF_INSTALLED))
 	{
 	  /* FIXME: this does not work if gw is changed in export filter */
-	  krt_replace_rte(p, e->net, NULL, e);
+	  krt_replace_rte(p, RTE_NET(e), NULL, e);
 	  n->n.flags &= ~KRF_INSTALLED;
 	}
     }
@@ -621,7 +618,7 @@ krt_same_dest(rte *k, rte *e)
 void
 krt_got_route(struct krt_proto *p, rte *e)
 {
-  net *net = e->net;
+  net *net = net_get(&p->krt_table, e->netA);
   int verdict;
 
 #ifdef KRT_ALLOW_LEARN
@@ -779,7 +776,7 @@ krt_prune(struct krt_proto *p)
 void
 krt_got_route_async(struct krt_proto *p, rte *e, int new)
 {
-  net *net = e->net;
+  net *net = net_get(&p->krt_table, e->netA);
 
   switch (e->u.krt.src)
     {
