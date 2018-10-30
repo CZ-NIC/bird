@@ -390,9 +390,9 @@ radv_trigger_valid(struct radv_config *cf)
 }
 
 static inline int
-radv_net_match_trigger(struct radv_config *cf, net *n)
+radv_net_match_trigger(struct radv_config *cf, const net_addr *n)
 {
-  return radv_trigger_valid(cf) && net_equal(n->n.addr, &cf->trigger);
+  return radv_trigger_valid(cf) && net_equal(n, &cf->trigger);
 }
 
 int
@@ -401,7 +401,7 @@ radv_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
   // struct radv_proto *p = (struct radv_proto *) P;
   struct radv_config *cf = (struct radv_config *) (P->cf);
 
-  if (radv_net_match_trigger(cf, (*new)->net))
+  if (radv_net_match_trigger(cf, (*new)->netA))
     return RIC_PROCESS;
 
   if (cf->propagate_routes)
@@ -418,7 +418,7 @@ radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   struct radv_route *rt;
   eattr *ea;
 
-  if (radv_net_match_trigger(cf, n))
+  if (radv_net_match_trigger(cf, n->n.addr))
   {
     u8 old_active = p->active;
     p->active = !!new;
