@@ -346,8 +346,8 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   return 0;
 }
 
-void
-krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old)
+int
+krt_replace_rte(struct krt_proto *p, rte *new, rte *old)
 {
   int err = 0;
 
@@ -357,10 +357,7 @@ krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old)
   if (new)
     err = krt_send_route(p, RTM_ADD, new);
 
-  if (err < 0)
-    n->n.flags |= KRF_SYNC_ERROR;
-  else
-    n->n.flags &= ~KRF_SYNC_ERROR;
+  return (err >= 0);
 }
 
 #define SKIP(ARG...) do { DBG("KRT: Ignoring route - " ARG); return; } while(0)

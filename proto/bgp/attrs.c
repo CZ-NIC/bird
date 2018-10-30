@@ -627,7 +627,7 @@ bgp_decode_large_community(struct bgp_parse_state *s, uint code UNUSED, uint fla
 static void
 bgp_export_mpls_label_stack(struct bgp_export_state *s, eattr *a)
 {
-  net_addr *n = s->route->net->n.addr;
+  const net_addr *n = s->route->netA;
   u32 *labels = (u32 *) a->u.ptr->data;
   uint lnum = a->u.ptr->length / 4;
 
