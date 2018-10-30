@@ -376,7 +376,7 @@ rte_mergable(rte *pri, rte *sec)
 static void
 rte_trace(struct proto *p, rte *e, int dir, char *msg)
 {
-  log(L_TRACE "%s %c %s %N %s", p->name, dir, msg, e->net->n.addr, rta_dest_name(e->attrs->dest));
+  log(L_TRACE "%s %c %s %N %s", p->name, dir, msg, e->netA, rta_dest_name(e->attrs->dest));
 }
 
 static inline void
@@ -923,36 +923,36 @@ static inline int
 rte_validate(rte *e)
 {
   int c;
-  net *n = e->net;
+  const net_addr *n = e->netA;
 
-  if (!net_validate(n->n.addr))
+  if (!net_validate(n))
   {
     log(L_WARN "Ignoring bogus prefix %N received via %s",
-	n->n.addr, e->sender->proto->name);
+	n, e->sender->proto->name);
     return 0;
   }
 
   /* FIXME: better handling different nettypes */
-  c = !net_is_flow(n->n.addr) ?
-    net_classify(n->n.addr): (IADDR_HOST | SCOPE_UNIVERSE);
+  c = !net_is_flow(n) ?
+    net_classify(n): (IADDR_HOST | SCOPE_UNIVERSE);
   if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
   {
     log(L_WARN "Ignoring bogus route %N received via %s",
-	n->n.addr, e->sender->proto->name);
+	n, e->sender->proto->name);
     return 0;
   }
 
-  if (net_type_match(n->n.addr, NB_DEST) == !e->attrs->dest)
+  if (net_type_match(n, NB_DEST) == !e->attrs->dest)
   {
     log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
-	n->n.addr, e->attrs->dest, e->sender->proto->name);
+	n, e->attrs->dest, e->sender->proto->name);
     return 0;
   }
 
   if ((e->attrs->dest == RTD_UNICAST) && !nexthop_is_sorted(&(e->attrs->nh)))
   {
     log(L_WARN "Ignoring unsorted multipath route %N received via %s",
-	n->n.addr, e->sender->proto->name);
+	n, e->sender->proto->name);
     return 0;
   }
 
@@ -1346,9 +1346,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   rte_update_lock();
   if (new)
     {
-      nn = net_get(c->table, n);
-
-      new->net = nn;
+      new->netA = n;
       new->sender = c;
 
       if (!new->pref)
@@ -1397,6 +1395,8 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
       if (!rta_is_cached(new->attrs)) /* Need to copy attributes */
 	new->attrs = rta_lookup(new->attrs);
       new->flags |= REF_COW;
+
+      new->netA = (nn = net_get(c->table, n))->n.addr;
     }
   else
     {
@@ -1420,7 +1420,12 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
  drop:
   rte_free(new);
   new = NULL;
-  goto recalc;
+
+  if ((nn = net_find(c->table, n)) && src)
+    goto recalc;
+
+  rte_update_unlock();
+  return;
 }
 
 /* Independent call to rte_announce(), used from next hop
@@ -1435,16 +1440,16 @@ rte_announce_i(rtable *tab, unsigned type, net *net, rte *new, rte *old,
 }
 
 static inline void
-rte_discard(rte *old)	/* Non-filtered route deletion, used during garbage collection */
+rte_discard(net *n, rte *old)	/* Non-filtered route deletion, used during garbage collection */
 {
   rte_update_lock();
-  rte_recalculate(old->sender, old->net, NULL, old->attrs->src);
+  rte_recalculate(old->sender, n, NULL, old->attrs->src);
   rte_update_unlock();
 }
 
 /* Modify existing route by protocol hook, used for long-lived graceful restart */
 static inline void
-rte_modify(rte *old)
+rte_modify(net *n, rte *old)
 {
   rte_update_lock();
 
@@ -1458,7 +1463,7 @@ rte_modify(rte *old)
       new->flags = (old->flags & ~REF_MODIFY) | REF_COW;
     }
 
-    rte_recalculate(old->sender, old->net, new, old->attrs->src);
+    rte_recalculate(old->sender, n, new, old->attrs->src);
   }
 
   rte_update_unlock();
@@ -1580,9 +1585,13 @@ rt_modify_stale(rtable *t, struct channel *c)
 void
 rte_dump(rte *e)
 {
-  net *n = e->net;
-  debug("%-1N ", n->n.addr);
-  debug("KF=%02x PF=%02x pref=%d ", n->n.flags, e->pflags, e->pref);
+  debug("%-1N ", e->netA);
+  net *n = RTE_NET(e);
+  if (n)
+    debug("KF=%02x PF=%02x pref=%d ", n->n.flags, e->pflags, e->pref);
+  else
+    debug("outside fib, PF=%02x pref=%d ", e->pflags, e->pref);
+
   rta_dump(e->attrs);
   if (e->attrs->src->proto->proto->dump_attrs)
     e->attrs->src->proto->proto->dump_attrs(e);
@@ -1769,7 +1778,7 @@ again:
 		return;
 	      }
 
-	    rte_discard(e);
+	    rte_discard(n, e);
 	    limit--;
 
 	    goto rescan;
@@ -1784,7 +1793,7 @@ again:
 		return;
 	      }
 
-	    rte_modify(e);
+	    rte_modify(n, e);
 	    limit--;
 
 	    goto rescan;
@@ -2360,7 +2369,7 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
   /* Insert the new rte */
   rte *e = rte_do_cow(new);
   e->flags |= REF_COW;
-  e->net = net;
+  e->netA = net->n.addr;
   e->sender = c;
   e->lastmod = current_time();
   e->next = *pos;

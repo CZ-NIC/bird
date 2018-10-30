@@ -207,7 +207,7 @@ struct hostentry {
 
 typedef struct rte {
   struct rte *next;
-  net *net;				/* Network this RTE belongs to */
+  const net_addr *netA;			/* Network this RTE belongs to */
   struct channel *sender;		/* Channel used to send the route to the routing table */
   struct rta *attrs;			/* Attributes of this route */
   byte flags;				/* Flags (REF_...) */
@@ -257,6 +257,8 @@ typedef struct rte {
 #define REF_STALE	4		/* Route is stale in a refresh cycle */
 #define REF_DISCARD	8		/* Route is scheduled for discard */
 #define REF_MODIFY	16		/* Route is scheduled for modify */
+
+#define RTE_NET(e)	(((e)->flags & REF_COW) ? SKIP_BACK(struct network, n, SKIP_BACK(struct fib_node, addr, (e)->netA)) : NULL)
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
 static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED); }

@@ -942,7 +942,7 @@ interpret(struct f_inst *what)
       {
       case SA_FROM:	res.val.ip = rta->from; break;
       case SA_GW:	res.val.ip = rta->nh.gw; break;
-      case SA_NET:	res.val.net = (*f_rte)->net->n.addr; break;
+      case SA_NET:	res.val.net = (*f_rte)->netA; break;
       case SA_PROTO:	res.val.s = rta->src->proto->name; break;
       case SA_SOURCE:	res.val.i = rta->source; break;
       case SA_SCOPE:	res.val.i = rta->scope; break;
@@ -1531,7 +1531,7 @@ interpret(struct f_inst *what)
     {
       ACCESS_RTE;
       ACCESS_EATTRS;
-      v1.val.net = (*f_rte)->net->n.addr;
+      v1.val.net = (*f_rte)->netA;
 
       /* We ignore temporary attributes, probably not a problem here */
       /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */

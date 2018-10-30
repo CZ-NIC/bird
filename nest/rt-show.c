@@ -34,8 +34,9 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d)
   byte from[IPA_MAX_TEXT_LENGTH+8];
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
   rta *a = e->attrs;
-  int primary = (e->net->routes == e);
-  int sync_error = (e->net->n.flags & KRF_SYNC_ERROR);
+  net *nn = RTE_NET(e);
+  int primary = nn && (nn->routes == e);
+  int sync_error = nn && (nn->n.flags & KRF_SYNC_ERROR);
   void (*get_route_info)(struct rte *, byte *buf);
   struct nexthop *nh;
 
