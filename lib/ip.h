@@ -186,13 +186,7 @@ static inline int ipa_nonzero2(ip_addr a)
  */
 
 static inline u32 ip4_hash(ip4_addr a)
-{
-  /* Returns a 32-bit value, although low-order bits are not mixed */
-  u32 x = _I(a);
-  x ^= x << 16;
-  x ^= x << 12;
-  return x;
-}
+{ return u32_hash(_I(a)); }
 
 static inline u32 ip6_hash(ip6_addr a)
 {
