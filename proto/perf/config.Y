@@ -17,7 +17,7 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(PERF, EXP, FROM, TO, REPEAT, THRESHOLD, KEEP)
+CF_KEYWORDS(PERF, EXP, FROM, TO, REPEAT, THRESHOLD, MIN, MAX, KEEP)
 
 CF_GRAMMAR
 
@@ -29,7 +29,8 @@ perf_proto_start: proto_start PERF
   PERF_CFG->from = 10;
   PERF_CFG->to = 20;
   PERF_CFG->repeat = 4;
-  PERF_CFG->threshold = 500 MS_;
+  PERF_CFG->threshold_max = 500 MS_;
+  PERF_CFG->threshold_min = 1 MS_;
   PERF_CFG->keep = 0;
 };
 
@@ -43,7 +44,8 @@ perf_proto_item:
  | EXP FROM NUM { PERF_CFG->from = $3; }
  | EXP TO NUM { PERF_CFG->to = $3; }
  | REPEAT NUM { PERF_CFG->repeat = $2; }
- | THRESHOLD expr_us { PERF_CFG->threshold = $2; }
+ | THRESHOLD MIN expr_us { PERF_CFG->threshold_min = $3; }
+ | THRESHOLD MAX expr_us { PERF_CFG->threshold_max = $3; }
  | KEEP bool { PERF_CFG->keep = $2; }
 ;
 

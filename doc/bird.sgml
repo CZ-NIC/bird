@@ -3675,7 +3675,11 @@ any instance of Perf in production configs.
 	<tag><label id="perf-to">exp to <m/number/</tag>
 	Stop benchmarking on this exponent. Default: 20
 
-	<tag><label id="perf-threshold">threshold <m/time/</tag>
+	<tag><label id="perf-threshold-min">threshold min <m/time/</tag>
+	If a run for the given exponent took less than this time for route import,
+	increase the exponent immediately. Default: 1 ms
+
+	<tag><label id="perf-threshold-max">threshold max <m/time/</tag>
 	If every run for the given exponent took at least this time for route import,
 	stop benchmarking. Default: 500 ms
 </descrip>

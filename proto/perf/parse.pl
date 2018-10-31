@@ -120,11 +120,15 @@ sub draw {
   my $csv = $self->dump();
   my $svg = $self->stub . ".svg";
 
+  my $title = $self->name;
+  $title =~ s/_/ /g;
+
   open PLOT, "|-", "gnuplot -p";
   print PLOT "set terminal svg;\n";
   print PLOT "set output '$svg';\n";
-  print PLOT "set title '" . $self->name . "';\n";
+  print PLOT "set title '$title';\n";
   print PLOT "set datafile separator ',';\n";
+  print PLOT "set jitter over 0.3 spread 0.3;\n";
   print PLOT "plot '$csv' using 1:2 title 'gen', '$csv' using 1:3 title 'temp', '$csv' using 1:4 title 'update', '$csv' using 1:5 title 'withdraw';\n";
   close PLOT;
 }
