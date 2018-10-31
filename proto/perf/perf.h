@@ -11,7 +11,8 @@
 
 struct perf_config {
   struct proto_config p;
-  btime threshold;
+  btime threshold_min;
+  btime threshold_max;
   uint from;
   uint to;
   uint repeat;
@@ -23,7 +24,8 @@ struct perf_proto {
   struct ifa *ifa;
   void *data;
   event *loop;
-  btime threshold;
+  btime threshold_min;
+  btime threshold_max;
   uint from;
   uint to;
   uint repeat;
