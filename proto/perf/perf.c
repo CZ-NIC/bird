@@ -186,13 +186,14 @@ perf_loop(void *data)
   s64 updatetime = timediff(&ts_rte, &ts_update);
   s64 withdrawtime = timediff(&ts_update, &ts_withdraw);
 
-  PLOG("exp=%u times: gen=%lu temp=%lu update=%lu withdraw=%lu",
-      p->exp, gentime, temptime, updatetime, withdrawtime);
+  if (updatetime NS >= p->threshold_min)
+    PLOG("exp=%u times: gen=%lu temp=%lu update=%lu withdraw=%lu",
+	p->exp, gentime, temptime, updatetime, withdrawtime);
 
-  if (updatetime NS < p->threshold)
+  if (updatetime NS < p->threshold_max)
     p->stop = 0;
 
-  if (++p->run == p->repeat) {
+  if ((updatetime NS < p->threshold_min) || (++p->run == p->repeat)) {
     xfree(p->data);
     p->data = NULL;
 
@@ -222,7 +223,8 @@ perf_init(struct proto_config *CF)
 
   struct perf_config *cf = (struct perf_config *) CF;
 
-  p->threshold = cf->threshold;
+  p->threshold_min = cf->threshold_min;
+  p->threshold_max = cf->threshold_max;
   p->from = cf->from;
   p->to = cf->to;
   p->repeat = cf->repeat;
