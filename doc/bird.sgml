@@ -3650,21 +3650,27 @@ protocol ospf MyOSPF {
 <p>The Perf protocol is a generator of fake routes together with a time measurement
 framework. Its purpose is to check BIRD performance and to benchmark filters.
 
-<p>This protocol runs in several steps. In each step, it generates 2^x routes,
+<p>Import mode of this protocol runs in several steps. In each step, it generates 2^x routes,
 imports them into the appropriate table and withdraws them. The exponent x is configurable.
 It runs the benchmark several times for the same x, then it increases x by one
 until it gets too high, then it stops.
+
+<p>Export mode of this protocol repeats route refresh from table and measures how long it takes.
 
 <p>Output data is logged on info level. There is a Perl script <cf>proto/perf/parse.pl</cf>
 which may be handy to parse the data and draw some plots.
 
 <p>Implementation of this protocol is experimental. Use with caution and do not keep
-any instance of Perf in production configs.
+any instance of Perf in production configs for long time. The config interface is also unstable
+and may change in future versions without warning.
 
 <sect1>Configuration
 <label id="perf-config">
 
 <p><descrip>
+	<tag><label id="perf-mode">mode import|export</tag>
+	Set perf mode. Default: import
+
 	<tag><label id="perf-repeat">repeat <m/number/</tag>
 	Run this amount of iterations of the benchmark for every amount step. Default: 4
 
