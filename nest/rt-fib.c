@@ -61,7 +61,7 @@
 #define HASH_DEF_ORDER 10
 #define HASH_HI_MARK *4
 #define HASH_HI_STEP 2
-#define HASH_HI_MAX 16
+#define HASH_HI_MAX 24
 #define HASH_LO_MARK /5
 #define HASH_LO_STEP 2
 #define HASH_LO_MIN 10
