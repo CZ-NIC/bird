@@ -9,6 +9,11 @@
 #ifndef _BIRD_PERF_H_
 #define _BIRD_PERF_H_
 
+enum perf_mode {
+  PERF_MODE_IMPORT,
+  PERF_MODE_EXPORT,
+};
+
 struct perf_config {
   struct proto_config p;
   btime threshold_min;
@@ -17,6 +22,7 @@ struct perf_config {
   uint to;
   uint repeat;
   uint keep;
+  enum perf_mode mode;
 };
 
 struct perf_proto {
@@ -33,6 +39,7 @@ struct perf_proto {
   uint exp;
   uint stop;
   uint keep;
+  enum perf_mode mode;
 };
 
 #endif
