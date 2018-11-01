@@ -209,13 +209,49 @@ perf_loop(void *data)
   ev_schedule(p->loop);
 }
 
+static void
+perf_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net UNUSED, struct rte *new UNUSED, struct rte *old UNUSED)
+{
+  struct perf_proto *p = (struct perf_proto *) P;
+  p->exp++;
+  return;
+}
+
+static void
+perf_feed_begin(struct channel *c, int initial UNUSED)
+{
+  struct perf_proto *p = (struct perf_proto *) c->proto;
+
+  p->run++;
+  p->data = xmalloc(sizeof(struct timespec));
+  p->exp = 0;
+
+  clock_gettime(CLOCK_MONOTONIC, p->data);
+}
+
+static void
+perf_feed_end(struct channel *c)
+{
+  struct perf_proto *p = (struct perf_proto *) c->proto;
+  struct timespec ts_end;
+  clock_gettime(CLOCK_MONOTONIC, &ts_end);
+
+  s64 feedtime = timediff(p->data, &ts_end);
+
+  PLOG("feed n=%lu time=%lu", p->exp, feedtime);
+
+  if (p->run < p->repeat)
+    channel_request_feeding(c);
+  else
+    PLOG("feed done");
+}
+
 static struct proto *
 perf_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
 
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
-  P->ifa_notify = perf_ifa_notify;
 
   struct perf_proto *p = (struct perf_proto *) P;
 
@@ -229,6 +265,18 @@ perf_init(struct proto_config *CF)
   p->to = cf->to;
   p->repeat = cf->repeat;
   p->keep = cf->keep;
+  p->mode = cf->mode;
+
+  switch (p->mode) {
+    case PERF_MODE_IMPORT:
+      P->ifa_notify = perf_ifa_notify;
+      break;
+    case PERF_MODE_EXPORT:
+      P->rt_notify = perf_rt_notify;
+      P->feed_begin = perf_feed_begin;
+      P->feed_end = perf_feed_end;
+      break;
+  }
 
   return P;
 }

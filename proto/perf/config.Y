@@ -17,7 +17,7 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(PERF, EXP, FROM, TO, REPEAT, THRESHOLD, MIN, MAX, KEEP)
+CF_KEYWORDS(PERF, EXP, FROM, TO, REPEAT, THRESHOLD, MIN, MAX, KEEP, MODE, IMPORT, EXPORT)
 
 CF_GRAMMAR
 
@@ -32,6 +32,7 @@ perf_proto_start: proto_start PERF
   PERF_CFG->threshold_max = 500 MS_;
   PERF_CFG->threshold_min = 1 MS_;
   PERF_CFG->keep = 0;
+  PERF_CFG->mode = PERF_MODE_IMPORT;
 };
 
 perf_proto:
@@ -47,6 +48,8 @@ perf_proto_item:
  | THRESHOLD MIN expr_us { PERF_CFG->threshold_min = $3; }
  | THRESHOLD MAX expr_us { PERF_CFG->threshold_max = $3; }
  | KEEP bool { PERF_CFG->keep = $2; }
+ | MODE IMPORT { PERF_CFG->mode = PERF_MODE_IMPORT; }
+ | MODE EXPORT { PERF_CFG->mode = PERF_MODE_EXPORT; }
 ;
 
 
