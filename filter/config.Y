@@ -852,7 +852,7 @@ static_attr:
  | SOURCE  { $$ = f_new_static_attr(T_ENUM_RTS,   SA_SOURCE,	0); }
  | SCOPE   { $$ = f_new_static_attr(T_ENUM_SCOPE, SA_SCOPE,	1); }
  | DEST    { $$ = f_new_static_attr(T_ENUM_RTD,   SA_DEST,	1); }
- | IFNAME  { $$ = f_new_static_attr(T_STRING,     SA_IFNAME,	0); }
+ | IFNAME  { $$ = f_new_static_attr(T_STRING,     SA_IFNAME,	1); }
  | IFINDEX { $$ = f_new_static_attr(T_INT,        SA_IFINDEX,	0); }
  ;
 

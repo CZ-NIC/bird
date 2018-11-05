@@ -1606,7 +1606,8 @@ regarded as empty bgppath/*clist for most purposes.
 	<tag><label id="rta-ifname"><m/string/ ifname</tag>
 	Name of the outgoing interface. Sink routes (like blackhole, unreachable
 	or prohibit) and multipath routes have no interface associated with
-	them, so <cf/ifname/ returns an empty string for such routes. Read-only.
+	them, so <cf/ifname/ returns an empty string for such routes. Setting it
+	would also change route to a direct one (remove gateway).
 
 	<tag><label id="rta-ifindex"><m/int/ ifindex</tag>
 	Index of the outgoing interface. System wide index of the interface. May

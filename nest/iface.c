@@ -449,7 +449,7 @@ if_find_by_name(char *name)
   struct iface *i;
 
   WALK_LIST(i, iface_list)
-    if (!strcmp(i->name, name))
+    if (!strcmp(i->name, name) && !(i->flags & IF_SHUTDOWN))
       return i;
   return NULL;
 }
@@ -459,8 +459,9 @@ if_get_by_name(char *name)
 {
   struct iface *i;
 
-  if (i = if_find_by_name(name))
-    return i;
+  WALK_LIST(i, iface_list)
+    if (!strcmp(i->name, name))
+      return i;
 
   /* No active iface, create a dummy */
   i = mb_allocz(if_pool, sizeof(struct iface));
