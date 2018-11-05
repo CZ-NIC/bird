@@ -58,6 +58,24 @@
 
 #include <stddef.h>
 
+const char * const rta_src_names[RTS_MAX] = {
+  [RTS_DUMMY]		= "",
+  [RTS_STATIC]		= "static",
+  [RTS_INHERIT]		= "inherit",
+  [RTS_DEVICE]		= "device",
+  [RTS_STATIC_DEVICE]	= "static-device",
+  [RTS_REDIRECT]	= "redirect",
+  [RTS_RIP]		= "RIP",
+  [RTS_OSPF]		= "OSPF",
+  [RTS_OSPF_IA]		= "OSPF-IA",
+  [RTS_OSPF_EXT1]	= "OSPF-E1",
+  [RTS_OSPF_EXT2]	= "OSPF-E2",
+  [RTS_BGP]		= "BGP",
+  [RTS_PIPE]		= "pipe",
+  [RTS_BABEL]		= "Babel",
+  [RTS_RPKI]		= "RPKI",
+};
+
 const char * rta_dest_names[RTD_MAX] = {
   [RTD_NONE]		= "",
   [RTD_UNICAST]		= "unicast",
@@ -1262,10 +1280,7 @@ rta_dump_all(void)
 void
 rta_show(struct cli *c, rta *a)
 {
-  static char *src_names[] = { "dummy", "static", "inherit", "device", "static-device", "redirect",
-			       "RIP", "OSPF", "OSPF-IA", "OSPF-E1", "OSPF-E2", "BGP", "pipe" };
-
-  cli_printf(c, -1008, "\tType: %s %s", src_names[a->source], ip_scope_text(a->scope));
+  cli_printf(c, -1008, "\tType: %s %s", rta_src_names[a->source], ip_scope_text(a->scope));
 
   for(ea_list *eal = a->eattrs; eal; eal=eal->next)
     for(int i=0; i<eal->count; i++)

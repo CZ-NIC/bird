@@ -421,6 +421,7 @@ typedef struct rta {
 #define RTS_PIPE 12			/* Inter-table wormhole */
 #define RTS_BABEL 13			/* Babel route */
 #define RTS_RPKI 14			/* Route Origin Authorization */
+#define RTS_MAX 15
 
 
 #define RTC_UNICAST 0
