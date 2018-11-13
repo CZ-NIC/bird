@@ -14,6 +14,7 @@
 struct pool;
 struct iface;
 struct birdsock;
+struct rfile;
 
 /* main.c */
 
@@ -102,7 +103,9 @@ void io_init(void);
 void io_loop(void);
 void io_log_dump(void);
 int sk_open_unix(struct birdsock *s, char *name);
-void *tracked_fopen(struct pool *, char *name, char *mode);
+struct rfile *rf_open(struct pool *, char *name, char *mode);
+void *rf_file(struct rfile *f);
+int rf_fileno(struct rfile *f);
 void test_old_bird(char *path);
 
 /* krt.c bits */
