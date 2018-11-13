@@ -55,6 +55,7 @@
    this to gen small latencies */
 #define MAX_RX_STEPS 4
 
+
 /*
  *	Tracked Files
  */
@@ -89,17 +90,29 @@ static struct resclass rf_class = {
   NULL
 };
 
-void *
-tracked_fopen(pool *p, char *name, char *mode)
+struct rfile *
+rf_open(pool *p, char *name, char *mode)
 {
   FILE *f = fopen(name, mode);
 
-  if (f)
-    {
-      struct rfile *r = ralloc(p, &rf_class);
-      r->f = f;
-    }
-  return f;
+  if (!f)
+    return NULL;
+
+  struct rfile *r = ralloc(p, &rf_class);
+  r->f = f;
+  return r;
+}
+
+void *
+rf_file(struct rfile *f)
+{
+  return f->f;
+}
+
+int
+rf_fileno(struct rfile *f)
+{
+  return fileno(f->f);
 }
 
 
