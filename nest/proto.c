@@ -1658,7 +1658,7 @@ channel_show_info(struct channel *c)
   cli_msg(-1006, "  Channel %s", c->name);
   cli_msg(-1006, "    State:          %s", c_states[c->channel_state]);
   cli_msg(-1006, "    Table:          %s", c->table->name);
-  cli_msg(-1006, "    Preference:     %d", c->preference);
+  cli_msg(-1006, "    Distance:       %d", c->preference);
   cli_msg(-1006, "    Input filter:   %s", filter_name(c->in_filter));
   cli_msg(-1006, "    Output filter:  %s", filter_name(c->out_filter));
 

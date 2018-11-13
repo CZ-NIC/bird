@@ -410,7 +410,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	IF, THEN, ELSE, CASE,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
 	FROM, GW, NET, MASK, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX,
-	PREFERENCE,
+	PREFERENCE, DISTANCE,
 	ROA_CHECK, ASN,
 	IS_V4, IS_V6,
 	LEN, MAXLEN,
@@ -886,6 +886,7 @@ term:
  | constructor { $$ = $1; }
 
  | PREFERENCE { $$ = f_new_inst(FI_PREF_GET); }
+ | DISTANCE { $$ = f_new_inst(FI_PREF_GET); }
 
  | rtadot static_attr { $$ = f_new_inst_sa(FI_RTA_GET, $2); }
 
@@ -1028,6 +1029,10 @@ cmd:
      $$->a1.p = $4;
    }
  | PREFERENCE '=' term ';' {
+     $$ = f_new_inst(FI_PREF_SET);
+     $$->a1.p = $3;
+   }
+ | DISTANCE '=' term ';' {
      $$ = f_new_inst(FI_PREF_SET);
      $$->a1.p = $3;
    }
