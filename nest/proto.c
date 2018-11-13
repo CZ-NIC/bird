@@ -483,7 +483,7 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
 
   cf->net_type = net_type;
   cf->ra_mode = RA_OPTIMAL;
-  cf->preference = 250 - proto->protocol->preference;
+  cf->preference = proto->protocol->preference;
 
   add_tail(&proto->channels, &cf->n);
 
