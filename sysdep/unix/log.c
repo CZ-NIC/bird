@@ -19,6 +19,8 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -86,6 +88,54 @@ static char *class_names[] = {
   "BUG"
 };
 
+static inline off_t
+log_size(struct log_config *l)
+{
+  struct stat st;
+  return (!fstat(rf_fileno(l->rf), &st) && S_ISREG(st.st_mode)) ? st.st_size : 0;
+}
+
+static void
+log_close(struct log_config *l)
+{
+  rfree(l->rf);
+  l->rf = NULL;
+  l->fh = NULL;
+}
+
+static int
+log_open(struct log_config *l)
+{
+  l->rf = rf_open(config->pool, l->filename, "a");
+  if (!l->rf)
+  {
+    /* Well, we cannot do much in case of error as log is closed */
+    l->mask = 0;
+    return -1;
+  }
+
+  l->fh = rf_file(l->rf);
+  l->pos = log_size(l);
+
+  return 0;
+}
+
+static int
+log_rotate(struct log_config *l)
+{
+  log_close(l);
+
+  /* If we cannot rename the logfile, we at least try to delete it
+     in order to continue logging and not exceeding logfile size */
+  if ((rename(l->filename, l->backup) < 0) &&
+      (unlink(l->filename) < 0))
+  {
+    l->mask = 0;
+    return -1;
+  }
+
+  return log_open(l);
+}
 
 /**
  * log_commit - commit a log message
@@ -121,6 +171,22 @@ log_commit(int class, buffer *buf)
 	    {
 	      byte tbuf[TM_DATETIME_BUFFER_SIZE];
 	      tm_format_real_time(tbuf, config->tf_log.fmt1, current_real_time());
+
+	      if (l->limit)
+	      {
+		off_t msg_len = strlen(tbuf) + strlen(class_names[class]) +
+		  (buf->pos - buf->start) + 5;
+
+		if (l->pos < 0)
+		  l->pos = log_size(l);
+
+		if (l->pos + msg_len > l->limit)
+		  if (log_rotate(l) < 0)
+		    continue;
+
+		l->pos += msg_len;
+	      }
+
 	      fprintf(l->fh, "%s <%s> ", tbuf, class_names[class]);
 	    }
 	  fputs(buf->start, l->fh);
@@ -279,12 +345,26 @@ default_log_list(int debug, int init, char **syslog_name)
 }
 
 void
-log_switch(int debug, list *l, char *new_syslog_name)
+log_switch(int debug, list *logs, char *new_syslog_name)
 {
-  if (!l || EMPTY_LIST(*l))
-    l = default_log_list(debug, !l, &new_syslog_name);
+  struct log_config *l;
 
-  current_log_list = l;
+  if (!logs || EMPTY_LIST(*logs))
+    logs = default_log_list(debug, !logs, &new_syslog_name);
+
+  /* Close the logs to avoid pinning them on disk when deleted */
+  if (current_log_list)
+    WALK_LIST(l, *current_log_list)
+      if (l->rf)
+	log_close(l);
+
+  /* Reopen the logs, needed for 'configure undo' */
+  if (logs)
+    WALK_LIST(l, *logs)
+      if (l->filename && !l->rf)
+	log_open(l);
+
+  current_log_list = logs;
 
 #ifdef HAVE_SYSLOG_H
   if (current_syslog_name && new_syslog_name &&
