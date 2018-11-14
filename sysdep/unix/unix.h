@@ -122,6 +122,11 @@ struct log_config {
   node n;
   uint mask;				/* Classes to log */
   void *fh;				/* FILE to log to, NULL=syslog */
+  struct rfile *rf;			/* Resource for log file */
+  char *filename;			/* Log filename */
+  char *backup;				/* Secondary filename (for log rotation) */
+  off_t pos;				/* Position/size of current log */
+  off_t limit;				/* Log size limit */
   int terminal_flag;
 };
 
