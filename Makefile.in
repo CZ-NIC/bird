@@ -33,6 +33,7 @@ bindir=@bindir@
 sbindir=@sbindir@
 sysconfdir=@sysconfdir@
 localstatedir=@localstatedir@
+runstatedir=@runstatedir@
 docdir=@prefix@/doc
 
 srcdir := @srcdir@
@@ -183,7 +184,7 @@ cscope:
 # Install
 
 install: all
-	$(INSTALL) -d $(DESTDIR)/$(sbindir) $(DESTDIR)/$(sysconfdir) $(DESTDIR)/@runtimedir@
+	$(INSTALL) -d $(DESTDIR)/$(sbindir) $(DESTDIR)/$(sysconfdir) $(DESTDIR)/$(runstatedir)
 	for BIN in bird @CLIENT@ ; do								\
 		$(INSTALL_PROGRAM) $(exedir)/$$BIN $(DESTDIR)/$(sbindir)/$$BIN ;		\
 	done

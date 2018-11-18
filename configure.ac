@@ -54,9 +54,9 @@ AC_ARG_WITH([sysconfig],
 )
 
 AC_ARG_WITH([runtimedir],
-  [AS_HELP_STRING([--with-runtimedir=PATH], [path for runtime files @<:@LOCALSTATEDIR/run@:>@])],
-  [runtimedir="$with_runtimedir"],
-  [runtimedir="\$(localstatedir)/run"]
+  [AS_HELP_STRING([--with-runtimedir=PATH], [run-state data, obsolete variant of --runstatedir])],
+  [runstatedir="$with_runtimedir"],
+  []
 )
 
 AC_ARG_WITH([iproutedir],
@@ -82,7 +82,10 @@ exedir=.
 AC_SUBST([objdir])
 AC_SUBST([exedir])
 AC_SUBST([srcdir])
-AC_SUBST([runtimedir])
+
+# Workaround for older Autoconfs that do not define runstatedir
+AS_IF([test -z "${runstatedir}"], [runstatedir='${localstatedir}/run'])
+AC_SUBST([runstatedir])
 
 
 if test "$enable_debug" = yes ; then
@@ -90,7 +93,7 @@ if test "$enable_debug" = yes ; then
   CONTROL_SOCKET="bird.ctl"
 else
   CONFIG_FILE="\$(sysconfdir)/bird.conf"
-  CONTROL_SOCKET="$runtimedir/bird.ctl"
+  CONTROL_SOCKET="\$(runstatedir)/bird.ctl"
 fi
 AC_SUBST([CONFIG_FILE])
 AC_SUBST([CONTROL_SOCKET])
