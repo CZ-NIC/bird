@@ -266,6 +266,7 @@ struct bgp_proto {
   u8 llgr_ready;			/* Neighbor could do Long-lived GR, implies gr_ready */
   u8 gr_active_num;			/* Neighbor is doing GR, number of active channels */
   u8 channel_count;			/* Number of active channels */
+  u8 summary_add_path_rx;		/* Summary state of ADD_PATH RX w.r.t active channels */
   u32 *afi_map;				/* Map channel index -> AFI */
   struct bgp_channel **channel_map;	/* Map channel index -> channel */
   struct bgp_conn *conn;		/* Connection we have established */
@@ -361,6 +362,7 @@ struct bgp_write_state {
   struct bgp_channel *channel;
   struct linpool *pool;
 
+  int mp_reach;
   int as4_session;
   int add_path;
   int mpls;
@@ -538,7 +540,7 @@ void bgp_get_route_info(struct rte *, byte *buf);
 
 /* packets.c */
 
-void mrt_dump_bgp_state_change(struct bgp_conn *conn, unsigned old, unsigned new);
+void bgp_dump_state_change(struct bgp_conn *conn, uint old, uint new);
 const struct bgp_af_desc *bgp_get_af_desc(u32 afi);
 const struct bgp_af_caps *bgp_find_af_caps(struct bgp_caps *caps, u32 afi);
 void bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type);

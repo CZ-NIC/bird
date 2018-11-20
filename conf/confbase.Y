@@ -60,6 +60,7 @@ CF_DECLS
   struct rt_show_data *ra;
   struct sym_show_data *sd;
   struct lsadb_show_data *ld;
+  struct mrt_dump_data *md;
   struct iface *iface;
   void *g;
   btime time;

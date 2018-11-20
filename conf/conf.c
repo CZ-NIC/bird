@@ -209,7 +209,7 @@ config_del_obstacle(struct config *c)
 {
   DBG("+++ deleting obstacle %d\n", c->obstacle_count);
   c->obstacle_count--;
-  if (!c->obstacle_count)
+  if (!c->obstacle_count && (c != config))
     ev_schedule(config_event);
 }
 

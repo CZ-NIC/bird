@@ -278,7 +278,7 @@ if test "$enable_mpls_kernel" != no ; then
   fi
 fi
 
-all_protocols="$proto_bfd babel bgp ospf pipe radv rip $proto_rpki static"
+all_protocols="$proto_bfd babel bgp mrt ospf pipe radv rip $proto_rpki static"
 
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
@@ -289,6 +289,7 @@ fi
 AH_TEMPLATE([CONFIG_BABEL], 	[Babel protocol])
 AH_TEMPLATE([CONFIG_BFD],	[BFD protocol])
 AH_TEMPLATE([CONFIG_BGP],	[BGP protocol])
+AH_TEMPLATE([CONFIG_MRT],	[MRT protocol])
 AH_TEMPLATE([CONFIG_OSPF],	[OSPF protocol])
 AH_TEMPLATE([CONFIG_PIPE],	[Pipe protocol])
 AH_TEMPLATE([CONFIG_RADV],	[RAdv protocol])

@@ -26,7 +26,7 @@
 
 #include "nest/bird.h"
 #include "nest/cli.h"
-#include "nest/mrtdump.h"
+#include "conf/conf.h"
 #include "lib/string.h"
 #include "lib/lists.h"
 #include "sysdep/unix/unix.h"
@@ -170,7 +170,8 @@ log_commit(int class, buffer *buf)
 	  else
 	    {
 	      byte tbuf[TM_DATETIME_BUFFER_SIZE];
-	      tm_format_real_time(tbuf, config->tf_log.fmt1, current_real_time());
+	      if (!tm_format_real_time(tbuf, sizeof(tbuf), config->tf_log.fmt1, current_real_time()))
+		strcpy(tbuf, "<error>");
 
 	      if (l->limit)
 	      {
@@ -386,8 +387,6 @@ log_switch(int debug, list *logs, char *new_syslog_name)
 #endif
 }
 
-
-
 void
 log_init_debug(char *f)
 {
@@ -405,17 +404,4 @@ log_init_debug(char *f)
   }
   if (dbgf)
     setvbuf(dbgf, NULL, _IONBF, 0);
-}
-
-void
-mrt_dump_message(struct proto *p, u16 type, u16 subtype, byte *buf, u32 len)
-{
-  /* Prepare header */
-  put_u32(buf+0, current_real_time() TO_S);
-  put_u16(buf+4, type);
-  put_u16(buf+6, subtype);
-  put_u32(buf+8, len - MRTDUMP_HDR_LENGTH);
-
-  if (p->cf->global->mrtdump_file != -1)
-    write(p->cf->global->mrtdump_file, buf, len);
 }

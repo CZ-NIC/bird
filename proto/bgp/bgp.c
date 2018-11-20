@@ -477,7 +477,7 @@ static inline void
 bgp_conn_set_state(struct bgp_conn *conn, uint new_state)
 {
   if (conn->bgp->p.mrtdump & MD_STATES)
-    mrt_dump_bgp_state_change(conn, conn->state, new_state);
+    bgp_dump_state_change(conn, conn->state, new_state);
 
   conn->state = new_state;
 }
@@ -527,6 +527,9 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
   /* Number of active channels */
   int num = 0;
+
+  /* Summary state of ADD_PATH RX for active channels */
+  uint summary_add_path_rx = 0;
 
   WALK_LIST(c, p->p.channels)
   {
@@ -586,6 +589,9 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     c->add_path_rx = (loc->add_path & BGP_ADD_PATH_RX) && (rem->add_path & BGP_ADD_PATH_TX);
     c->add_path_tx = (loc->add_path & BGP_ADD_PATH_TX) && (rem->add_path & BGP_ADD_PATH_RX);
 
+    if (active)
+      summary_add_path_rx |= !c->add_path_rx ? 1 : 2;
+
     /* Update RA mode */
     if (c->add_path_tx)
       c->c.ra_mode = RA_ANY;
@@ -598,6 +604,7 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   p->afi_map = mb_alloc(p->p.pool, num * sizeof(u32));
   p->channel_map = mb_alloc(p->p.pool, num * sizeof(void *));
   p->channel_count = num;
+  p->summary_add_path_rx = summary_add_path_rx;
 
   WALK_LIST(c, p->p.channels)
   {

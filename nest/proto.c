@@ -1290,6 +1290,9 @@ protos_build(void)
 #ifdef CONFIG_STATIC
   proto_build(&proto_static);
 #endif
+#ifdef CONFIG_MRT
+  proto_build(&proto_mrt);
+#endif
 #ifdef CONFIG_OSPF
   proto_build(&proto_ospf);
 #endif

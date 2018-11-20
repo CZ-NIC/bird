@@ -20,6 +20,12 @@
 #include "sysdep/unix/endian.h"
 #include "lib/string.h"
 
+static inline u8
+get_u8(const void *p)
+{
+  return * (u8 *) p;
+}
+
 static inline u16
 get_u16(const void *p)
 {
@@ -50,6 +56,12 @@ get_u64(const void *p)
   memcpy(&xh, p, 4);
   memcpy(&xl, p+4, 4);
   return (((u64) ntohl(xh)) << 32) | ntohl(xl);
+}
+
+static inline void
+put_u8(void *p, u8 x)
+{
+  memcpy(p, &x, 1);
 }
 
 static inline void

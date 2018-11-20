@@ -305,7 +305,8 @@ tm_format_time(char *x, struct timeformat *fmt, btime t)
   btime rt = current_real_time() - dt;
   int v1 = !fmt->limit || (dt < fmt->limit);
 
-  tm_format_real_time(x, v1 ? fmt->fmt1 : fmt->fmt2, rt);
+  if (!tm_format_real_time(x, TM_DATETIME_BUFFER_SIZE, v1 ? fmt->fmt1 : fmt->fmt2, rt))
+    strcpy(x, "<error>");
 }
 
 /* Replace %f in format string with usec scaled to requested precision */
@@ -353,8 +354,8 @@ strfusec(char *buf, int size, const char *fmt, uint usec)
   return str - buf;
 }
 
-void
-tm_format_real_time(char *x, const char *fmt, btime t)
+int
+tm_format_real_time(char *x, size_t max, const char *fmt, btime t)
 {
   s64 t1 = t TO_S;
   s64 t2 = t - t1 S;
@@ -362,17 +363,14 @@ tm_format_real_time(char *x, const char *fmt, btime t)
   time_t ts = t1;
   struct tm tm;
   if (!localtime_r(&ts, &tm))
-    goto err;
+    return 0;
 
   byte tbuf[TM_DATETIME_BUFFER_SIZE];
-  if (!strfusec(tbuf, TM_DATETIME_BUFFER_SIZE, fmt, t2))
-    goto err;
+  if (!strfusec(tbuf, max, fmt, t2))
+    return 0;
 
-  if (!strftime(x, TM_DATETIME_BUFFER_SIZE, tbuf, &tm))
-    goto err;
+  if (!strftime(x, max, tbuf, &tm))
+    return 0;
 
-  return;
-
-err:
-  strcpy(x, "<error>");
+  return 1;
 }

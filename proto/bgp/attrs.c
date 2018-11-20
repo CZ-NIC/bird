@@ -285,15 +285,20 @@ bgp_encode_next_hop(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
    * store it and encode it later by AFI-specific hooks.
    */
 
-  if ((s->channel->afi == BGP_AF_IPV4) && !s->channel->ext_next_hop)
+  if (!s->mp_reach)
   {
-    ASSERT(a->u.ptr->length == sizeof(ip_addr));
+    // ASSERT(a->u.ptr->length == sizeof(ip_addr));
+
+    /* FIXME: skip IPv6 next hops for IPv4 routes during MRT dump */
+    ip_addr *addr = (void *) a->u.ptr->data;
+    if ((a->u.ptr->length != sizeof(ip_addr)) || !ipa_is_ip4(*addr))
+      return 0;
 
     if (size < (3+4))
       return -1;
 
     bgp_put_attr_hdr3(buf, BA_NEXT_HOP, a->flags, 4);
-    put_ip4(buf+3, ipa_to_ip4( *(ip_addr *) a->u.ptr->data ));
+    put_ip4(buf+3, ipa_to_ip4(*addr));
 
     return 3+4;
   }
@@ -946,6 +951,7 @@ bgp_encode_attr(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
  *
  * The bgp_encode_attrs() function takes a list of extended attributes
  * and converts it to its BGP representation (a part of an Update message).
+ * BGP write state may be fake when called from MRT protocol.
  *
  * Result: Length of the attribute block generated or -1 if not enough space.
  */

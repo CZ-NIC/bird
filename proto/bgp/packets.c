@@ -17,7 +17,7 @@
 #include "nest/protocol.h"
 #include "nest/route.h"
 #include "nest/attrs.h"
-#include "nest/mrtdump.h"
+#include "proto/mrt/mrt.h"
 #include "conf/conf.h"
 #include "lib/unaligned.h"
 #include "lib/flowspec.h"
@@ -90,91 +90,71 @@ get_af4(byte *buf)
   return (get_u16(buf) << 16) | buf[3];
 }
 
-/*
- * MRT Dump format is not semantically specified.
- * We will use these values in appropriate fields:
- *
- * Local AS, Remote AS - configured AS numbers for given BGP instance.
- * Local IP, Remote IP - IP addresses of the TCP connection (0 if no connection)
- *
- * We dump two kinds of MRT messages: STATE_CHANGE (for BGP state
- * changes) and MESSAGE (for received BGP messages).
- *
- * STATE_CHANGE uses always AS4 variant, but MESSAGE uses AS4 variant
- * only when AS4 session is established and even in that case MESSAGE
- * does not use AS4 variant for initial OPEN message. This strange
- * behavior is here for compatibility with Quagga and Bgpdump,
- */
-
-static byte *
-mrt_put_bgp4_hdr(byte *buf, struct bgp_conn *conn, int as4)
+static void
+init_mrt_bgp_data(struct bgp_conn *conn, struct mrt_bgp_data *d)
 {
   struct bgp_proto *p = conn->bgp;
-  uint v4 = ipa_is_ip4(p->cf->remote_ip);
+  int p_ok = conn->state >= BS_OPENCONFIRM;
 
-  if (as4)
+  memset(d, 0, sizeof(struct mrt_bgp_data));
+  d->peer_as = p->remote_as;
+  d->local_as = p->local_as;
+  d->index = (p->neigh && p->neigh->iface) ? p->neigh->iface->index : 0;
+  d->af = ipa_is_ip4(p->cf->remote_ip) ? BGP_AFI_IPV4 : BGP_AFI_IPV6;
+  d->peer_ip = conn->sk ? conn->sk->daddr : IPA_NONE;
+  d->local_ip = conn->sk ? conn->sk->saddr : IPA_NONE;
+  d->as4 = p_ok ? p->as4_session : 0;
+}
+
+static uint bgp_find_update_afi(byte *pos, uint len);
+
+static int
+bgp_estimate_add_path(struct bgp_proto *p, byte *pkt, uint len)
+{
+  /* No need to estimate it for other messages than UPDATE */
+  if (pkt[18] != PKT_UPDATE)
+    return 0;
+
+  /* 1 -> no channel, 2 -> all channels, 3 -> some channels */
+  if (p->summary_add_path_rx < 3)
+    return p->summary_add_path_rx == 2;
+
+  uint afi = bgp_find_update_afi(pkt, len);
+  struct bgp_channel *c = bgp_get_channel(p, afi);
+  if (!c)
   {
-    put_u32(buf+0, p->remote_as);
-    put_u32(buf+4, p->public_as);
-    buf+=8;
-  }
-  else
-  {
-    put_u16(buf+0, (p->remote_as <= 0xFFFF) ? p->remote_as : AS_TRANS);
-    put_u16(buf+2, (p->public_as <= 0xFFFF) ? p->public_as : AS_TRANS);
-    buf+=4;
+    /* Either frame error (if !afi) or unknown AFI/SAFI,
+       will be reported later in regular parsing */
+    BGP_TRACE(D_PACKETS, "MRT processing noticed invalid packet");
+    return 0;
   }
 
-  put_u16(buf+0, (p->neigh && p->neigh->iface) ? p->neigh->iface->index : 0);
-  put_u16(buf+2, v4 ? BGP_AFI_IPV4 : BGP_AFI_IPV6);
-  buf+=4;
-
-  if (v4)
-  {
-    buf = put_ip4(buf, conn->sk ? ipa_to_ip4(conn->sk->daddr) : IP4_NONE);
-    buf = put_ip4(buf, conn->sk ? ipa_to_ip4(conn->sk->saddr) : IP4_NONE);
-  }
-  else
-  {
-    buf = put_ip6(buf, conn->sk ? ipa_to_ip6(conn->sk->daddr) : IP6_NONE);
-    buf = put_ip6(buf, conn->sk ? ipa_to_ip6(conn->sk->saddr) : IP6_NONE);
-  }
-
-  return buf;
+  return c->add_path_rx;
 }
 
 static void
-mrt_dump_bgp_packet(struct bgp_conn *conn, byte *pkt, uint len)
+bgp_dump_message(struct bgp_conn *conn, byte *pkt, uint len)
 {
-  byte *buf = alloca(128+len);	/* 128 is enough for MRT headers */
-  byte *bp = buf + MRTDUMP_HDR_LENGTH;
-  int as4 = conn->bgp->as4_session;
+  struct mrt_bgp_data d;
+  init_mrt_bgp_data(conn, &d);
 
-  bp = mrt_put_bgp4_hdr(bp, conn, as4);
-  memcpy(bp, pkt, len);
-  bp += len;
-  mrt_dump_message(&conn->bgp->p, BGP4MP, as4 ? BGP4MP_MESSAGE_AS4 : BGP4MP_MESSAGE,
-		   buf, bp-buf);
-}
+  d.message = pkt;
+  d.msg_len = len;
+  d.add_path = bgp_estimate_add_path(conn->bgp, pkt, len);
 
-static inline u16
-convert_state(uint state)
-{
-  /* Convert state from our BS_* values to values used in MRTDump */
-  return (state == BS_CLOSE) ? 1 : state + 1;
+  mrt_dump_bgp_message(&d);
 }
 
 void
-mrt_dump_bgp_state_change(struct bgp_conn *conn, uint old, uint new)
+bgp_dump_state_change(struct bgp_conn *conn, uint old, uint new)
 {
-  byte buf[128];
-  byte *bp = buf + MRTDUMP_HDR_LENGTH;
+  struct mrt_bgp_data d;
+  init_mrt_bgp_data(conn, &d);
 
-  bp = mrt_put_bgp4_hdr(bp, conn, 1);
-  put_u16(bp+0, convert_state(old));
-  put_u16(bp+2, convert_state(new));
-  bp += 4;
-  mrt_dump_message(&conn->bgp->p, BGP4MP, BGP4MP_STATE_CHANGE_AS4, buf, bp-buf);
+  d.old_state = old;
+  d.new_state = new;
+
+  mrt_dump_bgp_state_change(&d);
 }
 
 static byte *
@@ -2135,6 +2115,7 @@ again: ;
     .proto = p,
     .channel = c,
     .pool = bgp_linpool,
+    .mp_reach = (c->afi != BGP_AF_IPV4) || c->ext_next_hop,
     .as4_session = p->as4_session,
     .add_path = c->add_path_tx,
     .mpls = c->desc->mpls,
@@ -2162,7 +2143,7 @@ again: ;
       goto again;
     }
 
-    res = (c->afi == BGP_AF_IPV4) && !c->ext_next_hop ?
+    res = !s.mp_reach ?
       bgp_create_ip_reach(&s, buck, buf, end):
       bgp_create_mp_reach(&s, buck, buf, end);
 
@@ -2387,6 +2368,67 @@ done:
   rta_free(s.cached_rta);
   lp_flush(s.pool);
   return;
+}
+
+static uint
+bgp_find_update_afi(byte *pos, uint len)
+{
+  /*
+   * This is stripped-down version of bgp_rx_update(), bgp_decode_attrs() and
+   * bgp_decode_mp_[un]reach_nlri() used by MRT code in order to find out which
+   * AFI/SAFI is associated with incoming UPDATE. Returns 0 for framing errors.
+   */
+  if (len < 23)
+    return 0;
+
+  /* Assume there is no withrawn NLRI, read lengths and move to attribute list */
+  uint wlen = get_u16(pos + 19);
+  uint alen = get_u16(pos + 21);
+  ADVANCE(pos, len, 23);
+
+  /* Either non-zero withdrawn NLRI, non-zero reachable NLRI, or IPv4 End-of-RIB */
+  if ((wlen != 0) || (alen < len) || !alen)
+    return BGP_AF_IPV4;
+
+  if (alen > len)
+    return 0;
+
+  /* Process attribute list (alen == len) */
+  while (len)
+  {
+    if (len < 2)
+      return 0;
+
+    uint flags = pos[0];
+    uint code = pos[1];
+    ADVANCE(pos, len, 2);
+
+    uint ll = !(flags & BAF_EXT_LEN) ? 1 : 2;
+    if (len < ll)
+      return 0;
+
+    /* Read attribute length and move to attribute body */
+    alen = (ll == 1) ? get_u8(pos) : get_u16(pos);
+    ADVANCE(pos, len, ll);
+
+    if (len < alen)
+      return 0;
+
+    /* Found MP NLRI */
+    if ((code == BA_MP_REACH_NLRI) || (code == BA_MP_UNREACH_NLRI))
+    {
+      if (alen < 3)
+	return 0;
+
+      return BGP_AF(get_u16(pos), pos[2]);
+    }
+
+    /* Move to the next attribute */
+    ADVANCE(pos, len, alen);
+  }
+
+  /* No basic or MP NLRI, but there are some attributes -> error */
+  return 0;
 }
 
 
@@ -2890,7 +2932,7 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
   DBG("BGP: Got packet %02x (%d bytes)\n", type, len);
 
   if (conn->bgp->p.mrtdump & MD_MESSAGES)
-    mrt_dump_bgp_packet(conn, pkt, len);
+    bgp_dump_message(conn, pkt, len);
 
   switch (type)
   {

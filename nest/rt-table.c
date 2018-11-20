@@ -48,7 +48,7 @@ pool *rt_table_pool;
 static slab *rte_slab;
 static linpool *rte_update_pool;
 
-static list routing_tables;
+list routing_tables;
 
 static void rt_free_hostcache(rtable *tab);
 static void rt_notify_hostcache(rtable *tab, net *net);
