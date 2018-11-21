@@ -49,14 +49,12 @@ AC_ARG_WITH([protocols],
 )
 
 AC_ARG_WITH([sysconfig],
-  [AS_HELP_STRING([--with-sysconfig=FILE], [use specified BIRD system configuration file])],
-  []
+  [AS_HELP_STRING([--with-sysconfig=FILE], [use specified BIRD system configuration file])]
 )
 
 AC_ARG_WITH([runtimedir],
   [AS_HELP_STRING([--with-runtimedir=PATH], [run-state data, obsolete variant of --runstatedir])],
-  [runstatedir="$with_runtimedir"],
-  []
+  [runstatedir="$with_runtimedir"]
 )
 
 AC_ARG_WITH([iproutedir],
