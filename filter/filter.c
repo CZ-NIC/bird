@@ -1063,7 +1063,7 @@ interpret(struct f_inst *what)
 	break;
       }
 
-      switch (what->aux & EAF_TYPE_MASK) {
+      switch (e->type & EAF_TYPE_MASK) {
       case EAF_TYPE_INT:
 	res.type = f_type;
 	res.val.i = e->u.data;
