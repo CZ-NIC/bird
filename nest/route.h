@@ -471,9 +471,13 @@ typedef struct eattr {
   } u;
 } eattr;
 
+
 #define EA_CODE(proto,id) (((proto) << 8) | (id))
-#define EA_PROTO(ea) ((ea) >> 8)
 #define EA_ID(ea) ((ea) & 0xff)
+#define EA_PROTO_(ea) ((ea) >> 8)
+#define EA_PROTO(ea) ({ u8 p = EA_PROTO_((ea)); (p >= PROTOCOL__MAX) ? 0 : p; })
+#define EA_CUSTOM(id) EA_CODE(PROTOCOL__MAX, (id))
+#define EA_IS_CUSTOM(ea) (EA_PROTO_((ea)) >= PROTOCOL__MAX)
 
 #define EA_GEN_IGP_METRIC EA_CODE(PROTOCOL_NONE, 0)
 
@@ -625,7 +629,7 @@ rta *rta_do_cow(rta *o, linpool *lp);
 static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta_do_cow(r, lp) : r; }
 void rta_dump(rta *);
 void rta_dump_all(void);
-void rta_show(struct cli *, rta *);
+void rta_show(struct cli *, rta *, struct rt_show_data *);
 
 struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
 void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls);
