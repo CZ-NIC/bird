@@ -1027,6 +1027,10 @@ This argument can be omitted if there exists only a single instance.
 	number of networks, number of routes before and after filtering). If
 	you use <cf/count/ instead, only the statistics will be printed.
 
+	<tag><label id="cli-mrt-dump">mrt dump table <m/name/|"<m/pattern/" to "<m/filename/" [filter <m/f/|where <m/c/]</tag>
+	Dump content of a routing table to a specified file in MRT table dump
+	format. See <ref id="mrt" name="MRT protocol"> for details.
+
 	<tag><label id="cli-configure">configure [soft] ["<m/config file/"] [timeout [<m/num/]]</tag>
 	Reload configuration from a given file. BIRD will smoothly switch itself
 	to the new configuration, protocols are reconfigured if possible,
@@ -3048,6 +3052,83 @@ protocol kernel {		# Secondary routing table
 		table auxtable;
 		export all;
 	};
+}
+</code>
+
+
+<sect>MRT
+<label id="mrt">
+
+<sect1>Introduction
+<label id="mrt-intro">
+
+<p>The MRT protocol is a component responsible for handling the Multi-Threaded
+Routing Toolkit (MRT) routing information export format, which is mainly used
+for collecting and analyzing of routing information from BGP routers. The MRT
+protocol can be configured to do periodic dumps of routing tables, created MRT
+files can be analyzed later by other tools. Independent MRT table dumps can also
+be requested from BIRD client. There is also a feature to save incoming BGP
+messages in MRT files, but it is controlled by <ref id="proto-mrtdump"
+name="mrtdump"> options independently of MRT protocol, although that might
+change in the future.
+
+BIRD implements the main MRT format specification as defined in <rfc id="6396">
+and the ADD_PATH extension (<rfc id="8050">).
+
+<sect1>Configuration
+<label id="mrt-config">
+
+<p>MRT configuration consists of several statements describing routing table
+dumps. Multiple independent periodic dumps can be done as multiple MRT protocol
+instances. The MRT protocol does not use channels. There are two mandatory
+statements: <cf/filename/ and <cf/period/.
+
+The behavior can be modified by following configuration parameters:
+
+<descrip>
+	<tag><label id="mrt-table">table <m/name/ | "<m/pattern/"</tag>
+	Specify a routing table (or a set of routing tables described by a
+	wildcard pattern) that are to be dumped by the MRT protocol instance.
+	Default: the master table.
+
+	<tag><label id="mrt-filter">filter { <m/filter commands/ }</tag>
+	The MRT protocol allows to specify a filter that is applied to routes as
+	they are dumped. Rejected routes are ignored and not saved to the MRT
+	dump file. Default: no filter.
+
+	<tag><label id="mrt-where">where <m/filter expression/</tag>
+	An alternative way to specify a filter for the MRT protocol.
+
+	<tag><label id="mrt-filename">filename "<m/filename/"</tag>
+	Specify a filename for MRT dump files. The filename may contain time
+	format sequences with <it/strftime(3)/ notation (see <it/man strftime/
+	for details), there is also a sequence "%N" that is expanded to the name
+	of dumped table. Therefore, each periodic dump of each table can be
+	saved to a different file. Mandatory, see example below.
+
+	<tag><label id="mrt-period">period <m/number/</tag>
+	Specify the time interval (in seconds) between periodic dumps.
+	Mandatory.
+
+	<tag><label id="mrt-always-add-path">always add path <m/switch/</tag>
+	The MRT format uses special records (specified in <rfc id="8050">) for
+	routes received using BGP ADD_PATH extension to keep Path ID, while
+	other routes use regular records. This has advantage of better
+	compatibility with tools that do not know special records, but it loses
+	information about which route is the best route. When this option is
+	enabled, both ADD_PATH and non-ADD_PATH routes are stored in ADD_PATH
+	records and order of routes for network is preserved. Default: disabled.
+</descrip>
+
+<sect1>Example
+<label id="mrt-exam">
+
+<p><code>
+protocol mrt {
+	table "tab*";
+	where source = RTS_BGP;
+	filename "/var/log/bird/%N_%F_%T.mrt";
+	period 300;
 }
 </code>
 
