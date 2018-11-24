@@ -11,13 +11,16 @@ CF_HDR
 #include "sysdep/unix/unix.h"
 #include <stdio.h>
 
+CF_DEFINES
+
+static struct log_config *this_log;
+
 CF_DECLS
 
 CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT)
 CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout
-%type <g> log_file
 %type <t> cfg_name
 %type <tf> timeformat_which
 %type <t> syslog_name
@@ -26,11 +29,11 @@ CF_GRAMMAR
 
 CF_ADDTO(conf, log_config)
 
-log_config: LOG log_file log_mask ';' {
-    struct log_config *c = cfg_allocz(sizeof(struct log_config));
-    c->fh = $2;
-    c->mask = $3;
-    add_tail(&new_config->logfiles, &c->n);
+log_begin: { this_log = cfg_allocz(sizeof(struct log_config)); };
+
+log_config: LOG log_begin log_file log_mask ';' {
+    this_log->mask = $4;
+    add_tail(&new_config->logfiles, &this_log->n);
   }
  ;
 
@@ -39,14 +42,21 @@ syslog_name:
  | { $$ = bird_name; }
  ;
 
+log_limit:
+   /* empty */
+ | expr text { this_log->limit = $1; this_log->backup = $2; }
+ ;
+
 log_file:
-   text {
-     FILE *f = tracked_fopen(new_config->pool, $1, "a");
-     if (!f) cf_error("Unable to open log file `%s': %m", $1);
-     $$ = f;
+   text log_limit {
+     this_log->rf = rf_open(new_config->pool, $1, "a");
+     if (!this_log->rf) cf_error("Unable to open log file '%s': %m", $1);
+     this_log->fh = rf_file(this_log->rf);
+     this_log->pos = -1;
+     this_log->filename = $1;
    }
- | SYSLOG syslog_name { $$ = NULL; new_config->syslog_name = $2; }
- | STDERR { $$ = stderr; }
+ | SYSLOG syslog_name { this_log->fh = NULL; new_config->syslog_name = $2; }
+ | STDERR { this_log->fh = stderr; }
  ;
 
 log_mask:
@@ -77,9 +87,9 @@ CF_ADDTO(conf, mrtdump_base)
 mrtdump_base:
    MRTDUMP PROTOCOLS mrtdump_mask ';' { new_config->proto_default_mrtdump = $3; }
  | MRTDUMP text ';' {
-     FILE *f = tracked_fopen(new_config->pool, $2, "a");
+     struct rfile *f = rf_open(new_config->pool, $2, "a");
      if (!f) cf_error("Unable to open MRTDump file '%s': %m", $2);
-     new_config->mrtdump_file = fileno(f);
+     new_config->mrtdump_file = rf_fileno(f);
    }
  ;
 
