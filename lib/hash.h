@@ -202,7 +202,7 @@ mem_hash_init(u64 *h)
 }
 
 static inline void
-mem_hash_mix(u64 *h, void *p, uint s)
+mem_hash_mix(u64 *h, const void *p, uint s)
 {
   const u64 multiplier = 0xb38bc09a61202731ULL;
   const char *pp = p;
@@ -222,7 +222,7 @@ mem_hash_value(u64 *h)
 }
 
 static inline uint
-mem_hash(void *p, uint s)
+mem_hash(const void *p, uint s)
 {
   static u64 h;
   mem_hash_init(&h);
