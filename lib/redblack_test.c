@@ -1,0 +1,98 @@
+/*
+ *	BIRD Library -- Red Black Tree Tests
+ *
+ *	(c) 2018 Maria Matejka <mq@jmq.cz>
+ *	(c) 2018 CZ.NIC z.s.p.o.
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
+
+#include "test/birdtest.h"
+#include "lib/redblack.h"
+
+struct rb_test {
+  REDBLACK_NODE(struct rb_test, rb_);
+  int value;
+};
+
+#define RBT_KEY(a) ((a)->value)
+#define RBT_COMPARE(a, b) ((a) - (b))
+#define RBT_COMPARE_NODE(a, b) RBT_COMPARE(RBT_KEY(a), RBT_KEY(b))
+#define RBT_COMPARE_MIXED(a, b) RBT_COMPARE((a), RBT_KEY(b))
+
+#define RBTDS64 "                                                                "
+const char *spaces = RBTDS64;
+
+#define RBT_DUMPER(node, color, depth) printf("%s%c %d\n", spaces + 64 - (depth*2), color ? '-' : '*', node->value); fflush(stdout)
+
+static void rb_dump(struct rb_test *root) {
+  printf("Redblack dump.\n");
+  REDBLACK_DUMP(struct rb_test, rb_, root, RBT_DUMPER);
+  printf("Redblack dump done.\n");
+  fflush(stdout);
+}
+
+#define RB_CHECK(root) REDBLACK_CHECK(struct rb_test, rb_, root, RBT_COMPARE_NODE) \
+
+#define RB_FIND(root, val, exists) do { \
+  struct rb_test *found = REDBLACK_FIND(struct rb_test, rb_, root, RBT_COMPARE_MIXED, val); \
+  if (exists) { \
+    bt_assert(found); \
+    bt_assert(found->value == val); \
+  } else \
+    bt_assert(!found); \
+} while (0)
+
+#define RB_INSERT(root, val) do { \
+  struct rb_test *new = xmalloc(sizeof(struct rb_test)); \
+  *new = (struct rb_test) { .value = val }; \
+  REDBLACK_INSERT(struct rb_test, rb_, root, RBT_COMPARE_NODE, new); \
+} while (0)
+
+#define RB_DELETE(root, val) do { \
+  struct rb_test *old = REDBLACK_FIND(struct rb_test, rb_, root, RBT_COMPARE_MIXED, val); \
+  REDBLACK_DELETE(struct rb_test, rb_, root, old); \
+} while (0)
+
+static int
+rb_insert(void)
+{
+  struct rb_test *root = NULL;
+
+#define N 4096
+#define MUL 16
+#define BIT(x) ((bits[(x) / 64] >> ((x) % 64)) & 1)
+#define SIT(x) (bits[(x) / 64] |= (1ULL << ((x) % 64)))
+#define CIT(x) (bits[(x) / 64] &= ~(1ULL << ((x) % 64)))
+
+  u64 bits[N / 64] = {};
+  for (int i=0; i<N * MUL; i++) {
+    RB_CHECK(root);
+    if (bt_verbose >= BT_VERBOSE_ABSOLUTELY_ALL)
+      rb_dump(root);
+
+    int tv = bt_random() % N;
+    RB_FIND(root, tv, BIT(tv));
+
+    if (BIT(tv)) {
+      bt_debug("Deleting existing value %d\n", tv);
+      fflush(stdout);
+      CIT(tv);
+      RB_DELETE(root, tv);
+    } else {
+      bt_debug("Inserting value %d\n", tv);
+      fflush(stdout);
+      SIT(tv);
+      RB_INSERT(root, tv);
+    }
+  }
+ 
+  return 1;  
+}
+
+int
+main(int argc, char **argv)
+{
+  bt_init(argc, argv);
+  bt_test_suite_extra(rb_insert, BT_FORKING, 30, "redblack insertion test");
+}
