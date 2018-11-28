@@ -330,13 +330,19 @@ radv_if_notify(struct proto *P, unsigned flags, struct iface *iface)
 {
   struct radv_proto *p = (struct radv_proto *) P;
   struct radv_config *cf = (struct radv_config *) (P->cf);
+  struct radv_iface *ifa = radv_iface_find(p, iface);
 
   if (iface->flags & IF_IGNORE)
     return;
 
-  if (flags & IF_CHANGE_UP)
+  /* Add, remove or restart interface */
+  if (flags & (IF_CHANGE_UPDOWN | IF_CHANGE_LLV6))
   {
-    struct radv_iface_config *ic = (void *) iface_patt_find(&cf->patt_list, iface, NULL);
+    if (ifa)
+      radv_iface_remove(ifa);
+
+    if (!(iface->flags & IF_UP))
+      return;
 
     /* Ignore non-multicast ifaces */
     if (!(iface->flags & IF_MULTICAST))
@@ -346,21 +352,15 @@ radv_if_notify(struct proto *P, unsigned flags, struct iface *iface)
     if (!iface->llv6)
       return;
 
+    struct radv_iface_config *ic = (void *) iface_patt_find(&cf->patt_list, iface, NULL);
     if (ic)
       radv_iface_new(p, iface, ic);
 
     return;
   }
 
-  struct radv_iface *ifa = radv_iface_find(p, iface);
   if (!ifa)
     return;
-
-  if (flags & IF_CHANGE_DOWN)
-  {
-    radv_iface_remove(ifa);
-    return;
-  }
 
   if ((flags & IF_CHANGE_LINK) && (iface->flags & IF_LINK_UP))
     radv_iface_notify(ifa, RA_EV_INIT);

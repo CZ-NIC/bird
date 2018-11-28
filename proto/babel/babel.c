@@ -846,8 +846,7 @@ babel_send_route_request(struct babel_proto *p, struct babel_entry *e, struct ba
 {
   union babel_msg msg = {};
 
-  TRACE(D_PACKETS, "Sending route request for %N to %I",
-        e->n.addr, n->addr);
+  TRACE(D_PACKETS, "Sending route request for %N to %I", e->n.addr, n->addr);
 
   msg.type = BABEL_TLV_ROUTE_REQUEST;
   net_copy(&msg.route_request.net, e->n.addr);
@@ -861,8 +860,7 @@ babel_send_wildcard_request(struct babel_iface *ifa)
   struct babel_proto *p = ifa->proto;
   union babel_msg msg = {};
 
-  TRACE(D_PACKETS, "Sending wildcard route request on %s",
-	ifa->ifname);
+  TRACE(D_PACKETS, "Sending wildcard route request on %s", ifa->ifname);
 
   msg.type = BABEL_TLV_ROUTE_REQUEST;
   msg.route_request.full = 1;
@@ -1516,6 +1514,21 @@ babel_iface_update_state(struct babel_iface *ifa)
 }
 
 static void
+babel_iface_update_addr4(struct babel_iface *ifa)
+{
+  struct babel_proto *p = ifa->proto;
+
+  ip_addr addr4 = ifa->iface->addr4 ? ifa->iface->addr4->ip : IPA_NONE;
+  ifa->next_hop_ip4 = ipa_nonzero(ifa->cf->next_hop_ip4) ? ifa->cf->next_hop_ip4 : addr4;
+
+  if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
+    log(L_WARN "%s: Missing IPv4 next hop address for %s", p->p.name, ifa->ifname);
+
+  if (ifa->up)
+    babel_iface_kick_timer(ifa);
+}
+
+static void
 babel_iface_update_buffers(struct babel_iface *ifa)
 {
   if (!ifa->sk)
@@ -1624,15 +1637,21 @@ babel_if_notify(struct proto *P, unsigned flags, struct iface *iface)
 {
   struct babel_proto *p = (void *) P;
   struct babel_config *cf = (void *) P->cf;
+  struct babel_iface *ifa = babel_find_iface(p, iface);
 
   if (iface->flags & IF_IGNORE)
     return;
 
-  if (flags & IF_CHANGE_UP)
+  /* Add, remove or restart interface */
+  if (flags & (IF_CHANGE_UPDOWN | IF_CHANGE_LLV6))
   {
-    struct babel_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
+    if (ifa)
+      babel_remove_iface(p, ifa);
 
-    /* we only speak multicast */
+    if (!(iface->flags & IF_UP))
+      return;
+
+    /* We only speak multicast */
     if (!(iface->flags & IF_MULTICAST))
       return;
 
@@ -1640,22 +1659,18 @@ babel_if_notify(struct proto *P, unsigned flags, struct iface *iface)
     if (!iface->llv6)
       return;
 
+    struct babel_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
     if (ic)
       babel_add_iface(p, iface, ic);
 
     return;
   }
 
-  struct babel_iface *ifa = babel_find_iface(p, iface);
-
   if (!ifa)
     return;
 
-  if (flags & IF_CHANGE_DOWN)
-  {
-    babel_remove_iface(p, ifa);
-    return;
-  }
+  if (flags & IF_CHANGE_ADDR4)
+    babel_iface_update_addr4(ifa);
 
   if (flags & IF_CHANGE_MTU)
     babel_iface_update_buffers(ifa);

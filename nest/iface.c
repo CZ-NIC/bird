@@ -526,32 +526,28 @@ if_recalc_preferred(struct iface *i)
       }
     }
 
-  if (a4 != i->addr4)
+  if ((a4 != i->addr4) || (i->flags & IF_LOST_ADDR4))
   {
     if_set_preferred(&i->addr4, a4);
     change |= IF_CHANGE_ADDR4;
   }
 
-  if (a6 != i->addr6)
+  if ((a6 != i->addr6) || (i->flags & IF_LOST_ADDR6))
   {
     if_set_preferred(&i->addr6, a6);
     change |= IF_CHANGE_ADDR6;
   }
 
-  if (ll != i->llv6)
+  if ((ll != i->llv6) || (i->flags & IF_LOST_LLV6))
   {
     if_set_preferred(&i->llv6, ll);
     change |= IF_CHANGE_LLV6;
   }
 
-  i->flags &= ~IF_NEEDS_RECALC;
+  i->flags &= ~(IF_NEEDS_RECALC | IF_LOST_ADDR4 | IF_LOST_ADDR6 | IF_LOST_LLV6);
 
-  /*
-   * FIXME: There should be proper notification instead of iface restart:
-   * if_notify_change(change, i)
-   */
   if (change)
-    if_change_flags(i, i->flags | IF_TMP_DOWN);
+    if_notify_change(change, i);
 }
 
 void
@@ -643,11 +639,12 @@ ifa_delete(struct ifa *a)
 	     * We unlink deleted preferred address and mark for recalculation.
 	     * FIXME: This could break if we make iface scan non-atomic, as
 	     * protocols still could use the freed address until they get
-	     * if_notify from preferred route recalculation.
+	     * if_notify from preferred route recalculation. We should fix and
+	     * simplify this in the future by having struct ifa refcounted
 	     */
-	    if (b == i->addr4) i->addr4 = NULL;
-	    if (b == i->addr6) i->addr6 = NULL;
-	    if (b == i->llv6) i->llv6 = NULL;
+	    if (b == i->addr4) { i->addr4 = NULL; i->flags |= IF_LOST_ADDR4; }
+	    if (b == i->addr6) { i->addr6 = NULL; i->flags |= IF_LOST_ADDR6; }
+	    if (b == i->llv6)  { i->llv6 = NULL;  i->flags |= IF_LOST_LLV6; }
 	    i->flags |= IF_NEEDS_RECALC;
 	  }
 
