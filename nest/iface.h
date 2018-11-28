@@ -73,12 +73,15 @@ struct iface {
  */
 
 
-#define IF_JUST_CREATED 0x10000000	/* Send creation event as soon as possible */
-#define IF_TMP_DOWN 0x20000000		/* Temporary shutdown due to interface reconfiguration */
-#define IF_UPDATED 0x40000000		/* Iface touched in last scan */
+#define IF_JUST_CREATED	0x10000000	/* Send creation event as soon as possible */
+#define IF_TMP_DOWN	0x20000000	/* Temporary shutdown due to interface reconfiguration */
+#define IF_UPDATED	0x40000000	/* Iface touched in last scan */
 #define IF_NEEDS_RECALC	0x80000000	/* Preferred address recalculation is needed */
+#define IF_LOST_ADDR4	0x01000000	/* Preferred address was deleted, notification needed */
+#define IF_LOST_ADDR6	0x02000000
+#define IF_LOST_LLV6	0x04000000
 
-#define IA_UPDATED IF_UPDATED		/* Address touched in last scan */
+#define IA_UPDATED	IF_UPDATED	/* Address touched in last scan */
 
 /* Interface change events */
 
@@ -93,6 +96,7 @@ struct iface {
 #define IF_CHANGE_SYSDEP 0x800
 #define IF_CHANGE_TOO_MUCH 0x40000000	/* Used internally */
 
+#define IF_CHANGE_UPDOWN (IF_CHANGE_UP | IF_CHANGE_DOWN)
 #define IF_CHANGE_PREFERRED (IF_CHANGE_ADDR4 | IF_CHANGE_ADDR6 | IF_CHANGE_LLV6)
 
 void if_init(void);

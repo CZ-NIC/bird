@@ -325,6 +325,16 @@ radv_iface_remove(struct radv_iface *ifa)
   rfree(ifa->pool);
 }
 
+static inline void
+radv_iface_restart(struct radv_proto *p, struct radv_iface *ifa)
+{
+  struct iface *iface = ifa->iface;
+  struct radv_iface_config *cf = ifa->cf;
+
+  radv_iface_remove(ifa);
+  radv_iface_new(p, iface, cf);
+}
+
 static void
 radv_if_notify(struct proto *P, unsigned flags, struct iface *iface)
 {
@@ -359,6 +369,12 @@ radv_if_notify(struct proto *P, unsigned flags, struct iface *iface)
   if (flags & IF_CHANGE_DOWN)
   {
     radv_iface_remove(ifa);
+    return;
+  }
+
+  if (flags & IF_CHANGE_LLV6)
+  {
+    radv_iface_restart(p, ifa);
     return;
   }
 

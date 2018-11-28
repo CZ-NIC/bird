@@ -746,34 +746,33 @@ rip_if_notify(struct proto *P, unsigned flags, struct iface *iface)
 {
   struct rip_proto *p = (void *) P;
   struct rip_config *cf = (void *) P->cf;
+  struct rip_iface *ifa = rip_find_iface(p, iface);
 
   if (iface->flags & IF_IGNORE)
     return;
 
-  if (flags & IF_CHANGE_UP)
+  /* Add, remove or restart interface */
+  if (flags & (IF_CHANGE_UPDOWN | (rip_is_v2(p) ? IF_CHANGE_ADDR4 : IF_CHANGE_LLV6)))
   {
-    struct rip_iface_config *ic = (void *) iface_patt_find(&cf->patt_list, iface, NULL);
+    if (ifa)
+      rip_remove_iface(p, ifa);
+
+    if (!(iface->flags & IF_UP))
+      return;
 
     /* Ignore ifaces without appropriate address */
     if (rip_is_v2(p) ? !iface->addr4 : !iface->llv6)
       return;
 
+    struct rip_iface_config *ic = (void *) iface_patt_find(&cf->patt_list, iface, NULL);
     if (ic)
       rip_add_iface(p, iface, ic);
 
     return;
   }
 
-  struct rip_iface *ifa = rip_find_iface(p, iface);
-
   if (!ifa)
     return;
-
-  if (flags & IF_CHANGE_DOWN)
-  {
-    rip_remove_iface(p, ifa);
-    return;
-  }
 
   if (flags & IF_CHANGE_MTU)
     rip_iface_update_buffers(ifa);
