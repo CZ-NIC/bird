@@ -55,6 +55,8 @@ struct eattr;
 #define BGP_AF_FLOW4		BGP_AF( BGP_AFI_IPV4, BGP_SAFI_FLOW )
 #define BGP_AF_FLOW6		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_FLOW )
 
+#define BGP_PKT_TYPES		5	/* PKT_OPEN .. PKT_ROUTE_REFRESH */
+
 
 struct bgp_write_state;
 struct bgp_parse_state;
@@ -196,6 +198,14 @@ struct bgp_caps {
 #define WALK_AF_CAPS(caps,ac) \
   for (ac = caps->af_data; ac < &caps->af_data[caps->af_count]; ac++)
 
+struct bgp_stats {
+  uint rx_pkts[BGP_PKT_TYPES], tx_pkts[BGP_PKT_TYPES];
+  uint bad_alist, bad_attribute, bad_next_hop, no_mandatory, loopy;
+};
+
+#ifndef PARSER
+#define STATS(KEY) ({ p->stats.KEY++; })
+#endif
 
 struct bgp_socket {
   node n;				/* Node in global bgp_sockets */
@@ -254,6 +264,7 @@ struct bgp_proto {
   struct neighbor *neigh;		/* Neighbor entry corresponding to remote ip, NULL if multihop */
   struct bgp_socket *sock;		/* Shared listening socket */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
+  struct bgp_stats stats;		/* Packet statistics */
   ip_addr source_addr;			/* Local address used as an advertised next hop */
   ip_addr link_addr;			/* Link-local version of source_addr */
   event *event;				/* Event for respawning and shutting process */

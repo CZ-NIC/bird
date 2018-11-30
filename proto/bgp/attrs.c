@@ -1094,8 +1094,10 @@ bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
     ADVANCE(pos, len, alen);
   }
 
+#define FAIL(KEY) ({ STATS(KEY); goto fail; })
+
   if (s->err_withdraw)
-    goto withdraw;
+    FAIL(bad_attribute);
 
   /* If there is no reachability NLRI, we are finished */
   if (!s->ip_reach_len && !s->mp_reach_len)
@@ -1104,10 +1106,10 @@ bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
 
   /* Handle missing mandatory attributes; RFC 7606 3 (d) */
   if (!BIT32_TEST(s->attrs_seen, BA_ORIGIN))
-  { REPORT(NO_MANDATORY, "ORIGIN"); goto withdraw; }
+  { REPORT(NO_MANDATORY, "ORIGIN"); FAIL(no_mandatory); }
 
   if (!BIT32_TEST(s->attrs_seen, BA_AS_PATH))
-  { REPORT(NO_MANDATORY, "AS_PATH"); goto withdraw; }
+  { REPORT(NO_MANDATORY, "AS_PATH"); FAIL(no_mandatory); }
 
   /* When receiving attributes from non-AS4-aware BGP speaker, we have to
      reconstruct AS_PATH and AGGREGATOR attributes; RFC 6793 4.2.3 */
@@ -1116,19 +1118,19 @@ bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
 
   /* Reject routes with our ASN in AS_PATH attribute */
   if (bgp_as_path_loopy(p, attrs, p->local_as))
-    goto withdraw;
+    FAIL(loopy);
 
   /* Reject routes with our Confederation ID in AS_PATH attribute; RFC 5065 4.0 */
   if ((p->public_as != p->local_as) && bgp_as_path_loopy(p, attrs, p->public_as))
-    goto withdraw;
+    FAIL(loopy);
 
   /* Reject routes with our Router ID in ORIGINATOR_ID attribute; RFC 4456 8 */
   if (p->is_internal && bgp_originator_id_loopy(p, attrs))
-    goto withdraw;
+    FAIL(loopy);
 
   /* Reject routes with our Cluster ID in CLUSTER_LIST attribute; RFC 4456 8 */
   if (p->rr_client && bgp_cluster_list_loopy(p, attrs))
-    goto withdraw;
+    FAIL(loopy);
 
   /* If there is no local preference, define one */
   if (!BIT32_TEST(s->attrs_seen, BA_LOCAL_PREF))
@@ -1141,8 +1143,11 @@ framing_error:
   /* RFC 7606 4 - handle attribute framing errors */
   REPORT("Malformed attribute list - framing error (%u/%u) at %d",
 	 alen, len, (int) (pos - s->attrs));
+  FAIL(bad_alist);
 
-withdraw:
+#undef FAIL
+
+fail:
   /* RFC 7606 5.2 - handle missing NLRI during errors */
   if (!s->ip_reach_len && !s->mp_reach_len)
     bgp_parse_error(s, 1);

@@ -1328,6 +1328,8 @@ bgp_start(struct proto *P)
   p->source_addr = p->cf->local_ip;
   p->link_addr = IPA_NONE;
 
+  memset(&(p->stats), 0, sizeof(struct bgp_stats));
+
   /* Lock all channels when in GR recovery mode */
   if (p->p.gr_recovery && p->cf->gr_mode)
   {
@@ -2104,6 +2106,15 @@ bgp_show_proto_info(struct proto *P)
 	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
   }
 
+  struct bgp_stats *s = &p->stats;
+  cli_msg(-1006, "    Statistics:");
+  cli_msg(-1006, "      rx-open %u  rx-update %u  rx-notify %u  rx-keepalive %u  rx-refresh %u",
+	  s->rx_pkts[0], s->rx_pkts[1], s->rx_pkts[2], s->rx_pkts[3], s->rx_pkts[4]);
+  cli_msg(-1006, "      tx-open %u  tx-update %u  tx-notify %u  tx-keepalive %u  tx-refresh %u",
+	  s->tx_pkts[0], s->tx_pkts[1], s->tx_pkts[2], s->tx_pkts[3], s->tx_pkts[4]);
+  cli_msg(-1006, "      bad-alist %u  bad-attribute %u  bad-next-hop %u  no-mandatory %u  loopy %u",
+	  s->bad_alist, s->bad_attribute, s->bad_next_hop, s->no_mandatory, s->loopy);
+
   if ((p->last_error_class != BE_NONE) &&
       (p->last_error_class != BE_MAN_DOWN))
   {
@@ -2120,6 +2131,9 @@ bgp_show_proto_info(struct proto *P)
 
       if (c->c.channel_state == CS_UP)
       {
+	cli_msg(-1006, "    Enqueued updates:   %u", c->bucket_hash.count);
+	cli_msg(-1006, "    Enqueued prefixes:  %u", c->prefix_hash.count);
+
 	if (ipa_zero(c->link_addr))
 	  cli_msg(-1006, "    BGP Next hop:   %I", c->next_hop_addr);
 	else

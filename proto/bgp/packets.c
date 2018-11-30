@@ -2174,6 +2174,7 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
 static inline void
 bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_list *ea, byte *nh, uint nh_len)
 {
+  struct bgp_proto *p = s->proto;
   struct bgp_channel *c = bgp_get_channel(s->proto, afi);
   rta *a = NULL;
 
@@ -2207,7 +2208,10 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
     /* Handle withdraw during next hop decoding */
     if (s->err_withdraw)
+    {
+      STATS(bad_next_hop);
       a = NULL;
+    }
   }
 
   c->desc->decode_nlri(s, nlri, len, a);
@@ -2446,6 +2450,7 @@ found:
 static inline int
 bgp_send(struct bgp_conn *conn, uint type, uint len)
 {
+  struct bgp_proto *p = conn->bgp;
   sock *sk = conn->sk;
   byte *buf = sk->tbuf;
 
@@ -2453,6 +2458,7 @@ bgp_send(struct bgp_conn *conn, uint type, uint len)
   put_u16(buf+16, len);
   buf[18] = type;
 
+  STATS(tx_pkts[type - 1]);
   return sk_send(sk, len);
 }
 
@@ -2812,12 +2818,21 @@ bgp_rx_keepalive(struct bgp_conn *conn)
 static void
 bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
 {
+  struct bgp_proto *p = conn->bgp;
   byte type = pkt[18];
 
   DBG("BGP: Got packet %02x (%d bytes)\n", type, len);
 
-  if (conn->bgp->p.mrtdump & MD_MESSAGES)
+  if (p->p.mrtdump & MD_MESSAGES)
     mrt_dump_bgp_packet(conn, pkt, len);
+
+  if (type < PKT_OPEN || type > PKT_ROUTE_REFRESH)
+  {
+    bgp_error(conn, 1, 3, pkt+18, 1);
+    return;
+  }
+
+  STATS(rx_pkts[type - 1]);
 
   switch (type)
   {
@@ -2826,7 +2841,6 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
   case PKT_NOTIFICATION:	return bgp_rx_notification(conn, pkt, len);
   case PKT_KEEPALIVE:		return bgp_rx_keepalive(conn);
   case PKT_ROUTE_REFRESH:	return bgp_rx_route_refresh(conn, pkt, len);
-  default:			bgp_error(conn, 1, 3, pkt+18, 1);
   }
 }
 
