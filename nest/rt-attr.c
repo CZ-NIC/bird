@@ -876,7 +876,7 @@ ea_show_lc_set(struct cli *c, struct adata *ad, byte *pos, byte *buf, byte *end)
  * get_attr() hook, it's consulted first.
  */
 void
-ea_show(struct cli *c, eattr *e, struct rt_show_data *d)
+ea_show(struct cli *c, eattr *e)
 {
   struct protocol *p;
   int status = GA_UNKNOWN;
@@ -884,23 +884,23 @@ ea_show(struct cli *c, eattr *e, struct rt_show_data *d)
   byte buf[CLI_MSG_SIZE];
   byte *pos = buf, *end = buf + sizeof(buf);
 
-  if (p = class_to_protocol[EA_PROTO(e->id)])
+  if (EA_IS_CUSTOM(e->id))
+    {
+      const char *name = ea_custom_name(e->id);
+      if (name)
+        {
+	  pos += bsprintf(pos, "%s", name);
+	  status = GA_NAME;
+	}
+      else
+	pos += bsprintf(pos, "%02x.", EA_PROTO(e->id));
+    }
+  else if (p = class_to_protocol[EA_PROTO(e->id)])
     {
       pos += bsprintf(pos, "%s.", p->name);
       if (p->get_attr)
 	status = p->get_attr(e, pos, end - pos);
       pos += strlen(pos);
-    }
-  else if (EA_IS_CUSTOM(e->id))
-    {
-      struct symbol *sym = ea_custom_symbol(e->id, d->running_on_config);
-      if (sym)
-        {
-	  pos += bsprintf(pos, "%s", sym->name);
-	  status = GA_NAME;
-	}
-      else
-	pos += bsprintf(pos, "%02x.", EA_PROTO(e->id));
     }
   else if (EA_PROTO(e->id))
     pos += bsprintf(pos, "%02x.", EA_PROTO(e->id));
@@ -1289,13 +1289,13 @@ rta_dump_all(void)
 }
 
 void
-rta_show(struct cli *c, rta *a, struct rt_show_data *d)
+rta_show(struct cli *c, rta *a)
 {
   cli_printf(c, -1008, "\tType: %s %s", rta_src_names[a->source], ip_scope_text(a->scope));
 
   for(ea_list *eal = a->eattrs; eal; eal=eal->next)
     for(int i=0; i<eal->count; i++)
-      ea_show(c, &eal->attrs[i], d);
+      ea_show(c, &eal->attrs[i]);
 }
 
 /**

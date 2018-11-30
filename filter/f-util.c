@@ -140,6 +140,7 @@ ca_free(resource *r)
   if (!--cas->uc) {
     uint id = EA_CUSTOM_ID(cas->fda.ea_code);
     idm_free(&ca_idm, id);
+    HASH_REMOVE(ca_hash, CA, cas);
     ca_storage[id] = NULL;
     mb_free(cas);
   }
@@ -211,6 +212,9 @@ ca_lookup(pool *p, const char *name, int f_type)
 
     uint id = idm_alloc(&ca_idm);
 
+    if (id >= EA_CUSTOM_BIT)
+      cf_error("Too many custom attributes.");
+
     if (id >= ca_storage_max) {
       ca_storage_max *= 2;
       ca_storage = mb_realloc(ca_storage, sizeof(struct ca_storage *) * ca_storage_max * 2);
@@ -232,8 +236,8 @@ ca_lookup(pool *p, const char *name, int f_type)
   return ca;
 }
 
-struct symbol *
-ea_custom_symbol(uint ea, struct config *c)
+const char *
+ea_custom_name(uint ea)
 {
   uint id = EA_CUSTOM_ID(ea);
   if (id >= ca_storage_max)
@@ -242,11 +246,6 @@ ea_custom_symbol(uint ea, struct config *c)
   if (!ca_storage[id])
     return NULL;
 
-  struct symbol *sym = cf_find_symbol(c, ca_storage[id]->name);
-
-  if (sym->class != SYM_ATTRIBUTE)
-    return NULL;
-
-  return sym;
+  return ca_storage[id]->name;
 }
 

@@ -87,7 +87,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d)
     }
 
   if (d->verbose)
-    rta_show(c, a, d);
+    rta_show(c, a);
 }
 
 static void
