@@ -2014,11 +2014,13 @@ bgp_get_attr(eattr *a, byte *buf, int buflen)
 void
 bgp_get_route_info(rte *e, byte *buf, ea_list *attrs)
 {
+  struct bgp_proto *bgp = (void *) e->attrs->src->proto;
   eattr *p = ea_find(attrs, EA_CODE(EAP_BGP, BA_AS_PATH));
   eattr *o = ea_find(attrs, EA_CODE(EAP_BGP, BA_ORIGIN));
   u32 origas;
 
-  buf += bsprintf(buf, " (%d", e->pref);
+  char c = bgp->is_internal ? 'I' : (bgp->is_interior ? 'C' : 'E');
+  buf += bsprintf(buf, " %c (%d", c, e->pref);
 
   if (e->u.bgp.suppressed)
     buf += bsprintf(buf, "-");
