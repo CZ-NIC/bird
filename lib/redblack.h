@@ -144,6 +144,19 @@
       out = *pointer; \
     out; \
     })
+#define REDBLACK_FIND_DOWN(type, name, key, compare, root, what) ({ \
+    type **pointer, *prev = NULL, *out; \
+    REDBLACK_FIND_POINTER(name, key, compare, root, what, pointer) \
+      prev = *pointer; \
+    if (!*pointer && prev) \
+      if (pointer == &(REDBLACK_LEFT_CHILD(name, prev))) \
+	out = REDBLACK_PREV(type, name, prev); \
+      else \
+	out = prev; \
+    else \
+      out = *pointer; \
+    out; \
+    })
 
 #define REDBLACK_FIRST(type, name, root) ({ \
     type *first = root; \
@@ -165,6 +178,24 @@
 	int ps = p ? REDBLACK_PARENT_SIDE(name, p, where) : 0; \
 	where = p; \
 	if (ps == REDBLACK_RIGHT) \
+	  continue; \
+	break; \
+      } \
+    where; \
+})
+
+#define REDBLACK_PREV(type, name, node) ({ \
+    type *where = node; \
+    if (REDBLACK_LEFT_CHILD(name, where)) { \
+      where = REDBLACK_LEFT_CHILD(name, where); \
+      while (REDBLACK_RIGHT_CHILD(name, where)) \
+	where = REDBLACK_RIGHT_CHILD(name, where); \
+    } else \
+      while (1) { \
+	type *p = REDBLACK_PARENT(type, name, where); \
+	int ps = p ? REDBLACK_PARENT_SIDE(name, p, where) : 0; \
+	where = p; \
+	if (ps == REDBLACK_LEFT) \
 	  continue; \
 	break; \
       } \
