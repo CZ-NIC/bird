@@ -79,7 +79,7 @@ static inline struct fib_node * fib_user_to_node(struct fib *f, void *e)
 
 void fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offset, uint hash_order, fib_init_fn init);
 void *fib_find(struct fib *, const net_addr *);	/* Find or return NULL if doesn't exist */
-void *fib_get_chain(struct fib *f, const net_addr *a) DEPRECATED; /* Find first node in linked list from hash table */
+void *fib_get_chain(struct fib *f, const net_addr *a); /* Find first node in linked list from hash table */
 void *fib_get(struct fib *, const net_addr *);	/* Find or create new if nonexistent */
 void *fib_route(struct fib *, const net_addr *); /* Longest-match routing lookup */
 void fib_delete(struct fib *, void *);	/* Remove fib entry */
