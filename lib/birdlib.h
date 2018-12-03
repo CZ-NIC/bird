@@ -65,6 +65,7 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define NORET __attribute__((noreturn))
 #define UNUSED __attribute__((unused))
 #define PACKED __attribute__((packed))
+#define DEPRECATED __attribute__((deprecated))
 
 /* Microsecond time */
 
