@@ -131,6 +131,19 @@
 
 #define REDBLACK_FIND(type, name, key, compare, root, what) \
   ({ type **pointer; REDBLACK_FIND_POINTER(name, key, compare, root, what, pointer); *pointer; })
+#define REDBLACK_FIND_UP(type, name, key, compare, root, what) ({ \
+    type **pointer, *prev = NULL, *out; \
+    REDBLACK_FIND_POINTER(name, key, compare, root, what, pointer) \
+      prev = *pointer; \
+    if (!*pointer && prev) \
+      if (pointer == &(REDBLACK_RIGHT_CHILD(name, prev))) \
+	out = REDBLACK_NEXT(type, name, prev); \
+      else \
+	out = prev; \
+    else \
+      out = *pointer; \
+    out; \
+    })
 
 #define REDBLACK_FIRST(type, name, root) ({ \
     type *first = root; \

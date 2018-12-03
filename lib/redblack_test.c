@@ -10,6 +10,9 @@
 #include "test/birdtest.h"
 #include "lib/redblack.h"
 
+#define N 4096
+#define MUL 16
+
 struct rb_test {
   REDBLACK_NODE(struct rb_test, rb_);
   int value;
@@ -30,15 +33,30 @@ static void rb_dump(struct rb_test *root) {
   fflush(stdout);
 }
 
-#define RB_CHECK(root) do { \
+#define RB_CHECK(root, bits, total) do { \
   REDBLACK_CHECK(struct rb_test, rb_, RBT_KEY, RBT_COMPARE, root); \
+  int tot = 0; \
   for ( \
       struct rb_test *last = NULL, *node = REDBLACK_FIRST(struct rb_test, rb_, root); \
       node; \
       last = node, node = REDBLACK_NEXT(struct rb_test, rb_, node) \
-      ) \
+      ) { \
+    ASSERT(BIT(RBT_KEY(node))); \
+    tot++; \
     if (last) \
       ASSERT(RBT_COMPARE(RBT_KEY(last), RBT_KEY(node)) < 0); \
+  } \
+  ASSERT(tot == total); \
+  int begin = bt_random() % N, end = bt_random() % N; \
+  if (begin > end) { int t = begin; begin = end; end = t; } \
+  bt_debug("Nodes from %d to %d:\n", begin, end); \
+  for ( \
+      struct rb_test *node = REDBLACK_FIND_UP(struct rb_test, rb_, RBT_KEY, RBT_COMPARE, root, begin); \
+      node && (RBT_COMPARE(RBT_KEY(node), end) < 0); \
+      node = REDBLACK_NEXT(struct rb_test, rb_, node) \
+      ) \
+    bt_debug("%d\n", RBT_KEY(node)); \
+  bt_debug("Nodes done.\n"); \
 } while (0)
 
 #define RB_FIND(root, val, exists) do { \
@@ -66,15 +84,13 @@ rb_insert(void)
 {
   struct rb_test *root = NULL;
 
-#define N 4096
-#define MUL 16
 #define BIT(x) ((bits[(x) / 64] >> ((x) % 64)) & 1)
 #define SIT(x) (bits[(x) / 64] |= (1ULL << ((x) % 64)))
 #define CIT(x) (bits[(x) / 64] &= ~(1ULL << ((x) % 64)))
-
+  int total = 0;
   u64 bits[N / 64] = {};
   for (int i=0; i<N * MUL; i++) {
-    RB_CHECK(root);
+    RB_CHECK(root, bits, total);
     if (bt_verbose >= BT_VERBOSE_ABSOLUTELY_ALL)
       rb_dump(root);
 
@@ -85,11 +101,13 @@ rb_insert(void)
       bt_debug("Deleting existing value %d\n", tv);
       fflush(stdout);
       CIT(tv);
+      total--;
       RB_DELETE(root, tv);
     } else {
       bt_debug("Inserting value %d\n", tv);
       fflush(stdout);
       SIT(tv);
+      total++;
       RB_INSERT(root, tv);
     }
   }
