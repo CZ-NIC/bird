@@ -2,6 +2,7 @@
  *	BIRD -- Forwarding Information Base -- Data Structures
  *
  *	(c) 1998--2000 Martin Mares <mj@ucw.cz>
+ *	(c) 2018 Maria Matejka <mq@jmq.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -111,6 +112,8 @@ fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offse
 {
   uint addr_length = net_addr_length[addr_type];
 
+  f->tree_root = NULL;
+
   if (!hash_order)
     hash_order = HASH_DEF_ORDER;
   f->fib_pool = p;
@@ -172,6 +175,7 @@ fib_rehash(struct fib *f, int step)
 #define CAST(t) (const net_addr_##t *)
 #define CAST2(t) (net_addr_##t *)
 
+#define FIB_KEY(e)	((e)->addr)
 #define FIB_HASH(f,a,t) (net_hash_##t(CAST(t) a) >> f->hash_shift)
 
 #define FIB_FIND(f,a,t)							\
@@ -194,6 +198,8 @@ fib_rehash(struct fib *f, int step)
   net_copy_##t(CAST2(t) e->addr, CAST(t) a);				\
   e->next = *ee;							\
   *ee = e;								\
+  REDBLACK_INSERT(struct fib_node, rb, CAST(t) FIB_KEY,			\
+		  net_compare_##t, f->tree_root, e);			\
   })
 
 
@@ -363,41 +369,6 @@ fib_route(struct fib *f, const net_addr *n)
   }
 }
 
-
-static inline void
-fib_merge_readers(struct fib_iterator *i, struct fib_node *to)
-{
-  if (to)
-    {
-      struct fib_iterator *j = to->readers;
-      if (!j)
-	{
-	  /* Fast path */
-	  to->readers = i;
-	  i->prev = (struct fib_iterator *) to;
-	}
-      else
-	{
-	  /* Really merging */
-	  while (j->next)
-	    j = j->next;
-	  j->next = i;
-	  i->prev = j;
-	}
-      while (i && i->node)
-	{
-	  i->node = NULL;
-	  i = i->next;
-	}
-    }
-  else					/* No more nodes */
-    while (i)
-      {
-	i->prev = NULL;
-	i = i->next;
-      }
-}
-
 /**
  * fib_delete - delete a FIB node
  * @f: FIB to delete from
@@ -417,33 +388,54 @@ fib_delete(struct fib *f, void *E)
 
   while (*ee)
     {
-      if (*ee == e)
+      if (*ee != e)
 	{
-	  *ee = e->next;
-	  if (it = e->readers)
-	    {
-	      struct fib_node *l = e->next;
-	      while (!l)
-		{
-		  h++;
-		  if (h >= f->hash_size)
-		    break;
-		  else
-		    l = f->hash_table[h];
-		}
-	      fib_merge_readers(it, l);
-	    }
-
-	  if (f->fib_slab)
-	    sl_free(f->fib_slab, E);
-	  else
-	    mb_free(E);
-
-	  if (f->entries-- < f->entries_min)
-	    fib_rehash(f, -HASH_LO_STEP);
-	  return;
+	  ee = &((*ee)->next);
+	  continue;
 	}
-      ee = &((*ee)->next);
+
+      *ee = e->next;
+
+#define UNDEF ((void *) 1)
+      struct fib_node *onext = UNDEF, *hnext = UNDEF;
+      while (it = e->readers)
+	{
+	  e->readers = it->next;
+	  if (it->flags & FIF_ORDERED)
+	    {
+	      if (onext == UNDEF)
+		onext = REDBLACK_NEXT(struct fib_node, rb, e);
+	      fit_put(it, onext);
+	    }
+	  else
+	    {
+	      if (hnext == UNDEF)
+	        {
+		  hnext = e->next;
+		  while (!hnext)
+		    {
+		      h++;
+		      if (h >= f->hash_size)
+			break;
+		      else
+		        hnext = f->hash_table[h];
+		    }
+		}
+	      fit_put(it, hnext);
+	    }
+	}
+#undef UNDEF
+
+      if (f->fib_slab)
+	sl_free(f->fib_slab, E);
+      else
+	mb_free(E);
+
+      REDBLACK_DELETE(struct fib_node, rb, f->tree_root, e);
+
+      if (f->entries-- < f->entries_min)
+	fib_rehash(f, -HASH_LO_STEP);
+      return;
     }
   bug("fib_delete() called for invalid node");
 }
@@ -469,16 +461,18 @@ fit_init(struct fib_iterator *i, struct fib *f)
   struct fib_node *n;
 
   i->efef = 0xff;
-  for(h=0; h<f->hash_size; h++)
-    if (n = f->hash_table[h])
-      {
-	i->prev = (struct fib_iterator *) n;
-	if (i->next = n->readers)
-	  i->next->prev = i;
-	n->readers = i;
-	i->node = n;
-	return;
-      }
+  if (i->flags & FIF_ORDERED)
+    {
+      if (n = REDBLACK_FIRST(struct fib_node, rb, f->tree_root))
+	return fit_put(i, n);
+    }
+  else
+    {
+      for(h=0; h<f->hash_size; h++)
+	if (n = f->hash_table[h])
+	  return fit_put(i, n);
+    }
+
   /* The fib is empty, nothing to do */
   i->prev = i->next = NULL;
   i->node = NULL;
@@ -496,14 +490,8 @@ fit_get(struct fib *f, struct fib_iterator *i)
       i->hash = ~0 - 1;
       return NULL;
     }
-  if (!(n = i->node))
-    {
-      /* No node info available, we are a victim of merging. Try harder. */
-      j = i;
-      while (j->efef == 0xff)
-	j = j->prev;
-      n = (struct fib_node *) j;
-    }
+  ASSERT(i->node);
+  n = i->node;
   j = i->prev;
   if (k = i->next)
     k->prev = j;
@@ -528,12 +516,20 @@ fit_put(struct fib_iterator *i, struct fib_node *n)
 void
 fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uint hpos)
 {
-  if (n = n->next)
-    goto found;
+  if (i->flags & FIF_ORDERED)
+    {
+      if (n = REDBLACK_NEXT(struct fib_node, rb, n))
+	goto found;
+    }
+  else
+    {
+      if (n = n->next)
+	goto found;
 
-  while (++hpos < f->hash_size)
-    if (n = f->hash_table[hpos])
-      goto found;
+      while (++hpos < f->hash_size)
+	if (n = f->hash_table[hpos])
+	  goto found;
+    }
 
   /* We are at the end */
   i->prev = i->next = NULL;
@@ -576,8 +572,6 @@ fib_check(struct fib *f)
 		bug("fib_check: iterator->prev mismatch");
 	      j0 = j;
 	      if (!j->node)
-		nulls++;
-	      else if (nulls)
 		bug("fib_check: iterator nullified");
 	      else if (j->node != n)
 		bug("fib_check: iterator->node mismatch");

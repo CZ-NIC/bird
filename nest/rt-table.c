@@ -101,6 +101,7 @@ net_route_ip6_sadr(rtable *t, net_addr_ip6_sadr *n)
        match with the smallest matching src prefix. */
     for (fn = fib_get_chain(&t->fib, (net_addr *) n); fn; fn = fn->next)
     {
+      /* TODO: This may be more effectively done by searching in the redblack tree. */
       net_addr_ip6_sadr *a = (void *) fn->addr;
 
       if (net_equal_dst_ip6_sadr(n, a) &&

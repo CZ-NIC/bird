@@ -10,6 +10,7 @@
 #define _BIRD_ROUTE_H_
 
 #include "lib/lists.h"
+#include "lib/redblack.h"
 #include "lib/resource.h"
 #include "lib/net.h"
 
@@ -37,13 +38,17 @@ struct fib_node {
   struct fib_node *next;		/* Next in hash chain */
   struct fib_iterator *readers;		/* List of readers of this node */
   byte flags;				/* User-defined, will be removed */
+  REDBLACK_NODE(struct fib_node, rb);	/* Node in search tree */
   net_addr addr[0];
 };
+
+#define FIF_ORDERED 1
 
 struct fib_iterator {			/* See lib/slists.h for an explanation */
   struct fib_iterator *prev, *next;	/* Must be synced with struct fib_node! */
   byte efef;				/* 0xff to distinguish between iterator and node */
-  byte pad[3];
+  byte flags;				/* FIF_* */
+  byte pad[2];
   struct fib_node *node;		/* Or NULL if freshly merged */
   uint hash;
 };
@@ -53,6 +58,7 @@ typedef void (*fib_init_fn)(void *);
 struct fib {
   pool *fib_pool;			/* Pool holding all our data */
   slab *fib_slab;			/* Slab holding all fib nodes */
+  struct fib_node *tree_root;		/* Tree to hold lexicographically sorted entries */
   struct fib_node **hash_table;		/* Node hash table */
   uint hash_size;			/* Number of hash table entries (a power of two) */
   uint hash_order;			/* Binary logarithm of hash_size */
@@ -73,7 +79,7 @@ static inline struct fib_node * fib_user_to_node(struct fib *f, void *e)
 
 void fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offset, uint hash_order, fib_init_fn init);
 void *fib_find(struct fib *, const net_addr *);	/* Find or return NULL if doesn't exist */
-void *fib_get_chain(struct fib *f, const net_addr *a); /* Find first node in linked list from hash table */
+void *fib_get_chain(struct fib *f, const net_addr *a) DEPRECATED; /* Find first node in linked list from hash table */
 void *fib_get(struct fib *, const net_addr *);	/* Find or create new if nonexistent */
 void *fib_route(struct fib *, const net_addr *); /* Longest-match routing lookup */
 void fib_delete(struct fib *, void *);	/* Remove fib entry */
@@ -98,21 +104,27 @@ void fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uin
 #define FIB_ITERATE_INIT(it, fib) fit_init(it, fib)
 
 #define FIB_ITERATE_START(fib, it, type, z) do {		\
+	struct fib_iterator *it_ = it;				\
 	struct fib_node *fn_ = fit_get(fib, it);		\
 	uint count_ = (fib)->hash_size;				\
-	uint hpos_ = (it)->hash;				\
+	uint hpos_ = (it_)->hash;				\
 	type *z;						\
 	for(;;) {						\
 	  if (!fn_)						\
 	    {							\
-	       if (++hpos_ >= count_)				\
+	       if ((it_->flags & FIF_ORDERED) ||			\
+		  (++hpos_ >= count_))				\
 		 break;						\
 	       fn_ = (fib)->hash_table[hpos_];			\
 	       continue;					\
 	    }							\
 	  z = fib_node_to_user(fib, fn_);
 
-#define FIB_ITERATE_END fn_ = fn_->next; } } while(0)
+#define FIB_ITERATE_END						\
+	  fn_ = (it_->flags & FIF_ORDERED) ?			\
+		 REDBLACK_NEXT(struct fib_node, rb, fn_) :	\
+		 fn_->next;					\
+	} } while(0)
 
 #define FIB_ITERATE_PUT(it) fit_put(it, fn_)
 
