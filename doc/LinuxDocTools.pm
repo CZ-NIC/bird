@@ -242,6 +242,7 @@ sub process_options
   #   removes iso-entites sub directory after doing make install.)
   #
   $ENV{SGML_CATALOG_FILES} .= (defined $ENV{SGML_CATALOG_FILES} ? ":" : "") .
+     "$main::prefix/share/sgml/sgml-iso-entities-8879.1986/catalog:";
      "$main::prefix/share/sgml/entities/sgml-iso-entities-8879.1986/catalog";
   $ENV{SGML_CATALOG_FILES} .= ":$main::DataDir/linuxdoc-tools.catalog";
   $ENV{SGML_CATALOG_FILES} .= ":$main::/etc/sgml.catalog";
