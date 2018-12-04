@@ -149,10 +149,10 @@ BIRD executable by configuring out routing protocols you don't use, and
 	use given configuration file instead of <it/prefix/<file>/etc/bird.conf</file>.
 
 	<tag><label id="argv-debug">-d</tag>
-	enable debug messages and run bird in foreground.
+	enable debug messages to stderr, and run bird in foreground.
 
-	<tag><label id="argv-log-file">-D <m/filename of debug log/</tag>
-	log debugging information to given file instead of stderr.
+	<tag><label id="argv-debug-file">-D <m/filename of debug log/</tag>
+	enable debug messages to given file.
 
 	<tag><label id="argv-foreground">-f</tag>
 	run bird in foreground.
@@ -483,7 +483,9 @@ include "tablename.conf";;
 	<cf/auth/ about authentication failures,
 	<cf/bug/ for internal BIRD bugs.
 	You may specify more than one <cf/log/ line to establish logging to
-	multiple destinations. Default: log everything to the system log.
+	multiple destinations. Default: log everything to the system log, or
+	to the debug output if debugging is enabled by <cf/-d//<cf/-D/
+	command-line option.
 
 	<tag><label id="opt-debug-protocols">debug protocols all|off|{ states|routes|filters|interfaces|events|packets [, <m/.../] }</tag>
 	Set global defaults of protocol debugging options. See <cf/debug/ in the

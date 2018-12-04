@@ -85,15 +85,10 @@ AC_SUBST([srcdir])
 AS_IF([test -z "${runstatedir}"], [runstatedir='${localstatedir}/run'])
 AC_SUBST([runstatedir])
 
-
-if test "$enable_debug" = yes ; then
-  CONFIG_FILE="bird.conf"
-  CONTROL_SOCKET="bird.ctl"
-else
-  CONFIG_FILE="\$(sysconfdir)/bird.conf"
-  CONTROL_SOCKET="\$(runstatedir)/bird.ctl"
-fi
+CONFIG_FILE="\$(sysconfdir)/bird.conf"
 AC_SUBST([CONFIG_FILE])
+
+CONTROL_SOCKET="\$(runstatedir)/bird.ctl"
 AC_SUBST([CONTROL_SOCKET])
 
 AC_SEARCH_LIBS([clock_gettime], [rt posix4],

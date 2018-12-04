@@ -170,7 +170,8 @@ log_commit(int class, buffer *buf)
 	  else
 	    {
 	      byte tbuf[TM_DATETIME_BUFFER_SIZE];
-	      if (!tm_format_real_time(tbuf, sizeof(tbuf), config->tf_log.fmt1, current_real_time()))
+	      const char *fmt = config ? config->tf_log.fmt1 : "%F %T.%3f";
+	      if (!tm_format_real_time(tbuf, sizeof(tbuf), fmt, current_real_time()))
 		strcpy(tbuf, "<error>");
 
 	      if (l->limit)
@@ -322,36 +323,45 @@ debug(const char *msg, ...)
 }
 
 static list *
-default_log_list(int debug, int init, char **syslog_name)
+default_log_list(int initial, char **syslog_name)
 {
-  static list init_log_list;
-  init_list(&init_log_list);
+  static list log_list;
+  init_list(&log_list);
   *syslog_name = NULL;
 
 #ifdef HAVE_SYSLOG_H
-  if (!debug)
+  if (!dbgf)
     {
       static struct log_config lc_syslog = { .mask = ~0 };
-      add_tail(&init_log_list, &lc_syslog.n);
+      add_tail(&log_list, &lc_syslog.n);
       *syslog_name = bird_name;
-      if (!init)
-	return &init_log_list;
     }
 #endif
 
-  static struct log_config lc_stderr = { .mask = ~0, .terminal_flag = 1 };
-  lc_stderr.fh = stderr;
-  add_tail(&init_log_list, &lc_stderr.n);
-  return &init_log_list;
+  if (dbgf && (dbgf != stderr))
+    {
+      static struct log_config lc_debug = { .mask = ~0 };
+      lc_debug.fh = dbgf;
+      add_tail(&log_list, &lc_debug.n);
+    }
+
+  if (initial || (dbgf == stderr))
+    {
+      static struct log_config lc_stderr = { .mask = ~0, .terminal_flag = 1};
+      lc_stderr.fh = stderr;
+      add_tail(&log_list, &lc_stderr.n);
+    }
+
+  return &log_list;
 }
 
 void
-log_switch(int debug, list *logs, char *new_syslog_name)
+log_switch(int initial, list *logs, char *new_syslog_name)
 {
   struct log_config *l;
 
   if (!logs || EMPTY_LIST(*logs))
-    logs = default_log_list(debug, !logs, &new_syslog_name);
+    logs = default_log_list(initial, &new_syslog_name);
 
   /* Close the logs to avoid pinning them on disk when deleted */
   if (current_log_list)

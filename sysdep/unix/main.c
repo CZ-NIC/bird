@@ -44,12 +44,6 @@
  *	Debugging
  */
 
-#ifdef DEBUGGING
-static int debug_flag = 1;
-#else
-static int debug_flag = 0;
-#endif
-
 void
 async_dump(void)
 {
@@ -185,7 +179,7 @@ sysdep_preconfig(struct config *c)
 int
 sysdep_commit(struct config *new, struct config *old UNUSED)
 {
-  log_switch(debug_flag, &new->logfiles, new->syslog_name);
+  log_switch(0, &new->logfiles, new->syslog_name);
   return 0;
 }
 
@@ -750,21 +744,16 @@ parse_args(int argc, char **argv)
   while ((c = getopt(argc, argv, opt_list)) >= 0)
     switch (c)
       {
-      case 'b':
-	run_in_foreground = 0;
-	break;
       case 'c':
 	config_name = optarg;
 	config_changed = 1;
 	break;
       case 'd':
-	debug_flag |= 1;
+	log_init_debug("");
 	run_in_foreground = 1;
 	break;
       case 'D':
 	log_init_debug(optarg);
-	debug_flag |= 2;
-	run_in_foreground = 1;
 	break;
       case 'p':
 	parse_and_exit = 1;
@@ -822,9 +811,7 @@ main(int argc, char **argv)
 #endif
 
   parse_args(argc, argv);
-  if (debug_flag == 1)
-    log_init_debug("");
-  log_switch(debug_flag, NULL, NULL);
+  log_switch(1, NULL, NULL);
 
   net_init();
   resource_init();
