@@ -34,7 +34,8 @@ $progs = {
   "GROFFMACRO" => "-ms",
   "AWK" => "/usr/share/linuxdoc-tools/awkwhich"
 };
-$ENV{"SGML_CATALOG_FILES"} = "$DataDir/dtd/catalog";
+$ENV{"SGML_CATALOG_FILES"} = "$DataDir/dtd/catalog" .
+  (defined $ENV{SGML_CATALOG_FILES} ? ":$ENV{SGML_CATALOG_FILES}" : "");
 
 require "$FindBin::Bin/LinuxDocTools.pm";
 &LinuxDocTools::init;
