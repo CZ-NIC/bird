@@ -884,7 +884,18 @@ ea_show(struct cli *c, eattr *e)
   byte buf[CLI_MSG_SIZE];
   byte *pos = buf, *end = buf + sizeof(buf);
 
-  if (p = class_to_protocol[EA_PROTO(e->id)])
+  if (EA_IS_CUSTOM(e->id))
+    {
+      const char *name = ea_custom_name(e->id);
+      if (name)
+        {
+	  pos += bsprintf(pos, "%s", name);
+	  status = GA_NAME;
+	}
+      else
+	pos += bsprintf(pos, "%02x.", EA_PROTO(e->id));
+    }
+  else if (p = class_to_protocol[EA_PROTO(e->id)])
     {
       pos += bsprintf(pos, "%s.", p->name);
       if (p->get_attr)

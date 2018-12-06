@@ -15,7 +15,6 @@
 #include "lib/resource.h"
 #include "lib/timer.h"
 
-
 /* Configuration structure */
 
 struct config {
@@ -128,9 +127,12 @@ struct sym_scope {
 #define SYM_FUNCTION 3
 #define SYM_FILTER 4
 #define SYM_TABLE 5
+#define SYM_ATTRIBUTE 6
 
 #define SYM_VARIABLE 0x100	/* 0x100-0x1ff are variable types */
+#define SYM_VARIABLE_RANGE SYM_VARIABLE ... (SYM_VARIABLE | 0xff)
 #define SYM_CONSTANT 0x200	/* 0x200-0x2ff are variable types */
+#define SYM_CONSTANT_RANGE SYM_CONSTANT ... (SYM_CONSTANT | 0xff)
 
 #define SYM_TYPE(s) (((struct f_val *) (s)->def)->type)
 #define SYM_VAL(s) (((struct f_val *) (s)->def)->val)

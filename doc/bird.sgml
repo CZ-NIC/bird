@@ -25,7 +25,7 @@ configuration - something in config which is not keyword.
 Ondrej Filip <it/&lt;feela@network.cz&gt;/,
 Pavel Machek <it/&lt;pavel@ucw.cz&gt;/,
 Martin Mares <it/&lt;mj@ucw.cz&gt;/,
-Jan Matejka <it/&lt;mq@jmq.cz&gt;/,
+Maria Jan Matejka <it/&lt;mq@jmq.cz&gt;/,
 Ondrej Zajicek <it/&lt;santiago@crfreenet.org&gt;/
 </author>
 
@@ -551,6 +551,12 @@ include "tablename.conf";;
 	value of the same type. Besides, there are some predefined numeric
 	constants based on /etc/iproute2/rt_* files. A list of defined constants
 	can be seen (together with other symbols) using 'show symbols' command.
+
+	<tag><label id="opt-attribute">attribute <m/type/ <m/name/</tag>
+	Define a custom route attribute. You can set and get it in filters like
+	any other route atribute. This feature is intended for marking routes
+	in import filters for export filtering purposes instead of locally
+	assigned BGP communities which have to be deleted in export filters.
 
 	<tag><label id="opt-router-id">router id <m/IPv4 address/</tag>
 	Set BIRD's router ID. It's a world-wide unique identification of your

@@ -287,6 +287,15 @@ struct f_trie
 
 #define FF_SILENT 2			/* Silent filter execution */
 
+/* Custom route attributes */
+struct custom_attribute {
+  resource r;
+  struct f_dynamic_attr *fda;
+  const char *name;
+};
+
+struct custom_attribute *ca_lookup(pool *p, const char *name, int ea_type);
+
 /* Bird Tests */
 struct f_bt_test_suite {
   node n;			/* Node in config->tests */

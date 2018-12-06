@@ -471,13 +471,20 @@ typedef struct eattr {
   } u;
 } eattr;
 
+
 #define EA_CODE(proto,id) (((proto) << 8) | (id))
-#define EA_PROTO(ea) ((ea) >> 8)
 #define EA_ID(ea) ((ea) & 0xff)
+#define EA_PROTO(ea) ((ea) >> 8)
+#define EA_CUSTOM(id) ((id) | EA_CUSTOM_BIT)
+#define EA_IS_CUSTOM(ea) ((ea) & EA_CUSTOM_BIT)
+#define EA_CUSTOM_ID(ea) ((ea) & ~EA_CUSTOM_BIT)
+
+const char *ea_custom_name(uint ea);
 
 #define EA_GEN_IGP_METRIC EA_CODE(PROTOCOL_NONE, 0)
 
 #define EA_CODE_MASK 0xffff
+#define EA_CUSTOM_BIT 0x8000
 #define EA_ALLOW_UNDEF 0x10000		/* ea_find: allow EAF_TYPE_UNDEF */
 #define EA_BIT(n) ((n) << 24)		/* Used in bitfield accessors */
 

@@ -417,7 +417,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ADD, DELETE, CONTAINS, RESET,
 	PREPEND, FIRST, LAST, LAST_NONAGGREGATED, MATCH,
 	EMPTY,
-	FILTER, WHERE, EVAL,
+	FILTER, WHERE, EVAL, ATTRIBUTE,
 	BT_ASSERT, BT_TEST_SUITE, FORMAT)
 
 %nonassoc THEN
@@ -454,6 +454,11 @@ conf: filter_eval ;
 filter_eval:
    EVAL term { f_eval_int($2); }
  ;
+
+conf: custom_attr ;
+custom_attr: ATTRIBUTE type SYM ';' {
+  cf_define_symbol($3, SYM_ATTRIBUTE, ca_lookup(new_config->pool, $3->name, $2)->fda);
+};
 
 conf: bt_test_suite ;
 bt_test_suite:
@@ -834,14 +839,22 @@ function_call:
 
 symbol:
    SYM {
-     switch ($1->class & 0xff00) {
-       case SYM_CONSTANT: $$ = f_new_inst(FI_CONSTANT_INDIRECT); break;
-       case SYM_VARIABLE: $$ = f_new_inst(FI_VARIABLE); break;
-       default: cf_error("%s: variable expected.", $1->name);
+     switch ($1->class & 0xffff) {
+       case SYM_CONSTANT_RANGE:
+         $$ = f_new_inst(FI_CONSTANT_INDIRECT);
+	 goto cv_common;
+       case SYM_VARIABLE_RANGE:
+         $$ = f_new_inst(FI_VARIABLE);
+       cv_common:
+         $$->a1.p = $1->def;
+         $$->a2.p = $1->name;
+	 break;
+       case SYM_ATTRIBUTE:
+         $$ = f_new_inst_da(FI_EA_GET, *((struct f_dynamic_attr *) $1->def));
+	 break;
+       default:
+         cf_error("%s: variable expected.", $1->name);
      }
-
-     $$->a1.p = $1->def;
-     $$->a2.p = $1->name;
    }
 
 static_attr:
@@ -1001,11 +1014,15 @@ cmd:
    }
  | SYM '=' term ';' {
      DBG( "Ook, we'll set value\n" );
-     if (($1->class & ~T_MASK) != SYM_VARIABLE)
-       cf_error( "You may set only variables." );
-     $$ = f_new_inst(FI_SET);
-     $$->a1.p = $1;
-     $$->a2.p = $3;
+     if ($1->class == SYM_ATTRIBUTE) {
+       $$ = f_new_inst_da(FI_EA_SET, *((struct f_dynamic_attr *) $1->def));
+       $$->a1.p = $3;
+     } else if (($1->class & ~T_MASK) == SYM_VARIABLE) {
+       $$ = f_new_inst(FI_SET);
+       $$->a1.p = $1;
+       $$->a2.p = $3;
+     } else
+       cf_error( "Symbol `%s' is read-only.", $1->name );
    }
  | RETURN term ';' {
      DBG( "Ook, we'll return the value\n" );

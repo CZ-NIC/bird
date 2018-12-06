@@ -532,6 +532,7 @@ r_args:
      $$ = cfg_allocz(sizeof(struct rt_show_data));
      init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
+     $$->running_on_config = new_config->fallback;
    }
  | r_args net_any {
      $$ = $1;
@@ -586,7 +587,6 @@ r_args:
      if ($3->class != SYM_PROTO || !c->proto) cf_error("%s is not a protocol", $3->name);
      $$->export_mode = $2;
      $$->export_protocol = c->proto;
-     $$->running_on_config = c->proto->cf->global;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
  | r_args export_mode SYM '.' r_args_channel {
@@ -597,7 +597,6 @@ r_args:
      $$->export_mode = $2;
      $$->export_channel = proto_find_channel_by_name(c->proto, $5);
      if (!$$->export_channel) cf_error("Export channel not found");
-     $$->running_on_config = c->proto->cf->global;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
  | r_args PROTOCOL SYM {
@@ -606,7 +605,6 @@ r_args:
      if ($$->show_protocol) cf_error("Protocol specified twice");
      if ($3->class != SYM_PROTO || !c->proto) cf_error("%s is not a protocol", $3->name);
      $$->show_protocol = c->proto;
-     $$->running_on_config = c->proto->cf->global;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
  | r_args STATS {
