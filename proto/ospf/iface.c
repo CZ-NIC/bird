@@ -531,6 +531,10 @@ add_nbma_node(struct ospf_iface *ifa, struct nbma_node *src, int found)
 static int
 ospf_iface_stubby(struct ospf_iface_patt *ip, struct ifa *addr)
 {
+  /* vlink cannot be stub */
+  if (ip->type == OSPF_IT_VLINK)
+    return 0;
+
   /* a host address */
   if (addr->flags & IA_HOST)
     return 1;
