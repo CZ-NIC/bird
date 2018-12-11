@@ -1878,7 +1878,9 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   {
     C = (struct channel *) bgp_find_channel(p, cc->afi);
     same = proto_configure_channel(P, &C, &cc->c) && same;
-    C->stale = 0;
+
+    if (C)
+      C->stale = 0;
   }
 
   WALK_LIST_DELSAFE(C, C2, p->p.channels)
