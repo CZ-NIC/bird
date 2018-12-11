@@ -1044,6 +1044,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	      return;
 	    }
 	  *k = old->next;
+	  table->rt_count--;
 	  break;
 	}
       k = &old->next;
@@ -1063,7 +1064,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
   int old_ok = rte_is_ok(old);
 
   struct channel_limit *l = &c->rx_limit;
-  if (l->action && !old && new)
+  if (l->action && !old && new && !c->in_table)
     {
       u32 all_routes = stats->imp_routes + stats->filt_routes;
 
@@ -1146,6 +1147,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 
 	  new->next = *k;
 	  *k = new;
+	  table->rt_count++;
 	}
     }
   else
@@ -1163,6 +1165,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 
 	  new->next = net->routes;
 	  net->routes = new;
+	  table->rt_count++;
 	}
       else if (old == old_best)
 	{
@@ -1178,6 +1181,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	    {
 	      new->next = net->routes;
 	      net->routes = new;
+	      table->rt_count++;
 	    }
 
 	  /* Find a new optimal route (if there is any) */
@@ -1205,6 +1209,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	  ASSERT(net->routes != NULL);
 	  new->next = net->routes->next;
 	  net->routes->next = new;
+	  table->rt_count++;
 	}
       /* The fourth (empty) case - suboptimal route was removed, nothing to do */
     }
@@ -2292,12 +2297,13 @@ rt_feed_channel_abort(struct channel *c)
 int
 rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
+  struct rtable *tab = c->in_table;
   rte *old, **pos;
   net *net;
 
   if (new)
   {
-    net = net_get(c->in_table, n);
+    net = net_get(tab, n);
 
     if (!new->pref)
       new->pref = c->preference;
@@ -2307,10 +2313,10 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
   }
   else
   {
-    net = net_find(c->in_table, n);
+    net = net_find(tab, n);
 
     if (!net)
-      return 0;
+      goto drop_withdraw;
   }
 
   /* Find the old rte */
@@ -2318,17 +2324,36 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
     if (old->attrs->src == src)
     {
       if (new && rte_same(old, new))
-	return 0;
+	goto drop_update;
 
       /* Remove the old rte */
       *pos = old->next;
       rte_free_quick(old);
+      tab->rt_count--;
 
       break;
     }
 
   if (!new)
-    return !!old;
+  {
+    if (!old)
+      goto drop_withdraw;
+
+    return 1;
+  }
+
+  struct channel_limit *l = &c->rx_limit;
+  if (l->action && !old)
+  {
+    if (tab->rt_count >= l->limit)
+      channel_notify_limit(c, l, PLD_RX, tab->rt_count);
+
+    if (l->state == PLS_BLOCKED)
+    {
+      rte_trace_in(D_FILTERS, c->proto, new, "ignored [limit]");
+      goto drop_update;
+    }
+  }
 
   /* Insert the new rte */
   rte *e = rte_do_cow(new);
@@ -2338,8 +2363,19 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
   e->lastmod = current_time();
   e->next = *pos;
   *pos = e;
-
+  tab->rt_count++;
   return 1;
+
+drop_update:
+  c->stats.imp_updates_received++;
+  c->stats.imp_updates_ignored++;
+  rte_free(new);
+  return 0;
+
+drop_withdraw:
+  c->stats.imp_withdraws_received++;
+  c->stats.imp_withdraws_ignored++;
+  return 0;
 }
 
 int
@@ -2400,6 +2436,7 @@ rt_prune_sync(rtable *t, int all)
       {
 	*ee = e->next;
 	rte_free_quick(e);
+	t->rt_count--;
       }
       else
 	ee = &e->next;

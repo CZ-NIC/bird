@@ -151,6 +151,7 @@ typedef struct rtable {
   uint addr_type;			/* Type of address data stored in table (NET_*) */
   int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
+  u32 rt_count;				/* Number of routes in the table */
   struct hostcache *hostcache;
   struct rtable_config *config;		/* Configuration of this table */
   struct config *deleted;		/* Table doesn't exist in current configuration,
