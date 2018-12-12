@@ -135,6 +135,8 @@ stat_route:
 
 stat_route_item:
    cmd { *this_srt_last_cmd = $1; this_srt_last_cmd = &($1->next); }
+ | PREFERENCE expr ';' { this_srt->preference = $2; check_u16($2); }
+ | DISTANCE expr ';' { this_srt->preference = $2; check_u16($2); }
  ;
 
 stat_route_opts:

@@ -53,7 +53,7 @@ static void
 static_announce_rte(struct static_proto *p, struct static_route *r)
 {
   rta *a = allocz(RTA_MAX_SIZE);
-  a->src = p->p.main_source;
+  a->src = rt_get_source(&p->p, r->preference);
   a->source = RTS_STATIC;
   a->scope = SCOPE_UNIVERSE;
   a->dest = r->dest;
@@ -101,11 +101,13 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   /* We skip rta_lookup() here */
   rte *e = rte_get_temp(a);
   e->pflags = 0;
+  e->pref = r->preference;
 
   if (r->cmds)
     f_eval_rte(r->cmds, &e, static_lp);
 
-  rte_update(&p->p, r->net, e);
+  e->pref = r->preference;	/* Avoid preference from filter */
+  rte_update2(p->p.main_channel, r->net, e, a->src);
   r->state = SRS_CLEAN;
 
   if (r->cmds)
@@ -117,7 +119,7 @@ withdraw:
   if (r->state == SRS_DOWN)
     return;
 
-  rte_update(&p->p, r->net, NULL);
+  rte_update2(p->p.main_channel, r->net, NULL, a->src);
   r->state = SRS_DOWN;
 }
 
@@ -250,7 +252,7 @@ static void
 static_remove_rte(struct static_proto *p, struct static_route *r)
 {
   if (r->state)
-    rte_update(&p->p, r->net, NULL);
+    rte_update2(p->p.main_channel, r->net, NULL, rt_get_source(&p->p, r->preference));
 
   static_reset_rte(p, r);
 }
@@ -380,8 +382,13 @@ static_postconfig(struct proto_config *CF)
       cc->table : cf->c.global->def_tables[NET_IP6];
 
   WALK_LIST(r, cf->routes)
+  {
     if (r->net && (r->net->type != CF->net_type))
       cf_error("Route %N incompatible with channel type", r->net);
+
+    if (!r->preference)
+      r->preference = cc->preference;
+  }
 }
 
 static struct proto *
@@ -488,11 +495,17 @@ static_dump(struct proto *P)
 
 #define IGP_TABLE(cf, sym) ((cf)->igp_table_##sym ? (cf)->igp_table_##sym ->table : NULL )
 
+static inline int srt_equal(struct static_route *a, struct static_route *b)
+{ return net_equal(a->net, b->net) && (a->preference == b->preference); }
+
+static inline int srt_compare(struct static_route *a, struct static_route *b)
+{ return net_compare(a->net, b->net) ?: uint_cmp(a->preference, b->preference); }
+
 static inline int
 static_cmp_rte(const void *X, const void *Y)
 {
   struct static_route *x = *(void **)X, *y = *(void **)Y;
-  return net_compare(x->net, y->net);
+  return srt_compare(x, y);
 }
 
 static int
@@ -521,7 +534,7 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
 
   /* Reconfigure initial matching sequence */
   for (or = HEAD(o->routes), nr = HEAD(n->routes);
-       NODE_VALID(or) && NODE_VALID(nr) && net_equal(or->net, nr->net);
+       NODE_VALID(or) && NODE_VALID(nr) && srt_equal(or, nr);
        or = NODE_NEXT(or), nr = NODE_NEXT(nr))
     static_reconfigure_rte(p, or, nr);
 
@@ -552,7 +565,7 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
 
   while ((orpos < ornum) && (nrpos < nrnum))
   {
-    int x = net_compare(orbuf[orpos]->net, nrbuf[nrpos]->net);
+    int x = srt_compare(orbuf[orpos], nrbuf[nrpos]);
     if (x < 0)
       static_remove_rte(p, orbuf[orpos++]);
     else if (x > 0)
