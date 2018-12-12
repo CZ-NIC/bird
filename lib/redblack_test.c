@@ -15,11 +15,11 @@
 
 struct rb_test {
   REDBLACK_NODE(struct rb_test, rb_);
-  int value;
+  uint value;
 };
 
 #define RBT_KEY(a) ((a)->value)
-#define RBT_COMPARE(a, b) ((a) - (b))
+#define RBT_COMPARE(a, b) ((int)(a) - (int)(b))
 
 #define RBTDS64 "                                                                "
 const char *spaces = RBTDS64;
@@ -35,7 +35,7 @@ static void rb_dump(struct rb_test *root) {
 
 #define RB_CHECK(root, bits, total) do { \
   REDBLACK_CHECK(struct rb_test, rb_, RBT_KEY, RBT_COMPARE, root); \
-  int tot = 0; \
+  uint tot = 0; \
   for ( \
       struct rb_test *last = NULL, *node = REDBLACK_FIRST(struct rb_test, rb_, root); \
       node; \
@@ -47,8 +47,8 @@ static void rb_dump(struct rb_test *root) {
       ASSERT(RBT_COMPARE(RBT_KEY(last), RBT_KEY(node)) < 0); \
   } \
   ASSERT(tot == total); \
-  int begin = bt_random() % N, end = bt_random() % N; \
-  if (begin > end) { int t = begin; begin = end; end = t; } \
+  uint begin = (uint) bt_random() % N, end = (uint) bt_random() % N; \
+  if (begin > end) { uint t = begin; begin = end; end = t; } \
   bt_debug("Nodes from %d to %d:\n", begin, end); \
   for ( \
       struct rb_test *node = REDBLACK_FIND_UP(struct rb_test, rb_, RBT_KEY, RBT_COMPARE, root, begin); \
@@ -87,14 +87,14 @@ rb_insert(void)
 #define BIT(x) ((bits[(x) / 64] >> ((x) % 64)) & 1)
 #define SIT(x) (bits[(x) / 64] |= (1ULL << ((x) % 64)))
 #define CIT(x) (bits[(x) / 64] &= ~(1ULL << ((x) % 64)))
-  int total = 0;
+  uint total = 0;
   u64 bits[N / 64] = {};
-  for (int i=0; i<N * MUL; i++) {
+  for (uint i=0; i<N * MUL; i++) {
     RB_CHECK(root, bits, total);
     if (bt_verbose >= BT_VERBOSE_ABSOLUTELY_ALL)
       rb_dump(root);
 
-    int tv = bt_random() % N;
+    uint tv = (uint) bt_random() % N;
     RB_FIND(root, tv, BIT(tv));
 
     if (BIT(tv)) {
