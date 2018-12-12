@@ -69,39 +69,39 @@
  * stale routes after reestablishment of BGP session during graceful restart.
  *
  * Supported standards:
- * <itemize>
- * <item> <rfc id="4271"> - Border Gateway Protocol 4 (BGP)
- * <item> <rfc id="1997"> - BGP Communities Attribute
- * <item> <rfc id="2385"> - Protection of BGP Sessions via TCP MD5 Signature
- * <item> <rfc id="2545"> - Use of BGP Multiprotocol Extensions for IPv6
- * <item> <rfc id="2918"> - Route Refresh Capability
- * <item> <rfc id="3107"> - Carrying Label Information in BGP
- * <item> <rfc id="4360"> - BGP Extended Communities Attribute
- * <item> <rfc id="4364"> - BGP/MPLS IPv4 Virtual Private Networks
- * <item> <rfc id="4456"> - BGP Route Reflection
- * <item> <rfc id="4486"> - Subcodes for BGP Cease Notification Message
- * <item> <rfc id="4659"> - BGP/MPLS IPv6 Virtual Private Networks
- * <item> <rfc id="4724"> - Graceful Restart Mechanism for BGP
- * <item> <rfc id="4760"> - Multiprotocol extensions for BGP
- * <item> <rfc id="4798"> - Connecting IPv6 Islands over IPv4 MPLS
- * <item> <rfc id="5065"> - AS confederations for BGP
- * <item> <rfc id="5082"> - Generalized TTL Security Mechanism
- * <item> <rfc id="5492"> - Capabilities Advertisement with BGP
- * <item> <rfc id="5549"> - Advertising IPv4 NLRI with an IPv6 Next Hop
- * <item> <rfc id="5575"> - Dissemination of Flow Specification Rules
- * <item> <rfc id="5668"> - 4-Octet AS Specific BGP Extended Community
- * <item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
- * <item> <rfc id="6608"> - Subcodes for BGP Finite State Machine Error
- * <item> <rfc id="6793"> - BGP Support for 4-Octet AS Numbers
- * <item> <rfc id="7313"> - Enhanced Route Refresh Capability for BGP
- * <item> <rfc id="7606"> - Revised Error Handling for BGP UPDATE Messages
- * <item> <rfc id="7911"> - Advertisement of Multiple Paths in BGP
- * <item> <rfc id="7947"> - Internet Exchange BGP Route Server
- * <item> <rfc id="8092"> - BGP Large Communities Attribute
- * <item> <rfc id="8203"> - BGP Administrative Shutdown Communication
- * <item> <rfc id="8212"> - Default EBGP Route Propagation Behavior without Policies
- * </itemize>
-*/
+ * RFC 4271 - Border Gateway Protocol 4 (BGP)
+ * RFC 1997 - BGP Communities Attribute
+ * RFC 2385 - Protection of BGP Sessions via TCP MD5 Signature
+ * RFC 2545 - Use of BGP Multiprotocol Extensions for IPv6
+ * RFC 2918 - Route Refresh Capability
+ * RFC 3107 - Carrying Label Information in BGP
+ * RFC 4360 - BGP Extended Communities Attribute
+ * RFC 4364 - BGP/MPLS IPv4 Virtual Private Networks
+ * RFC 4456 - BGP Route Reflection
+ * RFC 4486 - Subcodes for BGP Cease Notification Message
+ * RFC 4659 - BGP/MPLS IPv6 Virtual Private Networks
+ * RFC 4724 - Graceful Restart Mechanism for BGP
+ * RFC 4760 - Multiprotocol extensions for BGP
+ * RFC 4798 - Connecting IPv6 Islands over IPv4 MPLS
+ * RFC 5065 - AS confederations for BGP
+ * RFC 5082 - Generalized TTL Security Mechanism
+ * RFC 5492 - Capabilities Advertisement with BGP
+ * RFC 5549 - Advertising IPv4 NLRI with an IPv6 Next Hop
+ * RFC 5575 - Dissemination of Flow Specification Rules
+ * RFC 5668 - 4-Octet AS Specific BGP Extended Community
+ * RFC 6286 - AS-Wide Unique BGP Identifier
+ * RFC 6608 - Subcodes for BGP Finite State Machine Error
+ * RFC 6793 - BGP Support for 4-Octet AS Numbers
+ * RFC 7313 - Enhanced Route Refresh Capability for BGP
+ * RFC 7606 - Revised Error Handling for BGP UPDATE Messages
+ * RFC 7911 - Advertisement of Multiple Paths in BGP
+ * RFC 7947 - Internet Exchange BGP Route Server
+ * RFC 8092 - BGP Large Communities Attribute
+ * RFC 8203 - BGP Administrative Shutdown Communication
+ * RFC 8212 - Default EBGP Route Propagation Behavior without Policies
+ * draft-ietf-idr-bgp-extended-messages-27
+ * draft-uttaro-idr-bgp-persistence-04
+ */
 
 #undef LOCAL_DEBUG
 

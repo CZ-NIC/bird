@@ -96,6 +96,7 @@
  * - RFC 5838 - OSPFv3 Support of Address Families
  * - RFC 6549 - OSPFv2 Multi-Instance Extensions
  * - RFC 6987 - OSPF Stub Router Advertisement
+ * - RFC 7166 - OSPFv3 Authentication Trailer
  */
 
 #include <stdlib.h>
