@@ -1454,8 +1454,7 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
     ad = as_path_strip_confed(pool, ad);
 
   /* AS_PATH attribute - keep or prepend ASN */
-  if (p->is_internal ||
-      (p->rs_client && src && src->rs_client))
+  if (p->is_internal || p->rs_client)
   {
     /* IBGP or route server -> just ensure there is one */
     if (!a)
