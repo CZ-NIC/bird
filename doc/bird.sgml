@@ -2609,6 +2609,16 @@ be used in explicit configuration.
 	for every allowed table type. Default: the same as the main table
 	the channel is connected to (if eligible).
 
+	<tag><label id="bgp-import-table">import table <m/switch/</tag>
+	A BGP import table contain all received routes from given BGP neighbor,
+	before application of import filters. It is also called <em/Adj-RIB-In/
+	in BGP terminology. BIRD BGP by default operates without import tables,
+	in which case received routes are just processed by import filters,
+	accepted ones are stored in the master table, and the rest is forgotten.
+	Enabling <cf/import table/ allows to store unprocessed routes, which can
+	be examined later by <cf/show route/, and can be used to reconfigure
+	import filters without full route refresh. Default: off.
+
 	<tag><label id="bgp-secondary">secondary <m/switch/</tag>
 	Usually, if an export filter rejects a selected route, no other route is
 	propagated for that network. This option allows to try the next route in
