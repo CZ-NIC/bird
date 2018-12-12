@@ -471,17 +471,25 @@ ipv6 table
 include "tablename.conf";;
 </code>
 
-	<tag><label id="opt-log">log "<m/filename/"|syslog [name <m/name/]|stderr all|{ <m/list of classes/ }</tag>
-	Set logging of messages having the given class (either <cf/all/ or
-	<cf/{ error|trace [, <m/.../] }/ etc.) into selected destination (a file specified
-	as a filename string, syslog with optional name argument, or the stderr
-	output). Classes are:
+	<tag><label id="opt-log">log "<m/filename/" [<m/limit/ "<m/backup/"] | syslog [name <m/name/] | stderr all|{ <m/list of classes/ }</tag>
+	Set logging of messages having the given class (either <cf/all/ or <cf>{
+	error|trace [, <m/.../] }</cf> etc.) into selected destination - a file
+	specified as a filename string (with optional log rotation information),
+	syslog (with optional name argument), or the stderr output.
+
+	Classes are:
 	<cf/info/, <cf/warning/, <cf/error/ and <cf/fatal/ for messages about local problems,
 	<cf/debug/ for debugging messages,
 	<cf/trace/ when you want to know what happens in the network,
 	<cf/remote/ for messages about misbehavior of remote machines,
 	<cf/auth/ about authentication failures,
 	<cf/bug/ for internal BIRD bugs.
+
+	Logging directly to file supports basic log rotation -- there is an
+	optional log file limit and a backup filename, when log file reaches the
+	limit, the current log file is renamed to the backup filename and a new
+	log file is created.
+
 	You may specify more than one <cf/log/ line to establish logging to
 	multiple destinations. Default: log everything to the system log, or
 	to the debug output if debugging is enabled by <cf/-d//<cf/-D/
