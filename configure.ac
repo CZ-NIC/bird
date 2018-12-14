@@ -343,7 +343,10 @@ fi
 if test "$enable_debug" = yes ; then
   AC_DEFINE([DEBUGGING], [1], [Define to 1 if debugging is enabled])
   LDFLAGS="$LDFLAGS -rdynamic"
-  CFLAGS="$CFLAGS -O0 -ggdb -g3 -gdwarf-4"
+  CFLAGS="$CFLAGS -O0 -ggdb -g3"
+
+  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_dwarf4], [-gdwarf-4], [])
+  BIRD_ADD_GCC_OPTION([bird_cv_c_option_dwarf4], [-gdwarf-4])
 
   AC_CHECK_HEADER([execinfo.h],
     [
