@@ -1568,13 +1568,19 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       krt_src = KRT_SRC_ALIEN;
     }
 
-  net_addr *n = &dst;
+  net_addr *n;
+
   if (p->p.net_type == NET_IP6_SADR)
-  {
-    n = alloca(sizeof(net_addr_ip6_sadr));
-    net_fill_ip6_sadr(n, net6_prefix(&dst), net6_pxlen(&dst),
-		      net6_prefix(&src), net6_pxlen(&src));
-  }
+    {
+      n = lp_alloc(s->pool, sizeof(net_addr_ip6_sadr));
+      net_fill_ip6_sadr(n, net6_prefix(&dst), net6_pxlen(&dst),
+		        net6_prefix(&src), net6_pxlen(&src));
+    }
+  else
+    {
+      n = lp_alloc(s->pool, dst.length);
+      net_copy(n, &dst);
+    }
 
   if (s->netA && !nl_mergable_route(s, n, p, priority, i->rtm_type))
     nl_announce_route(s);

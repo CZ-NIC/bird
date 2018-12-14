@@ -199,7 +199,7 @@ sockaddr_fill_dl(struct sockaddr_dl *sa, struct iface *ifa)
 static int
 krt_send_route(struct krt_proto *p, int cmd, rte *e)
 {
-  net *net = e->net;
+  const net_addr *n = e->netA;
   rta *a = e->attrs;
   static int msg_seq;
   struct iface *j, *i = a->nh.iface;
@@ -208,7 +208,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   char *body = (char *)msg.buf;
   sockaddr gate, mask, dst;
 
-  DBG("krt-sock: send %I/%d via %I\n", net->n.prefix, net->n.pxlen, a->gw);
+  DBG("krt-sock: send %N via %I\n", n, a->gw);
 
   bzero(&msg,sizeof (struct rt_msghdr));
   msg.rtm.rtm_version = RTM_VERSION;
@@ -218,7 +218,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   msg.rtm.rtm_flags = RTF_UP | RTF_PROTO1;
 
   /* XXXX */
-  if (net_pxlen(net->n.addr) == net_max_prefix_length[net->n.addr->type])
+  if (net_pxlen(n) == net_max_prefix_length[n->type])
     msg.rtm.rtm_flags |= RTF_HOST;
   else
     msg.rtm.rtm_addrs |= RTA_NETMASK;
@@ -260,7 +260,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 
   int af = AF_UNSPEC;
 
-  switch (net->n.addr->type) {
+  switch (n->type) {
     case NET_IP4:
       af = AF_INET;
       break;
@@ -268,12 +268,12 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
       af = AF_INET6;
       break;
     default:
-      log(L_ERR "KRT: Not sending route %N to kernel", net->n.addr);
+      log(L_ERR "KRT: Not sending route %N to kernel", n);
       return -1;
   }
 
-  sockaddr_fill(&dst,  af, net_prefix(net->n.addr), NULL, 0);
-  sockaddr_fill(&mask, af, net_pxmask(net->n.addr), NULL, 0);
+  sockaddr_fill(&dst,  af, net_prefix(n), NULL, 0);
+  sockaddr_fill(&mask, af, net_pxmask(n), NULL, 0);
 
   switch (a->dest)
   {
@@ -303,7 +303,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 
 #if __OpenBSD__
     /* Keeping temporarily old code for OpenBSD */
-    struct ifa *addr = (net->n.addr->type == NET_IP4) ? i->addr4 : (i->addr6 ?: i->llv6);
+    struct ifa *addr = (n->addr->type == NET_IP4) ? i->addr4 : (i->addr6 ?: i->llv6);
 
     if (!addr)
     {
@@ -339,7 +339,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   msg.rtm.rtm_msglen = l;
 
   if ((l = write(p->sys.sk->fd, (char *)&msg, l)) < 0) {
-    log(L_ERR "KRT: Error sending route %N to kernel: %m", net->n.addr);
+    log(L_ERR "KRT: Error sending route %N to kernel: %m", n);
     return -1;
   }
 
@@ -369,7 +369,6 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
 
   int ipv6;
   rte *e;
-  net *net;
   sockaddr dst, gate, mask;
   ip_addr idst, igate, imask;
   net_addr ndst;
@@ -486,8 +485,6 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   else
     src = KRT_SRC_KERNEL;
 
-  net = net_get(p->p.main_channel->table, &ndst);
-
   rta a = {
     .src = p->p.main_source,
     .source = RTS_INHERIT,
@@ -515,7 +512,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   if (!a.nh.iface)
     {
       log(L_ERR "KRT: Received route %N with unknown ifindex %u",
-	  net->n.addr, msg->rtm.rtm_index);
+	  &ndst, msg->rtm.rtm_index);
       return;
     }
 
@@ -538,14 +535,14 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
           return;
 
 	log(L_ERR "KRT: Received route %N with strange next-hop %I",
-	    net->n.addr, a.nh.gw);
+	    &ndst, a.nh.gw);
 	return;
       }
   }
 
  done:
   e = rte_get_temp(&a);
-  e->net = net;
+  e->netA = &ndst;
   e->u.krt.src = src;
   e->u.krt.proto = src2;
   e->u.krt.seen = 0;
