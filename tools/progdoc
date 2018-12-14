@@ -4,7 +4,7 @@ $srcdir = $ARGV[0];
 $out = $ARGV[1];
 
 open(OUT, ">", $out) || die "Cannot create output file";
-process($srcdir);
+process($srcdir, "doc/prog-root");
 close OUT;
 gen_deps();
 exit 0;
@@ -21,9 +21,10 @@ sub include {
 
 sub process {
   my $dir = shift @_;
-  print "$dir/progdoc\n";
-  open(IN, "$dir/progdoc") || die "Unable to read $dir/progdoc";
-  push(@deps, "$dir/progdoc");
+  my $doc = "$dir/" . shift @_;
+  print "$doc\n";
+  open(IN, $doc) || die "Unable to read $doc";
+  push(@deps, $doc);
   my @docfile = <IN>;
   close IN;
   foreach $_ (@docfile) {
@@ -32,7 +33,7 @@ sub process {
     /^([A-Z]+)\s*(.*)/ || die "Parse error: $_";
     $cmd = $1;
     $arg = $2;
-    if ($cmd eq "C") { process("$dir/$arg"); }
+    if ($cmd eq "C") { process("$dir/$arg", "progdoc"); }
     elsif ($cmd eq "H") {
       push @stack, "H";
       print OUT "<chapt>$arg\n";
