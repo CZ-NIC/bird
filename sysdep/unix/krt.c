@@ -344,6 +344,7 @@ krt_learn_scan(struct krt_proto *p, rte *e)
   if (!m)
     {
       e->next = n->routes;
+      e->netA = n->n.addr;
       n->routes = e;
       e->u.krt.seen = 1;
     }
