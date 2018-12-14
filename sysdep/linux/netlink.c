@@ -1568,22 +1568,21 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       krt_src = KRT_SRC_ALIEN;
     }
 
-  net_addr *n;
-
+  net_addr *nloc;
   if (p->p.net_type == NET_IP6_SADR)
     {
-      n = lp_alloc(s->pool, sizeof(net_addr_ip6_sadr));
-      net_fill_ip6_sadr(n, net6_prefix(&dst), net6_pxlen(&dst),
+      nloc = alloca(sizeof(net_addr_ip6_sadr));
+      net_fill_ip6_sadr(nloc, net6_prefix(&dst), net6_pxlen(&dst),
 		        net6_prefix(&src), net6_pxlen(&src));
     }
   else
-    {
-      n = lp_alloc(s->pool, dst.length);
-      net_copy(n, &dst);
-    }
+    nloc = &dst;
 
-  if (s->netA && !nl_mergable_route(s, n, p, priority, i->rtm_type))
-    nl_announce_route(s);
+  if (s->netA && !nl_mergable_route(s, nloc, p, priority, i->rtm_type))
+    nl_announce_route(s); /* Here is the s->pool flushed! */
+
+  net_addr *n = lp_alloc(s->pool, dst.length);
+  net_copy(n, nloc);
 
   rta *ra = lp_allocz(s->pool, RTA_MAX_SIZE);
   ra->src = p->p.main_source;
