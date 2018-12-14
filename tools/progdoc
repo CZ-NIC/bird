@@ -33,7 +33,7 @@ sub process {
     /^([A-Z]+)\s*(.*)/ || die "Parse error: $_";
     $cmd = $1;
     $arg = $2;
-    if ($cmd eq "C") { process("$dir/$arg", "progdoc"); }
+    if ($cmd eq "C") { process("$dir/$arg", "Doc"); }
     elsif ($cmd eq "H") {
       push @stack, "H";
       print OUT "<chapt>$arg\n";
