@@ -405,8 +405,6 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
   rt = rt0;
   *rt_free = NULL;
 
-  rte_make_tmp_attrs(&rt, pool);
-
   v = p->preexport ? p->preexport(p, &rt, pool) : 0;
   if (v < 0)
     {
@@ -424,6 +422,8 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
 	rte_trace_out(D_FILTERS, p, rt, "forced accept by protocol");
       goto accept;
     }
+
+  rte_make_tmp_attrs(&rt, pool);
 
   v = filter && ((filter == FILTER_REJECT) ||
 		 (f_run(filter, &rt, pool,
@@ -1482,12 +1482,14 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
   rte_update_lock();
 
   /* Rest is stripped down export_filter() */
-  rte_make_tmp_attrs(&rt, rte_update_pool);
   int v = p->preexport ? p->preexport(p, &rt, rte_update_pool) : 0;
   if (v == RIC_PROCESS)
+  {
+    rte_make_tmp_attrs(&rt, rte_update_pool);
     v = (f_run(filter, &rt, rte_update_pool, FF_SILENT) <= F_ACCEPT);
+  }
 
-   /* Discard temporary rte */
+  /* Discard temporary rte */
   if (rt != n->routes)
     rte_free(rt);
 
