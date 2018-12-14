@@ -303,7 +303,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 
 #if __OpenBSD__
     /* Keeping temporarily old code for OpenBSD */
-    struct ifa *addr = (n->addr->type == NET_IP4) ? i->addr4 : (i->addr6 ?: i->llv6);
+    struct ifa *addr = (n->type == NET_IP4) ? i->addr4 : (i->addr6 ?: i->llv6);
 
     if (!addr)
     {
