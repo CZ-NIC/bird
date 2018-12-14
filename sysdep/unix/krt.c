@@ -456,6 +456,7 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
 
       e->next = n->routes;
       n->routes = e;
+      e->netA = n->n.addr;
     }
   else if (!g)
     {
@@ -704,6 +705,7 @@ krt_got_route(struct krt_proto *p, rte *e)
       e->attrs = rta_lookup(a);
       e->next = net->routes;
       net->routes = e;
+      e->netA = net->n.addr;
     }
   else
     rte_free(e);
