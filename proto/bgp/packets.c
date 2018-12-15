@@ -855,6 +855,7 @@ static inline int
 bgp_use_next_hop(struct bgp_export_state *s, eattr *a)
 {
   struct bgp_proto *p = s->proto;
+  struct bgp_channel *c = s->channel;
   ip_addr *nh = (void *) a->u.ptr->data;
 
   if (s->channel->cf->next_hop_self)
@@ -866,6 +867,10 @@ bgp_use_next_hop(struct bgp_export_state *s, eattr *a)
   /* Keep it when explicitly set in export filter */
   if (a->type & EAF_FRESH)
     return 1;
+
+  /* Check for non-matching AF */
+  if ((ipa_is_ip4(*nh) != bgp_channel_is_ipv4(c)) && !c->ext_next_hop)
+    return 0;
 
   /* Keep it when exported to internal peers */
   if (p->is_interior && ipa_nonzero(*nh))
@@ -880,6 +885,7 @@ static inline int
 bgp_use_gateway(struct bgp_export_state *s)
 {
   struct bgp_proto *p = s->proto;
+  struct bgp_channel *c = s->channel;
   rta *ra = s->route->attrs;
 
   if (s->channel->cf->next_hop_self)
@@ -887,6 +893,10 @@ bgp_use_gateway(struct bgp_export_state *s)
 
   /* We need one valid global gateway */
   if ((ra->dest != RTD_UNICAST) || ra->nh.next || ipa_zero(ra->nh.gw) || ipa_is_link_local(ra->nh.gw))
+    return 0;
+
+  /* Check for non-matching AF */
+  if ((ipa_is_ip4(ra->nh.gw) != bgp_channel_is_ipv4(c)) && !c->ext_next_hop)
     return 0;
 
   /* Use it when exported to internal peers */
