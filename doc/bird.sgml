@@ -2220,9 +2220,9 @@ using the following configuration parameters:
 	the number of hops is 2. Default: enabled for iBGP.
 
 	<tag><label id="bgp-source-address">source address <m/ip/</tag>
-	Define local address we should use for next hop calculation and as a
-	source address for the BGP session. Default: the address of the local
-	end of the interface our neighbor is connected to.
+	Define local address we should use as a source address for the BGP
+	session. Default: the address of the local end of the interface our
+	neighbor is connected to.
 
 	<tag><label id="bgp-strict-bind">strict bind <m/switch/</tag>
 	Specify whether BGP listening socket should be bound to a specific local
@@ -2565,19 +2565,29 @@ be used in explicit configuration.
 <p>BGP channels have additional config options (together with the common ones):
 
 <descrip>
-	<tag><label id="bgp-next-hop-keep">next hop keep</tag>
-	Forward the received Next Hop attribute even in situations where the
-	local address should be used instead, like when the route is sent to an
-	interface with a different subnet. Default: disabled.
+	<tag><label id="bgp-next-hop-keep">next hop keep <m/switch/|ibgp|ebgp</tag>
+	Do not modify the Next Hop attribute and advertise the current one
+	unchanged even in cases where our own local address should be used
+	instead. This is necessary when the BGP speaker does not forward network
+	traffic (route servers and some route reflectors) and also can be useful
+	in some other cases (e.g. multihop EBGP sessions). Can be enabled for
+	all routes, or just for routes received from IBGP / EBGP neighbors.
+	Default: disabled for regular BGP, enabled for route servers,
+	<cf/ibgp/ for route reflectors.
 
-	<tag><label id="bgp-next-hop-self">next hop self</tag>
-	Avoid calculation of the Next Hop attribute and always advertise our own
-	source address as a next hop. This needs to be used only occasionally to
-	circumvent misconfigurations of other routers. Default: disabled.
+	<tag><label id="bgp-next-hop-self">next hop self <m/switch/|ibgp|ebgp</tag>
+	Always advertise our own local address as a next hop, even in cases
+	where the current Next Hop attribute should be used unchanged. This is
+	sometimes used for routes propagated from EBGP to IBGP when IGP routing
+	does not cover inter-AS links, therefore IP addreses of EBGP neighbors
+	are not resolvable through IGP. Can be enabled for all routes, or just
+	for routes received from IBGP / EBGP neighbors. Default: disabled.
 
 	<tag><label id="bgp-next-hop-address">next hop address <m/ip/</tag>
-	Avoid calculation of the Next Hop attribute and always advertise this address
-	as a next hop.
+	Specify which address to use when our own local address should be
+	announced in the Next Hop attribute. Default: the source address of the
+	BGP session (if acceptable), or the preferred address of an associated
+	interface.
 
 	<tag><label id="bgp-missing-lladdr">missing lladdr self|drop|ignore</tag>
 	Next Hop attribute in BGP-IPv6 sometimes contains just the global IPv6
@@ -2618,7 +2628,7 @@ be used in explicit configuration.
 	the channel is connected to (if eligible).
 
 	<tag><label id="bgp-import-table">import table <m/switch/</tag>
-	A BGP import table contain all received routes from given BGP neighbor,
+	A BGP import table contains all received routes from given BGP neighbor,
 	before application of import filters. It is also called <em/Adj-RIB-In/
 	in BGP terminology. BIRD BGP by default operates without import tables,
 	in which case received routes are just processed by import filters,

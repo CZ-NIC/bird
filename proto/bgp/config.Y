@@ -29,8 +29,9 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	SECURITY, DETERMINISTIC, SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX,
 	GRACEFUL, RESTART, AWARE, CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY,
 	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6, LONG,
-	LIVED, STALE, IMPORT)
+	LIVED, STALE, IMPORT, IBGP, EBGP)
 
+%type <i> bgp_nh
 %type <i32> bgp_afi
 
 CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
@@ -205,17 +206,23 @@ bgp_channel_start: bgp_afi
     BGP_CC->c.ra_mode = RA_UNDEF;
     BGP_CC->afi = $1;
     BGP_CC->desc = desc;
+    BGP_CC->next_hop_keep = 0xff; /* undefined */
     BGP_CC->gr_able = 0xff;	/* undefined */
     BGP_CC->llgr_able = 0xff;	/* undefined */
     BGP_CC->llgr_time = ~0U;	/* undefined */
   }
 };
 
+bgp_nh:
+   bool { $$ = $1; }
+ | IBGP { $$ = NH_IBGP; }
+ | EBGP { $$ = NH_EBGP; }
+
 bgp_channel_item:
    channel_item
  | NEXT HOP ADDRESS ipa { BGP_CC->next_hop_addr = $4; }
- | NEXT HOP SELF { BGP_CC->next_hop_self = 1; BGP_CC->next_hop_keep = 0; }
- | NEXT HOP KEEP { BGP_CC->next_hop_keep = 1; BGP_CC->next_hop_self = 0; }
+ | NEXT HOP SELF bgp_nh { BGP_CC->next_hop_self = $4; }
+ | NEXT HOP KEEP bgp_nh { BGP_CC->next_hop_keep = $4; }
  | MISSING LLADDR SELF { BGP_CC->missing_lladdr = MLL_SELF; }
  | MISSING LLADDR DROP { BGP_CC->missing_lladdr = MLL_DROP; }
  | MISSING LLADDR IGNORE { BGP_CC->missing_lladdr = MLL_IGNORE; }

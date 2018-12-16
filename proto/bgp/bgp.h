@@ -134,8 +134,8 @@ struct bgp_channel_config {
   const struct bgp_af_desc *desc;
 
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
-  u8 next_hop_self;			/* Always set next hop to local IP address */
-  u8 next_hop_keep;			/* Do not touch next hop attribute */
+  u8 next_hop_self;			/* Always set next hop to local IP address (NH_*) */
+  u8 next_hop_keep;			/* Do not modify next hop attribute (NH_*) */
   u8 missing_lladdr;			/* What we will do when we don' know link-local addr, see MLL_* */
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
   u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
@@ -151,12 +151,17 @@ struct bgp_channel_config {
   struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
 };
 
-#define MLL_SELF 1
-#define MLL_DROP 2
-#define MLL_IGNORE 3
+#define NH_NO			0
+#define NH_ALL			1
+#define NH_IBGP			2
+#define NH_EBGP			3
 
-#define GW_DIRECT 1
-#define GW_RECURSIVE 2
+#define MLL_SELF		1
+#define MLL_DROP		2
+#define MLL_IGNORE		3
+
+#define GW_DIRECT		1
+#define GW_RECURSIVE		2
 
 #define BGP_ADD_PATH_RX		1
 #define BGP_ADD_PATH_TX		2

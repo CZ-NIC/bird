@@ -851,6 +851,19 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 *labels, uint lnum)
 }
 
 
+static int
+bgp_match_src(struct bgp_export_state *s, int mode)
+{
+  switch (mode)
+  {
+  case NH_NO:		return 0;
+  case NH_ALL:		return 1;
+  case NH_IBGP:		return s->src && s->src->is_internal;
+  case NH_EBGP:		return s->src && !s->src->is_internal;
+  default:		return 0;
+  }
+}
+
 static inline int
 bgp_use_next_hop(struct bgp_export_state *s, eattr *a)
 {
@@ -858,10 +871,12 @@ bgp_use_next_hop(struct bgp_export_state *s, eattr *a)
   struct bgp_channel *c = s->channel;
   ip_addr *nh = (void *) a->u.ptr->data;
 
-  if (s->channel->cf->next_hop_self)
+  /* Handle next hop self option */
+  if (c->cf->next_hop_self && bgp_match_src(s, c->cf->next_hop_self))
     return 0;
 
-  if (s->channel->cf->next_hop_keep)
+  /* Handle next hop keep option */
+  if (c->cf->next_hop_keep && bgp_match_src(s, c->cf->next_hop_keep))
     return 1;
 
   /* Keep it when explicitly set in export filter */
@@ -888,7 +903,8 @@ bgp_use_gateway(struct bgp_export_state *s)
   struct bgp_channel *c = s->channel;
   rta *ra = s->route->attrs;
 
-  if (s->channel->cf->next_hop_self)
+  /* Handle next hop self option - also applies to gateway */
+  if (c->cf->next_hop_self && bgp_match_src(s, c->cf->next_hop_self))
     return 0;
 
   /* We need one valid global gateway */

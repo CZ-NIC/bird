@@ -1814,6 +1814,10 @@ bgp_postconfig(struct proto_config *CF)
     if ((cc->c.in_limit.action == PLA_RESTART) && cf->disable_after_error)
       cc->c.in_limit.action = PLA_DISABLE;
 
+    /* Different default based on rr_client, rs_client */
+    if (cc->next_hop_keep == 0xff)
+      cc->next_hop_keep = cf->rr_client ? NH_IBGP : (cf->rs_client ? NH_ALL : NH_NO);
+
     /* Different default based on rs_client */
     if (!cc->missing_lladdr)
       cc->missing_lladdr = cf->rs_client ? MLL_IGNORE : MLL_SELF;
