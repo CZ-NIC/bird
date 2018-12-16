@@ -663,9 +663,13 @@ proto_configure_channel(struct proto *p, struct channel **pc, struct channel_con
   {
     /* We could add the channel, but currently it would just stay in down state
        until protocol is restarted, so it is better to force restart anyways. */
-    log(L_INFO "Cannot add channel %s.%s", p->name, cf->name);
-    return 0;
-    // *pc = proto_add_channel(p, cf);
+    if (p->proto_state != PS_DOWN)
+    {
+      log(L_INFO "Cannot add channel %s.%s", p->name, cf->name);
+      return 0;
+    }
+
+    *pc = proto_add_channel(p, cf);
   }
   else if (c && !cf)
   {
