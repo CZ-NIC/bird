@@ -300,6 +300,11 @@ perf_reconfigure(struct proto *P UNUSED, struct proto_config *CF UNUSED)
   return 0;
 }
 
+static void
+perf_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUSED)
+{
+}
+
 struct protocol proto_perf = {
   .name = 		"Perf",
   .template =		"perf%d",
@@ -310,4 +315,5 @@ struct protocol proto_perf = {
   .init =		perf_init,
   .start =		perf_start,
   .reconfigure = 	perf_reconfigure,
+  .copy_config =	perf_copy_config,
 };
