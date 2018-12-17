@@ -361,6 +361,9 @@ if test "$enable_debug" = yes ; then
       AC_CHECK_LIB([efence], [malloc])
     fi
   fi
+else
+  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_implicit_fallthrough], [-Wno-implicit-fallthrough])
+  BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_implicit_fallthrough], [-Wno-implicit-fallthrough])
 fi
 
 CLIENT=birdcl
