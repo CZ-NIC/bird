@@ -597,9 +597,6 @@ val_format_str(struct filter_state *fs, struct f_val v) {
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
-#define BITFIELD_MASK(what) \
-  (1u << (what->a2.i >> 24))
-
 /**
  * interpret
  * @fs: filter state
@@ -655,6 +652,8 @@ interpret(struct filter_state *fs, struct f_inst *what)
 
 #define ACCESS_EATTRS \
   do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
+
+#define BITFIELD_MASK(what_) (1u << EA_BIT_GET(what_->a2.i))
 
 /* Binary operators */
   case FI_ADD:
