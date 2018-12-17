@@ -50,6 +50,15 @@
 
 #define CMP_ERROR 999
 
+#define FILTER_STACK_DEPTH 16384
+
+/* Filter interpreter stack. Make this thread local after going parallel. */
+struct filter_stack {
+  struct f_val val;
+};
+
+static struct filter_stack filter_stack[FILTER_STACK_DEPTH];
+
 /* Internal filter state, to be allocated on stack when executing filters */
 struct filter_state {
   struct rte **rte;
@@ -57,6 +66,8 @@ struct filter_state {
   struct ea_list **eattrs;
   struct linpool *pool;
   struct buffer buf;
+  struct filter_stack *stack;
+  int stack_ptr;
   int flags;
 };
 
@@ -611,24 +622,25 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
  * are either integers, or pointers to instruction trees. Common
  * instructions like +, that have two expressions as arguments use
  * TWOARGS macro to get both of them evaluated.
- *
- * &f_val structures are copied around, so there are no problems with
- * memory managment.
  */
 static enum filter_return
-interpret(struct filter_state *fs, struct f_inst *what, struct f_val *resp)
+interpret(struct filter_state *fs, struct f_inst *what)
 {
   struct symbol *sym;
-  struct f_val v1, v2, v3, *vp;
+  struct f_val *vp;
   unsigned u1, u2;
   enum filter_return fret;
   int i;
   u32 as;
 
-  *resp = (struct f_val) { .type = T_VOID };
+#define res fs->stack[fs->stack_ptr].val
+#define v1 fs->stack[fs->stack_ptr + 1].val
+#define v2 fs->stack[fs->stack_ptr + 2].val
+#define v3 fs->stack[fs->stack_ptr + 3].val
+
+  res = (struct f_val) { .type = T_VOID };
 
   for ( ; what; what = what->next) {
-#define res (*resp)
   res = (struct f_val) { .type = T_VOID };
   switch(what->fi_code) {
 
@@ -638,17 +650,22 @@ interpret(struct filter_state *fs, struct f_inst *what, struct f_val *resp)
     return F_ERROR; \
   } while(0)
 
-#define ARG_ANY(n) INTERPRET(v##n, what->a##n.p)
+#define ARG_ANY(n) INTERPRET(what->a##n.p, n)
 
-#define ARG(n,t) ARG_ANY(n) \
+#define ARG(n,t) ARG_ANY(n); \
     if (v##n.type != t) \
       runtime("Argument %d of instruction %s must be of type %02x, got %02x", \
 	  n, f_instruction_name(what->fi_code), t, v##n.type);
 
-#define INTERPRET(val, what_) \
-    fret = interpret(fs, what_, &(val)); \
-    if (fret >= F_RETURN) \
-      return fret;
+#define INTERPRET(what_, n) do { \
+    fs->stack_ptr += n; \
+    fret = interpret(fs, what_); \
+    fs->stack_ptr -= n; \
+    if (fret == F_RETURN) \
+      bug("This shall not happen"); \
+    if (fret > F_RETURN) \
+      return fret; \
+} while (0)
 
 #define ACCESS_RTE \
   do { if (!fs->rte) runtime("No route to access"); } while (0)
@@ -857,12 +874,12 @@ f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int fla
     .rte = rte,
     .pool = tmp_pool,
     .flags = flags,
+    .stack = filter_stack,
   };
 
   LOG_BUFFER_INIT(fs.buf);
 
-  struct f_val res;
-  enum filter_return fret = interpret(&fs, filter->root, &res);
+  enum filter_return fret = interpret(&fs, filter->root);
 
   if (fs.old_rta) {
     /*
@@ -902,13 +919,13 @@ f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
   struct filter_state fs = {
     .rte = rte,
     .pool = tmp_pool,
+    .stack = filter_stack,
   };
 
   LOG_BUFFER_INIT(fs.buf);
 
   /* Note that in this function we assume that rte->attrs is private / uncached */
-  struct f_val res;
-  return interpret(&fs, expr, &res);
+  return interpret(&fs, expr);
 }
 
 enum filter_return
@@ -916,25 +933,34 @@ f_eval(struct f_inst *expr, struct linpool *tmp_pool, struct f_val *pres)
 {
   struct filter_state fs = {
     .pool = tmp_pool,
+    .stack = filter_stack,
   };
 
   LOG_BUFFER_INIT(fs.buf);
 
-  return interpret(&fs, expr, pres);
+  enum filter_return fret = interpret(&fs, expr);
+  *pres = filter_stack[0].val;
+  return fret;
 }
 
 uint
 f_eval_int(struct f_inst *expr)
 {
   /* Called independently in parse-time to eval expressions */
-  struct f_val res;
-  if (f_eval(expr, cfg_mem, &res) > F_RETURN)
+  struct filter_state fs = {
+    .pool = cfg_mem,
+    .stack = filter_stack,
+  };
+
+  LOG_BUFFER_INIT(fs.buf);
+
+  if (interpret(&fs, expr) > F_RETURN)
     cf_error("Runtime error while evaluating expression");
 
-  if (res.type != T_INT)
+  if (filter_stack[0].val.type != T_INT)
     cf_error("Integer expression expected");
 
-  return res.val.i;
+  return filter_stack[0].val.val.i;
 }
 
 /**
