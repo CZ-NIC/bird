@@ -653,7 +653,7 @@ set_atom:
  | VPN_RD { $$.type = T_RD; $$.val.ec = $1; }
  | ENUM   { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
-     $$ = f_eval($2, cfg_mem);
+     if (f_eval($2, cfg_mem, &($$)) > F_RETURN) cf_error("Runtime error");
      if (!f_valid_set_type($$.type)) cf_error("Set-incompatible type");
    }
  | SYM {

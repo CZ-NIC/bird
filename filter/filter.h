@@ -175,9 +175,19 @@ void trie_format(struct f_trie *t, buffer *buf);
 struct ea_list;
 struct rte;
 
-int f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
-struct f_val f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool);
-struct f_val f_eval(struct f_inst *expr, struct linpool *tmp_pool);
+enum filter_return {
+  F_NOP = 0,
+  F_NONL,
+  F_RETURN,
+  F_ACCEPT,   /* Need to preserve ordering: accepts < rejects! */
+  F_REJECT,
+  F_ERROR,
+  F_QUITBIRD,
+};
+
+enum filter_return f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
+enum filter_return f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool);
+enum filter_return f_eval(struct f_inst *expr, struct linpool *tmp_pool, struct f_val *pres);
 uint f_eval_int(struct f_inst *expr);
 
 char *filter_name(struct filter *filter);
@@ -189,14 +199,6 @@ int val_compare(struct f_val v1, struct f_val v2);
 int val_same(struct f_val v1, struct f_val v2);
 
 void val_format(struct f_val v, buffer *buf);
-
-
-#define F_NOP 0
-#define F_NONL 1
-#define F_ACCEPT 2	/* Need to preserve ordering: accepts < rejects! */
-#define F_REJECT 3
-#define F_ERROR 4
-#define F_QUITBIRD 5
 
 #define FILTER_ACCEPT NULL
 #define FILTER_REJECT ((void *) 1)
@@ -246,7 +248,6 @@ void val_format(struct f_val v, buffer *buf);
 #define T_LCLIST 0x29		/* Large community list */
 #define T_RD 0x2a		/* Route distinguisher for VPN addresses */
 
-#define T_RETURN 0x40
 #define T_SET 0x80
 #define T_PREFIX_SET 0x81
 

@@ -97,9 +97,8 @@ cmd_show_memory(void)
 void
 cmd_eval(struct f_inst *expr)
 {
-  struct f_val v = f_eval(expr, this_cli->parser_pool);
-
-  if (v.type == T_RETURN)
+  struct f_val v;
+  if (f_eval(expr, this_cli->parser_pool, &v) > F_RETURN)
     {
       cli_msg(8008, "runtime error");
       return;
