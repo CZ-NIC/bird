@@ -597,32 +597,6 @@ val_format_str(struct filter_state *fs, struct f_val v) {
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
-#define runtime(fmt, ...) do { \
-    if (!(fs->flags & FF_SILENT)) \
-      log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
-    res.type = T_RETURN; \
-    res.val.i = F_ERROR; \
-    return res; \
-  } while(0)
-
-#define ARG_ANY(n) INTERPRET(v##n, what->a##n.p)
-
-#define ARG(n,t) ARG_ANY(n) \
-    if (v##n.type != t) \
-      runtime("Argument %d of instruction %s must be of type %02x, got %02x", \
-	  n, f_instruction_name(what->fi_code), t, v##n.type);
-
-#define INTERPRET(val, what_) \
-    val = interpret(fs, what_); \
-    if (val.type & T_RETURN) \
-      return val;
-
-#define ACCESS_RTE \
-  do { if (!fs->rte) runtime("No route to access"); } while (0)
-
-#define ACCESS_EATTRS \
-  do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
-
 #define BITFIELD_MASK(what) \
   (1u << (what->a2.i >> 24))
 
@@ -656,6 +630,32 @@ interpret(struct filter_state *fs, struct f_inst *what)
   for ( ; what; what = what->next) {
   res.type = T_VOID;
   switch(what->fi_code) {
+#define runtime(fmt, ...) do { \
+    if (!(fs->flags & FF_SILENT)) \
+      log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
+    res.type = T_RETURN; \
+    res.val.i = F_ERROR; \
+    return res; \
+  } while(0)
+
+#define ARG_ANY(n) INTERPRET(v##n, what->a##n.p)
+
+#define ARG(n,t) ARG_ANY(n) \
+    if (v##n.type != t) \
+      runtime("Argument %d of instruction %s must be of type %02x, got %02x", \
+	  n, f_instruction_name(what->fi_code), t, v##n.type);
+
+#define INTERPRET(val, what_) \
+    val = interpret(fs, what_); \
+    if (val.type & T_RETURN) \
+      return val;
+
+#define ACCESS_RTE \
+  do { if (!fs->rte) runtime("No route to access"); } while (0)
+
+#define ACCESS_EATTRS \
+  do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
+
 /* Binary operators */
   case FI_ADD:
     ARG(1,T_INT);
@@ -1582,12 +1582,17 @@ interpret(struct filter_state *fs, struct f_inst *what)
 
   default:
     bug( "Unknown instruction %d (%c)", what->fi_code, what->fi_code & 0xff);
+
+#undef runtime
+#undef ARG_ANY
+#undef ARG
+#undef INTERPRET
+#undef ACCESS_RTE
+#undef ACCESS_EATTRS
   }}
   return res;
 }
 
-#undef ARG
-#undef ARG_ANY
 
 #define ARG(n) \
 	if (!i_same(f1->a##n.p, f2->a##n.p)) \
