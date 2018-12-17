@@ -121,15 +121,15 @@
       while (tt) {
 	*vv = lp_alloc(fs->pool, sizeof(struct f_path_mask));
 	if (tt->kind == PM_ASN_EXPR) {
-	  struct f_val res;
-	  INTERPRET(res, (struct f_inst *) tt->val);
+	  struct f_val xres;
+	  INTERPRET(xres, (struct f_inst *) tt->val);
 	  (*vv)->kind = PM_ASN;
-	  if (res.type != T_INT) {
+	  if (xres.type != T_INT) {
 	    runtime( "Error resolving path mask template: value not an integer" );
-	    return (struct f_val) { .type = T_VOID };
+	    return F_ERROR;
 	  }
 
-	  (*vv)->val = res.val.i;
+	  (*vv)->val = xres.val.i;
 	} else {
 	  **vv = *tt;
 	}
@@ -280,9 +280,7 @@
       /* Should take care about turning ACCEPT into MODIFY */
     case F_ERROR:
     case F_REJECT:	/* FIXME (noncritical) Should print complete route along with reason to reject route */
-      res.type = T_RETURN;
-      res.val.i = what->a2.i;
-      return res;	/* We have to return now, no more processing. */
+      return what->a2.i;	/* We have to return now, no more processing. */
     case F_NONL:
     case F_NOP:
       break;
@@ -658,14 +656,12 @@
   case FI_RETURN:
     ARG_ANY(1);
     res = v1;
-    res.type |= T_RETURN;
-    return res;
-  case FI_CALL: /* CALL: this is special: if T_RETURN and returning some value, mask it out  */
+    return F_RETURN;
+  case FI_CALL:
     ARG_ANY(1);
-    res = interpret(fs, what->a2.p);
-    if (res.type == T_RETURN)
-      return res;
-    res.type &= ~T_RETURN;
+    fret = interpret(fs, what->a2.p, &res);
+    if (fret > F_RETURN)
+      return fret;
     break;
   case FI_CLEAR_LOCAL_VARS:	/* Clear local variables */
     for (sym = what->a1.p; sym != NULL; sym = sym->aux2)

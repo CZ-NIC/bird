@@ -124,8 +124,7 @@ conf: definition ;
 definition:
    DEFINE SYM '=' term ';' {
      struct f_val *val = cfg_alloc(sizeof(struct f_val));
-     *val = f_eval($4, cfg_mem);
-     if (val->type == T_RETURN) cf_error("Runtime error");
+     if (f_eval($4, cfg_mem, val) > F_RETURN) cf_error("Runtime error");
      cf_define_symbol($2, SYM_CONSTANT | val->type, val);
    }
  ;
