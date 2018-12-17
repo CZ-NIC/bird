@@ -615,24 +615,27 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
  * &f_val structures are copied around, so there are no problems with
  * memory managment.
  */
-static struct f_val
-interpret(struct filter_state *fs, struct f_inst *what)
+static enum filter_return
+interpret(struct filter_state *fs, struct f_inst *what, struct f_val *resp)
 {
   struct symbol *sym;
-  struct f_val v1, v2, v3, res = { .type = T_VOID }, *vp;
+  struct f_val v1, v2, v3, *vp;
   unsigned u1, u2;
+  enum filter_return fret;
   int i;
   u32 as;
 
+  *resp = (struct f_val) { .type = T_VOID };
+
   for ( ; what; what = what->next) {
-  res.type = T_VOID;
+#define res (*resp)
+  res = (struct f_val) { .type = T_VOID };
   switch(what->fi_code) {
+
 #define runtime(fmt, ...) do { \
     if (!(fs->flags & FF_SILENT)) \
       log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
-    res.type = T_RETURN; \
-    res.val.i = F_ERROR; \
-    return res; \
+    return F_ERROR; \
   } while(0)
 
 #define ARG_ANY(n) INTERPRET(v##n, what->a##n.p)
@@ -643,9 +646,9 @@ interpret(struct filter_state *fs, struct f_inst *what)
 	  n, f_instruction_name(what->fi_code), t, v##n.type);
 
 #define INTERPRET(val, what_) \
-    val = interpret(fs, what_); \
-    if (val.type & T_RETURN) \
-      return val;
+    fret = interpret(fs, what_, &(val)); \
+    if (fret >= F_RETURN) \
+      return fret;
 
 #define ACCESS_RTE \
   do { if (!fs->rte) runtime("No route to access"); } while (0)
@@ -657,6 +660,7 @@ interpret(struct filter_state *fs, struct f_inst *what)
 
 #include "filter/f-inst.c"
 
+#undef res
 #undef runtime
 #undef ARG_ANY
 #undef ARG
@@ -664,7 +668,7 @@ interpret(struct filter_state *fs, struct f_inst *what)
 #undef ACCESS_RTE
 #undef ACCESS_EATTRS
   }}
-  return res;
+  return F_NOP;
 }
 
 
@@ -837,7 +841,7 @@ i_same(struct f_inst *f1, struct f_inst *f2)
  * (and cached rta of read-only source rte is intact), if rte is
  * modified in place, old cached rta is possibly freed.
  */
-int
+enum filter_return
 f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags)
 {
   if (filter == FILTER_ACCEPT)
@@ -857,7 +861,8 @@ f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int fla
 
   LOG_BUFFER_INIT(fs.buf);
 
-  struct f_val res = interpret(&fs, filter->root);
+  struct f_val res;
+  enum filter_return fret = interpret(&fs, filter->root, &res);
 
   if (fs.old_rta) {
     /*
@@ -879,18 +884,18 @@ f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int fla
   }
 
 
-  if (res.type != T_RETURN) {
+  if (fret < F_ACCEPT) {
     if (!(fs.flags & FF_SILENT))
       log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter->name);
     return F_ERROR;
   }
   DBG( "done (%u)\n", res.val.i );
-  return res.val.i;
+  return fret;
 }
 
 /* TODO: perhaps we could integrate f_eval(), f_eval_rte() and f_run() */
 
-struct f_val
+enum filter_return
 f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
 {
 
@@ -902,13 +907,12 @@ f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
   LOG_BUFFER_INIT(fs.buf);
 
   /* Note that in this function we assume that rte->attrs is private / uncached */
-  struct f_val res = interpret(&fs, expr);
-
-  return res;
+  struct f_val res;
+  return interpret(&fs, expr, &res);
 }
 
-struct f_val
-f_eval(struct f_inst *expr, struct linpool *tmp_pool)
+enum filter_return
+f_eval(struct f_inst *expr, struct linpool *tmp_pool, struct f_val *pres)
 {
   struct filter_state fs = {
     .pool = tmp_pool,
@@ -916,14 +920,16 @@ f_eval(struct f_inst *expr, struct linpool *tmp_pool)
 
   LOG_BUFFER_INIT(fs.buf);
 
-  return interpret(&fs, expr);
+  return interpret(&fs, expr, pres);
 }
 
 uint
 f_eval_int(struct f_inst *expr)
 {
   /* Called independently in parse-time to eval expressions */
-  struct f_val res = f_eval(expr, cfg_mem);
+  struct f_val res;
+  if (f_eval(expr, cfg_mem, &res) > F_RETURN)
+    cf_error("Runtime error while evaluating expression");
 
   if (res.type != T_INT)
     cf_error("Integer expression expected");

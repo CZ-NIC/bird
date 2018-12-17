@@ -44,13 +44,11 @@ run_function(const void *parsed_fn_def)
   struct f_inst *f = (struct f_inst *) parsed_fn_def;
 
   linpool *tmp = lp_new_default(&root_pool);
-  struct f_val res = f_eval(f, tmp);
+  struct f_val res;
+  enum filter_return fret = f_eval(f, tmp, &res);
   rfree(tmp);
 
-  if (res.type == T_RETURN && res.val.i >= F_REJECT)
-    return 0;
-
-  return 1;
+  return (fret < F_REJECT);
 }
 
 static void
