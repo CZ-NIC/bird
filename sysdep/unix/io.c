@@ -1566,7 +1566,9 @@ sk_sendmsg(sock *s)
   };
 
 #ifdef CONFIG_DONTROUTE_UNICAST
-  if (ipa_is_ip4(s->daddr) && ip4_is_unicast(ipa_to_ip4(s->daddr)))
+  /* FreeBSD silently changes TTL to 1 when MSG_DONTROUTE is used, therefore we
+     cannot use it for other cases (e.g. when TTL security is used). */
+  if (ipa_is_ip4(s->daddr) && ip4_is_unicast(ipa_to_ip4(s->daddr)) && (s->ttl == 1))
     flags = MSG_DONTROUTE;
 #endif
 
