@@ -188,7 +188,7 @@ nexthop__same(struct nexthop *x, struct nexthop *y)
   {
     if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) ||
 	(x->flags != y->flags) || (x->weight != y->weight) ||
-	(x->labels != y->labels))
+	(x->labels_orig != y->labels_orig) || (x->labels != y->labels))
       return 0;
 
     for (int i = 0; i < x->labels; i++)
@@ -348,6 +348,7 @@ nexthop_copy(struct nexthop *o)
       n->next = NULL;
       n->flags = o->flags;
       n->weight = o->weight;
+      n->labels_orig = o->labels_orig;
       n->labels = o->labels;
       for (int i=0; i<o->labels; i++)
 	n->label[i] = o->label[i];
