@@ -641,37 +641,37 @@ interpret(struct filter_state *fs, struct f_inst *what)
   res = (struct f_val) { .type = T_VOID };
 
   for ( ; what; what = what->next) {
-  res = (struct f_val) { .type = T_VOID };
-  switch(what->fi_code) {
+    res = (struct f_val) { .type = T_VOID };
+    switch (what->fi_code) {
 
 #define runtime(fmt, ...) do { \
-    if (!(fs->flags & FF_SILENT)) \
-      log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
-    return F_ERROR; \
-  } while(0)
+  if (!(fs->flags & FF_SILENT)) \
+    log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
+  return F_ERROR; \
+} while(0)
 
 #define ARG_ANY(n) INTERPRET(what->a##n.p, n)
 
-#define ARG(n,t) ARG_ANY(n); \
-    if (v##n.type != t) \
-      runtime("Argument %d of instruction %s must be of type %02x, got %02x", \
-	  n, f_instruction_name(what->fi_code), t, v##n.type);
-
-#define INTERPRET(what_, n) do { \
-    fs->stack_ptr += n; \
-    fret = interpret(fs, what_); \
-    fs->stack_ptr -= n; \
-    if (fret == F_RETURN) \
-      bug("This shall not happen"); \
-    if (fret > F_RETURN) \
-      return fret; \
+#define ARG(n,t) do { \
+  ARG_ANY(n); \
+  if (v##n.type != t) \
+    runtime("Argument %d of instruction %s must be of type %02x, got %02x", \
+	    n, f_instruction_name(what->fi_code), t, v##n.type); \
 } while (0)
 
-#define ACCESS_RTE \
-  do { if (!fs->rte) runtime("No route to access"); } while (0)
+#define INTERPRET(what_, n) do { \
+  fs->stack_ptr += n; \
+  fret = interpret(fs, what_); \
+  fs->stack_ptr -= n; \
+  if (fret == F_RETURN) \
+    bug("This shall not happen"); \
+  if (fret > F_RETURN) \
+    return fret; \
+} while (0)
 
-#define ACCESS_EATTRS \
-  do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
+#define ACCESS_RTE do { if (!fs->rte) runtime("No route to access"); } while (0)
+
+#define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
 
 #define BITFIELD_MASK(what_) (1u << EA_BIT_GET(what_->a2.i))
 
@@ -684,7 +684,8 @@ interpret(struct filter_state *fs, struct f_inst *what)
 #undef INTERPRET
 #undef ACCESS_RTE
 #undef ACCESS_EATTRS
-  }}
+    }
+  }
   return F_NOP;
 }
 
