@@ -52,9 +52,15 @@
 
 #define FILTER_STACK_DEPTH 16384
 
+#define F_JMP_NEXT	(~0U)
+#define F_JMP_INST(x)	((x) & 0xffffff)
+#define F_JMP_ARG(x, n)	((x) | ((n) << 24))
+
 /* Filter interpreter stack. Make this thread local after going parallel. */
 struct filter_stack {
   struct f_val val;
+  struct f_inst *what;
+  uint jmp;
 };
 
 static struct filter_stack filter_stack[FILTER_STACK_DEPTH];
@@ -631,18 +637,24 @@ interpret(struct filter_state *fs, struct f_inst *what)
   unsigned u1, u2;
   enum filter_return fret;
   int i;
+  uint fi;
   u32 as;
 
-#define res fs->stack[fs->stack_ptr].val
-#define v1 fs->stack[fs->stack_ptr + 1].val
-#define v2 fs->stack[fs->stack_ptr + 2].val
-#define v3 fs->stack[fs->stack_ptr + 3].val
+#define stk(n) fs->stack[fs->stack_ptr + n]
+#define res stk(0).val
+#define v1 stk(1).val
+#define v2 stk(2).val
+#define v3 stk(3).val
 
   res = (struct f_val) { .type = T_VOID };
 
   for ( ; what; what = what->next) {
     res = (struct f_val) { .type = T_VOID };
-    switch (what->fi_code) {
+    uint jmp = what->fi_code;
+    while (jmp != F_JMP_NEXT) {
+      uint jmpc = jmp;
+      jmp = F_JMP_NEXT;
+      switch (jmpc) {
 
 #define runtime(fmt, ...) do { \
   if (!(fs->flags & FF_SILENT)) \
@@ -650,23 +662,27 @@ interpret(struct filter_state *fs, struct f_inst *what)
   return F_ERROR; \
 } while(0)
 
+#define INSTRUCTION(fi_) case fi_: fi = fi_;
+
 #define ARG_ANY(n) INTERPRET(what->a##n.p, n)
 
 #define ARG(n,t) do { \
   ARG_ANY(n); \
   if (v##n.type != t) \
     runtime("Argument %d of instruction %s must be of type %02x, got %02x", \
-	    n, f_instruction_name(what->fi_code), t, v##n.type); \
+	    n, f_instruction_name(fi), t, v##n.type); \
 } while (0)
 
 #define INTERPRET(what_, n) do { \
+  stk(n).what = what; \
+  stk(n).jmp = F_JMP_ARG(fi, n); \
   fs->stack_ptr += n; \
-  fret = interpret(fs, what_); \
+  what = what_; \
+  jmp = what->fi_code; \
+  continue; \
+case F_JMP_ARG(fi, n): \
   fs->stack_ptr -= n; \
-  if (fret == F_RETURN) \
-    bug("This shall not happen"); \
-  if (fret > F_RETURN) \
-    return fret; \
+  what = stk(n).what; \
 } while (0)
 
 #define ACCESS_RTE do { if (!fs->rte) runtime("No route to access"); } while (0)
@@ -684,6 +700,7 @@ interpret(struct filter_state *fs, struct f_inst *what)
 #undef INTERPRET
 #undef ACCESS_RTE
 #undef ACCESS_EATTRS
+      }
     }
   }
   return F_NOP;

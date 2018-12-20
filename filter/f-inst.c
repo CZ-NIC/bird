@@ -121,7 +121,7 @@
       while (tt) {
 	*vv = lp_alloc(fs->pool, sizeof(struct f_path_mask));
 	if (tt->kind == PM_ASN_EXPR) {
-	  INTERPRET((struct f_inst *) tt->val, 0);
+	  fret = interpret(fs, (struct f_inst *) tt->val);
 	  (*vv)->kind = PM_ASN;
 	  if (res.type != T_INT) {
 	    runtime( "Error resolving path mask template: value not an integer" );
@@ -680,11 +680,10 @@
       }
       /* It is actually possible to have t->data NULL */
 
-      fret = interpret(fs, t->data);
-      if (fret >= F_RETURN)
-	return fret;
+      what = t->data;
+      jmp = what->fi_code;
+      continue;
     }
-    break;
   case FI_IP_MASK: /* IP.MASK(val) */
     ARG(1, T_IP);
     ARG(2, T_INT);
