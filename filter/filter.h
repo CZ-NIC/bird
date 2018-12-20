@@ -90,20 +90,13 @@ struct f_inst {		/* Instruction */
   union {
     uint i;
     void *p;
-  } a1;			/* The first argument */
-  union {
-    uint i;
-    void *p;
-  } a2;			/* The second argument */
-  union {
-    int i;
-    void *p;
-  } a3;			/* The third argument */
+  } a[3];		/* The three arguments */
   int lineno;
 };
 
-#define arg1 a1.p
-#define arg2 a2.p
+#define arg1 a[0].p
+#define arg2 a[1].p
+#define arg3 a[2].p
 
 /* Not enough fields in f_inst for three args used by roa_check() */
 struct f_inst_roa_check {
