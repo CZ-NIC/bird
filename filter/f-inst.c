@@ -10,38 +10,38 @@
  */
 
 /* Binary operators */
-  case FI_ADD:
+  INST(FI_ADD) {
     ARG_T(1,0,T_INT);
     ARG_T(2,1,T_INT);
     res.val.i += v1.val.i;
-    break;
-  case FI_SUBTRACT:
+  }
+  INST(FI_SUBTRACT) {
     ARG_T(1,0,T_INT);
     ARG_T(2,1,T_INT);
     res.val.i -= v1.val.i;
-    break;
-  case FI_MULTIPLY:
+  }
+  INST(FI_MULTIPLY) {
     ARG_T(1,0,T_INT);
     ARG_T(2,1,T_INT);
     res.val.i *= v1.val.i;
-    break;
-  case FI_DIVIDE:
+  }
+  INST(FI_DIVIDE) {
     ARG_T(1,0,T_INT);
     ARG_T(2,1,T_INT);
     if (v1.val.i == 0) runtime( "Mother told me not to divide by 0" );
     res.val.i /= v1.val.i;
-    break;
-  case FI_AND:
+  }
+  INST(FI_AND) {
     ARG_T(1,0,T_BOOL);
     if (res.val.i)
       ARG_T(2,0,T_BOOL);
-    break;
-  case FI_OR:
+  }
+  INST(FI_OR) {
     ARG_T(1,0,T_BOOL);
     if (!res.val.i)
       ARG_T(2,0,T_BOOL);
-    break;
-  case FI_PAIR_CONSTRUCT:
+  }
+  INST(FI_PAIR_CONSTRUCT) {
     ARG(1,T_INT);
     ARG(2,T_INT);
     u1 = v1.val.i;
@@ -50,9 +50,9 @@
       runtime( "Can't operate with value out of bounds in pair constructor" );
     res.val.i = (u1 << 16) | u2;
     res.type = T_PAIR;
-    break;
+  }
 
-  case FI_EC_CONSTRUCT:
+  INST(FI_EC_CONSTRUCT) {
     {
       ARG_ANY(1);
       ARG(2, T_INT);
@@ -94,10 +94,10 @@
       if (check && (val > 0xFFFF))
 	runtime("Can't operate with value out of bounds in EC constructor");
 
-      break;
+    }
     }
 
-  case FI_LC_CONSTRUCT:
+  INST(FI_LC_CONSTRUCT) {
     {
       ARG(1, T_INT);
       ARG(2, T_INT);
@@ -106,10 +106,10 @@
       res.type = T_LC;
       res.val.lc = (lcomm) { v1.val.i, v2.val.i, v3.val.i };
 
-      break;
+    }
     }
 
-  case FI_PATHMASK_CONSTRUCT:
+  INST(FI_PATHMASK_CONSTRUCT) {
     {
       struct f_path_mask *tt = what->a[0].p, *vbegin, **vv = &vbegin;
 
@@ -132,26 +132,26 @@
       }
 
       res = (struct f_val) { .type = T_PATH_MASK, .val.path_mask = vbegin };
-      break;
+    }
     }
 
 /* Relational operators */
 
-  case FI_NEQ:
+  INST(FI_NEQ) {
     ARG_ANY(1);
     ARG_ANY(2);
     res.type = T_BOOL;
     res.val.i = !val_same(v1, v2);
-    break;
+  }
 
-  case FI_EQ:
+  INST(FI_EQ) {
     ARG_ANY(1);
     ARG_ANY(2);
     res.type = T_BOOL;
     res.val.i = val_same(v1, v2);
-    break;
+  }
 
-  case FI_LT:
+  INST(FI_LT) {
     ARG_ANY(1);
     ARG_ANY(2);
     i = val_compare(v1, v2);
@@ -159,9 +159,9 @@
       runtime( "Can't compare values of incompatible types" );
     res.type = T_BOOL;
     res.val.i = (i == -1);
-    break;
+  }
 
-  case FI_LTE:
+  INST(FI_LTE) {
     ARG_ANY(1);
     ARG_ANY(2);
     i = val_compare(v1, v2);
@@ -169,14 +169,14 @@
       runtime( "Can't compare values of incompatible types" );
     res.type = T_BOOL;
     res.val.i = (i != 1);
-    break;
+  }
 
-  case FI_NOT:
+  INST(FI_NOT) {
     ARG_T(1,0,T_BOOL);
     res.val.i = !res.val.i;
-    break;
+  }
 
-  case FI_MATCH:
+  INST(FI_MATCH) {
     ARG_ANY(1);
     ARG_ANY(2);
     res.type = T_BOOL;
@@ -184,9 +184,9 @@
     if (res.val.i == CMP_ERROR)
       runtime( "~ applied on unknown type pair" );
     res.val.i = !!res.val.i;
-    break;
+  }
 
-  case FI_NOT_MATCH:
+  INST(FI_NOT_MATCH) {
     ARG_ANY(1);
     ARG_ANY(2);
     res.type = T_BOOL;
@@ -194,14 +194,14 @@
     if (res.val.i == CMP_ERROR)
       runtime( "!~ applied on unknown type pair" );
     res.val.i = !res.val.i;
-    break;
+  }
 
-  case FI_DEFINED:
+  INST(FI_DEFINED) {
     ARG_ANY(1);
     res.type = T_BOOL;
     res.val.i = (v1.type != T_VOID) && !undef_value(v1);
-    break;
-  case FI_TYPE:
+  }
+  INST(FI_TYPE) {
     ARG_ANY(1); /* There may be more types supporting this operation */
     switch (v1.type)
     {
@@ -212,15 +212,15 @@
       default:
 	runtime( "Can't determine type of this item" );
     }
-    break;
-  case FI_IS_V4:
+  }
+  INST(FI_IS_V4) {
     ARG(1, T_IP);
     res.type = T_BOOL;
     res.val.i = ipa_is_ip4(v1.val.ip);
-    break;
+  }
 
   /* Set to indirect value, a[0] = variable, a[1] = value */
-  case FI_SET:
+  INST(FI_SET) {
     ARG_ANY(2);
     sym = what->a[0].p;
     vp = sym->def;
@@ -236,31 +236,30 @@
       runtime( "Assigning to variable of incompatible type" );
     }
     *vp = v2;
-    break;
+  }
 
     /* some constants have value in a[1], some in *a[0].p, strange. */
-  case FI_CONSTANT:	/* integer (or simple type) constant, string, set, or prefix_set */
+  INST(FI_CONSTANT) {	/* integer (or simple type) constant, string, set, or prefix_set */
     res = what->val;
-    break;
-  case FI_VARIABLE:
-  case FI_CONSTANT_INDIRECT:
+  }
+  INST(FI_VARIABLE) {
     res = * ((struct f_val *) what->a[0].p);
-    break;
-  case FI_PRINT:
+  }
+  INST(FI_CONSTANT_INDIRECT) {
+    res = * ((struct f_val *) what->a[0].p);
+  }
+  INST(FI_PRINT) {
     ARG_ANY(1);
     val_format(v1, &fs->buf);
-    break;
-  case FI_CONDITION:
+  }
+  INST(FI_CONDITION) {
     ARG_T(1, 0, T_BOOL);
     if (res.val.i)
       ARG_ANY_T(2,0);
     else
       ARG_ANY_T(3,0);
-    break;
-  case FI_NOP:
-    debug( "No operation\n" );
-    break;
-  case FI_PRINT_AND_DIE:
+  }
+  INST(FI_PRINT_AND_DIE) {
     ARG_ANY(1);
     if ((what->a[1].i == F_NOP || (what->a[1].i != F_NONL && what->a[0].p)) &&
 	!(fs->flags & FF_SILENT))
@@ -280,8 +279,8 @@
     default:
       bug( "unknown return type: Can't happen");
     }
-    break;
-  case FI_RTA_GET:	/* rta access */
+  }
+  INST(FI_RTA_GET) {	/* rta access */
     {
       ACCESS_RTE;
       struct rta *rta = (*fs->rte)->attrs;
@@ -303,8 +302,8 @@
 	bug("Invalid static attribute access (%x)", res.type);
       }
     }
-    break;
-  case FI_RTA_SET:
+  }
+  INST(FI_RTA_SET) {
     ACCESS_RTE;
     ARG_ANY(1);
     if (what->aux != v1.type)
@@ -369,8 +368,8 @@
 	bug("Invalid static attribute access (%x)", res.type);
       }
     }
-    break;
-  case FI_EA_GET:	/* Access to extended attributes */
+  }
+  INST(FI_EA_GET) {	/* Access to extended attributes */
     ACCESS_RTE;
     ACCESS_EATTRS;
     {
@@ -457,8 +456,8 @@
 	bug("Unknown type in e,a");
       }
     }
-    break;
-  case FI_EA_SET:
+  }
+  INST(FI_EA_SET) {
     ACCESS_RTE;
     ACCESS_EATTRS;
     ARG_ANY(1);
@@ -551,21 +550,21 @@
       l->next = *fs->eattrs;
       *fs->eattrs = l;
     }
-    break;
-  case FI_PREF_GET:
+  }
+  INST(FI_PREF_GET) {
     ACCESS_RTE;
     res.type = T_INT;
     res.val.i = (*fs->rte)->pref;
-    break;
-  case FI_PREF_SET:
+  }
+  INST(FI_PREF_SET) {
     ACCESS_RTE;
     ARG(1,T_INT);
     if (v1.val.i > 0xFFFF)
       runtime( "Setting preference value out of bounds" );
     f_rte_cow(fs);
     (*fs->rte)->pref = v1.val.i;
-    break;
-  case FI_LENGTH:	/* Get length of */
+  }
+  INST(FI_LENGTH) {	/* Get length of */
     ARG_ANY(1);
     res.type = T_INT;
     switch(v1.type) {
@@ -576,8 +575,8 @@
     case T_LCLIST: res.val.i = lc_set_get_size(v1.val.ad); break;
     default: runtime( "Prefix, path, clist or eclist expected" );
     }
-    break;
-  case FI_SADR_SRC: 	/* Get SADR src prefix */
+  }
+  INST(FI_SADR_SRC) { 	/* Get SADR src prefix */
     ARG(1, T_NET);
     if (!net_is_sadr(v1.val.net))
       runtime( "SADR expected" );
@@ -590,8 +589,8 @@
       res.type = T_NET;
       res.val.net = src;
     }
-    break;
-  case FI_ROA_MAXLEN: 	/* Get ROA max prefix length */
+  }
+  INST(FI_ROA_MAXLEN) { 	/* Get ROA max prefix length */
     ARG(1, T_NET);
     if (!net_is_roa(v1.val.net))
       runtime( "ROA expected" );
@@ -600,8 +599,8 @@
     res.val.i = (v1.val.net->type == NET_ROA4) ?
       ((net_addr_roa4 *) v1.val.net)->max_pxlen :
       ((net_addr_roa6 *) v1.val.net)->max_pxlen;
-    break;
-  case FI_ROA_ASN: 	/* Get ROA ASN */
+  }
+  INST(FI_ROA_ASN) { 	/* Get ROA ASN */
     ARG(1, T_NET);
     if (!net_is_roa(v1.val.net))
       runtime( "ROA expected" );
@@ -610,55 +609,56 @@
     res.val.i = (v1.val.net->type == NET_ROA4) ?
       ((net_addr_roa4 *) v1.val.net)->asn :
       ((net_addr_roa6 *) v1.val.net)->asn;
-    break;
-  case FI_IP:	/* Convert prefix to ... */
+  }
+  INST(FI_IP) {	/* Convert prefix to ... */
     ARG(1, T_NET);
     res.type = T_IP;
     res.val.ip = net_prefix(v1.val.net);
-    break;
-  case FI_ROUTE_DISTINGUISHER:
+  }
+  INST(FI_ROUTE_DISTINGUISHER) {
     ARG(1, T_NET);
     if (!net_is_vpn(v1.val.net))
       runtime( "VPN address expected" );
     res.type = T_RD;
     res.val.ec = net_rd(v1.val.net);
-    break;
-  case FI_AS_PATH_FIRST:	/* Get first ASN from AS PATH */
+  }
+  INST(FI_AS_PATH_FIRST) {	/* Get first ASN from AS PATH */
     ARG(1, T_PATH);
 
     as = 0;
     as_path_get_first(v1.val.ad, &as);
     res.type = T_INT;
     res.val.i = as;
-    break;
-  case FI_AS_PATH_LAST:	/* Get last ASN from AS PATH */
+  }
+  INST(FI_AS_PATH_LAST) {	/* Get last ASN from AS PATH */
     ARG(1, T_PATH);
 
     as = 0;
     as_path_get_last(v1.val.ad, &as);
     res.type = T_INT;
     res.val.i = as;
-    break;
-  case FI_AS_PATH_LAST_NAG:	/* Get last ASN from non-aggregated part of AS PATH */
+  }
+  INST(FI_AS_PATH_LAST_NAG) {	/* Get last ASN from non-aggregated part of AS PATH */
     ARG(1, T_PATH);
 
     res.type = T_INT;
     res.val.i = as_path_get_last_nonaggregated(v1.val.ad);
-    break;
-  case FI_RETURN:
+  }
+  INST(FI_RETURN) {
     ARG_ANY_T(1,0);
     return F_RETURN;
-  case FI_CALL:
+  }
+  INST(FI_CALL) {
     ARG_ANY_T(1,0);
     fret = interpret(fs, what->a[1].p);
     if (fret > F_RETURN)
       return fret;
-    break;
-  case FI_CLEAR_LOCAL_VARS:	/* Clear local variables */
+  }
+  INST(FI_CLEAR_LOCAL_VARS) {	/* Clear local variables */
     for (sym = what->a[0].p; sym != NULL; sym = sym->aux2)
       ((struct f_val *) sym->def)->type = T_VOID;
-    break;
-  case FI_SWITCH:
+  }
+  INST(FI_SWITCH) {
     ARG_ANY(1);
     {
       struct f_tree *t = find_tree(what->a[1].p, v1);
@@ -676,8 +676,8 @@
       if (fret >= F_RETURN)
 	return fret;
     }
-    break;
-  case FI_IP_MASK: /* IP.MASK(val) */
+  }
+  INST(FI_IP_MASK) { /* IP.MASK(val) */
     ARG(1, T_IP);
     ARG(2, T_INT);
 
@@ -685,21 +685,21 @@
     res.val.ip = ipa_is_ip4(v1.val.ip) ?
       ipa_from_ip4(ip4_and(ipa_to_ip4(v1.val.ip), ip4_mkmask(v2.val.i))) :
       ipa_from_ip6(ip6_and(ipa_to_ip6(v1.val.ip), ip6_mkmask(v2.val.i)));
-    break;
+  }
 
-  case FI_EMPTY:	/* Create empty attribute */
+  INST(FI_EMPTY) {	/* Create empty attribute */
     res.type = what->aux;
     res.val.ad = adata_empty(fs->pool, 0);
-    break;
-  case FI_PATH_PREPEND:	/* Path prepend */
+  }
+  INST(FI_PATH_PREPEND) {	/* Path prepend */
     ARG(1, T_PATH);
     ARG(2, T_INT);
 
     res.type = T_PATH;
     res.val.ad = as_path_prepend(fs->pool, v1.val.ad, v2.val.i);
-    break;
+  }
 
-  case FI_CLIST_ADD_DEL:	/* (Extended) Community list add or delete */
+  INST(FI_CLIST_ADD_DEL) {	/* (Extended) Community list add or delete */
     ARG_ANY(1);
     ARG_ANY(2);
     if (v1.type == T_PATH)
@@ -864,9 +864,9 @@
     else
       runtime("Can't add/delete to non-[e|l]clist");
 
-    break;
+  }
 
-  case FI_ROA_CHECK:	/* ROA Check */
+  INST(FI_ROA_CHECK) {	/* ROA Check */
     if (what->arg1)
     {
       ARG(1, T_NET);
@@ -904,23 +904,21 @@
     else
       res.val.i = net_roa_check(table, v1.val.net, as);
 
-    break;
+  }
 
-  case FI_FORMAT:	/* Format */
+  INST(FI_FORMAT) {	/* Format */
     ARG_ANY(1);
 
     res.type = T_STRING;
     res.val.s = val_format_str(fs, v1);
-    break;
+  }
 
-  case FI_ASSERT:	/* Birdtest Assert */
+  INST(FI_ASSERT) {	/* Birdtest Assert */
     ARG(1, T_BOOL);
 
     res.type = v1.type;
     res.val = v1.val;
 
     CALL(bt_assert_hook, res.val.i, what);
-    break;
+  }
 
-  default:
-    bug( "Unknown instruction %d (%c)", what->fi_code, what->fi_code & 0xff);
