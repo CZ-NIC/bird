@@ -189,15 +189,17 @@ f_generate_dpair(struct f_inst *t1, struct f_inst *t2)
   struct f_inst *rv;
 
   if ((t1->fi_code == FI_CONSTANT) && (t2->fi_code == FI_CONSTANT)) {
-    if ((t1->aux != T_INT) || (t2->aux != T_INT))
+    if ((t1->val.type != T_INT) || (t2->val.type != T_INT))
       cf_error( "Can't operate with value of non-integer type in pair constructor");
 
     check_u16(t1->a[1].i);
     check_u16(t2->a[1].i);
 
     rv = f_new_inst(FI_CONSTANT);
-    rv->aux = T_PAIR;
-    rv->a[1].i = pair(t1->a[1].i, t2->a[1].i);
+    rv->val = (struct f_val) {
+      .type = T_PAIR,
+      .val.i = pair(t1->a[1].i, t2->a[1].i),
+    };
   }
   else {
     rv = f_new_inst(FI_PAIR_CONSTRUCT);
@@ -217,26 +219,12 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
 
   if (tk->fi_code == FI_CONSTANT) {
     c1 = 1;
-
-    if (tk->aux == T_INT) {
-      ipv4_used = 0; key = tk->a[1].i;
-    }
-    else if (tk->aux == T_QUAD) {
-      ipv4_used = 1; key = tk->a[1].i;
-    }
-    else
-      cf_error("Can't operate with key of non-integer/IPv4 type in EC constructor");
-  }
-
-  /* IP->Quad implicit conversion */
-  else if (tk->fi_code == FI_CONSTANT_INDIRECT) {
-    c1 = 1;
-    struct f_val *val = tk->a[0].p;
+    struct f_val *val = &(tk->val);
 
     if (val->type == T_INT) {
       ipv4_used = 0; key = val->val.i;
     }
-    else if (val->type == T_QUAD) {
+    else if (tk->val.type == T_QUAD) {
       ipv4_used = 1; key = val->val.i;
     }
     else if ((val->type == T_IP) && ipa_is_ip4(val->val.ip)) {
@@ -247,10 +235,10 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
   }
 
   if (tv->fi_code == FI_CONSTANT) {
-    if (tv->aux != T_INT)
+    if (tv->val.type != T_INT)
       cf_error("Can't operate with value of non-integer type in EC constructor");
     c2 = 1;
-    val2 = tv->a[1].i;
+    val2 = tv->val.val.i;
   }
 
   if (c1 && c2) {
@@ -271,11 +259,11 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
       ec = ec_as4(kind, key, val2);
     }
 
-    NEW_F_VAL;
-    rv = f_new_inst(FI_CONSTANT_INDIRECT);
-    rv->a[0].p = val;
-    val->type = T_EC;
-    val->val.ec = ec;
+    rv = f_new_inst(FI_CONSTANT);
+    rv->val = (struct f_val) {
+      .type = T_EC,
+      .val.ec = ec,
+    };
   }
   else {
     rv = f_new_inst(FI_EC_CONSTRUCT);
@@ -293,15 +281,14 @@ f_generate_lc(struct f_inst *t1, struct f_inst *t2, struct f_inst *t3)
   struct f_inst *rv;
 
   if ((t1->fi_code == FI_CONSTANT) && (t2->fi_code == FI_CONSTANT) && (t3->fi_code == FI_CONSTANT)) {
-    if ((t1->aux != T_INT) || (t2->aux != T_INT) || (t3->aux != T_INT))
+    if ((t1->val.type != T_INT) || (t2->val.type != T_INT) || (t3->val.type != T_INT))
       cf_error( "LC - Can't operate with value of non-integer type in tuple constructor");
 
-    rv = f_new_inst(FI_CONSTANT_INDIRECT);
-
-    NEW_F_VAL;
-    rv->a[0].p = val;
-    val->type = T_LC;
-    val->val.lc = (lcomm) { t1->a[1].i, t2->a[1].i, t3->a[1].i };
+    rv = f_new_inst(FI_CONSTANT);
+    rv->val = (struct f_val) {
+      .type = T_LC,
+      .val.lc = (lcomm) { t1->a[1].i, t2->a[1].i, t3->a[1].i },
+    };
   }
   else
   {
@@ -325,12 +312,11 @@ f_generate_path_mask(struct f_path_mask *t)
     }
   }
 
-  NEW_F_VAL;
-  val->type = T_PATH_MASK;
-  val->val.path_mask = t;
-
-  struct f_inst *rv = f_new_inst(FI_CONSTANT_INDIRECT);
-  rv->a[0].p = val;
+  struct f_inst *rv = f_new_inst(FI_CONSTANT);
+  rv->val = (struct f_val) {
+    .type = T_PATH_MASK,
+    .val.path_mask = t,
+  };
 
   return rv;
 }
@@ -771,8 +757,6 @@ switch_body: /* EMPTY */ { $$ = NULL; }
  }
  ;
 
-/* CONST '(' expr ')' { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_INT; $$->a[1].i = $3; } */
-
 bgp_path_expr:
    symbol       { $$ = $1; }
  | '(' term ')' { $$ = $2; }
@@ -792,16 +776,21 @@ bgp_path_tail:
  ;
 
 constant:
-   NUM    { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_INT;  $$->a[1].i = $1; }
- | TRUE   { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_BOOL; $$->a[1].i = 1;  }
- | FALSE  { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_BOOL; $$->a[1].i = 0;  }
- | TEXT   { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_STRING; $$->a[1].p = $1; }
- | fipa	  { NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); $$->a[0].p = val; *val = $1; }
- | VPN_RD { NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); val->type = T_RD; val->val.ec = $1; $$->a[0].p = val; }
- | net_   { NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); val->type = T_NET; val->val.net = $1; $$->a[0].p = val; }
- | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(FI_CONSTANT); $$->aux = T_SET; $$->a[1].p = build_tree($2); DBG( "ook\n" ); }
- | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_PREFIX_SET;  $$->a[1].p = $2; }
- | ENUM	  { $$ = f_new_inst(FI_CONSTANT); $$->aux = $1 >> 16; $$->a[1].i = $1 & 0xffff; }
+   NUM    { $$ = f_new_inst(FI_CONSTANT); $$->val = (struct f_val) { .type = T_INT, .val.i = $1, }; }
+ | TRUE   { $$ = f_new_inst(FI_CONSTANT); $$->val = (struct f_val) { .type = T_BOOL, .val.i = 1, }; }
+ | FALSE  { $$ = f_new_inst(FI_CONSTANT); $$->val = (struct f_val) { .type = T_BOOL, .val.i = 0, }; }
+ | TEXT   { $$ = f_new_inst(FI_CONSTANT); $$->val = (struct f_val) { .type = T_STRING, .val.s = $1, }; }
+ | fipa	  { $$ = f_new_inst(FI_CONSTANT); $$->val = $1; }
+ | VPN_RD { $$ = f_new_inst(FI_CONSTANT); $$->val = (struct f_val) { .type = T_RD, .val.ec = $1, }; }
+ | net_   { $$ = f_new_inst(FI_CONSTANT); $$->val = (struct f_val) { .type = T_NET, .val.net = $1, }; }
+ | '[' set_items ']' {
+     DBG( "We've got a set here..." );
+     $$ = f_new_inst(FI_CONSTANT);
+     $$->val = (struct f_val) { .type = T_SET, .val.t = build_tree($2), };
+     DBG( "ook\n" );
+ }
+ | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT); $$->val = (struct f_val) { .type = T_PREFIX_SET, .val.ti = $2, }; }
+ | ENUM	  { $$ = f_new_inst(FI_CONSTANT); $$->val = (struct f_val) { .type = $1 >> 16, .val.i = $1 & 0xffff, }; }
  ;
 
 constructor:
