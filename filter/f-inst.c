@@ -240,16 +240,7 @@
 
     /* some constants have value in a[1], some in *a[0].p, strange. */
   case FI_CONSTANT:	/* integer (or simple type) constant, string, set, or prefix_set */
-    res.type = what->aux;
-
-    if (res.type == T_PREFIX_SET)
-      res.val.ti = what->a[1].p;
-    else if (res.type == T_SET)
-      res.val.t = what->a[1].p;
-    else if (res.type == T_STRING)
-      res.val.s = what->a[1].p;
-    else
-      res.val.i = what->a[1].i;
+    res = what->val;
     break;
   case FI_VARIABLE:
   case FI_CONSTANT_INDIRECT:

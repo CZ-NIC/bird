@@ -14,6 +14,39 @@
 #include "nest/route.h"
 #include "nest/attrs.h"
 
+struct f_prefix {
+  net_addr net;
+  u8 lo, hi;
+};
+
+struct f_val {
+  int type;		/* T_*  */
+  union {
+    uint i;
+    u64 ec;
+    lcomm lc;
+    ip_addr ip;
+    const net_addr *net;
+    char *s;
+    struct f_tree *t;
+    struct f_trie *ti;
+    struct adata *ad;
+    struct f_path_mask *path_mask;
+  } val;
+};
+
+struct f_dynamic_attr {
+  int type;
+  int f_type;
+  int ea_code;
+};
+
+struct f_static_attr {
+  int f_type;
+  int sa_code;
+  int readonly;
+};
+
 /* Filter instruction types */
 
 #define FI__TWOCHAR(a,b)	((a<<8) | b)
@@ -88,9 +121,12 @@ struct f_inst {		/* Instruction */
   enum f_instruction_code fi_code;
   u16 aux;		/* Extension to instruction code, T_*, EA_*, EAF_*  */
   union {
-    uint i;
-    void *p;
-  } a[3];		/* The three arguments */
+    union {
+      uint i;
+      void *p;
+    } a[3];		/* The three arguments */
+    struct f_val val;	/* The value if FI_CONSTANT */
+  };
   int lineno;
 };
 
@@ -103,40 +139,6 @@ struct f_inst_roa_check {
   struct f_inst i;
   struct rtable_config *rtc;
 };
-
-struct f_prefix {
-  net_addr net;
-  u8 lo, hi;
-};
-
-struct f_val {
-  int type;		/* T_*  */
-  union {
-    uint i;
-    u64 ec;
-    lcomm lc;
-    ip_addr ip;
-    const net_addr *net;
-    char *s;
-    struct f_tree *t;
-    struct f_trie *ti;
-    struct adata *ad;
-    struct f_path_mask *path_mask;
-  } val;
-};
-
-struct f_dynamic_attr {
-  int type;
-  int f_type;
-  int ea_code;
-};
-
-struct f_static_attr {
-  int f_type;
-  int sa_code;
-  int readonly;
-};
-
 struct filter {
   char *name;
   struct f_inst *root;
