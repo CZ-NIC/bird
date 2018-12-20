@@ -634,6 +634,7 @@ interpret(struct filter_state *fs, struct f_inst *what)
   u32 as;
 
 #define res fs->stack[fs->stack_ptr].val
+#define v0 res
 #define v1 fs->stack[fs->stack_ptr + 1].val
 #define v2 fs->stack[fs->stack_ptr + 2].val
 #define v3 fs->stack[fs->stack_ptr + 3].val
@@ -650,14 +651,17 @@ interpret(struct filter_state *fs, struct f_inst *what)
   return F_ERROR; \
 } while(0)
 
-#define ARG_ANY(n) INTERPRET(what->a##n.p, n)
+#define ARG_ANY_T(n, tt) INTERPRET(what->a##n.p, tt)
+#define ARG_ANY(n) ARG_ANY_T(n, n)
 
-#define ARG(n,t) do { \
-  ARG_ANY(n); \
-  if (v##n.type != t) \
+#define ARG_T(n,tt,t) do { \
+  ARG_ANY_T(n,tt); \
+  if (v##tt.type != t) \
     runtime("Argument %d of instruction %s must be of type %02x, got %02x", \
-	    n, f_instruction_name(what->fi_code), t, v##n.type); \
+	    n, f_instruction_name(what->fi_code), t, v##tt.type); \
 } while (0)
+
+#define ARG(n,t) ARG_T(n,n,t)
 
 #define INTERPRET(what_, n) do { \
   fs->stack_ptr += n; \
