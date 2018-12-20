@@ -51,6 +51,7 @@ struct f_static_attr {
 
 #define FI__TWOCHAR(a,b)	((a<<8) | b)
 #define FI__LIST \
+  F(FI_NOP,			  0, '0') \
   F(FI_ADD,			  0, '+') \
   F(FI_SUBTRACT,		  0, '-') \
   F(FI_MULTIPLY,		  0, '*') \
@@ -77,7 +78,6 @@ struct f_static_attr {
   F(FI_CONSTANT_INDIRECT,	  0, 'C') \
   F(FI_PRINT,			  0, 'p') \
   F(FI_CONDITION,		  0, '?') \
-  F(FI_NOP,			  0, '0') \
   F(FI_PRINT_AND_DIE,		'p', ',') \
   F(FI_RTA_GET,			  0, 'a') \
   F(FI_RTA_SET,			'a', 'S') \
