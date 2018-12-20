@@ -66,18 +66,16 @@ f_generate_complex(int operation, int operation_aux, struct f_dynamic_attr da, s
 struct f_inst *
 f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn)
 {
-  struct f_inst_roa_check *ret = cfg_allocz(sizeof(struct f_inst_roa_check));
-  ret->i.fi_code = FI_ROA_CHECK;
-  ret->i.lineno = ifs->lino;
-  ret->i.arg1 = prefix;
-  ret->i.arg2 = asn;
+  struct f_inst *ret = f_new_inst(FI_ROA_CHECK);
+  ret->arg1 = prefix;
+  ret->arg2 = asn;
   /* prefix == NULL <-> asn == NULL */
 
   if (table->addr_type != NET_ROA4 && table->addr_type != NET_ROA6)
     cf_error("%s is not a ROA table", table->name);
-  ret->rtc = table;
+  ret->arg3 = table;
 
-  return &ret->i;
+  return ret;
 }
 
 static const char * const f_instruction_name_str[] = {
