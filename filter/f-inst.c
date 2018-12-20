@@ -259,14 +259,12 @@
     ARG_ANY(1);
     val_format(v1, &fs->buf);
     break;
-  case FI_CONDITION:	/* ? has really strange error value, so we can implement if ... else nicely :-) */
-    ARG(1, T_BOOL);
-    if (v1.val.i) {
-      ARG_ANY(2);
-      res.val.i = 0;
-    } else
-      res.val.i = 1;
-    res.type = T_BOOL;
+  case FI_CONDITION:
+    ARG_T(1, 0, T_BOOL);
+    if (res.val.i)
+      ARG_ANY_T(2,0);
+    else
+      ARG_ANY_T(3,0);
     break;
   case FI_NOP:
     debug( "No operation\n" );
