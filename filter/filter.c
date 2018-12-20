@@ -679,7 +679,14 @@ interpret(struct filter_state *fs, struct f_inst *what)
 
 #define BITFIELD_MASK(what_) (1u << EA_BIT_GET(what_->a[1].i))
 
-#include "filter/f-inst.c"
+      case FI_NOP:
+	bug("This shall not happen");
+
+#include "filter/f-inst-interpret.c"
+
+	break;
+      default:
+	bug( "Unknown instruction %d (%c)", what->fi_code, what->fi_code & 0xff);
 
 #undef res
 #undef runtime
