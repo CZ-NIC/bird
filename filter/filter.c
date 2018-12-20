@@ -18,8 +18,8 @@
  * A filter is represented by a tree of &f_inst structures, one structure per
  * "instruction". Each &f_inst contains @code, @aux value which is
  * usually the data type this instruction operates on and two generic
- * arguments (@a1, @a2). Some instructions contain pointer(s) to other
- * instructions in their (@a1, @a2) fields.
+ * arguments (@a[0], @a[1]). Some instructions contain pointer(s) to other
+ * instructions in their (@a[0], @a[1]) fields.
  *
  * Filters use a &f_val structure for their data. Each &f_val
  * contains type and value (types are constants prefixed with %T_). Few
@@ -651,7 +651,7 @@ interpret(struct filter_state *fs, struct f_inst *what)
   return F_ERROR; \
 } while(0)
 
-#define ARG_ANY_T(n, tt) INTERPRET(what->a##n.p, tt)
+#define ARG_ANY_T(n, tt) INTERPRET(what->a[n-1].p, tt)
 #define ARG_ANY(n) ARG_ANY_T(n, n)
 
 #define ARG_T(n,tt,t) do { \
@@ -677,7 +677,7 @@ interpret(struct filter_state *fs, struct f_inst *what)
 
 #define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
 
-#define BITFIELD_MASK(what_) (1u << EA_BIT_GET(what_->a2.i))
+#define BITFIELD_MASK(what_) (1u << EA_BIT_GET(what_->a[1].i))
 
 #include "filter/f-inst.c"
 
@@ -695,14 +695,14 @@ interpret(struct filter_state *fs, struct f_inst *what)
 
 
 #define ARG(n) \
-	if (!i_same(f1->a##n.p, f2->a##n.p)) \
+	if (!i_same(f1->a[n-1].p, f2->a[n-1].p)) \
 		return 0;
 
 #define ONEARG		ARG(1);
 #define TWOARGS		ONEARG; ARG(2);
 #define THREEARGS	TWOARGS; ARG(3);
 
-#define A2_SAME if (f1->a2.i != f2->a2.i) return 0;
+#define A2_SAME if (f1->a[1].i != f2->a[1].i) return 0;
 
 /*
  * i_same - function that does real comparing of instruction trees, you should call filter_same from outside
@@ -735,7 +735,7 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   case FI_LT:
   case FI_LTE: TWOARGS; break;
 
-  case FI_PATHMASK_CONSTRUCT: if (!pm_same(f1->a1.p, f2->a1.p)) return 0; break;
+  case FI_PATHMASK_CONSTRUCT: if (!pm_same(f1->a[0].p, f2->a[0].p)) return 0; break;
 
   case FI_NOT: ONEARG; break;
   case FI_NOT_MATCH:
@@ -751,8 +751,8 @@ i_same(struct f_inst *f1, struct f_inst *f2)
     ARG(2);
     {
       struct symbol *s1, *s2;
-      s1 = f1->a1.p;
-      s2 = f2->a1.p;
+      s1 = f1->a[0].p;
+      s2 = f2->a[0].p;
       if (strcmp(s1->name, s2->name))
 	return 0;
       if (s1->class != s2->class)
@@ -764,17 +764,17 @@ i_same(struct f_inst *f1, struct f_inst *f2)
     switch (f1->aux) {
 
     case T_PREFIX_SET:
-      if (!trie_same(f1->a2.p, f2->a2.p))
+      if (!trie_same(f1->a[1].p, f2->a[1].p))
 	return 0;
       break;
 
     case T_SET:
-      if (!same_tree(f1->a2.p, f2->a2.p))
+      if (!same_tree(f1->a[1].p, f2->a[1].p))
 	return 0;
       break;
 
     case T_STRING:
-      if (strcmp(f1->a2.p, f2->a2.p))
+      if (strcmp(f1->a[1].p, f2->a[1].p))
 	return 0;
       break;
 
@@ -784,12 +784,12 @@ i_same(struct f_inst *f1, struct f_inst *f2)
     break;
 
   case FI_CONSTANT_INDIRECT:
-    if (!val_same(* (struct f_val *) f1->a1.p, * (struct f_val *) f2->a1.p))
+    if (!val_same(* (struct f_val *) f1->a[0].p, * (struct f_val *) f2->a[0].p))
       return 0;
     break;
 
   case FI_VARIABLE:
-    if (strcmp((char *) f1->a2.p, (char *) f2->a2.p))
+    if (strcmp((char *) f1->a[1].p, (char *) f2->a[1].p))
       return 0;
     break;
   case FI_PRINT: case FI_LENGTH: ONEARG; break;
@@ -812,12 +812,12 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   case FI_ROUTE_DISTINGUISHER: ONEARG; break;
   case FI_CALL: /* Call rewriting trickery to avoid exponential behaviour */
              ONEARG;
-	     if (!i_same(f1->a2.p, f2->a2.p))
+	     if (!i_same(f1->a[1].p, f2->a[1].p))
 	       return 0;
-	     f2->a2.p = f1->a2.p;
+	     f2->a[1].p = f1->a[1].p;
 	     break;
   case FI_CLEAR_LOCAL_VARS: break; /* internal instruction */
-  case FI_SWITCH: ONEARG; if (!same_tree(f1->a2.p, f2->a2.p)) return 0; break;
+  case FI_SWITCH: ONEARG; if (!same_tree(f1->a[1].p, f2->a[1].p)) return 0; break;
   case FI_IP_MASK: TWOARGS; break;
   case FI_PATH_PREPEND: TWOARGS; break;
   case FI_CLIST_ADD_DEL: TWOARGS; break;
