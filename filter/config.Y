@@ -559,7 +559,7 @@ filter:
 
 where_filter:
    WHERE term {
-     /* Construct 'IF term THEN ACCEPT; REJECT;' */
+     /* Construct 'IF term THEN { ACCEPT; } ELSE { REJECT; }' */
      struct filter *f = cfg_alloc(sizeof(struct filter));
      struct f_inst *i, *acc, *rej;
      acc = f_new_inst(FI_PRINT_AND_DIE);	/* ACCEPT */
@@ -571,7 +571,7 @@ where_filter:
      i = f_new_inst(FI_CONDITION);			/* IF */
      i->a1.p = $2;
      i->a2.p = acc;
-     i->next = rej;
+     i->a3.p = rej;
      f->name = NULL;
      f->root = i;
      $$ = f;
@@ -1005,12 +1005,10 @@ cmd:
      $$->a2.p = $4;
    }
  | IF term THEN block ELSE block {
-     struct f_inst *i = f_new_inst(FI_CONDITION);
-     i->a1.p = $2;
-     i->a2.p = $4;
      $$ = f_new_inst(FI_CONDITION);
-     $$->a1.p = i;
-     $$->a2.p = $6;
+     $$->a1.p = $2;
+     $$->a2.p = $4;
+     $$->a3.p = $6;
    }
  | SYM '=' term ';' {
      DBG( "Ook, we'll set value\n" );
