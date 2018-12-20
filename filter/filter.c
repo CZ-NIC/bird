@@ -826,9 +826,9 @@ i_same(struct f_inst *f1, struct f_inst *f2)
   case FI_AS_PATH_LAST_NAG: ONEARG; break;
   case FI_ROA_CHECK:
     TWOARGS;
-    /* Does not really make sense - ROA check results may change anyway */
-    if (strcmp(((struct f_inst_roa_check *) f1)->rtc->name,
-	       ((struct f_inst_roa_check *) f2)->rtc->name))
+    /* FIXME: ROA check results may change anyway */
+    if (strcmp(f1->a[2].rtc->name,
+	       f2->a[2].rtc->name))
       return 0;
     break;
   case FI_FORMAT: ONEARG; break;

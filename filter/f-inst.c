@@ -890,7 +890,7 @@
       as_path_get_last(e->u.ptr, &as);
     }
 
-    struct rtable *table = ((struct f_inst_roa_check *) what)->rtc->table;
+    struct rtable *table = what->a[2].rtc->table;
     if (!table)
       runtime("Missing ROA table");
 
