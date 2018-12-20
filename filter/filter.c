@@ -793,7 +793,7 @@ i_same(struct f_inst *f1, struct f_inst *f2)
       return 0;
     break;
   case FI_PRINT: case FI_LENGTH: ONEARG; break;
-  case FI_CONDITION: TWOARGS; break;
+  case FI_CONDITION: THREEARGS; break;
   case FI_NOP: case FI_EMPTY: break;
   case FI_PRINT_AND_DIE: ONEARG; A2_SAME; break;
   case FI_PREF_GET:
