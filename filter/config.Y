@@ -178,7 +178,7 @@ f_generate_empty(struct f_dynamic_attr dyn)
   }
 
   struct f_inst *s = f_new_inst_da(FI_EA_SET, dyn);
-  s->a1.p = e;
+  s->a[0].p = e;
   return s;
 }
 
@@ -192,17 +192,17 @@ f_generate_dpair(struct f_inst *t1, struct f_inst *t2)
     if ((t1->aux != T_INT) || (t2->aux != T_INT))
       cf_error( "Can't operate with value of non-integer type in pair constructor");
 
-    check_u16(t1->a2.i);
-    check_u16(t2->a2.i);
+    check_u16(t1->a[1].i);
+    check_u16(t2->a[1].i);
 
     rv = f_new_inst(FI_CONSTANT);
     rv->aux = T_PAIR;
-    rv->a2.i = pair(t1->a2.i, t2->a2.i);
+    rv->a[1].i = pair(t1->a[1].i, t2->a[1].i);
   }
   else {
     rv = f_new_inst(FI_PAIR_CONSTRUCT);
-    rv->a1.p = t1;
-    rv->a2.p = t2;
+    rv->a[0].p = t1;
+    rv->a[1].p = t2;
   }
 
   return rv;
@@ -219,10 +219,10 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
     c1 = 1;
 
     if (tk->aux == T_INT) {
-      ipv4_used = 0; key = tk->a2.i;
+      ipv4_used = 0; key = tk->a[1].i;
     }
     else if (tk->aux == T_QUAD) {
-      ipv4_used = 1; key = tk->a2.i;
+      ipv4_used = 1; key = tk->a[1].i;
     }
     else
       cf_error("Can't operate with key of non-integer/IPv4 type in EC constructor");
@@ -231,7 +231,7 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
   /* IP->Quad implicit conversion */
   else if (tk->fi_code == FI_CONSTANT_INDIRECT) {
     c1 = 1;
-    struct f_val *val = tk->a1.p;
+    struct f_val *val = tk->a[0].p;
 
     if (val->type == T_INT) {
       ipv4_used = 0; key = val->val.i;
@@ -250,7 +250,7 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
     if (tv->aux != T_INT)
       cf_error("Can't operate with value of non-integer type in EC constructor");
     c2 = 1;
-    val2 = tv->a2.i;
+    val2 = tv->a[1].i;
   }
 
   if (c1 && c2) {
@@ -273,15 +273,15 @@ f_generate_ec(u16 kind, struct f_inst *tk, struct f_inst *tv)
 
     NEW_F_VAL;
     rv = f_new_inst(FI_CONSTANT_INDIRECT);
-    rv->a1.p = val;
+    rv->a[0].p = val;
     val->type = T_EC;
     val->val.ec = ec;
   }
   else {
     rv = f_new_inst(FI_EC_CONSTRUCT);
     rv->aux = kind;
-    rv->a1.p = tk;
-    rv->a2.p = tv;
+    rv->a[0].p = tk;
+    rv->a[1].p = tv;
   }
 
   return rv;
@@ -299,16 +299,16 @@ f_generate_lc(struct f_inst *t1, struct f_inst *t2, struct f_inst *t3)
     rv = f_new_inst(FI_CONSTANT_INDIRECT);
 
     NEW_F_VAL;
-    rv->a1.p = val;
+    rv->a[0].p = val;
     val->type = T_LC;
-    val->val.lc = (lcomm) { t1->a2.i, t2->a2.i, t3->a2.i };
+    val->val.lc = (lcomm) { t1->a[1].i, t2->a[1].i, t3->a[1].i };
   }
   else
   {
     rv = f_new_inst(FI_LC_CONSTRUCT);
-    rv->a1.p = t1;
-    rv->a2.p = t2;
-    rv->a3.p = t3;
+    rv->a[0].p = t1;
+    rv->a[1].p = t2;
+    rv->a[2].p = t3;
   }
 
   return rv;
@@ -320,7 +320,7 @@ f_generate_path_mask(struct f_path_mask *t)
   for (struct f_path_mask *tt = t; tt; tt = tt->next) {
     if (tt->kind == PM_ASN_EXPR) {
       struct f_inst *mrv = f_new_inst(FI_PATHMASK_CONSTRUCT);
-      mrv->a1.p = t;
+      mrv->a[0].p = t;
       return mrv;
     }
   }
@@ -330,7 +330,7 @@ f_generate_path_mask(struct f_path_mask *t)
   val->val.path_mask = t;
 
   struct f_inst *rv = f_new_inst(FI_CONSTANT_INDIRECT);
-  rv->a1.p = val;
+  rv->a[0].p = val;
 
   return rv;
 }
@@ -385,16 +385,16 @@ assert_done(struct f_inst *expr, const char *start, const char *end)
 {
   struct f_inst *i;
   i = f_new_inst(FI_ASSERT);
-  i->a1.p = expr;
+  i->a[0].p = expr;
 
   if (end >= start)
   {
-    i->a2.p = assert_copy_expr(start, end - start + 1);
+    i->a[1].p = assert_copy_expr(start, end - start + 1);
   }
   else
   {
     /* this is a break of lexer buffer */
-    i->a2.p = "???";
+    i->a[1].p = "???";
   }
 
   return i;
@@ -563,15 +563,15 @@ where_filter:
      struct filter *f = cfg_alloc(sizeof(struct filter));
      struct f_inst *i, *acc, *rej;
      acc = f_new_inst(FI_PRINT_AND_DIE);	/* ACCEPT */
-     acc->a1.p = NULL;
-     acc->a2.i = F_ACCEPT;
+     acc->a[0].p = NULL;
+     acc->a[1].i = F_ACCEPT;
      rej = f_new_inst(FI_PRINT_AND_DIE);	/* REJECT */
-     rej->a1.p = NULL;
-     rej->a2.i = F_REJECT;
+     rej->a[0].p = NULL;
+     rej->a[1].i = F_REJECT;
      i = f_new_inst(FI_CONDITION);			/* IF */
-     i->a1.p = $2;
-     i->a2.p = acc;
-     i->a3.p = rej;
+     i->a[0].p = $2;
+     i->a[1].p = acc;
+     i->a[2].p = rej;
      f->name = NULL;
      f->root = i;
      $$ = f;
@@ -588,7 +588,7 @@ function_body:
      if ($1) {
        /* Prepend instruction to clear local variables */
        $$ = f_new_inst(FI_CLEAR_LOCAL_VARS);
-       $$->a1.p = $1;
+       $$->a[0].p = $1;
        $$->next = $3;
      } else
        $$ = $3;
@@ -771,7 +771,7 @@ switch_body: /* EMPTY */ { $$ = NULL; }
  }
  ;
 
-/* CONST '(' expr ')' { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_INT; $$->a2.i = $3; } */
+/* CONST '(' expr ')' { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_INT; $$->a[1].i = $3; } */
 
 bgp_path_expr:
    symbol       { $$ = $1; }
@@ -792,16 +792,16 @@ bgp_path_tail:
  ;
 
 constant:
-   NUM    { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_INT;  $$->a2.i = $1; }
- | TRUE   { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_BOOL; $$->a2.i = 1;  }
- | FALSE  { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_BOOL; $$->a2.i = 0;  }
- | TEXT   { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_STRING; $$->a2.p = $1; }
- | fipa	  { NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); $$->a1.p = val; *val = $1; }
- | VPN_RD { NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); val->type = T_RD; val->val.ec = $1; $$->a1.p = val; }
- | net_   { NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); val->type = T_NET; val->val.net = $1; $$->a1.p = val; }
- | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(FI_CONSTANT); $$->aux = T_SET; $$->a2.p = build_tree($2); DBG( "ook\n" ); }
- | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_PREFIX_SET;  $$->a2.p = $2; }
- | ENUM	  { $$ = f_new_inst(FI_CONSTANT); $$->aux = $1 >> 16; $$->a2.i = $1 & 0xffff; }
+   NUM    { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_INT;  $$->a[1].i = $1; }
+ | TRUE   { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_BOOL; $$->a[1].i = 1;  }
+ | FALSE  { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_BOOL; $$->a[1].i = 0;  }
+ | TEXT   { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_STRING; $$->a[1].p = $1; }
+ | fipa	  { NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); $$->a[0].p = val; *val = $1; }
+ | VPN_RD { NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); val->type = T_RD; val->val.ec = $1; $$->a[0].p = val; }
+ | net_   { NEW_F_VAL; $$ = f_new_inst(FI_CONSTANT_INDIRECT); val->type = T_NET; val->val.net = $1; $$->a[0].p = val; }
+ | '[' set_items ']' { DBG( "We've got a set here..." ); $$ = f_new_inst(FI_CONSTANT); $$->aux = T_SET; $$->a[1].p = build_tree($2); DBG( "ook\n" ); }
+ | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT); $$->aux = T_PREFIX_SET;  $$->a[1].p = $2; }
+ | ENUM	  { $$ = f_new_inst(FI_CONSTANT); $$->aux = $1 >> 16; $$->a[1].i = $1 & 0xffff; }
  ;
 
 constructor:
@@ -823,14 +823,14 @@ function_call:
        cf_error("You can't call something which is not a function. Really.");
      DBG("You are calling function %s\n", $1->name);
      $$ = f_new_inst(FI_CALL);
-     $$->a1.p = inst;
-     $$->a2.p = $1->def;
+     $$->a[0].p = inst;
+     $$->a[1].p = $1->def;
      sym = $1->aux2;
      while (sym || inst) {
        if (!sym || !inst)
 	 cf_error("Wrong number of arguments for function %s.", $1->name);
        DBG( "You should pass parameter called %s\n", sym->name);
-       inst->a1.p = sym;
+       inst->a[0].p = sym;
        sym = sym->aux2;
        inst = inst->next;
      }
@@ -846,8 +846,8 @@ symbol:
        case SYM_VARIABLE_RANGE:
          $$ = f_new_inst(FI_VARIABLE);
        cv_common:
-         $$->a1.p = $1->def;
-         $$->a2.p = $1->name;
+         $$->a[0].p = $1->def;
+         $$->a[1].p = $1->name;
 	 break;
        case SYM_ATTRIBUTE:
          $$ = f_new_inst_da(FI_EA_GET, *((struct f_dynamic_attr *) $1->def));
@@ -871,22 +871,22 @@ static_attr:
 
 term:
    '(' term ')'		{ $$ = $2; }
- | term '+' term	{ $$ = f_new_inst(FI_ADD);	$$->a1.p = $1; $$->a2.p = $3; }
- | term '-' term	{ $$ = f_new_inst(FI_SUBTRACT);	$$->a1.p = $1; $$->a2.p = $3; }
- | term '*' term	{ $$ = f_new_inst(FI_MULTIPLY);	$$->a1.p = $1; $$->a2.p = $3; }
- | term '/' term	{ $$ = f_new_inst(FI_DIVIDE);	$$->a1.p = $1; $$->a2.p = $3; }
- | term AND term	{ $$ = f_new_inst(FI_AND);	$$->a1.p = $1; $$->a2.p = $3; }
- | term OR  term	{ $$ = f_new_inst(FI_OR);	$$->a1.p = $1; $$->a2.p = $3; }
- | term '=' term	{ $$ = f_new_inst(FI_EQ);	$$->a1.p = $1; $$->a2.p = $3; }
- | term NEQ term	{ $$ = f_new_inst(FI_NEQ);	$$->a1.p = $1; $$->a2.p = $3; }
- | term '<' term	{ $$ = f_new_inst(FI_LT);	$$->a1.p = $1; $$->a2.p = $3; }
- | term LEQ term	{ $$ = f_new_inst(FI_LTE);	$$->a1.p = $1; $$->a2.p = $3; }
- | term '>' term	{ $$ = f_new_inst(FI_LT);	$$->a1.p = $3; $$->a2.p = $1; }
- | term GEQ term	{ $$ = f_new_inst(FI_LTE);	$$->a1.p = $3; $$->a2.p = $1; }
- | term '~' term	{ $$ = f_new_inst(FI_MATCH);	$$->a1.p = $1; $$->a2.p = $3; }
- | term NMA term	{ $$ = f_new_inst(FI_NOT_MATCH);$$->a1.p = $1; $$->a2.p = $3; }
- | '!' term		{ $$ = f_new_inst(FI_NOT);	$$->a1.p = $2; }
- | DEFINED '(' term ')' { $$ = f_new_inst(FI_DEFINED);	$$->a1.p = $3; }
+ | term '+' term	{ $$ = f_new_inst(FI_ADD);	$$->a[0].p = $1; $$->a[1].p = $3; }
+ | term '-' term	{ $$ = f_new_inst(FI_SUBTRACT);	$$->a[0].p = $1; $$->a[1].p = $3; }
+ | term '*' term	{ $$ = f_new_inst(FI_MULTIPLY);	$$->a[0].p = $1; $$->a[1].p = $3; }
+ | term '/' term	{ $$ = f_new_inst(FI_DIVIDE);	$$->a[0].p = $1; $$->a[1].p = $3; }
+ | term AND term	{ $$ = f_new_inst(FI_AND);	$$->a[0].p = $1; $$->a[1].p = $3; }
+ | term OR  term	{ $$ = f_new_inst(FI_OR);	$$->a[0].p = $1; $$->a[1].p = $3; }
+ | term '=' term	{ $$ = f_new_inst(FI_EQ);	$$->a[0].p = $1; $$->a[1].p = $3; }
+ | term NEQ term	{ $$ = f_new_inst(FI_NEQ);	$$->a[0].p = $1; $$->a[1].p = $3; }
+ | term '<' term	{ $$ = f_new_inst(FI_LT);	$$->a[0].p = $1; $$->a[1].p = $3; }
+ | term LEQ term	{ $$ = f_new_inst(FI_LTE);	$$->a[0].p = $1; $$->a[1].p = $3; }
+ | term '>' term	{ $$ = f_new_inst(FI_LT);	$$->a[0].p = $3; $$->a[1].p = $1; }
+ | term GEQ term	{ $$ = f_new_inst(FI_LTE);	$$->a[0].p = $3; $$->a[1].p = $1; }
+ | term '~' term	{ $$ = f_new_inst(FI_MATCH);	$$->a[0].p = $1; $$->a[1].p = $3; }
+ | term NMA term	{ $$ = f_new_inst(FI_NOT_MATCH);$$->a[0].p = $1; $$->a[1].p = $3; }
+ | '!' term		{ $$ = f_new_inst(FI_NOT);	$$->a[0].p = $2; }
+ | DEFINED '(' term ')' { $$ = f_new_inst(FI_DEFINED);	$$->a[0].p = $3; }
 
  | symbol   { $$ = $1; }
  | constant { $$ = $1; }
@@ -898,18 +898,18 @@ term:
 
  | rtadot dynamic_attr { $$ = f_new_inst_da(FI_EA_GET, $2); }
 
- | term '.' IS_V4 { $$ = f_new_inst(FI_IS_V4); $$->a1.p = $1; }
- | term '.' TYPE { $$ = f_new_inst(FI_TYPE); $$->a1.p = $1; }
- | term '.' IP { $$ = f_new_inst(FI_IP); $$->a1.p = $1; $$->aux = T_IP; }
- | term '.' RD { $$ = f_new_inst(FI_ROUTE_DISTINGUISHER); $$->a1.p = $1; $$->aux = T_RD; }
- | term '.' LEN { $$ = f_new_inst(FI_LENGTH); $$->a1.p = $1; }
- | term '.' MAXLEN { $$ = f_new_inst(FI_ROA_MAXLEN); $$->a1.p = $1; }
- | term '.' ASN { $$ = f_new_inst(FI_ROA_ASN); $$->a1.p = $1; }
- | term '.' SRC { $$ = f_new_inst(FI_SADR_SRC); $$->a1.p = $1; }
- | term '.' MASK '(' term ')' { $$ = f_new_inst(FI_IP_MASK); $$->a1.p = $1; $$->a2.p = $5; }
- | term '.' FIRST { $$ = f_new_inst(FI_AS_PATH_FIRST); $$->a1.p = $1; }
- | term '.' LAST  { $$ = f_new_inst(FI_AS_PATH_LAST); $$->a1.p = $1; }
- | term '.' LAST_NONAGGREGATED  { $$ = f_new_inst(FI_AS_PATH_LAST_NAG); $$->a1.p = $1; }
+ | term '.' IS_V4 { $$ = f_new_inst(FI_IS_V4); $$->a[0].p = $1; }
+ | term '.' TYPE { $$ = f_new_inst(FI_TYPE); $$->a[0].p = $1; }
+ | term '.' IP { $$ = f_new_inst(FI_IP); $$->a[0].p = $1; $$->aux = T_IP; }
+ | term '.' RD { $$ = f_new_inst(FI_ROUTE_DISTINGUISHER); $$->a[0].p = $1; $$->aux = T_RD; }
+ | term '.' LEN { $$ = f_new_inst(FI_LENGTH); $$->a[0].p = $1; }
+ | term '.' MAXLEN { $$ = f_new_inst(FI_ROA_MAXLEN); $$->a[0].p = $1; }
+ | term '.' ASN { $$ = f_new_inst(FI_ROA_ASN); $$->a[0].p = $1; }
+ | term '.' SRC { $$ = f_new_inst(FI_SADR_SRC); $$->a[0].p = $1; }
+ | term '.' MASK '(' term ')' { $$ = f_new_inst(FI_IP_MASK); $$->a[0].p = $1; $$->a[1].p = $5; }
+ | term '.' FIRST { $$ = f_new_inst(FI_AS_PATH_FIRST); $$->a[0].p = $1; }
+ | term '.' LAST  { $$ = f_new_inst(FI_AS_PATH_LAST); $$->a[0].p = $1; }
+ | term '.' LAST_NONAGGREGATED  { $$ = f_new_inst(FI_AS_PATH_LAST_NAG); $$->a[0].p = $1; }
 
 /* Communities */
 /* This causes one shift/reduce conflict
@@ -923,15 +923,15 @@ term:
  | '-' EMPTY '-' { $$ = f_new_inst(FI_EMPTY); $$->aux = T_CLIST; }
  | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_EMPTY); $$->aux = T_ECLIST; }
  | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_EMPTY); $$->aux = T_LCLIST; }
- | PREPEND '(' term ',' term ')' { $$ = f_new_inst(FI_PATH_PREPEND); $$->a1.p = $3; $$->a2.p = $5; }
- | ADD '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_ADD_DEL); $$->a1.p = $3; $$->a2.p = $5; $$->aux = 'a'; }
- | DELETE '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_ADD_DEL); $$->a1.p = $3; $$->a2.p = $5; $$->aux = 'd'; }
- | FILTER '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_ADD_DEL); $$->a1.p = $3; $$->a2.p = $5; $$->aux = 'f'; }
+ | PREPEND '(' term ',' term ')' { $$ = f_new_inst(FI_PATH_PREPEND); $$->a[0].p = $3; $$->a[1].p = $5; }
+ | ADD '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_ADD_DEL); $$->a[0].p = $3; $$->a[1].p = $5; $$->aux = 'a'; }
+ | DELETE '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_ADD_DEL); $$->a[0].p = $3; $$->a[1].p = $5; $$->aux = 'd'; }
+ | FILTER '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_ADD_DEL); $$->a[0].p = $3; $$->a[1].p = $5; $$->aux = 'f'; }
 
  | ROA_CHECK '(' rtable ')' { $$ = f_generate_roa_check($3, NULL, NULL); }
  | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_generate_roa_check($3, $5, $7); }
 
- | FORMAT '(' term ')' {  $$ = f_new_inst(FI_FORMAT); $$->a1.p = $3; }
+ | FORMAT '(' term ')' {  $$ = f_new_inst(FI_FORMAT); $$->a[0].p = $3; }
 
 /* | term '.' LEN { $$->code = P('P','l'); } */
 
@@ -943,14 +943,14 @@ term:
        cf_error("You can't call something which is not a function. Really.");
      DBG("You are calling function %s\n", $1->name);
      $$ = f_new_inst(FI_CALL);
-     $$->a1.p = inst;
-     $$->a2.p = $1->def;
+     $$->a[0].p = inst;
+     $$->a[1].p = $1->def;
      sym = $1->aux2;
      while (sym || inst) {
        if (!sym || !inst)
 	 cf_error("Wrong number of arguments for function %s.", $1->name);
        DBG( "You should pass parameter called %s\n", sym->name);
-       inst->a1.p = sym;
+       inst->a[0].p = sym;
        sym = sym->aux2;
        inst = inst->next;
      }
@@ -967,7 +967,7 @@ break_command:
  ;
 
 print_one:
-   term { $$ = f_new_inst(FI_PRINT); $$->a1.p = $1; $$->a2.p = NULL; }
+   term { $$ = f_new_inst(FI_PRINT); $$->a[0].p = $1; $$->a[1].p = NULL; }
  ;
 
 print_list: /* EMPTY */ { $$ = NULL; }
@@ -982,14 +982,14 @@ print_list: /* EMPTY */ { $$ = NULL; }
 
 var_listn: term {
      $$ = f_new_inst(FI_SET);
-     $$->a1.p = NULL;
-     $$->a2.p = $1;
+     $$->a[0].p = NULL;
+     $$->a[1].p = $1;
      $$->next = NULL;
    }
  | term ',' var_listn {
      $$ = f_new_inst(FI_SET);
-     $$->a1.p = NULL;
-     $$->a2.p = $1;
+     $$->a[0].p = NULL;
+     $$->a[1].p = $1;
      $$->next = $3;
    }
  ;
@@ -1001,57 +1001,57 @@ var_list: /* EMPTY */ { $$ = NULL; }
 cmd:
    IF term THEN block {
      $$ = f_new_inst(FI_CONDITION);
-     $$->a1.p = $2;
-     $$->a2.p = $4;
+     $$->a[0].p = $2;
+     $$->a[1].p = $4;
    }
  | IF term THEN block ELSE block {
      $$ = f_new_inst(FI_CONDITION);
-     $$->a1.p = $2;
-     $$->a2.p = $4;
-     $$->a3.p = $6;
+     $$->a[0].p = $2;
+     $$->a[1].p = $4;
+     $$->a[2].p = $6;
    }
  | SYM '=' term ';' {
      DBG( "Ook, we'll set value\n" );
      if ($1->class == SYM_ATTRIBUTE) {
        $$ = f_new_inst_da(FI_EA_SET, *((struct f_dynamic_attr *) $1->def));
-       $$->a1.p = $3;
+       $$->a[0].p = $3;
      } else if (($1->class & ~T_MASK) == SYM_VARIABLE) {
        $$ = f_new_inst(FI_SET);
-       $$->a1.p = $1;
-       $$->a2.p = $3;
+       $$->a[0].p = $1;
+       $$->a[1].p = $3;
      } else
        cf_error( "Symbol `%s' is read-only.", $1->name );
    }
  | RETURN term ';' {
      DBG( "Ook, we'll return the value\n" );
      $$ = f_new_inst(FI_RETURN);
-     $$->a1.p = $2;
+     $$->a[0].p = $2;
    }
  | rtadot dynamic_attr '=' term ';' {
      $$ = f_new_inst_da(FI_EA_SET, $2);
-     $$->a1.p = $4;
+     $$->a[0].p = $4;
    }
  | rtadot static_attr '=' term ';' {
      $$ = f_new_inst_sa(FI_RTA_SET, $2);
-     if (!$$->a1.i)
+     if (!$$->a[0].i)
        cf_error( "This static attribute is read-only.");
-     $$->a1.p = $4;
+     $$->a[0].p = $4;
    }
  | PREFERENCE '=' term ';' {
      $$ = f_new_inst(FI_PREF_SET);
-     $$->a1.p = $3;
+     $$->a[0].p = $3;
    }
  | UNSET '(' rtadot dynamic_attr ')' ';' {
      $$ = f_new_inst_da(FI_EA_SET, $4);
      $$->aux = EAF_TYPE_UNDEF | EAF_TEMP;
-     $$->a1.p = NULL;
+     $$->a[0].p = NULL;
    }
- | break_command print_list ';' { $$ = f_new_inst(FI_PRINT_AND_DIE); $$->a1.p = $2; $$->a2.i = $1; }
+ | break_command print_list ';' { $$ = f_new_inst(FI_PRINT_AND_DIE); $$->a[0].p = $2; $$->a[1].i = $1; }
  | function_call ';' { $$ = $1; }
  | CASE term '{' switch_body '}' {
       $$ = f_new_inst(FI_SWITCH);
-      $$->a1.p = $2;
-      $$->a2.p = build_tree( $4 );
+      $$->a[0].p = $2;
+      $$->a[1].p = build_tree( $4 );
    }
 
  | rtadot dynamic_attr '.' EMPTY ';' { $$ = f_generate_empty($2); }
