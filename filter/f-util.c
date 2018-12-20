@@ -31,7 +31,7 @@ f_new_inst_da(enum f_instruction_code fi_code, struct f_dynamic_attr da)
 {
   struct f_inst *ret = f_new_inst(fi_code);
   ret->aux = (da.f_type << 8) | da.type;
-  ret->a2.i = da.ea_code;
+  ret->a[1].i = da.ea_code;
   return ret;
 }
 
@@ -40,8 +40,8 @@ f_new_inst_sa(enum f_instruction_code fi_code, struct f_static_attr sa)
 {
   struct f_inst *ret = f_new_inst(fi_code);
   ret->aux = sa.f_type;
-  ret->a2.i = sa.sa_code;
-  ret->a1.i = sa.readonly;
+  ret->a[1].i = sa.sa_code;
+  ret->a[0].i = sa.readonly;
   return ret;
 }
 
@@ -56,10 +56,10 @@ f_generate_complex(int operation, int operation_aux, struct f_dynamic_attr da, s
                 *get_dyn = f_new_inst_da(FI_EA_GET, da);
 
   oper->aux = operation_aux;
-  oper->a1.p = get_dyn;
-  oper->a2.p = argument;
+  oper->a[0].p = get_dyn;
+  oper->a[1].p = argument;
 
-  set_dyn->a1.p = oper;
+  set_dyn->a[0].p = oper;
   return set_dyn;
 }
 

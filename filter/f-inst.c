@@ -111,7 +111,7 @@
 
   case FI_PATHMASK_CONSTRUCT:
     {
-      struct f_path_mask *tt = what->a1.p, *vbegin, **vv = &vbegin;
+      struct f_path_mask *tt = what->a[0].p, *vbegin, **vv = &vbegin;
 
       while (tt) {
 	*vv = lp_alloc(fs->pool, sizeof(struct f_path_mask));
@@ -219,10 +219,10 @@
     res.val.i = ipa_is_ip4(v1.val.ip);
     break;
 
-  /* Set to indirect value, a1 = variable, a2 = value */
+  /* Set to indirect value, a[0] = variable, a[1] = value */
   case FI_SET:
     ARG_ANY(2);
-    sym = what->a1.p;
+    sym = what->a[0].p;
     vp = sym->def;
     if ((sym->class != (SYM_VARIABLE | v2.type)) && (v2.type != T_VOID))
     {
@@ -238,22 +238,22 @@
     *vp = v2;
     break;
 
-    /* some constants have value in a2, some in *a1.p, strange. */
+    /* some constants have value in a[1], some in *a[0].p, strange. */
   case FI_CONSTANT:	/* integer (or simple type) constant, string, set, or prefix_set */
     res.type = what->aux;
 
     if (res.type == T_PREFIX_SET)
-      res.val.ti = what->a2.p;
+      res.val.ti = what->a[1].p;
     else if (res.type == T_SET)
-      res.val.t = what->a2.p;
+      res.val.t = what->a[1].p;
     else if (res.type == T_STRING)
-      res.val.s = what->a2.p;
+      res.val.s = what->a[1].p;
     else
-      res.val.i = what->a2.i;
+      res.val.i = what->a[1].i;
     break;
   case FI_VARIABLE:
   case FI_CONSTANT_INDIRECT:
-    res = * ((struct f_val *) what->a1.p);
+    res = * ((struct f_val *) what->a[0].p);
     break;
   case FI_PRINT:
     ARG_ANY(1);
@@ -271,18 +271,18 @@
     break;
   case FI_PRINT_AND_DIE:
     ARG_ANY(1);
-    if ((what->a2.i == F_NOP || (what->a2.i != F_NONL && what->a1.p)) &&
+    if ((what->a[1].i == F_NOP || (what->a[1].i != F_NONL && what->a[0].p)) &&
 	!(fs->flags & FF_SILENT))
       log_commit(*L_INFO, &fs->buf);
 
-    switch (what->a2.i) {
+    switch (what->a[1].i) {
     case F_QUITBIRD:
       die( "Filter asked me to die" );
     case F_ACCEPT:
       /* Should take care about turning ACCEPT into MODIFY */
     case F_ERROR:
     case F_REJECT:	/* FIXME (noncritical) Should print complete route along with reason to reject route */
-      return what->a2.i;	/* We have to return now, no more processing. */
+      return what->a[1].i;	/* We have to return now, no more processing. */
     case F_NONL:
     case F_NOP:
       break;
@@ -296,7 +296,7 @@
       struct rta *rta = (*fs->rte)->attrs;
       res.type = what->aux;
 
-      switch (what->a2.i)
+      switch (what->a[1].i)
       {
       case SA_FROM:	res.val.ip = rta->from; break;
       case SA_GW:	res.val.ip = rta->nh.gw; break;
@@ -323,7 +323,7 @@
     {
       struct rta *rta = (*fs->rte)->attrs;
 
-      switch (what->a2.i)
+      switch (what->a[1].i)
       {
       case SA_FROM:
 	rta->from = v1.val.ip;
@@ -383,7 +383,7 @@
     ACCESS_RTE;
     ACCESS_EATTRS;
     {
-      u16 code = what->a2.i;
+      u16 code = what->a[1].i;
       int f_type = what->aux >> 8;
       eattr *e = ea_find(*fs->eattrs, code);
 
@@ -473,7 +473,7 @@
     ARG_ANY(1);
     {
       struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
-      u16 code = what->a2.i;
+      u16 code = what->a[1].i;
       int f_type = what->aux >> 8;
 
       l->next = NULL;
@@ -659,21 +659,21 @@
     return F_RETURN;
   case FI_CALL:
     ARG_ANY_T(1,0);
-    fret = interpret(fs, what->a2.p);
+    fret = interpret(fs, what->a[1].p);
     if (fret > F_RETURN)
       return fret;
     break;
   case FI_CLEAR_LOCAL_VARS:	/* Clear local variables */
-    for (sym = what->a1.p; sym != NULL; sym = sym->aux2)
+    for (sym = what->a[0].p; sym != NULL; sym = sym->aux2)
       ((struct f_val *) sym->def)->type = T_VOID;
     break;
   case FI_SWITCH:
     ARG_ANY(1);
     {
-      struct f_tree *t = find_tree(what->a2.p, v1);
+      struct f_tree *t = find_tree(what->a[1].p, v1);
       if (!t) {
 	v1.type = T_VOID;
-	t = find_tree(what->a2.p, v1);
+	t = find_tree(what->a[1].p, v1);
 	if (!t) {
 	  debug( "No else statement?\n");
 	  break;
