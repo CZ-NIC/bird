@@ -36,11 +36,18 @@
     res.val.i = v1.val.i / v2.val.i;
     break;
   case FI_AND:
+    ARG(1,T_BOOL);
+    if (!v1.val.i) {
+      res = v1;
+    } else {
+      ARG(2,T_BOOL);
+      res = v2;
+    }
+    break;
   case FI_OR:
     ARG(1,T_BOOL);
-    if (v1.val.i == (what->fi_code == FI_OR)) {
-      res.type = T_BOOL;
-      res.val.i = v1.val.i;
+    if (v1.val.i) {
+      res = v1;
     } else {
       ARG(2,T_BOOL);
       res = v2;
@@ -142,28 +149,39 @@
 
 /* Relational operators */
 
-#define COMPARE(x) \
-    ARG_ANY(1); \
-    ARG_ANY(2); \
-    i = val_compare(v1, v2); \
-    if (i==CMP_ERROR) \
-      runtime( "Can't compare values of incompatible types" ); \
-    res.type = T_BOOL; \
-    res.val.i = (x); \
+  case FI_NEQ:
+    ARG_ANY(1);
+    ARG_ANY(2);
+    res.type = T_BOOL;
+    res.val.i = !val_same(v1, v2);
     break;
 
-#define SAME(x) \
-    ARG_ANY(1); \
-    ARG_ANY(2); \
-    i = val_same(v1, v2); \
-    res.type = T_BOOL; \
-    res.val.i = (x); \
+  case FI_EQ:
+    ARG_ANY(1);
+    ARG_ANY(2);
+    res.type = T_BOOL;
+    res.val.i = val_same(v1, v2);
     break;
 
-  case FI_NEQ: SAME(!i);
-  case FI_EQ: SAME(i);
-  case FI_LT: COMPARE(i==-1);
-  case FI_LTE: COMPARE(i!=1);
+  case FI_LT:
+    ARG_ANY(1);
+    ARG_ANY(2);
+    i = val_compare(v1, v2);
+    if (i==CMP_ERROR)
+      runtime( "Can't compare values of incompatible types" );
+    res.type = T_BOOL;
+    res.val.i = (i == -1);
+    break;
+
+  case FI_LTE:
+    ARG_ANY(1);
+    ARG_ANY(2);
+    i = val_compare(v1, v2);
+    if (i==CMP_ERROR)
+      runtime( "Can't compare values of incompatible types" );
+    res.type = T_BOOL;
+    res.val.i = (i != 1);
+    break;
 
   case FI_NOT:
     ARG(1,T_BOOL);
