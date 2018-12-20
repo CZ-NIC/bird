@@ -124,6 +124,7 @@ struct f_inst {		/* Instruction */
     union {
       uint i;
       void *p;
+      struct rtable_config *rtc;
     } a[3];		/* The three arguments */
     struct f_val val;	/* The value if FI_CONSTANT */
   };
@@ -134,11 +135,6 @@ struct f_inst {		/* Instruction */
 #define arg2 a[1].p
 #define arg3 a[2].p
 
-/* Not enough fields in f_inst for three args used by roa_check() */
-struct f_inst_roa_check {
-  struct f_inst i;
-  struct rtable_config *rtc;
-};
 struct filter {
   char *name;
   struct f_inst *root;
