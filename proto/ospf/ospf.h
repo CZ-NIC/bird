@@ -390,6 +390,7 @@ struct ospf_neighbor
    */
   slist lsrtl;			/* slist of struct top_hash_entry from n->lsrth */
   struct top_graph *lsrth;
+  u32 lsrt_count;		/* Number of entries in Link state retransmission list */
   timer *dbdes_timer;		/* DBDES exchange timer */
   timer *lsrq_timer;		/* LSA request timer */
   timer *lsrt_timer;		/* LSA retransmission timer */

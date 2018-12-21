@@ -39,6 +39,7 @@ init_lists(struct ospf_proto *p, struct ospf_neighbor *n)
 
   s_init_list(&(n->lsrtl));
   n->lsrth = ospf_top_new(p, n->pool);
+  n->lsrt_count = 0;
 }
 
 static void

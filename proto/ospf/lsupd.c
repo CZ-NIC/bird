@@ -129,8 +129,9 @@ ospf_lsa_lsrt_up(struct top_hash_entry *en, struct ospf_neighbor *n)
 
   if (!SNODE_VALID(ret))
   {
-    en->ret_count++;
     s_add_tail(&n->lsrtl, SNODE ret);
+    n->lsrt_count++;
+    en->ret_count++;
   }
 
   ret->lsa = en->lsa;
@@ -148,6 +149,7 @@ ospf_lsa_lsrt_down_(struct top_hash_entry *en, struct ospf_neighbor *n, struct t
 
   s_rem_node(SNODE ret);
   ospf_hash_delete(n->lsrth, ret);
+  n->lsrt_count--;
 
   if (EMPTY_SLIST(n->lsrtl))
     tm_stop(n->lsrt_timer);
@@ -450,6 +452,7 @@ ospf_rxmt_lsupd(struct ospf_proto *p, struct ospf_neighbor *n)
 
       s_rem_node(SNODE ret);
       ospf_hash_delete(n->lsrth, ret);
+      n->lsrt_count--;
 
       continue;
     }

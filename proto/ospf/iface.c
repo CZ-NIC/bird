@@ -1397,6 +1397,13 @@ ospf_iface_info(struct ospf_iface *ifa)
     cli_msg(-1015, "\tBackup designated router (IP): %I", ifa->bdrip);
   }
 
+  uint lsrt_count = 0;
+  struct ospf_neighbor *n;
+  WALK_LIST(n, ifa->neigh_list)
+    lsrt_count += n->lsrt_count;
+  cli_msg(-1015, "\tTotal LSA retransmission list length: %u", lsrt_count);
+
   cli_msg(-1015, "\tStatistics:");
   ospf_iface_stats(-1015, &ifa->stats);
+
 }
