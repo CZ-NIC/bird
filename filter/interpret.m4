@@ -10,7 +10,65 @@ m4_divert(-1)m4_dnl
 # Common aliases
 m4_define(DNL, `m4_dnl')
 
-m4_define(INST, `break; case $1:')
+m4_define(INST, `break; case $1:
+m4_ifelse(eval($2 > 0), `if (vstk.cnt < $2) runtime("Stack underflow");', `')
+vstk.cnt -= $2;
+')
 
+m4_define(ARG, `if (v$1.type != $2) runtime("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), v$1.type)')
+
+m4_define(RESULT_OK, `vstk.cnt++')
+m4_define(RESULT, `RESULT_VAL([[ (struct f_val) { .type = $1, .val.$2 = $3 } ]])')
+m4_define(RESULT_VAL, `do { res = $1; RESULT_OK; } while (0)')
+
+m4_define(LINEX, `do {
+  estk.item[estk.cnt].pos = 0;
+  estk.item[estk.cnt].line = $1;
+  estk.item[estk.cnt].ventry = vstk.cnt;
+  estk.item[estk.cnt].emask = 0;
+  estk.cnt++;
+} while (0)')
+
+m4_define(LINE, `do {
+  if (what->lines[$2]) {
+    estk.item[estk.cnt].pos = 0;
+    estk.item[estk.cnt].line = what->lines[$2];
+    estk.item[estk.cnt].ventry = vstk.cnt;
+    estk.item[estk.cnt].emask = 0;
+    estk.cnt++;
+  }
+} while (0)')
+
+m4_define(LINEP, LINE($1, $2))
+
+m4_define(ARG_ANY, `')
+
+m4_define(SYMBOL, `const struct symbol *sym = what->sym')
+
+m4_define(VALI, `res = what->val')
+m4_define(VALP, `res = what->val')
+m4_define(VAR, `res = *what->vp')
+m4_define(FRET, `enum filter_return fret = what->fret')
+m4_define(ECS, `enum ec_subtype ecs = what->ecs')
+m4_define(RTC, `struct rtable *table = what->rtc->table')
+m4_define(STATIC_ATTR, `struct f_static_attr sa = what->sa')
+m4_define(DYNAMIC_ATTR, `struct f_dynamic_attr da = what->da')
+m4_define(TREE, `')
+m4_define(STRING, `')
+m4_define(COUNT, `')
+m4_define(POSTFIXIFY, `')
+m4_define(LINE_SIZE, `')
+m4_define(SAME, `')
+m4_define(STRUCT, `')
+m4_define(NEW, `')
+
+m4_m4wrap(`
+m4_divert(0)DNL
+case FI_NOP: bug("This shall not happen");
+m4_undivert(1)
+break; default: bug( "Unknown instruction %d (%c)", what->fi_code, what->fi_code & 0xff);
+')
+
+m4_divert(1)
 m4_changequote([[,]])
-m4_divert(0)
+

@@ -10,76 +10,15 @@
 #include "nest/bird.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
+#include "filter/f-inst-struct.h"
 #include "lib/idm.h"
 #include "nest/protocol.h"
 #include "nest/route.h"
 
 #define P(a,b) ((a<<8) | b)
 
-struct f_inst *
-f_new_inst(enum f_instruction_code fi_code)
-{
-  struct f_inst * ret;
-  ret = cfg_allocz(sizeof(struct f_inst));
-  ret->fi_code = fi_code;
-  ret->lineno = ifs->lino;
-  return ret;
-}
-
-struct f_inst *
-f_new_inst_da(enum f_instruction_code fi_code, struct f_dynamic_attr da)
-{
-  struct f_inst *ret = f_new_inst(fi_code);
-  ret->aux = (da.f_type << 8) | da.type;
-  ret->a[1].i = da.ea_code;
-  return ret;
-}
-
-struct f_inst *
-f_new_inst_sa(enum f_instruction_code fi_code, struct f_static_attr sa)
-{
-  struct f_inst *ret = f_new_inst(fi_code);
-  ret->aux = sa.f_type;
-  ret->a[1].i = sa.sa_code;
-  ret->a[0].i = sa.readonly;
-  return ret;
-}
-
-/*
- * Generate set_dynamic( operation( get_dynamic(), argument ) )
- */
-struct f_inst *
-f_generate_complex(int operation, int operation_aux, struct f_dynamic_attr da, struct f_inst *argument)
-{
-  struct f_inst *set_dyn = f_new_inst_da(FI_EA_SET, da),
-                *oper = f_new_inst(operation),
-                *get_dyn = f_new_inst_da(FI_EA_GET, da);
-
-  oper->aux = operation_aux;
-  oper->a[0].p = get_dyn;
-  oper->a[1].p = argument;
-
-  set_dyn->a[0].p = oper;
-  return set_dyn;
-}
-
-struct f_inst *
-f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn)
-{
-  struct f_inst *ret = f_new_inst(FI_ROA_CHECK);
-  ret->arg1 = prefix;
-  ret->arg2 = asn;
-  /* prefix == NULL <-> asn == NULL */
-
-  if (table->addr_type != NET_ROA4 && table->addr_type != NET_ROA6)
-    cf_error("%s is not a ROA table", table->name);
-  ret->arg3 = table;
-
-  return ret;
-}
-
 static const char * const f_instruction_name_str[] = {
-#define F(c,a,b) \
+#define F(c,...) \
   [c] = #c,
 FI__LIST
 #undef F
@@ -105,6 +44,58 @@ filter_name(struct filter *filter)
     return "(unnamed)";
   else
     return filter->name;
+}
+
+void f_inst_next(struct f_inst *first, const struct f_inst *append)
+{
+  first->next = append;
+}
+
+struct filter *f_new_where(const struct f_inst *where)
+{
+  struct f_inst acc = {
+    .fi_code = FI_PRINT_AND_DIE,
+    .lineno = ifs->lino,
+    .i_FI_PRINT_AND_DIE = { .fret = F_ACCEPT, },
+  };
+
+  struct f_inst rej = {
+    .fi_code = FI_PRINT_AND_DIE,
+    .lineno = ifs->lino,
+    .i_FI_PRINT_AND_DIE = { .fret = F_REJECT, },
+  };
+
+  struct f_inst i = {
+    .fi_code = FI_CONDITION,
+    .lineno = ifs->lino,
+    .i_FI_CONDITION = {
+      .f1 = where,
+      .f2 = &acc,
+      .f3 = &rej,
+    },
+  };
+
+  struct filter *f = cfg_alloc(sizeof(struct filter));
+  f->name = NULL;
+  f->root = f_postfixify(&i);
+  return f;
+}
+
+struct f_inst *f_clear_local_vars(struct f_inst *decls)
+{
+  /* Prepend instructions to clear local variables */
+  struct f_inst *head = NULL;
+
+  for (const struct f_inst *si = decls; si; si = si->next) {
+    struct f_inst *cur = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
+    if (head)
+      f_inst_next(cur, head);
+    else
+      f_inst_next(cur, si);
+    head = cur;	/* The first FI_CONSTANT put there */
+  }
+
+  return head;
 }
 
 #define CA_KEY(n)	n->name, n->fda.type
@@ -219,7 +210,7 @@ ca_lookup(pool *p, const char *name, int f_type)
     }
 
     cas = mb_allocz(&root_pool, sizeof(struct ca_storage) + strlen(name) + 1);
-    cas->fda = f_new_dynamic_attr(ea_type, f_type, EA_CUSTOM(id));
+    cas->fda = f_new_dynamic_attr(ea_type, 0, f_type, EA_CUSTOM(id));
     cas->uc = 1;
 
     strcpy(cas->name, name);

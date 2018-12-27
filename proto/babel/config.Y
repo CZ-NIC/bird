@@ -125,20 +125,20 @@ babel_iface_opt_list:
 babel_iface:
   babel_iface_start iface_patt_list_nopx babel_iface_opt_list babel_iface_finish;
 
-dynamic_attr: BABEL_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_BABEL_METRIC); } ;
+dynamic_attr: BABEL_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, 0, T_INT, EA_BABEL_METRIC); } ;
 
 CF_CLI_HELP(SHOW BABEL, ..., [[Show information about Babel protocol]]);
 
-CF_CLI(SHOW BABEL INTERFACES, optsym opttext, [<name>] [\"<interface>\"], [[Show information about Babel interfaces]])
+CF_CLI(SHOW BABEL INTERFACES, optproto opttext, [<name>] [\"<interface>\"], [[Show information about Babel interfaces]])
 { babel_show_interfaces(proto_get_named($4, &proto_babel), $5); };
 
-CF_CLI(SHOW BABEL NEIGHBORS, optsym opttext, [<name>] [\"<interface>\"], [[Show information about Babel neighbors]])
+CF_CLI(SHOW BABEL NEIGHBORS, optproto opttext, [<name>] [\"<interface>\"], [[Show information about Babel neighbors]])
 { babel_show_neighbors(proto_get_named($4, &proto_babel), $5); };
 
-CF_CLI(SHOW BABEL ENTRIES, optsym opttext, [<name>], [[Show information about Babel prefix entries]])
+CF_CLI(SHOW BABEL ENTRIES, optproto opttext, [<name>], [[Show information about Babel prefix entries]])
 { babel_show_entries(proto_get_named($4, &proto_babel)); };
 
-CF_CLI(SHOW BABEL ROUTES, optsym opttext, [<name>], [[Show information about Babel route entries]])
+CF_CLI(SHOW BABEL ROUTES, optproto opttext, [<name>], [[Show information about Babel route entries]])
 { babel_show_routes(proto_get_named($4, &proto_babel)); };
 
 CF_CODE

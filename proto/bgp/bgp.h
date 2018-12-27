@@ -374,7 +374,7 @@ struct bgp_write_state {
   int mpls;
 
   eattr *mp_next_hop;
-  adata *mpls_labels;
+  const adata *mpls_labels;
 };
 
 struct bgp_parse_state {
@@ -505,7 +505,7 @@ bgp_set_attr_u32(ea_list **to, struct linpool *pool, uint code, uint flags, u32 
 { bgp_set_attr(to, pool, code, flags, (uintptr_t) val); }
 
 static inline void
-bgp_set_attr_ptr(ea_list **to, struct linpool *pool, uint code, uint flags, struct adata *val)
+bgp_set_attr_ptr(ea_list **to, struct linpool *pool, uint code, uint flags, const struct adata *val)
 { bgp_set_attr(to, pool, code, flags, (uintptr_t) val); }
 
 static inline void

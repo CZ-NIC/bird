@@ -332,8 +332,8 @@ radv_sensitive:
  | SENSITIVE bool { $$ = $2; }
  ;
 
-dynamic_attr: RA_PREFERENCE { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_RA_PREFERENCE, EA_RA_PREFERENCE); } ;
-dynamic_attr: RA_LIFETIME { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_RA_LIFETIME); } ;
+dynamic_attr: RA_PREFERENCE { $$ = f_new_dynamic_attr(EAF_TYPE_INT, 0, T_ENUM_RA_PREFERENCE, EA_RA_PREFERENCE); } ;
+dynamic_attr: RA_LIFETIME { $$ = f_new_dynamic_attr(EAF_TYPE_INT, 0, T_INT, EA_RA_LIFETIME); } ;
 
 CF_CODE
 

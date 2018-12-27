@@ -107,7 +107,7 @@ struct symbol {
   struct sym_scope *scope;
   int class;
   int aux;
-  void *aux2;
+  uint aux2;
   void *def;
   char name[1];
 };
@@ -164,10 +164,6 @@ struct symbol *cf_define_symbol(struct symbol *symbol, int type, void *def);
 void cf_push_scope(struct symbol *);
 void cf_pop_scope(void);
 char *cf_symbol_class_name(struct symbol *sym);
-
-static inline int cf_symbol_is_constant(struct symbol *sym)
-{ return (sym->class & 0xff00) == SYM_CONSTANT; }
-
 
 /* Parser */
 
