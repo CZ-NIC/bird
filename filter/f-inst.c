@@ -228,7 +228,7 @@
     if ((sym->class != (SYM_VARIABLE | v1.type)) && (v1.type != T_VOID))
     {
       /* IP->Quad implicit conversion */
-      if ((sym->class == (SYM_VARIABLE | T_QUAD)) && val_is_ip4(v1))
+      if ((sym->class == (SYM_VARIABLE | T_QUAD)) && val_is_ip4(&v1))
       {
 	*((struct f_val *) sym->def) = (struct f_val) {
 	  .type = T_QUAD,
@@ -247,9 +247,11 @@
   }
   INST(FI_VARIABLE, -1) {
     VALP(1); // res = * ((struct f_val *) what->a[0].p);
+    SAME([[if (strcmp(f1->sym->name, f2->sym->name)) return 0; ]]);
   }
   INST(FI_CONSTANT_INDIRECT, -1) {
     VALP(1);
+    SAME([[if (!val_same(f1->vp, f2->vp)) return 0; ]]);
   }
   INST(FI_PRINT, 1) {
     ARG_ANY(1);

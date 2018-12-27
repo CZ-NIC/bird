@@ -21,12 +21,13 @@ m4_define(LINE, `do { estk.item[estk.cnt].pos = 0; estk.item[estk.cnt].line = wh
 
 m4_define(ARG_ANY, `')
 
-m4_define(SYMBOL, `struct symbol *sym = what->sym')
+m4_define(SYMBOL, `const struct symbol *sym = what->sym')
 
 m4_define(VALI, `res = *what->vp')
 m4_define(VALP, `res = *what->vp')
 m4_define(FRET, `enum filter_return fret = what->fret')
 m4_define(POSTFIXIFY, `')
+m4_define(SAME, `')
 
 m4_m4wrap(`
 m4_divert(0)DNL

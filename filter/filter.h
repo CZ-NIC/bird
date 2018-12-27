@@ -165,9 +165,11 @@ struct f_line_item {
   enum f_instruction_flags flags;	/* Flags, instruction-specific */
   uint lineno;				/* Where */
   union {
-    const struct f_val *vp;
-    struct f_line *lines[2];
-    struct symbol *sym;
+    struct {
+      const struct f_val *vp;
+      const struct symbol *sym;
+    };
+    const struct f_line *lines[2];
     enum filter_return fret;
   };					/* Additional instruction data */
 };
@@ -201,7 +203,7 @@ struct f_val_stack {
 /* Instruction stack for execution */
 struct f_exec_stack {
   struct {
-    struct f_line *line;		/* The line that is being executed */
+    const struct f_line *line;		/* The line that is being executed */
     uint pos;				/* Instruction index in the line */
   } item[F_EXEC_STACK_MAX];
   uint cnt;				/* Current stack size; 0 for empty */
@@ -220,8 +222,8 @@ struct f_inst *f_generate_roa_check(struct rtable_config *table, struct f_inst *
 
 
 struct f_tree *build_tree(struct f_tree *);
-struct f_tree *find_tree(struct f_tree *t, struct f_val val);
-int same_tree(struct f_tree *t1, struct f_tree *t2);
+struct f_tree *find_tree(struct f_tree *t, const struct f_val *val);
+int same_tree(const struct f_tree *t1, const struct f_tree *t2);
 void tree_format(struct f_tree *t, buffer *buf);
 
 struct f_trie *f_new_trie(linpool *lp, uint node_size);
@@ -233,18 +235,17 @@ void trie_format(struct f_trie *t, buffer *buf);
 struct ea_list;
 struct rte;
 
-enum filter_return f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
-enum filter_return f_eval_rte(struct f_line *expr, struct rte **rte, struct linpool *tmp_pool);
-enum filter_return f_eval(struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres);
-uint f_eval_int(struct f_line *expr);
+enum filter_return f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
+enum filter_return f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool);
+enum filter_return f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres);
+uint f_eval_int(const struct f_line *expr);
 
 char *filter_name(struct filter *filter);
 int filter_same(struct filter *new, struct filter *old);
 
-int f_same(struct f_line *f1, struct f_line *f2);
+int f_same(const struct f_line *f1, const struct f_line *f2);
 
-int val_compare(struct f_val v1, struct f_val v2);
-int val_same(struct f_val v1, struct f_val v2);
+int val_compare(const struct f_val *v1, const struct f_val *v2);
 
 void val_format(struct f_val v, buffer *buf);
 

@@ -24,7 +24,7 @@ m4_define(SYMBOL, `m4_divert(1)dest->items[pos].sym = what->a[$1-1].p;
 m4_divert(-1)')
 m4_define(VALI, `m4_divert(1)dest->items[pos].vp = &(what->val);
 m4_divert(-1)')
-m4_define(VALP, `m4_divert(1)dest->items[pos].vp = what->a[$1-1].p;
+m4_define(VALP, `m4_divert(1)dest->items[pos].vp = (dest->items[pos].sym = what->a[$1-1].p)->def;
 m4_divert(-1)')
 m4_define(FRET, `m4_divert(1)dest->items[pos].fret = what->a[$1-1].i;
 m4_divert(-1)')

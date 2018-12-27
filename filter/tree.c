@@ -24,14 +24,14 @@
  * thus both are as fast as they can be.
  */
 struct f_tree *
-find_tree(struct f_tree *t, struct f_val val)
+find_tree(struct f_tree *t, const struct f_val *val)
 {
   if (!t)
     return NULL;
-  if ((val_compare(t->from, val) != 1) &&
-      (val_compare(t->to, val) != -1))
+  if ((val_compare(&(t->from), val) != 1) &&
+      (val_compare(&(t->to), val) != -1))
     return t;
-  if (val_compare(t->from, val) == -1)
+  if (val_compare(&(t->from), val) == -1)
     return find_tree(t->right, val);
   else
     return find_tree(t->left, val);
@@ -56,7 +56,7 @@ build_tree_rec(struct f_tree **buf, int l, int h)
 static int 
 tree_compare(const void *p1, const void *p2)
 {
-  return val_compare((* (struct f_tree **) p1)->from, (* (struct f_tree **) p2)->from);
+  return val_compare(&((* (struct f_tree **) p1)->from), &((* (struct f_tree **) p2)->from));
 }
 
 /**
@@ -119,21 +119,21 @@ f_new_tree(void)
  * Compares two trees and returns 1 if they are same
  */
 int
-same_tree(struct f_tree *t1, struct f_tree *t2)
+same_tree(const struct f_tree *t1, const struct f_tree *t2)
 {
   if ((!!t1) != (!!t2))
     return 0;
   if (!t1)
     return 1;
-  if (val_compare(t1->from, t2->from))
+  if (val_compare(&(t1->from), &(t2->from)))
     return 0;
-  if (val_compare(t1->to, t2->to))
+  if (val_compare(&(t1->to), &(t2->to)))
     return 0;
   if (!same_tree(t1->left, t2->left))
     return 0;
   if (!same_tree(t1->right, t2->right))
     return 0;
-  if (!i_same(t1->data, t2->data))
+  if (!f_same(t1->data, t2->data))
     return 0;
   return 1;
 }
@@ -148,7 +148,7 @@ tree_node_format(struct f_tree *t, buffer *buf)
   tree_node_format(t->left, buf);
 
   val_format(t->from, buf);
-  if (val_compare(t->from, t->to) != 0)
+  if (val_compare(&(t->from), &(t->to)) != 0)
   {
     buffer_puts(buf, "..");
     val_format(t->to, buf);

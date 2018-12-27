@@ -16,4 +16,6 @@ struct f_inst;
 void cmd_show_status(void);
 void cmd_show_symbols(struct sym_show_data *sym);
 void cmd_show_memory(void);
-void cmd_eval(struct f_inst *expr);
+
+struct f_line;
+void cmd_eval(const struct f_line *expr);

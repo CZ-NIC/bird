@@ -95,7 +95,7 @@ cmd_show_memory(void)
 }
 
 void
-cmd_eval(struct f_inst *expr)
+cmd_eval(const struct f_line *expr)
 {
   struct f_val v;
   if (f_eval(expr, this_cli->parser_pool, &v) > F_RETURN)

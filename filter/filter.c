@@ -125,8 +125,8 @@ pm_format(struct f_path_mask *p, buffer *buf)
   buffer_puts(buf, "=]");
 }
 
-static inline int val_is_ip4(const struct f_val v)
-{ return (v.type == T_IP) && ipa_is_ip4(v.val.ip); }
+static inline int val_is_ip4(const struct f_val *v)
+{ return (v->type == T_IP) && ipa_is_ip4(v->val.ip); }
 
 static inline int
 lcomm_cmp(lcomm v1, lcomm v2)
@@ -150,25 +150,25 @@ lcomm_cmp(lcomm v1, lcomm v2)
  * that it can be used for building balanced trees.
  */
 int
-val_compare(struct f_val v1, struct f_val v2)
+val_compare(const struct f_val *v1, const struct f_val *v2)
 {
-  if (v1.type != v2.type) {
-    if (v1.type == T_VOID)	/* Hack for else */
+  if (v1->type != v2->type) {
+    if (v1->type == T_VOID)	/* Hack for else */
       return -1;
-    if (v2.type == T_VOID)
+    if (v2->type == T_VOID)
       return 1;
 
     /* IP->Quad implicit conversion */
-    if ((v1.type == T_QUAD) && val_is_ip4(v2))
-      return uint_cmp(v1.val.i, ipa_to_u32(v2.val.ip));
-    if (val_is_ip4(v1) && (v2.type == T_QUAD))
-      return uint_cmp(ipa_to_u32(v1.val.ip), v2.val.i);
+    if ((v1->type == T_QUAD) && val_is_ip4(v2))
+      return uint_cmp(v1->val.i, ipa_to_u32(v2->val.ip));
+    if (val_is_ip4(v1) && (v2->type == T_QUAD))
+      return uint_cmp(ipa_to_u32(v1->val.ip), v2->val.i);
 
     debug( "Types do not match in val_compare\n" );
     return CMP_ERROR;
   }
 
-  switch (v1.type) {
+  switch (v1->type) {
   case T_VOID:
     return 0;
   case T_ENUM:
@@ -176,18 +176,18 @@ val_compare(struct f_val v1, struct f_val v2)
   case T_BOOL:
   case T_PAIR:
   case T_QUAD:
-    return uint_cmp(v1.val.i, v2.val.i);
+    return uint_cmp(v1->val.i, v2->val.i);
   case T_EC:
   case T_RD:
-    return u64_cmp(v1.val.ec, v2.val.ec);
+    return u64_cmp(v1->val.ec, v2->val.ec);
   case T_LC:
-    return lcomm_cmp(v1.val.lc, v2.val.lc);
+    return lcomm_cmp(v1->val.lc, v2->val.lc);
   case T_IP:
-    return ipa_compare(v1.val.ip, v2.val.ip);
+    return ipa_compare(v1->val.ip, v2->val.ip);
   case T_NET:
-    return net_compare(v1.val.net, v2.val.net);
+    return net_compare(v1->val.net, v2->val.net);
   case T_STRING:
-    return strcmp(v1.val.s, v2.val.s);
+    return strcmp(v1->val.s, v2->val.s);
   default:
     return CMP_ERROR;
   }
@@ -203,7 +203,7 @@ pm_same(struct f_path_mask *m1, struct f_path_mask *m2)
 
     if (m1->kind == PM_ASN_EXPR)
     {
-      if (!i_same((struct f_inst *) m1->val, (struct f_inst *) m2->val))
+      if (!f_same((struct f_line *) m1->val, (struct f_line *) m2->val))
 	return 0;
     }
     else
@@ -228,7 +228,7 @@ pm_same(struct f_path_mask *m1, struct f_path_mask *m2)
  * Comparison of values of different types is valid and returns 0.
  */
 int
-val_same(struct f_val v1, struct f_val v2)
+val_same(const struct f_val *v1, const struct f_val *v2)
 {
   int rc;
 
@@ -236,23 +236,23 @@ val_same(struct f_val v1, struct f_val v2)
   if (rc != CMP_ERROR)
     return !rc;
 
-  if (v1.type != v2.type)
+  if (v1->type != v2->type)
     return 0;
 
-  switch (v1.type) {
+  switch (v1->type) {
   case T_PATH_MASK:
-    return pm_same(v1.val.path_mask, v2.val.path_mask);
+    return pm_same(v1->val.path_mask, v2->val.path_mask);
   case T_PATH:
   case T_CLIST:
   case T_ECLIST:
   case T_LCLIST:
-    return adata_same(v1.val.ad, v2.val.ad);
+    return adata_same(v1->val.ad, v2->val.ad);
   case T_SET:
-    return same_tree(v1.val.t, v2.val.t);
+    return same_tree(v1->val.t, v2->val.t);
   case T_PREFIX_SET:
-    return trie_same(v1.val.ti, v2.val.ti);
+    return trie_same(v1->val.ti, v2->val.ti);
   default:
-    bug("Invalid type in val_same(): %x", v1.type);
+    bug("Invalid type in val_same(): %x", v1->type);
   }
 }
 
@@ -270,7 +270,7 @@ clist_set_type(struct f_tree *set, struct f_val *v)
     return 1;
 
   case T_IP:
-    if (val_is_ip4(set->from) && val_is_ip4(set->to))
+    if (val_is_ip4(&(set->from)) && val_is_ip4(&(set->to)))
     {
       v->type = T_QUAD;
       return 1;
@@ -305,7 +305,7 @@ clist_match_set(struct adata *clist, struct f_tree *set)
 
   while (l < end) {
     v.val.i = *l++;
-    if (find_tree(set, v))
+    if (find_tree(set, &v))
       return 1;
   }
   return 0;
@@ -328,7 +328,7 @@ eclist_match_set(struct adata *list, struct f_tree *set)
   v.type = T_EC;
   for (i = 0; i < len; i += 2) {
     v.val.ec = ec_get(l, i);
-    if (find_tree(set, v))
+    if (find_tree(set, &v))
       return 1;
   }
 
@@ -352,7 +352,7 @@ lclist_match_set(struct adata *list, struct f_tree *set)
   v.type = T_LC;
   for (i = 0; i < len; i += 3) {
     v.val.lc = lc_get(l, i);
-    if (find_tree(set, v))
+    if (find_tree(set, &v))
       return 1;
   }
 
@@ -381,7 +381,7 @@ clist_filter(struct linpool *pool, struct adata *list, struct f_val set, int pos
   while (l < end) {
     v.val.i = *l++;
     /* pos && member(val, set) || !pos && !member(val, set),  member() depends on tree */
-    if ((tree ? !!find_tree(set.val.t, v) : int_set_contains(set.val.ad, v.val.i)) == pos)
+    if ((tree ? !!find_tree(set.val.t, &v) : int_set_contains(set.val.ad, v.val.i)) == pos)
       *k++ = v.val.i;
   }
 
@@ -413,7 +413,7 @@ eclist_filter(struct linpool *pool, struct adata *list, struct f_val set, int po
   for (i = 0; i < len; i += 2) {
     v.val.ec = ec_get(l, i);
     /* pos && member(val, set) || !pos && !member(val, set),  member() depends on tree */
-    if ((tree ? !!find_tree(set.val.t, v) : ec_set_contains(set.val.ad, v.val.ec)) == pos) {
+    if ((tree ? !!find_tree(set.val.t, &v) : ec_set_contains(set.val.ad, v.val.ec)) == pos) {
       *k++ = l[i];
       *k++ = l[i+1];
     }
@@ -447,7 +447,7 @@ lclist_filter(struct linpool *pool, struct adata *list, struct f_val set, int po
   for (i = 0; i < len; i += 3) {
     v.val.lc = lc_get(l, i);
     /* pos && member(val, set) || !pos && !member(val, set),  member() depends on tree */
-    if ((tree ? !!find_tree(set.val.t, v) : lc_set_contains(set.val.ad, v.val.lc)) == pos)
+    if ((tree ? !!find_tree(set.val.t, &v) : lc_set_contains(set.val.ad, v.val.lc)) == pos)
       k = lc_copy(k, l+i);
   }
 
@@ -468,57 +468,57 @@ lclist_filter(struct linpool *pool, struct adata *list, struct f_val set, int po
  * Checks if @v1 is element (|~| operator) of @v2.
  */
 static int
-val_in_range(struct f_val v1, struct f_val v2)
+val_in_range(const struct f_val *v1, const struct f_val *v2)
 {
-  if ((v1.type == T_PATH) && (v2.type == T_PATH_MASK))
-    return as_path_match(v1.val.ad, v2.val.path_mask);
+  if ((v1->type == T_PATH) && (v2->type == T_PATH_MASK))
+    return as_path_match(v1->val.ad, v2->val.path_mask);
 
-  if ((v1.type == T_INT) && (v2.type == T_PATH))
-    return as_path_contains(v2.val.ad, v1.val.i, 1);
+  if ((v1->type == T_INT) && (v2->type == T_PATH))
+    return as_path_contains(v2->val.ad, v1->val.i, 1);
 
-  if (((v1.type == T_PAIR) || (v1.type == T_QUAD)) && (v2.type == T_CLIST))
-    return int_set_contains(v2.val.ad, v1.val.i);
+  if (((v1->type == T_PAIR) || (v1->type == T_QUAD)) && (v2->type == T_CLIST))
+    return int_set_contains(v2->val.ad, v1->val.i);
   /* IP->Quad implicit conversion */
-  if (val_is_ip4(v1) && (v2.type == T_CLIST))
-    return int_set_contains(v2.val.ad, ipa_to_u32(v1.val.ip));
+  if (val_is_ip4(v1) && (v2->type == T_CLIST))
+    return int_set_contains(v2->val.ad, ipa_to_u32(v1->val.ip));
 
-  if ((v1.type == T_EC) && (v2.type == T_ECLIST))
-    return ec_set_contains(v2.val.ad, v1.val.ec);
+  if ((v1->type == T_EC) && (v2->type == T_ECLIST))
+    return ec_set_contains(v2->val.ad, v1->val.ec);
 
-  if ((v1.type == T_LC) && (v2.type == T_LCLIST))
-    return lc_set_contains(v2.val.ad, v1.val.lc);
+  if ((v1->type == T_LC) && (v2->type == T_LCLIST))
+    return lc_set_contains(v2->val.ad, v1->val.lc);
 
-  if ((v1.type == T_STRING) && (v2.type == T_STRING))
-    return patmatch(v2.val.s, v1.val.s);
+  if ((v1->type == T_STRING) && (v2->type == T_STRING))
+    return patmatch(v2->val.s, v1->val.s);
 
-  if ((v1.type == T_IP) && (v2.type == T_NET))
-    return ipa_in_netX(v1.val.ip, v2.val.net);
+  if ((v1->type == T_IP) && (v2->type == T_NET))
+    return ipa_in_netX(v1->val.ip, v2->val.net);
 
-  if ((v1.type == T_NET) && (v2.type == T_NET))
-    return net_in_netX(v1.val.net, v2.val.net);
+  if ((v1->type == T_NET) && (v2->type == T_NET))
+    return net_in_netX(v1->val.net, v2->val.net);
 
-  if ((v1.type == T_NET) && (v2.type == T_PREFIX_SET))
-    return trie_match_net(v2.val.ti, v1.val.net);
+  if ((v1->type == T_NET) && (v2->type == T_PREFIX_SET))
+    return trie_match_net(v2->val.ti, v1->val.net);
 
-  if (v2.type != T_SET)
+  if (v2->type != T_SET)
     return CMP_ERROR;
 
   /* With integrated Quad<->IP implicit conversion */
-  if ((v1.type == v2.val.t->from.type) ||
-      ((v1.type == T_QUAD) && val_is_ip4(v2.val.t->from) && val_is_ip4(v2.val.t->to)))
-    return !!find_tree(v2.val.t, v1);
+  if ((v1->type == v2->val.t->from.type) ||
+      ((v1->type == T_QUAD) && val_is_ip4(&(v2->val.t->from)) && val_is_ip4(&(v2->val.t->to))))
+    return !!find_tree(v2->val.t, v1);
 
-  if (v1.type == T_CLIST)
-    return clist_match_set(v1.val.ad, v2.val.t);
+  if (v1->type == T_CLIST)
+    return clist_match_set(v1->val.ad, v2->val.t);
 
-  if (v1.type == T_ECLIST)
-    return eclist_match_set(v1.val.ad, v2.val.t);
+  if (v1->type == T_ECLIST)
+    return eclist_match_set(v1->val.ad, v2->val.t);
 
-  if (v1.type == T_LCLIST)
-    return lclist_match_set(v1.val.ad, v2.val.t);
+  if (v1->type == T_LCLIST)
+    return lclist_match_set(v1->val.ad, v2->val.t);
 
-  if (v1.type == T_PATH)
-    return as_path_match_set(v1.val.ad, v2.val.t);
+  if (v1->type == T_PATH)
+    return as_path_match_set(v1->val.ad, v2->val.t);
 
   return CMP_ERROR;
 }
@@ -655,7 +655,7 @@ f_postfixify(struct f_inst *root)
  * TWOARGS macro to get both of them evaluated.
  */
 static enum filter_return
-interpret(struct filter_state *fs, struct f_line *line, struct f_val *val)
+interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 {
   struct f_val_stack vstk;
   struct f_exec_stack estk = {
@@ -670,7 +670,7 @@ interpret(struct filter_state *fs, struct f_line *line, struct f_val *val)
 
   while (estk.cnt > 0) {
     while (curline.pos < curline.line->len) {
-      struct f_line_item *what = &(curline.line->items[curline.pos++]);
+      const struct f_line_item *what = &(curline.line->items[curline.pos++]);
 
 
       switch (what->fi_code) {
@@ -704,8 +704,10 @@ interpret(struct filter_state *fs, struct f_line *line, struct f_val *val)
 
   switch (vstk.cnt) {
     case 0:
-      if (val)
+      if (val) {
 	log_rl(&rl_runtime_err, L_ERR "filters: No value left on stack");
+	return F_ERROR;
+      }
       return F_NOP;
     case 1:
       if (val) {
@@ -715,38 +717,39 @@ interpret(struct filter_state *fs, struct f_line *line, struct f_val *val)
       /* fallthrough */
     default:
       log_rl(&rl_runtime_err, L_ERR "Too many items left on stack: %u", vstk.cnt);
+      return F_ERROR;
   }
 }
 
 
-#define ARG(n) \
-	if (!i_same(f1->a[n-1].p, f2->a[n-1].p)) \
-		return 0;
-
-#define ONEARG		ARG(1);
-#define TWOARGS		ONEARG; ARG(2);
-#define THREEARGS	TWOARGS; ARG(3);
-
-#define A2_SAME if (f1->a[1].i != f2->a[1].i) return 0;
-
 /*
- * i_same - function that does real comparing of instruction trees, you should call filter_same from outside
+ * f_same - function that does real comparing of instruction trees, you should call filter_same from outside
  */
 int
-i_same(struct f_line *f1, struct f_line *f2)
+f_same(const struct f_line *fl1, const struct f_line *fl2)
 {
-  if ((!!f1) != (!!f2))
-    return 0;
-  if (!f1)
+  if ((!fl1) && (!fl2))
     return 1;
-  if (f1->aux != f2->aux)
+  if ((!fl1) || (!fl2))
     return 0;
-  if (f1->fi_code != f2->fi_code)
+  if (fl1->len != fl2->len)
     return 0;
-  if (f1 == f2)		/* It looks strange, but it is possible with call rewriting trickery */
-    return 1;
+  for (uint i=0; i<fl1->len; i++) {
+#define f1 (&(fl1->items[i]))
+#define f2 (&(fl2->items[i]))
+    if (f1->fi_code != f2->fi_code)
+      return 0;
+    if (f1->flags != f2->flags)
+      return 0;
 
-  switch(f1->fi_code) {
+    switch(f1->fi_code) {
+#include "filter/f-inst-same.c"
+    }
+  }
+  return 1;
+}
+
+#if 0
   case FI_ADD: /* fall through */
   case FI_SUBTRACT:
   case FI_MULTIPLY:
@@ -860,9 +863,7 @@ i_same(struct f_line *f1, struct f_line *f2)
   case FI_ASSERT: ONEARG; break;
   default:
     bug( "Unknown instruction %d in same (%c)", f1->fi_code, f1->fi_code & 0xff);
-  }
-  return i_same(f1->next, f2->next);
-}
+#endif
 
 /**
  * f_run - run a filter for a route
@@ -889,7 +890,7 @@ i_same(struct f_line *f1, struct f_line *f2)
  * modified in place, old cached rta is possibly freed.
  */
 enum filter_return
-f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags)
+f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags)
 {
   if (filter == FILTER_ACCEPT)
     return F_ACCEPT;
@@ -942,7 +943,7 @@ f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int fla
 /* TODO: perhaps we could integrate f_eval(), f_eval_rte() and f_run() */
 
 enum filter_return
-f_eval_rte(struct f_line *expr, struct rte **rte, struct linpool *tmp_pool)
+f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool)
 {
 
   struct filter_state fs = {
@@ -957,7 +958,7 @@ f_eval_rte(struct f_line *expr, struct rte **rte, struct linpool *tmp_pool)
 }
 
 enum filter_return
-f_eval(struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
+f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 {
   struct filter_state fs = {
     .pool = tmp_pool,
@@ -970,7 +971,7 @@ f_eval(struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 }
 
 uint
-f_eval_int(struct f_line *expr)
+f_eval_int(const struct f_line *expr)
 {
   /* Called independently in parse-time to eval expressions */
   struct filter_state fs = {
@@ -1008,5 +1009,5 @@ filter_same(struct filter *new, struct filter *old)
   if (old == FILTER_ACCEPT || old == FILTER_REJECT ||
       new == FILTER_ACCEPT || new == FILTER_REJECT)
     return 0;
-  return i_same(new->root, old->root);
+  return f_same(new->root, old->root);
 }

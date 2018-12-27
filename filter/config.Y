@@ -835,12 +835,11 @@ symbol:
      switch ($1->class & 0xffff) {
        case SYM_CONSTANT_RANGE:
          $$ = f_new_inst(FI_CONSTANT_INDIRECT);
-	 goto cv_common;
+         $$->a[0].p = $1;
+	 break;
        case SYM_VARIABLE_RANGE:
          $$ = f_new_inst(FI_VARIABLE);
-       cv_common:
-         $$->a[0].p = $1->def;
-         $$->a[1].p = $1->name;
+         $$->a[0].p = $1;
 	 break;
        case SYM_ATTRIBUTE:
          $$ = f_new_inst_da(FI_EA_GET, *((struct f_dynamic_attr *) $1->def));
