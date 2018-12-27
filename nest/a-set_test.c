@@ -15,10 +15,10 @@
 #include "lib/resource.h"
 
 #define SET_SIZE 10
-static struct adata *set_sequence;		/* <0; SET_SIZE) */
-static struct adata *set_sequence_same;		/* <0; SET_SIZE) */
-static struct adata *set_sequence_higher;	/* <SET_SIZE; 2*SET_SIZE) */
-static struct adata *set_random;
+static const struct adata *set_sequence;		/* <0; SET_SIZE) */
+static const struct adata *set_sequence_same;		/* <0; SET_SIZE) */
+static const struct adata *set_sequence_higher;	/* <SET_SIZE; 2*SET_SIZE) */
+static const struct adata *set_random;
 
 #define BUFFER_SIZE 1000
 static byte buf[BUFFER_SIZE] = {};
@@ -34,14 +34,14 @@ enum set_type
 };
 
 static void
-generate_set_sequence(enum set_type type)
+generate_set_sequence(enum set_type type, int len)
 {
   struct adata empty_as_path = {};
   set_sequence = set_sequence_same = set_sequence_higher = set_random = &empty_as_path;
   lp = lp_new_default(&root_pool);
 
   int i;
-  for (i = 0; i < SET_SIZE; i++)
+  for (i = 0; i < len; i++)
   {
     if (type == SET_TYPE_INT)
     {
@@ -72,7 +72,7 @@ t_set_int_contains(void)
   int i;
 
   resource_init();
-  generate_set_sequence(SET_TYPE_INT);
+  generate_set_sequence(SET_TYPE_INT, SET_SIZE);
 
   bt_assert(int_set_get_size(set_sequence) == SET_SIZE);
 
@@ -93,9 +93,9 @@ static int
 t_set_int_union(void)
 {
   resource_init();
-  generate_set_sequence(SET_TYPE_INT);
+  generate_set_sequence(SET_TYPE_INT, SET_SIZE);
 
-  struct adata *set_union;
+  const struct adata *set_union;
   set_union = int_set_union(lp, set_sequence, set_sequence_same);
   bt_assert(int_set_get_size(set_union) == SET_SIZE);
   bt_assert(int_set_format(set_union, 0, 2, buf, BUFFER_SIZE) == 0);
@@ -112,9 +112,8 @@ static int
 t_set_int_format(void)
 {
   resource_init();
-  generate_set_sequence(SET_TYPE_INT);
+  generate_set_sequence(SET_TYPE_INT, SET_SIZE_FOR_FORMAT_OUTPUT);
 
-  set_sequence->length = 4 * SET_SIZE_FOR_FORMAT_OUTPUT; /* dirty */
   bt_assert(int_set_format(set_sequence, 0, 0, buf, BUFFER_SIZE) == 0);
   bt_assert(strcmp(buf, "0.0.0.0 0.0.0.1 0.0.0.2 0.0.0.3 0.0.0.4 0.0.0.5 0.0.0.6 0.0.0.7 0.0.0.8 0.0.0.9") == 0);
 
@@ -134,9 +133,9 @@ static int
 t_set_int_delete(void)
 {
   resource_init();
-  generate_set_sequence(SET_TYPE_INT);
+  generate_set_sequence(SET_TYPE_INT, SET_SIZE);
 
-  struct adata *deleting_sequence = set_sequence;
+  const struct adata *deleting_sequence = set_sequence;
   u32 i;
   for (i = 0; i < SET_SIZE; i++)
   {
@@ -162,7 +161,7 @@ t_set_ec_contains(void)
   u32 i;
 
   resource_init();
-  generate_set_sequence(SET_TYPE_EC);
+  generate_set_sequence(SET_TYPE_EC, SET_SIZE);
 
   bt_assert(ec_set_get_size(set_sequence) == SET_SIZE);
 
@@ -183,9 +182,9 @@ static int
 t_set_ec_union(void)
 {
   resource_init();
-  generate_set_sequence(SET_TYPE_EC);
+  generate_set_sequence(SET_TYPE_EC, SET_SIZE);
 
-  struct adata *set_union;
+  const struct adata *set_union;
   set_union = ec_set_union(lp, set_sequence, set_sequence_same);
   bt_assert(ec_set_get_size(set_union) == SET_SIZE);
   bt_assert(ec_set_format(set_union, 0, buf, BUFFER_SIZE) == 0);
@@ -203,7 +202,7 @@ t_set_ec_format(void)
 {
   resource_init();
 
-  struct adata empty_as_path = {};
+  const struct adata empty_as_path = {};
   set_sequence = set_sequence_same = set_sequence_higher = set_random = &empty_as_path;
   lp = lp_new_default(&root_pool);
 
@@ -224,9 +223,9 @@ static int
 t_set_ec_delete(void)
 {
   resource_init();
-  generate_set_sequence(SET_TYPE_EC);
+  generate_set_sequence(SET_TYPE_EC, SET_SIZE);
 
-  struct adata *deleting_sequence = set_sequence;
+  const struct adata *deleting_sequence = set_sequence;
   u32 i;
   for (i = 0; i < SET_SIZE; i++)
   {
