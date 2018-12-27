@@ -34,26 +34,24 @@ t_as_path_match(void)
     first_prepended = last_prepended = 0;
     struct linpool *lp = lp_new_default(&root_pool);
 
-    struct f_path_mask mask[AS_PATH_LENGTH] = {};
-    int i;
-    for (i = 0; i < AS_PATH_LENGTH; i++)
+    struct f_path_mask *mask = alloca(sizeof(struct f_path_mask) + AS_PATH_LENGTH * sizeof(struct f_path_mask_item));
+    mask->len = AS_PATH_LENGTH;
+    for (int i = AS_PATH_LENGTH - 1; i >= 0; i--)
     {
       u32 val = bt_random();
       as_path = as_path_prepend(lp, as_path, val);
       bt_debug("Prepending ASN: %10u \n", val);
 
       if (i == 0)
-	first_prepended = val;
-      if (i == AS_PATH_LENGTH-1)
 	last_prepended = val;
+      if (i == AS_PATH_LENGTH-1)
+	first_prepended = val;
 
-      mask[i].kind = PM_ASN;
-      mask[i].val  = val;
-      if (i)
-	mask[i].next = &mask[i-1];
+      mask->item[i].kind = PM_ASN;
+      mask->item[i].asn  = val;
     }
 
-    bt_assert_msg(as_path_match(as_path, &mask[AS_PATH_LENGTH-1]), "Mask should match with AS path");
+    bt_assert_msg(as_path_match(as_path, mask), "Mask should match with AS path");
 
     u32 asn;
 

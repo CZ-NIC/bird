@@ -34,7 +34,7 @@
  * the buffer to indicate truncation.
  */
 int
-int_set_format(struct adata *set, int way, int from, byte *buf, uint size)
+int_set_format(const struct adata *set, int way, int from, byte *buf, uint size)
 {
   u32 *z = (u32 *) set->data;
   byte *end = buf + size - 24;
@@ -115,7 +115,7 @@ ec_format(byte *buf, u64 ec)
 }
 
 int
-ec_set_format(struct adata *set, int from, byte *buf, uint size)
+ec_set_format(const struct adata *set, int from, byte *buf, uint size)
 {
   u32 *z = int_set_get_data(set);
   byte *end = buf + size - 64;
@@ -150,7 +150,7 @@ lc_format(byte *buf, lcomm lc)
 }
 
 int
-lc_set_format(struct adata *set, int from, byte *buf, uint bufsize)
+lc_set_format(const struct adata *set, int from, byte *buf, uint bufsize)
 {
   u32 *d = (u32 *) set->data;
   byte *end = buf + bufsize - 64;
@@ -181,7 +181,7 @@ lc_set_format(struct adata *set, int from, byte *buf, uint bufsize)
 }
 
 int
-int_set_contains(struct adata *list, u32 val)
+int_set_contains(const struct adata *list, u32 val)
 {
   if (!list)
     return 0;
@@ -198,7 +198,7 @@ int_set_contains(struct adata *list, u32 val)
 }
 
 int
-ec_set_contains(struct adata *list, u64 val)
+ec_set_contains(const struct adata *list, u64 val)
 {
   if (!list)
     return 0;
@@ -217,7 +217,7 @@ ec_set_contains(struct adata *list, u64 val)
 }
 
 int
-lc_set_contains(struct adata *list, lcomm val)
+lc_set_contains(const struct adata *list, lcomm val)
 {
   if (!list)
     return 0;
@@ -233,8 +233,8 @@ lc_set_contains(struct adata *list, lcomm val)
   return 0;
 }
 
-struct adata *
-int_set_prepend(struct linpool *pool, struct adata *list, u32 val)
+const struct adata *
+int_set_prepend(struct linpool *pool, const struct adata *list, u32 val)
 {
   struct adata *res;
   int len;
@@ -254,8 +254,8 @@ int_set_prepend(struct linpool *pool, struct adata *list, u32 val)
   return res;
 }
 
-struct adata *
-int_set_add(struct linpool *pool, struct adata *list, u32 val)
+const struct adata *
+int_set_add(struct linpool *pool, const struct adata *list, u32 val)
 {
   struct adata *res;
   int len;
@@ -275,8 +275,8 @@ int_set_add(struct linpool *pool, struct adata *list, u32 val)
   return res;
 }
 
-struct adata *
-ec_set_add(struct linpool *pool, struct adata *list, u64 val)
+const struct adata *
+ec_set_add(struct linpool *pool, const struct adata *list, u64 val)
 {
   if (ec_set_contains(list, val))
     return list;
@@ -295,8 +295,8 @@ ec_set_add(struct linpool *pool, struct adata *list, u64 val)
   return res;
 }
 
-struct adata *
-lc_set_add(struct linpool *pool, struct adata *list, lcomm val)
+const struct adata *
+lc_set_add(struct linpool *pool, const struct adata *list, lcomm val)
 {
   if (lc_set_contains(list, val))
     return list;
@@ -313,8 +313,8 @@ lc_set_add(struct linpool *pool, struct adata *list, lcomm val)
   return res;
 }
 
-struct adata *
-int_set_del(struct linpool *pool, struct adata *list, u32 val)
+const struct adata *
+int_set_del(struct linpool *pool, const struct adata *list, u32 val)
 {
   if (!int_set_contains(list, val))
     return list;
@@ -335,8 +335,8 @@ int_set_del(struct linpool *pool, struct adata *list, u32 val)
   return res;
 }
 
-struct adata *
-ec_set_del(struct linpool *pool, struct adata *list, u64 val)
+const struct adata *
+ec_set_del(struct linpool *pool, const struct adata *list, u64 val)
 {
   if (!ec_set_contains(list, val))
     return list;
@@ -362,8 +362,8 @@ ec_set_del(struct linpool *pool, struct adata *list, u64 val)
   return res;
 }
 
-struct adata *
-lc_set_del(struct linpool *pool, struct adata *list, lcomm val)
+const struct adata *
+lc_set_del(struct linpool *pool, const struct adata *list, lcomm val)
 {
   if (!lc_set_contains(list, val))
     return list;
@@ -384,8 +384,8 @@ lc_set_del(struct linpool *pool, struct adata *list, lcomm val)
   return res;
 }
 
-struct adata *
-int_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
+const struct adata *
+int_set_union(struct linpool *pool, const struct adata *l1, const struct adata *l2)
 {
   if (!l1)
     return l2;
@@ -414,8 +414,8 @@ int_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
   return res;
 }
 
-struct adata *
-ec_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
+const struct adata *
+ec_set_union(struct linpool *pool, const struct adata *l1, const struct adata *l2)
 {
   if (!l1)
     return l2;
@@ -447,8 +447,8 @@ ec_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
   return res;
 }
 
-struct adata *
-lc_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
+const struct adata *
+lc_set_union(struct linpool *pool, const struct adata *l1, const struct adata *l2)
 {
   if (!l1)
     return l2;
@@ -479,7 +479,7 @@ lc_set_union(struct linpool *pool, struct adata *l1, struct adata *l2)
 
 
 struct adata *
-ec_set_del_nontrans(struct linpool *pool, struct adata *set)
+ec_set_del_nontrans(struct linpool *pool, const struct adata *set)
 {
   adata *res = lp_alloc_adata(pool, set->length);
   u32 *src = int_set_get_data(set);
@@ -510,7 +510,7 @@ int_set_cmp(const void *X, const void *Y)
 }
 
 struct adata *
-int_set_sort(struct linpool *pool, struct adata *src)
+int_set_sort(struct linpool *pool, const struct adata *src)
 {
   struct adata *dst = lp_alloc_adata(pool, src->length);
   memcpy(dst->data, src->data, src->length);
@@ -528,7 +528,7 @@ ec_set_cmp(const void *X, const void *Y)
 }
 
 struct adata *
-ec_set_sort(struct linpool *pool, struct adata *src)
+ec_set_sort(struct linpool *pool, const struct adata *src)
 {
   struct adata *dst = lp_alloc_adata(pool, src->length);
   memcpy(dst->data, src->data, src->length);
@@ -558,7 +558,7 @@ lc_set_cmp(const void *X, const void *Y)
 }
 
 struct adata *
-lc_set_sort(struct linpool *pool, struct adata *src)
+lc_set_sort(struct linpool *pool, const struct adata *src)
 {
   struct adata *dst = lp_alloc_adata(pool, src->length);
   memcpy(dst->data, src->data, src->length);
