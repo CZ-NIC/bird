@@ -40,8 +40,7 @@ parse_config_file(const void *filename_void)
 static int
 run_function(const void *parsed_fn_def)
 {
-  /* XXX: const -> non-const */
-  struct f_inst *f = (struct f_inst *) parsed_fn_def;
+  const struct f_line *f = (const struct f_line *) parsed_fn_def;
 
   linpool *tmp = lp_new_default(&root_pool);
   struct f_val res;
@@ -52,7 +51,7 @@ run_function(const void *parsed_fn_def)
 }
 
 static void
-bt_assert_filter(int result, struct f_inst *assert)
+bt_assert_filter(int result, const struct f_line_item *assert)
 {
   int bt_suit_case_result = 1;
   if (!result)
@@ -62,7 +61,7 @@ bt_assert_filter(int result, struct f_inst *assert)
     bt_suit_case_result = 0;
   }
 
-  bt_log_suite_case_result(bt_suit_case_result, "Assertion at line %d (%s)", assert->lineno, (char *) assert->a[1].p);
+  bt_log_suite_case_result(bt_suit_case_result, "Assertion at line %d (%s)", assert->lineno, assert->s);
 }
 
 int

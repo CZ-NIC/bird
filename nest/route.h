@@ -475,7 +475,7 @@ typedef struct eattr {
   byte type;				/* Attribute type and several flags (EAF_...) */
   union {
     u32 data;
-    struct adata *ptr;			/* Attribute data elsewhere */
+    const struct adata *ptr;			/* Attribute data elsewhere */
   } u;
 } eattr;
 
@@ -519,6 +519,8 @@ typedef struct adata {
   byte data[0];
 } adata;
 
+extern const adata null_adata;		/* adata of length 0 */
+
 static inline struct adata *
 lp_alloc_adata(struct linpool *pool, uint len)
 {
@@ -527,7 +529,7 @@ lp_alloc_adata(struct linpool *pool, uint len)
   return ad;
 }
 
-static inline int adata_same(struct adata *a, struct adata *b)
+static inline int adata_same(const struct adata *a, const struct adata *b)
 { return (a->length == b->length && !memcmp(a->data, b->data, a->length)); }
 
 

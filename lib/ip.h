@@ -354,12 +354,12 @@ mpls_put(char *buf, int len, u32 *stack)
  *	Unaligned data access (in network order)
  */
 
-static inline ip4_addr get_ip4(void *buf)
+static inline ip4_addr get_ip4(const void *buf)
 {
   return _MI4(get_u32(buf));
 }
 
-static inline ip6_addr get_ip6(void *buf)
+static inline ip6_addr get_ip6(const void *buf)
 {
   ip6_addr a;
   memcpy(&a, buf, 16);

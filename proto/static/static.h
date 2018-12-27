@@ -39,7 +39,7 @@ struct static_route {
   struct static_route *chain;		/* Next for the same neighbor */
   struct static_route *mp_head;		/* First nexthop of this route */
   struct static_route *mp_next;		/* Nexthops for multipath routes */
-  struct f_inst *cmds;			/* List of commands for setting attributes */
+  struct f_line *cmds;			/* List of commands for setting attributes */
   byte dest;				/* Destination type (RTD_*) */
   byte state;				/* State of route announcement (SRS_*) */
   byte active;				/* Next hop is active (nbr/iface/BFD available) */
