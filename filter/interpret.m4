@@ -10,7 +10,31 @@ m4_divert(-1)m4_dnl
 # Common aliases
 m4_define(DNL, `m4_dnl')
 
-m4_define(INST, `break; case $1:')
+m4_define(INST, `break; case $1:
+m4_ifelse(eval($2 > 0), `if (vstk.cnt < $2) runtime("Stack underflow");', `')
+vstk.cnt -= $2;
+')
 
+m4_define(ARG, `if (v$1.type != $2) runtime("Argument $1 of instruction %s must be of type $2, got %02x", f_instruction_name(what->fi_code), v$1.type)')
+
+m4_define(LINE, `do { estk.item[estk.cnt].pos = 0; estk.item[estk.cnt].line = what->lines[$2]; estk.cnt++; continue; } while (0)')
+
+m4_define(ARG_ANY, `')
+
+m4_define(SYMBOL, `struct symbol *sym = what->sym')
+
+m4_define(VALI, `res = *what->vp')
+m4_define(VALP, `res = *what->vp')
+m4_define(FRET, `enum filter_return fret = what->fret')
+m4_define(POSTFIXIFY, `')
+
+m4_m4wrap(`
+m4_divert(0)DNL
+case FI_NOP: bug("This shall not happen");
+m4_undivert(1)
+break; default: bug( "Unknown instruction %d (%c)", what->fi_code, what->fi_code & 0xff);
+')
+
+m4_divert(1)
 m4_changequote([[,]])
-m4_divert(0)
+

@@ -10,37 +10,38 @@
  */
 
 /* Binary operators */
-  INST(FI_ADD) {
-    ARG_T(1,0,T_INT);
-    ARG_T(2,1,T_INT);
-    res.val.i += v1.val.i;
+  INST(FI_ADD, 2) {
+    ARG(1,T_INT);
+    ARG(2,T_INT);
+    res.val.i += v2.val.i;
   }
-  INST(FI_SUBTRACT) {
-    ARG_T(1,0,T_INT);
-    ARG_T(2,1,T_INT);
-    res.val.i -= v1.val.i;
+  INST(FI_SUBTRACT, 2) {
+    ARG(1,T_INT);
+    ARG(2,T_INT);
+    res.val.i -= v2.val.i;
   }
-  INST(FI_MULTIPLY) {
-    ARG_T(1,0,T_INT);
-    ARG_T(2,1,T_INT);
-    res.val.i *= v1.val.i;
+  INST(FI_MULTIPLY, 2) {
+    ARG(1,T_INT);
+    ARG(2,T_INT);
+    res.val.i *= v2.val.i;
   }
-  INST(FI_DIVIDE) {
-    ARG_T(1,0,T_INT);
-    ARG_T(2,1,T_INT);
-    if (v1.val.i == 0) runtime( "Mother told me not to divide by 0" );
-    res.val.i /= v1.val.i;
+  INST(FI_DIVIDE, 2) {
+    ARG(1,T_INT);
+    ARG(2,T_INT);
+    if (v2.val.i == 0) runtime( "Mother told me not to divide by 0" );
+    res.val.i /= v2.val.i;
   }
-  INST(FI_AND) {
-    ARG_T(1,0,T_BOOL);
+  INST(FI_AND, 1) {
+    ARG(1,T_BOOL);
     if (res.val.i)
-      ARG_T(2,0,T_BOOL);
+      LINE(2,0);
   }
-  INST(FI_OR) {
-    ARG_T(1,0,T_BOOL);
+  INST(FI_OR, 1) {
+    ARG(1,T_BOOL);
     if (!res.val.i)
-      ARG_T(2,0,T_BOOL);
+      LINE(2,0);
   }
+#if 0
   INST(FI_PAIR_CONSTRUCT) {
     ARG(1,T_INT);
     ARG(2,T_INT);
@@ -218,61 +219,70 @@
     res.type = T_BOOL;
     res.val.i = ipa_is_ip4(v1.val.ip);
   }
+#endif
 
-  /* Set to indirect value, a[0] = variable, a[1] = value */
-  INST(FI_SET) {
+  /* Set to indirect value prepared in v1 */
+  INST(FI_SET, 1) {
     ARG_ANY(2);
-    sym = what->a[0].p;
-    vp = sym->def;
-    if ((sym->class != (SYM_VARIABLE | v2.type)) && (v2.type != T_VOID))
+    SYMBOL(1);
+    if ((sym->class != (SYM_VARIABLE | v1.type)) && (v1.type != T_VOID))
     {
       /* IP->Quad implicit conversion */
-      if ((sym->class == (SYM_VARIABLE | T_QUAD)) && val_is_ip4(v2))
+      if ((sym->class == (SYM_VARIABLE | T_QUAD)) && val_is_ip4(v1))
       {
-	vp->type = T_QUAD;
-	vp->val.i = ipa_to_u32(v2.val.ip);
+	*((struct f_val *) sym->def) = (struct f_val) {
+	  .type = T_QUAD,
+	  .val.i = ipa_to_u32(v1.val.ip),
+	}; 
 	break;
       }
       runtime( "Assigning to variable of incompatible type" );
     }
-    *vp = v2;
+    *((struct f_val *) sym->def) = v1;
   }
 
     /* some constants have value in a[1], some in *a[0].p, strange. */
-  INST(FI_CONSTANT) {	/* integer (or simple type) constant, string, set, or prefix_set */
-    res = what->val;
+  INST(FI_CONSTANT, -1) {	/* integer (or simple type) constant, string, set, or prefix_set */
+    VALI; // res = what->val;
   }
-  INST(FI_VARIABLE) {
-    res = * ((struct f_val *) what->a[0].p);
+  INST(FI_VARIABLE, -1) {
+    VALP(1); // res = * ((struct f_val *) what->a[0].p);
   }
-  INST(FI_CONSTANT_INDIRECT) {
-    res = * ((struct f_val *) what->a[0].p);
+  INST(FI_CONSTANT_INDIRECT, -1) {
+    VALP(1);
   }
-  INST(FI_PRINT) {
+  INST(FI_PRINT, 1) {
     ARG_ANY(1);
     val_format(v1, &fs->buf);
   }
-  INST(FI_CONDITION) {
-    ARG_T(1, 0, T_BOOL);
+  INST(FI_CONDITION, 1) {
+    ARG(1, T_BOOL);
     if (res.val.i)
-      ARG_ANY_T(2,0);
+      LINE(2,0);
     else
-      ARG_ANY_T(3,0);
+      LINE(3,1);
   }
-  INST(FI_PRINT_AND_DIE) {
-    ARG_ANY(1);
-    if ((what->a[1].i == F_NOP || (what->a[1].i != F_NONL && what->a[0].p)) &&
+  INST(FI_PRINT_AND_DIE, 0) {
+    POSTFIXIFY([[
+	if (what->a[0].p) {
+	  pos += postfixify(dest, what->a[0].p, pos);
+	  dest->items[pos].flags |= FIF_PRINTED;
+	}
+    ]]);
+    FRET(2);
+
+    if ((fret == F_NOP || (fret != F_NONL && (what->flags & FIF_PRINTED))) &&
 	!(fs->flags & FF_SILENT))
       log_commit(*L_INFO, &fs->buf);
 
-    switch (what->a[1].i) {
+    switch (fret) {
     case F_QUITBIRD:
       die( "Filter asked me to die" );
     case F_ACCEPT:
       /* Should take care about turning ACCEPT into MODIFY */
     case F_ERROR:
     case F_REJECT:	/* FIXME (noncritical) Should print complete route along with reason to reject route */
-      return what->a[1].i;	/* We have to return now, no more processing. */
+      return fret;	/* We have to return now, no more processing. */
     case F_NONL:
     case F_NOP:
       break;
@@ -280,6 +290,7 @@
       bug( "unknown return type: Can't happen");
     }
   }
+#if 0
   INST(FI_RTA_GET) {	/* rta access */
     {
       ACCESS_RTE;
@@ -921,4 +932,4 @@
 
     CALL(bt_assert_hook, res.val.i, what);
   }
-
+#endif

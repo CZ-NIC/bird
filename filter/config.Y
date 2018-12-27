@@ -438,7 +438,7 @@ filter_def:
 
 conf: filter_eval ;
 filter_eval:
-   EVAL term { f_eval_int($2); }
+   EVAL term { f_eval_int(f_postfixify($2)); }
  ;
 
 conf: custom_attr ;
@@ -530,7 +530,7 @@ filter_body:
    function_body {
      struct filter *f = cfg_alloc(sizeof(struct filter));
      f->name = NULL;
-     f->root = $1;
+     f->root = f_postfixify($1);
      $$ = f;
    }
  ;
@@ -547,21 +547,25 @@ where_filter:
    WHERE term {
      /* Construct 'IF term THEN { ACCEPT; } ELSE { REJECT; }' */
      struct filter *f = cfg_alloc(sizeof(struct filter));
-     struct f_inst *i, *acc, *rej;
-     acc = f_new_inst(FI_PRINT_AND_DIE);	/* ACCEPT */
-     acc->a[0].p = NULL;
-     acc->a[1].i = F_ACCEPT;
-     rej = f_new_inst(FI_PRINT_AND_DIE);	/* REJECT */
-     rej->a[0].p = NULL;
-     rej->a[1].i = F_REJECT;
-     i = f_new_inst(FI_CONDITION);			/* IF */
-     i->a[0].p = $2;
-     i->a[1].p = acc;
-     i->a[2].p = rej;
+     struct f_inst acc = {
+       .fi_code = FI_PRINT_AND_DIE,
+       .a = { { .p = NULL }, { .i = F_ACCEPT } },
+       .lineno = ifs->lino,
+     };
+     struct f_inst rej = {
+       .fi_code = FI_PRINT_AND_DIE,
+       .a = { { .p = NULL }, { .i = F_REJECT } },
+       .lineno = ifs->lino,
+     };
+     struct f_inst i = {
+       .fi_code = FI_CONDITION,
+       .a = { { .p = $2 }, { .p = &acc }, { .p = &rej } },
+       .lineno = ifs->lino,
+     };
      f->name = NULL;
-     f->root = i;
+     f->root = f_postfixify(&i);
      $$ = f;
-  }
+   }
  ;
 
 function_params:
@@ -639,7 +643,7 @@ set_atom:
  | VPN_RD { $$.type = T_RD; $$.val.ec = $1; }
  | ENUM   { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
-     if (f_eval($2, cfg_mem, &($$)) > F_RETURN) cf_error("Runtime error");
+     if (f_eval(f_postfixify($2), cfg_mem, &($$)) > F_RETURN) cf_error("Runtime error");
      if (!f_valid_set_type($$.type)) cf_error("Set-incompatible type");
    }
  | SYM {
@@ -651,13 +655,13 @@ set_atom:
 
 switch_atom:
    NUM   { $$.type = T_INT; $$.val.i = $1; }
- | '(' term ')' { $$.type = T_INT; $$.val.i = f_eval_int($2); }
+ | '(' term ')' { $$.type = T_INT; $$.val.i = f_eval_int(f_postfixify($2)); }
  | fipa  { $$ = $1; }
  | ENUM  { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  ;
 
 cnum:
-   term { $$ = f_eval_int($1); }
+   term { $$ = f_eval_int(f_postfixify($1)); }
 
 pair_item:
    '(' cnum ',' cnum ')'		{ $$ = f_new_pair_item($2, $2, $4, $4); }

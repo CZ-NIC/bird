@@ -3,10 +3,16 @@ obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
 
-$(o)f-inst-interpret.c: $(s)interpret.m4 $(s)f-inst.c
+$(o)f-inst-line-size.c: $(s)line-size.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 	$(M4) $(M4FLAGS) -P $^ >$@
 
-$(o)filter.o: $(o)f-inst-interpret.c
+$(o)f-inst-postfixify.c: $(s)postfixify.m4 $(s)f-inst.c $(objdir)/.dir-stamp
+	$(M4) $(M4FLAGS) -P $^ >$@
+
+$(o)f-inst-interpret.c: $(s)interpret.m4 $(s)f-inst.c $(objdir)/.dir-stamp
+	$(M4) $(M4FLAGS) -P $^ >$@
+
+$(o)filter.o: $(o)f-inst-interpret.c $(o)f-inst-line-size.c $(o)f-inst-postfixify.c
 
 tests_src := tree_test.c filter_test.c trie_test.c
 tests_targets := $(tests_targets) $(tests-target-files)

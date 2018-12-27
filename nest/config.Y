@@ -112,7 +112,7 @@ rtrid:
 
 idval:
    NUM { $$ = $1; }
- | '(' term ')' { $$ = f_eval_int($2); }
+ | '(' term ')' { $$ = f_eval_int(f_postfixify($2)); }
  | IP4 { $$ = ip4_to_u32($1); }
  | SYM {
      if ($1->class == (SYM_CONSTANT | T_INT) || $1->class == (SYM_CONSTANT | T_QUAD))

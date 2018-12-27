@@ -14,11 +14,13 @@
 #include "nest/route.h"
 #include "nest/attrs.h"
 
+/* IP prefix range structure */
 struct f_prefix {
-  net_addr net;
-  u8 lo, hi;
+  net_addr net;		/* The matching prefix must match this net */
+  u8 lo, hi;		/* And its length must fit between lo and hi */
 };
 
+/* Filter value; size of this affects filter memory consumption */
 struct f_val {
   int type;		/* T_*  */
   union {
@@ -35,20 +37,21 @@ struct f_val {
   } val;
 };
 
+/* Dynamic attribute definition (eattrs) */
 struct f_dynamic_attr {
-  int type;
-  int f_type;
-  int ea_code;
+  int type;		/* EA type */
+  int f_type;		/* Filter type */
+  int ea_code;		/* EA code */
 };
 
+/* Static attribute definition (members of struct rta) */
 struct f_static_attr {
-  int f_type;
-  int sa_code;
-  int readonly;
+  int f_type;		/* Filter type */
+  int sa_code;		/* SA_* */
+  int readonly;		/* Don't allow writing */
 };
 
-/* Filter instruction types */
-
+/* Filter instruction words */
 #define FI__TWOCHAR(a,b)	((a<<8) | b)
 #define FI__LIST \
   F(FI_NOP,			  0, '0') \
@@ -106,6 +109,7 @@ struct f_static_attr {
   F(FI_FORMAT,			  0, 'F') \
   F(FI_ASSERT,			'a', 's')
 
+/* The enum itself */
 enum f_instruction_code {
 #define F(c,a,b) \
   c,
@@ -114,11 +118,17 @@ FI__LIST
   FI__MAX,
 } PACKED;
 
+/* Convert the instruction back to the enum name */
 const char *f_instruction_name(enum f_instruction_code fi);
 
-struct f_inst {		/* Instruction */
-  struct f_inst *next;	/* Structure is 16 bytes, anyway */
-  enum f_instruction_code fi_code;
+enum f_instruction_flags {
+  FIF_PRINTED = 1,		/* FI_PRINT_AND_DIE: message put in buffer */
+};
+
+/* Instruction structure for config */
+struct f_inst {
+  struct f_inst *next;	/* Next instruction to be executed */
+  enum f_instruction_code fi_code;	/* The instruction itself */
   u16 aux;		/* Extension to instruction code, T_*, EA_*, EAF_*  */
   union {
     union {
@@ -135,9 +145,66 @@ struct f_inst {		/* Instruction */
 #define arg2 a[1].p
 #define arg3 a[2].p
 
+/* Possible return values of filter execution */
+enum filter_return {
+  F_NOP = 0,
+  F_NONL,
+  F_RETURN,
+  F_ACCEPT,   /* Need to preserve ordering: accepts < rejects! */
+  F_REJECT,
+  F_ERROR,
+  F_QUITBIRD,
+};
+
+/* Filter structures for execution */
+struct f_line;
+
+/* The single instruction item */
+struct f_line_item {
+  enum f_instruction_code fi_code;	/* What to do */
+  enum f_instruction_flags flags;	/* Flags, instruction-specific */
+  uint lineno;				/* Where */
+  union {
+    const struct f_val *vp;
+    struct f_line *lines[2];
+    struct symbol *sym;
+    enum filter_return fret;
+  };					/* Additional instruction data */
+};
+
+/* Line of instructions to be unconditionally executed one after another */
+struct f_line {
+  uint len;				/* Line length */
+  int stack_balance;			/* How does the stack pointer move */
+  struct f_line_item items[0];		/* The items themselves */
+};
+
+/* The filter encapsulating structure to be pointed-to from outside */
 struct filter {
   char *name;
-  struct f_inst *root;
+  struct f_line *root;
+};
+
+/* Convert the f_inst infix tree to the f_line structures */
+struct f_line *f_postfixify(struct f_inst *root);
+
+#define F_VAL_STACK_MAX	4096
+
+/* Value stack for execution */
+struct f_val_stack {
+  uint cnt;				/* Current stack size; 0 for empty */
+  struct f_val val[F_VAL_STACK_MAX];	/* The stack itself */
+};
+
+#define F_EXEC_STACK_MAX 4096
+
+/* Instruction stack for execution */
+struct f_exec_stack {
+  struct {
+    struct f_line *line;		/* The line that is being executed */
+    uint pos;				/* Instruction index in the line */
+  } item[F_EXEC_STACK_MAX];
+  uint cnt;				/* Current stack size; 0 for empty */
 };
 
 struct f_inst *f_new_inst(enum f_instruction_code fi_code);
@@ -166,25 +233,15 @@ void trie_format(struct f_trie *t, buffer *buf);
 struct ea_list;
 struct rte;
 
-enum filter_return {
-  F_NOP = 0,
-  F_NONL,
-  F_RETURN,
-  F_ACCEPT,   /* Need to preserve ordering: accepts < rejects! */
-  F_REJECT,
-  F_ERROR,
-  F_QUITBIRD,
-};
-
 enum filter_return f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
-enum filter_return f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool);
-enum filter_return f_eval(struct f_inst *expr, struct linpool *tmp_pool, struct f_val *pres);
-uint f_eval_int(struct f_inst *expr);
+enum filter_return f_eval_rte(struct f_line *expr, struct rte **rte, struct linpool *tmp_pool);
+enum filter_return f_eval(struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres);
+uint f_eval_int(struct f_line *expr);
 
 char *filter_name(struct filter *filter);
 int filter_same(struct filter *new, struct filter *old);
 
-int i_same(struct f_inst *f1, struct f_inst *f2);
+int f_same(struct f_line *f1, struct f_line *f2);
 
 int val_compare(struct f_val v1, struct f_val v2);
 int val_same(struct f_val v1, struct f_val v2);

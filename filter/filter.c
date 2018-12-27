@@ -66,8 +66,6 @@ struct filter_state {
   struct ea_list **eattrs;
   struct linpool *pool;
   struct buffer buf;
-  struct filter_stack *stack;
-  int stack_ptr;
   int flags;
 };
 
@@ -608,6 +606,39 @@ val_format_str(struct filter_state *fs, struct f_val v) {
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
+static uint
+inst_line_size(const struct f_inst *what)
+{
+  uint cnt = 0;
+  for ( ; what; what = what->next) {
+    switch (what->fi_code) {
+#include "filter/f-inst-line-size.c"
+    }
+  }
+  return cnt;
+}
+
+static uint
+postfixify(struct f_line *dest, const struct f_inst *what, uint pos)
+{
+  for ( ; what; what = what->next) {
+    switch (what->fi_code) {
+#include "filter/f-inst-postfixify.c"
+    }
+    pos++;
+  }
+  return pos;
+}
+
+struct f_line *
+f_postfixify(struct f_inst *root)
+{
+  uint len = inst_line_size(root);
+  struct f_line *out = cfg_allocz(sizeof(struct f_line) + sizeof(struct f_line_item)*len);
+  out->len = postfixify(out, root, 0);
+  return out;
+}
+
 /**
  * interpret
  * @fs: filter state
@@ -624,26 +655,29 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
  * TWOARGS macro to get both of them evaluated.
  */
 static enum filter_return
-interpret(struct filter_state *fs, struct f_inst *what)
+interpret(struct filter_state *fs, struct f_line *line, struct f_val *val)
 {
-  struct symbol *sym;
-  struct f_val *vp;
-  unsigned u1, u2;
-  enum filter_return fret;
-  int i;
-  u32 as;
+  struct f_val_stack vstk;
+  struct f_exec_stack estk = {
+    .cnt = 1,
+    .item[0] = {
+      .line = line,
+      .pos = 0,
+    },
+  };
 
-#define res fs->stack[fs->stack_ptr].val
-#define v0 res
-#define v1 fs->stack[fs->stack_ptr + 1].val
-#define v2 fs->stack[fs->stack_ptr + 2].val
-#define v3 fs->stack[fs->stack_ptr + 3].val
+#define curline estk.item[estk.cnt-1]
 
-  res = (struct f_val) { .type = T_VOID };
+  while (estk.cnt > 0) {
+    while (curline.pos < curline.line->len) {
+      struct f_line_item *what = &(curline.line->items[curline.pos++]);
 
-  for ( ; what; what = what->next) {
-    res = (struct f_val) { .type = T_VOID };
-    switch (what->fi_code) {
+
+      switch (what->fi_code) {
+#define res vstk.val[vstk.cnt]
+#define v1 vstk.val[vstk.cnt]
+#define v2 vstk.val[vstk.cnt + 1]
+#define v3 vstk.val[vstk.cnt + 2]
 
 #define runtime(fmt, ...) do { \
   if (!(fs->flags & FF_SILENT)) \
@@ -651,53 +685,37 @@ interpret(struct filter_state *fs, struct f_inst *what)
   return F_ERROR; \
 } while(0)
 
-#define ARG_ANY_T(n, tt) INTERPRET(what->a[n-1].p, tt)
-#define ARG_ANY(n) ARG_ANY_T(n, n)
-
-#define ARG_T(n,tt,t) do { \
-  ARG_ANY_T(n,tt); \
-  if (v##tt.type != t) \
-    runtime("Argument %d of instruction %s must be of type %02x, got %02x", \
-	    n, f_instruction_name(what->fi_code), t, v##tt.type); \
-} while (0)
-
-#define ARG(n,t) ARG_T(n,n,t)
-
-#define INTERPRET(what_, n) do { \
-  fs->stack_ptr += n; \
-  fret = interpret(fs, what_); \
-  fs->stack_ptr -= n; \
-  if (fret == F_RETURN) \
-    bug("This shall not happen"); \
-  if (fret > F_RETURN) \
-    return fret; \
-} while (0)
-
 #define ACCESS_RTE do { if (!fs->rte) runtime("No route to access"); } while (0)
-
 #define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
-
 #define BITFIELD_MASK(what_) (1u << EA_BIT_GET(what_->a[1].i))
 
-      case FI_NOP:
-	bug("This shall not happen");
-
 #include "filter/f-inst-interpret.c"
-
-	break;
-      default:
-	bug( "Unknown instruction %d (%c)", what->fi_code, what->fi_code & 0xff);
-
 #undef res
+#undef v1
+#undef v2
+#undef v3
 #undef runtime
-#undef ARG_ANY
-#undef ARG
-#undef INTERPRET
 #undef ACCESS_RTE
 #undef ACCESS_EATTRS
+      }
     }
+    estk.cnt--;
   }
-  return F_NOP;
+
+  switch (vstk.cnt) {
+    case 0:
+      if (val)
+	log_rl(&rl_runtime_err, L_ERR "filters: No value left on stack");
+      return F_NOP;
+    case 1:
+      if (val) {
+	*val = vstk.val[0];
+	return F_NOP;
+      }
+      /* fallthrough */
+    default:
+      log_rl(&rl_runtime_err, L_ERR "Too many items left on stack: %u", vstk.cnt);
+  }
 }
 
 
@@ -715,7 +733,7 @@ interpret(struct filter_state *fs, struct f_inst *what)
  * i_same - function that does real comparing of instruction trees, you should call filter_same from outside
  */
 int
-i_same(struct f_inst *f1, struct f_inst *f2)
+i_same(struct f_line *f1, struct f_line *f2)
 {
   if ((!!f1) != (!!f2))
     return 0;
@@ -886,12 +904,11 @@ f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int fla
     .rte = rte,
     .pool = tmp_pool,
     .flags = flags,
-    .stack = filter_stack,
   };
 
   LOG_BUFFER_INIT(fs.buf);
 
-  enum filter_return fret = interpret(&fs, filter->root);
+  enum filter_return fret = interpret(&fs, filter->root, NULL);
 
   if (fs.old_rta) {
     /*
@@ -925,54 +942,52 @@ f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int fla
 /* TODO: perhaps we could integrate f_eval(), f_eval_rte() and f_run() */
 
 enum filter_return
-f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
+f_eval_rte(struct f_line *expr, struct rte **rte, struct linpool *tmp_pool)
 {
 
   struct filter_state fs = {
     .rte = rte,
     .pool = tmp_pool,
-    .stack = filter_stack,
   };
 
   LOG_BUFFER_INIT(fs.buf);
 
   /* Note that in this function we assume that rte->attrs is private / uncached */
-  return interpret(&fs, expr);
+  return interpret(&fs, expr, NULL);
 }
 
 enum filter_return
-f_eval(struct f_inst *expr, struct linpool *tmp_pool, struct f_val *pres)
+f_eval(struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 {
   struct filter_state fs = {
     .pool = tmp_pool,
-    .stack = filter_stack,
   };
 
   LOG_BUFFER_INIT(fs.buf);
 
-  enum filter_return fret = interpret(&fs, expr);
-  *pres = filter_stack[0].val;
+  enum filter_return fret = interpret(&fs, expr, pres);
   return fret;
 }
 
 uint
-f_eval_int(struct f_inst *expr)
+f_eval_int(struct f_line *expr)
 {
   /* Called independently in parse-time to eval expressions */
   struct filter_state fs = {
     .pool = cfg_mem,
-    .stack = filter_stack,
   };
+
+  struct f_val val;
 
   LOG_BUFFER_INIT(fs.buf);
 
-  if (interpret(&fs, expr) > F_RETURN)
+  if (interpret(&fs, expr, &val) > F_RETURN)
     cf_error("Runtime error while evaluating expression");
 
-  if (filter_stack[0].val.type != T_INT)
+  if (val.type != T_INT)
     cf_error("Integer expression expected");
 
-  return filter_stack[0].val.val.i;
+  return val.val.i;
 }
 
 /**
