@@ -186,8 +186,8 @@ rip_iface:
   rip_iface_start iface_patt_list_nopx rip_iface_opt_list rip_iface_finish;
 
 
-dynamic_attr: RIP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_RIP_METRIC); } ;
-dynamic_attr: RIP_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_RIP_TAG); } ;
+dynamic_attr: RIP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, 0, T_INT, EA_RIP_METRIC); } ;
+dynamic_attr: RIP_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT, 0, T_INT, EA_RIP_TAG); } ;
 
 CF_CLI_HELP(SHOW RIP, ..., [[Show information about RIP protocol]]);
 

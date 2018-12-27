@@ -55,7 +55,6 @@ CF_DECLS
   struct f_tree *e;
   struct f_trie *trie;
   struct f_val v;
-  struct f_path_mask *h;
   struct password_item *p;
   struct rt_show_data *ra;
   struct sym_show_data *sd;
@@ -124,14 +123,14 @@ conf: definition ;
 definition:
    DEFINE SYM '=' term ';' {
      struct f_val *val = cfg_alloc(sizeof(struct f_val));
-     if (f_eval($4, cfg_mem, val) > F_RETURN) cf_error("Runtime error");
+     if (f_eval(f_postfixify($4), cfg_mem, val) > F_RETURN) cf_error("Runtime error");
      cf_define_symbol($2, SYM_CONSTANT | val->type, val);
    }
  ;
 
 expr:
    NUM
- | '(' term ')' { $$ = f_eval_int($2); }
+ | '(' term ')' { $$ = f_eval_int(f_postfixify($2)); }
  | SYM {
      if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number expected");
      $$ = SYM_VAL($1).i; }

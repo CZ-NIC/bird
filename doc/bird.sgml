@@ -3982,7 +3982,7 @@ definitions, prefix definitions and DNS definitions:
 	RAdv protocol could be configured to change its behavior based on
 	availability of routes. When this option is used, the protocol waits in
 	suppressed state until a <it/trigger route/ (for the specified network)
-	is exported to the protocol, the protocol also returnsd to suppressed
+	is exported to the protocol, the protocol also returns to suppressed
 	state if the <it/trigger route/ disappears. Note that route export
 	depends on specified export filter, as usual. This option could be used,
 	e.g., for handling failover in multihoming scenarios.
