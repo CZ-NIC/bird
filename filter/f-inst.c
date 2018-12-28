@@ -98,130 +98,116 @@
       runtime("Value %u > %u out of bounds in EC constructor", val, 0xFFFF);
   }
 
+  INST(FI_LC_CONSTRUCT, 3, 1) {
+    ARG(1, T_INT);
+    ARG(2, T_INT);
+    ARG(3, T_INT);
+    RESULT(T_LC, lc, [[(lcomm) { v1.val.i, v2.val.i, v3.val.i }]]);
+  }
 
 #if 0
-  INST(FI_LC_CONSTRUCT) {
-    {
-      ARG(1, T_INT);
-      ARG(2, T_INT);
-      ARG(3, T_INT);
+  INST(FI_PATHMASK_CONSTRUCT, 0, 1) {
+    PATHMASK(1);
+    struct f_path_mask *vbegin, **vv = &vbegin;
 
-      res.type = T_LC;
-      res.val.lc = (lcomm) { v1.val.i, v2.val.i, v3.val.i };
-
-    }
-    }
-
-  INST(FI_PATHMASK_CONSTRUCT) {
-    {
-      struct f_path_mask *tt = what->a[0].p, *vbegin, **vv = &vbegin;
-
-      while (tt) {
-	*vv = lp_alloc(fs->pool, sizeof(struct f_path_mask));
-	if (tt->kind == PM_ASN_EXPR) {
-	  INTERPRET((struct f_inst *) tt->val, 0);
-	  (*vv)->kind = PM_ASN;
-	  if (res.type != T_INT) {
-	    runtime( "Error resolving path mask template: value not an integer" );
-	    return F_ERROR;
-	  }
-
-	  (*vv)->val = res.val.i;
-	} else {
-	  **vv = *tt;
+    while (pm) {
+      *vv = lp_alloc(fs->pool, sizeof(struct f_path_mask));
+      if (pm->kind == PM_ASN_EXPR) {
+	INTERPRET((struct f_inst *) pm->val, 0);
+	(*vv)->kind = PM_ASN;
+	if (res.type != T_INT) {
+	  runtime( "Error resolving path mask template: value not an integer" );
+	  return F_ERROR;
 	}
-	tt = tt->next;
-	vv = &((*vv)->next);
-      }
 
-      res = (struct f_val) { .type = T_PATH_MASK, .val.path_mask = vbegin };
+	(*vv)->val = res.val.i;
+      } else {
+	**vv = *pm;
+      }
+      pm = pm->next;
+      vv = &((*vv)->next);
     }
-    }
+
+    RESULT(T_PATH_MASK, path_mask, vbegin);
+  }
+#endif
 
 /* Relational operators */
 
-  INST(FI_NEQ) {
+  INST(FI_NEQ, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
-    res.type = T_BOOL;
-    res.val.i = !val_same(v1, v2);
+    RESULT(T_BOOL, i, !val_same(&v1, &v2));
   }
 
-  INST(FI_EQ) {
+  INST(FI_EQ, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
-    res.type = T_BOOL;
-    res.val.i = val_same(v1, v2);
+    RESULT(T_BOOL, i, val_same(&v1, &v2));
   }
 
-  INST(FI_LT) {
+  INST(FI_LT, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
-    i = val_compare(v1, v2);
-    if (i==CMP_ERROR)
+    int i = val_compare(&v1, &v2);
+    if (i == CMP_ERROR)
       runtime( "Can't compare values of incompatible types" );
-    res.type = T_BOOL;
-    res.val.i = (i == -1);
+    RESULT(T_BOOL, i, (i == -1));
   }
 
-  INST(FI_LTE) {
+  INST(FI_LTE, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
-    i = val_compare(v1, v2);
-    if (i==CMP_ERROR)
+    int i = val_compare(&v1, &v2);
+    if (i == CMP_ERROR)
       runtime( "Can't compare values of incompatible types" );
-    res.type = T_BOOL;
-    res.val.i = (i != 1);
+    RESULT(T_BOOL, i, (i != 1));
   }
 
-  INST(FI_NOT) {
-    ARG_T(1,0,T_BOOL);
-    res.val.i = !res.val.i;
+  INST(FI_NOT, 1, 1) {
+    ARG(1,0,T_BOOL);
+    RESULT(T_BOOL, i, !v1.val.i);
   }
 
-  INST(FI_MATCH) {
+  INST(FI_MATCH, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
-    res.type = T_BOOL;
-    res.val.i = val_in_range(v1, v2);
-    if (res.val.i == CMP_ERROR)
+    int i = val_in_range(&v1, &v2);
+    if (i == CMP_ERROR)
       runtime( "~ applied on unknown type pair" );
-    res.val.i = !!res.val.i;
+    RESULT(T_BOOL, i, !!i);
   }
 
-  INST(FI_NOT_MATCH) {
+  INST(FI_NOT_MATCH, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
-    res.type = T_BOOL;
-    res.val.i = val_in_range(v1, v2);
+    int i = val_in_range(&v1, &v2);
     if (res.val.i == CMP_ERROR)
       runtime( "!~ applied on unknown type pair" );
-    res.val.i = !res.val.i;
+    RESULT(T_BOOL, i, !i);
   }
 
-  INST(FI_DEFINED) {
+  INST(FI_DEFINED, 1, 1) {
     ARG_ANY(1);
-    res.type = T_BOOL;
-    res.val.i = (v1.type != T_VOID) && !undef_value(v1);
+    RESULT(T_BOOL, i, (v1.type != T_VOID) && !undef_value(v1));
   }
-  INST(FI_TYPE) {
+
+  INST(FI_TYPE, 1, 1) {
     ARG_ANY(1); /* There may be more types supporting this operation */
     switch (v1.type)
     {
       case T_NET:
-	res.type = T_ENUM_NETTYPE;
-	res.val.i = v1.val.net->type;
+	RESULT(T_ENUM_NETTYPE, i, v1.val.net->type);
 	break;
       default:
 	runtime( "Can't determine type of this item" );
     }
   }
-  INST(FI_IS_V4) {
+
+  INST(FI_IS_V4, 1, 1) {
     ARG(1, T_IP);
-    res.type = T_BOOL;
-    res.val.i = ipa_is_ip4(v1.val.ip);
+    RESULT(T_BOOL, i, ipa_is_ip4(v1.val.ip));
   }
-#endif
 
   /* Set to indirect value prepared in v1 */
   INST(FI_SET, 1, 0) {

@@ -703,6 +703,8 @@ static enum filter_return
 interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 {
   struct f_val_stack vstk;
+  vstk.cnt = 0;
+
   struct f_exec_stack estk;
   estk.cnt = 1;
   estk.item[0].line = line;

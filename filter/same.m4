@@ -32,7 +32,9 @@ m4_define(VALP, `')
 
 m4_define(FRET, `m4_divert(1)if (f1->fret != f2->fret) return 0;
 m4_divert(-1)')
-m4_define(ECS, `m4_divert(1)if (f1->fret != f2->fret) return 0;
+m4_define(ECS, `m4_divert(1)if (f1->ecs != f2->ecs) return 0;
+m4_divert(-1)')
+m4_define(PATH_MASK, `m4_divert(1)if (!pm_same(f1->pm, f2->pm)) return 0;
 m4_divert(-1)')
 
 m4_define(SAME, `m4_divert(1)$1m4_divert(-1)')

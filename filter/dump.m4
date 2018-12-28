@@ -24,6 +24,8 @@ m4_define(FRET, `m4_divert(1)debug("%sfilter return value %d\n", INDENT, item->f
 m4_divert(-1)')
 m4_define(ECS, `m4_divert(1)debug("%sec subtype %d\n", INDENT, item->ecs);
 m4_divert(-1)')
+m4_define(PATH_MASK, `m4_divert(1)debug("%sbgp path mask %p\n", INDENT, item->pm);
+m4_divert(-1)')
 m4_define(DUMP, `m4_divert(1)$1m4_divert(-1)')
 
 m4_m4wrap(`

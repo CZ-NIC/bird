@@ -172,6 +172,7 @@ struct f_line_item {
     const struct f_line *lines[2];
     enum filter_return fret;
     enum ec_subtype ecs;
+    const struct f_path_mask *pm;
   };					/* Additional instruction data */
 };
 
@@ -350,7 +351,7 @@ struct custom_attribute *ca_lookup(pool *p, const char *name, int ea_type);
 /* Bird Tests */
 struct f_bt_test_suite {
   node n;			/* Node in config->tests */
-  struct f_inst *fn;		/* Root of function */
+  struct f_line *fn;		/* Root of function */
   const char *fn_name;		/* Name of test */
   const char *dsc;		/* Description */
 };

@@ -30,6 +30,7 @@ m4_define(VALI, `res = *what->vp')
 m4_define(VALP, `res = *what->vp')
 m4_define(FRET, `enum filter_return fret = what->fret')
 m4_define(ECS, `enum ec_subtype ecs = what->ecs')
+m4_define(PATH_MASK, `const struct f_path_mask *pm = what->pm')
 m4_define(POSTFIXIFY, `')
 m4_define(SAME, `')
 

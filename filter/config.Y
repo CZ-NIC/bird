@@ -591,7 +591,7 @@ function_def:
      $2 = cf_define_symbol($2, SYM_FUNCTION, NULL);
      cf_push_scope($2);
    } function_params function_body {
-     $2->def = $5;
+     $2->def = f_postfixify($5);
      $2->aux2 = $4;
      DBG("Hmm, we've got one function here - %s\n", $2->name);
      cf_pop_scope();
