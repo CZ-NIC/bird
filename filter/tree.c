@@ -140,18 +140,18 @@ same_tree(const struct f_tree *t1, const struct f_tree *t2)
 
 
 static void
-tree_node_format(struct f_tree *t, buffer *buf)
+tree_node_format(const struct f_tree *t, buffer *buf)
 {
   if (t == NULL)
     return;
 
   tree_node_format(t->left, buf);
 
-  val_format(t->from, buf);
+  val_format(&(t->from), buf);
   if (val_compare(&(t->from), &(t->to)) != 0)
   {
     buffer_puts(buf, "..");
-    val_format(t->to, buf);
+    val_format(&(t->to), buf);
   }
   buffer_puts(buf, ", ");
 

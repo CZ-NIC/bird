@@ -12,6 +12,8 @@ m4_define(DNL, `m4_dnl')
 
 m4_define(INST, `m4_divert(1)break; case $1: cnt += 1;
 m4_divert(-1)')
+m4_define(ARG, `m4_divert(1)cnt += inst_line_size(what->a[$1-1].p);
+m4_divert(-1)')
 m4_define(ARG_T, `m4_divert(1)cnt += inst_line_size(what->a[$1-1].p);
 m4_divert(-1)')
 m4_define(ARG_ANY, `m4_divert(1)cnt += inst_line_size(what->a[$1-1].p);

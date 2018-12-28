@@ -15,7 +15,10 @@ $(o)f-inst-interpret.c: $(s)interpret.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 $(o)f-inst-same.c: $(s)same.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 	$(M4) $(M4FLAGS) -P $^ >$@
 
-$(o)filter.o: $(o)f-inst-interpret.c $(o)f-inst-line-size.c $(o)f-inst-postfixify.c $(o)f-inst-same.c
+$(o)f-inst-dump.c: $(s)dump.m4 $(s)f-inst.c $(objdir)/.dir-stamp
+	$(M4) $(M4FLAGS) -P $^ >$@
+
+$(o)filter.o: $(o)f-inst-interpret.c $(o)f-inst-line-size.c $(o)f-inst-postfixify.c $(o)f-inst-same.c $(o)f-inst-dump.c
 
 tests_src := tree_test.c filter_test.c trie_test.c
 tests_targets := $(tests_targets) $(tests-target-files)

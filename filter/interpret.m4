@@ -17,7 +17,9 @@ vstk.cnt -= $2;
 
 m4_define(ARG, `if (v$1.type != $2) runtime("Argument $1 of instruction %s must be of type $2, got %02x", f_instruction_name(what->fi_code), v$1.type)')
 
-m4_define(LINE, `do { estk.item[estk.cnt].pos = 0; estk.item[estk.cnt].line = what->lines[$2]; estk.cnt++; continue; } while (0)')
+m4_define(RESULT_OK, `vstk.cnt++')
+
+m4_define(LINE, `do { if (what->lines[$2]) { estk.item[estk.cnt].pos = 0; estk.item[estk.cnt].line = what->lines[$2]; estk.cnt++; } continue; } while (0)')
 
 m4_define(ARG_ANY, `')
 

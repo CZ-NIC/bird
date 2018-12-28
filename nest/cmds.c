@@ -97,6 +97,7 @@ cmd_show_memory(void)
 void
 cmd_eval(const struct f_line *expr)
 {
+  /* TODO: Return directly the string from eval */
   struct f_val v;
   if (f_eval(expr, this_cli->parser_pool, &v) > F_RETURN)
     {
@@ -106,6 +107,6 @@ cmd_eval(const struct f_line *expr)
 
   buffer buf;
   LOG_BUFFER_INIT(buf);
-  val_format(v, &buf);
+  val_format(&v, &buf);
   cli_msg(23, "%s", buf.start);
 }

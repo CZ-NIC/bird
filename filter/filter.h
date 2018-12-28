@@ -247,7 +247,7 @@ int f_same(const struct f_line *f1, const struct f_line *f2);
 
 int val_compare(const struct f_val *v1, const struct f_val *v2);
 
-void val_format(struct f_val v, buffer *buf);
+void val_format(const struct f_val *v, buffer *buf);
 
 #define FILTER_ACCEPT NULL
 #define FILTER_REJECT ((void *) 1)

@@ -527,31 +527,31 @@ val_in_range(const struct f_val *v1, const struct f_val *v2)
  * val_format - format filter value
  */
 void
-val_format(struct f_val v, buffer *buf)
+val_format(const struct f_val *v, buffer *buf)
 {
   char buf2[1024];
-  switch (v.type)
+  switch (v->type)
   {
   case T_VOID:	buffer_puts(buf, "(void)"); return;
-  case T_BOOL:	buffer_puts(buf, v.val.i ? "TRUE" : "FALSE"); return;
-  case T_INT:	buffer_print(buf, "%u", v.val.i); return;
-  case T_STRING: buffer_print(buf, "%s", v.val.s); return;
-  case T_IP:	buffer_print(buf, "%I", v.val.ip); return;
-  case T_NET:   buffer_print(buf, "%N", v.val.net); return;
-  case T_PAIR:	buffer_print(buf, "(%u,%u)", v.val.i >> 16, v.val.i & 0xffff); return;
-  case T_QUAD:	buffer_print(buf, "%R", v.val.i); return;
-  case T_EC:	ec_format(buf2, v.val.ec); buffer_print(buf, "%s", buf2); return;
-  case T_LC:	lc_format(buf2, v.val.lc); buffer_print(buf, "%s", buf2); return;
-  case T_RD:	rd_format(v.val.ec, buf2, 1024); buffer_print(buf, "%s", buf2); return;
-  case T_PREFIX_SET: trie_format(v.val.ti, buf); return;
-  case T_SET:	tree_format(v.val.t, buf); return;
-  case T_ENUM:	buffer_print(buf, "(enum %x)%u", v.type, v.val.i); return;
-  case T_PATH:	as_path_format(v.val.ad, buf2, 1000); buffer_print(buf, "(path %s)", buf2); return;
-  case T_CLIST:	int_set_format(v.val.ad, 1, -1, buf2, 1000); buffer_print(buf, "(clist %s)", buf2); return;
-  case T_ECLIST: ec_set_format(v.val.ad, -1, buf2, 1000); buffer_print(buf, "(eclist %s)", buf2); return;
-  case T_LCLIST: lc_set_format(v.val.ad, -1, buf2, 1000); buffer_print(buf, "(lclist %s)", buf2); return;
-  case T_PATH_MASK: pm_format(v.val.path_mask, buf); return;
-  default:	buffer_print(buf, "[unknown type %x]", v.type); return;
+  case T_BOOL:	buffer_puts(buf, v->val.i ? "TRUE" : "FALSE"); return;
+  case T_INT:	buffer_print(buf, "%u", v->val.i); return;
+  case T_STRING: buffer_print(buf, "%s", v->val.s); return;
+  case T_IP:	buffer_print(buf, "%I", v->val.ip); return;
+  case T_NET:   buffer_print(buf, "%N", v->val.net); return;
+  case T_PAIR:	buffer_print(buf, "(%u,%u)", v->val.i >> 16, v->val.i & 0xffff); return;
+  case T_QUAD:	buffer_print(buf, "%R", v->val.i); return;
+  case T_EC:	ec_format(buf2, v->val.ec); buffer_print(buf, "%s", buf2); return;
+  case T_LC:	lc_format(buf2, v->val.lc); buffer_print(buf, "%s", buf2); return;
+  case T_RD:	rd_format(v->val.ec, buf2, 1024); buffer_print(buf, "%s", buf2); return;
+  case T_PREFIX_SET: trie_format(v->val.ti, buf); return;
+  case T_SET:	tree_format(v->val.t, buf); return;
+  case T_ENUM:	buffer_print(buf, "(enum %x)%u", v->type, v->val.i); return;
+  case T_PATH:	as_path_format(v->val.ad, buf2, 1000); buffer_print(buf, "(path %s)", buf2); return;
+  case T_CLIST:	int_set_format(v->val.ad, 1, -1, buf2, 1000); buffer_print(buf, "(clist %s)", buf2); return;
+  case T_ECLIST: ec_set_format(v->val.ad, -1, buf2, 1000); buffer_print(buf, "(eclist %s)", buf2); return;
+  case T_LCLIST: lc_set_format(v->val.ad, -1, buf2, 1000); buffer_print(buf, "(lclist %s)", buf2); return;
+  case T_PATH_MASK: pm_format(v->val.path_mask, buf); return;
+  default:	buffer_print(buf, "[unknown type %x]", v->type); return;
   }
 }
 
@@ -597,7 +597,7 @@ f_rta_cow(struct filter_state *fs)
 }
 
 static char *
-val_format_str(struct filter_state *fs, struct f_val v) {
+val_format_str(struct filter_state *fs, struct f_val *v) {
   buffer b;
   LOG_BUFFER_INIT(b);
   val_format(v, &b);
@@ -618,6 +618,47 @@ inst_line_size(const struct f_inst *what)
   return cnt;
 }
 
+#if DEBUGGING
+#define INDENT (((const char *) f_dump_line_indent_str) + sizeof(f_dump_line_indent_str) - (indent) - 1)
+static const char f_dump_line_indent_str[] = "                                ";
+
+static char val_dump_buffer[1024];
+
+static const char *
+val_dump(const struct f_val *v) {
+  static buffer b = {
+    .start = val_dump_buffer,
+    .end = val_dump_buffer + 1024,
+  };
+  b.pos = b.start;
+  val_format(v, &b);
+  return val_dump_buffer;
+}
+
+static void f_dump_line(const struct f_line *dest, int indent);
+
+static void
+f_dump_line_item(const struct f_line_item *item, int indent)
+{
+  debug("%sInstruction %s at line %u\n", INDENT, f_instruction_name(item->fi_code), item->lineno);
+  switch (item->fi_code) {
+#include "filter/f-inst-dump.c"
+  }
+}
+
+static void
+f_dump_line(const struct f_line *dest, int indent)
+{
+  debug("%sFilter line %p (len=%u, stkbal=%d)\n", INDENT, dest, dest->len, dest->stack_balance);
+  for (uint i=0; i<dest->len; i++)
+    f_dump_line_item(&dest->items[i], indent+1);
+  debug("%sFilter line %p dump done\n", INDENT, dest);
+#undef INDENT
+}
+#else
+#define f_dump_line(...)
+#endif
+
 static uint
 postfixify(struct f_line *dest, const struct f_inst *what, uint pos)
 {
@@ -633,9 +674,13 @@ postfixify(struct f_line *dest, const struct f_inst *what, uint pos)
 struct f_line *
 f_postfixify(struct f_inst *root)
 {
+  if (!root)
+    return NULL;
+
   uint len = inst_line_size(root);
   struct f_line *out = cfg_allocz(sizeof(struct f_line) + sizeof(struct f_line_item)*len);
   out->len = postfixify(out, root, 0);
+  f_dump_line(out, 0);
   return out;
 }
 
@@ -658,13 +703,10 @@ static enum filter_return
 interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 {
   struct f_val_stack vstk;
-  struct f_exec_stack estk = {
-    .cnt = 1,
-    .item[0] = {
-      .line = line,
-      .pos = 0,
-    },
-  };
+  struct f_exec_stack estk;
+  estk.cnt = 1;
+  estk.item[0].line = line;
+  estk.item[0].pos = 0;
 
 #define curline estk.item[estk.cnt-1]
 

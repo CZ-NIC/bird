@@ -10,36 +10,44 @@
  */
 
 /* Binary operators */
-  INST(FI_ADD, 2) {
+  INST(FI_ADD, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
     res.val.i += v2.val.i;
+    RESULT_OK;
   }
-  INST(FI_SUBTRACT, 2) {
+  INST(FI_SUBTRACT, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
     res.val.i -= v2.val.i;
+    RESULT_OK;
   }
-  INST(FI_MULTIPLY, 2) {
+  INST(FI_MULTIPLY, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
     res.val.i *= v2.val.i;
+    RESULT_OK;
   }
-  INST(FI_DIVIDE, 2) {
+  INST(FI_DIVIDE, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
     if (v2.val.i == 0) runtime( "Mother told me not to divide by 0" );
     res.val.i /= v2.val.i;
+    RESULT_OK;
   }
-  INST(FI_AND, 1) {
+  INST(FI_AND, 1, 1) {
     ARG(1,T_BOOL);
     if (res.val.i)
       LINE(2,0);
+    else
+      RESULT_OK;
   }
-  INST(FI_OR, 1) {
+  INST(FI_OR, 1, 1) {
     ARG(1,T_BOOL);
     if (!res.val.i)
       LINE(2,0);
+    else
+      RESULT_OK;
   }
 #if 0
   INST(FI_PAIR_CONSTRUCT) {
@@ -222,7 +230,7 @@
 #endif
 
   /* Set to indirect value prepared in v1 */
-  INST(FI_SET, 1) {
+  INST(FI_SET, 1, 0) {
     ARG_ANY(2);
     SYMBOL(1);
     if ((sym->class != (SYM_VARIABLE | v1.type)) && (v1.type != T_VOID))
@@ -242,32 +250,35 @@
   }
 
     /* some constants have value in a[1], some in *a[0].p, strange. */
-  INST(FI_CONSTANT, -1) {	/* integer (or simple type) constant, string, set, or prefix_set */
+  INST(FI_CONSTANT, 0, 1) {	/* integer (or simple type) constant, string, set, or prefix_set */
     VALI; // res = what->val;
+    RESULT_OK;
   }
-  INST(FI_VARIABLE, -1) {
+  INST(FI_VARIABLE, 0, 1) {
     VALP(1); // res = * ((struct f_val *) what->a[0].p);
     SAME([[if (strcmp(f1->sym->name, f2->sym->name)) return 0; ]]);
+    RESULT_OK;
   }
-  INST(FI_CONSTANT_INDIRECT, -1) {
+  INST(FI_CONSTANT_INDIRECT, 0, 1) {
     VALP(1);
     SAME([[if (!val_same(f1->vp, f2->vp)) return 0; ]]);
+    RESULT_OK;
   }
-  INST(FI_PRINT, 1) {
+  INST(FI_PRINT, 1, 0) {
     ARG_ANY(1);
-    val_format(v1, &fs->buf);
+    val_format(&(v1), &fs->buf);
   }
-  INST(FI_CONDITION, 1) {
+  INST(FI_CONDITION, 1, 0) {
     ARG(1, T_BOOL);
     if (res.val.i)
       LINE(2,0);
     else
       LINE(3,1);
   }
-  INST(FI_PRINT_AND_DIE, 0) {
+  INST(FI_PRINT_AND_DIE, 0, 0) {
     POSTFIXIFY([[
 	if (what->a[0].p) {
-	  pos += postfixify(dest, what->a[0].p, pos);
+	  pos = postfixify(dest, what->a[0].p, pos);
 	  dest->items[pos].flags |= FIF_PRINTED;
 	}
     ]]);
@@ -667,10 +678,13 @@
     if (fret > F_RETURN)
       return fret;
   }
-  INST(FI_CLEAR_LOCAL_VARS) {	/* Clear local variables */
-    for (sym = what->a[0].p; sym != NULL; sym = sym->aux2)
+#endif
+  INST(FI_CLEAR_LOCAL_VARS, 0, 0) {	/* Clear local variables */
+    SYMBOL(1);
+    for ( ; sym != NULL; sym = sym->aux2)
       ((struct f_val *) sym->def)->type = T_VOID;
   }
+#if 0
   INST(FI_SWITCH) {
     ARG_ANY(1);
     {
