@@ -953,7 +953,7 @@ nl_parse_addr4(struct ifaddrmsg *i, int scan, int new)
   DBG("KIF: IF%d(%s): %s IPA %I, flg %x, net %N, brd %I, opp %I\n",
       ifi->index, ifi->name,
       new ? "added" : "removed",
-      ifa.ip, ifa.flags, ifa.prefix, ifa.brd, ifa.opposite);
+      ifa.ip, ifa.flags, &ifa.prefix, ifa.brd, ifa.opposite);
 
   if (new)
     ifa_update(&ifa);
@@ -1045,7 +1045,7 @@ nl_parse_addr6(struct ifaddrmsg *i, int scan, int new)
   DBG("KIF: IF%d(%s): %s IPA %I, flg %x, net %N, brd %I, opp %I\n",
       ifi->index, ifi->name,
       new ? "added" : "removed",
-      ifa.ip, ifa.flags, ifa.prefix, ifa.brd, ifa.opposite);
+      ifa.ip, ifa.flags, &ifa.prefix, ifa.brd, ifa.opposite);
 
   if (new)
     ifa_update(&ifa);
@@ -1526,7 +1526,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   /* Do we know this table? */
   p = HASH_FIND(nl_table_map, RTH, i->rtm_family, table_id);
   if (!p)
-    SKIP("unknown table %d\n", table);
+    SKIP("unknown table %u\n", table_id);
 
   if (a[RTA_SRC] && (p->p.net_type != NET_IP6_SADR))
     SKIP("src prefix for non-SADR channel\n");
