@@ -731,7 +731,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 
 #define ACCESS_RTE do { if (!fs->rte) runtime("No route to access"); } while (0)
 #define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
-#define BITFIELD_MASK(what_) (1u << EA_BIT_GET(what_->a[1].i))
 
 #include "filter/f-inst-interpret.c"
 #undef res

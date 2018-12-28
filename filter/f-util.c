@@ -30,8 +30,7 @@ struct f_inst *
 f_new_inst_da(enum f_instruction_code fi_code, struct f_dynamic_attr da)
 {
   struct f_inst *ret = f_new_inst(fi_code);
-  ret->aux = (da.f_type << 8) | da.type;
-  ret->a[1].i = da.ea_code;
+  ret->da = da;
   return ret;
 }
 
@@ -39,9 +38,7 @@ struct f_inst *
 f_new_inst_sa(enum f_instruction_code fi_code, struct f_static_attr sa)
 {
   struct f_inst *ret = f_new_inst(fi_code);
-  ret->aux = sa.f_type;
-  ret->a[1].i = sa.sa_code;
-  ret->a[0].i = sa.readonly;
+  ret->sa = sa;
   return ret;
 }
 
@@ -219,7 +216,7 @@ ca_lookup(pool *p, const char *name, int f_type)
     }
 
     cas = mb_allocz(&root_pool, sizeof(struct ca_storage) + strlen(name) + 1);
-    cas->fda = f_new_dynamic_attr(ea_type, f_type, EA_CUSTOM(id));
+    cas->fda = f_new_dynamic_attr(ea_type, 0, f_type, EA_CUSTOM(id));
     cas->uc = 1;
 
     strcpy(cas->name, name);

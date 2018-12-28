@@ -283,41 +283,43 @@
       bug( "unknown return type: Can't happen");
     }
   }
-#if 0
-  INST(FI_RTA_GET) {	/* rta access */
+  
+  INST(FI_RTA_GET, 0, 1) {	/* rta access */
     {
+      STATIC_ATTR;
       ACCESS_RTE;
       struct rta *rta = (*fs->rte)->attrs;
-      res.type = what->aux;
 
-      switch (what->a[1].i)
+      switch (sa.sa_code)
       {
-      case SA_FROM:	res.val.ip = rta->from; break;
-      case SA_GW:	res.val.ip = rta->nh.gw; break;
-      case SA_NET:	res.val.net = (*fs->rte)->netA; break;
-      case SA_PROTO:	res.val.s = rta->src->proto->name; break;
-      case SA_SOURCE:	res.val.i = rta->source; break;
-      case SA_SCOPE:	res.val.i = rta->scope; break;
-      case SA_DEST:	res.val.i = rta->dest; break;
-      case SA_IFNAME:	res.val.s = rta->nh.iface ? rta->nh.iface->name : ""; break;
-      case SA_IFINDEX:	res.val.i = rta->nh.iface ? rta->nh.iface->index : 0; break;
+      case SA_FROM:	RESULT(sa.f_type, ip, rta->from); break;
+      case SA_GW:	RESULT(sa.f_type, ip, rta->nh.gw); break;
+      case SA_NET:	RESULT(sa.f_type, net, (*fs->rte)->netA); break;
+      case SA_PROTO:	RESULT(sa.f_type, s, rta->src->proto->name); break;
+      case SA_SOURCE:	RESULT(sa.f_type, i, rta->source); break;
+      case SA_SCOPE:	RESULT(sa.f_type, i, rta->scope); break;
+      case SA_DEST:	RESULT(sa.f_type, i, rta->dest); break;
+      case SA_IFNAME:	RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
+      case SA_IFINDEX:	RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
 
       default:
-	bug("Invalid static attribute access (%x)", res.type);
+	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
       }
     }
   }
-  INST(FI_RTA_SET) {
+
+  INST(FI_RTA_SET, 1, 0) {
+    STATIC_ATTR;
     ACCESS_RTE;
     ARG_ANY(1);
-    if (what->aux != v1.type)
+    if (sa.f_type != v1.type)
       runtime( "Attempt to set static attribute to incompatible type" );
 
     f_rta_cow(fs);
     {
       struct rta *rta = (*fs->rte)->attrs;
 
-      switch (what->a[1].i)
+      switch (sa.sa_code)
       {
       case SA_FROM:
 	rta->from = v1.val.ip;
@@ -343,15 +345,17 @@
 	break;
 
       case SA_DEST:
-	i = v1.val.i;
-	if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
-	  runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
+	{
+	  int i = v1.val.i;
+	  if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
+	    runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
 
-	rta->dest = i;
-	rta->nh.gw = IPA_NONE;
-	rta->nh.iface = NULL;
-	rta->nh.next = NULL;
-	rta->hostentry = NULL;
+	  rta->dest = i;
+	  rta->nh.gw = IPA_NONE;
+	  rta->nh.iface = NULL;
+	  rta->nh.next = NULL;
+	  rta->hostentry = NULL;
+	}
 	break;
 
       case SA_IFNAME:
@@ -369,124 +373,112 @@
 	break;
 
       default:
-	bug("Invalid static attribute access (%x)", res.type);
+	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
       }
     }
   }
-  INST(FI_EA_GET) {	/* Access to extended attributes */
+
+  INST(FI_EA_GET, 0, 1) {	/* Access to extended attributes */
+    DYNAMIC_ATTR;
     ACCESS_RTE;
     ACCESS_EATTRS;
     {
-      u16 code = what->a[1].i;
-      int f_type = what->aux >> 8;
-      eattr *e = ea_find(*fs->eattrs, code);
+      eattr *e = ea_find(*fs->eattrs, da.ea_code);
 
       if (!e) {
 	/* A special case: undefined as_path looks like empty as_path */
-	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_AS_PATH) {
-	  res.type = T_PATH;
-	  res.val.ad = &undef_adata;
+	if (da.type == EAF_TYPE_AS_PATH) {
+	  RESULT(T_PATH, ad, &undef_adata);
 	  break;
 	}
 
 	/* The same special case for int_set */
-	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_INT_SET) {
-	  res.type = T_CLIST;
-	  res.val.ad = &undef_adata;
+	if (da.type == EAF_TYPE_INT_SET) {
+	  RESULT(T_CLIST, ad, &undef_adata);
 	  break;
 	}
 
 	/* The same special case for ec_set */
-	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_EC_SET) {
-	  res.type = T_ECLIST;
-	  res.val.ad = &undef_adata;
+	if (da.type == EAF_TYPE_EC_SET) {
+	  RESULT(T_ECLIST, ad, &undef_adata);
 	  break;
 	}
 
 	/* The same special case for lc_set */
-	if ((what->aux & EAF_TYPE_MASK) == EAF_TYPE_LC_SET) {
-	  res.type = T_LCLIST;
-	  res.val.ad = &undef_adata;
+	if (da.type == EAF_TYPE_LC_SET) {
+	  RESULT(T_LCLIST, ad, &undef_adata);
 	  break;
 	}
 
 	/* Undefined value */
 	res.type = T_VOID;
+	RESULT_OK;
 	break;
       }
 
       switch (e->type & EAF_TYPE_MASK) {
       case EAF_TYPE_INT:
-	res.type = f_type;
-	res.val.i = e->u.data;
+	RESULT(da.f_type, i, e->u.data);
 	break;
       case EAF_TYPE_ROUTER_ID:
-	res.type = T_QUAD;
-	res.val.i = e->u.data;
+	RESULT(T_QUAD, i, e->u.data);
 	break;
       case EAF_TYPE_OPAQUE:
-	res.type = T_ENUM_EMPTY;
-	res.val.i = 0;
+	RESULT(T_ENUM_EMPTY, i, 0);
 	break;
       case EAF_TYPE_IP_ADDRESS:
-	res.type = T_IP;
-	struct adata * ad = e->u.ptr;
-	res.val.ip = * (ip_addr *) ad->data;
+	RESULT(T_IP, ip, *((ip_addr *) e->u.ptr->data));
 	break;
       case EAF_TYPE_AS_PATH:
-        res.type = T_PATH;
-	res.val.ad = e->u.ptr;
+	RESULT(T_PATH, ad, e->u.ptr);
 	break;
       case EAF_TYPE_BITFIELD:
-	res.type = T_BOOL;
-	res.val.i = !!(e->u.data & BITFIELD_MASK(what));
+	RESULT(T_BOOL, i, !!(e->u.data & (1u << da.bit)));
 	break;
       case EAF_TYPE_INT_SET:
-	res.type = T_CLIST;
-	res.val.ad = e->u.ptr;
+	RESULT(T_CLIST, ad, e->u.ptr);
 	break;
       case EAF_TYPE_EC_SET:
-	res.type = T_ECLIST;
-	res.val.ad = e->u.ptr;
+	RESULT(T_ECLIST, ad, e->u.ptr);
 	break;
       case EAF_TYPE_LC_SET:
-	res.type = T_LCLIST;
-	res.val.ad = e->u.ptr;
+	RESULT(T_LCLIST, ad, e->u.ptr);
 	break;
       case EAF_TYPE_UNDEF:
 	res.type = T_VOID;
+	RESULT_OK;
 	break;
       default:
-	bug("Unknown type in e,a");
+	bug("Unknown dynamic attribute type");
       }
     }
   }
-  INST(FI_EA_SET) {
+
+  INST(FI_EA_SET, 1, 0) {
+    DYNAMIC_ATTR;
     ACCESS_RTE;
     ACCESS_EATTRS;
     ARG_ANY(1);
     {
       struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
-      u16 code = what->a[1].i;
-      int f_type = what->aux >> 8;
 
       l->next = NULL;
       l->flags = EALF_SORTED;
       l->count = 1;
-      l->attrs[0].id = code;
+      l->attrs[0].id = da.ea_code;
       l->attrs[0].flags = 0;
-      l->attrs[0].type = (what->aux & 0xff) | EAF_ORIGINATED | EAF_FRESH;
+      l->attrs[0].type = da.type | EAF_ORIGINATED | EAF_FRESH;
 
-      switch (what->aux & EAF_TYPE_MASK) {
+      switch (da.type) {
       case EAF_TYPE_INT:
-	if (v1.type != f_type)
+	if (v1.type != da.f_type)
 	  runtime( "Setting int attribute to non-int value" );
 	l->attrs[0].u.data = v1.val.i;
 	break;
 
       case EAF_TYPE_ROUTER_ID:
 	/* IP->Quad implicit conversion */
-	if (val_is_ip4(v1)) {
+	if (val_is_ip4(&v1)) {
 	  l->attrs[0].u.data = ipa_to_u32(v1.val.ip);
 	  break;
 	}
@@ -518,13 +510,13 @@
 	  runtime( "Setting bit in bitfield attribute to non-bool value" );
 	{
 	  /* First, we have to find the old value */
-	  eattr *e = ea_find(*fs->eattrs, code);
+	  eattr *e = ea_find(*fs->eattrs, da.ea_code);
 	  u32 data = e ? e->u.data : 0;
 
 	  if (v1.val.i)
-	    l->attrs[0].u.data = data | BITFIELD_MASK(what);
+	    l->attrs[0].u.data = data | (1u << da.bit);
 	  else
-	    l->attrs[0].u.data = data & ~BITFIELD_MASK(what);;
+	    l->attrs[0].u.data = data & ~(1u << da.bit);
 	}
 	break;
       case EAF_TYPE_INT_SET:
@@ -555,12 +547,13 @@
       *fs->eattrs = l;
     }
   }
-  INST(FI_PREF_GET) {
+
+  INST(FI_PREF_GET, 0, 1) {
     ACCESS_RTE;
-    res.type = T_INT;
-    res.val.i = (*fs->rte)->pref;
+    RESULT(T_INT, i, (*fs->rte)->pref);
   }
-  INST(FI_PREF_SET) {
+
+  INST(FI_PREF_SET, 1, 0) {
     ACCESS_RTE;
     ARG(1,T_INT);
     if (v1.val.i > 0xFFFF)
@@ -568,97 +561,121 @@
     f_rte_cow(fs);
     (*fs->rte)->pref = v1.val.i;
   }
-  INST(FI_LENGTH) {	/* Get length of */
+
+  INST(FI_LENGTH, 1, 1) {	/* Get length of */
     ARG_ANY(1);
-    res.type = T_INT;
     switch(v1.type) {
-    case T_NET:    res.val.i = net_pxlen(v1.val.net); break;
-    case T_PATH:   res.val.i = as_path_getlen(v1.val.ad); break;
-    case T_CLIST:  res.val.i = int_set_get_size(v1.val.ad); break;
-    case T_ECLIST: res.val.i = ec_set_get_size(v1.val.ad); break;
-    case T_LCLIST: res.val.i = lc_set_get_size(v1.val.ad); break;
+    case T_NET:    RESULT(T_INT, i, net_pxlen(v1.val.net)); break;
+    case T_PATH:   RESULT(T_INT, i, as_path_getlen(v1.val.ad)); break;
+    case T_CLIST:  RESULT(T_INT, i, int_set_get_size(v1.val.ad)); break;
+    case T_ECLIST: RESULT(T_INT, i, ec_set_get_size(v1.val.ad)); break;
+    case T_LCLIST: RESULT(T_INT, i, lc_set_get_size(v1.val.ad)); break;
     default: runtime( "Prefix, path, clist or eclist expected" );
     }
   }
-  INST(FI_SADR_SRC) { 	/* Get SADR src prefix */
+
+  INST(FI_SADR_SRC, 1, 1) { 	/* Get SADR src prefix */
     ARG(1, T_NET);
     if (!net_is_sadr(v1.val.net))
       runtime( "SADR expected" );
 
-    {
-      net_addr_ip6_sadr *net = (void *) v1.val.net;
-      net_addr *src = lp_alloc(fs->pool, sizeof(net_addr_ip6));
-      net_fill_ip6(src, net->src_prefix, net->src_pxlen);
+    net_addr_ip6_sadr *net = (void *) v1.val.net;
+    net_addr *src = lp_alloc(fs->pool, sizeof(net_addr_ip6));
+    net_fill_ip6(src, net->src_prefix, net->src_pxlen);
 
-      res.type = T_NET;
-      res.val.net = src;
-    }
+    RESULT(T_NET, net, src);
   }
-  INST(FI_ROA_MAXLEN) { 	/* Get ROA max prefix length */
+
+  INST(FI_ROA_MAXLEN, 1, 1) { 	/* Get ROA max prefix length */
     ARG(1, T_NET);
     if (!net_is_roa(v1.val.net))
       runtime( "ROA expected" );
 
-    res.type = T_INT;
-    res.val.i = (v1.val.net->type == NET_ROA4) ?
+    RESULT(T_INT, i, (v1.val.net->type == NET_ROA4) ?
       ((net_addr_roa4 *) v1.val.net)->max_pxlen :
-      ((net_addr_roa6 *) v1.val.net)->max_pxlen;
+      ((net_addr_roa6 *) v1.val.net)->max_pxlen);
   }
-  INST(FI_ROA_ASN) { 	/* Get ROA ASN */
+
+  INST(FI_ROA_ASN, 1, 1) { 	/* Get ROA ASN */
     ARG(1, T_NET);
     if (!net_is_roa(v1.val.net))
       runtime( "ROA expected" );
 
-    res.type = T_INT;
-    res.val.i = (v1.val.net->type == NET_ROA4) ?
+    RESULT(T_INT, i, (v1.val.net->type == NET_ROA4) ?
       ((net_addr_roa4 *) v1.val.net)->asn :
-      ((net_addr_roa6 *) v1.val.net)->asn;
+      ((net_addr_roa6 *) v1.val.net)->asn);
   }
-  INST(FI_IP) {	/* Convert prefix to ... */
+
+  INST(FI_IP, 1, 1) {	/* Convert prefix to ... */
     ARG(1, T_NET);
-    res.type = T_IP;
-    res.val.ip = net_prefix(v1.val.net);
+    RESULT(T_IP, ip, net_prefix(v1.val.net));
   }
-  INST(FI_ROUTE_DISTINGUISHER) {
+
+  INST(FI_ROUTE_DISTINGUISHER, 1, 1) {
     ARG(1, T_NET);
     if (!net_is_vpn(v1.val.net))
       runtime( "VPN address expected" );
-    res.type = T_RD;
-    res.val.ec = net_rd(v1.val.net);
+    RESULT(T_RD, ec, net_rd(v1.val.net));
   }
-  INST(FI_AS_PATH_FIRST) {	/* Get first ASN from AS PATH */
-    ARG(1, T_PATH);
 
-    as = 0;
+  INST(FI_AS_PATH_FIRST, 1, 1) {	/* Get first ASN from AS PATH */
+    ARG(1, T_PATH);
+    int as = 0;
     as_path_get_first(v1.val.ad, &as);
-    res.type = T_INT;
-    res.val.i = as;
+    RESULT(T_INT, i, as);
   }
-  INST(FI_AS_PATH_LAST) {	/* Get last ASN from AS PATH */
-    ARG(1, T_PATH);
 
-    as = 0;
+  INST(FI_AS_PATH_LAST, 1, 1) {	/* Get last ASN from AS PATH */
+    ARG(1, T_PATH);
+    int as = 0;
     as_path_get_last(v1.val.ad, &as);
-    res.type = T_INT;
-    res.val.i = as;
+    RESULT(T_INT, i, as);
   }
-  INST(FI_AS_PATH_LAST_NAG) {	/* Get last ASN from non-aggregated part of AS PATH */
-    ARG(1, T_PATH);
 
-    res.type = T_INT;
-    res.val.i = as_path_get_last_nonaggregated(v1.val.ad);
+  INST(FI_AS_PATH_LAST_NAG, 1, 1) {	/* Get last ASN from non-aggregated part of AS PATH */
+    ARG(1, T_PATH);
+    RESULT(T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
   }
-  INST(FI_RETURN) {
-    ARG_ANY_T(1,0);
-    return F_RETURN;
+
+  INST(FI_RETURN, 1, 1) {
+    /* Acquire the return value */
+    ARG_ANY(1);
+    uint retpos = vstk.cnt;
+
+    /* Drop every sub-block */
+    while (estk.cnt > 0 && !(estk.item[estk.cnt].emask & FE_RETURN))
+      estk.cnt--;
+
+    /* Now we are at the callee frame; if no such, try to convert to accept/reject. */
+    if (!estk.cnt)
+      if (vstk.val[retpos].type == T_BOOL)
+	if (vstk.val[retpos].val.i)
+	  return F_ACCEPT;
+	else
+	  return F_REJECT;
+      else
+	runtime("Can't return non-bool from non-function");
+
+    /* Set the value stack position */
+    vstk.cnt = estk.item[estk.cnt].ventry;
+
+    /* Copy the return value */
+    res = vstk.val[retpos];
+    RESULT_OK;
+
+    /* Return from the callee */
+    estk.cnt--;
   }
-  INST(FI_CALL) {
-    ARG_ANY_T(1,0);
-    fret = interpret(fs, what->a[1].p);
-    if (fret > F_RETURN)
-      return fret;
+
+  INST(FI_CALL, 0, 1) {
+    /* First push the code */
+    LINEP(2,0);
+    curline.emask |= FE_RETURN;
+
+    /* Then push the arguments */
+    LINE(1,1);
   }
-#endif
+
   INST(FI_CLEAR_LOCAL_VARS, 0, 0) {	/* Clear local variables */
     SYMBOL(1);
     for ( ; sym != NULL; sym = sym->aux2)

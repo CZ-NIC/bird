@@ -14,6 +14,7 @@ m4_define(INST, `m4_divert(1)break; case $1:
 m4_divert(-1)'))
 m4_define(LINE, `m4_divert(1)f_dump_line(item->lines[$2], indent + 1);
 m4_divert(-1)')
+m4_define(LINEP, LINE)
 m4_define(SYMBOL, `m4_divert(1)debug("%ssymbol %s\n", INDENT, item->sym->name);
 m4_divert(-1)')
 m4_define(VALI, `m4_divert(1)debug("%svalue %s\n", INDENT, val_dump(item->vp));
@@ -25,6 +26,10 @@ m4_divert(-1)')
 m4_define(ECS, `m4_divert(1)debug("%sec subtype %d\n", INDENT, item->ecs);
 m4_divert(-1)')
 m4_define(PATH_MASK, `m4_divert(1)debug("%sbgp path mask %p\n", INDENT, item->pm);
+m4_divert(-1)')
+m4_define(STATIC_ATTR, `m4_divert(1)debug("%sstatic attribute %u/%u/%u\n", INDENT, item->sa.f_type, item->sa.sa_code, item->sa.readonly);
+m4_divert(-1)')
+m4_define(DYNAMIC_ATTR, `m4_divert(1)debug("%sdynamic attribute %u/%u/%u/%u\n", INDENT, item->da.type, item->da.bit, item->da.f_type, item->da.ea_code);
 m4_divert(-1)')
 m4_define(DUMP, `m4_divert(1)$1m4_divert(-1)')
 

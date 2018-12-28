@@ -20,7 +20,17 @@ m4_define(ARG, `if (v$1.type != $2) runtime("Argument $1 of instruction %s must 
 m4_define(RESULT_OK, `vstk.cnt++')
 m4_define(RESULT, `do { res = (struct f_val) { .type = $1, .val.$2 = $3 }; RESULT_OK; } while (0)')
 
-m4_define(LINE, `do { if (what->lines[$2]) { estk.item[estk.cnt].pos = 0; estk.item[estk.cnt].line = what->lines[$2]; estk.cnt++; } continue; } while (0)')
+m4_define(LINE, `do {
+  if (what->lines[$2]) {
+    estk.item[estk.cnt].pos = 0;
+    estk.item[estk.cnt].line = what->lines[$2];
+    estk.item[estk.cnt].ventry = vstk.cnt;
+    estk.item[estk.cnt].emask = 0;
+    estk.cnt++;
+  }
+} while (0)')
+
+m4_define(LINEP, LINE($1, $2))
 
 m4_define(ARG_ANY, `')
 
@@ -31,6 +41,8 @@ m4_define(VALP, `res = *what->vp')
 m4_define(FRET, `enum filter_return fret = what->fret')
 m4_define(ECS, `enum ec_subtype ecs = what->ecs')
 m4_define(PATH_MASK, `const struct f_path_mask *pm = what->pm')
+m4_define(STATIC_ATTR, `struct f_static_attr sa = what->sa')
+m4_define(DYNAMIC_ATTR, `struct f_dynamic_attr da = what->da')
 m4_define(POSTFIXIFY, `')
 m4_define(SAME, `')
 

@@ -850,15 +850,15 @@ symbol:
    }
 
 static_attr:
-   FROM    { $$ = f_new_static_attr(T_IP,         SA_FROM,	1); }
- | GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	1); }
- | NET     { $$ = f_new_static_attr(T_NET,	  SA_NET,	0); }
- | PROTO   { $$ = f_new_static_attr(T_STRING,     SA_PROTO,	0); }
- | SOURCE  { $$ = f_new_static_attr(T_ENUM_RTS,   SA_SOURCE,	0); }
- | SCOPE   { $$ = f_new_static_attr(T_ENUM_SCOPE, SA_SCOPE,	1); }
- | DEST    { $$ = f_new_static_attr(T_ENUM_RTD,   SA_DEST,	1); }
- | IFNAME  { $$ = f_new_static_attr(T_STRING,     SA_IFNAME,	1); }
- | IFINDEX { $$ = f_new_static_attr(T_INT,        SA_IFINDEX,	0); }
+   FROM    { $$ = f_new_static_attr(T_IP,         SA_FROM,	0); }
+ | GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	0); }
+ | NET     { $$ = f_new_static_attr(T_NET,	  SA_NET,	1); }
+ | PROTO   { $$ = f_new_static_attr(T_STRING,     SA_PROTO,	1); }
+ | SOURCE  { $$ = f_new_static_attr(T_ENUM_RTS,   SA_SOURCE,	1); }
+ | SCOPE   { $$ = f_new_static_attr(T_ENUM_SCOPE, SA_SCOPE,	0); }
+ | DEST    { $$ = f_new_static_attr(T_ENUM_RTD,   SA_DEST,	0); }
+ | IFNAME  { $$ = f_new_static_attr(T_STRING,     SA_IFNAME,	0); }
+ | IFINDEX { $$ = f_new_static_attr(T_INT,        SA_IFINDEX,	1); }
  ;
 
 term:
@@ -1025,7 +1025,7 @@ cmd:
    }
  | rtadot static_attr '=' term ';' {
      $$ = f_new_inst_sa(FI_RTA_SET, $2);
-     if (!$$->a[0].i)
+     if ($$->sa.readonly)
        cf_error( "This static attribute is read-only.");
      $$->a[0].p = $4;
    }

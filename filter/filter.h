@@ -20,9 +20,58 @@ struct f_prefix {
   u8 lo, hi;		/* And its length must fit between lo and hi */
 };
 
+/* Type numbers must be in 0..0xff range */
+#define T_MASK 0xff
+
+/* Internal types */
+enum f_type {
+/* Do not use type of zero, that way we'll see errors easier. */
+  T_VOID = 1,
+
+/* User visible types, which fit in int */
+  T_INT = 0x10,
+  T_BOOL = 0x11,
+  T_PAIR = 0x12,  /*	Notice that pair is stored as integer: first << 16 | second */
+  T_QUAD = 0x13,
+
+/* Put enumerational types in 0x30..0x3f range */
+  T_ENUM_LO = 0x30,
+  T_ENUM_HI = 0x3f,
+
+  T_ENUM_RTS = 0x30,
+  T_ENUM_BGP_ORIGIN = 0x31,
+  T_ENUM_SCOPE = 0x32,
+  T_ENUM_RTC = 0x33,
+  T_ENUM_RTD = 0x34,
+  T_ENUM_ROA = 0x35,
+  T_ENUM_NETTYPE = 0x36,
+  T_ENUM_RA_PREFERENCE = 0x37,
+
+/* new enums go here */
+  T_ENUM_EMPTY = 0x3f,	/* Special hack for atomic_aggr */
+
+#define T_ENUM T_ENUM_LO ... T_ENUM_HI
+
+/* Bigger ones */
+  T_IP = 0x20,
+  T_NET = 0x21,
+  T_STRING = 0x22,
+  T_PATH_MASK = 0x23,	/* mask for BGP path */
+  T_PATH = 0x24,		/* BGP path */
+  T_CLIST = 0x25,		/* Community list */
+  T_EC = 0x26,		/* Extended community value, u64 */
+  T_ECLIST = 0x27,		/* Extended community list */
+  T_LC = 0x28,		/* Large community value, lcomm */
+  T_LCLIST = 0x29,		/* Large community list */
+  T_RD = 0x2a,		/* Route distinguisher for VPN addresses */
+
+  T_SET = 0x80,
+  T_PREFIX_SET = 0x81,
+} PACKED;
+
 /* Filter value; size of this affects filter memory consumption */
 struct f_val {
-  int type;		/* T_*  */
+  enum f_type type;	/* T_*  */
   union {
     uint i;
     u64 ec;
@@ -39,16 +88,29 @@ struct f_val {
 
 /* Dynamic attribute definition (eattrs) */
 struct f_dynamic_attr {
-  int type;		/* EA type */
-  int f_type;		/* Filter type */
-  int ea_code;		/* EA code */
+  u8 type;		/* EA type (EAF_*) */
+  u8 bit;		/* For bitfield accessors */
+  enum f_type f_type;	/* Filter type */
+  uint ea_code;		/* EA code */
 };
+
+enum f_sa_code {
+  SA_FROM = 1,
+  SA_GW,
+  SA_NET,
+  SA_PROTO,
+  SA_SOURCE,
+  SA_SCOPE,
+  SA_DEST,
+  SA_IFNAME,
+  SA_IFINDEX,
+} PACKED;
 
 /* Static attribute definition (members of struct rta) */
 struct f_static_attr {
-  int f_type;		/* Filter type */
-  int sa_code;		/* SA_* */
-  int readonly;		/* Don't allow writing */
+  enum f_type f_type;		/* Filter type */
+  enum f_sa_code sa_code;	/* Static attribute id */
+  int readonly:1;			/* Don't allow writing */
 };
 
 /* Filter instruction words */
@@ -125,18 +187,28 @@ enum f_instruction_flags {
   FIF_PRINTED = 1,		/* FI_PRINT_AND_DIE: message put in buffer */
 };
 
+union f_inst_attr {
+  uint i;
+  void *p;
+  struct rtable_config *rtc;
+};
+
 /* Instruction structure for config */
 struct f_inst {
   struct f_inst *next;	/* Next instruction to be executed */
   enum f_instruction_code fi_code;	/* The instruction itself */
   u16 aux;		/* Extension to instruction code, T_*, EA_*, EAF_*  */
   union {
-    union {
-      uint i;
-      void *p;
-      struct rtable_config *rtc;
-    } a[3];		/* The three arguments */
+    union f_inst_attr a[3];		/* The three arguments */
     struct f_val val;	/* The value if FI_CONSTANT */
+    struct {
+      union f_inst_attr sa_a[1];
+      struct f_static_attr sa;	/* Static attribute def for FI_RTA_* */
+    };
+    struct {
+      union f_inst_attr da_a[1];
+      struct f_dynamic_attr da; /* Dynamic attribute def for FI_EA_* */
+    };
   };
   int lineno;
 };
@@ -171,6 +243,8 @@ struct f_line_item {
     };
     const struct f_line *lines[2];
     enum filter_return fret;
+    struct f_static_attr sa;
+    struct f_dynamic_attr da;
     enum ec_subtype ecs;
     const struct f_path_mask *pm;
   };					/* Additional instruction data */
@@ -202,20 +276,28 @@ struct f_val_stack {
 
 #define F_EXEC_STACK_MAX 4096
 
+/* Exception bits */
+enum f_exception {
+  FE_RETURN = 0x1,
+};
+
 /* Instruction stack for execution */
 struct f_exec_stack {
   struct {
     const struct f_line *line;		/* The line that is being executed */
     uint pos;				/* Instruction index in the line */
+    uint ventry;			/* Value stack depth on entry */
+    enum f_exception emask;		/* Exception mask */
   } item[F_EXEC_STACK_MAX];
   uint cnt;				/* Current stack size; 0 for empty */
+  
 };
 
 struct f_inst *f_new_inst(enum f_instruction_code fi_code);
 struct f_inst *f_new_inst_da(enum f_instruction_code fi_code, struct f_dynamic_attr da);
 struct f_inst *f_new_inst_sa(enum f_instruction_code fi_code, struct f_static_attr sa);
-static inline struct f_dynamic_attr f_new_dynamic_attr(int type, int f_type, int code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */
-{ return (struct f_dynamic_attr) { .type = type, .f_type = f_type, .ea_code = code }; }   /* f_type currently unused; will be handy for static type checking */
+static inline struct f_dynamic_attr f_new_dynamic_attr(u8 type, u8 bit, enum f_type f_type, uint code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */
+{ return (struct f_dynamic_attr) { .type = type, .bit = bit, .f_type = f_type, .ea_code = code }; }   /* f_type currently unused; will be handy for static type checking */
 static inline struct f_static_attr f_new_static_attr(int f_type, int code, int readonly)
 { return (struct f_static_attr) { .f_type = f_type, .sa_code = code, .readonly = readonly }; }
 struct f_tree *f_new_tree(void);
@@ -254,64 +336,6 @@ void val_format(const struct f_val *v, buffer *buf);
 #define FILTER_ACCEPT NULL
 #define FILTER_REJECT ((void *) 1)
 #define FILTER_UNDEF  ((void *) 2)	/* Used in BGP */
-
-/* Type numbers must be in 0..0xff range */
-#define T_MASK 0xff
-
-/* Internal types */
-/* Do not use type of zero, that way we'll see errors easier. */
-#define T_VOID 1
-
-/* User visible types, which fit in int */
-#define T_INT 0x10
-#define T_BOOL 0x11
-#define T_PAIR 0x12  /*	Notice that pair is stored as integer: first << 16 | second */
-#define T_QUAD 0x13
-
-/* Put enumerational types in 0x30..0x3f range */
-#define T_ENUM_LO 0x30
-#define T_ENUM_HI 0x3f
-
-#define T_ENUM_RTS 0x30
-#define T_ENUM_BGP_ORIGIN 0x31
-#define T_ENUM_SCOPE 0x32
-#define T_ENUM_RTC 0x33
-#define T_ENUM_RTD 0x34
-#define T_ENUM_ROA 0x35
-#define T_ENUM_NETTYPE 0x36
-#define T_ENUM_RA_PREFERENCE 0x37
-
-/* new enums go here */
-#define T_ENUM_EMPTY 0x3f	/* Special hack for atomic_aggr */
-
-#define T_ENUM T_ENUM_LO ... T_ENUM_HI
-
-/* Bigger ones */
-#define T_IP 0x20
-#define T_NET 0x21
-#define T_STRING 0x22
-#define T_PATH_MASK 0x23	/* mask for BGP path */
-#define T_PATH 0x24		/* BGP path */
-#define T_CLIST 0x25		/* Community list */
-#define T_EC 0x26		/* Extended community value, u64 */
-#define T_ECLIST 0x27		/* Extended community list */
-#define T_LC 0x28		/* Large community value, lcomm */
-#define T_LCLIST 0x29		/* Large community list */
-#define T_RD 0x2a		/* Route distinguisher for VPN addresses */
-
-#define T_SET 0x80
-#define T_PREFIX_SET 0x81
-
-
-#define SA_FROM		 1
-#define SA_GW		 2
-#define SA_NET		 3
-#define SA_PROTO	 4
-#define SA_SOURCE	 5
-#define SA_SCOPE	 6
-#define SA_DEST    	 7
-#define SA_IFNAME  	 8
-#define SA_IFINDEX    	 9
 
 
 struct f_tree {

@@ -22,6 +22,8 @@ m4_define(ARG_ANY, `m4_divert(1)pos = postfixify(dest, what->a[$1-1].p, pos);
 m4_divert(-1)')
 m4_define(LINE, `m4_divert(1)dest->items[pos].lines[$2] = f_postfixify(what->a[$1-1].p);
 m4_divert(-1)')
+m4_define(LINEP, `m4_divert(1)dest->items[pos].lines[$2] = what->a[$1-1].p;
+m4_divert(-1)')
 m4_define(SYMBOL, `m4_divert(1)dest->items[pos].sym = what->a[$1-1].p;
 m4_divert(-1)')
 m4_define(VALI, `m4_divert(1)dest->items[pos].vp = &(what->val);
@@ -33,6 +35,10 @@ m4_divert(-1)')
 m4_define(ECS, `m4_divert(1)dest->items[pos].ecs = what->aux;
 m4_divert(-1)')
 m4_define(PATH_MASK, `m4_divert(1)dest->items[pos].pm = what->a[$1-1].p;
+m4_divert(-1)')
+m4_define(STATIC_ATTR, `m4_divert(1)dest->items[pos].sa = what->sa;
+m4_divert(-1)')
+m4_define(DYNAMIC_ATTR, `m4_divert(1)dest->items[pos].da = what->da;
 m4_divert(-1)')
 m4_define(POSTFIXIFY, `m4_divert(1)$1m4_divert(-1)')
 

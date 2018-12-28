@@ -18,6 +18,7 @@ m4_define(ARG_ANY, `')
 
 m4_define(LINE, `m4_divert(1)if (!f_same(f1->lines[$2], f2->lines[$2])) return 0;
 m4_divert(-1)')
+m4_define(LINEP, LINE)
 
 m4_define(SYMBOL, `m4_divert(1){
   const struct symbol *s1 = f1->sym, *s2 = f2->sym;
@@ -35,6 +36,10 @@ m4_divert(-1)')
 m4_define(ECS, `m4_divert(1)if (f1->ecs != f2->ecs) return 0;
 m4_divert(-1)')
 m4_define(PATH_MASK, `m4_divert(1)if (!pm_same(f1->pm, f2->pm)) return 0;
+m4_divert(-1)')
+m4_define(STATIC_ATTR, `m4_divert(1)if (f1->sa.sa_code != f2->sa.sa_code) return 0;
+m4_divert(-1)')
+m4_define(DYNAMIC_ATTR, `m4_divert(1)if (f1->da.ea_code != f2->da.ea_code) return 0;
 m4_divert(-1)')
 
 m4_define(SAME, `m4_divert(1)$1m4_divert(-1)')
