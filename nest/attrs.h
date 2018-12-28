@@ -109,10 +109,11 @@ aggregator_to_old(struct linpool *pool, struct adata *a)
 
 
 /* Extended Community subtypes (kinds) */
-#define EC_RT 0x0002
-#define EC_RO 0x0003
-
-#define EC_GENERIC 0xFFFF
+enum ec_subtype {
+  EC_RT = 0x0002,
+  EC_RO = 0x0003,
+  EC_GENERIC = 0xFFFF,
+} PACKED;
 
 /* Transitive bit (for first u32 half of EC) */
 #define EC_TBIT 0x40000000
@@ -137,16 +138,16 @@ static inline u64 ec_get(const u32 *l, int i)
 { return (((u64) l[i]) << 32) | l[i+1]; }
 
 /* RFC 4360 3.1.  Two-Octet AS Specific Extended Community */
-static inline u64 ec_as2(u64 kind, u64 key, u64 val)
-{ return ((kind | 0x0000) << 48) | (key << 32) | val; }
+static inline u64 ec_as2(enum ec_subtype kind, u64 key, u64 val)
+{ return (((u64) kind | 0x0000) << 48) | (key << 32) | val; }
 
 /* RFC 5668  4-Octet AS Specific BGP Extended Community */
-static inline u64 ec_as4(u64 kind, u64 key, u64 val)
-{ return ((kind | 0x0200) << 48) | (key << 16) | val; }
+static inline u64 ec_as4(enum ec_subtype kind, u64 key, u64 val)
+{ return (((u64) kind | 0x0200) << 48) | (key << 16) | val; }
 
 /* RFC 4360 3.2.  IPv4 Address Specific Extended Community */
-static inline u64 ec_ip4(u64 kind, u64 key, u64 val)
-{ return ((kind | 0x0100) << 48) | (key << 16) | val; }
+static inline u64 ec_ip4(enum ec_subtype kind, u64 key, u64 val)
+{ return (((u64) kind | 0x0100) << 48) | (key << 16) | val; }
 
 static inline u64 ec_generic(u64 key, u64 val)
 { return (key << 32) | val; }

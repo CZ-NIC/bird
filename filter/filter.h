@@ -171,6 +171,7 @@ struct f_line_item {
     };
     const struct f_line *lines[2];
     enum filter_return fret;
+    enum ec_subtype ecs;
   };					/* Additional instruction data */
 };
 

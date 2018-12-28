@@ -49,63 +49,57 @@
     else
       RESULT_OK;
   }
-#if 0
-  INST(FI_PAIR_CONSTRUCT) {
+  INST(FI_PAIR_CONSTRUCT, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
-    u1 = v1.val.i;
-    u2 = v2.val.i;
+    uint u1 = v1.val.i;
+    uint u2 = v2.val.i;
     if ((u1 > 0xFFFF) || (u2 > 0xFFFF))
       runtime( "Can't operate with value out of bounds in pair constructor" );
-    res.val.i = (u1 << 16) | u2;
-    res.type = T_PAIR;
+    RESULT(T_PAIR, i, (u1 << 16) | u2);
+  }
+  INST(FI_EC_CONSTRUCT, 2, 1) {
+    ARG_ANY(1);
+    ARG(2, T_INT);
+    ECS;
+
+    int check, ipv4_used;
+    u32 key, val;
+
+    if (v1.type == T_INT) {
+      ipv4_used = 0; key = v1.val.i;
+    }
+    else if (v1.type == T_QUAD) {
+      ipv4_used = 1; key = v1.val.i;
+    }
+    /* IP->Quad implicit conversion */
+    else if (val_is_ip4(&v1)) {
+      ipv4_used = 1; key = ipa_to_u32(v1.val.ip);
+    }
+    else
+      runtime("Argument 1 of instruction FI_EC_CONSTRUCT must be integer or IPv4 address, got 0x%02x");
+
+    val = v2.val.i;
+
+    if (ecs == EC_GENERIC) {
+      check = 0; RESULT(T_EC, ec, ec_generic(key, val));
+    }
+    else if (ipv4_used) {
+      check = 1; RESULT(T_EC, ec, ec_ip4(ecs, key, val));
+    }
+    else if (key < 0x10000) {
+      check = 0; RESULT(T_EC, ec, ec_as2(ecs, key, val));
+    }
+    else {
+      check = 1; RESULT(T_EC, ec, ec_as4(ecs, key, val));
+    }
+
+    if (check && (val > 0xFFFF))
+      runtime("Value %u > %u out of bounds in EC constructor", val, 0xFFFF);
   }
 
-  INST(FI_EC_CONSTRUCT) {
-    {
-      ARG_ANY(1);
-      ARG(2, T_INT);
 
-      int check, ipv4_used;
-      u32 key, val;
-
-      if (v1.type == T_INT) {
-	ipv4_used = 0; key = v1.val.i;
-      }
-      else if (v1.type == T_QUAD) {
-	ipv4_used = 1; key = v1.val.i;
-      }
-      /* IP->Quad implicit conversion */
-      else if (val_is_ip4(v1)) {
-	ipv4_used = 1; key = ipa_to_u32(v1.val.ip);
-      }
-      else
-	runtime("Can't operate with key of non-integer/IPv4 type in EC constructor");
-
-      val = v2.val.i;
-
-      /* XXXX */
-      res.type = T_EC;
-
-      if (what->aux == EC_GENERIC) {
-	check = 0; res.val.ec = ec_generic(key, val);
-      }
-      else if (ipv4_used) {
-	check = 1; res.val.ec = ec_ip4(what->aux, key, val);
-      }
-      else if (key < 0x10000) {
-	check = 0; res.val.ec = ec_as2(what->aux, key, val);
-      }
-      else {
-	check = 1; res.val.ec = ec_as4(what->aux, key, val);
-      }
-
-      if (check && (val > 0xFFFF))
-	runtime("Can't operate with value out of bounds in EC constructor");
-
-    }
-    }
-
+#if 0
   INST(FI_LC_CONSTRUCT) {
     {
       ARG(1, T_INT);

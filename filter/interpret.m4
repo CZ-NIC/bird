@@ -15,9 +15,10 @@ m4_ifelse(eval($2 > 0), `if (vstk.cnt < $2) runtime("Stack underflow");', `')
 vstk.cnt -= $2;
 ')
 
-m4_define(ARG, `if (v$1.type != $2) runtime("Argument $1 of instruction %s must be of type $2, got %02x", f_instruction_name(what->fi_code), v$1.type)')
+m4_define(ARG, `if (v$1.type != $2) runtime("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), v$1.type)')
 
 m4_define(RESULT_OK, `vstk.cnt++')
+m4_define(RESULT, `do { res = (struct f_val) { .type = $1, .val.$2 = $3 }; RESULT_OK; } while (0)')
 
 m4_define(LINE, `do { if (what->lines[$2]) { estk.item[estk.cnt].pos = 0; estk.item[estk.cnt].line = what->lines[$2]; estk.cnt++; } continue; } while (0)')
 
@@ -28,6 +29,7 @@ m4_define(SYMBOL, `const struct symbol *sym = what->sym')
 m4_define(VALI, `res = *what->vp')
 m4_define(VALP, `res = *what->vp')
 m4_define(FRET, `enum filter_return fret = what->fret')
+m4_define(ECS, `enum ec_subtype ecs = what->ecs')
 m4_define(POSTFIXIFY, `')
 m4_define(SAME, `')
 

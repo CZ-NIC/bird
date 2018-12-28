@@ -28,6 +28,8 @@ m4_define(VALP, `m4_divert(1)dest->items[pos].vp = (dest->items[pos].sym = what-
 m4_divert(-1)')
 m4_define(FRET, `m4_divert(1)dest->items[pos].fret = what->a[$1-1].i;
 m4_divert(-1)')
+m4_define(ECS, `m4_divert(1)dest->items[pos].ecs = what->aux;
+m4_divert(-1)')
 m4_define(POSTFIXIFY, `m4_divert(1)$1m4_divert(-1)')
 
 m4_m4wrap(`
