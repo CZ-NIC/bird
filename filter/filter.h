@@ -247,6 +247,8 @@ struct f_line_item {
     struct f_dynamic_attr da;
     enum ec_subtype ecs;
     const struct f_path_mask *pm;
+    const char *s;
+    const struct f_tree *tree;
   };					/* Additional instruction data */
 };
 
@@ -306,7 +308,7 @@ struct f_inst *f_generate_roa_check(struct rtable_config *table, struct f_inst *
 
 
 struct f_tree *build_tree(struct f_tree *);
-struct f_tree *find_tree(struct f_tree *t, const struct f_val *val);
+const struct f_tree *find_tree(const struct f_tree *t, const struct f_val *val);
 int same_tree(const struct f_tree *t1, const struct f_tree *t2);
 void tree_format(struct f_tree *t, buffer *buf);
 
@@ -381,6 +383,6 @@ struct f_bt_test_suite {
 };
 
 /* Hook for call bt_assert() function in configuration */
-extern void (*bt_assert_hook)(int result, struct f_inst *assert);
+extern void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
 #endif

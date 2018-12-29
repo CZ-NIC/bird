@@ -20,6 +20,14 @@ m4_define(ARG, `if (v$1.type != $2) runtime("Argument $1 of instruction %s must 
 m4_define(RESULT_OK, `vstk.cnt++')
 m4_define(RESULT, `do { res = (struct f_val) { .type = $1, .val.$2 = $3 }; RESULT_OK; } while (0)')
 
+m4_define(LINEX, `do {
+  estk.item[estk.cnt].pos = 0;
+  estk.item[estk.cnt].line = $1;
+  estk.item[estk.cnt].ventry = vstk.cnt;
+  estk.item[estk.cnt].emask = 0;
+  estk.cnt++;
+} while (0)')
+
 m4_define(LINE, `do {
   if (what->lines[$2]) {
     estk.item[estk.cnt].pos = 0;

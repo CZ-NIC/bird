@@ -165,7 +165,7 @@
   }
 
   INST(FI_NOT, 1, 1) {
-    ARG(1,0,T_BOOL);
+    ARG(1,T_BOOL);
     RESULT(T_BOOL, i, !v1.val.i);
   }
 
@@ -684,26 +684,25 @@
     for ( ; sym != NULL; sym = sym->aux2)
       ((struct f_val *) sym->def)->type = T_VOID;
   }
-#if 0
-  INST(FI_SWITCH) {
+  INST(FI_SWITCH, 1, 0) {
     ARG_ANY(1);
-    {
-      struct f_tree *t = find_tree(what->a[1].p, v1);
+    POSTFIXIFY([[
+	dest->items[pos].tree = what->a[1].p;
+	]]);
+    const struct f_tree *t = find_tree(what->tree, &v1);
+    if (!t) {
+      v1.type = T_VOID;
+      t = find_tree(what->tree, &v1);
       if (!t) {
-	v1.type = T_VOID;
-	t = find_tree(what->a[1].p, v1);
-	if (!t) {
-	  debug( "No else statement?\n");
-	  break;
-	}
+	debug( "No else statement?\n");
+	break;
       }
-      /* It is actually possible to have t->data NULL */
-
-      fret = interpret(fs, t->data);
-      if (fret >= F_RETURN)
-	return fret;
     }
+    /* It is actually possible to have t->data NULL */
+
+    LINEX(t->data);
   }
+#if 0
   INST(FI_IP_MASK) { /* IP.MASK(val) */
     ARG(1, T_IP);
     ARG(2, T_INT);
@@ -932,20 +931,17 @@
       res.val.i = net_roa_check(table, v1.val.net, as);
 
   }
-
-  INST(FI_FORMAT) {	/* Format */
-    ARG_ANY(1);
-
-    res.type = T_STRING;
-    res.val.s = val_format_str(fs, v1);
-  }
-
-  INST(FI_ASSERT) {	/* Birdtest Assert */
-    ARG(1, T_BOOL);
-
-    res.type = v1.type;
-    res.val = v1.val;
-
-    CALL(bt_assert_hook, res.val.i, what);
-  }
 #endif
+  INST(FI_FORMAT, 1, 0) {	/* Format */
+    ARG_ANY(1);
+    RESULT(T_STRING, s, val_format_str(fs, &v1));
+  }
+
+  INST(FI_ASSERT, 1, 1) {	/* Birdtest Assert */
+    ARG(1, T_BOOL);
+    POSTFIXIFY([[
+	dest->items[pos].s = what->a[1].p;
+    ]]);
+    CALL(bt_assert_hook, res.val.i, what);
+    RESULT_OK;
+  }

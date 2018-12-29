@@ -69,7 +69,7 @@ struct filter_state {
   int flags;
 };
 
-void (*bt_assert_hook)(int result, struct f_inst *assert);
+void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
 static struct adata undef_adata;	/* adata of length 0 used for undefined */
 

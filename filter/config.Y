@@ -748,15 +748,16 @@ switch_body: /* EMPTY */ { $$ = NULL; }
  | switch_body switch_items ':' cmds  {
      /* Fill data fields */
      struct f_tree *t;
+     struct f_line *line = f_postfixify($4);
      for (t = $2; t; t = t->left)
-       t->data = $4;
+       t->data = line;
      $$ = f_merge_items($1, $2);
    }
  | switch_body ELSECOL cmds {
      struct f_tree *t = f_new_tree();
      t->from.type = t->to.type = T_VOID;
      t->right = t;
-     t->data = $3;
+     t->data = f_postfixify($3);
      $$ = f_merge_items($1, t);
  }
  ;

@@ -23,8 +23,8 @@
  * Both set matching and |switch() { }| construction is implemented using this function,
  * thus both are as fast as they can be.
  */
-struct f_tree *
-find_tree(struct f_tree *t, const struct f_val *val)
+const struct f_tree *
+find_tree(const struct f_tree *t, const struct f_val *val)
 {
   if (!t)
     return NULL;

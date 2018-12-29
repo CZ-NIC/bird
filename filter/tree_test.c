@@ -226,7 +226,7 @@ t_find(void)
     };
     for(looking_up_value.val.i = 0; looking_up_value.val.i < nodes_count; looking_up_value.val.i++)
     {
-      struct f_tree *found_tree = find_tree(tree, &looking_up_value);
+      const struct f_tree *found_tree = find_tree(tree, &looking_up_value);
       bt_assert((val_compare(&looking_up_value, &(found_tree->from)) == 0) && (val_compare(&looking_up_value, &(found_tree->to)) == 0));
     }
   }
@@ -278,7 +278,7 @@ t_find_ranges(void)
 
     for(*i = 0; *i <= max_value; *i += (uint)bt_random()/nodes_count)
     {
-      struct f_tree *found_tree = find_tree(tree, &needle);
+      const struct f_tree *found_tree = find_tree(tree, &needle);
       bt_debug("searching: %u \n", *i);
       bt_assert(
 	  (val_compare(&needle, &(found_tree->from)) == 0) || (val_compare(&needle, &(found_tree->to)) == 0) ||
