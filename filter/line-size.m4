@@ -18,6 +18,7 @@ m4_define(ARG_T, `m4_divert(1)cnt += inst_line_size(what->a[$1-1].p);
 m4_divert(-1)')
 m4_define(ARG_ANY, `m4_divert(1)cnt += inst_line_size(what->a[$1-1].p);
 m4_divert(-1)')
+m4_define(LINE_SIZE, `m4_divert(1)$1m4_divert(-1)')
 
 m4_m4wrap(`
 m4_divert(0)DNL

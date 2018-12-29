@@ -262,6 +262,12 @@
 	  dest->items[pos].flags |= FIF_PRINTED;
 	}
     ]]);
+    LINE_SIZE([[
+	if (what->a[0].p) {
+	  cnt += inst_line_size(what->a[0].p);
+	}
+    ]]);
+
     FRET(2);
 
     if ((fret == F_NOP || (fret != F_NONL && (what->flags & FIF_PRINTED))) &&
@@ -642,11 +648,11 @@
     ARG_ANY(1);
     uint retpos = vstk.cnt;
 
-    /* Drop every sub-block */
-    while (estk.cnt > 0 && !(estk.item[estk.cnt].emask & FE_RETURN))
-      estk.cnt--;
+    /* Drop every sub-block including ourselves */
+    while ((estk.cnt-- > 0) && !(estk.item[estk.cnt].emask & FE_RETURN))
+      ;
 
-    /* Now we are at the callee frame; if no such, try to convert to accept/reject. */
+    /* Now we are at the caller frame; if no such, try to convert to accept/reject. */
     if (!estk.cnt)
       if (vstk.val[retpos].type == T_BOOL)
 	if (vstk.val[retpos].val.i)
@@ -662,9 +668,6 @@
     /* Copy the return value */
     res = vstk.val[retpos];
     RESULT_OK;
-
-    /* Return from the callee */
-    estk.cnt--;
   }
 
   INST(FI_CALL, 0, 1) {

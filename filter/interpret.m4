@@ -44,6 +44,7 @@ m4_define(PATH_MASK, `const struct f_path_mask *pm = what->pm')
 m4_define(STATIC_ATTR, `struct f_static_attr sa = what->sa')
 m4_define(DYNAMIC_ATTR, `struct f_dynamic_attr da = what->da')
 m4_define(POSTFIXIFY, `')
+m4_define(LINE_SIZE, `')
 m4_define(SAME, `')
 
 m4_m4wrap(`

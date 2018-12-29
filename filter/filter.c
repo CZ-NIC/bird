@@ -649,6 +649,10 @@ f_dump_line_item(const struct f_line_item *item, int indent)
 static void
 f_dump_line(const struct f_line *dest, int indent)
 {
+  if (!dest) {
+    debug("%sNo filter line (NULL)\n", INDENT);
+    return;
+  }
   debug("%sFilter line %p (len=%u, stkbal=%d)\n", INDENT, dest, dest->len, dest->stack_balance);
   for (uint i=0; i<dest->len; i++)
     f_dump_line_item(&dest->items[i], indent+1);

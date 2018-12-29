@@ -14,7 +14,7 @@ m4_define(INST, `m4_divert(1)break; case $1:
 m4_divert(-1)'))
 m4_define(LINE, `m4_divert(1)f_dump_line(item->lines[$2], indent + 1);
 m4_divert(-1)')
-m4_define(LINEP, LINE)
+m4_define(LINEP, `LINE($@)')
 m4_define(SYMBOL, `m4_divert(1)debug("%ssymbol %s\n", INDENT, item->sym->name);
 m4_divert(-1)')
 m4_define(VALI, `m4_divert(1)debug("%svalue %s\n", INDENT, val_dump(item->vp));
