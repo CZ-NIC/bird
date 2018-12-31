@@ -702,18 +702,16 @@
 
     LINEX(t->data);
   }
-#if 0
-  INST(FI_IP_MASK) { /* IP.MASK(val) */
+
+  INST(FI_IP_MASK, 2, 1) { /* IP.MASK(val) */
     ARG(1, T_IP);
     ARG(2, T_INT);
-
-    res.type = T_IP;
-    res.val.ip = ipa_is_ip4(v1.val.ip) ?
+    RESULT(T_IP, ip, [[ ipa_is_ip4(v1.val.ip) ?
       ipa_from_ip4(ip4_and(ipa_to_ip4(v1.val.ip), ip4_mkmask(v2.val.i))) :
-      ipa_from_ip6(ip6_and(ipa_to_ip6(v1.val.ip), ip6_mkmask(v2.val.i)));
+      ipa_from_ip6(ip6_and(ipa_to_ip6(v1.val.ip), ip6_mkmask(v2.val.i))) ]]);
   }
-
-  INST(FI_EMPTY) {	/* Create empty attribute */
+#if 0
+  INST(FI_EMPTY, 0, 1) {	/* Create empty attribute */
     res.type = what->aux;
     res.val.ad = adata_empty(fs->pool, 0);
   }
