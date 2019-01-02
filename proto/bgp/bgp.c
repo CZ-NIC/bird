@@ -505,6 +505,10 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   if (ipa_zero(p->source_addr))
     p->source_addr = conn->sk->saddr;
 
+  /* In case of LLv6 is not valid during BGP start */
+  if (ipa_zero(p->link_addr) && p->neigh && p->neigh->iface && p->neigh->iface->llv6)
+    p->link_addr = p->neigh->iface->llv6->ip;
+
   conn->sk->fast_rx = 0;
 
   p->conn = conn;
