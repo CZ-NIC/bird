@@ -666,8 +666,7 @@
     vstk.cnt = estk.item[estk.cnt].ventry;
 
     /* Copy the return value */
-    res = vstk.val[retpos];
-    RESULT_OK;
+    RESULT_VAL(vstk.val[retpos]);
   }
 
   INST(FI_CALL, 0, 1) {

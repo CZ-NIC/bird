@@ -18,7 +18,8 @@ vstk.cnt -= $2;
 m4_define(ARG, `if (v$1.type != $2) runtime("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), v$1.type)')
 
 m4_define(RESULT_OK, `vstk.cnt++')
-m4_define(RESULT, `do { res = (struct f_val) { .type = $1, .val.$2 = $3 }; RESULT_OK; } while (0)')
+m4_define(RESULT, `RESULT_VAL([[ (struct f_val) { .type = $1, .val.$2 = $3 } ]])')
+m4_define(RESULT_VAL, `do { res = $1; RESULT_OK; } while (0)')
 
 m4_define(LINEX, `do {
   estk.item[estk.cnt].pos = 0;
