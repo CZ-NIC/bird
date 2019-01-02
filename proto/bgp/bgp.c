@@ -188,6 +188,7 @@ bgp_open(struct bgp_proto *p)
   bs->sk = sk;
   bs->uc = 1;
   p->sock = bs;
+  sk->data = bs;
 
   add_tail(&bgp_sockets, &bs->n);
 
@@ -1049,7 +1050,8 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   s->tos = IP_PREC_INTERNET_CONTROL;
   s->password = p->cf->password;
   s->tx_hook = bgp_connected;
-  BGP_TRACE(D_EVENTS, "Connecting to %I%J from local address %I%J", s->daddr, p->cf->iface,
+  BGP_TRACE(D_EVENTS, "Connecting to %I%J from local address %I%J",
+	    s->daddr, ipa_is_link_local(s->daddr) ? p->cf->iface : NULL,
 	    s->saddr, ipa_is_link_local(s->saddr) ? s->iface : NULL);
   bgp_setup_conn(p, conn);
   bgp_setup_sk(conn, s);
@@ -1083,12 +1085,15 @@ bgp_find_proto(sock *sk)
 {
   struct bgp_proto *p;
 
+  /* sk->iface is valid only if src or dst address is link-local */
+  int link = ipa_is_link_local(sk->saddr) || ipa_is_link_local(sk->daddr);
+
   WALK_LIST(p, proto_list)
     if ((p->p.proto == &proto_bgp) &&
+	(p->sock == sk->data) &&
 	ipa_equal(p->cf->remote_ip, sk->daddr) &&
-	(!p->cf->iface  || (p->cf->iface == sk->iface)) &&
-	(ipa_zero(p->cf->local_ip) || ipa_equal(p->cf->local_ip, sk->saddr)) &&
-	(p->cf->local_port == sk->sport))
+	(!link || (p->cf->iface == sk->iface)) &&
+	(ipa_zero(p->cf->local_ip) || ipa_equal(p->cf->local_ip, sk->saddr)))
       return p;
 
   return NULL;
@@ -1765,8 +1770,9 @@ bgp_postconfig(struct proto_config *CF)
   if (!cf->remote_as)
     cf_error("Remote AS number must be set");
 
-  if (ipa_is_link_local(cf->remote_ip) && !cf->iface)
-    cf_error("Link-local neighbor address requires specified interface");
+  if (!cf->iface && (ipa_is_link_local(cf->local_ip) ||
+		     ipa_is_link_local(cf->remote_ip)))
+    cf_error("Link-local addresses require defined interface");
 
   if (!(cf->capabilities && cf->enable_as4) && (cf->remote_as > 0xFFFF))
     cf_error("Neighbor AS number out of range (AS4 not available)");

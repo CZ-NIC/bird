@@ -1077,6 +1077,7 @@ sk_passive_connected(sock *s, int type)
 
   sock *t = sk_new(s->pool);
   t->type = type;
+  t->data = s->data;
   t->af = s->af;
   t->fd = fd;
   t->ttl = s->ttl;
