@@ -1,3 +1,44 @@
+Version 2.0.3 (2019-01-05)
+  o MRT table dumps (RFC 6396)
+  o BGP Long-lived graceful restart
+  o BGP: Optional import table (Adj-RIB-In)
+  o BGP: Extend 'next hop keep' and 'next hop self' options
+  o BGP: Improved VRF support
+  o OSPF: Authentication trailer for OSPFv3 (RFC 7166)
+  o Babel: New option to randomize router ID
+  o Filter: Custom route attributes
+  o Filter: Support for src accessor to SADR source prefix
+  o Filter: Support for VPN_RD sets
+  o Filter: Make ifname attribute modifiable
+  o Perf: Protocol to measure BIRD performance internally
+  o More verbose error messages in config processing
+  o Log file size limit / log rotation
+  o Many bugfixes
+
+  Notes:
+
+  Export of routes to RS EBGP (route server) sessions from other sources than
+  RS EBGP sessions was changed that ASN is no longer prepended to BGP_PATH in
+  that case. The change does not affect regular BGP configurations or regular
+  route servers that have only RS EBGP peers.
+
+  For BGP route servers and route reflectors, the default value of option
+  'next hop keep' was changed to a more appropriate value.
+
+  Attributes for OSPF and Babel metrics are no longer reset when exported to
+  these protocols and could be set anywhere in BIRD. As a result, OSPF metric is
+  kept when a route is reannounced between OSPF instances. Also, when route is
+  exported to OSPF with both ospf_metric1 and ospf_metric2 attributes it is now
+  propagated as OSPF-E2 route instead of as OSPF-E1 route.
+
+  Compiling BIRD with --enable-debug no longer automatically activates debug
+  mode (-d option) nor local mode (-l option). Also, debug mode with output to
+  file (-D option) no longer not forces foreground mode (-f option).
+
+  The configure script now uses standard option --runstatedir, the old option
+  --with-runtimedir is deprecated.
+
+
 Version 2.0.2 (2018-03-22)
   o Source-specific routing support for Linux kernel and Babel
   o BGP: New option 'disable after cease'
