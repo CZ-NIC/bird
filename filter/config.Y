@@ -784,10 +784,10 @@ bgp_path:
  ;
 
 bgp_path_tail:
-   NUM bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT); $$->next = $2; $$->val = (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .asn = $1, .kind = PM_ASN, }, }; }
- | NUM DDOT NUM bgp_path_tail	{ $$ = f_new_inst(FI_CONSTANT); $$->next = $4; $$->val = (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .from = $1, .to = $3, .kind = PM_ASN_RANGE }, }; }
- | '*' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT); $$->next = $2; $$->val = (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_ASTERISK }, }; }
- | '?' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT); $$->next = $2; $$->val = (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_QUESTION }, }; }
+   NUM bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT); $$->next = $2; $$->val = (struct f_val) { .type = T_PATH_MASK_ITEM, .val = { .pmi = { .asn = $1, .kind = PM_ASN, }, }, }; }
+ | NUM DDOT NUM bgp_path_tail	{ $$ = f_new_inst(FI_CONSTANT); $$->next = $4; $$->val = (struct f_val) { .type = T_PATH_MASK_ITEM, .val = { .pmi = { .from = $1, .to = $3, .kind = PM_ASN_RANGE }, }, }; }
+ | '*' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT); $$->next = $2; $$->val = (struct f_val) { .type = T_PATH_MASK_ITEM, .val = { .pmi = { .kind = PM_ASTERISK }, }, }; }
+ | '?' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT); $$->next = $2; $$->val = (struct f_val) { .type = T_PATH_MASK_ITEM, .val = { .pmi = { .kind = PM_QUESTION }, }, }; }
  | bgp_path_expr bgp_path_tail	{ $$ = $1; $$->next = $2; }
  | 				{ $$ = NULL; }
  ;
