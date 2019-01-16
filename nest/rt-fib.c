@@ -426,12 +426,12 @@ fib_delete(struct fib *f, void *E)
 	}
 #undef UNDEF
 
+      REDBLACK_DELETE(struct fib_node, rb, f->tree_root, e);
+
       if (f->fib_slab)
 	sl_free(f->fib_slab, E);
       else
 	mb_free(E);
-
-      REDBLACK_DELETE(struct fib_node, rb, f->tree_root, e);
 
       if (f->entries-- < f->entries_min)
 	fib_rehash(f, -HASH_LO_STEP);
@@ -503,14 +503,20 @@ fit_get(struct fib *f, struct fib_iterator *i)
 void
 fit_put(struct fib_iterator *i, struct fib_node *n)
 {
-  struct fib_iterator *j;
-
   i->node = n;
-  if (j = n->readers)
-    j->prev = i;
-  i->next = j;
-  n->readers = i;
   i->prev = (struct fib_iterator *) n;
+
+  if (!n)
+    {
+      i->next = NULL;
+      return;
+    }
+
+  i->next = n->readers;
+  n->readers = i;
+
+  if (i->next)
+    i->next->prev = i;
 }
 
 void
