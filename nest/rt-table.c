@@ -909,8 +909,16 @@ rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old,
   if (!old && !new)
     return;
 
-  if ((type == RA_OPTIMAL) && tab->hostcache)
-    rt_notify_hostcache(tab, net);
+  if (type == RA_OPTIMAL)
+  {
+    if (new)
+      new->sender->stats.pref_routes++;
+    if (old)
+      old->sender->stats.pref_routes--;
+
+    if (tab->hostcache)
+      rt_notify_hostcache(tab, net);
+  }
 
   struct channel *c; node *n;
   WALK_LIST2(c, n, tab->channels, table_node)
@@ -2559,7 +2567,7 @@ rt_show_table_stats(rtable *tab)
   cli_msg(-1026, "Route withdraws:\t%u", tab->route_withdraws);
 
   cli_msg(-1026, "");
-  cli_msg(-1026, "%-16s %10s %10s %10s", "Protocol", "Routes", "Updates", "Withdraws");
+  cli_msg(-1026, "%-16s %10s %10s %10s %10s", "Protocol", "Routes", "Preferred", "Updates", "Withdraws");
 
   struct channel *c; node *n;
   WALK_LIST2(c, n, tab->channels, table_node)
@@ -2567,7 +2575,8 @@ rt_show_table_stats(rtable *tab)
     if (c->channel_state == CS_DOWN)
       continue;
 
-    cli_msg(-1026, "%-16s %10u %10u %10u", c->proto->name, c->stats.imp_routes,
+    cli_msg(-1026, "%-16s %10u %10u %10u %10u", c->proto->name,
+	    c->stats.imp_routes, c->stats.pref_routes,
 	    c->stats.imp_updates_accepted, c->stats.imp_withdraws_accepted);
   }
   cli_msg(-1026, "");
