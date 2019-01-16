@@ -246,7 +246,7 @@
 
 #define REDBLACK_INSERT(type, name, key, compare, root, what) do { \
   type **where = &(root); \
-  what->name[1] = what->name[2] = NULL; \
+  what->name[0] = what->name[1] = what->name[2] = NULL; \
   REDBLACK_FIND_POINTER(name, key, compare, root, key(what), where) \
     REDBLACK_PARENT_POINTER(name, what) = REDBLACK_PTR_RED(type, *where); \
   ASSERT(!*where); \
@@ -326,13 +326,28 @@
     cr = REDBLACK_RIGHT_CHILD(name, what); \
   } \
   type *p = REDBLACK_PARENT(type, name, what); \
+  if (!p) { \
+    /* Deleting root in almost empty tree */ \
+    if (cl) { \
+      root = cl; \
+      REDBLACK_PARENT_POINTER(name, cl) = NULL; \
+      break; \
+    } \
+    if (cr) { \
+      root = cr; \
+      REDBLACK_PARENT_POINTER(name, cr) = NULL; \
+      break; \
+    } \
+    root = NULL; \
+    break; \
+  } \
+  int ps = REDBLACK_PARENT_SIDE(name, p, what); \
   if (REDBLACK_NODE_COLOR(name, what) == REDBLACK_RED) { \
-    ASSERT((cl == NULL) && (cl == NULL)); \
-    REDBLACK_CHILD(name, p, REDBLACK_PARENT_SIDE(name, p, what)) = NULL; \
+    ASSERT((cl == NULL) && (cr == NULL)); \
+    REDBLACK_CHILD(name, p, ps) = NULL; \
     break; \
   } \
   /* The only child now must be red */ \
-  int ps = REDBLACK_PARENT_SIDE(name, p, what); \
   if (cl) { \
     REDBLACK_CONNECT_NODE_SET_COLOR(type, name, p, ps, cl, REDBLACK_BLACK); \
     break; \
@@ -344,7 +359,8 @@
   type *drop = what; \
   while (1) { /* Invariant: what is black */ \
     if (what == root) { /* Case 1 */ \
-      root = NULL; \
+      if (drop) \
+	root = NULL; \
       break; \
     } \
     type *p = REDBLACK_PARENT(type, name, what); \
@@ -355,6 +371,7 @@
       REDBLACK_ROTATE(type, name, root, p, ws); \
       REDBLACK_SET_COLOR(type, name, p, REDBLACK_RED); \
       REDBLACK_SET_COLOR(type, name, s, REDBLACK_BLACK); \
+      /* Now what's sibling is also black, let's try once again */ \
       continue; \
     } \
     if (drop) drop = REDBLACK_CHILD(name, p, ws) = NULL; \

@@ -10,9 +10,6 @@
 #include "test/birdtest.h"
 #include "lib/redblack.h"
 
-#define N 4096
-#define MUL 16
-
 struct rb_test {
   REDBLACK_NODE(struct rb_test, rb_);
   uint value;
@@ -70,7 +67,8 @@ static void rb_dump(struct rb_test *root) {
 
 #define RB_INSERT(root, val) do { \
   struct rb_test *new = xmalloc(sizeof(struct rb_test)); \
-  *new = (struct rb_test) { .value = val }; \
+  memset(new, 42, sizeof(struct rb_test)); \
+  new->value = val; \
   REDBLACK_INSERT(struct rb_test, rb_, RBT_KEY, RBT_COMPARE, root, new); \
 } while (0)
 
@@ -79,16 +77,70 @@ static void rb_dump(struct rb_test *root) {
   REDBLACK_DELETE(struct rb_test, rb_, root, old); \
 } while (0)
 
+struct rb_test_args {
+  uint N, MUL;
+};
+
+#define RB_INSERT_SIMPLE(root, val) do { \
+  RB_CHECK(root, bits, total); \
+  if (bt_verbose >= BT_VERBOSE_ABSOLUTELY_ALL) \
+    rb_dump(root); \
+  SIT(i); \
+  total++; \
+  RB_INSERT(root, i); \
+} while (0)
+
+#define RB_DELETE_SIMPLE(root, val) do { \
+  RB_CHECK(root, bits, total); \
+  if (bt_verbose >= BT_VERBOSE_ABSOLUTELY_ALL) \
+    rb_dump(root); \
+  CIT(i); \
+  total--; \
+  RB_DELETE(root, i); \
+} while (0)
+
 static int
-rb_insert(void)
+rb_insert(const void *_args)
 {
+  const struct rb_test_args *args = _args;
+  uint N = args->N;
+  uint MUL = args->MUL;
+
   struct rb_test *root = NULL;
 
 #define BIT(x) ((bits[(x) / 64] >> ((x) % 64)) & 1)
 #define SIT(x) (bits[(x) / 64] |= (1ULL << ((x) % 64)))
 #define CIT(x) (bits[(x) / 64] &= ~(1ULL << ((x) % 64)))
   uint total = 0;
-  u64 bits[N / 64] = {};
+  u64 *bits = alloca(sizeof(u64) * ((N+63) / 64));
+  memset(bits, 0, sizeof(u64) * ((N+63) / 64));
+
+  bt_debug("Inserting full tree");
+  for (uint i=0; i<N; i++)
+    RB_INSERT_SIMPLE(root, i);
+
+  bt_debug("Deleting full tree");
+  for (uint i=0; i<N; i++)
+    RB_DELETE_SIMPLE(root, i);
+
+  bt_debug("Inserting full tree backwards");
+  for (uint i=0; i<N; i++)
+    RB_INSERT_SIMPLE(root, N-i-1);
+
+  bt_debug("Deleting full tree");
+  for (uint i=0; i<N; i++)
+    RB_DELETE_SIMPLE(root, i);
+
+  bt_debug("Inserting full tree");
+  for (uint i=0; i<N; i++)
+    RB_INSERT_SIMPLE(root, i);
+
+  bt_debug("Deleting full tree backwards");
+  for (uint i=0; i<N; i++)
+    RB_DELETE_SIMPLE(root, i);
+
+  bt_debug("Running random test");
+
   for (uint i=0; i<N * MUL; i++) {
     RB_CHECK(root, bits, total);
     if (bt_verbose >= BT_VERBOSE_ABSOLUTELY_ALL)
@@ -111,13 +163,30 @@ rb_insert(void)
       RB_INSERT(root, tv);
     }
   }
+
+  for (uint i=0; i<N; i++) {
+    if (!BIT(i))
+      continue;
+
+    RB_DELETE_SIMPLE(root, i);
+  }
  
   return 1;  
 }
+
+#define RUNTEST(n, mul) do { \
+  const struct rb_test_args rbta = { .N = n, .MUL = mul }; \
+  bt_test_suite_arg_extra(rb_insert, &rbta, BT_FORKING, 30, "redblack insertion test: N=%u, MUL=%u", n, mul); \
+} while (0)
 
 int
 main(int argc, char **argv)
 {
   bt_init(argc, argv);
-  bt_test_suite_extra(rb_insert, BT_FORKING, 30, "redblack insertion test");
+  RUNTEST(3, 31);
+  RUNTEST(7, 17);
+  RUNTEST(127, 11);
+  RUNTEST(8191, 3);
+
+  return bt_exit_value();
 }
