@@ -108,6 +108,17 @@
   INST(FI_PATHMASK_CONSTRUCT, 0, 1) {
     ARG_ANY(1);
     COUNT(2);
+
+    NEW([[]], [[
+	uint len = 0;
+	uint dyn = 0;
+	for (const struct f_inst *tt = f1; tt; tt = tt->next, len++)
+	  if (tt->fi_code != FI_CONSTANT)
+	    dyn++;
+
+	WHAT().count = len;
+	]]);
+
     if (vstk.cnt < what->count) /* TODO: make this check systematic */
       runtime("Construction of BGP path mask from %u elements must have at least that number of elements", what->count);
 
@@ -239,13 +250,11 @@
     RESULT_OK;
   }
   INST(FI_VARIABLE, 0, 1) {
-    VALP(1); // res = * ((struct f_val *) what->a[0].p);
-    SAME([[if (strcmp(f1->sym->name, f2->sym->name)) return 0; ]]);
+    VAR;
     RESULT_OK;
   }
   INST(FI_CONSTANT_INDIRECT, 0, 1) {
-    VALP(1);
-    SAME([[if (!val_same(f1->vp, f2->vp)) return 0; ]]);
+    VALP;
     RESULT_OK;
   }
   INST(FI_PRINT, 1, 0) {
@@ -261,15 +270,16 @@
   }
   INST(FI_PRINT_AND_DIE, 0, 0) {
     POSTFIXIFY([[
-	if (what->a[0].p) {
-	  pos = postfixify(dest, what->a[0].p, pos);
-	  dest->items[pos].flags |= FIF_PRINTED;
-	}
+      {
+	uint opos = pos;
     ]]);
-    LINE_SIZE([[
-	if (what->a[0].p) {
-	  cnt += inst_line_size(what->a[0].p);
-	}
+
+    ARG_ANY(1);
+
+    POSTFIXIFY([[
+	if (opos < pos)
+	  dest->items[pos].flags |= FIF_PRINTED;
+      }
     ]]);
 
     FRET(2);
@@ -544,13 +554,30 @@
 	  runtime( "Setting lclist attribute to non-lclist value" );
 	l->attrs[0].u.ptr = v1.val.ad;
 	break;
-      case EAF_TYPE_UNDEF:
-	if (v1.type != T_VOID)
-	  runtime( "Setting void attribute to non-void value" );
-	l->attrs[0].u.data = 0;
-	break;
       default: bug("Unknown type in e,S");
       }
+
+      f_rta_cow(fs);
+      l->next = *fs->eattrs;
+      *fs->eattrs = l;
+    }
+  }
+
+  INST(FI_EA_UNSET, 0, 0) {
+    DYNAMIC_ATTR;
+    ACCESS_RTE;
+    ACCESS_EATTRS;
+
+    {
+      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
+
+      l->next = NULL;
+      l->flags = EALF_SORTED;
+      l->count = 1;
+      l->attrs[0].id = da.ea_code;
+      l->attrs[0].flags = 0;
+      l->attrs[0].type = EAF_TYPE_UNDEF | EAF_TEMP | EAF_ORIGINATED | EAF_FRESH;
+      l->attrs[0].u.data = 0;
 
       f_rta_cow(fs);
       l->next = *fs->eattrs;
@@ -660,6 +687,7 @@
     if (!estk.cnt)
       if (vstk.val[retpos].type == T_BOOL)
 	if (vstk.val[retpos].val.i)
+
 	  return F_ACCEPT;
 	else
 	  return F_REJECT;
@@ -674,28 +702,43 @@
   }
 
   INST(FI_CALL, 0, 1) {
-    /* First push the code */
-    LINEP(2,0);
+    /* Do not use the symbol on execution */
+    if (0) {
+      UNUSED SYMBOL;
+    }
+
+    /* Postfixify extracts the function body from the symbol */
+    POSTFIXIFY([[
+	dest->items[pos].lines[0] = what->sym->def;
+    ]]);
+
+    /* First push the body on stack */
+    LINEX(what->lines[0]);
     curline.emask |= FE_RETURN;
 
     /* Then push the arguments */
     LINE(1,1);
+
+    NEW([[]], [[
+	if (sym->class != SYM_FUNCTION)
+	  cf_error("You can't call something which is not a function. Really.");
+
+	uint count = 0;
+	for (const struct f_inst *inst = f1; inst; inst = inst->next)
+	  count++;
+	
+	if (count != sym->aux2)
+	  cf_error("Function %s takes %u arguments, got %u.", sym->name, sym->aux2, count);
+    ]]);
   }
 
   INST(FI_DROP_RESULT, 1, 0) {
     ARG_ANY(1);
   }
 
-  INST(FI_CLEAR_LOCAL_VARS, 0, 0) {	/* Clear local variables */
-    SYMBOL(1);
-    for ( ; sym != NULL; sym = sym->aux2)
-      ((struct f_val *) sym->def)->type = T_VOID;
-  }
   INST(FI_SWITCH, 1, 0) {
     ARG_ANY(1);
-    POSTFIXIFY([[
-	dest->items[pos].tree = what->a[1].p;
-	]]);
+    TREE;
     const struct f_tree *t = find_tree(what->tree, &v1);
     if (!t) {
       v1.type = T_VOID;
@@ -940,8 +983,6 @@
 
   INST(FI_ASSERT, 1, 0) {	/* Birdtest Assert */
     ARG(1, T_BOOL);
-    POSTFIXIFY([[
-	dest->items[pos].s = what->a[1].p;
-    ]]);
+    STRING;
     CALL(bt_assert_hook, res.val.i, what);
   }

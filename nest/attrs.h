@@ -123,7 +123,7 @@ enum ec_subtype {
   EC_RT = 0x0002,
   EC_RO = 0x0003,
   EC_GENERIC = 0xFFFF,
-} PACKED;
+};
 
 /* Transitive bit (for first u32 half of EC) */
 #define EC_TBIT 0x40000000

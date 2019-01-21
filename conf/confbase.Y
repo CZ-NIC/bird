@@ -49,6 +49,10 @@ CF_DECLS
   struct rtable_config *r;
   struct channel_config *cc;
   struct f_inst *x;
+  struct f_inst *xp[2];
+  struct { struct f_inst *inst; uint count; } xc;
+  enum filter_return fret;
+  enum ec_subtype ecs;
   struct f_dynamic_attr fda;
   struct f_static_attr fsa;
   struct filter *f;

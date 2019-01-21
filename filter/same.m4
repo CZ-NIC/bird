@@ -29,7 +29,9 @@ m4_divert(-1)')
 
 m4_define(VALI, `m4_divert(1)if (!val_same(f1->vp, f2->vp)) return 0;
 m4_divert(-1)')
-m4_define(VALP, `')
+m4_define(VALP, `m4_divert(1)if (!val_same(f1->vp, f2->vp)) return 0;
+m4_divert(-1)')
+m4_define(VAR, `SYMBOL()VALP()')
 
 m4_define(FRET, `m4_divert(1)if (f1->fret != f2->fret) return 0;
 m4_divert(-1)')

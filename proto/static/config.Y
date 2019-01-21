@@ -14,7 +14,7 @@ CF_DEFINES
 
 #define STATIC_CFG ((struct static_config *) this_proto)
 static struct static_route *this_srt, *this_snh;
-static struct f_inst *this_srt_cmds, **this_srt_last_cmd;
+static struct f_inst *this_srt_cmds, *this_srt_last_cmd;
 
 static struct static_route *
 static_nexthop_new(void)
@@ -111,7 +111,7 @@ stat_route0: ROUTE net_any {
      add_tail(&STATIC_CFG->routes, &this_srt->n);
      this_srt->net = $2;
      this_srt_cmds = NULL;
-     this_srt_last_cmd = &this_srt_cmds;
+     this_srt_last_cmd = NULL;
      this_srt->mp_next = NULL;
      this_snh = NULL;
   }
@@ -137,7 +137,13 @@ stat_route:
  ;
 
 stat_route_item:
-   cmd { *this_srt_last_cmd = $1; this_srt_last_cmd = &($1->next); }
+   cmd {
+     if (this_srt_last_cmd)
+       f_inst_next(this_srt_last_cmd, $1);
+     else
+       this_srt_cmds = $1;
+     this_srt_last_cmd = $1;
+   }
  ;
 
 stat_route_opts:
