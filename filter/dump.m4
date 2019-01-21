@@ -17,9 +17,9 @@ m4_divert(-1)')
 m4_define(LINEP, `LINE($@)')
 m4_define(SYMBOL, `m4_divert(1)debug("%ssymbol %s\n", INDENT, item->sym->name);
 m4_divert(-1)')
-m4_define(VALI, `m4_divert(1)debug("%svalue %s\n", INDENT, val_dump(item->vp));
+m4_define(VALI, `m4_divert(1)debug("%svalue %s\n", INDENT, val_dump(&item->val));
 m4_divert(-1)')
-m4_define(VALI, `m4_divert(1)debug("%svalue %s\n", INDENT, val_dump(item->vp));
+m4_define(VAR, `m4_divert(1)debug("%svar %s: value %s\n", INDENT, item->sym->name, val_dump(item->vp));
 m4_divert(-1)')
 m4_define(FRET, `m4_divert(1)debug("%sfilter return value %d\n", INDENT, item->fret);
 m4_divert(-1)')

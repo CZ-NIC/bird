@@ -47,6 +47,7 @@
 #include "nest/attrs.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
+#include "filter/f-inst-struct.h"
 
 #define CMP_ERROR 999
 
@@ -614,11 +615,11 @@ val_format_str(struct filter_state *fs, struct f_val *v) {
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
 static uint
-inst_line_size(const struct f_inst *what)
+inst_line_size(const struct f_inst *what_)
 {
   uint cnt = 0;
-  for ( ; what; what = what->next) {
-    switch (what->fi_code) {
+  for ( ; what_; what_ = what_->next) {
+    switch (what_->fi_code) {
 #include "filter/f-inst-line-size.c"
     }
   }
@@ -671,10 +672,10 @@ f_dump_line(const struct f_line *dest, int indent)
 #endif
 
 static uint
-postfixify(struct f_line *dest, const struct f_inst *what, uint pos)
+postfixify(struct f_line *dest, const struct f_inst *what_, uint pos)
 {
-  for ( ; what; what = what->next) {
-    switch (what->fi_code) {
+  for ( ; what_; what_ = what_->next) {
+    switch (what_->fi_code) {
 #include "filter/f-inst-postfixify.c"
     }
     pos++;
@@ -683,23 +684,16 @@ postfixify(struct f_line *dest, const struct f_inst *what, uint pos)
 }
 
 struct f_line *
-f_postfixify_concat(struct f_inst *first, ...)
+f_postfixify_concat(const struct f_inst * const inst[], uint count)
 {
-  va_list args;
-  va_list argd;
-  va_start(args, first);
-  va_copy(argd, args);
-
   uint len = 0;
-  for (struct f_inst *what = first; what; what = va_arg(args, struct f_inst *))
-    len += inst_line_size(what);
-
-  va_end(args);
+  for (uint i=0; i<count; i++)
+    len += inst_line_size(inst[i]);
 
   struct f_line *out = cfg_allocz(sizeof(struct f_line) + sizeof(struct f_line_item)*len);
 
-  for (struct f_inst *what = first; what; what = va_arg(argd, struct f_inst *))
-    out->len = postfixify(out, what, out->len);
+  for (uint i=0; i<count; i++)
+    out->len = postfixify(out, inst[i], out->len);
 
   f_dump_line(out, 0);
   return out;
