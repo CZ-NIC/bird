@@ -45,17 +45,22 @@ m4_define(ARG_ANY, `')
 
 m4_define(SYMBOL, `const struct symbol *sym = what->sym')
 
-m4_define(VALI, `res = *what->vp')
-m4_define(VALP, `res = *what->vp')
+m4_define(VALI, `res = what->val')
+m4_define(VALP, `res = what->val')
+m4_define(VAR, `res = *what->vp')
 m4_define(FRET, `enum filter_return fret = what->fret')
 m4_define(ECS, `enum ec_subtype ecs = what->ecs')
 m4_define(RTC, `struct rtable *table = what->rtc->table')
 m4_define(STATIC_ATTR, `struct f_static_attr sa = what->sa')
 m4_define(DYNAMIC_ATTR, `struct f_dynamic_attr da = what->da')
+m4_define(TREE, `')
+m4_define(STRING, `')
+m4_define(COUNT, `')
 m4_define(POSTFIXIFY, `')
 m4_define(LINE_SIZE, `')
 m4_define(SAME, `')
-m4_define(COUNT, `')
+m4_define(STRUCT, `')
+m4_define(NEW, `')
 
 m4_m4wrap(`
 m4_divert(0)DNL
