@@ -157,6 +157,15 @@ void debug(const char *msg, ...);	/* Printf to debug output */
 #define ASSERT(x) do { if (!(x)) log(L_BUG "Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)
 #endif
 
+#ifdef DEBUGGING
+asm(
+    ".pushsection \".debug_gdb_scripts\", \"MS\",@progbits,1\n"
+    ".byte 1\n" /* Python */
+    ".asciz \"bird-gdb.py\"\n"
+    ".popsection\n"
+   );
+#endif
+
 /* Pseudorandom numbers */
 
 u32 random_u32(void);
