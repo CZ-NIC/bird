@@ -36,16 +36,21 @@ struct ospf_lsa_rt_walk {
 };
 
 
-void lsa_get_type_domain_(u32 itype, struct ospf_iface *ifa, u32 *otype, u32 *domain);
+void lsa_get_type_domain_(u32 type, u32 id, struct ospf_iface *ifa, u32 *otype, u32 *domain);
 
 static inline void lsa_get_type_domain(struct ospf_lsa_header *lsa, struct ospf_iface *ifa, u32 *otype, u32 *domain)
-{ lsa_get_type_domain_(lsa->type_raw, ifa, otype, domain); }
+{ lsa_get_type_domain_(lsa->type_raw, lsa->id, ifa, otype, domain); }
 
 static inline u32 lsa_get_etype(struct ospf_lsa_header *h, struct ospf_proto *p)
 { return ospf_is_v2(p) ? (h->type_raw & LSA_T_V2_MASK) : h->type_raw; }
 
+/* Assuming OSPFv2 - All U-bit LSAs are mapped to Opaque LSAs */
+static inline int lsa_is_opaque(u32 type)
+{ return !!(type & LSA_UBIT); }
 
+u32 lsa_get_opaque_type(u32 type);
 int lsa_flooding_allowed(u32 type, u32 domain, struct ospf_iface *ifa);
+int lsa_is_acceptable(u32 type, struct ospf_neighbor *n, struct ospf_proto *p);
 void lsa_generate_checksum(struct ospf_lsa_header *lsa, const u8 *body);
 u16 lsa_verify_checksum(const void *lsa_n, int lsa_len);
 

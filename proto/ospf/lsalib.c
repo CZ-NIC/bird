@@ -91,6 +91,30 @@ lsa_flooding_allowed(u32 type, u32 domain, struct ospf_iface *ifa)
   }
 }
 
+int
+lsa_is_acceptable(u32 type, struct ospf_neighbor *n, struct ospf_proto *p)
+{
+  if (ospf_is_v2(p))
+  {
+    if (type == LSA_T_NSSA)
+      return !!(n->options & OPT_N);
+
+    if (lsa_is_opaque(type))
+      return !!(n->options & OPT_O);
+
+    return 1;
+  }
+  else
+  {
+    /*
+     * There should be check whether receiving router understands that type
+     * of LSA (for LSA types with U-bit == 0). But as we do not support any
+     * optional LSA types, this is not needed yet.
+     */
+
+    return 1;
+  }
+}
 
 static int
 unknown_lsa_type(u32 type)
@@ -105,6 +129,9 @@ unknown_lsa_type(u32 type)
   case LSA_T_NSSA:
   case LSA_T_LINK:
   case LSA_T_PREFIX:
+  case LSA_T_RI_LINK:
+  case LSA_T_RI_AREA:
+  case LSA_T_RI_AS:
     return 0;
 
   default:
@@ -112,28 +139,47 @@ unknown_lsa_type(u32 type)
   }
 }
 
-#define LSA_V2_TMAX 8
-static const u16 lsa_v2_types[LSA_V2_TMAX] =
-  {0, LSA_T_RT, LSA_T_NET, LSA_T_SUM_NET, LSA_T_SUM_RT, LSA_T_EXT, 0, LSA_T_NSSA};
+/* Maps OSPFv2 types to OSPFv3 types */
+static const u16 lsa_v2_types[] = {
+  0, LSA_T_RT, LSA_T_NET, LSA_T_SUM_NET, LSA_T_SUM_RT, LSA_T_EXT, 0, LSA_T_NSSA,
+  0, LSA_T_OPAQUE_LINK, LSA_T_OPAQUE_AREA, LSA_T_OPAQUE_AS
+};
+
+/* Maps OSPFv2 opaque types to OSPFv3 function codes */
+static const u16 opaque_lsa_types[] = {
+  [LSA_OT_RI] = LSA_T_RI_,
+};
+
+/* Maps (subset of) OSPFv3 function codes to OSPFv2 opaque types */
+static const u8 opaque_lsa_types_inv[] = {
+  [LSA_T_RI_] = LSA_OT_RI,
+};
+
+#define LOOKUP(a, i) ({ uint _i = (i); (_i < ARRAY_SIZE(a)) ? a[_i] : 0; })
 
 void
-lsa_get_type_domain_(u32 itype, struct ospf_iface *ifa, u32 *otype, u32 *domain)
+lsa_get_type_domain_(u32 type, u32 id, struct ospf_iface *ifa, u32 *otype, u32 *domain)
 {
   if (ospf_is_v2(ifa->oa->po))
   {
-    itype = itype & LSA_T_V2_MASK;
-    itype = (itype < LSA_V2_TMAX) ? lsa_v2_types[itype] : 0;
+    type = type & LSA_T_V2_MASK;
+    type = LOOKUP(lsa_v2_types, type);
+
+    uint code;
+    if (LSA_FUNCTION(type) == LSA_T_OPAQUE_)
+      if (code = LOOKUP(opaque_lsa_types, id >> 24))
+	type = code | LSA_UBIT | LSA_SCOPE(type);
   }
   else
   {
     /* For unkown LSAs without U-bit change scope to LSA_SCOPE_LINK */
-    if (unknown_lsa_type(itype) && !(itype & LSA_UBIT))
-      itype = itype & ~LSA_SCOPE_MASK;
+    if (unknown_lsa_type(type) && !(type & LSA_UBIT))
+      type = type & ~LSA_SCOPE_MASK;
   }
 
-  *otype = itype;
+  *otype = type;
 
-  switch (LSA_SCOPE(itype))
+  switch (LSA_SCOPE(type))
   {
   case LSA_SCOPE_LINK:
     *domain = ifa->iface_id;
@@ -148,6 +194,12 @@ lsa_get_type_domain_(u32 itype, struct ospf_iface *ifa, u32 *otype, u32 *domain)
     *domain = 0;
     return;
   }
+}
+
+u32
+lsa_get_opaque_type(u32 type)
+{
+  return LOOKUP(opaque_lsa_types_inv, LSA_FUNCTION(type));
 }
 
 
@@ -548,6 +600,17 @@ lsa_validate_prefix(struct ospf_lsa_header *lsa, struct ospf_lsa_prefix *body)
   return lsa_validate_pxlist(lsa, body->pxcount, sizeof(struct ospf_lsa_prefix), (u8 *) body);
 }
 
+static int
+lsa_validate_ri(struct ospf_lsa_header *lsa UNUSED, struct ospf_lsa_net *body UNUSED)
+{
+  /*
+   * There should be proper validation. But we do not really process RI LSAs, so
+   * we can just accept them like another unknown opaque LSAs.
+   */
+
+  return 1;
+}
+
 
 /**
  * lsa_validate - check whether given LSA is valid
@@ -577,6 +640,14 @@ lsa_validate(struct ospf_lsa_header *lsa, u32 lsa_type, int ospf2, void *body)
     case LSA_T_EXT:
     case LSA_T_NSSA:
       return lsa_validate_ext2(lsa, body);
+    case LSA_T_RI_LINK:
+    case LSA_T_RI_AREA:
+    case LSA_T_RI_AS:
+      return lsa_validate_ri(lsa, body);
+    case LSA_T_OPAQUE_LINK:
+    case LSA_T_OPAQUE_AREA:
+    case LSA_T_OPAQUE_AS:
+      return 1;	/* Unknown Opaque LSAs */
     default:
       return 0;	/* Should not happen, unknown LSAs are already rejected */
     }
@@ -600,6 +671,10 @@ lsa_validate(struct ospf_lsa_header *lsa, u32 lsa_type, int ospf2, void *body)
       return lsa_validate_link(lsa, body);
     case LSA_T_PREFIX:
       return lsa_validate_prefix(lsa, body);
+    case LSA_T_RI_LINK:
+    case LSA_T_RI_AREA:
+    case LSA_T_RI_AS:
+      return lsa_validate_ri(lsa, body);
     default:
       return 1;	/* Unknown LSAs are OK in OSPFv3 */
     }

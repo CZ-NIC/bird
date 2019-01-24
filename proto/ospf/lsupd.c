@@ -171,7 +171,8 @@ ospf_add_flushed_to_lsrt(struct ospf_proto *p, struct ospf_neighbor *n)
 
   WALK_SLIST(en, p->lsal)
     if ((en->lsa.age == LSA_MAXAGE) && (en->lsa_body != NULL) &&
-	lsa_flooding_allowed(en->lsa_type, en->domain, n->ifa))
+	lsa_flooding_allowed(en->lsa_type, en->domain, n->ifa) &&
+        lsa_is_acceptable(en->lsa_type, n, p))
       ospf_lsa_lsrt_up(en, n);
 
   /* If we found any flushed LSA, we send them ASAP */
@@ -287,9 +288,9 @@ ospf_flood_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_neig
       if (n == from)
 	continue;
 
-      /* In OSPFv3, there should be check whether receiving router understand
-	 that type of LSA (for LSA types with U-bit == 0). But as we do not support
-	 any optional LSA types, this is not needed yet */
+      /* Check whether optional LSAs are supported by neighbor */
+      if (!lsa_is_acceptable(en->lsa_type, n, p))
+	continue;
 
       /* 13.3 (1d) - add LSA to the link state retransmission list */
       ospf_lsa_lsrt_up(en, n);

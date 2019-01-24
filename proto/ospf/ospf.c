@@ -92,11 +92,13 @@
  * - RFC 2328 - main OSPFv2 standard
  * - RFC 5340 - main OSPFv3 standard
  * - RFC 3101 - OSPFv2 NSSA areas
+ * - RFC 5250 - OSPFv2 Opaque LSAs
  * - RFC 5709 - OSPFv2 HMAC-SHA Cryptographic Authentication
  * - RFC 5838 - OSPFv3 Support of Address Families
  * - RFC 6549 - OSPFv2 Multi-Instance Extensions
  * - RFC 6987 - OSPF Stub Router Advertisement
  * - RFC 7166 - OSPFv3 Authentication Trailer
+ * - RFC 7770 - OSPF Router Information LSA
  */
 
 #include <stdlib.h>
@@ -239,6 +241,7 @@ ospf_start(struct proto *P)
   p->rfc1583 = c->rfc1583;
   p->stub_router = c->stub_router;
   p->merge_external = c->merge_external;
+  p->instance_id = c->instance_id;
   p->asbr = c->asbr;
   p->ecmp = c->ecmp;
   p->tick = c->tick;
@@ -646,6 +649,9 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
     return 0;
 
   if (p->rfc1583 != new->rfc1583)
+    return 0;
+
+  if (p->instance_id != new->instance_id)
     return 0;
 
   if (old->abr != new->abr)

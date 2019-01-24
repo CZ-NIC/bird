@@ -125,7 +125,7 @@ ospf_receive_lsreq(struct ospf_packet *pkt, struct ospf_iface *ifa,
 
     id = ntohl(lsrs[i].id);
     rt = ntohl(lsrs[i].rt);
-    lsa_get_type_domain_(ntohl(lsrs[i].type), ifa, &type, &domain);
+    lsa_get_type_domain_(ntohl(lsrs[i].type), id, ifa, &type, &domain);
 
     DBG("Processing requested LSA: Type: %04x, Id: %R, Rt: %R\n", type, id, rt);
 

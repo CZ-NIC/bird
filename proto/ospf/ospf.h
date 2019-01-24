@@ -223,6 +223,7 @@ struct ospf_proto
   u8 rfc1583;			/* RFC1583 compatibility */
   u8 stub_router;		/* Do not forward transit traffic */
   u8 merge_external;		/* Should i merge external routes? */
+  u8 instance_id;		/* Differentiate between more OSPF instances */
   u8 asbr;			/* May i originate any ext/NSSA lsa? */
   u8 ecmp;			/* Maximal number of nexthops in ECMP route, or 0 */
   u64 csn64;			/* Last used cryptographic sequence number */
@@ -466,6 +467,7 @@ struct ospf_neighbor
 #define OPT_L_V2	0x0010	/* OSPFv2, link-local signaling, not used */
 #define OPT_R		0x0010	/* OSPFv3, originator is active router */
 #define OPT_DC		0x0020	/* Related to demand circuits, not used */
+#define OPT_O		0x0040	/* OSPFv2 Opaque LSA (RFC 5250) */
 #define OPT_AF		0x0100	/* OSPFv3 Address Families (RFC 5838) */
 #define OPT_L_V3	0x0200	/* OSPFv3, link-local signaling */
 #define OPT_AT          0x0400	/* OSPFv3, authentication trailer */
@@ -541,25 +543,44 @@ struct ospf_auth3
 #define DBDES_IMMS	(DBDES_I | DBDES_M | DBDES_MS)
 
 
-#define LSA_T_RT	0x2001
-#define LSA_T_NET	0x2002
-#define LSA_T_SUM_NET	0x2003
-#define LSA_T_SUM_RT	0x2004
-#define LSA_T_EXT	0x4005
-#define LSA_T_NSSA	0x2007
-#define LSA_T_LINK	0x0008
-#define LSA_T_PREFIX	0x2009
+/* OSPFv3 LSA Types / LSA Function Codes */
+/* https://www.iana.org/assignments/ospfv3-parameters/ospfv3-parameters.xhtml#ospfv3-parameters-3 */
+#define LSA_T_RT		0x2001
+#define LSA_T_NET		0x2002
+#define LSA_T_SUM_NET		0x2003
+#define LSA_T_SUM_RT		0x2004
+#define LSA_T_EXT		0x4005
+#define LSA_T_NSSA		0x2007
+#define LSA_T_LINK		0x0008
+#define LSA_T_PREFIX		0x2009
+#define LSA_T_RI_		0x000C
+#define LSA_T_RI_LINK		0x800C
+#define LSA_T_RI_AREA		0xA00C
+#define LSA_T_RI_AS		0xC00C
+#define LSA_T_OPAQUE_		0x1FFF
+#define LSA_T_OPAQUE_LINK	0x9FFF
+#define LSA_T_OPAQUE_AREA	0xBFFF
+#define LSA_T_OPAQUE_AS	 	0xDFFF
 
-#define LSA_T_V2_MASK	0x00ff
+#define LSA_T_V2_OPAQUE_	0x0009
+#define LSA_T_V2_MASK		0x00ff
 
-#define LSA_UBIT	0x8000
+/* OSPFv2 Opaque LSA Types */
+/* https://www.iana.org/assignments/ospf-opaque-types/ospf-opaque-types.xhtml#ospf-opaque-types-2 */
+#define LSA_OT_RI		0x04
 
-#define LSA_SCOPE_LINK	0x0000
-#define LSA_SCOPE_AREA	0x2000
-#define LSA_SCOPE_AS	0x4000
-#define LSA_SCOPE_RES	0x6000
-#define LSA_SCOPE_MASK	0x6000
-#define LSA_SCOPE(type)	((type) & LSA_SCOPE_MASK)
+#define LSA_FUNCTION_MASK	0x1FFF
+#define LSA_FUNCTION(type)	((type) & LSA_FUNCTION_MASK)
+
+#define LSA_UBIT		0x8000
+
+#define LSA_SCOPE_LINK		0x0000
+#define LSA_SCOPE_AREA		0x2000
+#define LSA_SCOPE_AS		0x4000
+#define LSA_SCOPE_RES		0x6000
+#define LSA_SCOPE_MASK		0x6000
+#define LSA_SCOPE(type)		((type) & LSA_SCOPE_MASK)
+#define LSA_SCOPE_ORDER(type)	(((type) >> 13) & 0x3)
 
 
 #define LSA_MAXAGE	3600	/* 1 hour */
@@ -586,9 +607,20 @@ struct ospf_auth3
 #define LSA_EXT2_TOS	0x7F000000
 #define LSA_EXT2_EBIT	0x80000000
 
-#define LSA_EXT3_EBIT	0x4000000
-#define LSA_EXT3_FBIT	0x2000000
-#define LSA_EXT3_TBIT	0x1000000
+#define LSA_EXT3_EBIT	0x04000000
+#define LSA_EXT3_FBIT	0x02000000
+#define LSA_EXT3_TBIT	0x01000000
+
+/* OSPF Router Information (RI) TLVs */
+/* https://www.iana.org/assignments/ospf-parameters/ospf-parameters.xhtml#ri-tlv */
+#define LSA_RI_RIC		1
+#define LSA_RI_RFC		2
+
+/* OSPF Router Informational Capability Bits */
+/* https://www.iana.org/assignments/ospf-parameters/ospf-parameters.xhtml#router-informational-capability */
+#define LSA_RIC_GR_CAPABLE	0
+#define LSA_RIC_GR_HELPER	1
+#define LSA_RIC_STUB_ROUTER	2
 
 
 struct ospf_lsa_header
@@ -729,6 +761,18 @@ struct ospf_lsa_prefix
   u32 ref_id;
   u32 ref_rt;
   u32 rest[];
+};
+
+struct ospf_tlv
+{
+#ifdef CPU_BIG_ENDIAN
+  u16 type;
+  u16 length;
+#else
+  u16 length;
+  u16 type;
+#endif
+  u32 data[];
 };
 
 

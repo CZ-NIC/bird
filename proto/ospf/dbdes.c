@@ -127,7 +127,7 @@ ospf_prepare_dbdes(struct ospf_proto *p, struct ospf_neighbor *n)
   {
     struct ospf_dbdes2_packet *ps = (void *) pkt;
     ps->iface_mtu = htons(iface_mtu);
-    ps->options = ifa->oa->options;
+    ps->options = ifa->oa->options | OPT_O;
     ps->imms = 0;	/* Will be set later */
     ps->ddseq = htonl(n->dds);
     length = sizeof(struct ospf_dbdes2_packet);
@@ -162,7 +162,8 @@ ospf_prepare_dbdes(struct ospf_proto *p, struct ospf_neighbor *n)
       }
 
       if ((en->lsa.age < LSA_MAXAGE) &&
-	  lsa_flooding_allowed(en->lsa_type, en->domain, ifa))
+	  lsa_flooding_allowed(en->lsa_type, en->domain, ifa) &&
+	  lsa_is_acceptable(en->lsa_type, n, p))
       {
 	lsa_hton_hdr(&(en->lsa), lsas + i);
 	i++;
