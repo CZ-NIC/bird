@@ -3511,16 +3511,6 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	<m/dead/ seconds, it will consider the neighbor down. If both directives
 	<cf/dead count/ and <cf/dead/ are used, <cf/dead/ has precedence.
 
-	<tag><label id="ospf-secondary">secondary <M>switch</M></tag>
-	On BSD systems, older versions of BIRD supported OSPFv2 only for the
-	primary IP address of an interface, other IP ranges on the interface
-	were handled as stub networks. Since v1.4.1, regular operation on
-	secondary IP addresses is supported, but disabled by default for
-	compatibility. This option allows to enable it. The option is a
-	transitional measure, will be removed in the next major release as the
-	behavior will be changed. On Linux systems, the option is irrelevant, as
-	operation on non-primary addresses is already the regular behavior.
-
 	<tag><label id="ospf-rx-buffer">rx buffer <M>num</M></tag>
 	This option allows to specify the size of buffers used for packet
 	processing. The buffer size should be bigger than maximal size of any
