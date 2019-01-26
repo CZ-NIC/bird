@@ -3491,6 +3491,11 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	Specifies interval in seconds between retransmissions of unacknowledged
 	updates. Default value is 5.
 
+	<tag><label id="ospf-transmit-delay">transmit delay <M>num</M></tag>
+	Specifies estimated transmission delay of link state updates send over
+	the interface. The value is added to LSA age of LSAs propagated through
+	it. Default value is 1.
+
 	<tag><label id="ospf-priority">priority <M>num</M></tag>
 	On every multiple access network (e.g., the Ethernet) Designated Router
 	and Backup Designated router are elected. These routers have some special
