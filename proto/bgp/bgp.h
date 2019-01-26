@@ -299,12 +299,16 @@ struct bgp_channel {
 
   /* Rest are BGP specific data */
   struct bgp_channel_config *cf;
-  pool *pool; /* XXXX */
 
   u32 afi;
   u32 index;
   const struct bgp_af_desc *desc;
 
+  rtable *igp_table_ip4;		/* Table for recursive IPv4 next hop lookups */
+  rtable *igp_table_ip6;		/* Table for recursive IPv6 next hop lookups */
+
+  /* Rest are zeroed when down */
+  pool *pool;
   HASH(struct bgp_bucket) bucket_hash;	/* Hash table of route buckets */
   struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
   list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
@@ -312,8 +316,6 @@ struct bgp_channel {
   HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
   slab *prefix_slab;			/* Slab holding prefix nodes */
 
-  rtable *igp_table_ip4;		/* Table for recursive IPv4 next hop lookups */
-  rtable *igp_table_ip6;		/* Table for recursive IPv6 next hop lookups */
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   ip_addr link_addr;			/* Link-local version of next_hop_addr */
 

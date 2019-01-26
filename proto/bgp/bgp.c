@@ -1692,6 +1692,11 @@ bgp_channel_cleanup(struct channel *C)
 
   if (c->igp_table_ip6)
     rt_unlock_table(c->igp_table_ip6);
+
+  c->index = 0;
+
+  /* Cleanup rest of bgp_channel starting at pool field */
+  memset(&(c->pool), 0, sizeof(struct bgp_channel) - OFFSETOF(struct bgp_channel, pool));
 }
 
 static inline struct bgp_channel_config *
