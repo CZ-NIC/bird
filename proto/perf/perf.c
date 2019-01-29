@@ -206,6 +206,7 @@ perf_loop(void *data)
     p->exp++;
   }
 
+  rt_schedule_prune(P->main_channel->table);
   ev_schedule(p->loop);
 }
 
