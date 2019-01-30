@@ -571,7 +571,8 @@ rt_notify_basic(struct channel *c, net *net, rte *new0, rte *old0, int refeed)
   if (new)
     new = export_filter(c, new, &new_free, 0);
 
-  if (old && !(refeed || (old->lastmod <= c->last_tx_filter_change)))
+  if (old && !(refeed || ((old->lastmod <= c->last_tx_filter_change) &&
+			  (p != old->sender->proto))))
     old = export_filter(c, old, &old_free, 1);
 
   if (!new && !old)
