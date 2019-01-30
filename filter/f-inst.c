@@ -109,7 +109,7 @@
     ARG_ANY(1);
     COUNT(2);
 
-    NEW([[]], [[
+    NEW(, [[
 	uint len = 0;
 	uint dyn = 0;
 	for (const struct f_inst *tt = f1; tt; tt = tt->next, len++)
@@ -329,9 +329,9 @@
   }
 
   INST(FI_RTA_SET, 1, 0) {
-    STATIC_ATTR;
     ACCESS_RTE;
     ARG_ANY(1);
+    STATIC_ATTR;
     if (sa.f_type != v1.type)
       runtime( "Attempt to set static attribute to incompatible type" );
 
@@ -475,10 +475,10 @@
   }
 
   INST(FI_EA_SET, 1, 0) {
-    DYNAMIC_ATTR;
     ACCESS_RTE;
     ACCESS_EATTRS;
     ARG_ANY(1);
+    DYNAMIC_ATTR;
     {
       struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
 
@@ -719,7 +719,7 @@
     /* Then push the arguments */
     LINE(1,1);
 
-    NEW([[]], [[
+    NEW(, [[
 	if (sym->class != SYM_FUNCTION)
 	  cf_error("You can't call something which is not a function. Really.");
 
@@ -984,5 +984,8 @@
   INST(FI_ASSERT, 1, 0) {	/* Birdtest Assert */
     ARG(1, T_BOOL);
     STRING;
-    CALL(bt_assert_hook, res.val.i, what);
+    if (!bt_assert_hook)
+      runtime("No bt_assert hook registered, can't assert");
+
+    bt_assert_hook(res.val.i, what);
   }

@@ -285,7 +285,18 @@ else: {
   }
 
   cf_lval.s = cf_get_symbol(yytext);
-  return SYM;
+  switch (cf_lval.s->class) {
+    case SYM_VOID: return CF_SYM_VOID;
+    case SYM_PROTO: return CF_SYM_PROTO;
+    case SYM_TEMPLATE: return CF_SYM_TEMPLATE;
+    case SYM_FUNCTION: return CF_SYM_FUNCTION;
+    case SYM_FILTER: return CF_SYM_FILTER;
+    case SYM_TABLE: return CF_SYM_TABLE;
+    case SYM_ATTRIBUTE: return CF_SYM_ATTRIBUTE;
+    case SYM_VARIABLE_RANGE: return CF_SYM_VARIABLE;
+    case SYM_CONSTANT_RANGE: return CF_SYM_CONSTANT;
+    default: bug("Unknown symbol class %d", cf_lval.s->class);
+  }
 }
 
 <CLI>(.|\n) {
@@ -723,9 +734,6 @@ cf_pop_scope(void)
 char *
 cf_symbol_class_name(struct symbol *sym)
 {
-  if (cf_symbol_is_constant(sym))
-    return "constant";
-
   switch (sym->class)
     {
     case SYM_VOID:
@@ -740,6 +748,12 @@ cf_symbol_class_name(struct symbol *sym)
       return "filter";
     case SYM_TABLE:
       return "routing table";
+    case SYM_ATTRIBUTE:
+      return "custom attribute";
+    case SYM_CONSTANT_RANGE:
+      return "constant";
+    case SYM_VARIABLE_RANGE:
+      return "variable";
     default:
       return "unknown type";
     }

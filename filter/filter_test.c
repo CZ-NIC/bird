@@ -22,19 +22,21 @@
 #define BT_CONFIG_FILE "filter/test.conf"
 
 
-static struct config *
-parse_config_file(const void *filename_void)
+struct parse_config_file_arg {
+  struct config **cp;
+  const char *filename;
+};
+
+static int
+parse_config_file(const void *argv)
 {
-  bt_bird_init();
-
-  size_t fn_size = strlen((const char *) filename_void) + 1;
+  const struct parse_config_file_arg *arg = argv;
+  size_t fn_size = strlen(arg->filename) + 1;
   char *filename = alloca(fn_size);
-  strncpy(filename, filename_void, fn_size);
-
-  struct config *c = bt_config_file_parse(filename);
-  bt_bird_cleanup();
-
-  return c;
+  strncpy(filename, arg->filename, fn_size);
+  
+  *(arg->cp) = bt_config_file_parse(filename);
+  return !!*(arg->cp);
 }
 
 static int
@@ -68,13 +70,18 @@ int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+  bt_bird_init();
+  
+  bt_assert_hook = bt_assert_filter;
 
-  struct config *c = parse_config_file(BT_CONFIG_FILE);
+  struct config *c = NULL;
+  struct parse_config_file_arg pcfa = { .cp = &c, .filename = BT_CONFIG_FILE };
+  bt_test_suite_base(parse_config_file, "conf", (const void *) &pcfa, 0, 0, "parse config file");
+
+  bt_bird_cleanup();
 
   if (c)
   {
-    bt_assert_hook = bt_assert_filter;
-
     struct f_bt_test_suite *t;
     WALK_LIST(t, c->tests)
       bt_test_suite_base(run_function, t->fn_name, t->fn, BT_FORKING, BT_TIMEOUT, "%s", t->dsc);

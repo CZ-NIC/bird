@@ -157,7 +157,7 @@ stat_route_opt_list:
  ;
 
 
-CF_CLI(SHOW STATIC, optsym, [<name>], [[Show details of static protocol]])
+CF_CLI(SHOW STATIC, optproto, [<name>], [[Show details of static protocol]])
 { static_show(proto_get_named($3, &proto_static)); } ;
 
 CF_CODE
