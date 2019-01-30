@@ -1402,7 +1402,7 @@ lsa_compare_for_lsadb(const void *p1, const void *p2)
 void
 ospf_sh_lsadb(struct lsadb_show_data *ld)
 {
-  struct ospf_proto *p = (struct ospf_proto *) proto_get_named(ld->name, &proto_ospf);
+  struct ospf_proto *p = ld->proto;
   uint num = p->gr->hash_entries;
   uint i, j;
   int last_dscope = -1;

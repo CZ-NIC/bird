@@ -165,10 +165,6 @@ void cf_push_scope(struct symbol *);
 void cf_pop_scope(void);
 char *cf_symbol_class_name(struct symbol *sym);
 
-static inline int cf_symbol_is_constant(struct symbol *sym)
-{ return (sym->class & 0xff00) == SYM_CONSTANT; }
-
-
 /* Parser */
 
 extern char *cf_text;

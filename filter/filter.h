@@ -128,6 +128,24 @@ enum filter_return {
   F_QUITBIRD,
 };
 
+/* Filter l-value type */
+enum f_lval_type {
+  F_LVAL_VARIABLE,
+  F_LVAL_PREFERENCE,
+  F_LVAL_SA,
+  F_LVAL_EA,
+};
+
+/* Filter l-value */
+struct f_lval {
+  enum f_lval_type type;
+  union {
+    const struct symbol *sym;
+    struct f_dynamic_attr da;
+    struct f_static_attr sa;
+  };
+};
+
 /* Filter instruction declarations */
 #define FI__LIST \
   F(FI_NOP) \
@@ -159,9 +177,9 @@ enum filter_return {
   F(FI_CONDITION, ARG, LINE, LINE) \
   F(FI_PRINT_AND_DIE, ARG, FRET) \
   F(FI_RTA_GET, SA) \
-  F(FI_RTA_SET, SA, ARG) \
+  F(FI_RTA_SET, ARG, SA) \
   F(FI_EA_GET, EA) \
-  F(FI_EA_SET, EA, ARG) \
+  F(FI_EA_SET, ARG, EA) \
   F(FI_EA_UNSET, EA) \
   F(FI_PREF_GET) \
   F(FI_PREF_SET, ARG) \
