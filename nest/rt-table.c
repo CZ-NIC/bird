@@ -1346,7 +1346,10 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   rte_update_lock();
   if (new)
     {
-      nn = net_get(c->table, n);
+      /* Create a temporary table node */
+      nn = alloca(sizeof(net) + n->length);
+      memset(nn, 0, sizeof(net) + n->length);
+      net_copy(nn->n.addr, n);
 
       new->net = nn;
       new->sender = c;
@@ -1397,6 +1400,10 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
       if (!rta_is_cached(new->attrs)) /* Need to copy attributes */
 	new->attrs = rta_lookup(new->attrs);
       new->flags |= REF_COW;
+
+      /* Use the actual struct network, not the dummy one */
+      nn = net_get(c->table, n);
+      new->net = nn;
     }
   else
     {
@@ -1411,16 +1418,21 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     }
 
  recalc:
+  /* And recalculate the best route */
   rte_hide_dummy_routes(nn, &dummy);
   rte_recalculate(c, nn, new, src);
   rte_unhide_dummy_routes(nn, &dummy);
+
   rte_update_unlock();
   return;
 
  drop:
   rte_free(new);
   new = NULL;
-  goto recalc;
+  if (nn = net_find(c->table, n))
+    goto recalc;
+
+  rte_update_unlock();
 }
 
 /* Independent call to rte_announce(), used from next hop
