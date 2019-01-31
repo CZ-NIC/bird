@@ -29,7 +29,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define PLOG(msg, ...) log(L_INFO "Perf %s " msg, p->p.name, ##__VA_ARGS__)
+#define PLOG(msg, ...) log(L_INFO "Perf %s %s " msg, BIRD_VERSION, p->p.name, ##__VA_ARGS__)
 
 static inline void
 random_data(void *p, uint len)
