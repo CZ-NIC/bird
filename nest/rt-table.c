@@ -901,8 +901,16 @@ rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old,
   if (!old && !new)
     return;
 
-  if ((type == RA_OPTIMAL) && tab->hostcache)
-    rt_notify_hostcache(tab, net);
+  if (type == RA_OPTIMAL)
+  {
+    if (new)
+      new->sender->stats.pref_routes++;
+    if (old)
+      old->sender->stats.pref_routes--;
+
+    if (tab->hostcache)
+      rt_notify_hostcache(tab, net);
+  }
 
   struct channel *c; node *n;
   WALK_LIST2(c, n, tab->channels, table_node)

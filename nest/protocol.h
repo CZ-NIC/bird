@@ -134,6 +134,7 @@ struct proto_stats {
   /* Import - from protocol to core */
   u32 imp_routes;		/* Number of routes successfully imported to the (adjacent) routing table */
   u32 filt_routes;		/* Number of routes rejected in import filter but kept in the routing table */
+  u32 pref_routes;		/* Number of routes selected as best in the (adjacent) routing table */
   u32 imp_updates_received;	/* Number of route updates received */
   u32 imp_updates_invalid;	/* Number of route updates rejected as invalid */
   u32 imp_updates_filtered;	/* Number of route updates rejected by filters */
