@@ -238,6 +238,14 @@ ospf_rxmt_dbdes(struct ospf_proto *p, struct ospf_neighbor *n)
   ospf_do_send_dbdes(p, n);
 }
 
+void
+ospf_reset_ldd(struct ospf_proto *p UNUSED, struct ospf_neighbor *n)
+{
+  mb_free(n->ldd_buffer);
+  n->ldd_buffer = NULL;
+  n->ldd_bsize = 0;
+}
+
 static int
 ospf_process_dbdes(struct ospf_proto *p, struct ospf_packet *pkt, struct ospf_neighbor *n)
 {
@@ -434,6 +442,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
       if (!(n->myimms & DBDES_M) && !(n->imms & DBDES_M))
       {
 	tm_stop(n->dbdes_timer);
+	ospf_reset_ldd(p, n);
 	ospf_neigh_sm(n, INM_EXDONE);
 	break;
       }
@@ -457,7 +466,11 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
       ospf_send_dbdes(p, n);
 
       if (!(n->myimms & DBDES_M) && !(n->imms & DBDES_M))
+      {
+	/* Use dbdes timer to postpone freeing of Last DBDES packet buffer */
+	tm_start(n->dbdes_timer, n->ifa->deadint S);
 	ospf_neigh_sm(n, INM_EXDONE);
+      }
     }
     break;
 

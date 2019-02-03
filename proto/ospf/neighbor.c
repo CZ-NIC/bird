@@ -608,6 +608,12 @@ dbdes_timer_hook(timer *t)
 
   if ((n->state == NEIGHBOR_EXCHANGE) && (n->myimms & DBDES_MS))
     ospf_rxmt_dbdes(p, n);
+
+  if ((n->state > NEIGHBOR_LOADING) && !(n->myimms & DBDES_MS))
+  {
+    ospf_reset_ldd(p, n);
+    tm_stop(n->dbdes_timer);
+  }
 }
 
 static void
