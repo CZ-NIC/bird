@@ -989,6 +989,7 @@ void ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa, struct 
 /* dbdes.c */
 void ospf_send_dbdes(struct ospf_proto *p, struct ospf_neighbor *n);
 void ospf_rxmt_dbdes(struct ospf_proto *p, struct ospf_neighbor *n);
+void ospf_reset_ldd(struct ospf_proto *p, struct ospf_neighbor *n);
 void ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa, struct ospf_neighbor *n);
 
 /* lsreq.c */
