@@ -106,6 +106,13 @@ ospf_send_lsack_(struct ospf_proto *p, struct ospf_neighbor *n, int queue)
   length = ospf_pkt_hdrlen(p) + i * sizeof(struct ospf_lsa_header);
   pkt->length = htons(length);
 
+  if (queue == ACKL_DIRECT)
+  {
+    OSPF_PACKET(ospf_dump_lsack, pkt, "LSACK packet sent to nbr %R on %s", n->rid, ifa->ifname);
+    ospf_send_to(ifa, n->ip);
+    return;
+  }
+
   OSPF_PACKET(ospf_dump_lsack, pkt, "LSACK packet sent via %s", ifa->ifname);
 
   if (ifa->type == OSPF_IT_BCAST)
