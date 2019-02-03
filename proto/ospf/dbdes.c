@@ -342,6 +342,16 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
     rcv_ddseq = ntohl(ps->ddseq);
   }
 
+  /* Reject packets with non-matching MTU */
+  if ((ifa->type != OSPF_IT_VLINK) &&
+      (rcv_iface_mtu != ifa->iface->mtu) &&
+      (rcv_iface_mtu != 0) && (ifa->iface->mtu != 0))
+  {
+    LOG_PKT("MTU mismatch with nbr %R on %s (remote %d, local %d)",
+	    n->rid, ifa->ifname, rcv_iface_mtu, ifa->iface->mtu);
+    return;
+  }
+
   switch (n->state)
   {
   case NEIGHBOR_DOWN:
@@ -357,13 +367,6 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
     /* fallthrough */
 
   case NEIGHBOR_EXSTART:
-    if ((ifa->type != OSPF_IT_VLINK) &&
-	(rcv_iface_mtu != ifa->iface->mtu) &&
-	(rcv_iface_mtu != 0) &&
-	(ifa->iface->mtu != 0))
-      LOG_PKT_WARN("MTU mismatch with nbr %R on %s (remote %d, local %d)",
-		   n->rid, ifa->ifname, rcv_iface_mtu, ifa->iface->mtu);
-
     if (((rcv_imms & DBDES_IMMS) == DBDES_IMMS) &&
 	(n->rid > p->router_id) &&
 	(plen == ospf_dbdes_hdrlen(p)))
