@@ -353,7 +353,6 @@ struct ospf_neighbor
   u32 rid;			/* Router ID */
   ip_addr ip;			/* IP of it's interface */
   u8 priority;			/* Priority */
-  u8 adj;			/* built adjacency? */
   u32 options;			/* Options received */
 
   /* Entries dr and bdr store IP addresses in OSPFv2 and router IDs in

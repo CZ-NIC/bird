@@ -176,8 +176,8 @@ ospf_neigh_chstate(struct ospf_neighbor *n, u8 state)
 
   if (state == NEIGHBOR_EXSTART)
   {
-    /* First time adjacency */
-    if (n->adj == 0)
+    /* First time adjacency attempt */
+    if (old_state < NEIGHBOR_EXSTART)
       n->dds = random_u32();
 
     n->dds++;
