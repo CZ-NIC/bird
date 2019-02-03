@@ -85,7 +85,6 @@ ospf_neighbor_new(struct ospf_iface *ifa)
   n->pool = pool;
   n->ifa = ifa;
   add_tail(&ifa->neigh_list, NODE n);
-  n->adj = 0;
   n->csn = 0;
   n->state = NEIGHBOR_DOWN;
 
@@ -179,8 +178,8 @@ ospf_neigh_chstate(struct ospf_neighbor *n, u8 state)
 
   if (state == NEIGHBOR_EXSTART)
   {
-    /* First time adjacency */
-    if (n->adj == 0)
+    /* First time adjacency attempt */
+    if (old_state < NEIGHBOR_EXSTART)
       n->dds = random_u32();
 
     n->dds++;
