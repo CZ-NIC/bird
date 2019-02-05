@@ -564,34 +564,47 @@ rt_notify_basic(struct channel *c, net *net, rte *new0, rte *old0, int refeed)
    * and the end of refeed - if a newly filtered route disappears during this
    * period, proper withdraw is not sent (because old would be also filtered)
    * and the route is not refeeded (because it disappeared before that).
-   * Therefore, we also do not try to run the filter on old routes that are
-   * older than the last filter change.
+   * This is handled below as a special case.
    */
 
   if (new)
     new = export_filter(c, new, &new_free, 0);
 
-  if (old && !(refeed || ((old->lastmod <= c->last_tx_filter_change) &&
-			  (p != old->sender->proto))))
+  if (old && !refeed)
     old = export_filter(c, old, &old_free, 1);
 
   if (!new && !old)
   {
     /*
      * As mentioned above, 'old' value may be incorrect in some race conditions.
-     * We generally ignore it with the exception of withdraw to pipe protocol.
-     * In that case we rather propagate unfiltered withdraws regardless of
-     * export filters to ensure that when a protocol is flushed, its routes are
-     * removed from all tables. Possible spurious unfiltered withdraws are not
-     * problem here as they are ignored if there is no corresponding route at
-     * the other end of the pipe. We directly call rt_notify() hook instead of
+     * We generally ignore it with two exceptions:
+     *
+     * First, withdraw to pipe protocol. In that case we rather propagate
+     * unfiltered withdraws regardless of export filters to ensure that when a
+     * protocol is flushed, its routes are removed from all tables. Possible
+     * spurious unfiltered withdraws are not problem here as they are ignored if
+     * there is no corresponding route at the other end of the pipe.
+     *
+     * Second, recent filter change. If old route is older than filter change,
+     * then it was previously evaluated by a different filter and we do not know
+     * whether it was really propagated. In that case we rather send spurious
+     * withdraw than do nothing and possibly cause phantom routes.
+     *
+     * In both cases wqe directly call rt_notify() hook instead of
      * do_rt_notify() to avoid logging and stat counters.
      */
 
+    int pipe_withdraw = 0, filter_change = 0;
 #ifdef CONFIG_PIPE
-    if ((p->proto == &proto_pipe) && !new0 && (p != old0->sender->proto))
-      p->rt_notify(p, c, net, NULL, old0);
+    pipe_withdraw = (p->proto == &proto_pipe) && !new0;
 #endif
+    filter_change = old0 && (old0->lastmod <= c->last_tx_filter_change);
+
+    if ((pipe_withdraw || filter_change) && (p != old0->sender->proto))
+    {
+      c->stats.exp_withdraws_accepted++;
+      p->rt_notify(p, c, net, NULL, old0);
+    }
 
     return;
   }
