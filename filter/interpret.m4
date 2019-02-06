@@ -10,10 +10,16 @@ m4_divert(-1)m4_dnl
 # Common aliases
 m4_define(DNL, `m4_dnl')
 
-m4_define(INST, `break; case $1:
-m4_ifelse(eval($2 > 0), `if (vstk.cnt < $2) runtime("Stack underflow");', `')
-vstk.cnt -= $2;
-')
+m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
+m4_divert(1)
+case INST_NAME():
+m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (vstk.cnt < INST_INVAL()) runtime("Stack underflow"); vstk.cnt -= INST_INVAL(); ]])
+m4_undivert(2)
+break;
+m4_divert(-1)
+]])')
+
+m4_define(INST, `INST_FLUSH()m4_define([[INST_NAME]], [[$1]])m4_define([[INST_INVAL]], [[$2]])m4_divert(2)')
 
 m4_define(ARG, `if (v$1.type != $2) runtime("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), v$1.type)')
 
@@ -63,12 +69,11 @@ m4_define(STRUCT, `')
 m4_define(NEW, `')
 
 m4_m4wrap(`
+INST_FLUSH()
 m4_divert(0)DNL
-case FI_NOP: bug("This shall not happen");
 m4_undivert(1)
-break; default: bug( "Unknown instruction %d (%c)", what->fi_code, what->fi_code & 0xff);
+default: bug( "Unknown instruction %d (%c)", what->fi_code, what->fi_code & 0xff);
 ')
 
-m4_divert(1)
 m4_changequote([[,]])
 

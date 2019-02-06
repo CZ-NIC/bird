@@ -20,23 +20,27 @@ m4_define(FNOUT, `m4_divert(1)')
 m4_define(FNARG, `m4_divert(2)')
 m4_define(FNBODY, `m4_divert(3)')
 
-m4_define(INST,	`m4_define([[INST_NAME]], [[$1]])FNOUT()DNL
-m4_undivert(2)DNL
-m4_undivert(3)DNL
-  return what;
-}
-
-struct f_inst *f_new_inst_$1(enum f_instruction_code fi_code
-FNBODY()) {
+m4_define(INST_FLUSH,  `m4_ifdef([[INST_NAME]], [[
+FNOUT()DNL
+struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
+m4_undivert(2)
+) {
   struct f_inst *what = cfg_allocz(sizeof(struct f_inst));
   what->fi_code = fi_code;
   what->lineno = ifs->lino;
-FNSTOP()')
+m4_undivert(3)
+  return what;
+}
+FNSTOP()
+]]DNL
+)')
+
+m4_define(INST, `INST_FLUSH()m4_define([[INST_NAME]], [[$1]])')
 
 m4_define(WHAT, `what->i_[[]]INST_NAME()')
 
 m4_define(FNMETAARG, `FNARG(), $1 $2
-FNBODY() WHAT().$2 = $2;
+FNBODY()  WHAT().$2 = $2;
 FNSTOP()')
 m4_define(ARG, `FNMETAARG(const struct f_inst *, f$1)')
 m4_define(ARG_ANY, `FNMETAARG(const struct f_inst *, f$1)')
@@ -60,25 +64,15 @@ FNBODY()$2
 FNSTOP()')
 
 m4_m4wrap(`
-FNOUT()
-m4_undivert(2)
-m4_undivert(3)
-
+INST_FLUSH()
 m4_divert(0)
 #include "nest/bird.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/f-inst-struct.h"
 
-struct f_inst *f_new_inst_FI_NOP(enum f_instruction_code fi_code) {
-  struct f_inst *what = cfg_allocz(sizeof(struct f_inst));
-  what->fi_code = fi_code;
-  what->lineno = ifs->lino;
-
 m4_undivert(1)
 
-  return what;
-}
 ')
 
 m4_changequote([[,]])
