@@ -626,7 +626,6 @@ inst_line_size(const struct f_inst *what_)
   return cnt;
 }
 
-#if DEBUGGING
 #define INDENT (((const char *) f_dump_line_indent_str) + sizeof(f_dump_line_indent_str) - (indent) - 1)
 static const char f_dump_line_indent_str[] = "                                ";
 
@@ -667,9 +666,6 @@ f_dump_line(const struct f_line *dest, int indent)
   debug("%sFilter line %p dump done\n", INDENT, dest);
 #undef INDENT
 }
-#else
-#define f_dump_line(...)
-#endif
 
 static uint
 postfixify(struct f_line *dest, const struct f_inst *what_, uint pos)
@@ -695,7 +691,9 @@ f_postfixify_concat(const struct f_inst * const inst[], uint count)
   for (uint i=0; i<count; i++)
     out->len = postfixify(out, inst[i], out->len);
 
+#if DEBUGGING
   f_dump_line(out, 0);
+#endif
   return out;
 }
 
