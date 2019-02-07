@@ -39,6 +39,7 @@
 #include "lib/string.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
+#include "filter/f-util.h"
 #include "lib/hash.h"
 #include "lib/string.h"
 #include "lib/alloca.h"

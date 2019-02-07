@@ -69,7 +69,7 @@ m4_divert(0)
 #include "nest/bird.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
-#include "filter/f-inst-struct.h"
+#include "filter/f-inst.h"
 
 m4_undivert(1)
 

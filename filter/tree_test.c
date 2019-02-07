@@ -10,6 +10,7 @@
 #include "test/bt-utils.h"
 
 #include "filter/filter.h"
+#include "filter/f-util.h"
 #include "conf/conf.h"
 
 #define MAX_TREE_HEIGHT 13
