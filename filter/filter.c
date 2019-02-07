@@ -47,7 +47,8 @@
 #include "nest/attrs.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
-#include "filter/f-inst-struct.h"
+#include "filter/f-inst.h"
+#include "filter/f-util.h"
 
 #define CMP_ERROR 999
 
@@ -715,12 +716,39 @@ f_postfixify_concat(const struct f_inst * const inst[], uint count)
 static enum filter_return
 interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 {
-  struct f_val_stack vstk;
-  vstk.cnt = 0;
 
-  struct f_exec_stack estk;
+#define F_VAL_STACK_MAX	4096
+  /* Value stack for execution */
+  struct f_val_stack {
+    uint cnt;				/* Current stack size; 0 for empty */
+    struct f_val val[F_VAL_STACK_MAX];	/* The stack itself */
+  } vstk;
+
+  /* The stack itself is intentionally kept as-is for performance reasons.
+   * Do NOT rewrite this to initialization by struct literal. It's slow.
+   */
+  vstk.cnt = 0;
+#define F_EXEC_STACK_MAX 4096
+
+  /* Exception bits */
+  enum f_exception {
+    FE_RETURN = 0x1,
+  };
+
+  /* Instruction stack for execution */
+  struct f_exec_stack {
+    struct {
+      const struct f_line *line;		/* The line that is being executed */
+      uint pos;				/* Instruction index in the line */
+      uint ventry;			/* Value stack depth on entry */
+      enum f_exception emask;		/* Exception mask */
+    } item[F_EXEC_STACK_MAX];
+    uint cnt;				/* Current stack size; 0 for empty */
+  } estk;
+
+  /* The same as with the value stack. Not resetting the stack for performance reasons. */
   estk.cnt = 1;
-  estk.item[0].line = line;
+  estk.item[0].line = line;		
   estk.item[0].pos = 0;
 
 #define curline estk.item[estk.cnt-1]

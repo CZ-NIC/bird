@@ -15,6 +15,7 @@
 #include "lib/string.h"
 #include "lib/resource.h"
 #include "filter/filter.h"
+#include "filter/f-util.h"
 
 extern int shutting_down;
 extern int configuring;

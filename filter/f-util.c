@@ -10,7 +10,7 @@
 #include "nest/bird.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
-#include "filter/f-inst-struct.h"
+#include "filter/f-inst.h"
 #include "lib/idm.h"
 #include "nest/protocol.h"
 #include "nest/route.h"

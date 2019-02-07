@@ -10,6 +10,9 @@
 
 CF_HDR
 
+#include "filter/f-inst.h"
+#include "filter/f-util.h"
+
 CF_DEFINES
 
 static inline u32 pair(u32 a, u32 b) { return (a << 16) | b; }
