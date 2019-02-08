@@ -155,10 +155,7 @@ int bt_run_test_fn(int (*fn)(const void *), const void *fn_arg, int timeout)
   int result;
   alarm(timeout);
 
-  if (fn_arg)
-    result = fn(fn_arg);
-  else
-    result = ((int (*)(void))fn)();
+  result = fn(fn_arg);
 
   if (!bt_suite_result)
     result = 0;

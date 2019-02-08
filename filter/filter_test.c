@@ -35,7 +35,7 @@ parse_config_file(const void *argv)
   const struct parse_config_file_arg *arg = argv;
   size_t fn_size = strlen(arg->filename) + 1;
   char *filename = alloca(fn_size);
-  strncpy(filename, arg->filename, fn_size);
+  memcpy(filename, arg->filename, fn_size);
   
   *(arg->cp) = bt_config_file_parse(filename);
   return !!*(arg->cp);
