@@ -10,6 +10,8 @@
 #ifndef _BIRD_F_INST_H_
 #define _BIRD_F_INST_H_
 
+#include "nest/bird.h"
+#include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/f-util.h"
 
@@ -30,6 +32,8 @@ struct f_lval {
     struct f_static_attr sa;
   };
 };
+
+#include "filter/f-inst-decl.h"
 
 /* Filter instruction declarations */
 #define FI__LIST \
