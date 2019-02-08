@@ -17,7 +17,7 @@
 #include "test/bt-utils.h"
 
 #include "filter/filter.h"
-#include "filter/f-util.h"
+#include "filter/data.h"
 #include "filter/f-inst.h"
 #include "conf/conf.h"
 

@@ -10,7 +10,7 @@
 #include "test/bt-utils.h"
 
 #include "filter/filter.h"
-#include "filter/f-util.h"
+#include "filter/data.h"
 #include "conf/conf.h"
 
 #define TESTS_NUM		10

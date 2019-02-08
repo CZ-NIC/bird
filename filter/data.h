@@ -1,5 +1,5 @@
 /*
- *	BIRD Internet Routing Daemon -- Filter utils
+ *	BIRD Internet Routing Daemon -- Dynamic data structures
  *
  *	(c) 1999 Pavel Machek <pavel@ucw.cz>
  *	(c) 2018--2019 Maria Matejka <mq@jmq.cz>
@@ -7,14 +7,10 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#ifndef _BIRD_F_UTIL_H_
-#define _BIRD_F_UTIL_H_
+#ifndef _BIRD_FILTER_DATA_H_
+#define _BIRD_FILTER_DATA_H_
 
-/* IP prefix range structure */
-struct f_prefix {
-  net_addr net;		/* The matching prefix must match this net */
-  u8 lo, hi;		/* And its length must fit between lo and hi */
-};
+#include "nest/bird.h"
 
 /* Type numbers must be in 0..0xff range */
 #define T_MASK 0xff
@@ -84,8 +80,6 @@ struct f_val {
   } val;
 };
 
-#define NEW_F_VAL struct f_val * val; val = cfg_alloc(sizeof(struct f_val));
-
 /* Dynamic attribute definition (eattrs) */
 struct f_dynamic_attr {
   u8 type;		/* EA type (EAF_*) */
@@ -111,6 +105,30 @@ struct f_static_attr {
   enum f_type f_type;		/* Filter type */
   enum f_sa_code sa_code;	/* Static attribute id */
   int readonly:1;			/* Don't allow writing */
+};
+
+/* Filter l-value type */
+enum f_lval_type {
+  F_LVAL_VARIABLE,
+  F_LVAL_PREFERENCE,
+  F_LVAL_SA,
+  F_LVAL_EA,
+};
+
+/* Filter l-value */
+struct f_lval {
+  enum f_lval_type type;
+  union {
+    const struct symbol *sym;
+    struct f_dynamic_attr da;
+    struct f_static_attr sa;
+  };
+};
+
+/* IP prefix range structure */
+struct f_prefix {
+  net_addr net;		/* The matching prefix must match this net */
+  u8 lo, hi;		/* And its length must fit between lo and hi */
 };
 
 struct f_tree {

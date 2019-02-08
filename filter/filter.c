@@ -48,7 +48,7 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/f-inst.h"
-#include "filter/f-util.h"
+#include "filter/data.h"
 
 #define CMP_ERROR 999
 
@@ -63,6 +63,75 @@ struct filter_state {
 };
 
 void (*bt_assert_hook)(int result, const struct f_line_item *assert);
+
+static const char * const f_instruction_name_str[] = {
+  /* TODO: Make this better */
+  [FI_ADD] = "FI_ADD",
+  [FI_SUBTRACT] = "FI_SUBTRACT",
+  [FI_MULTIPLY] = "FI_MULTIPLY",
+  [FI_DIVIDE] = "FI_DIVIDE",
+  [FI_AND] = "FI_AND",
+  [FI_OR] = "FI_OR",
+  [FI_PAIR_CONSTRUCT] = "FI_PAIR_CONSTRUCT",
+  [FI_EC_CONSTRUCT] = "FI_EC_CONSTRUCT",
+  [FI_LC_CONSTRUCT] = "FI_LC_CONSTRUCT",
+  [FI_PATHMASK_CONSTRUCT] = "FI_PATHMASK_CONSTRUCT",
+  [FI_NEQ] = "FI_NEQ",
+  [FI_EQ] = "FI_EQ",
+  [FI_LT] = "FI_LT",
+  [FI_LTE] = "FI_LTE",
+  [FI_NOT] = "FI_NOT",
+  [FI_MATCH] = "FI_MATCH",
+  [FI_NOT_MATCH] = "FI_NOT_MATCH",
+  [FI_DEFINED] = "FI_DEFINED",
+  [FI_TYPE] = "FI_TYPE",
+  [FI_IS_V4] = "FI_IS_V4",
+  [FI_SET] = "FI_SET",
+  [FI_CONSTANT] = "FI_CONSTANT",
+  [FI_VARIABLE] = "FI_VARIABLE",
+  [FI_CONSTANT_INDIRECT] = "FI_CONSTANT_INDIRECT",
+  [FI_PRINT] = "FI_PRINT",
+  [FI_CONDITION] = "FI_CONDITION",
+  [FI_PRINT_AND_DIE] = "FI_PRINT_AND_DIE",
+  [FI_RTA_GET] = "FI_RTA_GET",
+  [FI_RTA_SET] = "FI_RTA_SET",
+  [FI_EA_GET] = "FI_EA_GET",
+  [FI_EA_SET] = "FI_EA_SET",
+  [FI_EA_UNSET] = "FI_EA_UNSET",
+  [FI_PREF_GET] = "FI_PREF_GET",
+  [FI_PREF_SET] = "FI_PREF_SET",
+  [FI_LENGTH] = "FI_LENGTH",
+  [FI_SADR_SRC] = "FI_SADR_SRC",
+  [FI_ROA_MAXLEN] = "FI_ROA_MAXLEN",
+  [FI_ROA_ASN] = "FI_ROA_ASN",
+  [FI_IP] = "FI_IP",
+  [FI_ROUTE_DISTINGUISHER] = "FI_ROUTE_DISTINGUISHER",
+  [FI_AS_PATH_FIRST] = "FI_AS_PATH_FIRST",
+  [FI_AS_PATH_LAST] = "FI_AS_PATH_LAST",
+  [FI_AS_PATH_LAST_NAG] = "FI_AS_PATH_LAST_NAG",
+  [FI_RETURN] = "FI_RETURN",
+  [FI_CALL] = "FI_CALL",
+  [FI_DROP_RESULT] = "FI_DROP_RESULT",
+  [FI_SWITCH] = "FI_SWITCH",
+  [FI_IP_MASK] = "FI_IP_MASK",
+  [FI_PATH_PREPEND] = "FI_PATH_PREPEND",
+  [FI_CLIST_ADD] = "FI_CLIST_ADD",
+  [FI_CLIST_DEL] = "FI_CLIST_DEL",
+  [FI_CLIST_FILTER] = "FI_CLIST_FILTER",
+  [FI_ROA_CHECK_IMPLICIT] = "FI_ROA_CHECK_IMPLICIT",
+  [FI_ROA_CHECK_EXPLICIT] = "FI_ROA_CHECK_EXPLICIT",
+  [FI_FORMAT] = "FI_FORMAT",
+  [FI_ASSERT] = "FI_ASSERT",
+};
+
+const char *
+f_instruction_name(enum f_instruction_code fi)
+{
+  if (fi < (sizeof(f_instruction_name_str) / sizeof(f_instruction_name_str[0])))
+    return f_instruction_name_str[fi];
+  else
+    bug("Got unknown instruction code: %d", fi);
+}
 
 /* Special undef value for paths and clists */
 static inline int
@@ -615,18 +684,6 @@ val_format_str(struct filter_state *fs, struct f_val *v) {
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
-static uint
-inst_line_size(const struct f_inst *what_)
-{
-  uint cnt = 0;
-  for ( ; what_; what_ = what_->next) {
-    switch (what_->fi_code) {
-#include "filter/f-inst-line-size.c"
-    }
-  }
-  return cnt;
-}
-
 #define INDENT (((const char *) f_dump_line_indent_str) + sizeof(f_dump_line_indent_str) - (indent) - 1)
 static const char f_dump_line_indent_str[] = "                                ";
 
@@ -685,7 +742,8 @@ f_postfixify_concat(const struct f_inst * const inst[], uint count)
 {
   uint len = 0;
   for (uint i=0; i<count; i++)
-    len += inst_line_size(inst[i]);
+    for (const struct f_inst *what = inst[i]; what; what = what->next)
+      len += what->size;
 
   struct f_line *out = cfg_allocz(sizeof(struct f_line) + sizeof(struct f_line_item)*len);
 

@@ -109,15 +109,15 @@
     ARG_ANY(1);
     COUNT(2);
 
-    NEW(, [[
-	uint len = 0;
-	uint dyn = 0;
-	for (const struct f_inst *tt = f1; tt; tt = tt->next, len++)
-	  if (tt->fi_code != FI_CONSTANT)
-	    dyn++;
+    FID_NEW_BODY
+      uint len = 0;
+      uint dyn = 0;
+      for (const struct f_inst *tt = f1; tt; tt = tt->next, len++)
+	if (tt->fi_code != FI_CONSTANT)
+	  dyn++;
 
-	WHAT().count = len;
-	]]);
+      what->count = len;
+    FID_END
 
     if (vstk.cnt < what->count) /* TODO: make this check systematic */
       runtime("Construction of BGP path mask from %u elements must have at least that number of elements", what->count);
@@ -719,17 +719,17 @@
     /* Then push the arguments */
     LINE(1,1);
 
-    NEW(, [[
-	if (sym->class != SYM_FUNCTION)
-	  cf_error("You can't call something which is not a function. Really.");
+    FID_NEW_BODY
+      if (sym->class != SYM_FUNCTION)
+	cf_error("You can't call something which is not a function. Really.");
 
-	uint count = 0;
-	for (const struct f_inst *inst = f1; inst; inst = inst->next)
-	  count++;
-	
-	if (count != sym->aux2)
-	  cf_error("Function %s takes %u arguments, got %u.", sym->name, sym->aux2, count);
-    ]]);
+      uint count = 0;
+      for (const struct f_inst *inst = f1; inst; inst = inst->next)
+	count++;
+
+      if (count != sym->aux2)
+	cf_error("Function %s takes %u arguments, got %u.", sym->name, sym->aux2, count);
+    FID_END
   }
 
   INST(FI_DROP_RESULT, 1, 0) {

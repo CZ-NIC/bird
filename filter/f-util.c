@@ -17,22 +17,6 @@
 
 #define P(a,b) ((a<<8) | b)
 
-static const char * const f_instruction_name_str[] = {
-#define F(c,...) \
-  [c] = #c,
-FI__LIST
-#undef F
-};
-
-const char *
-f_instruction_name(enum f_instruction_code fi)
-{
-  if (fi < FI__MAX)
-    return f_instruction_name_str[fi];
-  else
-    bug("Got unknown instruction code: %d", fi);
-}
-
 char *
 filter_name(struct filter *filter)
 {
@@ -56,18 +40,21 @@ struct filter *f_new_where(const struct f_inst *where)
   struct f_inst acc = {
     .fi_code = FI_PRINT_AND_DIE,
     .lineno = ifs->lino,
+    .size = 1,
     .i_FI_PRINT_AND_DIE = { .fret = F_ACCEPT, },
   };
 
   struct f_inst rej = {
     .fi_code = FI_PRINT_AND_DIE,
     .lineno = ifs->lino,
+    .size = 1,
     .i_FI_PRINT_AND_DIE = { .fret = F_REJECT, },
   };
 
   struct f_inst i = {
     .fi_code = FI_CONDITION,
     .lineno = ifs->lino,
+    .size = 3,
     .i_FI_CONDITION = {
       .f1 = where,
       .f2 = &acc,

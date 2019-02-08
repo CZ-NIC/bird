@@ -18,6 +18,12 @@ AC_ARG_ENABLE([debug],
   [enable_debug=no]
 )
 
+AC_ARG_ENABLE([debug-generated],
+  [AS_HELP_STRING([--enable-debug-generated], [enable this to abstain from generating #line @<:@no@:>@])],
+  [],
+  [enable_debug_generated=no]
+)
+
 AC_ARG_ENABLE([memcheck],
   [AS_HELP_STRING([--enable-memcheck], [check memory allocations when debugging @<:@yes@:>@])],
   [],
@@ -156,7 +162,7 @@ test -z "$M4"	 && AC_MSG_ERROR([M4 is missing.])
 AC_MSG_CHECKING([bison version])
 BIRD_CHECK_BISON_VERSION(BISON_VERSION)
 AC_MSG_RESULT([$BISON_VERSION])
-if test "$bird_bison_synclines" = yes; then
+if test "$bird_bison_synclines" = yes && test "$enable_debug_generated" = no; then
   M4FLAGS="$M4FLAGS -s"
 fi
 
