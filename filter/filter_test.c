@@ -29,7 +29,7 @@ parse_config_file(const void *filename_void)
 
   size_t fn_size = strlen((const char *) filename_void) + 1;
   char *filename = alloca(fn_size);
-  strncpy(filename, filename_void, fn_size);
+  memcpy(filename, filename_void, fn_size);
 
   struct config *c = bt_config_file_parse(filename);
   bt_bird_cleanup();
