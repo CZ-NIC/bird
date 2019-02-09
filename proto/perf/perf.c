@@ -29,7 +29,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define PLOG(msg, ...) log(L_INFO "Perf %s " msg, p->p.name, ##__VA_ARGS__)
+#define PLOG(msg, ...) log(L_INFO "Perf %s %s " msg, BIRD_VERSION, p->p.name, ##__VA_ARGS__)
 
 static inline void
 random_data(void *p, uint len)
@@ -206,6 +206,7 @@ perf_loop(void *data)
     p->exp++;
   }
 
+  rt_schedule_prune(P->main_channel->table);
   ev_schedule(p->loop);
 }
 

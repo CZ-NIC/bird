@@ -38,6 +38,7 @@ perf_proto_start: proto_start PERF
 perf_proto:
    perf_proto_start proto_name '{'
  | perf_proto perf_proto_item ';'
+ | perf_proto proto_item ';'
  ;
 
 perf_proto_item:

@@ -58,11 +58,52 @@
 #include "nest/route.h"
 #include "lib/string.h"
 
+/*
+ * The FIB rehash values are maintaining FIB count between N/5 and 2N. What
+ * does it mean?
+ *
+ * +------------+--------+---------+-----------+----------+-----------+
+ * | Table size | Memory | Min cnt | net + rte |  Max cnt | net + rte |
+ * +------------+--------+---------+-----------+----------+-----------+
+ * |         1k |     8k |    0    |      0    |       2k |    192  k |
+ * |         2k |    16k |  409    |     38.3k |       4k |    384  k |
+ * |         4k |    32k |  819    |     76.8k |       8k |    768  k |
+ * |         8k |    64k |    1.6k |    153.6k |      16k |      1.5M |
+ * |        16k |   128k |    3.2k |    307.1k |      32k |      3  M |
+ * |        32k |   256k |    6.4k |    614.3k |      64k |      6  M |
+ * |        64k |   512k |   12.8k |      1.2M |     128k |     12  M |
+ * |       128k |  1024k |   25.6k |      2.4M |     256k |     24  M |
+ * |       256k |     2M |   51.2k |      4.8M |     512k |     48  M |
+ * |       512k |     4M |  102.4k |      9.6M |       1M |     96  M |
+ * |         1M |     8M |  204.8k |     19.2M |       2M |    192  M |
+ * |         2M |    16M |  409.6k |     38.4M |       4M |    384  M |
+ * |         4M |    32M |  819.2k |     76.8M |       8M |    768  M |
+ * |         8M |    64M |    1.6M |    153.6M | infinity |  infinity |
+ * +------------+--------+---------+-----------+----------+-----------+
+ *
+ * Table size	shows how many slots are in FIB table.
+ * Memory	shows how much memory is eaten by FIB table.
+ * Min cnt	minimal number of nets in table of given size
+ * Max cnt	maximal number of nets in table of given size
+ * net + rte	memory eaten by 1 net and one route in it for min cnt and max cnt
+ *
+ * Example: If we have 750,000 network entries in a table:
+ * * the table size may be 512k if we have never had more
+ * * the table size may be 1M or 2M if we at least happened to have more
+ * * 256k is too small, 8M is too big
+ *
+ * When growing, rehash is done on demand so we do it on every power of 2.
+ * When shrinking, rehash is done on delete which is done (in global tables)
+ * in a scheduled event. Rehashing down 2 steps.
+ *
+ */
+
+
 #define HASH_DEF_ORDER 10
-#define HASH_HI_MARK *4
-#define HASH_HI_STEP 2
+#define HASH_HI_MARK * 2
+#define HASH_HI_STEP 1
 #define HASH_HI_MAX 24
-#define HASH_LO_MARK /5
+#define HASH_LO_MARK / 5
 #define HASH_LO_STEP 2
 #define HASH_LO_MIN 10
 

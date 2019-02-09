@@ -405,8 +405,6 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
   rt = rt0;
   *rt_free = NULL;
 
-  rte_make_tmp_attrs(&rt, pool);
-
   v = p->preexport ? p->preexport(p, &rt, pool) : 0;
   if (v < 0)
     {
@@ -424,6 +422,8 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
 	rte_trace_out(D_FILTERS, p, rt, "forced accept by protocol");
       goto accept;
     }
+
+  rte_make_tmp_attrs(&rt, pool);
 
   v = filter && ((filter == FILTER_REJECT) ||
 		 (f_run(filter, &rt, pool,
@@ -1368,7 +1368,10 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   rte_update_lock();
   if (new)
     {
-      nn = net_get(c->table, n);
+      /* Create a temporary table node */
+      nn = alloca(sizeof(net) + n->length);
+      memset(nn, 0, sizeof(net) + n->length);
+      net_copy(nn->n.addr, n);
 
       new->net = nn;
       new->sender = c;
@@ -1419,6 +1422,10 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
       if (!rta_is_cached(new->attrs)) /* Need to copy attributes */
 	new->attrs = rta_lookup(new->attrs);
       new->flags |= REF_COW;
+
+      /* Use the actual struct network, not the dummy one */
+      nn = net_get(c->table, n);
+      new->net = nn;
     }
   else
     {
@@ -1433,16 +1440,21 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     }
 
  recalc:
+  /* And recalculate the best route */
   rte_hide_dummy_routes(nn, &dummy);
   rte_recalculate(c, nn, new, src);
   rte_unhide_dummy_routes(nn, &dummy);
+
   rte_update_unlock();
   return;
 
  drop:
   rte_free(new);
   new = NULL;
-  goto recalc;
+  if (nn = net_find(c->table, n))
+    goto recalc;
+
+  rte_update_unlock();
 }
 
 /* Independent call to rte_announce(), used from next hop
@@ -1499,12 +1511,14 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
   rte_update_lock();
 
   /* Rest is stripped down export_filter() */
-  rte_make_tmp_attrs(&rt, rte_update_pool);
   int v = p->preexport ? p->preexport(p, &rt, rte_update_pool) : 0;
   if (v == RIC_PROCESS)
+  {
+    rte_make_tmp_attrs(&rt, rte_update_pool);
     v = (f_run(filter, &rt, rte_update_pool, FF_SILENT) <= F_ACCEPT);
+  }
 
-   /* Discard temporary rte */
+  /* Discard temporary rte */
   if (rt != n->routes)
     rte_free(rt);
 
