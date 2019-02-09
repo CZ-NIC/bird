@@ -1736,7 +1736,7 @@ ospf_update_topology(struct ospf_proto *p)
 
       ospf_originate_rt_lsa(p, oa);
       ospf_originate_prefix_rt_lsa(p, oa);
-      ospf_originate_ri_lsa(p, oa);
+      // ospf_originate_ri_lsa(p, oa);
       oa->update_rt_lsa = 0;
     }
   }
