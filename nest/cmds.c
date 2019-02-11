@@ -15,7 +15,6 @@
 #include "lib/string.h"
 #include "lib/resource.h"
 #include "filter/filter.h"
-#include "filter/data.h"
 
 extern int shutting_down;
 extern int configuring;
@@ -98,16 +97,14 @@ cmd_show_memory(void)
 void
 cmd_eval(const struct f_line *expr)
 {
-  /* TODO: Return directly the string from eval */
-  struct f_val v;
-  if (f_eval(expr, this_cli->parser_pool, &v) > F_RETURN)
+  buffer buf;
+  LOG_BUFFER_INIT(buf);
+
+  if (f_eval_buf(expr, this_cli->parser_pool, &buf) > F_RETURN)
     {
       cli_msg(8008, "runtime error");
       return;
     }
 
-  buffer buf;
-  LOG_BUFFER_INIT(buf);
-  val_format(&v, &buf);
   cli_msg(23, "%s", buf.start);
 }

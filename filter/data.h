@@ -164,6 +164,39 @@ int trie_match_net(const struct f_trie *t, const net_addr *n);
 int trie_same(const struct f_trie *t1, const struct f_trie *t2);
 void trie_format(const struct f_trie *t, buffer *buf);
 
+#define F_CMP_ERROR 999
+
+int val_same(const struct f_val *v1, const struct f_val *v2);
+int val_compare(const struct f_val *v1, const struct f_val *v2);
+void val_format(const struct f_val *v, buffer *buf);
+const char *val_dump(const struct f_val *v);
+
+static inline int val_is_ip4(const struct f_val *v)
+{ return (v->type == T_IP) && ipa_is_ip4(v->val.ip); }
+int val_in_range(const struct f_val *v1, const struct f_val *v2);
+
+int clist_set_type(const struct f_tree *set, struct f_val *v);
+static inline int eclist_set_type(const struct f_tree *set)
+{ return set->from.type == T_EC; }
+static inline int lclist_set_type(const struct f_tree *set)
+{ return set->from.type == T_LC; }
+
+const struct adata *clist_filter(struct linpool *pool, const struct adata *list, const struct f_val *set, int pos);
+const struct adata *eclist_filter(struct linpool *pool, const struct adata *list, const struct f_val *set, int pos);
+const struct adata *lclist_filter(struct linpool *pool, const struct adata *list, const struct f_val *set, int pos);
+
+
+/* Special undef value for paths and clists */
+static inline int
+undef_value(struct f_val v)
+{
+  return ((v.type == T_PATH) || (v.type == T_CLIST) ||
+	  (v.type == T_ECLIST) || (v.type == T_LCLIST)) &&
+    (v.val.ad == &null_adata);
+}
+
 extern const struct f_val f_const_empty_path, f_const_empty_clist, f_const_empty_eclist, f_const_empty_lclist;
+
+enum filter_return f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres);
 
 #endif
