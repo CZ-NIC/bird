@@ -16,7 +16,7 @@
 #include "filter/data.h"
 
 /* Include generated filter instruction declarations */
-#include "filter/f-inst-decl.h"
+#include "filter/inst-gen.h"
 
 #define f_new_inst(...) MACRO_CONCAT_AFTER(f_new_inst_, MACRO_FIRST(__VA_ARGS__))(__VA_ARGS__)
 
