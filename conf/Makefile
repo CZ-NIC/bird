@@ -10,12 +10,12 @@ BISON_DEBUG=-t
 #FLEX_DEBUG=-d
 endif
 
-$(conf-y-targets): $(s)confbase.Y $(s)flowspec.Y
-	$(M4) $(M4FLAGS) -P $| $^ >$@
+$(o)cf-parse.y: $(s)gen_parser.m4
+$(o)keywords.h: $(s)gen_keywords.m4
+$(o)commands.h: $(s)gen_commands.m4
 
-$(o)cf-parse.y: | $(s)gen_parser.m4
-$(o)keywords.h: | $(s)gen_keywords.m4
-$(o)commands.h: | $(s)gen_commands.m4 $(srcdir)/client/cmds.m4
+$(conf-y-targets): $(s)confbase.Y $(s)flowspec.Y
+	$(M4) $(M4FLAGS) -P $(if $(word 2,$(filter %.m4,$^)),$(error "Too many M4 scripts for one target"),$(filter %.m4,$^)) $(filter %.Y,$^) >$@
 
 $(o)cf-parse.tab.h: $(o)cf-parse.tab.c
 

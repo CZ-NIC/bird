@@ -3,6 +3,8 @@ obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
 
+$(conf-y-targets) $(conf-lex-targets): $(o)f-inst-decl.h
+
 $(o)f-inst-postfixify.c: $(s)postfixify.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 	$(M4) $(M4FLAGS) -P $^ >$@
 
