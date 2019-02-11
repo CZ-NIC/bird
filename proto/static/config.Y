@@ -139,7 +139,7 @@ stat_route:
 stat_route_item:
    cmd {
      if (this_srt_last_cmd)
-       f_inst_next(this_srt_last_cmd, $1);
+       this_srt_last_cmd->next = $1;
      else
        this_srt_cmds = $1;
      this_srt_last_cmd = $1;
