@@ -19,8 +19,9 @@ m4_divert(-1)m4_dnl
 #	13	constructor body
 
 # Flush the completed instruction
-
 m4_define(FID_END, `m4_divert(-1)')
+
+m4_dnl m4_debugmode(aceflqtx)
 
 m4_define(FID_ZONE, `m4_divert($1) /* $2 for INST_NAME() */')
 m4_define(FID_STRUCT, `FID_ZONE(1, Per-instruction structure)')
@@ -32,6 +33,11 @@ m4_define(FID_STRUCT_IN, `m4_divert(101)')
 m4_define(FID_NEW_ARGS, `m4_divert(102)')
 m4_define(FID_NEW_BODY, `m4_divert(103)')
 
+m4_define(FID_ALL, `/* fidall */m4_ifdef([[FID_CURDIV]], [[m4_divert(FID_CURDIV)m4_undefine([[FID_CURDIV]])]])')
+m4_define(FID_C, `m4_ifelse(TARGET, [[C]], FID_ALL, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
+m4_define(FID_H, `m4_ifelse(TARGET, [[H]], FID_ALL, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
+
+
 m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
 FID_ENUM
 INST_NAME(),
@@ -42,9 +48,11 @@ m4_undivert(101)
 FID_UNION
 struct f_inst_[[]]INST_NAME() i_[[]]INST_NAME();
 FID_NEW
-static inline struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
+struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
 m4_undivert(102)
-) {
+)
+FID_H ; FID_C
+{
   struct f_inst *what_ = cfg_allocz(sizeof(struct f_inst));
   what_->fi_code = fi_code;
   what_->lineno = ifs->lino;
@@ -53,6 +61,7 @@ m4_undivert(102)
 m4_undivert(103)
   return what_;
 }
+FID_ALL
 FID_END
 ]])')
 
@@ -103,6 +112,11 @@ m4_define(STRING, `FID_MEMBER(const char *, s)')
 m4_m4wrap(`
 INST_FLUSH()
 m4_divert(0)
+FID_C
+#include "nest/bird.h"
+#include "filter/filter.h"
+#include "filter/f-inst.h"
+FID_H
 /* Filter instruction codes */
 enum f_instruction_code {
 m4_undivert(4)
@@ -121,6 +135,7 @@ struct f_inst {
   };
 };
 
+FID_ALL
 /* Instruction constructors */
 m4_undivert(3)
 ')

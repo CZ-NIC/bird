@@ -1,9 +1,9 @@
-src := filter.c f-util.c tree.c trie.c
+src := filter.c f-util.c tree.c trie.c inst-gen.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
 
-$(conf-y-targets) $(conf-lex-targets): $(o)f-inst-decl.h
+$(conf-y-targets) $(conf-lex-targets) $(src-o-files): $(o)inst-gen.h
 
 $(o)f-inst-postfixify.c: $(s)postfixify.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 	$(M4) $(M4FLAGS) -P $^ >$@
@@ -14,13 +14,16 @@ $(o)f-inst-interpret.c: $(s)interpret.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 $(o)f-inst-same.c: $(s)same.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 	$(M4) $(M4FLAGS) -P $^ >$@
 
-$(o)f-inst-decl.h: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
-	$(M4) $(M4FLAGS) -P $^ >$@
+$(o)inst-gen.h: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
+	$(M4) $(M4FLAGS) -DTARGET=H -P $^ >$@
+
+$(o)inst-gen.c: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
+	$(M4) $(M4FLAGS) -DTARGET=C -P $^ >$@
 
 $(o)f-inst-dump.c: $(s)dump.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 	$(M4) $(M4FLAGS) -P $^ >$@
 
-$(o)filter.o: $(o)f-inst-interpret.c $(o)f-inst-postfixify.c $(o)f-inst-same.c $(o)f-inst-dump.c $(o)f-inst-decl.h
+$(o)filter.o: $(o)f-inst-interpret.c $(o)f-inst-postfixify.c $(o)f-inst-same.c $(o)f-inst-dump.c $(o)inst-gen.h
 
 tests_src := tree_test.c filter_test.c trie_test.c
 tests_targets := $(tests_targets) $(tests-target-files)
