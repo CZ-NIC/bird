@@ -165,7 +165,7 @@
     ARG_ANY(1);
     ARG_ANY(2);
     int i = val_compare(&v1, &v2);
-    if (i == CMP_ERROR)
+    if (i == F_CMP_ERROR)
       runtime( "Can't compare values of incompatible types" );
     RESULT(T_BOOL, i, (i == -1));
   }
@@ -174,7 +174,7 @@
     ARG_ANY(1);
     ARG_ANY(2);
     int i = val_compare(&v1, &v2);
-    if (i == CMP_ERROR)
+    if (i == F_CMP_ERROR)
       runtime( "Can't compare values of incompatible types" );
     RESULT(T_BOOL, i, (i != 1));
   }
@@ -188,7 +188,7 @@
     ARG_ANY(1);
     ARG_ANY(2);
     int i = val_in_range(&v1, &v2);
-    if (i == CMP_ERROR)
+    if (i == F_CMP_ERROR)
       runtime( "~ applied on unknown type pair" );
     RESULT(T_BOOL, i, !!i);
   }
@@ -197,7 +197,7 @@
     ARG_ANY(1);
     ARG_ANY(2);
     int i = val_in_range(&v1, &v2);
-    if (res.val.i == CMP_ERROR)
+    if (res.val.i == F_CMP_ERROR)
       runtime( "!~ applied on unknown type pair" );
     RESULT(T_BOOL, i, !i);
   }

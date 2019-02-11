@@ -1,4 +1,4 @@
-src := filter.c f-util.c tree.c trie.c inst-gen.c
+src := filter.c data.c f-util.c tree.c trie.c inst-gen.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
