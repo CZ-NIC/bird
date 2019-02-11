@@ -8,6 +8,7 @@ m4_divert(-1)m4_dnl
 #
 #
 #	Global Diversions:
+#	4	enum fi_code
 #	1	struct f_inst_FI_...
 #	2	union in struct f_inst
 #	3	constructors
@@ -25,28 +26,32 @@ m4_define(FID_ZONE, `m4_divert($1) /* $2 for INST_NAME() */')
 m4_define(FID_STRUCT, `FID_ZONE(1, Per-instruction structure)')
 m4_define(FID_UNION, `FID_ZONE(2, Union member)')
 m4_define(FID_NEW, `FID_ZONE(3, Constructor)')
+m4_define(FID_ENUM, `FID_ZONE(4, Code enum)')
 
-m4_define(FID_STRUCT_IN, `m4_divert(11)')
-m4_define(FID_NEW_ARGS, `m4_divert(12)')
-m4_define(FID_NEW_BODY, `m4_divert(13)')
+m4_define(FID_STRUCT_IN, `m4_divert(101)')
+m4_define(FID_NEW_ARGS, `m4_divert(102)')
+m4_define(FID_NEW_BODY, `m4_divert(103)')
 
 m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
+FID_ENUM
+INST_NAME(),
 FID_STRUCT
 struct f_inst_[[]]INST_NAME() {
-m4_undivert(11)
+m4_undivert(101)
 };
 FID_UNION
 struct f_inst_[[]]INST_NAME() i_[[]]INST_NAME();
 FID_NEW
 static inline struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
-m4_undivert(12)
+m4_undivert(102)
 ) {
   struct f_inst *what_ = cfg_allocz(sizeof(struct f_inst));
   what_->fi_code = fi_code;
   what_->lineno = ifs->lino;
-  struct f_inst_[[]]INST_NAME() *what = &(what_->i_[[]]INST_NAME());
-m4_undivert(13)
-  return _what;
+  what_->size = 1;
+  struct f_inst_[[]]INST_NAME() *what UNUSED = &(what_->i_[[]]INST_NAME());
+m4_undivert(103)
+  return what_;
 }
 FID_END
 ]])')
@@ -59,11 +64,17 @@ $1 $2;
 FID_NEW_ARGS
 , $1 $2
 FID_NEW_BODY
-what.$2 = $2;
+what->$2 = $2;
 FID_END')
 
-m4_define(ARG, `FID_MEMBER(const struct f_inst *, f$1)')
-m4_define(ARG_ANY, `FID_MEMBER(const struct f_inst *, f$1)')
+m4_define(ARG, `FID_MEMBER(const struct f_inst *, f$1)
+FID_NEW_BODY
+for (const struct f_inst *child = f$1; child; child = child->next) what_->size += child->size;
+FID_END')
+m4_define(ARG_ANY, `FID_MEMBER(const struct f_inst *, f$1)
+FID_NEW_BODY
+for (const struct f_inst *child = f$1; child; child = child->next) what_->size += child->size;
+FID_END')
 m4_define(LINE, `FID_MEMBER(const struct f_inst *, f$1)')
 m4_define(LINEP, `FID_STRUCT_IN
 const struct f_line *fl$1;
@@ -78,7 +89,7 @@ const struct symbol *sym;
 FID_NEW_ARGS
 , const struct symbol *sym
 FID_NEW_BODY
-what.valp = (what.sym = sym)->def;
+what->valp = (what->sym = sym)->def;
 FID_END')
 m4_define(FRET, `FID_MEMBER(enum filter_return, fret)')
 m4_define(ECS, `FID_MEMBER(enum ec_subtype, ecs)')
@@ -92,12 +103,18 @@ m4_define(STRING, `FID_MEMBER(const char *, s)')
 m4_m4wrap(`
 INST_FLUSH()
 m4_divert(0)
+/* Filter instruction codes */
+enum f_instruction_code {
+m4_undivert(4)
+};
+
 /* Per-instruction structures */
 m4_undivert(1)
 
 struct f_inst {
   const struct f_inst *next;		/* Next instruction */
   enum f_instruction_code fi_code;	/* Instruction code */
+  int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */
   union {
     m4_undivert(2)

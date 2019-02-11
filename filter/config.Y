@@ -11,7 +11,7 @@
 CF_HDR
 
 #include "filter/f-inst.h"
-#include "filter/f-util.h"
+#include "filter/data.h"
 
 CF_DEFINES
 
@@ -418,7 +418,7 @@ assert_assign(struct f_lval *lval, struct f_inst *expr, const char *start, const
   }
 
   checker = f_new_inst(FI_EQ, expr, getter);
-  f_inst_next(setter, checker);
+  setter->next = checker;
   
   return assert_done(setter, start, end);
 }
@@ -550,7 +550,7 @@ one_decl:
 decls: /* EMPTY */ { $$ = NULL; }
  | one_decl ';' decls {
      $$ = $1;
-     f_inst_next($$, $3);
+     $$->next = $3;
    }
  ;
 
@@ -559,7 +559,7 @@ declsn: one_decl { $$.inst = $1; $$.count = 1; }
  | one_decl ';' declsn {
      $$ = $3;
      $$.count++;
-     f_inst_next($$.inst, $1);
+     $$.inst->next = $1;
    }
  ;
 
@@ -640,7 +640,7 @@ cmds: /* EMPTY */ { $$ = NULL; }
  ;
 
 cmds_int: cmd { $$[0] = $$[1] = $1; }
- | cmds_int cmd { $$[1] = $2; f_inst_next($1[1], $2); $$[0] = $1[0]; }
+ | cmds_int cmd { $$[1] = $2; $1[1]->next = $2; $$[0] = $1[0]; }
  ;
 
 block:
@@ -803,11 +803,11 @@ bgp_path:
  ;
 
 bgp_path_tail:
-   NUM bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .asn = $1, .kind = PM_ASN, }, }); f_inst_next($$, $2);  }
- | NUM DDOT NUM bgp_path_tail	{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .from = $1, .to = $3, .kind = PM_ASN_RANGE }, }); f_inst_next($$, $4); }
- | '*' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_ASTERISK }, }); f_inst_next($$, $2); }
- | '?' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_QUESTION }, }); f_inst_next($$, $2); }
- | bgp_path_expr bgp_path_tail	{ $$ = $1; f_inst_next($$, $2); }
+   NUM bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .asn = $1, .kind = PM_ASN, }, }); $$->next = $2;  }
+ | NUM DDOT NUM bgp_path_tail	{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .from = $1, .to = $3, .kind = PM_ASN_RANGE }, }); $$->next = $4; }
+ | '*' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_ASTERISK }, }); $$->next = $2; }
+ | '?' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_QUESTION }, }); $$->next = $2; }
+ | bgp_path_expr bgp_path_tail	{ $$ = $1; $$->next = $2; }
  | 				{ $$ = NULL; }
  ;
 
@@ -946,7 +946,7 @@ print_list: /* EMPTY */ { $$ = NULL; }
  | print_one { $$ = $1; }
  | print_one ',' print_list {
      if ($1) {
-       f_inst_next($1, $3);
+       $1->next = $3;
        $$ = $1;
      } else $$ = $3;
    }
@@ -957,7 +957,7 @@ var_listn: term {
    }
  | term ',' var_listn {
      $$ = $1;
-     f_inst_next($$, $3);
+     $$->next = $3;
    }
  ;
 
