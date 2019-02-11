@@ -40,16 +40,12 @@ struct rte;
 
 enum filter_return f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
 enum filter_return f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool);
-enum filter_return f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres);
 uint f_eval_int(const struct f_line *expr);
+enum filter_return f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf);
 
 char *filter_name(struct filter *filter);
 int filter_same(struct filter *new, struct filter *old);
 int f_same(const struct f_line *f1, const struct f_line *f2);
-
-int val_compare(const struct f_val *v1, const struct f_val *v2);
-
-void val_format(const struct f_val *v, buffer *buf);
 
 #define FILTER_ACCEPT NULL
 #define FILTER_REJECT ((void *) 1)
