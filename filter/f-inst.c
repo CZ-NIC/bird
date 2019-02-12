@@ -269,18 +269,18 @@
       LINE(3,1);
   }
   INST(FI_PRINT_AND_DIE, 0, 0) {
-    POSTFIXIFY([[
-      {
-	uint opos = pos;
-    ]]);
+    FID_POSTFIXIFY_BODY
+    {
+      uint opos = pos;
+      FID_END
 
     ARG_ANY(1);
 
-    POSTFIXIFY([[
-	if (opos < pos)
-	  dest->items[pos].flags |= FIF_PRINTED;
-      }
-    ]]);
+      FID_POSTFIXIFY_BODY
+      if (opos < pos)
+	dest->items[pos].flags |= FIF_PRINTED;
+    }
+    FID_END
 
     FRET(2);
 
@@ -708,9 +708,9 @@
     }
 
     /* Postfixify extracts the function body from the symbol */
-    POSTFIXIFY([[
-	dest->items[pos].lines[0] = what->sym->def;
-    ]]);
+    FID_POSTFIXIFY_BODY
+    dest->items[pos].lines[0] = what->sym->def;
+    FID_END
 
     /* First push the body on stack */
     LINEX(what->lines[0]);

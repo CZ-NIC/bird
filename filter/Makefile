@@ -5,9 +5,6 @@ $(cf-local)
 
 $(conf-y-targets) $(conf-lex-targets) $(src-o-files): $(o)inst-gen.h
 
-$(o)f-inst-postfixify.c: $(s)postfixify.m4 $(s)f-inst.c $(objdir)/.dir-stamp
-	$(M4) $(M4FLAGS) -P $^ >$@
-
 $(o)f-inst-interpret.c: $(s)interpret.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 	$(M4) $(M4FLAGS) -P $^ >$@
 
@@ -20,7 +17,7 @@ $(o)inst-gen.h: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 $(o)inst-gen.c: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 	$(M4) $(M4FLAGS) -DTARGET=C -P $^ >$@
 
-$(o)filter.o: $(o)f-inst-interpret.c $(o)f-inst-postfixify.c $(o)f-inst-same.c $(o)inst-gen.h
+$(o)filter.o: $(o)f-inst-interpret.c $(o)f-inst-same.c $(o)inst-gen.h
 
 tests_src := tree_test.c filter_test.c trie_test.c
 tests_targets := $(tests_targets) $(tests-target-files)
