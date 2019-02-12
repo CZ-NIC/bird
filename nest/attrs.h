@@ -125,6 +125,14 @@ enum ec_subtype {
   EC_GENERIC = 0xFFFF,
 };
 
+static inline const char *ec_subtype_str(const enum ec_subtype ecs) {
+  switch (ecs) {
+    case EC_RT: return "rt";
+    case EC_RO: return "ro";
+    default: return NULL;
+  }
+}
+
 /* Transitive bit (for first u32 half of EC) */
 #define EC_TBIT 0x40000000
 
