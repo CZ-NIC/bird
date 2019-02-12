@@ -28,3 +28,5 @@ $(o)filter.o: $(o)f-inst-interpret.c $(o)f-inst-postfixify.c $(o)f-inst-same.c $
 tests_src := tree_test.c filter_test.c trie_test.c
 tests_targets := $(tests_targets) $(tests-target-files)
 tests_objs := $(tests_objs) $(src-o-files)
+
+$(call clean,inst-gen.h inst-gen.c)

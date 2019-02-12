@@ -72,15 +72,12 @@ ec_format(byte *buf, u64 ec)
   char tbuf[16], *kind;
 
   type = ec >> 48;
-  switch (type & 0xf0ff)
-    {
-    case EC_RT: kind = "rt"; break;
-    case EC_RO: kind = "ro"; break;
+  kind = ec_subtype_str(type & 0xf0ff);
 
-    default:
-      kind = tbuf;
-      bsprintf(kind, "unknown 0x%x", type);
-    }
+  if (!kind) {
+    kind = tbuf;
+    bsprintf(kind, "unknown 0x%x", type);
+  }
 
   switch (ec >> 56)
     {
