@@ -62,11 +62,11 @@ m4_define(DYNAMIC_ATTR, `struct f_dynamic_attr da = what->da')
 m4_define(TREE, `')
 m4_define(STRING, `')
 m4_define(COUNT, `')
-m4_define(POSTFIXIFY, `')
 m4_define(SAME, `')
 m4_define(FID_STRUCT_IN, `m4_divert(-1)')
 m4_define(FID_NEW_ARGS, `m4_divert(-1)')
 m4_define(FID_NEW_BODY, `m4_divert(-1)')
+m4_define(FID_POSTFIXIFY_BODY, `m4_divert(-1)')
 m4_define(FID_END, `m4_divert(2)')
 
 m4_m4wrap(`
