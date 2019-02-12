@@ -9,6 +9,7 @@ m4_divert(-1)m4_dnl
 #
 #	Global Diversions:
 #	4	enum fi_code
+#	5	enum fi_code to string
 #	1	struct f_inst_FI_...
 #	2	union in struct f_inst
 #	3	constructors
@@ -30,6 +31,7 @@ m4_define(FID_STRUCT, `FID_ZONE(1, Per-instruction structure)')
 m4_define(FID_UNION, `FID_ZONE(2, Union member)')
 m4_define(FID_NEW, `FID_ZONE(3, Constructor)')
 m4_define(FID_ENUM, `FID_ZONE(4, Code enum)')
+m4_define(FID_ENUM_STR, `FID_ZONE(5, Code enum to string)')
 
 m4_define(FID_STRUCT_IN, `m4_divert(101)')
 m4_define(FID_NEW_ARGS, `m4_divert(102)')
@@ -43,6 +45,8 @@ m4_define(FID_H, `m4_ifelse(TARGET, [[H]], FID_ALL, [[m4_define(FID_CURDIV, m4_d
 m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
 FID_ENUM
 INST_NAME(),
+FID_ENUM_STR
+[INST_NAME()] = "INST_NAME()",
 FID_STRUCT
 struct f_inst_[[]]INST_NAME() {
 m4_undivert(101)
@@ -124,11 +128,31 @@ FID_C
 #include "nest/bird.h"
 #include "filter/filter.h"
 #include "filter/f-inst.h"
+
 FID_H
+
 /* Filter instruction codes */
 enum f_instruction_code {
 FID_WR_PUT(4)
 };
+
+FID_C
+
+/* Instruction codes to string */
+static const char * const f_instruction_name_str[] = {
+FID_WR_PUT(5)
+};
+
+const char *
+f_instruction_name(enum f_instruction_code fi)
+{
+  if (fi < (sizeof(f_instruction_name_str) / sizeof(f_instruction_name_str[0])))
+    return f_instruction_name_str[fi];
+  else
+    bug("Got unknown instruction code: %d", fi);
+}
+
+FID_H
 
 /* Per-instruction structures */
 FID_WR_PUT(1)
