@@ -112,34 +112,6 @@ val_format_str(struct filter_state *fs, struct f_val *v) {
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
-#define INDENT (((const char *) f_dump_line_indent_str) + sizeof(f_dump_line_indent_str) - (indent) - 1)
-static const char f_dump_line_indent_str[] = "                                ";
-
-static void f_dump_line(const struct f_line *dest, int indent);
-
-static void
-f_dump_line_item(const struct f_line_item *item, int indent)
-{
-  debug("%sInstruction %s at line %u\n", INDENT, f_instruction_name(item->fi_code), item->lineno);
-  switch (item->fi_code) {
-#include "filter/f-inst-dump.c"
-  }
-}
-
-static void
-f_dump_line(const struct f_line *dest, int indent)
-{
-  if (!dest) {
-    debug("%sNo filter line (NULL)\n", INDENT);
-    return;
-  }
-  debug("%sFilter line %p (len=%u)\n", INDENT, dest, dest->len);
-  for (uint i=0; i<dest->len; i++)
-    f_dump_line_item(&dest->items[i], indent+1);
-  debug("%sFilter line %p dump done\n", INDENT, dest);
-#undef INDENT
-}
-
 static uint
 postfixify(struct f_line *dest, const struct f_inst *what_, uint pos)
 {
@@ -166,7 +138,7 @@ f_postfixify_concat(const struct f_inst * const inst[], uint count)
     out->len = postfixify(out, inst[i], out->len);
 
 #if DEBUGGING
-  f_dump_line(out, 0);
+//  f_dump_line(out, 0);
 #endif
   return out;
 }

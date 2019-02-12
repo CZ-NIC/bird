@@ -27,6 +27,21 @@ enum filter_return {
   F_QUITBIRD,
 };
 
+static inline const char *filter_return_str(const enum filter_return fret) {
+  switch (fret) {
+#define FRS(x) case x: return #x
+    FRS(F_NOP);
+    FRS(F_NONL);
+    FRS(F_RETURN);
+    FRS(F_ACCEPT);
+    FRS(F_REJECT);
+    FRS(F_ERROR);
+    FRS(F_QUITBIRD);
+#undef FRS
+    default: bug("This shall not happen");
+  }
+}
+
 struct f_val;
 
 /* The filter encapsulating structure to be pointed-to from outside */

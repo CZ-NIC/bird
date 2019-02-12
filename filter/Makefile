@@ -22,11 +22,10 @@ $(o)inst-gen.h: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 $(o)inst-gen.c: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 	$(M4) $(M4FLAGS_FILTERS) -DTARGET=C -P $^ >$@
 
-$(o)f-inst-dump.c: $(s)dump.m4 $(s)f-inst.c $(objdir)/.dir-stamp
-	$(M4) $(M4FLAGS_FILTERS) -P $^ >$@
-
-$(o)filter.o: $(o)f-inst-interpret.c $(o)f-inst-postfixify.c $(o)f-inst-same.c $(o)f-inst-dump.c $(o)inst-gen.h
+$(o)filter.o: $(o)f-inst-interpret.c $(o)f-inst-postfixify.c $(o)f-inst-same.c $(o)inst-gen.h
 
 tests_src := tree_test.c filter_test.c trie_test.c
 tests_targets := $(tests_targets) $(tests-target-files)
 tests_objs := $(tests_objs) $(src-o-files)
+
+$(call clean,inst-gen.h inst-gen.c)
