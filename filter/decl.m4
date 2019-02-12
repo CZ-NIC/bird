@@ -14,9 +14,11 @@ m4_divert(-1)m4_dnl
 #	3	constructors
 #
 #	Per-inst Diversions:
-#	11	content of struct f_inst_FI_...
-#	12	constructor arguments
-#	13	constructor body
+#	101	content of struct f_inst_FI_...
+#	102	constructor arguments
+#	103	constructor body
+#
+#	Put-around Diversions: 9xx
 
 # Flush the completed instruction
 m4_define(FID_END, `m4_divert(-1)')
@@ -33,7 +35,7 @@ m4_define(FID_STRUCT_IN, `m4_divert(101)')
 m4_define(FID_NEW_ARGS, `m4_divert(102)')
 m4_define(FID_NEW_BODY, `m4_divert(103)')
 
-m4_define(FID_ALL, `/* fidall */m4_ifdef([[FID_CURDIV]], [[m4_divert(FID_CURDIV)m4_undefine([[FID_CURDIV]])]])')
+m4_define(FID_ALL, `m4_ifdef([[FID_CURDIV]], [[m4_divert(FID_CURDIV)m4_undefine([[FID_CURDIV]])]])')
 m4_define(FID_C, `m4_ifelse(TARGET, [[C]], FID_ALL, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
 m4_define(FID_H, `m4_ifelse(TARGET, [[H]], FID_ALL, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
 
@@ -109,9 +111,15 @@ m4_define(COUNT, `FID_MEMBER(uint, count)')
 m4_define(TREE, `FID_MEMBER(const struct f_tree *, tree)')
 m4_define(STRING, `FID_MEMBER(const char *, s)')
 
-m4_m4wrap(`
-INST_FLUSH()
-m4_divert(0)
+m4_define(FID_WR_UNDIVERT_LIST,FID_WR_DPUT(900))
+m4_define(FID_WR_CUR_DIRECT,900)
+m4_define(FID_WR_PUT, `m4_ifelse(1, m4_eval(m4_divnum > -1), [[m4_divert(-1)
+  m4_define([[FID_WR_CUR_DIRECT]], m4_eval(FID_WR_CUR_DIRECT + 1))
+  m4_define([[FID_WR_UNDIVERT_LIST]], FID_WR_UNDIVERT_LIST[[]]/* wrput $1 */FID_WR_DPUT($1)/* wrputdir FID_WR_CUR_DIRECT */FID_WR_DPUT(FID_WR_CUR_DIRECT))
+  m4_divert(FID_WR_CUR_DIRECT)]], [[m4_define([[FID_WR_UNDIVERT_LIST]], FID_WR_UNDIVERT_LIST[[]]/* wrdrop $1 */FID_WR_DROP($1))]])')
+
+m4_changequote([[,]])
+m4_divert(900)
 FID_C
 #include "nest/bird.h"
 #include "filter/filter.h"
@@ -119,11 +127,11 @@ FID_C
 FID_H
 /* Filter instruction codes */
 enum f_instruction_code {
-m4_undivert(4)
+FID_WR_PUT(4)
 };
 
 /* Per-instruction structures */
-m4_undivert(1)
+FID_WR_PUT(1)
 
 struct f_inst {
   const struct f_inst *next;		/* Next instruction */
@@ -131,13 +139,16 @@ struct f_inst {
   int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */
   union {
-    m4_undivert(2)
+    FID_WR_PUT(2)
   };
 };
 
 FID_ALL
 /* Instruction constructors */
-m4_undivert(3)
-')
+FID_WR_PUT(3)
+m4_divert(-1)
+m4_changequote(`,')
+
+m4_m4wrap(`INST_FLUSH()m4_define(FID_WR_DPUT, [[m4_undivert($1)]])m4_define(FID_WR_DROP, [[m4_divert(-1)m4_undivert($1)m4_divert(0)]])m4_divert(0)FID_WR_UNDIVERT_LIST[[]]m4_divert(-1)')
 
 m4_changequote([[,]])
