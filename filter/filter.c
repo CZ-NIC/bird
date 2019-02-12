@@ -112,37 +112,6 @@ val_format_str(struct filter_state *fs, struct f_val *v) {
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
-static uint
-postfixify(struct f_line *dest, const struct f_inst *what_, uint pos)
-{
-  for ( ; what_; what_ = what_->next) {
-    switch (what_->fi_code) {
-#include "filter/f-inst-postfixify.c"
-    }
-    pos++;
-  }
-  return pos;
-}
-
-struct f_line *
-f_postfixify_concat(const struct f_inst * const inst[], uint count)
-{
-  uint len = 0;
-  for (uint i=0; i<count; i++)
-    for (const struct f_inst *what = inst[i]; what; what = what->next)
-      len += what->size;
-
-  struct f_line *out = cfg_allocz(sizeof(struct f_line) + sizeof(struct f_line_item)*len);
-
-  for (uint i=0; i<count; i++)
-    out->len = postfixify(out, inst[i], out->len);
-
-#if DEBUGGING
-//  f_dump_line(out, 0);
-#endif
-  return out;
-}
-
 /**
  * interpret
  * @fs: filter state

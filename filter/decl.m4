@@ -12,6 +12,7 @@ m4_divert(-1)m4_dnl
 #	5	enum fi_code to string
 #	6	dump line item
 #	7	dump line item callers
+#	8	postfixify
 #	1	struct f_inst_FI_...
 #	2	union in struct f_inst
 #	3	constructors
@@ -21,6 +22,7 @@ m4_divert(-1)m4_dnl
 #	102	constructor arguments
 #	103	constructor body
 #	104	dump line item content
+#	105	postfixify body
 #
 #	Diversions for TARGET=C: 8xx
 #	Diversions for TARGET=H: 9xx
@@ -38,11 +40,13 @@ m4_define(FID_ENUM, `FID_ZONE(4, Code enum)')
 m4_define(FID_ENUM_STR, `FID_ZONE(5, Code enum to string)')
 m4_define(FID_DUMP, `FID_ZONE(6, Dump line)')
 m4_define(FID_DUMP_CALLER, `FID_ZONE(7, Dump line caller)')
+m4_define(FID_POSTFIXIFY, `FID_ZONE(8, Postfixify)')
 
 m4_define(FID_STRUCT_IN, `m4_divert(101)')
 m4_define(FID_NEW_ARGS, `m4_divert(102)')
 m4_define(FID_NEW_BODY, `m4_divert(103)')
-m4_define(FID_DUMP_BODY, `m4_divert(104)m4_define(FID_DUMP_BODY_EXISTS)')
+m4_define(FID_DUMP_BODY, `m4_divert(104)m4_define([[FID_DUMP_BODY_EXISTS]])')
+m4_define(FID_POSTFIXIFY_BODY, `m4_divert(105)m4_define([[FID_POSTFIXIFY_BODY_EXISTS]])')
 
 m4_define(FID_ALL, `m4_ifdef([[FID_CURDIV]], [[m4_divert(FID_CURDIV)m4_undefine([[FID_CURDIV]])]])')
 m4_define(FID_C, `m4_ifelse(TARGET, [[C]], FID_ALL, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
@@ -90,11 +94,28 @@ m4_undefine([[FID_DUMP_BODY_EXISTS]])
 m4_undivert(104)
 }
 FID_ALL
+
+FID_POSTFIXIFY
+case INST_NAME(): {
+m4_ifdef([[FID_POSTFIXIFY_BODY_EXISTS]], [[const struct f_inst_]]INST_NAME()[[ *what = &(what_->i_]]INST_NAME()[[);]], [[]])
+  m4_undivert(105)
+  dest->items[pos].fi_code = what_->fi_code;
+  dest->items[pos].lineno = what_->lineno;
+  break;
+}
+m4_undefine([[FID_POSTFIXIFY_BODY_EXISTS]])
+
 FID_END
 ]])')
 
 m4_define(INST, `INST_FLUSH()m4_define([[INST_NAME]], [[$1]])')
 
+m4_dnl FID_MEMBER call:
+m4_dnl type
+m4_dnl name in f_inst
+m4_dnl name in f_line_item
+m4_dnl dump format string
+m4_dnl dump format args
 m4_define(FID_MEMBER, `m4_dnl
 FID_STRUCT_IN
 $1 $2;
@@ -103,31 +124,46 @@ FID_NEW_ARGS
 FID_NEW_BODY
 what->$2 = $2;
 m4_ifelse($3,,,[[
+FID_POSTFIXIFY_BODY
+dest->items[pos].$3 = what->$2;
+]])
+m4_ifelse($4,,,[[
 FID_DUMP_BODY
-debug("%s$3\n", INDENT, $4);
+debug("%s$4\n", INDENT, $5);
 ]])
 FID_END')
 
-m4_define(ARG, `FID_MEMBER(const struct f_inst *, f$1,,)
+m4_define(ARG, `FID_MEMBER(const struct f_inst *, f$1,,,)
 FID_NEW_BODY
 for (const struct f_inst *child = f$1; child; child = child->next) what_->size += child->size;
+FID_POSTFIXIFY_BODY
+pos = postfixify(dest, what->f$1, pos);
 FID_END')
-m4_define(ARG_ANY, `FID_MEMBER(const struct f_inst *, f$1,,)
+m4_define(ARG_ANY, `FID_MEMBER(const struct f_inst *, f$1,,,)
 FID_NEW_BODY
 for (const struct f_inst *child = f$1; child; child = child->next) what_->size += child->size;
+FID_POSTFIXIFY_BODY
+pos = postfixify(dest, what->f$1, pos);
 FID_END')
-m4_define(LINE, `FID_MEMBER(const struct f_inst *, f$1,,)
+m4_define(LINE, `FID_MEMBER(const struct f_inst *, f$1,,,)
 FID_DUMP_BODY
 f_dump_line(item->lines[$2], indent + 1);
+FID_POSTFIXIFY_BODY
+dest->items[pos].lines[$2] = f_postfixify(what->f$1);
 FID_END')
 m4_define(LINEP, `FID_STRUCT_IN
 const struct f_line *fl$1;
 FID_DUMP_BODY
 f_dump_line(item->lines[$2], indent + 1)
+FID_POSTFIXIFY_BODY
+dest->items[pos].lines[$2] = what->fl$1;
 FID_END')
-m4_define(SYMBOL, `FID_MEMBER(const struct symbol *, sym, symbol %s, item->sym->name)')
-m4_define(VALI, `FID_MEMBER(struct f_val, vali, value %s, val_dump(&item->val))')
-m4_define(VALP, `FID_MEMBER(const struct f_val *, valp, value %s, val_dump(&item->val))')
+m4_define(SYMBOL, `FID_MEMBER(const struct symbol *, sym, sym, symbol %s, item->sym->name)')
+m4_define(VALI, `FID_MEMBER(struct f_val, vali, val, value %s, val_dump(&item->val))')
+m4_define(VALP, `FID_MEMBER(const struct f_val *, valp,, value %s, val_dump(&item->val))
+FID_POSTFIXIFY_BODY
+dest->items[pos].val = *(what->valp);
+FID_END')
 m4_define(VAR, `m4_dnl
 FID_STRUCT_IN
 const struct f_val *valp;
@@ -136,17 +172,19 @@ FID_NEW_ARGS
 , const struct symbol *sym
 FID_NEW_BODY
 what->valp = (what->sym = sym)->def;
+FID_POSTFIXIFY_BODY
+dest->items[pos].vp = (dest->items[pos].sym = what->sym)->def;
 FID_DUMP_BODY
 debug("%svariable %s with value %s\n", INDENT, item->sym->name, val_dump(item->vp));
 FID_END')
-m4_define(FRET, `FID_MEMBER(enum filter_return, fret, %s, filter_return_str(item->fret))')
-m4_define(ECS, `FID_MEMBER(enum ec_subtype, ecs, ec subtype %s, ec_subtype_str(item->ecs))')
-m4_define(RTC, `FID_MEMBER(const struct rtable_config *, rtc, route table %s, item->rtc->name)')
-m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa)')
-m4_define(DYNAMIC_ATTR, `FID_MEMBER(struct f_dynamic_attr, da)')
-m4_define(COUNT, `FID_MEMBER(uint, count, number %u, item->count)')
-m4_define(TREE, `FID_MEMBER(const struct f_tree *, tree, tree %p, item->tree)')
-m4_define(STRING, `FID_MEMBER(const char *, s, string \"%s\", item->s)')
+m4_define(FRET, `FID_MEMBER(enum filter_return, fret, fret, %s, filter_return_str(item->fret))')
+m4_define(ECS, `FID_MEMBER(enum ec_subtype, ecs, ecs, ec subtype %s, ec_subtype_str(item->ecs))')
+m4_define(RTC, `FID_MEMBER(const struct rtable_config *, rtc, rtc, route table %s, item->rtc->name)')
+m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, sa)')
+m4_define(DYNAMIC_ATTR, `FID_MEMBER(struct f_dynamic_attr, da, da)')
+m4_define(COUNT, `FID_MEMBER(uint, count, count, number %u, item->count)')
+m4_define(TREE, `FID_MEMBER(const struct f_tree *, tree, tree, tree %p, item->tree)')
+m4_define(STRING, `FID_MEMBER(const char *, s, s, string \"%s\", item->s)')
 
 m4_define(FID_WR_PUT_LIST)
 m4_define(FID_WR_DROP_LIST)
@@ -203,6 +241,38 @@ FID_WR_PUT(7)
     }
   }
   debug("%sFilter line %p dump done\n", INDENT, dest);
+}
+
+/* Postfixify */
+static uint
+postfixify(struct f_line *dest, const struct f_inst *what_, uint pos)
+{
+  for ( ; what_; what_ = what_->next) {
+    switch (what_->fi_code) {
+FID_WR_PUT(8)
+    }
+    pos++;
+  }
+  return pos;
+}
+
+struct f_line *
+f_postfixify_concat(const struct f_inst * const inst[], uint count)
+{
+  uint len = 0;
+  for (uint i=0; i<count; i++)
+    for (const struct f_inst *what = inst[i]; what; what = what->next)
+      len += what->size;
+
+  struct f_line *out = cfg_allocz(sizeof(struct f_line) + sizeof(struct f_line_item)*len);
+
+  for (uint i=0; i<count; i++)
+    out->len = postfixify(out, inst[i], out->len);
+
+#if DEBUGGING
+  f_dump_line(out, 0);
+#endif
+  return out;
 }
 
 FID_WR_DIRECT(900,H)

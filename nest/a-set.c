@@ -69,14 +69,15 @@ int
 ec_format(byte *buf, u64 ec)
 {
   u32 type, key, val;
-  char tbuf[16], *kind;
+  char tbuf[16];
+  const char *kind;
 
   type = ec >> 48;
   kind = ec_subtype_str(type & 0xf0ff);
 
   if (!kind) {
+    bsprintf(tbuf, "unknown 0x%x", type);
     kind = tbuf;
-    bsprintf(kind, "unknown 0x%x", type);
   }
 
   switch (ec >> 56)
