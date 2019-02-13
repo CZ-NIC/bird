@@ -441,7 +441,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	PREPEND, FIRST, LAST, LAST_NONAGGREGATED, MATCH,
 	EMPTY,
 	FILTER, WHERE, EVAL, ATTRIBUTE,
-	BT_ASSERT, BT_TEST_SUITE, BT_CHECK_ASSIGN, FORMAT)
+	BT_ASSERT, BT_TEST_SUITE, BT_CHECK_ASSIGN, BT_TEST_SAME, FORMAT)
 
 %nonassoc THEN
 %nonassoc ELSE
@@ -489,11 +489,24 @@ custom_attr: ATTRIBUTE type CF_SYM_VOID ';' {
 conf: bt_test_suite ;
 bt_test_suite:
  BT_TEST_SUITE '(' CF_SYM_FUNCTION ',' text ')' {
-  struct f_bt_test_suite *t = cfg_alloc(sizeof(struct f_bt_test_suite));
+  struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
   t->fn = $3->def;
   t->fn_name = $3->name;
   t->dsc = $5;
 
+  add_tail(&new_config->tests, &t->n);
+ }
+ ;
+
+conf: bt_test_same ;
+bt_test_same:
+ BT_TEST_SAME '(' CF_SYM_FUNCTION ',' CF_SYM_FUNCTION ',' NUM ')' {
+  struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
+  t->fn = $3->def;
+  t->cmp = $5->def;
+  t->result = $7;
+  t->fn_name = $3->name;
+  t->dsc = $5->name;
   add_tail(&new_config->tests, &t->n);
  }
  ;
