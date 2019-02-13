@@ -146,33 +146,40 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
   }
 }
 
+static inline int
+pmi_same(const struct f_path_mask_item *mi1, const struct f_path_mask_item *mi2)
+{
+  if (mi1->kind != mi2->kind)
+    return 0;
+
+  switch (mi1->kind) {
+    case PM_ASN:
+      if (mi1->asn != mi2->asn)
+	return 0;
+      break;
+    case PM_ASN_EXPR:
+      if (!f_same(mi1->expr, mi2->expr))
+	return 0;
+      break;
+    case PM_ASN_RANGE:
+      if (mi1->from != mi2->from)
+	return 0;
+      if (mi1->to != mi2->to)
+	return 0;
+      break;
+  }
+
+  return 1;
+}
+
 static int
 pm_same(const struct f_path_mask *m1, const struct f_path_mask *m2)
 {
   if (m1->len != m2->len)
 
   for (uint i=0; i<m1->len; i++)
-  {
-    if (m1->item[i].kind != m2->item[i].kind)
+    if (!pmi_same(&(m1->item[i]), &(m2->item[i])))
       return 0;
-
-    switch (m1->item[i].kind) {
-      case PM_ASN:
-	if (m1->item[i].asn != m2->item[i].asn)
-	  return 0;
-	break;
-      case PM_ASN_EXPR:
-	if (!f_same(m1->item[i].expr, m2->item[i].expr))
-	  return 0;
-	break;
-      case PM_ASN_RANGE:
-	if (m1->item[i].from != m2->item[i].from)
-	  return 0;
-	if (m1->item[i].to != m2->item[i].to)
-	  return 0;
-	break;
-    }
-  }
 
   return 1;
 }
@@ -200,6 +207,8 @@ val_same(const struct f_val *v1, const struct f_val *v2)
   switch (v1->type) {
   case T_PATH_MASK:
     return pm_same(v1->val.path_mask, v2->val.path_mask);
+  case T_PATH_MASK_ITEM:
+    return pmi_same(&(v1->val.pmi), &(v2->val.pmi));
   case T_PATH:
   case T_CLIST:
   case T_ECLIST:

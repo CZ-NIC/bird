@@ -82,8 +82,10 @@ extern void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 struct f_bt_test_suite {
   node n;			/* Node in config->tests */
   struct f_line *fn;		/* Root of function */
+  struct f_line *cmp;		/* Compare to this function */
   const char *fn_name;		/* Name of test */
   const char *dsc;		/* Description */
+  int result;			/* Desired result */
 };
 
 #endif

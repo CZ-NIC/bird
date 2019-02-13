@@ -220,33 +220,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 }
 
 
-/*
- * f_same - function that does real comparing of instruction trees, you should call filter_same from outside
- */
-int
-f_same(const struct f_line *fl1, const struct f_line *fl2)
-{
-  if ((!fl1) && (!fl2))
-    return 1;
-  if ((!fl1) || (!fl2))
-    return 0;
-  if (fl1->len != fl2->len)
-    return 0;
-  for (uint i=0; i<fl1->len; i++) {
-#define f1 (&(fl1->items[i]))
-#define f2 (&(fl2->items[i]))
-    if (f1->fi_code != f2->fi_code)
-      return 0;
-    if (f1->flags != f2->flags)
-      return 0;
-
-    switch(f1->fi_code) {
-#include "filter/f-inst-same.c"
-    }
-  }
-  return 1;
-}
-
 /**
  * f_run - run a filter for a route
  * @filter: filter to run
