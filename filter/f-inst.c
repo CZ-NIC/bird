@@ -730,6 +730,8 @@
       if (count != sym->aux2)
 	cf_error("Function %s takes %u arguments, got %u.", sym->name, sym->aux2, count);
     FID_END
+
+    /* FIXME: Optimization of function comparison. */
   }
 
   INST(FI_DROP_RESULT, 1, 0) {

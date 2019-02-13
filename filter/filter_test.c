@@ -42,13 +42,22 @@ parse_config_file(const void *argv)
 }
 
 static int
-run_function(const void *parsed_fn_def)
+run_function(const void *arg)
 {
-  const struct f_line *f = (const struct f_line *) parsed_fn_def;
+  const struct f_bt_test_suite *t = arg;
+
+  if (t->cmp)
+    return t->result == f_same(t->fn, t->cmp);
+
+  if (!f_same(t->fn, t->fn)) {
+    bt_result = bt_suite_result = 0;
+    bt_log_suite_case_result(0, "The function doesn't compare to itself as the same");
+    return 0;
+  }
 
   linpool *tmp = lp_new_default(&root_pool);
   struct f_val res;
-  enum filter_return fret = f_eval(f, tmp, &res);
+  enum filter_return fret = f_eval(t->fn, tmp, &res);
   rfree(tmp);
 
   return (fret < F_REJECT);
@@ -79,6 +88,7 @@ main(int argc, char *argv[])
   struct config *c = NULL;
   struct parse_config_file_arg pcfa = { .cp = &c, .filename = BT_CONFIG_FILE };
   bt_test_suite_base(parse_config_file, "conf", (const void *) &pcfa, 0, 0, "parse config file");
+  bt_test_suite_base(parse_config_file, "reconf", (const void *) &pcfa, 0, 0, "reconfigure with the same file");
 
   bt_bird_cleanup();
 
@@ -86,7 +96,7 @@ main(int argc, char *argv[])
   {
     struct f_bt_test_suite *t;
     WALK_LIST(t, c->tests)
-      bt_test_suite_base(run_function, t->fn_name, t->fn, BT_FORKING, BT_TIMEOUT, "%s", t->dsc);
+      bt_test_suite_base(run_function, t->fn_name, t, BT_FORKING, BT_TIMEOUT, "%s", t->dsc);
   }
 
   return bt_exit_value();
