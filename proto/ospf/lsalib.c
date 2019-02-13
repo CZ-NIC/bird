@@ -336,9 +336,10 @@ lsa_parse_sum_net(struct top_hash_entry *en, int ospf2, int af, net_addr *net, u
 {
   if (ospf2)
   {
+    uint opts = lsa_get_options(&en->lsa);
     struct ospf_lsa_sum2 *ls = en->lsa_body;
     net_fill_ip4(net, ip4_from_u32(en->lsa.id & ls->netmask), u32_masklen(ls->netmask));
-    *pxopts = 0;
+    *pxopts = (opts & OPT_DN) ? OPT_PX_DN : 0;
     *metric = ls->metric & LSA_METRIC_MASK;
   }
   else
@@ -386,6 +387,7 @@ lsa_parse_ext(struct top_hash_entry *en, int ospf2, int af, struct ospf_lsa_ext_
 
     rt->tag = ext->tag;
     rt->propagate = lsa_get_options(&en->lsa) & OPT_P;
+    rt->downwards = lsa_get_options(&en->lsa) & OPT_DN;
   }
   else
   {
@@ -402,6 +404,7 @@ lsa_parse_ext(struct top_hash_entry *en, int ospf2, int af, struct ospf_lsa_ext_
 
     rt->tag = (ext->metric & LSA_EXT3_TBIT) ? *buf++ : 0;
     rt->propagate = rt->pxopts & OPT_PX_P;
+    rt->downwards = rt->pxopts & OPT_PX_DN;
   }
 }
 

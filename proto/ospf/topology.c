@@ -1097,7 +1097,7 @@ prepare_ext2_lsa_body(struct ospf_proto *p, uint pxlen,
 
 static inline void
 prepare_ext3_lsa_body(struct ospf_proto *p, ort *nf,
-		      u32 metric, u32 ebit, ip_addr fwaddr, u32 tag, int pbit)
+		      u32 metric, u32 ebit, ip_addr fwaddr, u32 tag, int pbit, int dn)
 {
   struct ospf_lsa_ext3 *ext;
   int bsize = sizeof(struct ospf_lsa_ext3)
@@ -1109,7 +1109,8 @@ prepare_ext3_lsa_body(struct ospf_proto *p, ort *nf,
   ext->metric = metric & LSA_METRIC_MASK;
   u32 *buf = ext->rest;
 
-  buf = ospf3_put_prefix(buf, nf->fn.addr, pbit ? OPT_PX_P : 0, 0);
+  uint flags = (pbit ? OPT_PX_P : 0) | (dn ? OPT_PX_DN : 0);
+  buf = ospf3_put_prefix(buf, nf->fn.addr, flags, 0);
 
   if (ebit)
     ext->metric |= LSA_EXT3_EBIT;
@@ -1147,21 +1148,21 @@ prepare_ext3_lsa_body(struct ospf_proto *p, ort *nf,
  */
 void
 ospf_originate_ext_lsa(struct ospf_proto *p, struct ospf_area *oa, ort *nf, u8 mode,
-		       u32 metric, u32 ebit, ip_addr fwaddr, u32 tag, int pbit)
+		       u32 metric, u32 ebit, ip_addr fwaddr, u32 tag, int pbit, int dn)
 {
   struct ospf_new_lsa lsa = {
     .type = oa ? LSA_T_NSSA : LSA_T_EXT,
     .mode = mode, /* LSA_M_EXPORT or LSA_M_RTCALC */
     .dom  = oa ? oa->areaid : 0,
     .id   = ort_to_lsaid(p, nf),
-    .opts = oa ? (pbit ? OPT_P : 0) : OPT_E,
+    .opts = (oa ? (pbit ? OPT_P : 0) : OPT_E) | (dn ? OPT_DN : 0),
     .nf   = nf
   };
 
   if (ospf_is_v2(p))
     prepare_ext2_lsa_body(p, nf->fn.addr->pxlen, metric, ebit, fwaddr, tag);
   else
-    prepare_ext3_lsa_body(p, nf, metric, ebit, fwaddr, tag, oa && pbit);
+    prepare_ext3_lsa_body(p, nf, metric, ebit, fwaddr, tag, oa && pbit, dn);
 
   ospf_originate_lsa(p, &lsa);
 }
@@ -1337,7 +1338,7 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   }
 
   nf = fib_get(&p->rtf, n->n.addr);
-  ospf_originate_ext_lsa(p, oa, nf, LSA_M_EXPORT, metric, ebit, fwd, tag, 1);
+  ospf_originate_ext_lsa(p, oa, nf, LSA_M_EXPORT, metric, ebit, fwd, tag, 1, p->vpn_pe);
   nf->external_rte = 1;
 }
 

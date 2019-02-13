@@ -186,7 +186,7 @@ static inline void ospf_flush2_lsa(struct ospf_proto *p, struct top_hash_entry *
 
 void ospf_originate_sum_net_lsa(struct ospf_proto *p, struct ospf_area *oa, ort *nf, int metric);
 void ospf_originate_sum_rt_lsa(struct ospf_proto *p, struct ospf_area *oa, u32 drid, int metric, u32 options);
-void ospf_originate_ext_lsa(struct ospf_proto *p, struct ospf_area *oa, ort *nf, u8 mode, u32 metric, u32 ebit, ip_addr fwaddr, u32 tag, int pbit);
+void ospf_originate_ext_lsa(struct ospf_proto *p, struct ospf_area *oa, ort *nf, u8 mode, u32 metric, u32 ebit, ip_addr fwaddr, u32 tag, int pbit, int dn);
 
 void ospf_rt_notify(struct proto *P, struct channel *ch, net *n, rte *new, rte *old);
 void ospf_update_topology(struct ospf_proto *p);

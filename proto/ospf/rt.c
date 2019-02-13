@@ -782,6 +782,10 @@ ospf_rt_sum(struct ospf_area *oa)
       if (pxopts & OPT_PX_NU)
 	continue;
 
+      /* RFC 4576 4 - do not use LSAs with DN-bit on PE-routers */
+      if (p->vpn_pe && (pxopts & OPT_PX_DN))
+	continue;
+
       options = 0;
       type = ORT_NET;
     }
@@ -877,6 +881,10 @@ ospf_rt_sum_tr(struct ospf_area *oa)
       }
 
       if (pxopts & OPT_PX_NU)
+	continue;
+
+      /* RFC 4576 4 - do not use LSAs with DN-bit on PE-routers */
+      if (p->vpn_pe && (pxopts & OPT_PX_DN))
 	continue;
 
       re = fib_find(&p->rtf, &net);
@@ -1104,11 +1112,11 @@ check_nssa_lsa(struct ospf_proto *p, ort *nf)
   /* RFC 3101 3.2 (3) - originate the aggregated address range */
   if (anet && anet->active && !anet->hidden && oa->translate)
     ospf_originate_ext_lsa(p, NULL, nf, LSA_M_RTCALC, anet->metric,
-			   (anet->metric & LSA_EXT3_EBIT), IPA_NONE, anet->tag, 0);
+			   (anet->metric & LSA_EXT3_EBIT), IPA_NONE, anet->tag, 0, 0);
 
   /* RFC 3101 3.2 (2) - originate the same network */
   else if (decide_nssa_lsa(p, nf, &rt))
-    ospf_originate_ext_lsa(p, NULL, nf, LSA_M_RTCALC, rt.metric, rt.ebit, rt.fwaddr, rt.tag, 0);
+    ospf_originate_ext_lsa(p, NULL, nf, LSA_M_RTCALC, rt.metric, rt.ebit, rt.fwaddr, rt.tag, 0, 0);
 }
 
 /* RFC 2328 16.7. p2 - find new/lost vlink endpoints */
@@ -1238,7 +1246,7 @@ ospf_rt_abr1(struct ospf_proto *p)
 
     if (oa_is_nssa(oa) && oa->ac->default_nssa)
       ospf_originate_ext_lsa(p, oa, default_nf, LSA_M_RTCALC, oa->ac->default_cost,
-			     (oa->ac->default_cost & LSA_EXT3_EBIT), IPA_NONE, 0, 0);
+			     (oa->ac->default_cost & LSA_EXT3_EBIT), IPA_NONE, 0, 0, 0);
 
     /* RFC 2328 16.4. (3) - precompute preferred ASBR entries */
     if (oa_is_ext(oa))
@@ -1472,6 +1480,10 @@ ospf_ext_spf(struct ospf_proto *p)
       continue;
 
     if (rt.pxopts & OPT_PX_NU)
+      continue;
+
+    /* RFC 4576 4 - do not use LSAs with DN-bit on PE-routers */
+    if (p->vpn_pe && rt.downwards)
       continue;
 
     /* 16.4. (3) */
