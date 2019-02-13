@@ -13,6 +13,7 @@ m4_divert(-1)m4_dnl
 #	6	dump line item
 #	7	dump line item callers
 #	8	postfixify
+#	9	same (filter comparator)
 #	1	struct f_inst_FI_...
 #	2	union in struct f_inst
 #	3	constructors
@@ -23,6 +24,7 @@ m4_divert(-1)m4_dnl
 #	103	constructor body
 #	104	dump line item content
 #	105	postfixify body
+#	106	comparator body
 #
 #	Diversions for TARGET=C: 8xx
 #	Diversions for TARGET=H: 9xx
@@ -105,6 +107,11 @@ m4_ifdef([[FID_POSTFIXIFY_BODY_EXISTS]], [[const struct f_inst_]]INST_NAME()[[ *
 }
 m4_undefine([[FID_POSTFIXIFY_BODY_EXISTS]])
 
+FID_SAME
+case INST_NAME():
+m4_undivert(106)
+break;
+
 FID_END
 ]])')
 
@@ -114,6 +121,7 @@ m4_dnl FID_MEMBER call:
 m4_dnl type
 m4_dnl name in f_inst
 m4_dnl name in f_line_item
+m4_dnl comparator for same
 m4_dnl dump format string
 m4_dnl dump format args
 m4_define(FID_MEMBER, `m4_dnl
@@ -127,25 +135,27 @@ m4_ifelse($3,,,[[
 FID_POSTFIXIFY_BODY
 dest->items[pos].$3 = what->$2;
 ]])
-m4_ifelse($4,,,[[
+FID_SAME
+if ($4) return 0;
+m4_ifelse($5,,,[[
 FID_DUMP_BODY
-debug("%s$4\n", INDENT, $5);
+debug("%s$5\n", INDENT, $6);
 ]])
 FID_END')
 
-m4_define(ARG, `FID_MEMBER(const struct f_inst *, f$1,,,)
+m4_define(ARG, `FID_MEMBER(const struct f_inst *, f$1,,,,)
 FID_NEW_BODY
 for (const struct f_inst *child = f$1; child; child = child->next) what_->size += child->size;
 FID_POSTFIXIFY_BODY
 pos = postfixify(dest, what->f$1, pos);
 FID_END')
-m4_define(ARG_ANY, `FID_MEMBER(const struct f_inst *, f$1,,,)
+m4_define(ARG_ANY, `FID_MEMBER(const struct f_inst *, f$1,,,,)
 FID_NEW_BODY
 for (const struct f_inst *child = f$1; child; child = child->next) what_->size += child->size;
 FID_POSTFIXIFY_BODY
 pos = postfixify(dest, what->f$1, pos);
 FID_END')
-m4_define(LINE, `FID_MEMBER(const struct f_inst *, f$1,,,)
+m4_define(LINE, `FID_MEMBER(const struct f_inst *, f$1,[[!f_same(f1->lines[$2], f2->lines[$2])]],,)
 FID_DUMP_BODY
 f_dump_line(item->lines[$2], indent + 1);
 FID_POSTFIXIFY_BODY
@@ -157,10 +167,13 @@ FID_DUMP_BODY
 f_dump_line(item->lines[$2], indent + 1)
 FID_POSTFIXIFY_BODY
 dest->items[pos].lines[$2] = what->fl$1;
+FID_SAME_BODY
+if (!f_same(f1->lines[$2], f2->lines[$2])) return 0;
 FID_END')
-m4_define(SYMBOL, `FID_MEMBER(const struct symbol *, sym, sym, symbol %s, item->sym->name)')
-m4_define(VALI, `FID_MEMBER(struct f_val, vali, val, value %s, val_dump(&item->val))')
-m4_define(VALP, `FID_MEMBER(const struct f_val *, valp,, value %s, val_dump(&item->val))
+m4_define(SYMBOL, `FID_MEMBER(const struct symbol *, sym, sym,
+[[strcmp(f1->sym->name, f2->sym->name) || (s1->class != s2->class)]], symbol %s, item->sym->name)')
+m4_define(VALI, `FID_MEMBER(struct f_val, vali, val, [[val_same(&f1->val, &f2->val)]], value %s, val_dump(&item->val))')
+m4_define(VALP, `FID_MEMBER(const struct f_val *, valp,, [[val_same(&f1->val, &f2->val)]], value %s, val_dump(&item->val))
 FID_POSTFIXIFY_BODY
 dest->items[pos].val = *(what->valp);
 FID_END')
@@ -174,17 +187,19 @@ FID_NEW_BODY
 what->valp = (what->sym = sym)->def;
 FID_POSTFIXIFY_BODY
 dest->items[pos].vp = (dest->items[pos].sym = what->sym)->def;
+FID_SAME_BODY
+if (strcmp(f1->sym->name, f2->sym->name) || (s1->class != s2->class)) return 0;
 FID_DUMP_BODY
 debug("%svariable %s with value %s\n", INDENT, item->sym->name, val_dump(item->vp));
 FID_END')
-m4_define(FRET, `FID_MEMBER(enum filter_return, fret, fret, %s, filter_return_str(item->fret))')
-m4_define(ECS, `FID_MEMBER(enum ec_subtype, ecs, ecs, ec subtype %s, ec_subtype_str(item->ecs))')
-m4_define(RTC, `FID_MEMBER(const struct rtable_config *, rtc, rtc, route table %s, item->rtc->name)')
-m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, sa)')
-m4_define(DYNAMIC_ATTR, `FID_MEMBER(struct f_dynamic_attr, da, da)')
-m4_define(COUNT, `FID_MEMBER(uint, count, count, number %u, item->count)')
-m4_define(TREE, `FID_MEMBER(const struct f_tree *, tree, tree, tree %p, item->tree)')
-m4_define(STRING, `FID_MEMBER(const char *, s, s, string \"%s\", item->s)')
+m4_define(FRET, `FID_MEMBER(enum filter_return, fret, fret, f1->fret != f2->fret, %s, filter_return_str(item->fret))')
+m4_define(ECS, `FID_MEMBER(enum ec_subtype, ecs, ecs, f1->ecs != f2->ecs, ec subtype %s, ec_subtype_str(item->ecs))')
+m4_define(RTC, `FID_MEMBER(const struct rtable_config *, rtc, rtc, [[strcmp(f1->rtc->name, f2->rtc->name)]], route table %s, item->rtc->name)')
+m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, sa, f1->sa.sa_code != f2->sa.sa_code)')
+m4_define(DYNAMIC_ATTR, `FID_MEMBER(struct f_dynamic_attr, da, da, f1->da.ea_code != f2->da.ea_code)')
+m4_define(COUNT, `FID_MEMBER(uint, count, count, f1->count != f2->count, number %u, item->count)')
+m4_define(TREE, `FID_MEMBER(const struct f_tree *, tree, tree, [[!same_tree(f1->tree, f2->tree)]], tree %p, item->tree)')
+m4_define(STRING, `FID_MEMBER(const char *, s, s, [[strcmp(f1->s, f2->s)]], string \"%s\", item->s)')
 
 m4_define(FID_WR_PUT_LIST)
 m4_define(FID_WR_DROP_LIST)
