@@ -43,12 +43,14 @@ m4_define(FID_ENUM_STR, `FID_ZONE(5, Code enum to string)')
 m4_define(FID_DUMP, `FID_ZONE(6, Dump line)')
 m4_define(FID_DUMP_CALLER, `FID_ZONE(7, Dump line caller)')
 m4_define(FID_POSTFIXIFY, `FID_ZONE(8, Postfixify)')
+m4_define(FID_SAME, `FID_ZONE(9, Comparison)')
 
 m4_define(FID_STRUCT_IN, `m4_divert(101)')
 m4_define(FID_NEW_ARGS, `m4_divert(102)')
 m4_define(FID_NEW_BODY, `m4_divert(103)')
 m4_define(FID_DUMP_BODY, `m4_divert(104)m4_define([[FID_DUMP_BODY_EXISTS]])')
 m4_define(FID_POSTFIXIFY_BODY, `m4_divert(105)m4_define([[FID_POSTFIXIFY_BODY_EXISTS]])')
+m4_define(FID_SAME_BODY, `m4_divert(106)')
 
 m4_define(FID_ALL, `m4_ifdef([[FID_CURDIV]], [[m4_divert(FID_CURDIV)m4_undefine([[FID_CURDIV]])]])')
 m4_define(FID_C, `m4_ifelse(TARGET, [[C]], FID_ALL, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
@@ -135,8 +137,10 @@ m4_ifelse($3,,,[[
 FID_POSTFIXIFY_BODY
 dest->items[pos].$3 = what->$2;
 ]])
-FID_SAME
+m4_ifelse($4,,,[[
+FID_SAME_BODY
 if ($4) return 0;
+]])
 m4_ifelse($5,,,[[
 FID_DUMP_BODY
 debug("%s$5\n", INDENT, $6);
@@ -155,7 +159,7 @@ for (const struct f_inst *child = f$1; child; child = child->next) what_->size +
 FID_POSTFIXIFY_BODY
 pos = postfixify(dest, what->f$1, pos);
 FID_END')
-m4_define(LINE, `FID_MEMBER(const struct f_inst *, f$1,[[!f_same(f1->lines[$2], f2->lines[$2])]],,)
+m4_define(LINE, `FID_MEMBER(const struct f_inst *, f$1,,[[!f_same(f1->lines[$2], f2->lines[$2])]],,)
 FID_DUMP_BODY
 f_dump_line(item->lines[$2], indent + 1);
 FID_POSTFIXIFY_BODY
@@ -171,7 +175,7 @@ FID_SAME_BODY
 if (!f_same(f1->lines[$2], f2->lines[$2])) return 0;
 FID_END')
 m4_define(SYMBOL, `FID_MEMBER(const struct symbol *, sym, sym,
-[[strcmp(f1->sym->name, f2->sym->name) || (s1->class != s2->class)]], symbol %s, item->sym->name)')
+[[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name)')
 m4_define(VALI, `FID_MEMBER(struct f_val, vali, val, [[val_same(&f1->val, &f2->val)]], value %s, val_dump(&item->val))')
 m4_define(VALP, `FID_MEMBER(const struct f_val *, valp,, [[val_same(&f1->val, &f2->val)]], value %s, val_dump(&item->val))
 FID_POSTFIXIFY_BODY
@@ -188,7 +192,7 @@ what->valp = (what->sym = sym)->def;
 FID_POSTFIXIFY_BODY
 dest->items[pos].vp = (dest->items[pos].sym = what->sym)->def;
 FID_SAME_BODY
-if (strcmp(f1->sym->name, f2->sym->name) || (s1->class != s2->class)) return 0;
+if (strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)) return 0;
 FID_DUMP_BODY
 debug("%svariable %s with value %s\n", INDENT, item->sym->name, val_dump(item->vp));
 FID_END')
@@ -289,6 +293,32 @@ f_postfixify_concat(const struct f_inst * const inst[], uint count)
 #endif
   return out;
 }
+
+/* Filter line comparison */
+int
+f_same(const struct f_line *fl1, const struct f_line *fl2)
+{
+  if ((!fl1) && (!fl2))
+    return 1;
+  if ((!fl1) || (!fl2))
+    return 0;
+  if (fl1->len != fl2->len)
+    return 0;
+  for (uint i=0; i<fl1->len; i++) {
+#define f1 (&(fl1->items[i]))
+#define f2 (&(fl2->items[i]))
+    if (f1->fi_code != f2->fi_code)
+      return 0;
+    if (f1->flags != f2->flags)
+      return 0;
+
+    switch(f1->fi_code) {
+FID_WR_PUT(9)
+    }
+  }
+  return 1;
+}
+
 
 FID_WR_DIRECT(900,H)
 /* Filter instruction codes */
