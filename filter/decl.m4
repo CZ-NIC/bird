@@ -176,8 +176,8 @@ if (!f_same(f1->lines[$2], f2->lines[$2])) return 0;
 FID_END')
 m4_define(SYMBOL, `FID_MEMBER(const struct symbol *, sym, sym,
 [[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name)')
-m4_define(VALI, `FID_MEMBER(struct f_val, vali, val, [[val_same(&f1->val, &f2->val)]], value %s, val_dump(&item->val))')
-m4_define(VALP, `FID_MEMBER(const struct f_val *, valp,, [[val_same(&f1->val, &f2->val)]], value %s, val_dump(&item->val))
+m4_define(VALI, `FID_MEMBER(struct f_val, vali, val, [[!val_same(&f1->val, &f2->val)]], value %s, val_dump(&item->val))')
+m4_define(VALP, `FID_MEMBER(const struct f_val *, valp,, [[!val_same(&f1->val, &f2->val)]], value %s, val_dump(&item->val))
 FID_POSTFIXIFY_BODY
 dest->items[pos].val = *(what->valp);
 FID_END')
