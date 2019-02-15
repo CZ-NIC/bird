@@ -167,6 +167,11 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 
 #define curline estk.item[estk.cnt-1]
 
+#if DEBUGGING
+  debug("Interpreting line.");
+  f_dump_line(line, 1);
+#endif
+
   while (estk.cnt > 0) {
     while (curline.pos < curline.line->len) {
       const struct f_line_item *what = &(curline.line->items[curline.pos++]);

@@ -572,9 +572,9 @@ decls: /* EMPTY */ { $$ = NULL; }
 /* Declarations that have no ';' at the end. Beware; these are reversed. */
 declsn: one_decl { $$.inst = $1; $$.count = 1; }
  | one_decl ';' declsn {
-     $$ = $3;
-     $$.count++;
-     $$.inst->next = $1;
+     $1->next = $3.inst;
+     $$.count = $3.count + 1;
+     $$.inst = $1;
    }
  ;
 
@@ -861,7 +861,7 @@ function_call:
  ;
 
 symbol_value:
-   CF_SYM_CONSTANT { $$ = f_new_inst(FI_CONSTANT_INDIRECT, $1->val); }
+   CF_SYM_CONSTANT { $$ = f_new_inst(FI_VARIABLE, $1); }
  | CF_SYM_VARIABLE { $$ = f_new_inst(FI_VARIABLE, $1); }
  | CF_SYM_ATTRIBUTE { $$ = f_new_inst(FI_EA_GET, *$1->attribute); }
  ;
