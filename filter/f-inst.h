@@ -15,6 +15,11 @@
 #include "filter/filter.h"
 #include "filter/data.h"
 
+/* Flags for instructions */
+enum f_instruction_flags {
+  FIF_PRINTED = 1,		/* FI_PRINT_AND_DIE: message put in buffer */
+} PACKED;
+
 /* Include generated filter instruction declarations */
 #include "filter/inst-gen.h"
 
@@ -25,36 +30,8 @@ const char *f_instruction_name(enum f_instruction_code fi);
 
 struct f_inst *f_clear_local_vars(struct f_inst *decls);
 
-/* Flags for instructions */
-enum f_instruction_flags {
-  FIF_PRINTED = 1,		/* FI_PRINT_AND_DIE: message put in buffer */
-};
-
 /* Filter structures for execution */
 struct f_line;
-
-/* The single instruction item */
-struct f_line_item {
-  enum f_instruction_code fi_code;	/* What to do */
-  enum f_instruction_flags flags;	/* Flags, instruction-specific */
-  uint lineno;				/* Where */
-  union {
-    struct {
-      const struct f_val *vp;
-      const struct symbol *sym;
-    };
-    struct f_val val;
-    const struct f_line *lines[2];
-    enum filter_return fret;
-    struct f_static_attr sa;
-    struct f_dynamic_attr da;
-    enum ec_subtype ecs;
-    const char *s;
-    const struct f_tree *tree;
-    const struct rtable_config *rtc;
-    uint count;
-  };					/* Additional instruction data */
-};
 
 /* Line of instructions to be unconditionally executed one after another */
 struct f_line {
@@ -67,6 +44,8 @@ struct f_line {
 struct f_line *f_postfixify_concat(const struct f_inst * const inst[], uint count);
 static inline struct f_line *f_postfixify(const struct f_inst *root)
 { return f_postfixify_concat(&root, 1); }
+
+void f_dump_line(const struct f_line *, uint indent);
 
 struct filter *f_new_where(const struct f_inst *);
 static inline struct f_dynamic_attr f_new_dynamic_attr(u8 type, u8 bit, enum f_type f_type, uint code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */
