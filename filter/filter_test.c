@@ -74,7 +74,8 @@ bt_assert_filter(int result, const struct f_line_item *assert)
     bt_suit_case_result = 0;
   }
 
-  bt_log_suite_case_result(bt_suit_case_result, "Assertion at line %d (%s)", assert->lineno, assert->s);
+  bt_log_suite_case_result(bt_suit_case_result, "Assertion at line %d (%s)",
+      assert->lineno, assert->i_FI_ASSERT.s);
 }
 
 int

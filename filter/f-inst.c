@@ -119,13 +119,12 @@
       what->count = len;
     FID_END
 
-    if (vstk.cnt < what->count) /* TODO: make this check systematic */
-      runtime("Construction of BGP path mask from %u elements must have at least that number of elements", what->count);
+    if (vstk.cnt < whati->count) /* TODO: make this check systematic */
+      runtime("Construction of BGP path mask from %u elements must have at least that number of elements", whati->count);
 
-    struct f_path_mask *pm = lp_alloc(fs->pool, sizeof(struct f_path_mask) + what->count * sizeof(struct f_path_mask_item));
-    for (uint i=0; i<what->count; i++) {
-//#define pv vstk.val[vstk.cnt-i-1]
-#define pv vstk.val[vstk.cnt - what->count + i]
+    struct f_path_mask *pm = lp_alloc(fs->pool, sizeof(struct f_path_mask) + whati->count * sizeof(struct f_path_mask_item));
+    for (uint i=0; i<whati->count; i++) {
+#define pv vstk.val[vstk.cnt - whati->count + i]
       switch (pv.type) {
 	case T_PATH_MASK_ITEM:
 	  pm->item[i] = pv.val.pmi;
@@ -141,8 +140,8 @@
       }
     }
 
-    vstk.cnt -= what->count;
-    pm->len = what->count;
+    vstk.cnt -= whati->count;
+    pm->len = whati->count;
 
     RESULT(T_PATH_MASK, path_mask, pm);
   }
@@ -246,15 +245,53 @@
 
     /* some constants have value in a[1], some in *a[0].p, strange. */
   INST(FI_CONSTANT, 0, 1) {	/* integer (or simple type) constant, string, set, or prefix_set */
-    VALI; // res = what->val;
+    FID_LINE_IN
+      struct f_val val;
+    FID_STRUCT_IN
+      struct f_val val;
+    FID_NEW_ARGS
+    , const struct f_val val
+    FID_NEW_BODY
+      what->val = val;
+    FID_POSTFIXIFY_BODY
+      item->val = what->val;
+    FID_SAME_BODY
+      if (!val_same(&(f1->val), &(f2->val))) return 0;
+    FID_DUMP_BODY
+      debug("%svalue %s\n", INDENT, val_dump(&item->val));
+    FID_END
+
+    res = whati->val;
     RESULT_OK;
   }
   INST(FI_VARIABLE, 0, 1) {
-    VAR;
-    RESULT_OK;
-  }
-  INST(FI_CONSTANT_INDIRECT, 0, 1) {
-    VALP;
+    FID_STRUCT_IN
+      const struct symbol *sym;
+    FID_LINE_IN
+      const struct symbol *sym;
+      const struct f_val *valp;
+    FID_NEW_ARGS
+      , const struct symbol *sym
+    FID_NEW_BODY
+      what->sym = sym;
+    FID_POSTFIXIFY_BODY
+      item->valp = (item->sym = what->sym)->val;
+    FID_SAME_BODY
+      if (strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)) return 0;
+    FID_DUMP_BODY
+      switch (item->sym->class) {
+	case SYM_CONSTANT_RANGE:
+	  debug("%sconstant %s with value %s\n", INDENT, item->sym->name, val_dump(item->valp));
+	  break;
+	case SYM_VARIABLE_RANGE:
+	  debug("%svariable %s with current value %s\n", INDENT, item->sym->name, val_dump(item->valp));
+	  break;
+	default:
+	  bug("Symbol %s of type %d doesn't reference a value", item->sym->name, item->sym->class);
+      }
+    FID_END
+
+    res = *whati->valp;
     RESULT_OK;
   }
   INST(FI_PRINT, 1, 0) {
@@ -702,36 +739,48 @@
   }
 
   INST(FI_CALL, 0, 1) {
-    /* Do not use the symbol on execution */
-    if (0) {
-      UNUSED SYMBOL;
-    }
-
-    /* Postfixify extracts the function body from the symbol */
-    FID_POSTFIXIFY_BODY
-    dest->items[pos].lines[0] = what->sym->function;
-    FID_END
-
-    /* First push the body on stack */
-    LINEX(what->lines[0]);
-    curline.emask |= FE_RETURN;
-
-    /* Then push the arguments */
-    LINE(1,1);
-
+    FID_LINE_IN
+      const struct f_line *args;
+      const struct f_line *body;
+      struct symbol *sym;
+    FID_STRUCT_IN
+      struct symbol *sym;
+      const struct f_inst *args;
+    FID_NEW_ARGS
+      , struct symbol * sym
+      , const struct f_inst *args
     FID_NEW_BODY
       if (sym->class != SYM_FUNCTION)
 	cf_error("You can't call something which is not a function. Really.");
 
       uint count = 0;
-      for (const struct f_inst *inst = f1; inst; inst = inst->next)
+      for (const struct f_inst *inst = args; inst; inst = inst->next)
 	count++;
 
       if (count != sym->function->args)
 	cf_error("Function %s takes %u arguments, got %u.", sym->name, sym->function->args, count);
+
+      what->sym = sym;
+      what->args = args;
+    FID_DUMP_BODY
+      debug("%scalling %s with following args\n", INDENT, item->sym->name);
+      f_dump_line(item->args, indent + 1);
+    FID_POSTFIXIFY_BODY
+      item->args = f_postfixify(what->args);
+      item->body = (item->sym = what->sym)->function;
+    FID_SAME_BODY
+      /* To be done better */
+      if (strcmp(f1->sym->name, f2->sym->name)) return 0;
+      if (!f_same(f1->args, f2->args)) return 0;
+      if (!f_same(f1->body, f2->body)) return 0;
     FID_END
 
-    /* FIXME: Optimization of function comparison. */
+    /* First push the body on stack */
+    LINEX(whati->body);
+    curline.emask |= FE_RETURN;
+
+    /* Then push the arguments */
+    LINEX(whati->args);
   }
 
   INST(FI_DROP_RESULT, 1, 0) {
@@ -741,18 +790,17 @@
   INST(FI_SWITCH, 1, 0) {
     ARG_ANY(1);
     TREE;
-    const struct f_tree *t = find_tree(what->tree, &v1);
-    if (!t) {
+    if (!tree) {
       v1.type = T_VOID;
-      t = find_tree(what->tree, &v1);
-      if (!t) {
+      tree = find_tree(tree, &v1);
+      if (!tree) {
 	debug( "No else statement?\n");
 	break;
       }
     }
     /* It is actually possible to have t->data NULL */
 
-    LINEX(t->data);
+    LINEX(tree->data);
   }
 
   INST(FI_IP_MASK, 2, 1) { /* IP.MASK(val) */
