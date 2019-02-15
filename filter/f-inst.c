@@ -233,7 +233,7 @@
       /* IP->Quad implicit conversion */
       if ((sym->class == (SYM_VARIABLE | T_QUAD)) && val_is_ip4(&v1))
       {
-	*((struct f_val *) sym->def) = (struct f_val) {
+	*(sym->val) = (struct f_val) {
 	  .type = T_QUAD,
 	  .val.i = ipa_to_u32(v1.val.ip),
 	}; 
@@ -241,7 +241,7 @@
       }
       runtime( "Assigning to variable of incompatible type" );
     }
-    *((struct f_val *) sym->def) = v1;
+    *(sym->val) = v1;
   }
 
     /* some constants have value in a[1], some in *a[0].p, strange. */
@@ -709,7 +709,7 @@
 
     /* Postfixify extracts the function body from the symbol */
     FID_POSTFIXIFY_BODY
-    dest->items[pos].lines[0] = what->sym->def;
+    dest->items[pos].lines[0] = what->sym->function;
     FID_END
 
     /* First push the body on stack */
@@ -727,8 +727,8 @@
       for (const struct f_inst *inst = f1; inst; inst = inst->next)
 	count++;
 
-      if (count != sym->aux2)
-	cf_error("Function %s takes %u arguments, got %u.", sym->name, sym->aux2, count);
+      if (count != sym->function->args)
+	cf_error("Function %s takes %u arguments, got %u.", sym->name, sym->function->args, count);
     FID_END
 
     /* FIXME: Optimization of function comparison. */

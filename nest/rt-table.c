@@ -398,7 +398,7 @@ static rte *
 export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int silent)
 {
   struct proto *p = c->proto;
-  struct filter *filter = c->out_filter;
+  const struct filter *filter = c->out_filter;
   struct proto_stats *stats = &c->stats;
   rte *rt;
   int v;
@@ -1338,7 +1338,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
-  struct filter *filter = c->in_filter;
+  const struct filter *filter = c->in_filter;
   rte *dummy = NULL;
   net *nn;
 
@@ -1479,7 +1479,7 @@ rte_modify(rte *old)
 
 /* Check rtable for best route to given net whether it would be exported do p */
 int
-rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
+rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter)
 {
   net *n = net_find(t, a);
   rte *rt = n ? n->routes : NULL;
@@ -2082,13 +2082,13 @@ rt_new_table(struct symbol *s, uint addr_type)
 {
   /* Hack that allows to 'redefine' the master table */
   if ((s->class == SYM_TABLE) &&
-      (s->def == new_config->def_tables[addr_type]) &&
+      (s->table == new_config->def_tables[addr_type]) &&
       ((addr_type == NET_IP4) || (addr_type == NET_IP6)))
-    return s->def;
+    return s->table;
 
   struct rtable_config *c = cfg_allocz(sizeof(struct rtable_config));
 
-  cf_define_symbol(s, SYM_TABLE, c);
+  cf_define_symbol(s, SYM_TABLE, table, c);
   c->name = s->name;
   c->addr_type = addr_type;
   c->gc_max_ops = 1000;
@@ -2147,7 +2147,7 @@ static struct rtable_config *
 rt_find_table_config(struct config *cf, char *name)
 {
   struct symbol *sym = cf_find_symbol(cf, name);
-  return (sym && (sym->class == SYM_TABLE)) ? sym->def : NULL;
+  return (sym && (sym->class == SYM_TABLE)) ? sym->table : NULL;
 }
 
 /**

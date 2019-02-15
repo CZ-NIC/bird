@@ -297,7 +297,7 @@ rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
-int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter);
+int rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
@@ -335,7 +335,7 @@ struct rt_show_data {
   struct rt_show_data_rtable *last_table; /* Last table in output */
   struct fib_iterator fit;		/* Iterator over networks in table */
   int verbose, tables_defined_by;
-  struct filter *filter;
+  const struct filter *filter;
   struct proto *show_protocol;
   struct proto *export_protocol;
   struct channel *export_channel;

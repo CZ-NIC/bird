@@ -17,8 +17,8 @@
 
 #define P(a,b) ((a<<8) | b)
 
-char *
-filter_name(struct filter *filter)
+const char *
+filter_name(const struct filter *filter)
 {
   if (!filter)
     return "ACCEPT";

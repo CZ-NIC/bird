@@ -23,7 +23,7 @@ struct mrt_config {
 
   struct rtable_config *table_cf;
   const char *table_expr;
-  struct filter *filter;
+  const struct filter *filter;
   const char *filename;
   uint period;
   int always_add_path;
@@ -41,7 +41,7 @@ struct mrt_proto {
 struct mrt_dump_data {
   const char *table_expr;
   struct rtable *table_ptr;
-  struct filter *filter;
+  const struct filter *filter;
   char *filename;
 };
 
@@ -61,7 +61,7 @@ struct mrt_table_dump_state {
 					/* Configuration information */
   const char *table_expr;		/* Wildcard for table name (or NULL) */
   struct rtable *table_ptr;		/* Explicit table (or NULL) */
-  struct filter *filter;		/* Optional filter */
+  const struct filter *filter;		/* Optional filter */
   const char *filename;			/* Filename pattern */
   int always_add_path;			/* Always use *_ADDPATH message subtypes */
 

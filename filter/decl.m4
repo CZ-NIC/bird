@@ -188,9 +188,9 @@ const struct symbol *sym;
 FID_NEW_ARGS
 , const struct symbol *sym
 FID_NEW_BODY
-what->valp = (what->sym = sym)->def;
+what->valp = (what->sym = sym)->val;
 FID_POSTFIXIFY_BODY
-dest->items[pos].vp = (dest->items[pos].sym = what->sym)->def;
+dest->items[pos].vp = (dest->items[pos].sym = what->sym)->val;
 FID_SAME_BODY
 if (strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)) return 0;
 FID_DUMP_BODY

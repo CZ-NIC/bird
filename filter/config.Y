@@ -451,7 +451,8 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <x> term block cmd cmds constant constructor print_one print_list var_list var_listn function_call symbol_value bgp_path_expr bgp_path bgp_path_tail one_decl decls
 %type <fda> dynamic_attr
 %type <fsa> static_attr
-%type <f> filter filter_body where_filter
+%type <f> filter where_filter
+%type <fl> filter_body
 %type <flv> lvalue
 %type <i> type
 %type <ecs> ec_kind
@@ -467,11 +468,12 @@ CF_GRAMMAR
 
 conf: filter_def ;
 filter_def:
-   FILTER CF_SYM_VOID { $2 = cf_define_symbol($2, SYM_FILTER, NULL); cf_push_scope( $2 ); }
+   FILTER CF_SYM_VOID { $2 = cf_define_symbol($2, SYM_FILTER, filter, NULL); cf_push_scope( $2 ); }
      filter_body {
-     $2->def = $4;
-     $4->name = $2->name;
-     DBG( "We have new filter defined (%s)\n", $2->name );
+     struct filter *f = cfg_alloc(sizeof(struct filter));
+     *f = (struct filter) { .name = $2->name, .root = $4 };
+     $2->filter = f;
+
      cf_pop_scope();
    }
  ;
@@ -483,14 +485,14 @@ filter_eval:
 
 conf: custom_attr ;
 custom_attr: ATTRIBUTE type CF_SYM_VOID ';' {
-  cf_define_symbol($3, SYM_ATTRIBUTE, ca_lookup(new_config->pool, $3->name, $2)->fda);
+  cf_define_symbol($3, SYM_ATTRIBUTE, attribute, ca_lookup(new_config->pool, $3->name, $2)->fda);
 };
 
 conf: bt_test_suite ;
 bt_test_suite:
  BT_TEST_SUITE '(' CF_SYM_FUNCTION ',' text ')' {
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
-  t->fn = $3->def;
+  t->fn = $3->function;
   t->fn_name = $3->name;
   t->dsc = $5;
 
@@ -502,8 +504,8 @@ conf: bt_test_same ;
 bt_test_same:
  BT_TEST_SAME '(' CF_SYM_FUNCTION ',' CF_SYM_FUNCTION ',' NUM ')' {
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
-  t->fn = $3->def;
-  t->cmp = $5->def;
+  t->fn = $3->function;
+  t->cmp = $5->function;
   t->result = $7;
   t->fn_name = $3->name;
   t->dsc = $5->name;
@@ -553,7 +555,7 @@ one_decl:
    type CF_SYM_VOID {
      struct f_val * val = cfg_alloc(sizeof(struct f_val));
      val->type = T_VOID;
-     $2 = cf_define_symbol($2, SYM_VARIABLE | $1, val);
+     $2 = cf_define_symbol($2, SYM_VARIABLE | $1, val, val);
      DBG( "New variable %s type %x\n", $2->name, $1 );
      $$ = f_new_inst(FI_SET, NULL, $2);
    }
@@ -578,22 +580,24 @@ declsn: one_decl { $$.inst = $1; $$.count = 1; }
 
 filter_body:
    function_body {
-     $$ = cfg_alloc(sizeof(struct filter));
-     $$->name = NULL;
      if ($1[0]) {
        const struct f_inst *inst[2] = { $1[0], $1[1] };
-       $$->root = f_postfixify_concat(inst, 2);
+       $$ = f_postfixify_concat(inst, 2);
      }
      else
-       $$->root = f_postfixify($1[1]);
+       $$ = f_postfixify($1[1]);
    }
  ;
 
 filter:
    CF_SYM_FILTER {
-     $$ = $1->def;
+     $$ = $1->filter;
    }
- | filter_body
+ | filter_body {
+     struct filter *f = cfg_alloc(sizeof(struct filter));
+     *f = (struct filter) { .root = $1 };
+     $$ = f;
+   }
  ;
 
 where_filter:
@@ -618,7 +622,7 @@ function_body:
 conf: function_def ;
 function_def:
    FUNCTION CF_SYM_VOID { DBG( "Beginning of function %s\n", $2->name );
-     $2 = cf_define_symbol($2, SYM_FUNCTION, NULL);
+     $2 = cf_define_symbol($2, SYM_FUNCTION, function, NULL);
      cf_push_scope($2);
    } function_params function_body {
      const struct f_inst *catlist[4];
@@ -639,9 +643,10 @@ function_def:
      if ($5[1])
        catlist[count++] = $5[1];
 
-     $2->def = f_postfixify_concat(catlist, count);
-     $2->aux2 = $4.count;
-     DBG("Hmm, we've got one function here - %s\n", $2->name);
+     struct f_line *fl = f_postfixify_concat(catlist, count);
+     fl->args = $4.count;
+     $2->function = fl;
+
      cf_pop_scope();
    }
  ;
@@ -693,7 +698,7 @@ set_atom:
    }
  | CF_SYM_CONSTANT {
      if (!f_valid_set_type(SYM_TYPE($1))) cf_error("%s: set-incompatible type", $1->name);
-     $$ = *(struct f_val *)($1->def);
+     $$ = *$1->val;
    }
  ;
 
@@ -856,9 +861,9 @@ function_call:
  ;
 
 symbol_value:
-   CF_SYM_CONSTANT { $$ = f_new_inst(FI_CONSTANT_INDIRECT, $1->def); }
+   CF_SYM_CONSTANT { $$ = f_new_inst(FI_CONSTANT_INDIRECT, $1->val); }
  | CF_SYM_VARIABLE { $$ = f_new_inst(FI_VARIABLE, $1); }
- | CF_SYM_ATTRIBUTE { $$ = f_new_inst(FI_EA_GET, *((struct f_dynamic_attr *) $1->def)); }
+ | CF_SYM_ATTRIBUTE { $$ = f_new_inst(FI_EA_GET, *$1->attribute); }
  ;
 
 static_attr:
@@ -986,7 +991,7 @@ cmd:
      $$ = f_new_inst(FI_CONDITION, $2, $4, $6);
    }
  | CF_SYM_ATTRIBUTE '=' term ';' {
-   $$ = f_new_inst(FI_EA_SET, $3, *((struct f_dynamic_attr *) $1->def));
+   $$ = f_new_inst(FI_EA_SET, $3, *$1->attribute);
    }
  | CF_SYM_VARIABLE '=' term ';' {
    $$ = f_new_inst(FI_SET, $3, $1);
