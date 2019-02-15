@@ -56,7 +56,8 @@ CF_DECLS
   struct f_dynamic_attr fda;
   struct f_static_attr fsa;
   struct f_lval flv;
-  struct filter *f;
+  const struct f_line *fl;
+  const struct filter *f;
   struct f_tree *e;
   struct f_trie *trie;
   struct f_val v;
@@ -130,7 +131,7 @@ definition:
    DEFINE CF_SYM_VOID '=' term ';' {
      struct f_val *val = cfg_alloc(sizeof(struct f_val));
      if (f_eval(f_postfixify($4), cfg_mem, val) > F_RETURN) cf_error("Runtime error");
-     cf_define_symbol($2, SYM_CONSTANT | val->type, val);
+     cf_define_symbol($2, SYM_CONSTANT | val->type, val, val);
    }
  ;
 

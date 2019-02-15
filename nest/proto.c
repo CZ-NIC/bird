@@ -977,7 +977,7 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       {
 	/* Found match, let's check if we can smoothly switch to new configuration */
 	/* No need to check description */
-	nc = sym->def;
+	nc = sym->proto;
 	nc->proto = p;
 
 	/* We will try to reconfigure protocol p */
@@ -1905,7 +1905,7 @@ proto_apply_cmd_symbol(struct symbol *s, void (* cmd)(struct proto *, uintptr_t,
     return;
   }
 
-  cmd(((struct proto_config *)s->def)->proto, arg, 0);
+  cmd(s->proto->proto, arg, 0);
   cli_msg(0, "");
 }
 
@@ -1948,7 +1948,7 @@ proto_get_named(struct symbol *sym, struct protocol *pr)
     if (sym->class != SYM_PROTO)
       cf_error("%s: Not a protocol", sym->name);
 
-    p = ((struct proto_config *) sym->def)->proto;
+    p = sym->proto->proto;
     if (!p || p->proto != pr)
       cf_error("%s: Not a %s protocol", sym->name, pr->name);
   }

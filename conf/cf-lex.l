@@ -539,11 +539,8 @@ cf_new_symbol(byte *c)
   if (l > SYM_MAX_LEN)
     cf_error("Symbol too long");
 
-  s = cfg_alloc(sizeof(struct symbol) + l);
-  s->scope = conf_this_scope;
-  s->class = SYM_VOID;
-  s->def = NULL;
-  s->aux = 0;
+  s = cfg_allocz(sizeof(struct symbol) + l + 1);
+  *s = (struct symbol) { .scope = conf_this_scope, .class = SYM_VOID, };
   strcpy(s->name, c);
 
   if (!new_config->sym_hash.data)
@@ -574,6 +571,7 @@ cf_find_symbol(struct config *cfg, byte *c)
       (s = HASH_FIND(cfg->sym_hash, SYM, c, 1)))
     return s;
 
+  /* In CLI command parsing, fallback points to the current config, otherwise it is NULL. */
   if (cfg->fallback &&
       cfg->fallback->sym_hash.data &&
       (s = HASH_FIND(cfg->fallback->sym_hash, SYM, c, 1)))
@@ -597,6 +595,28 @@ cf_get_symbol(byte *c)
   return cf_find_symbol(new_config, c) ?: cf_new_symbol(c);
 }
 
+/**
+ * cf_localize_symbol - get the local instance of given symbol
+ * @sym: the symbol to localize
+ *
+ * This functions finds the symbol that is local to current scope
+ * for purposes of cf_define_symbol().
+ */
+struct symbol *
+cf_localize_symbol(struct symbol *sym)
+{
+  /* If the symbol type is void, it has been recently allocated just in this scope. */
+  if (!sym->class)
+    return sym;
+  
+  /* If the scope is the current, it is already defined in this scope. */
+  if (sym->scope == conf_this_scope)
+    cf_error("Symbol already defined");
+
+  /* Not allocated here yet, doing it now. */
+  return cf_new_symbol(sym->name);
+}
+
 struct symbol *
 cf_default_name(char *template, int *counter)
 {
@@ -614,35 +634,6 @@ cf_default_name(char *template, int *counter)
 	break;
     }
   cf_error("Unable to generate default name");
-}
-
-/**
- * cf_define_symbol - define meaning of a symbol
- * @sym: symbol to be defined
- * @type: symbol class to assign
- * @def: class dependent data
- *
- * Defines new meaning of a symbol. If the symbol is an undefined
- * one (%SYM_VOID), it's just re-defined to the new type. If it's defined
- * in different scope, a new symbol in current scope is created and the
- * meaning is assigned to it. If it's already defined in the current scope,
- * an error is reported via cf_error().
- *
- * Result: Pointer to the newly defined symbol. If we are in the top-level
- * scope, it's the same @sym as passed to the function.
- */
-struct symbol *
-cf_define_symbol(struct symbol *sym, int type, void *def)
-{
-  if (sym->class)
-    {
-      if (sym->scope == conf_this_scope)
-	cf_error("Symbol already defined");
-      sym = cf_new_symbol(sym->name);
-    }
-  sym->class = type;
-  sym->def = def;
-  return sym;
 }
 
 static void

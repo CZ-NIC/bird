@@ -179,28 +179,28 @@ proto_name:
    /* EMPTY */ {
      struct symbol *s = cf_default_name(this_proto->protocol->template, &this_proto->protocol->name_counter);
      s->class = this_proto->class;
-     s->def = this_proto;
+     s->proto = this_proto;
      this_proto->name = s->name;
      }
  | CF_SYM_VOID {
-     cf_define_symbol($1, this_proto->class, this_proto);
+     cf_define_symbol($1, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
    }
  | FROM sym_proto_or_template {
      struct symbol *s = cf_default_name(this_proto->protocol->template, &this_proto->protocol->name_counter);
      s->class = this_proto->class;
-     s->def = this_proto;
+     s->proto = this_proto;
      this_proto->name = s->name;
 
      if (($2->class != SYM_TEMPLATE) && ($2->class != SYM_PROTO)) cf_error("Template or protocol name expected");
-     proto_copy_config(this_proto, $2->def);
+     proto_copy_config(this_proto, $2->proto);
    }
  | CF_SYM_VOID FROM sym_proto_or_template {
-     cf_define_symbol($1, this_proto->class, this_proto);
+     cf_define_symbol($1, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
 
      if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
-     proto_copy_config(this_proto, $3->def);
+     proto_copy_config(this_proto, $3->proto);
    }
  ;
 
@@ -256,7 +256,7 @@ channel_end:
 proto_channel: channel_start channel_opt_list channel_end;
 
 
-rtable: CF_SYM_TABLE { $$ = $1->def; } ;
+rtable: CF_SYM_TABLE { $$ = $1->table; } ;
 
 imexport:
    FILTER filter { $$ = $2; }
@@ -544,7 +544,7 @@ r_args:
    }
  | r_args TABLE CF_SYM_TABLE {
      $$ = $1;
-     rt_show_add_table($$, ((struct rtable_config *)$3->def)->table);
+     rt_show_add_table($$, $3->table->table);
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args TABLE ALL {
@@ -556,7 +556,7 @@ r_args:
    }
  | r_args IMPORT TABLE CF_SYM_PROTO '.' r_args_channel {
      $$ = $1;
-     struct proto_config *cf = (void *) $4->def;
+     struct proto_config *cf = $4->proto;
      if (!cf->proto) cf_error("%s is not a protocol", $4->name);
      struct channel *c = proto_find_channel_by_name(cf->proto, $6);
      if (!c) cf_error("Channel %s.%s not found", $4->name, $6);
@@ -587,7 +587,7 @@ r_args:
      $$->filtered = 1;
    }
  | r_args export_mode CF_SYM_PROTO {
-     struct proto_config *c = (struct proto_config *) $3->def;
+     struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
      if ($$->export_mode) cf_error("Export specified twice");
      if (!c->proto) cf_error("%s is not a protocol", $3->name);
@@ -596,7 +596,7 @@ r_args:
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
  | r_args export_mode CF_SYM_PROTO '.' r_args_channel {
-     struct proto_config *c = (struct proto_config *) $3->def;
+     struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
      if ($$->export_mode) cf_error("Export specified twice");
      if (!c->proto) cf_error("%s is not a protocol", $3->name);
@@ -606,7 +606,7 @@ r_args:
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
  | r_args PROTOCOL CF_SYM_PROTO {
-     struct proto_config *c = (struct proto_config *) $3->def;
+     struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
      if ($$->show_protocol) cf_error("Protocol specified twice");
      if (!c->proto) cf_error("%s is not a protocol", $3->name);
