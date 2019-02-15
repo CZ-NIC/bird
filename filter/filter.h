@@ -48,7 +48,7 @@ struct f_val;
 struct f_line;
 struct filter {
   char *name;
-  struct f_line *root;
+  const struct f_line *root;
 };
 
 struct rte;
@@ -58,8 +58,8 @@ enum filter_return f_eval_rte(const struct f_line *expr, struct rte **rte, struc
 uint f_eval_int(const struct f_line *expr);
 enum filter_return f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf);
 
-char *filter_name(struct filter *filter);
-int filter_same(struct filter *new, struct filter *old);
+const char *filter_name(const struct filter *filter);
+int filter_same(const struct filter *new, const struct filter *old);
 int f_same(const struct f_line *f1, const struct f_line *f2);
 
 #define FILTER_ACCEPT NULL

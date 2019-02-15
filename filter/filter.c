@@ -359,15 +359,14 @@ f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf)
 /**
  * filter_same - compare two filters
  * @new: first filter to be compared
- * @old: second filter to be compared, notice that this filter is
- * damaged while comparing.
+ * @old: second filter to be compared
  *
  * Returns 1 in case filters are same, otherwise 0. If there are
  * underlying bugs, it will rather say 0 on same filters than say
  * 1 on different.
  */
 int
-filter_same(struct filter *new, struct filter *old)
+filter_same(const struct filter *new, const struct filter *old)
 {
   if (old == new)	/* Handle FILTER_ACCEPT and FILTER_REJECT */
     return 1;

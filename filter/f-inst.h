@@ -59,6 +59,7 @@ struct f_line_item {
 /* Line of instructions to be unconditionally executed one after another */
 struct f_line {
   uint len;				/* Line length */
+  u16 args;				/* Function: Args required  */
   struct f_line_item items[0];		/* The items themselves */
 };
 
@@ -81,8 +82,8 @@ extern void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 /* Bird Tests */
 struct f_bt_test_suite {
   node n;			/* Node in config->tests */
-  struct f_line *fn;		/* Root of function */
-  struct f_line *cmp;		/* Compare to this function */
+  const struct f_line *fn;	/* Root of function */
+  const struct f_line *cmp;	/* Compare to this function */
   const char *fn_name;		/* Name of test */
   const char *dsc;		/* Description */
   int result;			/* Desired result */

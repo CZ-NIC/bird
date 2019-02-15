@@ -105,11 +105,19 @@ extern int (*cf_read_hook)(byte *buf, uint max, int fd);
 struct symbol {
   struct symbol *next;
   struct sym_scope *scope;
-  int class;
-  int aux;
-  uint aux2;
-  void *def;
-  char name[1];
+  int class;				/* SYM_* */
+  uint flags;				/* SYM_FLAG_* */
+
+  union {
+    struct proto_config *proto;		/* For SYM_PROTO and SYM_TEMPLATE */
+    const struct f_line *function;	/* For SYM_FUNCTION */
+    const struct filter *filter;	/* For SYM_FILTER */
+    struct rtable_config *table;	/* For SYM_TABLE */
+    struct f_dynamic_attr *attribute;	/* For SYM_ATTRIBUTE */
+    struct f_val *val;			/* For SYM_CONSTANT or SYM_VARIABLE */
+  };
+
+  char name[0];
 };
 
 struct sym_scope {
@@ -134,8 +142,11 @@ struct sym_scope {
 #define SYM_CONSTANT 0x200	/* 0x200-0x2ff are variable types */
 #define SYM_CONSTANT_RANGE SYM_CONSTANT ... (SYM_CONSTANT | 0xff)
 
-#define SYM_TYPE(s) (((struct f_val *) (s)->def)->type)
-#define SYM_VAL(s) (((struct f_val *) (s)->def)->val)
+#define SYM_TYPE(s) ((s)->val->type)
+#define SYM_VAL(s) ((s)->val->val)
+
+/* Symbol flags */
+#define SYM_FLAG_SAME 0x1	/* For SYM_FUNCTION and SYM_FILTER */
 
 struct include_file_stack {
   void *buffer;				/* Internal lexer state */
@@ -160,7 +171,29 @@ struct symbol *cf_find_symbol(struct config *cfg, byte *c);
 
 struct symbol *cf_get_symbol(byte *c);
 struct symbol *cf_default_name(char *template, int *counter);
-struct symbol *cf_define_symbol(struct symbol *symbol, int type, void *def);
+struct symbol *cf_localize_symbol(struct symbol *sym);
+
+/**
+ * cf_define_symbol - define meaning of a symbol
+ * @sym: symbol to be defined
+ * @type: symbol class to assign
+ * @def: class dependent data
+ *
+ * Defines new meaning of a symbol. If the symbol is an undefined
+ * one (%SYM_VOID), it's just re-defined to the new type. If it's defined
+ * in different scope, a new symbol in current scope is created and the
+ * meaning is assigned to it. If it's already defined in the current scope,
+ * an error is reported via cf_error().
+ *
+ * Result: Pointer to the newly defined symbol. If we are in the top-level
+ * scope, it's the same @sym as passed to the function.
+ */
+#define cf_define_symbol(sym_, type_, var_, def_) ({ \
+    struct symbol *sym = cf_localize_symbol(sym_); \
+    sym->class = type_; \
+    sym->var_ = def_; \
+    sym; })
+
 void cf_push_scope(struct symbol *);
 void cf_pop_scope(void);
 char *cf_symbol_class_name(struct symbol *sym);

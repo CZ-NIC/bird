@@ -94,11 +94,9 @@ drop_gid(gid_t gid)
 static inline void
 add_num_const(char *name, int val)
 {
-  struct symbol *s = cf_get_symbol(name);
-  s->class = SYM_CONSTANT | T_INT;
-  s->def = cfg_allocz(sizeof(struct f_val));
-  SYM_TYPE(s) = T_INT;
-  SYM_VAL(s).i = val;
+  struct f_val *v = cfg_alloc(sizeof(struct f_val));
+  *v = (struct f_val) { .type = T_INT, .val.i = val };
+  cf_define_symbol(cf_get_symbol(name), SYM_CONSTANT | T_INT, val, v);
 }
 
 /* the code of read_iproute_table() is based on

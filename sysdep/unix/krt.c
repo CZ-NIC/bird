@@ -562,7 +562,7 @@ static struct rte *
 krt_export_net(struct krt_proto *p, net *net, rte **rt_free)
 {
   struct channel *c = p->p.main_channel;
-  struct filter *filter = c->out_filter;
+  const struct filter *filter = c->out_filter;
   rte *rt;
 
   if (c->ra_mode == RA_MERGED)
