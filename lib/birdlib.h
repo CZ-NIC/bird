@@ -56,6 +56,13 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define BIT32_CLR(b,p)		((b)[(p)/32] &= ~BIT32_VAL(p))
 #define BIT32_ZERO(b,l)		memset((b), 0, (l)/8)
 
+/* The same, but counting bits from MSB */
+#define BIT32R_VAL(p)		((((u32) 1) << 31) >> ((p) % 32))
+#define BIT32R_TEST(b,p)	((b)[(p)/32] & BIT32R_VAL(p))
+#define BIT32R_SET(b,p)		((b)[(p)/32] |= BIT32R_VAL(p))
+#define BIT32R_CLR(b,p)		((b)[(p)/32] &= ~BIT32R_VAL(p))
+#define BIT32R_ZERO(b,l)	memset((b), 0, (l)/8)
+
 #ifndef NULL
 #define NULL ((void *) 0)
 #endif

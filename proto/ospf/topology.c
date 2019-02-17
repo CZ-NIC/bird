@@ -224,12 +224,17 @@ ospf_do_originate_lsa(struct ospf_proto *p, struct top_hash_entry *en, void *lsa
   /*
    * lsa.type_raw is initialized by ospf_hash_get() to OSPFv3 LSA type.
    * lsa_set_options() implicitly converts it to OSPFv2 LSA type, assuming that
-   * old type is just new type masked by 0xff.  That is not universally true,
-   * but it holds for all OSPFv2 types currently supported by BIRD.
+   * old type is just new type masked by 0xff. That holds for most OSPFv2 types,
+   * but we have to fix it for opaque LSAs.
    */
 
   if (ospf_is_v2(p))
+  {
+    if (lsa_is_opaque(en->lsa_type))
+      en->lsa.type_raw = LSA_T_V2_OPAQUE_ + LSA_SCOPE_ORDER(en->lsa_type);
+
     lsa_set_options(&en->lsa, lsa_opts);
+  }
 
   mb_free(en->lsa_body);
   en->lsa_body = lsa_body;
@@ -272,6 +277,10 @@ ospf_originate_lsa(struct ospf_proto *p, struct ospf_new_lsa *lsa)
   void *lsa_body = p->lsab;
   u16 lsa_blen = p->lsab_used;
   u16 lsa_length = sizeof(struct ospf_lsa_header) + lsa_blen;
+
+  /* For OSPFv2 Opaque LSAs, LS ID consists of Opaque Type and Opaque ID */
+  if (ospf_is_v2(p) && lsa_is_opaque(lsa->type))
+    lsa->id |= (u32) lsa_get_opaque_type(lsa->type) << 24;
 
   en = ospf_hash_get(p->gr, lsa->dom, lsa->id, p->router_id, lsa->type);
 
@@ -1638,6 +1647,41 @@ ospf_originate_prefix_net_lsa(struct ospf_proto *p, struct ospf_iface *ifa)
   ifa->pxn_lsa = ospf_originate_lsa(p, &lsa);
 }
 
+
+/*
+ *	Router Information LSA handling
+ *	Type = LSA_T_RI_AREA, opaque type = LSA_OT_RI
+ */
+
+void
+ospf_add_ric_tlv(struct ospf_proto *p)
+{
+  struct ospf_tlv *ri = lsab_allocz(p, sizeof(struct ospf_tlv) + sizeof(u32));
+  ri->type = LSA_RI_RIC;
+  ri->length = sizeof(struct ospf_tlv) + sizeof(u32);
+
+  BIT32R_SET(ri->data, LSA_RIC_STUB_ROUTER);
+}
+
+void
+ospf_originate_ri_lsa(struct ospf_proto *p, struct ospf_area *oa)
+{
+  struct ospf_new_lsa lsa = {
+    .type = LSA_T_RI_AREA,
+    .dom  = oa->areaid,
+    .id   = p->instance_id
+  };
+
+  ospf_add_ric_tlv(p);
+
+  ospf_originate_lsa(p, &lsa);
+}
+
+
+/*
+ *	Generic topology code
+ */
+
 static inline int breaks_minlsinterval(struct top_hash_entry *en)
 { return en && (en->lsa.age < LSA_MAXAGE) && (lsa_inst_age(en) < MINLSINTERVAL); }
 
@@ -1672,6 +1716,7 @@ ospf_update_topology(struct ospf_proto *p)
 
       ospf_originate_rt_lsa(p, oa);
       ospf_originate_prefix_rt_lsa(p, oa);
+      // ospf_originate_ri_lsa(p, oa);
       oa->update_rt_lsa = 0;
     }
   }
