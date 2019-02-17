@@ -616,17 +616,25 @@ ospf_area_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
 {
   struct ospf_proto *p = oa->po;
   struct ospf_area_config *oac = oa->ac;
-  struct ospf_iface *ifa;
+  struct ospf_iface *ifa, *ifx;
 
   oa->ac = nac;
   oa->options = nac->type | ospf_opts(p);
 
   if (nac->type != oac->type)
   {
-    /* Force restart of area interfaces */
-    WALK_LIST(ifa, p->iface_list)
+    log(L_INFO "%s: Restarting area %R", p->p.name, oa->areaid);
+
+    /* Remove area interfaces, will be re-added later */
+    WALK_LIST_DELSAFE(ifa, ifx, p->iface_list)
       if (ifa->oa == oa)
-	ifa->marked = 2;
+      {
+	ospf_iface_shutdown(ifa);
+	ospf_iface_remove(ifa);
+      }
+
+    /* Flush area LSAs */
+    ospf_flush_area(p, oa->areaid);
   }
 
   /* Handle net_list */
@@ -656,7 +664,7 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_config *old = (struct ospf_config *) (P->cf);
   struct ospf_config *new = (struct ospf_config *) CF;
-  struct ospf_area_config *nac;
+  struct ospf_area_config *oac, *nac;
   struct ospf_area *oa, *oax;
   struct ospf_iface *ifa, *ifx;
   struct ospf_iface_patt *ip;
@@ -676,6 +684,15 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   if (old->abr != new->abr)
     return 0;
 
+  if (p->areano == 1)
+  {
+    oac = HEAD(old->area_list);
+    nac = HEAD(new->area_list);
+
+    if (oac->type != nac->type)
+      return 0;
+  }
+
   if (old->vpn_pe != new->vpn_pe)
     return 0;
 
@@ -691,7 +708,7 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   p->ecmp = new->ecmp;
   p->tick = new->tick;
   p->disp_timer->recurrent = p->tick S;
-  tm_start(p->disp_timer, 100 MS);
+  tm_start(p->disp_timer, 10 MS);
 
   /* Mark all areas and ifaces */
   WALK_LIST(oa, p->area_list)
