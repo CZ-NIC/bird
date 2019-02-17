@@ -1680,8 +1680,8 @@ channel_show_stats(struct channel *c)
   struct proto_stats *s = &c->stats;
 
   if (c->in_keep_filtered)
-    cli_msg(-1006, "    Routes:         %u imported, %u filtered, %u exported",
-	    s->imp_routes, s->filt_routes, s->exp_routes);
+    cli_msg(-1006, "    Routes:         %u imported, %u filtered, %u exported, %u preferred",
+	    s->imp_routes, s->filt_routes, s->exp_routes, s->pref_routes);
   else
     cli_msg(-1006, "    Routes:         %u imported, %u exported, %u preferred",
 	    s->imp_routes, s->exp_routes, s->pref_routes);
