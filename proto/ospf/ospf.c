@@ -92,6 +92,7 @@
  * - RFC 2328 - main OSPFv2 standard
  * - RFC 5340 - main OSPFv3 standard
  * - RFC 3101 - OSPFv2 NSSA areas
+ * - RFC 4576 - OSPFv2 VPN loop prevention
  * - RFC 5250 - OSPFv2 Opaque LSAs
  * - RFC 5709 - OSPFv2 HMAC-SHA Cryptographic Authentication
  * - RFC 5838 - OSPFv3 Support of Address Families
@@ -242,6 +243,7 @@ ospf_start(struct proto *P)
   p->merge_external = c->merge_external;
   p->instance_id = c->instance_id;
   p->asbr = c->asbr;
+  p->vpn_pe = c->vpn_pe;
   p->ecmp = c->ecmp;
   p->tick = c->tick;
   p->disp_timer = tm_new_init(P->pool, ospf_disp, p, p->tick S, 0);
@@ -672,6 +674,9 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
     return 0;
 
   if (old->abr != new->abr)
+    return 0;
+
+  if (old->vpn_pe != new->vpn_pe)
     return 0;
 
   if ((p->af_ext != new->af_ext) || (p->af_mc != new->af_mc))

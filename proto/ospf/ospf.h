@@ -95,6 +95,7 @@ struct ospf_config
   u8 instance_id_set;
   u8 abr;
   u8 asbr;
+  u8 vpn_pe;
   int ecmp;
   list area_list;		/* list of area configs (struct ospf_area_config) */
   list vlink_list;		/* list of configured vlinks (struct ospf_iface_patt) */
@@ -232,6 +233,7 @@ struct ospf_proto
   u8 merge_external;		/* Should i merge external routes? */
   u8 instance_id;		/* Differentiate between more OSPF instances */
   u8 asbr;			/* May i originate any ext/NSSA lsa? */
+  u8 vpn_pe;			/* Should we do VPN PE specific behavior (RFC 4577)? */
   u8 ecmp;			/* Maximal number of nexthops in ECMP route, or 0 */
   struct ospf_area *backbone;	/* If exists */
   event *flood_event;		/* Event for flooding LS updates */
@@ -477,6 +479,7 @@ struct ospf_neighbor
 #define OPT_R		0x0010	/* OSPFv3, originator is active router */
 #define OPT_DC		0x0020	/* Related to demand circuits, not used */
 #define OPT_O		0x0040	/* OSPFv2 Opaque LSA (RFC 5250) */
+#define OPT_DN		0x0080	/* OSPFv2 VPN loop prevention (RFC 4576)*/
 #define OPT_AF		0x0100	/* OSPFv3 Address Families (RFC 5838) */
 
 /* Router-LSA VEB flags are are stored together with links (OSPFv2) or options (OSPFv3) */
@@ -726,7 +729,7 @@ struct ospf_lsa_ext_local
 {
   net_addr net;
   ip_addr fwaddr;
-  u32 metric, ebit, fbit, tag, propagate;
+  u32 metric, ebit, fbit, tag, propagate, downwards;
   u8 pxopts;
 };
 
