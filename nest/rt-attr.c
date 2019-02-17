@@ -331,6 +331,7 @@ nexthop_copy(struct nexthop *o)
       n->gw = o->gw;
       n->iface = o->iface;
       n->next = NULL;
+      n->flags = o->flags;
       n->weight = o->weight;
       n->labels = o->labels;
       for (int i=0; i<o->labels; i++)
