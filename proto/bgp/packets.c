@@ -1108,7 +1108,7 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
   if (!a0)
   {
     /* Route withdraw */
-    rte_update2(&s->channel->c, n, NULL, s->last_src);
+    rte_update3(&s->channel->c, n, NULL, s->last_src);
     return;
   }
 
@@ -1128,7 +1128,7 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
 
   e->pflags = 0;
   e->u.bgp.suppressed = 0;
-  rte_update2(&s->channel->c, n, e, s->last_src);
+  rte_update3(&s->channel->c, n, e, s->last_src);
 }
 
 static void

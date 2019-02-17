@@ -282,8 +282,6 @@ rte_make_tmp_attrs(struct rte *rt, struct linpool *pool)
   return mta ? mta(rt, pool) : NULL;
 }
 
-/* Moved from route.h to avoid dependency conflicts */
-static inline void rte_update(struct proto *p, const net_addr *n, rte *new) { rte_update2(p->main_channel, n, new, p->main_source); }
 
 extern pool *proto_pool;
 extern list proto_list;
@@ -514,6 +512,11 @@ struct channel {
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
 
   btime last_state_change;		/* Time of last state transition */
+
+  struct rtable *in_table;		/* Internal table for received routes */
+  struct event *reload_event;		/* Event responsible for reloading from in_table */
+  struct fib_iterator reload_fit;	/* Iterator in in_table used during reloading */
+  u8 reload_active;			/* Iterator reload_fit is linked */
 };
 
 
@@ -581,6 +584,8 @@ struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);
 
 void channel_set_state(struct channel *c, uint state);
+void channel_setup_in_table(struct channel *c);
+void channel_schedule_reload(struct channel *c);
 
 static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }
 static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP); }
@@ -590,6 +595,19 @@ void channel_request_feeding(struct channel *c);
 void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);
+
+
+/* Moved from route.h to avoid dependency conflicts */
+static inline void rte_update(struct proto *p, const net_addr *n, rte *new) { rte_update2(p->main_channel, n, new, p->main_source); }
+
+static inline void
+rte_update3(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
+{
+  if (c->in_table && !rte_update_in(c, n, new, src))
+    return;
+
+  rte_update2(c, n, new, src);
+}
 
 
 #endif

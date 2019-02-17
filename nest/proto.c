@@ -282,6 +282,54 @@ channel_stop_export(struct channel *c)
   c->stats.exp_routes = 0;
 }
 
+
+/* Called by protocol for reload from in_table */
+void
+channel_schedule_reload(struct channel *c)
+{
+  ASSERT(c->channel_state == CS_UP);
+
+  rt_reload_channel_abort(c);
+  ev_schedule(c->reload_event);
+}
+
+static void
+channel_reload_loop(void *ptr)
+{
+  struct channel *c = ptr;
+
+  if (!rt_reload_channel(c))
+  {
+    ev_schedule(c->reload_event);
+    return;
+  }
+}
+
+static void
+channel_reset_import(struct channel *c)
+{
+  /* Need to abort feeding */
+  ev_postpone(c->reload_event);
+  rt_reload_channel_abort(c);
+
+  rt_prune_sync(c->in_table, 1);
+}
+
+/* Called by protocol to activate in_table */
+void
+channel_setup_in_table(struct channel *c)
+{
+  struct rtable_config *cf = mb_allocz(c->proto->pool, sizeof(struct rtable_config));
+  cf->name = "import";
+  cf->addr_type = c->net_type;
+
+  c->in_table = mb_allocz(c->proto->pool, sizeof(struct rtable));
+  rt_setup(c->proto->pool, c->in_table, cf);
+
+  c->reload_event = ev_new_init(c->proto->pool, channel_reload_loop, c);
+}
+
+
 static void
 channel_do_start(struct channel *c)
 {
@@ -315,6 +363,8 @@ channel_do_flush(struct channel *c)
 static void
 channel_do_down(struct channel *c)
 {
+  ASSERT(!c->feed_active && !c->reload_active);
+
   rem_node(&c->table_node);
   rt_unlock_table(c->table);
   c->proto->active_channels--;
@@ -323,6 +373,9 @@ channel_do_down(struct channel *c)
     log(L_ERR "%s: Channel %s is down but still has some routes", c->proto->name, c->name);
 
   memset(&c->stats, 0, sizeof(struct proto_stats));
+
+  c->in_table = NULL;
+  c->reload_event = NULL;
 
   CALL(c->channel->cleanup, c);
 
@@ -355,6 +408,9 @@ channel_set_state(struct channel *c, uint state)
     if (es != ES_DOWN)
       channel_stop_export(c);
 
+    if (c->in_table && (cs == CS_UP))
+      channel_reset_import(c);
+
     break;
 
   case CS_UP:
@@ -373,6 +429,9 @@ channel_set_state(struct channel *c, uint state)
 
     if (es != ES_DOWN)
       channel_stop_export(c);
+
+    if (c->in_table && (cs == CS_UP))
+      channel_reset_import(c);
 
     channel_do_flush(c);
     break;

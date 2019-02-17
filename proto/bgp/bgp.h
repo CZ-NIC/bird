@@ -142,6 +142,7 @@ struct bgp_channel_config {
   u8 gr_able;				/* Allow full graceful restart for the channel */
   u8 ext_next_hop;			/* Allow both IPv4 and IPv6 next hops */
   u8 add_path;				/* Use ADD-PATH extension [RFC 7911] */
+  u8 import_table;			/* Use c.in_table as Adj-RIB-In */
 
   uint rest[0];				/* Remaining items are reconfigured separately */
   struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */

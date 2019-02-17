@@ -562,6 +562,16 @@ r_args:
      $$ = $1;
      $$->fit.flags |= FIF_ORDERED;
    }
+ | r_args IMPORT TABLE SYM '.' r_args_channel {
+     $$ = $1;
+     struct proto_config *cf = (void *) $4->def;
+     if ($4->class != SYM_PROTO || !cf->proto) cf_error("%s is not a protocol", $4->name);
+     struct channel *c = proto_find_channel_by_name(cf->proto, $6);
+     if (!c) cf_error("Channel %s.%s not found", $4->name, $6);
+     if (!c->in_table) cf_error("No import table in channel %s.%s", $4->name, $6);
+     rt_show_add_table($$, c->in_table);
+     $$->tables_defined_by = RSD_TDB_DIRECT;
+   }
  | r_args FILTER filter {
      $$ = $1;
      if ($$->filter != FILTER_ACCEPT) cf_error("Filter specified twice");

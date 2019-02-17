@@ -1080,7 +1080,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
   int old_ok = rte_is_ok(old);
 
   struct channel_limit *l = &c->rx_limit;
-  if (l->action && !old && new)
+  if (l->action && !old && new && !c->in_table)
     {
       u32 all_routes = stats->imp_routes + stats->filt_routes;
 
@@ -2261,6 +2261,159 @@ ptr_hash(void *ptr)
   uintptr_t p = (uintptr_t) ptr;
   return p ^ (p << 8) ^ (p >> 16);
 }
+
+
+int
+rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
+{
+  struct rtable *tab = c->in_table;
+  rte *old, **pos;
+  net *net;
+
+  if (new)
+  {
+    net = net_get(tab, n);
+
+    if (!new->pref)
+      new->pref = c->preference;
+
+    if (!rta_is_cached(new->attrs))
+      new->attrs = rta_lookup(new->attrs);
+  }
+  else
+  {
+    net = net_find(tab, n);
+
+    if (!net)
+      goto drop_withdraw;
+  }
+
+  /* Find the old rte */
+  for (pos = &net->routes; old = *pos; pos = &old->next)
+    if (old->attrs->src == src)
+    {
+      if (new && rte_same(old, new))
+	goto drop_update;
+
+      /* Remove the old rte */
+      *pos = old->next;
+      rte_free_quick(old);
+      tab->route_count--;
+
+      break;
+    }
+
+  if (!new)
+  {
+    if (!old)
+      goto drop_withdraw;
+
+    return 1;
+  }
+
+  struct channel_limit *l = &c->rx_limit;
+  if (l->action && !old)
+  {
+    if (tab->route_count >= l->limit)
+      channel_notify_limit(c, l, PLD_RX, tab->route_count);
+
+    if (l->state == PLS_BLOCKED)
+    {
+      rte_trace_in(D_FILTERS, c->proto, new, "ignored [limit]");
+      goto drop_update;
+    }
+  }
+
+  /* Insert the new rte */
+  rte *e = rte_do_cow(new);
+  e->flags |= REF_COW;
+  e->net = net;
+  e->sender = c;
+  e->lastmod = current_time();
+  e->next = *pos;
+  *pos = e;
+  tab->route_count++;
+  return 1;
+
+drop_update:
+  c->stats.imp_updates_received++;
+  c->stats.imp_updates_ignored++;
+  rte_free(new);
+  return 0;
+
+drop_withdraw:
+  c->stats.imp_withdraws_received++;
+  c->stats.imp_withdraws_ignored++;
+  return 0;
+}
+
+int
+rt_reload_channel(struct channel *c)
+{
+  struct rtable *tab = c->in_table;
+  struct fib_iterator *fit = &c->reload_fit;
+  int max_feed = 64;
+
+  ASSERT(c->channel_state == CS_UP);
+
+  if (!c->reload_active)
+  {
+    FIB_ITERATE_INIT(fit, &tab->fib);
+    c->reload_active = 1;
+  }
+
+  FIB_ITERATE_START(&tab->fib, fit, net, n)
+  {
+    if (max_feed <= 0)
+    {
+      FIB_ITERATE_PUT(fit);
+      return 0;
+    }
+
+    for (rte *e = n->routes; e; e = e->next)
+    {
+      rte_update2(c, n->n.addr, rte_do_cow(e), e->attrs->src);
+      max_feed--;
+    }
+  }
+  FIB_ITERATE_END;
+
+  c->reload_active = 0;
+  return 1;
+}
+
+void
+rt_reload_channel_abort(struct channel *c)
+{
+  if (c->reload_active)
+  {
+    /* Unlink the iterator */
+    fit_get(&c->in_table->fib, &c->reload_fit);
+    c->reload_active = 0;
+  }
+}
+
+void
+rt_prune_sync(rtable *t, int all)
+{
+  FIB_WALK(&t->fib, net, n)
+  {
+    rte *e, **ee = &n->routes;
+    while (e = *ee)
+    {
+      if (all || (e->flags & (REF_STALE | REF_DISCARD)))
+      {
+	*ee = e->next;
+	rte_free_quick(e);
+	t->route_count--;
+      }
+      else
+	ee = &e->next;
+    }
+  }
+  FIB_WALK_END;
+}
+
 
 static inline u32
 hc_hash(ip_addr a, rtable *dep)
