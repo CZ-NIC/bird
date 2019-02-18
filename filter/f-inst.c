@@ -790,17 +790,18 @@
   INST(FI_SWITCH, 1, 0) {
     ARG_ANY(1);
     TREE;
-    if (!tree) {
+    const struct f_tree *t = find_tree(tree, &v1);
+    if (!t) {
       v1.type = T_VOID;
-      tree = find_tree(tree, &v1);
-      if (!tree) {
+      t = find_tree(tree, &v1);
+      if (!t) {
 	debug( "No else statement?\n");
 	break;
       }
     }
     /* It is actually possible to have t->data NULL */
 
-    LINEX(tree->data);
+    LINEX(t->data);
   }
 
   INST(FI_IP_MASK, 2, 1) { /* IP.MASK(val) */
