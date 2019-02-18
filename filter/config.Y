@@ -446,8 +446,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc THEN
 %nonassoc ELSE
 
-%type <xc> function_params declsn
-%type <xp> cmds_int function_body
+%type <xp> cmds_int function_body declsn function_params
 %type <x> term block cmd cmds constant constructor print_one print_list var_list var_listn function_call symbol_value bgp_path_expr bgp_path bgp_path_tail one_decl decls
 %type <fda> dynamic_attr
 %type <fsa> static_attr
@@ -561,7 +560,7 @@ one_decl:
    }
  ;
 
-/* Decls with ';' at the end */
+/* Decls with ';' at the end. Beware; these are reversed. */
 decls: /* EMPTY */ { $$ = NULL; }
  | one_decl ';' decls {
      $$ = $1;
@@ -569,12 +568,12 @@ decls: /* EMPTY */ { $$ = NULL; }
    }
  ;
 
-/* Declarations that have no ';' at the end. Beware; these are reversed. */
-declsn: one_decl { $$.inst = $1; $$.count = 1; }
+/* Declarations that have no ';' at the end. */
+declsn: one_decl { $$[0] = $$[1] = $1; }
  | one_decl ';' declsn {
-     $1->next = $3.inst;
-     $$.count = $3.count + 1;
-     $$.inst = $1;
+     $3[1]->next = $1;
+     $$[1] = $3[1] = $1;
+     $$[0] = $3[0];
    }
  ;
 
@@ -608,8 +607,8 @@ where_filter:
  ;
 
 function_params:
-   '(' declsn ')' { $$ = $2; }
- | '(' ')' { $$.inst = NULL; $$.count = 0; }
+   '(' declsn ')' { $$[0] = $2[0]; $$[1] = $2[1]; }
+ | '(' ')' { $$[0] = $$[1] = NULL; }
  ;
 
 function_body:
@@ -629,8 +628,8 @@ function_def:
      uint count = 0;
 
      /* Argument setters */
-     if ($4.inst)
-       catlist[count++] = $4.inst;
+     if ($4[0])
+       catlist[count++] = $4[0];
 
      /* Local var clearers */
      if ($5[0])
@@ -644,7 +643,11 @@ function_def:
        catlist[count++] = $5[1];
 
      struct f_line *fl = f_postfixify_concat(catlist, count);
-     fl->args = $4.count;
+
+     fl->args = 0;
+     for (const struct f_inst *arg = $4[0]; arg; arg = arg->next)
+       fl->args++;
+
      $2->function = fl;
 
      cf_pop_scope();
