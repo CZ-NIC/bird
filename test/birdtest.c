@@ -31,6 +31,7 @@
 static const char *request;
 static int list_tests;
 static int do_core;
+static int do_die;
 static int no_fork;
 static int no_timeout;
 static int is_terminal;		/* Whether stdout is a live terminal or pipe redirect */
@@ -67,7 +68,7 @@ bt_init(int argc, char *argv[])
   bt_test_id = NULL;
   is_terminal = isatty(fileno(stdout));
 
-  while ((c = getopt(argc, argv, "lcftv")) >= 0)
+  while ((c = getopt(argc, argv, "lcdftv")) >= 0)
     switch (c)
     {
       case 'l':
@@ -76,6 +77,10 @@ bt_init(int argc, char *argv[])
 
       case 'c':
 	do_core = 1;
+	break;
+
+      case 'd':
+	do_die = 1;
 	break;
 
       case 'f':
@@ -111,10 +116,11 @@ bt_init(int argc, char *argv[])
   return;
 
  usage:
-  printf("Usage: %s [-l] [-c] [-f] [-t] [-vvv] [<test_suit_name>]\n", argv[0]);
+  printf("Usage: %s [-l] [-c] [-d] [-f] [-t] [-vvv] [<test_suit_name>]\n", argv[0]);
   printf("Options: \n");
   printf("  -l   List all test suite names and descriptions \n");
   printf("  -c   Force unlimit core dumps (needs root privileges) \n");
+  printf("  -d	 Die on first failed test case \n");
   printf("  -f   No forking \n");
   printf("  -t   No timeout limit \n");
   printf("  -v   More verbosity, maximum is 3 -vvv \n");
@@ -223,6 +229,9 @@ bt_log_result(int result, const char *fmt, va_list argptr)
     result_str = is_terminal ? BT_PROMPT_FAIL : BT_PROMPT_FAIL_NO_COLOR;
 
   printf("%s\n", result_str);
+
+  if (do_die && !result)
+    abort();
 }
 
 /**
