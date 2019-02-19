@@ -117,7 +117,7 @@
 	  dyn++;
 
       what->count = len;
-    FID_END
+    FID_ALL
 
     if (vstk.cnt < whati->count) /* TODO: make this check systematic */
       runtime("Construction of BGP path mask from %u elements must have at least that number of elements", whati->count);
@@ -259,7 +259,7 @@
       if (!val_same(&(f1->val), &(f2->val))) return 0;
     FID_DUMP_BODY
       debug("%svalue %s\n", INDENT, val_dump(&item->val));
-    FID_END
+    FID_ALL
 
     res = whati->val;
     RESULT_OK;
@@ -289,7 +289,7 @@
 	default:
 	  bug("Symbol %s of type %d doesn't reference a value", item->sym->name, item->sym->class);
       }
-    FID_END
+    FID_ALL
 
     res = *whati->valp;
     RESULT_OK;
@@ -309,7 +309,7 @@
     FID_POSTFIXIFY_BODY
     {
       uint opos = pos;
-      FID_END
+      FID_ALL
 
     ARG_ANY(1);
 
@@ -317,7 +317,7 @@
       if (opos < pos)
 	dest->items[pos].flags |= FIF_PRINTED;
     }
-    FID_END
+    FID_ALL
 
     FRET(2);
 
@@ -773,7 +773,7 @@
       if (strcmp(f1->sym->name, f2->sym->name)) return 0;
       if (!f_same(f1->args, f2->args)) return 0;
       if (!f_same(f1->body, f2->body)) return 0;
-    FID_END
+    FID_ALL
 
     /* First push the body on stack */
     LINEX(whati->body);
