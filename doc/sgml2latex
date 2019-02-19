@@ -34,6 +34,10 @@ $progs = {
   "GROFFMACRO" => "-ms",
   "AWK" => "/usr/share/linuxdoc-tools/awkwhich"
 };
+
+if (! -x $progs->{"NSGMLS"})
+  { $progs->{"NSGMLS"} = "/usr/bin/onsgmls"; }
+
 $ENV{"SGML_CATALOG_FILES"} = "$DataDir/dtd/catalog" .
   (defined $ENV{SGML_CATALOG_FILES} ? ":$ENV{SGML_CATALOG_FILES}" : "");
 

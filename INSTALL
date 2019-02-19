@@ -41,8 +41,3 @@ For compiling BIRD documentation you also need:
 
  - Linuxdoc-Tools
  - LaTeX
-
-Note that build scripts for BIRD documentation expects 'nsgmls' from
-James Clark's SP suite, while modern distributions use 'onsgmls' from
-OpenSP suite. It is possible to build BIRD documentation with OpenSP
-tools, but it requires manually tweaking paths in doc/sgml2* scripts.
