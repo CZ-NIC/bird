@@ -621,7 +621,7 @@ rt_notify_basic(struct channel *c, net *net, rte *new0, rte *old0, int refeed)
 static void
 rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_changed, rte *before_old, int feed)
 {
-  // struct proto *p = c->proto;
+  struct proto *p = c->proto;
 
   rte *r;
   rte *new_best = NULL;
@@ -698,7 +698,9 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
    */
 
   /* Hack for changed filters */
-  if (old_changed && (old_changed->lastmod <= c->last_tx_filter_change))
+  if (old_changed &&
+      (p != old_changed->sender->proto) &&
+      (old_changed->lastmod <= c->last_tx_filter_change))
     {
       old_best = old_changed;
       goto found;
