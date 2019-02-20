@@ -137,12 +137,14 @@ if test "$bird_cflags_default" = yes ; then
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers], [-Wall -Wextra])
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_fno_strict_aliasing], [-fno-strict-aliasing])
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_fno_strict_overflow], [-fno-strict-overflow])
+  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_flto], [-flto])
 
   CFLAGS="$CFLAGS -Wall -Wextra -Wstrict-prototypes -Wno-parentheses"
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_pointer_sign], [-Wno-pointer-sign])
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers])
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_fno_strict_aliasing], [-fno-strict-aliasing])
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_fno_strict_overflow], [-fno-strict-overflow])
+  BIRD_ADD_GCC_OPTION([bird_cv_c_option_flto], [-flto])
 fi
 AC_MSG_CHECKING([CFLAGS])
 AC_MSG_RESULT([$CFLAGS])
