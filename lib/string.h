@@ -24,6 +24,10 @@ int buffer_vprint(buffer *buf, const char *fmt, va_list args);
 int buffer_print(buffer *buf, const char *fmt, ...);
 void buffer_puts(buffer *buf, const char *str);
 
+#define bstrtoul(str, end, base) bstrtoul##base(str, end)
+u64 bstrtoul10(const char *str, char **end);
+u64 bstrtoul16(const char *str, char **end);
+
 int patmatch(const byte *pat, const byte *str);
 
 static inline char *xbasename(const char *str)
