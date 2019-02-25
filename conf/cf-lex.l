@@ -65,7 +65,7 @@ struct keyword {
 #endif
 
 
-static uint cf_hash(byte *c);
+static uint cf_hash(const byte *c);
 
 #define KW_KEY(n)		n->name
 #define KW_NEXT(n)		n->next
@@ -96,6 +96,15 @@ int (*cf_read_hook)(byte *buf, unsigned int max, int fd);
 struct include_file_stack *ifs;
 static struct include_file_stack *ifs_head;
 
+#define QUOTED_BUFFER_SIZE  4096
+static BUFFER_(char) quoted_buffer;
+static char quoted_buffer_data[QUOTED_BUFFER_SIZE];
+static inline void quoted_buffer_init(void) {
+  quoted_buffer.used = 0;
+  quoted_buffer.size = QUOTED_BUFFER_SIZE;
+  quoted_buffer.data = quoted_buffer_data;
+}
+
 #define MAX_INCLUDE_DEPTH 8
 
 #define YY_INPUT(buf,result,max) result = cf_read_hook(buf, max, ifs->fd);
@@ -106,6 +115,8 @@ static struct include_file_stack *ifs_head;
 static void cf_include(char *arg, int alen);
 static int check_eof(void);
 
+static enum yytokentype cf_lex_symbol(const char *data);
+
 %}
 
 %option noyywrap
@@ -113,24 +124,26 @@ static int check_eof(void);
 %option nounput
 %option noreject
 
-%x COMMENT CCOMM CLI
+%x COMMENT CCOMM CLI QUOTED APOSTROPHED INCLUDE
 
 ALPHA [a-zA-Z_]
 DIGIT [0-9]
 XIGIT [0-9a-fA-F]
 ALNUM [a-zA-Z_0-9]
 WHITE [ \t]
-include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 
 %%
-{include} {
-  char *start, *end;
-
+^{WHITE}*include{WHITE}*\" {
   if (!ifs->depth)
     cf_error("Include not allowed in CLI");
 
-  start = strchr(yytext, '"');
-  start++;
+  BEGIN(INCLUDE);
+}
+
+<INCLUDE>[^"\n]+["]{WHITE}*; {
+  char *start, *end;
+
+  start = yytext;
 
   end = strchr(start, '"');
   *end = 0;
@@ -139,7 +152,15 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
     cf_error("Include with empty argument");
 
   cf_include(start, end-start);
+
+  BEGIN(INITIAL);
 }
+
+<INCLUDE>["]	        cf_error("Include with empty argument");
+<INCLUDE>.		cf_error("Unterminated include");
+<INCLUDE>\n		cf_error("Unterminated include");
+<INCLUDE><<EOF>>	cf_error("Unterminated include");
+
 
 {DIGIT}+:{DIGIT}+ {
   uint len1 UNUSED, len2;
@@ -267,37 +288,23 @@ else: {
   return ELSECOL;
 }
 
-({ALPHA}{ALNUM}*|[']({ALNUM}|[-]|[\.]|[:])*[']) {
-  if(*yytext == '\'') {
-    yytext[yyleng-1] = 0;
-    yytext++;
-  }
+['] {
+  BEGIN(APOSTROPHED);
+  quoted_buffer_init();
+}
 
-  struct keyword *k = HASH_FIND(kw_hash, KW, yytext);
-  if (k)
-  {
-    if (k->value > 0)
-      return k->value;
-    else
-    {
-      cf_lval.i = -k->value;
-      return ENUM;
-    }
-  }
+<APOSTROPHED>{ALNUM}|[-]|[.:]	BUFFER_PUSH(quoted_buffer) = yytext[0];
+<APOSTROPHED>\n			cf_error("Unterminated symbol");
+<APOSTROPHED><<EOF>>		cf_error("Unterminated symbol");
+<APOSTROPHED>['] {
+  BEGIN(INITIAL);
+  BUFFER_PUSH(quoted_buffer) = 0;
+  return cf_lex_symbol(quoted_buffer_data);
+}
+<APOSTROPHED>.			cf_error("Invalid character in apostrophed symbol");
 
-  cf_lval.s = cf_get_symbol(yytext);
-  switch (cf_lval.s->class) {
-    case SYM_VOID: return CF_SYM_VOID;
-    case SYM_PROTO: return CF_SYM_PROTO;
-    case SYM_TEMPLATE: return CF_SYM_TEMPLATE;
-    case SYM_FUNCTION: return CF_SYM_FUNCTION;
-    case SYM_FILTER: return CF_SYM_FILTER;
-    case SYM_TABLE: return CF_SYM_TABLE;
-    case SYM_ATTRIBUTE: return CF_SYM_ATTRIBUTE;
-    case SYM_VARIABLE_RANGE: return CF_SYM_VARIABLE;
-    case SYM_CONSTANT_RANGE: return CF_SYM_CONSTANT;
-    default: bug("Unknown symbol class %d", cf_lval.s->class);
-  }
+({ALPHA}{ALNUM}*) {
+  return cf_lex_symbol(yytext);
 }
 
 <CLI>(.|\n) {
@@ -313,14 +320,21 @@ else: {
   return yytext[0];
 }
 
-["][^"\n]*["] {
-  yytext[yyleng-1] = 0;
-  cf_lval.t = cfg_strdup(yytext+1);
-  yytext[yyleng-1] = '"';
+["] {
+  BEGIN(QUOTED);
+  quoted_buffer_init();
+}
+
+<QUOTED>\n	cf_error("Unterminated string");
+<QUOTED><<EOF>> cf_error("Unterminated string");
+<QUOTED>["]	{
+  BEGIN(INITIAL);
+  BUFFER_PUSH(quoted_buffer) = 0;
+  cf_lval.t = cfg_strdup(quoted_buffer_data);
   return TEXT;
 }
 
-["][^"\n]*\n	cf_error("Unterminated string");
+<QUOTED>.	BUFFER_PUSH(quoted_buffer) = yytext[0];
 
 <INITIAL,COMMENT><<EOF>>	{ if (check_eof()) return END; }
 
@@ -361,7 +375,7 @@ else: {
 %%
 
 static uint
-cf_hash(byte *c)
+cf_hash(const byte *c)
 {
   uint h = 13 << 24;
 
@@ -369,7 +383,6 @@ cf_hash(byte *c)
     h = h + (h >> 2) + (h >> 5) + ((uint) *c++ << 24);
   return h;
 }
-
 
 /*
  * IFS stack - it contains structures needed for recursive processing
@@ -531,7 +544,7 @@ check_eof(void)
 }
 
 static struct symbol *
-cf_new_symbol(byte *c)
+cf_new_symbol(const byte *c)
 {
   struct symbol *s;
 
@@ -563,7 +576,7 @@ cf_new_symbol(byte *c)
  * signify no match.
  */
 struct symbol *
-cf_find_symbol(struct config *cfg, byte *c)
+cf_find_symbol(struct config *cfg, const byte *c)
 {
   struct symbol *s;
 
@@ -590,7 +603,7 @@ cf_find_symbol(struct config *cfg, byte *c)
  * existing symbol is found.
  */
 struct symbol *
-cf_get_symbol(byte *c)
+cf_get_symbol(const byte *c)
 {
   return cf_find_symbol(new_config, c) ?: cf_new_symbol(c);
 }
@@ -634,6 +647,36 @@ cf_default_name(char *template, int *counter)
 	break;
     }
   cf_error("Unable to generate default name");
+}
+
+static enum yytokentype
+cf_lex_symbol(const char *data)
+{
+  struct keyword *k = HASH_FIND(kw_hash, KW, data);
+  if (k)
+  {
+    if (k->value > 0)
+      return k->value;
+    else
+    {
+      cf_lval.i = -k->value;
+      return ENUM;
+    }
+  }
+
+  cf_lval.s = cf_get_symbol(data);
+  switch (cf_lval.s->class) {
+    case SYM_VOID: return CF_SYM_VOID;
+    case SYM_PROTO: return CF_SYM_PROTO;
+    case SYM_TEMPLATE: return CF_SYM_TEMPLATE;
+    case SYM_FUNCTION: return CF_SYM_FUNCTION;
+    case SYM_FILTER: return CF_SYM_FILTER;
+    case SYM_TABLE: return CF_SYM_TABLE;
+    case SYM_ATTRIBUTE: return CF_SYM_ATTRIBUTE;
+    case SYM_VARIABLE_RANGE: return CF_SYM_VARIABLE;
+    case SYM_CONSTANT_RANGE: return CF_SYM_CONSTANT;
+    default: bug("Unknown symbol class %d", cf_lval.s->class);
+  }
 }
 
 static void
