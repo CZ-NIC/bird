@@ -561,6 +561,8 @@ cf_new_symbol(const byte *c)
 
   HASH_INSERT2(new_config->sym_hash, SYM, new_config->pool, s);
 
+  add_tail(&(new_config->symbols), &(s->n));
+
   return s;
 }
 
@@ -576,7 +578,7 @@ cf_new_symbol(const byte *c)
  * signify no match.
  */
 struct symbol *
-cf_find_symbol(struct config *cfg, const byte *c)
+cf_find_symbol(const struct config *cfg, const byte *c)
 {
   struct symbol *s;
 

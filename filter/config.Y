@@ -470,7 +470,7 @@ filter_def:
    FILTER CF_SYM_VOID { $2 = cf_define_symbol($2, SYM_FILTER, filter, NULL); cf_push_scope( $2 ); }
      filter_body {
      struct filter *f = cfg_alloc(sizeof(struct filter));
-     *f = (struct filter) { .name = $2->name, .root = $4 };
+     *f = (struct filter) { .sym = $2, .root = $4 };
      $2->filter = f;
 
      cf_pop_scope();

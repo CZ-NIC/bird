@@ -24,10 +24,10 @@ filter_name(const struct filter *filter)
     return "ACCEPT";
   else if (filter == FILTER_REJECT)
     return "REJECT";
-  else if (!filter->name)
+  else if (!filter->sym)
     return "(unnamed)";
   else
-    return filter->name;
+    return filter->sym->name;
 }
 
 void f_inst_next(struct f_inst *first, const struct f_inst *append)
@@ -54,7 +54,7 @@ struct filter *f_new_where(const struct f_inst *where)
   struct f_inst i = {
     .fi_code = FI_CONDITION,
     .lineno = ifs->lino,
-    .size = 3,
+    .size = 3 + where->size,
     .i_FI_CONDITION = {
       .f1 = where,
       .f2 = &acc,
@@ -62,8 +62,7 @@ struct filter *f_new_where(const struct f_inst *where)
     },
   };
 
-  struct filter *f = cfg_alloc(sizeof(struct filter));
-  f->name = NULL;
+  struct filter *f = cfg_allocz(sizeof(struct filter));
   f->root = f_postfixify(&i);
   return f;
 }

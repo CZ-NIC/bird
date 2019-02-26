@@ -293,7 +293,7 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
 
   if (fret < F_ACCEPT) {
     if (!(fs.flags & FF_SILENT))
-      log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter->name);
+      log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter_name(filter));
     return F_ERROR;
   }
   DBG( "done (%u)\n", res.val.i );
@@ -378,5 +378,47 @@ filter_same(const struct filter *new, const struct filter *old)
   if (old == FILTER_ACCEPT || old == FILTER_REJECT ||
       new == FILTER_ACCEPT || new == FILTER_REJECT)
     return 0;
-  return f_same(new->root, old->root);
+
+  if ((!old->sym) && (!new->sym))
+    return f_same(new->root, old->root);
+
+  if ((!old->sym) || (!new->sym))
+    return 0;
+
+  if (strcmp(old->sym->name, new->sym->name))
+    return 0;
+
+  return new->sym->flags & SYM_FLAG_SAME;
+}
+
+/**
+ * filter_commit - do filter comparisons on all the named functions and filters
+ */
+void
+filter_commit(const struct config *new, const struct config *old)
+{
+  if (!old)
+    return;
+
+  struct symbol *sym, *osym;
+  WALK_LIST(sym, new->symbols)
+    switch (sym->class) {
+      case SYM_FUNCTION:
+	if ((osym = cf_find_symbol(old, sym->name)) &&
+	    (osym->class == SYM_FUNCTION) &&
+	    f_same(sym->function, osym->function))
+	  sym->flags |= SYM_FLAG_SAME;
+	else
+	  sym->flags &= ~SYM_FLAG_SAME;
+	break;
+
+      case SYM_FILTER:
+	if ((osym = cf_find_symbol(old, sym->name)) &&
+	    (osym->class == SYM_FILTER) &&
+	    f_same(sym->filter->root, osym->filter->root))
+	  sym->flags |= SYM_FLAG_SAME;
+	else
+	  sym->flags &= ~SYM_FLAG_SAME;
+	break;
+    }
 }

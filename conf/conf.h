@@ -24,6 +24,7 @@ struct config {
   list tables;				/* Configured routing tables (struct rtable_config) */
   list logfiles;			/* Configured log files (sysdep) */
   list tests;				/* Configured unit tests (f_bt_test_suite) */
+  list symbols;				/* Configured symbols in config order */
 
   int mrtdump_file;			/* Configured MRTDump file (sysdep, fd in unix) */
   char *syslog_name;			/* Name used for syslog (NULL -> no syslog) */
@@ -103,6 +104,7 @@ void cfg_copy_list(list *dest, list *src, unsigned node_size);
 extern int (*cf_read_hook)(byte *buf, uint max, int fd);
 
 struct symbol {
+  node n;				/* In list of symbols in config */
   struct symbol *next;
   struct sym_scope *scope;
   int class;				/* SYM_* */
@@ -167,7 +169,7 @@ int cf_lex(void);
 void cf_lex_init(int is_cli, struct config *c);
 void cf_lex_unwind(void);
 
-struct symbol *cf_find_symbol(struct config *cfg, const byte *c);
+struct symbol *cf_find_symbol(const struct config *cfg, const byte *c);
 
 struct symbol *cf_get_symbol(const byte *c);
 struct symbol *cf_default_name(char *template, int *counter);

@@ -31,12 +31,10 @@ const char *f_instruction_name(enum f_instruction_code fi);
 struct f_inst *f_clear_local_vars(struct f_inst *decls);
 
 /* Filter structures for execution */
-struct f_line;
-
 /* Line of instructions to be unconditionally executed one after another */
 struct f_line {
   uint len;				/* Line length */
-  u16 args;				/* Function: Args required  */
+  u8 args;				/* Function: Args required */
   struct f_line_item items[0];		/* The items themselves */
 };
 

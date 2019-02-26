@@ -47,7 +47,7 @@ struct f_val;
 /* The filter encapsulating structure to be pointed-to from outside */
 struct f_line;
 struct filter {
-  char *name;
+  struct symbol *sym;
   const struct f_line *root;
 };
 
@@ -61,6 +61,8 @@ enum filter_return f_eval_buf(const struct f_line *expr, struct linpool *tmp_poo
 const char *filter_name(const struct filter *filter);
 int filter_same(const struct filter *new, const struct filter *old);
 int f_same(const struct f_line *f1, const struct f_line *f2);
+
+void filter_commit(const struct config *new, const struct config *old);
 
 #define FILTER_ACCEPT NULL
 #define FILTER_REJECT ((void *) 1)
