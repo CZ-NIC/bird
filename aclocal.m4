@@ -131,6 +131,30 @@ AC_DEFUN([BIRD_CHECK_ANDROID_LOG],
   )
 ])
 
+AC_DEFUN([BIRD_CHECK_LTO],
+[
+  bird_tmp_cflags="$CFLAGS"
+  bird_tmp_ldflags="$CFLAGS"
+  CFLAGS="-flto"
+  LDFLAGS="-flto"
+
+  AC_CACHE_CHECK(
+    [whether link time optimizer is available],
+    [bird_cv_c_lto],
+    [
+      AC_LINK_IFELSE(
+	[AC_LANG_PROGRAM()],
+	[bird_cv_c_lto=yes],
+	[bird_cv_c_lto=no]
+      )
+    ]
+  )
+
+  CFLAGS="$bird_tmp_cflags"
+  LDFLAGS="$bird_tmp_ldflags"
+])
+
+
 AC_DEFUN([BIRD_CHECK_GCC_OPTION],
 [
   bird_tmp_cflags="$CFLAGS"
