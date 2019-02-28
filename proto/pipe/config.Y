@@ -16,7 +16,7 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(PIPE, PEER, TABLE)
+CF_KEYWORDS(PIPE, PEER, TABLE, DELAY)
 
 CF_GRAMMAR
 
@@ -41,6 +41,7 @@ pipe_proto:
  | pipe_proto proto_item ';'
  | pipe_proto channel_item ';'
  | pipe_proto PEER TABLE rtable ';' { PIPE_CFG->peer = $4; }
+ | pipe_proto DELAY expr_us ';' { PIPE_CFG->delay = $3; }
  ;
 
 CF_CODE
