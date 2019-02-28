@@ -193,6 +193,9 @@ pipe_reconfigure(struct proto *P, struct proto_config *CF)
   struct pipe_proto *p = (void *) P;
   struct pipe_config *cf = (void *) CF;
 
+  if (p->delay != cf->delay)
+    return 0;
+
   return pipe_configure_channels(p, cf);
 }
 

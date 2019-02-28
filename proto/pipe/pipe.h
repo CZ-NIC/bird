@@ -12,12 +12,14 @@
 struct pipe_config {
   struct proto_config c;
   struct rtable_config *peer;		/* Table we're connected to */
+  btime delay;
 };
 
 struct pipe_proto {
   struct proto p;
   struct channel *pri;
   struct channel *sec;
+  btime delay;
 };
 
 #endif
