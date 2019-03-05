@@ -45,12 +45,56 @@
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "nest/attrs.h"
+#include "nest/notify.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
 
 #define CMP_ERROR 999
 
 void (*bt_assert_hook)(int result, struct f_inst *assert);
+
+struct filter_roa_notifier {
+  resource r;
+  struct listener L;
+  struct rtable *roa_table;
+  struct filter_slot *slot;
+};
+
+static void filter_roa_notifier_hook(struct listener *L, void *data UNUSED) {
+  struct filter_roa_notifier *frn = SKIP_BACK(struct filter_roa_notifier, L, L);
+  frn->slot->reloader(frn->slot);
+}
+
+static void filter_roa_notifier_unsubscribe(struct listener *L) {
+  struct filter_roa_notifier *frn = SKIP_BACK(struct filter_roa_notifier, L, L);
+  rfree(frn);
+}
+
+static void filter_roa_notifier_free(resource *r) {
+  struct filter_roa_notifier *frn = (void *) r;
+  unsubscribe(&(frn->L));
+}
+
+static struct resclass filter_roa_notifier_class = {
+  .name = "Filter ROA Notifier",
+  .size = sizeof(struct filter_roa_notifier),
+  .free = filter_roa_notifier_free,
+  .dump = NULL,
+  .lookup = NULL,
+  .memsize = NULL,
+};
+
+static void filter_roa_notifier_subscribe(struct rtable *roa_table, struct filter_slot *slot, const net_addr *n UNUSED, u32 as UNUSED) {
+  struct filter_roa_notifier *frn = ralloc(slot->p, &filter_roa_notifier_class);
+  frn->L = (struct listener) {
+    .hook = filter_roa_notifier_hook,
+    .unsub = filter_roa_notifier_unsubscribe,
+  };
+  frn->roa_table = roa_table;
+  frn->slot = slot;
+
+  subscribe(&(frn->L), &(roa_table->listeners), &(slot->notifiers));
+}
 
 static struct adata undef_adata;	/* adata of length 0 used for undefined */
 
@@ -542,6 +586,7 @@ static struct ea_list **f_eattrs;
 static struct linpool *f_pool;
 static struct buffer f_buf;
 static int f_flags;
+static struct filter_slot *f_slot;
 
 static inline void f_cache_eattrs(void)
 {
@@ -1555,7 +1600,10 @@ interpret(struct f_inst *what)
     if (table->addr_type != (v1.val.net->type == NET_IP4 ? NET_ROA4 : NET_ROA6))
       res.val.i = ROA_UNKNOWN; /* Prefix and table type mismatch */
     else
+    {
+      filter_roa_notifier_subscribe(table, f_slot, v1.val.net, as);
       res.val.i = net_roa_check(table, v1.val.net, as);
+    }
 
     break;
 
@@ -1754,12 +1802,12 @@ i_same(struct f_inst *f1, struct f_inst *f2)
  * modified in place, old cached rta is possibly freed.
  */
 int
-f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags)
+f_run(struct filter_slot *filter_slot, struct rte **rte, struct linpool *tmp_pool, int flags)
 {
-  if (filter == FILTER_ACCEPT)
+  if (filter_slot->filter == FILTER_ACCEPT)
     return F_ACCEPT;
 
-  if (filter == FILTER_REJECT)
+  if (filter_slot->filter == FILTER_REJECT)
     return F_REJECT;
 
   int rte_cow = ((*rte)->flags & REF_COW);
@@ -1770,10 +1818,11 @@ f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int fla
   f_old_rta = NULL;
   f_pool = tmp_pool;
   f_flags = flags;
+  f_slot = filter_slot;
 
   LOG_BUFFER_INIT(f_buf);
 
-  struct f_val res = interpret(filter->root);
+  struct f_val res = interpret(filter_slot->filter->root);
 
   if (f_old_rta) {
     /*
@@ -1797,7 +1846,7 @@ f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int fla
 
   if (res.type != T_RETURN) {
     if (!(f_flags & FF_SILENT))
-      log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter->name);
+      log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter_slot->filter->name);
     return F_ERROR;
   }
   DBG( "done (%u)\n", res.val.i );
@@ -1815,6 +1864,7 @@ f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
   f_old_rta = NULL;
   f_pool = tmp_pool;
   f_flags = 0;
+  f_slot = NULL;
 
   LOG_BUFFER_INIT(f_buf);
 
@@ -1831,6 +1881,7 @@ f_eval(struct f_inst *expr, struct linpool *tmp_pool)
   f_eattrs = NULL;
   f_rte = NULL;
   f_pool = tmp_pool;
+  f_slot = NULL;
 
   LOG_BUFFER_INIT(f_buf);
 

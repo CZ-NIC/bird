@@ -149,6 +149,13 @@ struct filter {
   struct f_inst *root;
 };
 
+struct filter_slot {
+  struct filter *filter;
+  void (*reloader)(struct filter_slot *);
+  pool *p;
+  list notifiers;
+};
+
 struct f_inst *f_new_inst(enum f_instruction_code fi_code);
 struct f_inst *f_new_inst_da(enum f_instruction_code fi_code, struct f_dynamic_attr da);
 struct f_inst *f_new_inst_sa(enum f_instruction_code fi_code, struct f_static_attr sa);
@@ -175,7 +182,7 @@ void trie_format(struct f_trie *t, buffer *buf);
 struct ea_list;
 struct rte;
 
-int f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
+int f_run(struct filter_slot *filter_slot, struct rte **rte, struct linpool *tmp_pool, int flags);
 struct f_val f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool);
 struct f_val f_eval(struct f_inst *expr, struct linpool *tmp_pool);
 uint f_eval_int(struct f_inst *expr);
@@ -286,6 +293,7 @@ struct f_trie
 #define NEW_F_VAL struct f_val * val; val = cfg_alloc(sizeof(struct f_val));
 
 #define FF_SILENT 2			/* Silent filter execution */
+#define FF_TEMP 4			/* Result of this filter is dropped */
 
 /* Custom route attributes */
 struct custom_attribute {

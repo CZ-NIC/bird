@@ -266,8 +266,8 @@ pipe_show_proto_info(struct proto *P)
   cli_msg(-1006, "    Peer table:     %s", p->sec->table->name);
   cli_msg(-1006, "    Import state:   %s", pipe_feed_state[p->sec->export_state]);
   cli_msg(-1006, "    Export state:   %s", pipe_feed_state[p->pri->export_state]);
-  cli_msg(-1006, "    Import filter:  %s", filter_name(p->sec->out_filter));
-  cli_msg(-1006, "    Export filter:  %s", filter_name(p->pri->out_filter));
+  cli_msg(-1006, "    Import filter:  %s", filter_name(p->sec->out_filter.filter));
+  cli_msg(-1006, "    Export filter:  %s", filter_name(p->pri->out_filter.filter));
 
   channel_show_limit(&p->pri->in_limit, "Import limit:");
   channel_show_limit(&p->sec->in_limit, "Export limit:");
