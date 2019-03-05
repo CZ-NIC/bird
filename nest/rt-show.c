@@ -149,7 +149,8 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	       * command may change the export filter and do not update routes.
 	       */
 	      int do_export = (ic > 0) ||
-		(f_run(ec->out_filter, &e, c->show_pool, FF_SILENT) <= F_ACCEPT);
+		(f_run(&(ec->out_filter), &e, c->show_pool, FF_SILENT | FF_TEMP) <= F_ACCEPT);
+
 
 	      if (do_export != (d->export_mode == RSEM_EXPORT))
 		goto skip;
@@ -162,7 +163,8 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       if (d->show_protocol && (d->show_protocol != e->attrs->src->proto))
 	goto skip;
 
-      if (f_run(d->filter, &e, c->show_pool, 0) > F_ACCEPT)
+      struct filter_slot fs = { .filter = d->filter };
+      if (f_run(&fs, &e, c->show_pool, FF_TEMP) > F_ACCEPT)
 	goto skip;
 
       if (d->stats < 2)
