@@ -542,6 +542,7 @@ static struct ea_list **f_eattrs;
 static struct linpool *f_pool;
 static struct buffer f_buf;
 static int f_flags;
+static list *f_notifiers;
 
 static inline void f_cache_eattrs(void)
 {
@@ -1754,12 +1755,12 @@ i_same(struct f_inst *f1, struct f_inst *f2)
  * modified in place, old cached rta is possibly freed.
  */
 int
-f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags)
+f_run(struct filter_slot *filter_slot, struct rte **rte, struct linpool *tmp_pool, int flags)
 {
-  if (filter == FILTER_ACCEPT)
+  if (filter_slot->filter == FILTER_ACCEPT)
     return F_ACCEPT;
 
-  if (filter == FILTER_REJECT)
+  if (filter_slot->filter == FILTER_REJECT)
     return F_REJECT;
 
   int rte_cow = ((*rte)->flags & REF_COW);
@@ -1770,10 +1771,11 @@ f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int fla
   f_old_rta = NULL;
   f_pool = tmp_pool;
   f_flags = flags;
+  f_notifiers = &(filter_slot->notifiers);
 
   LOG_BUFFER_INIT(f_buf);
 
-  struct f_val res = interpret(filter->root);
+  struct f_val res = interpret(filter_slot->filter->root);
 
   if (f_old_rta) {
     /*
@@ -1797,7 +1799,7 @@ f_run(struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int fla
 
   if (res.type != T_RETURN) {
     if (!(f_flags & FF_SILENT))
-      log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter->name);
+      log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter_slot->filter->name);
     return F_ERROR;
   }
   DBG( "done (%u)\n", res.val.i );
@@ -1815,6 +1817,7 @@ f_eval_rte(struct f_inst *expr, struct rte **rte, struct linpool *tmp_pool)
   f_old_rta = NULL;
   f_pool = tmp_pool;
   f_flags = 0;
+  f_notifiers = NULL;
 
   LOG_BUFFER_INIT(f_buf);
 
@@ -1831,6 +1834,7 @@ f_eval(struct f_inst *expr, struct linpool *tmp_pool)
   f_eattrs = NULL;
   f_rte = NULL;
   f_pool = tmp_pool;
+  f_notifiers = NULL;
 
   LOG_BUFFER_INIT(f_buf);
 

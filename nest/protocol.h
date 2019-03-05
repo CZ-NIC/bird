@@ -12,6 +12,8 @@
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
+#include "filter/filter.h"
+#include "nest/notify.h"
 #include "nest/route.h"
 #include "conf/conf.h"
 
@@ -511,8 +513,8 @@ struct channel {
   struct proto *proto;
 
   struct rtable *table;
-  struct filter *in_filter;		/* Input filter */
-  struct filter *out_filter;		/* Output filter */
+  struct filter_slot in_filter;		/* Input filter */
+  struct filter_slot out_filter;	/* Output filter */
   struct channel_limit rx_limit;	/* Receive limit (for in_keep_filtered) */
   struct channel_limit in_limit;	/* Input limit */
   struct channel_limit out_limit;	/* Output limit */

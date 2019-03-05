@@ -150,8 +150,12 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->proto = p;
   c->table = cf->table->table;
 
-  c->in_filter = cf->in_filter;
-  c->out_filter = cf->out_filter;
+  c->in_filter.filter = cf->in_filter;
+  init_list(&c->in_filter.notifiers);
+
+  c->out_filter.filter = cf->out_filter;
+  init_list(&c->out_filter.notifiers);
+
   c->rx_limit = cf->rx_limit;
   c->in_limit = cf->in_limit;
   c->out_limit = cf->out_limit;
@@ -592,8 +596,8 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
     return 0;
 
   /* Note that filter_same() requires arguments in (new, old) order */
-  int import_changed = !filter_same(cf->in_filter, c->in_filter);
-  int export_changed = !filter_same(cf->out_filter, c->out_filter);
+  int import_changed = !filter_same(cf->in_filter, c->in_filter.filter);
+  int export_changed = !filter_same(cf->out_filter, c->out_filter.filter);
 
   if (c->preference != cf->preference)
     import_changed = 1;
@@ -602,8 +606,15 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
     export_changed = 1;
 
   /* Reconfigure channel fields */
-  c->in_filter = cf->in_filter;
-  c->out_filter = cf->out_filter;
+  c->in_filter.filter = cf->in_filter;
+  c->out_filter.filter = cf->out_filter;
+
+  if (import_changed)
+    unsubscribe_all(&(c->in_filter.notifiers));
+
+  if (export_changed)
+    unsubscribe_all(&(c->out_filter.notifiers));
+
   c->rx_limit = cf->rx_limit;
   c->in_limit = cf->in_limit;
   c->out_limit = cf->out_limit;
@@ -1301,10 +1312,20 @@ protos_dump_all(void)
     WALK_LIST(c, p->channels)
     {
       debug("\tTABLE %s\n", c->table->name);
-      if (c->in_filter)
-	debug("\tInput filter: %s\n", filter_name(c->in_filter));
-      if (c->out_filter)
-	debug("\tOutput filter: %s\n", filter_name(c->out_filter));
+      if (c->in_filter.filter)
+	debug("\tInput filter: %s\n", filter_name(c->in_filter.filter));
+      if (!EMPTY_LIST(c->in_filter.notifiers))
+      {
+	debug("\tInput filter notifiers:\n");
+	listeners_dump(NULL, &(c->in_filter.notifiers));
+      }
+      if (c->out_filter.filter)
+	debug("\tOutput filter: %s\n", filter_name(c->out_filter.filter));
+      if (!EMPTY_LIST(c->out_filter.notifiers))
+      {
+	debug("\tOutput filter notifiers:\n");
+	listeners_dump(NULL, &(c->out_filter.notifiers));
+      }
     }
 
     if (p->proto->dump && (p->proto_state != PS_DOWN))
@@ -1731,8 +1752,8 @@ channel_show_info(struct channel *c)
   cli_msg(-1006, "    State:          %s", c_states[c->channel_state]);
   cli_msg(-1006, "    Table:          %s", c->table->name);
   cli_msg(-1006, "    Preference:     %d", c->preference);
-  cli_msg(-1006, "    Input filter:   %s", filter_name(c->in_filter));
-  cli_msg(-1006, "    Output filter:  %s", filter_name(c->out_filter));
+  cli_msg(-1006, "    Input filter:   %s", filter_name(c->in_filter.filter));
+  cli_msg(-1006, "    Output filter:  %s", filter_name(c->out_filter.filter));
 
   if (graceful_restart_state == GRS_ACTIVE)
     cli_msg(-1006, "    GR recovery:   %s%s",

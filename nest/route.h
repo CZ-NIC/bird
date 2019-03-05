@@ -19,6 +19,7 @@ struct proto;
 struct rte_src;
 struct symbol;
 struct filter;
+struct filter_slot;
 struct cli;
 
 /*
@@ -148,6 +149,7 @@ typedef struct rtable {
   struct fib fib;
   char *name;				/* Name of this table */
   list channels;			/* List of attached channels (struct channel) */
+  list listeners;			/* List of attached listeners (struct listener) */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
   int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
@@ -297,7 +299,7 @@ rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
-int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter);
+int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter_slot *filter_slot);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);

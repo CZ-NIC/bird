@@ -397,7 +397,7 @@ static rte *
 export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int silent)
 {
   struct proto *p = c->proto;
-  struct filter *filter = c->out_filter;
+  struct filter *filter = c->out_filter.filter;
   struct proto_stats *stats = &c->stats;
   rte *rt;
   int v;
@@ -426,7 +426,7 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
   rte_make_tmp_attrs(&rt, pool);
 
   v = filter && ((filter == FILTER_REJECT) ||
-		 (f_run(filter, &rt, pool,
+		 (f_run(&(c->out_filter), &rt, pool,
 			(silent ? FF_SILENT : 0)) > F_ACCEPT));
   if (v)
     {
@@ -1364,7 +1364,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
-  struct filter *filter = c->in_filter;
+  struct filter *filter = c->in_filter.filter;
   rte *dummy = NULL;
   net *nn;
 
@@ -1409,7 +1409,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	  if (filter && (filter != FILTER_REJECT))
 	    {
 	      ea_list *oldea = new->attrs->eattrs;
-	      int fr = f_run(filter, &new, rte_update_pool, 0);
+	      int fr = f_run(&(c->in_filter), &new, rte_update_pool, 0);
 	      if (fr > F_ACCEPT)
 		{
 		  stats->imp_updates_filtered++;
@@ -1503,9 +1503,9 @@ rte_modify(rte *old)
   rte_update_unlock();
 }
 
-/* Check rtable for best route to given net whether it would be exported do p */
+/* One time check rtable for best route to given net whether it would be exported do p */
 int
-rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
+rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter_slot *filter_slot)
 {
   net *n = net_find(t, a);
   rte *rt = n ? n->routes : NULL;
@@ -1520,7 +1520,7 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter)
   if (v == RIC_PROCESS)
   {
     rte_make_tmp_attrs(&rt, rte_update_pool);
-    v = (f_run(filter, &rt, rte_update_pool, FF_SILENT) <= F_ACCEPT);
+    v = (f_run(filter_slot, &rt, rte_update_pool, FF_SILENT | FF_TEMP) <= F_ACCEPT);
   }
 
   /* Discard temporary rte */
