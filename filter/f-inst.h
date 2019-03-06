@@ -5,6 +5,41 @@
  *	(c) 2018--2019 Maria Matejka <mq@jmq.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
+ *
+ *	Filter interpreter data structures and internal API.
+ *	The filter code goes through several phases:
+ *
+ *	1  Parsing
+ *	Flex- and Bison-generated parser decodes the human-readable data into
+ *	a struct f_inst tree. This is an infix tree that was interpreted by
+ *	depth-first search execution in previous versions of the interpreter.
+ *	All instructions have their constructor: f_new_inst(FI_code, ...)
+ *	translates into f_new_inst_FI_code(...) and the types are checked in
+ *	compile time.
+ *
+ *	2  Postfixify before interpreting
+ *	The infix tree is always interpreted in the same order. Therefore we
+ *	sort the instructions one after another into struct f_line. Results
+ *	and arguments of these instructions are implicitly put on a value
+ *	stack; e.g. the + operation just takes two arguments from the value
+ *	stack and puts the result on there.
+ *
+ *	3  Interpret
+ *	The given line is put on a custom execution stack. If needed (FI_CALL,
+ *	FI_SWITCH, FI_AND, FI_OR, FI_CONDITION, ...), another line is put on top
+ *	of the stack; when that line finishes, the execution continues on the
+ *	older lines on the stack where it stopped before.
+ *
+ *	4  Same
+ *	On config reload, the filters have to be compared whether channel
+ *	reload is needed or not. The comparison is done by comparing the
+ *	struct f_line's recursively.
+ *
+ *	The main purpose of this rework was to improve filter performance
+ *	by making the interpreter non-recursive.
+ *
+ *	The other outcome is concentration of instruction definitions to
+ *	one place -- filter/f-inst.c
  */
 
 #ifndef _BIRD_F_INST_H_

@@ -7,6 +7,43 @@
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  *
+ *	Filter instructions. You shall define your instruction only here
+ *	and nowhere else.
+ *
+ *	Beware. This file is interpreted by M4 macros. These macros
+ *	may be more stupid than you could imagine. If something strange
+ *	happens after changing this file, compare the results before and
+ *	after your change (see the Makefile to find out where the results are)
+ *	and see what really happened.
+ *
+ *	This file is not directly a C source code -> it is a generator input
+ *	for several C sources; every instruction block gets expanded into many
+ *	different places.
+ *
+ *	What is the syntax here?
+ *	m4_dnl	INST(FI_NOP, in, out) {			enum value, input args, output args
+ *	m4_dnl	  ARG(num, type);			argument, its id (in data fields) and type
+ *	m4_dnl	  ARG_ANY(num);				argument with no type check
+ *	m4_dnl	  LINE(num, unused);			this argument has to be converted to its own f_line
+ *	m4_dnl	  ECS;					extended community subtype
+ *	m4_dnl	  COUNT(unused);			simply a uint
+ *	m4_dnl	  SYMBOL(unused);			symbol handed from config
+ *	m4_dnl	  FRET(unused);				filter return value
+ *	m4_dnl	  STATIC_ATTR;				static attribute definition
+ *	m4_dnl	  DYNAMIC_ATTR;				dynamic attribute definition
+ *	m4_dnl	  RTC;					route table config
+ *	m4_dnl	  TREE;					a tree
+ *	m4_dnl	  ACCESS_RTE;				this instruction needs route
+ *	m4_dnl	  ACCESS_EATTRS;			this instruction needs extended attributes
+ *	m4_dnl	  RESULT(type, union-field, value);	putting this on value stack
+ *	m4_dnl	  RESULT_OK;				legalize what already is on the value stack
+ *	m4_dnl	}
+ *
+ *	Other code is just copied into the interpreter part.
+ *
+ *	If you want to write something really special, see FI_CALL
+ *	or FI_CONSTANT or whatever else to see how to use the FID_*
+ *	macros.
  */
 
 /* Binary operators */
