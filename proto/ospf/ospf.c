@@ -364,35 +364,6 @@ ospf_rte_same(struct rte *new, struct rte *old)
     new->u.ospf.router_id == old->u.ospf.router_id;
 }
 
-static ea_list *
-ospf_build_attrs(ea_list * next, struct linpool *pool, u32 m1, u32 m2,
-		 u32 tag, u32 rid)
-{
-  struct ea_list *l =
-    lp_alloc(pool, sizeof(struct ea_list) + 4 * sizeof(eattr));
-
-  l->next = next;
-  l->flags = EALF_SORTED;
-  l->count = 4;
-  l->attrs[0].id = EA_OSPF_METRIC1;
-  l->attrs[0].flags = 0;
-  l->attrs[0].type = EAF_TYPE_INT | EAF_TEMP;
-  l->attrs[0].u.data = m1;
-  l->attrs[1].id = EA_OSPF_METRIC2;
-  l->attrs[1].flags = 0;
-  l->attrs[1].type = EAF_TYPE_INT | EAF_TEMP;
-  l->attrs[1].u.data = m2;
-  l->attrs[2].id = EA_OSPF_TAG;
-  l->attrs[2].flags = 0;
-  l->attrs[2].type = EAF_TYPE_INT | EAF_TEMP;
-  l->attrs[2].u.data = tag;
-  l->attrs[3].id = EA_OSPF_ROUTER_ID;
-  l->attrs[3].flags = 0;
-  l->attrs[3].type = EAF_TYPE_ROUTER_ID | EAF_TEMP;
-  l->attrs[3].u.data = rid;
-  return l;
-}
-
 
 void
 ospf_schedule_rtcalc(struct ospf_proto *p)
@@ -470,17 +441,27 @@ ospf_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
 static struct ea_list *
 ospf_make_tmp_attrs(struct rte *rt, struct linpool *pool)
 {
-  return ospf_build_attrs(NULL, pool, rt->u.ospf.metric1, rt->u.ospf.metric2,
-			  rt->u.ospf.tag, rt->u.ospf.router_id);
+  struct ea_list *e = lp_alloc(pool, sizeof(struct ea_list) + 4 * sizeof(eattr));
+
+  e->next = NULL;
+  e->flags = EALF_SORTED;
+  e->count = 0;
+
+  rte_make_tmp_attr(rt, e, EA_OSPF_METRIC1, EAF_TYPE_INT, rt->u.ospf.metric1);
+  rte_make_tmp_attr(rt, e, EA_OSPF_METRIC2, EAF_TYPE_INT, rt->u.ospf.metric2);
+  rte_make_tmp_attr(rt, e, EA_OSPF_TAG, EAF_TYPE_INT, rt->u.ospf.tag);
+  rte_make_tmp_attr(rt, e, EA_OSPF_ROUTER_ID, EAF_TYPE_ROUTER_ID, rt->u.ospf.router_id);
+
+  return e;
 }
 
 static void
 ospf_store_tmp_attrs(struct rte *rt)
 {
-  rt->u.ospf.metric1 = ea_get_int(rt->attrs->eattrs, EA_OSPF_METRIC1, LSINFINITY);
-  rt->u.ospf.metric2 = ea_get_int(rt->attrs->eattrs, EA_OSPF_METRIC2, 10000);
-  rt->u.ospf.tag = ea_get_int(rt->attrs->eattrs, EA_OSPF_TAG, 0);
-  rt->u.ospf.router_id = ea_get_int(rt->attrs->eattrs, EA_OSPF_ROUTER_ID, 0);
+  rt->u.ospf.metric1 = rte_store_tmp_attr(rt, EA_OSPF_METRIC1);
+  rt->u.ospf.metric2 = rte_store_tmp_attr(rt, EA_OSPF_METRIC2);
+  rt->u.ospf.tag = rte_store_tmp_attr(rt, EA_OSPF_TAG);
+  rt->u.ospf.router_id = rte_store_tmp_attr(rt, EA_OSPF_ROUTER_ID);
 }
 
 /**

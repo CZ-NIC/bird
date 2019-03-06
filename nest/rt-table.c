@@ -325,6 +325,39 @@ rte_cow_rta(rte *r, linpool *lp)
   return r;
 }
 
+
+/* Note that rte_make_tmp_attr() requires free eattr in ea_list */
+void
+rte_make_tmp_attr(rte *r, ea_list *e, uint id, uint type, u32 val)
+{
+  if (r->pflags & EA_ID_FLAG(id))
+  {
+    eattr *a = &e->attrs[e->count++];
+    a->id = id;
+    a->type = type | EAF_TEMP;
+    a->flags = 0;
+    a->u.data = val;
+  }
+}
+
+/* Note that rte has to be writable */
+uint
+rte_store_tmp_attr(rte *r, uint id)
+{
+  eattr *a;
+  if (a = ea_find(r->attrs->eattrs, id))
+  {
+    r->pflags |= EA_ID_FLAG(id);
+    return a->u.data;
+  }
+  else
+  {
+    r->pflags &= ~EA_ID_FLAG(id);
+    return 0;
+  }
+}
+
+
 static int				/* Actually better or at least as good as */
 rte_better(rte *new, rte *old)
 {

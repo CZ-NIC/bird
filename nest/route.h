@@ -308,6 +308,8 @@ void rte_free(rte *);
 rte *rte_do_cow(rte *);
 static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }
 rte *rte_cow_rta(rte *r, linpool *lp);
+void rte_make_tmp_attr(struct rte *r, struct ea_list *e, uint id, uint type, u32 val);
+uint rte_store_tmp_attr(struct rte *r, uint id);
 void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
@@ -481,6 +483,7 @@ typedef struct eattr {
 #define EA_CODE(proto,id) (((proto) << 8) | (id))
 #define EA_ID(ea) ((ea) & 0xff)
 #define EA_PROTO(ea) ((ea) >> 8)
+#define EA_ID_FLAG(ea) (1 << EA_ID(ea))
 #define EA_CUSTOM(id) ((id) | EA_CUSTOM_BIT)
 #define EA_IS_CUSTOM(ea) ((ea) & EA_CUSTOM_BIT)
 #define EA_CUSTOM_ID(ea) ((ea) & ~EA_CUSTOM_BIT)
