@@ -79,11 +79,6 @@ docker_fedora-26-amd64:
     IMG_NAME: "fedora-26-amd64"
   <<: *docker_build
 
-docker_centos-6-amd64:
-  variables:
-    IMG_NAME: "centos-6-amd64"
-  <<: *docker_build
-
 docker_centos-7-amd64:
   variables:
     IMG_NAME: "centos-7-amd64"
@@ -174,13 +169,6 @@ docker_ubuntu-16_04-amd64:
   - linux
   - amd64
 
-.centos-6-amd64: &centos-6-amd64_env
-  image: registry.labs.nic.cz/labs/bird:centos-6-amd64
-  tags:
-  - docker
-  - linux
-  - amd64
-
 .centos-7-amd64: &centos-7-amd64_env
   image: registry.labs.nic.cz/labs/bird:centos-7-amd64
   tags:
@@ -262,10 +250,6 @@ build-fedora-25-amd64:
 
 build-fedora-26-amd64:
   <<: *fedora-26-amd64_env
-  <<: *build_job
-
-build-centos-6-amd64:
-  <<: *centos-6-amd64_env
   <<: *build_job
 
 build-centos-7-amd64:
