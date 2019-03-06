@@ -1528,8 +1528,9 @@ specified ROA table and returns ROA_UNKNOWN if there is no relevant ROA,
 ROA_VALID if there is a matching ROA, or ROA_INVALID if there are some relevant
 ROAs but none of them match. There is also an extended variant
 <cf>roa_check(<m/table/, <m/prefix/, <m/asn/)</cf>, which allows to specify a
-prefix and an ASN as arguments.
-
+prefix and an ASN as arguments. It shall be explicitly noted that if the content
+of the target table changes, the whole half-channel (import or export) reloads
+completely.
 
 <sect>Control structures
 <label id="control-structures">
@@ -4538,10 +4539,8 @@ Pakastani accidental announcement of YouTube's address space.
 <p>The RPKI-RTR protocol receives and maintains a set of ROAs from a cache
 server (also called validator). You can validate routes (RFC 6483) using
 function <cf/roa_check()/ in filter and set it as import filter at the BGP
-protocol. BIRD should re-validate all of affected routes after RPKI update by
-RFC 6811, but we don't support it yet! You can use a BIRD's client command
-<cf>reload in <m/bgp_protocol_name/</cf> for manual call of revalidation of all
-routes.
+protocol. BIRD re-validates all the affected routes after RPKI update by
+RFC 6811 by reloading whole the affected half-channel.
 
 <sect1>Supported transports
 <p>
