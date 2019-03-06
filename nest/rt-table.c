@@ -941,6 +941,17 @@ rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old,
 	else
 	  rt_notify_basic(c, net, new, old, 0);
     }
+
+  struct rt_notify rtn = {
+    .net = net,
+    .new = new,
+    .old = old,
+    .new_best = new_best,
+    .old_best = old_best,
+    .before_old = before_old,
+  };
+
+  notify(&(tab->listeners), &rtn);
 }
 
 static inline int

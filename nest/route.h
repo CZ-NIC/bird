@@ -320,6 +320,10 @@ void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
+struct rt_notify {
+  struct network *net;
+  rte *new, *old, *new_best, *old_best, *before_old;
+};
 
 /* Default limit for ECMP next hops, defined in sysdep code */
 extern const int rt_default_ecmp;

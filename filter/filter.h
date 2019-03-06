@@ -151,6 +151,8 @@ struct filter {
 
 struct filter_slot {
   struct filter *filter;
+  void (*reloader)(struct filter_slot *);
+  pool *p;
   list notifiers;
 };
 

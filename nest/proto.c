@@ -125,6 +125,16 @@ proto_find_channel_by_name(struct proto *p, const char *n)
   return NULL;
 }
 
+static void channel_filter_slot_reimport(struct filter_slot *fs)
+{
+  return channel_request_reload(SKIP_BACK(struct channel, in_filter, fs));
+}
+
+static void channel_filter_slot_reexport(struct filter_slot *fs)
+{
+  return channel_request_feeding(SKIP_BACK(struct channel, out_filter, fs));
+}
+
 /**
  * proto_add_channel - connect protocol to a routing table
  * @p: protocol instance
@@ -151,9 +161,13 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->table = cf->table->table;
 
   c->in_filter.filter = cf->in_filter;
+  c->in_filter.reloader = channel_filter_slot_reimport;
+  c->in_filter.p = p->pool;
   init_list(&c->in_filter.notifiers);
 
   c->out_filter.filter = cf->out_filter;
+  c->out_filter.reloader = channel_filter_slot_reexport;
+  c->out_filter.p = p->pool;
   init_list(&c->out_filter.notifiers);
 
   c->rx_limit = cf->rx_limit;
@@ -496,7 +510,7 @@ channel_reloadable(struct channel *c)
   return c->proto->reload_routes && c->reloadable;
 }
 
-static void
+void
 channel_request_reload(struct channel *c)
 {
   ASSERT(c->channel_state == CS_UP);
