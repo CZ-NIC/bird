@@ -498,7 +498,8 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
 
     rte_make_tmp_attrs(&rt, s->linpool);
 
-    if (f_run(s->filter, &rt, s->linpool, 0) <= F_ACCEPT)
+    struct filter_slot fs = { .filter = s->filter };
+    if (f_run(&(fs), &rt, s->linpool, FF_TEMP) <= F_ACCEPT)
       mrt_rib_table_entry(s, rt);
 
     if (rt != rt0)

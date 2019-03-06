@@ -51,9 +51,16 @@ struct filter {
   const struct f_line *root;
 };
 
+struct filter_slot {
+  const struct filter *filter;
+  void (*reloader)(const struct filter_slot *);
+  pool *p;
+  list notifiers;
+};
+
 struct rte;
 
-enum filter_return f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
+enum filter_return f_run(struct filter_slot *filter_slot, struct rte **rte, struct linpool *tmp_pool, int flags);
 enum filter_return f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool);
 uint f_eval_int(const struct f_line *expr);
 enum filter_return f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf);
@@ -69,6 +76,7 @@ void filter_commit(const struct config *new, const struct config *old);
 #define FILTER_UNDEF  ((void *) 2)	/* Used in BGP */
 
 #define FF_SILENT 2			/* Silent filter execution */
+#define FF_TEMP 4			/* Result of this filter is dropped */
 
 /* Custom route attributes */
 struct custom_attribute {

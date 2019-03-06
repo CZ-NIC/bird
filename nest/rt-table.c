@@ -398,7 +398,7 @@ static rte *
 export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int silent)
 {
   struct proto *p = c->proto;
-  const struct filter *filter = c->out_filter;
+  const struct filter *filter = c->out_filter.filter;
   struct proto_stats *stats = &c->stats;
   rte *rt;
   int v;
@@ -427,7 +427,7 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
   rte_make_tmp_attrs(&rt, pool);
 
   v = filter && ((filter == FILTER_REJECT) ||
-		 (f_run(filter, &rt, pool,
+		 (f_run(&(c->out_filter), &rt, pool,
 			(silent ? FF_SILENT : 0)) > F_ACCEPT));
   if (v)
     {
@@ -942,6 +942,17 @@ rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old,
 	else
 	  rt_notify_basic(c, net, new, old, 0);
     }
+
+  struct rt_notify rtn = {
+    .net = net,
+    .new = new,
+    .old = old,
+    .new_best = new_best,
+    .old_best = old_best,
+    .before_old = before_old,
+  };
+
+  notify(&(tab->listeners), &rtn);
 }
 
 static inline int
@@ -1008,12 +1019,13 @@ rte_free_quick(rte *e)
 static int
 rte_same(rte *x, rte *y)
 {
+  /* rte.flags are not checked, as they are mostly internal to rtable */
   return
     x->attrs == y->attrs &&
-    x->flags == y->flags &&
     x->pflags == y->pflags &&
     x->pref == y->pref &&
-    (!x->attrs->src->proto->rte_same || x->attrs->src->proto->rte_same(x, y));
+    (!x->attrs->src->proto->rte_same || x->attrs->src->proto->rte_same(x, y)) &&
+    rte_is_filtered(x) == rte_is_filtered(y);
 }
 
 static inline int rte_is_ok(rte *e) { return e && !rte_is_filtered(e); }
@@ -1057,7 +1069,9 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 
 	  if (new && rte_same(old, new))
 	    {
-	      /* No changes, ignore the new route */
+	      /* No changes, ignore the new route and refresh the old one */
+
+	      old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
 
 	      if (!rte_is_filtered(new))
 		{
@@ -1362,7 +1376,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
-  const struct filter *filter = c->in_filter;
+  const struct filter *filter = c->in_filter.filter;
   rte *dummy = NULL;
   net *nn;
 
@@ -1407,7 +1421,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	  if (filter && (filter != FILTER_REJECT))
 	    {
 	      ea_list *oldea = new->attrs->eattrs;
-	      int fr = f_run(filter, &new, rte_update_pool, 0);
+	      int fr = f_run(&(c->in_filter), &new, rte_update_pool, 0);
 	      if (fr > F_ACCEPT)
 		{
 		  stats->imp_updates_filtered++;
@@ -1501,9 +1515,9 @@ rte_modify(rte *old)
   rte_update_unlock();
 }
 
-/* Check rtable for best route to given net whether it would be exported do p */
+/* One time check rtable for best route to given net whether it would be exported do p */
 int
-rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter)
+rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter_slot *filter_slot)
 {
   net *n = net_find(t, a);
   rte *rt = n ? n->routes : NULL;
@@ -1518,7 +1532,7 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter)
   if (v == RIC_PROCESS)
   {
     rte_make_tmp_attrs(&rt, rte_update_pool);
-    v = (f_run(filter, &rt, rte_update_pool, FF_SILENT) <= F_ACCEPT);
+    v = (f_run(filter_slot, &rt, rte_update_pool, FF_SILENT | FF_TEMP) <= F_ACCEPT);
   }
 
   /* Discard temporary rte */
@@ -1725,6 +1739,7 @@ rt_setup(pool *p, rtable *t, struct rtable_config *cf)
   t->addr_type = cf->addr_type;
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
   init_list(&t->channels);
+  init_list(&t->listeners);
 
   t->rt_event = ev_new_init(p, rt_event, t);
   t->gc_time = current_time();
@@ -2363,7 +2378,16 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
     if (old->attrs->src == src)
     {
       if (new && rte_same(old, new))
+      {
+	/* Refresh the old rte, continue with update to main rtable */
+	if (old->flags & (REF_STALE | REF_DISCARD | REF_MODIFY))
+	{
+	  old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
+	  return 1;
+	}
+
 	goto drop_update;
+      }
 
       /* Remove the old rte */
       *pos = old->next;

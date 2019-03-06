@@ -12,6 +12,8 @@
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
+#include "filter/filter.h"
+#include "nest/notify.h"
 #include "nest/route.h"
 #include "conf/conf.h"
 
@@ -511,8 +513,8 @@ struct channel {
   struct proto *proto;
 
   struct rtable *table;
-  const struct filter *in_filter;	/* Input filter */
-  const struct filter *out_filter;	/* Output filter */
+  struct filter_slot in_filter;		/* Input filter */
+  struct filter_slot out_filter;	/* Output filter */
   struct channel_limit rx_limit;	/* Receive limit (for in_keep_filtered) */
   struct channel_limit in_limit;	/* Input limit */
   struct channel_limit out_limit;	/* Output limit */
@@ -620,6 +622,7 @@ static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP)
 static inline void channel_close(struct channel *c) { channel_set_state(c, CS_FLUSHING); }
 
 void channel_request_feeding(struct channel *c);
+void channel_request_reload(struct channel *c);
 void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);
