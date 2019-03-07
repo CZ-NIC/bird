@@ -53,57 +53,36 @@
 
 void (*bt_assert_hook)(int result, struct f_inst *assert);
 
-struct filter_roa_notifier {
-  resource r;
-  struct listener L;
+struct filter_roa_reloader {
+  node n;
+  struct listener *L;
   struct rtable *roa_table;
   struct filter_slot *slot;
 };
 
-static void filter_roa_notifier_hook(struct listener *L, void *data UNUSED) {
-  struct filter_roa_notifier *frn = SKIP_BACK(struct filter_roa_notifier, L, L);
-  frn->slot->reloader(frn->slot);
+static void filter_roa_reloader_notify(void *self, const void *data UNUSED) {
+  struct filter_roa_reloader *frr = self;
+  frr->slot->reloader(frr->slot);
 }
 
-static void filter_roa_notifier_unsubscribe(struct listener *L) {
-  struct filter_roa_notifier *frn = SKIP_BACK(struct filter_roa_notifier, L, L);
-  rfree(frn);
+static void filter_roa_reloader_unsubscribe(void *self) {
+  struct filter_roa_reloader *frr = self;
+  rem_node(&(frr->n));
+  mb_free(self);
 }
 
-static void filter_roa_notifier_free(resource *r) {
-  struct filter_roa_notifier *frn = (void *) r;
-  unsubscribe(&(frn->L));
-}
-
-static struct resclass filter_roa_notifier_class = {
-  .name = "Filter ROA Notifier",
-  .size = sizeof(struct filter_roa_notifier),
-  .free = filter_roa_notifier_free,
-  .dump = NULL,
-  .lookup = NULL,
-  .memsize = NULL,
-};
-
-static void filter_roa_notifier_subscribe(struct rtable *roa_table, struct filter_slot *slot, const net_addr *n UNUSED, u32 as UNUSED) {
-  struct listener *oldL;
+static void filter_roa_reloader_subscribe(struct rtable *roa_table, struct filter_slot *slot, const net_addr *n UNUSED, u32 as UNUSED) {
+  struct filter_roa_reloader *oldfrr;
   node *x;
-  WALK_LIST2(oldL, x, slot->notifiers, receiver_node)
-    if (oldL->hook == filter_roa_notifier_hook)
-    {
-      struct filter_roa_notifier *old = SKIP_BACK(struct filter_roa_notifier, L, oldL);
-      if ((old->roa_table == roa_table) && (old->slot == slot))
-	return; /* Old notifier found for the same event. */
-    }
+  WALK_LIST2(oldfrr, x, slot->notifiers, n)
+    if (oldfrr->roa_table == roa_table)
+      return; /* Old notifier found for the same event. */
 
-  struct filter_roa_notifier *frn = ralloc(slot->p, &filter_roa_notifier_class);
-  frn->L = (struct listener) {
-    .hook = filter_roa_notifier_hook,
-    .unsub = filter_roa_notifier_unsubscribe,
-  };
-  frn->roa_table = roa_table;
-  frn->slot = slot;
-
-  subscribe(&(frn->L), &(roa_table->listeners), &(slot->notifiers));
+  struct filter_roa_reloader *frr = mb_allocz(slot->p, sizeof(struct filter_roa_reloader));
+  frr->roa_table = roa_table;
+  frr->slot = slot;
+  add_tail(&(slot->notifiers), &(frr->n));
+  frr->L = subscribe(slot->p, &(roa_table->listeners), filter_roa_reloader_notify, filter_roa_reloader_unsubscribe, frr);
 }
 
 static struct adata undef_adata;	/* adata of length 0 used for undefined */
@@ -1612,7 +1591,7 @@ interpret(struct f_inst *what)
     else
     {
       if (f_slot)
-	filter_roa_notifier_subscribe(table, f_slot, v1.val.net, as);
+	filter_roa_reloader_subscribe(table, f_slot, v1.val.net, as);
 
       res.val.i = net_roa_check(table, v1.val.net, as);
     }
