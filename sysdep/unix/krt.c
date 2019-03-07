@@ -562,7 +562,7 @@ static struct rte *
 krt_export_net(struct krt_proto *p, net *net, rte **rt_free)
 {
   struct channel *c = p->p.main_channel;
-  const struct filter *filter = c->out_filter;
+  const struct filter *filter = c->out_filter.filter;
   rte *rt;
 
   if (c->ra_mode == RA_MERGED)
@@ -584,7 +584,7 @@ krt_export_net(struct krt_proto *p, net *net, rte **rt_free)
   if (filter == FILTER_ACCEPT)
     goto accept;
 
-  if (f_run(filter, &rt, krt_filter_lp, FF_SILENT) > F_ACCEPT)
+  if (f_run(&(c->out_filter), &rt, krt_filter_lp, FF_SILENT | FF_TEMP) > F_ACCEPT)
     goto reject;
 
 
