@@ -156,6 +156,21 @@ struct filter_slot {
   list notifiers;
 };
 
+static inline void filter_slot_init(struct filter_slot *fs, pool *pp, struct filter *filter, void (*reloader)(struct filter_slot *))
+{
+  fs->filter = filter;
+  fs->reloader = reloader;
+  fs->p = rp_new(pp, "filter slot pool");
+  init_list(&(fs->notifiers));
+}
+
+static inline void filter_slot_deactivate(struct filter_slot *fs)
+{
+  rfree(fs->p);
+  ASSERT(EMPTY_LIST(fs->notifiers));
+  fs->p = NULL;
+}
+
 struct f_inst *f_new_inst(enum f_instruction_code fi_code);
 struct f_inst *f_new_inst_da(enum f_instruction_code fi_code, struct f_dynamic_attr da);
 struct f_inst *f_new_inst_sa(enum f_instruction_code fi_code, struct f_static_attr sa);
