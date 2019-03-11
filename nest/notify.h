@@ -12,11 +12,45 @@
 #include "lib/resource.h"
 #include "lib/lists.h"
 
-struct listener;
+#define LISTENER(stype) struct listener__##stype
+#define LISTENER_DECL(stype) LISTENER(stype) { \
+  resource r; \
+  node n; \
+  void *self; \
+  void (*unsubscribe)(void *self); \
+  void (*notify)(void *self, const stype *data); \
+};
 
-struct listener *subscribe(pool *p, list *sender, void (*notify)(void *self, const void *data), void (*unsubscribe)(void *self), void *self);
-void unsubscribe(struct listener *L);
-void unsubscribe_all(list *sender);
-void notify(list *sender, const void *data);
+extern struct resclass listener_class;
+
+#define SUBSCRIBE(stype, pool, sender, _self, _notify, _unsubscribe) ({ \
+    LISTENER(stype) *L = ralloc(pool, &listener_class); \
+    L->notify = _notify; \
+    L->unsubscribe = _unsubscribe; \
+    L->self = _self; \
+    add_tail(&(sender), &(L->n)); \
+    L; \
+    })
+
+#define UNSUBSCRIBE(stype, listener) do { \
+  LISTENER(stype) *L = listener; \
+  L->unsubscribe = NULL; \
+  rfree(L); \
+} while (0)
+
+#define UNNOTIFY(stype, sender) do { \
+  LISTENER(stype) *L; \
+  node *x, *y; \
+  WALK_LIST2_DELSAFE(L, x, y, sender, n) \
+    rfree(L); \
+} while (0)
+
+#define NOTIFY(stype, sender, data) do { \
+  const stype *_d = data; \
+  LISTENER(stype) *L; \
+  node *x, *y; \
+  WALK_LIST2_DELSAFE(L, x, y, sender, n) \
+    L->notify(L->self, _d); \
+} while (0)
 
 #endif

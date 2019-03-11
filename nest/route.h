@@ -13,6 +13,8 @@
 #include "lib/resource.h"
 #include "lib/net.h"
 
+#include "nest/notify.h"
+
 struct ea_list;
 struct protocol;
 struct proto;
@@ -320,10 +322,12 @@ void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
-struct rt_notify {
+typedef struct rt_notify {
   struct network *net;
   rte *new, *old, *new_best, *old_best, *before_old;
-};
+} rt_notify_data;
+
+LISTENER_DECL(rt_notify_data);
 
 /* Default limit for ECMP next hops, defined in sysdep code */
 extern const int rt_default_ecmp;

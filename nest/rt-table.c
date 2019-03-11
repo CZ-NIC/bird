@@ -951,7 +951,7 @@ rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old,
     .before_old = before_old,
   };
 
-  notify(&(tab->listeners), &rtn);
+  NOTIFY(rt_notify_data, tab->listeners, &rtn);
 }
 
 static inline int
@@ -2173,6 +2173,7 @@ rt_unlock_table(rtable *r)
       r->config->table = NULL;
       if (r->hostcache)
 	rt_free_hostcache(r);
+      UNNOTIFY(rt_notify_data, r->listeners);
       rem_node(&r->n);
       fib_free(&r->fib);
       rfree(r->rt_event);

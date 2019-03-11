@@ -55,12 +55,12 @@ void (*bt_assert_hook)(int result, struct f_inst *assert);
 
 struct filter_roa_reloader {
   node n;
-  struct listener *L;
+  LISTENER(rt_notify_data) *L;
   struct rtable *roa_table;
   struct filter_slot *slot;
 };
 
-static void filter_roa_reloader_notify(void *self, const void *data UNUSED) {
+static void filter_roa_reloader_notify(void *self, const rt_notify_data *data UNUSED) {
   struct filter_roa_reloader *frr = self;
   frr->slot->reloader(frr->slot);
 }
@@ -82,7 +82,7 @@ static void filter_roa_reloader_subscribe(struct rtable *roa_table, struct filte
   frr->roa_table = roa_table;
   frr->slot = slot;
   add_tail(&(slot->notifiers), &(frr->n));
-  frr->L = subscribe(slot->p, &(roa_table->listeners), filter_roa_reloader_notify, filter_roa_reloader_unsubscribe, frr);
+  frr->L = SUBSCRIBE(rt_notify_data, slot->p, roa_table->listeners, frr, filter_roa_reloader_notify, filter_roa_reloader_unsubscribe);
 }
 
 static struct adata undef_adata;	/* adata of length 0 used for undefined */
