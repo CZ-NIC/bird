@@ -864,6 +864,7 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
     rte_free(old_changed_free);
 }
 
+LISTENER_CLASS_DEF(rt_notify_data);
 
 /**
  * rte_announce - announce a routing table change
@@ -1738,7 +1739,7 @@ rt_setup(pool *p, rtable *t, struct rtable_config *cf)
   t->addr_type = cf->addr_type;
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
   init_list(&t->channels);
-  init_list(&t->listeners);
+  INIT_LISTENERS(rt_notify_data, t->listeners);
 
   t->rt_event = ev_new_init(p, rt_event, t);
   t->gc_time = current_time();

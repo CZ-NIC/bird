@@ -146,12 +146,15 @@ struct rtable_config {
   byte sorted;				/* Routes of network are sorted according to rte_better() */
 };
 
+typedef struct rt_notify rt_notify_data;
+LISTENER_DEF(rt_notify_data);
+
 typedef struct rtable {
   node n;				/* Node in list of all tables */
   struct fib fib;
   char *name;				/* Name of this table */
   list channels;			/* List of attached channels (struct channel) */
-  list listeners;			/* List of attached listeners (struct listener) */
+  LISTENERS(rt_notify_data) listeners;	/* List of attached listeners */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
   int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
@@ -326,8 +329,6 @@ typedef struct rt_notify {
   struct network *net;
   rte *new, *old, *new_best, *old_best, *before_old;
 } rt_notify_data;
-
-LISTENER_DECL(rt_notify_data);
 
 /* Default limit for ECMP next hops, defined in sysdep code */
 extern const int rt_default_ecmp;

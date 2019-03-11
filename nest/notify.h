@@ -10,25 +10,43 @@
 #define _BIRD_NOTIFY_H_
 
 #include "lib/resource.h"
-#include "lib/lists.h"
+#include "lib/tlists.h"
 
 #define LISTENER(stype) struct listener__##stype
-#define LISTENER_DECL(stype) LISTENER(stype) { \
+#define LISTENER_DEF(stype) \
+  TLIST_DEF(listener__##stype); \
+LISTENER(stype) { \
   resource r; \
-  node n; \
+  TNODE(listener__##stype) n; \
   void *self; \
   void (*unsubscribe)(void *self); \
   void (*notify)(void *self, const stype *data); \
-};
+}; \
+extern struct resclass LISTENER_CLASS(stype) 
 
-extern struct resclass listener_class;
+#define LISTENERS(stype) TLIST(listener__##stype)
+
+#define LISTENER_CLASS(stype) listener_class__##stype
+#define LISTENER_CLASS_DEF(stype) static void listener_unsubscribe__##stype(resource *r) { \
+  LISTENER(stype) *L = (LISTENER(stype) *) r; \
+  TREM_NODE(listener__##stype, L->n); \
+  CALL(L->unsubscribe, L->self); \
+} \
+struct resclass LISTENER_CLASS(stype) = { \
+  .name = "Listener " #stype, \
+  .size = sizeof(LISTENER(stype)), \
+  .free = listener_unsubscribe__##stype, \
+}
+
+#define INIT_LISTENERS(stype, sender) INIT_TLIST(listener__##stype, sender)
 
 #define SUBSCRIBE(stype, pool, sender, _self, _notify, _unsubscribe) ({ \
-    LISTENER(stype) *L = ralloc(pool, &listener_class); \
+    LISTENER(stype) *L = ralloc(pool, &listener_class__##stype); \
     L->notify = _notify; \
     L->unsubscribe = _unsubscribe; \
     L->self = _self; \
-    add_tail(&(sender), &(L->n)); \
+    L->n.self = L; \
+    TADD_TAIL(listener__##stype, sender, L->n); \
     L; \
     })
 
@@ -39,18 +57,14 @@ extern struct resclass listener_class;
 } while (0)
 
 #define UNNOTIFY(stype, sender) do { \
-  LISTENER(stype) *L; \
-  node *x, *y; \
-  WALK_LIST2_DELSAFE(L, x, y, sender, n) \
-    rfree(L); \
+  WALK_TLIST_DELSAFE(listener__##stype, L, sender) \
+    rfree(L->self); \
 } while (0)
 
 #define NOTIFY(stype, sender, data) do { \
   const stype *_d = data; \
-  LISTENER(stype) *L; \
-  node *x, *y; \
-  WALK_LIST2_DELSAFE(L, x, y, sender, n) \
-    L->notify(L->self, _d); \
+  WALK_TLIST_DELSAFE(listener__##stype, L, sender) \
+    L->self->notify(L->self->self, _d); \
 } while (0)
 
 #endif
