@@ -160,8 +160,8 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->proto = p;
   c->table = cf->table->table;
 
-  filter_slot_init(&(c->in_filter),  p->pool, cf->in_filter,  channel_filter_slot_reimport);
-  filter_slot_init(&(c->out_filter), p->pool, cf->out_filter, channel_filter_slot_reexport);
+  filter_slot_init(&(c->in_filter),  p->pool, cf->in_filter);
+  filter_slot_init(&(c->out_filter), p->pool, cf->out_filter);
 
   c->rx_limit = cf->rx_limit;
   c->in_limit = cf->in_limit;
@@ -411,8 +411,8 @@ channel_set_state(struct channel *c, uint state)
   /* No filter notifier shall remain after transitioning from CS_UP state. */
   if (cs == CS_UP)
   {
-    filter_slot_deactivate(&(c->in_filter));
-    filter_slot_deactivate(&(c->out_filter));
+    filter_slot_stop(&(c->in_filter));
+    filter_slot_stop(&(c->out_filter));
   }
 
   switch (state)
@@ -439,6 +439,9 @@ channel_set_state(struct channel *c, uint state)
 
     if (!c->gr_wait && c->proto->rt_notify)
       channel_start_export(c);
+
+    filter_slot_start(&(c->in_filter),  channel_filter_slot_reimport);
+    filter_slot_start(&(c->out_filter), channel_filter_slot_reexport);
 
     break;
 
@@ -621,14 +624,14 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
 
   /* Reconfigure filter slots */
   if (import_changed) {
-    filter_slot_deactivate(&(c->in_filter));
-    filter_slot_init(&(c->in_filter),  c->proto->pool, cf->in_filter,  channel_filter_slot_reimport);
+    filter_slot_flush(&(c->in_filter));
+    filter_slot_init(&(c->in_filter),  c->proto->pool, cf->in_filter);
   } else
     c->in_filter.filter = cf->in_filter;
 
   if (export_changed) {
-    filter_slot_deactivate(&(c->out_filter));
-    filter_slot_init(&(c->out_filter), c->proto->pool, cf->out_filter, channel_filter_slot_reexport);
+    filter_slot_flush(&(c->out_filter));
+    filter_slot_init(&(c->out_filter), c->proto->pool, cf->out_filter);
   } else
     c->out_filter.filter = cf->out_filter;
 

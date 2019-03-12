@@ -2174,7 +2174,7 @@ rt_unlock_table(rtable *r)
       r->config->table = NULL;
       if (r->hostcache)
 	rt_free_hostcache(r);
-      UNNOTIFY(rt_notify_data, r->listeners);
+      ASSERT(EMPTY_TLIST(rt_notify_data, r->listeners));
       rem_node(&r->n);
       fib_free(&r->fib);
       rfree(r->rt_event);

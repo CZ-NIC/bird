@@ -38,6 +38,8 @@
   list.tail_node.prev = &(list.head_node); \
 } while (0)
 
+#define EMPTY_TLIST(t, list) (!((list).head->next))
+
 #define TNODE_VALID(t, n) ((n)->next)
 #define WALK_TLIST(t, n, list) for (TNODE(t) *n = list.head; TNODE_VALID(t, n); n = n->next)
 #define WALK_TLIST_DELSAFE(t, n, list) \

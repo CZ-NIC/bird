@@ -53,8 +53,45 @@
 
 void (*bt_assert_hook)(int result, struct f_inst *assert);
 
-struct filter_roa_reloader {
+struct filter_notifier {
   node n;
+  void (*unsubscribe)(struct filter_notifier *);
+};
+
+void filter_slot_init(struct filter_slot *fs, pool *pp, struct filter *filter)
+{
+  fs->filter = filter;
+  fs->p = rp_new(pp, "filter slot pool");
+  init_list(&(fs->notifiers));
+}
+
+void filter_slot_flush(struct filter_slot *fs)
+{
+  filter_slot_stop(fs);
+  fs->filter = NULL;
+  rfree(fs->p);
+}
+
+void filter_slot_start(struct filter_slot *fs, void (*reloader)(struct filter_slot *))
+{
+  ASSERT(EMPTY_LIST(fs->notifiers));
+  fs->reloader = reloader;
+}
+
+void filter_slot_stop(struct filter_slot *fs)
+{
+  fs->reloader = NULL;
+  struct filter_notifier *n;
+  node *x;
+  WALK_LIST_DELSAFE(n, x, fs->notifiers)
+    n->unsubscribe(n);
+
+  ASSERT(EMPTY_LIST(fs->notifiers));
+}
+
+
+struct filter_roa_reloader {
+  struct filter_notifier n;
   LISTENER(rt_notify_data) *L;
   struct rtable *roa_table;
   struct filter_slot *slot;
@@ -62,16 +99,19 @@ struct filter_roa_reloader {
 
 static void filter_roa_reloader_notify(void *self, const rt_notify_data *data UNUSED) {
   struct filter_roa_reloader *frr = self;
+  debug("notify %p\n", frr);
   frr->slot->reloader(frr->slot);
 }
 
-static void filter_roa_reloader_unsubscribe(void *self) {
-  struct filter_roa_reloader *frr = self;
-  rem_node(&(frr->n));
-  mb_free(self);
+static void filter_roa_reloader_unsubscribe(struct filter_notifier *n) {
+  struct filter_roa_reloader *frr = (void *) n;
+  UNSUBSCRIBE(rt_notify_data, frr->L);
+  rem_node(&(n->n));
+  mb_free(n);
 }
 
 static void filter_roa_reloader_subscribe(struct rtable *roa_table, struct filter_slot *slot, const net_addr *n UNUSED, u32 as UNUSED) {
+  debug("subscribe t%p s%p\n", roa_table, slot);
   struct filter_roa_reloader *oldfrr;
   node *x;
   WALK_LIST2(oldfrr, x, slot->notifiers, n)
@@ -79,10 +119,12 @@ static void filter_roa_reloader_subscribe(struct rtable *roa_table, struct filte
       return; /* Old notifier found for the same event. */
 
   struct filter_roa_reloader *frr = mb_allocz(slot->p, sizeof(struct filter_roa_reloader));
+  debug("subscribe new %p\n", frr);
   frr->roa_table = roa_table;
   frr->slot = slot;
-  add_tail(&(slot->notifiers), &(frr->n));
-  frr->L = SUBSCRIBE(rt_notify_data, slot->p, roa_table->listeners, frr, filter_roa_reloader_notify, filter_roa_reloader_unsubscribe);
+  add_tail(&(slot->notifiers), &(frr->n.n));
+  frr->n.unsubscribe = filter_roa_reloader_unsubscribe;
+  frr->L = SUBSCRIBE(rt_notify_data, slot->p, roa_table->listeners, frr, filter_roa_reloader_notify);
 }
 
 static struct adata undef_adata;	/* adata of length 0 used for undefined */
@@ -1802,7 +1844,7 @@ f_run(struct filter_slot *filter_slot, struct rte **rte, struct linpool *tmp_poo
     return F_REJECT;
 
   int rte_cow = ((*rte)->flags & REF_COW);
-  DBG( "Running filter `%s'...", filter->name );
+  DBG( "Running filter `%s'...", filter_slot->filter->name );
 
   f_rte = rte;
   f_eattrs = NULL;
