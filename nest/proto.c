@@ -160,15 +160,8 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->proto = p;
   c->table = cf->table->table;
 
-  c->in_filter.filter = cf->in_filter;
-  c->in_filter.reloader = channel_filter_slot_reimport;
-  c->in_filter.p = p->pool;
-  init_list(&c->in_filter.notifiers);
-
-  c->out_filter.filter = cf->out_filter;
-  c->out_filter.reloader = channel_filter_slot_reexport;
-  c->out_filter.p = p->pool;
-  init_list(&c->out_filter.notifiers);
+  filter_slot_init(&(c->in_filter),  p->pool, cf->in_filter);
+  filter_slot_init(&(c->out_filter), p->pool, cf->out_filter);
 
   c->rx_limit = cf->rx_limit;
   c->in_limit = cf->in_limit;
@@ -418,8 +411,8 @@ channel_set_state(struct channel *c, uint state)
   /* No filter notifier shall remain after transitioning from CS_UP state. */
   if (cs == CS_UP)
   {
-    unsubscribe_all(&(c->in_filter.notifiers));
-    unsubscribe_all(&(c->out_filter.notifiers));
+    filter_slot_stop(&(c->in_filter));
+    filter_slot_stop(&(c->out_filter));
   }
 
   switch (state)
@@ -446,6 +439,9 @@ channel_set_state(struct channel *c, uint state)
 
     if (!c->gr_wait && c->proto->rt_notify)
       channel_start_export(c);
+
+    filter_slot_start(&(c->in_filter),  channel_filter_slot_reimport);
+    filter_slot_start(&(c->out_filter), channel_filter_slot_reexport);
 
     break;
 
@@ -626,16 +622,20 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   if (c->merge_limit != cf->merge_limit)
     export_changed = 1;
 
-  /* Reconfigure channel fields */
-  c->in_filter.filter = cf->in_filter;
-  c->out_filter.filter = cf->out_filter;
+  /* Reconfigure filter slots */
+  if (import_changed) {
+    filter_slot_flush(&(c->in_filter));
+    filter_slot_init(&(c->in_filter),  c->proto->pool, cf->in_filter);
+  } else
+    c->in_filter.filter = cf->in_filter;
 
-  if (import_changed)
-    unsubscribe_all(&(c->in_filter.notifiers));
+  if (export_changed) {
+    filter_slot_flush(&(c->out_filter));
+    filter_slot_init(&(c->out_filter), c->proto->pool, cf->out_filter);
+  } else
+    c->out_filter.filter = cf->out_filter;
 
-  if (export_changed)
-    unsubscribe_all(&(c->out_filter.notifiers));
-
+  /* Reconfigure other channel fields */
   c->rx_limit = cf->rx_limit;
   c->in_limit = cf->in_limit;
   c->out_limit = cf->out_limit;
@@ -1335,18 +1335,8 @@ protos_dump_all(void)
       debug("\tTABLE %s\n", c->table->name);
       if (c->in_filter.filter)
 	debug("\tInput filter: %s\n", filter_name(c->in_filter.filter));
-      if (!EMPTY_LIST(c->in_filter.notifiers))
-      {
-	debug("\tInput filter notifiers:\n");
-	listeners_dump(NULL, &(c->in_filter.notifiers));
-      }
       if (c->out_filter.filter)
 	debug("\tOutput filter: %s\n", filter_name(c->out_filter.filter));
-      if (!EMPTY_LIST(c->out_filter.notifiers))
-      {
-	debug("\tOutput filter notifiers:\n");
-	listeners_dump(NULL, &(c->out_filter.notifiers));
-      }
     }
 
     if (p->proto->dump && (p->proto_state != PS_DOWN))

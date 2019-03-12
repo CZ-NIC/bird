@@ -58,6 +58,11 @@ struct filter_slot {
   list notifiers;
 };
 
+void filter_slot_init(struct filter_slot *fs, pool *pp, const struct filter *filter);
+void filter_slot_flush(struct filter_slot *fs);
+void filter_slot_start(struct filter_slot *fs, void (*reloader)(const struct filter_slot *));
+void filter_slot_stop(struct filter_slot *fs);
+
 struct rte;
 
 enum filter_return f_run(struct filter_slot *filter_slot, struct rte **rte, struct linpool *tmp_pool, int flags);

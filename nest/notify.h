@@ -9,80 +9,55 @@
 #ifndef _BIRD_NOTIFY_H_
 #define _BIRD_NOTIFY_H_
 
-#include "lib/lists.h"
+#include "lib/resource.h"
+#include "lib/tlists.h"
 
-struct listener {
-  node sender_node;
-  node receiver_node;
+#define LISTENER(stype) struct listener__##stype
+#define LISTENER_DEF(stype) \
+  TLIST_DEF(listener__##stype); \
+LISTENER(stype) { \
+  resource r; \
+  TNODE(listener__##stype) n; \
+  void *self; \
+  void (*notify)(void *self, const stype *data); \
+}; \
+extern struct resclass LISTENER_CLASS(stype) 
 
-  void (*hook)(struct listener *who, void *data);
-  void (*dump)(struct listener *who);
-  void (*unsub)(struct listener *who);
-};
+#define LISTENERS(stype) TLIST(listener__##stype)
 
-static inline void subscribe(struct listener *who, list *sender, list *receiver)
-{
-  ASSERT(!NODE_VALID(&(who->sender_node)));
-  ASSERT(!NODE_VALID(&(who->receiver_node)));
-
-  add_tail(sender, &(who->sender_node));
-  add_tail(receiver, &(who->receiver_node));
+#define LISTENER_CLASS(stype) listener_class__##stype
+#define LISTENER_CLASS_DEF(stype) static void listener_unnotify__##stype(resource *r) { \
+  debug("in: listener_unnotify__" #stype " %p\n", r); \
+  LISTENER(stype) *L = (LISTENER(stype) *) r; \
+  TREM_NODE(listener__##stype, L->n); \
+  debug("out: listener_unnotify__" #stype " %p\n", r); \
+} \
+struct resclass LISTENER_CLASS(stype) = { \
+  .name = "Listener " #stype, \
+  .size = sizeof(LISTENER(stype)), \
+  .free = listener_unnotify__##stype, \
 }
 
-static inline void unsubscribe(struct listener *who)
-{
-  /* Allow multiple unsubscribe */
-  if (!NODE_VALID(&(who->sender_node))
-      && !NODE_VALID(&(who->receiver_node)))
-    return;
+#define INIT_LISTENERS(stype, sender) INIT_TLIST(listener__##stype, sender)
 
-  ASSERT(NODE_VALID(&(who->sender_node))
-      && NODE_VALID(&(who->receiver_node)));
+#define SUBSCRIBE(stype, pool, sender, _self, _notify) ({ \
+    LISTENER(stype) *L = ralloc(pool, &listener_class__##stype); \
+    L->notify = _notify; \
+    L->self = _self; \
+    L->n.self = L; \
+    TADD_TAIL(listener__##stype, sender, L->n); \
+    L; \
+    })
 
-  rem_node(&(who->sender_node));
-  rem_node(&(who->receiver_node));
+#define UNSUBSCRIBE(stype, listener) do { \
+  LISTENER(stype) *L = listener; \
+  rfree(L); \
+} while (0)
 
-  who->sender_node = who->receiver_node = (node) {};
-  CALL(who->unsub, who);
-}
-
-static inline void unsubscribe_all(list *receiver)
-{
-  struct listener *n;
-  node *x, *y;
-  WALK_LIST2_DELSAFE(n, x, y, *receiver, receiver_node)
-    unsubscribe(n);
-}
-
-static inline void notify(list *sender, void *data)
-{
-  struct listener *n;
-  node *x, *y;
-  WALK_LIST2_DELSAFE(n, x, y, *sender, sender_node)
-    n->hook(n, data);
-}
-
-static inline void listeners_dump(list *sender, list *receiver)
-{
-  ASSERT((!sender) || (!receiver));
-  ASSERT(sender || receiver);
-
-  struct listener *n;
-  node *x;
-  if (sender)
-    WALK_LIST2(n, x, *sender, sender_node) {
-      debug("\t\tNotifier: hook %p", n->hook);
-      CALL(n->dump, n);
-      debug("\n");
-    }
-
-  if (receiver)
-    WALK_LIST2(n, x, *receiver, receiver_node) {
-      debug("\t\tNotifier: hook %p", n->hook);
-      CALL(n->dump, n);
-      debug("\n");
-    }
-}
-
+#define NOTIFY(stype, sender, data) do { \
+  const stype *_d = data; \
+  WALK_TLIST_DELSAFE(listener__##stype, L, sender) \
+    L->self->notify(L->self->self, _d); \
+} while (0)
 
 #endif

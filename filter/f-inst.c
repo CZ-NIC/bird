@@ -1043,7 +1043,7 @@
     else
     {
       if (fs->slot)
-	filter_roa_notifier_subscribe(table, fs->slot, net, as);
+	filter_roa_reloader_subscribe(table, fs->slot, net, as);
 
       RESULT(T_ENUM_ROA, i, [[ net_roa_check(table, net, as) ]]);
     }
@@ -1067,7 +1067,7 @@
     else
     {
       if (fs->slot)
-	filter_roa_notifier_subscribe(table, fs->slot, v1.val.net, as);
+	filter_roa_reloader_subscribe(table, fs->slot, v1.val.net, as);
 
       RESULT(T_ENUM_ROA, i, [[ net_roa_check(table, v1.val.net, as) ]]);
     }

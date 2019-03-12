@@ -865,6 +865,7 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
     rte_free(old_changed_free);
 }
 
+LISTENER_CLASS_DEF(rt_notify_data);
 
 /**
  * rte_announce - announce a routing table change
@@ -952,7 +953,7 @@ rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old,
     .before_old = before_old,
   };
 
-  notify(&(tab->listeners), &rtn);
+  NOTIFY(rt_notify_data, tab->listeners, &rtn);
 }
 
 static inline int
@@ -1739,7 +1740,7 @@ rt_setup(pool *p, rtable *t, struct rtable_config *cf)
   t->addr_type = cf->addr_type;
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
   init_list(&t->channels);
-  init_list(&t->listeners);
+  INIT_LISTENERS(rt_notify_data, t->listeners);
 
   t->rt_event = ev_new_init(p, rt_event, t);
   t->gc_time = current_time();
@@ -2174,6 +2175,7 @@ rt_unlock_table(rtable *r)
       r->config->table = NULL;
       if (r->hostcache)
 	rt_free_hostcache(r);
+      ASSERT(EMPTY_TLIST(rt_notify_data, r->listeners));
       rem_node(&r->n);
       fib_free(&r->fib);
       rfree(r->rt_event);

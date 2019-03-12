@@ -64,57 +64,78 @@ struct filter_state {
 
 void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
-struct filter_roa_notifier {
-  resource r;
-  struct listener L;
+struct filter_notifier {
+  node n;
+  void (*unsubscribe)(struct filter_notifier *);
+};
+
+void filter_slot_init(struct filter_slot *fs, pool *pp, const struct filter *filter)
+{
+  fs->filter = filter;
+  fs->p = rp_new(pp, "filter slot pool");
+  init_list(&(fs->notifiers));
+}
+
+void filter_slot_flush(struct filter_slot *fs)
+{
+  filter_slot_stop(fs);
+  fs->filter = NULL;
+  rfree(fs->p);
+}
+
+void filter_slot_start(struct filter_slot *fs, void (*reloader)(const struct filter_slot *))
+{
+  ASSERT(EMPTY_LIST(fs->notifiers));
+  fs->reloader = reloader;
+}
+
+void filter_slot_stop(struct filter_slot *fs)
+{
+  fs->reloader = NULL;
+  struct filter_notifier *n;
+  node *x;
+  WALK_LIST_DELSAFE(n, x, fs->notifiers)
+    n->unsubscribe(n);
+
+  ASSERT(EMPTY_LIST(fs->notifiers));
+}
+
+
+struct filter_roa_reloader {
+  struct filter_notifier n;
+  LISTENER(rt_notify_data) *L;
   struct rtable *roa_table;
   struct filter_slot *slot;
 };
 
-static void filter_roa_notifier_hook(struct listener *L, void *data UNUSED) {
-  struct filter_roa_notifier *frn = SKIP_BACK(struct filter_roa_notifier, L, L);
-  frn->slot->reloader(frn->slot);
+static void filter_roa_reloader_notify(void *self, const rt_notify_data *data UNUSED) {
+  struct filter_roa_reloader *frr = self;
+  debug("notify %p\n", frr);
+  frr->slot->reloader(frr->slot);
 }
 
-static void filter_roa_notifier_unsubscribe(struct listener *L) {
-  struct filter_roa_notifier *frn = SKIP_BACK(struct filter_roa_notifier, L, L);
-  rfree(frn);
+static void filter_roa_reloader_unsubscribe(struct filter_notifier *n) {
+  struct filter_roa_reloader *frr = (void *) n;
+  UNSUBSCRIBE(rt_notify_data, frr->L);
+  rem_node(&(n->n));
+  mb_free(n);
 }
 
-static void filter_roa_notifier_free(resource *r) {
-  struct filter_roa_notifier *frn = (void *) r;
-  unsubscribe(&(frn->L));
-}
-
-static struct resclass filter_roa_notifier_class = {
-  .name = "Filter ROA Notifier",
-  .size = sizeof(struct filter_roa_notifier),
-  .free = filter_roa_notifier_free,
-  .dump = NULL,
-  .lookup = NULL,
-  .memsize = NULL,
-};
-
-static void filter_roa_notifier_subscribe(struct rtable *roa_table, struct filter_slot *slot, const net_addr *n UNUSED, u32 as UNUSED) {
-  struct listener *oldL;
+static void filter_roa_reloader_subscribe(struct rtable *roa_table, struct filter_slot *slot, const net_addr *n UNUSED, u32 as UNUSED) {
+  debug("subscribe t%p s%p\n", roa_table, slot);
+  struct filter_roa_reloader *oldfrr;
   node *x;
-  WALK_LIST2(oldL, x, slot->notifiers, receiver_node)
-    if (oldL->hook == filter_roa_notifier_hook)
-    {
-      struct filter_roa_notifier *old = SKIP_BACK(struct filter_roa_notifier, L, oldL);
-      if ((old->roa_table == roa_table) && (old->slot == slot))
-       return; /* Old notifier found for the same event. */
-    }
+  WALK_LIST2(oldfrr, x, slot->notifiers, n)
+    if (oldfrr->roa_table == roa_table)
+      return; /* Old notifier found for the same event. */
 
-  struct filter_roa_notifier *frn = ralloc(slot->p, &filter_roa_notifier_class);
-  frn->L = (struct listener) {
-    .hook = filter_roa_notifier_hook,
-    .unsub = filter_roa_notifier_unsubscribe,
-  };
-  frn->roa_table = roa_table;
-  frn->slot = slot;
-
-  subscribe(&(frn->L), &(roa_table->listeners), &(slot->notifiers));
+  struct filter_roa_reloader *frr = mb_allocz(slot->p, sizeof(struct filter_roa_reloader));
+  debug("subscribe new %p\n", frr);
+  frr->roa_table = roa_table;
+  frr->slot = slot;
+  add_tail(&(slot->notifiers), &(frr->n.n));
+  frr->n.unsubscribe = filter_roa_reloader_unsubscribe;
+  frr->L = SUBSCRIBE(rt_notify_data, slot->p, roa_table->listeners, frr, filter_roa_reloader_notify);
 }
 
 static inline void f_cache_eattrs(struct filter_state *fs)
@@ -315,7 +336,7 @@ f_run(struct filter_slot *filter_slot, struct rte **rte, struct linpool *tmp_poo
     return F_REJECT;
 
   int rte_cow = ((*rte)->flags & REF_COW);
-  DBG( "Running filter `%s'...", filter->name );
+  DBG( "Running filter `%s'...", filter_slot->filter->name );
 
   struct filter_state fs = {
     .rte = rte,
