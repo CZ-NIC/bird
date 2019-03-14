@@ -45,6 +45,9 @@ CF_DECLS
 
 CF_KEYWORDS(STATIC, ROUTE, VIA, DROP, REJECT, PROHIBIT, PREFERENCE, CHECK, LINK)
 CF_KEYWORDS(ONLINK, WEIGHT, RECURSIVE, IGP, TABLE, BLACKHOLE, UNREACHABLE, BFD, MPLS)
+CF_KEYWORDS(METRIC)
+
+%type <i> stat_metric
 
 
 CF_GRAMMAR
@@ -104,12 +107,17 @@ stat_nexthops:
   | stat_nexthops stat_nexthop
 ;
 
-stat_route0: ROUTE net_any {
+stat_metric:
+   /* empty */ { $$ = IGP_METRIC_UNKNOWN; }
+ | METRIC expr { $$ = $2; }
+
+stat_route0: ROUTE net_any stat_metric {
      this_srt = cfg_allocz(sizeof(struct static_route));
      add_tail(&STATIC_CFG->routes, &this_srt->n);
      this_srt->net = $2;
      this_srt_last_cmd = &(this_srt->cmds);
      this_srt->mp_next = NULL;
+     this_srt->metric = $3;
      this_snh = NULL;
   }
  ;
@@ -135,8 +143,6 @@ stat_route:
 
 stat_route_item:
    cmd { *this_srt_last_cmd = $1; this_srt_last_cmd = &($1->next); }
- | PREFERENCE expr ';' { this_srt->preference = $2; check_u16($2); }
- | DISTANCE expr ';' { this_srt->preference = $2; check_u16($2); }
  ;
 
 stat_route_opts:

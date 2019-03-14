@@ -40,7 +40,7 @@ struct static_route {
   struct static_route *mp_head;		/* First nexthop of this route */
   struct static_route *mp_next;		/* Nexthops for multipath routes */
   struct f_inst *cmds;			/* List of commands for setting attributes */
-  u16 preference;			/* Route preference */
+  u32 metric;				/* Route metric */
   byte dest;				/* Destination type (RTD_*) */
   byte state;				/* State of route announcement (SRS_*) */
   byte active;				/* Next hop is active (nbr/iface/BFD available) */

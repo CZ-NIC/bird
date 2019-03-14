@@ -53,7 +53,7 @@ static void
 static_announce_rte(struct static_proto *p, struct static_route *r)
 {
   rta *a = allocz(RTA_MAX_SIZE);
-  a->src = rt_get_source(&p->p, r->preference);
+  a->src = rt_get_source(&p->p, r->metric);
   a->source = RTS_STATIC;
   a->scope = SCOPE_UNIVERSE;
   a->dest = r->dest;
@@ -98,15 +98,25 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   if (r->state == SRS_CLEAN)
     return;
 
+  if (r->metric != IGP_METRIC_UNKNOWN)
+  {
+    ea_list *ea = allocz(sizeof(struct ea_list) + sizeof(eattr));
+    a->eattrs = ea;
+
+    ea->count = 1;
+    ea->attrs[0].id = EA_GEN_IGP_METRIC;
+    ea->attrs[0].flags = 0;
+    ea->attrs[0].type = EAF_TYPE_INT;
+    ea->attrs[0].u.data = r->metric;
+  }
+
   /* We skip rta_lookup() here */
   rte *e = rte_get_temp(a);
   e->pflags = 0;
-  e->pref = r->preference;
 
   if (r->cmds)
     f_eval_rte(r->cmds, &e, static_lp);
 
-  e->pref = r->preference;	/* Avoid preference from filter */
   rte_update2(p->p.main_channel, r->net, e, a->src);
   r->state = SRS_CLEAN;
 
@@ -252,7 +262,7 @@ static void
 static_remove_rte(struct static_proto *p, struct static_route *r)
 {
   if (r->state)
-    rte_update2(p->p.main_channel, r->net, NULL, rt_get_source(&p->p, r->preference));
+    rte_update2(p->p.main_channel, r->net, NULL, rt_get_source(&p->p, r->metric));
 
   static_reset_rte(p, r);
 }
@@ -356,6 +366,14 @@ static_bfd_notify(struct bfd_request *req)
 }
 
 static int
+static_rte_better(struct rte *new, struct rte *old)
+{
+  u32 n = ea_get_int(new->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
+  u32 o = ea_get_int(old->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
+  return n < o;
+}
+
+static int
 static_rte_mergable(rte *pri UNUSED, rte *sec UNUSED)
 {
   return 1;
@@ -385,9 +403,6 @@ static_postconfig(struct proto_config *CF)
   {
     if (r->net && (r->net->type != CF->net_type))
       cf_error("Route %N incompatible with channel type", r->net);
-
-    if (!r->preference)
-      r->preference = cc->preference;
   }
 }
 
@@ -401,6 +416,7 @@ static_init(struct proto_config *CF)
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
   P->neigh_notify = static_neigh_notify;
+  P->rte_better = static_rte_better;
   P->rte_mergable = static_rte_mergable;
 
   if (cf->igp_table_ip4)
@@ -496,10 +512,10 @@ static_dump(struct proto *P)
 #define IGP_TABLE(cf, sym) ((cf)->igp_table_##sym ? (cf)->igp_table_##sym ->table : NULL )
 
 static inline int srt_equal(struct static_route *a, struct static_route *b)
-{ return net_equal(a->net, b->net) && (a->preference == b->preference); }
+{ return net_equal(a->net, b->net) && (a->metric == b->metric); }
 
 static inline int srt_compare(struct static_route *a, struct static_route *b)
-{ return net_compare(a->net, b->net) ?: uint_cmp(a->preference, b->preference); }
+{ return net_compare(a->net, b->net) ?: uint_cmp(a->metric, b->metric); }
 
 static inline int
 static_cmp_rte(const void *X, const void *Y)
@@ -618,6 +634,16 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
 }
 
 static void
+static_get_route_info(rte *rte, byte *buf, ea_list *attrs)
+{
+  eattr *a = ea_find(attrs, EA_GEN_IGP_METRIC);
+  if (a)
+    buf += bsprintf(buf, " (%d/%u)", rte->pref, a->u.data);
+  else
+    buf += bsprintf(buf, " (%d)", rte->pref);
+}
+
+static void
 static_show_rt(struct static_route *r)
 {
   switch (r->dest)
@@ -680,5 +706,6 @@ struct protocol proto_static = {
   .shutdown =		static_shutdown,
   .cleanup =		static_cleanup,
   .reconfigure =	static_reconfigure,
-  .copy_config =	static_copy_config
+  .copy_config =	static_copy_config,
+  .get_route_info =	static_get_route_info,
 };
