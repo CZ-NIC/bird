@@ -106,8 +106,8 @@
 #include "ospf.h"
 
 static int ospf_preexport(struct proto *P, rte **new, struct linpool *pool);
-static struct ea_list *ospf_make_tmp_attrs(struct rte *rt, struct linpool *pool);
-static void ospf_store_tmp_attrs(struct rte *rt);
+static void ospf_make_tmp_attrs(struct rte *rt, struct linpool *pool);
+static void ospf_store_tmp_attrs(struct rte *rt, struct linpool *pool);
 static void ospf_reload_routes(struct channel *C);
 static int ospf_rte_better(struct rte *new, struct rte *old);
 static int ospf_rte_same(struct rte *new, struct rte *old);
@@ -438,26 +438,20 @@ ospf_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
   return 0;
 }
 
-static struct ea_list *
+static void
 ospf_make_tmp_attrs(struct rte *rt, struct linpool *pool)
 {
-  struct ea_list *e = lp_alloc(pool, sizeof(struct ea_list) + 4 * sizeof(eattr));
-
-  e->next = NULL;
-  e->flags = EALF_SORTED;
-  e->count = 0;
-
-  rte_make_tmp_attr(rt, e, EA_OSPF_METRIC1, EAF_TYPE_INT, rt->u.ospf.metric1);
-  rte_make_tmp_attr(rt, e, EA_OSPF_METRIC2, EAF_TYPE_INT, rt->u.ospf.metric2);
-  rte_make_tmp_attr(rt, e, EA_OSPF_TAG, EAF_TYPE_INT, rt->u.ospf.tag);
-  rte_make_tmp_attr(rt, e, EA_OSPF_ROUTER_ID, EAF_TYPE_ROUTER_ID, rt->u.ospf.router_id);
-
-  return e;
+  rte_init_tmp_attrs(rt, pool, 4);
+  rte_make_tmp_attr(rt, EA_OSPF_METRIC1, EAF_TYPE_INT, rt->u.ospf.metric1);
+  rte_make_tmp_attr(rt, EA_OSPF_METRIC2, EAF_TYPE_INT, rt->u.ospf.metric2);
+  rte_make_tmp_attr(rt, EA_OSPF_TAG, EAF_TYPE_INT, rt->u.ospf.tag);
+  rte_make_tmp_attr(rt, EA_OSPF_ROUTER_ID, EAF_TYPE_ROUTER_ID, rt->u.ospf.router_id);
 }
 
 static void
-ospf_store_tmp_attrs(struct rte *rt)
+ospf_store_tmp_attrs(struct rte *rt, struct linpool *pool)
 {
+  rte_init_tmp_attrs(rt, pool, 4);
   rt->u.ospf.metric1 = rte_store_tmp_attr(rt, EA_OSPF_METRIC1);
   rt->u.ospf.metric2 = rte_store_tmp_attr(rt, EA_OSPF_METRIC2);
   rt->u.ospf.tag = rte_store_tmp_attr(rt, EA_OSPF_TAG);

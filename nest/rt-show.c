@@ -45,10 +45,11 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d)
   else
     from[0] = 0;
 
-  get_route_info = a->src->proto->proto->get_route_info;
   /* Need to normalize the extended attributes */
-  if ((get_route_info || d->verbose) && !rta_is_cached(a))
+  if (d->verbose && !rta_is_cached(a) && a->eattrs)
     ea_normalize(a->eattrs);
+
+  get_route_info = a->src->proto->proto->get_route_info;
   if (get_route_info)
     get_route_info(e, info);
   else
@@ -114,7 +115,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	continue;
 
       ee = e;
-      rte_make_tmp_attrs(&e, c->show_pool);
+      rte_make_tmp_attrs(&e, c->show_pool, NULL);
 
       /* Export channel is down, do not try to export routes to it */
       if (ec && (ec->export_state == ES_DOWN))

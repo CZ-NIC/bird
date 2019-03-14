@@ -645,7 +645,7 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
     rte->u.babel.seqno = r->seqno;
     rte->u.babel.metric = r->metric;
     rte->u.babel.router_id = r->router_id;
-    rte->pflags = 0;
+    rte->pflags = EA_ID_FLAG(EA_BABEL_METRIC) | EA_ID_FLAG(EA_BABEL_ROUTER_ID);
 
     e->unreachable = 0;
     rte_update2(c, e->n.addr, rte, p->p.main_source);
@@ -2077,32 +2077,6 @@ babel_kick_timer(struct babel_proto *p)
 }
 
 
-static struct ea_list *
-babel_prepare_attrs(struct linpool *pool, ea_list *next, uint metric, u64 router_id)
-{
-  struct ea_list *l = lp_alloc(pool, sizeof(struct ea_list) + 2*sizeof(eattr));
-  struct adata *rid = lp_alloc(pool, sizeof(struct adata) + sizeof(u64));
-  rid->length = sizeof(u64);
-  memcpy(&rid->data, &router_id, sizeof(u64));
-
-  l->next = next;
-  l->flags = EALF_SORTED;
-  l->count = 2;
-
-  l->attrs[0].id = EA_BABEL_METRIC;
-  l->attrs[0].flags = 0;
-  l->attrs[0].type = EAF_TYPE_INT | EAF_TEMP;
-  l->attrs[0].u.data = metric;
-
-  l->attrs[1].id = EA_BABEL_ROUTER_ID;
-  l->attrs[1].flags = 0;
-  l->attrs[1].type = EAF_TYPE_OPAQUE | EAF_TEMP;
-  l->attrs[1].u.ptr = rid;
-
-  return l;
-}
-
-
 static int
 babel_preexport(struct proto *P, struct rte **new, struct linpool *pool UNUSED)
 {
@@ -2115,16 +2089,25 @@ babel_preexport(struct proto *P, struct rte **new, struct linpool *pool UNUSED)
   return 0;
 }
 
-static struct ea_list *
+static void
 babel_make_tmp_attrs(struct rte *rt, struct linpool *pool)
 {
-  return babel_prepare_attrs(pool, NULL, rt->u.babel.metric, rt->u.babel.router_id);
+  struct adata *id = lp_alloc_adata(pool, sizeof(u64));
+  memcpy(id->data, &rt->u.babel.router_id, sizeof(u64));
+
+  rte_init_tmp_attrs(rt, pool, 2);
+  rte_make_tmp_attr(rt, EA_BABEL_METRIC, EAF_TYPE_INT, rt->u.babel.metric);
+  rte_make_tmp_attr(rt, EA_BABEL_ROUTER_ID, EAF_TYPE_OPAQUE, (uintptr_t) id);
 }
 
 static void
-babel_store_tmp_attrs(struct rte *rt)
+babel_store_tmp_attrs(struct rte *rt, struct linpool *pool)
 {
-  rt->u.babel.metric = ea_get_int(rt->attrs->eattrs, EA_BABEL_METRIC, 0);
+  rte_init_tmp_attrs(rt, pool, 2);
+  rt->u.babel.metric = rte_store_tmp_attr(rt, EA_BABEL_METRIC);
+
+  /* EA_BABEL_ROUTER_ID is read-only, we do not really save the value */
+  rte_store_tmp_attr(rt, EA_BABEL_ROUTER_ID);
 }
 
 /*
