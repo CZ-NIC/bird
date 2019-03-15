@@ -8,7 +8,7 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#include "ospf.h"
+#include "proto/ospf/ospf.h"
 
 
 struct ospf_dbdes2_packet

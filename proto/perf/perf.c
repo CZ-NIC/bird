@@ -24,7 +24,7 @@
 #include "filter/filter.h"
 #include "lib/string.h"
 
-#include "perf.h"
+#include "proto/perf/perf.h"
 
 #include <stdlib.h>
 #include <time.h>

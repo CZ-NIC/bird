@@ -41,7 +41,7 @@
 #include "filter/filter.h"
 #include "lib/string.h"
 
-#include "pipe.h"
+#include "proto/pipe/pipe.h"
 
 static void
 pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *old)

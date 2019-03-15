@@ -119,7 +119,7 @@
 #include "lib/resource.h"
 #include "lib/string.h"
 
-#include "bgp.h"
+#include "proto/bgp/bgp.h"
 
 
 struct linpool *bgp_linpool;		/* Global temporary pool */

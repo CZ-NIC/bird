@@ -76,7 +76,7 @@
  */
 
 #include <stdlib.h>
-#include "rip.h"
+#include "proto/rip/rip.h"
 
 
 static inline void rip_lock_neighbor(struct rip_neighbor *n);
