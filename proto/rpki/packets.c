@@ -15,9 +15,9 @@
 
 #undef LOCAL_DEBUG
 
-#include "rpki.h"
-#include "transport.h"
-#include "packets.h"
+#include "proto/rpki/rpki.h"
+#include "proto/rpki/transport.h"
+#include "proto/rpki/packets.h"
 
 #define RPKI_ADD_FLAG 		0b00000001
 

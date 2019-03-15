@@ -22,7 +22,7 @@
 #include "lib/string.h"
 #include "lib/unaligned.h"
 
-#include "bgp.h"
+#include "proto/bgp/bgp.h"
 
 /*
  *   UPDATE message error handling

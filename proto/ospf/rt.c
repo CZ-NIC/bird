@@ -8,7 +8,7 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#include "ospf.h"
+#include "proto/ospf/ospf.h"
 
 static void add_cand(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry *par, u32 dist, int i, uint lif, uint nif);
 static void rt_sync(struct ospf_proto *p);

@@ -60,8 +60,8 @@
 #include "lib/string.h"
 #include "lib/timer.h"
 
-#include "unix.h"
-#include "krt.h"
+#include "sysdep/unix/unix.h"
+#include "sysdep/unix/krt.h"
 
 /*
  *	Global resources

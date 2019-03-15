@@ -7,7 +7,7 @@
 
 
 #include <stdlib.h>
-#include "radv.h"
+#include "proto/radv/radv.h"
 
 struct radv_ra_packet
 {
