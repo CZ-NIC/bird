@@ -650,7 +650,7 @@
       l->count = 1;
       l->attrs[0].id = da.ea_code;
       l->attrs[0].flags = 0;
-      l->attrs[0].type = EAF_TYPE_UNDEF | EAF_TEMP | EAF_ORIGINATED | EAF_FRESH;
+      l->attrs[0].type = EAF_TYPE_UNDEF | EAF_ORIGINATED | EAF_FRESH;
       l->attrs[0].u.data = 0;
 
       f_rta_cow(fs);

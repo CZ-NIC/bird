@@ -43,7 +43,7 @@
 #include <limits.h>
 #include <errno.h>
 
-#include "mrt.h"
+#include "proto/mrt/mrt.h"
 
 #include "nest/cli.h"
 #include "filter/filter.h"
@@ -496,7 +496,7 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
       continue;
     }
 
-    rte_make_tmp_attrs(&rt, s->linpool);
+    rte_make_tmp_attrs(&rt, s->linpool, NULL);
 
     if (f_run(s->filter, &rt, s->linpool, 0) <= F_ACCEPT)
       mrt_rib_table_entry(s, rt);

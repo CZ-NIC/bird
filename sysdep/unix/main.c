@@ -38,8 +38,8 @@
 #include "filter/filter.h"
 #include "filter/data.h"
 
-#include "unix.h"
-#include "krt.h"
+#include "sysdep/unix/unix.h"
+#include "sysdep/unix/krt.h"
 
 /*
  *	Debugging

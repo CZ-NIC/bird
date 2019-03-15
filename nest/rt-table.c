@@ -326,6 +326,176 @@ rte_cow_rta(rte *r, linpool *lp)
   return r;
 }
 
+
+/**
+ * rte_init_tmp_attrs - initialize temporary ea_list for route
+ * @r: route entry to be modified
+ * @lp: linpool from which to allocate attributes
+ * @max: maximum number of added temporary attribus
+ *
+ * This function is supposed to be called from make_tmp_attrs() and
+ * store_tmp_attrs() hooks before rte_make_tmp_attr() / rte_store_tmp_attr()
+ * functions. It allocates &ea_list with length for @max items for temporary
+ * attributes and puts it on top of eattrs stack.
+ */
+void
+rte_init_tmp_attrs(rte *r, linpool *lp, uint max)
+{
+  struct ea_list *e = lp_alloc(lp, sizeof(struct ea_list) + max * sizeof(eattr));
+
+  e->next = r->attrs->eattrs;
+  e->flags = EALF_SORTED | EALF_TEMP;
+  e->count = 0;
+
+  r->attrs->eattrs = e;
+}
+
+/**
+ * rte_make_tmp_attr - make temporary eattr from private route fields
+ * @r: route entry to be modified
+ * @id: attribute ID
+ * @type: attribute type
+ * @val: attribute value (u32 or adata ptr)
+ *
+ * This function is supposed to be called from make_tmp_attrs() hook for
+ * each temporary attribute, after temporary &ea_list was initialized by
+ * rte_init_tmp_attrs(). It checks whether temporary attribute is supposed to
+ * be defined (based on route pflags) and if so then it fills &eattr field in
+ * preallocated temporary &ea_list on top of route @r eattrs stack.
+ *
+ * Note that it may require free &eattr in temporary &ea_list, so it must not be
+ * called more times than @max argument of rte_init_tmp_attrs().
+ */
+void
+rte_make_tmp_attr(rte *r, uint id, uint type, uintptr_t val)
+{
+  if (r->pflags & EA_ID_FLAG(id))
+  {
+    ea_list *e = r->attrs->eattrs;
+    eattr *a = &e->attrs[e->count++];
+    a->id = id;
+    a->type = type;
+    a->flags = 0;
+
+    if (type & EAF_EMBEDDED)
+      a->u.data = (u32) val;
+    else
+      a->u.ptr = (struct adata *) val;
+  }
+}
+
+/**
+ * rte_store_tmp_attr - store temporary eattr to private route fields
+ * @r: route entry to be modified
+ * @id: attribute ID
+ *
+ * This function is supposed to be called from store_tmp_attrs() hook for
+ * each temporary attribute, after temporary &ea_list was initialized by
+ * rte_init_tmp_attrs(). It checks whether temporary attribute is defined in
+ * route @r eattrs stack, updates route pflags accordingly, undefines it by
+ * filling &eattr field in preallocated temporary &ea_list on top of the eattrs
+ * stack, and returns the value. Caller is supposed to store it in the
+ * appropriate private field.
+ *
+ * Note that it may require free &eattr in temporary &ea_list, so it must not be
+ * called more times than @max argument of rte_init_tmp_attrs()
+ */
+uintptr_t
+rte_store_tmp_attr(rte *r, uint id)
+{
+  ea_list *e = r->attrs->eattrs;
+  eattr *a = ea_find(e->next, id);
+
+  if (a)
+  {
+    e->attrs[e->count++] = (struct eattr) { .id = id, .type = EAF_TYPE_UNDEF };
+    r->pflags |= EA_ID_FLAG(id);
+    return (a->type & EAF_EMBEDDED) ? a->u.data : (uintptr_t) a->u.ptr;
+  }
+  else
+  {
+    r->pflags &= ~EA_ID_FLAG(id);
+    return 0;
+  }
+}
+
+/**
+ * rte_make_tmp_attrs - prepare route by adding all relevant temporary route attributes
+ * @r: route entry to be modified (may be replaced if COW)
+ * @lp: linpool from which to allocate attributes
+ * @old_attrs: temporary ref to old &rta (may be NULL)
+ *
+ * This function expands privately stored protocol-dependent route attributes
+ * to a uniform &eattr / &ea_list representation. It is essentially a wrapper
+ * around protocol make_tmp_attrs() hook, which does some additional work like
+ * ensuring that route @r is writable.
+ *
+ * The route @r may be read-only (with %REF_COW flag), in that case rw copy is
+ * obtained by rte_cow() and @r is replaced. If @rte is originally rw, it may be
+ * directly modified (and it is never copied).
+ *
+ * If the @old_attrs ptr is supplied, the function obtains another reference of
+ * old cached &rta, that is necessary in some cases (see rte_cow_rta() for
+ * details). It is freed by rte_store_tmp_attrs(), or manually by rta_free().
+ *
+ * Generally, if caller ensures that @r is read-only (e.g. in route export) then
+ * it may ignore @old_attrs (and set it to NULL), but must handle replacement of
+ * @r. If caller ensures that @r is writable (e.g. in route import) then it may
+ * ignore replacement of @r, but it must handle @old_attrs.
+ */
+void
+rte_make_tmp_attrs(rte **r, linpool *lp, rta **old_attrs)
+{
+  void (*make_tmp_attrs)(rte *r, linpool *lp);
+  make_tmp_attrs = (*r)->attrs->src->proto->make_tmp_attrs;
+
+  if (!make_tmp_attrs)
+    return;
+
+  /* We may need to keep ref to old attributes, will be freed in rte_store_tmp_attrs() */
+  if (old_attrs)
+    *old_attrs = rta_is_cached((*r)->attrs) ? rta_clone((*r)->attrs) : NULL;
+
+  *r = rte_cow_rta(*r, lp);
+  make_tmp_attrs(*r, lp);
+}
+
+/**
+ * rte_store_tmp_attrs - store temporary route attributes back to private route fields
+ * @r: route entry to be modified
+ * @lp: linpool from which to allocate attributes
+ * @old_attrs: temporary ref to old &rta
+ *
+ * This function stores temporary route attributes that were expanded by
+ * rte_make_tmp_attrs() back to private route fields and also undefines them.
+ * It is essentially a wrapper around protocol store_tmp_attrs() hook, which
+ * does some additional work like shortcut if there is no change and cleanup
+ * of @old_attrs reference obtained by rte_make_tmp_attrs().
+ */
+static void
+rte_store_tmp_attrs(rte *r, linpool *lp, rta *old_attrs)
+{
+  void (*store_tmp_attrs)(rte *rt, linpool *lp);
+  store_tmp_attrs = r->attrs->src->proto->store_tmp_attrs;
+
+  if (!store_tmp_attrs)
+    return;
+
+  ASSERT(!rta_is_cached(r->attrs));
+
+  /* If there is no new ea_list, we just skip the temporary ea_list */
+  ea_list *ea = r->attrs->eattrs;
+  if (ea && (ea->flags & EALF_TEMP))
+    r->attrs->eattrs = ea->next;
+  else
+    store_tmp_attrs(r, lp);
+
+  /* Free ref we got in rte_make_tmp_attrs(), have to do rta_lookup() first */
+  r->attrs = rta_lookup(r->attrs);
+  rta_free(old_attrs);
+}
+
+
 static int				/* Actually better or at least as good as */
 rte_better(rte *new, rte *old)
 {
@@ -424,7 +594,7 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
       goto accept;
     }
 
-  rte_make_tmp_attrs(&rt, pool);
+  rte_make_tmp_attrs(&rt, pool, NULL);
 
   v = filter && ((filter == FILTER_REJECT) ||
 		 (f_run(filter, &rt, pool,
@@ -1008,12 +1178,13 @@ rte_free_quick(rte *e)
 static int
 rte_same(rte *x, rte *y)
 {
+  /* rte.flags are not checked, as they are mostly internal to rtable */
   return
     x->attrs == y->attrs &&
-    x->flags == y->flags &&
     x->pflags == y->pflags &&
     x->pref == y->pref &&
-    (!x->attrs->src->proto->rte_same || x->attrs->src->proto->rte_same(x, y));
+    (!x->attrs->src->proto->rte_same || x->attrs->src->proto->rte_same(x, y)) &&
+    rte_is_filtered(x) == rte_is_filtered(y);
 }
 
 static inline int rte_is_ok(rte *e) { return e && !rte_is_filtered(e); }
@@ -1057,7 +1228,9 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 
 	  if (new && rte_same(old, new))
 	    {
-	      /* No changes, ignore the new route */
+	      /* No changes, ignore the new route and refresh the old one */
+
+	      old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
 
 	      if (!rte_is_filtered(new))
 		{
@@ -1401,26 +1574,27 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	  /* new is a private copy, i could modify it */
 	  new->flags |= REF_FILTERED;
 	}
-      else
+      else if (filter)
 	{
-	  rte_make_tmp_attrs(&new, rte_update_pool);
-	  if (filter && (filter != FILTER_REJECT))
+	  rta *old_attrs;
+	  rte_make_tmp_attrs(&new, rte_update_pool, &old_attrs);
+
+	  int fr = f_run(filter, &new, rte_update_pool, 0);
+	  if (fr > F_ACCEPT)
+	  {
+	    stats->imp_updates_filtered++;
+	    rte_trace_in(D_FILTERS, p, new, "filtered out");
+
+	    if (! c->in_keep_filtered)
 	    {
-	      ea_list *oldea = new->attrs->eattrs;
-	      int fr = f_run(filter, &new, rte_update_pool, 0);
-	      if (fr > F_ACCEPT)
-		{
-		  stats->imp_updates_filtered++;
-		  rte_trace_in(D_FILTERS, p, new, "filtered out");
-
-		  if (! c->in_keep_filtered)
-		    goto drop;
-
-		  new->flags |= REF_FILTERED;
-		}
-	      if (new->attrs->eattrs != oldea && src->proto->store_tmp_attrs)
-		src->proto->store_tmp_attrs(new);
+	      rta_free(old_attrs);
+	      goto drop;
 	    }
+
+	    new->flags |= REF_FILTERED;
+	  }
+
+	  rte_store_tmp_attrs(new, rte_update_pool, old_attrs);
 	}
       if (!rta_is_cached(new->attrs)) /* Need to copy attributes */
 	new->attrs = rta_lookup(new->attrs);
@@ -1517,7 +1691,7 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter)
   int v = p->preexport ? p->preexport(p, &rt, rte_update_pool) : 0;
   if (v == RIC_PROCESS)
   {
-    rte_make_tmp_attrs(&rt, rte_update_pool);
+    rte_make_tmp_attrs(&rt, rte_update_pool, NULL);
     v = (f_run(filter, &rt, rte_update_pool, FF_SILENT) <= F_ACCEPT);
   }
 
@@ -2363,7 +2537,16 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
     if (old->attrs->src == src)
     {
       if (new && rte_same(old, new))
+      {
+	/* Refresh the old rte, continue with update to main rtable */
+	if (old->flags & (REF_STALE | REF_DISCARD | REF_MODIFY))
+	{
+	  old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
+	  return 1;
+	}
+
 	goto drop_update;
+      }
 
       /* Remove the old rte */
       *pos = old->next;

@@ -100,7 +100,7 @@
  * - RFC 5883 - BFD for multihop paths
  */
 
-#include "bfd.h"
+#include "proto/bfd/bfd.h"
 
 
 #define HASH_ID_KEY(n)		n->loc_id

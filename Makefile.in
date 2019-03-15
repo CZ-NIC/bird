@@ -6,7 +6,7 @@
 MAKEFLAGS += -r
 
 # Variable definitions
-CPPFLAGS=-I$(objdir) -I$(srcdir) @CPPFLAGS@
+CPPFLAGS=-I'$(objabs)' -I'$(srcabs)' @CPPFLAGS@
 CFLAGS=$(CPPFLAGS) @CFLAGS@
 LDFLAGS=@LDFLAGS@
 M4FLAGS=@M4FLAGS@
@@ -40,6 +40,11 @@ srcdir := @srcdir@
 objdir := @objdir@
 exedir := @exedir@
 
+srcabs := $(shell readlink -f $(srcdir))
+objabs := $(shell readlink -f $(objdir))
+
+$(warning src $(srcdir) obj $(objdir) exe $(exedir))
+
 git-label:=$(strip $(shell cd $(srcdir) && [ "$$(git rev-parse --show-toplevel)" = "$$(readlink -f .)" ] && git describe --always --dirty=-x 2>/dev/null))
 ifneq ($(git-label),)
         CFLAGS += -DGIT_LABEL="$(git-label)"
@@ -66,6 +71,7 @@ docgoals := docs userdocs progdocs
 testgoals := check test tests tests_run
 cleangoals := clean distclean testsclean
 .PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope
+
 all: daemon cli
 
 daemon: $(daemon)
@@ -87,6 +93,9 @@ tests-target-files = $(patsubst %.c,$(o)%,$(tests_src))
 all-daemon = $(daemon): $(obj)
 all-client = $(client): $(obj)
 
+deps :=
+obj-deps = $(patsubst %.o,%.d,$(obj))
+
 s = $(dir $(lastword $(MAKEFILE_LIST)))
 ifeq ($(srcdir),.)
   o = $(objdir)/$(s)
@@ -106,32 +115,52 @@ include $(addsuffix /Makefile,$(addprefix $(srcdir)/,$(dirs)))
 
 # Generic rules
 # Object file rules
-$(objdir)/%.o: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.o: $(srcdir)/%.c $(objdir)/.dir-stamp
 	$(E)echo CC -o $@ -c $<
-	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -c $<
+	$(Q)$(CC) $(CFLAGS) -o $@ -c $<
 
-$(objdir)/%.o: $(objdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.o: $(objdir)/%.c $(objdir)/.dir-stamp
 	$(E)echo CC -o $@ -c $<
-	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -c $<
+	$(Q)$(CC) $(CFLAGS) -o $@ -c $<
 
 # Debug: Preprocessed source rules
-$(objdir)/%.E: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.E: $(srcdir)/%.c $(objdir)/.dir-stamp
 	$(E)echo CC -o $@ -E $<
-	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -E $<
+	$(Q)$(CC) $(CFLAGS) -o $@ -E $<
 
-$(objdir)/%.E: $(objdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.E: $(objdir)/%.c $(objdir)/.dir-stamp
 	$(E)echo CC -o $@ -E $<
-	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -E $<
+	$(Q)$(CC) $(CFLAGS) -o $@ -E $<
 
 # Debug: Assembler object rules
-$(objdir)/%.S: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.S: $(srcdir)/%.c $(objdir)/.dir-stamp
 	$(E)echo CC -o $@ -S $<
-	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -S $<
+	$(Q)$(CC) $(CFLAGS) -o $@ -S $<
 
-$(objdir)/%.S: $(objdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.S: $(objdir)/%.c $(objdir)/.dir-stamp
 	$(E)echo CC -o $@ -S $<
-	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -S $<
+	$(Q)$(CC) $(CFLAGS) -o $@ -S $<
 
+# Dependencies
+DEPSPLIT := $(srcdir)/tools/depsplit.sed
+$(objdir)/%.d: $(srcdir)/%.c $(objdir)/.dir-stamp $(DEPSPLIT)
+	$(E)echo CC -o $@ -M $<
+	$(Q)$(CC) $(CFLAGS) -M -MQ '$(objdir)/$*.o' -MG -MM $< | sed -rf $(DEPSPLIT) | sed -r 's#^ +([^/ ][^ ]+)# $(objdir)/\1#' > $@
+
+$(objdir)/%.d: $(objdir)/%.c $(objdir)/.dir-stamp $(DEPSPLIT)
+	$(E)echo CC -o $@ -M $<
+	$(Q)$(CC) $(CFLAGS) -M -MQ '$(objdir)/$*.o' -MG -MM $< | sed -rf $(DEPSPLIT) | sed -r 's#^ +([^/ ][^ ]+)# $(objdir)/\1#' > $@
+
+# Finally include the computed dependencies:
+# ## if there is at least one non-clean goal
+ifneq ($(filter-out $(cleangoals),$(MAKECMDGOALS)),)
+-include $(deps)
+endif
+
+# ## if the implicit goal is called
+ifeq ($(MAKECMDGOALS),)
+-include $(deps)
+endif
 
 
 $(objdir)/.dir-stamp:
@@ -163,20 +192,10 @@ $(tests_targets): LIBS += $(DAEMON_LIBS)
 $(tests_targets_ok): %.ok: %
 	$(Q)$* 2>/dev/null && touch $*.ok
 
-test: testsclean check
+test: testsclean all check
 check: tests tests_run
 tests: $(tests_targets)
 tests_run: $(tests_targets_ok)
-
-# Finally include the computed dependencies
-
-ifneq ($(filter-out $(cleangoals),$(MAKECMDGOALS)),)
--include $(shell find $(objdir) -name "*.d")
-endif
-
-ifeq ($(MAKECMDGOALS),)
--include $(shell find $(objdir) -name "*.d")
-endif
 
 tags:
 	cd $(srcdir) ; etags -lc `find $(dirs) -name *.[chY]`

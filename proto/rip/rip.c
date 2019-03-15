@@ -76,7 +76,7 @@
  */
 
 #include <stdlib.h>
-#include "rip.h"
+#include "proto/rip/rip.h"
 
 
 static inline void rip_lock_neighbor(struct rip_neighbor *n);
@@ -193,8 +193,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     e->u.rip.from = a0.nh.iface;
     e->u.rip.metric = rt_metric;
     e->u.rip.tag = rt_tag;
-
-    e->pflags = 0;
+    e->pflags = EA_ID_FLAG(EA_RIP_METRIC) | EA_ID_FLAG(EA_RIP_TAG);
 
     rte_update(&p->p, en->n.addr, e);
   }
@@ -997,28 +996,6 @@ rip_trigger_update(struct rip_proto *p)
  *	RIP protocol glue
  */
 
-static struct ea_list *
-rip_prepare_attrs(struct linpool *pool, ea_list *next, u8 metric, u16 tag)
-{
-  struct ea_list *l = lp_alloc(pool, sizeof(struct ea_list) + 2 * sizeof(eattr));
-
-  l->next = next;
-  l->flags = EALF_SORTED;
-  l->count = 2;
-
-  l->attrs[0].id = EA_RIP_METRIC;
-  l->attrs[0].flags = 0;
-  l->attrs[0].type = EAF_TYPE_INT | EAF_TEMP;
-  l->attrs[0].u.data = metric;
-
-  l->attrs[1].id = EA_RIP_TAG;
-  l->attrs[1].flags = 0;
-  l->attrs[1].type = EAF_TYPE_INT | EAF_TEMP;
-  l->attrs[1].u.data = tag;
-
-  return l;
-}
-
 static void
 rip_reload_routes(struct channel *C)
 {
@@ -1032,17 +1009,20 @@ rip_reload_routes(struct channel *C)
   rip_kick_timer(p);
 }
 
-static struct ea_list *
+static void
 rip_make_tmp_attrs(struct rte *rt, struct linpool *pool)
 {
-  return rip_prepare_attrs(pool, NULL, rt->u.rip.metric, rt->u.rip.tag);
+  rte_init_tmp_attrs(rt, pool, 2);
+  rte_make_tmp_attr(rt, EA_RIP_METRIC, EAF_TYPE_INT, rt->u.rip.metric);
+  rte_make_tmp_attr(rt, EA_RIP_TAG, EAF_TYPE_INT, rt->u.rip.tag);
 }
 
 static void
-rip_store_tmp_attrs(struct rte *rt)
+rip_store_tmp_attrs(struct rte *rt, struct linpool *pool)
 {
-  rt->u.rip.metric = ea_get_int(rt->attrs->eattrs, EA_RIP_METRIC, 1);
-  rt->u.rip.tag = ea_get_int(rt->attrs->eattrs, EA_RIP_TAG, 0);
+  rte_init_tmp_attrs(rt, pool, 2);
+  rt->u.rip.metric = rte_store_tmp_attr(rt, EA_RIP_METRIC);
+  rt->u.rip.tag = rte_store_tmp_attr(rt, EA_RIP_TAG);
 }
 
 static int

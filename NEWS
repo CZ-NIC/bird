@@ -1,3 +1,11 @@
+Version 2.0.4 (2019-02-27)
+  o OSPF: Opaque LSAs (RFC 5250)
+  o OSPF: DN-bit handling (RFC 4576)
+  o Preferred route counters are back
+  o Important BGP bugfix
+  o Several bugfixes related to route propagation
+  o some minor bugfixes
+
 Version 2.0.3 (2019-01-05)
   o MRT table dumps (RFC 6396)
   o BGP Long-lived graceful restart
