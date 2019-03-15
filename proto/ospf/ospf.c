@@ -103,7 +103,7 @@
  */
 
 #include <stdlib.h>
-#include "ospf.h"
+#include "proto/ospf/ospf.h"
 
 static int ospf_preexport(struct proto *P, rte **new, struct linpool *pool);
 static void ospf_make_tmp_attrs(struct rte *rt, struct linpool *pool);

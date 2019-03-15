@@ -45,7 +45,7 @@
 #include "lib/string.h"
 #include "lib/alloca.h"
 
-#include "static.h"
+#include "proto/static/static.h"
 
 static linpool *static_lp;
 

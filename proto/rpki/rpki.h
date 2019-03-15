@@ -18,8 +18,8 @@
 #include "lib/socket.h"
 #include "lib/ip.h"
 
-#include "transport.h"
-#include "packets.h"
+#include "proto/rpki/transport.h"
+#include "proto/rpki/packets.h"
 
 #define RPKI_TCP_PORT		323
 #define RPKI_SSH_PORT		22

@@ -12,7 +12,7 @@
 #include "nest/bird.h"
 #include "lib/string.h"
 
-#include "ospf.h"
+#include "proto/ospf/ospf.h"
 
 
 #define HASH_DEF_ORDER 6

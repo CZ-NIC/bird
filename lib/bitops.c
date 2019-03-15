@@ -7,7 +7,7 @@
  */
 
 #include "nest/bird.h"
-#include "bitops.h"
+#include "lib/bitops.h"
 
 /**
  * u32_mkmask - create a bit mask
