@@ -139,13 +139,14 @@ $(objdir)/%.S: $(objdir)/%.c $(objdir)/.dir-stamp
 	$(Q)$(CC) $(CFLAGS) -o $@ -S $<
 
 # Dependencies
-$(objdir)/%.d: $(srcdir)/%.c $(objdir)/.dir-stamp
+DEPSPLIT := $(srcdir)/tools/depsplit.sed
+$(objdir)/%.d: $(srcdir)/%.c $(objdir)/.dir-stamp $(DEPSPLIT)
 	$(E)echo CC -o $@ -M $<
-	$(Q)$(CC) $(CFLAGS) -M -MQ '$(objdir)/$*.o' -MG -MM $< | sed -r 's#([^:\]) ([^\])#\1 \\\n \2#' | sed -r 's#^ ([^/][^ ]+)# $(objdir)/\1#' > $@
+	$(Q)$(CC) $(CFLAGS) -M -MQ '$(objdir)/$*.o' -MG -MM $< | sed -rf $(DEPSPLIT) | sed -r 's#^ ([^/][^ ]+)# $(objdir)/\1#' > $@
 
-$(objdir)/%.d: $(objdir)/%.c $(objdir)/.dir-stamp
+$(objdir)/%.d: $(objdir)/%.c $(objdir)/.dir-stamp $(DEPSPLIT)
 	$(E)echo CC -o $@ -M $<
-	$(Q)$(CC) $(CFLAGS) -M -MQ '$(objdir)/$*.o' -MG -MM $< | sed -r 's#([^:\]) ([^\])#\1 \\\n \2#' | sed -r 's#^ ([^/][^ ]+)# $(objdir)/\1#' > $@
+	$(Q)$(CC) $(CFLAGS) -M -MQ '$(objdir)/$*.o' -MG -MM $< | sed -rf $(DEPSPLIT) | sed -r 's#^ ([^/][^ ]+)# $(objdir)/\1#' > $@
 
 # Finally include the computed dependencies:
 # ## if there is at least one non-clean goal
