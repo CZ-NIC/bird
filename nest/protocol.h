@@ -196,8 +196,8 @@ struct proto {
    *	   ifa_notify	Notify protocol about interface address changes.
    *	   rt_notify	Notify protocol about routing table updates.
    *	   neigh_notify	Notify protocol about neighbor cache events.
-   *	   make_tmp_attrs  Construct ea_list from private attrs stored in rta.
-   *	   store_tmp_attrs Store private attrs back to rta. The route MUST NOT be cached.
+   *	   make_tmp_attrs  Add attributes to rta from from private attrs stored in rte. The route and rta MUST NOT be cached.
+   *	   store_tmp_attrs Store private attrs back to rte and undef added attributes. The route and rta MUST NOT be cached.
    *	   preexport  Called as the first step of the route exporting process.
    *			It can construct a new rte, add private attributes and
    *			decide whether the route shall be exported: 1=yes, -1=no,
@@ -213,8 +213,8 @@ struct proto {
   void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
   void (*rt_notify)(struct proto *, struct channel *, struct network *net, struct rte *new, struct rte *old);
   void (*neigh_notify)(struct neighbor *neigh);
-  struct ea_list *(*make_tmp_attrs)(struct rte *rt, struct linpool *pool);
-  void (*store_tmp_attrs)(struct rte *rt);
+  void (*make_tmp_attrs)(struct rte *rt, struct linpool *pool);
+  void (*store_tmp_attrs)(struct rte *rt, struct linpool *pool);
   int (*preexport)(struct proto *, struct rte **rt, struct linpool *pool);
   void (*reload_routes)(struct channel *);
   void (*feed_begin)(struct channel *, int initial);
@@ -297,18 +297,6 @@ static inline u32
 proto_get_router_id(struct proto_config *pc)
 {
   return pc->router_id ? pc->router_id : pc->global->router_id;
-}
-
-static inline void
-rte_make_tmp_attrs(struct rte **rt, struct linpool *pool)
-{
-  struct ea_list *(*mta)(struct rte *rt, struct linpool *pool);
-  mta = (*rt)->attrs->src->proto->make_tmp_attrs;
-  if (!mta) return;
-  *rt = rte_cow_rta(*rt, pool);
-  struct ea_list *ea = mta(*rt, pool);
-  ea->next = (*rt)->attrs->eattrs;
-  (*rt)->attrs->eattrs = ea;
 }
 
 

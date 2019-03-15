@@ -8,7 +8,7 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#include "ospf.h"
+#include "proto/ospf/ospf.h"
 
 static void add_cand(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry *par, u32 dist, int i, uint lif, uint nif);
 static void rt_sync(struct ospf_proto *p);
@@ -402,8 +402,6 @@ add_network(struct ospf_area *oa, net_addr *net, int metric, struct top_hash_ent
     .type = RTS_OSPF,
     .options = 0,
     .metric1 = metric,
-    .metric2 = LSINFINITY,
-    .tag = 0,
     .rid = en->lsa.rt,
     .oa = oa,
     .nhs = en->nhs
@@ -459,8 +457,6 @@ spfa_process_rt(struct ospf_proto *p, struct ospf_area *oa, struct top_hash_entr
       .type = RTS_OSPF,
       .options = rt->options,
       .metric1 = act->dist,
-      .metric2 = LSINFINITY,
-      .tag = 0,
       .rid = act->lsa.rt,
       .oa = oa,
       .nhs = act->nhs
@@ -823,8 +819,6 @@ ospf_rt_sum(struct ospf_area *oa)
       .type = RTS_OSPF_IA,
       .options = options,
       .metric1 = abr->n.metric1 + metric,
-      .metric2 = LSINFINITY,
-      .tag = 0,
       .rid = en->lsa.rt, /* ABR ID */
       .oa = oa,
       .nhs = abr->n.nhs
@@ -1563,7 +1557,7 @@ ospf_ext_spf(struct ospf_proto *p)
     {
       nfa.type = RTS_OSPF_EXT1;
       nfa.metric1 = br_metric + rt.metric;
-      nfa.metric2 = LSINFINITY;
+      nfa.metric2 = 0;
     }
 
     /* Mark the LSA as reachable */
@@ -2033,7 +2027,14 @@ again1:
 	e->u.ospf.metric2 = nf->old_metric2 = nf->n.metric2;
 	e->u.ospf.tag = nf->old_tag = nf->n.tag;
 	e->u.ospf.router_id = nf->old_rid = nf->n.rid;
-	e->pflags = 0;
+	e->pflags = EA_ID_FLAG(EA_OSPF_METRIC1) | EA_ID_FLAG(EA_OSPF_ROUTER_ID);
+
+	if (nf->n.type == RTS_OSPF_EXT2)
+	  e->pflags |= EA_ID_FLAG(EA_OSPF_METRIC2);
+
+	/* Perhaps onfly if tag is non-zero? */
+	if ((nf->n.type == RTS_OSPF_EXT1) || (nf->n.type == RTS_OSPF_EXT2))
+	  e->pflags |= EA_ID_FLAG(EA_OSPF_TAG);
 
 	DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
 	    a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);

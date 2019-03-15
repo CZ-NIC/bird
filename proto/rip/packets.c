@@ -11,7 +11,7 @@
 
 #undef LOCAL_DEBUG
 
-#include "rip.h"
+#include "proto/rip/rip.h"
 #include "lib/mac.h"
 
 

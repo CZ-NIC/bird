@@ -573,8 +573,8 @@ ea_do_sort(ea_list *e)
 }
 
 /**
- * In place discard duplicates, undefs and temporary attributes in sorted
- * ea_list. We use stable sort for this reason.
+ * In place discard duplicates and undefs in sorted ea_list. We use stable sort
+ * for this reason.
  **/
 static inline void
 ea_do_prune(ea_list *e)
@@ -596,10 +596,6 @@ ea_do_prune(ea_list *e)
       /* Now s0 is the most recent version, s[-1] the oldest one */
       /* Drop undefs */
       if ((s0->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
-	continue;
-
-      /* Drop temporary attributes */
-      if (s0->type & EAF_TEMP)
 	continue;
 
       /* Copy the newest version to destination */
@@ -981,8 +977,6 @@ ea_dump(ea_list *e)
 	{
 	  eattr *a = &e->attrs[i];
 	  debug(" %02x:%02x.%02x", EA_PROTO(a->id), EA_ID(a->id), a->flags);
-	  if (a->type & EAF_TEMP)
-	    debug("T");
 	  debug("=%c", "?iO?I?P???S?????" [a->type & EAF_TYPE_MASK]);
 	  if (a->type & EAF_ORIGINATED)
 	    debug("o");

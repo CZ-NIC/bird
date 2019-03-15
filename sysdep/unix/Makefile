@@ -4,5 +4,7 @@ $(all-daemon)
 $(cf-local)
 $(conf-y-targets): $(s)krt.Y
 
+deps += $(obj-deps)
+
 src := $(filter-out main.c, $(src))
 tests_objs := $(tests_objs) $(src-o-files)

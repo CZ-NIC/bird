@@ -315,6 +315,10 @@ void rte_free(rte *);
 rte *rte_do_cow(rte *);
 static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }
 rte *rte_cow_rta(rte *r, linpool *lp);
+void rte_init_tmp_attrs(struct rte *r, linpool *lp, uint max);
+void rte_make_tmp_attr(struct rte *r, uint id, uint type, uintptr_t val);
+void rte_make_tmp_attrs(struct rte **r, struct linpool *pool, struct rta **old_attrs);
+uintptr_t rte_store_tmp_attr(struct rte *r, uint id);
 void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
@@ -492,6 +496,7 @@ typedef struct eattr {
 #define EA_CODE(proto,id) (((proto) << 8) | (id))
 #define EA_ID(ea) ((ea) & 0xff)
 #define EA_PROTO(ea) ((ea) >> 8)
+#define EA_ID_FLAG(ea) (1 << EA_ID(ea))
 #define EA_CUSTOM(id) ((id) | EA_CUSTOM_BIT)
 #define EA_IS_CUSTOM(ea) ((ea) & EA_CUSTOM_BIT)
 #define EA_CUSTOM_ID(ea) ((ea) & ~EA_CUSTOM_BIT)
@@ -521,7 +526,6 @@ const char *ea_custom_name(uint ea);
 #define EAF_VAR_LENGTH 0x02		/* Attribute length is variable (part of type spec) */
 #define EAF_ORIGINATED 0x20		/* The attribute has originated locally */
 #define EAF_FRESH 0x40			/* An uncached attribute (e.g. modified in export filter) */
-#define EAF_TEMP 0x80			/* A temporary attribute (the one stored in the tmp attr list) */
 
 typedef struct adata {
   uint length;				/* Length of data */
@@ -553,6 +557,7 @@ typedef struct ea_list {
 #define EALF_SORTED 1			/* Attributes are sorted by code */
 #define EALF_BISECT 2			/* Use interval bisection for searching */
 #define EALF_CACHED 4			/* Attributes belonging to cached rta */
+#define EALF_TEMP 8			/* Temporary ea_list added by make_tmp_attrs hooks */
 
 struct rte_src *rt_find_source(struct proto *p, u32 id);
 struct rte_src *rt_get_source(struct proto *p, u32 id);
@@ -585,6 +590,8 @@ void ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **na
     ea = t; \
   } \
   ea_sort(ea); \
+  if (ea->count == 0) \
+    ea = NULL; \
 } while(0) \
 
 static inline eattr *

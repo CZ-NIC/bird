@@ -13,7 +13,7 @@
 #include <stdarg.h>
 
 #include "nest/bird.h"
-#include "checksum.h"
+#include "lib/checksum.h"
 
 static inline u32
 add32(u32 sum, u32 x)
