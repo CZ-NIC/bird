@@ -487,6 +487,7 @@ bgp_conn_enter_openconfirm_state(struct bgp_conn *conn)
 }
 
 static const struct bgp_af_caps dummy_af_caps = { };
+static const struct bgp_af_caps basic_af_caps = { .ready = 1 };
 
 void
 bgp_conn_enter_established_state(struct bgp_conn *conn)
@@ -529,6 +530,13 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   {
     const struct bgp_af_caps *loc = bgp_find_af_caps(local, c->afi);
     const struct bgp_af_caps *rem = bgp_find_af_caps(peer,  c->afi);
+
+    /* Use default if capabilities were not announced */
+    if (!local->length && (c->afi == BGP_AF_IPV4))
+      loc = &basic_af_caps;
+
+    if (!peer->length && (c->afi == BGP_AF_IPV4))
+      rem = &basic_af_caps;
 
     /* Ignore AFIs that were not announced in multiprotocol capability */
     if (!loc || !loc->ready)

@@ -192,6 +192,7 @@ struct bgp_caps {
   u16 gr_time;				/* Graceful restart time in seconds */
 
   u16 af_count;				/* Number of af_data items */
+  u16 length;				/* Length of capabilities in OPEN msg */
 
   struct bgp_af_caps af_data[0];	/* Per-AF capability data */
 };
