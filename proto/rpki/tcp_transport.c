@@ -18,7 +18,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "rpki.h"
+#include "proto/rpki/rpki.h"
 #include "sysdep/unix/unix.h"
 
 static int

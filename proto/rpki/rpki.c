@@ -93,7 +93,7 @@
 
 #undef LOCAL_DEBUG
 
-#include "rpki.h"
+#include "proto/rpki/rpki.h"
 #include "lib/string.h"
 #include "nest/cli.h"
 

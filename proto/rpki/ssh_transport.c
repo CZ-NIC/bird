@@ -15,7 +15,7 @@
 #include <string.h>
 #include <sys/time.h>
 
-#include "rpki.h"
+#include "proto/rpki/rpki.h"
 
 static int
 rpki_tr_ssh_open(struct rpki_tr_sock *tr)

@@ -25,7 +25,7 @@
 
 #include "nest/cli.h"
 
-#include "bgp.h"
+#include "proto/bgp/bgp.h"
 
 
 #define BGP_RR_REQUEST		0

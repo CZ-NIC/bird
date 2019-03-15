@@ -10,7 +10,7 @@
  *	This file contains the packet and TLV handling code for the protocol.
  */
 
-#include "babel.h"
+#include "proto/babel/babel.h"
 
 
 struct babel_pkt_header {

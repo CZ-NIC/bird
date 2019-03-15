@@ -22,7 +22,7 @@
 #include "lib/string.h"
 
 #include "nest/bfd.h"
-#include "io.h"
+#include "proto/bfd/io.h"
 
 
 #define BFD_CONTROL_PORT	3784

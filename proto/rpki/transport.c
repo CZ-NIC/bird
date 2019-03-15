@@ -12,8 +12,8 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
-#include "rpki.h"
-#include "transport.h"
+#include "proto/rpki/rpki.h"
+#include "proto/rpki/transport.h"
 #include "sysdep/unix/unix.h"
 
 /**
