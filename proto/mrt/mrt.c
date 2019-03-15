@@ -43,7 +43,7 @@
 #include <limits.h>
 #include <errno.h>
 
-#include "mrt.h"
+#include "proto/mrt/mrt.h"
 
 #include "nest/cli.h"
 #include "filter/filter.h"

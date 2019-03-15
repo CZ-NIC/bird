@@ -4,7 +4,7 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#include "bfd.h"
+#include "proto/bfd/bfd.h"
 #include "lib/mac.h"
 
 

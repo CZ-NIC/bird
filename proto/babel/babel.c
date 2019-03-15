@@ -36,7 +36,7 @@
  */
 
 #include <stdlib.h>
-#include "babel.h"
+#include "proto/babel/babel.h"
 
 
 /*
