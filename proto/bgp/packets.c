@@ -217,6 +217,7 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   struct bgp_af_caps *ac;
   uint any_ext_next_hop = 0;
   uint any_add_path = 0;
+  byte *buf_head = buf;
   byte *data;
 
   /* Prepare bgp_caps structure */
@@ -394,6 +395,8 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     data[-1] = buf - data;
   }
 
+  caps->length = buf - buf_head;
+
   return buf;
 }
 
@@ -404,6 +407,8 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
   struct bgp_af_caps *ac;
   int i, cl;
   u32 af;
+
+  caps->length += len;
 
   while (len > 0)
   {
