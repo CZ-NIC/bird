@@ -3,8 +3,6 @@ obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
 
-$(conf-y-targets) $(conf-lex-targets) $(src-o-files): $(o)inst-gen.h
-
 M4FLAGS_FILTERS=$(filter-out -s,$(M4FLAGS))
 
 $(o)inst-gen.h: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
@@ -16,7 +14,7 @@ $(o)inst-gen.c: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 $(o)inst-interpret.c: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 	$(M4) $(M4FLAGS_FILTERS) -DTARGET=I -P $^ >$@
 
-$(o)filter.o: $(o)inst-interpret.c $(o)inst-gen.h
+prepare: $(o)inst-interpret.c $(o)inst-gen.h
 
 tests_src := tree_test.c filter_test.c trie_test.c
 tests_targets := $(tests_targets) $(tests-target-files)
