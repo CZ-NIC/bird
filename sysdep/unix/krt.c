@@ -301,7 +301,7 @@ krt_learn_announce_update(struct krt_proto *p, rte *e)
   net *n = e->net;
   rta *aa = rta_clone(e->attrs);
   rte *ee = rte_get_temp(aa);
-  ee->pflags = 0;
+  ee->pflags = EA_ID_FLAG(EA_KRT_SOURCE) | EA_ID_FLAG(EA_KRT_METRIC);
   ee->u.krt = e->u.krt;
   rte_update(&p->p, n->n.addr, ee);
 }
@@ -577,7 +577,7 @@ krt_export_net(struct krt_proto *p, net *net, rte **rt_free)
   if (filter == FILTER_REJECT)
     return NULL;
 
-  rte_make_tmp_attrs(&rt, krt_filter_lp);
+  rte_make_tmp_attrs(&rt, krt_filter_lp, NULL);
 
   /* We could run krt_preexport() here, but it is already handled by KRF_INSTALLED */
 
@@ -910,33 +910,20 @@ krt_scan_timer_kick(struct krt_proto *p)
  *	Updates
  */
 
-static struct ea_list *
-krt_make_tmp_attrs(rte *rt, struct linpool *pool)
+static void
+krt_make_tmp_attrs(struct rte *rt, struct linpool *pool)
 {
-  struct ea_list *l = lp_alloc(pool, sizeof(struct ea_list) + 2 * sizeof(eattr));
-
-  l->next = NULL;
-  l->flags = EALF_SORTED;
-  l->count = 2;
-
-  l->attrs[0].id = EA_KRT_SOURCE;
-  l->attrs[0].flags = 0;
-  l->attrs[0].type = EAF_TYPE_INT | EAF_TEMP;
-  l->attrs[0].u.data = rt->u.krt.proto;
-
-  l->attrs[1].id = EA_KRT_METRIC;
-  l->attrs[1].flags = 0;
-  l->attrs[1].type = EAF_TYPE_INT | EAF_TEMP;
-  l->attrs[1].u.data = rt->u.krt.metric;
-
-  return l;
+  rte_init_tmp_attrs(rt, pool, 2);
+  rte_make_tmp_attr(rt, EA_KRT_SOURCE, EAF_TYPE_INT, rt->u.krt.proto);
+  rte_make_tmp_attr(rt, EA_KRT_METRIC, EAF_TYPE_INT, rt->u.krt.metric);
 }
 
 static void
-krt_store_tmp_attrs(rte *rt)
+krt_store_tmp_attrs(struct rte *rt, struct linpool *pool)
 {
-  /* EA_KRT_SOURCE is read-only */
-  rt->u.krt.metric = ea_get_int(rt->attrs->eattrs, EA_KRT_METRIC, 0);
+  rte_init_tmp_attrs(rt, pool, 2);
+  rt->u.krt.proto = rte_store_tmp_attr(rt, EA_KRT_SOURCE);
+  rt->u.krt.metric = rte_store_tmp_attr(rt, EA_KRT_METRIC);
 }
 
 static int

@@ -1045,7 +1045,7 @@ cmd:
    }
  | UNSET '(' rtadot dynamic_attr ')' ';' {
      $$ = f_new_inst_da(FI_EA_SET, $4);
-     $$->aux = EAF_TYPE_UNDEF | EAF_TEMP;
+     $$->aux = EAF_TYPE_UNDEF;
      $$->a1.p = NULL;
    }
  | break_command print_list ';' { $$ = f_new_inst(FI_PRINT_AND_DIE); $$->a1.p = $2; $$->a2.i = $1; }

@@ -65,7 +65,8 @@ endif
 docgoals := docs userdocs progdocs
 testgoals := check test tests tests_run
 cleangoals := clean distclean testsclean
-.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope
+.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope prepare
+
 all: daemon cli
 
 daemon: $(daemon)
@@ -103,35 +104,50 @@ include $(addsuffix /Makefile,$(addprefix $(srcdir)/,$(dirs)))
 
 # Generic rules
 # Object file rules
-$(objdir)/%.o: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.o: $(srcdir)/%.c | prepare
 	$(E)echo CC -o $@ -c $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -c $<
 
-$(objdir)/%.o: $(objdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.o: $(objdir)/%.c | prepare
 	$(E)echo CC -o $@ -c $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -c $<
 
 # Debug: Preprocessed source rules
-$(objdir)/%.E: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.E: $(srcdir)/%.c | prepare
 	$(E)echo CC -o $@ -E $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -E $<
 
-$(objdir)/%.E: $(objdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.E: $(objdir)/%.c | prepare
 	$(E)echo CC -o $@ -E $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -E $<
 
 # Debug: Assembler object rules
-$(objdir)/%.S: $(srcdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.S: $(srcdir)/%.c | prepare
 	$(E)echo CC -o $@ -S $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -S $<
 
-$(objdir)/%.S: $(objdir)/%.c $(objdir)/.dir-stamp $(objdir)/sysdep/paths.h
+$(objdir)/%.S: $(objdir)/%.c | prepare
 	$(E)echo CC -o $@ -S $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -S $<
 
+# Finally include the computed dependencies:
+DEPS = $(shell find $(objdir) -name '*.d')
 
+# ## if there is at least one non-clean goal
+ifneq ($(filter-out $(cleangoals),$(MAKECMDGOALS)),)
+-include $(DEPS)
+endif
 
-$(objdir)/.dir-stamp:
+# ## if the implicit goal is called
+ifeq ($(MAKECMDGOALS),)
+-include $(DEPS)
+endif
+
+# Rule for pre-generating all generated includables
+# before compiling any C file
+prepare: $(objdir)/sysdep/paths.h | $(objdir)/.dir-stamp
+
+$(objdir)/.dir-stamp: Makefile
 	$(E)echo MKDIR -p $(addprefix $(objdir)/,$(dirs) doc)
 	$(Q)mkdir -p $(addprefix $(objdir)/,$(dirs) doc)
 	$(Q)touch $@
@@ -150,7 +166,7 @@ $(objdir)/sysdep/paths.h: Makefile
 
 tests_targets_ok = $(addsuffix .ok,$(tests_targets))
 
-$(tests_targets): %: %.o $(tests_objs)
+$(tests_targets): %: %.o $(tests_objs) | prepare
 	$(E)echo LD $(LDFLAGS) -o $@ $< "..." $(LIBS)
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
@@ -164,16 +180,6 @@ test: testsclean check
 check: tests tests_run
 tests: $(tests_targets)
 tests_run: $(tests_targets_ok)
-
-# Finally include the computed dependencies
-
-ifneq ($(filter-out $(cleangoals),$(MAKECMDGOALS)),)
--include $(shell find $(objdir) -name "*.d")
-endif
-
-ifeq ($(MAKECMDGOALS),)
--include $(shell find $(objdir) -name "*.d")
-endif
 
 tags:
 	cd $(srcdir) ; etags -lc `find $(dirs) -name *.[chY]`
