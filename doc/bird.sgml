@@ -2565,6 +2565,15 @@ be used in explicit configuration.
 <p>BGP channels have additional config options (together with the common ones):
 
 <descrip>
+	<tag><label id="bgp-mandatory">mandatory <m/switch/</tag>
+	When local and neighbor sets of configured AFI/SAFI pairs differ,
+	capability negotiation ensures that a common subset is used. For
+	mandatory channels their associated AFI/SAFI must be negotiated
+	(i.e., also announced by the neighbor), otherwise BGP session
+	negotiation fails with <it/'Required capability missing'/ error.
+	Regardless, at least one AFI/SAFI must be negotiated in order to BGP
+	session be successfully established. Default: off.
+
 	<tag><label id="bgp-next-hop-keep">next hop keep <m/switch/|ibgp|ebgp</tag>
 	Do not modify the Next Hop attribute and advertise the current one
 	unchanged even in cases where our own local address should be used

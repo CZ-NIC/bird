@@ -574,6 +574,42 @@ err:
 }
 
 static int
+bgp_check_capabilities(struct bgp_conn *conn)
+{
+  struct bgp_proto *p = conn->bgp;
+  struct bgp_caps *local = conn->local_caps;
+  struct bgp_caps *remote = conn->remote_caps;
+  struct bgp_channel *c;
+  int count = 0;
+
+  /* This is partially overlapping with bgp_conn_enter_established_state(),
+     but we need to run this just after we receive OPEN message */
+
+  WALK_LIST(c, p->p.channels)
+  {
+    const struct bgp_af_caps *loc = bgp_find_af_caps(local,  c->afi);
+    const struct bgp_af_caps *rem = bgp_find_af_caps(remote, c->afi);
+
+    /* Find out whether this channel will be active */
+    int active = loc && loc->ready &&
+      ((rem && rem->ready) || (!remote->length && (c->afi == BGP_AF_IPV4)));
+
+    /* Mandatory must be active */
+    if (c->cf->mandatory && !active)
+      return 0;
+
+    if (active)
+      count++;
+  }
+
+  /* We need at least one channel active */
+  if (!count)
+    return 0;
+
+  return 1;
+}
+
+static int
 bgp_read_options(struct bgp_conn *conn, byte *pos, int len)
 {
   struct bgp_proto *p = conn->bgp;
@@ -682,6 +718,10 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   /* RFC 6286 2.2 - router ID is nonzero and AS-wide unique */
   if (!id || (p->is_internal && id == p->local_id))
   { bgp_error(conn, 2, 3, pkt+24, -4); return; }
+
+  /* RFC 5492 4 - check for required capabilities */
+  if (p->cf->capabilities && !bgp_check_capabilities(conn))
+  { bgp_error(conn, 2, 7, NULL, 0); return; }
 
   struct bgp_caps *caps = conn->remote_caps;
 
