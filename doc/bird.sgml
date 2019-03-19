@@ -561,7 +561,7 @@ include "tablename.conf";;
 	can be seen (together with other symbols) using 'show symbols' command.
 
 	<tag><label id="opt-attribute">attribute <m/type/ <m/name/</tag>
-	Define a custom route attribute. You can set and get it in filters like
+	Declare a custom route attribute. You can set and get it in filters like
 	any other route atribute. This feature is intended for marking routes
 	in import filters for export filtering purposes instead of locally
 	assigned BGP communities which have to be deleted in export filters.
@@ -1159,7 +1159,7 @@ int var;
 <p>As you can see, a filter has a header, a list of local variables, and a body.
 The header consists of the <cf/filter/ keyword followed by a (unique) name of
 filter. The list of local variables consists of <cf><M>type name</M>;</cf>
-pairs where each pair defines one local variable. The body consists of <cf>
+pairs where each pair declares one local variable. The body consists of <cf>
 { <M>statements</M> }</cf>. Each <m/statement/ is terminated by a <cf/;/. You
 can group several statements to a single compound statement by using braces
 (<cf>{ <M>statements</M> }</cf>) which is useful if you want to make a bigger
@@ -1188,7 +1188,7 @@ called like in C: <cf>name(); with_parameters(5);</cf>. Function may return
 values using the <cf>return <m/[expr]/</cf> command. Returning a value exits
 from current function (this is similar to C).
 
-<p>Filters are declared in a way similar to functions except they can't have
+<p>Filters are defined in a way similar to functions except they can't have
 explicit parameters. They get a route table entry as an implicit parameter, it
 is also passed automatically to any functions called. The filter must terminate
 with either <cf/accept/ or <cf/reject/ statement. If there's a runtime error in
@@ -1571,11 +1571,20 @@ if 1234 = i then printn "."; else {
 <label id="route-attributes">
 
 <p>A filter is implicitly passed a route, and it can access its attributes just
-like it accesses variables. Attempts to access undefined attribute result in a
-runtime error; you can check if an attribute is defined by using the
-<cf>defined( <m>attribute</m> )</cf> operator. One notable exception to this
-rule are attributes of bgppath and *clist types, where undefined value is
-regarded as empty bgppath/*clist for most purposes.
+like it accesses variables. There are common route attributes, protocol-specific
+route attributes and custom route attributes. Most common attributes are
+mandatory (always defined), while remaining are optional.  Attempts to access
+undefined attribute result in a runtime error; you can check if an attribute is
+defined by using the <cf>defined( <m>attribute</m> )</cf> operator. One notable
+exception to this rule are attributes of bgppath and *clist types, where
+undefined value is regarded as empty bgppath/*clist for most purposes.
+
+Attributes can be defined by just setting them in filters. Custom attributes
+have to be first declared by <ref id="opt-attribute" name="attribute"> global
+option. You can also undefine optional attribute back to non-existence by using
+the <cf>unset( <m/attribute/ )</cf> operator.
+
+Common route attributes are:
 
 <descrip>
 	<tag><label id="rta-net"><m/prefix/ net</tag>
@@ -1642,8 +1651,8 @@ regarded as empty bgppath/*clist for most purposes.
 	compare internal distances to boundary routers (see below).
 </descrip>
 
-<p>There also exist protocol-specific attributes which are described in the
-corresponding protocol sections.
+<p>Protocol-specific route attributes are described in the corresponding
+protocol sections.
 
 
 <sect>Other statements
@@ -1653,7 +1662,7 @@ corresponding protocol sections.
 
 <descrip>
 	<tag><label id="assignment"><m/variable/ = <m/expr/</tag>
-	Set variable to a given value.
+	Set variable (or route attribute) to a given value.
 
 	<tag><label id="filter-accept-reject">accept|reject [ <m/expr/ ]</tag>
 	Accept or reject the route, possibly printing <cf><m>expr</m></cf>.
