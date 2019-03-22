@@ -1576,7 +1576,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	}
       else if (filter)
 	{
-	  rta *old_attrs;
+	  rta *old_attrs = NULL;
 	  rte_make_tmp_attrs(&new, rte_update_pool, &old_attrs);
 
 	  int fr = f_run(filter, &new, rte_update_pool, 0);
