@@ -1733,7 +1733,7 @@ bgp_rte_better(rte *new, rte *old)
     return 0;
 
   /* RFC 4271 9.1.2.2. g) Compare peer IP adresses */
-  return (ipa_compare(new_bgp->cf->remote_ip, old_bgp->cf->remote_ip) < 0);
+  return ipa_compare(new_bgp->remote_ip, old_bgp->remote_ip) < 0;
 }
 
 

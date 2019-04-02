@@ -100,7 +100,7 @@ init_mrt_bgp_data(struct bgp_conn *conn, struct mrt_bgp_data *d)
   d->peer_as = p->remote_as;
   d->local_as = p->local_as;
   d->index = (p->neigh && p->neigh->iface) ? p->neigh->iface->index : 0;
-  d->af = ipa_is_ip4(p->cf->remote_ip) ? BGP_AFI_IPV4 : BGP_AFI_IPV6;
+  d->af = ipa_is_ip4(p->remote_ip) ? BGP_AFI_IPV4 : BGP_AFI_IPV6;
   d->peer_ip = conn->sk ? conn->sk->daddr : IPA_NONE;
   d->local_ip = conn->sk ? conn->sk->saddr : IPA_NONE;
   d->as4 = p_ok ? p->as4_session : 0;
@@ -1007,7 +1007,7 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
     WITHDRAW(NO_NEXT_HOP);
 
   ip_addr *nh = (void *) a->u.ptr->data;
-  ip_addr peer = s->proto->cf->remote_ip;
+  ip_addr peer = s->proto->remote_ip;
   uint len = a->u.ptr->length;
 
   /* Forbid zero next hop */
@@ -2325,7 +2325,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
     a->source = RTS_BGP;
     a->scope = SCOPE_UNIVERSE;
-    a->from = s->proto->cf->remote_ip;
+    a->from = s->proto->remote_ip;
     a->eattrs = ea;
 
     c->desc->decode_next_hop(s, nh, nh_len, a);

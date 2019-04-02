@@ -256,7 +256,8 @@ struct bgp_conn {
 
 struct bgp_proto {
   struct proto p;
-  struct bgp_config *cf;		/* Shortcut to BGP configuration */
+  const struct bgp_config *cf;		/* Shortcut to BGP configuration */
+  ip_addr local_ip, remote_ip;
   u32 local_as, remote_as;
   u32 public_as;			/* Externally visible ASN (local_as or confederation id) */
   u32 local_id;				/* BGP identifier of this router */
@@ -284,8 +285,7 @@ struct bgp_proto {
   struct neighbor *neigh;		/* Neighbor entry corresponding to remote ip, NULL if multihop */
   struct bgp_socket *sock;		/* Shared listening socket */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
-  ip_addr source_addr;			/* Local address used as an advertised next hop */
-  ip_addr link_addr;			/* Link-local version of source_addr */
+  ip_addr link_addr;			/* Link-local version of local_ip */
   event *event;				/* Event for respawning and shutting process */
   timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */
   timer *gr_timer;			/* Timer waiting for reestablishment after graceful restart */

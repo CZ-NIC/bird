@@ -387,7 +387,7 @@ bgp_close_conn(struct bgp_conn *conn)
 void
 bgp_update_startup_delay(struct bgp_proto *p)
 {
-  struct bgp_config *cf = p->cf;
+  const struct bgp_config *cf = p->cf;
 
   DBG("BGP: Updating startup delay\n");
 
@@ -504,8 +504,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   BGP_TRACE(D_EVENTS, "BGP session established");
 
   /* For multi-hop BGP sessions */
-  if (ipa_zero(p->source_addr))
-    p->source_addr = conn->sk->saddr;
+  if (ipa_zero(p->local_ip))
+    p->local_ip = conn->sk->saddr;
 
   /* In case of LLv6 is not valid during BGP start */
   if (ipa_zero(p->link_addr) && p->neigh && p->neigh->iface && p->neigh->iface->llv6)
@@ -1047,8 +1047,8 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   DBG("BGP: Connecting\n");
   sock *s = sk_new(p->p.pool);
   s->type = SK_TCP_ACTIVE;
-  s->saddr = p->source_addr;
-  s->daddr = p->cf->remote_ip;
+  s->saddr = p->local_ip;
+  s->daddr = p->remote_ip;
   s->dport = p->cf->remote_port;
   s->iface = p->neigh ? p->neigh->iface : NULL;
   s->vrf = p->p.vrf;
@@ -1209,11 +1209,11 @@ bgp_start_neighbor(struct bgp_proto *p)
 {
   /* Called only for single-hop BGP sessions */
 
-  if (ipa_zero(p->source_addr))
-    p->source_addr = p->neigh->ifa->ip;
+  if (ipa_zero(p->local_ip))
+    p->local_ip = p->neigh->ifa->ip;
 
-  if (ipa_is_link_local(p->source_addr))
-    p->link_addr = p->source_addr;
+  if (ipa_is_link_local(p->local_ip))
+    p->link_addr = p->local_ip;
   else if (p->neigh->iface->llv6)
     p->link_addr = p->neigh->iface->llv6->ip;
 
@@ -1302,7 +1302,7 @@ static void
 bgp_update_bfd(struct bgp_proto *p, int use_bfd)
 {
   if (use_bfd && !p->bfd_req)
-    p->bfd_req = bfd_request_session(p->p.pool, p->cf->remote_ip, p->source_addr,
+    p->bfd_req = bfd_request_session(p->p.pool, p->remote_ip, p->local_ip,
 				     p->cf->multihop ? NULL : p->neigh->iface,
 				     bgp_bfd_notify, p);
 
@@ -1383,7 +1383,7 @@ static void
 bgp_start_locked(struct object_lock *lock)
 {
   struct bgp_proto *p = lock->data;
-  struct bgp_config *cf = p->cf;
+  const struct bgp_config *cf = p->cf;
 
   if (p->p.proto_state != PS_START)
   {
@@ -1400,10 +1400,10 @@ bgp_start_locked(struct object_lock *lock)
     return;
   }
 
-  neighbor *n = neigh_find(&p->p, cf->remote_ip, cf->iface, NEF_STICKY);
+  neighbor *n = neigh_find(&p->p, p->remote_ip, cf->iface, NEF_STICKY);
   if (!n)
   {
-    log(L_ERR "%s: Invalid remote address %I%J", p->p.name, cf->remote_ip, cf->iface);
+    log(L_ERR "%s: Invalid remote address %I%J", p->p.name, p->remote_ip, cf->iface);
     /* As we do not start yet, we can just disable protocol */
     p->p.disabled = 1;
     bgp_store_error(p, NULL, BE_MISC, BEM_INVALID_NEXT_HOP);
@@ -1414,7 +1414,7 @@ bgp_start_locked(struct object_lock *lock)
   p->neigh = n;
 
   if (n->scope <= 0)
-    BGP_TRACE(D_EVENTS, "Waiting for %I%J to become my neighbor", cf->remote_ip, cf->iface);
+    BGP_TRACE(D_EVENTS, "Waiting for %I%J to become my neighbor", p->remote_ip, cf->iface);
   else if (p->cf->check_link && !(n->iface->flags & IF_LINK_UP))
     BGP_TRACE(D_EVENTS, "Waiting for link on %s", n->iface->name);
   else
@@ -1425,9 +1425,18 @@ static int
 bgp_start(struct proto *P)
 {
   struct bgp_proto *p = (struct bgp_proto *) P;
-  struct object_lock *lock;
+  const struct bgp_config *cf = p->cf;
 
-  DBG("BGP: Startup.\n");
+  p->local_ip = cf->local_ip;
+  p->remote_ip = cf->remote_ip;
+  p->local_as = cf->local_as;
+  p->remote_as = cf->remote_as;
+  p->public_as = cf->local_as;
+
+  /* Confederation ID is used for truly external peers */
+  if (p->cf->confederation && !p->is_interior)
+    p->public_as = cf->confederation;
+
   p->start_state = BSS_PREPARE;
   p->outgoing_conn.state = BS_IDLE;
   p->incoming_conn.state = BS_IDLE;
@@ -1445,7 +1454,6 @@ bgp_start(struct proto *P)
     p->rr_cluster_id = p->cf->rr_cluster_id ? p->cf->rr_cluster_id : p->local_id;
 
   p->remote_id = 0;
-  p->source_addr = p->cf->local_ip;
   p->link_addr = IPA_NONE;
 
   /* Lock all channels when in GR recovery mode */
@@ -1460,9 +1468,9 @@ bgp_start(struct proto *P)
    * Before attempting to create the connection, we need to lock the port,
    * so that we are the only instance attempting to talk with that neighbor.
    */
-
+  struct object_lock *lock;
   lock = p->lock = olock_new(P->pool);
-  lock->addr = p->cf->remote_ip;
+  lock->addr = p->remote_ip;
   lock->port = p->cf->remote_port;
   lock->iface = p->cf->iface;
   lock->vrf = p->cf->iface ? NULL : p->p.vrf;
@@ -1570,17 +1578,10 @@ bgp_init(struct proto_config *CF)
   P->rte_modify = bgp_rte_modify_stale;
 
   p->cf = cf;
-  p->local_as = cf->local_as;
-  p->remote_as = cf->remote_as;
-  p->public_as = cf->local_as;
   p->is_internal = (cf->local_as == cf->remote_as);
   p->is_interior = p->is_internal || cf->confederation_member;
   p->rs_client = cf->rs_client;
   p->rr_client = cf->rr_client;
-
-  /* Confederation ID is used for truly external peers */
-  if (cf->confederation && !p->is_interior)
-    p->public_as = cf->confederation;
 
   /* Add all channels */
   struct bgp_channel_config *cc;
@@ -1612,7 +1613,7 @@ bgp_channel_start(struct channel *C)
 {
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
-  ip_addr src = p->source_addr;
+  ip_addr src = p->local_ip;
 
   if (c->igp_table_ip4)
     rt_lock_table(c->igp_table_ip4);
@@ -1893,8 +1894,8 @@ static int
 bgp_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct bgp_proto *p = (void *) P;
-  struct bgp_config *new = (void *) CF;
-  struct bgp_config *old = p->cf;
+  const struct bgp_config *new = (void *) CF;
+  const struct bgp_config *old = p->cf;
 
   if (proto_get_router_id(CF) != p->local_id)
     return 0;
@@ -2241,7 +2242,7 @@ bgp_show_proto_info(struct proto *P)
 
   cli_msg(-1006, "  BGP state:          %s", bgp_state_dsc(p));
   cli_msg(-1006, "    Neighbor address: %I%J", p->cf->remote_ip, p->cf->iface);
-  cli_msg(-1006, "    Neighbor AS:      %u", p->remote_as);
+  cli_msg(-1006, "    Neighbor AS:      %u", p->cf->remote_as);
 
   if (p->gr_active_num)
     cli_msg(-1006, "    Neighbor graceful restart active");
@@ -2277,7 +2278,7 @@ bgp_show_proto_info(struct proto *P)
 	    p->rr_client ? " route-reflector" : "",
 	    p->rs_client ? " route-server" : "",
 	    p->as4_session ? " AS4" : "");
-    cli_msg(-1006, "    Source address:   %I", p->source_addr);
+    cli_msg(-1006, "    Source address:   %I", p->local_ip);
     cli_msg(-1006, "    Hold timer:       %t/%u",
 	    tm_remains(p->conn->hold_timer), p->conn->hold_time);
     cli_msg(-1006, "    Keepalive timer:  %t/%u",

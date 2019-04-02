@@ -361,7 +361,7 @@ mrt_peer_table_dump(struct mrt_table_dump_state *s)
     if ((P->proto == &proto_bgp) && (P->proto_state != PS_DOWN))
     {
       struct bgp_proto *p = (void *) P;
-      mrt_peer_table_entry(s, p->remote_id, p->remote_as, p->cf->remote_ip);
+      mrt_peer_table_entry(s, p->remote_id, p->remote_as, p->remote_ip);
     }
 #endif
 
@@ -429,7 +429,7 @@ mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
   {
     struct bgp_proto *p = (void *) r->attrs->src->proto;
     struct mrt_peer_entry *n =
-      HASH_FIND(s->peer_hash, PEER, p->remote_id, p->remote_as, p->cf->remote_ip);
+      HASH_FIND(s->peer_hash, PEER, p->remote_id, p->remote_as, p->remote_ip);
 
     peer = n ? n->index : 0;
   }
