@@ -83,6 +83,7 @@ struct bgp_config {
   struct iface *iface;			/* Interface for link-local addresses */
   u16 local_port;			/* Local listening port */
   u16 remote_port; 			/* Neighbor destination port */
+  int peer_type;			/* Internal or external BGP (BGP_PT_*, optional) */
   int multihop;				/* Number of hops if multihop */
   int strict_bind;			/* Bind listening socket to local address */
   int ttl_security;			/* Enable TTL security [RFC 5082] */
@@ -151,6 +152,9 @@ struct bgp_channel_config {
   struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */
   struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
 };
+
+#define BGP_PT_INTERNAL		1
+#define BGP_PT_EXTERNAL		2
 
 #define NH_NO			0
 #define NH_ALL			1
@@ -237,6 +241,7 @@ struct bgp_conn {
   u8 state;				/* State of connection state machine */
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
   u8 ext_messages;			/* Session uses extended message length */
+  u32 received_as;			/* ASN received in OPEN message */
 
   struct bgp_caps *local_caps;
   struct bgp_caps *remote_caps;

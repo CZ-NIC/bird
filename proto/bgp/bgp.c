@@ -507,6 +507,10 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   if (ipa_zero(p->local_ip))
     p->local_ip = conn->sk->saddr;
 
+  /* For promiscuous sessions */
+  if (!p->remote_as)
+    p->remote_as = conn->received_as;
+
   /* In case of LLv6 is not valid during BGP start */
   if (ipa_zero(p->link_addr) && p->neigh && p->neigh->iface && p->neigh->iface->llv6)
     p->link_addr = p->neigh->iface->llv6->ip;
@@ -1754,13 +1758,18 @@ void
 bgp_postconfig(struct proto_config *CF)
 {
   struct bgp_config *cf = (void *) CF;
-  int internal = (cf->local_as == cf->remote_as);
-  int interior = internal || cf->confederation_member;
 
   /* Do not check templates at all */
   if (cf->c.class == SYM_TEMPLATE)
     return;
 
+
+  /* Handle undefined remote_as, zero should mean unspecified external */
+  if (!cf->remote_as && (cf->peer_type == BGP_PT_INTERNAL))
+    cf->remote_as = cf->local_as;
+
+  int internal = (cf->local_as == cf->remote_as);
+  int interior = internal || cf->confederation_member;
 
   /* EBGP direct by default, IBGP multihop by default */
   if (cf->multihop < 0)
@@ -1781,8 +1790,14 @@ bgp_postconfig(struct proto_config *CF)
   if (ipa_zero(cf->remote_ip))
     cf_error("Neighbor must be configured");
 
-  if (!cf->remote_as)
-    cf_error("Remote AS number must be set");
+  if (!cf->remote_as && !cf->peer_type)
+    cf_error("Remote AS number (or peer type) must be set");
+
+  if ((cf->peer_type == BGP_PT_INTERNAL) && !internal)
+    cf_error("IBGP cannot have different ASNs");
+
+  if ((cf->peer_type == BGP_PT_EXTERNAL) &&  internal)
+    cf_error("EBGP cannot have the same ASNs");
 
   if (!cf->iface && (ipa_is_link_local(cf->local_ip) ||
 		     ipa_is_link_local(cf->remote_ip)))
@@ -2242,7 +2257,7 @@ bgp_show_proto_info(struct proto *P)
 
   cli_msg(-1006, "  BGP state:          %s", bgp_state_dsc(p));
   cli_msg(-1006, "    Neighbor address: %I%J", p->cf->remote_ip, p->cf->iface);
-  cli_msg(-1006, "    Neighbor AS:      %u", p->cf->remote_as);
+  cli_msg(-1006, "    Neighbor AS:      %u", p->cf->remote_as ?: p->remote_as);
 
   if (p->gr_active_num)
     cli_msg(-1006, "    Neighbor graceful restart active");

@@ -29,7 +29,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	SECURITY, DETERMINISTIC, SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX,
 	GRACEFUL, RESTART, AWARE, CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY,
 	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6, LONG,
-	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY)
+	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL)
 
 %type <i> bgp_nh
 %type <i32> bgp_afi
@@ -82,6 +82,8 @@ bgp_nbr_opts:
    /* empty */
  | bgp_nbr_opts PORT expr { BGP_CFG->remote_port = $3; if (($3<1) || ($3>65535)) cf_error("Invalid port number"); }
  | bgp_nbr_opts AS expr { BGP_CFG->remote_as = $3; }
+ | bgp_nbr_opts INTERNAL { BGP_CFG->peer_type = BGP_PT_INTERNAL; }
+ | bgp_nbr_opts EXTERNAL { BGP_CFG->peer_type = BGP_PT_EXTERNAL; }
  ;
 
 bgp_cease_mask:

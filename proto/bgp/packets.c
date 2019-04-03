@@ -732,13 +732,18 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
     if ((as4 != asn) && (asn != AS_TRANS))
       log(L_WARN "%s: Peer advertised inconsistent AS numbers", p->p.name);
 
-    if (as4 != p->remote_as)
+    /* When remote ASN is unspecified, it must be external one */
+    if (p->remote_as ? (as4 != p->remote_as) : (as4 == p->local_as))
     { as4 = htonl(as4); bgp_error(conn, 2, 2, (byte *) &as4, 4); return; }
+
+    conn->received_as = as4;
   }
   else
   {
-    if (asn != p->remote_as)
+    if (p->remote_as ? (asn != p->remote_as) : (asn == p->local_as))
     { bgp_error(conn, 2, 2, pkt+20, 2); return; }
+
+    conn->received_as = asn;
   }
 
   /* Check the other connection */
