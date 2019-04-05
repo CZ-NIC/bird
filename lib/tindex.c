@@ -32,52 +32,51 @@ struct tindex {
 struct tindex *
 tindex_new(pool *p)
 {
-  struct tindex *ti = mb_allocz(p, sizeof(struct tindex *ti));
+  struct tindex *ti = mb_allocz(p, sizeof(struct tindex *));
   ti->p = p;
-  idm_init(&(ti->idm), p);
   ti->unit_size = TI_MIN_UNIT_SIZE;
   ti->address_size = TI_MIN_ADDRESS_SIZE;
   ti->index_data = mb_allocz(p, ti->unit_size * (1 << ti->address_size));
+  idm_init(&(ti->idm), p, (1 << ti->address_size));
   return ti;
 }
 
 u64
 tindex_find(struct tindex *ti, tindex_bitcheck tib, int create)
 {
-  switch (ti->unit_size) {
-    case 4:
-      switch (ti->address_size) {
-	case 6:
-	  return tindex_find_4_6(ti, tib, create);
-	case 7:
-	  return tindex_find_4_7(ti, tib, create);
-	case 8:
-	  return tindex_find_4_8(ti, tib, create);
-	case 9:
-	  return tindex_find_4_9(ti, tib, create);
-	case 10:
-	  return tindex_find_4_10(ti, tib, create);
-	default:
-	  bug("This shall never happen");
-      }
+  const u64 asize = ti->address_size;
+  const u64 usize = ti->unit_size;
+
+  const u64 d3shift = 8 * (usize / 3) - asize; /* (d3shift * 3 + asize * 3 == usize * 8) if usize % 3 == 0 */
+
+  const u64 addrmask = (1ULL << ti->address_size) - 1;
+  u64 idx = 1;	/* The root node is always 1 */
+  
+  switch (usize) {
     case 6:
-      switch (ti->address_size) {
-	case 9:
-	  return tindex_find_6_9(ti, tib, create);
-	case 10:
-	  return tindex_find_6_10(ti, tib, create);
-	case 11:
-	  return tindex_find_6_11(ti, tib, create);
-	case 12:
-	  return tindex_find_6_12(ti, tib, create);
-	case 13:
-	  return tindex_find_6_13(ti, tib, create);
-	case 14:
-	  return tindex_find_6_14(ti, tib, create);
-	default:
-	  bug("This shall never happen");
-      }
-    default:
-      bug("This shall never happen");
+      do {
+	const u64 data =
+	  ((ti->index_data->data6[idx * 3] >> asize) << (d3shift * 2)) |
+	  ((ti->index_data->data6[idx * 3 + 1] >> asize) << (d3shift)) |
+	  (ti->index_data->data6[idx * 3 + 2] >> asize);
+
+	u8 len = d3shift * 3;
+	u64 bits = tib(&len);
+  /* TODO */
+
+	const u64 left = ti->index_data->data6[idx * 3] & addrmask;
+	const u64 right = ti->index_data->data6[idx * 3 + 1] & addrmask;
+	const u64 parent = ti->index_data->data6[idx * 3 + 2] & addrmask;
+
+	u8 len = 1;
+	u64 bits = tib(&len);
+	if (!len)
+	  return idx;
+	if (bits)
+	  idx = right;
+	else
+	  idx = left;
+      } while (1);
   }
+
 }

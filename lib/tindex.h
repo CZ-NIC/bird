@@ -9,11 +9,33 @@
 
 #include "nest/bird.h"
 
-typedef int (*tindex_bitcheck)(u32 needle, uint len);
+/**
+ * tindex_bitcheck() callback is called by tindex_find() repeatedly
+ * to get input bits as needed. Maximal number of bits is
+ * given in @len; it shall be replaced the actual number of bits
+ * returned. The bits shall be returned in LSB of the return value.
+ * If (and only if) no bits are remaining, @len shall be set to 0.
+ *
+ * This is intended to be implemented as a nested function in
+ * a library call using this tree index.
+ **/
 
-#define TBR_DONE	0xff	/* The bits are matching the end of the needle */
-#define TBR_PROCEED	0xfe	/* There is still some data to check */
+typedef u64 (*tindex_bitcheck)(u8 *len);
 
+/**
+ * Allocate a new tr[ei]e index from the given pool
+ * @p: pool to allocate from
+ *
+ * Returns the allocated tindex structure 
+ */
 struct tindex* tindex_new(pool *p);
+
+/**
+ * Find an index by the auxiliary function @tib.
+ * @t: the index to look into
+ * @tib: the auxiliary function; see before
+ * @create: 0 to find only existing records, 1 to create new
+ * Return value: 0 for not found (create == 0) or retry (create == 1); nonzero = the index
+ */
 
 u64 tindex_find(struct tindex *t, tindex_bitcheck tib, int create);

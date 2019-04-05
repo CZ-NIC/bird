@@ -16,8 +16,21 @@ struct test_trie {
   u64 len;
 };
 
+static inline u64 test_trie_idx(struct test_trie *tt, u64 data, int create) {
+  u8 pos = 64;
+
+  static u64 tib(u8 *len) {
+    if (pos < *len)
+      *len = pos;
+
+    return (data >> (pos - *len)) & (1 - (1 << *len));
+  }
+
+  return tindex_find(tt->ti, tib, create);
+}
+
 static inline void test_trie_add(struct test_trie *tt, u64 data) {
-  u64 idx = tindex_find(tt->ti, tib, 1);
+  u64 idx = test_trie_idx(tt, data, 1);
 
   u64 nlen = tt->len;
   while (idx > nlen)
@@ -28,8 +41,12 @@ static inline void test_trie_add(struct test_trie *tt, u64 data) {
     memset(&(tt->data[tt->len]), 0, (nlen - tt->len) * sizeof(u64));
     tt->len = nlen;
   }
+}
 
-  tt->data[idx]++;
+static inline u64 test_trie_get(struct test_trie *tt, u64 data) {
+  u64 idx = test_trie_idx(tt, data, 0);
+  if (!idx) return 0;
+  return tt->data[idx];
 }
 
 static int
@@ -43,8 +60,12 @@ t_simple(void)
   };
  
   bt_assert(tt.ti);
-  for 
+  for (u64 i = 0; !(i >> 24); i++)
+    test_trie_add(&tt, i);
 
+  for (u64 i = 0; !(i >> 24); i++)
+    bt_assert(test_trie_get(&tt, i) == 1);
+}
 
 int main(int argc, char **argv)
 {
