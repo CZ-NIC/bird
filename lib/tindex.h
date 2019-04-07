@@ -14,7 +14,8 @@
  * to get input bits as needed. Maximal number of bits is
  * given in @len; it shall be replaced the actual number of bits
  * returned. The bits shall be returned in LSB of the return value.
- * If (and only if) no bits are remaining, @len shall be set to 0.
+ * If (and only if) no bits are remaining, @len shall be changed,
+ * otherwise the callee must always return full bit string.
  *
  * This is intended to be implemented as a nested function in
  * a library call using this tree index.
@@ -31,7 +32,7 @@ typedef u64 (*tindex_bitcheck)(u8 *len);
 struct tindex* tindex_new(pool *p);
 
 /**
- * Find an index by the auxiliary function @tib.
+ * Find an index by the auxiliary funcction @tib.
  * @t: the index to look into
  * @tib: the auxiliary function; see before
  * @create: 0 to find only existing records, 1 to create new

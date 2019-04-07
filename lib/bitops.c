@@ -68,3 +68,16 @@ u32_log2(u32 v)
   return r;
 }
 
+u64
+u64_log2(u64 v)
+{
+  u64 r, shift;
+  r =	  (v > 0xFFFFFFFFLL) << 5; v >>= r;
+  shift = (v > 0xFFFF      ) << 4; v >>= shift; r |= shift;
+  shift = (v > 0xFF        ) << 3; v >>= shift; r |= shift;
+  shift = (v > 0xF         ) << 2; v >>= shift; r |= shift;
+  shift = (v > 0x3         ) << 1; v >>= shift; r |= shift;
+  r |= (v >> 1);
+  return r;
+}
+
