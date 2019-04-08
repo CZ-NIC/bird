@@ -1105,6 +1105,14 @@ proto_rethink_goal(struct proto *p)
   }
 }
 
+struct proto *
+proto_spawn(struct proto_config *cf)
+{
+  struct proto *p = proto_init(cf, TAIL(proto_list));
+  proto_rethink_goal(p);
+  return p;
+}
+
 
 /**
  * DOC: Graceful restart recovery

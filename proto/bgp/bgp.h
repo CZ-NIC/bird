@@ -84,6 +84,7 @@ struct bgp_config {
   u16 local_port;			/* Local listening port */
   u16 remote_port; 			/* Neighbor destination port */
   int peer_type;			/* Internal or external BGP (BGP_PT_*, optional) */
+  int dynamic;				/* Dynamic BGP - spawns more instances */
   int multihop;				/* Number of hops if multihop */
   int strict_bind;			/* Bind listening socket to local address */
   int ttl_security;			/* Enable TTL security [RFC 5082] */
@@ -270,12 +271,13 @@ struct bgp_proto {
   u32 local_id;				/* BGP identifier of this router */
   u32 remote_id;			/* BGP identifier of the neighbor */
   u32 rr_cluster_id;			/* Route reflector cluster ID */
-  int start_state;			/* Substates that partitions BS_START */
+  u8 start_state;			/* Substates that partitions BS_START */
   u8 is_internal;			/* Internal BGP session (local_as == remote_as) */
   u8 is_interior;			/* Internal or intra-confederation BGP session */
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
   u8 rr_client;				/* Whether neighbor is RR client of me */
   u8 rs_client;				/* Whether neighbor is RS client of me */
+  u8 passive;				/* Do not initiate outgoing connection */
   u8 route_refresh;			/* Route refresh allowed to send [RFC 2918] */
   u8 enhanced_refresh;			/* Enhanced refresh is negotiated [RFC 7313] */
   u8 gr_ready;				/* Neighbor could do graceful restart */
@@ -292,6 +294,7 @@ struct bgp_proto {
   struct neighbor *neigh;		/* Neighbor entry corresponding to remote ip, NULL if multihop */
   struct bgp_socket *sock;		/* Shared listening socket */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
+  struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
   ip_addr link_addr;			/* Link-local version of local_ip */
   event *event;				/* Event for respawning and shutting process */
   timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */

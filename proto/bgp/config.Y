@@ -29,7 +29,8 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	SECURITY, DETERMINISTIC, SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX,
 	GRACEFUL, RESTART, AWARE, CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY,
 	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6, LONG,
-	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL)
+	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL,
+	DYNAMIC)
 
 %type <i> bgp_nh
 %type <i32> bgp_afi
@@ -125,6 +126,7 @@ bgp_proto:
      BGP_CFG->remote_ip = $3;
      if ($4) BGP_CFG->iface = $4;
    }
+ | bgp_proto NEIGHBOR DYNAMIC bgp_nbr_opts ';' { BGP_CFG->dynamic = 1; }
  | bgp_proto INTERFACE TEXT ';' { BGP_CFG->iface = if_get_by_name($3); }
  | bgp_proto RR CLUSTER ID idval ';' { BGP_CFG->rr_cluster_id = $5; }
  | bgp_proto RR CLIENT bool ';' { BGP_CFG->rr_client = $4; }
