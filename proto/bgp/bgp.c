@@ -892,6 +892,7 @@ bgp_send_open(struct bgp_conn *conn)
   conn->sk->rx_hook = bgp_rx;
   conn->sk->tx_hook = bgp_tx;
   tm_stop(conn->connect_timer);
+  bgp_prepare_capabilities(conn);
   bgp_schedule_packet(conn, NULL, PKT_OPEN);
   bgp_conn_set_state(conn, BS_OPENSENT);
   bgp_start_timer(conn->hold_timer, conn->bgp->cf->initial_hold_time);

@@ -218,6 +218,8 @@ struct bgp_caps {
   u16 gr_time;				/* Graceful restart time in seconds */
 
   u8 llgr_aware;			/* Long-lived GR capability, RFC draft */
+  u8 any_ext_next_hop;			/* Bitwise OR of per-AF ext_next_hop */
+  u8 any_add_path;			/* Bitwise OR of per-AF add_path */
 
   u16 af_count;				/* Number of af_data items */
   u16 length;				/* Length of capabilities in OPEN msg */
@@ -556,6 +558,7 @@ void bgp_get_route_info(struct rte *, byte *buf);
 /* packets.c */
 
 void bgp_dump_state_change(struct bgp_conn *conn, uint old, uint new);
+void bgp_prepare_capabilities(struct bgp_conn *conn);
 const struct bgp_af_desc *bgp_get_af_desc(u32 afi);
 const struct bgp_af_caps *bgp_find_af_caps(struct bgp_caps *caps, u32 afi);
 void bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type);

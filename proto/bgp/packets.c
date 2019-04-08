@@ -208,20 +208,22 @@ bgp_af_caps_cmp(const void *X, const void *Y)
 }
 
 
-static byte *
-bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
+void
+bgp_prepare_capabilities(struct bgp_conn *conn)
 {
   struct bgp_proto *p = conn->bgp;
   struct bgp_channel *c;
   struct bgp_caps *caps;
   struct bgp_af_caps *ac;
-  uint any_ext_next_hop = 0;
-  uint any_add_path = 0;
-  byte *buf_head = buf;
-  byte *data;
+
+  if (!p->cf->capabilities)
+  {
+    /* Just prepare empty local_caps */
+    conn->local_caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps));
+    return;
+  }
 
   /* Prepare bgp_caps structure */
-
   int n = list_length(&p->p.channels);
   caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps) + n * sizeof(struct bgp_af_caps));
   conn->local_caps = caps;
@@ -252,10 +254,10 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     ac->ready = 1;
 
     ac->ext_next_hop = bgp_channel_is_ipv4(c) && c->cf->ext_next_hop;
-    any_ext_next_hop |= ac->ext_next_hop;
+    caps->any_ext_next_hop |= ac->ext_next_hop;
 
     ac->add_path = c->cf->add_path;
-    any_add_path |= ac->add_path;
+    caps->any_add_path |= ac->add_path;
 
     if (c->cf->gr_able)
     {
@@ -277,7 +279,16 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
 
   /* Sort capability fields by AFI/SAFI */
   qsort(caps->af_data, caps->af_count, sizeof(struct bgp_af_caps), bgp_af_caps_cmp);
+}
 
+static byte *
+bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
+{
+  struct bgp_proto *p = conn->bgp;
+  struct bgp_caps *caps = conn->local_caps;
+  struct bgp_af_caps *ac;
+  byte *buf_head = buf;
+  byte *data;
 
   /* Create capability list in buffer */
 
@@ -302,7 +313,7 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     *buf++ = 0;			/* Capability data length */
   }
 
-  if (any_ext_next_hop)
+  if (caps->any_ext_next_hop)
   {
     *buf++ = 5;			/* Capability 5: Support for extended next hop */
     *buf++ = 0;			/* Capability data length, will be fixed later */
@@ -354,7 +365,7 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     buf += 4;
   }
 
-  if (any_add_path)
+  if (caps->any_add_path)
   {
     *buf++ = 69;		/* Capability 69: Support for ADD-PATH */
     *buf++ = 0;			/* Capability data length, will be fixed later */
@@ -676,9 +687,6 @@ bgp_create_open(struct bgp_conn *conn, byte *buf)
   }
   else
   {
-    /* Prepare empty local_caps */
-    conn->local_caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps));
-
     buf[9] = 0;			/* No optional parameters */
     return buf + 10;
   }
@@ -2684,18 +2692,18 @@ bgp_fire_tx(struct bgp_conn *conn)
     end = bgp_create_notification(conn, pkt);
     return bgp_send(conn, PKT_NOTIFICATION, end - buf);
   }
+  else if (s & (1 << PKT_OPEN))
+  {
+    conn->packets_to_send &= ~(1 << PKT_OPEN);
+    end = bgp_create_open(conn, pkt);
+    return bgp_send(conn, PKT_OPEN, end - buf);
+  }
   else if (s & (1 << PKT_KEEPALIVE))
   {
     conn->packets_to_send &= ~(1 << PKT_KEEPALIVE);
     BGP_TRACE(D_PACKETS, "Sending KEEPALIVE");
     bgp_start_timer(conn->keepalive_timer, conn->keepalive_time);
     return bgp_send(conn, PKT_KEEPALIVE, BGP_HEADER_LENGTH);
-  }
-  else if (s & (1 << PKT_OPEN))
-  {
-    conn->packets_to_send &= ~(1 << PKT_OPEN);
-    end = bgp_create_open(conn, pkt);
-    return bgp_send(conn, PKT_OPEN, end - buf);
   }
   else while (conn->channels_to_send)
   {
