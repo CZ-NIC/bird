@@ -195,10 +195,10 @@ bt_config_file_parse(const char *filepath)
 /*
  * Returns @base raised to the power of @power.
  */
-uint
+u64
 bt_naive_pow(uint base, uint power)
 {
-  uint result = 1;
+  u64 result = 1;
   uint i;
   for (i = 0; i < power; i++)
     result *= base;

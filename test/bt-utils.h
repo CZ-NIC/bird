@@ -24,7 +24,7 @@
 #define BT_CONFIG_PARSE_STATIC_PROTO	"protocol static { ipv4; } \n"
 #define BT_CONFIG_SIMPLE		BT_CONFIG_PARSE_ROUTER_ID BT_CONFIG_PARSE_STATIC_PROTO
 
-uint bt_naive_pow(uint base, uint power);
+u64 bt_naive_pow(uint base, uint power);
 void bt_bytes_to_hex(char *buf, const byte *in_data, size_t size);
 
 void bt_bird_init(void);

@@ -82,11 +82,14 @@ t_masklen(void)
 }
 
 static void
-check_log2(u32 n)
+check_log2(u64 n)
 {
-  u32 log  = u32_log2(n);
-  u32 low  = bt_naive_pow(2, log);
-  u32 high = bt_naive_pow(2, log+1);
+  u64 log  = u64_log2(n);
+  u64 low  = bt_naive_pow(2, log);
+  u64 high = bt_naive_pow(2, log+1);
+
+  if (n <= 0xffffffff)
+    bt_assert(u32_log2(n) == log);
 
   bt_assert_msg(n >= low && n < high,
 		"u32_log2(%u) = %u, %u should be in the range <%u, %u)",
@@ -101,14 +104,46 @@ t_log2(void)
   for (i = 0; i < 31; i++)
     bt_assert(u32_log2(bt_naive_pow(2, i+1)) == i+1);
 
+  for (i = 0; i < 63; i++)
+    bt_assert(u64_log2(bt_naive_pow(2, i+1)) == i+1);
+
   for (i = 1; i < MAX_NUM; i++)
     check_log2(i);
 
   for (i = 1; i < MAX_NUM; i++)
-    check_log2(((u32) bt_random()) % 0x0fffffff);
+    check_log2((unsigned long int) bt_random());
 
   return 1;
 }
+
+static void
+var_enc_dec(u64 data, uint padlen)
+{
+  uint olen = ~0;
+  u64 enc = u64_var_encode(data, padlen);
+  u64 odata = u64_var_decode(enc, &olen);
+  bt_assert_msg(
+      (odata == data) && (olen == padlen),
+      "u64_var_encode(0x%llx, %u) == 0x%llx; u64_var_decode(0x%llx, %u) == 0x%llx",
+      data, padlen, enc, enc, olen, odata
+      );
+}
+
+static int
+t_var(void)
+{
+  for (uint i = 0; i < 63; i++)
+    for (uint j = 1; j+i < 64; j++) {
+      var_enc_dec(1ULL << i, j);
+      var_enc_dec((1ULL << i) - 1, j);
+      var_enc_dec(((unsigned long int) bt_random()) & ((1ULL << (64-j)) - 1), j);
+    }
+
+  return 1;
+}
+
+
+
 
 int
 main(int argc, char *argv[])
@@ -118,6 +153,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_mkmask, "u32_mkmask()");
   bt_test_suite(t_masklen, "u32_masklen()");
   bt_test_suite(t_log2, "u32_log2()");
+  bt_test_suite(t_var, "u64_var_(en|de)code()");
 
   return bt_exit_value();
 }
