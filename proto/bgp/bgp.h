@@ -124,6 +124,9 @@ struct bgp_config {
   u32 disable_after_cease;		/* Disable it when cease is received, bitfield */
 
   char *password;			/* Password used for MD5 authentication */
+  net_addr *remote_range;		/* Allowed neighbor range for dynamic BGP */
+  char *dynamic_name;			/* Name pattern for dynamic BGP */
+  int dynamic_name_digits;		/* Minimum number of digits for dynamic names */
   int check_link;			/* Use iface link state for liveness detection */
   int bfd;				/* Use BFD for liveness detection */
 };
@@ -270,12 +273,14 @@ struct bgp_proto {
   u32 local_id;				/* BGP identifier of this router */
   u32 remote_id;			/* BGP identifier of the neighbor */
   u32 rr_cluster_id;			/* Route reflector cluster ID */
-  int start_state;			/* Substates that partitions BS_START */
+  u8 start_state;			/* Substates that partitions BS_START */
   u8 is_internal;			/* Internal BGP session (local_as == remote_as) */
   u8 is_interior;			/* Internal or intra-confederation BGP session */
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
   u8 rr_client;				/* Whether neighbor is RR client of me */
   u8 rs_client;				/* Whether neighbor is RS client of me */
+  u8 ipv4;				/* Use IPv4 connection, i.e. remote_ip is IPv4 */
+  u8 passive;				/* Do not initiate outgoing connection */
   u8 route_refresh;			/* Route refresh allowed to send [RFC 2918] */
   u8 enhanced_refresh;			/* Enhanced refresh is negotiated [RFC 7313] */
   u8 gr_ready;				/* Neighbor could do graceful restart */
@@ -292,10 +297,12 @@ struct bgp_proto {
   struct neighbor *neigh;		/* Neighbor entry corresponding to remote ip, NULL if multihop */
   struct bgp_socket *sock;		/* Shared listening socket */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
+  struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
   ip_addr link_addr;			/* Link-local version of local_ip */
   event *event;				/* Event for respawning and shutting process */
   timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */
   timer *gr_timer;			/* Timer waiting for reestablishment after graceful restart */
+  int dynamic_name_counter;		/* Counter for dynamic BGP names */
   uint startup_delay;			/* Delay (in seconds) of protocol startup due to previous errors */
   btime last_proto_error;		/* Time of last error that leads to protocol stop */
   u8 last_error_class; 			/* Error class of last error */

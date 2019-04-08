@@ -52,6 +52,7 @@ struct config {
   int file_fd;				/* File descriptor of main configuration file */
   HASH(struct symbol) sym_hash;		/* Lexer: symbol hash table */
   struct config *fallback;		/* Link to regular config for CLI parsing */
+  struct sym_scope *root_scope;		/* Scope for root symbols */
   int obstacle_count;			/* Number of items blocking freeing of this config */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
   btime load_time;			/* When we've got this configuration */
@@ -151,6 +152,8 @@ struct include_file_stack {
 };
 
 extern struct include_file_stack *ifs;
+
+extern struct sym_scope *conf_this_scope;
 
 int cf_lex(void);
 void cf_lex_init(int is_cli, struct config *c);
