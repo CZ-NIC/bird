@@ -18,11 +18,12 @@ struct test_trie {
 };
 
 static inline void test_trie_add(struct test_trie *tt, u64 data) {
-  u64 idx = tindex_find(tt->ti, &data, 64, 1);
+  u32 dtb[2] = { data >> 32, data };
+  u64 idx = tindex_find(tt->ti, dtb, 64, TINDEX_CREATE);
   bt_assert(idx > 0);
 
   u64 nlen = tt->len;
-  while (idx > nlen)
+  while (idx >= nlen)
     nlen *= 2;
 
   if (nlen > tt->len) {
@@ -34,15 +35,29 @@ static inline void test_trie_add(struct test_trie *tt, u64 data) {
   tt->data[idx]++;
 }
 
-static inline u64 test_trie_get(struct test_trie *tt, u64 data) {
-  u64 idx = tindex_find(tt->ti, &data, 64, 0);
-  if (!idx) return 0;
-  return tt->data[idx];
+static inline void test_trie_get(struct test_trie *tt, u64 data, u64 cnt) {
+  u64 out = 0;
+  u32 dtb[2] = { data >> 32, data };
+  u64 idx = tindex_find(tt->ti, dtb, 64, TINDEX_FIND);
+  if (idx) out = tt->data[idx];
+  bt_assert_msg(out == cnt, "Index %lu shall be in trie %lu times, is %lu times.", data, cnt, out);
 }
+
+/*
+static inline void test_trie_remove(struct test_trie *tt, u64 data) {
+  u64 idx = tindex_find(tt->ti, &data, 64, TINDEX_FIND);
+  ASSERT(idx);
+  ASSERT(tt->data[idx]);
+  if (!--tt->data[idx])
+    tindex_delete(tt->ti, idx);
+}
+*/
 
 static int
 t_simple(void)
 {
+  const u64 mul = 0xf906f046b1fd4863ULL;
+  const u64 add = 0xb3a35ec46d09489bULL;
   pool *p = rp_new(&root_pool, "tindex test");
   struct test_trie tt = {
     .ti = tindex_new(p),
@@ -51,14 +66,23 @@ t_simple(void)
   };
  
   bt_assert(tt.ti);
-  for (u64 i = 0; i < 20; i++) {
+  for (u64 i = 0; i < (1<<16); i++) {
     bt_debug("Trie add: %lu\n", i);
     test_trie_add(&tt, i);
-    tindex_dump(tt.ti);
+    test_trie_add(&tt, i * mul + add);
   }
 
+  for (u64 i = 0; i < (1<<16); i++) {
+    test_trie_get(&tt, i, 1);
+    test_trie_get(&tt, i * mul + add, 1);
+  }
+
+  /*
   for (u64 i = 0; i < 20; i++)
-    bt_assert_msg(test_trie_get(&tt, i) == 1, "Index %lu shall be in trie", i);
+    test_trie_remove(&tt, i);
+    */
+
+  tindex_dump(tt.ti);
 
   return 1;
 }

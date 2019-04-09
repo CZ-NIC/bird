@@ -40,7 +40,7 @@ idm_alloc(struct idm *m)
       goto found;
 
   /* If we are at least 7/8 full, expand (if we are allowed to) */
-  if ((m->used * 32 < m->max) && (m->used > m->size * 28))
+  if ((m->used < m->max) && (m->used > m->size * 28))
   {
     m->size *= 2;
     m->data = mb_realloc(m->data, m->size * sizeof(u32));
