@@ -13,13 +13,14 @@
 struct idm
 {
   u32 *data;
-  u32 pos;
-  u32 used;
-  u32 size;
+  u64 pos;
+  u64 used;
+  u64 size;
+  u64 max;
 };
 
-void idm_init(struct idm *m, pool *p, uint size);
-u32 idm_alloc(struct idm *m);
-void idm_free(struct idm *m, u32 id);
+void idm_init(struct idm *m, pool *p, u64 size, u64 max);
+u64 idm_alloc(struct idm *m);
+void idm_free(struct idm *m, u64 id);
 
 #endif

@@ -111,7 +111,7 @@ rte_src_init(void)
 {
   rte_src_slab = sl_new(rta_pool, sizeof(struct rte_src));
 
-  idm_init(&src_ids, rta_pool, SRC_ID_INIT_SIZE);
+  idm_init(&src_ids, rta_pool, SRC_ID_INIT_SIZE, 1ULL << 32);
 
   HASH_INIT(src_hash, rta_pool, RSH_INIT_ORDER);
 }
@@ -137,6 +137,7 @@ rt_get_source(struct proto *p, u32 id)
   src->proto = p;
   src->private_id = id;
   src->global_id = idm_alloc(&src_ids);
+  ASSERT(src->global_id);
   src->uc = 0;
 
   HASH_INSERT2(src_hash, RSH, rta_pool, src);

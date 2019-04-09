@@ -40,7 +40,7 @@ tindex_new(pool *p)
   ti->unit_size = TI_MIN_UNIT_SIZE;
   ti->address_size = TI_MIN_ADDRESS_SIZE;
   ti->index_data = mb_allocz(p, ti->unit_size * (1 << ti->address_size));
-  idm_init(&(ti->idm), p, (1 << ti->address_size));
+  idm_init(&(ti->idm), p, (1 << (ti->address_size - 5)), (1 << ti->address_size));
   u32 rootnode = idm_alloc(&(ti->idm));
   ASSERT(rootnode == 1);
   return ti;

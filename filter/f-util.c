@@ -196,7 +196,7 @@ ca_lookup(pool *p, const char *name, int f_type)
 
   static int inited = 0;
   if (!inited) {
-    idm_init(&ca_idm, &root_pool, 8);
+    idm_init(&ca_idm, &root_pool, 8, EA_CUSTOM_BIT);
     HASH_INIT(ca_hash, &root_pool, CA_ORDER);
 
     ca_storage_max = 256;
@@ -212,7 +212,7 @@ ca_lookup(pool *p, const char *name, int f_type)
 
     uint id = idm_alloc(&ca_idm);
 
-    if (id >= EA_CUSTOM_BIT)
+    if (!id)
       cf_error("Too many custom attributes.");
 
     if (id >= ca_storage_max) {

@@ -563,6 +563,7 @@ ort_to_lsaid(struct ospf_proto *p, ort *nf)
     if (!nf->lsa_id)
       nf->lsa_id = idm_alloc(&p->idm);
 
+    ASSERT(nf->lsa_id);
     return nf->lsa_id;
   }
 

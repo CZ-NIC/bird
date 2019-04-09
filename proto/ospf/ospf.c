@@ -257,7 +257,7 @@ ospf_start(struct proto *P)
   init_list(&(p->area_list));
   fib_init(&p->rtf, P->pool, ospf_get_af(p), sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
   if (ospf_is_v3(p))
-    idm_init(&p->idm, P->pool, 16);
+    idm_init(&p->idm, P->pool, 16, 1ULL << 32);
   p->areano = 0;
   p->gr = ospf_top_new(p, P->pool);
   s_init_list(&(p->lsal));

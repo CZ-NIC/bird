@@ -16,11 +16,12 @@
 
 
 void
-idm_init(struct idm *m, pool *p, uint size)
+idm_init(struct idm *m, pool *p, u64 size, u64 max)
 {
   m->pos = 0;
   m->used = 1;
   m->size = size;
+  m->max = max;
   m->data = mb_allocz(p, m->size * sizeof(u32));
 
   /* ID 0 is reserved */
@@ -29,17 +30,17 @@ idm_init(struct idm *m, pool *p, uint size)
 
 static inline int u32_cto(uint x) { return ffs(~x) - 1; }
 
-u32
+u64
 idm_alloc(struct idm *m)
 {
-  uint i, j;
+  u64 i, j;
 
   for (i = m->pos; i < m->size; i++)
     if (m->data[i] != 0xffffffff)
       goto found;
 
-  /* If we are at least 7/8 full, expand */
-  if (m->used > (m->size * 28))
+  /* If we are at least 7/8 full, expand (if we are allowed to) */
+  if ((m->used * 32 < m->max) && (m->used > m->size * 28))
   {
     m->size *= 2;
     m->data = mb_realloc(m->data, m->size * sizeof(u32));
@@ -51,24 +52,26 @@ idm_alloc(struct idm *m)
     if (m->data[i] != 0xffffffff)
       goto found;
 
-  ASSERT(0);
+  return 0;
 
 found:
-  ASSERT(i < 0x8000000);
-
   m->pos = i;
   j = u32_cto(m->data[i]);
 
+  u64 id = 32 * i + j;
+
+  ASSERT(id < m->max);
+
   m->data[i] |= (1 << j);
   m->used++;
-  return 32 * i + j;
+  return id;
 }
 
 void
-idm_free(struct idm *m, u32 id)
+idm_free(struct idm *m, u64 id)
 {
-  uint i = id / 32;
-  uint j = id % 32;
+  u64 i = id / 32;
+  u64 j = id % 32;
 
   ASSERT((i < m->size) && (m->data[i] & (1 << j)));
   m->data[i] &= ~(1 << j);
