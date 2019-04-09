@@ -40,6 +40,16 @@ static inline u64 test_trie_get(struct test_trie *tt, u64 data) {
   return tt->data[idx];
 }
 
+/*
+static inline void test_trie_remove(struct test_trie *tt, u64 data) {
+  u64 idx = tindex_find(tt->ti, &data, 64, 0);
+  ASSERT(idx);
+  ASSERT(tt->data[idx]);
+  if (!--tt->data[idx])
+    tindex_delete(tt->ti, idx);
+}
+*/
+
 static int
 t_simple(void)
 {
@@ -59,6 +69,11 @@ t_simple(void)
 
   for (u64 i = 0; i < 20; i++)
     bt_assert_msg(test_trie_get(&tt, i) == 1, "Index %lu shall be in trie", i);
+
+  /*
+  for (u64 i = 0; i < 20; i++)
+    test_trie_remove(&tt, i);
+    */
 
   return 1;
 }

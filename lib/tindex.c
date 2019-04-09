@@ -299,6 +299,22 @@ tindex_dump(const struct tindex *ti)
   _tindex_dump(ti, 1, 0, 0);
 }
 
+#define TINDEX_ALLOC_IDX ({ u64 out = idm_alloc(&(ti->idm)); if (!out) goto noidx; out; })
+
+u64
+tindex_grow(struct tindex *ti)
+{
+  /* We want bigger index space so we have to change parameters
+   * of the tindex and completely rebuild it. Then we'll free the
+   * old index_data.
+   *
+   * Assigned indices are kept, internal nodes may be rearranged
+   * and renumbered.
+   */
+
+  /* First we'll try to estimate whether it is feasible to shorten
+}
+
 u64
 tindex_find(struct tindex *ti, const u64 *bits_in, const uint blen, const int create)
 {
@@ -374,7 +390,7 @@ tindex_find(struct tindex *ti, const u64 *bits_in, const uint blen, const int cr
 	return 0;
 
       /* So there will be a new node on path. */
-      nidx = idm_alloc(&(ti->idm));
+      nidx = TINDEX_ALLOC_IDX;
 
       /* Left or right? */
       if (bits)
@@ -416,10 +432,10 @@ tindex_find(struct tindex *ti, const u64 *bits_in, const uint blen, const int cr
     data &= (1 << dlen) - 1;
 
     /* Allocate the splitting index */
-    u64 midx = idm_alloc(&(ti->idm));
+    u64 midx = TINDEX_ALLOC_IDX;
 
     /* Allocate the new node if it shall exist */
-    u64 nidx = split ? idm_alloc(&(ti->idm)) : 0;
+    u64 nidx = split ? TINDEX_ALLOC_IDX : 0;
 
     /* Relink idx -> midx in the parent node */
     if (uidx)
@@ -464,7 +480,7 @@ tindex_find(struct tindex *ti, const u64 *bits_in, const uint blen, const int cr
     ASSERT(dataright < 2);
 
     /* Create a new node */
-    uint nidx = idm_alloc(&(ti->idm));
+    uint nidx = TINDEX_ALLOC_IDX;
 
     /* Link it into the trie */
     tindex_put(ti, idx, usize, asize, dsize, dshift, data, ilen, dataright ? 0 : nidx, dataright ? nidx : 0, uidx);
@@ -473,4 +489,15 @@ tindex_find(struct tindex *ti, const u64 *bits_in, const uint blen, const int cr
     uidx = idx;
     idx = nidx;
   }
+
+  /* This statement should be unreachable */
+  ASSERT(0);
+
+  /* No index available for alloc */
+noidx:
+  /* Grow the tindex */
+  tindex_grow(ti);
+
+  /* And retry */
+  return tindex_find(ti, bits_in, blen, create);
 }

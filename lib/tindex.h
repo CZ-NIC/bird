@@ -18,14 +18,25 @@
 struct tindex* tindex_new(pool *p);
 
 /**
- * Find an index by the auxiliary funcction @tib.
- * @t: the index to look into
- * @tib: the auxiliary function; see before
- * @create: 0 to find only existing records, 1 to create new
- * Return value: 0 for not found (create == 0) or retry (create == 1); nonzero = the index
+ * Find an index
+ * @ti: the tindex to look into
+ * @bits_in: data
+ * @blen: number of bits to extract from bits_in.
+ *	  If @blen is not multiple of 64, the LSB's of the last u64 are ignored.
+ * @create: 0 to find existing, 1 to create new records
+ *
+ * Return value: 0 for not found; nonzero = the index
  */
 
 u64 tindex_find(struct tindex *ti, const u64 *bits_in, const uint blen, const int create);
+
+/**
+ * Delete an index.
+ * @ti: the tindex to use
+ * @idx: the index to delete
+ **/
+
+u64 tindex_delete(struct tindex *ti, const u64 idx);
 
 /**
  * Dump the index. Useful for debugging.
