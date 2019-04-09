@@ -26,6 +26,7 @@ union tindex_data {
 
 struct tindex {
   union tindex_data *index_data;
+  u64 *exists;
   pool *p;
   struct idm idm;
   u8 unit_size;
@@ -40,6 +41,7 @@ tindex_new(pool *p)
   ti->unit_size = TI_MIN_UNIT_SIZE;
   ti->address_size = TI_MIN_ADDRESS_SIZE;
   ti->index_data = mb_allocz(p, ti->unit_size * (1 << ti->address_size));
+  ti->exists = mb_allocz(p, (1 << (ti->address_size - 3)));
   idm_init(&(ti->idm), p, (1 << (ti->address_size - 5)), (1 << ti->address_size));
   u32 rootnode = idm_alloc(&(ti->idm));
   ASSERT(rootnode == 1);
@@ -234,6 +236,24 @@ static inline uint tindex_input_bits(const u64 *bits_in, const uint blen, uint *
   return ilen;
 }
 
+static inline void
+tindex_exists_set(const struct tindex *ti, const u64 idx)
+{
+  ti->exists[idx / 64] |= (1ULL << (idx % 64));
+}
+
+static inline u64
+tindex_exists(const struct tindex *ti, const u64 idx)
+{
+  return (ti->exists[idx / 64] & (1ULL << (idx % 64)));
+}
+
+static inline void
+tindex_exists_clear(const struct tindex *ti, const u64 idx)
+{
+  ti->exists[idx / 64] &= ~(1ULL << (idx % 64));
+}
+
 const char dump_indent[] = "                                                                ";
 #define INDENT (dump_indent + sizeof(dump_indent) - depth - 1)
 
@@ -263,7 +283,7 @@ _tindex_dump(const struct tindex *ti, u64 idx, uint depth, uint bit)
   if (depth)
     dlen++;
 
-  debug("%s0x%x/%u (%lu)\n", INDENT, data, dlen, idx);
+  debug("%s0x%x/%u (%lu %c)\n", INDENT, data, dlen, idx, tindex_exists(ti, idx) ? '*' : ' ');
   u64 left = tindex_left(ti, idx, usize, asize, addrmask);
   if (left)
     _tindex_dump(ti, left, depth+1, 0);
@@ -325,11 +345,19 @@ tindex_find(struct tindex *ti, const u64 *bits_in, const uint blen, const int cr
       ilen = tindex_input_bits(bits_in, blen, &bpos, 1, &bits);
 
       /* No more bits, we're done */
-      if (!ilen)
+      if (!ilen) {
+	/* Existence bits fiddling */
+	if (create)
+	  tindex_exists_set(ti, idx);
+	else if (!tindex_exists(ti, idx))
+	  return 0;
+
 	return idx;
+      }
 
       /* Just one bit, to be sure */
       ASSERT(bits < 2);
+      ASSERT(ilen == 1);
 
       /* Go left or right? */
       u64 nidx = bits ? tindex_right(ti, idx, usize, asize, addrmask) : tindex_left(ti, idx, usize, asize, addrmask);
@@ -410,8 +438,10 @@ tindex_find(struct tindex *ti, const u64 *bits_in, const uint blen, const int cr
     /* Grow there a branch if it has to be grown, otherwise return */
     if (split)
       break;
-    else
+    else {
+      tindex_exists_set(ti, midx);
       return midx;
+    }
   }
 
   /* Growing a new branch */
@@ -426,6 +456,7 @@ tindex_find(struct tindex *ti, const u64 *bits_in, const uint blen, const int cr
     /* End of input data */
     if ((ilen < dsize - 1) || !tindex_input_bits(bits_in, blen, &bpos, 1, &dataright)) {
       tindex_put(ti, idx, usize, asize, dsize, dshift, data, ilen, 0, 0, uidx);
+      tindex_exists_set(ti, idx);
       return idx;
     }
 

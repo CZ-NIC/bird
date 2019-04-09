@@ -19,6 +19,7 @@ struct test_trie {
 
 static inline void test_trie_add(struct test_trie *tt, u64 data) {
   u64 idx = tindex_find(tt->ti, &data, 64, 1);
+  bt_assert(idx > 0);
 
   u64 nlen = tt->len;
   while (idx > nlen)
@@ -57,7 +58,7 @@ t_simple(void)
   }
 
   for (u64 i = 0; i < 20; i++)
-    bt_assert(test_trie_get(&tt, i) == 1);
+    bt_assert_msg(test_trie_get(&tt, i) == 1, "Index %lu shall be in trie", i);
 
   return 1;
 }
