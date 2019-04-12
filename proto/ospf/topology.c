@@ -1424,6 +1424,7 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
   struct ospf_config *cf = (struct ospf_config *) (p->p.cf);
   struct ospf_iface *ifa;
   struct ospf_lsa_prefix *lp;
+  uint max = ospf_is_ip4(p) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH;
   int host_addr = 0;
   int net_lsa;
   int i = 0;
@@ -1457,7 +1458,7 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
 	  (a->scope <= SCOPE_LINK))
 	continue;
 
-      if (((a->prefix.pxlen < IP6_MAX_PREFIX_LENGTH) && net_lsa) ||
+      if (((a->prefix.pxlen < max) && net_lsa) ||
 	  configured_stubnet(oa, a))
 	continue;
 
@@ -1465,8 +1466,13 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
 	  (ifa->state == OSPF_IS_LOOP) ||
 	  (ifa->type == OSPF_IT_PTMP))
       {
-	net_addr_ip6 net = NET_ADDR_IP6(a->ip, IP6_MAX_PREFIX_LENGTH);
-	lsab_put_prefix(p, (net_addr *) &net, 0);
+	net_addr net;
+	if (a->prefix.type == NET_IP4)
+	  net_fill_ip4(&net, ipa_to_ip4(a->ip), IP4_MAX_PREFIX_LENGTH);
+	else
+	  net_fill_ip6(&net, ipa_to_ip6(a->ip), IP6_MAX_PREFIX_LENGTH);
+
+	lsab_put_prefix(p, &net, 0);
 	host_addr = 1;
       }
       else
@@ -1482,7 +1488,7 @@ prepare_prefix_rt_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
     if (!sn->hidden)
     {
       lsab_put_prefix(p, &sn->prefix, sn->cost);
-      if (sn->prefix.pxlen == IP6_MAX_PREFIX_LENGTH)
+      if (sn->prefix.pxlen == max)
 	host_addr = 1;
       i++;
     }
