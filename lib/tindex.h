@@ -42,6 +42,40 @@ u64 tindex_find(struct tindex *ti, const u32 *bits_in, const uint blen, const u6
 
 u64 tindex_delete(struct tindex *ti, const u64 idx);
 
+struct tindex_walk_params {
+  u64 begin;
+  uint blen;
+  uint maxlen;
+  uint internal:1;
+};
+
+/**
+ * Walk the trie (prefix order): Get first node, return the walk context.
+ * @ti: the index to use
+ * @twp: walk parameters
+ *
+ * Returns the tindex walk context. Run tindex_walk_next() repeatedly to get single items.
+ **/
+
+struct tindex_walk *tindex_walk_init(const struct tindex *ti, const struct tindex_walk_params *twp);
+
+/**
+ * Finish the trie walk. This must be called to return the allocated structures.
+ * @ctx: walk context to free
+ **/
+
+void tindex_walk_done(struct tindex_walk *ctx);
+
+/**
+ * Get next node.
+ */
+u64 tindex_walk_next(const struct tindex *ti, struct tindex_walk *ctx);
+
+#define TINDEX_WALK_BEGIN(ti) do { \
+  struct tindex_walk *_ti_ctx = tindex_walk_init(ti); \
+  for (u64 idx; idx = tindex_walk_next(ti, _ti_ctx); )
+#define TINDEX_WALK_END tindex_walk_done(_ti_ctx); } while (0)
+
 /**
  * Dump the index. Useful for debugging.
  */

@@ -37,6 +37,31 @@ struct tindex {
   u8 address_size;
 };
 
+struct tindex_info {
+  uint usize;
+  uint asize;
+  uint dsize;
+  uint dshift;
+  u64 addrmask;
+};
+
+static inline void
+tindex_fill_info(const struct tindex *ti, struct tindex_info *tinfo)
+{
+  tinfo->asize = ti->address_size;
+  tinfo->usize = ti->unit_size;
+  tinfo->dsize = tinfo->usize * 8 - tinfo->asize * 3;
+
+  tinfo->dshift = (tinfo->usize % 3) ? (tinfo->asize * 3) : (tinfo->dsize / 3);
+  tinfo->addrmask = (1ULL << ti->address_size) - 1;
+}
+
+#define usize tinfo->usize
+#define asize tinfo->asize
+#define dsize tinfo->dsize
+#define dshift tinfo->dshift
+#define addrmask tinfo->addrmask
+
 struct tindex *
 tindex_new(pool *p)
 {
@@ -53,7 +78,7 @@ tindex_new(pool *p)
 }
 
 static inline u64
-tindex_data(const union tindex_data *id, u64 usize, u64 asize, u64 dsize, u64 dshift, u64 idx, uint *len)
+tindex_data(const union tindex_data *id, const struct tindex_info *tinfo, u64 idx, uint *len)
 {
   ASSERT(dsize <= TDB);
   u64 data;
@@ -91,7 +116,7 @@ tindex_data(const union tindex_data *id, u64 usize, u64 asize, u64 dsize, u64 ds
 }
 
 static inline u64
-tindex_left(const union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 addrmask)
+tindex_left(const union tindex_data *id, const struct tindex_info *tinfo, u64 idx)
 {
   switch (usize) {
     case 4: return (id->data4[idx] >> (asize * 2)) & addrmask;
@@ -103,7 +128,7 @@ tindex_left(const union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 addr
 }
 
 static inline u64
-tindex_right(const union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 addrmask)
+tindex_right(const union tindex_data *id, const struct tindex_info *tinfo, u64 idx)
 {
   switch (usize) {
     case 4: return (id->data4[idx] >> (asize)) & addrmask;
@@ -115,7 +140,7 @@ tindex_right(const union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 add
 }
 
 static inline u64
-tindex_up(const union tindex_data *id, u64 idx, u64 usize, u64 addrmask)
+tindex_up(const union tindex_data *id, const struct tindex_info *tinfo, u64 idx)
 {
   switch (usize) {
     case 4: return id->data4[idx] & addrmask;
@@ -127,7 +152,7 @@ tindex_up(const union tindex_data *id, u64 idx, u64 usize, u64 addrmask)
 }
 
 static inline void
-tindex_put(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 dsize, u64 dshift, u64 data, uint dlen, u64 left, u64 right, u64 up)
+tindex_put(union tindex_data *id, const struct tindex_info *tinfo, u64 idx, u64 data, uint dlen, u64 left, u64 right, u64 up)
 {
   const u64 dsmask = (1LL << dshift) - 1;
   data = u64_var_encode(data, dsize - dlen);
@@ -154,7 +179,7 @@ tindex_put(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 dsize, u64 
 }
 
 static inline void
-tindex_left_clear(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 addrmask)
+tindex_left_clear(union tindex_data *id, const struct tindex_info *tinfo, u64 idx)
 {
   switch (usize) {
     case 4: id->data4[idx] &= ~(addrmask << (asize * 2)); break;
@@ -165,7 +190,7 @@ tindex_left_clear(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 addr
 }
 
 static inline void
-tindex_right_clear(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 addrmask)
+tindex_right_clear(union tindex_data *id, const struct tindex_info *tinfo, u64 idx)
 {
   switch (usize) {
     case 4: id->data4[idx] &= ~(addrmask << asize); break;
@@ -176,7 +201,7 @@ tindex_right_clear(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 add
 }
 
 static inline void
-tindex_up_clear(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 addrmask)
+tindex_up_clear(union tindex_data *id, const struct tindex_info *tinfo, u64 idx)
 {
   switch (usize) {
     case 4: id->data4[idx] &= ~addrmask; break;
@@ -187,7 +212,7 @@ tindex_up_clear(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 addrma
 }
 
 static inline void
-tindex_left_set(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 nidx)
+tindex_left_set(union tindex_data *id, const struct tindex_info *tinfo, u64 idx, u64 nidx)
 {
   /* The left child must have been zero before */
   switch (usize) {
@@ -199,7 +224,7 @@ tindex_left_set(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 nidx)
 }
 
 static inline void
-tindex_right_set(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 nidx)
+tindex_right_set(union tindex_data *id, const struct tindex_info *tinfo, u64 idx, u64 nidx)
 {
   /* The right child must have been zero before */
   switch (usize) {
@@ -211,7 +236,7 @@ tindex_right_set(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 nidx)
 }
 
 static inline void
-tindex_up_set(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 nidx)
+tindex_up_set(union tindex_data *id, const struct tindex_info *tinfo, u64 idx, u64 nidx)
 {
   /* The parent must have been zero before */
   switch (usize) {
@@ -223,15 +248,15 @@ tindex_up_set(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 nidx)
 }
 
 static inline void
-tindex_child_update(union tindex_data *id, u64 idx, u64 usize, u64 asize, u64 addrmask, u64 oidx, u64 nidx)
+tindex_child_update(union tindex_data *id, const struct tindex_info *tinfo, u64 idx, u64 oidx, u64 nidx)
 {
-  if (oidx == tindex_left(id, idx, usize, asize, addrmask)) {
-    tindex_left_clear(id, idx, usize, asize, addrmask);
-    tindex_left_set(id, idx, usize, asize, nidx);
+  if (oidx == tindex_left(id, tinfo, idx)) {
+    tindex_left_clear(id, tinfo, idx);
+    tindex_left_set(id, tinfo, idx, nidx);
   } else {
-    ASSERT(oidx == tindex_right(id, idx, usize, asize, addrmask));
-    tindex_right_clear(id, idx, usize, asize, addrmask);
-    tindex_right_set(id, idx, usize, asize, nidx);
+    ASSERT(oidx == tindex_right(id, tinfo, idx));
+    tindex_right_clear(id, tinfo, idx);
+    tindex_right_set(id, tinfo, idx, nidx);
   }
 }
 
@@ -282,20 +307,41 @@ tindex_exists_clear(const struct tindex *ti, const u64 idx)
   ti->exists[idx / 64] &= ~(1ULL << (idx % 64));
 }
 
+struct tindex_parsed_node {
+  u64 left;
+  u64 right;
+  u64 up;
+  u64 data;
+  uint dlen;
+  uint seen:1;
+};
+
+struct tindex_walk {
+  const struct tindex_walk_params twp;
+  const struct tindex_info tinfo;
+  uint pos;
+  struct tindex_parsed_node tpn[0];
+};
+
+struct tindex_walk *
+tindex_walk_init(const struct tindex *ti, const struct tindex_walk_params *twp)
+{
+  struct tindex_walk *tw = mb_allocz(ti->p, sizeof(struct tindex_walk) + ti->ndepth * sizeof(struct tindex_parsed_node));
+  memcpy(tw, twp, sizeof(*twp));
+  tw->tpn[0] = tindex_walk_parse(ti
+  return tw;
+}
+
 const char dump_indent[] = "                                                                ";
 #define INDENT (dump_indent + sizeof(dump_indent) - depth - 1)
 
 static void
 _tindex_dump(const struct tindex *ti, u64 idx, uint depth, uint bit)
 {
-  const uint asize = ti->address_size;
-  const uint usize = ti->unit_size;
-  const uint dsize = usize * 8 - asize * 3;
+  struct tindex_info stinfo, *tinfo = &stinfo;
+  tindex_fill_info(ti, tinfo);
 
   union tindex_data *idata = ti->index_data;
-
-  const uint dshift = (usize % 3) ? (asize * 3) : (dsize / 3);
-  const u64 addrmask = (1ULL << ti->address_size) - 1;
 
   /* Validate unit size */
   switch (usize) {
@@ -332,6 +378,44 @@ tindex_dump(const struct tindex *ti)
   _tindex_dump(ti, 1, 0, 0);
 }
 
+void tindex_migrate(struct tindex * restrict ti, const union tindex_data * restrict odata, const u64 idx, const uint usize, const uint asize, const uint dsize, const uint dshift, const u64 addrmask, uTDB *bits, uint bpos) {
+  uint dlen;
+  u64 data = tindex_data(odata, usize, asize, dsize, dshift, idx, &dlen);
+  u64 mask = (1 << dlen) - 1;
+  if (dlen) {
+    uint bend = bpos + dlen - 1;
+
+    if (bend / TDB > bpos / TDB) {
+      bits[bpos / TDB] &= ~(mask >> (1 + bend % TDB));
+      bits[bpos / TDB] |= data >> (1 + bend % TDB);
+    }
+
+    bits[bend / TDB] &= ~(mask << (TDB - 1 - (bend % TDB)));
+    bits[bend / TDB] |= data << (TDB - 1 - (bend % TDB));
+
+    bpos = bend + 1;
+  }
+
+  /* Migration of non-root nodes */
+  if (idx > 1)
+    if (tindex_exists(ti, idx))
+      tindex_find(ti, bits, bpos, idx);
+    else
+      idm_free(&(ti->idm), idx);
+
+  u64 left = tindex_left(odata, idx, usize, asize, addrmask);
+  if (left) {
+    bits[bpos / TDB] &= ~(1ULL << (TDB - 1 - (bpos % TDB)));
+    tindex_migrate(ti, odata, left, usize, asize, dsize, dshift, addrmask, bits, bpos + 1);
+  }
+
+  u64 right = tindex_right(odata, idx, usize, asize, addrmask);
+  if (right) {
+    bits[bpos / TDB] |= 1ULL << (TDB - 1 - (bpos % TDB));
+    tindex_migrate(ti, odata, right, usize, asize, dsize, dshift, addrmask, bits, bpos + 1);
+  }
+}
+
 void
 tindex_do_grow(struct tindex *ti, const uint nasize, const uint nusize)
 {
@@ -355,57 +439,28 @@ tindex_do_grow(struct tindex *ti, const uint nasize, const uint nusize)
 
   ti->idm.max = 1 << nasize;
 
-  uint bpos = 0;
   uTDB *bits = alloca(((ti->depth / TDB) + 1)*sizeof(uTDB));
   memset(bits, 0, ((ti->depth / TDB) + 1)*sizeof(uTDB));
 
-  void migrate(u64 idx) {
-    uint dlen;
-    u64 data = tindex_data(odata, usize, asize, dsize, dshift, idx, &dlen);
-    u64 mask = (1 << dlen) - 1;
-    uint sbpos = bpos;
-    if (dlen) {
-      uint bend = bpos + dlen - 1;
-
-      if (bend / TDB > bpos / TDB) {
-	bits[bpos / TDB] &= ~(mask >> (1 + bend % TDB));
-	bits[bpos / TDB] |= data >> (1 + bend % TDB);
-      }
-
-      bits[bend / TDB] &= ~(mask << (TDB - 1 - (bend % TDB)));
-      bits[bend / TDB] |= data << (TDB - 1 - (bend % TDB));
-
-      bpos = bend + 1;
-    }
-
-    /* Migration of non-root nodes */
-    if (idx > 1)
-      if (tindex_exists(ti, idx))
-	tindex_find(ti, bits, bpos, idx);
-      else
-	idm_free(&(ti->idm), idx);
-
-    u64 left = tindex_left(odata, idx, usize, asize, addrmask);
-    if (left) {
-      bits[bpos / TDB] &= ~(1ULL << (TDB - 1 - (bpos % TDB)));
-      bpos++;
-      migrate(left);
-      bpos--;
-    }
-
-    u64 right = tindex_right(odata, idx, usize, asize, addrmask);
-    if (right) {
-      bits[bpos / TDB] |= 1ULL << (TDB - 1 - (bpos % TDB));
-      bpos++;
-      migrate(right);
-      bpos--;
-    }
-
-    bpos = sbpos;
-  }
-
-  migrate(1);
+  tindex_migrate(ti, odata, 1, usize, asize, dsize, dshift, addrmask, bits, 0);
   mb_free(odata);
+}
+
+void tindex_lencnt(u64 idx) {
+  uint dlen;
+  tindex_data(idata, usize, asize, dsize, dshift, idx, &dlen);
+  ASSERT(dlen < dsize);
+  if (dlen >= dsize - 3)
+    needsplit++;
+  total++;
+
+  u64 left = tindex_left(idata, idx, usize, asize, addrmask);
+  if (left)
+    tindex_lencnt(left);
+
+  u64 right = tindex_right(idata, idx, usize, asize, addrmask);
+  if (right)
+    tindex_lencnt(right);
 }
 
 void
@@ -434,24 +489,7 @@ tindex_grow(struct tindex *ti)
     u64 needsplit = 0;
     u64 total = 0;
 
-    void lencnt(u64 idx) {
-      uint dlen;
-      tindex_data(idata, usize, asize, dsize, dshift, idx, &dlen);
-      ASSERT(dlen < dsize);
-      if (dlen >= dsize - 3)
-	needsplit++;
-      total++;
-
-      u64 left = tindex_left(idata, idx, usize, asize, addrmask);
-      if (left)
-	lencnt(left);
-
-      u64 right = tindex_right(idata, idx, usize, asize, addrmask);
-      if (right)
-	lencnt(right);
-    }
-
-    lencnt(1);
+    tindex_lencnt(idata, 1, usize, asize, dsize, dshift, addrmask);
 
     /* After shortening the data part, needsplit/total nodes will duplicate (or triplicate!).
      * If the overall index usage goes up by at most 20% by doing this change,
@@ -520,14 +558,8 @@ tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 c
     else
       return 0;
 
-  const uint asize = ti->address_size;
-  const uint usize = ti->unit_size;
-  const uint dsize = usize * 8 - asize * 3;
-
   union tindex_data *idata = ti->index_data;
 
-  const uint dshift = (usize % 3) ? (asize * 3) : (dsize / 3);
-  const u64 addrmask = (1ULL << ti->address_size) - 1;
 
   /* Validate unit size */
   switch (usize) {
