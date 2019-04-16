@@ -32,7 +32,8 @@ struct tindex {
   u64 *exists;
   pool *p;
   struct idm idm;
-  u16 depth;
+  u16 bdepth;
+  u16 ndepth;
   u8 unit_size;
   u8 address_size;
 };
@@ -45,15 +46,18 @@ struct tindex_info {
   u64 addrmask;
 };
 
-static inline void
-tindex_fill_info(const struct tindex *ti, struct tindex_info *tinfo)
+static inline struct tindex_info
+tindex_get_info(const struct tindex *ti)
 {
-  tinfo->asize = ti->address_size;
-  tinfo->usize = ti->unit_size;
-  tinfo->dsize = tinfo->usize * 8 - tinfo->asize * 3;
+  struct tindex_info stinfo;
+  stinfo.asize = ti->address_size;
+  stinfo.usize = ti->unit_size;
+  stinfo.dsize = stinfo.usize * 8 - stinfo.asize * 3;
 
-  tinfo->dshift = (tinfo->usize % 3) ? (tinfo->asize * 3) : (tinfo->dsize / 3);
-  tinfo->addrmask = (1ULL << ti->address_size) - 1;
+  stinfo.dshift = (stinfo.usize % 3) ? (stinfo.asize * 3) : (stinfo.dsize / 3);
+  stinfo.addrmask = (1ULL << ti->address_size) - 1;
+
+  return stinfo;
 }
 
 #define usize tinfo->usize
@@ -319,7 +323,10 @@ struct tindex_parsed_node {
 struct tindex_walk {
   const struct tindex_walk_params twp;
   const struct tindex_info tinfo;
+  const union tindex_data *tdata;
+  const u64 *exists;
   uint pos;
+  uint realndepth;
   struct tindex_parsed_node tpn[0];
 };
 
@@ -327,8 +334,15 @@ struct tindex_walk *
 tindex_walk_init(const struct tindex *ti, const struct tindex_walk_params *twp)
 {
   struct tindex_walk *tw = mb_allocz(ti->p, sizeof(struct tindex_walk) + ti->ndepth * sizeof(struct tindex_parsed_node));
-  memcpy(tw, twp, sizeof(*twp));
-  tw->tpn[0] = tindex_walk_parse(ti
+  *tw = (struct tindex_walk) {
+    .twp = *twp,
+    .tinfo = tindex_get_info(ti),
+    .tdata = ti->index_data,
+    .exists = ti->exists,
+  };
+
+  tw->tpn[0] = tindex_parse_node(tw->tdata, tw->tinfo, twp->begin > 1 ? twp->begin : 1);
+
   return tw;
 }
 
@@ -338,8 +352,7 @@ const char dump_indent[] = "                                                    
 static void
 _tindex_dump(const struct tindex *ti, u64 idx, uint depth, uint bit)
 {
-  struct tindex_info stinfo, *tinfo = &stinfo;
-  tindex_fill_info(ti, tinfo);
+  const struct tindex_info stinfo = tindex_get_info(ti), *tinfo = &stinfo;
 
   union tindex_data *idata = ti->index_data;
 
@@ -372,13 +385,13 @@ _tindex_dump(const struct tindex *ti, u64 idx, uint depth, uint bit)
 void
 tindex_dump(const struct tindex *ti)
 {
-  debug("Trie index; usize = %u, asize = %u, dsize = %u, depth = %u\n",
+  debug("Trie index; usize = %u, asize = %u, dsize = %u, bdepth = %u, ndepth = %u\n",
       ti->unit_size, ti->address_size, ti->unit_size * 8 - ti->address_size * 3,
-      ti->depth);
+      ti->bdepth, ti->ndepth);
   _tindex_dump(ti, 1, 0, 0);
 }
 
-void tindex_migrate(struct tindex * restrict ti, const union tindex_data * restrict odata, const u64 idx, const uint usize, const uint asize, const uint dsize, const uint dshift, const u64 addrmask, uTDB *bits, uint bpos) {
+void tindex_migrate(struct tindex * restrict ti, const struct tindex_info *tinfo, const u64 idx, uTDB *bits, uint bpos) {
   uint dlen;
   u64 data = tindex_data(odata, usize, asize, dsize, dshift, idx, &dlen);
   u64 mask = (1 << dlen) - 1;
@@ -439,8 +452,8 @@ tindex_do_grow(struct tindex *ti, const uint nasize, const uint nusize)
 
   ti->idm.max = 1 << nasize;
 
-  uTDB *bits = alloca(((ti->depth / TDB) + 1)*sizeof(uTDB));
-  memset(bits, 0, ((ti->depth / TDB) + 1)*sizeof(uTDB));
+  uTDB *bits = alloca(((ti->bdepth / TDB) + 1)*sizeof(uTDB));
+  memset(bits, 0, ((ti->bdepth / TDB) + 1)*sizeof(uTDB));
 
   tindex_migrate(ti, odata, 1, usize, asize, dsize, dshift, addrmask, bits, 0);
   mb_free(odata);
@@ -552,9 +565,9 @@ tindex_renumber(union tindex_data *idata, u64 usize, u64 asize, u64 dsize, u64 d
 u64
 tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 create)
 {
-  if (blen > ti->depth)
+  if (blen > ti->bdepth)
     if (create)
-      ti->depth = blen;
+      ti->bdepth = blen;
     else
       return 0;
 
@@ -574,6 +587,8 @@ tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 c
   u64 uidx = 0;	/* Parent node is 0 on beginning */
 
   uint bpos = 0;
+
+  uint ndepth = 1;
 
   while (1) {
     /* Get data from trie */
@@ -601,11 +616,13 @@ tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 c
 	if (create == TINDEX_CREATE) {
 	  /* Creating at any index -> do it */
 	  tindex_exists_set(ti, idx);
+	  ti->ndepth = ti->ndepth > ndepth ? ti->ndepth : ndepth;
 	  return idx;
 	} else if (create) {
 	  /* Migration from old version -> renumber */
 	  tindex_renumber(idata, usize, asize, dsize, dshift, addrmask, idx, create);
 	  idm_free(&(ti->idm), idx);
+	  ti->ndepth = ti->ndepth > ndepth ? ti->ndepth : ndepth;
 	  return create;
 	} else if (tindex_exists(ti, idx))
 	  /* Shan't create but it already exists */
@@ -625,6 +642,7 @@ tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 c
       if (nidx) {
 	uidx = idx;
 	idx = nidx;
+	ndepth++;
 	continue;
       }
 
@@ -644,6 +662,7 @@ tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 c
       /* Go there. */
       uidx = idx;
       idx = nidx;
+      ndepth++;
 
       /* And now we shall continue by the brand new node. */
       break;
@@ -697,18 +716,23 @@ tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 c
       /* The current node is the newly allocated */
       idx = nidx;
 
+      /* The overall depth may have increased; just to be sure */
+      ti->ndepth++;
+
       /* Grow there a branch */
       break;
 
     } else if (create == TINDEX_CREATE) {
       /* This internal node exists */
       tindex_exists_set(ti, midx);
+      ti->ndepth = ti->ndepth > ndepth ? ti->ndepth : ndepth;
       return midx;
 
     } else {
       /* This internal node must be renumbered to the right one */
       tindex_renumber(idata, usize, asize, dsize, dshift, addrmask, midx, create);
       idm_free(&(ti->idm), midx);
+      ti->ndepth = ti->ndepth > ndepth ? ti->ndepth : ndepth;
       return create;
     }
   }
@@ -725,6 +749,7 @@ tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 c
     /* End of input data */
     if ((ilen < dsize - 1) || !tindex_input_bits(bits_in, blen, &bpos, 1, &dataright)) {
       tindex_put(idata, idx, usize, asize, dsize, dshift, data, ilen, 0, 0, uidx);
+      ti->ndepth = ti->ndepth > ndepth ? ti->ndepth : ndepth;
       if (create == TINDEX_CREATE) {
 	tindex_exists_set(ti, idx);
 	return idx;
@@ -746,6 +771,7 @@ tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 c
     /* And continue there */
     uidx = idx;
     idx = nidx;
+    ndepth++;
   }
 
   /* This statement should be unreachable */
