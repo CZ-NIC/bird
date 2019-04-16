@@ -69,7 +69,7 @@ void tindex_walk_done(struct tindex_walk *ctx);
 /**
  * Get next node.
  */
-u64 tindex_walk_next(const struct tindex *ti, struct tindex_walk *ctx);
+u64 tindex_walk_next(struct tindex_walk *ctx);
 
 #define TINDEX_WALK_BEGIN(ti) do { \
   struct tindex_walk *_ti_ctx = tindex_walk_init(ti); \

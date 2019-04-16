@@ -312,6 +312,7 @@ tindex_exists_clear(const struct tindex *ti, const u64 idx)
 }
 
 struct tindex_parsed_node {
+  u64 idx;
   u64 left;
   u64 right;
   u64 up;
@@ -346,6 +347,21 @@ tindex_walk_init(const struct tindex *ti, const struct tindex_walk_params *twp)
   return tw;
 }
 
+u64
+tindex_walk_next(struct tindex_walk *tw)
+{
+  ASSERT(tw->pos + 1);
+  if (!tw->tpn[tw->pos].seen)
+  while (tw->tpn[tw->pos].seen)
+    if (tw->pos-- == 0)
+      return 0;
+
+  u64 out = tw->tpn[tw->pos].idx
+
+
+
+}
+
 const char dump_indent[] = "                                                                ";
 #define INDENT (dump_indent + sizeof(dump_indent) - depth - 1)
 
@@ -354,7 +370,7 @@ _tindex_dump(const struct tindex *ti, u64 idx, uint depth, uint bit)
 {
   const struct tindex_info stinfo = tindex_get_info(ti), *tinfo = &stinfo;
 
-  union tindex_data *idata = ti->index_data;
+  union index_data *idata = ti->index_data;
 
   /* Validate unit size */
   switch (usize) {
