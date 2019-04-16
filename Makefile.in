@@ -174,12 +174,14 @@ $(tests_targets): %: %.o $(tests_objs) | prepare
 $(tests_targets): LIBS += $(DAEMON_LIBS)
 
 $(tests_targets_ok): %.ok: %
-	$(Q)$* 2>/dev/null && touch $*.ok
+	$(Q)$* $(TESTFLAGS) 2>/dev/null && touch $*.ok
 
 test: testsclean check
 check: tests tests_run
 tests: $(tests_targets)
 tests_run: $(tests_targets_ok)
+benchmark: test
+benchmark: TESTFLAGS+=-b
 
 tags:
 	cd $(srcdir) ; etags -lc `find $(dirs) -name *.[chY]`

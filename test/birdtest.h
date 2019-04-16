@@ -20,6 +20,7 @@
 extern int bt_result;
 extern int bt_suite_result;
 extern char bt_out_fmt_buf[1024];
+extern int bt_benchmark;
 
 extern uint bt_verbose;
 #define BT_VERBOSE_NO			0

@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <sys/ioctl.h>
@@ -35,6 +36,7 @@ static int no_fork;
 static int no_timeout;
 static int is_terminal;		/* Whether stdout is a live terminal or pipe redirect */
 
+int bt_benchmark;
 uint bt_verbose;
 const char *bt_filename;
 const char *bt_test_id;
@@ -67,9 +69,14 @@ bt_init(int argc, char *argv[])
   bt_test_id = NULL;
   is_terminal = isatty(fileno(stdout));
 
-  while ((c = getopt(argc, argv, "lcftv")) >= 0)
+  while ((c = getopt(argc, argv, "blcftv")) >= 0)
     switch (c)
     {
+      case 'b':
+	bt_benchmark = 1;
+	no_timeout = 1;
+	break;
+
       case 'l':
 	list_tests = 1;
 	break;
@@ -155,10 +162,25 @@ int bt_run_test_fn(int (*fn)(const void *), const void *fn_arg, int timeout)
   int result;
   alarm(timeout);
 
-  if (fn_arg)
-    result = fn(fn_arg);
-  else
-    result = ((int (*)(void))fn)();
+  if (bt_benchmark) {
+    for (int i=0; i<11; i++) {
+      struct timespec begin, end;
+      clock_gettime(CLOCK_MONOTONIC, &begin);
+      if (fn_arg)
+	result = fn(fn_arg);
+      else
+	result = ((int (*)(void))fn)();
+      clock_gettime(CLOCK_MONOTONIC, &end);
+      s64 dif = (end.tv_sec - begin.tv_sec) * 1000000000 + end.tv_nsec - begin.tv_nsec;
+      if (i)
+	bt_log("benchmark: %ld", dif);
+    }
+  } else {
+    if (fn_arg)
+      result = fn(fn_arg);
+    else
+      result = ((int (*)(void))fn)();
+  }
 
   if (!bt_suite_result)
     result = 0;
