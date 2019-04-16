@@ -33,10 +33,12 @@ t_simple(void)
   BSPRINTF(1, "\xff", buf, "%c", 0xff);
 
   errno = 5;
-  BSPRINTF(18, "Input/output error", buf, "%m");
-  errno = 0;
+  const char *ioemsg = strerror(errno);
+  const int ioesize = strlen(ioemsg);
+  BSPRINTF(ioesize, ioemsg, buf, "%m");
 
-  BSPRINTF(18, "Input/output error", buf, "%M", 5);
+  errno = 0;
+  BSPRINTF(ioesize, ioemsg, buf, "%M", 5);
 
   BSPRINTF(11, "TeSt%StRiNg", buf, "%s", "TeSt%StRiNg");
 
