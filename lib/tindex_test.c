@@ -64,15 +64,17 @@ t_simple(void)
     .data = mb_allocz(p, sizeof(u64) * 256),
     .len = 256,
   };
+
+  const u64 max = bt_benchmark ? (1<<19) : (1<<16);
  
   bt_assert(tt.ti);
-  for (u64 i = 0; i < (1<<16); i++) {
+  for (u64 i = 0; i < max; i++) {
     bt_debug("Trie add: %lu\n", i);
     test_trie_add(&tt, i);
     test_trie_add(&tt, i * mul + add);
   }
 
-  for (u64 i = 0; i < (1<<16); i++) {
+  for (u64 i = 0; i < max; i++) {
     test_trie_get(&tt, i, 1);
     test_trie_get(&tt, i * mul + add, 1);
   }

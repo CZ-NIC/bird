@@ -14,6 +14,7 @@
 
 #define TESTS_NUM		10
 #define PREFIXES_NUM 		10
+#define BENCHMARK_MUL		10
 #define PREFIX_TESTS_NUM 	10000
 
 #define BIG_BUFFER_SIZE		10000
@@ -79,7 +80,8 @@ static void
 generate_random_ipv6_prefixes(list *prefixes)
 {
   int i;
-  for (i = 0; i < PREFIXES_NUM; i++)
+  const int max = PREFIXES_NUM * (bt_benchmark ? BENCHMARK_MUL : 1);
+  for (i = 0; i < max; i++)
   {
     struct f_prefix f = get_random_ip6_prefix();
 
