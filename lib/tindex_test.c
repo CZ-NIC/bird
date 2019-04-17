@@ -79,6 +79,37 @@ t_simple(void)
     test_trie_get(&tt, i * mul + add, 1);
   }
 
+  u32 data[2];
+  uint dlen;
+  struct tindex_walk_params twp = {
+    .begin = 1,
+    .maxlen = TINDEX_WALK_NOMAXLEN,
+    .data = data,
+    .dlen = &dlen,
+  };
+
+  uint cnt = 0;
+  u32 seen[max / 32];
+  memset(seen, 0, sizeof(seen));
+
+  TINDEX_WALK(tt.ti, &twp) {
+
+    bt_assert(dlen == 64);
+    u64 num = ((u64) data[0] << 32) + ((u64) data[1]);
+
+    if (num < max) {
+      bt_assert((seen[num / 32] & (1 << (num % 32))) == 0);
+      seen[num / 32] |= 1 << (num % 32);
+    } else
+      cnt++;
+
+    dlen = 42; /* Mess it for testing purposes. */
+  }
+
+  bt_assert(cnt == max);
+  for (u64 i=0; i<sizeof(seen)/sizeof(u32); i++)
+    bt_assert(!~seen[i]);
+
   /*
   for (u64 i = 0; i < 20; i++)
     test_trie_remove(&tt, i);

@@ -83,7 +83,7 @@ void tindex_walk_free(struct tindex_walk *ctx);
 
 #define TINDEX_WALK(ti, twp) \
   for (struct tindex_walk *_ti_ctx = tindex_walk_init(ti, twp); _ti_ctx; _ti_ctx = NULL) \
-    for (u64 idx; idx = tindex_walk_next(ti, _ti_ctx); )
+    for (u64 idx; idx = tindex_walk_next(_ti_ctx); )
 
 /**
  * Dump the index. Useful for debugging.
