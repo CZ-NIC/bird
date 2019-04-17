@@ -21,6 +21,41 @@ struct tindex* tindex_new(pool *p);
 #define TINDEX_FIND	0
 
 /**
+ * Get the whole path to the indexed node at once
+ * @ti: the index to look into
+ * @sidx: index where to start
+ * @bits_in: data
+ * @blen: number of bits to extract from @bits_in.
+ *	  If @blen is not multiple of 64, the LSB's of the last u64 are ignored.
+ * @bpos: number of bits to ignore from @bits_in.
+ * @path: preallocated array of @blen of u64's to store the path.
+ * @create: TINDEX_FIND to find existing, TINDEX_CREATE to create new records,
+ *	    every other value is for internal use
+ *
+ * Return value: 0 for not found; nonzero = the index
+ */
+
+u64 tindex_find_rel_path(struct tindex *ti, const u64 sidx, const u32 *bits_in, const uint blen, const uint bpos, u64 *path, const u64 create);
+
+
+/**
+ * Find an index beginning somewhere else
+ * @ti: the index to look into
+ * @sidx: index where to start
+ * @bits_in: data
+ * @blen: number of bits to extract from @bits_in.
+ *	  If @blen is not multiple of 64, the LSB's of the last u64 are ignored.
+ * @bpos: number of bits to ignore from @bits_in.
+ * @create: TINDEX_FIND to find existing, TINDEX_CREATE to create new records,
+ *	    every other value is for internal use
+ *
+ * Return value: 0 for not found; nonzero = the index
+ */
+
+static inline u64 tindex_find_rel(struct tindex *ti, const u64 sidx, const u32 *bits_in, const uint blen, uint bpos, const u64 create)
+{ return tindex_find_rel_path(ti, sidx, bits_in, blen, bpos, NULL, create); }
+
+/**
  * Find an index
  * @ti: the tindex to look into
  * @bits_in: data
@@ -32,7 +67,8 @@ struct tindex* tindex_new(pool *p);
  * Return value: 0 for not found; nonzero = the index
  */
 
-u64 tindex_find(struct tindex *ti, const u32 *bits_in, const uint blen, const u64 create);
+static inline u64 tindex_find(struct tindex *ti, const u32 *bits_in, const uint blen, const u64 create)
+{ return tindex_find_rel(ti, 1, bits_in, blen, 0, create); }
 
 /**
  * Delete an index.

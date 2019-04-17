@@ -38,9 +38,12 @@ static inline void test_trie_add(struct test_trie *tt, u64 data) {
 static inline void test_trie_get(struct test_trie *tt, u64 data, u64 cnt) {
   u64 out = 0;
   u32 dtb[2] = { data >> 32, data };
-  u64 idx = tindex_find(tt->ti, dtb, 64, TINDEX_FIND);
+  u64 path[64] = {};
+  u64 idx = tindex_find_rel_path(tt->ti, 1, dtb, 64, 0, path, TINDEX_FIND);
   if (idx) out = tt->data[idx];
   bt_assert_msg(out == cnt, "Index %lu shall be in trie %lu times, is %lu times.", data, cnt, out);
+  for (int i=0; i<64; i++)
+    bt_assert(path[i] == 0);
 }
 
 /*

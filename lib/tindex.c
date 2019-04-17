@@ -648,7 +648,7 @@ tindex_renumber(union tindex_data *idata, const struct tindex_info *tinfo, u64 o
 #define TINDEX_ALLOC_IDX ({ u64 out = idm_alloc(&(ti->idm)); if (!out) goto noidx; out; })
 
 u64
-tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 create)
+tindex_find_rel_path(struct tindex *ti, const u64 sidx, const uTDB *bits_in, const uint blen, uint bpos, u64 *path, const u64 create)
 {
   if (blen > ti->bdepth)
     if (create)
@@ -659,6 +659,8 @@ tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 c
   union tindex_data *idata = ti->index_data;
   const struct tindex_info stinfo = tindex_get_info(ti), *tinfo = &stinfo;
 
+  ASSERT(sidx > 0);
+  ASSERT(sidx <= tinfo->addrmask);
 
   /* Validate unit size */
   switch (tinfo->usize) {
@@ -669,10 +671,16 @@ tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 c
     default: bug("This shall never happen");
   }
 
-  u64 idx = 1;	/* The root node is always 1 */
-  u64 uidx = 0;	/* Parent node is 0 on beginning */
+  /* Here we begin */
+  u64 idx = sidx;
+  u64 uidx = tindex_up(idata, tinfo, idx);
 
-  uint bpos = 0;
+  if (path)
+    memset(&(path[bpos]), 0, (blen - bpos) * sizeof(u64));
+
+  /* Shortcut for zero-length query */
+  if (blen == bpos)
+    return tindex_exists(ti->exists, idx) ? idx : 0;
 
   while (1) {
     /* Get data from trie */
@@ -712,6 +720,10 @@ tindex_find(struct tindex *ti, const uTDB *bits_in, const uint blen, const u64 c
 	else
 	  return 0;
       }
+
+      /* This is not final for sure, store the path node */
+      if (path && tindex_exists(ti->exists, idx))
+	path[bpos] = idx;
 
       /* Just one bit, to be sure */
       ASSERT(bits < 2);
