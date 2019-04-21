@@ -467,15 +467,14 @@ ospf_import_control(struct proto *P, rte **new, ea_list **attrs, struct linpool 
     return -1;			/* Do not export routes to stub areas */
 
   ea_list *ea = e->attrs->eattrs;
-  u32 m0 = ea_get_int(ea, EA_GEN_IGP_METRIC, LSINFINITY);
-  u32 m1 = MIN(m0, LSINFINITY);
+  u32 m1 = LSINFINITY;
   u32 m2 = 10000;
   u32 tag = 0;
 
   /* Hack for setting attributes directly in static protocol */
   if (e->attrs->source == RTS_STATIC)
   {
-    m1 = ea_get_int(ea, EA_OSPF_METRIC1, m1);
+    m1 = ea_get_int(ea, EA_OSPF_METRIC1, LSINFINITY);
     m2 = ea_get_int(ea, EA_OSPF_METRIC2, 10000);
     tag = ea_get_int(ea, EA_OSPF_TAG, 0);
   }
