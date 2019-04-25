@@ -30,7 +30,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	GRACEFUL, RESTART, AWARE, CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY,
 	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6, LONG,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL,
-	DYNAMIC)
+	DYNAMIC, RANGE, NAME, DIGITS)
 
 %type <i> bgp_nh
 %type <i32> bgp_afi
@@ -69,6 +69,7 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->llgr_mode = -1;
      BGP_CFG->llgr_time = 3600;
      BGP_CFG->setkey = 1;
+     BGP_CFG->dynamic_name = "dynbgp";
      BGP_CFG->check_link = -1;
    }
  ;
@@ -138,6 +139,17 @@ bgp_proto:
  | bgp_proto DIRECT ';' { BGP_CFG->multihop = 0; }
  | bgp_proto MULTIHOP ';' { BGP_CFG->multihop = 64; }
  | bgp_proto MULTIHOP expr ';' { BGP_CFG->multihop = $3; if (($3<1) || ($3>255)) cf_error("Multihop must be in range 1-255"); }
+ | bgp_proto DYNAMIC RANGE net_ip ';' {
+     net_addr *n = cfg_alloc($4.length);
+     net_copy(n, &($4));
+     BGP_CFG->dynamic_range = n;
+   }
+ | bgp_proto DYNAMIC NAME text ';' {
+     if (strchr($4, '%')) cf_error("Forbidden character '%%' in dynamic name");
+     if (strlen($4) > (SYM_MAX_LEN - 16)) cf_error("Dynamic name too long");
+     BGP_CFG->dynamic_name = $4;
+   }
+ | bgp_proto DYNAMIC NAME DIGITS expr ';' { BGP_CFG->dynamic_name_digits = $5; if ($5>10) cf_error("Dynamic name digits must be at most 10"); }
  | bgp_proto STRICT BIND bool ';' { BGP_CFG->strict_bind = $4; }
  | bgp_proto PATH METRIC bool ';' { BGP_CFG->compare_path_lengths = $4; }
  | bgp_proto MED METRIC bool ';' { BGP_CFG->med_metric = $4; }

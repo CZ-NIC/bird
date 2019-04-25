@@ -125,6 +125,9 @@ struct bgp_config {
   u32 disable_after_cease;		/* Disable it when cease is received, bitfield */
 
   char *password;			/* Password used for MD5 authentication */
+  net_addr *dynamic_range;		/* Allowed neighbor for dynamic BGP */
+  char *dynamic_name;			/* Name pattern for dynamic BGP */
+  int dynamic_name_digits;		/* Minimum number of digits for dynamic names */
   int check_link;			/* Use iface link state for liveness detection */
   int bfd;				/* Use BFD for liveness detection */
 };
@@ -299,6 +302,7 @@ struct bgp_proto {
   event *event;				/* Event for respawning and shutting process */
   timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */
   timer *gr_timer;			/* Timer waiting for reestablishment after graceful restart */
+  int dynamic_name_counter;		/* Counter for dynamic BGP names */
   uint startup_delay;			/* Delay (in seconds) of protocol startup due to previous errors */
   btime last_proto_error;		/* Time of last error that leads to protocol stop */
   u8 last_error_class; 			/* Error class of last error */
