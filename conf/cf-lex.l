@@ -87,7 +87,7 @@ HASH_DEFINE_REHASH_FN(SYM, struct symbol)
 HASH(struct keyword) kw_hash;
 
 
-static struct sym_scope *conf_this_scope;
+struct sym_scope *conf_this_scope;
 
 linpool *cfg_mem;
 
@@ -673,7 +673,8 @@ cf_lex_init(int is_cli, struct config *c)
   else
     BEGIN(INITIAL);
 
-  conf_this_scope = cfg_allocz(sizeof(struct sym_scope));
+  c->root_scope = cfg_allocz(sizeof(struct sym_scope));
+  conf_this_scope = c->root_scope;
   conf_this_scope->active = 1;
 }
 

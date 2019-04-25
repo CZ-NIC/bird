@@ -152,7 +152,7 @@ bgp_open(struct bgp_proto *p)
   struct bgp_socket *bs = NULL;
   struct iface *ifa = p->cf->strict_bind ? p->cf->iface : NULL;
   ip_addr addr = p->cf->strict_bind ? p->cf->local_ip :
-    (ipa_is_ip4(p->cf->remote_ip) ? IPA_NONE4 : IPA_NONE6);
+    (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
   uint port = p->cf->local_port;
 
   /* FIXME: Add some global init? */
@@ -488,6 +488,7 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip)
   /* This is hack, we would like to share config, but we need to copy it now */
   new_config = config;
   cfg_mem = config->mem;
+  conf_this_scope = config->root_scope;
   sym = cf_default_name(fmt, &(pp->dynamic_name_counter));
   proto_clone_config(sym, pp->p.cf);
   new_config = NULL;
@@ -1142,7 +1143,7 @@ bgp_find_proto(sock *sk)
   WALK_LIST(p, proto_list)
     if ((p->p.proto == &proto_bgp) &&
 	(ipa_equal(p->remote_ip, sk->daddr) || bgp_is_dynamic(p)) &&
-	(!p->cf->dynamic_range || ipa_in_netX(p->remote_ip, p->cf->dynamic_range)) &&
+	(!p->cf->remote_range || ipa_in_netX(sk->daddr, p->cf->remote_range)) &&
 	(p->p.vrf == sk->vrf) &&
 	(p->cf->local_port == sk->sport) &&
 	(!link || (p->cf->iface == sk->iface)) &&
@@ -1649,6 +1650,10 @@ bgp_init(struct proto_config *CF)
   p->rs_client = cf->rs_client;
   p->rr_client = cf->rr_client;
 
+  p->ipv4 = ipa_nonzero(cf->remote_ip) ?
+    ipa_is_ip4(cf->remote_ip) :
+    (cf->remote_range && (cf->remote_range->type == NET_IP4));
+
   p->remote_ip = cf->remote_ip;
   p->remote_as = cf->remote_as;
 
@@ -1856,11 +1861,8 @@ bgp_postconfig(struct proto_config *CF)
   if (!cf->local_as)
     cf_error("Local AS number must be set");
 
-  if (ipa_zero(cf->remote_ip) && !cf->dynamic)
+  if (ipa_zero(cf->remote_ip) && !cf->remote_range)
     cf_error("Neighbor must be configured");
-
-  if (!ipa_zero(cf->remote_ip) && cf->dynamic)
-    cf_error("Neighbor must not be configured for dynamic BGP");
 
   if (ipa_zero(cf->local_ip) && cf->strict_bind)
     cf_error("Local address must be configured for strict bind");
@@ -1996,7 +1998,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 		     OFFSETOF(struct bgp_config, password) - sizeof(struct proto_config))
     && ((!old->password && !new->password)
 	|| (old->password && new->password && !strcmp(old->password, new->password)))
-    && net_equal(old->dynamic_range, new->dynamic_range)
+    && net_equal(old->remote_range, new->remote_range)
     && !strcmp(old->dynamic_name, new->dynamic_name)
     && (old->dynamic_name_digits == new->dynamic_name_digits);
 
@@ -2337,7 +2339,12 @@ bgp_show_proto_info(struct proto *P)
   struct bgp_proto *p = (struct bgp_proto *) P;
 
   cli_msg(-1006, "  BGP state:          %s", bgp_state_dsc(p));
-  cli_msg(-1006, "    Neighbor address: %I%J", p->remote_ip, p->cf->iface);
+
+  if (bgp_is_dynamic(p) && p->cf->remote_range)
+    cli_msg(-1006, "    Neighbor range:   %N", p->cf->remote_range);
+  else
+    cli_msg(-1006, "    Neighbor address: %I%J", p->remote_ip, p->cf->iface);
+
   cli_msg(-1006, "    Neighbor AS:      %u", p->remote_as);
 
   if (p->gr_active_num)

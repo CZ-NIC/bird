@@ -122,12 +122,18 @@ bgp_proto:
    }
  | bgp_proto NEIGHBOR bgp_nbr_opts ';'
  | bgp_proto NEIGHBOR ipa ipa_scope bgp_nbr_opts ';' {
-     if (ipa_nonzero(BGP_CFG->remote_ip))
+     if (ipa_nonzero(BGP_CFG->remote_ip) || BGP_CFG->remote_range)
        cf_error("Only one neighbor per BGP instance is allowed");
      BGP_CFG->remote_ip = $3;
      if ($4) BGP_CFG->iface = $4;
    }
- | bgp_proto NEIGHBOR DYNAMIC bgp_nbr_opts ';' { BGP_CFG->dynamic = 1; }
+ | bgp_proto NEIGHBOR RANGE net_ip bgp_nbr_opts ';' {
+     if (ipa_nonzero(BGP_CFG->remote_ip) || BGP_CFG->remote_range)
+       cf_error("Only one neighbor per BGP instance is allowed");
+     net_addr *n = cfg_alloc($4.length);
+     net_copy(n, &($4));
+     BGP_CFG->remote_range = n;
+   }
  | bgp_proto INTERFACE TEXT ';' { BGP_CFG->iface = if_get_by_name($3); }
  | bgp_proto RR CLUSTER ID idval ';' { BGP_CFG->rr_cluster_id = $5; }
  | bgp_proto RR CLIENT bool ';' { BGP_CFG->rr_client = $4; }
@@ -139,11 +145,6 @@ bgp_proto:
  | bgp_proto DIRECT ';' { BGP_CFG->multihop = 0; }
  | bgp_proto MULTIHOP ';' { BGP_CFG->multihop = 64; }
  | bgp_proto MULTIHOP expr ';' { BGP_CFG->multihop = $3; if (($3<1) || ($3>255)) cf_error("Multihop must be in range 1-255"); }
- | bgp_proto DYNAMIC RANGE net_ip ';' {
-     net_addr *n = cfg_alloc($4.length);
-     net_copy(n, &($4));
-     BGP_CFG->dynamic_range = n;
-   }
  | bgp_proto DYNAMIC NAME text ';' {
      if (strchr($4, '%')) cf_error("Forbidden character '%%' in dynamic name");
      if (strlen($4) > (SYM_MAX_LEN - 16)) cf_error("Dynamic name too long");

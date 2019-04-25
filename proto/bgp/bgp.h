@@ -84,7 +84,6 @@ struct bgp_config {
   u16 local_port;			/* Local listening port */
   u16 remote_port; 			/* Neighbor destination port */
   int peer_type;			/* Internal or external BGP (BGP_PT_*, optional) */
-  int dynamic;				/* Dynamic BGP - spawns more instances */
   int multihop;				/* Number of hops if multihop */
   int strict_bind;			/* Bind listening socket to local address */
   int ttl_security;			/* Enable TTL security [RFC 5082] */
@@ -125,7 +124,7 @@ struct bgp_config {
   u32 disable_after_cease;		/* Disable it when cease is received, bitfield */
 
   char *password;			/* Password used for MD5 authentication */
-  net_addr *dynamic_range;		/* Allowed neighbor for dynamic BGP */
+  net_addr *remote_range;		/* Allowed neighbor range for dynamic BGP */
   char *dynamic_name;			/* Name pattern for dynamic BGP */
   int dynamic_name_digits;		/* Minimum number of digits for dynamic names */
   int check_link;			/* Use iface link state for liveness detection */
@@ -280,6 +279,7 @@ struct bgp_proto {
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
   u8 rr_client;				/* Whether neighbor is RR client of me */
   u8 rs_client;				/* Whether neighbor is RS client of me */
+  u8 ipv4;				/* Use IPv4 connection, i.e. remote_ip is IPv4 */
   u8 passive;				/* Do not initiate outgoing connection */
   u8 route_refresh;			/* Route refresh allowed to send [RFC 2918] */
   u8 enhanced_refresh;			/* Enhanced refresh is negotiated [RFC 7313] */
