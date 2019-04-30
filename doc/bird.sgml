@@ -2195,7 +2195,7 @@ using the following configuration parameters:
 	<cf/local 10.0.0.1; local as 65000;/ are valid). This parameter is
 	mandatory.
 
-	<tag><label id="bgp-neighbor">neighbor [<m/ip/] [port <m/number/] [as <m/number/] [internal|external]</tag>
+	<tag><label id="bgp-neighbor">neighbor [<m/ip/ | range <m/prefix/] [port <m/number/] [as <m/number/] [internal|external]</tag>
 	Define neighboring router this instance will be talking to and what AS
 	it is located in. In case the neighbor is in the same AS as we are, we
 	automatically switch to IBGP. Alternatively, it is possible to specify
@@ -2204,6 +2204,14 @@ using the following configuration parameters:
 	Optionally, the remote port may also be specified. Like <cf/local/
 	parameter, this parameter may also be used multiple times with different
 	sub-options. This parameter is mandatory.
+
+	It is possible to specify network prefix (with <cf/range/ keyword)
+	instead of explicit neighbor IP address. This enables dynamic BGP
+	behavior, where the BGP instance listens on BGP port, but new BGP
+	instances are spawned for incoming BGP connections (if source address
+	matches the network prefix). It is possible to mix regular BGP instances
+	with dynamic BGP instances and have multiple dynamic BGP instances with
+	different ranges.
 
 	<tag><label id="bgp-iface">interface <m/string/</tag>
 	Define interface we should use for link-local BGP IPv6 sessions.
@@ -2235,6 +2243,16 @@ using the following configuration parameters:
 	Define local address we should use as a source address for the BGP
 	session. Default: the address of the local end of the interface our
 	neighbor is connected to.
+
+	<tag><label id="bgp-dynamic-name">dynamic name "<m/text/"</tag>
+	Define common prefix of names used for new BGP instances spawned when
+	dynamic BGP behavior is active. Actual names also contain numberic
+	index to distinguish individual instances.  Default: "dynbgp".
+
+	<tag><label id="bgp-dynamic-name">dynamic name digits <m/number/</tag>
+	Define minimum number of digits for index in names of spawned dynamic
+	BGP instances. E.g., if set to 2, then the first name would be
+	"dynbgp01". Default: 0.
 
 	<tag><label id="bgp-strict-bind">strict bind <m/switch/</tag>
 	Specify whether BGP listening socket should be bound to a specific local
