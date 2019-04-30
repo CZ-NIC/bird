@@ -2346,6 +2346,7 @@ bgp_show_proto_info(struct proto *P)
     cli_msg(-1006, "    Neighbor address: %I%J", p->remote_ip, p->cf->iface);
 
   cli_msg(-1006, "    Neighbor AS:      %u", p->remote_as);
+  cli_msg(-1006, "    Local AS:         %u", p->cf->local_as);
 
   if (p->gr_active_num)
     cli_msg(-1006, "    Neighbor graceful restart active");
