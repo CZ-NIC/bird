@@ -270,8 +270,10 @@ typedef struct rte {
 #define REF_STALE	4		/* Route is stale in a refresh cycle */
 #define REF_DISCARD	8		/* Route is scheduled for discard */
 
+static inline int rte_is_resolvable(rte *r);
+
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
-static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED); }
+static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED) && rte_is_resolvable(r); }
 
 /* Route just has REF_FILTERED flag */
 static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); }
@@ -451,7 +453,8 @@ typedef struct rta {
 #define RTD_BLACKHOLE 2			/* Silently drop packets */
 #define RTD_UNREACHABLE 3		/* Reject as unreachable */
 #define RTD_PROHIBIT 4			/* Administratively prohibited */
-#define RTD_MAX 5
+#define RTD_UNRESOLVABLE 5		/* Recursive route is unresolvable */
+#define RTD_MAX 6
 
 					/* Flags for net->n.flags, used by kernel syncer */
 #define KRF_INSTALLED 0x80		/* This route should be installed in the kernel */
@@ -471,6 +474,9 @@ static inline const char *rta_dest_name(uint n)
 /* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
 static inline int rte_is_reachable(rte *r)
 { return r->attrs->dest == RTD_UNICAST; }
+
+static inline int rte_is_resolvable(rte *r)
+{ return r->attrs->dest != RTD_UNRESOLVABLE; }
 
 
 /*

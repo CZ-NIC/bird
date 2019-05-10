@@ -2609,7 +2609,7 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 
   /* Reset the hostentry */
   he->src = NULL;
-  he->dest = RTD_UNREACHABLE;
+  he->dest = RTD_UNRESOLVABLE;
   he->nexthop_linkable = 0;
   he->igp_metric = 0;
 

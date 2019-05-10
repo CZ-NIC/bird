@@ -34,7 +34,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
   byte from[IPA_MAX_TEXT_LENGTH+8];
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
   rta *a = e->attrs;
-  int primary = (e->net->routes == e);
+  int primary = (e->net->routes == e) && rte_is_valid(e);
   int sync_error = (e->net->n.flags & KRF_SYNC_ERROR);
   void (*get_route_info)(struct rte *, byte *buf, struct ea_list *attrs);
   struct nexthop *nh;
@@ -139,6 +139,9 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	}
       else if (d->export_mode)
 	{
+	  if (!rte_is_valid(e))
+	    goto skip;
+
 	  struct proto *ep = ec->proto;
 	  int ic = ep->import_control ? ep->import_control(ep, &e, &tmpa, c->show_pool) : 0;
 

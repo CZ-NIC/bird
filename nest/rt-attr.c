@@ -64,6 +64,7 @@ const char * rta_dest_names[RTD_MAX] = {
   [RTD_BLACKHOLE]	= "blackhole",
   [RTD_UNREACHABLE]	= "unreachable",
   [RTD_PROHIBIT]	= "prohibited",
+  [RTD_UNRESOLVABLE]	= "unresolvable",
 };
 
 pool *rta_pool;
