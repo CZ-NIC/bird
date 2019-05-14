@@ -29,6 +29,7 @@
 #include "nest/iface.h"
 #include "nest/protocol.h"
 #include "nest/cli.h"
+#include "lib/hash.h"
 #include "lib/resource.h"
 #include "lib/string.h"
 #include "conf/conf.h"
@@ -37,6 +38,20 @@
 static pool *if_pool;
 
 list iface_list;
+
+#define IFH_KEY(n)		n->index
+#define IFH_NEXT(n)		n->next
+#define IFH_EQ(a,b)		a == b
+#define IFH_FN(k)		u32_hash(k)
+#define IFH_ORDER		6
+
+#define IFH_REHASH		if_rehash
+#define IFH_PARAMS		/8, *1, 2, 2, 6, 20
+
+HASH_DEFINE_REHASH_FN(IFH, struct iface)
+
+static HASH(struct iface) iface_hash;
+
 
 static void if_recalc_preferred(struct iface *i);
 
@@ -311,6 +326,7 @@ if_update(struct iface *new)
 	    DBG("Interface %s changed too much -- forcing down/up transition\n", i->name);
 	    if_change_flags(i, i->flags | IF_TMP_DOWN);
 	    rem_node(&i->n);
+	    HASH_REMOVE2(iface_hash, IFH, if_pool, i);
 	    new->addr4 = i->addr4;
 	    new->addr6 = i->addr6;
 	    new->llv6 = i->llv6;
@@ -335,6 +351,7 @@ newif:
   init_list(&i->neighbors);
   i->flags |= IF_UPDATED | IF_TMP_DOWN;		/* Tmp down as we don't have addresses yet */
   add_tail(&iface_list, &i->n);
+  HASH_INSERT2(iface_hash, IFH, if_pool, i);
   return i;
 }
 
@@ -427,12 +444,8 @@ if_feed_baby(struct proto *p)
 struct iface *
 if_find_by_index(unsigned idx)
 {
-  struct iface *i;
-
-  WALK_LIST(i, iface_list)
-    if (i->index == idx && !(i->flags & IF_SHUTDOWN))
-      return i;
-  return NULL;
+  struct iface *i = HASH_FIND(iface_hash, IFH, idx);
+  return (i && !(i->flags & IF_SHUTDOWN)) ? i : NULL;
 }
 
 /**
@@ -469,6 +482,7 @@ if_get_by_name(char *name)
   init_list(&i->addrs);
   init_list(&i->neighbors);
   add_tail(&iface_list, &i->n);
+  /* No need to insert dummy nodes to iface_hash */
   return i;
 }
 
@@ -635,6 +649,7 @@ ifa_delete(struct ifa *a)
     if (ifa_same(b, a))
       {
 	rem_node(&b->n);
+	HASH_REMOVE2(iface_hash, IFH, if_pool, i);
 
 	if (b->flags & IA_PRIMARY)
 	  {
@@ -712,7 +727,10 @@ void
 if_init(void)
 {
   if_pool = rp_new(&root_pool, "Interfaces");
+
   init_list(&iface_list);
+  HASH_INIT(iface_hash, if_pool, IFH_ORDER);
+
   neigh_init(if_pool);
 }
 
