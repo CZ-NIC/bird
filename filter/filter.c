@@ -51,63 +51,93 @@
 #include "filter/data.h"
 
 /* Internal filter state, to be allocated on stack when executing filters */
-struct filter_state {
-  struct rte **rte;
-  struct rta *old_rta;
-  struct ea_list **eattrs;
-  struct linpool *pool;
-  struct buffer buf;
-  int flags;
-};
+_Thread_local struct rte **f_rte = NULL;
+_Thread_local struct rta *f_old_rta = NULL;
+_Thread_local struct ea_list **f_eattrs = NULL;
+_Thread_local struct linpool *f_pool = NULL;
+_Thread_local char f_buf_data[LOG_BUFFER_SIZE];
+_Thread_local struct buffer f_buf;
+_Thread_local int f_flags = 0;
+
+static inline void f_init(struct rte **rte, struct rta *old_rta, struct ea_list **eattrs, struct linpool *pool, int flags) {
+  ASSERT(!f_rte);
+  f_rte = rte;
+
+  ASSERT(!f_old_rta);
+  f_old_rta = old_rta;
+
+  ASSERT(!f_eattrs);
+  f_eattrs = eattrs;
+
+  ASSERT(!f_pool);
+  f_pool = pool;
+
+  ASSERT(!f_flags);
+  f_flags = flags;
+
+  f_buf = (struct buffer) {
+    .start = f_buf_data,
+    .pos = f_buf_data,
+    .end = f_buf_data + sizeof(f_buf_data),
+  };
+}
+
+static inline void f_cleanup(void) {
+  f_rte = NULL;
+  f_old_rta = NULL;
+  f_eattrs = NULL;
+  f_pool = NULL;
+  f_flags = 0;
+}
 
 void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
-static inline void f_cache_eattrs(struct filter_state *fs)
+static inline void f_cache_eattrs(void)
 {
-  fs->eattrs = &((*fs->rte)->attrs->eattrs);
+  f_eattrs = &((*f_rte)->attrs->eattrs);
 }
 
-static inline void f_rte_cow(struct filter_state *fs)
+static inline void f_rte_cow(void)
 {
-  if (!((*fs->rte)->flags & REF_COW))
+  if (!((*f_rte)->flags & REF_COW))
     return;
 
-  *fs->rte = rte_cow(*fs->rte);
+  *f_rte = rte_cow(*f_rte);
 }
 
 /*
  * rta_cow - prepare rta for modification by filter
  */
 static void
-f_rta_cow(struct filter_state *fs)
+f_rta_cow(void)
 {
-  if (!rta_is_cached((*fs->rte)->attrs))
+  if (!rta_is_cached((*f_rte)->attrs))
     return;
 
   /* Prepare to modify rte */
-  f_rte_cow(fs);
+  f_rte_cow();
 
   /* Store old rta to free it later, it stores reference from rte_cow() */
-  fs->old_rta = (*fs->rte)->attrs;
+  f_old_rta = (*f_rte)->attrs;
 
   /*
    * Get shallow copy of rta. Fields eattrs and nexthops of rta are shared
-   * with fs->old_rta (they will be copied when the cached rta will be obtained
+   * with f_old_rta (they will be copied when the cached rta will be obtained
    * at the end of f_run()), also the lock of hostentry is inherited (we
    * suppose hostentry is not changed by filters).
    */
-  (*fs->rte)->attrs = rta_do_cow((*fs->rte)->attrs, fs->pool);
+  (*f_rte)->attrs = rta_do_cow((*f_rte)->attrs, f_pool);
 
   /* Re-cache the ea_list */
-  f_cache_eattrs(fs);
+  f_cache_eattrs();
 }
 
 static char *
-val_format_str(struct filter_state *fs, struct f_val *v) {
+val_format_str(struct f_val *v) {
   buffer b;
   LOG_BUFFER_INIT(b);
   val_format(v, &b);
-  return lp_strdup(fs->pool, b.start);
+  return lp_strdup(f_pool, b.start);
 }
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
@@ -128,7 +158,7 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
  * TWOARGS macro to get both of them evaluated.
  */
 static enum filter_return
-interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
+interpret(const struct f_line *line, struct f_val *val)
 {
 
 #define F_VAL_STACK_MAX	4096
@@ -184,13 +214,13 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 #define v3 vstk.val[vstk.cnt + 2]
 
 #define runtime(fmt, ...) do { \
-  if (!(fs->flags & FF_SILENT)) \
+  if (!(f_flags & FF_SILENT)) \
     log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
   return F_ERROR; \
 } while(0)
 
-#define ACCESS_RTE do { if (!fs->rte) runtime("No route to access"); } while (0)
-#define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
+#define ACCESS_RTE do { if (!f_rte) runtime("No route to access"); } while (0)
+#define ACCESS_EATTRS do { if (!f_eattrs) f_cache_eattrs(); } while (0)
 
 #include "filter/inst-interpret.c"
 #undef res
@@ -261,42 +291,37 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
   int rte_cow = ((*rte)->flags & REF_COW);
   DBG( "Running filter `%s'...", filter->name );
 
-  struct filter_state fs = {
-    .rte = rte,
-    .pool = tmp_pool,
-    .flags = flags,
-  };
+  f_init(rte, NULL, NULL, tmp_pool, flags);
 
-  LOG_BUFFER_INIT(fs.buf);
+  enum filter_return fret = interpret(filter->root, NULL);
 
-  enum filter_return fret = interpret(&fs, filter->root, NULL);
-
-  if (fs.old_rta) {
+  if (f_old_rta) {
     /*
-     * Cached rta was modified and fs->rte contains now an uncached one,
+     * Cached rta was modified and f_rte contains now an uncached one,
      * sharing some part with the cached one. The cached rta should
-     * be freed (if rte was originally COW, fs->old_rta is a clone
+     * be freed (if rte was originally COW, f_old_rta is a clone
      * obtained during rte_cow()).
      *
      * This also implements the exception mentioned in f_run()
      * description. The reason for this is that rta reuses parts of
-     * fs->old_rta, and these may be freed during rta_free(fs->old_rta).
+     * f_old_rta, and these may be freed during rta_free(f_old_rta).
      * This is not the problem if rte was COW, because original rte
      * also holds the same rta.
      */
     if (!rte_cow)
-      (*fs.rte)->attrs = rta_lookup((*fs.rte)->attrs);
+      (*f_rte)->attrs = rta_lookup((*f_rte)->attrs);
 
-    rta_free(fs.old_rta);
+    rta_free(f_old_rta);
   }
 
+  f_cleanup();
 
   if (fret < F_ACCEPT) {
-    if (!(fs.flags & FF_SILENT))
+    if (!(flags & FF_SILENT))
       log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter_name(filter));
     return F_ERROR;
   }
-  DBG( "done (%u)\n", res.val.i );
+
   return fret;
 }
 
@@ -305,28 +330,23 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
 enum filter_return
 f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool)
 {
-
-  struct filter_state fs = {
-    .rte = rte,
-    .pool = tmp_pool,
-  };
-
-  LOG_BUFFER_INIT(fs.buf);
+  f_init(rte, NULL, NULL, tmp_pool, 0);
 
   /* Note that in this function we assume that rte->attrs is private / uncached */
-  return interpret(&fs, expr, NULL);
+  enum filter_return fret = interpret(expr, NULL);
+
+  f_cleanup();
+  return fret;
 }
 
 enum filter_return
 f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 {
-  struct filter_state fs = {
-    .pool = tmp_pool,
-  };
+  f_init(NULL, NULL, NULL, tmp_pool, 0);
 
-  LOG_BUFFER_INIT(fs.buf);
+  enum filter_return fret = interpret(expr, pres);
 
-  enum filter_return fret = interpret(&fs, expr, pres);
+  f_cleanup();
   return fret;
 }
 
@@ -334,19 +354,17 @@ uint
 f_eval_int(const struct f_line *expr)
 {
   /* Called independently in parse-time to eval expressions */
-  struct filter_state fs = {
-    .pool = cfg_mem,
-  };
+  f_init(NULL, NULL, NULL, cfg_mem, 0);
 
   struct f_val val;
 
-  LOG_BUFFER_INIT(fs.buf);
-
-  if (interpret(&fs, expr, &val) > F_RETURN)
+  if (interpret(expr, &val) > F_RETURN)
     cf_error("Runtime error while evaluating expression");
 
   if (val.type != T_INT)
     cf_error("Integer expression expected");
+
+  f_cleanup();
 
   return val.val.i;
 }

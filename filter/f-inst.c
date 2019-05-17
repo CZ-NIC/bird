@@ -159,7 +159,7 @@
     if (vstk.cnt < whati->count) /* TODO: make this check systematic */
       runtime("Construction of BGP path mask from %u elements must have at least that number of elements", whati->count);
 
-    struct f_path_mask *pm = lp_alloc(fs->pool, sizeof(struct f_path_mask) + whati->count * sizeof(struct f_path_mask_item));
+    struct f_path_mask *pm = lp_alloc(f_pool, sizeof(struct f_path_mask) + whati->count * sizeof(struct f_path_mask_item));
     for (uint i=0; i<whati->count; i++) {
 #define pv vstk.val[vstk.cnt - whati->count + i]
       switch (pv.type) {
@@ -333,7 +333,7 @@
   }
   INST(FI_PRINT, 1, 0) {
     ARG_ANY(1);
-    val_format(&(v1), &fs->buf);
+    val_format(&(v1), &f_buf);
   }
   INST(FI_CONDITION, 1, 0) {
     ARG(1, T_BOOL);
@@ -359,8 +359,8 @@
     FRET(2);
 
     if ((fret == F_NOP || (fret != F_NONL && (what->flags & FIF_PRINTED))) &&
-	!(fs->flags & FF_SILENT))
-      log_commit(*L_INFO, &fs->buf);
+	!(f_flags & FF_SILENT))
+      log_commit(*L_INFO, &f_buf);
 
     switch (fret) {
     case F_QUITBIRD:
@@ -382,13 +382,13 @@
     {
       STATIC_ATTR;
       ACCESS_RTE;
-      struct rta *rta = (*fs->rte)->attrs;
+      struct rta *rta = (*f_rte)->attrs;
 
       switch (sa.sa_code)
       {
       case SA_FROM:	RESULT(sa.f_type, ip, rta->from); break;
       case SA_GW:	RESULT(sa.f_type, ip, rta->nh.gw); break;
-      case SA_NET:	RESULT(sa.f_type, net, (*fs->rte)->net->n.addr); break;
+      case SA_NET:	RESULT(sa.f_type, net, (*f_rte)->net->n.addr); break;
       case SA_PROTO:	RESULT(sa.f_type, s, rta->src->proto->name); break;
       case SA_SOURCE:	RESULT(sa.f_type, i, rta->source); break;
       case SA_SCOPE:	RESULT(sa.f_type, i, rta->scope); break;
@@ -409,9 +409,9 @@
     if (sa.f_type != v1.type)
       runtime( "Attempt to set static attribute to incompatible type" );
 
-    f_rta_cow(fs);
+    f_rta_cow();
     {
-      struct rta *rta = (*fs->rte)->attrs;
+      struct rta *rta = (*f_rte)->attrs;
 
       switch (sa.sa_code)
       {
@@ -477,7 +477,7 @@
     ACCESS_RTE;
     ACCESS_EATTRS;
     {
-      eattr *e = ea_find(*fs->eattrs, da.ea_code);
+      eattr *e = ea_find(*f_eattrs, da.ea_code);
 
       if (!e) {
 	/* A special case: undefined as_path looks like empty as_path */
@@ -554,7 +554,7 @@
     ARG_ANY(1);
     DYNAMIC_ATTR;
     {
-      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
+      struct ea_list *l = lp_alloc(f_pool, sizeof(struct ea_list) + sizeof(eattr));
 
       l->next = NULL;
       l->flags = EALF_SORTED;
@@ -589,7 +589,7 @@
 	if (v1.type != T_IP)
 	  runtime( "Setting ip attribute to non-ip value" );
 	int len = sizeof(ip_addr);
-	struct adata *ad = lp_alloc(fs->pool, sizeof(struct adata) + len);
+	struct adata *ad = lp_alloc(f_pool, sizeof(struct adata) + len);
 	ad->length = len;
 	(* (ip_addr *) ad->data) = v1.val.ip;
 	l->attrs[0].u.ptr = ad;
@@ -604,7 +604,7 @@
 	  runtime( "Setting bit in bitfield attribute to non-bool value" );
 	{
 	  /* First, we have to find the old value */
-	  eattr *e = ea_find(*fs->eattrs, da.ea_code);
+	  eattr *e = ea_find(*f_eattrs, da.ea_code);
 	  u32 data = e ? e->u.data : 0;
 
 	  if (v1.val.i)
@@ -631,9 +631,9 @@
       default: bug("Unknown type in e,S");
       }
 
-      f_rta_cow(fs);
-      l->next = *fs->eattrs;
-      *fs->eattrs = l;
+      f_rta_cow();
+      l->next = *f_eattrs;
+      *f_eattrs = l;
     }
   }
 
@@ -643,7 +643,7 @@
     ACCESS_EATTRS;
 
     {
-      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
+      struct ea_list *l = lp_alloc(f_pool, sizeof(struct ea_list) + sizeof(eattr));
 
       l->next = NULL;
       l->flags = EALF_SORTED;
@@ -653,15 +653,15 @@
       l->attrs[0].type = EAF_TYPE_UNDEF | EAF_ORIGINATED | EAF_FRESH;
       l->attrs[0].u.data = 0;
 
-      f_rta_cow(fs);
-      l->next = *fs->eattrs;
-      *fs->eattrs = l;
+      f_rta_cow();
+      l->next = *f_eattrs;
+      *f_eattrs = l;
     }
   }
 
   INST(FI_PREF_GET, 0, 1) {
     ACCESS_RTE;
-    RESULT(T_INT, i, (*fs->rte)->pref);
+    RESULT(T_INT, i, (*f_rte)->pref);
   }
 
   INST(FI_PREF_SET, 1, 0) {
@@ -669,8 +669,8 @@
     ARG(1,T_INT);
     if (v1.val.i > 0xFFFF)
       runtime( "Setting preference value out of bounds" );
-    f_rte_cow(fs);
-    (*fs->rte)->pref = v1.val.i;
+    f_rte_cow();
+    (*f_rte)->pref = v1.val.i;
   }
 
   INST(FI_LENGTH, 1, 1) {	/* Get length of */
@@ -691,7 +691,7 @@
       runtime( "SADR expected" );
 
     net_addr_ip6_sadr *net = (void *) v1.val.net;
-    net_addr *src = lp_alloc(fs->pool, sizeof(net_addr_ip6));
+    net_addr *src = lp_alloc(f_pool, sizeof(net_addr_ip6));
     net_fill_ip6(src, net->src_prefix, net->src_pxlen);
 
     RESULT(T_NET, net, src);
@@ -852,7 +852,7 @@
   INST(FI_PATH_PREPEND, 2, 1) {	/* Path prepend */
     ARG(1, T_PATH);
     ARG(2, T_INT);
-    RESULT(T_PATH, ad, [[ as_path_prepend(fs->pool, v1.val.ad, v2.val.i) ]]);
+    RESULT(T_PATH, ad, [[ as_path_prepend(f_pool, v1.val.ad, v2.val.i) ]]);
   }
 
   INST(FI_CLIST_ADD, 2, 1) {	/* (Extended) Community list add */
@@ -867,14 +867,14 @@
       struct f_val dummy;
 
       if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	RESULT(T_CLIST, ad, [[ int_set_add(fs->pool, v1.val.ad, v2.val.i) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_add(f_pool, v1.val.ad, v2.val.i) ]]);
       /* IP->Quad implicit conversion */
       else if (val_is_ip4(&v2))
-	RESULT(T_CLIST, ad, [[ int_set_add(fs->pool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_add(f_pool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
       else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy))
 	runtime("Can't add set");
       else if (v2.type == T_CLIST)
-	RESULT(T_CLIST, ad, [[ int_set_union(fs->pool, v1.val.ad, v2.val.ad) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_union(f_pool, v1.val.ad, v2.val.ad) ]]);
       else
 	runtime("Can't add non-pair");
     }
@@ -885,11 +885,11 @@
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t))
 	runtime("Can't add set");
       else if (v2.type == T_ECLIST)
-	RESULT(T_ECLIST, ad, [[ ec_set_union(fs->pool, v1.val.ad, v2.val.ad) ]]);
+	RESULT(T_ECLIST, ad, [[ ec_set_union(f_pool, v1.val.ad, v2.val.ad) ]]);
       else if (v2.type != T_EC)
 	runtime("Can't add non-ec");
       else
-	RESULT(T_ECLIST, ad, [[ ec_set_add(fs->pool, v1.val.ad, v2.val.ec) ]]);
+	RESULT(T_ECLIST, ad, [[ ec_set_add(f_pool, v1.val.ad, v2.val.ec) ]]);
     }
 
     else if (v1.type == T_LCLIST)
@@ -898,11 +898,11 @@
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t))
 	runtime("Can't add set");
       else if (v2.type == T_LCLIST)
-	RESULT(T_LCLIST, ad, [[ lc_set_union(fs->pool, v1.val.ad, v2.val.ad) ]]);
+	RESULT(T_LCLIST, ad, [[ lc_set_union(f_pool, v1.val.ad, v2.val.ad) ]]);
       else if (v2.type != T_LC)
 	runtime("Can't add non-lc");
       else
-	RESULT(T_LCLIST, ad, [[ lc_set_add(fs->pool, v1.val.ad, v2.val.lc) ]]);
+	RESULT(T_LCLIST, ad, [[ lc_set_add(f_pool, v1.val.ad, v2.val.lc) ]]);
 
     }
 
@@ -925,7 +925,7 @@
       else
 	runtime("Can't delete non-integer (set)");
 
-      RESULT(T_PATH, ad, [[ as_path_filter(fs->pool, v1.val.ad, set, key, 0) ]]);
+      RESULT(T_PATH, ad, [[ as_path_filter(f_pool, v1.val.ad, set, key, 0) ]]);
     }
 
     else if (v1.type == T_CLIST)
@@ -934,12 +934,12 @@
       struct f_val dummy;
 
       if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	RESULT(T_CLIST, ad, [[ int_set_del(fs->pool, v1.val.ad, v2.val.i) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_del(f_pool, v1.val.ad, v2.val.i) ]]);
       /* IP->Quad implicit conversion */
       else if (val_is_ip4(&v2))
-	RESULT(T_CLIST, ad, [[ int_set_del(fs->pool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_del(f_pool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
       else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy) || (v2.type == T_CLIST))
-	RESULT(T_CLIST, ad, [[ clist_filter(fs->pool, v1.val.ad, &v2, 0) ]]);
+	RESULT(T_CLIST, ad, [[ clist_filter(f_pool, v1.val.ad, &v2, 0) ]]);
       else
 	runtime("Can't delete non-pair");
     }
@@ -948,22 +948,22 @@
     {
       /* v2.val is either EC or EC-set */
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t) || (v2.type == T_ECLIST))
-	RESULT(T_ECLIST, ad, [[ eclist_filter(fs->pool, v1.val.ad, &v2, 0) ]]);
+	RESULT(T_ECLIST, ad, [[ eclist_filter(f_pool, v1.val.ad, &v2, 0) ]]);
       else if (v2.type != T_EC)
 	runtime("Can't delete non-ec");
       else
-	RESULT(T_ECLIST, ad, [[ ec_set_del(fs->pool, v1.val.ad, v2.val.ec) ]]);
+	RESULT(T_ECLIST, ad, [[ ec_set_del(f_pool, v1.val.ad, v2.val.ec) ]]);
     }
 
     else if (v1.type == T_LCLIST)
     {
       /* v2.val is either LC or LC-set */
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t) || (v2.type == T_LCLIST))
-	RESULT(T_LCLIST, ad, [[ lclist_filter(fs->pool, v1.val.ad, &v2, 0) ]]);
+	RESULT(T_LCLIST, ad, [[ lclist_filter(f_pool, v1.val.ad, &v2, 0) ]]);
       else if (v2.type != T_LC)
 	runtime("Can't delete non-lc");
       else
-	RESULT(T_LCLIST, ad, [[ lc_set_del(fs->pool, v1.val.ad, v2.val.lc) ]]);
+	RESULT(T_LCLIST, ad, [[ lc_set_del(f_pool, v1.val.ad, v2.val.lc) ]]);
     }
 
     else
@@ -978,7 +978,7 @@
       u32 key = 0;
 
       if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
-	RESULT(T_PATH, ad, [[ as_path_filter(fs->pool, v1.val.ad, v2.val.t, key, 1) ]]);
+	RESULT(T_PATH, ad, [[ as_path_filter(f_pool, v1.val.ad, v2.val.t, key, 1) ]]);
       else
 	runtime("Can't filter integer");
     }
@@ -989,7 +989,7 @@
       struct f_val dummy;
 
       if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy) || (v2.type == T_CLIST))
-	RESULT(T_CLIST, ad, [[ clist_filter(fs->pool, v1.val.ad, &v2, 1) ]]);
+	RESULT(T_CLIST, ad, [[ clist_filter(f_pool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter pair");
     }
@@ -998,7 +998,7 @@
     {
       /* v2.val is either EC or EC-set */
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t) || (v2.type == T_ECLIST))
-	RESULT(T_ECLIST, ad, [[ eclist_filter(fs->pool, v1.val.ad, &v2, 1) ]]);
+	RESULT(T_ECLIST, ad, [[ eclist_filter(f_pool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter ec");
     }
@@ -1007,7 +1007,7 @@
     {
       /* v2.val is either LC or LC-set */
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t) || (v2.type == T_LCLIST))
-	RESULT(T_LCLIST, ad, [[ lclist_filter(fs->pool, v1.val.ad, &v2, 1) ]]);
+	RESULT(T_LCLIST, ad, [[ lclist_filter(f_pool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter lc");
     }
@@ -1020,11 +1020,11 @@
     RTC(1);
     ACCESS_RTE;
     ACCESS_EATTRS;
-    const net_addr *net = (*fs->rte)->net->n.addr;
+    const net_addr *net = (*f_rte)->net->n.addr;
 
     /* We ignore temporary attributes, probably not a problem here */
     /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */
-    eattr *e = ea_find(*fs->eattrs, EA_CODE(PROTOCOL_BGP, 0x02));
+    eattr *e = ea_find(*f_eattrs, EA_CODE(PROTOCOL_BGP, 0x02));
 
     if (!e || ((e->type & EAF_TYPE_MASK) != EAF_TYPE_AS_PATH))
       runtime("Missing AS_PATH attribute");
@@ -1066,7 +1066,7 @@
 
   INST(FI_FORMAT, 1, 0) {	/* Format */
     ARG_ANY(1);
-    RESULT(T_STRING, s, val_format_str(fs, &v1));
+    RESULT(T_STRING, s, val_format_str(&v1));
   }
 
   INST(FI_ASSERT, 1, 0) {	/* Birdtest Assert */
