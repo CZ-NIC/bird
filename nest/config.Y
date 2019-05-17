@@ -88,7 +88,7 @@ CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 %type <i32> idval
 %type <f> imexport
 %type <r> rtable
-%type <s> optproto sym_proto_or_template
+%type <s> optproto
 %type <ra> r_args
 %type <sd> sym_args
 %type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type table_sorted tos password_algorithm
@@ -114,7 +114,7 @@ idval:
    NUM { $$ = $1; }
  | '(' term ')' { $$ = f_eval_int(f_postfixify($2)); }
  | IP4 { $$ = ip4_to_u32($1); }
- | CF_SYM_CONSTANT {
+ | CF_SYM_KNOWN {
      if ($1->class == (SYM_CONSTANT | T_INT) || $1->class == (SYM_CONSTANT | T_QUAD))
        $$ = SYM_VAL($1).i;
      else if (($1->class == (SYM_CONSTANT | T_IP)) && ipa_is_ip4(SYM_VAL($1).ip))
@@ -173,8 +173,6 @@ proto_start:
  | TEMPLATE { $$ = SYM_TEMPLATE; }
  ;
 
-sym_proto_or_template: CF_SYM_PROTO | CF_SYM_TEMPLATE ;
-
 proto_name:
    /* EMPTY */ {
      struct symbol *s = cf_default_name(this_proto->protocol->template, &this_proto->protocol->name_counter);
@@ -186,20 +184,22 @@ proto_name:
      cf_define_symbol($1, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
    }
- | FROM sym_proto_or_template {
+ | FROM CF_SYM_KNOWN {
+     if (($2->class != SYM_TEMPLATE) && ($2->class != SYM_PROTO)) cf_error("Template or protocol name expected");
+
      struct symbol *s = cf_default_name(this_proto->protocol->template, &this_proto->protocol->name_counter);
      s->class = this_proto->class;
      s->proto = this_proto;
      this_proto->name = s->name;
 
-     if (($2->class != SYM_TEMPLATE) && ($2->class != SYM_PROTO)) cf_error("Template or protocol name expected");
      proto_copy_config(this_proto, $2->proto);
    }
- | CF_SYM_VOID FROM sym_proto_or_template {
+ | CF_SYM_VOID FROM CF_SYM_KNOWN {
+     if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
+
      cf_define_symbol($1, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
 
-     if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
      proto_copy_config(this_proto, $3->proto);
    }
  ;
@@ -256,7 +256,7 @@ channel_end:
 proto_channel: channel_start channel_opt_list channel_end;
 
 
-rtable: CF_SYM_TABLE { $$ = $1->table; } ;
+rtable: CF_SYM_KNOWN { cf_assert_symbol($1, SYM_TABLE); $$ = $1->table; } ;
 
 imexport:
    FILTER filter { $$ = $2; }
@@ -510,7 +510,7 @@ CF_CLI(SHOW PROTOCOLS ALL, proto_patt2, [<protocol> | \"<pattern>\"], [[Show rou
 { proto_apply_cmd($4, proto_cmd_show, 0, 1); } ;
 
 optproto:
-   CF_SYM_PROTO
+   CF_SYM_KNOWN { cf_assert_symbol($1, SYM_PROTO); $$ = $1; }
  | /* empty */ { $$ = NULL; }
  ;
 
@@ -542,7 +542,8 @@ r_args:
      $$->show_for = 1;
      $$->addr = $3;
    }
- | r_args TABLE CF_SYM_TABLE {
+ | r_args TABLE CF_SYM_KNOWN {
+     cf_assert_symbol($3, SYM_TABLE);
      $$ = $1;
      rt_show_add_table($$, $3->table->table);
      $$->tables_defined_by = RSD_TDB_DIRECT;
@@ -554,7 +555,8 @@ r_args:
        rt_show_add_table($$, t->table);
      $$->tables_defined_by = RSD_TDB_ALL;
    }
- | r_args IMPORT TABLE CF_SYM_PROTO '.' r_args_channel {
+ | r_args IMPORT TABLE CF_SYM_KNOWN '.' r_args_channel {
+     cf_assert_symbol($4, SYM_PROTO);
      $$ = $1;
      struct proto_config *cf = $4->proto;
      if (!cf->proto) cf_error("%s is not a protocol", $4->name);
@@ -586,7 +588,8 @@ r_args:
      $$ = $1;
      $$->filtered = 1;
    }
- | r_args export_mode CF_SYM_PROTO {
+ | r_args export_mode CF_SYM_KNOWN {
+     cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
      if ($$->export_mode) cf_error("Export specified twice");
@@ -595,7 +598,8 @@ r_args:
      $$->export_protocol = c->proto;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
- | r_args export_mode CF_SYM_PROTO '.' r_args_channel {
+ | r_args export_mode CF_SYM_KNOWN '.' r_args_channel {
+     cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
      if ($$->export_mode) cf_error("Export specified twice");
@@ -605,7 +609,8 @@ r_args:
      if (!$$->export_channel) cf_error("Export channel not found");
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
- | r_args PROTOCOL CF_SYM_PROTO {
+ | r_args PROTOCOL CF_SYM_KNOWN {
+     cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
      if ($$->show_protocol) cf_error("Protocol specified twice");
@@ -643,7 +648,7 @@ r_args_for:
     $$ = cfg_alloc(sizeof(net_addr_ip6_sadr));
     net_fill_ip6_sadr($$, $1, IP6_MAX_PREFIX_LENGTH, $3, IP6_MAX_PREFIX_LENGTH);
   }
- | CF_SYM_CONSTANT {
+ | CF_SYM_KNOWN {
      if ($1->class == (SYM_CONSTANT | T_IP))
      {
        $$ = cfg_alloc(ipa_is_ip4(SYM_VAL($1).ip) ? sizeof(net_addr_ip4) : sizeof(net_addr_ip6));
@@ -652,7 +657,7 @@ r_args_for:
      else if (($1->class == (SYM_CONSTANT | T_NET)) && net_type_match(SYM_VAL($1).net, NB_IP | NB_VPN))
        $$ = (net_addr *) SYM_VAL($1).net; /* Avoid const warning */
      else
-       cf_error("IP address or network expected");
+       cf_error("IP address or network constant expected");
    }
  ;
 
@@ -775,13 +780,13 @@ CF_CLI(RESTRICT,,,[[Restrict current CLI session to safe commands]])
 { this_cli->restricted = 1; cli_msg(16, "Access restricted"); } ;
 
 proto_patt:
-   CF_SYM_PROTO { $$.ptr = $1; $$.patt = 0; }
+   CF_SYM_KNOWN { cf_assert_symbol($1, SYM_PROTO); $$.ptr = $1; $$.patt = 0; }
  | ALL  { $$.ptr = NULL; $$.patt = 1; }
  | TEXT { $$.ptr = $1; $$.patt = 1; }
  ;
 
 proto_patt2:
-   CF_SYM_PROTO { $$.ptr = $1; $$.patt = 0; }
+   CF_SYM_KNOWN { cf_assert_symbol($1, SYM_PROTO); $$.ptr = $1; $$.patt = 0; }
  |      { $$.ptr = NULL; $$.patt = 1; }
  | TEXT { $$.ptr = $1; $$.patt = 1; }
  ;

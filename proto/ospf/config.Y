@@ -544,7 +544,7 @@ lsadb_args:
  | lsadb_args LSID idval { $$ = $1; $$->lsid = $3; }
  | lsadb_args SELF { $$ = $1; $$->router = SH_ROUTER_SELF; }
  | lsadb_args ROUTER idval { $$ = $1; $$->router = $3; }
- | lsadb_args CF_SYM_PROTO { $$ = $1; $$->proto = (struct ospf_proto *) proto_get_named($2, &proto_ospf); }
+ | lsadb_args CF_SYM_KNOWN { cf_assert_symbol($2, SYM_PROTO); $$ = $1; $$->proto = (struct ospf_proto *) proto_get_named($2, &proto_ospf); }
  ;
 
 CF_CODE

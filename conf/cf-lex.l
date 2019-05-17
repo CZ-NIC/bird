@@ -654,6 +654,14 @@ cf_default_name(char *template, int *counter)
 static enum yytokentype
 cf_lex_symbol(const char *data)
 {
+  /* Have we defined such a symbol? */
+  struct symbol *sym = cf_get_symbol(data);
+  cf_lval.s = sym;
+
+  if (sym->class != SYM_VOID)
+    return CF_SYM_KNOWN;
+
+  /* Is it a keyword? */
   struct keyword *k = HASH_FIND(kw_hash, KW, data);
   if (k)
   {
@@ -666,19 +674,9 @@ cf_lex_symbol(const char *data)
     }
   }
 
-  cf_lval.s = cf_get_symbol(data);
-  switch (cf_lval.s->class) {
-    case SYM_VOID: return CF_SYM_VOID;
-    case SYM_PROTO: return CF_SYM_PROTO;
-    case SYM_TEMPLATE: return CF_SYM_TEMPLATE;
-    case SYM_FUNCTION: return CF_SYM_FUNCTION;
-    case SYM_FILTER: return CF_SYM_FILTER;
-    case SYM_TABLE: return CF_SYM_TABLE;
-    case SYM_ATTRIBUTE: return CF_SYM_ATTRIBUTE;
-    case SYM_VARIABLE_RANGE: return CF_SYM_VARIABLE;
-    case SYM_CONSTANT_RANGE: return CF_SYM_CONSTANT;
-    default: bug("Unknown symbol class %d", cf_lval.s->class);
-  }
+  /* OK, undefined symbol */
+  cf_lval.s = sym;
+  return CF_SYM_UNDEFINED;
 }
 
 static void

@@ -489,7 +489,8 @@ custom_attr: ATTRIBUTE type CF_SYM_VOID ';' {
 
 conf: bt_test_suite ;
 bt_test_suite:
- BT_TEST_SUITE '(' CF_SYM_FUNCTION ',' text ')' {
+ BT_TEST_SUITE '(' CF_SYM_KNOWN ',' text ')' {
+  cf_assert_symbol($3, SYM_FUNCTION);
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
   t->fn = $3->function;
   t->fn_name = $3->name;
@@ -501,7 +502,9 @@ bt_test_suite:
 
 conf: bt_test_same ;
 bt_test_same:
- BT_TEST_SAME '(' CF_SYM_FUNCTION ',' CF_SYM_FUNCTION ',' NUM ')' {
+ BT_TEST_SAME '(' CF_SYM_KNOWN ',' CF_SYM_KNOWN ',' NUM ')' {
+  cf_assert_symbol($3, SYM_FUNCTION);
+  cf_assert_symbol($5, SYM_FUNCTION);
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
   t->fn = $3->function;
   t->cmp = $5->function;
@@ -589,7 +592,8 @@ filter_body:
  ;
 
 filter:
-   CF_SYM_FILTER {
+   CF_SYM_KNOWN {
+     cf_assert_symbol($1, SYM_FILTER);
      $$ = $1->filter;
    }
  | filter_body {
@@ -699,7 +703,8 @@ set_atom:
      if (f_eval(f_postfixify($2), cfg_mem, &($$)) > F_RETURN) cf_error("Runtime error");
      if (!f_valid_set_type($$.type)) cf_error("Set-incompatible type");
    }
- | CF_SYM_CONSTANT {
+ | CF_SYM_KNOWN {
+     cf_assert_symbol($1, SYM_CONSTANT);
      if (!f_valid_set_type(SYM_TYPE($1))) cf_error("%s: set-incompatible type", $1->name);
      $$ = *$1->val;
    }
@@ -858,15 +863,25 @@ constructor:
 
 
 function_call:
-   CF_SYM_FUNCTION '(' var_list ')' {
+   CF_SYM_KNOWN '(' var_list ')' {
      $$ = f_new_inst(FI_CALL, $1, $3);
    }
  ;
 
-symbol_value:
-   CF_SYM_CONSTANT { $$ = f_new_inst(FI_VARIABLE, $1); }
- | CF_SYM_VARIABLE { $$ = f_new_inst(FI_VARIABLE, $1); }
- | CF_SYM_ATTRIBUTE { $$ = f_new_inst(FI_EA_GET, *$1->attribute); }
+symbol_value: CF_SYM_KNOWN
+  {
+    switch ($1->class) {
+      case SYM_CONSTANT_RANGE:
+      case SYM_VARIABLE_RANGE:
+	$$ = f_new_inst(FI_VARIABLE, $1);
+	break;
+      case SYM_ATTRIBUTE:
+	$$ = f_new_inst(FI_EA_GET, *$1->attribute);
+	break;
+      default:
+	cf_error("Can't get value of symbol %s", $1->name);
+    }
+  }
  ;
 
 static_attr:
@@ -993,11 +1008,17 @@ cmd:
  | IF term THEN block ELSE block {
      $$ = f_new_inst(FI_CONDITION, $2, $4, $6);
    }
- | CF_SYM_ATTRIBUTE '=' term ';' {
-   $$ = f_new_inst(FI_EA_SET, $3, *$1->attribute);
-   }
- | CF_SYM_VARIABLE '=' term ';' {
-   $$ = f_new_inst(FI_SET, $3, $1);
+ | CF_SYM_KNOWN '=' term ';' {
+     switch ($1->class) {
+       case SYM_VARIABLE_RANGE:
+	 $$ = f_new_inst(FI_SET, $3, $1);
+	 break;
+       case SYM_ATTRIBUTE:
+	 $$ = f_new_inst(FI_EA_SET, $3, *$1->attribute);
+	 break;
+       default:
+	 cf_error("Can't assign to symbol %s", $1->name);
+     }
    }
  | RETURN term ';' {
      DBG( "Ook, we'll return the value\n" );
@@ -1038,7 +1059,7 @@ get_cf_position:
 };
 
 lvalue:
-   CF_SYM_VARIABLE { $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 }; }
+   CF_SYM_KNOWN { cf_assert_symbol($1, SYM_VARIABLE); $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 }; }
  | PREFERENCE { $$ = (struct f_lval) { .type = F_LVAL_PREFERENCE }; }
  | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1 }; }
  | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1 }; };
