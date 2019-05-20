@@ -51,14 +51,19 @@
 #include "filter/data.h"
 
 /* Internal filter state, to be allocated on stack when executing filters */
-struct filter_state {
+_Thread_local struct filter_state {
+  /* The route we are processing. This may be NULL to indicate no route available. */
   struct rte **rte;
+
+  /* The old rta to be freed after filters are done. */
   struct rta *old_rta;
+
+  /* Cached pointer to ea_list */
   struct ea_list **eattrs;
   struct linpool *pool;
   struct buffer buf;
   int flags;
-};
+} filter_state;
 
 void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
@@ -239,7 +244,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
  * copied).
  *
  * The returned rte may reuse the (possibly cached, cloned) rta, or
- * (if rta was modificied) contains a modified uncached rta, which
+ * (if rta was modified) contains a modified uncached rta, which
  * uses parts allocated from @tmp_pool and parts shared from original
  * rta. There is one exception - if @rte is rw but contains a cached
  * rta and that is modified, rta in returned rte is also cached.
@@ -261,38 +266,47 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
   int rte_cow = ((*rte)->flags & REF_COW);
   DBG( "Running filter `%s'...", filter->name );
 
-  struct filter_state fs = {
+  /* Initialize the filter state */
+  filter_state = (struct filter_state) {
     .rte = rte,
     .pool = tmp_pool,
     .flags = flags,
   };
 
-  LOG_BUFFER_INIT(fs.buf);
+  LOG_BUFFER_INIT(filter_state.buf);
 
-  enum filter_return fret = interpret(&fs, filter->root, NULL);
+  /* Run the interpreter itself */
+  enum filter_return fret = interpret(&filter_state, filter->root, NULL);
 
-  if (fs.old_rta) {
+  if (filter_state.old_rta) {
     /*
-     * Cached rta was modified and fs->rte contains now an uncached one,
+     * Cached rta was modified and filter_state->rte contains now an uncached one,
      * sharing some part with the cached one. The cached rta should
-     * be freed (if rte was originally COW, fs->old_rta is a clone
+     * be freed (if rte was originally COW, filter_state->old_rta is a clone
      * obtained during rte_cow()).
      *
      * This also implements the exception mentioned in f_run()
      * description. The reason for this is that rta reuses parts of
-     * fs->old_rta, and these may be freed during rta_free(fs->old_rta).
+     * filter_state->old_rta, and these may be freed during rta_free(filter_state->old_rta).
      * This is not the problem if rte was COW, because original rte
      * also holds the same rta.
      */
-    if (!rte_cow)
-      (*fs.rte)->attrs = rta_lookup((*fs.rte)->attrs);
+    if (!rte_cow) {
+      /* Cache the new attrs */
+      (*filter_state.rte)->attrs = rta_lookup((*filter_state.rte)->attrs);
 
-    rta_free(fs.old_rta);
+      /* Drop cached ea_list pointer */
+      filter_state.eattrs = NULL;
+    }
+
+    /* Uncache the old attrs and drop the pointer as it is invalid now. */
+    rta_free(filter_state.old_rta);
+    filter_state.old_rta = NULL;
   }
 
-
+  /* Process the filter output, log it and return */
   if (fret < F_ACCEPT) {
-    if (!(fs.flags & FF_SILENT))
+    if (!(filter_state.flags & FF_SILENT))
       log_rl(&rl_runtime_err, L_ERR "Filter %s did not return accept nor reject. Make up your mind", filter_name(filter));
     return F_ERROR;
   }
@@ -300,49 +314,72 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
   return fret;
 }
 
-/* TODO: perhaps we could integrate f_eval(), f_eval_rte() and f_run() */
+/**
+ * f_eval_rte – run a filter line for an uncached route
+ * @expr: filter line to run
+ * @rte: route being filtered, may be modified
+ * @tmp_pool: all filter allocations go from this pool
+ *
+ * This specific filter entry point runs the given filter line
+ * (which must not have any arguments) on the given route.
+ *
+ * The route MUST NOT have REF_COW set and its attributes MUST NOT
+ * be cached by rta_lookup().
+ */
 
 enum filter_return
 f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool)
 {
-
-  struct filter_state fs = {
+  filter_state = (struct filter_state) {
     .rte = rte,
     .pool = tmp_pool,
   };
 
-  LOG_BUFFER_INIT(fs.buf);
+  LOG_BUFFER_INIT(filter_state.buf);
 
-  /* Note that in this function we assume that rte->attrs is private / uncached */
-  return interpret(&fs, expr, NULL);
+  ASSERT(!((*rte)->flags & REF_COW));
+  ASSERT(!rta_is_cached((*rte)->attrs));
+
+  return interpret(&filter_state, expr, NULL);
 }
 
+/*
+ * f_eval – get a value of a term
+ * @expr: filter line containing the term
+ * @tmp_pool: long data may get allocated from this pool
+ * @pres: here the output will be stored
+ */
 enum filter_return
 f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 {
-  struct filter_state fs = {
+  filter_state = (struct filter_state) {
     .pool = tmp_pool,
   };
 
-  LOG_BUFFER_INIT(fs.buf);
+  LOG_BUFFER_INIT(filter_state.buf);
 
-  enum filter_return fret = interpret(&fs, expr, pres);
+  enum filter_return fret = interpret(&filter_state, expr, pres);
   return fret;
 }
 
+/*
+ * f_eval_int – get an integer value of a term 
+ * Called internally from the config parser, uses its internal memory pool
+ * for allocations. Do not call in other cases.
+ */
 uint
 f_eval_int(const struct f_line *expr)
 {
   /* Called independently in parse-time to eval expressions */
-  struct filter_state fs = {
+  filter_state = (struct filter_state) {
     .pool = cfg_mem,
   };
 
   struct f_val val;
 
-  LOG_BUFFER_INIT(fs.buf);
+  LOG_BUFFER_INIT(filter_state.buf);
 
-  if (interpret(&fs, expr, &val) > F_RETURN)
+  if (interpret(&filter_state, expr, &val) > F_RETURN)
     cf_error("Runtime error while evaluating expression");
 
   if (val.type != T_INT)
@@ -351,6 +388,9 @@ f_eval_int(const struct f_line *expr)
   return val.val.i;
 }
 
+/*
+ * f_eval_buf – get a value of a term and print it to the supplied buffer
+ */
 enum filter_return
 f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf)
 {
