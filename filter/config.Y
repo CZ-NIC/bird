@@ -15,6 +15,8 @@ CF_HDR
 
 CF_DEFINES
 
+static uint decls_count;
+
 static inline u32 pair(u32 a, u32 b) { return (a << 16) | b; }
 static inline u32 pair_a(u32 p) { return p >> 16; }
 static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
@@ -398,8 +400,8 @@ assert_assign(struct f_lval *lval, struct f_inst *expr, const char *start, const
   struct f_inst *setter, *getter, *checker;
   switch (lval->type) {
     case F_LVAL_VARIABLE:
-      setter = f_new_inst(FI_SET, expr, lval->sym);
-      getter = f_new_inst(FI_VARIABLE, lval->sym);
+      setter = f_new_inst(FI_VAR_SET, expr, lval->sym);
+      getter = f_new_inst(FI_VAR_GET, lval->sym);
       break;
     case F_LVAL_PREFERENCE:
       setter = f_new_inst(FI_PREF_SET, expr);
@@ -446,14 +448,14 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc THEN
 %nonassoc ELSE
 
-%type <xp> cmds_int function_body declsn function_params
-%type <x> term block cmd cmds constant constructor print_one print_list var_list var_listn function_call symbol_value bgp_path_expr bgp_path bgp_path_tail one_decl decls
+%type <xp> cmds_int
+%type <x> term block cmd cmds constant constructor print_one print_list var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
 %type <fda> dynamic_attr
 %type <fsa> static_attr
 %type <f> filter where_filter
-%type <fl> filter_body
+%type <fl> filter_body function_body
 %type <flv> lvalue
-%type <i> type
+%type <i> type function_params
 %type <ecs> ec_kind
 %type <fret> break_command 
 %type <i32> cnum
@@ -553,43 +555,24 @@ type:
    }
  ;
 
-one_decl:
-   type CF_SYM_VOID {
-     struct f_val * val = cfg_alloc(sizeof(struct f_val));
-     val->type = T_VOID;
-     $2 = cf_define_symbol($2, SYM_VARIABLE | $1, val, val);
-     DBG( "New variable %s type %x\n", $2->name, $1 );
-     $$ = f_new_inst(FI_SET, NULL, $2);
-   }
- ;
-
-/* Decls with ';' at the end. Beware; these are reversed. */
-decls: /* EMPTY */ { $$ = NULL; }
- | one_decl ';' decls {
-     $$ = $1;
-     $$->next = $3;
-   }
+/* Declarations with ';' at the end */
+decls:
+   /* EMPTY */
+ | declsn ';'
  ;
 
 /* Declarations that have no ';' at the end. */
-declsn: one_decl { $$[0] = $$[1] = $1; }
- | one_decl ';' declsn {
-     $3[1]->next = $1;
-     $$[1] = $3[1] = $1;
-     $$[0] = $3[0];
+declsn:
+   type CF_SYM_VOID {
+     cf_define_symbol($2, SYM_VARIABLE | $1, offset, decls_count++);
+   }
+ | declsn ';' type CF_SYM_VOID {
+     if (decls_count >= 0xff) cf_error("Too many declarations, at most 255 allowed");
+     cf_define_symbol($4, SYM_VARIABLE | $3, offset, decls_count++);
    }
  ;
 
-filter_body:
-   function_body {
-     if ($1[0]) {
-       const struct f_inst *inst[2] = { $1[0], $1[1] };
-       $$ = f_postfixify_concat(inst, 2);
-     }
-     else
-       $$ = f_postfixify($1[1]);
-   }
- ;
+filter_body: { decls_count = 0; } function_body { $$ = $2; } ;
 
 filter:
    CF_SYM_KNOWN {
@@ -611,14 +594,14 @@ where_filter:
  ;
 
 function_params:
-   '(' declsn ')' { $$[0] = $2[0]; $$[1] = $2[1]; }
- | '(' ')' { $$[0] = $$[1] = NULL; }
+   '(' declsn ')' { $$ = decls_count; }
+ | '(' ')' { $$ = 0; }
  ;
 
 function_body:
    decls '{' cmds '}' {
-     $$[0] = $1 ? f_clear_local_vars($1) : NULL;
-     $$[1] = $3;
+     $$ = f_postfixify($3);
+     $$->vars = decls_count;
    }
  ;
 
@@ -627,33 +610,11 @@ function_def:
    FUNCTION CF_SYM_VOID { DBG( "Beginning of function %s\n", $2->name );
      $2 = cf_define_symbol($2, SYM_FUNCTION, function, NULL);
      cf_push_scope($2);
+     decls_count = 0;
    } function_params function_body {
-     const struct f_inst *catlist[4];
-     uint count = 0;
-
-     /* Argument setters */
-     if ($4[0])
-       catlist[count++] = $4[0];
-
-     /* Local var clearers */
-     if ($5[0])
-       catlist[count++] = $5[0];
-
-     /* Return void if no return is needed */
-     catlist[count++] = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
-
-     /* Function body itself */
-     if ($5[1])
-       catlist[count++] = $5[1];
-
-     struct f_line *fl = f_postfixify_concat(catlist, count);
-
-     fl->args = 0;
-     for (const struct f_inst *arg = $4[0]; arg; arg = arg->next)
-       fl->args++;
-
-     $2->function = fl;
-
+     $5->vars -= $4;
+     $5->args = $4;
+     $2->function = $5;
      cf_pop_scope();
    }
  ;
@@ -862,9 +823,33 @@ constructor:
  ;
 
 
+/* This generates the function_call variable list backwards. */
+var_list: /* EMPTY */ { $$ = NULL; }
+ | term { $$ = $1; }
+ | var_list ',' term { $$ = $3; $$->next = $1; }
+
 function_call:
    CF_SYM_KNOWN '(' var_list ')' {
-     $$ = f_new_inst(FI_CALL, $1, $3);
+     if ($1->class != SYM_FUNCTION)
+       cf_error("You can't call something which is not a function. Really.");
+
+     struct f_inst *fc = f_new_inst(FI_CALL, $1);
+     uint args = 0;
+     while ($3) {
+       args++;
+       struct f_inst *tmp = $3->next;
+       $3->next = fc;
+
+       fc = $3;
+       $3 = tmp;
+     }
+
+     if (args != $1->function->args)
+       cf_error("Function call '%s' got %u arguments, need %u arguments.",
+	   $1->name, args, $1->function->args);
+
+     $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
+     $$->next = fc;
    }
  ;
 
@@ -872,8 +857,10 @@ symbol_value: CF_SYM_KNOWN
   {
     switch ($1->class) {
       case SYM_CONSTANT_RANGE:
+	$$ = f_new_inst(FI_CONSTANT_DEFINED, $1);
+	break;
       case SYM_VARIABLE_RANGE:
-	$$ = f_new_inst(FI_VARIABLE, $1);
+	$$ = f_new_inst(FI_VAR_GET, $1);
 	break;
       case SYM_ATTRIBUTE:
 	$$ = f_new_inst(FI_EA_GET, *$1->attribute);
@@ -988,19 +975,6 @@ print_list: /* EMPTY */ { $$ = NULL; }
    }
  ;
 
-var_listn: term {
-     $$ = $1;
-   }
- | term ',' var_listn {
-     $$ = $1;
-     $$->next = $3;
-   }
- ;
-
-var_list: /* EMPTY */ { $$ = NULL; }
- | var_listn { $$ = $1; }
- ;
-
 cmd:
    IF term THEN block {
      $$ = f_new_inst(FI_CONDITION, $2, $4, NULL);
@@ -1011,7 +985,7 @@ cmd:
  | CF_SYM_KNOWN '=' term ';' {
      switch ($1->class) {
        case SYM_VARIABLE_RANGE:
-	 $$ = f_new_inst(FI_SET, $3, $1);
+	 $$ = f_new_inst(FI_VAR_SET, $3, $1);
 	 break;
        case SYM_ATTRIBUTE:
 	 $$ = f_new_inst(FI_EA_SET, $3, *$1->attribute);

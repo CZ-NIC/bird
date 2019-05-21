@@ -56,8 +56,7 @@ run_function(const void *arg)
   }
 
   linpool *tmp = lp_new_default(&root_pool);
-  struct f_val res;
-  enum filter_return fret = f_eval(t->fn, tmp, &res);
+  enum filter_return fret = f_eval(t->fn, tmp, NULL);
   rfree(tmp);
 
   return (fret < F_REJECT);

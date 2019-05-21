@@ -135,6 +135,8 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 static enum filter_return
 interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 {
+  /* No arguments allowed */
+  ASSERT(line->args == 0);
 
 #define F_VAL_STACK_MAX	4096
   /* Value stack for execution */
@@ -145,8 +147,12 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 
   /* The stack itself is intentionally kept as-is for performance reasons.
    * Do NOT rewrite this to initialization by struct literal. It's slow.
-   */
-  vstk.cnt = 0;
+   *
+   * Reserving space for local variables. */
+
+  vstk.cnt = line->vars;
+  memset(vstk.val, 0, sizeof(struct f_val) * line->vars);
+
 #define F_EXEC_STACK_MAX 4096
 
   /* Exception bits */
@@ -160,6 +166,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
       const struct f_line *line;		/* The line that is being executed */
       uint pos;				/* Instruction index in the line */
       uint ventry;			/* Value stack depth on entry */
+      uint vbase;			/* Where to index variable positions from */
       enum f_exception emask;		/* Exception mask */
     } item[F_EXEC_STACK_MAX];
     uint cnt;				/* Current stack size; 0 for empty */
@@ -180,7 +187,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   while (estk.cnt > 0) {
     while (curline.pos < curline.line->len) {
       const struct f_line_item *what = &(curline.line->items[curline.pos++]);
-
 
       switch (what->fi_code) {
 #define res vstk.val[vstk.cnt]
@@ -207,26 +213,28 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 #undef ACCESS_EATTRS
       }
     }
+    
+    /* End of current line. Drop local variables before exiting. */
+    vstk.cnt -= curline.line->vars;
+    vstk.cnt -= curline.line->args;
     estk.cnt--;
   }
 
-  switch (vstk.cnt) {
-    case 0:
-      if (val) {
-	log_rl(&rl_runtime_err, L_ERR "filters: No value left on stack");
-	return F_ERROR;
-      }
-      return F_NOP;
-    case 1:
-      if (val) {
-	*val = vstk.val[0];
-	return F_NOP;
-      }
-      /* fallthrough */
-    default:
-      log_rl(&rl_runtime_err, L_ERR "Too many items left on stack: %u", vstk.cnt);
+  if (vstk.cnt == 0) {
+    if (val) {
+      log_rl(&rl_runtime_err, L_ERR "filters: No value left on stack");
       return F_ERROR;
+    }
+    return F_NOP;
   }
+
+  if (val && (vstk.cnt == 1)) {
+    *val = vstk.val[0];
+    return F_NOP;
+  }
+
+  log_rl(&rl_runtime_err, L_ERR "Too many items left on stack: %u", vstk.cnt);
+  return F_ERROR;
 }
 
 

@@ -63,13 +63,12 @@ enum f_instruction_flags {
 /* Convert the instruction back to the enum name */
 const char *f_instruction_name(enum f_instruction_code fi);
 
-struct f_inst *f_clear_local_vars(struct f_inst *decls);
-
 /* Filter structures for execution */
 /* Line of instructions to be unconditionally executed one after another */
 struct f_line {
   uint len;				/* Line length */
   u8 args;				/* Function: Args required */
+  u8 vars;
   struct f_line_item items[0];		/* The items themselves */
 };
 

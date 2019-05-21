@@ -116,7 +116,8 @@ struct symbol {
     const struct filter *filter;	/* For SYM_FILTER */
     struct rtable_config *table;	/* For SYM_TABLE */
     struct f_dynamic_attr *attribute;	/* For SYM_ATTRIBUTE */
-    struct f_val *val;			/* For SYM_CONSTANT or SYM_VARIABLE */
+    struct f_val *val;			/* For SYM_CONSTANT */
+    uint offset;			/* For SYM_VARIABLE */
   };
 
   char name[0];

@@ -261,23 +261,28 @@
   }
 
   /* Set to indirect value prepared in v1 */
-  INST(FI_SET, 1, 0) {
+  INST(FI_VAR_SET, 1, 0) {
     ARG_ANY(2);
     SYMBOL(1);
     if ((sym->class != (SYM_VARIABLE | v1.type)) && (v1.type != T_VOID))
     {
       /* IP->Quad implicit conversion */
       if ((sym->class == (SYM_VARIABLE | T_QUAD)) && val_is_ip4(&v1))
-      {
-	*(sym->val) = (struct f_val) {
+	v1 = (struct f_val) {
 	  .type = T_QUAD,
 	  .val.i = ipa_to_u32(v1.val.ip),
-	}; 
-	break;
-      }
-      runtime( "Assigning to variable of incompatible type" );
+	};
+      else 
+	runtime( "Assigning to variable of incompatible type" );
     }
-    *(sym->val) = v1;
+
+    vstk.val[curline.vbase + sym->offset] = v1;
+  }
+
+  INST(FI_VAR_GET, 0, 1) {
+    SYMBOL(1);
+    res = vstk.val[curline.vbase + sym->offset];
+    RESULT_OK;
   }
 
     /* some constants have value in a[1], some in *a[0].p, strange. */
@@ -301,7 +306,7 @@
     res = whati->val;
     RESULT_OK;
   }
-  INST(FI_VARIABLE, 0, 1) {
+  INST(FI_CONSTANT_DEFINED, 0, 1) {
     FID_STRUCT_IN
       const struct symbol *sym;
     FID_LINE_IN
@@ -314,18 +319,9 @@
     FID_POSTFIXIFY_BODY
       item->valp = (item->sym = what->sym)->val;
     FID_SAME_BODY
-      if (strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)) return 0;
+      if (strcmp(f1->sym->name, f2->sym->name) || !val_same(f1->sym->val, f2->sym->val)) return 0;
     FID_DUMP_BODY
-      switch (item->sym->class) {
-	case SYM_CONSTANT_RANGE:
-	  debug("%sconstant %s with value %s\n", INDENT, item->sym->name, val_dump(item->valp));
-	  break;
-	case SYM_VARIABLE_RANGE:
-	  debug("%svariable %s with current value %s\n", INDENT, item->sym->name, val_dump(item->valp));
-	  break;
-	default:
-	  bug("Symbol %s of type %d doesn't reference a value", item->sym->name, item->sym->class);
-      }
+      debug("%sconstant %s with value %s\n", INDENT, item->sym->name, val_dump(item->valp));
     FID_ALL
 
     res = *whati->valp;
@@ -768,56 +764,31 @@
       else
 	runtime("Can't return non-bool from non-function");
 
-    /* Set the value stack position */
-    vstk.cnt = estk.item[estk.cnt].ventry;
+    /* Set the value stack position, overwriting the former implicit void */
+    vstk.cnt = estk.item[estk.cnt].ventry - 1;
 
     /* Copy the return value */
     RESULT_VAL(vstk.val[retpos]);
   }
 
   INST(FI_CALL, 0, 1) {
-    FID_LINE_IN
-      const struct f_line *args;
-      const struct f_line *body;
-      struct symbol *sym;
-    FID_STRUCT_IN
-      struct symbol *sym;
-      const struct f_inst *args;
-    FID_NEW_ARGS
-      , struct symbol * sym
-      , const struct f_inst *args
-    FID_NEW_BODY
-      if (sym->class != SYM_FUNCTION)
-	cf_error("You can't call something which is not a function. Really.");
+    SYMBOL;
 
-      uint count = 0;
-      for (const struct f_inst *inst = args; inst; inst = inst->next)
-	count++;
-
-      if (count != sym->function->args)
-	cf_error("Function %s takes %u arguments, got %u.", sym->name, sym->function->args, count);
-
-      what->sym = sym;
-      what->args = args;
-    FID_DUMP_BODY
-      debug("%scalling %s with following args\n", INDENT, item->sym->name);
-      f_dump_line(item->args, indent + 1);
-    FID_POSTFIXIFY_BODY
-      item->args = f_postfixify(what->args);
-      item->body = (item->sym = what->sym)->function;
-    FID_SAME_BODY
-      /* To be done better */
-      if (strcmp(f1->sym->name, f2->sym->name)) return 0;
-      if (!f_same(f1->args, f2->args)) return 0;
-      if (!f_same(f1->body, f2->body)) return 0;
-    FID_ALL
-
-    /* First push the body on stack */
-    LINEX(whati->body);
+    /* Push the body on stack */
+    LINEX(sym->function);
     curline.emask |= FE_RETURN;
+  
+    /* Before this instruction was called, there was the T_VOID
+     * automatic return value pushed on value stack and also
+     * sym->function->args function arguments. Setting the
+     * vbase to point to first argument. */
+    ASSERT(curline.ventry >= sym->function->args);
+    curline.ventry -= sym->function->args;
+    curline.vbase = curline.ventry;
 
-    /* Then push the arguments */
-    LINEX(whati->args);
+    /* Storage for local variables */
+    memset(&(vstk.val[vstk.cnt]), 0, sizeof(struct f_val) * sym->function->vars);
+    vstk.cnt += sym->function->vars;
   }
 
   INST(FI_DROP_RESULT, 1, 0) {

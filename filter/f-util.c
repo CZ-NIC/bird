@@ -30,11 +30,6 @@ filter_name(const struct filter *filter)
     return filter->sym->name;
 }
 
-void f_inst_next(struct f_inst *first, const struct f_inst *append)
-{
-  first->next = append;
-}
-
 struct filter *f_new_where(const struct f_inst *where)
 {
   struct f_inst acc = {
@@ -65,23 +60,6 @@ struct filter *f_new_where(const struct f_inst *where)
   struct filter *f = cfg_allocz(sizeof(struct filter));
   f->root = f_postfixify(&i);
   return f;
-}
-
-struct f_inst *f_clear_local_vars(struct f_inst *decls)
-{
-  /* Prepend instructions to clear local variables */
-  struct f_inst *head = NULL;
-
-  for (const struct f_inst *si = decls; si; si = si->next) {
-    struct f_inst *cur = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
-    if (head)
-      f_inst_next(cur, head);
-    else
-      f_inst_next(cur, si);
-    head = cur;	/* The first FI_CONSTANT put there */
-  }
-
-  return head;
 }
 
 #define CA_KEY(n)	n->name, n->fda.type

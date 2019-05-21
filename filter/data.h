@@ -17,8 +17,8 @@
 
 /* Internal types */
 enum f_type {
-/* Do not use type of zero, that way we'll see errors easier. */
-  T_VOID = 1,
+/* Nothing. Simply nothing. */
+  T_VOID = 0,
 
 /* User visible types, which fit in int */
   T_INT = 0x10,

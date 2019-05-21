@@ -209,6 +209,7 @@ do {
   estk.item[estk.cnt].pos = 0;
   estk.item[estk.cnt].line = $1;
   estk.item[estk.cnt].ventry = vstk.cnt;
+  estk.item[estk.cnt].vbase = estk.item[estk.cnt-1].vbase;
   estk.item[estk.cnt].emask = 0;
   estk.cnt++;
 } while (0)m4_dnl
@@ -377,7 +378,7 @@ FID_WR_PUT(4)
 
 /* Filter instruction structure for config */
 struct f_inst {
-  const struct f_inst *next;		/* Next instruction */
+  struct f_inst *next;			/* Next instruction */
   enum f_instruction_code fi_code;	/* Instruction code */
   int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */
