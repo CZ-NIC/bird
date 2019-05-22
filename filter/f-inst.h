@@ -17,7 +17,7 @@
  *	translates into f_new_inst_FI_code(...) and the types are checked in
  *	compile time.
  *
- *	2  Postfixify before interpreting
+ *	2  Linearize before interpreting
  *	The infix tree is always interpreted in the same order. Therefore we
  *	sort the instructions one after another into struct f_line. Results
  *	and arguments of these instructions are implicitly put on a value
@@ -73,9 +73,9 @@ struct f_line {
 };
 
 /* Convert the f_inst infix tree to the f_line structures */
-struct f_line *f_postfixify_concat(const struct f_inst * const inst[], uint count);
-static inline struct f_line *f_postfixify(const struct f_inst *root)
-{ return f_postfixify_concat(&root, 1); }
+struct f_line *f_linearize_concat(const struct f_inst * const inst[], uint count);
+static inline struct f_line *f_linearize(const struct f_inst *root)
+{ return f_linearize_concat(&root, 1); }
 
 void f_dump_line(const struct f_line *, uint indent);
 

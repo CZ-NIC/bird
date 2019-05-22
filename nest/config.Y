@@ -112,7 +112,7 @@ rtrid:
 
 idval:
    NUM { $$ = $1; }
- | '(' term ')' { $$ = f_eval_int(f_postfixify($2)); }
+ | '(' term ')' { $$ = f_eval_int(f_linearize($2)); }
  | IP4 { $$ = ip4_to_u32($1); }
  | CF_SYM_KNOWN {
      if ($1->class == (SYM_CONSTANT | T_INT) || $1->class == (SYM_CONSTANT | T_QUAD))
@@ -733,7 +733,7 @@ CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])
 { protos_dump_all(); cli_msg(0, ""); } ;
 
 CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]])
-{ cmd_eval(f_postfixify($2)); } ;
+{ cmd_eval(f_linearize($2)); } ;
 
 CF_CLI_HELP(ECHO, ..., [[Control echoing of log messages]])
 CF_CLI(ECHO, echo_mask echo_size, (all | off | { debug|trace|info|remote|warning|error|auth [, ...] }) [<buffer-size>], [[Control echoing of log messages]]) {

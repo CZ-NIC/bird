@@ -58,7 +58,7 @@ struct filter *f_new_where(const struct f_inst *where)
   };
 
   struct filter *f = cfg_allocz(sizeof(struct filter));
-  f->root = f_postfixify(&i);
+  f->root = f_linearize(&i);
   return f;
 }
 

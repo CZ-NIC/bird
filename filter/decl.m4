@@ -12,7 +12,7 @@ m4_divert(-1)m4_dnl
 #	5	enum fi_code to string
 #	6	dump line item
 #	7	dump line item callers
-#	8	postfixify
+#	8	linearize
 #	9	same (filter comparator)
 #	1	union in struct f_inst
 #	3	constructors
@@ -23,7 +23,7 @@ m4_divert(-1)m4_dnl
 #	102	constructor arguments
 #	103	constructor body
 #	104	dump line item content
-#	105	postfixify body
+#	105	linearize body
 #	106	comparator body
 #	107	struct f_line_item content
 #	108	interpreter body
@@ -45,7 +45,7 @@ m4_define(FID_ENUM, `FID_ZONE(4, Code enum)')
 m4_define(FID_ENUM_STR, `FID_ZONE(5, Code enum to string)')
 m4_define(FID_DUMP, `FID_ZONE(6, Dump line)')
 m4_define(FID_DUMP_CALLER, `FID_ZONE(7, Dump line caller)')
-m4_define(FID_POSTFIXIFY, `FID_ZONE(8, Postfixify)')
+m4_define(FID_LINEARIZE, `FID_ZONE(8, Linearize)')
 m4_define(FID_SAME, `FID_ZONE(9, Comparison)')
 m4_define(FID_INTERPRET, `FID_ZONE(10, Interpret)')
 
@@ -53,7 +53,7 @@ m4_define(FID_STRUCT_IN, `m4_divert(101)')
 m4_define(FID_NEW_ARGS, `m4_divert(102)')
 m4_define(FID_NEW_BODY, `m4_divert(103)')
 m4_define(FID_DUMP_BODY, `m4_divert(104)m4_define([[FID_DUMP_BODY_EXISTS]])')
-m4_define(FID_POSTFIXIFY_BODY, `m4_divert(105)m4_define([[FID_POSTFIXIFY_BODY_EXISTS]])')
+m4_define(FID_LINEARIZE_BODY, `m4_divert(105)m4_define([[FID_LINEARIZE_BODY_EXISTS]])')
 m4_define(FID_SAME_BODY, `m4_divert(106)')
 m4_define(FID_LINE_IN, `m4_divert(107)')
 m4_define(FID_INTERPRET_BODY, `m4_divert(108)')
@@ -112,7 +112,7 @@ m4_undivert(104)
 }
 FID_ALL_TARGETS
 
-FID_POSTFIXIFY
+FID_LINEARIZE
 case INST_NAME(): {
 #define what (&(what_->i_]]INST_NAME()[[))
 #define item (&(dest->items[pos].i_]]INST_NAME()[[))
@@ -123,7 +123,7 @@ case INST_NAME(): {
   dest->items[pos].lineno = what_->lineno;
   break;
 }
-m4_undefine([[FID_POSTFIXIFY_BODY_EXISTS]])
+m4_undefine([[FID_LINEARIZE_BODY_EXISTS]])
 
 FID_SAME
 case INST_NAME():
@@ -170,7 +170,7 @@ FID_NEW_ARGS
 FID_NEW_BODY
 what->$2 = $2;
 m4_ifelse($3,,,[[
-FID_POSTFIXIFY_BODY
+FID_LINEARIZE_BODY
 item->$3 = what->$2;
 ]])
 m4_ifelse($4,,,[[
@@ -195,8 +195,8 @@ FID_NEW_ARGS
 FID_NEW_BODY
 what->f$1 = f$1;
 for (const struct f_inst *child = f$1; child; child = child->next) what_->size += child->size;
-FID_POSTFIXIFY_BODY
-pos = postfixify(dest, what->f$1, pos);m4_dnl
+FID_LINEARIZE_BODY
+pos = linearize(dest, what->f$1, pos);m4_dnl
 FID_ALL()')
 
 m4_define(ARG, `ARG_ANY($1)
@@ -226,8 +226,8 @@ FID_NEW_BODY
 what->f$1 = f$1;
 FID_DUMP_BODY
 f_dump_line(item->fl$1, indent + 1);
-FID_POSTFIXIFY_BODY
-item->fl$1 = f_postfixify(what->f$1);
+FID_LINEARIZE_BODY
+item->fl$1 = f_linearize(what->f$1);
 FID_SAME_BODY
 if (!f_same(f1->fl$1, f2->fl$1)) return 0;
 FID_INTERPRET_BODY
@@ -310,9 +310,9 @@ FID_WR_PUT(7)
   debug("%sFilter line %p dump done\n", INDENT, dest);
 }
 
-/* Postfixify */
+/* Linearize */
 static uint
-postfixify(struct f_line *dest, const struct f_inst *what_, uint pos)
+linearize(struct f_line *dest, const struct f_inst *what_, uint pos)
 {
   for ( ; what_; what_ = what_->next) {
     switch (what_->fi_code) {
@@ -324,7 +324,7 @@ FID_WR_PUT(8)
 }
 
 struct f_line *
-f_postfixify_concat(const struct f_inst * const inst[], uint count)
+f_linearize_concat(const struct f_inst * const inst[], uint count)
 {
   uint len = 0;
   for (uint i=0; i<count; i++)
@@ -334,7 +334,7 @@ f_postfixify_concat(const struct f_inst * const inst[], uint count)
   struct f_line *out = cfg_allocz(sizeof(struct f_line) + sizeof(struct f_line_item)*len);
 
   for (uint i=0; i<count; i++)
-    out->len = postfixify(out, inst[i], out->len);
+    out->len = linearize(out, inst[i], out->len);
 
 #if DEBUGGING
   f_dump_line(out, 0);

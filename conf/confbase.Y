@@ -147,14 +147,14 @@ conf: definition ;
 definition:
    DEFINE CF_SYM_VOID '=' term ';' {
      struct f_val *val = cfg_alloc(sizeof(struct f_val));
-     if (f_eval(f_postfixify($4), cfg_mem, val) > F_RETURN) cf_error("Runtime error");
+     if (f_eval(f_linearize($4), cfg_mem, val) > F_RETURN) cf_error("Runtime error");
      cf_define_symbol($2, SYM_CONSTANT | val->type, val, val);
    }
  ;
 
 expr:
    NUM
- | '(' term ')' { $$ = f_eval_int(f_postfixify($2)); }
+ | '(' term ')' { $$ = f_eval_int(f_linearize($2)); }
  | CF_SYM_KNOWN {
      if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number constant expected");
      $$ = SYM_VAL($1).i; }

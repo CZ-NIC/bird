@@ -295,7 +295,7 @@
     , const struct f_val val
     FID_NEW_BODY
       what->val = val;
-    FID_POSTFIXIFY_BODY
+    FID_LINEARIZE_BODY
       item->val = what->val;
     FID_SAME_BODY
       if (!val_same(&(f1->val), &(f2->val))) return 0;
@@ -316,7 +316,7 @@
       , const struct symbol *sym
     FID_NEW_BODY
       what->sym = sym;
-    FID_POSTFIXIFY_BODY
+    FID_LINEARIZE_BODY
       item->valp = (item->sym = what->sym)->val;
     FID_SAME_BODY
       if (strcmp(f1->sym->name, f2->sym->name) || !val_same(f1->sym->val, f2->sym->val)) return 0;
@@ -339,14 +339,14 @@
       LINE(3,1);
   }
   INST(FI_PRINT_AND_DIE, 0, 0) {
-    FID_POSTFIXIFY_BODY
+    FID_LINEARIZE_BODY
     {
       uint opos = pos;
       FID_ALL
 
     ARG_ANY(1);
 
-      FID_POSTFIXIFY_BODY
+      FID_LINEARIZE_BODY
       if (opos < pos)
 	dest->items[pos].flags |= FIF_PRINTED;
     }
