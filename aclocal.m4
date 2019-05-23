@@ -1,6 +1,25 @@
 dnl ** Additional Autoconf tests for BIRD configure script
 dnl ** (c) 1999 Martin Mares <mj@ucw.cz>
 
+AC_DEFUN([BIRD_CHECK_THREAD_LOCAL],
+[
+  AC_CACHE_CHECK(
+    [whether _Thread_local is known],
+    [bird_cv_thread_local],
+    AC_COMPILE_IFELSE([
+      AC_LANG_PROGRAM(
+        [
+	  _Thread_local static int x = 42;
+	],
+	[]
+      )
+    ],
+    [bird_cv_thread_local=yes],
+    [bird_cv_thread_local=no]
+    )
+  )
+])
+
 AC_DEFUN([BIRD_CHECK_PTHREADS],
 [
   bird_tmp_cflags="$CFLAGS"
@@ -134,7 +153,7 @@ AC_DEFUN([BIRD_CHECK_ANDROID_LOG],
 AC_DEFUN([BIRD_CHECK_LTO],
 [
   bird_tmp_cflags="$CFLAGS"
-  bird_tmp_ldflags="$CFLAGS"
+  bird_tmp_ldflags="$LDFLAGS"
   CFLAGS="-flto"
   LDFLAGS="-flto"
 

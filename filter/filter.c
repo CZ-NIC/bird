@@ -51,7 +51,7 @@
 #include "filter/data.h"
 
 /* Internal filter state, to be allocated on stack when executing filters */
-_Thread_local struct filter_state {
+struct filter_state {
   /* The route we are processing. This may be NULL to indicate no route available. */
   struct rte **rte;
 
@@ -63,7 +63,14 @@ _Thread_local struct filter_state {
   struct linpool *pool;
   struct buffer buf;
   int flags;
-} filter_state;
+};
+
+#if HAVE_THREAD_LOCAL
+_Thread_local static struct filter_state filter_state;
+#define FS_INIT(...) filter_state = (struct filter_state) { __VA_ARGS__ }
+#else
+#define FS_INIT(...) struct filter_state filter_state = { __VA_ARGS__ }
+#endif
 
 void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
@@ -275,11 +282,11 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
   DBG( "Running filter `%s'...", filter->name );
 
   /* Initialize the filter state */
-  filter_state = (struct filter_state) {
-    .rte = rte,
-    .pool = tmp_pool,
-    .flags = flags,
-  };
+  FS_INIT(
+      .rte = rte,
+      .pool = tmp_pool,
+      .flags = flags,
+      );
 
   LOG_BUFFER_INIT(filter_state.buf);
 
@@ -338,10 +345,10 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
 enum filter_return
 f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool)
 {
-  filter_state = (struct filter_state) {
-    .rte = rte,
-    .pool = tmp_pool,
-  };
+  FS_INIT(
+      .rte = rte,
+      .pool = tmp_pool,
+      );
 
   LOG_BUFFER_INIT(filter_state.buf);
 
@@ -360,9 +367,9 @@ f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool
 enum filter_return
 f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 {
-  filter_state = (struct filter_state) {
-    .pool = tmp_pool,
-  };
+  FS_INIT(
+      .pool = tmp_pool,
+      );
 
   LOG_BUFFER_INIT(filter_state.buf);
 
@@ -379,9 +386,9 @@ uint
 f_eval_int(const struct f_line *expr)
 {
   /* Called independently in parse-time to eval expressions */
-  filter_state = (struct filter_state) {
-    .pool = cfg_mem,
-  };
+  FS_INIT(
+      .pool = cfg_mem,
+      );
 
   struct f_val val;
 
