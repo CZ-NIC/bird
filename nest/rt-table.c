@@ -58,35 +58,51 @@ static inline void rt_prune_table(rtable *tab);
 
 
 /* Like fib_route(), but skips empty net entries */
-static inline void *
-net_route_ip4(rtable *t, net_addr_ip4 *n)
+static inline net *
+net_route_ip4(rtable *t, net_addr_ip4 *a)
 {
-  net *r;
-
-  while (r = net_find_valid(t, (net_addr *) n), (!r) && (n->pxlen > 0))
+  while (1)
   {
-    n->pxlen--;
-    ip4_clrbit(&n->prefix, n->pxlen);
-  }
+    if (!BIT32_TEST(t->pxlens, a->pxlen))
+      goto next;
 
-  return r;
+    net *n = net_find(t, (net_addr *) a);
+
+    if (n && rte_is_valid(n->routes))
+      return n;
+
+  next:
+    if (!a->pxlen)
+      return NULL;
+
+    a->pxlen--;
+    ip4_clrbit(&a->prefix, a->pxlen);
+  }
 }
 
-static inline void *
-net_route_ip6(rtable *t, net_addr_ip6 *n)
+static inline net *
+net_route_ip6(rtable *t, net_addr_ip6 *a)
 {
-  net *r;
-
-  while (r = net_find_valid(t, (net_addr *) n), (!r) && (n->pxlen > 0))
+  while (1)
   {
-    n->pxlen--;
-    ip6_clrbit(&n->prefix, n->pxlen);
-  }
+    if (!BIT32_TEST(t->pxlens, a->pxlen))
+      goto next;
 
-  return r;
+    net *n = net_find(t, (net_addr *) a);
+
+    if (n && rte_is_valid(n->routes))
+      return n;
+
+  next:
+    if (!a->pxlen)
+      return NULL;
+
+    a->pxlen--;
+    ip6_clrbit(&a->prefix, a->pxlen);
+  }
 }
 
-static inline void *
+static inline net *
 net_route_ip6_sadr(rtable *t, net_addr_ip6_sadr *n)
 {
   struct fib_node *fn;
@@ -95,6 +111,9 @@ net_route_ip6_sadr(rtable *t, net_addr_ip6_sadr *n)
   {
     net *best = NULL;
     int best_pxlen = 0;
+
+    if (!BIT32_TEST(t->pxlens, n->dst_pxlen))
+      goto next;
 
     /* We need to do dst first matching. Since sadr addresses are hashed on dst
        prefix only, find the hash table chain and go through it to find the
@@ -115,17 +134,16 @@ net_route_ip6_sadr(rtable *t, net_addr_ip6_sadr *n)
     if (best)
       return best;
 
+  next:
     if (!n->dst_pxlen)
-      break;
+      return NULL;
 
     n->dst_pxlen--;
     ip6_clrbit(&n->dst_prefix, n->dst_pxlen);
   }
-
-  return NULL;
 }
 
-void *
+net *
 net_route(rtable *tab, const net_addr *n)
 {
   ASSERT(tab->addr_type == n->type);
@@ -1415,6 +1433,9 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
       if (!rta_is_cached(new->attrs)) /* Need to copy attributes */
 	new->attrs = rta_lookup(new->attrs);
       new->flags |= REF_COW;
+
+      BIT32_SET(c->table->pxlens, net_pxlen(n));
+      BIT32_SET(c->table->pxlens_new, net_pxlen(n));
     }
   else
     {
@@ -1727,6 +1748,8 @@ rt_prune_table(rtable *tab)
 
     FIB_ITERATE_INIT(fit, &tab->fib);
     tab->prune_state = 2;
+
+    memset(tab->pxlens_new, 0, sizeof(tab->pxlens));
   }
 
 again:
@@ -1757,6 +1780,8 @@ again:
 	  fib_delete(&tab->fib, n);
 	  goto again;
 	}
+
+      BIT32_SET(tab->pxlens_new, net_pxlen(n->n.addr));
     }
   FIB_ITERATE_END;
 
@@ -1766,6 +1791,8 @@ again:
 
   tab->gc_counter = 0;
   tab->gc_time = current_time();
+
+  memcpy(tab->pxlens, tab->pxlens_new, sizeof(tab->pxlens));
 
   /* state change 2->0, 3->1 */
   tab->prune_state &= 1;
