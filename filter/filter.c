@@ -74,6 +74,12 @@ struct filter_stack {
     uint vbase;				/* Where to index variable positions from */
     enum f_exception emask;		/* Exception mask */
   } estk[F_EXEC_STACK_MAX];
+
+#define F_VAL_BUF_SIZE (64 * 1024)
+  char vbuf[F_VAL_BUF_SIZE];		/* Buffer for f_val's */
+  uint vbpos[F_VAL_STACK_MAX];		/* Offset to vbuf based on vstk position */
+
+  uint vend;				/* Size of vbuf usable for vstk f_val's */
 };
 
 /* Internal filter state, to be allocated on stack when executing filters */
@@ -89,8 +95,14 @@ struct filter_state {
 
   /* Cached pointer to ea_list */
   struct ea_list **eattrs;
+
+  /* Linpool for adata allocation */
   struct linpool *pool;
+
+  /* Buffer for log output */
   struct buffer buf;
+
+  /* Filter execution flags */
   int flags;
 };
 
