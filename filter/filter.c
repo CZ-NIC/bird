@@ -50,6 +50,31 @@
 #include "filter/f-inst.h"
 #include "filter/data.h"
 
+
+/* Exception bits */
+enum f_exception {
+  FE_RETURN = 0x1,
+};
+
+
+struct filter_stack {
+#define F_VAL_STACK_MAX	4096
+  /* Value stack for execution */
+  uint vcnt;				/* Current value stack size; 0 for empty */
+  uint ecnt;				/* Current execute stack size; 0 for empty */
+
+  struct f_val vstk[F_VAL_STACK_MAX];	/* The stack itself */
+
+  /* Instruction stack for execution */
+  struct {
+    const struct f_line *line;		/* The line that is being executed */
+    uint pos;				/* Instruction index in the line */
+    uint ventry;			/* Value stack depth on entry */
+    uint vbase;			/* Where to index variable positions from */
+    enum f_exception emask;		/* Exception mask */
+  } estk[F_EXEC_STACK_MAX];
+
+
 /* Internal filter state, to be allocated on stack when executing filters */
 struct filter_state {
   /* The route we are processing. This may be NULL to indicate no route available. */
@@ -145,13 +170,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   /* No arguments allowed */
   ASSERT(line->args == 0);
 
-#define F_VAL_STACK_MAX	4096
-  /* Value stack for execution */
-  struct f_val_stack {
-    uint cnt;				/* Current stack size; 0 for empty */
-    struct f_val val[F_VAL_STACK_MAX];	/* The stack itself */
-  } vstk;
-
   /* The stack itself is intentionally kept as-is for performance reasons.
    * Do NOT rewrite this to initialization by struct literal. It's slow.
    *
@@ -161,23 +179,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   memset(vstk.val, 0, sizeof(struct f_val) * line->vars);
 
 #define F_EXEC_STACK_MAX 4096
-
-  /* Exception bits */
-  enum f_exception {
-    FE_RETURN = 0x1,
-  };
-
-  /* Instruction stack for execution */
-  struct f_exec_stack {
-    struct {
-      const struct f_line *line;		/* The line that is being executed */
-      uint pos;				/* Instruction index in the line */
-      uint ventry;			/* Value stack depth on entry */
-      uint vbase;			/* Where to index variable positions from */
-      enum f_exception emask;		/* Exception mask */
-    } item[F_EXEC_STACK_MAX];
-    uint cnt;				/* Current stack size; 0 for empty */
-  } estk;
 
   /* The same as with the value stack. Not resetting the stack for performance reasons. */
   estk.cnt = 1;
