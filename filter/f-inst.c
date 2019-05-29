@@ -156,12 +156,12 @@
       what->count = len;
     FID_ALL
 
-    if (vstk.cnt < whati->count) /* TODO: make this check systematic */
+    if (fstk->vcnt < whati->count) /* TODO: make this check systematic */
       runtime("Construction of BGP path mask from %u elements must have at least that number of elements", whati->count);
 
     struct f_path_mask *pm = lp_alloc(fs->pool, sizeof(struct f_path_mask) + whati->count * sizeof(struct f_path_mask_item));
     for (uint i=0; i<whati->count; i++) {
-#define pv vstk.val[vstk.cnt - whati->count + i]
+#define pv fstk->vstk[fstk->vcnt - whati->count + i]
       switch (pv.type) {
 	case T_PATH_MASK_ITEM:
 	  pm->item[i] = pv.val.pmi;
@@ -177,7 +177,7 @@
       }
     }
 
-    vstk.cnt -= whati->count;
+    fstk->vcnt -= whati->count;
     pm->len = whati->count;
 
     RESULT(T_PATH_MASK, path_mask, pm);
@@ -276,12 +276,12 @@
 	runtime( "Assigning to variable of incompatible type" );
     }
 
-    vstk.val[curline.vbase + sym->offset] = v1;
+    fstk->vstk[curline.vbase + sym->offset] = v1;
   }
 
   INST(FI_VAR_GET, 0, 1) {
     SYMBOL(1);
-    res = vstk.val[curline.vbase + sym->offset];
+    res = fstk->vstk[curline.vbase + sym->offset];
     RESULT_OK;
   }
 
@@ -747,16 +747,16 @@
   INST(FI_RETURN, 1, 1) {
     /* Acquire the return value */
     ARG_ANY(1);
-    uint retpos = vstk.cnt;
+    uint retpos = fstk->vcnt;
 
     /* Drop every sub-block including ourselves */
-    while ((estk.cnt-- > 0) && !(estk.item[estk.cnt].emask & FE_RETURN))
+    while ((fstk->ecnt-- > 0) && !(fstk->estk[fstk->ecnt].emask & FE_RETURN))
       ;
 
     /* Now we are at the caller frame; if no such, try to convert to accept/reject. */
-    if (!estk.cnt)
-      if (vstk.val[retpos].type == T_BOOL)
-	if (vstk.val[retpos].val.i)
+    if (!fstk->ecnt)
+      if (fstk->vstk[retpos].type == T_BOOL)
+	if (fstk->vstk[retpos].val.i)
 
 	  return F_ACCEPT;
 	else
@@ -765,10 +765,10 @@
 	runtime("Can't return non-bool from non-function");
 
     /* Set the value stack position, overwriting the former implicit void */
-    vstk.cnt = estk.item[estk.cnt].ventry - 1;
+    fstk->vcnt = fstk->estk[fstk->ecnt].ventry - 1;
 
     /* Copy the return value */
-    RESULT_VAL(vstk.val[retpos]);
+    RESULT_VAL(fstk->vstk[retpos]);
   }
 
   INST(FI_CALL, 0, 1) {
@@ -787,8 +787,8 @@
     curline.vbase = curline.ventry;
 
     /* Storage for local variables */
-    memset(&(vstk.val[vstk.cnt]), 0, sizeof(struct f_val) * sym->function->vars);
-    vstk.cnt += sym->function->vars;
+    memset(&(fstk->vstk[fstk->vcnt]), 0, sizeof(struct f_val) * sym->function->vars);
+    fstk->vcnt += sym->function->vars;
   }
 
   INST(FI_DROP_RESULT, 1, 0) {

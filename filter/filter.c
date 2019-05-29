@@ -50,8 +50,37 @@
 #include "filter/f-inst.h"
 #include "filter/data.h"
 
+
+/* Exception bits */
+enum f_exception {
+  FE_RETURN = 0x1,
+};
+
+
+struct filter_stack {
+  /* Value stack for execution */
+#define F_VAL_STACK_MAX	4096
+  uint vcnt;				/* Current value stack size; 0 for empty */
+  uint ecnt;				/* Current execute stack size; 0 for empty */
+
+  struct f_val vstk[F_VAL_STACK_MAX];	/* The stack itself */
+
+  /* Instruction stack for execution */
+#define F_EXEC_STACK_MAX 4096
+  struct {
+    const struct f_line *line;		/* The line that is being executed */
+    uint pos;				/* Instruction index in the line */
+    uint ventry;			/* Value stack depth on entry */
+    uint vbase;				/* Where to index variable positions from */
+    enum f_exception emask;		/* Exception mask */
+  } estk[F_EXEC_STACK_MAX];
+};
+
 /* Internal filter state, to be allocated on stack when executing filters */
 struct filter_state {
+  /* Stacks needed for execution */
+  struct filter_stack *stack;
+
   /* The route we are processing. This may be NULL to indicate no route available. */
   struct rte **rte;
 
@@ -67,9 +96,10 @@ struct filter_state {
 
 #if HAVE_THREAD_LOCAL
 _Thread_local static struct filter_state filter_state;
-#define FS_INIT(...) filter_state = (struct filter_state) { __VA_ARGS__ }
+_Thread_local static struct filter_stack filter_stack;
+#define FS_INIT(...)	filter_state = (struct filter_state) { .stack = &filter_stack, __VA_ARGS__ }
 #else
-#define FS_INIT(...) struct filter_state filter_state = { __VA_ARGS__ }
+#define FS_INIT(...)	struct filter_state filter_state = { .stack = alloca(sizeof(struct filter_stack)), __VA_ARGS__ };
 #endif
 
 void (*bt_assert_hook)(int result, const struct f_line_item *assert);
@@ -145,61 +175,33 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   /* No arguments allowed */
   ASSERT(line->args == 0);
 
-#define F_VAL_STACK_MAX	4096
-  /* Value stack for execution */
-  struct f_val_stack {
-    uint cnt;				/* Current stack size; 0 for empty */
-    struct f_val val[F_VAL_STACK_MAX];	/* The stack itself */
-  } vstk;
+  /* Initialize the filter stack */
+  struct filter_stack *fstk = fs->stack;
 
-  /* The stack itself is intentionally kept as-is for performance reasons.
-   * Do NOT rewrite this to initialization by struct literal. It's slow.
-   *
-   * Reserving space for local variables. */
-
-  vstk.cnt = line->vars;
-  memset(vstk.val, 0, sizeof(struct f_val) * line->vars);
-
-#define F_EXEC_STACK_MAX 4096
-
-  /* Exception bits */
-  enum f_exception {
-    FE_RETURN = 0x1,
-  };
-
-  /* Instruction stack for execution */
-  struct f_exec_stack {
-    struct {
-      const struct f_line *line;		/* The line that is being executed */
-      uint pos;				/* Instruction index in the line */
-      uint ventry;			/* Value stack depth on entry */
-      uint vbase;			/* Where to index variable positions from */
-      enum f_exception emask;		/* Exception mask */
-    } item[F_EXEC_STACK_MAX];
-    uint cnt;				/* Current stack size; 0 for empty */
-  } estk;
+  fstk->vcnt = line->vars;
+  memset(fstk->vstk, 0, sizeof(struct f_val) * line->vars);
 
   /* The same as with the value stack. Not resetting the stack for performance reasons. */
-  estk.cnt = 1;
-  estk.item[0].line = line;		
-  estk.item[0].pos = 0;
+  fstk->ecnt = 1;
+  fstk->estk[0].line = line;		
+  fstk->estk[0].pos = 0;
 
-#define curline estk.item[estk.cnt-1]
+#define curline fstk->estk[fstk->ecnt-1]
 
 #if DEBUGGING
   debug("Interpreting line.");
   f_dump_line(line, 1);
 #endif
 
-  while (estk.cnt > 0) {
+  while (fstk->ecnt > 0) {
     while (curline.pos < curline.line->len) {
       const struct f_line_item *what = &(curline.line->items[curline.pos++]);
 
       switch (what->fi_code) {
-#define res vstk.val[vstk.cnt]
-#define v1 vstk.val[vstk.cnt]
-#define v2 vstk.val[vstk.cnt + 1]
-#define v3 vstk.val[vstk.cnt + 2]
+#define res fstk->vstk[fstk->vcnt]
+#define v1 fstk->vstk[fstk->vcnt]
+#define v2 fstk->vstk[fstk->vcnt + 1]
+#define v3 fstk->vstk[fstk->vcnt + 2]
 
 #define runtime(fmt, ...) do { \
   if (!(fs->flags & FF_SILENT)) \
@@ -222,12 +224,12 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
     }
     
     /* End of current line. Drop local variables before exiting. */
-    vstk.cnt -= curline.line->vars;
-    vstk.cnt -= curline.line->args;
-    estk.cnt--;
+    fstk->vcnt -= curline.line->vars;
+    fstk->vcnt -= curline.line->args;
+    fstk->ecnt--;
   }
 
-  if (vstk.cnt == 0) {
+  if (fstk->vcnt == 0) {
     if (val) {
       log_rl(&rl_runtime_err, L_ERR "filters: No value left on stack");
       return F_ERROR;
@@ -235,12 +237,12 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
     return F_NOP;
   }
 
-  if (val && (vstk.cnt == 1)) {
-    *val = vstk.val[0];
+  if (val && (fstk->vcnt == 1)) {
+    *val = fstk->vstk[0];
     return F_NOP;
   }
 
-  log_rl(&rl_runtime_err, L_ERR "Too many items left on stack: %u", vstk.cnt);
+  log_rl(&rl_runtime_err, L_ERR "Too many items left on stack: %u", fstk->vcnt);
   return F_ERROR;
 }
 

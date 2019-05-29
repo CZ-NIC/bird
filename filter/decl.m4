@@ -137,7 +137,7 @@ break;
 FID_INTERPRET
 case INST_NAME():
 #define whati (&(what->i_]]INST_NAME()[[))
-m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (vstk.cnt < INST_INVAL()) runtime("Stack underflow"); vstk.cnt -= INST_INVAL(); ]])
+m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
 m4_undivert(108)
 #undef whati
 break;
@@ -206,12 +206,12 @@ FID_ALL()')
 
 m4_define(LINEX, `FID_INTERPRET_BODY
 do {
-  estk.item[estk.cnt].pos = 0;
-  estk.item[estk.cnt].line = $1;
-  estk.item[estk.cnt].ventry = vstk.cnt;
-  estk.item[estk.cnt].vbase = estk.item[estk.cnt-1].vbase;
-  estk.item[estk.cnt].emask = 0;
-  estk.cnt++;
+  fstk->estk[fstk->ecnt].pos = 0;
+  fstk->estk[fstk->ecnt].line = $1;
+  fstk->estk[fstk->ecnt].ventry = fstk->vcnt;
+  fstk->estk[fstk->ecnt].vbase = fstk->estk[fstk->ecnt-1].vbase;
+  fstk->estk[fstk->ecnt].emask = 0;
+  fstk->ecnt++;
 } while (0)m4_dnl
 FID_ALL()')
 
@@ -236,7 +236,7 @@ do { if (whati->fl$1) {
 } } while(0)m4_dnl
 FID_ALL()')
 
-m4_define(RESULT_OK, `FID_INTERPRET_BODY()vstk.cnt++FID_ALL()')
+m4_define(RESULT_OK, `FID_INTERPRET_BODY()fstk->vcnt++FID_ALL()')
 m4_define(RESULT, `RESULT_VAL([[ (struct f_val) { .type = $1, .val.$2 = $3 } ]])')
 m4_define(RESULT_VAL, `FID_INTERPRET_BODY()do { res = $1; RESULT_OK; } while (0)FID_ALL()')
 
