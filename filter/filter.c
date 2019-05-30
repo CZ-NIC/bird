@@ -89,8 +89,14 @@ struct filter_state {
 
   /* Cached pointer to ea_list */
   struct ea_list **eattrs;
+
+  /* Linpool for adata allocation */
   struct linpool *pool;
+
+  /* Buffer for log output */
   struct buffer buf;
+
+  /* Filter execution flags */
   int flags;
 };
 
