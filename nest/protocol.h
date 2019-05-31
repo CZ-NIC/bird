@@ -96,6 +96,7 @@ struct proto_config {
   int class;				/* SYM_PROTO or SYM_TEMPLATE */
   u8 net_type;				/* Protocol network type (NET_*), 0 for undefined */
   u8 disabled;				/* Protocol enabled/disabled by default */
+  byte hidden;				/* Protocol not showed in show protocols */
   u32 debug, mrtdump;			/* Debugging bitfields, both use D_* constants */
   u32 router_id;			/* Protocol specific router ID */
 
@@ -160,6 +161,7 @@ struct proto {
   byte gr_recovery;			/* Protocol should participate in graceful restart recovery */
   byte down_sched;			/* Shutdown is scheduled for later (PDS_*) */
   byte down_code;			/* Reason for shutdown (PDC_* codes) */
+  byte hidden;				/* Protocol not showed in show protocols */
   u32 hash_key;				/* Random key used for hashing of neighbors */
   btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */

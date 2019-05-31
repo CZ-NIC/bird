@@ -13,6 +13,7 @@ struct rt_dev_config {
   struct proto_config c;
   list iface_list;		/* list of struct iface_patt */
   int check_link;
+  int host_ip;			/* Annunce local IP instead of prefix */
 
   struct channel_config *ip4_channel;
   struct channel_config *ip6_channel;

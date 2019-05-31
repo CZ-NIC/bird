@@ -34,6 +34,7 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
+#include "nest/rt-dev.h"
 #include "nest/cli.h"
 #include "lib/resource.h"
 #include "lib/event.h"
@@ -165,6 +166,87 @@ net_route(rtable *tab, const net_addr *n)
 
   case NET_IP6_SADR:
     return net_route_ip6_sadr(tab, (net_addr_ip6_sadr *) n0);
+
+  default:
+    return NULL;
+  }
+}
+
+static inline struct iface *
+net_route_ifa4(rtable *t, net_addr_ip4 *a, struct iface *vrf)
+{
+  while (1)
+  {
+    if (!BIT32_TEST(t->pxlens, a->pxlen))
+      goto next;
+
+    net *n = net_find(t, (net_addr *) a);
+
+    if (!n)
+      goto next;
+
+    for (rte *e = n->routes; e; e = e->next)
+    {
+      struct iface *i = e->attrs->nh.iface;
+      if (rte_is_valid(e) &&
+	  (e->attrs->dest == RTD_UNICAST) &&
+	  (!vrf || vrf == i->master))
+	return i;
+    }
+
+  next:
+    if (!a->pxlen)
+      return NULL;
+
+    a->pxlen--;
+    ip4_clrbit(&a->prefix, a->pxlen);
+  }
+}
+
+static inline struct iface *
+net_route_ifa6(rtable *t, net_addr_ip6 *a, struct iface *vrf)
+{
+  while (1)
+  {
+    if (!BIT32_TEST(t->pxlens, a->pxlen))
+      goto next;
+
+    net *n = net_find(t, (net_addr *) a);
+
+    if (!n)
+      goto next;
+
+    for (rte *e = n->routes; e; e = e->next)
+    {
+      struct iface *i = e->attrs->nh.iface;
+      if (rte_is_valid(e) &&
+	  (e->attrs->dest == RTD_UNICAST) &&
+	  (!vrf || vrf == i->master))
+	return i;
+    }
+
+  next:
+    if (!a->pxlen)
+      return NULL;
+
+    a->pxlen--;
+    ip6_clrbit(&a->prefix, a->pxlen);
+  }
+}
+
+struct iface *
+net_route_ifa(const ip_addr *a, struct iface *vrf)
+{
+  net_addr n0;
+  net_fill_ip_host(&n0, *a);
+
+  switch (n0.type)
+  {
+  case NET_IP4:
+    return net_route_ifa4(config->local4->table, (net_addr_ip4 *) &n0, vrf);
+
+  case NET_IP6:
+    return net_route_ifa6(config->local6->table, (net_addr_ip6 *) &n0, vrf);
 
   default:
     return NULL;
@@ -1821,6 +1903,50 @@ rt_preconfig(struct config *c)
 
   rt_new_table(cf_get_symbol("master4"), NET_IP4);
   rt_new_table(cf_get_symbol("master6"), NET_IP6);
+
+  c->local4 = rt_new_table(cf_get_symbol("local4"), NET_IP4);
+  c->local6 = rt_new_table(cf_get_symbol("local6"), NET_IP6);
+
+
+  /* Define two direct protocols and connect them to local tables */
+
+  struct symbol *s;
+  struct rt_dev_config *dev;
+  static struct channel_config *cc;
+
+  s = cf_get_symbol("networks");
+  dev = proto_config_new(&proto_device, SYM_PROTO);
+  init_list(&dev->iface_list);
+  cf_define_symbol(s, SYM_PROTO, dev);
+  dev->c.name = s->name;
+  dev->c.hidden = 1;
+  // dev->c.debug = D_EVENTS | D_STATES | D_IFACES;
+
+  cc = channel_config_get(NULL, net_label[NET_IP4], NET_IP4, &dev->c);
+  cc->table = c->local4;
+
+  cc = channel_config_get(NULL, net_label[NET_IP6], NET_IP6, &dev->c);
+  cc->table = c->local6;
+
+  proto_device.postconfig(&dev->c);
+
+
+  s = cf_get_symbol("addresses");
+  dev = proto_config_new(&proto_device, SYM_PROTO);
+  init_list(&dev->iface_list);
+  cf_define_symbol(s, SYM_PROTO, dev);
+  dev->c.name = s->name;
+  dev->c.hidden = 1;
+  // dev->c.debug = D_EVENTS | D_STATES | D_IFACES;
+  dev->host_ip = 1;
+
+  cc = channel_config_get(NULL, net_label[NET_IP4], NET_IP4, &dev->c);
+  cc->table = c->local4;
+
+  cc = channel_config_get(NULL, net_label[NET_IP6], NET_IP6, &dev->c);
+  cc->table = c->local6;
+
+  proto_device.postconfig(&dev->c);
 }
 
 

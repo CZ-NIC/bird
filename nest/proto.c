@@ -737,6 +737,7 @@ proto_new(struct proto_config *cf)
   p->proto = cf->protocol;
   p->net_type = cf->net_type;
   p->disabled = cf->disabled;
+  p->hidden = cf->hidden;
   p->hash_key = random_u32();
   cf->proto = p;
 
@@ -1025,7 +1026,13 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
 
   DBG("Protocol start\n");
 
-  /* Start device protocol first */
+
+  /* Start direct protocols first */
+  WALK_LIST_DELSAFE(p, n, proto_list)
+    if (p->proto == &proto_device)
+      proto_rethink_goal(p);
+
+  /* Start device protocol second */
   if (first_dev_proto)
     proto_rethink_goal(first_dev_proto);
 
@@ -1903,7 +1910,7 @@ proto_apply_cmd_patt(char *patt, void (* cmd)(struct proto *, uintptr_t, int), u
   int cnt = 0;
 
   WALK_LIST(p, proto_list)
-    if (!patt || patmatch(patt, p->name))
+    if ((!patt || patmatch(patt, p->name)) && !p->hidden)
       cmd(p, arg, cnt++);
 
   if (!cnt)
@@ -1943,7 +1950,7 @@ proto_get_named(struct symbol *sym, struct protocol *pr)
   {
     p = NULL;
     WALK_LIST(q, proto_list)
-      if ((q->proto == pr) && (q->proto_state != PS_DOWN))
+      if ((q->proto == pr) && (q->proto_state != PS_DOWN) && !q->hidden)
       {
 	if (p)
 	  cf_error("There are multiple %s protocols running", pr->name);

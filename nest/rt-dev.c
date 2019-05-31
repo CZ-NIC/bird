@@ -54,6 +54,12 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
   if (!c)
     return;
 
+  if (cf->host_ip)
+  {
+    net = alloca(sizeof(net_addr));
+    net_fill_ip_host(net, ad->ip);
+  }
+
   /* For IPv6 SADR, replace regular prefix with SADR prefix */
   if (c->net_type == NET_IP6_SADR)
   {

@@ -122,6 +122,8 @@ neigh_find(struct proto *p, ip_addr *a, unsigned flags)
   return neigh_find2(p, a, NULL, flags);
 }
 
+struct iface * net_route_ifa(const ip_addr *a, struct iface *vrf);
+
 
 neighbor *
 neigh_find2(struct proto *p, ip_addr *a, struct iface *ifa, unsigned flags)
@@ -153,13 +155,11 @@ neigh_find2(struct proto *p, ip_addr *a, struct iface *ifa, unsigned flags)
 	scope = class & IADDR_SCOPE_MASK;
     }
   else
-    WALK_LIST(i, iface_list)
-      if ((!p->vrf || p->vrf == i->master) &&
+    {
+      if ((i = net_route_ifa(a, p->vrf)) &&
 	  ((scope = if_connected(a, i, &addr)) >= 0))
-	{
-	  ifa = i;
-	  break;
-	}
+	ifa = i;
+    }
 
   /* scope < 0 means i don't know neighbor */
   /* scope >= 0 implies ifa != NULL */
