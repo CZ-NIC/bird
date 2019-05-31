@@ -119,8 +119,6 @@ case INST_NAME(): {
   m4_undivert(105)
 #undef what
 #undef item
-  dest->items[pos].fi_code = what_->fi_code;
-  dest->items[pos].lineno = what_->lineno;
   break;
 }
 m4_undefine([[FID_LINEARIZE_BODY_EXISTS]])
@@ -236,9 +234,29 @@ do { if (whati->fl$1) {
 } } while(0)m4_dnl
 FID_ALL()')
 
-m4_define(RESULT_OK, `FID_INTERPRET_BODY()fstk->vcnt++FID_ALL()')
-m4_define(RESULT, `RESULT_VAL([[ (struct f_val) { .type = $1, .val.$2 = $3 } ]])')
-m4_define(RESULT_VAL, `FID_INTERPRET_BODY()do { res = $1; RESULT_OK; } while (0)FID_ALL()')
+m4_define(RESULT_PTR, `
+FID_INTERPRET_BODY
+  do {
+    enum filter_return fret = f_lval_set(fs, &(what->result), $1);
+    if (fret != F_NOP) return fret;
+  } while (0)m4_dnl
+FID_ALL()')
+
+m4_define(RESULT, `
+FID_INTERPRET_BODY
+  do {
+    struct f_val res_ = { .type = $1, .val.$2 = $3 };
+    RESULT_PTR(&res_);
+  } while (0)m4_dnl
+FID_ALL()')
+
+m4_define(RESULT_VOID, `
+FID_INTERPRET_BODY
+  do {
+    struct f_val res_ = { .type = T_VOID };
+    RESULT_PTR(&res_);
+  } while (0)m4_dnl
+FID_ALL()')
 
 m4_define(SYMBOL, `FID_MEMBER(const struct symbol *, sym, sym,
 [[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name, const struct symbol *sym = whati->sym)')
@@ -302,6 +320,16 @@ void f_dump_line(const struct f_line *dest, uint indent)
   for (uint i=0; i<dest->len; i++) {
     const struct f_line_item *item = &dest->items[i];
     debug("%sInstruction %s at line %u\n", INDENT, f_instruction_name(item->fi_code), item->lineno);
+
+    switch (item->result.type) {
+      case F_LVAL_STACK: debug("%son stack\n", INDENT); break;
+      case F_LVAL_EXCEPTION: debug("%s=>exception 0x%x\n", INDENT, item->result.exception); break;
+      case F_LVAL_VARIABLE: debug("%s=>%s\n", INDENT, item->result.sym->name); break;
+      case F_LVAL_PREFERENCE: debug("%s=>preference\n", INDENT); break;
+      case F_LVAL_SA: debug("%s=>sa\n", INDENT); break;
+      case F_LVAL_EA: debug("%s=>ea\n", INDENT); break;
+    }
+
     switch (item->fi_code) {
 FID_WR_PUT(7)
       default: bug("Unknown instruction %x in f_dump_line", item->fi_code);
@@ -318,6 +346,9 @@ linearize(struct f_line *dest, const struct f_inst *what_, uint pos)
     switch (what_->fi_code) {
 FID_WR_PUT(8)
     }
+    dest->items[pos].fi_code = what_->fi_code;
+    dest->items[pos].lineno = what_->lineno;
+    dest->items[pos].result = what_->result;
     pos++;
   }
   return pos;
@@ -360,6 +391,32 @@ f_same(const struct f_line *fl1, const struct f_line *fl2)
     if (f1_->flags != f2_->flags)
       return 0;
 
+    if (f1_->result.type != f2_->result.type) return 0;
+    switch (f1_->result.type) {
+      case F_LVAL_STACK:
+	break;
+      case F_LVAL_EXCEPTION:
+	if (f1_->result.exception != f2_->result.exception)
+	  return 0;
+	break;
+      case F_LVAL_VARIABLE:
+	if (strcmp(f1_->result.sym->name, f2_->result.sym->name))
+	  return 0;
+	if (f1_->result.sym->class != f2_->result.sym->class)
+	  return 0;
+	break;
+      case F_LVAL_PREFERENCE:
+	break;
+      case F_LVAL_SA:
+	if (f1_->result.sa.sa_code != f2_->result.sa.sa_code)
+	  return 0;
+	break;
+      case F_LVAL_EA:
+	if (f1_->result.da.ea_code != f2_->result.da.ea_code)
+	  return 0;
+	break;
+    }
+
     switch(f1_->fi_code) {
 FID_WR_PUT(9)
     }
@@ -382,6 +439,7 @@ struct f_inst {
   enum f_instruction_code fi_code;	/* Instruction code */
   int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */
+  struct f_lval result;			/* Destination */
   union {
     FID_WR_PUT(1)
   };
@@ -392,6 +450,7 @@ struct f_line_item {
   enum f_instruction_code fi_code;	/* What to do */
   enum f_instruction_flags flags;	/* Flags, instruction-specific */
   uint lineno;				/* Where */
+  struct f_lval result;			/* Destination */
   union {
     FID_WR_PUT(2)
   };

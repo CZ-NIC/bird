@@ -36,7 +36,7 @@
  *	m4_dnl	  ACCESS_RTE;				this instruction needs route
  *	m4_dnl	  ACCESS_EATTRS;			this instruction needs extended attributes
  *	m4_dnl	  RESULT(type, union-field, value);	putting this on value stack
- *	m4_dnl	  RESULT_OK;				legalize what already is on the value stack
+ *	m4_dnl	  RESULT_PTR(vptr);			put what is pointed-to on the value stack
  *	m4_dnl	}
  *
  *	Other code is just copied into the interpreter part.
@@ -50,41 +50,37 @@
   INST(FI_ADD, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
-    res.val.i += v2.val.i;
-    RESULT_OK;
+    RESULT(T_INT, i, v1.val.i + v2.val.i);
   }
   INST(FI_SUBTRACT, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
-    res.val.i -= v2.val.i;
-    RESULT_OK;
+    RESULT(T_INT, i, v1.val.i - v2.val.i);
   }
   INST(FI_MULTIPLY, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
-    res.val.i *= v2.val.i;
-    RESULT_OK;
+    RESULT(T_INT, i, v1.val.i * v2.val.i);
   }
   INST(FI_DIVIDE, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
     if (v2.val.i == 0) runtime( "Mother told me not to divide by 0" );
-    res.val.i /= v2.val.i;
-    RESULT_OK;
+    RESULT(T_INT, i, v1.val.i / v2.val.i);
   }
   INST(FI_AND, 1, 1) {
     ARG(1,T_BOOL);
-    if (res.val.i)
+    if (v1.val.i)
       LINE(2,0);
     else
-      RESULT_OK;
+      RESULT_PTR(&(v1));
   }
   INST(FI_OR, 1, 1) {
     ARG(1,T_BOOL);
-    if (!res.val.i)
+    if (!v1.val.i)
       LINE(2,0);
     else
-      RESULT_OK;
+      RESULT_PTR(&(v1));
   }
   INST(FI_PAIR_CONSTRUCT, 2, 1) {
     ARG(1,T_INT);
@@ -281,8 +277,7 @@
 
   INST(FI_VAR_GET, 0, 1) {
     SYMBOL(1);
-    res = fstk->vstk[curline.vbase + sym->offset];
-    RESULT_OK;
+    RESULT_PTR(&(fstk->vstk[curline.vbase + sym->offset]));
   }
 
     /* some constants have value in a[1], some in *a[0].p, strange. */
@@ -303,8 +298,7 @@
       debug("%svalue %s\n", INDENT, val_dump(&item->val));
     FID_ALL
 
-    res = whati->val;
-    RESULT_OK;
+    RESULT_PTR(&(whati->val));
   }
   INST(FI_CONSTANT_DEFINED, 0, 1) {
     FID_STRUCT_IN
@@ -324,8 +318,7 @@
       debug("%sconstant %s with value %s\n", INDENT, item->sym->name, val_dump(item->valp));
     FID_ALL
 
-    res = *whati->valp;
-    RESULT_OK;
+    RESULT_PTR(whati->valp);
   }
   INST(FI_PRINT, 1, 0) {
     ARG_ANY(1);
@@ -398,76 +391,6 @@
     }
   }
 
-  INST(FI_RTA_SET, 1, 0) {
-    ACCESS_RTE;
-    ARG_ANY(1);
-    STATIC_ATTR;
-    if (sa.f_type != v1.type)
-      runtime( "Attempt to set static attribute to incompatible type" );
-
-    f_rta_cow(fs);
-    {
-      struct rta *rta = (*fs->rte)->attrs;
-
-      switch (sa.sa_code)
-      {
-      case SA_FROM:
-	rta->from = v1.val.ip;
-	break;
-
-      case SA_GW:
-	{
-	  ip_addr ip = v1.val.ip;
-	  neighbor *n = neigh_find(rta->src->proto, ip, NULL, 0);
-	  if (!n || (n->scope == SCOPE_HOST))
-	    runtime( "Invalid gw address" );
-
-	  rta->dest = RTD_UNICAST;
-	  rta->nh.gw = ip;
-	  rta->nh.iface = n->iface;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	}
-	break;
-
-      case SA_SCOPE:
-	rta->scope = v1.val.i;
-	break;
-
-      case SA_DEST:
-	{
-	  int i = v1.val.i;
-	  if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
-	    runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
-
-	  rta->dest = i;
-	  rta->nh.gw = IPA_NONE;
-	  rta->nh.iface = NULL;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	}
-	break;
-
-      case SA_IFNAME:
-	{
-	  struct iface *ifa = if_find_by_name(v1.val.s);
-	  if (!ifa)
-	    runtime( "Invalid iface name" );
-
-	  rta->dest = RTD_UNICAST;
-	  rta->nh.gw = IPA_NONE;
-	  rta->nh.iface = ifa;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	}
-	break;
-
-      default:
-	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
-      }
-    }
-  }
-
   INST(FI_EA_GET, 0, 1) {	/* Access to extended attributes */
     DYNAMIC_ATTR;
     ACCESS_RTE;
@@ -501,8 +424,7 @@
 	}
 
 	/* Undefined value */
-	res.type = T_VOID;
-	RESULT_OK;
+	RESULT_VOID;
 	break;
       }
 
@@ -535,101 +457,11 @@
 	RESULT(T_LCLIST, ad, e->u.ptr);
 	break;
       case EAF_TYPE_UNDEF:
-	res.type = T_VOID;
-	RESULT_OK;
+	RESULT_VOID;
 	break;
       default:
 	bug("Unknown dynamic attribute type");
       }
-    }
-  }
-
-  INST(FI_EA_SET, 1, 0) {
-    ACCESS_RTE;
-    ACCESS_EATTRS;
-    ARG_ANY(1);
-    DYNAMIC_ATTR;
-    {
-      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
-
-      l->next = NULL;
-      l->flags = EALF_SORTED;
-      l->count = 1;
-      l->attrs[0].id = da.ea_code;
-      l->attrs[0].flags = 0;
-      l->attrs[0].type = da.type | EAF_ORIGINATED | EAF_FRESH;
-
-      switch (da.type) {
-      case EAF_TYPE_INT:
-	if (v1.type != da.f_type)
-	  runtime( "Setting int attribute to non-int value" );
-	l->attrs[0].u.data = v1.val.i;
-	break;
-
-      case EAF_TYPE_ROUTER_ID:
-	/* IP->Quad implicit conversion */
-	if (val_is_ip4(&v1)) {
-	  l->attrs[0].u.data = ipa_to_u32(v1.val.ip);
-	  break;
-	}
-	/* T_INT for backward compatibility */
-	if ((v1.type != T_QUAD) && (v1.type != T_INT))
-	  runtime( "Setting quad attribute to non-quad value" );
-	l->attrs[0].u.data = v1.val.i;
-	break;
-
-      case EAF_TYPE_OPAQUE:
-	runtime( "Setting opaque attribute is not allowed" );
-	break;
-      case EAF_TYPE_IP_ADDRESS:
-	if (v1.type != T_IP)
-	  runtime( "Setting ip attribute to non-ip value" );
-	int len = sizeof(ip_addr);
-	struct adata *ad = lp_alloc(fs->pool, sizeof(struct adata) + len);
-	ad->length = len;
-	(* (ip_addr *) ad->data) = v1.val.ip;
-	l->attrs[0].u.ptr = ad;
-	break;
-      case EAF_TYPE_AS_PATH:
-	if (v1.type != T_PATH)
-	  runtime( "Setting path attribute to non-path value" );
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-      case EAF_TYPE_BITFIELD:
-	if (v1.type != T_BOOL)
-	  runtime( "Setting bit in bitfield attribute to non-bool value" );
-	{
-	  /* First, we have to find the old value */
-	  eattr *e = ea_find(*fs->eattrs, da.ea_code);
-	  u32 data = e ? e->u.data : 0;
-
-	  if (v1.val.i)
-	    l->attrs[0].u.data = data | (1u << da.bit);
-	  else
-	    l->attrs[0].u.data = data & ~(1u << da.bit);
-	}
-	break;
-      case EAF_TYPE_INT_SET:
-	if (v1.type != T_CLIST)
-	  runtime( "Setting clist attribute to non-clist value" );
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-      case EAF_TYPE_EC_SET:
-	if (v1.type != T_ECLIST)
-	  runtime( "Setting eclist attribute to non-eclist value" );
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-      case EAF_TYPE_LC_SET:
-	if (v1.type != T_LCLIST)
-	  runtime( "Setting lclist attribute to non-lclist value" );
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-      default: bug("Unknown type in e,S");
-      }
-
-      f_rta_cow(fs);
-      l->next = *fs->eattrs;
-      *fs->eattrs = l;
     }
   }
 
@@ -658,15 +490,6 @@
   INST(FI_PREF_GET, 0, 1) {
     ACCESS_RTE;
     RESULT(T_INT, i, (*fs->rte)->pref);
-  }
-
-  INST(FI_PREF_SET, 1, 0) {
-    ACCESS_RTE;
-    ARG(1,T_INT);
-    if (v1.val.i > 0xFFFF)
-      runtime( "Setting preference value out of bounds" );
-    f_rte_cow(fs);
-    (*fs->rte)->pref = v1.val.i;
   }
 
   INST(FI_LENGTH, 1, 1) {	/* Get length of */
@@ -742,33 +565,6 @@
   INST(FI_AS_PATH_LAST_NAG, 1, 1) {	/* Get last ASN from non-aggregated part of AS PATH */
     ARG(1, T_PATH);
     RESULT(T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
-  }
-
-  INST(FI_RETURN, 1, 1) {
-    /* Acquire the return value */
-    ARG_ANY(1);
-    uint retpos = fstk->vcnt;
-
-    /* Drop every sub-block including ourselves */
-    while ((fstk->ecnt-- > 0) && !(fstk->estk[fstk->ecnt].emask & FE_RETURN))
-      ;
-
-    /* Now we are at the caller frame; if no such, try to convert to accept/reject. */
-    if (!fstk->ecnt)
-      if (fstk->vstk[retpos].type == T_BOOL)
-	if (fstk->vstk[retpos].val.i)
-
-	  return F_ACCEPT;
-	else
-	  return F_REJECT;
-      else
-	runtime("Can't return non-bool from non-function");
-
-    /* Set the value stack position, overwriting the former implicit void */
-    fstk->vcnt = fstk->estk[fstk->ecnt].ventry - 1;
-
-    /* Copy the return value */
-    RESULT_VAL(fstk->vstk[retpos]);
   }
 
   INST(FI_CALL, 0, 1) {
