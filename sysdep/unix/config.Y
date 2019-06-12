@@ -18,7 +18,7 @@ static struct log_config *this_log;
 CF_DECLS
 
 CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT)
-CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING)
+CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout
 %type <t> cfg_name
@@ -123,6 +123,9 @@ CF_CLI(CONFIGURE CONFIRM,,, [[Confirm last configuration change - deactivate und
 
 CF_CLI(CONFIGURE UNDO,,, [[Undo last configuration change]])
 { cmd_reconfig_undo(); } ;
+
+CF_CLI(CONFIGURE STATUS,,, [[Show configuration status]])
+{ cmd_reconfig_status(); } ;
 
 CF_CLI(CONFIGURE CHECK, cfg_name, [\"<file>\"], [[Parse configuration and check its validity]])
 { cmd_check_config($3); } ;

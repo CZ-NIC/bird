@@ -69,6 +69,8 @@ void config_free(struct config *);
 int config_commit(struct config *, int type, uint timeout);
 int config_confirm(void);
 int config_undo(void);
+int config_status(void);
+btime config_timer_status(void);
 void config_init(void);
 void cf_error(const char *msg, ...) NORET;
 void config_add_obstacle(struct config *);

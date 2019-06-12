@@ -339,6 +339,28 @@ cmd_reconfig_undo(void)
   cmd_reconfig_msg(r);
 }
 
+void
+cmd_reconfig_status(void)
+{
+  int s = config_status();
+  btime t = config_timer_status();
+
+  switch (s)
+  {
+  case CONF_DONE:	cli_msg(-3, "Daemon is up and running"); break;
+  case CONF_PROGRESS:	cli_msg(-4, "Reconfiguration in progress"); break;
+  case CONF_QUEUED:	cli_msg(-5, "Reconfiguration in progress, next one enqueued"); break;
+  case CONF_SHUTDOWN:	cli_msg(-6, "Shutdown in progress"); break;
+  default:		break;
+  }
+
+  if (t >= 0)
+    cli_msg(-22, "Configuration unconfirmed, undo in %t s", t);
+
+  cli_msg(0, "");
+}
+
+
 /*
  *	Command-Line Interface
  */

@@ -444,6 +444,24 @@ config_undo(void)
   return CONF_PROGRESS;
 }
 
+int
+config_status(void)
+{
+  if (shutting_down)
+    return CONF_SHUTDOWN;
+
+  if (configuring)
+    return future_cftype ? CONF_QUEUED : CONF_PROGRESS;
+
+  return CONF_DONE;
+}
+
+btime
+config_timer_status(void)
+{
+  return tm_active(config_timer) ? tm_remains(config_timer) : -1;
+}
+
 extern void cmd_reconfig_undo_notify(void);
 
 static void
