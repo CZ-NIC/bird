@@ -1998,8 +1998,10 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 		     OFFSETOF(struct bgp_config, password) - sizeof(struct proto_config))
     && ((!old->password && !new->password)
 	|| (old->password && new->password && !strcmp(old->password, new->password)))
-    && net_equal(old->remote_range, new->remote_range)
-    && !strcmp(old->dynamic_name, new->dynamic_name)
+    && ((!old->remote_range && !new->remote_range)
+	|| (old->remote_range && new->remote_range && net_equal(old->remote_range, new->remote_range)))
+    && ((!old->dynamic_name && !new->dynamic_name)
+	|| (old->dynamic_name && new->dynamic_name && !strcmp(old->dynamic_name, new->dynamic_name)))
     && (old->dynamic_name_digits == new->dynamic_name_digits);
 
   /* FIXME: Move channel reconfiguration to generic protocol code ? */
