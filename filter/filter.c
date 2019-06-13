@@ -680,7 +680,7 @@ filter_same(const struct filter *new, const struct filter *old)
  * filter_commit - do filter comparisons on all the named functions and filters
  */
 void
-filter_commit(const struct config *new, const struct config *old)
+filter_commit(struct config *new, struct config *old)
 {
   if (!old)
     return;
