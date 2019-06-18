@@ -257,6 +257,7 @@ struct proto_spec {
 #define PDC_CMD_DISABLE		0x11	/* Result of disable command */
 #define PDC_CMD_RESTART		0x12	/* Result of restart command */
 #define PDC_CMD_SHUTDOWN	0x13	/* Result of global shutdown */
+#define PDC_CMD_GR_DOWN		0x14	/* Result of global graceful restart */
 #define PDC_RX_LIMIT_HIT	0x21	/* Route receive limit reached */
 #define PDC_IN_LIMIT_HIT	0x22	/* Route import limit reached */
 #define PDC_OUT_LIMIT_HIT	0x23	/* Route export limit reached */

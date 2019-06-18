@@ -492,19 +492,24 @@ config_init(void)
  * for switching to an empty configuration.
  */
 void
-order_shutdown(void)
+order_shutdown(int gr)
 {
   struct config *c;
 
   if (shutting_down)
     return;
 
-  log(L_INFO "Shutting down");
+  if (!gr)
+    log(L_INFO "Shutting down");
+  else
+    log(L_INFO "Shutting down for graceful restart");
+
   c = lp_alloc(config->mem, sizeof(struct config));
   memcpy(c, config, sizeof(struct config));
   init_list(&c->protos);
   init_list(&c->tables);
   c->shutdown = 1;
+  c->gr_down = gr;
 
   config_commit(c, RECONFIG_HARD, 0);
   shutting_down = 1;

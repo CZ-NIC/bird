@@ -422,7 +422,7 @@ bgp_update_startup_delay(struct bgp_proto *p)
 }
 
 static void
-bgp_graceful_close_conn(struct bgp_conn *conn, uint subcode, byte *data, uint len)
+bgp_graceful_close_conn(struct bgp_conn *conn, int subcode, byte *data, uint len)
 {
   switch (conn->state)
   {
@@ -438,7 +438,13 @@ bgp_graceful_close_conn(struct bgp_conn *conn, uint subcode, byte *data, uint le
   case BS_OPENSENT:
   case BS_OPENCONFIRM:
   case BS_ESTABLISHED:
-    bgp_error(conn, 6, subcode, data, len);
+    if (subcode < 0)
+    {
+      bgp_conn_enter_close_state(conn);
+      bgp_schedule_packet(conn, NULL, PKT_SCHEDULE_CLOSE);
+    }
+    else
+      bgp_error(conn, 6, subcode, data, len);
     return;
 
   default:
@@ -501,7 +507,7 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip)
 }
 
 void
-bgp_stop(struct bgp_proto *p, uint subcode, byte *data, uint len)
+bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
 {
   proto_notify_state(&p->p, PS_STOP);
   bgp_graceful_close_conn(&p->outgoing_conn, subcode, data, len);
@@ -1555,7 +1561,7 @@ static int
 bgp_shutdown(struct proto *P)
 {
   struct bgp_proto *p = (struct bgp_proto *) P;
-  uint subcode = 0;
+  int subcode = 0;
 
   char *message = NULL;
   byte *data = NULL;
@@ -1576,6 +1582,7 @@ bgp_shutdown(struct proto *P)
 
   case PDC_CMD_DISABLE:
   case PDC_CMD_SHUTDOWN:
+  shutdown:
     subcode = 2; // Errcode 6, 2 - administrative shutdown
     message = P->message;
     break;
@@ -1583,6 +1590,14 @@ bgp_shutdown(struct proto *P)
   case PDC_CMD_RESTART:
     subcode = 4; // Errcode 6, 4 - administrative reset
     message = P->message;
+    break;
+
+  case PDC_CMD_GR_DOWN:
+    if ((p->cf->gr_mode != BGP_GR_ABLE) &&
+	(p->cf->llgr_mode != BGP_LLGR_ABLE))
+      goto shutdown;
+
+    subcode = -1; // Do not send NOTIFICATION, just close the connection
     break;
 
   case PDC_RX_LIMIT_HIT:
