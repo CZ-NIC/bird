@@ -525,3 +525,4 @@ val_dump(const struct f_val *v) {
   val_format(v, &b);
   return val_dump_buffer;
 }
+

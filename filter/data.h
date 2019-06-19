@@ -107,15 +107,8 @@ struct f_static_attr {
   int readonly:1;			/* Don't allow writing */
 };
 
-/* Exception bits */
-enum f_exception {
-  FE_RETURN = 0x1,
-};
-
 /* Filter l-value type */
 enum f_lval_type {
-  F_LVAL_STACK = 0,
-  F_LVAL_EXCEPTION,
   F_LVAL_VARIABLE,
   F_LVAL_PREFERENCE,
   F_LVAL_SA,
@@ -126,7 +119,6 @@ enum f_lval_type {
 struct f_lval {
   enum f_lval_type type;
   union {
-    enum f_exception exception;
     const struct symbol *sym;
     struct f_dynamic_attr da;
     struct f_static_attr sa;

@@ -51,6 +51,12 @@
 #include "filter/data.h"
 
 
+/* Exception bits */
+enum f_exception {
+  FE_RETURN = 0x1,
+};
+
+
 struct filter_stack {
   /* Value stack for execution */
 #define F_VAL_STACK_MAX	4096
@@ -145,7 +151,7 @@ f_rta_cow(struct filter_state *fs)
 }
 
 static char *
-val_format_str(struct filter_state *fs, const struct f_val *v) {
+val_format_str(struct filter_state *fs, struct f_val *v) {
   buffer b;
   LOG_BUFFER_INIT(b);
   val_format(v, &b);
@@ -153,233 +159,6 @@ val_format_str(struct filter_state *fs, const struct f_val *v) {
 }
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
-
-#define runtime(fmt, ...) do { \
-  if (!(fs->flags & FF_SILENT)) \
-    log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, \
-	(fs->stack->estk[fs->stack->ecnt-1].line->items[fs->stack->estk[fs->stack->ecnt-1].pos-1]).lineno, \
-	##__VA_ARGS__); \
-  return F_ERROR; \
-} while(0)
-
-#define ACCESS_RTE do { if (!fs->rte) runtime("No route to access"); } while (0)
-#define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
-
-static inline enum filter_return
-f_rta_set(struct filter_state *fs, struct f_static_attr sa, const struct f_val *val)
-{
-    ACCESS_RTE;
-    if (sa.f_type != val->type)
-      runtime( "Attempt to set static attribute to incompatible type" );
-
-    f_rta_cow(fs);
-    {
-      struct rta *rta = (*fs->rte)->attrs;
-
-      switch (sa.sa_code)
-      {
-      case SA_FROM:
-	rta->from = val->val.ip;
-	return F_NOP;
-
-      case SA_GW:
-	{
-	  ip_addr ip = val->val.ip;
-	  neighbor *n = neigh_find(rta->src->proto, ip, NULL, 0);
-	  if (!n || (n->scope == SCOPE_HOST))
-	    runtime( "Invalid gw address" );
-
-	  rta->dest = RTD_UNICAST;
-	  rta->nh.gw = ip;
-	  rta->nh.iface = n->iface;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	}
-	return F_NOP;
-
-      case SA_SCOPE:
-	rta->scope = val->val.i;
-	return F_NOP;
-
-      case SA_DEST:
-	{
-	  int i = val->val.i;
-	  if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
-	    runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
-
-	  rta->dest = i;
-	  rta->nh.gw = IPA_NONE;
-	  rta->nh.iface = NULL;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	}
-	return F_NOP;
-
-      case SA_IFNAME:
-	{
-	  struct iface *ifa = if_find_by_name(val->val.s);
-	  if (!ifa)
-	    runtime( "Invalid iface name" );
-
-	  rta->dest = RTD_UNICAST;
-	  rta->nh.gw = IPA_NONE;
-	  rta->nh.iface = ifa;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	}
-	return F_NOP;
-
-      default:
-	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
-      }
-    }
-}
-
-static inline enum filter_return
-f_ea_set(struct filter_state *fs, struct f_dynamic_attr da, const struct f_val *val)
-{
-    ACCESS_RTE;
-    ACCESS_EATTRS;
-    {
-      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
-
-      l->next = NULL;
-      l->flags = EALF_SORTED;
-      l->count = 1;
-      l->attrs[0].id = da.ea_code;
-      l->attrs[0].flags = 0;
-      l->attrs[0].type = da.type | EAF_ORIGINATED | EAF_FRESH;
-
-      switch (da.type) {
-      case EAF_TYPE_INT:
-	if (val->type != da.f_type)
-	  runtime( "Setting int attribute to non-int value" );
-	l->attrs[0].u.data = val->val.i;
-	break;
-
-      case EAF_TYPE_ROUTER_ID:
-	/* IP->Quad implicit conversion */
-	if (val_is_ip4(val)) {
-	  l->attrs[0].u.data = ipa_to_u32(val->val.ip);
-	  break;
-	}
-	/* T_INT for backward compatibility */
-	if ((val->type != T_QUAD) && (val->type != T_INT))
-	  runtime( "Setting quad attribute to non-quad value" );
-	l->attrs[0].u.data = val->val.i;
-	break;
-
-      case EAF_TYPE_OPAQUE:
-	runtime( "Setting opaque attribute is not allowed" );
-	break;
-      case EAF_TYPE_IP_ADDRESS:
-	if (val->type != T_IP)
-	  runtime( "Setting ip attribute to non-ip value" );
-	int len = sizeof(ip_addr);
-	struct adata *ad = lp_alloc(fs->pool, sizeof(struct adata) + len);
-	ad->length = len;
-	(* (ip_addr *) ad->data) = val->val.ip;
-	l->attrs[0].u.ptr = ad;
-	break;
-      case EAF_TYPE_AS_PATH:
-	if (val->type != T_PATH)
-	  runtime( "Setting path attribute to non-path value" );
-	l->attrs[0].u.ptr = val->val.ad;
-	break;
-      case EAF_TYPE_BITFIELD:
-	if (val->type != T_BOOL)
-	  runtime( "Setting bit in bitfield attribute to non-bool value" );
-	{
-	  /* First, we have to find the old value */
-	  eattr *e = ea_find(*fs->eattrs, da.ea_code);
-	  u32 data = e ? e->u.data : 0;
-
-	  if (val->val.i)
-	    l->attrs[0].u.data = data | (1u << da.bit);
-	  else
-	    l->attrs[0].u.data = data & ~(1u << da.bit);
-	}
-	break;
-      case EAF_TYPE_INT_SET:
-	if (val->type != T_CLIST)
-	  runtime( "Setting clist attribute to non-clist value" );
-	l->attrs[0].u.ptr = val->val.ad;
-	break;
-      case EAF_TYPE_EC_SET:
-	if (val->type != T_ECLIST)
-	  runtime( "Setting eclist attribute to non-eclist value" );
-	l->attrs[0].u.ptr = val->val.ad;
-	break;
-      case EAF_TYPE_LC_SET:
-	if (val->type != T_LCLIST)
-	  runtime( "Setting lclist attribute to non-lclist value" );
-	l->attrs[0].u.ptr = val->val.ad;
-	break;
-      default: bug("Unknown type in e,S");
-      }
-
-      f_rta_cow(fs);
-      l->next = *fs->eattrs;
-      *fs->eattrs = l;
-
-      return F_NOP;
-    }
-}
-
-static inline enum filter_return
-f_lval_set(struct filter_state *fs, const struct f_lval *lv, const struct f_val *val)
-{
-  switch (lv->type) {
-    case F_LVAL_STACK:
-      fs->stack->vstk[fs->stack->vcnt] = *val;
-      fs->stack->vcnt++;
-      return F_NOP;
-    case F_LVAL_EXCEPTION:
-      {
-	/* Drop every sub-block including ourselves */
-	while ((fs->stack->ecnt-- > 0) && !(fs->stack->estk[fs->stack->ecnt].emask & lv->exception))
-	  ;
-
-	/* Now we are at the catch frame; if no such, try to convert to accept/reject. */
-	if (!fs->stack->ecnt)
-	  if (lv->exception == FE_RETURN)
-	    if (val->type == T_BOOL)
-	      if (val->val.i)
-		return F_ACCEPT;
-	      else
-		return F_REJECT;
-	    else
-	      runtime("Can't return non-bool from non-function");
-	  else
-	    runtime("Unhandled exception 0x%x: %s", lv->exception, val_format_str(fs, val));
-
-	/* Set the value stack position, overwriting the former implicit void */
-	fs->stack->vcnt = fs->stack->estk[fs->stack->ecnt].ventry;
-
-	/* Copy the return value */
-	fs->stack->vstk[fs->stack->vcnt - 1] = *val;
-	return F_NOP;
-      }
-    case F_LVAL_VARIABLE:
-      fs->stack->vstk[fs->stack->estk[fs->stack->ecnt-1].vbase + lv->sym->offset] = *val;
-      return F_NOP;
-    case F_LVAL_PREFERENCE:
-      ACCESS_RTE;
-      if (val->type != T_INT)
-	runtime("Preference must be integer, got 0x%02x", val->type);
-      if (val->val.i > 0xFFFF)
-	runtime("Preference is at most 65536");
-      f_rte_cow(fs);
-      (*fs->rte)->pref = val->val.i;
-      return F_NOP;
-    case F_LVAL_SA:
-      return f_rta_set(fs, lv->sa, val);
-    case F_LVAL_EA:
-      return f_ea_set(fs, lv->da, val);
-    default:
-      bug("This shall never happen");
-  }    
-}
 
 /**
  * interpret
@@ -430,6 +209,15 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 #define v2 fstk->vstk[fstk->vcnt + 1]
 #define v3 fstk->vstk[fstk->vcnt + 2]
 
+#define runtime(fmt, ...) do { \
+  if (!(fs->flags & FF_SILENT)) \
+    log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
+  return F_ERROR; \
+} while(0)
+
+#define ACCESS_RTE do { if (!fs->rte) runtime("No route to access"); } while (0)
+#define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
+
 #include "filter/inst-interpret.c"
 #undef res
 #undef v1
@@ -445,16 +233,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
     fstk->vcnt -= curline.line->vars;
     fstk->vcnt -= curline.line->args;
     fstk->ecnt--;
-
-    /* If the caller wants to store the result somewhere, do it. */
-    if (fstk->ecnt) {
-      const struct f_line_item *caller = &(curline.line->items[curline.pos-1]);
-      if (caller->result.type != F_LVAL_STACK) {
-	enum filter_return fret = f_lval_set(fs, &(caller->result), &fstk->vstk[--fstk->vcnt]);
-	if (fret != F_NOP)
-	  return fret;
-      }
-    }
   }
 
   if (fstk->vcnt == 0) {

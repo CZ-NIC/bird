@@ -21,13 +21,9 @@ static inline u32 pair(u32 a, u32 b) { return (a << 16) | b; }
 static inline u32 pair_a(u32 p) { return p >> 16; }
 static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
 
-#define f_generate_complex(fi_code, _da, arg) ({ \
-  struct f_inst *fi = f_new_inst(fi_code, f_new_inst(FI_EA_GET, _da), arg); \
-  fi->result.type = F_LVAL_EA; \
-  fi->result.da = _da; \
-  fi; \
-})
-  
+#define f_generate_complex(fi_code, da, arg) \
+  f_new_inst(FI_EA_SET, f_new_inst(fi_code, f_new_inst(FI_EA_GET, da), arg), da)
+
 /*
  * Sets and their items are during parsing handled as lists, linked
  * through left ptr. The first item in a list also contains a pointer
@@ -188,10 +184,7 @@ f_generate_empty(struct f_dynamic_attr dyn)
       cf_error("Can't empty that attribute");
   }
 
-  struct f_inst *fi = f_new_inst(FI_CONSTANT, empty);
-  fi->result.type = F_LVAL_EA;
-  fi->result.da = dyn;
-  return fi;
+  return f_new_inst(FI_EA_SET, f_new_inst(FI_CONSTANT, empty), dyn);
 }
 
 #if 0
@@ -404,34 +397,31 @@ assert_done(struct f_inst *expr, const char *start, const char *end)
 static struct f_inst *
 assert_assign(struct f_lval *lval, struct f_inst *expr, const char *start, const char *end)
 {
-  struct f_inst *getter;
+  struct f_inst *setter, *getter, *checker;
   switch (lval->type) {
-    case F_LVAL_STACK:
-      bug("This shall never happen");
-    case F_LVAL_EXCEPTION:
-      bug("This shall never happen");
     case F_LVAL_VARIABLE:
+      setter = f_new_inst(FI_VAR_SET, expr, lval->sym);
       getter = f_new_inst(FI_VAR_GET, lval->sym);
       break;
     case F_LVAL_PREFERENCE:
+      setter = f_new_inst(FI_PREF_SET, expr);
       getter = f_new_inst(FI_PREF_GET);
       break;
     case F_LVAL_SA:
+      setter = f_new_inst(FI_RTA_SET, expr, lval->sa);
       getter = f_new_inst(FI_RTA_GET, lval->sa);
       break;
     case F_LVAL_EA:
+      setter = f_new_inst(FI_EA_SET, expr, lval->da);
       getter = f_new_inst(FI_EA_GET, lval->da);
       break;
+    default:
+      bug("Unknown lval type");
   }
 
-  struct f_inst *checker = f_new_inst(FI_EQ, expr, getter);
-
-  struct f_inst *setter = cfg_alloc(sizeof(struct f_inst));
-  *setter = *expr;
-
+  checker = f_new_inst(FI_EQ, expr, getter);
   setter->next = checker;
-  setter->result = *lval;
-
+  
   return assert_done(setter, start, end);
 }
 
@@ -995,40 +985,29 @@ cmd:
  | CF_SYM_KNOWN '=' term ';' {
      switch ($1->class) {
        case SYM_VARIABLE_RANGE:
-	 $3->result.type = F_LVAL_VARIABLE;
-	 $3->result.sym = $1;
+	 $$ = f_new_inst(FI_VAR_SET, $3, $1);
 	 break;
        case SYM_ATTRIBUTE:
-	 $3->result.type = F_LVAL_EA;
-	 $3->result.da = *$1->attribute;
+	 $$ = f_new_inst(FI_EA_SET, $3, *$1->attribute);
 	 break;
        default:
 	 cf_error("Can't assign to symbol %s", $1->name);
      }
-     $$ = $3;
    }
  | RETURN term ';' {
      DBG( "Ook, we'll return the value\n" );
-     $2->result.type = F_LVAL_EXCEPTION;
-     $2->result.exception = FE_RETURN;
-     $$ = $2;
+     $$ = f_new_inst(FI_RETURN, $2);
    }
  | dynamic_attr '=' term ';' {
-     $3->result.type = F_LVAL_EA;
-     $3->result.da = $1;
-     $$ = $3;
+     $$ = f_new_inst(FI_EA_SET, $3, $1);
    }
  | static_attr '=' term ';' {
      if ($1.readonly)
        cf_error( "This static attribute is read-only.");
-
-     $3->result.type = F_LVAL_SA;
-     $3->result.sa = $1;
-     $$ = $3;
+     $$ = f_new_inst(FI_RTA_SET, $3, $1);
    }
  | PREFERENCE '=' term ';' {
-     $3->result.type = F_LVAL_PREFERENCE;
-     $$ = $3;
+     $$ = f_new_inst(FI_PREF_SET, $3);
    }
  | UNSET '(' dynamic_attr ')' ';' {
      $$ = f_new_inst(FI_EA_UNSET, $3);
