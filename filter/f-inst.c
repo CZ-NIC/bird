@@ -50,26 +50,26 @@
   INST(FI_ADD, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
-    res.val.i += v2.val.i;
+    res.val.i = v1.val.i + v2.val.i;
     RESULT_OK;
   }
   INST(FI_SUBTRACT, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
-    res.val.i -= v2.val.i;
+    res.val.i = v1.val.i - v2.val.i;
     RESULT_OK;
   }
   INST(FI_MULTIPLY, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
-    res.val.i *= v2.val.i;
+    res.val.i = v1.val.i * v2.val.i;
     RESULT_OK;
   }
   INST(FI_DIVIDE, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
     if (v2.val.i == 0) runtime( "Mother told me not to divide by 0" );
-    res.val.i /= v2.val.i;
+    res.val.i = v1.val.i / v2.val.i;
     RESULT_OK;
   }
   INST(FI_AND, 1, 1) {
