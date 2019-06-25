@@ -15,8 +15,6 @@ CF_HDR
 
 CF_DEFINES
 
-static uint decls_count;
-
 static inline u32 pair(u32 a, u32 b) { return (a << 16) | b; }
 static inline u32 pair_a(u32 p) { return p >> 16; }
 static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
@@ -455,7 +453,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <f> filter where_filter
 %type <fl> filter_body function_body
 %type <flv> lvalue
-%type <i> type function_params
+%type <i> type function_params declsn decls
 %type <ecs> ec_kind
 %type <fret> break_command 
 %type <i32> cnum
@@ -557,22 +555,24 @@ type:
 
 /* Declarations with ';' at the end */
 decls:
-   /* EMPTY */
- | declsn ';'
+   /* EMPTY */ { $$ = 0; }
+ | declsn ';' { $$ = $1; }
  ;
 
 /* Declarations that have no ';' at the end. */
 declsn:
    type CF_SYM_VOID {
-     cf_define_symbol($2, SYM_VARIABLE | $1, offset, decls_count++);
+     cf_define_symbol($2, SYM_VARIABLE | $1, offset, $2->scope->slots++);
+     $$ = $2->scope->slots;
    }
  | declsn ';' type CF_SYM_VOID {
-     if (decls_count >= 0xff) cf_error("Too many declarations, at most 255 allowed");
-     cf_define_symbol($4, SYM_VARIABLE | $3, offset, decls_count++);
+     if ($4->scope->slots >= 0xff) cf_error("Too many declarations, at most 255 allowed");
+     cf_define_symbol($4, SYM_VARIABLE | $3, offset, $4->scope->slots++);
+     $$ = $4->scope->slots;
    }
  ;
 
-filter_body: { decls_count = 0; } function_body { $$ = $2; } ;
+filter_body: function_body ;
 
 filter:
    CF_SYM_KNOWN {
@@ -594,14 +594,14 @@ where_filter:
  ;
 
 function_params:
-   '(' declsn ')' { $$ = decls_count; }
+   '(' declsn ')' { $$ = $2; }
  | '(' ')' { $$ = 0; }
  ;
 
 function_body:
    decls '{' cmds '}' {
      $$ = f_linearize($3);
-     $$->vars = decls_count;
+     $$->vars = $1;
    }
  ;
 
@@ -610,7 +610,6 @@ function_def:
    FUNCTION CF_SYM_VOID { DBG( "Beginning of function %s\n", $2->name );
      $2 = cf_define_symbol($2, SYM_FUNCTION, function, NULL);
      cf_push_scope($2);
-     decls_count = 0;
    } function_params function_body {
      $5->vars -= $4;
      $5->args = $4;

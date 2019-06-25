@@ -742,6 +742,7 @@ cf_push_scope(struct symbol *sym)
   conf_this_scope = s;
   s->active = 1;
   s->name = sym;
+  s->slots = 0;
 }
 
 /**

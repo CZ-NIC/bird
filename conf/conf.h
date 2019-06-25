@@ -126,6 +126,7 @@ struct symbol {
 struct sym_scope {
   struct sym_scope *next;		/* Next on scope stack */
   struct symbol *name;			/* Name of this scope */
+  uint slots;				/* Variable slots */
   int active;				/* Currently entered */
 };
 
