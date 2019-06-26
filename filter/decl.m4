@@ -15,8 +15,7 @@ m4_divert(-1)m4_dnl
 #	8	linearize
 #	9	same (filter comparator)
 #	1	union in struct f_inst
-#	3	constructors
-#	10	interpreter
+#	3	constructors + interpreter
 #
 #	Per-inst Diversions:
 #	101	content of per-inst struct
@@ -57,13 +56,17 @@ m4_define(FID_LINEARIZE_BODY, `m4_divert(105)m4_define([[FID_LINEARIZE_BODY_EXIS
 m4_define(FID_SAME_BODY, `m4_divert(106)')
 m4_define(FID_LINE_IN, `m4_divert(107)')
 m4_define(FID_INTERPRET_BODY, `m4_divert(108)')
+m4_define(FID_INTERPRET_NEW, `m4_ifelse(TARGET, [[C]], [[m4_divert(108)]], [[m4_divert(-1)]])')
+m4_define(FID_INTERPRET_EXEC, `m4_ifelse(TARGET, [[I]], [[m4_divert(108)]], [[m4_divert(-1)]])')
 
 m4_define(FID_ALL, `FID_INTERPRET_BODY');
 
 m4_define(FID_ALL_TARGETS, `m4_ifdef([[FID_CURDIV]], [[m4_divert(FID_CURDIV)m4_undefine([[FID_CURDIV]])]])')
-m4_define(FID_C, `m4_ifelse(TARGET, [[C]], FID_ALL_TARGETS, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
-m4_define(FID_I, `m4_ifelse(TARGET, [[I]], FID_ALL_TARGETS, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
-m4_define(FID_H, `m4_ifelse(TARGET, [[H]], FID_ALL_TARGETS, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
+m4_define(FID_C, `m4_ifelse(TARGET, [[C]], FID_ALL_TARGETS, [[m4_ifelse(m4_divnum, -1,, [[m4_define(FID_CURDIV, m4_divnum)]])m4_divert(-1)]])')
+m4_define(FID_I, `m4_ifelse(TARGET, [[I]], FID_ALL_TARGETS, [[m4_ifelse(m4_divnum, -1,, [[m4_define(FID_CURDIV, m4_divnum)]])m4_divert(-1)]])')
+m4_define(FID_H, `m4_ifelse(TARGET, [[H]], FID_ALL_TARGETS, [[m4_ifelse(m4_divnum, -1,, [[m4_define(FID_CURDIV, m4_divnum)]])m4_divert(-1)]])')
+m4_define(FID_CI, `m4_ifelse(TARGET, [[H]], [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]], FID_ALL_TARGETS)')
+
 
 
 m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
@@ -87,14 +90,46 @@ FID_H
 ;
 FID_C
 {
-  struct f_inst *what_ = cfg_allocz(sizeof(struct f_inst));
-  what_->fi_code = fi_code;
-  what_->lineno = ifs->lino;
-  what_->size = 1;
-#define what (&(what_->i_]]INST_NAME()[[))
+  struct f_inst *what = cfg_allocz(sizeof(struct f_inst));
+  what->fi_code = fi_code;
+  what->lineno = ifs->lino;
+  what->size = 1;
+  what->constant = 1;
+#define whati (&(what->i_]]INST_NAME()[[))
 m4_undivert(103)
-#undef what
-  return what_;
+  if (!what->constant)
+    return what;
+
+  struct f_val res;
+#define v1 f1->i_FI_CONSTANT.val
+#define v2 f2->i_FI_CONSTANT.val
+#define v3 f3->i_FI_CONSTANT.val
+#define runtime cf_error
+
+FID_I
+
+case INST_NAME():
+#define whati (&(what->i_]]INST_NAME()[[))
+m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
+
+FID_CI
+
+m4_undivert(108)
+#undef whati
+
+FID_I
+
+break;
+
+FID_C
+
+  what->fi_code = FI_CONSTANT;
+  what->i_FI_CONSTANT.val = res;
+  return what;
+#undef v1
+#undef v2
+#undef v3
+#undef runtime
 }
 
 FID_DUMP_CALLER
@@ -110,17 +145,16 @@ m4_undefine([[FID_DUMP_BODY_EXISTS]])
 m4_undivert(104)
 #undef item
 }
-FID_ALL_TARGETS
 
 FID_LINEARIZE
 case INST_NAME(): {
-#define what (&(what_->i_]]INST_NAME()[[))
+#define whati (&(what->i_]]INST_NAME()[[))
 #define item (&(dest->items[pos].i_]]INST_NAME()[[))
   m4_undivert(105)
-#undef what
+#undef whati
 #undef item
-  dest->items[pos].fi_code = what_->fi_code;
-  dest->items[pos].lineno = what_->lineno;
+  dest->items[pos].fi_code = what->fi_code;
+  dest->items[pos].lineno = what->lineno;
   break;
 }
 m4_undefine([[FID_LINEARIZE_BODY_EXISTS]])
@@ -133,15 +167,7 @@ m4_undivert(106)
 #undef f1
 #undef f2
 break;
-
-FID_INTERPRET
-case INST_NAME():
-#define whati (&(what->i_]]INST_NAME()[[))
-m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
-m4_undivert(108)
-#undef whati
-break;
-
+FID_ALL_TARGETS
 FID_END
 ]])')
 
@@ -168,7 +194,7 @@ $1 $2;
 FID_NEW_ARGS
 , $1 $2
 FID_NEW_BODY
-what->$2 = $2;
+whati->$2 = $2;
 m4_ifelse($3,,,[[
 FID_LINEARIZE_BODY
 item->$3 = what->$2;
@@ -189,12 +215,14 @@ FID_ALL')
 
 m4_define(ARG_ANY, `
 FID_STRUCT_IN
-const struct f_inst * f$1;
+struct f_inst * f$1;
 FID_NEW_ARGS
-, const struct f_inst * f$1
+, struct f_inst * f$1
 FID_NEW_BODY
-what->f$1 = f$1;
-for (const struct f_inst *child = f$1; child; child = child->next) what_->size += child->size;
+whati->f$1 = f$1;
+if (!whati->f$1->constant)
+  what->constant = 0;
+for (const struct f_inst *child = f$1; child; child = child->next) what->size += child->size;
 FID_LINEARIZE_BODY
 pos = linearize(dest, what->f$1, pos);m4_dnl
 FID_ALL()')
@@ -204,7 +232,7 @@ FID_INTERPRET_BODY
 if (v$1.type != $2) runtime("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), v$1.type)m4_dnl
 FID_ALL()')
 
-m4_define(LINEX, `FID_INTERPRET_BODY
+m4_define(LINEX, `FID_INTERPRET_EXEC
 do {
   fstk->estk[fstk->ecnt].pos = 0;
   fstk->estk[fstk->ecnt].line = $1;
@@ -219,31 +247,33 @@ m4_define(LINE, `
 FID_LINE_IN
 const struct f_line * fl$1;
 FID_STRUCT_IN
-const struct f_inst * f$1;
+struct f_inst * f$1;
 FID_NEW_ARGS
-, const struct f_inst * f$1
+, struct f_inst * f$1
 FID_NEW_BODY
-what->f$1 = f$1;
+whati->f$1 = f$1;
 FID_DUMP_BODY
 f_dump_line(item->fl$1, indent + 1);
 FID_LINEARIZE_BODY
 item->fl$1 = f_linearize(what->f$1);
 FID_SAME_BODY
 if (!f_same(f1->fl$1, f2->fl$1)) return 0;
-FID_INTERPRET_BODY
+FID_INTERPRET_EXEC
 do { if (whati->fl$1) {
-  LINEX(whati->fl$1);
+  LINEX(whati->fl$1) FID_INTERPRET_EXEC();
 } } while(0)m4_dnl
+FID_INTERPRET_NEW
+return f$1 m4_dnl
 FID_ALL()')
 
-m4_define(RESULT_OK, `FID_INTERPRET_BODY()fstk->vcnt++FID_ALL()')
+m4_define(RESULT_OK, `FID_INTERPRET_EXEC()fstk->vcnt++FID_INTERPRET_NEW(){}FID_ALL()')
 m4_define(RESULT, `RESULT_VAL([[ (struct f_val) { .type = $1, .val.$2 = $3 } ]])')
 m4_define(RESULT_VAL, `FID_INTERPRET_BODY()do { res = $1; RESULT_OK; } while (0)FID_ALL()')
 
-m4_define(SYMBOL, `FID_MEMBER(const struct symbol *, sym, sym,
-[[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name, const struct symbol *sym = whati->sym)')
+m4_define(SYMBOL, `FID_MEMBER(struct symbol *, sym, sym,
+[[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name, struct symbol *sym = whati->sym)')
 m4_define(VAL, `FID_MEMBER(struct f_val $1, val, val m4_ifelse($1,,,[0]), [[!val_same(&f1->val, &f2->val)]], value %s, val_dump(&item->val),)')
-m4_define(FRET, `FID_MEMBER(enum filter_return, fret, fret, f1->fret != f2->fret, %s, filter_return_str(item->fret), enum filter_return fret = whati->fret)')
+m4_define(FRET, `FID_MEMBER(enum filter_return, fret, fret, f1->fret != f2->fret, %s, filter_return_str(item->fret),)')
 m4_define(ECS, `FID_MEMBER(enum ec_subtype, ecs, ecs, f1->ecs != f2->ecs, ec subtype %s, ec_subtype_str(item->ecs), enum ec_subtype ecs = whati->ecs)')
 m4_define(RTC, `FID_MEMBER(const struct rtable_config *, rtc, rtc, [[strcmp(f1->rtc->name, f2->rtc->name)]], route table %s, item->rtc->name, struct rtable *table = whati->rtc->table)')
 m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, sa, f1->sa.sa_code != f2->sa.sa_code,,, struct f_static_attr sa = whati->sa)')
@@ -382,6 +412,7 @@ struct f_inst {
   enum f_instruction_code fi_code;	/* Instruction code */
   int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */
+  uint constant:1;			/* This instruction has constant value */
   union {
     FID_WR_PUT(1)
   };

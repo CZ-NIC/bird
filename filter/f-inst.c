@@ -27,8 +27,8 @@
  *	m4_dnl	  LINE(num, unused);			this argument has to be converted to its own f_line
  *	m4_dnl	  ECS;					extended community subtype
  *	m4_dnl	  COUNT(unused);			simply a uint
- *	m4_dnl	  SYMBOL(unused);			symbol handed from config
- *	m4_dnl	  FRET(unused);				filter return value
+ *	m4_dnl	  SYMBOL;				symbol handed from config
+ *	m4_dnl	  FRET;					filter return value
  *	m4_dnl	  STATIC_ATTR;				static attribute definition
  *	m4_dnl	  DYNAMIC_ATTR;				dynamic attribute definition
  *	m4_dnl	  RTC;					route table config
@@ -148,20 +148,36 @@
 
     FID_NEW_BODY
       uint len = 0;
-      uint dyn = 0;
       for (const struct f_inst *tt = f1; tt; tt = tt->next, len++)
-	if (tt->fi_code != FI_CONSTANT)
-	  dyn++;
+	if (!tt->constant)
+	  what->constant = 0;
 
-      what->count = len;
+      whati->count = len;
+      struct f_inst **items;
+      if (what->constant) {
+	items = alloca(len * sizeof(struct f_inst *));
+	for (uint i=0; f1; i++) {
+	  items[i] = f1;
+	  f1 = f1->next;
+	  items[i]->next = 0;
+	}
+      }
     FID_ALL
 
+    FID_INTERPRET_EXEC
     if (fstk->vcnt < whati->count) /* TODO: make this check systematic */
       runtime("Construction of BGP path mask from %u elements must have at least that number of elements", whati->count);
 
-    struct f_path_mask *pm = lp_alloc(fs->pool, sizeof(struct f_path_mask) + whati->count * sizeof(struct f_path_mask_item));
-    for (uint i=0; i<whati->count; i++) {
 #define pv fstk->vstk[fstk->vcnt - whati->count + i]
+#define lp fs->pool
+
+    FID_INTERPRET_NEW
+#define pv items[i]->i_FI_CONSTANT.val
+#define lp cfg_mem
+
+    FID_INTERPRET_BODY
+    struct f_path_mask *pm = lp_alloc(lp, sizeof(struct f_path_mask) + whati->count * sizeof(struct f_path_mask_item));
+    for (uint i=0; i<whati->count; i++) {
       switch (pv.type) {
 	case T_PATH_MASK_ITEM:
 	  pm->item[i] = pv.val.pmi;
@@ -177,10 +193,12 @@
       }
     }
 
-    fstk->vcnt -= whati->count;
     pm->len = whati->count;
-
     RESULT(T_PATH_MASK, path_mask, pm);
+
+    FID_INTERPRET_EXEC
+      fstk->vcnt -= whati->count;
+    FID_ALL
   }
 
 /* Relational operators */
@@ -262,8 +280,8 @@
 
   /* Set to indirect value prepared in v1 */
   INST(FI_VAR_SET, 1, 0) {
-    ARG_ANY(2);
-    SYMBOL(1);
+    ARG_ANY(1);
+    SYMBOL;
     if ((sym->class != (SYM_VARIABLE | v1.type)) && (v1.type != T_VOID))
     {
       /* IP->Quad implicit conversion */
@@ -276,12 +294,25 @@
 	runtime( "Assigning to variable of incompatible type" );
     }
 
-    fstk->vstk[curline.vbase + sym->offset] = v1;
+    FID_INTERPRET_NEW
+      sym->scope->vars[sym->offset] = v1;
+      sym->preeval = PREEVAL_CONSTANT;
+    FID_INTERPRET_EXEC
+      fstk->vstk[curline.vbase + sym->offset] = v1;
+    FID_ALL
   }
 
   INST(FI_VAR_GET, 0, 1) {
-    SYMBOL(1);
-    res = fstk->vstk[curline.vbase + sym->offset];
+    SYMBOL;
+    FID_INTERPRET_NEW
+      if (sym->preeval == PREEVAL_CONSTANT)
+	res = sym->scope->vars[sym->offset];
+      else
+	return what;
+    FID_INTERPRET_EXEC
+      res = fstk->vstk[curline.vbase + sym->offset]
+    FID_ALL
+
     RESULT_OK;
   }
 
@@ -294,7 +325,7 @@
     FID_NEW_ARGS
     , const struct f_val val
     FID_NEW_BODY
-      what->val = val;
+      whati->val = val;
     FID_LINEARIZE_BODY
       item->val = what->val;
     FID_SAME_BODY
@@ -303,8 +334,7 @@
       debug("%svalue %s\n", INDENT, val_dump(&item->val));
     FID_ALL
 
-    res = whati->val;
-    RESULT_OK;
+    RESULT_VAL(whati->val);
   }
   INST(FI_CONSTANT_DEFINED, 0, 1) {
     FID_STRUCT_IN
@@ -315,7 +345,7 @@
     FID_NEW_ARGS
       , const struct symbol *sym
     FID_NEW_BODY
-      what->sym = sym;
+      whati->sym = sym;
     FID_LINEARIZE_BODY
       item->valp = (item->sym = what->sym)->val;
     FID_SAME_BODY
@@ -324,12 +354,20 @@
       debug("%sconstant %s with value %s\n", INDENT, item->sym->name, val_dump(item->valp));
     FID_ALL
 
+    FID_INTERPRET_NEW
+    res = *sym->val;
+    FID_INTERPRET_EXEC
     res = *whati->valp;
+    FID_ALL
     RESULT_OK;
   }
   INST(FI_PRINT, 1, 0) {
     ARG_ANY(1);
+    FID_INTERPRET_NEW
+      return what;
+    FID_INTERPRET_EXEC
     val_format(&(v1), &fs->buf);
+    FID_ALL
   }
   INST(FI_CONDITION, 1, 0) {
     ARG(1, T_BOOL);
@@ -339,6 +377,8 @@
       LINE(3,1);
   }
   INST(FI_PRINT_AND_DIE, 0, 0) {
+    FID_INTERPRET_NEW
+      return what;
     FID_LINEARIZE_BODY
     {
       uint opos = pos;
@@ -352,7 +392,11 @@
     }
     FID_ALL
 
-    FRET(2);
+    FRET;
+
+    FID_INTERPRET_EXEC
+
+    enum filter_return fret = whati->fret;
 
     if ((fret == F_NOP || (fret != F_NONL && (what->flags & FIF_PRINTED))) &&
 	!(fs->flags & FF_SILENT))
@@ -372,29 +416,32 @@
     default:
       bug( "unknown return type: Can't happen");
     }
+    FID_ALL
   }
   
   INST(FI_RTA_GET, 0, 1) {	/* rta access */
     {
       STATIC_ATTR;
-      ACCESS_RTE;
-      struct rta *rta = (*fs->rte)->attrs;
+      FID_INTERPRET_EXEC
+	ACCESS_RTE;
+	struct rta *rta = (*fs->rte)->attrs;
 
-      switch (sa.sa_code)
-      {
-      case SA_FROM:	RESULT(sa.f_type, ip, rta->from); break;
-      case SA_GW:	RESULT(sa.f_type, ip, rta->nh.gw); break;
-      case SA_NET:	RESULT(sa.f_type, net, (*fs->rte)->net->n.addr); break;
-      case SA_PROTO:	RESULT(sa.f_type, s, rta->src->proto->name); break;
-      case SA_SOURCE:	RESULT(sa.f_type, i, rta->source); break;
-      case SA_SCOPE:	RESULT(sa.f_type, i, rta->scope); break;
-      case SA_DEST:	RESULT(sa.f_type, i, rta->dest); break;
-      case SA_IFNAME:	RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
-      case SA_IFINDEX:	RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
+	switch (sa.sa_code)
+	{
+	case SA_FROM:	RESULT(sa.f_type, ip, rta->from); break;
+	case SA_GW:	RESULT(sa.f_type, ip, rta->nh.gw); break;
+	case SA_NET:	RESULT(sa.f_type, net, (*fs->rte)->net->n.addr); break;
+	case SA_PROTO:	RESULT(sa.f_type, s, rta->src->proto->name); break;
+	case SA_SOURCE:	RESULT(sa.f_type, i, rta->source); break;
+	case SA_SCOPE:	RESULT(sa.f_type, i, rta->scope); break;
+	case SA_DEST:	RESULT(sa.f_type, i, rta->dest); break;
+	case SA_IFNAME:	RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
+	case SA_IFINDEX:	RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
 
-      default:
-	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
-      }
+	default:
+	  bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
+	}
+      FID_ALL
     }
   }
 

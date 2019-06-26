@@ -103,6 +103,11 @@ void cfg_copy_list(list *dest, list *src, unsigned node_size);
 
 extern int (*cf_read_hook)(byte *buf, uint max, int fd);
 
+enum preeval {
+  PREEVAL_VARIABLE,
+  PREEVAL_CONSTANT,
+} PACKED;
+
 struct symbol {
   node n;				/* In list of symbols in config */
   struct symbol *next;
@@ -117,7 +122,10 @@ struct symbol {
     struct rtable_config *table;	/* For SYM_TABLE */
     struct f_dynamic_attr *attribute;	/* For SYM_ATTRIBUTE */
     struct f_val *val;			/* For SYM_CONSTANT */
-    uint offset;			/* For SYM_VARIABLE */
+    struct {
+      uint offset;			/* For SYM_VARIABLE */
+      enum preeval preeval;		/* Pre-evaluation temporary storage */
+    };
   };
 
   char name[0];
@@ -128,6 +136,7 @@ struct sym_scope {
   struct symbol *name;			/* Name of this scope */
   uint slots;				/* Variable slots */
   int active;				/* Currently entered */
+  struct f_val *vars;			/* Value storage for constant preevaluation */
 };
 
 #define SYM_MAX_LEN 64

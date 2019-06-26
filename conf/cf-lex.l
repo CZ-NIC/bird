@@ -755,8 +755,14 @@ cf_push_scope(struct symbol *sym)
 void
 cf_pop_scope(void)
 {
+  if (conf_this_scope->slots)
+    conf_this_scope->vars = cfg_alloc(sizeof(struct f_val) * conf_this_scope->slots);
+  else
+    conf_this_scope->vars = NULL;
+
   conf_this_scope->active = 0;
   conf_this_scope = conf_this_scope->next;
+
   ASSERT(conf_this_scope);
 }
 

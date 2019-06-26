@@ -119,7 +119,7 @@ enum f_lval_type {
 struct f_lval {
   enum f_lval_type type;
   union {
-    const struct symbol *sym;
+    struct symbol *sym;
     struct f_dynamic_attr da;
     struct f_static_attr sa;
   };
