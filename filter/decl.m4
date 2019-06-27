@@ -28,9 +28,8 @@ m4_divert(-1)m4_dnl
 #	107	struct f_line_item content
 #	108	interpreter body
 #
-#	Diversions for TARGET=I: 7xx
-#	Diversions for TARGET=C: 8xx
-#	Diversions for TARGET=H: 9xx
+#	Final diversions
+#	200+	completed text before it is flushed to output
 
 # Flush the completed instruction
 m4_define(FID_END, `m4_divert(-1)')
@@ -61,10 +60,7 @@ m4_define(FID_INTERPRET_BODY, `m4_divert(108)')
 m4_define(FID_ALL, `FID_INTERPRET_BODY');
 
 m4_define(FID_ALL_TARGETS, `m4_ifdef([[FID_CURDIV]], [[m4_divert(FID_CURDIV)m4_undefine([[FID_CURDIV]])]])')
-m4_define(FID_C, `m4_ifelse(TARGET, [[C]], FID_ALL_TARGETS, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
-m4_define(FID_I, `m4_ifelse(TARGET, [[I]], FID_ALL_TARGETS, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
-m4_define(FID_H, `m4_ifelse(TARGET, [[H]], FID_ALL_TARGETS, [[m4_define(FID_CURDIV, m4_divnum)m4_divert(-1)]])')
-
+m4_define(FID_HIC, `m4_ifelse(TARGET, [[H]], $1, TARGET, [[I]], $2, TARGET, [[C]], $3)')
 
 m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
 FID_ENUM
@@ -83,19 +79,21 @@ FID_NEW
 struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
 m4_undivert(102)
 )
-FID_H
-;
-FID_C
-{
-  struct f_inst *what_ = cfg_allocz(sizeof(struct f_inst));
-  what_->fi_code = fi_code;
-  what_->lineno = ifs->lino;
-  what_->size = 1;
-#define what (&(what_->i_]]INST_NAME()[[))
-m4_undivert(103)
-#undef what
-  return what_;
-}
+FID_HIC(
+[[;]],
+[[]],
+[[
+  {
+    struct f_inst *what_ = cfg_allocz(sizeof(struct f_inst));
+    what_->fi_code = fi_code;
+    what_->lineno = ifs->lino;
+    what_->size = 1;
+  #define what (&(what_->i_]]INST_NAME()[[))
+  [[m4_undivert(103)]]
+  #undef what
+    return what_;
+  }
+]])
 
 FID_DUMP_CALLER
 case INST_NAME(): f_dump_line_item_]]INST_NAME()[[(item, indent + 1); break;
@@ -110,7 +108,6 @@ m4_undefine([[FID_DUMP_BODY_EXISTS]])
 m4_undivert(104)
 #undef item
 }
-FID_ALL_TARGETS
 
 FID_LINEARIZE
 case INST_NAME(): {
@@ -253,18 +250,16 @@ m4_define(TREE, `FID_MEMBER(const struct f_tree *, tree, tree, [[!same_tree(f1->
 m4_define(STRING, `FID_MEMBER(const char *, s, s, [[strcmp(f1->s, f2->s)]], string \"%s\", item->s)')
 
 m4_define(FID_WR_PUT_LIST)
-m4_define(FID_WR_DROP_LIST)
+m4_define(FID_WR_PUT_ALSO, `m4_define([[FID_WR_PUT_LIST]],FID_WR_PUT_LIST()[[FID_WR_DPUT(]]FID_WR_DIDX[[)FID_WR_DPUT(]]$1[[)]])m4_define([[FID_WR_DIDX]],m4_eval(FID_WR_DIDX+1))m4_divert(FID_WR_DIDX)')
 
-m4_define(FID_WR_IPUT, `m4_define([[FID_WR_CUR_DIRECT]], m4_eval(FID_WR_CUR_DIRECT + 1))m4_define([[FID_WR_PUT_LIST]], FID_WR_PUT_LIST[[]]FID_WR_DPUT($1)FID_WR_DPUT(FID_WR_CUR_DIRECT))m4_divert(FID_WR_CUR_DIRECT)')
-m4_define(FID_WR_IDROP, `m4_define([[FID_WR_CUR_DIRECT]], m4_eval(FID_WR_CUR_DIRECT + 1))m4_define([[FID_WR_DROP_LIST]], FID_WR_DROP_LIST[[]]FID_WR_DPUT($1)FID_WR_DPUT(FID_WR_CUR_DIRECT))m4_divert(FID_WR_CUR_DIRECT)')
+m4_define(FID_WR_DIRECT, `m4_ifelse(TARGET,[[$1]],[[FID_WR_INIT()]],[[FID_WR_STOP()]])')
+m4_define(FID_WR_INIT, `m4_define([[FID_WR_DIDX]],200)m4_define([[FID_WR_PUT]],[[FID_WR_PUT_ALSO($]][[@)]])m4_divert(200)')
+m4_define(FID_WR_STOP, `m4_define([[FID_WR_PUT]])m4_divert(-1)')
 
-m4_define(FID_WR_DIRECT, `m4_define([[FID_WR_CUR_DIRECT]],$1)m4_ifelse(TARGET,[[$2]],[[m4_define([[FID_WR_PUT]], [[FID_WR_IPUT($]][[@)]])m4_define([[FID_WR_PUT_LIST]],FID_WR_PUT_LIST[[]]FID_WR_DPUT($1))]],[[m4_define([[FID_WR_PUT]], [[FID_WR_IDROP($]][[@)]])m4_define([[FID_WR_DROP_LIST]],FID_WR_DROP_LIST[[]]FID_WR_DPUT($1))]])m4_divert($1)')
-
-m4_dnl m4_define(FID_WR_CUR_DIRECT,m4_ifelse(TARGET,`C',800,TARGET,`H',900,m4_errprint(`Bad TARGET: 'TARGET)m4_m4exit(1)))
 m4_changequote([[,]])
-FID_WR_DIRECT(700,I)
+FID_WR_DIRECT(I)
 FID_WR_PUT(10)
-FID_WR_DIRECT(800,C)
+FID_WR_DIRECT(C)
 #include "nest/bird.h"
 #include "filter/filter.h"
 #include "filter/f-inst.h"
@@ -370,7 +365,7 @@ FID_WR_PUT(9)
 }
 
 
-FID_WR_DIRECT(900,H)
+FID_WR_DIRECT(H)
 /* Filter instruction codes */
 enum f_instruction_code {
 FID_WR_PUT(4)
@@ -403,6 +398,9 @@ FID_WR_PUT(3)
 m4_divert(-1)
 m4_changequote(`,')
 
-m4_m4wrap(`INST_FLUSH()m4_define(FID_WR_DPUT, [[m4_undivert($1)]])m4_divert(0)FID_WR_PUT_LIST[[]]m4_divert(-1)FID_WR_DROP_LIST[[]]')
+m4_define(FID_CLEANUP, `m4_ifelse($1,$2,,[[m4_undivert($1)FID_CLEANUP(m4_eval($1+1),$2)]])')
+m4_define(FID_WR_DPUT, `m4_undivert($1)')
+
+m4_m4wrap(`INST_FLUSH()m4_divert(0)FID_WR_PUT_LIST()m4_divert(-1)FID_CLEANUP(1,200)')
 
 m4_changequote([[,]])
