@@ -478,31 +478,31 @@
 	/* A special case: undefined as_path looks like empty as_path */
 	if (da.type == EAF_TYPE_AS_PATH) {
 	  RESULT(T_PATH, ad, &null_adata);
-	  break;
+	  return F_NOP;
 	}
 
 	/* The same special case for int_set */
 	if (da.type == EAF_TYPE_INT_SET) {
 	  RESULT(T_CLIST, ad, &null_adata);
-	  break;
+	  return F_NOP;
 	}
 
 	/* The same special case for ec_set */
 	if (da.type == EAF_TYPE_EC_SET) {
 	  RESULT(T_ECLIST, ad, &null_adata);
-	  break;
+	  return F_NOP;
 	}
 
 	/* The same special case for lc_set */
 	if (da.type == EAF_TYPE_LC_SET) {
 	  RESULT(T_LCLIST, ad, &null_adata);
-	  break;
+	  return F_NOP;
 	}
 
 	/* Undefined value */
 	res.type = T_VOID;
 	RESULT_OK;
-	break;
+	return F_NOP;
       }
 
       switch (e->type & EAF_TYPE_MASK) {
@@ -803,7 +803,7 @@
       t = find_tree(tree, &v1);
       if (!t) {
 	debug( "No else statement?\n");
-	break;
+	return F_NOP;
       }
     }
     /* It is actually possible to have t->data NULL */

@@ -160,6 +160,34 @@ val_format_str(struct filter_state *fs, struct f_val *v) {
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
+#define fstk (fs->stack)
+
+#define res fstk->vstk[fstk->vcnt]
+#define v1 fstk->vstk[fstk->vcnt]
+#define v2 fstk->vstk[fstk->vcnt + 1]
+#define v3 fstk->vstk[fstk->vcnt + 2]
+
+#define curline fstk->estk[fstk->ecnt-1]
+
+#define runtime(fmt, ...) do { \
+  if (!(fs->flags & FF_SILENT)) \
+    log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
+  return F_ERROR; \
+} while(0)
+
+#define ACCESS_RTE do { if (!fs->rte) runtime("No route to access"); } while (0)
+#define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
+
+#include "filter/inst-interpret.c"
+
+#undef res
+#undef v1
+#undef v2
+#undef v3
+#undef runtime
+#undef ACCESS_RTE
+#undef ACCESS_EATTRS
+
 /**
  * interpret
  * @fs: filter state
@@ -182,8 +210,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   ASSERT(line->args == 0);
 
   /* Initialize the filter stack */
-  struct filter_stack *fstk = fs->stack;
-
   fstk->vcnt = line->vars;
   memset(fstk->vstk, 0, sizeof(struct f_val) * line->vars);
 
@@ -192,8 +218,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   fstk->estk[0].line = line;		
   fstk->estk[0].pos = 0;
 
-#define curline fstk->estk[fstk->ecnt-1]
-
 #if DEBUGGING
   debug("Interpreting line.");
   f_dump_line(line, 1);
@@ -201,32 +225,10 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 
   while (fstk->ecnt > 0) {
     while (curline.pos < curline.line->len) {
-      const struct f_line_item *what = &(curline.line->items[curline.pos++]);
+      enum filter_return fret = f_interpret(fs, &(curline.line->items[curline.pos++]));
+      if (fret != F_NOP)
+	return fret;
 
-      switch (what->fi_code) {
-#define res fstk->vstk[fstk->vcnt]
-#define v1 fstk->vstk[fstk->vcnt]
-#define v2 fstk->vstk[fstk->vcnt + 1]
-#define v3 fstk->vstk[fstk->vcnt + 2]
-
-#define runtime(fmt, ...) do { \
-  if (!(fs->flags & FF_SILENT)) \
-    log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
-  return F_ERROR; \
-} while(0)
-
-#define ACCESS_RTE do { if (!fs->rte) runtime("No route to access"); } while (0)
-#define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
-
-#include "filter/inst-interpret.c"
-#undef res
-#undef v1
-#undef v2
-#undef v3
-#undef runtime
-#undef ACCESS_RTE
-#undef ACCESS_EATTRS
-      }
     }
     
     /* End of current line. Drop local variables before exiting. */
@@ -251,6 +253,8 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   log_rl(&rl_runtime_err, L_ERR "Too many items left on stack: %u", fstk->vcnt);
   return F_ERROR;
 }
+
+#undef curline
 
 
 /**

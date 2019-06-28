@@ -16,7 +16,8 @@ m4_divert(-1)m4_dnl
 #	9	same (filter comparator)
 #	1	union in struct f_inst
 #	3	constructors
-#	10	interpreter
+#	10	interpreter inline functions
+#	11	interpreter switch
 #
 #	Per-inst Diversions:
 #	101	content of per-inst struct
@@ -43,7 +44,8 @@ m4_define(FID_DUMP, `FID_ZONE(6, Dump line)')
 m4_define(FID_DUMP_CALLER, `FID_ZONE(7, Dump line caller)')
 m4_define(FID_LINEARIZE, `FID_ZONE(8, Linearize)')
 m4_define(FID_SAME, `FID_ZONE(9, Comparison)')
-m4_define(FID_INTERPRET, `FID_ZONE(10, Interpret)')
+m4_define(FID_INTERPRET, `FID_ZONE(10, Interpret inline functions)')
+m4_define(FID_INTERPRET_SWITCH, `FID_ZONE(11, Interpret switch)')
 
 m4_define(FID_STRUCT_IN, `m4_divert(101)')
 m4_define(FID_NEW_ARGS, `m4_divert(102)')
@@ -53,6 +55,7 @@ m4_define(FID_LINEARIZE_BODY, `m4_divert(105)m4_define([[FID_LINEARIZE_BODY_EXIS
 m4_define(FID_SAME_BODY, `m4_divert(106)')
 m4_define(FID_LINE_IN, `m4_divert(107)')
 m4_define(FID_INTERPRET_BODY, `m4_divert(108)')
+m4_define(FID_INTERPRET_SWITCH, `m4_divert(109)')
 
 m4_define(FID_ALL, `FID_INTERPRET_BODY');
 m4_define(FID_HIC, `m4_ifelse(TARGET, [[H]], $1, TARGET, [[I]], $2, TARGET, [[C]], $3)')
@@ -127,13 +130,18 @@ m4_undivert(106)
 break;
 
 FID_INTERPRET
-case INST_NAME():
+static inline enum filter_return
+f_interpret_]]INST_NAME()[[(struct filter_state *fs, const struct f_line_item *what)
+{
 #define whati (&(what->i_]]INST_NAME()[[))
 m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
 m4_undivert(108)
 #undef whati
-break;
+  return F_NOP;
+}
 
+FID_INTERPRET_SWITCH
+case INST_NAME(): return f_interpret_]]INST_NAME()[[(fs, what);
 ]])')
 
 m4_define(INST, `m4_dnl
@@ -253,6 +261,16 @@ m4_define(FID_WR_STOP, `m4_define([[FID_WR_PUT]])m4_divert(-1)')
 m4_changequote([[,]])
 FID_WR_DIRECT(I)
 FID_WR_PUT(10)
+
+static inline enum filter_return
+f_interpret(struct filter_state *fs, const struct f_line_item *what)
+{
+  switch (what->fi_code) {
+FID_WR_PUT(11)
+default: bug("Unknown filter instruction. This shall never happen");
+  }
+}
+
 FID_WR_DIRECT(C)
 #include "nest/bird.h"
 #include "filter/filter.h"

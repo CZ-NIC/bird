@@ -3,7 +3,7 @@ obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
 
-M4FLAGS_FILTERS=$(filter-out -s,$(M4FLAGS))
+#M4FLAGS_FILTERS=$(filter-out -s,$(M4FLAGS))
 
 $(o)inst-gen.h: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
 	$(M4) $(M4FLAGS_FILTERS) -DTARGET=H -P $^ >$@
