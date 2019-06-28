@@ -31,9 +31,6 @@ m4_divert(-1)m4_dnl
 #	Final diversions
 #	200+	completed text before it is flushed to output
 
-# Flush the completed instruction
-m4_define(FID_END, `m4_divert(-1)')
-
 m4_dnl m4_debugmode(aceflqtx)
 
 m4_define(FID_ZONE, `m4_divert($1) /* $2 for INST_NAME() */')
@@ -58,8 +55,6 @@ m4_define(FID_LINE_IN, `m4_divert(107)')
 m4_define(FID_INTERPRET_BODY, `m4_divert(108)')
 
 m4_define(FID_ALL, `FID_INTERPRET_BODY');
-
-m4_define(FID_ALL_TARGETS, `m4_ifdef([[FID_CURDIV]], [[m4_divert(FID_CURDIV)m4_undefine([[FID_CURDIV]])]])')
 m4_define(FID_HIC, `m4_ifelse(TARGET, [[H]], $1, TARGET, [[I]], $2, TARGET, [[C]], $3)')
 
 m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
@@ -84,14 +79,14 @@ FID_HIC(
 [[]],
 [[
   {
-    struct f_inst *what_ = cfg_allocz(sizeof(struct f_inst));
-    what_->fi_code = fi_code;
-    what_->lineno = ifs->lino;
-    what_->size = 1;
-  #define what (&(what_->i_]]INST_NAME()[[))
+    struct f_inst *what = cfg_allocz(sizeof(struct f_inst));
+    what->fi_code = fi_code;
+    what->lineno = ifs->lino;
+    what->size = 1;
+  #define whati (&(what->i_]]INST_NAME()[[))
   [[m4_undivert(103)]]
-  #undef what
-    return what_;
+  #undef whati
+    return what;
   }
 ]])
 
@@ -111,13 +106,13 @@ m4_undivert(104)
 
 FID_LINEARIZE
 case INST_NAME(): {
-#define what (&(what_->i_]]INST_NAME()[[))
+#define whati (&(what->i_]]INST_NAME()[[))
 #define item (&(dest->items[pos].i_]]INST_NAME()[[))
   m4_undivert(105)
-#undef what
+#undef whati
 #undef item
-  dest->items[pos].fi_code = what_->fi_code;
-  dest->items[pos].lineno = what_->lineno;
+  dest->items[pos].fi_code = what->fi_code;
+  dest->items[pos].lineno = what->lineno;
   break;
 }
 m4_undefine([[FID_LINEARIZE_BODY_EXISTS]])
@@ -139,7 +134,6 @@ m4_undivert(108)
 #undef whati
 break;
 
-FID_END
 ]])')
 
 m4_define(INST, `m4_dnl
@@ -165,10 +159,10 @@ $1 $2;
 FID_NEW_ARGS
 , $1 $2
 FID_NEW_BODY
-what->$2 = $2;
+whati->$2 = $2;
 m4_ifelse($3,,,[[
 FID_LINEARIZE_BODY
-item->$3 = what->$2;
+item->$3 = whati->$2;
 ]])
 m4_ifelse($4,,,[[
 FID_SAME_BODY
@@ -186,14 +180,14 @@ FID_ALL')
 
 m4_define(ARG_ANY, `
 FID_STRUCT_IN
-const struct f_inst * f$1;
+struct f_inst * f$1;
 FID_NEW_ARGS
-, const struct f_inst * f$1
+, struct f_inst * f$1
 FID_NEW_BODY
-what->f$1 = f$1;
-for (const struct f_inst *child = f$1; child; child = child->next) what_->size += child->size;
+whati->f$1 = f$1;
+for (const struct f_inst *child = f$1; child; child = child->next) what->size += child->size;
 FID_LINEARIZE_BODY
-pos = linearize(dest, what->f$1, pos);m4_dnl
+pos = linearize(dest, whati->f$1, pos);m4_dnl
 FID_ALL()')
 
 m4_define(ARG, `ARG_ANY($1)
@@ -220,11 +214,11 @@ const struct f_inst * f$1;
 FID_NEW_ARGS
 , const struct f_inst * f$1
 FID_NEW_BODY
-what->f$1 = f$1;
+whati->f$1 = f$1;
 FID_DUMP_BODY
 f_dump_line(item->fl$1, indent + 1);
 FID_LINEARIZE_BODY
-item->fl$1 = f_linearize(what->f$1);
+item->fl$1 = f_linearize(whati->f$1);
 FID_SAME_BODY
 if (!f_same(f1->fl$1, f2->fl$1)) return 0;
 FID_INTERPRET_BODY
@@ -307,10 +301,10 @@ FID_WR_PUT(7)
 
 /* Linearize */
 static uint
-linearize(struct f_line *dest, const struct f_inst *what_, uint pos)
+linearize(struct f_line *dest, const struct f_inst *what, uint pos)
 {
-  for ( ; what_; what_ = what_->next) {
-    switch (what_->fi_code) {
+  for ( ; what; what = what->next) {
+    switch (what->fi_code) {
 FID_WR_PUT(8)
     }
     pos++;

@@ -30,7 +30,7 @@ filter_name(const struct filter *filter)
     return filter->sym->name;
 }
 
-struct filter *f_new_where(const struct f_inst *where)
+struct filter *f_new_where(struct f_inst *where)
 {
   struct f_inst acc = {
     .fi_code = FI_PRINT_AND_DIE,

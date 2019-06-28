@@ -79,7 +79,7 @@ static inline struct f_line *f_linearize(const struct f_inst *root)
 
 void f_dump_line(const struct f_line *, uint indent);
 
-struct filter *f_new_where(const struct f_inst *);
+struct filter *f_new_where(struct f_inst *);
 static inline struct f_dynamic_attr f_new_dynamic_attr(u8 type, u8 bit, enum f_type f_type, uint code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */
 { return (struct f_dynamic_attr) { .type = type, .bit = bit, .f_type = f_type, .ea_code = code }; }   /* f_type currently unused; will be handy for static type checking */
 static inline struct f_static_attr f_new_static_attr(int f_type, int code, int readonly)

@@ -27,8 +27,8 @@
  *	m4_dnl	  LINE(num, unused);			this argument has to be converted to its own f_line
  *	m4_dnl	  ECS;					extended community subtype
  *	m4_dnl	  COUNT(unused);			simply a uint
- *	m4_dnl	  SYMBOL(unused);			symbol handed from config
- *	m4_dnl	  FRET(unused);				filter return value
+ *	m4_dnl	  SYMBOL;				symbol handed from config
+ *	m4_dnl	  FRET;					filter return value
  *	m4_dnl	  STATIC_ATTR;				static attribute definition
  *	m4_dnl	  DYNAMIC_ATTR;				dynamic attribute definition
  *	m4_dnl	  RTC;					route table config
@@ -153,7 +153,7 @@
 	if (tt->fi_code != FI_CONSTANT)
 	  dyn++;
 
-      what->count = len;
+      whati->count = len;
     FID_ALL
 
     if (fstk->vcnt < whati->count) /* TODO: make this check systematic */
@@ -262,8 +262,8 @@
 
   /* Set to indirect value prepared in v1 */
   INST(FI_VAR_SET, 1, 0) {
-    ARG_ANY(2);
-    SYMBOL(1);
+    ARG_ANY(1);
+    SYMBOL;
     if ((sym->class != (SYM_VARIABLE | v1.type)) && (v1.type != T_VOID))
     {
       /* IP->Quad implicit conversion */
@@ -294,17 +294,16 @@
     FID_NEW_ARGS
     , const struct f_val val
     FID_NEW_BODY
-      what->val = val;
+      whati->val = val;
     FID_LINEARIZE_BODY
-      item->val = what->val;
+      item->val = whati->val;
     FID_SAME_BODY
       if (!val_same(&(f1->val), &(f2->val))) return 0;
     FID_DUMP_BODY
       debug("%svalue %s\n", INDENT, val_dump(&item->val));
     FID_ALL
 
-    res = whati->val;
-    RESULT_OK;
+    RESULT_VAL(whati->val);
   }
   INST(FI_CONSTANT_DEFINED, 0, 1) {
     FID_STRUCT_IN
@@ -315,9 +314,9 @@
     FID_NEW_ARGS
       , const struct symbol *sym
     FID_NEW_BODY
-      what->sym = sym;
+      whati->sym = sym;
     FID_LINEARIZE_BODY
-      item->valp = (item->sym = what->sym)->val;
+      item->valp = (item->sym = whati->sym)->val;
     FID_SAME_BODY
       if (strcmp(f1->sym->name, f2->sym->name) || !val_same(f1->sym->val, f2->sym->val)) return 0;
     FID_DUMP_BODY
