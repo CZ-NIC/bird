@@ -3070,6 +3070,8 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	tick &lt;num&gt;;
 	ecmp &lt;switch&gt; [limit &lt;num&gt;];
 	merge external &lt;switch&gt;;
+	graceful restart &lt;switch&gt;|aware;
+	graceful restart time &lt;num&gt;;
 	area &lt;id&gt; {
 		stub;
 		nssa;
@@ -3212,6 +3214,31 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	routes in the same way as regular routes. When disabled, external routes
 	from different LSAs are treated as separate even if they represents the
 	same destination. Default value is no.
+
+	<tag><label id="ospf-graceful-restart">graceful restart <m/switch/|aware</tag>
+	When an OSPF instance is restarted, neighbors break adjacencies and
+	recalculate their routing tables, which disrupts packet forwarding even
+	when the forwarding plane of the restarting router remains intact.
+	<rfc id="3623"> specifies a graceful restart mechanism to alleviate this
+	issue. For OSPF graceful restart, restarting router originates
+	Grace-LSAs, announcing intent to do graceful restart. Neighbors
+	receiving these LSAs enter helper mode, in which they ignore breakdown
+	of adjacencies, behave as if nothing is happening and keep old routes.
+	When adjacencies are reestablished, the restarting router flushes
+	Grace-LSAs and graceful restart is ended.
+
+	This option controls the graceful restart mechanism. It has three
+	states: Disabled, when no support is provided. Aware, when graceful
+	restart helper mode is supported, but no local graceful restart is
+	allowed (i.e. helper-only role). Enabled, when the full graceful restart
+	support is provided (i.e. both restarting and helper role). Note that
+	proper support for local graceful restart requires also configuration of
+	other protocols. Default: aware.
+
+	<tag><label id="ospf-graceful-restart-time">graceful restart time <m/num/</tag>
+	The restart time is announced in the Grace-LSA and specifies how long
+	neighbors should wait for proper end of the graceful restart before
+	exiting helper mode prematurely. Default: 120 seconds.
 
 	<tag><label id="ospf-area">area <M>id</M></tag>
 	This defines an OSPF area with given area ID (an integer or an IPv4
