@@ -33,6 +33,7 @@ Reply codes of BIRD command-line interface
 0022	Undo scheduled
 0023	Evaluation of expression
 0024	Graceful restart status report
+0025	Graceful restart ordered
 
 1000	BIRD version
 1001	Interface list

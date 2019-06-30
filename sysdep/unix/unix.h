@@ -27,6 +27,7 @@ void cmd_reconfig(char *name, int type, uint timeout);
 void cmd_reconfig_confirm(void);
 void cmd_reconfig_undo(void);
 void cmd_shutdown(void);
+void cmd_graceful_restart(void);
 
 #define UNIX_DEFAULT_CONFIGURE_TIMEOUT	300
 

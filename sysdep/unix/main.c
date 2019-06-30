@@ -549,14 +549,14 @@ cmd_shutdown(void)
     return;
 
   cli_msg(7, "Shutdown requested");
-  order_shutdown();
+  order_shutdown(0);
 }
 
 void
 async_shutdown(void)
 {
   DBG("Shutting down...\n");
-  order_shutdown();
+  order_shutdown(0);
 }
 
 void
@@ -567,6 +567,17 @@ sysdep_shutdown_done(void)
   log_msg(L_FATAL "Shutdown completed");
   exit(0);
 }
+
+void
+cmd_graceful_restart(void)
+{
+  if (cli_access_restricted())
+    return;
+
+  cli_msg(25, "Graceful restart requested");
+  order_shutdown(1);
+}
+
 
 /*
  *	Signals

@@ -56,6 +56,7 @@ struct config {
   struct config *fallback;		/* Link to regular config for CLI parsing */
   int obstacle_count;			/* Number of items blocking freeing of this config */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
+  int gr_down;				/* This is a pseudo-config for graceful restart */
   btime load_time;			/* When we've got this configuration */
 };
 
@@ -74,7 +75,7 @@ void config_init(void);
 void cf_error(const char *msg, ...) NORET;
 void config_add_obstacle(struct config *);
 void config_del_obstacle(struct config *);
-void order_shutdown(void);
+void order_shutdown(int gr);
 
 #define RECONFIG_NONE	0
 #define RECONFIG_HARD	1

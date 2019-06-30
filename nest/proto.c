@@ -993,6 +993,11 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
 	p->down_code = PDC_CF_REMOVE;
 	p->cf_new = NULL;
       }
+      else if (new->gr_down)
+      {
+	p->down_code = PDC_CMD_GR_DOWN;
+	p->cf_new = NULL;
+      }
       else /* global shutdown */
       {
 	p->down_code = PDC_CMD_SHUTDOWN;

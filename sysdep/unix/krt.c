@@ -1146,7 +1146,7 @@ krt_shutdown(struct proto *P)
   krt_scan_timer_stop(p);
 
   /* FIXME we should flush routes even when persist during reconfiguration */
-  if (p->initialized && !KRT_CF->persist)
+  if (p->initialized && !KRT_CF->persist && (P->down_code != PDC_CMD_GR_DOWN))
     krt_flush_routes(p);
 
   p->ready = 0;
