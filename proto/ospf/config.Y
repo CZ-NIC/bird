@@ -197,6 +197,7 @@ CF_KEYWORDS(RX, BUFFER, LARGE, NORMAL, STUBNET, HIDDEN, SUMMARY, TAG, EXTERNAL)
 CF_KEYWORDS(WAIT, DELAY, LSADB, ECMP, LIMIT, WEIGHT, NSSA, TRANSLATOR, STABILITY)
 CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL, NETMASK, TX, PRIORITY, LENGTH)
 CF_KEYWORDS(SECONDARY, MERGE, LSA, SUPPRESSION, MULTICAST, RFC5838, VPN, PE)
+CF_KEYWORDS(GRACEFUL, RESTART, AWARE, TIME)
 
 %type <ld> lsadb_args
 %type <i> ospf_variant ospf_af_mc nbma_eligible
@@ -223,6 +224,8 @@ ospf_proto_start: proto_start ospf_variant
   OSPF_CFG->tick = OSPF_DEFAULT_TICK;
   OSPF_CFG->ospf2 = $2;
   OSPF_CFG->af_ext = !$2;
+  OSPF_CFG->gr_mode = OSPF_GR_AWARE;
+  OSPF_CFG->gr_time = OSPF_DEFAULT_GR_TIME;
 };
 
 ospf_proto:
@@ -255,6 +258,9 @@ ospf_proto_item:
  | RFC5838 bool { OSPF_CFG->af_ext = $2; if (!ospf_cfg_is_v3()) cf_error("RFC5838 option requires OSPFv3"); }
  | VPN PE bool { OSPF_CFG->vpn_pe = $3; }
  | STUB ROUTER bool { OSPF_CFG->stub_router = $3; }
+ | GRACEFUL RESTART bool { OSPF_CFG->gr_mode = $3; }
+ | GRACEFUL RESTART AWARE { OSPF_CFG->gr_mode = OSPF_GR_AWARE; }
+ | GRACEFUL RESTART TIME expr { OSPF_CFG->gr_time = $4; if (($4 < 1) || ($4 > 1800)) cf_error("Graceful restart time must be in range 1-1800"); }
  | ECMP bool { OSPF_CFG->ecmp = $2 ? OSPF_DEFAULT_ECMP_LIMIT : 0; }
  | ECMP bool LIMIT expr { OSPF_CFG->ecmp = $2 ? $4 : 0; }
  | MERGE EXTERNAL bool { OSPF_CFG->merge_external = $3; }

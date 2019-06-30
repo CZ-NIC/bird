@@ -765,6 +765,14 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
   ifa->cf = new;
   ifa->marked = 0;
 
+  /* Cancel GR peers if GR is disabled */
+  if (!p->gr_mode && p->gr_count)
+  {
+    struct ospf_neighbor *n, *nx;
+    WALK_LIST_DELSAFE(n, nx, ifa->neigh_list)
+      if (n->gr_active)
+	ospf_neigh_cancel_graceful_restart(n);
+  }
 
   /* HELLO TIMER */
   if (ifa->helloint != new->helloint)

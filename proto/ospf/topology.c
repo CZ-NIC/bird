@@ -83,7 +83,10 @@ ospf_install_lsa(struct ospf_proto *p, struct ospf_lsa_header *lsa, u32 type, u3
 	     en->lsa_type, en->lsa.id, en->lsa.rt, en->lsa.sn, en->lsa.age);
 
   if (change)
+  {
+    ospf_neigh_lsadb_changed(p, en);
     ospf_schedule_rtcalc(p);
+  }
 
   return en;
 }
@@ -243,6 +246,7 @@ ospf_do_originate_lsa(struct ospf_proto *p, struct top_hash_entry *en, void *lsa
   en->lsa.age = 0;
   en->init_age = 0;
   en->inst_time = current_time();
+  en->dirty = 0;
   lsa_generate_checksum(&en->lsa, en->lsa_body);
 
   OSPF_TRACE(D_EVENTS, "Originating LSA: Type: %04x, Id: %R, Rt: %R, Seq: %08x",
@@ -251,7 +255,10 @@ ospf_do_originate_lsa(struct ospf_proto *p, struct top_hash_entry *en, void *lsa
   ospf_flood_lsa(p, en, NULL);
 
   if (en->mode == LSA_M_BASIC)
+  {
+    ospf_neigh_lsadb_changed(p, en);
     ospf_schedule_rtcalc(p);
+  }
 
   return 1;
 }
@@ -321,7 +328,8 @@ ospf_originate_lsa(struct ospf_proto *p, struct ospf_new_lsa *lsa)
   if ((en->lsa.age < LSA_MAXAGE) &&
       (lsa_length == en->lsa.length) &&
       !memcmp(lsa_body, en->lsa_body, lsa_blen) &&
-      (!ospf_is_v2(p) || (lsa->opts == lsa_get_options(&en->lsa))))
+      (!ospf_is_v2(p) || (lsa->opts == lsa_get_options(&en->lsa))) &&
+      !en->dirty)
     goto drop;
 
   lsa_body = lsab_flush(p);
@@ -433,7 +441,10 @@ ospf_flush_lsa(struct ospf_proto *p, struct top_hash_entry *en)
   ospf_flood_lsa(p, en, NULL);
 
   if (en->mode == LSA_M_BASIC)
+  {
+    ospf_neigh_lsadb_changed(p, en);
     ospf_schedule_rtcalc(p);
+  }
 
   en->mode = LSA_M_BASIC;
 }
@@ -509,6 +520,12 @@ ospf_update_lsadb(struct ospf_proto *p)
       continue;
     }
 
+    if (en->dirty)
+    {
+      ospf_flush_lsa(p, en);
+      continue;
+    }
+
     if ((en->lsa.rt == p->router_id) && (real_age >= LSREFRESHTIME))
     {
       ospf_refresh_lsa(p, en);
@@ -525,6 +542,16 @@ ospf_update_lsadb(struct ospf_proto *p)
   }
 }
 
+void
+ospf_mark_lsadb(struct ospf_proto *p)
+{
+  struct top_hash_entry *en;
+
+  /* Mark all local LSAs as dirty */
+  WALK_SLIST(en, p->lsal)
+    if (en->lsa.rt == p->router_id)
+      en->dirty = 1;
+}
 
 static u32
 ort_to_lsaid(struct ospf_proto *p, ort *nf)
@@ -1650,6 +1677,59 @@ ospf_originate_prefix_net_lsa(struct ospf_proto *p, struct ospf_iface *ifa)
 
 
 /*
+ *	Grace LSA handling
+ *	Type = LSA_T_GR, opaque type = LSA_OT_GR
+ */
+
+static inline void
+ospf_add_gr_period_tlv(struct ospf_proto *p, uint period)
+{
+  struct ospf_tlv *tlv = lsab_allocz(p, sizeof(struct ospf_tlv) + sizeof(u32));
+  tlv->type = LSA_GR_PERIOD;
+  tlv->length = 4;
+  tlv->data[0] = period;
+}
+
+static inline void
+ospf_add_gr_reason_tlv(struct ospf_proto *p, uint reason)
+{
+  struct ospf_tlv *tlv = lsab_allocz(p, sizeof(struct ospf_tlv) + sizeof(u32));
+  tlv->type = LSA_GR_REASON;
+  tlv->length = 1;
+  tlv->data[0] = reason << 24;
+}
+
+static inline void
+ospf_add_gr_address_tlv(struct ospf_proto *p, ip4_addr addr)
+{
+  struct ospf_tlv *tlv = lsab_allocz(p, sizeof(struct ospf_tlv) + sizeof(u32));
+  tlv->type = LSA_GR_ADDRESS;
+  tlv->length = 4;
+  tlv->data[0] = ip4_to_u32(addr);
+}
+
+void
+ospf_originate_gr_lsa(struct ospf_proto *p, struct ospf_iface *ifa)
+{
+  struct ospf_new_lsa lsa = {
+    .type = LSA_T_GR,
+    .dom  = ifa->iface_id,
+    .id   = ospf_is_v2(p) ? 0 : ifa->iface_id,
+    .ifa  = ifa
+  };
+
+  ospf_add_gr_period_tlv(p, p->gr_time);
+  ospf_add_gr_reason_tlv(p, 0);
+
+  uint t = ifa->type;
+  if (ospf_is_v2(p) && ((t == OSPF_IT_BCAST) || (t == OSPF_IT_NBMA) || (t == OSPF_IT_PTMP)))
+    ospf_add_gr_address_tlv(p, ipa_to_ip4(ifa->addr->ip));
+
+  ospf_originate_lsa(p, &lsa);
+}
+
+
+/*
  *	Router Information LSA handling
  *	Type = LSA_T_RI_AREA, opaque type = LSA_OT_RI
  */
@@ -1691,6 +1771,10 @@ ospf_update_topology(struct ospf_proto *p)
 {
   struct ospf_area *oa;
   struct ospf_iface *ifa;
+
+  /* No LSA reorigination during GR recovery */
+  if (p->gr_recovery)
+    return;
 
   WALK_LIST(oa, p->area_list)
   {

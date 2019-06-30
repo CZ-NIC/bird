@@ -130,6 +130,7 @@ static inline int rt_is_nssa(ort *nf)
 
 void ospf_rt_spf(struct ospf_proto *p);
 void ospf_rt_initort(struct fib_node *fn);
+void ospf_update_gr_recovery(struct ospf_proto *p);
 
 
 #endif /* _BIRD_OSPF_RT_H_ */

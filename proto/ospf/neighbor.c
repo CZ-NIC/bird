@@ -28,6 +28,8 @@ static void dbdes_timer_hook(timer *t);
 static void lsrq_timer_hook(timer *t);
 static void lsrt_timer_hook(timer *t);
 static void ackd_timer_hook(timer *t);
+static void ospf_neigh_stop_graceful_restart_(struct ospf_neighbor *n);
+static void graceful_restart_timeout(timer *t);
 
 
 static void
@@ -165,7 +167,7 @@ ospf_neigh_chstate(struct ospf_neighbor *n, u8 state)
   if (old_state == NEIGHBOR_FULL)
     ifa->fadj--;
 
-  if (ifa->fadj != old_fadj)
+  if ((ifa->fadj != old_fadj) && !n->gr_active)
   {
     /* RFC 2328 12.4 Event 4 - neighbor enters/leaves Full state */
     ospf_notify_rt_lsa(ifa->oa);
@@ -184,6 +186,7 @@ ospf_neigh_chstate(struct ospf_neighbor *n, u8 state)
 
     n->dds++;
     n->myimms = DBDES_IMMS;
+    n->got_my_rt_lsa = 0;
 
     tm_start(n->dbdes_timer, 0);
     tm_start(n->ackd_timer, ifa->rxmtint S / 2);
@@ -193,9 +196,9 @@ ospf_neigh_chstate(struct ospf_neighbor *n, u8 state)
     n->myimms &= ~DBDES_I;
 
   /* Generate NeighborChange event if needed, see RFC 2328 9.2 */
-  if ((state == NEIGHBOR_2WAY) && (old_state < NEIGHBOR_2WAY))
+  if ((state == NEIGHBOR_2WAY) && (old_state < NEIGHBOR_2WAY) && !n->gr_active)
     ospf_iface_sm(ifa, ISM_NEICH);
-  if ((state < NEIGHBOR_2WAY) && (old_state >= NEIGHBOR_2WAY))
+  if ((state < NEIGHBOR_2WAY) && (old_state >= NEIGHBOR_2WAY) && !n->gr_active)
     ospf_iface_sm(ifa, ISM_NEICH);
 }
 
@@ -293,6 +296,17 @@ ospf_neigh_sm(struct ospf_neighbor *n, int event)
   case INM_KILLNBR:
   case INM_LLDOWN:
   case INM_INACTTIM:
+    if (n->gr_active && (event == INM_INACTTIM))
+    {
+      /* Just down the neighbor, but do not remove it */
+      reset_lists(p, n);
+      ospf_neigh_chstate(n, NEIGHBOR_DOWN);
+      break;
+    }
+
+    if (n->gr_active)
+      ospf_neigh_stop_graceful_restart_(n);
+
     /* No need for reset_lists() */
     ospf_neigh_chstate(n, NEIGHBOR_DOWN);
     ospf_neigh_down(n);
@@ -357,6 +371,180 @@ can_do_adj(struct ospf_neighbor *n)
   DBG("%s: Iface %s can_do_adj=%d\n", p->p.name, ifa->ifname, i);
   return i;
 }
+
+static void
+ospf_neigh_start_graceful_restart(struct ospf_neighbor *n, uint gr_time)
+{
+  struct ospf_proto *p = n->ifa->oa->po;
+
+  OSPF_TRACE(D_EVENTS, "Neighbor %R on %s started graceful restart",
+	     n->rid, n->ifa->ifname);
+
+  n->gr_active = 1;
+  p->gr_count++;
+
+  n->gr_timer = tm_new_init(n->pool, graceful_restart_timeout, n, 0, 0);
+  tm_start(n->gr_timer, gr_time S);
+}
+
+static void
+ospf_neigh_stop_graceful_restart_(struct ospf_neighbor *n)
+{
+  struct ospf_proto *p = n->ifa->oa->po;
+  struct ospf_iface *ifa = n->ifa;
+
+  n->gr_active = 0;
+  p->gr_count--;
+
+  rfree(n->gr_timer);
+  n->gr_timer = NULL;
+
+  ospf_notify_rt_lsa(ifa->oa);
+  ospf_notify_net_lsa(ifa);
+
+  if (ifa->type == OSPF_IT_VLINK)
+    ospf_notify_rt_lsa(ifa->voa);
+
+  ospf_iface_sm(ifa, ISM_NEICH);
+}
+
+static void
+ospf_neigh_stop_graceful_restart(struct ospf_neighbor *n)
+{
+  struct ospf_proto *p = n->ifa->oa->po;
+
+  OSPF_TRACE(D_EVENTS, "Neighbor %R on %s finished graceful restart",
+	     n->rid, n->ifa->ifname);
+
+  ospf_neigh_stop_graceful_restart_(n);
+}
+
+void
+ospf_neigh_cancel_graceful_restart(struct ospf_neighbor *n)
+{
+  struct ospf_proto *p = n->ifa->oa->po;
+
+  OSPF_TRACE(D_EVENTS, "Graceful restart canceled for nbr %R on %s",
+	     n->rid, n->ifa->ifname);
+
+  ospf_neigh_stop_graceful_restart_(n);
+
+  if (n->state == NEIGHBOR_DOWN)
+    ospf_neigh_down(n);
+}
+
+static void
+graceful_restart_timeout(timer *t)
+{
+  struct ospf_neighbor *n = t->data;
+  struct ospf_proto *p = n->ifa->oa->po;
+
+  OSPF_TRACE(D_EVENTS, "Graceful restart timer expired for nbr %R on %s",
+	     n->rid, n->ifa->ifname);
+
+  ospf_neigh_stop_graceful_restart_(n);
+
+  if (n->state == NEIGHBOR_DOWN)
+    ospf_neigh_down(n);
+}
+
+static inline int
+changes_in_lsrtl(struct ospf_neighbor *n)
+{
+  /* This could be improved, see RFC 3623 3.1 (2) */
+
+  struct top_hash_entry *en;
+  WALK_SLIST(en, n->lsrtl)
+    if (LSA_FUNCTION(en->lsa_type) <= LSA_FUNCTION(LSA_T_NSSA))
+      return 1;
+
+  return 0;
+}
+
+void
+ospf_neigh_notify_grace_lsa(struct ospf_neighbor *n, struct top_hash_entry *en)
+{
+  struct ospf_iface *ifa = n->ifa;
+  struct ospf_proto *p = ifa->oa->po;
+
+  /* In OSPFv2, neighbors are identified by either IP or Router ID, based on network type */
+  uint t = ifa->type;
+  if (ospf_is_v2(p) && ((t == OSPF_IT_BCAST) || (t == OSPF_IT_NBMA) || (t == OSPF_IT_PTMP)))
+  {
+    struct ospf_tlv *tlv = lsa_get_tlv(en, LSA_GR_ADDRESS);
+    if (!tlv || tlv->length != 4)
+      return;
+
+    ip_addr addr = ipa_from_u32(tlv->data[0]);
+    if (!ipa_equal(n->ip, addr))
+      n = find_neigh_by_ip(ifa, addr);
+  }
+  else
+  {
+    if (n->rid != en->lsa.rt)
+      n = find_neigh(ifa, en->lsa.rt);
+  }
+
+  if (!n)
+    return;
+
+  if (en->lsa.age < LSA_MAXAGE)
+  {
+    u32 period = lsa_get_tlv_u32(en, LSA_GR_PERIOD);
+
+    /* Exception for updating grace period */
+    if (n->gr_active)
+    {
+      tm_start(n->gr_timer, (period S) - (en->lsa.age S));
+      return;
+    }
+
+    /* RFC 3623 3.1 (1) - full adjacency */
+    if (n->state != NEIGHBOR_FULL)
+      return;
+
+    /* RFC 3623 3.1 (2) - no changes in LSADB */
+    if (changes_in_lsrtl(n))
+      return;
+
+    /* RFC 3623 3.1 (3) - grace period not expired */
+    if (en->lsa.age >= period)
+      return;
+
+    /* RFC 3623 3.1 (4) - helper mode allowed */
+    if (!p->gr_mode)
+      return;
+
+    /* RFC 3623 3.1 (5) - no local graceful restart */
+    if (p->p.gr_recovery)
+      return;
+
+    ospf_neigh_start_graceful_restart(n, period - en->lsa.age);
+  }
+  else /* Grace-LSA is flushed */
+  {
+    if (n->gr_active)
+      ospf_neigh_stop_graceful_restart(n);
+  }
+}
+
+void
+ospf_neigh_lsadb_changed_(struct ospf_proto *p, struct top_hash_entry *en)
+{
+  struct ospf_iface *ifa;
+  struct ospf_neighbor *n, *nx;
+
+  if (LSA_FUNCTION(en->lsa_type) > LSA_FUNCTION(LSA_T_NSSA))
+    return;
+
+  /* RFC 3623 3.2 (3) - cancel graceful restart when LSdb changed */
+  WALK_LIST(ifa, p->iface_list)
+    if (lsa_flooding_allowed(en->lsa_type, en->domain, ifa))
+      WALK_LIST_DELSAFE(n, nx, ifa->neigh_list)
+	if (n->gr_active)
+	  ospf_neigh_cancel_graceful_restart(n);
+}
+
 
 
 static inline u32 neigh_get_id(struct ospf_proto *p, struct ospf_neighbor *n)
