@@ -486,6 +486,7 @@ void cmd_check_config(char *name UNUSED) {}
 void cmd_reconfig(char *name UNUSED, int type UNUSED, int timeout UNUSED) {}
 void cmd_reconfig_confirm(void) {}
 void cmd_reconfig_undo(void) {}
+void cmd_reconfig_status(void) {}
 void cmd_shutdown(void) {}
 void cmd_reconfig_undo_notify(void) {}
 
