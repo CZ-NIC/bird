@@ -12,6 +12,9 @@
 
 #include "lib/fletcher16.h"
 
+#define HDRLEN sizeof(struct ospf_lsa_header)
+
+
 #ifndef CPU_BIG_ENDIAN
 void
 lsa_hton_hdr(struct ospf_lsa_header *h, struct ospf_lsa_header *n)
@@ -59,7 +62,6 @@ lsa_ntoh_body(void *n, void *h, u16 len)
     hid[i] = ntohl(nid[i]);
 }
 #endif /* little endian */
-
 
 
 int
@@ -147,11 +149,13 @@ static const u16 lsa_v2_types[] = {
 
 /* Maps OSPFv2 opaque types to OSPFv3 function codes */
 static const u16 opaque_lsa_types[] = {
+  [LSA_OT_GR] = LSA_T_GR,
   [LSA_OT_RI] = LSA_T_RI_,
 };
 
 /* Maps (subset of) OSPFv3 function codes to OSPFv2 opaque types */
 static const u8 opaque_lsa_types_inv[] = {
+  [LSA_T_GR] = LSA_OT_GR,
   [LSA_T_RI_] = LSA_OT_RI,
 };
 
@@ -168,7 +172,13 @@ lsa_get_type_domain_(u32 type, u32 id, struct ospf_iface *ifa, u32 *otype, u32 *
     uint code;
     if (LSA_FUNCTION(type) == LSA_T_OPAQUE_)
       if (code = LOOKUP(opaque_lsa_types, id >> 24))
+      {
 	type = code | LSA_UBIT | LSA_SCOPE(type);
+
+	/* Hack for Grace-LSA: It does not use U-bit for link-scoped LSAs */
+	if (type == (LSA_T_GR | LSA_UBIT))
+	  type = LSA_T_GR;
+      }
   }
   else
   {
@@ -194,6 +204,13 @@ lsa_get_type_domain_(u32 type, u32 id, struct ospf_iface *ifa, u32 *otype, u32 *
     *domain = 0;
     return;
   }
+}
+
+int
+lsa_is_opaque(u32 type)
+{
+  u32 fn = LSA_FUNCTION(type);
+  return LOOKUP(opaque_lsa_types_inv, fn) || (fn == LSA_T_OPAQUE_);
 }
 
 u32
@@ -264,6 +281,51 @@ lsa_comp(struct ospf_lsa_header *l1, struct ospf_lsa_header *l2)
     return l1->age < l2->age ? CMP_NEWER : CMP_OLDER;
 
   return CMP_SAME;
+}
+
+
+#define LSA_TLV_LENGTH(tlv) \
+  (sizeof(struct ospf_tlv) + BIRD_ALIGN((tlv)->length, 4))
+
+#define LSA_NEXT_TLV(tlv) \
+  ((struct ospf_tlv *) ((byte *) (tlv) + LSA_TLV_LENGTH(tlv)))
+
+#define LSA_WALK_TLVS(tlv,buf,len)					\
+  for(struct ospf_tlv *tlv = (void *) (buf);				\
+      (byte *) tlv < (byte *) (buf) + (len);				\
+      tlv = LSA_NEXT_TLV(tlv))
+
+struct ospf_tlv *
+lsa_get_tlv(struct top_hash_entry *en, uint type)
+{
+  LSA_WALK_TLVS(tlv, en->lsa_body, en->lsa.length - HDRLEN)
+    if (tlv->type == type)
+      return tlv;
+
+  return NULL;
+}
+
+int
+lsa_validate_tlvs(byte *buf, uint len)
+{
+  byte *pos = buf;
+  byte *end = buf + len;
+
+  while (pos < end)
+  {
+    if ((pos + sizeof(struct ospf_tlv)) > end)
+      return 0;
+
+    struct ospf_tlv *tlv = (void *) pos;
+    uint len = LSA_TLV_LENGTH(tlv);
+
+    if ((pos + len) > end)
+      return 0;
+
+    pos += len;
+  }
+
+  return 1;
 }
 
 
@@ -408,7 +470,6 @@ lsa_parse_ext(struct top_hash_entry *en, int ospf2, int af, struct ospf_lsa_ext_
   }
 }
 
-#define HDRLEN sizeof(struct ospf_lsa_header)
 
 static int
 lsa_validate_rt2(struct ospf_lsa_header *lsa, struct ospf_lsa_rt *body)
@@ -604,6 +665,12 @@ lsa_validate_prefix(struct ospf_lsa_header *lsa, struct ospf_lsa_prefix *body)
 }
 
 static int
+lsa_validate_gr(struct ospf_lsa_header *lsa, void *body)
+{
+  return lsa_validate_tlvs(body, lsa->length - HDRLEN);
+}
+
+static int
 lsa_validate_ri(struct ospf_lsa_header *lsa UNUSED, struct ospf_lsa_net *body UNUSED)
 {
   /*
@@ -643,6 +710,8 @@ lsa_validate(struct ospf_lsa_header *lsa, u32 lsa_type, int ospf2, void *body)
     case LSA_T_EXT:
     case LSA_T_NSSA:
       return lsa_validate_ext2(lsa, body);
+    case LSA_T_GR:
+      return lsa_validate_gr(lsa, body);
     case LSA_T_RI_LINK:
     case LSA_T_RI_AREA:
     case LSA_T_RI_AS:
@@ -674,6 +743,8 @@ lsa_validate(struct ospf_lsa_header *lsa, u32 lsa_type, int ospf2, void *body)
       return lsa_validate_link(lsa, body);
     case LSA_T_PREFIX:
       return lsa_validate_prefix(lsa, body);
+    case LSA_T_GR:
+      return lsa_validate_gr(lsa, body);
     case LSA_T_RI_LINK:
     case LSA_T_RI_AREA:
     case LSA_T_RI_AS:
