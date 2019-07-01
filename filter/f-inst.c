@@ -39,7 +39,7 @@
  *	m4_dnl	    C type,				for storage in structs
  *	m4_dnl	    name in f_inst,			how the member is named before linearization
  *	m4_dnl	    name in f_line_item,		how the member is named afterwards
- *	m4_dnl	    comparator for same(),		how the member is compared
+ *	m4_dnl	    comparator for same(),		if different, this should be TRUE (CAVEAT)
  *	m4_dnl	    dump format string			debug -> format string for bvsnprintf
  *	m4_dnl	    dump format args			appropriate args
  *	m4_dnl	    interpreter body			how to deal with this on execution
@@ -294,43 +294,16 @@
 
     /* some constants have value in a[1], some in *a[0].p, strange. */
   INST(FI_CONSTANT, 0, 1) {	/* integer (or simple type) constant, string, set, or prefix_set */
-    FID_LINE_IN
-      struct f_val val;
-    FID_STRUCT_IN
-      struct f_val val;
-    FID_NEW_ARGS
-    , const struct f_val val
-    FID_NEW_BODY
-      whati->val = val;
-    FID_LINEARIZE_BODY
-      item->val = whati->val;
-    FID_SAME_BODY
-      if (!val_same(&(f1->val), &(f2->val))) return 0;
-    FID_DUMP_BODY
-      debug("%svalue %s\n", INDENT, val_dump(&item->val));
-    FID_ALL
+    FID_MEMBER(
+      struct f_val,
+      val,
+      val,
+      [[ !val_same(&(f1->val), &(f2->val)) ]],
+      value %s,
+      val_dump(&(item->val))
+    );
 
     RESULT_VAL(whati->val);
-  }
-  INST(FI_CONSTANT_DEFINED, 0, 1) {
-    FID_STRUCT_IN
-      const struct symbol *sym;
-    FID_LINE_IN
-      const struct symbol *sym;
-      const struct f_val *valp;
-    FID_NEW_ARGS
-      , const struct symbol *sym
-    FID_NEW_BODY
-      whati->sym = sym;
-    FID_LINEARIZE_BODY
-      item->valp = (item->sym = whati->sym)->val;
-    FID_SAME_BODY
-      if (strcmp(f1->sym->name, f2->sym->name) || !val_same(f1->sym->val, f2->sym->val)) return 0;
-    FID_DUMP_BODY
-      debug("%sconstant %s with value %s\n", INDENT, item->sym->name, val_dump(item->valp));
-    FID_ALL
-
-    RESULT_VAL(*whati->valp);
   }
   INST(FI_PRINT, 1, 0) {
     ARG_ANY(1);

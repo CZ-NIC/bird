@@ -856,7 +856,7 @@ symbol_value: CF_SYM_KNOWN
   {
     switch ($1->class) {
       case SYM_CONSTANT_RANGE:
-	$$ = f_new_inst(FI_CONSTANT_DEFINED, $1);
+	$$ = f_new_inst(FI_CONSTANT, *($1->val));
 	break;
       case SYM_VARIABLE_RANGE:
 	$$ = f_new_inst(FI_VAR_GET, $1);
