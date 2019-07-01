@@ -15,8 +15,7 @@ m4_divert(-1)m4_dnl
 #	8	linearize
 #	9	same (filter comparator)
 #	1	union in struct f_inst
-#	3	constructors
-#	10	interpreter
+#	3	constructors + interpreter
 #
 #	Per-inst Diversions:
 #	101	content of per-inst struct
@@ -43,7 +42,6 @@ m4_define(FID_DUMP, `FID_ZONE(6, Dump line)')
 m4_define(FID_DUMP_CALLER, `FID_ZONE(7, Dump line caller)')
 m4_define(FID_LINEARIZE, `FID_ZONE(8, Linearize)')
 m4_define(FID_SAME, `FID_ZONE(9, Comparison)')
-m4_define(FID_INTERPRET, `FID_ZONE(10, Interpret)')
 
 m4_define(FID_STRUCT_IN, `m4_divert(101)')
 m4_define(FID_NEW_ARGS, `m4_divert(102)')
@@ -71,13 +69,23 @@ struct {
 m4_undivert(107)
 } i_[[]]INST_NAME();
 FID_NEW
-struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
-m4_undivert(102)
-)
 FID_HIC(
-[[;]],
-[[]],
 [[
+struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
+[[m4_undivert(102)]]
+);]],
+[[
+  case INST_NAME():
+  #define whati (&(what->i_]]INST_NAME()[[))
+  m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
+  [[m4_undivert(108)]]
+  #undef whati
+  break;
+]],
+[[
+struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
+[[m4_undivert(102)]]
+)
   {
     struct f_inst *what = cfg_allocz(sizeof(struct f_inst));
     what->fi_code = fi_code;
@@ -124,14 +132,6 @@ case INST_NAME():
 m4_undivert(106)
 #undef f1
 #undef f2
-break;
-
-FID_INTERPRET
-case INST_NAME():
-#define whati (&(what->i_]]INST_NAME()[[))
-m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
-m4_undivert(108)
-#undef whati
 break;
 
 ]])')
@@ -252,7 +252,7 @@ m4_define(FID_WR_STOP, `m4_define([[FID_WR_PUT]])m4_divert(-1)')
 
 m4_changequote([[,]])
 FID_WR_DIRECT(I)
-FID_WR_PUT(10)
+FID_WR_PUT(3)
 FID_WR_DIRECT(C)
 #include "nest/bird.h"
 #include "filter/filter.h"
