@@ -87,10 +87,7 @@ struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
 [[m4_undivert(102)]]
 )
   {
-    struct f_inst *what = cfg_allocz(sizeof(struct f_inst));
-    what->fi_code = fi_code;
-    what->lineno = ifs->lino;
-    what->size = 1;
+    struct f_inst *what = fi_new(fi_code);
   #define whati (&(what->i_]]INST_NAME()[[))
   [[m4_undivert(103)]]
   #undef whati
@@ -270,6 +267,16 @@ f_instruction_name(enum f_instruction_code fi)
     return f_instruction_name_str[fi];
   else
     bug("Got unknown instruction code: %d", fi);
+}
+
+static inline struct f_inst *
+fi_new(enum f_instruction_code fi_code)
+{
+  struct f_inst *what = cfg_allocz(sizeof(struct f_inst));
+  what->lineno = ifs->lino;
+  what->size = 1;
+  what->fi_code = fi_code;
+  return what;
 }
 
 /* Instruction constructors */
