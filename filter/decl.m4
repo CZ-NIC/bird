@@ -227,9 +227,9 @@ do { if (whati->fl$1) {
 } } while(0)m4_dnl
 FID_ALL()')
 
-m4_define(RESULT_OK, `FID_INTERPRET_BODY()fstk->vcnt++FID_ALL()')
 m4_define(RESULT, `RESULT_VAL([[ (struct f_val) { .type = $1, .val.$2 = $3 } ]])')
-m4_define(RESULT_VAL, `FID_INTERPRET_BODY()do { res = $1; RESULT_OK; } while (0)FID_ALL()')
+m4_define(RESULT_VAL, `FID_INTERPRET_BODY()do { res = $1; fstk->vcnt++; } while (0)FID_ALL()')
+m4_define(RESULT_VOID, `RESULT_VAL([[ (struct f_val) { .type = T_VOID } ]])')
 
 m4_define(SYMBOL, `FID_MEMBER(const struct symbol *, sym, sym,
 [[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name, const struct symbol *sym = whati->sym)')

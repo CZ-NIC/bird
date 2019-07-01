@@ -36,7 +36,8 @@
  *	m4_dnl	  ACCESS_RTE;				this instruction needs route
  *	m4_dnl	  ACCESS_EATTRS;			this instruction needs extended attributes
  *	m4_dnl	  RESULT(type, union-field, value);	putting this on value stack
- *	m4_dnl	  RESULT_OK;				legalize what already is on the value stack
+ *	m4_dnl	  RESULT_VAL(value-struct);		pass the struct f_val directly
+ *	m4_dnl	  RESULT_VOID;				return undef
  *	m4_dnl	}
  *
  *	Other code is just copied into the interpreter part.
@@ -50,41 +51,37 @@
   INST(FI_ADD, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
-    res.val.i = v1.val.i + v2.val.i;
-    RESULT_OK;
+    RESULT(T_INT, i, v1.val.i + v2.val.i);
   }
   INST(FI_SUBTRACT, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
-    res.val.i = v1.val.i - v2.val.i;
-    RESULT_OK;
+    RESULT(T_INT, i, v1.val.i - v2.val.i);
   }
   INST(FI_MULTIPLY, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
-    res.val.i = v1.val.i * v2.val.i;
-    RESULT_OK;
+    RESULT(T_INT, i, v1.val.i * v2.val.i);
   }
   INST(FI_DIVIDE, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
     if (v2.val.i == 0) runtime( "Mother told me not to divide by 0" );
-    res.val.i = v1.val.i / v2.val.i;
-    RESULT_OK;
+    RESULT(T_INT, i, v1.val.i / v2.val.i);
   }
   INST(FI_AND, 1, 1) {
     ARG(1,T_BOOL);
-    if (res.val.i)
+    if (v1.val.i)
       LINE(2,0);
     else
-      RESULT_OK;
+      RESULT_VAL(v1);
   }
   INST(FI_OR, 1, 1) {
     ARG(1,T_BOOL);
-    if (!res.val.i)
+    if (!v1.val.i)
       LINE(2,0);
     else
-      RESULT_OK;
+      RESULT_VAL(v1);
   }
   INST(FI_PAIR_CONSTRUCT, 2, 1) {
     ARG(1,T_INT);
@@ -281,8 +278,7 @@
 
   INST(FI_VAR_GET, 0, 1) {
     SYMBOL(1);
-    res = fstk->vstk[curline.vbase + sym->offset];
-    RESULT_OK;
+    RESULT_VAL(fstk->vstk[curline.vbase + sym->offset]);
   }
 
     /* some constants have value in a[1], some in *a[0].p, strange. */
@@ -323,8 +319,7 @@
       debug("%sconstant %s with value %s\n", INDENT, item->sym->name, val_dump(item->valp));
     FID_ALL
 
-    res = *whati->valp;
-    RESULT_OK;
+    RESULT_VAL(*whati->valp);
   }
   INST(FI_PRINT, 1, 0) {
     ARG_ANY(1);
@@ -500,8 +495,7 @@
 	}
 
 	/* Undefined value */
-	res.type = T_VOID;
-	RESULT_OK;
+	RESULT_VOID;
 	break;
       }
 
@@ -534,8 +528,7 @@
 	RESULT(T_LCLIST, ad, e->u.ptr);
 	break;
       case EAF_TYPE_UNDEF:
-	res.type = T_VOID;
-	RESULT_OK;
+	RESULT_VOID;
 	break;
       default:
 	bug("Unknown dynamic attribute type");
