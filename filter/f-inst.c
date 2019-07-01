@@ -20,21 +20,31 @@
  *	for several C sources; every instruction block gets expanded into many
  *	different places.
  *
+ *	All the arguments are processed literally; if you need an argument including comma,
+ *	you have to quote it by [[ ... ]]
+ *
  *	What is the syntax here?
  *	m4_dnl	INST(FI_NOP, in, out) {			enum value, input args, output args
  *	m4_dnl	  ARG(num, type);			argument, its id (in data fields) and type
  *	m4_dnl	  ARG_ANY(num);				argument with no type check
  *	m4_dnl	  LINE(num, unused);			this argument has to be converted to its own f_line
- *	m4_dnl	  ECS;					extended community subtype
- *	m4_dnl	  COUNT(unused);			simply a uint
  *	m4_dnl	  SYMBOL;				symbol handed from config
- *	m4_dnl	  FRET;					filter return value
  *	m4_dnl	  STATIC_ATTR;				static attribute definition
  *	m4_dnl	  DYNAMIC_ATTR;				dynamic attribute definition
  *	m4_dnl	  RTC;					route table config
- *	m4_dnl	  TREE;					a tree
  *	m4_dnl	  ACCESS_RTE;				this instruction needs route
  *	m4_dnl	  ACCESS_EATTRS;			this instruction needs extended attributes
+ *
+ *	m4_dnl	  FID_MEMBER(				custom instruction member
+ *	m4_dnl	    C type,				for storage in structs
+ *	m4_dnl	    name in f_inst,			how the member is named before linearization
+ *	m4_dnl	    name in f_line_item,		how the member is named afterwards
+ *	m4_dnl	    comparator for same(),		how the member is compared
+ *	m4_dnl	    dump format string			debug -> format string for bvsnprintf
+ *	m4_dnl	    dump format args			appropriate args
+ *	m4_dnl	    interpreter body			how to deal with this on execution
+ *	m4_dnl	  )
+ *
  *	m4_dnl	  RESULT(type, union-field, value);	putting this on value stack
  *	m4_dnl	  RESULT_VAL(value-struct);		pass the struct f_val directly
  *	m4_dnl	  RESULT_VOID;				return undef
@@ -95,7 +105,8 @@
   INST(FI_EC_CONSTRUCT, 2, 1) {
     ARG_ANY(1);
     ARG(2, T_INT);
-    ECS;
+
+    FID_MEMBER(enum ec_subtype, ecs, ecs, f1->ecs != f2->ecs, ec subtype %s, ec_subtype_str(item->ecs), enum ec_subtype ecs = whati->ecs);
 
     int check, ipv4_used;
     u32 key, val;
@@ -141,7 +152,7 @@
 
   INST(FI_PATHMASK_CONSTRUCT, 0, 1) {
     ARG_ANY(1);
-    COUNT(2);
+    FID_MEMBER(uint, count, count, f1->count != f2->count, number of items %u, item->count);
 
     FID_NEW_BODY
       uint len = 0;
@@ -277,7 +288,7 @@
   }
 
   INST(FI_VAR_GET, 0, 1) {
-    SYMBOL(1);
+    SYMBOL;
     RESULT_VAL(fstk->vstk[curline.vbase + sym->offset]);
   }
 
@@ -346,7 +357,7 @@
     }
     FID_ALL
 
-    FRET(2);
+    FID_MEMBER(enum filter_return, fret, fret, f1->fret != f2->fret, %s, filter_return_str(item->fret), enum filter_return fret = whati->fret);
 
     if ((fret == F_NOP || (fret != F_NONL && (what->flags & FIF_PRINTED))) &&
 	!(fs->flags & FF_SILENT))
@@ -789,7 +800,9 @@
 
   INST(FI_SWITCH, 1, 0) {
     ARG_ANY(1);
-    TREE;
+
+    FID_MEMBER(const struct f_tree *, tree, tree, [[!same_tree(f1->tree, f2->tree)]], tree %p, item->tree, const struct f_tree *tree = whati->tree);
+
     const struct f_tree *t = find_tree(tree, &v1);
     if (!t) {
       v1.type = T_VOID;
@@ -1034,7 +1047,8 @@
 
   INST(FI_ASSERT, 1, 0) {	/* Birdtest Assert */
     ARG(1, T_BOOL);
-    STRING;
+    FID_MEMBER(const char *, s, s, [[strcmp(f1->s, f2->s)]], string \"%s\", item->s);
+
     if (!bt_assert_hook)
       runtime("No bt_assert hook registered, can't assert");
 

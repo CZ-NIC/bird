@@ -140,14 +140,6 @@ m4_define([[INST_INVAL]], [[$2]])m4_dnl
 FID_ALL() m4_dnl
 ')
 
-m4_dnl FID_MEMBER call:
-m4_dnl type
-m4_dnl name in f_inst
-m4_dnl name in f_line_item
-m4_dnl comparator for same
-m4_dnl dump format string
-m4_dnl dump format args
-m4_dnl interpreter body
 m4_define(FID_MEMBER, `m4_dnl
 FID_LINE_IN
 $1 $2;
@@ -230,15 +222,11 @@ m4_define(RESULT_VOID, `RESULT_VAL([[ (struct f_val) { .type = T_VOID } ]])')
 
 m4_define(SYMBOL, `FID_MEMBER(const struct symbol *, sym, sym,
 [[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name, const struct symbol *sym = whati->sym)')
-m4_define(VAL, `FID_MEMBER(struct f_val $1, val, val m4_ifelse($1,,,[0]), [[!val_same(&f1->val, &f2->val)]], value %s, val_dump(&item->val),)')
-m4_define(FRET, `FID_MEMBER(enum filter_return, fret, fret, f1->fret != f2->fret, %s, filter_return_str(item->fret), enum filter_return fret = whati->fret)')
+m4_define(FRET, `')
 m4_define(ECS, `FID_MEMBER(enum ec_subtype, ecs, ecs, f1->ecs != f2->ecs, ec subtype %s, ec_subtype_str(item->ecs), enum ec_subtype ecs = whati->ecs)')
 m4_define(RTC, `FID_MEMBER(const struct rtable_config *, rtc, rtc, [[strcmp(f1->rtc->name, f2->rtc->name)]], route table %s, item->rtc->name, struct rtable *table = whati->rtc->table)')
 m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, sa, f1->sa.sa_code != f2->sa.sa_code,,, struct f_static_attr sa = whati->sa)')
 m4_define(DYNAMIC_ATTR, `FID_MEMBER(struct f_dynamic_attr, da, da, f1->da.ea_code != f2->da.ea_code,,, struct f_dynamic_attr da = whati->da)')
-m4_define(COUNT, `FID_MEMBER(uint, count, count, f1->count != f2->count, number %u, item->count)')
-m4_define(TREE, `FID_MEMBER(const struct f_tree *, tree, tree, [[!same_tree(f1->tree, f2->tree)]], tree %p, item->tree, const struct f_tree *tree = whati->tree)')
-m4_define(STRING, `FID_MEMBER(const char *, s, s, [[strcmp(f1->s, f2->s)]], string \"%s\", item->s)')
 
 m4_define(FID_WR_PUT_LIST)
 m4_define(FID_WR_PUT_ALSO, `m4_define([[FID_WR_PUT_LIST]],FID_WR_PUT_LIST()[[FID_WR_DPUT(]]FID_WR_DIDX[[)FID_WR_DPUT(]]$1[[)]])m4_define([[FID_WR_DIDX]],m4_eval(FID_WR_DIDX+1))m4_divert(FID_WR_DIDX)')
