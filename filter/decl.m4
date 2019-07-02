@@ -93,6 +93,25 @@ FID_INTERPRET_EXEC()m4_dnl
 const $1 $2 = whati->$2
 FID_INTERPRET_BODY')
 
+m4_define(FID_MEMBER_IN, `m4_dnl
+FID_LINE_IN()m4_dnl
+      $1 $2;
+FID_STRUCT_IN()m4_dnl
+      $1 $2;
+FID_LINEARIZE_BODY()m4_dnl
+item->$2 = whati->$2;
+m4_ifelse($3,,,[[
+FID_SAME_BODY()m4_dnl
+if ($3) return 0;
+]])
+m4_ifelse($4,,,[[
+FID_DUMP_BODY()m4_dnl
+debug("%s$4\n", INDENT, $5);
+]])
+FID_INTERPRET_EXEC()m4_dnl
+const $1 $2 = whati->$2
+FID_INTERPRET_BODY')
+
 #	Instruction arguments are needed only until linearization is done.
 #	This puts the arguments into the filter line to be executed before
 #	the instruction itself.

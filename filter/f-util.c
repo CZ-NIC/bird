@@ -33,17 +33,17 @@ filter_name(const struct filter *filter)
 struct filter *f_new_where(struct f_inst *where)
 {
   struct f_inst acc = {
-    .fi_code = FI_PRINT_AND_DIE,
+    .fi_code = FI_DIE,
     .lineno = ifs->lino,
     .size = 1,
-    .i_FI_PRINT_AND_DIE = { .fret = F_ACCEPT, },
+    .i_FI_DIE = { .fret = F_ACCEPT, },
   };
 
   struct f_inst rej = {
-    .fi_code = FI_PRINT_AND_DIE,
+    .fi_code = FI_DIE,
     .lineno = ifs->lino,
     .size = 1,
-    .i_FI_PRINT_AND_DIE = { .fret = F_REJECT, },
+    .i_FI_DIE = { .fret = F_REJECT, },
   };
 
   struct f_inst i = {
