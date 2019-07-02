@@ -251,6 +251,12 @@ m4_changequote([[,]])
 FID_WR_DIRECT(I)
 FID_WR_PUT(3)
 FID_WR_DIRECT(C)
+
+#if defined(__GNUC__) && __GNUC__ >= 6
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
+#endif
+
 #include "nest/bird.h"
 #include "filter/filter.h"
 #include "filter/f-inst.h"
@@ -382,6 +388,9 @@ FID_WR_PUT(9)
   return 1;
 }
 
+#if defined(__GNUC__) && __GNUC__ >= 6
+#pragma GCC diagnostic pop
+#endif
 
 FID_WR_DIRECT(H)
 /* Filter instruction codes */
