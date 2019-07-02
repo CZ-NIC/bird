@@ -167,7 +167,7 @@
 	}
 	whati->f1 = NULL;
       }
-    FID_ALL
+    FID_INTERPRET_BODY
 
     FID_INTERPRET_EXEC
     if (fstk->vcnt < whati->count) /* TODO: make this check systematic */
@@ -198,7 +198,7 @@
 
     FID_INTERPRET_EXEC
       fstk->vcnt -= whati->count;
-    FID_ALL
+    FID_INTERPRET_BODY
 
     pm->len = whati->count;
     RESULT(T_PATH_MASK, path_mask, pm);
@@ -337,7 +337,7 @@
     FID_LINEARIZE_BODY
     {
       uint opos = pos;
-      FID_ALL
+      FID_INTERPRET_BODY
 
     ARG_ANY(1);
 
@@ -345,7 +345,7 @@
       if (opos < pos)
 	dest->items[pos].flags |= FIF_PRINTED;
     }
-    FID_ALL
+    FID_INTERPRET_BODY
 
     FID_MEMBER(enum filter_return, fret, f1->fret != f2->fret, %s, filter_return_str(item->fret));
 
@@ -1045,7 +1045,8 @@
   INST(FI_ASSERT, 1, 0) {	/* Birdtest Assert */
     NEVER_CONSTANT;
     ARG(1, T_BOOL);
-    FID_MEMBER(char *, s, [[strcmp(f1->s, f2->s)]], string \"%s\", item->s);
+
+    FID_MEMBER(char *, s, [[strcmp(f1->s, f2->s)]], string %s, item->s);
 
     ASSERT(s);
 
