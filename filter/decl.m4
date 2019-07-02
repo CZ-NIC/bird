@@ -71,12 +71,12 @@ m4_define(FID_IFCONST, `m4_ifdef([[INST_NEVER_CONSTANT]],[[$2]],[[$1]])')
 #	to interpreter. This yields a line of code everywhere on the path.
 #	FID_MEMBER is a macro to help with this task.
 m4_define(FID_MEMBER, `m4_dnl
-FID_LINE_IN
-$1 $2;
-FID_STRUCT_IN
-$1 $2;
-FID_NEW_ARGS
-, $1 $2
+FID_LINE_IN()m4_dnl
+      $1 $2;
+FID_STRUCT_IN()m4_dnl
+      $1 $2;
+FID_NEW_ARGS()m4_dnl
+  , $1 $2
 FID_NEW_BODY
 whati->$2 = $2;
 FID_LINEARIZE_BODY
@@ -100,10 +100,10 @@ FID_INTERPRET_BODY')
 #	To achieve this, ARG_ANY must be called before anything writes into
 #	the instruction line as it moves the instruction pointer forward.
 m4_define(ARG_ANY, `
-FID_STRUCT_IN
-struct f_inst * f$1;
-FID_NEW_ARGS
-, struct f_inst * f$1
+FID_STRUCT_IN()m4_dnl
+      struct f_inst * f$1;
+FID_NEW_ARGS()m4_dnl
+  , struct f_inst * f$1
 FID_NEW_BODY
 whati->f$1 = f$1;
 for (const struct f_inst *child = f$1; child; child = child->next) {
@@ -136,12 +136,12 @@ m4_define(LINEX_, `do {
 } while (0)')
 
 m4_define(LINE, `
-FID_LINE_IN
-const struct f_line * fl$1;
-FID_STRUCT_IN
-struct f_inst * f$1;
-FID_NEW_ARGS
-, struct f_inst * f$1
+FID_LINE_IN()m4_dnl
+      const struct f_line * fl$1;
+FID_STRUCT_IN()m4_dnl
+      struct f_inst * f$1;
+FID_NEW_ARGS()m4_dnl
+  , struct f_inst * f$1
 FID_NEW_BODY
 whati->f$1 = f$1;
 FID_DUMP_BODY
@@ -166,8 +166,7 @@ m4_define(RESULT_VAL, `FID_HIC(, [[do { res = $1; fstk->vcnt++; } while (0)]],
 m4_define(RESULT_VOID, `RESULT_VAL([[ (struct f_val) { .type = T_VOID } ]])')
 
 #	Some common filter instruction members
-m4_define(SYMBOL, `FID_MEMBER(struct symbol *, sym, 
-[[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name)')
+m4_define(SYMBOL, `FID_MEMBER(struct symbol *, sym, [[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name)')
 m4_define(RTC, `FID_MEMBER(struct rtable_config *, rtc, [[strcmp(f1->rtc->name, f2->rtc->name)]], route table %s, item->rtc->name)')
 m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, f1->sa.sa_code != f2->sa.sa_code,,)')
 m4_define(DYNAMIC_ATTR, `FID_MEMBER(struct f_dynamic_attr, da, f1->da.ea_code != f2->da.ea_code,,)')
@@ -196,8 +195,10 @@ m4_define(ACCESS_RTE, `NEVER_CONSTANT()')
 #	put into the final file, yet it still can't be written out now as
 #	every instruction writes to all of these diversions.
 
-#	Code wrapping diversion names
-m4_define(FID_ZONE, `m4_divert($1) /* $2 for INST_NAME() */')
+#	Code wrapping diversion names. Here we want an explicit newline
+#	after the C comment.
+m4_define(FID_ZONE, `m4_divert($1) /* $2 for INST_NAME() */
+')
 m4_define(FID_INST, `FID_ZONE(1, Instruction structure for config)')
 m4_define(FID_LINE, `FID_ZONE(2, Instruction structure for interpreter)')
 m4_define(FID_NEW, `FID_ZONE(3, Constructor)')
@@ -210,25 +211,25 @@ m4_define(FID_SAME, `FID_ZONE(9, Comparison)')
 
 #	This macro does all the code wrapping. See inline comments.
 m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
-FID_ENUM			m4_dnl Contents of enum fi_code { ... }
-INST_NAME(),
-FID_ENUM_STR			m4_dnl Contents of const char * indexed by enum fi_code
-[INST_NAME()] = "INST_NAME()",
-FID_INST			m4_dnl Anonymous structure inside struct f_inst
-struct {
-m4_undivert(101)
-} i_[[]]INST_NAME();
-FID_LINE			m4_dnl Anonymous structure inside struct f_line_item
-struct {
-m4_undivert(107)
-} i_[[]]INST_NAME();
-FID_NEW				m4_dnl Constructor and interpreter code together
+FID_ENUM()m4_dnl			 Contents of enum fi_code { ... }
+  INST_NAME(),
+FID_ENUM_STR()m4_dnl			 Contents of const char * indexed by enum fi_code
+  [INST_NAME()] = "INST_NAME()",
+FID_INST()m4_dnl			 Anonymous structure inside struct f_inst
+    struct {
+m4_undivert(101)m4_dnl
+    } i_[[]]INST_NAME();
+FID_LINE()m4_dnl			 Anonymous structure inside struct f_line_item
+    struct {
+m4_undivert(107)m4_dnl
+    } i_[[]]INST_NAME();
+FID_NEW()m4_dnl				 Constructor and interpreter code together
 FID_HIC(
-[[				m4_dnl Public declaration of constructor in H file
+[[m4_dnl				 Public declaration of constructor in H file
 struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
-m4_undivert(102)
+m4_undivert(102)m4_dnl
 );]],
-[[				m4_dnl The one case in The Big Switch inside interpreter
+[[m4_dnl				 The one case in The Big Switch inside interpreter
   case INST_NAME():
   #define whati (&(what->i_]]INST_NAME()[[))
   m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
@@ -236,7 +237,7 @@ m4_undivert(102)
   #undef whati
   break;
 ]],
-[[				m4_dnl Constructor itself
+[[m4_dnl				 Constructor itself
 struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
 m4_undivert(102)
 )
@@ -259,10 +260,10 @@ m4_undivert(102)
   }
 ]])
 
-FID_DUMP_CALLER			m4_dnl Case in another big switch used in instruction dumping (debug)
+FID_DUMP_CALLER()m4_dnl			 Case in another big switch used in instruction dumping (debug)
 case INST_NAME(): f_dump_line_item_]]INST_NAME()[[(item, indent + 1); break;
 
-FID_DUMP			m4_dnl The dumper itself
+FID_DUMP()m4_dnl			 The dumper itself
 m4_ifdef([[FID_DUMP_BODY_EXISTS]],
 [[static inline void f_dump_line_item_]]INST_NAME()[[(const struct f_line_item *item_, const int indent)]],
 [[static inline void f_dump_line_item_]]INST_NAME()[[(const struct f_line_item *item UNUSED, const int indent UNUSED)]])
@@ -273,7 +274,7 @@ m4_undivert(104)
 #undef item
 }
 
-FID_LINEARIZE			m4_dnl The linearizer
+FID_LINEARIZE()m4_dnl			 The linearizer
 case INST_NAME(): {
 #define whati (&(what->i_]]INST_NAME()[[))
 #define item (&(dest->items[pos].i_]]INST_NAME()[[))
@@ -285,7 +286,7 @@ case INST_NAME(): {
   break;
 }
 
-FID_SAME			m4_dnl This code compares two f_line"s while reconfiguring
+FID_SAME()m4_dnl			 This code compares two f_line"s while reconfiguring
 case INST_NAME():
 #define f1 (&(f1_->i_]]INST_NAME()[[))
 #define f2 (&(f2_->i_]]INST_NAME()[[))
@@ -294,7 +295,7 @@ m4_undivert(106)
 #undef f2
 break;
 
-m4_divert(-1)FID_FLUSH(101,200) m4_dnl And finally this flushes all the unused diversions
+m4_divert(-1)FID_FLUSH(101,200)m4_dnl  And finally this flushes all the unused diversions
 ]])')
 
 m4_define(INST, `m4_dnl				This macro is called on beginning of each instruction.
@@ -302,7 +303,7 @@ INST_FLUSH()m4_dnl				First, old data is flushed
 m4_define([[INST_NAME]], [[$1]])m4_dnl		Then we store instruction name,
 m4_define([[INST_INVAL]], [[$2]])m4_dnl		instruction input value count
 m4_undefine([[INST_NEVER_CONSTANT]])m4_dnl	and reset NEVER_CONSTANT trigger.
-FID_INTERPRET_BODY() m4_dnl			By default, every code is interpreter code.
+FID_INTERPRET_BODY()m4_dnl 			By default, every code is interpreter code.
 ')
 
 #	3) Final preparation
@@ -480,7 +481,7 @@ FID_WR_PUT(9)
 FID_WR_DIRECT(H)
 /* Filter instruction codes */
 enum f_instruction_code {
-FID_WR_PUT(4)
+FID_WR_PUT(4)m4_dnl
 } PACKED;
 
 /* Filter instruction structure for config */
@@ -490,7 +491,7 @@ struct f_inst {
   int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */
   union {
-    FID_WR_PUT(1)
+FID_WR_PUT(1)m4_dnl
   };
 };
 
@@ -500,7 +501,7 @@ struct f_line_item {
   enum f_instruction_flags flags;	/* Flags, instruction-specific */
   uint lineno;				/* Where */
   union {
-    FID_WR_PUT(2)
+FID_WR_PUT(2)m4_dnl
   };
 };
 
