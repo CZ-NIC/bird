@@ -77,19 +77,19 @@ FID_STRUCT_IN()m4_dnl
       $1 $2;
 FID_NEW_ARGS()m4_dnl
   , $1 $2
-FID_NEW_BODY
+FID_NEW_BODY()m4_dnl
 whati->$2 = $2;
-FID_LINEARIZE_BODY
+FID_LINEARIZE_BODY()m4_dnl
 item->$2 = whati->$2;
 m4_ifelse($3,,,[[
-FID_SAME_BODY
+FID_SAME_BODY()m4_dnl
 if ($3) return 0;
 ]])
 m4_ifelse($4,,,[[
-FID_DUMP_BODY
+FID_DUMP_BODY()m4_dnl
 debug("%s$4\n", INDENT, $5);
 ]])
-FID_INTERPRET_EXEC
+FID_INTERPRET_EXEC()m4_dnl
 const $1 $2 = whati->$2
 FID_INTERPRET_BODY')
 
@@ -119,7 +119,7 @@ FID_INTERPRET_BODY()')
 
 #	Some arguments need to check their type. After that, ARG_ANY is called.
 m4_define(ARG, `ARG_ANY($1)
-FID_INTERPRET_EXEC()
+FID_INTERPRET_EXEC()m4_dnl
 if (v$1.type != $2) runtime("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), v$1.type)m4_dnl
 FID_INTERPRET_BODY()')
 
@@ -142,19 +142,19 @@ FID_STRUCT_IN()m4_dnl
       struct f_inst * f$1;
 FID_NEW_ARGS()m4_dnl
   , struct f_inst * f$1
-FID_NEW_BODY
+FID_NEW_BODY()m4_dnl
 whati->f$1 = f$1;
-FID_DUMP_BODY
+FID_DUMP_BODY()m4_dnl
 f_dump_line(item->fl$1, indent + 1);
-FID_LINEARIZE_BODY
+FID_LINEARIZE_BODY()m4_dnl
 item->fl$1 = f_linearize(whati->f$1);
-FID_SAME_BODY
+FID_SAME_BODY()m4_dnl
 if (!f_same(f1->fl$1, f2->fl$1)) return 0;
-FID_INTERPRET_EXEC
+FID_INTERPRET_EXEC()m4_dnl
 do { if (whati->fl$1) {
   LINEX_(whati->fl$1);
 } } while(0)
-FID_INTERPRET_NEW
+FID_INTERPRET_NEW()m4_dnl
 return whati->f$1
 FID_INTERPRET_BODY()')
 
@@ -233,13 +233,13 @@ m4_undivert(102)m4_dnl
   case INST_NAME():
   #define whati (&(what->i_]]INST_NAME()[[))
   m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
-  m4_undivert(108)
+  m4_undivert(108)m4_dnl
   #undef whati
   break;
 ]],
 [[m4_dnl				 Constructor itself
 struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
-m4_undivert(102)
+m4_undivert(102)m4_dnl
 )
   {
     /* Allocate the structure */
@@ -248,14 +248,14 @@ m4_undivert(102)
 
     /* Initialize all the members */
   #define whati (&(what->i_]]INST_NAME()[[))
-  m4_undivert(103)
+  m4_undivert(103)m4_dnl
 
     /* If not constant, return the instruction itself */
     FID_IFCONST([[if (!constargs)]])
       return what;
 
     /* Try to pre-calculate the result */
-    FID_IFCONST([[m4_undivert(108)]])
+    FID_IFCONST([[m4_undivert(108)]])m4_dnl
   #undef whati
   }
 ]])
@@ -270,7 +270,7 @@ m4_ifdef([[FID_DUMP_BODY_EXISTS]],
 m4_undefine([[FID_DUMP_BODY_EXISTS]])
 {
 #define item (&(item_->i_]]INST_NAME()[[))
-m4_undivert(104)
+m4_undivert(104)m4_dnl
 #undef item
 }
 
@@ -278,7 +278,7 @@ FID_LINEARIZE()m4_dnl			 The linearizer
 case INST_NAME(): {
 #define whati (&(what->i_]]INST_NAME()[[))
 #define item (&(dest->items[pos].i_]]INST_NAME()[[))
-  m4_undivert(105)
+  m4_undivert(105)m4_dnl
 #undef whati
 #undef item
   dest->items[pos].fi_code = what->fi_code;
@@ -290,7 +290,7 @@ FID_SAME()m4_dnl			 This code compares two f_line"s while reconfiguring
 case INST_NAME():
 #define f1 (&(f1_->i_]]INST_NAME()[[))
 #define f2 (&(f2_->i_]]INST_NAME()[[))
-m4_undivert(106)
+m4_undivert(106)m4_dnl
 #undef f1
 #undef f2
 break;
