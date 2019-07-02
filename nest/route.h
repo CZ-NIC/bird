@@ -628,6 +628,7 @@ int nexthop__same(struct nexthop *x, struct nexthop *y); /* Compare multipath ne
 static inline int nexthop_same(struct nexthop *x, struct nexthop *y)
 { return (x == y) || nexthop__same(x, y); }
 struct nexthop *nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, linpool *lp);
+struct nexthop *nexthop_sort(struct nexthop *x);
 static inline void nexthop_link(struct rta *a, struct nexthop *from)
 { memcpy(&a->nh, from, nexthop_size(from)); }
 void nexthop_insert(struct nexthop **n, struct nexthop *y);

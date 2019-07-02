@@ -725,6 +725,10 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
       nh = RTNH_NEXT(nh);
     }
 
+  /* Ensure nexthops are sorted to satisfy nest invariant */
+  if (!nexthop_is_sorted(first))
+    first = nexthop_sort(first);
+
   return first;
 }
 
