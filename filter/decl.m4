@@ -53,7 +53,12 @@ m4_define(FID_LINE_IN, `m4_divert(107)')
 m4_define(FID_INTERPRET_BODY, `m4_divert(108)')
 
 m4_define(FID_ALL, `FID_INTERPRET_BODY');
-m4_define(FID_HIC, `m4_ifelse(TARGET, [[H]], $1, TARGET, [[I]], $2, TARGET, [[C]], $3)')
+m4_define(FID_HIC, `m4_ifelse(TARGET, [[H]], [[$1]], TARGET, [[I]], [[$2]], TARGET, [[C]], [[$3]])')
+
+m4_define(FID_INTERPRET_EXEC, `FID_HIC(,[[FID_INTERPRET_BODY()]],[[m4_divert(-1)]])')
+m4_define(FID_INTERPRET_NEW,  `FID_HIC(,[[m4_divert(-1)]],[[FID_INTERPRET_BODY()]])')
+m4_define(NEVER_CONSTANT, `m4_define([[INST_NEVER_CONSTANT]])')
+m4_define(FID_IFCONST, `m4_ifdef([[INST_NEVER_CONSTANT]],[[$2]],[[$1]])')
 
 m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
 FID_ENUM
@@ -72,26 +77,29 @@ FID_NEW
 FID_HIC(
 [[
 struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
-[[m4_undivert(102)]]
+m4_undivert(102)
 );]],
 [[
   case INST_NAME():
   #define whati (&(what->i_]]INST_NAME()[[))
   m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
-  [[m4_undivert(108)]]
+  m4_undivert(108)
   #undef whati
   break;
 ]],
 [[
 struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
-[[m4_undivert(102)]]
+m4_undivert(102)
 )
   {
     struct f_inst *what = fi_new(fi_code);
+    FID_IFCONST([[uint constargs = 1;]])
   #define whati (&(what->i_]]INST_NAME()[[))
-  [[m4_undivert(103)]]
+  m4_undivert(103)
+    FID_IFCONST([[if (!constargs)]])
+      return what;
+    FID_IFCONST([[m4_undivert(108)]])
   #undef whati
-    return what;
   }
 ]])
 
@@ -130,13 +138,14 @@ m4_undivert(106)
 #undef f1
 #undef f2
 break;
-
+m4_divert(-1)FID_FLUSH(101,200)
 ]])')
 
 m4_define(INST, `m4_dnl
 INST_FLUSH()m4_dnl
 m4_define([[INST_NAME]], [[$1]])m4_dnl
 m4_define([[INST_INVAL]], [[$2]])m4_dnl
+m4_undefine([[INST_NEVER_CONSTANT]])m4_dnl
 FID_ALL() m4_dnl
 ')
 
@@ -149,22 +158,18 @@ FID_NEW_ARGS
 , $1 $2
 FID_NEW_BODY
 whati->$2 = $2;
-m4_ifelse($3,,,[[
 FID_LINEARIZE_BODY
-item->$3 = whati->$2;
+item->$2 = whati->$2;
+m4_ifelse($3,,,[[
+FID_SAME_BODY
+if ($3) return 0;
 ]])
 m4_ifelse($4,,,[[
-FID_SAME_BODY
-if ($4) return 0;
-]])
-m4_ifelse($5,,,[[
 FID_DUMP_BODY
-debug("%s$5\n", INDENT, $6);
+debug("%s$4\n", INDENT, $5);
 ]])
-m4_ifelse($7,,,[[
-FID_INTERPRET_BODY
-$7
-]])
+FID_INTERPRET_EXEC
+const $1 $2 = whati->$2
 FID_ALL')
 
 m4_define(ARG_ANY, `
@@ -174,34 +179,39 @@ FID_NEW_ARGS
 , struct f_inst * f$1
 FID_NEW_BODY
 whati->f$1 = f$1;
-for (const struct f_inst *child = f$1; child; child = child->next) what->size += child->size;
+for (const struct f_inst *child = f$1; child; child = child->next) {
+  what->size += child->size;
+FID_IFCONST([[
+  if (child->fi_code != FI_CONSTANT)
+    constargs = 0;
+]])
+}
 FID_LINEARIZE_BODY
-pos = linearize(dest, whati->f$1, pos);m4_dnl
+pos = linearize(dest, whati->f$1, pos);
 FID_ALL()')
 
 m4_define(ARG, `ARG_ANY($1)
-FID_INTERPRET_BODY
+FID_INTERPRET_EXEC()
 if (v$1.type != $2) runtime("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), v$1.type)m4_dnl
 FID_ALL()')
 
-m4_define(LINEX, `FID_INTERPRET_BODY
-do {
+m4_define(LINEX, `FID_INTERPRET_EXEC()LINEX_($1)FID_INTERPRET_NEW()return $1 FID_ALL()')
+m4_define(LINEX_, `do {
   fstk->estk[fstk->ecnt].pos = 0;
   fstk->estk[fstk->ecnt].line = $1;
   fstk->estk[fstk->ecnt].ventry = fstk->vcnt;
   fstk->estk[fstk->ecnt].vbase = fstk->estk[fstk->ecnt-1].vbase;
   fstk->estk[fstk->ecnt].emask = 0;
   fstk->ecnt++;
-} while (0)m4_dnl
-FID_ALL()')
+} while (0)')
 
 m4_define(LINE, `
 FID_LINE_IN
 const struct f_line * fl$1;
 FID_STRUCT_IN
-const struct f_inst * f$1;
+struct f_inst * f$1;
 FID_NEW_ARGS
-, const struct f_inst * f$1
+, struct f_inst * f$1
 FID_NEW_BODY
 whati->f$1 = f$1;
 FID_DUMP_BODY
@@ -210,23 +220,25 @@ FID_LINEARIZE_BODY
 item->fl$1 = f_linearize(whati->f$1);
 FID_SAME_BODY
 if (!f_same(f1->fl$1, f2->fl$1)) return 0;
-FID_INTERPRET_BODY
+FID_INTERPRET_EXEC
 do { if (whati->fl$1) {
-  LINEX(whati->fl$1);
-} } while(0)m4_dnl
+  LINEX_(whati->fl$1);
+} } while(0)
+FID_INTERPRET_NEW
+return whati->f$1
 FID_ALL()')
 
 m4_define(RESULT, `RESULT_VAL([[ (struct f_val) { .type = $1, .val.$2 = $3 } ]])')
-m4_define(RESULT_VAL, `FID_INTERPRET_BODY()do { res = $1; fstk->vcnt++; } while (0)FID_ALL()')
+m4_define(RESULT_VAL, `FID_HIC(, [[do { res = $1; fstk->vcnt++; } while (0)]],
+[[return fi_constant(what, $1)]])')
 m4_define(RESULT_VOID, `RESULT_VAL([[ (struct f_val) { .type = T_VOID } ]])')
 
-m4_define(SYMBOL, `FID_MEMBER(const struct symbol *, sym, sym,
-[[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name, const struct symbol *sym = whati->sym)')
-m4_define(FRET, `')
-m4_define(ECS, `FID_MEMBER(enum ec_subtype, ecs, ecs, f1->ecs != f2->ecs, ec subtype %s, ec_subtype_str(item->ecs), enum ec_subtype ecs = whati->ecs)')
-m4_define(RTC, `FID_MEMBER(const struct rtable_config *, rtc, rtc, [[strcmp(f1->rtc->name, f2->rtc->name)]], route table %s, item->rtc->name, struct rtable *table = whati->rtc->table)')
-m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, sa, f1->sa.sa_code != f2->sa.sa_code,,, struct f_static_attr sa = whati->sa)')
-m4_define(DYNAMIC_ATTR, `FID_MEMBER(struct f_dynamic_attr, da, da, f1->da.ea_code != f2->da.ea_code,,, struct f_dynamic_attr da = whati->da)')
+m4_define(SYMBOL, `FID_MEMBER(struct symbol *, sym, 
+[[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name)')
+m4_define(RTC, `FID_MEMBER(struct rtable_config *, rtc, [[strcmp(f1->rtc->name, f2->rtc->name)]], route table %s, item->rtc->name)')
+m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, f1->sa.sa_code != f2->sa.sa_code,,)')
+m4_define(DYNAMIC_ATTR, `FID_MEMBER(struct f_dynamic_attr, da, f1->da.ea_code != f2->da.ea_code,,)')
+m4_define(ACCESS_RTE, `NEVER_CONSTANT()')
 
 m4_define(FID_WR_PUT_LIST)
 m4_define(FID_WR_PUT_ALSO, `m4_define([[FID_WR_PUT_LIST]],FID_WR_PUT_LIST()[[FID_WR_DPUT(]]FID_WR_DIDX[[)FID_WR_DPUT(]]$1[[)]])m4_define([[FID_WR_DIDX]],m4_eval(FID_WR_DIDX+1))m4_divert(FID_WR_DIDX)')
@@ -267,8 +279,25 @@ fi_new(enum f_instruction_code fi_code)
   return what;
 }
 
+static inline struct f_inst *
+fi_constant(struct f_inst *what, struct f_val val)
+{
+  what->fi_code = FI_CONSTANT;
+  what->i_FI_CONSTANT.val = val;
+  return what;
+}
+
+#define v1 whati->f1->i_FI_CONSTANT.val
+#define v2 whati->f2->i_FI_CONSTANT.val
+#define v3 whati->f3->i_FI_CONSTANT.val
+#define runtime(fmt, ...) cf_error("filter preevaluation, line %d: " fmt, ifs->lino, ##__VA_ARGS__)
+#define fpool cfg_mem
+#define falloc(size) cfg_alloc(size)
 /* Instruction constructors */
 FID_WR_PUT(3)
+#undef v1
+#undef v2
+#undef v3
 
 /* Line dumpers */
 #define INDENT (((const char *) f_dump_line_indent_str) + sizeof(f_dump_line_indent_str) - (indent) - 1)
@@ -387,9 +416,9 @@ FID_WR_PUT(3)
 m4_divert(-1)
 m4_changequote(`,')
 
-m4_define(FID_CLEANUP, `m4_ifelse($1,$2,,[[m4_undivert($1)FID_CLEANUP(m4_eval($1+1),$2)]])')
+m4_define(FID_FLUSH, `m4_ifelse($1,$2,,[[m4_undivert($1)FID_FLUSH(m4_eval($1+1),$2)]])')
 m4_define(FID_WR_DPUT, `m4_undivert($1)')
 
-m4_m4wrap(`INST_FLUSH()m4_divert(0)FID_WR_PUT_LIST()m4_divert(-1)FID_CLEANUP(1,200)')
+m4_m4wrap(`INST_FLUSH()m4_divert(0)FID_WR_PUT_LIST()m4_divert(-1)FID_FLUSH(1,200)')
 
 m4_changequote([[,]])

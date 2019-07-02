@@ -119,7 +119,7 @@ enum f_lval_type {
 struct f_lval {
   enum f_lval_type type;
   union {
-    const struct symbol *sym;
+    struct symbol *sym;
     struct f_dynamic_attr da;
     struct f_static_attr sa;
   };
@@ -169,6 +169,7 @@ void trie_format(const struct f_trie *t, buffer *buf);
 int val_same(const struct f_val *v1, const struct f_val *v2);
 int val_compare(const struct f_val *v1, const struct f_val *v2);
 void val_format(const struct f_val *v, buffer *buf);
+char *val_format_str(struct linpool *lp, const struct f_val *v);
 const char *val_dump(const struct f_val *v);
 
 static inline int val_is_ip4(const struct f_val *v)

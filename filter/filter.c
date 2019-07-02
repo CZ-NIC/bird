@@ -150,14 +150,6 @@ f_rta_cow(struct filter_state *fs)
   f_cache_eattrs(fs);
 }
 
-static char *
-val_format_str(struct filter_state *fs, struct f_val *v) {
-  buffer b;
-  LOG_BUFFER_INIT(b);
-  val_format(v, &b);
-  return lp_strdup(fs->pool, b.start);
-}
-
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
 /**
@@ -215,6 +207,9 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   return F_ERROR; \
 } while(0)
 
+#define falloc(size)  lp_alloc(fs->pool, size)
+#define fpool fs->pool
+
 #define ACCESS_RTE do { if (!fs->rte) runtime("No route to access"); } while (0)
 #define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
 
@@ -224,6 +219,8 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 #undef v2
 #undef v3
 #undef runtime
+#undef falloc
+#undef fpool
 #undef ACCESS_RTE
 #undef ACCESS_EATTRS
       }

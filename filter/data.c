@@ -514,6 +514,15 @@ val_format(const struct f_val *v, buffer *buf)
   }
 }
 
+char *
+val_format_str(struct linpool *lp, const struct f_val *v) {
+  buffer b;
+  LOG_BUFFER_INIT(b);
+  val_format(v, &b);
+  return lp_strdup(lp, b.start);
+}
+
+
 static char val_dump_buffer[1024];
 const char *
 val_dump(const struct f_val *v) {

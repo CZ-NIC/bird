@@ -37,12 +37,10 @@
  *
  *	m4_dnl	  FID_MEMBER(				custom instruction member
  *	m4_dnl	    C type,				for storage in structs
- *	m4_dnl	    name in f_inst,			how the member is named before linearization
- *	m4_dnl	    name in f_line_item,		how the member is named afterwards
+ *	m4_dnl	    name,				how the member is named
  *	m4_dnl	    comparator for same(),		if different, this should be TRUE (CAVEAT)
  *	m4_dnl	    dump format string			debug -> format string for bvsnprintf
  *	m4_dnl	    dump format args			appropriate args
- *	m4_dnl	    interpreter body			how to deal with this on execution
  *	m4_dnl	  )
  *
  *	m4_dnl	  RESULT(type, union-field, value);	putting this on value stack
@@ -106,7 +104,7 @@
     ARG_ANY(1);
     ARG(2, T_INT);
 
-    FID_MEMBER(enum ec_subtype, ecs, ecs, f1->ecs != f2->ecs, ec subtype %s, ec_subtype_str(item->ecs), enum ec_subtype ecs = whati->ecs);
+    FID_MEMBER(enum ec_subtype, ecs, f1->ecs != f2->ecs, ec subtype %s, ec_subtype_str(item->ecs));
 
     int check, ipv4_used;
     u32 key, val;
@@ -152,24 +150,37 @@
 
   INST(FI_PATHMASK_CONSTRUCT, 0, 1) {
     ARG_ANY(1);
-    FID_MEMBER(uint, count, count, f1->count != f2->count, number of items %u, item->count);
+    FID_MEMBER(uint, count, f1->count != f2->count, number of items %u, item->count);
 
     FID_NEW_BODY
       uint len = 0;
-      uint dyn = 0;
-      for (const struct f_inst *tt = f1; tt; tt = tt->next, len++)
-	if (tt->fi_code != FI_CONSTANT)
-	  dyn++;
+      for (const struct f_inst *tt = f1; tt; tt = tt->next, len++);
 
       whati->count = len;
+      struct f_inst **items;
+      if (constargs) {
+	items = alloca(len * sizeof(struct f_inst *));
+	for (uint i=0; f1; i++) {
+	  items[i] = f1;
+	  f1 = f1->next;
+	  items[i]->next = 0;
+	}
+	whati->f1 = NULL;
+      }
     FID_ALL
 
+    FID_INTERPRET_EXEC
     if (fstk->vcnt < whati->count) /* TODO: make this check systematic */
       runtime("Construction of BGP path mask from %u elements must have at least that number of elements", whati->count);
 
-    struct f_path_mask *pm = lp_alloc(fs->pool, sizeof(struct f_path_mask) + whati->count * sizeof(struct f_path_mask_item));
+#define pv fstk->vstk[fstk->vcnt - count + i]
+
+    FID_INTERPRET_NEW
+#define pv items[i]->i_FI_CONSTANT.val
+
+    FID_INTERPRET_BODY
+    struct f_path_mask *pm = falloc(sizeof(struct f_path_mask) + whati->count * sizeof(struct f_path_mask_item));
     for (uint i=0; i<whati->count; i++) {
-#define pv fstk->vstk[fstk->vcnt - whati->count + i]
       switch (pv.type) {
 	case T_PATH_MASK_ITEM:
 	  pm->item[i] = pv.val.pmi;
@@ -185,9 +196,11 @@
       }
     }
 
-    fstk->vcnt -= whati->count;
-    pm->len = whati->count;
+    FID_INTERPRET_EXEC
+      fstk->vcnt -= whati->count;
+    FID_ALL
 
+    pm->len = whati->count;
     RESULT(T_PATH_MASK, path_mask, pm);
   }
 
@@ -270,8 +283,10 @@
 
   /* Set to indirect value prepared in v1 */
   INST(FI_VAR_SET, 1, 0) {
+    NEVER_CONSTANT;
     ARG_ANY(1);
     SYMBOL;
+
     if ((sym->class != (SYM_VARIABLE | v1.type)) && (v1.type != T_VOID))
     {
       /* IP->Quad implicit conversion */
@@ -289,6 +304,7 @@
 
   INST(FI_VAR_GET, 0, 1) {
     SYMBOL;
+    NEVER_CONSTANT;
     RESULT_VAL(fstk->vstk[curline.vbase + sym->offset]);
   }
 
@@ -297,26 +313,27 @@
     FID_MEMBER(
       struct f_val,
       val,
-      val,
       [[ !val_same(&(f1->val), &(f2->val)) ]],
       value %s,
       val_dump(&(item->val))
     );
 
-    RESULT_VAL(whati->val);
+    RESULT_VAL(val);
   }
   INST(FI_PRINT, 1, 0) {
+    NEVER_CONSTANT;
     ARG_ANY(1);
     val_format(&(v1), &fs->buf);
   }
   INST(FI_CONDITION, 1, 0) {
     ARG(1, T_BOOL);
-    if (res.val.i)
+    if (v1.val.i)
       LINE(2,0);
     else
       LINE(3,1);
   }
   INST(FI_PRINT_AND_DIE, 0, 0) {
+    NEVER_CONSTANT;
     FID_LINEARIZE_BODY
     {
       uint opos = pos;
@@ -330,7 +347,7 @@
     }
     FID_ALL
 
-    FID_MEMBER(enum filter_return, fret, fret, f1->fret != f2->fret, %s, filter_return_str(item->fret), enum filter_return fret = whati->fret);
+    FID_MEMBER(enum filter_return, fret, f1->fret != f2->fret, %s, filter_return_str(item->fret));
 
     if ((fret == F_NOP || (fret != F_NONL && (what->flags & FIF_PRINTED))) &&
 	!(fs->flags & FF_SILENT))
@@ -663,7 +680,7 @@
       runtime( "SADR expected" );
 
     net_addr_ip6_sadr *net = (void *) v1.val.net;
-    net_addr *src = lp_alloc(fs->pool, sizeof(net_addr_ip6));
+    net_addr *src = falloc(sizeof(net_addr_ip6));
     net_fill_ip6(src, net->src_prefix, net->src_pxlen);
 
     RESULT(T_NET, net, src);
@@ -721,6 +738,7 @@
   }
 
   INST(FI_RETURN, 1, 1) {
+    NEVER_CONSTANT;
     /* Acquire the return value */
     ARG_ANY(1);
     uint retpos = fstk->vcnt;
@@ -748,6 +766,7 @@
   }
 
   INST(FI_CALL, 0, 1) {
+    NEVER_CONSTANT;
     SYMBOL;
 
     /* Push the body on stack */
@@ -768,13 +787,14 @@
   }
 
   INST(FI_DROP_RESULT, 1, 0) {
+    NEVER_CONSTANT;
     ARG_ANY(1);
   }
 
   INST(FI_SWITCH, 1, 0) {
     ARG_ANY(1);
 
-    FID_MEMBER(const struct f_tree *, tree, tree, [[!same_tree(f1->tree, f2->tree)]], tree %p, item->tree, const struct f_tree *tree = whati->tree);
+    FID_MEMBER(struct f_tree *, tree, [[!same_tree(f1->tree, f2->tree)]], tree %p, item->tree);
 
     const struct f_tree *t = find_tree(tree, &v1);
     if (!t) {
@@ -782,7 +802,7 @@
       t = find_tree(tree, &v1);
       if (!t) {
 	debug( "No else statement?\n");
-	break;
+	FID_HIC(,break,return NULL);
       }
     }
     /* It is actually possible to have t->data NULL */
@@ -801,7 +821,7 @@
   INST(FI_PATH_PREPEND, 2, 1) {	/* Path prepend */
     ARG(1, T_PATH);
     ARG(2, T_INT);
-    RESULT(T_PATH, ad, [[ as_path_prepend(fs->pool, v1.val.ad, v2.val.i) ]]);
+    RESULT(T_PATH, ad, [[ as_path_prepend(fpool, v1.val.ad, v2.val.i) ]]);
   }
 
   INST(FI_CLIST_ADD, 2, 1) {	/* (Extended) Community list add */
@@ -816,14 +836,14 @@
       struct f_val dummy;
 
       if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	RESULT(T_CLIST, ad, [[ int_set_add(fs->pool, v1.val.ad, v2.val.i) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, v2.val.i) ]]);
       /* IP->Quad implicit conversion */
       else if (val_is_ip4(&v2))
-	RESULT(T_CLIST, ad, [[ int_set_add(fs->pool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
       else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy))
 	runtime("Can't add set");
       else if (v2.type == T_CLIST)
-	RESULT(T_CLIST, ad, [[ int_set_union(fs->pool, v1.val.ad, v2.val.ad) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
       else
 	runtime("Can't add non-pair");
     }
@@ -834,11 +854,11 @@
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t))
 	runtime("Can't add set");
       else if (v2.type == T_ECLIST)
-	RESULT(T_ECLIST, ad, [[ ec_set_union(fs->pool, v1.val.ad, v2.val.ad) ]]);
+	RESULT(T_ECLIST, ad, [[ ec_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
       else if (v2.type != T_EC)
 	runtime("Can't add non-ec");
       else
-	RESULT(T_ECLIST, ad, [[ ec_set_add(fs->pool, v1.val.ad, v2.val.ec) ]]);
+	RESULT(T_ECLIST, ad, [[ ec_set_add(fpool, v1.val.ad, v2.val.ec) ]]);
     }
 
     else if (v1.type == T_LCLIST)
@@ -847,11 +867,11 @@
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t))
 	runtime("Can't add set");
       else if (v2.type == T_LCLIST)
-	RESULT(T_LCLIST, ad, [[ lc_set_union(fs->pool, v1.val.ad, v2.val.ad) ]]);
+	RESULT(T_LCLIST, ad, [[ lc_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
       else if (v2.type != T_LC)
 	runtime("Can't add non-lc");
       else
-	RESULT(T_LCLIST, ad, [[ lc_set_add(fs->pool, v1.val.ad, v2.val.lc) ]]);
+	RESULT(T_LCLIST, ad, [[ lc_set_add(fpool, v1.val.ad, v2.val.lc) ]]);
 
     }
 
@@ -874,7 +894,7 @@
       else
 	runtime("Can't delete non-integer (set)");
 
-      RESULT(T_PATH, ad, [[ as_path_filter(fs->pool, v1.val.ad, set, key, 0) ]]);
+      RESULT(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, set, key, 0) ]]);
     }
 
     else if (v1.type == T_CLIST)
@@ -883,12 +903,12 @@
       struct f_val dummy;
 
       if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	RESULT(T_CLIST, ad, [[ int_set_del(fs->pool, v1.val.ad, v2.val.i) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, v2.val.i) ]]);
       /* IP->Quad implicit conversion */
       else if (val_is_ip4(&v2))
-	RESULT(T_CLIST, ad, [[ int_set_del(fs->pool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
       else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy) || (v2.type == T_CLIST))
-	RESULT(T_CLIST, ad, [[ clist_filter(fs->pool, v1.val.ad, &v2, 0) ]]);
+	RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else
 	runtime("Can't delete non-pair");
     }
@@ -897,22 +917,22 @@
     {
       /* v2.val is either EC or EC-set */
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t) || (v2.type == T_ECLIST))
-	RESULT(T_ECLIST, ad, [[ eclist_filter(fs->pool, v1.val.ad, &v2, 0) ]]);
+	RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else if (v2.type != T_EC)
 	runtime("Can't delete non-ec");
       else
-	RESULT(T_ECLIST, ad, [[ ec_set_del(fs->pool, v1.val.ad, v2.val.ec) ]]);
+	RESULT(T_ECLIST, ad, [[ ec_set_del(fpool, v1.val.ad, v2.val.ec) ]]);
     }
 
     else if (v1.type == T_LCLIST)
     {
       /* v2.val is either LC or LC-set */
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t) || (v2.type == T_LCLIST))
-	RESULT(T_LCLIST, ad, [[ lclist_filter(fs->pool, v1.val.ad, &v2, 0) ]]);
+	RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else if (v2.type != T_LC)
 	runtime("Can't delete non-lc");
       else
-	RESULT(T_LCLIST, ad, [[ lc_set_del(fs->pool, v1.val.ad, v2.val.lc) ]]);
+	RESULT(T_LCLIST, ad, [[ lc_set_del(fpool, v1.val.ad, v2.val.lc) ]]);
     }
 
     else
@@ -927,7 +947,7 @@
       u32 key = 0;
 
       if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
-	RESULT(T_PATH, ad, [[ as_path_filter(fs->pool, v1.val.ad, v2.val.t, key, 1) ]]);
+	RESULT(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, v2.val.t, key, 1) ]]);
       else
 	runtime("Can't filter integer");
     }
@@ -938,7 +958,7 @@
       struct f_val dummy;
 
       if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy) || (v2.type == T_CLIST))
-	RESULT(T_CLIST, ad, [[ clist_filter(fs->pool, v1.val.ad, &v2, 1) ]]);
+	RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter pair");
     }
@@ -947,7 +967,7 @@
     {
       /* v2.val is either EC or EC-set */
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t) || (v2.type == T_ECLIST))
-	RESULT(T_ECLIST, ad, [[ eclist_filter(fs->pool, v1.val.ad, &v2, 1) ]]);
+	RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter ec");
     }
@@ -956,7 +976,7 @@
     {
       /* v2.val is either LC or LC-set */
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t) || (v2.type == T_LCLIST))
-	RESULT(T_LCLIST, ad, [[ lclist_filter(fs->pool, v1.val.ad, &v2, 1) ]]);
+	RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter lc");
     }
@@ -966,7 +986,9 @@
   }
 
   INST(FI_ROA_CHECK_IMPLICIT, 0, 1) {	/* ROA Check */
+    NEVER_CONSTANT;
     RTC(1);
+    struct rtable *table = rtc->table;
     ACCESS_RTE;
     ACCESS_EATTRS;
     const net_addr *net = (*fs->rte)->net->n.addr;
@@ -994,9 +1016,11 @@
   }
 
   INST(FI_ROA_CHECK_EXPLICIT, 2, 1) {	/* ROA Check */
+    NEVER_CONSTANT;
     ARG(1, T_NET);
     ARG(2, T_INT);
     RTC(3);
+    struct rtable *table = rtc->table;
 
     u32 as = v2.val.i;
 
@@ -1015,15 +1039,18 @@
 
   INST(FI_FORMAT, 1, 0) {	/* Format */
     ARG_ANY(1);
-    RESULT(T_STRING, s, val_format_str(fs, &v1));
+    RESULT(T_STRING, s, val_format_str(fpool, &v1));
   }
 
   INST(FI_ASSERT, 1, 0) {	/* Birdtest Assert */
+    NEVER_CONSTANT;
     ARG(1, T_BOOL);
-    FID_MEMBER(const char *, s, s, [[strcmp(f1->s, f2->s)]], string \"%s\", item->s);
+    FID_MEMBER(char *, s, [[strcmp(f1->s, f2->s)]], string \"%s\", item->s);
+
+    ASSERT(s);
 
     if (!bt_assert_hook)
       runtime("No bt_assert hook registered, can't assert");
 
-    bt_assert_hook(res.val.i, what);
+    bt_assert_hook(v1.val.i, what);
   }

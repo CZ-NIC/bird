@@ -757,6 +757,7 @@ cf_pop_scope(void)
 {
   conf_this_scope->active = 0;
   conf_this_scope = conf_this_scope->next;
+
   ASSERT(conf_this_scope);
 }
 

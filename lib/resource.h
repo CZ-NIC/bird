@@ -101,9 +101,13 @@ void buffer_realloc(void **buf, unsigned *size, unsigned need, unsigned item_siz
  */
 #define DMALLOC_DISABLE
 #include <dmalloc.h>
-#define xmalloc(size) _xmalloc_leap(__FILE__, __LINE__, size)
-#define xrealloc(size) _xrealloc_leap(__FILE__, __LINE__, size)
-#define xfree(ptr) _xfree_leap(__FILE__, __LINE__, ptr)
+#define xmalloc(size) \
+  dmalloc_malloc(__FILE__, __LINE__, (size), DMALLOC_FUNC_MALLOC, 0, 1)
+#define xrealloc(ptr, size) \
+  dmalloc_realloc(__FILE__, __LINE__, (ptr), (size), DMALLOC_FUNC_REALLOC, 1)
+#define xfree(ptr) \
+  dmalloc_free(__FILE__, __LINE__, (ptr), DMALLOC_FUNC_FREE)
+
 #else
 /*
  * Unfortunately, several libraries we might want to link to define
