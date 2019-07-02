@@ -791,7 +791,7 @@ proto_patt2:
  | TEXT { $$.ptr = $1; $$.patt = 1; }
  ;
 
-dynamic_attr: IGP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, 0, T_INT, EA_GEN_IGP_METRIC); } ;
+dynamic_attr: IGP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_GEN_IGP_METRIC); } ;
 
 
 CF_CODE
