@@ -271,7 +271,6 @@ as_path_to_old(struct linpool *pool, const struct adata *path)
 /*
  * Cut the path to the length @num, measured to the usual path metric. Note that
  * AS_CONFED_* segments have zero length and must be added if they are on edge.
- * In contrast to other as_path_* functions, @path is modified in place.
  */
 struct adata *
 as_path_cut(struct linpool *pool, const struct adata *path, uint num)
