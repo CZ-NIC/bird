@@ -33,17 +33,17 @@ filter_name(const struct filter *filter)
 struct filter *f_new_where(struct f_inst *where)
 {
   struct f_inst acc = {
-    .fi_code = FI_PRINT_AND_DIE,
+    .fi_code = FI_DIE,
     .lineno = ifs->lino,
     .size = 1,
-    .i_FI_PRINT_AND_DIE = { .fret = F_ACCEPT, },
+    .i_FI_DIE = { .fret = F_ACCEPT, },
   };
 
   struct f_inst rej = {
-    .fi_code = FI_PRINT_AND_DIE,
+    .fi_code = FI_DIE,
     .lineno = ifs->lino,
     .size = 1,
-    .i_FI_PRINT_AND_DIE = { .fret = F_REJECT, },
+    .i_FI_DIE = { .fret = F_REJECT, },
   };
 
   struct f_inst i = {
@@ -174,7 +174,7 @@ ca_lookup(pool *p, const char *name, int f_type)
     }
 
     cas = mb_allocz(&root_pool, sizeof(struct ca_storage) + strlen(name) + 1);
-    cas->fda = f_new_dynamic_attr(ea_type, 0, f_type, EA_CUSTOM(id));
+    cas->fda = f_new_dynamic_attr(ea_type, f_type, EA_CUSTOM(id));
     cas->uc = 1;
 
     strcpy(cas->name, name);

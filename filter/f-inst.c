@@ -167,13 +167,13 @@
 	}
 	whati->f1 = NULL;
       }
-    FID_ALL
+    FID_INTERPRET_BODY
 
     FID_INTERPRET_EXEC
     if (fstk->vcnt < whati->count) /* TODO: make this check systematic */
       runtime("Construction of BGP path mask from %u elements must have at least that number of elements", whati->count);
 
-#define pv fstk->vstk[fstk->vcnt - count + i]
+#define pv fstk->vstk[fstk->vcnt - whati->count + i]
 
     FID_INTERPRET_NEW
 #define pv items[i]->i_FI_CONSTANT.val
@@ -198,7 +198,7 @@
 
     FID_INTERPRET_EXEC
       fstk->vcnt -= whati->count;
-    FID_ALL
+    FID_INTERPRET_BODY
 
     pm->len = whati->count;
     RESULT(T_PATH_MASK, path_mask, pm);
@@ -320,11 +320,6 @@
 
     RESULT_VAL(val);
   }
-  INST(FI_PRINT, 1, 0) {
-    NEVER_CONSTANT;
-    ARG_ANY(1);
-    val_format(&(v1), &fs->buf);
-  }
   INST(FI_CONDITION, 1, 0) {
     ARG(1, T_BOOL);
     if (v1.val.i)
@@ -332,28 +327,37 @@
     else
       LINE(3,1);
   }
-  INST(FI_PRINT_AND_DIE, 0, 0) {
+
+  INST(FI_PRINT, 0, 0) {
     NEVER_CONSTANT;
-    FID_LINEARIZE_BODY
-    {
-      uint opos = pos;
-      FID_ALL
-
     ARG_ANY(1);
+    FID_MEMBER_IN(uint, count, f1->count != f2->count, number of items %u, item->count);
 
-      FID_LINEARIZE_BODY
-      if (opos < pos)
-	dest->items[pos].flags |= FIF_PRINTED;
-    }
-    FID_ALL
+    FID_NEW_BODY
+      uint len = 0;
+      for (const struct f_inst *tt = f1; tt; tt = tt->next, len++)
+	;
+      whati->count = len;
 
+    FID_INTERPRET_BODY
+
+#define pv fstk->vstk[fstk->vcnt - whati->count + i]
+    if (whati->count)
+      for (uint i=0; i<whati->count; i++)
+	val_format(&(pv), &fs->buf);
+#undef pv
+
+    fstk->vcnt -= whati->count;
+  }
+
+  INST(FI_DIE, 0, 0) {
+    NEVER_CONSTANT;
     FID_MEMBER(enum filter_return, fret, f1->fret != f2->fret, %s, filter_return_str(item->fret));
 
-    if ((fret == F_NOP || (fret != F_NONL && (what->flags & FIF_PRINTED))) &&
-	!(fs->flags & FF_SILENT))
+    if (fs->buf.start < fs->buf.pos)
       log_commit(*L_INFO, &fs->buf);
 
-    switch (fret) {
+    switch (whati->fret) {
     case F_QUITBIRD:
       die( "Filter asked me to die" );
     case F_ACCEPT:
@@ -361,7 +365,6 @@
     case F_ERROR:
     case F_REJECT:	/* FIXME (noncritical) Should print complete route along with reason to reject route */
       return fret;	/* We have to return now, no more processing. */
-    case F_NONL:
     case F_NOP:
       break;
     default:
@@ -1045,7 +1048,8 @@
   INST(FI_ASSERT, 1, 0) {	/* Birdtest Assert */
     NEVER_CONSTANT;
     ARG(1, T_BOOL);
-    FID_MEMBER(char *, s, [[strcmp(f1->s, f2->s)]], string \"%s\", item->s);
+
+    FID_MEMBER(char *, s, [[strcmp(f1->s, f2->s)]], string %s, item->s);
 
     ASSERT(s);
 

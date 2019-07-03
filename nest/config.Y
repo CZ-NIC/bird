@@ -731,6 +731,8 @@ CF_CLI(DUMP ROUTES,,, [[Dump routing table]])
 { rt_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])
 { protos_dump_all(); cli_msg(0, ""); } ;
+CF_CLI(DUMP FILTER ALL,,, [[Dump all filters in linearized form]])
+{ filters_dump_all(); cli_msg(0, ""); } ;
 
 CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]])
 { cmd_eval(f_linearize($2)); } ;
@@ -791,7 +793,7 @@ proto_patt2:
  | TEXT { $$.ptr = $1; $$.patt = 1; }
  ;
 
-dynamic_attr: IGP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, 0, T_INT, EA_GEN_IGP_METRIC); } ;
+dynamic_attr: IGP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_GEN_IGP_METRIC); } ;
 
 
 CF_CODE

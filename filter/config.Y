@@ -447,7 +447,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <xp> cmds_int
-%type <x> term block cmd cmds constant constructor print_one print_list var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
+%type <x> term block cmd cmds constant constructor print_list var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
 %type <fda> dynamic_attr
 %type <fsa> static_attr
 %type <f> filter where_filter
@@ -621,11 +621,21 @@ function_def:
 /* Programs */
 
 cmds: /* EMPTY */ { $$ = NULL; }
- | cmds_int { $$ = $1[0]; }
+ | cmds_int { $$ = $1.begin; }
  ;
 
-cmds_int: cmd { $$[0] = $$[1] = $1; }
- | cmds_int cmd { $$[1] = $2; $1[1]->next = $2; $$[0] = $1[0]; }
+cmds_int: cmd {
+  $$.begin = $$.end = $1;
+  while ($$.end->next)
+    $$.end = $$.end->next;
+  }
+ | cmds_int cmd {
+  $$.begin = $1.begin;
+  $1.end->next = $2;
+  $$.end = $2;
+  while ($$.end->next)
+    $$.end = $$.end->next;
+ }
  ;
 
 block:
@@ -960,17 +970,13 @@ break_command:
  | PRINTN { $$ = F_NONL; }
  ;
 
-print_one:
-   term { $$ = f_new_inst(FI_PRINT, $1); }
- ;
-
 print_list: /* EMPTY */ { $$ = NULL; }
- | print_one { $$ = $1; }
- | print_one ',' print_list {
-     if ($1) {
-       $1->next = $3;
-       $$ = $1;
-     } else $$ = $3;
+ | term { $$ = $1; }
+ | term ',' print_list {
+     ASSERT($1);
+     ASSERT($1->next == NULL);
+     $1->next = $3;
+     $$ = $1;
    }
  ;
 
@@ -1011,7 +1017,22 @@ cmd:
  | UNSET '(' dynamic_attr ')' ';' {
      $$ = f_new_inst(FI_EA_UNSET, $3);
    }
- | break_command print_list ';' { $$ = f_new_inst(FI_PRINT_AND_DIE, $2, $1); }
+ | break_command print_list ';' {
+    struct f_inst *breaker = NULL;
+    struct f_inst *printer = NULL;
+    if ($2)
+      printer = f_new_inst(FI_PRINT, $2);
+    if ($1 != F_NONL)
+      breaker = f_new_inst(FI_DIE, $1);
+
+    if (printer && breaker)
+      printer->next = breaker;
+
+    if (printer)
+      $$ = printer;
+    else
+      $$ = breaker;
+   }
  | function_call ';' { $$ = f_new_inst(FI_DROP_RESULT, $1); } 
  | CASE term '{' switch_body '}' {
       $$ = f_new_inst(FI_SWITCH, $2, build_tree($4));

@@ -64,9 +64,11 @@ int f_same(const struct f_line *f1, const struct f_line *f2);
 
 void filter_commit(struct config *new, struct config *old);
 
+void filters_dump_all(void);
+
 #define FILTER_ACCEPT NULL
-#define FILTER_REJECT ((void *) 1)
-#define FILTER_UNDEF  ((void *) 2)	/* Used in BGP */
+#define FILTER_REJECT ((struct filter *) 1)
+#define FILTER_UNDEF  ((struct filter *) 2)	/* Used in BGP */
 
 #define FF_SILENT 2			/* Silent filter execution */
 
