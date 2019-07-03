@@ -731,6 +731,8 @@ CF_CLI(DUMP ROUTES,,, [[Dump routing table]])
 { rt_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])
 { protos_dump_all(); cli_msg(0, ""); } ;
+CF_CLI(DUMP FILTER ALL,,, [[Dump all filters in linearized form]])
+{ filters_dump_all(); cli_msg(0, ""); } ;
 
 CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]])
 { cmd_eval(f_linearize($2)); } ;

@@ -482,3 +482,41 @@ filter_commit(struct config *new, struct config *old)
 	break;
     }
 }
+
+void filters_dump_all(void)
+{
+  struct symbol *sym;
+  WALK_LIST(sym, config->symbols) {
+    switch (sym->class) {
+      case SYM_FILTER:
+	debug("Named filter %s:\n", sym->name);
+	f_dump_line(sym->filter->root, 1);
+	break;
+      case SYM_FUNCTION:
+	debug("Function %s:\n", sym->name);
+	f_dump_line(sym->function, 1);
+	break;
+      case SYM_PROTO:
+	{
+	  debug("Protocol %s:\n", sym->name);
+	  struct channel *c;
+	  WALK_LIST(c, sym->proto->proto->channels) {
+	    debug(" Channel %s (%s) IMPORT", c->name, net_label[c->net_type]);
+	    if (c->in_filter == FILTER_ACCEPT)
+	      debug(" ALL\n");
+	    else if (c->in_filter == FILTER_REJECT)
+	      debug(" NONE\n");
+	    else if (c->in_filter == FILTER_UNDEF)
+	      debug(" UNDEF\n");
+	    else if (c->in_filter->sym) {
+	      ASSERT(c->in_filter->sym->filter == c->in_filter);
+	      debug(" named filter %s\n", c->in_filter->sym->name);
+	    } else {
+	      debug("\n");
+	      f_dump_line(c->in_filter->root, 2);
+	    }
+	  }
+	}
+    }
+  }
+}
