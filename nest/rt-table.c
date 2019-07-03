@@ -49,6 +49,13 @@ pool *rt_table_pool;
 static slab *rte_slab;
 static linpool *rte_update_pool;
 
+struct rte_update_data {
+  struct channel *channel;
+  const net_addr *net;
+  struct rte *rte;
+  struct rte_src *src;
+};
+
 list routing_tables;
 
 static void rt_free_hostcache(rtable *tab);
@@ -325,7 +332,6 @@ rte_cow_rta(rte *r, linpool *lp)
   r->attrs = a;
   return r;
 }
-
 
 /**
  * rte_init_tmp_attrs - initialize temporary ea_list for route
@@ -1488,51 +1494,14 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
   }
 }
 
-/**
- * rte_update - enter a new update to a routing table
- * @table: table to be updated
- * @c: channel doing the update
- * @net: network node
- * @p: protocol submitting the update
- * @src: protocol originating the update
- * @new: a &rte representing the new route or %NULL for route removal.
- *
- * This function is called by the routing protocols whenever they discover
- * a new route or wish to update/remove an existing route. The right announcement
- * sequence is to build route attributes first (either un-cached with @aflags set
- * to zero or a cached one using rta_lookup(); in this case please note that
- * you need to increase the use count of the attributes yourself by calling
- * rta_clone()), call rte_get_temp() to obtain a temporary &rte, fill in all
- * the appropriate data and finally submit the new &rte by calling rte_update().
- *
- * @src specifies the protocol that originally created the route and the meaning
- * of protocol-dependent data of @new. If @new is not %NULL, @src have to be the
- * same value as @new->attrs->proto. @p specifies the protocol that called
- * rte_update(). In most cases it is the same protocol as @src. rte_update()
- * stores @p in @new->sender;
- *
- * When rte_update() gets any route, it automatically validates it (checks,
- * whether the network and next hop address are valid IP addresses and also
- * whether a normal routing protocol doesn't try to smuggle a host or link
- * scope route to the table), converts all protocol dependent attributes stored
- * in the &rte to temporary extended attributes, consults import filters of the
- * protocol to see if the route should be accepted and/or its attributes modified,
- * stores the temporary attributes back to the &rte.
- *
- * Now, having a "public" version of the route, we
- * automatically find any old route defined by the protocol @src
- * for network @n, replace it by the new one (or removing it if @new is %NULL),
- * recalculate the optimal route for this destination and finally broadcast
- * the change (if any) to all routing protocols by calling rte_announce().
- *
- * All memory used for attribute lists and other temporary allocations is taken
- * from a special linear pool @rte_update_pool and freed when rte_update()
- * finishes.
- */
-
-void
-rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
+static void
+rte_do_update(struct rte_update_data *rud)
 {
+  struct channel *c = rud->channel;
+  const net_addr *n = rud->net;
+  rte *new = rud->rte;
+  struct rte_src *src = rud->src;
+
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
   const struct filter *filter = c->in_filter;
@@ -1632,6 +1601,65 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     goto recalc;
 
   rte_update_unlock();
+}
+
+/**
+ * rte_update - enter a new update to a routing table
+ * @c: channel doing the update
+ * @n: network address
+ * @new: a &rte representing the new route or %NULL for route removal.
+ * @src: protocol originating the update
+ *
+ * This function is called by the routing protocols whenever they discover
+ * a new route or wish to update/remove an existing route. The right announcement
+ * sequence is to build route attributes first (either un-cached with @aflags set
+ * to zero or a cached one using rta_lookup(); in this case please note that
+ * you need to increase the use count of the attributes yourself by calling
+ * rta_clone()), call rte_get_temp() to obtain a temporary &rte, fill in all
+ * the appropriate data and finally submit the new &rte by calling rte_update().
+ *
+ * @src specifies the protocol that originally created the route and the meaning
+ * of protocol-dependent data of @new. If @new is not %NULL, @src have to be the
+ * same value as @new->attrs->proto. @p specifies the protocol that called
+ * rte_update(). In most cases it is the same protocol as @src. rte_update()
+ * stores @p in @new->sender;
+ *
+ * When rte_update() gets any route, it automatically validates it (checks,
+ * whether the network and next hop address are valid IP addresses and also
+ * whether a normal routing protocol doesn't try to smuggle a host or link
+ * scope route to the table), converts all protocol dependent attributes stored
+ * in the &rte to temporary extended attributes, consults import filters of the
+ * protocol to see if the route should be accepted and/or its attributes modified,
+ * stores the temporary attributes back to the &rte.
+ *
+ * Now, having a "public" version of the route, we
+ * automatically find any old route defined by the protocol @src
+ * for network @n, replace it by the new one (or removing it if @new is %NULL),
+ * recalculate the optimal route for this destination and finally broadcast
+ * the change (if any) to all routing protocols by calling rte_announce().
+ *
+ * All memory used for attribute lists and other temporary allocations is taken
+ * from a special linear pool @rte_update_pool and freed when rte_update()
+ * finishes.
+ */
+
+static void
+rte_dispatch_update(struct rte_update_data *rud)
+{
+  rte_do_update(rud);
+}
+
+void
+rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
+{
+  struct rte_update_data rud = {
+    .channel = c,
+    .net = n,
+    .rte = new,
+    .src = src
+  };
+
+  rte_dispatch_update(&rud);
 }
 
 /* Independent call to rte_announce(), used from next hop
