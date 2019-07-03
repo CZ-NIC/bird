@@ -185,6 +185,13 @@ static int ospf_flood_lsupd(struct ospf_proto *p, struct top_hash_entry **lsa_li
 static void
 ospf_enqueue_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_iface *ifa)
 {
+  /* Exception for local Grace-LSA, they are flooded synchronously */
+  if ((en->lsa_type == LSA_T_GR) && (en->lsa.rt == p->router_id))
+  {
+    ospf_flood_lsupd(p, &en, 1, 1, ifa);
+    return;
+  }
+
   if (ifa->flood_queue_used == ifa->flood_queue_size)
   {
     /* If we already have full queue, we send some packets */
@@ -591,8 +598,9 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
       }
 
       /* 13. (5f) - handle self-originated LSAs, see also 13.4. */
-      if ((lsa.rt == p->router_id) ||
-	  (ospf_is_v2(p) && (lsa_type == LSA_T_NET) && ospf_addr_is_local(p, ifa->oa, ipa_from_u32(lsa.id))))
+      if (!p->gr_recovery &&
+	  ((lsa.rt == p->router_id) ||
+	   (ospf_is_v2(p) && (lsa_type == LSA_T_NET) && ospf_addr_is_local(p, ifa->oa, ipa_from_u32(lsa.id)))))
       {
 	OSPF_TRACE(D_EVENTS, "Received unexpected self-originated LSA");
 	ospf_advance_lsa(p, en, &lsa, lsa_type, lsa_domain, body);
@@ -628,6 +636,14 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
       /* RFC 5340 4.4.3 Events 6+7 - new Link LSA received */
       if (lsa_type == LSA_T_LINK)
 	ospf_notify_net_lsa(ifa);
+
+      /* RFC 3623 3.1 - entering graceful restart helper mode */
+      if (lsa_type == LSA_T_GR)
+	ospf_neigh_notify_grace_lsa(n, en);
+
+      /* Link received pre-restart router LSA */
+      if (p->gr_recovery && (lsa_type == LSA_T_RT) && (lsa.rt == p->router_id))
+	ifa->oa->rt = en;
 
       /* 13. (5b) - flood new LSA */
       int flood_back = ospf_flood_lsa(p, en, n);

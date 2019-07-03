@@ -10,7 +10,7 @@
 
 #include "ospf.h"
 
-static void add_cand(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry *par, u32 dist, int i, uint lif, uint nif);
+static void add_cand(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry *par, u32 dist, int i, uint data, uint lif, uint nif);
 static void rt_sync(struct ospf_proto *p);
 
 
@@ -392,6 +392,40 @@ px_pos_to_ifa(struct ospf_area *oa, int pos)
   return NULL;
 }
 
+static inline struct ospf_iface *
+rt_find_iface2(struct ospf_area *oa, uint data)
+{
+  ip_addr addr = ipa_from_u32(data);
+
+  /* We should handle it differently for unnumbered PTP links */
+  struct ospf_iface *ifa;
+  WALK_LIST(ifa, oa->po->iface_list)
+    if ((ifa->oa == oa) && ifa->addr && (ipa_equal(ifa->addr->ip, addr)))
+      return ifa;
+
+  return NULL;
+}
+
+static inline struct ospf_iface *
+rt_find_iface3(struct ospf_area *oa, uint lif)
+{
+  struct ospf_iface *ifa;
+  WALK_LIST(ifa, oa->po->iface_list)
+    if ((ifa->oa == oa) && (ifa->iface_id == lif))
+      return ifa;
+
+  return NULL;
+}
+
+static struct ospf_iface *
+rt_find_iface(struct ospf_area *oa, int pos, uint data, uint lif)
+{
+  if (0)
+    return rt_pos_to_ifa(oa, pos);
+  else
+    return ospf_is_v2(oa->po) ? rt_find_iface2(oa, data) : rt_find_iface3(oa, lif);
+}
+
 
 static void
 add_network(struct ospf_area *oa, net_addr *net, int metric, struct top_hash_entry *en, int pos)
@@ -503,7 +537,7 @@ spfa_process_rt(struct ospf_proto *p, struct ospf_area *oa, struct top_hash_entr
       break;
     }
 
-    add_cand(oa, tmp, act, act->dist + rtl.metric, i, rtl.lif, rtl.nif);
+    add_cand(oa, tmp, act, act->dist + rtl.metric, i, rtl.data, rtl.lif, rtl.nif);
   }
 }
 
@@ -526,7 +560,7 @@ spfa_process_net(struct ospf_proto *p, struct ospf_area *oa, struct top_hash_ent
   for (i = 0; i < cnt; i++)
   {
     tmp = ospf_hash_find_rt(p->gr, oa->areaid, ln->routers[i]);
-    add_cand(oa, tmp, act, act->dist, -1, 0, 0);
+    add_cand(oa, tmp, act, act->dist, -1, 0, 0, 0);
   }
 }
 
@@ -1708,7 +1742,7 @@ link_lsa_lladdr(struct ospf_proto *p, struct top_hash_entry *en)
 
 static struct nexthop *
 calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
-	      struct top_hash_entry *par, int pos, uint lif, uint nif)
+	      struct top_hash_entry *par, int pos, uint data, uint lif, uint nif)
 {
   struct ospf_proto *p = oa->po;
   struct nexthop *pn = par->nhs;
@@ -1735,7 +1769,7 @@ calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
   /* The first case - local network */
   if ((en->lsa_type == LSA_T_NET) && (par == oa->rt))
   {
-    ifa = rt_pos_to_ifa(oa, pos);
+    ifa = rt_find_iface(oa, pos, data, lif);
     if (!ifa)
       return NULL;
 
@@ -1748,7 +1782,7 @@ calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
   /* The second case - ptp or ptmp neighbor */
   if ((en->lsa_type == LSA_T_RT) && (par == oa->rt))
   {
-    ifa = rt_pos_to_ifa(oa, pos);
+    ifa = rt_find_iface(oa, pos, data, lif);
     if (!ifa)
       return NULL;
 
@@ -1838,7 +1872,7 @@ calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
 /* Add LSA into list of candidates in Dijkstra's algorithm */
 static void
 add_cand(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry *par,
-	 u32 dist, int pos, uint lif, uint nif)
+	 u32 dist, int pos, uint data, uint lif, uint nif)
 {
   struct ospf_proto *p = oa->po;
   node *prev, *n;
@@ -1871,7 +1905,7 @@ add_cand(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry 
   if (!link_back(oa, en, par, lif, nif))
     return;
 
-  struct nexthop *nhs = calc_next_hop(oa, en, par, pos, lif, nif);
+  struct nexthop *nhs = calc_next_hop(oa, en, par, pos, data, lif, nif);
   if (!nhs)
   {
     log(L_WARN "%s: Cannot find next hop for LSA (Type: %04x, Id: %R, Rt: %R)",
@@ -2085,4 +2119,134 @@ again2:
   WALK_SLIST(en, p->lsal)
     if (en->mode == LSA_M_STALE)
       ospf_flush_lsa(p, en);
+}
+
+
+/* RFC 3623 2.2 - checking for graceful restart termination conditions */
+void
+ospf_update_gr_recovery(struct ospf_proto *p)
+{
+  struct top_hash_entry *rt, *net, *nbr;
+  struct ospf_lsa_rt_walk rtl;
+  struct ospf_neighbor *n;
+  struct ospf_iface *ifa;
+  struct ospf_area *oa;
+  const char *err_dsc = NULL;
+  uint i, j, missing = 0, err_val = 0;
+
+  /*
+   * We check here for three cases:
+   * RFC 3623 2.2 (1) - success when all adjacencies are established
+   * RFC 3623 2.2 (2) - failure when inconsistent LSA was received
+   * RFC 3623 2.2 (3) - grace period timeout
+   *
+   * It is handled by processing pre-restart local router-LSA and adjacent
+   * network-LSAs, checking neighbor association for referenced routers (1)
+   * and checking back links from their router-LSAs (2).
+   *
+   * TODO: Use timer for grace period timeout. We avoided that as function
+   * ospf_stop_gr_recovery() called from ospf_disp() makes ending of graceful
+   * restart uninterrupted by other events.
+   */
+
+  #define CONTINUE { missing++; continue; }
+
+  if (current_time() > p->gr_timeout)
+    goto timeout;
+
+  WALK_LIST(oa, p->area_list)
+  {
+    /* Get the router-LSA */
+    rt = oa->rt;
+    if (!rt || (rt->lsa.age == LSA_MAXAGE))
+      CONTINUE;
+
+    for (lsa_walk_rt_init(p, rt, &rtl), i = 0; lsa_walk_rt(&rtl); i++)
+    {
+      if (rtl.type == LSART_STUB)
+	continue;
+
+      ifa = rt_find_iface(oa, i, rtl.data, rtl.lif);
+      if (!ifa)
+	DROP("inconsistent interface", ospf_is_v2(p) ? rtl.data : rtl.lif);
+
+      switch (rtl.type)
+      {
+      case LSART_NET:
+	/* Find the network-LSA */
+	net = ospf_hash_find_net(p->gr, oa->areaid, rtl.id, rtl.nif);
+	if (!net)
+	  CONTINUE;
+
+	if (!link_back(oa, net, rt, rtl.lif, rtl.nif))
+	  DROP("Inconsistent network-LSA", net->lsa.id);
+
+	if (ifa->state == OSPF_IS_DR)
+	{
+	  /* Find all neighbors from the network-LSA */
+	  struct ospf_lsa_net *net_body = net->lsa_body;
+	  uint cnt = lsa_net_count(&net->lsa);
+	  for (j = 0; j < cnt; i++)
+	  {
+	    n = find_neigh(ifa, net_body->routers[j]);
+	    if (!n || (n->state != NEIGHBOR_FULL))
+	      CONTINUE;
+
+	    if (!n->got_my_rt_lsa)
+	      DROP("not received my router-LSA", n->rid);
+
+	    nbr = ospf_hash_find_rt(p->gr, oa->areaid, n->rid);
+	    if (!link_back(oa, nbr, net, 0, 0))
+	      DROP("inconsistent router-LSA", n->rid);
+	  }
+	}
+	else
+	{
+	  /* Find the DR (by IP for OSPFv2) */
+	  n = ospf_is_v2(p) ?
+	    find_neigh_by_ip(ifa, ipa_from_u32(rtl.id)) :
+	    find_neigh(ifa, rtl.id);
+	  if (!n || (n->state != NEIGHBOR_FULL))
+	    CONTINUE;
+
+	  if (!n->got_my_rt_lsa)
+	    DROP("not received my router-LSA", n->rid);
+	}
+	break;
+
+      case LSART_VLNK:
+      case LSART_PTP:
+	/* Find the PtP peer */
+	n = find_neigh(ifa, rtl.id);
+	if (!n || (n->state != NEIGHBOR_FULL))
+	  CONTINUE;
+
+	if (!n->got_my_rt_lsa)
+	  DROP("not received my router-LSA", n->rid);
+
+	nbr = ospf_hash_find_rt(p->gr, oa->areaid, rtl.id);
+	if (!link_back(oa, nbr, rt, rtl.lif, rtl.nif))
+	  DROP("inconsistent router-LSA", rtl.id);
+      }
+    }
+  }
+
+  #undef CONTINUE
+
+  if (missing)
+    return;
+
+  OSPF_TRACE(D_EVENTS, "Graceful restart finished");
+  ospf_stop_gr_recovery(p);
+  return;
+
+drop:
+  log(L_INFO "%s: Graceful restart ended - %s (%R)", p->p.name, err_dsc, err_val);
+  ospf_stop_gr_recovery(p);
+  return;
+
+timeout:
+  log(L_INFO "%s: Graceful restart ended - grace period expired", p->p.name);
+  ospf_stop_gr_recovery(p);
+  return;
 }

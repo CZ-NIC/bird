@@ -44,10 +44,7 @@ static inline void lsa_get_type_domain(struct ospf_lsa_header *lsa, struct ospf_
 static inline u32 lsa_get_etype(struct ospf_lsa_header *h, struct ospf_proto *p)
 { return ospf_is_v2(p) ? (h->type_raw & LSA_T_V2_MASK) : h->type_raw; }
 
-/* Assuming OSPFv2 - All U-bit LSAs are mapped to Opaque LSAs */
-static inline int lsa_is_opaque(u32 type)
-{ return !!(type & LSA_UBIT); }
-
+int lsa_is_opaque(u32 type);
 u32 lsa_get_opaque_type(u32 type);
 int lsa_flooding_allowed(u32 type, u32 domain, struct ospf_iface *ifa);
 int lsa_is_acceptable(u32 type, struct ospf_neighbor *n, struct ospf_proto *p);
@@ -58,6 +55,16 @@ u16 lsa_verify_checksum(const void *lsa_n, int lsa_len);
 #define CMP_SAME 0
 #define CMP_OLDER -1
 int lsa_comp(struct ospf_lsa_header *l1, struct ospf_lsa_header *l2);
+
+struct ospf_tlv * lsa_get_tlv(struct top_hash_entry *en, uint type);
+
+static inline u32
+lsa_get_tlv_u32(struct top_hash_entry *en, uint type)
+{
+  struct ospf_tlv *tlv = lsa_get_tlv(en, type);
+  return (tlv && (tlv->length == 4)) ? tlv->data[0] : 0;
+}
+
 void lsa_walk_rt_init(struct ospf_proto *po, struct top_hash_entry *act, struct ospf_lsa_rt_walk *rt);
 int lsa_walk_rt(struct ospf_lsa_rt_walk *rt);
 void lsa_parse_sum_net(struct top_hash_entry *en, int ospf2, int af, net_addr *net, u8 *pxopts, u32 *metric);

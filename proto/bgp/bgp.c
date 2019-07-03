@@ -129,6 +129,9 @@ static list bgp_sockets;		/* Global list of listening sockets */
 
 static void bgp_connect(struct bgp_proto *p);
 static void bgp_active(struct bgp_proto *p);
+static void bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn);
+static void bgp_setup_sk(struct bgp_conn *conn, sock *s);
+static void bgp_send_open(struct bgp_conn *conn);
 static void bgp_update_bfd(struct bgp_proto *p, int use_bfd);
 
 static int bgp_incoming_connection(sock *sk, uint dummy UNUSED);
@@ -149,7 +152,7 @@ bgp_open(struct bgp_proto *p)
   struct bgp_socket *bs = NULL;
   struct iface *ifa = p->cf->strict_bind ? p->cf->iface : NULL;
   ip_addr addr = p->cf->strict_bind ? p->cf->local_ip :
-    (ipa_is_ip4(p->cf->remote_ip) ? IPA_NONE4 : IPA_NONE6);
+    (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
   uint port = p->cf->local_port;
 
   /* FIXME: Add some global init? */
@@ -272,8 +275,17 @@ bgp_startup(struct bgp_proto *p)
   BGP_TRACE(D_EVENTS, "Started");
   p->start_state = BSS_CONNECT;
 
-  if (!p->cf->passive)
+  if (!p->passive)
     bgp_active(p);
+
+  if (p->postponed_sk)
+  {
+    /* Apply postponed incoming connection */
+    bgp_setup_conn(p, &p->incoming_conn);
+    bgp_setup_sk(&p->incoming_conn, p->postponed_sk);
+    bgp_send_open(&p->incoming_conn);
+    p->postponed_sk = NULL;
+  }
 }
 
 static void
@@ -387,7 +399,7 @@ bgp_close_conn(struct bgp_conn *conn)
 void
 bgp_update_startup_delay(struct bgp_proto *p)
 {
-  struct bgp_config *cf = p->cf;
+  const struct bgp_config *cf = p->cf;
 
   DBG("BGP: Updating startup delay\n");
 
@@ -410,7 +422,7 @@ bgp_update_startup_delay(struct bgp_proto *p)
 }
 
 static void
-bgp_graceful_close_conn(struct bgp_conn *conn, uint subcode, byte *data, uint len)
+bgp_graceful_close_conn(struct bgp_conn *conn, int subcode, byte *data, uint len)
 {
   switch (conn->state)
   {
@@ -426,7 +438,13 @@ bgp_graceful_close_conn(struct bgp_conn *conn, uint subcode, byte *data, uint le
   case BS_OPENSENT:
   case BS_OPENCONFIRM:
   case BS_ESTABLISHED:
-    bgp_error(conn, 6, subcode, data, len);
+    if (subcode < 0)
+    {
+      bgp_conn_enter_close_state(conn);
+      bgp_schedule_packet(conn, NULL, PKT_SCHEDULE_CLOSE);
+    }
+    else
+      bgp_error(conn, 6, subcode, data, len);
     return;
 
   default:
@@ -456,7 +474,7 @@ bgp_decision(void *vp)
   if ((p->p.proto_state == PS_START) &&
       (p->outgoing_conn.state == BS_IDLE) &&
       (p->incoming_conn.state != BS_OPENCONFIRM) &&
-      !p->cf->passive)
+      !p->passive)
     bgp_active(p);
 
   if ((p->p.proto_state == PS_STOP) &&
@@ -465,8 +483,31 @@ bgp_decision(void *vp)
     bgp_down(p);
 }
 
+static struct bgp_proto *
+bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip)
+{
+  struct symbol *sym;
+  char fmt[SYM_MAX_LEN];
+
+  bsprintf(fmt, "%s%%0%dd", pp->cf->dynamic_name, pp->cf->dynamic_name_digits);
+
+  /* This is hack, we would like to share config, but we need to copy it now */
+  new_config = config;
+  cfg_mem = config->mem;
+  conf_this_scope = config->root_scope;
+  sym = cf_default_name(fmt, &(pp->dynamic_name_counter));
+  proto_clone_config(sym, pp->p.cf);
+  new_config = NULL;
+  cfg_mem = NULL;
+
+  /* Just pass remote_ip to bgp_init() */
+  ((struct bgp_config *) sym->proto)->remote_ip = remote_ip;
+
+  return (void *) proto_spawn(sym->proto, 0);
+}
+
 void
-bgp_stop(struct bgp_proto *p, uint subcode, byte *data, uint len)
+bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
 {
   proto_notify_state(&p->p, PS_STOP);
   bgp_graceful_close_conn(&p->outgoing_conn, subcode, data, len);
@@ -491,6 +532,7 @@ bgp_conn_enter_openconfirm_state(struct bgp_conn *conn)
 }
 
 static const struct bgp_af_caps dummy_af_caps = { };
+static const struct bgp_af_caps basic_af_caps = { .ready = 1 };
 
 void
 bgp_conn_enter_established_state(struct bgp_conn *conn)
@@ -503,8 +545,12 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   BGP_TRACE(D_EVENTS, "BGP session established");
 
   /* For multi-hop BGP sessions */
-  if (ipa_zero(p->source_addr))
-    p->source_addr = conn->sk->saddr;
+  if (ipa_zero(p->local_ip))
+    p->local_ip = conn->sk->saddr;
+
+  /* For promiscuous sessions */
+  if (!p->remote_as)
+    p->remote_as = conn->received_as;
 
   /* In case of LLv6 is not valid during BGP start */
   if (ipa_zero(p->link_addr) && p->neigh && p->neigh->iface && p->neigh->iface->llv6)
@@ -540,6 +586,13 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   {
     const struct bgp_af_caps *loc = bgp_find_af_caps(local, c->afi);
     const struct bgp_af_caps *rem = bgp_find_af_caps(peer,  c->afi);
+
+    /* Use default if capabilities were not announced */
+    if (!local->length && (c->afi == BGP_AF_IPV4))
+      loc = &basic_af_caps;
+
+    if (!peer->length && (c->afi == BGP_AF_IPV4))
+      rem = &basic_af_caps;
 
     /* Ignore AFIs that were not announced in multiprotocol capability */
     if (!loc || !loc->ready)
@@ -880,6 +933,7 @@ bgp_send_open(struct bgp_conn *conn)
   conn->sk->rx_hook = bgp_rx;
   conn->sk->tx_hook = bgp_tx;
   tm_stop(conn->connect_timer);
+  bgp_prepare_capabilities(conn);
   bgp_schedule_packet(conn, NULL, PKT_OPEN);
   bgp_conn_set_state(conn, BS_OPENSENT);
   bgp_start_timer(conn->hold_timer, conn->bgp->cf->initial_hold_time);
@@ -1039,8 +1093,8 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   DBG("BGP: Connecting\n");
   sock *s = sk_new(p->p.pool);
   s->type = SK_TCP_ACTIVE;
-  s->saddr = p->source_addr;
-  s->daddr = p->cf->remote_ip;
+  s->saddr = p->local_ip;
+  s->daddr = p->remote_ip;
   s->dport = p->cf->remote_port;
   s->iface = p->neigh ? p->neigh->iface : NULL;
   s->vrf = p->p.vrf;
@@ -1075,6 +1129,9 @@ err:
   return;
 }
 
+static inline int bgp_is_dynamic(struct bgp_proto *p)
+{ return ipa_zero(p->remote_ip); }
+
 /**
  * bgp_find_proto - find existing proto for incoming connection
  * @sk: TCP socket
@@ -1083,6 +1140,7 @@ err:
 static struct bgp_proto *
 bgp_find_proto(sock *sk)
 {
+  struct bgp_proto *best = NULL;
   struct bgp_proto *p;
 
   /* sk->iface is valid only if src or dst address is link-local */
@@ -1090,13 +1148,20 @@ bgp_find_proto(sock *sk)
 
   WALK_LIST(p, proto_list)
     if ((p->p.proto == &proto_bgp) &&
-	(p->sock == sk->data) &&
-	ipa_equal(p->cf->remote_ip, sk->daddr) &&
+	(ipa_equal(p->remote_ip, sk->daddr) || bgp_is_dynamic(p)) &&
+	(!p->cf->remote_range || ipa_in_netX(sk->daddr, p->cf->remote_range)) &&
+	(p->p.vrf == sk->vrf) &&
+	(p->cf->local_port == sk->sport) &&
 	(!link || (p->cf->iface == sk->iface)) &&
 	(ipa_zero(p->cf->local_ip) || ipa_equal(p->cf->local_ip, sk->saddr)))
-      return p;
+    {
+      best = p;
 
-  return NULL;
+      if (!bgp_is_dynamic(p))
+	break;
+    }
+
+  return best;
 }
 
 /**
@@ -1175,6 +1240,16 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     sk_reallocate(sk);
   }
 
+  /* For dynamic BGP, spawn new instance and postpone the socket */
+  if (bgp_is_dynamic(p))
+  {
+    p = bgp_spawn(p, sk->daddr);
+    p->postponed_sk = sk;
+    rmove(sk, p->p.pool);
+    return 0;
+  }
+
+  rmove(sk, p->p.pool);
   bgp_setup_conn(p, &p->incoming_conn);
   bgp_setup_sk(&p->incoming_conn, sk);
   bgp_send_open(&p->incoming_conn);
@@ -1201,11 +1276,11 @@ bgp_start_neighbor(struct bgp_proto *p)
 {
   /* Called only for single-hop BGP sessions */
 
-  if (ipa_zero(p->source_addr))
-    p->source_addr = p->neigh->ifa->ip;
+  if (ipa_zero(p->local_ip))
+    p->local_ip = p->neigh->ifa->ip;
 
-  if (ipa_is_link_local(p->source_addr))
-    p->link_addr = p->source_addr;
+  if (ipa_is_link_local(p->local_ip))
+    p->link_addr = p->local_ip;
   else if (p->neigh->iface->llv6)
     p->link_addr = p->neigh->iface->llv6->ip;
 
@@ -1293,8 +1368,8 @@ bgp_bfd_notify(struct bfd_request *req)
 static void
 bgp_update_bfd(struct bgp_proto *p, int use_bfd)
 {
-  if (use_bfd && !p->bfd_req)
-    p->bfd_req = bfd_request_session(p->p.pool, p->cf->remote_ip, p->source_addr,
+  if (use_bfd && !p->bfd_req && !bgp_is_dynamic(p))
+    p->bfd_req = bfd_request_session(p->p.pool, p->remote_ip, p->local_ip,
 				     p->cf->multihop ? NULL : p->neigh->iface,
 				     bgp_bfd_notify, p);
 
@@ -1375,7 +1450,7 @@ static void
 bgp_start_locked(struct object_lock *lock)
 {
   struct bgp_proto *p = lock->data;
-  struct bgp_config *cf = p->cf;
+  const struct bgp_config *cf = p->cf;
 
   if (p->p.proto_state != PS_START)
   {
@@ -1385,17 +1460,17 @@ bgp_start_locked(struct object_lock *lock)
 
   DBG("BGP: Got lock\n");
 
-  if (cf->multihop)
+  if (cf->multihop || bgp_is_dynamic(p))
   {
     /* Multi-hop sessions do not use neighbor entries */
     bgp_initiate(p);
     return;
   }
 
-  neighbor *n = neigh_find(&p->p, cf->remote_ip, cf->iface, NEF_STICKY);
+  neighbor *n = neigh_find(&p->p, p->remote_ip, cf->iface, NEF_STICKY);
   if (!n)
   {
-    log(L_ERR "%s: Invalid remote address %I%J", p->p.name, cf->remote_ip, cf->iface);
+    log(L_ERR "%s: Invalid remote address %I%J", p->p.name, p->remote_ip, cf->iface);
     /* As we do not start yet, we can just disable protocol */
     p->p.disabled = 1;
     bgp_store_error(p, NULL, BE_MISC, BEM_INVALID_NEXT_HOP);
@@ -1406,7 +1481,7 @@ bgp_start_locked(struct object_lock *lock)
   p->neigh = n;
 
   if (n->scope <= 0)
-    BGP_TRACE(D_EVENTS, "Waiting for %I%J to become my neighbor", cf->remote_ip, cf->iface);
+    BGP_TRACE(D_EVENTS, "Waiting for %I%J to become my neighbor", p->remote_ip, cf->iface);
   else if (p->cf->check_link && !(n->iface->flags & IF_LINK_UP))
     BGP_TRACE(D_EVENTS, "Waiting for link on %s", n->iface->name);
   else
@@ -1417,14 +1492,29 @@ static int
 bgp_start(struct proto *P)
 {
   struct bgp_proto *p = (struct bgp_proto *) P;
-  struct object_lock *lock;
+  const struct bgp_config *cf = p->cf;
 
-  DBG("BGP: Startup.\n");
+  p->local_ip = cf->local_ip;
+  p->local_as = cf->local_as;
+  p->remote_as = cf->remote_as;
+  p->public_as = cf->local_as;
+
+  /* For dynamic BGP childs, remote_ip is already set */
+  if (ipa_nonzero(cf->remote_ip))
+    p->remote_ip = cf->remote_ip;
+
+  /* Confederation ID is used for truly external peers */
+  if (p->cf->confederation && !p->is_interior)
+    p->public_as = cf->confederation;
+
+  p->passive = cf->passive || bgp_is_dynamic(p);
+
   p->start_state = BSS_PREPARE;
   p->outgoing_conn.state = BS_IDLE;
   p->incoming_conn.state = BS_IDLE;
   p->neigh = NULL;
   p->bfd_req = NULL;
+  p->postponed_sk = NULL;
   p->gr_ready = 0;
   p->gr_active_num = 0;
 
@@ -1437,7 +1527,6 @@ bgp_start(struct proto *P)
     p->rr_cluster_id = p->cf->rr_cluster_id ? p->cf->rr_cluster_id : p->local_id;
 
   p->remote_id = 0;
-  p->source_addr = p->cf->local_ip;
   p->link_addr = IPA_NONE;
 
   /* Lock all channels when in GR recovery mode */
@@ -1452,9 +1541,9 @@ bgp_start(struct proto *P)
    * Before attempting to create the connection, we need to lock the port,
    * so that we are the only instance attempting to talk with that neighbor.
    */
-
+  struct object_lock *lock;
   lock = p->lock = olock_new(P->pool);
-  lock->addr = p->cf->remote_ip;
+  lock->addr = p->remote_ip;
   lock->port = p->cf->remote_port;
   lock->iface = p->cf->iface;
   lock->vrf = p->cf->iface ? NULL : p->p.vrf;
@@ -1472,7 +1561,7 @@ static int
 bgp_shutdown(struct proto *P)
 {
   struct bgp_proto *p = (struct bgp_proto *) P;
-  uint subcode = 0;
+  int subcode = 0;
 
   char *message = NULL;
   byte *data = NULL;
@@ -1493,6 +1582,7 @@ bgp_shutdown(struct proto *P)
 
   case PDC_CMD_DISABLE:
   case PDC_CMD_SHUTDOWN:
+  shutdown:
     subcode = 2; // Errcode 6, 2 - administrative shutdown
     message = P->message;
     break;
@@ -1500,6 +1590,14 @@ bgp_shutdown(struct proto *P)
   case PDC_CMD_RESTART:
     subcode = 4; // Errcode 6, 4 - administrative reset
     message = P->message;
+    break;
+
+  case PDC_CMD_GR_DOWN:
+    if ((p->cf->gr_mode != BGP_GR_ABLE) &&
+	(p->cf->llgr_mode != BGP_LLGR_ABLE))
+      goto shutdown;
+
+    subcode = -1; // Do not send NOTIFICATION, just close the connection
     break;
 
   case PDC_RX_LIMIT_HIT:
@@ -1528,7 +1626,7 @@ bgp_shutdown(struct proto *P)
   if (message)
   {
     uint msg_len = strlen(message);
-    msg_len = MIN(msg_len, 128);
+    msg_len = MIN(msg_len, 255);
 
     /* Buffer will be freed automatically by protocol shutdown */
     data = mb_alloc(p->p.pool, msg_len + 1);
@@ -1562,17 +1660,21 @@ bgp_init(struct proto_config *CF)
   P->rte_modify = bgp_rte_modify_stale;
 
   p->cf = cf;
-  p->local_as = cf->local_as;
-  p->remote_as = cf->remote_as;
-  p->public_as = cf->local_as;
   p->is_internal = (cf->local_as == cf->remote_as);
   p->is_interior = p->is_internal || cf->confederation_member;
   p->rs_client = cf->rs_client;
   p->rr_client = cf->rr_client;
 
-  /* Confederation ID is used for truly external peers */
-  if (cf->confederation && !p->is_interior)
-    p->public_as = cf->confederation;
+  p->ipv4 = ipa_nonzero(cf->remote_ip) ?
+    ipa_is_ip4(cf->remote_ip) :
+    (cf->remote_range && (cf->remote_range->type == NET_IP4));
+
+  p->remote_ip = cf->remote_ip;
+  p->remote_as = cf->remote_as;
+
+  /* Hack: We use cf->remote_ip just to pass remote_ip from bgp_spawn() */
+  if (cf->c.parent)
+    cf->remote_ip = IPA_NONE;
 
   /* Add all channels */
   struct bgp_channel_config *cc;
@@ -1604,7 +1706,7 @@ bgp_channel_start(struct channel *C)
 {
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
-  ip_addr src = p->source_addr;
+  ip_addr src = p->local_ip;
 
   if (c->igp_table_ip4)
     rt_lock_table(c->igp_table_ip4);
@@ -1745,13 +1847,18 @@ void
 bgp_postconfig(struct proto_config *CF)
 {
   struct bgp_config *cf = (void *) CF;
-  int internal = (cf->local_as == cf->remote_as);
-  int interior = internal || cf->confederation_member;
 
   /* Do not check templates at all */
   if (cf->c.class == SYM_TEMPLATE)
     return;
 
+
+  /* Handle undefined remote_as, zero should mean unspecified external */
+  if (!cf->remote_as && (cf->peer_type == BGP_PT_INTERNAL))
+    cf->remote_as = cf->local_as;
+
+  int internal = (cf->local_as == cf->remote_as);
+  int interior = internal || cf->confederation_member;
 
   /* EBGP direct by default, IBGP multihop by default */
   if (cf->multihop < 0)
@@ -1769,11 +1876,20 @@ bgp_postconfig(struct proto_config *CF)
   if (!cf->local_as)
     cf_error("Local AS number must be set");
 
-  if (ipa_zero(cf->remote_ip))
+  if (ipa_zero(cf->remote_ip) && !cf->remote_range)
     cf_error("Neighbor must be configured");
 
-  if (!cf->remote_as)
-    cf_error("Remote AS number must be set");
+  if (ipa_zero(cf->local_ip) && cf->strict_bind)
+    cf_error("Local address must be configured for strict bind");
+
+  if (!cf->remote_as && !cf->peer_type)
+    cf_error("Remote AS number (or peer type) must be set");
+
+  if ((cf->peer_type == BGP_PT_INTERNAL) && !internal)
+    cf_error("IBGP cannot have different ASNs");
+
+  if ((cf->peer_type == BGP_PT_EXTERNAL) &&  internal)
+    cf_error("EBGP cannot have the same ASNs");
 
   if (!cf->iface && (ipa_is_link_local(cf->local_ip) ||
 		     ipa_is_link_local(cf->remote_ip)))
@@ -1885,8 +2001,8 @@ static int
 bgp_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct bgp_proto *p = (void *) P;
-  struct bgp_config *new = (void *) CF;
-  struct bgp_config *old = p->cf;
+  const struct bgp_config *new = (void *) CF;
+  const struct bgp_config *old = p->cf;
 
   if (proto_get_router_id(CF) != p->local_id)
     return 0;
@@ -1896,7 +2012,12 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 		     // password item is last and must be checked separately
 		     OFFSETOF(struct bgp_config, password) - sizeof(struct proto_config))
     && ((!old->password && !new->password)
-	|| (old->password && new->password && !strcmp(old->password, new->password)));
+	|| (old->password && new->password && !strcmp(old->password, new->password)))
+    && ((!old->remote_range && !new->remote_range)
+	|| (old->remote_range && new->remote_range && net_equal(old->remote_range, new->remote_range)))
+    && ((!old->dynamic_name && !new->dynamic_name)
+	|| (old->dynamic_name && new->dynamic_name && !strcmp(old->dynamic_name, new->dynamic_name)))
+    && (old->dynamic_name_digits == new->dynamic_name_digits);
 
   /* FIXME: Move channel reconfiguration to generic protocol code ? */
   struct channel *C, *C2;
@@ -1925,6 +2046,9 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   /* We should update our copy of configuration ptr as old configuration will be freed */
   if (same)
     p->cf = new;
+
+  /* Reset name counter */
+  p->dynamic_name_counter = 0;
 
   return same;
 }
@@ -2056,7 +2180,7 @@ bgp_state_dsc(struct bgp_proto *p)
     return "Down";
 
   int state = MAX(p->incoming_conn.state, p->outgoing_conn.state);
-  if ((state == BS_IDLE) && (p->start_state >= BSS_CONNECT) && p->cf->passive)
+  if ((state == BS_IDLE) && (p->start_state >= BSS_CONNECT) && p->passive)
     return "Passive";
 
   return bgp_state_names[state];
@@ -2232,8 +2356,14 @@ bgp_show_proto_info(struct proto *P)
   struct bgp_proto *p = (struct bgp_proto *) P;
 
   cli_msg(-1006, "  BGP state:          %s", bgp_state_dsc(p));
-  cli_msg(-1006, "    Neighbor address: %I%J", p->cf->remote_ip, p->cf->iface);
+
+  if (bgp_is_dynamic(p) && p->cf->remote_range)
+    cli_msg(-1006, "    Neighbor range:   %N", p->cf->remote_range);
+  else
+    cli_msg(-1006, "    Neighbor address: %I%J", p->remote_ip, p->cf->iface);
+
   cli_msg(-1006, "    Neighbor AS:      %u", p->remote_as);
+  cli_msg(-1006, "    Local AS:         %u", p->cf->local_as);
 
   if (p->gr_active_num)
     cli_msg(-1006, "    Neighbor graceful restart active");
@@ -2269,7 +2399,7 @@ bgp_show_proto_info(struct proto *P)
 	    p->rr_client ? " route-reflector" : "",
 	    p->rs_client ? " route-server" : "",
 	    p->as4_session ? " AS4" : "");
-    cli_msg(-1006, "    Source address:   %I", p->source_addr);
+    cli_msg(-1006, "    Source address:   %I", p->local_ip);
     cli_msg(-1006, "    Hold timer:       %t/%u",
 	    tm_remains(p->conn->hold_timer), p->conn->hold_time);
     cli_msg(-1006, "    Keepalive timer:  %t/%u",

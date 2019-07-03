@@ -1082,6 +1082,7 @@ sk_passive_connected(sock *s, int type)
   t->fd = fd;
   t->ttl = s->ttl;
   t->tos = s->tos;
+  t->vrf = s->vrf;
   t->rbsize = s->rbsize;
   t->tbsize = s->tbsize;
 

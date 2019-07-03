@@ -33,6 +33,7 @@ struct top_hash_entry
   u32 lb_id;			/* Interface ID of link back iface (for bcast or NBMA networks) */
   u32 dist;			/* Distance from the root */
   int ret_count;		/* Number of retransmission lists referencing the entry */
+  u8 dirty;			/* Will be flushed during next LSAdb update unless reoriginated*/
   u8 color;
 #define OUTSPF 0
 #define CANDIDATE 1
@@ -180,6 +181,7 @@ struct top_hash_entry * ospf_originate_lsa(struct ospf_proto *p, struct ospf_new
 void ospf_advance_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_lsa_header *lsa, u32 type, u32 domain, void *body);
 void ospf_flush_lsa(struct ospf_proto *p, struct top_hash_entry *en);
 void ospf_update_lsadb(struct ospf_proto *p);
+void ospf_mark_lsadb(struct ospf_proto *p);
 
 static inline void ospf_flush2_lsa(struct ospf_proto *p, struct top_hash_entry **en)
 { if (*en) { ospf_flush_lsa(p, *en); *en = NULL; } }
@@ -187,6 +189,7 @@ static inline void ospf_flush2_lsa(struct ospf_proto *p, struct top_hash_entry *
 void ospf_originate_sum_net_lsa(struct ospf_proto *p, struct ospf_area *oa, ort *nf, int metric);
 void ospf_originate_sum_rt_lsa(struct ospf_proto *p, struct ospf_area *oa, u32 drid, int metric, u32 options);
 void ospf_originate_ext_lsa(struct ospf_proto *p, struct ospf_area *oa, ort *nf, u8 mode, u32 metric, u32 ebit, ip_addr fwaddr, u32 tag, int pbit, int dn);
+void ospf_originate_gr_lsa(struct ospf_proto *p, struct ospf_iface *ifa);
 
 void ospf_rt_notify(struct proto *P, struct channel *ch, net *n, rte *new, rte *old);
 void ospf_update_topology(struct ospf_proto *p);

@@ -75,12 +75,16 @@
 #define OSPF_DEFAULT_TICK 1
 #define OSPF_DEFAULT_STUB_COST 1000
 #define OSPF_DEFAULT_ECMP_LIMIT 16
+#define OSPF_DEFAULT_GR_TIME 120
 #define OSPF_DEFAULT_TRANSINT 40
 
 #define OSPF_MIN_PKT_SIZE 256
 #define OSPF_MAX_PKT_SIZE 65535
 
 #define OSPF_VLINK_ID_OFFSET 0x80000000
+
+#define OSPF_GR_ABLE		1
+#define OSPF_GR_AWARE		2
 
 struct ospf_config
 {
@@ -97,7 +101,9 @@ struct ospf_config
   u8 abr;
   u8 asbr;
   u8 vpn_pe;
-  int ecmp;
+  u8 gr_mode;			/* Graceful restart mode (OSPF_GR_*) */
+  uint gr_time;			/* Graceful restart interval */
+  uint ecmp;
   list area_list;		/* list of area configs (struct ospf_area_config) */
   list vlink_list;		/* list of configured vlinks (struct ospf_iface_patt) */
 };
@@ -216,6 +222,9 @@ struct ospf_proto
   list area_list;		/* List of OSPF areas (struct ospf_area) */
   int areano;			/* Number of area I belong to */
   int padj;			/* Number of neighbors in Exchange or Loading state */
+  int gr_count;			/* Number of neighbors in graceful restart state */
+  int gr_recovery;		/* Graceful restart recovery is active */
+  btime gr_timeout;		/* The end time of grace restart recovery */
   struct fib rtf;		/* Routing table */
   struct idm idm;		/* OSPFv3 LSA ID map */
   u8 ospf2;			/* OSPF v2 or v3 */
@@ -228,6 +237,8 @@ struct ospf_proto
   u8 asbr;			/* May i originate any ext/NSSA lsa? */
   u8 vpn_pe;			/* Should we do VPN PE specific behavior (RFC 4577)? */
   u8 ecmp;			/* Maximal number of nexthops in ECMP route, or 0 */
+  u8 gr_mode;			/* Graceful restart mode (OSPF_GR_*) */
+  uint gr_time;			/* Graceful restart interval */
   u64 csn64;			/* Last used cryptographic sequence number */
   struct ospf_area *backbone;	/* If exists */
   event *flood_event;		/* Event for flooding LS updates */
@@ -346,6 +357,8 @@ struct ospf_neighbor
   pool *pool;
   struct ospf_iface *ifa;
   u8 state;
+  u8 gr_active;			/* We act as GR helper for the neighbor */
+  u8 got_my_rt_lsa;		/* Received my Rt-LSA in DBDES exchanged */
   timer *inactim;		/* Inactivity timer */
   u8 imms;			/* I, M, Master/slave received */
   u8 myimms;			/* I, M Master/slave */
@@ -388,6 +401,7 @@ struct ospf_neighbor
 #define ACKL_DIRECT 0
 #define ACKL_DELAY 1
   timer *ackd_timer;		/* Delayed ack timer */
+  timer *gr_timer;		/* Graceful restart timer, non-NULL only if gr_active */
   struct bfd_request *bfd_req;	/* BFD request, if BFD is used */
   void *ldd_buffer;		/* Last database description packet */
   u32 ldd_bsize;		/* Buffer size for ldd_buffer */
@@ -555,6 +569,7 @@ struct ospf_auth3
 #define LSA_T_NSSA		0x2007
 #define LSA_T_LINK		0x0008
 #define LSA_T_PREFIX		0x2009
+#define LSA_T_GR		0x000B
 #define LSA_T_RI_		0x000C
 #define LSA_T_RI_LINK		0x800C
 #define LSA_T_RI_AREA		0xA00C
@@ -569,6 +584,7 @@ struct ospf_auth3
 
 /* OSPFv2 Opaque LSA Types */
 /* https://www.iana.org/assignments/ospf-opaque-types/ospf-opaque-types.xhtml#ospf-opaque-types-2 */
+#define LSA_OT_GR		0x03
 #define LSA_OT_RI		0x04
 
 #define LSA_FUNCTION_MASK	0x1FFF
@@ -612,6 +628,12 @@ struct ospf_auth3
 #define LSA_EXT3_EBIT	0x04000000
 #define LSA_EXT3_FBIT	0x02000000
 #define LSA_EXT3_TBIT	0x01000000
+
+/* OSPF Grace LSA (GR) TLVs */
+/* https://www.iana.org/assignments/ospfv2-parameters/ospfv2-parameters.xhtml#ospfv2-parameters-13 */
+#define LSA_GR_PERIOD		1
+#define LSA_GR_REASON		2
+#define LSA_GR_ADDRESS		3
 
 /* OSPF Router Information (RI) TLVs */
 /* https://www.iana.org/assignments/ospf-parameters/ospf-parameters.xhtml#ri-tlv */
@@ -959,6 +981,8 @@ static inline int oa_is_ext(struct ospf_area *oa)
 static inline int oa_is_nssa(struct ospf_area *oa)
 { return oa->options & OPT_N; }
 
+void ospf_stop_gr_recovery(struct ospf_proto *p);
+
 void ospf_sh_neigh(struct proto *P, char *iff);
 void ospf_sh(struct proto *P);
 void ospf_sh_iface(struct proto *P, char *iff);
@@ -990,11 +1014,17 @@ static inline struct nbma_node * find_nbma_node(struct ospf_iface *ifa, ip_addr 
 /* neighbor.c */
 struct ospf_neighbor *ospf_neighbor_new(struct ospf_iface *ifa);
 void ospf_neigh_sm(struct ospf_neighbor *n, int event);
+void ospf_neigh_cancel_graceful_restart(struct ospf_neighbor *n);
+void ospf_neigh_notify_grace_lsa(struct ospf_neighbor *n, struct top_hash_entry *en);
+void ospf_neigh_lsadb_changed_(struct ospf_proto *p, struct top_hash_entry *en);
 void ospf_dr_election(struct ospf_iface *ifa);
 struct ospf_neighbor *find_neigh(struct ospf_iface *ifa, u32 rid);
 struct ospf_neighbor *find_neigh_by_ip(struct ospf_iface *ifa, ip_addr ip);
 void ospf_neigh_update_bfd(struct ospf_neighbor *n, int use_bfd);
 void ospf_sh_neigh_info(struct ospf_neighbor *n);
+
+static inline void ospf_neigh_lsadb_changed(struct ospf_proto *p, struct top_hash_entry *en)
+{ if (p->gr_count) ospf_neigh_lsadb_changed_(p, en); }
 
 /* packet.c */
 void ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type);

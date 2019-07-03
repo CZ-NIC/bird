@@ -53,8 +53,10 @@ struct config {
   int file_fd;				/* File descriptor of main configuration file */
   HASH(struct symbol) sym_hash;		/* Lexer: symbol hash table */
   struct config *fallback;		/* Link to regular config for CLI parsing */
+  struct sym_scope *root_scope;		/* Scope for root symbols */
   int obstacle_count;			/* Number of items blocking freeing of this config */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
+  int gr_down;				/* This is a pseudo-config for graceful restart */
   btime load_time;			/* When we've got this configuration */
 };
 
@@ -69,11 +71,13 @@ void config_free(struct config *);
 int config_commit(struct config *, int type, uint timeout);
 int config_confirm(void);
 int config_undo(void);
+int config_status(void);
+btime config_timer_status(void);
 void config_init(void);
 void cf_error(const char *msg, ...) NORET;
 void config_add_obstacle(struct config *);
 void config_del_obstacle(struct config *);
-void order_shutdown(void);
+void order_shutdown(int gr);
 
 #define RECONFIG_NONE	0
 #define RECONFIG_HARD	1
@@ -166,6 +170,8 @@ struct include_file_stack {
 };
 
 extern struct include_file_stack *ifs;
+
+extern struct sym_scope *conf_this_scope;
 
 int cf_lex(void);
 void cf_lex_init(int is_cli, struct config *c);

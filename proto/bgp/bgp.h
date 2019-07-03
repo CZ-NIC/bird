@@ -83,6 +83,7 @@ struct bgp_config {
   struct iface *iface;			/* Interface for link-local addresses */
   u16 local_port;			/* Local listening port */
   u16 remote_port; 			/* Neighbor destination port */
+  int peer_type;			/* Internal or external BGP (BGP_PT_*, optional) */
   int multihop;				/* Number of hops if multihop */
   int strict_bind;			/* Bind listening socket to local address */
   int ttl_security;			/* Enable TTL security [RFC 5082] */
@@ -123,6 +124,9 @@ struct bgp_config {
   u32 disable_after_cease;		/* Disable it when cease is received, bitfield */
 
   char *password;			/* Password used for MD5 authentication */
+  net_addr *remote_range;		/* Allowed neighbor range for dynamic BGP */
+  char *dynamic_name;			/* Name pattern for dynamic BGP */
+  int dynamic_name_digits;		/* Minimum number of digits for dynamic names */
   int check_link;			/* Use iface link state for liveness detection */
   int bfd;				/* Use BFD for liveness detection */
 };
@@ -136,6 +140,7 @@ struct bgp_channel_config {
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   u8 next_hop_self;			/* Always set next hop to local IP address (NH_*) */
   u8 next_hop_keep;			/* Do not modify next hop attribute (NH_*) */
+  u8 mandatory;				/* Channel is mandatory in capability negotiation */
   u8 missing_lladdr;			/* What we will do when we don' know link-local addr, see MLL_* */
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
   u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
@@ -150,6 +155,9 @@ struct bgp_channel_config {
   struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */
   struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
 };
+
+#define BGP_PT_INTERNAL		1
+#define BGP_PT_EXTERNAL		2
 
 #define NH_NO			0
 #define NH_ALL			1
@@ -213,8 +221,11 @@ struct bgp_caps {
   u16 gr_time;				/* Graceful restart time in seconds */
 
   u8 llgr_aware;			/* Long-lived GR capability, RFC draft */
+  u8 any_ext_next_hop;			/* Bitwise OR of per-AF ext_next_hop */
+  u8 any_add_path;			/* Bitwise OR of per-AF add_path */
 
   u16 af_count;				/* Number of af_data items */
+  u16 length;				/* Length of capabilities in OPEN msg */
 
   struct bgp_af_caps af_data[0];	/* Per-AF capability data */
 };
@@ -235,6 +246,7 @@ struct bgp_conn {
   u8 state;				/* State of connection state machine */
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
   u8 ext_messages;			/* Session uses extended message length */
+  u32 received_as;			/* ASN received in OPEN message */
 
   struct bgp_caps *local_caps;
   struct bgp_caps *remote_caps;
@@ -254,18 +266,21 @@ struct bgp_conn {
 
 struct bgp_proto {
   struct proto p;
-  struct bgp_config *cf;		/* Shortcut to BGP configuration */
+  const struct bgp_config *cf;		/* Shortcut to BGP configuration */
+  ip_addr local_ip, remote_ip;
   u32 local_as, remote_as;
   u32 public_as;			/* Externally visible ASN (local_as or confederation id) */
   u32 local_id;				/* BGP identifier of this router */
   u32 remote_id;			/* BGP identifier of the neighbor */
   u32 rr_cluster_id;			/* Route reflector cluster ID */
-  int start_state;			/* Substates that partitions BS_START */
+  u8 start_state;			/* Substates that partitions BS_START */
   u8 is_internal;			/* Internal BGP session (local_as == remote_as) */
   u8 is_interior;			/* Internal or intra-confederation BGP session */
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
   u8 rr_client;				/* Whether neighbor is RR client of me */
   u8 rs_client;				/* Whether neighbor is RS client of me */
+  u8 ipv4;				/* Use IPv4 connection, i.e. remote_ip is IPv4 */
+  u8 passive;				/* Do not initiate outgoing connection */
   u8 route_refresh;			/* Route refresh allowed to send [RFC 2918] */
   u8 enhanced_refresh;			/* Enhanced refresh is negotiated [RFC 7313] */
   u8 gr_ready;				/* Neighbor could do graceful restart */
@@ -282,11 +297,12 @@ struct bgp_proto {
   struct neighbor *neigh;		/* Neighbor entry corresponding to remote ip, NULL if multihop */
   struct bgp_socket *sock;		/* Shared listening socket */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
-  ip_addr source_addr;			/* Local address used as an advertised next hop */
-  ip_addr link_addr;			/* Link-local version of source_addr */
+  struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
+  ip_addr link_addr;			/* Link-local version of local_ip */
   event *event;				/* Event for respawning and shutting process */
   timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */
   timer *gr_timer;			/* Timer waiting for reestablishment after graceful restart */
+  int dynamic_name_counter;		/* Counter for dynamic BGP names */
   uint startup_delay;			/* Delay (in seconds) of protocol startup due to previous errors */
   btime last_proto_error;		/* Time of last error that leads to protocol stop */
   u8 last_error_class; 			/* Error class of last error */
@@ -472,7 +488,7 @@ void bgp_graceful_restart_done(struct bgp_channel *c);
 void bgp_refresh_begin(struct bgp_channel *c);
 void bgp_refresh_end(struct bgp_channel *c);
 void bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code);
-void bgp_stop(struct bgp_proto *p, uint subcode, byte *data, uint len);
+void bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len);
 
 struct rte_source *bgp_find_source(struct bgp_proto *p, u32 path_id);
 struct rte_source *bgp_get_source(struct bgp_proto *p, u32 path_id);
@@ -549,6 +565,7 @@ void bgp_get_route_info(struct rte *, byte *buf);
 /* packets.c */
 
 void bgp_dump_state_change(struct bgp_conn *conn, uint old, uint new);
+void bgp_prepare_capabilities(struct bgp_conn *conn);
 const struct bgp_af_desc *bgp_get_af_desc(u32 afi);
 const struct bgp_af_caps *bgp_find_af_caps(struct bgp_caps *caps, u32 afi);
 void bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type);

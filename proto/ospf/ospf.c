@@ -92,7 +92,9 @@
  * - RFC 2328 - main OSPFv2 standard
  * - RFC 5340 - main OSPFv3 standard
  * - RFC 3101 - OSPFv2 NSSA areas
+ * - RFC 3623 - OSPFv2 Graceful Restart
  * - RFC 4576 - OSPFv2 VPN loop prevention
+ * - RFC 5187 - OSPFv3 Graceful Restart
  * - RFC 5250 - OSPFv2 Opaque LSAs
  * - RFC 5709 - OSPFv2 HMAC-SHA Cryptographic Authentication
  * - RFC 5838 - OSPFv3 Support of Address Families
@@ -207,7 +209,6 @@ ospf_area_remove(struct ospf_area *oa)
   mb_free(oa);
 }
 
-
 struct ospf_area *
 ospf_find_area(struct ospf_proto *p, u32 aid)
 {
@@ -228,6 +229,37 @@ ospf_find_vlink(struct ospf_proto *p, u32 voa, u32 vid)
   return NULL;
 }
 
+static void
+ospf_start_gr_recovery(struct ospf_proto *p)
+{
+  OSPF_TRACE(D_EVENTS, "Graceful restart started");
+
+  p->gr_recovery = 1;
+  p->gr_timeout = current_time() + (p->gr_time S);
+  channel_graceful_restart_lock(p->p.main_channel);
+  p->p.main_channel->gr_wait = 1;
+
+  /* NOTE: We should get end of grace period from non-volatile storage */
+}
+
+void
+ospf_stop_gr_recovery(struct ospf_proto *p)
+{
+  p->gr_recovery = 0;
+  p->gr_timeout = 0;
+  channel_graceful_restart_unlock(p->p.main_channel);
+
+  /* Reorigination of router/network LSAs is already scheduled */
+  ospf_mark_lsadb(p);
+
+  /*
+   * NOTE: We should move channel_graceful_restart_unlock() to the end of
+   * ospf_disp() in order to have local LSA reorigination / LSAdb cleanup /
+   * routing table recomputation before official end of GR. It does not matter
+   * when we are single-threaded.
+   */
+}
+
 static int
 ospf_start(struct proto *P)
 {
@@ -246,6 +278,8 @@ ospf_start(struct proto *P)
   p->asbr = c->asbr;
   p->vpn_pe = c->vpn_pe;
   p->ecmp = c->ecmp;
+  p->gr_mode = c->gr_mode;
+  p->gr_time = c->gr_time;
   p->tick = c->tick;
   p->disp_timer = tm_new_init(P->pool, ospf_disp, p, p->tick S, 0);
   tm_start(p->disp_timer, 100 MS);
@@ -266,6 +300,10 @@ ospf_start(struct proto *P)
 
   p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
   p->log_lsa_tbf = (struct tbf){ .rate = 4, .burst = 20 };
+
+  /* Lock the channel when in GR recovery mode */
+  if (p->p.gr_recovery && (p->gr_mode == OSPF_GR_ABLE))
+    ospf_start_gr_recovery(p);
 
   WALK_LIST(ac, c->area_list)
     ospf_area_add(p, ac);
@@ -398,6 +436,9 @@ ospf_disp(timer * timer)
 {
   struct ospf_proto *p = timer->data;
 
+  if (p->gr_recovery)
+    ospf_update_gr_recovery(p);
+
   /* Originate or flush local topology LSAs */
   ospf_update_topology(p);
 
@@ -475,9 +516,18 @@ ospf_shutdown(struct proto *P)
 
   OSPF_TRACE(D_EVENTS, "Shutdown requested");
 
-  /* And send to all my neighbors 1WAY */
-  WALK_LIST(ifa, p->iface_list)
-    ospf_iface_shutdown(ifa);
+  if ((P->down_code == PDC_CMD_GR_DOWN) && (p->gr_mode == OSPF_GR_ABLE))
+  {
+    /* Originate Grace LSAs */
+    WALK_LIST(ifa, p->iface_list)
+      ospf_originate_gr_lsa(p, ifa);
+  }
+  else
+  {
+    /* Send to all my neighbors 1WAY */
+    WALK_LIST(ifa, p->iface_list)
+      ospf_iface_shutdown(ifa);
+  }
 
   /* Cleanup locked rta entries */
   FIB_WALK(&p->rtf, ort, nf)
@@ -664,6 +714,8 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   p->merge_external = new->merge_external;
   p->asbr = new->asbr;
   p->ecmp = new->ecmp;
+  p->gr_mode = new->gr_mode;
+  p->gr_time = new->gr_time;
   p->tick = new->tick;
   p->disp_timer->recurrent = p->tick S;
   tm_start(p->disp_timer, 10 MS);

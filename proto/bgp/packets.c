@@ -100,7 +100,7 @@ init_mrt_bgp_data(struct bgp_conn *conn, struct mrt_bgp_data *d)
   d->peer_as = p->remote_as;
   d->local_as = p->local_as;
   d->index = (p->neigh && p->neigh->iface) ? p->neigh->iface->index : 0;
-  d->af = ipa_is_ip4(p->cf->remote_ip) ? BGP_AFI_IPV4 : BGP_AFI_IPV6;
+  d->af = ipa_is_ip4(p->remote_ip) ? BGP_AFI_IPV4 : BGP_AFI_IPV6;
   d->peer_ip = conn->sk ? conn->sk->daddr : IPA_NONE;
   d->local_ip = conn->sk ? conn->sk->saddr : IPA_NONE;
   d->as4 = p_ok ? p->as4_session : 0;
@@ -208,19 +208,22 @@ bgp_af_caps_cmp(const void *X, const void *Y)
 }
 
 
-static byte *
-bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
+void
+bgp_prepare_capabilities(struct bgp_conn *conn)
 {
   struct bgp_proto *p = conn->bgp;
   struct bgp_channel *c;
   struct bgp_caps *caps;
   struct bgp_af_caps *ac;
-  uint any_ext_next_hop = 0;
-  uint any_add_path = 0;
-  byte *data;
+
+  if (!p->cf->capabilities)
+  {
+    /* Just prepare empty local_caps */
+    conn->local_caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps));
+    return;
+  }
 
   /* Prepare bgp_caps structure */
-
   int n = list_length(&p->p.channels);
   caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps) + n * sizeof(struct bgp_af_caps));
   conn->local_caps = caps;
@@ -251,10 +254,10 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     ac->ready = 1;
 
     ac->ext_next_hop = bgp_channel_is_ipv4(c) && c->cf->ext_next_hop;
-    any_ext_next_hop |= ac->ext_next_hop;
+    caps->any_ext_next_hop |= ac->ext_next_hop;
 
     ac->add_path = c->cf->add_path;
-    any_add_path |= ac->add_path;
+    caps->any_add_path |= ac->add_path;
 
     if (c->cf->gr_able)
     {
@@ -276,7 +279,16 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
 
   /* Sort capability fields by AFI/SAFI */
   qsort(caps->af_data, caps->af_count, sizeof(struct bgp_af_caps), bgp_af_caps_cmp);
+}
 
+static byte *
+bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
+{
+  struct bgp_proto *p = conn->bgp;
+  struct bgp_caps *caps = conn->local_caps;
+  struct bgp_af_caps *ac;
+  byte *buf_head = buf;
+  byte *data;
 
   /* Create capability list in buffer */
 
@@ -301,7 +313,7 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     *buf++ = 0;			/* Capability data length */
   }
 
-  if (any_ext_next_hop)
+  if (caps->any_ext_next_hop)
   {
     *buf++ = 5;			/* Capability 5: Support for extended next hop */
     *buf++ = 0;			/* Capability data length, will be fixed later */
@@ -353,7 +365,7 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     buf += 4;
   }
 
-  if (any_add_path)
+  if (caps->any_add_path)
   {
     *buf++ = 69;		/* Capability 69: Support for ADD-PATH */
     *buf++ = 0;			/* Capability data length, will be fixed later */
@@ -394,6 +406,8 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     data[-1] = buf - data;
   }
 
+  caps->length = buf - buf_head;
+
   return buf;
 }
 
@@ -404,6 +418,8 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
   struct bgp_af_caps *ac;
   int i, cl;
   u32 af;
+
+  caps->length += len;
 
   while (len > 0)
   {
@@ -569,6 +585,42 @@ err:
 }
 
 static int
+bgp_check_capabilities(struct bgp_conn *conn)
+{
+  struct bgp_proto *p = conn->bgp;
+  struct bgp_caps *local = conn->local_caps;
+  struct bgp_caps *remote = conn->remote_caps;
+  struct bgp_channel *c;
+  int count = 0;
+
+  /* This is partially overlapping with bgp_conn_enter_established_state(),
+     but we need to run this just after we receive OPEN message */
+
+  WALK_LIST(c, p->p.channels)
+  {
+    const struct bgp_af_caps *loc = bgp_find_af_caps(local,  c->afi);
+    const struct bgp_af_caps *rem = bgp_find_af_caps(remote, c->afi);
+
+    /* Find out whether this channel will be active */
+    int active = loc && loc->ready &&
+      ((rem && rem->ready) || (!remote->length && (c->afi == BGP_AF_IPV4)));
+
+    /* Mandatory must be active */
+    if (c->cf->mandatory && !active)
+      return 0;
+
+    if (active)
+      count++;
+  }
+
+  /* We need at least one channel active */
+  if (!count)
+    return 0;
+
+  return 1;
+}
+
+static int
 bgp_read_options(struct bgp_conn *conn, byte *pos, int len)
 {
   struct bgp_proto *p = conn->bgp;
@@ -635,9 +687,6 @@ bgp_create_open(struct bgp_conn *conn, byte *buf)
   }
   else
   {
-    /* Prepare empty local_caps */
-    conn->local_caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps));
-
     buf[9] = 0;			/* No optional parameters */
     return buf + 10;
   }
@@ -678,6 +727,10 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   if (!id || (p->is_internal && id == p->local_id))
   { bgp_error(conn, 2, 3, pkt+24, -4); return; }
 
+  /* RFC 5492 4 - check for required capabilities */
+  if (p->cf->capabilities && !bgp_check_capabilities(conn))
+  { bgp_error(conn, 2, 7, NULL, 0); return; }
+
   struct bgp_caps *caps = conn->remote_caps;
 
   if (caps->as4_support)
@@ -687,13 +740,18 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
     if ((as4 != asn) && (asn != AS_TRANS))
       log(L_WARN "%s: Peer advertised inconsistent AS numbers", p->p.name);
 
-    if (as4 != p->remote_as)
+    /* When remote ASN is unspecified, it must be external one */
+    if (p->remote_as ? (as4 != p->remote_as) : (as4 == p->local_as))
     { as4 = htonl(as4); bgp_error(conn, 2, 2, (byte *) &as4, 4); return; }
+
+    conn->received_as = as4;
   }
   else
   {
-    if (asn != p->remote_as)
+    if (p->remote_as ? (asn != p->remote_as) : (asn == p->local_as))
     { bgp_error(conn, 2, 2, pkt+20, 2); return; }
+
+    conn->received_as = asn;
   }
 
   /* Check the other connection */
@@ -962,7 +1020,7 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
     WITHDRAW(NO_NEXT_HOP);
 
   ip_addr *nh = (void *) a->u.ptr->data;
-  ip_addr peer = s->proto->cf->remote_ip;
+  ip_addr peer = s->proto->remote_ip;
   uint len = a->u.ptr->length;
 
   /* Forbid zero next hop */
@@ -2280,7 +2338,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
     a->source = RTS_BGP;
     a->scope = SCOPE_UNIVERSE;
-    a->from = s->proto->cf->remote_ip;
+    a->from = s->proto->remote_ip;
     a->eattrs = ea;
 
     c->desc->decode_next_hop(s, nh, nh_len, a);
@@ -2634,18 +2692,18 @@ bgp_fire_tx(struct bgp_conn *conn)
     end = bgp_create_notification(conn, pkt);
     return bgp_send(conn, PKT_NOTIFICATION, end - buf);
   }
+  else if (s & (1 << PKT_OPEN))
+  {
+    conn->packets_to_send &= ~(1 << PKT_OPEN);
+    end = bgp_create_open(conn, pkt);
+    return bgp_send(conn, PKT_OPEN, end - buf);
+  }
   else if (s & (1 << PKT_KEEPALIVE))
   {
     conn->packets_to_send &= ~(1 << PKT_KEEPALIVE);
     BGP_TRACE(D_PACKETS, "Sending KEEPALIVE");
     bgp_start_timer(conn->keepalive_timer, conn->keepalive_time);
     return bgp_send(conn, PKT_KEEPALIVE, BGP_HEADER_LENGTH);
-  }
-  else if (s & (1 << PKT_OPEN))
-  {
-    conn->packets_to_send &= ~(1 << PKT_OPEN);
-    end = bgp_create_open(conn, pkt);
-    return bgp_send(conn, PKT_OPEN, end - buf);
   }
   else while (conn->channels_to_send)
   {
@@ -2731,15 +2789,18 @@ bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
   if ((conn->sk->tpos == conn->sk->tbuf) && !ev_active(conn->tx_ev))
     ev_schedule(conn->tx_ev);
 }
-
 void
 bgp_kick_tx(void *vconn)
 {
   struct bgp_conn *conn = vconn;
 
   DBG("BGP: kicking TX\n");
-  while (bgp_fire_tx(conn) > 0)
+  uint max = 1024;
+  while (--max && (bgp_fire_tx(conn) > 0))
     ;
+
+  if (!max && !ev_active(conn->tx_ev))
+    ev_schedule(conn->tx_ev);
 }
 
 void
@@ -2748,8 +2809,12 @@ bgp_tx(sock *sk)
   struct bgp_conn *conn = sk->data;
 
   DBG("BGP: TX hook\n");
-  while (bgp_fire_tx(conn) > 0)
+  uint max = 1024;
+  while (--max && (bgp_fire_tx(conn) > 0))
     ;
+
+  if (!max && !ev_active(conn->tx_ev))
+    ev_schedule(conn->tx_ev);
 }
 
 
@@ -2835,7 +2900,7 @@ bgp_handle_message(struct bgp_proto *p, byte *data, uint len, byte **bp)
     return 1;
 
   /* Handle proper message */
-  if ((msg_len > 128) && (msg_len + 1 > len))
+  if ((msg_len > 255) && (msg_len + 1 > len))
     return 0;
 
   /* Some elementary cleanup */

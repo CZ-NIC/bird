@@ -89,6 +89,7 @@ void protos_build(void);
 void proto_build(struct protocol *);
 void protos_preconfig(struct config *);
 void protos_commit(struct config *new, struct config *old, int force_restart, int type);
+struct proto * proto_spawn(struct proto_config *cf, uint disabled);
 void protos_dump_all(void);
 
 #define GA_UNKNOWN	0		/* Attribute not recognized */
@@ -113,6 +114,7 @@ struct proto_config {
   struct config *global;		/* Global configuration data */
   struct protocol *protocol;		/* Protocol */
   struct proto *proto;			/* Instance we've created */
+  struct proto_config *parent;		/* Parent proto_config for dynamic protocols */
   char *name;
   char *dsc;
   int class;				/* SYM_PROTO or SYM_TEMPLATE */
@@ -255,6 +257,7 @@ struct proto_spec {
 #define PDC_CMD_DISABLE		0x11	/* Result of disable command */
 #define PDC_CMD_RESTART		0x12	/* Result of restart command */
 #define PDC_CMD_SHUTDOWN	0x13	/* Result of global shutdown */
+#define PDC_CMD_GR_DOWN		0x14	/* Result of global graceful restart */
 #define PDC_RX_LIMIT_HIT	0x21	/* Route receive limit reached */
 #define PDC_IN_LIMIT_HIT	0x22	/* Route import limit reached */
 #define PDC_OUT_LIMIT_HIT	0x23	/* Route export limit reached */
@@ -263,6 +266,7 @@ struct proto_spec {
 void *proto_new(struct proto_config *);
 void *proto_config_new(struct protocol *, int class);
 void proto_copy_config(struct proto_config *dest, struct proto_config *src);
+void proto_clone_config(struct symbol *sym, struct proto_config *parent);
 void proto_set_message(struct proto *p, char *msg, int len);
 
 void graceful_restart_recovery(void);

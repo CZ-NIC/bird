@@ -874,6 +874,28 @@ proto_copy_config(struct proto_config *dest, struct proto_config *src)
   dest->protocol->copy_config(dest, src);
 }
 
+void
+proto_clone_config(struct symbol *sym, struct proto_config *parent)
+{
+  struct proto_config *cf = proto_config_new(parent->protocol, SYM_PROTO);
+  proto_copy_config(cf, parent);
+  cf->name = sym->name;
+  cf->proto = NULL;
+  cf->parent = parent;
+
+  sym->class = cf->class;
+  sym->proto = cf;
+}
+
+static void
+proto_undef_clone(struct symbol *sym, struct proto_config *cf)
+{
+  rem_node(&cf->n);
+
+  sym->class = SYM_VOID;
+  sym->proto = NULL;
+}
+
 /**
  * protos_preconfig - pre-configuration processing
  * @c: new configuration
@@ -973,6 +995,24 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
     {
       p = oc->proto;
       sym = cf_find_symbol(new, oc->name);
+
+      /* Handle dynamic protocols */
+      if (!sym && oc->parent && !new->shutdown)
+      {
+	struct symbol *parsym = cf_find_symbol(new, oc->parent->name);
+	if (parsym && parsym->class == SYM_PROTO)
+	{
+	  /* This is hack, we would like to share config, but we need to copy it now */
+	  new_config = new;
+	  cfg_mem = new->mem;
+	  conf_this_scope = new->root_scope;
+	  sym = cf_get_symbol(oc->name);
+	  proto_clone_config(sym, parsym->proto);
+	  new_config = NULL;
+	  cfg_mem = NULL;
+	}
+      }
+
       if (sym && sym->class == SYM_PROTO && !new->shutdown)
       {
 	/* Found match, let's check if we can smoothly switch to new configuration */
@@ -983,6 +1023,12 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
 	/* We will try to reconfigure protocol p */
 	if (! force_reconfig && proto_reconfigure(p, oc, nc, type))
 	  continue;
+
+	if (nc->parent)
+	{
+	  proto_undef_clone(sym, nc);
+	  goto remove;
+	}
 
 	/* Unsuccessful, we will restart it */
 	if (!p->disabled && !nc->disabled)
@@ -997,8 +1043,14 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       }
       else if (!new->shutdown)
       {
+      remove:
 	log(L_INFO "Removing protocol %s", p->name);
 	p->down_code = PDC_CF_REMOVE;
+	p->cf_new = NULL;
+      }
+      else if (new->gr_down)
+      {
+	p->down_code = PDC_CMD_GR_DOWN;
 	p->cf_new = NULL;
       }
       else /* global shutdown */
@@ -1103,6 +1155,15 @@ proto_rethink_goal(struct proto *p)
       proto_notify_state(p, (q->shutdown ? q->shutdown(p) : PS_DOWN));
     }
   }
+}
+
+struct proto *
+proto_spawn(struct proto_config *cf, uint disabled)
+{
+  struct proto *p = proto_init(cf, TAIL(proto_list));
+  p->disabled = disabled;
+  proto_rethink_goal(p);
+  return p;
 }
 
 
