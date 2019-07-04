@@ -121,13 +121,12 @@ fi
 
 AC_PROG_CC
 AC_PROG_CC_C99
-if test -z "$GCC" ; then
-  AC_MSG_ERROR([This program requires the GNU C Compiler.])
-fi
 
 BIRD_CHECK_THREAD_LOCAL
-if test "$bird_cv_thread_local" = yes ; then
-  AC_DEFINE([HAVE_THREAD_LOCAL], [1], [Define to 1 if _Thread_local is available])
+if test "$bird_cv_thread_local" = no ; then
+  AC_MSG_ERROR([Thread local storage not available])
+elif test "$bird_cv_thread_local" = old ; then
+  AC_DEFINE([HAVE_OLD_THREAD_LOCAL], [1], [Define to 1 if _Thread_local has to be defined as __thread])
 fi
 
 AC_CHECK_HEADER([stdatomic.h],
