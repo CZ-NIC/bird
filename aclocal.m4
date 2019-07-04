@@ -4,18 +4,21 @@ dnl ** (c) 1999 Martin Mares <mj@ucw.cz>
 AC_DEFUN([BIRD_CHECK_THREAD_LOCAL],
 [
   AC_CACHE_CHECK(
-    [whether _Thread_local is known],
+    [whether C11 thread local storage is available],
     [bird_cv_thread_local],
     AC_COMPILE_IFELSE([
-      AC_LANG_PROGRAM(
-        [
-	  _Thread_local static int x = 42;
-	],
-	[]
-      )
+      AC_LANG_PROGRAM([ _Thread_local static int x = 42; ])
     ],
     [bird_cv_thread_local=yes],
-    [bird_cv_thread_local=no]
+      [
+	CFLAGS="$CFLAGS -std=gnu11"
+	AC_COMPILE_IFELSE([
+	  AC_LANG_PROGRAM([ _Thread_local static int x = 42; ])
+	],
+	[bird_cv_thread_local=gnu11]
+	AC_MSG_ERROR([Thread local storage not available])
+	)
+      ]
     )
   )
 ])

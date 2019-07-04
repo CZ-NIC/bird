@@ -73,12 +73,6 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define UNUSED __attribute__((unused))
 #define PACKED __attribute__((packed))
 
-#ifdef HAVE_THREAD_LOCAL
-#define THREAD_LOCAL _Thread_local
-#else
-#define THREAD_LOCAL
-#endif
-
 /* Microsecond time */
 
 typedef s64 btime;

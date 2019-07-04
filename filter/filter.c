@@ -100,13 +100,9 @@ struct filter_state {
   int flags;
 };
 
-#if HAVE_THREAD_LOCAL
 _Thread_local static struct filter_state filter_state;
 _Thread_local static struct filter_stack filter_stack;
 #define FS_INIT(...)	filter_state = (struct filter_state) { .stack = &filter_stack, __VA_ARGS__ }
-#else
-#define FS_INIT(...)	struct filter_state filter_state = { .stack = alloca(sizeof(struct filter_stack)), __VA_ARGS__ };
-#endif
 
 void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
