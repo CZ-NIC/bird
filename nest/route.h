@@ -652,13 +652,9 @@ void rta_dump_all(void);
 void rta_show(struct cli *, rta *);
 
 struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
-void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls);
+void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls, linpool *pool);
 
-static inline void
-rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, mpls_label_stack *mls)
-{
-  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ll, dep), mls);
-}
+void rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, mpls_label_stack *mls);
 
 /*
  * rta_set_recursive_next_hop() acquires hostentry from hostcache and fills
