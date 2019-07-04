@@ -93,8 +93,8 @@ struct filter_state {
   int flags;
 };
 
-_Thread_local static struct filter_state filter_state;
-_Thread_local static struct filter_stack filter_stack;
+static _Thread_local struct filter_state filter_state;
+static _Thread_local struct filter_stack filter_stack;
 
 void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
