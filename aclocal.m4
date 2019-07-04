@@ -7,15 +7,19 @@ AC_DEFUN([BIRD_CHECK_THREAD_LOCAL],
     [whether _Thread_local is known],
     [bird_cv_thread_local],
     AC_COMPILE_IFELSE([
-      AC_LANG_PROGRAM(
-        [
-	  _Thread_local static int x = 42;
-	],
-	[]
-      )
+      AC_LANG_PROGRAM([ _Thread_local static int x = 42; ])
     ],
     [bird_cv_thread_local=yes],
-    [bird_cv_thread_local=no]
+      [
+	bird_tmp_cflags="$CFLAGS"
+	CFLAGS="$CFLAGS -std=gnu11"
+	AC_COMPILE_IFELSE([
+	  AC_LANG_PROGRAM([ _Thread_local static int x = 42; ])
+	],
+	[bird_cv_thread_local="-std=gnu11"]
+	[bird_cv_thread_local=no]
+	)
+      ]
     )
   )
 ])
