@@ -95,4 +95,7 @@
 #define MACRO_FOREACH(call, ...) MACRO_EXPAND(MACRO_FOREACH_EXPAND(call, __VA_ARGS__))
 #define MACRO_RPACK(call, terminator, ...) MACRO_EXPAND(MACRO_RPACK_EXPAND(call, terminator, __VA_ARGS__))
 
+#define MACRO_PACK_BEFORE_AFTER(before, after) \
+  for (int _macro_pack_before_after = before, 1; _macro_pack_before_after--; after)
+
 #endif
