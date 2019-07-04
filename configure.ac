@@ -118,6 +118,10 @@ fi
 BIRD_CHECK_THREAD_LOCAL
 if test "$bird_cv_thread_local" = yes ; then
   AC_DEFINE([HAVE_THREAD_LOCAL], [1], [Define to 1 if _Thread_local is available])
+elif test "$bird_cv_thread_local" != no ; then
+  AC_DEFINE([_Thread_local], $bird_cv_thread_local, [Remap _Thread_local from old CC versions])
+else
+  AC_MSG_ERROR([Thread local storage not available.])
 fi
 
 if test "$enable_pthreads" != no ; then
