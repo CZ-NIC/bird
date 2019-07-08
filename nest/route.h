@@ -294,7 +294,6 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 rte *rte_find(net *net, struct rte_src *src);
-rte *rte_get_temp(struct rta *);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
 int rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter);
@@ -305,8 +304,9 @@ void rt_modify_stale(rtable *t, struct channel *c);
 void rt_schedule_prune(rtable *t);
 void rte_dump(rte *);
 void rte_free(rte *);
-rte *rte_do_cow(rte *);
-static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }
+rte *rte_cache(rte *r);
+rte *rte_do_cow(rte *, linpool *lp);
+static inline rte * rte_cow(rte *r, linpool *lp) { return (r->flags & REF_COW) ? rte_do_cow(r, lp) : r; }
 rte *rte_cow_rta(rte *r, linpool *lp);
 void rte_init_tmp_attrs(struct rte *r, linpool *lp, uint max);
 void rte_make_tmp_attr(struct rte *r, uint id, uint type, uintptr_t val);
@@ -644,6 +644,7 @@ static inline int rta_is_cached(rta *r) { return r->aflags & RTAF_CACHED; }
 static inline rta *rta_clone(rta *r) { r->uc++; return r; }
 void rta__free(rta *r);
 static inline void rta_free(rta *r) { if (r && !--r->uc) rta__free(r); }
+
 rta *rta_do_cow(rta *o, linpool *lp);
 static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta_do_cow(r, lp) : r; }
 void rta_dump(rta *);

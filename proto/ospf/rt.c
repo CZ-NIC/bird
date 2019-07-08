@@ -2052,16 +2052,19 @@ again1:
 
       if (reload || ort_changed(nf, &a0))
       {
-	rta *a = rta_lookup(&a0);
-	rte *e = rte_get_temp(a);
-
 	rta_free(nf->old_rta);
-	nf->old_rta = rta_clone(a);
-	e->u.ospf.metric1 = nf->old_metric1 = nf->n.metric1;
-	e->u.ospf.metric2 = nf->old_metric2 = nf->n.metric2;
-	e->u.ospf.tag = nf->old_tag = nf->n.tag;
-	e->u.ospf.router_id = nf->old_rid = nf->n.rid;
-	e->pflags = EA_ID_FLAG(EA_OSPF_METRIC1) | EA_ID_FLAG(EA_OSPF_ROUTER_ID);
+	nf->old_rta = rta_lookup(&a0);
+
+	rte e0 = {
+	  .attrs = nf->old_rta,
+	  .u.ospf = {
+	    .metric1 = nf->old_metric1 = nf->n.metric1,
+            .metric2 = nf->old_metric2 = nf->n.metric2,
+            .tag = nf->old_tag = nf->n.tag,
+            .router_id = nf->old_rid = nf->n.rid,
+	  },
+	  .pflags = EA_ID_FLAG(EA_OSPF_METRIC1) | EA_ID_FLAG(EA_OSPF_ROUTER_ID),
+	}, *e = &e0;
 
 	if (nf->n.type == RTS_OSPF_EXT2)
 	  e->pflags |= EA_ID_FLAG(EA_OSPF_METRIC2);
