@@ -116,7 +116,7 @@ static inline void f_rte_cow(struct filter_state *fs)
   if (!((*fs->rte)->flags & REF_COW))
     return;
 
-  *fs->rte = rte_cow(*fs->rte);
+  *fs->rte = rte_cow(*fs->rte, fs->pool);
 }
 
 /*

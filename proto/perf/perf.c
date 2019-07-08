@@ -86,7 +86,6 @@ random_net_ip4(void)
 
 struct perf_random_routes {
   net_addr net;
-  rte *ep;
   struct rta a;
 };
 
@@ -162,15 +161,10 @@ perf_loop(void *data)
 
   for (uint i=0; i<N; i++) {
     struct perf_random_routes *prr = p->data + offset * i;
-    prr->ep = rte_get_temp(&prr->a);
-    prr->ep->pflags = 0;
-  }
-
-  clock_gettime(CLOCK_MONOTONIC, &ts_rte);
-
-  for (uint i=0; i<N; i++) {
-    struct perf_random_routes *prr = p->data + offset * i;
-    rte_update(P, &prr->net, prr->ep);
+    rte e0 = {
+      .attrs = &(prr->a),
+    };
+    rte_update(P, &prr->net, &e0);
   }
 
   clock_gettime(CLOCK_MONOTONIC, &ts_update);

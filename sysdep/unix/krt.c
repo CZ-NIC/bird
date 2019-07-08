@@ -299,11 +299,9 @@ static void
 krt_learn_announce_update(struct krt_proto *p, rte *e)
 {
   net *n = e->net;
-  rta *aa = rta_clone(e->attrs);
-  rte *ee = rte_get_temp(aa);
-  ee->pflags = EA_ID_FLAG(EA_KRT_SOURCE) | EA_ID_FLAG(EA_KRT_METRIC);
-  ee->u.krt = e->u.krt;
-  rte_update(&p->p, n->n.addr, ee);
+  rte ee = *e;
+  ee.pflags = EA_ID_FLAG(EA_KRT_SOURCE) | EA_ID_FLAG(EA_KRT_METRIC);
+  rte_update(&p->p, n->n.addr, &ee);
 }
 
 static void
@@ -330,8 +328,9 @@ krt_learn_scan(struct krt_proto *p, rte *e)
       if (krt_uptodate(m, e))
 	{
 	  krt_trace_in_rl(&rl_alien, p, e, "[alien] seen");
-	  rte_free(e);
 	  m->u.krt.seen = 1;
+	  rta_free(e->attrs);
+	  return;
 	}
       else
 	{
@@ -345,6 +344,7 @@ krt_learn_scan(struct krt_proto *p, rte *e)
     krt_trace_in(p, e, "[alien] created");
   if (!m)
     {
+      e = rte_cache(e);
       e->next = n->routes;
       n->routes = e;
       e->u.krt.seen = 1;
