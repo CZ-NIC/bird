@@ -308,29 +308,28 @@ rte_find(net *net, struct rte_src *src)
 }
 
 /**
- * rte_get_temp - get a temporary &rte
- * @a: attributes to assign to the new route (a &rta; in case it's
- * un-cached, rte_update() will create a cached copy automatically)
+ * rte_cache - store a temporary route into global storage
+ * @e: temporary route to copy
  *
  * Create a temporary &rte and bind it with the attributes @a.
  * Also set route preference to the default preference set for
  * the protocol.
  */
 rte *
-rte_get_temp(rta *a)
+rte_cache(rte *r)
 {
   rte *e = sl_alloc(rte_slab);
 
-  e->attrs = a;
-  e->flags = 0;
-  e->pref = 0;
+  memcpy(e, r, sizeof(rte));
+  e->attrs = rta_clone(r->attrs);
+  e->flags |= REF_COW;
   return e;
 }
 
 rte *
-rte_do_cow(rte *r)
+rte_do_cow(rte *r, linpool *lp)
 {
-  rte *e = sl_alloc(rte_slab);
+  rte *e = lp_alloc(lp, sizeof(rte));
 
   memcpy(e, r, sizeof(rte));
   e->attrs = rta_clone(r->attrs);
@@ -360,10 +359,14 @@ rte_do_cow(rte *r)
 rte *
 rte_cow_rta(rte *r, linpool *lp)
 {
+  /* RTA is not cached -> nothing is cached */
   if (!rta_is_cached(r->attrs))
     return r;
 
-  r = rte_cow(r);
+  /* Create local RTE copy if needed */
+  r = rte_cow(r, lp);
+
+  /* COW RTA */
   rta *a = rta_do_cow(r->attrs, lp);
   rta_free(r->attrs);
   r->attrs = a;
@@ -499,7 +502,10 @@ rte_make_tmp_attrs(rte **r, linpool *lp, rta **old_attrs)
   if (old_attrs)
     *old_attrs = rta_is_cached((*r)->attrs) ? rta_clone((*r)->attrs) : NULL;
 
+  /* The route must be made writable if needed. */
   *r = rte_cow_rta(*r, lp);
+
+  /* Run the protocol-specific function. */
   make_tmp_attrs(*r, lp);
 }
 
@@ -1258,7 +1264,6 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
 		{
 		  log_rl(&rl_pipe, L_ERR "Pipe collision detected when sending %N to table %s",
 		      net->n.addr, table->name);
-		  rte_free_quick(new);
 		}
 	      return;
 	    }
@@ -1275,7 +1280,6 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
 		  rte_trace_in(D_ROUTES, p, new, "ignored");
 		}
 
-	      rte_free_quick(new);
 	      return;
 	    }
 	  *k = old->next;
@@ -1313,7 +1317,6 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
 
 	  stats->imp_updates_ignored++;
 	  rte_trace_in(D_FILTERS, p, new, "ignored [limit]");
-	  rte_free_quick(new);
 	  return;
 	}
     }
@@ -1339,7 +1342,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
 	  if (c->in_keep_filtered)
 	    new->flags |= REF_FILTERED;
 	  else
-	    { rte_free_quick(new); new = NULL; }
+	    new = NULL;
 
 	  /* Note that old && !new could be possible when
 	     c->in_keep_filtered changed in the recent past. */
@@ -1365,6 +1368,10 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
     rte_is_filtered(new) ? stats->filt_routes++ : stats->imp_routes++;
   if (old)
     rte_is_filtered(old) ? stats->filt_routes-- : stats->imp_routes--;
+
+  /* The new route will be inserted. Allocating from the common pool right now. */
+  if (new)
+    new = rte_cache(new);
 
   if (table->config->sorted)
     {
@@ -1572,7 +1579,7 @@ rte_do_update(struct rte_update_data *rud)
 	    stats->imp_updates_filtered++;
 	    rte_trace_in(D_FILTERS, p, new, "filtered out");
 
-	    if (! c->in_keep_filtered)
+	    if (!c->in_keep_filtered)
 	    {
 	      rta_free(old_attrs);
 	      goto drop;
@@ -1615,7 +1622,6 @@ rte_do_update(struct rte_update_data *rud)
   return;
 
  drop:
-  rte_free(new);
   new = NULL;
   if (nn = net_find(c->table, n))
     goto recalc;
@@ -1636,8 +1642,8 @@ rte_do_update(struct rte_update_data *rud)
  * sequence is to build route attributes first (either un-cached with @aflags set
  * to zero or a cached one using rta_lookup(); in this case please note that
  * you need to increase the use count of the attributes yourself by calling
- * rta_clone()), call rte_get_temp() to obtain a temporary &rte, fill in all
- * the appropriate data and finally submit the new &rte by calling rte_update().
+ * rta_clone()), create a rte structure, fill in all the appropriate data
+ * and finally submit the new &rte by calling rte_update().
  *
  * @src specifies the protocol that originally created the route and the meaning
  * of protocol-dependent data of @new. If @new is not %NULL, @src have to be the
@@ -2639,8 +2645,7 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
   }
 
   /* Insert the new rte */
-  rte *e = rte_do_cow(new);
-  e->flags |= REF_COW;
+  rte *e = rte_cache(new);
   e->net = net;
   e->sender = c;
   e->lastmod = current_time();
@@ -2652,7 +2657,6 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 drop_update:
   c->stats.imp_updates_received++;
   c->stats.imp_updates_ignored++;
-  rte_free(new);
   return 0;
 
 drop_withdraw:
@@ -2686,7 +2690,7 @@ rt_reload_channel(struct channel *c)
 
     for (rte *e = n->routes; e; e = e->next)
     {
-      rte_update2(c, n->n.addr, rte_do_cow(e), e->attrs->src);
+      rte_update2(c, n->n.addr, e, e->attrs->src);
       max_feed--;
     }
   }
