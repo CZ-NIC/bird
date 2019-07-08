@@ -70,13 +70,13 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
 
       a->aflags = 0;
       a->hostentry = NULL;
-      e = rte_get_temp(a);
-      e->pflags = 0;
-
-      /* Copy protocol specific embedded attributes. */
-      memcpy(&(e->u), &(new->u), sizeof(e->u));
-      e->pref = new->pref;
-      e->pflags = new->pflags;
+      rte e0 = {
+	.attrs = a,
+	.u = new->u,
+	.pref = new->pref,
+	.pflags = new->pflags,
+      };
+      e = &e0;
 
 #ifdef CONFIG_BGP
       /* Hack to cleanup cached value */
