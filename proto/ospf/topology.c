@@ -71,6 +71,7 @@ ospf_install_lsa(struct ospf_proto *p, struct ospf_lsa_header *lsa, u32 type, u3
   en->lsa = *lsa;
   en->init_age = en->lsa.age;
   en->inst_time = current_time();
+  en->gr_dirty = p->gr_recovery && (lsa->rt == p->router_id);
 
   /*
    * We do not set en->mode. It is either default LSA_M_BASIC, or in a special
@@ -246,7 +247,7 @@ ospf_do_originate_lsa(struct ospf_proto *p, struct top_hash_entry *en, void *lsa
   en->lsa.age = 0;
   en->init_age = 0;
   en->inst_time = current_time();
-  en->dirty = 0;
+  en->gr_dirty = 0;
   lsa_generate_checksum(&en->lsa, en->lsa_body);
 
   OSPF_TRACE(D_EVENTS, "Originating LSA: Type: %04x, Id: %R, Rt: %R, Seq: %08x",
@@ -329,7 +330,7 @@ ospf_originate_lsa(struct ospf_proto *p, struct ospf_new_lsa *lsa)
       (lsa_length == en->lsa.length) &&
       !memcmp(lsa_body, en->lsa_body, lsa_blen) &&
       (!ospf_is_v2(p) || (lsa->opts == lsa_get_options(&en->lsa))) &&
-      !en->dirty)
+      !en->gr_dirty)
     goto drop;
 
   lsa_body = lsab_flush(p);
@@ -422,6 +423,7 @@ void
 ospf_flush_lsa(struct ospf_proto *p, struct top_hash_entry *en)
 {
   en->nf = NULL;
+  en->gr_dirty = 0;
 
   if (en->next_lsa_body)
   {
@@ -520,12 +522,6 @@ ospf_update_lsadb(struct ospf_proto *p)
       continue;
     }
 
-    if (en->dirty)
-    {
-      ospf_flush_lsa(p, en);
-      continue;
-    }
-
     if ((en->lsa.rt == p->router_id) && (real_age >= LSREFRESHTIME))
     {
       ospf_refresh_lsa(p, en);
@@ -543,14 +539,27 @@ ospf_update_lsadb(struct ospf_proto *p)
 }
 
 void
-ospf_mark_lsadb(struct ospf_proto *p)
+ospf_feed_begin(struct channel *C, int initial UNUSED)
 {
+  struct ospf_proto *p = (struct ospf_proto *) C->proto;
   struct top_hash_entry *en;
 
-  /* Mark all local LSAs as dirty */
+  /* Mark all external LSAs as stale */
   WALK_SLIST(en, p->lsal)
-    if (en->lsa.rt == p->router_id)
-      en->dirty = 1;
+    if (en->mode == LSA_M_EXPORT)
+      en->mode = LSA_M_EXPORT_STALE;
+}
+
+void
+ospf_feed_end(struct channel *C)
+{
+  struct ospf_proto *p = (struct ospf_proto *) C->proto;
+  struct top_hash_entry *en;
+
+  /* Flush stale LSAs */
+  WALK_SLIST(en, p->lsal)
+    if (en->mode == LSA_M_EXPORT_STALE)
+      ospf_flush_lsa(p, en);
 }
 
 static u32
