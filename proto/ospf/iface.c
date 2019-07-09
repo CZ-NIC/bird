@@ -880,6 +880,7 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 	       ifname, ifa->priority, new->priority);
 
     ifa->priority = new->priority;
+    ospf_iface_sm(ifa, ISM_NEICH);
     ospf_notify_link_lsa(ifa);
   }
 
