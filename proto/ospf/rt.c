@@ -1646,7 +1646,7 @@ ospf_rt_reset(struct ospf_proto *p)
     en->lb = IPA_NONE;
 
     if (en->mode == LSA_M_RTCALC)
-      en->mode = LSA_M_STALE;
+      en->mode = LSA_M_RTCALC_STALE;
   }
 
   WALK_LIST(oa, p->area_list)
@@ -2117,7 +2117,7 @@ again2:
 
   /* Cleanup stale LSAs */
   WALK_SLIST(en, p->lsal)
-    if (en->mode == LSA_M_STALE)
+    if (en->mode == LSA_M_RTCALC_STALE)
       ospf_flush_lsa(p, en);
 }
 

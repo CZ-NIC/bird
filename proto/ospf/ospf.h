@@ -230,7 +230,8 @@ struct ospf_proto
   int areano;			/* Number of area I belong to */
   int padj;			/* Number of neighbors in Exchange or Loading state */
   int gr_count;			/* Number of neighbors in graceful restart state */
-  int gr_recovery;		/* Graceful restart recovery is active */
+  u8 gr_recovery;		/* Graceful restart recovery is active */
+  u8 gr_cleanup;		/* GR cleanup scheduled */
   btime gr_timeout;		/* The end time of grace restart recovery */
   struct fib rtf;		/* Routing table */
   struct idm idm;		/* OSPFv3 LSA ID map */
