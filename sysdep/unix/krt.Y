@@ -41,7 +41,11 @@ CF_GRAMMAR
 proto: kern_proto '}' ;
 
 kern_proto_start: proto_start KERNEL {
+#ifdef	HAVE_KERNEL
      this_proto = krt_init_config($1);
+#else
+     cf_error("Kernel sync protocol not available");
+#endif
 }
  ;
 

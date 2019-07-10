@@ -126,6 +126,7 @@ struct proto_config * krt_init_config(int class);
 
 /* krt sysdep */
 
+#ifdef	HAVE_KERNEL
 void krt_sys_io_init(void);
 void krt_sys_init(struct krt_proto *);
 int krt_sys_start(struct krt_proto *);
@@ -141,7 +142,7 @@ int  krt_capable(rte *e);
 void krt_do_scan(struct krt_proto *);
 void krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old);
 int krt_sys_get_attr(eattr *a, byte *buf, int buflen);
-
+#endif
 
 /* kif sysdep */
 

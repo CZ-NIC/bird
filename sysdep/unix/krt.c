@@ -68,16 +68,20 @@
  */
 
 pool *krt_pool;
+#ifdef	HAVE_KERNEL
 static linpool *krt_filter_lp;
 static list krt_proto_list;
+#endif
 
 void
 krt_io_init(void)
 {
   krt_pool = rp_new(&root_pool, "Kernel Syncer");
+#ifdef	HAVE_KERNEL
   krt_filter_lp = lp_new_default(krt_pool);
   init_list(&krt_proto_list);
   krt_sys_io_init();
+#endif
 }
 
 /*
@@ -109,6 +113,7 @@ kif_scan(timer *t)
   kif_do_scan(p);
 }
 
+#ifdef	HAVE_KERNEL
 static void
 kif_force_scan(void)
 {
@@ -118,6 +123,7 @@ kif_force_scan(void)
       tm_start(kif_scan_timer, ((struct kif_config *) kif_proto->p.cf)->scan_time);
     }
 }
+#endif
 
 void
 kif_request_scan(void)
@@ -243,6 +249,7 @@ struct protocol proto_unix_iface = {
   .copy_config =	kif_copy_config
 };
 
+#ifdef	HAVE_KERNEL
 /*
  *	Tracing of routes
  */
@@ -534,6 +541,7 @@ krt_dump_attrs(rte *e)
 }
 
 #endif
+
 
 /*
  *	Routes
@@ -906,6 +914,7 @@ krt_scan_timer_kick(struct krt_proto *p)
 
 
 
+
 /*
  *	Updates
  */
@@ -1237,3 +1246,4 @@ struct protocol proto_unix_kernel = {
   .dump_attrs =		krt_dump_attrs,
 #endif
 };
+#endif
