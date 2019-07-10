@@ -69,7 +69,9 @@ bt_bird_init(void)
   config_init();
 
   protos_build();
+#ifdef	HAVE_KERNEL
   proto_build(&proto_unix_kernel);
+#endif
   proto_build(&proto_unix_iface);
 }
 

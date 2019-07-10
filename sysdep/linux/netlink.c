@@ -134,7 +134,9 @@ struct nl_sock
 #define NL_OP_REPLACE	(NLM_F_CREATE|NLM_F_REPLACE)
 #define NL_OP_APPEND	(NLM_F_CREATE|NLM_F_APPEND)
 
+#ifdef	HAVE_KERNEL
 static linpool *nl_linpool;
+#endif
 
 static struct nl_sock nl_scan = {.fd = -1};	/* Netlink socket for synchronous scan */
 static struct nl_sock nl_req  = {.fd = -1};	/* Netlink socket for requests */
@@ -271,6 +273,8 @@ nl_get_scan(void)
   return h;
 }
 
+#ifdef	HAVE_KERNEL
+
 static int
 nl_exchange(struct nlmsghdr *pkt, int ignore_esrch)
 {
@@ -286,6 +290,8 @@ nl_exchange(struct nlmsghdr *pkt, int ignore_esrch)
     }
   return nl_error(h, ignore_esrch) ? -1 : 0;
 }
+
+#endif
 
 /*
  *	Netlink attributes
@@ -337,7 +343,7 @@ static struct nl_want_attrs ifa_attr_want6[BIRD_IFA_MAX] = {
   [IFA_FLAGS]	  = { 1, 1, sizeof(u32) },
 };
 
-
+#ifdef	HAVE_KERNEL
 #define BIRD_RTA_MAX  (RTA_ENCAP+1)
 
 static struct nl_want_attrs nexthop_attr_want4[BIRD_RTA_MAX] = {
@@ -401,7 +407,7 @@ static struct nl_want_attrs rtm_attr_want_mpls[BIRD_RTA_MAX] = {
   [RTA_NEWDST]	  = { 1, 0, 0 },
 };
 #endif
-
+#endif
 
 static int
 nl_parse_attrs(struct rtattr *a, struct nl_want_attrs *want, struct rtattr **k, int ksize)
@@ -452,6 +458,7 @@ static inline ip_addr rta_get_ipa(struct rtattr *a)
     return ipa_from_ip6(rta_get_ip6(a));
 }
 
+#ifdef	HAVE_KERNEL
 #ifdef HAVE_MPLS_KERNEL
 static inline ip_addr rta_get_via(struct rtattr *a)
 {
@@ -773,6 +780,7 @@ nl_parse_metrics(struct rtattr *hdr, u32 *metrics, int max)
   return 0;
 }
 
+#endif
 
 /*
  *	Scanning of interfaces
@@ -1130,6 +1138,8 @@ kif_do_scan(struct kif_proto *p UNUSED)
 
   if_end_update();
 }
+
+#ifdef	HAVE_KERNEL
 
 /*
  *	Routes
@@ -1830,6 +1840,8 @@ krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NUL
   nl_parse_end(&s);
 }
 
+#endif
+
 /*
  *	Asynchronous Netlink interface
  */
@@ -1840,10 +1852,13 @@ static byte *nl_async_rx_buffer;	/* Receive buffer */
 static void
 nl_async_msg(struct nlmsghdr *h)
 {
+#ifdef	HAVE_KERNEL
   struct nl_parse_state s;
+#endif
 
   switch (h->nlmsg_type)
     {
+#ifdef	HAVE_KERNEL
     case RTM_NEWROUTE:
     case RTM_DELROUTE:
       DBG("KRT: Received async route notification (%d)\n", h->nlmsg_type);
@@ -1851,6 +1866,7 @@ nl_async_msg(struct nlmsghdr *h)
       nl_parse_route(&s, h);
       nl_parse_end(&s);
       break;
+#endif
     case RTM_NEWLINK:
     case RTM_DELLINK:
       DBG("KRT: Received async link notification (%d)\n", h->nlmsg_type);
@@ -1971,10 +1987,11 @@ nl_open_async(void)
     bug("Netlink: sk_open failed");
 }
 
-
 /*
  *	Interface to the UNIX krt module
  */
+
+#ifdef	HAVE_KERNEL
 
 void
 krt_sys_io_init(void)
@@ -2077,7 +2094,7 @@ krt_sys_get_attr(eattr *a, byte *buf, int buflen UNUSED)
   }
 }
 
-
+#endif
 
 void
 kif_sys_start(struct kif_proto *p UNUSED)

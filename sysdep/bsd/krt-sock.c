@@ -365,6 +365,8 @@ krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old)
 
 #define SKIP(ARG...) do { DBG("KRT: Ignoring route - " ARG); return; } while(0)
 
+#ifdef	HAVE_KERNEL
+
 static void
 krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
 {
@@ -560,6 +562,8 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   else
     krt_got_route_async(p, e, new);
 }
+
+#endif
 
 static void
 krt_read_ifannounce(struct ks_msg *msg)
@@ -789,6 +793,7 @@ krt_read_msg(struct proto *p, struct ks_msg *msg, int scan)
 
   switch (msg->rtm.rtm_type)
   {
+#ifdef	HAVE_KERNEL
     case RTM_GET:
       if(!scan) return;
     case RTM_ADD:
@@ -796,6 +801,7 @@ krt_read_msg(struct proto *p, struct ks_msg *msg, int scan)
     case RTM_CHANGE:
       krt_read_route(msg, (struct krt_proto *)p, scan);
       break;
+#endif
     case RTM_IFANNOUNCE:
       krt_read_ifannounce(msg);
       break;

@@ -873,7 +873,9 @@ main(int argc, char **argv)
     open_pid_file();
 
   protos_build();
+#ifdef	HAVE_KERNEL
   proto_build(&proto_unix_kernel);
+#endif
   proto_build(&proto_unix_iface);
 
   struct config *conf = read_config();
