@@ -202,7 +202,7 @@ nexthop__same(struct nexthop *x, struct nexthop *y)
 }
 
 static int
-nexthop_compare_node(struct nexthop *x, struct nexthop *y)
+nexthop_compare_node(const struct nexthop *x, const  struct nexthop *y)
 {
   int r;
 
@@ -318,6 +318,24 @@ nexthop_insert(struct nexthop **n, struct nexthop *x)
 
   x->next = *n;
   *n = x;
+}
+
+struct nexthop *
+nexthop_sort(struct nexthop *x)
+{
+  struct nexthop *s = NULL;
+
+  /* Simple insert-sort */
+  while (x)
+  {
+    struct nexthop *n = x;
+    x = n->next;
+    n->next = NULL;
+
+    nexthop_insert(&s, n);
+  }
+
+  return s;
 }
 
 int

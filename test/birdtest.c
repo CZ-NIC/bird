@@ -44,23 +44,17 @@ int bt_result;			/* Overall program run result */
 int bt_suite_result;		/* One suit result */
 char bt_out_fmt_buf[1024];	/* Temporary memory buffer for output of testing function */
 
-long int
-bt_random(void)
-{
-  /* Seeded in bt_init() */
-  long int rand_low, rand_high;
-
-  rand_low = random();
-  rand_high = random();
-  return (rand_low & 0xffff) | ((rand_high & 0xffff) << 16);
-}
+u64 bt_random_state[] = {
+  0x80241f302bd4d95d, 0xd10ba2e910f772b, 0xea188c9046f507c5, 0x4c4c581f04e6da05,
+  0x53d9772877c1b647, 0xab8ce3eb466de6c5, 0xad02844c8a8e865f, 0xe8cc78080295065d
+};
 
 void
 bt_init(int argc, char *argv[])
 {
   int c;
 
-  srandom(BT_RANDOM_SEED);
+  initstate(BT_RANDOM_SEED, (char *) bt_random_state, sizeof(bt_random_state));
 
   bt_verbose = 0;
   bt_filename = argv[0];

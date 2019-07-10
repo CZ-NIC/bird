@@ -2246,7 +2246,7 @@ using the following configuration parameters:
 
 	<tag><label id="bgp-dynamic-name">dynamic name "<m/text/"</tag>
 	Define common prefix of names used for new BGP instances spawned when
-	dynamic BGP behavior is active. Actual names also contain numberic
+	dynamic BGP behavior is active. Actual names also contain numeric
 	index to distinguish individual instances.  Default: "dynbgp".
 
 	<tag><label id="bgp-dynamic-name">dynamic name digits <m/number/</tag>

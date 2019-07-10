@@ -246,18 +246,33 @@ void
 ospf_stop_gr_recovery(struct ospf_proto *p)
 {
   p->gr_recovery = 0;
+  p->gr_cleanup = 1;
   p->gr_timeout = 0;
-  channel_graceful_restart_unlock(p->p.main_channel);
 
   /* Reorigination of router/network LSAs is already scheduled */
-  ospf_mark_lsadb(p);
 
-  /*
-   * NOTE: We should move channel_graceful_restart_unlock() to the end of
-   * ospf_disp() in order to have local LSA reorigination / LSAdb cleanup /
-   * routing table recomputation before official end of GR. It does not matter
-   * when we are single-threaded.
-   */
+  /* Rest is done in ospf_cleanup_gr_recovery() */
+}
+
+static void
+ospf_cleanup_gr_recovery(struct ospf_proto *p)
+{
+  struct top_hash_entry *en;
+
+  /* Flush dirty LSAa except external ones, these will be handled by feed */
+  WALK_SLIST(en, p->lsal)
+    if (en->gr_dirty)
+    {
+      if ((en->lsa_type == LSA_T_EXT) || (en->lsa_type == LSA_T_NSSA))
+	en->mode = LSA_M_EXPORT;
+      else
+	ospf_flush_lsa(p, en);
+    }
+
+  /* End graceful restart on channel, will also schedule feed */
+  channel_graceful_restart_unlock(p->p.main_channel);
+
+  p->gr_cleanup = 0;
 }
 
 static int
@@ -361,6 +376,8 @@ ospf_init(struct proto_config *CF)
   P->ifa_notify = cf->ospf2 ? ospf_ifa_notify2 : ospf_ifa_notify3;
   P->preexport = ospf_preexport;
   P->reload_routes = ospf_reload_routes;
+  P->feed_begin = ospf_feed_begin;
+  P->feed_end = ospf_feed_end;
   P->make_tmp_attrs = ospf_make_tmp_attrs;
   P->store_tmp_attrs = ospf_store_tmp_attrs;
   P->rte_better = ospf_rte_better;
@@ -436,6 +453,7 @@ ospf_disp(timer * timer)
 {
   struct ospf_proto *p = timer->data;
 
+  /* Check for end of graceful restart */
   if (p->gr_recovery)
     ospf_update_gr_recovery(p);
 
@@ -448,6 +466,10 @@ ospf_disp(timer * timer)
   /* Calculate routing table */
   if (p->calcrt)
     ospf_rt_spf(p);
+
+  /* Cleanup after graceful restart */
+  if (p->gr_cleanup)
+    ospf_cleanup_gr_recovery(p);
 }
 
 

@@ -725,6 +725,10 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
       nh = RTNH_NEXT(nh);
     }
 
+  /* Ensure nexthops are sorted to satisfy nest invariant */
+  if (!nexthop_is_sorted(first))
+    first = nexthop_sort(first);
+
   return first;
 }
 
@@ -1393,10 +1397,10 @@ krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old)
 }
 
 static int
-nl_mergable_route(struct nl_parse_state *s, net *net, struct krt_proto *p, uint priority, uint krt_type)
+nl_mergable_route(struct nl_parse_state *s, net *net, struct krt_proto *p, uint priority, uint krt_type, uint rtm_family)
 {
-  /* Route merging must be active */
-  if (!s->merge)
+  /* Route merging is used for IPv6 scans */
+  if (!s->scan || (rtm_family != AF_INET6))
     return 0;
 
   /* Saved and new route must have same network, proto/table, and priority */
@@ -1433,12 +1437,11 @@ nl_announce_route(struct nl_parse_state *s)
 }
 
 static inline void
-nl_parse_begin(struct nl_parse_state *s, int scan, int merge)
+nl_parse_begin(struct nl_parse_state *s, int scan)
 {
   memset(s, 0, sizeof (struct nl_parse_state));
   s->pool = nl_linpool;
   s->scan = scan;
-  s->merge = merge;
 }
 
 static inline void
@@ -1581,7 +1584,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 
   net *net = net_get(p->p.main_channel->table, n);
 
-  if (s->net && !nl_mergable_route(s, net, p, priority, i->rtm_type))
+  if (s->net && !nl_mergable_route(s, net, p, priority, i->rtm_type, i->rtm_family))
     nl_announce_route(s);
 
   rta *ra = lp_allocz(s->pool, RTA_MAX_SIZE);
@@ -1817,34 +1820,14 @@ krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NUL
   struct nlmsghdr *h;
   struct nl_parse_state s;
 
-  nl_parse_begin(&s, 1, 0);
-  nl_request_dump(AF_INET, RTM_GETROUTE);
+  nl_parse_begin(&s, 1);
+  nl_request_dump(AF_UNSPEC, RTM_GETROUTE);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
       nl_parse_route(&s, h);
     else
       log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
   nl_parse_end(&s);
-
-  nl_parse_begin(&s, 1, 1);
-  nl_request_dump(AF_INET6, RTM_GETROUTE);
-  while (h = nl_get_scan())
-    if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
-      nl_parse_route(&s, h);
-    else
-      log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
-  nl_parse_end(&s);
-
-#ifdef HAVE_MPLS_KERNEL
-  nl_parse_begin(&s, 1, 1);
-  nl_request_dump(AF_MPLS, RTM_GETROUTE);
-  while (h = nl_get_scan())
-    if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
-      nl_parse_route(&s, h);
-    else
-      log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
-  nl_parse_end(&s);
-#endif
 }
 
 /*
@@ -1864,7 +1847,7 @@ nl_async_msg(struct nlmsghdr *h)
     case RTM_NEWROUTE:
     case RTM_DELROUTE:
       DBG("KRT: Received async route notification (%d)\n", h->nlmsg_type);
-      nl_parse_begin(&s, 0, 0);
+      nl_parse_begin(&s, 0);
       nl_parse_route(&s, h);
       nl_parse_end(&s);
       break;
