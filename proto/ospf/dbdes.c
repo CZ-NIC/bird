@@ -121,7 +121,7 @@ ospf_prepare_dbdes(struct ospf_proto *p, struct ospf_neighbor *n)
   {
     struct ospf_dbdes2_packet *ps = (void *) pkt;
     ps->iface_mtu = htons(iface_mtu);
-    ps->options = ifa->oa->options | OPT_O;
+    ps->options = ifa->oa->options & DBDES2_OPT_MASK;
     ps->imms = 0;	/* Will be set later */
     ps->ddseq = htonl(n->dds);
     length = sizeof(struct ospf_dbdes2_packet);
@@ -129,7 +129,7 @@ ospf_prepare_dbdes(struct ospf_proto *p, struct ospf_neighbor *n)
   else /* OSPFv3 */
   {
     struct ospf_dbdes3_packet *ps = (void *) pkt;
-    ps->options = htonl(ifa->oa->options);
+    ps->options = htonl(ifa->oa->options & DBDES3_OPT_MASK);
     ps->iface_mtu = htons(iface_mtu);
     ps->padding = 0;
     ps->imms = 0;	/* Will be set later */
