@@ -91,6 +91,7 @@
     else
       RESULT_VAL(v1);
   }
+
   INST(FI_PAIR_CONSTRUCT, 2, 1) {
     ARG(1,T_INT);
     ARG(2,T_INT);
@@ -100,6 +101,7 @@
       runtime( "Can't operate with value out of bounds in pair constructor" );
     RESULT(T_PAIR, i, (u1 << 16) | u2);
   }
+
   INST(FI_EC_CONSTRUCT, 2, 1) {
     ARG_ANY(1);
     ARG(2, T_INT);
@@ -120,7 +122,7 @@
       ipv4_used = 1; key = ipa_to_u32(v1.val.ip);
     }
     else
-      runtime("Argument 1 of instruction FI_EC_CONSTRUCT must be integer or IPv4 address, got 0x%02x");
+      runtime("Argument 1 of EC constructor must be integer or IPv4 address, got 0x%02x", v1.type);
 
     val = v2.val.i;
 
@@ -173,21 +175,21 @@
     if (fstk->vcnt < whati->count) /* TODO: make this check systematic */
       runtime("Construction of BGP path mask from %u elements must have at least that number of elements", whati->count);
 
-#define pv fstk->vstk[fstk->vcnt - whati->count + i]
+#define pv(i) fstk->vstk[fstk->vcnt - whati->count + (i)]
 
     FID_INTERPRET_NEW
-#define pv items[i]->i_FI_CONSTANT.val
+#define pv(i) items[i]->i_FI_CONSTANT.val
 
     FID_INTERPRET_BODY
     struct f_path_mask *pm = falloc(sizeof(struct f_path_mask) + whati->count * sizeof(struct f_path_mask_item));
     for (uint i=0; i<whati->count; i++) {
-      switch (pv.type) {
+      switch (pv(i).type) {
 	case T_PATH_MASK_ITEM:
-	  pm->item[i] = pv.val.pmi;
+	  pm->item[i] = pv(i).val.pmi;
 	  break;
 	case T_INT:
 	  pm->item[i] = (struct f_path_mask_item) {
-	    .asn = pv.val.i,
+	    .asn = pv(i).val.i,
 	    .kind = PM_ASN,
 	  };
 	  break;
@@ -195,6 +197,7 @@
 	  runtime( "Error resolving path mask template: value not an integer" );
       }
     }
+#undef pv
 
     FID_INTERPRET_EXEC
       fstk->vcnt -= whati->count;
@@ -295,7 +298,7 @@
 	  .type = T_QUAD,
 	  .val.i = ipa_to_u32(v1.val.ip),
 	};
-      else 
+      else
 	runtime( "Assigning to variable of incompatible type" );
     }
 
@@ -308,8 +311,7 @@
     RESULT_VAL(fstk->vstk[curline.vbase + sym->offset]);
   }
 
-    /* some constants have value in a[1], some in *a[0].p, strange. */
-  INST(FI_CONSTANT, 0, 1) {	/* integer (or simple type) constant, string, set, or prefix_set */
+  INST(FI_CONSTANT, 0, 1) {
     FID_MEMBER(
       struct f_val,
       val,
@@ -320,6 +322,7 @@
 
     RESULT_VAL(val);
   }
+
   INST(FI_CONDITION, 1, 0) {
     ARG(1, T_BOOL);
     if (v1.val.i)
@@ -341,10 +344,10 @@
 
     FID_INTERPRET_BODY
 
-#define pv fstk->vstk[fstk->vcnt - whati->count + i]
+#define pv(i) fstk->vstk[fstk->vcnt - whati->count + (i)]
     if (whati->count)
       for (uint i=0; i<whati->count; i++)
-	val_format(&(pv), &fs->buf);
+	val_format(&(pv(i)), &fs->buf);
 #undef pv
 
     fstk->vcnt -= whati->count;
@@ -371,8 +374,8 @@
       bug( "unknown return type: Can't happen");
     }
   }
-  
-  INST(FI_RTA_GET, 0, 1) {	/* rta access */
+
+  INST(FI_RTA_GET, 0, 1) {
     {
       STATIC_ATTR;
       ACCESS_RTE;
@@ -577,6 +580,7 @@
       case EAF_TYPE_OPAQUE:
 	runtime( "Setting opaque attribute is not allowed" );
 	break;
+
       case EAF_TYPE_IP_ADDRESS:
 	if (v1.type != T_IP)
 	  runtime( "Setting ip attribute to non-ip value" );
@@ -586,11 +590,13 @@
 	(* (ip_addr *) ad->data) = v1.val.ip;
 	l->attrs[0].u.ptr = ad;
 	break;
+
       case EAF_TYPE_AS_PATH:
 	if (v1.type != T_PATH)
 	  runtime( "Setting path attribute to non-path value" );
 	l->attrs[0].u.ptr = v1.val.ad;
 	break;
+
       case EAF_TYPE_BITFIELD:
 	if (v1.type != T_BOOL)
 	  runtime( "Setting bit in bitfield attribute to non-bool value" );
@@ -605,22 +611,27 @@
 	    l->attrs[0].u.data = data & ~(1u << da.bit);
 	}
 	break;
+
       case EAF_TYPE_INT_SET:
 	if (v1.type != T_CLIST)
 	  runtime( "Setting clist attribute to non-clist value" );
 	l->attrs[0].u.ptr = v1.val.ad;
 	break;
+
       case EAF_TYPE_EC_SET:
 	if (v1.type != T_ECLIST)
 	  runtime( "Setting eclist attribute to non-eclist value" );
 	l->attrs[0].u.ptr = v1.val.ad;
 	break;
+
       case EAF_TYPE_LC_SET:
 	if (v1.type != T_LCLIST)
 	  runtime( "Setting lclist attribute to non-lclist value" );
 	l->attrs[0].u.ptr = v1.val.ad;
 	break;
-      default: bug("Unknown type in e,S");
+
+      default:
+	bug("Unknown dynamic attribute type");
       }
 
       f_rta_cow(fs);
@@ -728,7 +739,7 @@
     RESULT(T_INT, i, as);
   }
 
-  INST(FI_AS_PATH_LAST, 1, 1) {	/* Get last ASN from AS PATH */
+  INST(FI_AS_PATH_LAST, 1, 1) {		/* Get last ASN from AS PATH */
     ARG(1, T_PATH);
     int as = 0;
     as_path_get_last(v1.val.ad, &as);
@@ -754,7 +765,6 @@
     if (!fstk->ecnt)
       if (fstk->vstk[retpos].type == T_BOOL)
 	if (fstk->vstk[retpos].val.i)
-
 	  return F_ACCEPT;
 	else
 	  return F_REJECT;
@@ -775,7 +785,7 @@
     /* Push the body on stack */
     LINEX(sym->function);
     curline.emask |= FE_RETURN;
-  
+
     /* Before this instruction was called, there was the T_VOID
      * automatic return value pushed on value stack and also
      * sym->function->args function arguments. Setting the

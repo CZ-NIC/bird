@@ -181,7 +181,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 
   /* The same as with the value stack. Not resetting the stack for performance reasons. */
   fstk->ecnt = 1;
-  fstk->estk[0].line = line;		
+  fstk->estk[0].line = line;
   fstk->estk[0].pos = 0;
 
 #define curline fstk->estk[fstk->ecnt-1]
@@ -225,7 +225,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 #undef ACCESS_EATTRS
       }
     }
-    
+
     /* End of current line. Drop local variables before exiting. */
     fstk->vcnt -= curline.line->vars;
     fstk->vcnt -= curline.line->args;
@@ -335,7 +335,7 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
 }
 
 /**
- * f_eval_rte – run a filter line for an uncached route
+ * f_eval_rte - run a filter line for an uncached route
  * @expr: filter line to run
  * @rte: route being filtered, may be modified
  * @tmp_pool: all filter allocations go from this pool
@@ -364,7 +364,7 @@ f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool
 }
 
 /*
- * f_eval – get a value of a term
+ * f_eval - get a value of a term
  * @expr: filter line containing the term
  * @tmp_pool: long data may get allocated from this pool
  * @pres: here the output will be stored
@@ -383,7 +383,7 @@ f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 }
 
 /*
- * f_eval_int – get an integer value of a term 
+ * f_eval_int - get an integer value of a term
  * Called internally from the config parser, uses its internal memory pool
  * for allocations. Do not call in other cases.
  */
@@ -409,7 +409,7 @@ f_eval_int(const struct f_line *expr)
 }
 
 /*
- * f_eval_buf – get a value of a term and print it to the supplied buffer
+ * f_eval_buf - get a value of a term and print it to the supplied buffer
  */
 enum filter_return
 f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf)
