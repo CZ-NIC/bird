@@ -484,10 +484,16 @@ struct ospf_neighbor
 #define OPT_R		0x0010	/* OSPFv3, originator is active router */
 #define OPT_DC		0x0020	/* Related to demand circuits, not used */
 #define OPT_O		0x0040	/* OSPFv2 Opaque LSA (RFC 5250) */
-#define OPT_DN		0x0080	/* OSPFv2 VPN loop prevention (RFC 4576)*/
+#define OPT_DN		0x0080	/* OSPFv2 VPN loop prevention (RFC 4576) */
 #define OPT_AF		0x0100	/* OSPFv3 Address Families (RFC 5838) */
 #define OPT_L_V3	0x0200	/* OSPFv3, link-local signaling */
 #define OPT_AT          0x0400	/* OSPFv3, authentication trailer */
+
+#define HELLO2_OPT_MASK	(OPT_E | OPT_N | OPT_L_V2)
+#define DBDES2_OPT_MASK	(OPT_E         | OPT_L_V2 | OPT_O)
+
+#define HELLO3_OPT_MASK	(OPT_V6 | OPT_E | OPT_N | OPT_R | OPT_AF | OPT_L_V3 | OPT_AT )
+#define DBDES3_OPT_MASK	(OPT_V6 | OPT_E |         OPT_R | OPT_AF | OPT_L_V3 | OPT_AT )
 
 /* Router-LSA VEB flags are are stored together with links (OSPFv2) or options (OSPFv3) */
 #define OPT_RT_B	(0x01 << 24)

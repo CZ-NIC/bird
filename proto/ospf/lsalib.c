@@ -98,8 +98,7 @@ lsa_is_acceptable(u32 type, struct ospf_neighbor *n, struct ospf_proto *p)
 {
   if (ospf_is_v2(p))
   {
-    if (type == LSA_T_NSSA)
-      return !!(n->options & OPT_N);
+    /* Do not check NSSA-LSA here, as OPT_N is only in HELLO packets */
 
     if (lsa_is_opaque(type))
       return !!(n->options & OPT_O);

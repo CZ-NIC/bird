@@ -81,7 +81,7 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
       ps->netmask = htonl(u32_mkmask(ifa->addr->prefix.pxlen));
 
     ps->helloint = ntohs(ifa->helloint);
-    ps->options = ifa->oa->options;
+    ps->options = ifa->oa->options & HELLO2_OPT_MASK;
     ps->priority = ifa->priority;
     ps->deadint = htonl(ifa->deadint);
     ps->dr = htonl(ipa_to_u32(ifa->drip));
@@ -96,7 +96,7 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
     u32 options = ifa->oa->options | (ifa->autype == OSPF_AUTH_CRYPT ? OPT_AT : 0);
 
     ps->iface_id = htonl(ifa->iface_id);
-    ps->options = ntohl(options | (ifa->priority << 24));
+    ps->options = ntohl((options & HELLO3_OPT_MASK) | (ifa->priority << 24));
     ps->helloint = ntohs(ifa->helloint);
     ps->deadint = htons(ifa->deadint);
     ps->dr = htonl(ifa->drid);
