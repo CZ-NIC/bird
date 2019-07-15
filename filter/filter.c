@@ -190,9 +190,10 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 
       switch (what->fi_code) {
 #define res fstk->vstk[fstk->vcnt]
-#define v1 fstk->vstk[fstk->vcnt]
-#define v2 fstk->vstk[fstk->vcnt + 1]
-#define v3 fstk->vstk[fstk->vcnt + 2]
+#define vv(i) fstk->vstk[fstk->vcnt + (i)]
+#define v1 vv(0)
+#define v2 vv(1)
+#define v3 vv(2)
 
 #define runtime(fmt, ...) do { \
   if (!(fs->flags & FF_SILENT)) \

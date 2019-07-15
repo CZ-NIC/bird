@@ -60,8 +60,9 @@
  *
  *	What is the syntax here?
  *	m4_dnl	INST(FI_NOP, in, out) {			enum value, input args, output args
- *	m4_dnl	  ARG(num, type);			argument, its id (in data fields) and type
- *	m4_dnl	  ARG_ANY(num);				argument with no type check
+ *	m4_dnl	  ARG(num, type);			argument, its id (in data fields) and type accessible by v1, v2, v3
+ *	m4_dnl	  ARG_ANY(num);				argument with no type check accessible by v1, v2, v3
+ *	m4_dnl	  VARARG;				variable-length argument list; accessible by vv(i) and whati->varcount
  *	m4_dnl	  LINE(num, unused);			this argument has to be converted to its own f_line
  *	m4_dnl	  SYMBOL;				symbol handed from config
  *	m4_dnl	  STATIC_ATTR;				static attribute definition
@@ -297,45 +298,19 @@
   }
 
   INST(FI_PATHMASK_CONSTRUCT, 0, 1) {
-    ARG_ANY(1);
-    FID_MEMBER(uint, count, f1->count != f2->count, number of items %u, item->count);
+    VARARG;
 
-    FID_NEW_BODY
-      uint len = 0;
-      for (const struct f_inst *tt = f1; tt; tt = tt->next, len++);
+    struct f_path_mask *pm = falloc(sizeof(struct f_path_mask) + whati->varcount * sizeof(struct f_path_mask_item));
+    pm->len = whati->varcount;
 
-      whati->count = len;
-      struct f_inst **items;
-      if (constargs) {
-	items = alloca(len * sizeof(struct f_inst *));
-	for (uint i=0; f1; i++) {
-	  items[i] = f1;
-	  f1 = f1->next;
-	  items[i]->next = 0;
-	}
-	whati->f1 = NULL;
-      }
-    FID_INTERPRET_BODY
-
-    FID_INTERPRET_EXEC
-    if (fstk->vcnt < whati->count) /* TODO: make this check systematic */
-      runtime("Construction of BGP path mask from %u elements must have at least that number of elements", whati->count);
-
-#define pv(i) fstk->vstk[fstk->vcnt - whati->count + (i)]
-
-    FID_INTERPRET_NEW
-#define pv(i) items[i]->i_FI_CONSTANT.val
-
-    FID_INTERPRET_BODY
-    struct f_path_mask *pm = falloc(sizeof(struct f_path_mask) + whati->count * sizeof(struct f_path_mask_item));
-    for (uint i=0; i<whati->count; i++) {
-      switch (pv(i).type) {
+    for (uint i=0; i<whati->varcount; i++) {
+      switch (vv(i).type) {
 	case T_PATH_MASK_ITEM:
-	  pm->item[i] = pv(i).val.pmi;
+	  pm->item[i] = vv(i).val.pmi;
 	  break;
 	case T_INT:
 	  pm->item[i] = (struct f_path_mask_item) {
-	    .asn = pv(i).val.i,
+	    .asn = vv(i).val.i,
 	    .kind = PM_ASN,
 	  };
 	  break;
@@ -343,13 +318,7 @@
 	  runtime( "Error resolving path mask template: value not an integer" );
       }
     }
-#undef pv
 
-    FID_INTERPRET_EXEC
-      fstk->vcnt -= whati->count;
-    FID_INTERPRET_BODY
-
-    pm->len = whati->count;
     RESULT(T_PATH_MASK, path_mask, pm);
   }
 
@@ -479,24 +448,11 @@
 
   INST(FI_PRINT, 0, 0) {
     NEVER_CONSTANT;
-    ARG_ANY(1);
-    FID_MEMBER_IN(uint, count, f1->count != f2->count, number of items %u, item->count);
+    VARARG;
 
-    FID_NEW_BODY
-      uint len = 0;
-      for (const struct f_inst *tt = f1; tt; tt = tt->next, len++)
-	;
-      whati->count = len;
-
-    FID_INTERPRET_BODY
-
-#define pv(i) fstk->vstk[fstk->vcnt - whati->count + (i)]
-    if (whati->count && !(fs->flags & FF_SILENT))
-      for (uint i=0; i<whati->count; i++)
-	val_format(&(pv(i)), &fs->buf);
-#undef pv
-
-    fstk->vcnt -= whati->count;
+    if (whati->varcount && !(fs->flags & FF_SILENT))
+      for (uint i=0; i<whati->varcount; i++)
+	val_format(&(vv(i)), &fs->buf);
   }
 
   INST(FI_DIE, 0, 0) {

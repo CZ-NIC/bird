@@ -828,7 +828,7 @@ constructor:
    '(' term ',' term ')' { $$ = f_new_inst(FI_PAIR_CONSTRUCT, $2, $4); }
  | '(' ec_kind ',' term ',' term ')' { $$ = f_new_inst(FI_EC_CONSTRUCT, $4, $6, $2); }
  | '(' term ',' term ',' term ')' { $$ = f_new_inst(FI_LC_CONSTRUCT, $2, $4, $6); }
- | bgp_path { $$ = f_new_inst(FI_PATHMASK_CONSTRUCT, $1, 0); }
+ | bgp_path { $$ = f_new_inst(FI_PATHMASK_CONSTRUCT, $1); }
  ;
 
 

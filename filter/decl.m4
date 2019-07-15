@@ -93,25 +93,6 @@ FID_INTERPRET_EXEC()m4_dnl
 const $1 $2 = whati->$2
 FID_INTERPRET_BODY')
 
-m4_define(FID_MEMBER_IN, `m4_dnl
-FID_LINE_IN()m4_dnl
-      $1 $2;
-FID_STRUCT_IN()m4_dnl
-      $1 $2;
-FID_LINEARIZE_BODY()m4_dnl
-item->$2 = whati->$2;
-m4_ifelse($3,,,[[
-FID_SAME_BODY()m4_dnl
-if ($3) return 0;
-]])
-m4_ifelse($4,,,[[
-FID_DUMP_BODY()m4_dnl
-debug("%s$4\n", INDENT, $5);
-]])
-FID_INTERPRET_EXEC()m4_dnl
-const $1 $2 = whati->$2
-FID_INTERPRET_BODY')
-
 #	Instruction arguments are needed only until linearization is done.
 #	This puts the arguments into the filter line to be executed before
 #	the instruction itself.
@@ -135,6 +116,48 @@ FID_IFCONST([[
 FID_LINEARIZE_BODY
 pos = linearize(dest, whati->f$1, pos);
 FID_INTERPRET_BODY()')
+
+#	Some instructions accept variable number of arguments.
+m4_define(VARARG, `
+FID_NEW_ARGS()m4_dnl
+  , struct f_inst * fvar
+FID_STRUCT_IN()m4_dnl
+      struct f_inst * fvar;
+      uint varcount;
+FID_LINE_IN()m4_dnl
+      uint varcount;
+FID_NEW_BODY()m4_dnl
+whati->varcount = 0;
+whati->fvar = fvar;
+for (const struct f_inst *child = fvar; child; child = child->next, whati->varcount++) {
+  what->size += child->size;
+FID_IFCONST([[
+  if (child->fi_code != FI_CONSTANT)
+    constargs = 0;
+]])
+}
+FID_IFCONST([[
+  const struct f_inst **items = NULL;
+  if (constargs) {
+    items = alloca(whati->varcount * sizeof(struct f_inst *));
+    const struct f_inst *child = fvar;
+    for (uint i=0; child; i++)
+      child = (items[i] = child)->next;
+  }
+]])
+FID_LINEARIZE_BODY()m4_dnl
+  pos = linearize(dest, whati->fvar, pos);
+  item->varcount = whati->varcount;
+FID_DUMP_BODY()m4_dnl
+  debug("%snumber of varargs %u\n", INDENT, item->varcount);
+FID_SAME_BODY()m4_dnl
+  if (f1->varcount != f2->varcount) return 0;
+FID_INTERPRET_BODY()
+FID_HIC(,[[
+  if (fstk->vcnt < whati->varcount) runtime("Stack underflow");
+  fstk->vcnt -= whati->varcount;
+]],)
+')
 
 #	Some arguments need to check their type. After that, ARG_ANY is called.
 m4_define(ARG, `ARG_ANY($1)
@@ -410,6 +433,7 @@ fi_constant(struct f_inst *what, struct f_val val)
 #define v1 whati->f1->i_FI_CONSTANT.val
 #define v2 whati->f2->i_FI_CONSTANT.val
 #define v3 whati->f3->i_FI_CONSTANT.val
+#define vv(i) items[i]->i_FI_CONSTANT.val
 #define runtime(fmt, ...) cf_error("filter preevaluation, line %d: " fmt, ifs->lino, ##__VA_ARGS__)
 #define fpool cfg_mem
 #define falloc(size) cfg_alloc(size)
@@ -418,6 +442,7 @@ FID_WR_PUT(3)
 #undef v1
 #undef v2
 #undef v3
+#undef vv
 
 /* Line dumpers */
 #define INDENT (((const char *) f_dump_line_indent_str) + sizeof(f_dump_line_indent_str) - (indent) - 1)
