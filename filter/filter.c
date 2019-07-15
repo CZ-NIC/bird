@@ -210,7 +210,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 #define falloc(size)  lp_alloc(fs->pool, size)
 #define fpool fs->pool
 
-#define ACCESS_RTE do { if (!fs->rte) runtime("No route to access"); } while (0)
 #define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
 
 #include "filter/inst-interpret.c"
@@ -221,7 +220,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 #undef runtime
 #undef falloc
 #undef fpool
-#undef ACCESS_RTE
 #undef ACCESS_EATTRS
       }
     }
@@ -400,7 +398,7 @@ f_eval_int(const struct f_line *expr)
   LOG_BUFFER_INIT(filter_state.buf);
 
   if (interpret(&filter_state, expr, &val) > F_RETURN)
-    cf_error("Runtime error while evaluating expression");
+    cf_error("Runtime error while evaluating expression; see log for details");
 
   if (val.type != T_INT)
     cf_error("Integer expression expected");
