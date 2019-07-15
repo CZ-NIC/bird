@@ -455,23 +455,24 @@
 	val_format(&(vv(i)), &fs->buf);
   }
 
+  INST(FI_FLUSH, 0, 0) {
+    NEVER_CONSTANT;
+    if (!(fs->flags & FF_SILENT))
+      /* After log_commit, the buffer is reset */
+      log_commit(*L_INFO, &fs->buf);
+  }
+
   INST(FI_DIE, 0, 0) {
     NEVER_CONSTANT;
     FID_MEMBER(enum filter_return, fret, f1->fret != f2->fret, "%s", filter_return_str(item->fret));
 
-    if (fs->buf.start < fs->buf.pos)
-      log_commit(*L_INFO, &fs->buf);
-
     switch (whati->fret) {
     case F_QUITBIRD:
       die( "Filter asked me to die" );
-    case F_ACCEPT:
-      /* Should take care about turning ACCEPT into MODIFY */
+    case F_ACCEPT:	/* Should take care about turning ACCEPT into MODIFY */
     case F_ERROR:
-    case F_REJECT:	/* FIXME (noncritical) Should print complete route along with reason to reject route */
+    case F_REJECT:	/* Maybe print complete route along with reason to reject route? */
       return fret;	/* We have to return now, no more processing. */
-    case F_NOP:
-      break;
     default:
       bug( "unknown return type: Can't happen");
     }

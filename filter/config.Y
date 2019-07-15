@@ -966,8 +966,6 @@ break_command:
  | ACCEPT { $$ = F_ACCEPT; }
  | REJECT { $$ = F_REJECT; }
  | ERROR { $$ = F_ERROR; }
- | PRINT { $$ = F_NOP; }
- | PRINTN { $$ = F_NONL; }
  ;
 
 print_list: /* EMPTY */ { $$ = NULL; }
@@ -1018,20 +1016,22 @@ cmd:
      $$ = f_new_inst(FI_EA_UNSET, $3);
    }
  | break_command print_list ';' {
-    struct f_inst *breaker = NULL;
-    struct f_inst *printer = NULL;
-    if ($2)
-      printer = f_new_inst(FI_PRINT, $2);
-    if ($1 != F_NONL)
-      breaker = f_new_inst(FI_DIE, $1);
-
-    if (printer && breaker)
-      printer->next = breaker;
-
-    if (printer)
+    struct f_inst *breaker = f_new_inst(FI_DIE, $1);
+    if ($2) {
+      struct f_inst *printer = f_new_inst(FI_PRINT, $2);
+      struct f_inst *flusher = f_new_inst(FI_FLUSH);
+      printer->next = flusher;
+      flusher->next = breaker;
       $$ = printer;
-    else
+    } else
       $$ = breaker;
+   }
+ | PRINT print_list ';' {
+    $$ = f_new_inst(FI_PRINT, $2);
+    $$->next = f_new_inst(FI_FLUSH);
+   }
+ | PRINTN print_list ';' {
+    $$ = f_new_inst(FI_PRINT, $2);
    }
  | function_call ';' { $$ = f_new_inst(FI_DROP_RESULT, $1); } 
  | CASE term '{' switch_body '}' {
