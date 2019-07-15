@@ -69,6 +69,7 @@
 #define RTA_ENCAP  22
 #endif
 
+#define krt_ipv4(p) ((p)->af == AF_INET)
 #define krt_ecmp6(p) ((p)->af == AF_INET6)
 
 const int rt_default_ecmp = 16;
@@ -1368,27 +1369,43 @@ nl_delete_rte(struct krt_proto *p, rte *e)
   return err;
 }
 
+static inline int
+nl_replace_rte(struct krt_proto *p, rte *e)
+{
+  rta *a = e->attrs;
+  return nl_send_route(p, e, NL_OP_REPLACE, a->dest, &(a->nh));
+}
+
+
 void
 krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old)
 {
   int err = 0;
 
   /*
-   * We could use NL_OP_REPLACE, but route replace on Linux has some problems:
+   * We use NL_OP_REPLACE for IPv4, it has an issue with not checking for
+   * matching rtm_protocol, but that is OK when dedicated priority is used.
    *
-   * 1) Does not check for matching rtm_protocol
-   * 2) Has broken semantics for IPv6 ECMP
-   * 3) Crashes some kernel version when used for IPv6 ECMP
+   * We do not use NL_OP_REPLACE for IPv6, as it has broken semantics for ECMP
+   * and with some kernel versions ECMP replace crashes kernel. Would need more
+   * testing and checks for kernel versions.
    *
-   * So we use NL_OP_DELETE and then NL_OP_ADD. We also do not trust the old
-   * route value, so we do not try to optimize IPv6 ECMP reconfigurations.
+   * For IPv6, we use NL_OP_DELETE and then NL_OP_ADD. We also do not trust the
+   * old route value, so we do not try to optimize IPv6 ECMP reconfigurations.
    */
 
-  if (old)
-    nl_delete_rte(p, old);
+  if (krt_ipv4(p) && old && new)
+  {
+    err = nl_replace_rte(p, new);
+  }
+  else
+  {
+    if (old)
+      nl_delete_rte(p, old);
 
-  if (new)
-    err = nl_add_rte(p, new);
+    if (new)
+      err = nl_add_rte(p, new);
+  }
 
   if (err < 0)
     n->n.flags |= KRF_SYNC_ERROR;
