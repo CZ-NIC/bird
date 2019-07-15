@@ -453,7 +453,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <f> filter where_filter
 %type <fl> filter_body function_body
 %type <flv> lvalue
-%type <i> type function_params declsn decls
+%type <i> type function_args function_vars
 %type <ecs> ec_kind
 %type <fret> break_command 
 %type <i32> cnum
@@ -553,22 +553,27 @@ type:
    }
  ;
 
-/* Declarations with ';' at the end */
-decls:
-   /* EMPTY */ { $$ = 0; }
- | declsn ';' { $$ = $1; }
+function_argsn:
+   /* EMPTY */
+ | function_argsn type CF_SYM_VOID ';' {
+     if ($3->scope->slots >= 0xfe) cf_error("Too many declarations, at most 255 allowed");
+     cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++);
+   }
  ;
 
-/* Declarations that have no ';' at the end. */
-declsn:
-   type CF_SYM_VOID {
-     cf_define_symbol($2, SYM_VARIABLE | $1, offset, $2->scope->slots++);
-     $$ = $2->scope->slots;
-   }
- | declsn ';' type CF_SYM_VOID {
-     if ($4->scope->slots >= 0xff) cf_error("Too many declarations, at most 255 allowed");
+function_args:
+   '(' ')' { $$ = 0; }
+ | '(' function_argsn type CF_SYM_VOID ')' {
      cf_define_symbol($4, SYM_VARIABLE | $3, offset, $4->scope->slots++);
      $$ = $4->scope->slots;
+   }
+ ;
+
+function_vars:
+   /* EMPTY */ { $$ = 0; }
+ | function_vars type CF_SYM_VOID ';' {
+     cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++);
+     $$ = $1 + 1;
    }
  ;
 
@@ -593,13 +598,8 @@ where_filter:
    }
  ;
 
-function_params:
-   '(' declsn ')' { $$ = $2; }
- | '(' ')' { $$ = 0; }
- ;
-
 function_body:
-   decls '{' cmds '}' {
+   function_vars '{' cmds '}' {
      $$ = f_linearize($3);
      $$->vars = $1;
    }
@@ -610,8 +610,8 @@ function_def:
    FUNCTION CF_SYM_VOID { DBG( "Beginning of function %s\n", $2->name );
      $2 = cf_define_symbol($2, SYM_FUNCTION, function, NULL);
      cf_push_scope($2);
-   } function_params function_body {
-     $5->vars -= $4;
+   } function_args function_body {
+     DBG("Definition of function %s with %u args and %u local vars.\n", $2->name, $4, $5->vars);
      $5->args = $4;
      $2->function = $5;
      cf_pop_scope();
