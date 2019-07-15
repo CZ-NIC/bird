@@ -93,13 +93,8 @@ struct filter_state {
   int flags;
 };
 
-#if HAVE_THREAD_LOCAL
 _Thread_local static struct filter_state filter_state;
 _Thread_local static struct filter_stack filter_stack;
-#define FS_INIT(...)	filter_state = (struct filter_state) { .stack = &filter_stack, __VA_ARGS__ }
-#else
-#define FS_INIT(...)	struct filter_state filter_state = { .stack = alloca(sizeof(struct filter_stack)), __VA_ARGS__ };
-#endif
 
 void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
@@ -279,11 +274,12 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
   DBG( "Running filter `%s'...", filter->name );
 
   /* Initialize the filter state */
-  FS_INIT(
-      .rte = rte,
-      .pool = tmp_pool,
-      .flags = flags,
-      );
+  filter_state = (struct filter_state) {
+    .stack = &filter_stack,
+    .rte = rte,
+    .pool = tmp_pool,
+    .flags = flags,
+  };
 
   LOG_BUFFER_INIT(filter_state.buf);
 
@@ -342,10 +338,11 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
 enum filter_return
 f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool)
 {
-  FS_INIT(
-      .rte = rte,
-      .pool = tmp_pool,
-      );
+  filter_state = (struct filter_state) {
+    .stack = &filter_stack,
+    .rte = rte,
+    .pool = tmp_pool,
+  };
 
   LOG_BUFFER_INIT(filter_state.buf);
 
@@ -364,9 +361,10 @@ f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool
 enum filter_return
 f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 {
-  FS_INIT(
-      .pool = tmp_pool,
-      );
+  filter_state = (struct filter_state) {
+    .stack = &filter_stack,
+    .pool = tmp_pool,
+  };
 
   LOG_BUFFER_INIT(filter_state.buf);
 
@@ -383,9 +381,10 @@ uint
 f_eval_int(const struct f_line *expr)
 {
   /* Called independently in parse-time to eval expressions */
-  FS_INIT(
-      .pool = cfg_mem,
-      );
+  filter_state = (struct filter_state) {
+    .stack = &filter_stack,
+    .pool = cfg_mem,
+  };
 
   struct f_val val;
 
