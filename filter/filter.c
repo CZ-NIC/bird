@@ -15,20 +15,13 @@
  * the source from user into a tree of &f_inst structures. These trees are
  * later interpreted using code in |filter/filter.c|.
  *
- * A filter is represented by a tree of &f_inst structures, one structure per
- * "instruction". Each &f_inst contains @code, @aux value which is
- * usually the data type this instruction operates on and two generic
- * arguments (@a[0], @a[1]). Some instructions contain pointer(s) to other
- * instructions in their (@a[0], @a[1]) fields.
+ * A filter is represented by a tree of &f_inst structures, later translated
+ * into lists called &f_line. All the instructions are defined and documented
+ * in |filter/f-inst.c| definition file.
  *
  * Filters use a &f_val structure for their data. Each &f_val
- * contains type and value (types are constants prefixed with %T_). Few
- * of the types are special; %T_RETURN can be or-ed with a type to indicate
- * that return from a function or from the whole filter should be
- * forced. Important thing about &f_val's is that they may be copied
- * with a simple |=|. That's fine for all currently defined types: strings
- * are read-only (and therefore okay), paths are copied for each
- * operation (okay too).
+ * contains type and value (types are constants prefixed with %T_).
+ * Look into |filter/data.h| for more information and appropriate calls.
  */
 
 #undef LOCAL_DEBUG

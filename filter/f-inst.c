@@ -7,7 +7,42 @@
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  *
- *	Filter instructions. You shall define your instruction only here
+ *	The filter code goes through several phases:
+ *
+ *	1  Parsing
+ *	Flex- and Bison-generated parser decodes the human-readable data into
+ *	a struct f_inst tree. This is an infix tree that was interpreted by
+ *	depth-first search execution in previous versions of the interpreter.
+ *	All instructions have their constructor: f_new_inst(FI_EXAMPLE, ...)
+ *	translates into f_new_inst_FI_EXAMPLE(...) and the types are checked in
+ *	compile time. If the result of the instruction is always the same,
+ *	it's reduced to FI_CONSTANT directly in constructor. This phase also
+ *	counts how many instructions are underlying in means of f_line_item
+ *	fields to know how much we have to allocate in the next phase.
+ *
+ *	2  Linearize before interpreting
+ *	The infix tree is always interpreted in the same order. Therefore we
+ *	sort the instructions one after another into struct f_line. Results
+ *	and arguments of these instructions are implicitly put on a value
+ *	stack; e.g. the + operation just takes two arguments from the value
+ *	stack and puts the result on there.
+ *
+ *	3  Interpret
+ *	The given line is put on a custom execution stack. If needed (FI_CALL,
+ *	FI_SWITCH, FI_AND, FI_OR, FI_CONDITION, ...), another line is put on top
+ *	of the stack; when that line finishes, the execution continues on the
+ *	older lines on the stack where it stopped before.
+ *
+ *	4  Same
+ *	On config reload, the filters have to be compared whether channel
+ *	reload is needed or not. The comparison is done by comparing the
+ *	struct f_line's recursively.
+ *
+ *	The main purpose of this rework was to improve filter performance
+ *	by making the interpreter non-recursive.
+ *
+ *	The other outcome is concentration of instruction definitions to
+ *	one place -- right here. You shall define your instruction only here
  *	and nowhere else.
  *
  *	Beware. This file is interpreted by M4 macros. These macros
@@ -48,11 +83,122 @@
  *	m4_dnl	  RESULT_VOID;				return undef
  *	m4_dnl	}
  *
+ *	Also note that the { ... } blocks are not respected by M4 at all.
+ *	If you get weird unmatched-brace-pair errors, check what it generated and why.
+ *	What is really considered as one instruction is not the { ... } block
+ *	after m4_dnl INST() but all the code between them.
+ *
  *	Other code is just copied into the interpreter part.
  *
- *	If you want to write something really special, see FI_CALL
- *	or FI_CONSTANT or whatever else to see how to use the FID_*
- *	macros.
+ *	If you are satisfied with this, you don't need to read the following
+ *	detailed description of what is really done with the instruction definitions.
+ *
+ *	m4_dnl	Now let's look under the cover. The code between each INST()
+ *	m4_dnl	is copied to several places, namely these (numbered by the M4 diversions
+ *	m4_dnl	used in filter/decl.m4):
+ *
+ *	m4_dnl	(102)	struct f_inst *f_new_inst(FI_EXAMPLE [[ put it here ]])
+ *	m4_dnl		{
+ *	m4_dnl		  ... (common code)
+ *	m4_dnl	(103)	  [[ put it here ]]
+ *	m4_dnl		  ...
+ *	m4_dnl		  if (all arguments are constant)
+ *	m4_dnl	(108)	    [[ put it here ]]	    
+ *	m4_dnl		}
+ *	m4_dnl	For writing directly to constructor argument list, use FID_NEW_ARGS.
+ *	m4_dnl	For computing something in constructor (103), use FID_NEW_BODY.
+ *	m4_dnl	For constant pre-interpretation (108), see below at FID_INTERPRET_BODY.
+ *
+ *	m4_dnl		struct f_inst {
+ *	m4_dnl		  ... (common fields)
+ *	m4_dnl		  union {
+ *	m4_dnl		    struct {
+ *	m4_dnl	(101)	      [[ put it here ]]
+ *	m4_dnl		    } i_FI_EXAMPLE;
+ *	m4_dnl		    ...
+ *	m4_dnl		  };
+ *	m4_dnl		};
+ *	m4_dnl	This structure is returned from constructor.
+ *	m4_dnl	For writing directly to this structure, use FID_STRUCT_IN.
+ *
+ *	m4_dnl		linearize(struct f_line *dest, const struct f_inst *what, uint pos) {
+ *	m4_dnl		  ...
+ *	m4_dnl		    switch (what->fi_code) {
+ *	m4_dnl		      case FI_EXAMPLE:
+ *	m4_dnl	(105)		[[ put it here ]]
+ *	m4_dnl			break;
+ *	m4_dnl		    }
+ *	m4_dnl		}
+ *	m4_dnl	This is called when translating from struct f_inst to struct f_line_item.
+ *	m4_dnl	For accessing your custom instruction data, use following macros:
+ *	m4_dnl	  whati	-> for accessing (struct f_inst).i_FI_EXAMPLE
+ *	m4_dnl	  item	-> for accessing (struct f_line)[pos].i_FI_EXAMPLE
+ *	m4_dnl	For writing directly here, use FID_LINEARIZE_BODY.
+ *
+ *	m4_dnl	(107)	struct f_line_item {
+ *	m4_dnl		  ... (common fields)
+ *	m4_dnl		  union {
+ *	m4_dnl		    struct {
+ *	m4_dnl	(101)	      [[ put it here ]]
+ *	m4_dnl		    } i_FI_EXAMPLE;
+ *	m4_dnl		    ...
+ *	m4_dnl		  };
+ *	m4_dnl		};
+ *	m4_dnl	The same as FID_STRUCT_IN (101) but for the other structure.
+ *	m4_dnl	This structure is returned from the linearizer (105).
+ *	m4_dnl	For writing directly to this structure, use FID_LINE_IN.
+ *
+ *	m4_dnl		f_dump_line_item_FI_EXAMPLE(const struct f_line_item *item, const int indent)
+ *	m4_dnl		{
+ *	m4_dnl	(104)	  [[ put it here ]]
+ *	m4_dnl		}
+ *	m4_dnl	This code dumps the instruction on debug. Note that the argument
+ *	m4_dnl	is the linearized instruction; if the instruction has arguments,
+ *	m4_dnl	their code has already been linearized and their value is taken
+ *	m4_dnl	from the value stack.
+ *	m4_dnl	For writing directly here, use FID_DUMP_BODY.
+ *
+ *	m4_dnl		f_same(...)
+ *	m4_dnl		{
+ *	m4_dnl		  switch (f1_->fi_code) {
+ *	m4_dnl		    case FI_EXAMPLE:
+ *	m4_dnl	(106)	      [[ put it here ]]
+ *	m4_dnl		      break;
+ *	m4_dnl		  }
+ *	m4_dnl		}
+ *	m4_dnl	This code compares the two given instrucions (f1_ and f2_)
+ *	m4_dnl	on reconfigure. For accessing your custom instruction data,
+ *	m4_dnl	use macros f1 and f2.
+ *	m4_dnl	For writing directly here, use FID_SAME_BODY.
+ *
+ *	m4_dnl		interpret(...)
+ *	m4_dnl		{
+ *	m4_dnl		  switch (what->fi_code) {
+ *	m4_dnl		    case FI_EXAMPLE:
+ *	m4_dnl	(108)	      [[ put it here ]]
+ *	m4_dnl		      break;
+ *	m4_dnl		  }
+ *	m4_dnl		}
+ *	m4_dnl	This code executes the instruction. Every pre-defined macro
+ *	m4_dnl	resets the output here. For setting it explicitly,
+ *	m4_dnl	use FID_INTERPRET_BODY.
+ *	m4_dnl	This code is put on two places; one is the interpreter, the other
+ *	m4_dnl	is instruction constructor. If you need to distinguish between
+ *	m4_dnl	these two, use FID_INTERPRET_EXEC or FID_INTERPRET_NEW respectively.
+ *	m4_dnl	To address the difference between interpreter and constructor
+ *	m4_dnl	environments, there are several convenience macros defined:
+ *	m4_dnl	  runtime()	-> for spitting out runtime error like division by zero
+ *	m4_dnl	  RESULT(...)	-> declare result; may overwrite arguments
+ *	m4_dnl	  v1, v2, v3	-> positional arguments, may be overwritten by RESULT()
+ *	m4_dnl	  falloc(size)	-> allocate memory from the appropriate linpool
+ *	m4_dnl	  fpool		-> the current linpool
+ *	m4_dnl	  NEVER_CONSTANT-> don't generate pre-interpretation code at all
+ *	m4_dnl	  ACCESS_RTE	-> check that route is available, also NEVER_CONSTANT
+ *	m4_dnl	  ACCESS_EATTRS	-> pre-cache the eattrs; use only with ACCESS_RTE
+ *	m4_dnl	  f_rta_cow(fs)	-> function to call before any change to route should be done
+ *
+ *	m4_dnl	If you are stymied, see FI_CALL or FI_CONSTANT or just search for
+ *	m4_dnl	the mentioned macros in this file to see what is happening there in wild.
  */
 
 /* Binary operators */
