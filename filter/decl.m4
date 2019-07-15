@@ -87,7 +87,7 @@ if ($3) return 0;
 ]])
 m4_ifelse($4,,,[[
 FID_DUMP_BODY()m4_dnl
-debug("%s$4\n", INDENT, $5);
+debug("%s" $4 "\n", INDENT, $5);
 ]])
 FID_INTERPRET_EXEC()m4_dnl
 const $1 $2 = whati->$2
@@ -208,8 +208,8 @@ m4_define(RESULT_VAL, `FID_HIC(, [[do { res = $1; fstk->vcnt++; } while (0)]],
 m4_define(RESULT_VOID, `RESULT_VAL([[ (struct f_val) { .type = T_VOID } ]])')
 
 #	Some common filter instruction members
-m4_define(SYMBOL, `FID_MEMBER(struct symbol *, sym, [[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], symbol %s, item->sym->name)')
-m4_define(RTC, `FID_MEMBER(struct rtable_config *, rtc, [[strcmp(f1->rtc->name, f2->rtc->name)]], route table %s, item->rtc->name)')
+m4_define(SYMBOL, `FID_MEMBER(struct symbol *, sym, [[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], "symbol %s", item->sym->name)')
+m4_define(RTC, `FID_MEMBER(struct rtable_config *, rtc, [[strcmp(f1->rtc->name, f2->rtc->name)]], "route table %s", item->rtc->name)')
 m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, f1->sa.sa_code != f2->sa.sa_code,,)')
 m4_define(DYNAMIC_ATTR, `FID_MEMBER(struct f_dynamic_attr, da, f1->da.ea_code != f2->da.ea_code,,)')
 m4_define(ACCESS_RTE, `FID_HIC(,[[do { if (!fs->rte) runtime("No route to access"); } while (0)]],NEVER_CONSTANT())')

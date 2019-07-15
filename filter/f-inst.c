@@ -253,7 +253,7 @@
     ARG_ANY(1);
     ARG(2, T_INT);
 
-    FID_MEMBER(enum ec_subtype, ecs, f1->ecs != f2->ecs, ec subtype %s, ec_subtype_str(item->ecs));
+    FID_MEMBER(enum ec_subtype, ecs, f1->ecs != f2->ecs, "ec subtype %s", ec_subtype_str(item->ecs));
 
     int check, ipv4_used;
     u32 key, val;
@@ -431,7 +431,7 @@
       struct f_val,
       val,
       [[ !val_same(&(f1->val), &(f2->val)) ]],
-      value %s,
+      "value %s",
       val_dump(&(item->val))
     );
 
@@ -457,7 +457,7 @@
 
   INST(FI_DIE, 0, 0) {
     NEVER_CONSTANT;
-    FID_MEMBER(enum filter_return, fret, f1->fret != f2->fret, %s, filter_return_str(item->fret));
+    FID_MEMBER(enum filter_return, fret, f1->fret != f2->fret, "%s", filter_return_str(item->fret));
 
     if (fs->buf.start < fs->buf.pos)
       log_commit(*L_INFO, &fs->buf);
@@ -909,7 +909,7 @@
   INST(FI_SWITCH, 1, 0) {
     ARG_ANY(1);
 
-    FID_MEMBER(struct f_tree *, tree, [[!same_tree(f1->tree, f2->tree)]], tree %p, item->tree);
+    FID_MEMBER(struct f_tree *, tree, [[!same_tree(f1->tree, f2->tree)]], "tree %p", item->tree);
 
     const struct f_tree *t = find_tree(tree, &v1);
     if (!t) {
@@ -1161,7 +1161,7 @@
     NEVER_CONSTANT;
     ARG(1, T_BOOL);
 
-    FID_MEMBER(char *, s, [[strcmp(f1->s, f2->s)]], string %s, item->s);
+    FID_MEMBER(char *, s, [[strcmp(f1->s, f2->s)]], "string %s", item->s);
 
     ASSERT(s);
 
