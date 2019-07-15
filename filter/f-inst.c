@@ -345,7 +345,7 @@
     FID_INTERPRET_BODY
 
 #define pv(i) fstk->vstk[fstk->vcnt - whati->count + (i)]
-    if (whati->count)
+    if (whati->count && !(fs->flags & FF_SILENT))
       for (uint i=0; i<whati->count; i++)
 	val_format(&(pv(i)), &fs->buf);
 #undef pv
