@@ -467,10 +467,21 @@ static inline ip_addr rta_get_via(struct rtattr *a)
 static u32 rta_mpls_stack[MPLS_MAX_LABEL_STACK];
 static inline int rta_get_mpls(struct rtattr *a, u32 *stack)
 {
+  if (!a)
+    return 0;
+
   if (RTA_PAYLOAD(a) % 4)
     log(L_WARN "KRT: Strange length of received MPLS stack: %u", RTA_PAYLOAD(a));
 
-  return mpls_get(RTA_DATA(a), RTA_PAYLOAD(a) & ~0x3, stack);
+  int labels = mpls_get(RTA_DATA(a), RTA_PAYLOAD(a) & ~0x3, stack);
+
+  if (labels < 0)
+  {
+    log(L_WARN "KRT: Too long MPLS stack received, ignoring");
+    labels = 0;
+  }
+
+  return labels;
 }
 #endif
 
@@ -706,7 +717,7 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
 	rv->gw = IPA_NONE;
 
 #ifdef HAVE_MPLS_KERNEL
-      if (a[RTA_ENCAP_TYPE])
+      if (a[RTA_ENCAP] && a[RTA_ENCAP_TYPE])
       {
 	if (rta_get_u16(a[RTA_ENCAP_TYPE]) != LWTUNNEL_ENCAP_MPLS) {
 	  log(L_WARN "KRT: Unknown encapsulation method %d in multipath", rta_get_u16(a[RTA_ENCAP_TYPE]));
@@ -717,7 +728,6 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
 	nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
 	nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
 	rv->labels = rta_get_mpls(enca[RTA_DST], rv->label);
-	break;
       }
 #endif
 
@@ -1623,7 +1633,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	      return;
 	    }
 
-	  ra->nh = *nh;
+	  nexthop_link(ra, nh);
 	  break;
 	}
 
@@ -1683,9 +1693,8 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
     }
 
 #ifdef HAVE_MPLS_KERNEL
-  int labels = 0;
   if ((i->rtm_family == AF_MPLS) && a[RTA_NEWDST] && !ra->nh.next)
-    labels = rta_get_mpls(a[RTA_NEWDST], ra->nh.label);
+    ra->nh.labels = rta_get_mpls(a[RTA_NEWDST], ra->nh.label);
 
   if (a[RTA_ENCAP] && a[RTA_ENCAP_TYPE] && !ra->nh.next)
     {
@@ -1696,7 +1705,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	      struct rtattr *enca[BIRD_RTA_MAX];
 	      nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
 	      nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
-	      labels = rta_get_mpls(enca[RTA_DST], ra->nh.label);
+	      ra->nh.labels = rta_get_mpls(enca[RTA_DST], ra->nh.label);
 	      break;
 	    }
 	  default:
@@ -1704,14 +1713,6 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	    break;
 	}
     }
-
-  if (labels < 0)
-  {
-    log(L_WARN "KRT: Too long MPLS stack received, ignoring.");
-    ra->nh.labels = 0;
-  }
-  else
-    ra->nh.labels = labels;
 #endif
 
   if (i->rtm_scope != def_scope)
