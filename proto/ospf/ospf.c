@@ -146,7 +146,7 @@ static inline uint
 ospf_opts(struct ospf_proto *p)
 {
   if (ospf_is_v2(p))
-    return 0;
+    return OPT_O;
 
   return ((ospf_is_ip6(p) && !p->af_mc) ? OPT_V6 : 0) |
     (!p->stub_router ? OPT_R : 0) | (p->af_ext ? OPT_AF : 0);
