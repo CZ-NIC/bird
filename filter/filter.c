@@ -77,9 +77,6 @@ struct filter_state {
   /* The route we are processing. This may be NULL to indicate no route available. */
   struct rte **rte;
 
-  /* The old rta to be freed after filters are done. */
-  struct rta *old_rta;
-
   /* Cached pointer to ea_list */
   struct ea_list **eattrs;
 
@@ -105,10 +102,7 @@ static inline void f_cache_eattrs(struct filter_state *fs)
 
 static inline void f_rte_cow(struct filter_state *fs)
 {
-  if (!((*fs->rte)->flags & REF_COW))
-    return;
-
-  *fs->rte = rte_cow(*fs->rte);
+  *fs->rte = rte_copy_shallow(*fs->rte, fs->pool);
 }
 
 /*
@@ -117,14 +111,12 @@ static inline void f_rte_cow(struct filter_state *fs)
 static void
 f_rta_cow(struct filter_state *fs)
 {
+  /* If rta is already private, everything is OK. */
   if (!rta_is_cached((*fs->rte)->attrs))
     return;
 
   /* Prepare to modify rte */
   f_rte_cow(fs);
-
-  /* Store old rta to free it later, it stores reference from rte_cow() */
-  fs->old_rta = (*fs->rte)->attrs;
 
   /*
    * Get shallow copy of rta. Fields eattrs and nexthops of rta are shared
@@ -132,7 +124,7 @@ f_rta_cow(struct filter_state *fs)
    * at the end of f_run()), also the lock of hostentry is inherited (we
    * suppose hostentry is not changed by filters).
    */
-  (*fs->rte)->attrs = rta_do_cow((*fs->rte)->attrs, fs->pool);
+  (*fs->rte)->attrs = rta_copy_shallow((*fs->rte)->attrs, fs->pool);
 
   /* Re-cache the ea_list */
   f_cache_eattrs(fs);
@@ -241,11 +233,12 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
  * f_run - run a filter for a route
  * @filter: filter to run
  * @rte: route being filtered, may be modified
+ * @old_rta: old rta to be released after all route modifications are done
  * @tmp_pool: all filter allocations go from this pool
  * @flags: flags
  *
  * If filter needs to modify the route, there are several
- * posibilities. @rte might be read-only (with REF_COW flag), in that
+ * posibilities. @rte might be read-only (with REF_CACHED flag), in that
  * case rw copy is obtained by rte_cow() and @rte is replaced. If
  * @rte is originally rw, it may be directly modified (and it is never
  * copied).
@@ -253,12 +246,11 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
  * The returned rte may reuse the (possibly cached, cloned) rta, or
  * (if rta was modified) contains a modified uncached rta, which
  * uses parts allocated from @tmp_pool and parts shared from original
- * rta. There is one exception - if @rte is rw but contains a cached
- * rta and that is modified, rta in returned rte is also cached.
+ * rta.
  *
  * Ownership of cached rtas is consistent with rte, i.e.
- * if a new rte is returned, it has its own clone of cached rta
- * (and cached rta of read-only source rte is intact), if rte is
+ * if a new rte is returned, it has its own uncached rta
+ * (and cached rta of read-only source rte is intact); if rte is
  * modified in place, old cached rta is possibly freed.
  */
 enum filter_return
@@ -270,7 +262,6 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
   if (filter == FILTER_REJECT)
     return F_REJECT;
 
-  int rte_cow = ((*rte)->flags & REF_COW);
   DBG( "Running filter `%s'...", filter->name );
 
   /* Initialize the filter state */
@@ -285,32 +276,6 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
 
   /* Run the interpreter itself */
   enum filter_return fret = interpret(&filter_state, filter->root, NULL);
-
-  if (filter_state.old_rta) {
-    /*
-     * Cached rta was modified and filter_state->rte contains now an uncached one,
-     * sharing some part with the cached one. The cached rta should
-     * be freed (if rte was originally COW, filter_state->old_rta is a clone
-     * obtained during rte_cow()).
-     *
-     * This also implements the exception mentioned in f_run()
-     * description. The reason for this is that rta reuses parts of
-     * filter_state->old_rta, and these may be freed during rta_free(filter_state->old_rta).
-     * This is not the problem if rte was COW, because original rte
-     * also holds the same rta.
-     */
-    if (!rte_cow) {
-      /* Cache the new attrs */
-      (*filter_state.rte)->attrs = rta_lookup((*filter_state.rte)->attrs);
-
-      /* Drop cached ea_list pointer */
-      filter_state.eattrs = NULL;
-    }
-
-    /* Uncache the old attrs and drop the pointer as it is invalid now. */
-    rta_free(filter_state.old_rta);
-    filter_state.old_rta = NULL;
-  }
 
   /* Process the filter output, log it and return */
   if (fret < F_ACCEPT) {
@@ -346,7 +311,7 @@ f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool
 
   LOG_BUFFER_INIT(filter_state.buf);
 
-  ASSERT(!((*rte)->flags & REF_COW));
+  ASSERT(!((*rte)->flags & REF_CACHED));
   ASSERT(!rta_is_cached((*rte)->attrs));
 
   return interpret(&filter_state, expr, NULL);

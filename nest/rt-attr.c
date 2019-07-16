@@ -355,14 +355,17 @@ nexthop_slab(struct nexthop *nh)
 }
 
 static struct nexthop *
-nexthop_copy(struct nexthop *o)
+nexthop_copy(struct nexthop *o, linpool *lp)
 {
   struct nexthop *first = NULL;
   struct nexthop **last = &first;
 
   for (; o; o = o->next)
     {
-      struct nexthop *n = sl_alloc(nexthop_slab(o));
+      struct nexthop *n = lp ?
+	lp_alloc(lp, NEXTHOP_MAX_SIZE) :
+	sl_alloc(nexthop_slab(o));
+
       n->gw = o->gw;
       n->iface = o->iface;
       n->next = NULL;
@@ -741,7 +744,7 @@ ea_same(ea_list *x, ea_list *y)
 }
 
 static inline ea_list *
-ea_list_copy(ea_list *o)
+ea_list_copy(ea_list *o, linpool *lp)
 {
   ea_list *n;
   unsigned i, len;
@@ -750,7 +753,7 @@ ea_list_copy(ea_list *o)
     return NULL;
   ASSERT(!o->next);
   len = sizeof(ea_list) + sizeof(eattr) * o->count;
-  n = mb_alloc(rta_pool, len);
+  n = lp ? lp_alloc(lp, len) : mb_alloc(rta_pool, len);
   memcpy(n, o, len);
   n->flags |= EALF_CACHED;
   for(i=0; i<o->count; i++)
@@ -759,7 +762,7 @@ ea_list_copy(ea_list *o)
       if (!(a->type & EAF_EMBEDDED))
 	{
 	  unsigned size = sizeof(struct adata) + a->u.ptr->length;
-	  struct adata *d = mb_alloc(rta_pool, size);
+	  struct adata *d = lp ? lp_alloc(lp, size) : mb_alloc(rta_pool, size);
 	  memcpy(d, a->u.ptr, size);
 	  a->u.ptr = d;
 	}
@@ -1128,15 +1131,61 @@ rta_slab(rta *a)
 }
 
 static rta *
-rta_copy(rta *o)
+rta_do_copy(rta *o, linpool *lp, int shallow)
 {
-  rta *r = sl_alloc(rta_slab(o));
-
+  rta *r = lp ? lp_alloc(lp, rta_size(o)) : sl_alloc(rta_slab(o));
   memcpy(r, o, rta_size(o));
-  r->uc = 1;
-  r->nh.next = nexthop_copy(o->nh.next);
-  r->eattrs = ea_list_copy(o->eattrs);
+
+  r->nh.next = nexthop_copy(o->nh.next, lp);
+
+  if (!shallow)
+    r->eattrs = ea_list_copy(o->eattrs, lp);
+
+  r->aflags = 0;
+  r->uc = 0;
+
   return r;
+}
+
+/**
+ * rta_copy - create a private writable copy of a route attributes structure
+ * @o: the attributes entry to be copied
+ * @lp: linpool from which to allocate
+ *
+ * Returns the private deep copy with all the eattrs allocated from the given
+ * linpool. You may dismiss the original rta right after this function returns.
+ */
+rta *
+rta_copy(rta *o, linpool *lp)
+{
+  ASSERT(lp);
+  return rta_do_copy(o, lp, 0);
+}
+
+static inline rta *
+rta_copy_cache(rta *o)
+{
+  o = rta_do_copy(o, NULL, 0);
+  o->uc = 1;
+  return o;
+}
+
+/**
+ * rta_copy_shallow - create a private writable copy of a route attributes structure
+ * @o: the attributes entry to be copied
+ * @lp: linpool from which to allocate
+ *
+ * Returns the private copy keeping the eattrs pointer.
+ * You shall keep the original rta ownership whole the lifetime of this structure
+ * unless you reallocate eattrs as well.
+ *
+ * Run rta_copy() to get a deep copy.
+ */
+rta *
+rta_copy_shallow(rta *o, linpool *lp)
+{
+  ASSERT(lp);
+  return rta_do_copy(o, lp, 1);
 }
 
 static inline void
@@ -1198,7 +1247,7 @@ rta_lookup(rta *o)
     if (r->hash_key == h && rta_same(r, o))
       return rta_clone(r);
 
-  r = rta_copy(o);
+  r = rta_copy_cache(o);
   r->hash_key = h;
   r->aflags = RTAF_CACHED;
   rt_lock_source(r->src);
@@ -1226,22 +1275,6 @@ rta__free(rta *a)
   ea_free(a->eattrs);
   a->aflags = 0;		/* Poison the entry */
   sl_free(rta_slab(a), a);
-}
-
-rta *
-rta_do_cow(rta *o, linpool *lp)
-{
-  rta *r = lp_alloc(lp, rta_size(o));
-  memcpy(r, o, rta_size(o));
-  for (struct nexthop **nhn = &(r->nh.next), *nho = o->nh.next; nho; nho = nho->next)
-    {
-      *nhn = lp_alloc(lp, nexthop_size(nho));
-      memcpy(*nhn, nho, nexthop_size(nho));
-      nhn = &((*nhn)->next);
-    }
-  r->aflags = 0;
-  r->uc = 0;
-  return r;
 }
 
 /**

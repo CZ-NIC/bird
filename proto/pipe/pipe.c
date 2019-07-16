@@ -50,7 +50,7 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
   struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
   struct rte_src *src;
 
-  rte *e;
+  rte e0, *e;
   rta *a;
 
   if (!new && !old)
@@ -70,13 +70,11 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
 
       a->aflags = 0;
       a->hostentry = NULL;
-      e = rte_get_temp(a);
-      e->pflags = 0;
 
-      /* Copy protocol specific embedded attributes. */
-      memcpy(&(e->u), &(new->u), sizeof(e->u));
-      e->pref = new->pref;
-      e->pflags = new->pflags;
+      e0 = *new;
+      e = &e0;
+      e->pflags = 0;
+      e->attrs = a;
 
 #ifdef CONFIG_BGP
       /* Hack to cleanup cached value */

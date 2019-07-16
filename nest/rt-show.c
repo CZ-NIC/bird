@@ -115,7 +115,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	continue;
 
       ee = e;
-      rte_make_tmp_attrs(&e, c->show_pool, NULL);
+      rte_make_tmp_attrs(&e, c->show_pool);
 
       /* Export channel is down, do not try to export routes to it */
       if (ec && (ec->export_state == ES_DOWN))
@@ -124,8 +124,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       /* Special case for merged export */
       if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
 	{
-	  rte *rt_free;
-	  e = rt_export_merged(ec, n, &rt_free, c->show_pool, 1);
+	  e = rt_export_merged(ec, n, c->show_pool, 1);
 	  pass = 1;
 
 	  if (!e)
@@ -173,11 +172,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       ia[0] = 0;
 
     skip:
-      if (e != ee)
-      {
-	rte_free(e);
-	e = ee;
-      }
+      e = ee;
       lp_flush(c->show_pool);
 
       if (d->primary_only)
