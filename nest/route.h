@@ -252,7 +252,7 @@ typedef struct rte {
   } u;
 } rte;
 
-#define REF_COW		1		/* Copy this rte on write */
+#define REF_CACHED	1		/* Route is owned by global storage */
 #define REF_FILTERED	2		/* Route is rejected by import filter */
 #define REF_STALE	4		/* Route is stale in a refresh cycle */
 #define REF_DISCARD	8		/* Route is scheduled for discard */
@@ -294,23 +294,20 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 rte *rte_find(net *net, struct rte_src *src);
-rte *rte_get_temp(struct rta *);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
 int rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter);
-rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
+rte *rt_export_merged(struct channel *c, net *net, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
 void rt_modify_stale(rtable *t, struct channel *c);
 void rt_schedule_prune(rtable *t);
 void rte_dump(rte *);
-void rte_free(rte *);
-rte *rte_do_cow(rte *);
-static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }
+rte *rte_copy_shallow(rte *r, linpool *lp);
 rte *rte_cow_rta(rte *r, linpool *lp);
 void rte_init_tmp_attrs(struct rte *r, linpool *lp, uint max);
 void rte_make_tmp_attr(struct rte *r, uint id, uint type, uintptr_t val);
-void rte_make_tmp_attrs(struct rte **r, struct linpool *pool, struct rta **old_attrs);
+void rte_make_tmp_attrs(struct rte **r, struct linpool *pool);
 uintptr_t rte_store_tmp_attr(struct rte *r, uint id);
 void rt_dump(rtable *);
 void rt_dump_all(void);
@@ -643,10 +640,10 @@ static inline size_t rta_size(const rta *a) { return sizeof(rta) + sizeof(u32)*a
 rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */
 static inline int rta_is_cached(rta *r) { return r->aflags & RTAF_CACHED; }
 static inline rta *rta_clone(rta *r) { r->uc++; return r; }
+rta *rta_copy(rta *, linpool *);
+rta *rta_copy_shallow(rta *, linpool *);
 void rta__free(rta *r);
 static inline void rta_free(rta *r) { if (r && !--r->uc) rta__free(r); }
-rta *rta_do_cow(rta *o, linpool *lp);
-static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta_do_cow(r, lp) : r; }
 void rta_dump(rta *);
 void rta_dump_all(void);
 void rta_show(struct cli *, rta *);

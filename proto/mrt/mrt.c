@@ -496,13 +496,10 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
       continue;
     }
 
-    rte_make_tmp_attrs(&rt, s->linpool, NULL);
+    rte_make_tmp_attrs(&rt, s->linpool);
 
     if (f_run(s->filter, &rt, s->linpool, 0) <= F_ACCEPT)
       mrt_rib_table_entry(s, rt);
-
-    if (rt != rt0)
-      rte_free(rt);
 
     lp_flush(s->linpool);
   }
