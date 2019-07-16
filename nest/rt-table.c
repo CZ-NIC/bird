@@ -89,6 +89,7 @@ struct rte_update_data {
   struct channel *channel;
   const net_addr *net;
   struct rte *rte;
+  struct rta *old_rta;
   struct rte_src *src;
   struct linpool *pool;
 };
@@ -308,33 +309,40 @@ rte_find(net *net, struct rte_src *src)
 }
 
 /**
- * rte_get_temp - get a temporary &rte
- * @a: attributes to assign to the new route (a &rta; in case it's
- * un-cached, rte_update() will create a cached copy automatically)
+ * rte_copy_shallow - create a private writeble copy of a route
+ * @r: a route entry to be copied
+ * @lp: linpool from which to allocate
  *
- * Create a temporary &rte and bind it with the attributes @a.
- * Also set route preference to the default preference set for
- * the protocol.
+ * Returns the private copy keeping the rta pointer.
+ * This function doesn't increase the rta use count. Do it yourself if you need it.
  */
 rte *
-rte_get_temp(rta *a)
+rte_copy_shallow(rte *r, linpool *lp)
 {
-  rte *e = sl_alloc(rte_slab);
-
-  e->attrs = a;
+  rte *e = lp_alloc(lp, sizeof(rte));
+  memcpy(e, r, sizeof(rte));
   e->flags = 0;
-  e->pref = 0;
   return e;
 }
 
-rte *
-rte_do_cow(rte *r)
+/**
+ * rte_cache - create a global copy of a route
+ * @r: the route to be stored
+ *
+ * Returns the global copy.
+ */
+static rte *
+rte_cache(rte *r)
 {
   rte *e = sl_alloc(rte_slab);
-
   memcpy(e, r, sizeof(rte));
-  e->attrs = rta_clone(r->attrs);
-  e->flags = 0;
+  e->flags = REF_CACHED;
+
+  if (rta_is_cached(r->attrs))
+    rta_clone(r->attrs);
+  else
+    e->attrs = rta_lookup(r->attrs);
+
   return e;
 }
 
@@ -344,29 +352,33 @@ rte_do_cow(rte *r)
  * @lp: a linpool from which to allocate &rta
  *
  * rte_cow_rta() takes a &rte and prepares it and associated &rta for
- * modification. There are three possibilities: First, both &rte and &rta are
- * private copies, in that case they are returned unchanged.  Second, &rte is
- * private copy, but &rta is cached, in that case &rta is duplicated using
- * rta_do_cow(). Third, both &rte is shared and &rta is cached, in that case
- * both structures are duplicated by rte_do_cow() and rta_do_cow().
+ * modification. There are three possibilities:
+ * 1  both &rte and &rta are private copies
+ *    -> they are returned unchanged
+ * 2  &rte is private copy, but &rta is shared
+ *    -> &rta is copied
+ * 3  both &rte and &rta is shared
+ *    -> both structures are copied
  *
- * Note that in the second case, cached &rta loses one reference, while private
- * copy created by rta_do_cow() is a shallow copy sharing indirect data (eattrs,
- * nexthops, ...) with it. To work properly, original shared &rta should have
- * another reference during the life of created private copy.
+ * In cases 2 and 3, you must keep the original rta ownership during the
+ * lifetime of the returned structure as the eattrs are still shared.
  *
  * Result: a pointer to the new writable &rte with writable &rta.
  */
 rte *
 rte_cow_rta(rte *r, linpool *lp)
 {
+  /* 1  rtA is private, therefore rtE must be also private, nothing to do */
   if (!rta_is_cached(r->attrs))
     return r;
 
-  r = rte_cow(r);
-  rta *a = rta_do_cow(r->attrs, lp);
-  rta_free(r->attrs);
-  r->attrs = a;
+  /* 3  rtE is shared so it has to be copied */
+  if (r->flags & REF_CACHED)
+    r = rte_copy_shallow(r, lp);
+
+  /* 2+3  rtA unshare */
+  r->attrs = rta_copy_shallow(r->attrs, lp);
+
   return r;
 }
 
@@ -466,14 +478,13 @@ rte_store_tmp_attr(rte *r, uint id)
  * rte_make_tmp_attrs - prepare route by adding all relevant temporary route attributes
  * @r: route entry to be modified (may be replaced if COW)
  * @lp: linpool from which to allocate attributes
- * @old_attrs: temporary ref to old &rta (may be NULL)
  *
  * This function expands privately stored protocol-dependent route attributes
  * to a uniform &eattr / &ea_list representation. It is essentially a wrapper
  * around protocol make_tmp_attrs() hook, which does some additional work like
  * ensuring that route @r is writable.
  *
- * The route @r may be read-only (with %REF_COW flag), in that case rw copy is
+ * The route @r may be read-only (with %REF_CLONE flag), in that case rw copy is
  * obtained by rte_cow() and @r is replaced. If @rte is originally rw, it may be
  * directly modified (and it is never copied).
  *
@@ -487,17 +498,13 @@ rte_store_tmp_attr(rte *r, uint id)
  * ignore replacement of @r, but it must handle @old_attrs.
  */
 void
-rte_make_tmp_attrs(rte **r, linpool *lp, rta **old_attrs)
+rte_make_tmp_attrs(rte **r, linpool *lp)
 {
   void (*make_tmp_attrs)(rte *r, linpool *lp);
   make_tmp_attrs = (*r)->attrs->src->proto->make_tmp_attrs;
 
   if (!make_tmp_attrs)
     return;
-
-  /* We may need to keep ref to old attributes, will be freed in rte_store_tmp_attrs() */
-  if (old_attrs)
-    *old_attrs = rta_is_cached((*r)->attrs) ? rta_clone((*r)->attrs) : NULL;
 
   *r = rte_cow_rta(*r, lp);
   make_tmp_attrs(*r, lp);
@@ -516,7 +523,7 @@ rte_make_tmp_attrs(rte **r, linpool *lp, rta **old_attrs)
  * of @old_attrs reference obtained by rte_make_tmp_attrs().
  */
 static void
-rte_store_tmp_attrs(rte *r, linpool *lp, rta *old_attrs)
+rte_store_tmp_attrs(rte *r, linpool *lp)
 {
   void (*store_tmp_attrs)(rte *rt, linpool *lp);
   store_tmp_attrs = r->attrs->src->proto->store_tmp_attrs;
@@ -532,10 +539,6 @@ rte_store_tmp_attrs(rte *r, linpool *lp, rta *old_attrs)
     r->attrs->eattrs = ea->next;
   else
     store_tmp_attrs(r, lp);
-
-  /* Free ref we got in rte_make_tmp_attrs(), have to do rta_lookup() first */
-  r->attrs = rta_lookup(r->attrs);
-  rta_free(old_attrs);
 }
 
 
@@ -608,7 +611,7 @@ rte_trace_out(uint flag, struct proto *p, rte *e, char *msg)
 }
 
 static rte *
-export_filter(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int silent)
+export_filter(struct channel *c, rte *rt0, linpool *pool, int silent)
 {
   struct proto *p = c->proto;
   const struct filter *filter = c->out_filter;
@@ -617,7 +620,6 @@ export_filter(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int sil
   int v;
 
   rt = rt0;
-  *rt_free = NULL;
 
   v = p->preexport ? p->preexport(p, &rt, pool) : 0;
   if (v < 0)
@@ -637,7 +639,7 @@ export_filter(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int sil
       goto accept;
     }
 
-  rte_make_tmp_attrs(&rt, pool, NULL);
+  rte_make_tmp_attrs(&rt, pool);
 
   v = filter && ((filter == FILTER_REJECT) ||
 		 (f_run(filter, &rt, pool,
@@ -653,14 +655,9 @@ export_filter(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int sil
     }
 
  accept:
-  if (rt != rt0)
-    *rt_free = rt;
   return rt;
 
  reject:
-  /* Discard temporary rte */
-  if (rt != rt0)
-    rte_free(rt);
   return NULL;
 }
 
@@ -748,8 +745,6 @@ rt_notify_basic(struct channel *c, net *net, rte *new0, rte *old0, linpool *pool
 
   rte *new = new0;
   rte *old = old0;
-  rte *new_free = NULL;
-  rte *old_free = NULL;
 
   if (new)
     c->stats.exp_updates_received++;
@@ -776,10 +771,10 @@ rt_notify_basic(struct channel *c, net *net, rte *new0, rte *old0, linpool *pool
    */
 
   if (new)
-    new = export_filter(c, new, &new_free, pool, 0);
+    new = export_filter(c, new, pool, 0);
 
   if (old && !refeed)
-    old = export_filter(c, old, &old_free, pool, 1);
+    old = export_filter(c, old, pool, 1);
 
   if (!new && !old)
   {
@@ -818,12 +813,6 @@ rt_notify_basic(struct channel *c, net *net, rte *new0, rte *old0, linpool *pool
   }
 
   do_rt_notify(c, net, new, old, refeed);
-
-  /* Discard temporary rte's */
-  if (new_free)
-    rte_free(new_free);
-  if (old_free)
-    rte_free(old_free);
 }
 
 static void
@@ -834,8 +823,6 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
   rte *r;
   rte *new_best = NULL;
   rte *old_best = NULL;
-  rte *new_free = NULL;
-  rte *old_free = NULL;
 
   /* Used to track whether we met old_changed position. If before_old is NULL
      old_changed was the first and we met it implicitly before current best route. */
@@ -853,7 +840,7 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
   /* First, find the new_best route - first accepted by filters */
   for (r=net->routes; rte_is_valid(r); r=r->next)
     {
-      if (new_best = export_filter(c, r, &new_free, pool, 0))
+      if (new_best = export_filter(c, r, pool, 0))
 	break;
 
       /* Note if we walked around the position of old_changed route */
@@ -916,7 +903,7 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
 
   /* First case */
   if (old_meet)
-    if (old_best = export_filter(c, old_changed, &old_free, pool, 1))
+    if (old_best = export_filter(c, old_changed, pool, 1))
       goto found;
 
   /* Second case */
@@ -925,20 +912,16 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
 
   /* Third case, we use r instead of new_best, because export_filter() could change it */
   if (r != new_changed)
-    {
-      if (new_free)
-	rte_free(new_free);
-      return;
-    }
+    return;
 
   /* Fourth case */
   for (r=r->next; rte_is_valid(r); r=r->next)
     {
-      if (old_best = export_filter(c, r, &old_free, pool, 1))
+      if (old_best = export_filter(c, r, pool, 1))
 	goto found;
 
       if (r == before_old)
-	if (old_best = export_filter(c, old_changed, &old_free, pool, 1))
+	if (old_best = export_filter(c, old_changed, pool, 1))
 	  goto found;
     }
 
@@ -946,12 +929,6 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
 
  found:
   do_rt_notify(c, net, new_best, old_best, (feed == 2));
-
-  /* Discard temporary rte's */
-  if (new_free)
-    rte_free(new_free);
-  if (old_free)
-    rte_free(old_free);
 }
 
 
@@ -962,19 +939,18 @@ nexthop_merge_rta(struct nexthop *nhs, rta *a, linpool *pool, int max)
 }
 
 rte *
-rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent)
+rt_export_merged(struct channel *c, net *net, linpool *pool, int silent)
 {
   // struct proto *p = c->proto;
   struct nexthop *nhs = NULL;
-  rte *best0, *best, *rt0, *rt, *tmp;
+  rte *best0, *best, *rt0, *rt;
 
   best0 = net->routes;
-  *rt_free = NULL;
 
   if (!rte_is_valid(best0))
     return NULL;
 
-  best = export_filter(c, best0, rt_free, pool, silent);
+  best = export_filter(c, best0, pool, silent);
 
   if (!best || !rte_is_reachable(best))
     return best;
@@ -984,16 +960,13 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int 
     if (!rte_mergable(best0, rt0))
       continue;
 
-    rt = export_filter(c, rt0, &tmp, pool, 1);
+    rt = export_filter(c, rt0, pool, 1);
 
     if (!rt)
       continue;
 
     if (rte_is_reachable(rt))
       nhs = nexthop_merge_rta(nhs, rt->attrs, pool, c->merge_limit);
-
-    if (tmp)
-      rte_free(tmp);
   }
 
   if (nhs)
@@ -1007,9 +980,6 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int 
     }
   }
 
-  if (best != best0)
-    *rt_free = best;
-
   return best;
 }
 
@@ -1018,13 +988,6 @@ static void
 rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed,
 		 rte *new_best, rte*old_best, linpool *pool, int refeed)
 {
-  // struct proto *p = c->proto;
-
-  rte *new_best_free = NULL;
-  rte *old_best_free = NULL;
-  rte *new_changed_free = NULL;
-  rte *old_changed_free = NULL;
-
   /* We assume that all rte arguments are either NULL or rte_is_valid() */
 
   /* This check should be done by the caller */
@@ -1035,10 +998,10 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
   if ((new_best == old_best) && !refeed)
   {
     new_changed = rte_mergable(new_best, new_changed) ?
-      export_filter(c, new_changed, &new_changed_free, pool, 1) : NULL;
+      export_filter(c, new_changed, pool, 1) : NULL;
 
     old_changed = rte_mergable(old_best, old_changed) ?
-      export_filter(c, old_changed, &old_changed_free, pool, 1) : NULL;
+      export_filter(c, old_changed, pool, 1) : NULL;
 
     if (!new_changed && !old_changed)
       return;
@@ -1051,25 +1014,15 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
 
   /* Prepare new merged route */
   if (new_best)
-    new_best = rt_export_merged(c, net, &new_best_free, pool, 0);
+    new_best = rt_export_merged(c, net, pool, 0);
 
   /* Prepare old merged route (without proper merged next hops) */
   /* There are some issues with running filter on old route - see rt_notify_basic() */
   if (old_best && !refeed)
-    old_best = export_filter(c, old_best, &old_best_free, pool, 1);
+    old_best = export_filter(c, old_best, pool, 1);
 
   if (new_best || old_best)
     do_rt_notify(c, net, new_best, old_best, refeed);
-
-  /* Discard temporary rte's */
-  if (new_best_free)
-    rte_free(new_best_free);
-  if (old_best_free)
-    rte_free(old_best_free);
-  if (new_changed_free)
-    rte_free(new_changed_free);
-  if (old_changed_free)
-    rte_free(old_changed_free);
 }
 
 
@@ -1197,18 +1150,13 @@ rte_validate(rte *e)
  *
  * rte_free() deletes the given &rte from the routing table it's linked to.
  */
-void
+static void
 rte_free(rte *e)
 {
-  if (rta_is_cached(e->attrs))
-    rta_free(e->attrs);
-  sl_free(rte_slab, e);
-}
-
-static inline void
-rte_free_quick(rte *e)
-{
+  ASSERT(rta_is_cached(e->attrs));
   rta_free(e->attrs);
+
+  ASSERT(e->flags & REF_CACHED);
   sl_free(rte_slab, e);
 }
 
@@ -1258,7 +1206,6 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
 		{
 		  log_rl(&rl_pipe, L_ERR "Pipe collision detected when sending %N to table %s",
 		      net->n.addr, table->name);
-		  rte_free_quick(new);
 		}
 	      return;
 	    }
@@ -1275,7 +1222,6 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
 		  rte_trace_in(D_ROUTES, p, new, "ignored");
 		}
 
-	      rte_free_quick(new);
 	      return;
 	    }
 	  *k = old->next;
@@ -1313,7 +1259,6 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
 
 	  stats->imp_updates_ignored++;
 	  rte_trace_in(D_FILTERS, p, new, "ignored [limit]");
-	  rte_free_quick(new);
 	  return;
 	}
     }
@@ -1339,7 +1284,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
 	  if (c->in_keep_filtered)
 	    new->flags |= REF_FILTERED;
 	  else
-	    { rte_free_quick(new); new = NULL; }
+	    new = NULL;
 
 	  /* Note that old && !new could be possible when
 	     c->in_keep_filtered changed in the recent past. */
@@ -1366,6 +1311,13 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
   if (old)
     rte_is_filtered(old) ? stats->filt_routes-- : stats->imp_routes--;
 
+  /* Here we are decided to insert the route into table.
+   * It's the right time to allocate the route in the global pool.
+   */
+  if (new)
+    new = rte_cache(new);
+
+  /* And the insertion shall begin. */
   if (table->config->sorted)
     {
       /* If routes are sorted, just insert new route to appropriate position */
@@ -1487,7 +1439,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
     p->rte_insert(net, new);
 
   if (old)
-    rte_free_quick(old);
+    rte_free(old);
 }
 
 static inline void
@@ -1526,9 +1478,6 @@ rte_do_update(struct rte_update_data *rud)
 
   ASSERT(c->channel_state == CS_UP);
 
-  ASSERT(rud->pool == NULL);
-  rud->pool = rup_get();
-  
   if (new)
     {
       /* Create a temporary table node */
@@ -1550,42 +1499,31 @@ rte_do_update(struct rte_update_data *rud)
 	  goto drop;
 	}
 
-      if (filter == FILTER_REJECT)
+      if (filter)
 	{
-	  stats->imp_updates_filtered++;
-	  rte_trace_in(D_FILTERS, p, new, "filtered out");
+	  int fr;
+	  if (filter == FILTER_REJECT)
+	    fr = F_REJECT;
+	  else
+	    {
+	      rte_make_tmp_attrs(&new, rud->pool);
+	      fr = f_run(filter, &new, rud->pool, 0);
+	    }
 
-	  if (! c->in_keep_filtered)
-	    goto drop;
-
-	  /* new is a private copy, i could modify it */
-	  new->flags |= REF_FILTERED;
-	}
-      else if (filter)
-	{
-	  rta *old_attrs = NULL;
-	  rte_make_tmp_attrs(&new, rud->pool, &old_attrs);
-
-	  int fr = f_run(filter, &new, rud->pool, 0);
 	  if (fr > F_ACCEPT)
 	  {
 	    stats->imp_updates_filtered++;
 	    rte_trace_in(D_FILTERS, p, new, "filtered out");
 
 	    if (! c->in_keep_filtered)
-	    {
-	      rta_free(old_attrs);
 	      goto drop;
-	    }
 
 	    new->flags |= REF_FILTERED;
 	  }
 
-	  rte_store_tmp_attrs(new, rud->pool, old_attrs);
+	  if (filter != FILTER_REJECT)
+	    rte_store_tmp_attrs(new, rud->pool);
 	}
-      if (!rta_is_cached(new->attrs)) /* Need to copy attributes */
-	new->attrs = rta_lookup(new->attrs);
-      new->flags |= REF_COW;
 
       /* Use the actual struct network, not the dummy one */
       nn = net_get(c->table, n);
@@ -1598,8 +1536,6 @@ rte_do_update(struct rte_update_data *rud)
       if (!(nn = net_find(c->table, n)) || !src)
 	{
 	  stats->imp_withdraws_ignored++;
-	  rup_free(rud->pool);
-	  rud->pool = NULL;
 	  return;
 	}
     }
@@ -1609,19 +1545,13 @@ rte_do_update(struct rte_update_data *rud)
   rte_hide_dummy_routes(nn, &dummy);
   rte_recalculate(c, nn, new, src, rud->pool);
   rte_unhide_dummy_routes(nn, &dummy);
-
-  rup_free(rud->pool);
-  rud->pool = NULL;
   return;
 
  drop:
-  rte_free(new);
   new = NULL;
   if (nn = net_find(c->table, n))
     goto recalc;
 
-  rup_free(rud->pool);
-  rud->pool = NULL;
 }
 
 /**
@@ -1667,7 +1597,39 @@ rte_do_update(struct rte_update_data *rud)
 static void
 rte_dispatch_update(struct rte_update_data *rud)
 {
+  /* Get local linpool */
+  ASSERT(rud->pool == NULL);
+  rud->pool = rup_get();
+
+  /* Create local rte copy */
+  rte *e = lp_alloc(rud->pool, sizeof(rte));
+  *e = *rud->rte;
+  rud->rte = e;
+  
+  /* Create local rta copy or raise the usecount */
+  if (rta_is_cached(e->attrs))
+    {
+      rud->old_rta = e->attrs;
+      rta_clone(e->attrs);
+    }
+  else
+    {
+      if (e->attrs->eattrs)
+	ea_normalize(e->attrs->eattrs);
+
+      e->attrs = rta_copy(e->attrs, rud->pool);
+    }
+
+  /* Run the update on local data */
   rte_do_update(rud);
+
+  /* Lower the global rta copy usecount */
+  if (rud->old_rta)
+    rta_free(rud->old_rta);
+
+  /* And return the pool */
+  rup_free(rud->pool);
+  rud->pool = NULL;
 }
 
 void
@@ -1677,7 +1639,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     .channel = c,
     .net = n,
     .rte = new,
-    .src = src
+    .src = src,
   };
 
   rte_dispatch_update(&rud);
@@ -1710,11 +1672,7 @@ rte_modify(rte *old)
   if (new != old)
   {
     if (new)
-    {
-      if (!rta_is_cached(new->attrs))
-	new->attrs = rta_lookup(new->attrs);
-      new->flags = (old->flags & ~REF_MODIFY) | REF_COW;
-    }
+      new->flags = old->flags & ~REF_MODIFY;
 
     rte_recalculate(old->sender, old->net, new, old->attrs->src, pool);
   }
@@ -1738,13 +1696,9 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter)
   int v = p->preexport ? p->preexport(p, &rt, pool) : 0;
   if (v == RIC_PROCESS)
   {
-    rte_make_tmp_attrs(&rt, pool, NULL);
+    rte_make_tmp_attrs(&rt, pool);
     v = (f_run(filter, &rt, pool, FF_SILENT) <= F_ACCEPT);
   }
-
-  /* Discard temporary rte */
-  if (rt != n->routes)
-    rte_free(rt);
 
   rup_free(pool);
 
@@ -2250,7 +2204,7 @@ rt_next_hop_update_net(rtable *tab, net *n)
 	  e->attrs->src->proto->rte_recalculate(tab, n, new, e, NULL);
 
 	if (e != old_best)
-	  rte_free_quick(e);
+	  rte_free(e);
 	else /* Freeing of the old best rte is postponed */
 	  free_old_best = 1;
 
@@ -2292,7 +2246,7 @@ rt_next_hop_update_net(rtable *tab, net *n)
   rte_announce_i(tab, RA_MERGED, n, new, old_best, new, old_best, pool);
 
   if (free_old_best)
-    rte_free_quick(old_best);
+    rte_free(old_best);
 
   rup_free(pool);
   return count;
@@ -2575,15 +2529,18 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
   rte *old, **pos;
   net *net;
 
+  /* The only protocol that announces cached routes directly
+   * is pipe -> and this protocol has no reason to have import table.
+   * So all the routes passed here are local and we can write into them.
+   */
+  ASSERT(!(new->flags & REF_CACHED));
+
   if (new)
   {
     net = net_get(tab, n);
 
     if (!new->pref)
       new->pref = c->preference;
-
-    if (!rta_is_cached(new->attrs))
-      new->attrs = rta_lookup(new->attrs);
   }
   else
   {
@@ -2611,7 +2568,7 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 
       /* Remove the old rte */
       *pos = old->next;
-      rte_free_quick(old);
+      rte_free(old);
       tab->rt_count--;
 
       break;
@@ -2639,8 +2596,7 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
   }
 
   /* Insert the new rte */
-  rte *e = rte_do_cow(new);
-  e->flags |= REF_COW;
+  rte *e = rte_cache(new);
   e->net = net;
   e->sender = c;
   e->lastmod = current_time();
@@ -2652,7 +2608,6 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 drop_update:
   c->stats.imp_updates_received++;
   c->stats.imp_updates_ignored++;
-  rte_free(new);
   return 0;
 
 drop_withdraw:
@@ -2686,7 +2641,7 @@ rt_reload_channel(struct channel *c)
 
     for (rte *e = n->routes; e; e = e->next)
     {
-      rte_update2(c, n->n.addr, rte_do_cow(e), e->attrs->src);
+      rte_update2(c, n->n.addr, e, e->attrs->src);
       max_feed--;
     }
   }
@@ -2718,7 +2673,7 @@ rt_prune_sync(rtable *t, int all)
       if (all || (e->flags & (REF_STALE | REF_DISCARD)))
       {
 	*ee = e->next;
-	rte_free_quick(e);
+	rte_free(e);
 	t->rt_count--;
       }
       else
