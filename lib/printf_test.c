@@ -19,6 +19,14 @@
   } while (0)
 
 static int
+t_router_id(void)
+{
+  char buf[256];
+  BSPRINTF(23, "01:02:03:04:05:06:07:08", buf, "%lR", 0x102030405060708);
+  return 1;
+}
+
+static int
 t_simple(void)
 {
   char buf[256];
@@ -74,6 +82,7 @@ main(int argc, char *argv[])
   bt_init(argc, argv);
 
   bt_test_suite(t_simple, "printf without varargs");
+  bt_test_suite(t_router_id, "print router id");
 
   return bt_exit_value();
 }
