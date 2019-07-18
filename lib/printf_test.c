@@ -56,6 +56,27 @@ t_simple(void)
   BSPRINTF(2, "-1", buf, "%d", -1);
   BSPRINTF(11, "-2147483648", buf, "%d", -2147483648);
 
+  return 1;
+}
+
+static int
+t_router_id(void)
+{
+  char buf[256];
+
+  BSPRINTF(7, "1.2.3.4", buf, "%R", (u32) 0x01020304);
+  BSPRINTF(15, "240.224.208.192", buf, "%R", (u32) 0xF0E0D0C0);
+  BSPRINTF(23, "01:02:03:04:05:06:07:08", buf, "%lR", (u64) 0x0102030405060708);
+  BSPRINTF(23, "f0:e0:d0:c0:b0:a0:90:80", buf, "%lR", (u64) 0xF0E0D0C0B0A09080);
+
+  return 1;
+}
+
+static int
+t_time(void)
+{
+  char buf[256];
+
   BSPRINTF(7, "123.456", buf, "%t", (btime) 123456789);
   BSPRINTF(7, "123.456", buf, "%2t", (btime) 123456789);
   BSPRINTF(8, " 123.456", buf, "%8t", (btime) 123456789);
@@ -74,6 +95,8 @@ main(int argc, char *argv[])
   bt_init(argc, argv);
 
   bt_test_suite(t_simple, "printf without varargs");
+  bt_test_suite(t_router_id, "print router id");
+  bt_test_suite(t_time, "print time");
 
   return bt_exit_value();
 }
