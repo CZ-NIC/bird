@@ -89,6 +89,19 @@ t_time(void)
   return 1;
 }
 
+static int
+t_bstrcmp(void)
+{
+  bt_assert(bstrcmp("aa", "aa") == 0);
+  bt_assert(bstrcmp("aa", "bb") == -1);
+  bt_assert(bstrcmp("bb", "aa") == 1);
+  bt_assert(bstrcmp(NULL, NULL) == 0);
+  bt_assert(bstrcmp(NULL, "bb") == -1);
+  bt_assert(bstrcmp("bb", NULL) == 1);
+
+  return 1;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -97,6 +110,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_simple, "printf without varargs");
   bt_test_suite(t_router_id, "print router id");
   bt_test_suite(t_time, "print time");
+  bt_test_suite(t_bstrcmp, "bstrcmp");
 
   return bt_exit_value();
 }

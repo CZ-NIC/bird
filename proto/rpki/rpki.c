@@ -687,9 +687,9 @@ rpki_reconfigure_cache(struct rpki_proto *p UNUSED, struct rpki_cache *cache, st
   {
     struct rpki_tr_ssh_config *ssh_old = (void *) old->tr_config.spec;
     struct rpki_tr_ssh_config *ssh_new = (void *) new->tr_config.spec;
-    if ((strcmp(ssh_old->bird_private_key, ssh_new->bird_private_key) != 0) ||
-	(strcmp(ssh_old->cache_public_key, ssh_new->cache_public_key) != 0) ||
-	(strcmp(ssh_old->user, ssh_new->user) != 0))
+    if (bstrcmp(ssh_old->bird_private_key, ssh_new->bird_private_key) ||
+	bstrcmp(ssh_old->cache_public_key, ssh_new->cache_public_key) ||
+	bstrcmp(ssh_old->user, ssh_new->user))
     {
       CACHE_TRACE(D_EVENTS, cache, "Settings of SSH transport configuration changed");
       try_fast_reconnect = 1;

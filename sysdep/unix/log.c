@@ -387,8 +387,7 @@ log_switch(int initial, list *logs, char *new_syslog_name)
   current_log_list = logs;
 
 #ifdef HAVE_SYSLOG_H
-  if (current_syslog_name && new_syslog_name &&
-      !strcmp(current_syslog_name, new_syslog_name))
+  if (!bstrcmp(current_syslog_name, new_syslog_name))
     return;
 
   if (current_syslog_name)
