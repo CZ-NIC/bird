@@ -857,7 +857,7 @@ ospf_sh_neigh_info(struct ospf_neighbor *n)
       pos = "Other";
   }
 
-  cli_msg(-1013, "%-1R\t%3u\t%s/%s\t%7t\t%-10s %-1I",
+  cli_msg(-1013, "%-12R\t%3u\t%s/%s\t%6t\t%-10s %I",
 	  n->rid, n->priority, ospf_ns_names[n->state], pos,
 	  tm_remains(n->inactim), ifa->ifname, n->ip);
 }
