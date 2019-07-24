@@ -624,7 +624,7 @@ bfd_request_notify(struct bfd_request *req, u8 state, u8 diag)
 static int
 bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
 {
-  if (p->p.vrf && (p->p.vrf != req->vrf))
+  if (p->p.vrf_set && (p->p.vrf != req->vrf))
     return 0;
 
   struct bfd_session *s = bfd_find_session_by_addr(p, req->addr);

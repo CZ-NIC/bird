@@ -765,6 +765,7 @@ proto_init(struct proto_config *c, node *n)
   p->proto_state = PS_DOWN;
   p->last_state_change = current_time();
   p->vrf = c->vrf;
+  p->vrf_set = c->vrf_set;
   insert_node(&p->n, n);
 
   p->event = ev_new_init(proto_pool, proto_event, p);
@@ -932,7 +933,8 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
   if ((nc->protocol != oc->protocol) ||
       (nc->net_type != oc->net_type) ||
       (nc->disabled != p->disabled) ||
-      (nc->vrf != oc->vrf))
+      (nc->vrf != oc->vrf) ||
+      (nc->vrf_set != oc->vrf_set))
     return 0;
 
   p->name = nc->name;
@@ -1838,8 +1840,8 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
       cli_msg(-1006, "  Message:        %s", p->message);
     if (p->cf->router_id)
       cli_msg(-1006, "  Router ID:      %R", p->cf->router_id);
-    if (p->vrf)
-      cli_msg(-1006, "  VRF:            %s", p->vrf->name);
+    if (p->vrf_set)
+      cli_msg(-1006, "  VRF:            %s", p->vrf ? p->vrf->name : "default");
 
     if (p->proto->show_proto_info)
       p->proto->show_proto_info(p);
