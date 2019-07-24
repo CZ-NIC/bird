@@ -885,7 +885,7 @@ proto_clone_config(struct symbol *sym, struct proto_config *parent)
   cf->parent = parent;
 
   sym->class = cf->class;
-  sym->def = cf;
+  sym->proto = cf;
 }
 
 static void
@@ -894,7 +894,7 @@ proto_undef_clone(struct symbol *sym, struct proto_config *cf)
   rem_node(&cf->n);
 
   sym->class = SYM_VOID;
-  sym->def = NULL;
+  sym->proto = NULL;
 }
 
 /**
@@ -1009,7 +1009,7 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
 	  cfg_mem = new->mem;
 	  conf_this_scope = new->root_scope;
 	  sym = cf_get_symbol(oc->name);
-	  proto_clone_config(sym, parsym->def);
+	  proto_clone_config(sym, parsym->proto);
 	  new_config = NULL;
 	  cfg_mem = NULL;
 	}
@@ -1019,7 +1019,7 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       {
 	/* Found match, let's check if we can smoothly switch to new configuration */
 	/* No need to check description */
-	nc = sym->def;
+	nc = sym->proto;
 	nc->proto = p;
 
 	/* We will try to reconfigure protocol p */
@@ -1968,7 +1968,7 @@ proto_apply_cmd_symbol(struct symbol *s, void (* cmd)(struct proto *, uintptr_t,
     return;
   }
 
-  cmd(((struct proto_config *)s->def)->proto, arg, 0);
+  cmd(s->proto->proto, arg, 0);
   cli_msg(0, "");
 }
 
@@ -2011,7 +2011,7 @@ proto_get_named(struct symbol *sym, struct protocol *pr)
     if (sym->class != SYM_PROTO)
       cf_error("%s: Not a protocol", sym->name);
 
-    p = ((struct proto_config *) sym->def)->proto;
+    p = sym->proto->proto;
     if (!p || p->proto != pr)
       cf_error("%s: Not a %s protocol", sym->name, pr->name);
   }

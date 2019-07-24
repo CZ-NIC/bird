@@ -10,103 +10,56 @@
 #include "nest/bird.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
+#include "filter/f-inst.h"
 #include "lib/idm.h"
 #include "nest/protocol.h"
 #include "nest/route.h"
 
 #define P(a,b) ((a<<8) | b)
 
-struct f_inst *
-f_new_inst(enum f_instruction_code fi_code)
-{
-  struct f_inst * ret;
-  ret = cfg_allocz(sizeof(struct f_inst));
-  ret->fi_code = fi_code;
-  ret->lineno = ifs->lino;
-  return ret;
-}
-
-struct f_inst *
-f_new_inst_da(enum f_instruction_code fi_code, struct f_dynamic_attr da)
-{
-  struct f_inst *ret = f_new_inst(fi_code);
-  ret->aux = (da.f_type << 8) | da.type;
-  ret->a2.i = da.ea_code;
-  return ret;
-}
-
-struct f_inst *
-f_new_inst_sa(enum f_instruction_code fi_code, struct f_static_attr sa)
-{
-  struct f_inst *ret = f_new_inst(fi_code);
-  ret->aux = sa.f_type;
-  ret->a2.i = sa.sa_code;
-  ret->a1.i = sa.readonly;
-  return ret;
-}
-
-/*
- * Generate set_dynamic( operation( get_dynamic(), argument ) )
- */
-struct f_inst *
-f_generate_complex(int operation, int operation_aux, struct f_dynamic_attr da, struct f_inst *argument)
-{
-  struct f_inst *set_dyn = f_new_inst_da(FI_EA_SET, da),
-                *oper = f_new_inst(operation),
-                *get_dyn = f_new_inst_da(FI_EA_GET, da);
-
-  oper->aux = operation_aux;
-  oper->a1.p = get_dyn;
-  oper->a2.p = argument;
-
-  set_dyn->a1.p = oper;
-  return set_dyn;
-}
-
-struct f_inst *
-f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn)
-{
-  struct f_inst_roa_check *ret = cfg_allocz(sizeof(struct f_inst_roa_check));
-  ret->i.fi_code = FI_ROA_CHECK;
-  ret->i.lineno = ifs->lino;
-  ret->i.arg1 = prefix;
-  ret->i.arg2 = asn;
-  /* prefix == NULL <-> asn == NULL */
-
-  if (table->addr_type != NET_ROA4 && table->addr_type != NET_ROA6)
-    cf_error("%s is not a ROA table", table->name);
-  ret->rtc = table;
-
-  return &ret->i;
-}
-
-static const char * const f_instruction_name_str[] = {
-#define F(c,a,b) \
-  [c] = #c,
-FI__LIST
-#undef F
-};
-
 const char *
-f_instruction_name(enum f_instruction_code fi)
-{
-  if (fi < FI__MAX)
-    return f_instruction_name_str[fi];
-  else
-    bug("Got unknown instruction code: %d", fi);
-}
-
-char *
-filter_name(struct filter *filter)
+filter_name(const struct filter *filter)
 {
   if (!filter)
     return "ACCEPT";
   else if (filter == FILTER_REJECT)
     return "REJECT";
-  else if (!filter->name)
+  else if (!filter->sym)
     return "(unnamed)";
   else
-    return filter->name;
+    return filter->sym->name;
+}
+
+struct filter *f_new_where(struct f_inst *where)
+{
+  struct f_inst acc = {
+    .fi_code = FI_DIE,
+    .lineno = ifs->lino,
+    .size = 1,
+    .i_FI_DIE = { .fret = F_ACCEPT, },
+  };
+
+  struct f_inst rej = {
+    .fi_code = FI_DIE,
+    .lineno = ifs->lino,
+    .size = 1,
+    .i_FI_DIE = { .fret = F_REJECT, },
+  };
+
+  struct f_inst i = {
+    .fi_code = FI_CONDITION,
+    .lineno = ifs->lino,
+    .size = 3 + where->size,
+    .i_FI_CONDITION = {
+      .f1 = where,
+      .f2 = &acc,
+      .f3 = &rej,
+    },
+  };
+
+  struct filter *f = cfg_allocz(sizeof(struct filter));
+  f->root = f_linearize(&i);
+  return f;
 }
 
 #define CA_KEY(n)	n->name, n->fda.type

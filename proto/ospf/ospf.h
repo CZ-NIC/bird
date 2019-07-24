@@ -929,7 +929,7 @@ struct ospf_lsreq_header
 #define SH_ROUTER_SELF 0xffffffff
 
 struct lsadb_show_data {
-  struct symbol *name;	/* Protocol to request data from */
+  struct ospf_proto *proto;	/* Protocol to request data from */
   u16 type;		/* LSA Type, 0 -> all */
   u16 scope;		/* Scope, 0 -> all, hack to handle link scope as 1 */
   u32 area;		/* Specified for area scope */

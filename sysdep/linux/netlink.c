@@ -1740,9 +1740,12 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       ea->attrs[0].id = EA_KRT_PREFSRC;
       ea->attrs[0].flags = 0;
       ea->attrs[0].type = EAF_TYPE_IP_ADDRESS;
-      ea->attrs[0].u.ptr = lp_alloc(s->pool, sizeof(struct adata) + sizeof(ps));
-      ea->attrs[0].u.ptr->length = sizeof(ps);
-      memcpy(ea->attrs[0].u.ptr->data, &ps, sizeof(ps));
+
+      struct adata *ad = lp_alloc(s->pool, sizeof(struct adata) + sizeof(ps));
+      ad->length = sizeof(ps);
+      memcpy(ad->data, &ps, sizeof(ps));
+
+      ea->attrs[0].u.ptr = ad;
     }
 
   if (a[RTA_FLOW])

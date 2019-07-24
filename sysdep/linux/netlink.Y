@@ -44,19 +44,21 @@ dynamic_attr: KRT_RTO_MIN	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_
 dynamic_attr: KRT_INITRWND	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_INITRWND); } ;
 dynamic_attr: KRT_QUICKACK	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_QUICKACK); } ;
 
-dynamic_attr: KRT_LOCK_MTU	{ $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_LOCK_MTU); } ;
-dynamic_attr: KRT_LOCK_WINDOW	{ $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_LOCK_WINDOW); } ;
-dynamic_attr: KRT_LOCK_RTT	{ $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_LOCK_RTT); } ;
-dynamic_attr: KRT_LOCK_RTTVAR	{ $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_LOCK_RTTVAR); } ;
-dynamic_attr: KRT_LOCK_SSTRESH	{ $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_LOCK_SSTHRESH); } ;
-dynamic_attr: KRT_LOCK_CWND	{ $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_LOCK_CWND); } ;
-dynamic_attr: KRT_LOCK_ADVMSS	{ $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_LOCK_ADVMSS); } ;
-dynamic_attr: KRT_LOCK_REORDERING { $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_LOCK_REORDERING); } ;
-dynamic_attr: KRT_LOCK_HOPLIMIT { $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_LOCK_HOPLIMIT); } ;
-dynamic_attr: KRT_LOCK_RTO_MIN { $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_LOCK_RTO_MIN); } ;
+/* Bits of EA_KRT_LOCK, based on RTAX_* constants */
 
-dynamic_attr: KRT_FEATURE_ECN	{ $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_FEATURE_ECN); } ;
-dynamic_attr: KRT_FEATURE_ALLFRAG { $$ = f_new_dynamic_attr(EAF_TYPE_BITFIELD, T_BOOL, EA_KRT_FEATURE_ALLFRAG); } ;
+dynamic_attr: KRT_LOCK_MTU	{ $$ = f_new_dynamic_attr_bit(2, T_BOOL, EA_KRT_LOCK); } ;
+dynamic_attr: KRT_LOCK_WINDOW	{ $$ = f_new_dynamic_attr_bit(3, T_BOOL, EA_KRT_LOCK); } ;
+dynamic_attr: KRT_LOCK_RTT	{ $$ = f_new_dynamic_attr_bit(4, T_BOOL, EA_KRT_LOCK); } ;
+dynamic_attr: KRT_LOCK_RTTVAR	{ $$ = f_new_dynamic_attr_bit(5, T_BOOL, EA_KRT_LOCK); } ;
+dynamic_attr: KRT_LOCK_SSTRESH	{ $$ = f_new_dynamic_attr_bit(6, T_BOOL, EA_KRT_LOCK); } ;
+dynamic_attr: KRT_LOCK_CWND	{ $$ = f_new_dynamic_attr_bit(7, T_BOOL, EA_KRT_LOCK); } ;
+dynamic_attr: KRT_LOCK_ADVMSS	{ $$ = f_new_dynamic_attr_bit(8, T_BOOL, EA_KRT_LOCK); } ;
+dynamic_attr: KRT_LOCK_REORDERING { $$ = f_new_dynamic_attr_bit(9, T_BOOL, EA_KRT_LOCK); } ;
+dynamic_attr: KRT_LOCK_HOPLIMIT { $$ = f_new_dynamic_attr_bit(10, T_BOOL, EA_KRT_LOCK); } ;
+dynamic_attr: KRT_LOCK_RTO_MIN { $$ = f_new_dynamic_attr_bit(13, T_BOOL, EA_KRT_LOCK); } ;
+
+dynamic_attr: KRT_FEATURE_ECN	{ $$ = f_new_dynamic_attr_bit(0, T_BOOL, EA_KRT_FEATURES); } ;
+dynamic_attr: KRT_FEATURE_ALLFRAG { $$ = f_new_dynamic_attr(3, T_BOOL, EA_KRT_FEATURES); } ;
 
 
 CF_CODE

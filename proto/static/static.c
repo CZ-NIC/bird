@@ -309,7 +309,7 @@ static inline int
 static_same_rte(struct static_route *or, struct static_route *nr)
 {
   /* Note that i_same() requires arguments in (new, old) order */
-  return static_same_dest(or, nr) && i_same(nr->cmds, or->cmds);
+  return static_same_dest(or, nr) && f_same(nr->cmds, or->cmds);
 }
 
 static void

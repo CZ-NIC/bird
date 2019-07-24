@@ -501,9 +501,9 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip)
   cfg_mem = NULL;
 
   /* Just pass remote_ip to bgp_init() */
-  ((struct bgp_config *) sym->def)->remote_ip = remote_ip;
+  ((struct bgp_config *) sym->proto)->remote_ip = remote_ip;
 
-  return (void *) proto_spawn(sym->def, 0);
+  return (void *) proto_spawn(sym->proto, 0);
 }
 
 void

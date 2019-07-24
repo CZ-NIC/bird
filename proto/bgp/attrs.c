@@ -181,7 +181,7 @@ bgp_encode_u32s(struct bgp_write_state *s UNUSED, eattr *a, byte *buf, uint size
 }
 
 static int
-bgp_put_attr(byte *buf, uint size, uint code, uint flags, byte *data, uint len)
+bgp_put_attr(byte *buf, uint size, uint code, uint flags, const byte *data, uint len)
 {
   if (size < (4+len))
     return -1;
@@ -234,15 +234,15 @@ bgp_format_origin(eattr *a, byte *buf, uint size UNUSED)
 static int
 bgp_encode_as_path(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
 {
-  byte *data = a->u.ptr->data;
+  const byte *data = a->u.ptr->data;
   uint len = a->u.ptr->length;
 
   if (!s->as4_session)
   {
     /* Prepare 16-bit AS_PATH (from 32-bit one) in a temporary buffer */
-    byte *src = data;
-    data = alloca(len);
-    len = as_path_32to16(data, src, len);
+    byte *dst = alloca(len);
+    len = as_path_32to16(dst, data, len);
+    data = dst;
   }
 
   return bgp_put_attr(buf, size, BA_AS_PATH, a->flags, data, len);
@@ -381,15 +381,14 @@ bgp_decode_atomic_aggr(struct bgp_parse_state *s, uint code UNUSED, uint flags, 
 static int
 bgp_encode_aggregator(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
 {
-  byte *data = a->u.ptr->data;
+  const byte *data = a->u.ptr->data;
   uint len = a->u.ptr->length;
 
   if (!s->as4_session)
   {
     /* Prepare 16-bit AGGREGATOR (from 32-bit one) in a temporary buffer */
-    byte *src = data;
-    data = alloca(6);
-    len = aggregator_32to16(data, src);
+    byte *dst = alloca(6);
+    len = aggregator_32to16(dst, data);
   }
 
   return bgp_put_attr(buf, size, BA_AGGREGATOR, a->flags, data, len);
@@ -415,7 +414,7 @@ bgp_decode_aggregator(struct bgp_parse_state *s, uint code UNUSED, uint flags, b
 static void
 bgp_format_aggregator(eattr *a, byte *buf, uint size UNUSED)
 {
-  byte *data = a->u.ptr->data;
+  const byte *data = a->u.ptr->data;
 
   bsprintf(buf, "%I4 AS%u", get_ip4(data+4), get_u32(data+0));
 }
@@ -545,12 +544,13 @@ bgp_decode_mp_unreach_nlri(struct bgp_parse_state *s, uint code UNUSED, uint fla
 static void
 bgp_export_ext_community(struct bgp_export_state *s, eattr *a)
 {
-  a->u.ptr = ec_set_del_nontrans(s->pool, a->u.ptr);
+  struct adata *ad = ec_set_del_nontrans(s->pool, a->u.ptr);
 
-  if (a->u.ptr->length == 0)
+  if (ad->length == 0)
     UNSET(a);
 
-  ec_set_sort_x(a->u.ptr);
+  ec_set_sort_x(ad);
+  a->u.ptr = ad;
 }
 
 static void
@@ -1232,7 +1232,7 @@ bgp_get_bucket(struct bgp_channel *c, ea_list *new)
 
     if (!(a->type & EAF_EMBEDDED))
     {
-      struct adata *oa = a->u.ptr;
+      const struct adata *oa = a->u.ptr;
       struct adata *na = (struct adata *) dest;
       memcpy(na, oa, sizeof(struct adata) + oa->length);
       a->u.ptr = na;
@@ -1404,7 +1404,7 @@ bgp_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
   if (p->cf->interpret_communities &&
       (c = ea_find(e->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY))))
   {
-    struct adata *d = c->u.ptr;
+    const struct adata *d = c->u.ptr;
 
     /* Do not export anywhere */
     if (int_set_contains(d, BGP_COMM_NO_ADVERTISE))
@@ -1426,9 +1426,6 @@ bgp_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
   return 0;
 }
 
-
-static adata null_adata;	/* adata of length 0 */
-
 static ea_list *
 bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *attrs0, struct linpool *pool)
 {
@@ -1437,7 +1434,7 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
   struct bgp_export_state s = { .proto = p, .channel = c, .pool = pool, .src = src, .route = e, .mpls = c->desc->mpls };
   ea_list *attrs = attrs0;
   eattr *a;
-  adata *ad;
+  const adata *ad;
 
   /* ORIGIN attribute - mandatory, attach if missing */
   if (! bgp_find_attr(attrs0, BA_ORIGIN))
@@ -1962,7 +1959,7 @@ struct rte *
 bgp_rte_modify_stale(struct rte *r, struct linpool *pool)
 {
   eattr *a = ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));
-  struct adata *ad = a ? a->u.ptr : NULL;
+  const struct adata *ad = a ? a->u.ptr : NULL;
   uint flags = a ? a->flags : BAF_PARTIAL;
 
   if (ad && int_set_contains(ad, BGP_COMM_NO_LLGR))
@@ -2021,8 +2018,8 @@ bgp_process_as4_attrs(ea_list **attrs, struct linpool *pool)
       return;
 
     /* Merge AS_PATH and AS4_PATH */
-    as_path_cut(p2->u.ptr, p2_len - p4_len);
-    p2->u.ptr = as_path_merge(pool, p2->u.ptr, p4->u.ptr);
+    struct adata *apc = as_path_cut(pool, p2->u.ptr, p2_len - p4_len);
+    p2->u.ptr = as_path_merge(pool, apc, p4->u.ptr);
   }
 }
 

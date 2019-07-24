@@ -1268,10 +1268,10 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
 }
 
 static void
-bgp_encode_mpls_labels(struct bgp_write_state *s UNUSED, adata *mpls, byte **pos, uint *size, byte *pxlen)
+bgp_encode_mpls_labels(struct bgp_write_state *s UNUSED, const adata *mpls, byte **pos, uint *size, byte *pxlen)
 {
-  u32 dummy = 0;
-  u32 *labels = mpls ? (u32 *) mpls->data : &dummy;
+  const u32 dummy = 0;
+  const u32 *labels = mpls ? (const u32 *) mpls->data : &dummy;
   uint lnum = mpls ? (mpls->length / 4) : 1;
 
   for (uint i = 0; i < lnum; i++)

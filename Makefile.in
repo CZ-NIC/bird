@@ -77,6 +77,8 @@ $(daemon): LIBS += $(DAEMON_LIBS)
 # Include directories
 dirs := client conf doc filter lib nest test $(addprefix proto/,$(protocols)) @sysdep_dirs@
 
+# conf/Makefile declarations needed for all other modules
+conf-lex-targets := $(addprefix $(objdir)/conf/,cf-lex.o)
 conf-y-targets := $(addprefix $(objdir)/conf/,cf-parse.y keywords.h commands.h)
 cf-local = $(conf-y-targets): $(s)config.Y
 
@@ -100,6 +102,7 @@ endef
 
 clean = $(eval $(call clean_in,$(1)))
 
+# Include main Makefiles of the directories
 include $(addsuffix /Makefile,$(addprefix $(srcdir)/,$(dirs)))
 
 # Generic rules

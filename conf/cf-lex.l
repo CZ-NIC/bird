@@ -45,6 +45,7 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "filter/filter.h"
+#include "filter/f-inst.h"
 #include "conf/conf.h"
 #include "conf/cf-parse.tab.h"
 #include "lib/string.h"
@@ -64,7 +65,7 @@ struct keyword {
 #endif
 
 
-static uint cf_hash(byte *c);
+static uint cf_hash(const byte *c);
 
 #define KW_KEY(n)		n->name
 #define KW_NEXT(n)		n->next
@@ -95,6 +96,15 @@ int (*cf_read_hook)(byte *buf, unsigned int max, int fd);
 struct include_file_stack *ifs;
 static struct include_file_stack *ifs_head;
 
+#define QUOTED_BUFFER_SIZE  4096
+static BUFFER_(char) quoted_buffer;
+static char quoted_buffer_data[QUOTED_BUFFER_SIZE];
+static inline void quoted_buffer_init(void) {
+  quoted_buffer.used = 0;
+  quoted_buffer.size = QUOTED_BUFFER_SIZE;
+  quoted_buffer.data = quoted_buffer_data;
+}
+
 #define MAX_INCLUDE_DEPTH 8
 
 #define YY_INPUT(buf,result,max) result = cf_read_hook(buf, max, ifs->fd);
@@ -105,6 +115,8 @@ static struct include_file_stack *ifs_head;
 static void cf_include(char *arg, int alen);
 static int check_eof(void);
 
+static enum yytokentype cf_lex_symbol(const char *data);
+
 %}
 
 %option noyywrap
@@ -112,24 +124,26 @@ static int check_eof(void);
 %option nounput
 %option noreject
 
-%x COMMENT CCOMM CLI
+%x COMMENT CCOMM CLI QUOTED APOSTROPHED INCLUDE
 
 ALPHA [a-zA-Z_]
 DIGIT [0-9]
 XIGIT [0-9a-fA-F]
 ALNUM [a-zA-Z_0-9]
 WHITE [ \t]
-include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 
 %%
-{include} {
-  char *start, *end;
-
+^{WHITE}*include{WHITE}*\" {
   if (!ifs->depth)
     cf_error("Include not allowed in CLI");
 
-  start = strchr(yytext, '"');
-  start++;
+  BEGIN(INCLUDE);
+}
+
+<INCLUDE>[^"\n]+["]{WHITE}*; {
+  char *start, *end;
+
+  start = yytext;
 
   end = strchr(start, '"');
   *end = 0;
@@ -138,7 +152,15 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
     cf_error("Include with empty argument");
 
   cf_include(start, end-start);
+
+  BEGIN(INITIAL);
 }
+
+<INCLUDE>["]	        cf_error("Include with empty argument");
+<INCLUDE>.		cf_error("Unterminated include");
+<INCLUDE>\n		cf_error("Unterminated include");
+<INCLUDE><<EOF>>	cf_error("Unterminated include");
+
 
 {DIGIT}+:{DIGIT}+ {
   uint len1 UNUSED, len2;
@@ -146,7 +168,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   char *e;
 
   errno = 0;
-  l = strtoul(yytext, &e, 10);
+  l = bstrtoul10(yytext, &e);
   if (e && (*e != ':') || (errno == ERANGE) || (l >> 32))
     cf_error("ASN out of range");
 
@@ -164,7 +186,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   }
 
   errno = 0;
-  l = strtoul(e+1, &e, 10);
+  l = bstrtoul10(e+1, &e);
   if (e && *e || (errno == ERANGE) || (l >> len2))
     cf_error("Number out of range");
   cf_lval.i64 |= l;
@@ -191,13 +213,13 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   }
 
   errno = 0;
-  l = strtoul(yytext+2, &e, 10);
+  l = bstrtoul10(yytext+2, &e);
   if (e && (*e != ':') || (errno == ERANGE) || (l >> len1))
     cf_error("ASN out of range");
   cf_lval.i64 |= ((u64) l) << len2;
 
   errno = 0;
-  l = strtoul(e+1, &e, 10);
+  l = bstrtoul10(e+1, &e);
   if (e && *e || (errno == ERANGE) || (l >> len2))
     cf_error("Number out of range");
   cf_lval.i64 |= l;
@@ -219,7 +241,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   cf_lval.i64 |= ((u64) ip4_to_u32(ip4)) << 16;
 
   errno = 0;
-  l = strtoul(e, &e, 10);
+  l = bstrtoul10(e, &e);
   if (e && *e || (errno == ERANGE) || (l >> 16))
     cf_error("Number out of range");
   cf_lval.i64 |= l;
@@ -243,7 +265,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   char *e;
   unsigned long int l;
   errno = 0;
-  l = strtoul(yytext+2, &e, 16);
+  l = bstrtoul16(yytext+2, &e);
   if (e && *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
     cf_error("Number out of range");
   cf_lval.i = l;
@@ -254,7 +276,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   char *e;
   unsigned long int l;
   errno = 0;
-  l = strtoul(yytext, &e, 10);
+  l = bstrtoul10(yytext, &e);
   if (e && *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
     cf_error("Number out of range");
   cf_lval.i = l;
@@ -266,26 +288,23 @@ else: {
   return ELSECOL;
 }
 
-({ALPHA}{ALNUM}*|[']({ALNUM}|[-]|[\.]|[:])*[']) {
-  if(*yytext == '\'') {
-    yytext[yyleng-1] = 0;
-    yytext++;
-  }
+['] {
+  BEGIN(APOSTROPHED);
+  quoted_buffer_init();
+}
 
-  struct keyword *k = HASH_FIND(kw_hash, KW, yytext);
-  if (k)
-  {
-    if (k->value > 0)
-      return k->value;
-    else
-    {
-      cf_lval.i = -k->value;
-      return ENUM;
-    }
-  }
+<APOSTROPHED>{ALNUM}|[-]|[.:]	BUFFER_PUSH(quoted_buffer) = yytext[0];
+<APOSTROPHED>\n			cf_error("Unterminated symbol");
+<APOSTROPHED><<EOF>>		cf_error("Unterminated symbol");
+<APOSTROPHED>['] {
+  BEGIN(INITIAL);
+  BUFFER_PUSH(quoted_buffer) = 0;
+  return cf_lex_symbol(quoted_buffer_data);
+}
+<APOSTROPHED>.			cf_error("Invalid character in apostrophed symbol");
 
-  cf_lval.s = cf_get_symbol(yytext);
-  return SYM;
+({ALPHA}{ALNUM}*) {
+  return cf_lex_symbol(yytext);
 }
 
 <CLI>(.|\n) {
@@ -301,14 +320,21 @@ else: {
   return yytext[0];
 }
 
-["][^"\n]*["] {
-  yytext[yyleng-1] = 0;
-  cf_lval.t = cfg_strdup(yytext+1);
-  yytext[yyleng-1] = '"';
+["] {
+  BEGIN(QUOTED);
+  quoted_buffer_init();
+}
+
+<QUOTED>\n	cf_error("Unterminated string");
+<QUOTED><<EOF>> cf_error("Unterminated string");
+<QUOTED>["]	{
+  BEGIN(INITIAL);
+  BUFFER_PUSH(quoted_buffer) = 0;
+  cf_lval.t = cfg_strdup(quoted_buffer_data);
   return TEXT;
 }
 
-["][^"\n]*\n	cf_error("Unterminated string");
+<QUOTED>.	BUFFER_PUSH(quoted_buffer) = yytext[0];
 
 <INITIAL,COMMENT><<EOF>>	{ if (check_eof()) return END; }
 
@@ -349,7 +375,7 @@ else: {
 %%
 
 static uint
-cf_hash(byte *c)
+cf_hash(const byte *c)
 {
   uint h = 13 << 24;
 
@@ -357,7 +383,6 @@ cf_hash(byte *c)
     h = h + (h >> 2) + (h >> 5) + ((uint) *c++ << 24);
   return h;
 }
-
 
 /*
  * IFS stack - it contains structures needed for recursive processing
@@ -519,7 +544,7 @@ check_eof(void)
 }
 
 static struct symbol *
-cf_new_symbol(byte *c)
+cf_new_symbol(const byte *c)
 {
   struct symbol *s;
 
@@ -527,17 +552,16 @@ cf_new_symbol(byte *c)
   if (l > SYM_MAX_LEN)
     cf_error("Symbol too long");
 
-  s = cfg_alloc(sizeof(struct symbol) + l);
-  s->scope = conf_this_scope;
-  s->class = SYM_VOID;
-  s->def = NULL;
-  s->aux = 0;
+  s = cfg_allocz(sizeof(struct symbol) + l + 1);
+  *s = (struct symbol) { .scope = conf_this_scope, .class = SYM_VOID, };
   strcpy(s->name, c);
 
   if (!new_config->sym_hash.data)
     HASH_INIT(new_config->sym_hash, new_config->pool, SYM_ORDER);
 
   HASH_INSERT2(new_config->sym_hash, SYM, new_config->pool, s);
+
+  add_tail(&(new_config->symbols), &(s->n));
 
   return s;
 }
@@ -554,7 +578,7 @@ cf_new_symbol(byte *c)
  * signify no match.
  */
 struct symbol *
-cf_find_symbol(struct config *cfg, byte *c)
+cf_find_symbol(const struct config *cfg, const byte *c)
 {
   struct symbol *s;
 
@@ -562,6 +586,7 @@ cf_find_symbol(struct config *cfg, byte *c)
       (s = HASH_FIND(cfg->sym_hash, SYM, c, 1)))
     return s;
 
+  /* In CLI command parsing, fallback points to the current config, otherwise it is NULL. */
   if (cfg->fallback &&
       cfg->fallback->sym_hash.data &&
       (s = HASH_FIND(cfg->fallback->sym_hash, SYM, c, 1)))
@@ -580,9 +605,31 @@ cf_find_symbol(struct config *cfg, byte *c)
  * existing symbol is found.
  */
 struct symbol *
-cf_get_symbol(byte *c)
+cf_get_symbol(const byte *c)
 {
   return cf_find_symbol(new_config, c) ?: cf_new_symbol(c);
+}
+
+/**
+ * cf_localize_symbol - get the local instance of given symbol
+ * @sym: the symbol to localize
+ *
+ * This functions finds the symbol that is local to current scope
+ * for purposes of cf_define_symbol().
+ */
+struct symbol *
+cf_localize_symbol(struct symbol *sym)
+{
+  /* If the symbol type is void, it has been recently allocated just in this scope. */
+  if (!sym->class)
+    return sym;
+  
+  /* If the scope is the current, it is already defined in this scope. */
+  if (sym->scope == conf_this_scope)
+    cf_error("Symbol already defined");
+
+  /* Not allocated here yet, doing it now. */
+  return cf_new_symbol(sym->name);
 }
 
 struct symbol *
@@ -604,33 +651,32 @@ cf_default_name(char *template, int *counter)
   cf_error("Unable to generate default name");
 }
 
-/**
- * cf_define_symbol - define meaning of a symbol
- * @sym: symbol to be defined
- * @type: symbol class to assign
- * @def: class dependent data
- *
- * Defines new meaning of a symbol. If the symbol is an undefined
- * one (%SYM_VOID), it's just re-defined to the new type. If it's defined
- * in different scope, a new symbol in current scope is created and the
- * meaning is assigned to it. If it's already defined in the current scope,
- * an error is reported via cf_error().
- *
- * Result: Pointer to the newly defined symbol. If we are in the top-level
- * scope, it's the same @sym as passed to the function.
- */
-struct symbol *
-cf_define_symbol(struct symbol *sym, int type, void *def)
+static enum yytokentype
+cf_lex_symbol(const char *data)
 {
-  if (sym->class)
+  /* Have we defined such a symbol? */
+  struct symbol *sym = cf_get_symbol(data);
+  cf_lval.s = sym;
+
+  if (sym->class != SYM_VOID)
+    return CF_SYM_KNOWN;
+
+  /* Is it a keyword? */
+  struct keyword *k = HASH_FIND(kw_hash, KW, data);
+  if (k)
+  {
+    if (k->value > 0)
+      return k->value;
+    else
     {
-      if (sym->scope == conf_this_scope)
-	cf_error("Symbol already defined");
-      sym = cf_new_symbol(sym->name);
+      cf_lval.i = -k->value;
+      return ENUM;
     }
-  sym->class = type;
-  sym->def = def;
-  return sym;
+  }
+
+  /* OK, undefined symbol */
+  cf_lval.s = sym;
+  return CF_SYM_UNDEFINED;
 }
 
 static void
@@ -697,6 +743,7 @@ cf_push_scope(struct symbol *sym)
   conf_this_scope = s;
   s->active = 1;
   s->name = sym;
+  s->slots = 0;
 }
 
 /**
@@ -711,6 +758,7 @@ cf_pop_scope(void)
 {
   conf_this_scope->active = 0;
   conf_this_scope = conf_this_scope->next;
+
   ASSERT(conf_this_scope);
 }
 
@@ -724,9 +772,6 @@ cf_pop_scope(void)
 char *
 cf_symbol_class_name(struct symbol *sym)
 {
-  if (cf_symbol_is_constant(sym))
-    return "constant";
-
   switch (sym->class)
     {
     case SYM_VOID:
@@ -741,6 +786,12 @@ cf_symbol_class_name(struct symbol *sym)
       return "filter";
     case SYM_TABLE:
       return "routing table";
+    case SYM_ATTRIBUTE:
+      return "custom attribute";
+    case SYM_CONSTANT_RANGE:
+      return "constant";
+    case SYM_VARIABLE_RANGE:
+      return "variable";
     default:
       return "unknown type";
     }

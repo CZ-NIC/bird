@@ -18,6 +18,12 @@ AC_ARG_ENABLE([debug],
   [enable_debug=no]
 )
 
+AC_ARG_ENABLE([debug-generated],
+  [AS_HELP_STRING([--enable-debug-generated], [enable this to abstain from generating #line @<:@no@:>@])],
+  [],
+  [enable_debug_generated=no]
+)
+
 AC_ARG_ENABLE([memcheck],
   [AS_HELP_STRING([--enable-memcheck], [check memory allocations when debugging @<:@yes@:>@])],
   [],
@@ -109,6 +115,11 @@ if test -z "$GCC" ; then
   AC_MSG_ERROR([This program requires the GNU C Compiler.])
 fi
 
+BIRD_CHECK_THREAD_LOCAL
+if test "$bird_cv_thread_local" = yes ; then
+  AC_DEFINE([HAVE_THREAD_LOCAL], [1], [Define to 1 if _Thread_local is available])
+fi
+
 if test "$enable_pthreads" != no ; then
   BIRD_CHECK_PTHREADS
 
@@ -141,6 +152,14 @@ fi
 AC_MSG_CHECKING([CFLAGS])
 AC_MSG_RESULT([$CFLAGS])
 
+if test "$enable_debug" = no; then
+  BIRD_CHECK_LTO
+fi
+
+if test "$bird_cv_c_lto" = yes; then
+  CFLAGS="$CFLAGS -flto"
+  LDFLAGS="$LDFLAGS -flto"
+fi
 
 AC_PROG_CPP
 AC_PROG_INSTALL
@@ -156,7 +175,7 @@ test -z "$M4"	 && AC_MSG_ERROR([M4 is missing.])
 AC_MSG_CHECKING([bison version])
 BIRD_CHECK_BISON_VERSION(BISON_VERSION)
 AC_MSG_RESULT([$BISON_VERSION])
-if test "$bird_bison_synclines" = yes; then
+if test "$bird_bison_synclines" = yes && test "$enable_debug_generated" = no; then
   M4FLAGS="$M4FLAGS -s"
 fi
 
@@ -364,6 +383,9 @@ if test "$enable_debug" = yes ; then
       AC_CHECK_LIB([efence], [malloc])
     fi
   fi
+else
+  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_implicit_fallthrough], [-Wno-implicit-fallthrough])
+  BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_implicit_fallthrough], [-Wno-implicit-fallthrough])
 fi
 
 CLIENT=birdcl

@@ -90,6 +90,8 @@ struct perf_random_routes {
   struct rta a;
 };
 
+static const uint perf_random_routes_size = sizeof(net_addr) + sizeof(rte *) + RTA_MAX_SIZE;
+
 static inline s64 timediff(struct timespec *begin, struct timespec *end)
 { return (end->tv_sec - begin->tv_sec) * (s64) 1000000000 + end->tv_nsec - begin->tv_nsec; }
 
@@ -124,7 +126,7 @@ perf_loop(void *data)
   struct perf_proto *p = data;
 
   const uint N = 1U << p->exp;
-  const uint offset = sizeof(net_addr) + RTA_MAX_SIZE;
+  const uint offset = perf_random_routes_size;
 
   if (!p->run) {
     ASSERT(p->data == NULL);

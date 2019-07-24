@@ -95,18 +95,16 @@ cmd_show_memory(void)
 }
 
 void
-cmd_eval(struct f_inst *expr)
+cmd_eval(const struct f_line *expr)
 {
-  struct f_val v = f_eval(expr, this_cli->parser_pool);
+  buffer buf;
+  LOG_BUFFER_INIT(buf);
 
-  if (v.type == T_RETURN)
+  if (f_eval_buf(expr, this_cli->parser_pool, &buf) > F_RETURN)
     {
       cli_msg(8008, "runtime error");
       return;
     }
 
-  buffer buf;
-  LOG_BUFFER_INIT(buf);
-  val_format(v, &buf);
   cli_msg(23, "%s", buf.start);
 }

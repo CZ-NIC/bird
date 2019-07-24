@@ -58,6 +58,8 @@
 
 #include <stddef.h>
 
+const adata null_adata;		/* adata of length 0 */
+
 const char * const rta_src_names[RTS_MAX] = {
   [RTS_DUMMY]		= "",
   [RTS_STATIC]		= "static",
@@ -777,7 +779,7 @@ ea_free(ea_list *o)
 	{
 	  eattr *a = &o->attrs[i];
 	  if (!(a->type & EAF_EMBEDDED))
-	    mb_free(a->u.ptr);
+	    mb_free((void *) a->u.ptr);
 	}
       mb_free(o);
     }
@@ -822,7 +824,7 @@ ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, 
 }
 
 static inline void
-opaque_format(struct adata *ad, byte *buf, uint size)
+opaque_format(const struct adata *ad, byte *buf, uint size)
 {
   byte *bound = buf + size - 10;
   uint i;
@@ -845,7 +847,7 @@ opaque_format(struct adata *ad, byte *buf, uint size)
 }
 
 static inline void
-ea_show_int_set(struct cli *c, struct adata *ad, int way, byte *pos, byte *buf, byte *end)
+ea_show_int_set(struct cli *c, const struct adata *ad, int way, byte *pos, byte *buf, byte *end)
 {
   int i = int_set_format(ad, way, 0, pos, end - pos);
   cli_printf(c, -1012, "\t%s", buf);
@@ -857,7 +859,7 @@ ea_show_int_set(struct cli *c, struct adata *ad, int way, byte *pos, byte *buf, 
 }
 
 static inline void
-ea_show_ec_set(struct cli *c, struct adata *ad, byte *pos, byte *buf, byte *end)
+ea_show_ec_set(struct cli *c, const struct adata *ad, byte *pos, byte *buf, byte *end)
 {
   int i = ec_set_format(ad, 0, pos, end - pos);
   cli_printf(c, -1012, "\t%s", buf);
@@ -869,7 +871,7 @@ ea_show_ec_set(struct cli *c, struct adata *ad, byte *pos, byte *buf, byte *end)
 }
 
 static inline void
-ea_show_lc_set(struct cli *c, struct adata *ad, byte *pos, byte *buf, byte *end)
+ea_show_lc_set(struct cli *c, const struct adata *ad, byte *pos, byte *buf, byte *end)
 {
   int i = lc_set_format(ad, 0, pos, end - pos);
   cli_printf(c, -1012, "\t%s", buf);
@@ -896,7 +898,7 @@ ea_show(struct cli *c, eattr *e)
 {
   struct protocol *p;
   int status = GA_UNKNOWN;
-  struct adata *ad = (e->type & EAF_EMBEDDED) ? NULL : e->u.ptr;
+  const struct adata *ad = (e->type & EAF_EMBEDDED) ? NULL : e->u.ptr;
   byte buf[CLI_MSG_SIZE];
   byte *pos = buf, *end = buf + sizeof(buf);
 
@@ -1035,7 +1037,7 @@ ea_hash(ea_list *e)
 	    h ^= a->u.data;
 	  else
 	    {
-	      struct adata *d = a->u.ptr;
+	      const struct adata *d = a->u.ptr;
 	      h ^= mem_hash(d->data, d->length);
 	    }
 	  h *= mul;

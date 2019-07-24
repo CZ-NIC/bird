@@ -14,7 +14,7 @@ CF_DEFINES
 
 #define STATIC_CFG ((struct static_config *) this_proto)
 static struct static_route *this_srt, *this_snh;
-static struct f_inst **this_srt_last_cmd;
+static struct f_inst *this_srt_cmds, *this_srt_last_cmd;
 
 static struct static_route *
 static_nexthop_new(void)
@@ -39,6 +39,8 @@ static_route_finish(void)
 {
   if (net_type_match(this_srt->net, NB_DEST) == !this_srt->dest)
     cf_error("Unexpected or missing nexthop/type");
+
+  this_srt->cmds = f_linearize(this_srt_cmds);
 }
 
 CF_DECLS
@@ -108,7 +110,8 @@ stat_route0: ROUTE net_any {
      this_srt = cfg_allocz(sizeof(struct static_route));
      add_tail(&STATIC_CFG->routes, &this_srt->n);
      this_srt->net = $2;
-     this_srt_last_cmd = &(this_srt->cmds);
+     this_srt_cmds = NULL;
+     this_srt_last_cmd = NULL;
      this_srt->mp_next = NULL;
      this_snh = NULL;
   }
@@ -134,7 +137,13 @@ stat_route:
  ;
 
 stat_route_item:
-   cmd { *this_srt_last_cmd = $1; this_srt_last_cmd = &($1->next); }
+   cmd {
+     if (this_srt_last_cmd)
+       this_srt_last_cmd->next = $1;
+     else
+       this_srt_cmds = $1;
+     this_srt_last_cmd = $1;
+   }
  ;
 
 stat_route_opts:
@@ -148,7 +157,7 @@ stat_route_opt_list:
  ;
 
 
-CF_CLI(SHOW STATIC, optsym, [<name>], [[Show details of static protocol]])
+CF_CLI(SHOW STATIC, optproto, [<name>], [[Show details of static protocol]])
 { static_show(proto_get_named($3, &proto_static)); } ;
 
 CF_CODE

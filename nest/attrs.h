@@ -31,15 +31,15 @@
 struct f_tree;
 
 int as_path_valid(byte *data, uint len, int bs, int confed, char *err, uint elen);
-int as_path_16to32(byte *dst, byte *src, uint len);
-int as_path_32to16(byte *dst, byte *src, uint len);
+int as_path_16to32(byte *dst, const byte *src, uint len);
+int as_path_32to16(byte *dst, const byte *src, uint len);
 int as_path_contains_as4(const struct adata *path);
 int as_path_contains_confed(const struct adata *path);
 struct adata *as_path_strip_confed(struct linpool *pool, const struct adata *op);
 struct adata *as_path_prepend2(struct linpool *pool, const struct adata *op, int seq, u32 as);
 struct adata *as_path_to_old(struct linpool *pool, const struct adata *path);
-void as_path_cut(struct adata *path, uint num);
-struct adata *as_path_merge(struct linpool *pool, struct adata *p1, struct adata *p2);
+struct adata *as_path_cut(struct linpool *pool, const struct adata *path, uint num);
+const struct adata *as_path_merge(struct linpool *pool, const struct adata *p1, const struct adata *p2);
 void as_path_format(const struct adata *path, byte *buf, uint size);
 int as_path_getlen(const struct adata *path);
 int as_path_getlen_int(const struct adata *path, int bs);
@@ -48,8 +48,8 @@ int as_path_get_first_regular(const struct adata *path, u32 *last_as);
 int as_path_get_last(const struct adata *path, u32 *last_as);
 u32 as_path_get_last_nonaggregated(const struct adata *path);
 int as_path_contains(const struct adata *path, u32 as, int min);
-int as_path_match_set(const struct adata *path, struct f_tree *set);
-struct adata *as_path_filter(struct linpool *pool, struct adata *path, struct f_tree *set, u32 key, int pos);
+int as_path_match_set(const struct adata *path, const struct f_tree *set);
+const struct adata *as_path_filter(struct linpool *pool, const struct adata *path, const struct f_tree *set, u32 key, int pos);
 
 static inline struct adata *as_path_prepend(struct linpool *pool, const struct adata *path, u32 as)
 { return as_path_prepend2(pool, path, AS_PATH_SEQUENCE, as); }
@@ -61,20 +61,30 @@ static inline struct adata *as_path_prepend(struct linpool *pool, const struct a
 #define PM_ASN_EXPR	3
 #define PM_ASN_RANGE	4
 
-struct f_path_mask {
-  struct f_path_mask *next;
+struct f_path_mask_item {
+  union {
+    u32 asn; /* PM_ASN */
+    struct f_line *expr; /* PM_ASN_EXPR */
+    struct { /* PM_ASN_RANGE */
+      u32 from;
+      u32 to;
+    };
+  }; 
   int kind;
-  uintptr_t val;
-  uintptr_t val2;
 };
 
-int as_path_match(const struct adata *path, struct f_path_mask *mask);
+struct f_path_mask {
+  uint len;
+  struct f_path_mask_item item[0];
+};
+
+int as_path_match(const struct adata *path, const struct f_path_mask *mask);
 
 
 /* Counterparts to appropriate as_path_* functions */
 
 static inline int
-aggregator_16to32(byte *dst, byte *src)
+aggregator_16to32(byte *dst, const byte *src)
 {
   put_u32(dst, get_u16(src));
   memcpy(dst+4, src+2, 4);
@@ -82,7 +92,7 @@ aggregator_16to32(byte *dst, byte *src)
 }
 
 static inline int
-aggregator_32to16(byte *dst, byte *src)
+aggregator_32to16(byte *dst, const byte *src)
 {
   put_u16(dst, get_u32(src));
   memcpy(dst+2, src+4, 4);
@@ -90,13 +100,13 @@ aggregator_32to16(byte *dst, byte *src)
 }
 
 static inline int
-aggregator_contains_as4(struct adata *a)
+aggregator_contains_as4(const struct adata *a)
 {
   return get_u32(a->data) > 0xFFFF;
 }
 
 static inline struct adata *
-aggregator_to_old(struct linpool *pool, struct adata *a)
+aggregator_to_old(struct linpool *pool, const struct adata *a)
 {
   struct adata *d = lp_alloc_adata(pool, 8);
   put_u32(d->data, 0xFFFF);
@@ -109,26 +119,35 @@ aggregator_to_old(struct linpool *pool, struct adata *a)
 
 
 /* Extended Community subtypes (kinds) */
-#define EC_RT 0x0002
-#define EC_RO 0x0003
+enum ec_subtype {
+  EC_RT = 0x0002,
+  EC_RO = 0x0003,
+  EC_GENERIC = 0xFFFF,
+};
 
-#define EC_GENERIC 0xFFFF
+static inline const char *ec_subtype_str(const enum ec_subtype ecs) {
+  switch (ecs) {
+    case EC_RT: return "rt";
+    case EC_RO: return "ro";
+    default: return NULL;
+  }
+}
 
 /* Transitive bit (for first u32 half of EC) */
 #define EC_TBIT 0x40000000
 
 #define ECOMM_LENGTH 8
 
-static inline int int_set_get_size(struct adata *list)
+static inline int int_set_get_size(const struct adata *list)
 { return list->length / 4; }
 
-static inline int ec_set_get_size(struct adata *list)
+static inline int ec_set_get_size(const struct adata *list)
 { return list->length / 8; }
 
-static inline int lc_set_get_size(struct adata *list)
+static inline int lc_set_get_size(const struct adata *list)
 { return list->length / 12; }
 
-static inline u32 *int_set_get_data(struct adata *list)
+static inline u32 *int_set_get_data(const struct adata *list)
 { return (u32 *) list->data; }
 
 static inline u32 ec_hi(u64 ec) { return ec >> 32; }
@@ -137,16 +156,16 @@ static inline u64 ec_get(const u32 *l, int i)
 { return (((u64) l[i]) << 32) | l[i+1]; }
 
 /* RFC 4360 3.1.  Two-Octet AS Specific Extended Community */
-static inline u64 ec_as2(u64 kind, u64 key, u64 val)
-{ return ((kind | 0x0000) << 48) | (key << 32) | val; }
+static inline u64 ec_as2(enum ec_subtype kind, u64 key, u64 val)
+{ return (((u64) kind | 0x0000) << 48) | (key << 32) | val; }
 
 /* RFC 5668  4-Octet AS Specific BGP Extended Community */
-static inline u64 ec_as4(u64 kind, u64 key, u64 val)
-{ return ((kind | 0x0200) << 48) | (key << 16) | val; }
+static inline u64 ec_as4(enum ec_subtype kind, u64 key, u64 val)
+{ return (((u64) kind | 0x0200) << 48) | (key << 16) | val; }
 
 /* RFC 4360 3.2.  IPv4 Address Specific Extended Community */
-static inline u64 ec_ip4(u64 kind, u64 key, u64 val)
-{ return ((kind | 0x0100) << 48) | (key << 16) | val; }
+static inline u64 ec_ip4(enum ec_subtype kind, u64 key, u64 val)
+{ return (((u64) kind | 0x0100) << 48) | (key << 16) | val; }
 
 static inline u64 ec_generic(u64 key, u64 val)
 { return (key << 32) | val; }
@@ -173,29 +192,29 @@ static inline u32 *lc_copy(u32 *dst, const u32 *src)
 { memcpy(dst, src, LCOMM_LENGTH); return dst + 3; }
 
 
-int int_set_format(struct adata *set, int way, int from, byte *buf, uint size);
+int int_set_format(const struct adata *set, int way, int from, byte *buf, uint size);
 int ec_format(byte *buf, u64 ec);
-int ec_set_format(struct adata *set, int from, byte *buf, uint size);
+int ec_set_format(const struct adata *set, int from, byte *buf, uint size);
 int lc_format(byte *buf, lcomm lc);
-int lc_set_format(struct adata *set, int from, byte *buf, uint size);
-int int_set_contains(struct adata *list, u32 val);
-int ec_set_contains(struct adata *list, u64 val);
-int lc_set_contains(struct adata *list, lcomm val);
-struct adata *int_set_prepend(struct linpool *pool, struct adata *list, u32 val);
-struct adata *int_set_add(struct linpool *pool, struct adata *list, u32 val);
-struct adata *ec_set_add(struct linpool *pool, struct adata *list, u64 val);
-struct adata *lc_set_add(struct linpool *pool, struct adata *list, lcomm val);
-struct adata *int_set_del(struct linpool *pool, struct adata *list, u32 val);
-struct adata *ec_set_del(struct linpool *pool, struct adata *list, u64 val);
-struct adata *lc_set_del(struct linpool *pool, struct adata *list, lcomm val);
-struct adata *int_set_union(struct linpool *pool, struct adata *l1, struct adata *l2);
-struct adata *ec_set_union(struct linpool *pool, struct adata *l1, struct adata *l2);
-struct adata *lc_set_union(struct linpool *pool, struct adata *l1, struct adata *l2);
+int lc_set_format(const struct adata *set, int from, byte *buf, uint size);
+int int_set_contains(const struct adata *list, u32 val);
+int ec_set_contains(const struct adata *list, u64 val);
+int lc_set_contains(const struct adata *list, lcomm val);
+const struct adata *int_set_prepend(struct linpool *pool, const struct adata *list, u32 val);
+const struct adata *int_set_add(struct linpool *pool, const struct adata *list, u32 val);
+const struct adata *ec_set_add(struct linpool *pool, const struct adata *list, u64 val);
+const struct adata *lc_set_add(struct linpool *pool, const struct adata *list, lcomm val);
+const struct adata *int_set_del(struct linpool *pool, const struct adata *list, u32 val);
+const struct adata *ec_set_del(struct linpool *pool, const struct adata *list, u64 val);
+const struct adata *lc_set_del(struct linpool *pool, const struct adata *list, lcomm val);
+const struct adata *int_set_union(struct linpool *pool, const struct adata *l1, const struct adata *l2);
+const struct adata *ec_set_union(struct linpool *pool, const struct adata *l1, const struct adata *l2);
+const struct adata *lc_set_union(struct linpool *pool, const struct adata *l1, const struct adata *l2);
 
-struct adata *ec_set_del_nontrans(struct linpool *pool, struct adata *set);
-struct adata *int_set_sort(struct linpool *pool, struct adata *src);
-struct adata *ec_set_sort(struct linpool *pool, struct adata *src);
-struct adata *lc_set_sort(struct linpool *pool, struct adata *src);
+struct adata *ec_set_del_nontrans(struct linpool *pool, const struct adata *set);
+struct adata *int_set_sort(struct linpool *pool, const struct adata *src);
+struct adata *ec_set_sort(struct linpool *pool, const struct adata *src);
+struct adata *lc_set_sort(struct linpool *pool, const struct adata *src);
 
 void ec_set_sort_x(struct adata *set); /* Sort in place */
 

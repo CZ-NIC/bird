@@ -13,7 +13,7 @@
 #include "lib/resource.h"
 #include "lib/unaligned.h"
 #include "lib/string.h"
-#include "filter/filter.h"
+#include "filter/data.h"
 
 // static inline void put_as(byte *data, u32 as) { put_u32(data, as); }
 // static inline u32 get_as(byte *data) { return get_u32(data); }
@@ -77,10 +77,10 @@ bad:
 }
 
 int
-as_path_16to32(byte *dst, byte *src, uint len)
+as_path_16to32(byte *dst, const byte *src, uint len)
 {
   byte *dst0 = dst;
-  byte *end = src + len;
+  const byte *end = src + len;
   uint i, n;
 
   while (src < end)
@@ -101,10 +101,10 @@ as_path_16to32(byte *dst, byte *src, uint len)
 }
 
 int
-as_path_32to16(byte *dst, byte *src, uint len)
+as_path_32to16(byte *dst, const byte *src, uint len)
 {
   byte *dst0 = dst;
-  byte *end = src + len;
+  const byte *end = src + len;
   uint i, n;
 
   while (src < end)
@@ -271,13 +271,12 @@ as_path_to_old(struct linpool *pool, const struct adata *path)
 /*
  * Cut the path to the length @num, measured to the usual path metric. Note that
  * AS_CONFED_* segments have zero length and must be added if they are on edge.
- * In contrast to other as_path_* functions, @path is modified in place.
  */
-void
-as_path_cut(struct adata *path, uint num)
+struct adata *
+as_path_cut(struct linpool *pool, const struct adata *path, uint num)
 {
-  byte *pos = path->data;
-  byte *end = pos + path->length;
+  const byte *pos = path->data;
+  const byte *end = pos + path->length;
 
   while (pos < end)
   {
@@ -297,28 +296,39 @@ as_path_cut(struct adata *path, uint num)
     /* Cannot add whole segment, so try partial one and finish */
     if (num < n)
     {
+      const byte *nend = pos;
+      if (num)
+	nend += 2 + BS * num;
+
+      struct adata *res = lp_alloc_adata(pool, path->length);
+      res->length = nend - (const byte *) path->data;
+      memcpy(res->data, path->data, res->length);
+
       if (num)
       {
-	pos[1] = num;
-	pos += 2 + BS * num;
+	byte *dpos = ((byte *) res->data) + (pos - (const byte *) path->data);
+	dpos[1] = num;
       }
 
-      break;
+      return res;
     }
 
     num -= n;
     pos += 2 + BS * l;
   }
 
-  path->length = pos - path->data;
+  struct adata *res = lp_alloc_adata(pool, path->length);
+  res->length = path->length;
+  memcpy(res->data, path->data, res->length);
+  return res;
 }
 
 /*
  * Merge (concatenate) paths @p1 and @p2 and return the result.
  * In contrast to other as_path_* functions, @p1 and @p2 may be reused.
  */
-struct adata *
-as_path_merge(struct linpool *pool, struct adata *p1, struct adata *p2)
+const struct adata *
+as_path_merge(struct linpool *pool, const struct adata *p1, const struct adata *p2)
 {
   if (p1->length == 0)
     return p2;
@@ -561,7 +571,7 @@ as_path_contains(const struct adata *path, u32 as, int min)
 }
 
 int
-as_path_match_set(const struct adata *path, struct f_tree *set)
+as_path_match_set(const struct adata *path, const struct f_tree *set)
 {
   const u8 *p = path->data;
   const u8 *q = p+path->length;
@@ -574,7 +584,7 @@ as_path_match_set(const struct adata *path, struct f_tree *set)
       for (i=0; i<n; i++)
 	{
 	  struct f_val v = {T_INT, .val.i = get_as(p)};
-	  if (find_tree(set, v))
+	  if (find_tree(set, &v))
 	    return 1;
 	  p += BS;
 	}
@@ -583,8 +593,8 @@ as_path_match_set(const struct adata *path, struct f_tree *set)
   return 0;
 }
 
-struct adata *
-as_path_filter(struct linpool *pool, struct adata *path, struct f_tree *set, u32 key, int pos)
+const struct adata *
+as_path_filter(struct linpool *pool, const struct adata *path, const struct f_tree *set, u32 key, int pos)
 {
   if (!path)
     return NULL;
@@ -612,7 +622,10 @@ as_path_filter(struct linpool *pool, struct adata *path, struct f_tree *set, u32
 	  int match;
 
 	  if (set)
-	    match = !!find_tree(set, (struct f_val){T_INT, .val.i = as});
+	    {
+	      struct f_val v = {T_INT, .val.i = as};
+	      match = !!find_tree(set, &v);
+	    }
 	  else
 	    match = (as == key);
 
@@ -771,7 +784,7 @@ pm_mark(struct pm_pos *pos, int i, int plen, int *nl, int *nh)
  * is marked.
  */
 int
-as_path_match(const struct adata *path, struct f_path_mask *mask)
+as_path_match(const struct adata *path, const struct f_path_mask *mask)
 {
   struct pm_pos pos[2048 + 1];
   int plen = parse_path(path, pos);
@@ -788,12 +801,12 @@ as_path_match(const struct adata *path, struct f_path_mask *mask)
   l = h = 0;
   pos[0].mark = 1;
 
-  while (mask)
+  for (uint m=0; m < mask->len; m++)
     {
       /* We remove this mark to not step after pos[plen] */
       pos[plen].mark = 0;
 
-      switch (mask->kind)
+      switch (mask->item[m].kind)
 	{
 	case PM_ASTERISK:
 	  for (i = l; i <= plen; i++)
@@ -802,13 +815,13 @@ as_path_match(const struct adata *path, struct f_path_mask *mask)
 	  break;
 
 	case PM_ASN:	/* Define single ASN as ASN..ASN - very narrow interval */
-	  val2 = val = mask->val;
+	  val2 = val = mask->item[m].asn;
 	  goto step;
 	case PM_ASN_EXPR:
 	  bug("Expressions should be evaluated on AS path mask construction.");
 	case PM_ASN_RANGE:
-	  val = mask->val;
-	  val2 = mask->val2;
+	  val = mask->item[m].from;
+	  val2 = mask->item[m].to;
 	  goto step;
 	case PM_QUESTION:
 	step:
@@ -817,7 +830,7 @@ as_path_match(const struct adata *path, struct f_path_mask *mask)
 	    if (pos[i].mark)
 	      {
 		pos[i].mark = 0;
-		if ((mask->kind == PM_QUESTION) || pm_match(pos + i, val, val2))
+		if ((mask->item[m].kind == PM_QUESTION) || pm_match(pos + i, val, val2))
 		  pm_mark(pos, i, plen, &nl, &nh);
 	      }
 
@@ -828,8 +841,6 @@ as_path_match(const struct adata *path, struct f_path_mask *mask)
 	  l = nl;
 	  break;
 	}
-
-      mask = mask->next;
     }
 
   return pos[plen].mark;

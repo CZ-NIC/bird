@@ -65,27 +65,6 @@ static inline struct ifa * kif_get_primary_ip(struct iface *i UNUSED) { return N
 #define EA_KRT_INITRWND		EA_CODE(PROTOCOL_KERNEL, 0x2e)
 #define EA_KRT_QUICKACK		EA_CODE(PROTOCOL_KERNEL, 0x2f)
 
-/* Bits of EA_KRT_LOCK, also based on RTAX_* constants */
-#define EA_KRT_LOCK_MTU		EA_KRT_LOCK | EA_BIT(0x2)
-#define EA_KRT_LOCK_WINDOW	EA_KRT_LOCK | EA_BIT(0x3)
-#define EA_KRT_LOCK_RTT		EA_KRT_LOCK | EA_BIT(0x4)
-#define EA_KRT_LOCK_RTTVAR	EA_KRT_LOCK | EA_BIT(0x5)
-#define EA_KRT_LOCK_SSTHRESH	EA_KRT_LOCK | EA_BIT(0x6)
-#define EA_KRT_LOCK_CWND	EA_KRT_LOCK | EA_BIT(0x7)
-#define EA_KRT_LOCK_ADVMSS	EA_KRT_LOCK | EA_BIT(0x8)
-#define EA_KRT_LOCK_REORDERING 	EA_KRT_LOCK | EA_BIT(0x9)
-#define EA_KRT_LOCK_HOPLIMIT	EA_KRT_LOCK | EA_BIT(0xa)
-// define EA_KRT_LOCK_INITCWND	EA_KRT_LOCK | EA_BIT(0xb)
-// define EA_KRT_LOCK_FEATURES	EA_KRT_LOCK | EA_BIT(0xc)
-#define EA_KRT_LOCK_RTO_MIN	EA_KRT_LOCK | EA_BIT(0xd)
-// define EA_KRT_LOCK_INITRWND	EA_KRT_LOCK | EA_BIT(0xe)
-
-/* Bits of EA_KRT_FEATURES, based on RTAX_FEATURE_* constants */
-#define EA_KRT_FEATURE_ECN	EA_KRT_FEATURES | EA_BIT(0x0)
-// define EA_KRT_FEATURE_SACK	EA_KRT_FEATURES | EA_BIT(0x1)
-// define EA_KRT_FEATURE_TSTAMP	EA_KRT_FEATURES | EA_BIT(0x2)
-#define EA_KRT_FEATURE_ALLFRAG	EA_KRT_FEATURES | EA_BIT(0x3)
-
 
 struct krt_params {
   u32 table_id;				/* Kernel table ID we sync with */

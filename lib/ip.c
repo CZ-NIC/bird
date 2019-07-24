@@ -245,7 +245,7 @@ ip4_pton(const char *a, ip4_addr *o)
     char *d, *c = strchr(a, '.');
     if (!c != !i)
       return 0;
-    l = strtoul(a, &d, 10);
+    l = bstrtoul10(a, &d);
     if (((d != c) && *d) || (l > 255))
       return 0;
     ia = (ia << 8) | l;

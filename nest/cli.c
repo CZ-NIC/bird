@@ -262,6 +262,7 @@ cli_command(struct cli *c)
   bzero(&f, sizeof(f));
   f.mem = c->parser_pool;
   f.pool = rp_new(c->pool, "Config");
+  init_list(&f.symbols);
   cf_read_hook = cli_cmd_read_hook;
   cli_rh_pos = c->rx_buf;
   cli_rh_len = strlen(c->rx_buf);

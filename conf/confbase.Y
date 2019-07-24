@@ -33,6 +33,21 @@ check_u16(uint val)
     cf_error("Value %u out of range (0-65535)", val);
 }
 
+#define cf_assert(cond, ...) do { if (!(cond)) cf_error(__VA_ARGS__); } while (0)
+static inline void cf_assert_symbol(const struct symbol *sym, uint class) {
+  switch (class) {
+    case SYM_PROTO: cf_assert(sym->class == SYM_PROTO, "Protocol name required"); break;
+    case SYM_TEMPLATE: cf_assert(sym->class == SYM_TEMPLATE, "Protocol template name required"); break;
+    case SYM_FUNCTION: cf_assert(sym->class == SYM_FUNCTION, "Function name required"); break;
+    case SYM_FILTER: cf_assert(sym->class == SYM_FILTER, "Filter name required"); break;
+    case SYM_TABLE: cf_assert(sym->class == SYM_TABLE, "Table name required"); break;
+    case SYM_ATTRIBUTE: cf_assert(sym->class == SYM_ATTRIBUTE, "Custom attribute name required"); break;
+    case SYM_VARIABLE: cf_assert((sym->class & ~0xff) == SYM_VARIABLE, "Variable name required"); break;
+    case SYM_CONSTANT: cf_assert((sym->class & ~0xff) == SYM_CONSTANT, "Constant name required"); break;
+    default: bug("This shall not happen");
+  }
+}
+
 CF_DECLS
 
 %union {
@@ -49,13 +64,19 @@ CF_DECLS
   struct rtable_config *r;
   struct channel_config *cc;
   struct f_inst *x;
+  struct {
+    struct f_inst *begin, *end;
+  } xp;
+  enum filter_return fret;
+  enum ec_subtype ecs;
   struct f_dynamic_attr fda;
   struct f_static_attr fsa;
-  struct filter *f;
+  struct f_lval flv;
+  struct f_line *fl;
+  const struct filter *f;
   struct f_tree *e;
   struct f_trie *trie;
   struct f_val v;
-  struct f_path_mask *h;
   struct password_item *p;
   struct rt_show_data *ra;
   struct sym_show_data *sd;
@@ -78,7 +99,7 @@ CF_DECLS
 %token <ip4> IP4
 %token <ip6> IP6
 %token <i64> VPN_RD
-%token <s> SYM
+%token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED
 %token <t> TEXT
 %type <iface> ipa_scope
 
@@ -88,8 +109,10 @@ CF_DECLS
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
 %type <mls> label_stack_start label_stack
+%type <s> CF_SYM_VOID
 
 %type <t> text opttext
+%type <s> symbol
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
@@ -98,6 +121,8 @@ CF_DECLS
 %left '*' '/' '%'
 %left '!'
 %nonassoc '.'
+
+%start config
 
 CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM)
 
@@ -122,28 +147,30 @@ conf: ';' ;
 conf: definition ;
 
 definition:
-   DEFINE SYM '=' term ';' {
+   DEFINE CF_SYM_VOID '=' term ';' {
      struct f_val *val = cfg_alloc(sizeof(struct f_val));
-     *val = f_eval($4, cfg_mem);
-     if (val->type == T_RETURN) cf_error("Runtime error");
-     cf_define_symbol($2, SYM_CONSTANT | val->type, val);
+     if (f_eval(f_linearize($4), cfg_mem, val) > F_RETURN) cf_error("Runtime error");
+     cf_define_symbol($2, SYM_CONSTANT | val->type, val, val);
    }
  ;
 
 expr:
    NUM
- | '(' term ')' { $$ = f_eval_int($2); }
- | SYM {
-     if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number expected");
+ | '(' term ')' { $$ = f_eval_int(f_linearize($2)); }
+ | CF_SYM_KNOWN {
+     if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number constant expected");
      $$ = SYM_VAL($1).i; }
  ;
-
 
 expr_us:
    expr S  { $$ = $1 S_; }
  | expr MS { $$ = $1 MS_; }
  | expr US { $$ = $1 US_; }
  ;
+
+CF_SYM_VOID: CF_SYM_UNDEFINED ;
+
+symbol: CF_SYM_VOID | CF_SYM_KNOWN ;
 
 /* Switches */
 
@@ -162,15 +189,15 @@ bool:
 ipa:
    IP4 { $$ = ipa_from_ip4($1); }
  | IP6 { $$ = ipa_from_ip6($1); }
- | SYM {
-     if ($1->class != (SYM_CONSTANT | T_IP)) cf_error("IP address expected");
+ | CF_SYM_KNOWN {
+     if ($1->class != (SYM_CONSTANT | T_IP)) cf_error("IP address constant expected");
      $$ = SYM_VAL($1).ip;
    }
  ;
 
 ipa_scope:
    /* empty */ { $$ = NULL; }
- | '%' SYM { $$ = if_get_by_name($2->name); }
+ | '%' symbol { $$ = if_get_by_name($2->name); }
  ;
 
 
@@ -277,27 +304,27 @@ net_:
 
 net_ip6:
    net_ip6_
- | SYM {
+ | CF_SYM_KNOWN {
      if (($1->class != (SYM_CONSTANT | T_NET)) || (SYM_VAL($1).net->type != NET_IP6))
-       cf_error("IPv6 network expected");
+       cf_error("IPv6 network constant expected");
      $$ = * SYM_VAL($1).net;
    }
  ;
 
 net_ip:
    net_ip_
- | SYM {
+ | CF_SYM_KNOWN {
      if (($1->class != (SYM_CONSTANT | T_NET)) || !net_is_ip(SYM_VAL($1).net))
-       cf_error("IP network expected");
+       cf_error("IP network constant expected");
      $$ = * SYM_VAL($1).net;
    }
  ;
 
 net_any:
    net_
- | SYM {
+ | CF_SYM_KNOWN {
      if ($1->class != (SYM_CONSTANT | T_NET))
-       cf_error("Network expected");
+       cf_error("Network constant expected");
      $$ = (net_addr *) SYM_VAL($1).net; /* Avoid const warning */
    }
  ;
@@ -307,13 +334,13 @@ net_or_ipa:
  | net_ip6_
  | IP4 { net_fill_ip4(&($$), $1, IP4_MAX_PREFIX_LENGTH); }
  | IP6 { net_fill_ip6(&($$), $1, IP6_MAX_PREFIX_LENGTH); }
- | SYM {
+ | CF_SYM_KNOWN {
      if ($1->class == (SYM_CONSTANT | T_IP))
        net_fill_ip_host(&($$), SYM_VAL($1).ip);
      else if (($1->class == (SYM_CONSTANT | T_NET)) && net_is_ip(SYM_VAL($1).net))
        $$ = * SYM_VAL($1).net;
      else
-       cf_error("IP address or network expected");
+       cf_error("IP address or network constant expected");
    }
  ;
 
@@ -344,8 +371,8 @@ time:
 
 text:
    TEXT
- | SYM {
-     if ($1->class != (SYM_CONSTANT | T_STRING)) cf_error("String expected");
+ | CF_SYM_KNOWN {
+     if ($1->class != (SYM_CONSTANT | T_STRING)) cf_error("String constant expected");
      $$ = SYM_VAL($1).s;
    }
  ;

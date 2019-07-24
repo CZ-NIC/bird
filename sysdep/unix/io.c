@@ -132,7 +132,7 @@ times_init(struct timeloop *loop)
   if (rv < 0)
     die("Monotonic clock is missing");
 
-  if ((ts.tv_sec < 0) || (((s64) ts.tv_sec) > ((s64) 1 << 40)))
+  if ((ts.tv_sec < 0) || (((u64) ts.tv_sec) > ((u64) 1 << 40)))
     log(L_WARN "Monotonic clock is crazy");
 
   loop->last_time = ts.tv_sec S + ts.tv_nsec NS;

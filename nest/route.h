@@ -297,7 +297,7 @@ rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
-int rt_examine(rtable *t, net_addr *a, struct proto *p, struct filter *filter);
+int rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
@@ -339,7 +339,7 @@ struct rt_show_data {
   struct rt_show_data_rtable *last_table; /* Last table in output */
   struct fib_iterator fit;		/* Iterator over networks in table */
   int verbose, tables_defined_by;
-  struct filter *filter;
+  const struct filter *filter;
   struct proto *show_protocol;
   struct proto *export_protocol;
   struct channel *export_channel;
@@ -477,7 +477,7 @@ typedef struct eattr {
   byte type;				/* Attribute type and several flags (EAF_...) */
   union {
     u32 data;
-    struct adata *ptr;			/* Attribute data elsewhere */
+    const struct adata *ptr;			/* Attribute data elsewhere */
   } u;
 } eattr;
 
@@ -498,6 +498,7 @@ const char *ea_custom_name(uint ea);
 #define EA_CUSTOM_BIT 0x8000
 #define EA_ALLOW_UNDEF 0x10000		/* ea_find: allow EAF_TYPE_UNDEF */
 #define EA_BIT(n) ((n) << 24)		/* Used in bitfield accessors */
+#define EA_BIT_GET(ea) ((ea) >> 24)
 
 #define EAF_TYPE_MASK 0x1f		/* Mask with this to get type */
 #define EAF_TYPE_INT 0x01		/* 32-bit unsigned integer number */
@@ -520,6 +521,8 @@ typedef struct adata {
   byte data[0];
 } adata;
 
+extern const adata null_adata;		/* adata of length 0 */
+
 static inline struct adata *
 lp_alloc_adata(struct linpool *pool, uint len)
 {
@@ -528,7 +531,7 @@ lp_alloc_adata(struct linpool *pool, uint len)
   return ad;
 }
 
-static inline int adata_same(struct adata *a, struct adata *b)
+static inline int adata_same(const struct adata *a, const struct adata *b)
 { return (a->length == b->length && !memcmp(a->data, b->data, a->length)); }
 
 

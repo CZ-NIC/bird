@@ -73,6 +73,7 @@
 #include "lib/string.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
+#include "filter/data.h"
 
 
 /*
@@ -220,7 +221,7 @@ trie_add_prefix(struct f_trie *t, const net_addr *net, uint l, uint h)
 }
 
 static int
-trie_match_prefix(struct f_trie *t, ip_addr px, uint plen)
+trie_match_prefix(const struct f_trie *t, ip_addr px, uint plen)
 {
   ip_addr pmask = ipa_mkmask(plen);
   ip_addr paddr = ipa_and(px, pmask);
@@ -229,7 +230,7 @@ trie_match_prefix(struct f_trie *t, ip_addr px, uint plen)
     return t->zero;
 
   int plentest = plen - 1;
-  struct f_trie_node *n = t->root;
+  const struct f_trie_node *n = t->root;
 
   while(n)
     {
@@ -264,7 +265,7 @@ trie_match_prefix(struct f_trie *t, ip_addr px, uint plen)
  * is such prefix pattern in the trie.
  */
 int
-trie_match_net(struct f_trie *t, const net_addr *n)
+trie_match_net(const struct f_trie *t, const net_addr *n)
 {
   uint add = 0;
 
@@ -279,7 +280,7 @@ trie_match_net(struct f_trie *t, const net_addr *n)
 }
 
 static int
-trie_node_same(struct f_trie_node *t1, struct f_trie_node *t2)
+trie_node_same(const struct f_trie_node *t1, const struct f_trie_node *t2)
 {
   if ((t1 == NULL) && (t2 == NULL))
     return 1;
@@ -303,13 +304,13 @@ trie_node_same(struct f_trie_node *t1, struct f_trie_node *t2)
  * Compares two tries and returns 1 if they are same
  */
 int
-trie_same(struct f_trie *t1, struct f_trie *t2)
+trie_same(const struct f_trie *t1, const struct f_trie *t2)
 {
   return (t1->zero == t2->zero) && trie_node_same(t1->root, t2->root);
 }
 
 static void
-trie_node_format(struct f_trie_node *t, buffer *buf)
+trie_node_format(const struct f_trie_node *t, buffer *buf)
 {
   if (t == NULL)
     return;
@@ -329,7 +330,7 @@ trie_node_format(struct f_trie_node *t, buffer *buf)
  * Prints the trie to the supplied buffer.
  */
 void
-trie_format(struct f_trie *t, buffer *buf)
+trie_format(const struct f_trie *t, buffer *buf)
 {
   buffer_puts(buf, "[");
 
