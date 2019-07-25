@@ -1084,7 +1084,7 @@ bfd_show_sessions(struct proto *P)
   }
 
   cli_msg(-1020, "%s:", p->p.name);
-  cli_msg(-1020, "%-25s %-10s %-10s %-10s  %8s %8s",
+  cli_msg(-1020, "%-25s %-10s %-10s %-12s  %8s %8s",
 	  "IP address", "Interface", "State", "Since", "Interval", "Timeout");
 
 
@@ -1100,7 +1100,7 @@ bfd_show_sessions(struct proto *P)
     state = (state < 4) ? state : 0;
     tm_format_time(tbuf, &config->tf_proto, s->last_state_change);
 
-    cli_msg(-1020, "%-25I %-10s %-10s %-10s  %7t  %7t",
+    cli_msg(-1020, "%-25I %-10s %-10s %-12s  %7t  %7t",
 	    s->addr, ifname, bfd_state_names[state], tbuf, tx_int, timeout);
   }
   HASH_WALK_END;
