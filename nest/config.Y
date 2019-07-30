@@ -156,7 +156,7 @@ table_sorted:
  | SORTED { $$ = 1; }
  ;
 
-table: net_type TABLE CF_SYM_VOID table_sorted {
+table: net_type TABLE symbol table_sorted {
    struct rtable_config *cf;
    cf = rt_new_table($3, $1);
    cf->sorted = $4;
@@ -180,7 +180,7 @@ proto_name:
      s->proto = this_proto;
      this_proto->name = s->name;
      }
- | CF_SYM_VOID {
+ | symbol {
      cf_define_symbol($1, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
    }
@@ -194,7 +194,7 @@ proto_name:
 
      proto_copy_config(this_proto, $2->proto);
    }
- | CF_SYM_VOID FROM CF_SYM_KNOWN {
+ | symbol FROM CF_SYM_KNOWN {
      if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
 
      cf_define_symbol($1, this_proto->class, proto, this_proto);
