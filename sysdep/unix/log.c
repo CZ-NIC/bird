@@ -352,6 +352,9 @@ log_switch(int debug, list *logs, char *new_syslog_name)
   if (!logs || EMPTY_LIST(*logs))
     logs = default_log_list(debug, !logs, &new_syslog_name);
 
+  /* We shouldn't close the logs when other threads may use them */
+  log_lock();
+
   /* Close the logs to avoid pinning them on disk when deleted */
   if (current_log_list)
     WALK_LIST(l, *current_log_list)
@@ -369,7 +372,7 @@ log_switch(int debug, list *logs, char *new_syslog_name)
 #ifdef HAVE_SYSLOG_H
   if (current_syslog_name && new_syslog_name &&
       !strcmp(current_syslog_name, new_syslog_name))
-    return;
+    goto done;
 
   if (current_syslog_name)
   {
@@ -383,7 +386,12 @@ log_switch(int debug, list *logs, char *new_syslog_name)
     current_syslog_name = xstrdup(new_syslog_name);
     openlog(current_syslog_name, LOG_CONS | LOG_NDELAY, LOG_DAEMON);
   }
+
 #endif
+
+done:
+  /* Logs exchange done, let the threads log as before */
+  log_unlock();
 }
 
 
