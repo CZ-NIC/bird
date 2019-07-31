@@ -19,6 +19,7 @@ CF_DECLS
 
 CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT)
 CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS)
+CF_KEYWORDS(GRACEFUL, RESTART)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout
 %type <t> cfg_name
@@ -133,7 +134,7 @@ CF_CLI(CONFIGURE CHECK, cfg_name, [\"<file>\"], [[Parse configuration and check 
 CF_CLI(DOWN,,, [[Shut the daemon down]])
 { cmd_shutdown(); } ;
 
-CF_CLI(GRACEFUL DOWN,,, [[Shut the daemon down for graceful restart]])
+CF_CLI(GRACEFUL RESTART,,, [[Shut the daemon down for graceful restart]])
 { cmd_graceful_restart(); } ;
 
 

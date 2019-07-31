@@ -403,6 +403,14 @@ configured for all relevant protocols and requires protocol-specific support
 (currently implemented for Kernel and BGP protocols), it is activated for
 particular boot by option <cf/-R/.
 
+<p>Some protocols (e.g. BGP) could be restarted gracefully after both
+intentional outage and crash, while others (e.g. OSPF) after intentional outage
+only. For planned graceful restart, BIRD must be shut down by
+<ref id="cli-graceful-restart" name="graceful restart"> command instead of
+regular <ref id="cli-down" name="down"> command. In this way routing neighbors
+are notified about planned graceful restart and routes are kept in kernel table
+after shutdown.
+
 
 <chapt>Configuration
 <label id="config">
@@ -1115,6 +1123,10 @@ This argument can be omitted if there exists only a single instance.
 
 	<tag><label id="cli-down">down</tag>
 	Shut BIRD down.
+
+	<tag><label id="cli-graceful-restart">graceful restart</tag>
+	Shut BIRD down for graceful restart. See <ref id="graceful-restart"
+	name="graceful restart"> section for details.
 
 	<tag><label id="cli-debug">debug <m/protocol/|<m/pattern/|all all|off|{ states|routes|filters|events|packets [, <m/.../] }</tag>
 	Control protocol debugging.
@@ -2216,7 +2228,7 @@ using the following configuration parameters:
 	Define neighboring router this instance will be talking to and what AS
 	it is located in. In case the neighbor is in the same AS as we are, we
 	automatically switch to IBGP. Alternatively, it is possible to specify
-	just <cf/internal/ or </cf/external/ instead of AS number, in that case
+	just <cf/internal/ or <cf/external/ instead of AS number, in that case
 	either local AS number, or any external AS number is accepted.
 	Optionally, the remote port may also be specified. Like <cf/local/
 	parameter, this parameter may also be used multiple times with different
@@ -2266,7 +2278,7 @@ using the following configuration parameters:
 	dynamic BGP behavior is active. Actual names also contain numeric
 	index to distinguish individual instances.  Default: "dynbgp".
 
-	<tag><label id="bgp-dynamic-name">dynamic name digits <m/number/</tag>
+	<tag><label id="bgp-dynamic-name-digits">dynamic name digits <m/number/</tag>
 	Define minimum number of digits for index in names of spawned dynamic
 	BGP instances. E.g., if set to 2, then the first name would be
 	"dynbgp01". Default: 0.
