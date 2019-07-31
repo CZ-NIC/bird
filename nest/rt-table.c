@@ -86,15 +86,32 @@ static inline void rup_free(linpool *pool) {
 }
 
 struct rte_update_data {
+  node n;
   struct channel *channel;
   const net_addr *net;
   struct rte *rte;
   struct rta *old_rta;
   struct rte_src *src;
   struct linpool *pool;
+  PACKED enum rte_update_state {
+    RUS_PENDING_UPDATE = 0,
+    RUS_UPDATING,
+    RUS_PENDING_RECALCULATE,
+    RUS_RECALCULATING,
+  } state;
+  PACKED enum rte_update_result {
+    RUR_UNKNOWN = 0,
+    RUR_WITHDRAW = 1,
+    RUR_INVALID = 2,
+    RUR_FILTERED = 3,
+    RUR_ACCEPTED = 4,
+  } result;
 };
 
+list pending_imports;
 list routing_tables;
+
+static event *pending_imports_event;
 
 static void rt_free_hostcache(rtable *tab);
 static void rt_notify_hostcache(rtable *tab, net *net);
@@ -1104,45 +1121,6 @@ rte_announce(rtable *tab, unsigned type, net *net, rte *new, rte *old,
     }
 }
 
-static inline int
-rte_validate(rte *e)
-{
-  int c;
-
-  if (!net_validate(e->net))
-  {
-    log(L_WARN "Ignoring bogus prefix %N received via %s",
-	e->net, e->sender->proto->name);
-    return 0;
-  }
-
-  /* FIXME: better handling different nettypes */
-  c = !net_is_flow(e->net) ?
-    net_classify(e->net): (IADDR_HOST | SCOPE_UNIVERSE);
-  if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
-  {
-    log(L_WARN "Ignoring bogus route %N received via %s",
-	e->net, e->sender->proto->name);
-    return 0;
-  }
-
-  if (net_type_match(e->net, NB_DEST) == !e->attrs->dest)
-  {
-    log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
-	e->net, e->attrs->dest, e->sender->proto->name);
-    return 0;
-  }
-
-  if ((e->attrs->dest == RTD_UNICAST) && !nexthop_is_sorted(&(e->attrs->nh)))
-  {
-    log(L_WARN "Ignoring unsorted multipath route %N received via %s",
-	e->net, e->sender->proto->name);
-    return 0;
-  }
-
-  return 1;
-}
-
 /**
  * rte_free - delete a &rte
  * @e: &rte to be deleted
@@ -1464,87 +1442,56 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
 static void
 rte_do_update(struct rte_update_data *rud)
 {
+  ASSERT(rud->state == RUS_PENDING_UPDATE);
+  rud->state = RUS_UPDATING;
+
   struct channel *c = rud->channel;
-  rte *new = rud->rte;
-  struct rte_src *src = rud->src;
+  ASSERT(rud->rte);
+#define new (rud->rte)
 
-  struct proto *p = c->proto;
-  struct proto_stats *stats = &c->stats;
   const struct filter *filter = c->in_filter;
-  rte *dummy = NULL;
-  net *nn;
 
-  ASSERT(c->channel_state == CS_UP);
+  new->net = rud->net;
+  new->sender = c;
 
-  if (new)
-    {
-      new->net = rud->net;
-      new->sender = c;
+  if (!new->pref)
+    new->pref = c->preference;
 
-      if (!new->pref)
-	new->pref = c->preference;
-
-      stats->imp_updates_received++;
-      if (!rte_validate(new))
-	{
-	  rte_trace_in(D_FILTERS, p, new, "invalid");
-	  stats->imp_updates_invalid++;
-	  goto drop;
-	}
-
-      if (filter)
-	{
-	  int fr;
-	  if (filter == FILTER_REJECT)
-	    fr = F_REJECT;
-	  else
-	    {
-	      rte_make_tmp_attrs(&new, rud->pool);
-	      fr = f_run(filter, &new, rud->pool, 0);
-	    }
-
-	  if (fr > F_ACCEPT)
-	  {
-	    stats->imp_updates_filtered++;
-	    rte_trace_in(D_FILTERS, p, new, "filtered out");
-
-	    if (! c->in_keep_filtered)
-	      goto drop;
-
-	    new->flags |= REF_FILTERED;
-	  }
-
-	  if (filter != FILTER_REJECT)
-	    rte_store_tmp_attrs(new, rud->pool);
-	}
-
-      /* Use the actual struct network, not the dummy one */
-      nn = net_get(c->table, rud->net);
-      new->net = nn->n.addr;
-    }
+  if (filter == FILTER_ACCEPT)
+    rud->result = RUR_ACCEPTED;
   else
     {
-      stats->imp_withdraws_received++;
-
-      if (!(nn = net_find(c->table, rud->net)) || !src)
+      int fr;
+      if (filter == FILTER_REJECT)
+	fr = F_REJECT;
+      else
 	{
-	  stats->imp_withdraws_ignored++;
-	  return;
+	  rte_make_tmp_attrs(&new, rud->pool);
+	  fr = f_run(filter, &new, rud->pool, 0);
 	}
+
+      if (fr > F_ACCEPT)
+      {
+	rud->result = RUR_FILTERED;
+	if (!c->in_keep_filtered)
+	  goto done;
+	
+	new->flags |= REF_FILTERED;
+      }
+      else
+	rud->result = RUR_ACCEPTED;
+
+      if (filter != FILTER_REJECT)
+	rte_store_tmp_attrs(new, rud->pool);
     }
 
- recalc:
-  /* And recalculate the best route */
-  rte_hide_dummy_routes(nn, &dummy);
-  rte_recalculate(c, nn, new, src, rud->pool);
-  rte_unhide_dummy_routes(nn, &dummy);
+done:
+  rud->state = RUS_PENDING_RECALCULATE;
+  if (!ev_active(pending_imports_event))
+    ev_schedule(pending_imports_event);
+
   return;
-
- drop:
-  new = NULL;
-  if (nn = net_find(c->table, rud->net))
-    goto recalc;
-
+#undef new
 }
 
 /**
@@ -1594,40 +1541,87 @@ rte_dispatch_update(struct rte_update_data *rud)
   ASSERT(rud->pool == NULL);
   rud->pool = rup_get();
 
-  /* Create local rte copy */
-  rte *e = lp_alloc(rud->pool, sizeof(rte));
-  *e = *rud->rte;
-  rud->rte = e;
-  
-  /* Create local rta copy or raise the usecount */
-  if (rta_is_cached(e->attrs))
-    {
-      rud->old_rta = e->attrs;
-      rta_clone(e->attrs);
-    }
-  else
-    {
-      if (e->attrs->eattrs)
-	ea_normalize(e->attrs->eattrs);
+  /* Check right rud state */
+  ASSERT(rud->state == RUS_PENDING_UPDATE);
 
-      e->attrs = rta_copy(e->attrs, rud->pool);
-    }
+  /* Create local rud copy */
+  rud = LP_DUPLICATE(rud->pool, rud);
 
-  /* Run the update on local data */
-  rte_do_update(rud);
+  /* Insert rud into the synchronization queue */
+  add_tail(&pending_imports, &rud->n);
 
-  /* Lower the global rta copy usecount */
-  if (rud->old_rta)
-    rta_free(rud->old_rta);
+  /* Is route update */
+  if (rud->rte)
+  {
+    /* Create local rte copy */
+    rud->rte = LP_DUPLICATE(rud->pool, rud->rte);
+    
+    /* Create local rta copy or raise the usecount */
+    if (rta_is_cached(rud->rte->attrs))
+      {
+	rud->old_rta = rud->rte->attrs;
+	rta_clone(rud->rte->attrs);
+      }
+    else
+      {
+	if (rud->rte->attrs->eattrs)
+	  ea_normalize(rud->rte->attrs->eattrs);
 
-  /* And return the pool */
-  rup_free(rud->pool);
-  rud->pool = NULL;
+	rud->rte->attrs = rta_copy(rud->rte->attrs, rud->pool);
+      }
+
+    /* Run the filters on local data */
+    rte_do_update(rud);
+  }
+  else	/* Is route withdraw */
+  {
+    /* Skip filter for withdraw */
+    rud->state = RUS_PENDING_RECALCULATE;
+    if (!ev_active(pending_imports_event))
+      ev_schedule(pending_imports_event);
+  }
+}
+
+static inline int
+net_bogus(const net_addr *n)
+{
+  if (!net_validate(n))
+    return 1;
+
+  int c = !net_is_flow(n) ?
+    net_classify(n) : (IADDR_HOST | SCOPE_UNIVERSE);
+
+  if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
+    return 1;
+
+  return 0;
 }
 
 void
 rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
+  ASSERT(c->channel_state == CS_UP);
+  ASSERT(n);
+  ASSERT(src);
+
+  if (new)
+    c->stats.imp_updates_received++;
+  else
+    c->stats.imp_withdraws_received++;
+
+  if (net_bogus(n))
+  {
+    log(L_WARN "Ignoring bogus prefix %N received via %s",
+	n, c->proto->name);
+    if (new)
+      c->stats.imp_updates_invalid++;
+    else
+      c->stats.imp_withdraws_invalid++;
+    
+    /* Invalid net_addr can never get into table */
+    return;
+  }
+
   struct rte_update_data rud = {
     .channel = c,
     .net = n,
@@ -1635,7 +1629,111 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     .src = src,
   };
 
+  if (new && (
+       (net_type_match(n, NB_DEST) == !new->attrs->dest)
+       ||
+       (new->attrs->dest == RTD_UNICAST) && !nexthop_is_sorted(&(new->attrs->nh))
+      ))
+  {
+    log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
+	n, new->attrs->dest, c->proto->name);
+
+    /* Convert this update to withdraw */
+    rud.result = RUR_INVALID;
+    new = NULL;
+  }
+
   rte_dispatch_update(&rud);
+}
+
+static void
+rte_finish_update(struct rte_update_data *rud)
+{
+  ASSERT(rud->state == RUS_PENDING_RECALCULATE);
+  rud->state = RUS_RECALCULATING;
+
+  debug("rte_finish_update (%d): %s %N\n", rud->result, rud->channel->proto->name, rud->rte->net);
+
+  struct proto_stats *stats = &rud->channel->stats;
+  struct proto *p = rud->channel->proto;
+
+  /* First update statistics */
+  switch (rud->result)
+  {
+    case RUR_WITHDRAW:
+      break;
+    case RUR_INVALID:
+      stats->imp_updates_invalid++;
+      break;
+    case RUR_FILTERED:
+      stats->imp_updates_filtered++;
+      rte_trace_in(D_FILTERS, p, rud->rte, "filtered out");
+      if (!rud->channel->in_keep_filtered)
+	rud->rte = NULL;
+      break;
+      /* Fallthrough */
+    case RUR_ACCEPTED:
+      stats->imp_updates_accepted++;
+      break;
+    case RUR_UNKNOWN:
+      bug("There must be a result in this phase");
+  }
+
+  net *nn;
+
+  /* Find the target in table */
+  if (rud->rte)
+  {
+    /* Use the actual struct network, not the dummy one */
+    nn = net_get(rud->channel->table, rud->net);
+    rud->rte->net = nn->n.addr;
+  }
+  else
+  {
+    nn = net_find(rud->channel->table, rud->net);
+    if (!nn)
+    {
+      if (rud->result == RUR_WITHDRAW)
+	stats->imp_withdraws_ignored++;
+
+      goto done;
+    }
+  }
+
+  rte *dummy = NULL;
+
+  /* And recalculate the best route */
+  rte_hide_dummy_routes(nn, &dummy);
+  rte_recalculate(rud->channel, nn, rud->rte, rud->src, rud->pool);
+  rte_unhide_dummy_routes(nn, &dummy);
+
+  /* Lower the global rta copy usecount if it is this case */
+  if (rud->old_rta)
+    rta_free(rud->old_rta);
+
+done:
+  /* And return the pool */
+  rup_free(rud->pool);
+  rud->pool = NULL;
+  return;
+}
+
+static void
+rte_finish_update_hook(void *data UNUSED)
+{
+  struct rte_update_data *rud;
+  node *nn;
+  WALK_LIST_DELSAFE(rud, nn, pending_imports)
+  {
+    if (rud->state != RUS_PENDING_RECALCULATE)
+    {
+      ev_schedule(pending_imports_event);
+      return;
+    }
+
+    rem_node(&(rud->n));
+    rte_finish_update(rud);
+  }
 }
 
 /* Independent call to rte_announce(), used from next hop
@@ -1914,6 +2012,9 @@ rt_init(void)
 
   rte_slab = sl_new(rt_table_pool, sizeof(rte));
   init_list(&routing_tables);
+  init_list(&pending_imports);
+
+  pending_imports_event = ev_new_init(&root_pool, rte_finish_update_hook, NULL);
 }
 
 

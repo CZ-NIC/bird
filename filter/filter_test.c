@@ -16,9 +16,12 @@
 #include "test/birdtest.h"
 #include "test/bt-utils.h"
 
+#include "lib/event.h"
+
 #include "filter/filter.h"
 #include "filter/data.h"
 #include "filter/f-inst.h"
+
 #include "conf/conf.h"
 
 #define BT_CONFIG_FILE "filter/test.conf"
@@ -89,6 +92,9 @@ main(int argc, char *argv[])
   struct parse_config_file_arg pcfa = { .cp = &c, .filename = BT_CONFIG_FILE };
   bt_test_suite_base(parse_config_file, "conf", (const void *) &pcfa, 0, 0, "parse config file");
   bt_test_suite_base(parse_config_file, "reconf", (const void *) &pcfa, 0, 0, "reconfigure with the same file");
+
+  while (ev_run_list(&global_event_list))
+    ;
 
   bt_bird_cleanup();
 

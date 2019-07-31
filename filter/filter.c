@@ -166,7 +166,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 
 #define curline fstk->estk[fstk->ecnt-1]
 
-#if DEBUGGING
+#if defined(LOCAL_DEBUG) || defined(GLOBAL_DEBUG)
   debug("Interpreting line.");
   f_dump_line(line, 1);
 #endif
