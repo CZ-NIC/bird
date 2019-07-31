@@ -72,6 +72,13 @@ void lp_flush(linpool *);			/* Free everything, but leave linpool */
 void lp_save(linpool *m, lp_state *p);		/* Save state */
 void lp_restore(linpool *m, lp_state *p);	/* Restore state */
 
+#define LP_DUPLICATE(pool, ptr) \
+  ({ \
+   typeof(ptr) _nptr = lp_alloc(pool, sizeof(*(ptr))); \
+   *_nptr = *ptr; \
+   _nptr; \
+   })
+
 extern const int lp_chunk_size;
 #define LP_GAS		    1024
 #define LP_GOOD_SIZE(x)	    (((x + LP_GAS - 1) & (~(LP_GAS - 1))) - lp_chunk_size)
