@@ -156,7 +156,7 @@ fi
 
 if test "$bird_cv_c_lto" = yes; then
   CFLAGS="$CFLAGS -flto"
-  LDFLAGS="$LDFLAGS -flto"
+  LDFLAGS="$LDFLAGS -flto=4"
 fi
 
 AC_MSG_CHECKING([CFLAGS])
