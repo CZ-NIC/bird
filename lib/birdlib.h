@@ -162,10 +162,14 @@ void debug(const char *msg, ...);	/* Printf to debug output */
 #define DBG(x, y...) do { } while(0)
 #endif
 
+#define ASSERT_DIE(x) do { if (!(x)) bug("Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)
+
 #ifdef DEBUGGING
-#define ASSERT(x) do { if (!(x)) bug("Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)
+#define ASSERT(x) ASSERT_DIE(x)
+#define ASSUME(x) ASSERT_DIE(x)
 #else
 #define ASSERT(x) do { if (!(x)) log(L_BUG "Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)
+#define ASSUME(x) /* intentionally left blank */
 #endif
 
 #ifdef DEBUGGING
