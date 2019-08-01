@@ -149,8 +149,6 @@ if test "$bird_cflags_default" = yes ; then
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_fno_strict_aliasing], [-fno-strict-aliasing])
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_fno_strict_overflow], [-fno-strict-overflow])
 fi
-AC_MSG_CHECKING([CFLAGS])
-AC_MSG_RESULT([$CFLAGS])
 
 if test "$enable_debug" = no; then
   BIRD_CHECK_LTO
@@ -160,6 +158,9 @@ if test "$bird_cv_c_lto" = yes; then
   CFLAGS="$CFLAGS -flto"
   LDFLAGS="$LDFLAGS -flto"
 fi
+
+AC_MSG_CHECKING([CFLAGS])
+AC_MSG_RESULT([$CFLAGS])
 
 AC_PROG_CPP
 AC_PROG_INSTALL
