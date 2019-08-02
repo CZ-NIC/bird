@@ -453,7 +453,7 @@ rte_better(rte *new, rte *old)
   return 0;
 }
 
-static int
+int
 rte_mergable(rte *pri, rte *sec)
 {
   int (*mergable)(rte *, rte *);

@@ -35,6 +35,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
   rta *a = e->attrs;
   int primary = (e->net->routes == e) && rte_is_valid(e);
+  int mergable = d->show_mergable && !primary && rte_mergable(e->net->routes, e);
   int sync_error = (e->net->n.flags & KRF_SYNC_ERROR);
   void (*get_route_info)(struct rte *, byte *buf, struct ea_list *attrs);
   struct nexthop *nh;
@@ -63,8 +64,10 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, ea_list *tm
   if (d->last_table != d->tab)
     rt_show_table(c, d);
 
-  cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s", ia, rta_dest_name(a->dest),
-	     a->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
+  cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s",
+	     ia, rta_dest_name(a->dest), a->src->proto->name, tm, from,
+	     primary ? (sync_error ? " !" : " *") : (mergable ? " +" : ""),
+	     info);
 
   if (a->dest == RTD_UNICAST)
     for (nh = &(a->nh); nh; nh = nh->next)

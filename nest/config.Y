@@ -533,6 +533,7 @@ r_args:
      $$ = cfg_allocz(sizeof(struct rt_show_data));
      init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
+     $$->show_mergable = 1;
    }
  | r_args net_any {
      $$ = $1;

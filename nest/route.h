@@ -320,6 +320,7 @@ void rte_free(rte *);
 rte *rte_do_cow(rte *);
 static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }
 rte *rte_cow_rta(rte *r, linpool *lp);
+int rte_mergable(rte *pri, rte *sec);
 void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
@@ -353,7 +354,7 @@ struct rt_show_data {
   struct proto *export_protocol;
   struct channel *export_channel;
   struct config *running_on_config;
-  int export_mode, primary_only, filtered, stats, show_for;
+  int export_mode, primary_only, filtered, stats, show_for, show_mergable;
 
   int table_open;			/* Iteration (fit) is open */
   int net_counter, rt_counter, show_counter, table_counter;
