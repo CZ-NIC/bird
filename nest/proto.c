@@ -616,7 +616,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   channel_verify_limits(c);
 
   /* Execute channel-specific reconfigure hook */
-  if (c->channel->reconfigure && !c->channel->reconfigure(c, cf))
+  if (c->channel->reconfigure && !c->channel->reconfigure(c, cf, &import_changed, &export_changed))
     return 0;
 
   /* If the channel is not open, it has no routes and we cannot reload it anyways */
