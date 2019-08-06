@@ -1747,7 +1747,7 @@ bgp_rte_mergable(rte *pri, rte *sec)
     return 0;
 
   /* RFC 4271 9.1.2.1. Route resolvability test */
-  if (!rte_resolvable(sec))
+  if (rte_resolvable(pri) != rte_resolvable(sec))
     return 0;
 
   /* LLGR draft - depreference stale routes */
@@ -1833,7 +1833,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
   rte *key = new ? new : old;
   u32 lpref = key->pref;
   u32 lasn = bgp_get_neighbor(key);
-  int old_is_group_best = 0;
+  int old_suppressed = old ? old->u.bgp.suppressed : 0;
 
   /*
    * Proper RFC 4271 path selection is a bit complicated, it cannot be
@@ -1880,7 +1880,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
    * We could find the best-in-group and then make some shortcuts like
    * in rte_recalculate, but as we would have to walk through all
    * net->routes just to find it, it is probably not worth. So we
-   * just have two simpler fast cases that use just the old route.
+   * just have one simple fast case that use just the old route.
    * We also set suppressed flag to avoid using it in bgp_rte_better().
    */
 
@@ -1889,23 +1889,11 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
 
   if (old)
   {
-    old_is_group_best = !old->u.bgp.suppressed;
     old->u.bgp.suppressed = 1;
-    int new_is_better = new && bgp_rte_better(new, old);
 
-    /* The first case - replace not best with worse (or remove not best) */
-    if (!old_is_group_best && !new_is_better)
+    /* The fast case - replace not best with worse (or remove not best) */
+    if (old_suppressed && !(new && bgp_rte_better(new, old)))
       return 0;
-
-    /* The second case - replace the best with better */
-    if (old_is_group_best && new_is_better)
-    {
-      /* new is best-in-group, the see discussion below - this is
-	 a special variant of NBG && OBG. From OBG we can deduce
-	 that same_group(old_best) iff (old == old_best)  */
-      new->u.bgp.suppressed = 0;
-      return (old == old_best);
-    }
   }
 
   /* The default case - find a new best-in-group route */
@@ -1922,6 +1910,16 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
   if (!r)
     return 0;
 
+  /* Found if new is mergable with best-in-group */
+  if (new && (new != r) && bgp_rte_mergable(r, new))
+    new->u.bgp.suppressed = 0;
+
+  /* Found all existing routes mergable with best-in-group */
+  for (s=net->routes; rte_is_valid(s); s=s->next)
+    if (use_deterministic_med(s) && same_group(s, lpref, lasn))
+      if ((s != r) && bgp_rte_mergable(r, s))
+	s->u.bgp.suppressed = 0;
+
   /* Found best-in-group */
   r->u.bgp.suppressed = 0;
 
@@ -1935,9 +1933,9 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
    * rte_recalculate() without ignore that possibility).
    *
    * There are three possible cases according to whether the old route
-   * was the best in group (OBG, stored in old_is_group_best) and
-   * whether the new route is the best in group (NBG, tested by r == new).
-   * These cases work even if old or new is NULL.
+   * was the best in group (OBG, i.e. !old_suppressed) and whether the
+   * new route is the best in group (NBG, tested by r == new). These
+   * cases work even if old or new is NULL.
    *
    * NBG -> new is a possible candidate for the best route, so we just
    *        check for the first reason using same_group().
@@ -1952,7 +1950,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
   if (r == new)
     return old_best && same_group(old_best, lpref, lasn);
   else
-    return old_is_group_best;
+    return !old_suppressed;
 }
 
 struct rte *
