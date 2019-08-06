@@ -488,7 +488,7 @@
       {
       case SA_FROM:	RESULT(sa.f_type, ip, rta->from); break;
       case SA_GW:	RESULT(sa.f_type, ip, rta->nh.gw); break;
-      case SA_NET:	RESULT(sa.f_type, net, (*fs->rte)->net->n.addr); break;
+      case SA_NET:	RESULT(sa.f_type, net, (*fs->rte)->net); break;
       case SA_PROTO:	RESULT(sa.f_type, s, rta->src->proto->name); break;
       case SA_SOURCE:	RESULT(sa.f_type, i, rta->source); break;
       case SA_SCOPE:	RESULT(sa.f_type, i, rta->scope); break;
@@ -1107,7 +1107,7 @@
     struct rtable *table = rtc->table;
     ACCESS_RTE;
     ACCESS_EATTRS;
-    const net_addr *net = (*fs->rte)->net->n.addr;
+    const net_addr *net = (*fs->rte)->net;
 
     /* We ignore temporary attributes, probably not a problem here */
     /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */
