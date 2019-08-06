@@ -65,8 +65,8 @@ static inline struct adata *as_path_prepend(struct linpool *pool, const struct a
 struct f_path_mask_item {
   union {
     u32 asn; /* PM_ASN */
-    struct f_line *expr; /* PM_ASN_EXPR */
-    struct f_tree *set; /* PM_ASN_SET */
+    const struct f_line *expr; /* PM_ASN_EXPR */
+    const struct f_tree *set; /* PM_ASN_SET */
     struct { /* PM_ASN_RANGE */
       u32 from;
       u32 to;

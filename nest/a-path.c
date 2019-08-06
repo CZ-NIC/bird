@@ -741,7 +741,7 @@ pm_match(struct pm_pos *pos, u32 asn, u32 asn2)
 }
 
 static int
-pm_match_set(struct pm_pos *pos, struct f_tree *set)
+pm_match_set(struct pm_pos *pos, const struct f_tree *set)
 {
   struct f_val asn = { .type = T_INT };
 
