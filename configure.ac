@@ -137,27 +137,27 @@ if test "$enable_pthreads" != no ; then
   fi
 fi
 
+# This is assumed to be necessary for proper BIRD build
+CFLAGS="$CFLAGS -fno-strict-aliasing -fno-strict-overflow"
+
 if test "$bird_cflags_default" = yes ; then
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_pointer_sign], [-Wno-pointer-sign], [-Wall])
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers], [-Wall -Wextra])
-  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_fno_strict_aliasing], [-fno-strict-aliasing])
-  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_fno_strict_overflow], [-fno-strict-overflow])
+
+  if test "$enable_debug" = no; then
+    BIRD_CHECK_LTO
+  fi
+
+  if test "$bird_cv_c_lto" = yes; then
+    CFLAGS="$CFLAGS -flto"
+    LDFLAGS="$LDFLAGS -flto=4"
+  fi
 
   CFLAGS="$CFLAGS -Wall -Wextra -Wstrict-prototypes -Wno-parentheses"
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_pointer_sign], [-Wno-pointer-sign])
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers])
-  BIRD_ADD_GCC_OPTION([bird_cv_c_option_fno_strict_aliasing], [-fno-strict-aliasing])
-  BIRD_ADD_GCC_OPTION([bird_cv_c_option_fno_strict_overflow], [-fno-strict-overflow])
 fi
 
-if test "$enable_debug" = no; then
-  BIRD_CHECK_LTO
-fi
-
-if test "$bird_cv_c_lto" = yes; then
-  CFLAGS="$CFLAGS -flto"
-  LDFLAGS="$LDFLAGS -flto=4"
-fi
 
 AC_MSG_CHECKING([CFLAGS])
 AC_MSG_RESULT([$CFLAGS])
@@ -387,9 +387,6 @@ if test "$enable_debug" = yes ; then
       AC_CHECK_LIB([efence], [malloc])
     fi
   fi
-else
-  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_implicit_fallthrough], [-Wno-implicit-fallthrough])
-  BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_implicit_fallthrough], [-Wno-implicit-fallthrough])
 fi
 
 CLIENT=birdcl
