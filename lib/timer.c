@@ -37,28 +37,7 @@
 #include "lib/timer.h"
 
 
-struct timeloop main_timeloop;
-
-
-#ifdef USE_PTHREADS
-
-#include <pthread.h>
-
-/* Data accessed and modified from proto/bfd/io.c */
-pthread_key_t current_time_key;
-
-static inline struct timeloop *
-timeloop_current(void)
-{
-  return pthread_getspecific(current_time_key);
-}
-
-static inline void
-timeloop_init_current(void)
-{
-  pthread_key_create(&current_time_key, NULL);
-  pthread_setspecific(current_time_key, &main_timeloop);
-}
+_Thread_local struct timeloop timeloop_current;
 
 void wakeup_kick_current(void);
 
