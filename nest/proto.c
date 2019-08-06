@@ -619,7 +619,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
     c->last_tx_filter_change = current_time();
 
   /* Execute channel-specific reconfigure hook */
-  if (c->channel->reconfigure && !c->channel->reconfigure(c, cf))
+  if (c->channel->reconfigure && !c->channel->reconfigure(c, cf, &import_changed, &export_changed))
     return 0;
 
   /* If the channel is not open, it has no routes and we cannot reload it anyways */

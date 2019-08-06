@@ -451,7 +451,7 @@ struct channel_class {
   uint config_size;			/* Size of channel config data structure */
 
   void (*init)(struct channel *, struct channel_config *);	/* Create new instance */
-  int (*reconfigure)(struct channel *, struct channel_config *);	/* Try to reconfigure instance, returns success */
+  int (*reconfigure)(struct channel *, struct channel_config *, int *import_changed, int *export_changed);	/* Try to reconfigure instance, returns success */
   int (*start)(struct channel *);	/* Start the instance */
   void (*shutdown)(struct channel *);	/* Stop the instance */
   void (*cleanup)(struct channel *);	/* Channel finished flush */
