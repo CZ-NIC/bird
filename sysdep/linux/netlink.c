@@ -69,6 +69,7 @@
 #define RTA_ENCAP  22
 #endif
 
+#define krt_ipv4(p) ((p)->af == AF_INET)
 #define krt_ecmp6(p) ((p)->af == AF_INET6)
 
 const int rt_default_ecmp = 16;
@@ -473,10 +474,21 @@ static inline ip_addr rta_get_via(struct rtattr *a)
 static u32 rta_mpls_stack[MPLS_MAX_LABEL_STACK];
 static inline int rta_get_mpls(struct rtattr *a, u32 *stack)
 {
+  if (!a)
+    return 0;
+
   if (RTA_PAYLOAD(a) % 4)
     log(L_WARN "KRT: Strange length of received MPLS stack: %u", RTA_PAYLOAD(a));
 
-  return mpls_get(RTA_DATA(a), RTA_PAYLOAD(a) & ~0x3, stack);
+  int labels = mpls_get(RTA_DATA(a), RTA_PAYLOAD(a) & ~0x3, stack);
+
+  if (labels < 0)
+  {
+    log(L_WARN "KRT: Too long MPLS stack received, ignoring");
+    labels = 0;
+  }
+
+  return labels;
 }
 #endif
 
@@ -712,7 +724,7 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
 	rv->gw = IPA_NONE;
 
 #ifdef HAVE_MPLS_KERNEL
-      if (a[RTA_ENCAP_TYPE])
+      if (a[RTA_ENCAP] && a[RTA_ENCAP_TYPE])
       {
 	if (rta_get_u16(a[RTA_ENCAP_TYPE]) != LWTUNNEL_ENCAP_MPLS) {
 	  log(L_WARN "KRT: Unknown encapsulation method %d in multipath", rta_get_u16(a[RTA_ENCAP_TYPE]));
@@ -723,7 +735,6 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
 	nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
 	nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
 	rv->labels = rta_get_mpls(enca[RTA_DST], rv->label);
-	break;
       }
 #endif
 
@@ -1378,27 +1389,43 @@ nl_delete_rte(struct krt_proto *p, rte *e)
   return err;
 }
 
+static inline int
+nl_replace_rte(struct krt_proto *p, rte *e)
+{
+  rta *a = e->attrs;
+  return nl_send_route(p, e, NL_OP_REPLACE, a->dest, &(a->nh));
+}
+
+
 void
 krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old)
 {
   int err = 0;
 
   /*
-   * We could use NL_OP_REPLACE, but route replace on Linux has some problems:
+   * We use NL_OP_REPLACE for IPv4, it has an issue with not checking for
+   * matching rtm_protocol, but that is OK when dedicated priority is used.
    *
-   * 1) Does not check for matching rtm_protocol
-   * 2) Has broken semantics for IPv6 ECMP
-   * 3) Crashes some kernel version when used for IPv6 ECMP
+   * We do not use NL_OP_REPLACE for IPv6, as it has broken semantics for ECMP
+   * and with some kernel versions ECMP replace crashes kernel. Would need more
+   * testing and checks for kernel versions.
    *
-   * So we use NL_OP_DELETE and then NL_OP_ADD. We also do not trust the old
-   * route value, so we do not try to optimize IPv6 ECMP reconfigurations.
+   * For IPv6, we use NL_OP_DELETE and then NL_OP_ADD. We also do not trust the
+   * old route value, so we do not try to optimize IPv6 ECMP reconfigurations.
    */
 
-  if (old)
-    nl_delete_rte(p, old);
+  if (krt_ipv4(p) && old && new)
+  {
+    err = nl_replace_rte(p, new);
+  }
+  else
+  {
+    if (old)
+      nl_delete_rte(p, old);
 
-  if (new)
-    err = nl_add_rte(p, new);
+    if (new)
+      err = nl_add_rte(p, new);
+  }
 
   if (err < 0)
     n->n.flags |= KRF_SYNC_ERROR;
@@ -1616,7 +1643,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	      return;
 	    }
 
-	  ra->nh = *nh;
+	  nexthop_link(ra, nh);
 	  break;
 	}
 
@@ -1676,9 +1703,8 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
     }
 
 #ifdef HAVE_MPLS_KERNEL
-  int labels = 0;
   if ((i->rtm_family == AF_MPLS) && a[RTA_NEWDST] && !ra->nh.next)
-    labels = rta_get_mpls(a[RTA_NEWDST], ra->nh.label);
+    ra->nh.labels = rta_get_mpls(a[RTA_NEWDST], ra->nh.label);
 
   if (a[RTA_ENCAP] && a[RTA_ENCAP_TYPE] && !ra->nh.next)
     {
@@ -1689,7 +1715,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	      struct rtattr *enca[BIRD_RTA_MAX];
 	      nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
 	      nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
-	      labels = rta_get_mpls(enca[RTA_DST], ra->nh.label);
+	      ra->nh.labels = rta_get_mpls(enca[RTA_DST], ra->nh.label);
 	      break;
 	    }
 	  default:
@@ -1697,14 +1723,6 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	    break;
 	}
     }
-
-  if (labels < 0)
-  {
-    log(L_WARN "KRT: Too long MPLS stack received, ignoring.");
-    ra->nh.labels = 0;
-  }
-  else
-    ra->nh.labels = labels;
 #endif
 
   if (i->rtm_scope != def_scope)

@@ -403,6 +403,14 @@ configured for all relevant protocols and requires protocol-specific support
 (currently implemented for Kernel and BGP protocols), it is activated for
 particular boot by option <cf/-R/.
 
+<p>Some protocols (e.g. BGP) could be restarted gracefully after both
+intentional outage and crash, while others (e.g. OSPF) after intentional outage
+only. For planned graceful restart, BIRD must be shut down by
+<ref id="cli-graceful-restart" name="graceful restart"> command instead of
+regular <ref id="cli-down" name="down"> command. In this way routing neighbors
+are notified about planned graceful restart and routes are kept in kernel table
+after shutdown.
+
 
 <chapt>Configuration
 <label id="config">
@@ -671,14 +679,24 @@ agreement").
 	This is an optional description of the protocol. It is displayed as a
 	part of the output of 'show protocols all' command.
 
-	<tag><label id="proto-vrf">vrf "<m/text/"</tag>
+	<tag><label id="proto-vrf">vrf "<m/text/"|default</tag>
 	Associate the protocol with specific VRF. The protocol will be
 	restricted to interfaces assigned to the VRF and will use sockets bound
-	to the VRF. Appropriate VRF interface must exist on OS level. For kernel
-	protocol, an appropriate table still must be explicitly selected by
-	<cf/table/ option. Note that for proper VRF support it is necessary to
-	use Linux kernel version at least 4.14, older versions have limited VRF
-	implementation.
+	to the VRF. A corresponding VRF interface must exist on OS level. For
+	kernel protocol, an appropriate table still must be explicitly selected
+	by <cf/table/ option.
+
+	By selecting <cf/default/, the protocol is associated with the default
+	VRF; i.e., it will be restricted to interfaces not assigned to any
+	regular VRF. That is different from not specifying <cf/vrf/ at all, in
+	which case the protocol may use any interface regardless of its VRF
+	status.
+
+	Note that for proper VRF support it is necessary to use Linux kernel
+	version at least 4.14, older versions have limited VRF implementation.
+	Before Linux kernel 5.0, a socket bound to a port in default VRF collide
+	with others in regular VRFs. In BGP, this can be avoided by using
+	<ref id="bgp-strict-bind" name="strict bind"> option.
 
 	<tag><label id="proto-channel"><m/channel name/ [{<m/channel config/}]</tag>
 	Every channel must be explicitly stated. See the protocol-specific
@@ -1105,6 +1123,10 @@ This argument can be omitted if there exists only a single instance.
 
 	<tag><label id="cli-down">down</tag>
 	Shut BIRD down.
+
+	<tag><label id="cli-graceful-restart">graceful restart</tag>
+	Shut BIRD down for graceful restart. See <ref id="graceful-restart"
+	name="graceful restart"> section for details.
 
 	<tag><label id="cli-debug">debug <m/protocol/|<m/pattern/|all all|off|{ states|routes|filters|events|packets [, <m/.../] }</tag>
 	Control protocol debugging.
@@ -1896,12 +1918,11 @@ the BFD session went down).
 advanced features like the echo mode or authentication are not implemented), IP
 transport for BFD as defined in <rfc id="5881"> and <rfc id="5883"> and
 interaction with client protocols as defined in <rfc id="5882">.
-We currently support at most one protocol instance.
 
 <p>BFD packets are sent with a dynamic source port number. Linux systems use by
 default a bit different dynamic port range than the IANA approved one
 (49152-65535). If you experience problems with compatibility, please adjust
-<cf>/proc/sys/net/ipv4/ip_local_port_range</cf>
+<cf>/proc/sys/net/ipv4/ip_local_port_range</cf>.
 
 <sect1>Configuration
 <label id="bfd-config">
@@ -1917,6 +1938,14 @@ configuration is often sufficient.
 
 <p>Note that to use BFD for other protocols like OSPF or BGP, these protocols
 also have to be configured to request BFD sessions, usually by <cf/bfd/ option.
+
+<p>A BFD instance not associated with any VRF handles session requests from all
+other protocols, even ones associated with a VRF. Such setup would work for
+single-hop BFD sessions if <cf/net.ipv4.udp_l3mdev_accept/ sysctl is enabled,
+but does not currently work for multihop sessions. Another approach is to
+configure multiple BFD instances, one for each VRF (including the default VRF).
+Each BFD instance associated with a VRF (regular or default) only handles
+session requests from protocols in the same VRF.
 
 <p>Some of BFD session options require <m/time/ value, which has to be specified
 with the appropriate unit: <m/num/ <cf/s/|<cf/ms/|<cf/us/. Although microseconds
@@ -2199,7 +2228,7 @@ using the following configuration parameters:
 	Define neighboring router this instance will be talking to and what AS
 	it is located in. In case the neighbor is in the same AS as we are, we
 	automatically switch to IBGP. Alternatively, it is possible to specify
-	just <cf/internal/ or </cf/external/ instead of AS number, in that case
+	just <cf/internal/ or <cf/external/ instead of AS number, in that case
 	either local AS number, or any external AS number is accepted.
 	Optionally, the remote port may also be specified. Like <cf/local/
 	parameter, this parameter may also be used multiple times with different
@@ -2249,7 +2278,7 @@ using the following configuration parameters:
 	dynamic BGP behavior is active. Actual names also contain numeric
 	index to distinguish individual instances.  Default: "dynbgp".
 
-	<tag><label id="bgp-dynamic-name">dynamic name digits <m/number/</tag>
+	<tag><label id="bgp-dynamic-name-digits">dynamic name digits <m/number/</tag>
 	Define minimum number of digits for index in names of spawned dynamic
 	BGP instances. E.g., if set to 2, then the first name would be
 	"dynbgp01". Default: 0.

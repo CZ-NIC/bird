@@ -147,7 +147,7 @@ ifa_send_notify(struct proto *p, unsigned c, struct ifa *a)
 {
   if (p->ifa_notify &&
       (p->proto_state != PS_DOWN) &&
-      (!p->vrf || p->vrf == a->iface->master))
+      (!p->vrf_set || p->vrf == a->iface->master))
     {
       if (p->debug & D_IFACES)
 	log(L_TRACE "%s < address %N on interface %s %s",
@@ -185,7 +185,7 @@ if_send_notify(struct proto *p, unsigned c, struct iface *i)
 {
   if (p->if_notify &&
       (p->proto_state != PS_DOWN) &&
-      (!p->vrf || p->vrf == i->master))
+      (!p->vrf_set || p->vrf == i->master))
     {
       if (p->debug & D_IFACES)
 	log(L_TRACE "%s < interface %s %s", p->name, i->name,

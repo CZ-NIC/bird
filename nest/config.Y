@@ -65,7 +65,7 @@ proto_postconfig(void)
 CF_DECLS
 
 CF_KEYWORDS(ROUTER, ID, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
-CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, TABLE, STATES, ROUTES, FILTERS)
+CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, DEFAULT, TABLE, STATES, ROUTES, FILTERS)
 CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED)
 CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, INTERFACES)
@@ -156,7 +156,7 @@ table_sorted:
  | SORTED { $$ = 1; }
  ;
 
-table: net_type TABLE CF_SYM_VOID table_sorted {
+table: net_type TABLE symbol table_sorted {
    struct rtable_config *cf;
    cf = rt_new_table($3, $1);
    cf->sorted = $4;
@@ -180,7 +180,7 @@ proto_name:
      s->proto = this_proto;
      this_proto->name = s->name;
      }
- | CF_SYM_VOID {
+ | symbol {
      cf_define_symbol($1, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
    }
@@ -194,7 +194,7 @@ proto_name:
 
      proto_copy_config(this_proto, $2->proto);
    }
- | CF_SYM_VOID FROM CF_SYM_KNOWN {
+ | symbol FROM CF_SYM_KNOWN {
      if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
 
      cf_define_symbol($1, this_proto->class, proto, this_proto);
@@ -211,7 +211,8 @@ proto_item:
  | MRTDUMP mrtdump_mask { this_proto->mrtdump = $2; }
  | ROUTER ID idval { this_proto->router_id = $3; }
  | DESCRIPTION text { this_proto->dsc = $2; }
- | VRF text { this_proto->vrf = if_get_by_name($2); }
+ | VRF text { this_proto->vrf = if_get_by_name($2); this_proto->vrf_set = 1; }
+ | VRF DEFAULT { this_proto->vrf = NULL; this_proto->vrf_set = 1; }
  ;
 
 
