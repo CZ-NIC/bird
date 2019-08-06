@@ -459,7 +459,7 @@ mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
 
     if (alen < 0)
     {
-      mrt_log(s, "Attribute list too long for %N", r->net->n.addr);
+      mrt_log(s, "Attribute list too long for %N", r->net);
       alen = 0;
     }
 
