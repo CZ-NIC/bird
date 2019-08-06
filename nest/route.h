@@ -209,7 +209,7 @@ struct hostentry {
 
 typedef struct rte {
   struct rte *next;
-  net *net;				/* Network this RTE belongs to */
+  const net_addr *net;			/* Prefix this RTE belongs to. If REF_CACHED, this points to the net_addr stored in FIB. */
   struct channel *sender;		/* Channel used to send the route to the routing table */
   struct rta *attrs;			/* Attributes of this route */
   u32 id;				/* Table specific route id */
@@ -306,7 +306,7 @@ void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
 void rt_modify_stale(rtable *t, struct channel *c);
 void rt_schedule_prune(rtable *t);
-void rte_dump(rte *);
+void rte_dump(const net *n, const rte *);
 void rte_free(rte *);
 rte *rte_do_cow(rte *);
 static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }

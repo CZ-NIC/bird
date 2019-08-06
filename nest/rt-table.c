@@ -552,7 +552,7 @@ rte_mergable(rte *pri, rte *sec)
 static void
 rte_trace(struct proto *p, rte *e, int dir, char *msg)
 {
-  log(L_TRACE "%s %c %s %N %s", p->name, dir, msg, e->net->n.addr, rta_dest_name(e->attrs->dest));
+  log(L_TRACE "%s %c %s %N %s", p->name, dir, msg, e->net, rta_dest_name(e->attrs->dest));
 }
 
 static inline void
@@ -1002,36 +1002,35 @@ static inline int
 rte_validate(rte *e)
 {
   int c;
-  net *n = e->net;
 
-  if (!net_validate(n->n.addr))
+  if (!net_validate(e->net))
   {
     log(L_WARN "Ignoring bogus prefix %N received via %s",
-	n->n.addr, e->sender->proto->name);
+	e->net, e->sender->proto->name);
     return 0;
   }
 
   /* FIXME: better handling different nettypes */
-  c = !net_is_flow(n->n.addr) ?
-    net_classify(n->n.addr): (IADDR_HOST | SCOPE_UNIVERSE);
+  c = !net_is_flow(e->net) ?
+    net_classify(e->net): (IADDR_HOST | SCOPE_UNIVERSE);
   if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
   {
     log(L_WARN "Ignoring bogus route %N received via %s",
-	n->n.addr, e->sender->proto->name);
+	e->net, e->sender->proto->name);
     return 0;
   }
 
-  if (net_type_match(n->n.addr, NB_DEST) == !e->attrs->dest)
+  if (net_type_match(e->net, NB_DEST) == !e->attrs->dest)
   {
     log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
-	n->n.addr, e->attrs->dest, e->sender->proto->name);
+	e->net, e->attrs->dest, e->sender->proto->name);
     return 0;
   }
 
   if ((e->attrs->dest == RTD_UNICAST) && !nexthop_is_sorted(&(e->attrs->nh)))
   {
     log(L_WARN "Ignoring unsorted multipath route %N received via %s",
-	n->n.addr, e->sender->proto->name);
+	e->net, e->sender->proto->name);
     return 0;
   }
 
@@ -1438,12 +1437,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   rte_update_lock();
   if (new)
     {
-      /* Create a temporary table node */
-      nn = alloca(sizeof(net) + n->length);
-      memset(nn, 0, sizeof(net) + n->length);
-      net_copy(nn->n.addr, n);
-
-      new->net = nn;
+      new->net = n;
       new->sender = c;
 
       if (!new->pref)
@@ -1496,7 +1490,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
       /* Use the actual struct network, not the dummy one */
       nn = net_get(c->table, n);
-      new->net = nn;
+      new->net = nn->n.addr;
     }
   else
     {
@@ -1540,16 +1534,16 @@ rte_announce_i(rtable *tab, uint type, net *net, rte *new, rte *old,
 }
 
 static inline void
-rte_discard(rte *old)	/* Non-filtered route deletion, used during garbage collection */
+rte_discard(net *net, rte *old)	/* Non-filtered route deletion, used during garbage collection */
 {
   rte_update_lock();
-  rte_recalculate(old->sender, old->net, NULL, old->attrs->src);
+  rte_recalculate(old->sender, net, NULL, old->attrs->src);
   rte_update_unlock();
 }
 
 /* Modify existing route by protocol hook, used for long-lived graceful restart */
 static inline void
-rte_modify(rte *old)
+rte_modify(net *net, rte *old)
 {
   rte_update_lock();
 
@@ -1563,7 +1557,7 @@ rte_modify(rte *old)
       new->flags = (old->flags & ~REF_MODIFY) | REF_COW;
     }
 
-    rte_recalculate(old->sender, old->net, new, old->attrs->src);
+    rte_recalculate(old->sender, net, new, old->attrs->src);
   }
 
   rte_update_unlock();
@@ -1683,11 +1677,13 @@ rt_modify_stale(rtable *t, struct channel *c)
  * This functions dumps contents of a &rte to debug output.
  */
 void
-rte_dump(rte *e)
+rte_dump(const net *n, const rte *e)
 {
-  net *n = e->net;
-  debug("%-1N ", n->n.addr);
-  debug("KF=%02x PF=%02x pref=%d ", n->n.flags, e->pflags, e->pref);
+  ASSERT((!n) || (n->n.addr == e->net));
+  debug("%-1N ", e->net);
+  if (n)
+    debug("KF=%02x ", n->n.flags);
+  debug("PF=%02x pref=%d ", e->pflags, e->pref);
   rta_dump(e->attrs);
   if (e->attrs->src->proto->proto->dump_attrs)
     e->attrs->src->proto->proto->dump_attrs(e);
@@ -1711,7 +1707,7 @@ rt_dump(rtable *t)
     {
       rte *e;
       for(e=n->routes; e; e=e->next)
-	rte_dump(e);
+	rte_dump(n, e);
     }
   FIB_WALK_END;
   debug("\n");
@@ -1877,7 +1873,7 @@ again:
 		return;
 	      }
 
-	    rte_discard(e);
+	    rte_discard(n, e);
 	    limit--;
 
 	    goto rescan;
@@ -1892,7 +1888,7 @@ again:
 		return;
 	      }
 
-	    rte_modify(e);
+	    rte_modify(n, e);
 	    limit--;
 
 	    goto rescan;
@@ -2492,7 +2488,7 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
   /* Insert the new rte */
   rte *e = rte_do_cow(new);
   e->flags |= REF_COW;
-  e->net = net;
+  e->net = net->n.addr;
   e->sender = c;
   e->lastmod = current_time();
   e->next = *pos;
@@ -2537,7 +2533,7 @@ rt_reload_channel(struct channel *c)
 	return 0;
       }
 
-      rte_update2(c, e->net->n.addr, rte_do_cow(e), e->attrs->src);
+      rte_update2(c, e->net, rte_do_cow(e), e->attrs->src);
     }
 
     c->reload_next_rte = NULL;
@@ -2660,7 +2656,7 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int re
   /* Insert the new rte */
   rte *e = rte_do_cow(new);
   e->flags |= REF_COW;
-  e->net = net;
+  e->net = net->n.addr;
   e->sender = c;
   e->lastmod = current_time();
   e->next = *pos;

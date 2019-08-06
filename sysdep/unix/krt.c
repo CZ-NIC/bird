@@ -251,14 +251,14 @@ static inline void
 krt_trace_in(struct krt_proto *p, rte *e, char *msg)
 {
   if (p->p.debug & D_PACKETS)
-    log(L_TRACE "%s: %N: %s", p->p.name, e->net->n.addr, msg);
+    log(L_TRACE "%s: %N: %s", p->p.name, e->net, msg);
 }
 
 static inline void
 krt_trace_in_rl(struct tbf *f, struct krt_proto *p, rte *e, char *msg)
 {
   if (p->p.debug & D_PACKETS)
-    log_rl(f, L_TRACE "%s: %N: %s", p->p.name, e->net->n.addr, msg);
+    log_rl(f, L_TRACE "%s: %N: %s", p->p.name, e->net, msg);
 }
 
 /*
@@ -298,12 +298,12 @@ krt_uptodate(rte *a, rte *b)
 static void
 krt_learn_announce_update(struct krt_proto *p, rte *e)
 {
-  net *n = e->net;
+  const net_addr *n = e->net;
   rta *aa = rta_clone(e->attrs);
   rte *ee = rte_get_temp(aa);
   ee->pflags = EA_ID_FLAG(EA_KRT_SOURCE) | EA_ID_FLAG(EA_KRT_METRIC);
   ee->u.krt = e->u.krt;
-  rte_update(&p->p, n->n.addr, ee);
+  rte_update(&p->p, n, ee);
 }
 
 static void
@@ -316,8 +316,7 @@ krt_learn_announce_delete(struct krt_proto *p, net *n)
 static void
 krt_learn_scan(struct krt_proto *p, rte *e)
 {
-  net *n0 = e->net;
-  net *n = net_get(&p->krt_table, n0->n.addr);
+  net *n = net_get(&p->krt_table, e->net);
   rte *m, **mm;
 
   e->attrs = rta_lookup(e->attrs);
@@ -429,8 +428,7 @@ again:
 static void
 krt_learn_async(struct krt_proto *p, rte *e, int new)
 {
-  net *n0 = e->net;
-  net *n = net_get(&p->krt_table, n0->n.addr);
+  net *n = net_get(&p->krt_table, e->net);
   rte *g, **gg, *best, **bestp, *old_best;
 
   e->attrs = rta_lookup(e->attrs);
@@ -528,7 +526,7 @@ krt_dump(struct proto *P)
 }
 
 static void
-krt_dump_attrs(rte *e)
+krt_dump_attrs(const rte *e)
 {
   debug(" [m=%d,p=%d]", e->u.krt.metric, e->u.krt.proto);
 }
@@ -551,7 +549,7 @@ krt_flush_routes(struct krt_proto *p)
       if (rte_is_valid(e) && (n->n.flags & KRF_INSTALLED))
 	{
 	  /* FIXME: this does not work if gw is changed in export filter */
-	  krt_replace_rte(p, e->net, NULL, e);
+	  krt_replace_rte(p, n, NULL, e);
 	  n->n.flags &= ~KRF_INSTALLED;
 	}
     }
@@ -621,7 +619,7 @@ krt_same_dest(rte *k, rte *e)
 void
 krt_got_route(struct krt_proto *p, rte *e)
 {
-  net *net = e->net;
+  net *net = net_get(p->p.main_channel->table, e->net);
   int verdict;
 
 #ifdef KRT_ALLOW_LEARN
@@ -776,7 +774,7 @@ krt_prune(struct krt_proto *p)
 void
 krt_got_route_async(struct krt_proto *p, rte *e, int new)
 {
-  net *net = e->net;
+  net *net = net_get(p->p.main_channel->table, e->net);
 
   switch (e->u.krt.src)
     {
