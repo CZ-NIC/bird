@@ -43,15 +43,19 @@
 #include "lib/hash.h"
 #include "lib/string.h"
 #include "lib/alloca.h"
-#include "lib/lock.h"
+#include "lib/worker.h"
+
+#include <errno.h>
+#include <semaphore.h>
 
 pool *rt_table_pool;
 
-#define RUPS_MAX  8
+#define RTE_UPDATE_WORKERS	16
+#define RUPS_MAX  (RTE_UPDATE_WORKERS * 8)
 
 static slab *rte_slab;
-static _Thread_local linpool *rte_update_pool[RUPS_MAX] = {};
-static _Thread_local uint rups = 0;
+static linpool *rte_update_pool[RUPS_MAX] = {};
+static uint rups = 0;
 
 static inline linpool *rup_get(void) {
   /* If we have a local spare linpool,
@@ -59,26 +63,19 @@ static inline linpool *rup_get(void) {
   if (rups > 0)
     return rte_update_pool[--rups];
 
-  /* Linpool acquisition must be serialized. */
-  general_lock();
-
   /* Allocate a new linpool */
   struct linpool *pool = lp_new_default(rt_table_pool);
-
-  /* Done with acquisition */
-  general_unlock();
 
   /* Return the pool */
   return pool;
 }
 
 static inline void rup_free(linpool *pool) {
-  if (rups == RUPS_MAX) {
+  if (rups == RUPS_MAX)
     /* We have too many spare linpools, freeing this one */
-    general_lock();
     rfree(pool);
-    general_unlock();
-  } else {
+  else
+  {
     /* Keep the linpool for future use */
     lp_flush(pool);
     rte_update_pool[rups++] = pool;
@@ -108,10 +105,12 @@ struct rte_update_data {
   } result;
 };
 
-list pending_imports;
 list routing_tables;
+list pending_imports;
 
-static event *pending_imports_event;
+static struct worker_queue *import_queue;
+static struct rte_update_data *import_queue_data[RTE_UPDATE_WORKERS];
+static struct io_ping_handle *import_ping;
 
 static void rt_free_hostcache(rtable *tab);
 static void rt_notify_hostcache(rtable *tab, net *net);
@@ -1440,219 +1439,6 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
 }
 
 static void
-rte_do_update(struct rte_update_data *rud)
-{
-  ASSERT(rud->state == RUS_PENDING_UPDATE);
-  rud->state = RUS_UPDATING;
-
-  struct channel *c = rud->channel;
-  ASSERT(rud->rte);
-#define new (rud->rte)
-
-  const struct filter *filter = c->in_filter;
-
-  new->net = rud->net;
-  new->sender = c;
-
-  if (!new->pref)
-    new->pref = c->preference;
-
-  if (filter == FILTER_ACCEPT)
-    rud->result = RUR_ACCEPTED;
-  else
-    {
-      int fr;
-      if (filter == FILTER_REJECT)
-	fr = F_REJECT;
-      else
-	{
-	  rte_make_tmp_attrs(&new, rud->pool);
-	  fr = f_run(filter, &new, rud->pool, 0);
-	}
-
-      if (fr > F_ACCEPT)
-      {
-	rud->result = RUR_FILTERED;
-	if (!c->in_keep_filtered)
-	  goto done;
-	
-	new->flags |= REF_FILTERED;
-      }
-      else
-	rud->result = RUR_ACCEPTED;
-
-      if (filter != FILTER_REJECT)
-	rte_store_tmp_attrs(new, rud->pool);
-    }
-
-done:
-  rud->state = RUS_PENDING_RECALCULATE;
-  if (!ev_active(pending_imports_event))
-    ev_schedule(pending_imports_event);
-
-  return;
-#undef new
-}
-
-/**
- * rte_update - enter a new update to a routing table
- * @c: channel doing the update
- * @n: network address
- * @new: a &rte representing the new route or %NULL for route removal.
- * @src: protocol originating the update
- *
- * This function is called by the routing protocols whenever they discover
- * a new route or wish to update/remove an existing route. The right announcement
- * sequence is to build route attributes first (either un-cached with @aflags set
- * to zero or a cached one using rta_lookup(); in this case please note that
- * you need to increase the use count of the attributes yourself by calling
- * rta_clone()), call rte_get_temp() to obtain a temporary &rte, fill in all
- * the appropriate data and finally submit the new &rte by calling rte_update().
- *
- * @src specifies the protocol that originally created the route and the meaning
- * of protocol-dependent data of @new. If @new is not %NULL, @src have to be the
- * same value as @new->attrs->proto. @p specifies the protocol that called
- * rte_update(). In most cases it is the same protocol as @src. rte_update()
- * stores @p in @new->sender;
- *
- * When rte_update() gets any route, it automatically validates it (checks,
- * whether the network and next hop address are valid IP addresses and also
- * whether a normal routing protocol doesn't try to smuggle a host or link
- * scope route to the table), converts all protocol dependent attributes stored
- * in the &rte to temporary extended attributes, consults import filters of the
- * protocol to see if the route should be accepted and/or its attributes modified,
- * stores the temporary attributes back to the &rte.
- *
- * Now, having a "public" version of the route, we
- * automatically find any old route defined by the protocol @src
- * for network @n, replace it by the new one (or removing it if @new is %NULL),
- * recalculate the optimal route for this destination and finally broadcast
- * the change (if any) to all routing protocols by calling rte_announce().
- *
- * All memory used for attribute lists and other temporary allocations is taken
- * from a special linear pool @rte_update_pool and freed when rte_update()
- * finishes.
- */
-
-static void
-rte_dispatch_update(struct rte_update_data *rud)
-{
-  /* Get local linpool */
-  ASSERT(rud->pool == NULL);
-  rud->pool = rup_get();
-
-  /* Check right rud state */
-  ASSERT(rud->state == RUS_PENDING_UPDATE);
-
-  /* Create local rud copy */
-  rud = LP_DUPLICATE(rud->pool, rud);
-
-  /* Copy prefix */
-  net_addr *n = lp_alloc(rud->pool, rud->net->length);
-  net_copy(n, rud->net);
-  rud->net = n;
-
-  /* Insert rud into the synchronization queue */
-  add_tail(&pending_imports, &rud->n);
-
-  /* Is route update */
-  if (rud->rte)
-  {
-    /* Create local rte copy */
-    rud->rte = LP_DUPLICATE(rud->pool, rud->rte);
-    
-    /* Create local rta copy or raise the usecount */
-    if (rta_is_cached(rud->rte->attrs))
-      {
-	rud->old_rta = rud->rte->attrs;
-	rta_clone(rud->rte->attrs);
-      }
-    else
-      {
-	if (rud->rte->attrs->eattrs)
-	  ea_normalize(rud->rte->attrs->eattrs);
-
-	rud->rte->attrs = rta_copy(rud->rte->attrs, rud->pool);
-      }
-
-    /* Run the filters on local data */
-    rte_do_update(rud);
-  }
-  else	/* Is route withdraw */
-  {
-    /* Skip filter for withdraw */
-    rud->state = RUS_PENDING_RECALCULATE;
-    rud->result = RUR_WITHDRAW;
-    if (!ev_active(pending_imports_event))
-      ev_schedule(pending_imports_event);
-  }
-}
-
-static inline int
-net_bogus(const net_addr *n)
-{
-  if (!net_validate(n))
-    return 1;
-
-  int c = !net_is_flow(n) ?
-    net_classify(n) : (IADDR_HOST | SCOPE_UNIVERSE);
-
-  if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
-    return 1;
-
-  return 0;
-}
-
-void
-rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
-{
-  ASSERT(c->channel_state == CS_UP);
-  ASSERT(n);
-  ASSERT(src);
-
-  if (new)
-    c->stats.imp_updates_received++;
-  else
-    c->stats.imp_withdraws_received++;
-
-  if (net_bogus(n))
-  {
-    log(L_WARN "Ignoring bogus prefix %N received via %s",
-	n, c->proto->name);
-    if (new)
-      c->stats.imp_updates_invalid++;
-    else
-      c->stats.imp_withdraws_invalid++;
-    
-    /* Invalid net_addr can never get into table */
-    return;
-  }
-
-  struct rte_update_data rud = {
-    .channel = c,
-    .net = n,
-    .rte = new,
-    .src = src,
-  };
-
-  if (new && (
-       (net_type_match(n, NB_DEST) == !new->attrs->dest)
-       ||
-       (new->attrs->dest == RTD_UNICAST) && !nexthop_is_sorted(&(new->attrs->nh))
-      ))
-  {
-    log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
-	n, new->attrs->dest, c->proto->name);
-
-    /* Convert this update to withdraw */
-    rud.result = RUR_INVALID;
-    new = NULL;
-  }
-
-  rte_dispatch_update(&rud);
-}
-
-static void
 rte_finish_update(struct rte_update_data *rud)
 {
   ASSERT(rud->state == RUS_PENDING_RECALCULATE);
@@ -1725,21 +1511,251 @@ done:
 }
 
 static void
-rte_finish_update_hook(void *data UNUSED)
+rte_finish_update_hook(struct io_ping_handle *data UNUSED)
 {
+/*  ASSUME(data == import_ping); */
+  debug("Called rte_finish_update_hook()");
   struct rte_update_data *rud;
   node *nn;
   WALK_LIST_DELSAFE(rud, nn, pending_imports)
   {
     if (rud->state != RUS_PENDING_RECALCULATE)
-    {
-      ev_schedule(pending_imports_event);
       return;
-    }
 
     rem_node(&(rud->n));
     rte_finish_update(rud);
   }
+}
+
+static void
+rte_do_update(struct rte_update_data *rud)
+{
+  ASSERT(rud->state == RUS_PENDING_UPDATE);
+  rud->state = RUS_UPDATING;
+
+  struct channel *c = rud->channel;
+  ASSERT(rud->rte);
+#define new (rud->rte)
+
+  const struct filter *filter = c->in_filter;
+
+  new->net = rud->net;
+  new->sender = c;
+
+  if (!new->pref)
+    new->pref = c->preference;
+
+  if (filter == FILTER_ACCEPT)
+    rud->result = RUR_ACCEPTED;
+  else
+    {
+      int fr;
+      if (filter == FILTER_REJECT)
+	fr = F_REJECT;
+      else
+	{
+	  rte_make_tmp_attrs(&new, rud->pool);
+	  fr = f_run(filter, &new, rud->pool, 0);
+	}
+
+      if (fr > F_ACCEPT)
+      {
+	rud->result = RUR_FILTERED;
+	if (!c->in_keep_filtered)
+	  goto done;
+	
+	new->flags |= REF_FILTERED;
+      }
+      else
+	rud->result = RUR_ACCEPTED;
+
+      if (filter != FILTER_REJECT)
+	rte_store_tmp_attrs(new, rud->pool);
+    }
+
+done:
+  rud->state = RUS_PENDING_RECALCULATE;
+  debug("Worker: Route request processed, calling io_ping (%d): %s %N\n", rud->result, rud->channel->proto->name, rud->rte->net);
+  io_ping(import_ping);
+
+  return;
+#undef new
+}
+
+/**
+ * rte_update - enter a new update to a routing table
+ * @c: channel doing the update
+ * @n: network address
+ * @new: a &rte representing the new route or %NULL for route removal.
+ * @src: protocol originating the update
+ *
+ * This function is called by the routing protocols whenever they discover
+ * a new route or wish to update/remove an existing route. The right announcement
+ * sequence is to build route attributes first (either un-cached with @aflags set
+ * to zero or a cached one using rta_lookup(); in this case please note that
+ * you need to increase the use count of the attributes yourself by calling
+ * rta_clone()), call rte_get_temp() to obtain a temporary &rte, fill in all
+ * the appropriate data and finally submit the new &rte by calling rte_update().
+ *
+ * @src specifies the protocol that originally created the route and the meaning
+ * of protocol-dependent data of @new. If @new is not %NULL, @src have to be the
+ * same value as @new->attrs->proto. @p specifies the protocol that called
+ * rte_update(). In most cases it is the same protocol as @src. rte_update()
+ * stores @p in @new->sender;
+ *
+ * When rte_update() gets any route, it automatically validates it (checks,
+ * whether the network and next hop address are valid IP addresses and also
+ * whether a normal routing protocol doesn't try to smuggle a host or link
+ * scope route to the table), converts all protocol dependent attributes stored
+ * in the &rte to temporary extended attributes, consults import filters of the
+ * protocol to see if the route should be accepted and/or its attributes modified,
+ * stores the temporary attributes back to the &rte.
+ *
+ * Now, having a "public" version of the route, we
+ * automatically find any old route defined by the protocol @src
+ * for network @n, replace it by the new one (or removing it if @new is %NULL),
+ * recalculate the optimal route for this destination and finally broadcast
+ * the change (if any) to all routing protocols by calling rte_announce().
+ *
+ * All memory used for attribute lists and other temporary allocations is taken
+ * from a special linear pool @rte_update_pool and freed when rte_update()
+ * finishes.
+ */
+
+static void
+rte_dispatch_update(struct rte_update_data *rud)
+{
+  debug("Route update dispatch: %s %N %s\n", rud->channel->proto->name, rud->net, rud->rte ? rta_dest_name(rud->rte->attrs->dest) : "withdraw");
+
+  /* Get local linpool */
+  ASSERT(rud->pool == NULL);
+  rud->pool = rup_get();
+
+  /* Check right rud state */
+  ASSERT(rud->state == RUS_PENDING_UPDATE);
+
+  /* Create local rud copy */
+  rud = LP_DUPLICATE(rud->pool, rud);
+
+  /* Copy prefix */
+  net_addr *n = lp_alloc(rud->pool, rud->net->length);
+  net_copy(n, rud->net);
+  rud->net = n;
+
+  /* This is a withdraw and may be evaluated right now */
+  if (EMPTY_LIST(pending_imports) && !rud->rte)
+    return rte_finish_update(rud);
+
+  /* Insert rud into the synchronization queue */
+  add_tail(&pending_imports, &rud->n);
+
+  /* Is route update */
+  if (rud->rte)
+  {
+    /* Create local rte copy */
+    rud->rte = LP_DUPLICATE(rud->pool, rud->rte);
+    
+    /* Create local rta copy or raise the usecount */
+    if (rta_is_cached(rud->rte->attrs))
+      {
+	rud->old_rta = rud->rte->attrs;
+	rta_clone(rud->rte->attrs);
+      }
+    else
+      {
+	if (rud->rte->attrs->eattrs)
+	  ea_normalize(rud->rte->attrs->eattrs);
+
+	rud->rte->attrs = rta_copy(rud->rte->attrs, rud->pool);
+      }
+
+    /* Pass the update to the workers */
+    debug("Pushing route update to workers: %s %N %s\n", rud->channel->proto->name, rud->net, rta_dest_name(rud->rte->attrs->dest));
+    WORKER_QUEUE_PUSH(import_queue, import_queue_data, rud);
+  }
+  else	/* Is route withdraw and there are some pending imports before */
+  {
+    /* Skip filter for withdraw */
+    rud->state = RUS_PENDING_RECALCULATE;
+    rud->result = RUR_WITHDRAW;
+  }
+}
+
+static int
+rte_update_loop(struct worker_queue *wq)
+{
+  struct rte_update_data *rud;
+  WORKER_QUEUE_GET(wq, import_queue_data, rud);
+  ASSERT(rud->rte);
+  debug("Worker: Got route update request: %s %N %s\n", rud->channel->proto->name, rud->net, rta_dest_name(rud->rte->attrs->dest));
+  rte_do_update(rud);
+  return 1;
+}
+
+static inline int
+net_bogus(const net_addr *n)
+{
+  if (!net_validate(n))
+    return 1;
+
+  int c = !net_is_flow(n) ?
+    net_classify(n) : (IADDR_HOST | SCOPE_UNIVERSE);
+
+  if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
+    return 1;
+
+  return 0;
+}
+
+void
+rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
+{
+  ASSERT(c->channel_state == CS_UP);
+  ASSERT(n);
+  ASSERT(src);
+
+  debug("Route update requested: %s %N %s\n", c->proto->name, n, new ? rta_dest_name(new->attrs->dest) : "withdraw");
+
+  if (new)
+    c->stats.imp_updates_received++;
+  else
+    c->stats.imp_withdraws_received++;
+
+  if (net_bogus(n))
+  {
+    log(L_WARN "Ignoring bogus prefix %N received via %s",
+	n, c->proto->name);
+    if (new)
+      c->stats.imp_updates_invalid++;
+    else
+      c->stats.imp_withdraws_invalid++;
+    
+    /* Invalid net_addr can never get into table */
+    return;
+  }
+
+  struct rte_update_data rud = {
+    .channel = c,
+    .net = n,
+    .rte = new,
+    .src = src,
+  };
+
+  if (new && (
+       (net_type_match(n, NB_DEST) == !new->attrs->dest)
+       ||
+       (new->attrs->dest == RTD_UNICAST) && !nexthop_is_sorted(&(new->attrs->nh))
+      ))
+  {
+    log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
+	n, new->attrs->dest, c->proto->name);
+
+    /* Convert this update to withdraw */
+    rud.result = RUR_INVALID;
+    new = NULL;
+  }
+  
+  rte_dispatch_update(&rud);
 }
 
 /* Independent call to rte_announce(), used from next hop
@@ -2019,10 +2035,33 @@ rt_init(void)
   rte_slab = sl_new(rt_table_pool, sizeof(rte));
   init_list(&routing_tables);
   init_list(&pending_imports);
-
-  pending_imports_event = ev_new_init(&root_pool, rte_finish_update_hook, NULL);
 }
 
+
+/**
+ * rt_workers_init - start route update workers
+ *
+ * Started after initial fork.
+ */
+void
+rt_workers_init(void)
+{
+  import_queue = worker_queue_new(RTE_UPDATE_WORKERS, rte_update_loop);
+  import_ping = io_ping_new(rte_finish_update_hook);
+
+  debug("Starting %d route update workers\n", RTE_UPDATE_WORKERS);
+  
+  for (int i=0; i<RTE_UPDATE_WORKERS; i++)
+    if (worker_start(import_queue) < 0)
+      if (i) {
+	log(L_WARN "Started only %d workers", i);
+	break;
+      }
+      else
+	die("Could't start any route update worker.");
+    else
+      debug("Started route update worker %d\n", i);
+}
 
 /**
  * rt_prune_table - prune a routing table

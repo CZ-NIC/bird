@@ -900,6 +900,8 @@ main(int argc, char **argv)
 
   main_thread_init();
 
+  rt_workers_init();
+
   write_pid_file();
 
   signal_init();

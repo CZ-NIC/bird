@@ -282,6 +282,7 @@ extern list routing_tables;
 struct config;
 
 void rt_init(void);
+void rt_workers_init(void);
 void rt_preconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
 void rt_lock_table(rtable *);
