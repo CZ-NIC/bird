@@ -38,48 +38,21 @@
 
 
 struct timeloop main_timeloop;
+_Thread_local struct timeloop *timeloop_current;
 
-
-#ifdef USE_PTHREADS
-
-#include <pthread.h>
-
-/* Data accessed and modified from proto/bfd/io.c */
-pthread_key_t current_time_key;
-
-static inline struct timeloop *
-timeloop_current(void)
-{
-  return pthread_getspecific(current_time_key);
-}
-
-static inline void
-timeloop_init_current(void)
-{
-  pthread_key_create(&current_time_key, NULL);
-  pthread_setspecific(current_time_key, &main_timeloop);
-}
 
 void wakeup_kick_current(void);
-
-#else
-
-/* Just use main timelooop */
-static inline struct timeloop * timeloop_current(void) { return &main_timeloop; }
-static inline void timeloop_init_current(void) { }
-
-#endif
 
 btime
 current_time(void)
 {
-  return timeloop_current()->last_time;
+  return timeloop_current->last_time;
 }
 
 btime
 current_real_time(void)
 {
-  struct timeloop *loop = timeloop_current();
+  struct timeloop *loop = timeloop_current;
 
   if (!loop->real_time)
     times_update_real_time(loop);
@@ -138,7 +111,7 @@ tm_new(pool *p)
 void
 tm_set(timer *t, btime when)
 {
-  struct timeloop *loop = timeloop_current();
+  struct timeloop *loop = timeloop_current;
   uint tc = timers_count(loop);
 
   if (!t->expires)
@@ -178,7 +151,7 @@ tm_stop(timer *t)
   if (!t->expires)
     return;
 
-  struct timeloop *loop = timeloop_current();
+  struct timeloop *loop = timeloop_current;
   uint tc = timers_count(loop);
 
   HEAP_DELETE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
@@ -240,7 +213,7 @@ void
 timer_init(void)
 {
   timers_init(&main_timeloop, &root_pool);
-  timeloop_init_current();
+  timeloop_current = &main_timeloop;
 }
 
 
