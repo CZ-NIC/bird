@@ -4121,6 +4121,12 @@ definitions, prefix definitions and DNS definitions:
 	The minimum delay between two consecutive router advertisements, in
 	seconds. Default: 3
 
+	<tag><label id="radv-solicited-ra-unicast">solicited ra unicast <m/switch/</tag>
+	Solicited router advertisements are usually sent to all-nodes multicast
+	group like unsolicited ones, but the router can be configured to send
+	them as unicast directly to soliciting nodes instead. This is especially
+	useful on wireless networks (see <rfc id="7772">). Default: no
+
 	<tag><label id="radv-iface-managed">managed <m/switch/</tag>
 	This option specifies whether hosts should use DHCPv6 for IP address
 	configuration. Default: no

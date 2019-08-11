@@ -97,7 +97,7 @@ void sk_dump_all(void);
 int sk_is_ipv4(sock *s);		/* True if socket is IPv4 */
 int sk_is_ipv6(sock *s);		/* True if socket is IPv6 */
 
-static inline int sk_send_buffer_empty(sock *sk)
+static inline int sk_tx_buffer_empty(sock *sk)
 { return sk->tbuf == sk->tpos; }
 
 int sk_setup_multicast(sock *s);	/* Prepare UDP or IP socket for multicasting */

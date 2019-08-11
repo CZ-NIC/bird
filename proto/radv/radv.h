@@ -1,6 +1,8 @@
 /*
  *	BIRD -- Router Advertisement
  *
+ *	(c) 2011--2019 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2011--2019 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -65,6 +67,8 @@ struct radv_iface_config
   u32 min_ra_int;		/* Standard options from RFC 4861 */
   u32 max_ra_int;
   u32 min_delay;
+
+  u8 solicited_ra_unicast;	/* Send solicited RAs as unicast */
 
   u32 prefix_linger_time;	/* How long we advertise dead prefixes with lifetime 0 */
   u32 route_linger_time;	/* How long we advertise dead routes with lifetime 0 */
@@ -204,12 +208,16 @@ struct radv_iface
 	log(L_TRACE "%s: " msg, p->p.name , ## args ); } while(0)
 
 
+/* Invalidate cached RA packet */
+static inline void radv_invalidate(struct radv_iface *ifa)
+{ ifa->plen = 0; }
+
 /* radv.c */
 void radv_iface_notify(struct radv_iface *ifa, int event);
 
 /* packets.c */
 int radv_process_domain(struct radv_dnssl_config *cf);
-void radv_send_ra(struct radv_iface *ifa);
+void radv_send_ra(struct radv_iface *ifa, ip_addr to);
 int radv_sk_open(struct radv_iface *ifa);
 
 

@@ -1,6 +1,8 @@
 /*
  *	BIRD -- Router Advertisement Configuration
  *
+ *	(c) 2011--2019 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2011--2019 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -26,12 +28,12 @@ static u8 radv_mult_val;	/* Used by radv_mult for second return value */
 
 CF_DECLS
 
-CF_KEYWORDS(RADV, PREFIX, INTERFACE, MIN, MAX, RA, DELAY, INTERVAL,
-	MANAGED, OTHER, CONFIG, LINGER, LINK, MTU, REACHABLE, TIME, RETRANS,
-	TIMER, CURRENT, HOP, LIMIT, DEFAULT, VALID, PREFERRED, MULT,
-	LIFETIME, SKIP, ONLINK, AUTONOMOUS, RDNSS, DNSSL, NS, DOMAIN,
-	LOCAL, TRIGGER, SENSITIVE, PREFERENCE, LOW, MEDIUM, HIGH, PROPAGATE,
-	ROUTE, ROUTES, RA_PREFERENCE, RA_LIFETIME)
+CF_KEYWORDS(RADV, PREFIX, INTERFACE, MIN, MAX, RA, DELAY, INTERVAL, SOLICITED,
+	UNICAST, MANAGED, OTHER, CONFIG, LINGER, LINK, MTU, REACHABLE, TIME,
+	RETRANS, TIMER, CURRENT, HOP, LIMIT, DEFAULT, VALID, PREFERRED, MULT,
+	LIFETIME, SKIP, ONLINK, AUTONOMOUS, RDNSS, DNSSL, NS, DOMAIN, LOCAL,
+	TRIGGER, SENSITIVE, PREFERENCE, LOW, MEDIUM, HIGH, PROPAGATE, ROUTE,
+	ROUTES, RA_PREFERENCE, RA_LIFETIME)
 
 CF_ENUM(T_ENUM_RA_PREFERENCE, RA_PREF_, LOW, MEDIUM, HIGH)
 
@@ -98,6 +100,7 @@ radv_iface_item:
    MIN RA INTERVAL expr { RADV_IFACE->min_ra_int = $4; if ($4 < 3) cf_error("Min RA interval must be at least 3"); }
  | MAX RA INTERVAL expr { RADV_IFACE->max_ra_int = $4; if (($4 < 4) || ($4 > 1800)) cf_error("Max RA interval must be in range 4-1800"); }
  | MIN DELAY expr { RADV_IFACE->min_delay = $3; if ($3 <= 0) cf_error("Min delay must be positive"); }
+ | SOLICITED RA UNICAST bool { RADV_IFACE->solicited_ra_unicast = $4; }
  | MANAGED bool { RADV_IFACE->managed = $2; }
  | OTHER CONFIG bool { RADV_IFACE->other_config = $3; }
  | LINK MTU expr { RADV_IFACE->link_mtu = $3; }
