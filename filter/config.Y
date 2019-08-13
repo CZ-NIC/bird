@@ -446,7 +446,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc THEN
 %nonassoc ELSE
 
-%type <xp> cmds_int
+%type <xp> cmds_int cmd_prep
 %type <x> term block cmd cmds constant constructor print_list var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
 %type <fda> dynamic_attr
 %type <fsa> static_attr
@@ -624,17 +624,25 @@ cmds: /* EMPTY */ { $$ = NULL; }
  | cmds_int { $$ = $1.begin; }
  ;
 
-cmds_int: cmd {
+cmd_prep: cmd {
   $$.begin = $$.end = $1;
-  while ($$.end->next)
-    $$.end = $$.end->next;
+  if ($1)
+    while ($$.end->next)
+      $$.end = $$.end->next;
+}
+ ;
+
+cmds_int: cmd_prep
+ | cmds_int cmd_prep {
+  if (!$1.begin)
+    $$ = $2;
+  else if (!$2.begin)
+    $$ = $1;
+  else {
+    $$.begin = $1.begin;
+    $$.end = $2.end;
+    $1.end->next = $2.begin;
   }
- | cmds_int cmd {
-  $$.begin = $1.begin;
-  $1.end->next = $2;
-  $$.end = $2;
-  while ($$.end->next)
-    $$.end = $$.end->next;
  }
  ;
 
