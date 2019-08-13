@@ -567,6 +567,17 @@ r_args:
      rt_show_add_table($$, c->in_table);
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
+ | r_args EXPORT TABLE CF_SYM_KNOWN '.' r_args_channel {
+     cf_assert_symbol($4, SYM_PROTO);
+     $$ = $1;
+     struct proto_config *cf = $4->proto;
+     if (!cf->proto) cf_error("%s is not a protocol", $4->name);
+     struct channel *c = proto_find_channel_by_name(cf->proto, $6);
+     if (!c) cf_error("Channel %s.%s not found", $4->name, $6);
+     if (!c->out_table) cf_error("No export table in channel %s.%s", $4->name, $6);
+     rt_show_add_table($$, c->out_table);
+     $$->tables_defined_by = RSD_TDB_DIRECT;
+   }
  | r_args FILTER filter {
      $$ = $1;
      if ($$->filter != FILTER_ACCEPT) cf_error("Filter specified twice");

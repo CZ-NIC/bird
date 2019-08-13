@@ -1721,6 +1721,9 @@ bgp_channel_start(struct channel *C)
   if (c->cf->import_table)
     channel_setup_in_table(C);
 
+  if (c->cf->export_table)
+    channel_setup_out_table(C);
+
   c->stale_timer = tm_new_init(c->pool, bgp_long_lived_stale_timeout, c, 0, 0);
 
   c->next_hop_addr = c->cf->next_hop_addr;
@@ -2067,6 +2070,7 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
       (new->ext_next_hop != old->ext_next_hop) ||
       (new->add_path != old->add_path) ||
       (new->import_table != old->import_table) ||
+      (new->export_table != old->export_table) ||
       (IGP_TABLE(new, ip4) != IGP_TABLE(old, ip4)) ||
       (IGP_TABLE(new, ip6) != IGP_TABLE(old, ip6)))
     return 0;

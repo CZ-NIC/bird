@@ -320,6 +320,7 @@ int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
+int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
 
