@@ -1539,6 +1539,9 @@ bgp_channel_start(struct channel *C)
   if (c->cf->import_table)
    channel_setup_in_table(C);
 
+  if (c->cf->export_table)
+    channel_setup_out_table(C);
+
   c->next_hop_addr = c->cf->next_hop_addr;
   c->link_addr = IPA_NONE;
   c->packets_to_send = 0;
@@ -1841,8 +1844,9 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
       (new->ext_next_hop != old->ext_next_hop) ||
       (new->add_path != old->add_path) ||
       (new->import_table != old->import_table) ||
-      (IGP_TABLE(old, ip4) != IGP_TABLE(new, ip4)) ||
-      (IGP_TABLE(old, ip6) != IGP_TABLE(new, ip6)))
+      (new->export_table != old->export_table) ||
+      (IGP_TABLE(new, ip4) != IGP_TABLE(old, ip4)) ||
+      (IGP_TABLE(new, ip6) != IGP_TABLE(old, ip6)))
     return 0;
 
   if (new->gw_mode != old->gw_mode)

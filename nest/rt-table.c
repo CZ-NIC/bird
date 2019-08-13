@@ -566,7 +566,6 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, ea_list *tmpa, int
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
 
-
   /*
    * First, apply export limit.
    *
@@ -612,6 +611,8 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, ea_list *tmpa, int
 	}
     }
 
+  if (c->out_table && !rte_update_out(c, net->n.addr, new, old, refeed))
+    return;
 
   if (new)
     stats->exp_updates_accepted++;
@@ -2416,6 +2417,10 @@ ptr_hash(void *ptr)
 }
 
 
+/*
+ *	Import table
+ */
+
 int
 rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
@@ -2567,6 +2572,89 @@ rt_prune_sync(rtable *t, int all)
   FIB_WALK_END;
 }
 
+
+/*
+ *	Export table
+ */
+
+int
+rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed)
+{
+  struct rtable *tab = c->out_table;
+  struct rte_src *src;
+  rte *old, **pos;
+  net *net;
+
+  if (new)
+  {
+    net = net_get(tab, n);
+    src = new->attrs->src;
+  }
+  else
+  {
+    net = net_find(tab, n);
+    src = old0->attrs->src;
+
+    if (!net)
+      goto drop_withdraw;
+  }
+
+  /* Find the old rte */
+  for (pos = &net->routes; old = *pos; pos = &old->next)
+    if (old->attrs->src == src)
+    {
+      if (new && rte_same(old, new))
+      {
+	/* REF_STALE / REF_DISCARD not used in export table */
+	/*
+	if (old->flags & (REF_STALE | REF_DISCARD | REF_MODIFY))
+	{
+	  old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
+	  return 1;
+	}
+	*/
+
+	goto drop_update;
+      }
+
+      /* Remove the old rte */
+      *pos = old->next;
+      rte_free_quick(old);
+      tab->route_count--;
+
+      break;
+    }
+
+  if (!new)
+  {
+    if (!old)
+      goto drop_withdraw;
+
+    return 1;
+  }
+
+  /* Insert the new rte */
+  rte *e = rte_do_cow(new);
+  e->flags |= REF_COW;
+  e->net = net;
+  e->sender = c;
+  e->lastmod = current_time();
+  e->next = *pos;
+  *pos = e;
+  tab->route_count++;
+  return 1;
+
+drop_update:
+  return refeed;
+
+drop_withdraw:
+  return 0;
+}
+
+
+/*
+ *	Hostcache
+ */
 
 static inline u32
 hc_hash(ip_addr a, rtable *dep)

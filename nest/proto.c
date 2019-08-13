@@ -315,6 +315,13 @@ channel_reset_import(struct channel *c)
   rt_prune_sync(c->in_table, 1);
 }
 
+static void
+channel_reset_export(struct channel *c)
+{
+  /* Just free the routes */
+  rt_prune_sync(c->out_table, 1);
+}
+
 /* Called by protocol to activate in_table */
 void
 channel_setup_in_table(struct channel *c)
@@ -327,6 +334,18 @@ channel_setup_in_table(struct channel *c)
   rt_setup(c->proto->pool, c->in_table, cf);
 
   c->reload_event = ev_new_init(c->proto->pool, channel_reload_loop, c);
+}
+
+/* Called by protocol to activate out_table */
+void
+channel_setup_out_table(struct channel *c)
+{
+  struct rtable_config *cf = mb_allocz(c->proto->pool, sizeof(struct rtable_config));
+  cf->name = "export";
+  cf->addr_type = c->net_type;
+
+  c->out_table = mb_allocz(c->proto->pool, sizeof(struct rtable));
+  rt_setup(c->proto->pool, c->out_table, cf);
 }
 
 
@@ -376,6 +395,7 @@ channel_do_down(struct channel *c)
 
   c->in_table = NULL;
   c->reload_event = NULL;
+  c->out_table = NULL;
 
   CALL(c->channel->cleanup, c);
 
@@ -411,6 +431,9 @@ channel_set_state(struct channel *c, uint state)
     if (c->in_table && (cs == CS_UP))
       channel_reset_import(c);
 
+    if (c->out_table && (cs == CS_UP))
+      channel_reset_export(c);
+
     break;
 
   case CS_UP:
@@ -432,6 +455,9 @@ channel_set_state(struct channel *c, uint state)
 
     if (c->in_table && (cs == CS_UP))
       channel_reset_import(c);
+
+    if (c->out_table && (cs == CS_UP))
+      channel_reset_export(c);
 
     channel_do_flush(c);
     break;

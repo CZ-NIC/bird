@@ -219,6 +219,7 @@ bgp_channel_item:
  | ADD PATHS TX { BGP_CC->add_path = BGP_ADD_PATH_TX; }
  | ADD PATHS bool { BGP_CC->add_path = $3 ? BGP_ADD_PATH_FULL : 0; }
  | IMPORT TABLE bool { BGP_CC->import_table = $3; }
+ | EXPORT TABLE bool { BGP_CC->export_table = $3; }
  | IGP TABLE rtable {
     if (BGP_CC->desc->no_igp)
       cf_error("IGP table not allowed here");
