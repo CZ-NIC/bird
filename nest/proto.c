@@ -1888,7 +1888,7 @@ proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
   /* All channels must support reload */
   if (dir != CMD_RELOAD_OUT)
     WALK_LIST(c, p->channels)
-      if (!channel_reloadable(c))
+      if ((c->channel_state == CS_UP) && !channel_reloadable(c))
       {
 	cli_msg(-8006, "%s: reload failed", p->name);
 	return;
@@ -1899,12 +1899,14 @@ proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
   /* re-importing routes */
   if (dir != CMD_RELOAD_OUT)
     WALK_LIST(c, p->channels)
-      channel_request_reload(c);
+      if (c->channel_state == CS_UP)
+	channel_request_reload(c);
 
   /* re-exporting routes */
   if (dir != CMD_RELOAD_IN)
     WALK_LIST(c, p->channels)
-      channel_request_feeding(c);
+      if (c->channel_state == CS_UP)
+	channel_request_feeding(c);
 
   cli_msg(-15, "%s: reloading", p->name);
 }
