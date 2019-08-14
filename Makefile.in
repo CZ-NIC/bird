@@ -184,6 +184,12 @@ check: tests tests_run
 tests: $(tests_targets)
 tests_run: $(tests_targets_ok)
 
+STATIC_CHECKERS := nullability.NullableDereferenced nullability.NullablePassedToNonnull nullability.NullableReturnedFromNonnull optin.portability.UnixAPI valist.CopyToSelf valist.Uninitialized valist.Unterminated
+STATIC_SCAN_FLAGS := --force-analyze-debug-code -o $(objdir)/static-scan/ $(addprefix -enable-checker ,$(STATIC_CHECKERS))
+
+static-scan:
+	scan-build $(STATIC_SCAN_FLAGS) $(MAKE)
+
 tags:
 	cd $(srcdir) ; etags -lc `find $(dirs) -name *.[chY]`
 
