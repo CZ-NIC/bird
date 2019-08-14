@@ -529,7 +529,7 @@ static inline void
 bgp_set_attr_data(ea_list **to, struct linpool *pool, uint code, uint flags, void *data, uint len)
 {
   struct adata *a = lp_alloc_adata(pool, len);
-  memcpy(a->data, data, len);
+  bmemcpy(a->data, data, len);
   bgp_set_attr(to, pool, code, flags, (uintptr_t) a);
 }
 
