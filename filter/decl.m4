@@ -139,7 +139,7 @@ FID_IFCONST([[
 }
 FID_IFCONST([[
   const struct f_inst **items = NULL;
-  if (constargs) {
+  if (constargs && whati->varcount) {
     items = alloca(whati->varcount * sizeof(struct f_inst *));
     const struct f_inst *child = fvar;
     for (uint i=0; child; i++)
