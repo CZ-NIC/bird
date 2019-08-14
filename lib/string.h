@@ -72,6 +72,15 @@ bstrcmp(const char *s1, const char *s2)
     return !s2 - !s1;
 }
 
+static inline void *
+bmemcpy(void *dest, const void *src, size_t n)
+{
+  if (n)
+    return memcpy(dest, src, n);
+  else
+    return dest;
+}
+
 #define ROUTER_ID_64_LENGTH 23
 
 #endif
