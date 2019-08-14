@@ -18,6 +18,12 @@ AC_ARG_ENABLE([debug],
   [enable_debug=no]
 )
 
+AC_ARG_ENABLE([debug-expensive],
+  [AS_HELP_STRING([--enable-debug-expensive], [enable expensive consistency checks (implies --enable-debug) @<:@no@:>@])],
+  [],
+  [enable_debug_expensive=no]
+)
+
 AC_ARG_ENABLE([memcheck],
   [AS_HELP_STRING([--enable-memcheck], [check memory allocations when debugging @<:@yes@:>@])],
   [],
@@ -68,6 +74,9 @@ AC_ARG_VAR([FLEX], [location of the Flex program])
 AC_ARG_VAR([BISON], [location of the Bison program])
 AC_ARG_VAR([M4], [location of the M4 program])
 
+if test "$enable_debug_expensive" = yes; then
+  enable_debug=yes
+fi
 
 if test "$srcdir" = . ; then
   # Building in current directory => create obj directory holding all objects
@@ -335,6 +344,10 @@ if test "$enable_debug" = yes ; then
     if test $ac_cv_lib_dmalloc_dmalloc_debug != yes ; then
       AC_CHECK_LIB([efence], [malloc])
     fi
+  fi
+
+  if test "enable_debug_expensive" = yes ; then
+    AC_DEFINE([ENABLE_EXPENSIVE_CHECKS], [1], [Define to 1 if you want to run expensive consistency checks.])
   fi
 fi
 
