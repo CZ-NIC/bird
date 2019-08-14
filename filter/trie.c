@@ -163,6 +163,8 @@ trie_add_prefix(struct f_trie *t, const net_addr *net, uint l, uint h)
   struct f_trie_node *o = NULL;
   struct f_trie_node *n = t->root;
 
+  switch (0)
+  {
   while (n)
     {
       ip_addr cmask = ipa_and(n->mask, pmask);
@@ -197,6 +199,9 @@ trie_add_prefix(struct f_trie *t, const net_addr *net, uint l, uint h)
 	  return a;
 	}
 
+      /* The two conditions until here are always false if n == t->root */
+      case 0:
+
       if (plen == n->plen)
 	{
 	  /* We already found added node in trie. Just update accept mask */
@@ -211,6 +216,7 @@ trie_add_prefix(struct f_trie *t, const net_addr *net, uint l, uint h)
       o = n;
       n = n->c[ipa_getbit(paddr, n->plen) ? 1 : 0];
     }
+  }
 
   /* We add new tail node 'a' after node 'o' */
   struct f_trie_node *a = new_node(t, plen, paddr, pmask, amask);
