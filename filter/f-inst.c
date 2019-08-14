@@ -273,21 +273,20 @@
 
     val = v2.val.i;
 
-    if (ecs == EC_GENERIC) {
-      check = 0; RESULT(T_EC, ec, ec_generic(key, val));
-    }
-    else if (ipv4_used) {
-      check = 1; RESULT(T_EC, ec, ec_ip4(ecs, key, val));
-    }
-    else if (key < 0x10000) {
-      check = 0; RESULT(T_EC, ec, ec_as2(ecs, key, val));
-    }
-    else {
-      check = 1; RESULT(T_EC, ec, ec_as4(ecs, key, val));
-    }
-
-    if (check && (val > 0xFFFF))
-      runtime("Value %u > %u out of bounds in EC constructor", val, 0xFFFF);
+    if (ecs == EC_GENERIC)
+      RESULT(T_EC, ec, ec_generic(key, val));
+    else if (ipv4_used)
+      if (val <= 0xFFFF)
+	RESULT(T_EC, ec, ec_ip4(ecs, key, val));
+      else
+	runtime("4-byte value %u can't be used with IP-address key in extended community", val);
+    else if (key < 0x10000)
+      RESULT(T_EC, ec, ec_as2(ecs, key, val));
+    else
+      if (val <= 0xFFFF)
+	RESULT(T_EC, ec, ec_as4(ecs, key, val));
+      else
+	runtime("4-byte value %u can't be used with 4-byte ASN in extended community", val);
   }
 
   INST(FI_LC_CONSTRUCT, 3, 1) {
