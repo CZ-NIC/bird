@@ -105,6 +105,7 @@ FID_STRUCT_IN()m4_dnl
 FID_NEW_ARGS()m4_dnl
   , struct f_inst * f$1
 FID_NEW_BODY
+ASSERT_DIE(f$1);
 whati->f$1 = f$1;
 for (const struct f_inst *child = f$1; child; child = child->next) {
   what->size += child->size;
