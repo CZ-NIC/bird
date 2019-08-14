@@ -58,7 +58,7 @@ endif
 docgoals := docs userdocs progdocs
 testgoals := check test tests tests_run
 cleangoals := clean distclean testsclean
-.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope
+.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope static-scan
 all: daemon cli
 
 daemon: $(daemon)
@@ -158,6 +158,13 @@ endif
 ifeq ($(MAKECMDGOALS),)
 -include $(shell find $(objdir) -name "*.d")
 endif
+
+STATIC_CHECKERS := nullability.NullableDereferenced nullability.NullablePassedToNonnull nullability.NullableReturnedFromNonnull optin.portability.UnixAPI valist.CopyToSelf valist.Uninitialized valist.Unterminated
+STATIC_SCAN_FLAGS := --force-analyze-debug-code -o $(objdir)/static-scan/ $(addprefix -enable-checker ,$(STATIC_CHECKERS))
+
+static-scan:
+	$(MAKE) clean
+	scan-build $(STATIC_SCAN_FLAGS) $(MAKE)
 
 tags:
 	cd $(srcdir) ; etags -lc `find $(dirs) -name *.[chY]`
