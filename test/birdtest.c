@@ -465,7 +465,10 @@ void
 bt_fmt_ipa(char *buf, size_t size, const void *data)
 {
   const ip_addr *ip = data;
-  bsnprintf(buf, size, "%I", *ip);
+  if (data)
+    bsnprintf(buf, size, "%I", *ip);
+  else
+    bsnprintf(buf, size, "(null)");
 }
 
 int

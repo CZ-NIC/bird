@@ -264,6 +264,9 @@ ip6_pton(const char *a, ip6_addr *o)
   int i, j, k, l, hfil;
   const char *start;
 
+  if (!a[0])				/* Empty string check */
+    return 0;
+
   if (a[0] == ':')			/* Leading :: */
   {
     if (a[1] != ':')
@@ -333,6 +336,8 @@ ip6_pton(const char *a, ip6_addr *o)
     for (; i>=hfil; i--)
       words[i] = 0;
   }
+  else if (i != 8)	/* Incomplete address */
+    return 0;
 
   /* Convert the address to ip6_addr format */
   for (i=0; i<4; i++)
