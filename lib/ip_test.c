@@ -13,25 +13,38 @@
 #define IP4_MAX_LEN		16
 
 static int
-test_ipa_pton(void *out_, const void *in_, const void *expected_out_)
+test_ip4_pton(void *out_, const void *in_, const void *expected_out_)
+{
+  ip_addr *out = out_;
+  const char *in = in_;
+  const ip_addr *expected_out = expected_out_;
+  ip4_addr ip4;
+
+  if (expected_out)
+  {
+    bt_assert(ip4_pton(in, &ip4));
+    *out = ipa_from_ip4(ip4);
+    return ipa_equal(*out, *expected_out);
+  }
+  else
+    return !ip4_pton(in, &ip4);
+
+}
+
+static int
+test_ip6_pton(void *out_, const void *in_, const void *expected_out_)
 {
   ip_addr *out = out_;
   const char *in = in_;
   const ip_addr *expected_out = expected_out_;
 
-  if (ipa_is_ip4(*expected_out))
-  {
-    ip4_addr ip4;
-    bt_assert(ip4_pton(in, &ip4));
-    *out = ipa_from_ip4(ip4);
-  }
-  else
+  if (expected_out)
   {
     bt_assert(ip6_pton(in, out));
-    /* ip_addr == ip6_addr */
+    return ipa_equal(*out, *expected_out);
   }
-
-  return ipa_equal(*out, *expected_out);
+  else
+    return !ip6_pton(in, out);
 }
 
 static int
@@ -52,7 +65,7 @@ t_ip4_pton(void)
     },
   };
 
-  return bt_assert_batch(test_vectors, test_ipa_pton, bt_fmt_str, bt_fmt_ipa);
+  return bt_assert_batch(test_vectors, test_ip4_pton, bt_fmt_str, bt_fmt_ipa);
 }
 
 static int
@@ -87,9 +100,17 @@ t_ip6_pton(void)
       .in  = "2605:2700:0:3::4713:93e3",
       .out = & ipa_build6(0x26052700, 0x00000003, 0x00000000, 0x471393E3),
     },
+    {
+      .in = "2605:2700:0:3:4713:93e3",
+      .out = NULL,
+    },
+    {
+      .in = "2",
+      .out = NULL,
+    },
   };
 
-  return bt_assert_batch(test_vectors, test_ipa_pton, bt_fmt_str, bt_fmt_ipa);
+  return bt_assert_batch(test_vectors, test_ip6_pton, bt_fmt_str, bt_fmt_ipa);
 }
 
 static int
