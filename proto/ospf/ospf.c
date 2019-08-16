@@ -1289,7 +1289,7 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 
   uint num = p->gr->hash_entries;
   struct top_hash_entry *hea[num];
-  struct top_hash_entry *hex[verbose ? num : 0];
+  struct top_hash_entry **hex = verbose ? alloca(num * sizeof(struct top_hash_entry *)) : NULL;
   struct top_hash_entry *he;
   struct top_hash_entry *cnode = NULL;
 
@@ -1334,7 +1334,9 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
 
   lsa_compare_ospf3 = !ospf2;
   qsort(hea, j1, sizeof(struct top_hash_entry *), lsa_compare_for_state);
-  qsort(hex, jx, sizeof(struct top_hash_entry *), ext_compare_for_state);
+
+  if (verbose)
+    qsort(hex, jx, sizeof(struct top_hash_entry *), ext_compare_for_state);
 
   /*
    * This code is a bit tricky, we have a primary LSAs (router and
