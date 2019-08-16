@@ -184,8 +184,9 @@ check: tests tests_run
 tests: $(tests_targets)
 tests_run: $(tests_targets_ok)
 
-STATIC_CHECKERS := nullability.NullableDereferenced nullability.NullablePassedToNonnull nullability.NullableReturnedFromNonnull optin.portability.UnixAPI valist.CopyToSelf valist.Uninitialized valist.Unterminated
-STATIC_SCAN_FLAGS := --force-analyze-debug-code -o $(objdir)/static-scan/ $(addprefix -enable-checker ,$(STATIC_CHECKERS))
+STATIC_CHECKERS_ENABLE := nullability.NullableDereferenced nullability.NullablePassedToNonnull nullability.NullableReturnedFromNonnull optin.portability.UnixAPI valist.CopyToSelf valist.Uninitialized valist.Unterminated
+STATIC_CHECKERS_DISABLE := deadcode.DeadStores
+STATIC_SCAN_FLAGS := --force-analyze-debug-code -o $(objdir)/static-scan/ $(addprefix -enable-checker ,$(STATIC_CHECKERS_ENABLE)) $(addprefix -disable-checker ,$(STATIC_CHECKERS_DISABLE))
 
 static-scan:
 	$(MAKE) clean
