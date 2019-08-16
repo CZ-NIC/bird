@@ -329,6 +329,14 @@ ospf_originate_lsa(struct ospf_proto *p, struct ospf_new_lsa *lsa)
     en->next_lsa_opts = 0;
   }
 
+  /* The static analyzer complains here that en->lsa_body may be NULL.
+   * Yes, it may if ospf_hash_get() creates a new struct top_hash_entry.
+   * In this case, also en->lsa.length must be 0 and lsa_length is never
+   * equal to 0 while sizeof(struct ospf_lsa_header) is non-zero.
+   * Therefore memcmp() is never executed with NULL here.
+   * */
+  ASSUME((en->lsa.length == 0) == (en->lsa_body == NULL));
+
   /* Ignore the the new LSA if is the same as the current one */
   if ((en->lsa.age < LSA_MAXAGE) &&
       (lsa_length == en->lsa.length) &&
