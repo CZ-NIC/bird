@@ -1011,6 +1011,7 @@ rpki_send_error_pdu(struct rpki_cache *cache, const enum pdu_error_type error_co
   {
     va_start(args, fmt);
     msg_len = bvsnprintf(msg, sizeof(msg), fmt, args) + 1;
+    va_end(args);
   }
 
   u32 pdu_size = 16 + err_pdu_len + msg_len;
