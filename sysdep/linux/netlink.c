@@ -2057,7 +2057,7 @@ static const char *krt_features_names[KRT_FEATURES_MAX] = {
 };
 
 int
-krt_sys_get_attr(eattr *a, byte *buf, int buflen UNUSED)
+krt_sys_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
 {
   switch (a->id)
   {

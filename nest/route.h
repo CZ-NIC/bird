@@ -570,7 +570,7 @@ void ea_merge(ea_list *from, ea_list *to); /* Merge sub-lists to allocated buffe
 int ea_same(ea_list *x, ea_list *y);	/* Test whether two ea_lists are identical */
 uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
-void ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
+void ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
 #define ea_normalize(ea) do { \
   if (ea->next) { \

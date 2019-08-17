@@ -790,7 +790,7 @@ ea_free(ea_list *o)
 }
 
 static int
-get_generic_attr(eattr *a, byte **buf, int buflen UNUSED)
+get_generic_attr(const eattr *a, byte **buf, int buflen UNUSED)
 {
   if (a->id == EA_GEN_IGP_METRIC)
     {
@@ -802,7 +802,7 @@ get_generic_attr(eattr *a, byte **buf, int buflen UNUSED)
 }
 
 void
-ea_format_bitfield(struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max)
+ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max)
 {
   byte *bound = buf + bufsize - 32;
   u32 data = a->u.data;
@@ -898,7 +898,7 @@ ea_show_lc_set(struct cli *c, const struct adata *ad, byte *pos, byte *buf, byte
  * get_attr() hook, it's consulted first.
  */
 void
-ea_show(struct cli *c, eattr *e)
+ea_show(struct cli *c, const eattr *e)
 {
   struct protocol *p;
   int status = GA_UNKNOWN;
