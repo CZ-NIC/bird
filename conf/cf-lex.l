@@ -169,7 +169,7 @@ WHITE [ \t]
 
   errno = 0;
   l = bstrtoul10(yytext, &e);
-  if (e && (*e != ':') || (errno == ERANGE) || (l >> 32))
+  if (!e || (*e != ':') || (errno == ERANGE) || (l >> 32))
     cf_error("ASN out of range");
 
   if (l >> 16)
@@ -187,7 +187,7 @@ WHITE [ \t]
 
   errno = 0;
   l = bstrtoul10(e+1, &e);
-  if (e && *e || (errno == ERANGE) || (l >> len2))
+  if (!e || *e || (errno == ERANGE) || (l >> len2))
     cf_error("Number out of range");
   cf_lval.i64 |= l;
 
@@ -214,13 +214,13 @@ WHITE [ \t]
 
   errno = 0;
   l = bstrtoul10(yytext+2, &e);
-  if (e && (*e != ':') || (errno == ERANGE) || (l >> len1))
+  if (!e || (*e != ':') || (errno == ERANGE) || (l >> len1))
     cf_error("ASN out of range");
   cf_lval.i64 |= ((u64) l) << len2;
 
   errno = 0;
   l = bstrtoul10(e+1, &e);
-  if (e && *e || (errno == ERANGE) || (l >> len2))
+  if (!e || *e || (errno == ERANGE) || (l >> len2))
     cf_error("Number out of range");
   cf_lval.i64 |= l;
 
@@ -242,7 +242,7 @@ WHITE [ \t]
 
   errno = 0;
   l = bstrtoul10(e, &e);
-  if (e && *e || (errno == ERANGE) || (l >> 16))
+  if (!e || *e || (errno == ERANGE) || (l >> 16))
     cf_error("Number out of range");
   cf_lval.i64 |= l;
 
@@ -266,7 +266,7 @@ WHITE [ \t]
   unsigned long int l;
   errno = 0;
   l = bstrtoul16(yytext+2, &e);
-  if (e && *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
+  if (!e || *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
     cf_error("Number out of range");
   cf_lval.i = l;
   return NUM;
@@ -277,7 +277,7 @@ WHITE [ \t]
   unsigned long int l;
   errno = 0;
   l = bstrtoul10(yytext, &e);
-  if (e && *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
+  if (!e || *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
     cf_error("Number out of range");
   cf_lval.i = l;
   return NUM;
