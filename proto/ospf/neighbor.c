@@ -652,19 +652,20 @@ void
 ospf_dr_election(struct ospf_iface *ifa)
 {
   struct ospf_proto *p = ifa->oa->po;
-  struct ospf_neighbor *neigh, *ndr, *nbdr, me;
+  struct ospf_neighbor *neigh, *ndr, *nbdr;
   u32 myid = p->router_id;
 
   DBG("(B)DR election.\n");
 
-  me.state = NEIGHBOR_2WAY;
-  me.rid = myid;
-  me.priority = ifa->priority;
-  me.ip = ifa->addr->ip;
-
-  me.dr  = ospf_is_v2(p) ? ipa_to_u32(ifa->drip) : ifa->drid;
-  me.bdr = ospf_is_v2(p) ? ipa_to_u32(ifa->bdrip) : ifa->bdrid;
-  me.iface_id = ifa->iface_id;
+  struct ospf_neighbor me = {
+    .state = NEIGHBOR_2WAY,
+    .rid = myid,
+    .priority = ifa->priority,
+    .ip = ifa->addr->ip,
+    .dr  = ospf_is_v2(p) ? ipa_to_u32(ifa->drip) : ifa->drid,
+    .bdr = ospf_is_v2(p) ? ipa_to_u32(ifa->bdrip) : ifa->bdrid,
+    .iface_id = ifa->iface_id,
+  };
 
   add_tail(&ifa->neigh_list, NODE & me);
 
