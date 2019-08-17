@@ -106,6 +106,12 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
   byte ia[NET_MAX_TEXT_LENGTH+1];
   struct ea_list *tmpa;
   struct channel *ec = d->tab->export_channel;
+
+  /* The Clang static analyzer complains that ec may be NULL.
+   * It should be ensured to be not NULL by rt_show_prepare_tables() */
+  if (d->export_mode)
+    ASSUME(ec);
+
   int first = 1;
   int pass = 0;
 
