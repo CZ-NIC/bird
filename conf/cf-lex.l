@@ -146,7 +146,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 
   errno = 0;
   l = strtoul(yytext, &e, 10);
-  if (e && (*e != ':') || (errno == ERANGE) || (l >> 32))
+  if (!e || (*e != ':') || (errno == ERANGE) || (l >> 32))
     cf_error("ASN out of range");
 
   if (l >> 16)
@@ -164,7 +164,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 
   errno = 0;
   l = strtoul(e+1, &e, 10);
-  if (e && *e || (errno == ERANGE) || (l >> len2))
+  if (!e || *e || (errno == ERANGE) || (l >> len2))
     cf_error("Number out of range");
   cf_lval.i64 |= l;
 
@@ -191,13 +191,13 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 
   errno = 0;
   l = strtoul(yytext+2, &e, 10);
-  if (e && (*e != ':') || (errno == ERANGE) || (l >> len1))
+  if (!e || (*e != ':') || (errno == ERANGE) || (l >> len1))
     cf_error("ASN out of range");
   cf_lval.i64 |= ((u64) l) << len2;
 
   errno = 0;
   l = strtoul(e+1, &e, 10);
-  if (e && *e || (errno == ERANGE) || (l >> len2))
+  if (!e || *e || (errno == ERANGE) || (l >> len2))
     cf_error("Number out of range");
   cf_lval.i64 |= l;
 
@@ -219,7 +219,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
 
   errno = 0;
   l = strtoul(e, &e, 10);
-  if (e && *e || (errno == ERANGE) || (l >> 16))
+  if (!e || *e || (errno == ERANGE) || (l >> 16))
     cf_error("Number out of range");
   cf_lval.i64 |= l;
 
@@ -243,7 +243,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   unsigned long int l;
   errno = 0;
   l = strtoul(yytext+2, &e, 16);
-  if (e && *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
+  if (!e || *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
     cf_error("Number out of range");
   cf_lval.i = l;
   return NUM;
@@ -254,7 +254,7 @@ include   ^{WHITE}*include{WHITE}*\".*\"{WHITE}*;
   unsigned long int l;
   errno = 0;
   l = strtoul(yytext, &e, 10);
-  if (e && *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
+  if (!e || *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
     cf_error("Number out of range");
   cf_lval.i = l;
   return NUM;
