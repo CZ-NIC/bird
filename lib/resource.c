@@ -340,6 +340,7 @@ mb_alloc(pool *p, unsigned size)
   struct mblock *b = xmalloc(sizeof(struct mblock) + size);
 
   b->r.class = &mb_class;
+  b->r.n = (node) {};
   add_tail(&p->inside, &b->r.n);
   b->size = size;
   return b->data;
