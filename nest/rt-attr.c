@@ -186,7 +186,7 @@ nexthop__same(struct nexthop *x, struct nexthop *y)
 }
 
 static int
-nexthop_compare_node(struct nexthop *x, struct nexthop *y)
+nexthop_compare_node(const struct nexthop *x, const struct nexthop *y)
 {
   int r;
 
@@ -262,18 +262,22 @@ nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, lin
   while ((x || y) && max--)
   {
     int cmp = nexthop_compare_node(x, y);
+
     if (cmp < 0)
     {
+      ASSUME(x);
       *n = rx ? x : nexthop_copy_node(x, lp);
       x = x->next;
     }
     else if (cmp > 0)
     {
+      ASSUME(y);
       *n = ry ? y : nexthop_copy_node(y, lp);
       y = y->next;
     }
     else
     {
+      ASSUME(x && y);
       *n = rx ? x : (ry ? y : nexthop_copy_node(x, lp));
       x = x->next;
       y = y->next;
