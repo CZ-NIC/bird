@@ -79,7 +79,7 @@ AC_ARG_VAR([BISON], [location of the Bison program])
 AC_ARG_VAR([M4], [location of the M4 program])
 
 if test "$enable_debug_expensive" = yes; then
-  enable_debug = yes
+  enable_debug=yes
 fi
 
 if test "$srcdir" = . ; then
