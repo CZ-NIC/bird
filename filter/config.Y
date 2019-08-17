@@ -462,7 +462,7 @@ bt_test_suite:
   if (!($3->class & SYM_FUNCTION))
     cf_error("Function expected");
 
-  struct f_bt_test_suite *t = cfg_alloc(sizeof(struct f_bt_test_suite));
+  struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
   t->fn = $3->def;
   t->fn_name = $3->name;
   t->dsc = $5;

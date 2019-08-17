@@ -2301,7 +2301,7 @@ rt_commit(struct config *new, struct config *old)
   WALK_LIST(r, new->tables)
     if (!r->table)
       {
-	rtable *t = mb_alloc(rt_table_pool, sizeof(struct rtable));
+	rtable *t = mb_allocz(rt_table_pool, sizeof(struct rtable));
 	DBG("\t%s: created\n", r->name);
 	rt_setup(rt_table_pool, t, r);
 	add_tail(&routing_tables, &t->n);
