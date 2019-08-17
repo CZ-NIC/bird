@@ -740,7 +740,7 @@ radv_pref_str(u32 pref)
 
 /* The buffer has some minimal size */
 static int
-radv_get_attr(eattr *a, byte *buf, int buflen UNUSED)
+radv_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
 {
   switch (a->id)
   {
