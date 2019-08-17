@@ -1203,7 +1203,7 @@ krt_copy_config(struct proto_config *dest, struct proto_config *src)
 }
 
 static int
-krt_get_attr(eattr *a, byte *buf, int buflen)
+krt_get_attr(const eattr *a, byte *buf, int buflen)
 {
   switch (a->id)
   {

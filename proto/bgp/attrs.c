@@ -72,7 +72,7 @@ struct bgp_attr_desc {
   void (*export)(struct bgp_export_state *s, eattr *a);
   int  (*encode)(struct bgp_write_state *s, eattr *a, byte *buf, uint size);
   void (*decode)(struct bgp_parse_state *s, uint code, uint flags, byte *data, uint len, ea_list **to);
-  void (*format)(eattr *ea, byte *buf, uint size);
+  void (*format)(const eattr *ea, byte *buf, uint size);
 };
 
 static const struct bgp_attr_desc bgp_attr_table[];
@@ -233,7 +233,7 @@ bgp_decode_origin(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte 
 }
 
 static void
-bgp_format_origin(eattr *a, byte *buf, uint size UNUSED)
+bgp_format_origin(const eattr *a, byte *buf, uint size UNUSED)
 {
   static const char *bgp_origin_names[] = { "IGP", "EGP", "Incomplete" };
 
@@ -327,7 +327,7 @@ bgp_decode_next_hop(struct bgp_parse_state *s, uint code UNUSED, uint flags UNUS
 
 /* TODO: This function should use AF-specific hook */
 static void
-bgp_format_next_hop(eattr *a, byte *buf, uint size UNUSED)
+bgp_format_next_hop(const eattr *a, byte *buf, uint size UNUSED)
 {
   ip_addr *nh = (void *) a->u.ptr->data;
   uint len = a->u.ptr->length;
@@ -418,7 +418,7 @@ bgp_decode_aggregator(struct bgp_parse_state *s, uint code UNUSED, uint flags, b
 }
 
 static void
-bgp_format_aggregator(eattr *a, byte *buf, uint size UNUSED)
+bgp_format_aggregator(const eattr *a, byte *buf, uint size UNUSED)
 {
   byte *data = a->u.ptr->data;
 
@@ -493,7 +493,7 @@ bgp_decode_cluster_list(struct bgp_parse_state *s, uint code UNUSED, uint flags,
 }
 
 static void
-bgp_format_cluster_list(eattr *a, byte *buf, uint size)
+bgp_format_cluster_list(const eattr *a, byte *buf, uint size)
 {
   /* Truncates cluster lists larger than buflen, probably not a problem */
   int_set_format(a->u.ptr, 0, -1, buf, size);
@@ -676,7 +676,7 @@ bgp_decode_mpls_label_stack(struct bgp_parse_state *s, uint code UNUSED, uint fl
 }
 
 static void
-bgp_format_mpls_label_stack(eattr *a, byte *buf, uint size)
+bgp_format_mpls_label_stack(const eattr *a, byte *buf, uint size)
 {
   u32 *labels = (u32 *) a->u.ptr->data;
   uint lnum = a->u.ptr->length / 4;
@@ -1984,7 +1984,7 @@ bgp_process_as4_attrs(ea_list **attrs, struct linpool *pool)
 }
 
 int
-bgp_get_attr(eattr *a, byte *buf, int buflen)
+bgp_get_attr(const eattr *a, byte *buf, int buflen)
 {
   uint i = EA_ID(a->id);
   const struct bgp_attr_desc *d;

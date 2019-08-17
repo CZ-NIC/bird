@@ -1164,7 +1164,7 @@ rip_get_route_info(rte *rte, byte *buf, ea_list *attrs UNUSED)
 }
 
 static int
-rip_get_attr(eattr *a, byte *buf, int buflen UNUSED)
+rip_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
 {
   switch (a->id)
   {
