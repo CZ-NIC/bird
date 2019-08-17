@@ -167,8 +167,12 @@ LIST_INLINE void
 replace_node(node *old, node *new)
 {
   EXPENSIVE_CHECK(check_list(NULL, old));
-  ASSUME(new->prev == NULL);
-  ASSUME(new->next == NULL);
+
+  if (old != new)
+  {
+    ASSUME(new->prev == NULL);
+    ASSUME(new->next == NULL);
+  }
 
   old->next->prev = new;
   old->prev->next = new;
