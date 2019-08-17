@@ -1495,7 +1495,9 @@ sk_open_unix(sock *s, char *name)
   if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0)
     return -1;
 
-  /* Path length checked in test_old_bird() */
+  /* Path length checked in test_old_bird() but we may need unix sockets for other reasons in future */
+  ASSERT_DIE(strlen(name) < sizeof(sa.sun_path));
+
   sa.sun_family = AF_UNIX;
   strcpy(sa.sun_path, name);
 
