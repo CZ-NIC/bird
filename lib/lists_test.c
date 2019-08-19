@@ -222,26 +222,29 @@ t_remove_node(void)
 }
 
 static int
-t_replace_node(void)
+t_update_node(void)
 {
   node head, inside, tail;
 
   init_list_();
   fill_list();
 
-  replace_node(&nodes[0], &head);
+  head = nodes[0];
+  update_node(&head);
   bt_assert(l.head == &head);
   bt_assert(head.prev == NODE &l.head);
   bt_assert(head.next == &nodes[1]);
   bt_assert(nodes[1].prev == &head);
 
-  replace_node(&nodes[MAX_NUM/2], &inside);
+  inside = nodes[MAX_NUM/2];
+  update_node(&inside);
   bt_assert(nodes[MAX_NUM/2-1].next == &inside);
   bt_assert(nodes[MAX_NUM/2+1].prev == &inside);
   bt_assert(inside.prev == &nodes[MAX_NUM/2-1]);
   bt_assert(inside.next == &nodes[MAX_NUM/2+1]);
 
-  replace_node(&nodes[MAX_NUM-1], &tail);
+  tail = nodes[MAX_NUM-1];
+  update_node(&tail);
   bt_assert(l.tail == &tail);
   bt_assert(tail.prev == &nodes[MAX_NUM-2]);
   bt_assert(tail.next == NODE &l.null);
@@ -280,7 +283,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_add_head, "Adding nodes to head of list");
   bt_test_suite(t_insert_node, "Inserting nodes to list");
   bt_test_suite(t_remove_node, "Removing nodes from list");
-  bt_test_suite(t_replace_node, "Replacing nodes in list");
+  bt_test_suite(t_update_node, "Updating nodes in list");
   bt_test_suite(t_add_tail_list, "At the tail of a list adding the another list");
 
   return bt_exit_value();
