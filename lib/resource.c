@@ -388,7 +388,7 @@ mb_realloc(void *m, unsigned size)
   struct mblock *b = SKIP_BACK(struct mblock, data, m);
 
   b = xrealloc(b, sizeof(struct mblock) + size);
-  replace_node(&b->r.n, &b->r.n);
+  update_node(&b->r.n);
   b->size = size;
   return b->data;
 }

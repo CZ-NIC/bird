@@ -153,32 +153,20 @@ rem_node(node *n)
 }
 
 /**
- * replace_node - replace a node in a list with another one
- * @old: node to be removed
- * @new: node to be inserted
+ * update_node - update node after calling realloc on it
+ * @n: node to be updated
  *
- * Replaces node @old in the list it's linked in with node @new.  Node
- * @old may be a copy of the original node, which is not accessed
- * through the list. The function could be called with @old == @new,
- * which just fixes neighbors' pointers in the case that the node
- * was reallocated.
+ * Fixes neighbor pointers.
  */
 LIST_INLINE void
-replace_node(node *old, node *new)
+update_node(node *n)
 {
-  EXPENSIVE_CHECK(check_list(NULL, old));
+  ASSUME(n->next->prev == n->prev->next);
 
-  if (old != new)
-  {
-    ASSUME(new->prev == NULL);
-    ASSUME(new->next == NULL);
-  }
+  n->next->prev = n;
+  n->prev->next = n;
 
-  old->next->prev = new;
-  old->prev->next = new;
-
-  new->prev = old->prev;
-  new->next = old->next;
+  EXPENSIVE_CHECK(check_list(NULL, n));
 }
 
 /**
