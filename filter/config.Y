@@ -467,7 +467,7 @@ CF_GRAMMAR
 
 conf: filter_def ;
 filter_def:
-   FILTER CF_SYM_VOID { $2 = cf_define_symbol($2, SYM_FILTER, filter, NULL); cf_push_scope( $2 ); }
+   FILTER symbol { $2 = cf_define_symbol($2, SYM_FILTER, filter, NULL); cf_push_scope( $2 ); }
      filter_body {
      struct filter *f = cfg_alloc(sizeof(struct filter));
      *f = (struct filter) { .sym = $2, .root = $4 };
@@ -483,7 +483,7 @@ filter_eval:
  ;
 
 conf: custom_attr ;
-custom_attr: ATTRIBUTE type CF_SYM_VOID ';' {
+custom_attr: ATTRIBUTE type symbol ';' {
   cf_define_symbol($3, SYM_ATTRIBUTE, attribute, ca_lookup(new_config->pool, $3->name, $2)->fda);
 };
 
@@ -555,7 +555,7 @@ type:
 
 function_argsn:
    /* EMPTY */
- | function_argsn type CF_SYM_VOID ';' {
+ | function_argsn type symbol ';' {
      if ($3->scope->slots >= 0xfe) cf_error("Too many declarations, at most 255 allowed");
      cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++);
    }
@@ -563,7 +563,7 @@ function_argsn:
 
 function_args:
    '(' ')' { $$ = 0; }
- | '(' function_argsn type CF_SYM_VOID ')' {
+ | '(' function_argsn type symbol ')' {
      cf_define_symbol($4, SYM_VARIABLE | $3, offset, $4->scope->slots++);
      $$ = $4->scope->slots;
    }
@@ -571,7 +571,7 @@ function_args:
 
 function_vars:
    /* EMPTY */ { $$ = 0; }
- | function_vars type CF_SYM_VOID ';' {
+ | function_vars type symbol ';' {
      cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++);
      $$ = $1 + 1;
    }
@@ -607,7 +607,7 @@ function_body:
 
 conf: function_def ;
 function_def:
-   FUNCTION CF_SYM_VOID { DBG( "Beginning of function %s\n", $2->name );
+   FUNCTION symbol { DBG( "Beginning of function %s\n", $2->name );
      $2 = cf_define_symbol($2, SYM_FUNCTION, function, NULL);
      cf_push_scope($2);
    } function_args function_body {

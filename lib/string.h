@@ -63,6 +63,15 @@ memset32(void *D, u32 val, uint n)
     dst[i] = val;
 }
 
+static inline int
+bstrcmp(const char *s1, const char *s2)
+{
+  if (s1 && s2)
+    return strcmp(s1, s2);
+  else
+    return !s2 - !s1;
+}
+
 #define ROUTER_ID_64_LENGTH 23
 
 #endif

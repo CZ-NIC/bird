@@ -157,7 +157,7 @@ AC_DEFUN([BIRD_CHECK_LTO],
   bird_tmp_cflags="$CFLAGS"
   bird_tmp_ldflags="$LDFLAGS"
   CFLAGS="-flto"
-  LDFLAGS="-flto"
+  LDFLAGS="-flto=4"
 
   AC_CACHE_CHECK(
     [whether link time optimizer is available],

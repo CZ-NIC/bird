@@ -1371,7 +1371,7 @@ bgp_update_bfd(struct bgp_proto *p, int use_bfd)
   if (use_bfd && !p->bfd_req && !bgp_is_dynamic(p))
     p->bfd_req = bfd_request_session(p->p.pool, p->remote_ip, p->local_ip,
 				     p->cf->multihop ? NULL : p->neigh->iface,
-				     bgp_bfd_notify, p);
+				     p->p.vrf, bgp_bfd_notify, p);
 
   if (!use_bfd && p->bfd_req)
   {
@@ -2011,12 +2011,10 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 		     ((byte *) new) + sizeof(struct proto_config),
 		     // password item is last and must be checked separately
 		     OFFSETOF(struct bgp_config, password) - sizeof(struct proto_config))
-    && ((!old->password && !new->password)
-	|| (old->password && new->password && !strcmp(old->password, new->password)))
+    && !bstrcmp(old->password, new->password)
     && ((!old->remote_range && !new->remote_range)
 	|| (old->remote_range && new->remote_range && net_equal(old->remote_range, new->remote_range)))
-    && ((!old->dynamic_name && !new->dynamic_name)
-	|| (old->dynamic_name && new->dynamic_name && !strcmp(old->dynamic_name, new->dynamic_name)))
+    && !bstrcmp(old->dynamic_name, new->dynamic_name)
     && (old->dynamic_name_digits == new->dynamic_name_digits);
 
   /* FIXME: Move channel reconfiguration to generic protocol code ? */

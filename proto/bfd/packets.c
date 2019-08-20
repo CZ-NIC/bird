@@ -413,6 +413,7 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
   sk->type = SK_UDP;
   sk->subtype = af;
   sk->sport = !multihop ? BFD_CONTROL_PORT : BFD_MULTI_CTL_PORT;
+  sk->vrf = p->p.vrf;
   sk->data = p;
 
   sk->rbsize = BFD_MAX_LEN;
@@ -444,6 +445,7 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   sk->saddr = local;
   sk->dport = ifa ? BFD_CONTROL_PORT : BFD_MULTI_CTL_PORT;
   sk->iface = ifa;
+  sk->vrf = p->p.vrf;
   sk->data = p;
 
   sk->tbsize = BFD_MAX_LEN;

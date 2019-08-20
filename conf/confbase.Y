@@ -109,7 +109,6 @@ CF_DECLS
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
 %type <mls> label_stack_start label_stack
-%type <s> CF_SYM_VOID
 
 %type <t> text opttext
 %type <s> symbol
@@ -147,7 +146,7 @@ conf: ';' ;
 conf: definition ;
 
 definition:
-   DEFINE CF_SYM_VOID '=' term ';' {
+   DEFINE symbol '=' term ';' {
      struct f_val *val = cfg_alloc(sizeof(struct f_val));
      if (f_eval(f_linearize($4), cfg_mem, val) > F_RETURN) cf_error("Runtime error");
      cf_define_symbol($2, SYM_CONSTANT | val->type, val, val);
@@ -168,9 +167,7 @@ expr_us:
  | expr US { $$ = $1 US_; }
  ;
 
-CF_SYM_VOID: CF_SYM_UNDEFINED ;
-
-symbol: CF_SYM_VOID | CF_SYM_KNOWN ;
+symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN ;
 
 /* Switches */
 

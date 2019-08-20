@@ -1,3 +1,21 @@
+Version 2.0.5 (2019-08-01)
+  o OSPF Graceful restart (RFC 3623, RFC 5187)
+  o BGP: Dynamic BGP
+  o BGP: Promiscuous ASN mode
+  o BGP: Mandatory option for channels
+  o BFD: Support for VRFs
+  o Graceful restart command
+  o Redesigned filtering code
+  o Many bugfixes
+
+  Notes:
+
+  Previous version introduced an error in handling of OSPF NSSA-LSA, causing
+  compatibility issues with proper implementations. The error is fixed in this
+  version, therefore there are compatibility issues in OSPF NSSA areas between
+  this and previous version.
+
+
 Version 2.0.4 (2019-02-27)
   o OSPF: Opaque LSAs (RFC 5250)
   o OSPF: DN-bit handling (RFC 4576)

@@ -624,6 +624,9 @@ bfd_request_notify(struct bfd_request *req, u8 state, u8 diag)
 static int
 bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
 {
+  if (p->p.vrf_set && (p->p.vrf != req->vrf))
+    return 0;
+
   struct bfd_session *s = bfd_find_session_by_addr(p, req->addr);
   u8 state, diag;
 
@@ -685,7 +688,8 @@ bfd_drop_requests(struct bfd_proto *p)
 static struct resclass bfd_request_class;
 
 struct bfd_request *
-bfd_request_session(pool *p, ip_addr addr, ip_addr local, struct iface *iface,
+bfd_request_session(pool *p, ip_addr addr, ip_addr local,
+		    struct iface *iface, struct iface *vrf,
 		    void (*hook)(struct bfd_request *), void *data)
 {
   struct bfd_request *req = ralloc(p, &bfd_request_class);
@@ -696,6 +700,7 @@ bfd_request_session(pool *p, ip_addr addr, ip_addr local, struct iface *iface,
   req->addr = addr;
   req->local = local;
   req->iface = iface;
+  req->vrf = vrf;
 
   bfd_submit_request(req);
 
@@ -754,7 +759,7 @@ bfd_neigh_notify(struct neighbor *nb)
   if ((nb->scope > 0) && !n->req)
   {
     ip_addr local = ipa_nonzero(n->local) ? n->local : nb->ifa->ip;
-    n->req = bfd_request_session(p->p.pool, n->addr, local, nb->iface, NULL, NULL);
+    n->req = bfd_request_session(p->p.pool, n->addr, local, nb->iface, p->p.vrf, NULL, NULL);
   }
 
   if ((nb->scope <= 0) && n->req)
@@ -771,7 +776,7 @@ bfd_start_neighbor(struct bfd_proto *p, struct bfd_neighbor *n)
 
   if (n->multihop)
   {
-    n->req = bfd_request_session(p->p.pool, n->addr, n->local, NULL, NULL, NULL);
+    n->req = bfd_request_session(p->p.pool, n->addr, n->local, NULL, p->p.vrf, NULL, NULL);
     return;
   }
 
@@ -1051,15 +1056,6 @@ bfd_reconfigure(struct proto *P, struct proto_config *c)
   return 1;
 }
 
-/* Ensure one instance */
-struct bfd_config *bfd_cf;
-
-static void
-bfd_preconfig(struct protocol *P UNUSED, struct config *c UNUSED)
-{
-  bfd_cf = NULL;
-}
-
 static void
 bfd_copy_config(struct proto_config *dest, struct proto_config *src UNUSED)
 {
@@ -1088,7 +1084,7 @@ bfd_show_sessions(struct proto *P)
   }
 
   cli_msg(-1020, "%s:", p->p.name);
-  cli_msg(-1020, "%-25s %-10s %-10s %-10s  %8s %8s",
+  cli_msg(-1020, "%-25s %-10s %-10s %-12s  %8s %8s",
 	  "IP address", "Interface", "State", "Since", "Interval", "Timeout");
 
 
@@ -1104,7 +1100,7 @@ bfd_show_sessions(struct proto *P)
     state = (state < 4) ? state : 0;
     tm_format_time(tbuf, &config->tf_proto, s->last_state_change);
 
-    cli_msg(-1020, "%-25I %-10s %-10s %-10s  %7t  %7t",
+    cli_msg(-1020, "%-25I %-10s %-10s %-12s  %7t  %7t",
 	    s->addr, ifname, bfd_state_names[state], tbuf, tx_int, timeout);
   }
   HASH_WALK_END;
@@ -1123,6 +1119,5 @@ struct protocol proto_bfd = {
   .start =		bfd_start,
   .shutdown =		bfd_shutdown,
   .reconfigure =	bfd_reconfigure,
-  .preconfig = 		bfd_preconfig,
   .copy_config =	bfd_copy_config,
 };

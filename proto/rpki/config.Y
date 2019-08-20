@@ -97,7 +97,7 @@ rpki_cache_addr:
      rpki_check_unused_hostname();
      RPKI_CFG->ip = $1;
      /* Ensure hostname is filled */
-     char *hostname = cfg_allocz(sizeof(INET6_ADDRSTRLEN + 1));
+     char *hostname = cfg_allocz(INET6_ADDRSTRLEN + 1);
      bsnprintf(hostname, INET6_ADDRSTRLEN+1, "%I", RPKI_CFG->ip);
      RPKI_CFG->hostname = hostname;
    }
