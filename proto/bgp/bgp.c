@@ -100,6 +100,7 @@
  * RFC 8203 - BGP Administrative Shutdown Communication
  * RFC 8212 - Default EBGP Route Propagation Behavior without Policies
  * draft-ietf-idr-bgp-extended-messages-27
+ * draft-ietf-idr-ext-opt-param-07
  * draft-uttaro-idr-bgp-persistence-04
  */
 

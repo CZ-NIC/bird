@@ -294,8 +294,8 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
 
   /*
    * Note that max length is ~ 22+21*af_count. With max 12 channels that is
-   * 274. Option limit is 253 and buffer size is 4096, so we cannot overflow
-   * unless we add new capabilities or more AFs. XXXXX
+   * 274. We are limited just by buffer size (4096, minus header), as we support
+   * extended optional parameres. Therefore, we have enough space for expansion.
    */
 
   WALK_AF_CAPS(caps, ac)
@@ -411,7 +411,7 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   return buf;
 }
 
-static void
+static int
 bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, int len)
 {
   struct bgp_proto *p = conn->bgp;
@@ -577,11 +577,11 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
     }
   }
 
-  return;
+  return 0;
 
 err:
   bgp_error(conn, 2, 0, NULL, 0);
-  return;
+  return -1;
 }
 
 static int
@@ -621,36 +621,62 @@ bgp_check_capabilities(struct bgp_conn *conn)
 }
 
 static int
-bgp_read_options(struct bgp_conn *conn, byte *pos, int len)
+bgp_read_options(struct bgp_conn *conn, byte *pos, uint len, uint rest)
 {
   struct bgp_proto *p = conn->bgp;
   struct bgp_caps *caps;
-  int ol;
+  int ext = 0;
+
+  /* Handle extended length (draft-ietf-idr-ext-opt-param-07) */
+  if ((len > 0) && (rest > 0) && (pos[0] == 255))
+  {
+    if (rest < 3)
+      goto err;
+
+    /* Update pos/len to describe optional data */
+    len = get_u16(pos+1);
+    ext = 1;
+    pos += 3;
+    rest -= 3;
+  }
+
+  /* Verify that optional data fits into OPEN packet */
+  if (len > rest)
+    goto err;
 
   /* Max number of announced AFIs is limited by max option length (255) */
   caps = alloca(sizeof(struct bgp_caps) + 64 * sizeof(struct bgp_af_caps));
   memset(caps, 0, sizeof(struct bgp_caps));
 
+  /* Length of option parameter header */
+  uint hlen = ext ? 3 : 2;
+
   while (len > 0)
   {
-    if ((len < 2) || (len < (2 + pos[1])))
-    { bgp_error(conn, 2, 0, NULL, 0); return -1; }
+    if (len < hlen)
+      goto err;
 
-    ol = pos[1];
-    if (pos[0] == 2)
+    uint otype = get_u8(pos);
+    uint olen = ext ? get_u16(pos+1) : get_u8(pos+1);
+
+    if (len < (hlen + olen))
+      goto err;
+
+    if (otype == 2)
     {
       /* BGP capabilities, RFC 5492 */
       if (p->cf->capabilities)
-	bgp_read_capabilities(conn, caps, pos + 2, ol);
+	if (bgp_read_capabilities(conn, caps, pos + hlen, olen) < 0)
+	  return -1;
     }
     else
     {
       /* Unknown option */
-      bgp_error(conn, 2, 4, pos, ol); /* FIXME: ol or ol+2 ? */
+      bgp_error(conn, 2, 4, pos, hlen + olen);
       return -1;
     }
 
-    ADVANCE(pos, len, 2 + ol);
+    ADVANCE(pos, len, hlen + olen);
   }
 
   uint n = sizeof(struct bgp_caps) + caps->af_count * sizeof(struct bgp_af_caps);
@@ -658,6 +684,10 @@ bgp_read_options(struct bgp_conn *conn, byte *pos, int len)
   memcpy(conn->remote_caps, caps, n);
 
   return 0;
+
+err:
+  bgp_error(conn, 2, 0, NULL, 0);
+  return -1;
 }
 
 static byte *
@@ -676,12 +706,29 @@ bgp_create_open(struct bgp_conn *conn, byte *buf)
   if (p->cf->capabilities)
   {
     /* Prepare local_caps and write capabilities to buffer */
-    byte *end = bgp_write_capabilities(conn, buf+12);
-    uint len = end - (buf+12);
+    byte *pos = buf+12;
+    byte *end = bgp_write_capabilities(conn, pos);
+    uint len = end - pos;
 
-    buf[9] = len + 2;		/* Optional parameters length */
-    buf[10] = 2;		/* Option 2: Capability list */
-    buf[11] = len;		/* Option data length */
+    if (len < 254)
+    {
+      buf[9] = len + 2;		/* Optional parameters length */
+      buf[10] = 2;		/* Option 2: Capability list */
+      buf[11] = len;		/* Option data length */
+    }
+    else /* draft-ietf-idr-ext-opt-param-07 */
+    {
+      /* Move capabilities 4 B forward */
+      memmove(buf + 16, pos, len);
+      pos = buf + 16;
+      end = pos + len;
+
+      buf[9] = 255;		/* Non-ext OP length, fake */
+      buf[10] = 255;		/* Non-ext OP type, signals extended length */
+      put_u16(buf+11, len + 3);	/* Extended optional parameters length */
+      buf[13] = 2;		/* Option 2: Capability list */
+      put_u16(buf+14, len);	/* Option extended data length */
+    }
 
     return end;
   }
@@ -705,8 +752,8 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   if (conn->state != BS_OPENSENT)
   { bgp_error(conn, 5, fsm_err_subcode[conn->state], NULL, 0); return; }
 
-  /* Check message contents */
-  if (len < 29 || len != 29 + (uint) pkt[28])
+  /* Check message length */
+  if (len < 29)
   { bgp_error(conn, 1, 2, pkt+16, 2); return; }
 
   if (pkt[19] != BGP_VERSION)
@@ -717,7 +764,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   id = get_u32(pkt+24);
   BGP_TRACE(D_PACKETS, "Got OPEN(as=%d,hold=%d,id=%R)", asn, hold, id);
 
-  if (bgp_read_options(conn, pkt+29, pkt[28]) < 0)
+  if (bgp_read_options(conn, pkt+29, pkt[28], len-29) < 0)
     return;
 
   if (hold > 0 && hold < 3)
