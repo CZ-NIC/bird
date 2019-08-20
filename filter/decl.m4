@@ -494,7 +494,7 @@ f_linearize_concat(const struct f_inst * const inst[], uint count)
   for (uint i=0; i<count; i++)
     out->len = linearize(out, inst[i], out->len);
 
-#if DEBUGGING
+#if defined(LOCAL_DEBUG) || defined(GLOBAL_DEBUG)
   f_dump_line(out, 0);
 #endif
   return out;
