@@ -90,7 +90,7 @@ struct perf_random_routes {
   struct rta a;
 };
 
-static const uint perf_random_routes_size = sizeof(net_addr) + sizeof(rte) + RTA_MAX_SIZE;
+static const uint perf_random_routes_size = sizeof(struct perf_random_routes) + (RTA_MAX_SIZE - sizeof(struct rta));
 
 static inline s64 timediff(struct timespec *begin, struct timespec *end)
 { return (end->tv_sec - begin->tv_sec) * (s64) 1000000000 + end->tv_nsec - begin->tv_nsec; }
@@ -141,21 +141,28 @@ perf_loop(void *data)
 
   clock_gettime(CLOCK_MONOTONIC, &ts_begin);
 
+  struct rta *a = NULL;
+
   for (uint i=0; i<N; i++) {
     struct perf_random_routes *prr = p->data + offset * i;
     *((net_addr_ip4 *) &prr->net) = random_net_ip4();
 
-    rta *a = &prr->a;
-    bzero(a, RTA_MAX_SIZE);
+    if (!p->attrs_per_rte || !(i % p->attrs_per_rte)) {
+      a = &prr->a;
+      bzero(a, RTA_MAX_SIZE);
 
-    a->src = p->p.main_source;
-    a->source = RTS_PERF;
-    a->scope = SCOPE_UNIVERSE;
-    a->dest = RTD_UNICAST;
+      a->src = p->p.main_source;
+      a->source = RTS_PERF;
+      a->scope = SCOPE_UNIVERSE;
+      a->dest = RTD_UNICAST;
 
-    a->nh.iface = p->ifa->iface;
-    a->nh.gw = gw;
-    a->nh.weight = 1;
+      a->nh.iface = p->ifa->iface;
+      a->nh.gw = gw;
+      a->nh.weight = 1;
+
+      if (p->attrs_per_rte)
+	a = rta_lookup(a);
+    }
 
     rte *e = &prr->e;
     bzero(e, sizeof(rte));
@@ -264,6 +271,7 @@ perf_init(struct proto_config *CF)
   p->repeat = cf->repeat;
   p->keep = cf->keep;
   p->mode = cf->mode;
+  p->attrs_per_rte = cf->attrs_per_rte;
 
   switch (p->mode) {
     case PERF_MODE_IMPORT:
