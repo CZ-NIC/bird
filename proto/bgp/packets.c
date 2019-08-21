@@ -185,13 +185,19 @@ bgp_find_af_caps(struct bgp_caps *caps, u32 afi)
 }
 
 static struct bgp_af_caps *
-bgp_get_af_caps(struct bgp_caps *caps, u32 afi)
+bgp_get_af_caps(struct bgp_caps **pcaps, u32 afi)
 {
+  struct bgp_caps *caps = *pcaps;
   struct bgp_af_caps *ac;
 
   WALK_AF_CAPS(caps, ac)
     if (ac->afi == afi)
       return ac;
+
+  uint n = caps->af_count;
+  if (uint_is_pow2(n))
+    *pcaps = caps = mb_realloc(caps, sizeof(struct bgp_caps) +
+			       (2 * n) * sizeof(struct bgp_af_caps));
 
   ac = &caps->af_data[caps->af_count++];
   memset(ac, 0, sizeof(struct bgp_af_caps));
@@ -412,12 +418,21 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
 }
 
 static int
-bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, int len)
+bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
 {
   struct bgp_proto *p = conn->bgp;
+  struct bgp_caps *caps;
   struct bgp_af_caps *ac;
   int i, cl;
   u32 af;
+
+  if (!conn->remote_caps)
+    caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps) + sizeof(struct bgp_af_caps));
+  else
+  {
+    caps = conn->remote_caps;
+    conn->remote_caps = NULL;
+  }
 
   caps->length += len;
 
@@ -437,7 +452,7 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
 	goto err;
 
       af = get_af4(pos+2);
-      ac = bgp_get_af_caps(caps, af);
+      ac = bgp_get_af_caps(&caps, af);
       ac->ready = 1;
       break;
 
@@ -460,7 +475,7 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
 	  continue;
 
 	af = get_af4(pos+2+i);
-	ac = bgp_get_af_caps(caps, af);
+	ac = bgp_get_af_caps(&caps, af);
 	ac->ext_next_hop = 1;
       }
       break;
@@ -490,7 +505,7 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
       for (i = 2; i < cl; i += 4)
       {
 	af = get_af3(pos+2+i);
-	ac = bgp_get_af_caps(caps, af);
+	ac = bgp_get_af_caps(&caps, af);
 	ac->gr_able = 1;
 	ac->gr_af_flags = pos[2+i+3];
       }
@@ -522,7 +537,7 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
       for (i = 0; i < cl; i += 4)
       {
 	af = get_af3(pos+2+i);
-	ac = bgp_get_af_caps(caps, af);
+	ac = bgp_get_af_caps(&caps, af);
 	ac->add_path = pos[2+i+3];
       }
       break;
@@ -551,7 +566,7 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
       for (i = 0; i < cl; i += 7)
       {
 	af = get_af3(pos+2+i);
-	ac = bgp_get_af_caps(caps, af);
+	ac = bgp_get_af_caps(&caps, af);
 	ac->llgr_able = 1;
 	ac->llgr_flags = pos[2+i+3];
 	ac->llgr_time = get_u24(pos + 2+i+4);
@@ -577,9 +592,11 @@ bgp_read_capabilities(struct bgp_conn *conn, struct bgp_caps *caps, byte *pos, i
     }
   }
 
+  conn->remote_caps = caps;
   return 0;
 
 err:
+  mb_free(caps);
   bgp_error(conn, 2, 0, NULL, 0);
   return -1;
 }
@@ -624,7 +641,6 @@ static int
 bgp_read_options(struct bgp_conn *conn, byte *pos, uint len, uint rest)
 {
   struct bgp_proto *p = conn->bgp;
-  struct bgp_caps *caps;
   int ext = 0;
 
   /* Handle extended length (draft-ietf-idr-ext-opt-param-07) */
@@ -644,10 +660,6 @@ bgp_read_options(struct bgp_conn *conn, byte *pos, uint len, uint rest)
   if (len > rest)
     goto err;
 
-  /* Max number of announced AFIs is limited by max option length (255) */
-  caps = alloca(sizeof(struct bgp_caps) + 64 * sizeof(struct bgp_af_caps));
-  memset(caps, 0, sizeof(struct bgp_caps));
-
   /* Length of option parameter header */
   uint hlen = ext ? 3 : 2;
 
@@ -666,7 +678,7 @@ bgp_read_options(struct bgp_conn *conn, byte *pos, uint len, uint rest)
     {
       /* BGP capabilities, RFC 5492 */
       if (p->cf->capabilities)
-	if (bgp_read_capabilities(conn, caps, pos + hlen, olen) < 0)
+	if (bgp_read_capabilities(conn, pos + hlen, olen) < 0)
 	  return -1;
     }
     else
@@ -679,9 +691,9 @@ bgp_read_options(struct bgp_conn *conn, byte *pos, uint len, uint rest)
     ADVANCE(pos, len, hlen + olen);
   }
 
-  uint n = sizeof(struct bgp_caps) + caps->af_count * sizeof(struct bgp_af_caps);
-  conn->remote_caps = mb_allocz(p->p.pool, n);
-  memcpy(conn->remote_caps, caps, n);
+  /* Prepare empty caps if no capability option was announced */
+  if (!conn->remote_caps)
+    conn->remote_caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps));
 
   return 0;
 

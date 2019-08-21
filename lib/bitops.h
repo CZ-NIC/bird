@@ -29,4 +29,6 @@ static inline u32 u32_hash(u32 v) { return v * 2902958171u; }
 
 static inline u8 u32_popcount(u32 v) { return __builtin_popcount(v); }
 
+static inline int uint_is_pow2(uint n) { return n && !(n & (n-1)); }
+
 #endif
