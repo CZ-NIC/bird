@@ -22,6 +22,7 @@ struct perf_config {
   uint to;
   uint repeat;
   uint keep;
+  uint attrs_per_rte;
   enum perf_mode mode;
 };
 
@@ -39,6 +40,7 @@ struct perf_proto {
   uint exp;
   uint stop;
   uint keep;
+  uint attrs_per_rte;
   enum perf_mode mode;
 };
 

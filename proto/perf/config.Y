@@ -31,6 +31,7 @@ perf_proto_start: proto_start PERF
   PERF_CFG->repeat = 4;
   PERF_CFG->threshold_max = 500 MS_;
   PERF_CFG->threshold_min = 1 MS_;
+  PERF_CFG->attrs_per_rte = 0;
   PERF_CFG->keep = 0;
   PERF_CFG->mode = PERF_MODE_IMPORT;
 };
@@ -48,6 +49,7 @@ perf_proto_item:
  | REPEAT NUM { PERF_CFG->repeat = $2; }
  | THRESHOLD MIN expr_us { PERF_CFG->threshold_min = $3; }
  | THRESHOLD MAX expr_us { PERF_CFG->threshold_max = $3; }
+ | ATTRIBUTES NUM { PERF_CFG->attrs_per_rte = $2; }
  | KEEP bool { PERF_CFG->keep = $2; }
  | MODE IMPORT { PERF_CFG->mode = PERF_MODE_IMPORT; }
  | MODE EXPORT { PERF_CFG->mode = PERF_MODE_EXPORT; }
