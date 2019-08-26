@@ -537,7 +537,8 @@ struct channel {
 
   struct rtable *in_table;		/* Internal table for received routes */
   struct event *reload_event;		/* Event responsible for reloading from in_table */
-  struct fib_iterator reload_fit;	/* Iterator in in_table used during reloading */
+  struct fib_iterator reload_fit;	/* FIB iterator in in_table used during reloading */
+  struct rte *reload_next_rte;		/* Route iterator in in_table used during reloading */
   u8 reload_active;			/* Iterator reload_fit is linked */
 
   struct rtable *out_table;		/* Internal table for exported routes */
