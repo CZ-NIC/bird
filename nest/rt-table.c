@@ -2553,6 +2553,11 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 	goto drop_update;
       }
 
+      /* Move iterator if needed */
+      if (old == c->reload_next_rte)
+	if (!(c->reload_next_rte = old->next))
+	  c->reload_next_rte_end = 1;
+
       /* Remove the old rte */
       *pos = old->next;
       rte_free_quick(old);
@@ -2622,16 +2627,26 @@ rt_reload_channel(struct channel *c)
 
   FIB_ITERATE_START(&tab->fib, fit, net, n)
   {
-    if (max_feed <= 0)
+    if (c->reload_next_rte_end)
+      c->reload_next_rte_end = 0;
+    else
     {
-      FIB_ITERATE_PUT(fit);
-      return 0;
-    }
+      for (rte *e = c->reload_next_rte ? : n->routes; e; e = e->next)
+      {
+	rte_update2(c, n->n.addr, rte_do_cow(e), e->attrs->src);
 
-    for (rte *e = n->routes; e; e = e->next)
-    {
-      rte_update2(c, n->n.addr, rte_do_cow(e), e->attrs->src);
-      max_feed--;
+	if (max_feed-- > 0)
+	  continue;
+
+	if (!(c->reload_next_rte = e->next))
+	  c->reload_next_rte_end = 1;
+
+	FIB_ITERATE_PUT(fit);
+	log(L_TRACE "%s channel reload burst split (max_feed=%d)", c->proto->name, max_feed);
+	return 0;
+      }
+
+      c->reload_next_rte = NULL;
     }
   }
   FIB_ITERATE_END;
@@ -2647,6 +2662,8 @@ rt_reload_channel_abort(struct channel *c)
   {
     /* Unlink the iterator */
     fit_get(&c->in_table->fib, &c->reload_fit);
+    c->reload_next_rte = NULL;
+    c->reload_next_rte_end = 0;
     c->reload_active = 0;
   }
 }
