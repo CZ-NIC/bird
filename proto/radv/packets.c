@@ -1,6 +1,8 @@
 /*
  *	BIRD -- RAdv Packet Processing
  *
+ *	(c) 2011--2019 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2011--2019 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -370,18 +372,48 @@ radv_prepare_ra(struct radv_iface *ifa)
 
 
 void
-radv_send_ra(struct radv_iface *ifa)
+radv_send_ra(struct radv_iface *ifa, ip_addr to)
 {
   struct radv_proto *p = ifa->ra;
+
+  /* TX queue is already full */
+  if (!sk_tx_buffer_empty(ifa->sk))
+    return;
+
+  if (ifa->valid_time <= current_time())
+    radv_invalidate(ifa);
 
   /* We store prepared RA in tbuf */
   if (!ifa->plen)
     radv_prepare_ra(ifa);
 
-  RADV_TRACE(D_PACKETS, "Sending RA via %s", ifa->iface->name);
-  sk_send_to(ifa->sk, ifa->plen, IP6_ALL_NODES, 0);
+  if (ipa_zero(to))
+  {
+    to = IP6_ALL_NODES;
+    RADV_TRACE(D_PACKETS, "Sending RA via %s", ifa->iface->name);
+  }
+  else
+  {
+    RADV_TRACE(D_PACKETS, "Sending RA to %I via %s", to, ifa->iface->name);
+  }
+
+  int done = sk_send_to(ifa->sk, ifa->plen, to, 0);
+  if (!done)
+    log(L_WARN "%s: TX queue full on %s", p->p.name, ifa->iface->name);
 }
 
+
+static void
+radv_receive_rs(struct radv_proto *p, struct radv_iface *ifa, ip_addr from)
+{
+  RADV_TRACE(D_PACKETS, "Received RS from %I via %s",
+	     from, ifa->iface->name);
+
+  if (ifa->cf->solicited_ra_unicast && ipa_nonzero(from))
+    radv_send_ra(ifa, from);
+  else
+    radv_iface_notify(ifa, RA_EV_RS);
+}
 
 static int
 radv_rx_hook(sock *sk, uint size)
@@ -410,9 +442,7 @@ radv_rx_hook(sock *sk, uint size)
   switch (buf[0])
   {
   case ICMPV6_RS:
-    RADV_TRACE(D_PACKETS, "Received RS from %I via %s",
-	       sk->faddr, ifa->iface->name);
-    radv_iface_notify(ifa, RA_EV_RS);
+    radv_receive_rs(p, ifa, sk->faddr);
     return 1;
 
   case ICMPV6_RA:
@@ -430,7 +460,10 @@ static void
 radv_tx_hook(sock *sk)
 {
   struct radv_iface *ifa = sk->data;
-  log(L_WARN "%s: TX hook called", ifa->ra->p.name);
+  log(L_INFO "%s: TX queue ready on %s", ifa->ra->p.name, ifa->iface->name);
+
+  /* Some RAs may be missed due to full TX queue */
+  radv_iface_notify(ifa, RA_EV_RS);
 }
 
 static void

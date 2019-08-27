@@ -83,6 +83,9 @@ drop_gid(gid_t gid)
 {
   if (setgid(gid) < 0)
     die("setgid: %m");
+
+  if (setgroups(0, NULL) < 0)
+    die("setgroups: %m");
 }
 
 /*

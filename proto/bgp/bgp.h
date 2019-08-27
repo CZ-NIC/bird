@@ -150,8 +150,8 @@ struct bgp_channel_config {
   u8 ext_next_hop;			/* Allow both IPv4 and IPv6 next hops */
   u8 add_path;				/* Use ADD-PATH extension [RFC 7911] */
   u8 import_table;			/* Use c.in_table as Adj-RIB-In */
+  u8 export_table;			/* Use c.out_table as Adj-RIB-Out */
 
-  uint rest[0];				/* Remaining items are reconfigured separately */
   struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */
   struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
 };

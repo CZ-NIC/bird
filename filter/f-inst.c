@@ -308,12 +308,24 @@
 	case T_PATH_MASK_ITEM:
 	  pm->item[i] = vv(i).val.pmi;
 	  break;
+
 	case T_INT:
 	  pm->item[i] = (struct f_path_mask_item) {
 	    .asn = vv(i).val.i,
 	    .kind = PM_ASN,
 	  };
 	  break;
+
+	case T_SET:
+	  if (vv(i).val.t->from.type != T_INT)
+	    runtime("Only integer sets allowed in path mask");
+
+	  pm->item[i] = (struct f_path_mask_item) {
+	    .set = vv(i).val.t,
+	    .kind = PM_ASN_SET,
+	  };
+	  break;
+
 	default:
 	  runtime( "Error resolving path mask template: value not an integer" );
       }

@@ -740,6 +740,31 @@ pm_match(struct pm_pos *pos, u32 asn, u32 asn2)
   return 0;
 }
 
+static int
+pm_match_set(struct pm_pos *pos, const struct f_tree *set)
+{
+  struct f_val asn = { .type = T_INT };
+
+  if (! pos->set)
+  {
+    asn.val.i = pos->val.asn;
+    return !!find_tree(set, &asn);
+  }
+
+  const u8 *p = pos->val.sp;
+  int len = *p++;
+  int i;
+
+  for (i = 0; i < len; i++)
+  {
+    asn.val.i = get_as(p + i * BS);
+    if (find_tree(set, &asn))
+      return 1;
+  }
+
+  return 0;
+}
+
 static void
 pm_mark(struct pm_pos *pos, int i, int plen, int *nl, int *nh)
 {
@@ -824,13 +849,17 @@ as_path_match(const struct adata *path, const struct f_path_mask *mask)
 	  val2 = mask->item[m].to;
 	  goto step;
 	case PM_QUESTION:
+	case PM_ASN_SET:
 	step:
 	  nh = nl = -1;
 	  for (i = h; i >= l; i--)
 	    if (pos[i].mark)
 	      {
 		pos[i].mark = 0;
-		if ((mask->item[m].kind == PM_QUESTION) || pm_match(pos + i, val, val2))
+		if ((mask->item[m].kind == PM_QUESTION) ||
+		    ((mask->item[m].kind != PM_ASN_SET) ?
+		     pm_match(pos + i, val, val2) :
+		     pm_match_set(pos + i, mask->item[m].set)))
 		  pm_mark(pos, i, plen, &nl, &nh);
 	      }
 

@@ -2705,6 +2705,16 @@ be used in explicit configuration.
 	be examined later by <cf/show route/, and can be used to reconfigure
 	import filters without full route refresh. Default: off.
 
+	<tag><label id="bgp-export-table">export table <m/switch/</tag>
+	A BGP export table contains all routes sent to given BGP neighbor, after
+	application of export filters. It is also called <em/Adj-RIB-Out/ in BGP
+	terminology. BIRD BGP by default operates without export tables, in
+	which case routes from master table are just processed by export filters
+	and then announced by BGP. Enabling <cf/export table/ allows to store
+	routes after export filter processing, so they can be examined later by
+	<cf/show route/, and can be used to eliminate unnecessary updates or
+	withdraws. Default: off.
+
 	<tag><label id="bgp-secondary">secondary <m/switch/</tag>
 	Usually, if an export filter rejects a selected route, no other route is
 	propagated for that network. This option allows to try the next route in
@@ -4120,6 +4130,12 @@ definitions, prefix definitions and DNS definitions:
 	<tag><label id="radv-iface-min-delay">min delay <m/expr/</tag>
 	The minimum delay between two consecutive router advertisements, in
 	seconds. Default: 3
+
+	<tag><label id="radv-solicited-ra-unicast">solicited ra unicast <m/switch/</tag>
+	Solicited router advertisements are usually sent to all-nodes multicast
+	group like unsolicited ones, but the router can be configured to send
+	them as unicast directly to soliciting nodes instead. This is especially
+	useful on wireless networks (see <rfc id="7772">). Default: no
 
 	<tag><label id="radv-iface-managed">managed <m/switch/</tag>
 	This option specifies whether hosts should use DHCPv6 for IP address

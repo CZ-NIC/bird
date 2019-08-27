@@ -684,7 +684,6 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
 
-
   /*
    * First, apply export limit.
    *
@@ -730,6 +729,8 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
 	}
     }
 
+  if (c->out_table && !rte_update_out(c, net->n.addr, new, old, refeed))
+    return;
 
   if (new)
     stats->exp_updates_accepted++;
@@ -2624,6 +2625,10 @@ rt_feed_channel_abort(struct channel *c)
 }
 
 
+/*
+ *	Import table
+ */
+
 int
 rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
@@ -2667,6 +2672,10 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 
 	goto drop_update;
       }
+
+      /* Move iterator if needed */
+      if (old == c->reload_next_rte)
+	c->reload_next_rte = old->next;
 
       /* Remove the old rte */
       *pos = old->next;
@@ -2733,21 +2742,32 @@ rt_reload_channel(struct channel *c)
     c->reload_active = 1;
   }
 
-  FIB_ITERATE_START(&tab->fib, fit, net, n)
-  {
-    if (max_feed <= 0)
+  do {
+    for (rte *e = c->reload_next_rte; e; e = e->next)
     {
-      FIB_ITERATE_PUT(fit);
-      return 0;
+      if (max_feed-- <= 0)
+      {
+	c->reload_next_rte = e;
+	debug("%s channel reload burst split (max_feed=%d)", c->proto->name, max_feed);
+	return 0;
+      }
+
+      rte_update2(c, e->net, e, e->attrs->src);
     }
 
-    for (rte *e = n->routes; e; e = e->next)
+    c->reload_next_rte = NULL;
+
+    FIB_ITERATE_START(&tab->fib, fit, net, n)
     {
-      rte_update2(c, n->n.addr, e, e->attrs->src);
-      max_feed--;
+      if (c->reload_next_rte = n->routes)
+      {
+	FIB_ITERATE_PUT_NEXT(fit, &tab->fib);
+	break;
+      }
     }
+    FIB_ITERATE_END;
   }
-  FIB_ITERATE_END;
+  while (c->reload_next_rte);
 
   c->reload_active = 0;
   return 1;
@@ -2760,6 +2780,7 @@ rt_reload_channel_abort(struct channel *c)
   {
     /* Unlink the iterator */
     fit_get(&c->in_table->fib, &c->reload_fit);
+    c->reload_next_rte = NULL;
     c->reload_active = 0;
   }
 }
@@ -2785,6 +2806,88 @@ rt_prune_sync(rtable *t, int all)
   FIB_WALK_END;
 }
 
+
+/*
+ *	Export table
+ */
+
+int
+rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed)
+{
+  struct rtable *tab = c->out_table;
+  struct rte_src *src;
+  rte *old, **pos;
+  net *net;
+
+  if (new)
+  {
+    net = net_get(tab, n);
+    src = new->attrs->src;
+  }
+  else
+  {
+    net = net_find(tab, n);
+    src = old0->attrs->src;
+
+    if (!net)
+      goto drop_withdraw;
+  }
+
+  /* Find the old rte */
+  for (pos = &net->routes; old = *pos; pos = &old->next)
+    if (old->attrs->src == src)
+    {
+      if (new && rte_same(old, new))
+      {
+	/* REF_STALE / REF_DISCARD not used in export table */
+	/*
+	if (old->flags & (REF_STALE | REF_DISCARD | REF_MODIFY))
+	{
+	  old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
+	  return 1;
+	}
+	*/
+
+	goto drop_update;
+      }
+
+      /* Remove the old rte */
+      *pos = old->next;
+      rte_free(old);
+      tab->rt_count--;
+
+      break;
+    }
+
+  if (!new)
+  {
+    if (!old)
+      goto drop_withdraw;
+
+    return 1;
+  }
+
+  /* Insert the new rte */
+  rte *e = rte_cache(new);
+  e->net = net->n.addr;
+  e->sender = c;
+  e->lastmod = current_time();
+  e->next = *pos;
+  *pos = e;
+  tab->rt_count++;
+  return 1;
+
+drop_update:
+  return refeed;
+
+drop_withdraw:
+  return 0;
+}
+
+
+/*
+ *	Hostcache
+ */
 
 static inline u32
 hc_hash(ip_addr a, rtable *dep)

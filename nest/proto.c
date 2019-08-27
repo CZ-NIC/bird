@@ -317,6 +317,13 @@ channel_reset_import(struct channel *c)
   rt_prune_sync(c->in_table, 1);
 }
 
+static void
+channel_reset_export(struct channel *c)
+{
+  /* Just free the routes */
+  rt_prune_sync(c->out_table, 1);
+}
+
 /* Called by protocol to activate in_table */
 void
 channel_setup_in_table(struct channel *c)
@@ -329,6 +336,18 @@ channel_setup_in_table(struct channel *c)
   rt_setup(c->proto->pool, c->in_table, cf);
 
   c->reload_event = ev_new_init(c->proto->pool, channel_reload_loop, c);
+}
+
+/* Called by protocol to activate out_table */
+void
+channel_setup_out_table(struct channel *c)
+{
+  struct rtable_config *cf = mb_allocz(c->proto->pool, sizeof(struct rtable_config));
+  cf->name = "export";
+  cf->addr_type = c->net_type;
+
+  c->out_table = mb_allocz(c->proto->pool, sizeof(struct rtable));
+  rt_setup(c->proto->pool, c->out_table, cf);
 }
 
 
@@ -376,6 +395,7 @@ channel_do_down(struct channel *c)
 
   c->in_table = NULL;
   c->reload_event = NULL;
+  c->out_table = NULL;
 
   CALL(c->channel->cleanup, c);
 
@@ -411,6 +431,9 @@ channel_set_state(struct channel *c, uint state)
     if (c->in_table && (cs == CS_UP))
       channel_reset_import(c);
 
+    if (c->out_table && (cs == CS_UP))
+      channel_reset_export(c);
+
     break;
 
   case CS_UP:
@@ -432,6 +455,9 @@ channel_set_state(struct channel *c, uint state)
 
     if (c->in_table && (cs == CS_UP))
       channel_reset_import(c);
+
+    if (c->out_table && (cs == CS_UP))
+      channel_reset_export(c);
 
     channel_do_flush(c);
     break;
@@ -619,7 +645,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
     c->last_tx_filter_change = current_time();
 
   /* Execute channel-specific reconfigure hook */
-  if (c->channel->reconfigure && !c->channel->reconfigure(c, cf))
+  if (c->channel->reconfigure && !c->channel->reconfigure(c, cf, &import_changed, &export_changed))
     return 0;
 
   /* If the channel is not open, it has no routes and we cannot reload it anyways */
@@ -1926,7 +1952,7 @@ proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
   /* All channels must support reload */
   if (dir != CMD_RELOAD_OUT)
     WALK_LIST(c, p->channels)
-      if (!channel_reloadable(c))
+      if ((c->channel_state == CS_UP) && !channel_reloadable(c))
       {
 	cli_msg(-8006, "%s: reload failed", p->name);
 	return;
@@ -1937,12 +1963,14 @@ proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
   /* re-importing routes */
   if (dir != CMD_RELOAD_OUT)
     WALK_LIST(c, p->channels)
-      channel_request_reload(c);
+      if (c->channel_state == CS_UP)
+	channel_request_reload(c);
 
   /* re-exporting routes */
   if (dir != CMD_RELOAD_IN)
     WALK_LIST(c, p->channels)
-      channel_request_feeding(c);
+      if (c->channel_state == CS_UP)
+	channel_request_feeding(c);
 
   cli_msg(-15, "%s: reloading", p->name);
 }

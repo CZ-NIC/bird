@@ -451,7 +451,7 @@ struct channel_class {
   uint config_size;			/* Size of channel config data structure */
 
   void (*init)(struct channel *, struct channel_config *);	/* Create new instance */
-  int (*reconfigure)(struct channel *, struct channel_config *);	/* Try to reconfigure instance, returns success */
+  int (*reconfigure)(struct channel *, struct channel_config *, int *import_changed, int *export_changed);	/* Try to reconfigure instance, returns success */
   int (*start)(struct channel *);	/* Start the instance */
   void (*shutdown)(struct channel *);	/* Stop the instance */
   void (*cleanup)(struct channel *);	/* Channel finished flush */
@@ -537,8 +537,11 @@ struct channel {
 
   struct rtable *in_table;		/* Internal table for received routes */
   struct event *reload_event;		/* Event responsible for reloading from in_table */
-  struct fib_iterator reload_fit;	/* Iterator in in_table used during reloading */
+  struct fib_iterator reload_fit;	/* FIB iterator in in_table used during reloading */
+  struct rte *reload_next_rte;		/* Route iterator in in_table used during reloading */
   u8 reload_active;			/* Iterator reload_fit is linked */
+
+  struct rtable *out_table;		/* Internal table for exported routes */
 };
 
 
@@ -607,6 +610,7 @@ int proto_configure_channel(struct proto *p, struct channel **c, struct channel_
 
 void channel_set_state(struct channel *c, uint state);
 void channel_setup_in_table(struct channel *c);
+void channel_setup_out_table(struct channel *c);
 void channel_schedule_reload(struct channel *c);
 
 static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }

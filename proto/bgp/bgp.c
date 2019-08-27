@@ -100,6 +100,7 @@
  * RFC 8203 - BGP Administrative Shutdown Communication
  * RFC 8212 - Default EBGP Route Propagation Behavior without Policies
  * draft-ietf-idr-bgp-extended-messages-27
+ * draft-ietf-idr-ext-opt-param-07
  * draft-uttaro-idr-bgp-persistence-04
  */
 
@@ -1721,6 +1722,9 @@ bgp_channel_start(struct channel *C)
   if (c->cf->import_table)
     channel_setup_in_table(C);
 
+  if (c->cf->export_table)
+    channel_setup_out_table(C);
+
   c->stale_timer = tm_new_init(c->pool, bgp_long_lived_stale_timeout, c, 0, 0);
 
   c->next_hop_addr = c->cf->next_hop_addr;
@@ -2054,22 +2058,35 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 #define IGP_TABLE(cf, sym) ((cf)->igp_table_##sym ? (cf)->igp_table_##sym ->table : NULL )
 
 static int
-bgp_channel_reconfigure(struct channel *C, struct channel_config *CC)
+bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *import_changed, int *export_changed)
 {
   struct bgp_channel *c = (void *) C;
   struct bgp_channel_config *new = (void *) CC;
   struct bgp_channel_config *old = c->cf;
 
-  if (memcmp(((byte *) old) + sizeof(struct channel_config),
-	     ((byte *) new) + sizeof(struct channel_config),
-	     /* Remaining items must be checked separately */
-	     OFFSETOF(struct bgp_channel_config, rest) - sizeof(struct channel_config)))
+  if ((new->secondary != old->secondary) ||
+      (new->gr_able != old->gr_able) ||
+      (new->llgr_able != old->llgr_able) ||
+      (new->llgr_time != old->llgr_time) ||
+      (new->ext_next_hop != old->ext_next_hop) ||
+      (new->add_path != old->add_path) ||
+      (new->import_table != old->import_table) ||
+      (new->export_table != old->export_table) ||
+      (IGP_TABLE(new, ip4) != IGP_TABLE(old, ip4)) ||
+      (IGP_TABLE(new, ip6) != IGP_TABLE(old, ip6)))
     return 0;
 
-  /* Check change in IGP tables */
-  if ((IGP_TABLE(old, ip4) != IGP_TABLE(new, ip4)) ||
-      (IGP_TABLE(old, ip6) != IGP_TABLE(new, ip6)))
+  if (new->mandatory && !old->mandatory && (C->channel_state != CS_UP))
     return 0;
+
+  if (new->gw_mode != old->gw_mode)
+    *import_changed = 1;
+
+  if (!ipa_equal(new->next_hop_addr, old->next_hop_addr) ||
+      (new->next_hop_self != old->next_hop_self) ||
+      (new->next_hop_keep != old->next_hop_keep) ||
+      (new->missing_lladdr != old->missing_lladdr))
+    *export_changed = 1;
 
   c->cf = new;
   return 1;

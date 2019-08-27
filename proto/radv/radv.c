@@ -1,6 +1,8 @@
 /*
  *	BIRD -- Router Advertisement
  *
+ *	(c) 2011--2019 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2011--2019 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -35,17 +37,13 @@
  * case of the specified trigger prefix was changed.
  *
  * Supported standards:
- * - RFC 4861 - main RA standard
- * - RFC 4191 - Default Router Preferences and More-Specific Routes
- * - RFC 6106 - DNS extensions (RDDNS, DNSSL)
+ * RFC 4861 - main RA standard
+ * RFC 4191 - Default Router Preferences and More-Specific Routes
+ * RFC 6106 - DNS extensions (RDDNS, DNSSL)
  */
 
 static void radv_prune_prefixes(struct radv_iface *ifa);
 static void radv_prune_routes(struct radv_proto *p);
-
-/* Invalidate cached RA packet */
-static inline void radv_invalidate(struct radv_iface *ifa)
-{ ifa->plen = 0; }
 
 static void
 radv_timer(timer *tm)
@@ -56,16 +54,13 @@ radv_timer(timer *tm)
 
   RADV_TRACE(D_EVENTS, "Timer fired on %s", ifa->iface->name);
 
-  if (ifa->valid_time <= now)
-    radv_invalidate(ifa);
-
   if (ifa->prune_time <= now)
     radv_prune_prefixes(ifa);
 
   if (p->prune_time <= now)
     radv_prune_routes(p);
 
-  radv_send_ra(ifa);
+  radv_send_ra(ifa, IPA_NONE);
 
   /* Update timer */
   ifa->last = now;
@@ -627,7 +622,7 @@ radv_iface_shutdown(struct radv_iface *ifa)
   if (ifa->sk)
   {
     radv_invalidate(ifa);
-    radv_send_ra(ifa);
+    radv_send_ra(ifa, IPA_NONE);
   }
 }
 

@@ -446,7 +446,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc THEN
 %nonassoc ELSE
 
-%type <xp> cmds_int
+%type <xp> cmds_int cmd_prep
 %type <x> term block cmd cmds constant constructor print_list var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
 %type <fda> dynamic_attr
 %type <fsa> static_attr
@@ -624,17 +624,25 @@ cmds: /* EMPTY */ { $$ = NULL; }
  | cmds_int { $$ = $1.begin; }
  ;
 
-cmds_int: cmd {
+cmd_prep: cmd {
   $$.begin = $$.end = $1;
-  while ($$.end->next)
-    $$.end = $$.end->next;
+  if ($1)
+    while ($$.end->next)
+      $$.end = $$.end->next;
+}
+ ;
+
+cmds_int: cmd_prep
+ | cmds_int cmd_prep {
+  if (!$1.begin)
+    $$ = $2;
+  else if (!$2.begin)
+    $$ = $1;
+  else {
+    $$.begin = $1.begin;
+    $$.end = $2.end;
+    $1.end->next = $2.begin;
   }
- | cmds_int cmd {
-  $$.begin = $1.begin;
-  $1.end->next = $2;
-  $$.end = $2;
-  while ($$.end->next)
-    $$.end = $$.end->next;
  }
  ;
 
@@ -801,6 +809,10 @@ bgp_path:
 bgp_path_tail:
    NUM bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .asn = $1, .kind = PM_ASN, }, }); $$->next = $2;  }
  | NUM DDOT NUM bgp_path_tail	{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .from = $1, .to = $3, .kind = PM_ASN_RANGE }, }); $$->next = $4; }
+ | '[' set_items ']' bgp_path_tail {
+   if ($2->from.type != T_INT) cf_error("Only integer sets allowed in path mask");
+   $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .set = build_tree($2), .kind = PM_ASN_SET }, }); $$->next = $4;
+ }
  | '*' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_ASTERISK }, }); $$->next = $2; }
  | '?' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_QUESTION }, }); $$->next = $2; }
  | bgp_path_expr bgp_path_tail	{ $$ = $1; $$->next = $2; }
