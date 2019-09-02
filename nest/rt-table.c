@@ -43,7 +43,6 @@
 #include "lib/hash.h"
 #include "lib/string.h"
 #include "lib/alloca.h"
-#include "lib/lock.h"
 
 pool *rt_table_pool;
 
@@ -59,14 +58,8 @@ static inline linpool *rup_get(void) {
   if (rups > 0)
     return rte_update_pool[--rups];
 
-  /* Linpool acquisition must be serialized. */
-  general_lock();
-
   /* Allocate a new linpool */
   struct linpool *pool = lp_new_default(rt_table_pool);
-
-  /* Done with acquisition */
-  general_unlock();
 
   /* Return the pool */
   return pool;
@@ -74,10 +67,7 @@ static inline linpool *rup_get(void) {
 
 static inline void rup_free(linpool *pool) {
   if (rups == RUPS_MAX) {
-    /* We have too many spare linpools, freeing this one */
-    general_lock();
     rfree(pool);
-    general_unlock();
   } else {
     /* Keep the linpool for future use */
     lp_flush(pool);
