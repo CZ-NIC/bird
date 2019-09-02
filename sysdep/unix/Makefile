@@ -1,4 +1,4 @@
-src := io.c krt.c lock.c log.c main.c random.c
+src := io.c krt.c log.c main.c random.c worker.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
