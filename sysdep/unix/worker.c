@@ -1,7 +1,10 @@
 #include "nest/bird.h"
+#include "lib/macro.h"
 #include "lib/worker.h"
 #include "lib/timer.h"
 #include "lib/socket.h"
+
+#include "conf/conf.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -41,17 +44,20 @@ static inline void SEM_POST(sem_t *s)
 
 #define WQ_LOCK pthread_spin_lock(&(wq->lock))
 #define WQ_UNLOCK pthread_spin_unlock(&(wq->lock))
+#define WQ_LOCKED MACRO_PACK_BEFORE_AFTER(WQ_LOCK, WQ_UNLOCK)
 
 static _Thread_local struct timeloop worker_timeloop;
 
 struct worker_queue {
   sem_t waiting;		/* Workers wait on this semaphore to get work */
-  sem_t stop;			/* If worker succeeds waiting here, it shall shutdown */
+  sem_t stopped;		/* Posted on worker stopped */
   pthread_spinlock_t lock;	/* Lock for the following values */
-  int available;		/* How many workers are waiting */
-  uint running;			/* How many workers are running */
   list pending;			/* Pending tasks */
   list sendmore;		/* Pending sendmore requests */
+  int available;		/* How many workers are waiting */
+  uint running;			/* How many workers are running */
+  uint prefork;			/* Default count of workers */
+  uint stop;			/* Stop requests */
 };
 
 extern _Thread_local struct timeloop *timeloop_current;
@@ -68,13 +74,21 @@ worker_loop(void *_wq)
   debug("Worker started for worker queue %p\n", wq);
  
   /* Run the loop */
-  while (!SEM_TRYWAIT(&wq->stop)) {
+  while (1) {
     WQ_LOCK;
     wq->available++;
     WQ_UNLOCK;
     SEM_WAIT(&wq->waiting);
-
+    
     WQ_LOCK;
+    /* Is there a request to stop? */
+    if (wq->stop)
+    {
+      wq->stop--;
+      WQ_UNLOCK;
+      break;
+    }
+
     if (!EMPTY_LIST(wq->pending)) {
       /* Get first pending task out of the list */
       struct task *t = HEAD(wq->pending);
@@ -88,9 +102,7 @@ worker_loop(void *_wq)
       t->state = TS_SENDMORE;
 
       /* Order more tasks */
-      WQ_LOCK;
-      add_tail(&wq->sendmore, &t->n);
-      WQ_UNLOCK;
+      WQ_LOCKED add_tail(&wq->sendmore, &t->n);
 
       /* We have added an item into a queue */
       SEM_POST(&wq->waiting);
@@ -115,7 +127,8 @@ worker_loop(void *_wq)
   }
 
   /* Requested to stop */
-  debug("Worker stoppping, waiting for join\n");
+  debug("Worker stopping\n");
+  SEM_POST(&wq->stopped);
   return NULL;
 }
 
@@ -134,20 +147,31 @@ worker_start(struct worker_queue *wq)
   if (e < 0)
     bug("pthread_detach() failed: %m");
 
-  WQ_LOCK;
-  wq->running++;
-  WQ_UNLOCK;
+  WQ_LOCKED wq->running++;
   return 0;
 }
 
+/* Stop a number of threads */
+static void
+worker_stop(struct worker_queue *wq, uint count)
+{
+  WQ_LOCKED wq->stop += count;
+
+  for (uint i=0; i<count; i++)
+    SEM_POST(&wq->waiting);
+
+  for (uint i=0; i<count; i++)
+    SEM_WAIT(&wq->stopped);
+}
+
 struct worker_queue *
-worker_queue_new(uint prefork)
+worker_queue_new(void)
 {
   struct worker_queue *wq = mb_alloc(&root_pool, sizeof(struct worker_queue));
 
   if (sem_init(&wq->waiting, 0, 0) < 0)
     bug("sem_init() failed: %m");
-  if (sem_init(&wq->stop, 0, 0) < 0)
+  if (sem_init(&wq->stopped, 0, 0) < 0)
     bug("sem_init() failed: %m");
 
   pthread_spin_init(&wq->lock, 0);
@@ -157,14 +181,24 @@ worker_queue_new(uint prefork)
   init_list(&wq->pending);
   init_list(&wq->sendmore);
 
-  while (prefork--)
-    if (!worker_start(wq))
-      if (!wq->running)
-	bug("Failed to start any worker");
-      else
-	log(L_WARN "Failed to start a worker");
-
   return wq;
+}
+
+void
+worker_queue_update(struct worker_queue *wq, struct config *c)
+{
+  while (c->workers > wq->prefork)
+  {
+    if (worker_start(wq) == 0)
+      wq->prefork++;
+    else if (wq->prefork)
+      return log(L_WARN "Failed to start a worker: %m");
+    else
+      bug("Failed to start a worker: %m");
+  }
+
+  if (c->workers < wq->prefork)
+    worker_stop(wq, wq->prefork - c->workers);
 }
 
 int

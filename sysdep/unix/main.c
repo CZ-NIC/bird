@@ -29,6 +29,7 @@
 #include "lib/event.h"
 #include "lib/timer.h"
 #include "lib/string.h"
+#include "lib/worker.h"
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
@@ -91,6 +92,8 @@ drop_gid(gid_t gid)
 /*
  *	Reading the Configuration
  */
+
+static struct worker_queue *queue;
 
 #ifdef PATH_IPROUTE_DIR
 
@@ -170,6 +173,8 @@ sysdep_preconfig(struct config *c)
   c->latency_limit = UNIX_DEFAULT_LATENCY_LIMIT;
   c->watchdog_warning = UNIX_DEFAULT_WATCHDOG_WARNING;
 
+  c->workers = 4;
+
 #ifdef PATH_IPROUTE_DIR
   read_iproute_table(PATH_IPROUTE_DIR "/rt_protos", "ipp_", 256);
   read_iproute_table(PATH_IPROUTE_DIR "/rt_realms", "ipr_", 256);
@@ -182,6 +187,7 @@ int
 sysdep_commit(struct config *new, struct config *old UNUSED)
 {
   log_switch(0, &new->logfiles, new->syslog_name);
+  worker_queue_update(queue, new);
   return 0;
 }
 
