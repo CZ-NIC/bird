@@ -45,6 +45,7 @@ struct config {
   u32 latency_limit;			/* Events with longer duration are logged (us) */
   u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */
   u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
+  uint workers;				/* How many workers should run */
   char *err_msg;			/* Parser error message */
   int err_lino;				/* Line containing error */
   int err_chno;				/* Character where the parser stopped */
