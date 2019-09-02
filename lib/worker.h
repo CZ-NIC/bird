@@ -8,6 +8,8 @@
 
 #include "lib/birdlib.h"
 
+struct config;
+
 struct worker_queue;
 extern struct worker_queue *main_queue;
 
@@ -27,11 +29,16 @@ struct task {
 };
 
 /* Fixed-size worker queue. Must be run from the main thread.
- * @prefork: how many workers to start
  *
  * Returns the worker queue pointer.
  */
-struct worker_queue *worker_queue_new(uint prefork);
+struct worker_queue *worker_queue_new(void);
+
+/* Set the right number of workers in worker queue.
+ * @wq: worker queue
+ * @prefork: how many workers shall run
+ */
+void worker_queue_update(struct worker_queue *wq, struct config *c);
 
 /* Push some work to the queue.
  * @wq: queue to push to
