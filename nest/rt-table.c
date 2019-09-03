@@ -1721,7 +1721,6 @@ rte_finish_update(struct rte_update_data *rud)
 done:
   /* And return the pool */
   rup_free(rud->pool);
-  rud->pool = NULL;
   return;
 }
 
