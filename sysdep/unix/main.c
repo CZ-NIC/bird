@@ -93,8 +93,6 @@ drop_gid(gid_t gid)
  *	Reading the Configuration
  */
 
-static struct worker_queue *queue;
-
 #ifdef PATH_IPROUTE_DIR
 
 static inline void
@@ -187,7 +185,7 @@ int
 sysdep_commit(struct config *new, struct config *old UNUSED)
 {
   log_switch(0, &new->logfiles, new->syslog_name);
-  worker_queue_update(queue, new);
+  worker_queue_update(new);
   return 0;
 }
 
@@ -909,7 +907,7 @@ main(int argc, char **argv)
 
   main_thread_init();
 
-  queue = worker_queue_new();
+  worker_queue_init();
 
   write_pid_file();
 
