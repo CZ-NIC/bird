@@ -6,12 +6,31 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#ifndef _BIRD_WORKER_H_
+#define _BIRD_WORKER_H_
+
 #include "lib/birdlib.h"
 
 struct config;
 
-struct domain;
-struct limiter;
+struct domain *domain_new(pool *p);
+void domain_read_lock(struct domain *);
+void domain_read_unlock(struct domain *);
+void domain_write_lock(struct domain *);
+void domain_write_unlock(struct domain *);
+
+extern _Thread_local struct domain *worker_domain;
+extern _Thread_local enum task_flags worker_task_flags;
+
+#define ASSERT_WORKER_DOMAIN_READ(domain) do { \
+  ASSERT(worker_domain == domain); \
+  ASSERT(!(worker_task_flags & TF_EXCLUSIVE)); \
+} while (0)
+
+#define ASSERT_WORKER_DOMAIN_WRITE(domain) do { \
+  ASSERT(worker_domain == domain); \
+  ASSERT(worker_task_flags & TF_EXCLUSIVE); \
+} while (0)
 
 enum task_flags {
   /* These flags can be set by the user */
@@ -54,3 +73,5 @@ struct io_ping_handle *io_ping_new(void (*hook)(struct io_ping_handle *));
 
 /* Issue the ping. Run from a worker thread. */
 void io_ping(struct io_ping_handle *);
+
+#endif

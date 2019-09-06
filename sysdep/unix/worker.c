@@ -65,28 +65,73 @@ static struct worker_queue {
 } wq_, *wq = &wq_;
 
 struct domain {
-  node n;
+  resource r;
   pthread_rwlock_t lock;
   list blocked;			/* These tasks are blocked by the rwlock */
 };
 
 void
-domain_init(struct domain *d)
+domain_free(resource *r)
 {
+  struct domain *d = SKIP_BACK(struct domain, r, r);
+  pthread_rwlock_destroy(&d->lock);
+}
+
+void
+task_dump(struct task *t)
+{
+  debug("D:%p E:%p F:0x%x    ", t->domain, t->execute, t->flags);
+}
+
+void
+domain_dump(resource *r)
+{
+  struct domain *d = SKIP_BACK(struct domain, r, r);
+  WQ_LOCK;
+  debug("Locking domain with blocked tasks: ");
+  struct task *t;
+  WALK_LIST(t, d->blocked)
+    task_dump(t);
+  debug("\n");
+  WQ_UNLOCK;
+}
+
+static struct resclass domain_resclass = {
+  .name = "Domain",
+  .size = sizeof(struct domain),
+  .free = domain_free,
+  .dump = domain_dump,
+  .lookup = NULL,
+  .memsize = NULL
+};
+
+_Thread_local struct domain *worker_domain;
+_Thread_local enum task_flags worker_task_flags;
+
+struct domain *
+domain_new(pool *p)
+{
+  struct domain *d = ralloc(p, &domain_resclass);
+
   int e = pthread_rwlock_init(&d->lock, NULL);
   if (e != 0)
     die("Domain init failed: %M", e);
 
   init_list(&d->blocked);
+
+  return d;
 }
 
-int
-domain_trylock_read(struct domain *d)
+static int
+domain_read_trylock(struct domain *d)
 {
+  ASSERT(!worker_domain);
   int e = pthread_rwlock_tryrdlock(&d->lock);
   switch (e)
   {
     case 0:
+      worker_domain = d;
+      worker_task_flags &= ~TF_EXCLUSIVE;
       return 1;
     case EBUSY:
       return 0;
@@ -95,13 +140,16 @@ domain_trylock_read(struct domain *d)
   }
 }
 
-int
-domain_trylock_write(struct domain *d)
+static int
+domain_write_trylock(struct domain *d)
 {
+  ASSERT(!worker_domain);
   int e = pthread_rwlock_trywrlock(&d->lock);
   switch (e)
   {
     case 0:
+      worker_domain = d;
+      worker_task_flags |= TF_EXCLUSIVE;
       return 1;
     case EBUSY:
       return 0;
@@ -110,12 +158,35 @@ domain_trylock_write(struct domain *d)
   }
 }
 
-void domain_unlock_read(struct domain *d)
-{ pthread_rwlock_unlock(&d->lock); }
+static void domain_read_unlock_internal(struct domain *d)
+{
+  ASSERT(worker_domain == d);
+  ASSERT(!(worker_task_flags & TF_EXCLUSIVE));
+  worker_domain = NULL;
+  pthread_rwlock_unlock(&d->lock);
+}
 
-void domain_unlock_write(struct domain *d)
-{ pthread_rwlock_unlock(&d->lock); }
+static void domain_write_unlock_internal(struct domain *d)
+{
+  ASSERT(worker_domain == d);
+  ASSERT(worker_task_flags & TF_EXCLUSIVE);
+  worker_domain = NULL;
+  pthread_rwlock_unlock(&d->lock);
+}
 
+void
+domain_read_lock(struct domain *d)
+{
+  while (!domain_read_trylock(d))
+    worker_suspend();
+}
+
+void
+domain_write_lock(struct domain *d)
+{
+  while (!domain_write_trylock(d))
+    worker_suspend();
+}
 
 extern _Thread_local struct timeloop *timeloop_current;
 
@@ -150,16 +221,16 @@ worker_loop(void *_data UNUSED)
       else
 	/* Yes. And is it available? */
 	if (t->flags & TF_EXCLUSIVE ?
-	    domain_trylock_write(t->domain) :
-	    domain_trylock_read(t->domain))
+	    domain_write_trylock(t->domain) :
+	    domain_read_trylock(t->domain))
 	{
 	  /* Yes. Run it! */
 	  t->execute(t);
 
 	  /* And unlock to let others to the domain */
 	  t->flags & TF_EXCLUSIVE ?
-	    domain_unlock_write(t->domain) :
-	    domain_unlock_read(t->domain);
+	    domain_write_unlock_internal(t->domain) :
+	    domain_read_unlock_internal(t->domain);
 	}
 	else
 	{
@@ -275,7 +346,25 @@ worker_queue_update(struct config *c)
 void
 task_push(struct task *t)
 {
+  /* Task must have an executor */
   ASSERT(t->execute);
+
+  /* Idempotency. */
+  WQ_LOCK;
+  if (t->n.prev && t->n.next)
+  {
+    /* If already pushed, do nothing. */
+    WQ_UNLOCK;
+    return;
+  }
+  else
+  {
+    /* Check that the node is clean */
+    ASSERT(!t->n.prev && !t->n.next);
+    WQ_UNLOCK;
+  }
+
+  /* Use only public */
   t->flags &= TF_PUBLIC_MASK;
   
   /* We have a pending task */

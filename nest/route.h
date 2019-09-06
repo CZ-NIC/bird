@@ -12,6 +12,7 @@
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/net.h"
+#include "lib/worker.h"
 
 struct ea_list;
 struct protocol;
@@ -146,6 +147,7 @@ struct rtable_config {
 typedef struct rtable {
   node n;				/* Node in list of all tables */
   struct fib fib;
+  struct domain *domain;		/* Locking domain */
   char *name;				/* Name of this table */
   list channels;			/* List of attached channels (struct channel) */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
@@ -166,6 +168,8 @@ typedef struct rtable {
   byte nhu_state;			/* Next Hop Update state */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
+  list pending_imports;			/* Imports shall be sequenced */
+  struct task import_task;		/* Route update task */
 } rtable;
 
 #define NHU_CLEAN	0

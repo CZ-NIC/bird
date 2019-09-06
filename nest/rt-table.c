@@ -43,6 +43,9 @@
 #include "lib/hash.h"
 #include "lib/string.h"
 #include "lib/alloca.h"
+#include "lib/worker.h"
+
+#include <stdatomic.h>
 
 pool *rt_table_pool;
 
@@ -77,13 +80,14 @@ static inline void rup_free(linpool *pool) {
 
 struct rte_update_data {
   node n;
+  struct task task;
   struct channel *channel;
   const net_addr *net;
   struct rte *rte;
   struct rta *old_rta;
   struct rte_src *src;
   struct linpool *pool;
-  PACKED enum rte_update_state {
+  _Atomic volatile PACKED enum rte_update_state {
     RUS_PENDING_UPDATE = 0,
     RUS_UPDATING,
     RUS_PENDING_RECALCULATE,
@@ -98,10 +102,19 @@ struct rte_update_data {
   } result;
 };
 
-list pending_imports;
-list routing_tables;
+static inline void rud_state_change(struct rte_update_data *rud, enum rte_update_state from, enum rte_update_state to)
+{ 
+  if (!atomic_compare_exchange_strong(&(rud->state), &from, to))
+    bug("RUD state changed in a strange way!");
+}
 
-static event *pending_imports_event;
+static inline void rud_state_check(struct rte_update_data *rud, enum rte_update_state state)
+{
+  if (atomic_load(&(rud->state)) != state)
+    bug("RUD state changed in a strange way!");
+}
+
+list routing_tables;
 
 static void rt_free_hostcache(rtable *tab);
 static void rt_notify_hostcache(rtable *tab, net *net);
@@ -1147,6 +1160,9 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
 {
   struct proto *p = c->proto;
   struct rtable *table = c->table;
+
+  ASSERT_WORKER_DOMAIN_WRITE(c->table->domain);
+
   struct proto_stats *stats = &c->stats;
   static struct tbf rl_pipe = TBF_DEFAULT_LOG_LIMITS;
   rte *before_old = NULL;
@@ -1431,22 +1447,17 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
 }
 
 static void
-rte_do_update(struct rte_update_data *rud)
+rte_do_update(struct task *task)
 {
-  ASSERT(rud->state == RUS_PENDING_UPDATE);
-  rud->state = RUS_UPDATING;
+  struct rte_update_data *rud = SKIP_BACK(struct rte_update_data, task, task);
+
+  rud_state_change(rud, RUS_PENDING_UPDATE, RUS_UPDATING);
 
   struct channel *c = rud->channel;
   ASSERT(rud->rte);
 #define new (rud->rte)
 
   const struct filter *filter = c->in_filter;
-
-  new->net = rud->net;
-  new->sender = c;
-
-  if (!new->pref)
-    new->pref = c->preference;
 
   if (filter == FILTER_ACCEPT)
     rud->result = RUR_ACCEPTED;
@@ -1477,9 +1488,8 @@ rte_do_update(struct rte_update_data *rud)
     }
 
 done:
-  rud->state = RUS_PENDING_RECALCULATE;
-  if (!ev_active(pending_imports_event))
-    ev_schedule(pending_imports_event);
+  rud_state_change(rud, RUS_UPDATING, RUS_PENDING_RECALCULATE);
+  task_push(&(c->table->import_task));
 
   return;
 #undef new
@@ -1533,7 +1543,7 @@ rte_dispatch_update(struct rte_update_data *rud)
   rud->pool = rup_get();
 
   /* Check right rud state */
-  ASSERT(rud->state == RUS_PENDING_UPDATE);
+  rud_state_check(rud, RUS_PENDING_UPDATE);
 
   /* Create local rud copy */
   rud = LP_DUPLICATE(rud->pool, rud);
@@ -1543,8 +1553,11 @@ rte_dispatch_update(struct rte_update_data *rud)
   net_copy(n, rud->net);
   rud->net = n;
 
-  /* Insert rud into the synchronization queue */
-  add_tail(&pending_imports, &rud->n);
+  /* Insert rud into the table's synchronization queue */
+  struct rtable *rt = rud->channel->table;
+  domain_write_lock(rt->domain);
+  add_tail(&rt->pending_imports, &rud->n);
+  domain_write_unlock(rt->domain);
 
   /* Is route update */
   if (rud->rte)
@@ -1566,16 +1579,22 @@ rte_dispatch_update(struct rte_update_data *rud)
 	rud->rte->attrs = rta_copy(rud->rte->attrs, rud->pool);
       }
 
+    if (!rud->rte->pref)
+      rud->rte->pref = rud->channel->preference;
+
+    rud->rte->sender = rud->channel;
+    rud->rte->net = rud->net;
+
     /* Run the filters on local data */
-    rte_do_update(rud);
+    rud->task.execute = rte_do_update;
+    task_push(&rud->task);
   }
   else	/* Is route withdraw */
   {
     /* Skip filter for withdraw */
-    rud->state = RUS_PENDING_RECALCULATE;
     rud->result = RUR_WITHDRAW;
-    if (!ev_active(pending_imports_event))
-      ev_schedule(pending_imports_event);
+    rud_state_change(rud, RUS_PENDING_UPDATE, RUS_PENDING_RECALCULATE);
+    task_push(&rt->import_task);
   }
 }
 
@@ -1646,8 +1665,9 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 static void
 rte_finish_update(struct rte_update_data *rud)
 {
-  ASSERT(rud->state == RUS_PENDING_RECALCULATE);
-  rud->state = RUS_RECALCULATING;
+  ASSERT_WORKER_DOMAIN_WRITE(rud->channel->table->domain);
+
+  rud_state_change(rud, RUS_PENDING_RECALCULATE, RUS_RECALCULATING);
 
   debug("rte_finish_update (%d): %s %N (%s)\n", rud->result, rud->channel->proto->name, rud->net, rud->rte ? rta_dest_name(rud->rte->attrs->dest) : "withdraw");
 
@@ -1714,18 +1734,19 @@ done:
   return;
 }
 
+/* This hook is run in route table domain locked for writing */
 static void
-rte_finish_update_hook(void *data UNUSED)
+rte_finish_update_hook(struct task *import_task)
 {
+  struct rtable *rt = SKIP_BACK(struct rtable, import_task, import_task);
+  ASSERT_WORKER_DOMAIN_WRITE(rt->domain);
+
   struct rte_update_data *rud;
   node *nn;
-  WALK_LIST_DELSAFE(rud, nn, pending_imports)
+  WALK_LIST_DELSAFE(rud, nn, rt->pending_imports)
   {
-    if (rud->state != RUS_PENDING_RECALCULATE)
-    {
-      ev_schedule(pending_imports_event);
+    if (atomic_load(&(rud->state)) != RUS_PENDING_RECALCULATE)
       return;
-    }
 
     rem_node(&(rud->n));
     rte_finish_update(rud);
@@ -1990,6 +2011,16 @@ rt_setup(pool *p, rtable *t, struct rtable_config *cf)
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
   init_list(&t->channels);
 
+  t->domain = domain_new(p);
+
+  init_list(&t->pending_imports);
+  t->import_task = (struct task) {
+    .n = {},				/* Not in any list */
+    .flags = TF_EXCLUSIVE,		/* Import modifies the table */
+    .domain = t->domain,
+    .execute = rte_finish_update_hook,
+  };
+
   t->rt_event = ev_new_init(p, rt_event, t);
   t->gc_time = current_time();
 }
@@ -2008,9 +2039,6 @@ rt_init(void)
 
   rte_slab = sl_new(rt_table_pool, sizeof(rte));
   init_list(&routing_tables);
-  init_list(&pending_imports);
-
-  pending_imports_event = ev_new_init(&root_pool, rte_finish_update_hook, NULL);
 }
 
 
