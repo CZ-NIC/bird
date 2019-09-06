@@ -5,4 +5,7 @@ $(cf-local)
 $(conf-y-targets): $(s)krt.Y
 
 src := $(filter-out main.c, $(src))
+
+tests_src := worker_test.c
+tests_targets := $(tests_targets) $(tests-target-files)
 tests_objs := $(tests_objs) $(src-o-files)

@@ -139,6 +139,7 @@ typedef struct buffer {
 void log_commit(int class, buffer *buf);
 void log_msg(const char *msg, ...);
 void log_rl(struct tbf *rl, const char *msg, ...);
+void debug_flush(void);
 void die(const char *msg, ...) NORET;
 void bug(const char *msg, ...) NORET;
 
