@@ -125,6 +125,12 @@ perf_loop(void *data)
   struct proto *P = data;
   struct perf_proto *p = data;
 
+  if (P->proto_state != PS_UP)
+  {
+    log(L_WARN "Protocol %s stopped before import loop is done", P->name);
+    return;
+  }
+
   const uint N = 1U << p->exp;
   const uint offset = perf_random_routes_size;
 

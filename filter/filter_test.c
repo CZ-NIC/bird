@@ -85,6 +85,8 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
   bt_bird_init();
+
+  worker_queue_init();
   
   bt_assert_hook = bt_assert_filter;
 
@@ -92,9 +94,6 @@ main(int argc, char *argv[])
   struct parse_config_file_arg pcfa = { .cp = &c, .filename = BT_CONFIG_FILE };
   bt_test_suite_base(parse_config_file, "conf", (const void *) &pcfa, 0, 0, "parse config file");
   bt_test_suite_base(parse_config_file, "reconf", (const void *) &pcfa, 0, 0, "reconfigure with the same file");
-
-  while (ev_run_list(&global_event_list))
-    ;
 
   bt_bird_cleanup();
 
