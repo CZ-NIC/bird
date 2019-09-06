@@ -40,6 +40,7 @@
 #include "lib/string.h"
 #include "nest/iface.h"
 #include "conf/conf.h"
+#include "lib/worker.h"
 
 #include "sysdep/unix/unix.h"
 #include CONFIG_INCLUDE_SYSIO_H
@@ -2158,6 +2159,8 @@ volatile int async_config_flag;		/* Asynchronous reconfiguration/dump scheduled 
 volatile int async_dump_flag;
 volatile int async_shutdown_flag;
 
+static struct domain *io_domain;
+
 void
 io_init(void)
 {
@@ -2170,6 +2173,8 @@ io_init(void)
 
   u64 now = (u64) current_real_time();
   srandom((uint) (now ^ (now >> 32)));
+
+  io_domain = domain_new(&root_pool);
 }
 
 static int short_loops = 0;
@@ -2185,6 +2190,8 @@ io_loop(void)
   node *n;
   int fdmax = 256;
   struct pollfd *pfd = xmalloc(fdmax * sizeof(struct pollfd));
+
+  domain_write_lock(io_domain);
 
   watchdog_start1();
   for(;;)
@@ -2261,9 +2268,11 @@ io_loop(void)
 	}
 
       /* And finally enter poll() to find active sockets */
+      domain_write_unlock(io_domain);
       watchdog_stop();
       pout = poll(pfd, nfds, poll_tout);
       watchdog_start();
+      domain_write_lock(io_domain);
 
       if (pout < 0)
 	{
