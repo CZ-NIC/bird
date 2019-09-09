@@ -120,9 +120,17 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       if (ec && (ec->export_state == ES_DOWN))
 	goto skip;
 
-      /* Special case for merged export */
-      if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
+      if (d->export_mode == RSEM_EXPORTED)
+        {
+	  if (!bmap_test(&ec->export_map, ee->id))
+	    goto skip;
+
+	  // if (ec->ra_mode != RA_ANY)
+	  //   pass = 1;
+        }
+      else if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
 	{
+	  /* Special case for merged export */
 	  rte *rt_free;
 	  e = rt_export_merged(ec, n, &rt_free, c->show_pool, 1);
 	  pass = 1;

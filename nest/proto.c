@@ -255,6 +255,22 @@ channel_feed_loop(void *ptr)
     return;
   }
 
+  /* Reset export limit if the feed ended with acceptable number of exported routes */
+  struct channel_limit *l = &c->out_limit;
+  if (c->refeeding &&
+      (l->state == PLS_BLOCKED) &&
+      (c->refeed_count <= l->limit) &&
+      (c->stats.exp_routes <= l->limit))
+  {
+    log(L_INFO "Protocol %s resets route export limit (%u)", c->proto->name, l->limit);
+    channel_reset_limit(&c->out_limit);
+
+    /* Continue in feed - it will process routing table again from beginning */
+    c->refeed_count = 0;
+    ev_schedule(c->feed_event);
+    return;
+  }
+
   // DBG("Feeding protocol %s finished\n", p->name);
   c->export_state = ES_READY;
   // proto_log_state_change(p);
@@ -282,6 +298,7 @@ channel_stop_export(struct channel *c)
 
   c->export_state = ES_DOWN;
   c->stats.exp_routes = 0;
+  bmap_reset(&c->export_map, 1024);
 }
 
 
@@ -360,6 +377,9 @@ channel_do_start(struct channel *c)
 
   c->feed_event = ev_new_init(c->proto->pool, channel_feed_loop, c);
 
+  bmap_init(&c->export_map, c->proto->pool, 1024);
+  memset(&c->stats, 0, sizeof(struct proto_stats));
+
   channel_reset_limit(&c->rx_limit);
   channel_reset_limit(&c->in_limit);
   channel_reset_limit(&c->out_limit);
@@ -391,6 +411,7 @@ channel_do_down(struct channel *c)
   if ((c->stats.imp_routes + c->stats.filt_routes) != 0)
     log(L_ERR "%s: Channel %s is down but still has some routes", c->proto->name, c->name);
 
+  bmap_free(&c->export_map);
   memset(&c->stats, 0, sizeof(struct proto_stats));
 
   c->in_table = NULL;
@@ -503,10 +524,8 @@ channel_request_feeding(struct channel *c)
     rt_feed_channel_abort(c);
   }
 
-  channel_reset_limit(&c->out_limit);
-
-  /* Hack: reset exp_routes during refeed, and do not decrease it later */
-  c->stats.exp_routes = 0;
+  /* Track number of exported routes during refeed */
+  c->refeed_count = 0;
 
   channel_schedule_feed(c, 0);	/* Sets ES_FEEDING */
   // proto_log_state_change(c);

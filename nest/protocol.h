@@ -507,6 +507,7 @@ struct channel {
   struct rtable *table;
   const struct filter *in_filter;	/* Input filter */
   const struct filter *out_filter;	/* Output filter */
+  struct bmap export_map;		/* Keeps track which routes passed export filter */
   struct channel_limit rx_limit;	/* Receive limit (for in_keep_filtered) */
   struct channel_limit in_limit;	/* Input limit */
   struct channel_limit out_limit;	/* Output limit */
@@ -514,6 +515,7 @@ struct channel {
   struct event *feed_event;		/* Event responsible for feeding */
   struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
   struct proto_stats stats;		/* Per-channel protocol statistics */
+  u32 refeed_count;			/* Number of routes exported during refeed regardless of out_limit */
 
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */

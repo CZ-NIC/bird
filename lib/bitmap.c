@@ -27,6 +27,13 @@ bmap_init(struct bmap *b, pool *p, uint size)
 }
 
 void
+bmap_reset(struct bmap *b, uint size)
+{
+  b->size = BIRD_ALIGN(size, 4);
+  memset(b->data, 0, b->size);
+}
+
+void
 bmap_grow(struct bmap *b, uint need)
 {
   uint size = b->size * 2;

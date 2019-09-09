@@ -736,11 +736,8 @@ krt_prune(struct krt_proto *p)
       switch (verdict)
 	{
 	case KRF_CREATE:
-	  if (new && (n->n.flags & KRF_INSTALLED))
-	    {
-	      krt_trace_in(p, new, "reinstalling");
-	      krt_replace_rte(p, n, new, NULL);
-	    }
+	  krt_trace_in(p, new, "reinstalling");
+	  krt_replace_rte(p, n, new, NULL);
 	  break;
 	case KRF_SEEN:
 	case KRF_IGNORE:
