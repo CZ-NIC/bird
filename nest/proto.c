@@ -360,6 +360,7 @@ channel_do_start(struct channel *c)
 
   c->feed_event = ev_new_init(c->proto->pool, channel_feed_loop, c);
 
+  bmap_init(&c->export_map, c->proto->pool, 1024);
   channel_reset_limit(&c->rx_limit);
   channel_reset_limit(&c->in_limit);
   channel_reset_limit(&c->out_limit);
@@ -391,6 +392,7 @@ channel_do_down(struct channel *c)
   if ((c->stats.imp_routes + c->stats.filt_routes) != 0)
     log(L_ERR "%s: Channel %s is down but still has some routes", c->proto->name, c->name);
 
+  bmap_free(&c->export_map);
   memset(&c->stats, 0, sizeof(struct proto_stats));
 
   c->in_table = NULL;
@@ -504,9 +506,6 @@ channel_request_feeding(struct channel *c)
   }
 
   channel_reset_limit(&c->out_limit);
-
-  /* Hack: reset exp_routes during refeed, and do not decrease it later */
-  c->stats.exp_routes = 0;
 
   channel_schedule_feed(c, 0);	/* Sets ES_FEEDING */
   // proto_log_state_change(c);
