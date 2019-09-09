@@ -278,6 +278,7 @@ rte_get_temp(rta *a)
   rte *e = sl_alloc(rte_slab);
 
   e->attrs = a;
+  e->id = 0;
   e->flags = 0;
   e->pref = 0;
   return e;
@@ -633,6 +634,12 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
 
+  if (old)
+    bmap_clear(&c->export_map, old->id);
+
+  if (new)
+    bmap_set(&c->export_map, new->id);
+
   /*
    * First, apply export limit.
    *
@@ -686,11 +693,9 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
   else
     stats->exp_withdraws_accepted++;
 
-  /* Hack: We do not decrease exp_routes during refeed, we instead
-     reset exp_routes at the start of refeed. */
   if (new)
     stats->exp_routes++;
-  if (old && !refeed)
+  if (old)
     stats->exp_routes--;
 
   if (p->debug & D_ROUTES)
@@ -706,88 +711,31 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
 }
 
 static void
-rt_notify_basic(struct channel *c, net *net, rte *new0, rte *old0, int refeed)
+rt_notify_basic(struct channel *c, net *net, rte *new, rte *old, int refeed)
 {
-  struct proto *p = c->proto;
+  // struct proto *p = c->proto;
 
-  rte *new = new0;
-  rte *old = old0;
   rte *new_free = NULL;
-  rte *old_free = NULL;
 
   if (new)
     c->stats.exp_updates_received++;
   else
     c->stats.exp_withdraws_received++;
 
-  /*
-   * This is a tricky part - we don't know whether route 'old' was exported to
-   * protocol 'p' or was filtered by the export filter. We try to run the export
-   * filter to know this to have a correct value in 'old' argument of rte_update
-   * (and proper filter value).
-   *
-   * This is broken because 'configure soft' may change filters but keep routes.
-   * Refeed cycle is expected to be called after change of the filters and with
-   * old == new, therefore we do not even try to run the filter on an old route.
-   * This may lead to 'spurious withdraws' but ensure that there are no 'missing
-   * withdraws'.
-   *
-   * This is not completely safe as there is a window between reconfiguration
-   * and the end of refeed - if a newly filtered route disappears during this
-   * period, proper withdraw is not sent (because old would be also filtered)
-   * and the route is not refeeded (because it disappeared before that).
-   * This is handled below as a special case.
-   */
-
   if (new)
     new = export_filter(c, new, &new_free, 0);
 
-  if (old && !refeed)
-    old = export_filter(c, old, &old_free, 1);
+  if (old && !bmap_test(&c->export_map, old->id))
+    old = NULL;
 
   if (!new && !old)
-  {
-    /*
-     * As mentioned above, 'old' value may be incorrect in some race conditions.
-     * We generally ignore it with two exceptions:
-     *
-     * First, withdraw to pipe protocol. In that case we rather propagate
-     * unfiltered withdraws regardless of export filters to ensure that when a
-     * protocol is flushed, its routes are removed from all tables. Possible
-     * spurious unfiltered withdraws are not problem here as they are ignored if
-     * there is no corresponding route at the other end of the pipe.
-     *
-     * Second, recent filter change. If old route is older than filter change,
-     * then it was previously evaluated by a different filter and we do not know
-     * whether it was really propagated. In that case we rather send spurious
-     * withdraw than do nothing and possibly cause phantom routes.
-     *
-     * In both cases wqe directly call rt_notify() hook instead of
-     * do_rt_notify() to avoid logging and stat counters.
-     */
-
-    int pipe_withdraw = 0, filter_change = 0;
-#ifdef CONFIG_PIPE
-    pipe_withdraw = (p->proto == &proto_pipe) && !new0;
-#endif
-    filter_change = old0 && (old0->lastmod <= c->last_tx_filter_change);
-
-    if ((pipe_withdraw || filter_change) && (p != old0->sender->proto))
-    {
-      c->stats.exp_withdraws_accepted++;
-      p->rt_notify(p, c, net, NULL, old0);
-    }
-
     return;
-  }
 
   do_rt_notify(c, net, new, old, refeed);
 
   /* Discard temporary rte's */
   if (new_free)
     rte_free(new_free);
-  if (old_free)
-    rte_free(old_free);
 }
 
 static void
@@ -814,15 +762,20 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
   else
     c->stats.exp_withdraws_received++;
 
+  for (r=net->routes; rte_is_valid(r); r=r->next)
+    {
+      if (bmap_test(&c->export_map, r->id))
+      {
+	old_best = r;
+	break;
+      }
+    }
+
   /* First, find the new_best route - first accepted by filters */
   for (r=net->routes; rte_is_valid(r); r=r->next)
     {
       if (new_best = export_filter(c, r, &new_free, 0))
 	break;
-
-      /* Note if we walked around the position of old_changed route */
-      if (r == before_old)
-	old_meet = 1;
     }
 
   /*
@@ -980,14 +933,11 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int 
 
 static void
 rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed,
-		 rte *new_best, rte*old_best, int refeed)
+		 rte *new_best, rte *old_best, int refeed)
 {
   // struct proto *p = c->proto;
 
-  rte *new_best_free = NULL;
-  rte *old_best_free = NULL;
-  rte *new_changed_free = NULL;
-  rte *old_changed_free = NULL;
+  rte *new_free = NULL;
 
   /* We assume that all rte arguments are either NULL or rte_is_valid() */
 
@@ -996,17 +946,11 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
     return;
 
   /* Check whether the change is relevant to the merged route */
-  if ((new_best == old_best) && !refeed)
-  {
-    new_changed = rte_mergable(new_best, new_changed) ?
-      export_filter(c, new_changed, &new_changed_free, 1) : NULL;
-
-    old_changed = rte_mergable(old_best, old_changed) ?
-      export_filter(c, old_changed, &old_changed_free, 1) : NULL;
-
-    if (!new_changed && !old_changed)
-      return;
-  }
+  if ((new_best == old_best) &&
+      (new_changed != old_changed) &&
+      !rte_mergable(new_best, new_changed) &&
+      !rte_mergable(old_best, old_changed))
+    return;
 
   if (new_best)
     c->stats.exp_updates_received++;
@@ -1015,25 +959,20 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
 
   /* Prepare new merged route */
   if (new_best)
-    new_best = rt_export_merged(c, net, &new_best_free, rte_update_pool, 0);
+    new_best = rt_export_merged(c, net, &new_free, rte_update_pool, 0);
 
-  /* Prepare old merged route (without proper merged next hops) */
-  /* There are some issues with running filter on old route - see rt_notify_basic() */
-  if (old_best && !refeed)
-    old_best = export_filter(c, old_best, &old_best_free, 1);
+  /* Check old merged route */
+  if (old_best && !bmap_test(&c->export_map, old_best->id))
+    old_best = NULL;
 
-  if (new_best || old_best)
-    do_rt_notify(c, net, new_best, old_best, refeed);
+  if (!new_best && !old_best)
+    return;
+
+  do_rt_notify(c, net, new_best, old_best, refeed);
 
   /* Discard temporary rte's */
-  if (new_best_free)
-    rte_free(new_best_free);
-  if (old_best_free)
-    rte_free(old_best_free);
-  if (new_changed_free)
-    rte_free(new_changed_free);
-  if (old_changed_free)
-    rte_free(old_changed_free);
+  if (new_free)
+    rte_free(new_free);
 }
 
 
@@ -1414,7 +1353,17 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
     }
 
   if (new)
-    new->lastmod = current_time();
+    {
+      new->lastmod = current_time();
+
+      if (!old)
+        {
+	  new->id = hmap_first_zero(&table->id_map);
+	  hmap_set(&table->id_map, new->id);
+	}
+      else
+	new->id = old->id;
+    }
 
   /* Log the route change */
   if (p->debug & D_ROUTES)
@@ -1451,7 +1400,12 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
     p->rte_insert(net, new);
 
   if (old)
-    rte_free_quick(old);
+    {
+      if (!new)
+	hmap_clear(&table->id_map, old->id);
+
+      rte_free_quick(old);
+    }
 }
 
 static int rte_update_nest_cnt;		/* Nesting counter to allow recursive updates */
@@ -1901,6 +1855,9 @@ rt_setup(pool *p, rtable *t, struct rtable_config *cf)
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
   init_list(&t->channels);
 
+  hmap_init(&t->id_map, p, 1024);
+  hmap_set(&t->id_map, 0);
+
   t->rt_event = ev_new_init(p, rt_event, t);
   t->gc_time = current_time();
 }
@@ -2230,7 +2187,7 @@ rt_next_hop_update_net(rtable *tab, net *n)
     }
 
   /* FIXME: Better announcement of merged routes */
-  rte_announce_i(tab, RA_MERGED, n, new, old_best, new, old_best);
+  rte_announce_i(tab, RA_MERGED, n, NULL, NULL, new, old_best);
 
   if (free_old_best)
     rte_free_quick(old_best);
@@ -2336,6 +2293,7 @@ rt_unlock_table(rtable *r)
 	rt_free_hostcache(r);
       rem_node(&r->n);
       fib_free(&r->fib);
+      hmap_free(&r->id_map);
       rfree(r->rt_event);
       mb_free(r);
       config_del_obstacle(conf);
@@ -2415,9 +2373,9 @@ do_feed_channel(struct channel *c, net *n, rte *e)
   if (c->ra_mode == RA_ACCEPTED)
     rt_notify_accepted(c, n, e, NULL, NULL, c->refeeding ? 2 : 1);
   else if (c->ra_mode == RA_MERGED)
-    rt_notify_merged(c, n, NULL, NULL, e, c->refeeding ? e : NULL, c->refeeding);
+    rt_notify_merged(c, n, NULL, NULL, e, e, c->refeeding);
   else /* RA_BASIC */
-    rt_notify_basic(c, n, e, c->refeeding ? e : NULL, c->refeeding);
+    rt_notify_basic(c, n, e, e, c->refeeding);
   rte_update_unlock();
 }
 

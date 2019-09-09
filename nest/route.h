@@ -10,6 +10,7 @@
 #define _BIRD_ROUTE_H_
 
 #include "lib/lists.h"
+#include "lib/bitmap.h"
 #include "lib/resource.h"
 #include "lib/net.h"
 
@@ -152,6 +153,7 @@ typedef struct rtable {
   int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
+  struct hmap id_map;
   struct hostcache *hostcache;
   struct rtable_config *config;		/* Configuration of this table */
   struct config *deleted;		/* Table doesn't exist in current configuration,
@@ -210,6 +212,7 @@ typedef struct rte {
   net *net;				/* Network this RTE belongs to */
   struct channel *sender;		/* Channel used to send the route to the routing table */
   struct rta *attrs;			/* Attributes of this route */
+  u32 id;				/* Table specific route id */
   byte flags;				/* Flags (REF_...) */
   byte pflags;				/* Protocol-specific flags */
   word pref;				/* Route preference */
