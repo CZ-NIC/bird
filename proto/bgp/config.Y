@@ -188,7 +188,7 @@ CF_ADDTO(dynamic_attr, BGP_LOCAL_PREF
 CF_ADDTO(dynamic_attr, BGP_ATOMIC_AGGR
 	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(EAP_BGP, BA_ATOMIC_AGGR)); })
 CF_ADDTO(dynamic_attr, BGP_AGGREGATOR
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(EAP_BGP, BA_AGGREGATOR)); })
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(EAP_BGP, BA_AGGREGATOR)); })
 CF_ADDTO(dynamic_attr, BGP_COMMUNITY
 	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(EAP_BGP, BA_COMMUNITY)); })
 CF_ADDTO(dynamic_attr, BGP_ORIGINATOR_ID
