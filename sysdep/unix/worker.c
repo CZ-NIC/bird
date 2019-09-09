@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <semaphore.h>
+#include <stdatomic.h>
 #include <pthread.h>
 #include <unistd.h>
 
@@ -66,7 +67,9 @@ static struct worker_queue {
 
 struct domain {
   resource r;
-  pthread_rwlock_t lock;
+  sem_t rdsem;			/* Wait semaphore for readers */
+  sem_t wrsem;			/* Wait semaphore for writers */
+  _Atomic u64 state;		/* State value of rwlock */
   list blocked;			/* These tasks are blocked by the rwlock */
 };
 
@@ -113,50 +116,131 @@ domain_new(pool *p)
 {
   struct domain *d = ralloc(p, &domain_resclass);
 
-  int e = pthread_rwlock_init(&d->lock, NULL);
-  if (e != 0)
-    die("Domain init failed: %M", e);
+  SEM_INIT(&d->rdsem, 0);
+  SEM_INIT(&d->wrsem, 0);
+  atomic_store(&d->state, 0);
 
   init_list(&d->blocked);
 
   return d;
 }
 
+#define WRITER_OFFSET 21
+#define READER_OFFSET 42
+#define LOCK_WRITER (1ULL << WRITER_OFFSET)
+#define LOCK_READER_WAITING (1ULL << READER_OFFSET)
+#define LOCK_STATE_MASK ((1ULL << 21) - 1)
+
 static int
-domain_read_trylock(struct domain *d)
+domain_read_lock_internal(struct domain *d, const int try)
 {
-  ASSERT(!worker_domain);
-  int e = pthread_rwlock_tryrdlock(&d->lock);
-  switch (e)
+  while (1)
   {
-    case 0:
-      worker_domain = d;
-      worker_task_flags &= ~TF_EXCLUSIVE;
-      return 1;
-    case EBUSY:
+    /* Get current state */
+    u64 state = atomic_load_explicit(&d->state, memory_order_acquire);
+
+    if (state < LOCK_WRITER - 1)
+      /* Only readers */
+      if (atomic_compare_exchange_strong_explicit(&d->state, &state, state+1,
+	    memory_order_acq_rel, memory_order_acquire))
+	/* Succesfully acquired read lock */
+	return 1;
+      else
+	/* Race! Try once more. */
+	continue;
+    else if (state == LOCK_WRITER - 1)
+      bug("Too many read locks on domain %p", d);
+    else if (((state >> READER_OFFSET) & LOCK_STATE_MASK) == LOCK_STATE_MASK)
+      bug("Too many read locks pending on domain %p", d);
+      /* Writers waiting or running but we don't want to wait */
+    else if (try)
       return 0;
-    default:
-      bug("pthread_rwlock_tryrdlock() returned %m");
+    else
+      /* Gonna wait */
+      if (atomic_compare_exchange_strong_explicit(&d->state, &state, state+LOCK_READER_WAITING,
+	    memory_order_acq_rel, memory_order_acquire))
+      {
+	/* Succesfully marked that we are waiting on rdsem */
+	if (!worker_start())
+	  bug("Failed to start a temporary worker: %m");
+	SEM_WAIT(&d->rdsem);
+	/* Now we have the lock, stop one thread to continue */
+	WQ_LOCKED wq->stop++;
+	SEM_POST(&wq->waiting);
+	SEM_WAIT(&wq->stopped);
+	/* Thread stopped, come on now */
+	return 1;
+      }
+      else
+	/* Race! Try once more. */
+	continue;
   }
 }
 
+void domain_read_lock(struct domain *d)
+{ domain_read_lock_internal(d, 0); }
+
+static inline int
+domain_read_trylock(struct domain *d)
+{ return domain_read_lock_internal(d, 1); }
+
 static int
-domain_write_trylock(struct domain *d)
+domain_write_lock_internal(struct domain *d, const int try)
 {
-  ASSERT(!worker_domain);
-  int e = pthread_rwlock_trywrlock(&d->lock);
-  switch (e)
+  while (1)
   {
-    case 0:
-      worker_domain = d;
-      worker_task_flags |= TF_EXCLUSIVE;
-      return 1;
-    case EBUSY:
+    u64 state = atomic_load_explicit(&d->state, memory_order_acquire);
+
+    if (state == 0)
+      /* Nobody present here */
+      if (atomic_compare_exchange_strong_explicit(&d->state, &state, state + LOCK_WRITER,
+	    memory_order_acq_rel, memory_order_acquire))
+	return 1;
+      else
+	/* Race! Try once more. */
+	continue;
+    else if (((state >> WRITER_OFFSET) & LOCK_STATE_MASK) == LOCK_STATE_MASK)
+      bug("Too many write locks pending on domain %p");
+    else if (try)
       return 0;
-    default:
-      bug("pthread_rwlock_tryrdlock() returned %m");
+    else
+      /* Possesed by another thread */
+      if (atomic_compare_exchange_strong_explicit(&d->state, &state, state+LOCK_WRITER,
+	    memory_order_acq_rel, memory_order_acquire))
+      {
+	/* Succesfully marked that we are waiting on wrsem */
+	if (!worker_start())
+	  bug("Failed to start a temporary worker: %m");
+	SEM_WAIT(&d->wrsem);
+	/* Now we have the lock, stop one thread to continue */
+	WQ_LOCKED wq->stop++;
+	SEM_POST(&wq->waiting);
+	SEM_WAIT(&wq->stopped);
+	/* Thread stopped, come on now */
+	return 1;
+      }
+      else
+	/* Race! Try once more. */
+	continue;
   }
 }
+
+void domain_write_lock(struct domain *d)
+{ domain_write_lock_internal(d, 0); }
+
+static void
+domain_read_unlock_internal(struct domain *d)
+{
+  while (1)
+  {
+    u64 state = atomic_load_explicit(&d->state, memory_order_acquire);
+
+    if (state == 0)
+      bug("Can't unlock read when not locked in domain %p", d);
+
+static inline int
+domain_write_trylock(struct domain *d)
+{ return domain_write_lock_internal(d, 1); }
 
 static void domain_read_unlock_internal(struct domain *d)
 {
@@ -172,20 +256,6 @@ static void domain_write_unlock_internal(struct domain *d)
   ASSERT(worker_task_flags & TF_EXCLUSIVE);
   worker_domain = NULL;
   pthread_rwlock_unlock(&d->lock);
-}
-
-void
-domain_read_lock(struct domain *d)
-{
-  while (!domain_read_trylock(d))
-    worker_suspend();
-}
-
-void
-domain_write_lock(struct domain *d)
-{
-  while (!domain_write_trylock(d))
-    worker_suspend();
 }
 
 extern _Thread_local struct timeloop *timeloop_current;
