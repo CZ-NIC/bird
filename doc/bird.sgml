@@ -1473,7 +1473,8 @@ foot).
 	but <tt>bgp_path &tilde; [= * 4 5 * =]</tt> is false. BGP mask
 	expressions can also contain integer expressions enclosed in parenthesis
 	and integer variables, for example <tt>[= * 4 (1+2) a =]</tt>. You can
-        also use ranges, for example <tt>[= * 3..5 2 100..200 * =]</tt>.
+	also use ranges (e.g. <tt>[= * 3..5 2 100..200 * =]</tt>) and sets
+	(e.g. <tt>[= 1 2 [3, 5, 7] * =]</tt>).
 
 	<tag><label id="type-clist">clist</tag>
 	Clist is similar to a set, except that unlike other sets, it can be
