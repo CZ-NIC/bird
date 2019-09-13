@@ -22,15 +22,9 @@ void domain_write_unlock(struct domain *);
 extern _Thread_local struct domain *worker_domain;
 extern _Thread_local enum task_flags worker_task_flags;
 
-#define ASSERT_WORKER_DOMAIN_READ(domain) do { \
-  ASSERT(worker_domain == domain); \
-  ASSERT(!(worker_task_flags & TF_EXCLUSIVE)); \
-} while (0)
-
-#define ASSERT_WORKER_DOMAIN_WRITE(domain) do { \
-  ASSERT(worker_domain == domain); \
-  ASSERT(worker_task_flags & TF_EXCLUSIVE); \
-} while (0)
+void domain_assert_write_locked(struct domain *);
+void domain_assert_read_locked(struct domain *);
+void domain_assert_unlocked(struct domain *);
 
 enum task_flags {
   /* These flags can be set by the user */

@@ -1161,7 +1161,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src, linp
   struct proto *p = c->proto;
   struct rtable *table = c->table;
 
-  ASSERT_WORKER_DOMAIN_WRITE(c->table->domain);
+  domain_assert_write_locked(c->table->domain);
 
   struct proto_stats *stats = &c->stats;
   static struct tbf rl_pipe = TBF_DEFAULT_LOG_LIMITS;
@@ -1665,7 +1665,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 static void
 rte_finish_update(struct rte_update_data *rud)
 {
-  ASSERT_WORKER_DOMAIN_WRITE(rud->channel->table->domain);
+  domain_assert_write_locked(rud->channel->table->domain);
 
   rud_state_change(rud, RUS_PENDING_RECALCULATE, RUS_RECALCULATING);
 
@@ -1739,7 +1739,7 @@ static void
 rte_finish_update_hook(struct task *import_task)
 {
   struct rtable *rt = SKIP_BACK(struct rtable, import_task, import_task);
-  ASSERT_WORKER_DOMAIN_WRITE(rt->domain);
+  domain_assert_write_locked(rt->domain);
 
   struct rte_update_data *rud;
   node *nn;
@@ -1988,6 +1988,7 @@ rt_event(void *ptr)
   rtable *tab = ptr;
 
   rt_lock_table(tab);
+  domain_write_lock(tab->domain);
 
   if (tab->hcu_scheduled)
     rt_update_hostcache(tab);
@@ -1998,6 +1999,7 @@ rt_event(void *ptr)
   if (tab->prune_state)
     rt_prune_table(tab);
 
+  domain_write_unlock(tab->domain);
   rt_unlock_table(tab);
 }
 
@@ -2471,6 +2473,7 @@ rt_unlock_table(rtable *r)
       rem_node(&r->n);
       fib_free(&r->fib);
       rfree(r->rt_event);
+      rfree(r->domain);
       mb_free(r);
       config_del_obstacle(conf);
     }

@@ -31,7 +31,7 @@
 #include "lib/lists.h"
 #include "sysdep/unix/unix.h"
 
-static FILE *dbgf;
+FILE *dbgf;
 static list *current_log_list;
 static char *current_syslog_name; /* NULL -> syslog closed */
 
@@ -263,6 +263,13 @@ log_rl(struct tbf *f, const char *msg, ...)
   va_end(args);
 }
 
+void
+debug_flush(void)
+{
+  if (dbgf)
+    fflush(dbgf);
+}
+
 /**
  * bug - report an internal error
  * @msg: a printf-like error message
@@ -278,6 +285,7 @@ bug(const char *msg, ...)
   va_start(args, msg);
   vlog(L_BUG[0], msg, args);
   va_end(args);
+  debug_flush();
   abort();
 }
 
@@ -296,6 +304,7 @@ die(const char *msg, ...)
   va_start(args, msg);
   vlog(L_FATAL[0], msg, args);
   va_end(args);
+  debug_flush();
   exit(1);
 }
 
@@ -311,8 +320,8 @@ debug(const char *msg, ...)
 {
 #define MAX_DEBUG_BUFSIZE       65536
   va_list args;
-  static uint bufsize = 4096;
-  static char *buf = NULL;
+  static _Thread_local uint bufsize = 4096;
+  static _Thread_local char *buf = NULL;
 
   if (!buf)
     buf = mb_alloc(&root_pool, bufsize);
