@@ -1551,6 +1551,14 @@ bgp_start(struct proto *P)
   lock->type = OBJLOCK_TCP;
   lock->hook = bgp_start_locked;
   lock->data = p;
+
+  /* For dynamic BGP, we use inst 1 to avoid collisions with regular BGP */
+  if (bgp_is_dynamic(p))
+  {
+    lock->addr = net_prefix(p->cf->remote_range);
+    lock->inst = 1;
+  }
+
   olock_acquire(lock);
 
   return PS_START;
