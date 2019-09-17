@@ -374,9 +374,11 @@ static_rte_better(struct rte *new, struct rte *old)
 }
 
 static int
-static_rte_mergable(rte *pri UNUSED, rte *sec UNUSED)
+static_rte_mergable(rte *pri, rte *sec)
 {
-  return 1;
+  u32 a = ea_get_int(pri->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
+  u32 b = ea_get_int(sec->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
+  return a == b;
 }
 
 
