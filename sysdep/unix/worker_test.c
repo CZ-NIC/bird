@@ -34,12 +34,12 @@ static void t_rwlock_execute(struct task *task)
 }
 
 static int
-t_rwlock_read(void)
+t_rwlock_read(const void *data_)
 {
-  struct config conf = { .workers = THREAD_NUM };
+  const struct config *conf = data_;
 
   worker_queue_init();
-  worker_queue_update(&conf);
+  worker_queue_update(conf);
 
   struct domain *domain = domain_new(&root_pool);
   _Atomic uint total_counter = 0;
@@ -61,8 +61,7 @@ t_rwlock_read(void)
     bt_info("Task pushed (after)\n");
   }
 
-  conf.workers = 0;
-  worker_queue_update(&conf);
+  worker_queue_destroy();
 
   bt_info("Returning 1\n");
   return 1;
@@ -73,7 +72,16 @@ int main(int argc, char *argv[])
   bt_init(argc, argv);
   bt_bird_init();
 
-  bt_test_suite(t_rwlock_read, "rwlock concurrent read");
+  struct config conf;
+
+  conf.workers = 1;
+  bt_test_suite_arg(t_rwlock_read, &conf, "rwlock concurrent read with 1 worker");
+
+  conf.workers = 2;
+  bt_test_suite_arg(t_rwlock_read, &conf, "rwlock concurrent read with 2 workers");
+
+  conf.workers = THREAD_NUM;
+  bt_test_suite_arg(t_rwlock_read, &conf, "rwlock concurrent read with %u workers", THREAD_NUM);
 
   return bt_exit_value();
 }

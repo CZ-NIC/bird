@@ -44,10 +44,15 @@ struct task {
 /* Initialize the worker queue. Run once and never more. */
 void worker_queue_init(void);
 
+/* Flush and cleanup the worker queue. Run only in tests. */
+void worker_queue_destroy(void);
+
+void worker_queue_init(void);
+
 /* Update configuration for worker queue
  * @c: new config
  */
-void worker_queue_update(struct config *c);
+void worker_queue_update(const struct config *c);
 
 /* Push some work to the queue.
  * @t: task to push

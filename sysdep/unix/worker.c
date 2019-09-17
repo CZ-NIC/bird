@@ -47,6 +47,7 @@ static struct worker_queue {
       WQS_SEM_TRYWAIT_BLOCKED,
       WQS_LOCK,
       WQS_UNLOCK,
+      WQS_STOP,
     } what;
     union {
       struct {
@@ -62,7 +63,7 @@ static struct worker_queue {
 
 #define WQ_STATELOG(what_, ...) \
   wq->statelog[atomic_fetch_add(&wq->statelog_pos, 1) % STATELOG_SIZE] = \
-  (struct worker_queue_state) { .what = what_, .worker_id = worker_id, __VA_ARGS__, }
+  (struct worker_queue_state) { .what = what_, .worker_id = worker_id, __VA_ARGS__ }
 
 const u64 noworker = ~0ULL;
 static inline void WQ_LOCK(void)
@@ -138,6 +139,12 @@ static inline void SEM_POST(sem_t *s)
     wbug("sem_post: %m");
 
   WQ_STATELOG(WQS_SEM_POST, .sem = s);
+}
+
+static inline void SEM_DESTROY(sem_t *s)
+{
+  if (sem_destroy(s) < 0)
+    wbug("sem_post: %m");
 }
 
 static _Thread_local struct timeloop worker_timeloop;
@@ -688,9 +695,11 @@ worker_start_temporary(void)
   int e = worker_start();
   WQDUMP;
   if (!e)
+  {
+    temporary_worker_running = 1;
     return;
+  }
 
-  temporary_worker_running = 1;
   log(L_WARN "Temporary worker start failed: %M", e);
 }
 
@@ -713,6 +722,7 @@ void
 worker_queue_init(void)
 {
   SEM_INIT(&wq->waiting, 0);
+  SEM_INIT(&wq->available, 0);
   SEM_INIT(&wq->stopped, 0);
 
   pthread_spin_init(&wq->lock, 0);
@@ -720,10 +730,33 @@ worker_queue_init(void)
   init_list(&wq->pending);
 
   atomic_store(&wq->spinlock_owner, ~0ULL);
+  atomic_store(&wq->statelog_pos, 0);
 }
 
 void
-worker_queue_update(struct config *c)
+worker_queue_destroy(void)
+{
+  WQ_STATELOG(WQS_STOP);
+  workers_stop(wq->prefork);
+  WQ_STATELOG(WQS_STOP);
+  WQ_LOCKED
+  {
+    ASSERT(EMPTY_LIST(wq->pending));
+    ASSERT(wq->running == 0);
+    ASSERT(wq->prefork == 0);
+    ASSERT(wq->stop == 0);
+  }
+
+  SEM_DESTROY(&wq->waiting);
+  SEM_DESTROY(&wq->available);
+  SEM_DESTROY(&wq->stopped);
+
+  pthread_spin_destroy(&wq->lock);
+}
+
+
+void
+worker_queue_update(const struct config *c)
 {
 
   if (c->workers > wq->prefork)
