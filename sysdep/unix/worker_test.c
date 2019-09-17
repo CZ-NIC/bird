@@ -3,7 +3,8 @@
 #endif
 
 #define TEST_MAX (1 << 20)
-#define THREAD_NUM  42
+//#define THREAD_NUM  42
+#define THREAD_NUM  4
 
 #include "test/birdtest.h"
 #include "test/bt-utils.h"
@@ -25,10 +26,9 @@ static void t_rwlock_execute(struct task *task)
   struct t_rwlock_task *t = SKIP_BACK(struct t_rwlock_task, task, task);
   domain_read_lock(t->domain);
   uint tot = atomic_fetch_add(t->total_counter, 1);
-  bt_log("Total counter: %u\n", tot);
+  bt_info("Total counter: %u\n", tot);
   uint prev = atomic_fetch_sub(t->allocated, 1);
-  bt_log("Prev allocated: %u\n", prev);
-  bt_assert(prev > 0 && prev <= THREAD_NUM+1);
+  bt_info("Prev allocated: %u\n", prev);
   domain_read_unlock(t->domain);
   xfree(t);
 }
@@ -56,15 +56,15 @@ t_rwlock_read(void)
       .total_counter = &total_counter,
       .allocated = &allocated,
     };
-    bt_log("Task pushed (before)\n");
+    bt_info("Task pushed (before)\n");
     task_push(&t->task);
-    bt_log("Task pushed (after)\n");
+    bt_info("Task pushed (after)\n");
   }
 
   conf.workers = 0;
   worker_queue_update(&conf);
 
-  bt_log("Returning 1\n");
+  bt_info("Returning 1\n");
   return 1;
 }
 

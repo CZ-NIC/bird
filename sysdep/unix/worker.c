@@ -20,9 +20,82 @@ static _Atomic u64 max_worker_id = 1;
 static _Thread_local u64 worker_id;
 
 #define WDBG(x, y...) DBG("(W%4lu): " x, worker_id, ##y)
+#define WQLDUMP WDBG("WQ:T%4lu|S%4lu\n", list_length(&wq->pending), wq->stop)
+#define WQDUMP do { WQ_LOCKED WQLDUMP; } while (0)
 #define wdie(x, y...) die("(W%4lu): " x, worker_id, ##y)
 #define wbug(x, y...) bug("(W%4lu): " x, worker_id, ##y)
 #define wdebug(x, y...) debug("(W%4lu): " x, worker_id, ##y)
+
+#define STATELOG_SIZE (1 << 14)
+
+static struct worker_queue {
+  sem_t waiting;		/* Workers wait on this semaphore to get work */
+  sem_t stopped;		/* Posted on worker stopped */
+  sem_t available;		/* How many workers are currently free */
+  pthread_spinlock_t lock;	/* Lock for the following values */
+  list pending;			/* Tasks pending */
+  uint running;			/* How many workers are running */
+  uint prefork;			/* Default count of workers */
+  uint stop;			/* Stop requests */
+  _Atomic u64 statelog_pos;	/* Current position in statelog */
+  struct worker_queue_state {
+    u64 worker_id;
+    PACKED enum {
+      WQS_SEM_POST = 1,
+      WQS_SEM_WAIT,
+      WQS_SEM_TRYWAIT_SUCCESS,
+      WQS_SEM_TRYWAIT_BLOCKED,
+      WQS_LOCK,
+      WQS_UNLOCK,
+    } what;
+    union {
+      struct {
+	uint pending;
+	uint running;
+	uint stop;
+      } queue;
+      sem_t *sem;
+    };
+  } statelog[STATELOG_SIZE];
+  _Atomic u64 spinlock_owner;
+} wq_, *wq = &wq_;
+
+#define WQ_STATELOG(what_, ...) \
+  wq->statelog[atomic_fetch_add(&wq->statelog_pos, 1) % STATELOG_SIZE] = \
+  (struct worker_queue_state) { .what = what_, .worker_id = worker_id, __VA_ARGS__, }
+
+const u64 noworker = ~0ULL;
+static inline void WQ_LOCK(void)
+{
+  pthread_spin_lock(&(wq->lock));
+
+  if (!atomic_compare_exchange_strong(&wq->spinlock_owner, &noworker, worker_id))
+    bug("The spinlock shall be unlocked!");
+
+  WQ_STATELOG(WQS_LOCK,
+      .queue = {
+	.pending = list_length(&wq->pending),
+	.running = wq->running,
+	.stop = wq->stop,
+      });
+}
+
+static inline void WQ_UNLOCK(void)
+{
+  WQ_STATELOG(WQS_UNLOCK,
+      .queue = {
+	.pending = list_length(&wq->pending),
+	.running = wq->running,
+	.stop = wq->stop,
+      });
+
+  if (!atomic_compare_exchange_strong(&wq->spinlock_owner, &worker_id, noworker))
+    bug("The spinlock shall be locked!");
+
+  pthread_spin_unlock(&(wq->lock));
+}
+
+#define WQ_LOCKED MACRO_PACK_BEFORE_AFTER(WQ_LOCK(), WQ_UNLOCK())
 
 static inline void SEM_INIT(sem_t *s, uint val)
 {
@@ -37,6 +110,8 @@ static inline void SEM_WAIT(sem_t *s)
       continue;
     wdie("sem_wait: %m");
   }
+
+  WQ_STATELOG(WQS_SEM_WAIT, .sem = s);
 }
 
 static inline int SEM_TRYWAIT(sem_t *s)
@@ -45,12 +120,15 @@ static inline int SEM_TRYWAIT(sem_t *s)
     if (errno == EINTR)
       continue;
     if (errno == EAGAIN)
+    {
+      WQ_STATELOG(WQS_SEM_TRYWAIT_BLOCKED, .sem = s);
       return 0;
-
+    }
 
     wdie("sem_trywait: %m");
   }
 
+  WQ_STATELOG(WQS_SEM_TRYWAIT_SUCCESS, .sem = s);
   return 1;
 }
 
@@ -58,34 +136,44 @@ static inline void SEM_POST(sem_t *s)
 {
   if (sem_post(s) < 0)
     wbug("sem_post: %m");
+
+  WQ_STATELOG(WQS_SEM_POST, .sem = s);
 }
 
-#define WQ_LOCK pthread_spin_lock(&(wq->lock))
-#define WQ_UNLOCK pthread_spin_unlock(&(wq->lock))
-#define WQ_LOCKED MACRO_PACK_BEFORE_AFTER(WQ_LOCK, WQ_UNLOCK)
-
 static _Thread_local struct timeloop worker_timeloop;
-
-static struct worker_queue {
-  sem_t waiting;		/* Workers wait on this semaphore to get work */
-  sem_t stopped;		/* Posted on worker stopped */
-  sem_t available;		/* How many workers are currently free */
-  pthread_spinlock_t lock;	/* Lock for the following values */
-  list pending;			/* Tasks pending */
-  uint running;			/* How many workers are running */
-  uint prefork;			/* Default count of workers */
-  uint stop;			/* Stop requests */
-} wq_, *wq = &wq_;
 
 static int worker_start(void);
 
 struct domain {
   resource r;
-  sem_t rdsem;			/* Wait semaphore for readers */
-  sem_t wrsem;			/* Wait semaphore for writers */
-  _Atomic u64 state;		/* State value of rwlock */
-  list blocked;			/* These tasks are blocked by the rwlock */
+  sem_t rdsem;		/* Wait semaphore for readers */
+  sem_t wrsem;		/* Wait semaphore for writers */
+  list rdtasks;		/* Reader tasks blocked */
+  list wrtasks;		/* Writer tasks blocked */
+  uint rdsem_n;		/* How many secondary readers waiting */
+  uint wrsem_n;		/* How many secondary writers waiting + locked */
+  uint rdtasks_n;	/* How many reader tasks waiting */
+  uint wrtasks_n;	/* How many writer tasks waiting + locked */
+  uint rdlocked;	/* How many readers are locked */
+  uint prepended;	/* How many tasks have been prepended */
+  uint wrlocked:1;	/* If a writer is locked */
 };
+
+#define TASK_PREPEND(t) do { \
+  t->flags |= TF_PREPENDED; \
+  add_head(&wq->pending, &((t)->n)); \
+  SEM_POST(&wq->waiting); \
+} while (0)
+
+#define TASK_APPEND(t) do { \
+  add_tail(&wq->pending, &((t)->n)); \
+  SEM_POST(&wq->waiting); \
+} while (0)
+
+#define TASK_STOP_WORKER do { \
+  wq->stop++; \
+  SEM_POST(&wq->waiting); \
+} while (0);
 
 void
 domain_free(resource *r)
@@ -96,22 +184,14 @@ domain_free(resource *r)
 }
 
 void
-task_dump(struct task *t)
-{
-  wdebug("D:%p E:%p F:0x%x    ", t->domain, t->execute, t->flags);
-}
-
-void
 domain_dump(resource *r)
 {
   struct domain *d = SKIP_BACK(struct domain, r, r);
-  WQ_LOCK;
-  wdebug("Locking domain with blocked tasks: ");
-  struct task *t;
-  WALK_LIST(t, d->blocked)
-    task_dump(t);
-  wdebug("\n");
-  WQ_UNLOCK;
+  WQ_LOCK();
+  wdebug("Locking domain: WP:%u WS:%u RP:%u RS:%u RL:%u PREP:%u WL:%u\n",
+      d->wrtasks_n, d->wrsem_n, d->rdtasks_n, d->rdsem_n,
+      d->rdlocked, d->prepended, d->wrlocked);
+  WQ_UNLOCK();
 }
 
 static struct resclass domain_resclass = {
@@ -129,6 +209,9 @@ _Thread_local static struct locked_domain {
 } *locked_domains = NULL;
 _Thread_local static uint locked_max = 0, locked_cnt = 0;
 
+static void worker_start_temporary(void);
+static void worker_stop_temporary(void);
+
 struct domain *
 domain_new(pool *p)
 {
@@ -136,48 +219,12 @@ domain_new(pool *p)
 
   SEM_INIT(&d->rdsem, 0);
   SEM_INIT(&d->wrsem, 0);
-  atomic_store(&d->state, 0);
 
-  init_list(&d->blocked);
+  init_list(&d->rdtasks);
+  init_list(&d->wrtasks);
 
   return d;
 }
-
-/*
- * The lock state consists (bitwise) of these values:
- *
- * Bits MSB to LSB:
- *  66665555 55555544 44444444 33333333 33222222 22221111 11111100 00000000
- *  32109876 54321098 76543210 98765432 10987654 32109876 54321098 76543210
- * +--------+--------+--------+--------+--------+--------+--------+--------+
- * |BPWQwwww|wwwwwwww|wwwwwwww|bbbbbbbb|bbbbbbbb|bbbbrrrr|rrrrrrrr|rrrrrrrr|
- * +--------+--------+--------+--------+--------+--------+--------+--------+
- *
- * bit 63: B = a blocked task is in domain queue waiting for unlock
- * bit 62: P = a pending task is in global queue waiting for a thread
- * bit 61: W = the blocked task needs a write lock
- * bit 60: Q = reserved for future use
- * bits 40-59: w..w = number of writers registered
- * bits 20-39: b..b = number of readers blocked by writers
- * bits 0-19: r..r = number of readers locked
- *
- */
-
-#define STATE_TASK_BLOCKED	(1ULL << 63)
-#define STATE_TASK_PENDING	(1ULL << 62)
-#define STATE_TASK_WRITE	(1ULL << 61)
-#define STATE_OFFSET		20
-#define STATE_MASK		((1ULL << STATE_OFFSET) - 1)
-
-#define STATE_READERS(s)	((s) & STATE_MASK)
-#define STATE_BLOCKED(s)	((s) >> (STATE_OFFSET) & STATE_MASK)
-#define STATE_WRITERS(s)	(((s) >> (STATE_OFFSET*2)) & STATE_MASK)
-
-#define STATE_ONE_READER	1ULL
-#define STATE_ONE_BLOCKED	(1ULL << STATE_OFFSET)
-#define STATE_ONE_WRITER	(1ULL << (STATE_OFFSET * 2))
-
-#define STATE_CHANGE(s)  atomic_compare_exchange_strong_explicit(&d->state, &ls, (s), memory_order_acq_rel, memory_order_acquire)
 
 static inline int
 domain_assert_locked(struct domain *d, int write)
@@ -216,7 +263,7 @@ void domain_assert_unlocked(struct domain *d)
       wbug("Domain locked.");
 }
 
-static void
+static inline void
 domain_push_lock(struct domain *d, int write)
 {
   if (!locked_max)
@@ -231,375 +278,263 @@ domain_push_lock(struct domain *d, int write)
   locked_domains[locked_cnt++] = (struct locked_domain) { .domain = d, .write = write };
 }
 
+static inline void
+domain_pop_lock(struct domain *d UNUSED)
+{ locked_cnt--; }
+
 static int
-domain_read_lock_internal(struct domain *d, struct task *t)
+domain_read_lock_primary(struct domain *d, struct task *t)
 {
   domain_assert_unlocked(d);
-  WDBG("Read lock: domain %p, task %p\n", d, t);
-  while (1)
+  WDBG("Primary read lock: domain %p, task %p\n", d, t);
+
+  WQ_LOCK();
+  if (t->flags & TF_PREPENDED)
   {
-    /* Get current state */
-    u64 ls = atomic_load_explicit(&d->state, memory_order_acquire);
-    WDBG("... state 0x%lx\n", ls);
+    if (!d->prepended--)
+      wbug("Got a pending task without pending bit set");
 
-    /* Priority locking: This task has reserved the lock */
-    if (t && (t->flags & TF_PREPENDED))
-    {
-      if (!(ls & STATE_TASK_PENDING))
-	wbug("Got a pending task without pending bit set");
+    if (d->wrlocked)
+      wbug("Got a prepended reader task with writer locked");
 
-      if (ls & STATE_TASK_WRITE)
-	wbug("Pending lock type mismatch");
+    if (!d->rdlocked)
+      wbug("Reader shall be already locked");
 
-      if (STATE_READERS(ls) == STATE_MASK)
-	wbug("Too many readers");
-
-      /* Lock read for this task and go on */
-      if (STATE_CHANGE((ls & ~STATE_TASK_PENDING) + STATE_ONE_READER))
-      {
-	WDBG("... priority locked for reading\n");
-	domain_push_lock(d, 0);
-	return 1;
-      }
-      else
-	continue;
-    }
-
-    /* There are writers, they have priority over readers */
-    if (STATE_WRITERS(ls) || (ls & STATE_TASK_WRITE))
-    {
-      /* If we have to block the task */
-      if (t)
-      {
-	WQ_LOCK;
-	/* No blocked task yet? Set the bit. */
-	if (!(ls & STATE_TASK_BLOCKED) && !STATE_CHANGE((ls | STATE_TASK_BLOCKED)))
-	{
-	  WQ_UNLOCK;
-	  continue;
-	}
-
-	add_tail(&d->blocked, &t->n);
-	WQ_UNLOCK;
-	WDBG("... task blocked\n");
-	return 0;
-      }
-
-      /* We'll block ourselves */
-      if (STATE_BLOCKED(ls) == STATE_MASK)
-	wbug("Too many blocked readers");
-
-      /* Marked that we are waiting on rdsem */
-      if (!STATE_CHANGE((ls + STATE_ONE_BLOCKED)))
-	continue;
-
-      /* Start another worker to work instead of us for now */
-      int e = worker_start();
-      if (e != 0)
-	wdie("Failed to start a temporary worker: %M", e);
-
-      WDBG("... waiting for release\n");
-
-      SEM_WAIT(&d->rdsem);
-
-      /* Now we have the lock, stop one thread to continue */
-      WDBG("Read lock: domain %p, task %p: waiting for thread stop\n", d, t);
-      WQ_LOCKED wq->stop++;
-      SEM_POST(&wq->waiting);
-      SEM_WAIT(&wq->stopped);
-
-      /* Thread stopped, come on now */
-      WDBG("Read lock: domain %p, task %p: going on\n", d, t);
-      domain_push_lock(d, 0);
-      return 1;
-    }
-
-    /* There is no writer, lock for reading */
-    if (!STATE_CHANGE(ls + STATE_ONE_READER))
-      continue;
-    else
-    {
-      WDBG("... instant lock\n");
-      domain_push_lock(d, 0);
-      return 1;
-    }
+    WDBG("-> Forcibly acquiring prepended lock.\n");
+/*    d->rdlocked++;  is called by the prepender */
+    domain_push_lock(d, 0);
+    WQ_UNLOCK();
+    return 1;
   }
-}
-
-void domain_read_lock(struct domain *d)
-{ domain_read_lock_internal(d, NULL); }
-
-static int
-domain_write_lock_internal(struct domain *d, struct task *t)
-{
-  domain_assert_unlocked(d);
-  WDBG("Write lock: domain %p, task %p:\n", d, t);
-  while (1)
+  else if (d->wrlocked || d->wrsem_n || d->wrtasks_n)
   {
-    /* Get current state */
-    u64 ls = atomic_load_explicit(&d->state, memory_order_acquire);
-    WDBG("... state 0x%lx\n", ls);
-
-    /* Priority locking: This task has reserved the lock */
-    if (t && (t->flags & TF_PREPENDED))
-    {
-      if (!(ls & STATE_TASK_PENDING))
-	wbug("Got a pending task without pending bit set");
-
-      if (!(ls & STATE_TASK_WRITE))
-	wbug("Pending lock type mismatch");
-
-      if (STATE_WRITERS(ls) == STATE_MASK)
-	wbug("Too many writers");
-
-      /* Lock write for this task and go on */
-      if (STATE_CHANGE((ls & ~STATE_TASK_PENDING & ~STATE_TASK_WRITE) + STATE_ONE_WRITER))
-      {
-	WDBG("... priority locked\n");
-	domain_push_lock(d, 1);
-	return 1;
-      }
-      else
-	continue;
-    }
-
-    /* The only other possibility to get through is that the lock is completely unlocked */
-    if (ls == 0)
-      if (STATE_CHANGE(STATE_ONE_WRITER))
-      {
-	WDBG("... instant lock\n");
-	domain_push_lock(d, 1);
-	return 1;
-      }
-      else
-	continue;
-
-    /* If we have to block the task */
-    if (t)
-    {
-      WQ_LOCK;
-      /* No blocked task yet? Set the bit. */
-      if (!(ls & STATE_TASK_BLOCKED) && !STATE_CHANGE((ls | STATE_TASK_BLOCKED)))
-      {
-	WQ_UNLOCK;
-	continue;
-      }
-
-      add_tail(&d->blocked, &t->n);
-      WQ_UNLOCK;
-      WDBG("... task blocked\n");
-      return 0;
-    }
-
-    /* We'll block ourselves */
-    if (STATE_WRITERS(ls) == STATE_MASK)
-      wbug("Too many blocked writers");
-
-    /* Marked that we are waiting on wrsem */
-    if (!STATE_CHANGE(ls + STATE_ONE_WRITER))
-      continue;
-
-    /* Start another worker to work instead of us for now */
-    int e = worker_start();
-    if (e != 0)
-      wdie("Failed to start a temporary worker: %M", e);
-
-    WDBG("... waiting for release\n");
-
-    SEM_WAIT(&d->wrsem);
-
-    /* Now we have the lock, stop one thread to continue */
-    WDBG("Read lock: domain %p, task %p: waiting for thread stop\n", d, t);
-    WQ_LOCKED wq->stop++;
-    SEM_POST(&wq->waiting);
-    SEM_WAIT(&wq->stopped);
-
-    /* Thread stopped, come on now */
-    WDBG("Read lock: domain %p, task %p: going on\n", d, t);
-    domain_push_lock(d, 1);
+    /* Blocked */
+    add_tail(&(d->rdtasks), &(t->n));
+    d->rdtasks_n++;
+    WDBG("-> Blocked (n=%u)\n", d->rdtasks_n);
+    WQ_UNLOCK();
+    return 0;
+  }
+  else
+  {
+    d->rdlocked++;
+    domain_push_lock(d, 0);
+    WDBG("-> Instantly locked (n=%u)\n", d->rdlocked);
+    WQ_UNLOCK();
     return 1;
   }
 }
 
-void domain_write_lock(struct domain *d)
-{ domain_write_lock_internal(d, NULL); }
-
-enum domain_unlock_action {
-  DU_RETURN,
-  DU_RETRY,
-  DU_CONTINUE,
-};
-
-static enum domain_unlock_action
-domain_unlock_blocked(u64 *pstate, int w, struct domain *d)
+void
+domain_read_lock(struct domain *d)
 {
-#define ls (*pstate)
-  u64 one = w ? STATE_ONE_WRITER : STATE_ONE_READER;
+  domain_assert_unlocked(d);
+  WDBG("Secondary read lock: domain %p\n", d);
 
-  /* Check for priority boarding */
-  if (    (ls & STATE_TASK_BLOCKED)	/* There is a blocked task */
-      && !(ls & STATE_TASK_PENDING)	/* No task is currently pending */
-      && (w || (STATE_READERS(ls) == 1)))	/* And we are unlocking */
+  WQ_LOCK();
+  if (d->wrlocked || d->wrsem_n || d->wrtasks_n)
   {
-    WDBG("... priority boarding\n");
-    WQ_LOCK;
+    /* Blocked */
+    d->rdsem_n++;
+    WDBG("-> Blocked (n=%u)\n", d->rdsem_n);
+    WQ_UNLOCK();
 
-    struct task *t = HEAD(d->blocked);
-    if (HEAD(d->blocked) == TAIL(d->blocked))
-    {
-      /* Block the lock for the task, no other blocked task remains */
-      if (!STATE_CHANGE(
-	    (ls - one)
-	  & ~STATE_TASK_BLOCKED
-	  | STATE_TASK_PENDING
-	  | ((t->flags & TF_EXCLUSIVE) ? STATE_TASK_WRITE : 0)))
-      {
-	WQ_UNLOCK;
-	return DU_RETRY;
-      }
-    }
-    else
-    {
-      /* Block the lock for the task; there are also other blocked tasks */
-      if (!STATE_CHANGE(
-	    (ls - one)
-	  | STATE_TASK_PENDING
-	  | ((t->flags & TF_EXCLUSIVE) ? STATE_TASK_WRITE : 0)))
-      {
-	WQ_UNLOCK;
-	return DU_RETRY;
-      }
-    }
-
-    /* Schedule the task */
-    t->flags |= TF_PREPENDED;
-    rem_node(&t->n);
-    add_head(&wq->pending, &t->n);
-    WQ_UNLOCK;
-
-    SEM_POST(&wq->waiting);
-    WDBG("... task scheduled\n");
-    return DU_RETURN;
+    worker_start_temporary();
+    /* Wait until somebody unblocks us.
+     * That thread also locks the lock for us
+     * before running SEM_POST(&d->rdsem), */
+    SEM_WAIT(&d->rdsem);
+    worker_stop_temporary();
+  }
+  else
+  {
+    d->rdlocked++;
+    WDBG("-> Instantly locked (n=%u)\n", d->rdlocked);
+    WQ_UNLOCK();
   }
 
-  return DU_CONTINUE;
-#undef ls
+  domain_push_lock(d, 0);
+}
+
+static int
+domain_write_lock_primary(struct domain *d, struct task *t)
+{
+  domain_assert_unlocked(d);
+  WDBG("Primary write lock: domain %p, task %p\n", d, t);
+
+  WQ_LOCK();
+  if (t->flags & TF_PREPENDED)
+  {
+    if (!d->prepended--)
+      wbug("Got a pending task without pending bit set");
+
+    if (d->rdlocked)
+      wbug("Got a prepended writer task with reader locked");
+
+    if (!d->wrlocked)
+      wbug("Writer shall be already locked here");
+
+    WDBG("-> Forcibly acquiring prepended lock.\n");
+/*    d->wrlocked = 1;  is called by the prepender */
+    domain_push_lock(d, 1);
+    WQ_UNLOCK();
+    return 1;
+  }
+  else if (d->wrlocked || d->rdlocked || d->wrtasks_n || d->wrsem_n)
+  {
+    /* Blocked */
+    add_tail(&(d->wrtasks), &(t->n));
+    d->wrtasks_n++;
+    WDBG("-> Blocked (n=%u)\n", d->wrtasks_n);
+    WQ_UNLOCK();
+    return 0;
+  }
+  else
+  {
+    if (d->rdtasks_n || d->rdsem_n || d->prepended)
+      wbug("This shall never happen");
+
+    d->wrlocked = 1;
+    domain_push_lock(d, 1);
+    WDBG("-> Instantly locked\n");
+    WQ_UNLOCK();
+    return 1;
+  }
+}
+
+void
+domain_write_lock(struct domain *d)
+{
+  domain_assert_unlocked(d);
+  WDBG("Secondary write lock: domain %p\n", d);
+
+  WQ_LOCK();
+  if (d->wrlocked || d->rdlocked || d->wrsem_n || d->wrtasks_n)
+  {
+    /* Blocked */
+    d->wrsem_n++;
+    WDBG("-> Blocked (n=%u)\n", d->wrsem_n);
+    WQ_UNLOCK();
+
+    worker_start_temporary();
+    /* Wait until somebody unblocks us.
+     * That thread also locks the lock for us
+     * before running SEM_POST(&d->rdsem), */
+    SEM_WAIT(&d->wrsem);
+    worker_stop_temporary();
+  }
+  else
+  {
+    if (d->rdtasks_n || d->rdsem_n || d->prepended) 
+      wbug("This shall never happen");
+
+    d->wrlocked = 1;
+    WDBG("-> Instantly locked\n");
+    WQ_UNLOCK();
+  }
+
+  domain_push_lock(d, 1);
+}
+
+/* Called from WQ_LOCKED context only */
+static void
+domain_unlock_common(struct domain *d)
+{
+  if (d->wrtasks_n)
+  {
+    WDBG("-> There is a writer task waiting for us (n=%u)\n", d->wrtasks_n);
+    if (d->prepended || d->wrlocked)
+      wbug("This shall never happen");
+
+    /* Lock the domain now */
+    d->wrlocked = 1;
+    d->prepended++;
+
+    /* Get the task */
+    struct task *t = HEAD(d->wrtasks);
+    rem_node(&t->n);
+    d->wrtasks_n--;
+
+    /* Prepend the task */
+    TASK_PREPEND(t);
+  }
+  else if (d->wrsem_n)
+  {
+    WDBG("-> There is a secondary writer waiting for us (n=%u)\n", d->wrsem_n);
+    
+    /* Lock the domain now */
+    d->wrlocked = 1;
+    
+    /* Wake up that thread */
+    SEM_POST(&d->wrsem);
+  }
 }
 
 void
 domain_read_unlock(struct domain *d)
 {
-  ASSERT(locked_cnt > 0
-      && locked_domains[locked_cnt-1].domain == d
-      && locked_domains[locked_cnt-1].write == 0);
-  locked_cnt--;
+  domain_assert_read_locked(d);
+  WDBG("Read unlock: domain %p\n", d);
 
-  while (1)
+  WQ_LOCK();
+  if (!d->rdlocked)
+    wbug("Read lock count underflow");
+
+  d->rdlocked--;
+  domain_pop_lock(d);
+
+  if (d->rdlocked)
   {
-    WDBG("Read unlock: domain %p:\n", d);
-    u64 ls = atomic_load_explicit(&d->state, memory_order_acquire);
-    WDBG("... state 0x%lx\n", ls);
-
-    if (!STATE_READERS(ls))
-      wbug("Can't unlock read when not locked", d);
-
-    /* Call for priority boarding */
-    switch (domain_unlock_blocked(&ls, 0, d))
-    {
-      case DU_RETURN: return;
-      case DU_RETRY: continue;
-      case DU_CONTINUE: break;
-    }
-
-    /* No priority boarding possible; are we the last reader? */
-    if (STATE_READERS(ls) == 1)
-    {
-      if (!STATE_CHANGE(ls - STATE_ONE_READER))
-	continue;
-
-      /* If there is a writer pending, wake it up */
-      if (STATE_WRITERS(ls) > 0)
-      {
-	WDBG("... waking up a pending writer\n");
-	SEM_POST(&d->wrsem);
-      }
-
-      WDBG("... last reader unlocked\n");
-
-      return;
-    }
-
-    /* We aren't the last reader, just lower the count and we're done */
-    if (!STATE_CHANGE(ls - STATE_ONE_READER))
-      continue;
-
-    WDBG("... concurrent reader unlocked\n");
-    return;
+    WDBG("-> Unlocked leaving other readers behind (n=%u)\n", d->rdlocked);
   }
+  else
+    domain_unlock_common(d);
+  
+  WQ_UNLOCK();
 }
 
 void
 domain_write_unlock(struct domain *d)
 {
-  ASSERT(locked_cnt > 0
-      && locked_domains[locked_cnt-1].domain == d
-      && locked_domains[locked_cnt-1].write == 1);
-  locked_cnt--;
+  domain_assert_write_locked(d);
+  WDBG("Write unlock: domain %p\n", d);
 
-  while (1)
+  WQ_LOCK();
+  if (!d->wrlocked)
+    wbug("Write lock already unlocked");
+
+  d->wrlocked = 0;
+  domain_pop_lock(d);
+
+  if (	  (d->wrtasks_n + d->wrsem_n == 0)
+      ||  (d->wrtasks_n + d->wrsem_n > 2 * (d->rdtasks_n + d->rdsem_n)))
   {
-    WDBG("Write unlock: domain %p:\n", d);
-    u64 ls = atomic_load_explicit(&d->state, memory_order_acquire);
-    WDBG("... state 0x%lx\n", ls);
+    WDBG("-> Flushing readers: WP=%u WS=%u RP=%u RS=%u\n",
+	d->wrtasks_n, d->wrsem_n, d->rdtasks_n, d->rdsem_n);
+    /* We shall flush the readers */
+    d->rdlocked = d->rdtasks_n + d->rdsem_n;
 
-    if (STATE_READERS(ls))
-      wbug("Trying to unlock write when readers are running");
-
-    if (!STATE_WRITERS(ls))
-      wbug("Can't unlock write when not locked", d);
-
-    /* Call for priority boarding */
-    switch (domain_unlock_blocked(&ls, 1, d))
+    /* Put the tasks into queue */
+    uint check = 0;
+    struct task *t, *tt;
+    WALK_LIST_BACKWARDS_DELSAFE(t, tt, d->rdtasks)
     {
-      case DU_RETURN: return;
-      case DU_RETRY: continue;
-      case DU_CONTINUE: break;
+      rem_node(&t->n);
+      TASK_PREPEND(t);
     }
 
-    /* Not the last writer. Pass the lock to another writer. */
-    if (STATE_WRITERS(ls) > 1)
-    {
-      if (!STATE_CHANGE(ls - STATE_ONE_WRITER))
-	continue;
+    if (check != d->rdtasks_n || !EMPTY_LIST(d->rdtasks))
+      wbug("This shall never happen");
 
-      WDBG("... waking up a pending writer\n");
-      SEM_POST(&d->wrsem);
-      return;
-    }
+    d->rdtasks_n = 0;
 
-    /* Some readers are blocked. Lock them at once. */
-    u64 blocked = STATE_BLOCKED(ls);
-    if (blocked)
-    {
-      if (!STATE_CHANGE(ls + blocked * (STATE_ONE_READER - STATE_ONE_BLOCKED) - STATE_ONE_WRITER))
-	continue;
-
-      WDBG("... waking up %u pending readers\n", blocked);
-      for (u64 i=0; i<blocked; i++)
-	SEM_POST(&d->rdsem);
-      WDBG("... done\n");
-      return;
-    }
-    else
-    {
-      ASSERT(ls - STATE_ONE_WRITER == 0);
-      if (!STATE_CHANGE(0))
-	continue;
-      
-      WDBG("... unlocking a writer\n");
-      return;
-    }
+    for ( ; d->rdsem_n; d->rdsem_n--)
+      SEM_POST(&d->rdsem);
   }
+  else
+    domain_unlock_common(d);
+
+  WQ_UNLOCK();
 }
 
 extern _Thread_local struct timeloop *timeloop_current;
@@ -619,40 +554,45 @@ worker_loop(void *_data UNUSED)
   /* Run the loop */
   while (1) {
     WDBG("Worker waiting\n");
+    WQDUMP;
     SEM_WAIT(&wq->waiting);
     WDBG("Worker woken up\n");
     
-    WQ_LOCK;
+    WQ_LOCK();
+    WQLDUMP;
     /* Is there a pending task? */
     if (!EMPTY_LIST(wq->pending))
     {
       /* Retrieve that task */
       struct task *t = HEAD(wq->pending);
       rem_node(&t->n);
-      WQ_UNLOCK;
+      WQ_UNLOCK();
+
+      /* Store the old flags */
+      enum task_flags tf = t->flags;
 
       /* Does the task need a lock? */
       if (!t->domain)
 	/* No. Just run it. */
 	t->execute(t);
       /* It needs a lock. Is it available? */
-      else if (t->flags & TF_EXCLUSIVE ?
-	    domain_write_lock_internal(t->domain, t) :
-	    domain_read_lock_internal(t->domain, t))
+      else if (tf & TF_EXCLUSIVE ?
+	    domain_write_lock_primary(t->domain, t) :
+	    domain_read_lock_primary(t->domain, t))
       {
 	/* Yes. Run it! */
 	t->execute(t);
 
 	/* And unlock to let others to the domain */
-	t->flags & TF_EXCLUSIVE ?
+	tf & TF_EXCLUSIVE ?
 	  domain_write_unlock(t->domain) :
 	  domain_read_unlock(t->domain);
 
 	/* If this task was prepended, the available semaphore was not waited for */
-	if (t->flags & TF_PREPENDED)
+	if (tf & TF_PREPENDED)
 	  continue;
       }
-      else if (t->flags & TF_PREPENDED)
+      else if (tf & TF_PREPENDED)
 	wbug("The prepended task shall never block on lock");
 
       /* Else: Unavailable. The task has been stored
@@ -671,7 +611,7 @@ worker_loop(void *_data UNUSED)
       wdebug("Worker stopping\n");
       wq->stop--;
       wq->running--;
-      WQ_UNLOCK;
+      WQ_UNLOCK();
 
       /* This makes one worker less available */
       SEM_WAIT(&wq->available);
@@ -730,17 +670,43 @@ workers_start(uint count)
 static void
 workers_stop(uint count)
 {
-  WQ_LOCKED
-    wq->stop += count;
-
   for (uint i=0; i<count; i++)
-    SEM_POST(&wq->waiting);
+    WQ_LOCKED
+      TASK_STOP_WORKER;
 
   for (uint i=0; i<count; i++)
     SEM_WAIT(&wq->stopped);
 
   WQ_LOCKED
     wq->prefork -= count;
+}
+
+_Thread_local int temporary_worker_running = 0;
+static void
+worker_start_temporary(void)
+{
+  int e = worker_start();
+  WQDUMP;
+  if (!e)
+    return;
+
+  temporary_worker_running = 1;
+  log(L_WARN "Temporary worker start failed: %M", e);
+}
+
+static void
+worker_stop_temporary(void)
+{
+  if (!temporary_worker_running)
+    return;
+
+  WQ_LOCKED
+  {
+    TASK_STOP_WORKER;
+    WQLDUMP;
+  }
+
+  SEM_WAIT(&wq->stopped);
 }
 
 void
@@ -752,6 +718,8 @@ worker_queue_init(void)
   pthread_spin_init(&wq->lock, 0);
 
   init_list(&wq->pending);
+
+  atomic_store(&wq->spinlock_owner, ~0ULL);
 }
 
 void
@@ -772,62 +740,55 @@ task_push(struct task *t)
   /* Task must have an executor */
   ASSERT(t->execute);
 
+  WDBG("Task push\n");
+
   /* Idempotency. */
-  WQ_LOCK;
+  WQ_LOCK();
+  WQLDUMP;
   if (t->n.prev && t->n.next)
   {
     /* If already pushed, do nothing. */
-    WQ_UNLOCK;
+    WQ_UNLOCK();
     return;
   }
   else
   {
     /* Check that the node is clean */
     ASSERT(!t->n.prev && !t->n.next);
-    WQ_UNLOCK;
   }
 
   /* Use only public flags */
   t->flags &= TF_PUBLIC_MASK;
-  
-  /* We have a pending task */
-  WQ_LOCKED
-    add_tail(&wq->pending, &t->n);
 
   /* Is there an available worker right now? */
   if (SEM_TRYWAIT(&wq->available))
   {
     WDBG("Waited for an available worker succesfully\n");
     /* Then we have a task for it. */
-    SEM_POST(&wq->waiting);
-    SEM_POST(&wq->available);
+
+    TASK_APPEND(t);
 
     /* And now we can continue freely. */
+    WQ_UNLOCK();
     return;
   }
   else
   {
     /* No available worker. We're going to sleep.
      * Anyway, the task still exists in the queue. */
-    SEM_POST(&wq->waiting);
-    WDBG("Starting a temporary worker\n");
+    TASK_APPEND(t);
+    WQ_UNLOCK();
 
-    /* Let's start another worker to keep the number of active workers. */
-    int e = worker_start();
-    if (e != 0)
-      wdie("Failed to start a temporary worker: %M", e);
+    WDBG("Starting a temporary worker\n");
+    worker_start_temporary();
 
     /* Wait until somebody picks the task up */
     SEM_WAIT(&wq->available);
 
     /* Order one worker stop */
     WDBG("Ordering a temporary worker stop\n");
-    WQ_LOCKED
-      wq->stop++;
-    SEM_POST(&wq->waiting);
+    worker_stop_temporary();
 
-    /* And wait until it really stops to continue */
-    SEM_WAIT(&wq->stopped);
     WDBG("Temporary worker stopped, resuming normal operation\n");
     return;
   }
