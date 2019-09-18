@@ -18,7 +18,7 @@ static struct log_config *this_log;
 CF_DECLS
 
 CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT)
-CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS, WORKERS)
+CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS, WORKERS, MAX)
 CF_KEYWORDS(GRACEFUL, RESTART)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout
@@ -30,10 +30,20 @@ CF_GRAMMAR
 
 conf: worker_config ;
 
-worker_config: WORKERS expr ';' {
+worker_config:
+  WORKERS expr ';' {
     if ($2 < 1)
       cf_error("At least one worker is needed to run BIRD");
     new_config->workers = $2;
+    new_config->max_workers = 2 * $2;
+  } |
+  WORKERS expr MAX expr ';' {
+    if ($2 < 1)
+      cf_error("At least one worker is needed to run BIRD");
+    if ($4 < 2)
+      cf_error("Maximum worker count must be at least the standard count");
+    new_config->workers = $2;
+    new_config->max_workers = $4;
   }
  ;
 

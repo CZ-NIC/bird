@@ -1,5 +1,5 @@
-//#undef LOCAL_DEBUG
-#define LOCAL_DEBUG
+//#define LOCAL_DEBUG
+#undef LOCAL_DEBUG
 
 #include "nest/bird.h"
 #include "lib/macro.h"
@@ -36,6 +36,7 @@ static struct worker_queue {
   list pending;			/* Tasks pending */
   uint running;			/* How many workers are running */
   uint prefork;			/* Default count of workers */
+  uint fork_limit;		/* Maximum count of workers */
   uint stop;			/* Stop requests */
   _Atomic u64 statelog_pos;	/* Current position in statelog */
   struct worker_queue_state {
@@ -47,6 +48,16 @@ static struct worker_queue {
       WQS_SEM_TRYWAIT_BLOCKED,
       WQS_LOCK,
       WQS_UNLOCK,
+      WQS_DOMAIN_WRLOCK_REQUEST,
+      WQS_DOMAIN_RDLOCK_REQUEST,
+      WQS_DOMAIN_WRLOCK_SUCCESS,
+      WQS_DOMAIN_RDLOCK_SUCCESS,
+      WQS_DOMAIN_WRLOCK_BLOCKED,
+      WQS_DOMAIN_RDLOCK_BLOCKED,
+      WQS_DOMAIN_RDUNLOCK_REQUEST,
+      WQS_DOMAIN_WRUNLOCK_REQUEST,
+      WQS_DOMAIN_RDUNLOCK_DONE,
+      WQS_DOMAIN_WRUNLOCK_DONE,
       WQS_STOP,
     } what;
     union {
@@ -56,6 +67,11 @@ static struct worker_queue {
 	uint stop;
       } queue;
       sem_t *sem;
+      struct {
+	uint rdsem_n, wrsem_n, rdtasks_n, wrtasks_n, rdlocked, prepended;
+	struct domain *domain;
+	struct task *task;
+      } domain;
     };
   } statelog[STATELOG_SIZE];
   _Atomic u64 spinlock_owner;
@@ -97,6 +113,7 @@ static inline void WQ_UNLOCK(void)
 }
 
 #define WQ_LOCKED MACRO_PACK_BEFORE_AFTER(WQ_LOCK(), WQ_UNLOCK())
+#define WQ_LOCKED_BOOL(...) (WQ_LOCK(), !!(__VA_ARGS__) + (WQ_UNLOCK(), 0))
 
 static inline void SEM_INIT(sem_t *s, uint val)
 {
@@ -289,12 +306,17 @@ static inline void
 domain_pop_lock(struct domain *d UNUSED)
 { locked_cnt--; }
 
+#define DOMAIN_STATLOG(what_, dom, task_) \
+  WQ_STATELOG(what_, .domain = { .rdsem_n = dom->rdsem_n, .wrsem_n = dom->wrsem_n, .rdtasks_n = dom->rdtasks_n, .wrtasks_n = dom->wrtasks_n, .rdlocked = dom->rdlocked, .prepended = dom->prepended, .domain = dom, .task = task_ })
+
+
 static int
 domain_read_lock_primary(struct domain *d, struct task *t)
 {
   domain_assert_unlocked(d);
   WDBG("Primary read lock: domain %p, task %p\n", d, t);
-
+  DOMAIN_STATLOG(WQS_DOMAIN_RDLOCK_REQUEST, d, t);
+  
   WQ_LOCK();
   if (t->flags & TF_PREPENDED)
   {
@@ -310,6 +332,7 @@ domain_read_lock_primary(struct domain *d, struct task *t)
     WDBG("-> Forcibly acquiring prepended lock.\n");
 /*    d->rdlocked++;  is called by the prepender */
     domain_push_lock(d, 0);
+    DOMAIN_STATLOG(WQS_DOMAIN_RDLOCK_SUCCESS, d, t);
     WQ_UNLOCK();
     return 1;
   }
@@ -319,6 +342,7 @@ domain_read_lock_primary(struct domain *d, struct task *t)
     add_tail(&(d->rdtasks), &(t->n));
     d->rdtasks_n++;
     WDBG("-> Blocked (n=%u)\n", d->rdtasks_n);
+    DOMAIN_STATLOG(WQS_DOMAIN_RDLOCK_BLOCKED, d, t);
     WQ_UNLOCK();
     return 0;
   }
@@ -327,6 +351,7 @@ domain_read_lock_primary(struct domain *d, struct task *t)
     d->rdlocked++;
     domain_push_lock(d, 0);
     WDBG("-> Instantly locked (n=%u)\n", d->rdlocked);
+    DOMAIN_STATLOG(WQS_DOMAIN_RDLOCK_SUCCESS, d, t);
     WQ_UNLOCK();
     return 1;
   }
@@ -337,6 +362,7 @@ domain_read_lock(struct domain *d)
 {
   domain_assert_unlocked(d);
   WDBG("Secondary read lock: domain %p\n", d);
+  DOMAIN_STATLOG(WQS_DOMAIN_RDLOCK_REQUEST, d, NULL);
 
   WQ_LOCK();
   if (d->wrlocked || d->wrsem_n || d->wrtasks_n)
@@ -344,6 +370,7 @@ domain_read_lock(struct domain *d)
     /* Blocked */
     d->rdsem_n++;
     WDBG("-> Blocked (n=%u)\n", d->rdsem_n);
+    DOMAIN_STATLOG(WQS_DOMAIN_RDLOCK_BLOCKED, d, NULL);
     WQ_UNLOCK();
 
     worker_start_temporary();
@@ -360,6 +387,7 @@ domain_read_lock(struct domain *d)
     WQ_UNLOCK();
   }
 
+  DOMAIN_STATLOG(WQS_DOMAIN_RDLOCK_SUCCESS, d, NULL);
   domain_push_lock(d, 0);
 }
 
@@ -368,6 +396,7 @@ domain_write_lock_primary(struct domain *d, struct task *t)
 {
   domain_assert_unlocked(d);
   WDBG("Primary write lock: domain %p, task %p\n", d, t);
+  DOMAIN_STATLOG(WQS_DOMAIN_WRLOCK_REQUEST, d, t);
 
   WQ_LOCK();
   if (t->flags & TF_PREPENDED)
@@ -384,6 +413,7 @@ domain_write_lock_primary(struct domain *d, struct task *t)
     WDBG("-> Forcibly acquiring prepended lock.\n");
 /*    d->wrlocked = 1;  is called by the prepender */
     domain_push_lock(d, 1);
+    DOMAIN_STATLOG(WQS_DOMAIN_WRLOCK_SUCCESS, d, t);
     WQ_UNLOCK();
     return 1;
   }
@@ -393,6 +423,7 @@ domain_write_lock_primary(struct domain *d, struct task *t)
     add_tail(&(d->wrtasks), &(t->n));
     d->wrtasks_n++;
     WDBG("-> Blocked (n=%u)\n", d->wrtasks_n);
+    DOMAIN_STATLOG(WQS_DOMAIN_WRLOCK_BLOCKED, d, t);
     WQ_UNLOCK();
     return 0;
   }
@@ -404,6 +435,7 @@ domain_write_lock_primary(struct domain *d, struct task *t)
     d->wrlocked = 1;
     domain_push_lock(d, 1);
     WDBG("-> Instantly locked\n");
+    DOMAIN_STATLOG(WQS_DOMAIN_WRLOCK_SUCCESS, d, t);
     WQ_UNLOCK();
     return 1;
   }
@@ -414,6 +446,7 @@ domain_write_lock(struct domain *d)
 {
   domain_assert_unlocked(d);
   WDBG("Secondary write lock: domain %p\n", d);
+  DOMAIN_STATLOG(WQS_DOMAIN_WRLOCK_REQUEST, d, NULL);
 
   WQ_LOCK();
   if (d->wrlocked || d->rdlocked || d->wrsem_n || d->wrtasks_n)
@@ -421,6 +454,7 @@ domain_write_lock(struct domain *d)
     /* Blocked */
     d->wrsem_n++;
     WDBG("-> Blocked (n=%u)\n", d->wrsem_n);
+    DOMAIN_STATLOG(WQS_DOMAIN_WRLOCK_BLOCKED, d, NULL);
     WQ_UNLOCK();
 
     worker_start_temporary();
@@ -440,6 +474,7 @@ domain_write_lock(struct domain *d)
     WQ_UNLOCK();
   }
 
+  DOMAIN_STATLOG(WQS_DOMAIN_WRLOCK_SUCCESS, d, NULL);
   domain_push_lock(d, 1);
 }
 
@@ -473,6 +508,7 @@ domain_unlock_common(struct domain *d)
     d->wrlocked = 1;
     
     /* Wake up that thread */
+    d->wrsem_n--;
     SEM_POST(&d->wrsem);
   }
 }
@@ -484,6 +520,7 @@ domain_read_unlock(struct domain *d)
   WDBG("Read unlock: domain %p\n", d);
 
   WQ_LOCK();
+  DOMAIN_STATLOG(WQS_DOMAIN_RDUNLOCK_REQUEST, d, NULL);
   if (!d->rdlocked)
     wbug("Read lock count underflow");
 
@@ -497,6 +534,7 @@ domain_read_unlock(struct domain *d)
   else
     domain_unlock_common(d);
   
+  DOMAIN_STATLOG(WQS_DOMAIN_RDUNLOCK_DONE, d, NULL);
   WQ_UNLOCK();
 }
 
@@ -507,14 +545,22 @@ domain_write_unlock(struct domain *d)
   WDBG("Write unlock: domain %p\n", d);
 
   WQ_LOCK();
+  DOMAIN_STATLOG(WQS_DOMAIN_WRUNLOCK_REQUEST, d, NULL);
   if (!d->wrlocked)
     wbug("Write lock already unlocked");
 
   d->wrlocked = 0;
   domain_pop_lock(d);
 
-  if (	  (d->wrtasks_n + d->wrsem_n == 0)
-      ||  (d->wrtasks_n + d->wrsem_n > 2 * (d->rdtasks_n + d->rdsem_n)))
+  uint w = d->wrtasks_n + d->wrsem_n;
+  uint r = d->rdtasks_n + d->rdsem_n;
+
+/* Magical condition to when we have to flush readers.
+ * The rwlock has strict writer preference over readers. No reader
+ * is allowed to lock when there are enough writers. This may lead
+ * to a situation where two writers are blocking all readers.
+ * So we sometimes flush the readers instead of locking another pending writer. */
+  if (r && (!w || (r > 3*w)))
   {
     WDBG("-> Flushing readers: WP=%u WS=%u RP=%u RS=%u\n",
 	d->wrtasks_n, d->wrsem_n, d->rdtasks_n, d->rdsem_n);
@@ -541,6 +587,7 @@ domain_write_unlock(struct domain *d)
   else
     domain_unlock_common(d);
 
+  DOMAIN_STATLOG(WQS_DOMAIN_WRUNLOCK_DONE, d, NULL);
   WQ_UNLOCK();
 }
 
@@ -615,7 +662,7 @@ worker_loop(void *_data UNUSED)
       ASSERT(wq->stop > 0);
 
       /* Requested to stop */
-      wdebug("Worker stopping\n");
+      WDBG("Worker stopping\n");
       wq->stop--;
       wq->running--;
       WQ_UNLOCK();
@@ -637,6 +684,9 @@ worker_loop(void *_data UNUSED)
 static int
 worker_start(void)
 {
+  if (WQ_LOCKED_BOOL(wq->running >= wq->fork_limit))
+    return 1;
+
   /* Run the thread */
   pthread_t id;
   int e = pthread_create(&id, NULL, worker_loop, NULL);
@@ -692,13 +742,22 @@ _Thread_local int temporary_worker_running = 0;
 static void
 worker_start_temporary(void)
 {
+  /* Is there an idle worker right now? */
+  if (SEM_TRYWAIT(&wq->available))
+  {
+    /* We won't spawn more, it doesn't make any sense. */
+    SEM_POST(&wq->available);
+    return;
+  }
+
   int e = worker_start();
-  WQDUMP;
-  if (!e)
+  if (e == 0)
   {
     temporary_worker_running = 1;
     return;
   }
+  if (e == 1)
+    return;
 
   log(L_WARN "Temporary worker start failed: %M", e);
 }
@@ -709,6 +768,7 @@ worker_stop_temporary(void)
   if (!temporary_worker_running)
     return;
 
+  temporary_worker_running = 0;
   WQ_LOCKED
   {
     TASK_STOP_WORKER;
@@ -758,6 +818,9 @@ worker_queue_destroy(void)
 void
 worker_queue_update(const struct config *c)
 {
+  ASSERT(c->max_workers >= c->workers);
+  wq->fork_limit = c->max_workers;
+  /* FIXME: Apply the new limit immediately */
 
   if (c->workers > wq->prefork)
     workers_start(c->workers - wq->prefork);
