@@ -134,6 +134,8 @@ CF_CLI(CONFIGURE CHECK, cfg_name, [\"<file>\"], [[Parse configuration and check 
 CF_CLI(DOWN,,, [[Shut the daemon down]])
 { cmd_shutdown(); } ;
 
+CF_CLI_HELP(GRACEFUL, restart, [[Shut the daemon down for graceful restart]])
+
 CF_CLI(GRACEFUL RESTART,,, [[Shut the daemon down for graceful restart]])
 { cmd_graceful_restart(); } ;
 
