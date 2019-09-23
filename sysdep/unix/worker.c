@@ -16,6 +16,10 @@
 #include <pthread.h>
 #include <unistd.h>
 
+#ifdef LOCAL_DEBUG
+#define DEBUG_STATELOG
+#endif
+
 static _Atomic u64 max_worker_id = 1;
 static _Thread_local u64 worker_id;
 
@@ -26,8 +30,10 @@ static _Thread_local u64 worker_id;
 #define wbug(x, y...) bug("(W%4lu): " x, worker_id, ##y)
 #define wdebug(x, y...) debug("(W%4lu): " x, worker_id, ##y)
 
+#ifdef DEBUG_STATELOG
 #define STATELOG_SIZE_ (1 << 14)
 static const uint STATELOG_SIZE = STATELOG_SIZE_;
+#endif
 
 static struct worker_queue {
   sem_t waiting;		/* Workers wait on this semaphore to get work */
@@ -40,6 +46,7 @@ static struct worker_queue {
   uint workers;			/* Allowed number of concurrent workers */
   uint max_workers;		/* Maximum count of workers incl. sleeping */
   uint stop;			/* Stop requests */
+#ifdef DEBUG_STATELOG
   _Atomic u64 statelog_pos;	/* Current position in statelog */
   struct worker_queue_state {
     u64 worker_id;
@@ -78,12 +85,17 @@ static struct worker_queue {
       } domain;
     };
   } statelog[STATELOG_SIZE_];
+#endif
   _Atomic u64 spinlock_owner;
 } wq_, *wq = &wq_;
 
+#ifdef DEBUG_STATELOG
 #define WQ_STATELOG(what_, ...) \
   wq->statelog[atomic_fetch_add(&wq->statelog_pos, 1) % STATELOG_SIZE] = \
   (struct worker_queue_state) { .what = what_, .worker_id = worker_id, __VA_ARGS__ }
+#else
+#define WQ_STATELOG(...)
+#endif
 
 const u64 noworker = ~0ULL;
 static inline void WQ_LOCK(void)
@@ -770,7 +782,9 @@ worker_queue_init(void)
   init_list(&wq->pending);
 
   atomic_store(&wq->spinlock_owner, ~0ULL);
+#ifdef DEBUG_STATELOG
   atomic_store(&wq->statelog_pos, 0);
+#endif
 }
 
 void
