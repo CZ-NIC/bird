@@ -13,6 +13,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <time.h>
 
 #include "nest/bird.h"
 
@@ -35,6 +36,8 @@ int  bt_exit_value(void);
 int bt_test_suite_base(int (*test_fn)(const void *), const char *test_id, const void *test_fn_argument, int forked, int timeout, const char *dsc, ...);
 static inline u64 bt_random(void)
 { return ((u64) random() & 0xffffffff) | ((u64) random() << 32); }
+
+extern struct timespec bt_begin, bt_suite_begin, bt_suite_case_begin;
 
 void bt_log_suite_result(int result, const char *fmt, ...);
 void bt_log_suite_case_result(int result, const char *fmt, ...);
