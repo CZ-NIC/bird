@@ -407,7 +407,7 @@ f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf)
 {
   struct f_val val;
   enum filter_return fret = f_eval(expr, tmp_pool, &val);
-  if (fret > F_RETURN)
+  if (fret <= F_RETURN)
     val_format(&val, buf);
   return fret;
 }
