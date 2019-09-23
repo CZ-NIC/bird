@@ -26,28 +26,33 @@ static _Thread_local u64 worker_id;
 #define wbug(x, y...) bug("(W%4lu): " x, worker_id, ##y)
 #define wdebug(x, y...) debug("(W%4lu): " x, worker_id, ##y)
 
-#define STATELOG_SIZE (1 << 14)
+#define STATELOG_SIZE_ (1 << 14)
+static const uint STATELOG_SIZE = STATELOG_SIZE_;
 
 static struct worker_queue {
   sem_t waiting;		/* Workers wait on this semaphore to get work */
   sem_t stopped;		/* Posted on worker stopped */
+  sem_t yield;			/* Keeps the right number of workers running */
   sem_t available;		/* How many workers are currently free */
   pthread_spinlock_t lock;	/* Lock for the following values */
   list pending;			/* Tasks pending */
-  uint running;			/* How many workers are running */
-  uint prefork;			/* Default count of workers */
-  uint fork_limit;		/* Maximum count of workers */
+  uint running;			/* How many workers are really running */
+  uint workers;			/* Allowed number of concurrent workers */
+  uint max_workers;		/* Maximum count of workers incl. sleeping */
   uint stop;			/* Stop requests */
   _Atomic u64 statelog_pos;	/* Current position in statelog */
   struct worker_queue_state {
     u64 worker_id;
     PACKED enum {
-      WQS_SEM_POST = 1,
+      WQS_NOTHING = 0,
+      WQS_LOCK,
+      WQS_UNLOCK,
+      WQS_YIELD,
+      WQS_CONTINUE,
+      WQS_SEM_POST,
       WQS_SEM_WAIT,
       WQS_SEM_TRYWAIT_SUCCESS,
       WQS_SEM_TRYWAIT_BLOCKED,
-      WQS_LOCK,
-      WQS_UNLOCK,
       WQS_DOMAIN_WRLOCK_REQUEST,
       WQS_DOMAIN_RDLOCK_REQUEST,
       WQS_DOMAIN_WRLOCK_SUCCESS,
@@ -58,7 +63,6 @@ static struct worker_queue {
       WQS_DOMAIN_WRUNLOCK_REQUEST,
       WQS_DOMAIN_RDUNLOCK_DONE,
       WQS_DOMAIN_WRUNLOCK_DONE,
-      WQS_STOP,
     } what;
     union {
       struct {
@@ -73,7 +77,7 @@ static struct worker_queue {
 	struct task *task;
       } domain;
     };
-  } statelog[STATELOG_SIZE];
+  } statelog[STATELOG_SIZE_];
   _Atomic u64 spinlock_owner;
 } wq_, *wq = &wq_;
 
@@ -87,7 +91,7 @@ static inline void WQ_LOCK(void)
   pthread_spin_lock(&(wq->lock));
 
   if (!atomic_compare_exchange_strong(&wq->spinlock_owner, &noworker, worker_id))
-    bug("The spinlock shall be unlocked!");
+    wbug("The spinlock shall be unlocked!");
 
   WQ_STATELOG(WQS_LOCK,
       .queue = {
@@ -95,6 +99,18 @@ static inline void WQ_LOCK(void)
 	.running = wq->running,
 	.stop = wq->stop,
       });
+}
+
+static inline void WQ_ASSERT_LOCKED(void)
+{
+  if (atomic_load(&wq->spinlock_owner) != worker_id)
+    wbug("The spinlock shall be locked!");
+}
+
+static inline void WQ_ASSERT_UNLOCKED(void)
+{
+  if (atomic_load(&wq->spinlock_owner) == worker_id)
+    wbug("The spinlock shan't be locked by us!");
 }
 
 static inline void WQ_UNLOCK(void)
@@ -107,7 +123,7 @@ static inline void WQ_UNLOCK(void)
       });
 
   if (!atomic_compare_exchange_strong(&wq->spinlock_owner, &worker_id, noworker))
-    bug("The spinlock shall be locked!");
+    wbug("The spinlock shall be locked!");
 
   pthread_spin_unlock(&(wq->lock));
 }
@@ -164,9 +180,36 @@ static inline void SEM_DESTROY(sem_t *s)
     wbug("sem_post: %m");
 }
 
-static _Thread_local struct timeloop worker_timeloop;
+static void worker_start(void);
 
-static int worker_start(void);
+static inline void WORKER_YIELD(void)
+{
+  WQ_ASSERT_LOCKED();
+  WQ_STATELOG(WQS_YIELD);
+
+  /* We may want to start another worker */
+  if (wq->running < wq->max_workers)
+  {
+    /* Is it reasonable? */
+    if (SEM_TRYWAIT(&wq->available))
+      /* No, there is an available worker right now */
+      SEM_POST(&wq->available);
+    else
+      /* Yes, all workers are doing something */
+      worker_start();
+  }
+
+  SEM_POST(&wq->yield);
+}
+
+static inline void WORKER_CONTINUE(void)
+{
+  WQ_ASSERT_UNLOCKED();
+  SEM_WAIT(&wq->yield);
+  WQ_STATELOG(WQS_CONTINUE);
+}
+
+static _Thread_local struct timeloop worker_timeloop;
 
 struct domain {
   resource r;
@@ -232,9 +275,6 @@ _Thread_local static struct locked_domain {
   int write;
 } *locked_domains = NULL;
 _Thread_local static uint locked_max = 0, locked_cnt = 0;
-
-static void worker_start_temporary(void);
-static void worker_stop_temporary(void);
 
 struct domain *
 domain_new(pool *p)
@@ -371,14 +411,14 @@ domain_read_lock(struct domain *d)
     d->rdsem_n++;
     WDBG("-> Blocked (n=%u)\n", d->rdsem_n);
     DOMAIN_STATLOG(WQS_DOMAIN_RDLOCK_BLOCKED, d, NULL);
+    WORKER_YIELD();
     WQ_UNLOCK();
 
-    worker_start_temporary();
     /* Wait until somebody unblocks us.
      * That thread also locks the lock for us
      * before running SEM_POST(&d->rdsem), */
     SEM_WAIT(&d->rdsem);
-    worker_stop_temporary();
+    WORKER_CONTINUE();
   }
   else
   {
@@ -455,14 +495,14 @@ domain_write_lock(struct domain *d)
     d->wrsem_n++;
     WDBG("-> Blocked (n=%u)\n", d->wrsem_n);
     DOMAIN_STATLOG(WQS_DOMAIN_WRLOCK_BLOCKED, d, NULL);
+    WORKER_YIELD();
     WQ_UNLOCK();
 
-    worker_start_temporary();
     /* Wait until somebody unblocks us.
      * That thread also locks the lock for us
      * before running SEM_POST(&d->rdsem), */
     SEM_WAIT(&d->wrsem);
-    worker_stop_temporary();
+    WORKER_CONTINUE();
   }
   else
   {
@@ -478,10 +518,10 @@ domain_write_lock(struct domain *d)
   domain_push_lock(d, 1);
 }
 
-/* Called from WQ_LOCKED context only */
 static void
 domain_unlock_common(struct domain *d)
 {
+  WQ_ASSERT_LOCKED();
   if (d->wrtasks_n)
   {
     WDBG("-> There is a writer task waiting for us (n=%u)\n", d->wrtasks_n);
@@ -611,7 +651,8 @@ worker_loop(void *_data UNUSED)
     WQDUMP;
     SEM_WAIT(&wq->waiting);
     WDBG("Worker woken up\n");
-    
+    WORKER_CONTINUE();
+
     WQ_LOCK();
     WQLDUMP;
     /* Is there a pending task? */
@@ -653,6 +694,11 @@ worker_loop(void *_data UNUSED)
        * into the blocked list and will be released
        * when the lock is available. */
 
+      WDBG("Worker yielding\n");
+      WQ_LOCKED
+	WORKER_YIELD();
+
+      WDBG("Worker available\n");
       SEM_POST(&wq->available);
       continue;
     }
@@ -665,6 +711,9 @@ worker_loop(void *_data UNUSED)
       WDBG("Worker stopping\n");
       wq->stop--;
       wq->running--;
+
+      /* Let others work instead of us */
+      WORKER_YIELD();
       WQ_UNLOCK();
 
       /* This makes one worker less available */
@@ -681,109 +730,40 @@ worker_loop(void *_data UNUSED)
   wbug("This shall never happen");
 }
 
-static int
+static void
 worker_start(void)
 {
-  if (WQ_LOCKED_BOOL(wq->running >= wq->fork_limit))
-    return 1;
+  WQ_ASSERT_LOCKED();
+  ASSERT(wq->running < wq->max_workers);
 
   /* Run the thread */
   pthread_t id;
   int e = pthread_create(&id, NULL, worker_loop, NULL);
-  if ((wq->prefork == 0) && (e < 0))
-    wbug("Failed to start a worker: %m");
-
   if (e < 0)
-    return e;
+  {
+    if (wq->workers == 0) 
+      wbug("Failed to start a worker: %M", e);
+    else
+      log(L_WARN "Failed to start a worker: %M", e);
+
+    return;
+  }
 
   /* Detach the thread; we don't want to join the threads */
   e = pthread_detach(id);
   if (e < 0)
-    wbug("pthread_detach() failed: %m");
+    wbug("pthread_detach() failed: %M", e);
 
-  WQ_LOCKED
-    wq->running++;
-  return 0;
-}
-
-/* Start a thread */
-static void
-workers_start(uint count)
-{
-  uint i;
-  for (i=0; i<count; i++)
-    if (worker_start() != 0)
-      break;
-
-  WQ_LOCKED
-    wq->prefork += i;
-
-  /* If started only partially, log a warning */
-  if (i < count)
-    log(L_WARN "Failed to start a worker (%u of %u): %m", i, count);
-}
-
-/* Stop a number of threads. */
-static void
-workers_stop(uint count)
-{
-  for (uint i=0; i<count; i++)
-    WQ_LOCKED
-      TASK_STOP_WORKER;
-
-  for (uint i=0; i<count; i++)
-    SEM_WAIT(&wq->stopped);
-
-  WQ_LOCKED
-    wq->prefork -= count;
-}
-
-_Thread_local int temporary_worker_running = 0;
-static void
-worker_start_temporary(void)
-{
-  /* Is there an idle worker right now? */
-  if (SEM_TRYWAIT(&wq->available))
-  {
-    /* We won't spawn more, it doesn't make any sense. */
-    SEM_POST(&wq->available);
-    return;
-  }
-
-  int e = worker_start();
-  if (e == 0)
-  {
-    temporary_worker_running = 1;
-    return;
-  }
-  if (e == 1)
-    return;
-
-  log(L_WARN "Temporary worker start failed: %M", e);
-}
-
-static void
-worker_stop_temporary(void)
-{
-  if (!temporary_worker_running)
-    return;
-
-  temporary_worker_running = 0;
-  WQ_LOCKED
-  {
-    TASK_STOP_WORKER;
-    WQLDUMP;
-  }
-
-  SEM_WAIT(&wq->stopped);
+  wq->running++;
 }
 
 void
 worker_queue_init(void)
 {
   SEM_INIT(&wq->waiting, 0);
-  SEM_INIT(&wq->available, 0);
   SEM_INIT(&wq->stopped, 0);
+  SEM_INIT(&wq->yield, 0);
+  SEM_INIT(&wq->available, 0);
 
   pthread_spin_init(&wq->lock, 0);
 
@@ -796,38 +776,87 @@ worker_queue_init(void)
 void
 worker_queue_destroy(void)
 {
-  WQ_STATELOG(WQS_STOP);
-  workers_stop(wq->prefork);
-  WQ_STATELOG(WQS_STOP);
-  WQ_LOCKED
+  WQ_LOCK();
+
+  /* First stop all the workers. */
+  wq->max_workers = 0;
+  while (wq->running)
   {
-    ASSERT(EMPTY_LIST(wq->pending));
-    ASSERT(wq->running == 0);
-    ASSERT(wq->prefork == 0);
-    ASSERT(wq->stop == 0);
+    TASK_STOP_WORKER;
+    WORKER_YIELD();
+    WQ_UNLOCK();
+    SEM_WAIT(&wq->stopped);
+    WORKER_CONTINUE();
+    WQ_LOCK();
   }
 
+  ASSERT(wq->stop == 0);
+
+  /* Worker stops only when there is no task so now there
+   * should be no task pending at all. */
+  ASSERT(EMPTY_LIST(wq->pending));
+
+  /* All the workers but one should also have yielded. The last one is us. */
+  while (--wq->workers)
+    ASSERT(SEM_TRYWAIT(&wq->yield));
+
+  /* Nobody is using the queue now. Cleanup the resources. */
   SEM_DESTROY(&wq->waiting);
-  SEM_DESTROY(&wq->available);
   SEM_DESTROY(&wq->stopped);
+  SEM_DESTROY(&wq->yield);
+  SEM_DESTROY(&wq->available);
 
   pthread_spin_destroy(&wq->lock);
 }
 
-
+/* Configured worker pool change */
 void
 worker_queue_update(const struct config *c)
 {
+  /* Check whether the values are sane */
   ASSERT(c->max_workers >= c->workers);
-  wq->fork_limit = c->max_workers;
-  /* FIXME: Apply the new limit immediately */
+  ASSERT(c->workers > 0);
 
-  if (c->workers > wq->prefork)
-    workers_start(c->workers - wq->prefork);
-  else if (c->workers < wq->prefork)
-    workers_stop(wq->prefork - c->workers);
-  else /* c->workers == wq->prefork */
-    wdebug("Worker count kept the same\n");
+  WQ_LOCK();
+  if ((c->workers == wq->workers) && (c->max_workers == wq->max_workers))
+  {
+    /* No change at all */
+    WQ_UNLOCK();
+    return;
+  }
+
+  /* Reduction of concurrent running workers */
+  while (c->workers < wq->workers)
+  {
+    WQ_UNLOCK();
+    /* Wait until a worker yields */
+    SEM_WAIT(&wq->yield);
+    WQ_LOCK();
+    wq->workers--;
+  }
+
+  /* Set the new maximum */
+  wq->max_workers = c->max_workers;
+
+  /* Reduction of really running workers */
+  while (wq->max_workers < wq->running)
+  {
+    TASK_STOP_WORKER;
+    WQ_UNLOCK();
+    SEM_WAIT(&wq->stopped);
+    WQ_LOCK();
+  }
+
+  /* Increase of concurrent running workers */
+  while (c->workers > wq->workers)
+  {
+    SEM_POST(&wq->yield);
+    wq->workers++;
+  }
+
+  /* On startup, start at least one worker */
+  worker_start();
+  WQ_UNLOCK();
 }
 
 void
@@ -838,8 +867,13 @@ task_push(struct task *t)
 
   WDBG("Task push\n");
 
-  /* Idempotency. */
   WQ_LOCK();
+
+  /* Stopping, won't accept tasks */
+  if (wq->max_workers == 0)
+    return;
+
+  /* Idempotency. */
   WQLDUMP;
   if (t->n.prev && t->n.next)
   {
@@ -873,19 +907,12 @@ task_push(struct task *t)
     /* No available worker. We're going to sleep.
      * Anyway, the task still exists in the queue. */
     TASK_APPEND(t);
+    WORKER_YIELD();
     WQ_UNLOCK();
-
-    WDBG("Starting a temporary worker\n");
-    worker_start_temporary();
 
     /* Wait until somebody picks the task up */
     SEM_WAIT(&wq->available);
-
-    /* Order one worker stop */
-    WDBG("Ordering a temporary worker stop\n");
-    worker_stop_temporary();
-
-    WDBG("Temporary worker stopped, resuming normal operation\n");
+    WORKER_CONTINUE();
     return;
   }
 }
