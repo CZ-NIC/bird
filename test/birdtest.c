@@ -4,12 +4,14 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#include <inttypes.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <sys/ioctl.h>
@@ -48,6 +50,8 @@ const char *bt_test_id;
 int bt_result;			/* Overall program run result */
 int bt_suite_result;		/* One suit result */
 char bt_out_fmt_buf[1024];	/* Temporary memory buffer for output of testing function */
+
+struct timespec bt_begin, bt_suite_begin, bt_suite_case_begin;
 
 u64 bt_random_state[] = {
   0x80241f302bd4d95d, 0xd10ba2e910f772b, 0xea188c9046f507c5, 0x4c4c581f04e6da05,
@@ -111,6 +115,8 @@ bt_init(int argc, char *argv[])
     int rv = setrlimit(RLIMIT_CORE, &rl);
     bt_syscall(rv < 0, "setrlimit RLIMIT_CORE");
   }
+
+  clock_gettime(CLOCK_MONOTONIC, &bt_begin);
 
   return;
 
@@ -187,16 +193,19 @@ get_num_terminal_cols(void)
  * levels.
  */
 static void
-bt_log_result(int result, const char *fmt, va_list argptr)
+bt_log_result(int result, u64 time, const char *fmt, va_list argptr)
 {
   static char msg_buf[BT_BUFFER_SIZE];
   char *pos;
 
-  snprintf(msg_buf, sizeof(msg_buf), "%s%s%s%s",
+  snprintf(msg_buf, sizeof(msg_buf), "%s%s%s%s %" PRIu64 ".%09" PRIu64 "s",
 	   bt_filename,
 	   bt_test_id ? ": " : "",
 	   bt_test_id ? bt_test_id : "",
-	   (fmt && strlen(fmt) > 0) ? ": " : "");
+	   (fmt && strlen(fmt) > 0) ? ": " : "",
+	   time / 1000000000,
+	   time % 1000000000
+	   );
   pos = msg_buf + strlen(msg_buf);
 
   if (fmt)
@@ -234,6 +243,15 @@ bt_log_result(int result, const char *fmt, va_list argptr)
     abort();
 }
 
+static u64
+get_time_diff(struct timespec *begin)
+{
+  struct timespec end;
+  clock_gettime(CLOCK_MONOTONIC, &end);
+  return (end.tv_sec - begin->tv_sec) * 1000000000ULL
+    + end.tv_nsec - begin->tv_nsec;
+}
+
 /**
  * bt_log_overall_result - pretty print of suite case result
  * @result: 1 or 0
@@ -247,7 +265,7 @@ bt_log_overall_result(int result, const char *fmt, ...)
 {
   va_list argptr;
   va_start(argptr, fmt);
-  bt_log_result(result, fmt, argptr);
+  bt_log_result(result, get_time_diff(&bt_begin), fmt, argptr);
   va_end(argptr);
 }
 
@@ -262,11 +280,11 @@ bt_log_overall_result(int result, const char *fmt, ...)
 void
 bt_log_suite_result(int result, const char *fmt, ...)
 {
-  if(bt_verbose >= BT_VERBOSE_SUITE || !result)
+  if (bt_verbose >= BT_VERBOSE_SUITE || !result)
   {
     va_list argptr;
     va_start(argptr, fmt);
-    bt_log_result(result, fmt, argptr);
+    bt_log_result(result, get_time_diff(&bt_suite_begin), fmt, argptr);
     va_end(argptr);
   }
 }
@@ -286,7 +304,7 @@ bt_log_suite_case_result(int result, const char *fmt, ...)
   {
     va_list argptr;
     va_start(argptr, fmt);
-    bt_log_result(result, fmt, argptr);
+    bt_log_result(result, get_time_diff(&bt_suite_case_begin), fmt, argptr);
     va_end(argptr);
   }
 }
@@ -319,6 +337,8 @@ bt_test_suite_base(int (*fn)(const void *), const char *id, const void *fn_arg, 
 
   if (bt_verbose >= BT_VERBOSE_ABSOLUTELY_ALL)
     bt_log("Starting");
+
+  clock_gettime(CLOCK_MONOTONIC, &bt_suite_begin);
 
   if (!forked)
   {
@@ -397,6 +417,9 @@ bt_assert_batch__(struct bt_batch *opts)
   int i;
   for (i = 0; i < opts->ndata; i++)
   {
+    if (bt_verbose >= BT_VERBOSE_SUITE)
+      clock_gettime(CLOCK_MONOTONIC, &bt_suite_case_begin);
+
     int bt_suit_case_result = opts->test_fn(opts->out_buf, opts->data[i].in, opts->data[i].out);
 
     if (bt_suit_case_result == 0)
