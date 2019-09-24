@@ -24,11 +24,13 @@ struct t_rwlock_task {
 static void t_rwlock_execute(struct task *task)
 {
   struct t_rwlock_task *t = SKIP_BACK(struct t_rwlock_task, task, task);
-  switch (t->howtolock) {
-    case T_READ: domain_read_lock(t->domain);
-		 break;
-    case T_WRITE: domain_write_lock(t->domain);
-  }
+
+  if (t->domain)
+    switch (t->howtolock) {
+      case T_READ: domain_read_lock(t->domain);
+		   break;
+      case T_WRITE: domain_write_lock(t->domain);
+    }
 
   uint tot = atomic_fetch_add(t->total_counter, 1);
 
@@ -38,11 +40,12 @@ static void t_rwlock_execute(struct task *task)
 
   atomic_store(t->sink, tot);
 
-  switch (t->howtolock) {
-    case T_READ: domain_read_unlock(t->domain);
-		 break;
-    case T_WRITE: domain_write_unlock(t->domain);
-  }
+  if (t->domain)
+    switch (t->howtolock) {
+      case T_READ: domain_read_unlock(t->domain);
+		   break;
+      case T_WRITE: domain_write_unlock(t->domain);
+    }
 
   bt_info("Total counter: %u\n", tot);
   uint prev = atomic_fetch_sub(t->allocated, 1);
@@ -52,7 +55,7 @@ static void t_rwlock_execute(struct task *task)
 
 struct t_rwlock_class {
   uint workers, max_workers;
-  uint readers, writers;
+  uint rp, wp, rs, ws;
 };
 
 static int
@@ -71,17 +74,27 @@ t_rwlock(const void *data_)
   _Atomic uint total_counter = 0;
   _Atomic uint allocated = 0;
   _Atomic uint sink;
-  for (int i=0; i<TEST_MAX; i++)
-  {
-    int write = (i % (class->readers + class->writers) >= class->readers);
+  uint ws = class->ws;
+  uint rs = ws + class->rs;
+  uint wp = rs + class->wp;
+  uint rp = wp + class->rp;
 
+  for (uint i=0; i<TEST_MAX; i++)
+  {
     atomic_fetch_add(&allocated, 1);
     struct t_rwlock_task *t = xmalloc(sizeof(struct t_rwlock_task));
+
+    uint pivot = ((i*1234568579) % rp);
+    uint primary = pivot >= rs;
+    uint write = (pivot < ws) || (primary && pivot < wp);
+
     *t = (struct t_rwlock_task) {
       .task = {
 	.execute = t_rwlock_execute,
+	.domain = primary ? domain : NULL,
+	.flags = write ? TF_EXCLUSIVE : 0,
       },
-      .domain = domain,
+      .domain = primary ? NULL : domain,
       .total_counter = &total_counter,
       .allocated = &allocated,
       .sink = &sink,
@@ -107,31 +120,41 @@ int main(int argc, char *argv[])
   bt_init(argc, argv);
   bt_bird_init();
 
-#define TEST(workers_, max_workers_, readers_, writers_) \
+#define TEST(workers_, max_workers_, rp_, wp_, rs_, ws_) \
   do { \
     struct t_rwlock_class class = { \
       .workers = workers_, .max_workers = max_workers_, \
-      .readers = readers_, .writers = writers_, \
+      .rs = rs_, .ws = ws_, .wp = wp_, .rp = rp_, \
     }; \
     bt_test_suite_base(t_rwlock, "t_rwlock workers=" #workers_ " max_workers=" #max_workers_ \
-       " readers=" #readers_ " writers=" #writers_, &class, BT_FORKING, BT_TIMEOUT, "t_rwlock"); \
+       " rp=" #rp_ " wp=" #wp_ " rs=" #rs_ " ws=" #ws_, \
+       &class, BT_FORKING, BT_TIMEOUT, "t_rwlock"); \
   } while (0)
 
-  TEST(1, 1, 1, 0);
-  TEST(1, 1, 0, 1);
-  TEST(1, 5, 1, 0);
-  TEST(1, 5, 0, 1);
-  TEST(2, 2, 1, 0);
-  TEST(2, 2, 0, 1);
-  TEST(2, 2, 1, 1);
-  TEST(2, 8, 1, 7);
-  TEST(2, 8, 7, 1);
-  TEST(8, 16, 1, 0);
-  TEST(8, 16, 0, 1);
+#define TEST_ALL_ONES(workers_, max_workers_) \
+  do { \
+    TEST(workers_, max_workers_, 1, 0, 0, 0); \
+    TEST(workers_, max_workers_, 0, 1, 0, 0); \
+    TEST(workers_, max_workers_, 0, 0, 1, 0); \
+    TEST(workers_, max_workers_, 0, 0, 0, 1); \
+    TEST(workers_, max_workers_, 1, 1, 0, 0); \
+    TEST(workers_, max_workers_, 0, 1, 1, 0); \
+    TEST(workers_, max_workers_, 0, 0, 1, 1); \
+    TEST(workers_, max_workers_, 1, 0, 0, 1); \
+    TEST(workers_, max_workers_, 0, 1, 0, 1); \
+    TEST(workers_, max_workers_, 1, 0, 1, 0); \
+    TEST(workers_, max_workers_, 0, 1, 1, 1); \
+    TEST(workers_, max_workers_, 1, 0, 1, 1); \
+    TEST(workers_, max_workers_, 1, 1, 0, 1); \
+    TEST(workers_, max_workers_, 1, 1, 1, 0); \
+    TEST(workers_, max_workers_, 1, 1, 1, 1); \
+  } while (0)
 
-  TEST(8, 16, 1, 1);
-  TEST(8, 16, 1, 7);
-  TEST(8, 16, 7, 1);
+  TEST_ALL_ONES(1, 1);
+  TEST_ALL_ONES(1, 5);
+  TEST_ALL_ONES(2, 2);
+  TEST_ALL_ONES(2, 8);
+  TEST_ALL_ONES(8, 16);
 
   return bt_exit_value();
 }
