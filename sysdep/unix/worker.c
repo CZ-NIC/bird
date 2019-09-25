@@ -1,7 +1,7 @@
 #undef LOCAL_DEBUG
 //#define LOCAL_DEBUG
 #undef DEBUG_STATELOG
-#define DEBUG_STATELOG
+//#define DEBUG_STATELOG
 
 #include "nest/bird.h"
 #include "lib/macro.h"
@@ -18,12 +18,12 @@
 #include <pthread.h>
 #include <unistd.h>
 
-static _Atomic u64 max_worker_id = 1;
+#include <urcu.h>
+
+static volatile _Atomic u64 max_worker_id = 1;
 static _Thread_local u64 worker_id;
 
 #define WDBG(x, y...) DBG("(W%4lu): " x, worker_id, ##y)
-#define WQLDUMP WDBG("WQ:T%4lu|S%4lu\n", list_length(&wq->pending), wq->stop)
-#define WQDUMP do { WQ_LOCKED WQLDUMP; } while (0)
 #define wdie(x, y...) die("(W%4lu): " x, worker_id, ##y)
 #define wbug(x, y...) bug("(W%4lu): " x, worker_id, ##y)
 #define wdebug(x, y...) debug("(W%4lu): " x, worker_id, ##y)
@@ -38,14 +38,14 @@ static struct worker_queue {
   sem_t stopped;		/* Posted on worker stopped */
   sem_t yield;			/* Keeps the right number of workers running */
   sem_t available;		/* How many workers are currently free */
-  pthread_spinlock_t lock;	/* Lock for the following values */
+  volatile _Atomic u64 lock;	/* Simple spinlock */
   list pending;			/* Tasks pending */
   uint running;			/* How many workers are really running */
   uint workers;			/* Allowed number of concurrent workers */
   uint max_workers;		/* Maximum count of workers incl. sleeping */
   uint stop;			/* Stop requests */
 #ifdef DEBUG_STATELOG
-  _Atomic u64 statelog_pos;	/* Current position in statelog */
+  volatile _Atomic u64 statelog_pos;	/* Current position in statelog */
   struct worker_queue_state {
     u64 worker_id;
     PACKED enum {
@@ -85,7 +85,6 @@ static struct worker_queue {
     };
   } statelog[STATELOG_SIZE_];
 #endif
-  _Atomic u64 spinlock_owner;
 } wq_, *wq = &wq_;
 
 #ifdef DEBUG_STATELOG
@@ -96,13 +95,18 @@ static struct worker_queue {
 #define WQ_STATELOG(...)
 #endif
 
-const u64 noworker = ~0ULL;
+#define NOWORKER (~0ULL)
+
 static inline void WQ_LOCK(void)
 {
-  pthread_spin_lock(&(wq->lock));
+  while (1)
+  {
+    u64 noworker = NOWORKER;
+    if (atomic_compare_exchange_weak_explicit(&wq->lock, &noworker, worker_id, memory_order_acq_rel, memory_order_acquire))
+      break;
 
-  if (!atomic_compare_exchange_strong(&wq->spinlock_owner, &noworker, worker_id))
-    wbug("The spinlock shall be unlocked!");
+    caa_cpu_relax();
+  }
 
   WQ_STATELOG(WQS_LOCK,
       .queue = {
@@ -114,13 +118,13 @@ static inline void WQ_LOCK(void)
 
 static inline void WQ_ASSERT_LOCKED(void)
 {
-  if (atomic_load(&wq->spinlock_owner) != worker_id)
+  if (atomic_load(&wq->lock) != worker_id)
     wbug("The spinlock shall be locked!");
 }
 
 static inline void WQ_ASSERT_UNLOCKED(void)
 {
-  if (atomic_load(&wq->spinlock_owner) == worker_id)
+  if (atomic_load(&wq->lock) == worker_id)
     wbug("The spinlock shan't be locked by us!");
 }
 
@@ -133,10 +137,9 @@ static inline void WQ_UNLOCK(void)
 	.stop = wq->stop,
       });
 
-  if (!atomic_compare_exchange_strong(&wq->spinlock_owner, &worker_id, noworker))
-    wbug("The spinlock shall be locked!");
-
-  pthread_spin_unlock(&(wq->lock));
+  u64 expected = worker_id;
+  if (!atomic_compare_exchange_strong_explicit(&wq->lock, &expected, NOWORKER, memory_order_acq_rel, memory_order_acquire))
+    wbug("The spinlock is locked by %lu but shall be locked by %lu!", expected, worker_id);
 }
 
 #define WQ_LOCKED MACRO_PACK_BEFORE_AFTER(WQ_LOCK(), WQ_UNLOCK())
@@ -663,19 +666,20 @@ worker_loop(void *_data UNUSED)
 
   worker_id = atomic_fetch_add(&max_worker_id, 1);
 
+  /* It shall be completely impossible to count up to 2**64 workers */
+  ASSERT(worker_id < NOWORKER);
+
   WDBG("Worker started\n");
   SEM_POST(&wq->available);
  
   /* Run the loop */
   while (1) {
     WDBG("Worker waiting\n");
-    WQDUMP;
     SEM_WAIT(&wq->waiting);
     WDBG("Worker woken up\n");
     WORKER_CONTINUE();
 
     WQ_LOCK();
-    WQLDUMP;
     /* Is there a pending task? */
     if (!EMPTY_LIST(wq->pending))
     {
@@ -788,11 +792,9 @@ worker_queue_init(void)
   SEM_INIT(&wq->yield, 0);
   SEM_INIT(&wq->available, 0);
 
-  pthread_spin_init(&wq->lock, 0);
-
   init_list(&wq->pending);
 
-  atomic_store(&wq->spinlock_owner, ~0ULL);
+  atomic_store(&wq->lock, NOWORKER);
 #ifdef DEBUG_STATELOG
   atomic_store(&wq->statelog_pos, 0);
 #endif
@@ -833,8 +835,6 @@ worker_queue_destroy(void)
   SEM_DESTROY(&wq->stopped);
   SEM_DESTROY(&wq->yield);
   SEM_DESTROY(&wq->available);
-
-  pthread_spin_destroy(&wq->lock);
 }
 
 /* Configured worker pool change */
@@ -902,7 +902,6 @@ task_push(struct task *t)
     return;
 
   /* Idempotency. */
-  WQLDUMP;
   if (t->n.prev && t->n.next)
   {
     /* If already pushed, do nothing. */
