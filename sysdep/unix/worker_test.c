@@ -17,8 +17,9 @@ struct t_rwlock_task {
   struct domain *domain;
   enum { T_READ, T_WRITE } howtolock;
   _Atomic uint *total_counter;
-  _Atomic uint *sink;
   _Atomic uint *allocated;
+  uint sink;
+  uint frobnicator[42];
 };
 
 static void t_rwlock_execute(struct task *task)
@@ -35,10 +36,12 @@ static void t_rwlock_execute(struct task *task)
   uint tot = atomic_fetch_add(t->total_counter, 1);
 
   /* Spin for some time to mimic some reasonable work */
-  for (int i=0; i<4096; i++)
-    tot += i;
+  for (uint i=0; i<42; i++)
+    t->frobnicator[i] = (i+1) * (2*i + 1) * 3535353559;
 
-  atomic_store(t->sink, tot);
+  for (uint i=0; i<42; i++)
+    for (uint j=0; j<42; j++)
+      t->sink += (t->frobnicator[i] ^= -t->frobnicator[j]) * 3535353559;
 
   if (t->domain)
     switch (t->howtolock) {
@@ -73,7 +76,6 @@ t_rwlock(const void *data_)
   struct domain *domain = domain_new(&root_pool);
   _Atomic uint total_counter = 0;
   _Atomic uint allocated = 0;
-  _Atomic uint sink;
   uint ws = class->ws;
   uint rs = ws + class->rs;
   uint wp = rs + class->wp;
@@ -97,7 +99,6 @@ t_rwlock(const void *data_)
       .domain = primary ? NULL : domain,
       .total_counter = &total_counter,
       .allocated = &allocated,
-      .sink = &sink,
       .howtolock = write ? T_WRITE : T_READ,
     };
     bt_info("Task pushed (before)\n");
