@@ -1,5 +1,7 @@
-//#define LOCAL_DEBUG
 #undef LOCAL_DEBUG
+//#define LOCAL_DEBUG
+#undef DEBUG_STATELOG
+#define DEBUG_STATELOG
 
 #include "nest/bird.h"
 #include "lib/macro.h"
@@ -15,10 +17,6 @@
 #include <stdatomic.h>
 #include <pthread.h>
 #include <unistd.h>
-
-#ifdef LOCAL_DEBUG
-#define DEBUG_STATELOG
-#endif
 
 static _Atomic u64 max_worker_id = 1;
 static _Thread_local u64 worker_id;
@@ -57,7 +55,8 @@ static struct worker_queue {
       WQS_YIELD,
       WQS_CONTINUE,
       WQS_SEM_POST,
-      WQS_SEM_WAIT,
+      WQS_SEM_WAIT_REQUEST,
+      WQS_SEM_WAIT_SUCCESS,
       WQS_SEM_TRYWAIT_SUCCESS,
       WQS_SEM_TRYWAIT_BLOCKED,
       WQS_DOMAIN_WRLOCK_REQUEST,
@@ -151,13 +150,14 @@ static inline void SEM_INIT(sem_t *s, uint val)
 
 static inline void SEM_WAIT(sem_t *s)
 {
+  WQ_STATELOG(WQS_SEM_WAIT_REQUEST, .sem = s);
   while (sem_wait(s) < 0) {
     if (errno == EINTR)
       continue;
     wdie("sem_wait: %m");
   }
 
-  WQ_STATELOG(WQS_SEM_WAIT, .sem = s);
+  WQ_STATELOG(WQS_SEM_WAIT_SUCCESS, .sem = s);
 }
 
 static inline int SEM_TRYWAIT(sem_t *s)
@@ -194,9 +194,12 @@ static inline void SEM_DESTROY(sem_t *s)
 
 static void worker_start(void);
 
+static _Thread_local int worker_sleeping = 1;
+
 static inline void WORKER_YIELD(void)
 {
   WQ_ASSERT_LOCKED();
+  ASSERT(!worker_sleeping);
   WQ_STATELOG(WQS_YIELD);
 
   /* We may want to start another worker */
@@ -212,12 +215,15 @@ static inline void WORKER_YIELD(void)
   }
 
   SEM_POST(&wq->yield);
+  worker_sleeping = 1;
 }
 
 static inline void WORKER_CONTINUE(void)
 {
   WQ_ASSERT_UNLOCKED();
+  ASSERT(worker_sleeping);
   SEM_WAIT(&wq->yield);
+  worker_sleeping = 0;
   WQ_STATELOG(WQS_CONTINUE);
 }
 
@@ -238,10 +244,11 @@ struct domain {
   uint wrlocked:1;	/* If a writer is locked */
 };
 
-#define TASK_PREPEND(t) do { \
+#define TASK_PREPEND(d, t) do { \
   t->flags |= TF_PREPENDED; \
   add_head(&wq->pending, &((t)->n)); \
   SEM_POST(&wq->waiting); \
+  d->prepended++; \
 } while (0)
 
 #define TASK_APPEND(t) do { \
@@ -542,15 +549,16 @@ domain_unlock_common(struct domain *d)
 
     /* Lock the domain now */
     d->wrlocked = 1;
-    d->prepended++;
 
     /* Get the task */
     struct task *t = HEAD(d->wrtasks);
     rem_node(&t->n);
-    d->wrtasks_n--;
 
     /* Prepend the task */
-    TASK_PREPEND(t);
+    TASK_PREPEND(d, t);
+
+    /* Lower the wrtasks_n counter */
+    d->wrtasks_n--;
   }
   else if (d->wrsem_n)
   {
@@ -625,7 +633,8 @@ domain_write_unlock(struct domain *d)
     WALK_LIST_BACKWARDS_DELSAFE(t, tt, d->rdtasks)
     {
       rem_node(&t->n);
-      TASK_PREPEND(t);
+      TASK_PREPEND(d, t);
+      check++;
     }
 
     if (check != d->rdtasks_n || !EMPTY_LIST(d->rdtasks))
@@ -675,31 +684,30 @@ worker_loop(void *_data UNUSED)
       rem_node(&t->n);
       WQ_UNLOCK();
 
-      /* Store the old flags */
+      /* Store the old flags and domain */
       enum task_flags tf = t->flags;
+      int prepended = tf & TF_PREPENDED;
+      struct domain *d = t->domain;
 
       /* Does the task need a lock? */
-      if (!t->domain)
+      if (!d)
 	/* No. Just run it. */
 	t->execute(t);
       /* It needs a lock. Is it available? */
       else if (tf & TF_EXCLUSIVE ?
-	    domain_write_lock_primary(t->domain, t) :
-	    domain_read_lock_primary(t->domain, t))
+	    domain_write_lock_primary(d, t) :
+	    domain_read_lock_primary(d, t))
       {
 	/* Yes. Run it! */
 	t->execute(t);
 
 	/* And unlock to let others to the domain */
 	tf & TF_EXCLUSIVE ?
-	  domain_write_unlock(t->domain) :
-	  domain_read_unlock(t->domain);
+	  domain_write_unlock(d) :
+	  domain_read_unlock(d);
 
-	/* If this task was prepended, the available semaphore was not waited for */
-	if (tf & TF_PREPENDED)
-	  continue;
       }
-      else if (tf & TF_PREPENDED)
+      else if (prepended)
 	wbug("The prepended task shall never block on lock");
 
       /* Else: Unavailable. The task has been stored
@@ -710,9 +718,12 @@ worker_loop(void *_data UNUSED)
       WQ_LOCKED
 	WORKER_YIELD();
 
-      WDBG("Worker available\n");
-      SEM_POST(&wq->available);
-      continue;
+      /* If this task was prepended, the available semaphore was not waited for */
+      if (!prepended)
+      {
+	WDBG("Worker available\n");
+	SEM_POST(&wq->available);
+      }
     }
     else
     {
@@ -785,6 +796,9 @@ worker_queue_init(void)
 #ifdef DEBUG_STATELOG
   atomic_store(&wq->statelog_pos, 0);
 #endif
+
+  worker_sleeping = 0;
+  wq->workers = 1;
 }
 
 void
