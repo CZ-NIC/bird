@@ -153,6 +153,10 @@ prepare: $(objdir)/sysdep/paths.h | $(objdir)/.dir-stamp
 $(objdir)/.dir-stamp: Makefile
 	$(E)echo MKDIR -p $(addprefix $(objdir)/,$(dirs) doc)
 	$(Q)mkdir -p $(addprefix $(objdir)/,$(dirs) doc)
+	$(E)echo RM -f $(objdir)/sysdep/arch
+	$(Q)rm -f $(objdir)/sysdep/arch
+	$(E)echo LN -s $(srcdir)/sysdep/@bird_target_cpu@ $(objdir)/sysdep/arch
+	$(Q)ln -s $$(readlink -f $(srcdir)/sysdep/@bird_target_cpu@) $(objdir)/sysdep/arch
 	$(Q)touch $@
 
 $(client) $(daemon):

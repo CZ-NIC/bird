@@ -103,6 +103,16 @@ AC_SEARCH_LIBS([clock_gettime], [rt posix4],
 )
 
 AC_CANONICAL_HOST
+AC_CANONICAL_TARGET
+
+if test -d "sysdep/$target_cpu" ; then
+  bird_target_cpu="$target_cpu"
+else
+  AC_MSG_NOTICE([Target CPU not known, disabling architecture tweaks: $target_cpu])
+  bird_target_cpu=generic-arch
+fi
+
+AC_SUBST([bird_target_cpu])
 
 # Store this value because ac_test_CFLAGS is overwritten by AC_PROG_CC
 if test "$ac_test_CFLAGS" != set ; then
@@ -457,6 +467,7 @@ AC_OUTPUT
 
 AC_MSG_RESULT()
 AC_MSG_RESULT([BIRD was configured with the following options:])
+AC_MSG_RESULT([        Target CPU:		$target_cpu])
 AC_MSG_RESULT([        Source directory:	$srcdir])
 AC_MSG_RESULT([        Object directory:	$objdir])
 AC_MSG_RESULT([        Iproute2 directory:	$iproutedir])
