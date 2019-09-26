@@ -18,7 +18,7 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#include <urcu.h>
+#include "sysdep/arch/asm.h"
 
 static volatile _Atomic u64 max_worker_id = 1;
 static _Thread_local u64 worker_id;
@@ -105,7 +105,7 @@ static inline void WQ_LOCK(void)
     if (atomic_compare_exchange_weak_explicit(&wq->lock, &noworker, worker_id, memory_order_acq_rel, memory_order_acquire))
       break;
 
-    caa_cpu_relax();
+    CPU_RELAX();
   }
 
   WQ_STATELOG(WQS_LOCK,

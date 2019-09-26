@@ -46,6 +46,7 @@ static inline int uint_cmp(uint i1, uint i2)
 static inline int u64_cmp(u64 i1, u64 i2)
 { return (int)(i1 > i2) - (int)(i1 < i2); }
 
+#define TARGET_ARCH_INCLUDE_PATH(file) "sysdep/" TARGET_CPU file
 
 /* Bitfield macros */
 
