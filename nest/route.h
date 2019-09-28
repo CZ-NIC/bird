@@ -652,6 +652,7 @@ void rta_dump(rta *);
 void rta_dump_all(void);
 void rta_show(struct cli *, rta *);
 
+u32 rt_get_igp_metric(rte *rt);
 struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
 void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls);
 

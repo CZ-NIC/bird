@@ -30,7 +30,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	GRACEFUL, RESTART, AWARE, CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY,
 	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6, LONG,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL,
-	DYNAMIC, RANGE, NAME, DIGITS)
+	DYNAMIC, RANGE, NAME, DIGITS, BGP_AIGP, AIGP, ORIGINATE, COST)
 
 %type <i> bgp_nh
 %type <i32> bgp_afi
@@ -227,6 +227,7 @@ bgp_channel_start: bgp_afi
     BGP_CC->gr_able = 0xff;	/* undefined */
     BGP_CC->llgr_able = 0xff;	/* undefined */
     BGP_CC->llgr_time = ~0U;	/* undefined */
+    BGP_CC->aigp = 0xff;	/* undefined */
   }
 };
 
@@ -256,6 +257,9 @@ bgp_channel_item:
  | ADD PATHS bool { BGP_CC->add_path = $3 ? BGP_ADD_PATH_FULL : 0; }
  | IMPORT TABLE bool { BGP_CC->import_table = $3; }
  | EXPORT TABLE bool { BGP_CC->export_table = $3; }
+ | AIGP bool { BGP_CC->aigp = $2; BGP_CC->aigp_originate = 0; }
+ | AIGP ORIGINATE { BGP_CC->aigp = 1; BGP_CC->aigp_originate = 1; }
+ | COST expr { BGP_CC->cost = $2; if ($2 < 1) cf_error("Cost must be positive"); }
  | IGP TABLE rtable {
     if (BGP_CC->desc->no_igp)
       cf_error("IGP table not allowed here");
@@ -312,6 +316,8 @@ dynamic_attr: BGP_CLUSTER_LIST
 	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_CLUSTER_LIST)); } ;
 dynamic_attr: BGP_EXT_COMMUNITY
 	{ $$ = f_new_dynamic_attr(EAF_TYPE_EC_SET, T_ECLIST, EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY)); } ;
+dynamic_attr: BGP_AIGP
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_AIGP)); } ;
 dynamic_attr: BGP_LARGE_COMMUNITY
 	{ $$ = f_new_dynamic_attr(EAF_TYPE_LC_SET, T_LCLIST, EA_CODE(PROTOCOL_BGP, BA_LARGE_COMMUNITY)); } ;
 

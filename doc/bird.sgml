@@ -2161,6 +2161,7 @@ avoid routing loops.
 <item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
 <item> <rfc id="6608"> - Subcodes for BGP Finite State Machine Error
 <item> <rfc id="6793"> - BGP Support for 4-Octet AS Numbers
+<item> <rfc id="7311"> - Accumulated IGP Metric Attribute for BGP
 <item> <rfc id="7313"> - Enhanced Route Refresh Capability for BGP
 <item> <rfc id="7606"> - Revised Error Handling for BGP UPDATE Messages
 <item> <rfc id="7911"> - Advertisement of Multiple Paths in BGP
@@ -2739,6 +2740,36 @@ be used in explicit configuration.
 	TX direction. When active, all available routes accepted by the export
 	filter are advertised to the neighbor. Default: off.
 
+	<tag><label id="bgp-aigp">aigp <m/switch/|originate</tag>
+	The BGP protocol does not use a common metric like other routing
+	protocols, instead it uses a set of criteria for route selection
+	consisting both overall AS path length and a distance to the nearest AS
+	boundary router. Assuming that metrics of different autonomous systems
+	are incomparable, once a route is propagated from an AS to a next one,
+	the distance in the old AS does not matter.
+
+	The AIGP extension (<rfc id="7311">) allows to propagate accumulated
+	IGP metric (in the AIGP attribute) through both IBGP and EBGP links,
+	computing total distance through multiple autonomous systems (assuming
+	they use comparable IGP metric). The total AIGP metric is compared in
+	the route selection process just after Local Preference comparison (and
+	before AS path length comparison).
+
+	This option controls whether AIGP attribute propagation is allowed on
+	the session. Optionally, it can be set to <cf/originate/, which not only
+	allows AIGP attribute propagation, but also new AIGP attributes are
+	automatically attached to non-BGP routes with valid IGP metric (e.g.
+	<cf/ospf_metric1/) as they are exported to the BGP session. Default:
+	enabled for IBGP (and intra-confederation EBGP), disabled for regular
+	EBGP.
+
+	<tag><label id="bgp-cost">cost <m/number/</tag>
+	When BGP <ref id="bgp-gateway" name="gateway mode"> is <cf/recursive/
+	(mainly multihop IBGP sessions), then the distance to BGP next hop is
+	based on underlying IGP metric. This option specifies the distance to
+	BGP next hop for BGP sessions in direct gateway mode (mainly direct
+	EBGP sessions).
+
 	<tag><label id="bgp-graceful-restart-c">graceful restart <m/switch/</tag>
 	Although BGP graceful restart is configured mainly by protocol-wide
 	<ref id="bgp-graceful-restart" name="options">, it is possible to
@@ -2807,9 +2838,11 @@ some of them (marked with `<tt/O/') are optional.
 	presence of which indicates that the route has been aggregated from
 	multiple routes by some router on the path from the originator.
 
-<!-- we don't handle aggregators right since they are of a very obscure type
-	<tag>bgp_aggregator</tag>
--->
+	<tag><label id="rta-bgp-aggregator">void bgp_aggregator [O]</tag>
+	This is an optional attribute specifying AS number and IP address of the
+	BGP router that created the route by aggregating multiple BGP routes.
+	Currently, the attribute is not accessible from filters.
+
 	<tag><label id="rta-bgp-community">clist bgp_community [O]</tag>
 	List of community values associated with the route. Each such value is a
 	pair (represented as a <cf/pair/ data type inside the filters) of 16-bit
@@ -2844,6 +2877,11 @@ some of them (marked with `<tt/O/') are optional.
 	<tag><label id="rta-bgp-cluster-list">clist bgp_cluster_list [I, O]</tag>
 	This attribute contains a list of cluster IDs of route reflectors. Each
 	route reflector prepends its cluster ID when reflecting the route.
+
+	<tag><label id="rta-bgp-aigp">void bgp_aigp [O]</tag>
+	This attribute contains accumulated IGP metric, which is a total
+	distance to the destination through multiple autonomous systems.
+	Currently, the attribute is not accessible from filters.
 </descrip>
 
 <sect1>Example

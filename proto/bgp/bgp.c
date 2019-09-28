@@ -92,6 +92,7 @@
  * RFC 6286 - AS-Wide Unique BGP Identifier
  * RFC 6608 - Subcodes for BGP Finite State Machine Error
  * RFC 6793 - BGP Support for 4-Octet AS Numbers
+ * RFC 7311 - Accumulated IGP Metric Attribute for BGP
  * RFC 7313 - Enhanced Route Refresh Capability for BGP
  * RFC 7606 - Revised Error Handling for BGP UPDATE Messages
  * RFC 7911 - Advertisement of Multiple Paths in BGP
@@ -1979,6 +1980,10 @@ bgp_postconfig(struct proto_config *CF)
     if (cc->llgr_time == ~0U)
       cc->llgr_time = cf->llgr_time;
 
+    /* AIGP enabled by default on interior sessions */
+    if (cc->aigp == 0xff)
+      cc->aigp = interior;
+
     /* Default values of IGP tables */
     if ((cc->gw_mode == GW_RECURSIVE) && !cc->desc->no_igp)
     {
@@ -2087,13 +2092,17 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
   if (new->mandatory && !old->mandatory && (C->channel_state != CS_UP))
     return 0;
 
-  if (new->gw_mode != old->gw_mode)
+  if ((new->gw_mode != old->gw_mode) ||
+      (new->aigp != old->aigp) ||
+      (new->cost != old->cost))
     *import_changed = 1;
 
   if (!ipa_equal(new->next_hop_addr, old->next_hop_addr) ||
       (new->next_hop_self != old->next_hop_self) ||
       (new->next_hop_keep != old->next_hop_keep) ||
-      (new->missing_lladdr != old->missing_lladdr))
+      (new->missing_lladdr != old->missing_lladdr) ||
+      (new->aigp != old->aigp) ||
+      (new->aigp_originate != old->aigp_originate))
     *export_changed = 1;
 
   c->cf = new;
