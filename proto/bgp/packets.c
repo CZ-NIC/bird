@@ -919,6 +919,7 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     a->dest = RTD_UNICAST;
     a->nh.gw = nbr->addr;
     a->nh.iface = nbr->iface;
+    a->igp_metric = c->cf->cost;
   }
   else /* GW_RECURSIVE */
   {
@@ -1063,6 +1064,7 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
     {
       ip_addr nh[2] = { s->channel->next_hop_addr, s->channel->link_addr };
       bgp_set_attr_data(to, s->pool, BA_NEXT_HOP, 0, nh, ipa_nonzero(nh[1]) ? 32 : 16);
+      s->local_next_hop = 1;
 
       /* TODO: Use local MPLS assigned label */
       if (s->mpls)
@@ -2401,6 +2403,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
     a->eattrs = ea;
 
     c->desc->decode_next_hop(s, nh, nh_len, a);
+    bgp_finish_attrs(s, a);
 
     /* Handle withdraw during next hop decoding */
     if (s->err_withdraw)

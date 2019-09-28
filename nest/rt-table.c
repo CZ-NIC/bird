@@ -44,6 +44,10 @@
 #include "lib/string.h"
 #include "lib/alloca.h"
 
+#ifdef CONFIG_BGP
+#include "proto/bgp/bgp.h"
+#endif
+
 pool *rt_table_pool;
 
 static slab *rte_slab;
@@ -2934,7 +2938,7 @@ if_local_addr(ip_addr a, struct iface *i)
   return 0;
 }
 
-static u32
+u32
 rt_get_igp_metric(rte *rt)
 {
   eattr *ea = ea_find(rt->attrs->eattrs, EA_GEN_IGP_METRIC);
@@ -2954,6 +2958,14 @@ rt_get_igp_metric(rte *rt)
 #ifdef CONFIG_RIP
   if (a->source == RTS_RIP)
     return rt->u.rip.metric;
+#endif
+
+#ifdef CONFIG_BGP
+  if (a->source == RTS_BGP)
+  {
+    u64 metric = bgp_total_aigp_metric(rt);
+    return (u32) MIN(metric, (u64) IGP_METRIC_UNKNOWN);
+  }
 #endif
 
   if (a->source == RTS_DEVICE)
