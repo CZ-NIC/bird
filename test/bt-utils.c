@@ -73,6 +73,8 @@ bt_bird_init(void)
   proto_build(&proto_unix_kernel);
 #endif
   proto_build(&proto_unix_iface);
+
+  worker_queue_init();
 }
 
 void bt_bird_cleanup(void)

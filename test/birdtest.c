@@ -522,8 +522,17 @@ void cmd_reconfig_undo_notify(void) {}
 #include "nest/bird.h"
 #include "lib/net.h"
 #include "conf/conf.h"
-void sysdep_preconfig(struct config *c UNUSED) {}
-int sysdep_commit(struct config *new UNUSED, struct config *old UNUSED) { return 0; }
+#include "lib/worker.h"
+void sysdep_preconfig(struct config *c) {
+  c->workers = 4;
+  c->max_workers = 8;
+}
+
+int sysdep_commit(struct config *new, struct config *old UNUSED) {
+  worker_queue_update(new);
+  return 0;
+}
+
 void sysdep_shutdown_done(void) {}
 
 #include "nest/cli.h"

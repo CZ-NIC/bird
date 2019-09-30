@@ -172,6 +172,7 @@ sysdep_preconfig(struct config *c)
   c->watchdog_warning = UNIX_DEFAULT_WATCHDOG_WARNING;
 
   c->workers = 4;
+  c->max_workers = 8;
 
 #ifdef PATH_IPROUTE_DIR
   read_iproute_table(PATH_IPROUTE_DIR "/rt_protos", "ipp_", 256);

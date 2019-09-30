@@ -85,8 +85,6 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
   bt_bird_init();
-
-  worker_queue_init();
   
   bt_assert_hook = bt_assert_filter;
 
