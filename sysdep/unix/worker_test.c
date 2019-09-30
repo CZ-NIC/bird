@@ -2,7 +2,11 @@
 #define _GNU_SOURCE
 #endif
 
+#ifdef DEBUGGING
 #define TEST_MAX (1 << 16)
+#else
+#define TEST_MAX (1 << 12)
+#endif
 
 #include "test/birdtest.h"
 #include "test/bt-utils.h"
@@ -155,7 +159,7 @@ int main(int argc, char *argv[])
   TEST_ALL_ONES(1, 5);
   TEST_ALL_ONES(2, 2);
   TEST_ALL_ONES(2, 8);
-  TEST_ALL_ONES(8, 16);
+  TEST_ALL_ONES(4, 32);
 
   return bt_exit_value();
 }
