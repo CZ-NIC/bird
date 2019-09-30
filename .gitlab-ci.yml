@@ -226,7 +226,7 @@ docker_ubuntu-16_04-amd64:
   - which gmake 2>/dev/null >/dev/null && MAKE=gmake
   - $MAKE
   # Run tests if they are available
-  #  - $MAKE check
+  - $MAKE check
 
 build-debian-7-amd64:
   <<: *debian-7-amd64_env
