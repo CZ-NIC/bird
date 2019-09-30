@@ -3,6 +3,10 @@
 #undef DEBUG_STATELOG
 //#define DEBUG_STATELOG
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "nest/bird.h"
 #include "lib/macro.h"
 #include "lib/worker.h"
@@ -97,15 +101,18 @@ static struct worker_queue {
 
 #define NOWORKER (~0ULL)
 
+#define WORKER_CPU_RELAX(var) do { if (var++ > 5) pthread_yield(); else CPU_RELAX(); } while (0)
+
 static inline void WQ_LOCK(void)
 {
+  u64 spin_count = 0;
   while (1)
   {
     u64 noworker = NOWORKER;
     if (atomic_compare_exchange_weak_explicit(&wq->lock, &noworker, worker_id, memory_order_acq_rel, memory_order_acquire))
       break;
 
-    CPU_RELAX();
+    WORKER_CPU_RELAX(spin_count);
   }
 
   WQ_STATELOG(WQS_LOCK,
@@ -265,10 +272,10 @@ struct domain {
 
 #define DOMAIN_LOCK_LOAD_() lock = atomic_load_explicit(&d->lock, memory_order_acquire)
 #define DOMAIN_LOCK_LOAD() \
-  u64 lock; DOMAIN_LOCK_LOAD_(); \
+  u64 lock, spin_count = 0; DOMAIN_LOCK_LOAD_(); \
 retry: do { \
   if (lock & DOMAIN_LOCK_SPINLOCK_BIT) { \
-    CPU_RELAX(); \
+    WORKER_CPU_RELAX(spin_count); \
     DOMAIN_LOCK_LOAD_(); \
     goto retry; \
   } \
