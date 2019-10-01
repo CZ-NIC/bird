@@ -533,7 +533,7 @@ write_pid_file(void)
 
   /* We don't use PID file for uniqueness, so no need for locking */
 
-  pl = bsnprintf(ps, sizeof(ps), "%ld\n", (long) getpid());
+  pl = bsnprintf(ps, sizeof(ps), "%ld\n", (s64) getpid());
   if (pl < 0)
     bug("PID buffer too small");
 

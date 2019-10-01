@@ -192,7 +192,7 @@ perf_loop(void *data)
   s64 withdrawtime = timediff(&ts_update, &ts_withdraw);
 
   if (updatetime NS >= p->threshold_min)
-    PLOG("exp=%u times: gen=%lu update=%lu withdraw=%lu",
+    PLOG("exp=%u times: gen=%ld update=%ld withdraw=%ld",
 	p->exp, gentime, updatetime, withdrawtime);
 
   if (updatetime NS < p->threshold_max)

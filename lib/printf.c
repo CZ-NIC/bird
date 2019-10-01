@@ -34,13 +34,7 @@ static int skip_atoi(const char **s)
 #define SPECIAL	32		/* 0x */
 #define LARGE	64		/* use 'ABCDEF' instead of 'abcdef' */
 
-#define do_div(n,base) ({ \
-int __res; \
-__res = ((unsigned long) n) % (unsigned) base; \
-n = ((unsigned long) n) / (unsigned) base; \
-__res; })
-
-static char * number(char * str, long num, int base, int size, int precision,
+static char * number(char * str, u64 num, uint base, int size, int precision,
 	int type, int remains)
 {
 	char c,sign,tmp[66];
@@ -58,7 +52,7 @@ static char * number(char * str, long num, int base, int size, int precision,
 	c = (type & ZEROPAD) ? '0' : ' ';
 	sign = 0;
 	if (type & SIGN) {
-		if (num < 0) {
+		if (num > (u64) INT64_MAX) {
 			sign = '-';
 			num = -num;
 			size--;
@@ -79,8 +73,11 @@ static char * number(char * str, long num, int base, int size, int precision,
 	i = 0;
 	if (num == 0)
 		tmp[i++]='0';
-	else while (num != 0)
-		tmp[i++] = digits[do_div(num,base)];
+	else while (num != 0) {
+		uint res = num % base;
+		num = num / base;
+		tmp[i++] = digits[res];
+	}
 	if (i > precision)
 		precision = i;
 	size -= precision;
@@ -128,16 +125,17 @@ static char * number(char * str, long num, int base, int size, int precision,
  * value printed as eight :-separated octets), |%t| for time values (btime) with
  * specified subsecond precision, and |%m| resp. |%M| for error messages (uses
  * strerror() to translate @errno code to message text). On the other hand, it
- * doesn't support floating point numbers.
+ * doesn't support floating point numbers. The bvsnprintf() supports |%h| and
+ * |%l| qualifiers, but |%l| is used for s64/u64 instead of long/ulong.
  *
  * Result: number of characters of the output string or -1 if
  * the buffer space was insufficient.
  */
 int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 {
-	int len;
-	unsigned long num;
-	int i, base;
+	int len, i;
+	u64 num;
+	uint base;
 	u32 x;
 	u64 X;
 	btime t;
@@ -152,7 +150,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 	int field_width;	/* width of output field */
 	int precision;		/* min. # of digits for integers; max
 				   number of chars for from string */
-	int qualifier;		/* 'h', 'l', or 'L' for integer fields */
+	int qualifier;		/* 'h' or 'l' for integer fields */
 
 	for (start=str=buf ; *fmt ; ++fmt, size-=(str-start), start=str) {
 		if (*fmt != '%') {
@@ -286,16 +284,15 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 				field_width = 2*sizeof(void *);
 				flags |= ZEROPAD;
 			}
-			str = number(str,
-				(unsigned long) va_arg(args, void *), 16,
-				field_width, precision, flags, size);
+			str = number(str, (uintptr_t) va_arg(args, void *), 16,
+				     field_width, precision, flags, size);
 			if (!str)
 				return -1;
 			continue;
 
 		case 'n':
 			if (qualifier == 'l') {
-				long * ip = va_arg(args, long *);
+				s64 * ip = va_arg(args, s64 *);
 				*ip = (str - buf);
 			} else {
 				int * ip = va_arg(args, int *);
@@ -393,7 +390,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 
 			/* Print seconds */
 			flags |= SIGN;
-			str = number(str, t1, 10, field_width, 0, flags, size);
+			str = number(str, (u64) t1, 10, field_width, 0, flags, size);
 			if (!str)
 			  return -1;
 
@@ -411,7 +408,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 
 			  /* Print sub-seconds */
 			  *str++ = '.';
-			  str = number(str, t2, 10, precision, 0, ZEROPAD, size - 1);
+			  str = number(str, (u64) t2, 10, precision, 0, ZEROPAD, size - 1);
 			  if (!str)
 			    return -1;
 			}
@@ -446,16 +443,22 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 				--fmt;
 			continue;
 		}
-		if (qualifier == 'l')
-			num = va_arg(args, unsigned long);
-		else if (qualifier == 'h') {
-			num = (unsigned short) va_arg(args, int);
-			if (flags & SIGN)
-				num = (short) num;
-		} else if (flags & SIGN)
-			num = va_arg(args, int);
-		else
-			num = va_arg(args, uint);
+		if (flags & SIGN) {
+			/* Conversions valid per ISO C99 6.3.1.3 (2) */
+			if (qualifier == 'l')
+				num = (u64) va_arg(args, s64);
+			else if (qualifier == 'h')
+				num = (u64) (short) va_arg(args, int);
+			else
+				num = (u64) va_arg(args, int);
+		} else {
+			if (qualifier == 'l')
+				num = va_arg(args, u64);
+			else if (qualifier == 'h')
+				num = (unsigned short) va_arg(args, int);
+			else
+				num = va_arg(args, uint);
+		}
 		str = number(str, num, base, field_width, precision, flags, size);
 		if (!str)
 			return -1;
