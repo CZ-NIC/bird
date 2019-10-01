@@ -7,6 +7,8 @@
 #define _GNU_SOURCE
 #endif
 
+#define WORKER_SPIN_THEN_YIELD	50
+
 #include "nest/bird.h"
 #include "lib/macro.h"
 #include "lib/worker.h"
@@ -110,7 +112,19 @@ static struct worker_queue {
 
 #define NOWORKER (~0ULL)
 
-#define WORKER_CPU_RELAX(var) do { if (var++ > 5) pthread_yield(); else CPU_RELAX(); } while (0)
+#ifdef SPINLOCK_STATS
+#define WORKER_CPU_RELAX(var) do { var++; CPU_RELAX(); } while (0)
+#define WORKER_CPU_RELAX_STORE_COUNT(var) do { \
+  u64 spin_max_local = atomic_load_explicit(&spin_max, memory_order_relaxed); \
+  while (spin_max_local < var) \
+    if (atomic_compare_exchange_weak_explicit(&spin_max, &spin_max_local, var, memory_order_relaxed, memory_order_relaxed)) \
+      break; \
+} while (0)
+_Atomic u64 spin_max = 0;
+_Atomic u64 spin_stats[65536];
+#else
+#define WORKER_CPU_RELAX(var) do { if (var++ > WORKER_SPIN_THEN_YIELD) pthread_yield(); else CPU_RELAX(); } while (0)
+#endif
 
 static inline void WQ_LOCK(void)
 {
@@ -123,6 +137,15 @@ static inline void WQ_LOCK(void)
 
     WORKER_CPU_RELAX(spin_count);
   }
+
+#ifdef SPINLOCK_STATS
+  if (spin_count > 65534)
+    atomic_fetch_add(&spin_stats[65535], 1);
+  else
+    atomic_fetch_add(&spin_stats[spin_count], 1);
+
+  WORKER_CPU_RELAX_STORE_COUNT(spin_count);
+#endif
 
   WQ_STATELOG_QUEUE(WQS_LOCK, 1);
 }

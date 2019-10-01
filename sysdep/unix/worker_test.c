@@ -120,6 +120,11 @@ t_rwlock(const void *data_)
   return 1;
 }
 
+#ifdef SPINLOCK_STATS
+extern _Atomic u64 spin_max;
+extern _Atomic u64 spin_stats[65536];
+#endif
+
 int main(int argc, char *argv[])
 {
   bt_init(argc, argv);
@@ -161,6 +166,12 @@ int main(int argc, char *argv[])
   TEST_ALL_ONES(2, 8);
   TEST_ALL_ONES(4, 4);
   TEST_ALL_ONES(4, 32);
+
+#ifdef SPINLOCK_STATS
+  printf("spin_max %lu\n", atomic_load(&spin_max));
+  for (uint i=0; i<sizeof(spin_stats)/sizeof(spin_stats[0]); i++)
+    printf("spin_stats[%u] = %lu\n", i, atomic_load(&spin_stats[i]));
+#endif
 
   return bt_exit_value();
 }
