@@ -165,6 +165,9 @@ int main(int argc, char *argv[])
   TEST_ALL_ONES(2, 2);
   TEST_ALL_ONES(2, 8);
   TEST_ALL_ONES(4, 4);
+  TEST_ALL_ONES(4, 6);
+  TEST_ALL_ONES(4, 8);
+  TEST_ALL_ONES(4, 16);
   TEST_ALL_ONES(4, 32);
 
 #ifdef SPINLOCK_STATS

@@ -7,8 +7,6 @@
 #define _GNU_SOURCE
 #endif
 
-#define WORKER_SPIN_THEN_YIELD	50
-
 #include "nest/bird.h"
 #include "lib/macro.h"
 #include "lib/worker.h"
@@ -48,7 +46,10 @@ static struct worker_queue {
   _Atomic uint workers;		/* Allowed number of concurrent workers */
   _Atomic uint max_workers;	/* Maximum count of workers incl. sleeping */
   _Atomic uint stop;		/* Stop requests */
-  _Atomic u64 lock;		/* Simple spinlock */
+  union {
+    _Atomic u64 lock;		/* Simple spinlock */
+    sem_t mutex;		/* Mutex instead of the spinlock */
+  };
   list pending;			/* Tasks pending */
 #ifdef DEBUG_STATELOG
   _Atomic u64 statelog_pos;	/* Current position in statelog */
@@ -123,7 +124,7 @@ static struct worker_queue {
 _Atomic u64 spin_max = 0;
 _Atomic u64 spin_stats[65536];
 #else
-#define WORKER_CPU_RELAX(var) do { if (var++ > WORKER_SPIN_THEN_YIELD) pthread_yield(); else CPU_RELAX(); } while (0)
+#define WORKER_CPU_RELAX(var) do { var++; CPU_RELAX(); } while (0)
 #endif
 
 static inline void WQ_LOCK(void)
