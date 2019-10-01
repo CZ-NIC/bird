@@ -173,6 +173,7 @@ sysdep_preconfig(struct config *c)
 
   c->workers = 4;
   c->max_workers = 8;
+  c->queue_size = 64;
 
 #ifdef PATH_IPROUTE_DIR
   read_iproute_table(PATH_IPROUTE_DIR "/rt_protos", "ipp_", 256);

@@ -1,4 +1,4 @@
-src := netlink.c
+src := netlink.c perf.c
 obj := $(src-o-files)
 $(all-daemon)
 $(conf-y-targets): $(s)netlink.Y

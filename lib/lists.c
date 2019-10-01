@@ -170,3 +170,19 @@ list_length(list *l)
 
   return len;
 }
+
+/* Move all nodes from one list to another */
+LIST_INLINE void
+move_list(list *dest, list *src)
+{
+  dest->head = src->head;
+  dest->null = NULL;
+  dest->tail = src->tail;
+
+  dest->head->prev = &dest->head_node;
+  dest->tail->next = &dest->tail_node;
+
+  src->head = &src->tail_node;
+  src->null = NULL;
+  src->tail = &src->head_node;
+}
