@@ -47,6 +47,7 @@ struct config {
   u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
   uint workers;				/* How many workers should run by default */
   uint max_workers;			/* How many workers should run at maximum */
+  uint queue_size;			/* How many items can be in the global queue */
   char *err_msg;			/* Parser error message */
   int err_lino;				/* Line containing error */
   int err_chno;				/* Character where the parser stopped */

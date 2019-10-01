@@ -147,12 +147,14 @@ class BIRDWQStateLogPrinter(BIRDPrinter):
     typeTag = "worker_queue_state"
 
     def queueval(self):
-        return "%(worker) 4d %(what)s: pending %(pending)s, running %(running)s, stop %(stop)s" % {
+        return "%(worker) 4d %(what)s: running %(running)s, workers %(workers)s, max_workers %(max_workers)s, stop %(stop)s, pending %(pending)s" % {
                 "worker": self.val['worker_id'],
                 "what": str(self.val['what']),
-                "pending": str(self.val['queue']['pending']),
                 "running": str(self.val['queue']['running']),
+                "workers": str(self.val['queue']['workers']),
+                "max_workers": str(self.val['queue']['max_workers']),
                 "stop": str(self.val['queue']['stop']),
+                "pending": str(self.val['queue']['pending']),
                 }
 
     def semval(self):
@@ -175,8 +177,26 @@ class BIRDWQStateLogPrinter(BIRDPrinter):
                 "semname": semname
                 }
 
+    def lockstate(self):
+        lock = self.val["domain"]["lock"]
+        readers = lock & ((1 << 30) - 1)
+        prepended = (lock >> 30) & ((1 << 30) - 1)
+        waiting_writers = (lock >> 60) & 1 == 1
+        waiting_readers = (lock >> 61) & 1 == 1
+        writer_locked = (lock >> 62) & 1 == 1
+        spinlock = (lock >> 63) & 1 == 1
+
+        return "RDLOCK=%(rdlock)u PREP=%(prep)u%(ww)s%(wr)s%(wl)s%(spin)s" % {
+                "rdlock": readers,
+                "prep": prepended,
+                "ww": " W+" if waiting_writers else "",
+                "wr": " R+" if waiting_readers else "",
+                "wl": " WL" if writer_locked else "",
+                "spin": " SPIN" if spinlock else "",
+                }
+
     def domval(self):
-        return "%(worker) 4d %(what)s: %(task)s on %(domain)s: RP=%(rdtasks_n)u WP=%(wrtasks_n)u RS=%(rdsem_n)u WS=%(wrsem_n)u RL=%(rdlocked)u PREP=%(prepended)u" % {
+        return "%(worker) 4d %(what)s: %(task)s on %(domain)s: RP=%(rdtasks_n)u WP=%(wrtasks_n)u RS=%(rdsem_n)u WS=%(wrsem_n)u %(lockstate)s" % {
                 "worker": self.val['worker_id'],
                 "what": str(self.val["what"]),
                 "task": str(self.val["domain"]["task"]),
@@ -185,8 +205,7 @@ class BIRDWQStateLogPrinter(BIRDPrinter):
                 "wrtasks_n": self.val["domain"]["wrtasks_n"],
                 "rdsem_n": self.val["domain"]["rdsem_n"],
                 "wrsem_n": self.val["domain"]["wrsem_n"],
-                "rdlocked": self.val["domain"]["rdlocked"],
-                "prepended": self.val["domain"]["prepended"],
+                "lockstate": self.lockstate(),
                 }
 
     def nothing(self):
@@ -256,6 +275,7 @@ class BIRDWQStateLogCommand(gdb.Command):
         statelog_size = gdb.lookup_symbol("STATELOG_SIZE")[0].value()
         statelog_pos = wq["statelog_pos"]
 
+        print("offset", int(statelog_pos / statelog_size) * statelog_size)
         print("   idx  WID command")
 
         for i in range(total):
