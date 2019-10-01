@@ -42,14 +42,14 @@ static struct worker_queue {
   sem_t stopped;		/* Posted on worker stopped */
   sem_t yield;			/* Keeps the right number of workers running */
   sem_t available;		/* How many workers are currently free */
-  volatile _Atomic u64 lock;	/* Simple spinlock */
+  _Atomic uint running;		/* How many workers are really running */
+  _Atomic uint workers;		/* Allowed number of concurrent workers */
+  _Atomic uint max_workers;	/* Maximum count of workers incl. sleeping */
+  _Atomic uint stop;		/* Stop requests */
+  _Atomic u64 lock;		/* Simple spinlock */
   list pending;			/* Tasks pending */
-  uint running;			/* How many workers are really running */
-  uint workers;			/* Allowed number of concurrent workers */
-  uint max_workers;		/* Maximum count of workers incl. sleeping */
-  uint stop;			/* Stop requests */
 #ifdef DEBUG_STATELOG
-  volatile _Atomic u64 statelog_pos;	/* Current position in statelog */
+  _Atomic u64 statelog_pos;	/* Current position in statelog */
   struct worker_queue_state {
     u64 worker_id;
     PACKED enum {
@@ -76,13 +76,16 @@ static struct worker_queue {
     } what;
     union {
       struct {
-	uint pending;
 	uint running;
+	uint workers;
+	uint max_workers;
 	uint stop;
+	uint pending;
       } queue;
       sem_t *sem;
       struct {
-	uint rdsem_n, wrsem_n, rdtasks_n, wrtasks_n, rdlocked, prepended;
+	u64 lock;
+	uint rdsem_n, wrsem_n, rdtasks_n, wrtasks_n;
 	struct domain *domain;
 	struct task *task;
       } domain;
@@ -98,6 +101,12 @@ static struct worker_queue {
 #else
 #define WQ_STATELOG(...)
 #endif
+
+#define ADL(what) atomic_load_explicit(&what, memory_order_relaxed)
+
+#define WQ_STATELOG_QUEUE(what_, locked) \
+  WQ_STATELOG(what_, .queue = { .running = ADL(wq->running), .workers = ADL(wq->workers), .max_workers = ADL(wq->max_workers), .stop = ADL(wq->stop), .pending = locked ? list_length(&wq->pending) : 0 })
+
 
 #define NOWORKER (~0ULL)
 
@@ -115,12 +124,7 @@ static inline void WQ_LOCK(void)
     WORKER_CPU_RELAX(spin_count);
   }
 
-  WQ_STATELOG(WQS_LOCK,
-      .queue = {
-	.pending = list_length(&wq->pending),
-	.running = wq->running,
-	.stop = wq->stop,
-      });
+  WQ_STATELOG_QUEUE(WQS_LOCK, 1);
 }
 
 static inline void WQ_ASSERT_LOCKED(void)
@@ -137,12 +141,7 @@ static inline void WQ_ASSERT_UNLOCKED(void)
 
 static inline void WQ_UNLOCK(void)
 {
-  WQ_STATELOG(WQS_UNLOCK,
-      .queue = {
-	.pending = list_length(&wq->pending),
-	.running = wq->running,
-	.stop = wq->stop,
-      });
+  WQ_STATELOG_QUEUE(WQS_UNLOCK, 1);
 
   u64 expected = worker_id;
   if (!atomic_compare_exchange_strong_explicit(&wq->lock, &expected, NOWORKER, memory_order_acq_rel, memory_order_acquire))
@@ -202,32 +201,54 @@ static inline void SEM_DESTROY(sem_t *s)
     wbug("sem_post: %m");
 }
 
-static void worker_start(void);
+static int worker_start(void);
 
 static _Thread_local int worker_sleeping = 1;
+
+static inline void WORKER_DO_YIELD(void)
+{
+  SEM_POST(&wq->yield);
+  worker_sleeping = 1;
+}
 
 static inline void WORKER_YIELD(void)
 {
   WQ_ASSERT_UNLOCKED();
   ASSERT(!worker_sleeping);
-  WQ_STATELOG(WQS_YIELD);
+  WQ_STATELOG_QUEUE(WQS_YIELD, 0);
+  
+  uint max_workers = atomic_load(&wq->max_workers);
+  uint running = atomic_load(&wq->running);
 
-  WQ_LOCK();
-  /* We may want to start another worker */
-  if (wq->running < wq->max_workers)
+  /* No, there is enough workers */
+  if (running >= max_workers)
+    return WORKER_DO_YIELD();
+
+  /* Yes, start it. */
+  running = atomic_fetch_add_explicit(&wq->running, 1, memory_order_acq_rel);
+
+  /* If we're over the limit now. */
+  if (running >= max_workers)
+    goto bad;
+
+  /* It is unreasonable, there is a sleeping worker just now, */
+  if (SEM_TRYWAIT(&wq->available))
   {
-    /* Is it reasonable? */
-    if (SEM_TRYWAIT(&wq->available))
-      /* No, there is an available worker right now */
-      SEM_POST(&wq->available);
-    else
-      /* Yes, all workers are doing something */
-      worker_start();
+    SEM_POST(&wq->available);
+    goto bad;
   }
 
-  WQ_UNLOCK();
-  SEM_POST(&wq->yield);
-  worker_sleeping = 1;
+  /* Yes, all workers are doing something, start a new one */
+  int e = worker_start();
+  if (e == 0)
+    return WORKER_DO_YIELD();
+
+  log(L_WARN "Failed to start a worker on yield: %M", e);
+
+bad:
+  /* Revert the running counter */
+  atomic_fetch_sub_explicit(&wq->running, 1, memory_order_acquire);
+  WORKER_DO_YIELD();
 }
 
 static inline void WORKER_CONTINUE(void)
@@ -236,7 +257,7 @@ static inline void WORKER_CONTINUE(void)
   ASSERT(worker_sleeping);
   SEM_WAIT(&wq->yield);
   worker_sleeping = 0;
-  WQ_STATELOG(WQS_CONTINUE);
+  WQ_STATELOG_QUEUE(WQS_CONTINUE, 0);
 }
 
 static _Thread_local struct timeloop worker_timeloop;
@@ -309,7 +330,7 @@ retry: do { \
 } while (0)
 
 #define TASK_STOP_WORKER do { \
-  wq->stop++; \
+  atomic_fetch_add(&wq->stop, 1); \
   SEM_POST(&wq->waiting); \
 } while (0);
 
@@ -420,7 +441,7 @@ domain_pop_lock(struct domain *d UNUSED)
 { locked_cnt--; }
 
 #define DOMAIN_STATLOG(what_, dom, task_) \
-  WQ_STATELOG(what_, .domain = { .rdsem_n = dom->rdsem_n, .wrsem_n = dom->wrsem_n, .rdtasks_n = dom->rdtasks_n, .wrtasks_n = dom->wrtasks_n, .rdlocked = dom->rdlocked, .prepended = dom->prepended, .domain = dom, .task = task_ })
+  WQ_STATELOG(what_, .domain = { .rdsem_n = dom->rdsem_n, .wrsem_n = dom->wrsem_n, .rdtasks_n = dom->rdtasks_n, .wrtasks_n = dom->wrtasks_n, .lock = atomic_load(&dom->lock), .domain = dom, .task = task_ })
 
 static int
 domain_read_lock_primary(struct domain *d, struct task *t)
@@ -829,29 +850,31 @@ worker_loop(void *_data UNUSED)
        * into the blocked list and will be released
        * when the lock is available. */
 
-      WDBG("Worker yielding\n");
-      WORKER_YIELD();
-
       /* If this task was prepended, the available semaphore was not waited for */
       if (!prepended)
       {
 	WDBG("Worker available\n");
 	SEM_POST(&wq->available);
       }
+
+      WDBG("Worker yielding\n");
+      WORKER_YIELD();
     }
     else
     {
+      WQ_UNLOCK();
+
       /* There must be a request to stop then */
-      ASSERT(wq->stop > 0);
+      uint stop = atomic_load_explicit(&wq->stop, memory_order_acquire);
+      ASSERT(stop > 0);
 
       /* Requested to stop */
       WDBG("Worker stopping\n");
-      wq->stop--;
-      wq->running--;
-      WQ_UNLOCK();
+      atomic_fetch_sub_explicit(&wq->stop, 1, memory_order_release);
+      atomic_fetch_sub_explicit(&wq->running, 1, memory_order_release);
 
       /* Let others work instead of us */
-      WORKER_YIELD();
+      WORKER_DO_YIELD();
 
       /* This makes one worker less available */
       SEM_WAIT(&wq->available);
@@ -867,31 +890,21 @@ worker_loop(void *_data UNUSED)
   wbug("This shall never happen");
 }
 
-static void
+static int
 worker_start(void)
 {
-  WQ_ASSERT_LOCKED();
-  ASSERT(wq->running < wq->max_workers);
-
   /* Run the thread */
   pthread_t id;
   int e = pthread_create(&id, NULL, worker_loop, NULL);
   if (e < 0)
-  {
-    if (wq->workers == 0) 
-      wbug("Failed to start a worker: %M", e);
-    else
-      log(L_WARN "Failed to start a worker: %M", e);
-
-    return;
-  }
+    return e;
 
   /* Detach the thread; we don't want to join the threads */
   e = pthread_detach(id);
   if (e < 0)
     wbug("pthread_detach() failed: %M", e);
 
-  wq->running++;
+  return 0;
 }
 
 void
@@ -908,38 +921,40 @@ worker_queue_init(void)
 #ifdef DEBUG_STATELOG
   atomic_store(&wq->statelog_pos, 0);
 #endif
+  atomic_store(&wq->running, 0);
+  atomic_store(&wq->workers, 1);
+  atomic_store(&wq->max_workers, 0);
+  atomic_store(&wq->stop, 0);
 
   worker_sleeping = 0;
-  wq->workers = 1;
 }
 
 void
 worker_queue_destroy(void)
 {
-  WQ_LOCK();
-
   /* First stop all the workers. */
-  wq->max_workers = 0;
-  while (wq->running)
+  atomic_store(&wq->max_workers, 0);
+  
+  while (atomic_load(&wq->running) > 0)
   {
     TASK_STOP_WORKER;
-    WQ_UNLOCK();
 
-    WORKER_YIELD();
+    WORKER_DO_YIELD();
     SEM_WAIT(&wq->stopped);
     WORKER_CONTINUE();
-
-    WQ_LOCK();
   }
 
-  ASSERT(wq->stop == 0);
+  ASSERT(atomic_load(&wq->stop) == 0);
 
   /* Worker stops only when there is no task so now there
    * should be no task pending at all. */
+  WQ_LOCK();
   ASSERT(EMPTY_LIST(wq->pending));
+  WQ_UNLOCK();
 
   /* All the workers but one should also have yielded. The last one is us. */
-  while (--wq->workers)
+  uint workers = atomic_load(&wq->workers);
+  for (uint i=1; i<workers; i++)
     ASSERT(SEM_TRYWAIT(&wq->yield));
 
   /* Nobody is using the queue now. Cleanup the resources. */
@@ -953,50 +968,53 @@ worker_queue_destroy(void)
 void
 worker_queue_update(const struct config *c)
 {
+  static int exclusive_lock = 0;
+  ASSERT(!exclusive_lock);
+  exclusive_lock = 1;
+#define RETURN do { exclusive_lock = 0; return; } while (0)
+
   /* Check whether the values are sane */
   ASSERT(c->max_workers >= c->workers);
   ASSERT(c->workers > 0);
 
-  WQ_LOCK();
-  if ((c->workers == wq->workers) && (c->max_workers == wq->max_workers))
-  {
+  if ((c->workers == atomic_load(&wq->workers))
+      && (c->max_workers == atomic_load(&wq->max_workers)))
     /* No change at all */
-    WQ_UNLOCK();
-    return;
-  }
+    RETURN;
 
   /* Reduction of concurrent running workers */
-  while (c->workers < wq->workers)
-  {
-    WQ_UNLOCK();
+  for (uint i=c->workers; i<atomic_load(&wq->workers); i++)
     /* Wait until a worker yields */
     SEM_WAIT(&wq->yield);
-    WQ_LOCK();
-    wq->workers--;
-  }
 
   /* Set the new maximum */
-  wq->max_workers = c->max_workers;
+  atomic_store(&wq->max_workers, c->max_workers);
 
   /* Reduction of really running workers */
-  while (wq->max_workers < wq->running)
+  while (atomic_load(&wq->max_workers) < atomic_load(&wq->running))
   {
     TASK_STOP_WORKER;
-    WQ_UNLOCK();
     SEM_WAIT(&wq->stopped);
-    WQ_LOCK();
   }
 
   /* Increase of concurrent running workers */
-  while (c->workers > wq->workers)
-  {
+  for (uint i=atomic_load(&wq->workers); i<c->workers; i++)
     SEM_POST(&wq->yield);
-    wq->workers++;
-  }
+
+  atomic_store(&wq->workers, c->workers);
 
   /* On startup, start at least one worker */
-  worker_start();
-  WQ_UNLOCK();
+  if (atomic_load(&wq->running) > 0)
+    RETURN;
+
+  int e = worker_start();
+  if (!e)
+  {
+    atomic_fetch_add(&wq->running, 1);
+    RETURN;
+  }
+
+  wbug("Failed to start a worker on startup: %M", e);
 }
 
 void
@@ -1007,11 +1025,11 @@ task_push(struct task *t)
 
   WDBG("Task push\n");
 
-  WQ_LOCK();
-
   /* Stopping, won't accept tasks */
-  if (wq->max_workers == 0)
+  if (atomic_load(&wq->max_workers) == 0)
     return;
+
+  WQ_LOCK();
 
   /* Idempotency. */
   if (t->n.prev && t->n.next)
