@@ -535,6 +535,7 @@ lp_alloc_adata(struct linpool *pool, uint len)
 static inline int adata_same(const struct adata *a, const struct adata *b)
 { return (a->length == b->length && !memcmp(a->data, b->data, a->length)); }
 
+int net_aspa_check(struct linpool *lp, rtable *tab, const struct adata *path, uint dir, u8 afi);
 
 typedef struct ea_list {
   struct ea_list *next;			/* In case we have an override list */
@@ -707,5 +708,14 @@ static inline void rt_unlock_hostentry(struct hostentry *he) { if (he) he->uc--;
 #define ROA_UNKNOWN	0
 #define ROA_VALID	1
 #define ROA_INVALID	2
+
+/*
+ *	ASPA verification status
+ */
+
+#define ASPA_UNKNOWN	0
+#define ASPA_VALID	1
+#define ASPA_INVALID	2
+#define ASPA_UNVERIFIED 3
 
 #endif

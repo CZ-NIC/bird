@@ -39,6 +39,8 @@ enum f_type {
   T_ENUM_NETTYPE = 0x36,
   T_ENUM_RA_PREFERENCE = 0x37,
   T_ENUM_AF = 0x38,
+  T_ENUM_ASPA = 0x39,
+  T_ENUM_BGP_DIR = 0x3a,
 
 /* new enums go here */
   T_ENUM_EMPTY = 0x3f,	/* Special hack for atomic_aggr */

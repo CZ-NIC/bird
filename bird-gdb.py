@@ -31,6 +31,8 @@ class BIRDFValPrinter(BIRDPrinter):
             "T_ENUM_NETTYPE": "i",
             "T_ENUM_RA_PREFERENCE": "i",
             "T_ENUM_AF": "i",
+            "T_ENUM_ASPA": "i",
+            "T_ENUM_BGP_DIR": "i",
             "T_IP": "ip",
             "T_NET": "net",
             "T_STRING": "s",

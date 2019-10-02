@@ -1170,6 +1170,58 @@
 
   }
 
+  INST(FI_ASPA_CHECK_IMPLICIT, 1, 1) {	/* ASPA Check */
+    NEVER_CONSTANT;
+    ARG(1, T_ENUM_BGP_DIR);
+    RTC(2);
+    struct rtable *table = rtc->table;
+    ACCESS_RTE;
+    ACCESS_EATTRS;
+    const net_addr *net = (*fs->rte)->net->n.addr;
+
+    if (!table)
+      runtime("Missing ASPA table");
+
+    if (table->addr_type != NET_ASPA)
+      runtime("Table type must be ASPA");
+
+    /* We ignore temporary attributes, probably not a problem here */
+    /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */
+    eattr *e = ea_find(*fs->eattrs, EA_CODE(PROTOCOL_BGP, 0x02));
+
+    if (!e || ((e->type & EAF_TYPE_MASK) != EAF_TYPE_AS_PATH))
+      runtime("Missing AS_PATH attribute");
+
+    uint dir = v1.val.i;
+
+    if (!net_is_ip(net))
+      runtime("Network type must be IPv4 or IPv6");
+
+    uint afi = (net->type == NET_IP4) ? AFI_IPV4 : AFI_IPV6;
+
+    RESULT(T_ENUM_ASPA, i, [[ net_aspa_check(fpool, table, e->u.ptr, dir, afi) ]]);
+  }
+
+  INST(FI_ASPA_CHECK_EXPLICIT, 3, 1) {	/* ASPA Check */
+    NEVER_CONSTANT;
+    ARG(1, T_PATH);
+    ARG(2, T_ENUM_BGP_DIR);
+    ARG(3, T_ENUM_AF);
+    RTC(4);
+    struct rtable *table = rtc->table;
+
+    if (!table)
+      runtime("Missing ASPA table");
+
+    if (table->addr_type != NET_ASPA)
+      runtime("Table type must be ASPA");
+
+    if ((v3.val.i != AFI_IPV4) && (v3.val.i != AFI_IPV6))
+      runtime("Address family must be AF_IPV4 or AF_IPV6");
+
+    RESULT(T_ENUM_ASPA, i, [[ net_aspa_check(fpool, table, v1.val.ad, v2.val.i, v3.val.i) ]]);
+  }
+
   INST(FI_FORMAT, 1, 0) {	/* Format */
     ARG_ANY(1);
     RESULT(T_STRING, s, val_format_str(fpool, &v1));

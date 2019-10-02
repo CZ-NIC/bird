@@ -169,6 +169,27 @@ as_path_contains_confed(const struct adata *path)
   return 0;
 }
 
+int
+as_path_contains_set(const struct adata *path)
+{
+  const byte *pos = path->data;
+  const byte *end = pos + path->length;
+
+  while (pos < end)
+  {
+    uint type = pos[0];
+    uint slen = 2 + BS * pos[1];
+
+    if ((type == AS_PATH_SET) ||
+	(type == AS_PATH_CONFED_SET))
+      return 1;
+
+    pos += slen;
+  }
+
+  return 0;
+}
+
 struct adata *
 as_path_strip_confed(struct linpool *pool, const struct adata *path)
 {
@@ -196,6 +217,55 @@ as_path_strip_confed(struct linpool *pool, const struct adata *path)
   res->length = dst - res->data;
 
   return res;
+}
+
+int
+as_path_get_reverse_unique_asns(struct linpool *pool, const struct adata *path, u32 **data)
+{
+  u32 *asns = lp_alloc(pool, as_path_getlen(path) * sizeof(u32));
+  const byte *src = path->data;
+  const byte *end = src + path->length;
+  u32 *dst = asns;
+  u32 prev_as = 0;
+  u32 as;
+  uint i;
+
+  /* Step 1: create array of unique asns */
+  while (src < end)
+  {
+    uint t = src[0];
+    uint l = src[1];
+    src += 2;
+
+    if (t == AS_PATH_SEQUENCE)
+    {
+      for (i = 0; i < l; i++)
+      {
+        as = get_as(src);
+        if (as != prev_as)
+          *dst++ = as;
+        prev_as = as;
+        src += BS;
+      }
+    }
+    else
+      src += BS * l;
+  }
+  u32 num = dst - asns;
+
+  /* Step 2: Reverse the array */
+  u32 as_1, as_2;
+  for (i = 0; i < num/2; i++)
+  {
+    as_1 = asns[i];
+    as_2 = asns[num-i-1];
+    asns[i] = as_2;
+    asns[num-i-1] = as_1;
+  }
+
+  *data = asns;
+
+  return num;
 }
 
 struct adata *

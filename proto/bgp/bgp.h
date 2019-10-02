@@ -733,5 +733,10 @@ void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 #define ORIGIN_EGP		1
 #define ORIGIN_INCOMPLETE	2
 
+/* BGP dir */
+
+#define BGP_DIR_DOWN		0
+#define BGP_DIR_UP		1
+
 
 #endif

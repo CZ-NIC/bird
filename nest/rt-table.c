@@ -249,6 +249,78 @@ net_roa_check(rtable *tab, const net_addr *n, u32 asn)
     return ROA_UNKNOWN;	/* Should not happen */
 }
 
+static int
+net_aspa_pair_check(rtable *tab, u32 customer_asn, u32 provider_asn, u8 afi)
+{
+  struct net_addr_aspa n = NET_ADDR_ASPA(customer_asn, provider_asn, afi);
+  struct fib_node *fn;
+  int anything = 0;
+
+  for (fn = fib_get_chain(&tab->fib, (net_addr *) &n); fn; fn = fn->next)
+  {
+    net_addr_aspa *aspa = (void *) fn->addr;
+    net *r = fib_node_to_user(&tab->fib, fn);
+
+    if (net_equal_customer_aspa(aspa, &n) && rte_is_valid(r->routes))
+    {
+      anything = 1;
+      if (net_equal_aspa(aspa, &n))
+        return ASPA_VALID;
+    }
+  }
+
+  return anything ? ASPA_INVALID : ASPA_UNKNOWN;
+}
+
+int
+net_aspa_check(linpool *lp, rtable *tab, const struct adata *path, uint dir, u8 afi)
+{
+  ASSERT(tab->addr_type == NET_ASPA);
+
+  if (as_path_contains_set(path))
+    return ASPA_UNVERIFIED;
+
+  u32 *asns;
+  int asn_count = as_path_get_reverse_unique_asns(lp, path, &asns);
+
+  int invalid_count = 0;
+  int unknown_count = 0;
+  u32 customer_asn;
+  u32 provider_asn;
+
+  if (asn_count < 2)
+    return ASPA_VALID;
+
+  for (int i = 0; i < (asn_count - 1); i++)
+  {
+    if (!invalid_count)
+    {
+      customer_asn = asns[i];
+      provider_asn = asns[i+1];
+    }
+    else
+    {
+      customer_asn = asns[i+1];
+      provider_asn = asns[i];
+    }
+
+    int pair_status = net_aspa_pair_check(tab, customer_asn, provider_asn, afi);
+
+    if (pair_status == ASPA_INVALID)
+    {
+      if ((dir == 1) || invalid_count)
+        return ASPA_INVALID;
+      else
+        invalid_count++;
+    }
+
+    if (pair_status == ASPA_UNKNOWN)
+      unknown_count++;
+  }
+
+  return unknown_count ? ASPA_UNKNOWN : ASPA_VALID;
+}
+
 /**
  * rte_find - find a route
  * @net: network node
