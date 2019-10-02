@@ -24,6 +24,15 @@
 
 #include "sysdep/arch/asm.h"
 
+/*
+void cpu_stat_begin(void);
+u64 cpu_stat_end(void);
+void cpu_stat_init(void);
+void cpu_stat_destroy(void);
+*/
+
+#define cpu_stat_init()
+
 static volatile _Atomic u64 max_worker_id = 1;
 static _Thread_local u64 worker_id;
 
@@ -123,6 +132,10 @@ static struct worker_queue {
 } while (0)
 _Atomic u64 spin_max = 0;
 _Atomic u64 spin_stats[65536];
+_Atomic u64 wql_max = 0;
+_Atomic u64 wql_sum = 0;
+_Atomic u64 wql_cnt = 0;
+
 #else
 #define WORKER_CPU_RELAX(var) do { var++; CPU_RELAX(); } while (0)
 #endif
@@ -133,13 +146,16 @@ static inline void WQ_LOCK(void)
   while (1)
   {
     u64 noworker = NOWORKER;
-    if (atomic_compare_exchange_weak_explicit(&wq->lock, &noworker, worker_id, memory_order_acq_rel, memory_order_acquire))
+    if (atomic_compare_exchange_weak_explicit(&wq->lock, &noworker, worker_id, memory_order_acquire, memory_order_relaxed))
       break;
 
     WORKER_CPU_RELAX(spin_count);
   }
 
+
 #ifdef SPINLOCK_STATS
+  cpu_stat_begin();
+
   if (spin_count > 65534)
     atomic_fetch_add(&spin_stats[65535], 1);
   else
@@ -168,8 +184,19 @@ static inline void WQ_UNLOCK(void)
   WQ_STATELOG_QUEUE(WQS_UNLOCK, 1);
 
   u64 expected = worker_id;
-  if (!atomic_compare_exchange_strong_explicit(&wq->lock, &expected, NOWORKER, memory_order_acq_rel, memory_order_acquire))
+  if (!atomic_compare_exchange_strong_explicit(&wq->lock, &expected, NOWORKER, memory_order_release, memory_order_relaxed))
     wbug("The spinlock is locked by %lu but shall be locked by %lu!", expected, worker_id);
+
+#ifdef SPINLOCK_STATS
+  u64 stat = cpu_stat_end();
+  u64 wql_max_local = atomic_load_explicit(&wql_max, memory_order_relaxed);
+  while (wql_max_local < stat)
+    if (atomic_compare_exchange_weak_explicit(&wql_max, &wql_max_local, stat, memory_order_relaxed, memory_order_relaxed))
+      break;
+
+  atomic_fetch_add_explicit(&wql_sum, stat, memory_order_relaxed);
+  atomic_fetch_add_explicit(&wql_cnt, 1, memory_order_relaxed);
+#endif
 }
 
 #define WQ_LOCKED MACRO_PACK_BEFORE_AFTER(WQ_LOCK(), WQ_UNLOCK())
@@ -341,15 +368,11 @@ retry: do { \
 } while (0)
 
 #define TASK_PREPEND(d, t) do { \
-  WQ_LOCK(); \
   t->flags |= TF_PREPENDED; \
+  __builtin_prefetch(HEAD(wq->pending)); \
+  WQ_LOCK(); \
   add_head(&wq->pending, &((t)->n)); \
   WQ_UNLOCK(); \
-  SEM_POST(&wq->waiting); \
-} while (0)
-
-#define TASK_APPEND(t) do { \
-  add_tail(&wq->pending, &((t)->n)); \
   SEM_POST(&wq->waiting); \
 } while (0)
 
@@ -827,6 +850,8 @@ worker_loop(void *_data UNUSED)
 
   WDBG("Worker started\n");
   SEM_POST(&wq->available);
+
+  cpu_stat_init();
  
   /* Run the loop */
   while (1) {
@@ -951,6 +976,8 @@ worker_queue_init(void)
   atomic_store(&wq->stop, 0);
 
   worker_sleeping = 0;
+
+  cpu_stat_init();
 }
 
 void
@@ -1041,6 +1068,69 @@ worker_queue_update(const struct config *c)
   wbug("Failed to start a worker on startup: %M", e);
 }
 
+#define TASK_APPEND(t) do { \
+  SEM_POST(&wq->waiting); \
+} while (0)
+
+static void
+task_push_available(struct task *t)
+{
+  WDBG("Waited for an available worker succesfully\n");
+  WQ_LOCK();
+
+  /* Idempotency. */
+  if (t->n.prev && t->n.next)
+  {
+    /* If already pushed, do nothing. */
+    WQ_UNLOCK();
+    return;
+  }
+
+  /* Check that the node is clean */
+  ASSERT(!t->n.prev && !t->n.next);
+
+  /* Use only public flags */
+  t->flags &= TF_PUBLIC_MASK;
+
+  /* Then we have a task for it. */
+  add_tail(&wq->pending, &((t)->n));
+  WQ_UNLOCK();
+  SEM_POST(&wq->waiting);
+}
+
+static void
+task_push_block(struct task *t)
+{
+  WDBG("Blocking until a worker is available\n");
+  WQ_LOCK();
+
+  /* Idempotency. */
+  if (t->n.prev && t->n.next)
+  {
+    /* If already pushed, do nothing. */
+    WQ_UNLOCK();
+    return;
+  }
+
+  /* Check that the node is clean */
+  ASSERT(!t->n.prev && !t->n.next);
+
+  /* Use only public flags */
+  t->flags &= TF_PUBLIC_MASK;
+
+  /* No available worker. We're going to sleep.
+   * Anyway, the task still exists in the queue. */
+  add_tail(&wq->pending, &((t)->n));
+  WQ_UNLOCK();
+
+  SEM_POST(&wq->waiting);
+  WORKER_YIELD();
+
+  /* Wait until somebody picks the task up */
+  SEM_WAIT(&wq->available);
+  WORKER_CONTINUE();
+}
+
 void
 task_push(struct task *t)
 {
@@ -1053,51 +1143,13 @@ task_push(struct task *t)
   if (atomic_load(&wq->max_workers) == 0)
     return;
 
-  WQ_LOCK();
-
-  /* Idempotency. */
-  if (t->n.prev && t->n.next)
-  {
-    /* If already pushed, do nothing. */
-    WQ_UNLOCK();
-    return;
-  }
-  else
-  {
-    /* Check that the node is clean */
-    ASSERT(!t->n.prev && !t->n.next);
-  }
-
-  /* Use only public flags */
-  t->flags &= TF_PUBLIC_MASK;
-
   /* Is there an available worker right now? */
   if (SEM_TRYWAIT(&wq->available))
-  {
-    WDBG("Waited for an available worker succesfully\n");
-    /* Then we have a task for it. */
-
-    TASK_APPEND(t);
-
-    /* And now we can continue freely. */
-    WQ_UNLOCK();
-    return;
-  }
+    return task_push_available(t);
   else
-  {
-    /* No available worker. We're going to sleep.
-     * Anyway, the task still exists in the queue. */
-    TASK_APPEND(t);
-    WQ_UNLOCK();
-
-    WORKER_YIELD();
-
-    /* Wait until somebody picks the task up */
-    SEM_WAIT(&wq->available);
-    WORKER_CONTINUE();
-    return;
-  }
+    return task_push_block(t);
 }
+
 
 struct io_ping_handle {
   int fd[2];

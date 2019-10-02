@@ -123,6 +123,7 @@ t_rwlock(const void *data_)
 #ifdef SPINLOCK_STATS
 extern _Atomic u64 spin_max;
 extern _Atomic u64 spin_stats[65536];
+extern _Atomic u64 wql_max, wql_sum, wql_cnt;
 #endif
 
 int main(int argc, char *argv[])
@@ -174,6 +175,11 @@ int main(int argc, char *argv[])
   printf("spin_max %lu\n", atomic_load(&spin_max));
   for (uint i=0; i<sizeof(spin_stats)/sizeof(spin_stats[0]); i++)
     printf("spin_stats[%u] = %lu\n", i, atomic_load(&spin_stats[i]));
+
+  printf("wql max %lu avg %lf cnt %lu\n",
+      atomic_load(&wql_max),
+      atomic_load(&wql_sum)/((double) atomic_load(&wql_cnt)),
+      atomic_load(&wql_cnt));
 #endif
 
   return bt_exit_value();
