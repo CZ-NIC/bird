@@ -61,7 +61,7 @@ static void t_rwlock_execute(struct task *task)
 }
 
 struct t_rwlock_class {
-  uint workers, max_workers;
+  uint workers, max_workers, queue_size;
   uint rp, wp, rs, ws;
 };
 
@@ -72,6 +72,7 @@ t_rwlock(const void *data_)
   const struct config conf = {
     .workers = class->workers,
     .max_workers = class->max_workers,
+    .queue_size = class->queue_size,
   };
 
   worker_queue_init();
@@ -133,11 +134,18 @@ int main(int argc, char *argv[])
 
 #define TEST(workers_, max_workers_, rp_, wp_, rs_, ws_) \
   do { \
+    TESTQ(workers_, max_workers_, 64, rp_, wp_, rs_, ws_); \
+  } while (0)
+
+#define TESTQ(workers_, max_workers_, queue_size_, rp_, wp_, rs_, ws_) \
+  do { \
     struct t_rwlock_class class = { \
       .workers = workers_, .max_workers = max_workers_, \
+      .queue_size = queue_size_, \
       .rs = rs_, .ws = ws_, .wp = wp_, .rp = rp_, \
     }; \
     bt_test_suite_base(t_rwlock, "t_rwlock workers=" #workers_ " max_workers=" #max_workers_ \
+       " queue_size=" #queue_size_ \
        " rp=" #rp_ " wp=" #wp_ " rs=" #rs_ " ws=" #ws_, \
        &class, BT_FORKING, BT_TIMEOUT, "t_rwlock"); \
   } while (0)
