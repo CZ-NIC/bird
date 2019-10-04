@@ -2154,10 +2154,6 @@ watchdog_stop(void)
  *	Main I/O Loop
  */
 
-volatile int async_config_flag;		/* Asynchronous reconfiguration/dump scheduled */
-volatile int async_dump_flag;
-volatile int async_shutdown_flag;
-
 void
 io_init(void)
 {

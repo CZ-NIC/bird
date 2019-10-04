@@ -36,6 +36,11 @@ static int no_fork;
 static int no_timeout;
 static int is_terminal;		/* Whether stdout is a live terminal or pipe redirect */
 
+volatile sig_atomic_t async_config_flag;		/* Asynchronous reconfiguration/dump scheduled */
+volatile sig_atomic_t async_dump_flag;
+volatile sig_atomic_t async_shutdown_flag;
+
+
 uint bt_verbose;
 const char *bt_filename;
 const char *bt_test_id;
