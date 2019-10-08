@@ -15,10 +15,15 @@
 
 #include "conf/conf.h"
 
+#if HAVE_ATOMIC
+#include <stdatomic.h>
+#else
+#include "sysdep/unix/atomic.h"
+#endif
+
 #include <errno.h>
 #include <fcntl.h>
 #include <semaphore.h>
-#include <stdatomic.h>
 #include <pthread.h>
 #include <unistd.h>
 

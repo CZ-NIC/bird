@@ -129,6 +129,15 @@ elif test "$bird_cv_thread_local" = old ; then
   AC_DEFINE([HAVE_OLD_THREAD_LOCAL], [1], [Define to 1 if _Thread_local has to be defined as __thread])
 fi
 
+AC_CHECK_HEADER([stdatomic.h],
+		[AC_DEFINE([HAVE_ATOMIC], [1], [Define to 1 if stdatomic.h is present])],
+		[AC_CHECK_FUNC([__sync_fetch_and_add],
+			       [],
+			       [AC_MSG_ERROR([No atomic operations available.])]
+			       )],
+	        []
+		)
+
 if test "$enable_pthreads" != no ; then
   BIRD_CHECK_PTHREADS
 
