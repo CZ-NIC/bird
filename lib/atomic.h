@@ -5,14 +5,15 @@
 #include <stdatomic.h>
 #else
 
-#define _Atomic volatile
+#define _Atomic
 
-#define atomic_load(ptr) (*(ptr))
-#define atomic_load_explicit(ptr, mem) (*(ptr))
-#define atomic_store(ptr, val) (*(ptr) = (val))
+#define atomic_load(ptr) __sync_val_compare_and_swap(ptr, 0, 0)
+#define atomic_load_explicit(ptr, mem) atomic_load(ptr)
+#define atomic_store(ptr, val) __sync_lock_test_and_set(ptr, val)
 
 #define atomic_fetch_add(ptr, val) __sync_fetch_and_add((ptr), (val))
 #define atomic_fetch_add_explicit(ptr, val, memory) __sync_fetch_and_add((ptr), (val))
+#define atomic_fetch_sub(ptr, val) __sync_fetch_and_sub((ptr), (val))
 #define atomic_fetch_sub_explicit(ptr, val, memory) __sync_fetch_and_sub((ptr), (val))
 
 #define atomic_compare_exchange_weak(ptr, desired, wanted) ({ \

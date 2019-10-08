@@ -6,9 +6,8 @@
 #include "test/bt-utils.h"
 
 #include "lib/worker.h"
+#include "lib/atomic.h"
 #include "conf/conf.h"
-
-#include <stdatomic.h>
 
 #ifdef DEBUGGING
 #define TEST_MAX (1 << 16)
