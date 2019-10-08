@@ -131,11 +131,13 @@ fi
 
 AC_CHECK_HEADER([stdatomic.h],
 		[AC_DEFINE([HAVE_ATOMIC], [1], [Define to 1 if stdatomic.h is present])],
-		[AC_CHECK_FUNC([__sync_fetch_and_add],
-			       [],
-			       [AC_MSG_ERROR([No atomic operations available.])]
-			       )],
-	        []
+		[
+		BIRD_CHECK_OLD_SYNC
+		if test "$bird_cv_old_sync" = no ; then
+		  AC_MSG_ERROR([No atomic operations available.])
+		fi
+		],
+		[]
 		)
 
 if test "$enable_pthreads" != no ; then

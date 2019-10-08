@@ -15,11 +15,7 @@
 
 #include "conf/conf.h"
 
-#if HAVE_ATOMIC
-#include <stdatomic.h>
-#else
-#include "sysdep/unix/atomic.h"
-#endif
+#include "lib/atomic.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -426,11 +422,11 @@ static struct resclass domain_resclass = {
   .memsize = NULL
 };
 
-_Thread_local static struct locked_domain {
+static _Thread_local struct locked_domain {
   struct domain *domain;
   int write;
 } *locked_domains = NULL;
-_Thread_local static uint locked_max = 0, locked_cnt = 0;
+static _Thread_local uint locked_max = 0, locked_cnt = 0;
 
 struct domain *
 domain_new(pool *p)

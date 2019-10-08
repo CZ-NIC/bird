@@ -44,8 +44,7 @@
 #include "lib/string.h"
 #include "lib/alloca.h"
 #include "lib/worker.h"
-
-#include <stdatomic.h>
+#include "lib/atomic.h"
 
 pool *rt_table_pool;
 

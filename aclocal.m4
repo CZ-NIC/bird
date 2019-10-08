@@ -22,6 +22,30 @@ AC_DEFUN([BIRD_CHECK_THREAD_LOCAL],
   )
 ])
 
+AC_DEFUN([BIRD_CHECK_OLD_SYNC],
+[
+  AC_CACHE_CHECK(
+    [whether GCC old-style __sync_* calls are available],
+    [bird_cv_old_sync],
+    [
+      AC_COMPILE_IFELSE([
+	AC_LANG_PROGRAM([
+	  #include <stdint.h>
+	], [
+	  uint64_t value = 0;
+	  __sync_fetch_and_add(&value, 64);
+	  __sync_fetch_and_sub(&value, 42);
+	  uint64_t old = __sync_val_compare_and_swap(&value, 22, 64);
+	])
+      ],
+      [bird_cv_old_sync=yes],
+      [bird_cv_old_sync=no],
+      )
+    ]
+  )
+])
+
+
 AC_DEFUN([BIRD_CHECK_PTHREADS],
 [
   bird_tmp_cflags="$CFLAGS"
