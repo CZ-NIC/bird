@@ -253,6 +253,24 @@ class BIRDCommand(gdb.Command):
     def invoke(self, argument, from_tty):
         pass
 
+class BIRDListCommand(gdb.Command):
+    def __init__(self):
+        super().__init__("bird list", gdb.COMMAND_DATA, gdb.COMPLETE_EXPRESSION)
+
+    def invoke(self, argument, from_tty):
+        args = gdb.string_to_argv(argument)
+        if len(args) != 1:
+            raise Exception("Need one arg")
+
+        blist = gdb.parse_and_eval(args[0])
+        if blist.type.code == gdb.TYPE_CODE_PTR:
+            blist = blist.dereference()
+
+        head = blist['head']["next"]
+        while head['next'] != 0:
+            print(head)
+            head = head['next']
+
 class BIRDWQCommand(gdb.Command):
     def __init__(self):
         super().__init__("bird wq", gdb.COMMAND_NONE, gdb.COMPLETE_COMMAND, True)
@@ -283,6 +301,7 @@ class BIRDWQStateLogCommand(gdb.Command):
             print("%(idx) 5d" % { "idx": idx }, wq["statelog"][idx])
 
 BIRDCommand()
+BIRDListCommand()
 BIRDWQCommand()
 BIRDWQStateLogCommand()
 
