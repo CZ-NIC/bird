@@ -2115,6 +2115,7 @@ no_nexthop:
     memset(nhp, 0, NEXTHOP_MAX_SIZE);
     nhp->iface = nh->iface;
     nhp->weight = nh->weight;
+
     if (mls)
     {
       nhp->labels = nh->labels + mls->len;
@@ -2132,6 +2133,13 @@ no_nexthop:
 	continue;
       }
     }
+    else if (nh->labels)
+    {
+      nhp->labels = nh->labels;
+      nhp->labels_orig = 0;
+      memcpy(nhp->label, nh->label, nh->labels * sizeof(u32));
+    }
+
     if (ipa_nonzero(nh->gw))
     {
       nhp->gw = nh->gw;			/* Router nexthop */
