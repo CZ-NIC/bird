@@ -2137,6 +2137,8 @@ no_nexthop:
       nhp->gw = nh->gw;			/* Router nexthop */
       nhp->flags |= (nh->flags & RNF_ONLINK);
     }
+    else if (!(nh->iface->flags & IF_MULTIACCESS) || (nh->iface->flags & IF_LOOPBACK))
+      nhp->gw = IPA_NONE;		/* PtP link - no need for nexthop */
     else if (ipa_nonzero(he->link))
       nhp->gw = he->link;		/* Device nexthop with link-local address known */
     else
