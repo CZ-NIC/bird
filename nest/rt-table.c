@@ -2109,9 +2109,10 @@ no_nexthop:
     else
     {
       nhr = nhp;
-      nhp = (nhp ? (nhp->next = lp_allocz(rte_update_pool, NEXTHOP_MAX_SIZE)) : &(a->nh));
+      nhp = (nhp ? (nhp->next = lp_alloc(rte_update_pool, NEXTHOP_MAX_SIZE)) : &(a->nh));
     }
 
+    memset(nhp, 0, NEXTHOP_MAX_SIZE);
     nhp->iface = nh->iface;
     nhp->weight = nh->weight;
     if (mls)
