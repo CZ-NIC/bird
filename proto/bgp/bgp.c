@@ -2073,6 +2073,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 static int
 bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *import_changed, int *export_changed)
 {
+  struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
   struct bgp_channel_config *new = (void *) CC;
   struct bgp_channel_config *old = c->cf;
@@ -2095,7 +2096,13 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
   if ((new->gw_mode != old->gw_mode) ||
       (new->aigp != old->aigp) ||
       (new->cost != old->cost))
+  {
+    /* import_changed itself does not force ROUTE_REFRESH when import_table is active */
+    if (c->c.in_table && (c->c.channel_state == CS_UP))
+      bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
+
     *import_changed = 1;
+  }
 
   if (!ipa_equal(new->next_hop_addr, old->next_hop_addr) ||
       (new->next_hop_self != old->next_hop_self) ||
