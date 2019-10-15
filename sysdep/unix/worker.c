@@ -498,7 +498,7 @@ domain_pop_lock(struct domain *d UNUSED)
 #define DOMAIN_STATLOG(what_, dom, task_) \
   WQ_STATELOG(what_, .domain = { .rdsem_n = dom->rdsem_n, .wrsem_n = dom->wrsem_n, .rdtasks_n = dom->rdtasks_n, .wrtasks_n = dom->wrtasks_n, .lock = atomic_load(&dom->lock), .domain = dom, .task = task_ })
 
-static int
+static inline int
 domain_read_lock_primary(struct domain *d, struct task *t)
 {
   domain_assert_unlocked(d);
@@ -592,7 +592,7 @@ domain_read_lock(struct domain *d)
   DOMAIN_STATLOG(WQS_DOMAIN_RDLOCK_SUCCESS, d, NULL);
 }
 
-static int
+static inline int
 domain_write_lock_primary(struct domain *d, struct task *t)
 {
   domain_assert_unlocked(d);
@@ -690,7 +690,7 @@ domain_write_lock(struct domain *d)
 }
 
 /* This function has to be called after DOMAIN_LOCK_ENTER_SLOWPATH() is called */
-static void
+static inline void
 domain_unlock_writers(struct domain *d, u64 lock, u64 ulock)
 {
   ASSERT(DOMAIN_LOCK_RDLOCKED(ulock) == 0);
