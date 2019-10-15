@@ -9,8 +9,10 @@
 #include "lib/atomic.h"
 #include "conf/conf.h"
 
-//#define TEST_MAX (1 << 18)
-#define TEST_MAX (1 << 12)
+#define TEST_MAX (1 << 15)
+//#define TEST_MAX (1 << 10)
+
+#define FROB  31
 
 struct t_rwlock_task {
   struct task task;
@@ -19,7 +21,7 @@ struct t_rwlock_task {
   _Atomic uint *total_counter;
   _Atomic uint *allocated;
   uint sink;
-  uint frobnicator[42];
+  uint frobnicator[FROB];
 };
 
 static void t_rwlock_execute(struct task *task)
@@ -36,12 +38,13 @@ static void t_rwlock_execute(struct task *task)
   uint tot = atomic_fetch_add(t->total_counter, 1);
 
   /* Spin for some time to mimic some reasonable work */
-  for (uint i=0; i<42; i++)
+  for (uint i=0; i<FROB; i++)
     t->frobnicator[i] = (i+1) * (2*i + 1) * 3535353559;
 
-  for (uint i=0; i<42; i++)
-    for (uint j=0; j<42; j++)
-      t->sink += (t->frobnicator[i] ^= -t->frobnicator[j]) * 3535353559;
+  for (uint i=0; i<FROB; i++)
+    for (uint j=0; j<FROB; j++)
+      for (uint k=0; k<FROB; k++)
+	t->sink += (t->frobnicator[i] ^= t->frobnicator[k] - t->frobnicator[j]) * 3535353559;
 
   if (t->domain)
     switch (t->howtolock) {

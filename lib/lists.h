@@ -78,6 +78,7 @@ void add_tail(list *, node *);
 void add_head(list *, node *);
 void rem_node(node *);
 void move_list(list *dest, list *src);
+void add_head_list(list *, list *);
 void add_tail_list(list *, list *);
 void init_list(list *);
 void insert_node(node *, node *);

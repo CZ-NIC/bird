@@ -145,6 +145,22 @@ _Atomic u64 wql_cnt = 0;
 
 static _Thread_local int worker_sleeping = 1;
 
+static inline void WQ_LOCK_PREFETCH(void *ptr, ...)
+{
+  __builtin_prefetch(&wq->lock);
+
+  va_list args;
+  va_start(args, ptr);
+
+  while (ptr)
+  {
+    __builtin_prefetch(ptr);
+    ptr = va_arg(args, void *);
+  }
+
+  va_end(args);
+}
+
 static inline void WQ_LOCK(void)
 {
   WASSERT(!worker_sleeping);
@@ -204,9 +220,6 @@ static inline void WQ_UNLOCK(void)
   atomic_fetch_add_explicit(&wql_cnt, 1, memory_order_relaxed);
 #endif
 }
-
-#define WQ_LOCKED MACRO_PACK_BEFORE_AFTER(WQ_LOCK(), WQ_UNLOCK())
-#define WQ_LOCKED_BOOL(...) (WQ_LOCK(), !!(__VA_ARGS__) + (WQ_UNLOCK(), 0))
 
 static inline void SEM_INIT(sem_t *s, uint val)
 {
@@ -378,16 +391,8 @@ retry: do { \
     bug("Lock state value shall never change while in slowpath"); \
 } while (0)
 
-#define TASK_PREPEND(d, t) do { \
-  t->flags |= TF_PREPENDED; \
-  WQ_LOCK(); \
-  add_head(&wq->pending, &((t)->n)); \
-  WQ_UNLOCK(); \
-  SEM_POST(&wq->waiting); \
-} while (0)
-
 #define TASK_STOP_WORKER do { \
-  atomic_fetch_add(&wq->stop, 1); \
+  atomic_fetch_add_explicit(&wq->stop, 1, memory_order_acquire); \
   SEM_POST(&wq->waiting); \
 } while (0);
 
@@ -701,6 +706,8 @@ domain_unlock_writers(struct domain *d, u64 lock, u64 ulock)
 
   if (d->wrtasks_n)
   {
+    WQ_LOCK_PREFETCH(wq->pending.head);
+
     WDBG("-> There is a writer task waiting for us (n=%u)\n", d->wrtasks_n);
     if ((ulock & DOMAIN_LOCK_WRLOCKED_BIT) || DOMAIN_LOCK_PREPENDED(ulock))
       wimpossible();
@@ -718,7 +725,11 @@ domain_unlock_writers(struct domain *d, u64 lock, u64 ulock)
       ((d->rdtasks_n || d->rdsem_n) ? DOMAIN_LOCK_READERS_BIT : 0));
 
     /* Prepend the task */
-    TASK_PREPEND(d, t);
+    t->flags |= TF_PREPENDED;
+    WQ_LOCK();
+    add_head(&wq->pending, &((t)->n));
+    WQ_UNLOCK();
+    SEM_POST(&wq->waiting);
 
     return;
   }
@@ -818,6 +829,10 @@ domain_write_unlock(struct domain *d)
  * So we sometimes flush the readers instead of locking another pending writer. */
   if (r && (!w || (r > 3*w)))
   {
+    list tmp_rdtasks;
+
+    WQ_LOCK_PREFETCH(wq->pending.head);
+
     WDBG("-> Flushing readers: WP=%u WS=%u RP=%u RS=%u\n",
 	d->wrtasks_n, d->wrsem_n, d->rdtasks_n, d->rdsem_n);
 
@@ -830,8 +845,8 @@ domain_write_unlock(struct domain *d)
     d->rdsem_n = 0;
 
     /* Move the tasks to a temporary list */
-    list tmp_rdtasks;
-    move_list(&tmp_rdtasks, &d->rdtasks);
+    if (rdtasks_n)
+      move_list(&tmp_rdtasks, &d->rdtasks);
 
     DOMAIN_LOCK_EXIT_SLOWPATH(
 	/* Lock all the pending readers */
@@ -841,18 +856,28 @@ domain_write_unlock(struct domain *d)
 	/* If writers are remaining, block other writers */
 	((d->wrtasks_n || d->wrsem_n) ? DOMAIN_LOCK_WRITERS_BIT : 0));
 
-    /* Put the prepended tasks into queue */
-    u64 prepend_check = 0;
-    struct task *t, *tt;
-    WALK_LIST_BACKWARDS_DELSAFE(t, tt, tmp_rdtasks)
+    if (rdtasks_n)
     {
-      rem_node(&t->n);
-      TASK_PREPEND(d, t);
-      prepend_check++;
-    }
+      /* Put the prepended tasks into queue */
+      u64 prepend_check = 0;
+      struct task *t;
+      WALK_LIST(t, tmp_rdtasks)
+      {
+	t->flags |= TF_PREPENDED;
+	prepend_check++;
+      }
+   
+      /* Check the right number of waiting tasks */   
+      if (prepend_check != rdtasks_n)
+	wimpossible();
 
-    if (prepend_check != rdtasks_n || !EMPTY_LIST(tmp_rdtasks))
-      wbug("This shall never happen");
+      WQ_LOCK();
+      add_head_list(&wq->pending, &tmp_rdtasks);
+      WQ_UNLOCK();
+
+      for (uint i=0; i<prepend_check; i++)
+	SEM_POST(&wq->waiting);
+    }
 
     /* Unlock the waiting secondary readers */
     for ( ; rdsem_n; rdsem_n--)
@@ -889,6 +914,8 @@ worker_loop(void *_data UNUSED)
  
   /* Run the loop */
   while (1) {
+    WQ_LOCK_PREFETCH(wq->pending.head, NULL);
+
     if (!SEM_TRYWAIT(&wq->waiting))
     {
       WDBG("Worker will wait\n");
@@ -914,6 +941,7 @@ worker_loop(void *_data UNUSED)
     }
 
     WQ_LOCK();
+
     /* Is there a pending task? */
     if (!EMPTY_LIST(wq->pending))
     {
@@ -1215,11 +1243,14 @@ task_push(struct task *t)
   WDBG("Task push\n");
 
   /* Stopping, won't accept tasks */
-  if (atomic_load(&wq->max_workers) == 0)
+  if (atomic_load_explicit(&wq->max_workers, memory_order_relaxed) == 0)
     return;
 
+  /* Will add_tail to the pending tasks list */
+  WQ_LOCK_PREFETCH(wq->pending.tail, NULL);
+
   /* Is there an available worker right now? */
-  if ((atomic_load(&wq->blocked) == 0) && SEM_TRYWAIT(&wq->available))
+  if ((atomic_load_explicit(&wq->blocked, memory_order_relaxed) == 0) && SEM_TRYWAIT(&wq->available))
     return task_push_available(t);
   else
     return task_push_block(t);
