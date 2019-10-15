@@ -57,10 +57,9 @@ static struct worker_queue {
   _Atomic uint max_workers;	/* Maximum count of workers incl. sleeping */
   uint queue_size;		/* How many items can be in queue before blocking */
   _Atomic uint stop;		/* Stop requests */
-  union {
-    _Atomic u64 lock;		/* Simple spinlock */
-    sem_t mutex;		/* Mutex instead of the spinlock */
-  };
+  _Atomic uint blocked;		/* How many workers are blocked by full queue */
+  _Atomic uint postponed;	/* How many available sem_post's have been postponed */
+  _Atomic u64 lock;		/* Simple spinlock */
   list pending;			/* Tasks pending */
 #ifdef DEBUG_STATELOG
   _Atomic u64 statelog_pos;	/* Current position in statelog */
@@ -894,7 +893,10 @@ worker_loop(void *_data UNUSED)
     {
       WDBG("Worker will wait\n");
       if (!prepended)
-	SEM_POST(&wq->available);
+	if (atomic_load_explicit(&wq->blocked, memory_order_relaxed))
+	  atomic_fetch_add_explicit(&wq->postponed, 1, memory_order_relaxed);
+	else
+	  SEM_POST(&wq->available);
 
       WORKER_YIELD();
       SEM_WAIT(&wq->waiting);
@@ -905,7 +907,10 @@ worker_loop(void *_data UNUSED)
     {
       WDBG("Worker won't wait\n");
       if (!prepended)
-	SEM_POST(&wq->available);
+	if (atomic_load_explicit(&wq->blocked, memory_order_relaxed))
+	  atomic_fetch_add_explicit(&wq->postponed, 1, memory_order_relaxed);
+	else
+	  SEM_POST(&wq->available);
     }
 
     WQ_LOCK();
@@ -915,7 +920,20 @@ worker_loop(void *_data UNUSED)
       /* Retrieve that task */
       struct task *t = HEAD(wq->pending);
       rem_node(&t->n);
+
+      /* Check list for emptiness */
+      int empty = EMPTY_LIST(wq->pending);
+
+      /* No more operations on worker queue */
       WQ_UNLOCK();
+
+      /* Flush the postponed available semaphores */
+      if (empty && atomic_load_explicit(&wq->postponed, memory_order_relaxed))
+      {
+	uint postponed = atomic_exchange_explicit(&wq->postponed, 0, memory_order_relaxed);
+	for (uint i=0; i<postponed; i++)
+	  SEM_POST(&wq->available);
+      }
 
       /* Store the old flags and domain */
       struct domain *d = t->domain;
@@ -1154,6 +1172,9 @@ static void
 task_push_block(struct task *t)
 {
   WDBG("Blocking until a worker is available\n");
+
+  atomic_fetch_add_explicit(&wq->blocked, 1, memory_order_relaxed);
+
   WQ_LOCK();
 
   /* Idempotency. */
@@ -1180,6 +1201,8 @@ task_push_block(struct task *t)
 
   /* Wait until somebody picks the task up */
   SEM_WAIT(&wq->available);
+
+  atomic_fetch_sub_explicit(&wq->blocked, 1, memory_order_relaxed);
   WORKER_CONTINUE();
 }
 
@@ -1196,7 +1219,7 @@ task_push(struct task *t)
     return;
 
   /* Is there an available worker right now? */
-  if (SEM_TRYWAIT(&wq->available))
+  if ((atomic_load(&wq->blocked) == 0) && SEM_TRYWAIT(&wq->available))
     return task_push_available(t);
   else
     return task_push_block(t);
