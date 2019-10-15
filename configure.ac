@@ -404,7 +404,7 @@ if test "$enable_debug" = yes ; then
   )
 
   if test "$enable_memcheck" = yes ; then
-    AC_CHECK_LIB([dmalloc], [dmalloc_debug])
+    AC_CHECK_LIB([dmallocth], [dmalloc_debug])
     if test $ac_cv_lib_dmalloc_dmalloc_debug != yes ; then
       AC_CHECK_LIB([efence], [malloc])
     fi
