@@ -47,6 +47,8 @@
 #include "lib/atomic.h"
 
 pool *rt_table_pool;
+static pool *rup_pool;
+static struct domain *rup_domain;
 
 #define RUPS_MAX  8
 
@@ -61,7 +63,9 @@ static inline linpool *rup_get(void) {
     return rte_update_pool[--rups];
 
   /* Allocate a new linpool */
-  struct linpool *pool = lp_new_default(rt_table_pool);
+  domain_write_lock(rup_domain);
+  struct linpool *pool = lp_new_default(rup_pool);
+  domain_write_unlock(rup_domain);
 
   /* Return the pool */
   return pool;
@@ -69,7 +73,9 @@ static inline linpool *rup_get(void) {
 
 static inline void rup_free(linpool *pool) {
   if (rups == RUPS_MAX) {
+    domain_write_lock(rup_domain);
     rfree(pool);
+    domain_write_unlock(rup_domain);
   } else {
     /* Keep the linpool for future use */
     lp_flush(pool);
@@ -2037,6 +2043,9 @@ rt_init(void)
 {
   rta_init();
   rt_table_pool = rp_new(&root_pool, "Routing tables");
+
+  rup_pool = rp_new(&root_pool, "Route updates");
+  rup_domain = domain_new(rup_pool);
 
   rte_slab = sl_new(rt_table_pool, sizeof(rte));
   init_list(&routing_tables);
