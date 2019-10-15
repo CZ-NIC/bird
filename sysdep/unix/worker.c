@@ -212,17 +212,16 @@ static inline void SEM_INIT(sem_t *s, uint val)
     wbug("sem_init() failed: %m");
 }
 
-static inline void SEM_WAIT(sem_t *s)
-{
-  WQ_STATELOG(WQS_SEM_WAIT_REQUEST, .sem = s);
-  while (sem_wait(s) < 0) {
-    if (errno == EINTR)
-      continue;
-    wdie("sem_wait: %m");
-  }
-
-  WQ_STATELOG(WQS_SEM_WAIT_SUCCESS, .sem = s);
-}
+#define SEM_WAIT(_s) do { \
+  sem_t *s = _s; \
+  WQ_STATELOG(WQS_SEM_WAIT_REQUEST, .sem = s); \
+  while (sem_wait(s) < 0) { \
+    if (errno == EINTR) \
+      continue; \
+    wdie("sem_wait: %m"); \
+  } \
+  WQ_STATELOG(WQS_SEM_WAIT_SUCCESS, .sem = s); \
+} while (0)
 
 static inline int SEM_TRYWAIT(sem_t *s)
 {
@@ -242,13 +241,12 @@ static inline int SEM_TRYWAIT(sem_t *s)
   return 1;
 }
 
-static inline void SEM_POST(sem_t *s)
-{
-  if (sem_post(s) < 0)
-    wbug("sem_post: %m");
-
-  WQ_STATELOG(WQS_SEM_POST, .sem = s);
-}
+#define SEM_POST(_s) do { \
+  sem_t *s = _s; \
+  if (sem_post(s) < 0) \
+    wbug("sem_post: %m"); \
+  WQ_STATELOG(WQS_SEM_POST, .sem = s); \
+} while (0)
 
 static inline void SEM_DESTROY(sem_t *s)
 {
