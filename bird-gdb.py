@@ -5,12 +5,31 @@ class BIRDPrinter:
     @classmethod
     def lookup(cls, val):
 #        print(cls.typeCode, cls.typeTag, val.type.code, val.type.tag)
-        if val.type.code != cls.typeCode:
+        baseType = val.type.strip_typedefs()
+        if baseType.code != cls.typeCode:
             return None
-        if val.type.tag != cls.typeTag:
+        if baseType.tag != cls.typeTag:
             return None
 
         return cls(val)
+
+class BIRDListPrinter(BIRDPrinter):
+    typeCode = gdb.TYPE_CODE_UNION
+    typeTag = "list"
+
+    def to_string(self):
+        blist = self.val
+        if blist.type.code == gdb.TYPE_CODE_PTR:
+            blist = blist.dereference()
+
+        out = []
+
+        head = blist['head']['next']
+        while head and head['next'] != 0:
+            out.append(str(head))
+            head = head['next']
+
+        return "(list) [" + ", ".join(out) + "]"
 
 
 class BIRDFValPrinter(BIRDPrinter):
@@ -236,6 +255,7 @@ class BIRDWQStateLogPrinter(BIRDPrinter):
                 }[str(self.val['what'])]()
 
 def register_printers(objfile):
+    objfile.pretty_printers.append(BIRDListPrinter.lookup)
     objfile.pretty_printers.append(BIRDFInstPrinter.lookup)
     objfile.pretty_printers.append(BIRDFValPrinter.lookup)
     objfile.pretty_printers.append(BIRDFValStackPrinter.lookup)
@@ -252,6 +272,29 @@ class BIRDCommand(gdb.Command):
 
     def invoke(self, argument, from_tty):
         pass
+
+class BIRDListCommand(gdb.Command):
+    def __init__(self):
+        super().__init__("bird list", gdb.COMMAND_DATA, gdb.COMPLETE_EXPRESSION)
+
+    def invoke(self, argument, from_tty):
+        args = gdb.string_to_argv(argument)
+        nodeType = None
+        if len(args) == 1:
+            nodeType = gdb.lookup_type("struct node")
+        elif len(args) == 2:
+            nodeType = gdb.lookup_type(args[1])
+        else:
+            raise Exception("Usage: bird list <list> [<node type>]")
+
+        blist = gdb.parse_and_eval(args[0])
+        if blist.type.code == gdb.TYPE_CODE_PTR:
+            blist = blist.dereference()
+
+        head = blist['head']['next']
+        while head and head['next'] != 0:
+            print(head.cast(nodeType))
+            head = head['next']
 
 class BIRDWQCommand(gdb.Command):
     def __init__(self):
@@ -283,6 +326,7 @@ class BIRDWQStateLogCommand(gdb.Command):
             print("%(idx) 5d" % { "idx": idx }, wq["statelog"][idx])
 
 BIRDCommand()
+BIRDListCommand()
 BIRDWQCommand()
 BIRDWQStateLogCommand()
 
