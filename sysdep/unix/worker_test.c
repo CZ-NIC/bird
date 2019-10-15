@@ -9,11 +9,8 @@
 #include "lib/atomic.h"
 #include "conf/conf.h"
 
-#ifdef DEBUGGING
-#define TEST_MAX (1 << 16)
-#else
+//#define TEST_MAX (1 << 18)
 #define TEST_MAX (1 << 12)
-#endif
 
 struct t_rwlock_task {
   struct task task;
