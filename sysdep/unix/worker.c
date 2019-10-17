@@ -178,17 +178,15 @@ static inline void WQ_LOCK(void)
   WQ_STATELOG_QUEUE(WQS_LOCK, 1);
 }
 
-static inline void WQ_ASSERT_LOCKED(void)
-{
-  if (atomic_load(&wq->lock) != worker_id)
-    wbug("The spinlock shall be locked!");
-}
-
+#if DEBUGGING
 static inline void WQ_ASSERT_UNLOCKED(void)
 {
   if (atomic_load(&wq->lock) == worker_id)
     wbug("The spinlock shan't be locked by us!");
 }
+#else
+#define WQ_ASSERT_UNLOCKED()
+#endif
 
 static inline void WQ_UNLOCK(void)
 {
