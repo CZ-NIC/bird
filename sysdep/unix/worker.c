@@ -145,21 +145,10 @@ _Atomic u64 wql_cnt = 0;
 
 static _Thread_local int worker_sleeping = 1;
 
-static inline void WQ_LOCK_PREFETCH(void *ptr, ...)
-{
-  __builtin_prefetch(&wq->lock);
-
-  va_list args;
-  va_start(args, ptr);
-
-  while (ptr)
-  {
-    __builtin_prefetch(ptr);
-    ptr = va_arg(args, void *);
-  }
-
-  va_end(args);
-}
+#define WQ_LOCK_PREFETCH(ptr) do { \
+  __builtin_prefetch(&wq->lock); \
+  __builtin_prefetch(ptr); \
+} while (0)
 
 static inline void WQ_LOCK(void)
 {
@@ -914,7 +903,7 @@ worker_loop(void *_data UNUSED)
  
   /* Run the loop */
   while (1) {
-    WQ_LOCK_PREFETCH(wq->pending.head, NULL);
+    WQ_LOCK_PREFETCH(wq->pending.head);
 
     uint blocked = 0;
     if (!prepended)
@@ -1211,8 +1200,6 @@ task_push_block(struct task *t)
 {
   WDBG("Blocking until a worker is available\n");
 
-  atomic_fetch_add_explicit(&wq->blocked, 1, memory_order_relaxed);
-
   WQ_LOCK();
 
   /* Idempotency. */
@@ -1233,6 +1220,9 @@ task_push_block(struct task *t)
    * Anyway, the task still exists in the queue. */
   add_tail(&wq->pending, &((t)->n));
   WQ_UNLOCK();
+
+  /* Indicate that there is a blocked task pusher */
+  atomic_fetch_add_explicit(&wq->blocked, 1, memory_order_relaxed);
 
   SEM_POST(&wq->waiting);
   WORKER_YIELD();
@@ -1257,7 +1247,7 @@ task_push(struct task *t)
     return;
 
   /* Will add_tail to the pending tasks list */
-  WQ_LOCK_PREFETCH(wq->pending.tail, NULL);
+  WQ_LOCK_PREFETCH(wq->pending.tail);
 
   /* Is there an available worker right now? */
   if ((atomic_load_explicit(&wq->blocked, memory_order_relaxed) == 0) && SEM_TRYWAIT(&wq->available))
