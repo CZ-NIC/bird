@@ -41,6 +41,8 @@ static _Thread_local u64 worker_id;
 #define wdie(x, y...) die("(W%4lu): " x, worker_id, ##y)
 #define wbug(x, y...) bug("(W%4lu): " x, worker_id, ##y)
 #define wdebug(x, y...) debug("(W%4lu): " x, worker_id, ##y)
+#define wimpossible() wbug("This shall never happen: %s:%d", __FILE__, __LINE__)
+#define WASSERT(what) do { if (!(what)) wbug("This shall never happen: " #what " at %s:%d", __FILE__, __LINE__); } while (0)
 
 #ifdef DEBUG_STATELOG
 #define STATELOG_SIZE_ (1 << 14)
@@ -145,7 +147,7 @@ static _Thread_local int worker_sleeping = 1;
 
 static inline void WQ_LOCK(void)
 {
-  ASSERT(!worker_sleeping);
+  WASSERT(!worker_sleeping);
 
   u64 spin_count = 0;
   while (1)
@@ -267,7 +269,7 @@ static _Atomic int enough_workers = 0;
 static inline void WORKER_YIELD(void)
 {
   WQ_ASSERT_UNLOCKED();
-  ASSERT(!worker_sleeping);
+  WASSERT(!worker_sleeping);
   WQ_STATELOG_QUEUE(WQS_YIELD, 0);
   
   /* No, there is enough workers (stored value) */
@@ -314,7 +316,7 @@ bad:
 static inline void WORKER_CONTINUE(void)
 {
   WQ_ASSERT_UNLOCKED();
-  ASSERT(worker_sleeping);
+  WASSERT(worker_sleeping);
   SEM_WAIT(&wq->yield);
   worker_sleeping = 0;
   WQ_STATELOG_QUEUE(WQS_CONTINUE, 0);
@@ -693,15 +695,15 @@ domain_write_lock(struct domain *d)
 static inline void
 domain_unlock_writers(struct domain *d, u64 lock, u64 ulock)
 {
-  ASSERT(DOMAIN_LOCK_RDLOCKED(ulock) == 0);
-  ASSERT(!(ulock & DOMAIN_LOCK_WRLOCKED_BIT));
-  ASSERT(DOMAIN_LOCK_PREPENDED(ulock) == 0);
+  WASSERT(DOMAIN_LOCK_RDLOCKED(ulock) == 0);
+  WASSERT(!(ulock & DOMAIN_LOCK_WRLOCKED_BIT));
+  WASSERT(DOMAIN_LOCK_PREPENDED(ulock) == 0);
 
   if (d->wrtasks_n)
   {
     WDBG("-> There is a writer task waiting for us (n=%u)\n", d->wrtasks_n);
     if ((ulock & DOMAIN_LOCK_WRLOCKED_BIT) || DOMAIN_LOCK_PREPENDED(ulock))
-      wbug("This shall never happen");
+      wimpossible();
 
     /* Get the task */
     struct task *t = HEAD(d->wrtasks);
@@ -739,7 +741,7 @@ domain_unlock_writers(struct domain *d, u64 lock, u64 ulock)
     return;
   }
 
-  wbug("This shall never happen");
+  wimpossible();
 }
 
 void
@@ -767,7 +769,7 @@ domain_read_unlock(struct domain *d)
   else
   {
     /* Writing the completely unlocked state */
-    ASSERT(lock == DOMAIN_LOCK_RDLOCKED_ONE);
+    WASSERT(lock == DOMAIN_LOCK_RDLOCKED_ONE);
     DOMAIN_LOCK_STORE(0);
     WDBG("-> Unlocked leaving the lock unlocked\n");
   }
@@ -874,7 +876,7 @@ worker_loop(void *_data UNUSED)
 
   /* It shall be completely impossible to count up to 2**64 workers */
   worker_id = atomic_fetch_add(&max_worker_id, 1);
-  ASSERT(worker_id < NOWORKER);
+  WASSERT(worker_id < NOWORKER);
 
   cpu_stat_init();
 
@@ -970,7 +972,7 @@ worker_loop(void *_data UNUSED)
 
       /* There must be a request to stop then */
       uint stop = atomic_load_explicit(&wq->stop, memory_order_acquire);
-      ASSERT(stop > 0);
+      WASSERT(stop > 0);
 
       /* Requested to stop */
       WDBG("Worker stopping\n");
@@ -990,8 +992,8 @@ worker_loop(void *_data UNUSED)
       return NULL;
     }
   }
-  
-  wbug("This shall never happen");
+ 
+  wimpossible(); 
 }
 
 static int
@@ -1052,18 +1054,18 @@ worker_queue_destroy(void)
     WORKER_CONTINUE();
   }
 
-  ASSERT(atomic_load(&wq->stop) == 0);
+  WASSERT(atomic_load(&wq->stop) == 0);
 
   /* Worker stops only when there is no task so now there
    * should be no task pending at all. */
   WQ_LOCK();
-  ASSERT(EMPTY_LIST(wq->pending));
+  WASSERT(EMPTY_LIST(wq->pending));
   WQ_UNLOCK();
 
   /* All the workers but one should also have yielded. The last one is us. */
   uint workers = atomic_load(&wq->workers);
   for (uint i=1; i<workers; i++)
-    ASSERT(SEM_TRYWAIT(&wq->yield));
+    WASSERT(SEM_TRYWAIT(&wq->yield));
 
   /* Nobody is using the queue now. Cleanup the resources. */
   SEM_DESTROY(&wq->waiting);
@@ -1077,13 +1079,13 @@ void
 worker_queue_update(const struct config *c)
 {
   static int exclusive_lock = 0;
-  ASSERT(!exclusive_lock);
+  WASSERT(!exclusive_lock);
   exclusive_lock = 1;
 #define RETURN do { exclusive_lock = 0; return; } while (0)
 
   /* Check whether the values are sane */
-  ASSERT(c->max_workers >= c->workers);
-  ASSERT(c->workers > 0);
+  WASSERT(c->max_workers >= c->workers);
+  WASSERT(c->workers > 0);
 
   if ((c->workers == atomic_load(&wq->workers))
       && (c->max_workers == atomic_load(&wq->max_workers))
@@ -1155,7 +1157,7 @@ task_push_available(struct task *t)
   }
 
   /* Check that the node is clean */
-  ASSERT(!t->n.prev && !t->n.next);
+  WASSERT(!t->n.prev && !t->n.next);
 
   /* Use only public flags */
   t->flags &= TF_PUBLIC_MASK;
@@ -1184,7 +1186,7 @@ task_push_block(struct task *t)
   }
 
   /* Check that the node is clean */
-  ASSERT(!t->n.prev && !t->n.next);
+  WASSERT(!t->n.prev && !t->n.next);
 
   /* Use only public flags */
   t->flags &= TF_PUBLIC_MASK;
@@ -1208,7 +1210,7 @@ void
 task_push(struct task *t)
 {
   /* Task must have an executor */
-  ASSERT(t->execute);
+  WASSERT(t->execute);
 
   WDBG("Task push\n");
 
@@ -1306,6 +1308,6 @@ io_ping(struct io_ping_handle *h)
   if (sz < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
     return;
 
-  /* This shall not happen. */
-  wdie("No write error on io_ping (%p) shall ever happen: %m", h);
+  /* No write error on io_ping shall ever happen. */
+  wimpossible();
 }
