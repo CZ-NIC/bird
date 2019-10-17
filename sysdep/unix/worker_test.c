@@ -9,10 +9,11 @@
 #include "lib/atomic.h"
 #include "conf/conf.h"
 
-#define TEST_MAX (1 << 15)
-//#define TEST_MAX (1 << 10)
+#define TEST_MAX_BENCHMARK (1 << 15)
+#define TEST_MAX_STANDARD (1 << 10)
 
-#define FROB  31
+#define FROB_BENCHMARK	31
+#define FROB_STANDARD	21
 
 struct t_rwlock_task {
   struct task task;
@@ -21,7 +22,7 @@ struct t_rwlock_task {
   _Atomic uint *total_counter;
   _Atomic uint *allocated;
   uint sink;
-  uint frobnicator[FROB];
+  uint frobnicator[MAX(FROB_BENCHMARK, FROB_STANDARD)];
 };
 
 static void t_rwlock_execute(struct task *task)
@@ -37,13 +38,15 @@ static void t_rwlock_execute(struct task *task)
 
   uint tot = atomic_fetch_add(t->total_counter, 1);
 
+  uint frob = benchmark ? FROB_BENCHMARK : FROB_STANDARD;
+
   /* Spin for some time to mimic some reasonable work */
-  for (uint i=0; i<FROB; i++)
+  for (uint i=0; i<frob; i++)
     t->frobnicator[i] = (i+1) * (2*i + 1) * 3535353559;
 
-  for (uint i=0; i<FROB; i++)
-    for (uint j=0; j<FROB; j++)
-      for (uint k=0; k<FROB; k++)
+  for (uint i=0; i<frob; i++)
+    for (uint j=0; j<frob; j++)
+      for (uint k=0; k<frob; k++)
 	t->sink += (t->frobnicator[i] ^= t->frobnicator[k] - t->frobnicator[j]) * 3535353559;
 
   if (t->domain)
@@ -85,7 +88,9 @@ t_rwlock(const void *data_)
   uint wp = rs + class->wp;
   uint rp = wp + class->rp;
 
-  for (uint i=0; i<TEST_MAX; i++)
+  uint test_max = benchmark ? TEST_MAX_BENCHMARK : TEST_MAX_STANDARD;
+
+  for (uint i=0; i<test_max; i++)
   {
     atomic_fetch_add(&allocated, 1);
     struct t_rwlock_task *t = xmalloc(sizeof(struct t_rwlock_task));
@@ -113,7 +118,7 @@ t_rwlock(const void *data_)
   worker_queue_destroy();
   rfree(domain);
 
-  bt_assert(atomic_load(&total_counter) == TEST_MAX);
+  bt_assert(atomic_load(&total_counter) == test_max);
   bt_assert(atomic_load(&allocated) == 0);
 
   bt_info("Returning 1\n");
