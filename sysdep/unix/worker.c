@@ -909,38 +909,69 @@ worker_loop(void *_data UNUSED)
   while (1) {
     WQ_LOCK_PREFETCH(wq->pending.head);
 
-    uint blocked = 0;
-    if (!prepended)
-      blocked = atomic_load_explicit(&wq->blocked, memory_order_relaxed);
+    /* First of all, there must be some task. If there is no task,
+     * the thread shall sleep.
+     * Then, if there is any task but maximum concurrent workers is reached,
+     * the thread shall also sleep.
+     * Only if we are allowed to run and there is a task, we shall run.
+     */
 
     if (!SEM_TRYWAIT(&wq->waiting))
     {
+      /* There is no worker waiting. Slow path! */
       WDBG("Worker will wait\n");
-      WORKER_YIELD();
 
-      /* If no work is waiting, we must release the available-semaphore */
-      SEM_POST(&wq->available);
+      /* Yield. There may be others waiting for release */
+      WORKER_DO_YIELD();
 
-      /* And also flush all the postponed semaphores */
-      uint postponed = atomic_exchange_explicit(&wq->postponed, 0, memory_order_relaxed);
-      for (uint i=0; i<postponed; i++)
-	SEM_POST(&wq->available);
+      /* Wait for both semaphores */
+      enum { WSS_UNKNOWN = 0, WSS_BLOCKED = 1, WSS_OK = 2 } waiting = WSS_UNKNOWN, yield = WSS_UNKNOWN;
 
-      SEM_WAIT(&wq->waiting);
-      WORKER_CONTINUE();
-      WDBG("Worker woken up\n");
-    }
-    else
-    {
-      WDBG("Worker won't wait\n");
+      while (1)
+      {
+	if (waiting == WSS_UNKNOWN)
+	  if (SEM_TRYWAIT(&wq->waiting))
+	    waiting = WSS_OK;
+	  else
+	    waiting = WSS_BLOCKED;
 
-      if (blocked)
-	/* There are some task_push() calls blocked. We keep them blocked
-	 * until the queue is processed to prevent unnecessary semaphore
-	 * calls and context switches. */
-	atomic_fetch_add_explicit(&wq->postponed, 1, memory_order_relaxed);
-      else
-	SEM_POST(&wq->available);
+	if (yield == WSS_UNKNOWN)
+	  if (SEM_TRYWAIT(&wq->yield))
+	    yield = WSS_OK;
+	  else
+	    yield = WSS_BLOCKED;
+
+	if ((waiting == WSS_OK) && (yield == WSS_OK))
+	  break;
+
+	if (waiting == WSS_OK) /* Therefore yield == WSS_BLOCKED */
+	{
+	  SEM_POST(&wq->waiting);
+	  waiting = WSS_UNKNOWN;
+
+	  SEM_WAIT(&wq->yield);
+	  yield = WSS_OK;
+	  continue;
+	}
+
+	if (yield == WSS_OK)  /* Therefore waiting == WSS_BLOCKED */
+	{
+	  SEM_POST(&wq->yield);
+	  yield = WSS_UNKNOWN;
+
+	  SEM_WAIT(&wq->waiting);
+	  waiting = WSS_OK;
+	  continue;
+	}
+
+	/* Both are blocked */
+	SEM_WAIT(&wq->yield);
+	yield = WSS_OK;
+	waiting = WSS_UNKNOWN;
+      }
+
+      /* Now both semaphores are acquired. */
+      worker_sleeping = 0;
     }
 
     WQ_LOCK();
@@ -961,10 +992,12 @@ worker_loop(void *_data UNUSED)
       /* Flush the postponed available semaphores if the queue is empty */
       if (empty)
       {
-	uint postponed = atomic_exchange_explicit(&wq->postponed, 0, memory_order_relaxed);
+	uint postponed = atomic_exchange_explicit(&wq->postponed, 0, memory_order_relaxed) + !prepended;
 	for (uint i=0; i<postponed; i++)
 	  SEM_POST(&wq->available);
       }
+      else if (!prepended)
+	atomic_fetch_add_explicit(&wq->postponed, 1, memory_order_relaxed);
 
       /* Store the old flags and domain */
       struct domain *d = t->domain;
@@ -1012,9 +1045,6 @@ worker_loop(void *_data UNUSED)
 
       /* Let others work instead of us */
       WORKER_DO_YIELD();
-
-      /* This makes one worker less available */
-      SEM_WAIT(&wq->available);
 
       /* Notify the stop requestor */
       SEM_POST(&wq->stopped);
