@@ -260,11 +260,10 @@ static inline void SEM_DESTROY(sem_t *s)
 
 static int worker_start(void);
 
-static inline void WORKER_DO_YIELD(void)
-{
-  SEM_POST(&wq->yield);
-  worker_sleeping = 1;
-}
+#define WORKER_DO_YIELD() do { \
+  SEM_POST(&wq->yield); \
+  worker_sleeping = 1; \
+} while (0)
 
 static _Atomic int enough_workers = 0;
 
@@ -276,7 +275,10 @@ static inline void WORKER_YIELD(void)
   
   /* No, there is enough workers (stored value) */
   if (atomic_load_explicit(&enough_workers, memory_order_relaxed))
-    return WORKER_DO_YIELD();
+  {
+    WORKER_DO_YIELD();
+    return;
+  }
 
   uint max_workers = atomic_load_explicit(&wq->max_workers, memory_order_relaxed);
   uint running = atomic_load_explicit(&wq->running, memory_order_relaxed);
@@ -285,7 +287,8 @@ static inline void WORKER_YIELD(void)
   if (running >= max_workers)
   {
     atomic_store(&enough_workers, 1);
-    return WORKER_DO_YIELD();
+    WORKER_DO_YIELD();
+    return;
   }
 
   /* Yes, start it. */
@@ -305,7 +308,10 @@ static inline void WORKER_YIELD(void)
   /* Yes, all workers are doing something, start a new one */
   int e = worker_start();
   if (e == 0)
-    return WORKER_DO_YIELD();
+  {
+    WORKER_DO_YIELD();
+    return;
+  }
 
   log(L_WARN "Failed to start a worker on yield: %M", e);
 
@@ -1237,17 +1243,13 @@ task_push_block(struct task *t)
 void
 task_push(struct task *t)
 {
-  /* Task must have an executor */
-  WASSERT(t->execute);
-
   WDBG("Task push\n");
-
-  /* Stopping, won't accept tasks */
-  if (atomic_load_explicit(&wq->max_workers, memory_order_relaxed) == 0)
-    return;
 
   /* Will add_tail to the pending tasks list */
   WQ_LOCK_PREFETCH(wq->pending.tail);
+
+  /* Task must have an executor */
+  WASSERT(t->execute);
 
   /* Is there an available worker right now? */
   if ((atomic_load_explicit(&wq->blocked, memory_order_relaxed) == 0) && SEM_TRYWAIT(&wq->available))
