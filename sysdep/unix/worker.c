@@ -1252,7 +1252,7 @@ task_push(struct task *t)
   WASSERT(t->execute);
 
   /* Is there an available worker right now? */
-  if ((atomic_load_explicit(&wq->blocked, memory_order_relaxed) == 0) && SEM_TRYWAIT(&wq->available))
+  if (SEM_TRYWAIT(&wq->available))
     return task_push_available(t);
   else
     return task_push_block(t);
