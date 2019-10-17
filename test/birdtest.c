@@ -36,6 +36,7 @@ static int do_die;
 static int no_fork;
 static int no_timeout;
 static int is_terminal;		/* Whether stdout is a live terminal or pipe redirect */
+int benchmark;			/* Whether we shall run the benchmark test version */
 
 uint bt_verbose;
 const char *bt_filename;
@@ -65,9 +66,13 @@ bt_init(int argc, char *argv[])
   bt_test_id = NULL;
   is_terminal = isatty(fileno(stdout));
 
-  while ((c = getopt(argc, argv, "lcdftv")) >= 0)
+  while ((c = getopt(argc, argv, "blcdftv")) >= 0)
     switch (c)
     {
+      case 'b':
+	benchmark = 1;
+	break;
+
       case 'l':
 	list_tests = 1;
 	break;
