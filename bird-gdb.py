@@ -24,10 +24,10 @@ class BIRDListPrinter(BIRDPrinter):
 
         out = []
 
-        head = blist['head']['next']
-        while head and head['next'] != 0:
-            out.append(str(head))
-            head = head['next']
+        node = blist['head']
+        while node['next'] != 0:
+            out.append(str(node))
+            node = node['next']
 
         return "(list) [" + ", ".join(out) + "]"
 
