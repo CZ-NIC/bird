@@ -15,6 +15,24 @@ static node nodes[MAX_NUM];
 static list l;
 
 static void
+show_list__(list *l)
+{
+  bt_debug("\n");
+  bt_debug("list.null is at %p -> %p\n", &l->null, l->null);
+  bt_debug("list.head is at %p -> %p\n", &l->head, l->head);
+  bt_debug("list.tail is at %p -> %p\n", &l->tail, l->tail);
+
+  node *n = HEAD(*l);
+  while (NODE_VALID(n))
+  {
+    bt_debug("node is at %p\n", n);
+    bt_debug("	prev -> %p\n", n->prev);
+    bt_debug("	next -> %p\n", n->next);
+    n = n->next;
+  }
+}
+
+static void
 show_list(void)
 {
   bt_debug("\n");
@@ -250,6 +268,97 @@ t_replace_node(void)
   return 1;
 }
 
+struct t_list_short {
+  list l;
+  node n[0];
+};
+
+static list *
+t_alloc_list_short(uint size)
+{
+  struct t_list_short *tld = xmalloc(sizeof(struct t_list_short) + size * sizeof(node));
+  tld->l.null = NULL;
+
+  if (!size)
+  {
+    tld->l.head = &(tld->l.tail_node);
+    tld->l.tail = &(tld->l.head_node);
+    return &tld->l;
+  }
+
+  tld->l.head = &(tld->n[0]);
+  tld->n[0].prev = &(tld->l.head_node);
+
+  tld->l.tail = &(tld->n[size-1]);
+  tld->n[size-1].next = &(tld->l.tail_node);
+
+  for (uint i=1;i<size;i++)
+  {
+    tld->n[i-1].next = &(tld->n[i]);
+    tld->n[i].prev = &(tld->n[i-1]);
+  }
+
+  return &tld->l;
+}
+
+static void
+t_check_list_short(list *l, uint size)
+{
+  if (!size)
+    bt_assert(EMPTY_LIST(*l));
+
+  node *n = HEAD(*l);
+  node *prev = &(l->head_node);
+  while (n)
+  {
+    bt_assert(n->prev == prev);
+    bt_assert(prev->next == n);
+    prev = n;
+    n = n->next;
+    size--;
+  }
+
+  bt_assert(size+1 == 0);
+}
+
+#define CSH(an, bn) do { \
+  uint _an = an, _bn = bn; \
+  bt_debug("CSH test for %d, %d\n", _an, _bn); \
+  list *a = t_alloc_list_short(_an), *b = t_alloc_list_short(_bn); \
+  CSH_FN(a, b); \
+  t_check_list_short(a, _an + _bn); \
+  show_list__(a); \
+  xfree(a); \
+  xfree(b); \
+} while (0)
+
+static int
+t_add_head_list(void)
+{
+  node nodes2[MAX_NUM];
+  list l2;
+
+  init_list__(&l, (node *) nodes);
+  fill_list2(&l, (node *) nodes);
+
+  init_list__(&l2, (node *) nodes2);
+  fill_list2(&l2, (node *) nodes2);
+
+  add_head_list(&l, &l2);
+
+  bt_assert(nodes2[MAX_NUM-1].next == &nodes[0]);
+  bt_assert(nodes[0].prev == &nodes2[MAX_NUM-1]);
+  bt_assert(l.head == &nodes2[0]);
+
+#define CSH_FN add_head_list
+  for (uint an = 0; an < 3; an++)
+    for (uint bn = 0; bn < 3; bn++)
+      CSH(an, bn);
+#undef CSH_FN
+
+  return 1;
+}
+
 static int
 t_add_tail_list(void)
 {
@@ -268,6 +377,12 @@ t_add_tail_list(void)
   bt_assert(nodes2[0].prev == &nodes[MAX_NUM-1]);
   bt_assert(l.tail == &nodes2[MAX_NUM-1]);
 
+#define CSH_FN add_tail_list
+  for (uint an = 0; an < 3; an++)
+    for (uint bn = 0; bn < 3; bn++)
+      CSH(an, bn);
+#undef CSH_FN
+
   return 1;
 }
 
@@ -281,6 +396,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_insert_node, "Inserting nodes to list");
   bt_test_suite(t_remove_node, "Removing nodes from list");
   bt_test_suite(t_replace_node, "Replacing nodes in list");
+  bt_test_suite(t_add_head_list, "At the head of a list adding the another list");
   bt_test_suite(t_add_tail_list, "At the tail of a list adding the another list");
 
   return bt_exit_value();
