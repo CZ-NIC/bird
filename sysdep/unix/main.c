@@ -586,6 +586,7 @@ async_shutdown(void)
 void
 sysdep_shutdown_done(void)
 {
+  worker_queue_destroy();
   unlink_pid_file();
   unlink(path_control_socket);
   log_msg(L_FATAL "Shutdown completed");

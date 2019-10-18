@@ -2191,7 +2191,7 @@ io_loop(void)
   int fdmax = 256;
   struct pollfd *pfd = xmalloc(fdmax * sizeof(struct pollfd));
 
-  domain_write_lock(io_domain);
+//  domain_write_lock(io_domain);
 
   watchdog_start1();
   for(;;)
@@ -2268,11 +2268,11 @@ io_loop(void)
 	}
 
       /* And finally enter poll() to find active sockets */
-      domain_write_unlock(io_domain);
+//      domain_write_unlock(io_domain);
       watchdog_stop();
       pout = poll(pfd, nfds, poll_tout);
       watchdog_start();
-      domain_write_lock(io_domain);
+//      domain_write_lock(io_domain);
 
       if (pout < 0)
 	{
