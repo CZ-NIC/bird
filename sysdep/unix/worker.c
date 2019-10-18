@@ -929,6 +929,12 @@ worker_loop(void *_data UNUSED)
 	/* Free worker with no work! Releasing the worker. */
 	SEM_POST(&wq->yield);
 
+	/* Flush the postponed available semaphores
+	 * as the queue is certainly empty. */
+	uint postponed = atomic_exchange_explicit(&wq->postponed, 0, memory_order_relaxed) + !prepended;
+	for (uint i=0; i<postponed; i++)
+	  SEM_POST(&wq->available);
+
 	/* Sleep until some task is available */
 	SEM_WAIT(&wq->waiting);
 
@@ -940,6 +946,9 @@ worker_loop(void *_data UNUSED)
       WORKER_CONTINUE();
       continue;
     }
+    else
+      /* Picked up a task. The availability semaphore will be posted later. */
+      atomic_fetch_add_explicit(&wq->postponed, 1, memory_order_relaxed);
 
     WQ_LOCK();
 
@@ -950,21 +959,8 @@ worker_loop(void *_data UNUSED)
       struct task *t = HEAD(wq->pending);
       rem_node(&t->n);
 
-      /* Check worker queue for emptiness */
-      int empty = EMPTY_LIST(wq->pending);
-
       /* No more operations on worker queue */
       WQ_UNLOCK();
-
-      /* Flush the postponed available semaphores if the queue is empty */
-      if (empty)
-      {
-	uint postponed = atomic_exchange_explicit(&wq->postponed, 0, memory_order_relaxed) + !prepended;
-	for (uint i=0; i<postponed; i++)
-	  SEM_POST(&wq->available);
-      }
-      else if (!prepended)
-	atomic_fetch_add_explicit(&wq->postponed, 1, memory_order_relaxed);
 
       /* Store the old flags and domain */
       struct domain *d = t->domain;
