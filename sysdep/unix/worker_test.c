@@ -100,16 +100,14 @@ t_rwlock(const void *data_)
     uint write = (pivot < ws) || (primary && pivot < wp);
 
     *t = (struct t_rwlock_task) {
-      .task = {
-	.execute = t_rwlock_execute,
-	.domain = primary ? domain : NULL,
-	.flags = write ? TF_EXCLUSIVE : 0,
-      },
       .domain = primary ? NULL : domain,
       .total_counter = &total_counter,
       .allocated = &allocated,
       .howtolock = write ? T_WRITE : T_READ,
     };
+
+    task_init(&t->task, write ? TF_EXCLUSIVE : 0, primary ? domain : NULL, t_rwlock_execute);
+
     bt_info("Task pushed (before)\n");
     task_push(&t->task);
     bt_info("Task pushed (after)\n");

@@ -50,21 +50,16 @@ pool *rt_table_pool;
 static pool *rup_pool;
 static struct domain *rup_domain;
 
-#define RUPS_MAX  8
+#define RUPS_MAX  128
 
 static slab *rte_slab;
-static _Thread_local linpool *rte_update_pool[RUPS_MAX] = {};
-static _Thread_local uint rups = 0;
+static linpool *rte_update_pool[RUPS_MAX] = {};
+static uint rups = 0;
 
 static inline linpool *rup_get(void) {
-  /* If we have a local spare linpool,
-   * just use it. */
-  if (rups > 0)
-    return rte_update_pool[--rups];
 
-  /* Allocate a new linpool */
   domain_write_lock(rup_domain);
-  struct linpool *pool = lp_new_default(rup_pool);
+  struct linpool *pool = (rups > 0) ? rte_update_pool[--rups] : lp_new_default(rup_pool);
   domain_write_unlock(rup_domain);
 
   /* Return the pool */
@@ -72,15 +67,16 @@ static inline linpool *rup_get(void) {
 }
 
 static inline void rup_free(linpool *pool) {
+  lp_flush(pool);
+
+  domain_write_lock(rup_domain);
   if (rups == RUPS_MAX) {
-    domain_write_lock(rup_domain);
     rfree(pool);
-    domain_write_unlock(rup_domain);
   } else {
     /* Keep the linpool for future use */
-    lp_flush(pool);
     rte_update_pool[rups++] = pool;
   }
+  domain_write_unlock(rup_domain);
 }
 
 struct rte_update_data {
@@ -1746,16 +1742,13 @@ rte_finish_update_hook(struct task *import_task)
   struct rtable *rt = SKIP_BACK(struct rtable, import_task, import_task);
   domain_assert_write_locked(rt->domain);
 
-  struct rte_update_data *rud;
-  node *nn;
-  WALK_LIST_DELSAFE(rud, nn, rt->pending_imports)
-  {
-    if (atomic_load(&(rud->state)) != RUS_PENDING_RECALCULATE)
-      return;
+  struct rte_update_data *rud = HEAD(rt->pending_imports);
+  if (atomic_load(&(rud->state)) != RUS_PENDING_RECALCULATE)
+    return;
 
-    rem_node(&(rud->n));
-    rte_finish_update(rud);
-  }
+  rem_node(&(rud->n));
+  rte_finish_update(rud);
+  task_push(import_task);
 }
 
 /* Independent call to rte_announce(), used from next hop
@@ -2021,12 +2014,7 @@ rt_setup(pool *p, rtable *t, struct rtable_config *cf)
   t->domain = domain_new(p);
 
   init_list(&t->pending_imports);
-  t->import_task = (struct task) {
-    .n = {},				/* Not in any list */
-    .flags = TF_EXCLUSIVE,		/* Import modifies the table */
-    .domain = t->domain,
-    .execute = rte_finish_update_hook,
-  };
+  task_init(&t->import_task, TF_EXCLUSIVE, t->domain, rte_finish_update_hook);
 
   t->rt_event = ev_new_init(p, rt_event, t);
   t->gc_time = current_time();

@@ -1,10 +1,21 @@
+/*
+ *	BIRD Library -- Atomic calls
+ *
+ *	(c) 2019 Maria Matejka <mq@ucw.cz>
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
+
 #ifndef _BIRD_ATOMIC_H_
 #define _BIRD_ATOMIC_H_
 
-//#if HAVE_ATOMIC
-#if 0
+/* If we have stdatomic.h, we simply use C11 atomic calls */
+
+#if HAVE_ATOMIC
 #include <stdatomic.h>
 #else
+
+/* Otherwise, we try to approximate the atomic calls by GCC __sync calls */
 
 #define _Atomic
 
@@ -35,6 +46,15 @@
 
 #define atomic_compare_exchange_strong_explicit(ptr, desired, wanted, success, failure) \
   atomic_compare_exchange_weak(ptr, desired, wanted)
+
+#define ATOMIC_FLAG_INIT  0
+typedef u8 atomic_flag;
+
+#define atomic_flag_test_and_set_explicit(ptr, memory) \
+  __sync_lock_test_and_set(ptr, 1)
+
+#define atomic_flag_clear_explicit(ptr, memory) \
+  __sync_lock_release(ptr)
 
 #endif
 #endif

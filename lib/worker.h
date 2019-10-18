@@ -10,6 +10,7 @@
 #define _BIRD_WORKER_H_
 
 #include "lib/birdlib.h"
+#include "lib/atomic.h"
 
 struct config;
 
@@ -31,15 +32,30 @@ enum task_flags {
   TF_EXCLUSIVE = 0x1,		/* Lock the domain exclusively */
   TF_PUBLIC_MASK = 0xff,	/* Flags are masked by this value on task push */
   /* These flags are private for worker queue */
-  TF_PREPENDED = 0x100,		/* Task is the first in domain blocked-queue */
+  TF_PREPENDED = 0x100,		/* Task is waiting for the first free worker */
 } PACKED;
 
 struct task {
   node n;				/* Init this to zero. */
   enum task_flags flags;		/* Task flags */
+  atomic_flag enqueued;			/* Is in queue */
   struct domain *domain;		/* Task's primary domain */
   void (*execute)(struct task *);	/* This will be called to execute the task */
 };
+
+/* Always initialize the task by task_init() */
+static inline void task_init(struct task *t, enum task_flags tf, struct domain *domain, void (*execute)(struct task *))
+{
+  ASSERT(execute);
+  *t = (struct task) {
+    .n = { },
+    .flags = tf & TF_PUBLIC_MASK,
+    .enqueued =	ATOMIC_FLAG_INIT,
+    .domain = domain,
+    .execute = execute,
+  };
+}
+
 
 /* Initialize the worker queue. Run once and never more. */
 void worker_queue_init(void);

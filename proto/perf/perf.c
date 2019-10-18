@@ -1,7 +1,8 @@
 /*
- *	BIRD -- Table-to-Table Routing Protocol a.k.a Pipe
+ *	BIRD -- Dummy route generator with performance measurements
  *
- *	(c) 1999--2000 Martin Mares <mj@ucw.cz>
+ *	(c) 2018--2019 Maria Matejka
+ *	based on code of protocol Pipe by Martin Mares <mj@ucw.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
