@@ -885,8 +885,6 @@ domain_write_unlock(struct domain *d)
 
 extern _Thread_local struct timeloop *timeloop_current;
 
-#define SCHEDULER_SHORTCUT  5
-
 static void *
 worker_loop(void *_data UNUSED)
 {
@@ -906,7 +904,6 @@ worker_loop(void *_data UNUSED)
   WDBG("Worker started\n");
 
   _Bool prepended = 0;
-  int scheduler_shortcut = SCHEDULER_SHORTCUT;
  
   /* Run the loop */
   while (1) {
@@ -927,70 +924,22 @@ worker_loop(void *_data UNUSED)
       /* Yield. There may be others waiting for release */
       WORKER_DO_YIELD();
 
-      /* Try to wait for yield before we ask for tasks once more */
-      if (scheduler_shortcut--)
+      if (SEM_TRYWAIT(&wq->yield))
       {
-	WORKER_CONTINUE();
-	continue;
-      }
-
-      /* Wait for both semaphores */
-      enum { WSS_UNKNOWN = 0, WSS_BLOCKED = 1, WSS_OK = 2 } waiting = WSS_UNKNOWN, yield = WSS_UNKNOWN;
-
-      while (1)
-      {
-	/* Try yield */
-	if (yield == WSS_UNKNOWN)
-	  if (SEM_TRYWAIT(&wq->yield))
-	    yield = WSS_OK;
-	  else
-	    yield = WSS_BLOCKED;
-
-	/* If blocked, wait for yield */
-	if (yield == WSS_BLOCKED)
-	{
-	  /* If there are tasks, release them to other workers */
-	  if (waiting == WSS_OK)
-	    SEM_POST(&wq->waiting);
-
-	  waiting = WSS_UNKNOWN;
-
-	  SEM_WAIT(&wq->yield);
-	  yield = WSS_OK;
-	  continue;
-	}
-
-	/* Now this thread is allowed to run. */
-	/* Is there any task? */
-	if (waiting == WSS_OK)
-	  /* Yes and we have reserved it. Go on! */
-	  break;
-
-	/* Is there any task? */
-	if (waiting == WSS_UNKNOWN)
-	  if (SEM_TRYWAIT(&wq->waiting))
-	    /* Yes, there is. Go on! */
-	    break;
-	  else
-	    waiting = WSS_BLOCKED;
-
-	/* We can run but we have no task. */
-	/* Release the yield */
+	/* Free worker with no work! Releasing the worker. */
 	SEM_POST(&wq->yield);
-	yield = WSS_UNKNOWN;
 
-	/* And wait for some tasks */
+	/* Sleep until some task is available */
 	SEM_WAIT(&wq->waiting);
-	waiting = WSS_OK;
 
-	/* Now there is a task but we have to check yield; loop around. */
+	/* But first let it to others */
+	SEM_POST(&wq->waiting);
       }
 
-      /* Now both semaphores are acquired. */
-      worker_sleeping = 0;
+      /* Now wait for our turn */
+      WORKER_CONTINUE();
+      continue;
     }
-
-    scheduler_shortcut = SCHEDULER_SHORTCUT;
 
     WQ_LOCK();
 
