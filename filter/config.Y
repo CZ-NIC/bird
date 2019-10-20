@@ -447,7 +447,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term block cmd cmds constant constructor print_list var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
+%type <x> term block cmd cmds constant constructor print_list args function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
 %type <fda> dynamic_attr
 %type <fsa> static_attr
 %type <f> filter where_filter
@@ -845,32 +845,17 @@ constructor:
 
 
 /* This generates the function_call variable list backwards. */
-var_list: /* EMPTY */ { $$ = NULL; }
+args:
+   /* EMPTY */ { $$ = NULL; }
  | term { $$ = $1; }
- | var_list ',' term { $$ = $3; $$->next = $1; }
+ | term ',' args { $$ = $1; $$->next = $3; }
 
 function_call:
-   CF_SYM_KNOWN '(' var_list ')' {
+   CF_SYM_KNOWN '(' args ')' {
      if ($1->class != SYM_FUNCTION)
        cf_error("You can't call something which is not a function. Really.");
 
-     struct f_inst *fc = f_new_inst(FI_CALL, $1);
-     uint args = 0;
-     while ($3) {
-       args++;
-       struct f_inst *tmp = $3->next;
-       $3->next = fc;
-
-       fc = $3;
-       $3 = tmp;
-     }
-
-     if (args != $1->function->args)
-       cf_error("Function call '%s' got %u arguments, need %u arguments.",
-	   $1->name, args, $1->function->args);
-
-     $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
-     $$->next = fc;
+     $$ = f_new_inst(FI_CALL, $3, $1);
    }
  ;
 

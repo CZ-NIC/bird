@@ -274,7 +274,8 @@ m4_undivert(102)m4_dnl
 [[m4_dnl				 The one case in The Big Switch inside interpreter
   case INST_NAME():
   #define whati (&(what->i_]]INST_NAME()[[))
-  m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
+  m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[ if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow");
+					     fstk->vcnt -= INST_INVAL(); ]])
   m4_undivert(108)m4_dnl
   #undef whati
   break;
