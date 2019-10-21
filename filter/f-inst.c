@@ -899,9 +899,11 @@
     SYMBOL;
 
     FID_NEW_BODY()
-      if (whati->varcount != sym->function->body->args)
+      const struct function *fn = sym->function;
+
+      if (whati->varcount != fn->arg_count)
 	cf_error("Function call '%s' got %u arguments, needs %u arguments",
-		 sym->name, whati->varcount, sym->function->body->args);
+		 sym->name, whati->varcount, fn->arg_count);
 
       /* Add void slot for return value (requires [[NEVER_CONSTANT]]) */
       struct f_inst *rv = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
@@ -914,6 +916,22 @@
 	return 0;
 
     FID_INTERPRET_BODY()
+    const struct function *fn = sym->function;
+
+    /* Check types of arguments */
+    for (uint i = 0; i < fn->arg_count; i++)
+      if ((vv(i).type != fn->args[i].type) && (vv(i).type != T_VOID))
+      {
+	/* IP->Quad implicit conversion */
+	if ((fn->args[i].type == T_QUAD) && val_is_ip4(&vv(i)))
+	  vv(i) = (struct f_val) {
+	    .type = T_QUAD,
+	    .val.i = ipa_to_u32(vv(i).val.ip),
+	  };
+	else
+	  runtime("Function call '%s' argument %u must be of type 0x%02x, got 0x%02x",
+		  sym->name, i, fn->args[i].type, vv(i).type);
+      }
 
     /* Push the body on stack */
     LINEX(sym->function->body);

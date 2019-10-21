@@ -80,6 +80,10 @@ struct f_val {
   } val;
 };
 
+struct f_arg {
+  enum f_type type;
+};
+
 /* Dynamic attribute definition (eattrs) */
 struct f_dynamic_attr {
   u8 type;		/* EA type (EAF_*) */

@@ -10,6 +10,7 @@
 
 CF_HDR
 
+#include "lib/buffer.h"
 #include "filter/f-inst.h"
 #include "filter/data.h"
 
@@ -21,6 +22,8 @@ static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
 
 #define f_generate_complex(fi_code, da, arg) \
   f_new_inst(FI_EA_SET, f_new_inst(fi_code, f_new_inst(FI_EA_GET, da), arg), da)
+
+BUFFER_(struct f_arg) this_args;
 
 /*
  * Sets and their items are during parsing handled as lists, linked
@@ -455,7 +458,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <flv> lvalue
 %type <i> type function_args function_vars
 %type <ecs> ec_kind
-%type <fret> break_command 
+%type <fret> break_command
 %type <i32> cnum
 %type <e> pair_item ec_item lc_item set_item switch_item set_items switch_items switch_body
 %type <trie> fprefix_set
@@ -553,20 +556,27 @@ type:
    }
  ;
 
-function_argsn:
-   /* EMPTY */
- | function_argsn type symbol ';' {
-     if ($3->scope->slots >= 0xfe) cf_error("Too many declarations, at most 255 allowed");
-     cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++);
+function_arg:
+   type symbol {
+     cf_define_symbol($2, SYM_VARIABLE | $1, offset, $2->scope->slots++);
+     BUFFER_PUSH(this_args) = (struct f_arg){ .type = $1 };
    }
+ ;
+
+function_argsn:
+   /* EMPTY */ {
+     /* Initialize the buffer */
+     if (!this_args.data)
+       BUFFER_INIT(this_args, &root_pool, 4);
+     else
+       BUFFER_FLUSH(this_args);
+   }
+ | function_argsn function_arg ';'
  ;
 
 function_args:
    '(' ')' { $$ = 0; }
- | '(' function_argsn type symbol ')' {
-     cf_define_symbol($4, SYM_VARIABLE | $3, offset, $4->scope->slots++);
-     $$ = $4->scope->slots;
-   }
+ | '(' function_argsn function_arg ')' { $$ = this_args.used; }
  ;
 
 function_vars:
@@ -615,7 +625,13 @@ function_def:
      struct function *fn = cfg_alloc(sizeof(struct function));
      *fn = (struct function) { .sym = $2, .body = $5 };
      $2->function = fn;
-     $5->args = $4;
+     if ($4) {
+       struct f_arg *args = cfg_alloc(BUFFER_SIZE(this_args));
+       memcpy(args, this_args.data, BUFFER_SIZE(this_args));
+       fn->args = args;
+       fn->arg_count = this_args.used;
+     }
+     $5->args = fn->arg_count;
      cf_pop_scope();
    }
  ;

@@ -53,7 +53,9 @@ struct filter {
 
 struct function {
   struct symbol *sym;
+  const struct f_arg *args;
   const struct f_line *body;
+  uint arg_count;
 };
 
 struct rte;
