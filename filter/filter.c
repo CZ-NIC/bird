@@ -457,7 +457,7 @@ filter_commit(struct config *new, struct config *old)
       case SYM_FUNCTION:
 	if ((osym = cf_find_symbol(old, sym->name)) &&
 	    (osym->class == SYM_FUNCTION) &&
-	    f_same(sym->function, osym->function))
+	    f_same(sym->function->body, osym->function->body))
 	  sym->flags |= SYM_FLAG_SAME;
 	else
 	  sym->flags &= ~SYM_FLAG_SAME;
@@ -485,7 +485,7 @@ void filters_dump_all(void)
 	break;
       case SYM_FUNCTION:
 	debug("Function %s:\n", sym->name);
-	f_dump_line(sym->function, 1);
+	f_dump_line(sym->function->body, 1);
 	break;
       case SYM_PROTO:
 	{

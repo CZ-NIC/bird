@@ -43,12 +43,17 @@ static inline const char *filter_return_str(const enum filter_return fret) {
 }
 
 struct f_val;
+struct f_line;
 
 /* The filter encapsulating structure to be pointed-to from outside */
-struct f_line;
 struct filter {
   struct symbol *sym;
   const struct f_line *root;
+};
+
+struct function {
+  struct symbol *sym;
+  const struct f_line *body;
 };
 
 struct rte;

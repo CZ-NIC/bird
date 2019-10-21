@@ -899,9 +899,9 @@
     SYMBOL;
 
     FID_NEW_BODY()
-      if (whati->varcount != sym->function->args)
+      if (whati->varcount != sym->function->body->args)
 	cf_error("Function call '%s' got %u arguments, needs %u arguments",
-		 sym->name, whati->varcount, sym->function->args);
+		 sym->name, whati->varcount, sym->function->body->args);
 
       /* Add void slot for return value (requires [[NEVER_CONSTANT]]) */
       struct f_inst *rv = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
@@ -916,7 +916,7 @@
     FID_INTERPRET_BODY()
 
     /* Push the body on stack */
-    LINEX(sym->function);
+    LINEX(sym->function->body);
     curline.emask |= FE_RETURN;
 
     /* Set new base for local variables */
@@ -926,8 +926,9 @@
     fstk->vcnt += whati->varcount;
 
     /* Storage for local variables */
-    memset(&(fstk->vstk[fstk->vcnt]), 0, sizeof(struct f_val) * sym->function->vars);
-    fstk->vcnt += sym->function->vars;
+    uint vars = sym->function->body->vars;
+    memset(&(fstk->vstk[fstk->vcnt]), 0, sizeof(struct f_val) * vars);
+    fstk->vcnt += vars;
   }
 
   INST(FI_DROP_RESULT, 1, 0) {

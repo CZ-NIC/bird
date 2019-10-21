@@ -116,7 +116,7 @@ struct symbol {
 
   union {
     struct proto_config *proto;		/* For SYM_PROTO and SYM_TEMPLATE */
-    const struct f_line *function;	/* For SYM_FUNCTION */
+    const struct function *function;	/* For SYM_FUNCTION */
     const struct filter *filter;	/* For SYM_FILTER */
     struct rtable_config *table;	/* For SYM_TABLE */
     struct f_dynamic_attr *attribute;	/* For SYM_ATTRIBUTE */

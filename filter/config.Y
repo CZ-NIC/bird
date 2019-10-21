@@ -492,7 +492,7 @@ bt_test_suite:
  BT_TEST_SUITE '(' CF_SYM_KNOWN ',' text ')' {
   cf_assert_symbol($3, SYM_FUNCTION);
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
-  t->fn = $3->function;
+  t->fn = $3->function->body;
   t->fn_name = $3->name;
   t->dsc = $5;
 
@@ -506,8 +506,8 @@ bt_test_same:
   cf_assert_symbol($3, SYM_FUNCTION);
   cf_assert_symbol($5, SYM_FUNCTION);
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
-  t->fn = $3->function;
-  t->cmp = $5->function;
+  t->fn = $3->function->body;
+  t->cmp = $5->function->body;
   t->result = $7;
   t->fn_name = $3->name;
   t->dsc = $5->name;
@@ -612,8 +612,10 @@ function_def:
      cf_push_scope($2);
    } function_args function_body {
      DBG("Definition of function %s with %u args and %u local vars.\n", $2->name, $4, $5->vars);
+     struct function *fn = cfg_alloc(sizeof(struct function));
+     *fn = (struct function) { .sym = $2, .body = $5 };
+     $2->function = fn;
      $5->args = $4;
-     $2->function = $5;
      cf_pop_scope();
    }
  ;
