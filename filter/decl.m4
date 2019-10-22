@@ -161,8 +161,12 @@ FID_HIC(,[[
 
 #	Some arguments need to check their type. After that, ARG_ANY is called.
 m4_define(ARG, `ARG_ANY($1)
+FID_NEW_BODY()m4_dnl
+if (f$1->type && (f$1->type != $2))
+  cf_error("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), f$1->type);m4_dnl
 FID_INTERPRET_EXEC()m4_dnl
-if (v$1.type != $2) runtime("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), v$1.type)m4_dnl
+if (v$1.type != $2)
+  runtime("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), v$1.type);m4_dnl
 FID_INTERPRET_BODY()')
 
 #	Executing another filter line. This replaces the recursion
@@ -202,10 +206,20 @@ FID_INTERPRET_BODY()')
 
 #	Some of the instructions have a result. These constructions
 #	state the result and put it to the right place.
-m4_define(RESULT, `RESULT_VAL([[ (struct f_val) { .type = $1, .val.$2 = $3 } ]])')
+m4_define(RESULT, `RESULT_TYPE([[$1]]) RESULT_([[$1]],[[$2]],[[$3]])')
+m4_define(RESULT_, `RESULT_VAL([[ (struct f_val) { .type = $1, .val.$2 = $3 } ]])')
 m4_define(RESULT_VAL, `FID_HIC(, [[do { res = $1; fstk->vcnt++; } while (0)]],
 [[return fi_constant(what, $1)]])')
 m4_define(RESULT_VOID, `RESULT_VAL([[ (struct f_val) { .type = T_VOID } ]])')
+
+m4_define(ERROR,
+       `m4_errprint(m4___file__:m4___line__: $*
+       )m4_m4exit(1)')
+
+m4_define(RESULT_TYPE,
+	`m4_ifdef([[INST_RESULT_TYPE]],
+		  [[m4_ifelse(INST_RESULT_TYPE,$1,,[[ERROR([[Multiple type definitons]])]])]],
+		  [[m4_define(INST_RESULT_TYPE,$1) FID_NEW_BODY()    what->type = $1;FID_INTERPRET_BODY()]])')
 
 #	Some common filter instruction members
 m4_define(SYMBOL, `FID_MEMBER(struct symbol *, sym, [[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], "symbol %s", item->sym->name)')
@@ -345,6 +359,7 @@ INST_FLUSH()m4_dnl				First, old data is flushed
 m4_define([[INST_NAME]], [[$1]])m4_dnl		Then we store instruction name,
 m4_define([[INST_INVAL]], [[$2]])m4_dnl		instruction input value count
 m4_undefine([[INST_NEVER_CONSTANT]])m4_dnl	and reset NEVER_CONSTANT trigger.
+m4_undefine([[INST_RESULT_TYPE]])m4_dnl		and reset RESULT_TYPE trigger.
 FID_INTERPRET_BODY()m4_dnl 			By default, every code is interpreter code.
 ')
 
@@ -541,6 +556,7 @@ FID_WR_PUT(4)m4_dnl
 struct f_inst {
   struct f_inst *next;			/* Next instruction */
   enum f_instruction_code fi_code;	/* Instruction code */
+  enum f_type type;			/* Type of returned value, if known */
   int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */
   union {

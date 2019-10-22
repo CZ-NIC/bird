@@ -435,6 +435,7 @@
   INST(FI_VAR_GET, 0, 1) {
     SYMBOL;
     NEVER_CONSTANT;
+    RESULT_TYPE(sym->class & 0xff);
     RESULT_VAL(fstk->vstk[curline.vbase + sym->offset]);
   }
 
@@ -447,6 +448,7 @@
       val_dump(&(item->val))
     );
 
+    RESULT_TYPE(val.type);
     RESULT_VAL(val);
   }
 
@@ -588,31 +590,32 @@
     DYNAMIC_ATTR;
     ACCESS_RTE;
     ACCESS_EATTRS;
+    RESULT_TYPE(da.f_type);
     {
       eattr *e = ea_find(*fs->eattrs, da.ea_code);
 
       if (!e) {
 	/* A special case: undefined as_path looks like empty as_path */
 	if (da.type == EAF_TYPE_AS_PATH) {
-	  RESULT(T_PATH, ad, &null_adata);
+	  RESULT_(T_PATH, ad, &null_adata);
 	  break;
 	}
 
 	/* The same special case for int_set */
 	if (da.type == EAF_TYPE_INT_SET) {
-	  RESULT(T_CLIST, ad, &null_adata);
+	  RESULT_(T_CLIST, ad, &null_adata);
 	  break;
 	}
 
 	/* The same special case for ec_set */
 	if (da.type == EAF_TYPE_EC_SET) {
-	  RESULT(T_ECLIST, ad, &null_adata);
+	  RESULT_(T_ECLIST, ad, &null_adata);
 	  break;
 	}
 
 	/* The same special case for lc_set */
 	if (da.type == EAF_TYPE_LC_SET) {
-	  RESULT(T_LCLIST, ad, &null_adata);
+	  RESULT_(T_LCLIST, ad, &null_adata);
 	  break;
 	}
 
@@ -623,31 +626,31 @@
 
       switch (e->type & EAF_TYPE_MASK) {
       case EAF_TYPE_INT:
-	RESULT(da.f_type, i, e->u.data);
+	RESULT_(da.f_type, i, e->u.data);
 	break;
       case EAF_TYPE_ROUTER_ID:
-	RESULT(T_QUAD, i, e->u.data);
+	RESULT_(T_QUAD, i, e->u.data);
 	break;
       case EAF_TYPE_OPAQUE:
-	RESULT(T_ENUM_EMPTY, i, 0);
+	RESULT_(T_ENUM_EMPTY, i, 0);
 	break;
       case EAF_TYPE_IP_ADDRESS:
-	RESULT(T_IP, ip, *((ip_addr *) e->u.ptr->data));
+	RESULT_(T_IP, ip, *((ip_addr *) e->u.ptr->data));
 	break;
       case EAF_TYPE_AS_PATH:
-	RESULT(T_PATH, ad, e->u.ptr);
+	RESULT_(T_PATH, ad, e->u.ptr);
 	break;
       case EAF_TYPE_BITFIELD:
-	RESULT(T_BOOL, i, !!(e->u.data & (1u << da.bit)));
+	RESULT_(T_BOOL, i, !!(e->u.data & (1u << da.bit)));
 	break;
       case EAF_TYPE_INT_SET:
-	RESULT(T_CLIST, ad, e->u.ptr);
+	RESULT_(T_CLIST, ad, e->u.ptr);
 	break;
       case EAF_TYPE_EC_SET:
-	RESULT(T_ECLIST, ad, e->u.ptr);
+	RESULT_(T_ECLIST, ad, e->u.ptr);
 	break;
       case EAF_TYPE_LC_SET:
-	RESULT(T_LCLIST, ad, e->u.ptr);
+	RESULT_(T_LCLIST, ad, e->u.ptr);
 	break;
       case EAF_TYPE_UNDEF:
 	RESULT_VOID;
@@ -960,6 +963,8 @@
   INST(FI_CLIST_ADD, 2, 1) {	/* (Extended) Community list add */
     ARG_ANY(1);
     ARG_ANY(2);
+    RESULT_TYPE(f1->type);
+
     if (v1.type == T_PATH)
       runtime("Can't add to path");
 
@@ -969,14 +974,14 @@
       struct f_val dummy;
 
       if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, v2.val.i) ]]);
+	RESULT_(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, v2.val.i) ]]);
       /* IP->Quad implicit conversion */
       else if (val_is_ip4(&v2))
-	RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
+	RESULT_(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
       else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy))
 	runtime("Can't add set");
       else if (v2.type == T_CLIST)
-	RESULT(T_CLIST, ad, [[ int_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
+	RESULT_(T_CLIST, ad, [[ int_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
       else
 	runtime("Can't add non-pair");
     }
@@ -987,11 +992,11 @@
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t))
 	runtime("Can't add set");
       else if (v2.type == T_ECLIST)
-	RESULT(T_ECLIST, ad, [[ ec_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
+	RESULT_(T_ECLIST, ad, [[ ec_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
       else if (v2.type != T_EC)
 	runtime("Can't add non-ec");
       else
-	RESULT(T_ECLIST, ad, [[ ec_set_add(fpool, v1.val.ad, v2.val.ec) ]]);
+	RESULT_(T_ECLIST, ad, [[ ec_set_add(fpool, v1.val.ad, v2.val.ec) ]]);
     }
 
     else if (v1.type == T_LCLIST)
@@ -1000,11 +1005,11 @@
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t))
 	runtime("Can't add set");
       else if (v2.type == T_LCLIST)
-	RESULT(T_LCLIST, ad, [[ lc_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
+	RESULT_(T_LCLIST, ad, [[ lc_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
       else if (v2.type != T_LC)
 	runtime("Can't add non-lc");
       else
-	RESULT(T_LCLIST, ad, [[ lc_set_add(fpool, v1.val.ad, v2.val.lc) ]]);
+	RESULT_(T_LCLIST, ad, [[ lc_set_add(fpool, v1.val.ad, v2.val.lc) ]]);
 
     }
 
@@ -1015,6 +1020,8 @@
   INST(FI_CLIST_DEL, 2, 1) {	/* (Extended) Community list add or delete */
     ARG_ANY(1);
     ARG_ANY(2);
+    RESULT_TYPE(f1->type);
+
     if (v1.type == T_PATH)
     {
       const struct f_tree *set = NULL;
@@ -1027,7 +1034,7 @@
       else
 	runtime("Can't delete non-integer (set)");
 
-      RESULT(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, set, key, 0) ]]);
+      RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, set, key, 0) ]]);
     }
 
     else if (v1.type == T_CLIST)
@@ -1036,12 +1043,12 @@
       struct f_val dummy;
 
       if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, v2.val.i) ]]);
+	RESULT_(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, v2.val.i) ]]);
       /* IP->Quad implicit conversion */
       else if (val_is_ip4(&v2))
-	RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
+	RESULT_(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
       else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy) || (v2.type == T_CLIST))
-	RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 0) ]]);
+	RESULT_(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else
 	runtime("Can't delete non-pair");
     }
@@ -1050,22 +1057,22 @@
     {
       /* v2.val is either EC or EC-set */
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t) || (v2.type == T_ECLIST))
-	RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
+	RESULT_(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else if (v2.type != T_EC)
 	runtime("Can't delete non-ec");
       else
-	RESULT(T_ECLIST, ad, [[ ec_set_del(fpool, v1.val.ad, v2.val.ec) ]]);
+	RESULT_(T_ECLIST, ad, [[ ec_set_del(fpool, v1.val.ad, v2.val.ec) ]]);
     }
 
     else if (v1.type == T_LCLIST)
     {
       /* v2.val is either LC or LC-set */
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t) || (v2.type == T_LCLIST))
-	RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
+	RESULT_(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else if (v2.type != T_LC)
 	runtime("Can't delete non-lc");
       else
-	RESULT(T_LCLIST, ad, [[ lc_set_del(fpool, v1.val.ad, v2.val.lc) ]]);
+	RESULT_(T_LCLIST, ad, [[ lc_set_del(fpool, v1.val.ad, v2.val.lc) ]]);
     }
 
     else
@@ -1075,12 +1082,14 @@
   INST(FI_CLIST_FILTER, 2, 1) {	/* (Extended) Community list add or delete */
     ARG_ANY(1);
     ARG_ANY(2);
+    RESULT_TYPE(f1->type);
+
     if (v1.type == T_PATH)
     {
       u32 key = 0;
 
       if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
-	RESULT(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, v2.val.t, key, 1) ]]);
+	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, v2.val.t, key, 1) ]]);
       else
 	runtime("Can't filter integer");
     }
@@ -1091,7 +1100,7 @@
       struct f_val dummy;
 
       if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy) || (v2.type == T_CLIST))
-	RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 1) ]]);
+	RESULT_(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter pair");
     }
@@ -1100,7 +1109,7 @@
     {
       /* v2.val is either EC or EC-set */
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t) || (v2.type == T_ECLIST))
-	RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
+	RESULT_(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter ec");
     }
@@ -1109,7 +1118,7 @@
     {
       /* v2.val is either LC or LC-set */
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t) || (v2.type == T_LCLIST))
-	RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
+	RESULT_(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter lc");
     }
