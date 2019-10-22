@@ -139,7 +139,7 @@ read_iproute_table(char *file, char *prefix, int max)
       continue;
 
     for(p = name; *p; p++)
-      if ((*p < 'a' || *p > 'z') && (*p < '0' || *p > '9') && (*p != '_'))
+      if ((*p < 'a' || *p > 'z') && (*p < 'A' || *p > 'Z') && (*p < '0' || *p > '9') && (*p != '_'))
 	*p = '_';
 
     add_num_const(namebuf, val);
