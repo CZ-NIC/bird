@@ -104,7 +104,7 @@
  *	m4_dnl	(103)	  [[ put it here ]]
  *	m4_dnl		  ...
  *	m4_dnl		  if (all arguments are constant)
- *	m4_dnl	(108)	    [[ put it here ]]	    
+ *	m4_dnl	(108)	    [[ put it here ]]
  *	m4_dnl		}
  *	m4_dnl	For writing directly to constructor argument list, use FID_NEW_ARGS.
  *	m4_dnl	For computing something in constructor (103), use FID_NEW_BODY.
@@ -416,18 +416,7 @@
     NEVER_CONSTANT;
     ARG_ANY(1);
     SYMBOL;
-
-    if ((sym->class != (SYM_VARIABLE | v1.type)) && (v1.type != T_VOID))
-    {
-      /* IP->Quad implicit conversion */
-      if ((sym->class == (SYM_VARIABLE | T_QUAD)) && val_is_ip4(&v1))
-	v1 = (struct f_val) {
-	  .type = T_QUAD,
-	  .val.i = ipa_to_u32(v1.val.ip),
-	};
-      else
-	runtime( "Assigning to variable of incompatible type" );
-    }
+    ARG_TYPE(1, sym->class & 0xff);
 
     fstk->vstk[curline.vbase + sym->offset] = v1;
   }
@@ -520,8 +509,7 @@
     ACCESS_RTE;
     ARG_ANY(1);
     STATIC_ATTR;
-    if (sa.f_type != v1.type)
-      runtime( "Attempt to set static attribute to incompatible type" );
+    ARG_TYPE(1, sa.f_type);
 
     f_rta_cow(fs);
     {
@@ -666,6 +654,7 @@
     ACCESS_EATTRS;
     ARG_ANY(1);
     DYNAMIC_ATTR;
+    ARG_TYPE(1, da.f_type);
     {
       struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
 
@@ -678,20 +667,7 @@
 
       switch (da.type) {
       case EAF_TYPE_INT:
-	if (v1.type != da.f_type)
-	  runtime( "Setting int attribute to non-int value" );
-	l->attrs[0].u.data = v1.val.i;
-	break;
-
       case EAF_TYPE_ROUTER_ID:
-	/* IP->Quad implicit conversion */
-	if (val_is_ip4(&v1)) {
-	  l->attrs[0].u.data = ipa_to_u32(v1.val.ip);
-	  break;
-	}
-	/* T_INT for backward compatibility */
-	if ((v1.type != T_QUAD) && (v1.type != T_INT))
-	  runtime( "Setting quad attribute to non-quad value" );
 	l->attrs[0].u.data = v1.val.i;
 	break;
 
@@ -699,9 +675,7 @@
 	runtime( "Setting opaque attribute is not allowed" );
 	break;
 
-      case EAF_TYPE_IP_ADDRESS:
-	if (v1.type != T_IP)
-	  runtime( "Setting ip attribute to non-ip value" );
+      case EAF_TYPE_IP_ADDRESS:;
 	int len = sizeof(ip_addr);
 	struct adata *ad = lp_alloc(fs->pool, sizeof(struct adata) + len);
 	ad->length = len;
@@ -710,14 +684,13 @@
 	break;
 
       case EAF_TYPE_AS_PATH:
-	if (v1.type != T_PATH)
-	  runtime( "Setting path attribute to non-path value" );
+      case EAF_TYPE_INT_SET:
+      case EAF_TYPE_EC_SET:
+      case EAF_TYPE_LC_SET:
 	l->attrs[0].u.ptr = v1.val.ad;
 	break;
 
       case EAF_TYPE_BITFIELD:
-	if (v1.type != T_BOOL)
-	  runtime( "Setting bit in bitfield attribute to non-bool value" );
 	{
 	  /* First, we have to find the old value */
 	  eattr *e = ea_find(*fs->eattrs, da.ea_code);
@@ -728,24 +701,6 @@
 	  else
 	    l->attrs[0].u.data = data & ~(1u << da.bit);
 	}
-	break;
-
-      case EAF_TYPE_INT_SET:
-	if (v1.type != T_CLIST)
-	  runtime( "Setting clist attribute to non-clist value" );
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-
-      case EAF_TYPE_EC_SET:
-	if (v1.type != T_ECLIST)
-	  runtime( "Setting eclist attribute to non-eclist value" );
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-
-      case EAF_TYPE_LC_SET:
-	if (v1.type != T_LCLIST)
-	  runtime( "Setting lclist attribute to non-lclist value" );
-	l->attrs[0].u.ptr = v1.val.ad;
 	break;
 
       default:

@@ -160,12 +160,13 @@ FID_HIC(,[[
 ')
 
 #	Some arguments need to check their type. After that, ARG_ANY is called.
-m4_define(ARG, `ARG_ANY($1)
+m4_define(ARG, `ARG_ANY($1) ARG_TYPE($1,$2)')
+m4_define(ARG_TYPE, `
 FID_NEW_BODY()m4_dnl
-if (f$1->type && (f$1->type != $2))
+if (f$1->type && (f$1->type != ($2)))
   cf_error("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), f$1->type);
 FID_INTERPRET_EXEC()m4_dnl
-if (v$1.type != $2)
+if (v$1.type != ($2))
   runtime("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), v$1.type)m4_dnl
 FID_INTERPRET_BODY()')
 
