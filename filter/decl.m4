@@ -163,7 +163,7 @@ FID_HIC(,[[
 m4_define(ARG, `ARG_ANY($1) ARG_TYPE($1,$2)')
 m4_define(ARG_TYPE, `
 FID_NEW_BODY()m4_dnl
-if (f$1->type && (f$1->type != ($2)))
+if (f$1->type && (f$1->type != ($2)) && !f_const_promotion(f$1, ($2)))
   cf_error("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), f$1->type);
 FID_INTERPRET_EXEC()m4_dnl
 if (v$1.type != ($2))
@@ -444,6 +444,25 @@ fi_constant(struct f_inst *what, struct f_val val)
   what->fi_code = FI_CONSTANT;
   what->i_FI_CONSTANT.val = val;
   return what;
+}
+
+static int
+f_const_promotion(struct f_inst *arg, enum f_type want)
+{
+  if (arg->fi_code != FI_CONSTANT)
+    return 0;
+
+  struct f_val *c = &arg->i_FI_CONSTANT.val;
+
+  if ((c->type == T_IP) && ipa_is_ip4(c->val.ip) && (want == T_QUAD)) {
+    *c = (struct f_val) {
+      .type = T_QUAD,
+      .val.i = ipa_to_u32(c->val.ip),
+    };
+    return 1;
+  }
+
+  return 0;
 }
 
 #define v1 whati->f1->i_FI_CONSTANT.val
