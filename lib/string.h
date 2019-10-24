@@ -9,11 +9,11 @@
 #ifndef _BIRD_STRING_H_
 #define _BIRD_STRING_H_
 
+#include "lib/birdlib.h"
+#include "lib/resource.h"
+
 #include <stdarg.h>
 #include <string.h>
-#include <strings.h>
-
-#include "lib/resource.h"
 
 int bsprintf(char *str, const char *fmt, ...);
 int bvsprintf(char *str, const char *fmt, va_list args);

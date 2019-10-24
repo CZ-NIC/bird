@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#include "nest/bird.h"
+#include "lib/birdlib.h"
 #include "lib/resource.h"
 #include "lib/string.h"
 

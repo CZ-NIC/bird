@@ -9,7 +9,6 @@
 #ifndef _BIRD_BIRD_H_
 #define _BIRD_BIRD_H_
 
-#include "sysdep/config.h"
 #include "lib/birdlib.h"
 #include "lib/ip.h"
 #include "lib/net.h"
