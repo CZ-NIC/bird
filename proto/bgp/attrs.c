@@ -717,13 +717,23 @@ bgp_decode_mp_unreach_nlri(struct bgp_parse_state *s, uint code UNUSED, uint fla
 static void
 bgp_export_ext_community(struct bgp_export_state *s, eattr *a)
 {
-  struct adata *ad = ec_set_del_nontrans(s->pool, a->u.ptr);
+  if (!s->proto->is_interior)
+  {
+    struct adata *ad = ec_set_del_nontrans(s->pool, a->u.ptr);
 
-  if (ad->length == 0)
-    UNSET(a);
+    if (ad->length == 0)
+      UNSET(a);
 
-  ec_set_sort_x(ad);
-  a->u.ptr = ad;
+    ec_set_sort_x(ad);
+    a->u.ptr = ad;
+  }
+  else
+  {
+    if (a->u.ptr->length == 0)
+      UNSET(a);
+
+    a->u.ptr = ec_set_sort(s->pool, a->u.ptr);
+  }
 }
 
 static void
