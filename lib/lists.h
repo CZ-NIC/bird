@@ -9,6 +9,8 @@
 #ifndef _BIRD_LISTS_H_
 #define _BIRD_LISTS_H_
 
+#include "lib/birdlib.h"
+
 /*
  * I admit the list structure is very tricky and also somewhat awkward,
  * but it's both efficient and easy to manipulate once one understands the

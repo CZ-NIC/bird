@@ -9,6 +9,7 @@
 #ifndef _BIRD_BIRDLIB_H_
 #define _BIRD_BIRDLIB_H_
 
+#include "sysdep/config.h"
 #include "lib/alloca.h"
 
 /* Ugly structure offset handling macros */
