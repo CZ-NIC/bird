@@ -897,6 +897,11 @@
     NEVER_CONSTANT;
     SYMBOL;
 
+    FID_SAME_BODY()
+      if (!(f2->sym->flags & SYM_FLAG_SAME))
+	return 0;
+    FID_INTERPRET_BODY()
+
     /* Push the body on stack */
     LINEX(sym->function);
     curline.emask |= FE_RETURN;

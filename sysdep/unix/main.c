@@ -140,7 +140,7 @@ read_iproute_table(char *file, char *prefix, int max)
       continue;
 
     for(p = name; *p; p++)
-      if ((*p < 'a' || *p > 'z') && (*p < '0' || *p > '9') && (*p != '_'))
+      if ((*p < 'a' || *p > 'z') && (*p < 'A' || *p > 'Z') && (*p < '0' || *p > '9') && (*p != '_'))
 	*p = '_';
 
     add_num_const(namebuf, val);
@@ -539,7 +539,7 @@ write_pid_file(void)
 
   /* We don't use PID file for uniqueness, so no need for locking */
 
-  pl = bsnprintf(ps, sizeof(ps), "%ld\n", (long) getpid());
+  pl = bsnprintf(ps, sizeof(ps), "%ld\n", (s64) getpid());
   if (pl < 0)
     bug("PID buffer too small");
 
@@ -608,9 +608,9 @@ cmd_graceful_restart(void)
  *	Signals
  */
 
-volatile int async_config_flag;
-volatile int async_dump_flag;
-volatile int async_shutdown_flag;
+volatile sig_atomic_t async_config_flag;
+volatile sig_atomic_t async_dump_flag;
+volatile sig_atomic_t async_shutdown_flag;
 
 static void
 handle_sighup(int sig UNUSED)

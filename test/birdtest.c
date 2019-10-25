@@ -4,6 +4,7 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#include <inttypes.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -36,7 +37,11 @@ static int do_die;
 static int no_fork;
 static int no_timeout;
 static int is_terminal;		/* Whether stdout is a live terminal or pipe redirect */
-int benchmark;			/* Whether we shall run the benchmark test version */
+
+volatile sig_atomic_t async_config_flag;		/* Asynchronous reconfiguration/dump scheduled */
+volatile sig_atomic_t async_dump_flag;
+volatile sig_atomic_t async_shutdown_flag;
+
 
 uint bt_verbose;
 const char *bt_filename;
@@ -114,7 +119,7 @@ bt_init(int argc, char *argv[])
     int rv = setrlimit(RLIMIT_CORE, &rl);
     bt_syscall(rv < 0, "setrlimit RLIMIT_CORE");
   }
-   
+
   clock_gettime(CLOCK_MONOTONIC, &bt_begin);
 
   return;
@@ -197,7 +202,7 @@ bt_log_result(int result, u64 time, const char *fmt, va_list argptr)
   static char msg_buf[BT_BUFFER_SIZE];
   char *pos;
 
-  snprintf(msg_buf, sizeof(msg_buf), "%s%s%s%s %lu.%09lus",
+  snprintf(msg_buf, sizeof(msg_buf), "%s%s%s%s %" PRIu64 ".%09" PRIu64 "s",
 	   bt_filename,
 	   bt_test_id ? ": " : "",
 	   bt_test_id ? bt_test_id : "",
@@ -242,6 +247,15 @@ bt_log_result(int result, u64 time, const char *fmt, va_list argptr)
     abort();
 }
 
+static u64
+get_time_diff(struct timespec *begin)
+{
+  struct timespec end;
+  clock_gettime(CLOCK_MONOTONIC, &end);
+  return (end.tv_sec - begin->tv_sec) * 1000000000ULL
+    + end.tv_nsec - begin->tv_nsec;
+}
+
 /**
  * bt_log_overall_result - pretty print of suite case result
  * @result: 1 or 0
@@ -253,14 +267,9 @@ bt_log_result(int result, u64 time, const char *fmt, va_list argptr)
 static void
 bt_log_overall_result(int result, const char *fmt, ...)
 {
-  struct timespec end;
-  clock_gettime(CLOCK_MONOTONIC, &end);
-  u64 time = (end.tv_sec - bt_begin.tv_sec) * 1000000000ULL
-    + end.tv_nsec - bt_begin.tv_nsec;
-
   va_list argptr;
   va_start(argptr, fmt);
-  bt_log_result(result, time, fmt, argptr);
+  bt_log_result(result, get_time_diff(&bt_begin), fmt, argptr);
   va_end(argptr);
 }
 
@@ -277,14 +286,9 @@ bt_log_suite_result(int result, const char *fmt, ...)
 {
   if (bt_verbose >= BT_VERBOSE_SUITE || !result)
   {
-    struct timespec end;
-    clock_gettime(CLOCK_MONOTONIC, &end);
-    u64 time = (end.tv_sec - bt_suite_begin.tv_sec) * 1000000000ULL
-      + end.tv_nsec - bt_suite_begin.tv_nsec;
-
     va_list argptr;
     va_start(argptr, fmt);
-    bt_log_result(result, time, fmt, argptr);
+    bt_log_result(result, get_time_diff(&bt_suite_begin), fmt, argptr);
     va_end(argptr);
   }
 }
@@ -302,14 +306,9 @@ bt_log_suite_case_result(int result, const char *fmt, ...)
 {
   if(bt_verbose >= BT_VERBOSE_SUITE_CASE)
   {
-    struct timespec end;
-    clock_gettime(CLOCK_MONOTONIC, &end);
-    u64 time = (end.tv_sec - bt_suite_case_begin.tv_sec) * 1000000000ULL
-      + end.tv_nsec - bt_suite_case_begin.tv_nsec;
-
     va_list argptr;
     va_start(argptr, fmt);
-    bt_log_result(result, time, fmt, argptr);
+    bt_log_result(result, get_time_diff(&bt_suite_case_begin), fmt, argptr);
     va_end(argptr);
   }
 }
@@ -344,7 +343,7 @@ bt_test_suite_base(int (*fn)(const void *), const char *id, const void *fn_arg, 
     bt_log("Starting");
 
   clock_gettime(CLOCK_MONOTONIC, &bt_suite_begin);
-  
+
   if (!forked)
   {
     bt_suite_result = bt_run_test_fn(fn, fn_arg, timeout);

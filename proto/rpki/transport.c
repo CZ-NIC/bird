@@ -26,7 +26,6 @@
 static ip_addr
 rpki_hostname_autoresolv(const char *host)
 {
-  ip_addr addr = {};
   struct addrinfo *res;
   struct addrinfo hints = {
       .ai_family = AF_UNSPEC,
@@ -44,12 +43,10 @@ rpki_hostname_autoresolv(const char *host)
     return IPA_NONE;
   }
 
-  sockaddr sa = {
-      .sa = *res->ai_addr,
-  };
-
+  ip_addr addr = IPA_NONE;
   uint unused;
-  sockaddr_read(&sa, res->ai_family, &addr, NULL, &unused);
+
+  sockaddr_read((sockaddr *) res->ai_addr, res->ai_family, &addr, NULL, &unused);
 
   freeaddrinfo(res);
   return addr;

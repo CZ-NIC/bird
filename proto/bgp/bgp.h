@@ -149,6 +149,9 @@ struct bgp_channel_config {
   uint llgr_time;			/* Long-lived graceful restart stale time */
   u8 ext_next_hop;			/* Allow both IPv4 and IPv6 next hops */
   u8 add_path;				/* Use ADD-PATH extension [RFC 7911] */
+  u8 aigp;				/* AIGP is allowed on this session */
+  u8 aigp_originate;			/* AIGP is originated automatically */
+  u32 cost;				/* IGP cost for direct next hops */
   u8 import_table;			/* Use c.in_table as Adj-RIB-In */
   u8 export_table;			/* Use c.out_table as Adj-RIB-Out */
 
@@ -379,6 +382,7 @@ struct bgp_export_state {
 
   u32 attrs_seen[1];
   uint err_withdraw;
+  uint local_next_hop;
 };
 
 struct bgp_write_state {
@@ -493,6 +497,11 @@ void bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len);
 struct rte_source *bgp_find_source(struct bgp_proto *p, u32 path_id);
 struct rte_source *bgp_get_source(struct bgp_proto *p, u32 path_id);
 
+static inline int
+rte_resolvable(rte *rt)
+{
+  return rt->attrs->dest == RTD_UNICAST;
+}
 
 
 #ifdef LOCAL_DEBUG
@@ -541,6 +550,7 @@ bgp_unset_attr(ea_list **to, struct linpool *pool, uint code)
 
 int bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte *end);
 ea_list * bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len);
+void bgp_finish_attrs(struct bgp_parse_state *s, rta *a);
 
 void bgp_init_bucket_table(struct bgp_channel *c);
 void bgp_free_bucket_table(struct bgp_channel *c);
@@ -560,6 +570,20 @@ void bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *ol
 int bgp_preexport(struct proto *, struct rte **, struct linpool *);
 int bgp_get_attr(struct eattr *e, byte *buf, int buflen);
 void bgp_get_route_info(struct rte *, byte *buf);
+int bgp_total_aigp_metric_(rte *e, u64 *metric, const struct adata **ad);
+
+#define BGP_AIGP_METRIC		1
+#define BGP_AIGP_MAX		U64(0xffffffffffffffff)
+
+static inline u64
+bgp_total_aigp_metric(rte *r)
+{
+  u64 metric = BGP_AIGP_MAX;
+  const struct adata *ad;
+
+  bgp_total_aigp_metric_(r, &metric, &ad);
+  return metric;
+}
 
 
 /* packets.c */
@@ -595,6 +619,8 @@ void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 #define BAF_PARTIAL		0x20
 #define BAF_EXT_LEN		0x10
 
+#define BAF_DECODE_FLAGS	0x0100	/* Private flag - attribute flags are handled by the decode hook */
+
 #define BA_ORIGIN		0x01	/* RFC 4271 */		/* WM */
 #define BA_AS_PATH		0x02				/* WM */
 #define BA_NEXT_HOP		0x03				/* WM */
@@ -610,6 +636,7 @@ void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 #define BA_EXT_COMMUNITY	0x10	/* RFC 4360 */
 #define BA_AS4_PATH             0x11	/* RFC 6793 */
 #define BA_AS4_AGGREGATOR       0x12	/* RFC 6793 */
+#define BA_AIGP			0x1a	/* RFC 7311 */
 #define BA_LARGE_COMMUNITY	0x20	/* RFC 8092 */
 
 /* Bird's private internal BGP attributes */

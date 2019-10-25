@@ -837,10 +837,11 @@ bfd_reconfigure_neighbors(struct bfd_proto *p, struct bfd_config *new)
 
 	nn->req = on->req;
 	nn->active = 1;
-	return;
+	goto next;
       }
 
     bfd_stop_neighbor(p, on);
+  next:;
   }
 
   WALK_LIST(nn, new->neigh_list)

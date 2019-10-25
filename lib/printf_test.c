@@ -45,7 +45,7 @@ t_simple(void)
   else
     BSPRINTF(16, "00000fee1a15600d", buf, "%p", (void *) 0xfee1a15600d);
 
-  long ln = 0;
+  s64 ln = 0;
   BSPRINTF(10, "TeStStRiNg", buf, "TeStS%lntRiNg", &ln);
   bt_assert_msg(ln == 5, "fmt=\"TeStS%%lntRiNg\", &ln makes ln=%ld, want 5", ln);
 
@@ -54,7 +54,19 @@ t_simple(void)
   BSPRINTF(2, "+1", buf, "%+d", 1);
   BSPRINTF(2, " 1", buf, "% d", 1);
   BSPRINTF(2, "-1", buf, "%d", -1);
-  BSPRINTF(11, "-2147483648", buf, "%d", -2147483648);
+  BSPRINTF(11, "-2147483648", buf, "%d", INT32_MIN);
+  BSPRINTF(10,  "2147483647", buf, "%d", INT32_MAX);
+
+  BSPRINTF(1,  "0", buf, "%u", 0x0);
+  BSPRINTF(10, "4294967295", buf, "%u", 0xFFFFFFFF);
+
+  BSPRINTF(4,  "-100", buf, "%ld", (s64) -100);
+  BSPRINTF(3,   "100", buf, "%ld", (s64)  100);
+  BSPRINTF(20, "-9223372036854775808", buf, "%ld", INT64_MIN);
+  BSPRINTF(19,  "9223372036854775807", buf, "%ld", INT64_MAX);
+
+  BSPRINTF(3,  "0 8", buf, "%lu %lu", U64(0), U64(8));
+  BSPRINTF(20, "18446744073709551615", buf, "%lu", UINT64_MAX);
 
   return 1;
 }

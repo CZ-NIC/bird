@@ -46,6 +46,10 @@
 #include "lib/worker.h"
 #include "lib/atomic.h"
 
+#ifdef CONFIG_BGP
+#include "proto/bgp/bgp.h"
+#endif
+
 pool *rt_table_pool;
 static pool *rup_pool;
 static struct domain *rup_domain;
@@ -2188,7 +2192,7 @@ rta_next_hop_outdated(rta *a)
 }
 
 void
-rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls, linpool *pool)
+rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls, struct linpool *pool)
 {
   a->hostentry = he;
   a->dest = he->dest;
@@ -2223,11 +2227,13 @@ no_nexthop:
     else
     {
       nhr = nhp;
-      nhp = (nhp ? (nhp->next = lp_allocz(pool, NEXTHOP_MAX_SIZE)) : &(a->nh));
+      nhp = (nhp ? (nhp->next = lp_alloc(pool, NEXTHOP_MAX_SIZE)) : &(a->nh));
     }
 
+    memset(nhp, 0, NEXTHOP_MAX_SIZE);
     nhp->iface = nh->iface;
     nhp->weight = nh->weight;
+
     if (mls)
     {
       nhp->labels = nh->labels + mls->len;
@@ -2245,11 +2251,20 @@ no_nexthop:
 	continue;
       }
     }
+    else if (nh->labels)
+    {
+      nhp->labels = nh->labels;
+      nhp->labels_orig = 0;
+      memcpy(nhp->label, nh->label, nh->labels * sizeof(u32));
+    }
+
     if (ipa_nonzero(nh->gw))
     {
       nhp->gw = nh->gw;			/* Router nexthop */
       nhp->flags |= (nh->flags & RNF_ONLINK);
     }
+    else if (!(nh->iface->flags & IF_MULTIACCESS) || (nh->iface->flags & IF_LOOPBACK))
+      nhp->gw = IPA_NONE;		/* PtP link - no need for nexthop */
     else if (ipa_nonzero(he->link))
       nhp->gw = he->link;		/* Device nexthop with link-local address known */
     else
@@ -3062,7 +3077,7 @@ if_local_addr(ip_addr a, struct iface *i)
   return 0;
 }
 
-static u32
+u32
 rt_get_igp_metric(rte *rt)
 {
   eattr *ea = ea_find(rt->attrs->eattrs, EA_GEN_IGP_METRIC);
@@ -3082,6 +3097,14 @@ rt_get_igp_metric(rte *rt)
 #ifdef CONFIG_RIP
   if (a->source == RTS_RIP)
     return rt->u.rip.metric;
+#endif
+
+#ifdef CONFIG_BGP
+  if (a->source == RTS_BGP)
+  {
+    u64 metric = bgp_total_aigp_metric(rt);
+    return (u32) MIN(metric, (u64) IGP_METRIC_UNKNOWN);
+  }
 #endif
 
   if (a->source == RTS_DEVICE)

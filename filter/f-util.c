@@ -32,33 +32,12 @@ filter_name(const struct filter *filter)
 
 struct filter *f_new_where(struct f_inst *where)
 {
-  struct f_inst acc = {
-    .fi_code = FI_DIE,
-    .lineno = ifs->lino,
-    .size = 1,
-    .i_FI_DIE = { .fret = F_ACCEPT, },
-  };
-
-  struct f_inst rej = {
-    .fi_code = FI_DIE,
-    .lineno = ifs->lino,
-    .size = 1,
-    .i_FI_DIE = { .fret = F_REJECT, },
-  };
-
-  struct f_inst i = {
-    .fi_code = FI_CONDITION,
-    .lineno = ifs->lino,
-    .size = 3 + where->size,
-    .i_FI_CONDITION = {
-      .f1 = where,
-      .f2 = &acc,
-      .f3 = &rej,
-    },
-  };
+  struct f_inst *cond = f_new_inst(FI_CONDITION, where,
+				   f_new_inst(FI_DIE, F_ACCEPT),
+				   f_new_inst(FI_DIE, F_REJECT));
 
   struct filter *f = cfg_allocz(sizeof(struct filter));
-  f->root = f_linearize(&i);
+  f->root = f_linearize(cond);
   return f;
 }
 

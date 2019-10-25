@@ -430,11 +430,11 @@ a comment, whitespace characters are treated as a single space. If there's a
 variable number of options, they are grouped using the <cf/{ }/ brackets. Each
 option is terminated by a <cf/;/. Configuration is case sensitive. There are two
 ways how to name symbols (like protocol names, filter names, constants etc.).
-You can either use a simple string starting with a letter followed by any
-combination of letters and numbers (e.g. <cf/R123/, <cf/myfilter/, <cf/bgp5/) or
-you can enclose the name into apostrophes (<cf/'/) and than you can use any
-combination of numbers, letters. hyphens, dots and colons (e.g.
-<cf/'1:strange-name'/, <cf/'-NAME-'/, <cf/'cool::name'/).
+You can either use a simple string starting with a letter (or underscore)
+followed by any combination of letters, numbers and underscores (e.g. <cf/R123/,
+<cf/my_filter/, <cf/bgp5/) or you can enclose the name into apostrophes (<cf/'/)
+and than you can use any combination of numbers, letters, underscores, hyphens,
+dots and colons (e.g.  <cf/'1:strange-name'/, <cf/'-NAME-'/, <cf/'cool::name'/).
 
 <p>Here is an example of a simple config file. It enables synchronization of
 routing tables with OS kernel, learns network interfaces and runs RIP on all
@@ -570,7 +570,7 @@ include "tablename.conf";;
 
 	<tag><label id="opt-attribute">attribute <m/type/ <m/name/</tag>
 	Declare a custom route attribute. You can set and get it in filters like
-	any other route atribute. This feature is intended for marking routes
+	any other route attribute. This feature is intended for marking routes
 	in import filters for export filtering purposes instead of locally
 	assigned BGP communities which have to be deleted in export filters.
 
@@ -760,10 +760,6 @@ agreement").
 
 	<cf>interface "eth1", "eth4", "eth5" { type ptp; };</cf> - start the
 	protocol on enumerated interfaces with <cf>type ptp</cf> option.
-
-	<cf>interface -192.168.1.0/24, 192.168.0.0/16;</cf> - start the protocol
-	on all interfaces that have address from 192.168.0.0/16, but not from
-	192.168.1.0/24.
 
 	<cf>interface -192.168.1.0/24, 192.168.0.0/16;</cf> - start the protocol
 	on all interfaces that have address from 192.168.0.0/16, but not from
@@ -1255,8 +1251,8 @@ bird>
 <label id="data-types">
 
 <p>Each variable and each value has certain type. Booleans, integers and enums
-are incompatible with each other (that is to prevent you from shooting in the
-foot).
+are incompatible with each other (that is to prevent you from shooting oneself
+in the foot).
 
 <descrip>
 	<tag><label id="type-bool">bool</tag>
@@ -1293,7 +1289,7 @@ foot).
 	This type can hold a single IP address. The IPv4 addresses are stored as
 	IPv4-Mapped IPv6 addresses so one data type for both of them is used.
 	Whether the address is IPv4 or not may be checked by <cf>.is_ip4</cf>
-	which returns <cf/bool/. IP addresses are written in the standard
+	which returns a <cf/bool/. IP addresses are written in the standard
 	notation (<cf/10.20.30.40/ or <cf/fec0:3:4::1/). You can apply special
 	operator <cf>.mask(<M>num</M>)</cf> on values of type ip. It masks out
 	all but first <cf><M>num</M></cf> bits from the IP address. So
@@ -1490,7 +1486,8 @@ foot).
 	but <tt>bgp_path &tilde; [= * 4 5 * =]</tt> is false. BGP mask
 	expressions can also contain integer expressions enclosed in parenthesis
 	and integer variables, for example <tt>[= * 4 (1+2) a =]</tt>. You can
-        also use ranges, for example <tt>[= * 3..5 2 100..200 * =]</tt>.
+	also use ranges (e.g. <tt>[= * 3..5 2 100..200 * =]</tt>) and sets
+	(e.g. <tt>[= 1 2 [3, 5, 7] * =]</tt>).
 
 	<tag><label id="type-clist">clist</tag>
 	Clist is similar to a set, except that unlike other sets, it can be
@@ -1530,7 +1527,7 @@ foot).
 	<cf/!&tilde;/ membership operators) can be used to modify or test
 	eclists, with ECs instead of pairs as arguments.
 
-	<tag><label id="type-lclist">lclist/</tag>
+	<tag><label id="type-lclist">lclist</tag>
 	Lclist is a data type used for BGP large community lists. Like eclists,
 	lclists are very similar to clists, but they are sets of LCs instead of
 	pairs. The same operations (like <cf/add/, <cf/delete/ or <cf/&tilde;/
@@ -1562,8 +1559,8 @@ the clist that is also a member of the pair/quad set).
 <p>There is one operator related to ROA infrastructure - <cf/roa_check()/. It
 examines a ROA table and does <rfc id="6483"> route origin validation for a
 given network prefix. The basic usage is <cf>roa_check(<m/table/)</cf>, which
-checks current route (which should be from BGP to have AS_PATH argument) in the
-specified ROA table and returns ROA_UNKNOWN if there is no relevant ROA,
+checks the current route (which should be from BGP to have AS_PATH argument) in
+the specified ROA table and returns ROA_UNKNOWN if there is no relevant ROA,
 ROA_VALID if there is a matching ROA, or ROA_INVALID if there are some relevant
 ROAs but none of them match. There is also an extended variant
 <cf>roa_check(<m/table/, <m/prefix/, <m/asn/)</cf>, which allows to specify a
@@ -2181,6 +2178,7 @@ avoid routing loops.
 <item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
 <item> <rfc id="6608"> - Subcodes for BGP Finite State Machine Error
 <item> <rfc id="6793"> - BGP Support for 4-Octet AS Numbers
+<item> <rfc id="7311"> - Accumulated IGP Metric Attribute for BGP
 <item> <rfc id="7313"> - Enhanced Route Refresh Capability for BGP
 <item> <rfc id="7606"> - Revised Error Handling for BGP UPDATE Messages
 <item> <rfc id="7911"> - Advertisement of Multiple Paths in BGP
@@ -2759,6 +2757,36 @@ be used in explicit configuration.
 	TX direction. When active, all available routes accepted by the export
 	filter are advertised to the neighbor. Default: off.
 
+	<tag><label id="bgp-aigp">aigp <m/switch/|originate</tag>
+	The BGP protocol does not use a common metric like other routing
+	protocols, instead it uses a set of criteria for route selection
+	consisting both overall AS path length and a distance to the nearest AS
+	boundary router. Assuming that metrics of different autonomous systems
+	are incomparable, once a route is propagated from an AS to a next one,
+	the distance in the old AS does not matter.
+
+	The AIGP extension (<rfc id="7311">) allows to propagate accumulated
+	IGP metric (in the AIGP attribute) through both IBGP and EBGP links,
+	computing total distance through multiple autonomous systems (assuming
+	they use comparable IGP metric). The total AIGP metric is compared in
+	the route selection process just after Local Preference comparison (and
+	before AS path length comparison).
+
+	This option controls whether AIGP attribute propagation is allowed on
+	the session. Optionally, it can be set to <cf/originate/, which not only
+	allows AIGP attribute propagation, but also new AIGP attributes are
+	automatically attached to non-BGP routes with valid IGP metric (e.g.
+	<cf/ospf_metric1/) as they are exported to the BGP session. Default:
+	enabled for IBGP (and intra-confederation EBGP), disabled for regular
+	EBGP.
+
+	<tag><label id="bgp-cost">cost <m/number/</tag>
+	When BGP <ref id="bgp-gateway" name="gateway mode"> is <cf/recursive/
+	(mainly multihop IBGP sessions), then the distance to BGP next hop is
+	based on underlying IGP metric. This option specifies the distance to
+	BGP next hop for BGP sessions in direct gateway mode (mainly direct
+	EBGP sessions).
+
 	<tag><label id="bgp-graceful-restart-c">graceful restart <m/switch/</tag>
 	Although BGP graceful restart is configured mainly by protocol-wide
 	<ref id="bgp-graceful-restart" name="options">, it is possible to
@@ -2827,9 +2855,11 @@ some of them (marked with `<tt/O/') are optional.
 	presence of which indicates that the route has been aggregated from
 	multiple routes by some router on the path from the originator.
 
-<!-- we don't handle aggregators right since they are of a very obscure type
-	<tag>bgp_aggregator</tag>
--->
+	<tag><label id="rta-bgp-aggregator">void bgp_aggregator [O]</tag>
+	This is an optional attribute specifying AS number and IP address of the
+	BGP router that created the route by aggregating multiple BGP routes.
+	Currently, the attribute is not accessible from filters.
+
 	<tag><label id="rta-bgp-community">clist bgp_community [O]</tag>
 	List of community values associated with the route. Each such value is a
 	pair (represented as a <cf/pair/ data type inside the filters) of 16-bit
@@ -2864,6 +2894,11 @@ some of them (marked with `<tt/O/') are optional.
 	<tag><label id="rta-bgp-cluster-list">clist bgp_cluster_list [I, O]</tag>
 	This attribute contains a list of cluster IDs of route reflectors. Each
 	route reflector prepends its cluster ID when reflecting the route.
+
+	<tag><label id="rta-bgp-aigp">void bgp_aigp [O]</tag>
+	This attribute contains accumulated IGP metric, which is a total
+	distance to the destination through multiple autonomous systems.
+	Currently, the attribute is not accessible from filters.
 </descrip>
 
 <sect1>Example
@@ -4791,7 +4826,7 @@ protocol rpki {
 filter peer_in_v4 {
 	if (roa_check(r4, net, bgp_path.last) = ROA_INVALID) then
 	{
-		print "Ignore invalid ROA ", net, " for ASN ", bgp_path.last;
+		print "Ignore RPKI invalid ", net, " for ASN ", bgp_path.last;
 		reject;
 	}
 	accept;

@@ -537,7 +537,12 @@ CF_CLI(SHOW OSPF STATE ALL, optproto opttext, [<name>], [[Show information about
 
 CF_CLI_HELP(SHOW OSPF LSADB, ..., [[Show content of OSPF LSA database]]);
 CF_CLI(SHOW OSPF LSADB, lsadb_args, [global | area <id> | link] [type <num>] [lsid <id>] [self | router <id>] [<proto>], [[Show content of OSPF LSA database]])
-{ ospf_sh_lsadb($4); };
+{
+  if (!$4->proto)
+    $4->proto = (struct ospf_proto *) proto_get_named(NULL, &proto_ospf);
+
+  ospf_sh_lsadb($4);
+};
 
 lsadb_args:
    /* empty */ {

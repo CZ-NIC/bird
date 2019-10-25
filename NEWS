@@ -1,3 +1,15 @@
+Version 2.0.7 (2019-10-11)
+  o BGP: Accumulated IGP metric (RFC 7311)
+  o Important filter reconfiguration bugfix
+  o Several other bugfixes
+
+Version 2.0.6 (2019-09-10)
+  o RAdv: Solicited unicast RAs
+  o BGP: Optional Adj-RIB-Out
+  o BGP: Extended optional parameters length
+  o Filter: Sets and set expressions in path masks
+  o Several important bugfixes
+
 Version 2.0.5 (2019-08-01)
   o OSPF Graceful restart (RFC 3623, RFC 5187)
   o BGP: Dynamic BGP
