@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#include "nest/bird.h"
+#include "lib/birdlib.h"
 #include "lib/resource.h"
 #include "lib/string.h"
 
@@ -30,7 +30,7 @@
 
 struct pool {
   resource r;
-  list inside;
+  TLIST(resource) inside;
   const char *name;
 };
 
@@ -65,7 +65,7 @@ rp_new(pool *p, const char *name)
 {
   pool *z = ralloc(p, &pool_class);
   z->name = name;
-  init_list(&z->inside);
+  INIT_TLIST(&z->inside);
   return z;
 }
 
@@ -73,14 +73,12 @@ static void
 pool_free(resource *P)
 {
   pool *p = (pool *) P;
-  resource *r, *rr;
+  resource *r;
 
-  r = HEAD(p->inside);
-  while (rr = (resource *) r->n.next)
+  WALK_TLIST_DELSAFE(r, p->inside)
     {
       r->class->free(r);
       xfree(r);
-      r = rr;
     }
 }
 
@@ -136,9 +134,9 @@ void rmove(void *res, pool *p)
 
   if (r)
     {
-      if (r->n.next)
-        rem_node(&r->n);
-      add_tail(&p->inside, &r->n);
+      if (TNODE_IN_LIST(r))
+        TREM_NODE(r);
+      TADD_TAIL(&p->inside, r);
     }
 }
 
@@ -160,8 +158,8 @@ rfree(void *res)
   if (!r)
     return;
 
-  if (r->n.next)
-    rem_node(&r->n);
+  if (TNODE_IN_LIST(r))
+    TREM_NODE(r);
   r->class->free(r);
   r->class = NULL;
   xfree(r);
@@ -222,7 +220,7 @@ ralloc(pool *p, struct resclass *c)
 
   r->class = c;
   if (p)
-    add_tail(&p->inside, &r->n);
+    TADD_TAIL(&p->inside, r);
   return r;
 }
 
@@ -261,7 +259,7 @@ resource_init(void)
 {
   root_pool.r.class = &pool_class;
   root_pool.name = "Root";
-  init_list(&root_pool.inside);
+  INIT_TLIST(&root_pool.inside);
 }
 
 /**
@@ -340,7 +338,7 @@ mb_alloc(pool *p, unsigned size)
   struct mblock *b = xmalloc(sizeof(struct mblock) + size);
 
   b->r.class = &mb_class;
-  add_tail(&p->inside, &b->r.n);
+  TADD_TAIL(&p->inside, &b->r);
   b->size = size;
   return b->data;
 }
@@ -387,7 +385,7 @@ mb_realloc(void *m, unsigned size)
   struct mblock *b = SKIP_BACK(struct mblock, data, m);
 
   b = xrealloc(b, sizeof(struct mblock) + size);
-  replace_node(&b->r.n, &b->r.n);
+  TFIX_NODE(&b->r);
   b->size = size;
   return b->data;
 }

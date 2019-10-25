@@ -9,6 +9,8 @@
 #ifndef _BIRD_LISTS_H_
 #define _BIRD_LISTS_H_
 
+#include "lib/birdlib.h"
+
 /*
  * I admit the list structure is very tricky and also somewhat awkward,
  * but it's both efficient and easy to manipulate once one understands the
@@ -41,7 +43,6 @@ typedef union list {			/* In fact two overlayed nodes */
     struct node *tail;
   };
 } list;
-
 
 #define NODE (node *)
 #define HEAD(list) ((void *)((list).head))
@@ -84,5 +85,73 @@ void init_list(list *);
 void insert_node(node *, node *);
 uint list_length(list *);
 #endif
+
+/* Typed lists */
+#define TLIST_NODE(_type) struct { _type *next, *prev; } _tln
+#define TLIST(_type) union { \
+  struct { \
+    union { \
+      struct { _type *next, *prev; }; \
+      _type node[0]; \
+    } head_node; \
+    void *head_padding; \
+  }; \
+  struct { \
+    void *tail_padding; \
+    union { \
+      struct { _type *next, *prev; }; \
+      _type node[0]; \
+    } tail_node; \
+  }; \
+  struct { \
+    _type *head, *null, *tail; \
+  }; \
+}
+
+#define TNODE(n) (n)->node
+#define THEAD(list) list.head
+#define TTAIL(list) list.tail
+#define TNODE_IN_LIST(n) (((n)->_tln.next) && ((n)->_tln.prev))
+
+#define WALK_TLIST(n_, list) for (n_ = (list).head; n_->_tln.next; n_ = n_->_tln.next)
+#define WALK_TLIST_DELSAFE(n_, list) for (typeof(n_) next_ = n_ = THEAD(list); next_ = n_->_tln.next; n_ = next_)
+
+#define INIT_TLIST(list) do { \
+  typeof(list) l_ = list; \
+  l_->head = l_->tail_node.node; \
+  l_->tail = l_->head_node.node; \
+  l_->null = NULL; \
+} while (0)
+
+#define TADD_HEAD(list_, node_) do { \
+  typeof(node_) n_ = node_; \
+  typeof(list_) l_ = list_; \
+  n_->_tln.next = l_->head; \
+  n_->_tln.prev = l_->head_node.node; \
+  l_->head->_tln.prev = n_; \
+  l_->head = n_; \
+} while (0)
+
+#define TADD_TAIL(list_, node_) do { \
+  typeof(node_) n_ = node_; \
+  typeof(list_) l_ = list_; \
+  n_->_tln.next = l_->tail_node.node; \
+  n_->_tln.prev = l_->tail; \
+  l_->tail->_tln.next = n_; \
+  l_->tail = n_; \
+} while (0)
+
+#define TREM_NODE(node) do { \
+  typeof(node) n_ = node; \
+  n_->_tln.prev->_tln.next = n_->_tln.next; \
+  n_->_tln.next->_tln.prev = n_->_tln.prev; \
+  n_->_tln.prev = n_->_tln.next = NULL; \
+} while (0)
+
+#define TFIX_NODE(node) do { \
+  typeof(node) n_ = node; \
+  n_->_tln.next->_tln.prev = n_; \
+  n_->_tln.prev->_tln.next = n_; \
+ } while (0)
 
 #endif

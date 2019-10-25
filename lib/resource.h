@@ -14,8 +14,8 @@
 /* Resource */
 
 typedef struct resource {
-  node n;				/* Inside resource pool */
-  struct resclass *class;		/* Resource class */
+  TLIST_NODE(struct resource);	/* Inside resource pool */
+  struct resclass *class;	/* Resource class */
 } resource;
 
 /* Resource class */
