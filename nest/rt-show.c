@@ -29,12 +29,11 @@ rt_show_table(struct cli *c, struct rt_show_data *d)
 }
 
 static void
-rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d)
+rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary)
 {
   byte from[IPA_MAX_TEXT_LENGTH+8];
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
   rta *a = e->attrs;
-  int primary = (e->net->routes == e);
   int sync_error = (e->net->n.flags & KRF_SYNC_ERROR);
   void (*get_route_info)(struct rte *, byte *buf);
   struct nexthop *nh;
@@ -167,7 +166,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	goto skip;
 
       if (d->stats < 2)
-	rt_show_rte(c, ia, e, d);
+	rt_show_rte(c, ia, e, d, (e->net->routes == ee));
 
       d->show_counter++;
       ia[0] = 0;
