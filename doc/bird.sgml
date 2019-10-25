@@ -2469,8 +2469,8 @@ using the following configuration parameters:
 
 	<tag><label id="bgp-enable-extended-messages">enable extended messages <m/switch/</tag>
 	The BGP protocol uses maximum message length of 4096 bytes. This option
-	provides an extension to allow extended messages with length up
-	to 65535 bytes. Default: off.
+	provides an extension (<rfc id="8654">) to allow extended messages with
+	length up to 65535 bytes. Default: off.
 
 	<tag><label id="bgp-capabilities">capabilities <m/switch/</tag>
 	Use capability advertisement to advertise optional capabilities. This is
