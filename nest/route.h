@@ -13,6 +13,7 @@
 #include "lib/resource.h"
 #include "lib/net.h"
 #include "lib/worker.h"
+#include "lib/locked.h"
 
 struct ea_list;
 struct protocol;
@@ -144,6 +145,32 @@ struct rtable_config {
   byte sorted;				/* Routes of network are sorted according to rte_better() */
 };
 
+/* Route update data that is passed through the filters */
+
+struct rte_update_data {
+  LOCKED_LIST_NODE(struct rte_update_data);
+  struct task task;
+  struct channel *channel;
+  const net_addr *net;
+  struct rte *rte;
+  struct rta *old_rta;
+  struct rte_src *src;
+  struct linpool *pool;
+  _Atomic PACKED enum rte_update_state {
+    RUS_PENDING_UPDATE = 0,
+    RUS_UPDATING,
+    RUS_PENDING_RECALCULATE,
+    RUS_RECALCULATING,
+  } state;
+  PACKED enum rte_update_result {
+    RUR_UNKNOWN = 0,
+    RUR_WITHDRAW = 1,
+    RUR_INVALID = 2,
+    RUR_FILTERED = 3,
+    RUR_ACCEPTED = 4,
+  } result;
+};
+
 typedef struct rtable {
   node n;				/* Node in list of all tables */
   struct fib fib;
@@ -168,7 +195,7 @@ typedef struct rtable {
   byte nhu_state;			/* Next Hop Update state */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
-  list pending_imports;			/* Imports shall be sequenced */
+  LOCKED_LIST(struct rte_update_data) pending_imports;	/* Imports shall be sequenced */
   struct task import_task;		/* Route update task */
 } rtable;
 

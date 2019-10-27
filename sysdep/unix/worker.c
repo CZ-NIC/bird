@@ -26,8 +26,8 @@
 
 #include "sysdep/arch/asm.h"
 
-static volatile _Atomic u64 max_worker_id = 1;
-static _Thread_local u64 worker_id;
+static _Atomic u64 max_worker_id = 1;
+_Thread_local u64 worker_id;
 
 #define WDBG(x, y...) DBG("(W%4lu): " x, worker_id, ##y)
 #define wdie(x, y...) die("(W%4lu): " x, worker_id, ##y)
@@ -116,9 +116,6 @@ static struct worker_queue {
 
 #define WQ_STATELOG_QUEUE(what_, locked) \
   WQ_STATELOG(what_, .queue = { .running = ADL(wq->running), .workers = ADL(wq->workers), .max_workers = ADL(wq->max_workers), .stop = ADL(wq->stop), .pending = ADL(wq->pending_count) })
-
-
-#define NOWORKER (~0ULL)
 
 #ifdef SPINLOCK_STATS
 void cpu_stat_begin(void);

@@ -83,30 +83,6 @@ static inline void rup_free(linpool *pool) {
   domain_write_unlock(rup_domain);
 }
 
-struct rte_update_data {
-  node n;
-  struct task task;
-  struct channel *channel;
-  const net_addr *net;
-  struct rte *rte;
-  struct rta *old_rta;
-  struct rte_src *src;
-  struct linpool *pool;
-  _Atomic volatile PACKED enum rte_update_state {
-    RUS_PENDING_UPDATE = 0,
-    RUS_UPDATING,
-    RUS_PENDING_RECALCULATE,
-    RUS_RECALCULATING,
-  } state;
-  PACKED enum rte_update_result {
-    RUR_UNKNOWN = 0,
-    RUR_WITHDRAW = 1,
-    RUR_INVALID = 2,
-    RUR_FILTERED = 3,
-    RUR_ACCEPTED = 4,
-  } result;
-};
-
 static inline void rud_state_change(struct rte_update_data *rud, enum rte_update_state from, enum rte_update_state to)
 { 
   if (!atomic_compare_exchange_strong(&(rud->state), &from, to))
@@ -1560,9 +1536,7 @@ rte_dispatch_update(struct rte_update_data *rud)
 
   /* Insert rud into the table's synchronization queue */
   struct rtable *rt = rud->channel->table;
-  domain_write_lock(rt->domain);
-  add_tail(&rt->pending_imports, &rud->n);
-  domain_write_unlock(rt->domain);
+  ADD_TAIL_LOCKED(&rt->pending_imports, rud);
 
   /* Is route update */
   if (rud->rte)
@@ -1746,12 +1720,15 @@ rte_finish_update_hook(struct task *import_task)
   struct rtable *rt = SKIP_BACK(struct rtable, import_task, import_task);
   domain_assert_write_locked(rt->domain);
 
-  struct rte_update_data *rud = HEAD(rt->pending_imports);
-  if (atomic_load(&(rud->state)) != RUS_PENDING_RECALCULATE)
+  /* Get the first rud to insert into table */
+  struct rte_update_data *rud = REM_HEAD_LOCKED(&(rt->pending_imports));
+  if (!rud)
     return;
 
-  rem_node(&(rud->n));
+  /* Do the real table update */
   rte_finish_update(rud);
+
+  /* And try the next rud */
   task_push(import_task);
 }
 
@@ -2017,7 +1994,7 @@ rt_setup(pool *p, rtable *t, struct rtable_config *cf)
 
   t->domain = domain_new(p);
 
-  init_list(&t->pending_imports);
+  INIT_LOCKED_LIST(&t->pending_imports);
   task_init(&t->import_task, TF_EXCLUSIVE, t->domain, rte_finish_update_hook);
 
   t->rt_event = ev_new_init(p, rt_event, t);

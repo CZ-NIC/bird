@@ -10,6 +10,7 @@
 #define _BIRD_BIRDLIB_H_
 
 #include "sysdep/config.h"
+#include "sysdep/arch/asm.h"
 #include "lib/alloca.h"
 
 /* Ugly structure offset handling macros */

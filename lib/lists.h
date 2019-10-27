@@ -113,6 +113,10 @@ uint list_length(list *);
 #define TTAIL(list) list.tail
 #define TNODE_IN_LIST(n) (((n)->_tln.next) && ((n)->_tln.prev))
 
+#define TLIST_NODE_TYPE(l) typeof(*(l.head))
+
+#define TLIST_EMPTY(list) ((list)->head == ((list)->tail_node.node))
+
 #define WALK_TLIST(n_, list) for (n_ = (list).head; n_->_tln.next; n_ = n_->_tln.next)
 #define WALK_TLIST_DELSAFE(n_, list) for (typeof(n_) next_ = n_ = THEAD(list); next_ = n_->_tln.next; n_ = next_)
 
