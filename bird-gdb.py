@@ -166,7 +166,7 @@ class BIRDWQStateLogPrinter(BIRDPrinter):
     typeTag = "worker_queue_state"
 
     def queueval(self):
-        return "%(worker) 4d %(what)s: running %(running)s, workers %(workers)s, max_workers %(max_workers)s, stop %(stop)s, pending %(pending)s" % {
+        return "%(worker) 4d %(what)s: running %(running)s, workers %(workers)s, max_workers %(max_workers)s, stop %(stop)s, pending %(pending)s, blocked %(blocked)s, postponed %(postponed)s" % {
                 "worker": self.val['worker_id'],
                 "what": str(self.val['what']),
                 "running": str(self.val['queue']['running']),
@@ -174,6 +174,8 @@ class BIRDWQStateLogPrinter(BIRDPrinter):
                 "max_workers": str(self.val['queue']['max_workers']),
                 "stop": str(self.val['queue']['stop']),
                 "pending": str(self.val['queue']['pending']),
+                "blocked": str(self.val['queue']['blocked']),
+                "postponed": str(self.val['queue']['postponed']),
                 }
 
     def semval(self):
@@ -227,6 +229,19 @@ class BIRDWQStateLogPrinter(BIRDPrinter):
                 "lockstate": self.lockstate(),
                 }
 
+    def taskval(self):
+        return "%(worker) 4d %(what)s: %(execute)s with%(out)s flags %(tf_exclusive)s%(tf_tail)s%(tf_idempotent)s%(tf_prepended)son %(domain)s" % {
+                "worker": self.val['worker_id'],
+                "what": str(self.val["what"]),
+                "execute": str(self.val["task"]["execute"]),
+                "domain": str(self.val["domain"]["domain"]),
+                "out": "out" if self.val["task"]["flags"] == 0 else "",
+                "tf_exclusive": "TF_EXCLUSIVE " if self.val["task"]["flags"] & 0x1 == 0x1 else "",
+                "tf_tail": "TF_TAIL " if self.val["task"]["flags"] & 0x2 == 0x2 else "",
+                "tf_idempotent": "TF_IDEMPOTENT " if self.val["task"]["flags"] & 0x4 == 0x4 else "",
+                "tf_prepended": "TF_PREPENDED " if self.val["task"]["flags"] & 0x100 == 0x100 else "",
+                }
+
     def nothing(self):
         return "nothing"
 
@@ -252,6 +267,10 @@ class BIRDWQStateLogPrinter(BIRDPrinter):
                 "WQS_DOMAIN_WRUNLOCK_REQUEST": self.domval,
                 "WQS_DOMAIN_RDUNLOCK_DONE": self.domval,
                 "WQS_DOMAIN_WRUNLOCK_DONE": self.domval,
+                "WQS_TASK_PUSHED": self.taskval,
+                "WQS_TASK_BLOCKED": self.taskval,
+                "WQS_TASK_STARTED": self.taskval,
+                "WQS_TASK_DONE": self.taskval,
                 }[str(self.val['what'])]()
 
 def register_printers(objfile):

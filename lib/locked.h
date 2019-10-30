@@ -30,6 +30,8 @@ typedef _Atomic u64 spinlock;
     bug("The spinlock is locked by worker %lu but shall be locked by %lu!", expected, worker_id); \
 } while (0)
 
+#define SPIN_INIT(_sp) atomic_store_explicit(&(_sp), NOWORKER, memory_order_relaxed);
+
 
 #define LOCKED_LIST(_type) struct { \
   TLIST(_type) _llist; \
@@ -41,18 +43,28 @@ typedef _Atomic u64 spinlock;
   spinlock *_lsp; \
 }
 
-#define WLL_RETURN(list_...) return (domain_read_unlock(list_._lld), ##what)
-
 #define INIT_LOCKED_LIST(list_) do { \
   INIT_TLIST(&((list_)->_llist)); \
-  atomic_store_explicit(&((list_)->_lsp), NOWORKER, memory_order_relaxed); \
+  SPIN_INIT(((list_)->_lsp)); \
 } while (0)
 
+#define LOCKED_LIST_LOCK(list_, token) do { typeof(&((list_)->_llist)) token = &((list_)->_llist); SPIN_LOCK((list_)->_lsp); do
+#define LOCKED_LIST_UNLOCK(list_) while (0); SPIN_UNLOCK((list_)->_lsp); } while (0)
+
+#define GET_HEAD_LOCKED(list_) ({ \
+    TLIST_NODE_TYPE((list_)->_llist) *node_ = NULL; \
+    SPIN_LOCK((list_)->_lsp); \
+    if (!TLIST_EMPTY(&((list_)->_llist))) \
+      node_ = THEAD(&((list_)->_llist)); \
+    SPIN_UNLOCK((list_)->_lsp); \
+    node_; \
+    })
+
 #define ADD_HEAD_LOCKED(list_, node_) do { \
-  node_->_lsp = &(list_->_lsp); \
-  SPIN_LOCK(list_->_lsp); \
+  node_->_lsp = &((list_)->_lsp); \
+  SPIN_LOCK((list_)->_lsp); \
   TADD_HEAD(&((list_)->_llist), node_); \
-  SPIN_UNLOCK(list_->_lsp); \
+  SPIN_UNLOCK((list_)->_lsp); \
 } while (0)
 
 #define ADD_TAIL_LOCKED(list_, node_) do { \
@@ -63,10 +75,10 @@ typedef _Atomic u64 spinlock;
 } while (0)
 
 #define REM_HEAD_LOCKED(list_) ({ \
-    TLIST_NODE_TYPE((list_)->_llist) *node_ = NULL; \
+    TLIST_NODE_TYPE(&((list_)->_llist)) *node_ = NULL; \
     SPIN_LOCK((list_)->_lsp); \
     if (!TLIST_EMPTY(&((list_)->_llist))) { \
-      node_ = THEAD((list_)->_llist); \
+      node_ = THEAD(&((list_)->_llist)); \
       TREM_NODE(node_); \
     } \
     SPIN_UNLOCK((list_)->_lsp); \

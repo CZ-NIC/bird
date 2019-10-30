@@ -75,7 +75,7 @@ pool_free(resource *P)
   pool *p = (pool *) P;
   resource *r;
 
-  WALK_TLIST_DELSAFE(r, p->inside)
+  WALK_TLIST_DELSAFE(r, &(p->inside))
     {
       r->class->free(r);
       xfree(r);

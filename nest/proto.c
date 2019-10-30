@@ -168,6 +168,8 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->last_tx_filter_change = current_time();
   c->reloadable = 1;
 
+  INIT_LOCKED_LIST(&c->pending_imports);
+
   CALL(c->channel->init, c, cf);
 
   add_tail(&p->channels, &c->n);

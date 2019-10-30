@@ -30,6 +30,8 @@ void domain_assert_unlocked(struct domain *);
 enum task_flags {
   /* These flags can be set by the user */
   TF_EXCLUSIVE = 0x1,		/* Lock the domain exclusively */
+  TF_TAIL = 0x2,		/* This is the last task produced by current task */
+  TF_IDEMPOTENT = 0x4,		/* Do nothing if task already pushed */
   TF_PUBLIC_MASK = 0xff,	/* Flags are masked by this value on task push */
   /* These flags are private for worker queue */
   TF_PREPENDED = 0x100,		/* Task is waiting for the first free worker */

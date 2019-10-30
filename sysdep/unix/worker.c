@@ -64,6 +64,7 @@ static struct worker_queue {
     u64 worker_id;
     PACKED enum {
       WQS_NOTHING = 0,
+      WQS_ATOMIC,
       WQS_LOCK,
       WQS_UNLOCK,
       WQS_YIELD,
@@ -83,6 +84,10 @@ static struct worker_queue {
       WQS_DOMAIN_WRUNLOCK_REQUEST,
       WQS_DOMAIN_RDUNLOCK_DONE,
       WQS_DOMAIN_WRUNLOCK_DONE,
+      WQS_TASK_PUSHED,
+      WQS_TASK_BLOCKED,
+      WQS_TASK_STARTED,
+      WQS_TASK_DONE,
     } what;
     union {
       struct {
@@ -91,6 +96,8 @@ static struct worker_queue {
 	uint max_workers;
 	uint stop;
 	uint pending;
+	uint blocked;
+	uint postponed;
       } queue;
       sem_t *sem;
       struct {
@@ -99,10 +106,16 @@ static struct worker_queue {
 	struct domain *domain;
 	struct task *task;
       } domain;
+      struct {
+	enum task_flags flags;
+	struct domain *domain;
+	void (*execute)(struct task *);
+      } task;
     };
   } statelog[STATELOG_SIZE_];
 #endif
-} wq_, *wq = &wq_;
+} wq_;
+struct worker_queue *wq = &wq_;
 
 #ifdef DEBUG_STATELOG
 #define WQ_STATELOG(what_, ...) \
@@ -115,7 +128,13 @@ static struct worker_queue {
 #define ADL(what) atomic_load_explicit(&what, memory_order_relaxed)
 
 #define WQ_STATELOG_QUEUE(what_, locked) \
-  WQ_STATELOG(what_, .queue = { .running = ADL(wq->running), .workers = ADL(wq->workers), .max_workers = ADL(wq->max_workers), .stop = ADL(wq->stop), .pending = ADL(wq->pending_count) })
+  WQ_STATELOG(what_, .queue = { .running = ADL(wq->running), .workers = ADL(wq->workers), .max_workers = ADL(wq->max_workers), .stop = ADL(wq->stop), .pending = ADL(wq->pending_count), .blocked = ADL(wq->blocked), .postponed = ADL(wq->postponed) })
+
+#define WQ_STATELOG_TASK_EXPLICIT(what_, f_, d_, e_) \
+  WQ_STATELOG(what_, .task = { .flags = f_, .domain = d_, .execute = e_ })
+
+#define WQ_STATELOG_TASK(what_, task_) \
+  WQ_STATELOG_TASK_EXPLICIT(what_, task_->flags, task_->domain, task_->execute)
 
 #ifdef SPINLOCK_STATS
 void cpu_stat_begin(void);
@@ -245,6 +264,7 @@ static inline int SEM_TRYWAIT(sem_t *s)
   return 1;
 }
 
+//  if (s == &(wq->available)) { int n; sem_getvalue(s, &n); if (n > 64) bug("!"); }
 #define SEM_POST(_s) do { \
   sem_t *s = _s; \
   if (sem_post(s) < 0) \
@@ -753,10 +773,10 @@ domain_unlock_writers(struct domain *d, u64 lock, u64 ulock)
 
     /* Prepend the task */
     t->flags |= TF_PREPENDED;
+    WQ_LOCK();
 #ifdef DEBUG_STATELOG
     atomic_fetch_add_explicit(&wq->pending_count, 1, memory_order_acquire);
 #endif
-    WQ_LOCK();
     add_head(&wq->pending, &((t)->n));
     WQ_UNLOCK();
     SEM_POST(&wq->waiting);
@@ -901,10 +921,10 @@ domain_write_unlock(struct domain *d)
       if (prepend_check != rdtasks_n)
 	wimpossible();
 
+      WQ_LOCK();
 #ifdef DEBUG_STATELOG
       atomic_fetch_add_explicit(&wq->pending_count, prepend_check, memory_order_acquire);
 #endif
-      WQ_LOCK();
       add_head_list(&wq->pending, &tmp_rdtasks);
       WQ_UNLOCK();
 
@@ -924,6 +944,9 @@ domain_write_unlock(struct domain *d)
 }
 
 extern _Thread_local struct timeloop *timeloop_current;
+
+/* There has been a tail-task queued without trying the available semaphore. */
+_Thread_local _Bool tail_task = 1;
 
 static void *
 worker_loop(void *_data UNUSED)
@@ -973,7 +996,7 @@ worker_loop(void *_data UNUSED)
 
 	/* Flush the postponed available semaphores
 	 * as the queue is certainly empty. */
-	uint postponed = atomic_exchange_explicit(&wq->postponed, 0, memory_order_relaxed) + !prepended;
+	uint postponed = atomic_exchange_explicit(&wq->postponed, 0, memory_order_relaxed);
 	for (uint i=0; i<postponed; i++)
 	  SEM_POST(&wq->available);
 
@@ -988,7 +1011,7 @@ worker_loop(void *_data UNUSED)
       WORKER_CONTINUE();
       continue;
     }
-    else
+    else if ((!prepended) && (!tail_task))
       /* Picked up a task. The availability semaphore will be posted later. */
       atomic_fetch_add_explicit(&wq->postponed, 1, memory_order_relaxed);
 
@@ -1000,16 +1023,20 @@ worker_loop(void *_data UNUSED)
       /* Retrieve that task */
       struct task *t = HEAD(wq->pending);
       rem_node(&t->n);
-
-      /* No more operations on worker queue */
-      WQ_UNLOCK();
 #ifdef DEBUG_STATELOG
       atomic_fetch_sub_explicit(&wq->pending_count, 1, memory_order_release);
 #endif
 
+      /* No more operations on worker queue */
+      WQ_UNLOCK();
+
+      /* Reset the tail_task flag */
+      tail_task = 0;
+
       /* Store the old flags and domain */
       struct domain *d = t->domain;
       enum task_flags tf = t->flags;
+      void (*te)(struct task *) = t->execute;
 
       /* Store the current prepended state */
       prepended = tf & TF_PREPENDED;
@@ -1019,7 +1046,9 @@ worker_loop(void *_data UNUSED)
       {
 	/* No. Just run it. */
 	atomic_flag_clear_explicit(&t->enqueued, memory_order_relaxed);
-	t->execute(t);
+	WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_STARTED, tf, d, te);
+	te(t);
+	WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_DONE, tf, d, te);
       }
 
       /* It needs a lock. Is it available? */
@@ -1029,7 +1058,9 @@ worker_loop(void *_data UNUSED)
       {
 	/* Yes. Run it! */
 	atomic_flag_clear_explicit(&t->enqueued, memory_order_relaxed);
-	t->execute(t);
+	WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_STARTED, tf, d, te);
+	te(t);
+	WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_DONE, tf, d, te);
 
 	/* And unlock to let others to the domain */
 	tf & TF_EXCLUSIVE ?
@@ -1039,6 +1070,11 @@ worker_loop(void *_data UNUSED)
 
       else if (prepended)
 	wbug("The prepended task shall never block on lock");
+
+      else
+      {
+	WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_BLOCKED, tf, d, te);
+      }
 
       /* Else: Unavailable. The task has been stored
        * into the blocked list and will be released
@@ -1231,13 +1267,26 @@ task_push(struct task *t)
   WASSERT(t->execute);
 
   /* If already pushed, do not touch. */
-  if (atomic_flag_test_and_set_explicit(&t->enqueued, memory_order_relaxed))
+  if (atomic_flag_test_and_set_explicit(&t->enqueued, memory_order_relaxed) && !(t->flags & TF_IDEMPOTENT))
     return;
 
   /* Is there an available worker right now? */
-  _Bool available = SEM_TRYWAIT(&wq->available);
+  _Bool available = 0;
+
+  if (t->flags & TF_TAIL)
+  {
+    if (tail_task)
+      bug("Second tail task pushed from one task");
+
+    tail_task = 1;
+    available = 1;
+  }
+  else
+    available = SEM_TRYWAIT(&wq->available);
 
   WDBG("Waited for an available worker succesfully\n");
+
+  WQ_STATELOG_TASK(WQS_TASK_PUSHED, t);
 
   /* Check that the node is clean */
   WASSERT(!t->n.prev && !t->n.next);
@@ -1245,11 +1294,11 @@ task_push(struct task *t)
   /* Use only public flags */
   t->flags &= TF_PUBLIC_MASK;
 
-  /* Then we have a task for it. */
+  /* We have a task. */
+  WQ_LOCK();
 #ifdef DEBUG_STATELOG
   atomic_fetch_add_explicit(&wq->pending_count, 1, memory_order_acquire);
 #endif
-  WQ_LOCK();
   add_tail(&wq->pending, &((t)->n));
   WQ_UNLOCK();
 

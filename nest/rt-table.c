@@ -52,35 +52,48 @@
 
 pool *rt_table_pool;
 static pool *rup_pool;
-static struct domain *rup_domain;
+static spinlock rup_spinlock;
 
 #define RUPS_MAX  128
 
 static slab *rte_slab;
-static linpool *rte_update_pool[RUPS_MAX] = {};
-static uint rups = 0;
+static linpool * volatile rte_update_pool[RUPS_MAX] = {};
+static volatile uint rups = 0;
+static volatile uint rup_total_linpools = 0;
 
 static inline linpool *rup_get(void) {
-
-  domain_write_lock(rup_domain);
-  struct linpool *pool = (rups > 0) ? rte_update_pool[--rups] : lp_new_default(rup_pool);
-  domain_write_unlock(rup_domain);
-
-  /* Return the pool */
+  SPIN_LOCK(rup_spinlock);
+  struct linpool *pool;
+  if (!rups)
+  {
+    pool = lp_new_default(rup_pool);
+    rup_total_linpools++;
+    if (rup_total_linpools > 256)
+      bug("");
+  }
+  else
+  {
+    /* Get a recycled linpool */
+    pool = rte_update_pool[--rups];
+  }
+  SPIN_UNLOCK(rup_spinlock);
+  log(L_INFO "Linpool state %u (get)", rup_total_linpools);
   return pool;
 }
 
 static inline void rup_free(linpool *pool) {
   lp_flush(pool);
 
-  domain_write_lock(rup_domain);
+  SPIN_LOCK(rup_spinlock);
   if (rups == RUPS_MAX) {
     rfree(pool);
+    rup_total_linpools--;
   } else {
     /* Keep the linpool for future use */
     rte_update_pool[rups++] = pool;
   }
-  domain_write_unlock(rup_domain);
+  SPIN_UNLOCK(rup_spinlock);
+  log(L_INFO "Linpool state %u (free)", rup_total_linpools);
 }
 
 static inline void rud_state_change(struct rte_update_data *rud, enum rte_update_state from, enum rte_update_state to)
@@ -1427,6 +1440,44 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
   }
 }
 
+static void rte_finish_update_hook(struct task *task);
+
+static void
+rte_finish_update_schedule(struct rte_update_data *rud, _Bool tail)
+{
+  struct task *task = &(rud->task);
+
+  log(L_INFO "FUS: %d", tail);
+
+  /* Check whether it is to be pushed now.
+   * There are two cases.
+   * 1. the task was first in list (and therefore is also now),
+   *	no rte_finish_update_hook is running on this queue and we shall schedule it.
+   * 2. the task was not first in list so it will happen that
+   *	rte_finish_update_hook will pick it up in future.
+   */
+  LOCKED_LIST_LOCK(&(rud->channel->pending_imports), l)
+  {
+    /* Are we first? Then push it. */
+    if (THEAD(l) == rud)
+      rud_state_change(rud, RUS_UPDATING, RUS_RECALCULATING);
+    else
+    {
+      /* Otherwise let it be. */
+      rud_state_change(rud, RUS_UPDATING, RUS_PENDING_RECALCULATE);
+      task = NULL;
+    }
+  }
+  LOCKED_LIST_UNLOCK(&(rud->channel->pending_imports));
+
+  if (task)
+  {
+    /* Prepare the table-insert task */
+    task_init(task, TF_EXCLUSIVE | (tail ? TF_TAIL : 0), rud->channel->table->domain, rte_finish_update_hook);
+    task_push(task);
+  }
+}
+
 static void
 rte_do_update(struct task *task)
 {
@@ -1467,13 +1518,10 @@ rte_do_update(struct task *task)
       if (filter != FILTER_REJECT)
 	rte_store_tmp_attrs(new, rud->pool);
     }
+#undef new
 
 done:
-  rud_state_change(rud, RUS_UPDATING, RUS_PENDING_RECALCULATE);
-  task_push(&(c->table->import_task));
-
-  return;
-#undef new
+  return rte_finish_update_schedule(rud, 1);
 }
 
 /**
@@ -1519,6 +1567,8 @@ done:
 static void
 rte_dispatch_update(struct rte_update_data *rud)
 {
+  log(L_INFO "RDU");
+
   /* Get local linpool */
   ASSERT(rud->pool == NULL);
   rud->pool = rup_get();
@@ -1534,9 +1584,8 @@ rte_dispatch_update(struct rte_update_data *rud)
   net_copy(n, rud->net);
   rud->net = n;
 
-  /* Insert rud into the table's synchronization queue */
-  struct rtable *rt = rud->channel->table;
-  ADD_TAIL_LOCKED(&rt->pending_imports, rud);
+  /* Insert rud into the channel's synchronization queue */
+  ADD_TAIL_LOCKED(&rud->channel->pending_imports, rud);
 
   /* Is route update */
   if (rud->rte)
@@ -1565,15 +1614,15 @@ rte_dispatch_update(struct rte_update_data *rud)
     rud->rte->net = rud->net;
 
     /* Run the filters on local data */
-    rud->task.execute = rte_do_update;
+    task_init(&rud->task, 0, NULL, rte_do_update);
     task_push(&rud->task);
   }
   else	/* Is route withdraw */
   {
     /* Skip filter for withdraw */
     rud->result = RUR_WITHDRAW;
-    rud_state_change(rud, RUS_PENDING_UPDATE, RUS_PENDING_RECALCULATE);
-    task_push(&rt->import_task);
+    rud_state_change(rud, RUS_PENDING_UPDATE, RUS_UPDATING);
+    rte_finish_update_schedule(rud, 0);
   }
 }
 
@@ -1646,7 +1695,7 @@ rte_finish_update(struct rte_update_data *rud)
 {
   domain_assert_write_locked(rud->channel->table->domain);
 
-  rud_state_change(rud, RUS_PENDING_RECALCULATE, RUS_RECALCULATING);
+  rud_state_check(rud, RUS_RECALCULATING);
 
   debug("rte_finish_update (%d): %s %N (%s)\n", rud->result, rud->channel->proto->name, rud->net, rud->rte ? rta_dest_name(rud->rte->attrs->dest) : "withdraw");
 
@@ -1715,21 +1764,45 @@ done:
 
 /* This hook is run in route table domain locked for writing */
 static void
-rte_finish_update_hook(struct task *import_task)
+rte_finish_update_hook(struct task *task)
 {
-  struct rtable *rt = SKIP_BACK(struct rtable, import_task, import_task);
+  log(L_INFO "FUH: %d");
+
+  struct rte_update_data *rud = SKIP_BACK(struct rte_update_data, task, task);
+  struct channel *c = rud->channel;
+  struct rtable *rt = c->table;
+
   domain_assert_write_locked(rt->domain);
 
-  /* Get the first rud to insert into table */
-  struct rte_update_data *rud = REM_HEAD_LOCKED(&(rt->pending_imports));
-  if (!rud)
-    return;
+  /* If this task is run, it must be the first pending import */
+  ASSERT(REM_HEAD_LOCKED(&(c->pending_imports)) == rud);
 
   /* Do the real table update */
   rte_finish_update(rud);
 
-  /* And try the next rud */
-  task_push(import_task);
+  /* Look for the next node */
+  rud = NULL;
+  LOCKED_LIST_LOCK(&(c->pending_imports), l)
+  {
+    /* Is there another route update? */
+    if (!TLIST_EMPTY(l))
+    {
+      rud = THEAD(l);
+
+      /* Is the update pending recalculate? */
+      if (atomic_load(&(rud->state)) == RUS_PENDING_RECALCULATE)
+	rud_state_change(rud, RUS_PENDING_RECALCULATE, RUS_RECALCULATING);
+      else
+	rud = NULL;
+    }
+  }
+  LOCKED_LIST_UNLOCK(&(c->pending_imports));
+
+  if (!rud)
+    return;
+
+  task_init(&(rud->task), TF_EXCLUSIVE | TF_TAIL, rud->channel->table->domain, rte_finish_update_hook);
+  task_push(&(rud->task));
 }
 
 /* Independent call to rte_announce(), used from next hop
@@ -1994,9 +2067,6 @@ rt_setup(pool *p, rtable *t, struct rtable_config *cf)
 
   t->domain = domain_new(p);
 
-  INIT_LOCKED_LIST(&t->pending_imports);
-  task_init(&t->import_task, TF_EXCLUSIVE, t->domain, rte_finish_update_hook);
-
   t->rt_event = ev_new_init(p, rt_event, t);
   t->gc_time = current_time();
 }
@@ -2013,8 +2083,8 @@ rt_init(void)
   rta_init();
   rt_table_pool = rp_new(&root_pool, "Routing tables");
 
+  SPIN_INIT(rup_spinlock);
   rup_pool = rp_new(&root_pool, "Route updates");
-  rup_domain = domain_new(rup_pool);
 
   rte_slab = sl_new(rt_table_pool, sizeof(rte));
   init_list(&routing_tables);

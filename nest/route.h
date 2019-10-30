@@ -195,8 +195,6 @@ typedef struct rtable {
   byte nhu_state;			/* Next Hop Update state */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
-  LOCKED_LIST(struct rte_update_data) pending_imports;	/* Imports shall be sequenced */
-  struct task import_task;		/* Route update task */
 } rtable;
 
 #define NHU_CLEAN	0

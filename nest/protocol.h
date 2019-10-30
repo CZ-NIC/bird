@@ -535,6 +535,8 @@ struct channel {
   btime last_state_change;		/* Time of last state transition */
   btime last_tx_filter_change;
 
+  LOCKED_LIST(struct rte_update_data) pending_imports;	/* Imports shall be sequenced */
+
   struct rtable *in_table;		/* Internal table for received routes */
   struct event *reload_event;		/* Event responsible for reloading from in_table */
   struct fib_iterator reload_fit;	/* FIB iterator in in_table used during reloading */
