@@ -1,16 +1,6 @@
 How to install BIRD
 ===================
 
-$ ./configure
-$ make
-# make install
-
-Default location for configuration file is /usr/local/etc/bird.conf and
-for control socket is /usr/local/var/run/bird.ctl . You can change that
-by --prefix, --sysconfdir and --runstatedir configure options, e.g.:
-
-$ ./configure --prefix=/usr --sysconfdir=/etc --runstatedir=/run
-
 To compile current development BIRD source code from Git repository, you
 also need Git (to download the source code) and Autoconf (to generate
 the configure script and associated files using 'autoreconf' tool):
@@ -19,7 +9,14 @@ $ git clone https://gitlab.labs.nic.cz/labs/bird/
 $ cd bird
 $ autoreconf
 
-Then continue as in usual installation above.
+Default location for configuration file is /usr/local/etc/bird.conf and
+for control socket is /usr/local/var/run/bird.ctl . You can change that
+by --prefix, --sysconfdir and --runstatedir configure options, e.g.:
+
+$ ./configure --prefix=/usr --sysconfdir=/etc --runstatedir=/run
+
+$ make
+$ make install
 
 
 Requirements
@@ -27,6 +24,7 @@ Requirements
 
 For compiling BIRD you need these programs and libraries:
 
+ - GNU autoconf
  - GNU C Compiler (or LLVM Clang)
  - GNU Make
  - GNU Bison
