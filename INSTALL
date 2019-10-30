@@ -1,7 +1,6 @@
 How to install BIRD
 ===================
 
-$ autoconf
 $ ./configure
 $ make
 # make install
@@ -29,7 +28,6 @@ Requirements
 For compiling BIRD you need these programs and libraries:
 
  - GNU C Compiler (or LLVM Clang)
- - GNU Autoconf
  - GNU Make
  - GNU Bison
  - GNU M4
