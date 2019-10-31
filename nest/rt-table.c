@@ -2589,6 +2589,9 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int re
   {
     net = net_get(tab, n);
     src = new->attrs->src;
+
+    if (!rta_is_cached(new->attrs))
+      new->attrs = rta_lookup(new->attrs);
   }
   else
   {
