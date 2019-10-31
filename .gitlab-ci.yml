@@ -291,3 +291,9 @@ build-freebsd-11-amd64:
 build-freebsd-11-i386:
   <<: *freebsd-11-i386_env
   <<: *build_job
+
+build-birdlab:
+  <<: *build_job
+  tags:
+  - birdlab
+  - amd64
