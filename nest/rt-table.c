@@ -565,6 +565,7 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, ea_list *tmpa, int
 {
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
+  rte *old_free = NULL;
 
   /*
    * First, apply export limit.
@@ -611,8 +612,12 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, ea_list *tmpa, int
 	}
     }
 
-  if (c->out_table && !rte_update_out(c, net->n.addr, new, old, refeed))
+  if (c->out_table && !rte_update_out(c, net->n.addr, new, old, &old_free, refeed))
     return;
+
+  /* Use route from export_table as old */
+  if (old_free)
+    old = old_free;
 
   if (new)
     stats->exp_updates_accepted++;
@@ -648,6 +653,9 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, ea_list *tmpa, int
     }
   else
     p->rt_notify(p, c, net, new, old, new->attrs->eattrs);
+
+  if (old_free)
+    rte_free(old_free);
 }
 
 static void
@@ -2578,7 +2586,7 @@ rt_prune_sync(rtable *t, int all)
  */
 
 int
-rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed)
+rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, rte **old_free, int refeed)
 {
   struct rtable *tab = c->out_table;
   struct rte_src *src;
@@ -2621,8 +2629,8 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int re
       }
 
       /* Remove the old rte */
+      *old_free = old;
       *pos = old->next;
-      rte_free_quick(old);
       tab->route_count--;
 
       break;
