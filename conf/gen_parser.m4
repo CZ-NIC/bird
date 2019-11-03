@@ -44,6 +44,7 @@ m4_define(CF_CLI_HELP, `')
 
 # ENUM declarations are ignored
 m4_define(CF_ENUM, `')
+m4_define(CF_ENUM_PX, `')
 
 # After all configuration templates end, we finally generate the grammar file.
 m4_m4wrap(`

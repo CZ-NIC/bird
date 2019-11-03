@@ -48,6 +48,13 @@
 #define UDP_HEADER_LENGTH	8
 
 
+/* IANA Address Family Numbers */
+/* https://www.iana.org/assignments/address-family-numbers/address-family-numbers.xhtml */
+/* Would use AF_ prefix, but that collides with POSIX address family numbers */
+#define AFI_IPV4		1
+#define AFI_IPV6		2
+
+
 #ifdef DEBUGGING
 
 typedef struct ip4_addr {
