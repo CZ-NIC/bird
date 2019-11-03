@@ -2737,7 +2737,7 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int re
 
   /* Find the old rte */
   for (pos = &net->routes; old = *pos; pos = &old->next)
-    if (old->attrs->src == src)
+    if ((c->ra_mode != RA_ANY) || (old->attrs->src == src))
     {
       if (new && rte_same(old, new))
       {
