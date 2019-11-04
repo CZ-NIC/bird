@@ -107,6 +107,7 @@ struct bgp_config {
   int interpret_communities;		/* Hardwired handling of well-known communities */
   int allow_local_as;			/* Allow that number of local ASNs in incoming AS_PATHs */
   int allow_local_pref;			/* Allow LOCAL_PREF in EBGP sessions */
+  int allow_as_sets;			/* Allow AS_SETs in incoming AS_PATHs */
   int gr_mode;				/* Graceful restart mode (BGP_GR_*) */
   int llgr_mode;			/* Long-lived graceful restart mode (BGP_LLGR_*) */
   int setkey;				/* Set MD5 password to system SA/SP database */

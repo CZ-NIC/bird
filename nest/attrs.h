@@ -30,7 +30,7 @@
 
 struct f_tree;
 
-int as_path_valid(byte *data, uint len, int bs, int confed, char *err, uint elen);
+int as_path_valid(byte *data, uint len, int bs, int sets, int confed, char *err, uint elen);
 int as_path_16to32(byte *dst, const byte *src, uint len);
 int as_path_32to16(byte *dst, const byte *src, uint len);
 int as_path_contains_as4(const struct adata *path);

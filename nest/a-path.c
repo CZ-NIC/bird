@@ -25,7 +25,7 @@
 #define BAD(DSC, VAL) ({ err_dsc = DSC; err_val = VAL; goto bad; })
 
 int
-as_path_valid(byte *data, uint len, int bs, int confed, char *err, uint elen)
+as_path_valid(byte *data, uint len, int bs, int sets, int confed, char *err, uint elen)
 {
   byte *pos = data;
   char *err_dsc = NULL;
@@ -46,13 +46,21 @@ as_path_valid(byte *data, uint len, int bs, int confed, char *err, uint elen)
     switch (type)
     {
     case AS_PATH_SET:
+      if (!sets)
+	BAD("AS_SET segment", type);
+      break;
+
     case AS_PATH_SEQUENCE:
       break;
 
     case AS_PATH_CONFED_SEQUENCE:
-    case AS_PATH_CONFED_SET:
       if (!confed)
-	BAD("AS_CONFED* segment", type);
+	BAD("AS_CONFED_SEQUENCE segment", type);
+      break;
+
+    case AS_PATH_CONFED_SET:
+      if (!sets || !confed)
+	BAD("AS_CONFED_SET segment", type);
       break;
 
     default:

@@ -426,10 +426,11 @@ bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte
 {
   struct bgp_proto *p = s->proto;
   int as_length = s->as4_session ? 4 : 2;
+  int as_sets = p->cf->allow_as_sets;
   int as_confed = p->cf->confederation && p->is_interior;
   char err[128];
 
-  if (!as_path_valid(data, len, as_length, as_confed, err, sizeof(err)))
+  if (!as_path_valid(data, len, as_length, as_sets, as_confed, err, sizeof(err)))
     WITHDRAW("Malformed AS_PATH attribute - %s", err);
 
   /* In some circumstances check for initial AS_CONFED_SEQUENCE; RFC 5065 5.0 */
@@ -763,6 +764,9 @@ bgp_decode_as4_aggregator(struct bgp_parse_state *s, uint code UNUSED, uint flag
 static void
 bgp_decode_as4_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
 {
+  struct bgp_proto *p = s->proto;
+  int sets = p->cf->allow_as_sets;
+
   char err[128];
 
   if (s->as4_session)
@@ -771,7 +775,7 @@ bgp_decode_as4_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byt
   if (len < 6)
     DISCARD(BAD_LENGTH, "AS4_PATH", len);
 
-  if (!as_path_valid(data, len, 4, 1, err, sizeof(err)))
+  if (!as_path_valid(data, len, 4, sets, 1, err, sizeof(err)))
     DISCARD("Malformed AS4_PATH attribute - %s", err);
 
   struct adata *a = lp_alloc_adata(s->pool, len);
