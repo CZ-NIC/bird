@@ -310,8 +310,8 @@ netlab:
     - cd /build/labs/bird
     #- sudo cp bird birdc ../bird-tools/netlab-int/common
 
-runtest:
-  stage: tests
+tests:
+  stage: runtest
   script:
     - echo "Install"
     - ls -l
