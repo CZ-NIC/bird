@@ -1,9 +1,9 @@
 variables:
-   DEBIAN_FRONTEND: noninteractive
-   LC_ALL: C
-   GIT_STRATEGY: fetch
-   DOCKER_CMD: docker --config="$HOME/.docker/$CI_JOB_ID/"
-   IMG_BASE: registry.labs.nic.cz/labs/bird
+  DEBIAN_FRONTEND: noninteractive
+  LC_ALL: C
+  GIT_STRATEGY: fetch
+  DOCKER_CMD: docker --config="$HOME/.docker/$CI_JOB_ID/"
+  IMG_BASE: registry.labs.nic.cz/labs/bird
 
 stages:
   - image
@@ -12,75 +12,75 @@ stages:
   - runtest
   - cleanup
 
- .docker: &docker_build
-   stage: image
-   allow_failure: true
-   script:
-   - $DOCKER_CMD login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.labs.nic.cz
-   # Make sure we refresh the base image if it updates (eg. security updates, etc)
-   # If we do just the build, cache is always reused and the freshness of the
-   # base image is never checked. However, pull always asks and updates the
-   # image only if it changed ‒ therefore, the cache is used unless there's a
-   # change.
-   - $DOCKER_CMD pull `sed -ne 's/^FROM //p' "misc/docker/$IMG_NAME/Dockerfile"`
-   - $DOCKER_CMD build -t "bird:$IMG_NAME" "misc/docker/$IMG_NAME"
-   - $DOCKER_CMD tag "bird:$IMG_NAME" "$IMG_BASE:$IMG_NAME"
-   - $DOCKER_CMD push "$IMG_BASE:$IMG_NAME"
-   after_script:
-   - rm -f "$HOME/.docker/$CI_JOB_ID/" # cleanup the credentials
-   tags:
-   # That's Docker in Docker
-   - dind
+.docker: &docker_build
+  stage: image
+  allow_failure: true
+  script:
+  - $DOCKER_CMD login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.labs.nic.cz
+  # Make sure we refresh the base image if it updates (eg. security updates, etc)
+  # If we do just the build, cache is always reused and the freshness of the
+  # base image is never checked. However, pull always asks and updates the
+  # image only if it changed ‒ therefore, the cache is used unless there's a
+  # change.
+  - $DOCKER_CMD pull `sed -ne 's/^FROM //p' "misc/docker/$IMG_NAME/Dockerfile"`
+  - $DOCKER_CMD build -t "bird:$IMG_NAME" "misc/docker/$IMG_NAME"
+  - $DOCKER_CMD tag "bird:$IMG_NAME" "$IMG_BASE:$IMG_NAME"
+  - $DOCKER_CMD push "$IMG_BASE:$IMG_NAME"
+  after_script:
+  - rm -f "$HOME/.docker/$CI_JOB_ID/" # cleanup the credentials
+  tags:
+  # That's Docker in Docker
+  - dind
 
- docker_debian-7-amd64:
-   variables:
-     IMG_NAME: "debian-7-amd64"
-   <<: *docker_build
+docker_debian-7-amd64:
+  variables:
+    IMG_NAME: "debian-7-amd64"
+  <<: *docker_build
 
- docker_debian-8-amd64:
-   variables:
-     IMG_NAME: "debian-8-amd64"
-   <<: *docker_build
+docker_debian-8-amd64:
+  variables:
+    IMG_NAME: "debian-8-amd64"
+  <<: *docker_build
 
- docker_debian-9-amd64:
-   variables:
-     IMG_NAME: "debian-9-amd64"
-   <<: *docker_build
+docker_debian-9-amd64:
+  variables:
+    IMG_NAME: "debian-9-amd64"
+  <<: *docker_build
 
- docker_debian-testing-amd64:
-   variables:
-     IMG_NAME: "debian-testing-amd64"
-   <<: *docker_build
+docker_debian-testing-amd64:
+  variables:
+    IMG_NAME: "debian-testing-amd64"
+  <<: *docker_build
 
- docker_debian-7-i386:
-   variables:
-     IMG_NAME: "debian-7-i386"
-   <<: *docker_build
+docker_debian-7-i386:
+  variables:
+    IMG_NAME: "debian-7-i386"
+  <<: *docker_build
 
- docker_debian-8-i386:
-   variables:
-     IMG_NAME: "debian-8-i386"
-   <<: *docker_build
+docker_debian-8-i386:
+  variables:
+    IMG_NAME: "debian-8-i386"
+  <<: *docker_build
 
- docker_debian-9-i386:
-   variables:
-     IMG_NAME: "debian-9-i386"
-   <<: *docker_build
+docker_debian-9-i386:
+  variables:
+    IMG_NAME: "debian-9-i386"
+  <<: *docker_build
 
- docker_debian-testing-i386:
-   variables:
-     IMG_NAME: "debian-testing-i386"
-   <<: *docker_build
+docker_debian-testing-i386:
+  variables:
+    IMG_NAME: "debian-testing-i386"
+  <<: *docker_build
 
- docker_fedora-25-amd64:
-   variables:
-     IMG_NAME: "fedora-25-amd64"
-   <<: *docker_build
+docker_fedora-25-amd64:
+  variables:
+    IMG_NAME: "fedora-25-amd64"
+  <<: *docker_build
 
- docker_fedora-26-amd64:
-   variables:
-     IMG_NAME: "fedora-26-amd64"
-   <<: *docker_build
+docker_fedora-26-amd64:
+  variables:
+    IMG_NAME: "fedora-26-amd64"
+  <<: *docker_build
 
 docker_centos-7-amd64:
   variables:
@@ -300,6 +300,8 @@ build-birdlab:
   tags:
   - birdlab
   - amd64
+
+
 
 netlab:
   stage: netlab_prep
