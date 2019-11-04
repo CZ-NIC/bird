@@ -8,6 +8,7 @@ variables:
 stages:
   - image
   - build
+  - tests
 
 .docker: &docker_build
   stage: image
@@ -298,3 +299,9 @@ build-birdlab:
   - birdlab
   - amd64
 
+runtest:
+  stage: tests
+  script:
+    - echo "Install"
+    - ls -l 
+    - echo "done!"
