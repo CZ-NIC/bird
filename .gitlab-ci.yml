@@ -305,9 +305,9 @@ netlab:
   stage: netlab_prep
   script:
     - echo "Prep-phase"
-    - cd builds/labs/
+    - cd /builds/labs/
     - sudo git clone https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
-    - cd /build/labs/bird
+    - cd /builds/labs/bird
     #- sudo cp bird birdc ../bird-tools/netlab-int/common
 
 tests:
@@ -316,7 +316,7 @@ tests:
     - echo "Install"
     - ls -l
     - pwd
-    - echo "done!"
+    - echo "Done!"
 
 cleaning:
   stage: cleanup
