@@ -8,7 +8,9 @@
 stages:
   # - image
   # - build
-  - tests
+  - netlab_prep
+  - runtest
+  - cleanup
 
 # .docker: &docker_build
 #   stage: image
@@ -299,6 +301,15 @@ stages:
 #   - birdlab
 #   - amd64
 
+netlab:
+  stage: netlab_prep
+  script:
+    - echo "Prep-phase"
+    - cd builds/labs/
+    - sudo git clone https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
+    - cd /build/labs/bird
+    #- sudo cp bird birdc ../bird-tools/netlab-int/common
+
 runtest:
   stage: tests
   script:
@@ -306,3 +317,9 @@ runtest:
     - ls -l
     - pwd
     - echo "done!"
+
+cleaning:
+  stage: cleanup
+  script:
+    - echo "Cleaning phase"
+    - sudo rm -r builds/labs/bird-tools
