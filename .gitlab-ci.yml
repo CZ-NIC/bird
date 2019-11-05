@@ -305,11 +305,15 @@ build-birdlab:
 
 netlab:
   stage: netlab_prep
+  tags:
+    - birdlab
   script:
     - echo "Prep-phase"
 
 tests:
   stage: runtest
+  tags:
+    - birdlab
   script:
     - echo "Install"
     - ls -l
@@ -318,5 +322,7 @@ tests:
 
 cleaning:
   stage: cleanup
+  tags:
+    - birdlab
   script:
     - echo "Cleaning phase"
