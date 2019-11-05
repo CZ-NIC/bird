@@ -532,6 +532,7 @@ void cmd_reconfig_undo_notify(void) {}
 void sysdep_preconfig(struct config *c) {
   c->workers = 4;
   c->max_workers = 8;
+  c->queue_size = 64;
 }
 
 int sysdep_commit(struct config *new, struct config *old UNUSED) {
