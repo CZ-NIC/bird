@@ -2403,7 +2403,7 @@ using the following configuration parameters:
 	as they complicate security features like RPKI validation. When this
 	option is disabled, then received AS paths with AS sets are rejected as
 	malformed and corresponding BGP updates are treated as withdraws.
-	Default: off.
+	Default: on.
 
 	<tag><label id="bgp-enable-route-refresh">enable route refresh <m/switch/</tag>
 	After the initial route exchange, BGP protocol uses incremental updates
