@@ -104,7 +104,7 @@ FID_STRUCT_IN()m4_dnl
       struct f_inst * f$1;
 FID_NEW_ARGS()m4_dnl
   , struct f_inst * f$1
-FID_NEW_BODY
+FID_NEW_BODY()m4_dnl
 whati->f$1 = f$1;
 for (const struct f_inst *child = f$1; child; child = child->next) {
   what->size += child->size;
@@ -164,10 +164,19 @@ m4_define(ARG, `ARG_ANY($1) ARG_TYPE($1,$2)')
 m4_define(ARG_TYPE, `
 FID_NEW_BODY()m4_dnl
 if (f$1->type && (f$1->type != ($2)) && !f_const_promotion(f$1, ($2)))
-  cf_error("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), f$1->type);
+  cf_error("Argument $1 of %s must be of type %s, got type %s",
+	   f_instruction_name(what->fi_code), f_type_name($2), f_type_name(f$1->type));
 FID_INTERPRET_EXEC()m4_dnl
 if (v$1.type != ($2))
-  runtime("Argument $1 of instruction %s must be of type $2, got 0x%02x", f_instruction_name(what->fi_code), v$1.type)m4_dnl
+  runtime("Argument $1 of %s must be of type %s, got type %s",
+	   f_instruction_name(what->fi_code), f_type_name($2), f_type_name(v$1.type));
+FID_INTERPRET_BODY()')
+
+m4_define(ARG_SAME_TYPE, `
+FID_NEW_BODY()m4_dnl
+if (f$1->type && f$2->type && (f$1->type != f$2->type) &&
+   !f_const_promotion(f$2, f$1->type) && !f_const_promotion(f$1, f$2->type))
+  cf_error("Arguments $1 and $2 of %s must be of the same type", f_instruction_name(what->fi_code));
 FID_INTERPRET_BODY()')
 
 #	Executing another filter line. This replaces the recursion
@@ -217,10 +226,16 @@ m4_define(ERROR,
        `m4_errprint(m4___file__:m4___line__: $*
        )m4_m4exit(1)')
 
+#	This macro specifies result type and makes there are no conflicting definitions
 m4_define(RESULT_TYPE,
 	`m4_ifdef([[INST_RESULT_TYPE]],
 		  [[m4_ifelse(INST_RESULT_TYPE,$1,,[[ERROR([[Multiple type definitons]])]])]],
-		  [[m4_define(INST_RESULT_TYPE,$1) FID_NEW_BODY()    what->type = $1;FID_INTERPRET_BODY()]])')
+		  [[m4_define(INST_RESULT_TYPE,$1) RESULT_TYPE_($1)]])')
+
+m4_define(RESULT_TYPE_, `
+FID_NEW_BODY()m4_dnl
+what->type = $1;
+FID_INTERPRET_BODY()')
 
 #	Some common filter instruction members
 m4_define(SYMBOL, `FID_MEMBER(struct symbol *, sym, [[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], "symbol %s", item->sym->name)')
@@ -420,7 +435,7 @@ FID_WR_PUT(5)
 };
 
 const char *
-f_instruction_name(enum f_instruction_code fi)
+f_instruction_name_(enum f_instruction_code fi)
 {
   if (fi < (sizeof(f_instruction_name_str) / sizeof(f_instruction_name_str[0])))
     return f_instruction_name_str[fi];
@@ -494,7 +509,7 @@ void f_dump_line(const struct f_line *dest, uint indent)
   debug("%sFilter line %p (len=%u)\n", INDENT, dest, dest->len);
   for (uint i=0; i<dest->len; i++) {
     const struct f_line_item *item = &dest->items[i];
-    debug("%sInstruction %s at line %u\n", INDENT, f_instruction_name(item->fi_code), item->lineno);
+    debug("%sInstruction %s at line %u\n", INDENT, f_instruction_name_(item->fi_code), item->lineno);
     switch (item->fi_code) {
 FID_WR_PUT(7)
       default: bug("Unknown instruction %x in f_dump_line", item->fi_code);
@@ -529,7 +544,7 @@ f_linearize_concat(const struct f_inst * const inst[], uint count)
   for (uint i=0; i<count; i++)
     out->len = linearize(out, inst[i], out->len);
 
-#if DEBUGGING
+#ifdef LOCAL_DEBUG
   f_dump_line(out, 0);
 #endif
   return out;

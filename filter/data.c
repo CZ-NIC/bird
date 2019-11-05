@@ -25,6 +25,49 @@
 #include "filter/f-inst.h"
 #include "filter/data.h"
 
+static const char * const f_type_str[] = {
+  [T_VOID]	= "void",
+
+  [T_INT]	= "int",
+  [T_BOOL]	= "bool",
+  [T_PAIR]	= "pair",
+  [T_QUAD]	= "quad",
+
+  [T_ENUM_RTS]	= "enum rts",
+  [T_ENUM_BGP_ORIGIN] = "enum bgp_origin",
+  [T_ENUM_SCOPE] = "enum scope",
+  [T_ENUM_RTC]	= "enum rtc",
+  [T_ENUM_RTD]	= "enum rtd",
+  [T_ENUM_ROA]	= "enum roa",
+  [T_ENUM_NETTYPE] = "enum nettype",
+  [T_ENUM_RA_PREFERENCE] = "enum ra_preference",
+  [T_ENUM_AF]	= "enum af",
+
+  [T_IP]	= "ip",
+  [T_NET]	= "prefix",
+  [T_STRING]	= "string",
+  [T_PATH_MASK]	= "bgpmask",
+  [T_PATH]	= "bgppath",
+  [T_CLIST]	= "clist",
+  [T_EC]	= "ec",
+  [T_ECLIST]	= "eclist",
+  [T_LC]	= "lc",
+  [T_LCLIST]	= "lclist",
+  [T_RD]	= "rd",
+};
+
+const char *
+f_type_name(enum f_type t)
+{
+  if (t < ARRAY_SIZE(f_type_str))
+    return f_type_str[t] ?: "?";
+
+  if ((t == T_SET) || (t == T_PREFIX_SET))
+    return "set";
+
+  return "?";
+}
+
 const struct f_val f_const_empty_path = {
   .type = T_PATH,
   .val.ad = &null_adata,

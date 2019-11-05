@@ -167,6 +167,8 @@ void trie_format(const struct f_trie *t, buffer *buf);
 
 #define F_CMP_ERROR 999
 
+const char *f_type_name(enum f_type t);
+
 int val_same(const struct f_val *v1, const struct f_val *v2);
 int val_compare(const struct f_val *v1, const struct f_val *v2);
 void val_format(const struct f_val *v, buffer *buf);

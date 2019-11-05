@@ -29,7 +29,9 @@ enum f_instruction_flags {
 #define f_new_inst(...) MACRO_CONCAT_AFTER(f_new_inst_, MACRO_FIRST(__VA_ARGS__))(__VA_ARGS__)
 
 /* Convert the instruction back to the enum name */
-const char *f_instruction_name(enum f_instruction_code fi);
+const char *f_instruction_name_(enum f_instruction_code fi);
+static inline const char *f_instruction_name(enum f_instruction_code fi)
+{ return f_instruction_name_(fi) + 3; }
 
 /* Filter structures for execution */
 /* Line of instructions to be unconditionally executed one after another */
