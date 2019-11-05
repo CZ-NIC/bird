@@ -2395,6 +2395,16 @@ using the following configuration parameters:
 	completely disabled and you should ensure loop-free behavior by some
 	other means. Default: 0 (no local AS number allowed).
 
+	<tag><label id="bgp-allow-as-sets">allow as sets [<m/switch/]</tag>
+	AS path attribute received with BGP routes may contain not only
+	sequences of AS numbers, but also sets of AS numbers. These rarely used
+	artifacts are results of inter-AS route aggregation. AS sets are
+	deprecated (<rfc id="6472">), and likely to be rejected in the future,
+	as they complicate security features like RPKI validation. When this
+	option is disabled, then received AS paths with AS sets are rejected as
+	malformed and corresponding BGP updates are treated as withdraws.
+	Default: off.
+
 	<tag><label id="bgp-enable-route-refresh">enable route refresh <m/switch/</tag>
 	After the initial route exchange, BGP protocol uses incremental updates
 	to keep BGP speakers synchronized. Sometimes (e.g., if BGP speaker
