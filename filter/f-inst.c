@@ -226,6 +226,9 @@
   }
   INST(FI_AND, 1, 1) {
     ARG(1,T_BOOL);
+    ARG_TYPE(2,T_BOOL);
+    RESULT_TYPE(T_BOOL);
+
     if (v1.val.i)
       LINE(2,0);
     else
@@ -233,6 +236,9 @@
   }
   INST(FI_OR, 1, 1) {
     ARG(1,T_BOOL);
+    ARG_TYPE(2,T_BOOL);
+    RESULT_TYPE(T_BOOL);
+
     if (!v1.val.i)
       LINE(2,0);
     else
@@ -351,6 +357,8 @@
   INST(FI_LT, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
+    ARG_SAME_TYPE(1, 2);
+
     int i = val_compare(&v1, &v2);
     if (i == F_CMP_ERROR)
       runtime( "Can't compare values of incompatible types" );
@@ -360,6 +368,8 @@
   INST(FI_LTE, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
+    ARG_SAME_TYPE(1, 2);
+
     int i = val_compare(&v1, &v2);
     if (i == F_CMP_ERROR)
       runtime( "Can't compare values of incompatible types" );
@@ -807,14 +817,14 @@
 
   INST(FI_AS_PATH_FIRST, 1, 1) {	/* Get first ASN from AS PATH */
     ARG(1, T_PATH);
-    int as = 0;
+    u32 as = 0;
     as_path_get_first(v1.val.ad, &as);
     RESULT(T_INT, i, as);
   }
 
   INST(FI_AS_PATH_LAST, 1, 1) {		/* Get last ASN from AS PATH */
     ARG(1, T_PATH);
-    int as = 0;
+    u32 as = 0;
     as_path_get_last(v1.val.ad, &as);
     RESULT(T_INT, i, as);
   }
