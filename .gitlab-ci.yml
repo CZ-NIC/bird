@@ -306,10 +306,20 @@ cloning_netlab:
     - birdlab
   script:
     - echo 'Cloning Netlab from repository'
-    - pwd
+    - autoreconf
+    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
+    # Detect which make is available
+    - MAKE=make
+    - which gmake 2>/dev/null >/dev/null && MAKE=gmake
+    - $MAKE
+    # Run tests if they are available
+    - $MAKE check
     - cd ../
     - git clone https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
     - ls -l
+    - cd bird
+    - mv bird birdc ../bird-tools/netlab-int/common
+    - echo 'Done!'
 
 preparing_netlab:
   stage: nl_prep
