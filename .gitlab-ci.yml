@@ -8,7 +8,8 @@ variables:
 stages:
 #   - image
   - build
-  - netlab_prep
+  - get_nl
+  - nl_prep
 
 # .docker: &docker_build
 #   stage: image
@@ -299,15 +300,20 @@ build-birdlab:
   - birdlab
   - amd64
 
-
-netlab:
-  stage: netlab_prep
+cloning_netlab:
+  stage: get_nl
   tags:
     - birdlab
   script:
-    - echo "Prep-phase"
+    - echo 'Cloning Netlab from repository'
     - pwd
     - cd ../
-    - pwd
+    - git clone https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
     - ls -l
-    - echo 'Cloning the repository'
+
+preparing_netlab:
+  stage: nl_prep
+  tags:
+    - birdlab
+  script:
+    - echo 'Preparing netlab'
