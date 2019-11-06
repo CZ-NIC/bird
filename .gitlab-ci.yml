@@ -304,8 +304,8 @@ cloning_netlab:
   tags:
     - birdlab
   script:
-    - apt install python3-pip
-    - apt update
+    - sudo apt install python3-pip
+    - sudo apt update
     - pip3 install python3.6
     - pip3 install pytest==5.0.1
     - python3 --version
