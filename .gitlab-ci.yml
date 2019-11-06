@@ -320,4 +320,4 @@ cloning_netlab:
     - cd bird
     - mv bird birdc ../bird-tools/netlab-int/common
     - cd ../bird-tools/netlab-int
-    #- ./runtest -m save cf-ospf
+    - ./runtest -m save cf-ospf
