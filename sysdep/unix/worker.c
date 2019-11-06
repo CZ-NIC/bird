@@ -1,7 +1,7 @@
 #undef LOCAL_DEBUG
 //#define LOCAL_DEBUG
-#undef DEBUG_STATELOG
-//#define DEBUG_STATELOG
+//#undef DEBUG_STATELOG
+#define DEBUG_STATELOG
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -37,7 +37,7 @@ _Thread_local u64 worker_id;
 #define WASSERT(what) do { if (!(what)) wbug("This shall never happen: " #what " at %s:%d", __FILE__, __LINE__); } while (0)
 
 #ifdef DEBUG_STATELOG
-#define STATELOG_SIZE_ (1 << 14)
+#define STATELOG_SIZE_ (1 << 18)
 static const uint STATELOG_SIZE = STATELOG_SIZE_;
 #endif
 
@@ -110,6 +110,7 @@ static struct worker_queue {
 	enum task_flags flags;
 	struct domain *domain;
 	void (*execute)(struct task *);
+	struct timespec when;
       } task;
     };
   } statelog[STATELOG_SIZE_];
@@ -130,8 +131,11 @@ struct worker_queue *wq = &wq_;
 #define WQ_STATELOG_QUEUE(what_, locked) \
   WQ_STATELOG(what_, .queue = { .running = ADL(wq->running), .workers = ADL(wq->workers), .max_workers = ADL(wq->max_workers), .stop = ADL(wq->stop), .pending = ADL(wq->pending_count), .blocked = ADL(wq->blocked), .postponed = ADL(wq->postponed) })
 
-#define WQ_STATELOG_TASK_EXPLICIT(what_, f_, d_, e_) \
-  WQ_STATELOG(what_, .task = { .flags = f_, .domain = d_, .execute = e_ })
+#define WQ_STATELOG_TASK_EXPLICIT(what_, f_, d_, e_) do { \
+  struct timespec when; \
+  clock_gettime(CLOCK_MONOTONIC, &when); \
+  WQ_STATELOG(what_, .task = { .flags = f_, .domain = d_, .execute = e_, .when = when }); \
+} while (0)
 
 #define WQ_STATELOG_TASK(what_, task_) \
   WQ_STATELOG_TASK_EXPLICIT(what_, task_->flags, task_->domain, task_->execute)
@@ -235,15 +239,15 @@ static inline void SEM_INIT(sem_t *s, uint val)
     wbug("sem_init() failed: %m");
 }
 
-#define SEM_WAIT(_s) do { \
-  sem_t *s = _s; \
-  WQ_STATELOG(WQS_SEM_WAIT_REQUEST, .sem = s); \
-  while (sem_wait(s) < 0) { \
+#define SEM_WAIT(s) do { \
+  sem_t *_s = s; \
+  WQ_STATELOG(WQS_SEM_WAIT_REQUEST, .sem = _s); \
+  while (sem_wait(_s) < 0) { \
     if (errno == EINTR) \
       continue; \
     wdie("sem_wait: %m"); \
   } \
-  WQ_STATELOG(WQS_SEM_WAIT_SUCCESS, .sem = s); \
+  WQ_STATELOG(WQS_SEM_WAIT_SUCCESS, .sem = _s); \
 } while (0)
 
 static inline int SEM_TRYWAIT(sem_t *s)
@@ -265,11 +269,11 @@ static inline int SEM_TRYWAIT(sem_t *s)
 }
 
 //  if (s == &(wq->available)) { int n; sem_getvalue(s, &n); if (n > 64) bug("!"); }
-#define SEM_POST(_s) do { \
-  sem_t *s = _s; \
-  if (sem_post(s) < 0) \
+#define SEM_POST(s) do { \
+  sem_t *_s = s; \
+  if (sem_post(_s) < 0) \
     wbug("sem_post: %m"); \
-  WQ_STATELOG(WQS_SEM_POST, .sem = s); \
+  WQ_STATELOG(WQS_SEM_POST, .sem = _s); \
 } while (0)
 
 static inline void SEM_DESTROY(sem_t *s)
@@ -352,6 +356,63 @@ static inline void WORKER_CONTINUE(void)
 
 static _Thread_local struct timeloop worker_timeloop;
 
+struct semaphore {
+  resource r;
+  sem_t sem;		/* A single semaphore */
+};
+
+static void
+semaphore_free(resource *r)
+{
+  struct semaphore *s = SKIP_BACK(struct semaphore, r, r);
+  sem_destroy(&s->sem);
+}
+
+static void
+semaphore_dump(resource *r)
+{
+  struct semaphore *s = SKIP_BACK(struct semaphore, r, r);
+  int val;
+  if (!sem_getvalue(&s->sem, &val))
+    bug("sem_getvalue() error: %m");
+
+  debug("Semaphore: %d\n", val);
+}
+
+static struct resclass semaphore_resclass = {
+  .name = "Semaphore",
+  .size = sizeof(struct semaphore),
+  .free = semaphore_free,
+  .dump = semaphore_dump,
+  .lookup = NULL,
+  .memsize = NULL,
+};
+
+struct semaphore *semaphore_new(pool *p, uint n)
+{
+  struct semaphore *s = ralloc(p, &semaphore_resclass);
+
+  if (sem_init(&(s->sem), 0, n) < 0)
+    bug("Semaphore init error: %m");
+
+  return s;
+}
+
+void semaphore_wait(struct semaphore *s)
+{
+  if (!SEM_TRYWAIT(&(s->sem)))
+  {
+    WORKER_YIELD();
+    SEM_WAIT(&(s->sem));
+    WORKER_CONTINUE();
+  }
+}
+
+void semaphore_post(struct semaphore *s)
+{
+  SEM_POST(&(s->sem));
+}
+
 struct domain {
   resource r;
   sem_t rdsem;		/* Wait semaphore for readers */
@@ -419,7 +480,7 @@ retry: do { \
 } while (0)
 #endif
 
-void
+static void
 domain_free(resource *r)
 {
   struct domain *d = SKIP_BACK(struct domain, r, r);
@@ -427,7 +488,7 @@ domain_free(resource *r)
   sem_destroy(&d->wrsem);
 }
 
-void
+static void
 domain_dump(resource *r)
 {
   struct domain *d = SKIP_BACK(struct domain, r, r);

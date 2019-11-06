@@ -60,10 +60,15 @@ static slab *rte_slab;
 static linpool * volatile rte_update_pool[RUPS_MAX] = {};
 static volatile uint rups = 0;
 static volatile uint rup_total_linpools = 0;
+static struct semaphore *rup_sem = NULL;
 
 static inline linpool *rup_get(void) {
-  SPIN_LOCK(rup_spinlock);
   struct linpool *pool;
+
+  /* Wait until some linpool is available */
+  semaphore_wait(rup_sem);
+
+  SPIN_LOCK(rup_spinlock);
   if (!rups)
   {
     pool = lp_new_default(rup_pool);
@@ -77,7 +82,8 @@ static inline linpool *rup_get(void) {
     pool = rte_update_pool[--rups];
   }
   SPIN_UNLOCK(rup_spinlock);
-  log(L_INFO "Linpool state %u (get)", rup_total_linpools);
+
+  debug("Linpool state %u (get)\n", rup_total_linpools);
   return pool;
 }
 
@@ -93,7 +99,9 @@ static inline void rup_free(linpool *pool) {
     rte_update_pool[rups++] = pool;
   }
   SPIN_UNLOCK(rup_spinlock);
-  log(L_INFO "Linpool state %u (free)", rup_total_linpools);
+
+  semaphore_post(rup_sem);
+  debug("Linpool state %u (free)\n", rup_total_linpools);
 }
 
 static inline void rud_state_change(struct rte_update_data *rud, enum rte_update_state from, enum rte_update_state to)
@@ -1447,7 +1455,7 @@ rte_finish_update_schedule(struct rte_update_data *rud, _Bool tail)
 {
   struct task *task = &(rud->task);
 
-  log(L_INFO "FUS: %d", tail);
+  debug("rte_finish_update_schedule(%p, %d)\n", rud, tail);
 
   /* Check whether it is to be pushed now.
    * There are two cases.
@@ -1491,36 +1499,29 @@ rte_do_update(struct task *task)
 
   const struct filter *filter = c->in_filter;
 
-  if (filter == FILTER_ACCEPT)
-    rud->result = RUR_ACCEPTED;
+  ASSERT(filter != FILTER_ACCEPT);
+  ASSERT((filter != FILTER_REJECT) || (c->in_keep_filtered));
+
+  int fr;
+  if (filter == FILTER_REJECT)
+    fr = F_REJECT;
   else
     {
-      int fr;
-      if (filter == FILTER_REJECT)
-	fr = F_REJECT;
-      else
-	{
-	  rte_make_tmp_attrs(&new, rud->pool);
-	  fr = f_run(filter, &new, rud->pool, 0);
-	}
-
-      if (fr > F_ACCEPT)
-      {
-	rud->result = RUR_FILTERED;
-	if (!c->in_keep_filtered)
-	  goto done;
-	
-	new->flags |= REF_FILTERED;
-      }
-      else
-	rud->result = RUR_ACCEPTED;
-
-      if (filter != FILTER_REJECT)
-	rte_store_tmp_attrs(new, rud->pool);
+      rte_make_tmp_attrs(&new, rud->pool);
+      fr = f_run(filter, &new, rud->pool, 0);
     }
+
+  if (fr > F_ACCEPT)
+  {
+    rud->result = RUR_FILTERED;
+    new->flags |= REF_FILTERED;
+  }
+  else
+    rud->result = RUR_ACCEPTED;
+
+  rte_store_tmp_attrs(new, rud->pool);
 #undef new
 
-done:
   return rte_finish_update_schedule(rud, 1);
 }
 
@@ -1567,7 +1568,7 @@ done:
 static void
 rte_dispatch_update(struct rte_update_data *rud)
 {
-  log(L_INFO "RDU");
+  debug("RDU\n");
 
   /* Get local linpool */
   ASSERT(rud->pool == NULL);
@@ -1587,9 +1588,24 @@ rte_dispatch_update(struct rte_update_data *rud)
   /* Insert rud into the channel's synchronization queue */
   ADD_TAIL_LOCKED(&rud->channel->pending_imports, rud);
 
-  /* Is route update */
-  if (rud->rte)
+  const struct filter *filter = rud->channel->in_filter;
+  if ((filter == FILTER_ACCEPT) || (filter == FILTER_REJECT) || !rud->rte)
   {
+    /* Is trivial */
+    if (rud->rte)
+      if (filter == FILTER_ACCEPT)
+	rud->result = RUR_ACCEPTED;
+      else
+	rud->result = RUR_FILTERED;
+    else
+      rud->result = RUR_WITHDRAW;
+
+    rud_state_change(rud, RUS_PENDING_UPDATE, RUS_UPDATING);
+    rte_finish_update_schedule(rud, 0);
+  }
+  else
+  {
+    /* Run non-trivial filter */
     /* Create local rte copy */
     rud->rte = LP_DUPLICATE(rud->pool, rud->rte);
     
@@ -1616,13 +1632,6 @@ rte_dispatch_update(struct rte_update_data *rud)
     /* Run the filters on local data */
     task_init(&rud->task, 0, NULL, rte_do_update);
     task_push(&rud->task);
-  }
-  else	/* Is route withdraw */
-  {
-    /* Skip filter for withdraw */
-    rud->result = RUR_WITHDRAW;
-    rud_state_change(rud, RUS_PENDING_UPDATE, RUS_UPDATING);
-    rte_finish_update_schedule(rud, 0);
   }
 }
 
@@ -1690,9 +1699,11 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   rte_dispatch_update(&rud);
 }
 
-static void
+static int
 rte_finish_update(struct rte_update_data *rud)
 {
+  int out = 0;
+
   domain_assert_write_locked(rud->channel->table->domain);
 
   rud_state_check(rud, RUS_RECALCULATING);
@@ -1716,7 +1727,6 @@ rte_finish_update(struct rte_update_data *rud)
       if (!rud->channel->in_keep_filtered)
 	rud->rte = NULL;
       break;
-      /* Fallthrough */
     case RUR_ACCEPTED:
       stats->imp_updates_accepted++;
       break;
@@ -1741,6 +1751,7 @@ rte_finish_update(struct rte_update_data *rud)
       if (rud->result == RUR_WITHDRAW)
 	stats->imp_withdraws_ignored++;
 
+      out = 1;
       goto done;
     }
   }
@@ -1759,14 +1770,14 @@ rte_finish_update(struct rte_update_data *rud)
 done:
   /* And return the pool */
   rup_free(rud->pool);
-  return;
+  return out;
 }
 
 /* This hook is run in route table domain locked for writing */
 static void
 rte_finish_update_hook(struct task *task)
 {
-  log(L_INFO "FUH: %d");
+  debug("FUH: %d\n");
 
   struct rte_update_data *rud = SKIP_BACK(struct rte_update_data, task, task);
   struct channel *c = rud->channel;
@@ -1774,11 +1785,12 @@ rte_finish_update_hook(struct task *task)
 
   domain_assert_write_locked(rt->domain);
 
-  /* If this task is run, it must be the first pending import */
+  /* If this task is run, it must be the first pending import.
+   * Removing this import from the queue. */
   ASSERT(REM_HEAD_LOCKED(&(c->pending_imports)) == rud);
 
   /* Do the real table update */
-  rte_finish_update(rud);
+  int fast = rte_finish_update(rud);
 
   /* Look for the next node */
   rud = NULL;
@@ -1800,6 +1812,10 @@ rte_finish_update_hook(struct task *task)
 
   if (!rud)
     return;
+
+  /* Merge fast route updates */
+  if (fast)
+    return rte_finish_update_hook(&(rud->task));
 
   task_init(&(rud->task), TF_EXCLUSIVE | TF_TAIL, rud->channel->table->domain, rte_finish_update_hook);
   task_push(&(rud->task));
@@ -2085,6 +2101,7 @@ rt_init(void)
 
   SPIN_INIT(rup_spinlock);
   rup_pool = rp_new(&root_pool, "Route updates");
+  rup_sem = semaphore_new(rup_pool, RUPS_MAX);
 
   rte_slab = sl_new(rt_table_pool, sizeof(rte));
   init_list(&routing_tables);

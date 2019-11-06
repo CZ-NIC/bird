@@ -230,7 +230,7 @@ class BIRDWQStateLogPrinter(BIRDPrinter):
                 }
 
     def taskval(self):
-        return "%(worker) 4d %(what)s: %(execute)s with%(out)s flags %(tf_exclusive)s%(tf_tail)s%(tf_idempotent)s%(tf_prepended)son %(domain)s" % {
+        return "%(worker) 4d %(what)s: %(execute)s with%(out)s flags %(tf_exclusive)s%(tf_tail)s%(tf_idempotent)s%(tf_prepended)son %(domain)s at %(date)s" % {
                 "worker": self.val['worker_id'],
                 "what": str(self.val["what"]),
                 "execute": str(self.val["task"]["execute"]),
@@ -240,6 +240,7 @@ class BIRDWQStateLogPrinter(BIRDPrinter):
                 "tf_tail": "TF_TAIL " if self.val["task"]["flags"] & 0x2 == 0x2 else "",
                 "tf_idempotent": "TF_IDEMPOTENT " if self.val["task"]["flags"] & 0x4 == 0x4 else "",
                 "tf_prepended": "TF_PREPENDED " if self.val["task"]["flags"] & 0x100 == 0x100 else "",
+                "date": "%(sec)d.%(nsec)09d" % { "sec": self.val["task"]["when"]["tv_sec"], "nsec": self.val["task"]["when"]["tv_nsec"], },
                 }
 
     def nothing(self):
