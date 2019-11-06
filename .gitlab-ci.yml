@@ -307,4 +307,7 @@ netlab:
   script:
     - echo "Prep-phase"
     - pwd
+    - cd ../
+    - pwd
     - ls -l
+    - echo 'Cloning the repository'
