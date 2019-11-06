@@ -9,7 +9,6 @@ stages:
 #   - image
   - build
   - get_nl
-  - nl_prep
 
 # .docker: &docker_build
 #   stage: image
@@ -305,29 +304,19 @@ cloning_netlab:
   tags:
     - birdlab
   script:
-    - echo 'Cleaning the directories'
     - cd ../
     - rm -r bird-tools
     - cd bird
     - autoreconf
     - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
-    # Detect which make is available
     - MAKE=make
     - which gmake 2>/dev/null >/dev/null && MAKE=gmake
     - $MAKE
-    # Run tests if they are available
     - $MAKE check
     - cd ../
-    - echo 'Cloning Netlab from repository'
     - git clone https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
     - ls -l
     - cd bird
     - mv bird birdc ../bird-tools/netlab-int/common
-    - echo 'Done!'
-
-preparing_netlab:
-  stage: nl_prep
-  tags:
-    - birdlab
-  script:
-    - echo 'Preparing netlab'
+    - cd ../bird-tools/netlab-int
+    - ./runtest -m save cf-ospf
