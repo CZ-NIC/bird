@@ -305,7 +305,10 @@ cloning_netlab:
   tags:
     - birdlab
   script:
-    - echo 'Cloning Netlab from repository'
+    - echo 'Cleaning the directories'
+    - cd ../
+    - rm -r bird-tools
+    - cd bird
     - autoreconf
     - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
     # Detect which make is available
@@ -315,6 +318,7 @@ cloning_netlab:
     # Run tests if they are available
     - $MAKE check
     - cd ../
+    - echo 'Cloning Netlab from repository'
     - git clone https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
     - ls -l
     - cd bird
