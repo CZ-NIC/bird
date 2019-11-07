@@ -319,4 +319,4 @@ cloning_netlab:
     - mv bird birdc ../bird-tools/netlab-int/common
     - cd ../bird-tools/netlab-int
     - whoami
-    - ./runtest -m save cf-ospf
+    - sudo ./runtest -m save cf-ospf
