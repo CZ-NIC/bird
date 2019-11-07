@@ -303,11 +303,11 @@ build-birdlab:
     - autoreconf
     - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
     - make
-    - make check
+    #- make check
     - cd /var/lib/gitlab-runner/bird-tools
     - sudo git clean -fx
     - git pull --ff-only
-    - mv $DIR/bird $DIR/birdc bird-tools/netlab-int/common
+    - mv $DIR/bird $DIR/birdc netlab-int/common
   tags:
     - birdlab
     - amd64
