@@ -307,7 +307,7 @@ cloning_netlab:
     - birdlab
   script:
     - cd ../
-    - rm -r bird-tools
+    - sudo rm -r bird-tools
     - cd bird
     - autoreconf
     - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
