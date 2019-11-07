@@ -304,7 +304,6 @@ cloning_netlab:
   tags:
     - birdlab
   script:
-    - python3 --version
     - cd ../
     - rm -r bird-tools
     - cd bird
@@ -316,8 +315,7 @@ cloning_netlab:
     - $MAKE check
     - cd ../
     - git clone https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
-    - ls -l
     - cd bird
     - mv bird birdc ../bird-tools/netlab-int/common
     - cd ../bird-tools/netlab-int
-    - ./runtest -m save cf-ospf
+    - sudo ./runtest -m save cf-ospf
