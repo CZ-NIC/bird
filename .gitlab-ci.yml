@@ -300,7 +300,7 @@ build-birdlab:
     - DIR=$(pwd)
     - cd /var/lib/gitlab-runner/bird-tools
     - sudo git clean -fx
-    - git pull
+    - git pull --ff-only
     - mv $DIR/bird $DIR/birdc bird-tools/netlab-int/common
   tags:
     - birdlab
