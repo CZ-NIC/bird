@@ -4,6 +4,7 @@ variables:
   GIT_STRATEGY: fetch
   DOCKER_CMD: docker --config="$HOME/.docker/$CI_JOB_ID/"
   IMG_BASE: registry.labs.nic.cz/labs/bird
+  GIT_STRATEGY: fetch
 
 stages:
   # - image
@@ -296,28 +297,19 @@ stages:
 build-birdlab:
   <<: *build_job
   tags:
-  - birdlab
-  - amd64
+    - birdlab
+    - amd64
   script:
-    - whoami
+    - git clean
+    - git fetch https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
+    - cd bird
+    - mv bird /etc/gitlab-runner/bird && mv birdc /etc/gitlab-runner/birdc
+    - mv ../bird-tools /etc/gitlab-runner/bird-tools
 
-cloning_netlab:
+running_test:
   stage: test
   tags:
     - birdlab
   script:
-    - cd ../
-    - sudo rm -r bird-tools
-    - cd bird
-    - autoreconf
-    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
-    - MAKE=make
-    - which gmake 2>/dev/null >/dev/null && MAKE=gmake
-    - $MAKE
-    - $MAKE check
-    - cd ../
-    - git clone https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
-    - cd bird
-    - mv bird birdc ../bird-tools/netlab-int/common
-    - cd ../bird-tools/netlab-int
+    - cd /etc/gitlab-runner/bird-tools
     - sudo ./runtest -m save cf-ospf
