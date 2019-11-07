@@ -296,20 +296,20 @@ stages:
 
 build-birdlab:
   <<: *build_job
+  script:
+    - DIR=$(pwd)
+    - cd /var/lib/gitlab-runner/bird-tools
+    - sudo git clean -fx
+    - git fetch https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
+    - mv $DIR/bird $DIR/birdc bird-tools/netlab-int/common
   tags:
     - birdlab
     - amd64
-  script:
-    - git clean
-    - git fetch https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
-    - cd bird
-    - mv bird /etc/gitlab-runner/bird && mv birdc /etc/gitlab-runner/birdc
-    - mv ../bird-tools /etc/gitlab-runner/bird-tools
 
 running_test:
   stage: test
+  script:
+    - cd /var/lib/gitlab-runner/bird-tools/netlab-int
+    - sudo ./runtest -m check cf-ospf
   tags:
     - birdlab
-  script:
-    - cd /etc/gitlab-runner/bird-tools
-    - sudo ./runtest -m save cf-ospf
