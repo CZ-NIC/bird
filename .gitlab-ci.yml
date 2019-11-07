@@ -298,6 +298,7 @@ build-birdlab:
   <<: *build_job
   script:
     - DIR=$(pwd)
+    - mkdir /var/lib/gitlab-runner/bird-tools
     - cd /var/lib/gitlab-runner/bird-tools
     - sudo git clean -fx
     - git fetch https://gitlab.labs.nic.cz/labs/bird-tools --branch oz-test-base
