@@ -10,11 +10,12 @@
 #define _BIRD_RESOURCE_H_
 
 #include "lib/lists.h"
+#include "lib/locked.h"
 
 /* Resource */
 
 typedef struct resource {
-  TLIST_NODE(struct resource);	/* Inside resource pool */
+  LOCKED_LIST_NODE(struct resource);	/* Inside resource pool */
   struct resclass *class;	/* Resource class */
 } resource;
 
