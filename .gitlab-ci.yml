@@ -301,7 +301,7 @@ build-birdlab:
     - cd /var/lib/gitlab-runner/bird-tools
     - sudo git clean -fx
     - git pull --ff-only
-    - mv $DIR/bird $DIR/birdc bird-tools/netlab-int/common
+    - mv $DIR/bird $DIR/birdc /var/lib/gitlab-runner/bird-tools/netlab-int/common
   tags:
     - birdlab
     - amd64
