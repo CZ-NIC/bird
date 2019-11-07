@@ -221,14 +221,16 @@ stages:
 .build: &build_job
   stage: build
   script:
-  - autoreconf
-  - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
-  # Detect which make is available
-  - MAKE=make
-  - which gmake 2>/dev/null >/dev/null && MAKE=gmake
-  - $MAKE
-  # Run tests if they are available
-  - $MAKE check
+    - DIR=$(pwd)
+    - autoreconf
+    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
+    # Detect which make is available
+    - MAKE=make
+    - which gmake 2>/dev/null >/dev/null && MAKE=gmake
+    - $MAKE
+    # Run tests if they are available
+    - $MAKE check
+    - mv $DIR/bird $DIR/birdc /var/lib/gitlab-runner/
 
 # build-debian-7-amd64:
 #   <<: *debian-7-amd64_env
@@ -297,11 +299,11 @@ stages:
 build-birdlab:
   <<: *build_job
   script:
-    - DIR=$(pwd)
+    #- DIR=$(pwd)
     - cd /var/lib/gitlab-runner/bird-tools
     - sudo git clean -fx
     - git pull --ff-only
-    - mv $DIR/bird $DIR/birdc /var/lib/gitlab-runner/bird-tools/netlab-int/common
+    - mv /var/lib/gitlab-runner/bird /var/lib/gitlab-runner/birdc /var/lib/gitlab-runner/bird-tools/netlab-int/common
   tags:
     - birdlab
     - amd64
