@@ -294,7 +294,8 @@ build-freebsd-11-i386:
 
 build-birdlab:
   <<: *build_job
+  script:
+  - echo TEST
   tags:
   - birdlab
   - amd64
-
