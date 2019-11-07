@@ -1699,10 +1699,10 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   rte_dispatch_update(&rud);
 }
 
-static int
+static _Bool
 rte_finish_update(struct rte_update_data *rud)
 {
-  int out = 0;
+  _Bool out = 0;
 
   domain_assert_write_locked(rud->channel->table->domain);
 
@@ -1780,42 +1780,42 @@ rte_finish_update_hook(struct task *task)
   debug("FUH: %d\n");
 
   struct rte_update_data *rud = SKIP_BACK(struct rte_update_data, task, task);
-  struct channel *c = rud->channel;
-  struct rtable *rt = c->table;
 
-  domain_assert_write_locked(rt->domain);
-
-  /* If this task is run, it must be the first pending import.
-   * Removing this import from the queue. */
-  ASSERT(REM_HEAD_LOCKED(&(c->pending_imports)) == rud);
-
-  /* Do the real table update */
-  int fast = rte_finish_update(rud);
-
-  /* Look for the next node */
-  rud = NULL;
-  LOCKED_LIST_LOCK(&(c->pending_imports), l)
+  for (_Bool fast = 1; fast; )
   {
-    /* Is there another route update? */
-    if (!TLIST_EMPTY(l))
+    struct channel *c = rud->channel;
+    struct rtable *rt = c->table;
+
+    domain_assert_write_locked(rt->domain);
+
+    /* If this task is run, it must be the first pending import.
+     * Removing this import from the queue. */
+    ASSERT(REM_HEAD_LOCKED(&(c->pending_imports)) == rud);
+
+    /* Do the real table update */
+    fast = rte_finish_update(rud);
+
+    /* Look for the next node */
+    rud = NULL;
+    LOCKED_LIST_LOCK(&(c->pending_imports), l)
     {
-      rud = THEAD(l);
+      /* Is there another route update? */
+      if (!TLIST_EMPTY(l))
+      {
+	rud = THEAD(l);
 
-      /* Is the update pending recalculate? */
-      if (atomic_load(&(rud->state)) == RUS_PENDING_RECALCULATE)
-	rud_state_change(rud, RUS_PENDING_RECALCULATE, RUS_RECALCULATING);
-      else
-	rud = NULL;
+	/* Is the update pending recalculate? */
+	if (atomic_load(&(rud->state)) == RUS_PENDING_RECALCULATE)
+	  rud_state_change(rud, RUS_PENDING_RECALCULATE, RUS_RECALCULATING);
+	else
+	  rud = NULL;
+      }
     }
+    LOCKED_LIST_UNLOCK(&(c->pending_imports));
+
+    if (!rud)
+      return;
   }
-  LOCKED_LIST_UNLOCK(&(c->pending_imports));
-
-  if (!rud)
-    return;
-
-  /* Merge fast route updates */
-  if (fast)
-    return rte_finish_update_hook(&(rud->task));
 
   task_init(&(rud->task), TF_EXCLUSIVE | TF_TAIL, rud->channel->table->domain, rte_finish_update_hook);
   task_push(&(rud->task));
