@@ -13,6 +13,7 @@
 #include "lib/birdlib.h"
 #include "lib/resource.h"
 #include "lib/string.h"
+#include "lib/locked.h"
 
 /**
  * DOC: Resource pools
@@ -30,7 +31,7 @@
 
 struct pool {
   resource r;
-  TLIST(resource) inside;
+  LOCKED_LIST(resource) inside;
   const char *name;
 };
 
@@ -65,7 +66,7 @@ rp_new(pool *p, const char *name)
 {
   pool *z = ralloc(p, &pool_class);
   z->name = name;
-  INIT_TLIST(&z->inside);
+  INIT_LOCKED_LIST(&z->inside);
   return z;
 }
 
@@ -75,7 +76,7 @@ pool_free(resource *P)
   pool *p = (pool *) P;
   resource *r;
 
-  WALK_TLIST_DELSAFE(r, &(p->inside))
+  while (r = REM_HEAD_LOCKED(&(p->inside)))
     {
       r->class->free(r);
       xfree(r);
@@ -90,8 +91,12 @@ pool_dump(resource *P)
 
   debug("%s\n", p->name);
   indent += 3;
-  WALK_LIST(r, p->inside)
-    rdump(r);
+  LOCKED_LIST_LOCK(&(p->inside), l)
+  {
+    WALK_TLIST(r, l)
+      rdump(r);
+  }
+  LOCKED_LIST_UNLOCK(&(p->inside));
   indent -= 3;
 }
 
@@ -102,8 +107,12 @@ pool_memsize(resource *P)
   resource *r;
   size_t sum = sizeof(pool) + ALLOC_OVERHEAD;
 
-  WALK_LIST(r, p->inside)
-    sum += rmemsize(r);
+  LOCKED_LIST_LOCK(&(p->inside), l)
+  {
+    WALK_TLIST(r, l)
+      sum += rmemsize(r);
+  }
+  LOCKED_LIST_UNLOCK(&(p->inside));
 
   return sum;
 }
@@ -113,11 +122,20 @@ pool_lookup(resource *P, unsigned long a)
 {
   pool *p = (pool *) P;
   resource *r, *q;
+  resource *ret = NULL;
 
-  WALK_LIST(r, p->inside)
+  LOCKED_LIST_LOCK(&(p->inside), l)
+  {
+    WALK_TLIST(r, l)
     if (r->class->lookup && (q = r->class->lookup(r, a)))
-      return q;
-  return NULL;
+    {
+      ret = q;
+      break;
+    }
+  }
+  LOCKED_LIST_UNLOCK(&(p->inside));
+
+  return ret;
 }
 
 /**
@@ -134,9 +152,9 @@ void rmove(void *res, pool *p)
 
   if (r)
     {
-      if (TNODE_IN_LIST(r))
-        TREM_NODE(r);
-      TADD_TAIL(&p->inside, r);
+      if (NODE_IN_LOCKED_LIST(r))
+	REM_NODE_LOCKED(r);
+      ADD_TAIL_LOCKED(&p->inside, r);
     }
 }
 
@@ -158,8 +176,9 @@ rfree(void *res)
   if (!r)
     return;
 
-  if (TNODE_IN_LIST(r))
-    TREM_NODE(r);
+  if (NODE_IN_LOCKED_LIST(r))
+    REM_NODE_LOCKED(r);
+
   r->class->free(r);
   r->class = NULL;
   xfree(r);
@@ -220,7 +239,7 @@ ralloc(pool *p, struct resclass *c)
 
   r->class = c;
   if (p)
-    TADD_TAIL(&p->inside, r);
+    ADD_TAIL_LOCKED(&p->inside, r);
   return r;
 }
 
@@ -259,7 +278,7 @@ resource_init(void)
 {
   root_pool.r.class = &pool_class;
   root_pool.name = "Root";
-  INIT_TLIST(&root_pool.inside);
+  INIT_LOCKED_LIST(&root_pool.inside);
 }
 
 /**
@@ -338,7 +357,7 @@ mb_alloc(pool *p, unsigned size)
   struct mblock *b = xmalloc(sizeof(struct mblock) + size);
 
   b->r.class = &mb_class;
-  TADD_TAIL(&p->inside, &b->r);
+  ADD_TAIL_LOCKED(&p->inside, &b->r);
   b->size = size;
   return b->data;
 }
