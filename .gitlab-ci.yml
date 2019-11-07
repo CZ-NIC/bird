@@ -6,9 +6,9 @@ variables:
   IMG_BASE: registry.labs.nic.cz/labs/bird
 
 stages:
-#   - image
+  # - image
   - build
-  - get_nl
+  - test
 
 # .docker: &docker_build
 #   stage: image
@@ -298,9 +298,11 @@ build-birdlab:
   tags:
   - birdlab
   - amd64
+  script:
+    - whoami
 
 cloning_netlab:
-  stage: get_nl
+  stage: test
   tags:
     - birdlab
   script:
