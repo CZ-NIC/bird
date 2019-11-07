@@ -10,10 +10,13 @@
 #define _BIRD_LOCKED_H_
 
 #include "lib/atomic.h"
-#include "lib/worker.h"
 #include "lib/lists.h"
 
 typedef _Atomic u64 spinlock;
+
+/* Exporting worker ID for spinlock use */
+#define NOWORKER (~((u64) 0))
+extern _Thread_local u64 worker_id;
 
 #define SPIN_LOCK(_sp) do { \
   while (1) { \
@@ -48,11 +51,13 @@ typedef _Atomic u64 spinlock;
   SPIN_INIT(((list_)->_lsp)); \
 } while (0)
 
+#define NODE_IN_LOCKED_LIST(node_) (!!((node_)->_lsp))
+
 #define LOCKED_LIST_LOCK(list_, token) do { typeof(&((list_)->_llist)) token = &((list_)->_llist); SPIN_LOCK((list_)->_lsp); do
 #define LOCKED_LIST_UNLOCK(list_) while (0); SPIN_UNLOCK((list_)->_lsp); } while (0)
 
 #define GET_HEAD_LOCKED(list_) ({ \
-    TLIST_NODE_TYPE((list_)->_llist) *node_ = NULL; \
+    TLIST_NODE_TYPE(&((list_)->_llist)) *node_ = NULL; \
     SPIN_LOCK((list_)->_lsp); \
     if (!TLIST_EMPTY(&((list_)->_llist))) \
       node_ = THEAD(&((list_)->_llist)); \
@@ -68,7 +73,7 @@ typedef _Atomic u64 spinlock;
 } while (0)
 
 #define ADD_TAIL_LOCKED(list_, node_) do { \
-  node_->_lsp = &((list_)->_lsp); \
+  (node_)->_lsp = &((list_)->_lsp); \
   SPIN_LOCK((list_)->_lsp); \
   TADD_TAIL(&((list_)->_llist), node_); \
   SPIN_UNLOCK((list_)->_lsp); \

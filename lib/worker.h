@@ -11,6 +11,8 @@
 
 #include "lib/birdlib.h"
 #include "lib/atomic.h"
+#include "lib/locked.h"
+#include "lib/resource.h"
 
 struct config;
 
@@ -61,11 +63,6 @@ static inline void task_init(struct task *t, enum task_flags tf, struct domain *
     .execute = execute,
   };
 }
-
-/* Sometimes it is needed to know the worker ID.
- * Don't rely on it unless you know what you are doing. */
-#define NOWORKER (~((u64) 0))
-extern _Thread_local u64 worker_id;
 
 /* Initialize the worker queue. Run once and never more. */
 void worker_queue_init(void);
