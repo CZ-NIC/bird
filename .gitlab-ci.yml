@@ -218,7 +218,7 @@ docker_ubuntu-16_04-amd64:
 
 .build: &build_job
   stage: build
-  script:
+  script: &build_job_script
   - autoreconf
   - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
   # Detect which make is available
@@ -293,8 +293,9 @@ build-freebsd-11-i386:
   <<: *build_job
 
 build-birdlab:
-  <<: *build_job
+  stage: build
   script:
+  <<: *build_job_script
   - echo TEST
   tags:
   - birdlab
