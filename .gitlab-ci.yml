@@ -297,13 +297,17 @@ stages:
 #   <<: *build_job
 
 build-birdlab:
-  <<: *build_job
+  stage: build
   script:
-    #- DIR=$(pwd)
+    - DIR=$(pwd)
+    - autoreconf
+    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
+    - make
+    - make check
     - cd /var/lib/gitlab-runner/bird-tools
     - sudo git clean -fx
     - git pull --ff-only
-    - mv /var/lib/gitlab-runner/bird /var/lib/gitlab-runner/birdc /var/lib/gitlab-runner/bird-tools/netlab-int/common
+    - mv $DIR/bird $DIR/birdc bird-tools/netlab-int/common
   tags:
     - birdlab
     - amd64
