@@ -99,4 +99,43 @@ extern _Thread_local u64 worker_id;
   node_->_lsp = NULL; \
 } while (0)
 
+/* Atomic pointer-based circular buffer.
+ * There is 
+ *
+ * */
+#define CIRCULAR_BUFFER_PTR struct { \
+  _Atomic u64 acquire, release; \
+  _Atomic uint waiting; \
+  struct semaphore *sem; \
+}
+
+#define CIRCULAR_BUFFER_N(type_, size_, ptrs_) struct { \
+  type_ buffer[size_]; \
+  CIRCULAR_BUFFER_PTR ptr[ptrs_]; \
+}
+
+#define CIRCULAR_BUFFER(type_, size_) CIRCULAR_BUFFER_N(type_, size_, 2)
+
+#define CIRCULAR_BUFFER_PTR_INIT(ptr_, pool_) do { \
+  (ptr_)->acquire = (ptr_)->release = ATOMIC_VAR_INIT(0); \
+  (ptr_)->waiting = ATOMIC_VAR_INIT(0); \
+  (ptr_)->sem = semaphore_new(pool_, 0); \
+} while (0)
+
+#define CIRCULAR_BUFFER_INIT(buf_, pool_) do { \
+  memset((buf_)->buffer, 0, sizeof((buf_)->buffer)); \
+  for (uint i_=0; i_<sizeof((buf_)->ptr) / sizeof((buf_)->ptr[0]); i_++) \
+    CIRCULAR_BUFFER_PTR_INIT(&((buf_)->ptr[i_]), pool_); \
+} while (0)
+
+#define CIRCULAR_BUFFER_CLEANUP(buf_) do { \
+  u64 val = atomic_load(&((buf_)->ptr[0].acquire)); \
+  for (uint i_=0; i_<sizeof((buf_)->ptr) / sizeof((buf_)->ptr[0]); i_++) { \
+    ASSERT(val == atomic_load(&((buf_)->ptr[i_].acquire))); \
+    ASSERT(val == atomic_load(&((buf_)->ptr[i_].release))); \
+    ASSERT(0 == atomic_load(&((buf_)->ptr[i_].waiting))); \
+    rfree((buf_)->ptr[i_].sem); \
+  } \
+} while (0)
+
 #endif

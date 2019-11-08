@@ -147,30 +147,6 @@ struct rtable_config {
 
 /* Route update data that is passed through the filters */
 
-struct rte_update_data {
-  LOCKED_LIST_NODE(struct rte_update_data);
-  struct task task;
-  struct channel *channel;
-  const net_addr *net;
-  struct rte *rte;
-  struct rta *old_rta;
-  struct rte_src *src;
-  struct linpool *pool;
-  _Atomic PACKED enum rte_update_state {
-    RUS_PENDING_UPDATE = 0,
-    RUS_UPDATING,
-    RUS_PENDING_RECALCULATE,
-    RUS_RECALCULATING,
-  } state;
-  PACKED enum rte_update_result {
-    RUR_UNKNOWN = 0,
-    RUR_WITHDRAW = 1,
-    RUR_INVALID = 2,
-    RUR_FILTERED = 3,
-    RUR_ACCEPTED = 4,
-  } result;
-};
-
 typedef struct rtable {
   node n;				/* Node in list of all tables */
   struct fib fib;
@@ -306,6 +282,28 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RIC_PROCESS	0		/* Process it through import filter */
 #define RIC_REJECT	-1		/* Rejected by protocol */
 #define RIC_DROP	-2		/* Silently dropped by protocol */
+
+struct rte_update_data {
+  struct task task;
+  struct channel *channel;
+  net_addr_union net;
+  struct rte rte;
+  struct rta *old_rta;
+  struct rte_src *src;
+  _Atomic PACKED enum rte_update_state {
+    RUS_PENDING_UPDATE = 0,
+    RUS_UPDATING,
+    RUS_PENDING_RECALCULATE,
+    RUS_RECALCULATING,
+  } state;
+  PACKED enum rte_update_result {
+    RUR_UNKNOWN = 0,
+    RUR_WITHDRAW = 1,
+    RUR_INVALID = 2,
+    RUR_FILTERED = 3,
+    RUR_ACCEPTED = 4,
+  } result;
+};
 
 extern list routing_tables;
 struct config;

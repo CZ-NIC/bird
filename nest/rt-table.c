@@ -51,58 +51,8 @@
 #endif
 
 pool *rt_table_pool;
-static pool *rup_pool;
-static spinlock rup_spinlock;
-
-#define RUPS_MAX  128
 
 static slab *rte_slab;
-static linpool * volatile rte_update_pool[RUPS_MAX] = {};
-static volatile uint rups = 0;
-static volatile uint rup_total_linpools = 0;
-static struct semaphore *rup_sem = NULL;
-
-static inline linpool *rup_get(void) {
-  struct linpool *pool;
-
-  /* Wait until some linpool is available */
-  semaphore_wait(rup_sem);
-
-  SPIN_LOCK(rup_spinlock);
-  if (!rups)
-  {
-    pool = lp_new_default(rup_pool);
-    rup_total_linpools++;
-    if (rup_total_linpools > 256)
-      bug("");
-  }
-  else
-  {
-    /* Get a recycled linpool */
-    pool = rte_update_pool[--rups];
-  }
-  SPIN_UNLOCK(rup_spinlock);
-
-  debug("Linpool state %u (get)\n", rup_total_linpools);
-  return pool;
-}
-
-static inline void rup_free(linpool *pool) {
-  lp_flush(pool);
-
-  SPIN_LOCK(rup_spinlock);
-  if (rups == RUPS_MAX) {
-    rfree(pool);
-    rup_total_linpools--;
-  } else {
-    /* Keep the linpool for future use */
-    rte_update_pool[rups++] = pool;
-  }
-  SPIN_UNLOCK(rup_spinlock);
-
-  semaphore_post(rup_sem);
-  debug("Linpool state %u (free)\n", rup_total_linpools);
-}
 
 static inline void rud_state_change(struct rte_update_data *rud, enum rte_update_state from, enum rte_update_state to)
 { 
@@ -1569,10 +1519,6 @@ static void
 rte_dispatch_update(struct rte_update_data *rud)
 {
   debug("RDU\n");
-
-  /* Get local linpool */
-  ASSERT(rud->pool == NULL);
-  rud->pool = rup_get();
 
   /* Check right rud state */
   rud_state_check(rud, RUS_PENDING_UPDATE);

@@ -496,6 +496,8 @@ struct channel_config {
   u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
 };
 
+#define CHANNEL_QUEUE_SIZE	64
+
 struct channel {
   node n;				/* Node in proto->channels */
   node table_node;			/* Node in table->channels */
@@ -535,7 +537,8 @@ struct channel {
   btime last_state_change;		/* Time of last state transition */
   btime last_tx_filter_change;
 
-  LOCKED_LIST(struct rte_update_data) pending_imports;	/* Imports shall be sequenced */
+  /* Circular buffer for pending imports */
+  CIRCULAR_BUFFER_N(struct rte_update_data, CHANNEL_QUEUE_SIZE, 3) pending_imports;
 
   struct rtable *in_table;		/* Internal table for received routes */
   struct event *reload_event;		/* Event responsible for reloading from in_table */

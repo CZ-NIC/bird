@@ -168,7 +168,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->last_tx_filter_change = current_time();
   c->reloadable = 1;
 
-  INIT_LOCKED_LIST(&c->pending_imports);
+  CIRCULAR_BUFFER_INIT(&c->pending_imports, proto_pool);
 
   CALL(c->channel->init, c, cf);
 
@@ -185,6 +185,8 @@ proto_remove_channel(struct proto *p, struct channel *c)
   ASSERT(c->channel_state == CS_DOWN);
 
   PD(p, "Channel %s removed", c->name);
+
+  CIRCULAR_BUFFER_CLEANUP(&c->pending_imports);
 
   rem_node(&c->n);
   mb_free(c);
