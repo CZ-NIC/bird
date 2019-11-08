@@ -1009,6 +1009,9 @@ extern _Thread_local struct timeloop *timeloop_current;
 /* There has been a tail-task queued without trying the available semaphore. */
 _Thread_local _Bool tail_task = 1;
 
+/* Pool for allocating data during task run. */
+_Thread_local linpool *task_pool;
+
 static void *
 worker_loop(void *_data UNUSED)
 {
@@ -1023,6 +1026,9 @@ worker_loop(void *_data UNUSED)
 #ifdef SPINLOCK_STATS 
   cpu_stat_init();
 #endif
+
+  /* Initialize the task-local linpool */
+  task_pool = lp_new_default(&root_pool);
 
   /* Obtain the yield-semaphore before being available */
   WORKER_CONTINUE();
@@ -1090,97 +1096,99 @@ worker_loop(void *_data UNUSED)
     WQ_LOCK();
 
     /* Is there a pending task? */
-    if (!EMPTY_LIST(wq->pending))
-    {
-      /* Retrieve that task */
-      struct task *t = HEAD(wq->pending);
-      rem_node(&t->n);
+    if (EMPTY_LIST(wq->pending))
+      break;
+
+    /* Retrieve that task */
+    struct task *t = HEAD(wq->pending);
+    rem_node(&t->n);
 #ifdef DEBUG_STATELOG
-      atomic_fetch_sub_explicit(&wq->pending_count, 1, memory_order_release);
+    atomic_fetch_sub_explicit(&wq->pending_count, 1, memory_order_release);
 #endif
 
-      /* No more operations on worker queue */
-      WQ_UNLOCK();
+    /* No more operations on worker queue */
+    WQ_UNLOCK();
 
-      /* Reset the tail_task flag */
-      tail_task = 0;
+    /* Reset the tail_task flag */
+    tail_task = 0;
 
-      /* Store the old flags and domain */
-      struct domain *d = t->domain;
-      enum task_flags tf = t->flags;
-      void (*te)(struct task *) = t->execute;
+    /* Store the old flags and domain */
+    struct domain *d = t->domain;
+    enum task_flags tf = t->flags;
+    void (*te)(struct task *) = t->execute;
 
-      /* Store the current prepended state */
-      prepended = tf & TF_PREPENDED;
+    /* Store the current prepended state */
+    prepended = tf & TF_PREPENDED;
 
-      /* Does the task need a lock? */
-      if (!d)
-      {
-	/* No. Just run it. */
-	atomic_flag_clear_explicit(&t->enqueued, memory_order_relaxed);
-	WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_STARTED, tf, d, te);
-	te(t);
-	WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_DONE, tf, d, te);
-      }
+    /* Does the task need a lock? */
+    if (!d)
+    {
+      /* No. Just run it. */
+      atomic_flag_clear_explicit(&t->enqueued, memory_order_relaxed);
+      WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_STARTED, tf, d, te);
+      te(t);
+      WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_DONE, tf, d, te);
+    }
 
-      /* It needs a lock. Is it available? */
-      else if (tf & TF_EXCLUSIVE ?
-	    domain_write_lock_primary(d, t) :
-	    domain_read_lock_primary(d, t))
-      {
-	/* Yes. Run it! */
-	atomic_flag_clear_explicit(&t->enqueued, memory_order_relaxed);
-	WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_STARTED, tf, d, te);
-	te(t);
-	WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_DONE, tf, d, te);
+    /* It needs a lock. Is it available? */
+    else if (tf & TF_EXCLUSIVE ?
+	  domain_write_lock_primary(d, t) :
+	  domain_read_lock_primary(d, t))
+    {
+      /* Yes. Run it! */
+      atomic_flag_clear_explicit(&t->enqueued, memory_order_relaxed);
+      WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_STARTED, tf, d, te);
+      te(t);
+      WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_DONE, tf, d, te);
 
-	/* And unlock to let others to the domain */
-	tf & TF_EXCLUSIVE ?
-	  domain_write_unlock(d) :
-	  domain_read_unlock(d);
-      }
+      /* And unlock to let others to the domain */
+      tf & TF_EXCLUSIVE ?
+	domain_write_unlock(d) :
+	domain_read_unlock(d);
+    }
 
-      else if (prepended)
-	wbug("The prepended task shall never block on lock");
+    else if (prepended)
+      wbug("The prepended task shall never block on lock");
 
-      else
-      {
-	WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_BLOCKED, tf, d, te);
-      }
-
+    else
+    {
       /* Else: Unavailable. The task has been stored
        * into the blocked list and will be released
        * when the lock is available. */
+      WQ_STATELOG_TASK_EXPLICIT(WQS_TASK_BLOCKED, tf, d, te);
     }
-    else
-    {
-      WQ_UNLOCK();
 
-      /* There must be a request to stop then */
-      uint stop = atomic_load_explicit(&wq->stop, memory_order_acquire);
-      WASSERT(stop > 0);
-
-      /* Requested to stop */
-      WDBG("Worker stopping\n");
-      atomic_fetch_sub_explicit(&wq->stop, 1, memory_order_release);
-      atomic_fetch_sub_explicit(&wq->running, 1, memory_order_release);
-
-      /* Let others work instead of us */
-      WORKER_DO_YIELD();
-
-      /* Flush the out-of-order counter */
-      for (uint i=0; i<nopost; i++)
-	SEM_WAIT(&wq->available);
-
-      /* Notify the stop requestor */
-      SEM_POST(&wq->stopped);
-
-      /* Finished */
-      return NULL;
-    }
+    /* Cleanup after executing the task */
+    lp_flush(task_pool);
   }
- 
-  wimpossible(); 
+
+  /* There is no task in queue */
+  WQ_UNLOCK();
+
+  /* There must be a request to stop then */
+  uint stop = atomic_load_explicit(&wq->stop, memory_order_acquire);
+  WASSERT(stop > 0);
+
+  /* Requested to stop */
+  WDBG("Worker stopping\n");
+  atomic_fetch_sub_explicit(&wq->stop, 1, memory_order_release);
+  atomic_fetch_sub_explicit(&wq->running, 1, memory_order_release);
+
+  /* Let others work instead of us */
+  WORKER_DO_YIELD();
+
+  /* Flush the out-of-order counter */
+  for (uint i=0; i<nopost; i++)
+    SEM_WAIT(&wq->available);
+
+  /* Notify the stop requestor */
+  SEM_POST(&wq->stopped);
+
+  /* Free the task-local linpool */
+  rfree(task_pool);
+
+  /* Finished */
+  return NULL;
 }
 
 static int

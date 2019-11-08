@@ -16,6 +16,8 @@
 
 struct config;
 
+extern _Thread_local linpool *task_pool;
+
 struct semaphore *semaphore_new(pool *p, uint n);
 void semaphore_wait(struct semaphore *s);
 void semaphore_post(struct semaphore *s);

@@ -35,6 +35,7 @@ extern _Thread_local u64 worker_id;
 
 #define SPIN_INIT(_sp) atomic_store_explicit(&(_sp), NOWORKER, memory_order_relaxed);
 
+/* Locked typed linked list */
 
 #define LOCKED_LIST(_type) struct { \
   TLIST(_type) _llist; \
