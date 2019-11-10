@@ -309,11 +309,17 @@ build-birdlab:
     - git pull --ff-only
     - mv $DIR/bird $DIR/birdc netlab-int/common
 
-running_test:
+.test: &test_job
   stage: test
+  needs: [build-birdlab]
   tags:
     - birdlab
     - amd64
   script:
     - cd $TOOLS_DIR/netlab-int
-    - sudo ./runtest -m check cf-ospf
+    - sudo ./runtest -m check $TEST_NAME
+
+test-ospf:
+  variables:
+    TEST_NAME: cf-ospf
+  <<: *test_job
