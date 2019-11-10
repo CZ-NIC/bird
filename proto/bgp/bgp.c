@@ -1936,6 +1936,9 @@ bgp_postconfig(struct proto_config *CF)
   if (!cf->gr_mode && cf->llgr_mode)
     cf_error("Long-lived graceful restart requires basic graceful restart");
 
+  if (internal && cf->enforce_first_as)
+    cf_error("Enforce first AS check is requires EBGP sessions");
+
 
   struct bgp_channel_config *cc;
   WALK_LIST(cc, CF->channels)

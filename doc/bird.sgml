@@ -2405,6 +2405,15 @@ using the following configuration parameters:
 	malformed and corresponding BGP updates are treated as withdraws.
 	Default: on.
 
+	<tag><label id="bgp-enforce-first-as">enforce first as [<m/switch/]</tag>
+	Routes received from an EBGP neighbor are generally expected to have the
+	first (leftmost) AS number in their AS path equal to the neighbor AS
+	number. This is not enforced by default as there are legitimate cases
+	where it is not true, e.g. connections to route servers. When this
+	option is enabled, routes with non-matching first AS number are rejected
+	and corresponding updates are treated as withdraws. The option is valid
+	on EBGP sessions only. Default: off.
+
 	<tag><label id="bgp-enable-route-refresh">enable route refresh <m/switch/</tag>
 	After the initial route exchange, BGP protocol uses incremental updates
 	to keep BGP speakers synchronized. Sometimes (e.g., if BGP speaker

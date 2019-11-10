@@ -404,6 +404,15 @@ bgp_format_origin(eattr *a, byte *buf, uint size UNUSED)
 }
 
 
+static inline int
+bgp_as_path_first_as_equal(const byte *data, uint len, u32 asn)
+{
+  return (len >= 6) &&
+    ((data[0] == AS_PATH_SEQUENCE) || (data[0] == AS_PATH_CONFED_SEQUENCE)) &&
+    (data[1] > 0) &&
+    (get_u32(data+2) == asn);
+}
+
 static int
 bgp_encode_as_path(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
 {
@@ -433,11 +442,6 @@ bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte
   if (!as_path_valid(data, len, as_length, as_sets, as_confed, err, sizeof(err)))
     WITHDRAW("Malformed AS_PATH attribute - %s", err);
 
-  /* In some circumstances check for initial AS_CONFED_SEQUENCE; RFC 5065 5.0 */
-  if (p->is_interior && !p->is_internal &&
-      ((len < 2) || (data[0] != AS_PATH_CONFED_SEQUENCE)))
-    WITHDRAW("Malformed AS_PATH attribute - %s", "missing initial AS_CONFED_SEQUENCE");
-
   if (!s->as4_session)
   {
     /* Prepare 32-bit AS_PATH (from 16-bit one) in a temporary buffer */
@@ -445,6 +449,16 @@ bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte
     data = alloca(2*len);
     len = as_path_16to32(data, src, len);
   }
+
+  /* In some circumstances check for initial AS_CONFED_SEQUENCE; RFC 5065 5.0 */
+  if (p->is_interior && !p->is_internal &&
+      ((len < 2) || (data[0] != AS_PATH_CONFED_SEQUENCE)))
+    WITHDRAW("Malformed AS_PATH attribute - %s", "missing initial AS_CONFED_SEQUENCE");
+
+  /* Reject routes with first AS in AS_PATH not matching neighbor AS; RFC 4271 6.3 */
+  if (!p->is_internal && p->cf->enforce_first_as &&
+      !bgp_as_path_first_as_equal(data, len, p->remote_as))
+    WITHDRAW("Malformed AS_PATH attribute - %s", "First AS differs from neigbor AS");
 
   bgp_set_attr_data(to, s->pool, BA_AS_PATH, flags, data, len);
 }

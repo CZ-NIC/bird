@@ -30,7 +30,8 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	GRACEFUL, RESTART, AWARE, CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY,
 	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6, LONG,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL, SETS,
-	DYNAMIC, RANGE, NAME, DIGITS, BGP_AIGP, AIGP, ORIGINATE, COST)
+	DYNAMIC, RANGE, NAME, DIGITS, BGP_AIGP, AIGP, ORIGINATE, COST, ENFORCE,
+	FIRST)
 
 %type <i> bgp_nh
 %type <i32> bgp_afi
@@ -191,6 +192,7 @@ bgp_proto:
  | bgp_proto CHECK LINK bool ';' { BGP_CFG->check_link = $4; }
  | bgp_proto BFD bool ';' { BGP_CFG->bfd = $3; cf_check_bfd($3); }
  | bgp_proto BFD GRACEFUL ';' { BGP_CFG->bfd = BGP_BFD_GRACEFUL; cf_check_bfd(1); }
+ | bgp_proto ENFORCE FIRST AS bool ';' { BGP_CFG->enforce_first_as = $5; }
  ;
 
 bgp_afi:
