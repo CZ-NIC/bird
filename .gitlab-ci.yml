@@ -4,10 +4,12 @@ variables:
   GIT_STRATEGY: fetch
   DOCKER_CMD: docker --config="$HOME/.docker/$CI_JOB_ID/"
   IMG_BASE: registry.labs.nic.cz/labs/bird
+  TOOLS_DIR: /var/lib/gitlab-runner/bird-tools
 
 stages:
   - image
   - build
+  - test
 
 .docker: &docker_build
   stage: image
@@ -293,7 +295,25 @@ build-freebsd-11-i386:
   <<: *build_job
 
 build-birdlab:
-  <<: *build_job
+  stage: build
   tags:
-  - birdlab
-  - amd64
+    - birdlab
+    - amd64
+  script:
+    - DIR=$(pwd)
+    - autoreconf
+    - ./configure
+    - make
+    - cd $TOOLS_DIR
+    - sudo git clean -fx
+    - git pull --ff-only
+    - mv $DIR/bird $DIR/birdc netlab-int/common
+
+running_test:
+  stage: test
+  tags:
+    - birdlab
+    - amd64
+  script:
+    - cd $TOOLS_DIR/netlab-int
+    - sudo ./runtest -m check cf-ospf
