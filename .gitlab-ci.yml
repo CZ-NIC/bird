@@ -136,6 +136,16 @@ docker_ubuntu-16_04-amd64:
     IMG_NAME: "ubuntu-16.04-amd64"
   <<: *docker_build
 
+docker_ubuntu-18_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-18.04-amd64"
+  <<: *docker_build
+
+docker_ubuntu-19_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-19.04-amd64"
+  <<: *docker_build
+
 .build: &build-base
   stage: build
   script:
@@ -238,6 +248,14 @@ build-ubuntu-14_04-amd64:
 build-ubuntu-16_04-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:ubuntu-16.04-amd64
+
+build-ubuntu-18_04-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
+
+build-ubuntu-19_04-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:ubuntu-19.04-amd64
 
 build-freebsd-11-amd64:
   <<: *build-base
