@@ -5,7 +5,6 @@ variables:
   DOCKER_CMD: docker --config="$HOME/.docker/$CI_JOB_ID/"
   IMG_BASE: registry.labs.nic.cz/labs/bird
   TOOLS_DIR: /var/lib/gitlab-runner/bird-tools
-  DOCKER_DRIVER: overlay
 
 stages:
   - image
