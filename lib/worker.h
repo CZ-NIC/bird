@@ -43,12 +43,12 @@ enum task_flags {
   TF_PUBLIC_MASK = 0xff,	/* Flags are masked by this value on task push */
   /* These flags are private for worker queue */
   TF_PREPENDED = 0x100,		/* Task is waiting for the first free worker */
+  TF_ENQUEUED = 0x200,		/* Task is in queue */
 } PACKED;
 
 struct task {
   node n;				/* Init this to zero. */
-  enum task_flags flags;		/* Task flags */
-  atomic_flag enqueued;			/* Is in queue */
+  _Atomic enum task_flags flags;	/* Task flags */
   struct domain *domain;		/* Task's primary domain */
   void (*execute)(struct task *);	/* This will be called to execute the task */
 };
@@ -56,11 +56,11 @@ struct task {
 /* Always initialize the task by task_init() */
 static inline void task_init(struct task *t, enum task_flags tf, struct domain *domain, void (*execute)(struct task *))
 {
+  ASSERT(t);
   ASSERT(execute);
   *t = (struct task) {
     .n = { },
-    .flags = tf & TF_PUBLIC_MASK,
-    .enqueued =	ATOMIC_FLAG_INIT,
+    .flags = ATOMIC_VAR_INIT(tf & TF_PUBLIC_MASK),
     .domain = domain,
     .execute = execute,
   };
