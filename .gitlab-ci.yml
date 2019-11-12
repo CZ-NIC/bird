@@ -46,10 +46,10 @@ stages:
 #     IMG_NAME: "debian-9-amd64"
 #   <<: *docker_build
 
-docker_debian-10-amd64:
-  variables:
-    IMG_NAME: "debian-10-amd64"
-  <<: *docker_build
+# docker_debian-10-amd64:
+#   variables:
+#     IMG_NAME: "debian-10-amd64"
+#   <<: *docker_build
 
 # docker_debian-testing-amd64:
 #   variables:
@@ -71,10 +71,10 @@ docker_debian-10-amd64:
 #     IMG_NAME: "debian-9-i386"
 #   <<: *docker_build
 
-docker_debian-10-i386:
-  variables:
-    IMG_NAME: "debian-10-i386"
-  <<: *docker_build
+# docker_debian-10-i386:
+#   variables:
+#     IMG_NAME: "debian-10-i386"
+#   <<: *docker_build
 
 # docker_debian-testing-i386:
   # variables:
@@ -106,25 +106,30 @@ docker_debian-10-i386:
     # IMG_NAME: "fedora-29-amd64"
   # <<: *docker_build
 
-docker_fedora-30-amd64:
+# docker_fedora-30-amd64:
+#   variables:
+#     IMG_NAME: "fedora-30-amd64"
+#   <<: *docker_build
+
+# docker_fedora-31-amd64:
+#   variables:
+#     IMG_NAME: "fedora-31-amd64"
+#   <<: *docker_build
+
+# docker_centos-7-amd64:
+#   variables:
+#     IMG_NAME: "centos-7-amd64"
+#   <<: *docker_build
+
+docker_centos-8-amd64:
   variables:
-    IMG_NAME: "fedora-30-amd64"
+    IMG_NAME: "centos-8-amd64"
   <<: *docker_build
 
-docker_fedora-31-amd64:
-  variables:
-    IMG_NAME: "fedora-31-amd64"
-  <<: *docker_build
-
-docker_centos-7-amd64:
-  variables:
-    IMG_NAME: "centos-7-amd64"
-  <<: *docker_build
-
-docker_opensuse-42_3-amd64:
-  variables:
-    IMG_NAME: "opensuse-42.3-amd64"
-  <<: *docker_build
+# docker_opensuse-42_3-amd64:
+#   variables:
+#     IMG_NAME: "opensuse-42.3-amd64"
+#   <<: *docker_build
 
 # docker_ubuntu-14_04-amd64:
 #   variables:
@@ -136,15 +141,15 @@ docker_opensuse-42_3-amd64:
 #     IMG_NAME: "ubuntu-16.04-amd64"
 #   <<: *docker_build
 
-docker_ubuntu-18_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-18.04-amd64"
-  <<: *docker_build
+# docker_ubuntu-18_04-amd64:
+#   variables:
+#     IMG_NAME: "ubuntu-18.04-amd64"
+#   <<: *docker_build
 
-docker_ubuntu-19_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-19.04-amd64"
-  <<: *docker_build
+# docker_ubuntu-19_04-amd64:
+#   variables:
+#     IMG_NAME: "ubuntu-19.04-amd64"
+#   <<: *docker_build
 
 .build: &build-base
   stage: build
@@ -189,13 +194,13 @@ docker_ubuntu-19_04-amd64:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:debian-9-i386
 
-build-debian-10-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-10-amd64
+# build-debian-10-amd64:
+#   <<: *build-linux
+#   image: registry.labs.nic.cz/labs/bird:debian-10-amd64
 
-build-debian-10-i386:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-10-i386
+# build-debian-10-i386:
+#   <<: *build-linux
+#   image: registry.labs.nic.cz/labs/bird:debian-10-i386
 
 # build-debian-testing-amd64:
 #   <<: *build-linux
@@ -225,19 +230,23 @@ build-debian-10-i386:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:fedora-29-amd64
 
-build-fedora-30-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-30-amd64
+# build-fedora-30-amd64:
+#   <<: *build-linux
+#   image: registry.labs.nic.cz/labs/bird:fedora-30-amd64
 
-build-fedora-31-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
+# build-fedora-31-amd64:
+#   <<: *build-linux
+#   image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
 
 # build-centos-7-amd64:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:centos-7-amd64
 
-# build-opensuse-42_3-amd64:
+build-centos-8-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:centos-8-amd64
+
+  # build-opensuse-42_3-amd64:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:opensuse-42.3-amd64
 
@@ -249,25 +258,25 @@ build-fedora-31-amd64:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:ubuntu-16.04-amd64
 
-build-ubuntu-18_04-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
+# build-ubuntu-18_04-amd64:
+#   <<: *build-linux
+#   image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
 
-build-ubuntu-19_04-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:ubuntu-19.04-amd64
+# build-ubuntu-19_04-amd64:
+#   <<: *build-linux
+#   image: registry.labs.nic.cz/labs/bird:ubuntu-19.04-amd64
 
-build-freebsd-11-amd64:
-  <<: *build-base
-  tags:
-    - freebsd
-    - amd64
+# build-freebsd-11-amd64:
+#   <<: *build-base
+#   tags:
+#     - freebsd
+#     - amd64
 
-build-freebsd-11-i386:
-  <<: *build-base
-  tags:
-    - freebsd
-    - i386
+# build-freebsd-11-i386:
+#   <<: *build-base
+#   tags:
+#     - freebsd
+#     - i386
 
 build-birdlab:
   stage: build
