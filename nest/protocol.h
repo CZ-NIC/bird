@@ -538,7 +538,7 @@ struct channel {
   btime last_tx_filter_change;
 
   /* Circular buffer for pending imports */
-  CIRCULAR_BUFFER_N(struct rte_update_data, CHANNEL_QUEUE_SIZE, 3) pending_imports;
+  CIRCULAR_QUEUE_N(struct rte_update_data, CHANNEL_QUEUE_SIZE, 3) pending_imports;
 
   struct rtable *in_table;		/* Internal table for received routes */
   struct event *reload_event;		/* Event responsible for reloading from in_table */
