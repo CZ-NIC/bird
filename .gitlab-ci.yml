@@ -96,15 +96,15 @@ stages:
     # IMG_NAME: "fedora-27-amd64"
   # <<: *docker_build
 # 
-# docker_fedora-28-amd64:
-  # variables:
-    # IMG_NAME: "fedora-28-amd64"
-  # <<: *docker_build
-# 
-# docker_fedora-29-amd64:
-  # variables:
-    # IMG_NAME: "fedora-29-amd64"
-  # <<: *docker_build
+docker_fedora-28-amd64:
+  variables:
+    IMG_NAME: "fedora-28-amd64"
+  <<: *docker_build
+
+docker_fedora-29-amd64:
+  variables:
+    IMG_NAME: "fedora-29-amd64"
+  <<: *docker_build
 
 # docker_fedora-30-amd64:
 #   variables:
@@ -141,15 +141,15 @@ stages:
 #     IMG_NAME: "ubuntu-16.04-amd64"
 #   <<: *docker_build
 
-docker_ubuntu-18_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-18.04-amd64"
-  <<: *docker_build
+# docker_ubuntu-18_04-amd64:
+#   variables:
+#     IMG_NAME: "ubuntu-18.04-amd64"
+#   <<: *docker_build
 
-docker_ubuntu-19_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-19.04-amd64"
-  <<: *docker_build
+# docker_ubuntu-19_04-amd64:
+#   variables:
+#     IMG_NAME: "ubuntu-19.04-amd64"
+#   <<: *docker_build
 
 .build: &build-base
   stage: build
@@ -222,13 +222,13 @@ docker_ubuntu-19_04-amd64:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:fedora-27-amd64
 
-# build-fedora-28-amd64:
-#   <<: *build-linux
-#   image: registry.labs.nic.cz/labs/bird:fedora-28-amd64
+build-fedora-28-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:fedora-28-amd64
 
-# build-fedora-29-amd64:
-#   <<: *build-linux
-#   image: registry.labs.nic.cz/labs/bird:fedora-29-amd64
+build-fedora-29-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:fedora-29-amd64
 
 # build-fedora-30-amd64:
 #   <<: *build-linux
@@ -258,13 +258,13 @@ docker_ubuntu-19_04-amd64:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:ubuntu-16.04-amd64
 
-build-ubuntu-18_04-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
+# build-ubuntu-18_04-amd64:
+#   <<: *build-linux
+#   image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
 
-build-ubuntu-19_04-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:ubuntu-19.04-amd64
+# build-ubuntu-19_04-amd64:
+#   <<: *build-linux
+#   image: registry.labs.nic.cz/labs/bird:ubuntu-19.04-amd64
 
 # build-freebsd-11-amd64:
 #   <<: *build-base
