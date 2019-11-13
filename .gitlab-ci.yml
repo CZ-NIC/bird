@@ -106,10 +106,10 @@ stages:
     # IMG_NAME: "fedora-29-amd64"
   # <<: *docker_build
 
-docker_fedora-30-amd64:
-  variables:
-    IMG_NAME: "fedora-30-amd64"
-  <<: *docker_build
+# docker_fedora-30-amd64:
+#   variables:
+#     IMG_NAME: "fedora-30-amd64"
+#   <<: *docker_build
 
 # docker_fedora-31-amd64:
 #   variables:
@@ -141,10 +141,10 @@ docker_fedora-30-amd64:
 #     IMG_NAME: "ubuntu-16.04-amd64"
 #   <<: *docker_build
 
-# docker_ubuntu-18_04-amd64:
-#   variables:
-#     IMG_NAME: "ubuntu-18.04-amd64"
-#   <<: *docker_build
+docker_ubuntu-18_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-18.04-amd64"
+  <<: *docker_build
 
 # docker_ubuntu-19_04-amd64:
 #   variables:
@@ -157,8 +157,8 @@ docker_fedora-30-amd64:
   - autoreconf
   - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
   # Detect which make is available
-  - MAKE=gmake
-  #- which gmake 2>/dev/null >/dev/null && MAKE=gmake
+  - MAKE=make
+  - which gmake 2>/dev/null >/dev/null && MAKE=gmake
   - $MAKE
   # Run tests if they are available
   - $MAKE check
@@ -230,9 +230,9 @@ docker_fedora-30-amd64:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:fedora-29-amd64
 
-build-fedora-30-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-30-amd64
+# build-fedora-30-amd64:
+#   <<: *build-linux
+#   image: registry.labs.nic.cz/labs/bird:fedora-30-amd64
 
 # build-fedora-31-amd64:
 #   <<: *build-linux
@@ -258,9 +258,9 @@ build-fedora-30-amd64:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:ubuntu-16.04-amd64
 
-# build-ubuntu-18_04-amd64:
-#   <<: *build-linux
-#   image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
+build-ubuntu-18_04-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
 
 # build-ubuntu-19_04-amd64:
 #   <<: *build-linux
