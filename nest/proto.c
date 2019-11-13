@@ -168,7 +168,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->last_tx_filter_change = current_time();
   c->reloadable = 1;
 
-  CQ_INIT(&c->pending_imports, proto_pool);
+  CQ_INIT(&c->import_queue, proto_pool);
 
   CALL(c->channel->init, c, cf);
 
@@ -186,7 +186,7 @@ proto_remove_channel(struct proto *p, struct channel *c)
 
   PD(p, "Channel %s removed", c->name);
 
-  CQ_CLEANUP(&c->pending_imports);
+  CQ_CLEANUP(&c->import_queue);
 
   rem_node(&c->n);
   mb_free(c);

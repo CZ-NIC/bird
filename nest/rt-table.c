@@ -45,10 +45,13 @@
 #include "lib/alloca.h"
 #include "lib/worker.h"
 #include "lib/atomic.h"
+#include "lib/cq.h"
 
 #ifdef CONFIG_BGP
 #include "proto/bgp/bgp.h"
 #endif
+
+
 
 pool *rt_table_pool;
 

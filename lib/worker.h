@@ -10,9 +10,8 @@
 #define _BIRD_WORKER_H_
 
 #include "lib/birdlib.h"
-#include "lib/atomic.h"
-#include "lib/locked.h"
 #include "lib/resource.h"
+#include "lib/atomic.h"
 
 struct config;
 

@@ -12,6 +12,7 @@
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
+#include "lib/cq.h"
 #include "nest/route.h"
 #include "conf/conf.h"
 
@@ -538,7 +539,9 @@ struct channel {
   btime last_tx_filter_change;
 
   /* Circular buffer for pending imports */
-  CIRCULAR_QUEUE_N(struct rte_update_data, CHANNEL_QUEUE_SIZE, 3) pending_imports;
+  CQ_N(struct rte_update_data, CHANNEL_QUEUE_SIZE, 3) import_queue;
+
+  
 
   struct rtable *in_table;		/* Internal table for received routes */
   struct event *reload_event;		/* Event responsible for reloading from in_table */
@@ -549,6 +552,11 @@ struct channel {
   struct rtable *out_table;		/* Internal table for exported routes */
 };
 
+enum channel_import_queue_ptr {
+  CIQ_ORDER = 0,
+  CIQ_FILTER = 1,
+  CIQ_TABLE = 2,
+};
 
 /*
  * Channel states
