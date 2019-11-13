@@ -157,8 +157,8 @@ docker_fedora-30-amd64:
   - autoreconf
   - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
   # Detect which make is available
-  - MAKE=make
-  - which gmake 2>/dev/null >/dev/null && MAKE=gmake
+  - MAKE=gmake
+  #- which gmake 2>/dev/null >/dev/null && MAKE=gmake
   - $MAKE
   # Run tests if they are available
   - $MAKE check
