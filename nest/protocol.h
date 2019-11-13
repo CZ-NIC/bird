@@ -541,8 +541,6 @@ struct channel {
   /* Circular buffer for pending imports */
   CQ_N(struct rte_update_data, CHANNEL_QUEUE_SIZE, 3) import_queue;
 
-  
-
   struct rtable *in_table;		/* Internal table for received routes */
   struct event *reload_event;		/* Event responsible for reloading from in_table */
   struct fib_iterator reload_fit;	/* FIB iterator in in_table used during reloading */

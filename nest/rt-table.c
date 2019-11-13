@@ -1404,39 +1404,20 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
 static void rte_finish_update_hook(struct task *task);
 
 static void
-rte_finish_update_schedule(struct rte_update_data *rud, _Bool tail)
+rte_finish_update_schedule(struct rte_update_data *rud, u64 id)
 {
-  struct task *task = &(rud->task);
-
+  struct channel *c = &(rud->channel);
   debug("rte_finish_update_schedule(%p, %d)\n", rud, tail);
 
-  /* Check whether it is to be pushed now.
-   * There are two cases.
-   * 1. the task was first in list (and therefore is also now),
-   *	no rte_finish_update_hook is running on this queue and we shall schedule it.
-   * 2. the task was not first in list so it will happen that
-   *	rte_finish_update_hook will pick it up in future.
-   */
-  LOCKED_LIST_LOCK(&(rud->channel->pending_imports), l)
-  {
-    /* Are we first? Then push it. */
-    if (THEAD(l) == rud)
-      rud_state_change(rud, RUS_UPDATING, RUS_RECALCULATING);
-    else
-    {
-      /* Otherwise let it be. */
-      rud_state_change(rud, RUS_UPDATING, RUS_PENDING_RECALCULATE);
-      task = NULL;
-    }
-  }
-  LOCKED_LIST_UNLOCK(&(rud->channel->pending_imports));
+  uint released = 0;
+  CQ_RELEASE(&(c->import_queue), CIQ_FILTER, id, released);
+  if (!released)
+    return;
+ 
+  /* Prepare the table-insert task if needed */
+  task_init(&(c->import_finish_task), TF_EXCLUSIVE | (tail ? TF_TAIL : 0), rud->channel->table->domain, rte_finish_update_hook);
 
-  if (task)
-  {
-    /* Prepare the table-insert task */
-    task_init(task, TF_EXCLUSIVE | (tail ? TF_TAIL : 0), rud->channel->table->domain, rte_finish_update_hook);
-    task_push(task);
-  }
+  task_push(&(c->import_finish_task));
 }
 
 static void
@@ -1475,7 +1456,7 @@ rte_do_update(struct task *task)
   rte_store_tmp_attrs(new, rud->pool);
 #undef new
 
-  return rte_finish_update_schedule(rud, 1);
+  return rte_finish_update_schedule(rud, ___id);
 }
 
 /**
@@ -1550,7 +1531,7 @@ rte_dispatch_update(struct rte_update_data *rud)
       rud->result = RUR_WITHDRAW;
 
     rud_state_change(rud, RUS_PENDING_UPDATE, RUS_UPDATING);
-    rte_finish_update_schedule(rud, 0);
+    rte_finish_update_schedule(rud, ___id);
   }
   else
   {
