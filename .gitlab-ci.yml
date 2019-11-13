@@ -96,15 +96,15 @@ stages:
     # IMG_NAME: "fedora-27-amd64"
   # <<: *docker_build
 # 
-docker_fedora-28-amd64:
-  variables:
-    IMG_NAME: "fedora-28-amd64"
-  <<: *docker_build
+# docker_fedora-28-amd64:
+#   variables:
+#     IMG_NAME: "fedora-28-amd64"
+#   <<: *docker_build
 
-docker_fedora-29-amd64:
-  variables:
-    IMG_NAME: "fedora-29-amd64"
-  <<: *docker_build
+# docker_fedora-29-amd64:
+#   variables:
+#     IMG_NAME: "fedora-29-amd64"
+#   <<: *docker_build
 
 # docker_fedora-30-amd64:
 #   variables:
@@ -116,15 +116,15 @@ docker_fedora-29-amd64:
 #     IMG_NAME: "fedora-31-amd64"
 #   <<: *docker_build
 
-# docker_centos-7-amd64:
-#   variables:
-#     IMG_NAME: "centos-7-amd64"
-#   <<: *docker_build
+docker_centos-7-amd64:
+  variables:
+    IMG_NAME: "centos-7-amd64"
+  <<: *docker_build
 
-# docker_centos-8-amd64:
-#   variables:
-#     IMG_NAME: "centos-8-amd64"
-#   <<: *docker_build
+docker_centos-8-amd64:
+  variables:
+    IMG_NAME: "centos-8-amd64"
+  <<: *docker_build
 
 # docker_opensuse-42_3-amd64:
 #   variables:
@@ -222,13 +222,13 @@ docker_fedora-29-amd64:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:fedora-27-amd64
 
-build-fedora-28-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-28-amd64
+# build-fedora-28-amd64:
+#   <<: *build-linux
+#   image: registry.labs.nic.cz/labs/bird:fedora-28-amd64
 
-build-fedora-29-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-29-amd64
+# build-fedora-29-amd64:
+#   <<: *build-linux
+#   image: registry.labs.nic.cz/labs/bird:fedora-29-amd64
 
 # build-fedora-30-amd64:
 #   <<: *build-linux
@@ -238,13 +238,13 @@ build-fedora-29-amd64:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
 
-# build-centos-7-amd64:
-#   <<: *build-linux
-#   image: registry.labs.nic.cz/labs/bird:centos-7-amd64
+build-centos-7-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:centos-7-amd64
 
-# build-centos-8-amd64:
-#   <<: *build-linux
-#   image: registry.labs.nic.cz/labs/bird:centos-8-amd64
+build-centos-8-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:centos-8-amd64
 
   # build-opensuse-42_3-amd64:
 #   <<: *build-linux
