@@ -284,7 +284,6 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RIC_DROP	-2		/* Silently dropped by protocol */
 
 struct rte_update_data {
-  struct task task;
   struct channel *channel;
   net_addr_union net;
   struct rte rte;
@@ -303,6 +302,12 @@ struct rte_update_data {
     RUR_FILTERED = 3,
     RUR_ACCEPTED = 4,
   } result;
+};
+
+struct rte_update_task {
+  struct task task;
+  struct channel *channel;
+  uint secondary:1;
 };
 
 extern list routing_tables;

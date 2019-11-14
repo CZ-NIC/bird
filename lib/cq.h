@@ -57,9 +57,18 @@
       break; \
     /* Release what is to be released */ \
     u64 unmask_ = (~mask_) ? : ~(((mask_ ^ (mask_ + 1)) >> 1) << (release_ % 64)); \
-
-
-  /* 
+    if (!atomic_compare_exchange_strong_explicit( \
+	  &(CQ_PTRN((buf_), (ptrn_))->mask[(release_ % CQ_BUF_SIZE((buf_))) / 64]), \
+	  &mask_, mask_ & unmask_, \
+	  memory_order_acquire, memory_order_acq_rel)) \
+      continue; \
+    if (!atomic_compare_exchange_strong_explicit( \
+	  &(CQ_PTRN((buf_), (ptrn_))->release), &release_, release_ + consec, \
+	  memory_order_acquire, memory_order_acq_rel)) \
+      bug("Invalid release value"); \
+    released_ += consec; \
+  } \
+} while (0)
 
 
 #endif
