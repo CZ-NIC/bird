@@ -81,40 +81,40 @@ stages:
 #     IMG_NAME: "debian-testing-i386"
 #   <<: *docker_build
 # 
-# docker_fedora-25-amd64:
-  # variables:
-    # IMG_NAME: "fedora-25-amd64"
-  # <<: *docker_build
-# 
-# docker_fedora-26-amd64:
-  # variables:
-    # IMG_NAME: "fedora-26-amd64"
-  # <<: *docker_build
-# 
-# docker_fedora-27-amd64:
-  # variables:
-    # IMG_NAME: "fedora-27-amd64"
-  # <<: *docker_build
-# 
-# docker_fedora-28-amd64:
-#   variables:
-#     IMG_NAME: "fedora-28-amd64"
-#   <<: *docker_build
+docker_fedora-25-amd64:
+  variables:
+    IMG_NAME: "fedora-25-amd64"
+  <<: *docker_build
 
-# docker_fedora-29-amd64:
-#   variables:
-#     IMG_NAME: "fedora-29-amd64"
-#   <<: *docker_build
+docker_fedora-26-amd64:
+  variables:
+    IMG_NAME: "fedora-26-amd64"
+  <<: *docker_build
+
+docker_fedora-27-amd64:
+  variables:
+    IMG_NAME: "fedora-27-amd64"
+  <<: *docker_build
+
+docker_fedora-28-amd64:
+  variables:
+    IMG_NAME: "fedora-28-amd64"
+  <<: *docker_build
+
+docker_fedora-29-amd64:
+  variables:
+    IMG_NAME: "fedora-29-amd64"
+  <<: *docker_build
 
 docker_fedora-30-amd64:
   variables:
     IMG_NAME: "fedora-30-amd64"
   <<: *docker_build
 
-# docker_fedora-31-amd64:
-#   variables:
-#     IMG_NAME: "fedora-31-amd64"
-#   <<: *docker_build
+docker_fedora-31-amd64:
+  variables:
+    IMG_NAME: "fedora-31-amd64"
+  <<: *docker_build
 
 # docker_centos-7-amd64:
 #   variables:
@@ -211,33 +211,33 @@ docker_fedora-30-amd64:
 #   <<: *build-linux
 #   image: registry.labs.nic.cz/labs/bird:debian-testing-i386
 
-# build-fedora-25-amd64:
-#   <<: *build-linux
-#   image: registry.labs.nic.cz/labs/bird:fedora-25-amd64
+build-fedora-25-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:fedora-25-amd64
 
-# build-fedora-26-amd64:
-#   <<: *build-linux
-#   image: registry.labs.nic.cz/labs/bird:fedora-26-amd64
+build-fedora-26-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:fedora-26-amd64
 
-# build-fedora-27-amd64:
-#   <<: *build-linux
-#   image: registry.labs.nic.cz/labs/bird:fedora-27-amd64
+build-fedora-27-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:fedora-27-amd64
 
-# build-fedora-28-amd64:
-#   <<: *build-linux
-#   image: registry.labs.nic.cz/labs/bird:fedora-28-amd64
+build-fedora-28-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:fedora-28-amd64
 
-# build-fedora-29-amd64:
-#   <<: *build-linux
-#   image: registry.labs.nic.cz/labs/bird:fedora-29-amd64
+build-fedora-29-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:fedora-29-amd64
 
 build-fedora-30-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:fedora-30-amd64
 
-# build-fedora-31-amd64:
-#   <<: *build-linux
-#   image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
+build-fedora-31-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
 
 # build-centos-7-amd64:
 #   <<: *build-linux
