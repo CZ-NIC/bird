@@ -112,7 +112,6 @@ get_value_length(const byte *op)
 }
 
 
-
 /*
  *	Flowspec iterators
  */
@@ -243,6 +242,45 @@ flow6_next_part(const byte *pos, const byte *end)
 {
   return flow_next_part(pos, end, 1);
 }
+
+
+/*
+ *	Flowspec accessors
+ */
+
+
+static inline ip4_addr
+flow_read_ip4(const byte *px, uint pxlen)
+{
+  ip4_addr ip = IP4_NONE;
+  memcpy(&ip, px, BYTES(pxlen));
+  return ip4_ntoh(ip);
+}
+
+ip4_addr
+flow_read_ip4_part(const byte *part)
+{
+  return flow_read_ip4(part + 2, part[1]);
+}
+
+static inline ip6_addr
+flow_read_ip6(const byte *px, uint pxlen, uint pxoffset)
+{
+  uint floor_offset = BYTES(pxoffset - (pxoffset % 8));
+  uint ceil_len = BYTES(pxlen);
+  ip6_addr ip = IP6_NONE;
+
+  memcpy(((byte *) &ip) + floor_offset, px, ceil_len - floor_offset);
+
+  return ip6_ntoh(ip);
+}
+
+ip6_addr
+flow_read_ip6_part(const byte *part)
+{
+  return flow_read_ip6(part + 3, part[1], part[2]);
+}
+
 
 
 /*
@@ -779,26 +817,6 @@ flow_builder_set_type(struct flow_builder *fb, enum flow_type type)
   fb->this_type = type;
 }
 
-static ip4_addr
-flow_read_ip4(const byte *px, uint pxlen)
-{
-  ip4_addr ip = IP4_NONE;
-  memcpy(&ip, px, BYTES(pxlen));
-  return ip4_ntoh(ip);
-}
-
-static ip6_addr
-flow_read_ip6(const byte *px, uint pxlen, uint pxoffset)
-{
-  uint floor_offset = BYTES(pxoffset - (pxoffset % 8));
-  uint ceil_len = BYTES(pxlen);
-  ip6_addr ip = IP6_NONE;
-
-  memcpy(((byte *) &ip) + floor_offset, px, ceil_len - floor_offset);
-
-  return ip6_ntoh(ip);
-}
-
 static void
 builder_write_parts(struct flow_builder *fb, byte *buf)
 {
@@ -831,9 +849,9 @@ flow_builder4_finalize(struct flow_builder *fb, linpool *lpool)
 
   if (fb->parts[FLOW_TYPE_DST_PREFIX].length)
   {
-    byte *p = fb->data.data + fb->parts[FLOW_TYPE_DST_PREFIX].offset + 1;
-    pxlen = *p++;
-    prefix = flow_read_ip4(p, pxlen);
+    byte *part = fb->data.data + fb->parts[FLOW_TYPE_DST_PREFIX].offset;
+    prefix = flow_read_ip4_part(part);
+    pxlen = part[1];
   }
   *f = NET_ADDR_FLOW4(prefix, pxlen, data_len);
 
@@ -861,10 +879,9 @@ flow_builder6_finalize(struct flow_builder *fb, linpool *lpool)
 
   if (fb->parts[FLOW_TYPE_DST_PREFIX].length)
   {
-    byte *p = fb->data.data + fb->parts[FLOW_TYPE_DST_PREFIX].offset + 1;
-    pxlen = *p++;
-    uint pxoffset = *p++;
-    prefix = flow_read_ip6(p, pxlen, pxoffset);
+    byte *part = fb->data.data + fb->parts[FLOW_TYPE_DST_PREFIX].offset;
+    prefix = flow_read_ip6_part(part);
+    pxlen = part[1];
   }
   *n = NET_ADDR_FLOW6(prefix, pxlen, data_len);
 
@@ -947,18 +964,18 @@ fragment_val_str(u8 val)
 static void
 net_format_flow_ip(buffer *b, const byte *part, int ipv6)
 {
-  uint pxlen = *(part+1);
+  uint pxlen = part[1];
   if (ipv6)
   {
-    uint pxoffset = *(part+2);
+    uint pxoffset = part[2];
     if (pxoffset)
-      buffer_print(b, "%I6/%u offset %u; ", flow_read_ip6(part+3,pxlen,pxoffset), pxlen, pxoffset);
+      buffer_print(b, "%I6/%u offset %u; ", flow_read_ip6_part(part), pxlen, pxoffset);
     else
-      buffer_print(b, "%I6/%u; ", flow_read_ip6(part+3,pxlen,0), pxlen);
+      buffer_print(b, "%I6/%u; ", flow_read_ip6_part(part), pxlen);
   }
   else
   {
-    buffer_print(b, "%I4/%u; ", flow_read_ip4(part+2,pxlen), pxlen);
+    buffer_print(b, "%I4/%u; ", flow_read_ip4_part(part), pxlen);
   }
 }
 

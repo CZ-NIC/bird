@@ -137,7 +137,7 @@ static int
 t_iterators6(void)
 {
   net_addr_flow6 *f;
-  NET_ADDR_FLOW6_(f, ip6_build(0,0,0x12345678,0x9a000000), 64, ((byte[]) {
+  NET_ADDR_FLOW6_(f, ip6_build(0,0,0x12345678,0x9a000000), 0x68, ((byte[]) {
     26, /* Length */
     FLOW_TYPE_DST_PREFIX, 0x68, 0x40, 0x12, 0x34, 0x56, 0x78, 0x9a,
     FLOW_TYPE_SRC_PREFIX, 0x08, 0x0, 0xc0,
@@ -162,6 +162,56 @@ t_iterators6(void)
   bt_assert(flow6_next_part(p3_next_header, end) == p4_port);
   bt_assert(flow6_next_part(p4_port, end) == p5_label);
   bt_assert(flow6_next_part(p5_label, end) == NULL);
+
+  return 1;
+}
+
+static int
+t_accessors4(void)
+{
+  net_addr_flow4 *f;
+  NET_ADDR_FLOW4_(f, ip4_build(5,6,7,0), 24, ((byte[]) {
+    25, /* Length */
+    FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
+    FLOW_TYPE_SRC_PREFIX, 32, 10, 11, 12, 13,
+    FLOW_TYPE_IP_PROTOCOL, 0x81, 0x06,
+    FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
+    FLOW_TYPE_TCP_FLAGS, 0x80, 0x55,
+  }));
+
+  const byte *p1_dst_px		= &f->data[1];
+  const ip4_addr p1_dst_addr	= ip4_build(5,6,7,0);
+
+  const byte *p2_src_px		= &f->data[6];
+  const ip4_addr p2_src_addr	= ip4_build(10,11,12,13);
+
+  bt_assert(ip4_equal(flow_read_ip4_part(p1_dst_px), p1_dst_addr));
+  bt_assert(ip4_equal(flow_read_ip4_part(p2_src_px), p2_src_addr));
+
+  return 1;
+}
+
+static int
+t_accessors6(void)
+{
+  net_addr_flow6 *f;
+  NET_ADDR_FLOW6_(f, ip6_build(0,0,0x12345678,0x9a000000), 0x68, ((byte[]) {
+    26, /* Length */
+    FLOW_TYPE_DST_PREFIX, 0x68, 0x40, 0x12, 0x34, 0x56, 0x78, 0x9a,
+    FLOW_TYPE_SRC_PREFIX, 0x08, 0x0, 0xc0,
+    FLOW_TYPE_NEXT_HEADER, 0x81, 0x06,
+    FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
+    FLOW_TYPE_LABEL, 0x80, 0x55,
+  }));
+
+  const byte *p1_dst_px		= &f->data[1];
+  const ip6_addr p1_dst_addr	= ip6_build(0,0,0x12345678,0x9a000000);
+
+  const byte *p2_src_px 	= &f->data[9];
+  const ip6_addr p2_src_addr	= ip6_build(0xc0000000, 0, 0, 0);
+
+  bt_assert(ip6_equal(flow_read_ip6_part(p1_dst_px), p1_dst_addr));
+  bt_assert(ip6_equal(flow_read_ip6_part(p2_src_px), p2_src_addr));
 
   return 1;
 }
@@ -628,6 +678,8 @@ main(int argc, char *argv[])
   bt_test_suite(t_first_part,   "Searching first part in net_addr_flow");
   bt_test_suite(t_iterators4,   "Testing iterators (IPv4)");
   bt_test_suite(t_iterators6,   "Testing iterators (IPv6)");
+  bt_test_suite(t_accessors4,   "Testing accessors (IPv4)");
+  bt_test_suite(t_accessors6,   "Testing accessors (IPv6)");
   bt_test_suite(t_validation4,  "Testing validation (IPv4)");
   bt_test_suite(t_validation6,  "Testing validation (IPv6)");
   bt_test_suite(t_builder4,     "Inserting components into existing Flow Specification (IPv4)");

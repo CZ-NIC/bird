@@ -86,6 +86,14 @@ const byte *flow6_next_part(const byte *pos, const byte *end);
 
 
 /*
+ *	Flowspec accessors
+ */
+
+ip4_addr flow_read_ip4_part(const byte *part);
+ip6_addr flow_read_ip6_part(const byte *part);
+
+
+/*
  * 	Flowspec Builder
  */
 
