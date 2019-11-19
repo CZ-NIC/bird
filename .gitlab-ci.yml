@@ -265,8 +265,7 @@ docker_fedora-31-amd64:
 #   image: registry.labs.nic.cz/labs/bird:fedora-30-amd64
 
 build-fedora-31-amd64:
-  <<: *preprocessing-fedora
-  <<: *build-linux
+  <<: [*preprocessing-fedora, *build-linux]
   image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
 
 # build-centos-7-amd64:
