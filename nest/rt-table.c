@@ -1409,14 +1409,13 @@ rte_finish_update_schedule(struct rte_update_data *rud, u64 id)
   struct channel *c = rud->channel;
   debug("rte_finish_update_schedule(%p)\n", rud);
 
-  uint released = 0;
-  CQ_RELEASE(&(c->import_queue), CIQ_FILTER, id, released);
-  if (!released)
-    return;
- 
-  /* Prepare the table-insert task if needed */
-  task_init(&(c->import_finish_task), TF_EXCLUSIVE | TF_IDEMPOTENT, rud->channel->table->domain, rte_finish_update_hook);
-  task_push(&(c->import_finish_task));
+  CQ_RELEASE(&(c->import_queue), CIQ_FILTER, id)
+  {
+    /* Prepare the table-insert task if needed */
+    task_init(&(c->import_finish_task), TF_EXCLUSIVE | TF_IDEMPOTENT, rud->channel->table->domain, rte_finish_update_hook);
+    task_push(&(c->import_finish_task));
+  }
+  CQ_RELEASE_DONE();
 }
 
 static void
@@ -1425,11 +1424,12 @@ rte_do_update(struct task *task)
   struct rte_update_task *rut = SKIP_BACK(struct rte_update_task, task, task);
   struct channel *c = rut->channel;
 
-  u64 id = CQ_ACQUIRE_TRY(&(c->import_queue));
+  u64 id = CQ_ACQUIRE_TRY(&(c->import_queue), CIQ_FILTER);
 
   if (!~id)
     return;
 
+  struct rte_update_data *rud = CQ_ITEM(&(c->import_queue), id);
 
   rud_state_change(rud, RUS_PENDING_UPDATE, RUS_UPDATING);
 
