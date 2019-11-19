@@ -273,7 +273,7 @@ build-centos-8-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:centos-8-amd64
 
-  build-opensuse-42_3-amd64:
+build-opensuse-42_3-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:opensuse-42.3-amd64
 
