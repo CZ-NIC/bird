@@ -9,7 +9,7 @@ variables:
 stages:
   - image
   - build
-  #- test
+  - test
 
 .docker: &docker_build
   stage: image
