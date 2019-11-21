@@ -1,6 +1,6 @@
 FROM i386/debian:wheezy-slim
 ENV DEBIAN_FRONTEND noninteractive
-RUN sed -i 's/deb.debian.org/archive.debian.org/' /etc/apt/sources.list
+RUN echo 'http://archive.debian.org/debian/dists/wheezy/' > /etc/apt/sources.list
 RUN apt-get -y update
 RUN apt-get -y upgrade
 RUN apt-get -y install \
