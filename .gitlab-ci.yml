@@ -174,15 +174,6 @@ docker_ubuntu-19_04-amd64:
   # Run tests if they are available
   - $MAKE check
 
-.build: &preprocessing-fedora
-  stage: build
-  script:
-    - dnf -y install make
-  tags:
-    - docker
-    - linux
-    - amd64
-
 .build-linux: &build-linux
   <<: *build-base
   tags:
@@ -231,32 +222,31 @@ build-debian-testing-i386:
   image: registry.labs.nic.cz/labs/bird:debian-testing-i386
 
 build-fedora-25-amd64:
-  <<: [*preprocessing-fedora, *build-linux]
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:fedora-25-amd64
 
 build-fedora-26-amd64:
-  <<: [*preprocessing-fedora, *build-linux]
+  <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:fedora-26-amd64
 
 build-fedora-27-amd64:
-  <<: [*preprocessing-fedora, *build-linux]
+  <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:fedora-27-amd64
 
 build-fedora-28-amd64:
-  <<: [*preprocessing-fedora, *build-linux]
+  <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:fedora-28-amd64
 
 build-fedora-29-amd64:
-  <<: [*preprocessing-fedora, *build-linux]
+  <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:fedora-29-amd64
 
 build-fedora-30-amd64:
-  <<: [*preprocessing-fedora, *build-linux]
+  <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:fedora-30-amd64
 
 build-fedora-31-amd64:
-  <<: [*preprocessing-fedora, *build-linux]
+  <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
 
 build-centos-7-amd64:
