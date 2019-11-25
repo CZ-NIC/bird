@@ -146,6 +146,16 @@ docker_ubuntu-19_04-amd64:
     IMG_NAME: "ubuntu-19.04-amd64"
   <<: *docker_build
 
+docker_opensuse-15.0-amd64:
+  variables:
+    IMG_NAME: "opensuse-15.0-amd64"
+  <<: *docker_build
+
+docker_opensuse-15.1-amd64:
+  variables:
+    IMG_NAME: "opensuse-15.1-amd64"
+  <<: *docker_build
+
 # TODO We want to copy these BSDs to our own virtual machines, to make sure
 # someone doesn't update them by accident.
 .freebsd-11-i386: &freebsd-11-i386_env
@@ -272,6 +282,20 @@ build-ubuntu-18_04-amd64:
 build-ubuntu-19_04-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:ubuntu-19.04-amd64
+
+.opensuse-15.0-amd64: &opensuse-15.0-amd64_env
+  image: registry.labs.nic.cz/labs/bird:opensuse-15.0-amd64
+  tags:
+  - docker
+  - linux
+  - amd64
+
+.opensuse-15.1-amd64: &opensuse-15.1-amd64_env
+  image: registry.labs.nic.cz/labs/bird:opensuse-15.1-amd64
+  tags:
+  - docker
+  - linux
+  - amd64
 
 build-freebsd-11-amd64:
   <<: *build-base
