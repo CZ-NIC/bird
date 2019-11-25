@@ -283,19 +283,13 @@ build-ubuntu-19_04-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:ubuntu-19.04-amd64
 
-.opensuse-15.0-amd64: &opensuse-15.0-amd64_env
-  image: registry.labs.nic.cz/labs/bird:opensuse-15.0-amd64
-  tags:
-  - docker
-  - linux
-  - amd64
+build-opensuse-15.0-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:opensuse-15.1-amd64_env
 
-.opensuse-15.1-amd64: &opensuse-15.1-amd64_env
-  image: registry.labs.nic.cz/labs/bird:opensuse-15.1-amd64
-  tags:
-  - docker
-  - linux
-  - amd64
+build-opensuse-15.1-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:opensuse-15.1-amd64_env
 
 build-freebsd-11-amd64:
   <<: *build-base
