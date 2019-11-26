@@ -1,4 +1,4 @@
-FROM opensuse:42.3
+FROM opensuse/leap:15.1
 RUN zypper -n up
 RUN zypper -n install \
 	autoconf \
