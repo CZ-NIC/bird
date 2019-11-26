@@ -143,6 +143,7 @@ cli_printf(cli *c, int code, char *msg, ...)
     {
       size = bsprintf(buf, "%04d ", cd);
       errcode = 8000;
+      cd = 0;	/* Final message - no more continuation lines */
     }
 
   c->last_reply = cd;
