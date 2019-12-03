@@ -138,6 +138,26 @@ init_list(list *l)
 }
 
 /**
+ * add_head_list - concatenate two lists
+ * @to: destination list
+ * @l: source list
+ *
+ * This function prepends all elements of the list @l to
+ * the list @to in constant time.
+ */
+LIST_INLINE void
+add_head_list(list *to, list *l)
+{
+  /* Join the lists */
+  to->head->prev = l->tail;
+  l->tail->next = to->head;
+
+  /* Fix the header */
+  to->head = l->head;
+  to->head->prev = &to->head_node;
+}
+
+/**
  * add_tail_list - concatenate two lists
  * @to: destination list
  * @l: source list
@@ -168,4 +188,20 @@ list_length(list *l)
     len++;
 
   return len;
+}
+
+/* Move all nodes from one list to another */
+LIST_INLINE void
+move_list(list *dest, list *src)
+{
+  dest->head = src->head;
+  dest->null = NULL;
+  dest->tail = src->tail;
+
+  dest->head->prev = &dest->head_node;
+  dest->tail->next = &dest->tail_node;
+
+  src->head = &src->tail_node;
+  src->null = NULL;
+  src->tail = &src->head_node;
 }
