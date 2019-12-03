@@ -619,6 +619,23 @@ include "tablename.conf";;
 	<cf/protocol/ times, and the <cf/iso long ms/ format for <cf/base/ and
 	<cf/log/ times.
 
+	<tag><label id="opt-worker">worker <m/number/ [ max <m/number/]</tag>
+	Set number of workers to run BIRD. The first number states how many concurrent
+	threads are allowed to run, plus one if you run BFD (it has its own thread).
+	It's recommended to set this to at most the number of your CPU cores.
+	By default, this is 4.
+
+	The max number is a maximal number of threads allowed to exist (plus one for BFD).
+	Setting this to a too low value may lead to deadlocks in the route propagation task chain.
+	By default, this is 8; if this clause is omitted and the worker count
+	is more than 4, this is twice the worker count.
+
+	<tag><label id="opt-queue-size">queue size <m/number/</tag>
+	Set how many tasks can wait in the task queue for workers. Higher value means
+	more memory consumed with lesser thread switching overhead. Zero means no buffer
+	at all. By default, this is 64 and you probably don't want to change it unless
+	you are fine-tuning your route server performance.
+
 	<tag><label id="opt-table"><m/nettype/ table <m/name/ [sorted]</tag>
 	Create a new routing table. The default routing tables <cf/master4/ and
 	<cf/master6/ are created implicitly, other routing tables have to be

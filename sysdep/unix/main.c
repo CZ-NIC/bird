@@ -29,6 +29,7 @@
 #include "lib/event.h"
 #include "lib/timer.h"
 #include "lib/string.h"
+#include "lib/worker.h"
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
@@ -170,6 +171,10 @@ sysdep_preconfig(struct config *c)
   c->latency_limit = UNIX_DEFAULT_LATENCY_LIMIT;
   c->watchdog_warning = UNIX_DEFAULT_WATCHDOG_WARNING;
 
+  c->workers = 4;
+  c->max_workers = 8;
+  c->queue_size = 64;
+
 #ifdef PATH_IPROUTE_DIR
   read_iproute_table(PATH_IPROUTE_DIR "/rt_protos", "ipp_", 256);
   read_iproute_table(PATH_IPROUTE_DIR "/rt_realms", "ipr_", 256);
@@ -182,6 +187,7 @@ int
 sysdep_commit(struct config *new, struct config *old UNUSED)
 {
   log_switch(0, &new->logfiles, new->syslog_name);
+  worker_queue_update(new);
   return 0;
 }
 
@@ -580,6 +586,7 @@ async_shutdown(void)
 void
 sysdep_shutdown_done(void)
 {
+  worker_queue_destroy();
   unlink_pid_file();
   unlink(path_control_socket);
   log_msg(L_FATAL "Shutdown completed");
@@ -876,7 +883,9 @@ main(int argc, char **argv)
     open_pid_file();
 
   protos_build();
+#ifdef	HAVE_KERNEL
   proto_build(&proto_unix_kernel);
+#endif
   proto_build(&proto_unix_iface);
 
   struct config *conf = read_config();
@@ -900,6 +909,8 @@ main(int argc, char **argv)
     }
 
   main_thread_init();
+
+  worker_queue_init();
 
   write_pid_file();
 

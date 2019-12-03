@@ -89,6 +89,13 @@ static inline int bt_test_fn_noarg(const void *cp) { return ((int (*)(void)) cp)
       printf("%s: " format "\n", bt_filename, ##__VA_ARGS__);		\
   } while(0)
 
+#define bt_info(format, ...)                                           \
+  do                                                                   \
+  {                                                                    \
+    if (bt_verbose >= BT_VERBOSE_SUITE_CASE)                           \
+      printf(format, ##__VA_ARGS__);                                   \
+  } while (0)
+
 #define bt_debug(format, ...) 						\
   do 									\
   { 									\
