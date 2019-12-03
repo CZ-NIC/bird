@@ -19,14 +19,21 @@
 
 #define _Atomic
 
+#define ATOMIC_VAR_INIT(val) (val)
+
 #define atomic_load(ptr) __sync_val_compare_and_swap(ptr, 0, 0)
 #define atomic_load_explicit(ptr, mem) atomic_load(ptr)
 #define atomic_store(ptr, val) __sync_lock_test_and_set(ptr, val)
+#define atomic_store_explicit(ptr, val, mem) atomic_store(ptr, val)
 
 #define atomic_fetch_add(ptr, val) __sync_fetch_and_add((ptr), (val))
 #define atomic_fetch_add_explicit(ptr, val, memory) __sync_fetch_and_add((ptr), (val))
 #define atomic_fetch_sub(ptr, val) __sync_fetch_and_sub((ptr), (val))
 #define atomic_fetch_sub_explicit(ptr, val, memory) __sync_fetch_and_sub((ptr), (val))
+#define atomic_fetch_or(ptr, val) __sync_fetch_and_or((ptr), (val))
+#define atomic_fetch_or_explicit(ptr, val, memory) __sync_fetch_and_or((ptr), (val))
+#define atomic_fetch_and(ptr, val) __sync_fetch_and_and((ptr), (val))
+#define atomic_fetch_and_explicit(ptr, val, memory) __sync_fetch_and_and((ptr), (val))
 
 #define atomic_exchange(ptr, val) __sync_lock_test_and_set((ptr), (val))
 #define atomic_exchange_explicit(ptr, val, memory) atomic_exchange((ptr), (val))
