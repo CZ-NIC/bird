@@ -17,6 +17,8 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 
+#include "lib/worker.h"
+
 #include "sysdep/unix/unix.h"
 #include "sysdep/unix/krt.h"
 
@@ -71,6 +73,8 @@ bt_bird_init(void)
   protos_build();
   proto_build(&proto_unix_kernel);
   proto_build(&proto_unix_iface);
+
+  worker_queue_init();
 }
 
 void bt_bird_cleanup(void)
