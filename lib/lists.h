@@ -78,6 +78,8 @@ typedef union list {			/* In fact two overlayed nodes */
 void add_tail(list *, node *);
 void add_head(list *, node *);
 void rem_node(node *);
+void move_list(list *dest, list *src);
+void add_head_list(list *, list *);
 void add_tail_list(list *, list *);
 void init_list(list *);
 void insert_node(node *, node *);
@@ -107,11 +109,17 @@ uint list_length(list *);
 }
 
 #define TNODE(n) (n)->node
-#define THEAD(list) list.head
-#define TTAIL(list) list.tail
+#define THEAD(list) (list)->head
+#define TNEXT(n) (n)->_tln.next
+#define TPREV(n) (n)->_tln.prev
+#define TTAIL(list) (list)->tail
 #define TNODE_IN_LIST(n) (((n)->_tln.next) && ((n)->_tln.prev))
 
-#define WALK_TLIST(n_, list) for (n_ = (list).head; n_->_tln.next; n_ = n_->_tln.next)
+#define TLIST_NODE_TYPE(l) typeof(*((l)->head))
+
+#define TLIST_EMPTY(list) ((list)->head == ((list)->tail_node.node))
+
+#define WALK_TLIST(n_, list) for (n_ = THEAD(list); n_->_tln.next; n_ = n_->_tln.next)
 #define WALK_TLIST_DELSAFE(n_, list) for (typeof(n_) next_ = n_ = THEAD(list); next_ = n_->_tln.next; n_ = next_)
 
 #define INIT_TLIST(list) do { \
