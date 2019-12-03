@@ -2300,6 +2300,7 @@ again: ;
 
 done:
   BGP_TRACE_RL(&rl_snd_update, D_PACKETS, "Sending UPDATE");
+  p->stats.tx_updates++;
   lp_flush(s.pool);
 
   return res;
@@ -2335,6 +2336,7 @@ bgp_create_end_mark(struct bgp_channel *c, byte *buf)
   struct bgp_proto *p = (void *) c->c.proto;
 
   BGP_TRACE(D_PACKETS, "Sending END-OF-RIB");
+  p->stats.tx_updates++;
 
   return (c->afi == BGP_AF_IPV4) ?
     bgp_create_ip_end_mark(c, buf):
@@ -2415,6 +2417,8 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
   ea_list *ea = NULL;
 
   BGP_TRACE_RL(&rl_rcv_update, D_PACKETS, "Got UPDATE");
+  p->last_rx_update = current_time();
+  p->stats.rx_updates++;
 
   /* Workaround for some BGP implementations that skip initial KEEPALIVE */
   if (conn->state == BS_OPENCONFIRM)
@@ -2701,6 +2705,9 @@ bgp_send(struct bgp_conn *conn, uint type, uint len)
 {
   sock *sk = conn->sk;
   byte *buf = sk->tbuf;
+
+  conn->bgp->stats.tx_messages++;
+  conn->bgp->stats.tx_bytes += len;
 
   memset(buf, 0xff, 16);		/* Marker */
   put_u16(buf+16, len);
@@ -3075,6 +3082,8 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
   byte type = pkt[18];
 
   DBG("BGP: Got packet %02x (%d bytes)\n", type, len);
+  conn->bgp->stats.rx_messages++;
+  conn->bgp->stats.rx_bytes += len;
 
   if (conn->bgp->p.mrtdump & MD_MESSAGES)
     bgp_dump_message(conn, pkt, len);

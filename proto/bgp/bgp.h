@@ -245,6 +245,14 @@ struct bgp_socket {
   u32 uc;				/* Use count */
 };
 
+struct bgp_stats {
+  uint rx_messages, tx_messages;
+  uint rx_updates, tx_updates;
+  u64  rx_bytes, tx_bytes;
+
+  uint fsm_established_transitions;
+};
+
 struct bgp_conn {
   struct bgp_proto *bgp;
   struct birdsock *sk;
@@ -303,6 +311,9 @@ struct bgp_proto {
   struct bgp_socket *sock;		/* Shared listening socket */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
+  struct bgp_stats stats;		/* BGP statistics */
+  btime last_established;		/* Last time of enter/leave of established state */
+  btime last_rx_update;			/* Last time of RX update */
   ip_addr link_addr;			/* Link-local version of local_ip */
   event *event;				/* Event for respawning and shutting process */
   timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */

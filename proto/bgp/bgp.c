@@ -545,6 +545,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   struct bgp_channel *c;
 
   BGP_TRACE(D_EVENTS, "BGP session established");
+  p->last_established = current_time();
+  p->stats.fsm_established_transitions++;
 
   /* For multi-hop BGP sessions */
   if (ipa_zero(p->local_ip))
@@ -685,6 +687,7 @@ static void
 bgp_conn_leave_established_state(struct bgp_proto *p)
 {
   BGP_TRACE(D_EVENTS, "BGP session closed");
+  p->last_established = current_time();
   p->conn = NULL;
 
   if (p->p.proto_state == PS_UP)
@@ -1519,6 +1522,12 @@ bgp_start(struct proto *P)
   p->postponed_sk = NULL;
   p->gr_ready = 0;
   p->gr_active_num = 0;
+
+  /* Reset some stats */
+  p->stats.rx_messages = p->stats.tx_messages = 0;
+  p->stats.rx_updates = p->stats.tx_updates = 0;
+  p->stats.rx_bytes = p->stats.tx_bytes = 0;
+  p->last_rx_update = 0;
 
   p->event = ev_new_init(p->p.pool, bgp_decision, p);
   p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
@@ -2447,6 +2456,16 @@ bgp_show_proto_info(struct proto *P)
     cli_msg(-1006, "    Keepalive timer:  %t/%u",
 	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
   }
+
+  struct bgp_stats *s = &p->stats;
+  cli_msg(-1006, "    FSM established transitions: %u",
+	  s->fsm_established_transitions);
+  cli_msg(-1006, "    Rcvd messages:    %u total / %u updates / %lu bytes",
+	  s->rx_messages, s->rx_updates, s->rx_bytes);
+  cli_msg(-1006, "    Sent messages:    %u total / %u updates / %lu bytes",
+	  s->tx_messages, s->tx_updates, s->tx_bytes);
+  cli_msg(-1006, "    Last rcvd update elapsed time: %t s",
+	  p->last_rx_update ? (current_time() - p->last_rx_update) : 0);
 
   if ((p->last_error_class != BE_NONE) &&
       (p->last_error_class != BE_MAN_DOWN))
