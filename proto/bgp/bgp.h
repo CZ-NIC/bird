@@ -267,6 +267,8 @@ struct bgp_proto {
   struct bgp_socket *sock;		/* Shared listening socket */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   struct bgp_stats stats;		/* Packet statistics */
+  uint fsm_established_transitions;	/* Number of established transitions */
+  btime last_established;		/* Last time of enter/leave of established state */
   ip_addr source_addr;			/* Local address used as an advertised next hop */
   ip_addr link_addr;			/* Link-local version of source_addr */
   event *event;				/* Event for respawning and shutting process */

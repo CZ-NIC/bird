@@ -504,6 +504,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   struct bgp_channel *c;
 
   BGP_TRACE(D_EVENTS, "BGP session established");
+  p->last_established = current_time();
+  p->fsm_established_transitions++;
 
   /* For multi-hop BGP sessions */
   if (ipa_zero(p->source_addr))
@@ -616,6 +618,7 @@ static void
 bgp_conn_leave_established_state(struct bgp_proto *p)
 {
   BGP_TRACE(D_EVENTS, "BGP session closed");
+  p->last_established = current_time();
   p->conn = NULL;
 
   if (p->p.proto_state == PS_UP)
@@ -2155,6 +2158,9 @@ bgp_show_proto_info(struct proto *P)
     cli_msg(-1006, "    Keepalive timer:  %t/%u",
 	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
   }
+
+  cli_msg(-1006, "    FSM established transitions: %u",
+	  p->fsm_established_transitions);
 
   struct bgp_stats *s = &p->stats;
   cli_msg(-1006, "    Statistics:");
