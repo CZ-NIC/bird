@@ -1295,7 +1295,9 @@ in the foot).
 	prefix. The literals are written as <cf><m/ipaddress//<m/pxlen/ from
 	<m/ipaddress//<m/pxlen/</cf>, where the first part is the destination
 	prefix and the second art is the source prefix. They support the same
-	operators as IP prefixes, but just for the destination part.
+	operators as IP prefixes, but just for the destination part. They also
+	support <cf/.src/ and <cf/.dst/ operators to get respective parts of the
+	address as separate <cf/NET_IP6/ values.
 
 	<cf/NET_VPN4/ and <cf/NET_VPN6/ prefixes hold an IP prefix with VPN
 	Route Distinguisher (<rfc id="4364">). They support the same special
@@ -1309,7 +1311,9 @@ in the foot).
 	and <cf/.asn/ which extracts the ASN.
 
 	<cf/NET_FLOW4/ and <cf/NET_FLOW6/ hold an IP prefix together with a
-	flowspec rule. Filters currently don't support flowspec parsing.
+	flowspec rule. Filters currently do not support much flowspec parsing,
+	only <cf/.src/ and <cf/.dst/ operators to get source and destination
+	parts of the flowspec as separate <cf/NET_IP4/ / <cf/NET_IP6/ values.
 
 	<cf/NET_MPLS/ holds a single MPLS label and its handling is currently
 	not implemented.
