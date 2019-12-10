@@ -924,7 +924,7 @@
     SYMBOL;
 
     FID_SAME_BODY()
-      if (!(f2->sym->flags & SYM_FLAG_SAME))
+      if (!(f1->sym->flags & SYM_FLAG_SAME))
 	return 0;
     FID_INTERPRET_BODY()
 
