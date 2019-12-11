@@ -397,6 +397,12 @@ channel_do_flush(struct channel *c)
     channel_graceful_restart_unlock(c);
 
   CALL(c->channel->shutdown, c);
+
+  /* This have to be done in here, as channel pool is freed before channel_do_down() */
+  bmap_free(&c->export_map);
+  c->in_table = NULL;
+  c->reload_event = NULL;
+  c->out_table = NULL;
 }
 
 static void
@@ -411,7 +417,7 @@ channel_do_down(struct channel *c)
   if ((c->stats.imp_routes + c->stats.filt_routes) != 0)
     log(L_ERR "%s: Channel %s is down but still has some routes", c->proto->name, c->name);
 
-  bmap_free(&c->export_map);
+  // bmap_free(&c->export_map);
   memset(&c->stats, 0, sizeof(struct proto_stats));
 
   c->in_table = NULL;

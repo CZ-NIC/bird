@@ -243,11 +243,36 @@ flow6_next_part(const byte *pos, const byte *end)
   return flow_next_part(pos, end, 1);
 }
 
+static const byte *
+flow_get_part(const byte *data, uint dlen, uint type, int ipv6)
+{
+  const byte *part;
+
+  for (part = flow_first_part(data);
+       part && (part[0] <= type);
+       part = flow_next_part(part, data+dlen, ipv6))
+    if (part[0] == type)
+      return part;
+
+  return NULL;
+}
+
+const byte *
+flow4_get_part(const net_addr_flow4 *f, uint type)
+{
+  return flow_get_part(f->data, f->length - sizeof(net_addr_flow4), type, 0);
+}
+
+const byte *
+flow6_get_part(const net_addr_flow6 *f, uint type)
+{
+  return flow_get_part(f->data, f->length - sizeof(net_addr_flow6), type, 1);
+}
+
 
 /*
  *	Flowspec accessors
  */
-
 
 static inline ip4_addr
 flow_read_ip4(const byte *px, uint pxlen)
@@ -280,7 +305,6 @@ flow_read_ip6_part(const byte *part)
 {
   return flow_read_ip6(part + 3, part[1], part[2]);
 }
-
 
 
 /*

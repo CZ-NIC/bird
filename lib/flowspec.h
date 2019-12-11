@@ -83,6 +83,8 @@ const byte *flow4_first_part(const net_addr_flow4 *f);
 const byte *flow6_first_part(const net_addr_flow6 *f);
 const byte *flow4_next_part(const byte *pos, const byte *end);
 const byte *flow6_next_part(const byte *pos, const byte *end);
+const byte *flow4_get_part(const net_addr_flow4 *f, uint type);
+const byte *flow6_get_part(const net_addr_flow6 *f, uint type);
 
 
 /*
@@ -91,6 +93,7 @@ const byte *flow6_next_part(const byte *pos, const byte *end);
 
 ip4_addr flow_read_ip4_part(const byte *part);
 ip6_addr flow_read_ip6_part(const byte *part);
+static inline int flow_read_pxlen(const byte *part) { return part[1]; }
 
 
 /*

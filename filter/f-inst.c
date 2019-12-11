@@ -771,16 +771,74 @@
     }
   }
 
-  INST(FI_SADR_SRC, 1, 1) { 	/* Get SADR src prefix */
+  INST(FI_NET_SRC, 1, 1) { 	/* Get src prefix */
     ARG(1, T_NET);
-    if (!net_is_sadr(v1.val.net))
-      runtime( "SADR expected" );
 
-    net_addr_ip6_sadr *net = (void *) v1.val.net;
+    net_addr_union *net = (void *) v1.val.net;
     net_addr *src = falloc(sizeof(net_addr_ip6));
-    net_fill_ip6(src, net->src_prefix, net->src_pxlen);
+    const byte *part;
+
+    switch(v1.val.net->type) {
+    case NET_FLOW4:
+      part = flow4_get_part(&net->flow4, FLOW_TYPE_SRC_PREFIX);
+      if (part)
+	net_fill_ip4(src, flow_read_ip4_part(part), flow_read_pxlen(part));
+      else
+	net_fill_ip4(src, IP4_NONE, 0);
+      break;
+
+    case NET_FLOW6:
+      part = flow6_get_part(&net->flow6, FLOW_TYPE_SRC_PREFIX);
+      if (part)
+	net_fill_ip6(src, flow_read_ip6_part(part), flow_read_pxlen(part));
+      else
+	net_fill_ip6(src, IP6_NONE, 0);
+      break;
+
+    case NET_IP6_SADR:
+      net_fill_ip6(src, net->ip6_sadr.src_prefix, net->ip6_sadr.src_pxlen);
+      break;
+
+    default:
+      runtime( "Flow or SADR expected" );
+    }
 
     RESULT(T_NET, net, src);
+  }
+
+  INST(FI_NET_DST, 1, 1) { 	/* Get dst prefix */
+    ARG(1, T_NET);
+
+    net_addr_union *net = (void *) v1.val.net;
+    net_addr *dst = falloc(sizeof(net_addr_ip6));
+    const byte *part;
+
+    switch(v1.val.net->type) {
+    case NET_FLOW4:
+      part = flow4_get_part(&net->flow4, FLOW_TYPE_DST_PREFIX);
+      if (part)
+	net_fill_ip4(dst, flow_read_ip4_part(part), flow_read_pxlen(part));
+      else
+	net_fill_ip4(dst, IP4_NONE, 0);
+      break;
+
+    case NET_FLOW6:
+      part = flow6_get_part(&net->flow6, FLOW_TYPE_DST_PREFIX);
+      if (part)
+	net_fill_ip6(dst, flow_read_ip6_part(part), flow_read_pxlen(part));
+      else
+	net_fill_ip6(dst, IP6_NONE, 0);
+      break;
+
+    case NET_IP6_SADR:
+      net_fill_ip6(dst, net->ip6_sadr.dst_prefix, net->ip6_sadr.dst_pxlen);
+      break;
+
+    default:
+      runtime( "Flow or SADR expected" );
+    }
+
+    RESULT(T_NET, net, dst);
   }
 
   INST(FI_ROA_MAXLEN, 1, 1) { 	/* Get ROA max prefix length */
@@ -866,7 +924,7 @@
     SYMBOL;
 
     FID_SAME_BODY()
-      if (!(f2->sym->flags & SYM_FLAG_SAME))
+      if (!(f1->sym->flags & SYM_FLAG_SAME))
 	return 0;
     FID_INTERPRET_BODY()
 

@@ -17,6 +17,7 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/data.h"
+#include "lib/flowspec.h"
 
 /* Flags for instructions */
 enum f_instruction_flags {
