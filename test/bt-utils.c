@@ -154,7 +154,7 @@ bt_config_parse__(struct config *cfg)
 
   if (cfg->err_msg)
   {
-    bt_debug("Parse error %s, line %d: %s\n", cfg->err_file_name, cfg->err_lino, cfg->err_msg);
+    bt_log("Parse error %s, line %d: %s", cfg->err_file_name, cfg->err_lino, cfg->err_msg);
     bt_show_cfg_error(cfg);
     return NULL;
   }

@@ -117,6 +117,7 @@ bt_init(int argc, char *argv[])
   }
 
   clock_gettime(CLOCK_MONOTONIC, &bt_begin);
+  bt_suite_case_begin = bt_suite_begin = bt_begin;
 
   return;
 
@@ -198,14 +199,13 @@ bt_log_result(int result, u64 time, const char *fmt, va_list argptr)
   static char msg_buf[BT_BUFFER_SIZE];
   char *pos;
 
-  snprintf(msg_buf, sizeof(msg_buf), "%s%s%s%s %" PRIu64 ".%09" PRIu64 "s",
+  snprintf(msg_buf, sizeof(msg_buf), "%s%s%s %" PRIu64 ".%09" PRIu64 "s%s",
 	   bt_filename,
 	   bt_test_id ? ": " : "",
 	   bt_test_id ? bt_test_id : "",
-	   (fmt && strlen(fmt) > 0) ? ": " : "",
 	   time / 1000000000,
-	   time % 1000000000
-	   );
+	   time % 1000000000,
+	   (fmt && strlen(fmt) > 0) ? ": " : "");
   pos = msg_buf + strlen(msg_buf);
 
   if (fmt)
@@ -339,6 +339,7 @@ bt_test_suite_base(int (*fn)(const void *), const char *id, const void *fn_arg, 
     bt_log("Starting");
 
   clock_gettime(CLOCK_MONOTONIC, &bt_suite_begin);
+  bt_suite_case_begin = bt_suite_begin;
 
   if (!forked)
   {

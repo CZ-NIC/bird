@@ -24,21 +24,18 @@
 #define BT_CONFIG_FILE "filter/test.conf"
 
 
-struct parse_config_file_arg {
-  struct config **cp;
-  const char *filename;
-};
-
 static int
-parse_config_file(const void *argv)
+t_reconfig(void)
 {
-  const struct parse_config_file_arg *arg = argv;
-  size_t fn_size = strlen(arg->filename) + 1;
-  char *filename = alloca(fn_size);
-  memcpy(filename, arg->filename, fn_size);
-  
-  *(arg->cp) = bt_config_file_parse(filename);
-  return !!*(arg->cp);
+  if (!bt_config_file_parse(BT_CONFIG_FILE))
+    return 0;
+
+  struct symbol *s;
+  WALK_LIST(s, config->symbols)
+    if ((s->class == SYM_FUNCTION) || (s->class == SYM_FILTER))
+      bt_assert_msg((s->flags & SYM_FLAG_SAME), "Symbol %s same check", s->name);
+
+  return 1;
 }
 
 static int
@@ -75,27 +72,18 @@ int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
-
   bt_bird_init();
-  
+
   bt_assert_hook = bt_assert_filter;
 
-  struct config *c = NULL;
-  struct parse_config_file_arg pcfa = { .cp = &c, .filename = BT_CONFIG_FILE };
+  /* Initial test.conf parsing, must be done here */
+  if (!bt_config_file_parse(BT_CONFIG_FILE))
+    abort();
 
-  bt_test_suite_base(parse_config_file, "conf", (const void *) &pcfa, 0, 0, "parse config file");
-  bt_assert(c);
-
-  bt_test_suite_base(parse_config_file, "reconf", (const void *) &pcfa, 0, 0, "reconfigure with the same file");
-  bt_assert(c);
-
-  struct symbol *s;
-  WALK_LIST(s, c->symbols)
-    if ((s->class == SYM_FUNCTION) || (s->class == SYM_FILTER))
-      bt_assert_msg((s->flags & SYM_FLAG_SAME), "Symbol %s same check", s->name);
+  bt_test_suite(t_reconfig, "Testing reconfiguration");
 
   struct f_bt_test_suite *t;
-  WALK_LIST(t, c->tests)
+  WALK_LIST(t, config->tests)
     bt_test_suite_base(run_function, t->fn_name, t, BT_FORKING, BT_TIMEOUT, "%s", t->dsc);
 
   bt_bird_cleanup();

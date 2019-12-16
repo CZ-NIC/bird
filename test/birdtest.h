@@ -101,12 +101,12 @@ static inline int bt_test_fn_noarg(const void *cp) { return ((int (*)(void)) cp)
 #define bt_assert_msg(test, format, ...)				\
   do									\
   {									\
-    int bt_suit_case_result = 1;				\
+    int bt_suit_case_result = 1;					\
     if ((test) == 0) 							\
     {									\
-      bt_result = 0;						\
-      bt_suite_result = 0;					\
-      bt_suit_case_result = 0;					\
+      bt_result = 0;							\
+      bt_suite_result = 0;						\
+      bt_suit_case_result = 0;						\
     }									\
     bt_log_suite_case_result(bt_suit_case_result, format, ##__VA_ARGS__); \
   } while (0)
