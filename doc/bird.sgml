@@ -2696,12 +2696,11 @@ be used in explicit configuration.
 	For received routes, their <cf/gw/ (immediate next hop) attribute is
 	computed from received <cf/bgp_next_hop/ attribute. This option
 	specifies how it is computed. Direct mode means that the IP address from
-	<cf/bgp_next_hop/ is used if it is directly reachable, otherwise the
-	neighbor IP address is used. Recursive mode means that the gateway is
-	computed by an IGP routing table lookup for the IP address from
-	<cf/bgp_next_hop/. Note that there is just one level of indirection in
-	recursive mode - the route obtained by the lookup must not be recursive
-	itself, to prevent mutually recursive routes.
+	<cf/bgp_next_hop/ is used and must be directly reachable. Recursive mode
+	means that the gateway is computed by an IGP routing table lookup for
+	the IP address from <cf/bgp_next_hop/. Note that there is just one level
+	of indirection in recursive mode - the route obtained by the lookup must
+	not be recursive itself, to prevent mutually recursive routes.
 
 	Recursive mode is the behavior specified by the BGP
 	standard. Direct mode is simpler, does not require any routes in a
