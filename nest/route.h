@@ -453,7 +453,6 @@ typedef struct rta {
 #define RTD_MAX 5
 
 					/* Flags for net->n.flags, used by kernel syncer */
-#define KRF_INSTALLED 0x80		/* This route should be installed in the kernel */
 #define KRF_SYNC_ERROR 0x40		/* Error during kernel table synchronization */
 
 #define RTAF_CACHED 1			/* This is a cached rta */

@@ -539,6 +539,12 @@ krt_dump_attrs(rte *e)
  *	Routes
  */
 
+static inline int
+krt_is_installed(struct krt_proto *p, rte *e)
+{
+  return bmap_test(&p->p.main_channel->export_map, e->id);
+}
+
 static void
 krt_flush_routes(struct krt_proto *p)
 {
@@ -548,11 +554,10 @@ krt_flush_routes(struct krt_proto *p)
   FIB_WALK(&t->fib, net, n)
     {
       rte *e = n->routes;
-      if (rte_is_valid(e) && (n->n.flags & KRF_INSTALLED))
+      if (rte_is_valid(e) && krt_is_installed(p, e))
 	{
 	  /* FIXME: this does not work if gw is changed in export filter */
 	  krt_replace_rte(p, e->net, NULL, e);
-	  n->n.flags &= ~KRF_INSTALLED;
 	}
     }
   FIB_WALK_END;
@@ -579,7 +584,7 @@ krt_export_net(struct krt_proto *p, net *net, rte **rt_free)
 
   rte_make_tmp_attrs(&rt, krt_filter_lp, NULL);
 
-  /* We could run krt_preexport() here, but it is already handled by KRF_INSTALLED */
+  /* We could run krt_preexport() here, but it is already handled by krt_is_installed() */
 
   if (filter == FILTER_ACCEPT)
     goto accept;
@@ -658,12 +663,12 @@ krt_got_route(struct krt_proto *p, rte *e)
 
   if (!p->ready)
     {
-      /* We wait for the initial feed to have correct KRF_INSTALLED flag */
+      /* We wait for the initial feed to have correct installed state */
       verdict = KRF_IGNORE;
       goto sentenced;
     }
 
-  if (net->n.flags & KRF_INSTALLED)
+  if (krt_is_installed(p, e))
     {
       rte *new, *rt_free;
 
@@ -930,22 +935,7 @@ krt_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
   rte *e = *new;
 
   if (e->attrs->src->proto == P)
-  {
-#ifdef CONFIG_SINGLE_ROUTE
-    /*
-     * Implicit withdraw - when the imported kernel route becomes the best one,
-     * we know that the previous one exported to the kernel was already removed,
-     * but if we processed the update as usual, we would send withdraw to the
-     * kernel, which would remove the new imported route instead.
-     *
-     * We will remove KRT_INSTALLED flag, which stops such withdraw to be
-     * processed in krt_rt_notify() and krt_replace_rte().
-     */
-    if (e == e->net->routes)
-      e->net->n.flags &= ~KRF_INSTALLED;
-#endif
     return -1;
-  }
 
   if (!krt_capable(e))
     return -1;
@@ -961,12 +951,19 @@ krt_rt_notify(struct proto *P, struct channel *ch UNUSED, net *net,
 
   if (config->shutdown)
     return;
-  if (!(net->n.flags & KRF_INSTALLED))
-    old = NULL;
-  if (new)
-    net->n.flags |= KRF_INSTALLED;
-  else
-    net->n.flags &= ~KRF_INSTALLED;
+
+#ifdef CONFIG_SINGLE_ROUTE
+  /*
+   * Implicit withdraw - when the imported kernel route becomes the best one,
+   * we know that the previous one exported to the kernel was already removed,
+   * but if we processed the update as usual, we would send withdraw to the
+   * kernel, which would remove the new imported route instead.
+   */
+  rte *best = net->routes;
+  if (!new && best && (best->attrs->src->proto == P))
+    return;
+#endif
+
   if (p->initialized)		/* Before first scan we don't touch the routes */
     krt_replace_rte(p, net, new, old);
 }
