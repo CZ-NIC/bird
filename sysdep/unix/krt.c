@@ -540,9 +540,9 @@ krt_dump_attrs(rte *e)
  */
 
 static inline int
-krt_is_installed(struct krt_proto *p, rte *e)
+krt_is_installed(struct krt_proto *p, net *n)
 {
-  return bmap_test(&p->p.main_channel->export_map, e->id);
+  return n->routes && bmap_test(&p->p.main_channel->export_map, n->routes->id);
 }
 
 static void
@@ -553,11 +553,10 @@ krt_flush_routes(struct krt_proto *p)
   KRT_TRACE(p, D_EVENTS, "Flushing kernel routes");
   FIB_WALK(&t->fib, net, n)
     {
-      rte *e = n->routes;
-      if (rte_is_valid(e) && krt_is_installed(p, e))
+      if (krt_is_installed(p, n))
 	{
 	  /* FIXME: this does not work if gw is changed in export filter */
-	  krt_replace_rte(p, e->net, NULL, e);
+	  krt_replace_rte(p, n, NULL, n->routes);
 	}
     }
   FIB_WALK_END;
@@ -668,7 +667,7 @@ krt_got_route(struct krt_proto *p, rte *e)
       goto sentenced;
     }
 
-  if (krt_is_installed(p, e))
+  if (krt_is_installed(p, net))
     {
       rte *new, *rt_free;
 
