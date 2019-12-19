@@ -15,6 +15,7 @@
 #include "nest/cli.h"
 #include "nest/iface.h"
 #include "filter/filter.h"
+#include "sysdep/unix/krt.h"
 
 static void
 rt_show_table(struct cli *c, struct rt_show_data *d)
@@ -28,13 +29,20 @@ rt_show_table(struct cli *c, struct rt_show_data *d)
   d->last_table = d->tab;
 }
 
+static inline struct krt_proto *
+rt_show_get_kernel(struct rt_show_data *d)
+{
+  struct proto_config *krt = d->tab->table->config->krt_attached;
+  return krt ? (struct krt_proto *) krt->proto : NULL;
+}
+
 static void
 rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary)
 {
   byte from[IPA_MAX_TEXT_LENGTH+8];
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
   rta *a = e->attrs;
-  int sync_error = (e->net->n.flags & KRF_SYNC_ERROR);
+  int sync_error = d->kernel ? krt_get_sync_error(d->kernel, e) : 0;
   void (*get_route_info)(struct rte *, byte *buf);
   struct nexthop *nh;
 
@@ -230,6 +238,7 @@ rt_show_cont(struct cli *c)
     FIB_ITERATE_INIT(&d->fit, &d->tab->table->fib);
     d->table_open = 1;
     d->table_counter++;
+    d->kernel = rt_show_get_kernel(d);
 
     d->show_counter_last = d->show_counter;
     d->rt_counter_last   = d->rt_counter;
@@ -260,6 +269,7 @@ rt_show_cont(struct cli *c)
 	       d->net_counter - d->net_counter_last, d->tab->table->name);
   }
 
+  d->kernel = NULL;
   d->table_open = 0;
   d->tab = NODE_NEXT(d->tab);
 
@@ -403,6 +413,7 @@ rt_show(struct rt_show_data *d)
     WALK_LIST(tab, d->tables)
     {
       d->tab = tab;
+      d->kernel = rt_show_get_kernel(d);
 
       if (d->show_for)
 	n = net_route(tab->table, d->addr);

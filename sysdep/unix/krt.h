@@ -65,6 +65,7 @@ struct krt_proto {
   timer *scan_timer;
 #endif
 
+  struct bmap sync_map;		/* Keeps track which exported routes were successfully written to kernel */
   node krt_node;		/* Node in krt_proto_list */
   byte af;			/* Kernel address family (AF_*) */
   byte ready;			/* Initial feed has been finished */
@@ -85,6 +86,14 @@ struct proto_config * kif_init_config(int class);
 void kif_request_scan(void);
 void krt_got_route(struct krt_proto *p, struct rte *e);
 void krt_got_route_async(struct krt_proto *p, struct rte *e, int new);
+
+static inline int
+krt_get_sync_error(struct krt_proto *p, struct rte *e)
+{
+  return (p->p.proto_state == PS_UP) &&
+    bmap_test(&p->p.main_channel->export_map, e->id) &&
+    !bmap_test(&p->sync_map, e->id);
+}
 
 /* Values for rte->u.krt_sync.src */
 #define KRT_SRC_UNKNOWN	-1	/* Nobody knows */

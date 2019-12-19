@@ -348,6 +348,7 @@ struct rt_show_data {
   struct proto *export_protocol;
   struct channel *export_channel;
   struct config *running_on_config;
+  struct krt_proto *kernel;
   int export_mode, primary_only, filtered, stats, show_for;
 
   int table_open;			/* Iteration (fit) is open */
@@ -451,9 +452,6 @@ typedef struct rta {
 #define RTD_UNREACHABLE 3		/* Reject as unreachable */
 #define RTD_PROHIBIT 4			/* Administratively prohibited */
 #define RTD_MAX 5
-
-					/* Flags for net->n.flags, used by kernel syncer */
-#define KRF_SYNC_ERROR 0x40		/* Error during kernel table synchronization */
 
 #define RTAF_CACHED 1			/* This is a cached rta */
 

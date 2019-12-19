@@ -357,10 +357,13 @@ krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old)
   if (new)
     err = krt_send_route(p, RTM_ADD, new);
 
-  if (err < 0)
-    n->n.flags |= KRF_SYNC_ERROR;
-  else
-    n->n.flags &= ~KRF_SYNC_ERROR;
+  if (new)
+  {
+    if (err < 0)
+      bmap_clear(&p->sync_map, new->id);
+    else
+      bmap_set(&p->sync_map, new->id);
+  }
 }
 
 #define SKIP(ARG...) do { DBG("KRT: Ignoring route - " ARG); return; } while(0)

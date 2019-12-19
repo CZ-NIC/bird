@@ -677,7 +677,7 @@ krt_got_route(struct krt_proto *p, rte *e)
 
       if (!new)
 	verdict = KRF_DELETE;
-      else if ((net->n.flags & KRF_SYNC_ERROR) || !krt_same_dest(e, new))
+      else if (!bmap_test(&p->sync_map, new->id) || !krt_same_dest(e, new))
 	verdict = KRF_UPDATE;
       else
 	verdict = KRF_SEEN;
@@ -1094,6 +1094,7 @@ krt_start(struct proto *P)
   default: log(L_ERR "KRT: Tried to start with strange net type: %d", p->p.net_type); return PS_START; break;
   }
 
+  bmap_init(&p->sync_map, p->p.pool, 1024);
   add_tail(&krt_proto_list, &p->krt_node);
 
 #ifdef KRT_ALLOW_LEARN
@@ -1133,6 +1134,7 @@ krt_shutdown(struct proto *P)
 
   krt_sys_shutdown(p);
   rem_node(&p->krt_node);
+  bmap_free(&p->sync_map);
 
   return PS_DOWN;
 }

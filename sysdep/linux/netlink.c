@@ -1399,7 +1399,7 @@ nl_replace_rte(struct krt_proto *p, rte *e)
 
 
 void
-krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old)
+krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
 {
   int err = 0;
 
@@ -1428,10 +1428,13 @@ krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old)
       err = nl_add_rte(p, new);
   }
 
-  if (err < 0)
-    n->n.flags |= KRF_SYNC_ERROR;
-  else
-    n->n.flags &= ~KRF_SYNC_ERROR;
+  if (new)
+  {
+    if (err < 0)
+      bmap_clear(&p->sync_map, new->id);
+    else
+      bmap_set(&p->sync_map, new->id);
+  }
 }
 
 static int
