@@ -37,7 +37,6 @@ struct cli;
 struct fib_node {
   struct fib_node *next;		/* Next in hash chain */
   struct fib_iterator *readers;		/* List of readers of this node */
-  byte flags;				/* User-defined, will be removed */
   net_addr addr[0];
 };
 

@@ -19,15 +19,6 @@ struct kif_proto;
 #include "sysdep/config.h"
 #include CONFIG_INCLUDE_KRTSYS_H
 
-/* Flags stored in net->n.flags, rest are in nest/route.h */
-
-#define KRF_VERDICT_MASK 0x0f
-#define KRF_CREATE 0			/* Not seen in kernel table */
-#define KRF_SEEN 1			/* Seen in kernel table during last scan */
-#define KRF_UPDATE 2			/* Need to update this entry */
-#define KRF_DELETE 3			/* Should be deleted */
-#define KRF_IGNORE 4			/* To be ignored */
-
 #define KRT_DEFAULT_ECMP_LIMIT	16
 
 #define EA_KRT_SOURCE	EA_CODE(PROTOCOL_KERNEL, 0)
@@ -66,6 +57,7 @@ struct krt_proto {
 #endif
 
   struct bmap sync_map;		/* Keeps track which exported routes were successfully written to kernel */
+  struct bmap seen_map;		/* Routes seen during last periodic scan */
   node krt_node;		/* Node in krt_proto_list */
   byte af;			/* Kernel address family (AF_*) */
   byte ready;			/* Initial feed has been finished */

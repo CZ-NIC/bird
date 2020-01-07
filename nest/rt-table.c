@@ -1687,7 +1687,7 @@ rte_dump(rte *e)
 {
   net *n = e->net;
   debug("%-1N ", n->n.addr);
-  debug("KF=%02x PF=%02x pref=%d ", n->n.flags, e->pflags, e->pref);
+  debug("PF=%02x pref=%d ", e->pflags, e->pref);
   rta_dump(e->attrs);
   if (e->attrs->src->proto->proto->dump_attrs)
     e->attrs->src->proto->proto->dump_attrs(e);
