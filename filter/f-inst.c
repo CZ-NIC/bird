@@ -226,7 +226,7 @@
   }
   INST(FI_AND, 1, 1) {
     ARG(1,T_BOOL);
-    ARG_TYPE(2,T_BOOL);
+    ARG_TYPE_STATIC(2,T_BOOL);
     RESULT_TYPE(T_BOOL);
 
     if (v1.val.i)
@@ -236,7 +236,7 @@
   }
   INST(FI_OR, 1, 1) {
     ARG(1,T_BOOL);
-    ARG_TYPE(2,T_BOOL);
+    ARG_TYPE_STATIC(2,T_BOOL);
     RESULT_TYPE(T_BOOL);
 
     if (!v1.val.i)
