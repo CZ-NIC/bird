@@ -586,8 +586,6 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   ifa->deadint = ip->deadint;
   ifa->stub = ospf_iface_stubby(ip, addr);
   ifa->ioprob = OSPF_I_OK;
-  ifa->tx_length = ifa_tx_length(ifa);
-  ifa->tx_hdrlen = ifa_tx_hdrlen(ifa);
   ifa->check_link = ip->check_link;
   ifa->ecmp_weight = ip->ecmp_weight;
   ifa->check_ttl = (ip->ttl_security == 1);
@@ -595,6 +593,10 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   ifa->autype = ip->autype;
   ifa->passwords = ip->passwords;
   ifa->instance_id = ip->instance_id;
+
+  /* This must be done after relevant fields are set */
+  ifa->tx_length = ifa_tx_length(ifa);
+  ifa->tx_hdrlen = ifa_tx_hdrlen(ifa);
 
   ifa->ptp_netmask = !(addr->flags & IA_PEER);
   if (ip->ptp_netmask < 2)
@@ -698,11 +700,13 @@ ospf_iface_new_vlink(struct ospf_proto *p, struct ospf_iface_patt *ip)
   ifa->waitint = ip->waitint;
   ifa->deadint = ip->deadint;
   ifa->inftransdelay = ip->inftransdelay;
-  ifa->tx_length = ospf_is_v2(p) ? IP4_MIN_MTU : IP6_MIN_MTU;
-  ifa->tx_hdrlen = ifa_tx_hdrlen(ifa);
   ifa->autype = ip->autype;
   ifa->passwords = ip->passwords;
   ifa->instance_id = ip->instance_id;
+
+  /* This must be done after relevant fields are set */
+  ifa->tx_length = ospf_is_v2(p) ? IP4_MIN_MTU : IP6_MIN_MTU;
+  ifa->tx_hdrlen = ifa_tx_hdrlen(ifa);
 
   ifa->type = OSPF_IT_VLINK;
 
