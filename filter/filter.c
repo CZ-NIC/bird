@@ -95,7 +95,18 @@ struct filter_state {
 };
 
 _Thread_local static struct filter_state filter_state;
-_Thread_local static struct filter_stack filter_stack;
+_Thread_local static struct filter_stack *filter_stack;
+
+static inline struct filter_stack *get_filter_stack(void)
+{
+  if (!filter_stack)
+  {
+    filter_stack = xmalloc(sizeof(*filter_stack));
+    bzero(filter_stack, sizeof(*filter_stack));
+  }
+
+  return filter_stack;
+}
 
 void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
@@ -276,7 +287,7 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
 
   /* Initialize the filter state */
   filter_state = (struct filter_state) {
-    .stack = &filter_stack,
+    .stack = get_filter_stack(),
     .rte = rte,
     .pool = tmp_pool,
     .flags = flags,
@@ -340,7 +351,7 @@ enum filter_return
 f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool)
 {
   filter_state = (struct filter_state) {
-    .stack = &filter_stack,
+    .stack = get_filter_stack(),
     .rte = rte,
     .pool = tmp_pool,
   };
@@ -363,7 +374,7 @@ enum filter_return
 f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 {
   filter_state = (struct filter_state) {
-    .stack = &filter_stack,
+    .stack = get_filter_stack(),
     .pool = tmp_pool,
   };
 
@@ -383,7 +394,7 @@ f_eval_int(const struct f_line *expr)
 {
   /* Called independently in parse-time to eval expressions */
   filter_state = (struct filter_state) {
-    .stack = &filter_stack,
+    .stack = get_filter_stack(),
     .pool = cfg_mem,
   };
 
