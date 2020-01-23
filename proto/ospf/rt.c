@@ -2015,6 +2015,8 @@ rt_sync(struct ospf_proto *p)
 
   OSPF_TRACE(D_EVENTS, "Starting routing table synchronization");
 
+  struct rte_update_batch *rub = rte_update_init();
+
   DBG("Now syncing my rt table with nest's\n");
   FIB_ITERATE_INIT(&fit, fib);
 again1:
@@ -2052,27 +2054,27 @@ again1:
 
       if (reload || ort_changed(nf, &a0))
       {
-	rta *a = rta_lookup(&a0);
-	rte *e = rte_get_temp(a);
+	struct rte_update *ru = rte_update_get(rub, nf->fn.addr, NULL);
+	ru->rte->attrs = rta_lookup(&a0);
 
 	rta_free(nf->old_rta);
-	nf->old_rta = rta_clone(a);
-	e->u.ospf.metric1 = nf->old_metric1 = nf->n.metric1;
-	e->u.ospf.metric2 = nf->old_metric2 = nf->n.metric2;
-	e->u.ospf.tag = nf->old_tag = nf->n.tag;
-	e->u.ospf.router_id = nf->old_rid = nf->n.rid;
-	e->pflags = EA_ID_FLAG(EA_OSPF_METRIC1) | EA_ID_FLAG(EA_OSPF_ROUTER_ID);
+	nf->old_rta = rta_clone(ru->rte->attrs);
+
+	ru->rte->u.ospf.metric1 = nf->old_metric1 = nf->n.metric1;
+	ru->rte->u.ospf.metric2 = nf->old_metric2 = nf->n.metric2;
+	ru->rte->u.ospf.tag = nf->old_tag = nf->n.tag;
+	ru->rte->u.ospf.router_id = nf->old_rid = nf->n.rid;
+	ru->rte->pflags = EA_ID_FLAG(EA_OSPF_METRIC1) | EA_ID_FLAG(EA_OSPF_ROUTER_ID);
 
 	if (nf->n.type == RTS_OSPF_EXT2)
-	  e->pflags |= EA_ID_FLAG(EA_OSPF_METRIC2);
+	  ru->rte->pflags |= EA_ID_FLAG(EA_OSPF_METRIC2);
 
 	/* Perhaps onfly if tag is non-zero? */
 	if ((nf->n.type == RTS_OSPF_EXT1) || (nf->n.type == RTS_OSPF_EXT2))
-	  e->pflags |= EA_ID_FLAG(EA_OSPF_TAG);
+	  ru->rte->pflags |= EA_ID_FLAG(EA_OSPF_TAG);
 
 	DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
 	    a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
-	rte_update(&p->p, nf->fn.addr, e);
       }
     }
     else if (nf->old_rta)
@@ -2081,7 +2083,7 @@ again1:
       rta_free(nf->old_rta);
       nf->old_rta = NULL;
 
-      rte_update(&p->p, nf->fn.addr, NULL);
+      rte_withdraw_get(rub, nf->fn.addr, NULL);
     }
 
     /* Remove unused rt entry, some special entries are persistent */
@@ -2097,6 +2099,7 @@ again1:
   }
   FIB_ITERATE_END;
 
+  rte_update_commit(rub, p->p.main_channel);
 
   WALK_LIST(oa, p->area_list)
   {
