@@ -453,6 +453,7 @@ struct bgp_parse_state {
   u32 last_id;
   struct rte_src *last_src;
   rta *cached_rta;
+  struct rte_update_batch *update_batch;
 };
 
 #define BGP_PORT		179

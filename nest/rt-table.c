@@ -267,27 +267,6 @@ rte_find(net *net, struct rte_src *src)
   return e;
 }
 
-/**
- * rte_get_temp - get a temporary &rte
- * @a: attributes to assign to the new route (a &rta; in case it's
- * un-cached, rte_update() will create a cached copy automatically)
- *
- * Create a temporary &rte and bind it with the attributes @a.
- * Also set route preference to the default preference set for
- * the protocol.
- */
-rte *
-rte_get_temp(rta *a)
-{
-  rte *e = sl_alloc(rte_slab);
-
-  e->attrs = a;
-  e->id = 0;
-  e->flags = 0;
-  e->pref = 0;
-  return e;
-}
-
 rte *
 rte_do_cow(rte *r)
 {
@@ -296,6 +275,18 @@ rte_do_cow(rte *r)
   memcpy(e, r, sizeof(rte));
   e->attrs = rta_clone(r->attrs);
   e->flags = 0;
+  return e;
+}
+
+rte *
+rte_store(rte *r)
+{
+  rte *e = sl_alloc(rte_slab);
+  memcpy(e, r, sizeof(rte));
+  if (e->attrs->aflags & RTAF_CACHED)
+    e->attrs = rta_clone(r->attrs);
+  else
+    e->attrs = rta_lookup(r->attrs);
   return e;
 }
 
@@ -1424,7 +1415,7 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
  * finishes.
  */
 
-void
+static void
 rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
   struct proto *p = c->proto;
@@ -1526,6 +1517,87 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     goto recalc;
 
   rte_update_unlock();
+}
+
+struct rte_update_batch *
+rte_update_init(void)
+{
+  rte_update_lock();
+  struct rte_update_batch *batch = lp_alloc(rte_update_pool, sizeof(struct rte_update_batch));
+  batch->lp = rte_update_pool;
+  batch->first = NULL;
+  batch->last = &(batch->first);
+  return batch;
+}
+
+static int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
+
+void
+rte_update_commit(struct rte_update_batch *batch, struct channel *c)
+{
+  ASSERT(batch->lp);
+
+  if (c->in_table)
+    for (struct rte_update *ru = batch->first; ru; ru = ru->next)
+      if (!rte_update_in(c, &(ru->n.n), ru->rte, ru->src))
+	ru->flags |= RUF_IGNORE;
+
+  for (struct rte_update *ru = batch->first; ru; ru = ru->next)
+    if (ru->flags & RUF_IGNORE)
+      rte_free_quick(ru->rte);
+    else
+      rte_update2(c, &(ru->n.n), ru->rte, ru->src);
+
+  batch->lp = NULL;
+  rte_update_unlock();
+}
+
+struct rte_update *
+rte_withdraw_get(struct rte_update_batch *batch, net_addr *n, struct rte_src *src)
+{
+  struct rte_update *ru = lp_alloc(batch->lp, sizeof(struct rte_update));
+
+  *(batch->last) = ru;
+  batch->last = &(ru->next);
+  ru->next = NULL;
+
+  ru->rte = NULL;
+  net_copy(&ru->n.n, n);
+  ru->src = src;
+  return ru;
+}
+
+void
+rte_withdraw(struct channel *c, net_addr *n, struct rte_src *src)
+{
+  rte_update2(c, n, NULL, src);
+}
+
+struct rte_update *
+rte_update_get(struct rte_update_batch *batch, net_addr *n, struct rte_src *src)
+{
+  struct rte_update *ru = rte_withdraw_get(batch, n, src);
+
+  rte *e = sl_alloc(rte_slab);
+
+  e->id = 0;
+  e->flags = 0;
+  e->pref = 0;
+
+  ru->rte = e;
+
+  return ru;
+}
+
+void
+rte_update(struct channel *c, net_addr *n, struct rte_src *src, struct rte *new)
+{
+  ASSERT(new);
+
+  rte *e = sl_alloc(rte_slab);
+  *e = *new;
+
+  rte_update2(c, n, e, src);
 }
 
 /* Independent call to rte_announce(), used from next hop
@@ -2415,7 +2487,7 @@ rt_feed_channel_abort(struct channel *c)
  *	Import table
  */
 
-int
+static int
 rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
   struct rtable *tab = c->in_table;

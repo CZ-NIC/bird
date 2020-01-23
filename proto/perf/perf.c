@@ -86,7 +86,6 @@ random_net_ip4(void)
 
 struct perf_random_routes {
   net_addr net;
-  rte *ep;
   struct rta a;
 };
 
@@ -143,6 +142,8 @@ perf_loop(void *data)
 
   struct rta *a = NULL;
 
+  struct rte_update_batch *rub = rte_update_init();
+
   for (uint i=0; i<N; i++) {
     struct perf_random_routes *prr = p->data + offset * i;
     *((net_addr_ip4 *) &prr->net) = random_net_ip4();
@@ -166,24 +167,26 @@ perf_loop(void *data)
 
     ASSERT(a);
 
-    prr->ep = rte_get_temp(a);
-    prr->ep->pflags = 0;
+    struct rte_update *ru = rte_update_get(rub, &prr->net, p->p.main_source);
+    ru->rte->attrs = a;
+    ru->rte->pflags = 0;
   }
 
   clock_gettime(CLOCK_MONOTONIC, &ts_generated);
 
-  for (uint i=0; i<N; i++) {
-    struct perf_random_routes *prr = p->data + offset * i;
-    rte_update(P, &prr->net, prr->ep);
-  }
+  rte_update_commit(rub, P->main_channel);
 
   clock_gettime(CLOCK_MONOTONIC, &ts_update);
+
+  rub = rte_update_init();
 
   if (!p->keep)
     for (uint i=0; i<N; i++) {
       struct perf_random_routes *prr = p->data + offset * i;
-      rte_update(P, &prr->net, NULL);
+      rte_withdraw_get(rub, &prr->net, p->p.main_source);
     }
+
+  rte_update_commit(rub, P->main_channel);
 
   clock_gettime(CLOCK_MONOTONIC, &ts_withdraw);
 

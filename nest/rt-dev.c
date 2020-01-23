@@ -67,13 +67,10 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 
       /* Use iface ID as local source ID */
       struct rte_src *src = rt_get_source(P, ad->iface->index);
-      rte_update2(c, net, NULL, src);
+      rte_withdraw(c, net, src);
     }
   else if (flags & IF_CHANGE_UP)
     {
-      rta *a;
-      rte *e;
-
       DBG("dev_if_notify: %s:%I going up\n", ad->iface->name, ad->ip);
 
       if (cf->check_link && !(ad->iface->flags & IF_LINK_UP))
@@ -89,11 +86,10 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 	.dest = RTD_UNICAST,
 	.nh.iface = ad->iface,
       };
-
-      a = rta_lookup(&a0);
-      e = rte_get_temp(a);
-      e->pflags = 0;
-      rte_update2(c, net, e, src);
+      rte e0 = {
+	.attrs = rta_lookup(&a0),
+      };
+      rte_update(c, net, src, &e0);
     }
 }
 

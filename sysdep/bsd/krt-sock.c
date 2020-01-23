@@ -550,13 +550,11 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   }
 
  done:
-  e = rte_get_temp(&a);
+  rte e0 = {}, *e = &e0;
+  e->attrs = &a;
   e->net = net;
   e->u.krt.src = src;
   e->u.krt.proto = src2;
-  e->u.krt.seen = 0;
-  e->u.krt.best = 0;
-  e->u.krt.metric = 0;
 
   if (scan)
     krt_got_route(p, e);

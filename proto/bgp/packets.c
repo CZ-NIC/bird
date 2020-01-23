@@ -1304,7 +1304,7 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
   if (!a0)
   {
     /* Route withdraw */
-    rte_update3(&s->channel->c, n, NULL, s->last_src);
+    rte_withdraw_get(s->update_batch, n, s->last_src);
     return;
   }
 
@@ -1319,13 +1319,12 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
     a0->eattrs = ea;
   }
 
-  rta *a = rta_clone(s->cached_rta);
-  rte *e = rte_get_temp(a);
-
-  e->pflags = 0;
-  e->u.bgp.suppressed = 0;
-  e->u.bgp.stale = -1;
-  rte_update3(&s->channel->c, n, e, s->last_src);
+  struct rte_update *ru = rte_update_get(s->update_batch, n, s->last_src);
+  ru->rte->pflags = 0;
+  ru->rte->attrs = rta_clone(s->cached_rta);
+  ru->rte->u.bgp.suppressed = 0;
+  ru->rte->u.bgp.stale = -1;
+  return;
 }
 
 static void
@@ -1433,6 +1432,8 @@ bgp_encode_nlri_ip4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
 static void
 bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 {
+  s->update_batch = rte_update_init();
+
   while (len)
   {
     net_addr_ip4 net;
@@ -1475,6 +1476,9 @@ bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     bgp_rte_update(s, (net_addr *) &net, path_id, a);
   }
+
+  rte_update_commit(s->update_batch, &s->channel->c);
+  s->update_batch = NULL;
 }
 
 
