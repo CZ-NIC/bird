@@ -1304,7 +1304,7 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
   if (!a0)
   {
     /* Route withdraw */
-    rte_update3(&s->channel->c, n, NULL, s->last_src);
+    rte_withdraw_get(s->update_batch, n, s->last_src);
     return;
   }
 
@@ -1319,13 +1319,12 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
     a0->eattrs = ea;
   }
 
-  rta *a = rta_clone(s->cached_rta);
-  rte *e = rte_get_temp(a);
-
-  e->pflags = 0;
-  e->u.bgp.suppressed = 0;
-  e->u.bgp.stale = -1;
-  rte_update3(&s->channel->c, n, e, s->last_src);
+  struct rte_update *ru = rte_update_get(s->update_batch, n, s->last_src);
+  ru->rte->pflags = 0;
+  ru->rte->attrs = rta_clone(s->cached_rta);
+  ru->rte->u.bgp.suppressed = 0;
+  ru->rte->u.bgp.stale = -1;
+  return;
 }
 
 static void
@@ -1433,6 +1432,8 @@ bgp_encode_nlri_ip4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
 static void
 bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 {
+  s->update_batch = rte_update_init();
+
   while (len)
   {
     net_addr_ip4 net;
@@ -1475,6 +1476,9 @@ bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     bgp_rte_update(s, (net_addr *) &net, path_id, a);
   }
+
+  rte_update_commit(s->update_batch, &s->channel->c);
+  s->update_batch = NULL;
 }
 
 
@@ -1518,6 +1522,8 @@ bgp_encode_nlri_ip6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
 static void
 bgp_decode_nlri_ip6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 {
+  s->update_batch = rte_update_init();
+
   while (len)
   {
     net_addr_ip6 net;
@@ -1560,6 +1566,9 @@ bgp_decode_nlri_ip6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     bgp_rte_update(s, (net_addr *) &net, path_id, a);
   }
+
+  rte_update_commit(s->update_batch, &s->channel->c);
+  s->update_batch = NULL;
 }
 
 static uint
@@ -1606,6 +1615,8 @@ bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
 static void
 bgp_decode_nlri_vpn4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 {
+  s->update_batch = rte_update_init();
+
   while (len)
   {
     net_addr_vpn4 net;
@@ -1656,6 +1667,9 @@ bgp_decode_nlri_vpn4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     bgp_rte_update(s, (net_addr *) &net, path_id, a);
   }
+
+  rte_update_commit(s->update_batch, &s->channel->c);
+  s->update_batch = NULL;
 }
 
 
@@ -1703,6 +1717,8 @@ bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
 static void
 bgp_decode_nlri_vpn6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 {
+  s->update_batch = rte_update_init();
+
   while (len)
   {
     net_addr_vpn6 net;
@@ -1753,6 +1769,9 @@ bgp_decode_nlri_vpn6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     bgp_rte_update(s, (net_addr *) &net, path_id, a);
   }
+
+  rte_update_commit(s->update_batch, &s->channel->c);
+  s->update_batch = NULL;
 }
 
 
@@ -1790,6 +1809,8 @@ bgp_encode_nlri_flow4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
 static void
 bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 {
+  s->update_batch = rte_update_init();
+
   while (len)
   {
     u32 path_id = 0;
@@ -1841,6 +1862,9 @@ bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     bgp_rte_update(s, n, path_id, a);
   }
+
+  rte_update_commit(s->update_batch, &s->channel->c);
+  s->update_batch = NULL;
 }
 
 
@@ -1878,6 +1902,8 @@ bgp_encode_nlri_flow6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
 static void
 bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 {
+  s->update_batch = rte_update_init();
+
   while (len)
   {
     u32 path_id = 0;
@@ -1929,6 +1955,9 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     bgp_rte_update(s, n, path_id, a);
   }
+
+  rte_update_commit(s->update_batch, &s->channel->c);
+  s->update_batch = NULL;
 }
 
 
@@ -2378,7 +2407,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
   s->mpls = c->desc->mpls;
 
   s->last_id = 0;
-  s->last_src = s->proto->p.main_source;
+  s->last_src = NULL;
 
   /*
    * IPv4 BGP and MP-BGP may be used together in one update, therefore we do not

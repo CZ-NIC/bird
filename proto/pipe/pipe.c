@@ -50,7 +50,7 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
   struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
   struct rte_src *src;
 
-  rte *e;
+  rte e0 = {}, *e = &e0;
   rta *a;
 
   if (!new && !old)
@@ -70,7 +70,8 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
 
       a->aflags = 0;
       a->hostentry = NULL;
-      e = rte_get_temp(a);
+
+      e->attrs = rta_lookup(a);
       e->pflags = 0;
 
       /* Copy protocol specific embedded attributes. */
@@ -93,7 +94,10 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
     }
 
   src_ch->table->pipe_busy = 1;
-  rte_update2(dst, n->n.addr, e, src);
+  if (e)
+    rte_update(dst, n->n.addr, e);
+  else
+    rte_withdraw(dst, n->n.addr, src);
   src_ch->table->pipe_busy = 0;
 }
 

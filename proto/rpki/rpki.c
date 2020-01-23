@@ -121,25 +121,21 @@ rpki_table_add_roa(struct rpki_cache *cache, struct channel *channel, const net_
   struct rpki_proto *p = cache->p;
 
   rta a0 = {
-    .src = p->p.main_source,
     .source = RTS_RPKI,
     .scope = SCOPE_UNIVERSE,
     .dest = RTD_NONE,
   };
 
-  rta *a = rta_lookup(&a0);
-  rte *e = rte_get_temp(a);
+  rte e0 = { .attrs = rta_lookup(&a0) };
 
-  e->pflags = 0;
-
-  rte_update2(channel, &pfxr->n, e, a0.src);
+  rte_update(channel, &pfxr->n, &e0);
 }
 
 void
 rpki_table_remove_roa(struct rpki_cache *cache, struct channel *channel, const net_addr_union *pfxr)
 {
   struct rpki_proto *p = cache->p;
-  rte_update2(channel, &pfxr->n, NULL, p->p.main_source);
+  rte_withdraw(channel, &pfxr->n, NULL);
 }
 
 
