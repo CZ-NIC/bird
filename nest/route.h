@@ -280,6 +280,31 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RIC_REJECT	-1		/* Rejected by protocol */
 #define RIC_DROP	-2		/* Silently dropped by protocol */
 
+/* Single route update order */
+struct rte_update {
+  struct rte_update *next;		/* Internal single-linked list */
+  struct rte_src *src;			/* Key: rte_src */
+  rte* rte;				/* Value: the route itself */
+  enum rte_update_flags {
+    RUF_IGNORE = 1,			/* Ignore this update */
+  } flags;
+  net_addr n[0];			/* Key: net */
+};
+
+struct rte_update_batch {
+  struct linpool *lp;			/* Linpool to allocate the batch from */
+  struct rte_update *first, **last;	/* Single route update order list */
+};
+
+struct rte_update_batch * rte_update_init(void);
+struct rte_update * rte_update_get(struct rte_update_batch *batch, net_addr *n, struct rte_src *src);
+struct rte_update * rte_withdraw_get(struct rte_update_batch *batch, net_addr *n, struct rte_src *src);
+void rte_update_commit(struct rte_update_batch *batch, struct channel *c);
+void rte_update_cancel(struct rte_update_batch *batch);
+
+void rte_withdraw(struct channel *, net_addr *, struct rte_src *);
+void rte_update(struct channel *, net_addr *, struct rte_src *, struct rte *);
+
 extern list routing_tables;
 struct config;
 
@@ -296,9 +321,6 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 rte *rte_find(net *net, struct rte_src *src);
-rte *rte_get_temp(struct rta *);
-void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
-/* rte_update() moved to protocol.h to avoid dependency conflicts */
 int rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
@@ -308,6 +330,7 @@ void rt_schedule_prune(rtable *t);
 void rte_dump(rte *);
 void rte_free(rte *);
 rte *rte_do_cow(rte *);
+rte *rte_store(rte *);
 static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }
 rte *rte_cow_rta(rte *r, linpool *lp);
 void rte_init_tmp_attrs(struct rte *r, linpool *lp, uint max);
@@ -318,7 +341,6 @@ void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
-int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);

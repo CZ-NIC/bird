@@ -453,6 +453,7 @@ struct bgp_parse_state {
   u32 last_id;
   struct rte_src *last_src;
   rta *cached_rta;
+  struct rte_update_batch *update_batch;
 };
 
 #define BGP_PORT		179
@@ -483,6 +484,9 @@ static inline uint bgp_max_packet_length(struct bgp_conn *conn)
 static inline void
 bgp_parse_error(struct bgp_parse_state *s, uint subcode)
 {
+  if (s->update_batch)
+    rte_update_cancel(s->update_batch);
+
   s->err_subcode = subcode;
   longjmp(s->err_jmpbuf, 1);
 }
