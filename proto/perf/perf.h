@@ -29,7 +29,8 @@ struct perf_config {
 struct perf_proto {
   struct proto p;
   struct ifa *ifa;
-  void *data;
+  struct perf_random_routes *data;
+  struct timespec *feed_begin;
   event *loop;
   btime threshold_min;
   btime threshold_max;

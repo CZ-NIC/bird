@@ -85,12 +85,11 @@ random_net_ip4(void)
 }
 
 struct perf_random_routes {
+  struct rta *a;
   net_addr net;
-  rte *ep;
-  struct rta a;
 };
 
-static const uint perf_random_routes_size = sizeof(struct perf_random_routes) + (RTA_MAX_SIZE - sizeof(struct rta));
+//static const uint perf_random_routes_size = sizeof(struct perf_random_routes) + (RTA_MAX_SIZE - sizeof(struct rta));
 
 static inline s64 timediff(struct timespec *begin, struct timespec *end)
 { return (end->tv_sec - begin->tv_sec) * (s64) 1000000000 + end->tv_nsec - begin->tv_nsec; }
@@ -126,12 +125,10 @@ perf_loop(void *data)
   struct perf_proto *p = data;
 
   const uint N = 1U << p->exp;
-  const uint offset = perf_random_routes_size;
 
   if (!p->run) {
     ASSERT(p->data == NULL);
-    p->data = xmalloc(offset * N);
-    bzero(p->data, offset * N);
+    p->data = xmalloc(sizeof(struct perf_random_routes) * N);
     p->stop = 1;
   }
 
@@ -141,49 +138,40 @@ perf_loop(void *data)
 
   clock_gettime(CLOCK_MONOTONIC, &ts_begin);
 
-  struct rta *a = NULL;
-
   for (uint i=0; i<N; i++) {
-    struct perf_random_routes *prr = p->data + offset * i;
-    *((net_addr_ip4 *) &prr->net) = random_net_ip4();
+    *((net_addr_ip4 *) &(p->data[i].net)) = random_net_ip4();
 
     if (!p->attrs_per_rte || !(i % p->attrs_per_rte)) {
-      a = &prr->a;
-      bzero(a, RTA_MAX_SIZE);
+      struct rta a0 = {
+	.src = p->p.main_source,
+	.source = RTS_PERF,
+	.scope = SCOPE_UNIVERSE,
+	.dest = RTD_UNICAST,
+	.nh.iface = p->ifa->iface,
+	.nh.gw = gw,
+	.nh.weight = 1,
+      };
 
-      a->src = p->p.main_source;
-      a->source = RTS_PERF;
-      a->scope = SCOPE_UNIVERSE;
-      a->dest = RTD_UNICAST;
-
-      a->nh.iface = p->ifa->iface;
-      a->nh.gw = gw;
-      a->nh.weight = 1;
-
-      if (p->attrs_per_rte)
-	a = rta_lookup(a);
+      p->data[i].a = rta_lookup(&a0);
     }
-
-    ASSERT(a);
-
-    prr->ep = rte_get_temp(a);
-    prr->ep->pflags = 0;
+    else
+      p->data[i].a = rta_clone(p->data[i-1].a);
   }
 
   clock_gettime(CLOCK_MONOTONIC, &ts_generated);
 
   for (uint i=0; i<N; i++) {
-    struct perf_random_routes *prr = p->data + offset * i;
-    rte_update(P, &prr->net, prr->ep);
+    rte *e = rte_get_temp(p->data[i].a);
+    e->pflags = 0;
+
+    rte_update(P, &(p->data[i].net), e);
   }
 
   clock_gettime(CLOCK_MONOTONIC, &ts_update);
 
   if (!p->keep)
-    for (uint i=0; i<N; i++) {
-      struct perf_random_routes *prr = p->data + offset * i;
-      rte_update(P, &prr->net, NULL);
-    }
+    for (uint i=0; i<N; i++)
+      rte_update(P, &(p->data[i].net), NULL);
 
   clock_gettime(CLOCK_MONOTONIC, &ts_withdraw);
 
@@ -229,10 +217,10 @@ perf_feed_begin(struct channel *c, int initial UNUSED)
   struct perf_proto *p = (struct perf_proto *) c->proto;
 
   p->run++;
-  p->data = xmalloc(sizeof(struct timespec));
+  p->feed_begin = xmalloc(sizeof(struct timespec));
   p->exp = 0;
 
-  clock_gettime(CLOCK_MONOTONIC, p->data);
+  clock_gettime(CLOCK_MONOTONIC, p->feed_begin);
 }
 
 static void
@@ -242,9 +230,12 @@ perf_feed_end(struct channel *c)
   struct timespec ts_end;
   clock_gettime(CLOCK_MONOTONIC, &ts_end);
 
-  s64 feedtime = timediff(p->data, &ts_end);
+  s64 feedtime = timediff(p->feed_begin, &ts_end);
 
   PLOG("feed n=%lu time=%lu", p->exp, feedtime);
+
+  xfree(p->feed_begin);
+  p->feed_begin = NULL;
 
   if (p->run < p->repeat)
     channel_request_feeding(c);
