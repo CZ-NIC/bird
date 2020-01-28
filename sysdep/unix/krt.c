@@ -298,18 +298,19 @@ krt_uptodate(rte *a, rte *b)
 static void
 krt_learn_announce_update(struct krt_proto *p, rte *e)
 {
-  net *n = e->net;
-  rta *aa = rta_clone(e->attrs);
-  rte *ee = rte_get_temp(aa);
-  ee->pflags = EA_ID_FLAG(EA_KRT_SOURCE) | EA_ID_FLAG(EA_KRT_METRIC);
-  ee->u.krt = e->u.krt;
-  rte_update(&p->p, n->n.addr, ee);
+  rte e0 = {
+    .attrs = rta_clone(e->attrs),
+    .pflags = EA_ID_FLAG(EA_KRT_SOURCE) | EA_ID_FLAG(EA_KRT_METRIC),
+    .u.krt = e->u.krt,
+  };
+
+  rte_update(p->p.main_channel, e->net->n.addr, &e0);
 }
 
 static void
-krt_learn_announce_delete(struct krt_proto *p, net *n)
+krt_learn_announce_delete(struct krt_proto *p, net_addr *n)
 {
-  rte_update(&p->p, n->n.addr, NULL);
+  rte_withdraw(p->p.main_channel, n, NULL);
 }
 
 /* Called when alien route is discovered during scan */
@@ -320,7 +321,7 @@ krt_learn_scan(struct krt_proto *p, rte *e)
   net *n = net_get(&p->krt_table, n0->n.addr);
   rte *m, **mm;
 
-  e->attrs = rta_lookup(e->attrs);
+  e = rte_store(e);
 
   for(mm=&n->routes; m = *mm; mm=&m->next)
     if (krt_same_key(m, e))
@@ -401,7 +402,7 @@ again:
 	{
 	  DBG("%I/%d: deleting\n", n->n.prefix, n->n.pxlen);
 	  if (old_best)
-	    krt_learn_announce_delete(p, n);
+	    krt_learn_announce_delete(p, n->n.addr);
 
 	  FIB_ITERATE_PUT(&fit);
 	  fib_delete(fib, n);
@@ -433,7 +434,7 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
   net *n = net_get(&p->krt_table, n0->n.addr);
   rte *g, **gg, *best, **bestp, *old_best;
 
-  e->attrs = rta_lookup(e->attrs);
+  e = rte_store(e);
 
   old_best = n->routes;
   for(gg=&n->routes; g = *gg; gg = &g->next)
@@ -499,7 +500,7 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
       if (best)
 	krt_learn_announce_update(p, best);
       else
-	krt_learn_announce_delete(p, n);
+	krt_learn_announce_delete(p, n->n.addr);
     }
 }
 
@@ -641,10 +642,7 @@ krt_got_route(struct krt_proto *p, rte *e)
       if (KRT_CF->learn)
 	krt_learn_scan(p, e);
       else
-	{
-	  krt_trace_in_rl(&rl_alien, p, e, "[alien] ignored");
-	  rte_free(e);
-	}
+	krt_trace_in_rl(&rl_alien, p, e, "[alien] ignored");
       return;
     }
 #endif
@@ -700,8 +698,6 @@ delete:
   goto done;
 
 done:
-  rte_free(e);
-
   if (rt_free)
     rte_free(rt_free);
 
@@ -779,7 +775,6 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new)
 	}
 #endif
     }
-  rte_free(e);
 }
 
 /*

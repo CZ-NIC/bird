@@ -2052,27 +2052,29 @@ again1:
 
       if (reload || ort_changed(nf, &a0))
       {
-	rta *a = rta_lookup(&a0);
-	rte *e = rte_get_temp(a);
+	rte e0 = {
+	  .attrs = rta_lookup(&a0),
+	  .u.ospf.metric1 = nf->old_metric1 = nf->n.metric1,
+	  .u.ospf.metric2 = nf->old_metric2 = nf->n.metric2,
+	  .u.ospf.tag = nf->old_tag = nf->n.tag,
+	  .u.ospf.router_id = nf->old_rid = nf->n.rid,
+	  .pflags = EA_ID_FLAG(EA_OSPF_METRIC1) | EA_ID_FLAG(EA_OSPF_ROUTER_ID),
+	};
 
 	rta_free(nf->old_rta);
-	nf->old_rta = rta_clone(a);
-	e->u.ospf.metric1 = nf->old_metric1 = nf->n.metric1;
-	e->u.ospf.metric2 = nf->old_metric2 = nf->n.metric2;
-	e->u.ospf.tag = nf->old_tag = nf->n.tag;
-	e->u.ospf.router_id = nf->old_rid = nf->n.rid;
-	e->pflags = EA_ID_FLAG(EA_OSPF_METRIC1) | EA_ID_FLAG(EA_OSPF_ROUTER_ID);
+	nf->old_rta = rta_clone(e0.attrs);
 
 	if (nf->n.type == RTS_OSPF_EXT2)
-	  e->pflags |= EA_ID_FLAG(EA_OSPF_METRIC2);
+	  e0.pflags |= EA_ID_FLAG(EA_OSPF_METRIC2);
 
 	/* Perhaps onfly if tag is non-zero? */
 	if ((nf->n.type == RTS_OSPF_EXT1) || (nf->n.type == RTS_OSPF_EXT2))
-	  e->pflags |= EA_ID_FLAG(EA_OSPF_TAG);
+	  e0.pflags |= EA_ID_FLAG(EA_OSPF_TAG);
 
 	DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
 	    a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
-	rte_update(&p->p, nf->fn.addr, e);
+
+	rte_update(p->p.main_channel, nf->fn.addr, &e0);
       }
     }
     else if (nf->old_rta)
@@ -2081,7 +2083,7 @@ again1:
       rta_free(nf->old_rta);
       nf->old_rta = NULL;
 
-      rte_update(&p->p, nf->fn.addr, NULL);
+      rte_withdraw(p->p.main_channel, nf->fn.addr, NULL);
     }
 
     /* Remove unused rt entry, some special entries are persistent */
@@ -2096,7 +2098,6 @@ again1:
     }
   }
   FIB_ITERATE_END;
-
 
   WALK_LIST(oa, p->area_list)
   {

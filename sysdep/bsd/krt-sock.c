@@ -374,7 +374,6 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   /* p is NULL iff KRT_SHARED_SOCKET and !scan */
 
   int ipv6;
-  rte *e;
   net *net;
   sockaddr dst, gate, mask;
   ip_addr idst, igate, imask;
@@ -495,7 +494,6 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   net = net_get(p->p.main_channel->table, &ndst);
 
   rta a = {
-    .src = p->p.main_source,
     .source = RTS_INHERIT,
     .scope = SCOPE_UNIVERSE,
   };
@@ -549,14 +547,12 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
       }
   }
 
- done:
-  e = rte_get_temp(&a);
+ done:;
+  rte e0 = {}, *e = &e0;
+  e->attrs = &a;
   e->net = net;
   e->u.krt.src = src;
   e->u.krt.proto = src2;
-  e->u.krt.seen = 0;
-  e->u.krt.best = 0;
-  e->u.krt.metric = 0;
 
   if (scan)
     krt_got_route(p, e);

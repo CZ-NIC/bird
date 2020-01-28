@@ -99,13 +99,12 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
     return;
 
   /* We skip rta_lookup() here */
-  rte *e = rte_get_temp(a);
-  e->pflags = 0;
+  rte e0 = { .attrs = a }, *e = &e0;
 
   if (r->cmds)
     f_eval_rte(r->cmds, &e, static_lp);
 
-  rte_update(&p->p, r->net, e);
+  rte_update(p->p.main_channel, r->net, e);
   r->state = SRS_CLEAN;
 
   if (r->cmds)
@@ -117,7 +116,7 @@ withdraw:
   if (r->state == SRS_DOWN)
     return;
 
-  rte_update(&p->p, r->net, NULL);
+  rte_withdraw(p->p.main_channel, r->net, NULL);
   r->state = SRS_DOWN;
 }
 
@@ -250,7 +249,7 @@ static void
 static_remove_rte(struct static_proto *p, struct static_route *r)
 {
   if (r->state)
-    rte_update(&p->p, r->net, NULL);
+    rte_withdraw(p->p.main_channel, r->net, NULL);
 
   static_reset_rte(p, r);
 }

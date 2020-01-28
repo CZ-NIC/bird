@@ -267,27 +267,6 @@ rte_find(net *net, struct rte_src *src)
   return e;
 }
 
-/**
- * rte_get_temp - get a temporary &rte
- * @a: attributes to assign to the new route (a &rta; in case it's
- * un-cached, rte_update() will create a cached copy automatically)
- *
- * Create a temporary &rte and bind it with the attributes @a.
- * Also set route preference to the default preference set for
- * the protocol.
- */
-rte *
-rte_get_temp(rta *a)
-{
-  rte *e = sl_alloc(rte_slab);
-
-  e->attrs = a;
-  e->id = 0;
-  e->flags = 0;
-  e->pref = 0;
-  return e;
-}
-
 rte *
 rte_do_cow(rte *r)
 {
@@ -296,6 +275,18 @@ rte_do_cow(rte *r)
   memcpy(e, r, sizeof(rte));
   e->attrs = rta_clone(r->attrs);
   e->flags = 0;
+  return e;
+}
+
+rte *
+rte_store(rte *r)
+{
+  rte *e = sl_alloc(rte_slab);
+  memcpy(e, r, sizeof(rte));
+  if (e->attrs->aflags & RTAF_CACHED)
+    e->attrs = rta_clone(r->attrs);
+  else
+    e->attrs = rta_lookup(r->attrs);
   return e;
 }
 
@@ -1382,49 +1373,7 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
   }
 }
 
-/**
- * rte_update - enter a new update to a routing table
- * @table: table to be updated
- * @c: channel doing the update
- * @net: network node
- * @p: protocol submitting the update
- * @src: protocol originating the update
- * @new: a &rte representing the new route or %NULL for route removal.
- *
- * This function is called by the routing protocols whenever they discover
- * a new route or wish to update/remove an existing route. The right announcement
- * sequence is to build route attributes first (either un-cached with @aflags set
- * to zero or a cached one using rta_lookup(); in this case please note that
- * you need to increase the use count of the attributes yourself by calling
- * rta_clone()), call rte_get_temp() to obtain a temporary &rte, fill in all
- * the appropriate data and finally submit the new &rte by calling rte_update().
- *
- * @src specifies the protocol that originally created the route and the meaning
- * of protocol-dependent data of @new. If @new is not %NULL, @src have to be the
- * same value as @new->attrs->proto. @p specifies the protocol that called
- * rte_update(). In most cases it is the same protocol as @src. rte_update()
- * stores @p in @new->sender;
- *
- * When rte_update() gets any route, it automatically validates it (checks,
- * whether the network and next hop address are valid IP addresses and also
- * whether a normal routing protocol doesn't try to smuggle a host or link
- * scope route to the table), converts all protocol dependent attributes stored
- * in the &rte to temporary extended attributes, consults import filters of the
- * protocol to see if the route should be accepted and/or its attributes modified,
- * stores the temporary attributes back to the &rte.
- *
- * Now, having a "public" version of the route, we
- * automatically find any old route defined by the protocol @src
- * for network @n, replace it by the new one (or removing it if @new is %NULL),
- * recalculate the optimal route for this destination and finally broadcast
- * the change (if any) to all routing protocols by calling rte_announce().
- *
- * All memory used for attribute lists and other temporary allocations is taken
- * from a special linear pool @rte_update_pool and freed when rte_update()
- * finishes.
- */
-
-void
+static void
 rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
   struct proto *p = c->proto;
@@ -1526,6 +1475,37 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     goto recalc;
 
   rte_update_unlock();
+}
+
+static int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
+
+void
+rte_withdraw(struct channel *c, net_addr *n, struct rte_src *src)
+{
+  if (!src)
+    src = c->proto->main_source;
+
+  if (!c->in_table || rte_update_in(c, n, NULL, src))
+    rte_update2(c, n, NULL, src ?: c->proto->main_source);
+}
+
+void
+rte_update(struct channel *c, net_addr *n, struct rte *new)
+{
+  ASSERT(new);
+  ASSERT(new->attrs);
+
+  rte *e = sl_alloc(rte_slab);
+  *e = *new;
+
+  if (!e->attrs->src)
+  {
+    ASSERT(!rta_is_cached(e->attrs));
+    e->attrs->src = c->proto->main_source;
+  }
+
+  if (!c->in_table || rte_update_in(c, n, e, e->attrs->src))
+    rte_update2(c, n, e, e->attrs->src);
 }
 
 /* Independent call to rte_announce(), used from next hop
@@ -2415,7 +2395,7 @@ rt_feed_channel_abort(struct channel *c)
  *	Import table
  */
 
-int
+static int
 rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
   struct rtable *tab = c->in_table;

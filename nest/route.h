@@ -280,6 +280,51 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RIC_REJECT	-1		/* Rejected by protocol */
 #define RIC_DROP	-2		/* Silently dropped by protocol */
 
+/**
+ * rte_update - enter a new update to a routing table
+ * @c: channel doing the update
+ * @net: network address
+ * @rte: a &rte representing the new route
+ *
+ * This function imports a new route to the appropriate table (via the channel).
+ * Table keys are @net (obligatory) and @rte->attrs->src.
+ * Both the @net and @rte pointers can be local.
+ *
+ * The route attributes (@rte->attrs) are obligatory. They can be also allocated
+ * locally. Anyway, if you use an already-cached attribute object, you shall
+ * call rta_clone() on that object yourself. (This semantics may change in future.)
+ *
+ * If the route attributes are local, you may set @rte->attrs->src to NULL, then
+ * the protocol's default route source will be supplied.
+ *
+ * When rte_update() gets a route, it automatically validates it. This includes
+ * checking for validity of the given network and next hop addresses and also
+ * checking for host-scope or link-scope routes. Then the import filters are
+ * processed and if accepted, the route is passed to route table recalculation.
+ *
+ * The accepted routes are then inserted into the table, replacing the old route
+ * (key is the @net together with @rte->attrs->src). Then the route is announced
+ * to all the channels connected to the table using the standard export mechanism.
+ *
+ * All memory used for temporary allocations is taken from a special linpool
+ * @rte_update_pool and freed when rte_update() finishes.
+ */
+void rte_update(struct channel *c, net_addr *net, struct rte *rte);
+
+/**
+ * rte_withdraw - withdraw a route from a routing table
+ * @c: channel doing the withdraw
+ * @net: network address
+ * @src: the route source identifier
+ *
+ * This function withdraws a previously announced route from the table.
+ * No import filter is called. This function is idempotent. If no route
+ * is found under the given key, it does nothing.
+ *
+ * If @src is NULL, the protocol's default route source is used.
+ */
+void rte_withdraw(struct channel *c, net_addr *net, struct rte_src *src);
+
 extern list routing_tables;
 struct config;
 
@@ -296,9 +341,6 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 rte *rte_find(net *net, struct rte_src *src);
-rte *rte_get_temp(struct rta *);
-void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
-/* rte_update() moved to protocol.h to avoid dependency conflicts */
 int rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
@@ -308,6 +350,7 @@ void rt_schedule_prune(rtable *t);
 void rte_dump(rte *);
 void rte_free(rte *);
 rte *rte_do_cow(rte *);
+rte *rte_store(rte *);
 static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }
 rte *rte_cow_rta(rte *r, linpool *lp);
 void rte_init_tmp_attrs(struct rte *r, linpool *lp, uint max);
@@ -318,7 +361,6 @@ void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
-int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
