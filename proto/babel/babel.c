@@ -647,15 +647,18 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
     if (!neigh_find(&p->p, r->next_hop, r->neigh->ifa->iface, 0))
       a0.nh.flags = RNF_ONLINK;
 
-    rta *a = rta_lookup(&a0);
-    rte *rte = rte_get_temp(a);
-    rte->u.babel.seqno = r->seqno;
-    rte->u.babel.metric = r->metric;
-    rte->u.babel.router_id = r->router_id;
-    rte->pflags = EA_ID_FLAG(EA_BABEL_METRIC) | EA_ID_FLAG(EA_BABEL_ROUTER_ID);
+    rte e0 = {
+      .attrs = rta_lookup(&a0),
+      .u.babel = {
+	.seqno = r->seqno,
+	.metric = r->metric,
+	.router_id = r->router_id,
+      },
+      .pflags = EA_ID_FLAG(EA_BABEL_METRIC) | EA_ID_FLAG(EA_BABEL_ROUTER_ID),
+    };
 
     e->unreachable = 0;
-    rte_update2(c, e->n.addr, rte, p->p.main_source);
+    rte_update(c, e->n.addr, &e0);
   }
   else if (e->valid && (e->router_id != p->router_id))
   {
@@ -667,20 +670,19 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       .dest = RTD_UNREACHABLE,
     };
 
-    rta *a = rta_lookup(&a0);
-    rte *rte = rte_get_temp(a);
-    memset(&rte->u.babel, 0, sizeof(rte->u.babel));
-    rte->pflags = 0;
-    rte->pref = 1;
+    rte e0 = {
+      .attrs = &a0,
+      .pref = 1,
+    };
 
     e->unreachable = 1;
-    rte_update2(c, e->n.addr, rte, p->p.main_source);
+    rte_update(c, e->n.addr, &e0);
   }
   else
   {
     /* Retraction */
     e->unreachable = 0;
-    rte_update2(c, e->n.addr, NULL, p->p.main_source);
+    rte_withdraw(c, e->n.addr, p->p.main_source);
   }
 }
 
@@ -690,7 +692,7 @@ babel_announce_retraction(struct babel_proto *p, struct babel_entry *e)
 {
   struct channel *c = (e->n.addr->type == NET_IP4) ? p->ip4_channel : p->ip6_channel;
   e->unreachable = 0;
-  rte_update2(c, e->n.addr, NULL, p->p.main_source);
+  rte_withdraw(c, e->n.addr, p->p.main_source);
 }
 
 

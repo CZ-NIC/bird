@@ -188,21 +188,20 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
       a0.nh.iface = rt->from->ifa->iface;
     }
 
-    rta *a = rta_lookup(&a0);
-    rte *e = rte_get_temp(a);
+    rte e0 = {
+      .attrs = rta_lookup(&a0),
+      .u.rip = {
+	.from = a0.nh.iface,
+	.metric = rt_metric,
+	.tag = rt_tag,
+      },
+      .pflags = EA_ID_FLAG(EA_RIP_METRIC) | EA_ID_FLAG(EA_RIP_TAG)
+    };
 
-    e->u.rip.from = a0.nh.iface;
-    e->u.rip.metric = rt_metric;
-    e->u.rip.tag = rt_tag;
-    e->pflags = EA_ID_FLAG(EA_RIP_METRIC) | EA_ID_FLAG(EA_RIP_TAG);
-
-    rte_update(&p->p, en->n.addr, e);
+    rte_update(p->p.main_channel, en->n.addr, &e0);
   }
   else
-  {
-    /* Withdraw */
-    rte_update(&p->p, en->n.addr, NULL);
-  }
+    rte_withdraw(p->p.main_channel, en->n.addr, p->p.main_source);
 }
 
 /**
