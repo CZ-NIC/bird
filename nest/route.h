@@ -157,6 +157,7 @@ typedef struct rtable {
   resource r;
   node n;				/* Node in list of all tables */
   pool *rp;				/* Resource pool to allocate everything from, including itself */
+  struct slab *rte_slab;		/* Slab to allocate route objects */
   struct fib fib;
   char *name;				/* Name of this table */
   list channels;			/* List of attached channels (struct channel) */
@@ -202,7 +203,7 @@ struct rt_subscription {
 #define NHU_DIRTY	3
 
 typedef struct network {
-  struct rte *routes;			/* Available routes for this network */
+  struct rte_storage *routes;			/* Available routes for this network */
   struct fib_node n;			/* FIB flags reserved for kernel syncer */
 } net;
 
@@ -234,18 +235,24 @@ struct hostentry {
 };
 
 typedef struct rte {
-  struct rte *next;
-  net *net;				/* Network this RTE belongs to */
+  struct rta *attrs;			/* Attributes of this route */
+  const net_addr *net;			/* Network this RTE belongs to */
   struct rte_src *src;			/* Route source that created the route */
   struct channel *sender;		/* Channel used to send the route to the routing table */
-  struct rta *attrs;			/* Attributes of this route */
+  btime lastmod;			/* Last modified (set by table) */
   u32 id;				/* Table specific route id */
-  byte flags;				/* Flags (REF_...) */
+  byte flags;				/* Table-specific flags */
   byte pflags;				/* Protocol-specific flags */
-  btime lastmod;			/* Last modified */
 } rte;
 
-#define REF_COW		1		/* Copy this rte on write */
+struct rte_storage {
+  struct rte_storage *next;		/* Next in chain */
+  struct rte rte;			/* Route data */
+};
+
+#define RTE_COPY(r, l)	((r) ? (((*(l)) = (r)->rte), (l)) : NULL)
+#define RTE_OR_NULL(r)	((r) ? &((r)->rte) : NULL)
+
 #define REF_FILTERED	2		/* Route is rejected by import filter */
 #define REF_STALE	4		/* Route is stale in a refresh cycle */
 #define REF_DISCARD	8		/* Route is scheduled for discard */
@@ -271,6 +278,40 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RIC_REJECT	-1		/* Rejected by protocol */
 #define RIC_DROP	-2		/* Silently dropped by protocol */
 
+/**
+ * rte_update - enter a new update to a routing table
+ * @c: channel doing the update
+ * @net: network address
+ * @rte: a &rte representing the new route
+ * @src: old route source identifier
+ *
+ * This function imports a new route to the appropriate table (via the channel).
+ * Table keys are @net (obligatory) and @rte->attrs->src.
+ * Both the @net and @rte pointers can be local.
+ *
+ * The route attributes (@rte->attrs) are obligatory. They can be also allocated
+ * locally. Anyway, if you use an already-cached attribute object, you shall
+ * call rta_clone() on that object yourself. (This semantics may change in future.)
+ *
+ * If the route attributes are local, you may set @rte->attrs->src to NULL, then
+ * the protocol's default route source will be supplied.
+ *
+ * When rte_update() gets a route, it automatically validates it. This includes
+ * checking for validity of the given network and next hop addresses and also
+ * checking for host-scope or link-scope routes. Then the import filters are
+ * processed and if accepted, the route is passed to route table recalculation.
+ *
+ * The accepted routes are then inserted into the table, replacing the old route
+ * for the same @net identified by @src. Then the route is announced
+ * to all the channels connected to the table using the standard export mechanism.
+ * Setting @rte to NULL makes this a withdraw, otherwise @rte->src must be the same
+ * as @src.
+ *
+ * All memory used for temporary allocations is taken from a special linpool
+ * @rte_update_pool and freed when rte_update() finishes.
+ */
+void rte_update(struct channel *c, const net_addr *net, struct rte *rte, struct rte_src *src);
+
 extern list routing_tables;
 struct config;
 
@@ -286,34 +327,27 @@ static inline void rt_shutdown(rtable *r) { rfree(r->rp); }
 
 static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
 static inline net *net_find_valid(rtable *tab, const net_addr *addr)
-{ net *n = net_find(tab, addr); return (n && rte_is_valid(n->routes)) ? n : NULL; }
+{ net *n = net_find(tab, addr); return (n && n->routes && rte_is_valid(&n->routes->rte)) ? n : NULL; }
 static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
-rte *rte_find(net *net, struct rte_src *src);
-rte *rte_get_temp(struct rta *, struct rte_src *src);
-void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
-/* rte_update() moved to protocol.h to avoid dependency conflicts */
-int rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter);
-rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
+int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
+rte *rt_export_merged(struct channel *c, net *net, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
 void rt_modify_stale(rtable *t, struct channel *c);
 void rt_schedule_prune(rtable *t);
-void rte_dump(rte *);
-void rte_free(rte *);
-rte *rte_do_cow(rte *);
-static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }
-rte *rte_cow_rta(rte *r, linpool *lp);
+void rte_dump(struct rte_storage *);
+void rte_free(struct rte_storage *, rtable *);
+struct rte_storage *rte_store(const rte *, net *net, rtable *);
 void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
-int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
-int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old, rte **old_exported, int refeed);
+int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old, struct rte_storage **old_exported, int refeed);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
 
@@ -634,7 +668,7 @@ void rta_dump(rta *);
 void rta_dump_all(void);
 void rta_show(struct cli *, rta *);
 
-u32 rt_get_igp_metric(rte *rt);
+u32 rt_get_igp_metric(rte *);
 struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
 void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls);
 

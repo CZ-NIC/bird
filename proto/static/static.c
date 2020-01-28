@@ -103,24 +103,13 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
     return;
 
   /* We skip rta_lookup() here */
-  rte *e = rte_get_temp(a, src);
-  e->pflags = 0;
+  rte e0 = { .attrs = a, .src = src, .net = r->net, }, *e = &e0;
 
+  /* Evaluate the filter */
   if (r->cmds)
-  {
-    /* Create a temporary table node */
-    e->net = alloca(sizeof(net) + r->net->length);
-    memset(e->net, 0, sizeof(net) + r->net->length);
-    net_copy(e->net->n.addr, r->net);
+    f_eval_rte(r->cmds, e, static_lp);
 
-    /* Evaluate the filter */
-    f_eval_rte(r->cmds, &e, static_lp);
-
-    /* Remove the temporary node */
-    e->net = NULL;
-  }
-
-  rte_update2(p->p.main_channel, r->net, e, src);
+  rte_update(p->p.main_channel, r->net, e, src);
   r->state = SRS_CLEAN;
 
   if (r->cmds)
@@ -132,7 +121,7 @@ withdraw:
   if (r->state == SRS_DOWN)
     return;
 
-  rte_update2(p->p.main_channel, r->net, NULL, src);
+  rte_update(p->p.main_channel, r->net, NULL, src);
   r->state = SRS_DOWN;
 }
 
@@ -298,7 +287,7 @@ static void
 static_remove_rte(struct static_proto *p, struct static_route *r)
 {
   if (r->state)
-    rte_update2(p->p.main_channel, r->net, NULL, static_get_source(p, r->index));
+    rte_update(p->p.main_channel, r->net, NULL, static_get_source(p, r->index));
 
   static_reset_rte(p, r);
 }

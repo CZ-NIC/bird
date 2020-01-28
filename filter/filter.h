@@ -51,8 +51,8 @@ struct filter {
 
 struct rte;
 
-enum filter_return f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
-enum filter_return f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool);
+enum filter_return f_run(const struct filter *filter, struct rte *rte, struct linpool *tmp_pool, int flags);
+enum filter_return f_eval_rte(const struct f_line *expr, struct rte *rte, struct linpool *tmp_pool);
 uint f_eval_int(const struct f_line *expr);
 enum filter_return f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf);
 

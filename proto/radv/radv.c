@@ -385,16 +385,16 @@ radv_trigger_valid(struct radv_config *cf)
 }
 
 static inline int
-radv_net_match_trigger(struct radv_config *cf, net *n)
+radv_net_match_trigger(struct radv_config *cf, const net_addr *n)
 {
-  return radv_trigger_valid(cf) && net_equal(n->n.addr, &cf->trigger);
+  return radv_trigger_valid(cf) && net_equal(n, &cf->trigger);
 }
 
 int
-radv_preexport(struct proto *P, rte *new)
+radv_preexport(struct channel *c, rte *new)
 {
   // struct radv_proto *p = (struct radv_proto *) P;
-  struct radv_config *cf = (struct radv_config *) (P->cf);
+  struct radv_config *cf = (struct radv_config *) (c->proto->cf);
 
   if (radv_net_match_trigger(cf, new->net))
     return RIC_PROCESS;
@@ -406,7 +406,7 @@ radv_preexport(struct proto *P, rte *new)
 }
 
 static void
-radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte *old UNUSED)
+radv_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *n, rte *new, const rte *old UNUSED)
 {
   struct radv_proto *p = (struct radv_proto *) P;
   struct radv_config *cf = (struct radv_config *) (P->cf);
@@ -457,14 +457,14 @@ radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
 	(preference != RA_PREF_HIGH))
     {
       log(L_WARN "%s: Invalid ra_preference value %u on route %N",
-	  p->p.name, preference, n->n.addr);
+	  p->p.name, preference, n);
       preference = RA_PREF_MEDIUM;
       preference_set = 1;
       lifetime = 0;
       lifetime_set = 1;
     }
 
-    rt = fib_get(&p->routes, n->n.addr);
+    rt = fib_get(&p->routes, n);
 
     /* Ignore update if nothing changed */
     if (rt->valid &&
@@ -487,7 +487,7 @@ radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   else
   {
     /* Withdraw */
-    rt = fib_find(&p->routes, n->n.addr);
+    rt = fib_find(&p->routes, n);
 
     if (!rt || !rt->valid)
       return;
@@ -555,7 +555,7 @@ radv_check_active(struct radv_proto *p)
     return 1;
 
   struct channel *c = p->p.main_channel;
-  return rt_examine(c->table, &cf->trigger, &p->p, c->out_filter);
+  return rt_examine(c->table, &cf->trigger, c, c->out_filter);
 }
 
 static void

@@ -1349,7 +1349,7 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
   if (!a0)
   {
     /* Route withdraw */
-    rte_update3(&s->channel->c, n, NULL, s->last_src);
+    rte_update(&s->channel->c, n, NULL, s->last_src);
     return;
   }
 
@@ -1362,11 +1362,12 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
     a0->eattrs = ea;
   }
 
-  rta *a = rta_clone(s->cached_rta);
-  rte *e = rte_get_temp(a, s->last_src);
+  rte e0 = {
+    .attrs = s->cached_rta,
+    .src = s->last_src,
+  };
 
-  e->pflags = 0;
-  rte_update3(&s->channel->c, n, e, s->last_src);
+  rte_update(&s->channel->c, n, &e0, s->last_src);
 }
 
 static void

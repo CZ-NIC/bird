@@ -105,7 +105,7 @@ struct nl_parse_state
   int scan;
   int merge;
 
-  net *net;
+  net_addr *net;
   rta *attrs;
   struct krt_proto *proto;
   s8 new;
@@ -1233,10 +1233,9 @@ nh_bufsize(struct nexthop *nh)
 }
 
 static int
-nl_send_route(struct krt_proto *p, rte *e, int op, int dest, struct nexthop *nh)
+nl_send_route(struct krt_proto *p, const rte *e, int op, int dest, struct nexthop *nh)
 {
   eattr *ea;
-  net *net = e->net;
   rta *a = e->attrs;
   ea_list *eattrs = a->eattrs;
   int bufsize = 128 + KRT_METRICS_MAX*8 + nh_bufsize(&(a->nh));
@@ -1251,7 +1250,7 @@ nl_send_route(struct krt_proto *p, rte *e, int op, int dest, struct nexthop *nh)
   int rsize = sizeof(*r) + bufsize;
   r = alloca(rsize);
 
-  DBG("nl_send_route(%N,op=%x)\n", net->n.addr, op);
+  DBG("nl_send_route(%N,op=%x)\n", e->net, op);
 
   bzero(&r->h, sizeof(r->h));
   bzero(&r->r, sizeof(r->r));
@@ -1260,7 +1259,7 @@ nl_send_route(struct krt_proto *p, rte *e, int op, int dest, struct nexthop *nh)
   r->h.nlmsg_flags = op | NLM_F_REQUEST | NLM_F_ACK;
 
   r->r.rtm_family = p->af;
-  r->r.rtm_dst_len = net_pxlen(net->n.addr);
+  r->r.rtm_dst_len = net_pxlen(e->net);
   r->r.rtm_protocol = RTPROT_BIRD;
   r->r.rtm_scope = RT_SCOPE_NOWHERE;
 #ifdef HAVE_MPLS_KERNEL
@@ -1272,7 +1271,7 @@ nl_send_route(struct krt_proto *p, rte *e, int op, int dest, struct nexthop *nh)
      * 2) Never use RTA_PRIORITY
      */
 
-    u32 label = net_mpls(net->n.addr);
+    u32 label = net_mpls(e->net);
     nl_add_attr_mpls(&r->h, rsize, RTA_DST, 1, &label);
     r->r.rtm_scope = RT_SCOPE_UNIVERSE;
     r->r.rtm_type = RTN_UNICAST;
@@ -1280,12 +1279,12 @@ nl_send_route(struct krt_proto *p, rte *e, int op, int dest, struct nexthop *nh)
   else
 #endif
   {
-    nl_add_attr_ipa(&r->h, rsize, RTA_DST, net_prefix(net->n.addr));
+    nl_add_attr_ipa(&r->h, rsize, RTA_DST, net_prefix(e->net));
 
     /* Add source address for IPv6 SADR routes */
-    if (net->n.addr->type == NET_IP6_SADR)
+    if (e->net->type == NET_IP6_SADR)
     {
-      net_addr_ip6_sadr *a = (void *) &net->n.addr;
+      net_addr_ip6_sadr *a = (void *) &e->net;
       nl_add_attr_ip6(&r->h, rsize, RTA_SRC, a->src_prefix);
       r->r.rtm_src_len = a->src_pxlen;
     }
@@ -1406,7 +1405,7 @@ nl_add_rte(struct krt_proto *p, rte *e)
 }
 
 static inline int
-nl_delete_rte(struct krt_proto *p, rte *e)
+nl_delete_rte(struct krt_proto *p, const rte *e)
 {
   int err = 0;
 
@@ -1427,7 +1426,7 @@ nl_replace_rte(struct krt_proto *p, rte *e)
 
 
 void
-krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
+krt_replace_rte(struct krt_proto *p, const net_addr *n UNUSED, rte *new, const rte *old)
 {
   int err = 0;
 
@@ -1466,7 +1465,7 @@ krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
 }
 
 static int
-nl_mergable_route(struct nl_parse_state *s, net *net, struct krt_proto *p, uint priority, uint krt_type, uint rtm_family)
+nl_mergable_route(struct nl_parse_state *s, const net_addr *net, struct krt_proto *p, uint priority, uint krt_type, uint rtm_family)
 {
   /* Route merging is used for IPv6 scans */
   if (!s->scan || (rtm_family != AF_INET6))
@@ -1486,12 +1485,14 @@ nl_mergable_route(struct nl_parse_state *s, net *net, struct krt_proto *p, uint 
 static void
 nl_announce_route(struct nl_parse_state *s)
 {
-  rte *e = rte_get_temp(s->attrs, s->proto->p.main_source);
-  e->net = s->net;
+  rte e0 = {
+    .attrs = s->attrs,
+    .net = s->net,
+  };
 
   ea_list *ea = alloca(sizeof(ea_list) + 2 * sizeof(eattr));
-  *ea = (ea_list) { .count = 2, .next = e->attrs->eattrs };
-  e->attrs->eattrs = ea;
+  *ea = (ea_list) { .count = 2, .next = e0.attrs->eattrs };
+  e0.attrs->eattrs = ea;
 
   ea->attrs[0] = (eattr) {
     .id = EA_KRT_SOURCE,
@@ -1505,9 +1506,9 @@ nl_announce_route(struct nl_parse_state *s)
   };
 
   if (s->scan)
-    krt_got_route(s->proto, e, s->krt_src);
+    krt_got_route(s->proto, &e0, s->krt_src);
   else
-    krt_got_route_async(s->proto, e, s->new, s->krt_src);
+    krt_got_route_async(s->proto, &e0, s->new, s->krt_src);
 
   s->net = NULL;
   s->attrs = NULL;
@@ -1653,15 +1654,13 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       krt_src = KRT_SRC_ALIEN;
     }
 
-  net_addr *n = &dst;
+  net_addr *net = &dst;
   if (p->p.net_type == NET_IP6_SADR)
   {
-    n = alloca(sizeof(net_addr_ip6_sadr));
-    net_fill_ip6_sadr(n, net6_prefix(&dst), net6_pxlen(&dst),
+    net = alloca(sizeof(net_addr_ip6_sadr));
+    net_fill_ip6_sadr(net, net6_prefix(&dst), net6_pxlen(&dst),
 		      net6_prefix(&src), net6_pxlen(&src));
   }
-
-  net *net = net_get(p->p.main_channel->table, n);
 
   if (s->net && !nl_mergable_route(s, net, p, priority, i->rtm_type, i->rtm_family))
     nl_announce_route(s);
@@ -1685,7 +1684,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	  struct nexthop *nh = nl_parse_multipath(s, p, a[RTA_MULTIPATH], i->rtm_family);
 	  if (!nh)
 	    {
-	      log(L_ERR "KRT: Received strange multipath route %N", net->n.addr);
+	      log(L_ERR "KRT: Received strange multipath route %N", net);
 	      return;
 	    }
 
@@ -1699,7 +1698,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       ra->nh.iface = if_find_by_index(oif);
       if (!ra->nh.iface)
 	{
-	  log(L_ERR "KRT: Received route %N with unknown ifindex %u", net->n.addr, oif);
+	  log(L_ERR "KRT: Received route %N with unknown ifindex %u", net, oif);
 	  return;
 	}
 
@@ -1726,8 +1725,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 			   (ra->nh.flags & RNF_ONLINK) ? NEF_ONLINK : 0);
 	  if (!nbr || (nbr->scope == SCOPE_HOST))
 	    {
-	      log(L_ERR "KRT: Received route %N with strange next-hop %I", net->n.addr,
-                  ra->nh.gw);
+	      log(L_ERR "KRT: Received route %N with strange next-hop %I", net, ra->nh.gw);
 	      return;
 	    }
 	}
@@ -1826,7 +1824,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 
       if (nl_parse_metrics(a[RTA_METRICS], metrics, ARRAY_SIZE(metrics)) < 0)
         {
-	  log(L_ERR "KRT: Received route %N with strange RTA_METRICS attribute", net->n.addr);
+	  log(L_ERR "KRT: Received route %N with strange RTA_METRICS attribute", net);
 	  return;
 	}
 
@@ -1860,7 +1858,9 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   if (!s->net)
   {
     /* Store the new route */
-    s->net = net;
+    s->net = lp_alloc(s->pool, net->length);
+    net_copy(s->net, net);
+
     s->attrs = ra;
     s->proto = p;
     s->new = new;

@@ -101,7 +101,6 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
 static void
 rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 {
-  rte *e, *ee;
   byte ia[NET_MAX_TEXT_LENGTH+1];
   struct channel *ec = d->tab->export_channel;
 
@@ -114,9 +113,9 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
   bsnprintf(ia, sizeof(ia), "%N", n->n.addr);
 
-  for (e = n->routes; e; e = e->next)
+  for (struct rte_storage *er = n->routes; er; er = er->next)
     {
-      if (rte_is_filtered(e) != d->filtered)
+      if (rte_is_filtered(&er->rte) != d->filtered)
 	continue;
 
       d->rt_counter++;
@@ -126,7 +125,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       if (pass)
 	continue;
 
-      ee = e;
+      struct rte e = er->rte;
 
       /* Export channel is down, do not try to export routes to it */
       if (ec && (ec->export_state == ES_DOWN))
@@ -134,7 +133,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
       if (d->export_mode == RSEM_EXPORTED)
         {
-	  if (!bmap_test(&ec->export_map, ee->id))
+	  if (!bmap_test(&ec->export_map, e.id))
 	    goto skip;
 
 	  // if (ec->ra_mode != RA_ANY)
@@ -143,17 +142,17 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       else if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
 	{
 	  /* Special case for merged export */
-	  rte *rt_free;
-	  e = rt_export_merged(ec, n, &rt_free, c->show_pool, 1);
 	  pass = 1;
-
-	  if (!e)
-	  { e = ee; goto skip; }
+	  rte *em = rt_export_merged(ec, n, c->show_pool, 1);
+	  if (em)
+	    e = *em;
+	  else
+	    goto skip;
 	}
       else if (d->export_mode)
 	{
 	  struct proto *ep = ec->proto;
-	  int ic = ep->preexport ? ep->preexport(ep, e) : 0;
+	  int ic = ep->preexport ? ep->preexport(ec, &e) : 0;
 
 	  if (ec->ra_mode == RA_OPTIMAL || ec->ra_mode == RA_MERGED)
 	    pass = 1;
@@ -179,24 +178,19 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	    }
 	}
 
-      if (d->show_protocol && (d->show_protocol != e->src->proto))
+      if (d->show_protocol && (d->show_protocol != e.src->proto))
 	goto skip;
 
       if (f_run(d->filter, &e, c->show_pool, 0) > F_ACCEPT)
 	goto skip;
 
       if (d->stats < 2)
-	rt_show_rte(c, ia, e, d, (e->net->routes == ee));
+	rt_show_rte(c, ia, &e, d, (n->routes == er));
 
       d->show_counter++;
       ia[0] = 0;
 
     skip:
-      if (e != ee)
-      {
-	rte_free(e);
-	e = ee;
-      }
       lp_flush(c->show_pool);
 
       if (d->primary_only)

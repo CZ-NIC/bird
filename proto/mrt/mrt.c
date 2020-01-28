@@ -460,7 +460,7 @@ mrt_rib_table_entry_bgp_attrs(struct mrt_table_dump_state *s, rte *r)
   return;
 
 fail:
-  mrt_log(s, "Attribute list too long for %N", r->net->n.addr);
+  mrt_log(s, "Attribute list too long for %N", r->net);
 }
 #endif
 
@@ -512,24 +512,21 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
   mrt_init_message(&s->buf, MRT_TABLE_DUMP_V2, subtype);
   mrt_rib_table_header(s, n->n.addr);
 
-  rte *rt, *rt0;
-  for (rt0 = n->routes; rt = rt0; rt0 = rt0->next)
+  for (struct rte_storage *rt, *rt0 = n->routes; rt = rt0; rt0 = rt0->next)
   {
-    if (rte_is_filtered(rt))
+    if (rte_is_filtered(&rt->rte))
       continue;
 
     /* Skip routes that should be reported in the other phase */
-    if (!s->always_add_path && (!rt->src->private_id != !s->add_path))
+    if (!s->always_add_path && (!rt->rte.src->private_id != !s->add_path))
     {
       s->want_add_path = 1;
       continue;
     }
 
-    if (f_run(s->filter, &rt, s->linpool, 0) <= F_ACCEPT)
-      mrt_rib_table_entry(s, rt);
-
-    if (rt != rt0)
-      rte_free(rt);
+    rte e = rt->rte;
+    if (f_run(s->filter, &e, s->linpool, 0) <= F_ACCEPT)
+      mrt_rib_table_entry(s, &e);
 
     lp_flush(s->linpool);
   }

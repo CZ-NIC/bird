@@ -2096,15 +2096,18 @@ again1:
 	  .u.data = nf->n.rid,
 	};
 
-	rta *a = rta_lookup(&a0);
-	rte *e = rte_get_temp(a, p->p.main_source);
-
 	rta_free(nf->old_rta);
-	nf->old_rta = rta_clone(a);
+	nf->old_rta = rta_lookup(&a0);
+
+	rte e0 = {
+	  .attrs = nf->old_rta,
+	  .src = p->p.main_source,
+	};
 
 	DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
 	    a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
-	rte_update(&p->p, nf->fn.addr, e);
+
+	rte_update(p->p.main_channel, nf->fn.addr, &e0, p->p.main_source);
       }
     }
     else if (nf->old_rta)
@@ -2113,7 +2116,7 @@ again1:
       rta_free(nf->old_rta);
       nf->old_rta = NULL;
 
-      rte_update(&p->p, nf->fn.addr, NULL);
+      rte_update(p->p.main_channel, nf->fn.addr, NULL, p->p.main_source);
     }
 
     /* Remove unused rt entry, some special entries are persistent */
@@ -2128,7 +2131,6 @@ again1:
     }
   }
   FIB_ITERATE_END;
-
 
   WALK_LIST(oa, p->area_list)
   {
