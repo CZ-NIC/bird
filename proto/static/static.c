@@ -50,10 +50,9 @@
 static linpool *static_lp;
 
 static void
-static_announce_rte(struct static_proto *p, struct static_route *r)
+static_announce_rte(struct static_proto *p, struct rte_update_batch *rub, struct static_route *r)
 {
-  rta *a = allocz(RTA_MAX_SIZE);
-  a->src = p->p.main_source;
+  rta *a = lp_allocz(rub->lp, RTA_MAX_SIZE);
   a->source = RTS_STATIC;
   a->scope = SCOPE_UNIVERSE;
   a->dest = r->dest;
@@ -68,7 +67,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
       if (!r2->active)
 	continue;
 
-      struct nexthop *nh = allocz(NEXTHOP_MAX_SIZE);
+      struct nexthop *nh = lp_allocz(rub->lp, NEXTHOP_MAX_SIZE);
       nh->gw = r2->via;
       nh->iface = r2->neigh->iface;
       nh->flags = r2->onlink ? RNF_ONLINK : 0;
@@ -99,16 +98,14 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
     return;
 
   /* We skip rta_lookup() here */
-  rte e0 = { .attrs = a }, *e = &e0;
+  struct rte_update *ru = rte_update_get(rub, r->net, NULL);
+  ru->rte->pflags = 0;
+  ru->rte->attrs = a;
 
   if (r->cmds)
-    f_eval_rte(r->cmds, &e, static_lp);
+    f_eval_rte(r->cmds, &(ru->rte), rub->lp);
 
-  rte_update(p->p.main_channel, r->net, e);
   r->state = SRS_CLEAN;
-
-  if (r->cmds)
-    lp_flush(static_lp);
 
   return;
 
@@ -116,7 +113,7 @@ withdraw:
   if (r->state == SRS_DOWN)
     return;
 
-  rte_withdraw(p->p.main_channel, r->net, NULL);
+  rte_withdraw_get(rub, r->net, NULL);
   r->state = SRS_DOWN;
 }
 
@@ -138,10 +135,12 @@ static_announce_marked(void *P)
 {
   struct static_proto *p = P;
 
+  struct rte_update_batch *rub = rte_update_init();
   BUFFER_WALK(p->marked, r)
-    static_announce_rte(P, r);
+    static_announce_rte(p, rub, r);
 
   BUFFER_FLUSH(p->marked);
+  rte_update_commit(rub, p->p.main_channel);
 }
 
 static void
@@ -196,7 +195,7 @@ fail:
 }
 
 static void
-static_add_rte(struct static_proto *p, struct static_route *r)
+static_add_rte(struct static_proto *p, struct rte_update_batch *rub, struct static_route *r)
 {
   if (r->dest == RTD_UNICAST)
   {
@@ -224,7 +223,7 @@ static_add_rte(struct static_proto *p, struct static_route *r)
     }
   }
 
-  static_announce_rte(p, r);
+  static_announce_rte(p, rub, r);
 }
 
 static void
@@ -246,10 +245,10 @@ static_reset_rte(struct static_proto *p UNUSED, struct static_route *r)
 }
 
 static void
-static_remove_rte(struct static_proto *p, struct static_route *r)
+static_remove_rte(struct static_proto *p, struct rte_update_batch *rub, struct static_route *r)
 {
   if (r->state)
-    rte_withdraw(p->p.main_channel, r->net, NULL);
+    rte_withdraw_get(rub, r->net, NULL);
 
   static_reset_rte(p, r);
 }
@@ -312,14 +311,14 @@ static_same_rte(struct static_route *or, struct static_route *nr)
 }
 
 static void
-static_reconfigure_rte(struct static_proto *p, struct static_route *or, struct static_route *nr)
+static_reconfigure_rte(struct static_proto *p, struct rte_update_batch *rub, struct static_route *or, struct static_route *nr)
 {
   if ((or->state == SRS_CLEAN) && !static_same_rte(or, nr))
     nr->state = SRS_DIRTY;
   else
     nr->state = or->state;
 
-  static_add_rte(p, nr);
+  static_add_rte(p, rub, nr);
   static_reset_rte(p, or);
 }
 
@@ -427,8 +426,12 @@ static_start(struct proto *P)
   /* We have to go UP before routes could be installed */
   proto_notify_state(P, PS_UP);
 
+  struct rte_update_batch *rub = rte_update_init();
+
   WALK_LIST(r, cf->routes)
-    static_add_rte(p, r);
+    static_add_rte(p, rub, r);
+
+  rte_update_commit(rub, p->p.main_channel);
 
   return PS_UP;
 }
@@ -508,6 +511,8 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
   if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
     return 0;
 
+  struct rte_update_batch *rub = rte_update_init();
+
   p->p.cf = CF;
 
   /* Reset route lists in neighbor entries */
@@ -520,10 +525,13 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
   for (or = HEAD(o->routes), nr = HEAD(n->routes);
        NODE_VALID(or) && NODE_VALID(nr) && net_equal(or->net, nr->net);
        or = NODE_NEXT(or), nr = NODE_NEXT(nr))
-    static_reconfigure_rte(p, or, nr);
+    static_reconfigure_rte(p, rub, or, nr);
 
   if (!NODE_VALID(or) && !NODE_VALID(nr))
+  {
+    rte_update_commit(rub, p->p.main_channel);
     return 1;
+  }
 
   /* Reconfigure remaining routes, sort them to find matching pairs */
   struct static_route *or2, *nr2, **orbuf, **nrbuf;
@@ -551,18 +559,20 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
   {
     int x = net_compare(orbuf[orpos]->net, nrbuf[nrpos]->net);
     if (x < 0)
-      static_remove_rte(p, orbuf[orpos++]);
+      static_remove_rte(p, rub, orbuf[orpos++]);
     else if (x > 0)
-      static_add_rte(p, nrbuf[nrpos++]);
+      static_add_rte(p, rub, nrbuf[nrpos++]);
     else
-      static_reconfigure_rte(p, orbuf[orpos++], nrbuf[nrpos++]);
+      static_reconfigure_rte(p, rub, orbuf[orpos++], nrbuf[nrpos++]);
   }
 
   while (orpos < ornum)
-    static_remove_rte(p, orbuf[orpos++]);
+    static_remove_rte(p, rub, orbuf[orpos++]);
 
   while (nrpos < nrnum)
-    static_add_rte(p, nrbuf[nrpos++]);
+    static_add_rte(p, rub, nrbuf[nrpos++]);
+
+  rte_update_commit(rub, p->p.main_channel);
 
   xfree(orbuf);
   xfree(nrbuf);

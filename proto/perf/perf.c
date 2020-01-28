@@ -160,17 +160,25 @@ perf_loop(void *data)
 
   clock_gettime(CLOCK_MONOTONIC, &ts_generated);
 
-  for (uint i=0; i<N; i++)
-  {
-    rte e0 = { .attrs = p->data[i].a, };
-    rte_update(P->main_channel, &(p->data[i].net), &e0);
+  struct rte_update_batch *rub = rte_update_init();
+
+  for (uint i=0; i<N; i++) {
+    struct rte_update *ru = rte_update_get(rub, &(p->data[i].net), NULL);
+    ru->rte->attrs = p->data[i].a;
+    ru->rte->pflags = 0;
   }
+
+  rte_update_commit(rub, P->main_channel);
 
   clock_gettime(CLOCK_MONOTONIC, &ts_update);
 
+  rub = rte_update_init();
+
   if (!p->keep)
     for (uint i=0; i<N; i++)
-      rte_withdraw(P->main_channel, &(p->data[i].net), NULL);
+      rte_withdraw_get(rub, &(p->data[i].net), NULL);
+
+  rte_update_commit(rub, P->main_channel);
 
   clock_gettime(CLOCK_MONOTONIC, &ts_withdraw);
 

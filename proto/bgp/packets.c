@@ -1304,7 +1304,7 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
   if (!a0)
   {
     /* Route withdraw */
-    rte_withdraw(&(s->channel->c), n, s->last_src);
+    rte_withdraw_get(s->update_batch, n, s->last_src);
     return;
   }
 
@@ -1319,12 +1319,12 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
     a0->eattrs = ea;
   }
 
-  rte e0 = {
-    .attrs = rta_clone(s->cached_rta),
-    .u.bgp.stale = -1,
-  };
-
-  rte_update(&(s->channel->c), n, &e0);
+  struct rte_update *ru = rte_update_get(s->update_batch, n, s->last_src);
+  ru->rte->pflags = 0;
+  ru->rte->attrs = rta_clone(s->cached_rta);
+  ru->rte->u.bgp.suppressed = 0;
+  ru->rte->u.bgp.stale = -1;
+  return;
 }
 
 static void
@@ -2388,7 +2388,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   if (ea)
   {
-    a = allocz(RTA_MAX_SIZE);
+    a = lp_allocz(s->update_batch->lp, RTA_MAX_SIZE);
 
     a->source = RTS_BGP;
     a->scope = SCOPE_UNIVERSE;
@@ -2491,6 +2491,8 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
       !s.mp_reach_len && !s.mp_unreach_len && s.mp_unreach_af)
   { bgp_rx_end_mark(&s, s.mp_unreach_af); goto done; }
 
+  s.update_batch = rte_update_init();
+
   if (s.ip_unreach_len)
     bgp_decode_nlri(&s, BGP_AF_IPV4, s.ip_unreach_nlri, s.ip_unreach_len, NULL, NULL, 0);
 
@@ -2504,6 +2506,9 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
   if (s.mp_reach_len)
     bgp_decode_nlri(&s, s.mp_reach_af, s.mp_reach_nlri, s.mp_reach_len,
 		    ea, s.mp_next_hop_data, s.mp_next_hop_len);
+
+  rte_update_commit(s.update_batch, &s.channel->c);
+  s.update_batch = NULL;
 
 done:
   rta_free(s.cached_rta);

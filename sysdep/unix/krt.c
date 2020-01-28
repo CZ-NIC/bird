@@ -296,21 +296,18 @@ krt_uptodate(rte *a, rte *b)
 }
 
 static void
-krt_learn_announce_update(struct krt_proto *p, rte *e)
+krt_learn_announce_update(struct rte_update_batch *rub, rte *e)
 {
-  rte e0 = {
-    .attrs = rta_clone(e->attrs),
-    .pflags = EA_ID_FLAG(EA_KRT_SOURCE) | EA_ID_FLAG(EA_KRT_METRIC),
-    .u.krt = e->u.krt,
-  };
-
-  rte_update(p->p.main_channel, e->net->n.addr, &e0);
+  struct rte_update *ru = rte_update_get(rub, e->net->n.addr, NULL);
+  ru->rte->attrs = rta_clone(e->attrs);
+  ru->rte->pflags = EA_ID_FLAG(EA_KRT_SOURCE) | EA_ID_FLAG(EA_KRT_METRIC);
+  ru->rte->u.krt = e->u.krt;
 }
 
 static void
-krt_learn_announce_delete(struct krt_proto *p, net_addr *n)
+krt_learn_announce_delete(struct rte_update_batch *rub, net *n)
 {
-  rte_withdraw(p->p.main_channel, n, NULL);
+  rte_withdraw_get(rub, n->n.addr, NULL);
 }
 
 /* Called when alien route is discovered during scan */
@@ -360,6 +357,8 @@ krt_learn_prune(struct krt_proto *p)
 
   KRT_TRACE(p, D_EVENTS, "Pruning inherited routes");
 
+  struct rte_update_batch *rub = rte_update_init();
+
   FIB_ITERATE_INIT(&fit, fib);
 again:
   FIB_ITERATE_START(fib, &fit, net, n)
@@ -402,7 +401,7 @@ again:
 	{
 	  DBG("%I/%d: deleting\n", n->n.prefix, n->n.pxlen);
 	  if (old_best)
-	    krt_learn_announce_delete(p, n->n.addr);
+	    krt_learn_announce_delete(rub, n);
 
 	  FIB_ITERATE_PUT(&fit);
 	  fib_delete(fib, n);
@@ -417,12 +416,14 @@ again:
       if ((best != old_best) || p->reload)
 	{
 	  DBG("%I/%d: announcing (metric=%d)\n", n->n.prefix, n->n.pxlen, best->u.krt.metric);
-	  krt_learn_announce_update(p, best);
+	  krt_learn_announce_update(rub, best);
 	}
       else
 	DBG("%I/%d: uptodate (metric=%d)\n", n->n.prefix, n->n.pxlen, best->u.krt.metric);
     }
   FIB_ITERATE_END;
+
+  rte_update_commit(rub, p->p.main_channel);
 
   p->reload = 0;
 }
@@ -494,14 +495,16 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
       n->routes = best;
     }
 
+  struct rte_update_batch *rub = rte_update_init();
   if (best != old_best)
     {
       DBG("krt_learn_async: distributing change\n");
       if (best)
-	krt_learn_announce_update(p, best);
+	krt_learn_announce_update(rub, best);
       else
-	krt_learn_announce_delete(p, n->n.addr);
+	krt_learn_announce_delete(rub, n);
     }
+  rte_update_commit(rub, p->p.main_channel);
 }
 
 static void

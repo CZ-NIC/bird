@@ -325,6 +325,78 @@ void rte_update(struct channel *c, net_addr *net, struct rte *rte);
  */
 void rte_withdraw(struct channel *c, net_addr *net, struct rte_src *src);
 
+/* Single route update order */
+struct rte_update {
+  struct rte_update *next;		/* Internal single-linked list */
+  struct rte_src *src;			/* Key: rte_src */
+  rte* rte;				/* Value: the route itself */
+  enum rte_update_flags {
+    RUF_IGNORE = 1,			/* Ignore this update */
+  } flags;
+  net_addr n[0];			/* Key: net */
+};
+
+struct rte_update_batch {
+  struct linpool *lp;			/* Linpool to allocate the batch from */
+  struct rte_update *first, **last;	/* Single route update order list */
+};
+
+/**
+ * rte_update_init - prepare a route update batch
+ *
+ * If you want to import / withdraw more routes than one, you should pack them
+ * into one batch and then execute them all at once. This function prepares
+ * the batch.
+ */
+struct rte_update_batch * rte_update_init(void);
+
+/**
+ * rte_update_get - prepare a route import
+ *
+ * @batch: the batch to put this import in
+ * @n: network address
+ * @src: the route source identifier (NULL for default)
+ *
+ * This function returns a structure for route import.
+ * You shall fill in only the @rte member of the returned structure
+ * (the pointer is already set) and set the flags.
+ * The route attributes must exist until rte_update_commit()
+ * is called which you can do either by calling rta_lookup()
+ * or by allocating from the batch->lp linpool.
+ */
+struct rte_update * rte_update_get(struct rte_update_batch *batch, net_addr *n, struct rte_src *src);
+
+/**
+ * rte_withdraw_get - prepare a route withdraw
+ *
+ * @batch: the batch to put this import in
+ * @n: network address
+ * @src: the route source identifier (NULL for default)
+ *
+ * This function registers a withdraw. You may only set flags in the returned structure.
+ */
+struct rte_update * rte_withdraw_get(struct rte_update_batch *batch, net_addr *n, struct rte_src *src);
+
+/**
+ * rte_update_commit - do all the prepared updates
+ *
+ * @batch: batch to commit
+ * @c: channel to send the updates to
+ *
+ * This function does all the prepared updates.
+ */
+void rte_update_commit(struct rte_update_batch *batch, struct channel *c);
+
+/**
+ * rte_update_cancel - cancel the prepared updates
+ *
+ * @batch: batch to cancel
+ *
+ * In case of error, you may want to send no update.
+ * This frees all the memory allocated to the batch together with the batch itself.
+ */
+void rte_update_cancel(struct rte_update_batch *batch);
+
 extern list routing_tables;
 struct config;
 

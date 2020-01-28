@@ -1373,6 +1373,17 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
   }
 }
 
+static struct rte_src *
+rte_fix_src(struct channel *c, rte *new)
+{
+  if (new->attrs->src)
+    return new->attrs->src;
+  else if (rta_is_cached(new->attrs))
+    bug("src is NULL in cached RTA");
+  else
+    return new->attrs->src = c->proto->main_source;
+}
+
 static void
 rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
@@ -1397,6 +1408,8 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
       if (!new->pref)
 	new->pref = c->preference;
+
+      src = rte_fix_src(c, new);
 
       stats->imp_updates_received++;
       if (!rte_validate(new))
@@ -1449,9 +1462,12 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     }
   else
     {
+      if (!src)
+	src = c->proto->main_source;
+
       stats->imp_withdraws_received++;
 
-      if (!(nn = net_find(c->table, n)) || !src)
+      if (!(nn = net_find(c->table, n)))
 	{
 	  stats->imp_withdraws_ignored++;
 	  rte_update_unlock();
@@ -1477,16 +1493,87 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   rte_update_unlock();
 }
 
+struct rte_update_batch *
+rte_update_init(void)
+{
+  rte_update_lock();
+  struct rte_update_batch *batch = lp_alloc(rte_update_pool, sizeof(struct rte_update_batch));
+  batch->lp = rte_update_pool;
+  batch->first = NULL;
+  batch->last = &(batch->first);
+  return batch;
+}
+
 static int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
+
+void
+rte_update_commit(struct rte_update_batch *batch, struct channel *c)
+{
+  ASSERT(batch->lp);
+
+  _Bool have_in_table = c->in_table;
+
+  for (struct rte_update *ru = batch->first; ru; ru = ru->next)
+    if ((ru->flags & RUF_IGNORE) ||
+	have_in_table && !rte_update_in(c, ru->n, ru->rte, ru->src))
+      rte_free_quick(ru->rte);
+    else
+      rte_update2(c, ru->n, ru->rte, ru->src);
+
+  batch->lp = NULL;
+  rte_update_unlock();
+}
+
+void
+rte_update_cancel(struct rte_update_batch *batch)
+{
+  ASSERT(batch->lp);
+
+  for (struct rte_update *ru = batch->first; ru; ru = ru->next)
+    if (ru->rte)
+      rte_free_quick(ru->rte);
+
+  batch->lp = NULL;
+  rte_update_unlock();
+}
+
+struct rte_update *
+rte_withdraw_get(struct rte_update_batch *batch, net_addr *n, struct rte_src *src)
+{
+  struct rte_update *ru = lp_alloc(batch->lp, sizeof(struct rte_update) + n->length);
+
+  *(batch->last) = ru;
+  batch->last = &(ru->next);
+  ru->next = NULL;
+
+  net_copy(ru->n, n);
+  ru->src = src;
+  ru->rte = NULL;
+  ru->flags = 0;
+  return ru;
+}
 
 void
 rte_withdraw(struct channel *c, net_addr *n, struct rte_src *src)
 {
-  if (!src)
-    src = c->proto->main_source;
-
-  if (!c->in_table || rte_update_in(c, n, NULL, src))
+  if (c->in_table && !rte_update_in(c, n, NULL, src ?: c->proto->main_source))
     rte_update2(c, n, NULL, src ?: c->proto->main_source);
+}
+
+struct rte_update *
+rte_update_get(struct rte_update_batch *batch, net_addr *n, struct rte_src *src)
+{
+  struct rte_update *ru = rte_withdraw_get(batch, n, src);
+
+  rte *e = sl_alloc(rte_slab);
+
+  e->id = 0;
+  e->flags = 0;
+  e->pref = 0;
+
+  ru->rte = e;
+
+  return ru;
 }
 
 void
@@ -1504,7 +1591,9 @@ rte_update(struct channel *c, net_addr *n, struct rte *new)
     e->attrs->src = c->proto->main_source;
   }
 
-  if (!c->in_table || rte_update_in(c, n, e, e->attrs->src))
+  if (c->in_table && !rte_update_in(c, n, e, e->attrs->src))
+    rte_free_quick(e);
+  else
     rte_update2(c, n, e, e->attrs->src);
 }
 
