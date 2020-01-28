@@ -624,7 +624,15 @@ bfd_request_notify(struct bfd_request *req, u8 state, u8 diag)
 static int
 bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
 {
+  struct bfd_config *cf = (struct bfd_config *) (p->p.cf);
+
   if (p->p.vrf_set && (p->p.vrf != req->vrf))
+    return 0;
+
+  if (ipa_is_ip4(req->addr) ? !cf->accept_ipv4 : !cf->accept_ipv6)
+    return 0;
+
+  if (req->iface ? !cf->accept_direct : !cf->accept_multihop)
     return 0;
 
   struct bfd_session *s = bfd_find_session_by_addr(p, req->addr);
@@ -986,10 +994,19 @@ bfd_start(struct proto *P)
   add_tail(&bfd_proto_list, &p->bfd_node);
 
   birdloop_enter(p->loop);
-  p->rx4_1 = bfd_open_rx_sk(p, 0, SK_IPV4);
-  p->rx4_m = bfd_open_rx_sk(p, 1, SK_IPV4);
-  p->rx6_1 = bfd_open_rx_sk(p, 0, SK_IPV6);
-  p->rx6_m = bfd_open_rx_sk(p, 1, SK_IPV6);
+
+  if (cf->accept_ipv4 && cf->accept_direct)
+    p->rx4_1 = bfd_open_rx_sk(p, 0, SK_IPV4);
+
+  if (cf->accept_ipv4 && cf->accept_multihop)
+    p->rx4_m = bfd_open_rx_sk(p, 1, SK_IPV4);
+
+  if (cf->accept_ipv6 && cf->accept_direct)
+    p->rx6_1 = bfd_open_rx_sk(p, 0, SK_IPV6);
+
+  if (cf->accept_ipv6 && cf->accept_multihop)
+    p->rx6_m = bfd_open_rx_sk(p, 1, SK_IPV6);
+
   birdloop_leave(p->loop);
 
   bfd_take_requests(p);
@@ -1034,9 +1051,16 @@ static int
 bfd_reconfigure(struct proto *P, struct proto_config *c)
 {
   struct bfd_proto *p = (struct bfd_proto *) P;
-  // struct bfd_config *old = (struct bfd_config *) (P->cf);
+  struct bfd_config *old = (struct bfd_config *) (P->cf);
   struct bfd_config *new = (struct bfd_config *) c;
   struct bfd_iface *ifa;
+
+  /* TODO: Improve accept reconfiguration */
+  if ((new->accept_ipv4 != old->accept_ipv4) ||
+      (new->accept_ipv6 != old->accept_ipv6) ||
+      (new->accept_direct != old->accept_direct) ||
+      (new->accept_multihop != old->accept_multihop))
+    return 0;
 
   birdloop_mask_wakeups(p->loop);
 

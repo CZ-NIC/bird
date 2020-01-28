@@ -23,7 +23,7 @@ CF_DECLS
 
 CF_KEYWORDS(BFD, MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE,
 	INTERFACE, MULTIHOP, NEIGHBOR, DEV, LOCAL, AUTHENTICATION,
-	NONE, SIMPLE, METICULOUS, KEYED, MD5, SHA1)
+	NONE, SIMPLE, METICULOUS, KEYED, MD5, SHA1, IPV4, IPV6, DIRECT)
 
 %type <iface> bfd_neigh_iface
 %type <a> bfd_neigh_local
@@ -38,10 +38,13 @@ bfd_proto_start: proto_start BFD
   this_proto = proto_config_new(&proto_bfd, $1);
   init_list(&BFD_CFG->patt_list);
   init_list(&BFD_CFG->neigh_list);
+  BFD_CFG->accept_ipv4 = BFD_CFG->accept_ipv6 = 1;
+  BFD_CFG->accept_direct = BFD_CFG->accept_multihop = 1;
 };
 
 bfd_proto_item:
    proto_item
+ | ACCEPT bfd_accept
  | INTERFACE bfd_iface
  | MULTIHOP bfd_multihop
  | NEIGHBOR bfd_neighbor
@@ -54,6 +57,21 @@ bfd_proto_opts:
 
 bfd_proto:
    bfd_proto_start proto_name '{' bfd_proto_opts '}';
+
+
+bfd_accept_item:
+   IPV4			{ BFD_CFG->accept_ipv4 = 1;  BFD_CFG->accept_ipv6 = 0; }
+ | IPV6 		{ BFD_CFG->accept_ipv4 = 0;  BFD_CFG->accept_ipv6 = 1; }
+ | DIRECT		{ BFD_CFG->accept_direct = 1;  BFD_CFG->accept_multihop = 0; }
+ | MULTIHOP		{ BFD_CFG->accept_direct = 0;  BFD_CFG->accept_multihop = 1; }
+ ;
+
+bfd_accept:
+   {
+     BFD_CFG->accept_ipv4 = BFD_CFG->accept_ipv6 = 1;
+     BFD_CFG->accept_direct = BFD_CFG->accept_multihop = 1;
+   }
+ | bfd_accept bfd_accept_item
 
 
 bfd_iface_start:

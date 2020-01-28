@@ -43,6 +43,10 @@ struct bfd_config
   list patt_list;		/* List of iface configs (struct bfd_iface_config) */
   list neigh_list;		/* List of configured neighbors (struct bfd_neighbor) */
   struct bfd_iface_config *multihop; /* Multihop pseudoiface config */
+  u8 accept_ipv4;
+  u8 accept_ipv6;
+  u8 accept_direct;
+  u8 accept_multihop;
 };
 
 struct bfd_iface_config

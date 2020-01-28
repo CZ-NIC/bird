@@ -1955,6 +1955,7 @@ milliseconds.
 
 <code>
 protocol bfd [&lt;name&gt;] {
+	accept [ipv4|ipv6] [direct|multihop];
 	interface &lt;interface pattern&gt; {
 		interval &lt;time&gt;;
 		min rx interval &lt;time&gt;;
@@ -1989,6 +1990,14 @@ protocol bfd [&lt;name&gt;] {
 </code>
 
 <descrip>
+	<tag><label id="bfd-accept">accept [ipv4|ipv6] [direct|multihop]</tag>
+	A BFD protocol instance accepts (by default) all BFD session requests
+	(with regard to VRF restrictions, see above). This option controls
+	whether IPv4 / IPv6 and direct / multihop session requests are accepted
+	(and which listening sockets are opened). It can be used, for example,
+	to configure separate BFD protocol instances for IPv4 and for IPv6
+	sessions.
+
 	<tag><label id="bfd-iface">interface <m/pattern/ [, <m/.../] { <m/options/ }</tag>
 	Interface definitions allow to specify options for sessions associated
 	with such interfaces and also may contain interface specific options.
