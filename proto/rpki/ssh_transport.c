@@ -17,6 +17,8 @@
 
 #include "rpki.h"
 
+#if HAVE_LIBSSH
+
 static int
 rpki_tr_ssh_open(struct rpki_tr_sock *tr)
 {
@@ -71,3 +73,5 @@ rpki_tr_ssh_init(struct rpki_tr_sock *tr)
   tr->open_fp = &rpki_tr_ssh_open;
   tr->ident_fp = &rpki_tr_ssh_ident;
 }
+
+#endif

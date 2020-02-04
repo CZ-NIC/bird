@@ -37,7 +37,7 @@ AC_ARG_ENABLE([pthreads],
 )
 
 AC_ARG_ENABLE([libssh],
-  [AS_HELP_STRING([--enable-libssh], [enable LibSSH support together with RPKI @<:@try@:>@])],
+  [AS_HELP_STRING([--enable-libssh], [enable LibSSH support in RPKI @<:@try@:>@])],
   [],
   [enable_libssh=try]
 )
@@ -271,7 +271,6 @@ if test "$enable_libssh" != no ; then
   if test "$fail" != yes ; then
     AC_DEFINE([HAVE_LIBSSH], [1], [Define to 1 if you have the `ssh' library (-lssh).])
     DAEMON_LIBS="-lssh $DAEMON_LIBS"
-    proto_rpki=rpki
     enable_libssh=yes
   else
     if test "$enable_libssh" = yes ; then
@@ -296,7 +295,7 @@ if test "$enable_mpls_kernel" != no ; then
   fi
 fi
 
-all_protocols="$proto_bfd babel bgp mrt ospf perf pipe radv rip $proto_rpki static"
+all_protocols="$proto_bfd babel bgp mrt ospf perf pipe radv rip rpki static"
 
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
@@ -453,6 +452,7 @@ AC_MSG_RESULT([        System configuration:	$sysdesc])
 AC_MSG_RESULT([        Debugging:		$enable_debug])
 AC_MSG_RESULT([        POSIX threads:		$enable_pthreads])
 AC_MSG_RESULT([        Routing protocols:	$protocols])
+AC_MSG_RESULT([        LibSSH support in RPKI:	$enable_libssh])
 AC_MSG_RESULT([        Kernel MPLS support:	$enable_mpls_kernel])
 AC_MSG_RESULT([        Client:			$enable_client])
 

@@ -51,7 +51,9 @@ const char *rpki_tr_ident(struct rpki_tr_sock *tr);
 /* Types of supported transports */
 enum rpki_tr_type {
   RPKI_TR_TCP,				/* Unprotected transport over TCP */
+#if HAVE_LIBSSH
   RPKI_TR_SSH,				/* Protected transport by SSHv2 connection */
+#endif
 };
 
 /* Common configure structure for transports */
