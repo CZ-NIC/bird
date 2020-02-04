@@ -198,11 +198,11 @@ struct symbol *cf_localize_symbol(struct symbol *sym);
  * Result: Pointer to the newly defined symbol. If we are in the top-level
  * scope, it's the same @sym as passed to the function.
  */
-#define cf_define_symbol(sym_, type_, var_, def_) ({ \
-    struct symbol *sym = cf_localize_symbol(sym_); \
-    sym->class = type_; \
-    sym->var_ = def_; \
-    sym; })
+#define cf_define_symbol(osym_, type_, var_, def_) ({ \
+    struct symbol *sym_ = cf_localize_symbol(osym_); \
+    sym_->class = type_; \
+    sym_->var_ = def_; \
+    sym_; })
 
 void cf_push_scope(struct symbol *);
 void cf_pop_scope(void);
