@@ -521,6 +521,7 @@ struct channel {
   struct fib_iterator reload_fit;	/* Iterator in in_table used during reloading */
   u8 reload_active;			/* Iterator reload_fit is linked */
 
+  u8 out_table_int;			/* Update of out_table is handled internally by protocol */
   struct rtable *out_table;		/* Internal table for exported routes */
 };
 

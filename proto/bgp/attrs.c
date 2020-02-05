@@ -1553,6 +1553,33 @@ bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old, ea
   {
     attrs = bgp_update_attrs(p, c, new, attrs, bgp_linpool2);
 
+    if (c->c.out_table && c->c.out_table_int)
+    {
+      rte *old_free = NULL;
+      rte *new1 = NULL;
+
+      /* Prepare new1 as final route after bgp_update_attrs() attribute changes */
+      if (attrs)
+      {
+	new1 = rte_cow_rta(new, bgp_linpool2);
+	new1->attrs->eattrs = attrs;
+      }
+
+      /* Update out_table, we use 'new' as 'old' to ensure it is non-NULL */
+      int drop = !rte_update_out(C, n->n.addr, new1, new, &old_free, new == old);
+
+      if (new1 != new)
+	rte_free(new1);
+      if (old_free)
+	rte_free(old_free);
+
+      if (drop)
+      {
+	lp_flush(bgp_linpool2);
+	return;
+      }
+    }
+
     /* If attributes are invalid, we fail back to withdraw */
     buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
     path = new->attrs->src->global_id;
@@ -1561,6 +1588,17 @@ bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old, ea
   }
   else
   {
+    if (c->c.out_table && c->c.out_table_int)
+    {
+      rte *old_free = NULL;
+
+      if (!rte_update_out(C, n->n.addr, new, old, &old_free, 0))
+	return;
+
+      if (old_free)
+	rte_free(old_free);
+    }
+
     buck = bgp_get_withdraw_bucket(c);
     path = old->attrs->src->global_id;
   }

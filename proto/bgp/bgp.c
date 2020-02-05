@@ -1543,7 +1543,10 @@ bgp_channel_start(struct channel *C)
    channel_setup_in_table(C);
 
   if (c->cf->export_table)
+  {
     channel_setup_out_table(C);
+    C->out_table_int = 1;
+  }
 
   c->next_hop_addr = c->cf->next_hop_addr;
   c->link_addr = IPA_NONE;

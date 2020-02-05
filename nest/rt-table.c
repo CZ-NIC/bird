@@ -612,7 +612,8 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, ea_list *tmpa, int
 	}
     }
 
-  if (c->out_table && !rte_update_out(c, net->n.addr, new, old, &old_free, refeed))
+  if (c->out_table && !c->out_table_int &&
+      !rte_update_out(c, net->n.addr, new, old, &old_free, refeed))
     return;
 
   /* Use route from export_table as old */
