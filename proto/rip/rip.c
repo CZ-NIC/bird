@@ -146,6 +146,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     /* Update */
     rta a0 = {
       .src = p->p.main_source,
+      .pref = p->p.main_channel->preference,
       .source = RTS_RIP,
       .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNICAST,
@@ -189,7 +190,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     }
 
     rte e0 = {
-      .attrs = rta_lookup(&a0),
+      .attrs = &a0,
       .u.rip = {
 	.from = a0.nh.iface,
 	.metric = rt_metric,
@@ -1197,7 +1198,7 @@ rip_reconfigure(struct proto *P, struct proto_config *CF)
 static void
 rip_get_route_info(rte *rte, byte *buf)
 {
-  buf += bsprintf(buf, " (%d/%d)", rte->pref, rte->u.rip.metric);
+  buf += bsprintf(buf, " (%d/%d)", rte->attrs->pref, rte->u.rip.metric);
 
   if (rte->u.rip.tag)
     bsprintf(buf, " [%04x]", rte->u.rip.tag);
