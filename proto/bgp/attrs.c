@@ -1881,14 +1881,24 @@ bgp_get_neighbor(rte *r)
 static inline int
 rte_stale(rte *r)
 {
-  if (r->u.bgp.stale < 0)
-  {
-    /* If staleness is unknown, compute and cache it */
-    eattr *a = ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));
-    r->u.bgp.stale = a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE);
-  }
+  if (r->pflags & BGP_REF_STALE)
+    return 1;
 
-  return r->u.bgp.stale;
+  if (r->pflags & BGP_REF_NOT_STALE)
+    return 0;
+
+  /* If staleness is unknown, compute and cache it */
+  eattr *a = ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));
+  if (a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE))
+  {
+    r->pflags |= BGP_REF_STALE;
+    return 1;
+  }
+  else
+  {
+    r->pflags |= BGP_REF_NOT_STALE;
+    return 0;
+  }
 }
 
 int
@@ -1900,8 +1910,8 @@ bgp_rte_better(rte *new, rte *old)
   u32 n, o;
 
   /* Skip suppressed routes (see bgp_rte_recalculate()) */
-  n = new->u.bgp.suppressed;
-  o = old->u.bgp.suppressed;
+  n = new->pflags & BGP_REF_SUPPRESSED;
+  o = old->pflags & BGP_REF_SUPPRESSED;
   if (n > o)
     return 0;
   if (n < o)
@@ -2045,15 +2055,12 @@ bgp_rte_mergable(rte *pri, rte *sec)
   u32 p, s;
 
   /* Skip suppressed routes (see bgp_rte_recalculate()) */
-  if (pri->u.bgp.suppressed != sec->u.bgp.suppressed)
+  /* LLGR draft - depreference stale routes */
+  if (pri->pflags != sec->pflags)
     return 0;
 
   /* RFC 4271 9.1.2.1. Route resolvability test */
   if (rte_resolvable(pri) != rte_resolvable(sec))
-    return 0;
-
-  /* LLGR draft - depreference stale routes */
-  if (rte_stale(pri) != rte_stale(sec))
     return 0;
 
   /* Start with local preferences */
@@ -2135,7 +2142,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
   rte *key = new ? new : old;
   u32 lpref = key->attrs->pref;
   u32 lasn = bgp_get_neighbor(key);
-  int old_suppressed = old ? old->u.bgp.suppressed : 0;
+  int old_suppressed = old ? !!(old->pflags & BGP_REF_SUPPRESSED) : 0;
 
   /*
    * Proper RFC 4271 path selection is a bit complicated, it cannot be
@@ -2187,11 +2194,11 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
    */
 
   if (new)
-    new->u.bgp.suppressed = 1;
+    new->pflags |= BGP_REF_SUPPRESSED;
 
   if (old)
   {
-    old->u.bgp.suppressed = 1;
+    old->pflags |= BGP_REF_SUPPRESSED;
 
     /* The fast case - replace not best with worse (or remove not best) */
     if (old_suppressed && !(new && bgp_rte_better(new, old)))
@@ -2203,7 +2210,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
   for (s=net->routes; rte_is_valid(s); s=s->next)
     if (use_deterministic_med(s) && same_group(s, lpref, lasn))
     {
-      s->u.bgp.suppressed = 1;
+      s->pflags |= BGP_REF_SUPPRESSED;
       if (!r || bgp_rte_better(s, r))
 	r = s;
     }
@@ -2214,16 +2221,16 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
 
   /* Found if new is mergable with best-in-group */
   if (new && (new != r) && bgp_rte_mergable(r, new))
-    new->u.bgp.suppressed = 0;
+    new->pflags &= ~BGP_REF_SUPPRESSED;
 
   /* Found all existing routes mergable with best-in-group */
   for (s=net->routes; rte_is_valid(s); s=s->next)
     if (use_deterministic_med(s) && same_group(s, lpref, lasn))
       if ((s != r) && bgp_rte_mergable(r, s))
-	s->u.bgp.suppressed = 0;
+	s->pflags &= ~BGP_REF_SUPPRESSED;
 
   /* Found best-in-group */
-  r->u.bgp.suppressed = 0;
+  r->pflags &= ~BGP_REF_SUPPRESSED;
 
   /*
    * There are generally two reasons why we have to force
@@ -2271,7 +2278,7 @@ bgp_rte_modify_stale(struct rte *r, struct linpool *pool)
   r = rte_cow_rta(r, pool);
   bgp_set_attr_ptr(&(r->attrs->eattrs), pool, BA_COMMUNITY, flags,
 		   int_set_add(pool, ad, BGP_COMM_LLGR_STALE));
-  r->u.bgp.stale = 1;
+  r->pflags |= BGP_REF_STALE;
 
   return r;
 }
@@ -2358,7 +2365,7 @@ bgp_get_route_info(rte *e, byte *buf)
 
   buf += bsprintf(buf, " (%d", e->attrs->pref);
 
-  if (e->u.bgp.suppressed)
+  if (e->pflags & BGP_REF_SUPPRESSED)
     buf += bsprintf(buf, "-");
 
   if (rte_stale(e))
