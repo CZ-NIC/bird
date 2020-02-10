@@ -215,6 +215,12 @@ mem_hash_mix(u64 *h, const void *p, uint s)
     *h = *h * multiplier + pp[i];
 }
 
+static inline void
+mem_hash_mix_num(u64 *h, u64 val)
+{
+  mem_hash_mix(h, &val, sizeof(val));
+}
+
 static inline uint
 mem_hash_value(u64 *h)
 {
