@@ -645,6 +645,7 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       .source = RTS_BABEL,
       .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNICAST,
+      .pref = c->preference,
       .from = r->neigh->addr,
       .nh.gw = r->next_hop,
       .nh.iface = r->neigh->ifa->iface,
@@ -676,13 +677,13 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       .source = RTS_BABEL,
       .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNREACHABLE,
+      .pref = 1,
     };
 
     rta *a = rta_lookup(&a0);
     rte *rte = rte_get_temp(a);
     memset(&rte->u.babel, 0, sizeof(rte->u.babel));
     rte->pflags = 0;
-    rte->pref = 1;
 
     e->unreachable = 1;
     rte_update2(c, e->n.addr, rte, p->p.main_source);
@@ -2010,7 +2011,7 @@ babel_dump(struct proto *P)
 static void
 babel_get_route_info(rte *rte, byte *buf)
 {
-  buf += bsprintf(buf, " (%d/%d) [%lR]", rte->pref, rte->u.babel.metric, rte->u.babel.router_id);
+  buf += bsprintf(buf, " (%d/%d) [%lR]", rte->attrs->pref, rte->u.babel.metric, rte->u.babel.router_id);
 }
 
 static int

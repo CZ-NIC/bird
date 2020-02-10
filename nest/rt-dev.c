@@ -84,6 +84,7 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 
       rta a0 = {
 	.src = src,
+	.pref = c->preference,
 	.source = RTS_DEVICE,
 	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,

@@ -433,6 +433,9 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
   net *n = net_get(p->krt_table, n0->n.addr);
   rte *g, **gg, *best, **bestp, *old_best;
 
+  ASSERT(!e->attrs->cached);
+  e->attrs->pref = p->p.main_channel->preference;
+
   e->attrs = rta_lookup(e->attrs);
 
   old_best = n->routes;

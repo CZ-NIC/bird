@@ -2058,6 +2058,7 @@ again1:
 	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,
 	.nh = *(nf->n.nhs),
+	.pref = p->p.main_channel->preference,
       };
 
       if (reload || ort_changed(nf, &a0))
