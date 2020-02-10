@@ -1366,8 +1366,6 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
   rte *e = rte_get_temp(a, s->last_src);
 
   e->pflags = 0;
-  e->u.bgp.suppressed = 0;
-  e->u.bgp.stale = -1;
   rte_update3(&s->channel->c, n, e, s->last_src);
 }
 

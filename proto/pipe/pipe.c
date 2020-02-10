@@ -43,6 +43,10 @@
 
 #include "pipe.h"
 
+#ifdef CONFIG_BGP
+#include "proto/bgp/bgp.h"
+#endif
+
 static void
 pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *old)
 {
@@ -82,7 +86,7 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
 #ifdef CONFIG_BGP
       /* Hack to cleanup cached value */
       if (e->src->proto->proto == &proto_bgp)
-	e->u.bgp.stale = -1;
+	e->pflags &= ~(BGP_REF_STALE | BGP_REF_NOT_STALE);
 #endif
     }
   else

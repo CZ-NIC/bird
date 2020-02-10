@@ -244,12 +244,6 @@ typedef struct rte {
   byte pflags;				/* Protocol-specific flags */
   btime lastmod;			/* Last modified */
   union {				/* Protocol-dependent data (metrics etc.) */
-#ifdef CONFIG_BGP
-    struct {
-      u8 suppressed;			/* Used for deterministic MED comparison */
-      s8 stale;				/* Route is LLGR_STALE, -1 if unknown */
-    } bgp;
-#endif
   } u;
 } rte;
 
