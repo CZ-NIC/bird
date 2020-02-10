@@ -607,7 +607,7 @@ ospf_get_route_info(rte * rte, byte * buf)
   }
 
   buf += bsprintf(buf, " %s", type);
-  buf += bsprintf(buf, " (%d/%d", rte->pref, rte->u.ospf.metric1);
+  buf += bsprintf(buf, " (%d/%d", rte->attrs->pref, rte->u.ospf.metric1);
   if (rte->attrs->source == RTS_OSPF_EXT2)
     buf += bsprintf(buf, "/%d", rte->u.ospf.metric2);
   buf += bsprintf(buf, ")");

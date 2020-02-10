@@ -57,6 +57,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   a->source = RTS_STATIC;
   a->scope = SCOPE_UNIVERSE;
   a->dest = r->dest;
+  a->pref = p->p.main_channel->preference;
 
   if (r->dest == RTD_UNICAST)
   {

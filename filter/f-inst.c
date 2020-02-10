@@ -508,6 +508,7 @@
       case SA_DEST:	RESULT(sa.f_type, i, rta->dest); break;
       case SA_IFNAME:	RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
       case SA_IFINDEX:	RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
+      case SA_PREF:	RESULT(sa.f_type, i, rta->pref); break;
 
       default:
 	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
@@ -576,6 +577,10 @@
 	  rta->nh.next = NULL;
 	  rta->hostentry = NULL;
 	}
+	break;
+
+      case SA_PREF:
+	rta->pref = v1.val.i;
 	break;
 
       default:
@@ -743,20 +748,6 @@
       l->next = *fs->eattrs;
       *fs->eattrs = l;
     }
-  }
-
-  INST(FI_PREF_GET, 0, 1) {
-    ACCESS_RTE;
-    RESULT(T_INT, i, (*fs->rte)->pref);
-  }
-
-  INST(FI_PREF_SET, 1, 0) {
-    ACCESS_RTE;
-    ARG(1,T_INT);
-    if (v1.val.i > 0xFFFF)
-      runtime( "Setting preference value out of bounds" );
-    f_rte_cow(fs);
-    (*fs->rte)->pref = v1.val.i;
   }
 
   INST(FI_LENGTH, 1, 1) {	/* Get length of */
