@@ -283,7 +283,7 @@ rte_store(rte *r)
 {
   rte *e = sl_alloc(rte_slab);
   memcpy(e, r, sizeof(rte));
-  if (e->attrs->aflags & RTAF_CACHED)
+  if (e->attrs->cached)
     e->attrs = rta_clone(r->attrs);
   else
     e->attrs = rta_lookup(r->attrs);
@@ -502,9 +502,9 @@ rte_better(rte *new, rte *old)
   if (!rte_is_valid(new))
     return 0;
 
-  if (new->pref > old->pref)
+  if (new->attrs->pref > old->attrs->pref)
     return 1;
-  if (new->pref < old->pref)
+  if (new->attrs->pref < old->attrs->pref)
     return 0;
   if (new->attrs->src->proto->proto != old->attrs->src->proto->proto)
     {
@@ -528,7 +528,7 @@ rte_mergable(rte *pri, rte *sec)
   if (!rte_is_valid(pri) || !rte_is_valid(sec))
     return 0;
 
-  if (pri->pref != sec->pref)
+  if (pri->attrs->pref != sec->attrs->pref)
     return 0;
 
   if (pri->attrs->src->proto->proto != sec->attrs->src->proto->proto)
@@ -1057,7 +1057,6 @@ rte_same(rte *x, rte *y)
   return
     x->attrs == y->attrs &&
     x->pflags == y->pflags &&
-    x->pref == y->pref &&
     (!x->attrs->src->proto->rte_same || x->attrs->src->proto->rte_same(x, y)) &&
     rte_is_filtered(x) == rte_is_filtered(y);
 }
@@ -1395,9 +1394,6 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
       new->net = nn;
       new->sender = c;
 
-      if (!new->pref)
-	new->pref = c->preference;
-
       stats->imp_updates_received++;
       if (!rte_validate(new))
 	{
@@ -1492,6 +1488,12 @@ rte_update(struct channel *c, const net_addr *n, struct rte *new)
   ASSERT(new);
   ASSERT(new->attrs);
   ASSERT(new->attrs->src);
+
+  if (!new->attrs->pref)
+  {
+    ASSERT(!new->attrs->cached);
+    new->attrs->pref = c->preference;
+  }
 
   rte *e = sl_alloc(rte_slab);
   *e = *new;
@@ -1659,7 +1661,7 @@ rte_dump(rte *e)
 {
   net *n = e->net;
   debug("%-1N ", n->n.addr);
-  debug("PF=%02x pref=%d ", e->pflags, e->pref);
+  debug("PF=%02x ", e->pflags);
   rta_dump(e->attrs);
   if (e->attrs->src->proto->proto->dump_attrs)
     e->attrs->src->proto->proto->dump_attrs(e);
@@ -2038,7 +2040,7 @@ rt_next_hop_update_rte(rtable *tab UNUSED, rte *old)
   memcpy(mls.stack, &a->nh.label[a->nh.labels - mls.len], mls.len * sizeof(u32));
 
   rta_apply_hostentry(a, old->attrs->hostentry, &mls);
-  a->aflags = 0;
+  a->cached = 0;
 
   rte *e = sl_alloc(rte_slab);
   memcpy(e, old, sizeof(rte));
@@ -2397,9 +2399,6 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
   if (new)
   {
     net = net_get(tab, n);
-
-    if (!new->pref)
-      new->pref = c->preference;
 
     if (!rta_is_cached(new->attrs))
       new->attrs = rta_lookup(new->attrs);

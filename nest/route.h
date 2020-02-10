@@ -214,7 +214,6 @@ typedef struct rte {
   u32 id;				/* Table specific route id */
   byte flags;				/* Flags (REF_...) */
   byte pflags;				/* Protocol-specific flags */
-  word pref;				/* Route preference */
   btime lastmod;			/* Last modified */
   union {				/* Protocol-dependent data (metrics etc.) */
 #ifdef CONFIG_RIP
@@ -457,10 +456,11 @@ typedef struct rta {
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
   ip_addr from;				/* Advertising router */
   u32 igp_metric;			/* IGP metric to next hop (for iBGP routes) */
-  u8 source;				/* Route source (RTS_...) */
-  u8 scope;				/* Route scope (SCOPE_... -- see ip.h) */
-  u8 dest;				/* Route destination type (RTD_...) */
-  u8 aflags;
+  u16 cached:1;				/* Are attributes cached? */
+  u16 source:7;				/* Route source (RTS_...) */
+  u16 scope:4;				/* Route scope (SCOPE_... -- see ip.h) */
+  u16 dest:4;				/* Route destination type (RTD_...) */
+  word pref;
   struct nexthop nh;			/* Next hop */
 } rta;
 
@@ -482,19 +482,12 @@ typedef struct rta {
 #define RTS_PERF 15			/* Perf checker */
 #define RTS_MAX 16
 
-#define RTC_UNICAST 0
-#define RTC_BROADCAST 1
-#define RTC_MULTICAST 2
-#define RTC_ANYCAST 3			/* IPv6 Anycast */
-
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* Next hop is neighbor router */
 #define RTD_BLACKHOLE 2			/* Silently drop packets */
 #define RTD_UNREACHABLE 3		/* Reject as unreachable */
 #define RTD_PROHIBIT 4			/* Administratively prohibited */
 #define RTD_MAX 5
-
-#define RTAF_CACHED 1			/* This is a cached rta */
 
 #define IGP_METRIC_UNKNOWN 0x80000000	/* Default igp_metric used when no other
 					   protocol-specific metric is availabe */
@@ -684,7 +677,7 @@ void rta_init(void);
 static inline size_t rta_size(const rta *a) { return sizeof(rta) + sizeof(u32)*a->nh.labels; }
 #define RTA_MAX_SIZE (sizeof(rta) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
 rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */
-static inline int rta_is_cached(rta *r) { return r->aflags & RTAF_CACHED; }
+static inline int rta_is_cached(rta *r) { return r->cached; }
 static inline rta *rta_clone(rta *r) { r->uc++; return r; }
 void rta__free(rta *r);
 static inline void rta_free(rta *r) { if (r && !--r->uc) rta__free(r); }

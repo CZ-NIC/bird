@@ -1095,13 +1095,15 @@ rta_hash(rta *a)
   u64 h;
   mem_hash_init(&h);
 #define MIX(f) mem_hash_mix(&h, &(a->f), sizeof(a->f));
+#define BMIX(f) mem_hash_mix_num(&h, a->f);
   MIX(src);
   MIX(hostentry);
   MIX(from);
   MIX(igp_metric);
-  MIX(source);
-  MIX(scope);
-  MIX(dest);
+  BMIX(source);
+  BMIX(scope);
+  BMIX(dest);
+  MIX(pref);
 #undef MIX
 
   return mem_hash_value(&h) ^ nexthop_hash(&(a->nh)) ^ ea_hash(a->eattrs);
@@ -1189,7 +1191,7 @@ rta_lookup(rta *o)
   rta *r;
   uint h;
 
-  ASSERT(!(o->aflags & RTAF_CACHED));
+  ASSERT(!o->cached);
   if (o->eattrs)
     ea_normalize(o->eattrs);
 
@@ -1200,7 +1202,7 @@ rta_lookup(rta *o)
 
   r = rta_copy(o);
   r->hash_key = h;
-  r->aflags = RTAF_CACHED;
+  r->cached = 1;
   rt_lock_source(r->src);
   rt_lock_hostentry(r->hostentry);
   rta_insert(r);
@@ -1214,7 +1216,7 @@ rta_lookup(rta *o)
 void
 rta__free(rta *a)
 {
-  ASSERT(rta_cache_count && (a->aflags & RTAF_CACHED));
+  ASSERT(rta_cache_count && a->cached);
   rta_cache_count--;
   *a->pprev = a->next;
   if (a->next)
@@ -1224,7 +1226,7 @@ rta__free(rta *a)
   if (a->nh.next)
     nexthop_free(a->nh.next);
   ea_free(a->eattrs);
-  a->aflags = 0;		/* Poison the entry */
+  a->cached = 0;
   sl_free(rta_slab(a), a);
 }
 
@@ -1239,7 +1241,7 @@ rta_do_cow(rta *o, linpool *lp)
       memcpy(*nhn, nho, nexthop_size(nho));
       nhn = &((*nhn)->next);
     }
-  r->aflags = 0;
+  r->cached = 0;
   r->uc = 0;
   return r;
 }
@@ -1259,10 +1261,10 @@ rta_dump(rta *a)
 			 "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
-  debug("p=%s uc=%d %s %s%s h=%04x",
-	a->src->proto->name, a->uc, rts[a->source], ip_scope_text(a->scope),
+  debug("p=%s pref=%d uc=%d %s %s%s h=%04x",
+	a->src->proto->name, a->pref, a->uc, rts[a->source], ip_scope_text(a->scope),
 	rtd[a->dest], a->hash_key);
-  if (!(a->aflags & RTAF_CACHED))
+  if (!a->cached)
     debug(" !CACHED");
   debug(" <-%I", a->from);
   if (a->dest == RTD_UNICAST)

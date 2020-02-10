@@ -147,6 +147,7 @@ perf_loop(void *data)
 	.source = RTS_PERF,
 	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,
+	.pref = p->p.main_channel->preference,
 	.nh.iface = p->ifa->iface,
 	.nh.gw = gw,
 	.nh.weight = 1,

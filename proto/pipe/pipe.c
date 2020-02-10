@@ -68,7 +68,7 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
       a = alloca(rta_size(new->attrs));
       memcpy(a, new->attrs, rta_size(new->attrs));
 
-      a->aflags = 0;
+      a->cached = 0;
       a->hostentry = NULL;
 
       e->attrs = rta_lookup(a);
@@ -76,7 +76,6 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
 
       /* Copy protocol specific embedded attributes. */
       memcpy(&(e->u), &(new->u), sizeof(e->u));
-      e->pref = new->pref;
       e->pflags = new->pflags;
 
 #ifdef CONFIG_BGP
