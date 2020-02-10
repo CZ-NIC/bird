@@ -230,12 +230,6 @@ typedef struct rte {
       u32 router_id;			/* Router that originated this route */
     } ospf;
 #endif
-#ifdef CONFIG_BGP
-    struct {
-      u8 suppressed;			/* Used for deterministic MED comparison */
-      s8 stale;				/* Route is LLGR_STALE, -1 if unknown */
-    } bgp;
-#endif
 #ifdef CONFIG_BABEL
     struct {
       u16 seqno;			/* Babel seqno */
