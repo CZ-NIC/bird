@@ -200,6 +200,10 @@ struct bgp_channel_config {
 
 #define BGP_BFD_GRACEFUL	2	/* BFD down triggers graceful restart */
 
+/* rte->pflags */
+#define BGP_REF_SUPPRESSED	0x1	/* Used for deterministic MED comparison */
+#define BGP_REF_STALE		0x2	/* Route is LLGR_STATE */
+#define BGP_REF_NOT_STALE	0x4	/* Route is NOT LLGR_STATE */
 
 struct bgp_af_caps {
   u32 afi;
