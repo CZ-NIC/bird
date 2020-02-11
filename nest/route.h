@@ -216,13 +216,6 @@ typedef struct rte {
   byte pflags;				/* Protocol-specific flags */
   btime lastmod;			/* Last modified */
   union {				/* Protocol-dependent data (metrics etc.) */
-#ifdef CONFIG_OSPF
-    struct {
-      u32 metric1, metric2;		/* OSPF Type 1 and Type 2 metrics */
-      u32 tag;				/* External route tag */
-      u32 router_id;			/* Router that originated this route */
-    } ospf;
-#endif
 #ifdef CONFIG_BABEL
     struct {
       u16 seqno;			/* Babel seqno */
