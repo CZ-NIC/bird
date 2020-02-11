@@ -2062,23 +2062,45 @@ again1:
 
       if (reload || ort_changed(nf, &a0))
       {
+	a0.eattrs = alloca(sizeof(ea_list) + 4 * sizeof(eattr));
+	memset(a0.eattrs, 0, sizeof(ea_list));
+
+	nf->old_metric1 = nf->n.metric1;
+	nf->old_metric2 = nf->n.metric2;
+	nf->old_tag = nf->n.tag;
+	nf->old_rid = nf->n.rid;
+
+	a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
+	  .id = EA_OSPF_METRIC1,
+	  .type = EAF_TYPE_INT,
+	  .u.data = nf->n.metric1,
+	};
+
+	if (nf->n.type == RTS_OSPF_EXT2)
+	  a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
+	    .id = EA_OSPF_METRIC2,
+	    .type = EAF_TYPE_INT,
+	    .u.data = nf->n.metric2,
+	  };
+
+	if ((nf->n.type == RTS_OSPF_EXT1) || (nf->n.type == RTS_OSPF_EXT2))
+	  a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
+	    .id = EA_OSPF_TAG,
+	    .type = EAF_TYPE_INT,
+	    .u.data = nf->n.tag,
+	  };
+
+	a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
+	  .id = EA_OSPF_ROUTER_ID,
+	  .type = EAF_TYPE_ROUTER_ID,
+	  .u.data = nf->n.rid,
+	};
+
 	rta *a = rta_lookup(&a0);
 	rte *e = rte_get_temp(a, p->p.main_source);
 
 	rta_free(nf->old_rta);
 	nf->old_rta = rta_clone(a);
-	e->u.ospf.metric1 = nf->old_metric1 = nf->n.metric1;
-	e->u.ospf.metric2 = nf->old_metric2 = nf->n.metric2;
-	e->u.ospf.tag = nf->old_tag = nf->n.tag;
-	e->u.ospf.router_id = nf->old_rid = nf->n.rid;
-	e->pflags = EA_ID_FLAG(EA_OSPF_METRIC1) | EA_ID_FLAG(EA_OSPF_ROUTER_ID);
-
-	if (nf->n.type == RTS_OSPF_EXT2)
-	  e->pflags |= EA_ID_FLAG(EA_OSPF_METRIC2);
-
-	/* Perhaps onfly if tag is non-zero? */
-	if ((nf->n.type == RTS_OSPF_EXT1) || (nf->n.type == RTS_OSPF_EXT2))
-	  e->pflags |= EA_ID_FLAG(EA_OSPF_TAG);
 
 	DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
 	    a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
