@@ -216,13 +216,6 @@ typedef struct rte {
   byte pflags;				/* Protocol-specific flags */
   btime lastmod;			/* Last modified */
   union {				/* Protocol-dependent data (metrics etc.) */
-#ifdef CONFIG_RIP
-    struct {
-      struct iface *from;		/* Incoming iface */
-      u8 metric;			/* RIP metric */
-      u16 tag;				/* External route tag */
-    } rip;
-#endif
 #ifdef CONFIG_OSPF
     struct {
       u32 metric1, metric2;		/* OSPF Type 1 and Type 2 metrics */
