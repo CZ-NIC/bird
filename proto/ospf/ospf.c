@@ -108,11 +108,8 @@
 #include "ospf.h"
 
 static int ospf_preexport(struct proto *P, rte **new, struct linpool *pool);
-static void ospf_make_tmp_attrs(struct rte *rt, struct linpool *pool);
-static void ospf_store_tmp_attrs(struct rte *rt, struct linpool *pool);
 static void ospf_reload_routes(struct channel *C);
 static int ospf_rte_better(struct rte *new, struct rte *old);
-static int ospf_rte_same(struct rte *new, struct rte *old);
 static void ospf_disp(timer *timer);
 
 
@@ -378,10 +375,7 @@ ospf_init(struct proto_config *CF)
   P->reload_routes = ospf_reload_routes;
   P->feed_begin = ospf_feed_begin;
   P->feed_end = ospf_feed_end;
-  P->make_tmp_attrs = ospf_make_tmp_attrs;
-  P->store_tmp_attrs = ospf_store_tmp_attrs;
   P->rte_better = ospf_rte_better;
-  P->rte_same = ospf_rte_same;
 
   return P;
 }
@@ -390,7 +384,9 @@ ospf_init(struct proto_config *CF)
 static int
 ospf_rte_better(struct rte *new, struct rte *old)
 {
-  if (new->u.ospf.metric1 == LSINFINITY)
+  u32 new_metric1 = ea_get_int(new->attrs->eattrs, EA_OSPF_METRIC1, LSINFINITY);
+
+  if (new_metric1 == LSINFINITY)
     return 0;
 
   if(new->attrs->source < old->attrs->source) return 1;
@@ -398,27 +394,18 @@ ospf_rte_better(struct rte *new, struct rte *old)
 
   if(new->attrs->source == RTS_OSPF_EXT2)
   {
-    if(new->u.ospf.metric2 < old->u.ospf.metric2) return 1;
-    if(new->u.ospf.metric2 > old->u.ospf.metric2) return 0;
+    u32 old_metric2 = ea_get_int(old->attrs->eattrs, EA_OSPF_METRIC2, LSINFINITY);
+    u32 new_metric2 = ea_get_int(new->attrs->eattrs, EA_OSPF_METRIC2, LSINFINITY);
+    if(new_metric2 < old_metric2) return 1;
+    if(new_metric2 > old_metric2) return 0;
   }
 
-  if (new->u.ospf.metric1 < old->u.ospf.metric1)
+  u32 old_metric1 = ea_get_int(old->attrs->eattrs, EA_OSPF_METRIC1, LSINFINITY);
+  if (new_metric1 < old_metric1)
     return 1;
 
   return 0;			/* Old is shorter or same */
 }
-
-static int
-ospf_rte_same(struct rte *new, struct rte *old)
-{
-  /* new->attrs == old->attrs always */
-  return
-    new->u.ospf.metric1 == old->u.ospf.metric1 &&
-    new->u.ospf.metric2 == old->u.ospf.metric2 &&
-    new->u.ospf.tag == old->u.ospf.tag &&
-    new->u.ospf.router_id == old->u.ospf.router_id;
-}
-
 
 void
 ospf_schedule_rtcalc(struct ospf_proto *p)
@@ -499,26 +486,6 @@ ospf_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
     return -1;
 
   return 0;
-}
-
-static void
-ospf_make_tmp_attrs(struct rte *rt, struct linpool *pool)
-{
-  rte_init_tmp_attrs(rt, pool, 4);
-  rte_make_tmp_attr(rt, EA_OSPF_METRIC1, EAF_TYPE_INT, rt->u.ospf.metric1);
-  rte_make_tmp_attr(rt, EA_OSPF_METRIC2, EAF_TYPE_INT, rt->u.ospf.metric2);
-  rte_make_tmp_attr(rt, EA_OSPF_TAG, EAF_TYPE_INT, rt->u.ospf.tag);
-  rte_make_tmp_attr(rt, EA_OSPF_ROUTER_ID, EAF_TYPE_ROUTER_ID, rt->u.ospf.router_id);
-}
-
-static void
-ospf_store_tmp_attrs(struct rte *rt, struct linpool *pool)
-{
-  rte_init_tmp_attrs(rt, pool, 4);
-  rt->u.ospf.metric1 = rte_store_tmp_attr(rt, EA_OSPF_METRIC1);
-  rt->u.ospf.metric2 = rte_store_tmp_attr(rt, EA_OSPF_METRIC2);
-  rt->u.ospf.tag = rte_store_tmp_attr(rt, EA_OSPF_TAG);
-  rt->u.ospf.router_id = rte_store_tmp_attr(rt, EA_OSPF_ROUTER_ID);
 }
 
 /**
@@ -607,16 +574,20 @@ ospf_get_route_info(rte * rte, byte * buf)
   }
 
   buf += bsprintf(buf, " %s", type);
-  buf += bsprintf(buf, " (%d/%d", rte->attrs->pref, rte->u.ospf.metric1);
+  buf += bsprintf(buf, " (%d/%d", rte->attrs->pref, ea_find(rte->attrs->eattrs, EA_OSPF_METRIC1)->u.data);
   if (rte->attrs->source == RTS_OSPF_EXT2)
-    buf += bsprintf(buf, "/%d", rte->u.ospf.metric2);
+    buf += bsprintf(buf, "/%d", ea_find(rte->attrs->eattrs, EA_OSPF_METRIC2)->u.data);
   buf += bsprintf(buf, ")");
-  if ((rte->attrs->source == RTS_OSPF_EXT1 || rte->attrs->source == RTS_OSPF_EXT2) && rte->u.ospf.tag)
+  if (rte->attrs->source == RTS_OSPF_EXT1 || rte->attrs->source == RTS_OSPF_EXT2)
   {
-    buf += bsprintf(buf, " [%x]", rte->u.ospf.tag);
+    eattr *ea = ea_find(rte->attrs->eattrs, EA_OSPF_TAG);
+    if (ea)
+      buf += bsprintf(buf, " [%x]", ea->u.data);
   }
-  if (rte->u.ospf.router_id)
-    buf += bsprintf(buf, " [%R]", rte->u.ospf.router_id);
+  
+  eattr *ea = ea_find(rte->attrs->eattrs, EA_OSPF_ROUTER_ID);
+  if (ea)
+    buf += bsprintf(buf, " [%R]", ea->u.data);
 }
 
 static int
