@@ -506,8 +506,8 @@ typedef struct eattr {
   byte flags;				/* Protocol-dependent flags */
   byte type;				/* Attribute type and several flags (EAF_...) */
   union {
-    u32 data;
-    const struct adata *ptr;			/* Attribute data elsewhere */
+    uintptr_t data;
+    const struct adata *ptr;		/* Attribute data elsewhere */
   } u;
 } eattr;
 
@@ -538,6 +538,7 @@ const char *ea_custom_name(uint ea);
 #define EAF_TYPE_AS_PATH 0x06		/* BGP AS path (encoding per RFC 1771:4.3) */
 #define EAF_TYPE_BITFIELD 0x09		/* 32-bit embedded bitfield */
 #define EAF_TYPE_INT_SET 0x0a		/* Set of u32's (e.g., a community list) */
+#define EAF_TYPE_PTR 0x0d		/* Pointer to an object */
 #define EAF_TYPE_EC_SET 0x0e		/* Set of pairs of u32's - ext. community list */
 #define EAF_TYPE_LC_SET 0x12		/* Set of triplets of u32's - large community list */
 #define EAF_TYPE_UNDEF 0x1f		/* `force undefined' entry */
@@ -592,7 +593,7 @@ struct ea_walk_state {
 
 eattr *ea_find(ea_list *, unsigned ea);
 eattr *ea_walk(struct ea_walk_state *s, uint id, uint max);
-int ea_get_int(ea_list *, unsigned ea, int def);
+uintptr_t ea_get_int(ea_list *, unsigned ea, uintptr_t def);
 void ea_dump(ea_list *);
 void ea_sort(ea_list *);		/* Sort entries in all sub-lists */
 unsigned ea_scan(ea_list *);		/* How many bytes do we need for merged ea_list */
