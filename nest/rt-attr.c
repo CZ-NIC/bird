@@ -541,8 +541,8 @@ ea_walk(struct ea_walk_state *s, uint id, uint max)
  * by calling ea_find() to find the attribute, extracting its value or returning
  * a provided default if no such attribute is present.
  */
-int
-ea_get_int(ea_list *e, unsigned id, int def)
+uintptr_t
+ea_get_int(ea_list *e, unsigned id, uintptr_t def)
 {
   eattr *a = ea_find(e, id);
   if (!a)
