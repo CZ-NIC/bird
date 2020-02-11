@@ -49,6 +49,10 @@
 #include "proto/rip/rip.h"
 #endif
 
+#ifdef CONFIG_OSPF
+#include "proto/ospf/ospf.h"
+#endif
+
 #ifdef CONFIG_BGP
 #include "proto/bgp/bgp.h"
 #endif
@@ -2923,7 +2927,9 @@ rt_get_igp_metric(rte *rt)
     case RTS_OSPF:
     case RTS_OSPF_IA:
     case RTS_OSPF_EXT1:
-      return rt->u.ospf.metric1;
+      if (ea = ea_find(rt->attrs->eattrs, EA_OSPF_METRIC1))
+	return ea->u.data;
+      break;
 #endif
 
 #ifdef CONFIG_RIP
