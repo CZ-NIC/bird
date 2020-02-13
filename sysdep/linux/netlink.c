@@ -1489,14 +1489,26 @@ nl_announce_route(struct nl_parse_state *s)
   rte e0 = {}, *e = &e0;
   e->attrs = s->attrs;
   e->net = s->net;
-  e->u.krt.src = s->krt_src;
-  e->u.krt.proto = s->krt_proto;
-  e->u.krt.metric = s->krt_metric;
+
+  ea_list *ea = alloca(sizeof(ea_list) + 2 * sizeof(eattr));
+  *ea = (ea_list) { .count = 2, .next = e->attrs->eattrs };
+  e->attrs->eattrs = ea;
+
+  ea->attrs[0] = (eattr) {
+    .id = EA_KRT_SOURCE,
+    .type = EAF_TYPE_INT,
+    .u.data = s->krt_proto,
+  };
+  ea->attrs[1] = (eattr) {
+    .id = EA_KRT_METRIC,
+    .type = EAF_TYPE_INT,
+    .u.data = s->krt_metric,
+  };
 
   if (s->scan)
-    krt_got_route(s->proto, e);
+    krt_got_route(s->proto, e, s->krt_src);
   else
-    krt_got_route_async(s->proto, e, s->new);
+    krt_got_route_async(s->proto, e, s->new, s->krt_src);
 
   s->net = NULL;
   s->attrs = NULL;
