@@ -57,6 +57,10 @@
 #include "proto/bgp/bgp.h"
 #endif
 
+#ifdef CONFIG_BABEL
+#include "proto/babel/babel.h"
+#endif
+
 pool *rt_table_pool;
 
 static slab *rte_slab;
@@ -2949,7 +2953,9 @@ rt_get_igp_metric(rte *rt)
 
 #ifdef CONFIG_BABEL
     case RTS_BABEL:
-      return rt->u.babel.metric;
+      if (ea = ea_find(rt->attrs->eattrs, EA_BABEL_METRIC))
+	return ea->u.data;
+      break;
 #endif
 
     case RTS_DEVICE:
