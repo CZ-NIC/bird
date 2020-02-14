@@ -167,7 +167,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 	struct nexthop *nh = allocz(sizeof(struct nexthop));
 
 	nh->gw = rt->next_hop;
-	nh->iface = rt->from->nbr->iface;
+	nh->iface = rt->from->ifa->iface;
 	nh->weight = rt->from->ifa->cf->ecmp_weight;
 
 	nexthop_insert(&nhs, nh);
@@ -184,7 +184,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
       /* Unipath route */
       a0.from = rt->from->nbr->addr;
       a0.nh.gw = rt->next_hop;
-      a0.nh.iface = rt->from->nbr->iface;
+      a0.nh.iface = rt->from->ifa->iface;
     }
 
     rta *a = rta_lookup(&a0);
@@ -402,7 +402,7 @@ rip_remove_neighbor(struct rip_proto *p, struct rip_neighbor *n)
 {
   neighbor *nbr = n->nbr;
 
-  TRACE(D_EVENTS, "Removing neighbor %I on %s", nbr->addr, nbr->iface->name);
+  TRACE(D_EVENTS, "Removing neighbor %I on %s", nbr->addr, nbr->ifreq->name);
 
   rem_node(NODE n);
   n->ifa = NULL;
