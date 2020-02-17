@@ -74,7 +74,6 @@ struct protocol {
   struct proto * (*init)(struct proto_config *);		/* Create new instance */
   int (*reconfigure)(struct proto *, struct proto_config *);	/* Try to reconfigure instance, returns success */
   void (*dump)(struct proto *);			/* Debugging dump */
-  void (*dump_attrs)(struct rte *);		/* Dump protocol-dependent attributes */
   int (*start)(struct proto *);			/* Start the instance */
   int (*shutdown)(struct proto *);		/* Stop the instance */
   void (*cleanup)(struct proto *);		/* Called after shutdown when protocol became hungry/down */
@@ -465,7 +464,6 @@ struct channel_class {
 
 
   void (*dump)(struct proto *);			/* Debugging dump */
-  void (*dump_attrs)(struct rte *);		/* Dump protocol-dependent attributes */
 
   void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
   void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */

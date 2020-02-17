@@ -1484,8 +1484,6 @@ rte_dump(rte *e)
   debug("%-1N ", n->n.addr);
   debug("PF=%02x ", e->pflags);
   rta_dump(e->attrs);
-  if (e->attrs->src->proto->proto->dump_attrs)
-    e->attrs->src->proto->proto->dump_attrs(e);
   debug("\n");
 }
 
