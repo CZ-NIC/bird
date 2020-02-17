@@ -577,8 +577,6 @@ krt_export_net(struct krt_proto *p, net *net, rte **rt_free)
   if (filter == FILTER_REJECT)
     return NULL;
 
-  rte_make_tmp_attrs(&rt, krt_filter_lp, NULL);
-
   /* We could run krt_preexport() here, but it is already handled by krt_is_installed() */
 
   if (filter == FILTER_ACCEPT)

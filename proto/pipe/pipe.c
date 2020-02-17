@@ -78,16 +78,6 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
       e->attrs = rta_lookup(a);
       e->pflags = 0;
 
-      /* Copy protocol specific embedded attributes. */
-      memcpy(&(e->u), &(new->u), sizeof(e->u));
-      e->pflags = new->pflags;
-
-#ifdef CONFIG_BGP
-      /* Hack to cleanup cached value */
-      if (e->attrs->src->proto->proto == &proto_bgp)
-	e->pflags &= ~(BGP_REF_STALE | BGP_REF_NOT_STALE);
-#endif
-
       src = a->src;
     }
   else
