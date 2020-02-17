@@ -24,6 +24,9 @@ struct kif_proto;
 #define EA_KRT_SOURCE	EA_CODE(PROTOCOL_KERNEL, 0)
 #define EA_KRT_METRIC	EA_CODE(PROTOCOL_KERNEL, 1)
 
+#define KRT_REF_SEEN	0x1	/* Seen in table */
+#define KRT_REF_BEST	0x2	/* Best in table */
+
 /* Whenever we recognize our own routes, we allow learing of foreign routes */
 
 #ifdef CONFIG_SELF_CONSCIOUS
@@ -76,8 +79,8 @@ extern pool *krt_pool;
 
 struct proto_config * kif_init_config(int class);
 void kif_request_scan(void);
-void krt_got_route(struct krt_proto *p, struct rte *e);
-void krt_got_route_async(struct krt_proto *p, struct rte *e, int new);
+void krt_got_route(struct krt_proto *p, struct rte *e, s8 src);
+void krt_got_route_async(struct krt_proto *p, struct rte *e, int new, s8 src);
 
 static inline int
 krt_get_sync_error(struct krt_proto *p, struct rte *e)

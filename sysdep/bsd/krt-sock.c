@@ -551,13 +551,21 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   rte e0 = {}, *e = &e0;
   e->attrs = &a;
   e->net = net;
-  e->u.krt.src = src;
-  e->u.krt.proto = src2;
+
+  ea_list *ea = alloca(sizeof(ea_list) + 1 * sizeof(eattr));
+  *ea = (ea_list) { .count = 1, .next = e->attrs->eattrs };
+  e->attrs->eattrs = ea;
+
+  ea->attrs[0] = (eattr) {
+    .id = EA_KRT_SOURCE,
+    .type = EAF_TYPE_INT,
+    .u.data = src2,
+  };
 
   if (scan)
-    krt_got_route(p, e);
+    krt_got_route(p, e, src);
   else
-    krt_got_route_async(p, e, new);
+    krt_got_route_async(p, e, new, src);
 }
 
 static void
