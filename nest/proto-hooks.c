@@ -275,21 +275,6 @@ int rte_better(rte *new, rte *old)
 { DUMMY; }
 
 /**
- * rte_same - compare two routes
- * @e1: route
- * @e2: route
- *
- * The rte_same() hook tests whether the routes @e1 and @e2 belonging
- * to the same protocol instance have identical contents. Contents of
- * &rta, all the extended attributes and &rte preference are checked
- * by the core code, no need to take care of them here.
- *
- * Result: 1 if @e1 is identical to @e2, 0 otherwise.
- */
-int rte_same(rte *e1, rte *e2)
-{ DUMMY; }
-
-/**
  * rte_insert - notify instance about route insertion
  * @n: network
  * @e: route
