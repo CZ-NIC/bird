@@ -1385,26 +1385,6 @@ rte_update_unlock(void)
     lp_flush(rte_update_pool);
 }
 
-static inline void
-rte_hide_dummy_routes(net *net, rte **dummy)
-{
-  if (net->routes && net->routes->attrs->source == RTS_DUMMY)
-  {
-    *dummy = net->routes;
-    net->routes = (*dummy)->next;
-  }
-}
-
-static inline void
-rte_unhide_dummy_routes(net *net, rte **dummy)
-{
-  if (*dummy)
-  {
-    (*dummy)->next = net->routes;
-    net->routes = *dummy;
-  }
-}
-
 /**
  * rte_update - enter a new update to a routing table
  * @table: table to be updated
@@ -1453,7 +1433,6 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   // struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
   const struct filter *filter = c->in_filter;
-  rte *dummy = NULL;
   net *nn;
 
   ASSERT(c->channel_state == CS_UP);
@@ -1532,9 +1511,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
  recalc:
   /* And recalculate the best route */
-  rte_hide_dummy_routes(nn, &dummy);
   rte_recalculate(c, nn, new, src);
-  rte_unhide_dummy_routes(nn, &dummy);
 
   rte_update_unlock();
   return;

@@ -1305,8 +1305,6 @@ nl_send_route(struct krt_proto *p, rte *e, int op, int dest, struct nexthop *nh)
 
   if (p->af == AF_MPLS)
     priority = 0;
-  else if (a->source == RTS_DUMMY)
-    priority = e->u.krt.metric;
   else if (KRT_CF->sys.metric)
     priority = KRT_CF->sys.metric;
   else if ((op != NL_OP_DELETE) && (ea = ea_find(eattrs, EA_KRT_METRIC)))
