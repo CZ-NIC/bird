@@ -277,22 +277,23 @@ static struct tbf rl_alien = TBF_DEFAULT_LOG_LIMITS;
  * the same key.
  */
 
+static inline u32
+krt_metric(rte *a)
+{
+  eattr *ea = ea_find(a->attrs->eattrs, EA_KRT_METRIC);
+  return ea ? ea->u.data : 0;
+}
+
 static inline int
 krt_same_key(rte *a, rte *b)
 {
-  return a->u.krt.metric == b->u.krt.metric;
+  return (krt_metric(a) == krt_metric(b));
 }
 
 static inline int
 krt_uptodate(rte *a, rte *b)
 {
-  if (a->attrs != b->attrs)
-    return 0;
-
-  if (a->u.krt.proto != b->u.krt.proto)
-    return 0;
-
-  return 1;
+  return (a->attrs == b->attrs);
 }
 
 static void
@@ -300,8 +301,6 @@ krt_learn_announce_update(struct krt_proto *p, rte *e)
 {
   rte e0 = {
     .attrs = rta_clone(e->attrs),
-    .pflags = EA_ID_FLAG(EA_KRT_SOURCE) | EA_ID_FLAG(EA_KRT_METRIC),
-    .u.krt = e->u.krt,
   };
 
   rte_update(p->p.main_channel, e->net->n.addr, &e0);
@@ -332,7 +331,7 @@ krt_learn_scan(struct krt_proto *p, rte *e)
 	{
 	  krt_trace_in_rl(&rl_alien, p, e, "[alien] seen");
 	  rte_free(e);
-	  m->u.krt.seen = 1;
+	  m->pflags |= KRT_REF_SEEN;
 	}
       else
 	{
@@ -348,7 +347,7 @@ krt_learn_scan(struct krt_proto *p, rte *e)
     {
       e->next = n->routes;
       n->routes = e;
-      e->u.krt.seen = 1;
+      e->pflags |= KRT_REF_SEEN;
     }
 }
 
@@ -378,24 +377,23 @@ again:
       ee = &n->routes;
       while (e = *ee)
 	{
-	  if (e->u.krt.best)
+	  if (e->pflags & KRT_REF_BEST)
 	    old_best = e;
 
-	  if (!e->u.krt.seen)
+	  if (!(e->pflags & KRT_REF_SEEN))
 	    {
 	      *ee = e->next;
 	      rte_free(e);
 	      continue;
 	    }
 
-	  if (!best || best->u.krt.metric > e->u.krt.metric)
+	  if (!best || krt_metric(best) > krt_metric(e))
 	    {
 	      best = e;
 	      pbest = ee;
 	    }
 
-	  e->u.krt.seen = 0;
-	  e->u.krt.best = 0;
+	  e->pflags &= ~(KRT_REF_SEEN | KRT_REF_BEST);
 	  ee = &e->next;
 	}
       if (!n->routes)
@@ -409,18 +407,18 @@ again:
 	  goto again;
 	}
 
-      best->u.krt.best = 1;
+      best->pflags |= KRT_REF_BEST;
       *pbest = best->next;
       best->next = n->routes;
       n->routes = best;
 
       if ((best != old_best) || p->reload)
 	{
-	  DBG("%I/%d: announcing (metric=%d)\n", n->n.prefix, n->n.pxlen, best->u.krt.metric);
+	  DBG("%I/%d: announcing (metric=%d)\n", n->n.prefix, n->n.pxlen, krt_metric(best));
 	  krt_learn_announce_update(p, best);
 	}
       else
-	DBG("%I/%d: uptodate (metric=%d)\n", n->n.prefix, n->n.pxlen, best->u.krt.metric);
+	DBG("%I/%d: uptodate (metric=%d)\n", n->n.prefix, n->n.pxlen, krt_metric(best));
     }
   FIB_ITERATE_END;
 
@@ -480,18 +478,18 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
   bestp = &n->routes;
   for(gg=&n->routes; g=*gg; gg=&g->next)
   {
-    if (best->u.krt.metric > g->u.krt.metric)
+    if (krt_metric(best) > krt_metric(g))
       {
 	best = g;
 	bestp = gg;
       }
 
-    g->u.krt.best = 0;
+    g->pflags &= ~KRT_REF_BEST;
   }
 
   if (best)
     {
-      best->u.krt.best = 1;
+      best->pflags |= KRT_REF_BEST;
       *bestp = best->next;
       best->next = n->routes;
       n->routes = best;
@@ -529,12 +527,6 @@ krt_dump(struct proto *P)
     return;
   debug("KRT: Table of inheritable routes\n");
   rt_dump(&p->krt_table);
-}
-
-static void
-krt_dump_attrs(rte *e)
-{
-  debug(" [m=%d,p=%d]", e->u.krt.metric, e->u.krt.proto);
 }
 
 #endif
@@ -627,13 +619,13 @@ krt_same_dest(rte *k, rte *e)
  */
 
 void
-krt_got_route(struct krt_proto *p, rte *e)
+krt_got_route(struct krt_proto *p, rte *e, s8 src)
 {
   rte *new = NULL, *rt_free = NULL;
   net *n = e->net;
 
 #ifdef KRT_ALLOW_LEARN
-  switch (e->u.krt.src)
+  switch (src)
     {
     case KRT_SRC_KERNEL:
       goto ignore;
@@ -750,11 +742,11 @@ krt_prune(struct krt_proto *p)
 }
 
 void
-krt_got_route_async(struct krt_proto *p, rte *e, int new)
+krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
 {
   net *net = e->net;
 
-  switch (e->u.krt.src)
+  switch (src)
     {
     case KRT_SRC_BIRD:
       /* Should be filtered by the back end */
@@ -883,22 +875,6 @@ krt_scan_timer_kick(struct krt_proto *p)
  *	Updates
  */
 
-static void
-krt_make_tmp_attrs(struct rte *rt, struct linpool *pool)
-{
-  rte_init_tmp_attrs(rt, pool, 2);
-  rte_make_tmp_attr(rt, EA_KRT_SOURCE, EAF_TYPE_INT, rt->u.krt.proto);
-  rte_make_tmp_attr(rt, EA_KRT_METRIC, EAF_TYPE_INT, rt->u.krt.metric);
-}
-
-static void
-krt_store_tmp_attrs(struct rte *rt, struct linpool *pool)
-{
-  rte_init_tmp_attrs(rt, pool, 2);
-  rt->u.krt.proto = rte_store_tmp_attr(rt, EA_KRT_SOURCE);
-  rt->u.krt.metric = rte_store_tmp_attr(rt, EA_KRT_METRIC);
-}
-
 static int
 krt_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
 {
@@ -980,14 +956,6 @@ krt_feed_end(struct channel *C)
 }
 
 
-static int
-krt_rte_same(rte *a, rte *b)
-{
-  /* src is always KRT_SRC_ALIEN and type is irrelevant */
-  return (a->u.krt.proto == b->u.krt.proto) && (a->u.krt.metric == b->u.krt.metric);
-}
-
-
 /*
  *	Protocol glue
  */
@@ -1042,9 +1010,6 @@ krt_init(struct proto_config *CF)
   p->p.if_notify = krt_if_notify;
   p->p.reload_routes = krt_reload_routes;
   p->p.feed_end = krt_feed_end;
-  p->p.make_tmp_attrs = krt_make_tmp_attrs;
-  p->p.store_tmp_attrs = krt_store_tmp_attrs;
-  p->p.rte_same = krt_rte_same;
 
   krt_sys_init(p);
   return &p->p;
@@ -1202,6 +1167,5 @@ struct protocol proto_unix_kernel = {
   .get_attr =		krt_get_attr,
 #ifdef KRT_ALLOW_LEARN
   .dump =		krt_dump,
-  .dump_attrs =		krt_dump_attrs,
 #endif
 };
