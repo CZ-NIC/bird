@@ -902,8 +902,6 @@ rte_same(rte *x, rte *y)
   /* rte.flags are not checked, as they are mostly internal to rtable */
   return
     x->attrs == y->attrs &&
-    x->pflags == y->pflags &&
-    (!x->attrs->src->proto->rte_same || x->attrs->src->proto->rte_same(x, y)) &&
     rte_is_filtered(x) == rte_is_filtered(y);
 }
 
