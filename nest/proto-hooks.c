@@ -76,16 +76,6 @@ void dump(struct proto *p)
 { DUMMY; }
 
 /**
- * dump_attrs - dump protocol-dependent attributes
- * @e: a route entry
- *
- * This hook dumps all attributes in the &rte which belong to this
- * protocol to the debug output.
- */
-void dump_attrs(rte *e)
-{ DUMMY; }
-
-/**
  * start - request instance startup
  * @p: protocol instance
  *
