@@ -198,8 +198,6 @@ struct proto {
    *	   ifa_notify	Notify protocol about interface address changes.
    *	   rt_notify	Notify protocol about routing table updates.
    *	   neigh_notify	Notify protocol about neighbor cache events.
-   *	   make_tmp_attrs  Add attributes to rta from from private attrs stored in rte. The route and rta MUST NOT be cached.
-   *	   store_tmp_attrs Store private attrs back to rte and undef added attributes. The route and rta MUST NOT be cached.
    *	   preexport  Called as the first step of the route exporting process.
    *			It can construct a new rte, add private attributes and
    *			decide whether the route shall be exported: 1=yes, -1=no,
@@ -215,8 +213,6 @@ struct proto {
   void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
   void (*rt_notify)(struct proto *, struct channel *, struct network *net, struct rte *new, struct rte *old);
   void (*neigh_notify)(struct neighbor *neigh);
-  void (*make_tmp_attrs)(struct rte *rt, struct linpool *pool);
-  void (*store_tmp_attrs)(struct rte *rt, struct linpool *pool);
   int (*preexport)(struct proto *, struct rte **rt, struct linpool *pool);
   void (*reload_routes)(struct channel *);
   void (*feed_begin)(struct channel *, int initial);
