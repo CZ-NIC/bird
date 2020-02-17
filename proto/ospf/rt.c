@@ -144,7 +144,7 @@ orta_compare(const struct ospf_proto *p, const orta *new, const orta *old)
 {
   int r;
 
-  if (old->type == RTS_DUMMY)
+  if (!old->type)
     return 1;
 
   /* Prefer intra-area to inter-area to externals */
@@ -195,7 +195,7 @@ orta_compare_asbr(const struct ospf_proto *p, const orta *new, const orta *old)
 {
   int r;
 
-  if (old->type == RTS_DUMMY)
+  if (!old->type)
     return 1;
 
   if (!p->rfc1583)
@@ -225,7 +225,7 @@ orta_compare_ext(const struct ospf_proto *p, const orta *new, const orta *old)
 {
   int r;
 
-  if (old->type == RTS_DUMMY)
+  if (!old->type)
     return 1;
 
   /* 16.4 (6a) - prefer routes with lower type */

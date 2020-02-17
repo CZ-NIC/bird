@@ -437,7 +437,6 @@ typedef struct rta {
   struct nexthop nh;			/* Next hop */
 } rta;
 
-#define RTS_DUMMY 0			/* Dummy route to be removed soon */
 #define RTS_STATIC 1			/* Normal static route */
 #define RTS_INHERIT 2			/* Route inherited from kernel */
 #define RTS_DEVICE 3			/* Device route */
