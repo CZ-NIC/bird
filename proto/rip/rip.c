@@ -369,6 +369,20 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
   }
 }
 
+void
+rip_flush_table(struct rip_proto *p, struct rip_neighbor *n)
+{
+  btime expires = current_time() + n->ifa->cf->timeout_time;
+
+  FIB_WALK(&p->rtable, struct rip_entry, en)
+  {
+    for (struct rip_rte *e = en->routes; e; e = e->next)
+      if ((e->from == n) && (e->expires == TIME_INFINITY))
+	e->expires = expires;
+  }
+  FIB_WALK_END;
+}
+
 
 /*
  *	RIP neighbors
@@ -506,14 +520,20 @@ rip_iface_start(struct rip_iface *ifa)
 
   TRACE(D_EVENTS, "Starting interface %s", ifa->iface->name);
 
-  ifa->next_regular = current_time() + (random() % ifa->cf->update_time) + 100 MS;
-  ifa->next_triggered = current_time();	/* Available immediately */
-  ifa->want_triggered = 1;		/* All routes in triggered update */
-  tm_start(ifa->timer, 100 MS);
+  if (! ifa->cf->demand_circuit)
+  {
+    ifa->next_regular = current_time() + (random() % ifa->cf->update_time) + 100 MS;
+    tm_set(ifa->timer, ifa->next_regular);
+  }
+  else
+  {
+    ifa->next_regular = TIME_INFINITY;
+  }
+
   ifa->up = 1;
 
-  if (!ifa->cf->passive)
-    rip_send_request(ifa->rip, ifa);
+  rip_send_request(p, ifa);
+  rip_send_table(p, ifa, ifa->addr, 0);
 }
 
 static void
@@ -526,10 +546,18 @@ rip_iface_stop(struct rip_iface *ifa)
 
   rip_reset_tx_session(p, ifa);
 
+  ifa->next_regular = 0;
+  ifa->next_triggered = 0;
+  ifa->want_triggered = 0;
+
+  ifa->tx_pending = 0;
+  ifa->req_pending = 0;
+
   WALK_LIST_FIRST(n, ifa->neigh_list)
     rip_remove_neighbor(p, n);
 
   tm_stop(ifa->timer);
+  tm_stop(ifa->rxmt_timer);
   ifa->up = 0;
 }
 
@@ -643,6 +671,7 @@ rip_add_iface(struct rip_proto *p, struct iface *iface, struct rip_iface_config 
   add_tail(&p->iface_list, NODE ifa);
 
   ifa->timer = tm_new_init(p->p.pool, rip_iface_timer, ifa, 0, 0);
+  ifa->rxmt_timer = tm_new_init(p->p.pool, rip_rxmt_timeout, ifa, 0, 0);
 
   struct object_lock *lock = olock_new(p->p.pool);
   lock->type = OBJLOCK_UDP;
@@ -886,6 +915,11 @@ rip_timer(timer *t)
 
   /* Handling neighbor expiration */
   WALK_LIST(ifa, p->iface_list)
+  {
+    /* No expiration for demand circuit ifaces */
+    if (ifa->cf->demand_circuit)
+      continue;
+
     WALK_LIST_DELSAFE(n, nn, ifa->neigh_list)
       if (n->last_seen)
       {
@@ -896,6 +930,7 @@ rip_timer(timer *t)
 	else
 	  next = MIN(next, expires);
       }
+  }
 
   tm_start(p->timer, MAX(next - now_, 100 MS));
 }
@@ -903,7 +938,7 @@ rip_timer(timer *t)
 static inline void
 rip_kick_timer(struct rip_proto *p)
 {
-  if (p->timer->expires > (current_time() + 100 MS))
+  if ((p->timer->expires > (current_time() + 100 MS)))
     tm_start(p->timer, 100 MS);
 }
 
@@ -932,11 +967,8 @@ rip_iface_timer(timer *t)
 
   if (ifa->tx_active)
   {
-    if (now_ < (ifa->next_regular + period))
-    { tm_start(ifa->timer, 100 MS); return; }
-
-    /* We are too late, reset is done by rip_send_table() */
-    log(L_WARN "%s: Too slow update on %s, resetting", p->p.name, ifa->iface->name);
+    tm_start(ifa->timer, 100 MS);
+    return;
   }
 
   if (now_ >= ifa->next_regular)
@@ -958,13 +990,17 @@ rip_iface_timer(timer *t)
     p->triggered = 0;
   }
 
-  tm_start(ifa->timer, ifa->want_triggered ? (1 S) : (ifa->next_regular - now_));
+  if (ifa->want_triggered && (ifa->next_triggered < ifa->next_regular))
+    tm_set(ifa->timer, ifa->next_triggered);
+  else if (ifa->next_regular != TIME_INFINITY)
+    tm_set(ifa->timer, ifa->next_regular);
 }
+
 
 static inline void
 rip_iface_kick_timer(struct rip_iface *ifa)
 {
-  if (ifa->timer->expires > (current_time() + 100 MS))
+  if ((! tm_active(ifa->timer)) || (ifa->timer->expires > (current_time() + 100 MS)))
     tm_start(ifa->timer, 100 MS);
 }
 
@@ -988,9 +1024,8 @@ rip_trigger_update(struct rip_proto *p)
     TRACE(D_EVENTS, "Scheduling triggered updates for %s", ifa->iface->name);
     ifa->want_triggered = current_time();
     rip_iface_kick_timer(ifa);
+    p->triggered = 1;
   }
-
-  p->triggered = 1;
 }
 
 
@@ -1210,7 +1245,8 @@ rip_show_interfaces(struct proto *P, char *iff)
 	nbrs++;
 
     btime now_ = current_time();
-    btime timer = (ifa->next_regular > now_) ? (ifa->next_regular - now_) : 0;
+    btime timer = ((ifa->next_regular < TIME_INFINITY) && (ifa->next_regular > now_)) ?
+      (ifa->next_regular - now_) : 0;
     cli_msg(-1021, "%-10s %-6s %6u %6u %7t",
 	    ifa->iface->name, (ifa->up ? "Up" : "Down"), ifa->cf->metric, nbrs, timer);
   }

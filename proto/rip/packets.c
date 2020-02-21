@@ -18,11 +18,17 @@
 #define RIP_CMD_REQUEST		1	/* want info */
 #define RIP_CMD_RESPONSE	2	/* responding to request */
 
+#define RIP_CMD_UPDATE_REQUEST	9
+#define RIP_CMD_UPDATE_RESPONSE	10
+#define RIP_CMD_UPDATE_ACK	11
+
 #define RIP_BLOCK_LENGTH	20
 #define RIP_PASSWD_LENGTH	16
 
 #define RIP_AF_IPV4		2
 #define RIP_AF_AUTH		0xffff
+
+#define RIP_UPDATE_VERSION	1
 
 
 /* RIP packet header */
@@ -31,6 +37,14 @@ struct rip_packet
   u8 command;
   u8 version;
   u16 unused;
+};
+
+/* Triggered RIP update header (RFC 2091) */
+struct rip_update_hdr
+{
+  u8 version;
+  u8 flush;
+  u16 seqnum;
 };
 
 /* RTE block for RIPv2 */
@@ -89,6 +103,8 @@ struct rip_block
   ip_addr next_hop;
 };
 
+static int
+rip_send_ack(struct rip_proto *p, struct rip_iface *ifa, uint flush, uint seqnum);
 
 #define DROP(DSC,VAL) do { err_dsc = DSC; err_val = VAL; goto drop; } while(0)
 #define DROP1(DSC) do { err_dsc = DSC; goto drop; } while(0)
@@ -107,8 +123,27 @@ struct rip_block
 static inline void * rip_tx_buffer(struct rip_iface *ifa)
 { return ifa->sk->tbuf; }
 
-static inline uint rip_pkt_hdrlen(struct rip_iface *ifa)
-{ return sizeof(struct rip_packet) + (ifa->cf->auth_type ? RIP_BLOCK_LENGTH : 0); }
+static inline uint
+rip_pkt_hdrlen(struct rip_iface *ifa)
+{
+  return sizeof(struct rip_packet) +
+    (ifa->cf->demand_circuit ? sizeof(struct rip_update_hdr) : 0) +
+    (ifa->cf->auth_type ? RIP_BLOCK_LENGTH : 0);
+}
+
+static inline struct rip_update_hdr *
+rip_get_update_hdr(struct rip_packet *pkt)
+{
+  return (void *) ((byte *) pkt + sizeof(struct rip_packet));
+}
+
+static inline struct rip_block_auth *
+rip_get_auth_block(struct rip_iface *ifa, struct rip_packet *pkt)
+{
+  return (void *) ((byte *) pkt + sizeof(struct rip_packet) +
+		   (ifa->cf->demand_circuit ? sizeof(struct rip_update_hdr) : 0));
+}
+
 
 static inline void
 rip_put_block(struct rip_proto *p, byte *pos, struct rip_block *rte)
@@ -199,10 +234,31 @@ rip_update_csn(struct rip_proto *p UNUSED, struct rip_iface *ifa)
   }
 }
 
+static inline void
+rip_fill_header(struct rip_iface *ifa, struct rip_packet *pkt, uint cmd)
+{
+  *pkt = (struct rip_packet) {
+    .command = cmd,
+    .version = ifa->cf->version
+  };
+}
+
+static inline void
+rip_fill_update_hdr(struct rip_packet *pkt, uint flush, uint seqnum)
+{
+  struct rip_update_hdr *hdr = rip_get_update_hdr(pkt);
+
+  *hdr = (struct rip_update_hdr) {
+    .version = RIP_UPDATE_VERSION,
+    .flush = flush,
+    .seqnum = htons(seqnum)
+  };
+}
+
 static void
 rip_fill_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_packet *pkt, uint *plen)
 {
-  struct rip_block_auth *auth = (void *) (pkt + 1);
+  struct rip_block_auth *auth = rip_get_auth_block(ifa, pkt);
   struct password_item *pass = password_find(ifa->cf->passwords, 0);
 
   if (!pass)
@@ -271,16 +327,16 @@ rip_fill_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_p
 }
 
 static int
-rip_check_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_packet *pkt, uint *plen, struct rip_neighbor *n)
+rip_check_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_packet *pkt, uint *plen, uint hdr_len, struct rip_neighbor *n)
 {
-  struct rip_block_auth *auth = (void *) (pkt + 1);
+  struct rip_block_auth *auth = (void *) ((byte *) pkt + hdr_len);
   struct password_item *pass = NULL;
   const char *err_dsc = NULL;
   uint err_val = 0;
   uint auth_type = 0;
 
   /* Check for authentication entry */
-  if ((*plen >= (sizeof(struct rip_packet) + sizeof(struct rip_block_auth))) &&
+  if ((*plen >= (hdr_len + sizeof(struct rip_block_auth))) &&
       (auth->must_be_ffff == htons(0xffff)))
     auth_type = ntohs(auth->auth_type);
 
@@ -376,17 +432,31 @@ rip_send_to(struct rip_proto *p, struct rip_iface *ifa, struct rip_packet *pkt, 
   return sk_send_to(ifa->sk, plen, dst, 0);
 }
 
+static inline void
+rip_kick_rxmt_timer(struct rip_iface *ifa)
+{
+  if (! tm_active(ifa->rxmt_timer))
+    tm_start(ifa->rxmt_timer, ifa->cf->rxmt_time);
+}
+
 
 void
 rip_send_request(struct rip_proto *p, struct rip_iface *ifa)
 {
-  byte *pos = rip_tx_buffer(ifa);
+  struct rip_packet *pkt = rip_tx_buffer(ifa);
+  byte *pos = (byte *) pkt + rip_pkt_hdrlen(ifa);
 
-  struct rip_packet *pkt = (void *) pos;
-  pkt->command = RIP_CMD_REQUEST;
-  pkt->version = ifa->cf->version;
-  pkt->unused = 0;
-  pos += rip_pkt_hdrlen(ifa);
+  rip_fill_header(ifa, pkt, RIP_CMD_REQUEST);
+
+  if (ifa->cf->demand_circuit)
+  {
+    pkt->command = RIP_CMD_UPDATE_REQUEST;
+    rip_fill_update_hdr(pkt, 0, 0);
+
+    /* Must be acknowledged by update response */
+    ifa->req_pending = 1;
+    rip_kick_rxmt_timer(ifa);
+  }
 
   struct rip_block b = { .no_af = 1, .metric = p->infinity };
   rip_put_block(p, pos, &b);
@@ -437,18 +507,25 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
   if (! ifa->tx_active)
     return 0;
 
-  byte *pos = rip_tx_buffer(ifa);
-  byte *max = rip_tx_buffer(ifa) + ifa->tx_plen -
+  /* In demand circuit mode, we may wait for ACK */
+  if (ifa->tx_pending)
+    return 0;
+
+  struct rip_packet *pkt = rip_tx_buffer(ifa);
+  byte *pos = (byte *) pkt + rip_pkt_hdrlen(ifa);
+  byte *max = (byte *) pkt + ifa->tx_plen -
     (rip_is_v2(p) ? RIP_BLOCK_LENGTH : 2*RIP_BLOCK_LENGTH);
   ip_addr last_next_hop = IPA_NONE;
   btime now_ = current_time();
   int send = 0;
 
-  struct rip_packet *pkt = (void *) pos;
-  pkt->command = RIP_CMD_RESPONSE;
-  pkt->version = ifa->cf->version;
-  pkt->unused = 0;
-  pos += rip_pkt_hdrlen(ifa);
+  rip_fill_header(ifa, pkt, RIP_CMD_RESPONSE);
+
+  if (ifa->cf->demand_circuit)
+  {
+    pkt->command = RIP_CMD_UPDATE_RESPONSE;
+    rip_fill_update_hdr(pkt, ifa->tx_flush, ifa->tx_seqnum);
+  }
 
   FIB_ITERATE_START(&p->rtable, &ifa->tx_fit, struct rip_entry, en)
   {
@@ -469,7 +546,7 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
     if (pos > max)
     {
       FIB_ITERATE_PUT(&ifa->tx_fit);
-      goto break_loop;
+      goto send_pkt;
     }
 
     struct rip_block rte = {
@@ -522,13 +599,31 @@ rip_send_response(struct rip_proto *p, struct rip_iface *ifa)
   next_entry: ;
   }
   FIB_ITERATE_END;
-  ifa->tx_active = 0;
+
+  if (send)
+  {
+    FIB_ITERATE_PUT_END(&ifa->tx_fit);
+    goto send_pkt;
+  }
 
   /* Do not send empty packet */
-  if (!send)
-    return 0;
 
-break_loop:
+  ifa->tx_active = 0;
+
+  /* Unlink second iterator */
+  FIB_ITERATE_UNLINK(&ifa->tx_done, &p->rtable);
+
+  return 0;
+
+send_pkt:
+
+  /* Waiting for ack or timeout */
+  if (ifa->cf->demand_circuit)
+  {
+    ifa->tx_pending = 1;
+    rip_kick_rxmt_timer(ifa);
+  }
+
   TRACE(D_PACKETS, "Sending response via %s", ifa->iface->name);
   return rip_send_to(p, ifa, pkt, pos - (byte *) pkt, ifa->tx_addr);
 }
@@ -558,6 +653,10 @@ rip_send_table(struct rip_proto *p, struct rip_iface *ifa, ip_addr addr, btime c
   ifa->tx_addr = addr;
   ifa->tx_changed = changed;
   FIB_ITERATE_INIT(&ifa->tx_fit, &p->rtable);
+  FIB_ITERATE_INIT(&ifa->tx_done, &p->rtable);
+
+  if (ifa->cf->demand_circuit)
+    ifa->tx_flush = ! changed;
 
   rip_update_csn(p, ifa);
 
@@ -597,9 +696,27 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
 
   TRACE(D_PACKETS, "Response received from %I on %s", from->nbr->addr, ifa->iface->name);
 
-  byte *pos = (byte *) pkt + sizeof(struct rip_packet);
+  byte *pos = (byte *) pkt + rip_pkt_hdrlen(ifa);
   byte *end = (byte *) pkt + plen;
-  btime now_ = current_time();
+
+  btime expires = current_time() + ifa->cf->timeout_time;
+
+  if (pkt->command == RIP_CMD_UPDATE_RESPONSE)
+  {
+    struct rip_update_hdr *hdr = rip_get_update_hdr(pkt);
+    rip_send_ack(p, ifa, hdr->flush, ntohs(hdr->seqnum));
+    expires = TIME_INFINITY;
+
+    /* Handle flush bit */
+    if (hdr->flush)
+    {
+      /* Flush old routes */
+      rip_flush_table(p, from);
+
+      /* Acknowledge pending request */
+      ifa->req_pending = 0;
+    }
+  }
 
   for (; pos < end; pos += RIP_BLOCK_LENGTH)
   {
@@ -647,7 +764,7 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
 	.next_hop = ipa_nonzero(rte.next_hop) ? rte.next_hop : from->nbr->addr,
 	.metric = rte.metric,
 	.tag = rte.tag,
-	.expires = now_ + ifa->cf->timeout_time
+	.expires = expires
       };
 
       rip_update_rte(p, &rte.net, &new);
@@ -662,6 +779,85 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
 	    &rte.net, from->nbr->addr, err_dsc);
   }
 }
+
+
+static int
+rip_send_ack(struct rip_proto *p, struct rip_iface *ifa, uint flush, uint seqnum)
+{
+  struct rip_packet *pkt = rip_tx_buffer(ifa);
+
+  rip_fill_header(ifa, pkt, RIP_CMD_UPDATE_ACK);
+  rip_fill_update_hdr(pkt, flush, seqnum);
+
+  TRACE(D_PACKETS, "Sending acknowledge via %s", ifa->iface->name);
+  return rip_send_to(p, ifa, pkt, rip_pkt_hdrlen(ifa), ifa->tx_addr);
+}
+
+static void
+rip_receive_ack(struct rip_proto *p, struct rip_iface *ifa, struct rip_packet *pkt, uint plen UNUSED, struct rip_neighbor *from)
+{
+  TRACE(D_PACKETS, "Acknowledge received from %I on %s", from->nbr->addr, ifa->iface->name);
+
+  struct rip_update_hdr *hdr = rip_get_update_hdr(pkt);
+  uint seqnum = ntohs(hdr->seqnum);
+
+  if (! ifa->tx_active || ! ifa->tx_pending)
+  {
+    LOG_PKT("Bad acknowledge packet from %I via %s - no pending response",
+	    from->nbr->addr, ifa->iface->name);
+    return;
+  }
+
+  if (seqnum != ifa->tx_seqnum)
+  {
+    LOG_PKT("Bad acknowledge packet from %I via %s - "
+	    "mismatched sequence number (rcv %u, old %u)",
+	    from->nbr->addr, ifa->iface->name, seqnum, (uint) ifa->tx_seqnum);
+    return;
+  }
+
+  /* Move acked position */
+  FIB_ITERATE_COPY(&ifa->tx_done, &ifa->tx_fit, &p->rtable);
+
+  /* Packet is no longer pending */
+  ifa->tx_pending = 0;
+  ifa->tx_seqnum++;
+
+  /* Next one does not have flush bit */
+  ifa->tx_flush = 0;
+
+  rip_send_response(p, ifa);
+}
+
+/**
+ * rip_rxmt_timeout - RIP retransmission timer hook
+ * @t: timer
+ *
+ * In Demand Circuit mode, update packets must be acknowledged to ensure
+ * reliability. If they are not acknowledged, we need to retransmit them.
+ */
+void
+rip_rxmt_timeout(timer *t)
+{
+  struct rip_iface *ifa = t->data;
+  struct rip_proto *p = ifa->rip;
+
+  if (ifa->req_pending)
+    rip_send_request(p, ifa);
+
+  if (ifa->tx_pending)
+  {
+    /* Revert to acked position */
+    FIB_ITERATE_COPY(&ifa->tx_fit, &ifa->tx_done, &p->rtable);
+
+    /* Packet is no longer pending */
+    ifa->tx_pending = 0;
+    ifa->tx_seqnum++;
+
+    rip_send_response(p, ifa);
+  }
+}
+
 
 static int
 rip_rx_hook(sock *sk, uint len)
@@ -702,17 +898,43 @@ rip_rx_hook(sock *sk, uint len)
     DROP("truncated", len);
 
   struct rip_packet *pkt = (struct rip_packet *) sk->rbuf;
-  uint plen = len;
+  uint pkt_len = len;
+  uint hdr_len = sizeof(struct rip_packet);
+  uint update_msg = 0;
 
   if (!pkt->version || (ifa->cf->version_only && (pkt->version != ifa->cf->version)))
     DROP("wrong version", pkt->version);
 
+  /* Update packets (RFC 2091) have additional header even before auth data */
+  if ((pkt->command == RIP_CMD_UPDATE_REQUEST) ||
+      (pkt->command == RIP_CMD_UPDATE_RESPONSE) ||
+      (pkt->command == RIP_CMD_UPDATE_ACK))
+  {
+    hdr_len += sizeof(struct rip_update_hdr);
+
+    if (len < hdr_len)
+      DROP("too short", len);
+
+    struct rip_update_hdr *hdr = rip_get_update_hdr(pkt);
+
+    if (hdr->version != RIP_UPDATE_VERSION)
+      DROP("wrong update header version", hdr->version);
+
+    if (hdr->flush > 1)
+      DROP("wrong flush value", hdr->flush);
+
+    update_msg = 1;
+  }
+
   /* rip_check_authentication() has its own error logging */
-  if (rip_is_v2(p) && !rip_check_authentication(p, ifa, pkt, &plen, n))
+  if (rip_is_v2(p) && !rip_check_authentication(p, ifa, pkt, &pkt_len, hdr_len, n))
     return 1;
 
-  if ((plen - sizeof(struct rip_packet)) % RIP_BLOCK_LENGTH)
-    DROP("invalid length", plen);
+  if ((pkt_len - hdr_len) % RIP_BLOCK_LENGTH)
+    DROP("invalid length", pkt_len);
+
+  if (update_msg != ifa->cf->demand_circuit)
+    DROP("demand circuit mode mismatch", update_msg);
 
   n->last_seen = current_time();
   rip_update_bfd(p, n);
@@ -720,11 +942,17 @@ rip_rx_hook(sock *sk, uint len)
   switch (pkt->command)
   {
   case RIP_CMD_REQUEST:
-    rip_receive_request(p, ifa, pkt, plen, n);
+  case RIP_CMD_UPDATE_REQUEST:
+    rip_receive_request(p, ifa, pkt, pkt_len, n);
     break;
 
   case RIP_CMD_RESPONSE:
-    rip_receive_response(p, ifa, pkt, plen, n);
+  case RIP_CMD_UPDATE_RESPONSE:
+    rip_receive_response(p, ifa, pkt, pkt_len, n);
+    break;
+
+  case RIP_CMD_UPDATE_ACK:
+    rip_receive_ack(p, ifa, pkt, pkt_len, n);
     break;
 
   default:
