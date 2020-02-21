@@ -584,6 +584,40 @@ found:
   fit_put(i, n);
 }
 
+void
+fit_put_end(struct fib_iterator *i)
+{
+  i->prev = i->next = NULL;
+  i->node = NULL;
+  i->hash = ~0 - 1;
+}
+
+void
+fit_copy(struct fib *f, struct fib_iterator *dst, struct fib_iterator *src)
+{
+  struct fib_iterator *nxt = src->next;
+
+  fit_get(f, dst);
+
+  if (!src->prev)
+  {
+    /* We are at the end */
+    fit_put_end(dst);
+    return;
+  }
+
+  src->next = dst;
+  dst->prev = src;
+
+  dst->next = nxt;
+  if (nxt)
+    nxt->prev = dst;
+
+  dst->node = src->node;
+  dst->hash = src->hash;
+}
+
+
 #ifdef DEBUGGING
 
 /**

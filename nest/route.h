@@ -84,6 +84,8 @@ void fit_init(struct fib_iterator *, struct fib *); /* Internal functions, don't
 struct fib_node *fit_get(struct fib *, struct fib_iterator *);
 void fit_put(struct fib_iterator *, struct fib_node *);
 void fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uint hpos);
+void fit_put_end(struct fib_iterator *i);
+void fit_copy(struct fib *f, struct fib_iterator *dst, struct fib_iterator *src);
 
 
 #define FIB_WALK(fib, type, z) do {				\
@@ -118,7 +120,11 @@ void fit_put_next(struct fib *f, struct fib_iterator *i, struct fib_node *n, uin
 
 #define FIB_ITERATE_PUT_NEXT(it, fib) fit_put_next(fib, it, fn_, hpos_)
 
+#define FIB_ITERATE_PUT_END(it) fit_put_end(it)
+
 #define FIB_ITERATE_UNLINK(it, fib) fit_get(fib, it)
+
+#define FIB_ITERATE_COPY(dst, src, fib) fit_copy(fib, dst, src)
 
 
 /*

@@ -41,6 +41,7 @@
 #define RIP_DEFAULT_UPDATE_TIME	  (30 S_)
 #define RIP_DEFAULT_TIMEOUT_TIME (180 S_)
 #define RIP_DEFAULT_GARBAGE_TIME (120 S_)
+#define RIP_DEFAULT_RXMT_TIME (1 S_)
 
 
 struct rip_config
@@ -73,6 +74,7 @@ struct rip_iface_config
   u8 auth_type;				/* Authentication type (RIP_AUTH_*) */
   u8 ttl_security;			/* bool + 2 for TX only (send, but do not check on RX) */
   u8 check_link;			/* Whether iface link change is used */
+  u8 demand_circuit;			/* Use demand circuit extensions (RFC 2091) */
   u8 bfd;				/* Use BFD on iface */
   u16 rx_buffer;			/* RX buffer size, 0 for MTU */
   u16 tx_length;			/* TX packet length limit (including headers), 0 for MTU */
@@ -81,6 +83,7 @@ struct rip_iface_config
   btime update_time;			/* Periodic update interval */
   btime timeout_time;			/* Route expiration timeout */
   btime garbage_time;			/* Unreachable entry GC timeout */
+  btime rxmt_time;			/* Retransmit timeout for demand circuit */
   list *passwords;			/* Passwords for authentication */
 };
 
@@ -110,6 +113,7 @@ struct rip_iface
   struct rip_iface_config *cf;		/* Related config, must be updated in reconfigure */
   struct object_lock *lock;		/* Interface lock */
   timer *timer;				/* Interface timer */
+  timer *rxmt_timer;			/* Retransmission timer */
   sock *sk;				/* UDP socket */
 
   u8 up;				/* Interface is active */
@@ -126,9 +130,18 @@ struct rip_iface
 
   /* Active update */
   int tx_active;			/* Update session is active */
+  int tx_waiting;
   ip_addr tx_addr;			/* Update session destination address */
   btime tx_changed;			/* Minimal changed time for triggered update */
   struct fib_iterator tx_fit;		/* FIB iterator in RIP routing table (p.rtable) */
+  struct fib_iterator tx_done;		/* FIB iterator for acked routes (p.rtable) */
+
+  /* Update message */
+  u8 tx_pending;
+  u8 tx_flush;
+  u16 tx_seqnum;
+
+  u8 req_pending;
 };
 
 struct rip_neighbor
@@ -197,6 +210,7 @@ rip_reset_tx_session(struct rip_proto *p, struct rip_iface *ifa)
   if (ifa->tx_active)
   {
     FIB_ITERATE_UNLINK(&ifa->tx_fit, &p->rtable);
+    FIB_ITERATE_UNLINK(&ifa->tx_done, &p->rtable);
     ifa->tx_active = 0;
   }
 }
@@ -204,6 +218,7 @@ rip_reset_tx_session(struct rip_proto *p, struct rip_iface *ifa)
 /* rip.c */
 void rip_update_rte(struct rip_proto *p, net_addr *n, struct rip_rte *new);
 void rip_withdraw_rte(struct rip_proto *p, net_addr *n, struct rip_neighbor *from);
+void rip_flush_table(struct rip_proto *p, struct rip_neighbor *n);
 struct rip_neighbor * rip_get_neighbor(struct rip_proto *p, ip_addr *a, struct rip_iface *ifa);
 void rip_update_bfd(struct rip_proto *p, struct rip_neighbor *n);
 void rip_show_interfaces(struct proto *P, char *iff);
@@ -212,6 +227,7 @@ void rip_show_neighbors(struct proto *P, char *iff);
 /* packets.c */
 void rip_send_request(struct rip_proto *p, struct rip_iface *ifa);
 void rip_send_table(struct rip_proto *p, struct rip_iface *ifa, ip_addr addr, btime changed);
+void rip_rxmt_timeout(timer *t);
 int rip_open_socket(struct rip_iface *ifa);
 
 
