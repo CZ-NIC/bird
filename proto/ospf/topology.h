@@ -200,7 +200,7 @@ void ospf_originate_sum_rt_lsa(struct ospf_proto *p, struct ospf_area *oa, u32 d
 void ospf_originate_ext_lsa(struct ospf_proto *p, struct ospf_area *oa, ort *nf, u8 mode, u32 metric, u32 ebit, ip_addr fwaddr, u32 tag, int pbit, int dn);
 void ospf_originate_gr_lsa(struct ospf_proto *p, struct ospf_iface *ifa);
 
-void ospf_rt_notify(struct proto *P, struct channel *ch, net *n, rte *new, rte *old);
+void ospf_rt_notify(struct channel *ch, struct rte_export *e);
 void ospf_update_topology(struct ospf_proto *p);
 
 struct top_hash_entry *ospf_hash_find(struct top_graph *, u32 domain, u32 lsa, u32 rtr, u32 type);
