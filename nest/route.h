@@ -228,6 +228,16 @@ typedef struct rte {
   } u;
 } rte;
 
+/* Route export structure. Protocols get this structure as an information about
+ * new routes on the channel. */
+struct rte_export {
+  net *net;				/* Network information */
+  struct rte_src *new_src;		/* New route src (NULL for withdraw) */
+  rte *new;				/* New route (NULL for withdraw) */
+  struct rte_src *old_src;		/* Old route src */
+  rte *old;				/* Old route */
+};
+
 #define REF_COW		1		/* Copy this rte on write */
 #define REF_FILTERED	2		/* Route is rejected by import filter */
 #define REF_STALE	4		/* Route is stale in a refresh cycle */

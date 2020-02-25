@@ -1295,9 +1295,9 @@ find_surrogate_fwaddr(struct ospf_proto *p, struct ospf_area *oa)
 }
 
 void
-ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte *old UNUSED)
+ospf_rt_notify(struct channel *ch, struct rte_export *e)
 {
-  struct ospf_proto *p = (struct ospf_proto *) P;
+  struct ospf_proto *p = (struct ospf_proto *) ch->proto;
   struct ospf_area *oa = NULL;	/* non-NULL for NSSA-LSA */
   ort *nf;
 
@@ -1312,9 +1312,9 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   if ((p->areano == 1) && oa_is_nssa(HEAD(p->area_list)))
     oa = HEAD(p->area_list);
 
-  if (!new)
+  if (!e->new)
   {
-    nf = fib_find(&p->rtf, n->n.addr);
+    nf = fib_find(&p->rtf, e->net->n.addr);
 
     if (!nf || !nf->external_rte)
       return;
@@ -1332,7 +1332,7 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   ASSERT(p->asbr);
 
   /* Get route attributes */
-  rta *a = new->attrs;
+  rta *a = e->new->attrs;
   eattr *m1a = ea_find(a->eattrs, EA_OSPF_METRIC1);
   eattr *m2a = ea_find(a->eattrs, EA_OSPF_METRIC2);
   uint m1 = m1a ? m1a->u.data : 0;
@@ -1341,14 +1341,14 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   if (m1 > LSINFINITY)
   {
     log(L_WARN "%s: Invalid ospf_metric1 value %u for route %N",
-	p->p.name, m1, n->n.addr);
+	p->p.name, m1, e->net->n.addr);
     m1 = LSINFINITY;
   }
 
   if (m2 > LSINFINITY)
   {
     log(L_WARN "%s: Invalid ospf_metric2 value %u for route %N",
-	p->p.name, m2, n->n.addr);
+	p->p.name, m2, e->net->n.addr);
     m2 = LSINFINITY;
   }
 
@@ -1372,12 +1372,12 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
     if (ipa_zero(fwd))
     {
       log(L_ERR "%s: Cannot find forwarding address for NSSA-LSA %N",
-	  p->p.name, n->n.addr);
+	  p->p.name, e->net->n.addr);
       return;
     }
   }
 
-  nf = fib_get(&p->rtf, n->n.addr);
+  nf = fib_get(&p->rtf, e->net->n.addr);
   ospf_originate_ext_lsa(p, oa, nf, LSA_M_EXPORT, metric, ebit, fwd, tag, 1, p->vpn_pe);
   nf->external_rte = 1;
 }

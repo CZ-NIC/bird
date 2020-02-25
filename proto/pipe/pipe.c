@@ -48,50 +48,44 @@
 #include "pipe.h"
 
 static void
-pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *old)
+pipe_rt_notify(struct channel *src_ch, struct rte_export *export)
 {
-  struct pipe_proto *p = (void *) P;
+  struct pipe_proto *p = (void *) src_ch->proto;
   struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
-  struct rte_src *src;
 
-  rte e0 = {}, *e = &e0;
-  rta *a;
-
-  if (!new && !old)
+  if (!export->new && !export->old)
     return;
 
   if (dst->table->pipe_busy)
     {
       log(L_ERR "Pipe loop detected when sending %N to table %s",
-	  n->n.addr, dst->table->name);
+	  export->net->n.addr, dst->table->name);
       return;
     }
 
-  if (new)
+  if (export->new)
     {
-      a = alloca(rta_size(new->attrs));
-      memcpy(a, new->attrs, rta_size(new->attrs));
+      rta *a = alloca(rta_size(export->new->attrs));
+      memcpy(a, export->new->attrs, rta_size(export->new->attrs));
 
       a->cached = 0;
+      a->uc = 0;
       a->hostentry = NULL;
 
-      e->attrs = rta_lookup(a);
-      e->pflags = 0;
+      rte e0 = {
+	.attrs = rta_lookup(a),
+      };
 
-      src = a->src;
+      src_ch->table->pipe_busy = 1;
+      rte_update(dst, export->net->n.addr, &e0);
+      src_ch->table->pipe_busy = 0;
     }
   else
     {
-      e = NULL;
-      src = old->attrs->src;
+      src_ch->table->pipe_busy = 1;
+      rte_withdraw(dst, export->net->n.addr, export->old_src);
+      src_ch->table->pipe_busy = 0;
     }
-
-  src_ch->table->pipe_busy = 1;
-  if (e)
-    rte_update(dst, n->n.addr, e);
-  else
-    rte_withdraw(dst, n->n.addr, src);
-  src_ch->table->pipe_busy = 0;
 }
 
 static int

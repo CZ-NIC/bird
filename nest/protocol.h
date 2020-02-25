@@ -210,7 +210,7 @@ struct proto {
 
   void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
   void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
-  void (*rt_notify)(struct proto *, struct channel *, struct network *net, struct rte *new, struct rte *old);
+  void (*rt_notify)(struct channel *, struct rte_export *);
   void (*neigh_notify)(struct neighbor *neigh);
   int (*preexport)(struct proto *, struct rte **rt, struct linpool *pool);
   void (*reload_routes)(struct channel *);
