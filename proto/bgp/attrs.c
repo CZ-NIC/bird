@@ -1801,31 +1801,31 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
 }
 
 void
-bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old)
+bgp_rt_notify(struct channel *C, struct rte_export *e)
 {
-  struct bgp_proto *p = (void *) P;
+  struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
   struct bgp_bucket *buck;
   struct bgp_prefix *px;
   u32 path;
 
-  if (new)
+  if (e->new)
   {
-    struct ea_list *attrs = bgp_update_attrs(p, c, new, new->attrs->eattrs, bgp_linpool2);
+    struct ea_list *attrs = bgp_update_attrs(p, c, e->new, e->new->attrs->eattrs, bgp_linpool2);
 
     /* If attributes are invalid, we fail back to withdraw */
     buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
-    path = new->attrs->src->global_id;
+    path = e->new_src->global_id;
 
     lp_flush(bgp_linpool2);
   }
   else
   {
     buck = bgp_get_withdraw_bucket(c);
-    path = old->attrs->src->global_id;
+    path = e->old_src->global_id;
   }
 
-  px = bgp_get_prefix(c, n->n.addr, c->add_path_tx ? path : 0);
+  px = bgp_get_prefix(c, e->net->n.addr, c->add_path_tx ? path : 0);
   add_tail(&buck->prefixes, &px->buck_node);
 
   bgp_schedule_packet(p->conn, c, PKT_UPDATE);
