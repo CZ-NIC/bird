@@ -330,6 +330,27 @@ rte_cow_rta(rte *r, linpool *lp)
   return r;
 }
 
+/**
+ * rte_free - delete a &rte
+ * @e: &rte to be deleted
+ *
+ * rte_free() deletes the given &rte from the routing table it's linked to.
+ */
+void
+rte_free(rte *e)
+{
+  if (rta_is_cached(e->attrs))
+    rta_free(e->attrs);
+  sl_free(rte_slab, e);
+}
+
+static inline void
+rte_free_quick(rte *e)
+{
+  rta_free(e->attrs);
+  sl_free(rte_slab, e);
+}
+
 static int				/* Actually better or at least as good as */
 rte_better(rte *new, rte *old)
 {
@@ -483,9 +504,17 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
     }
   }
 
+  struct rte_src *src = old ? old->attrs->src : new->attrs->src;
+
   /* Apply export table */
-  if (c->out_table && !rte_update_out(c, net->n.addr, new, old, refeed))
-    return;
+  struct rte *old_exported = NULL;
+  if (c->out_table)
+  {
+    if (!rte_update_out(c, net->n.addr, src, new, &old_exported, refeed))
+      return;
+  }
+  else if (c->out_filter == FILTER_ACCEPT)
+    old_exported = old;
 
   if (new)
     stats->exp_updates_accepted++;
@@ -515,6 +544,9 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
   }
 
   p->rt_notify(p, c, net, new, old);
+
+  if (c->out_table && old_exported)
+    rte_free_quick(old_exported);
 }
 
 static void
@@ -863,27 +895,6 @@ rte_validate(rte *e)
   }
 
   return 1;
-}
-
-/**
- * rte_free - delete a &rte
- * @e: &rte to be deleted
- *
- * rte_free() deletes the given &rte from the routing table it's linked to.
- */
-void
-rte_free(rte *e)
-{
-  if (rta_is_cached(e->attrs))
-    rta_free(e->attrs);
-  sl_free(rte_slab, e);
-}
-
-static inline void
-rte_free_quick(rte *e)
-{
-  rta_free(e->attrs);
-  sl_free(rte_slab, e);
 }
 
 static int
@@ -2366,17 +2377,15 @@ rt_prune_sync(rtable *t, int all)
  */
 
 int
-rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed)
+rte_update_out(struct channel *c, const net_addr *n, struct rte_src *src, rte *new, rte **old_exported, int refeed)
 {
   struct rtable *tab = c->out_table;
-  struct rte_src *src;
   rte *old, **pos;
   net *net;
 
   if (new)
   {
     net = net_get(tab, n);
-    src = new->attrs->src;
 
     if (!rta_is_cached(new->attrs))
       new->attrs = rta_lookup(new->attrs);
@@ -2384,7 +2393,6 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int re
   else
   {
     net = net_find(tab, n);
-    src = old0->attrs->src;
 
     if (!net)
       goto drop_withdraw;
@@ -2410,7 +2418,7 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int re
 
       /* Remove the old rte */
       *pos = old->next;
-      rte_free_quick(old);
+      *old_exported = old;
       tab->rt_count--;
 
       break;
