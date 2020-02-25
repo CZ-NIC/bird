@@ -543,7 +543,15 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
       rte_trace_out(D_ROUTES, p, old, "removed");
   }
 
-  p->rt_notify(p, c, net, new, old);
+  struct rte_export export = {
+    .net = net,
+    .new_src = new ? new->attrs->src : NULL,
+    .new = new,
+    .old_src = old ? old->attrs->src : NULL,
+    .old = old,
+  };
+
+  p->rt_notify(c, &export);
 
   if (c->out_table && old_exported)
     rte_free_quick(old_exported);

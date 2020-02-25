@@ -889,10 +889,9 @@ krt_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
 }
 
 static void
-krt_rt_notify(struct proto *P, struct channel *ch UNUSED, net *net,
-	      rte *new, rte *old)
+krt_rt_notify(struct channel *ch, struct rte_export *e)
 {
-  struct krt_proto *p = (struct krt_proto *) P;
+  struct krt_proto *p = (struct krt_proto *) ch->proto;
 
   if (config->shutdown)
     return;
@@ -904,13 +903,13 @@ krt_rt_notify(struct proto *P, struct channel *ch UNUSED, net *net,
    * but if we processed the update as usual, we would send withdraw to the
    * kernel, which would remove the new imported route instead.
    */
-  rte *best = net->routes;
-  if (!new && best && (best->attrs->src->proto == P))
+  rte *best = e->net->routes;
+  if (!e->new && best && (best->attrs->src->proto == ch->proto))
     return;
 #endif
 
   if (p->initialized)		/* Before first scan we don't touch the routes */
-    krt_replace_rte(p, net, new, old);
+    krt_replace_rte(p, e->net, e->new, e->old);
 }
 
 static void

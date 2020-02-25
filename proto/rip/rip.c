@@ -309,31 +309,31 @@ rip_withdraw_rte(struct rip_proto *p, net_addr *n, struct rip_neighbor *from)
  * it into our data structures.
  */
 static void
-rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, struct rte *new,
-	      struct rte *old UNUSED)
+rip_rt_notify(struct channel *ch, struct rte_export *e)
 {
-  struct rip_proto *p = (struct rip_proto *) P;
+  struct rip_proto *p = (struct rip_proto *) ch->proto;
   struct rip_entry *en;
   int old_metric;
 
-  if (new)
+  if (e->new)
   {
     /* Update */
-    u32 rt_tag = ea_get_int(new->attrs->eattrs, EA_RIP_TAG, 0);
-    u32 rt_metric = ea_get_int(new->attrs->eattrs, EA_RIP_METRIC, 1);
-    struct iface *rt_from = (struct iface *) ea_get_int(new->attrs->eattrs, EA_RIP_FROM, 0);
+    rta *a = e->new->attrs;
+    u32 rt_tag = ea_get_int(a->eattrs, EA_RIP_TAG, 0);
+    u32 rt_metric = ea_get_int(a->eattrs, EA_RIP_METRIC, 1);
+    struct iface *rt_from = (struct iface *) ea_get_int(a->eattrs, EA_RIP_FROM, 0);
 
     if (rt_metric > p->infinity)
     {
       log(L_WARN "%s: Invalid rip_metric value %u for route %N",
-	  p->p.name, rt_metric, net->n.addr);
+	  p->p.name, rt_metric, e->net->n.addr);
       rt_metric = p->infinity;
     }
 
     if (rt_tag > 0xffff)
     {
       log(L_WARN "%s: Invalid rip_tag value %u for route %N",
-	  p->p.name, rt_tag, net->n.addr);
+	  p->p.name, rt_tag, e->net->n.addr);
       rt_metric = p->infinity;
       rt_tag = 0;
     }
@@ -345,7 +345,7 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
      * collection.
      */
 
-    en = fib_get(&p->rtable, net->n.addr);
+    en = fib_get(&p->rtable, e->net->n.addr);
 
     old_metric = en->valid ? en->metric : -1;
 
@@ -353,13 +353,13 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
     en->metric = rt_metric;
     en->tag = rt_tag;
     en->from = rt_from;
-    en->iface = new->attrs->nh.iface;
-    en->next_hop = new->attrs->nh.gw;
+    en->iface = a->nh.iface;
+    en->next_hop = a->nh.gw;
   }
   else
   {
     /* Withdraw */
-    en = fib_find(&p->rtable, net->n.addr);
+    en = fib_find(&p->rtable, e->net->n.addr);
 
     if (!en || en->valid != RIP_ENTRY_VALID)
       return;
