@@ -2121,38 +2121,32 @@ babel_preexport(struct proto *P, struct rte **new, struct linpool *pool UNUSED)
  * so store it into our data structures.
  */
 static void
-babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
-		struct rte *new, struct rte *old UNUSED)
+babel_rt_notify(struct channel *c, struct rte_export *export)
 {
-  struct babel_proto *p = (void *) P;
+  struct babel_proto *p = (void *) c->proto;
   struct babel_entry *e;
 
-  if (new)
+  if (export->new)
   {
     /* Update */
-    uint rt_seqno;
-    uint rt_metric = ea_get_int(new->attrs->eattrs, EA_BABEL_METRIC, 0);
+    uint rt_metric = ea_get_int(export->new->attrs->eattrs, EA_BABEL_METRIC, 0);
+    uint rt_seqno = ea_get_int(export->new->attrs->eattrs, EA_BABEL_SEQNO, p->update_seqno);
     u64 rt_router_id;
 
-    if (new->attrs->src->proto == P)
-    {
-      rt_seqno = ea_find(new->attrs->eattrs, EA_BABEL_SEQNO)->u.data;
-      memcpy(&rt_router_id, ea_find(new->attrs->eattrs, EA_BABEL_ROUTER_ID)->u.ptr->data, sizeof(u64));
-    }
+    eattr *ea;
+    if (ea = ea_find(export->new->attrs->eattrs, EA_BABEL_ROUTER_ID))
+      memcpy(&rt_router_id, ea->u.ptr->data, sizeof(u64));
     else
-    {
-      rt_seqno = p->router_id;
-      rt_router_id = p->router_id;
-    }
+      rt_router_id = p->router_id; 
 
     if (rt_metric > BABEL_INFINITY)
     {
       log(L_WARN "%s: Invalid babel_metric value %u for route %N",
-	  p->p.name, rt_metric, net->n.addr);
+	  p->p.name, rt_metric, export->net->n.addr);
       rt_metric = BABEL_INFINITY;
     }
 
-    e = babel_get_entry(p, net->n.addr);
+    e = babel_get_entry(p, export->net->n.addr);
 
     /* Activate triggered updates */
     if ((e->valid != BABEL_ENTRY_VALID) ||
@@ -2170,7 +2164,7 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
   else
   {
     /* Withdraw */
-    e = babel_find_entry(p, net->n.addr);
+    e = babel_find_entry(p, export->net->n.addr);
 
     if (!e || e->valid != BABEL_ENTRY_VALID)
       return;

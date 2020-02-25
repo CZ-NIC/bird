@@ -406,17 +406,17 @@ radv_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
 }
 
 static void
-radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte *old UNUSED)
+radv_rt_notify(struct channel *ch, struct rte_export *e)
 {
-  struct radv_proto *p = (struct radv_proto *) P;
-  struct radv_config *cf = (struct radv_config *) (P->cf);
+  struct radv_proto *p = (struct radv_proto *) ch->proto;
+  struct radv_config *cf = (struct radv_config *) (ch->proto->cf);
   struct radv_route *rt;
   eattr *ea;
 
-  if (radv_net_match_trigger(cf, n))
+  if (radv_net_match_trigger(cf, e->net))
   {
     u8 old_active = p->active;
-    p->active = !!new;
+    p->active = !!e->new;
 
     if (p->active == old_active)
       return;
@@ -440,15 +440,15 @@ radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
    * And yes, we exclude the trigger route on purpose.
    */
 
-  if (new)
+  if (e->new)
   {
     /* Update */
 
-    ea = ea_find(new->attrs->eattrs, EA_RA_PREFERENCE);
+    ea = ea_find(e->new->attrs->eattrs, EA_RA_PREFERENCE);
     uint preference = ea ? ea->u.data : RA_PREF_MEDIUM;
     uint preference_set = !!ea;
 
-    ea = ea_find(new->attrs->eattrs, EA_RA_LIFETIME);
+    ea = ea_find(e->new->attrs->eattrs, EA_RA_LIFETIME);
     uint lifetime = ea ? ea->u.data : 0;
     uint lifetime_set = !!ea;
 
@@ -457,14 +457,14 @@ radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
 	(preference != RA_PREF_HIGH))
     {
       log(L_WARN "%s: Invalid ra_preference value %u on route %N",
-	  p->p.name, preference, n->n.addr);
+	  p->p.name, preference, e->net->n.addr);
       preference = RA_PREF_MEDIUM;
       preference_set = 1;
       lifetime = 0;
       lifetime_set = 1;
     }
 
-    rt = fib_get(&p->routes, n->n.addr);
+    rt = fib_get(&p->routes, e->net->n.addr);
 
     /* Ignore update if nothing changed */
     if (rt->valid &&
@@ -487,7 +487,7 @@ radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   else
   {
     /* Withdraw */
-    rt = fib_find(&p->routes, n->n.addr);
+    rt = fib_find(&p->routes, e->net->n.addr);
 
     if (!rt || !rt->valid)
       return;

@@ -204,9 +204,9 @@ perf_loop(void *data)
 }
 
 static void
-perf_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net UNUSED, struct rte *new UNUSED, struct rte *old UNUSED)
+perf_rt_notify(struct channel *c, struct rte_export *e UNUSED)
 {
-  struct perf_proto *p = (struct perf_proto *) P;
+  struct perf_proto *p = (struct perf_proto *) c->proto;
   p->exp++;
   return;
 }
