@@ -1029,6 +1029,11 @@ krt_start(struct proto *P)
   default: log(L_ERR "KRT: Tried to start with strange net type: %d", p->p.net_type); return PS_START; break;
   }
 
+  /* If it is needed, setup out table automagically */
+  if (!TRIVIAL_FILTER(p->p.main_channel->out_filter))
+    channel_setup_out_table(p->p.main_channel);
+
+
   bmap_init(&p->sync_map, p->p.pool, 1024);
   bmap_init(&p->seen_map, p->p.pool, 1024);
   add_tail(&krt_proto_list, &p->krt_node);
@@ -1073,6 +1078,15 @@ krt_shutdown(struct proto *P)
   bmap_free(&p->sync_map);
 
   return PS_DOWN;
+}
+
+static int
+krt_channel_reconfigure(struct channel *C, struct channel_config *CC, int *import_changed UNUSED, int *export_changed)
+{
+  if (!*export_changed)
+    return 1;
+
+  return (TRIVIAL_FILTER(C->out_filter) == TRIVIAL_FILTER(CC->out_filter));
 }
 
 static int
@@ -1146,6 +1160,12 @@ krt_get_attr(eattr *a, byte *buf, int buflen)
 #else
 #define MAYBE_MPLS	0
 #endif
+
+struct channel_class channel_krt = {
+  .channel_size = sizeof(struct channel),
+  .config_size = sizeof(struct channel_config),
+  .reconfigure = krt_channel_reconfigure,
+};
 
 struct protocol proto_unix_kernel = {
   .name =		"Kernel",
