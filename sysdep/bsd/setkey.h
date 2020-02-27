@@ -63,7 +63,7 @@ setkey_send(struct sadb_msg *msg, uint len)
  * operations to implement replace.
  */
 static int
-setkey_md5(sockaddr *src, sockaddr *dst, uint pxlen, char *passwd, uint type)
+setkey_md5(sockaddr *src, uint slen, sockaddr *dst, uint dlen, char *passwd, uint type)
 {
   uint passwd_len = passwd ? strlen(passwd) : 0;
 
@@ -122,7 +122,7 @@ setkey_md5(sockaddr *src, sockaddr *dst, uint pxlen, char *passwd, uint type)
   saddr->sadb_address_len = PFKEY_UNIT64(len);
   saddr->sadb_address_exttype = SADB_EXT_ADDRESS_SRC;
   saddr->sadb_address_proto = IPSEC_ULPROTO_ANY;
-  saddr->sadb_address_prefixlen = pxlen;
+  saddr->sadb_address_prefixlen = slen;
   memcpy(pos + sizeof(struct sadb_address), &src->sa, src->sa.sa_len);
   pos += len;
 
@@ -132,7 +132,7 @@ setkey_md5(sockaddr *src, sockaddr *dst, uint pxlen, char *passwd, uint type)
   daddr->sadb_address_len = PFKEY_UNIT64(len);
   daddr->sadb_address_exttype = SADB_EXT_ADDRESS_DST;
   daddr->sadb_address_proto = IPSEC_ULPROTO_ANY;
-  daddr->sadb_address_prefixlen = pxlen;
+  daddr->sadb_address_prefixlen = dlen;
   memcpy(pos + sizeof(struct sadb_address), &dst->sa, dst->sa.sa_len);
   pos += len;
 
@@ -146,13 +146,15 @@ setkey_md5(sockaddr *src, sockaddr *dst, uint pxlen, char *passwd, uint type)
  * Manipulation with the IPsec SA/SP database
  */
 static int
-sk_set_md5_in_sasp_db(sock *s, ip_addr local, ip_addr remote, struct iface *ifa, char *passwd)
+sk_set_md5_in_sasp_db(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, char *passwd)
 {
   sockaddr src, dst;
   sockaddr_fill(&src, s->af, local, ifa, 0);
   sockaddr_fill(&dst, s->af, remote, ifa, 0);
 
-  uint pxlen = (s->af == AF_INET) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH;
+  uint maxlen = (s->af == AF_INET) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH;
+  uint slen = maxlen;
+  uint dlen = (pxlen < 0) ? maxlen : pxlen;
 
   if (passwd && *passwd)
   {
@@ -160,14 +162,14 @@ sk_set_md5_in_sasp_db(sock *s, ip_addr local, ip_addr remote, struct iface *ifa,
     if (len > TCP_KEYLEN_MAX)
       ERR_MSG("The password for TCP MD5 Signature is too long");
 
-    if ((setkey_md5(&src, &dst, pxlen, passwd, SADB_ADD) < 0) ||
-	(setkey_md5(&dst, &src, pxlen, passwd, SADB_ADD) < 0))
+    if ((setkey_md5(&src, slen, &dst, dlen, passwd, SADB_ADD) < 0) ||
+	(setkey_md5(&dst, dlen, &src, slen, passwd, SADB_ADD) < 0))
       ERR_MSG("Cannot add TCP-MD5 password into the IPsec SA/SP database");
   }
   else
   {
-    if ((setkey_md5(&src, &dst, pxlen, NULL, SADB_DELETE) < 0) ||
-	(setkey_md5(&dst, &src, pxlen, NULL, SADB_DELETE) < 0))
+    if ((setkey_md5(&src, slen, &dst, dlen, NULL, SADB_DELETE) < 0) ||
+	(setkey_md5(&dst, dlen, &src, slen, NULL, SADB_DELETE) < 0))
       ERR_MSG("Cannot delete TCP-MD5 password from the IPsec SA/SP database");
   }
   return 0;

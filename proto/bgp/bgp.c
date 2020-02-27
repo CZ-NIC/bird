@@ -247,8 +247,17 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
 {
   if (p->cf->password)
   {
+    ip_addr prefix = p->cf->remote_ip;
+    int pxlen = -1;
+
+    if (p->cf->remote_range)
+    {
+      prefix = net_prefix(p->cf->remote_range);
+      pxlen = net_pxlen(p->cf->remote_range);
+    }
+
     int rv = sk_set_md5_auth(p->sock->sk,
-			     p->cf->local_ip, p->cf->remote_ip, p->cf->iface,
+			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
 			     enable ? p->cf->password : NULL, p->cf->setkey);
 
     if (rv < 0)
