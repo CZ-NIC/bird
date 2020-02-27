@@ -6,6 +6,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#include <linux/in.h>
+#include <linux/in6.h>
 
 #ifndef TCP_MD5SIG_EXT
 #define TCP_MD5SIG_EXT 32

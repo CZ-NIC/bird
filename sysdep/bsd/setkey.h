@@ -146,7 +146,7 @@ setkey_md5(sockaddr *src, uint slen, sockaddr *dst, uint dlen, char *passwd, uin
  * Manipulation with the IPsec SA/SP database
  */
 static int
-sk_set_md5_in_sasp_db(sock *s, ip_addr local, ip_addr remote, uint pxlen, struct iface *ifa, char *passwd)
+sk_set_md5_in_sasp_db(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, char *passwd)
 {
   sockaddr src, dst;
   sockaddr_fill(&src, s->af, local, ifa, 0);
@@ -168,7 +168,7 @@ sk_set_md5_in_sasp_db(sock *s, ip_addr local, ip_addr remote, uint pxlen, struct
   }
   else
   {
-    if ((setkey_md5(&src, slen, &dst, dlen, pxlen, NULL, SADB_DELETE) < 0) ||
+    if ((setkey_md5(&src, slen, &dst, dlen, NULL, SADB_DELETE) < 0) ||
 	(setkey_md5(&dst, dlen, &src, slen, NULL, SADB_DELETE) < 0))
       ERR_MSG("Cannot delete TCP-MD5 password from the IPsec SA/SP database");
   }

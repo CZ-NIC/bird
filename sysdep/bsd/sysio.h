@@ -210,7 +210,7 @@ sk_prepare_ip_header(sock *s, void *hdr, int dlen)
 #endif
 
 int
-sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote UNUSED, uint pxlen UNUSED, struct iface *ifa UNUSED, char *passwd, int setkey UNUSED)
+sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote UNUSED, int pxlen UNUSED, struct iface *ifa UNUSED, char *passwd, int setkey UNUSED)
 {
 #ifdef USE_MD5SIG_SETKEY
   if (setkey)
