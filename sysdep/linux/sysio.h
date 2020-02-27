@@ -7,33 +7,23 @@
  */
 
 
-#ifndef IP_MINTTL
-#define IP_MINTTL 21
+#ifndef TCP_MD5SIG_EXT
+#define TCP_MD5SIG_EXT 32
 #endif
 
-#ifndef IPV6_TCLASS
-#define IPV6_TCLASS 67
+#ifndef TCP_MD5SIG_FLAG_PREFIX
+#define TCP_MD5SIG_FLAG_PREFIX 1
 #endif
 
-#ifndef IPV6_MINHOPCOUNT
-#define IPV6_MINHOPCOUNT 73
-#endif
-
-
-#ifndef TCP_MD5SIG
-
-#define TCP_MD5SIG  14
-#define TCP_MD5SIG_MAXKEYLEN 80
-
-struct tcp_md5sig {
-  struct  sockaddr_storage tcpm_addr;             /* address associated */
-  u16   __tcpm_pad1;                              /* zero */
-  u16   tcpm_keylen;                              /* key length */
-  u32   __tcpm_pad2;                              /* zero */
-  u8    tcpm_key[TCP_MD5SIG_MAXKEYLEN];           /* key (binary) */
+/* We redefine the tcp_md5sig structure with different name to avoid collision with older headers */
+struct tcp_md5sig_ext {
+  struct  sockaddr_storage tcpm_addr;		/* Address associated */
+  u8    tcpm_flags;				/* Extension flags */
+  u8    tcpm_prefixlen;				/* Address prefix */
+  u16   tcpm_keylen;				/* Key length */
+  u32   __tcpm_pad2;				/* Zero */
+  u8    tcpm_key[TCP_MD5SIG_MAXKEYLEN];		/* Key (binary) */
 };
-
-#endif
 
 
 /* Linux does not care if sa_len is larger than needed */
@@ -169,9 +159,9 @@ sk_prepare_cmsgs4(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
  */
 
 int
-sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote, struct iface *ifa, char *passwd, int setkey UNUSED)
+sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct iface *ifa, char *passwd, int setkey UNUSED)
 {
-  struct tcp_md5sig md5;
+  struct tcp_md5sig_ext md5;
 
   memset(&md5, 0, sizeof(md5));
   sockaddr_fill((sockaddr *) &md5.tcpm_addr, s->af, remote, ifa, 0);
@@ -187,12 +177,26 @@ sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote, struct iface *ifa
     memcpy(&md5.tcpm_key, passwd, len);
   }
 
-  if (setsockopt(s->fd, SOL_TCP, TCP_MD5SIG, &md5, sizeof(md5)) < 0)
+  if (pxlen < 0)
   {
-    if (errno == ENOPROTOOPT)
-      ERR_MSG("Kernel does not support TCP MD5 signatures");
-    else
-      ERR("TCP_MD5SIG");
+    if (setsockopt(s->fd, SOL_TCP, TCP_MD5SIG, &md5, sizeof(md5)) < 0)
+      if (errno == ENOPROTOOPT)
+	ERR_MSG("Kernel does not support TCP MD5 signatures");
+      else
+	ERR("TCP_MD5SIG");
+  }
+  else
+  {
+    md5.tcpm_flags = TCP_MD5SIG_FLAG_PREFIX;
+    md5.tcpm_prefixlen = pxlen;
+
+    if (setsockopt(s->fd, SOL_TCP, TCP_MD5SIG_EXT, &md5, sizeof(md5)) < 0)
+    {
+      if (errno == ENOPROTOOPT)
+	ERR_MSG("Kernel does not support extended TCP MD5 signatures");
+      else
+	ERR("TCP_MD5SIG_EXT");
+    }
   }
 
   return 0;

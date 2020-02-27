@@ -1442,7 +1442,7 @@ sk_open(sock *s)
   }
 
   if (s->password)
-    if (sk_set_md5_auth(s, s->saddr, s->daddr, s->iface, s->password, 0) < 0)
+    if (sk_set_md5_auth(s, s->saddr, s->daddr, -1, s->iface, s->password, 0) < 0)
       goto err;
 
   switch (s->type)

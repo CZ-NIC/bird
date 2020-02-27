@@ -210,11 +210,11 @@ sk_prepare_ip_header(sock *s, void *hdr, int dlen)
 #endif
 
 int
-sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote UNUSED, struct iface *ifa UNUSED, char *passwd, int setkey UNUSED)
+sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote UNUSED, uint pxlen UNUSED, struct iface *ifa UNUSED, char *passwd, int setkey UNUSED)
 {
 #ifdef USE_MD5SIG_SETKEY
   if (setkey)
-    if (sk_set_md5_in_sasp_db(s, local, remote, ifa, passwd) < 0)
+    if (sk_set_md5_in_sasp_db(s, local, remote, pxlen, ifa, passwd) < 0)
       return -1;
 #endif
 
