@@ -229,11 +229,9 @@ t_validation4(void)
     FLOW_TYPE_TCP_FLAGS, 0x80, 0x55,
   };
 
-  /* Isn't included destination prefix */
+  /* Empty NLRI */
   res = flow4_validate(nlri1, 0);
-  bt_assert(res == FLOW_ST_DEST_PREFIX_REQUIRED);
-  res = flow4_validate(&nlri1[5], sizeof(nlri1)-5);
-  bt_assert(res == FLOW_ST_DEST_PREFIX_REQUIRED);
+  bt_assert(res == FLOW_ST_VALID);
 
   /* Valid / Not Complete testing */
   uint valid_sizes[] = {5, 11, 14, 22, 25, 0};
