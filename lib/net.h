@@ -174,10 +174,10 @@ extern const u16 net_max_text_length[];
   ((net_addr_roa6) { NET_ROA6, pxlen, sizeof(net_addr_roa6), prefix, max_pxlen, asn })
 
 #define NET_ADDR_FLOW4(prefix,pxlen,dlen) \
-  ((net_addr_flow4) { NET_FLOW4, pxlen, sizeof(net_addr_ip4) + dlen, prefix })
+  ((net_addr_flow4) { NET_FLOW4, pxlen, sizeof(net_addr_flow4) + dlen, prefix })
 
 #define NET_ADDR_FLOW6(prefix,pxlen,dlen) \
-  ((net_addr_flow6) { NET_FLOW6, pxlen, sizeof(net_addr_ip6) + dlen, prefix })
+  ((net_addr_flow6) { NET_FLOW6, pxlen, sizeof(net_addr_flow6) + dlen, prefix })
 
 #define NET_ADDR_IP6_SADR(dst_prefix,dst_pxlen,src_prefix,src_pxlen) \
   ((net_addr_ip6_sadr) { NET_IP6_SADR, dst_pxlen, sizeof(net_addr_ip6_sadr), dst_prefix, src_pxlen, src_prefix })

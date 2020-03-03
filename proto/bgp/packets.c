@@ -1824,15 +1824,15 @@ bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
       bgp_parse_error(s, 1);
     }
 
-    if (data[0] != FLOW_TYPE_DST_PREFIX)
-    {
-      log(L_REMOTE "%s: No dst prefix at first pos", s->proto->p.name);
-      bgp_parse_error(s, 1);
-    }
+    ip4_addr px = IP4_NONE;
+    uint pxlen = 0;
 
     /* Decode dst prefix */
-    ip4_addr px = flow_read_ip4_part(data);
-    uint pxlen = data[1];
+    if (data[0] == FLOW_TYPE_DST_PREFIX)
+    {
+      px = flow_read_ip4_part(data);
+      pxlen = flow_read_pxlen(data);
+    }
 
     /* Prepare the flow */
     net_addr *n = alloca(sizeof(struct net_addr_flow4) + flen);
@@ -1912,15 +1912,15 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
       bgp_parse_error(s, 1);
     }
 
-    if (data[0] != FLOW_TYPE_DST_PREFIX)
-    {
-      log(L_REMOTE "%s: No dst prefix at first pos", s->proto->p.name);
-      bgp_parse_error(s, 1);
-    }
+    ip6_addr px = IP6_NONE;
+    uint pxlen = 0;
 
     /* Decode dst prefix */
-    ip6_addr px = flow_read_ip6_part(data);
-    uint pxlen = data[1];
+    if (data[0] == FLOW_TYPE_DST_PREFIX)
+    {
+      px = flow_read_ip6_part(data);
+      pxlen = flow_read_pxlen(data);
+    }
 
     /* Prepare the flow */
     net_addr *n = alloca(sizeof(struct net_addr_flow6) + flen);

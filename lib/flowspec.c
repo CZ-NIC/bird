@@ -436,7 +436,6 @@ flow_validate(const byte *nlri, uint len, int ipv6)
   enum flow_type type = 0;
   const byte *pos = nlri;
   const byte *end = nlri + len;
-  int met_dst_pfx = 0;
 
   while (pos < end)
   {
@@ -448,8 +447,6 @@ flow_validate(const byte *nlri, uint len, int ipv6)
     switch (type)
     {
     case FLOW_TYPE_DST_PREFIX:
-      met_dst_pfx = 1;
-      /* Fall through */
     case FLOW_TYPE_SRC_PREFIX:
     {
       uint pxlen = *pos++;
@@ -555,9 +552,6 @@ flow_validate(const byte *nlri, uint len, int ipv6)
 
   if (pos != end)
     return FLOW_ST_NOT_COMPLETE;
-
-  if (!ipv6 && !met_dst_pfx)
-    return FLOW_ST_DEST_PREFIX_REQUIRED;
 
   return FLOW_ST_VALID;
 }
@@ -875,7 +869,7 @@ flow_builder4_finalize(struct flow_builder *fb, linpool *lpool)
   {
     byte *part = fb->data.data + fb->parts[FLOW_TYPE_DST_PREFIX].offset;
     prefix = flow_read_ip4_part(part);
-    pxlen = part[1];
+    pxlen = flow_read_pxlen(part);
   }
   *f = NET_ADDR_FLOW4(prefix, pxlen, data_len);
 
@@ -905,7 +899,7 @@ flow_builder6_finalize(struct flow_builder *fb, linpool *lpool)
   {
     byte *part = fb->data.data + fb->parts[FLOW_TYPE_DST_PREFIX].offset;
     prefix = flow_read_ip6_part(part);
-    pxlen = part[1];
+    pxlen = flow_read_pxlen(part);
   }
   *n = NET_ADDR_FLOW6(prefix, pxlen, data_len);
 
