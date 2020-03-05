@@ -328,7 +328,42 @@ build-birdlab:
     - cd $TOOLS_DIR/netlab
     - sudo ./runtest -m check $TEST_NAME
 
-test-ospf:
+test-ospf-base:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ospf
+    TEST_NAME: cf-ospf-base
+
+test-ospf-default:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ospf-default
+
+test-ospf-priority:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ospf-priority
+
+test-ospf-nbma:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ospf-nbma
+
+test-ospf-ptmp:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ospf-ptmp
+
+test-ospf-authentication:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ospf-authentication
+
+test-ospf-bfd:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ospf-bfd
+
+test-ospf-custom:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ospf-custom
