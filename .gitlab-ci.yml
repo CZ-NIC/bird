@@ -326,6 +326,7 @@ build-birdlab:
     - amd64
   script:
     - cd $TOOLS_DIR/netlab
+    - sudo ./stop
     - sudo ./runtest -m check $TEST_NAME
 
 test-ospf-base:
