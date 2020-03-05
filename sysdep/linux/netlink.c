@@ -953,18 +953,15 @@ nl_parse_addr4(struct ifaddrmsg *i, int scan, int new)
       if (i->ifa_prefixlen == IP4_MAX_PREFIX_LENGTH - 2)
 	ifa.opposite = ipa_opposite_m2(ifa.ip);
 
-      if ((ifi->flags & IF_BROADCAST) && a[IFA_BROADCAST])
-	{
-	  ip4_addr xbrd = rta_get_ip4(a[IFA_BROADCAST]);
-	  ip4_addr ybrd = ip4_or(ipa_to_ip4(ifa.ip), ip4_not(ip4_mkmask(i->ifa_prefixlen)));
-
-	  if (ip4_equal(xbrd, net4_prefix(&ifa.prefix)) || ip4_equal(xbrd, ybrd))
-	    ifa.brd = ipa_from_ip4(xbrd);
-	  else if (ifi->flags & IF_TMP_DOWN) /* Complain only during the first scan */
-	    {
-	      log(L_ERR "KIF: Invalid broadcast address %I4 for %s", xbrd, ifi->name);
-	      ifa.brd = ipa_from_ip4(ybrd);
-	    }
+      if (ifi->flags & IF_BROADCAST)
+        {
+	  /* If kernel offers us a broadcast address, we trust it */
+	  if (a[IFA_BROADCAST])
+	    ifa.brd = ipa_from_ip4(rta_get_ip4(a[IFA_BROADCAST]));
+	  /* Otherwise we create one (except for /31) */
+	  else if (i->ifa_prefixlen < (IP4_MAX_PREFIX_LENGTH - 1))
+	    ifa.brd = ipa_from_ip4(ip4_or(ipa_to_ip4(ifa.ip),
+					  ip4_not(ip4_mkmask(i->ifa_prefixlen))));
 	}
     }
 
