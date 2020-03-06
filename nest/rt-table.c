@@ -558,7 +558,7 @@ do_rt_notify(struct channel *c, struct rte_export_internal *e)
     rte_free_quick(old_exported);
 }
 
-static void
+USE_RESULT static _Bool
 rt_notify_basic(struct channel *c, struct rte_export_internal *e)
 {
   if (e->pub.new)
@@ -573,12 +573,12 @@ rt_notify_basic(struct channel *c, struct rte_export_internal *e)
     e->pub.old = NULL;
 
   if (!e->pub.new && !e->pub.old)
-    return;
+    return 0;
 
-  do_rt_notify(c, e);
+  return 1;
 }
 
-static void
+USE_RESULT static _Bool
 rt_notify_accepted(struct channel *c, struct rte_export_internal *e)
 {
   // struct proto *p = c->proto;
@@ -640,18 +640,18 @@ rt_notify_accepted(struct channel *c, struct rte_export_internal *e)
     if (new_first && (e->pub.new = export_filter(c, e->pub.new, &e->rt_free, 0)))
       new_best = e->pub.new;
     else
-      return;
+      return 0;
   }
 
   if (!new_best && !old_best)
-    return;
+    return 0;
 
   e->pub.new = new_best;
   e->pub.new_src = new_best ? new_best->attrs->src : NULL;
   e->pub.old = old_best;
   e->pub.old_src = old_best ? old_best->attrs->src : NULL;
 
-  do_rt_notify(c, e);
+  return 1;
 }
 
 
@@ -714,21 +714,21 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int 
 }
 
 
-static void
+USE_RESULT static _Bool
 rt_notify_merged(struct channel *c, struct rte_export_internal *e)
 {
   /* We assume that all rte arguments are either NULL or rte_is_valid() */
 
   /* This check should be done by the caller */
   if (!e->new_best && !e->old_best)
-    return;
+    return 0;
 
   /* Check whether the change is relevant to the merged route */
   if ((e->new_best == e->old_best) &&
       (e->pub.new != e->pub.old) &&
       !rte_mergable(e->new_best, e->pub.new) &&
       !rte_mergable(e->old_best, e->pub.old))
-    return;
+    return 0;
 
   if (e->new_best)
     c->stats.exp_updates_received++;
@@ -744,12 +744,12 @@ rt_notify_merged(struct channel *c, struct rte_export_internal *e)
     e->pub.old = NULL;
 
   if (!e->pub.new && !e->pub.old)
-    return;
+    return 0;
 
   e->pub.new_src = e->pub.new ? e->pub.new->attrs->src : NULL;
   e->pub.old_src = e->pub.old ? e->pub.old->attrs->src : NULL;
 
-  do_rt_notify(c, e);
+  return 1;
 }
 
 
@@ -852,24 +852,31 @@ rte_announce(rtable *tab, uint type, net *net, rte *new, rte *old,
 	e.pub.new_src = new_best ? new_best->attrs->src : NULL;
 	e.pub.old = old_best;
 	e.pub.old_src = old_best ? old_best->attrs->src : NULL;
-	rt_notify_basic(c, &e);
+	if (!rt_notify_basic(c, &e))
+	  goto next_channel;
       }
       break;
 
     case RA_ANY:
       if (new != old)
-	rt_notify_basic(c, &e);
+	if (!rt_notify_basic(c, &e))
+	  goto next_channel;
       break;
 
     case RA_ACCEPTED:
-      rt_notify_accepted(c, &e);
+      if (!rt_notify_accepted(c, &e))
+	goto next_channel;
       break;
 
     case RA_MERGED:
-      rt_notify_merged(c, &e);
+      if (!rt_notify_merged(c, &e))
+	goto next_channel;
       break;
     }
 
+    do_rt_notify(c, &e);
+
+next_channel:
     /* Discard temporary rte */
     if (e.rt_free)
       rte_free(e.rt_free);
@@ -2171,19 +2178,25 @@ rt_feed_channel(struct channel *c)
 	      ee.pub.new_src = e->attrs->src;
 	      ee.pub.old = e;
 	      ee.pub.old_src = e->attrs->src;
-	      rt_notify_basic(c, &ee);
+	      if (!rt_notify_basic(c, &ee))
+		goto next_rte;
 	      break;
 	    case RA_ACCEPTED:
-	      rt_notify_accepted(c, &ee);
+	      if (!rt_notify_accepted(c, &ee))
+		goto next_rte;
 	      break;
 	    case RA_MERGED:
-	      rt_notify_merged(c, &ee);
+	      if (!rt_notify_merged(c, &ee))
+		goto next_rte;
 	      break;
 	    default:
 	      ASSERT(0);
 	  }
 
+	  do_rt_notify(c, &ee);
+
 	  /* Discard temporary rte */
+next_rte:
 	  if (ee.rt_free)
 	    rte_free(ee.rt_free);
 	}
