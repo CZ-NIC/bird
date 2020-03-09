@@ -434,33 +434,36 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
   const struct filter *filter = c->out_filter;
   struct proto_stats *stats = &c->stats;
   rte *rt;
-  int v;
 
   rt = rt0;
   *rt_free = NULL;
 
-  v = p->preexport ? p->preexport(p, &rt, pool) : 0;
-  if (v < 0)
+  /* Do nothing if we have already rejected the route */
+  if (silent && bmap_test(&c->export_reject_map, rt0->id))
+    return NULL;
+
+  int pv = p->preexport ? p->preexport(p, &rt, pool) : 0;
+  if (pv < 0)
     {
       if (silent)
 	goto reject;
 
       stats->exp_updates_rejected++;
-      if (v == RIC_REJECT)
+      if (pv == RIC_REJECT)
 	rte_trace_out(D_FILTERS, p, rt, "rejected by protocol");
       goto reject;
     }
-  if (v > 0)
+  if (pv > 0)
     {
       if (!silent)
 	rte_trace_out(D_FILTERS, p, rt, "forced accept by protocol");
       goto accept;
     }
 
-  v = filter && ((filter == FILTER_REJECT) ||
+  int fv = filter && ((filter == FILTER_REJECT) ||
 		 (f_run(filter, &rt, pool,
 			(silent ? FF_SILENT : 0)) > F_ACCEPT));
-  if (v)
+  if (fv)
     {
       if (silent)
 	goto reject;
@@ -471,11 +474,19 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
     }
 
  accept:
+  /* We have accepted the route */
+  bmap_clear(&c->export_reject_map, rt0->id);
+
+  /* Discard temporary rte */
   if (rt != rt0)
     *rt_free = rt;
   return rt;
 
  reject:
+  /* We have rejected the route by filter */
+  if (pv == 0)
+    bmap_set(&c->export_reject_map, rt0->id);
+
   /* Discard temporary rte */
   if (rt != rt0)
     rte_free(rt);
@@ -829,7 +840,16 @@ rte_announce(rtable *tab, uint type, net *net, rte *new, rte *old,
       continue;
 
     if (type && (type != c->ra_mode))
+    {
+      /* If skipping other means of announcement,
+       * drop the rejection bit anyway
+       * as we won't get this route as old any more.
+       * This happens when updating hostentries. */
+      if (old)
+	bmap_clear(&c->export_reject_map, old->id);
+
       continue;
+    }
 
     struct rte_export_internal e = {
       .pub = {
@@ -880,6 +900,11 @@ next_channel:
     /* Discard temporary rte */
     if (e.rt_free)
       rte_free(e.rt_free);
+
+    /* Drop the old stored rejection if applicable.
+     * new->id == old->id happens when updating hostentries. */
+    if (old && (!new || (new->id != old->id)))
+      bmap_clear(&c->export_reject_map, old->id);
   }
 }
 
@@ -1383,22 +1408,26 @@ rte_modify(rte *old)
   rte_update_unlock();
 }
 
-/* Check rtable for best route to given net whether it would be exported do p */
+/* Check channel for best route to given net whether it would be exported */
 int
-rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter)
+rt_examine(struct channel *c, net_addr *a)
 {
-  net *n = net_find(t, a);
+  net *n = net_find(c->table, a);
   rte *rt = n ? n->routes : NULL;
 
   if (!rte_is_valid(rt))
     return 0;
 
+  if (bmap_test(&c->export_reject_map, rt->id))
+    return 0;
+
   rte_update_lock();
 
+  struct proto *p = c->proto;
   /* Rest is stripped down export_filter() */
   int v = p->preexport ? p->preexport(p, &rt, rte_update_pool) : 0;
   if (v == RIC_PROCESS)
-    v = (f_run(filter, &rt, rte_update_pool, FF_SILENT) <= F_ACCEPT);
+    v = (f_run(c->out_filter, &rt, rte_update_pool, FF_SILENT) <= F_ACCEPT);
 
   /* Discard temporary rte */
   if (rt != n->routes)
