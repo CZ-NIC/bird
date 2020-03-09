@@ -314,7 +314,7 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 rte *rte_find(net *net, struct rte_src *src);
-int rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter);
+int rt_examine(struct channel *c, net_addr *a);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
