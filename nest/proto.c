@@ -463,6 +463,7 @@ channel_stop_export(struct channel *c)
   c->export_state = ES_DOWN;
   c->stats.exp_routes = 0;
   bmap_reset(&c->export_map, 1024);
+  bmap_reset(&c->export_reject_map, 1024);
 }
 
 
@@ -550,6 +551,7 @@ channel_do_start(struct channel *c)
   c->feed_event = ev_new_init(c->proto->pool, channel_feed_loop, c);
 
   bmap_init(&c->export_map, c->proto->pool, 1024);
+  bmap_init(&c->export_reject_map, c->proto->pool, 1024);
   memset(&c->stats, 0, sizeof(struct proto_stats));
 
   channel_reset_limit(&c->rx_limit);
@@ -583,6 +585,7 @@ channel_do_flush(struct channel *c)
 
   /* This have to be done in here, as channel pool is freed before channel_do_down() */
   bmap_free(&c->export_map);
+  bmap_free(&c->export_reject_map);
   c->in_table = NULL;
   c->reload_event = NULL;
   c->out_table = NULL;
