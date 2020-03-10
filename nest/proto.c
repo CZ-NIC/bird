@@ -186,6 +186,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->reloadable = 1;
 
   init_list(&c->roa_subscriptions);
+  init_list(&c->net_feed);
 
   CALL(c->channel->init, c, cf);
 
@@ -304,9 +305,30 @@ channel_feed_loop(void *ptr)
 
   /* Restart feeding */
   if (c->refeed_pending)
-    channel_request_feeding(c);
+    channel_request_feeding(c, NULL);
 }
 
+static void
+channel_feed_net(void *data)
+{
+  struct channel_net_feed *nf = data;
+
+  rt_feed_channel_net(nf->c, nf->addr);
+  rem_node(&nf->n);
+  mb_free(nf);
+}
+
+static void
+channel_schedule_feed_net(struct channel *c, net_addr *n)
+{
+  struct channel_net_feed *nf = mb_alloc(c->proto->pool, sizeof(struct channel_net_feed) + n->length);
+  nf->n = (node) {};
+  nf->e = (event) { .hook = channel_feed_net, .data = nf };
+  nf->c = c;
+  net_copy(nf->addr, n);
+  add_tail(&c->net_feed, &nf->n);
+  ev_schedule(&nf->e);
+}
 
 static void
 channel_roa_in_changed(struct rt_subscription *s)
@@ -331,7 +353,7 @@ channel_roa_out_changed(struct rt_subscription *s)
   CD(c, "Feeding triggered by RPKI change%s", active ? " - already active" : "");
 
   if (!active)
-    channel_request_feeding(c);
+    channel_request_feeding(c, NULL);
   else
     c->refeed_pending = 1;
 }
@@ -459,6 +481,16 @@ channel_stop_export(struct channel *c)
   /* Need to abort feeding */
   if (c->export_state == ES_FEEDING)
     rt_feed_channel_abort(c);
+
+  /* Abort also all scheduled net feeds */
+  struct channel_net_feed *n;
+  node *nxt;
+  WALK_LIST_DELSAFE(n, nxt, c->net_feed)
+  {
+    ev_postpone(&n->e);
+    rem_node(&n->n);
+    mb_free(n);
+  }
 
   c->export_state = ES_DOWN;
   c->stats.exp_routes = 0;
@@ -702,7 +734,7 @@ channel_set_state(struct channel *c, uint state)
  * even when feeding is already running, in that case it is restarted.
  */
 void
-channel_request_feeding(struct channel *c)
+channel_request_feeding(struct channel *c, net_addr *n)
 {
   ASSERT(c->channel_state == CS_UP);
 
@@ -719,8 +751,16 @@ channel_request_feeding(struct channel *c)
     if (!c->feed_active)
 	return;
 
+    /* Unless only single net is requested */
+    if (n)
+      return channel_schedule_feed_net(c, n);
+
     rt_feed_channel_abort(c);
   }
+
+  /* Single net refeed isn't counted */
+  if (n)
+    return channel_schedule_feed_net(c, n);
 
   /* Track number of exported routes during refeed */
   c->refeed_count = 0;
@@ -902,7 +942,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
     channel_request_reload(c);
 
   if (export_changed)
-    channel_request_feeding(c);
+    channel_request_feeding(c, NULL);
 
 done:
   CD(c, "Reconfigured");
@@ -2210,7 +2250,7 @@ proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
   if (dir != CMD_RELOAD_IN)
     WALK_LIST(c, p->channels)
       if (c->channel_state == CS_UP)
-	channel_request_feeding(c);
+	channel_request_feeding(c, NULL);
 
   cli_msg(-15, "%s: reloading", p->name);
 }

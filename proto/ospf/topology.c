@@ -1319,7 +1319,7 @@ ospf_rt_notify(struct channel *ch, struct rte_export *e)
 
   if (!e->new)
   {
-    nf = fib_find(&p->rtf, e->net->n.addr);
+    nf = fib_find(&p->rtf, e->net);
 
     if (!nf || !nf->external_rte)
       return;
@@ -1346,14 +1346,14 @@ ospf_rt_notify(struct channel *ch, struct rte_export *e)
   if (m1 > LSINFINITY)
   {
     log(L_WARN "%s: Invalid ospf_metric1 value %u for route %N",
-	p->p.name, m1, e->net->n.addr);
+	p->p.name, m1, e->net);
     m1 = LSINFINITY;
   }
 
   if (m2 > LSINFINITY)
   {
     log(L_WARN "%s: Invalid ospf_metric2 value %u for route %N",
-	p->p.name, m2, e->net->n.addr);
+	p->p.name, m2, e->net);
     m2 = LSINFINITY;
   }
 
@@ -1377,12 +1377,12 @@ ospf_rt_notify(struct channel *ch, struct rte_export *e)
     if (ipa_zero(fwd))
     {
       log(L_ERR "%s: Cannot find forwarding address for NSSA-LSA %N",
-	  p->p.name, e->net->n.addr);
+	  p->p.name, e->net);
       return;
     }
   }
 
-  nf = fib_get(&p->rtf, e->net->n.addr);
+  nf = fib_get(&p->rtf, e->net);
   ospf_originate_ext_lsa(p, oa, nf, LSA_M_EXPORT, metric, ebit, fwd, tag, 1, p->vpn_pe);
   nf->external_rte = 1;
 }

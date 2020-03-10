@@ -2137,11 +2137,11 @@ babel_rt_notify(struct channel *c, struct rte_export *export)
     if (rt_metric > BABEL_INFINITY)
     {
       log(L_WARN "%s: Invalid babel_metric value %u for route %N",
-	  p->p.name, rt_metric, export->net->n.addr);
+	  p->p.name, rt_metric, export->net);
       rt_metric = BABEL_INFINITY;
     }
 
-    e = babel_get_entry(p, export->net->n.addr);
+    e = babel_get_entry(p, export->net);
 
     /* Activate triggered updates */
     if ((e->valid != BABEL_ENTRY_VALID) ||
@@ -2159,7 +2159,7 @@ babel_rt_notify(struct channel *c, struct rte_export *export)
   else
   {
     /* Withdraw */
-    e = babel_find_entry(p, export->net->n.addr);
+    e = babel_find_entry(p, export->net);
 
     if (!e || e->valid != BABEL_ENTRY_VALID)
       return;
