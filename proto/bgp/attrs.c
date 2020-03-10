@@ -1825,7 +1825,7 @@ bgp_rt_notify(struct channel *C, struct rte_export *e)
     path = e->old_src->global_id;
   }
 
-  px = bgp_get_prefix(c, e->net->n.addr, c->add_path_tx ? path : 0);
+  px = bgp_get_prefix(c, e->net, c->add_path_tx ? path : 0);
   add_tail(&buck->prefixes, &px->buck_node);
 
   bgp_schedule_packet(p->conn, c, PKT_UPDATE);

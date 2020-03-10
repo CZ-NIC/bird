@@ -1397,7 +1397,7 @@ nl_replace_rte(struct krt_proto *p, rte *e)
 
 
 void
-krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
+krt_replace_rte(struct krt_proto *p, rte *new, rte *old)
 {
   int err = 0;
 

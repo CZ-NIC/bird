@@ -536,7 +536,16 @@ struct channel {
   struct rte *reload_next_rte;		/* Route iterator in in_table used during reloading */
   u8 reload_active;			/* Iterator reload_fit is linked */
 
+  list net_feed;			/* Active net feeders (struct channel_net_feed) */
+
   struct rtable *out_table;		/* Internal table for exported routes */
+};
+
+struct channel_net_feed {
+  node n;
+  struct event e;
+  struct channel *c;
+  net_addr addr[0];
 };
 
 
@@ -612,7 +621,7 @@ static inline void channel_init(struct channel *c) { channel_set_state(c, CS_STA
 static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP); }
 static inline void channel_close(struct channel *c) { channel_set_state(c, CS_FLUSHING); }
 
-void channel_request_feeding(struct channel *c);
+void channel_request_feeding(struct channel *c, net_addr *n);
 void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);

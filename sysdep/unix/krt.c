@@ -552,7 +552,7 @@ krt_flush_routes(struct krt_proto *p)
       if (krt_is_installed(p, n))
 	{
 	  /* FIXME: this does not work if gw is changed in export filter */
-	  krt_replace_rte(p, n, NULL, n->routes);
+	  krt_replace_rte(p, NULL, n->routes);
 	}
     }
   FIB_WALK_END;
@@ -682,12 +682,12 @@ ignore:
 
 update:
   krt_trace_in(p, new, "updating");
-  krt_replace_rte(p, n, new, e);
+  krt_replace_rte(p, new, e);
   goto done;
 
 delete:
   krt_trace_in(p, e, "deleting");
-  krt_replace_rte(p, n, NULL, e);
+  krt_replace_rte(p, NULL, e);
   goto done;
 
 done:
@@ -719,7 +719,7 @@ krt_prune(struct krt_proto *p)
       if (new)
       {
 	krt_trace_in(p, new, "installing");
-	krt_replace_rte(p, n, new, NULL);
+	krt_replace_rte(p, new, NULL);
       }
 
       if (rt_free)
@@ -742,8 +742,6 @@ krt_prune(struct krt_proto *p)
 void
 krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
 {
-  net *net = e->net;
-
   switch (src)
     {
     case KRT_SRC_BIRD:
@@ -754,7 +752,7 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
       if (new)
 	{
 	  krt_trace_in(p, e, "[redirect] deleting");
-	  krt_replace_rte(p, net, NULL, e);
+	  krt_replace_rte(p, NULL, e);
 	}
       /* If !new, it is probably echo of our deletion */
       break;
@@ -903,13 +901,12 @@ krt_rt_notify(struct channel *ch, struct rte_export *e)
    * but if we processed the update as usual, we would send withdraw to the
    * kernel, which would remove the new imported route instead.
    */
-  rte *best = e->net->routes;
-  if (!e->new && best && (best->attrs->src->proto == ch->proto))
+  if (!e->new && (e->new_src->proto == ch->proto))
     return;
 #endif
 
   if (p->initialized)		/* Before first scan we don't touch the routes */
-    krt_replace_rte(p, e->net, e->new, e->old);
+    krt_replace_rte(p, e->new, e->old);
 }
 
 static void

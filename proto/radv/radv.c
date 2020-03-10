@@ -33,7 +33,7 @@
  * The RAdv protocol could receive routes (through radv_preexport() and
  * radv_rt_notify()), but only the configured trigger route is tracked (in
  * &active var).  When a radv protocol is reconfigured, the connected routing
- * table is examined (in radv_check_active()) to have proper &active value in
+ * table is examined to have proper &active value in
  * case of the specified trigger prefix was changed.
  *
  * Supported standards:
@@ -385,9 +385,9 @@ radv_trigger_valid(struct radv_config *cf)
 }
 
 static inline int
-radv_net_match_trigger(struct radv_config *cf, net *n)
+radv_net_match_trigger(struct radv_config *cf, net_addr *n)
 {
-  return radv_trigger_valid(cf) && net_equal(n->n.addr, &cf->trigger);
+  return radv_trigger_valid(cf) && net_equal(n, &cf->trigger);
 }
 
 int
@@ -396,7 +396,7 @@ radv_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
   // struct radv_proto *p = (struct radv_proto *) P;
   struct radv_config *cf = (struct radv_config *) (P->cf);
 
-  if (radv_net_match_trigger(cf, (*new)->net))
+  if (radv_net_match_trigger(cf, (*new)->net->n.addr))
     return RIC_PROCESS;
 
   if (cf->propagate_routes)
@@ -457,14 +457,14 @@ radv_rt_notify(struct channel *ch, struct rte_export *e)
 	(preference != RA_PREF_HIGH))
     {
       log(L_WARN "%s: Invalid ra_preference value %u on route %N",
-	  p->p.name, preference, e->net->n.addr);
+	  p->p.name, preference, e->net);
       preference = RA_PREF_MEDIUM;
       preference_set = 1;
       lifetime = 0;
       lifetime_set = 1;
     }
 
-    rt = fib_get(&p->routes, e->net->n.addr);
+    rt = fib_get(&p->routes, e->net);
 
     /* Ignore update if nothing changed */
     if (rt->valid &&
@@ -487,7 +487,7 @@ radv_rt_notify(struct channel *ch, struct rte_export *e)
   else
   {
     /* Withdraw */
-    rt = fib_find(&p->routes, e->net->n.addr);
+    rt = fib_find(&p->routes, e->net);
 
     if (!rt || !rt->valid)
       return;
@@ -544,18 +544,6 @@ again:
   FIB_ITERATE_END;
 
   p->prune_time = next;
-}
-
-static int
-radv_check_active(struct radv_proto *p)
-{
-  struct radv_config *cf = (struct radv_config *) (p->p.cf);
-
-  if (!radv_trigger_valid(cf))
-    return 1;
-
-  struct channel *c = p->p.main_channel;
-  return rt_examine(c, &cf->trigger);
 }
 
 static void
@@ -650,15 +638,21 @@ radv_reconfigure(struct proto *P, struct proto_config *CF)
   if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
     return 0;
 
-  P->cf = CF; /* radv_check_active() requires proper P->cf */
-  p->active = radv_check_active(p);
+  P->cf = CF;
 
   /* Allocate or free FIB */
   radv_set_fib(p, new->propagate_routes);
 
   /* We started to accept routes so we need to refeed them */
   if (!old->propagate_routes && new->propagate_routes)
-    channel_request_feeding(p->p.main_channel);
+    channel_request_feeding(p->p.main_channel, NULL);
+  else if (!net_equal(&old->trigger, &new->trigger))
+  {
+    /* On trigger change, refeed the routes for which the preexport may have changed */
+    channel_request_feeding(p->p.main_channel, &old->trigger);
+    channel_request_feeding(p->p.main_channel, &new->trigger);
+  }
+
 
   struct iface *iface;
   WALK_LIST(iface, iface_list)

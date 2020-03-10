@@ -219,12 +219,13 @@ typedef struct rte {
 
 /* Route export structure. Protocols get this structure as an information about
  * new routes on the channel. */
+
 struct rte_export {
-  net *net;				/* Network information */
-  struct rte_src *new_src;		/* New route src (NULL for withdraw) */
+  net_addr *net;			/* Network information */
   rte *new;				/* New route (NULL for withdraw) */
+  struct rte_src *new_src;		/* New route src (kept if route is rejected by preexport or filter) */
+  rte *old;				/* Old route (only if export table is on) */
   struct rte_src *old_src;		/* Old route src */
-  rte *old;				/* Old route */
 };
 
 #define REF_COW		1		/* Copy this rte on write */
@@ -314,7 +315,6 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 rte *rte_find(net *net, struct rte_src *src);
-int rt_examine(struct channel *c, net_addr *a);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
@@ -329,6 +329,7 @@ rte *rte_cow_rta(rte *r, linpool *lp);
 void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
+void rt_feed_channel_net(struct channel *c, net_addr *n);
 void rt_feed_channel_abort(struct channel *c);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
