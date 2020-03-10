@@ -326,14 +326,14 @@ rip_rt_notify(struct channel *ch, struct rte_export *e)
     if (rt_metric > p->infinity)
     {
       log(L_WARN "%s: Invalid rip_metric value %u for route %N",
-	  p->p.name, rt_metric, e->net->n.addr);
+	  p->p.name, rt_metric, e->net);
       rt_metric = p->infinity;
     }
 
     if (rt_tag > 0xffff)
     {
       log(L_WARN "%s: Invalid rip_tag value %u for route %N",
-	  p->p.name, rt_tag, e->net->n.addr);
+	  p->p.name, rt_tag, e->net);
       rt_metric = p->infinity;
       rt_tag = 0;
     }
@@ -345,7 +345,7 @@ rip_rt_notify(struct channel *ch, struct rte_export *e)
      * collection.
      */
 
-    en = fib_get(&p->rtable, e->net->n.addr);
+    en = fib_get(&p->rtable, e->net);
 
     old_metric = en->valid ? en->metric : -1;
 
@@ -359,7 +359,7 @@ rip_rt_notify(struct channel *ch, struct rte_export *e)
   else
   {
     /* Withdraw */
-    en = fib_find(&p->rtable, e->net->n.addr);
+    en = fib_find(&p->rtable, e->net);
 
     if (!en || en->valid != RIP_ENTRY_VALID)
       return;

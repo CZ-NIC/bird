@@ -59,7 +59,7 @@ pipe_rt_notify(struct channel *src_ch, struct rte_export *export)
   if (dst->table->pipe_busy)
     {
       log(L_ERR "Pipe loop detected when sending %N to table %s",
-	  export->net->n.addr, dst->table->name);
+	  export->net, dst->table->name);
       return;
     }
 
@@ -77,13 +77,13 @@ pipe_rt_notify(struct channel *src_ch, struct rte_export *export)
       };
 
       src_ch->table->pipe_busy = 1;
-      rte_update(dst, export->net->n.addr, &e0);
+      rte_update(dst, export->net, &e0);
       src_ch->table->pipe_busy = 0;
     }
   else
     {
       src_ch->table->pipe_busy = 1;
-      rte_withdraw(dst, export->net->n.addr, export->old_src);
+      rte_withdraw(dst, export->net, export->old_src);
       src_ch->table->pipe_busy = 0;
     }
 }
@@ -105,7 +105,7 @@ pipe_reload_routes(struct channel *C)
   struct pipe_proto *p = (void *) C->proto;
 
   /* Route reload on one channel is just refeed on the other */
-  channel_request_feeding((C == p->pri) ? p->sec : p->pri);
+  channel_request_feeding((C == p->pri) ? p->sec : p->pri, NULL);
 }
 
 
