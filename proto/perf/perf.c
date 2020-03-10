@@ -238,7 +238,7 @@ perf_feed_end(struct channel *c)
   p->feed_begin = NULL;
 
   if (p->run < p->repeat)
-    channel_request_feeding(c);
+    channel_request_feeding(c, NULL);
   else
     PLOG("feed done");
 }
