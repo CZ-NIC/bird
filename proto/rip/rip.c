@@ -550,8 +550,14 @@ rip_iface_stop(struct rip_iface *ifa)
   ifa->next_triggered = 0;
   ifa->want_triggered = 0;
 
+  if (ifa->tx_pending)
+    ifa->tx_seqnum++;
+
   ifa->tx_pending = 0;
   ifa->req_pending = 0;
+
+  if (ifa->cf->demand_circuit)
+    rip_send_flush(p, ifa);
 
   WALK_LIST_FIRST(n, ifa->neigh_list)
     rip_remove_neighbor(p, n);
@@ -710,7 +716,8 @@ rip_reconfigure_iface(struct rip_proto *p, struct rip_iface *ifa, struct rip_ifa
       (new->port != old->port) ||
       (new->tx_tos != old->tx_tos) ||
       (new->tx_priority != old->tx_priority) ||
-      (new->ttl_security != old->ttl_security))
+      (new->ttl_security != old->ttl_security) ||
+      (new->demand_circuit != old->demand_circuit))
     return 0;
 
   TRACE(D_EVENTS, "Reconfiguring interface %s", ifa->iface->name);
@@ -719,7 +726,8 @@ rip_reconfigure_iface(struct rip_proto *p, struct rip_iface *ifa, struct rip_ifa
 
   rip_iface_update_buffers(ifa);
 
-  if (ifa->next_regular > (current_time() + new->update_time))
+  if ((! ifa->cf->demand_circuit) &&
+      (ifa->next_regular > (current_time() + new->update_time)))
     ifa->next_regular = current_time() + (random() % new->update_time) + 100 MS;
 
   if (new->check_link != old->check_link)
@@ -1131,6 +1139,20 @@ rip_start(struct proto *P)
 }
 
 static int
+rip_shutdown(struct proto *P)
+{
+  struct rip_proto *p = (void *) P;
+
+  TRACE(D_EVENTS, "Shutdown requested");
+
+  struct rip_iface *ifa;
+  WALK_LIST(ifa, p->iface_list)
+    rip_iface_stop(ifa);
+
+  return PS_DOWN;
+}
+
+static int
 rip_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct rip_proto *p = (void *) P;
@@ -1271,8 +1293,12 @@ rip_dump(struct proto *P)
   FIB_WALK(&p->rtable, struct rip_entry, en)
   {
     debug("RIP: entry #%d: %N via %I dev %s valid %d metric %d age %t\n",
-	  i++, en->n.addr, en->next_hop, en->iface->name,
+	  i++, en->n.addr, en->next_hop, en->iface ? en->iface->name : "(null)",
 	  en->valid, en->metric, current_time() - en->changed);
+
+    for (struct rip_rte *e = en->routes; e; e = e->next)
+      debug("RIP:   via %I metric %d expires %t\n",
+	    e->next_hop, e->metric, e->expires - current_time());
   }
   FIB_WALK_END;
 
@@ -1298,6 +1324,7 @@ struct protocol proto_rip = {
   .init =		rip_init,
   .dump =		rip_dump,
   .start =		rip_start,
+  .shutdown =		rip_shutdown,
   .reconfigure =	rip_reconfigure,
   .get_route_info =	rip_get_route_info,
   .get_attr =		rip_get_attr

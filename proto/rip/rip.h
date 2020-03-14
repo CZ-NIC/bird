@@ -162,7 +162,7 @@ struct rip_entry
   u8 valid;				/* Entry validity state (RIP_ENTRY_*) */
   u8 metric;				/* Outgoing route metric */
   u16 tag;				/* Outgoing route tag */
-  struct iface *from;			/* Outgoing route from, NULL if from  proto */
+  struct iface *from;			/* Outgoing route from, NULL if from proto */
   struct iface *iface;			/* Outgoing route iface (for next hop) */
   ip_addr next_hop;			/* Outgoing route next hop */
 
@@ -227,6 +227,7 @@ void rip_show_neighbors(struct proto *P, char *iff);
 /* packets.c */
 void rip_send_request(struct rip_proto *p, struct rip_iface *ifa);
 void rip_send_table(struct rip_proto *p, struct rip_iface *ifa, ip_addr addr, btime changed);
+int rip_send_flush(struct rip_proto *p, struct rip_iface *ifa);
 void rip_rxmt_timeout(timer *t);
 int rip_open_socket(struct rip_iface *ifa);
 
