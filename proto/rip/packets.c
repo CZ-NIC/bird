@@ -780,6 +780,25 @@ rip_receive_response(struct rip_proto *p, struct rip_iface *ifa, struct rip_pack
   }
 }
 
+int
+rip_send_flush(struct rip_proto *p, struct rip_iface *ifa)
+{
+  /* Caller should handle cleanup of pending response */
+  if (ifa->tx_pending)
+    return 0;
+
+  struct rip_packet *pkt = rip_tx_buffer(ifa);
+
+  rip_fill_header(ifa, pkt, RIP_CMD_UPDATE_RESPONSE);
+  rip_fill_update_hdr(pkt, 1, ifa->tx_seqnum);
+
+  /* We suppose that iface is going down, so we do not expect ACK */
+  ifa->tx_seqnum++;
+
+  TRACE(D_PACKETS, "Sending response via %s", ifa->iface->name);
+  return rip_send_to(p, ifa, pkt, rip_pkt_hdrlen(ifa), ifa->tx_addr);
+}
+
 
 static int
 rip_send_ack(struct rip_proto *p, struct rip_iface *ifa, uint flush, uint seqnum)
