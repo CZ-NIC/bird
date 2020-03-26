@@ -2789,7 +2789,7 @@ rt_init_hostcache(rtable *tab)
   hc->slab = sl_new(rt_table_pool, sizeof(struct hostentry));
 
   hc->lp = lp_new(rt_table_pool, LP_GOOD_SIZE(1024));
-  hc->trie = f_new_trie(hc->lp, sizeof(struct f_trie_node));
+  hc->trie = f_new_trie(hc->lp, 0);
 
   tab->hostcache = hc;
 }
@@ -2943,7 +2943,7 @@ rt_update_hostcache(rtable *tab)
 
   /* Reset the trie */
   lp_flush(hc->lp);
-  hc->trie = f_new_trie(hc->lp, sizeof(struct f_trie_node));
+  hc->trie = f_new_trie(hc->lp, 0);
 
   WALK_LIST_DELSAFE(n, x, hc->hostentries)
     {

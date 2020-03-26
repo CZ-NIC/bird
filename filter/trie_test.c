@@ -103,7 +103,7 @@ t_match_net(void)
   {
     list prefixes; /* of structs f_extended_prefix */
     init_list(&prefixes);
-    struct f_trie *trie = f_new_trie(config->mem, sizeof(struct f_trie_node));
+    struct f_trie *trie = f_new_trie(config->mem, 0);
 
     generate_random_ipv6_prefixes(&prefixes);
     struct f_prefix_node *n;
@@ -143,8 +143,8 @@ t_trie_same(void)
   int round;
   for (round = 0; round < TESTS_NUM*4; round++)
   {
-    struct f_trie * trie1 = f_new_trie(config->mem, sizeof(struct f_trie_node));
-    struct f_trie * trie2 = f_new_trie(config->mem, sizeof(struct f_trie_node));
+    struct f_trie * trie1 = f_new_trie(config->mem, 0);
+    struct f_trie * trie2 = f_new_trie(config->mem, 0);
 
     list prefixes; /* a list of f_extended_prefix structures */
     init_list(&prefixes);

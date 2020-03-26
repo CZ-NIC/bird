@@ -138,19 +138,35 @@ struct f_tree {
   void *data;
 };
 
+struct f_trie_node4
+{
+  ip4_addr addr, mask, accept;
+  uint plen;
+  struct f_trie_node4 *c[2];
+};
+
+struct f_trie_node6
+{
+  ip6_addr addr, mask, accept;
+  uint plen;
+  struct f_trie_node6 *c[2];
+};
+
 struct f_trie_node
 {
-  ip_addr addr, mask, accept;
-  uint plen;
-  struct f_trie_node *c[2];
+  union {
+    struct f_trie_node4 v4;
+    struct f_trie_node6 v6;
+  };
 };
 
 struct f_trie
 {
   linpool *lp;
-  int zero;
-  uint node_size;
-  struct f_trie_node root[0];		/* Root trie node follows */
+  u8 zero;
+  s8 ipv4;				/* -1 for undefined / empty */
+  u16 data_size;			/* Additional data for each trie node */
+  struct f_trie_node root;		/* Root trie node */
 };
 
 struct f_tree *f_new_tree(void);
@@ -159,7 +175,7 @@ const struct f_tree *find_tree(const struct f_tree *t, const struct f_val *val);
 int same_tree(const struct f_tree *t0, const struct f_tree *t2);
 void tree_format(const struct f_tree *t, buffer *buf);
 
-struct f_trie *f_new_trie(linpool *lp, uint node_size);
+struct f_trie *f_new_trie(linpool *lp, uint data_size);
 void *trie_add_prefix(struct f_trie *t, const net_addr *n, uint l, uint h);
 int trie_match_net(const struct f_trie *t, const net_addr *n);
 int trie_same(const struct f_trie *t1, const struct f_trie *t2);
