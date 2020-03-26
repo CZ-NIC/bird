@@ -438,7 +438,7 @@ trie_node_format4(const struct f_trie_node4 *t, buffer *buf)
     return;
 
   if (ip4_nonzero(t->accept))
-    buffer_print(buf, "%4I/%d{%4I}, ", t->addr, t->plen, t->accept);
+    buffer_print(buf, "%I4/%d{%I4}, ", t->addr, t->plen, t->accept);
 
   trie_node_format4(t->c[0], buf);
   trie_node_format4(t->c[1], buf);
@@ -451,7 +451,7 @@ trie_node_format6(const struct f_trie_node6 *t, buffer *buf)
     return;
 
   if (ip6_nonzero(t->accept))
-    buffer_print(buf, "%6I/%d{%6I}, ", t->addr, t->plen, t->accept);
+    buffer_print(buf, "%I6/%d{%I6}, ", t->addr, t->plen, t->accept);
 
   trie_node_format6(t->c[0], buf);
   trie_node_format6(t->c[1], buf);
