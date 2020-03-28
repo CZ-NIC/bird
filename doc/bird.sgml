@@ -1419,9 +1419,10 @@ in the foot).
 	<cf>192.168.0.0/16{16,24}</cf> and <cf>192.168.0.0/16 ge 24</cf> as
 	<cf>192.168.0.0/16{24,32}</cf>.
 
-	It is possible to mix IPv4 and IPv6 prefixes/addresses in a prefix/ip set
-	but its behavior may change between versions without any warning; don't do
-	it unless you are more than sure what you are doing. (Really, don't do it.)
+	It is not possible to mix IPv4 and IPv6 prefixes in a prefix set. It is
+	currently possible to mix IPv4 and IPv6 addresses in an ip set, but that
+	behavior may change between versions without any warning; don't do it
+	unless you are more than sure what you are doing. (Really, don't do it.)
 
 	<tag><label id="type-enum">enum</tag>
 	Enumeration types are fixed sets of possibilities. You can't define your
