@@ -352,7 +352,7 @@ rte_free_quick(rte *e)
 }
 
 struct rte_export_internal {
-  struct rte_export pub;
+  net *net;
   rte *new, *old, *new_best, *old_best;
   rte *rt_free;
   _Bool refeed;
@@ -569,9 +569,11 @@ do_rt_notify(struct channel *c, struct rte_export *ep, _Bool refeed)
     rte_free_quick(old_exported);
 }
 
-USE_RESULT static _Bool
+USE_RESULT static struct rte_export *
 rt_notify_basic(struct channel *c, struct rte_export_internal *e)
 {
+  struct rte_export *ep = lp_allocz(rte_update_pool, sizeof(struct rte_export));
+
   if (e->new)
     c->stats.exp_updates_received++;
   else
@@ -579,25 +581,26 @@ rt_notify_basic(struct channel *c, struct rte_export_internal *e)
 
   if (e->new)
   {
-    e->pub.new = export_filter(c, e->new, &e->rt_free, 0);
-    e->pub.new_src = e->new->attrs->src;
+    ep->new = export_filter(c, e->new, &e->rt_free, 0);
+    ep->new_src = e->new->attrs->src;
   }
 
   if (e->old && bmap_test(&c->export_map, e->old->id))
   {
-    e->pub.old = e->old;
-    e->pub.old_src = e->old->attrs->src;
+    ep->old = e->old;
+    ep->old_src = e->old->attrs->src;
   }
 
-  return e->pub.new || e->pub.old;
+  return (ep->new || ep->old) ? ep : NULL;
 }
 
-USE_RESULT static _Bool
-rt_notify_accepted(struct channel *c, net *net, struct rte_export_internal *e)
+USE_RESULT static struct rte_export *
+rt_notify_accepted(struct channel *c, struct rte_export_internal *e)
 {
   // struct proto *p = c->proto;
   rte *new_best = NULL;
   rte *old_best = NULL;
+  rte *new_filtered = NULL;
   int new_first = 0;
 
   /*
@@ -616,7 +619,7 @@ rt_notify_accepted(struct channel *c, net *net, struct rte_export_internal *e)
    * old_best is after new_changed -> try new_changed, otherwise old_best
    */
 
-  if (net->routes)
+  if (e->net->routes)
     c->stats.exp_updates_received++;
   else
     c->stats.exp_withdraws_received++;
@@ -626,7 +629,7 @@ rt_notify_accepted(struct channel *c, net *net, struct rte_export_internal *e)
     old_best = e->old;
   else
   {
-    for (rte *r = net->routes; rte_is_valid(r); r = r->next)
+    for (rte *r = e->net->routes; rte_is_valid(r); r = r->next)
     {
       if (bmap_test(&c->export_map, r->id))
       {
@@ -644,15 +647,15 @@ rt_notify_accepted(struct channel *c, net *net, struct rte_export_internal *e)
   if ((e->new == e->old) || (old_best == e->old))
   {
     /* Feed or old_best changed -> find first accepted by filters */
-    for (rte *r = net->routes; rte_is_valid(r); r = r->next)
+    for (rte *r = e->net->routes; rte_is_valid(r); r = r->next)
       if (new_best = export_filter(c, r, &e->rt_free, 0))
 	break;
   }
   else
   {
     /* Other cases -> either new_changed, or old_best (and nothing changed) */
-    if (new_first && (e->pub.new = export_filter(c, e->new, &e->rt_free, 0)))
-      new_best = e->pub.new;
+    if (new_first && (new_filtered = export_filter(c, e->new, &e->rt_free, 0)))
+      new_best = new_filtered;
     else
       return 0;
   }
@@ -660,12 +663,15 @@ rt_notify_accepted(struct channel *c, net *net, struct rte_export_internal *e)
   if (!new_best && !old_best)
     return 0;
 
-  e->pub.new = new_best;
-  e->pub.new_src = new_best ? new_best->attrs->src : NULL;
-  e->pub.old = old_best;
-  e->pub.old_src = old_best ? old_best->attrs->src : NULL;
+  struct rte_export *ep = lp_alloc(rte_update_pool, sizeof(struct rte_export));
+  *ep = (struct rte_export) {
+    .new = new_best,
+    .new_src = new_best ? new_best->attrs->src : NULL,
+    .old = old_best,
+    .old_src = old_best ? old_best->attrs->src : NULL,
+  };
 
-  return 1;
+  return ep;
 }
 
 
@@ -728,117 +734,90 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int 
 }
 
 
-USE_RESULT static _Bool
-rt_notify_merged(struct channel *c, net *net, struct rte_export_internal *e)
+USE_RESULT static struct rte_export *
+rt_notify_merged(struct channel *c, struct rte_export_internal *e)
 {
   /* We assume that all rte arguments are either NULL or rte_is_valid() */
 
   /* This check should be done by the caller */
   if (!e->new_best && !e->old_best)
-    return 0;
+    return NULL;
 
   /* Check whether the change is relevant to the merged route */
   if ((e->new_best == e->old_best) &&
       (e->new != e->old) &&
       !rte_mergable(e->new_best, e->new) &&
       !rte_mergable(e->old_best, e->old))
-    return 0;
+    return NULL;
 
   if (e->new_best)
     c->stats.exp_updates_received++;
   else
     c->stats.exp_withdraws_received++;
 
+  struct rte_export *ep = lp_allocz(rte_update_pool, sizeof(struct rte_export));
+
   /* Prepare new merged route */
   if (e->new_best)
   {
-    e->pub.new = rt_export_merged(c, net, &(e->rt_free), rte_update_pool, 0);
-    e->pub.new_src = net->routes->attrs->src;
+    ep->new = rt_export_merged(c, e->net, &(e->rt_free), rte_update_pool, 0);
+    ep->new_src = e->net->routes->attrs->src;
   }
 
   /* Check old merged route */
-  if (e->old_best && !bmap_test(&c->export_map, e->old_best->id))
-    e->pub.old = NULL;
+  if (e->old_best)
+    ep->old = bmap_test(&c->export_map, e->old_best->id) ? e->old_best : NULL;
 
-  if (!e->pub.new && !e->pub.old)
-    return 0;
+  if (!ep->new && !ep->old)
+    return NULL;
 
-  e->pub.old_src = e->pub.old ? e->pub.old->attrs->src : NULL;
-
-  return 1;
+  ep->old_src = ep->old ? ep->old->attrs->src : NULL;
+  return ep;
 }
 
-static inline void
-rte_export_finish(struct channel *c, struct rte_export_internal *e)
+static void
+rte_export(struct channel *c, struct rte_export_internal *e)
 {
-  if (e->rt_free)
-    rte_free(e->rt_free);
-
-  if (e->old && (!e->new || (e->new->id != e->old->id)))
-    bmap_clear(&c->export_reject_map, e->old->id);
-}
-
-static uint
-rte_export(struct channel *c, net *n, struct rte_export_internal *e)
-{
-  e->pub.net = n->n.addr;
-
   uint ra_mode = c->ra_mode;
+
+  struct rte_export *ep = NULL;
+
   switch (ra_mode)
   {
     case RA_OPTIMAL:
       if (e->new_best == e->old_best)
-	return 0;
+	break;
 
       e->new = e->new_best;
       e->old = e->old_best;
       /* fall through */
     case RA_ANY:
-      if (!e->new && !e->old)
-	break;
-
-      if (rt_notify_basic(c, e))
-	do_rt_notify(c, &e->pub, e->refeed);
-
-      rte_export_finish(c, e);
-      return 1;
+      ep = rt_notify_basic(c, e);
+      break;
 
     case RA_ACCEPTED:
-      if (rt_notify_accepted(c, n, e))
-	do_rt_notify(c, &e->pub, e->refeed);
-
-      rte_export_finish(c, e);
-      return 1;
+      ep = rt_notify_accepted(c, e);
+      break;
 
     case RA_MERGED:
-      if (rt_notify_merged(c, n, e))
-	do_rt_notify(c, &e->pub, e->refeed);
+      ep = rt_notify_merged(c, e);
+      break;
 
-      rte_export_finish(c, e);
-      return 1;
+    default:
+      bug("Strange channel route announcement mode");
   }
 
-  uint cnt = 0;
-
-  for (rte *ee = n->routes; ee; ee = ee->next)
+  if (ep)
   {
-    if (!rte_is_valid(ee))
-      continue;
-
-    switch (ra_mode)
-    {
-      case RA_ANY:
-	cnt++;
-	e->new = ee;
-	e->old = ee;
-	rte_export(c, n, e);
-	break;
-      default:
-	bug("strange export mode");
-    }
+    ep->net = e->net->n.addr;
+    do_rt_notify(c, ep, e->refeed);
   }
 
-  return cnt;
+  if (e->rt_free)
+    rte_free(e->rt_free);
+
+  if (e->old && (!e->new || (e->new->id != e->old->id)))
+    bmap_clear(&c->export_reject_map, e->old->id);
 }
 
 
@@ -930,11 +909,12 @@ rte_announce(rtable *tab, uint type, net *net, rte *new, rte *old,
     }
 
     struct rte_export_internal rei = {
+      .net = net,
       .new = new, .old = old,
       .new_best = new_best, .old_best = old_best,
     };
     
-    rte_export(c, net, &rei);
+    rte_export(c, &rei);
   }
 }
 
@@ -2150,6 +2130,43 @@ rt_commit(struct config *new, struct config *old)
   DBG("\tdone\n");
 }
 
+static uint
+rt_feed_channel_net_internal(struct channel *c, net *nn)
+{
+  struct rte_export_internal rei = {
+    .net = nn,
+    .new_best = nn->routes,
+    .new = nn->routes,
+    .refeed = 1,
+  };
+
+  rte_update_lock();
+  if (c->ra_mode == RA_ANY)
+  {
+    uint cnt = 0;
+    for (rei.new = nn->routes; rei.new; rei.new = rei.new->next)
+      if (rte_is_valid(rei.new))
+	rte_export(c, &rei), cnt++;
+    return cnt;
+  }
+  else
+  {
+    rte_export(c, &rei);
+    return 1;
+  }
+  rte_update_unlock();
+}
+
+void
+rt_feed_channel_net(struct channel *c, net_addr *n)
+{
+  net *nn = net_find(c->table, n);
+  if (!nn)
+    return;
+
+  rt_feed_channel_net_internal(c, nn);
+}
+
 /**
  * rt_feed_channel - advertise all routes to a channel
  * @c: channel to be fed
@@ -2181,35 +2198,12 @@ rt_feed_channel(struct channel *c)
 	  return 0;
 	}
 
-      struct rte_export_internal rei = {
-	.new_best = n->routes,
-	.refeed = 1,
-      };
-
-      rte_update_lock();
-      max_feed -= rte_export(c, n, &rei);
-      rte_update_unlock();
+      max_feed -= rt_feed_channel_net_internal(c, n);
     }
   FIB_ITERATE_END;
 
   c->feed_active = 0;
   return 1;
-}
-
-void rt_feed_channel_net(struct channel *c, net_addr *n)
-{
-  net *nn = net_find(c->table, n);
-  if (!nn)
-    return;
-
-  struct rte_export_internal rei = {
-    .new_best = nn->routes,
-    .refeed = 1,
-  };
-
-  rte_update_lock();
-  rte_export(c, nn, &rei);
-  rte_update_unlock();
 }
 
 /**
