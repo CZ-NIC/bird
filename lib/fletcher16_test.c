@@ -24,23 +24,32 @@ straightforward_fletcher16_compute(const char *data)
     sum2 = (sum2 + sum1) % 255;
   }
 
-  return (sum2 << 8) | sum1;
+  sum2 = (sum2 + sum1) % 255;
+  sum2 = (sum2 + sum1) % 255;
+
+  return (sum1 << 8) | sum2;
 }
 
 static u16
 straightforward_fletcher16_checksum(const char *data)
 {
   u16 csum;
-  u8 c0,c1,f0,f1;
+  u16 c0,c1,x,y;
 
   csum = straightforward_fletcher16_compute(data);
-  f0 = csum & 0xff;
-  f1 = (csum >> 8) & 0xff;
-  c0 = 0xff - ((f0 + f1) % 0xff);
-  c1 = 0xff - ((f0 + c0) % 0xff);
+  c0 = (csum >> 8) & 0xff;
+  c1 = csum & 0xff;
 
-  return (c1 << 8) | c0;
+  x = (255 +   c0 - c1) % 255;
+  y = (510 - 2*c0 + c1) % 255;
+
+  if (!x) x = 255;
+  if (!y) y = 255;
+
+  return (x << 8) | y;
 }
+
+const u8 zero16[2] = {};
 
 static int
 test_fletcher16(void *out_, const void *in_, const void *expected_out_)
@@ -53,7 +62,8 @@ test_fletcher16(void *out_, const void *in_, const void *expected_out_)
 
   fletcher16_init(&ctxt);
   fletcher16_update(&ctxt, in, strlen(in));
-  put_u16(out, fletcher16_compute(&ctxt));
+  fletcher16_update(&ctxt, zero16, 2);
+  *out = fletcher16_compute(&ctxt);
 
   return *out == *expected_out;
 }
@@ -70,7 +80,8 @@ test_fletcher16_checksum(void *out_, const void *in_, const void *expected_out_)
 
   fletcher16_init(&ctxt);
   fletcher16_update(&ctxt, in, len);
-  put_u16(out, fletcher16_final(&ctxt, len, len));
+  fletcher16_update(&ctxt, zero16, 2);
+  *out = fletcher16_final(&ctxt, len+2, len);
 
   return *out == *expected_out;
 }
@@ -81,7 +92,7 @@ t_fletcher16_compute(void)
   struct bt_pair test_vectors[] = {
     {
       .in  = "\001\002",
-      .out = & (const u16) { 0x0403 },
+      .out = & ((const u16) { straightforward_fletcher16_compute("\001\002") }),
     },
     {
       .in  = "",
