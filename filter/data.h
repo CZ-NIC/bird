@@ -138,18 +138,22 @@ struct f_tree {
   void *data;
 };
 
+#define TRIE_STEP	4
+
 struct f_trie_node4
 {
   ip4_addr addr, mask, accept;
-  uint plen;
-  struct f_trie_node4 *c[2];
+  u16 plen;
+  u16 local;
+  struct f_trie_node4 *c[1 << TRIE_STEP];
 };
 
 struct f_trie_node6
 {
   ip6_addr addr, mask, accept;
-  uint plen;
-  struct f_trie_node6 *c[2];
+  u16 plen;
+  u16 local;
+  struct f_trie_node6 *c[1 << TRIE_STEP];
 };
 
 struct f_trie_node
