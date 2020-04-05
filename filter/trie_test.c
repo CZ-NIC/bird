@@ -58,7 +58,8 @@ get_random_ip6_prefix(void)
   struct f_prefix p;
   u8 pxlen = xrandom(120)+8;
   ip6_addr ip6 = ip6_build(bt_random(),bt_random(),bt_random(),bt_random());
-  net_addr_ip6 net6 = NET_ADDR_IP6(ip6, pxlen);
+  ip6_addr mask = ip6_mkmask(pxlen);
+  net_addr_ip6 net6 = NET_ADDR_IP6(ip6_and(ip6, mask), pxlen);
 
   p.net = *((net_addr*) &net6);
 
@@ -87,7 +88,7 @@ generate_random_ipv6_prefixes(list *prefixes)
     struct f_prefix_node *px = calloc(1, sizeof(struct f_prefix_node));
     px->prefix = f;
 
-    bt_debug("ADD\t" PRIip6 "/%d %d-%d\n", ARGip6(net6_prefix(&px->prefix.net)), px->prefix.net.pxlen, px->prefix.lo, px->prefix.hi);
+    bt_debug("ADD\t" PRIip6 "/%d{%d,%d}\n", ARGip6(net6_prefix(&px->prefix.net)), px->prefix.net.pxlen, px->prefix.lo, px->prefix.hi);
     add_tail(prefixes, &px->n);
   }
 }
