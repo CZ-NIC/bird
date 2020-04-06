@@ -1,7 +1,8 @@
 /*
  *	Filters: Trie for prefix sets
  *
- *	Copyright 2009 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2009--2020 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2009--2020 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -9,53 +10,68 @@
 /**
  * DOC: Trie for prefix sets
  *
- * We use a (compressed) trie to represent prefix sets. Every node
- * in the trie represents one prefix (&addr/&plen) and &plen also
- * indicates the index of the bit in the address that is used to
- * branch at the node. If we need to represent just a set of
- * prefixes, it would be simple, but we have to represent a
- * set of prefix patterns. Each prefix pattern consists of
- * &ppaddr/&pplen and two integers: &low and &high, and a prefix
- * &paddr/&plen matches that pattern if the first MIN(&plen, &pplen)
- * bits of &paddr and &ppaddr are the same and &low <= &plen <= &high.
+ * We use a (compressed) trie to represent prefix sets. Every node in the trie
+ * represents one prefix (&addr/&plen) and &plen also indicates the index of
+ * bits in the address that are used to branch at the node. Note that such
+ * prefix is not necessary a member of the prefix set, it is just a canonical
+ * prefix associated with a node. Prefix lengths of nodes are aligned to
+ * multiples of &TRIE_STEP (4) and there is 16-way branching in each
+ * node. Therefore, we say that a node is associated with a range of prefix
+ * lengths (&plen .. &plen + TRIE_STEP - 1).
  *
- * We use a bitmask (&accept) to represent accepted prefix lengths
- * at a node. As there are 33 prefix lengths (0..32 for IPv4), but
- * there is just one prefix of zero length in the whole trie so we
- * have &zero flag in &f_trie (indicating whether the trie accepts
- * prefix 0.0.0.0/0) as a special case, and &accept bitmask
+ * The prefix set is not just a set of prefixes, it is defined by a set of
+ * prefix patterns. Each prefix pattern consists of &ppaddr/&pplen and two
+ * integers: &low and &high. The tested prefix &paddr/&plen matches that pattern
+ * if the first MIN(&plen, &pplen) bits of &paddr and &ppaddr are the same and
+ * &low <= &plen <= &high.
+ *
+ * There are two ways to represent accepted prefixes for a node. First, there is
+ * a bitmask &local, which represents independently all 15 prefixes that extend
+ * the canonical prefix of the node and are within a range of prefix lengths
+ * associated with the node. E.g., for node 10.0.0.0/8 they are 10.0.0.0/8,
+ * 10.0.0.0/9, 10.128.0.0/9, .. 10.224.0.0/11. This order (first by length, then
+ * lexicographically) is used for indexing the bitmask &local, starting at
+ * position 1. I.e., index is 2^(plen - base) + offset within the same length,
+ * see function trie_local_mask6() for details.
+ *
+ * Second, we use a bitmask &accept to represent accepted prefix lengths at a
+ * node. The bit is set means that all prefixes of given length that are either
+ * subprefixes or superprefixes of the canonical prefix are accepted. As there
+ * are 33 prefix lengths (0..32 for IPv4), but there is just one prefix of zero
+ * length in the whole trie so we have &zero flag in &f_trie (indicating whether
+ * the trie accepts prefix 0.0.0.0/0) as a special case, and &accept bitmask
  * represents accepted prefix lengths from 1 to 32.
  *
- * There are two cases in prefix matching - a match when the length
- * of the prefix is smaller that the length of the prefix pattern,
- * (&plen < &pplen) and otherwise. The second case is simple - we
- * just walk through the trie and look at every visited node
- * whether that prefix accepts our prefix length (&plen). The
- * first case is tricky - we don't want to examine every descendant
- * of a final node, so (when we create the trie) we have to propagate
- * that information from nodes to their ascendants.
+ * One complication is handling of prefix patterns with unaligned prefix length.
+ * When such pattern is to be added, we add a primary node above (with rounded
+ * down prefix length &nlen) and a set of secondary nodes below (with rounded up
+ * prefix lengths &slen). Accepted prefix lengths of the original prefix pattern
+ * are then represented in different places based on their lengths. For prefixes
+ * shorter than &nlen, it is &accept bitmask of the primary node, for prefixes
+ * between &nlen and &slen - 1 it is &local bitmask of the primary node, and for
+ * prefixes longer of equal &slen it is &accept bitmasks of secondary nodes.
  *
- * Suppose that we have two masks (M1 and M2) for a node. Mask M1
- * represents accepted prefix lengths by just the node and mask M2
- * represents accepted prefix lengths by the node or any of its
- * descendants. Therefore M2 is a bitwise or of M1 and children's
- * M2 and this is a maintained invariant during trie building.
- * Basically, when we want to match a prefix, we walk through the trie,
- * check mask M1 for our prefix length and when we came to
- * final node, we check mask M2.
+ * There are two cases in prefix matching - a match when the length of the
+ * prefix is smaller that the length of the prefix pattern, (&plen < &pplen) and
+ * otherwise. The second case is simple - we just walk through the trie and look
+ * at every visited node whether that prefix accepts our prefix length (&plen).
+ * The first case is tricky - we do not want to examine every descendant of a
+ * final node, so (when we create the trie) we have to propagate that
+ * information from nodes to their ascendants.
  *
- * There are two differences in the real implementation. First,
- * we use a compressed trie so there is a case that we skip our
- * final node (if it is not in the trie) and we came to node that
- * is either extension of our prefix, or completely out of path
- * In the first case, we also have to check M2.
+ * There are two kinds of propagations - propagation from child's &accept
+ * bitmask to parent's &accept bitmask, and propagation from child's &accept
+ * bitmask to parent's &local bitmask. The first kind is simple - as all
+ * superprefixes of a parent are also all superprefixes of appropriate length of
+ * a child, then we can just add (by bitwise or) a child &accept mask masked by
+ * parent prefix length mask to the parent &accept mask. This handles prefixes
+ * shorter than node &plen.
  *
- * Second, we really need not to maintain two separate bitmasks.
- * Checks for mask M1 are always larger than &applen and we need
- * just the first &pplen bits of mask M2 (if trie compression
- * hadn't been used it would suffice to know just $applen-th bit),
- * so we have to store them together in &accept mask - the first
- * &pplen bits of mask M2 and then mask M1.
+ * The second kind of propagation is necessary to handle superprefixes of a
+ * child that are represented by parent &local mask - that are in the range of
+ * prefix lengths associated with the parent. For each accepted (by child
+ * &accept mask) prefix length from that range, we need to set appropriate bit
+ * in &local mask. See function trie_amask_to_local() for details.
  *
  * There are four cases when we walk through a trie:
  *
@@ -65,8 +81,7 @@
  * - we are beyond the end of path (node length > &plen)
  * - we are still on path and keep walking (node length < &plen)
  *
- * The walking code in trie_match_prefix() is structured according to
- * these cases.
+ * The walking code in trie_match_net() is structured according to these cases.
  */
 
 #include "nest/bird.h"
@@ -166,6 +181,10 @@ attach_node(struct f_trie_node *parent, struct f_trie_node *child, int v4)
 }
 
 
+/*
+ * Compute appropriate mask representing prefix px/plen in local bitmask of node
+ * with prefix length nlen. Assuming that nlen <= plen < (nlen + TRIE_STEP).
+ */
 static inline uint
 trie_local_mask4(ip4_addr px, uint plen, uint nlen)
 {
@@ -182,6 +201,12 @@ trie_local_mask6(ip6_addr px, uint plen, uint nlen)
   return 1u << pos;
 }
 
+/*
+ * Compute an appropriate local mask (for a node with prefix length nlen)
+ * representing prefixes of px that are accepted by amask and fall within the
+ * range associated with that node. Used for propagation of child accept mask
+ * to parent local mask.
+ */
 static inline uint
 trie_amask_to_local(ip_addr px, ip_addr amask, uint nlen)
 {
