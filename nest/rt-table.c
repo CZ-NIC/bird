@@ -500,75 +500,6 @@ export_filter(struct channel *c, rte *rt0, rte **rt_free, int silent)
   return export_filter_(c, rt0, rt_free, rte_update_pool, silent);
 }
 
-static void
-do_rt_notify(struct channel *c, struct rte_export *ep, _Bool refeed)
-{
-  struct proto *p = c->proto;
-  struct proto_stats *stats = &c->stats;
-
-  if (refeed && ep->new)
-    c->refeed_count++;
-
-  /* Apply export limit */
-  struct channel_limit *l = &c->out_limit;
-  if (l->action && !ep->old && ep->new)
-  {
-    if (stats->exp_routes >= l->limit)
-      channel_notify_limit(c, l, PLD_OUT, stats->exp_routes);
-
-    if (l->state == PLS_BLOCKED)
-    {
-      stats->exp_updates_rejected++;
-      rte_trace_out(D_FILTERS, p, ep->new, "rejected [limit]");
-      return;
-    }
-  }
-
-  /* Apply export table */
-  rte *old_exported = NULL;
-  if (c->out_table)
-  {
-    if (!rte_update_out(c, ep->net, ep->old_src, ep->new, &(old_exported), refeed))
-      return;
-  }
-  else if (c->out_filter == FILTER_ACCEPT)
-    old_exported = ep->old;
-
-  if (ep->new)
-    stats->exp_updates_accepted++;
-  else
-    stats->exp_withdraws_accepted++;
-
-  if (ep->old)
-  {
-    bmap_clear(&c->export_map, ep->old->id);
-    stats->exp_routes--;
-  }
-
-  if (ep->new)
-  {
-    bmap_set(&c->export_map, ep->new->id);
-    stats->exp_routes++;
-  }
-
-  if (p->debug & D_ROUTES)
-  {
-    if (ep->new && ep->old)
-      rte_trace_out(D_ROUTES, p, ep->new, "replaced");
-    else if (ep->new)
-      rte_trace_out(D_ROUTES, p, ep->new, "added");
-    else if (ep->old)
-      rte_trace_out(D_ROUTES, p, ep->old, "removed");
-  }
-
-  ep->old = old_exported;
-
-  p->rt_notify(c, ep);
-
-  if (c->out_table && old_exported)
-    rte_free_quick(old_exported);
-}
-
 USE_RESULT static struct rte_export *
 rt_notify_basic(struct channel *c, struct rte_export_internal *e)
 {
@@ -807,12 +738,77 @@ rte_export(struct channel *c, struct rte_export_internal *e)
       bug("Strange channel route announcement mode");
   }
 
-  if (ep)
+  if (!ep)
+    goto cleanup;
+
+  ep->net = e->net->n.addr;
+
+  struct proto *p = c->proto;
+  struct proto_stats *stats = &c->stats;
+
+  if (e->refeed && ep->new)
+    c->refeed_count++;
+
+  /* Apply export limit */
+  struct channel_limit *l = &c->out_limit;
+  if (l->action && !ep->old && ep->new)
   {
-    ep->net = e->net->n.addr;
-    do_rt_notify(c, ep, e->refeed);
+    if (stats->exp_routes >= l->limit)
+      channel_notify_limit(c, l, PLD_OUT, stats->exp_routes);
+
+    if (l->state == PLS_BLOCKED)
+    {
+      stats->exp_updates_rejected++;
+      rte_trace_out(D_FILTERS, p, ep->new, "rejected [limit]");
+      goto cleanup;
+    }
   }
 
+  /* Apply export table */
+  rte *old_exported = NULL;
+  if (c->out_table)
+  {
+    if (!rte_update_out(c, ep->net, ep->old_src, ep->new, &(old_exported), e->refeed))
+      goto cleanup;
+  }
+  else if (c->out_filter == FILTER_ACCEPT)
+    old_exported = ep->old;
+
+  if (ep->new)
+    stats->exp_updates_accepted++;
+  else
+    stats->exp_withdraws_accepted++;
+
+  if (ep->old)
+  {
+    bmap_clear(&c->export_map, ep->old->id);
+    stats->exp_routes--;
+  }
+
+  if (ep->new)
+  {
+    bmap_set(&c->export_map, ep->new->id);
+    stats->exp_routes++;
+  }
+
+  if (p->debug & D_ROUTES)
+  {
+    if (ep->new && ep->old)
+      rte_trace_out(D_ROUTES, p, ep->new, "replaced");
+    else if (ep->new)
+      rte_trace_out(D_ROUTES, p, ep->new, "added");
+    else if (ep->old)
+      rte_trace_out(D_ROUTES, p, ep->old, "removed");
+  }
+
+  ep->old = old_exported;
+
+  p->rt_notify(c, ep);
+
+  if (c->out_table && old_exported)
+    rte_free_quick(old_exported);
+
+cleanup:
   if (e->rt_free)
     rte_free(e->rt_free);
 
