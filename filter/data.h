@@ -72,7 +72,7 @@ struct f_val {
     lcomm lc;
     ip_addr ip;
     const net_addr *net;
-    char *s;
+    const char *s;
     const struct f_tree *t;
     const struct f_trie *ti;
     const struct adata *ad;

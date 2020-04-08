@@ -76,7 +76,7 @@ typedef struct birdsock {
   int rcv_ttl;				/* TTL of last received datagram */
   node n;
   void *rbuf_alloc, *tbuf_alloc;
-  char *password;			/* Password for MD5 authentication */
+  const char *password;			/* Password for MD5 authentication */
   const char *err;			/* Error message */
   struct ssh_sock *ssh;			/* Used in SK_SSH */
 } sock;
@@ -106,7 +106,7 @@ int sk_leave_group(sock *s, ip_addr maddr);	/* Leave multicast group on sk iface
 int sk_setup_broadcast(sock *s);
 int sk_set_ttl(sock *s, int ttl);	/* Set transmit TTL for given socket */
 int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given socket */
-int sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, char *passwd, int setkey);
+int sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey);
 int sk_set_ipv6_checksum(sock *s, int offset);
 int sk_set_icmp6_filter(sock *s, int p1, int p2);
 void sk_log_error(sock *s, const char *p);

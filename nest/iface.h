@@ -115,8 +115,8 @@ void if_end_update(void);
 void if_flush_ifaces(struct proto *p);
 void if_feed_baby(struct proto *);
 struct iface *if_find_by_index(unsigned);
-struct iface *if_find_by_name(char *);
-struct iface *if_get_by_name(char *);
+struct iface *if_find_by_name(const char *);
+struct iface *if_get_by_name(const char *);
 void if_recalc_all_preferred_addresses(void);
 
 
@@ -160,7 +160,7 @@ void neigh_init(struct pool *);
 struct iface_patt_node {
   node n;
   int positive;
-  byte *pattern;
+  const byte *pattern;
   net_addr prefix;
 };
 

@@ -444,7 +444,7 @@ if_find_by_index(unsigned idx)
  * if no such structure exists.
  */
 struct iface *
-if_find_by_name(char *name)
+if_find_by_name(const char *name)
 {
   struct iface *i;
 
@@ -455,7 +455,7 @@ if_find_by_name(char *name)
 }
 
 struct iface *
-if_get_by_name(char *name)
+if_get_by_name(const char *name)
 {
   struct iface *i;
 
@@ -725,7 +725,7 @@ iface_patt_match(struct iface_patt *ifp, struct iface *i, struct ifa *a)
 
   WALK_LIST(p, ifp->ipn_list)
     {
-      char *t = p->pattern;
+      const char *t = p->pattern;
       int pos = p->positive;
 
       if (t)

@@ -23,8 +23,8 @@ extern char *bird_name;
 void async_config(void);
 void async_dump(void);
 void async_shutdown(void);
-void cmd_check_config(char *name);
-void cmd_reconfig(char *name, int type, uint timeout);
+void cmd_check_config(const char *name);
+void cmd_reconfig(const char *name, int type, uint timeout);
 void cmd_reconfig_confirm(void);
 void cmd_reconfig_undo(void);
 void cmd_reconfig_status(void);
@@ -106,7 +106,7 @@ void io_init(void);
 void io_loop(void);
 void io_log_dump(void);
 int sk_open_unix(struct birdsock *s, char *name);
-struct rfile *rf_open(struct pool *, char *name, char *mode);
+struct rfile *rf_open(struct pool *, const char *name, const char *mode);
 void *rf_file(struct rfile *f);
 int rf_fileno(struct rfile *f);
 void test_old_bird(char *path);
@@ -119,15 +119,15 @@ void krt_io_init(void);
 
 void main_thread_init(void);
 void log_init_debug(char *);		/* Initialize debug dump to given file (NULL=stderr, ""=off) */
-void log_switch(int initial, list *l, char *);
+void log_switch(int initial, list *l, const char *);
 
 struct log_config {
   node n;
   uint mask;				/* Classes to log */
   void *fh;				/* FILE to log to, NULL=syslog */
   struct rfile *rf;			/* Resource for log file */
-  char *filename;			/* Log filename */
-  char *backup;				/* Secondary filename (for log rotation) */
+  const char *filename;			/* Log filename */
+  const char *backup;			/* Secondary filename (for log rotation) */
   off_t pos;				/* Position/size of current log */
   off_t limit;				/* Log size limit */
   int terminal_flag;

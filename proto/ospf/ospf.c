@@ -791,7 +791,7 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
 
 
 void
-ospf_sh_neigh(struct proto *P, char *iff)
+ospf_sh_neigh(struct proto *P, const char *iff)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_iface *ifa = NULL;
@@ -900,7 +900,7 @@ ospf_sh(struct proto *P)
 }
 
 void
-ospf_sh_iface(struct proto *P, char *iff)
+ospf_sh_iface(struct proto *P, const char *iff)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_iface *ifa = NULL;

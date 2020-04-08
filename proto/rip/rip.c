@@ -1208,7 +1208,7 @@ rip_get_attr(eattr *a, byte *buf, int buflen UNUSED)
 }
 
 void
-rip_show_interfaces(struct proto *P, char *iff)
+rip_show_interfaces(struct proto *P, const char *iff)
 {
   struct rip_proto *p = (void *) P;
   struct rip_iface *ifa = NULL;
@@ -1246,7 +1246,7 @@ rip_show_interfaces(struct proto *P, char *iff)
 }
 
 void
-rip_show_neighbors(struct proto *P, char *iff)
+rip_show_neighbors(struct proto *P, const char *iff)
 {
   struct rip_proto *p = (void *) P;
   struct rip_iface *ifa = NULL;

@@ -60,7 +60,7 @@ CF_DECLS
   net_addr net;
   net_addr *net_ptr;
   struct symbol *s;
-  char *t;
+  const char *t;
   struct rtable_config *r;
   struct channel_config *cc;
   struct f_inst *x;

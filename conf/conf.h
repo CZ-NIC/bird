@@ -27,7 +27,7 @@ struct config {
   list symbols;				/* Configured symbols in config order */
 
   int mrtdump_file;			/* Configured MRTDump file (sysdep, fd in unix) */
-  char *syslog_name;			/* Name used for syslog (NULL -> no syslog) */
+  const char *syslog_name;		/* Name used for syslog (NULL -> no syslog) */
   struct rtable_config *def_tables[NET_MAX]; /* Default routing tables for each network */
   struct iface_patt *router_id_from;	/* Configured list of router ID iface patterns */
 

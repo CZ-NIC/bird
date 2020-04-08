@@ -125,9 +125,9 @@ struct bgp_config {
   unsigned disable_after_error;		/* Disable the protocol when error is detected */
   u32 disable_after_cease;		/* Disable it when cease is received, bitfield */
 
-  char *password;			/* Password used for MD5 authentication */
+  const char *password;			/* Password used for MD5 authentication */
   net_addr *remote_range;		/* Allowed neighbor range for dynamic BGP */
-  char *dynamic_name;			/* Name pattern for dynamic BGP */
+  const char *dynamic_name;		/* Name pattern for dynamic BGP */
   int dynamic_name_digits;		/* Minimum number of digits for dynamic names */
   int check_link;			/* Use iface link state for liveness detection */
   int bfd;				/* Use BFD for liveness detection */

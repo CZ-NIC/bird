@@ -106,7 +106,7 @@ void timer_init(void);
 
 
 struct timeformat {
-  char *fmt1, *fmt2;
+  const char *fmt1, *fmt2;
   btime limit;
 };
 
@@ -120,7 +120,7 @@ struct timeformat {
 
 #define TM_DATETIME_BUFFER_SIZE 32	/* Buffer size required by tm_format_time() */
 
-btime tm_parse_time(char *x);
+btime tm_parse_time(const char *x);
 void tm_format_time(char *x, struct timeformat *fmt, btime t);
 int tm_format_real_time(char *x, size_t max, const char *fmt, btime t);
 

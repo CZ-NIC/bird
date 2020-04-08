@@ -119,7 +119,7 @@ struct radv_dnssl_config
   u16 lifetime_mult;		/* Lifetime specified as multiple of max_ra_int */
   u8 dlen_first;		/* Length of first label in domain */
   u8 dlen_all;			/* Both dlen_ filled in radv_process_domain() */
-  char *domain;			/* Domain for DNS search list, in processed form */
+  const char *domain;		/* Domain for DNS search list, in processed form */
 };
 
 /*
