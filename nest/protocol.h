@@ -115,8 +115,8 @@ struct proto_config {
   struct protocol *protocol;		/* Protocol */
   struct proto *proto;			/* Instance we've created */
   struct proto_config *parent;		/* Parent proto_config for dynamic protocols */
-  char *name;
-  char *dsc;
+  const char *name;
+  const char *dsc;
   int class;				/* SYM_PROTO or SYM_TEMPLATE */
   u8 net_type;				/* Protocol network type (NET_*), 0 for undefined */
   u8 disabled;				/* Protocol enabled/disabled by default */
@@ -171,7 +171,7 @@ struct proto {
   struct rte_src *main_source;		/* Primary route source */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
 
-  char *name;				/* Name of this instance (== cf->name) */
+  const char *name;				/* Name of this instance (== cf->name) */
   u32 debug;				/* Debugging flags */
   u32 mrtdump;				/* MRTDump flags */
   uint active_channels;			/* Number of active channels */
@@ -245,7 +245,7 @@ struct proto {
 };
 
 struct proto_spec {
-  void *ptr;
+  const void *ptr;
   int patt;
 };
 

@@ -1874,7 +1874,7 @@ babel_get_attr(eattr *a, byte *buf, int buflen UNUSED)
 }
 
 void
-babel_show_interfaces(struct proto *P, char *iff)
+babel_show_interfaces(struct proto *P, const char *iff)
 {
   struct babel_proto *p = (void *) P;
   struct babel_iface *ifa = NULL;
@@ -1912,7 +1912,7 @@ babel_show_interfaces(struct proto *P, char *iff)
 }
 
 void
-babel_show_neighbors(struct proto *P, char *iff)
+babel_show_neighbors(struct proto *P, const char *iff)
 {
   struct babel_proto *p = (void *) P;
   struct babel_iface *ifa = NULL;

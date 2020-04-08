@@ -893,7 +893,7 @@ proto_copy_config(struct proto_config *dest, struct proto_config *src)
   struct channel_config *cc;
   node old_node;
   int old_class;
-  char *old_name;
+  const char *old_name;
 
   if (dest->protocol != src->protocol)
     cf_error("Can't copy configuration from a different protocol type");
@@ -2013,7 +2013,7 @@ proto_cmd_mrtdump(struct proto *p, uintptr_t mask, int cnt UNUSED)
 }
 
 static void
-proto_apply_cmd_symbol(struct symbol *s, void (* cmd)(struct proto *, uintptr_t, int), uintptr_t arg)
+proto_apply_cmd_symbol(const struct symbol *s, void (* cmd)(struct proto *, uintptr_t, int), uintptr_t arg)
 {
   if (s->class != SYM_PROTO)
   {
@@ -2026,7 +2026,7 @@ proto_apply_cmd_symbol(struct symbol *s, void (* cmd)(struct proto *, uintptr_t,
 }
 
 static void
-proto_apply_cmd_patt(char *patt, void (* cmd)(struct proto *, uintptr_t, int), uintptr_t arg)
+proto_apply_cmd_patt(const char *patt, void (* cmd)(struct proto *, uintptr_t, int), uintptr_t arg)
 {
   struct proto *p;
   int cnt = 0;

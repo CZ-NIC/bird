@@ -990,9 +990,9 @@ static inline int oa_is_nssa(struct ospf_area *oa)
 
 void ospf_stop_gr_recovery(struct ospf_proto *p);
 
-void ospf_sh_neigh(struct proto *P, char *iff);
+void ospf_sh_neigh(struct proto *P, const char *iff);
 void ospf_sh(struct proto *P);
-void ospf_sh_iface(struct proto *P, char *iff);
+void ospf_sh_iface(struct proto *P, const char *iff);
 void ospf_sh_state(struct proto *P, int verbose, int reachable);
 
 void ospf_sh_lsadb(struct lsadb_show_data *ld);

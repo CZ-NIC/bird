@@ -190,7 +190,7 @@ sysdep_commit(struct config *new, struct config *old UNUSED)
 }
 
 static int
-unix_read_config(struct config **cp, char *name)
+unix_read_config(struct config **cp, const char *name)
 {
   struct config *conf = config_alloc(name);
   int ret;
@@ -240,7 +240,7 @@ async_config(void)
 }
 
 static struct config *
-cmd_read_config(char *name)
+cmd_read_config(const char *name)
 {
   struct config *conf;
 
@@ -262,7 +262,7 @@ cmd_read_config(char *name)
 }
 
 void
-cmd_check_config(char *name)
+cmd_check_config(const char *name)
 {
   struct config *conf = cmd_read_config(name);
   if (!conf)
@@ -303,7 +303,7 @@ cmd_reconfig_undo_notify(void)
 }
 
 void
-cmd_reconfig(char *name, int type, uint timeout)
+cmd_reconfig(const char *name, int type, uint timeout)
 {
   if (cli_access_restricted())
     return;

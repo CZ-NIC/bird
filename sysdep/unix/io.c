@@ -91,7 +91,7 @@ static struct resclass rf_class = {
 };
 
 struct rfile *
-rf_open(pool *p, char *name, char *mode)
+rf_open(pool *p, const char *name, const char *mode)
 {
   FILE *f = fopen(name, mode);
 

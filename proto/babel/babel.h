@@ -368,8 +368,8 @@ void babel_handle_update(union babel_msg *msg, struct babel_iface *ifa);
 void babel_handle_route_request(union babel_msg *msg, struct babel_iface *ifa);
 void babel_handle_seqno_request(union babel_msg *msg, struct babel_iface *ifa);
 
-void babel_show_interfaces(struct proto *P, char *iff);
-void babel_show_neighbors(struct proto *P, char *iff);
+void babel_show_interfaces(struct proto *P, const char *iff);
+void babel_show_neighbors(struct proto *P, const char *iff);
 void babel_show_entries(struct proto *P);
 void babel_show_routes(struct proto *P);
 

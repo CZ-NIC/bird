@@ -12,7 +12,7 @@
 
 struct password_item {
   node n;
-  char *password;			/* Key data, null terminated */
+  const char *password;			/* Key data, null terminated */
   uint length;				/* Key length, without null */
   uint id;				/* Key ID */
   uint alg;				/* MAC algorithm */

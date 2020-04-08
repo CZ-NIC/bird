@@ -332,7 +332,7 @@ debug(const char *msg, ...)
 }
 
 static list *
-default_log_list(int initial, char **syslog_name)
+default_log_list(int initial, const char **syslog_name)
 {
   static list log_list;
   init_list(&log_list);
@@ -365,7 +365,7 @@ default_log_list(int initial, char **syslog_name)
 }
 
 void
-log_switch(int initial, list *logs, char *new_syslog_name)
+log_switch(int initial, list *logs, const char *new_syslog_name)
 {
   struct log_config *l;
 

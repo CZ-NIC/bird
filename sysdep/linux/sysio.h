@@ -162,7 +162,7 @@ sk_prepare_cmsgs4(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
  */
 
 int
-sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct iface *ifa, char *passwd, int setkey UNUSED)
+sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey UNUSED)
 {
   struct tcp_md5sig_ext md5;
 

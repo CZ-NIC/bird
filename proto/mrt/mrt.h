@@ -42,7 +42,7 @@ struct mrt_dump_data {
   const char *table_expr;
   struct rtable *table_ptr;
   const struct filter *filter;
-  char *filename;
+  const char *filename;
 };
 
 struct mrt_peer_entry {

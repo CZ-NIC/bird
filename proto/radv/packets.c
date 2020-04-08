@@ -173,8 +173,8 @@ radv_process_domain(struct radv_dnssl_config *cf)
 {
   /* Format of domain in search list is <size> <label> <size> <label> ... 0 */
 
-  char *dom = cf->domain;
-  char *dom_end = dom; /* Just to  */
+  const char *dom = cf->domain;
+  const char *dom_end = dom; /* Just to  */
   u8 *dlen_save = &cf->dlen_first;
   uint len;
 
