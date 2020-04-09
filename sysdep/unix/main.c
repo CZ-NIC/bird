@@ -95,7 +95,7 @@ drop_gid(gid_t gid)
 #ifdef PATH_IPROUTE_DIR
 
 static inline void
-add_num_const(char *name, int val, const char *file, const uint line)
+add_num_const(const char *name, int val, const char *file, const uint line)
 {
   struct f_val *v = cfg_alloc(sizeof(struct f_val));
   *v = (struct f_val) { .type = T_INT, .val.i = val };
@@ -103,7 +103,7 @@ add_num_const(char *name, int val, const char *file, const uint line)
   if (sym->class && (sym->scope == conf_this_scope))
     cf_error("Error reading value for %s from %s:%d: already defined", name, file, line);
 
-  cf_define_symbol(sym, SYM_CONSTANT | T_INT, val, v);
+  cf_define_symbol(name, SYM_CONSTANT | T_INT, val, v);
 }
 
 /* the code of read_iproute_table() is based on

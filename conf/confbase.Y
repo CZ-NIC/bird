@@ -22,6 +22,9 @@ CF_HDR
 #include "nest/cli.h"
 #include "filter/filter.h"
 
+extern struct keyword keyword_list[];
+extern struct sym_scope *conf_this_scope;
+
 /* FIXME: Turn on YYERROR_VERBOSE and work around lots of bison bugs? */
 
 CF_DEFINES
@@ -90,12 +93,14 @@ CF_DECLS
   struct channel_limit cl;
   struct timeformat *tf;
   mpls_label_stack *mls;
+  struct keyword kw;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT
 %token GEQ LEQ NEQ AND OR
 %token PO PC
-%token <i> NUM ENUM
+%token <kw> ENUM
+%token <i> NUM
 %token <ip4> IP4
 %token <ip6> IP6
 %token <i64> VPN_RD
@@ -110,8 +115,9 @@ CF_DECLS
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
 %type <mls> label_stack_start label_stack
 
-%type <t> text opttext
+%type <t> text opttext token_def
 %type <s> symbol
+%type <kw> token keyword
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
@@ -146,7 +152,7 @@ conf: ';' ;
 conf: definition ;
 
 definition:
-   DEFINE symbol '=' term ';' {
+   DEFINE token_def '=' term ';' {
      struct f_val *val = cfg_alloc(sizeof(struct f_val));
      if (f_eval(f_linearize($4), cfg_mem, val) > F_RETURN) cf_error("Runtime error");
      cf_define_symbol($2, SYM_CONSTANT | val->type, val, val);
@@ -194,7 +200,7 @@ ipa:
 
 ipa_scope:
    /* empty */ { $$ = NULL; }
- | '%' symbol { $$ = if_get_by_name($2->name); }
+ | '%' token { $$ = if_get_by_name($2.name); }
  ;
 
 
@@ -379,6 +385,16 @@ opttext:
  | /* empty */ { $$ = NULL; }
  ;
 
+token:
+   symbol { $$ = (struct keyword) { .name = $1->name, }; }
+ | keyword { $$ = $1; }
+ | ENUM { $$ = $1; }
+ ;
+
+token_def:
+   symbol { $$ = $1->name; }
+ | keyword { log(L_WARN "Redefining a keyword: \"%s\"", $1.name); $$ = $1.name; }
+ | ENUM { log(L_WARN "Redefining a keyword: \"%s\"", $1.name); $$ = $1.name; }
 
 CF_CODE
 

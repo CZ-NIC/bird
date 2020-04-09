@@ -140,7 +140,7 @@ void fit_copy(struct fib *f, struct fib_iterator *dst, struct fib_iterator *src)
 
 struct rtable_config {
   node n;
-  char *name;
+  const char *name;
   struct rtable *table;
   struct proto_config *krt_attached;	/* Kernel syncer attached to this table */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
@@ -152,7 +152,7 @@ struct rtable_config {
 typedef struct rtable {
   node n;				/* Node in list of all tables */
   struct fib fib;
-  char *name;				/* Name of this table */
+  const char *name;			/* Name of this table */
   list channels;			/* List of attached channels (struct channel) */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
   int pipe_busy;			/* Pipe loop detection */
@@ -329,7 +329,7 @@ int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
 int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed);
-struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
+struct rtable_config *rt_new_table(const char *name, uint addr_type);
 
 
 /* Default limit for ECMP next hops, defined in sysdep code */

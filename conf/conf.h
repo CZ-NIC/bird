@@ -181,7 +181,7 @@ struct symbol *cf_find_symbol(const struct config *cfg, const byte *c);
 
 struct symbol *cf_get_symbol(const byte *c);
 struct symbol *cf_default_name(char *template, int *counter);
-struct symbol *cf_localize_symbol(struct symbol *sym);
+struct symbol *cf_localize_symbol(const byte *c);
 
 /**
  * cf_define_symbol - define meaning of a symbol
@@ -198,8 +198,8 @@ struct symbol *cf_localize_symbol(struct symbol *sym);
  * Result: Pointer to the newly defined symbol. If we are in the top-level
  * scope, it's the same @sym as passed to the function.
  */
-#define cf_define_symbol(osym_, type_, var_, def_) ({ \
-    struct symbol *sym_ = cf_localize_symbol(osym_); \
+#define cf_define_symbol(name_, type_, var_, def_) ({ \
+    struct symbol *sym_ = cf_localize_symbol(name_); \
     sym_->class = type_; \
     sym_->var_ = def_; \
     sym_; })
@@ -207,6 +207,12 @@ struct symbol *cf_localize_symbol(struct symbol *sym);
 void cf_push_scope(struct symbol *);
 void cf_pop_scope(void);
 char *cf_symbol_class_name(struct symbol *sym);
+
+struct keyword {
+  byte *name;
+  int value;
+  struct keyword *next;
+};
 
 /* Parser */
 

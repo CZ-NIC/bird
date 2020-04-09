@@ -25,14 +25,11 @@ m4_define(CF_GRAMMAR, `CF_ZONE(3, Grammar)')
 m4_define(CF_CODE, `CF_ZONE(4, C Code)')
 m4_define(CF_END, `m4_divert(-1)')
 
-# Simple iterator
-m4_define(CF_itera, `m4_ifelse($#, 1, [[CF_iter($1)]], [[CF_iter($1)[[]]CF_itera(m4_shift($@))]])')
-m4_define(CF_iterate, `m4_define([[CF_iter]], m4_defn([[$1]]))CF_itera($2)')
-
-# Keywords act as untyped %token
-m4_define(CF_keywd, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)m4_define([[CF_toks]],CF_toks $1)]])')
-m4_define(CF_KEYWORDS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd]], [[$@]])m4_ifelse(CF_toks,,,%token[[]]CF_toks
-)DNL')
+# Keywords act as a %token <kw> + added to a keyword: rule
+m4_define(CF_KEYWORDS, `m4_ifelse($#,1,,[[CF_KEYWORDS(m4_shift($@))]])DNL
+m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)m4_divert(2)%token <kw> $1
+m4_divert(3)keyword: $1 ;
+m4_divert(2)]])')
 
 # CLI commands
 m4_define(CF_CLI, `m4_define([[CF_cmd]], cmd_[[]]m4_translit($1, [[ ]], _))DNL

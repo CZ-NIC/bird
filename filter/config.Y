@@ -467,13 +467,16 @@ CF_GRAMMAR
 
 conf: filter_def ;
 filter_def:
-   FILTER symbol { $2 = cf_define_symbol($2, SYM_FILTER, filter, NULL); cf_push_scope( $2 ); }
-     filter_body {
-     struct filter *f = cfg_alloc(sizeof(struct filter));
-     *f = (struct filter) { .sym = $2, .root = $4 };
-     $2->filter = f;
-
+   FILTER token_def {
+     cf_push_scope( cf_define_symbol($2, SYM_FILTER, filter, NULL) );
+  } filter_body {
      cf_pop_scope();
+
+     struct symbol *sym = cf_get_symbol($2);
+     ASSERT(sym->class == SYM_FILTER);
+     struct filter *f = cfg_alloc(sizeof(struct filter));
+     *f = (struct filter) { .sym = sym, .root = $4 };
+     sym->filter = f;
    }
  ;
 
@@ -483,8 +486,8 @@ filter_eval:
  ;
 
 conf: custom_attr ;
-custom_attr: ATTRIBUTE type symbol ';' {
-  cf_define_symbol($3, SYM_ATTRIBUTE, attribute, ca_lookup(new_config->pool, $3->name, $2)->fda);
+custom_attr: ATTRIBUTE type token_def ';' {
+  cf_define_symbol($3, SYM_ATTRIBUTE, attribute, ca_lookup(new_config->pool, $3, $2)->fda);
 };
 
 conf: bt_test_suite ;
@@ -555,24 +558,24 @@ type:
 
 function_argsn:
    /* EMPTY */
- | function_argsn type symbol ';' {
-     if ($3->scope->slots >= 0xfe) cf_error("Too many declarations, at most 255 allowed");
-     cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++);
+ | function_argsn type token_def ';' {
+     if (conf_this_scope->slots >= 0xfe) cf_error("Too many declarations, at most 255 allowed");
+     cf_define_symbol($3, SYM_VARIABLE | $2, offset, conf_this_scope->slots++);
    }
  ;
 
 function_args:
    '(' ')' { $$ = 0; }
- | '(' function_argsn type symbol ')' {
-     cf_define_symbol($4, SYM_VARIABLE | $3, offset, $4->scope->slots++);
-     $$ = $4->scope->slots;
+ | '(' function_argsn type token_def ')' {
+     cf_define_symbol($4, SYM_VARIABLE | $3, offset, conf_this_scope->slots++);
+     $$ = conf_this_scope->slots;
    }
  ;
 
 function_vars:
    /* EMPTY */ { $$ = 0; }
- | function_vars type symbol ';' {
-     cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++);
+ | function_vars type token_def ';' {
+     cf_define_symbol($3, SYM_VARIABLE | $2, offset, conf_this_scope->slots++);
      $$ = $1 + 1;
    }
  ;
@@ -607,14 +610,16 @@ function_body:
 
 conf: function_def ;
 function_def:
-   FUNCTION symbol { DBG( "Beginning of function %s\n", $2->name );
-     $2 = cf_define_symbol($2, SYM_FUNCTION, function, NULL);
-     cf_push_scope($2);
+   FUNCTION token_def { DBG( "Beginning of function %s\n", $2 );
+     cf_push_scope(cf_define_symbol($2, SYM_FUNCTION, function, NULL));
    } function_args function_body {
-     DBG("Definition of function %s with %u args and %u local vars.\n", $2->name, $4, $5->vars);
-     $5->args = $4;
-     $2->function = $5;
      cf_pop_scope();
+
+     struct symbol *sym = cf_get_symbol($2);
+     ASSERT(sym->class == SYM_FUNCTION);
+     DBG("Definition of function %s with %u args and %u local vars.\n", $2, $4, $5->vars);
+     $5->args = $4;
+     sym->function = $5;
    }
  ;
 
@@ -676,7 +681,7 @@ set_atom:
    NUM    { $$.type = T_INT; $$.val.i = $1; }
  | fipa   { $$ = $1; }
  | VPN_RD { $$.type = T_RD; $$.val.ec = $1; }
- | ENUM   { $$.type = pair_a($1); $$.val.i = pair_b($1); }
+ | ENUM   { $$.type = pair_a(-$1.value); $$.val.i = pair_b(-$1.value); }
  | '(' term ')' {
      if (f_eval(f_linearize($2), cfg_mem, &($$)) > F_RETURN) cf_error("Runtime error");
      if (!f_valid_set_type($$.type)) cf_error("Set-incompatible type");
@@ -692,7 +697,7 @@ switch_atom:
    NUM   { $$.type = T_INT; $$.val.i = $1; }
  | '(' term ')' { $$.type = T_INT; $$.val.i = f_eval_int(f_linearize($2)); }
  | fipa  { $$ = $1; }
- | ENUM  { $$.type = pair_a($1); $$.val.i = pair_b($1); }
+ | ENUM  { $$.type = pair_a(-$1.value); $$.val.i = pair_b(-$1.value); }
  ;
 
 cnum:
@@ -833,7 +838,7 @@ constant:
      DBG( "ook\n" );
  }
  | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PREFIX_SET, .val.ti = $2, }); }
- | ENUM	  { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = $1 >> 16, .val.i = $1 & 0xffff, }); }
+ | ENUM	  { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = (-$1.value) >> 16, .val.i = (-$1.value) & 0xffff, }); }
  ;
 
 constructor:

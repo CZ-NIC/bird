@@ -158,7 +158,7 @@ table_sorted:
  | SORTED { $$ = 1; }
  ;
 
-table: net_type TABLE symbol table_sorted {
+table: net_type TABLE token_def table_sorted {
    struct rtable_config *cf;
    cf = rt_new_table($3, $1);
    cf->sorted = $4;
@@ -183,7 +183,7 @@ proto_name:
      this_proto->name = s->name;
      }
  | symbol {
-     cf_define_symbol($1, this_proto->class, proto, this_proto);
+     cf_define_symbol($1->name, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
    }
  | FROM CF_SYM_KNOWN {
@@ -199,7 +199,7 @@ proto_name:
  | symbol FROM CF_SYM_KNOWN {
      if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
 
-     cf_define_symbol($1, this_proto->class, proto, this_proto);
+     cf_define_symbol($1->name, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
 
      proto_copy_config(this_proto, $3->proto);

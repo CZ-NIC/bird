@@ -43,7 +43,7 @@ m4_define(CF_ENUM_PX, `m4_define([[CF_enum_type]],$1)m4_define([[CF_enum_prefix_
 # After all configuration templates end, we generate the 
 m4_m4wrap(`
 m4_divert(0)
-static struct keyword keyword_list[] = {
+struct keyword keyword_list[] = {
 m4_undivert(1){ NULL, -1, NULL } };
 ')
 

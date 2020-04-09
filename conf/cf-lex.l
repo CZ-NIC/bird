@@ -51,12 +51,6 @@
 #include "lib/string.h"
 #include "lib/hash.h"
 
-struct keyword {
-  byte *name;
-  int value;
-  struct keyword *next;
-};
-
 #include "conf/keywords.h"
 
 /* Could be defined by Bison in cf-parse.tab.h, inteferes with SYM hash */
@@ -618,18 +612,20 @@ cf_get_symbol(const byte *c)
  * for purposes of cf_define_symbol().
  */
 struct symbol *
-cf_localize_symbol(struct symbol *sym)
+cf_localize_symbol(const byte *c)
 {
+  struct symbol *sym = cf_find_symbol(new_config, c);
+
   /* If the symbol type is void, it has been recently allocated just in this scope. */
-  if (!sym->class)
+  if (sym && !sym->class)
     return sym;
   
   /* If the scope is the current, it is already defined in this scope. */
-  if (sym->scope == conf_this_scope)
+  if (sym && (sym->scope == conf_this_scope))
     cf_error("Symbol already defined");
 
   /* Not allocated here yet, doing it now. */
-  return cf_new_symbol(sym->name);
+  return cf_new_symbol(c);
 }
 
 struct symbol *
@@ -665,13 +661,11 @@ cf_lex_symbol(const char *data)
   struct keyword *k = HASH_FIND(kw_hash, KW, data);
   if (k)
   {
+    cf_lval.kw = *k;
     if (k->value > 0)
       return k->value;
     else
-    {
-      cf_lval.i = -k->value;
       return ENUM;
-    }
   }
 
   /* OK, undefined symbol */

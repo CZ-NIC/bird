@@ -1940,8 +1940,8 @@ rt_preconfig(struct config *c)
 {
   init_list(&c->tables);
 
-  rt_new_table(cf_get_symbol("master4"), NET_IP4);
-  rt_new_table(cf_get_symbol("master6"), NET_IP6);
+  rt_new_table("master4", NET_IP4);
+  rt_new_table("master6", NET_IP6);
 }
 
 
@@ -2181,8 +2181,10 @@ rt_next_hop_update(rtable *tab)
 
 
 struct rtable_config *
-rt_new_table(struct symbol *s, uint addr_type)
+rt_new_table(const char *name, uint addr_type)
 {
+  struct symbol *s = cf_get_symbol(name);
+
   /* Hack that allows to 'redefine' the master table */
   if ((s->class == SYM_TABLE) &&
       (s->table == new_config->def_tables[addr_type]) &&
@@ -2191,8 +2193,8 @@ rt_new_table(struct symbol *s, uint addr_type)
 
   struct rtable_config *c = cfg_allocz(sizeof(struct rtable_config));
 
-  cf_define_symbol(s, SYM_TABLE, table, c);
-  c->name = s->name;
+  cf_define_symbol(name, SYM_TABLE, table, c);
+  c->name = name;
   c->addr_type = addr_type;
   c->gc_max_ops = 1000;
   c->gc_min_time = 5;
@@ -2248,7 +2250,7 @@ rt_unlock_table(rtable *r)
 }
 
 static struct rtable_config *
-rt_find_table_config(struct config *cf, char *name)
+rt_find_table_config(struct config *cf, const char *name)
 {
   struct symbol *sym = cf_find_symbol(cf, name);
   return (sym && (sym->class == SYM_TABLE)) ? sym->table : NULL;
