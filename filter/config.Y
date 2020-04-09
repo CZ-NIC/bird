@@ -431,7 +431,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	SET, STRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
-	FROM, GW, NET, MASK, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX,
+	FROM, GW, NET, MASK, PROTO, AUTHOR, SENDER, SOURCE, SCOPE, DEST, IFNAME, IFINDEX,
 	PREFERENCE,
 	ROA_CHECK, ASN, SRC, DST,
 	IS_V4, IS_V6,
@@ -902,6 +902,8 @@ static_attr:
  | GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	0); }
  | NET     { $$ = f_new_static_attr(T_NET,	  SA_NET,	1); }
  | PROTO   { $$ = f_new_static_attr(T_STRING,     SA_PROTO,	1); }
+ | SENDER  { $$ = f_new_static_attr(T_CHANNEL,	  SA_SENDER,	1); }
+ | AUTHOR  { $$ = f_new_static_attr(T_PROTO,	  SA_AUTHOR,	1); }
  | SOURCE  { $$ = f_new_static_attr(T_ENUM_RTS,   SA_SOURCE,	1); }
  | SCOPE   { $$ = f_new_static_attr(T_ENUM_SCOPE, SA_SCOPE,	0); }
  | DEST    { $$ = f_new_static_attr(T_ENUM_RTD,   SA_DEST,	0); }
@@ -938,19 +940,24 @@ term:
 
  | dynamic_attr { $$ = f_new_inst(FI_EA_GET, $1); }
 
- | term '.' IS_V4 { $$ = f_new_inst(FI_IS_V4, $1); }
- | term '.' TYPE { $$ = f_new_inst(FI_TYPE, $1); }
- | term '.' IP { $$ = f_new_inst(FI_IP, $1); }
- | term '.' RD { $$ = f_new_inst(FI_ROUTE_DISTINGUISHER, $1); }
- | term '.' LEN { $$ = f_new_inst(FI_LENGTH, $1); }
- | term '.' MAXLEN { $$ = f_new_inst(FI_ROA_MAXLEN, $1); }
- | term '.' ASN { $$ = f_new_inst(FI_ROA_ASN, $1); }
- | term '.' SRC { $$ = f_new_inst(FI_NET_SRC, $1); }
- | term '.' DST { $$ = f_new_inst(FI_NET_DST, $1); }
  | term '.' MASK '(' term ')' { $$ = f_new_inst(FI_IP_MASK, $1, $5); }
- | term '.' FIRST { $$ = f_new_inst(FI_AS_PATH_FIRST, $1); }
- | term '.' LAST  { $$ = f_new_inst(FI_AS_PATH_LAST, $1); }
- | term '.' LAST_NONAGGREGATED  { $$ = f_new_inst(FI_AS_PATH_LAST_NAG, $1); }
+ | term '.' token {
+    switch ($3.value) {
+      case IS_V4: $$ = f_new_inst(FI_IS_V4, $1); break;
+      case TYPE: $$ = f_new_inst(FI_TYPE, $1); break;
+      case IP: $$ = f_new_inst(FI_IP, $1); break;
+      case RD: $$ = f_new_inst(FI_ROUTE_DISTINGUISHER, $1); break;
+      case LEN: $$ = f_new_inst(FI_LENGTH, $1); break;
+      case MAXLEN: $$ = f_new_inst(FI_ROA_MAXLEN, $1); break;
+      case ASN: $$ = f_new_inst(FI_ROA_ASN, $1); break;
+      case SRC: $$ = f_new_inst(FI_NET_SRC, $1); break;
+      case DST: $$ = f_new_inst(FI_NET_DST, $1); break;
+      case FIRST: $$ = f_new_inst(FI_AS_PATH_FIRST, $1); break;
+      case LAST: $$ = f_new_inst(FI_AS_PATH_LAST, $1); break;
+      case LAST_NONAGGREGATED: $$ = f_new_inst(FI_AS_PATH_LAST_NAG, $1); break;
+      default: $$ = f_new_inst(FI_DEREF, $1, f_get_deref($1->type, &$3)); break;
+    }
+ }
 
 /* Communities */
 /* This causes one shift/reduce conflict

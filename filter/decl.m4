@@ -90,7 +90,7 @@ FID_DUMP_BODY()m4_dnl
 debug("%s" $4 "\n", INDENT, $5);
 ]])
 FID_INTERPRET_EXEC()m4_dnl
-const $1 $2 = whati->$2
+$1 const $2 = whati->$2
 FID_INTERPRET_BODY')
 
 #	Instruction arguments are needed only until linearization is done.

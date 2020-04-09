@@ -61,6 +61,9 @@ enum f_type {
 
   T_SET = 0x80,
   T_PREFIX_SET = 0x81,
+
+  T_PROTO = 0xa0,	/* Protocol instance */
+  T_CHANNEL = 0xa1,	/* Channel */
 } PACKED;
 
 /* Filter value; size of this affects filter memory consumption */
@@ -78,6 +81,8 @@ struct f_val {
     const struct adata *ad;
     const struct f_path_mask *path_mask;
     struct f_path_mask_item pmi;
+    struct proto *proto;
+    struct channel *channel;
   } val;
 };
 
@@ -94,6 +99,8 @@ enum f_sa_code {
   SA_GW,
   SA_NET,
   SA_PROTO,
+  SA_SENDER,
+  SA_AUTHOR,
   SA_SOURCE,
   SA_SCOPE,
   SA_DEST,
@@ -125,6 +132,16 @@ struct f_lval {
     struct f_static_attr sa;
   };
 };
+
+/* Member dereference (in filter/deref.c) */
+struct f_deref {
+  struct f_val (*deref)(struct f_val *);
+  const char *name;
+  enum f_type source_type, result_type;
+};
+
+struct keyword;
+const struct f_deref *f_get_deref(enum f_type, const struct keyword *);
 
 /* IP prefix range structure */
 struct f_prefix {

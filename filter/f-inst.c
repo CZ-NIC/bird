@@ -404,6 +404,21 @@
     RESULT(T_BOOL, i, (v1.type != T_VOID) && !undef_value(v1));
   }
 
+  INST(FI_DEREF, 1, 1) {
+    NEVER_CONSTANT;
+    ARG_ANY(1);
+    FID_MEMBER(
+	const struct f_deref *,
+	deref,
+	[[ f1->deref != f2->deref ]],
+	"dereference %s from %s",
+	[[ item->deref->name, f_type_name(item->deref->source_type) ]]
+	);
+
+    RESULT_TYPE(deref->result_type);
+    RESULT_VAL(deref->deref(&v1));
+  }
+
   INST(FI_TYPE, 1, 1) {
     ARG_ANY(1); /* There may be more types supporting this operation */
     switch (v1.type)
@@ -503,6 +518,8 @@
       case SA_GW:	RESULT(sa.f_type, ip, rta->nh.gw); break;
       case SA_NET:	RESULT(sa.f_type, net, (*fs->rte)->net->n.addr); break;
       case SA_PROTO:	RESULT(sa.f_type, s, rta->src->proto->name); break;
+      case SA_SENDER:	RESULT(sa.f_type, channel, (*fs->rte)->sender); break;
+      case SA_AUTHOR:	RESULT(sa.f_type, proto, rta->src->proto); break;
       case SA_SOURCE:	RESULT(sa.f_type, i, rta->source); break;
       case SA_SCOPE:	RESULT(sa.f_type, i, rta->scope); break;
       case SA_DEST:	RESULT(sa.f_type, i, rta->dest); break;
