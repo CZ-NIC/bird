@@ -102,12 +102,13 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   rte e0 = {
     .attrs = a,
     .src = p->p.main_source,
-  }, *e = &e0;
+    .net = r->net,
+  };
 
   if (r->cmds)
-    f_eval_rte(r->cmds, &e, static_lp);
+    f_eval_rte(r->cmds, &e0, static_lp);
 
-  rte_update(p->p.main_channel, r->net, e);
+  rte_update(p->p.main_channel, &e0);
   r->state = SRS_CLEAN;
 
   if (r->cmds)
@@ -356,7 +357,7 @@ static_bfd_notify(struct bfd_request *req)
 }
 
 static int
-static_rte_mergable(rte *pri UNUSED, rte *sec UNUSED)
+static_rte_mergable(struct rte_storage *pri UNUSED, struct rte_storage *sec UNUSED)
 {
   return 1;
 }

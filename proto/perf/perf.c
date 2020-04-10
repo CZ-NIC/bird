@@ -165,8 +165,9 @@ perf_loop(void *data)
     rte e0 = {
       .attrs = p->data[i].a,
       .src = p->p.main_source,
+      .net = &(p->data[i].net),
     };
-    rte_update(P->main_channel, &(p->data[i].net), &e0);
+    rte_update(P->main_channel, &e0);
   }
 
   clock_gettime(CLOCK_MONOTONIC, &ts_update);
