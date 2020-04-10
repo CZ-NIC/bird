@@ -143,7 +143,6 @@ perf_loop(void *data)
 
     if (!p->attrs_per_rte || !(i % p->attrs_per_rte)) {
       struct rta a0 = {
-	.src = p->p.main_source,
 	.source = RTS_PERF,
 	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,
@@ -163,7 +162,10 @@ perf_loop(void *data)
 
   for (uint i=0; i<N; i++)
   {
-    rte e0 = { .attrs = p->data[i].a, };
+    rte e0 = {
+      .attrs = p->data[i].a,
+      .src = p->p.main_source,
+    };
     rte_update(P->main_channel, &(p->data[i].net), &e0);
   }
 
