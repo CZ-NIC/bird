@@ -526,7 +526,7 @@
       case SA_FROM:	RESULT(sa.f_type, ip, rta->from); break;
       case SA_GW:	RESULT(sa.f_type, ip, rta->nh.gw); break;
       case SA_NET:	RESULT(sa.f_type, net, (*fs->rte)->net->n.addr); break;
-      case SA_PROTO:	RESULT(sa.f_type, s, rta->src->proto->name); break;
+      case SA_PROTO:	RESULT(sa.f_type, s, (*fs->rte)->src->proto->name); break;
       case SA_SOURCE:	RESULT(sa.f_type, i, rta->source); break;
       case SA_SCOPE:	RESULT(sa.f_type, i, rta->scope); break;
       case SA_DEST:	RESULT(sa.f_type, i, rta->dest); break;
@@ -562,7 +562,7 @@
 	{
 	  ip_addr ip = v1.val.ip;
 	  struct iface *ifa = ipa_is_link_local(ip) ? rta->nh.iface : NULL;
-	  neighbor *n = neigh_find(rta->src->proto, ip, ifa, 0);
+	  neighbor *n = neigh_find((*fs->rte)->src->proto, ip, ifa, 0);
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
 

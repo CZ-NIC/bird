@@ -1488,7 +1488,7 @@ nl_mergable_route(struct nl_parse_state *s, net *net, struct krt_proto *p, uint 
 static void
 nl_announce_route(struct nl_parse_state *s)
 {
-  rte *e = rte_get_temp(s->attrs);
+  rte *e = rte_get_temp(s->attrs, s->proto->p.main_source);
   e->net = s->net;
   e->u.krt.src = s->krt_src;
   e->u.krt.proto = s->krt_proto;
@@ -1659,7 +1659,6 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
     nl_announce_route(s);
 
   rta *ra = lp_allocz(s->pool, RTA_MAX_SIZE);
-  ra->src = p->p.main_source;
   ra->source = RTS_INHERIT;
   ra->scope = SCOPE_UNIVERSE;
 

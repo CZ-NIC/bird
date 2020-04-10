@@ -300,7 +300,7 @@ krt_learn_announce_update(struct krt_proto *p, rte *e)
 {
   net *n = e->net;
   rta *aa = rta_clone(e->attrs);
-  rte *ee = rte_get_temp(aa);
+  rte *ee = rte_get_temp(aa, p->p.main_source);
   ee->pflags = EA_ID_FLAG(EA_KRT_SOURCE) | EA_ID_FLAG(EA_KRT_METRIC);
   ee->u.krt = e->u.krt;
   rte_update(&p->p, n->n.addr, ee);
@@ -909,7 +909,7 @@ static int
 krt_preexport(struct proto *P, rte *e)
 {
   // struct krt_proto *p = (struct krt_proto *) P;
-  if (e->attrs->src->proto == P)
+  if (e->src->proto == P)
     return -1;
 
   if (!krt_capable(e))

@@ -1105,7 +1105,6 @@ rta_hash(rta *a)
   mem_hash_init(&h);
 #define MIX(f) mem_hash_mix(&h, &(a->f), sizeof(a->f));
 #define BMIX(f) mem_hash_mix_num(&h, a->f);
-  MIX(src);
   MIX(hostentry);
   MIX(from);
   MIX(igp_metric);
@@ -1121,8 +1120,7 @@ rta_hash(rta *a)
 static inline int
 rta_same(rta *x, rta *y)
 {
-  return (x->src == y->src &&
-	  x->source == y->source &&
+  return (x->source == y->source &&
 	  x->scope == y->scope &&
 	  x->dest == y->dest &&
 	  x->igp_metric == y->igp_metric &&
@@ -1212,7 +1210,6 @@ rta_lookup(rta *o)
   r = rta_copy(o);
   r->hash_key = h;
   r->cached = 1;
-  rt_lock_source(r->src);
   rt_lock_hostentry(r->hostentry);
   rta_insert(r);
 
@@ -1231,7 +1228,6 @@ rta__free(rta *a)
   if (a->next)
     a->next->pprev = a->pprev;
   rt_unlock_hostentry(a->hostentry);
-  rt_unlock_source(a->src);
   if (a->nh.next)
     nexthop_free(a->nh.next);
   ea_free(a->eattrs);
@@ -1270,8 +1266,8 @@ rta_dump(rta *a)
 			 "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
-  debug("p=%s pref=%d uc=%d %s %s%s h=%04x",
-	a->src->proto->name, a->pref, a->uc, rts[a->source], ip_scope_text(a->scope),
+  debug("pref=%d uc=%d %s %s%s h=%04x",
+	a->pref, a->uc, rts[a->source], ip_scope_text(a->scope),
 	rtd[a->dest], a->hash_key);
   if (!a->cached)
     debug(" !CACHED");

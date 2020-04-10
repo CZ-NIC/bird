@@ -472,9 +472,9 @@ mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
 
 #ifdef CONFIG_BGP
   /* Find peer index */
-  if (r->attrs->src->proto->proto == &proto_bgp)
+  if (r->src->proto->proto == &proto_bgp)
   {
-    struct bgp_proto *p = (void *) r->attrs->src->proto;
+    struct bgp_proto *p = (void *) r->src->proto;
     struct mrt_peer_entry *n =
       HASH_FIND(s->peer_hash, PEER, p->remote_id, p->remote_as, p->remote_ip);
 
@@ -488,7 +488,7 @@ mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
 
   /* Path Identifier */
   if (s->add_path)
-    mrt_put_u32(b, r->attrs->src->private_id);
+    mrt_put_u32(b, r->src->private_id);
 
   /* Route Attributes */
   mrt_put_u16(b, 0);
@@ -519,7 +519,7 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
       continue;
 
     /* Skip routes that should be reported in the other phase */
-    if (!s->always_add_path && (!rt->attrs->src->private_id != !s->add_path))
+    if (!s->always_add_path && (!rt->src->private_id != !s->add_path))
     {
       s->want_add_path = 1;
       continue;

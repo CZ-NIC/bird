@@ -1356,8 +1356,6 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
   /* Prepare cached route attributes */
   if (s->cached_rta == NULL)
   {
-    a0->src = s->last_src;
-
     /* Workaround for rta_lookup() breaking eattrs */
     ea_list *ea = a0->eattrs;
     s->cached_rta = rta_lookup(a0);
@@ -1365,7 +1363,7 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
   }
 
   rta *a = rta_clone(s->cached_rta);
-  rte *e = rte_get_temp(a);
+  rte *e = rte_get_temp(a, s->last_src);
 
   e->pflags = 0;
   e->u.bgp.suppressed = 0;

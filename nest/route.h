@@ -236,6 +236,7 @@ struct hostentry {
 typedef struct rte {
   struct rte *next;
   net *net;				/* Network this RTE belongs to */
+  struct rte_src *src;			/* Route source that created the route */
   struct channel *sender;		/* Channel used to send the route to the routing table */
   struct rta *attrs;			/* Attributes of this route */
   u32 id;				/* Table specific route id */
@@ -326,7 +327,7 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 rte *rte_find(net *net, struct rte_src *src);
-rte *rte_get_temp(struct rta *);
+rte *rte_get_temp(struct rta *, struct rte_src *src);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
 int rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter);
@@ -441,7 +442,6 @@ typedef struct rta {
   u32 uc;				/* Use count */
   u32 hash_key;				/* Hash over important fields */
   struct ea_list *eattrs;		/* Extended Attribute chain */
-  struct rte_src *src;			/* Route source that created the route */
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
   ip_addr from;				/* Advertising router */
   u32 igp_metric;			/* IGP metric to next hop (for iBGP routes) */

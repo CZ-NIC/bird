@@ -145,7 +145,6 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   {
     /* Update */
     rta a0 = {
-      .src = p->p.main_source,
       .pref = p->p.main_channel->preference,
       .source = RTS_RIP,
       .scope = SCOPE_UNIVERSE,
@@ -190,7 +189,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     }
 
     rta *a = rta_lookup(&a0);
-    rte *e = rte_get_temp(a);
+    rte *e = rte_get_temp(a, p->p.main_source);
 
     e->u.rip.from = a0.nh.iface;
     e->u.rip.metric = rt_metric;
@@ -340,7 +339,7 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
     en->valid = RIP_ENTRY_VALID;
     en->metric = rt_metric;
     en->tag = rt_tag;
-    en->from = (new->attrs->src->proto == P) ? new->u.rip.from : NULL;
+    en->from = (new->src->proto == P) ? new->u.rip.from : NULL;
     en->iface = new->attrs->nh.iface;
     en->next_hop = new->attrs->nh.gw;
   }
