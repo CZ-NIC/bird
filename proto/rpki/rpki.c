@@ -130,9 +130,10 @@ rpki_table_add_roa(struct rpki_cache *cache, struct channel *channel, const net_
   rte e0 = {
     .attrs = &a0,
     .src = p->p.main_source,
+    .net = &pfxr->n, 
   };
 
-  rte_update(channel, &pfxr->n, &e0);
+  rte_update(channel, &e0);
 }
 
 void
