@@ -2047,7 +2047,6 @@ again1:
     if (nf->n.type) /* Add the route */
     {
       rta a0 = {
-	.src = p->p.main_source,
 	.source = nf->n.type,
 	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,
@@ -2096,7 +2095,10 @@ again1:
 	    .u.data = nf->n.rid,
 	  };
 
-	rte e0 = { .attrs = rta_lookup(&a0), };
+	rte e0 = {
+	  .attrs = rta_lookup(&a0),
+	  .src = p->p.main_source,
+	};
 
 	rta_free(nf->old_rta);
 	nf->old_rta = rta_clone(e0.attrs);

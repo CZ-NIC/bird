@@ -56,7 +56,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   if (d->verbose && !rta_is_cached(a) && a->eattrs)
     ea_normalize(a->eattrs);
 
-  get_route_info = a->src->proto->proto->get_route_info;
+  get_route_info = e->src->proto->proto->get_route_info;
   if (get_route_info)
     get_route_info(e, info);
   else
@@ -66,7 +66,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
     rt_show_table(c, d);
 
   cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s", ia, rta_dest_name(a->dest),
-	     a->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
+	     e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
 
   if (a->dest == RTD_UNICAST)
     for (nh = &(a->nh); nh; nh = nh->next)
@@ -179,7 +179,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	    }
 	}
 
-      if (d->show_protocol && (d->show_protocol != e->attrs->src->proto))
+      if (d->show_protocol && (d->show_protocol != e->src->proto))
 	goto skip;
 
       if (f_run(d->filter, &e, c->show_pool, 0) > F_ACCEPT)

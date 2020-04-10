@@ -630,7 +630,6 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
   if (r)
   {
     rta a0 = {
-      .src = p->p.main_source,
       .source = RTS_BABEL,
       .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNICAST,
@@ -672,6 +671,7 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       a0.nh.flags = RNF_ONLINK;
 
     rte e0 = {
+      .src = p->p.main_source,
       .attrs = &a0,
     };
 
@@ -682,7 +682,6 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
   {
     /* Unreachable */
     rta a0 = {
-      .src = p->p.main_source,
       .source = RTS_BABEL,
       .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNREACHABLE,
@@ -690,6 +689,7 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
     };
 
     rte e0 = {
+      .src = p->p.main_source,
       .attrs = &a0,
     };
 
@@ -2102,10 +2102,8 @@ babel_kick_timer(struct babel_proto *p)
 static int
 babel_preexport(struct proto *P, struct rte **new, struct linpool *pool UNUSED)
 {
-  struct rta *a = (*new)->attrs;
-
   /* Reject our own unreachable routes */
-  if ((a->dest == RTD_UNREACHABLE) && (a->src->proto == P))
+  if (((*new)->attrs->dest == RTD_UNREACHABLE) && ((*new)->src->proto == P))
     return -1;
 
   return 0;

@@ -301,6 +301,7 @@ krt_learn_announce_update(struct krt_proto *p, rte *e)
 {
   rte e0 = {
     .attrs = rta_clone(e->attrs),
+    .src = p->p.main_source,
   };
 
   rte_update(p->p.main_channel, e->net->n.addr, &e0);
@@ -877,7 +878,7 @@ krt_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
   // struct krt_proto *p = (struct krt_proto *) P;
   rte *e = *new;
 
-  if (e->attrs->src->proto == P)
+  if (e->src->proto == P)
     return -1;
 
   if (!krt_capable(e))
