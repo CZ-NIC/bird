@@ -83,11 +83,11 @@ void krt_got_route(struct krt_proto *p, struct rte *e, s8 src);
 void krt_got_route_async(struct krt_proto *p, struct rte *e, int new, s8 src);
 
 static inline int
-krt_get_sync_error(struct krt_proto *p, struct rte *e)
+krt_get_sync_error(struct krt_proto *p, u32 id)
 {
   return (p->p.proto_state == PS_UP) &&
-    bmap_test(&p->p.main_channel->export_map, e->id) &&
-    !bmap_test(&p->sync_map, e->id);
+    bmap_test(&p->p.main_channel->export_map, id) &&
+    !bmap_test(&p->sync_map, id);
 }
 
 /* Values for rte->u.krt_sync.src */
@@ -143,7 +143,7 @@ void krt_sys_copy_config(struct krt_config *, struct krt_config *);
 
 int  krt_capable(rte *e);
 void krt_do_scan(struct krt_proto *);
-void krt_replace_rte(struct krt_proto *p, rte *new, rte *old);
+void krt_replace_rte(struct krt_proto *p, struct rte_export *e);
 int krt_sys_get_attr(const eattr *a, byte *buf, int buflen);
 
 

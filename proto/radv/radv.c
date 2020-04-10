@@ -385,18 +385,17 @@ radv_trigger_valid(struct radv_config *cf)
 }
 
 static inline int
-radv_net_match_trigger(struct radv_config *cf, net_addr *n)
+radv_net_match_trigger(struct radv_config *cf, const net_addr *n)
 {
   return radv_trigger_valid(cf) && net_equal(n, &cf->trigger);
 }
 
 int
-radv_preexport(struct proto *P, rte *new)
+radv_preexport(struct channel *c, rte *new)
 {
-  // struct radv_proto *p = (struct radv_proto *) P;
-  struct radv_config *cf = (struct radv_config *) (P->cf);
+  struct radv_config *cf = (struct radv_config *) (c->proto->cf);
 
-  if (radv_net_match_trigger(cf, new->net->n.addr))
+  if (radv_net_match_trigger(cf, new->net))
     return RIC_PROCESS;
 
   if (cf->propagate_routes)
@@ -413,10 +412,12 @@ radv_rt_notify(struct channel *ch, struct rte_export *e)
   struct radv_route *rt;
   eattr *ea;
 
-  if (radv_net_match_trigger(cf, e->net))
+  const net_addr *net = e->new.attrs ? e->new.net : e->old.net;
+
+  if (radv_net_match_trigger(cf, net))
   {
     u8 old_active = p->active;
-    p->active = !!e->new;
+    p->active = !!e->new.attrs;
 
     if (p->active == old_active)
       return;
@@ -440,15 +441,15 @@ radv_rt_notify(struct channel *ch, struct rte_export *e)
    * And yes, we exclude the trigger route on purpose.
    */
 
-  if (e->new)
+  if (e->new.attrs)
   {
     /* Update */
 
-    ea = ea_find(e->new->attrs->eattrs, EA_RA_PREFERENCE);
+    ea = ea_find(e->new.attrs->eattrs, EA_RA_PREFERENCE);
     uint preference = ea ? ea->u.data : RA_PREF_MEDIUM;
     uint preference_set = !!ea;
 
-    ea = ea_find(e->new->attrs->eattrs, EA_RA_LIFETIME);
+    ea = ea_find(e->new.attrs->eattrs, EA_RA_LIFETIME);
     uint lifetime = ea ? ea->u.data : 0;
     uint lifetime_set = !!ea;
 
@@ -457,14 +458,14 @@ radv_rt_notify(struct channel *ch, struct rte_export *e)
 	(preference != RA_PREF_HIGH))
     {
       log(L_WARN "%s: Invalid ra_preference value %u on route %N",
-	  p->p.name, preference, e->net);
+	  p->p.name, preference, e->new.net);
       preference = RA_PREF_MEDIUM;
       preference_set = 1;
       lifetime = 0;
       lifetime_set = 1;
     }
 
-    rt = fib_get(&p->routes, e->net);
+    rt = fib_get(&p->routes, e->new.net);
 
     /* Ignore update if nothing changed */
     if (rt->valid &&
@@ -487,7 +488,7 @@ radv_rt_notify(struct channel *ch, struct rte_export *e)
   else
   {
     /* Withdraw */
-    rt = fib_find(&p->routes, e->net);
+    rt = fib_find(&p->routes, e->old.net);
 
     if (!rt || !rt->valid)
       return;

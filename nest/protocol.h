@@ -78,7 +78,7 @@ struct protocol {
   int (*shutdown)(struct proto *);		/* Stop the instance */
   void (*cleanup)(struct proto *);		/* Called after shutdown when protocol became hungry/down */
   void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
-  void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */
+  void (*get_route_info)(struct rte *, struct rte_storage *, byte *); /* Get route information (for `show route' command) */
   int (*get_attr)(const struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
   void (*show_proto_info)(struct proto *);	/* Show protocol info (for `show protocols all' command) */
   void (*copy_config)(struct proto_config *, struct proto_config *);	/* Copy config from given protocol instance */
@@ -213,7 +213,7 @@ struct proto {
   void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
   void (*rt_notify)(struct channel *, struct rte_export *);
   void (*neigh_notify)(struct neighbor *neigh);
-  int (*preexport)(struct proto *, struct rte *rt);
+  int (*preexport)(struct channel *, struct rte *rt);
   void (*reload_routes)(struct channel *);
   void (*feed_begin)(struct channel *, int initial);
   void (*feed_end)(struct channel *);
@@ -228,12 +228,12 @@ struct proto {
    *	   rte_remove	Called whenever a rte is removed from the routing table.
    */
 
-  int (*rte_recalculate)(struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
-  int (*rte_better)(struct rte *, struct rte *);
-  int (*rte_mergable)(struct rte *, struct rte *);
-  struct rte * (*rte_modify)(struct rte *, struct linpool *);
-  void (*rte_insert)(struct network *, struct rte *);
-  void (*rte_remove)(struct network *, struct rte *);
+  int (*rte_recalculate)(struct rtable *, struct network *, struct rte_storage *, struct rte_storage *, struct rte_storage *);
+  int (*rte_better)(struct rte_storage *, struct rte_storage *);
+  int (*rte_mergable)(struct rte_storage *, struct rte_storage *);
+  struct rta *(*rte_modify)(struct rte_storage *, struct linpool *);
+  void (*rte_insert)(struct network *, struct rte_storage *);
+  void (*rte_remove)(struct network *, struct rte_storage *);
 
   /* Hic sunt protocol-specific data */
 };
@@ -541,7 +541,7 @@ struct channel {
   struct rtable *in_table;		/* Internal table for received routes */
   struct event *reload_event;		/* Event responsible for reloading from in_table */
   struct fib_iterator reload_fit;	/* FIB iterator in in_table used during reloading */
-  struct rte *reload_next_rte;		/* Route iterator in in_table used during reloading */
+  struct rte_storage *reload_next_rte;	/* Route iterator in in_table used during reloading */
   u8 reload_active;			/* Iterator reload_fit is linked */
   u8 reload_pending;			/* Reloading and another reload is scheduled */
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */

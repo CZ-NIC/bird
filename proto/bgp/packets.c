@@ -1359,11 +1359,12 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
   }
 
   rte e0 = {
-    .attrs = rta_clone(s->cached_rta),
+    .net = n,
     .src = s->last_src,
+    .attrs = s->cached_rta,
   };
 
-  rte_update(&(s->channel->c), n, &e0);
+  rte_update(&(s->channel->c), &e0);
 }
 
 static void

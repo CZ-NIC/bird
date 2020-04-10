@@ -37,16 +37,16 @@ rt_show_get_kernel(struct rt_show_data *d)
 }
 
 static void
-rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary)
+rt_show_rte(struct cli *c, byte *ia, struct rte *e, struct rte_storage *er, struct rt_show_data *d)
 {
   byte from[IPA_MAX_TEXT_LENGTH+8];
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
   rta *a = e->attrs;
-  int sync_error = d->kernel ? krt_get_sync_error(d->kernel, e) : 0;
-  void (*get_route_info)(struct rte *, byte *buf);
+  int sync_error = d->kernel ? krt_get_sync_error(d->kernel, er->id) : 0;
+  void (*get_route_info)(struct rte *, struct rte_storage *, byte *);
   struct nexthop *nh;
 
-  tm_format_time(tm, &config->tf_route, e->lastmod);
+  tm_format_time(tm, &config->tf_route, er->lastmod);
   if (ipa_nonzero(a->from) && !ipa_equal(a->from, a->nh.gw))
     bsprintf(from, " from %I", a->from);
   else
@@ -58,7 +58,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
 
   get_route_info = e->src->proto->proto->get_route_info;
   if (get_route_info)
-    get_route_info(e, info);
+    get_route_info(e, er, info);
   else
     bsprintf(info, " (%d)", a->pref);
 
@@ -66,7 +66,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
     rt_show_table(c, d);
 
   cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s", ia, rta_dest_name(a->dest),
-	     e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
+	     e->src->proto->name, tm, from, (er == er->net->routes) ? (sync_error ? " !" : " *") : "", info);
 
   if (a->dest == RTD_UNICAST)
     for (nh = &(a->nh); nh; nh = nh->next)
@@ -101,7 +101,6 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
 static void
 rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 {
-  rte *e, *ee;
   byte ia[NET_MAX_TEXT_LENGTH+1];
   struct channel *ec = d->tab->export_channel;
 
@@ -114,9 +113,9 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
   bsnprintf(ia, sizeof(ia), "%N", n->n.addr);
 
-  for (e = n->routes; e; e = e->next)
+  for (struct rte_storage *er = n->routes; er; er = er->next)
     {
-      if (rte_is_filtered(e) != d->filtered)
+      if (rte_is_filtered(er) != d->filtered)
 	continue;
 
       d->rt_counter++;
@@ -126,7 +125,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       if (pass)
 	continue;
 
-      ee = e;
+      struct rte e = rte_copy(er);
 
       /* Export channel is down, do not try to export routes to it */
       if (ec && (ec->export_state == ES_DOWN))
@@ -134,7 +133,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
       if (d->export_mode == RSEM_EXPORTED)
         {
-	  if (!bmap_test(&ec->export_map, ee->id))
+	  if (!bmap_test(&ec->export_map, er->id))
 	    goto skip;
 
 	  // if (ec->ra_mode != RA_ANY)
@@ -143,17 +142,14 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       else if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
 	{
 	  /* Special case for merged export */
-	  rte *rt_free;
-	  e = rt_export_merged(ec, n, &rt_free, c->show_pool, 1);
 	  pass = 1;
-
-	  if (!e)
-	  { e = ee; goto skip; }
+	  if (!rt_export_merged(ec, n, &e, c->show_pool, 1))
+	    goto skip;
 	}
       else if (d->export_mode)
 	{
 	  struct proto *ep = ec->proto;
-	  int ic = ep->preexport ? ep->preexport(ep, e) : 0;
+	  int ic = ep->preexport ? ep->preexport(ec, &e) : 0;
 
 	  if (ec->ra_mode == RA_OPTIMAL || ec->ra_mode == RA_MERGED)
 	    pass = 1;
@@ -179,24 +175,19 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	    }
 	}
 
-      if (d->show_protocol && (d->show_protocol != e->src->proto))
+      if (d->show_protocol && (d->show_protocol != er->src->proto))
 	goto skip;
 
       if (f_run(d->filter, &e, c->show_pool, 0) > F_ACCEPT)
 	goto skip;
 
       if (d->stats < 2)
-	rt_show_rte(c, ia, e, d, (e->net->routes == ee));
+	rt_show_rte(c, ia, &e, er, d);
 
       d->show_counter++;
       ia[0] = 0;
 
     skip:
-      if (e != ee)
-      {
-	rte_free(e);
-	e = ee;
-      }
       lp_flush(c->show_pool);
 
       if (d->primary_only)

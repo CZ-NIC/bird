@@ -53,48 +53,54 @@ pipe_rt_notify(struct channel *src_ch, struct rte_export *export)
   struct pipe_proto *p = (void *) src_ch->proto;
   struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
 
-  if (!export->new && !export->old)
+  if (!RTE_EXPORT_IS_OK(export))
     return;
+
+  const net_addr *net = export->new.attrs ? export->new.net : export->old.net;
 
   if (dst->table->pipe_busy)
     {
       log(L_ERR "Pipe loop detected when sending %N to table %s",
-	  export->net, dst->table->name);
+	  net, dst->table->name);
       return;
     }
 
-  if (export->new)
+  if (export->new.attrs)
     {
-      rta *a = alloca(rta_size(export->new->attrs));
-      memcpy(a, export->new->attrs, rta_size(export->new->attrs));
+      rta *a = alloca(rta_size(export->new.attrs));
+      memcpy(a, export->new.attrs, rta_size(export->new.attrs));
 
       a->cached = 0;
       a->uc = 0;
       a->hostentry = NULL;
 
       rte e0 = {
-	.attrs = rta_lookup(a),
+	.attrs = a,
+	.src = export->new.src,
+	.net = net,
       };
 
       src_ch->table->pipe_busy = 1;
-      rte_update(dst, export->net, &e0);
+      rte_update(dst, &e0);
       src_ch->table->pipe_busy = 0;
     }
   else
     {
       src_ch->table->pipe_busy = 1;
-      rte_withdraw(dst, export->net, export->old_src);
+      rte_withdraw(dst, net, export->old.src);
       src_ch->table->pipe_busy = 0;
     }
 }
 
 static int
-pipe_preexport(struct proto *P, rte *e)
+pipe_preexport(struct channel *src_ch, rte *e UNUSED)
 {
-  struct proto *pp = e->sender->proto;
+  struct pipe_proto *p = (void *) src_ch->proto;
+  struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
 
-  if (pp == P)
-    return -1;	/* Avoid local loops automatically */
+  /* Avoid pipe loops */
+  if (dst->table->pipe_busy)
+    return -1;
 
   return 0;
 }

@@ -196,7 +196,7 @@ struct rt_subscription {
 #define NHU_DIRTY	3
 
 typedef struct network {
-  struct rte *routes;			/* Available routes for this network */
+  struct rte_storage *routes;			/* Available routes for this network */
   struct fib_node n;			/* FIB flags reserved for kernel syncer */
 } net;
 
@@ -228,40 +228,60 @@ struct hostentry {
 };
 
 typedef struct rte {
-  struct rte *next;
+  struct rta *attrs;			/* Attributes of this route */
+  const net_addr *net;			/* Network this RTE belongs to */
+  struct rte_src *src;			/* Route source that created the route */
+} rte;
+
+struct rte_storage {
+  struct rte_storage *next;		/* Next in chain */
+
+  struct rta *attrs;			/* Attributes of this route */
   net *net;				/* Network this RTE belongs to */
   struct rte_src *src;			/* Route source that created the route */
+
   struct channel *sender;		/* Channel used to send the route to the routing table */
-  struct rta *attrs;			/* Attributes of this route */
   u32 id;				/* Table specific route id */
   byte flags;				/* Flags (REF_...) */
   byte pflags;				/* Protocol-specific flags */
   btime lastmod;			/* Last modified */
-} rte;
-
-/* Route export structure. Protocols get this structure as an information about
- * new routes on the channel. */
-
-struct rte_export {
-  net_addr *net;			/* Network information */
-  rte *new;				/* New route (NULL for withdraw) */
-  struct rte_src *new_src;		/* New route src (kept if route is rejected by preexport or filter) */
-  rte *old;				/* Old route (only if export table is on) */
-  struct rte_src *old_src;		/* Old route src */
 };
 
-#define REF_COW		1		/* Copy this rte on write */
 #define REF_FILTERED	2		/* Route is rejected by import filter */
 #define REF_STALE	4		/* Route is stale in a refresh cycle */
 #define REF_DISCARD	8		/* Route is scheduled for discard */
 #define REF_MODIFY	16		/* Route is scheduled for modify */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
-static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED); }
+static inline int rte_is_valid(const struct rte_storage *r) { return r && !(r->flags & REF_FILTERED); }
 
 /* Route just has REF_FILTERED flag */
-static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); }
+static inline int rte_is_filtered(const struct rte_storage *r) { return !!(r->flags & REF_FILTERED); }
 
+/* Route export structure. Protocols get this structure as an information about
+ * new routes on the channel.
+ *
+ * In new:
+ *    if all fields are set then the route is to be exported,
+ *    if all fields are set but attrs == NULL then this route has been filtered out,
+ *    if all fields are NULL then there is no route at all to announce.
+ *
+ * In old:
+ *    if all fields are set then this is the complete previously exported route,
+ *    if all fields are set but attrs == NULL then this route was exported last time
+ *	 but we don't run filters on it once more to get the modified version,
+ *    if all fields are NULL then there was no route at all to withdraw.
+ */
+
+struct rte_export {
+  rte new;				/* New route */
+  rte old;				/* Old route */
+  u32 new_id, old_id;			/* Table specific route id for channel-private use */
+};
+
+#define RTE_EXPORT_NEW_OK(ep)	(!!ep->new.attrs)
+#define RTE_EXPORT_OLD_OK(ep)	(!!ep->old.net)
+#define RTE_EXPORT_IS_OK(ep)	(RTE_EXPORT_NEW_OK(ep) || RTE_EXPORT_OLD_OK(ep))
 
 /* Types of route announcement, also used as flags */
 #define RA_UNDEF	0		/* Undefined RA type */
@@ -279,19 +299,18 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 /**
  * rte_update - enter a new update to a routing table
  * @c: channel doing the update
- * @net: network address
  * @rte: a &rte representing the new route
  *
  * This function imports a new route to the appropriate table (via the channel).
- * Table keys are @net (obligatory) and @rte->attrs->src.
- * Both the @net and @rte pointers can be local.
+ * Table keys are @rte->net (obligatory) and @rte->src.
+ * The @rte pointer can be local as well as @rte->net. The @rte->src must be
+ * either the protocol's main_source, or looked-up by rt_get_source().
+ * The @rte pointer must be writable.
  *
- * The route attributes (@rte->attrs) are obligatory. They can be also allocated
- * locally. Anyway, if you use an already-cached attribute object, you shall
- * call rta_clone() on that object yourself. (This semantics may change in future.)
- *
- * If the route attributes are local, you may set @rte->attrs->src to NULL, then
- * the protocol's default route source will be supplied.
+ * For an update, the route attributes (@rte->attrs) are obligatory.
+ * They can be also allocated locally. If you use an already-cached
+ * attribute object, this function returns keeping your reference
+ * for yourself. No attributes means withdraw.
  *
  * When rte_update() gets a route, it automatically validates it. This includes
  * checking for validity of the given network and next hop addresses and also
@@ -305,21 +324,11 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
  * All memory used for temporary allocations is taken from a special linpool
  * @rte_update_pool and freed when rte_update() finishes.
  */
-void rte_update(struct channel *c, const net_addr *net, struct rte *rte);
-
-/**
- * rte_withdraw - withdraw a route from a routing table
- * @c: channel doing the withdraw
- * @net: network address
- * @src: the route source identifier
- *
- * This function withdraws a previously announced route from the table.
- * No import filter is called. This function is idempotent. If no route
- * is found under the given key, it does nothing.
- *
- * If @src is NULL, the protocol's default route source is used.
- */
-void rte_withdraw(struct channel *c, const net_addr *net, struct rte_src *src);
+void rte_update(struct channel *c, struct rte *rte) NONNULL(1,2);
+static inline void rte_withdraw(struct channel *c, const net_addr *net, struct rte_src *src)
+{
+  rte e = { .net = net, .src = src}; rte_update(c, &e);
+}
 
 extern list routing_tables;
 struct config;
@@ -338,18 +347,18 @@ static inline net *net_find_valid(rtable *tab, const net_addr *addr)
 static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
-rte *rte_find(net *net, struct rte_src *src);
-rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
+struct rte_storage *rte_find(net *net, struct rte_src *src);
+_Bool rt_export_merged(struct channel *c, net *net, rte *best, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
 void rt_modify_stale(rtable *t, struct channel *c);
 void rt_schedule_prune(rtable *t);
-void rte_dump(rte *);
-void rte_free(rte *);
-rte *rte_do_cow(rte *);
-rte *rte_store(rte *);
-static inline rte * rte_cow(rte *r) { return (r->flags & REF_COW) ? rte_do_cow(r) : r; }
-rte *rte_cow_rta(rte *r, linpool *lp);
+void rte_dump(struct rte_storage *);
+void rte_free(struct rte_storage *);
+struct rte_storage *rte_store(const rte *, net *n);
+void rte_copy_metadata(struct rte_storage *dest, struct rte_storage *src);
+static inline rte rte_copy(const struct rte_storage *r)
+{ return (rte) { .attrs = r->attrs, .net = r->net->n.addr, .src = r->src }; }
 void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
@@ -358,7 +367,7 @@ void rt_feed_channel_abort(struct channel *c);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
-int rte_update_out(struct channel *c, const net_addr *n, struct rte_src *src, rte *new, rte **old_exported, int refeed);
+int rte_update_out(struct channel *c, rte *new, rte *old, struct rte_storage **old_stored, int refeed);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
 
@@ -679,7 +688,7 @@ void rta_dump(rta *);
 void rta_dump_all(void);
 void rta_show(struct cli *, rta *);
 
-u32 rt_get_igp_metric(rte *rt);
+u32 rt_get_igp_metric(struct rta *);
 struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
 void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls);
 
