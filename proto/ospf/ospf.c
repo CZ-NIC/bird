@@ -478,7 +478,7 @@ ospf_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
   rte *e = *new;
 
   /* Reject our own routes */
-  if (e->attrs->src->proto == P)
+  if (e->src->proto == P)
     return -1;
 
   /* Do not export routes to stub areas */

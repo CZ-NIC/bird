@@ -1633,7 +1633,7 @@ int
 bgp_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
 {
   rte *e = *new;
-  struct proto *SRC = e->attrs->src->proto;
+  struct proto *SRC = e->src->proto;
   struct bgp_proto *p = (struct bgp_proto *) P;
   struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (struct bgp_proto *) SRC : NULL;
 
@@ -1688,7 +1688,7 @@ bgp_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
 static ea_list *
 bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *attrs0, struct linpool *pool)
 {
-  struct proto *SRC = e->attrs->src->proto;
+  struct proto *SRC = e->src->proto;
   struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (void *) SRC : NULL;
   struct bgp_export_state s = { .proto = p, .channel = c, .pool = pool, .src = src, .route = e, .mpls = c->desc->mpls };
   ea_list *attrs = attrs0;
@@ -1843,7 +1843,7 @@ bgp_get_neighbor(rte *r)
     return as;
 
   /* If AS_PATH is not defined, we treat rte as locally originated */
-  struct bgp_proto *p = (void *) r->attrs->src->proto;
+  struct bgp_proto *p = (void *) r->src->proto;
   return p->cf->confederation ?: p->local_as;
 }
 
@@ -1873,8 +1873,8 @@ rte_stale(rte *r)
 int
 bgp_rte_better(rte *new, rte *old)
 {
-  struct bgp_proto *new_bgp = (struct bgp_proto *) new->attrs->src->proto;
-  struct bgp_proto *old_bgp = (struct bgp_proto *) old->attrs->src->proto;
+  struct bgp_proto *new_bgp = (struct bgp_proto *) new->src->proto;
+  struct bgp_proto *old_bgp = (struct bgp_proto *) old->src->proto;
   eattr *x, *y;
   u32 n, o;
 
@@ -2018,8 +2018,8 @@ bgp_rte_better(rte *new, rte *old)
 int
 bgp_rte_mergable(rte *pri, rte *sec)
 {
-  struct bgp_proto *pri_bgp = (struct bgp_proto *) pri->attrs->src->proto;
-  struct bgp_proto *sec_bgp = (struct bgp_proto *) sec->attrs->src->proto;
+  struct bgp_proto *pri_bgp = (struct bgp_proto *) pri->src->proto;
+  struct bgp_proto *sec_bgp = (struct bgp_proto *) sec->src->proto;
   eattr *x, *y;
   u32 p, s;
 
@@ -2100,7 +2100,7 @@ same_group(rte *r, u32 lpref, u32 lasn)
 static inline int
 use_deterministic_med(rte *r)
 {
-  struct proto *P = r->attrs->src->proto;
+  struct proto *P = r->src->proto;
   return (P->proto == &proto_bgp) && ((struct bgp_proto *) P)->cf->deterministic_med;
 }
 

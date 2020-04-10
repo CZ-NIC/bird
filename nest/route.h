@@ -215,6 +215,7 @@ struct hostentry {
 typedef struct rte {
   struct rte *next;
   net *net;				/* Network this RTE belongs to */
+  struct rte_src *src;			/* Route source that created the route */
   struct channel *sender;		/* Channel used to send the route to the routing table */
   struct rta *attrs;			/* Attributes of this route */
   u32 id;				/* Table specific route id */
@@ -429,7 +430,6 @@ typedef struct rta {
   u32 uc;				/* Use count */
   u32 hash_key;				/* Hash over important fields */
   struct ea_list *eattrs;		/* Extended Attribute chain */
-  struct rte_src *src;			/* Route source that created the route */
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
   ip_addr from;				/* Advertising router */
   u32 igp_metric;			/* IGP metric to next hop (for iBGP routes) */

@@ -144,7 +144,6 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   {
     /* Update */
     rta a0 = {
-      .src = p->p.main_source,
       .pref = p->p.main_channel->preference,
       .source = RTS_RIP,
       .scope = SCOPE_UNIVERSE,
@@ -209,6 +208,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 
     rte e0 = {
       .attrs = &a0,
+      .src = p->p.main_source,
     };
 
     rte_update(p->p.main_channel, en->n.addr, &e0);

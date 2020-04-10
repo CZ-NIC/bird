@@ -53,7 +53,6 @@ static void
 static_announce_rte(struct static_proto *p, struct static_route *r)
 {
   rta *a = allocz(RTA_MAX_SIZE);
-  a->src = p->p.main_source;
   a->source = RTS_STATIC;
   a->scope = SCOPE_UNIVERSE;
   a->dest = r->dest;
@@ -100,7 +99,10 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
     return;
 
   /* We skip rta_lookup() here */
-  rte e0 = { .attrs = a }, *e = &e0;
+  rte e0 = {
+    .attrs = a,
+    .src = p->p.main_source,
+  }, *e = &e0;
 
   if (r->cmds)
     f_eval_rte(r->cmds, &e, static_lp);
@@ -250,7 +252,7 @@ static void
 static_remove_rte(struct static_proto *p, struct static_route *r)
 {
   if (r->state)
-    rte_withdraw(p->p.main_channel, r->net, NULL);
+    rte_withdraw(p->p.main_channel, r->net, p->p.main_source);
 
   static_reset_rte(p, r);
 }

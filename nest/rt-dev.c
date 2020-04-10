@@ -77,7 +77,6 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 
       rta a0 = {
 	/* Use iface ID as local source ID */
-	.src = rt_get_source(P, ad->iface->index),
 	.pref = c->preference,
 	.source = RTS_DEVICE,
 	.scope = SCOPE_UNIVERSE,
@@ -85,6 +84,7 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 	.nh.iface = ad->iface,
       };
       rte e0 = {
+	.src = rt_get_source(P, ad->iface->index),
 	.attrs = &a0,
       };
       rte_update(c, net, &e0);
