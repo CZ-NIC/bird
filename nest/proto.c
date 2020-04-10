@@ -704,8 +704,8 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   c->out_limit = cf->out_limit;
 
   // c->ra_mode = cf->ra_mode;
-  c->merge_limit = cf->merge_limit;
   c->preference = cf->preference;
+  c->merge_limit = cf->merge_limit;
   c->in_keep_filtered = cf->in_keep_filtered;
 
   channel_verify_limits(c);

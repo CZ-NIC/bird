@@ -85,9 +85,10 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
       };
       rte e0 = {
 	.src = rt_get_source(P, ad->iface->index),
+	.net = net,
 	.attrs = &a0,
       };
-      rte_update(c, net, &e0);
+      rte_update(c, &e0);
     }
 }
 

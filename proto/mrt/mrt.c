@@ -418,7 +418,7 @@ mrt_rib_table_header(struct mrt_table_dump_state *s, net_addr *n)
 }
 
 static void
-mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
+mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r, struct rte_storage *er)
 {
   buffer *b = &s->buf;
   uint peer = 0;
@@ -437,7 +437,7 @@ mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
 
   /* Peer Index and Originated Time */
   mrt_put_u16(b, peer);
-  mrt_put_u32(b, (r->lastmod + s->time_offset) TO_S);
+  mrt_put_u32(b, (er->lastmod + s->time_offset) TO_S);
 
   /* Path Identifier */
   if (s->add_path)
@@ -459,7 +459,7 @@ mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
 
     if (alen < 0)
     {
-      mrt_log(s, "Attribute list too long for %N", r->net->n.addr);
+      mrt_log(s, "Attribute list too long for %N", r->net);
       alen = 0;
     }
 
@@ -483,8 +483,7 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
   mrt_init_message(&s->buf, MRT_TABLE_DUMP_V2, subtype);
   mrt_rib_table_header(s, n->n.addr);
 
-  rte *rt, *rt0;
-  for (rt0 = n->routes; rt = rt0; rt0 = rt0->next)
+  for (struct rte_storage *rt = n->routes; rt; rt = rt->next)
   {
     if (rte_is_filtered(rt))
       continue;
@@ -496,11 +495,10 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
       continue;
     }
 
-    if (f_run(s->filter, &rt, s->linpool, 0) <= F_ACCEPT)
-      mrt_rib_table_entry(s, rt);
+    rte e = rte_copy(rt);
 
-    if (rt != rt0)
-      rte_free(rt);
+    if (f_run(s->filter, &e, s->linpool, 0) <= F_ACCEPT)
+      mrt_rib_table_entry(s, &e, rt);
 
     lp_flush(s->linpool);
   }
