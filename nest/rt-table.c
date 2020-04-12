@@ -449,7 +449,7 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
   if (silent && bmap_test(&c->export_reject_map, rt0->id))
     return NULL;
 
-  v = p->preexport ? p->preexport(p, &rt, pool) : 0;
+  v = p->preexport ? p->preexport(p, rt) : 0;
   if (v < 0)
     {
       if (silent)

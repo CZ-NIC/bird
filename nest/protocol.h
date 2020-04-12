@@ -197,10 +197,11 @@ struct proto {
    *	   ifa_notify	Notify protocol about interface address changes.
    *	   rt_notify	Notify protocol about routing table updates.
    *	   neigh_notify	Notify protocol about neighbor cache events.
-   *	   preexport  Called as the first step of the route exporting process.
-   *			It can construct a new rte, add private attributes and
-   *			decide whether the route shall be exported: 1=yes, -1=no,
-   *			0=process it through the export filter set by the user.
+   *	   preexport	Called as the first step of the route exporting process.
+   *			It can decide whether the route shall be exported:
+   *			  -1 = reject,
+   *			   0 = continue to export filter
+   *			   1 = accept immediately
    *	   reload_routes   Request channel to reload all its routes to the core
    *			(using rte_update()). Returns: 0=reload cannot be done,
    *			1= reload is scheduled and will happen (asynchronously).
@@ -212,7 +213,7 @@ struct proto {
   void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
   void (*rt_notify)(struct channel *, struct rte_export *);
   void (*neigh_notify)(struct neighbor *neigh);
-  int (*preexport)(struct proto *, struct rte **rt, struct linpool *pool);
+  int (*preexport)(struct proto *, struct rte *rt);
   void (*reload_routes)(struct channel *);
   void (*feed_begin)(struct channel *, int initial);
   void (*feed_end)(struct channel *);
