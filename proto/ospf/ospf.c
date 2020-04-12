@@ -107,7 +107,7 @@
 #include <stdlib.h>
 #include "ospf.h"
 
-static int ospf_preexport(struct proto *P, rte **new, struct linpool *pool);
+static int ospf_preexport(struct proto *P, rte *new);
 static void ospf_reload_routes(struct channel *C);
 static int ospf_rte_better(struct rte *new, struct rte *old);
 static void ospf_disp(timer *timer);
@@ -471,11 +471,10 @@ ospf_disp(timer * timer)
  * import to the filters.
  */
 static int
-ospf_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
+ospf_preexport(struct proto *P, rte *e)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_area *oa = ospf_main_area(p);
-  rte *e = *new;
 
   /* Reject our own routes */
   if (e->src->proto == P)

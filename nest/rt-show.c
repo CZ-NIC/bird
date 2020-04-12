@@ -153,7 +153,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       else if (d->export_mode)
 	{
 	  struct proto *ep = ec->proto;
-	  int ic = ep->preexport ? ep->preexport(ep, &e, c->show_pool) : 0;
+	  int ic = ep->preexport ? ep->preexport(ep, e) : 0;
 
 	  if (ec->ra_mode == RA_OPTIMAL || ec->ra_mode == RA_MERGED)
 	    pass = 1;

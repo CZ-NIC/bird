@@ -2100,10 +2100,10 @@ babel_kick_timer(struct babel_proto *p)
 
 
 static int
-babel_preexport(struct proto *P, struct rte **new, struct linpool *pool UNUSED)
+babel_preexport(struct proto *P, struct rte *new)
 {
   /* Reject our own unreachable routes */
-  if (((*new)->attrs->dest == RTD_UNREACHABLE) && ((*new)->src->proto == P))
+  if ((new->attrs->dest == RTD_UNREACHABLE) && (new->src->proto == P))
     return -1;
 
   return 0;
