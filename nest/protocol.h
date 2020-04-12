@@ -200,10 +200,11 @@ struct proto {
    *	   neigh_notify	Notify protocol about neighbor cache events.
    *	   make_tmp_attrs  Add attributes to rta from from private attrs stored in rte. The route and rta MUST NOT be cached.
    *	   store_tmp_attrs Store private attrs back to rte and undef added attributes. The route and rta MUST NOT be cached.
-   *	   preexport  Called as the first step of the route exporting process.
-   *			It can construct a new rte, add private attributes and
-   *			decide whether the route shall be exported: 1=yes, -1=no,
-   *			0=process it through the export filter set by the user.
+   *	   preexport	Called as the first step of the route exporting process.
+   *			It can decide whether the route shall be exported:
+   *			  -1 = reject,
+   *			   0 = continue to export filter
+   *			   1 = accept immediately
    *	   reload_routes   Request channel to reload all its routes to the core
    *			(using rte_update()). Returns: 0=reload cannot be done,
    *			1= reload is scheduled and will happen (asynchronously).
@@ -217,7 +218,7 @@ struct proto {
   void (*neigh_notify)(struct neighbor *neigh);
   void (*make_tmp_attrs)(struct rte *rt, struct linpool *pool);
   void (*store_tmp_attrs)(struct rte *rt, struct linpool *pool);
-  int (*preexport)(struct proto *, struct rte **rt, struct linpool *pool);
+  int (*preexport)(struct proto *, struct rte *rt);
   void (*reload_routes)(struct channel *);
   void (*feed_begin)(struct channel *, int initial);
   void (*feed_end)(struct channel *);

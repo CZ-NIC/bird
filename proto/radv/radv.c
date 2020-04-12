@@ -391,12 +391,12 @@ radv_net_match_trigger(struct radv_config *cf, net *n)
 }
 
 int
-radv_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
+radv_preexport(struct proto *P, rte *new)
 {
   // struct radv_proto *p = (struct radv_proto *) P;
   struct radv_config *cf = (struct radv_config *) (P->cf);
 
-  if (radv_net_match_trigger(cf, (*new)->net))
+  if (radv_net_match_trigger(cf, new->net))
     return RIC_PROCESS;
 
   if (cf->propagate_routes)
