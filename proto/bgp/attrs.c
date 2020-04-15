@@ -577,6 +577,7 @@ bgp_encode_aggregator(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
     /* Prepare 16-bit AGGREGATOR (from 32-bit one) in a temporary buffer */
     byte *dst = alloca(6);
     len = aggregator_32to16(dst, data);
+    data = dst;
   }
 
   return bgp_put_attr(buf, size, BA_AGGREGATOR, a->flags, data, len);

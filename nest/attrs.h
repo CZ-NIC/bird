@@ -111,7 +111,7 @@ static inline struct adata *
 aggregator_to_old(struct linpool *pool, const struct adata *a)
 {
   struct adata *d = lp_alloc_adata(pool, 8);
-  put_u32(d->data, 0xFFFF);
+  put_u32(d->data, AS_TRANS);
   memcpy(d->data + 4, a->data + 4, 4);
   return d;
 }
