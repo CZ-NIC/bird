@@ -75,7 +75,7 @@ pipe_rt_notify(struct channel *src_ch, struct rte_export *export)
       a->hostentry = NULL;
 
       rte e0 = {
-	.attrs = rta_lookup(a),
+	.attrs = a,
 	.src = export->new.src,
 	.net = net,
       };

@@ -98,7 +98,6 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   if (r->state == SRS_CLEAN)
     return;
 
-  /* We skip rta_lookup() here */
   rte e0 = {
     .attrs = a,
     .src = p->p.main_source,

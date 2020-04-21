@@ -178,6 +178,9 @@ perf_loop(void *data)
 
   clock_gettime(CLOCK_MONOTONIC, &ts_withdraw);
 
+  for (uint i=0; i<N; i++)
+    rta_free(p->data[i].a);
+
   s64 gentime = timediff(&ts_begin, &ts_generated);
   s64 updatetime = timediff(&ts_generated, &ts_update);
   s64 withdrawtime = timediff(&ts_update, &ts_withdraw);
