@@ -501,6 +501,12 @@ bt_fmt_ipa(char *buf, size_t size, const void *data)
     bsnprintf(buf, size, "(null)");
 }
 
+void
+bt_format_net(char *buf, size_t size, const void *data)
+{
+  bsnprintf(buf, size, "%N", (const net_addr *) data);
+}
+
 int
 bt_is_char(byte c)
 {
