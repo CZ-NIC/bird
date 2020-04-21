@@ -165,6 +165,8 @@ struct bt_batch {
 void bt_fmt_str(char *buf, size_t size, const void *data);
 void bt_fmt_unsigned(char *buf, size_t size, const void *data);
 void bt_fmt_ipa(char *buf, size_t size, const void *data);
+void bt_format_net(char *buf, size_t size, const void *data);
+
 int bt_assert_batch__(struct bt_batch *opts);
 int bt_is_char(byte c);
 
