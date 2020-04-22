@@ -15,8 +15,17 @@ AC_DEFUN([BIRD_CHECK_THREAD_LOCAL],
       )
     ],
     [bird_cv_thread_local=yes],
+    AC_COMPILE_IFELSE([
+      AC_LANG_PROGRAM(
+	[
+	  static __thread int x = 42;
+	],
+	[]
+      )
+    ],
+    [bird_cv_thread_local=__thread],    ],
     [bird_cv_thread_local=no]
-    )
+    ))
   )
 ])
 
