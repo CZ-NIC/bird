@@ -23,6 +23,7 @@
 #include <libgen.h>
 
 #include "nest/bird.h"
+#include "lib/gc.h"
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
@@ -584,6 +585,13 @@ async_shutdown(void)
 void
 sysdep_shutdown_done(void)
 {
+#if 0
+  /* Garbage collector needn't be run on exit */
+  gc_exit();
+  while (gc_cleanup())
+    ;
+#endif
+
   unlink_pid_file();
   unlink(path_control_socket);
   log_msg(L_FATAL "Shutdown completed");
@@ -908,6 +916,8 @@ main(int argc, char **argv)
   write_pid_file();
 
   signal_init();
+
+  gc_enter();
 
   config_commit(conf, RECONFIG_HARD, 0);
 
