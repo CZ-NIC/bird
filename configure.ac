@@ -120,7 +120,9 @@ fi
 
 BIRD_CHECK_THREAD_LOCAL
 if test "$bird_cv_thread_local" = no ; then
-  AC_MSG_ERROR([Thread-local storage not available]) 
+  AC_MSG_ERROR([Thread-local storage not available])
+elif test "$bird_cv_thread_local" != yes ; then
+  CFLAGS="$CFLAGS -D_Thread_local=$bird_cv_thread_local"
 fi
 
 BIRD_CHECK_PTHREADS
