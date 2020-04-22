@@ -368,3 +368,8 @@ test-ospf-custom:
   <<: *test-base
   variables:
     TEST_NAME: cf-ospf-custom
+
+test-bgp-base:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-base
