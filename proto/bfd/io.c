@@ -18,6 +18,7 @@
 #include "proto/bfd/io.h"
 
 #include "lib/buffer.h"
+#include "lib/gc.h"
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
@@ -482,6 +483,7 @@ birdloop_main(void *arg)
 
   birdloop_set_current(loop);
 
+  gc_enter();
   pthread_mutex_lock(&loop->mutex);
   while (1)
   {
@@ -501,6 +503,7 @@ birdloop_main(void *arg)
 
     loop->poll_active = 1;
     pthread_mutex_unlock(&loop->mutex);
+    gc_exit();
 
   try:
     rv = poll(loop->poll_fd.data, loop->poll_fd.used, timeout);
@@ -511,6 +514,7 @@ birdloop_main(void *arg)
       die("poll: %m");
     }
 
+    gc_enter();
     pthread_mutex_lock(&loop->mutex);
     loop->poll_active = 0;
 
@@ -528,6 +532,7 @@ birdloop_main(void *arg)
 
   loop->stop_called = 0;
   pthread_mutex_unlock(&loop->mutex);
+  gc_exit();
 
   return NULL;
 }

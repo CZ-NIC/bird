@@ -32,6 +32,7 @@
 #include <netinet/icmp6.h>
 
 #include "nest/bird.h"
+#include "lib/gc.h"
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
@@ -2256,10 +2257,18 @@ io_loop(void)
 	  continue;
 	}
 
+      gc_exit();
+
+      /* Run the garbage collector before waiting for new data */
+      while (gc_cleanup())
+	;
+
       /* And finally enter poll() to find active sockets */
       watchdog_stop();
       pout = poll(pfd, nfds, poll_tout);
       watchdog_start();
+
+      gc_enter();
 
       if (pout < 0)
 	{
