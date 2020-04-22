@@ -39,9 +39,6 @@
 
 struct timeloop main_timeloop;
 
-
-#ifdef USE_PTHREADS
-
 #include <pthread.h>
 
 /* Data accessed and modified from proto/bfd/io.c */
@@ -61,14 +58,6 @@ timeloop_init_current(void)
 }
 
 void wakeup_kick_current(void);
-
-#else
-
-/* Just use main timelooop */
-static inline struct timeloop * timeloop_current(void) { return &main_timeloop; }
-static inline void timeloop_init_current(void) { }
-
-#endif
 
 btime
 current_time(void)
