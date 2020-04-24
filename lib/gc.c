@@ -8,6 +8,7 @@
  */
 
 #include "lib/gc.h"
+#include "lib/resource.h"
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,17 +26,22 @@ static u64 gc_offset = 0;
 #define RTOI(round) ((round) - gc_offset)
 #define ITOR(index) ((index) + gc_offset)
 
+#define DEFAULT_GC_CALLBACKS  4
+
+struct gc_callback_set **gc_callbacks = NULL;
+static uint gc_callbacks_cnt = 0, gc_callbacks_size = 0;
+
 void gc_enter(void)
 {
-  ASSERT(gc_current_round == 0);
-
   /* Everything is done locked. */
   pthread_mutex_lock(&gc_mutex);
+
+  ASSERT(gc_current_round == 0);
 
   /* No usecount keeper? Just create some. */
   if (!gc_uc)
   {
-    gc_uc = malloc(sizeof(u32) * DEFAULT_CONCURRENT_GC_ROUNDS);
+    gc_uc = xmalloc(sizeof(u32) * DEFAULT_CONCURRENT_GC_ROUNDS);
     gc_uc_size = DEFAULT_CONCURRENT_GC_ROUNDS;
   }
 
@@ -56,7 +62,7 @@ void gc_enter(void)
     }
     else
       /* Not enough. Realloc. */
-      gc_uc = realloc(gc_uc, (gc_uc_size *= 2) * sizeof(u32));
+      gc_uc = xrealloc(gc_uc, (gc_uc_size *= 2) * sizeof(u32));
   }
 
   u64 index = RTOI(gc_current_round);
@@ -65,17 +71,22 @@ void gc_enter(void)
    * plus one for this thread. */
   gc_uc[index] = 1 + (index ? gc_uc[index - 1] : 0);
 
+  /* Run hooks */
+  for (uint i=0; i<gc_callbacks_cnt; i++)
+    if (gc_callbacks[i])
+      CALL(gc_callbacks[i]->enter, gc_current_round, gc_callbacks[i]);
+
   /* We're done now. Unlock. */
   pthread_mutex_unlock(&gc_mutex);
 }
 
 void gc_exit(void)
 {
-  ASSERT(gc_current_round <= gc_last_round);
-  ASSERT(gc_current_round >= gc_oldest_round);
-
   /* Everything is done locked. */
   pthread_mutex_lock(&gc_mutex);
+
+  ASSERT(gc_current_round <= gc_last_round);
+  ASSERT(gc_current_round >= gc_oldest_round);
 
   for (
       u64 index = RTOI(gc_current_round),
@@ -87,6 +98,12 @@ void gc_exit(void)
     ASSERT(gc_uc[index] > 0);
     gc_uc[index]--;
   }
+
+  /* Run hooks */
+  for (uint i=0; i<gc_callbacks_cnt; i++)
+    if (gc_callbacks[i])
+      CALL(gc_callbacks[i]->exit, gc_current_round, gc_callbacks[i]);
+
 
   gc_current_round = 0;
 
@@ -112,7 +129,10 @@ _Bool gc_cleanup(void)
   if (oldest_round_uc > 0)
     return 0;
 
-  /* TODO: Do the real cleanup here */
+  /* Run hooks */
+  for (uint i=0; i<gc_callbacks_cnt; i++)
+    if (gc_callbacks[i])
+      CALL(gc_callbacks[i]->cleanup, gc_current_round, gc_callbacks[i]);
 
   /* This round is done */
   pthread_mutex_lock(&gc_mutex);
@@ -120,4 +140,33 @@ _Bool gc_cleanup(void)
   pthread_mutex_unlock(&gc_mutex);
 
   return 1;
+}
+
+void gc_register(struct gc_callback_set *gcs)
+{
+  pthread_mutex_lock(&gc_mutex);
+
+  if (!gc_callbacks)
+    gc_callbacks = xmalloc(sizeof(struct gc_callback_set *) * (gc_callbacks_size = DEFAULT_GC_CALLBACKS));
+
+  if (gc_callbacks_cnt == gc_callbacks_size)
+    gc_callbacks = xrealloc(gc_callbacks, sizeof(struct gc_callback_set *) * (gc_callbacks_size *= 2));
+
+  gc_callbacks[gc_callbacks_cnt++] = gcs;
+
+  pthread_mutex_unlock(&gc_mutex);
+}
+
+void gc_unregister(struct gc_callback_set *gcs)
+{
+  pthread_mutex_lock(&gc_mutex);
+
+  for (uint i=0; i<gc_callbacks_cnt; i++)
+    if (gc_callbacks[i] == gcs)
+    {
+      gc_callbacks[i] = NULL;
+      break;
+    }
+
+  pthread_mutex_unlock(&gc_mutex);
 }
