@@ -447,7 +447,8 @@ typedef struct rta {
   ip_addr from;				/* Advertising router */
   u32 igp_metric;			/* IGP metric to next hop (for iBGP routes) */
   u16 cached:1;				/* Are attributes cached? */
-  u16 source:7;				/* Route source (RTS_...) */
+  u16 obsolete:1;			/* This rta is going to be freed */
+  u16 source:6;				/* Route source (RTS_...) */
   u16 scope:4;				/* Route scope (SCOPE_... -- see ip.h) */
   u16 dest:4;				/* Route destination type (RTD_...) */
   word pref;
@@ -666,9 +667,16 @@ static inline size_t rta_size(const rta *a) { return sizeof(rta) + sizeof(u32)*a
 #define RTA_MAX_SIZE (sizeof(rta) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
 rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */
 static inline int rta_is_cached(rta *r) { return r->cached; }
-static inline rta *rta_clone(rta *r) { r->uc++; return r; }
-void rta__free(rta *r);
-static inline void rta_free(rta *r) { if (r && !--r->uc) rta__free(r); }
+static inline rta *rta_clone(rta *r)
+{
+  if (r->obsolete)
+    return rta_lookup(r);
+
+  r->uc++;
+  return r;
+}
+void rta_unlink(rta *r);
+static inline void rta_free(rta *r) { if (r && !--r->uc) rta_unlink(r); }
 rta *rta_do_cow(rta *o, linpool *lp);
 static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta_do_cow(r, lp) : r; }
 void rta_dump(rta *);

@@ -51,12 +51,14 @@
 #include "nest/cli.h"
 #include "nest/attrs.h"
 #include "lib/alloca.h"
+#include "lib/gc.h"
 #include "lib/hash.h"
 #include "lib/idm.h"
 #include "lib/resource.h"
 #include "lib/string.h"
 
 #include <stddef.h>
+#include <pthread.h>
 
 const adata null_adata;		/* adata of length 0 */
 
@@ -1076,6 +1078,16 @@ static uint rta_cache_size = 32;
 static uint rta_cache_limit;
 static uint rta_cache_mask;
 static rta **rta_hash_table;
+static pthread_mutex_t rta_hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+struct rta_gc_chain {
+  node n;
+  u64 round;
+  rta *chain;
+};
+
+static _Thread_local struct rta_gc_chain *rta_gc_current_chain = NULL;
+static list rta_gc_chain_list;
 
 static void
 rta_alloc_hash(void)
@@ -1132,6 +1144,7 @@ rta_copy(rta *o)
   rta *r = sl_alloc(rta_slab(o));
 
   memcpy(r, o, rta_size(o));
+  r->obsolete = 0;
   r->uc = 1;
   r->nh.next = nexthop_copy(o->nh.next);
   r->eattrs = ea_list_copy(o->eattrs);
@@ -1188,15 +1201,30 @@ rta_lookup(rta *o)
   rta *r;
   uint h;
 
+  if (o->cached && o->obsolete)
+  {
+    pthread_mutex_lock(&rta_hash_mutex);
+    ASSERT(o->uc == 0);
+    h = o->hash_key;
+    goto copy;
+  }
+
   ASSERT(!o->cached);
   if (o->eattrs)
     ea_normalize(o->eattrs);
 
   h = rta_hash(o);
+
+  pthread_mutex_lock(&rta_hash_mutex);
+
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next)
     if (r->hash_key == h && rta_same(r, o))
-      return rta_clone(r);
+    {
+      r = rta_clone(r);
+      goto done;
+    }
 
+copy:
   r = rta_copy(o);
   r->hash_key = h;
   r->cached = 1;
@@ -1206,17 +1234,36 @@ rta_lookup(rta *o)
   if (++rta_cache_count > rta_cache_limit)
     rta_rehash();
 
+done:
+  pthread_mutex_unlock(&rta_hash_mutex);
   return r;
 }
 
 void
-rta__free(rta *a)
+rta_unlink(rta *a)
 {
+  pthread_mutex_lock(&rta_hash_mutex);
   ASSERT(rta_cache_count && a->cached);
+  ASSERT(rta_gc_current_chain);
+
+  a->obsolete = 1;
   rta_cache_count--;
+
   *a->pprev = a->next;
   if (a->next)
     a->next->pprev = a->pprev;
+
+  a->pprev = NULL;
+  a->next = rta_gc_current_chain->chain;
+  rta_gc_current_chain->chain = a;
+
+  pthread_mutex_unlock(&rta_hash_mutex);
+}
+
+static void
+rta_do_free(rta *a)
+{
+  ASSERT(a->obsolete);
   rt_unlock_hostentry(a->hostentry);
   if (a->nh.next)
     nexthop_free(a->nh.next);
@@ -1224,6 +1271,67 @@ rta__free(rta *a)
   a->cached = 0;
   sl_free(rta_slab(a), a);
 }
+
+static void
+rta_gc_enter(u64 round, struct gc_callback_set *gcs UNUSED)
+{
+  pthread_mutex_lock(&rta_hash_mutex);
+  ASSERT(rta_gc_current_chain == NULL);
+  rta_gc_current_chain = mb_alloc(rta_pool, sizeof(struct rta_gc_chain));
+  *rta_gc_current_chain = (struct rta_gc_chain) { .round = round };
+
+  add_tail(&rta_gc_chain_list, &rta_gc_current_chain->n);
+
+  pthread_mutex_unlock(&rta_hash_mutex);
+}
+
+static void
+rta_gc_exit(u64 round UNUSED, struct gc_callback_set *gcs UNUSED)
+{
+  if (!rta_gc_current_chain->chain)
+  {
+    pthread_mutex_lock(&rta_hash_mutex);
+    rem_node(&rta_gc_current_chain->n);
+    mb_free(rta_gc_current_chain);
+    pthread_mutex_unlock(&rta_hash_mutex);
+  }
+
+  rta_gc_current_chain = NULL;
+}
+
+static void
+rta_gc_cleanup(u64 round, struct gc_callback_set *gcs UNUSED)
+{
+  pthread_mutex_lock(&rta_hash_mutex);
+  node *n = HEAD(rta_gc_chain_list);
+  if (!NODE_VALID(n))
+    goto done;
+
+  struct rta_gc_chain *rgc = SKIP_BACK(struct rta_gc_chain, n, n);
+  if (rgc->round > round)
+    goto done;
+
+  ASSERT(rgc->round == round);
+  rem_node(n);
+
+  rta *a, *nxt = rgc->chain;
+  while (a = nxt)
+  {
+    nxt = a->next;
+    rta_do_free(a);
+  }
+
+  mb_free(rgc);
+
+done:
+  pthread_mutex_unlock(&rta_hash_mutex);
+}
+
+static struct gc_callback_set rta_gc_callback_set = {
+  .enter = rta_gc_enter,
+  .exit = rta_gc_exit,
+  .cleanup = rta_gc_cleanup,
+};
 
 rta *
 rta_do_cow(rta *o, linpool *lp)
@@ -1332,8 +1440,12 @@ rta_init(void)
   nexthop_slab_[2] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*2);
   nexthop_slab_[3] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK);
 
+  init_list(&rta_gc_chain_list);
+  gc_register(&rta_gc_callback_set);
+
   rta_alloc_hash();
   rte_src_init();
+
 }
 
 /*
