@@ -1555,8 +1555,8 @@ static inline int
 sk_sendmsg(sock *s)
 {
   struct iovec iov = {s->tbuf, s->tpos - s->tbuf};
-  byte cmsg_buf[CMSG_TX_SPACE];
-  sockaddr dst;
+  static _Thread_local byte cmsg_buf[CMSG_TX_SPACE] = {};
+  static _Thread_local sockaddr dst = {};
   int flags = 0;
 
   sockaddr_fill(&dst, s->af, s->daddr, s->iface, s->dport);
