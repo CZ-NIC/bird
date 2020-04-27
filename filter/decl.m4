@@ -32,6 +32,7 @@ m4_divert(-1)m4_dnl
 #
 #	101	content of per-inst struct
 #	102	constructor arguments
+#	110	constructor attributes
 #	103	constructor body
 #	104	dump line item content
 #		(there may be nothing in dump-line content and
@@ -45,6 +46,7 @@ m4_divert(-1)m4_dnl
 #	Here are macros to allow you to _divert to the right directions.
 m4_define(FID_STRUCT_IN, `m4_divert(101)')
 m4_define(FID_NEW_ARGS, `m4_divert(102)')
+m4_define(FID_NEW_ATTRIBUTES, `m4_divert(110)')
 m4_define(FID_NEW_BODY, `m4_divert(103)')
 m4_define(FID_DUMP_BODY, `m4_divert(104)m4_define([[FID_DUMP_BODY_EXISTS]])')
 m4_define(FID_LINEARIZE_BODY, `m4_divert(105)')
@@ -106,15 +108,18 @@ FID_STRUCT_IN()m4_dnl
       struct f_inst * f$1;
 FID_NEW_ARGS()m4_dnl
   , struct f_inst * f$1
+FID_NEW_ATTRIBUTES()m4_dnl
+NONNULL(m4_eval($1+1))
 FID_NEW_BODY()m4_dnl
 whati->f$1 = f$1;
-for (const struct f_inst *child = f$1; child; child = child->next) {
-  what->size += child->size;
+const struct f_inst *child$1 = f$1;
+do {
+  what->size += child$1->size;
 FID_IFCONST([[
-  if (child->fi_code != FI_CONSTANT)
+  if (child$1->fi_code != FI_CONSTANT)
     constargs = 0;
 ]])
-}
+} while (child$1 = child$1->next);
 FID_LINEARIZE_BODY
 pos = linearize(dest, whati->f$1, pos);
 FID_INTERPRET_BODY()')
@@ -309,7 +314,9 @@ m4_undivert(107)m4_dnl
 FID_NEW()m4_dnl				 Constructor and interpreter code together
 FID_HIC(
 [[m4_dnl				 Public declaration of constructor in H file
-struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
+struct f_inst *
+m4_undivert(110)m4_dnl
+f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
 m4_undivert(102)m4_dnl
 );]],
 [[m4_dnl				 The one case in The Big Switch inside interpreter
@@ -321,7 +328,9 @@ m4_undivert(102)m4_dnl
   break;
 ]],
 [[m4_dnl				 Constructor itself
-struct f_inst *f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
+struct f_inst *
+m4_undivert(110)m4_dnl
+f_new_inst_]]INST_NAME()[[(enum f_instruction_code fi_code
 m4_undivert(102)m4_dnl
 )
   {
