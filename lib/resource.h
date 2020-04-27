@@ -15,6 +15,7 @@
 
 typedef struct resource {
   node n;				/* Inside resource pool */
+  struct pool *parent;			/* Parent resource pool */
   struct resclass *class;		/* Resource class */
 } resource;
 

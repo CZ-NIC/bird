@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <pthread.h>
 
 #include "nest/bird.h"
 #include "lib/resource.h"
@@ -31,6 +32,7 @@
 struct pool {
   resource r;
   list inside;
+  pthread_mutex_t mutex;
   const char *name;
 };
 
@@ -66,6 +68,7 @@ rp_new(pool *p, const char *name)
   pool *z = ralloc(p, &pool_class);
   z->name = name;
   init_list(&z->inside);
+  pthread_mutex_init(&z->mutex, NULL);
   return z;
 }
 
@@ -75,6 +78,8 @@ pool_free(resource *P)
   pool *p = (pool *) P;
   resource *r, *rr;
 
+  pthread_mutex_lock(&p->mutex);
+
   r = HEAD(p->inside);
   while (rr = (resource *) r->n.next)
     {
@@ -82,6 +87,8 @@ pool_free(resource *P)
       xfree(r);
       r = rr;
     }
+
+  pthread_mutex_unlock(&p->mutex);
 }
 
 static void
@@ -90,11 +97,14 @@ pool_dump(resource *P)
   pool *p = (pool *) P;
   resource *r;
 
+  pthread_mutex_lock(&p->mutex);
+
   debug("%s\n", p->name);
   indent += 3;
   WALK_LIST(r, p->inside)
     rdump(r);
   indent -= 3;
+  pthread_mutex_unlock(&p->mutex);
 }
 
 static size_t
@@ -104,8 +114,10 @@ pool_memsize(resource *P)
   resource *r;
   size_t sum = sizeof(pool) + ALLOC_OVERHEAD;
 
+  pthread_mutex_lock(&p->mutex);
   WALK_LIST(r, p->inside)
     sum += rmemsize(r);
+  pthread_mutex_unlock(&p->mutex);
 
   return sum;
 }
@@ -116,9 +128,12 @@ pool_lookup(resource *P, unsigned long a)
   pool *p = (pool *) P;
   resource *r, *q;
 
+  pthread_mutex_lock(&p->mutex);
   WALK_LIST(r, p->inside)
     if (r->class->lookup && (q = r->class->lookup(r, a)))
       return q;
+  pthread_mutex_unlock(&p->mutex);
+
   return NULL;
 }
 
@@ -136,9 +151,16 @@ void rmove(void *res, pool *p)
 
   if (r)
     {
-      if (r->n.next)
+      if (r->parent)
+      {
+	pthread_mutex_lock(&r->parent->mutex);
         rem_node(&r->n);
+	pthread_mutex_unlock(&r->parent->mutex);
+      }
+
+      pthread_mutex_lock(&p->mutex);
       add_tail(&p->inside, &r->n);
+      pthread_mutex_unlock(&p->mutex);
     }
 }
 
@@ -160,8 +182,13 @@ rfree(void *res)
   if (!r)
     return;
 
-  if (r->n.next)
+  if (r->parent)
+  {
+    pthread_mutex_lock(&r->parent->mutex);
     rem_node(&r->n);
+    pthread_mutex_unlock(&r->parent->mutex);
+  }
+
   r->class->free(r);
   r->class = NULL;
   xfree(r);
@@ -221,8 +248,14 @@ ralloc(pool *p, struct resclass *c)
   bzero(r, c->size);
 
   r->class = c;
+  r->parent = p;
+
   if (p)
+  {
+    pthread_mutex_lock(&p->mutex);
     add_tail(&p->inside, &r->n);
+    pthread_mutex_unlock(&p->mutex);
+  }
   return r;
 }
 
@@ -262,6 +295,7 @@ resource_init(void)
   root_pool.r.class = &pool_class;
   root_pool.name = "Root";
   init_list(&root_pool.inside);
+  pthread_mutex_init(&root_pool.mutex, NULL);
 }
 
 /**
@@ -340,8 +374,11 @@ mb_alloc(pool *p, unsigned size)
   struct mblock *b = xmalloc(sizeof(struct mblock) + size);
 
   b->r.class = &mb_class;
+  b->r.parent = p;
   b->r.n = (node) {};
+  pthread_mutex_lock(&p->mutex);
   add_tail(&p->inside, &b->r.n);
+  pthread_mutex_unlock(&p->mutex);
   b->size = size;
   return b->data;
 }
@@ -387,8 +424,10 @@ mb_realloc(void *m, unsigned size)
 {
   struct mblock *b = SKIP_BACK(struct mblock, data, m);
 
+  pthread_mutex_lock(&b->r.parent->mutex);
   b = xrealloc(b, sizeof(struct mblock) + size);
   update_node(&b->r.n);
+  pthread_mutex_unlock(&b->r.parent->mutex);
   b->size = size;
   return b->data;
 }
