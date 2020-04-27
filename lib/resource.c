@@ -334,7 +334,7 @@ static struct resclass mb_class = {
  * chunk, not to the resource, hence you have to free it using
  * mb_free(), not rfree().
  */
-void *
+void * NONNULL(1)
 mb_alloc(pool *p, unsigned size)
 {
   struct mblock *b = xmalloc(sizeof(struct mblock) + size);
@@ -359,7 +359,7 @@ mb_alloc(pool *p, unsigned size)
  * chunk, not to the resource, hence you have to free it using
  * mb_free(), not rfree().
  */
-void *
+void * NONNULL(1)
 mb_allocz(pool *p, unsigned size)
 {
   void *x = mb_alloc(p, size);

@@ -50,8 +50,8 @@ extern pool root_pool;
 
 /* Normal memory blocks */
 
-void *mb_alloc(pool *, unsigned size);
-void *mb_allocz(pool *, unsigned size);
+void *mb_alloc(pool *, unsigned size) NONNULL(1);
+void *mb_allocz(pool *, unsigned size) NONNULL(1);
 void *mb_realloc(void *m, unsigned size);
 void mb_free(void *);
 
@@ -64,7 +64,7 @@ typedef struct lp_state {
   byte *ptr;
 } lp_state;
 
-linpool *lp_new(pool *, unsigned blk);
+linpool *lp_new(pool *, unsigned blk) NONNULL(1);
 void *lp_alloc(linpool *, unsigned size);	/* Aligned */
 void *lp_allocu(linpool *, unsigned size);	/* Unaligned */
 void *lp_allocz(linpool *, unsigned size);	/* With clear */

@@ -65,8 +65,8 @@ static struct resclass lp_class = {
  * The linear pool consists of a list of memory chunks of size at least
  * @blk.
  */
-linpool
-*lp_new(pool *p, uint blk)
+linpool * NONNULL(1)
+lp_new(pool *p, uint blk)
 {
   linpool *m = ralloc(p, &lp_class);
   m->chunk_size = blk;
