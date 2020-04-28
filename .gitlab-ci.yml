@@ -378,3 +378,8 @@ test-bgp-base:
   <<: *test-base
   variables:
     TEST_NAME: cf-bgp-base
+
+test-bgp-auth:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-auth
