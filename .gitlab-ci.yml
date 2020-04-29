@@ -141,9 +141,9 @@ docker_ubuntu-18_04-amd64:
     IMG_NAME: "ubuntu-18.04-amd64"
   <<: *docker_build
  
-docker_ubuntu-19_04-amd64:
+docker_ubuntu-19_10-amd64:
   variables:
-    IMG_NAME: "ubuntu-19.04-amd64"
+    IMG_NAME: "ubuntu-19.10-amd64"
   <<: *docker_build
 
 docker_opensuse-15.0-amd64:
