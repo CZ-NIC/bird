@@ -273,7 +273,7 @@ assert_assign(struct f_lval *lval, struct f_inst *expr, const char *start, const
 CF_DECLS
 
 CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
-	ACCEPT, REJECT, ERROR, QUITBIRD,
+	ACCEPT, REJECT, ERROR,
 	INT, BOOL, IP, TYPE, PREFIX, RD, PAIR, QUAD, EC, LC,
 	SET, STRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
@@ -822,8 +822,7 @@ term:
  ;
 
 break_command:
-   QUITBIRD { $$ = F_QUITBIRD; }
- | ACCEPT { $$ = F_ACCEPT; }
+   ACCEPT { $$ = F_ACCEPT; }
  | REJECT { $$ = F_REJECT; }
  | ERROR { $$ = F_ERROR; }
  ;

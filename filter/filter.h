@@ -24,7 +24,6 @@ enum filter_return {
   F_ACCEPT,   /* Need to preserve ordering: accepts < rejects! */
   F_REJECT,
   F_ERROR,
-  F_QUITBIRD,
 };
 
 static inline const char *filter_return_str(const enum filter_return fret) {
@@ -36,7 +35,6 @@ static inline const char *filter_return_str(const enum filter_return fret) {
     FRS(F_ACCEPT);
     FRS(F_REJECT);
     FRS(F_ERROR);
-    FRS(F_QUITBIRD);
 #undef FRS
     default: bug("This shall not happen");
   }

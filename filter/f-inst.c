@@ -479,8 +479,6 @@
     FID_MEMBER(enum filter_return, fret, f1->fret != f2->fret, "%s", filter_return_str(item->fret));
 
     switch (whati->fret) {
-    case F_QUITBIRD:
-      die( "Filter asked me to die" );
     case F_ACCEPT:	/* Should take care about turning ACCEPT into MODIFY */
     case F_ERROR:
     case F_REJECT:	/* Maybe print complete route along with reason to reject route? */

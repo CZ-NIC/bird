@@ -1698,9 +1698,6 @@ protocol sections.
 	<tag><label id="print">print|printn <m/expr/ [<m/, expr.../]</tag>
 	Prints given expressions; useful mainly while debugging filters. The
 	<cf/printn/ variant does not terminate the line.
-
-	<tag><label id="quitbird">quitbird</tag>
-	Terminates BIRD. Useful when debugging the filter interpreter.
 </descrip>
 
 
