@@ -162,7 +162,6 @@ typedef struct rtable {
   char *name;				/* Name of this table */
   list channels;			/* List of attached channels (struct channel) */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
-  int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
 
@@ -185,6 +184,7 @@ typedef struct rtable {
   byte nhu_state;			/* Next Hop Update state */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
+  struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
 
   list subscribers;			/* Subscribers for notifications */
   struct timer *settle_timer;		/* Settle time for notifications */
@@ -243,6 +243,9 @@ typedef struct rte {
   u32 id;				/* Table specific route id */
   byte flags;				/* Table-specific flags */
   byte pflags;				/* Protocol-specific flags */
+  u8 generation;			/* If this route import is based on other previously exported route,
+					   this value should be 1 + MAX(generation of the parent routes).
+					   Otherwise the route is independent and this value is zero. */
 } rte;
 
 struct rte_storage {

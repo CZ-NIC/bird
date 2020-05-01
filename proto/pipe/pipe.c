@@ -56,15 +56,6 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
   if (!new && !old)
     return;
 
-  if (dst->table->pipe_busy)
-    {
-      log(L_ERR "Pipe loop detected when sending %N to table %s",
-	  n, dst->table->name);
-      return;
-    }
-
-  src_ch->table->pipe_busy = 1;
-
   if (new)
     {
       rta *a = alloca(rta_size(new->attrs));
@@ -76,23 +67,34 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
       rte e0 = {
 	.attrs = a,
 	.src = new->src,
+	.generation = new->generation + 1,
       };
 
       rte_update(dst, n, &e0, new->src);
     }
   else
     rte_update(dst, n, NULL, old->src);
-
-  src_ch->table->pipe_busy = 0;
 }
 
 static int
 pipe_preexport(struct channel *c, rte *e)
 {
-  struct proto *pp = e->sender->proto;
+  struct pipe_proto *p = (void *) c->proto;
 
-  if (pp == c->proto)
-    return -1;	/* Avoid local loops automatically */
+  /* Avoid direct loopbacks */
+  if (e->sender == c)
+    return -1;
+
+  /* Indirection check */
+  uint max_generation = ((struct pipe_config *) p->p.cf)->max_generation;
+  if (e->generation >= max_generation)
+  {
+    log_rl(&p->rl_gen, L_ERR "Route overpiped (%u hops of %u configured in %s) in table %s: %N %s/%u:%u",
+	e->generation, max_generation, c->proto->name,
+	c->table->name, e->net, e->src->proto->name, e->src->private_id, e->src->global_id);
+
+    return -1;
+  }
 
   return 0;
 }
@@ -176,6 +178,8 @@ pipe_init(struct proto_config *CF)
   P->rt_notify = pipe_rt_notify;
   P->preexport = pipe_preexport;
   P->reload_routes = pipe_reload_routes;
+
+  p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 
   pipe_configure_channels(p, cf);
 
