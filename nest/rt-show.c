@@ -107,8 +107,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
   /* The Clang static analyzer complains that ec may be NULL.
    * It should be ensured to be not NULL by rt_show_prepare_tables() */
-  if (d->export_mode)
-    ASSUME(ec);
+  ASSUME(!d->export_mode || ec);
 
   int first = 1;
   int pass = 0;
