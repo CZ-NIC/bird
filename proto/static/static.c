@@ -105,12 +105,13 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
     .attrs = a,
     .src = static_get_source(p, r->index),
     .net = r->net,
+    .sender = p->p.main_channel,
   };
 
   if (r->cmds)
     f_eval_rte(r->cmds, &e0, static_lp);
 
-  rte_update(p->p.main_channel, &e0);
+  rte_update(&e0);
   r->state = SRS_CLEAN;
 
   if (r->cmds)

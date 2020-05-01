@@ -674,10 +674,11 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       .net = e->n.addr,
       .src = p->p.main_source,
       .attrs = &a0,
+      .sender = c,
     };
 
     e->unreachable = 0;
-    rte_update(c, &e0);
+    rte_update(&e0);
   }
   else if (e->valid && (e->router_id != p->router_id))
   {
@@ -693,10 +694,11 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       .net = e->n.addr,
       .src = p->p.main_source,
       .attrs = &a0,
+      .sender = c,
     };
 
     e->unreachable = 1;
-    rte_update(c, &e0);
+    rte_update(&e0);
   }
   else
   {

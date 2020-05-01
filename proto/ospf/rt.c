@@ -2098,7 +2098,8 @@ again1:
 	rte e0 = {
 	  .attrs = rta_lookup(&a0),
 	  .src = p->p.main_source,
-	  .net = nf->fn.addr, 
+	  .net = nf->fn.addr,
+	  .sender = p->p.main_channel,
 	};
 
 	rta_free(nf->old_rta);
@@ -2107,7 +2108,7 @@ again1:
 	DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
 	    a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
 
-	rte_update(p->p.main_channel, &e0);
+	rte_update(&e0);
       }
     }
     else if (nf->old_rta)

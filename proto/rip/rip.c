@@ -210,10 +210,11 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     rte e0 = {
       .attrs = &a0,
       .src = p->p.main_source,
-      .net = en->n.addr, 
+      .net = en->n.addr,
+      .sender = p->p.main_channel,
     };
 
-    rte_update(p->p.main_channel, &e0);
+    rte_update(&e0);
   }
   else
     rte_withdraw(p->p.main_channel, en->n.addr, p->p.main_source);

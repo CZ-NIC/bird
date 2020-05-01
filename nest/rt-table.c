@@ -291,6 +291,7 @@ rte_store(const rte *r, net *n)
     .attrs = r->attrs,
     .net = n,
     .src = r->src,
+    .sender = r->sender,
   };
 
   rt_lock_source(e->src);
@@ -306,7 +307,6 @@ rte_store(const rte *r, net *n)
 void
 rte_copy_metadata(struct rte_storage *dest, struct rte_storage *src)
 {
-  dest->sender = src->sender;
   dest->flags = src->flags & REF_FILTERED;
   dest->pflags = src->pflags;
   dest->lastmod = src->lastmod;
@@ -891,9 +891,10 @@ rte_same(struct rte_storage *x, rte *y, _Bool fy)
     rte_is_filtered(x) == fy;
 }
 
-static void NONNULL(1,2,3)
-rte_recalculate(struct channel *c, net *net, rte *new, _Bool filtered)
+static void NONNULL(1,2)
+rte_recalculate(net *net, rte *new, _Bool filtered)
 {
+  struct channel *c = new->sender;
   struct proto *p = c->proto;
   struct rtable *table = c->table;
   struct proto_stats *stats = &c->stats;
@@ -1028,7 +1029,6 @@ rte_recalculate(struct channel *c, net *net, rte *new, _Bool filtered)
 
   if (new->attrs) {
     new_stored = rte_store(new, net);
-    new_stored->sender = c;
 
     if (filtered)
       new_stored->flags |= REF_FILTERED;
@@ -1184,31 +1184,33 @@ rte_update_unlock(void)
     lp_flush(rte_update_pool);
 }
 
-static int NONNULL(1,2) rte_update_in(struct channel *c, rte *new);
-static void NONNULL(1,2) rte_update2(struct channel *c, rte *new);
+static int NONNULL(1) rte_update_in(rte *new);
+static void NONNULL(1) rte_update2(rte *new);
 
-void NONNULL(1,2)
-rte_update(struct channel *c, rte *new)
+void NONNULL(1)
+rte_update(rte *new)
 {
-  ASSERT(c->channel_state == CS_UP);
+  ASSERT(new->sender);
+  ASSERT(new->sender->channel_state == CS_UP);
   ASSERT(new->net);
   ASSERT(new->src);
 
   if (new->attrs && !new->attrs->pref)
   {
     ASSERT(!new->attrs->cached);
-    new->attrs->pref = c->preference;
+    new->attrs->pref = new->sender->preference;
   }
 
-  if (c->in_table && !rte_update_in(c, new))
+  if (new->sender->in_table && !rte_update_in(new))
     return;
 
-  rte_update2(c, new);
+  rte_update2(new);
 }
 
-static void NONNULL(1,2)
-rte_update2(struct channel *c, rte *new)
+static void NONNULL(1)
+rte_update2(rte *new)
 {
+  struct channel *c = new->sender;
   // struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
   const struct filter *filter = c->in_filter;
@@ -1288,7 +1290,7 @@ rte_update2(struct channel *c, rte *new)
   }
 
   /* And recalculate the best route */
-  rte_recalculate(c, nn, new, filtered);
+  rte_recalculate(nn, new, filtered);
   rte_update_unlock();
   return;
 
@@ -1327,10 +1329,11 @@ rte_modify(struct rte_storage *old)
     .net = old->net->n.addr,
     .src = old->src,
     .attrs = old->sender->proto->rte_modify(old, rte_update_pool),
+    .sender = old->sender,
   };
 
   if (new.attrs != old->attrs)
-    rte_recalculate(old->sender, old->net, &new, old->src);
+    rte_recalculate(old->net, &new, old->src);
 
   rte_update_unlock();
 }
@@ -1682,8 +1685,8 @@ again:
 
 	    /* Discard the route */
 	    rte_update_lock();
-	    rte ew = { .net = e->net->n.addr, .src = e->src };
-	    rte_recalculate(e->sender, e->net, &ew, 0);
+	    rte ew = { .net = e->net->n.addr, .src = e->src, .sender = e->sender, };
+	    rte_recalculate(e->net, &ew, 0);
 	    rte_update_unlock();
 
 	    limit--;
@@ -1880,6 +1883,7 @@ rt_next_hop_update_rte(struct rte_storage *old)
     .attrs = a,
     .net = old->net->n.addr,
     .src = old->src,
+    .sender = old->sender,
   };
 
   rte_trace_in(D_ROUTES, old->sender, &e, "updated");
@@ -2240,8 +2244,9 @@ rt_feed_channel_abort(struct channel *c)
  */
 
 static int
-rte_update_in(struct channel *c, rte *new)
+rte_update_in(rte *new)
 {
+  struct channel *c = new->sender;
   struct rtable *tab = c->in_table;
   struct rte_storage *old, **pos;
   net *net;
@@ -2312,7 +2317,6 @@ rte_update_in(struct channel *c, rte *new)
 
   /* Insert the new rte */
   struct rte_storage *e = rte_store(new, net);
-  e->sender = c;
   e->lastmod = current_time();
   e->next = *pos;
   *pos = e;
@@ -2356,7 +2360,7 @@ rt_reload_channel(struct channel *c)
       }
 
       rte eloc = rte_copy(e);
-      rte_update2(c, &eloc);
+      rte_update2(&eloc);
     }
 
     c->reload_next_rte = NULL;
@@ -2508,7 +2512,6 @@ rte_update_out(struct channel *c, struct rte_export_internal *e)
   if (new->attrs)
   {
     struct rte_storage *es = rte_store(new, net);
-    es->sender = c;
     es->lastmod = current_time();
     es->id = e->new->id;
     es->next = *pos;

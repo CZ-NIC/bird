@@ -78,10 +78,11 @@ pipe_rt_notify(struct channel *src_ch, struct rte_export *export)
 	.attrs = a,
 	.src = export->new.src,
 	.net = net,
+	.sender = dst,
       };
 
       src_ch->table->pipe_busy = 1;
-      rte_update(dst, &e0);
+      rte_update(&e0);
       src_ch->table->pipe_busy = 0;
     }
   else
@@ -93,13 +94,17 @@ pipe_rt_notify(struct channel *src_ch, struct rte_export *export)
 }
 
 static int
-pipe_preexport(struct channel *src_ch, rte *e UNUSED)
+pipe_preexport(struct channel *src_ch, rte *e)
 {
   struct pipe_proto *p = (void *) src_ch->proto;
   struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
 
   /* Avoid pipe loops */
   if (dst->table->pipe_busy)
+    return -1;
+
+  /* Avoid direct loopbacks */
+  if (e->sender == src_ch)
     return -1;
 
   return 0;

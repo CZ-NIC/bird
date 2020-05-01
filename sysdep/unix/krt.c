@@ -303,9 +303,10 @@ krt_learn_announce_update(struct krt_proto *p, struct rte_storage *e)
     .attrs = e->attrs,
     .src = p->p.main_source,
     .net = e->net->n.addr,
+    .sender = p->p.main_channel,
   };
 
-  rte_update(p->p.main_channel, &e0);
+  rte_update(&e0);
 }
 
 static void
