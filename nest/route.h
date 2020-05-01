@@ -216,6 +216,7 @@ typedef struct rte {
   struct rta *attrs;			/* Attributes of this route */
   const net_addr *net;			/* Network this RTE belongs to */
   struct rte_src *src;			/* Route source that created the route */
+  struct channel *sender;		/* Channel used to send the route to the routing table */
 } rte;
 
 struct rte_storage {
@@ -224,8 +225,8 @@ struct rte_storage {
   struct rta *attrs;			/* Attributes of this route */
   net *net;				/* Network this RTE belongs to */
   struct rte_src *src;			/* Route source that created the route */
-
   struct channel *sender;		/* Channel used to send the route to the routing table */
+
   u32 id;				/* Table specific route id */
   byte flags;				/* Flags (REF_...) */
   byte pflags;				/* Protocol-specific flags */
@@ -287,7 +288,6 @@ static inline enum rte_export_kind {
 
 /**
  * rte_update - enter a new update to a routing table
- * @c: channel doing the update
  * @rte: a &rte representing the new route
  *
  * This function imports a new route to the appropriate table (via the channel).
@@ -313,10 +313,10 @@ static inline enum rte_export_kind {
  * All memory used for temporary allocations is taken from a special linpool
  * @rte_update_pool and freed when rte_update() finishes.
  */
-void rte_update(struct channel *c, struct rte *rte) NONNULL(1,2);
+void rte_update(struct rte *rte) NONNULL(1);
 static inline void rte_withdraw(struct channel *c, const net_addr *net, struct rte_src *src)
 {
-  rte e = { .net = net, .src = src}; rte_update(c, &e);
+  rte e = { .sender = c, .net = net, .src = src}; rte_update(&e);
 }
 
 extern list routing_tables;
@@ -345,7 +345,14 @@ void rte_free(struct rte_storage *);
 struct rte_storage *rte_store(const rte *, net *n);
 void rte_copy_metadata(struct rte_storage *dest, struct rte_storage *src);
 static inline rte rte_copy(const struct rte_storage *r)
-{ return (rte) { .attrs = r->attrs, .net = r->net->n.addr, .src = r->src }; }
+{
+  return (rte) {
+    .attrs = r->attrs,
+    .net = r->net->n.addr,
+    .src = r->src,
+    .sender = r->sender,
+  };
+}
 void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);

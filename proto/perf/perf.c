@@ -166,8 +166,9 @@ perf_loop(void *data)
       .attrs = p->data[i].a,
       .src = p->p.main_source,
       .net = &(p->data[i].net),
+      .sender = P->main_channel,
     };
-    rte_update(P->main_channel, &e0);
+    rte_update(&e0);
   }
 
   clock_gettime(CLOCK_MONOTONIC, &ts_update);
