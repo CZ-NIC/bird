@@ -29,6 +29,42 @@
 #include "nest/bird.h"
 #include "lib/lists.h"
 
+LIST_INLINE int
+check_list(list *l, node *n)
+{
+  if (!l)
+  {
+    ASSERT_DIE(n);
+    ASSERT_DIE(n->prev);
+
+    do { n = n->prev; } while (n->prev);
+
+    l = SKIP_BACK(list, head_node, n);
+  }
+
+  int seen = 0;
+
+  ASSERT_DIE(l->null == NULL);
+  ASSERT_DIE(l->head != NULL);
+  ASSERT_DIE(l->tail != NULL);
+
+  node *prev = &l->head_node, *cur = l->head, *next = l->head->next;
+  while (next)
+  {
+    if (cur == n)
+      seen++;
+    ASSERT_DIE(cur->prev == prev);
+    prev = cur;
+    cur = next;
+    next = next->next;
+  }
+
+  ASSERT_DIE(cur == &(l->tail_node));
+  ASSERT_DIE(!n || (seen == 1));
+
+  return 1;
+}
+
 /**
  * add_tail - append a node to a list
  * @l: linked list
@@ -39,6 +75,10 @@
 LIST_INLINE void
 add_tail(list *l, node *n)
 {
+  EXPENSIVE_CHECK(check_list(l, NULL));
+  ASSUME(n->prev == NULL);
+  ASSUME(n->next == NULL);
+
   node *z = l->tail;
 
   n->next = &l->tail_node;
@@ -57,6 +97,10 @@ add_tail(list *l, node *n)
 LIST_INLINE void
 add_head(list *l, node *n)
 {
+  EXPENSIVE_CHECK(check_list(l, NULL));
+  ASSUME(n->prev == NULL);
+  ASSUME(n->next == NULL);
+
   node *z = l->head;
 
   n->next = z;
@@ -76,6 +120,10 @@ add_head(list *l, node *n)
 LIST_INLINE void
 insert_node(node *n, node *after)
 {
+  EXPENSIVE_CHECK(check_list(l, after));
+  ASSUME(n->prev == NULL);
+  ASSUME(n->next == NULL);
+
   node *z = after->next;
 
   n->next = z;
@@ -93,6 +141,8 @@ insert_node(node *n, node *after)
 LIST_INLINE void
 rem_node(node *n)
 {
+  EXPENSIVE_CHECK(check_list(NULL, n));
+
   node *z = n->prev;
   node *x = n->next;
 
@@ -103,24 +153,20 @@ rem_node(node *n)
 }
 
 /**
- * replace_node - replace a node in a list with another one
- * @old: node to be removed
- * @new: node to be inserted
+ * update_node - update node after calling realloc on it
+ * @n: node to be updated
  *
- * Replaces node @old in the list it's linked in with node @new.  Node
- * @old may be a copy of the original node, which is not accessed
- * through the list. The function could be called with @old == @new,
- * which just fixes neighbors' pointers in the case that the node
- * was reallocated.
+ * Fixes neighbor pointers.
  */
 LIST_INLINE void
-replace_node(node *old, node *new)
+update_node(node *n)
 {
-  old->next->prev = new;
-  old->prev->next = new;
+  ASSUME(n->next->prev == n->prev->next);
 
-  new->prev = old->prev;
-  new->next = old->next;
+  n->next->prev = n;
+  n->prev->next = n;
+
+  EXPENSIVE_CHECK(check_list(NULL, n));
 }
 
 /**
@@ -149,6 +195,9 @@ init_list(list *l)
 LIST_INLINE void
 add_tail_list(list *to, list *l)
 {
+  EXPENSIVE_CHECK(check_list(to, NULL));
+  EXPENSIVE_CHECK(check_list(l, NULL));
+
   node *p = to->tail;
   node *q = l->head;
 
@@ -157,6 +206,8 @@ add_tail_list(list *to, list *l)
   q = l->tail;
   q->next = &to->tail_node;
   to->tail = q;
+
+  EXPENSIVE_CHECK(check_list(to, NULL));
 }
 
 LIST_INLINE uint
@@ -164,6 +215,8 @@ list_length(list *l)
 {
   uint len = 0;
   node *n;
+
+  EXPENSIVE_CHECK(check_list(l, NULL));
 
   WALK_LIST(n, *l)
     len++;

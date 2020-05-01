@@ -340,6 +340,7 @@ mb_alloc(pool *p, unsigned size)
   struct mblock *b = xmalloc(sizeof(struct mblock) + size);
 
   b->r.class = &mb_class;
+  b->r.n = (node) {};
   add_tail(&p->inside, &b->r.n);
   b->size = size;
   return b->data;
@@ -387,7 +388,7 @@ mb_realloc(void *m, unsigned size)
   struct mblock *b = SKIP_BACK(struct mblock, data, m);
 
   b = xrealloc(b, sizeof(struct mblock) + size);
-  replace_node(&b->r.n, &b->r.n);
+  update_node(&b->r.n);
   b->size = size;
   return b->data;
 }

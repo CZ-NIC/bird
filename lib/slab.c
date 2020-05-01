@@ -216,8 +216,11 @@ sl_new_head(slab *s)
   struct sl_obj *no;
   uint n = s->objs_per_slab;
 
-  h->first_free = o;
-  h->num_full = 0;
+  *h = (struct sl_head) {
+    .first_free = o,
+    .num_full = 0,
+  };
+
   while (n--)
     {
       o->slab = h;

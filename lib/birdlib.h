@@ -72,6 +72,7 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define NORET __attribute__((noreturn))
 #define UNUSED __attribute__((unused))
 #define PACKED __attribute__((packed))
+#define NONNULL(...) __attribute__((nonnull((__VA_ARGS__))))
 
 #ifndef HAVE_THREAD_LOCAL
 #define _Thread_local
@@ -162,11 +163,22 @@ void debug(const char *msg, ...);	/* Printf to debug output */
 #define DBG(x, y...) do { } while(0)
 #endif
 
+#define ASSERT_DIE(x) do { if (!(x)) bug("Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)
+
+#define EXPENSIVE_CHECK(x) /* intentionally left blank */
+
 #ifdef DEBUGGING
-#define ASSERT(x) do { if (!(x)) bug("Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)
+#define ASSERT(x) ASSERT_DIE(x)
+#define ASSUME(x) ASSERT_DIE(x)
+#ifdef ENABLE_EXPENSIVE_CHECKS
+#undef EXPENSIVE_CHECK
+#define EXPENSIVE_CHECK(x) ASSERT_DIE(x)
+#endif
 #else
 #define ASSERT(x) do { if (!(x)) log(L_BUG "Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)
+#define ASSUME(x) /* intentionally left blank */
 #endif
+
 
 #ifdef DEBUGGING
 asm(
