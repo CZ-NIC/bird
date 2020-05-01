@@ -69,6 +69,7 @@ static void rt_update_hostcache(rtable *tab);
 static void rt_next_hop_update(rtable *tab);
 static inline void rt_prune_table(rtable *tab);
 
+struct tbf rl_pipe = TBF_DEFAULT_LOG_LIMITS;
 
 /* Like fib_route(), but skips empty net entries */
 static inline void *
@@ -284,6 +285,7 @@ rte_store(const rte *r, net *n)
     .net = n,
     .src = r->src,
     .sender = r->sender,
+    .generation = r->generation,
   };
 
   rt_lock_source(e->src);
@@ -921,7 +923,6 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
   struct proto *p = c->proto;
   struct rtable *table = c->table;
   struct proto_stats *stats = &c->stats;
-  static struct tbf rl_pipe = TBF_DEFAULT_LOG_LIMITS;
   struct rte_storage *old_best = net->routes;
   struct rte_storage *old = NULL, *before_old = NULL;
 
@@ -936,16 +937,25 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
        * a different sender, then there are two paths from the
        * source protocol to this routing table through transparent
        * pipes, which is not allowed.
-       *
-       * We log that and ignore the route. If it is withdraw, we
-       * ignore it completely (there might be 'spurious withdraws',
-       * see FIXME in do_rte_announce())
-       */
+       * We log that and ignore the route. */
       if (old->sender->proto != p)
 	{
-	  if (new->attrs)
-	      log_rl(&rl_pipe, L_ERR "Pipe collision detected when sending %N to table %s",
-		  net->n.addr, table->name);
+	  if (!old->generation && !new->generation)
+	    bug("Two protocols claim to author a route with the same rte_src in table %s: %N %s/%u:%u",
+		c->table->name, net->n.addr, old->src->proto->name, old->src->private_id, old->src->global_id);
+
+	  log_rl(&rl_pipe, L_ERR "Route source collision in table %s: %N %s/%u:%u",
+		c->table->name, net->n.addr, old->src->proto->name, old->src->private_id, old->src->global_id);
+
+	  if (config->pipe_debug)
+	  {
+	    if (old->generation)
+	      old->sender->proto->rte_track(old->sender, net->n.addr, old->src);
+
+	    if (new->generation)
+	      c->proto->rte_track(c, net->n.addr, new->src);
+	  }
+
 	  return;
 	}
 
@@ -1241,6 +1251,9 @@ rte_update2(rte *new)
 
   _Bool filtered = 0;
 
+  if (new->generation && !p->rte_track)
+    bug("Announced a non-authored route without rte_track() implemented");
+
   if (new->attrs)
     stats->imp_updates_received++;
   else
@@ -1354,6 +1367,7 @@ rte_modify(struct rte_storage *old)
     .src = old->src,
     .attrs = old->sender->proto->rte_modify(old, rte_update_pool),
     .sender = old->sender,
+    .generation = old->generation,
   };
 
   if (new.attrs != old->attrs)
@@ -1635,7 +1649,12 @@ again:
 
 	    /* Discard the route */
 	    rte_update_lock();
-	    rte ew = { .net = e->net->n.addr, .src = e->src, .sender = e->sender, };
+	    rte ew = {
+	      .net = e->net->n.addr,
+	      .src = e->src,
+	      .sender = e->sender,
+	      .generation = e->generation,
+	    };
 	    rte_recalculate(e->net, &ew, 0);
 	    rte_update_unlock();
 
@@ -1834,6 +1853,7 @@ rt_next_hop_update_rte(struct rte_storage *old)
     .net = old->net->n.addr,
     .src = old->src,
     .sender = old->sender,
+    .generation = old->generation,
   };
 
   rte_trace_in(D_ROUTES, old->sender->proto, &e, "updated");

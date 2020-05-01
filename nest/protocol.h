@@ -234,6 +234,7 @@ struct proto {
   struct rta *(*rte_modify)(struct rte_storage *, struct linpool *);
   void (*rte_insert)(struct network *, struct rte_storage *);
   void (*rte_remove)(struct network *, struct rte_storage *);
+  void (*rte_track)(struct channel *, net_addr *, struct rte_src *);
 
   /* Hic sunt protocol-specific data */
 };
