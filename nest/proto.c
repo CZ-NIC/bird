@@ -235,6 +235,8 @@ channel_schedule_feed(struct channel *c, int initial)
   c->export_state = ES_FEEDING;
   c->refeeding = !initial;
 
+  c->refeed_lastmod_min = c->refeed_lastmod_max = 0;
+
   ev_schedule(c->feed_event);
 }
 
@@ -246,16 +248,12 @@ channel_feed_loop(void *ptr)
   if (c->export_state != ES_FEEDING)
     return;
 
-  if (!c->feed_active)
-    if (c->proto->feed_begin)
-      c->proto->feed_begin(c, !c->refeeding);
+  ASSERT(!c->feed_active);
+  if (c->proto->feed_begin)
+    c->proto->feed_begin(c, !c->refeeding);
 
   // DBG("Feeding protocol %s continued\n", p->name);
-  if (!rt_feed_channel(c))
-  {
-    ev_schedule(c->feed_event);
-    return;
-  }
+  rt_feed_channel(c);
 
   /* Reset export limit if the feed ended with acceptable number of exported routes */
   struct channel_limit *l = &c->out_limit;
@@ -269,12 +267,15 @@ channel_feed_loop(void *ptr)
 
     /* Continue in feed - it will process routing table again from beginning */
     c->refeed_count = 0;
-    ev_schedule(c->feed_event);
-    return;
+    c->refeed_lastmod_max = 0;
+    rt_feed_channel(c);
   }
 
   // DBG("Feeding protocol %s finished\n", p->name);
   c->export_state = ES_READY;
+  if (c->table->total_updates > c->last_export)
+    channel_run_exports(c);
+
   // proto_log_state_change(p);
 
   if (c->proto->feed_end)
@@ -352,9 +353,16 @@ channel_stop_export(struct channel *c)
   }
 
   c->export_state = ES_DOWN;
+
+  /* Abort all regular exports */
+  if (c->export_event)
+    rfree(c->export_event);
+  c->export_event = NULL;
+
   c->stats.exp_routes = 0;
   bmap_reset(&c->export_map, 1024);
   bmap_reset(&c->export_reject_map, 1024);
+
 }
 
 
