@@ -115,6 +115,9 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
   for (struct rte_storage *er = n->routes; er; er = er->next)
     {
+      if (!er->attrs)
+	continue;
+
       if (rte_is_filtered(er) != d->filtered)
 	continue;
 

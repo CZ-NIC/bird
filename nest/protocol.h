@@ -512,6 +512,9 @@ struct channel {
   struct proto_stats stats;		/* Per-channel protocol statistics */
   u32 refeed_count;			/* Number of routes exported during refeed regardless of out_limit */
 
+  struct event *export_event;		/* Event responsible for regular export processing */
+  u64 last_export;			/* Last finished export ID */
+
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u16 preference;			/* Default route preference */
@@ -524,6 +527,7 @@ struct channel {
   u8 export_state;			/* Route export state (ES_*, see below) */
   u8 feed_active;
   u8 flush_active;
+  u8 withdraws_pending;			/* Not all withdraws have been properly exported */
   u8 refeeding;				/* We are refeeding (valid only if export_state == ES_FEEDING) */
   u8 reloadable;			/* Hook reload_routes() is allowed on the channel */
   u8 gr_lock;				/* Graceful restart mechanism should wait for this channel */

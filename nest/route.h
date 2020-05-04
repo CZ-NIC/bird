@@ -170,8 +170,12 @@ typedef struct rtable {
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
+  byte export_scheduled;		/* Export is scheduled */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
+  struct rte_update *pending_updates;	/* Route updates waiting for clearing */
+  u64 total_updates;			/* How many route changes have made it to the table */
+  u64 cleared_updates;			/* How many updates have been fully cleared */
 } rtable;
 
 #define NHU_CLEAN	0
@@ -230,19 +234,25 @@ struct rte_storage {
   struct channel *sender;		/* Channel used to send the route to the routing table */
 
   u32 id;				/* Table specific route id */
-  byte flags;				/* Flags (REF_...) */
-  byte pflags;				/* Protocol-specific flags */
+  u8 flags;				/* Flags (REF_...) */
+  u8 pflags;				/* Protocol-specific flags */
   u8 generation;			/* See struct rte */
   btime lastmod;			/* Last modified */
 };
 
+#define REF_OBSOLETE	1		/* Route is obsolete */
 #define REF_FILTERED	2		/* Route is rejected by import filter */
 #define REF_STALE	4		/* Route is stale in a refresh cycle */
 #define REF_DISCARD	8		/* Route is scheduled for discard */
 #define REF_MODIFY	16		/* Route is scheduled for modify */
 
+struct rte_update {
+  struct rte_storage *new, *old, *new_best, *old_best;
+  u64 pos;
+};
+
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
-static inline int rte_is_valid(const struct rte_storage *r) { return r && !(r->flags & REF_FILTERED); }
+static inline int rte_is_valid(const struct rte_storage *r) { return r && r->attrs && !(r->flags & REF_FILTERED); }
 
 /* Route just has REF_FILTERED flag */
 static inline int rte_is_filtered(const struct rte_storage *r) { return !!(r->flags & REF_FILTERED); }
@@ -347,6 +357,7 @@ void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 struct rte_storage **rte_find(net *net, struct rte_src *src);
 _Bool rt_export_merged(struct channel *c, net *net, rte *best, linpool *pool, int silent);
+void rt_flush_obsolete(rtable *t);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
 void rt_modify_stale(rtable *t, struct channel *c);

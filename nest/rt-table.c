@@ -71,6 +71,8 @@ static inline void rt_prune_table(rtable *tab);
 
 struct tbf rl_pipe = TBF_DEFAULT_LOG_LIMITS;
 
+#define RT_OBS_BUF_SIZE	256
+
 /* Like fib_route(), but skips empty net entries */
 static inline void *
 net_route_ip4(rtable *t, net_addr_ip4 *n)
@@ -714,7 +716,7 @@ rte_export_obtain(struct channel *c, struct rte_export_internal *e)
 
   if (!accepted)
   {
-    debug("Idempotent export.\n");
+    DBG("Idempotent export.\n");
     return 0;
   }
 
@@ -793,6 +795,16 @@ rte_export_meta(struct channel *c, struct rte_export *ep)
     }
 }
 
+
+/* Route export event
+ *
+ * In general, we first call preexport() hook of a protocol, which performs
+ * basic checks on the route (each protocol has a right to veto or force accept
+ * of the route before any filter is asked). Then we consult an export filter
+ * of the channel and verify the old route in an export map of the channel.
+ * Finally, the rt_notify() hook of the protocol gets called.
+ */
+
 static void
 rte_export(struct channel *c, struct rte_export_internal *e)
 {
@@ -816,6 +828,66 @@ cleanup:
     bmap_clear(&c->export_reject_map, e->old->id);
 }
 
+void rte_export_event(void *data)
+{
+  struct channel *c = data;
+
+  while (c->last_export < c->table->total_updates)
+  {
+    DBG("channel %s.%s: processing export %lu of %lu from table %s\n",
+	c->proto->name, c->name, c->last_export, c->table->total_updates, c->table->name);
+    u64 pos = c->last_export % RT_OBS_BUF_SIZE;
+    struct rte_update *u = &c->table->pending_updates[pos];
+
+    ASSERT(u->pos == c->last_export);
+    ASSERT(u->new);
+
+#define VALID_OR_NULL(w)  rte_is_valid(w) ? w : NULL
+
+    struct rte_export_internal ei = {
+      .net = u->new ? u->new->net : u->old->net,
+      .new = VALID_OR_NULL(u->new),
+      .old = VALID_OR_NULL(u->old),
+      .new_best = VALID_OR_NULL(u->new_best),
+      .old_best = VALID_OR_NULL(u->old_best),
+    };
+
+#undef VALID_OR_NULL
+
+    if (ei.new || ei.old || ei.new_best || ei.old_best)
+      rte_export(c, &ei);
+
+    c->last_export++;
+    ev_suspend();
+  }
+
+  rt_schedule_prune(c->table);
+}
+
+static void
+rt_run_exports(struct rtable *tab)
+{
+  tab->export_scheduled = 0;
+
+  struct channel *c;
+  node *n;
+  WALK_LIST2(c, n, tab->channels, table_node)
+    if (c->channel_state == CS_UP && c->export_state == ES_READY)
+    {
+      if (!c->export_event)
+	c->export_event = ev_new_init(c->proto->pool, rte_export_event, c);
+      ev_schedule(c->export_event);
+    }
+}
+
+static inline void
+rt_schedule_export(rtable *tab)
+{
+  if (tab->export_scheduled == 0)
+    ev_schedule(tab->rt_event);
+
+  tab->export_scheduled = 1;
+}
 
 /**
  * rte_announce - announce a routing table change
@@ -829,42 +901,18 @@ cleanup:
  * This function gets a routing table update and announces it to all protocols
  * that are connected to the same table by their channels.
  *
- * Arguments @new and @old describe the changed route and @new_best and @old_best
- * describe best routes. Other routes are not affected, but in sorted table
- * the order of other routes might change.
+ * The update is always a change of just one route in @net (which may caused a
+ * change of the best route of the network). Routes @new and @old describe the
+ * changed route and @new_best and @old_best describe best routes. Other routes
+ * are not affected, but in sorted table the order of other routes might
+ * change.
  *
- * The function announces the change to all associated channels. For each
- * channel, an appropriate preprocessing is done according to channel &ra_mode.
- * For example, %RA_OPTIMAL channels receive just changes of best routes.
- *
- * In general, we first call preexport() hook of a protocol, which performs
- * basic checks on the route (each protocol has a right to veto or force accept
- * of the route before any filter is asked). Then we consult an export filter
- * of the channel and verify the old route in an export map of the channel.
- * Finally, the rt_notify() hook of the protocol gets called.
- *
- * Note that there are also calls of rt_notify() hooks due to feed, but that is
- * done outside of scope of rte_announce().
+ * The function stores the change and schedules the appropriate events.
  */
 static void
 rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage *old,
 	     struct rte_storage *new_best, struct rte_storage *old_best)
 {
-  if (!rte_is_valid(new))
-    new = NULL;
-
-  if (!rte_is_valid(old))
-    old = NULL;
-
-  if (!rte_is_valid(new_best))
-    new_best = NULL;
-
-  if (!rte_is_valid(old_best))
-    old_best = NULL;
-
-  if (!new && !old && !new_best && !old_best)
-    return;
-
   if (new_best != old_best)
   {
     if (new_best)
@@ -876,20 +924,31 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
       rt_notify_hostcache(tab, net);
   }
 
-  struct channel *c; node *n;
-  WALK_LIST2(c, n, tab->channels, table_node)
-  {
-    if (c->export_state == ES_DOWN)
-      continue;
+  if (tab->total_updates - tab->cleared_updates >= RT_OBS_BUF_SIZE)
+    bug("Too many updates pending, not implemented yet");
 
-    struct rte_export_internal rei = {
-      .net = net,
-      .new = new, .old = old,
-      .new_best = new_best, .old_best = old_best,
-    };
-    
-    rte_export(c, &rei);
+  /* Check invariant */
+  ASSERT(!old || !(old->flags & REF_OBSOLETE));
+
+  /* Put the route update to the first empty place */
+  if (old)
+  {
+    old->next = new;
+    old->flags |= REF_OBSOLETE;
   }
+
+  u64 pos = tab->total_updates++ % RT_OBS_BUF_SIZE;
+
+  tab->pending_updates[pos] = (struct rte_update) {
+    .new = new, .old = old,
+    .new_best = new_best, .old_best = old_best,
+    .pos = pos,
+  };
+
+  DBG("put export %lu (new %p a %p old %p a %p) from table %s\n",
+      tab->total_updates, new, new ? new->attrs : NULL, old, old ? old->attrs : NULL, tab->name);
+
+  rt_schedule_export(tab);
 }
 
 static void
@@ -954,25 +1013,22 @@ rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, stru
   if (table->config->sorted)
     {
       /* If routes are sorted, just insert new route to appropriate position */
-      if (new->attrs)
-	{
-	  /* Try to insert the route to the old position or new route to beginning. */
-	  struct rte_storage **k = before_old ?: &net->routes;
+      /* Try to insert the route to the old position or new route to beginning. */
+      struct rte_storage **k = before_old ?: &net->routes;
 
-	  /* But if the new route is better than the preceeding route,
-	   * we have to start comparing from the best route. */
-	  if (k != &net->routes &&
-	      rte_better(new, SKIP_BACK(struct rte_storage, next, k)))
-	    k = &net->routes;
+      /* But if the new route is better than the preceeding route,
+       * we have to start comparing from the best route. */
+      if (k != &net->routes &&
+	  rte_better(new, SKIP_BACK(struct rte_storage, next, k)))
+	k = &net->routes;
 
-	  for (; *k; k=&(*k)->next)
-	    if (rte_better(new, *k))
-	      break;
+      for (; *k; k=&(*k)->next)
+	if (rte_better(new, *k))
+	  break;
 
-	  new->next = *k;
-	  *k = new;
-	  table->rt_count++;
-	}
+      new->next = *k;
+      *k = new;
+      table->rt_count++;
     }
   else
     {
@@ -984,7 +1040,7 @@ rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, stru
 
       if (new->attrs && rte_better(new, old_best))
 	{
-	  /* The first case - the new route is cleary optimal,
+	  /* The first case - the new route is clearly optimal,
 	     we link it at the first position */
 
 	  new->next = net->routes;
@@ -1001,12 +1057,9 @@ rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, stru
 
 	do_recalculate:
 	  /* Add the new route to the list */
-	  if (new->attrs)
-	    {
-	      new->next = net->routes;
-	      net->routes = new;
-	      table->rt_count++;
-	    }
+	  new->next = net->routes;
+	  net->routes = new;
+	  table->rt_count++;
 
 	  /* Find a new optimal route (if there is any) */
 	  if (net->routes)
@@ -1023,19 +1076,20 @@ rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, stru
 	      net->routes = best;
 	    }
 	}
-      else if (new->attrs)
+      else
 	{
 	  /* The third case - the new route is not better than the old
 	     best route (therefore old_best != NULL) and the old best
 	     route was not removed (therefore old_best == net->routes).
-	     We just link the new route after the old best route. */
+	     Or there is no new route at all.
+	     We just link the new route or the withdraw marker
+	     after the old best route. */
 
 	  ASSERT(net->routes != NULL);
 	  new->next = net->routes->next;
 	  net->routes->next = new;
 	  table->rt_count++;
 	}
-      /* The fourth (empty) case - suboptimal route was removed, nothing to do */
     }
 
   if (new->attrs)
@@ -1077,12 +1131,6 @@ rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, stru
     p->rte_remove(net, old);
   if (new_ok && p->rte_insert)
     p->rte_insert(net, new);
-
-  if (old)
-    {
-      hmap_clear(&table->id_map, old->id);
-      rte_free(old);
-    }
 }
 
 static int rte_update_nest_cnt;		/* Nesting counter to allow recursive updates */
@@ -1307,26 +1355,12 @@ rte_update2(rte *new)
     stats->imp_withdraws_ignored++;
 
  skip_stats1:;
+
   /* Store the new route now, it is going to be inserted. */
-  struct rte_storage *new_stored = NULL;
-  if (new->attrs)
-  {
-    new_stored = rte_store(new, nn);
-    if (filtered)
-      new_stored->flags |= REF_FILTERED;
-  }
-  else
-  {
-    /* Create a dummy stored route. This is a temporary code
-     * which is going to be replaced by real storage of withdraws */
-    new_stored = alloca(sizeof(struct rte_storage));
-    *new_stored = (struct rte_storage) {
-      .net = nn,
-      .src = new->src,
-      .sender = new->sender,
-      .generation = new->generation,
-    };
-  }
+  struct rte_storage *new_stored = rte_store(new, nn);
+
+  if (filtered)
+    new_stored->flags |= REF_FILTERED;
 
   /* And recalculate the best route */
   rte_recalculate(nn, new_stored, old, before_old);
@@ -1535,7 +1569,6 @@ rt_schedule_prune(rtable *tab)
   tab->prune_state |= 1;
 }
 
-
 static void
 rt_event(void *ptr)
 {
@@ -1548,6 +1581,9 @@ rt_event(void *ptr)
 
   if (tab->nhu_state)
     rt_next_hop_update(tab);
+
+  if (tab->export_scheduled)
+    rt_run_exports(tab);
 
   if (tab->prune_state)
     rt_prune_table(tab);
@@ -1567,6 +1603,8 @@ rt_setup(pool *p, rtable *t, struct rtable_config *cf)
 
   hmap_init(&t->id_map, p, 1024);
   hmap_set(&t->id_map, 0);
+
+  t->pending_updates = mb_alloc(rt_table_pool, sizeof(struct rte_update) * RT_OBS_BUF_SIZE);
 
   t->rt_event = ev_new_init(p, rt_event, t);
   t->gc_time = current_time();
@@ -1607,7 +1645,7 @@ static void
 rt_prune_table(rtable *tab)
 {
   struct fib_iterator *fit = &tab->prune_fit;
-  int limit = 512;
+  int limit = 128;
 
   struct channel *c;
   node *n, *x;
@@ -1622,10 +1660,40 @@ rt_prune_table(rtable *tab)
 
   if (tab->prune_state == 1)
   {
-    /* Mark channels to flush */
+    u64 last_export = tab->total_updates;
     WALK_LIST2(c, n, tab->channels, table_node)
+    {
+      /* Mark channels to flush */
       if (c->channel_state == CS_FLUSHING)
+      {
 	c->flush_active = 1;
+	c->withdraws_pending = 0;
+      }
+
+      /* Find the oldest export processed by all channels */
+      if (c->channel_state == CS_UP &&
+	  c->export_state == ES_READY &&
+	  c->last_export < last_export)
+	last_export = c->last_export;
+    }
+
+    for (u64 e = tab->cleared_updates; e < last_export; e++)
+    {
+      struct rte_update *u = &tab->pending_updates[e % RT_OBS_BUF_SIZE];
+
+      /* Free the withdrawn route */
+      if (u->old)
+      {
+	hmap_clear(&tab->id_map, u->old->id);
+	rte_free(u->old);
+      }
+
+      /* Mark the withdraw indicator for discard */
+      if (!u->new->attrs)
+	u->new->flags |= REF_DISCARD;
+    }
+
+    tab->cleared_updates = last_export;
 
     FIB_ITERATE_INIT(fit, &tab->fib);
     tab->prune_state = 2;
@@ -1635,9 +1703,35 @@ again:
   FIB_ITERATE_START(&tab->fib, fit, net, n)
     {
     rescan:
-      for (struct rte_storage **ep = &n->routes; (*ep); ep = &((*ep)->next))
+      for (struct rte_storage *e, **ep = &n->routes; e = *ep; ep = &((*ep)->next))
       {
-	struct rte_storage *e = *ep;
+	/* Dropping the marked withdraw indicators */
+	while (!e->attrs && (e->flags & REF_DISCARD))
+	{
+	  DBG("withdraw indicator %p (lastmod %lu) drop\n", e, e->lastmod);
+
+	  /* Remove it from the list */
+	  *ep = e->next;
+
+	  /* Finally free */
+	  rte_free(e);
+
+	  /* Move to the next entry */
+	  if (e = *ep)
+	    continue;
+
+	  /* No more entries in this list */
+	  FIB_ITERATE_PUT_NEXT(fit, &tab->fib);
+	  goto again;
+	}
+
+	if (e->sender->flush_active && !e->attrs)
+	{
+	  e->sender->withdraws_pending = 1;
+	  tab->prune_state |= 1;
+	  continue;
+	}
+
 	if (e->sender->flush_active || (e->flags & REF_DISCARD))
 	  {
 	    if (limit <= 0)
@@ -1655,6 +1749,7 @@ again:
 	      .sender = e->sender,
 	      .generation = e->generation,
 	    };
+	    DBG("route %p for %N (attrs %p src %p lastmod %lu) discard\n", e, ew.net, e->attrs, ew.src, e->lastmod);
 	    struct rte_storage *es = rte_store(&ew, e->net);
 	    es->flags |= e->flags & REF_FILTERED;
 	    rte_recalculate(e->net, es, e, ep);
@@ -1709,10 +1804,15 @@ again:
   /* Close flushed channels */
   WALK_LIST2_DELSAFE(c, n, x, tab->channels, table_node)
     if (c->flush_active)
-      {
-	c->flush_active = 0;
+    {
+      c->flush_active = 0;
+      if (c->withdraws_pending)
+	/* Wait for pending withdraws */
+	c->withdraws_pending = 0;
+      else
+	/* No pending withdraws */
 	channel_set_state(c, CS_DOWN);
-      }
+    }
 
   return;
 }
@@ -2007,6 +2107,7 @@ rt_unlock_table(rtable *r)
       rem_node(&r->n);
       fib_free(&r->fib);
       hmap_free(&r->id_map);
+      mb_free(r->pending_updates);
       rfree(r->rt_event);
       mb_free(r);
       config_del_obstacle(conf);
