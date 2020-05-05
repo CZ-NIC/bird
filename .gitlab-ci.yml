@@ -383,3 +383,8 @@ test-bgp-auth:
   <<: *test-base
   variables:
     TEST_NAME: cf-bgp-auth
+
+test-bgp-int:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-int
