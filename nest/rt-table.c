@@ -702,8 +702,8 @@ rt_notify_merged(struct channel *c, struct rte_export_internal *e)
   return rte_export_kind(ep) ? ep : NULL;
 }
 
-static void
-rte_export(struct channel *c, struct rte_export_internal *e)
+static struct rte_export *
+rte_export_obtain(struct channel *c, struct rte_export_internal *e)
 {
   uint ra_mode = c->ra_mode;
 
@@ -737,7 +737,7 @@ rte_export(struct channel *c, struct rte_export_internal *e)
   if (!ep)
   {
     debug("Idempotent export.\n");
-    goto cleanup;
+    return NULL;
   }
 
   struct proto *p = c->proto;
@@ -757,9 +757,20 @@ rte_export(struct channel *c, struct rte_export_internal *e)
     {
       stats->exp_updates_rejected++;
       rte_trace_out(D_FILTERS, p, &ep->new, "rejected [limit]");
-      goto cleanup;
+      return NULL;
     }
   }
+
+  return ep;
+}
+
+static void
+rte_export(struct channel *c, struct rte_export_internal *e)
+{
+  struct rte_export *ep = rte_export_obtain(c, e);
+
+  if (!ep)
+    goto cleanup;
 
   struct rte_storage *old_stored = NULL;
   /* Apply export table */
@@ -771,6 +782,9 @@ rte_export(struct channel *c, struct rte_export_internal *e)
   else if (c->out_filter != FILTER_ACCEPT)
     /* We aren't sure about the old route attributes */
     ep->old.attrs = NULL;
+
+  struct proto_stats *stats = &c->stats;
+  struct proto *p = c->proto;
 
   if (ep->new.attrs)
     stats->exp_updates_accepted++;
