@@ -354,7 +354,7 @@ enum export_filter_result
 
 struct rte_export_internal {
   net *net;
-  struct rte_storage *new, *old, *new_best, *old_best;
+  struct rte_storage *new, *old, *new_best, *old_best, *old_stored;
   struct rte_export pub;
   u32 refeed:1;
 };
@@ -521,7 +521,7 @@ rt_notify_basic(struct channel *c, struct rte_export_internal *e)
     ep->old_id = e->old->id;
   }
 
-  return !!rte_export_kind(ep);
+  return RTE_EXPORT_IS_OK(ep);
 }
 
 static _Bool
@@ -602,7 +602,7 @@ rt_notify_accepted(struct channel *c, struct rte_export_internal *e)
     ep->old_id = old_best->id;
   }
 
-  return !!rte_export_kind(ep);
+  return RTE_EXPORT_IS_OK(ep);
 }
 
 
@@ -698,7 +698,7 @@ rt_notify_merged(struct channel *c, struct rte_export_internal *e)
     ep->old = rte_copy(e->old_best);
   }
 
-  return !!rte_export_kind(ep);
+  return RTE_EXPORT_IS_OK(ep);
 }
 
 static _Bool
@@ -764,40 +764,40 @@ rte_export_obtain(struct channel *c, struct rte_export_internal *e)
   return 1;
 }
 
-static void
-rte_export(struct channel *c, struct rte_export_internal *e)
+static _Bool
+rte_export_store(struct channel *c, struct rte_export_internal *e)
 {
-  if (!rte_export_obtain(c, e))
-    goto cleanup;
-
-  struct rte_export *ep = &(e->pub);
-
-  struct rte_storage *old_stored = NULL;
   /* Apply export table */
   if (c->out_table)
   {
-    if (!rte_update_out(c, &(ep->new), &(ep->old), &old_stored, e->refeed))
-      goto cleanup;
+    if (!rte_update_out(c, &(e->pub.new), &(e->pub.old), &(e->old_stored), e->refeed))
+      return 0;
   }
   else if (c->out_filter != FILTER_ACCEPT)
     /* We aren't sure about the old route attributes */
-    ep->old.attrs = NULL;
+    e->pub.old.attrs = NULL;
 
+  return 1;
+}
+
+static void
+rte_export_meta(struct channel *c, struct rte_export *ep)
+{
   struct proto_stats *stats = &c->stats;
   struct proto *p = c->proto;
 
-  if (ep->new.attrs)
+  if (RTE_EXPORT_NEW_OK(ep))
     stats->exp_updates_accepted++;
   else
     stats->exp_withdraws_accepted++;
 
-  if (ep->old.attrs)
+  if (RTE_EXPORT_OLD_OK(ep))
   {
     bmap_clear(&c->export_map, ep->old_id);
     stats->exp_routes--;
   }
 
-  if (ep->new.attrs)
+  if (RTE_EXPORT_NEW_OK(ep))
   {
     bmap_set(&c->export_map, ep->new_id);
     stats->exp_routes++;
@@ -811,13 +811,27 @@ rte_export(struct channel *c, struct rte_export_internal *e)
       case REX_WITHDRAWAL:	rte_trace_out(D_ROUTES, p, &ep->old, "removed"); break;
       case REX_UPDATE:		rte_trace_out(D_ROUTES, p, &ep->new, "replaced"); break;
     }
+}
 
-  p->rt_notify(c, ep);
+static void
+rte_export(struct channel *c, struct rte_export_internal *e)
+{
+  if (!rte_export_obtain(c, e))
+    goto cleanup;
 
-  if (old_stored)
-    rte_free(old_stored);
+  if (!rte_export_store(c, e))
+    goto cleanup;
+
+  struct rte_export *ep = &(e->pub);
+
+  rte_export_meta(c, ep);
+
+  c->proto->rt_notify(c, ep);
 
 cleanup:
+  if (e->old_stored)
+    rte_free(e->old_stored);
+
   if (e->old && (!e->new || (e->new->id != e->old->id)))
     bmap_clear(&c->export_reject_map, e->old->id);
 }

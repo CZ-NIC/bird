@@ -268,13 +268,21 @@ struct rte_export {
   u32 new_id, old_id;			/* Table specific route id for channel-private use */
 };
 
+#define RTE_EXPORT_NEW_OK(ep)	(!!ep->new.attrs)
+#define RTE_EXPORT_OLD_OK(ep)	(!!ep->old.net)
+#define RTE_EXPORT_IS_OK(ep)	(RTE_EXPORT_NEW_OK(ep) || RTE_EXPORT_OLD_OK(ep))
+
 static inline enum rte_export_kind {
   REX_NOTHING = 0,
   REX_ANNOUNCEMENT = 1,
   REX_WITHDRAWAL = 2,
   REX_UPDATE = 3,
 } PACKED rte_export_kind(struct rte_export *ep)
-{ return ((ep->new.attrs) ? REX_ANNOUNCEMENT : 0) | ((ep->old.net) ? REX_WITHDRAWAL : 0); }
+{
+  return
+      RTE_EXPORT_NEW_OK(ep) * REX_ANNOUNCEMENT
+    + RTE_EXPORT_OLD_OK(ep) * REX_WITHDRAWAL;
+}
 
 /* Types of route announcement, also used as flags */
 #define RA_UNDEF	0		/* Undefined RA type */
