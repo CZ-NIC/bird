@@ -355,8 +355,8 @@ enum export_filter_result
 struct rte_export_internal {
   net *net;
   struct rte_storage *new, *old, *new_best, *old_best;
+  struct rte_export pub;
   u32 refeed:1;
-  u32 accepted:1;
 };
 
 //_Thread_local static struct rte_export_internal rei;
@@ -496,11 +496,10 @@ export_filter(struct channel *c, rte *rt, u32 id, int silent)
   return export_filter_(c, rt, id, rte_update_pool, silent);
 }
 
-USE_RESULT static struct rte_export *
+static _Bool
 rt_notify_basic(struct channel *c, struct rte_export_internal *e)
 {
-  struct rte_export *ep = lp_allocz(rte_update_pool, sizeof(struct rte_export));
-
+  struct rte_export *ep = &(e->pub);
   if (e->new)
     c->stats.exp_updates_received++;
   else
@@ -522,17 +521,17 @@ rt_notify_basic(struct channel *c, struct rte_export_internal *e)
     ep->old_id = e->old->id;
   }
 
-  return rte_export_kind(ep) ? ep : NULL;
+  return !!rte_export_kind(ep);
 }
 
-USE_RESULT static struct rte_export *
+static _Bool
 rt_notify_accepted(struct channel *c, struct rte_export_internal *e)
 {
   // struct proto *p = c->proto;
   struct rte_storage *old_best = NULL;
   int new_first = 0;
 
-  struct rte_export *ep = lp_allocz(rte_update_pool, sizeof(struct rte_export));
+  struct rte_export *ep = &(e->pub);
 
   /*
    * We assume that there are no changes in net route order except (added)
@@ -588,12 +587,12 @@ rt_notify_accepted(struct channel *c, struct rte_export_internal *e)
   else
   {
     if (!new_first) /* old_best is still best, nothing has changed */
-      return NULL;
+      return 0;
 
     ep->new = rte_copy(e->new);
     if (export_filter(c, &ep->new, ep->new_id = e->new->id, 0) >= EFR_FILTER_REJECT)
       /* This route is better than old_best but doesn't pass */
-      return NULL;
+      return 0;
   }
 
   if (old_best)
@@ -603,7 +602,7 @@ rt_notify_accepted(struct channel *c, struct rte_export_internal *e)
     ep->old_id = old_best->id;
   }
 
-  return rte_export_kind(ep) ? ep : NULL;
+  return !!rte_export_kind(ep);
 }
 
 
@@ -661,28 +660,28 @@ rt_export_merged(struct channel *c, net *net, rte *best, linpool *pool, int sile
 }
 
 
-USE_RESULT static struct rte_export *
+static _Bool
 rt_notify_merged(struct channel *c, struct rte_export_internal *e)
 {
   /* We assume that all rte arguments are either NULL or rte_is_valid() */
 
   /* This check should be done by the caller */
   if (!e->new_best && !e->old_best)
-    return NULL;
+    return 0;
 
   /* Check whether the change is relevant to the merged route */
   if ((e->new_best == e->old_best) &&
       (e->new != e->old) &&
       !rte_mergable(e->new_best, e->new) &&
       !rte_mergable(e->old_best, e->old))
-    return NULL;
+    return 0;
 
   if (e->new_best)
     c->stats.exp_updates_received++;
   else
     c->stats.exp_withdraws_received++;
 
-  struct rte_export *ep = lp_allocz(rte_update_pool, sizeof(struct rte_export));
+  struct rte_export *ep = &(e->pub);
 
   /* Prepare new merged route */
   if (e->new_best)
@@ -699,15 +698,14 @@ rt_notify_merged(struct channel *c, struct rte_export_internal *e)
     ep->old = rte_copy(e->old_best);
   }
 
-  return rte_export_kind(ep) ? ep : NULL;
+  return !!rte_export_kind(ep);
 }
 
-static struct rte_export *
+static _Bool
 rte_export_obtain(struct channel *c, struct rte_export_internal *e)
 {
   uint ra_mode = c->ra_mode;
-
-  struct rte_export *ep = NULL;
+  _Bool accepted = 0;
 
   switch (ra_mode)
   {
@@ -719,26 +717,28 @@ rte_export_obtain(struct channel *c, struct rte_export_internal *e)
       e->old = e->old_best;
       /* fall through */
     case RA_ANY:
-      ep = rt_notify_basic(c, e);
+      accepted = rt_notify_basic(c, e);
       break;
 
     case RA_ACCEPTED:
-      ep = rt_notify_accepted(c, e);
+      accepted = rt_notify_accepted(c, e);
       break;
 
     case RA_MERGED:
-      ep = rt_notify_merged(c, e);
+      accepted = rt_notify_merged(c, e);
       break;
 
     default:
       bug("Strange channel route announcement mode");
   }
 
-  if (!ep)
+  if (!accepted)
   {
     debug("Idempotent export.\n");
-    return NULL;
+    return 0;
   }
+
+  struct rte_export *ep = &(e->pub);
 
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
@@ -757,20 +757,20 @@ rte_export_obtain(struct channel *c, struct rte_export_internal *e)
     {
       stats->exp_updates_rejected++;
       rte_trace_out(D_FILTERS, p, &ep->new, "rejected [limit]");
-      return NULL;
+      return 0;
     }
   }
 
-  return ep;
+  return 1;
 }
 
 static void
 rte_export(struct channel *c, struct rte_export_internal *e)
 {
-  struct rte_export *ep = rte_export_obtain(c, e);
-
-  if (!ep)
+  if (!rte_export_obtain(c, e))
     goto cleanup;
+
+  struct rte_export *ep = &(e->pub);
 
   struct rte_storage *old_stored = NULL;
   /* Apply export table */
