@@ -66,10 +66,32 @@ neigh_hash(struct proto *p, ip_addr a, struct iface *i)
   return (p->hash_key ^ ipa_hash(a) ^ ptr_hash(i)) >> NEIGH_HASH_OFFSET;
 }
 
+static inline int
+ifa_better(struct ifa *a, struct ifa *b)
+{
+  return a && (!b || (a->prefix.pxlen > b->prefix.pxlen));
+}
+
+static inline int
+scope_better(int sa, int sb)
+{
+  /* Order per preference: -1 unknown, 0 for remote, 1 for local */
+  sa = (sa < 0) ? sa : !sa;
+  sb = (sb < 0) ? sb : !sb;
+
+  return sa > sb;
+}
+
+static inline int
+scope_remote(int sa, int sb)
+{
+  return (sa > SCOPE_HOST) && (sb > SCOPE_HOST);
+}
+
 static int
 if_connected(ip_addr a, struct iface *i, struct ifa **ap, uint flags)
 {
-  struct ifa *b;
+  struct ifa *b, *addr = NULL;
 
   /* Handle iface pseudo-neighbors */
   if (flags & NEF_IFACE)
@@ -89,12 +111,12 @@ if_connected(ip_addr a, struct iface *i, struct ifa **ap, uint flags)
   {
     if (b->flags & IA_PEER)
     {
-      if (ipa_equal(a, b->opposite))
-	return *ap = b, b->scope;
+      if (ipa_equal(a, b->opposite) && ifa_better(b, addr))
+	addr = b;
     }
     else
     {
-      if (ipa_in_netX(a, &b->prefix))
+      if (ipa_in_netX(a, &b->prefix) && ifa_better(b, addr))
       {
 	/* Do not allow IPv4 network and broadcast addresses */
 	if (ipa_is_ip4(a) &&
@@ -103,10 +125,14 @@ if_connected(ip_addr a, struct iface *i, struct ifa **ap, uint flags)
 	     ipa_equal(a, b->brd)))			/* Broadcast */
 	  return *ap = NULL, -1;
 
-	return *ap = b, b->scope;
+	addr = b;
       }
     }
   }
+
+  /* Return found address */
+  if (addr)
+    return *ap = addr, addr->scope;
 
   /* Handle ONLINK flag */
   if (flags & NEF_ONLINK)
@@ -125,10 +151,10 @@ if_connected_any(ip_addr a, struct iface *vrf, uint vrf_set, struct iface **ifac
   *iface = NULL;
   *addr = NULL;
 
-  /* Get first match, but prefer SCOPE_HOST to other matches */
+  /* Prefer SCOPE_HOST or longer prefix */
   WALK_LIST(i, iface_list)
     if ((!vrf_set || vrf == i->master) && ((s = if_connected(a, i, &b, flags)) >= 0))
-      if ((scope < 0) || ((scope > SCOPE_HOST) && (s == SCOPE_HOST)))
+      if (scope_better(s, scope) || (scope_remote(s, scope) && ifa_better(b, *addr)))
       {
 	*iface = i;
 	*addr = b;
@@ -136,6 +162,33 @@ if_connected_any(ip_addr a, struct iface *vrf, uint vrf_set, struct iface **ifac
       }
 
   return scope;
+}
+
+/* Is ifa @a subnet of any ifa on iface @ib ? */
+static inline int
+ifa_intersect(struct ifa *a, struct iface *ib)
+{
+  struct ifa *b;
+
+  WALK_LIST(b, ib->addrs)
+    if (net_in_netX(&a->prefix, &b->prefix))
+      return 1;
+
+  return 0;
+}
+
+/* Is any ifa of iface @ia subnet of any ifa on iface @ib ? */
+static inline int
+if_intersect(struct iface *ia, struct iface *ib)
+{
+  struct ifa *a, *b;
+
+  WALK_LIST(a, ia->addrs)
+    WALK_LIST(b, ib->addrs)
+    if (net_in_netX(&a->prefix, &b->prefix))
+      return 1;
+
+  return 0;
 }
 
 /**
@@ -323,9 +376,20 @@ neigh_update(neighbor *n, struct iface *iface)
 
   scope = if_connected(n->addr, iface, &ifa, n->flags);
 
-  /* When neighbor is going down, try to respawn it on other ifaces */
-  if ((scope < 0) && (n->scope >= 0) && !n->ifreq && (n->flags & NEF_STICKY))
-    scope = if_connected_any(n->addr, p->vrf, p->vrf_set, &iface, &ifa, n->flags);
+  /* Update about already assigned iface, or some other iface */
+  if (iface == n->iface)
+  {
+    /* When neighbor is going down, try to respawn it on other ifaces */
+    if ((scope < 0) && (n->scope >= 0) && !n->ifreq && (n->flags & NEF_STICKY))
+      scope = if_connected_any(n->addr, p->vrf, p->vrf_set, &iface, &ifa, n->flags);
+  }
+  else
+  {
+    /* Continue only if the new variant is better than the existing one */
+    if (! (scope_better(scope, n->scope) ||
+	   (scope_remote(scope, n->scope) && ifa_better(ifa, n->ifa))))
+      return;
+  }
 
   /* No change or minor change - ignore or notify */
   if ((scope == n->scope) && (iface == n->iface))
@@ -367,8 +431,15 @@ neigh_update(neighbor *n, struct iface *iface)
 void
 neigh_if_up(struct iface *i)
 {
+  struct iface *ii;
   neighbor *n;
   node *x, *y;
+
+  /* Update neighbors that might be better off with the new iface */
+  WALK_LIST(ii, iface_list)
+    if (!EMPTY_LIST(ii->neighbors) && (ii != i) && if_intersect(i, ii))
+      WALK_LIST2_DELSAFE(n, x, y, ii->neighbors, if_n)
+	neigh_update(n, i);
 
   WALK_LIST2_DELSAFE(n, x, y, sticky_neigh_list, if_n)
     neigh_update(n, i);
@@ -420,7 +491,25 @@ neigh_if_link(struct iface *i)
  * and causes all unreachable neighbors to be flushed.
  */
 void
-neigh_ifa_update(struct ifa *a)
+neigh_ifa_up(struct ifa *a)
+{
+  struct iface *i = a->iface, *ii;
+  neighbor *n;
+  node *x, *y;
+
+  /* Update neighbors that might be better off with the new ifa */
+  WALK_LIST(ii, iface_list)
+    if (!EMPTY_LIST(ii->neighbors) && ifa_intersect(a, ii))
+      WALK_LIST2_DELSAFE(n, x, y, ii->neighbors, if_n)
+	neigh_update(n, i);
+
+  /* Wake up all sticky neighbors that are reachable now */
+  WALK_LIST2_DELSAFE(n, x, y, sticky_neigh_list, if_n)
+    neigh_update(n, i);
+}
+
+void
+neigh_ifa_down(struct ifa *a)
 {
   struct iface *i = a->iface;
   neighbor *n;
@@ -428,11 +517,8 @@ neigh_ifa_update(struct ifa *a)
 
   /* Update all neighbors whose scope has changed */
   WALK_LIST2_DELSAFE(n, x, y, i->neighbors, if_n)
-    neigh_update(n, i);
-
-  /* Wake up all sticky neighbors that are reachable now */
-  WALK_LIST2_DELSAFE(n, x, y, sticky_neigh_list, if_n)
-    neigh_update(n, i);
+    if (n->ifa == a)
+      neigh_update(n, i);
 }
 
 static inline void

@@ -172,12 +172,12 @@ static inline void
 ifa_notify_change(unsigned c, struct ifa *a)
 {
   if (c & IF_CHANGE_DOWN)
-    neigh_ifa_update(a);
+    neigh_ifa_down(a);
 
   ifa_notify_change_(c, a);
 
   if (c & IF_CHANGE_UP)
-    neigh_ifa_update(a);
+    neigh_ifa_up(a);
 }
 
 static inline void
