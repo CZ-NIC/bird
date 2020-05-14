@@ -1104,7 +1104,6 @@ bfd_show_sessions(struct proto *P)
   if (p->p.proto_state != PS_UP)
   {
     cli_msg(-1020, "%s: is not up", p->p.name);
-    cli_msg(0, "");
     return;
   }
 
@@ -1129,8 +1128,6 @@ bfd_show_sessions(struct proto *P)
 	    s->addr, ifname, bfd_state_names[state], tbuf, tx_int, timeout);
   }
   HASH_WALK_END;
-
-  cli_msg(0, "");
 }
 
 

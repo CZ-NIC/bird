@@ -2084,3 +2084,47 @@ proto_get_named(struct symbol *sym, struct protocol *pr)
 
   return p;
 }
+
+struct proto *
+proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *old)
+{
+  if (sym)
+  {
+    /* Just the first pass */
+    if (old)
+    {
+      cli_msg(0, "");
+      return NULL;
+    }
+
+    if (sym->class != SYM_PROTO)
+      cf_error("%s: Not a protocol", sym->name);
+
+    struct proto *p = sym->proto->proto;
+    if (!p || (p->proto != proto))
+      cf_error("%s: Not a %s protocol", sym->name, proto->name);
+
+    return p;
+  }
+  else
+  {
+    for (struct proto *p = !old ? HEAD(proto_list) : NODE_NEXT(old);
+	 NODE_VALID(p);
+	 p = NODE_NEXT(p))
+    {
+      if ((p->proto == proto) && (p->proto_state != PS_DOWN))
+      {
+	cli_separator(this_cli);
+	return p;
+      }
+    }
+
+    /* Not found anything during first pass */
+    if (!old)
+      cf_error("There is no %s protocol running", proto->name);
+
+    /* No more items */
+    cli_msg(0, "");
+    return NULL;
+  }
+}

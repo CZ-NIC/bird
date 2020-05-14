@@ -800,7 +800,6 @@ ospf_sh_neigh(struct proto *P, const char *iff)
   if (p->p.proto_state != PS_UP)
   {
     cli_msg(-1013, "%s: is not up", p->p.name);
-    cli_msg(0, "");
     return;
   }
 
@@ -811,7 +810,6 @@ ospf_sh_neigh(struct proto *P, const char *iff)
     if ((iff == NULL) || patmatch(iff, ifa->ifname))
       WALK_LIST(n, ifa->neigh_list)
 	ospf_sh_neigh_info(n);
-  cli_msg(0, "");
 }
 
 void
@@ -826,7 +824,6 @@ ospf_sh(struct proto *P)
   if (p->p.proto_state != PS_UP)
   {
     cli_msg(-1014, "%s: is not up", p->p.name);
-    cli_msg(0, "");
     return;
   }
 
@@ -896,7 +893,6 @@ ospf_sh(struct proto *P)
     FIB_WALK_END;
 
   }
-  cli_msg(0, "");
 }
 
 void
@@ -908,7 +904,6 @@ ospf_sh_iface(struct proto *P, const char *iff)
   if (p->p.proto_state != PS_UP)
   {
     cli_msg(-1015, "%s: is not up", p->p.name);
-    cli_msg(0, "");
     return;
   }
 
@@ -916,7 +911,6 @@ ospf_sh_iface(struct proto *P, const char *iff)
   WALK_LIST(ifa, p->iface_list)
     if ((iff == NULL) || patmatch(iff, ifa->ifname))
       ospf_iface_info(ifa);
-  cli_msg(0, "");
 }
 
 /* lsa_compare_for_state() - Compare function for 'show ospf state'
