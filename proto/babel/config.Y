@@ -130,16 +130,16 @@ dynamic_attr: BABEL_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_BAB
 CF_CLI_HELP(SHOW BABEL, ..., [[Show information about Babel protocol]]);
 
 CF_CLI(SHOW BABEL INTERFACES, optproto opttext, [<name>] [\"<interface>\"], [[Show information about Babel interfaces]])
-{ babel_show_interfaces(proto_get_named($4, &proto_babel), $5); };
+{ PROTO_WALK_CMD($4, &proto_babel, p) babel_show_interfaces(p, $5); };
 
 CF_CLI(SHOW BABEL NEIGHBORS, optproto opttext, [<name>] [\"<interface>\"], [[Show information about Babel neighbors]])
-{ babel_show_neighbors(proto_get_named($4, &proto_babel), $5); };
+{ PROTO_WALK_CMD($4, &proto_babel, p) babel_show_neighbors(p, $5); };
 
 CF_CLI(SHOW BABEL ENTRIES, optproto opttext, [<name>], [[Show information about Babel prefix entries]])
-{ babel_show_entries(proto_get_named($4, &proto_babel)); };
+{ PROTO_WALK_CMD($4, &proto_babel, p) babel_show_entries(p); };
 
 CF_CLI(SHOW BABEL ROUTES, optproto opttext, [<name>], [[Show information about Babel route entries]])
-{ babel_show_routes(proto_get_named($4, &proto_babel)); };
+{ PROTO_WALK_CMD($4, &proto_babel, p)  babel_show_routes(p); };
 
 CF_CODE
 

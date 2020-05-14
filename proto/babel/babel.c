@@ -1891,7 +1891,6 @@ babel_show_interfaces(struct proto *P, const char *iff)
   if (p->p.proto_state != PS_UP)
   {
     cli_msg(-1023, "%s: is not up", p->p.name);
-    cli_msg(0, "");
     return;
   }
 
@@ -1915,8 +1914,6 @@ babel_show_interfaces(struct proto *P, const char *iff)
 	    ifa->cf->rxcost, nbrs, MAX(timer, 0),
 	    ifa->next_hop_ip4, ifa->next_hop_ip6);
   }
-
-  cli_msg(0, "");
 }
 
 void
@@ -1930,7 +1927,6 @@ babel_show_neighbors(struct proto *P, const char *iff)
   if (p->p.proto_state != PS_UP)
   {
     cli_msg(-1024, "%s: is not up", p->p.name);
-    cli_msg(0, "");
     return;
   }
 
@@ -1955,8 +1951,6 @@ babel_show_neighbors(struct proto *P, const char *iff)
 	      n->addr, ifa->iface->name, n->cost, rts, hellos, MAX(timer, 0));
     }
   }
-
-  cli_msg(0, "");
 }
 
 static void
@@ -1998,7 +1992,6 @@ babel_show_entries(struct proto *P)
   if (p->p.proto_state != PS_UP)
   {
     cli_msg(-1025, "%s: is not up", p->p.name);
-    cli_msg(0, "");
     return;
   }
 
@@ -2008,8 +2001,6 @@ babel_show_entries(struct proto *P)
 
   babel_show_entries_(p, &p->ip4_rtable);
   babel_show_entries_(p, &p->ip6_rtable);
-
-  cli_msg(0, "");
 }
 
 static void
@@ -2041,7 +2032,6 @@ babel_show_routes(struct proto *P)
   if (p->p.proto_state != PS_UP)
   {
     cli_msg(-1025, "%s: is not up", p->p.name);
-    cli_msg(0, "");
     return;
   }
 
@@ -2051,8 +2041,6 @@ babel_show_routes(struct proto *P)
 
   babel_show_routes_(p, &p->ip4_rtable);
   babel_show_routes_(p, &p->ip6_rtable);
-
-  cli_msg(0, "");
 }
 
 

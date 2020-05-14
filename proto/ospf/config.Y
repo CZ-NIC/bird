@@ -513,13 +513,13 @@ dynamic_attr: OSPF_ROUTER_ID { $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID, T_QUA
 
 CF_CLI_HELP(SHOW OSPF, ..., [[Show information about OSPF protocol]]);
 CF_CLI(SHOW OSPF, optproto, [<name>], [[Show information about OSPF protocol]])
-{ ospf_sh(proto_get_named($3, &proto_ospf)); };
+{ PROTO_WALK_CMD($3, &proto_ospf, p) ospf_sh(p); };
 
 CF_CLI(SHOW OSPF NEIGHBORS, optproto opttext, [<name>] [\"<interface>\"], [[Show information about OSPF neighbors]])
-{ ospf_sh_neigh(proto_get_named($4, &proto_ospf), $5); };
+{ PROTO_WALK_CMD($4, &proto_ospf, p) ospf_sh_neigh(p, $5); };
 
 CF_CLI(SHOW OSPF INTERFACE, optproto opttext, [<name>] [\"<interface>\"], [[Show information about interface]])
-{ ospf_sh_iface(proto_get_named($4, &proto_ospf), $5); };
+{ PROTO_WALK_CMD($4, &proto_ospf, p) ospf_sh_iface(p, $5); };
 
 CF_CLI_HELP(SHOW OSPF TOPOLOGY, [all] [<name>], [[Show information about OSPF network topology]])
 

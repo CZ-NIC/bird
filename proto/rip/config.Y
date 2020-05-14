@@ -196,10 +196,10 @@ dynamic_attr: RIP_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_RIP_TAG)
 CF_CLI_HELP(SHOW RIP, ..., [[Show information about RIP protocol]]);
 
 CF_CLI(SHOW RIP INTERFACES, optproto opttext, [<name>] [\"<interface>\"], [[Show information about RIP interfaces]])
-{ rip_show_interfaces(proto_get_named($4, &proto_rip), $5); };
+{ PROTO_WALK_CMD($4, &proto_rip, p) rip_show_interfaces(p, $5); };
 
 CF_CLI(SHOW RIP NEIGHBORS, optproto opttext, [<name>] [\"<interface>\"], [[Show information about RIP neighbors]])
-{ rip_show_neighbors(proto_get_named($4, &proto_rip), $5); };
+{ PROTO_WALK_CMD($4, &proto_rip, p) rip_show_neighbors(p, $5); };
 
 
 CF_CODE
