@@ -4443,7 +4443,8 @@ you can't use RIP on networks where maximal distance is higher than 15
 hosts.
 
 <p>BIRD supports RIPv1 (<rfc id="1058">), RIPv2 (<rfc id="2453">), RIPng (<rfc
-id="2080">), and RIP cryptographic authentication (<rfc id="4822">).
+id="2080">), Triggered RIP for demand circuits (<rfc id="2091">), and RIP
+cryptographic authentication (<rfc id="4822">).
 
 <p>RIP is a very simple protocol, and it has a lot of shortcomings. Slow
 convergence, big network load and inability to handle larger networks makes it
@@ -4473,6 +4474,7 @@ protocol rip [ng] [&lt;name&gt;] {
 		version 1|2;
 		split horizon &lt;switch&gt;;
 		poison reverse &lt;switch&gt;;
+		demand circuit &lt;switch&gt;;
 		check zero &lt;switch&gt;;
 		update time &lt;number&gt;;
 		timeout time &lt;number&gt;;
@@ -4576,6 +4578,16 @@ protocol rip [ng] [&lt;name&gt;] {
 	reverse variant (propagating routes back with an infinity metric) is
 	used. The poisoned reverse has some advantages in faster convergence,
 	but uses more network traffic. Default: yes.
+
+	<tag><label id="rip-iface-demand-circuit">demand circuit <m/switch/</tag>
+	Regular RIP sends periodic full updates on an interface. There is the
+	Triggered RIP extension for demand circuits (<rfc id="2091">), which
+	removes periodic updates and introduces update acknowledgments. When
+	enabled, there is no RIP communication in steady-state network. Note
+	that in order to work, it must be enabled on both sides. As there are
+	no hello packets, it depends on hardware link state to detect neighbor
+	failures. Also, it is designed for PtP links and it does not work
+	properly with multiple RIP neighbors on an interface. Default: no.
 
 	<tag><label id="rip-iface-check-zero">check zero <m/switch/</tag>
 	Received RIPv1 packets with non-zero values in reserved fields should

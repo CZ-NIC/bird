@@ -69,10 +69,11 @@
  * structure is finally freed.
  *
  * Supported standards:
- * - RFC 1058 - RIPv1
- * - RFC 2453 - RIPv2
- * - RFC 2080 - RIPng
- * - RFC 4822 - RIP cryptographic authentication
+ * RFC 1058 - RIPv1
+ * RFC 2453 - RIPv2
+ * RFC 2080 - RIPng
+ * RFC 2091 - Triggered RIP for demand circuits
+ * RFC 4822 - RIP cryptographic authentication
  */
 
 #include <stdlib.h>
