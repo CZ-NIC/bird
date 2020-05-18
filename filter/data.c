@@ -93,6 +93,8 @@ adata_empty(struct linpool *pool, int l)
 static void
 pm_format(const struct f_path_mask *p, buffer *buf)
 {
+  int loop = 0;
+
   buffer_puts(buf, "[= ");
 
   for (uint i=0; i<p->len; i++)
@@ -111,6 +113,10 @@ pm_format(const struct f_path_mask *p, buffer *buf)
       buffer_puts(buf, "* ");
       break;
 
+    case PM_LOOP:
+      loop = 1;
+      break;
+
     case PM_ASN_RANGE:
       buffer_print(buf, "%u..%u ", p->item[i].from, p->item[i].to);
       break;
@@ -119,6 +125,11 @@ pm_format(const struct f_path_mask *p, buffer *buf)
       ASSERT(0);
     }
 
+    if (loop && (p->item[i].kind != PM_LOOP))
+    {
+      buffer_puts(buf, "+ ");
+      loop = 0;
+    }
   }
 
   buffer_puts(buf, "=]");

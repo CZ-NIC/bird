@@ -1471,11 +1471,16 @@ in the foot).
 	<cf/*/ matches any (even empty) sequence of arbitrary AS numbers and
 	<cf/?/ matches one arbitrary AS number. For example, if <cf>bgp_path</cf>
  	is 4 3 2 1, then: <tt>bgp_path &tilde; [= * 4 3 * =]</tt> is true,
-	but <tt>bgp_path &tilde; [= * 4 5 * =]</tt> is false. BGP mask
-	expressions can also contain integer expressions enclosed in parenthesis
-	and integer variables, for example <tt>[= * 4 (1+2) a =]</tt>. You can
-	also use ranges (e.g. <tt>[= * 3..5 2 100..200 * =]</tt>) and sets
-	(e.g. <tt>[= 1 2 [3, 5, 7] * =]</tt>).
+	but <tt>bgp_path &tilde; [= * 4 5 * =]</tt> is false. There is also
+	<cf/+/ operator which matches one or multiple instances of previous
+	expression, e.g. <tt>[= 1 2+ 3 =]</tt> matches both path 1 2 3 and path
+	1 2 2 2 3, but not 1 3 nor 1 2 4 3. Note that while <cf/*/ and <cf/?/
+	are wildcard-style operators, <cf/+/ is regex-style operator.
+
+	BGP mask expressions can also contain integer expressions enclosed in
+	parenthesis and integer variables, for example <tt>[= * 4 (1+2) a =]</tt>.
+	You can also use ranges (e.g. <tt>[= * 3..5 2 100..200 * =]</tt>)
+	and sets (e.g. <tt>[= 1 2 [3, 5, 7] * =]</tt>).
 
 	<tag><label id="type-clist">clist</tag>
 	Clist is similar to a set, except that unlike other sets, it can be

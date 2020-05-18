@@ -727,7 +727,7 @@ parse_path(const struct adata *path, struct pm_pos *pp)
 }
 
 static int
-pm_match(struct pm_pos *pos, u32 asn, u32 asn2)
+pm_match_val(const struct pm_pos *pos, u32 asn, u32 asn2)
 {
   u32 gas;
   if (! pos->set)
@@ -749,7 +749,7 @@ pm_match(struct pm_pos *pos, u32 asn, u32 asn2)
 }
 
 static int
-pm_match_set(struct pm_pos *pos, const struct f_tree *set)
+pm_match_set(const struct pm_pos *pos, const struct f_tree *set)
 {
   struct f_val asn = { .type = T_INT };
 
@@ -773,25 +773,34 @@ pm_match_set(struct pm_pos *pos, const struct f_tree *set)
   return 0;
 }
 
-static void
-pm_mark(struct pm_pos *pos, int i, int plen, int *nl, int *nh)
+static inline int
+pm_match(const struct pm_pos *pos, const struct f_path_mask_item *mask, u32 asn, u32 asn2)
 {
-  int j;
+  return ((mask->kind == PM_QUESTION) ||
+	  ((mask->kind != PM_ASN_SET) ?
+	   pm_match_val(pos, asn, asn2) :
+	   pm_match_set(pos, mask->set)));
+}
 
-  if (pos[i].set)
-    pos[i].mark = 1;
+static void
+pm_mark(struct pm_pos *pos, int *i, int plen, int *nl, int *nh)
+{
+  int j = *i;
 
-  for (j = i + 1; (j < plen) && pos[j].set && (! pos[j].mark); j++)
-    pos[j].mark = 1;
+  if (pos[j].set)
+    do { pos[j].mark = 1; j++; }
+    while ((j < plen) && pos[j].set);
+  else
+    j++;
+
   pos[j].mark = 1;
 
-  /* We are going downwards, therefore every mark is
-     new low and just the first mark is new high */
+  /* Update low, high based on first and last marked pos */
+  int l = pos[*i].set ? *i : j;
 
-  *nl = i + (pos[i].set ? 0 : 1);
-
-  if (*nh < 0)
-    *nh = j;
+  *nl = (*nl < 0) ? l : MIN(*nl, l);
+  *nh = MAX(*nh, j);
+  *i = j;
 }
 
 /* AS path matching is nontrivial. Because AS path can
@@ -821,7 +830,7 @@ as_path_match(const struct adata *path, const struct f_path_mask *mask)
 {
   struct pm_pos pos[2048 + 1];
   int plen = parse_path(path, pos);
-  int l, h, i, nh, nl;
+  int l, h, i, nh, nl, last, loop;
   u32 val = 0;
   u32 val2 = 0;
 
@@ -831,7 +840,7 @@ as_path_match(const struct adata *path, const struct f_path_mask *mask)
   pos[plen].set = 0;
   pos[plen].mark = 0;
 
-  l = h = 0;
+  l = h = loop = 0;
   pos[0].mark = 1;
 
   for (uint m=0; m < mask->len; m++)
@@ -847,6 +856,10 @@ as_path_match(const struct adata *path, const struct f_path_mask *mask)
 	  h = plen;
 	  break;
 
+	case PM_LOOP:
+	  loop = 1;
+	  break;
+
 	case PM_ASN:	/* Define single ASN as ASN..ASN - very narrow interval */
 	  val2 = val = mask->item[m].asn;
 	  goto step;
@@ -860,15 +873,22 @@ as_path_match(const struct adata *path, const struct f_path_mask *mask)
 	case PM_ASN_SET:
 	step:
 	  nh = nl = -1;
+	  last = plen;
 	  for (i = h; i >= l; i--)
 	    if (pos[i].mark)
 	      {
 		pos[i].mark = 0;
-		if ((mask->item[m].kind == PM_QUESTION) ||
-		    ((mask->item[m].kind != PM_ASN_SET) ?
-		     pm_match(pos + i, val, val2) :
-		     pm_match_set(pos + i, mask->item[m].set)))
-		  pm_mark(pos, i, plen, &nl, &nh);
+		int j = i;
+
+	      match:
+		if (pm_match(pos + j, &mask->item[m], val, val2))
+		{
+		  pm_mark(pos, &j, plen, &nl, &nh);
+		  if (loop && (j < last))
+		    goto match;
+		}
+
+		last = i;
 	      }
 
 	  if (nh < 0)
@@ -876,6 +896,7 @@ as_path_match(const struct adata *path, const struct f_path_mask *mask)
 
 	  h = nh;
 	  l = nl;
+	  loop = 0;
 	  break;
 	}
     }
