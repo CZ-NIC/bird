@@ -266,13 +266,14 @@ net_roa_check(rtable *tab, const net_addr *n, u32 asn)
  * The rte_find() function returns a route for destination @net
  * which is from route source @src.
  */
-struct rte_storage *
+struct rte_storage **
 rte_find(net *net, struct rte_src *src)
 {
-  struct rte_storage *e = net->routes;
+  struct rte_storage **e = &net->routes;
 
-  while (e && e->src != src)
-    e = e->next;
+  while ((*e) && (*e)->src != src)
+    e = &((*e)->next);
+
   return e;
 }
 
@@ -934,6 +935,26 @@ rte_announce(rtable *tab, uint type, net *net, struct rte_storage *new, struct r
   }
 }
 
+static void
+rte_report_pipe_collision(struct channel *c, struct network *net, struct rte_storage *old, struct rte *new)
+{
+  if (!old->generation && !new->generation)
+    bug("Two protocols claim to author a route with the same rte_src in table %s: %N %s/%u:%u",
+	c->table->name, net->n.addr, old->src->proto->name, old->src->private_id, old->src->global_id);
+
+  log_rl(&rl_pipe, L_ERR "Route source collision in table %s: %N %s/%u:%u",
+	c->table->name, net->n.addr, old->src->proto->name, old->src->private_id, old->src->global_id);
+
+  if (config->pipe_debug)
+  {
+    if (old->generation)
+      old->sender->proto->rte_track(old->sender, net->n.addr, old->src);
+
+    if (new->generation)
+      c->proto->rte_track(c, net->n.addr, new->src);
+  }
+}
+
 static int
 rte_same(struct rte_storage *x, rte *y, _Bool fy)
 {
@@ -952,68 +973,48 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
   struct rtable *table = c->table;
   struct proto_stats *stats = &c->stats;
   struct rte_storage *old_best = net->routes;
-  struct rte_storage *old = NULL, *before_old = NULL;
+  struct rte_storage *old = NULL, **before_old = NULL;
 
-  /* Find and remove original route from the same protocol */
-  for (struct rte_storage **k = &net->routes; old = *k; k = &((before_old = old)->next))
-    {
-      /* Another route */
-      if (old->src != new->src)
-	continue;
+  /* Find the original route from the same protocol */
+  old = *(before_old = rte_find(net, new->src));
 
-      /* If there is the same route in the routing table but from
-       * a different sender, then there are two paths from the
-       * source protocol to this routing table through transparent
-       * pipes, which is not allowed.
-       * We log that and ignore the route. */
-      if (old->sender->proto != p)
-	{
-	  if (!old->generation && !new->generation)
-	    bug("Two protocols claim to author a route with the same rte_src in table %s: %N %s/%u:%u",
-		c->table->name, net->n.addr, old->src->proto->name, old->src->private_id, old->src->global_id);
-
-	  log_rl(&rl_pipe, L_ERR "Route source collision in table %s: %N %s/%u:%u",
-		c->table->name, net->n.addr, old->src->proto->name, old->src->private_id, old->src->global_id);
-
-	  if (config->pipe_debug)
-	  {
-	    if (old->generation)
-	      old->sender->proto->rte_track(old->sender, net->n.addr, old->src);
-
-	    if (new->generation)
-	      c->proto->rte_track(c, net->n.addr, new->src);
-	  }
-
-	  return;
-	}
-
-      if (new->attrs && rte_same(old, new, filtered))
-	{
-	  /* No changes, ignore the new route and refresh the old one */
-
-	  old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
-
-	  if (!filtered)
-	    {
-	      stats->imp_updates_ignored++;
-	      rte_trace_in(D_ROUTES, p, new, "ignored");
-	    }
-
-	  return;
-	}
-      *k = old->next;
-      table->rt_count--;
-      break;
-    }
-
-  if (!old)
-    before_old = NULL;
-
+  /* Idempotent withdraw. Do nothing. */
   if (!old && !new->attrs)
     {
       stats->imp_withdraws_ignored++;
       return;
     }
+
+  /* If there is the same route in the routing table but from
+   * a different sender, then there are two paths from the
+   * source protocol to this routing table through transparent
+   * pipes, which is not allowed.
+   * We log that and ignore the route. */
+  if (old && (old->sender->proto != p))
+    return rte_report_pipe_collision(c, net, old, new);
+
+  /* If the route is the same, then we just ignore the update and
+   * refresh the old route */
+  if (old && new->attrs && rte_same(old, new, filtered))
+    {
+      old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
+
+      if (!filtered)
+	{
+	  stats->imp_updates_ignored++;
+	  rte_trace_in(D_ROUTES, p, new, "ignored");
+	}
+
+      return;
+    }
+
+  /* Remove the old route from the chain */
+  /* TODO: Do this later together with recalculation */
+  if (old)
+  {
+    *before_old = old->next;
+    table->rt_count--;
+  }
 
   _Bool new_ok = new->attrs && !filtered;
   _Bool old_ok = old && !rte_is_filtered(old);
@@ -1100,10 +1101,13 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
       /* If routes are sorted, just insert new route to appropriate position */
       if (new_stored)
 	{
-	  struct rte_storage **k;
-	  if (before_old && !rte_better(new_stored, before_old))
-	    k = &before_old->next;
-	  else
+	  /* Try to insert the route to the old position or new route to beginning. */
+	  struct rte_storage **k = before_old ?: &net->routes;
+
+	  /* But if the new route is better than the preceeding route,
+	   * we have to start comparing from the best route. */
+	  if (k != &net->routes &&
+	      rte_better(new_stored, SKIP_BACK(struct rte_storage, next, k)))
 	    k = &net->routes;
 
 	  for (; *k; k=&(*k)->next)
@@ -2235,7 +2239,7 @@ rte_update_in(rte *new)
 {
   struct channel *c = new->sender;
   struct rtable *tab = c->in_table;
-  struct rte_storage *old, **pos;
+  struct rte_storage *old, **parent;
   net *net;
 
   if (new->attrs)
@@ -2254,8 +2258,9 @@ rte_update_in(rte *new)
   }
 
   /* Find the old rte */
-  for (pos = &net->routes; old = *pos; pos = &old->next)
-    if (old->src == new->src)
+  old = *(parent = rte_find(net, new->src));
+
+  if (old)
     {
       if (new->attrs && rte_same(old, new, 0))
       {
@@ -2274,11 +2279,10 @@ rte_update_in(rte *new)
 	c->reload_next_rte = old->next;
 
       /* Remove the old rte */
-      *pos = old->next;
+      *parent = old->next;
+
       rte_free(old);
       tab->rt_count--;
-
-      break;
     }
 
   if (!new->attrs)
@@ -2305,8 +2309,8 @@ rte_update_in(rte *new)
   /* Insert the new rte */
   struct rte_storage *e = rte_store(new, net);
   e->lastmod = current_time();
-  e->next = *pos;
-  *pos = e;
+  e->next = *parent;
+  *parent = e;
   tab->rt_count++;
   return 1;
 
@@ -2429,33 +2433,24 @@ rte_update_out(struct channel *c, rte *new, rte *old, struct rte_storage **old_s
   }
 
   /* Find the old rte */
-  for (pos = &net->routes; *pos; pos = &(*pos)->next)
-    if ((c->ra_mode != RA_ANY) || ((*pos)->src == old->src))
-    {
-      if (new && rte_same(*pos, new, 0))
-      {
-	/* REF_STALE / REF_DISCARD not used in export table */
-	/*
-	if (old->flags & (REF_STALE | REF_DISCARD | REF_MODIFY))
-	{
-	  old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
-	  return 1;
-	}
-	*/
+  if (c->ra_mode == RA_ANY)
+    pos = rte_find(net, old->src);
+  else
+    pos = &net->routes;
 
-	goto drop_update;
-      }
+  if (*pos)
+  {
+    if (new && rte_same(*pos, new, 0))
+      goto drop_update;
 
-      /* Keep the old rte */
-      *old_stored = *pos;
-      *old = rte_copy(*pos);
+    /* Keep the old rte */
+    *old_stored = *pos;
+    *old = rte_copy(*pos);
 
-      /* Remove the old rte from the list */
-      *pos = (*pos)->next;
-      tab->rt_count--;
-
-      break;
-    }
+    /* Remove the old rte from the list */
+    *pos = (*pos)->next;
+    tab->rt_count--;
+  }
 
   if (!new->attrs)
   {

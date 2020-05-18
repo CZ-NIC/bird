@@ -113,7 +113,7 @@ pipe_rte_track(struct channel *C, net_addr *n, struct rte_src *src)
   struct channel *src_ch = (C == p->pri) ? p->sec : p->pri;
 
   net *nn = net_find(src_ch->table, n);
-  struct rte_storage *e = nn ? rte_find(nn, src) : NULL;
+  struct rte_storage *e = nn ? *rte_find(nn, src) : NULL;
 
   log(L_TRACE "[route trace] Piped by protocol %s from table %s to table %s: %N %s/%u:%u",
       p->p.name, src_ch->table->name, C->table->name, n, src->proto->name, src->private_id, src->global_id);

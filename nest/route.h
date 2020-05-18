@@ -345,7 +345,7 @@ static inline net *net_find_valid(rtable *tab, const net_addr *addr)
 static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
-struct rte_storage *rte_find(net *net, struct rte_src *src);
+struct rte_storage **rte_find(net *net, struct rte_src *src);
 _Bool rt_export_merged(struct channel *c, net *net, rte *best, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
