@@ -480,7 +480,7 @@ password_item_params:
  | ACCEPT TO time ';' password_item_params { this_p_item->accto = $3; }
  | FROM time ';' password_item_params { this_p_item->genfrom = this_p_item->accfrom = $2; }
  | TO time ';' password_item_params { this_p_item->gento = this_p_item->accto = $2; }
- | ID expr ';' password_item_params { this_p_item->id = $2; if ($2 <= 0) cf_error("Password ID has to be greated than zero."); }
+ | ID expr ';' password_item_params { this_p_item->id = $2; if ($2 > 255) cf_error("Password ID must be in range 0-255"); }
  | ALGORITHM password_algorithm ';' password_item_params { this_p_item->alg = $2; }
  ;
 

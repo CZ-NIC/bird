@@ -783,11 +783,12 @@ agreement").
 
 <descrip>
 	<tag><label id="proto-pass-id">id <M>num</M></tag>
-	ID of the password, (1-255). If it is not used, BIRD will choose ID based
-	on an order of the password item in the interface. For example, second
-	password item in one interface will have default ID 2. ID is used by
-	some routing protocols to identify which password was used to
-	authenticate protocol packets.
+	ID of the password, (0-255). If it is not specified, BIRD will choose ID
+	based on an order of the password item in the interface, starting from
+	1. For example, second password item in one interface will have default
+	ID 2. ID 0 is allowed by BIRD, but some other implementations may not
+	allow it. ID is used by some routing protocols to identify which
+	password was used to authenticate protocol packets.
 
 	<tag><label id="proto-pass-gen-from">generate from "<m/time/"</tag>
 	The start time of the usage of the password for packet signing.
