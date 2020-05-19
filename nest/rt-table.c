@@ -291,10 +291,11 @@ rte_store(const rte *r, net *n)
 
   rt_lock_source(e->src);
 
-  if (e->attrs->cached)
-    e->attrs = rta_clone(r->attrs);
-  else
-    e->attrs = rta_lookup(r->attrs);
+  if (e->attrs)
+    if (e->attrs->cached)
+      e->attrs = rta_clone(r->attrs);
+    else
+      e->attrs = rta_lookup(r->attrs);
 
   return e;
 }
@@ -308,29 +309,6 @@ rte_copy_metadata(struct rte_storage *dest, struct rte_storage *src)
 }
 
 /**
- * rte_cow_rta - get a private writable copy of &rte with writable &rta
- * @r: a route entry to be copied
- * @lp: a linpool from which to allocate &rta
- *
- * rte_cow_rta() returns directly a &rte struct; the route attributes are
- * a shallow copy made on the given linpool, src is not locked.
- *
- * To work properly, the caller must own the original rte_storage whole the
- * time this route is being used.
- *
- * Result: a new &rte with writable &rta.
- */
-rte
-rte_cow_rta(const struct rte_storage *r, linpool *lp)
-{
-  return (rte) {
-    .attrs = rta_do_cow(r->attrs, lp),
-    .net = r->net->n.addr,
-    .src = r->src,
-  };
-}
-
-/**
  * rte_free - delete a &rte
  * @e: &rte to be deleted
  *
@@ -340,7 +318,8 @@ void
 rte_free(struct rte_storage *e)
 {
   rt_unlock_source(e->src);
-  rta_free(e->attrs);
+  if (e->attrs)
+    rta_free(e->attrs);
   sl_free(rte_slab, e);
 }
 
@@ -966,47 +945,34 @@ rte_same(struct rte_storage *x, rte *y, _Bool fy)
 }
 
 static void NONNULL(1,2)
-rte_recalculate(net *net, rte *new, _Bool filtered)
+rte_recalculate(net *net, struct rte *new_rte, _Bool filtered, struct rte_storage *old, struct rte_storage **before_old)
 {
-  struct channel *c = new->sender;
+  struct channel *c = new_rte->sender;
   struct proto *p = c->proto;
-  struct rtable *table = c->table;
   struct proto_stats *stats = &c->stats;
+  struct rtable *table = c->table;
+
+  /* Store the new route now, it is going to be inserted. */
+  struct rte_storage *new = NULL;
+  if (new_rte->attrs)
+  {
+    new = rte_store(new_rte, net);
+    if (filtered)
+      new->flags |= REF_FILTERED;
+  }
+
+  /* Update channel statistics */
+  if (new)
+    filtered ? stats->filt_routes++ : stats->imp_routes++;
+  if (old)
+    rte_is_filtered(old) ? stats->filt_routes-- : stats->imp_routes--;
+
+  /* Store the input state */
+  _Bool new_ok = new_rte->attrs && !rte_is_filtered(new);
+  _Bool old_ok = old && !rte_is_filtered(old);
+
+  /* Keep the old best route for recalculation purposes */
   struct rte_storage *old_best = net->routes;
-  struct rte_storage *old = NULL, **before_old = NULL;
-
-  /* Find the original route from the same protocol */
-  old = *(before_old = rte_find(net, new->src));
-
-  /* Idempotent withdraw. Do nothing. */
-  if (!old && !new->attrs)
-    {
-      stats->imp_withdraws_ignored++;
-      return;
-    }
-
-  /* If there is the same route in the routing table but from
-   * a different sender, then there are two paths from the
-   * source protocol to this routing table through transparent
-   * pipes, which is not allowed.
-   * We log that and ignore the route. */
-  if (old && (old->sender->proto != p))
-    return rte_report_pipe_collision(c, net, old, new);
-
-  /* If the route is the same, then we just ignore the update and
-   * refresh the old route */
-  if (old && new->attrs && rte_same(old, new, filtered))
-    {
-      old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
-
-      if (!filtered)
-	{
-	  stats->imp_updates_ignored++;
-	  rte_trace_in(D_ROUTES, p, new, "ignored");
-	}
-
-      return;
-    }
 
   /* Remove the old route from the chain */
   /* TODO: Do this later together with recalculation */
@@ -1016,90 +982,10 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
     table->rt_count--;
   }
 
-  _Bool new_ok = new->attrs && !filtered;
-  _Bool old_ok = old && !rte_is_filtered(old);
-
-  struct channel_limit *l = &c->rx_limit;
-  if (l->action && !old && new->attrs && !c->in_table)
-    {
-      u32 all_routes = stats->imp_routes + stats->filt_routes;
-
-      if (all_routes >= l->limit)
-	channel_notify_limit(c, l, PLD_RX, all_routes);
-
-      if (l->state == PLS_BLOCKED)
-	{
-	  /* In receive limit the situation is simple, old is NULL so
-	     we just free new and exit like nothing happened */
-
-	  stats->imp_updates_ignored++;
-	  rte_trace_in(D_FILTERS, p, new, "ignored [limit]");
-	  return;
-	}
-    }
-
-  l = &c->in_limit;
-  if (l->action && !old_ok && new_ok)
-    {
-      if (stats->imp_routes >= l->limit)
-	channel_notify_limit(c, l, PLD_IN, stats->imp_routes);
-
-      if (l->state == PLS_BLOCKED)
-	{
-	  /* In import limit the situation is more complicated. We
-	     shouldn't just drop the route, we should handle it like
-	     it was filtered. We also have to continue the route
-	     processing if old or new is non-NULL, but we should exit
-	     if both are NULL as this case is probably assumed to be
-	     already handled. */
-
-	  stats->imp_updates_ignored++;
-	  rte_trace_in(D_FILTERS, p, new, "ignored [limit]");
-
-	  if (c->in_keep_filtered)
-	    filtered = 1;
-	  else
-	    new->attrs = NULL;
-
-	  /* Note that old && !new could be possible when
-	     c->in_keep_filtered changed in the recent past. */
-
-	  if (!old && !new->attrs)
-	    return;
-
-	  new_ok = 0;
-	  goto skip_stats1;
-	}
-    }
-
-  if (new_ok)
-    stats->imp_updates_accepted++;
-  else if (old_ok)
-    stats->imp_withdraws_accepted++;
-  else
-    stats->imp_withdraws_ignored++;
-
- skip_stats1:
-
-  if (new->attrs)
-    filtered ? stats->filt_routes++ : stats->imp_routes++;
-  if (old)
-    rte_is_filtered(old) ? stats->filt_routes-- : stats->imp_routes--;
-
-  /* Store the new route now, it is going to be inserted. */
-  struct rte_storage *new_stored = NULL;
-
-  if (new->attrs) {
-    new_stored = rte_store(new, net);
-
-    if (filtered)
-      new_stored->flags |= REF_FILTERED;
-  }
-
   if (table->config->sorted)
     {
       /* If routes are sorted, just insert new route to appropriate position */
-      if (new_stored)
+      if (new)
 	{
 	  /* Try to insert the route to the old position or new route to beginning. */
 	  struct rte_storage **k = before_old ?: &net->routes;
@@ -1107,15 +993,15 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
 	  /* But if the new route is better than the preceeding route,
 	   * we have to start comparing from the best route. */
 	  if (k != &net->routes &&
-	      rte_better(new_stored, SKIP_BACK(struct rte_storage, next, k)))
+	      rte_better(new, SKIP_BACK(struct rte_storage, next, k)))
 	    k = &net->routes;
 
 	  for (; *k; k=&(*k)->next)
-	    if (rte_better(new_stored, *k))
+	    if (rte_better(new, *k))
 	      break;
 
-	  new_stored->next = *k;
-	  *k = new_stored;
+	  new->next = *k;
+	  *k = new;
 	  table->rt_count++;
 	}
     }
@@ -1124,16 +1010,16 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
       /* If routes are not sorted, find the best route and move it on
 	 the first position. There are several optimized cases. */
 
-      if (new->src->proto->rte_recalculate && new->src->proto->rte_recalculate(table, net, new_stored, old, old_best))
+      if (new && new->src->proto->rte_recalculate && new->src->proto->rte_recalculate(table, net, new, old, old_best))
 	goto do_recalculate;
 
-      if (new_stored && rte_better(new_stored, old_best))
+      if (new && rte_better(new, old_best))
 	{
 	  /* The first case - the new route is cleary optimal,
 	     we link it at the first position */
 
-	  new_stored->next = net->routes;
-	  net->routes = new_stored;
+	  new->next = net->routes;
+	  net->routes = new;
 	  table->rt_count++;
 	}
       else if (old == old_best)
@@ -1146,10 +1032,10 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
 
 	do_recalculate:
 	  /* Add the new route to the list */
-	  if (new_stored)
+	  if (new)
 	    {
-	      new_stored->next = net->routes;
-	      net->routes = new_stored;
+	      new->next = net->routes;
+	      net->routes = new;
 	      table->rt_count++;
 	    }
 
@@ -1168,7 +1054,7 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
 	      net->routes = best;
 	    }
 	}
-      else if (new_stored)
+      else if (new)
 	{
 	  /* The third case - the new route is not better than the old
 	     best route (therefore old_best != NULL) and the old best
@@ -1176,31 +1062,34 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
 	     We just link the new route after the old best route. */
 
 	  ASSERT(net->routes != NULL);
-	  new_stored->next = net->routes->next;
-	  net->routes->next = new_stored;
+	  new->next = net->routes->next;
+	  net->routes->next = new;
 	  table->rt_count++;
 	}
       /* The fourth (empty) case - suboptimal route was removed, nothing to do */
     }
 
-  if (new_stored)
+  if (new)
     {
-      new_stored->lastmod = current_time();
+      new->lastmod = current_time();
 
       if (!old)
         {
-	  new_stored->id = hmap_first_zero(&table->id_map);
-	  hmap_set(&table->id_map, new_stored->id);
+	  new->id = hmap_first_zero(&table->id_map);
+	  hmap_set(&table->id_map, new->id);
 	}
       else
-	new_stored->id = old->id;
+	new->id = old->id;
     }
 
   /* Log the route change */
   if (p->debug & D_ROUTES)
     {
       if (new_ok)
-	rte_trace(p, new, '>', new_stored == net->routes ? "added [best]" : "added");
+      {
+	rte new_copy = rte_copy(new);
+	rte_trace(p, &new_copy, '>', new == net->routes ? "added [best]" : "added");
+      }
       else if (old_ok)
 	{
 	  rte old_copy = rte_copy(old);
@@ -1214,7 +1103,7 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
     }
 
   /* Propagate the route change */
-  rte_announce(table, RA_UNDEF, net, new_stored, old, net->routes, old_best);
+  rte_announce(table, RA_UNDEF, net, new, old, net->routes, old_best);
 
   if (!net->routes &&
       (table->gc_counter++ >= table->config->gc_max_ops) &&
@@ -1224,11 +1113,11 @@ rte_recalculate(net *net, rte *new, _Bool filtered)
   if (old_ok && p->rte_remove)
     p->rte_remove(net, old);
   if (new_ok && p->rte_insert)
-    p->rte_insert(net, new_stored);
+    p->rte_insert(net, new);
 
   if (old)
     {
-      if (!new_stored)
+      if (!new)
 	hmap_clear(&table->id_map, old->id);
 
       rte_free(old);
@@ -1358,8 +1247,108 @@ rte_update2(rte *new)
     new->attrs = NULL;
   }
 
+  struct rte_storage *old = NULL, **before_old = NULL;
+
+  /* Find the original route from the same protocol */
+  old = *(before_old = rte_find(nn, new->src));
+
+  /* Idempotent withdraw. Do nothing. */
+  if (!old && !new->attrs)
+    {
+      stats->imp_withdraws_ignored++;
+      return;
+    }
+
+  /* If there is the same route in the routing table but from
+   * a different sender, then there are two paths from the
+   * source protocol to this routing table through transparent
+   * pipes, which is not allowed.
+   * We log that and ignore the route. */
+  if (old && (old->sender->proto != p))
+    return rte_report_pipe_collision(c, nn, old, new);
+
+  /* If the route is the same, then we just ignore the update and
+   * refresh the old route */
+  if (old && new->attrs && rte_same(old, new, filtered))
+    {
+      old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
+
+      if (!filtered)
+	{
+	  stats->imp_updates_ignored++;
+	  rte_trace_in(D_ROUTES, p, new, "ignored");
+	}
+
+      return;
+    }
+
+  _Bool new_ok = new->attrs && !filtered;
+  _Bool old_ok = old && !rte_is_filtered(old);
+
+  struct channel_limit *l = &c->rx_limit;
+  if (l->action && !old && new->attrs && !c->in_table)
+    {
+      u32 all_routes = stats->imp_routes + stats->filt_routes;
+
+      if (all_routes >= l->limit)
+	channel_notify_limit(c, l, PLD_RX, all_routes);
+
+      if (l->state == PLS_BLOCKED)
+	{
+	  /* In receive limit the situation is simple, old is NULL so
+	     we just free new and exit like nothing happened */
+
+	  stats->imp_updates_ignored++;
+	  rte_trace_in(D_FILTERS, p, new, "ignored [limit]");
+	  return;
+	}
+    }
+
+  l = &c->in_limit;
+  if (l->action && !old_ok && new_ok)
+    {
+      if (stats->imp_routes >= l->limit)
+	channel_notify_limit(c, l, PLD_IN, stats->imp_routes);
+
+      if (l->state == PLS_BLOCKED)
+	{
+	  /* In import limit the situation is more complicated. We
+	     shouldn't just drop the route, we should handle it like
+	     it was filtered. We also have to continue the route
+	     processing if old or new is non-NULL, but we should exit
+	     if both are NULL as this case is probably assumed to be
+	     already handled. */
+
+	  stats->imp_updates_ignored++;
+	  rte_trace_in(D_FILTERS, p, new, "ignored [limit]");
+
+	  if (c->in_keep_filtered)
+	    filtered = 1;
+	  else
+	    new->attrs = NULL;
+
+	  /* Note that old && !new could be possible when
+	     c->in_keep_filtered changed in the recent past. */
+
+	  if (!old && !new->attrs)
+	    return;
+
+	  new_ok = 0;
+	  goto skip_stats1;
+	}
+    }
+
+  if (new_ok)
+    stats->imp_updates_accepted++;
+  else if (old_ok)
+    stats->imp_withdraws_accepted++;
+  else
+    stats->imp_withdraws_ignored++;
+
+ skip_stats1:
+
   /* And recalculate the best route */
-  rte_recalculate(nn, new, filtered);
+  rte_recalculate(nn, new, filtered, old, before_old);
   rte_update_unlock();
   return;
 
@@ -1390,8 +1379,10 @@ rte_announce_i(rtable *tab, uint type, net *net,
 
 /* Modify existing route by protocol hook, used for long-lived graceful restart */
 static inline void
-rte_modify(struct rte_storage *old)
+rte_modify(struct rte_storage **before_old)
 {
+  struct rte_storage *old = *before_old;
+
   rte_update_lock();
 
   rte new = {
@@ -1403,7 +1394,11 @@ rte_modify(struct rte_storage *old)
   };
 
   if (new.attrs != old->attrs)
-    rte_recalculate(old->net, &new, old->src);
+    /* Exchange the route for a new one */
+    rte_recalculate(old->net, &new, rte_is_filtered(old), old, before_old);
+  else
+    /* Keep the old route */
+    old->flags &= ~REF_MODIFY;
 
   rte_update_unlock();
 }
@@ -1668,8 +1663,9 @@ again:
   FIB_ITERATE_START(&tab->fib, fit, net, n)
     {
     rescan:
-      for (struct rte_storage *e=n->routes; e; e=e->next)
+      for (struct rte_storage **ep = &n->routes; (*ep); ep = &((*ep)->next))
       {
+	struct rte_storage *e = *ep;
 	if (e->sender->flush_active || (e->flags & REF_DISCARD))
 	  {
 	    if (limit <= 0)
@@ -1687,7 +1683,7 @@ again:
 	      .sender = e->sender,
 	      .generation = e->generation,
 	    };
-	    rte_recalculate(e->net, &ew, 0);
+	    rte_recalculate(e->net, &ew, rte_is_filtered(e), e, ep);
 	    rte_update_unlock();
 
 	    limit--;
@@ -1704,7 +1700,7 @@ again:
 		return;
 	      }
 
-	    rte_modify(e);
+	    rte_modify(ep);
 	    limit--;
 
 	    goto rescan;
