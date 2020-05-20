@@ -945,30 +945,21 @@ rte_same(struct rte_storage *x, rte *y, _Bool fy)
 }
 
 static void NONNULL(1,2)
-rte_recalculate(net *net, struct rte *new_rte, _Bool filtered, struct rte_storage *old, struct rte_storage **before_old)
+rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, struct rte_storage **before_old)
 {
-  struct channel *c = new_rte->sender;
+  struct channel *c = new->sender;
   struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
   struct rtable *table = c->table;
 
-  /* Store the new route now, it is going to be inserted. */
-  struct rte_storage *new = NULL;
-  if (new_rte->attrs)
-  {
-    new = rte_store(new_rte, net);
-    if (filtered)
-      new->flags |= REF_FILTERED;
-  }
-
   /* Update channel statistics */
-  if (new)
-    filtered ? stats->filt_routes++ : stats->imp_routes++;
+  if (new->attrs)
+    rte_is_filtered(new) ? stats->filt_routes++ : stats->imp_routes++;
   if (old)
     rte_is_filtered(old) ? stats->filt_routes-- : stats->imp_routes--;
 
   /* Store the input state */
-  _Bool new_ok = new_rte->attrs && !rte_is_filtered(new);
+  _Bool new_ok = new->attrs && !rte_is_filtered(new);
   _Bool old_ok = old && !rte_is_filtered(old);
 
   /* Keep the old best route for recalculation purposes */
@@ -985,7 +976,7 @@ rte_recalculate(net *net, struct rte *new_rte, _Bool filtered, struct rte_storag
   if (table->config->sorted)
     {
       /* If routes are sorted, just insert new route to appropriate position */
-      if (new)
+      if (new->attrs)
 	{
 	  /* Try to insert the route to the old position or new route to beginning. */
 	  struct rte_storage **k = before_old ?: &net->routes;
@@ -1010,10 +1001,10 @@ rte_recalculate(net *net, struct rte *new_rte, _Bool filtered, struct rte_storag
       /* If routes are not sorted, find the best route and move it on
 	 the first position. There are several optimized cases. */
 
-      if (new && new->src->proto->rte_recalculate && new->src->proto->rte_recalculate(table, net, new, old, old_best))
+      if (new->attrs && new->src->proto->rte_recalculate && new->src->proto->rte_recalculate(table, net, new, old, old_best))
 	goto do_recalculate;
 
-      if (new && rte_better(new, old_best))
+      if (new->attrs && rte_better(new, old_best))
 	{
 	  /* The first case - the new route is cleary optimal,
 	     we link it at the first position */
@@ -1032,7 +1023,7 @@ rte_recalculate(net *net, struct rte *new_rte, _Bool filtered, struct rte_storag
 
 	do_recalculate:
 	  /* Add the new route to the list */
-	  if (new)
+	  if (new->attrs)
 	    {
 	      new->next = net->routes;
 	      net->routes = new;
@@ -1054,7 +1045,7 @@ rte_recalculate(net *net, struct rte *new_rte, _Bool filtered, struct rte_storag
 	      net->routes = best;
 	    }
 	}
-      else if (new)
+      else if (new->attrs)
 	{
 	  /* The third case - the new route is not better than the old
 	     best route (therefore old_best != NULL) and the old best
@@ -1069,7 +1060,7 @@ rte_recalculate(net *net, struct rte *new_rte, _Bool filtered, struct rte_storag
       /* The fourth (empty) case - suboptimal route was removed, nothing to do */
     }
 
-  if (new)
+  if (new->attrs)
     {
       new->lastmod = current_time();
 
@@ -1117,7 +1108,7 @@ rte_recalculate(net *net, struct rte *new_rte, _Bool filtered, struct rte_storag
 
   if (old)
     {
-      if (!new)
+      if (!new->attrs)
 	hmap_clear(&table->id_map, old->id);
 
       rte_free(old);
@@ -1345,10 +1336,30 @@ rte_update2(rte *new)
   else
     stats->imp_withdraws_ignored++;
 
- skip_stats1:
+ skip_stats1:;
+  /* Store the new route now, it is going to be inserted. */
+  struct rte_storage *new_stored = NULL;
+  if (new->attrs)
+  {
+    new_stored = rte_store(new, nn);
+    if (filtered)
+      new_stored->flags |= REF_FILTERED;
+  }
+  else
+  {
+    /* Create a dummy stored route. This is a temporary code
+     * which is going to be replaced by real storage of withdraws */
+    new_stored = alloca(sizeof(struct rte_storage));
+    *new_stored = (struct rte_storage) {
+      .net = nn,
+      .src = new->src,
+      .sender = new->sender,
+      .generation = new->generation,
+    };
+  }
 
   /* And recalculate the best route */
-  rte_recalculate(nn, new, filtered, old, before_old);
+  rte_recalculate(nn, new_stored, old, before_old);
   rte_update_unlock();
   return;
 
@@ -1385,7 +1396,7 @@ rte_modify(struct rte_storage **before_old)
 
   rte_update_lock();
 
-  rte new = {
+  rte nloc = {
     .net = old->net->n.addr,
     .src = old->src,
     .attrs = old->sender->proto->rte_modify(old, rte_update_pool),
@@ -1393,9 +1404,12 @@ rte_modify(struct rte_storage **before_old)
     .generation = old->generation,
   };
 
-  if (new.attrs != old->attrs)
+  struct rte_storage *new = rte_store(&nloc, old->net);
+  new->flags |= old->flags & REF_FILTERED;
+
+  if (new->attrs != old->attrs)
     /* Exchange the route for a new one */
-    rte_recalculate(old->net, &new, rte_is_filtered(old), old, before_old);
+    rte_recalculate(old->net, new, old, before_old);
   else
     /* Keep the old route */
     old->flags &= ~REF_MODIFY;
@@ -1683,7 +1697,9 @@ again:
 	      .sender = e->sender,
 	      .generation = e->generation,
 	    };
-	    rte_recalculate(e->net, &ew, rte_is_filtered(e), e, ep);
+	    struct rte_storage *es = rte_store(&ew, e->net);
+	    es->flags |= e->flags & REF_FILTERED;
+	    rte_recalculate(e->net, es, e, ep);
 	    rte_update_unlock();
 
 	    limit--;
