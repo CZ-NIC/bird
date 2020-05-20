@@ -2075,6 +2075,34 @@ rt_next_hop_update_rte(rtable *tab UNUSED, rte *old)
   return e;
 }
 
+static struct rte *
+rte_recalc_sort(struct rte *chain)
+{
+  ASSERT(chain);
+
+  /* Single route -> nothing to do */
+  if (!chain->next)
+    return chain;
+
+  /* Simple insert sort (TODO: something faster for long chains) */
+  struct rte *best = chain, *next = chain->next, *cur;
+  chain->next = NULL;
+
+  while (cur = next)
+  {
+    next = cur->next;
+    for (struct rte **k = &best; *k; k = &((*k)->next))
+      if (rte_better(cur, *k))
+      {
+	cur->next = *k;
+	*k = cur;
+	break;
+      }
+  }
+
+  return best;
+}
+
 static inline int
 rt_next_hop_update_net(rtable *tab, net *n)
 {
@@ -2113,20 +2141,25 @@ rt_next_hop_update_net(rtable *tab, net *n)
     return 0;
 
   /* Find the new best route */
-  new_best = NULL;
-  for (k = &n->routes; e = *k; k = &e->next)
+  if (tab->config->sorted)
+    new = n->routes = rte_recalc_sort(n->routes);
+  else
     {
-      if (!new_best || rte_better(e, *new_best))
-	new_best = k;
-    }
+      new_best = NULL;
+      for (k = &n->routes; e = *k; k = &e->next)
+      {
+	if (!new_best || rte_better(e, *new_best))
+	  new_best = k;
+      }
 
-  /* Relink the new best route to the first position */
-  new = *new_best;
-  if (new != n->routes)
-    {
-      *new_best = new->next;
-      new->next = n->routes;
-      n->routes = new;
+      /* Relink the new best route to the first position */
+      new = *new_best;
+      if (new != n->routes)
+      {
+	*new_best = new->next;
+	new->next = n->routes;
+	n->routes = new;
+      }
     }
 
   /* Announce the new best route */
