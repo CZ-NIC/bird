@@ -395,12 +395,10 @@ px_pos_to_ifa(struct ospf_area *oa, int pos)
 static inline struct ospf_iface *
 rt_find_iface2(struct ospf_area *oa, uint data)
 {
-  ip_addr addr = ipa_from_u32(data);
-
   /* We should handle it differently for unnumbered PTP links */
   struct ospf_iface *ifa;
   WALK_LIST(ifa, oa->po->iface_list)
-    if ((ifa->oa == oa) && ifa->addr && (ipa_equal(ifa->addr->ip, addr)))
+    if ((ifa->oa == oa) && ifa->addr && (ospf_iface_get_data(ifa) == data))
       return ifa;
 
   return NULL;
@@ -420,7 +418,13 @@ rt_find_iface3(struct ospf_area *oa, uint lif)
 static struct ospf_iface *
 rt_find_iface(struct ospf_area *oa, int pos, uint data, uint lif)
 {
-  if (0)
+  /*
+   * We can use both position based lookup (which is more reliable) and data/lif
+   * based lookup (which works even during graceful restart). We will prefer the
+   * first approach, but use the second one for GR-enabled instances.
+   */
+
+  if (oa->po->gr_mode != OSPF_GR_ABLE)
     return rt_pos_to_ifa(oa, pos);
   else
     return ospf_is_v2(oa->po) ? rt_find_iface2(oa, data) : rt_find_iface3(oa, lif);

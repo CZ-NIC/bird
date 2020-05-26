@@ -3760,11 +3760,28 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	In <cf/type ptp/ network configurations, OSPFv2 implementations should
 	ignore received netmask field in hello packets and should send hello
 	packets with zero netmask field on unnumbered PtP links. But some OSPFv2
-	implementations perform netmask checking even for PtP links. This option
-	specifies whether real netmask will be used in hello packets on <cf/type
- 	ptp/ interfaces. You should ignore this option unless you meet some
-	compatibility problems related to this issue. Default value is no for
-	unnumbered PtP links, yes otherwise.
+	implementations perform netmask checking even for PtP links.
+
+	This option specifies whether real netmask will be used in hello packets
+	on <cf/type ptp/ interfaces. You should ignore this option unless you
+	meet some compatibility problems related to this issue. Default value is
+	no for unnumbered PtP links, yes otherwise.
+
+	<tag><label id="ospf-ptp-address">ptp address <m/switch/</tag>
+	In <cf/type ptp/ network configurations, OSPFv2 implementations should
+	use IP address for regular PtP links and interface id for unnumbered PtP
+	links in data field of link description records in router LSA. This data
+	field has only local meaning for PtP links, but some broken OSPFv2
+	implementations assume there is an IP address and use it as a next hop
+	in SPF calculations. Note that interface id for unnumbered PtP links is
+	necessary when graceful restart is enabled to distinguish PtP links with
+	the same local IP address.
+
+	This option specifies whether an IP address will be used in data field
+	for <cf/type ptp/ interfaces, it is ignored for other interfaces. You
+	should ignore this option unless you meet some compatibility problems
+	related to this issue. Default value is no for unnumbered PtP links when
+	graceful restart is enabled, yes otherwise.
 
 	<tag><label id="ospf-check-link">check link <M>switch</M></tag>
 	If set, a hardware link state (reported by OS) is taken into consideration.

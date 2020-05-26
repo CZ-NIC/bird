@@ -602,6 +602,11 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   if (ip->ptp_netmask < 2)
     ifa->ptp_netmask = ip->ptp_netmask;
 
+  /* For compatibility, we may use ptp_address even for unnumbered links */
+  ifa->ptp_address = !(addr->flags & IA_PEER) || (p->gr_mode != OSPF_GR_ABLE);
+  if (ip->ptp_address < 2)
+    ifa->ptp_address = ip->ptp_address;
+
   ifa->drip = ifa->bdrip = ospf_is_v2(p) ? IPA_NONE4 : IPA_NONE6;
 
   ifa->type = ospf_iface_classify(ip->type, addr);
@@ -1002,6 +1007,29 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 
     ifa->link_lsa_suppression = new->link_lsa_suppression;
     ospf_notify_link_lsa(ifa);
+  }
+
+  /* PtP netmask */
+  int new_ptp_netmask = (new->ptp_netmask < 2) ? new->ptp_netmask :
+    !(ifa->addr->flags & IA_PEER);
+  if (ifa->ptp_netmask != new_ptp_netmask)
+  {
+    OSPF_TRACE(D_EVENTS, "Changing PtP netmask option of %s from %d to %d",
+	       ifname, ifa->ptp_netmask, new_ptp_netmask);
+    ifa->ptp_netmask = new_ptp_netmask;
+  }
+
+  /* PtP address */
+  int new_ptp_address = (new->ptp_address < 2) ? new->ptp_address :
+    (!(ifa->addr->flags & IA_PEER) || (p->gr_mode != OSPF_GR_ABLE));
+  if (ifa->ptp_address != new_ptp_address)
+  {
+    /* Keep it silent for implicit changes */
+    if (new->ptp_address < 2)
+      OSPF_TRACE(D_EVENTS, "Changing PtP address option of %s from %d to %d",
+		 ifname, ifa->ptp_address, new_ptp_address);
+
+    ifa->ptp_address = new_ptp_address;
   }
 
   /* BFD */
