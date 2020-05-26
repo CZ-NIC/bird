@@ -640,6 +640,14 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       .nh.iface = r->neigh->ifa->iface,
     };
 
+    /*
+     * If we cannot find a reachable neighbour, set the entry to be onlink. This
+     * makes it possible to, e.g., assign /32 addresses on a mesh interface and
+     * have routing work.
+     */
+    if (!neigh_find(&p->p, r->next_hop, r->neigh->ifa->iface, 0))
+      a0.nh.flags = RNF_ONLINK;
+
     rta *a = rta_lookup(&a0);
     rte *rte = rte_get_temp(a);
     rte->u.babel.seqno = r->seqno;
