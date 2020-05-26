@@ -820,7 +820,6 @@ cleanup:
 /**
  * rte_announce - announce a routing table change
  * @tab: table the route has been added to
- * @type: type of route announcement (RA_UNDEF or RA_ANY)
  * @net: network in question
  * @new: the new or changed route
  * @old: the previous route replaced by the new one
@@ -830,18 +829,9 @@ cleanup:
  * This function gets a routing table update and announces it to all protocols
  * that are connected to the same table by their channels.
  *
- * There are two ways of how routing table changes are announced. First, there
- * is a change of just one route in @net (which may caused a change of the best
- * route of the network). In this case @new and @old describes the changed route
- * and @new_best and @old_best describes best routes. Other routes are not
- * affected, but in sorted table the order of other routes might change.
- *
- * Second, There is a bulk change of multiple routes in @net, with shared best
- * route selection. In such case separate route changes are described using
- * @type of %RA_ANY, with @new and @old specifying the changed route, while
- * @new_best and @old_best are NULL. After that, another notification is done
- * where @new_best and @old_best are filled (may be the same), but @new and @old
- * are NULL.
+ * Arguments @new and @old describe the changed route and @new_best and @old_best
+ * describe best routes. Other routes are not affected, but in sorted table
+ * the order of other routes might change.
  *
  * The function announces the change to all associated channels. For each
  * channel, an appropriate preprocessing is done according to channel &ra_mode.
@@ -857,7 +847,7 @@ cleanup:
  * done outside of scope of rte_announce().
  */
 static void
-rte_announce(rtable *tab, uint type, net *net, struct rte_storage *new, struct rte_storage *old,
+rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage *old,
 	     struct rte_storage *new_best, struct rte_storage *old_best)
 {
   if (!rte_is_valid(new))
@@ -891,18 +881,6 @@ rte_announce(rtable *tab, uint type, net *net, struct rte_storage *new, struct r
   {
     if (c->export_state == ES_DOWN)
       continue;
-
-    if (type && (type != c->ra_mode))
-    {
-      /* If skipping other means of announcement,
-       * drop the rejection bit anyway
-       * as we won't get this route as old any more.
-       * This happens when updating hostentries. */
-      if (old)
-	bmap_clear(&c->export_reject_map, old->id);
-
-      continue;
-    }
 
     struct rte_export_internal rei = {
       .net = net,
@@ -1094,7 +1072,7 @@ rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, stru
     }
 
   /* Propagate the route change */
-  rte_announce(table, RA_UNDEF, net, new, old, net->routes, old_best);
+  rte_announce(table, net, new, old, net->routes, old_best);
 
   if (!net->routes &&
       (table->gc_counter++ >= table->config->gc_max_ops) &&
@@ -1374,18 +1352,6 @@ rte_update2(rte *new)
 
   rte_update_unlock();
   return;
-}
-
-/* Independent call to rte_announce(), used from next hop
-   recalculation, outside of rte_update(). new must be non-NULL */
-static inline void
-rte_announce_i(rtable *tab, uint type, net *net,
-    struct rte_storage *new, struct rte_storage *old,
-    struct rte_storage *new_best, struct rte_storage *old_best)
-{
-  rte_update_lock();
-  rte_announce(tab, type, net, new, old, new_best, old_best);
-  rte_update_unlock();
 }
 
 /* Modify existing route by protocol hook, used for long-lived graceful restart */
@@ -1936,75 +1902,16 @@ rte_recalc_sort(struct rte_storage *chain)
 }
 
 static inline int
-rt_next_hop_update_net(rtable *tab, net *n)
+rt_next_hop_update_net(net *n)
 {
-  struct rte_storage *new, **new_best;
-  int count = 0;
-  int free_old_best = 0;
-
-  struct rte_storage *old_best = n->routes;
-  if (!old_best)
-    return 0;
-
+  uint count = 0;
   for (struct rte_storage **k = &n->routes, *e; e = *k; k = &e->next)
     if (rta_next_hop_outdated(e->attrs))
       {
-	new = rt_next_hop_update_rte(e);
-	*k = new;
-
-	rte_announce_i(tab, RA_ANY, n, new, e, NULL, NULL);
-
-	/* Call a pre-comparison hook */
-	/* Not really an efficient way to compute this */
-	if (e->src->proto->rte_recalculate)
-	  e->src->proto->rte_recalculate(tab, n, new, e, NULL);
-
-	if (e != old_best)
-	  rte_free(e);
-	else /* Freeing of the old best rte is postponed */
-	  free_old_best = 1;
-
-	e = new;
+	struct rte_storage *new = rt_next_hop_update_rte(e);
+	rte_recalculate(n, new, e, k);
 	count++;
       }
-
-  if (!count)
-    return 0;
-
-  /* Find the new best route */
-  if (tab->config->sorted)
-    new = n->routes = rte_recalc_sort(n->routes);
-  else
-    {
-      new_best = NULL;
-      for (struct rte_storage **k = &n->routes, *e; e = *k; k = &e->next)
-      {
-	if (!new_best || rte_better(e, *new_best))
-	  new_best = k;
-      }
-
-      /* Relink the new best route to the first position */
-      new = *new_best;
-      if (new != n->routes)
-      {
-	*new_best = new->next;
-	new->next = n->routes;
-	n->routes = new;
-      }
-    }
-
-  /* Announce the new best route */
-  if (new != old_best)
-  {
-    rte nloc = rte_copy(new);
-    rte_trace_in(D_ROUTES, new->sender->proto, &nloc, "updated [best]");
-  }
-
-  /* Propagate changes */
-  rte_announce_i(tab, RA_UNDEF, n, NULL, NULL, n->routes, old_best);
-
-  if (free_old_best)
-    rte_free(old_best);
 
   return count;
 }
@@ -2032,7 +1939,7 @@ rt_next_hop_update(rtable *tab)
 	  ev_schedule(tab->rt_event);
 	  return;
 	}
-      max_feed -= rt_next_hop_update_net(tab, n);
+      max_feed -= rt_next_hop_update_net(n);
     }
   FIB_ITERATE_END;
 
