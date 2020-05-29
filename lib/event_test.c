@@ -69,8 +69,6 @@ t_ev_run_list(void)
   schedule_event(2);
   schedule_event(3);
 
-  ev_run_list(&global_event_list);
-
   for (i = 1; i < MAX_NUM; i++)
     bt_assert(event_check_points[i]);
 

@@ -328,7 +328,7 @@ static void
 channel_reset_import(struct channel *c)
 {
   /* Need to abort feeding */
-  ev_postpone(c->reload_event);
+  ev_cancel(c->reload_event);
   rt_reload_channel_abort(c);
 
   rt_prune_sync(c->in_table, 1);

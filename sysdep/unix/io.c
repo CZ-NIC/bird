@@ -22,6 +22,7 @@
 #include <sys/uio.h>
 #include <sys/un.h>
 #include <poll.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -2014,12 +2015,13 @@ struct event_log_entry
 };
 
 static struct event_log_entry event_log[EVENT_LOG_LENGTH];
-static struct event_log_entry *event_open;
 static int event_log_pos, event_log_num, watchdog_active;
-static btime last_time;
 static btime loop_time;
 
-static void
+_Thread_local static struct event_log_entry *event_open;
+_Thread_local static btime last_time;
+
+void
 io_update_time(void)
 {
   struct timespec ts;
@@ -2160,7 +2162,6 @@ void
 io_init(void)
 {
   init_list(&sock_list);
-  init_list(&global_event_list);
   krt_io_init();
   // XXX init_times();
   // XXX update_times();
@@ -2177,7 +2178,7 @@ void
 io_loop(void)
 {
   int poll_tout, timeout;
-  int nfds, events, pout;
+  int nfds, pout;
   timer *t;
   sock *s;
   node *n;
@@ -2188,12 +2189,11 @@ io_loop(void)
   for(;;)
     {
       times_update(&main_timeloop);
-      events = ev_run_list(&global_event_list);
       timers_fire(&main_timeloop);
       io_close_event();
 
       // FIXME
-      poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
+      poll_tout = 3000; /* Time in milliseconds */
       if (t = timers_first(&main_timeloop))
       {
 	times_update(&main_timeloop);
@@ -2260,7 +2260,9 @@ io_loop(void)
 
       /* And finally enter poll() to find active sockets */
       watchdog_stop();
+      the_bird_unlock();
       pout = poll(pfd, nfds, poll_tout);
+      the_bird_lock();
       watchdog_start();
 
       if (pout < 0)
@@ -2317,7 +2319,7 @@ io_loop(void)
 	    }
 
 	  short_loops++;
-	  if (events && (short_loops < SHORT_LOOP_MAX))
+	  if (short_loops < SHORT_LOOP_MAX)
 	    continue;
 	  short_loops = 0;
 

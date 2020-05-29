@@ -36,8 +36,6 @@ static list *current_log_list;
 static char *current_syslog_name; /* NULL -> syslog closed */
 
 
-#ifdef USE_PTHREADS
-
 #include <pthread.h>
 
 static pthread_mutex_t log_mutex;
@@ -47,15 +45,6 @@ static inline void log_unlock(void) { pthread_mutex_unlock(&log_mutex); }
 static pthread_t main_thread;
 void main_thread_init(void) { main_thread = pthread_self(); }
 static int main_thread_self(void) { return pthread_equal(pthread_self(), main_thread); }
-
-#else
-
-static inline void log_lock(void) {  }
-static inline void log_unlock(void) {  }
-void main_thread_init(void) { }
-static int main_thread_self(void) { return 1; }
-
-#endif
 
 
 #ifdef HAVE_SYSLOG_H
@@ -309,22 +298,26 @@ die(const char *msg, ...)
 void
 debug(const char *msg, ...)
 {
-#define MAX_DEBUG_BUFSIZE       65536
+#define DEBUG_BUFSIZE_MAX       65536
+#define DEBUG_BUFSIZE_INIT	256
   va_list args;
-  static uint bufsize = 4096;
-  static char *buf = NULL;
+  _Thread_local static uint bufsize = DEBUG_BUFSIZE_INIT;
+  _Thread_local static char buf_init[DEBUG_BUFSIZE_INIT];
+  _Thread_local static char *buf = NULL;
 
   if (!buf)
-    buf = mb_alloc(&root_pool, bufsize);
+    buf = buf_init;
 
   va_start(args, msg);
   if (dbgf)
     {
       while (bvsnprintf(buf, bufsize, msg, args) < 0)
-        if (bufsize >= MAX_DEBUG_BUFSIZE)
+        if (bufsize >= DEBUG_BUFSIZE_MAX)
           bug("Extremely long debug output, split it.");
+	else if (buf == buf_init)
+	  buf = ev_alloc(bufsize *= 2);
         else
-          buf = mb_realloc(buf, (bufsize *= 2));
+          buf = ev_realloc(buf, (bufsize *= 2));
 
       fputs(buf, dbgf);
     }

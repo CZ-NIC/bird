@@ -37,7 +37,6 @@ struct birdloop
   int wakeup_fds[2];
 
   struct timeloop time;
-  list event_list;
   list sock_list;
   uint sock_num;
 
@@ -153,44 +152,6 @@ wakeup_kick_current(void)
 
   if (loop && loop->poll_active)
     wakeup_kick(loop);
-}
-
-
-/*
- *	Events
- */
-
-static inline uint
-events_waiting(struct birdloop *loop)
-{
-  return !EMPTY_LIST(loop->event_list);
-}
-
-static inline void
-events_init(struct birdloop *loop)
-{
-  init_list(&loop->event_list);
-}
-
-static void
-events_fire(struct birdloop *loop)
-{
-  times_update(&loop->time);
-  ev_run_list(&loop->event_list);
-}
-
-void
-ev2_schedule(event *e)
-{
-  struct birdloop *loop = birdloop_current;
-
-  if (loop->poll_active && EMPTY_LIST(loop->event_list))
-    wakeup_kick(loop);
-
-  if (e->n.next)
-    rem_node(&e->n);
-
-  add_tail(&loop->event_list, &e->n);
 }
 
 
@@ -387,7 +348,6 @@ birdloop_new(void)
 
   wakeup_init(loop);
 
-  events_init(loop);
   timers_init(&loop->time, p);
   sockets_init(loop);
 
@@ -468,13 +428,10 @@ birdloop_main(void *arg)
   pthread_mutex_lock(&loop->mutex);
   while (1)
   {
-    events_fire(loop);
     timers_fire(&loop->time);
 
     times_update(&loop->time);
-    if (events_waiting(loop))
-      timeout = 0;
-    else if (t = timers_first(&loop->time))
+    if (t = timers_first(&loop->time))
       timeout = (tm_remains(t) TO_MS) + 1;
     else
       timeout = -1;

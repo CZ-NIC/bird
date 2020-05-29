@@ -903,6 +903,8 @@ main(int argc, char **argv)
       dup2(0, 2);
     }
 
+  the_bird_lock();
+
   main_thread_init();
 
   write_pid_file();
