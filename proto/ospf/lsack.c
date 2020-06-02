@@ -59,6 +59,7 @@ ospf_enqueue_lsack(struct ospf_neighbor *n, struct ospf_lsa_header *h_n, int que
 {
   /* Note that h_n is in network endianity */
   struct lsa_node *no = mb_alloc(n->pool, sizeof(struct lsa_node));
+  no->n = (node) {};
   memcpy(&no->lsa, h_n, sizeof(struct ospf_lsa_header));
   add_tail(&n->ackl[queue], NODE no);
   DBG("Adding %s ack for %R, ID: %R, RT: %R, Type: %u\n",
