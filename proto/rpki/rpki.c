@@ -701,7 +701,7 @@ rpki_reconfigure_cache(struct rpki_proto *p UNUSED, struct rpki_cache *cache, st
 #endif
 
 #define TEST_INTERVAL(name, Name) 						\
-    if (cache->name##_interval != new->name##_interval ||			\
+    if (old->name##_interval != new->name##_interval ||				\
 	old->keep_##name##_interval != new->keep_##name##_interval) 		\
     { 										\
       cache->name##_interval = new->name##_interval;				\
