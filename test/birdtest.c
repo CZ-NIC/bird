@@ -511,6 +511,7 @@ bt_is_char(byte c)
  * Mock-ups of all necessary public functions in main.c
  */
 
+int parse_and_exit;
 char *bird_name;
 void async_config(void) {}
 void async_dump(void) {}
