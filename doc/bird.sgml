@@ -3424,6 +3424,7 @@ protocol ospf [v2|v3] &lt;name&gt; {
 			strict nonbroadcast &lt;switch&gt;;
 			real broadcast &lt;switch&gt;;
 			ptp netmask &lt;switch&gt;;
+			ptp address &lt;switch&gt;;
 			check link &lt;switch&gt;;
 			bfd &lt;switch&gt;;
 			ecmp weight &lt;num&gt;;
