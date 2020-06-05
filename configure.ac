@@ -119,8 +119,10 @@ if test -z "$GCC" ; then
 fi
 
 BIRD_CHECK_THREAD_LOCAL
-if test "$bird_cv_thread_local" = yes ; then
-  AC_DEFINE([HAVE_THREAD_LOCAL], [1], [Define to 1 if _Thread_local is available])
+if test "$bird_cv_thread_local" = no ; then
+  AC_MSG_ERROR([This program requires thread local storage.])
+elif test "$bird_cv_thread_local" != yes ; then
+  AC_DEFINE_UNQUOTED([_Thread_local], [$bird_cv_thread_local], [Legacy _Thread_local])
 fi
 
 BIRD_CHECK_PTHREADS
