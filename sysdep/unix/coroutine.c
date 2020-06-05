@@ -41,8 +41,8 @@ static inline void event_state_unlock(void)
   pthread_mutex_unlock(&event_state_mutex);
 }
 
-_Thread_local static struct coroutine *coro_local = NULL;
-_Thread_local static event *ev_local = NULL;
+static _Thread_local struct coroutine *coro_local = NULL;
+static _Thread_local event *ev_local = NULL;
 
 void the_bird_lock(void);
 void the_bird_unlock(void);

@@ -94,8 +94,8 @@ struct filter_state {
   int flags;
 };
 
-_Thread_local static struct filter_state filter_state;
-_Thread_local static struct filter_stack *filter_stack = NULL;
+static _Thread_local struct filter_state filter_state;
+static _Thread_local struct filter_stack *filter_stack = NULL;
 
 static struct filter_stack *get_filter_stack(void)
 {
