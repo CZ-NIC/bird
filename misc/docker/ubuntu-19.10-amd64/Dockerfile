@@ -1,4 +1,4 @@
-FROM ubuntu:19.04
+FROM ubuntu:19.10
 ENV DEBIAN_FRONTEND noninteractive
 RUN sed -i 's/deb.debian.org/ftp.cz.debian.org/' /etc/apt/sources.list
 RUN apt-get -y update

@@ -368,7 +368,7 @@ static inline rte rte_copy(const struct rte_storage *r)
 void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
-void rt_feed_channel_net(struct channel *c, net_addr *n);
+uint rt_feed_channel_net(struct channel *c, net_addr *n);
 void rt_feed_channel_abort(struct channel *c);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);

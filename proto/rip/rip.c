@@ -69,10 +69,11 @@
  * structure is finally freed.
  *
  * Supported standards:
- * - RFC 1058 - RIPv1
- * - RFC 2453 - RIPv2
- * - RFC 2080 - RIPng
- * - RFC 4822 - RIP cryptographic authentication
+ * RFC 1058 - RIPv1
+ * RFC 2453 - RIPv2
+ * RFC 2080 - RIPng
+ * RFC 2091 - Triggered RIP for demand circuits
+ * RFC 4822 - RIP cryptographic authentication
  */
 
 #include <stdlib.h>
@@ -548,6 +549,9 @@ rip_iface_start(struct rip_iface *ifa)
 
   ifa->up = 1;
 
+  if (ifa->cf->passive)
+    return;
+
   rip_send_request(p, ifa);
   rip_send_table(p, ifa, ifa->addr, 0);
 }
@@ -572,7 +576,7 @@ rip_iface_stop(struct rip_iface *ifa)
   ifa->tx_pending = 0;
   ifa->req_pending = 0;
 
-  if (ifa->cf->demand_circuit)
+  if (ifa->cf->demand_circuit && !ifa->cf->passive)
     rip_send_flush(p, ifa);
 
   WALK_LIST_FIRST(n, ifa->neigh_list)
@@ -745,6 +749,17 @@ rip_reconfigure_iface(struct rip_proto *p, struct rip_iface *ifa, struct rip_ifa
   if ((! ifa->cf->demand_circuit) &&
       (ifa->next_regular > (current_time() + new->update_time)))
     ifa->next_regular = current_time() + (random() % new->update_time) + 100 MS;
+
+  if (ifa->up && new->demand_circuit && (new->passive != old->passive))
+  {
+    if (new->passive)
+      rip_send_flush(p, ifa);
+    else
+    {
+      rip_send_request(p, ifa);
+      rip_send_table(p, ifa, ifa->addr, 0);
+    }
+  }
 
   if (new->check_link != old->check_link)
     rip_iface_update_state(ifa);

@@ -539,14 +539,13 @@ struct channel {
   u8 reload_active;			/* Iterator reload_fit is linked */
 
   list net_feed;			/* Active net feeders (struct channel_net_feed) */
+  struct event *net_feed_event;		/* Feeder event */
 
   struct rtable *out_table;		/* Internal table for exported routes */
 };
 
 struct channel_net_feed {
   node n;
-  struct event e;
-  struct channel *c;
   net_addr addr[0];
 };
 

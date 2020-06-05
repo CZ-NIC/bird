@@ -2207,14 +2207,14 @@ rt_feed_channel_net_internal(struct channel *c, net *nn)
   rte_update_unlock();
 }
 
-void
+uint
 rt_feed_channel_net(struct channel *c, net_addr *n)
 {
   net *nn = net_find(c->table, n);
   if (!nn)
-    return;
+    return 0;
 
-  rt_feed_channel_net_internal(c, nn);
+  return rt_feed_channel_net_internal(c, nn);
 }
 
 /**

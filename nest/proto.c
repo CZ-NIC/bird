@@ -284,11 +284,28 @@ channel_feed_loop(void *ptr)
 static void
 channel_feed_net(void *data)
 {
-  struct channel_net_feed *nf = data;
+  struct channel *c = data;
 
-  rt_feed_channel_net(nf->c, nf->addr);
-  rem_node(&nf->n);
-  mb_free(nf);
+  while (1)
+  {
+    int max = 16;
+    struct channel_net_feed *n;
+    node *nxt;
+    WALK_LIST_DELSAFE(n, nxt, c->net_feed)
+    {
+      max -= rt_feed_channel_net(c, n->addr);
+      rem_node(&n->n);
+      mb_free(n);
+      if (max <= 0)
+	break;
+    }
+
+    if (EMPTY_LIST(c->net_feed))
+      return;
+
+    /* Let others do their job also */
+    ev_suspend();
+  }
 }
 
 static void
@@ -296,11 +313,14 @@ channel_schedule_feed_net(struct channel *c, net_addr *n)
 {
   struct channel_net_feed *nf = mb_alloc(c->proto->pool, sizeof(struct channel_net_feed) + n->length);
   nf->n = (node) {};
-  nf->e = (event) { .hook = channel_feed_net, .data = nf };
-  nf->c = c;
   net_copy(nf->addr, n);
   add_tail(&c->net_feed, &nf->n);
-  ev_schedule(&nf->e);
+
+  if (!c->net_feed_event)
+    c->net_feed_event = ev_new_init(c->proto->pool, channel_feed_net, c);
+
+  if (!ev_active(c->net_feed_event))
+    ev_schedule(c->net_feed_event);
 }
 
 static void
@@ -320,11 +340,13 @@ channel_stop_export(struct channel *c)
     rt_feed_channel_abort(c);
 
   /* Abort also all scheduled net feeds */
+  if (c->net_feed_event)
+    ev_cancel(c->net_feed_event);
+
   struct channel_net_feed *n;
   node *nxt;
   WALK_LIST_DELSAFE(n, nxt, c->net_feed)
   {
-    ev_postpone(&n->e);
     rem_node(&n->n);
     mb_free(n);
   }
@@ -362,7 +384,7 @@ static void
 channel_reset_import(struct channel *c)
 {
   /* Need to abort feeding */
-  ev_postpone(c->reload_event);
+  ev_cancel(c->reload_event);
   rt_reload_channel_abort(c);
 
   rt_prune_sync(c->in_table, 1);

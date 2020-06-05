@@ -797,14 +797,11 @@ prepare_rt2_lsa_body(struct ospf_proto *p, struct ospf_area *oa)
 	if (neigh->state == NEIGHBOR_FULL)
 	{
 	  /*
-	   * ln->data should be ifa->iface_id in case of no/ptp
-	   * address (ifa->addr->flags & IA_PEER) on PTP link (see
-	   * RFC 2328 12.4.1.1.), but the iface ID value has no use,
-	   * while using IP address even in this case is here for
-	   * compatibility with some broken implementations that use
-	   * this address as a next-hop.
+	   * ln->data field should be ifa->iface_id for unnumbered PtP links,
+	   * IP address otherwise (see RFC 2328 12.4.1.1). This is controlled
+	   * by ifa->ptp_address field.
 	   */
-	  add_rt2_lsa_link(p, LSART_PTP, neigh->rid, ipa_to_u32(ifa->addr->ip), link_cost);
+	  add_rt2_lsa_link(p, LSART_PTP, neigh->rid, ospf_iface_get_data(ifa), link_cost);
 	  i++;
 	}
       break;

@@ -141,9 +141,9 @@ docker_ubuntu-18_04-amd64:
     IMG_NAME: "ubuntu-18.04-amd64"
   <<: *docker_build
  
-docker_ubuntu-19_04-amd64:
+docker_ubuntu-19_10-amd64:
   variables:
-    IMG_NAME: "ubuntu-19.04-amd64"
+    IMG_NAME: "ubuntu-19.10-amd64"
   <<: *docker_build
 
 docker_opensuse-15.0-amd64:
@@ -369,7 +369,22 @@ test-ospf-custom:
   variables:
     TEST_NAME: cf-ospf-custom
 
+test-ospf-vrf:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ospf-vrf
+
 test-bgp-base:
   <<: *test-base
   variables:
     TEST_NAME: cf-bgp-base
+
+test-bgp-auth:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-auth
+
+test-bgp-int:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-int

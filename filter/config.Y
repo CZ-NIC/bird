@@ -269,7 +269,7 @@ assert_assign(struct f_lval *lval, struct f_inst *expr, const char *start, const
 CF_DECLS
 
 CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
-	ACCEPT, REJECT, ERROR, QUITBIRD,
+	ACCEPT, REJECT, ERROR,
 	INT, BOOL, IP, TYPE, PREFIX, RD, PAIR, QUAD, EC, LC,
 	SET, STRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
@@ -658,6 +658,7 @@ bgp_path_tail:
  }
  | '*' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_ASTERISK }, }); $$->next = $2; }
  | '?' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_QUESTION }, }); $$->next = $2; }
+ | '+' bgp_path_tail 		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_LOOP }, }); $$->next = $2; }
  | bgp_path_expr bgp_path_tail	{ $$ = $1; $$->next = $2; }
  | 				{ $$ = NULL; }
  ;
@@ -817,8 +818,7 @@ term:
  ;
 
 break_command:
-   QUITBIRD { $$ = F_QUITBIRD; }
- | ACCEPT { $$ = F_ACCEPT; }
+   ACCEPT { $$ = F_ACCEPT; }
  | REJECT { $$ = F_REJECT; }
  | ERROR { $$ = F_ERROR; }
  ;

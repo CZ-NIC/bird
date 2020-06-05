@@ -43,7 +43,6 @@ protocol static {
 			print scope;
 			if !(scope ~ [ SCOPE_HOST, SCOPE_SITE ]) then {
 				print "Failed in test";
-				quitbird;
 			}
 
 			preference = 15;

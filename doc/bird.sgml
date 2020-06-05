@@ -783,11 +783,12 @@ agreement").
 
 <descrip>
 	<tag><label id="proto-pass-id">id <M>num</M></tag>
-	ID of the password, (1-255). If it is not used, BIRD will choose ID based
-	on an order of the password item in the interface. For example, second
-	password item in one interface will have default ID 2. ID is used by
-	some routing protocols to identify which password was used to
-	authenticate protocol packets.
+	ID of the password, (0-255). If it is not specified, BIRD will choose ID
+	based on an order of the password item in the interface, starting from
+	1. For example, second password item in one interface will have default
+	ID 2. ID 0 is allowed by BIRD, but some other implementations may not
+	allow it. ID is used by some routing protocols to identify which
+	password was used to authenticate protocol packets.
 
 	<tag><label id="proto-pass-gen-from">generate from "<m/time/"</tag>
 	The start time of the usage of the password for packet signing.
@@ -1471,11 +1472,16 @@ in the foot).
 	<cf/*/ matches any (even empty) sequence of arbitrary AS numbers and
 	<cf/?/ matches one arbitrary AS number. For example, if <cf>bgp_path</cf>
  	is 4 3 2 1, then: <tt>bgp_path &tilde; [= * 4 3 * =]</tt> is true,
-	but <tt>bgp_path &tilde; [= * 4 5 * =]</tt> is false. BGP mask
-	expressions can also contain integer expressions enclosed in parenthesis
-	and integer variables, for example <tt>[= * 4 (1+2) a =]</tt>. You can
-	also use ranges (e.g. <tt>[= * 3..5 2 100..200 * =]</tt>) and sets
-	(e.g. <tt>[= 1 2 [3, 5, 7] * =]</tt>).
+	but <tt>bgp_path &tilde; [= * 4 5 * =]</tt> is false. There is also
+	<cf/+/ operator which matches one or multiple instances of previous
+	expression, e.g. <tt>[= 1 2+ 3 =]</tt> matches both path 1 2 3 and path
+	1 2 2 2 3, but not 1 3 nor 1 2 4 3. Note that while <cf/*/ and <cf/?/
+	are wildcard-style operators, <cf/+/ is regex-style operator.
+
+	BGP mask expressions can also contain integer expressions enclosed in
+	parenthesis and integer variables, for example <tt>[= * 4 (1+2) a =]</tt>.
+	You can also use ranges (e.g. <tt>[= * 3..5 2 100..200 * =]</tt>)
+	and sets (e.g. <tt>[= 1 2 [3, 5, 7] * =]</tt>).
 
 	<tag><label id="type-clist">clist</tag>
 	Clist is similar to a set, except that unlike other sets, it can be
@@ -1698,9 +1704,6 @@ protocol sections.
 	<tag><label id="print">print|printn <m/expr/ [<m/, expr.../]</tag>
 	Prints given expressions; useful mainly while debugging filters. The
 	<cf/printn/ variant does not terminate the line.
-
-	<tag><label id="quitbird">quitbird</tag>
-	Terminates BIRD. Useful when debugging the filter interpreter.
 </descrip>
 
 
@@ -3757,11 +3760,28 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	In <cf/type ptp/ network configurations, OSPFv2 implementations should
 	ignore received netmask field in hello packets and should send hello
 	packets with zero netmask field on unnumbered PtP links. But some OSPFv2
-	implementations perform netmask checking even for PtP links. This option
-	specifies whether real netmask will be used in hello packets on <cf/type
- 	ptp/ interfaces. You should ignore this option unless you meet some
-	compatibility problems related to this issue. Default value is no for
-	unnumbered PtP links, yes otherwise.
+	implementations perform netmask checking even for PtP links.
+
+	This option specifies whether real netmask will be used in hello packets
+	on <cf/type ptp/ interfaces. You should ignore this option unless you
+	meet some compatibility problems related to this issue. Default value is
+	no for unnumbered PtP links, yes otherwise.
+
+	<tag><label id="ospf-ptp-address">ptp address <m/switch/</tag>
+	In <cf/type ptp/ network configurations, OSPFv2 implementations should
+	use IP address for regular PtP links and interface id for unnumbered PtP
+	links in data field of link description records in router LSA. This data
+	field has only local meaning for PtP links, but some broken OSPFv2
+	implementations assume there is an IP address and use it as a next hop
+	in SPF calculations. Note that interface id for unnumbered PtP links is
+	necessary when graceful restart is enabled to distinguish PtP links with
+	the same local IP address.
+
+	This option specifies whether an IP address will be used in data field
+	for <cf/type ptp/ interfaces, it is ignored for other interfaces. You
+	should ignore this option unless you meet some compatibility problems
+	related to this issue. Default value is no for unnumbered PtP links when
+	graceful restart is enabled, yes otherwise.
 
 	<tag><label id="ospf-check-link">check link <M>switch</M></tag>
 	If set, a hardware link state (reported by OS) is taken into consideration.
@@ -4441,7 +4461,8 @@ you can't use RIP on networks where maximal distance is higher than 15
 hosts.
 
 <p>BIRD supports RIPv1 (<rfc id="1058">), RIPv2 (<rfc id="2453">), RIPng (<rfc
-id="2080">), and RIP cryptographic authentication (<rfc id="4822">).
+id="2080">), Triggered RIP for demand circuits (<rfc id="2091">), and RIP
+cryptographic authentication (<rfc id="4822">).
 
 <p>RIP is a very simple protocol, and it has a lot of shortcomings. Slow
 convergence, big network load and inability to handle larger networks makes it
@@ -4471,6 +4492,7 @@ protocol rip [ng] [&lt;name&gt;] {
 		version 1|2;
 		split horizon &lt;switch&gt;;
 		poison reverse &lt;switch&gt;;
+		demand circuit &lt;switch&gt;;
 		check zero &lt;switch&gt;;
 		update time &lt;number&gt;;
 		timeout time &lt;number&gt;;
@@ -4574,6 +4596,16 @@ protocol rip [ng] [&lt;name&gt;] {
 	reverse variant (propagating routes back with an infinity metric) is
 	used. The poisoned reverse has some advantages in faster convergence,
 	but uses more network traffic. Default: yes.
+
+	<tag><label id="rip-iface-demand-circuit">demand circuit <m/switch/</tag>
+	Regular RIP sends periodic full updates on an interface. There is the
+	Triggered RIP extension for demand circuits (<rfc id="2091">), which
+	removes periodic updates and introduces update acknowledgments. When
+	enabled, there is no RIP communication in steady-state network. Note
+	that in order to work, it must be enabled on both sides. As there are
+	no hello packets, it depends on hardware link state to detect neighbor
+	failures. Also, it is designed for PtP links and it does not work
+	properly with multiple RIP neighbors on an interface. Default: no.
 
 	<tag><label id="rip-iface-check-zero">check zero <m/switch/</tag>
 	Received RIPv1 packets with non-zero values in reserved fields should

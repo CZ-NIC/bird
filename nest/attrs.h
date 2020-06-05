@@ -61,6 +61,7 @@ static inline struct adata *as_path_prepend(struct linpool *pool, const struct a
 #define PM_ASN_EXPR	3
 #define PM_ASN_RANGE	4
 #define PM_ASN_SET	5
+#define PM_LOOP		6
 
 struct f_path_mask_item {
   union {

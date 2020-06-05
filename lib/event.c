@@ -22,34 +22,28 @@
 #include "nest/bird.h"
 #include "lib/event.h"
 
-event_list global_event_list;
-
-inline void
-ev_postpone(event *e)
-{
-  if (ev_active(e))
-    {
-      rem_node(&e->n);
-      e->n.next = NULL;
-    }
-}
+extern _Thread_local struct timeloop *timeloop_current;
 
 static void
-ev_dump(resource *r)
+ev_free(resource *r)
 {
   event *e = (event *) r;
 
-  debug("(code %p, data %p, %s)\n",
-	e->hook,
-	e->data,
-	e->n.next ? "scheduled" : "inactive");
+  if (ev_active(e))
+    ev_cancel(e);
+}
+
+static void ev_dump_res(resource *r)
+{
+  event *e = (event *) r;
+  ev_dump(e);
 }
 
 static struct resclass ev_class = {
   "Event",
   sizeof(event),
-  (void (*)(resource *)) ev_postpone,
-  ev_dump,
+  ev_free,
+  ev_dump_res,
   NULL,
   NULL
 };
@@ -65,81 +59,7 @@ event *
 ev_new(pool *p)
 {
   event *e = ralloc(p, &ev_class);
+  e->timeloop = timeloop_current;
+  e->coro = NULL;
   return e;
-}
-
-/**
- * ev_run - run an event
- * @e: an event
- *
- * This function explicitly runs the event @e (calls its hook
- * function) and removes it from an event list if it's linked to any.
- *
- * From the hook function, you can call ev_enqueue() or ev_schedule()
- * to re-add the event.
- */
-inline void
-ev_run(event *e)
-{
-  ev_postpone(e);
-  e->hook(e->data);
-}
-
-/**
- * ev_enqueue - enqueue an event
- * @l: an event list
- * @e: an event
- *
- * ev_enqueue() stores the event @e to the specified event
- * list @l which can be run by calling ev_run_list().
- */
-inline void
-ev_enqueue(event_list *l, event *e)
-{
-  ev_postpone(e);
-  add_tail(l, &e->n);
-}
-
-/**
- * ev_schedule - schedule an event
- * @e: an event
- *
- * This function schedules an event by enqueueing it to a system-wide
- * event list which is run by the platform dependent code whenever
- * appropriate.
- */
-void
-ev_schedule(event *e)
-{
-  ev_enqueue(&global_event_list, e);
-}
-
-void io_log_event(void *hook, void *data);
-
-/**
- * ev_run_list - run an event list
- * @l: an event list
- *
- * This function calls ev_run() for all events enqueued in the list @l.
- */
-int
-ev_run_list(event_list *l)
-{
-  node *n;
-  list tmp_list;
-
-  init_list(&tmp_list);
-  add_tail_list(&tmp_list, l);
-  init_list(l);
-  WALK_LIST_FIRST(n, tmp_list)
-    {
-      event *e = SKIP_BACK(event, n, n);
-
-      /* This is ugly hack, we want to log just events executed from the main I/O loop */
-      if (l == &global_event_list)
-	io_log_event(e->hook, e->data);
-
-      ev_run(e);
-    }
-  return !EMPTY_LIST(*l);
 }

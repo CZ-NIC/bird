@@ -641,6 +641,14 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       .eattrs = alloca(sizeof(ea_list) + 3*sizeof(eattr)),
     };
 
+    /*
+     * If we cannot find a reachable neighbour, set the entry to be onlink. This
+     * makes it possible to, e.g., assign /32 addresses on a mesh interface and
+     * have routing work.
+     */
+    if (!neigh_find(&p->p, r->next_hop, r->neigh->ifa->iface, 0))
+      a0.nh.flags = RNF_ONLINK;
+
     *a0.eattrs = (ea_list) { .count = 3 };
     a0.eattrs->attrs[0] = (eattr) {
       .id = EA_BABEL_METRIC,

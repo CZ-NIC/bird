@@ -314,9 +314,7 @@ cli_new(void *priv)
   bzero(c, sizeof(cli));
   c->pool = p;
   c->priv = priv;
-  c->event = ev_new(p);
-  c->event->hook = cli_event;
-  c->event->data = c;
+  c->event = ev_new_init(p, cli_event, c);
   c->cont = cli_hello;
   c->parser_pool = lp_new_default(c->pool);
   c->show_pool = lp_new_default(c->pool);

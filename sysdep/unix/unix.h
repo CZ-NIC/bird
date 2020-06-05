@@ -20,6 +20,7 @@ struct rfile;
 /* main.c */
 
 extern char *bird_name;
+extern int parse_and_exit;
 void async_config(void);
 void async_dump(void);
 void async_shutdown(void);
@@ -35,6 +36,10 @@ void cmd_graceful_restart(void);
 
 #define UNIX_DEFAULT_LATENCY_LIMIT	(1 S_)
 #define UNIX_DEFAULT_WATCHDOG_WARNING	(5 S_)
+
+/* coroutine.c */
+void the_bird_lock(void);
+void the_bird_unlock(void);
 
 /* io.c */
 

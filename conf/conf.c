@@ -481,8 +481,7 @@ config_timeout(timer *t UNUSED)
 void
 config_init(void)
 {
-  config_event = ev_new(&root_pool);
-  config_event->hook = config_done;
+  config_event = ev_new_init(&root_pool, config_done, NULL);
 
   config_timer = tm_new(&root_pool);
   config_timer->hook = config_timeout;

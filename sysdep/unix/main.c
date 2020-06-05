@@ -658,7 +658,7 @@ signal_init(void)
  */
 
 static char *opt_list = "bc:dD:ps:P:u:g:flRh";
-static int parse_and_exit;
+int parse_and_exit;
 char *bird_name;
 static char *use_user;
 static char *use_group;
@@ -902,6 +902,8 @@ main(int argc, char **argv)
       dup2(0, 1);
       dup2(0, 2);
     }
+
+  the_bird_lock();
 
   main_thread_init();
 

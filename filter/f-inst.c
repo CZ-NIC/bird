@@ -311,6 +311,17 @@
     for (uint i=0; i<whati->varcount; i++) {
       switch (vv(i).type) {
 	case T_PATH_MASK_ITEM:
+	  if (vv(i).val.pmi.kind == PM_LOOP)
+	  {
+	    if (i == 0)
+	      runtime("Path mask iterator '+' cannot be first");
+
+	    /* We want PM_LOOP as prefix operator */
+	    pm->item[i] = pm->item[i - 1];
+	    pm->item[i - 1] = vv(i).val.pmi;
+	    break;
+	  }
+
 	  pm->item[i] = vv(i).val.pmi;
 	  break;
 
@@ -479,8 +490,6 @@
     FID_MEMBER(enum filter_return, fret, f1->fret != f2->fret, "%s", filter_return_str(item->fret));
 
     switch (whati->fret) {
-    case F_QUITBIRD:
-      die( "Filter asked me to die" );
     case F_ACCEPT:	/* Should take care about turning ACCEPT into MODIFY */
     case F_ERROR:
     case F_REJECT:	/* Maybe print complete route along with reason to reject route? */
