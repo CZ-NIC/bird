@@ -49,7 +49,7 @@ event *ev_new(pool *);
 void ev_schedule(event *);
 
 /* Run the event directly */
-static inline void __attribute_deprecated__ ev_run(event *e)
+static inline void __attribute__((deprecated)) ev_run(event *e)
 { e->hook(e->data); }
 
 /* Cancel an event */

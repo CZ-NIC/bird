@@ -76,10 +76,6 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define NONNULL(...) __attribute__((nonnull (__VA_ARGS__)))
 #define USE_RESULT __attribute__((warn_unused_result))
 
-#ifndef HAVE_THREAD_LOCAL
-#define _Thread_local
-#endif
-
 /* Microsecond time */
 
 typedef s64 btime;

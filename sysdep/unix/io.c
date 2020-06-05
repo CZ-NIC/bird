@@ -2018,8 +2018,8 @@ static struct event_log_entry event_log[EVENT_LOG_LENGTH];
 static int event_log_pos, event_log_num, watchdog_active;
 static btime loop_time;
 
-_Thread_local static struct event_log_entry *event_open;
-_Thread_local static btime last_time;
+static _Thread_local struct event_log_entry *event_open;
+static _Thread_local btime last_time;
 
 void
 io_update_time(void)
