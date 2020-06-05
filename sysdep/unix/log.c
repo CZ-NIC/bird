@@ -301,9 +301,9 @@ debug(const char *msg, ...)
 #define DEBUG_BUFSIZE_MAX       65536
 #define DEBUG_BUFSIZE_INIT	256
   va_list args;
-  _Thread_local static uint bufsize = DEBUG_BUFSIZE_INIT;
-  _Thread_local static char buf_init[DEBUG_BUFSIZE_INIT];
-  _Thread_local static char *buf = NULL;
+  static _Thread_local uint bufsize = DEBUG_BUFSIZE_INIT;
+  static _Thread_local char buf_init[DEBUG_BUFSIZE_INIT];
+  static _Thread_local char *buf = NULL;
 
   if (!buf)
     buf = buf_init;

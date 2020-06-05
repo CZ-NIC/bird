@@ -2248,7 +2248,7 @@ bgp_rte_modify_stale(struct rte_storage *r, struct linpool *pool)
   if (ad && int_set_contains(ad, BGP_COMM_LLGR_STALE))
     return r->attrs;
 
-  _Thread_local static struct {
+  static _Thread_local struct {
     rta a;
     u32 labels[MPLS_MAX_LABEL_STACK];
   } aloc;
