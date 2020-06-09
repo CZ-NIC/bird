@@ -812,7 +812,7 @@ cleanup:
   if (e->old_stored)
     rte_free(e->old_stored);
 
-  if (e->old && (!e->new || (e->new->id != e->old->id)))
+  if (e->old)
     bmap_clear(&c->export_reject_map, e->old->id);
 }
 
@@ -1041,14 +1041,8 @@ rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, stru
   if (new->attrs)
     {
       new->lastmod = current_time();
-
-      if (!old)
-        {
-	  new->id = hmap_first_zero(&table->id_map);
-	  hmap_set(&table->id_map, new->id);
-	}
-      else
-	new->id = old->id;
+      new->id = hmap_first_zero(&table->id_map);
+      hmap_set(&table->id_map, new->id);
     }
 
   /* Log the route change */
@@ -1086,9 +1080,7 @@ rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, stru
 
   if (old)
     {
-      if (!new->attrs)
-	hmap_clear(&table->id_map, old->id);
-
+      hmap_clear(&table->id_map, old->id);
       rte_free(old);
     }
 }
