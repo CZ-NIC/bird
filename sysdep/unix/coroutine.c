@@ -75,7 +75,7 @@ static const char *ev_dump_coro(event *e)
 #define EV_DEBUG_FMT "(ev %p, code %p (%s), data %p, init %s:%u, %s)\n"
 #define EV_DEBUG_ARGS(e) e, e->hook, e->name, e->data, e->file, e->line, ev_dump_coro(e)
 
-#define EV_DEBUG(e, s, a...) DBG(s " " EV_DEBUG_FMT, ##a, EV_DEBUG_ARGS(e))
+#define EV_DEBUG(e, s, a...) DBG("%.6T: " s " " EV_DEBUG_FMT, ##a, EV_DEBUG_ARGS(e))
 
 void
 ev_dump(event *e)

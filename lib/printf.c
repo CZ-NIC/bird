@@ -8,6 +8,7 @@
  */
 
 #include "nest/bird.h"
+#include "lib/timer.h"
 #include "string.h"
 
 #include <errno.h>
@@ -370,8 +371,13 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			s = ipbuf;
 			goto str;
 
+		case 'T':
 		case 't':
-			t = va_arg(args, btime);
+			if (*fmt == 't')
+			  t = va_arg(args, btime);
+			else
+			  t = current_time();
+
 			t1 = t TO_S;
 			t2 = t - t1 S;
 
