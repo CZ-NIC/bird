@@ -14,6 +14,8 @@
 #undef LOCAL_DEBUG
 #define LOCAL_DEBUG
 
+#undef DEBUG_LOCKING
+
 #include "lib/birdlib.h"
 #include "lib/event.h"
 
@@ -254,11 +256,15 @@ pthread_mutex_t the_bird_global_lock = PTHREAD_MUTEX_INITIALIZER;
 void the_bird_lock(void)
 {
   pthread_mutex_lock(&the_bird_global_lock);
+#ifdef DEBUG_LOCKING
   DBG("the_bird_lock() in %p\n", ev_local);
+#endif
 }
 
 void the_bird_unlock(void)
 {
+#ifdef DEBUG_LOCKING
   DBG("the_bird_unlock() in %p\n", ev_local);
+#endif
   pthread_mutex_unlock(&the_bird_global_lock);
 }
