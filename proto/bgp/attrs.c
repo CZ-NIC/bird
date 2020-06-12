@@ -1476,7 +1476,7 @@ bgp_get_bucket(struct bgp_channel *c, ea_list *new)
   }
 
   /* Create the bucket */
-  b = mb_alloc(c->pool, size);
+  b = mb_allocz(c->pool, size);
   init_list(&b->prefixes);
   b->hash = hash;
 
