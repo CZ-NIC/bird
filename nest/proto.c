@@ -700,6 +700,7 @@ channel_copy_config(struct channel_config *src, struct proto_config *proto)
   struct channel_config *dst = cfg_alloc(src->channel->config_size);
 
   memcpy(dst, src, src->channel->config_size);
+  dst->n = (node) {};
   add_tail(&proto->channels, &dst->n);
   CALL(src->channel->copy_config, dst, src);
 
