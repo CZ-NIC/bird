@@ -46,7 +46,12 @@ event *ev_new(pool *);
     e; })
 
 /* Schedule the event */
+#ifdef DEBUGGING
+void ev_schedule_(event *, const char *, const char *, uint);
+#define ev_schedule(e) ev_schedule_(e, #e, __FILE__, __LINE__)
+#else
 void ev_schedule(event *);
+#endif
 
 /* Run the event directly */
 static inline void __attribute__((deprecated)) ev_run(event *e)
