@@ -207,20 +207,24 @@ static void *coro_entry(void *data)
 
   DBG("coro_free(%p)\n", data);
   ev_local->coro = NULL;
+  coro_free();
   event_state_unlock();
   the_bird_unlock();
-  coro_free();
   pthread_exit(NULL);
 }
 
+#ifdef DEBUGGING
+void ev_schedule_(event *ev, const char *name, const char *file, uint line)
+#else
 void ev_schedule(event *ev)
+#endif
 {
   event_state_lock();
   int e = 0;
   if (ev_local)
-    EV_DEBUG(ev, "scheduling from %p", ev_local);
+    EV_DEBUG(ev, "scheduling from %p event %s in %s:%u", ev_local, name, file, line);
   else
-    EV_DEBUG(ev, "scheduling from main");
+    EV_DEBUG(ev, "scheduling from main event %s in %s:%u", name, file, line);
 
   if (ev->coro)
   {
