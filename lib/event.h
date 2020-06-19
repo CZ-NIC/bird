@@ -60,11 +60,11 @@ static inline void __attribute__((deprecated)) ev_run(event *e)
 /* Cancel an event */
 void ev_cancel(event *);
 
-/* Check whether an event is active or not */
+/* Check whether an event is active or not from outside */
 _Bool ev_active(event *e);
 
-/* These routines are called from inside the event */
-/* Yield */
+/* Suspend and wait for current locks.
+ * This is an explicit cancellation point. */
 void ev_suspend(void);
 
 /* Allocate some memory with event-long duration and automagic release.
@@ -76,5 +76,47 @@ static inline void *ev_realloc(void *mem, uint size)
 
 /* Dump event info on debug console */
 void ev_dump(event *r);
+
+/* Locking */
+struct domain_generic;
+
+/* Here define the global lock order; first to last. */
+#define LOI(type) struct domain_generic *type;
+struct lock_order {
+  LOI(the_bird);
+  LOI(event_state);
+};
+#undef LOI
+
+#define LOCK_ORDER_DEPTH  (sizeof(struct lock_order) / sizeof(struct domain_generic *))
+
+extern _Thread_local struct lock_order locking_stack;
+
+/* Internal for locking */
+void do_lock(struct domain_generic *dg, struct domain_generic **lsp);
+void do_unlock(struct domain_generic *dg, struct domain_generic **lsp);
+
+#define DOMAIN(type) struct domain__##type
+#define DEFINE_DOMAIN(type) DOMAIN(type) { struct domain_generic *type; }
+
+/* Pass a locked context to a subfunction */
+#define LOCKED(type) DOMAIN(type) *_bird_current_lock
+#define CURRENT_LOCK _bird_current_lock
+#define ASSERT_LOCK(type) ASSERT_DIE(_bird_current_lock)
+
+/* Do something in a locked context */
+#define LOCKED_DO(type, d) for ( \
+    UNUSED LOCKED(type) = (do_lock((d)->type, &(locking_stack.type)), (d)), *_bird_aux = (d); \
+    _bird_aux ? ((_bird_aux = NULL), 1) : 0; \
+    do_unlock((d)->type, &(locking_stack.type)))
+
+/* Break from the locked context */
+#define LOCKED_BREAK  continue
+
+DEFINE_DOMAIN(the_bird);
+extern DOMAIN(the_bird) the_bird_domain;
+
+#define the_bird_lock()		do_lock(the_bird_domain.the_bird, &locking_stack.the_bird)
+#define the_bird_unlock()	do_unlock(the_bird_domain.the_bird, &locking_stack.the_bird)
 
 #endif
