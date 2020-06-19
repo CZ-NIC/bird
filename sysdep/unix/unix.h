@@ -37,10 +37,6 @@ void cmd_graceful_restart(void);
 #define UNIX_DEFAULT_LATENCY_LIMIT	(1 S_)
 #define UNIX_DEFAULT_WATCHDOG_WARNING	(5 S_)
 
-/* coroutine.c */
-void the_bird_lock(void);
-void the_bird_unlock(void);
-
 /* io.c */
 
 #define ERR(c) do { s->err = c; return -1; } while (0)
