@@ -121,6 +121,11 @@ pm_format(const struct f_path_mask *p, buffer *buf)
       buffer_print(buf, "%u..%u ", p->item[i].from, p->item[i].to);
       break;
 
+    case PM_ASN_SET:
+      tree_format(p->item[i].set, buf);
+      buffer_puts(buf, " ");
+      break;
+
     case PM_ASN_EXPR:
       ASSERT(0);
     }
@@ -219,6 +224,10 @@ pmi_same(const struct f_path_mask_item *mi1, const struct f_path_mask_item *mi2)
       if (mi1->from != mi2->from)
 	return 0;
       if (mi1->to != mi2->to)
+	return 0;
+      break;
+    case PM_ASN_SET:
+      if (!same_tree(mi1->set, mi2->set))
 	return 0;
       break;
   }
