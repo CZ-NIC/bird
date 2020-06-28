@@ -230,6 +230,7 @@ static int
 pm_same(const struct f_path_mask *m1, const struct f_path_mask *m2)
 {
   if (m1->len != m2->len)
+    return 0;
 
   for (uint i=0; i<m1->len; i++)
     if (!pmi_same(&(m1->item[i]), &(m2->item[i])))
