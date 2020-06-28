@@ -24,6 +24,7 @@ typedef struct event {
   const char *name;
   const char *file;
   uint line;
+  _Bool default_lock;
 } event;
 
 /* These routines are called from outside */
@@ -37,12 +38,23 @@ event *ev_new(pool *);
     e->name = #_hook; \
     e->file = __FILE__; \
     e->line = __LINE__; \
+    e->default_lock = 1; \
+    })
+
+#define ev_setup_unlocked(e, _hook, _data) ({ \
+    ev_setup(e, _hook, _data); \
+    e->default_lock = 0; \
     })
 
 /* Create and initialize a new event */
 #define ev_new_init(p, hook, data) ({ \
     event *e = ev_new(p); \
     ev_setup(e, hook, data); \
+    e; })
+
+#define ev_new_init_unlocked(p, hook, data) ({ \
+    event *e = ev_new(p); \
+    ev_setup_unlocked(e, hook, data); \
     e; })
 
 /* Schedule the event */
@@ -66,6 +78,10 @@ _Bool ev_active(event *e);
 /* Suspend and wait for current locks.
  * This is an explicit cancellation point. */
 void ev_suspend(void);
+
+/* Cancellation point check */
+_Bool ev_get_cancelled(void);
+NORET void ev_exit(void);
 
 /* Allocate some memory with event-long duration and automagic release.
  * If called from the main thread, it allocates a memory block

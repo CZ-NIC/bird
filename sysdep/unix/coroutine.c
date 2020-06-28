@@ -184,7 +184,7 @@ static void coro_free(void)
 void io_update_time(void);
 void io_log_event(void *hook, void *data);
 
-static _Bool ev_get_cancelled(LOCKED(event_state))
+static _Bool ev_get_cancelled_(LOCKED(event_state))
 {
   if (coro_local->flags & CORO_STOP)
     return 1;
@@ -194,19 +194,32 @@ static _Bool ev_get_cancelled(LOCKED(event_state))
     return 0;
 
   if ((e < 0) && (errno == EINTR))
-    return ev_get_cancelled(CURRENT_LOCK);
+    return ev_get_cancelled_(CURRENT_LOCK);
 
   if (e < 0)
     die("sem_trywait() failed in ev_get_cancelled: %M");
 
   ASSERT_DIE(e == 0);
+  /* Store the cancellation info locally */
+  coro_local->flags |= CORO_STOP;
   return 1;
 }
 
-static NORET void ev_do_cancel(LOCKED(event_state) UNUSED)
+_Bool ev_get_cancelled(void)
+{
+  _Bool out;
+  EVENT_LOCKED out = ev_get_cancelled_(CURRENT_LOCK);
+  return out;
+}
+
+static NORET void ev_exit_(LOCKED(event_state) UNUSED)
 {
   /* Here the ev_local pointer is not a valid pointer, maybe */
   DBG("stopping cancelled event: %p\n", coro_local->ev);
+
+  if (!(coro_local->flags & CORO_STOP))
+    ev_local->coro = NULL;
+
   ev_local = NULL;
 
   EVENT_UNLOCKED
@@ -219,10 +232,16 @@ static NORET void ev_do_cancel(LOCKED(event_state) UNUSED)
   bug("There shall happen nothing after pthread_exit()");
 }
 
+NORET void ev_exit(void)
+{
+  EVENT_LOCKED ev_exit_(CURRENT_LOCK);
+  bug("There shall happen nothing after pthread_exit()");
+}
+
 static void ev_check_cancelled(LOCKED(event_state))
 {
-  if (ev_get_cancelled(CURRENT_LOCK))
-    ev_do_cancel(CURRENT_LOCK);
+  if (ev_get_cancelled_(CURRENT_LOCK))
+    ev_exit_(CURRENT_LOCK);
 }
 
 void ev_suspend(void)
@@ -246,13 +265,13 @@ void ev_suspend(void)
   {
     do_lock(stored[N].lock, stored[N].slot);
     _Bool cancelled;
-    EVENT_LOCKED cancelled = ev_get_cancelled(CURRENT_LOCK);
+    cancelled = ev_get_cancelled();
     if (!cancelled)
       continue;
 
     while (last_locked)
       do_unlock(*last_locked, last_locked);
-    EVENT_LOCKED ev_do_cancel(CURRENT_LOCK);
+    ev_exit();
   }
 }
 
@@ -315,26 +334,34 @@ static void *coro_entry(void *data)
 
       EV_DEBUG(ev_local, "event entry");
 
-      EVENT_UNLOCKED
-      {
-	ASSERT_NO_LOCK;
-	the_bird_lock();
-	EV_DEBUG(ev_local, "event locked");
-
-	_Bool cancelled;
-	EVENT_LOCKED cancelled = ev_get_cancelled(CURRENT_LOCK);
-	if (cancelled)
+      if (ev_local->default_lock)
+	EVENT_UNLOCKED
 	{
+	  ASSERT_NO_LOCK;
+	  the_bird_lock();
+	  EV_DEBUG(ev_local, "event locked");
+
+	  _Bool cancelled;
+	  cancelled = ev_get_cancelled();
+	  if (cancelled)
+	  {
+	    the_bird_unlock();
+	    ev_exit();
+	  }
+
+	  ev_local->hook(ev_local->data);
+
+	  EV_DEBUG(ev_local, "event unlocked");
 	  the_bird_unlock();
-	  EVENT_LOCKED ev_do_cancel(CURRENT_LOCK);
+	  ASSERT_NO_LOCK;
 	}
-
-	ev_local->hook(ev_local->data);
-
-	EV_DEBUG(ev_local, "event unlocked");
-	the_bird_unlock();
-	ASSERT_NO_LOCK;
-      }
+      else
+	EVENT_UNLOCKED
+	{
+	  ASSERT_NO_LOCK;
+	  ev_local->hook(ev_local->data);
+	  ASSERT_NO_LOCK;
+	}
 
       DBG("event %p exit\n", ev_local);
       io_update_time();
