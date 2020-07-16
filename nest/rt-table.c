@@ -1177,6 +1177,9 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
       before_old = old;
     }
 
+  /* Save the last accessed position */
+  rte **pos = k;
+
   if (!old)
     before_old = NULL;
 
@@ -1308,8 +1311,8 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	  /* Add the new route to the list */
 	  if (new)
 	    {
-	      new->next = net->routes;
-	      net->routes = new;
+	      new->next = *pos;
+	      *pos = new;
 	    }
 
 	  /* Find a new optimal route (if there is any) */
@@ -1332,11 +1335,10 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	  /* The third case - the new route is not better than the old
 	     best route (therefore old_best != NULL) and the old best
 	     route was not removed (therefore old_best == net->routes).
-	     We just link the new route after the old best route. */
+	     We just link the new route to the old/last position. */
 
-	  ASSERT(net->routes != NULL);
-	  new->next = net->routes->next;
-	  net->routes->next = new;
+	  new->next = *pos;
+	  *pos = new;
 	}
       /* The fourth (empty) case - suboptimal route was removed, nothing to do */
     }
