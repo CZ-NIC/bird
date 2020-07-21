@@ -4,6 +4,7 @@
  *	Heavily inspired by the original SLAB paper by Jeff Bonwick.
  *
  *	(c) 1998--2000 Martin Mares <mj@ucw.cz>
+ *	(c) 2020       Maria Matejka <mq@jmq.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -147,12 +148,12 @@ slab_memsize(resource *r)
  *  Real efficient version.
  */
 
-#define SLAB_SIZE 4096
 #define MAX_EMPTY_HEADS 1
 
 struct slab {
   resource r;
-  uint obj_size, head_size, objs_per_slab, num_empty_heads, data_size;
+  uint obj_size, head_size, head_bitfield_len;
+  uint objs_per_slab, num_empty_heads, data_size;
   list empty_heads, partial_heads, full_heads;
 };
 
@@ -167,22 +168,16 @@ static struct resclass sl_class = {
 
 struct sl_head {
   node n;
-  struct sl_obj *first_free;
-  int num_full;
-};
-
-struct sl_obj {
-  struct sl_head *slab;
-  union {
-    struct sl_obj *next;
-    byte data[0];
-  } u;
+  u32 num_full;
+  u32 used_bits[0];
 };
 
 struct sl_alignment {			/* Magic structure for testing of alignment */
   byte data;
   int x[0];
 };
+
+#define SL_GET_HEAD(x)	((struct sl_head *) (((uintptr_t) (x)) & ~(get_page_size()-1)))
 
 /**
  * sl_new - create a new Slab
@@ -200,43 +195,30 @@ sl_new(pool *p, uint size)
   if (align < sizeof(int))
     align = sizeof(int);
   s->data_size = size;
-  size += OFFSETOF(struct sl_obj, u.data);
-  if (size < sizeof(struct sl_obj))
-    size = sizeof(struct sl_obj);
   size = (size + align - 1) / align * align;
   s->obj_size = size;
-  s->head_size = (sizeof(struct sl_head) + align - 1) / align * align;
-  s->objs_per_slab = (SLAB_SIZE - s->head_size) / size;
+
+  s->head_size = sizeof(struct sl_head);
+  u64 page_size = get_page_size();
+
+  do {
+    s->objs_per_slab = (page_size - s->head_size) / size;
+    s->head_bitfield_len = (s->objs_per_slab + 31) / 32;
+    s->head_size = (
+	sizeof(struct sl_head)
+      + sizeof(u32) * s->head_bitfield_len
+      + align - 1)
+    / align * align;
+  } while (s->objs_per_slab * size + s->head_size > page_size);
+
   if (!s->objs_per_slab)
     bug("Slab: object too large");
   s->num_empty_heads = 0;
+
   init_list(&s->empty_heads);
   init_list(&s->partial_heads);
   init_list(&s->full_heads);
   return s;
-}
-
-static struct sl_head *
-sl_new_head(slab *s)
-{
-  struct sl_head *h = xmalloc(SLAB_SIZE);
-  struct sl_obj *o = (struct sl_obj *)((byte *)h+s->head_size);
-  struct sl_obj *no;
-  uint n = s->objs_per_slab;
-
-  *h = (struct sl_head) {
-    .first_free = o,
-    .num_full = 0,
-  };
-
-  while (n--)
-    {
-      o->slab = h;
-      no = (struct sl_obj *)((char *) o+s->obj_size);
-      o->u.next = n ? no : NULL;
-      o = no;
-    }
-  return h;
 }
 
 /**
@@ -250,24 +232,29 @@ void *
 sl_alloc(slab *s)
 {
   struct sl_head *h;
-  struct sl_obj *o;
 
 redo:
   h = HEAD(s->partial_heads);
   if (!h->n.next)
     goto no_partial;
 okay:
-  o = h->first_free;
-  if (!o)
-    goto full_partial;
-  h->first_free = o->u.next;
-  h->num_full++;
-#ifdef POISON
-  memset(o->u.data, 0xcd, s->data_size);
-#endif
-  return o->u.data;
+  for (uint i=0; i<s->head_bitfield_len; i++)
+    if (~h->used_bits[i])
+    {
+      uint pos = u32_ctz(~h->used_bits[i]);
+      if (i * 32 + pos >= s->objs_per_slab)
+	break;
 
-full_partial:
+      h->used_bits[i] |= 1 << pos;
+      h->num_full++;
+
+      void *out = ((void *) h) + s->head_size + (i * 32 + pos) * s->obj_size;
+#ifdef POISON
+      memset(out, 0xcd, s->data_size);
+#endif
+      return out;
+    }
+
   rem_node(&h->n);
   add_tail(&s->full_heads, &h->n);
   goto redo;
@@ -281,7 +268,9 @@ no_partial:
       s->num_empty_heads--;
       goto okay;
     }
-  h = sl_new_head(s);
+  h = alloc_page();
+  ASSERT_DIE(SL_GET_HEAD(h) == h);
+  memset(h, 0, s->head_size);
   add_head(&s->partial_heads, &h->n);
   goto okay;
 }
@@ -313,29 +302,34 @@ sl_allocz(slab *s)
 void
 sl_free(slab *s, void *oo)
 {
-  struct sl_obj *o = SKIP_BACK(struct sl_obj, u.data, oo);
-  struct sl_head *h = o->slab;
+  struct sl_head *h = SL_GET_HEAD(oo);
 
 #ifdef POISON
   memset(oo, 0xdb, s->data_size);
 #endif
-  o->u.next = h->first_free;
-  h->first_free = o;
-  if (!--h->num_full)
+
+  uint offset = oo - ((void *) h) - s->head_size;
+  ASSERT_DIE(offset % s->obj_size == 0);
+  uint pos = offset / s->obj_size;
+  ASSERT_DIE(pos < s->objs_per_slab);
+
+  h->used_bits[pos / 32] &= ~(1 << (pos % 32));
+
+  if (h->num_full-- == s->objs_per_slab)
+    {
+      rem_node(&h->n);
+      add_head(&s->partial_heads, &h->n);
+    }
+  else if (!h->num_full)
     {
       rem_node(&h->n);
       if (s->num_empty_heads >= MAX_EMPTY_HEADS)
-	xfree(h);
+	free_page(h);
       else
 	{
 	  add_head(&s->empty_heads, &h->n);
 	  s->num_empty_heads++;
 	}
-    }
-  else if (!o->u.next)
-    {
-      rem_node(&h->n);
-      add_head(&s->partial_heads, &h->n);
     }
 }
 
@@ -346,11 +340,11 @@ slab_free(resource *r)
   struct sl_head *h, *g;
 
   WALK_LIST_DELSAFE(h, g, s->empty_heads)
-    xfree(h);
+    free_page(h);
   WALK_LIST_DELSAFE(h, g, s->partial_heads)
-    xfree(h);
+    free_page(h);
   WALK_LIST_DELSAFE(h, g, s->full_heads)
-    xfree(h);
+    free_page(h);
 }
 
 static void
@@ -383,7 +377,7 @@ slab_memsize(resource *r)
   WALK_LIST(h, s->full_heads)
     heads++;
 
-  return ALLOC_OVERHEAD + sizeof(struct slab) + heads * (ALLOC_OVERHEAD + SLAB_SIZE);
+  return ALLOC_OVERHEAD + sizeof(struct slab) + heads * (ALLOC_OVERHEAD + get_page_size());
 }
 
 static resource *
@@ -393,10 +387,10 @@ slab_lookup(resource *r, unsigned long a)
   struct sl_head *h;
 
   WALK_LIST(h, s->partial_heads)
-    if ((unsigned long) h < a && (unsigned long) h + SLAB_SIZE < a)
+    if ((unsigned long) h < a && (unsigned long) h + get_page_size() < a)
       return r;
   WALK_LIST(h, s->full_heads)
-    if ((unsigned long) h < a && (unsigned long) h + SLAB_SIZE < a)
+    if ((unsigned long) h < a && (unsigned long) h + get_page_size() < a)
       return r;
   return NULL;
 }
