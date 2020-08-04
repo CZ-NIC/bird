@@ -441,7 +441,8 @@ ospf_rx_hook(sock *sk, uint len)
     DROP("version mismatch", pkt->version);
 
   uint plen = ntohs(pkt->length);
-  if ((plen < sizeof(struct ospf_packet)) || ((plen % 4) != 0))
+  uint hlen = sizeof(struct ospf_packet) + (ospf_is_v2(p) ? sizeof(union ospf_auth2) : 0);
+  if ((plen < hlen) || ((plen % 4) != 0))
     DROP("invalid length", plen);
 
   if (sk->flags & SKF_TRUNCATED)
@@ -462,9 +463,8 @@ ospf_rx_hook(sock *sk, uint len)
 
   if (ospf_is_v2(p) && (pkt->autype != OSPF_AUTH_CRYPT))
   {
-    uint hlen = sizeof(struct ospf_packet) + sizeof(union ospf_auth2);
-    uint blen = plen - hlen;
     void *body = ((void *) pkt) + hlen;
+    uint blen = plen - hlen;
 
     if (!ipsum_verify(pkt, sizeof(struct ospf_packet), body, blen, NULL))
       DROP("invalid checksum", ntohs(pkt->checksum));

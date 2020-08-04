@@ -650,7 +650,6 @@ static_show(struct proto *P)
 
   WALK_LIST(r, c->routes)
     static_show_rt(r);
-  cli_msg(0, "");
 }
 
 

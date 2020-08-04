@@ -139,7 +139,7 @@ slab_memsize(resource *r)
  *  Real efficient version.
  */
 
-#define SLAB_SIZE 4096
+#define SLAB_SIZE get_page_size()
 #define MAX_EMPTY_HEADS 1
 
 struct slab {
@@ -211,7 +211,7 @@ sl_new(pool *p, uint size)
 static struct sl_head *
 sl_new_head(slab *s)
 {
-  struct sl_head *h = xmalloc(SLAB_SIZE);
+  struct sl_head *h = alloc_page();
   struct sl_obj *o = (struct sl_obj *)((byte *)h+s->head_size);
   struct sl_obj *no;
   uint n = s->objs_per_slab;
@@ -301,7 +301,7 @@ sl_free(slab *s, void *oo)
     {
       rem_node(&h->n);
       if (s->num_empty_heads >= MAX_EMPTY_HEADS)
-	xfree(h);
+	free_page(h);
       else
 	{
 	  add_head(&s->empty_heads, &h->n);
@@ -322,11 +322,11 @@ slab_free(resource *r)
   struct sl_head *h, *g;
 
   WALK_LIST_DELSAFE(h, g, s->empty_heads)
-    xfree(h);
+    free_page(h);
   WALK_LIST_DELSAFE(h, g, s->partial_heads)
-    xfree(h);
+    free_page(h);
   WALK_LIST_DELSAFE(h, g, s->full_heads)
-    xfree(h);
+    free_page(h);
 }
 
 static void
