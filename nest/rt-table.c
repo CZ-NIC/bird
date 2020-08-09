@@ -1188,6 +1188,7 @@ rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, stru
 
 	  new->next = net->routes;
 	  net->routes = new;
+
 	}
       else if (old == old_best)
 	{
@@ -1199,8 +1200,9 @@ rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, stru
 
 	do_recalculate:
 	  /* Add the new route to the list and find best route */
-	  new->next = net->routes;
-	  net->routes = rte_recalc_find_best(new);
+	  new->next = *before_old;
+	  *before_old = new;
+	  net->routes = rte_recalc_find_best(net->routes);
 	}
       else
 	{
@@ -1212,8 +1214,8 @@ rte_recalculate(net *net, struct rte_storage *new, struct rte_storage *old, stru
 	     after the old best route. */
 
 	  ASSERT(net->routes != NULL);
-	  new->next = net->routes->next;
-	  net->routes->next = new;
+	  new->next = *before_old;
+	  *before_old = new;
 	}
     }
 

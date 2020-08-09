@@ -58,6 +58,9 @@ void cli_printf(cli *, int, char *, ...);
 #define cli_msg(x...) cli_printf(this_cli, x)
 void cli_set_log_echo(cli *, uint mask, uint size);
 
+static inline void cli_separator(cli *c)
+{ if (c->last_reply) cli_printf(c, -c->last_reply, ""); };
+
 /* Functions provided to sysdep layer */
 
 cli *cli_new(void *);

@@ -1230,7 +1230,6 @@ rip_show_interfaces(struct proto *P, const char *iff)
   if (p->p.proto_state != PS_UP)
   {
     cli_msg(-1021, "%s: is not up", p->p.name);
-    cli_msg(0, "");
     return;
   }
 
@@ -1254,8 +1253,6 @@ rip_show_interfaces(struct proto *P, const char *iff)
     cli_msg(-1021, "%-10s %-6s %6u %6u %7t",
 	    ifa->iface->name, (ifa->up ? "Up" : "Down"), ifa->cf->metric, nbrs, timer);
   }
-
-  cli_msg(0, "");
 }
 
 void
@@ -1268,7 +1265,6 @@ rip_show_neighbors(struct proto *P, const char *iff)
   if (p->p.proto_state != PS_UP)
   {
     cli_msg(-1022, "%s: is not up", p->p.name);
-    cli_msg(0, "");
     return;
   }
 
@@ -1291,8 +1287,6 @@ rip_show_neighbors(struct proto *P, const char *iff)
 	      n->nbr->addr, ifa->iface->name, ifa->cf->metric, n->uc, timer);
     }
   }
-
-  cli_msg(0, "");
 }
 
 static void
