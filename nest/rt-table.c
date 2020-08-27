@@ -849,18 +849,13 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
 }
 
 
-static struct nexthop *
-nexthop_merge_rta(struct nexthop *nhs, rta *a, linpool *pool, int max)
-{
-  return nexthop_merge(nhs, &(a->nh), 1, 0, max, pool);
-}
-
 rte *
 rt_export_merged(struct channel *c, net *net, rte **rt_free, ea_list **tmpa, linpool *pool, int silent)
 {
   // struct proto *p = c->proto;
   struct nexthop *nhs = NULL;
   rte *best0, *best, *rt0, *rt, *tmp;
+  int max = c->merge_limit;
 
   best0 = net->routes;
   *rt_free = NULL;
@@ -870,10 +865,12 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, ea_list **tmpa, lin
 
   best = export_filter_(c, best0, rt_free, tmpa, pool, silent);
 
-  if (!best || !rte_is_reachable(best))
+  if (!best || !rte_is_reachable(best) || !best0->next)
     return best;
 
-  for (rt0 = best0->next; rt0; rt0 = rt0->next)
+  nhs = nexthop_merge2(NULL, &(best->attrs->nh), 0, &max, pool);
+
+  for (rt0 = best0->next; rt0 && max; rt0 = rt0->next)
   {
     if (!rte_mergable(best0, rt0))
       continue;
@@ -884,22 +881,14 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, ea_list **tmpa, lin
       continue;
 
     if (rte_is_reachable(rt))
-      nhs = nexthop_merge_rta(nhs, rt->attrs, pool, c->merge_limit);
+      nhs = nexthop_merge2(nhs, &(rt->attrs->nh), 0, &max, pool);
 
     if (tmp)
       rte_free(tmp);
   }
 
-  if (nhs)
-  {
-    nhs = nexthop_merge_rta(nhs, best->attrs, pool, c->merge_limit);
-
-    if (nhs->next)
-    {
-      best = rte_cow_rta(best, pool);
-      nexthop_link(best->attrs, nhs);
-    }
-  }
+  best = rte_cow_rta(best, pool);
+  nexthop_link(best->attrs, nhs);
 
   if (best != best0)
     *rt_free = best;

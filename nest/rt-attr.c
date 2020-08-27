@@ -285,6 +285,57 @@ nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, lin
   return root;
 }
 
+/**
+ * nexthop_merge2 - merge nexthop lists
+ * @x: list 1
+ * @y: list 2
+ * @ry: reusability of list @y
+ * @max: max number of added nexthops
+ * @lp: linpool for allocating nexthops
+ *
+ * The nexthop_merge2() function takes two nexthop lists @x and @y and merges
+ * them, eliminating possible duplicates. It is a variant of nexthop_merge()
+ * function differing in how @max limit is handled, here it limits just number
+ * of nexthops added from the second list @y. The @max value is decreased with
+ * each such nexthop, this return remaining 'unused' limit, which can be used in
+ * subsequent calls. The list @x is expected to be an accumulator and its
+ * reusability is implied.  New nodes are allocated from linpool @lp.
+ */
+struct nexthop *
+nexthop_merge2(struct nexthop *x, struct nexthop *y, int ry, int *max, linpool *lp)
+{
+  struct nexthop *root = NULL;
+  struct nexthop **n = &root;
+
+  if (*max <= 0)
+    return x;
+
+  while (x || y)
+  {
+    int cmp = nexthop_compare_node(x, y);
+    if (cmp < 0)
+    {
+      *n = x;
+      x = x->next;
+    }
+    else if (cmp > 0)
+    {
+      *n = ry ? y : nexthop_copy_node(y, lp);
+      y = (--*max) ? y->next : NULL;
+    }
+    else
+    {
+      *n = x;
+      x = x->next;
+      y = y->next;
+    }
+    n = &((*n)->next);
+  }
+  *n = NULL;
+
+  return root;
+}
+
 void
 nexthop_insert(struct nexthop **n, struct nexthop *x)
 {
