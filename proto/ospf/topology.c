@@ -335,7 +335,7 @@ ospf_originate_lsa(struct ospf_proto *p, struct ospf_new_lsa *lsa)
    * equal to 0 while sizeof(struct ospf_lsa_header) is non-zero.
    * Therefore memcmp() is never executed with NULL here.
    * */
-  ASSUME((en->lsa.length == 0) == (en->lsa_body == NULL));
+  ASSUME(en->lsa.age >= LSA_MAXAGE || (en->lsa.length == 0) == (en->lsa_body == NULL));
 
   /* Ignore the the new LSA if is the same as the current one */
   if ((en->lsa.age < LSA_MAXAGE) &&
