@@ -14,6 +14,14 @@
 #include "lib/mac.h"
 #include "lib/socket.h"
 
+const char * const ospf_pkt_names[] = {
+  [HELLO_P]	= "HELLO",
+  [DBDES_P]	= "DBDES",
+  [LSREQ_P]	= "LSREQ",
+  [LSUPD_P]	= "LSUPD",
+  [LSACK_P]	= "LSACK",
+};
+
 void
 ospf_pkt_fill_hdr(struct ospf_iface *ifa, void *buf, u8 h_type)
 {
@@ -550,6 +558,10 @@ found:
   if (rid == 0)
     DROP1("zero router ID");
 
+  /* Check packet type here, ospf_pkt_checkauth3() expects valid values */
+  if (pkt->type < HELLO_P || pkt->type > LSACK_P)
+    DROP("invalid packet type", pkt->type);
+
   /* In OSPFv2, neighbors are identified by either IP or Router ID, based on network type */
   uint t = ifa->type;
   struct ospf_neighbor *n;
@@ -565,11 +577,15 @@ found:
     return 1;
   }
 
-  /* Check packet type here, ospf_pkt_checkauth3() expects valid values */
-  if (pkt->type < HELLO_P || pkt->type > LSACK_P)
-    DROP("invalid packet type", pkt->type);
+  /* We need to ignore out-of-state packets before ospf_pkt_checkauth3() */
+  if ((pkt->type > DBDES_P) && (n->state < NEIGHBOR_EXCHANGE))
+  {
+    OSPF_TRACE(D_PACKETS, "%s packet ignored - lesser state than Exchange",
+	       ospf_pkt_names[pkt->type]);
+    return 1;
+  }
 
-  /* ospf_pkt_checkauth() has its own error logging */
+  /* ospf_pkt_checkauthX() has its own error logging */
   if ((ospf_is_v2(p) ?
        !ospf_pkt_checkauth2(n, ifa, pkt, len) :
        !ospf_pkt_checkauth3(n, ifa, pkt, len, sk->faddr)))
