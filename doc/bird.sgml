@@ -1272,7 +1272,7 @@ in the foot).
 	<tag><label id="type-ip">ip</tag>
 	This type can hold a single IP address. The IPv4 addresses are stored as
 	IPv4-Mapped IPv6 addresses so one data type for both of them is used.
-	Whether the address is IPv4 or not may be checked by <cf>.is_ip4</cf>
+	Whether the address is IPv4 or not may be checked by <cf>.is_v4</cf>
 	which returns a <cf/bool/. IP addresses are written in the standard
 	notation (<cf/10.20.30.40/ or <cf/fec0:3:4::1/). You can apply special
 	operator <cf>.mask(<M>num</M>)</cf> on values of type ip. It masks out
