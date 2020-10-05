@@ -3393,18 +3393,18 @@ protocol ospf [v2|v3] &lt;name&gt; {
                 networks {
 			&lt;prefix&gt;;
 			&lt;prefix&gt; hidden;
-		}
+		};
                 external {
 			&lt;prefix&gt;;
 			&lt;prefix&gt; hidden;
 			&lt;prefix&gt; tag &lt;num&gt;;
-		}
+		};
 		stubnet &lt;prefix&gt;;
 		stubnet &lt;prefix&gt; {
 			hidden &lt;switch&gt;;
 			summary &lt;switch&gt;;
 			cost &lt;num&gt;;
-		}
+		};
 		interface &lt;interface pattern&gt; [instance &lt;num&gt;] {
 			cost &lt;num&gt;;
 			stub &lt;switch&gt;;
@@ -3929,7 +3929,7 @@ protocol ospf MyOSPF {
 		networks {
 			172.16.1.0/24;
 			172.16.2.0/24 hidden;
-		}
+		};
 		interface "-arc0" , "arc*" {
 			type nonbroadcast;
 			authentication none;
@@ -5151,12 +5151,12 @@ protocol static {
 	route 10.2.0.0/24 via "arc0";	# Secondary network
 	route 192.168.10.0/24 via 198.51.100.100 {
 		ospf_metric1 = 20;	# Set extended attribute
-	}
+	};
 	route 192.168.10.0/24 via 198.51.100.100 {
 		ospf_metric2 = 100;	# Set extended attribute
 		ospf_tag = 2;		# Set extended attribute
 		bfd;			# BFD-controlled route
-	}
+	};
 }
 </code>
 
