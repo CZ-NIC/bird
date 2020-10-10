@@ -639,18 +639,6 @@ rpki_shutdown(struct proto *P)
  * 	RPKI Reconfiguration
  */
 
-static int
-rpki_try_fast_reconnect(struct rpki_cache *cache)
-{
-  if (cache->state == RPKI_CS_ESTABLISHED)
-  {
-    rpki_cache_change_state(cache, RPKI_CS_FAST_RECONNECT);
-    return SUCCESSFUL_RECONF;
-  }
-
-  return NEED_RESTART;
-}
-
 /**
  * rpki_reconfigure_cache - a cache reconfiguration
  * @p: RPKI protocol instance
@@ -666,6 +654,7 @@ rpki_try_fast_reconnect(struct rpki_cache *cache)
 static int
 rpki_reconfigure_cache(struct rpki_proto *p UNUSED, struct rpki_cache *cache, struct rpki_config *new, struct rpki_config *old)
 {
+  u8 try_reset = 0;
   u8 try_fast_reconnect = 0;
 
   if (strcmp(old->hostname, new->hostname) != 0)
@@ -685,6 +674,13 @@ rpki_reconfigure_cache(struct rpki_proto *p UNUSED, struct rpki_cache *cache, st
     CACHE_TRACE(D_EVENTS, cache, "Transport type changed");
     return NEED_RESTART;
   }
+
+  if (old->ignore_max_length != new->ignore_max_length)
+  {
+    CACHE_TRACE(D_EVENTS, cache, "Ignore max length changed");
+    try_reset = 1;
+  }
+
 #if HAVE_LIBSSH
   else if (new->tr_config.type == RPKI_TR_SSH)
   {
@@ -713,8 +709,26 @@ rpki_reconfigure_cache(struct rpki_proto *p UNUSED, struct rpki_cache *cache, st
   TEST_INTERVAL(expire, Expire);
 #undef TEST_INTERVAL
 
-  if (try_fast_reconnect)
-    return rpki_try_fast_reconnect(cache);
+  if (try_reset || try_fast_reconnect)
+  {
+    if (cache->state != RPKI_CS_ESTABLISHED)
+      return NEED_RESTART;
+
+    if (try_reset && !try_fast_reconnect)
+      rpki_cache_change_state(cache, RPKI_CS_RESET);
+
+    if (try_fast_reconnect)
+    {
+      if (try_reset)
+      {
+	/* Force reset during reconnect */
+	cache->request_session_id = 1;
+	cache->serial_num = 0;
+      }
+
+      rpki_cache_change_state(cache, RPKI_CS_FAST_RECONNECT);
+    }
+  }
 
   return SUCCESSFUL_RECONF;
 }

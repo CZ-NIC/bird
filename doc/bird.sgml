@@ -4826,6 +4826,11 @@ specify both channels.
         suppresses updating this value by a cache server.
         Default: 7200 seconds
 
+	<tag>ignore max length <m/switch/</tag>
+	Ignore received max length in ROA records and use max value (32 or 128)
+	instead. This may be useful for implementing loose RPKI check for
+	blackholes. Default: disabled.
+
         <tag>transport tcp</tag> Unprotected transport over TCP. It's a default
         transport. Should be used only on secure private networks.
         Default: tcp

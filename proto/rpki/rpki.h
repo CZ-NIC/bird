@@ -125,6 +125,7 @@ struct rpki_config {
   u8 keep_refresh_interval:1;		/* Do not overwrite refresh interval by cache server update */
   u8 keep_retry_interval:1;		/* Do not overwrite retry interval by cache server update */
   u8 keep_expire_interval:1;		/* Do not overwrite expire interval by cache server update */
+  u8 ignore_max_length:1;		/* Ignore received max length and use MAX_PREFIX_LENGTH instead */
 };
 
 void rpki_check_config(struct rpki_config *cf);

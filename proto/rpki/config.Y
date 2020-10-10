@@ -32,7 +32,7 @@ rpki_check_unused_transport(void)
 CF_DECLS
 
 CF_KEYWORDS(RPKI, REMOTE, BIRD, PRIVATE, PUBLIC, KEY, TCP, SSH, TRANSPORT, USER,
-	    RETRY, REFRESH, EXPIRE, KEEP)
+	    RETRY, REFRESH, EXPIRE, KEEP, IGNORE, MAX, LENGTH)
 
 %type <i> rpki_keep_interval
 
@@ -79,6 +79,7 @@ rpki_proto_item:
      RPKI_CFG->expire_interval = $3;
      RPKI_CFG->keep_expire_interval = $2;
    }
+ | IGNORE MAX LENGTH bool { RPKI_CFG->ignore_max_length = $4; }
  ;
 
 rpki_keep_interval:

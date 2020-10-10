@@ -729,11 +729,21 @@ rpki_prefix_pdu_2_net_addr(const struct pdu_header *pdu, net_addr_union *n)
 static int
 rpki_handle_prefix_pdu(struct rpki_cache *cache, const struct pdu_header *pdu)
 {
+  const struct rpki_config *cf = (void *) cache->p->p.cf;
+
   const enum pdu_type type = pdu->type;
   ASSERT(type == IPV4_PREFIX || type == IPV6_PREFIX);
 
   net_addr_union addr = {};
   rpki_prefix_pdu_2_net_addr(pdu, &addr);
+
+  if (cf->ignore_max_length)
+  {
+    if (type == IPV4_PREFIX)
+      addr.roa4.max_pxlen = IP4_MAX_PREFIX_LENGTH;
+    else
+      addr.roa6.max_pxlen = IP6_MAX_PREFIX_LENGTH;
+  }
 
   struct channel *channel = NULL;
 
