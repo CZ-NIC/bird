@@ -25,6 +25,7 @@ static struct iface_patt_node *this_ipn;
 static list *this_p_list;
 static struct password_item *this_p_item;
 static int password_id;
+static struct bfd_options *this_bfd_opts;
 
 static void
 iface_patt_check(void)
@@ -75,6 +76,7 @@ CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION, SORTED)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
+CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
 
 /* For r_args_channel */
@@ -97,6 +99,7 @@ CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 %type <ps> proto_patt proto_patt2
 %type <cc> channel_start proto_channel
 %type <cl> limit_spec
+%type <bo> bfd_opts
 %type <net> r_args_for_val
 %type <net_ptr> r_args_for
 %type <t> r_args_channel
@@ -495,6 +498,28 @@ password_algorithm:
  | HMAC SHA256	{ $$ = ALG_HMAC_SHA256; }
  | HMAC SHA384	{ $$ = ALG_HMAC_SHA384; }
  | HMAC SHA512	{ $$ = ALG_HMAC_SHA512; }
+ ;
+
+
+/* BFD options */
+
+bfd_item:
+   INTERVAL expr_us { this_bfd_opts->min_rx_int = this_bfd_opts->min_tx_int = $2; }
+ | MIN RX INTERVAL expr_us { this_bfd_opts->min_rx_int = $4; }
+ | MIN TX INTERVAL expr_us { this_bfd_opts->min_tx_int = $4; }
+ | IDLE TX INTERVAL expr_us { this_bfd_opts->idle_tx_int = $4; }
+ | MULTIPLIER expr { this_bfd_opts->multiplier = $2; }
+ | PASSIVE bool { this_bfd_opts->passive = $2; this_bfd_opts->passive_set = 1; }
+ | GRACEFUL { this_bfd_opts->mode = BGP_BFD_GRACEFUL; }
+ ;
+
+bfd_items:
+   /* empty */
+ | bfd_items bfd_item ';'
+ ;
+
+bfd_opts:
+ '{' { this_bfd_opts = bfd_new_options(); } bfd_items '}' { $$ = this_bfd_opts; this_bfd_opts = NULL; }
  ;
 
 /* Core commands */

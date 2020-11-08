@@ -134,7 +134,7 @@ static void bgp_active(struct bgp_proto *p);
 static void bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn);
 static void bgp_setup_sk(struct bgp_conn *conn, sock *s);
 static void bgp_send_open(struct bgp_conn *conn);
-static void bgp_update_bfd(struct bgp_proto *p, int use_bfd);
+static void bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd);
 
 static int bgp_incoming_connection(sock *sk, uint dummy UNUSED);
 static void bgp_listen_sock_err(sock *sk UNUSED, int err);
@@ -1357,7 +1357,7 @@ bgp_bfd_notify(struct bfd_request *req)
     BGP_TRACE(D_EVENTS, "BFD session down");
     bgp_store_error(p, NULL, BE_MISC, BEM_BFD_DOWN);
 
-    if (p->cf->bfd == BGP_BFD_GRACEFUL)
+    if (req->opts.mode == BGP_BFD_GRACEFUL)
     {
       /* Trigger graceful restart */
       if (p->conn && (p->conn->state == BS_ESTABLISHED) && p->gr_ready)
@@ -1380,14 +1380,17 @@ bgp_bfd_notify(struct bfd_request *req)
 }
 
 static void
-bgp_update_bfd(struct bgp_proto *p, int use_bfd)
+bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd)
 {
-  if (use_bfd && !p->bfd_req && !bgp_is_dynamic(p))
+  if (bfd && p->bfd_req)
+    bfd_update_request(p->bfd_req, bfd);
+
+  if (bfd && !p->bfd_req && !bgp_is_dynamic(p))
     p->bfd_req = bfd_request_session(p->p.pool, p->remote_ip, p->local_ip,
 				     p->cf->multihop ? NULL : p->neigh->iface,
-				     p->p.vrf, bgp_bfd_notify, p);
+				     p->p.vrf, bgp_bfd_notify, p, bfd);
 
-  if (!use_bfd && p->bfd_req)
+  if (!bfd && p->bfd_req)
   {
     rfree(p->bfd_req);
     p->bfd_req = NULL;
@@ -2138,9 +2141,18 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
 }
 
 static void
-bgp_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUSED)
+bgp_copy_config(struct proto_config *dest, struct proto_config *src)
 {
-  /* Just a shallow copy */
+  struct bgp_config *d = (void *) dest;
+  struct bgp_config *s = (void *) src;
+
+  /* Copy BFD options */
+  if (s->bfd)
+  {
+    struct bfd_options *opts = cfg_alloc(sizeof(struct bfd_options));
+    memcpy(opts, s->bfd, sizeof(struct bfd_options));
+    d->bfd = opts;
+  }
 }
 
 

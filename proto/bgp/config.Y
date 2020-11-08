@@ -190,8 +190,9 @@ bgp_proto:
  | bgp_proto LONG LIVED STALE TIME expr ';' { BGP_CFG->llgr_time = $6; }
  | bgp_proto TTL SECURITY bool ';' { BGP_CFG->ttl_security = $4; }
  | bgp_proto CHECK LINK bool ';' { BGP_CFG->check_link = $4; }
- | bgp_proto BFD bool ';' { BGP_CFG->bfd = $3; cf_check_bfd($3); }
- | bgp_proto BFD GRACEFUL ';' { BGP_CFG->bfd = BGP_BFD_GRACEFUL; cf_check_bfd(1); }
+ | bgp_proto BFD bool ';' { cf_check_bfd($3); BGP_CFG->bfd = $3 ? bfd_new_options() : NULL; }
+ | bgp_proto BFD GRACEFUL ';' { cf_check_bfd(1); struct bfd_options *opts = bfd_new_options(); opts->mode = BGP_BFD_GRACEFUL; BGP_CFG->bfd = opts; }
+ | bgp_proto BFD bfd_opts ';' { BGP_CFG->bfd = $3; cf_check_bfd(1); }
  | bgp_proto ENFORCE FIRST AS bool ';' { BGP_CFG->enforce_first_as = $5; }
  ;
 

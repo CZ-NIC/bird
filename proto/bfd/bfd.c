@@ -128,6 +128,18 @@ static inline void bfd_notify_kick(struct bfd_proto *p);
  *	BFD sessions
  */
 
+static inline struct bfd_session_config
+bfd_merge_options(const struct bfd_iface_config *cf, const struct bfd_options *opts)
+{
+  return (struct bfd_session_config) {
+    .min_rx_int = opts->min_rx_int ?: cf->min_rx_int,
+    .min_tx_int = opts->min_tx_int ?: cf->min_tx_int,
+    .idle_tx_int = opts->idle_tx_int ?: cf->idle_tx_int,
+    .multiplier = opts->multiplier ?: cf->multiplier,
+    .passive = opts->passive_set ? opts->passive : cf->passive
+  };
+}
+
 static void
 bfd_session_update_state(struct bfd_session *s, uint state, uint diag)
 {
@@ -152,10 +164,10 @@ bfd_session_update_state(struct bfd_session *s, uint state, uint diag)
   bfd_unlock_sessions(p);
 
   if (state == BFD_STATE_UP)
-    bfd_session_set_min_tx(s, s->ifa->cf->min_tx_int);
+    bfd_session_set_min_tx(s, s->cf.min_tx_int);
 
   if (old_state == BFD_STATE_UP)
-    bfd_session_set_min_tx(s, s->ifa->cf->idle_tx_int);
+    bfd_session_set_min_tx(s, s->cf.idle_tx_int);
 
   if (notify)
     bfd_notify_kick(p);
@@ -405,7 +417,7 @@ bfd_get_free_id(struct bfd_proto *p)
 }
 
 static struct bfd_session *
-bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *iface)
+bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *iface, struct bfd_options *opts)
 {
   birdloop_enter(p->loop);
 
@@ -421,15 +433,16 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
   HASH_INSERT(p->session_hash_id, HASH_ID, s);
   HASH_INSERT(p->session_hash_ip, HASH_IP, s);
 
+  s->cf = bfd_merge_options(ifa->cf, opts);
 
   /* Initialization of state variables - see RFC 5880 6.8.1 */
   s->loc_state = BFD_STATE_DOWN;
   s->rem_state = BFD_STATE_DOWN;
-  s->des_min_tx_int = s->des_min_tx_new = ifa->cf->idle_tx_int;
-  s->req_min_rx_int = s->req_min_rx_new = ifa->cf->min_rx_int;
+  s->des_min_tx_int = s->des_min_tx_new = s->cf.idle_tx_int;
+  s->req_min_rx_int = s->req_min_rx_new = s->cf.min_rx_int;
   s->rem_min_rx_int = 1;
-  s->detect_mult = ifa->cf->multiplier;
-  s->passive = ifa->cf->passive;
+  s->detect_mult = s->cf.multiplier;
+  s->passive = s->cf.passive;
   s->tx_csn = random_u32();
 
   s->tx_timer = tm_new_init(p->tpool, bfd_tx_timer_hook, s, 0, 0);
@@ -506,15 +519,19 @@ bfd_remove_session(struct bfd_proto *p, struct bfd_session *s)
 static void
 bfd_reconfigure_session(struct bfd_proto *p, struct bfd_session *s)
 {
+  if (EMPTY_LIST(s->request_list))
+    return;
+
   birdloop_enter(p->loop);
 
-  struct bfd_iface_config *cf = s->ifa->cf;
+  struct bfd_request *req = SKIP_BACK(struct bfd_request, n, HEAD(s->request_list));
+  s->cf = bfd_merge_options(s->ifa->cf, &req->opts);
 
-  u32 tx = (s->loc_state == BFD_STATE_UP) ? cf->min_tx_int : cf->idle_tx_int;
+  u32 tx = (s->loc_state == BFD_STATE_UP) ? s->cf.min_tx_int : s->cf.idle_tx_int;
   bfd_session_set_min_tx(s, tx);
-  bfd_session_set_min_rx(s, cf->min_rx_int);
-  s->detect_mult = cf->multiplier;
-  s->passive = cf->passive;
+  bfd_session_set_min_rx(s, s->cf.min_rx_int);
+  s->detect_mult = s->cf.multiplier;
+  s->passive = s->cf.passive;
 
   bfd_session_control_tx_timer(s, 0);
 
@@ -639,7 +656,7 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
   u8 state, diag;
 
   if (!s)
-    s = bfd_add_session(p, req->addr, req->local, req->iface);
+    s = bfd_add_session(p, req->addr, req->local, req->iface, &req->opts);
 
   rem_node(&req->n);
   add_tail(&s->request_list, &req->n);
@@ -698,7 +715,8 @@ static struct resclass bfd_request_class;
 struct bfd_request *
 bfd_request_session(pool *p, ip_addr addr, ip_addr local,
 		    struct iface *iface, struct iface *vrf,
-		    void (*hook)(struct bfd_request *), void *data)
+		    void (*hook)(struct bfd_request *), void *data,
+		    const struct bfd_options *opts)
 {
   struct bfd_request *req = ralloc(p, &bfd_request_class);
 
@@ -710,12 +728,29 @@ bfd_request_session(pool *p, ip_addr addr, ip_addr local,
   req->iface = iface;
   req->vrf = vrf;
 
+  if (opts)
+    req->opts = *opts;
+
   bfd_submit_request(req);
 
   req->hook = hook;
   req->data = data;
 
   return req;
+}
+
+void
+bfd_update_request(struct bfd_request *req, const struct bfd_options *opts)
+{
+  struct bfd_session *s = req->session;
+
+  if (!memcmp(opts, &req->opts, sizeof(const struct bfd_options)))
+    return;
+
+  req->opts = *opts;
+
+  if (s)
+    bfd_reconfigure_session(s->ifa->bfd, s);
 }
 
 static void
@@ -767,7 +802,7 @@ bfd_neigh_notify(struct neighbor *nb)
   if ((nb->scope > 0) && !n->req)
   {
     ip_addr local = ipa_nonzero(n->local) ? n->local : nb->ifa->ip;
-    n->req = bfd_request_session(p->p.pool, n->addr, local, nb->iface, p->p.vrf, NULL, NULL);
+    n->req = bfd_request_session(p->p.pool, n->addr, local, nb->iface, p->p.vrf, NULL, NULL, NULL);
   }
 
   if ((nb->scope <= 0) && n->req)
@@ -784,7 +819,7 @@ bfd_start_neighbor(struct bfd_proto *p, struct bfd_neighbor *n)
 
   if (n->multihop)
   {
-    n->req = bfd_request_session(p->p.pool, n->addr, n->local, NULL, p->p.vrf, NULL, NULL);
+    n->req = bfd_request_session(p->p.pool, n->addr, n->local, NULL, p->p.vrf, NULL, NULL, NULL);
     return;
   }
 

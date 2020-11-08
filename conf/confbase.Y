@@ -19,6 +19,7 @@ CF_HDR
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "nest/route.h"
+#include "nest/bfd.h"
 #include "nest/cli.h"
 #include "filter/filter.h"
 
@@ -78,6 +79,7 @@ CF_DECLS
   struct f_trie *trie;
   struct f_val v;
   struct password_item *p;
+  struct bfd_options *bo;
   struct rt_show_data *ra;
   struct sym_show_data *sd;
   struct lsadb_show_data *ld;
