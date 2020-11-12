@@ -1943,6 +1943,8 @@ configuration is often sufficient.
 
 <p>Note that to use BFD for other protocols like OSPF or BGP, these protocols
 also have to be configured to request BFD sessions, usually by <cf/bfd/ option.
+In BGP case, it is also possible to specify per-peer BFD session options (e.g.
+rx/tx intervals) as a part of the <cf/bfd/ option.
 
 <p>A BFD instance not associated with any VRF handles session requests from all
 other protocols, even ones associated with a VRF. Such setup would work for
@@ -2315,14 +2317,17 @@ using the following configuration parameters:
 	immediately shut down. Note that this option cannot be used with
 	multihop BGP. Default: enabled for direct BGP, disabled otherwise.
 
-	<tag><label id="bgp-bfd">bfd <M>switch</M>|graceful</tag>
+	<tag><label id="bgp-bfd">bfd <M>switch</M>|graceful| { <m/options/ }</tag>
 	BGP could use BFD protocol as an advisory mechanism for neighbor
 	liveness and failure detection. If enabled, BIRD setups a BFD session
 	for the BGP neighbor and tracks its liveness by it. This has an
 	advantage of an order of magnitude lower detection times in case of
 	failure. When a neighbor failure is detected, the BGP session is
 	restarted. Optionally, it can be configured (by <cf/graceful/ argument)
-	to trigger graceful restart instead of regular restart. Note that BFD
+	to trigger graceful restart instead of regular restart. It is also
+	possible to specify section with per-peer BFD session options instead of
+	just switch argument. Most BFD session specific options are allowed here
+	with the exception of authentication options. here Note that BFD
 	protocol also has to be configured, see <ref id="bfd" name="BFD">
 	section for details. Default: disabled.
 
