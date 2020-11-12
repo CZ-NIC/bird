@@ -130,7 +130,7 @@ struct bgp_config {
   const char *dynamic_name;		/* Name pattern for dynamic BGP */
   int dynamic_name_digits;		/* Minimum number of digits for dynamic names */
   int check_link;			/* Use iface link state for liveness detection */
-  const struct bfd_options *bfd;	/* Use BFD for liveness detection */
+  struct bfd_options *bfd;		/* Use BFD for liveness detection */
 };
 
 struct bgp_channel_config {

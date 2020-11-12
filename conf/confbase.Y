@@ -79,7 +79,6 @@ CF_DECLS
   struct f_trie *trie;
   struct f_val v;
   struct password_item *p;
-  struct bfd_options *bo;
   struct rt_show_data *ra;
   struct sym_show_data *sd;
   struct lsadb_show_data *ld;

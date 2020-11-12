@@ -52,6 +52,28 @@ get_passwords(void)
   return rv;
 }
 
+static inline void
+init_bfd_opts(struct bfd_options **opts)
+{
+  cf_check_bfd(1);
+
+  if (! *opts)
+    *opts = bfd_new_options();
+}
+
+static inline void
+open_bfd_opts(struct bfd_options **opts)
+{
+  init_bfd_opts(opts);
+  this_bfd_opts = *opts;
+}
+
+static inline void
+close_bfd_opts(void)
+{
+  this_bfd_opts = NULL;
+}
+
 static void
 proto_postconfig(void)
 {
@@ -99,7 +121,6 @@ CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 %type <ps> proto_patt proto_patt2
 %type <cc> channel_start proto_channel
 %type <cl> limit_spec
-%type <bo> bfd_opts
 %type <net> r_args_for_val
 %type <net_ptr> r_args_for
 %type <t> r_args_channel
@@ -519,7 +540,7 @@ bfd_items:
  ;
 
 bfd_opts:
- '{' { this_bfd_opts = bfd_new_options(); } bfd_items '}' { $$ = this_bfd_opts; this_bfd_opts = NULL; }
+   '{' bfd_items '}'
  ;
 
 /* Core commands */
