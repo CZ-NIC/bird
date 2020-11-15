@@ -2490,6 +2490,9 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 
     if (l->state == PLS_BLOCKED)
     {
+      /* Required by rte_trace_in() */
+      new->net = net;
+
       rte_trace_in(D_FILTERS, c->proto, new, "ignored [limit]");
       goto drop_update;
     }
