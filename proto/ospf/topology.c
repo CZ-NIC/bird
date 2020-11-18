@@ -1455,6 +1455,9 @@ ospf_originate_link_lsa(struct ospf_proto *p, struct ospf_iface *ifa)
   prepare_link_lsa_body(p, ifa);
 
   ifa->link_lsa = ospf_originate_lsa(p, &lsa);
+
+  /* RFC 5340 4.4.3 Events 6+7 - new Link LSA is locally originated */
+  ospf_notify_net_lsa(ifa);
 }
 
 
