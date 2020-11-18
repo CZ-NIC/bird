@@ -5167,6 +5167,10 @@ protocol static {
 		ospf_tag = 2;		# Set extended attribute
 		bfd;			# BFD-controlled route
 	};
+	route 192.168.11.0/24 via 198.51.100.100 {
+		bgp_community.add((65535, 65281));	# Set extended BGP attribute
+		bgp_large_community.add((64512, 1, 1));	# Set extended BGP attribute
+	};
 }
 </code>
 
