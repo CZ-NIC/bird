@@ -4938,8 +4938,15 @@ default route to prevent routing loops).
 
 <p>There are three classes of definitions in Static protocol configuration --
 global options, static route definitions, and per-route options. Usually, the
-definition of the protocol contains mainly a list of static routes.
-Static routes have no specific attributes.
+definition of the protocol contains mainly a list of static routes. Static
+routes have no specific attributes, but <ref id="rta-igp-metric" name="igp_metric">
+attribute is used to compare static routes with the same preference.
+
+<p>The list of static routes may contain multiple routes for the same network
+(usually, but not necessary, distinquished by <cf/preference/ or <cf/igp_metric/),
+but only routes of the same network type are allowed, as the static protocol
+has just one channel. E.g., to have both IPv4 and IPv6 static routes, define two
+static protocols, each with appropriate routes and channel.
 
 <p>Global options:
 
