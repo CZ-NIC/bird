@@ -83,6 +83,7 @@ typedef struct slab slab;
 
 slab *sl_new(pool *, unsigned size);
 void *sl_alloc(slab *);
+void *sl_allocz(slab *);
 void sl_free(slab *, void *);
 
 /*

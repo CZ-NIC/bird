@@ -113,7 +113,7 @@ babel_get_source(struct babel_proto *p, struct babel_entry *e, u64 router_id)
   if (s)
     return s;
 
-  s = sl_alloc(p->source_slab);
+  s = sl_allocz(p->source_slab);
   s->router_id = router_id;
   s->expires = current_time() + BABEL_GARBAGE_INTERVAL;
   s->seqno = 0;
@@ -159,8 +159,7 @@ babel_get_route(struct babel_proto *p, struct babel_entry *e, struct babel_neigh
   if (r)
     return r;
 
-  r = sl_alloc(p->route_slab);
-  memset(r, 0, sizeof(*r));
+  r = sl_allocz(p->route_slab);
 
   r->e = e;
   r->neigh = nbr;
@@ -323,7 +322,7 @@ babel_add_seqno_request(struct babel_proto *p, struct babel_entry *e,
     }
 
   /* No entries found */
-  sr = sl_alloc(p->seqno_slab);
+  sr = sl_allocz(p->seqno_slab);
 
 found:
   sr->router_id = router_id;
