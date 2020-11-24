@@ -135,7 +135,7 @@ rt_get_source(struct proto *p, u32 id)
   if (src)
     return src;
 
-  src = sl_alloc(rte_src_slab);
+  src = sl_allocz(rte_src_slab);
   src->proto = p;
   src->private_id = id;
   src->global_id = idm_alloc(&src_ids);
@@ -366,7 +366,7 @@ nexthop_copy(struct nexthop *o)
 
   for (; o; o = o->next)
     {
-      struct nexthop *n = sl_alloc(nexthop_slab(o));
+      struct nexthop *n = sl_allocz(nexthop_slab(o));
       n->gw = o->gw;
       n->iface = o->iface;
       n->next = NULL;

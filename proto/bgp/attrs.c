@@ -1603,6 +1603,7 @@ bgp_get_prefix(struct bgp_channel *c, net_addr *net, u32 path_id)
 
   px->buck_node.next = NULL;
   px->buck_node.prev = NULL;
+  px->next = NULL;
   px->hash = hash;
   px->path_id = path_id;
   net_copy(px->net, net);

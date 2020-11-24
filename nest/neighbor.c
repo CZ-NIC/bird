@@ -253,9 +253,7 @@ neigh_find(struct proto *p, ip_addr a, struct iface *iface, uint flags)
   if ((scope < 0) && !(flags & NEF_STICKY))
     return NULL;
 
-  n = sl_alloc(neigh_slab);
-  memset(n, 0, sizeof(neighbor));
-
+  n = sl_allocz(neigh_slab);
   add_tail(&neigh_hash_table[h], &n->n);
   add_tail((scope >= 0) ? &iface->neighbors : &sticky_neigh_list, &n->if_n);
   n->addr = a;

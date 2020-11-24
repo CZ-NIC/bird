@@ -423,9 +423,7 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
 
   struct bfd_iface *ifa = bfd_get_iface(p, local, iface);
 
-  struct bfd_session *s = sl_alloc(p->session_slab);
-  bzero(s, sizeof(struct bfd_session));
-
+  struct bfd_session *s = sl_allocz(p->session_slab);
   s->addr = addr;
   s->ifa = ifa;
   s->loc_id = bfd_get_free_id(p);
