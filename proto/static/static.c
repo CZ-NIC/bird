@@ -643,6 +643,7 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
     {
       dnh = cfg_alloc(sizeof(struct static_route));
       memcpy(dnh, snh, sizeof(struct static_route));
+      memset(&dnh->n, 0, sizeof(node));
 
       if (!drt)
 	add_tail(&d->routes, &(dnh->n));

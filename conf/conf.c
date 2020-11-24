@@ -573,6 +573,7 @@ cfg_copy_list(list *dest, list *src, unsigned node_size)
   {
     dn = cfg_alloc(node_size);
     memcpy(dn, sn, node_size);
+    memset(dn, 0, sizeof(node));
     add_tail(dest, dn);
   }
 }
