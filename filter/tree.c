@@ -103,12 +103,7 @@ build_tree(struct f_tree *from)
 struct f_tree *
 f_new_tree(void)
 {
-  struct f_tree * ret;
-  ret = cfg_alloc(sizeof(struct f_tree));
-  ret->left = ret->right = NULL;
-  ret->from.type = ret->to.type = T_VOID;
-  ret->from.val.i = ret->to.val.i = 0;
-  ret->data = NULL;
+  struct f_tree *ret = cfg_allocz(sizeof(struct f_tree));
   return ret;
 }
 

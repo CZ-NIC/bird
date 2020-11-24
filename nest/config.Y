@@ -479,11 +479,11 @@ password_item:
 password_item_begin:
    PASSWORD text {
      if (!this_p_list) {
-	this_p_list = cfg_alloc(sizeof(list));
+	this_p_list = cfg_allocz(sizeof(list));
 	init_list(this_p_list);
 	password_id = 1;
      }
-     this_p_item = cfg_alloc(sizeof (struct password_item));
+     this_p_item = cfg_allocz(sizeof(struct password_item));
      this_p_item->password = $2;
      this_p_item->length = strlen($2);
      this_p_item->genfrom = 0;

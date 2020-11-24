@@ -737,7 +737,7 @@ cf_lex_init(int is_cli, struct config *c)
 void
 cf_push_scope(struct symbol *sym)
 {
-  struct sym_scope *s = cfg_alloc(sizeof(struct sym_scope));
+  struct sym_scope *s = cfg_allocz(sizeof(struct sym_scope));
 
   s->next = conf_this_scope;
   conf_this_scope = s;
