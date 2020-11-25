@@ -382,11 +382,11 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
 {
   struct log_config *l;
 
+  /* We should not manipulate with log list when other threads may use it */
+  log_lock();
+
   if (!logs || EMPTY_LIST(*logs))
     logs = default_log_list(initial, &new_syslog_name);
-
-  /* We shouldn't close the logs when other threads may use them */
-  log_lock();
 
   /* Close the logs to avoid pinning them on disk when deleted */
   if (current_log_list)
