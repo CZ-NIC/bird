@@ -1477,6 +1477,7 @@ bgp_get_bucket(struct bgp_channel *c, ea_list *new)
 
   /* Create the bucket */
   b = mb_alloc(c->pool, size);
+  *b = (struct bgp_bucket) { };
   init_list(&b->prefixes);
   b->hash = hash;
 
@@ -1601,9 +1602,7 @@ bgp_get_prefix(struct bgp_channel *c, net_addr *net, u32 path_id)
   else
     px = mb_alloc(c->pool, sizeof(struct bgp_prefix) + net->length);
 
-  px->buck_node.next = NULL;
-  px->buck_node.prev = NULL;
-  px->next = NULL;
+  *px = (struct bgp_prefix) { };
   px->hash = hash;
   px->path_id = path_id;
   net_copy(px->net, net);
