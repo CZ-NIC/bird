@@ -341,7 +341,11 @@ default_log_list(int initial, const char **syslog_name)
 #ifdef HAVE_SYSLOG_H
   if (!dbgf)
     {
-      static struct log_config lc_syslog = { .mask = ~0 };
+      static struct log_config lc_syslog;
+      lc_syslog = (struct log_config){
+	.mask = ~0
+      };
+
       add_tail(&log_list, &lc_syslog.n);
       *syslog_name = bird_name;
     }
@@ -349,15 +353,24 @@ default_log_list(int initial, const char **syslog_name)
 
   if (dbgf && (dbgf != stderr))
     {
-      static struct log_config lc_debug = { .mask = ~0 };
-      lc_debug.fh = dbgf;
+      static struct log_config lc_debug;
+      lc_debug = (struct log_config){
+	.mask = ~0,
+	.fh = dbgf
+      };
+
       add_tail(&log_list, &lc_debug.n);
     }
 
   if (initial || (dbgf == stderr))
     {
-      static struct log_config lc_stderr = { .mask = ~0, .terminal_flag = 1};
-      lc_stderr.fh = stderr;
+      static struct log_config lc_stderr;
+      lc_stderr = (struct log_config){
+	.mask = ~0,
+	.terminal_flag = 1,
+	.fh = stderr
+      };
+
       add_tail(&log_list, &lc_stderr.n);
     }
 
