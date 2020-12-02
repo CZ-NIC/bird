@@ -99,6 +99,7 @@ enum f_sa_code {
   SA_DEST,
   SA_IFNAME,
   SA_IFINDEX,
+  SA_WEIGHT,
 } PACKED;
 
 /* Static attribute definition (members of struct rta) */

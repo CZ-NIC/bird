@@ -516,6 +516,7 @@
       case SA_DEST:	RESULT(sa.f_type, i, rta->dest); break;
       case SA_IFNAME:	RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
       case SA_IFINDEX:	RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
+      case SA_WEIGHT:	RESULT(sa.f_type, i, rta->nh.weight + 1); break;
 
       default:
 	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
@@ -584,6 +585,20 @@
 	  rta->nh.next = NULL;
 	  rta->hostentry = NULL;
 	}
+	break;
+
+      case SA_WEIGHT:
+        {
+	  int i = v1.val.i;
+	  if (i < 1 || i > 256)
+	    runtime( "Setting weight value out of bounds" );
+	  if (rta->dest != RTD_UNICAST)
+	    runtime( "Setting weight needs regular nexthop " );
+
+	  /* Set weight on all next hops */
+	  for (struct nexthop *nh = &rta->nh; nh; nh = nh->next)
+	    nh->weight = i - 1;
+        }
 	break;
 
       default:

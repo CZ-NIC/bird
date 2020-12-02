@@ -1674,6 +1674,15 @@ Common route attributes are:
 	creation/removal. Zero is returned for routes with undefined outgoing
 	interfaces. Read-only.
 
+	<tag><label id="rta-weight"><m/int/ weight</tag>
+	Multipath weight of route next hops. Valid values are 1-256. Reading
+	returns the weight of the first next hop, setting it sets weights of all
+	next hops to the specified value. Therefore, this attribute is not much
+	useful for manipulating individual next hops of an ECMP route, but can
+	be used in BGP multipath setup to set weights of individual routes that
+	are merged to one ECMP route during export to the Kernel protocol
+	(with active <ref id="krt-merge-paths" name="marge paths"> option).
+
 	<tag><label id="rta-igp-metric"><m/int/ igp_metric</tag>
 	The optional attribute that can be used to specify a distance to the
 	network for routes that do not have a native protocol metric attribute
