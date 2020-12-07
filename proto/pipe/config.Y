@@ -39,7 +39,7 @@ proto_name
 pipe_proto:
    pipe_proto_start '{'
  | pipe_proto proto_item ';'
- | pipe_proto channel_item ';'
+ | pipe_proto channel_item_ ';'
  | pipe_proto PEER TABLE rtable ';' { PIPE_CFG->peer = $4; }
  ;
 

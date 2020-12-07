@@ -64,6 +64,7 @@ CF_DECLS
   const char *t;
   struct rtable_config *r;
   struct channel_config *cc;
+  struct channel *c;
   struct f_inst *x;
   struct {
     struct f_inst *begin, *end;

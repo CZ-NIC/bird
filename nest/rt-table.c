@@ -550,23 +550,25 @@ rte_mergable(rte *pri, rte *sec)
 }
 
 static void
-rte_trace(struct proto *p, rte *e, int dir, char *msg)
+rte_trace(struct channel *c, rte *e, int dir, char *msg)
 {
-  log(L_TRACE "%s %c %s %N %s", p->name, dir, msg, e->net->n.addr, rta_dest_name(e->attrs->dest));
+  log(L_TRACE "%s.%s %c %s %N %s",
+      c->proto->name, c->name ?: "?", dir, msg, e->net->n.addr,
+      rta_dest_name(e->attrs->dest));
 }
 
 static inline void
-rte_trace_in(uint flag, struct proto *p, rte *e, char *msg)
+rte_trace_in(uint flag, struct channel *c, rte *e, char *msg)
 {
-  if (p->debug & flag)
-    rte_trace(p, e, '>', msg);
+  if ((c->debug & flag) || (c->proto->debug & flag))
+    rte_trace(c, e, '>', msg);
 }
 
 static inline void
-rte_trace_out(uint flag, struct proto *p, rte *e, char *msg)
+rte_trace_out(uint flag, struct channel *c, rte *e, char *msg)
 {
-  if (p->debug & flag)
-    rte_trace(p, e, '<', msg);
+  if ((c->debug & flag) || (c->proto->debug & flag))
+    rte_trace(c, e, '<', msg);
 }
 
 static rte *
@@ -589,13 +591,13 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
 
       stats->exp_updates_rejected++;
       if (v == RIC_REJECT)
-	rte_trace_out(D_FILTERS, p, rt, "rejected by protocol");
+	rte_trace_out(D_FILTERS, c, rt, "rejected by protocol");
       goto reject;
     }
   if (v > 0)
     {
       if (!silent)
-	rte_trace_out(D_FILTERS, p, rt, "forced accept by protocol");
+	rte_trace_out(D_FILTERS, c, rt, "forced accept by protocol");
       goto accept;
     }
 
@@ -610,7 +612,7 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
 	goto reject;
 
       stats->exp_updates_filtered++;
-      rte_trace_out(D_FILTERS, p, rt, "filtered out");
+      rte_trace_out(D_FILTERS, c, rt, "filtered out");
       goto reject;
     }
 
@@ -651,7 +653,7 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
     if (l->state == PLS_BLOCKED)
     {
       stats->exp_updates_rejected++;
-      rte_trace_out(D_FILTERS, p, new, "rejected [limit]");
+      rte_trace_out(D_FILTERS, c, new, "rejected [limit]");
       return;
     }
   }
@@ -680,11 +682,11 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
   if (p->debug & D_ROUTES)
   {
     if (new && old)
-      rte_trace_out(D_ROUTES, p, new, "replaced");
+      rte_trace_out(D_ROUTES, c, new, "replaced");
     else if (new)
-      rte_trace_out(D_ROUTES, p, new, "added");
+      rte_trace_out(D_ROUTES, c, new, "added");
     else if (old)
-      rte_trace_out(D_ROUTES, p, old, "removed");
+      rte_trace_out(D_ROUTES, c, old, "removed");
   }
 
   p->rt_notify(p, c, net, new, old);
@@ -1119,7 +1121,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	      if (!rte_is_filtered(new))
 		{
 		  stats->imp_updates_ignored++;
-		  rte_trace_in(D_ROUTES, p, new, "ignored");
+		  rte_trace_in(D_ROUTES, c, new, "ignored");
 		}
 
 	      rte_free_quick(new);
@@ -1162,7 +1164,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	     we just free new and exit like nothing happened */
 
 	  stats->imp_updates_ignored++;
-	  rte_trace_in(D_FILTERS, p, new, "ignored [limit]");
+	  rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
 	  rte_free_quick(new);
 	  return;
 	}
@@ -1184,7 +1186,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	     already handled. */
 
 	  stats->imp_updates_ignored++;
-	  rte_trace_in(D_FILTERS, p, new, "ignored [limit]");
+	  rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
 
 	  if (c->in_keep_filtered)
 	    new->flags |= REF_FILTERED;
@@ -1316,18 +1318,18 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
     }
 
   /* Log the route change */
-  if (p->debug & D_ROUTES)
+  if ((c->debug & D_ROUTES) || (p->debug & D_ROUTES))
     {
       if (new_ok)
-	rte_trace(p, new, '>', new == net->routes ? "added [best]" : "added");
+	rte_trace(c, new, '>', new == net->routes ? "added [best]" : "added");
       else if (old_ok)
 	{
 	  if (old != old_best)
-	    rte_trace(p, old, '>', "removed");
+	    rte_trace(c, old, '>', "removed");
 	  else if (rte_is_ok(net->routes))
-	    rte_trace(p, old, '>', "removed [replaced]");
+	    rte_trace(c, old, '>', "removed [replaced]");
 	  else
-	    rte_trace(p, old, '>', "removed [sole]");
+	    rte_trace(c, old, '>', "removed [sole]");
 	}
     }
 
@@ -1433,7 +1435,7 @@ rte_unhide_dummy_routes(net *net, rte **dummy)
 void
 rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
-  struct proto *p = c->proto;
+  // struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
   const struct filter *filter = c->in_filter;
   rte *dummy = NULL;
@@ -1458,7 +1460,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
       stats->imp_updates_received++;
       if (!rte_validate(new))
 	{
-	  rte_trace_in(D_FILTERS, p, new, "invalid");
+	  rte_trace_in(D_FILTERS, c, new, "invalid");
 	  stats->imp_updates_invalid++;
 	  goto drop;
 	}
@@ -1466,7 +1468,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
       if (filter == FILTER_REJECT)
 	{
 	  stats->imp_updates_filtered++;
-	  rte_trace_in(D_FILTERS, p, new, "filtered out");
+	  rte_trace_in(D_FILTERS, c, new, "filtered out");
 
 	  if (! c->in_keep_filtered)
 	    goto drop;
@@ -1483,7 +1485,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	  if (fr > F_ACCEPT)
 	  {
 	    stats->imp_updates_filtered++;
-	    rte_trace_in(D_FILTERS, p, new, "filtered out");
+	    rte_trace_in(D_FILTERS, c, new, "filtered out");
 
 	    if (! c->in_keep_filtered)
 	    {
@@ -2098,7 +2100,7 @@ rt_next_hop_update_net(rtable *tab, net *n)
 	new = rt_next_hop_update_rte(tab, e);
 	*k = new;
 
-	rte_trace_in(D_ROUTES, new->sender->proto, new, "updated");
+	rte_trace_in(D_ROUTES, new->sender, new, "updated");
 	rte_announce_i(tab, RA_ANY, n, new, e, NULL, NULL);
 
 	/* Call a pre-comparison hook */
@@ -2137,7 +2139,7 @@ rt_next_hop_update_net(rtable *tab, net *n)
 
   /* Announce the new best route */
   if (new != old_best)
-    rte_trace_in(D_ROUTES, new->sender->proto, new, "updated [best]");
+    rte_trace_in(D_ROUTES, new->sender, new, "updated [best]");
 
   /* Propagate changes */
   rte_announce_i(tab, RA_UNDEF, n, NULL, NULL, n->routes, old_best);
@@ -2493,7 +2495,7 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
       /* Required by rte_trace_in() */
       new->net = net;
 
-      rte_trace_in(D_FILTERS, c->proto, new, "ignored [limit]");
+      rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
       goto drop_update;
     }
   }

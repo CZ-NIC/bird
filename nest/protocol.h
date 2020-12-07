@@ -281,6 +281,7 @@ void channel_graceful_restart_unlock(struct channel *c);
 
 void channel_show_limit(struct channel_limit *l, const char *dsc);
 void channel_show_info(struct channel *c);
+void channel_cmd_debug(struct channel *c, uint mask);
 
 void proto_cmd_show(struct proto *, uintptr_t, int);
 void proto_cmd_disable(struct proto *, uintptr_t, int);
@@ -496,6 +497,7 @@ struct channel_config {
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u16 preference;			/* Default route preference */
+  u32 debug;				/* Debugging flags (D_*) */
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
   u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
 };
@@ -524,6 +526,7 @@ struct channel {
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u16 preference;			/* Default route preference */
+  u32 debug;				/* Debugging flags (D_*) */
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
   u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
   u8 disabled;
