@@ -1734,8 +1734,7 @@ bgp_rte_better(rte *new, rte *old)
 
   /* RFC 5004 - prefer older routes */
   /* (if both are external and from different peer) */
-  if ((new_bgp->cf->prefer_older || old_bgp->cf->prefer_older) &&
-      !new_bgp->is_internal && n != o)
+  if ((new_bgp->cf->prefer_older || old_bgp->cf->prefer_older))
     return 0;
 
   /* rest of RFC 4271 9.1.2.2. f) */
