@@ -106,7 +106,18 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   e->pflags = 0;
 
   if (r->cmds)
+  {
+    /* Create a temporary table node */
+    e->net = alloca(sizeof(net) + r->net->length);
+    memset(e->net, 0, sizeof(net) + r->net->length);
+    net_copy(e->net->n.addr, r->net);
+
+    /* Evaluate the filter */
     f_eval_rte(r->cmds, &e, static_lp);
+
+    /* Remove the temporary node */
+    e->net = NULL;
+  }
 
   rte_update2(p->p.main_channel, r->net, e, a->src);
   r->state = SRS_CLEAN;
