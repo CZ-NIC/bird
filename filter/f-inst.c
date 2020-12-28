@@ -922,18 +922,17 @@
     uint retpos = fstk->vcnt;
 
     /* Drop every sub-block including ourselves */
-    while ((fstk->ecnt-- > 0) && !(fstk->estk[fstk->ecnt].emask & FE_RETURN))
-      ;
+    do fstk->ecnt--;
+    while ((fstk->ecnt > 0) && !(fstk->estk[fstk->ecnt].emask & FE_RETURN));
 
     /* Now we are at the caller frame; if no such, try to convert to accept/reject. */
     if (!fstk->ecnt)
+    {
       if (fstk->vstk[retpos].type == T_BOOL)
-	if (fstk->vstk[retpos].val.i)
-	  return F_ACCEPT;
-	else
-	  return F_REJECT;
+	return (fstk->vstk[retpos].val.i) ? F_ACCEPT :  F_REJECT;
       else
 	runtime("Can't return non-bool from non-function");
+    }
 
     /* Set the value stack position, overwriting the former implicit void */
     fstk->vcnt = fstk->estk[fstk->ecnt].ventry - 1;
