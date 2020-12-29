@@ -2878,6 +2878,11 @@ rt_get_igp_metric(rte *rt)
   }
 #endif
 
+#ifdef CONFIG_BABEL
+  if (a->source == RTS_BABEL)
+    return rt->u.babel.metric;
+#endif
+
   if (a->source == RTS_DEVICE)
     return 0;
 
