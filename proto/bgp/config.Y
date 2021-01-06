@@ -241,15 +241,15 @@ bgp_nh:
  | IBGP { $$ = NH_IBGP; }
  | EBGP { $$ = NH_EBGP; }
 
+bgp_lladdr: SELF | DROP | IGNORE;
+
 bgp_channel_item:
    channel_item
  | NEXT HOP ADDRESS ipa { BGP_CC->next_hop_addr = $4; }
  | NEXT HOP SELF bgp_nh { BGP_CC->next_hop_self = $4; }
  | NEXT HOP KEEP bgp_nh { BGP_CC->next_hop_keep = $4; }
  | MANDATORY bool { BGP_CC->mandatory = $2; }
- | MISSING LLADDR SELF { BGP_CC->missing_lladdr = MLL_SELF; }
- | MISSING LLADDR DROP { BGP_CC->missing_lladdr = MLL_DROP; }
- | MISSING LLADDR IGNORE { BGP_CC->missing_lladdr = MLL_IGNORE; }
+ | MISSING LLADDR bgp_lladdr { log(L_WARN "%s.%s: Missing lladdr option is deprecated and ignored, remove it", this_proto->name, this_channel->name); }
  | GATEWAY DIRECT { BGP_CC->gw_mode = GW_DIRECT; }
  | GATEWAY RECURSIVE { BGP_CC->gw_mode = GW_RECURSIVE; }
  | SECONDARY bool { BGP_CC->secondary = $2; }

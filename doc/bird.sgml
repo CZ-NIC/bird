@@ -1647,9 +1647,8 @@ Common route attributes are:
 	<tag><label id="rta-source"><m/enum/ source</tag>
 	what protocol has told me about this route. Possible values:
 	<cf/RTS_DUMMY/, <cf/RTS_STATIC/, <cf/RTS_INHERIT/, <cf/RTS_DEVICE/,
-	<cf/RTS_STATIC_DEVICE/, <cf/RTS_REDIRECT/, <cf/RTS_RIP/, <cf/RTS_OSPF/,
-	<cf/RTS_OSPF_IA/, <cf/RTS_OSPF_EXT1/, <cf/RTS_OSPF_EXT2/, <cf/RTS_BGP/,
-	<cf/RTS_PIPE/, <cf/RTS_BABEL/.
+	<cf/RTS_RIP/, <cf/RTS_OSPF/, <cf/RTS_OSPF_IA/, <cf/RTS_OSPF_EXT1/,
+	<cf/RTS_OSPF_EXT2/, <cf/RTS_BGP/, <cf/RTS_PIPE/, <cf/RTS_BABEL/.
 
 	<tag><label id="rta-dest"><m/enum/ dest</tag>
 	Type of destination the packets should be sent to
@@ -2704,20 +2703,6 @@ be used in explicit configuration.
 	announced in the Next Hop attribute. Default: the source address of the
 	BGP session (if acceptable), or the preferred address of an associated
 	interface.
-
-	<tag><label id="bgp-missing-lladdr">missing lladdr self|drop|ignore</tag>
-	Next Hop attribute in BGP-IPv6 sometimes contains just the global IPv6
-	address, but sometimes it has to contain both global and link-local IPv6
-	addresses. This option specifies what to do if BIRD have to send both
-	addresses but does not know link-local address. This situation might
-	happen when routes from other protocols are exported to BGP, or when
-	improper updates are received from BGP peers. <cf/self/ means that BIRD
-	advertises its own local address instead. <cf/drop/ means that BIRD
-	skips that prefixes and logs error. <cf/ignore/ means that BIRD ignores
-	the problem and sends just the global address (and therefore forms
-	improper BGP update). Default: <cf/self/, unless BIRD is configured as a
-	route server (option <cf/rs client/), in that case default is <cf/ignore/,
-	because route servers usually do not forward packets themselves.
 
 	<tag><label id="bgp-gateway">gateway direct|recursive</tag>
 	For received routes, their <cf/gw/ (immediate next hop) attribute is

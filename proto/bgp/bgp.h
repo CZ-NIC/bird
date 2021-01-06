@@ -143,7 +143,6 @@ struct bgp_channel_config {
   u8 next_hop_self;			/* Always set next hop to local IP address (NH_*) */
   u8 next_hop_keep;			/* Do not modify next hop attribute (NH_*) */
   u8 mandatory;				/* Channel is mandatory in capability negotiation */
-  u8 missing_lladdr;			/* What we will do when we don' know link-local addr, see MLL_* */
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
   u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
   u8 gr_able;				/* Allow full graceful restart for the channel */

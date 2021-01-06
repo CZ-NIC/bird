@@ -1986,10 +1986,6 @@ bgp_postconfig(struct proto_config *CF)
     if (cc->next_hop_keep == 0xff)
       cc->next_hop_keep = cf->rr_client ? NH_IBGP : (cf->rs_client ? NH_ALL : NH_NO);
 
-    /* Different default based on rs_client */
-    if (!cc->missing_lladdr)
-      cc->missing_lladdr = cf->rs_client ? MLL_IGNORE : MLL_SELF;
-
     /* Different default for gw_mode */
     if (!cc->gw_mode)
       cc->gw_mode = cf->multihop ? GW_RECURSIVE : GW_DIRECT;
@@ -2131,7 +2127,6 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
   if (!ipa_equal(new->next_hop_addr, old->next_hop_addr) ||
       (new->next_hop_self != old->next_hop_self) ||
       (new->next_hop_keep != old->next_hop_keep) ||
-      (new->missing_lladdr != old->missing_lladdr) ||
       (new->aigp != old->aigp) ||
       (new->aigp_originate != old->aigp_originate))
     *export_changed = 1;
