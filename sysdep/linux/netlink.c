@@ -113,6 +113,8 @@ struct nl_parse_state
   u8 krt_type;
   u8 krt_proto;
   u32 krt_metric;
+
+  u32 rta_flow;		/* Used during parsing */
 };
 
 /*
@@ -345,6 +347,7 @@ static struct nl_want_attrs ifa_attr_want6[BIRD_IFA_MAX] = {
 static struct nl_want_attrs nexthop_attr_want4[BIRD_RTA_MAX] = {
   [RTA_GATEWAY]	  = { 1, 1, sizeof(ip4_addr) },
   [RTA_VIA]	  = { 1, 0, 0 },
+  [RTA_FLOW]	  = { 1, 1, sizeof(u32) },
   [RTA_ENCAP_TYPE]= { 1, 1, sizeof(u16) },
   [RTA_ENCAP]	  = { 1, 0, 0 },
 };
@@ -352,6 +355,7 @@ static struct nl_want_attrs nexthop_attr_want4[BIRD_RTA_MAX] = {
 static struct nl_want_attrs nexthop_attr_want6[BIRD_RTA_MAX] = {
   [RTA_GATEWAY]	  = { 1, 1, sizeof(ip6_addr) },
   [RTA_VIA]	  = { 1, 0, 0 },
+  [RTA_FLOW]	  = { 1, 1, sizeof(u32) },
   [RTA_ENCAP_TYPE]= { 1, 1, sizeof(u16) },
   [RTA_ENCAP]	  = { 1, 0, 0 },
 };
@@ -647,9 +651,10 @@ nl_add_nexthop(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af UNUS
 }
 
 static void
-nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af)
+nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af, ea_list *eattrs)
 {
   struct rtattr *a = nl_open_attr(h, bufsize, RTA_MULTIPATH);
+  eattr *flow = ea_find(eattrs, EA_KRT_REALM);
 
   for (; nh; nh = nh->next)
   {
@@ -663,6 +668,11 @@ nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af)
 
     if (nh->flags & RNF_ONLINK)
       rtnh->rtnh_flags |= RTNH_F_ONLINK;
+
+    /* Our KRT_REALM is per-route, but kernel RTA_FLOW is per-nexthop.
+       Therefore, we need to attach the same attribute to each nexthop. */
+    if (flow)
+      nl_add_attr_u32(h, bufsize, RTA_FLOW, flow->u.data);
 
     nl_close_nexthop(h, rtnh);
   }
@@ -726,6 +736,9 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
 
       if (a[RTA_GATEWAY])
 	rv->gw = rta_get_ipa(a[RTA_GATEWAY]);
+
+      if (a[RTA_FLOW])
+	s->rta_flow = rta_get_u32(a[RTA_FLOW]);
 
 #ifdef HAVE_MPLS_KERNEL
       if (a[RTA_VIA])
@@ -1339,7 +1352,7 @@ dest:
     case RTD_UNICAST:
       r->r.rtm_type = RTN_UNICAST;
       if (nh->next && !krt_ecmp6(p))
-	nl_add_multipath(&r->h, rsize, nh, p->af);
+	nl_add_multipath(&r->h, rsize, nh, p->af, eattrs);
       else
       {
 	nl_add_attr_u32(&r->h, rsize, RTA_OIF, nh->iface->index);
@@ -1647,6 +1660,11 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   ra->source = RTS_INHERIT;
   ra->scope = SCOPE_UNIVERSE;
 
+  if (a[RTA_FLOW])
+    s->rta_flow = rta_get_u32(a[RTA_FLOW]);
+  else
+    s->rta_flow = 0;
+
   switch (i->rtm_type)
     {
     case RTN_UNICAST:
@@ -1773,7 +1791,8 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       ea->attrs[0].u.ptr = ad;
     }
 
-  if (a[RTA_FLOW])
+  /* Can be set per-route or per-nexthop */
+  if (s->rta_flow)
     {
       ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + sizeof(eattr));
       ea->next = ra->eattrs;
@@ -1783,7 +1802,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       ea->attrs[0].id = EA_KRT_REALM;
       ea->attrs[0].flags = 0;
       ea->attrs[0].type = EAF_TYPE_INT;
-      ea->attrs[0].u.data = rta_get_u32(a[RTA_FLOW]);
+      ea->attrs[0].u.data = s->rta_flow;
     }
 
   if (a[RTA_METRICS])
