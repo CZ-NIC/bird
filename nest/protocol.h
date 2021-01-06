@@ -542,7 +542,6 @@ struct channel {
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
 
   btime last_state_change;		/* Time of last state transition */
-  btime last_tx_filter_change;
 
   struct rtable *in_table;		/* Internal table for received routes */
   struct event *reload_event;		/* Event responsible for reloading from in_table */
