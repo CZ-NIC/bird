@@ -1008,6 +1008,10 @@ krt_postconfig(struct proto_config *CF)
 {
   struct krt_config *cf = (void *) CF;
 
+  /* Do not check templates at all */
+  if (cf->c.class == SYM_TEMPLATE)
+    return;
+
   if (EMPTY_LIST(CF->channels))
     cf_error("Channel not specified");
 
