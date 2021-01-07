@@ -4965,8 +4965,8 @@ static protocols, each with appropriate routes and channel.
 <ref id="type-prefix" name="dependent on network type">.
 
 <descrip>
-	<tag>route <m/prefix/ via <m/ip/|<m/"interface"/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]]</tag>
-	Next hop routes may bear one or more <ref id="route-next-hop" name="next hops">.
+	<tag>route <m/prefix/ via <m/ip/|<m/"interface"/ [<m/per-nexthop options/] [via ...]</tag>
+	Regular routes may bear one or more <ref id="route-next-hop" name="next hops">.
 	Every next hop is preceded by <cf/via/ and configured as shown.
 
 	<tag>route <m/prefix/ recursive <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]]</tag>
@@ -4984,6 +4984,46 @@ static protocols, each with appropriate routes and channel.
 the next hop of the route is not a neighbor at the moment), Static just
 uninstalls the route from the table it is connected to and adds it again as soon
 as the destination becomes adjacent again.
+
+<sect2>Per-nexthop options
+
+<p>There are several options that in a case of multipath route are per-nexthop
+(i.e., they can be used multiple times for a route, one time for each nexthop).
+Syntactically, they are not separate options but just parts of <cf/route/
+statement after each <cf/via/ statement, not separated by semicolons. E.g.,
+statement <cf/route 10.0.0.0/8 via 192.0.2.1 bfd weight 1 via 192.0.2.2 weight
+2;/ describes a route with two nexthops, the first nexthop has two per-nexthop
+options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
+
+<descrip>
+	<tag><label id="static-route-bfd">bfd <m/switch/</tag>
+	The Static protocol could use BFD protocol for next hop liveness
+	detection. If enabled, a BFD session to the route next hop is created
+	and the static route is BFD-controlled -- the static route is announced
+	only if the next hop liveness is confirmed by BFD. If the BFD session
+	fails, the static route (or just the affected nexthop from multiple
+	ones) is removed. Note that this is a bit different compared to other
+	protocols, which may use BFD as an advisory mechanism for fast failure
+	detection but ignore it if a BFD session is not even established. Note
+	that BFD protocol also has to be configured, see <ref id="bfd" name="BFD">
+	section for details. Default value is no.
+
+	<tag><label id="static-route-mpls">mpls <m/num/[/<m/num/[/<m/num/[...]]]</tag>
+	MPLS labels that should be pushed to packets forwarded by the route.
+	The option could be used for both IP routes (on MPLS ingress routers)
+	and MPLS switching rules (on MPLS transit routers). Default value is
+	no labels.
+
+	<tag><label id="static-route-onlink">onlink <m/switch/</tag>
+	Onlink flag means that the specified nexthop is accessible on the
+	(specified) interface regardless of IP prefixes of the interface. The
+	interface must be attached to nexthop IP address using link-local-scope
+	format (e.g. <cf/192.0.2.1%eth0/). Default value is no.
+
+	<tag><label id="static-route-weight">weight <m/switch/</tag>
+	For multipath routes, this value specifies a relative weight of the
+	nexthop. Allowed values are 1-256. Default value is 1.
+</descrip>
 
 <sect1>Route Origin Authorization
 
@@ -5123,21 +5163,6 @@ protocol static {
 <sect1>Per-route options
 <p>
 <descrip>
-	<tag><label id="static-route-bfd">bfd <m/switch/</tag>
-	The Static protocol could use BFD protocol for next hop liveness
-	detection. If enabled, a BFD session to the route next hop is created
-	and the static route is BFD-controlled -- the static route is announced
-	only if the next hop liveness is confirmed by BFD. If the BFD session
-	fails, the static route is removed. Note that this is a bit different
-	compared to other protocols, which may use BFD as an advisory mechanism
-	for fast failure detection but ignores it if a BFD session is not even
-	established.
-
-	This option can be used for static routes with a direct next hop, or
-	also for for individual next hops in a static multipath route (see
-	above). Note that BFD protocol also has to be configured, see
-	<ref id="bfd" name="BFD"> section for details. Default value is no.
-
 	<tag><label id="static-route-filter"><m/filter expression/</tag>
 	This is a special option that allows filter expressions to be configured
 	on per-route basis. Can be used multiple times. These expressions are
@@ -5147,7 +5172,8 @@ protocol static {
 	exported to the OSPF protocol.
 </descrip>
 
-<sect1>Example static config
+<sect1>Example static configs
+<label id="static-example">
 
 <p><code>
 protocol static {
@@ -5158,20 +5184,29 @@ protocol static {
 		via 198.51.100.10 weight 2
 		via 198.51.100.20 bfd	# BFD-controlled next hop
 		via 192.0.2.1;
-	route 203.0.113.0/24 unreachable; # Sink route
+	route 203.0.113.0/24 blackhole; # Sink route
 	route 10.2.0.0/24 via "arc0";	# Secondary network
 	route 192.168.10.0/24 via 198.51.100.100 {
 		ospf_metric1 = 20;	# Set extended attribute
 	};
-	route 192.168.10.0/24 via 198.51.100.100 {
+	route 192.168.11.0/24 via 198.51.100.100 {
 		ospf_metric2 = 100;	# Set extended attribute
 		ospf_tag = 2;		# Set extended attribute
-		bfd;			# BFD-controlled route
 	};
-	route 192.168.11.0/24 via 198.51.100.100 {
+	route 192.168.12.0/24 via 198.51.100.100 {
 		bgp_community.add((65535, 65281));	# Set extended BGP attribute
 		bgp_large_community.add((64512, 1, 1));	# Set extended BGP attribute
 	};
+}
+
+protocol static {
+	ipv6;						# Channel is mandatory
+	route 2001:db8:10::/48 via 2001:db8:1::1;	# Route with global nexthop
+	route 2001:db8:20::/48 via fe80::10%eth0;	# Route with link-local nexthop
+	route 2001:db8:30::/48 via fe80::20%'eth1.60';	# Iface with non-alphanumeric characters
+	route 2001:db8:40::/48 via "eth2";		# Direct route to eth2
+	route 2001:db8::/32 unreachable;		# Unreachable route
+	route ::/0 via 2001:db8:1::1 bfd;		# BFD-controlled default route
 }
 </code>
 
