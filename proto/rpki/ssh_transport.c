@@ -47,17 +47,15 @@ rpki_tr_ssh_ident(struct rpki_tr_sock *tr)
   struct rpki_cache *cache = tr->cache;
   struct rpki_config *cf = (void *) cache->p->p.cf;
   struct rpki_tr_ssh_config *ssh_cf = (void *) cf->tr_config.spec;
+  const char *username = ssh_cf->user;
 
   if (tr->ident != NULL)
     return tr->ident;
 
-  const char *username = ssh_cf->user;
-  const char *host = cf->hostname;
-  u16 port = cf->port;
-
-  size_t len = strlen(username) + 1 + strlen(host) + 1 + 5 + 1; /* <user> + '@' + <host> + ':' + <port> + '\0' */
+  /* Length: <user> + '@' + <host> + ' port ' + <port> + '\0' */
+  size_t len = strlen(username) + 1 + strlen(cf->hostname) + 1 + 5 + 1;
   char *ident = mb_alloc(cache->pool, len);
-  bsnprintf(ident, len, "%s@%s:%u", username, host, port);
+  bsnprintf(ident, len, "%s@%s:%u", username, cf->hostname, cf->port);
   tr->ident = ident;
 
   return tr->ident;

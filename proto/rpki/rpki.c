@@ -837,7 +837,7 @@ rpki_show_proto_info(struct proto *P)
     case RPKI_TR_TCP: transport_name = "Unprotected over TCP"; break;
     };
 
-    cli_msg(-1006, "  Cache server:     %s", rpki_get_cache_ident(cache));
+    cli_msg(-1006, "  Cache server:     %s", cf->hostname);
     cli_msg(-1006, "  Status:           %s", rpki_cache_state_to_str(cache->state));
     cli_msg(-1006, "  Transport:        %s", transport_name);
     cli_msg(-1006, "  Protocol version: %u", cache->version);
