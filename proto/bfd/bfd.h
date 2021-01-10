@@ -153,6 +153,7 @@ struct bfd_session
   u8 detect_mult;			/* Announced detect_mult, local option */
   u8 rem_detect_mult;			/* Last received detect_mult */
 
+  uint ifindex;				/* Iface index, for hashing in bfd.session_hash_ip */
   btime last_tx;			/* Time of last sent periodic control packet */
   btime last_rx;			/* Time of last received valid control packet */
 
@@ -213,7 +214,7 @@ static inline void bfd_unlock_sessions(struct bfd_proto *p) { pthread_spin_unloc
 
 /* bfd.c */
 struct bfd_session * bfd_find_session_by_id(struct bfd_proto *p, u32 id);
-struct bfd_session * bfd_find_session_by_addr(struct bfd_proto *p, ip_addr addr);
+struct bfd_session * bfd_find_session_by_addr(struct bfd_proto *p, ip_addr addr, uint ifindex);
 void bfd_session_process_ctl(struct bfd_session *s, u8 flags, u32 old_tx_int, u32 old_rx_int);
 void bfd_show_sessions(struct proto *P);
 

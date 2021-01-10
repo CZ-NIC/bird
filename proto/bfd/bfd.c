@@ -27,13 +27,13 @@
  * related to the session and two timers (TX timer for periodic packets and hold
  * timer for session timeout). These sessions are allocated from @session_slab
  * and are accessible by two hash tables, @session_hash_id (by session ID) and
- * @session_hash_ip (by IP addresses of neighbors). Slab and both hashes are in
- * the main protocol structure &bfd_proto. The protocol logic related to BFD
- * sessions is implemented in internal functions bfd_session_*(), which are
- * expected to be called from the context of BFD thread, and external functions
- * bfd_add_session(), bfd_remove_session() and bfd_reconfigure_session(), which
- * form an interface to the BFD core for the rest and are expected to be called
- * from the context of main thread.
+ * @session_hash_ip (by IP addresses of neighbors and associated interfaces).
+ * Slab and both hashes are in the main protocol structure &bfd_proto. The
+ * protocol logic related to BFD sessions is implemented in internal functions
+ * bfd_session_*(), which are expected to be called from the context of BFD
+ * thread, and external functions bfd_add_session(), bfd_remove_session() and
+ * bfd_reconfigure_session(), which form an interface to the BFD core for the
+ * rest and are expected to be called from the context of main thread.
  *
  * Each BFD session has an associated BFD interface, represented by structure
  * &bfd_iface. A BFD interface contains a socket used for TX (the one for RX is
@@ -108,10 +108,10 @@
 #define HASH_ID_EQ(a,b)		a == b
 #define HASH_ID_FN(k)		k
 
-#define HASH_IP_KEY(n)		n->addr
+#define HASH_IP_KEY(n)		n->addr, n->ifindex
 #define HASH_IP_NEXT(n)		n->next_ip
-#define HASH_IP_EQ(a,b)		ipa_equal(a,b)
-#define HASH_IP_FN(k)		ipa_hash(k)
+#define HASH_IP_EQ(a1,n1,a2,n2)	ipa_equal(a1, a2) && n1 == n2
+#define HASH_IP_FN(a,n)		ipa_hash(a) ^ u32_hash(n)
 
 static list bfd_proto_list;
 static list bfd_wait_list;
@@ -385,9 +385,9 @@ bfd_find_session_by_id(struct bfd_proto *p, u32 id)
 }
 
 struct bfd_session *
-bfd_find_session_by_addr(struct bfd_proto *p, ip_addr addr)
+bfd_find_session_by_addr(struct bfd_proto *p, ip_addr addr, uint ifindex)
 {
-  return HASH_FIND(p->session_hash_ip, HASH_IP, addr);
+  return HASH_FIND(p->session_hash_ip, HASH_IP, addr, ifindex);
 }
 
 static void
@@ -426,6 +426,7 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
   struct bfd_session *s = sl_allocz(p->session_slab);
   s->addr = addr;
   s->ifa = ifa;
+  s->ifindex = iface ? iface->index : 0;
   s->loc_id = bfd_get_free_id(p);
 
   HASH_INSERT(p->session_hash_id, HASH_ID, s);
@@ -658,7 +659,8 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
   if (req->iface ? !cf->accept_direct : !cf->accept_multihop)
     return 0;
 
-  struct bfd_session *s = bfd_find_session_by_addr(p, req->addr);
+  uint ifindex = req->iface ? req->iface->index : 0;
+  struct bfd_session *s = bfd_find_session_by_addr(p, req->addr, ifindex);
   u8 state, diag;
 
   if (!s)

@@ -366,7 +366,8 @@ bfd_rx_hook(sock *sk, uint len)
     if (ps > BFD_STATE_DOWN)
       DROP("invalid init state", ps);
 
-    s = bfd_find_session_by_addr(p, sk->faddr);
+    uint ifindex = (sk->sport == BFD_CONTROL_PORT) ? sk->lifindex : 0;
+    s = bfd_find_session_by_addr(p, sk->faddr, ifindex);
 
     /* FIXME: better session matching and message */
     if (!s)
