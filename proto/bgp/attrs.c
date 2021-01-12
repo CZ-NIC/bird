@@ -683,6 +683,37 @@ bgp_format_cluster_list(const eattr *a, byte *buf, uint size)
 }
 
 
+int
+bgp_encode_mp_reach_mrt(struct bgp_write_state *s UNUSED, eattr *a, byte *buf, uint size)
+{
+  /*
+   *	Limited version of MP_REACH_NLRI used for MRT table dumps (IPv6 only):
+   *
+   *	3 B	MP_REACH_NLRI header
+   *	1 B	MP_REACH_NLRI data - Length of Next Hop Network Address
+   *	var	MP_REACH_NLRI data - Network Address of Next Hop
+   */
+
+  ip_addr *nh = (void *) a->u.ptr->data;
+  uint len = a->u.ptr->length;
+
+  ASSERT((len == 16) || (len == 32));
+
+  if (size < (3+1+len))
+    return -1;
+
+  bgp_put_attr_hdr3(buf, BA_MP_REACH_NLRI, BAF_OPTIONAL, 1+len);
+  buf[3] = len;
+  buf += 4;
+
+  put_ip6(buf, ipa_to_ip6(nh[0]));
+
+  if (len == 32)
+    put_ip6(buf+16, ipa_to_ip6(nh[1]));
+
+  return 3+1+len;
+}
+
 static inline u32
 get_af3(byte *buf)
 {

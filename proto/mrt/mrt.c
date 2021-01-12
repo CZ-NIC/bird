@@ -417,6 +417,50 @@ mrt_rib_table_header(struct mrt_table_dump_state *s, net_addr *n)
   mrt_put_u16(b, 0);
 }
 
+#ifdef CONFIG_BGP
+static void
+mrt_rib_table_entry_bgp_attrs(struct mrt_table_dump_state *s, rte *r)
+{
+  struct ea_list *eattrs = r->attrs->eattrs;
+  buffer *b = &s->buf;
+
+  if (!eattrs)
+    return;
+
+  /* Attribute list must be normalized for bgp_encode_attrs() */
+  if (!rta_is_cached(r->attrs))
+    ea_normalize(eattrs);
+
+  mrt_buffer_need(b, MRT_ATTR_BUFFER_SIZE);
+  byte *pos = b->pos;
+
+  s->bws->mp_next_hop = NULL;
+
+  /* Encode BGP attributes */
+  int len = bgp_encode_attrs(s->bws, eattrs, pos, b->end);
+  if (len < 0)
+    goto fail;
+  pos += len;
+
+  /* Encode IPv6 next hop separately as fake MP_REACH_NLRI attribute */
+  if (s->bws->mp_next_hop)
+  {
+    len = bgp_encode_mp_reach_mrt(s->bws, s->bws->mp_next_hop, pos, b->end - pos);
+    if (len < 0)
+      goto fail;
+    pos += len;
+  }
+
+  /* Update attribute length and advance buffer pos */
+  put_u16(b->pos - 2, pos - b->pos);
+  b->pos = pos;
+  return;
+
+fail:
+  mrt_log(s, "Attribute list too long for %N", r->net->n.addr);
+}
+#endif
+
 static void
 mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
 {
@@ -447,25 +491,7 @@ mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
   mrt_put_u16(b, 0);
 
 #ifdef CONFIG_BGP
-  if (r->attrs->eattrs)
-  {
-    struct ea_list *eattrs = r->attrs->eattrs;
-
-    if (!rta_is_cached(r->attrs))
-      ea_normalize(eattrs);
-
-    mrt_buffer_need(b, MRT_ATTR_BUFFER_SIZE);
-    int alen = bgp_encode_attrs(s->bws, eattrs, b->pos, b->end);
-
-    if (alen < 0)
-    {
-      mrt_log(s, "Attribute list too long for %N", r->net->n.addr);
-      alen = 0;
-    }
-
-    put_u16(b->pos - 2, alen);
-    b->pos += alen;
-  }
+  mrt_rib_table_entry_bgp_attrs(s, r);
 #endif
 
   s->entry_count++;
