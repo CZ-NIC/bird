@@ -697,6 +697,9 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
       if ((len < sizeof(*nh)) || (len < nh->rtnh_len))
 	return NULL;
 
+      if (nh->rtnh_flags & RTNH_F_DEAD)
+	goto next;
+
       *last = rv = lp_allocz(s->pool, NEXTHOP_MAX_SIZE);
       last = &(rv->next);
 
@@ -772,7 +775,7 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
       }
 #endif
 
-
+    next:
       len -= NLMSG_ALIGN(nh->rtnh_len);
       nh = RTNH_NEXT(nh);
     }
@@ -1682,6 +1685,9 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	  nexthop_link(ra, nh);
 	  break;
 	}
+
+      if (i->rtm_flags & RTNH_F_DEAD)
+	return;
 
       ra->nh.iface = if_find_by_index(oif);
       if (!ra->nh.iface)
