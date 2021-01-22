@@ -244,7 +244,6 @@ mrt_next_table(struct mrt_table_dump_state *s)
 
   s->table = tab;
   s->ipv4 = tab ? (tab->addr_type == NET_IP4) : 0;
-  s->bws->mp_reach = !s->ipv4;
 
   if (s->table)
     rt_lock_table(s->table);
@@ -434,6 +433,7 @@ mrt_rib_table_entry_bgp_attrs(struct mrt_table_dump_state *s, rte *r)
   mrt_buffer_need(b, MRT_ATTR_BUFFER_SIZE);
   byte *pos = b->pos;
 
+  s->bws->mp_reach = !s->ipv4;
   s->bws->mp_next_hop = NULL;
 
   /* Encode BGP attributes */
