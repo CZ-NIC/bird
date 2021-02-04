@@ -1,5 +1,6 @@
 dnl ** Additional Autoconf tests for BIRD configure script
 dnl ** (c) 1999 Martin Mares <mj@ucw.cz>
+dnl ** (c) 2021 Maria Matejka <mq@jmq.cz>
 
 AC_DEFUN([BIRD_CHECK_THREAD_LOCAL],
 [
@@ -9,14 +10,23 @@ AC_DEFUN([BIRD_CHECK_THREAD_LOCAL],
     AC_COMPILE_IFELSE([
       AC_LANG_PROGRAM(
         [
-	  _Thread_local static int x = 42;
+	  static _Thread_local int x = 42;
 	],
 	[]
       )
     ],
     [bird_cv_thread_local=yes],
+    [AC_COMPILE_IFELSE([
+      AC_LANG_PROGRAM(
+       [
+         static __thread int x = 42;
+       ],
+       []
+      )
+    ],
+    [bird_cv_thread_local=__thread],
     [bird_cv_thread_local=no]
-    )
+    )])
   )
 ])
 
