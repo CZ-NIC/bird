@@ -36,6 +36,7 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/event.h"
+#include "lib/locking.h"
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/iface.h"
@@ -2263,7 +2264,9 @@ io_loop(void)
 
       /* And finally enter poll() to find active sockets */
       watchdog_stop();
+      the_bird_unlock();
       pout = poll(pfd, nfds, poll_tout);
+      the_bird_lock();
       watchdog_start();
 
       if (pout < 0)
