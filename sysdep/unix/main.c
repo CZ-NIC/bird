@@ -28,6 +28,7 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/event.h"
+#include "lib/locking.h"
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/route.h"
@@ -918,6 +919,8 @@ main(int argc, char **argv)
       dup2(0, 1);
       dup2(0, 2);
     }
+
+  the_bird_lock();
 
   main_thread_init();
 
