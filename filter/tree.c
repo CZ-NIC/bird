@@ -170,3 +170,14 @@ tree_format(const struct f_tree *t, buffer *buf)
 
   buffer_puts(buf, "]");
 }
+
+void
+tree_walk(const struct f_tree *t, void (*hook)(const struct f_tree *, void *), void *data)
+{
+  if (!t)
+    return;
+
+  tree_walk(t->left, hook, data);
+  hook(t, data);
+  tree_walk(t->right, hook, data);
+}

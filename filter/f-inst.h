@@ -17,6 +17,7 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/data.h"
+#include "lib/buffer.h"
 #include "lib/flowspec.h"
 
 /* Flags for instructions */
@@ -49,6 +50,41 @@ static inline struct f_line *f_linearize(const struct f_inst *root)
 { return f_linearize_concat(&root, 1); }
 
 void f_dump_line(const struct f_line *, uint indent);
+
+
+/* Recursive iteration over filter instructions */
+
+struct filter_iterator {
+  BUFFER_(const struct f_line *) lines;
+};
+
+void f_add_lines(const struct f_line_item *what, struct filter_iterator *fit);
+
+#define FILTER_ITERATE_INIT(fit, filter, pool)			\
+  ({								\
+    BUFFER_INIT((fit)->lines, (pool), 32);			\
+    BUFFER_PUSH((fit)->lines) = (filter)->root;			\
+  })
+
+#define FILTER_ITERATE(fit, fi) ({				\
+  const struct f_line *fl_;					\
+  while (!BUFFER_EMPTY((fit)->lines))				\
+  {								\
+    BUFFER_POP((fit)->lines);					\
+    fl_ = (fit)->lines.data[(fit)->lines.used];			\
+    for (uint i_ = 0; i_ < fl_->len; i_++)			\
+    {								\
+      const struct f_line_item *fi = &fl_->items[i_];		\
+      f_add_lines(fi, (fit));
+
+#define FILTER_ITERATE_END } } })
+
+#define FILTER_ITERATE_CLEANUP(fit)				\
+  ({								\
+    mb_free((fit)->lines.data);					\
+    memset((fit), 0, sizeof(struct filter_iterator));		\
+  })
+
 
 struct filter *f_new_where(struct f_inst *);
 static inline struct f_dynamic_attr f_new_dynamic_attr(u8 type, enum f_type f_type, uint code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */

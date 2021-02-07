@@ -20,6 +20,7 @@
 #include "nest/iface.h"
 #include "nest/cli.h"
 #include "filter/filter.h"
+#include "filter/f-inst.h"
 
 pool *proto_pool;
 list  proto_list;

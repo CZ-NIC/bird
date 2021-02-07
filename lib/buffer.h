@@ -50,6 +50,8 @@
 
 #define BUFFER_FLUSH(v)		({ (v).used = 0; })
 
+#define BUFFER_EMPTY(v)		({ (v).used == 0; })
+
 #define BUFFER_WALK(v,n)						\
   for (BUFFER_TYPE(v) *_n = (v).data, n; _n < ((v).data + (v).used) && (n = *_n, 1); _n++)
 

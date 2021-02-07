@@ -172,6 +172,22 @@
  *	m4_dnl	use macros f1 and f2.
  *	m4_dnl	For writing directly here, use FID_SAME_BODY.
  *
+ *	m4_dnl		f_add_lines(...)
+ *	m4_dnl		{
+ *	m4_dnl		  switch (what_->fi_code) {
+ *	m4_dnl		    case FI_EXAMPLE:
+ *	m4_dnl	(109)	      [[ put it here ]]
+ *	m4_dnl		      break;
+ *	m4_dnl		  }
+ *	m4_dnl		}
+ *	m4_dnl	This code adds new filter lines reachable from the instruction
+ *	m4_dnl	to the filter iterator line buffer. This is for instructions
+ *	m4_dnl  that changes conrol flow, like FI_CONDITION or FI_CALL, most
+ *	m4_dnl  instructions do not need to update it. It is used in generic
+ *	m4_dnl  filter iteration code (FILTER_ITERATE*). For accessing your
+ *	m4_dnl  custom instruction data, use macros f1 and f2. For writing
+ *	m4_dnl	directly here, use FID_ITERATE_BODY.
+ *
  *	m4_dnl		interpret(...)
  *	m4_dnl		{
  *	m4_dnl		  switch (what->fi_code) {
@@ -948,6 +964,10 @@
     FID_SAME_BODY()
       if (!(f1->sym->flags & SYM_FLAG_SAME))
 	return 0;
+
+    FID_ITERATE_BODY()
+      BUFFER_PUSH(fit->lines) = whati->sym->function;
+
     FID_INTERPRET_BODY()
 
     /* Push the body on stack */
@@ -977,6 +997,10 @@
 
     FID_MEMBER(struct f_tree *, tree, [[!same_tree(f1->tree, f2->tree)]], "tree %p", item->tree);
 
+    FID_ITERATE_BODY()
+      tree_walk(whati->tree, f_add_tree_lines, fit);
+
+    FID_INTERPRET_BODY()
     const struct f_tree *t = find_tree(tree, &v1);
     if (!t) {
       v1.type = T_VOID;

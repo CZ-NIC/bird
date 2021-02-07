@@ -40,6 +40,7 @@ m4_divert(-1)m4_dnl
 #	106	comparator body
 #	107	struct f_line_item content
 #	108	interpreter body
+#	109	iterator body
 #
 #	Here are macros to allow you to _divert to the right directions.
 m4_define(FID_STRUCT_IN, `m4_divert(101)')
@@ -50,6 +51,7 @@ m4_define(FID_LINEARIZE_BODY, `m4_divert(105)')
 m4_define(FID_SAME_BODY, `m4_divert(106)')
 m4_define(FID_LINE_IN, `m4_divert(107)')
 m4_define(FID_INTERPRET_BODY, `m4_divert(108)')
+m4_define(FID_ITERATE_BODY, `m4_divert(109)')
 
 #	Sometimes you want slightly different code versions in different
 #	outputs.
@@ -211,6 +213,8 @@ FID_LINEARIZE_BODY()m4_dnl
 item->fl$1 = f_linearize(whati->f$1);
 FID_SAME_BODY()m4_dnl
 if (!f_same(f1->fl$1, f2->fl$1)) return 0;
+FID_ITERATE_BODY()m4_dnl
+if (whati->fl$1) BUFFER_PUSH(fit->lines) = whati->fl$1;
 FID_INTERPRET_EXEC()m4_dnl
 do { if (whati->fl$1) {
   LINEX_(whati->fl$1);
@@ -265,6 +269,7 @@ m4_define(ACCESS_RTE, `FID_HIC(,[[do { if (!fs->rte) runtime("No route to access
 #	7	dump line item callers
 #	8	linearize
 #	9	same (filter comparator)
+#	10	iterate
 #	1	union in struct f_inst
 #	3	constructors + interpreter
 #
@@ -285,6 +290,7 @@ m4_define(FID_DUMP, `FID_ZONE(6, Dump line)')
 m4_define(FID_DUMP_CALLER, `FID_ZONE(7, Dump line caller)')
 m4_define(FID_LINEARIZE, `FID_ZONE(8, Linearize)')
 m4_define(FID_SAME, `FID_ZONE(9, Comparison)')
+m4_define(FID_ITERATE, `FID_ZONE(10, Iteration)')
 
 #	This macro does all the code wrapping. See inline comments.
 m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
@@ -370,6 +376,13 @@ case INST_NAME():
 m4_undivert(106)m4_dnl
 #undef f1
 #undef f2
+break;
+
+FID_ITERATE()m4_dnl			The iterator
+case INST_NAME():
+#define whati (&(what->i_]]INST_NAME()[[))
+m4_undivert(109)m4_dnl
+#undef whati
 break;
 
 m4_divert(-1)FID_FLUSH(101,200)m4_dnl  And finally this flushes all the unused diversions
@@ -581,6 +594,27 @@ FID_WR_PUT(9)
 #undef f2_
   return 1;
 }
+
+
+/* Part of FI_SWITCH filter iterator */
+static void
+f_add_tree_lines(const struct f_tree *t, void *fit_)
+{
+  struct filter_iterator * fit = fit_;
+
+  if (t->data)
+    BUFFER_PUSH(fit->lines) = t->data;
+}
+
+/* Filter line iterator */
+void
+f_add_lines(const struct f_line_item *what, struct filter_iterator *fit)
+{
+  switch(what->fi_code) {
+FID_WR_PUT(10)
+  }
+}
+
 
 #if defined(__GNUC__) && __GNUC__ >= 6
 #pragma GCC diagnostic pop

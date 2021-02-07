@@ -175,6 +175,7 @@ struct f_tree *build_tree(struct f_tree *);
 const struct f_tree *find_tree(const struct f_tree *t, const struct f_val *val);
 int same_tree(const struct f_tree *t0, const struct f_tree *t2);
 void tree_format(const struct f_tree *t, buffer *buf);
+void tree_walk(const struct f_tree *t, void (*hook)(const struct f_tree *, void *), void *data);
 
 struct f_trie *f_new_trie(linpool *lp, uint data_size);
 void *trie_add_prefix(struct f_trie *t, const net_addr *n, uint l, uint h);
