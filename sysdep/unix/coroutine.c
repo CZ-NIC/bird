@@ -17,7 +17,14 @@
 
 #include "lib/birdlib.h"
 #include "lib/locking.h"
+#include "lib/coro.h"
 #include "lib/resource.h"
+#include "lib/timer.h"
+
+/* Using a rather big stack for coroutines to allow for stack-local allocations.
+ * In real world, the kernel doesn't alloc this memory until it is used.
+ * */
+#define CORO_STACK_SIZE	1048576
 
 /*
  *	Implementation of coroutines based on POSIX threads
@@ -100,3 +107,69 @@ void do_unlock(struct domain_generic *dg, struct domain_generic **lsp)
   pthread_mutex_unlock(&dg->mutex);
 }
 
+/* Coroutines */
+struct coroutine {
+  resource r;
+  pthread_t id;
+  pthread_attr_t attr;
+  void (*entry)(void *);
+  void *data;
+};
+
+static _Thread_local _Bool coro_cleaned_up = 0;
+
+static void coro_free(resource *r)
+{
+  struct coroutine *c = (void *) r;
+  ASSERT_DIE(pthread_equal(pthread_self(), c->id));
+  pthread_attr_destroy(&c->attr);
+  coro_cleaned_up = 1;
+}
+
+static struct resclass coro_class = {
+  .name = "Coroutine",
+  .size = sizeof(struct coroutine),
+  .free = coro_free,
+};
+
+extern pthread_key_t current_time_key;
+
+static void *coro_entry(void *p)
+{
+  struct coroutine *c = p;
+  ASSERT_DIE(c->entry);
+
+  pthread_setspecific(current_time_key, &main_timeloop);
+
+  c->entry(c->data);
+  ASSERT_DIE(coro_cleaned_up);
+
+  return NULL;
+}
+
+struct coroutine *coro_run(pool *p, void (*entry)(void *), void *data)
+{
+  ASSERT_DIE(entry);
+  ASSERT_DIE(p);
+
+  struct coroutine *c = ralloc(p, &coro_class);
+
+  c->entry = entry;
+  c->data = data;
+
+  int e = 0;
+
+  if (e = pthread_attr_init(&c->attr))
+    die("pthread_attr_init() failed: %M", e);
+
+  if (e = pthread_attr_setstacksize(&c->attr, CORO_STACK_SIZE))
+    die("pthread_attr_setstacksize(%u) failed: %M", CORO_STACK_SIZE, e);
+
+  if (e = pthread_attr_setdetachstate(&c->attr, PTHREAD_CREATE_DETACHED))
+    die("pthread_attr_setdetachstate(PTHREAD_CREATE_DETACHED) failed: %M", e);
+
+  if (e = pthread_create(&c->id, &c->attr, coro_entry, c))
+    die("pthread_create() failed: %M", e);
+
+  return c;
+}
