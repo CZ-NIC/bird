@@ -36,6 +36,7 @@
 #include "nest/iface.h"
 #include "lib/resource.h"
 #include "lib/event.h"
+#include "lib/timer.h"
 #include "lib/string.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
@@ -60,6 +61,7 @@ static void rt_notify_hostcache(rtable *tab, net *net);
 static void rt_update_hostcache(rtable *tab);
 static void rt_next_hop_update(rtable *tab);
 static inline void rt_prune_table(rtable *tab);
+static inline void rt_schedule_notify(rtable *tab);
 
 
 /* Like fib_route(), but skips empty net entries */
@@ -968,6 +970,8 @@ rte_announce(rtable *tab, uint type, net *net, rte *new, rte *old,
       rt_notify_hostcache(tab, net);
   }
 
+  rt_schedule_notify(tab);
+
   struct channel *c; node *n;
   WALK_LIST2(c, n, tab->channels, table_node)
   {
@@ -1210,6 +1214,9 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
     stats->imp_withdraws_accepted++;
   else
     stats->imp_withdraws_ignored++;
+
+  if (old_ok || new_ok)
+    table->last_rt_change = current_time();
 
  skip_stats1:
 
@@ -1792,6 +1799,78 @@ rt_event(void *ptr)
   rt_unlock_table(tab);
 }
 
+
+static inline btime
+rt_settled_time(rtable *tab)
+{
+  ASSUME(tab->base_settle_time != 0);
+
+  return MIN(tab->last_rt_change + tab->config->min_settle_time,
+	     tab->base_settle_time + tab->config->max_settle_time);
+}
+
+static void
+rt_settle_timer(timer *t)
+{
+  rtable *tab = t->data;
+
+  if (!tab->base_settle_time)
+    return;
+
+  btime settled_time = rt_settled_time(tab);
+  if (current_time() < settled_time)
+  {
+    tm_set(tab->settle_timer, settled_time);
+    return;
+  }
+
+  /* Settled */
+  tab->base_settle_time = 0;
+
+  struct rt_subscription *s;
+  WALK_LIST(s, tab->subscribers)
+    s->hook(s);
+}
+
+static void
+rt_kick_settle_timer(rtable *tab)
+{
+  tab->base_settle_time = current_time();
+
+  if (!tab->settle_timer)
+    tab->settle_timer = tm_new_init(rt_table_pool, rt_settle_timer, tab, 0, 0);
+
+  if (!tm_active(tab->settle_timer))
+    tm_set(tab->settle_timer, rt_settled_time(tab));
+}
+
+static inline void
+rt_schedule_notify(rtable *tab)
+{
+  if (EMPTY_LIST(tab->subscribers))
+    return;
+
+  if (tab->base_settle_time)
+    return;
+
+  rt_kick_settle_timer(tab);
+}
+
+void
+rt_subscribe(rtable *tab, struct rt_subscription *s)
+{
+  s->tab = tab;
+  rt_lock_table(tab);
+  add_tail(&tab->subscribers, &s->n);
+}
+
+void
+rt_unsubscribe(struct rt_subscription *s)
+{
+  rem_node(&s->n);
+  rt_unlock_table(s->tab);
+}
+
 void
 rt_setup(pool *p, rtable *t, struct rtable_config *cf)
 {
@@ -1806,7 +1885,9 @@ rt_setup(pool *p, rtable *t, struct rtable_config *cf)
   hmap_set(&t->id_map, 0);
 
   t->rt_event = ev_new_init(p, rt_event, t);
-  t->gc_time = current_time();
+  t->last_rt_change = t->gc_time = current_time();
+
+  init_list(&t->subscribers);
 }
 
 /**
@@ -2204,6 +2285,8 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->addr_type = addr_type;
   c->gc_max_ops = 1000;
   c->gc_min_time = 5;
+  c->min_settle_time = 1 S;
+  c->max_settle_time = 20 S;
 
   add_tail(&new_config->tables, &c->n);
 
@@ -2250,6 +2333,7 @@ rt_unlock_table(rtable *r)
       fib_free(&r->fib);
       hmap_free(&r->id_map);
       rfree(r->rt_event);
+      rfree(r->settle_timer);
       mb_free(r);
       config_del_obstacle(conf);
     }

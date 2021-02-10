@@ -19,6 +19,7 @@ struct protocol;
 struct proto;
 struct rte_src;
 struct symbol;
+struct timer;
 struct filter;
 struct cli;
 
@@ -147,6 +148,8 @@ struct rtable_config {
   int gc_max_ops;			/* Maximum number of operations before GC is run */
   int gc_min_time;			/* Minimum time between two consecutive GC runs */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
+  btime min_settle_time;		/* Minimum settle time for notifications */
+  btime max_settle_time;		/* Maximum settle time for notifications */
 };
 
 typedef struct rtable {
@@ -166,6 +169,8 @@ typedef struct rtable {
 					 * obstacle from this routing table.
 					 */
   struct event *rt_event;		/* Routing table event */
+  btime last_rt_change;			/* Last time when route changed */
+  btime base_settle_time;		/* Start time of rtable settling interval */
   btime gc_time;			/* Time of last GC */
   int gc_counter;			/* Number of operations since last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
@@ -173,7 +178,17 @@ typedef struct rtable {
   byte nhu_state;			/* Next Hop Update state */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
+
+  list subscribers;			/* Subscribers for notifications */
+  struct timer *settle_timer;		/* Settle time for notifications */
 } rtable;
+
+struct rt_subscription {
+  node n;
+  rtable *tab;
+  void (*hook)(struct rt_subscription *b);
+  void *data;
+};
 
 #define NHU_CLEAN	0
 #define NHU_SCHEDULED	1
@@ -294,6 +309,8 @@ void rt_preconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
 void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
+void rt_subscribe(rtable *tab, struct rt_subscription *s);
+void rt_unsubscribe(struct rt_subscription *s);
 void rt_setup(pool *, rtable *, struct rtable_config *);
 static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
 static inline net *net_find_valid(rtable *tab, const net_addr *addr)

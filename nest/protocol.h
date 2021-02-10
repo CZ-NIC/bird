@@ -549,7 +549,12 @@ struct channel {
   struct rte *reload_next_rte;		/* Route iterator in in_table used during reloading */
   u8 reload_active;			/* Iterator reload_fit is linked */
 
+  u8 reload_pending;			/* Reloading and another reload is scheduled */
+  u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
+
   struct rtable *out_table;		/* Internal table for exported routes */
+
+  list roa_subscriptions;		/* List of active ROA table subscriptions based on filters roa_check() */
 };
 
 
