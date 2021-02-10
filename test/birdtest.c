@@ -516,6 +516,7 @@ char *bird_name;
 void async_config(void) {}
 void async_dump(void) {}
 void async_shutdown(void) {}
+char *get_hostname(linpool *lp UNUSED) { return NULL; }
 void cmd_check_config(char *name UNUSED) {}
 void cmd_reconfig(char *name UNUSED, int type UNUSED, int timeout UNUSED) {}
 void cmd_reconfig_confirm(void) {}
