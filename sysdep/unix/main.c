@@ -20,6 +20,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #include <libgen.h>
 
 #include "nest/bird.h"
@@ -86,6 +87,21 @@ drop_gid(gid_t gid)
 
   if (setgroups(0, NULL) < 0)
     die("setgroups: %m");
+}
+
+/*
+ *	Hostname
+ */
+
+char *
+get_hostname(linpool *lp)
+{
+  struct utsname uts = {};
+
+  if (uname(&uts) < 0)
+      return NULL;
+
+  return lp_strdup(lp, uts.nodename);
 }
 
 /*

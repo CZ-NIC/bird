@@ -55,6 +55,7 @@
 #include "lib/timer.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
+#include "sysdep/unix/unix.h"
 
 
 static jmp_buf conf_jmpbuf;
@@ -217,6 +218,14 @@ config_del_obstacle(struct config *c)
 static int
 global_commit(struct config *new, struct config *old)
 {
+  if (!new->hostname)
+    {
+      new->hostname = get_hostname(new->mem);
+
+      if (!new->hostname)
+        log(L_WARN "Cannot determine hostname");
+    }
+
   if (!old)
     return 0;
 

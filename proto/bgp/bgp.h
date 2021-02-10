@@ -98,6 +98,7 @@ struct bgp_config {
   int enable_refresh;			/* Enable local support for route refresh [RFC 2918] */
   int enable_as4;			/* Enable local support for 4B AS numbers [RFC 6793] */
   int enable_extended_messages;		/* Enable local support for extended messages [draft] */
+  int enable_hostname;			/* Enable local support for hostname [draft] */
   u32 rr_cluster_id;			/* Route reflector cluster ID, if different from local ID */
   int rr_client;			/* Whether neighbor is RR client of me */
   int rs_client;			/* Whether neighbor is RS client of me */
@@ -227,6 +228,8 @@ struct bgp_caps {
   u8 llgr_aware;			/* Long-lived GR capability, RFC draft */
   u8 any_ext_next_hop;			/* Bitwise OR of per-AF ext_next_hop */
   u8 any_add_path;			/* Bitwise OR of per-AF add_path */
+
+  const char *hostname;			/* Hostname, RFC draft */
 
   u16 af_count;				/* Number of af_data items */
   u16 length;				/* Length of capabilities in OPEN msg */

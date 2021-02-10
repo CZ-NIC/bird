@@ -103,6 +103,7 @@
  * RFC 8654 - Extended Message Support for BGP
  * draft-ietf-idr-ext-opt-param-07
  * draft-uttaro-idr-bgp-persistence-04
+ * draft-walton-bgp-hostname-capability-02
  */
 
 #undef LOCAL_DEBUG
@@ -2415,6 +2416,9 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
     bgp_show_afis(-1006, "        AF supported:", afl1, afn1);
     bgp_show_afis(-1006, "        AF preserved:", afl2, afn2);
   }
+
+  if (caps->hostname)
+    cli_msg(-1006, "      Hostname: %s", caps->hostname);
 }
 
 static void

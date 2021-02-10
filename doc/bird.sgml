@@ -585,6 +585,9 @@ include "tablename.conf";;
 	See <ref id="proto-iface" name="interface"> section for detailed
 	description of interface patterns with extended clauses.
 
+	<tag><label id="opt-hostname">hostname "<m/name/"</tag>
+	Set hostname. Default: node name as returned by `uname -n'.
+
 	<tag><label id="opt-graceful-restart">graceful restart wait <m/number/</tag>
 	During graceful restart recovery, BIRD waits for convergence of routing
 	protocols. This option allows to specify a timeout for the recovery to
@@ -2535,6 +2538,9 @@ using the following configuration parameters:
 	widespread and required by some BGP implementations (Cisco and Quagga).
 	This option is relevant to IPv4 mode with enabled capability
 	advertisement only. Default: on.
+
+	<tag><label id="bgp-advertise-hostname">advertise hostname <m/switch/</tag>
+	Advertise hostname capability along with the hostname. Default: off.
 
 	<tag><label id="bgp-disable-after-error">disable after error <m/switch/</tag>
 	When an error is encountered (either locally or by the other side),

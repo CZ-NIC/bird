@@ -40,6 +40,7 @@ struct config {
   struct timeformat tf_log;		/* Time format for the logfile */
   struct timeformat tf_base;		/* Time format for other purposes */
   u32 gr_wait;				/* Graceful restart wait timeout (sec) */
+  const char *hostname;			/* Hostname */
 
   int cli_debug;			/* Tracing of CLI connections and commands */
   int latency_debug;			/* I/O loop tracks duration of each event */

@@ -62,6 +62,7 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->error_delay_time_max = 300;
      BGP_CFG->enable_refresh = 1;
      BGP_CFG->enable_as4 = 1;
+     BGP_CFG->enable_hostname = 0;
      BGP_CFG->capabilities = 2;
      BGP_CFG->interpret_communities = 1;
      BGP_CFG->allow_as_sets = 1;
@@ -173,6 +174,7 @@ bgp_proto:
  | bgp_proto ENABLE ROUTE REFRESH bool ';' { BGP_CFG->enable_refresh = $5; }
  | bgp_proto ENABLE AS4 bool ';' { BGP_CFG->enable_as4 = $4; }
  | bgp_proto ENABLE EXTENDED MESSAGES bool ';' { BGP_CFG->enable_extended_messages = $5; }
+ | bgp_proto ADVERTISE HOSTNAME bool ';' { BGP_CFG->enable_hostname = $4; }
  | bgp_proto CAPABILITIES bool ';' { BGP_CFG->capabilities = $3; }
  | bgp_proto PASSWORD text ';' { BGP_CFG->password = $3; }
  | bgp_proto SETKEY bool ';' { BGP_CFG->setkey = $3; }

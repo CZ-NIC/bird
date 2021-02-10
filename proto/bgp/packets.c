@@ -252,6 +252,14 @@ bgp_prepare_capabilities(struct bgp_conn *conn)
   if (p->cf->llgr_mode)
     caps->llgr_aware = 1;
 
+  if (p->cf->enable_hostname && config->hostname)
+  {
+    size_t length = strlen(config->hostname);
+    char *hostname = mb_allocz(p->p.pool, length+1);
+    memcpy(hostname, config->hostname, length+1);
+    caps->hostname = hostname;
+  }
+
   /* Allocate and fill per-AF fields */
   WALK_LIST(c, p->p.channels)
   {
@@ -408,6 +416,24 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
 	put_u24(buf+4, ac->llgr_time);
 	buf += 7;
       }
+
+    data[-1] = buf - data;
+  }
+
+  if (caps->hostname)
+  {
+    *buf++ = 73;                /* Capability 73: Hostname */
+    *buf++ = 0;			/* Capability data length */
+    data = buf;
+
+    /* Hostname */
+    size_t length = strlen(caps->hostname);
+    *buf++ = length;
+    memcpy(buf, caps->hostname, length);
+    buf += length;
+
+    /* Domain, not implemented */
+    *buf++ = 0;
 
     data[-1] = buf - data;
   }
@@ -572,6 +598,21 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
 	ac->llgr_time = get_u24(pos + 2+i+4);
       }
       break;
+
+    case 73: /* Hostname, RFC draft */
+      if ((cl < 2) || (cl < 2 + pos[2]))
+        goto err;
+
+      int length = pos[2];
+      char *hostname = mb_allocz(p->p.pool, length+1);
+      memcpy(hostname, pos + 3, length);
+      hostname[length] = 0;
+
+      for (i = 0; i < length; i++)
+        if (hostname[i] < ' ')
+          hostname[i] = ' ';
+
+      caps->hostname = hostname;
 
       /* We can safely ignore all other capabilities */
     }
