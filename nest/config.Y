@@ -265,6 +265,7 @@ channel_item_:
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
  | PREFERENCE expr { this_channel->preference = $2; check_u16($2); }
  | IMPORT KEEP FILTERED bool { this_channel->in_keep_filtered = $4; }
+ | RPKI RELOAD bool { this_channel->rpki_reload = $3; }
  ;
 
 /* To avoid grammar collision in Pipe protocol */

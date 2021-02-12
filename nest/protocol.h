@@ -500,6 +500,7 @@ struct channel_config {
   u32 debug;				/* Debugging flags (D_*) */
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
   u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
+  u8 rpki_reload;			/* RPKI changes trigger channel reload */
 };
 
 struct channel {
@@ -551,6 +552,7 @@ struct channel {
 
   u8 reload_pending;			/* Reloading and another reload is scheduled */
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
+  u8 rpki_reload;			/* RPKI changes trigger channel reload */
 
   struct rtable *out_table;		/* Internal table for exported routes */
 

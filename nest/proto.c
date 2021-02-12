@@ -175,6 +175,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->debug = cf->debug;
   c->merge_limit = cf->merge_limit;
   c->in_keep_filtered = cf->in_keep_filtered;
+  c->rpki_reload = cf->rpki_reload;
 
   c->channel_state = CS_DOWN;
   c->export_state = ES_DOWN;
@@ -383,9 +384,14 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
 {
   const struct filter *f = dir ? c->in_filter : c->out_filter;
   struct rtable *tab;
+  int valid = 1, found = 0;
 
   if ((f == FILTER_ACCEPT) || (f == FILTER_REJECT))
     return;
+
+  /* No automatic reload for BGP channels without in_table / out_table */
+  if (c->channel == &channel_bgp)
+    valid = dir ? !!c->in_table : !!c->out_table;
 
   struct filter_iterator fit;
   FILTER_ITERATE_INIT(&fit, f, c->proto->pool);
@@ -396,12 +402,14 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
     {
     case FI_ROA_CHECK_IMPLICIT:
       tab = fi->i_FI_ROA_CHECK_IMPLICIT.rtc->table;
-      channel_roa_subscribe(c, tab, dir);
+      if (valid) channel_roa_subscribe(c, tab, dir);
+      found = 1;
       break;
 
     case FI_ROA_CHECK_EXPLICIT:
       tab = fi->i_FI_ROA_CHECK_EXPLICIT.rtc->table;
-      channel_roa_subscribe(c, tab, dir);
+      if (valid) channel_roa_subscribe(c, tab, dir);
+      found = 1;
       break;
 
     default:
@@ -411,6 +419,10 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
   FILTER_ITERATE_END;
 
   FILTER_ITERATE_CLEANUP(&fit);
+
+  if (!valid && found)
+    log(L_WARN "%s.%s: Automatic RPKI reload not active for %s",
+	c->proto->name, c->name ?: "?", dir ? "import" : "export");
 }
 
 static void
@@ -542,8 +554,11 @@ static void
 channel_do_up(struct channel *c)
 {
   /* Register RPKI/ROA subscriptions */
-  channel_roa_subscribe_filter(c, 1);
-  channel_roa_subscribe_filter(c, 0);
+  if (c->rpki_reload)
+  {
+    channel_roa_subscribe_filter(c, 1);
+    channel_roa_subscribe_filter(c, 0);
+  }
 }
 
 static void
@@ -762,6 +777,7 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
   cf->ra_mode = RA_OPTIMAL;
   cf->preference = proto->protocol->preference;
   cf->debug = new_config->channel_default_debug;
+  cf->rpki_reload = 1;
 
   add_tail(&proto->channels, &cf->n);
 
@@ -814,6 +830,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   /* Note that filter_same() requires arguments in (new, old) order */
   int import_changed = !filter_same(cf->in_filter, c->in_filter);
   int export_changed = !filter_same(cf->out_filter, c->out_filter);
+  int rpki_reload_changed = (cf->rpki_reload != c->rpki_reload);
 
   if (c->preference != cf->preference)
     import_changed = 1;
@@ -833,6 +850,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   c->preference = cf->preference;
   c->debug = cf->debug;
   c->in_keep_filtered = cf->in_keep_filtered;
+  c->rpki_reload = cf->rpki_reload;
 
   channel_verify_limits(c);
 
@@ -845,11 +863,15 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
     goto done;
 
   /* Update RPKI/ROA subscriptions */
-  if (import_changed || export_changed)
+  if (import_changed || export_changed || rpki_reload_changed)
   {
     channel_roa_unsubscribe_all(c);
-    channel_roa_subscribe_filter(c, 1);
-    channel_roa_subscribe_filter(c, 0);
+
+    if (c->rpki_reload)
+    {
+      channel_roa_subscribe_filter(c, 1);
+      channel_roa_subscribe_filter(c, 0);
+    }
   }
 
   if (reconfigure_type == RECONFIG_SOFT)
