@@ -27,9 +27,9 @@ Requirements
 
 For compiling BIRD you need these programs and libraries:
 
- - GNU C Compiler (or LLVM Clang)
+ - GNU C Compiler (or LLVM Clang) capable of compiling C11 code
  - GNU Make
- - GNU Bison
+ - GNU Bison (at least 3.0)
  - GNU M4
  - Flex
 
