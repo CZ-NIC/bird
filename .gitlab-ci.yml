@@ -134,19 +134,9 @@ docker_fedora-34-amd64:
     IMG_NAME: "fedora-34-amd64"
   <<: *docker_build
 
-docker_centos-7-amd64:
-  variables:
-    IMG_NAME: "centos-7-amd64"
-  <<: *docker_build
-
 docker_centos-8-amd64:
   variables:
     IMG_NAME: "centos-8-amd64"
-  <<: *docker_build
-
-docker_ubuntu-14_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-14.04-amd64"
   <<: *docker_build
 
 docker_ubuntu-16_04-amd64:
@@ -312,17 +302,9 @@ build-fedora-34-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:fedora-33-amd64
 
-build-centos-7-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:centos-7-amd64
-
 build-centos-8-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:centos-8-amd64
-
-build-ubuntu-14_04-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:ubuntu-14.04-amd64
 
 build-ubuntu-16_04-amd64:
   <<: *build-linux
@@ -467,13 +449,6 @@ pkg-fedora-34-amd64:
   <<: *pkg-rpm
   needs: [build-fedora-34-amd64]
   image: registry.labs.nic.cz/labs/bird:fedora-34-amd64
-
-pkg-centos-7-amd64:
-  <<: *pkg-rpm-wa
-  variables:
-    LC_ALL: en_US.UTF-8
-  needs: [build-centos-7-amd64]
-  image: registry.labs.nic.cz/labs/bird:centos-7-amd64
 
 pkg-centos-8-amd64:
   <<: *pkg-rpm-wa
