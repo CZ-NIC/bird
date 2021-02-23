@@ -509,6 +509,7 @@ struct channel {
   const struct filter *out_filter;	/* Output filter */
   struct bmap export_map;		/* Keeps track which routes were really exported */
   struct bmap export_reject_map;	/* Keeps track which routes were rejected by export filter */
+  struct bmap out_seen_map;		/* Keeps track which routes have been seen by out_sync */
   struct channel_limit rx_limit;	/* Receive limit (for in_keep_filtered) */
   struct channel_limit in_limit;	/* Input limit */
   struct channel_limit out_limit;	/* Output limit */
@@ -546,6 +547,7 @@ struct channel {
   u8 reload_pending;			/* Reloading and another reload is scheduled */
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
+  u8 out_flush_refeed;			/* Feed by withdrawals on export reset */
 
   list net_feed;			/* Active net feeders (struct channel_net_feed) */
 

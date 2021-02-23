@@ -60,11 +60,11 @@ struct krt_proto {
 #endif
 
   struct bmap sync_map;		/* Keeps track which exported routes were successfully written to kernel */
-  struct bmap seen_map;		/* Routes seen during last periodic scan */
   node krt_node;		/* Node in krt_proto_list */
   byte af;			/* Kernel address family (AF_*) */
   byte ready;			/* Initial feed has been finished */
   byte initialized;		/* First scan has been finished */
+  byte pruning;			/* Pruning */
   byte reload;			/* Next scan is doing reload */
 };
 

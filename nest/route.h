@@ -367,8 +367,12 @@ void rt_feed_channel_abort(struct channel *c);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
-int rte_update_out(struct channel *c, rte *new, rte *old, struct rte_storage **old_stored, int refeed);
+int rte_update_out(struct channel *c, rte *new, rte *old, struct rte_storage **old_stored, u32 id, int refeed);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
+void rt_out_sync_start(struct channel *c);
+_Bool rt_out_sync_mark(struct channel *c, struct rte_export *e);
+void rt_out_sync_finish(struct channel *c);
+void rt_out_flush(struct channel *c);
 
 
 /* Default limit for ECMP next hops, defined in sysdep code */

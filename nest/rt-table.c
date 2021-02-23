@@ -691,7 +691,7 @@ rt_notify_merged(struct channel *c, struct rte_export_internal *e)
   /* Prepare new merged route */
   if (e->new_best)
   {
-    ep->new_id = e->new->id;
+    ep->new_id = e->new_best->id;
     if (!rt_export_merged(c, e->net, &ep->new, rte_update_pool, 0))
       ep->new.attrs = NULL;
   }
@@ -774,7 +774,7 @@ rte_export_store(struct channel *c, struct rte_export_internal *e)
   /* Apply export table */
   if (c->out_table)
   {
-    if (!rte_update_out(c, &(e->pub.new), &(e->pub.old), &(e->old_stored), e->refeed))
+    if (!rte_update_out(c, &(e->pub.new), &(e->pub.old), &(e->old_stored), e->pub.new_id, e->refeed))
       return 0;
   }
   else if (c->out_filter != FILTER_ACCEPT)
@@ -2471,7 +2471,7 @@ rt_prune_sync(rtable *t, int all)
  */
 
 int
-rte_update_out(struct channel *c, rte *new, rte *old, struct rte_storage **old_stored, int refeed)
+rte_update_out(struct channel *c, rte *new, rte *old, struct rte_storage **old_stored, u32 id, int refeed)
 {
   struct rtable *tab = c->out_table;
   struct rte_storage **pos;
@@ -2533,6 +2533,7 @@ rte_update_out(struct channel *c, rte *new, rte *old, struct rte_storage **old_s
   struct rte_storage *e = rte_store(new, net);
   e->sender = c;
   e->lastmod = current_time();
+  e->id = id;
   e->next = *pos;
   *pos = e;
   tab->rt_count++;
@@ -2545,6 +2546,79 @@ drop_withdraw:
   return 0;
 }
 
+void
+rt_out_sync_start(struct channel *c)
+{
+  ASSERT_DIE(c->out_table);
+  ASSERT_DIE(c->ra_mode != RA_ANY);
+  bmap_reset(&c->out_seen_map, 1024);
+}
+
+_Bool
+rt_out_sync_mark(struct channel *c, struct rte_export *e)
+{
+  ASSERT_DIE(c->out_table);
+  ASSERT_DIE(c->ra_mode != RA_ANY);
+
+  net *n = net_find(c->out_table, e->old.net);
+  if (!n || !n->routes)
+    return 1;
+
+  e->new = rte_copy(n->routes);
+  e->new_id = n->routes->id;
+
+  if (bmap_test(&c->out_seen_map, n->routes->id))
+    return 0;
+
+  bmap_set(&c->out_seen_map, n->routes->id);
+  return 1;
+}
+
+void
+rt_out_sync_finish(struct channel *c)
+{
+  ASSERT_DIE(c->out_table);
+  ASSERT_DIE(c->ra_mode != RA_ANY);
+
+  FIB_WALK(&c->out_table->fib, net, n)
+  {
+    if (!n->routes)
+      continue;
+
+    if (!bmap_test(&c->out_seen_map, n->routes->id))
+    {
+      struct rte_export ex = {
+	.new_id = n->routes->id,
+	.new = rte_copy(n->routes),
+      };
+
+      c->proto->rt_notify(c, &ex);
+    }
+  }
+  FIB_WALK_END;
+  bmap_reset(&c->out_seen_map, 1024);
+}
+
+void
+rt_out_flush(struct channel *c)
+{
+  ASSERT_DIE(c->out_table);
+  ASSERT_DIE(c->ra_mode != RA_ANY);
+
+  FIB_WALK(&c->out_table->fib, net, n)
+  {
+    if (!n->routes)
+      continue;
+
+    struct rte_export ex = {
+      .old_id = n->routes->id,
+      .old = rte_copy(n->routes),
+    };
+
+    c->proto->rt_notify(c, &ex);
+  }
+  FIB_WALK_END;
+}
 
 /*
  *	Hostcache

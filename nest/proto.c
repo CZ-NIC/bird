@@ -542,8 +542,12 @@ channel_reset_import(struct channel *c)
 static void
 channel_reset_export(struct channel *c)
 {
+  if (c->out_flush_refeed)
+    rt_out_flush(c);
+
   /* Just free the routes */
   rt_prune_sync(c->out_table, 1);
+  bmap_reset(&c->out_seen_map, 1024);
 }
 
 /* Called by protocol to activate in_table */
@@ -584,6 +588,10 @@ channel_do_start(struct channel *c)
 
   bmap_init(&c->export_map, c->proto->pool, 1024);
   bmap_init(&c->export_reject_map, c->proto->pool, 1024);
+
+  if (c->out_table)
+    bmap_init(&c->out_seen_map, c->proto->pool, 1024);
+
   memset(&c->stats, 0, sizeof(struct proto_stats));
 
   channel_reset_limit(&c->rx_limit);
@@ -618,6 +626,8 @@ channel_do_flush(struct channel *c)
   /* This have to be done in here, as channel pool is freed before channel_do_down() */
   bmap_free(&c->export_map);
   bmap_free(&c->export_reject_map);
+  if (c->out_table)
+    bmap_free(&c->out_seen_map);
   c->in_table = NULL;
   c->reload_event = NULL;
   c->out_table = NULL;
