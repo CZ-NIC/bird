@@ -133,25 +133,26 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
       if (d->export_mode == RSEM_EXPORTED)
         {
-	  if (!bmap_test(&ec->export_map, er->id))
+	  if (ec->merge_limit > 1)
+	  {
+	    pass = 1;
+	    e = rte_get_merged(n, c->show_pool, ec->merge_limit);
+	    if (!e.attrs)
+	      goto skip;
+	  }
+	  else if (!bmap_test(&ec->export_map, er->id))
 	    goto skip;
+
 
 	  // if (ec->ra_mode != RA_ANY)
 	  //   pass = 1;
         }
-      else if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
-	{
-	  /* Special case for merged export */
-	  pass = 1;
-	  if (!rt_export_merged(ec, n, &e, c->show_pool, 1))
-	    goto skip;
-	}
       else if (d->export_mode)
 	{
 	  struct proto *ep = ec->proto;
 	  int ic = ep->preexport ? ep->preexport(ec, &e) : 0;
 
-	  if (ec->ra_mode == RA_OPTIMAL || ec->ra_mode == RA_MERGED)
+	  if (ec->ra_mode == RA_OPTIMAL)
 	    pass = 1;
 
 	  if (ic < 0)
@@ -230,7 +231,15 @@ rt_show_cont(struct cli *c)
 
   if (!d->table_open)
   {
-    FIB_ITERATE_INIT(&d->fit, &d->tab->table->fib);
+    if (d->export_mode == RSEM_EXPORTED &&
+	d->tab->export_channel &&
+	d->tab->export_channel->out_table)
+      fib = &d->tab->export_channel->out_table->fib;
+    else
+      fib = &d->tab->table->fib;
+
+    FIB_ITERATE_INIT(&d->fit, fib);
+
     d->table_open = 1;
     d->table_counter++;
     d->kernel = rt_show_get_kernel(d);
@@ -410,10 +419,12 @@ rt_show(struct rt_show_data *d)
       d->tab = tab;
       d->kernel = rt_show_get_kernel(d);
 
+      struct rtable *rt = (d->export_mode == RSEM_EXPORTED) ? tab->export_channel->out_table : tab->table;
+
       if (d->show_for)
-	n = net_route(tab->table, d->addr);
+	n = net_route(rt, d->addr);
       else
-	n = net_find(tab->table, d->addr);
+	n = net_find(rt, d->addr);
 
       if (n)
 	rt_show_net(this_cli, n, d);

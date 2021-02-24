@@ -1869,17 +1869,25 @@ bgp_rt_notify(struct channel *C, struct rte_export *e)
 
 
 static inline u32
-bgp_get_neighbor(struct rte_storage *r)
+bgp_get_neighbor(const struct rte r)
 {
-  eattr *e = ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
+  eattr *e = ea_find(r.attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
   u32 as;
 
   if (e && as_path_get_first_regular(e->u.ptr, &as))
     return as;
 
   /* If AS_PATH is not defined, we treat rte as locally originated */
-  struct bgp_proto *p = (void *) r->src->proto;
+  struct bgp_proto *p = (void *) r.src->proto;
   return p->cf->confederation ?: p->local_as;
+}
+
+static inline int
+rte_stale_get(rta *r)
+{
+  /* If staleness is unknown, compute and cache it */
+  eattr *a = ea_find(r->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));
+  return (a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE));
 }
 
 static inline int
@@ -1891,9 +1899,7 @@ rte_stale(struct rte_storage *r)
   if (r->pflags & BGP_REF_NOT_STALE)
     return 0;
 
-  /* If staleness is unknown, compute and cache it */
-  eattr *a = ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));
-  if (a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE))
+  if (rte_stale_get(r->attrs))
   {
     r->pflags |= BGP_REF_STALE;
     return 1;
@@ -1990,7 +1996,7 @@ bgp_rte_better(struct rte_storage *new, struct rte_storage *old)
    * probably not a big issue.
    */
   if (new_bgp->cf->med_metric || old_bgp->cf->med_metric ||
-      (bgp_get_neighbor(new) == bgp_get_neighbor(old)))
+      (bgp_get_neighbor(rte_copy(new)) == bgp_get_neighbor(rte_copy(old))))
   {
     x = ea_find(new->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC));
     y = ea_find(old->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC));
@@ -2049,9 +2055,8 @@ bgp_rte_better(struct rte_storage *new, struct rte_storage *old)
   return ipa_compare(new_bgp->remote_ip, old_bgp->remote_ip) < 0;
 }
 
-
-int
-bgp_rte_mergable(struct rte_storage *pri, struct rte_storage *sec)
+static int
+bgp_rte_mergable_internal(struct rte *pri, struct rte *sec)
 {
   struct bgp_proto *pri_bgp = (struct bgp_proto *) pri->src->proto;
   struct bgp_proto *sec_bgp = (struct bgp_proto *) sec->src->proto;
@@ -2059,12 +2064,15 @@ bgp_rte_mergable(struct rte_storage *pri, struct rte_storage *sec)
   u32 p, s;
 
   /* Skip suppressed routes (see bgp_rte_recalculate()) */
-  /* LLGR draft - depreference stale routes */
-  if (pri->pflags != sec->pflags)
+  if ((pri->pflags ^ sec->pflags) & BGP_REF_SUPPRESSED)
     return 0;
 
   /* RFC 4271 9.1.2.1. Route resolvability test */
   if (rta_resolvable(pri->attrs) != rta_resolvable(sec->attrs))
+    return 0;
+
+  /* LLGR draft - depreference stale routes */
+  if (rte_stale_get(pri->attrs) != rte_stale_get(sec->attrs))
     return 0;
 
   /* Start with local preferences */
@@ -2100,7 +2108,7 @@ bgp_rte_mergable(struct rte_storage *pri, struct rte_storage *sec)
 
   /* RFC 4271 9.1.2.2. c) Compare MED's */
   if (pri_bgp->cf->med_metric || sec_bgp->cf->med_metric ||
-      (bgp_get_neighbor(pri) == bgp_get_neighbor(sec)))
+      (bgp_get_neighbor(*pri) == bgp_get_neighbor(*sec)))
   {
     x = ea_find(pri->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC));
     y = ea_find(sec->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC));
@@ -2125,11 +2133,17 @@ bgp_rte_mergable(struct rte_storage *pri, struct rte_storage *sec)
   return 1;
 }
 
+int
+bgp_rte_mergable(struct rte pri, struct rte sec)
+{
+  return bgp_rte_mergable_internal(&pri, &sec);
+}
+
 
 static inline int
 same_group(struct rte_storage *r, u32 lpref, u32 lasn)
 {
-  return (r->attrs->pref == lpref) && (bgp_get_neighbor(r) == lasn);
+  return (r->attrs->pref == lpref) && (bgp_get_neighbor(rte_copy(r)) == lasn);
 }
 
 static inline int
@@ -2145,7 +2159,7 @@ bgp_rte_recalculate(rtable *table, net *net, struct rte_storage *new, struct rte
   struct rte_storage *r, *s;
   struct rte_storage *key = new ? new : old;
   u32 lpref = key->attrs->pref;
-  u32 lasn = bgp_get_neighbor(key);
+  u32 lasn = bgp_get_neighbor(rte_copy(key));
   int old_suppressed = old ? !!(old->pflags & BGP_REF_SUPPRESSED) : 0;
 
   /*
@@ -2224,13 +2238,13 @@ bgp_rte_recalculate(rtable *table, net *net, struct rte_storage *new, struct rte
     return 0;
 
   /* Found if new is mergable with best-in-group */
-  if (new && (new != r) && bgp_rte_mergable(r, new))
+  if (new && (new != r) && bgp_rte_mergable(rte_copy(r), rte_copy(new)))
     new->pflags &= ~BGP_REF_SUPPRESSED;
 
   /* Found all existing routes mergable with best-in-group */
   for (s=net->routes; rte_is_valid(s); s=s->next)
     if (use_deterministic_med(s) && same_group(s, lpref, lasn))
-      if ((s != r) && bgp_rte_mergable(r, s))
+      if ((s != r) && bgp_rte_mergable(rte_copy(r), rte_copy(s)))
 	s->pflags &= ~BGP_REF_SUPPRESSED;
 
   /* Found best-in-group */

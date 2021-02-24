@@ -68,13 +68,15 @@ static linpool *rte_update_pool;
 
 list routing_tables;
 
+struct rte_export_internal;
+
 static void rt_free_hostcache(rtable *tab);
 static void rt_notify_hostcache(rtable *tab, net *net);
 static void rt_update_hostcache(rtable *tab);
 static void rt_next_hop_update(rtable *tab);
 static inline void rt_prune_table(rtable *tab);
 static inline void rt_schedule_notify(rtable *tab);
-
+static int rte_update_out(struct channel *c, struct rte_export_internal *e);
 
 /* Like fib_route(), but skips empty net entries */
 static inline void *
@@ -392,20 +394,20 @@ rte_better(struct rte_storage *new, struct rte_storage *old)
 }
 
 static int
-rte_mergable(struct rte_storage *pri, struct rte_storage *sec)
+rte_mergable(struct rte pri, struct rte sec)
 {
-  int (*mergable)(struct rte_storage *, struct rte_storage *);
+  int (*mergable)(struct rte, struct rte);
 
-  if (!rte_is_valid(pri) || !rte_is_valid(sec))
+  ASSERT_DIE(pri.attrs);
+  ASSERT_DIE(sec.attrs);
+
+  if (pri.attrs->pref != sec.attrs->pref)
     return 0;
 
-  if (pri->attrs->pref != sec->attrs->pref)
+  if (pri.src->proto->proto != sec.src->proto->proto)
     return 0;
 
-  if (pri->src->proto->proto != sec->src->proto->proto)
-    return 0;
-
-  if (mergable = pri->src->proto->rte_mergable)
+  if (mergable = pri.src->proto->rte_mergable)
     return mergable(pri, sec);
 
   return 0;
@@ -617,93 +619,33 @@ nexthop_merge_rta(struct nexthop *nhs, rta *a, linpool *pool, int max)
   return nexthop_merge(nhs, &(a->nh), 1, 0, max, pool);
 }
 
-_Bool
-rt_export_merged(struct channel *c, net *net, rte *best, linpool *pool, int silent)
+rte
+rte_get_merged(net *net, linpool *pool, uint limit)
 {
-  // struct proto *p = c->proto;
+  if (!net->routes || !(net->routes->flags & REF_E_MERGED))
+    return (rte) {};
+
   struct nexthop *nhs = NULL;
-  struct rte_storage *best0 = net->routes;
+  struct rte e = rte_copy(net->routes);
 
-  if (!rte_is_valid(best0))
-    return 0;
-
-  *best = rte_copy(best0);
-  if (export_filter_(c, best, best0->id, pool, silent) >= EFR_FILTER_REJECT)
-    /* Best route doesn't pass the filter */
-    return 0;
-
-  if (!rte_is_reachable(best))
-    /* Unreachable routes can't be merged */
-    return 1;
-
-  for (struct rte_storage *rt0 = best0->next; rt0; rt0 = rt0->next)
+  for (struct rte_storage *rt0 = net->routes->next; rt0; rt0 = rt0->next)
   {
-    if (!rte_mergable(best0, rt0))
+    if (!(rt0->flags & REF_E_MERGED))
       continue;
 
-    struct rte tmp = rte_copy(rt0);
-    if (export_filter_(c, &tmp, rt0->id, pool, 1) >= EFR_FILTER_REJECT)
-      continue;
-
-    if (!rte_is_reachable(&tmp))
-      continue;
-
-    nhs = nexthop_merge_rta(nhs, tmp.attrs, pool, c->merge_limit);
+    nhs = nexthop_merge_rta(nhs, rte_copy(rt0).attrs, pool, limit);
   }
 
   if (nhs)
   {
-    nhs = nexthop_merge_rta(nhs, best->attrs, pool, c->merge_limit);
-
+    nhs = nexthop_merge_rta(nhs, e.attrs, pool, limit);
     if (nhs->next)
-      best->attrs = rta_cow(best->attrs, pool);
+      e.attrs = rta_cow(e.attrs, pool);
 
-    nexthop_link(best->attrs, nhs);
+    nexthop_link(e.attrs, nhs);
   }
 
-  return 1;
-}
-
-
-USE_RESULT static _Bool
-rt_notify_merged(struct channel *c, struct rte_export_internal *e)
-{
-  /* We assume that all rte arguments are either NULL or rte_is_valid() */
-
-  /* This check should be done by the caller */
-  if (!e->new_best && !e->old_best)
-    return 0;
-
-  /* Check whether the change is relevant to the merged route */
-  if ((e->new_best == e->old_best) &&
-      (e->new != e->old) &&
-      !rte_mergable(e->new_best, e->new) &&
-      !rte_mergable(e->old_best, e->old))
-    return 0;
-
-  if (e->new_best)
-    c->stats.exp_updates_received++;
-  else
-    c->stats.exp_withdraws_received++;
-
-  struct rte_export *ep = &e->pub;
-
-  /* Prepare new merged route */
-  if (e->new_best)
-  {
-    ep->new_id = e->new_best->id;
-    if (!rt_export_merged(c, e->net, &ep->new, rte_update_pool, 0))
-      ep->new.attrs = NULL;
-  }
-
-  /* Check old merged route */
-  if (e->old_best && bmap_test(&c->export_map, e->old_best->id))
-  {
-    ep->old_id = e->old_best->id;
-    ep->old = rte_copy(e->old_best);
-  }
-
-  return RTE_EXPORT_IS_OK(ep);
+  return e;
 }
 
 static struct rte_export *
@@ -727,10 +669,6 @@ rte_export_obtain(struct channel *c, struct rte_export_internal *e)
 
     case RA_ACCEPTED:
       accepted = rt_notify_accepted(c, e);
-      break;
-
-    case RA_MERGED:
-      accepted = rt_notify_merged(c, e);
       break;
 
     default:
@@ -774,7 +712,7 @@ rte_export_store(struct channel *c, struct rte_export_internal *e)
   /* Apply export table */
   if (c->out_table)
   {
-    if (!rte_update_out(c, &(e->pub.new), &(e->pub.old), &(e->old_stored), e->pub.new_id, e->refeed))
+    if (!rte_update_out(c, e))
       return 0;
   }
   else if (c->out_filter != FILTER_ACCEPT)
@@ -938,7 +876,7 @@ rte_announce(rtable *tab, uint type, net *net, struct rte_storage *new, struct r
       .new = new, .old = old,
       .new_best = new_best, .old_best = old_best,
     };
-    
+
     rte_export(c, &rei);
   }
 }
@@ -2477,105 +2415,163 @@ rt_prune_sync(rtable *t, int all)
  *	Export table
  */
 
-int
-rte_update_out(struct channel *c, rte *new, rte *old, struct rte_storage **old_stored, u32 id, int refeed)
+static int
+rte_update_out(struct channel *c, struct rte_export_internal *e)
 {
   struct rtable *tab = c->out_table;
   struct rte_storage **pos;
   net *net;
 
+  rte *new = &e->pub.new;
+  rte *old = &e->pub.old;
+
+  _Bool new_is_best = (e->new == e->new_best);
+  _Bool old_is_best = (e->old == e->old_best);
+  _Bool merging = c->merge_limit > 1;
+
   if (new->attrs)
   {
-    net = net_get(tab, new->net);
-
     if (!rta_is_cached(new->attrs))
       new->attrs = rta_lookup(new->attrs);
-  }
-  else
-  {
-    net = net_find(tab, old->net);
 
-    if (!net)
-      goto drop_withdraw;
+    net = net_get(tab, new->net);
   }
+  else if (!(net = net_find(tab, old->net)))
+    return 0;
 
-  /* Find the old rte */
+  /* Find the old rte if exists */
   for (pos = &net->routes; *pos; pos = &(*pos)->next)
-    if ((c->ra_mode != RA_ANY) || ((*pos)->src == old->src))
-    {
-      if (new && rte_same(*pos, new, 0))
-      {
-	/* REF_STALE / REF_DISCARD not used in export table */
-	/*
-	if (old->flags & (REF_STALE | REF_DISCARD | REF_MODIFY))
-	{
-	  old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
-	  return 1;
-	}
-	*/
-
-	goto drop_update;
-      }
-
-      /* Keep the old rte */
-      *old_stored = *pos;
-      *old = rte_copy(*pos);
-
-      /* Remove the old rte from the list */
-      *pos = (*pos)->next;
-      tab->rt_count--;
-
+    if ((c->ra_mode != RA_ANY) || ((*pos)->src == new->src))
       break;
-    }
 
-  if (!new->attrs)
+  /* Found exactly the same route, no update needed */
+  if ((*pos) && new->attrs && rte_same(*pos, new, 0))
+    return 0;
+
+  /* Are the new/old routes mergable with the old_best? */
+  struct rte_storage *best_stored =
+    (!merging || net->routes && (net->routes->flags & REF_E_MERGED))
+    ? net->routes : NULL;
+
+  _Bool best_changed = new_is_best || old_is_best;
+
+  _Bool new_mergable_with_best_stored =
+    !best_changed &&
+    new->attrs && best_stored &&
+    rte_mergable(rte_copy(best_stored), *new);
+
+  _Bool gen_old = merging ?
+    best_changed ||
+    (*pos) && ((*pos)->flags & REF_E_MERGED) ||
+    new_mergable_with_best_stored
+    : 0;
+
+  if (gen_old)
+    /* Reconstruct the old merged rte completely. It's gonna change */
+    *old = rte_get_merged(net, rte_update_pool, c->merge_limit);
+  else if (!merging && *pos)
+    /* A plain old route */
+    *old = rte_copy(*pos);
+
+  /* Keep the old_stored but remove it from the list */
+  tab->rt_count--;
+  e->old_stored = *pos;
+  if (*pos)
+    *pos = (*pos)->next;
+
+  /* Idempotent withdraw */
+  if (!e->old_stored && !new->attrs)
+    return 0;
+
+  /* Best route must be inserted to the beginning */
+  if (merging)
   {
-    if (!*old_stored)
-      goto drop_withdraw;
+    if (new_is_best)
+      pos = &net->routes;
+    else if (old_is_best && (c->ra_mode == RA_ANY))
+    {
+      /* We have to find the new best route and put it first */
+      for (pos = &net->routes; *pos; pos = &(*pos)->next)
+	if ((c->ra_mode != RA_ANY) || ((*pos)->src == e->new_best->src))
+	  break;
 
-    return 1;
+      if (best_stored = *pos)
+      {
+	*pos = best_stored->next;
+	best_stored->next = net->routes;
+	net->routes = best_stored;
+      }
+    }
   }
 
-  /* Insert the new rte */
-  struct rte_storage *e = rte_store(new, net);
-  e->sender = c;
-  e->lastmod = current_time();
-  e->id = id;
-  e->next = *pos;
-  *pos = e;
-  tab->rt_count++;
+  /* Store the new rte */
+  if (new->attrs)
+  {
+    struct rte_storage *es = rte_store(new, net);
+    es->sender = c;
+    es->lastmod = current_time();
+    es->id = e->new->id;
+    es->next = *pos;
+    *pos = es;
+    tab->rt_count++;
+
+    if (new_is_best)
+      best_stored = es;
+    else if (!best_changed && new_mergable_with_best_stored)
+      es->flags |= REF_E_MERGED;
+  }
+
+  if (merging)
+  {
+    if (best_stored)
+      best_stored->flags |= REF_E_MERGED;
+
+    ASSERT_DIE(best_stored == net->routes);
+
+    /* Recalculate REF_E_MERGED for other routes */
+    if (best_changed && net->routes)
+      for (struct rte_storage *rt0 = best_stored ? net->routes->next : net->routes; rt0; rt0 = rt0->next)
+	if (best_stored && rte_mergable(rte_copy(best_stored), rte_copy(rt0)))
+	  rt0->flags |= REF_E_MERGED;
+	else
+	  rt0->flags &= ~REF_E_MERGED;
+
+    if (!gen_old)
+      /* Not mergable before nor after, no update generated at all. */
+      return 0;
+
+    *new = rte_get_merged(net, rte_update_pool, c->merge_limit);
+  }
+
   return 1;
-
-drop_update:
-  return refeed;
-
-drop_withdraw:
-  return 0;
 }
 
 void
 rt_out_sync_start(struct channel *c)
 {
   ASSERT_DIE(c->out_table);
-  ASSERT_DIE(c->ra_mode != RA_ANY);
+  ASSERT_DIE((c->ra_mode != RA_ANY) || (c->merge_limit > 1));
   bmap_reset(&c->out_seen_map, 1024);
 }
 
 _Bool
-rt_out_sync_mark(struct channel *c, struct rte_export *e)
+rt_out_sync_mark(struct channel *c, struct rte_export *e, linpool *p)
 {
   ASSERT_DIE(c->out_table);
-  ASSERT_DIE(c->ra_mode != RA_ANY);
+  ASSERT_DIE((c->ra_mode != RA_ANY) || (c->merge_limit > 1));
 
   net *n = net_find(c->out_table, e->old.net);
   if (!n || !n->routes)
     return 1;
 
-  e->new = rte_copy(n->routes);
   e->new_id = n->routes->id;
-
   if (bmap_test(&c->out_seen_map, n->routes->id))
     return 0;
+
+  if (c->merge_limit > 1)
+    e->new = rte_get_merged(n, p, c->merge_limit);
+  else
+    e->new = rte_copy(n->routes);
 
   bmap_set(&c->out_seen_map, n->routes->id);
   return 1;
@@ -2585,7 +2581,7 @@ void
 rt_out_sync_finish(struct channel *c)
 {
   ASSERT_DIE(c->out_table);
-  ASSERT_DIE(c->ra_mode != RA_ANY);
+  ASSERT_DIE((c->ra_mode != RA_ANY) || (c->merge_limit > 1));
 
   FIB_WALK(&c->out_table->fib, net, n)
   {
@@ -2594,12 +2590,14 @@ rt_out_sync_finish(struct channel *c)
 
     if (!bmap_test(&c->out_seen_map, n->routes->id))
     {
+      rte_update_lock();
       struct rte_export ex = {
 	.new_id = n->routes->id,
-	.new = rte_copy(n->routes),
+	.new = ((c->merge_limit > 1) ? rte_get_merged(n, rte_update_pool, c->merge_limit) : rte_copy(n->routes)),
       };
 
       c->proto->rt_notify(c, &ex);
+      rte_update_unlock();
     }
   }
   FIB_WALK_END;
@@ -2610,19 +2608,21 @@ void
 rt_out_flush(struct channel *c)
 {
   ASSERT_DIE(c->out_table);
-  ASSERT_DIE(c->ra_mode != RA_ANY);
+  ASSERT_DIE((c->ra_mode != RA_ANY) || (c->merge_limit > 1));
 
   FIB_WALK(&c->out_table->fib, net, n)
   {
     if (!n->routes)
       continue;
 
+    rte_update_lock();
     struct rte_export ex = {
       .old_id = n->routes->id,
-      .old = rte_copy(n->routes),
+      .old = ((c->merge_limit > 1) ? rte_get_merged(n, rte_update_pool, c->merge_limit) : rte_copy(n->routes)),
     };
 
     c->proto->rt_notify(c, &ex);
+    rte_update_unlock();
   }
   FIB_WALK_END;
 }

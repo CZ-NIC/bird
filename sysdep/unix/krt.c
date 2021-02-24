@@ -68,12 +68,14 @@
  */
 
 pool *krt_pool;
+static linpool *krt_filter_lp;
 static list krt_proto_list;
 
 void
 krt_io_init(void)
 {
   krt_pool = rp_new(&root_pool, "Kernel Syncer");
+  krt_filter_lp = lp_new_default(krt_pool);
   init_list(&krt_proto_list);
   krt_sys_io_init();
 }
@@ -558,7 +560,6 @@ krt_same_dest(rte *k, rte *e)
 void
 krt_got_route(struct krt_proto *p, rte *e, s8 src)
 {
-
   struct rte_export ex = {
     .old = *e,
   };
@@ -587,7 +588,7 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
   if (!p->ready)
     goto ignore;
 
-  if (!rt_out_sync_mark(p->p.main_channel, &ex))
+  if (!rt_out_sync_mark(p->p.main_channel, &ex, krt_filter_lp))
     goto aseen;
 
   if (!ex.new.attrs)
@@ -622,6 +623,7 @@ delete:
   goto done;
 
 done:
+  lp_flush(krt_filter_lp);
   return;
 }
 
@@ -896,7 +898,7 @@ krt_postconfig(struct proto_config *CF)
 
   if (cf->merge_paths)
   {
-    cc->ra_mode = RA_MERGED;
+    cc->ra_mode = RA_ANY;
     cc->merge_limit = cf->merge_paths;
   }
 

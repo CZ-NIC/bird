@@ -583,7 +583,7 @@ void bgp_free_prefix_table(struct bgp_channel *c);
 void bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *bp);
 
 int bgp_rte_better(struct rte_storage *, struct rte_storage *);
-int bgp_rte_mergable(struct rte_storage *pri, struct rte_storage *sec);
+int bgp_rte_mergable(struct rte pri, struct rte sec);
 int bgp_rte_recalculate(rtable *table, net *net, struct rte_storage *new, struct rte_storage *old, struct rte_storage *old_best);
 struct rta *bgp_rte_modify_stale(struct rte_storage *r, struct linpool *pool);
 void bgp_rt_notify(struct channel *C, struct rte_export *e);

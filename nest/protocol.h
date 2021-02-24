@@ -230,7 +230,7 @@ struct proto {
 
   int (*rte_recalculate)(struct rtable *, struct network *, struct rte_storage *, struct rte_storage *, struct rte_storage *);
   int (*rte_better)(struct rte_storage *, struct rte_storage *);
-  int (*rte_mergable)(struct rte_storage *, struct rte_storage *);
+  int (*rte_mergable)(struct rte, struct rte);
   struct rta *(*rte_modify)(struct rte_storage *, struct linpool *);
   void (*rte_insert)(struct network *, struct rte_storage *);
   void (*rte_remove)(struct network *, struct rte_storage *);
@@ -491,7 +491,7 @@ struct channel_config {
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u16 preference;			/* Default route preference */
   u32 debug;				/* Debugging flags (D_*) */
-  u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
+  u8 merge_limit;			/* Maximal number of nexthops for merging */
   u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
 };
@@ -523,7 +523,7 @@ struct channel {
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u16 preference;			/* Default route preference */
   u32 debug;				/* Debugging flags (D_*) */
-  u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
+  u8 merge_limit;			/* Maximal number of nexthops for merging */
   u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
   u8 disabled;
   u8 stale;				/* Used in reconfiguration */

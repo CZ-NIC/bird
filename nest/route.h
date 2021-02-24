@@ -231,6 +231,8 @@ typedef struct rte {
   struct rta *attrs;			/* Attributes of this route */
   const net_addr *net;			/* Network this RTE belongs to */
   struct rte_src *src;			/* Route source that created the route */
+  byte flags;				/* Flags (REF_...) */
+  byte pflags;				/* Protocol-specific flags */
 } rte;
 
 struct rte_storage {
@@ -251,6 +253,7 @@ struct rte_storage {
 #define REF_STALE	4		/* Route is stale in a refresh cycle */
 #define REF_DISCARD	8		/* Route is scheduled for discard */
 #define REF_MODIFY	16		/* Route is scheduled for modify */
+#define REF_E_MERGED	32		/* Route has been merged on export */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
 static inline int rte_is_valid(const struct rte_storage *r) { return r && !(r->flags & REF_FILTERED); }
@@ -288,7 +291,6 @@ struct rte_export {
 #define RA_OPTIMAL	1		/* Announcement of optimal route change */
 #define RA_ACCEPTED	2		/* Announcement of first accepted route */
 #define RA_ANY		3		/* Announcement of any route change */
-#define RA_MERGED	4		/* Announcement of optimal route merged with next ones */
 
 /* Return value of preexport() callback */
 #define RIC_ACCEPT	1		/* Accepted by protocol */
@@ -348,7 +350,7 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 struct rte_storage *rte_find(net *net, struct rte_src *src);
-_Bool rt_export_merged(struct channel *c, net *net, rte *best, linpool *pool, int silent);
+rte rte_get_merged(net *n, linpool *p, u32 limit);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
 void rt_modify_stale(rtable *t, struct channel *c);
@@ -358,7 +360,15 @@ void rte_free(struct rte_storage *);
 struct rte_storage *rte_store(const rte *, net *n);
 void rte_copy_metadata(struct rte_storage *dest, struct rte_storage *src);
 static inline rte rte_copy(const struct rte_storage *r)
-{ return (rte) { .attrs = r->attrs, .net = r->net->n.addr, .src = r->src }; }
+{
+  return r ? (rte) {
+    .attrs = r->attrs,
+    .net = r->net->n.addr,
+    .src = r->src,
+    .flags = r->flags,
+    .pflags = r->pflags
+  } : (rte) {};
+}
 void rt_dump(rtable *);
 void rt_dump_all(void);
 int rt_feed_channel(struct channel *c);
@@ -367,10 +377,9 @@ void rt_feed_channel_abort(struct channel *c);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
-int rte_update_out(struct channel *c, rte *new, rte *old, struct rte_storage **old_stored, u32 id, int refeed);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 void rt_out_sync_start(struct channel *c);
-_Bool rt_out_sync_mark(struct channel *c, struct rte_export *e);
+_Bool rt_out_sync_mark(struct channel *c, struct rte_export *e, linpool *p);
 void rt_out_sync_finish(struct channel *c);
 void rt_out_flush(struct channel *c);
 
