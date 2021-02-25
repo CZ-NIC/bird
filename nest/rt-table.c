@@ -412,7 +412,7 @@ rte_mergable(struct rte_storage *pri, struct rte_storage *sec)
 }
 
 static void
-rte_trace(struct channel *c, rte *e, int dir, char *msg)
+rte_trace(struct channel *c, rte *e, int dir, const char *msg)
 {
   log(L_TRACE "%s.%s %c %s %N %s",
       c->proto->name, c->name ?: "?", dir, msg, e->net,
@@ -420,14 +420,14 @@ rte_trace(struct channel *c, rte *e, int dir, char *msg)
 }
 
 static inline void
-rte_trace_in(uint flag, struct channel *c, rte *e, char *msg)
+rte_trace_in(uint flag, struct channel *c, rte *e, const char *msg)
 {
   if ((c->debug & flag) || (c->proto->debug & flag))
     rte_trace(c, e, '>', msg);
 }
 
 static inline void
-rte_trace_out(uint flag, struct channel *c, rte *e, char *msg)
+rte_trace_out(uint flag, struct channel *c, rte *e, const char *msg)
 {
   if ((c->debug & flag) || (c->proto->debug & flag))
     rte_trace(c, e, '<', msg);
@@ -1954,9 +1954,8 @@ rt_next_hop_update_rte(struct rte_storage *old)
 static inline int
 rt_next_hop_update_net(rtable *tab, net *n)
 {
-  struct rte_storage *new, **new_best;
+  struct rte_storage *new;
   int count = 0;
-  int free_old_best = 0;
 
   struct rte_storage *old_best = n->routes;
   if (!old_best)
@@ -1964,32 +1963,40 @@ rt_next_hop_update_net(rtable *tab, net *n)
 
   for (struct rte_storage **k = &n->routes, *e; e = *k; k = &e->next)
     if (rta_next_hop_outdated(e->attrs))
-      {
-	new = rt_next_hop_update_rte(e);
-	new->next = e->next;
-	*k = new;
-
-	rte_announce_i(tab, RA_ANY, n, new, e, NULL, NULL);
-
-	/* Call a pre-comparison hook */
-	/* Not really an efficient way to compute this */
-	if (e->src->proto->rte_recalculate)
-	  e->src->proto->rte_recalculate(tab, n, new, e, NULL);
-
-	if (e != old_best)
-	  rte_free(e);
-	else /* Freeing of the old best rte is postponed */
-	  free_old_best = 1;
-
-	e = new;
-	count++;
-      }
+      count++;
 
   if (!count)
     return 0;
 
+  struct rte_multiupdate {
+    struct rte_storage *old, *new;
+  } *updates = alloca(sizeof(struct rte_multiupdate) * count);
+
+  int pos = 0;
+  for (struct rte_storage **k = &n->routes, *e; e = *k; k = &e->next)
+    if (rta_next_hop_outdated(e->attrs))
+      {
+	struct rte_storage *new = rt_next_hop_update_rte(e);
+
+	/* Call a pre-comparison hook */
+	/* Not really an efficient way to compute this */
+	if (e->src->proto->rte_recalculate)
+	  e->src->proto->rte_recalculate(tab, n, new, e, old_best);
+
+	updates[pos++] = (struct rte_multiupdate) {
+	  .old = e,
+	  .new = new,
+	};
+
+	/* Replace the route in the list */
+	new->next = e->next;
+	*k = e = new;
+      }
+
+  ASSERT_DIE(pos == count);
+
   /* Find the new best route */
-  new_best = NULL;
+  struct rte_storage **new_best = NULL;
   for (struct rte_storage **k = &n->routes, *e; e = *k; k = &e->next)
     {
       if (!new_best || rte_better(e, *new_best))
@@ -2005,18 +2012,18 @@ rt_next_hop_update_net(rtable *tab, net *n)
       n->routes = new;
     }
 
-  /* Announce the new best route */
-  if (new != old_best)
+  /* Announce the changes */
+  for (int i=0; i<count; i++)
   {
-    rte nloc = rte_copy(new);
-    rte_trace_in(D_ROUTES, new->sender, &nloc, "updated [best]");
+    _Bool nb = (*new_best == updates[i].new), ob = (old_best == updates[i].old);
+    const char *best_indicator[2][2] = { { "updated", "updated [-best]" }, { "updated [+best]", "updated [best]" } };
+    rte nloc = rte_copy(updates[i].new);
+    rte_trace_in(D_ROUTES, new->sender, &nloc, best_indicator[nb][ob]);
+    rte_announce_i(tab, RA_UNDEF, n, updates[i].new, updates[i].old, *new_best, old_best);
   }
 
-  /* Propagate changes */
-  rte_announce_i(tab, RA_UNDEF, n, NULL, NULL, n->routes, old_best);
-
-  if (free_old_best)
-    rte_free(old_best);
+  for (int i=0; i<count; i++)
+    rte_free(updates[i].old);
 
   return count;
 }
