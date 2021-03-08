@@ -62,6 +62,9 @@ static inline int proto_is_done(struct proto *p)
 static inline int channel_is_active(struct channel *c)
 { return (c->channel_state == CS_START) || (c->channel_state == CS_UP); }
 
+static inline int channel_reloadable(struct channel *c)
+{ return c->proto->reload_routes && c->reloadable; }
+
 static inline void
 channel_log_state_change(struct channel *c)
 {
@@ -389,6 +392,10 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
   if ((f == FILTER_ACCEPT) || (f == FILTER_REJECT))
     return;
 
+  /* No automatic reload for non-reloadable channels */
+  if (dir && !channel_reloadable(c))
+    valid = 0;
+
   /* No automatic reload for BGP channels without in_table / out_table */
   if (c->channel == &channel_bgp)
     valid = dir ? !!c->in_table : !!c->out_table;
@@ -715,12 +722,6 @@ channel_request_feeding(struct channel *c)
 
   channel_schedule_feed(c, 0);	/* Sets ES_FEEDING */
   channel_log_state_change(c);
-}
-
-static inline int
-channel_reloadable(struct channel *c)
-{
-  return c->proto->reload_routes && c->reloadable;
 }
 
 static void
