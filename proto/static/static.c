@@ -149,14 +149,47 @@ static_mark_rte(struct static_proto *p, struct static_route *r)
 }
 
 static void
+static_mark_all(struct static_proto *p)
+{
+  struct static_config *cf = (void *) p->p.cf;
+  struct static_route *r;
+
+  /* We want to reload all routes, mark them as dirty */
+
+  WALK_LIST(r, cf->routes)
+    if (r->state == SRS_CLEAN)
+      r->state = SRS_DIRTY;
+
+  p->marked_all = 1;
+  BUFFER_FLUSH(p->marked);
+
+  if (!ev_active(p->event))
+    ev_schedule(p->event);
+}
+
+
+static void
 static_announce_marked(void *P)
 {
   struct static_proto *p = P;
+  struct static_config *cf = (void *) p->p.cf;
+  struct static_route *r;
 
-  BUFFER_WALK(p->marked, r)
-    static_announce_rte(P, r);
+  if (p->marked_all)
+  {
+    WALK_LIST(r, cf->routes)
+      if (r->state == SRS_DIRTY)
+	static_announce_rte(p, r);
 
-  BUFFER_FLUSH(p->marked);
+    p->marked_all = 0;
+  }
+  else
+  {
+    BUFFER_WALK(p->marked, r)
+      static_announce_rte(p, r);
+
+    BUFFER_FLUSH(p->marked);
+  }
 }
 
 static void
@@ -367,6 +400,16 @@ static_bfd_notify(struct bfd_request *req)
     static_mark_rte(p, r->mp_head);
 }
 
+static void
+static_reload_routes(struct channel *C)
+{
+  struct static_proto *p = (void *) C->proto;
+
+  TRACE(D_EVENTS, "Scheduling route reload");
+
+  static_mark_all(p);
+}
+
 static int
 static_rte_better(rte *new, rte *old)
 {
@@ -421,6 +464,7 @@ static_init(struct proto_config *CF)
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
   P->neigh_notify = static_neigh_notify;
+  P->reload_routes = static_reload_routes;
   P->rte_better = static_rte_better;
   P->rte_mergable = static_rte_mergable;
 
@@ -632,6 +676,10 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
 
   xfree(orbuf);
   xfree(nrbuf);
+
+  /* All dirty routes were announced anyways */
+  BUFFER_FLUSH(p->marked);
+  p->marked_all = 0;
 
   return 1;
 }
