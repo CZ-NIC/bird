@@ -23,6 +23,7 @@
 #include "lib/event.h"
 
 event_list global_event_list;
+event_list global_work_list;
 
 inline void
 ev_postpone(event *e)
@@ -114,6 +115,22 @@ ev_schedule(event *e)
   ev_enqueue(&global_event_list, e);
 }
 
+/**
+ * ev_schedule_work - schedule a work-event.
+ * @e: an event
+ *
+ * This function schedules an event by enqueueing it to a system-wide work-event
+ * list which is run by the platform dependent code whenever appropriate. This
+ * is designated for work-events instead of regular events. They are executed
+ * less often in order to not clog I/O loop.
+ */
+void
+ev_schedule_work(event *e)
+{
+  if (!ev_active(e))
+    add_tail(&global_work_list, &e->n);
+}
+
 void io_log_event(void *hook, void *data);
 
 /**
@@ -136,10 +153,47 @@ ev_run_list(event_list *l)
       event *e = SKIP_BACK(event, n, n);
 
       /* This is ugly hack, we want to log just events executed from the main I/O loop */
-      if (l == &global_event_list)
+      if ((l == &global_event_list) || (l == &global_work_list))
 	io_log_event(e->hook, e->data);
 
       ev_run(e);
     }
+
+  return !EMPTY_LIST(*l);
+}
+
+int
+ev_run_list_limited(event_list *l, uint limit)
+{
+  node *n;
+  list tmp_list;
+
+  init_list(&tmp_list);
+  add_tail_list(&tmp_list, l);
+  init_list(l);
+
+  WALK_LIST_FIRST(n, tmp_list)
+    {
+      event *e = SKIP_BACK(event, n, n);
+
+      if (!limit)
+	break;
+
+      /* This is ugly hack, we want to log just events executed from the main I/O loop */
+      if ((l == &global_event_list) || (l == &global_work_list))
+	io_log_event(e->hook, e->data);
+
+      ev_run(e);
+      limit--;
+    }
+
+  if (!EMPTY_LIST(tmp_list))
+  {
+    /* Attach new items after the unprocessed old items */
+    add_tail_list(&tmp_list, l);
+    init_list(l);
+    add_tail_list(l, &tmp_list);
+  }
+
   return !EMPTY_LIST(*l);
 }

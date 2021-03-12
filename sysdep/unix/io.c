@@ -2161,6 +2161,7 @@ io_init(void)
 {
   init_list(&sock_list);
   init_list(&global_event_list);
+  init_list(&global_work_list);
   krt_io_init();
   // XXX init_times();
   // XXX update_times();
@@ -2172,6 +2173,7 @@ io_init(void)
 
 static int short_loops = 0;
 #define SHORT_LOOP_MAX 10
+#define WORK_EVENTS_MAX 10
 
 void
 io_loop(void)
@@ -2189,6 +2191,7 @@ io_loop(void)
     {
       times_update(&main_timeloop);
       events = ev_run_list(&global_event_list);
+      events = ev_run_list_limited(&global_work_list, WORK_EVENTS_MAX) || events;
       timers_fire(&main_timeloop);
       io_close_event();
 

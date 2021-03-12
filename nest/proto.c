@@ -252,7 +252,7 @@ channel_schedule_feed(struct channel *c, int initial)
   c->export_state = ES_FEEDING;
   c->refeeding = !initial;
 
-  ev_schedule(c->feed_event);
+  ev_schedule_work(c->feed_event);
 }
 
 static void
@@ -275,7 +275,7 @@ channel_feed_loop(void *ptr)
   // DBG("Feeding protocol %s continued\n", p->name);
   if (!rt_feed_channel(c))
   {
-    ev_schedule(c->feed_event);
+    ev_schedule_work(c->feed_event);
     return;
   }
 
@@ -291,7 +291,7 @@ channel_feed_loop(void *ptr)
 
     /* Continue in feed - it will process routing table again from beginning */
     c->refeed_count = 0;
-    ev_schedule(c->feed_event);
+    ev_schedule_work(c->feed_event);
     return;
   }
 
@@ -471,7 +471,7 @@ channel_schedule_reload(struct channel *c)
   ASSERT(c->channel_state == CS_UP);
 
   rt_reload_channel_abort(c);
-  ev_schedule(c->reload_event);
+  ev_schedule_work(c->reload_event);
 }
 
 static void
@@ -485,7 +485,7 @@ channel_reload_loop(void *ptr)
 
   if (!rt_reload_channel(c))
   {
-    ev_schedule(c->reload_event);
+    ev_schedule_work(c->reload_event);
     return;
   }
 
