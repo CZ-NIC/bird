@@ -504,8 +504,14 @@ include "tablename.conf";;
 	command-line option.
 
 	<tag><label id="opt-debug-protocols">debug protocols all|off|{ states|routes|filters|interfaces|events|packets [, <m/.../] }</tag>
-	Set global defaults of protocol debugging options. See <cf/debug/ in the
-	following section. Default: off.
+	Set global defaults of protocol debugging options.
+	See <ref id="proto-debug" name="debug"> in the following section.
+	Default: off.
+
+	<tag><label id="opt-debug-channels">debug channels all|off|{ states|routes|filters|events [, <m/.../] }</tag>
+	Set global defaults of channel debugging options.
+	See <ref id="channel-debug" name="debug"> in the channel section.
+	Default: off.
 
 	<tag><label id="opt-debug-commands">debug commands <m/number/</tag>
 	Control logging of client connections (0 for no logging, 1 for logging
@@ -657,12 +663,14 @@ agreement").
 	Set protocol debugging options. If asked, each protocol is capable of
 	writing trace messages about its work to the log (with category
 	<cf/trace/). You can either request printing of <cf/all/ trace messages
-	or only of the types selected: <cf/states/ for protocol state changes
+	or only of the selected types: <cf/states/ for protocol state changes
 	(protocol going up, down, starting, stopping etc.), <cf/routes/ for
 	routes exchanged with the routing table, <cf/filters/ for details on
-	route filtering, <cf/interfaces/ for interface change events sent to the
-	protocol, <cf/events/ for events internal to the protocol and <cf/packets/
-	for packets sent and received by the protocol. Default: off.
+	route filtering, <cf/interfaces/ for interface change events sent to
+	the protocol, <cf/events/ for events internal to the protocol and
+	<cf/packets/ for packets sent and received by the protocol. Classes
+	<cf/routes/ and <cf/filters/ can be also set per-channel using
+	<ref id="channel-debug" name="channel debugging option">) Default: off.
 
 	<tag><label id="proto-mrtdump">mrtdump all|off|{ states|messages [, <m/.../] }</tag>
 	Set protocol MRTdump flags. MRTdump is a standard binary format for
@@ -831,6 +839,16 @@ templates. Multiple definitions of the same channel are forbidden, but channels
 inherited from templates can be updated by new definitions.
 
 <descrip>
+	<tag><label id="channel-debug">debug all|off|{ states|routes|filters [, <m/.../] }</tag>
+	Set channel debugging options. Like in <ref id="proto-debug"
+	name="protocol debugging">, channels are capable of writing trace
+	messages about its work to the log (with category <cf/trace/). You can
+	either request printing of <cf/all/ trace messages or only of the
+	selected types: <cf/states/ for channel state changes (channel going up,
+	down, feeding, reloading etc.), <cf/routes/ for routes propagated
+	through the channel, <cf/filters/ for details on route filtering,
+	remaining debug flags are not used in channel debug. Default: off.
+
 	<tag><label id="proto-table">table <m/name/</tag>
 	Specify a table to which the channel is connected. Default: the first
 	table of given nettype.
