@@ -875,6 +875,19 @@ inherited from templates can be updated by new definitions.
 	possible to show them using <cf/show route filtered/. Note that this
 	option does not work for the pipe protocol. Default: off.
 
+	<tag><label id="proto-rpki-reload">rpki reload <m/switch/</tag>
+	Import or export filters may depend on route RPKI status (using
+	<cf/roa_check()/ operator). In contrast to to other filter operators,
+	this status for the same route may change as the content of ROA tables
+	changes. When this option is active, BIRD activates automatic reload of
+	affected channels whenever ROA tables are updated (after a short settle
+	time). When disabled, route reloads have to be requested manually. The
+	option is ignored if <cf/roa_check()/ is not used in channel filters.
+	Note that for BGP channels, automatic reload requires
+	<ref id="bgp-import-table" name="import table"> or
+	<ref id="bgp-export-table" name="export table"> (for respective
+	direction). Default: on.
+
 	<tag><label id="proto-import-limit">import limit [<m/number/ | off ] [action warn | block | restart | disable]</tag>
 	Specify an import route limit (a maximum number of routes imported from
 	the protocol) and optionally the action to be taken when the limit is
@@ -4761,21 +4774,21 @@ protocol rip {
 <sect1>Introduction
 
 <p>The Resource Public Key Infrastructure (RPKI) is mechanism for origin
-validation of BGP routes (RFC 6480). BIRD supports only so-called RPKI-based
-origin validation. There is implemented RPKI to Router (RPKI-RTR) protocol (RFC
-6810). It uses some of the RPKI data to allow a router to verify that the
-autonomous system announcing an IP address prefix is in fact authorized to do
-so. This is not crypto checked so can be violated. But it should prevent the
-vast majority of accidental hijackings on the Internet today, e.g. the famous
-Pakastani accidental announcement of YouTube's address space.
+validation of BGP routes (<rfc id="6480">). BIRD supports only so-called
+RPKI-based origin validation. There is implemented RPKI to Router (RPKI-RTR)
+protocol (<rfc id="6810">). It uses some of the RPKI data to allow a router to
+verify that the autonomous system announcing an IP address prefix is in fact
+authorized to do so. This is not crypto checked so can be violated. But it
+should prevent the vast majority of accidental hijackings on the Internet today,
+e.g. the famous Pakistani accidental announcement of YouTube's address space.
 
 <p>The RPKI-RTR protocol receives and maintains a set of ROAs from a cache
-server (also called validator). You can validate routes (RFC 6483) using
-function <cf/roa_check()/ in filter and set it as import filter at the BGP
-protocol. BIRD should re-validate all of affected routes after RPKI update by
-RFC 6811, but we don't support it yet! You can use a BIRD's client command
-<cf>reload in <m/bgp_protocol_name/</cf> for manual call of revalidation of all
-routes.
+server (also called validator). You can validate routes (<rfc id="6483">,
+<rfc id="6811">) using function <cf/roa_check()/ in filter and set it as import
+filter at the BGP protocol. BIRD offers crude automatic re-validating of
+affected routes after RPKI update, see option <ref id="proto-rpki-reload"
+name="rpki reload">. Or you can use a BIRD client command <cf>reload in
+<m/bgp_protocol_name/</cf> for manual call of revalidation of all routes.
 
 <sect1>Supported transports
 <p>
