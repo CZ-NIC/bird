@@ -559,7 +559,8 @@
       case SA_GW:
 	{
 	  ip_addr ip = v1.val.ip;
-	  neighbor *n = neigh_find(rta->src->proto, ip, NULL, 0);
+	  struct iface *ifa = ipa_is_link_local(ip) ? rta->nh.iface : NULL;
+	  neighbor *n = neigh_find(rta->src->proto, ip, ifa, 0);
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
 
