@@ -141,6 +141,8 @@ pipe_postconfig(struct proto_config *CF)
 
   if (cc->in_keep_filtered)
     cf_error("Pipe protocol prohibits keeping filtered routes");
+
+  cc->debug = cf->c.debug;
 }
 
 static int
@@ -155,6 +157,7 @@ pipe_configure_channels(struct pipe_proto *p, struct pipe_config *cf)
     .out_filter = cc->out_filter,
     .in_limit = cc->in_limit,
     .ra_mode = RA_ANY,
+    .debug = cc->debug,
     .rpki_reload = cc->rpki_reload,
   };
 
@@ -165,6 +168,7 @@ pipe_configure_channels(struct pipe_proto *p, struct pipe_config *cf)
     .out_filter = cc->in_filter,
     .in_limit = cc->out_limit,
     .ra_mode = RA_ANY,
+    .debug = cc->debug,
     .rpki_reload = cc->rpki_reload,
   };
 
@@ -276,6 +280,14 @@ pipe_show_proto_info(struct proto *P)
 
   if (P->proto_state != PS_DOWN)
     pipe_show_stats(p);
+}
+
+void
+pipe_update_debug(struct proto *P)
+{
+  struct pipe_proto *p = (void *) P;
+
+  p->pri->debug = p->sec->debug = p->p.debug;
 }
 
 

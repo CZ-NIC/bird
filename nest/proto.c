@@ -2210,10 +2210,17 @@ proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
   cli_msg(-15, "%s: reloading", p->name);
 }
 
+extern void pipe_update_debug(struct proto *P);
+
 void
 proto_cmd_debug(struct proto *p, uintptr_t mask, int cnt UNUSED)
 {
   p->debug = mask;
+
+#ifdef CONFIG_PIPE
+  if (p->proto == &proto_pipe)
+    pipe_update_debug(p);
+#endif
 }
 
 void
