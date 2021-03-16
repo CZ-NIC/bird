@@ -294,6 +294,14 @@ ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa,
 	n->ip = faddr;
       }
     }
+
+    /* Update RFC 7166 authentication trailer flag */
+    if (ospf_is_v3(p) && ((rcv_options ^ n->options) & OPT_AT))
+    {
+      OSPF_TRACE(D_EVENTS, "Neighbor %R on %s %s authentication",
+		 n->rid, ifa->ifname, (rcv_options & OPT_AT) ? "enabled" : "disabled");
+      n->options = (n->options & ~OPT_AT) | (rcv_options & OPT_AT);
+    }
   }
 
   if (!n)
@@ -325,6 +333,9 @@ ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa,
     n->bdr = rcv_bdr;
     n->priority = rcv_priority;
     n->iface_id = rcv_iface_id;
+
+    if (ospf_is_v3(p))
+      n->options = rcv_options & OPT_AT;
 
     if (n->ifa->cf->bfd)
       ospf_neigh_update_bfd(n, n->ifa->bfd);
