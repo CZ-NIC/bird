@@ -396,9 +396,11 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
   if (dir && !channel_reloadable(c))
     valid = 0;
 
+#ifdef CONFIG_BGP
   /* No automatic reload for BGP channels without in_table / out_table */
   if (c->channel == &channel_bgp)
     valid = dir ? !!c->in_table : !!c->out_table;
+#endif
 
   struct filter_iterator fit;
   FILTER_ITERATE_INIT(&fit, f, c->proto->pool);
