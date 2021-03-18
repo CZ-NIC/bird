@@ -388,3 +388,28 @@ test-bgp-int:
   <<: *test-base
   variables:
     TEST_NAME: cf-bgp-int
+
+test-bgp-merged:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-merged
+
+test-ebgp-loop:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-loop
+
+test-ebgp-star:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-star
+
+test-ibgp-loop:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-loop
+
+test-ibgp-star:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-flat
