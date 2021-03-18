@@ -1,3 +1,44 @@
+Version 2.0.8 (2021-03-18)
+  o Automatic channel reloads based on RPKI changes
+  o Multiple static routes with the same network
+  o Use bitmaps to keep track of exported routes
+  o Per-channel debug flags
+  o CLI commands show info from multiple protocols
+  o Linux: IPv4 routes with IPv6 nexthops
+  o Filter: Optimized redesign of prefix sets
+  o Filter: Improved type checking of user filters
+  o Filter: New src/dst accessors for Flowspec and SADR
+  o Filter: New 'weight' route attribute
+  o Filter: BGP path mask loop operator
+  o Filter: Remove quitbird command
+  o RIP: Demand circuit support (RFC 2091)
+  o BGP: New 'allow as sets' and 'enforce first as' options
+  o BGP: Support for BGP hostname capability
+  o BGP: Support for MD5SIG with dynamic BGP
+  o BFD: Optional separation of IPv4 / IPv6 BFD instances
+  o BFD: Per-peer session options
+  o RPKI: Allow build without libSSH
+  o RPKI: New 'ignore max length' option
+  o OSPF: Redesign of handling of unnumbered PtPs
+  o OSPF: Allow key id 0 in authentication
+  o Babel: Use onlink flag for routes with unreachable next hop
+  o Many bugfixes
+
+  Notes:
+
+  Automatic channel reloads based on RPKI changes are enabled by default,
+  but require import table enabled when used in BGP import filter.
+
+  BIRD now uses bitmaps to keep track of exported routes instead of
+  re-evaluation of export filters. That should improve speed and accuracy in
+  route export handling during reconfiguration, but takes some more memory.
+
+  Per-channel debug logging and some CLI commands (like 'show ospf neighbors')
+  defaulting to all protocol instances lead to some minor changes in log and
+  CLI output. Caution is recommended when logs or CLI output are monitored by
+  scripts.
+
+
 Version 2.0.7 (2019-10-11)
   o BGP: Accumulated IGP metric (RFC 7311)
   o Important filter reconfiguration bugfix
