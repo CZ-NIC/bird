@@ -2477,6 +2477,7 @@ bgp_show_proto_info(struct proto *P)
 	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
   }
 
+#if 0
   struct bgp_stats *s = &p->stats;
   cli_msg(-1006, "    FSM established transitions: %u",
 	  s->fsm_established_transitions);
@@ -2486,6 +2487,7 @@ bgp_show_proto_info(struct proto *P)
 	  s->tx_messages, s->tx_updates, s->tx_bytes);
   cli_msg(-1006, "    Last rcvd update elapsed time: %t s",
 	  p->last_rx_update ? (current_time() - p->last_rx_update) : 0);
+#endif
 
   if ((p->last_error_class != BE_NONE) &&
       (p->last_error_class != BE_MAN_DOWN))
