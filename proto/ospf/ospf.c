@@ -113,6 +113,7 @@ static void ospf_store_tmp_attrs(struct rte *rt, struct linpool *pool);
 static void ospf_reload_routes(struct channel *C);
 static int ospf_rte_better(struct rte *new, struct rte *old);
 static int ospf_rte_same(struct rte *new, struct rte *old);
+static u32 ospf_rte_igp_metric(struct rte *rt);
 static void ospf_disp(timer *timer);
 
 
@@ -382,6 +383,7 @@ ospf_init(struct proto_config *CF)
   P->store_tmp_attrs = ospf_store_tmp_attrs;
   P->rte_better = ospf_rte_better;
   P->rte_same = ospf_rte_same;
+  P->rte_igp_metric = ospf_rte_igp_metric;
 
   return P;
 }
@@ -419,6 +421,11 @@ ospf_rte_same(struct rte *new, struct rte *old)
     new->u.ospf.router_id == old->u.ospf.router_id;
 }
 
+static u32
+ospf_rte_igp_metric(struct rte *rt)
+{
+  return rt->u.ospf.metric1;
+}
 
 void
 ospf_schedule_rtcalc(struct ospf_proto *p)

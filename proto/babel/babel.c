@@ -2332,6 +2332,12 @@ babel_rte_same(struct rte *new, struct rte *old)
 	  (new->u.babel.router_id == old->u.babel.router_id));
 }
 
+static u32
+babel_rte_igp_metric(struct rte *rt)
+{
+  return rt->u.babel.metric;
+}
+
 
 static void
 babel_postconfig(struct proto_config *CF)
@@ -2367,6 +2373,7 @@ babel_init(struct proto_config *CF)
   P->store_tmp_attrs = babel_store_tmp_attrs;
   P->rte_better = babel_rte_better;
   P->rte_same = babel_rte_same;
+  P->rte_igp_metric = babel_rte_igp_metric;
 
   return P;
 }

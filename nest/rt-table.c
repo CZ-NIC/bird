@@ -45,10 +45,6 @@
 #include "lib/string.h"
 #include "lib/alloca.h"
 
-#ifdef CONFIG_BGP
-#include "proto/bgp/bgp.h"
-#endif
-
 pool *rt_table_pool;
 
 static slab *rte_slab;
@@ -3022,35 +3018,11 @@ rt_get_igp_metric(rte *rt)
   if (ea)
     return ea->u.data;
 
-  rta *a = rt->attrs;
-
-#ifdef CONFIG_OSPF
-  if ((a->source == RTS_OSPF) ||
-      (a->source == RTS_OSPF_IA) ||
-      (a->source == RTS_OSPF_EXT1))
-    return rt->u.ospf.metric1;
-#endif
-
-#ifdef CONFIG_RIP
-  if (a->source == RTS_RIP)
-    return rt->u.rip.metric;
-#endif
-
-#ifdef CONFIG_BGP
-  if (a->source == RTS_BGP)
-  {
-    u64 metric = bgp_total_aigp_metric(rt);
-    return (u32) MIN(metric, (u64) IGP_METRIC_UNKNOWN);
-  }
-#endif
-
-#ifdef CONFIG_BABEL
-  if (a->source == RTS_BABEL)
-    return rt->u.babel.metric;
-#endif
-
-  if (a->source == RTS_DEVICE)
+  if (rt->attrs->source == RTS_DEVICE)
     return 0;
+
+  if (rt->src->proto->rte_igp_metric)
+    return rt->src->proto->rte_igp_metric(rt);
 
   return IGP_METRIC_UNKNOWN;
 }

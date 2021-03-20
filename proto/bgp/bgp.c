@@ -1694,6 +1694,7 @@ bgp_init(struct proto_config *CF)
   P->rte_mergable = bgp_rte_mergable;
   P->rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
   P->rte_modify = bgp_rte_modify_stale;
+  P->rte_igp_metric = bgp_rte_igp_metric;
 
   p->cf = cf;
   p->is_internal = (cf->local_as == cf->remote_as);

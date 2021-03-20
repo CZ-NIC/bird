@@ -241,6 +241,7 @@ struct proto {
   struct rte * (*rte_modify)(struct rte *, struct linpool *);
   void (*rte_insert)(struct network *, struct rte *);
   void (*rte_remove)(struct network *, struct rte *);
+  u32 (*rte_igp_metric)(struct rte *);
 
   /* Hic sunt protocol-specific data */
 };

@@ -1098,6 +1098,11 @@ rip_rte_same(struct rte *new, struct rte *old)
 	  (new->u.rip.from == old->u.rip.from));
 }
 
+static u32
+rip_rte_igp_metric(struct rte *rt)
+{
+  return rt->u.rip.metric;
+}
 
 static void
 rip_postconfig(struct proto_config *CF)
@@ -1124,6 +1129,7 @@ rip_init(struct proto_config *CF)
   P->store_tmp_attrs = rip_store_tmp_attrs;
   P->rte_better = rip_rte_better;
   P->rte_same = rip_rte_same;
+  P->rte_igp_metric = rip_rte_igp_metric;
 
   return P;
 }
