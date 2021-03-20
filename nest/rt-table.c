@@ -2913,33 +2913,36 @@ rt_get_igp_metric(rte *rt)
 
   rta *a = rt->attrs;
 
+  switch (a->source)
+  {
 #ifdef CONFIG_OSPF
-  if ((a->source == RTS_OSPF) ||
-      (a->source == RTS_OSPF_IA) ||
-      (a->source == RTS_OSPF_EXT1))
-    return rt->u.ospf.metric1;
+    case RTS_OSPF:
+    case RTS_OSPF_IA:
+    case RTS_OSPF_EXT1:
+      return rt->u.ospf.metric1;
 #endif
 
 #ifdef CONFIG_RIP
-  if (a->source == RTS_RIP)
-    return rt->u.rip.metric;
+    case RTS_RIP:
+      return rt->u.rip.metric;
 #endif
 
 #ifdef CONFIG_BGP
-  if (a->source == RTS_BGP)
-  {
-    u64 metric = bgp_total_aigp_metric(rt);
-    return (u32) MIN(metric, (u64) IGP_METRIC_UNKNOWN);
-  }
+    case RTS_BGP:
+      {
+	u64 metric = bgp_total_aigp_metric(rt);
+	return (u32) MIN(metric, (u64) IGP_METRIC_UNKNOWN);
+      }
 #endif
 
 #ifdef CONFIG_BABEL
-  if (a->source == RTS_BABEL)
-    return rt->u.babel.metric;
+    case RTS_BABEL:
+      return rt->u.babel.metric;
 #endif
 
-  if (a->source == RTS_DEVICE)
-    return 0;
+    case RTS_DEVICE:
+      return 0;
+  }
 
   return IGP_METRIC_UNKNOWN;
 }
