@@ -45,6 +45,10 @@
 #include "lib/string.h"
 #include "lib/alloca.h"
 
+#ifdef CONFIG_RIP
+#include "proto/rip/rip.h"
+#endif
+
 #ifdef CONFIG_BGP
 #include "proto/bgp/bgp.h"
 #endif
@@ -2924,7 +2928,9 @@ rt_get_igp_metric(rte *rt)
 
 #ifdef CONFIG_RIP
     case RTS_RIP:
-      return rt->u.rip.metric;
+      if (ea = ea_find(rt->attrs->eattrs, EA_RIP_METRIC))
+	return ea->u.data;
+      break;
 #endif
 
 #ifdef CONFIG_BGP

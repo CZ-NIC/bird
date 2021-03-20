@@ -197,6 +197,7 @@ struct rip_rte
 
 #define EA_RIP_METRIC		EA_CODE(PROTOCOL_RIP, 0)
 #define EA_RIP_TAG		EA_CODE(PROTOCOL_RIP, 1)
+#define EA_RIP_FROM		EA_CODE(PROTOCOL_RIP, 2)
 
 static inline int rip_is_v2(struct rip_proto *p)
 { return p->rip2; }
