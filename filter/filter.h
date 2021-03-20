@@ -68,6 +68,8 @@ void filters_dump_all(void);
 #define FILTER_REJECT ((struct filter *) 1)
 #define FILTER_UNDEF  ((struct filter *) 2)	/* Used in BGP */
 
+#define TRIVIAL_FILTER(f)   (((f) == FILTER_REJECT) || ((f) == FILTER_ACCEPT))
+
 #define FF_SILENT 2			/* Silent filter execution */
 
 /* Custom route attributes */

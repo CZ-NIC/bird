@@ -471,7 +471,7 @@ struct channel_class {
 #endif
 };
 
-extern struct channel_class channel_bgp;
+extern struct channel_class channel_bgp, channel_krt;
 
 struct channel_config {
   node n;
