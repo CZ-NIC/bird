@@ -173,3 +173,43 @@ struct coroutine *coro_run(pool *p, void (*entry)(void *), void *data)
 
   return c;
 }
+
+/* Semaphores */
+struct bsem {
+  resource r;
+  sem_t sem;
+};
+
+static void bsem_free(resource *r)
+{
+  struct bsem *b = (void *) r;
+  if (sem_destroy(&b->sem) < 0)
+    bug("sem_destroy() failed: %m");
+}
+
+static struct resclass bsem_class = {
+  .name = "Semaphore",
+  .size = sizeof(struct bsem),
+  .free = bsem_free,
+};
+
+struct bsem *bsem_new(pool *p) {
+  struct bsem *b = ralloc(p, &bsem_class);
+  if (sem_init(&b->sem, 0, 0) < 0)
+    bug("sem_init() failed: %m");
+
+  return b;
+}
+
+void bsem_post(struct bsem *b) {
+  if (sem_post(&b->sem) < 0)
+    bug("sem_post() failed: %m");
+}
+
+void bsem_wait(struct bsem *b) {
+  if (sem_wait(&b->sem) < 0)
+    if (errno == EINTR)
+      return bsem_wait(b);
+    else
+      bug("sem_wait() failed: %m");
+}

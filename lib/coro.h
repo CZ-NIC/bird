@@ -22,5 +22,17 @@ struct coroutine;
  */
 struct coroutine *coro_run(pool *, void (*entry)(void *), void *data);
 
+/* Semaphores are handy to sleep and wake worker threads. */
+struct bsem;
+
+/* Create a semaphore. Be sure to choose such a pool that happens to be freed
+ * only when the semaphore can't be waited for or posted. */
+struct bsem *bsem_new(pool *);
+
+/* Post a semaphore (wake the worker). */
+void bsem_post(struct bsem *);
+
+/* Wait for a semaphore. Never do this within a locked context. */
+void bsem_wait(struct bsem *);
 
 #endif
