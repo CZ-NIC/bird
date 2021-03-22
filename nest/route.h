@@ -174,14 +174,17 @@ typedef struct rtable {
 					 * delete as soon as use_count becomes 0 and remove
 					 * obstacle from this routing table.
 					 */
-  struct event *rt_event;		/* Routing table event */
   btime last_rt_change;			/* Last time when route changed */
   btime base_settle_time;		/* Start time of rtable settling interval */
   btime gc_time;			/* Time of last GC */
   int gc_counter;			/* Number of operations since last GC */
+
+  struct coroutine *maint_coro;		/* Maintenance coroutine */
+  struct bsem *maint_sem;		/* Maintenance semaphore */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
+
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
 
