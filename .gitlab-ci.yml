@@ -31,16 +31,6 @@ stages:
   # That's Docker in Docker
   - dind
 
-docker_debian-7-amd64:
-  variables:
-    IMG_NAME: "debian-7-amd64"
-  <<: *docker_build
-
-docker_debian-7-i386:
-  variables:
-    IMG_NAME: "debian-7-i386"
-  <<: *docker_build
-
 docker_debian-8-amd64:
   variables:
     IMG_NAME: "debian-8-amd64"
@@ -190,14 +180,6 @@ docker_opensuse-15.1-amd64:
     - docker
     - linux
     - amd64
-
-build-debian-7-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-7-amd64
-
-build-debian-7-i386:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-7-i386
 
 build-debian-8-amd64:
   <<: *build-linux
