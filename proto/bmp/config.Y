@@ -25,7 +25,6 @@ proto: bmp_proto '}' ;
 
 bmp_proto_start: proto_start BMP {
      this_proto = proto_config_new(&proto_bmp, $1);
-     BMP_CFG->disabled = false;
      BMP_CFG->station_ip = IPA_NONE4;
      BMP_CFG->station_port = 0;
      BMP_CFG->sys_descr = "Not defined";
@@ -39,9 +38,8 @@ bmp_proto_start: proto_start BMP {
 bmp_station_address:
    /* empty */
  | bmp_station_address IP ipa {
-     if (!BMP_CFG->disabled)
-       if (ipa_zero($3))
-         cf_error("Invalid BMP monitoring station IP address");
+     if (ipa_zero($3))
+       cf_error("Invalid BMP monitoring station IP address");
      BMP_CFG->station_ip = $3;
    }
  | bmp_station_address PORT expr {
@@ -54,9 +52,6 @@ bmp_station_address:
 bmp_proto:
    bmp_proto_start proto_name '{'
  | bmp_proto proto_item ';'
- | bmp_proto ENABLED bool ';' {
-     BMP_CFG->disabled = $3;
-   }
  | bmp_proto STATION ADDRESS bmp_station_address ';'
  | bmp_proto SYSTEM DESCRIPTION text ';' {
      if (!$4 || (strlen($4) == 0))
@@ -81,8 +76,6 @@ bmp_proto:
  | bmp_proto MONITORING RIB LOCAL bool ';' {
      BMP_CFG->monitoring_rib_local = $5;
    }
- | bmp_proto DISABLED bool ';' {
-     BMP_CFG->disabled = $3; }
  ;
 
 CF_CODE

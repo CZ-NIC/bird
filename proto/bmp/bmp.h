@@ -23,12 +23,6 @@
 // Max length of MIB-II description object
 #define MIB_II_STR_LEN 255
 
-enum bmp_peer_down {
-  // Value of packet size of 'pkt_size' argument of bmp_peer_down() function
-  // used for pointing out that there was not any packet to pass
-  BMP_PEER_DOWN_NULL_PKT_SIZE = 0
-};
-
 // The following fields of this structure controls whether there will be put
 // specific routes into Route Monitoring message and send to BMP collector
 struct monitoring_rib {
@@ -43,7 +37,6 @@ struct bmp_config {
   const char *sys_name;               // sysName MIB-II [RFC1213] object
   ip_addr station_ip;                 // Monitoring station address
   u16 station_port;                   // Monitoring station TCP port
-  bool disabled;                      // Manually disabled
   bool monitoring_rib_in_pre_policy;  // Route monitoring pre-policy Adj-Rib-In
   bool monitoring_rib_in_post_policy; // Route monitoring post-policy Adj-Rib-In
   bool monitoring_rib_local;          // Route monitoring Local Rib
@@ -82,10 +75,8 @@ struct bmp_proto {
   char sys_name[MIB_II_STR_LEN];   // sysName MIB-II [RFC1213] object
   ip_addr station_ip;              // Monitoring station IP address
   u16 station_port;                // Monitoring station TCP port
-  bool disabled;                   // Manually disabled
   struct monitoring_rib monitoring_rib;
   // Below fields are for internal use
-  int station_socket;              // Socket associated with the BMP collector
   struct bmp_peer_map bgp_peers;   // Stores 'bgp_proto' structure per BGP peer
   struct bmp_peer_open_msg peer_open_msg; // Stores sent and received BGP OPEN MSG per BGP peer
   pool *buffer_mpool;              // Memory pool used for BMP buffer allocations

@@ -671,7 +671,6 @@ byte * bgp_create_end_mark(struct bgp_channel *c, byte *buf);
 #define PKT_ROUTE_REFRESH	0x05	/* [RFC2918] */
 #define PKT_BEGIN_REFRESH	0x1e	/* Dummy type for BoRR packet [RFC7313] */
 #define PKT_SCHEDULE_CLOSE	0x1f	/* Used internally to schedule socket close */
-#define PKT_BMP_MSG 0x20 /* BGP Monitoring Protocol message [RFC7854] */
 
 /* Attributes */
 

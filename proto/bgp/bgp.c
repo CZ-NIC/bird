@@ -869,7 +869,7 @@ bgp_graceful_restart_timeout(timer *t)
   else
   {
     bgp_stop(p, 0, NULL, 0);
-    bmp_peer_down(p, BE_NONE, NULL, BMP_PEER_DOWN_NULL_PKT_SIZE);
+    bmp_peer_down(p, BE_NONE, NULL, 0);
   }
 }
 
@@ -996,7 +996,7 @@ bgp_sock_err(sock *sk, int err)
   else
   {
     BGP_TRACE(D_EVENTS, "Connection closed");
-    bmp_peer_down(p, BE_SOCKET, NULL, BMP_PEER_DOWN_NULL_PKT_SIZE);
+    bmp_peer_down(p, BE_SOCKET, NULL, 0);
   }
 
   if ((conn->state == BS_ESTABLISHED) && p->gr_ready)
@@ -1322,7 +1322,7 @@ bgp_neigh_notify(neighbor *n)
       bgp_store_error(p, NULL, BE_MISC, BEM_NEIGHBOR_LOST);
       /* Perhaps also run bgp_update_startup_delay(p)? */
       bgp_stop(p, 0, NULL, 0);
-      bmp_peer_down(p, BE_MISC, NULL, BMP_PEER_DOWN_NULL_PKT_SIZE);
+      bmp_peer_down(p, BE_MISC, NULL, 0);
     }
   }
   else if (p->cf->check_link && !(n->iface->flags & IF_LINK_UP))
@@ -1334,7 +1334,7 @@ bgp_neigh_notify(neighbor *n)
       if (ps == PS_UP)
 	bgp_update_startup_delay(p);
       bgp_stop(p, 0, NULL, 0);
-      bmp_peer_down(p, BE_MISC, NULL, BMP_PEER_DOWN_NULL_PKT_SIZE);
+      bmp_peer_down(p, BE_MISC, NULL, 0);
     }
   }
   else
@@ -1376,7 +1376,7 @@ bgp_bfd_notify(struct bfd_request *req)
       if (ps == PS_UP)
 	bgp_update_startup_delay(p);
       bgp_stop(p, 0, NULL, 0);
-      bmp_peer_down(p, BE_MISC, NULL, BMP_PEER_DOWN_NULL_PKT_SIZE);
+      bmp_peer_down(p, BE_MISC, NULL, 0);
     }
   }
 }
