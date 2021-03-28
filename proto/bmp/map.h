@@ -16,8 +16,6 @@
 #include "lib/hash.h"
 #include "lib/resource.h"
 
-#include "proto/bmp/utils.h"
-
 struct bmp_peer_map_key {
   struct bmp_peer_map_key *next;
   ip_addr peer_ip;
@@ -39,23 +37,23 @@ struct bmp_peer_map {
   HASH(struct bmp_peer_map_key) peer_hash; // Hash for peers to find the index
 };
 
-enum bmp_result
+void
 bmp_peer_map_init(struct bmp_peer_map *map, pool *mpool);
 
 struct bmp_peer_map_key
 bmp_peer_map_key_create(const ip_addr peer_ip, const u32 peer_as);
 
-enum bmp_result
+void
 bmp_peer_map_free(struct bmp_peer_map *map);
 
-enum bmp_result
+void
 bmp_peer_map_flush(struct bmp_peer_map *map);
 
-enum bmp_result
+void
 bmp_peer_map_insert(struct bmp_peer_map *map, const struct bmp_peer_map_key key,
   const byte *data, const size_t data_size);
 
-enum bmp_result
+void
 bmp_peer_map_remove(struct bmp_peer_map *map, const struct bmp_peer_map_key key);
 
 const struct bmp_peer_map_entry *

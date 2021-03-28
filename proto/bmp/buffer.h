@@ -10,7 +10,6 @@
 #define _BIRD_BMP_BUFFER_H_
 
 #include "proto/bmp/bmp.h"
-#include "proto/bmp/utils.h"
 
 #include <stdlib.h>
 
