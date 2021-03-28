@@ -107,13 +107,13 @@ bmp_peer_map_get(struct bmp_peer_map *map, const struct bmp_peer_map_key key)
 }
 
 void
-bmp_peer_map_walk(const struct bmp_peer_map *map, bmp_peer_map_walk_action action)
+bmp_peer_map_walk(const struct bmp_peer_map *map, bmp_peer_map_walk_action action, void *arg)
 {
   struct bmp_peer_map_entry *entry;
   HASH_WALK_FILTER(map->peer_hash, next, e, _)
   {
     entry = (struct bmp_peer_map_entry *) e;
-    action(entry->key, entry->data.buf, entry->data.buf_size);
+    action(entry->key, entry->data.buf, entry->data.buf_size, arg);
   }
   HASH_WALK_FILTER_END;
 }

@@ -193,14 +193,14 @@ static void
 bmp_sock_err(sock *sk, int err);
 
 static void
-bmp_send_peer_up_notif_msg(const struct bgp_proto *bgp,
+bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   const byte* tx_data, const size_t tx_data_size,
   const byte* rx_data, const size_t rx_data_size);
 
 static void
 bmp_peer_map_walk_tx_open_msg_and_send_peer_up_notif(
   const struct bmp_peer_map_key key, const byte *tx_msg,
-  const size_t tx_msg_size);
+  const size_t tx_msg_size, void *bmp_);
 
 // Stores necessary any data in list
 struct bmp_data_node {
@@ -248,20 +248,20 @@ bmp_init_msg_serialize(buffer *stream, const char *sys_descr, const char *sys_na
 }
 
 static void
-bmp_schedule_tx_packet(const byte *payload, const size_t size)
+bmp_schedule_tx_packet(struct bmp_proto *p, const byte *payload, const size_t size)
 {
-  ASSERT(g_bmp->station_connected);
+  ASSERT(p->station_connected);
 
-  struct bmp_data_node *tx_data = mb_alloc(g_bmp->tx_mem_pool, sizeof (struct bmp_data_node));
-  tx_data->data = mb_alloc(g_bmp->tx_mem_pool, size);
+  struct bmp_data_node *tx_data = mb_alloc(p->tx_mem_pool, sizeof (struct bmp_data_node));
+  tx_data->data = mb_alloc(p->tx_mem_pool, size);
   memcpy(tx_data->data, payload, size);
   tx_data->data_size = size;
-  add_tail(&g_bmp->tx_queue, &tx_data->n);
+  add_tail(&p->tx_queue, &tx_data->n);
 
-  if (sk_tx_buffer_empty(g_bmp->conn->sk)
-      && !ev_active(g_bmp->conn->tx_ev))
+  if (sk_tx_buffer_empty(p->conn->sk)
+      && !ev_active(p->conn->tx_ev))
   {
-    ev_schedule(g_bmp->conn->tx_ev);
+    ev_schedule(p->conn->tx_ev);
   }
 }
 
@@ -270,21 +270,23 @@ bmp_schedule_tx_packet(const byte *payload, const size_t size)
  * NOTE: Send Initiation Message to the BMP collector.
  */
 static void
-bmp_startup(void)
+bmp_startup(struct bmp_proto *p)
 {
-  ASSERT(g_bmp->station_connected && !g_bmp->started);
+  ASSERT(p->station_connected && !p->started);
 
-  buffer payload = bmp_buffer_alloc(g_bmp->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
-  bmp_init_msg_serialize(&payload, g_bmp->sys_descr, g_bmp->sys_name);
-  bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
+  buffer payload = bmp_buffer_alloc(p->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
+  bmp_init_msg_serialize(&payload, p->sys_descr, p->sys_name);
+  bmp_schedule_tx_packet(p, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
-  g_bmp->started = true;
+  p->started = true;
 }
 
 void
 bmp_fire_tx(void *vconn)
 {
-  struct bmp_conn *conn = (struct bmp_conn *) vconn;
+  struct bmp_conn *conn = (void *) vconn;
+  struct bmp_proto *p = conn->bmp;
+
   IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
     conn->sk,
     "Socket is null"
@@ -292,22 +294,21 @@ bmp_fire_tx(void *vconn)
 
   byte *buf = conn->sk->tbuf;
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    EMPTY_LIST(g_bmp->tx_queue),
+    EMPTY_LIST(p->tx_queue),
     "Called BMP TX event handler when there is not any data to send"
   );
 
   size_t cnt = 0; // Counts max packets which we want to send per TX slot
   struct bmp_data_node *tx_data;
   struct bmp_data_node *tx_data_next;
-  size_t data_size = 0;
-  WALK_LIST_DELSAFE(tx_data, tx_data_next, g_bmp->tx_queue)
+  WALK_LIST_DELSAFE(tx_data, tx_data_next, p->tx_queue)
   {
     if (tx_data->data_size > conn->sk->tbsize)
     {
       sk_set_tbsize(conn->sk, tx_data->data_size);
     }
 
-    data_size = tx_data->data_size;
+    size_t data_size = tx_data->data_size;
     memcpy(buf, tx_data->data, tx_data->data_size);
     mb_free(tx_data->data);
     rem_node((node *) tx_data);
@@ -339,17 +340,17 @@ bmp_tx(struct birdsock *sk)
 }
 
 static inline int
-bmp_open_socket(struct bmp_proto *bmp)
+bmp_open_socket(struct bmp_proto *p)
 {
-  sock *s = bmp->conn->sk;
-  s->daddr = bmp->station_ip;
-  s->dport = bmp->station_port;
+  sock *s = p->conn->sk;
+  s->daddr = p->station_ip;
+  s->dport = p->station_port;
   s->err_hook = bmp_sock_err;
 
   int rc = sk_open(s);
 
   if (rc < 0)
-    sk_log_error(s, bmp->p.name);
+    sk_log_error(s, p->p.name);
 
   return rc;
 }
@@ -357,9 +358,9 @@ bmp_open_socket(struct bmp_proto *bmp)
 static void
 bmp_connection_retry(timer *t)
 {
-  struct bmp_proto *bmp = (struct bmp_proto *) t->data;
+  struct bmp_proto *p = (void *) t->data;
 
-  if (bmp_open_socket(bmp) < 0)
+  if (bmp_open_socket(p) < 0)
   {
     log(L_DEBUG "Failed to connect to BMP station");
     return;
@@ -372,7 +373,7 @@ bmp_connection_retry(timer *t)
 void
 bmp_sock_err(sock *sk, int err)
 {
-  struct bmp_conn *conn = (struct bmp_conn *)sk->data;
+  struct bmp_conn *conn = (void *) sk->data;
   log(L_WARN "[BMP:%s] Socket error: %M", conn->bmp->p.name, err);
 }
 
@@ -517,56 +518,54 @@ bmp_peer_down_notif_msg_serialize(buffer *stream, const bool is_peer_global,
 void
 bmp_open(const struct proto *P)
 {
-  struct bmp_proto *bmp = (struct bmp_proto *) P;
-  g_bmp = bmp;
+  struct bmp_proto *p = (void *) P;
 
   log(L_DEBUG "Init BMP");
 
-  g_bmp->buffer_mpool = rp_new(P->pool, "BMP Buffer");
-  g_bmp->map_mem_pool = rp_new(P->pool, "BMP Map");
-  g_bmp->tx_mem_pool = rp_new(P->pool, "BMP Tx");
-  g_bmp->update_msg_mem_pool = rp_new(P->pool, "BMP Update");
-  bmp->conn->tx_ev = ev_new_init(g_bmp->tx_mem_pool, bmp_fire_tx, bmp->conn);
+  p->buffer_mpool = rp_new(P->pool, "BMP Buffer");
+  p->map_mem_pool = rp_new(P->pool, "BMP Map");
+  p->tx_mem_pool = rp_new(P->pool, "BMP Tx");
+  p->update_msg_mem_pool = rp_new(P->pool, "BMP Update");
+  p->conn->tx_ev = ev_new_init(p->tx_mem_pool, bmp_fire_tx, p->conn);
 
-  bmp_peer_map_init(&g_bmp->peer_open_msg.tx_msg, g_bmp->map_mem_pool);
-  bmp_peer_map_init(&g_bmp->peer_open_msg.rx_msg, g_bmp->map_mem_pool);
-  bmp_peer_map_init(&g_bmp->bgp_peers, g_bmp->map_mem_pool);
+  bmp_peer_map_init(&p->peer_open_msg.tx_msg, p->map_mem_pool);
+  bmp_peer_map_init(&p->peer_open_msg.rx_msg, p->map_mem_pool);
+  bmp_peer_map_init(&p->bgp_peers, p->map_mem_pool);
 
-  init_list(&g_bmp->tx_queue);
-  init_list(&g_bmp->rt_table_in_pre_policy.update_msg_queue);
-  g_bmp->station_connected = false;
-  g_bmp->started = false;
-  g_bmp->connect_retry_timer = NULL;
-  if (bmp_open_socket(bmp) < 0)
+  init_list(&p->tx_queue);
+  init_list(&p->rt_table_in_pre_policy.update_msg_queue);
+  p->station_connected = false;
+  p->started = false;
+  p->connect_retry_timer = NULL;
+  if (bmp_open_socket(p) < 0)
   {
     log(L_DEBUG "Failed to connect to BMP station");
-    g_bmp->connect_retry_timer = tm_new_init(P->pool, bmp_connection_retry, bmp,
-                                   CONNECT_RETRY_SEC, 0 /* not randomized */);
-    tm_start(g_bmp->connect_retry_timer, CONNECT_RETRY_SEC);
-    g_bmp->station_connected = false;
+    p->connect_retry_timer = tm_new_init(P->pool, bmp_connection_retry, p,
+					 CONNECT_RETRY_SEC, 0 /* not randomized */);
+    tm_start(p->connect_retry_timer, CONNECT_RETRY_SEC);
+    p->station_connected = false;
   }
   else
   {
     log(L_DEBUG "Connected to BMP station");
   }
-
-  strncpy(g_bmp->sys_name, bmp->sys_name, sizeof (g_bmp->sys_name) - 1);
-  strncpy(g_bmp->sys_descr, bmp->sys_descr, sizeof (g_bmp->sys_descr) - 1);
 }
 
 void
 bmp_peer_map_walk_tx_open_msg_and_send_peer_up_notif(
   const struct bmp_peer_map_key key, const byte *tx_msg,
-  const size_t tx_msg_size)
+  const size_t tx_msg_size, void *bmp_)
 {
-  ASSERT(g_bmp->station_connected);
-  const struct bmp_peer_map_entry *map_rx_msg = bmp_peer_map_get(&g_bmp->peer_open_msg.rx_msg, key);
+  struct bmp_proto *p = bmp_;
+  ASSERT(p->station_connected);
+
+  const struct bmp_peer_map_entry *map_rx_msg = bmp_peer_map_get(&p->peer_open_msg.rx_msg, key);
   IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
     map_rx_msg,
     "Processing TX BGP OPEN MSG but there is not corresponding received MSG"
   );
 
-  const struct bmp_peer_map_entry *map_bgp_proto = bmp_peer_map_get(&g_bmp->bgp_peers, key);
+  const struct bmp_peer_map_entry *map_bgp_proto = bmp_peer_map_get(&p->bgp_peers, key);
   IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
     map_bgp_proto,
     "There is not BGP proto related with stored TX/RX OPEN MSG"
@@ -576,7 +575,7 @@ bmp_peer_map_walk_tx_open_msg_and_send_peer_up_notif(
   memcpy(&bgp, map_bgp_proto->data.buf, sizeof (bgp));
   if (bgp->p.proto_state == PS_UP)
   {
-    bmp_send_peer_up_notif_msg(bgp, tx_msg, tx_msg_size,
+    bmp_send_peer_up_notif_msg(p, bgp, tx_msg, tx_msg_size,
 			       map_rx_msg->data.buf, map_rx_msg->data.buf_size);
   }
 }
@@ -666,11 +665,11 @@ bmp_is_peer_global_instance(const struct bgp_proto *bgp)
 }
 
 static void
-bmp_send_peer_up_notif_msg(const struct bgp_proto *bgp,
+bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   const byte* tx_data, const size_t tx_data_size,
   const byte* rx_data, const size_t rx_data_size)
 {
-  ASSERT(g_bmp->station_connected);
+  ASSERT(p->station_connected);
 
   const struct birdsock *sk = bmp_get_birdsock_ext(bgp);
   IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
@@ -679,12 +678,12 @@ bmp_send_peer_up_notif_msg(const struct bgp_proto *bgp,
   );
 
   const bool is_global_instance_peer = bmp_is_peer_global_instance(bgp);
-  buffer payload = bmp_buffer_alloc(g_bmp->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
+  buffer payload = bmp_buffer_alloc(p->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
   bmp_peer_up_notif_msg_serialize(&payload, is_global_instance_peer,
     bgp->remote_as, bgp->remote_id, 1,
     sk->saddr, sk->daddr, sk->sport, sk->dport, tx_data, tx_data_size,
     rx_data, rx_data_size);
-  bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
+  bmp_schedule_tx_packet(p, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
   bmp_peer_up(bgp);
 }
@@ -693,7 +692,9 @@ void
 bmp_put_sent_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
   const size_t pkt_size)
 {
-  if (!g_bmp)
+  struct bmp_proto *p = g_bmp;
+
+  if (!p)
   {
     return;
   }
@@ -701,20 +702,20 @@ bmp_put_sent_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
   struct bmp_peer_map_key key = bmp_peer_map_key_create(bgp->remote_ip,
                                   bgp->remote_as);
   const struct bmp_peer_map_entry *map_entry
-    = bmp_peer_map_get(&g_bmp->peer_open_msg.rx_msg, key);
-  if (!map_entry || !g_bmp->started)
+    = bmp_peer_map_get(&p->peer_open_msg.rx_msg, key);
+  if (!map_entry || !p->started)
   {
-    bmp_peer_map_insert(&g_bmp->peer_open_msg.tx_msg, key, pkt, pkt_size);
+    bmp_peer_map_insert(&p->peer_open_msg.tx_msg, key, pkt, pkt_size);
 
     if (!map_entry)
     {
-      bmp_peer_map_insert(&g_bmp->bgp_peers, key, (const byte *) &bgp, sizeof (bgp));
+      bmp_peer_map_insert(&p->bgp_peers, key, (const byte *) &bgp, sizeof (bgp));
     }
 
     return;
   }
 
-  bmp_send_peer_up_notif_msg(bgp, pkt, pkt_size, map_entry->data.buf,
+  bmp_send_peer_up_notif_msg(p, bgp, pkt, pkt_size, map_entry->data.buf,
 			     map_entry->data.buf_size);
 }
 
@@ -722,7 +723,9 @@ void
 bmp_put_recv_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
   const size_t pkt_size)
 {
-  if (!g_bmp)
+  struct bmp_proto *p = g_bmp;
+
+  if (!p)
   {
     return;
   }
@@ -730,99 +733,105 @@ bmp_put_recv_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
   struct bmp_peer_map_key key
     = bmp_peer_map_key_create(bgp->remote_ip, bgp->remote_as);
   const struct bmp_peer_map_entry *map_data
-    = bmp_peer_map_get(&g_bmp->peer_open_msg.tx_msg, key);
-  if (!map_data || !g_bmp->started)
+    = bmp_peer_map_get(&p->peer_open_msg.tx_msg, key);
+  if (!map_data || !p->started)
   {
-    bmp_peer_map_insert(&g_bmp->peer_open_msg.rx_msg, key, pkt, pkt_size);
+    bmp_peer_map_insert(&p->peer_open_msg.rx_msg, key, pkt, pkt_size);
 
     if (!map_data)
     {
-      bmp_peer_map_insert(&g_bmp->bgp_peers, key, (const byte *) &bgp, sizeof (bgp));
+      bmp_peer_map_insert(&p->bgp_peers, key, (const byte *) &bgp, sizeof (bgp));
     }
 
     return;
   }
 
-  bmp_send_peer_up_notif_msg(bgp, map_data->data.buf, map_data->data.buf_size,
+  bmp_send_peer_up_notif_msg(p, bgp, map_data->data.buf, map_data->data.buf_size,
 			     pkt, pkt_size);
 }
 
 void
 bmp_route_monitor_update_in_pre_begin()
 {
-  if (!g_bmp)
+  struct bmp_proto *p = g_bmp;
+
+  if (!p)
   {
     return;
   }
 
-  if (g_bmp->monitoring_rib.in_pre_policy == false)
+  if (p->monitoring_rib.in_pre_policy == false)
   {
     return;
   }
 
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    !g_bmp->started,
+    !p->started,
     "BMP instance not started yet"
   );
 
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    !EMPTY_LIST(g_bmp->rt_table_in_pre_policy.update_msg_queue),
+    !EMPTY_LIST(p->rt_table_in_pre_policy.update_msg_queue),
     "Previous BMP route monitoring update not finished yet"
   );
 
-  gettimeofday(&g_bmp->rt_table_in_pre_policy.update_begin_time,NULL);
-  init_list(&g_bmp->rt_table_in_pre_policy.update_msg_queue);
-  g_bmp->rt_table_in_pre_policy.update_msg_size = 0;
-  g_bmp->rt_table_in_pre_policy.update_in_progress = true;
+  gettimeofday(&p->rt_table_in_pre_policy.update_begin_time,NULL);
+  init_list(&p->rt_table_in_pre_policy.update_msg_queue);
+  p->rt_table_in_pre_policy.update_msg_size = 0;
+  p->rt_table_in_pre_policy.update_in_progress = true;
 }
 
 void
 bmp_route_monitor_put_update_in_pre_msg(const byte *data, const size_t data_size)
 {
-  if (!g_bmp)
+  struct bmp_proto *p = g_bmp;
+
+  if (!p)
   {
     return;
   }
 
-  if (g_bmp->monitoring_rib.in_pre_policy == false)
+  if (p->monitoring_rib.in_pre_policy == false)
   {
     return;
   }
 
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    !g_bmp->started,
+    !p->started,
     "BMP instance not started yet"
   );
 
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    !g_bmp->rt_table_in_pre_policy.update_in_progress,
+    !p->rt_table_in_pre_policy.update_in_progress,
     "BMP route monitoring update not started yet"
   );
 
-  struct bmp_data_node *upd_msg = mb_alloc(g_bmp->update_msg_mem_pool,
+  struct bmp_data_node *upd_msg = mb_alloc(p->update_msg_mem_pool,
                                sizeof (struct bmp_data_node));
-  upd_msg->data = mb_alloc(g_bmp->update_msg_mem_pool, data_size);
+  upd_msg->data = mb_alloc(p->update_msg_mem_pool, data_size);
   memcpy(upd_msg->data, data, data_size);
   upd_msg->data_size = data_size;
-  g_bmp->rt_table_in_pre_policy.update_msg_size += data_size;
-  add_tail(&g_bmp->rt_table_in_pre_policy.update_msg_queue, &upd_msg->n);
+  p->rt_table_in_pre_policy.update_msg_size += data_size;
+  add_tail(&p->rt_table_in_pre_policy.update_msg_queue, &upd_msg->n);
 }
 
 void
 bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp)
 {
-  if (!g_bmp)
+  struct bmp_proto *p = g_bmp;
+
+  if (!p)
   {
     return;
   }
 
-  if (g_bmp->monitoring_rib.in_pre_policy == false)
+  if (p->monitoring_rib.in_pre_policy == false)
   {
     return;
   }
 
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    (!g_bmp->started || EMPTY_LIST(g_bmp->rt_table_in_pre_policy.update_msg_queue)),
+    (!p->started || EMPTY_LIST(p->rt_table_in_pre_policy.update_msg_queue)),
     "BMP route monitoring update not started yet"
   );
 
@@ -840,25 +849,25 @@ bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp)
 
   bool is_global_instance_peer = bmp_is_peer_global_instance(bgp);
   buffer payload
-    = bmp_buffer_alloc(g_bmp->buffer_mpool,
-        g_bmp->rt_table_in_pre_policy.update_msg_size + DEFAULT_MEM_BLOCK_SIZE);
+    = bmp_buffer_alloc(p->buffer_mpool,
+        p->rt_table_in_pre_policy.update_msg_size + DEFAULT_MEM_BLOCK_SIZE);
 
   buffer update_msgs
-    = bmp_buffer_alloc(g_bmp->buffer_mpool,
-        g_bmp->rt_table_in_pre_policy.update_msg_size);
+    = bmp_buffer_alloc(p->buffer_mpool,
+        p->rt_table_in_pre_policy.update_msg_size);
 
   struct bmp_data_node *data;
-  WALK_LIST(data, g_bmp->rt_table_in_pre_policy.update_msg_queue)
+  WALK_LIST(data, p->rt_table_in_pre_policy.update_msg_queue)
   {
     bmp_put_data(&update_msgs, data->data, data->data_size);
     bmp_route_monitor_msg_serialize(&payload,
       is_global_instance_peer, true /* TODO: Hardcoded pre-policy Adj-Rib-In */,
       bgp->conn->received_as, bgp->remote_id, remote_caps->as4_support,
       sk->daddr, bmp_buffer_data(&update_msgs), bmp_buffer_pos(&update_msgs),
-      g_bmp->rt_table_in_pre_policy.update_begin_time.tv_sec,
-      g_bmp->rt_table_in_pre_policy.update_begin_time.tv_usec);
+      p->rt_table_in_pre_policy.update_begin_time.tv_sec,
+      p->rt_table_in_pre_policy.update_begin_time.tv_usec);
 
-    bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
+    bmp_schedule_tx_packet(p, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
     bmp_buffer_flush(&payload);
     bmp_buffer_flush(&update_msgs);
@@ -868,24 +877,26 @@ bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp)
 void
 bmp_route_monitor_update_in_pre_end()
 {
-  if (!g_bmp)
+  struct bmp_proto *p = g_bmp;
+
+  if (!p)
   {
     return;
   }
 
-  if (g_bmp->monitoring_rib.in_pre_policy == false)
+  if (p->monitoring_rib.in_pre_policy == false)
   {
     return;
   }
 
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    (!g_bmp->started || EMPTY_LIST(g_bmp->rt_table_in_pre_policy.update_msg_queue)),
+    (!p->started || EMPTY_LIST(p->rt_table_in_pre_policy.update_msg_queue)),
     "BMP route monitoring update not started yet"
   );
 
   struct bmp_data_node *upd_msg;
   struct bmp_data_node *upd_msg_next;
-  WALK_LIST_DELSAFE(upd_msg, upd_msg_next, g_bmp->rt_table_in_pre_policy.update_msg_queue)
+  WALK_LIST_DELSAFE(upd_msg, upd_msg_next, p->rt_table_in_pre_policy.update_msg_queue)
   {
     mb_free(upd_msg->data);
     rem_node((node *) upd_msg);
@@ -896,7 +907,9 @@ bmp_route_monitor_update_in_pre_end()
 void
 bmp_route_monitor_pre_policy_table_in_snapshot(const struct channel *C)
 {
-  if (g_bmp->monitoring_rib.in_pre_policy == false)
+  struct bmp_proto *p = g_bmp;
+
+  if (p->monitoring_rib.in_pre_policy == false)
   {
     return;
   }
@@ -928,7 +941,7 @@ bmp_route_monitor_pre_policy_table_in_snapshot(const struct channel *C)
       bgp_rte_update_in_notify(P, C, n, e, NULL, e->src);
     }
 
-    bmp_route_monitor_update_in_pre_commit((struct bgp_proto*) P);
+    bmp_route_monitor_update_in_pre_commit((struct bgp_proto *) P);
     bmp_route_monitor_update_in_pre_end();
     ++cnt;
   }
@@ -952,20 +965,20 @@ bmp_route_monitor_pre_policy_table_in_snapshot(const struct channel *C)
 }
 
 static void
-bmp_send_peer_down_notif_msg(const struct bgp_proto *bgp,
+bmp_send_peer_down_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   const byte* data, const size_t data_size)
 {
-  ASSERT(g_bmp->station_connected);
+  ASSERT(p->station_connected);
 
   const struct bgp_caps *remote_caps = bmp_get_bgp_remote_caps_ext(bgp);
   bool is_global_instance_peer = bmp_is_peer_global_instance(bgp);
   buffer payload
-    = bmp_buffer_alloc(g_bmp->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
+    = bmp_buffer_alloc(p->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
   bmp_peer_down_notif_msg_serialize(&payload, is_global_instance_peer,
     bgp->remote_as, bgp->remote_id,
     remote_caps ? remote_caps->as4_support : bgp->as4_session,
     bgp->remote_ip, data, data_size);
-  bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
+  bmp_schedule_tx_packet(p, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
   bmp_buffer_free(&payload);
 }
@@ -974,26 +987,28 @@ void
 bmp_peer_down(const struct bgp_proto *bgp, const int err_class, const byte *pkt,
   size_t pkt_size)
 {
-  if (!g_bmp || !g_bmp->started)
+  struct bmp_proto *p = g_bmp;
+
+  if (!p || !p->started)
   {
     return;
   }
 
   struct bmp_peer_map_key key
     = bmp_peer_map_key_create(bgp->remote_ip, bgp->remote_as);
-  if (!bmp_peer_map_get(&g_bmp->bgp_peers, key))
+  if (!bmp_peer_map_get(&p->bgp_peers, key))
   {
     return;
   }
 
-  bmp_peer_map_remove(&g_bmp->peer_open_msg.tx_msg, key);
-  bmp_peer_map_remove(&g_bmp->peer_open_msg.rx_msg, key);
-  bmp_peer_map_remove(&g_bmp->bgp_peers, key);
+  bmp_peer_map_remove(&p->peer_open_msg.tx_msg, key);
+  bmp_peer_map_remove(&p->peer_open_msg.rx_msg, key);
+  bmp_peer_map_remove(&p->bgp_peers, key);
   const size_t missing_bgp_hdr_size = BGP_MSG_HDR_MARKER_SIZE
                                         + BGP_MSG_HDR_LENGTH_SIZE
                                         + BGP_MSG_HDR_TYPE_SIZE;
   buffer payload
-    = bmp_buffer_alloc(g_bmp->buffer_mpool, pkt_size + missing_bgp_hdr_size + 1);
+    = bmp_buffer_alloc(p->buffer_mpool, pkt_size + missing_bgp_hdr_size + 1);
   if (pkt != NULL && pkt_size > 0)
   {
     byte marker[BGP_MSG_HDR_MARKER_SIZE];
@@ -1028,13 +1043,13 @@ bmp_peer_down(const struct bgp_proto *bgp, const int err_class, const byte *pkt,
     }
   }
 
-  bmp_send_peer_down_notif_msg(bgp, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
+  bmp_send_peer_down_notif_msg(p, bgp, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
   bmp_buffer_free(&payload);
 }
 
 static void
-bmp_send_termination_msg(struct bmp_proto *bmp,
+bmp_send_termination_msg(struct bmp_proto *p,
   const enum bmp_term_reason reason)
 {
   const size_t term_msg_hdr_size = BMP_TERM_INFO_TYPE_SIZE
@@ -1042,14 +1057,14 @@ bmp_send_termination_msg(struct bmp_proto *bmp,
                                      + BMP_TERM_REASON_CODE_SIZE;
   const size_t term_msg_size = BMP_COMMON_HDR_SIZE + term_msg_hdr_size;
   buffer stream
-    = bmp_buffer_alloc(g_bmp->buffer_mpool, term_msg_size);
+    = bmp_buffer_alloc(p->buffer_mpool, term_msg_size);
   bmp_common_hdr_serialize(&stream, BMP_TERM_MSG, term_msg_hdr_size);
   bmp_put_u16(&stream, BMP_TERM_INFO_REASON);
   bmp_put_u16(&stream, BMP_TERM_REASON_CODE_SIZE); // 2-byte code indication the reason
   bmp_put_u16(&stream, reason);
-  memcpy(bmp->conn->sk->tbuf, bmp_buffer_data(&stream), bmp_buffer_pos(&stream));
+  memcpy(p->conn->sk->tbuf, bmp_buffer_data(&stream), bmp_buffer_pos(&stream));
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    sk_send(bmp->conn->sk, bmp_buffer_pos(&stream)) < 0,
+    sk_send(p->conn->sk, bmp_buffer_pos(&stream)) < 0,
     "Failed to send BMP termination message"
     );
 
@@ -1059,16 +1074,18 @@ bmp_send_termination_msg(struct bmp_proto *bmp,
 static void
 bmp_station_connected(struct birdsock *sk)
 {
-  struct bmp_conn *conn = (struct bmp_conn *)sk->data;
+  struct bmp_conn *conn = (void *) sk->data;
+  struct bmp_proto *p = conn->bmp;
+
   conn->sk->tx_hook = bmp_tx;
-  conn->bmp->station_connected = true;
+  p->station_connected = true;
 
-  bmp_startup();
+  bmp_startup(p);
 
-  bmp_peer_map_walk(&conn->bmp->peer_open_msg.tx_msg,
-    bmp_peer_map_walk_tx_open_msg_and_send_peer_up_notif);
-  bmp_peer_map_flush(&conn->bmp->peer_open_msg.tx_msg);
-  bmp_peer_map_flush(&conn->bmp->peer_open_msg.rx_msg);
+  bmp_peer_map_walk(&p->peer_open_msg.tx_msg,
+		    bmp_peer_map_walk_tx_open_msg_and_send_peer_up_notif, p);
+  bmp_peer_map_flush(&p->peer_open_msg.tx_msg);
+  bmp_peer_map_flush(&p->peer_open_msg.rx_msg);
 }
 
 static inline void
@@ -1090,42 +1107,44 @@ static struct proto *
 bmp_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
-  struct bmp_proto *bmp = (struct bmp_proto *) P;
+  struct bmp_proto *p = (void *) P;
+  struct bmp_config *cf = (void *) CF;
 
-  struct bmp_config *cf = (struct bmp_config *) CF;
-  bmp->cf = cf;
-  bmp->station_ip = cf->station_ip;
-  bmp->station_port = cf->station_port;
-  strcpy(bmp->sys_descr, cf->sys_descr);
-  strcpy(bmp->sys_name, cf->sys_name);
-  bmp->disabled = cf->disabled;
-  bmp->monitoring_rib.in_pre_policy = cf->monitoring_rib_in_pre_policy;
-  bmp->monitoring_rib.in_post_policy = cf->monitoring_rib_in_post_policy;
-  bmp->monitoring_rib.local = cf->monitoring_rib_local;
+  p->cf = cf;
+  p->station_ip = cf->station_ip;
+  p->station_port = cf->station_port;
+  strcpy(p->sys_descr, cf->sys_descr);
+  strcpy(p->sys_name, cf->sys_name);
+  p->disabled = cf->disabled;
+  p->monitoring_rib.in_pre_policy = cf->monitoring_rib_in_pre_policy;
+  p->monitoring_rib.in_post_policy = cf->monitoring_rib_in_post_policy;
+  p->monitoring_rib.local = cf->monitoring_rib_local;
 
-  g_bmp = bmp;
   return P;
 }
 
 static int
 bmp_start(struct proto *P)
 {
-  struct bmp_proto *bmp = (struct bmp_proto *) P;
-  if (bmp->disabled)
+  struct bmp_proto *p = (void *) P;
+
+  if (p->disabled)
   {
     g_bmp = NULL;
     return PS_DOWN;
   }
 
-  if (bmp->disabled)
+  if (p->disabled)
   {
     return PS_DOWN;
   }
 
-  bmp->conn = mb_allocz(P->pool, sizeof (struct bmp_conn));
-  bmp->conn->bmp = bmp;
-  bmp_setup_socket(bmp->conn);
+  p->conn = mb_allocz(P->pool, sizeof (struct bmp_conn));
+  p->conn->bmp = p;
+  bmp_setup_socket(p->conn);
   bmp_open(P);
+
+  g_bmp = p;
 
   return PS_UP;
 }
@@ -1133,11 +1152,12 @@ bmp_start(struct proto *P)
 static int
 bmp_shutdown(struct proto *P)
 {
-  struct bmp_proto *bmp = (struct bmp_proto *) P;
-  bmp_send_termination_msg(bmp, BMP_TERM_REASON_ADM);
+  struct bmp_proto *p = (void *) P;
+  bmp_send_termination_msg(p, BMP_TERM_REASON_ADM);
 
-  g_bmp->station_connected = false;
-  g_bmp->started = false;
+  p->station_connected = false;
+  p->started = false;
+
   g_bmp = NULL;
 
   return PS_DOWN;

@@ -60,9 +60,9 @@ const struct bmp_peer_map_entry *
 bmp_peer_map_get(struct bmp_peer_map *map, const struct bmp_peer_map_key key);
 
 typedef void (*bmp_peer_map_walk_action)(const struct bmp_peer_map_key key,
-          const byte *data, const size_t data_size);
+					 const byte *data, const size_t data_size, void *arg);
 
 void
-bmp_peer_map_walk(const struct bmp_peer_map *map, bmp_peer_map_walk_action action);
+bmp_peer_map_walk(const struct bmp_peer_map *map, bmp_peer_map_walk_action action, void *arg);
 
 #endif /* _BIRD_BMP_MAP_H_ */
