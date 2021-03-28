@@ -377,12 +377,12 @@ bmp_sock_err(sock *sk, int err)
   log(L_WARN "[BMP:%s] Socket error: %M", conn->bmp->p.name, err);
 }
 
-static void
-bmp_put_ip4_addr_with_padding(buffer *stream, const ip4_addr addr)
+static inline void
+bmp_put_ipa(buffer *stream, const ip_addr addr)
 {
-  byte padding[BMP_PADDING_IP4_ADDR_SIZE] = { 0x00 };
-  bmp_put_data(stream, padding, BMP_PADDING_IP4_ADDR_SIZE);
-  bmp_put_ip4(stream, addr);
+  bmp_put_ip6(stream, ipa_is_ip4(addr) ?
+	      ip6_build(0,0,0, ipa_to_u32(addr)) :
+	      ipa_to_ip6(addr));
 }
 
 static void
@@ -434,15 +434,7 @@ bmp_per_peer_hdr_serialize(buffer *stream, const bool is_global_instance_peer,
   bmp_put_u8(stream, peer_flags);
   // TODO: Provide appropriate peer Route Distinguisher if applicable
   bmp_put_u64(stream, 0x00); // 0x00 - Not supported peer distinguisher
-  if (ipa_is_ip4(peer_addr))
-  {
-    bmp_put_ip4_addr_with_padding(stream, ipa_to_ip4(peer_addr));
-  }
-  else
-  {
-    bmp_put_ip6(stream, ipa_to_ip6(peer_addr));
-  }
-
+  bmp_put_ipa(stream, peer_addr);
   bmp_put_u32(stream, peer_as);
   bmp_put_u32(stream, peer_bgp_id);
   bmp_put_u32(stream, ts_sec);
@@ -478,15 +470,7 @@ bmp_peer_up_notif_msg_serialize(buffer *stream, const bool is_peer_global,
   bmp_per_peer_hdr_serialize(stream, is_peer_global,
     true /* TODO: Hardcoded pre-policy Adj-RIB-In */, as4_support, remote_addr,
     peer_as, peer_bgp_id, 0, 0); // 0, 0 - No timestamp provided
-  if (ipa_is_ip4(local_addr))
-  {
-    bmp_put_ip4_addr_with_padding(stream, ipa_to_ip4(local_addr));
-  }
-  else
-  {
-    bmp_put_ip6(stream, ipa_to_ip6(local_addr));
-  }
-
+  bmp_put_ipa(stream, local_addr);
   bmp_put_u16(stream, local_port);
   bmp_put_u16(stream, remote_port);
   bmp_set_initial_bgp_hdr(stream, sent_msg_size, PKT_OPEN);
@@ -1115,7 +1099,6 @@ bmp_init(struct proto_config *CF)
   p->station_port = cf->station_port;
   strcpy(p->sys_descr, cf->sys_descr);
   strcpy(p->sys_name, cf->sys_name);
-  p->disabled = cf->disabled;
   p->monitoring_rib.in_pre_policy = cf->monitoring_rib_in_pre_policy;
   p->monitoring_rib.in_post_policy = cf->monitoring_rib_in_post_policy;
   p->monitoring_rib.local = cf->monitoring_rib_local;
@@ -1127,17 +1110,6 @@ static int
 bmp_start(struct proto *P)
 {
   struct bmp_proto *p = (void *) P;
-
-  if (p->disabled)
-  {
-    g_bmp = NULL;
-    return PS_DOWN;
-  }
-
-  if (p->disabled)
-  {
-    return PS_DOWN;
-  }
 
   p->conn = mb_allocz(P->pool, sizeof (struct bmp_conn));
   p->conn->bmp = p;
