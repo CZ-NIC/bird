@@ -25,7 +25,6 @@
 #include "proto/bmp/bmp.h"
 #include "proto/bmp/buffer.h"
 #include "proto/bmp/map.h"
-#include "proto/bmp/utils.h"
 
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -172,11 +171,28 @@ enum bmp_term_reason {
 
 #define IP4_MAX_TTL 255
 
+
+#define IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(expr, msg, rv...)     \
+  do {                                                                      \
+    if ((expr))                                                             \
+    {                                                                       \
+      log(L_WARN "[BMP] " msg);                                             \
+      return rv;                                                            \
+    }                                                                       \
+  } while (0)
+
+
+#define IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(p, msg, rv...)	\
+  do {									\
+    IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(!(p), msg, rv);	\
+  } while (0)
+
+
 // Handle BIRD socket error event
 static void
 bmp_sock_err(sock *sk, int err);
 
-static enum bmp_result
+static void
 bmp_send_peer_up_notif_msg(const struct bgp_proto *bgp,
   const byte* tx_data, const size_t tx_data_size,
   const byte* rx_data, const size_t rx_data_size);
@@ -204,26 +220,20 @@ bmp_common_hdr_serialize(buffer *stream, const enum bmp_message_type type, const
   bmp_put_u8(stream, type);
 }
 
-static enum bmp_result
+static void
 bmp_info_tlv_hdr_serialize(buffer *stream, const enum bmp_info_tlv_type type,
-  const char *ascii)
+  const char *str)
 {
-  const size_t ascii_len = strlen(ascii);
-  if (ascii_len > MIB_II_STR_LEN)
-  {
-    return BMP_E_INVALID_ARG;
-  }
+  size_t str_len = strlen(str);
+  str_len = MIN(str_len, 65535);
 
   bmp_put_u16(stream, type);
-  // It doesn't contain null terminating character '\0'
-  bmp_put_u16(stream, ascii_len);
-  bmp_put_data(stream, ascii, ascii_len);
-
-  return BMP_E_NONE;
+  bmp_put_u16(stream, str_len);
+  bmp_put_data(stream, str, str_len);
 }
 
 // Serializes BMP Initiation message header [RFC 7854 - Section 4.3]
-static enum bmp_result
+static void
 bmp_init_msg_serialize(buffer *stream, const char *sys_descr, const char *sys_name)
 {
   const size_t sys_descr_len = strlen(sys_descr);
@@ -233,70 +243,42 @@ bmp_init_msg_serialize(buffer *stream, const char *sys_descr, const char *sys_na
   const size_t data_size = (2 * BMP_INFO_TLV_FIX_SIZE) + sys_descr_len + sys_name_len;
   bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE + data_size);
   bmp_common_hdr_serialize(stream, BMP_INIT_MSG, data_size);
-  IF_BMP_FAILED_RETURN_RC(
-    bmp_info_tlv_hdr_serialize(stream, BMP_INFO_TLV_TYPE_SYS_DESCR, sys_descr)
-  );
-
-  IF_BMP_FAILED_RETURN_RC(
-    bmp_info_tlv_hdr_serialize(stream, BMP_INFO_TLV_TYPE_SYS_NAME, sys_name)
-  );
-
-  return BMP_E_NONE;
+  bmp_info_tlv_hdr_serialize(stream, BMP_INFO_TLV_TYPE_SYS_DESCR, sys_descr);
+  bmp_info_tlv_hdr_serialize(stream, BMP_INFO_TLV_TYPE_SYS_NAME, sys_name);
 }
 
-static enum bmp_result
+static void
 bmp_schedule_tx_packet(const byte *payload, const size_t size)
 {
-  IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    !g_bmp->station_connected,
-    "Not BMP station connected yet",
-    BMP_E_CONNECT_TO_SRV
-  );
+  ASSERT(g_bmp->station_connected);
 
   struct bmp_data_node *tx_data = mb_alloc(g_bmp->tx_mem_pool, sizeof (struct bmp_data_node));
   tx_data->data = mb_alloc(g_bmp->tx_mem_pool, size);
   memcpy(tx_data->data, payload, size);
   tx_data->data_size = size;
   add_tail(&g_bmp->tx_queue, &tx_data->n);
+
   if (sk_tx_buffer_empty(g_bmp->conn->sk)
-         && !ev_active(g_bmp->conn->tx_ev))
+      && !ev_active(g_bmp->conn->tx_ev))
   {
     ev_schedule(g_bmp->conn->tx_ev);
   }
-
-  return BMP_E_NONE;
 }
 
 /**
  * bmp_startup - connect to the BMP collector.
  * NOTE: Send Initiation Message to the BMP collector.
  */
-static enum bmp_result
+static void
 bmp_startup(void)
 {
-  if (g_bmp->started || !g_bmp->station_connected)
-  {
-    return BMP_E_NONE;
-  }
+  ASSERT(g_bmp->station_connected && !g_bmp->started);
 
-  enum bmp_result rc = BMP_E_NONE;
-  buffer payload
-    = bmp_buffer_alloc(g_bmp->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
-  IF_BMP_FAILED_GOTO_LABEL(
-    bmp_init_msg_serialize(&payload, g_bmp->sys_descr, g_bmp->sys_name),
-    err
-  );
-
-  IF_BMP_FAILED_GOTO_LABEL(
-    bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload)),
-    err
-  );
+  buffer payload = bmp_buffer_alloc(g_bmp->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
+  bmp_init_msg_serialize(&payload, g_bmp->sys_descr, g_bmp->sys_name);
+  bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
   g_bmp->started = true;
-
-err:
-  bmp_buffer_free(&payload);
-  return rc;
 }
 
 void
@@ -331,8 +313,8 @@ bmp_fire_tx(void *vconn)
     rem_node((node *) tx_data);
     mb_free(tx_data);
     IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-      (sk_send(conn->sk, data_size) == 0),
-      "Failed to send BMP packet",
+      (sk_send(conn->sk, data_size) <= 0),
+      "Failed to send BMP packet"
     );
 
     // BMP packets should be treat with lowest priority when scheduling sending
@@ -353,37 +335,35 @@ bmp_fire_tx(void *vconn)
 static void
 bmp_tx(struct birdsock *sk)
 {
-  IF_BMP_FAILED_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    bmp_startup(),
-    "Failed to send Initation message to BMP collector"
-  );
-
   bmp_fire_tx(sk->data);
 }
 
-static inline enum bmp_result
+static inline int
 bmp_open_socket(struct bmp_proto *bmp)
 {
-  bmp->conn->sk->daddr = bmp->station_ip;
-  bmp->conn->sk->dport = bmp->station_port;
-  bmp->conn->sk->err_hook = bmp_sock_err;
+  sock *s = bmp->conn->sk;
+  s->daddr = bmp->station_ip;
+  s->dport = bmp->station_port;
+  s->err_hook = bmp_sock_err;
 
-  if (sk_open(bmp->conn->sk) < 0)
-  {
-    return BMP_E_OPEN_SOCKET;
-  }
+  int rc = sk_open(s);
 
-  return BMP_E_NONE;
+  if (rc < 0)
+    sk_log_error(s, bmp->p.name);
+
+  return rc;
 }
 
 static void
 bmp_connection_retry(timer *t)
 {
   struct bmp_proto *bmp = (struct bmp_proto *) t->data;
-  IF_BMP_FAILED_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    bmp_open_socket(bmp),
-    "Failed to connect to BMP station"
-  );
+
+  if (bmp_open_socket(bmp) < 0)
+  {
+    log(L_DEBUG "Failed to connect to BMP station");
+    return;
+  }
 
   log(L_DEBUG "Connected to BMP station after connection retry");
   tm_stop(t);
@@ -534,49 +514,30 @@ bmp_peer_down_notif_msg_serialize(buffer *stream, const bool is_peer_global,
  * bmp_open - initialize internal resources of BMP implementation.
  * NOTE: It does not connect to BMP collector yet.
  */
-enum bmp_result
+void
 bmp_open(const struct proto *P)
 {
   struct bmp_proto *bmp = (struct bmp_proto *) P;
   g_bmp = bmp;
-  enum bmp_result rc = BMP_E_NONE;
 
   log(L_DEBUG "Init BMP");
-  if (!P)
-  {
-    return BMP_E_NULL_REF;
-  }
 
   g_bmp->buffer_mpool = rp_new(P->pool, "BMP Buffer");
   g_bmp->map_mem_pool = rp_new(P->pool, "BMP Map");
   g_bmp->tx_mem_pool = rp_new(P->pool, "BMP Tx");
   g_bmp->update_msg_mem_pool = rp_new(P->pool, "BMP Update");
   bmp->conn->tx_ev = ev_new_init(g_bmp->tx_mem_pool, bmp_fire_tx, bmp->conn);
-  if (!bmp->conn->tx_ev)
-  {
-    return BMP_E_NEW_TX_EVENT;
-  }
 
-  IF_BMP_FAILED_RETURN_RC(
-    bmp_peer_map_init(&g_bmp->peer_open_msg.tx_msg, g_bmp->map_mem_pool)
-  );
-
-  IF_BMP_FAILED_GOTO_LABEL(
-    bmp_peer_map_init(&g_bmp->peer_open_msg.rx_msg, g_bmp->map_mem_pool),
-    err_free_ip_map_tx_msg
-  );
-
-  IF_BMP_FAILED_GOTO_LABEL(
-    bmp_peer_map_init(&g_bmp->bgp_peers, g_bmp->map_mem_pool),
-    err_free_ip_map_rx_msg
-  );
+  bmp_peer_map_init(&g_bmp->peer_open_msg.tx_msg, g_bmp->map_mem_pool);
+  bmp_peer_map_init(&g_bmp->peer_open_msg.rx_msg, g_bmp->map_mem_pool);
+  bmp_peer_map_init(&g_bmp->bgp_peers, g_bmp->map_mem_pool);
 
   init_list(&g_bmp->tx_queue);
   init_list(&g_bmp->rt_table_in_pre_policy.update_msg_queue);
   g_bmp->station_connected = false;
   g_bmp->started = false;
   g_bmp->connect_retry_timer = NULL;
-  if (BMP_FAILED(bmp_open_socket(bmp)))
+  if (bmp_open_socket(bmp) < 0)
   {
     log(L_DEBUG "Failed to connect to BMP station");
     g_bmp->connect_retry_timer = tm_new_init(P->pool, bmp_connection_retry, bmp,
@@ -591,14 +552,6 @@ bmp_open(const struct proto *P)
 
   strncpy(g_bmp->sys_name, bmp->sys_name, sizeof (g_bmp->sys_name) - 1);
   strncpy(g_bmp->sys_descr, bmp->sys_descr, sizeof (g_bmp->sys_descr) - 1);
-  return BMP_E_NONE;
-
-err_free_ip_map_rx_msg:
-  bmp_peer_map_free(&g_bmp->peer_open_msg.rx_msg);
-
-err_free_ip_map_tx_msg:
-  bmp_peer_map_free(&g_bmp->peer_open_msg.tx_msg);
-  return rc;
 }
 
 void
@@ -606,6 +559,7 @@ bmp_peer_map_walk_tx_open_msg_and_send_peer_up_notif(
   const struct bmp_peer_map_key key, const byte *tx_msg,
   const size_t tx_msg_size)
 {
+  ASSERT(g_bmp->station_connected);
   const struct bmp_peer_map_entry *map_rx_msg = bmp_peer_map_get(&g_bmp->peer_open_msg.rx_msg, key);
   IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
     map_rx_msg,
@@ -622,11 +576,8 @@ bmp_peer_map_walk_tx_open_msg_and_send_peer_up_notif(
   memcpy(&bgp, map_bgp_proto->data.buf, sizeof (bgp));
   if (bgp->p.proto_state == PS_UP)
   {
-    IF_BMP_FAILED_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-      bmp_send_peer_up_notif_msg(bgp, tx_msg, tx_msg_size, map_rx_msg->data.buf,
-        map_rx_msg->data.buf_size),
-      "Failed to send BMP Peer Up Notification MSG"
-    );
+    bmp_send_peer_up_notif_msg(bgp, tx_msg, tx_msg_size,
+			       map_rx_msg->data.buf, map_rx_msg->data.buf_size);
   }
 }
 
@@ -655,6 +606,7 @@ static const struct birdsock *
 bmp_get_birdsock_ext(const struct bgp_proto *bgp)
 {
   const struct birdsock *sk = bmp_get_birdsock(bgp);
+
   if (sk != NULL)
   {
     return sk;
@@ -713,47 +665,35 @@ bmp_is_peer_global_instance(const struct bgp_proto *bgp)
               : (bgp->cf->peer_type == BGP_PT_EXTERNAL);
 }
 
-enum bmp_result
+static void
 bmp_send_peer_up_notif_msg(const struct bgp_proto *bgp,
   const byte* tx_data, const size_t tx_data_size,
   const byte* rx_data, const size_t rx_data_size)
 {
+  ASSERT(g_bmp->station_connected);
+
   const struct birdsock *sk = bmp_get_birdsock_ext(bgp);
-  if (IS_NULL(sk))
-  {
-    return BMP_E_BIRDSOCK_NULL_REF;
-  }
+  IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
+    sk,
+    "[BMP] No BGP socket"
+  );
 
-  const struct bgp_caps *remote_caps = bmp_get_bgp_remote_caps_ext(bgp);
-  if (IS_NULL(remote_caps))
-  {
-    return BMP_E_REMOTE_CAPS_NULL_REF;
-  }
-
-  enum bmp_result rc = BMP_E_NONE;
   const bool is_global_instance_peer = bmp_is_peer_global_instance(bgp);
   buffer payload = bmp_buffer_alloc(g_bmp->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
   bmp_peer_up_notif_msg_serialize(&payload, is_global_instance_peer,
-    bgp->remote_as, bgp->remote_id, remote_caps->as4_support,
+    bgp->remote_as, bgp->remote_id, 1,
     sk->saddr, sk->daddr, sk->sport, sk->dport, tx_data, tx_data_size,
     rx_data, rx_data_size);
-  IF_BMP_FAILED_GOTO_LABEL(
-    bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload)),
-    err
-  );
+  bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
   bmp_peer_up(bgp);
-
-err:
-  bmp_buffer_free(&payload);
-  return rc;
 }
 
 void
 bmp_put_sent_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
   const size_t pkt_size)
 {
-  if (IS_NULL(g_bmp))
+  if (!g_bmp)
   {
     return;
   }
@@ -764,35 +704,25 @@ bmp_put_sent_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
     = bmp_peer_map_get(&g_bmp->peer_open_msg.rx_msg, key);
   if (!map_entry || !g_bmp->started)
   {
-    IF_BMP_FAILED_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-      bmp_peer_map_insert(&g_bmp->peer_open_msg.tx_msg, key, pkt, pkt_size),
-      "Failed to put data into map"
-    );
+    bmp_peer_map_insert(&g_bmp->peer_open_msg.tx_msg, key, pkt, pkt_size);
 
     if (!map_entry)
     {
-      IF_BMP_FAILED_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-        bmp_peer_map_insert(&g_bmp->bgp_peers, key, (const byte *) &bgp,
-          sizeof (bgp)),
-        "Failed to put data into map"
-      );
+      bmp_peer_map_insert(&g_bmp->bgp_peers, key, (const byte *) &bgp, sizeof (bgp));
     }
 
     return;
   }
 
-  IF_BMP_FAILED_PRINT_ERR_MSG(
-    bmp_send_peer_up_notif_msg(bgp, pkt, pkt_size, map_entry->data.buf,
-      map_entry->data.buf_size),
-    "Failed to send PEER UP notification"
-  );
+  bmp_send_peer_up_notif_msg(bgp, pkt, pkt_size, map_entry->data.buf,
+			     map_entry->data.buf_size);
 }
 
 void
 bmp_put_recv_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
   const size_t pkt_size)
 {
-  if (IS_NULL(g_bmp))
+  if (!g_bmp)
   {
     return;
   }
@@ -803,34 +733,24 @@ bmp_put_recv_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
     = bmp_peer_map_get(&g_bmp->peer_open_msg.tx_msg, key);
   if (!map_data || !g_bmp->started)
   {
-    IF_BMP_FAILED_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-      bmp_peer_map_insert(&g_bmp->peer_open_msg.rx_msg, key, pkt, pkt_size),
-      "Failed to insert item into peer map"
-    );
+    bmp_peer_map_insert(&g_bmp->peer_open_msg.rx_msg, key, pkt, pkt_size);
 
     if (!map_data)
     {
-      IF_BMP_FAILED_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-        bmp_peer_map_insert(&g_bmp->bgp_peers, key, (const byte *) &bgp,
-          sizeof (bgp)),
-        "Failed to insert item into peer map"
-      );
+      bmp_peer_map_insert(&g_bmp->bgp_peers, key, (const byte *) &bgp, sizeof (bgp));
     }
 
     return;
   }
 
-  IF_BMP_FAILED_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    bmp_send_peer_up_notif_msg(bgp, map_data->data.buf, map_data->data.buf_size,
-      pkt, pkt_size),
-    "Failed to send peer up notification"
-  );
+  bmp_send_peer_up_notif_msg(bgp, map_data->data.buf, map_data->data.buf_size,
+			     pkt, pkt_size);
 }
 
 void
 bmp_route_monitor_update_in_pre_begin()
 {
-  if (IS_NULL(g_bmp))
+  if (!g_bmp)
   {
     return;
   }
@@ -859,7 +779,7 @@ bmp_route_monitor_update_in_pre_begin()
 void
 bmp_route_monitor_put_update_in_pre_msg(const byte *data, const size_t data_size)
 {
-  if (IS_NULL(g_bmp))
+  if (!g_bmp)
   {
     return;
   }
@@ -891,7 +811,7 @@ bmp_route_monitor_put_update_in_pre_msg(const byte *data, const size_t data_size
 void
 bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp)
 {
-  if (IS_NULL(g_bmp))
+  if (!g_bmp)
   {
     return;
   }
@@ -938,25 +858,17 @@ bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp)
       g_bmp->rt_table_in_pre_policy.update_begin_time.tv_sec,
       g_bmp->rt_table_in_pre_policy.update_begin_time.tv_usec);
 
-    IF_BMP_FAILED_PRINT_ERR_MSG_AND_GOTO_LABEL(
-      bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload)),
-      "Failed to schedule packet for sent",
-      err
-    );
+    bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
     bmp_buffer_flush(&payload);
     bmp_buffer_flush(&update_msgs);
   }
-
-err:
-  bmp_buffer_free(&update_msgs);
-  bmp_buffer_free(&payload);
 }
 
 void
 bmp_route_monitor_update_in_pre_end()
 {
-  if (IS_NULL(g_bmp))
+  if (!g_bmp)
   {
     return;
   }
@@ -990,7 +902,7 @@ bmp_route_monitor_pre_policy_table_in_snapshot(const struct channel *C)
   }
 
   struct rtable *tab = C->in_table;
-  if (IS_NULL(tab))
+  if (!tab)
   {
     return;
   }
@@ -1039,33 +951,30 @@ bmp_route_monitor_pre_policy_table_in_snapshot(const struct channel *C)
   }
 }
 
-static enum bmp_result
+static void
 bmp_send_peer_down_notif_msg(const struct bgp_proto *bgp,
   const byte* data, const size_t data_size)
 {
+  ASSERT(g_bmp->station_connected);
+
   const struct bgp_caps *remote_caps = bmp_get_bgp_remote_caps_ext(bgp);
   bool is_global_instance_peer = bmp_is_peer_global_instance(bgp);
-  enum bmp_result rc = BMP_E_NONE;
   buffer payload
     = bmp_buffer_alloc(g_bmp->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
   bmp_peer_down_notif_msg_serialize(&payload, is_global_instance_peer,
     bgp->remote_as, bgp->remote_id,
     remote_caps ? remote_caps->as4_support : bgp->as4_session,
     bgp->remote_ip, data, data_size);
-  IF_BMP_FAILED_PRINT_ERR_MSG(
-    bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload)),
-    "Failed to schedule packet for transmit"
-  );
+  bmp_schedule_tx_packet(bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
   bmp_buffer_free(&payload);
-  return rc;
 }
 
 void
 bmp_peer_down(const struct bgp_proto *bgp, const int err_class, const byte *pkt,
   size_t pkt_size)
 {
-  if (IS_NULL(g_bmp) || (!g_bmp->started))
+  if (!g_bmp || !g_bmp->started)
   {
     return;
   }
@@ -1119,20 +1028,15 @@ bmp_peer_down(const struct bgp_proto *bgp, const int err_class, const byte *pkt,
     }
   }
 
-  IF_BMP_FAILED_PRINT_ERR_MSG(
-    bmp_send_peer_down_notif_msg(bgp, bmp_buffer_data(&payload),
-      bmp_buffer_pos(&payload)),
-    "Failed to send PEER DOWN notification"
-  );
+  bmp_send_peer_down_notif_msg(bgp, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
   bmp_buffer_free(&payload);
 }
 
-static enum bmp_result
+static void
 bmp_send_termination_msg(struct bmp_proto *bmp,
   const enum bmp_term_reason reason)
 {
-  enum bmp_result rc = BMP_E_NONE;
   const size_t term_msg_hdr_size = BMP_TERM_INFO_TYPE_SIZE
                                      + BMP_TERM_INFO_LEN_FIELD_SIZE
                                      + BMP_TERM_REASON_CODE_SIZE;
@@ -1144,13 +1048,12 @@ bmp_send_termination_msg(struct bmp_proto *bmp,
   bmp_put_u16(&stream, BMP_TERM_REASON_CODE_SIZE); // 2-byte code indication the reason
   bmp_put_u16(&stream, reason);
   memcpy(bmp->conn->sk->tbuf, bmp_buffer_data(&stream), bmp_buffer_pos(&stream));
-  if (sk_send(bmp->conn->sk, bmp_buffer_pos(&stream)) < 0)
-  {
-    rc = BMP_E_SEND_DATA;
-  }
+  IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
+    sk_send(bmp->conn->sk, bmp_buffer_pos(&stream)) < 0,
+    "Failed to send BMP termination message"
+    );
 
   bmp_buffer_free(&stream);
-  return rc;
 }
 
 static void
@@ -1159,10 +1062,8 @@ bmp_station_connected(struct birdsock *sk)
   struct bmp_conn *conn = (struct bmp_conn *)sk->data;
   conn->sk->tx_hook = bmp_tx;
   conn->bmp->station_connected = true;
-  IF_BMP_FAILED_PRINT_ERR_MSG(
-    bmp_startup(),
-    "Failed to start BMP protocol"
-  );
+
+  bmp_startup();
 
   bmp_peer_map_walk(&conn->bmp->peer_open_msg.tx_msg,
     bmp_peer_map_walk_tx_open_msg_and_send_peer_up_notif);
@@ -1190,11 +1091,6 @@ bmp_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
   struct bmp_proto *bmp = (struct bmp_proto *) P;
-  IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    (g_bmp != NULL),
-    "Single BMP protocol instance has been already run",
-    PS_DOWN
-  );
 
   struct bmp_config *cf = (struct bmp_config *) CF;
   bmp->cf = cf;
@@ -1229,11 +1125,7 @@ bmp_start(struct proto *P)
   bmp->conn = mb_allocz(P->pool, sizeof (struct bmp_conn));
   bmp->conn->bmp = bmp;
   bmp_setup_socket(bmp->conn);
-  IF_BMP_FAILED_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    bmp_open(P),
-    "Failed to connect to BMP collector",
-    PS_DOWN
-  );
+  bmp_open(P);
 
   return PS_UP;
 }
@@ -1242,10 +1134,7 @@ static int
 bmp_shutdown(struct proto *P)
 {
   struct bmp_proto *bmp = (struct bmp_proto *) P;
-  IF_BMP_FAILED_PRINT_ERR_MSG(
-    bmp_send_termination_msg(bmp, BMP_TERM_REASON_ADM),
-    "Failed to send BMP termination message"
-  );
+  bmp_send_termination_msg(bmp, BMP_TERM_REASON_ADM);
 
   g_bmp->station_connected = false;
   g_bmp->started = false;

@@ -39,8 +39,8 @@ struct monitoring_rib {
 
 struct bmp_config {
   struct proto_config c;
-  char *sys_descr;                    // sysDescr MIB-II [RFC1213] object
-  char *sys_name;                     // sysName MIB-II [RFC1213] object
+  const char *sys_descr;              // sysDescr MIB-II [RFC1213] object
+  const char *sys_name;               // sysName MIB-II [RFC1213] object
   ip_addr station_ip;                 // Monitoring station address
   u16 station_port;                   // Monitoring station TCP port
   bool disabled;                      // Manually disabled
