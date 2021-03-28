@@ -258,10 +258,10 @@ bmp_schedule_tx_packet(struct bmp_proto *p, const byte *payload, const size_t si
   tx_data->data_size = size;
   add_tail(&p->tx_queue, &tx_data->n);
 
-  if (sk_tx_buffer_empty(p->conn->sk)
-      && !ev_active(p->conn->tx_ev))
+  if (sk_tx_buffer_empty(p->sk)
+      && !ev_active(p->tx_ev))
   {
-    ev_schedule(p->conn->tx_ev);
+    ev_schedule(p->tx_ev);
   }
 }
 
@@ -281,18 +281,11 @@ bmp_startup(struct bmp_proto *p)
   p->started = true;
 }
 
-void
-bmp_fire_tx(void *vconn)
+static void
+bmp_fire_tx(void *p_)
 {
-  struct bmp_conn *conn = (void *) vconn;
-  struct bmp_proto *p = conn->bmp;
-
-  IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    conn->sk,
-    "Socket is null"
-  );
-
-  byte *buf = conn->sk->tbuf;
+  struct bmp_proto *p = p_;
+  byte *buf = p->sk->tbuf;
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
     EMPTY_LIST(p->tx_queue),
     "Called BMP TX event handler when there is not any data to send"
@@ -303,9 +296,9 @@ bmp_fire_tx(void *vconn)
   struct bmp_data_node *tx_data_next;
   WALK_LIST_DELSAFE(tx_data, tx_data_next, p->tx_queue)
   {
-    if (tx_data->data_size > conn->sk->tbsize)
+    if (tx_data->data_size > p->sk->tbsize)
     {
-      sk_set_tbsize(conn->sk, tx_data->data_size);
+      sk_set_tbsize(p->sk, tx_data->data_size);
     }
 
     size_t data_size = tx_data->data_size;
@@ -314,7 +307,7 @@ bmp_fire_tx(void *vconn)
     rem_node((node *) tx_data);
     mb_free(tx_data);
     IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-      (sk_send(conn->sk, data_size) <= 0),
+      (sk_send(p->sk, data_size) <= 0),
       "Failed to send BMP packet"
     );
 
@@ -323,9 +316,9 @@ bmp_fire_tx(void *vconn)
     // call
     if (++cnt > 32)
     {
-      if (!ev_active(conn->tx_ev))
+      if (!ev_active(p->tx_ev))
       {
-        ev_schedule(conn->tx_ev);
+        ev_schedule(p->tx_ev);
       }
 
       return;
@@ -342,7 +335,7 @@ bmp_tx(struct birdsock *sk)
 static inline int
 bmp_open_socket(struct bmp_proto *p)
 {
-  sock *s = p->conn->sk;
+  sock *s = p->sk;
   s->daddr = p->station_ip;
   s->dport = p->station_port;
   s->err_hook = bmp_sock_err;
@@ -358,7 +351,7 @@ bmp_open_socket(struct bmp_proto *p)
 static void
 bmp_connection_retry(timer *t)
 {
-  struct bmp_proto *p = (void *) t->data;
+  struct bmp_proto *p = t->data;
 
   if (bmp_open_socket(p) < 0)
   {
@@ -373,8 +366,8 @@ bmp_connection_retry(timer *t)
 void
 bmp_sock_err(sock *sk, int err)
 {
-  struct bmp_conn *conn = (void *) sk->data;
-  log(L_WARN "[BMP:%s] Socket error: %M", conn->bmp->p.name, err);
+  struct bmp_proto *p = sk->data;
+  log(L_WARN "[BMP:%s] Socket error: %M", p->p.name, err);
 }
 
 static inline void
@@ -510,7 +503,7 @@ bmp_open(const struct proto *P)
   p->map_mem_pool = rp_new(P->pool, "BMP Map");
   p->tx_mem_pool = rp_new(P->pool, "BMP Tx");
   p->update_msg_mem_pool = rp_new(P->pool, "BMP Update");
-  p->conn->tx_ev = ev_new_init(p->tx_mem_pool, bmp_fire_tx, p->conn);
+  p->tx_ev = ev_new_init(p->tx_mem_pool, bmp_fire_tx, p);
 
   bmp_peer_map_init(&p->peer_open_msg.tx_msg, p->map_mem_pool);
   bmp_peer_map_init(&p->peer_open_msg.rx_msg, p->map_mem_pool);
@@ -1040,15 +1033,14 @@ bmp_send_termination_msg(struct bmp_proto *p,
                                      + BMP_TERM_INFO_LEN_FIELD_SIZE
                                      + BMP_TERM_REASON_CODE_SIZE;
   const size_t term_msg_size = BMP_COMMON_HDR_SIZE + term_msg_hdr_size;
-  buffer stream
-    = bmp_buffer_alloc(p->buffer_mpool, term_msg_size);
+  buffer stream = bmp_buffer_alloc(p->buffer_mpool, term_msg_size);
   bmp_common_hdr_serialize(&stream, BMP_TERM_MSG, term_msg_hdr_size);
   bmp_put_u16(&stream, BMP_TERM_INFO_REASON);
   bmp_put_u16(&stream, BMP_TERM_REASON_CODE_SIZE); // 2-byte code indication the reason
   bmp_put_u16(&stream, reason);
-  memcpy(p->conn->sk->tbuf, bmp_buffer_data(&stream), bmp_buffer_pos(&stream));
+  memcpy(p->sk->tbuf, bmp_buffer_data(&stream), bmp_buffer_pos(&stream));
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    sk_send(p->conn->sk, bmp_buffer_pos(&stream)) < 0,
+    sk_send(p->sk, bmp_buffer_pos(&stream)) < 0,
     "Failed to send BMP termination message"
     );
 
@@ -1058,10 +1050,9 @@ bmp_send_termination_msg(struct bmp_proto *p,
 static void
 bmp_station_connected(struct birdsock *sk)
 {
-  struct bmp_conn *conn = (void *) sk->data;
-  struct bmp_proto *p = conn->bmp;
+  struct bmp_proto *p = (void *) sk->data;
 
-  conn->sk->tx_hook = bmp_tx;
+  sk->tx_hook = bmp_tx;
   p->station_connected = true;
 
   bmp_startup(p);
@@ -1073,17 +1064,17 @@ bmp_station_connected(struct birdsock *sk)
 }
 
 static inline void
-bmp_setup_socket(struct bmp_conn *conn)
+bmp_setup_socket(struct bmp_proto *p)
 {
-  sock *sk = sk_new(proto_pool);
+  sock *sk = sk_new(p->tx_mem_pool);
   sk->type = SK_TCP_ACTIVE;
   sk->ttl = IP4_MAX_TTL;
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->tbsize = BGP_TX_BUFFER_EXT_SIZE;
   sk->tx_hook = bmp_station_connected;
 
-  conn->sk = sk;
-  sk->data = conn;
+  p->sk = sk;
+  sk->data = p;
 }
 
 /** Configuration handle section **/
@@ -1111,9 +1102,7 @@ bmp_start(struct proto *P)
 {
   struct bmp_proto *p = (void *) P;
 
-  p->conn = mb_allocz(P->pool, sizeof (struct bmp_conn));
-  p->conn->bmp = p;
-  bmp_setup_socket(p->conn);
+  bmp_setup_socket(p);
   bmp_open(P);
 
   g_bmp = p;

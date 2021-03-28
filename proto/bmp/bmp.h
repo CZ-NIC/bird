@@ -46,12 +46,6 @@ struct bmp_config {
 struct bgp_proto;
 struct bmp_proto;
 
-struct bmp_conn {
-  struct bmp_proto *bmp;
-  struct birdsock *sk;
-  event *tx_ev;
-};
-
 // Stores sent and received BGP OPEN MSGs
 struct bmp_peer_open_msg {
   struct bmp_peer_map tx_msg;
@@ -70,7 +64,8 @@ struct rt_table_info {
 struct bmp_proto {
   struct proto p;                  // Parent proto
   const struct bmp_config *cf;     // Shortcut to BMP configuration
-  struct bmp_conn *conn;           // Connection we have established
+  sock *sk;                        // TCP connection
+  event *tx_ev;			   // TX event
   char sys_descr[MIB_II_STR_LEN];  // sysDescr MIB-II [RFC1213] object
   char sys_name[MIB_II_STR_LEN];   // sysName MIB-II [RFC1213] object
   ip_addr station_ip;              // Monitoring station IP address
