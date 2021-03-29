@@ -125,6 +125,7 @@
 #include "lib/string.h"
 
 #include "bgp.h"
+#include "proto/bmp/bmp.h"
 
 
 static list STATIC_LIST_INIT(bgp_sockets);		/* Global list of listening sockets */
@@ -866,7 +867,10 @@ bgp_graceful_restart_timeout(timer *t)
     }
   }
   else
+  {
     bgp_stop(p, 0, NULL, 0);
+    bmp_peer_down(p, BE_NONE, NULL, BMP_PEER_DOWN_NULL_PKT_SIZE);
+  }
 }
 
 static void
@@ -990,7 +994,10 @@ bgp_sock_err(sock *sk, int err)
   if (err)
     BGP_TRACE(D_EVENTS, "Connection lost (%M)", err);
   else
+  {
     BGP_TRACE(D_EVENTS, "Connection closed");
+    bmp_peer_down(p, BE_SOCKET, NULL, BMP_PEER_DOWN_NULL_PKT_SIZE);
+  }
 
   if ((conn->state == BS_ESTABLISHED) && p->gr_ready)
     bgp_handle_graceful_restart(p);
@@ -1315,6 +1322,7 @@ bgp_neigh_notify(neighbor *n)
       bgp_store_error(p, NULL, BE_MISC, BEM_NEIGHBOR_LOST);
       /* Perhaps also run bgp_update_startup_delay(p)? */
       bgp_stop(p, 0, NULL, 0);
+      bmp_peer_down(p, BE_MISC, NULL, BMP_PEER_DOWN_NULL_PKT_SIZE);
     }
   }
   else if (p->cf->check_link && !(n->iface->flags & IF_LINK_UP))
@@ -1326,6 +1334,7 @@ bgp_neigh_notify(neighbor *n)
       if (ps == PS_UP)
 	bgp_update_startup_delay(p);
       bgp_stop(p, 0, NULL, 0);
+      bmp_peer_down(p, BE_MISC, NULL, BMP_PEER_DOWN_NULL_PKT_SIZE);
     }
   }
   else
@@ -1367,6 +1376,7 @@ bgp_bfd_notify(struct bfd_request *req)
       if (ps == PS_UP)
 	bgp_update_startup_delay(p);
       bgp_stop(p, 0, NULL, 0);
+      bmp_peer_down(p, BE_MISC, NULL, BMP_PEER_DOWN_NULL_PKT_SIZE);
     }
   }
 }
@@ -1684,6 +1694,7 @@ bgp_init(struct proto_config *CF)
   struct bgp_config *cf = (struct bgp_config *) CF;
 
   P->rt_notify = bgp_rt_notify;
+  P->rte_update_in_notify = bgp_rte_update_in_notify;
   P->preexport = bgp_preexport;
   P->neigh_notify = bgp_neigh_notify;
   P->reload_routes = bgp_reload_routes;
