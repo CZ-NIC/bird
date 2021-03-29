@@ -210,7 +210,7 @@ struct bmp_data_node {
 };
 
 static void
-bmp_route_monitor_pre_policy_table_in_snapshot(const struct channel *C);
+bmp_route_monitor_pre_policy_table_in_snapshot(struct channel *C);
 
 static void
 bmp_common_hdr_serialize(buffer *stream, const enum bmp_message_type type, const u32 data_size)
@@ -881,8 +881,8 @@ bmp_route_monitor_update_in_pre_end()
   }
 }
 
-void
-bmp_route_monitor_pre_policy_table_in_snapshot(const struct channel *C)
+static void
+bmp_route_monitor_pre_policy_table_in_snapshot(struct channel *C)
 {
   struct bmp_proto *p = g_bmp;
 
@@ -915,7 +915,7 @@ bmp_route_monitor_pre_policy_table_in_snapshot(const struct channel *C)
     rte *e;
     for (e = n->routes; e; e = e->next)
     {
-      bgp_rte_update_in_notify(P, C, n, e, NULL, e->src);
+      bgp_rte_update_in_notify(C, n->n.addr, e, e->src);
     }
 
     bmp_route_monitor_update_in_pre_commit((struct bgp_proto *) P);

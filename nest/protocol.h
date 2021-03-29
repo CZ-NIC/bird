@@ -214,8 +214,7 @@ struct proto {
   void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
   void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
   void (*rt_notify)(struct proto *, struct channel *, struct network *net, struct rte *new, struct rte *old);
-  void (*rte_update_in_notify)(const struct proto *, const struct channel *,
-    const net *net, const struct rte *new, const struct rte *old, const struct rte_src *src);
+  void (*rte_update_in_notify)(struct channel *, const net_addr *, const struct rte *, const struct rte_src *);
   void (*neigh_notify)(struct neighbor *neigh);
   int (*preexport)(struct channel *, struct rte *rt);
   void (*reload_routes)(struct channel *);

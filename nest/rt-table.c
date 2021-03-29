@@ -3097,7 +3097,7 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 	  old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
 
 	  if (c->proto->rte_update_in_notify)
-	    c->proto->rte_update_in_notify(c->proto, c, net, new, old, src);
+	    c->proto->rte_update_in_notify(c, n, old, src);
 
 	  return 1;
 	}
@@ -3122,11 +3122,11 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
     if (!old)
       goto drop_withdraw;
 
-    if (c->proto->rte_update_in_notify)
-      c->proto->rte_update_in_notify(c->proto, c, net, new, old, src);
-
     if (!net->routes)
       fib_delete(&tab->fib, net);
+
+    if (c->proto->rte_update_in_notify)
+      c->proto->rte_update_in_notify(c, n, NULL, src);
 
     return 1;
   }
@@ -3158,7 +3158,7 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
   tab->rt_count++;
 
   if (c->proto->rte_update_in_notify)
-    c->proto->rte_update_in_notify(c->proto, c, net, new, old, src);
+    c->proto->rte_update_in_notify(c, n, e, src);
 
   return 1;
 
