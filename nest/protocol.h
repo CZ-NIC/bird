@@ -42,6 +42,7 @@ enum protocol_class {
   PROTOCOL_BABEL,
   PROTOCOL_BFD,
   PROTOCOL_BGP,
+  PROTOCOL_BMP,
   PROTOCOL_DEVICE,
   PROTOCOL_DIRECT,
   PROTOCOL_KERNEL,
@@ -103,7 +104,7 @@ void protos_dump_all(void);
 extern struct protocol
   proto_device, proto_radv, proto_rip, proto_static, proto_mrt,
   proto_ospf, proto_perf,
-  proto_pipe, proto_bgp, proto_bfd, proto_babel, proto_rpki;
+  proto_pipe, proto_bgp, proto_bmp, proto_bfd, proto_babel, proto_rpki;
 
 /*
  *	Routing Protocol Instance
@@ -213,6 +214,8 @@ struct proto {
   void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
   void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
   void (*rt_notify)(struct proto *, struct channel *, struct network *net, struct rte *new, struct rte *old);
+  void (*rte_update_in_notify)(const struct proto *, const struct channel *,
+    const net *net, const struct rte *new, const struct rte *old, const struct rte_src *src);
   void (*neigh_notify)(struct neighbor *neigh);
   int (*preexport)(struct channel *, struct rte *rt);
   void (*reload_routes)(struct channel *);
