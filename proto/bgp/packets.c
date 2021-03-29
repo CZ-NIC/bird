@@ -1566,7 +1566,10 @@ bgp_encode_nlri_ip4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_free_prefix(s->channel, px);
+    if (!s->sham)
+      bgp_free_prefix(s->channel, px);
+    else
+      rem_node(&px->buck_node);
   }
 
   return pos - buf;
@@ -1651,7 +1654,10 @@ bgp_encode_nlri_ip6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_free_prefix(s->channel, px);
+    if (!s->sham)
+      bgp_free_prefix(s->channel, px);
+    else
+      rem_node(&px->buck_node);
   }
 
   return pos - buf;
@@ -1739,7 +1745,10 @@ bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_free_prefix(s->channel, px);
+    if (!s->sham)
+      bgp_free_prefix(s->channel, px);
+    else
+      rem_node(&px->buck_node);
   }
 
   return pos - buf;
@@ -1836,7 +1845,10 @@ bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_free_prefix(s->channel, px);
+    if (!s->sham)
+      bgp_free_prefix(s->channel, px);
+    else
+      rem_node(&px->buck_node);
   }
 
   return pos - buf;
@@ -1923,7 +1935,10 @@ bgp_encode_nlri_flow4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
     memcpy(pos, net->data, flen);
     ADVANCE(pos, size, flen);
 
-    bgp_free_prefix(s->channel, px);
+    if (!s->sham)
+      bgp_free_prefix(s->channel, px);
+    else
+      rem_node(&px->buck_node);
   }
 
   return pos - buf;
@@ -2015,7 +2030,10 @@ bgp_encode_nlri_flow6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
     memcpy(pos, net->data, flen);
     ADVANCE(pos, size, flen);
 
-    bgp_free_prefix(s->channel, px);
+    if (!s->sham)
+      bgp_free_prefix(s->channel, px);
+    else
+      rem_node(&px->buck_node);
   }
 
   return pos - buf;
@@ -2242,224 +2260,6 @@ bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to)
 
 #define MAX_ATTRS_LENGTH (end-buf+BGP_HEADER_LENGTH - 1024)
 
-/**
- * Following functions starting with prefix bgp_bmp_* compose BGP UPDATE messages.
- * Their implementation has been adopted from relevant function without 'bmp_' part in 
- * their names.
- */
-
-// Buffer @buf should be big enough. It means that there should be available at least 19 bytes
-static byte *
-bgp_bmp_prepare_bgp_hdr(byte *buf, const u16 msg_size, const u8 msg_type)
-{
-  if (!buf)
-  {
-    return NULL;
-  }
-
-  memset(buf + BGP_MSG_HDR_MARKER_POS, 0xff, BGP_MSG_HDR_MARKER_SIZE);
-  put_u16(buf + BGP_MSG_HDR_LENGTH_POS, msg_size);
-  put_u8(buf + BGP_MSG_HDR_TYPE_POS, msg_type);
-
-  return buf + BGP_MSG_HDR_TYPE_POS + BGP_MSG_HDR_TYPE_SIZE;
-}
-
-static uint
-bgp_bmp_encode_nlri_ip4(struct bgp_write_state *s, const net *n,
-  const u32 path_id, byte *buf, uint size)
-{
-  const struct net_addr_ip4 *naddr = (net_addr_ip4 *)n->n.addr;
-
-  byte *pos = buf;
-  /* Encode path ID */
-  if (s->add_path)
-  {
-    put_u32(pos, path_id);
-    ADVANCE(pos, size, 4);
-  }
-
-  /* Encode prefix length */
-  *pos = naddr->pxlen;
-  ADVANCE(pos, size, 1);
-
-  /* Encode MPLS labels */
-  if (s->mpls)
-  {
-    bgp_encode_mpls_labels(s, s->mpls_labels, &pos, &size, pos - 1);
-  }
-
-  /* Encode prefix body */
-  ip4_addr a = ip4_hton(naddr->prefix);
-  uint b = (naddr->pxlen + 7) / 8;
-  memcpy(pos, &a, b);
-  ADVANCE(pos, size, b);
-
-  return pos - buf;
-}
-
-static uint
-bgp_bmp_encode_nlri_ip6(struct bgp_write_state *s, const net *n,
-  const u32 path_id, byte *buf, uint size)
-{
-  if (size < BGP_NLRI_MAX)
-  {
-    return 0;
-  }
-
-  const struct net_addr_ip6 *naddr = (net_addr_ip6 *)n->n.addr;
-  byte *pos = buf;
-  /* Encode path ID */
-  if (s->add_path)
-  {
-    put_u32(pos, path_id);
-    ADVANCE(pos, size, 4);
-  }
-
-  /* Encode prefix length */
-  *pos = naddr->pxlen;
-  ADVANCE(pos, size, 1);
-
-  /* Encode MPLS labels */
-  if (s->mpls)
-  {
-    bgp_encode_mpls_labels(s, s->mpls_labels, &pos, &size, pos - 1);
-  }
-
-  /* Encode prefix body */
-  ip6_addr a = ip6_hton(naddr->prefix);
-  uint b = (naddr->pxlen + 7) / 8;
-  memcpy(pos, &a, b);
-  ADVANCE(pos, size, b);
-
-  return pos - buf;
-}
-
-static byte *
-bgp_bmp_create_ip_reach(struct bgp_write_state *s, const net *n,
-  const struct rte *new, const struct rte *old, const u32 path_id,
-  byte *buf, uint size)
-{
-  /*
-   *	2 B	Withdrawn Routes Length (zero)
-   *	---	IPv4 Withdrawn Routes NLRI (unused)
-   *	2 B	Total Path Attribute Length
-   *	var	Path Attributes
-   *	var	IPv4 Network Layer Reachability Information
-   */
-
-  int lr, la; // Route length, attribute length
-  ea_list *attrs = new ? new->attrs->eattrs : old->attrs->eattrs;
-  bgp_fix_attr_flags(attrs);
-
-  la = bgp_encode_attrs(s, attrs, buf + 2, buf + size - 2);
-  if (la < 0)
-  {
-    /* Attribute list too long */
-    log(L_ERR "Failed to encode UPDATE msg attributes");
-    return NULL;
-  }
-
-  put_u16(buf, la);
-  lr = bgp_bmp_encode_nlri_ip4(s, n, path_id, buf + 2 + la, size - (2 + la));
-
-  return buf + 2 + la + lr;
-}
-
-static byte *
-bgp_bmp_create_mp_reach(struct bgp_write_state *s, const net *n,
-  const struct rte *new, const struct rte *old, const u32 path_id,
-  byte *buf, uint size)
-{
-  /*
-   *	2 B	IPv4 Withdrawn Routes Length (zero)
-   *	---	IPv4 Withdrawn Routes NLRI (unused)
-   *	2 B	Total Path Attribute Length
-   *	1 B	MP_REACH_NLRI hdr - Attribute Flags
-   *	1 B	MP_REACH_NLRI hdr - Attribute Type Code
-   *	2 B	MP_REACH_NLRI hdr - Length of Attribute Data
-   *	2 B	MP_REACH_NLRI data - Address Family Identifier
-   *	1 B	MP_REACH_NLRI data - Subsequent Address Family Identifier
-   *	1 B	MP_REACH_NLRI data - Length of Next Hop Network Address
-   *	var	MP_REACH_NLRI data - Network Address of Next Hop
-   *	1 B	MP_REACH_NLRI data - Reserved (zero)
-   *	var	MP_REACH_NLRI data - Network Layer Reachability Information
-   *	var	Rest of Path Attributes
-   *	---	IPv4 Network Layer Reachability Information (unused)
-   */
-
-  int lh, lr, la;	/* Lengths of next hop, NLRI and attributes */
-
-  /* Begin of MP_REACH_NLRI atribute */
-  buf[4] = BAF_OPTIONAL | BAF_EXT_LEN;
-  buf[5] = BA_MP_REACH_NLRI;
-  put_u16(buf+6, 0);		/* Will be fixed later */
-  put_af3(buf+8, s->channel->afi);
-  byte *pos = buf+11;
-  byte *end = buf + size;
-  /* Encode attributes to temporary buffer */
-  byte *abuf = alloca(MAX_ATTRS_LENGTH);
-
-  ea_list *attrs = new ? new->attrs->eattrs : old->attrs->eattrs;
-  bgp_fix_attr_flags(attrs);
-
-  la = bgp_encode_attrs(s, attrs, abuf, abuf + MAX_ATTRS_LENGTH);
-  if (la < 0)
-  {
-    /* Attribute list too long */
-    log(L_ERR "Failed to encode UPDATE msg attributes");
-    return NULL;
-  }
-
-  /* Encode the next hop */
-  lh = bgp_encode_next_hop(s, s->mp_next_hop, pos+1);
-  *pos = lh;
-  pos += 1+lh;
-
-  /* Reserved field */
-  *pos++ = 0;
-
-  /* Encode the NLRI */
-  lr = bgp_bmp_encode_nlri_ip6(s, n, path_id, pos, end - (buf + la));
-  pos += lr;
-
-  /* End of MP_REACH_NLRI atribute, update data length */
-  put_u16(buf+6, pos-buf-8);
-
-  /* Copy remaining attributes */
-  memcpy(pos, abuf, la);
-  pos += la;
-
-  /* Initial UPDATE fields */
-  put_u16(buf+0, 0);
-  put_u16(buf+2, pos-buf-4);
-
-  return pos;
-}
-
-static byte *
-bgp_bmp_create_ip_unreach(struct bgp_write_state *s, const net *n,
-  const struct rte *new, const struct rte *old, const u32 path_id,
-  byte *buf, uint size)
-{
-  /*
-   *	2 B	Withdrawn Routes Length
-   *	var	IPv4 Withdrawn Routes NLRI
-   *	2 B	Total Path Attribute Length (zero)
-   *	---	Path Attributes (unused)
-   *	---	IPv4 Network Layer Reachability Information (unused)
-   */
-
-  uint len = 0;
-  bool is_withdrawn = !new && old;
-  if (is_withdrawn)
-  {
-    len = bgp_bmp_encode_nlri_ip4(s, n, path_id, buf + 2, size - 2);
-  }
-
-  put_u16(buf, len);
-  return buf + 2 + len;
-}
-
 static byte *
 bgp_create_ip_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, byte *end)
 {
@@ -2477,7 +2277,8 @@ bgp_create_ip_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
   if (la < 0)
   {
     /* Attribute list too long */
-    bgp_withdraw_bucket(s->channel, buck);
+    if (!s->sham)
+      bgp_withdraw_bucket(s->channel, buck);
     return NULL;
   }
 
@@ -2524,7 +2325,8 @@ bgp_create_mp_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
   if (la < 0)
   {
     /* Attribute list too long */
-    bgp_withdraw_bucket(s->channel, buck);
+    if (!s->sham)
+      bgp_withdraw_bucket(s->channel, buck);
     return NULL;
   }
 
@@ -2606,53 +2408,11 @@ bgp_create_mp_unreach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
 }
 
 static byte *
-bgp_bmp_create_mp_unreach(struct bgp_write_state *s, const net *n,
-  const struct rte *new, const struct rte *old, const u32 path_id,
-  byte *buf, uint size)
+bgp_create_update_bmp(struct bgp_channel *c, byte *buf, struct bgp_bucket *buck, bool update)
 {
-  /*
-   *	2 B	Withdrawn Routes Length (zero)
-   *	---	IPv4 Withdrawn Routes NLRI (unused)
-   *	2 B	Total Path Attribute Length
-   *	1 B	MP_UNREACH_NLRI hdr - Attribute Flags
-   *	1 B	MP_UNREACH_NLRI hdr - Attribute Type Code
-   *	2 B	MP_UNREACH_NLRI hdr - Length of Attribute Data
-   *	2 B	MP_UNREACH_NLRI data - Address Family Identifier
-   *	1 B	MP_UNREACH_NLRI data - Subsequent Address Family Identifier
-   *	var	MP_UNREACH_NLRI data - Network Layer Reachability Information
-   *	---	IPv4 Network Layer Reachability Information (unused)
-   */
-
-  uint len = 0;
-  bool is_withdrawn = !new && old;
-  if (is_withdrawn)
-  {
-    len = bgp_bmp_encode_nlri_ip6(s, n, path_id, buf + 11, size);
-  }
-
-  put_u16(buf+0, 0);
-  put_u16(buf+2, 7+len);
-
-  /* Begin of MP_UNREACH_NLRI atribute */
-  buf[4] = BAF_OPTIONAL | BAF_EXT_LEN;
-  buf[5] = BA_MP_UNREACH_NLRI;
-
-  put_u16(buf+6, 3+len);
-  put_af3(buf+8, s->channel->afi);
-
-  return buf+11+len;
-}
-
-void
-bgp_rte_update_in_notify(const struct proto *P, const struct channel *C,
-  const net *n, const struct rte *new, const struct rte *old,
-  const struct rte_src *src)
-{
-  struct bgp_proto *p = (struct bgp_proto *)P;
-  struct bgp_channel *c = (struct bgp_channel *)C;
-  byte buf[BGP_MAX_EXT_MSG_LENGTH] = { 0x00 };
-  byte *pkt = buf + BGP_HEADER_LENGTH;
-  byte *end = pkt + (bgp_max_packet_length(p->conn) - BGP_HEADER_LENGTH);
+  struct bgp_proto *p = (void *) c->c.proto;
+  byte *end = buf + (BGP_MAX_EXT_MSG_LENGTH - BGP_HEADER_LENGTH);
+  /* FIXME: must be a bit shorter */
 
   struct bgp_caps *peer = p->conn->remote_caps;
   const struct bgp_af_caps *rem = bgp_find_af_caps(peer, c->afi);
@@ -2660,65 +2420,73 @@ bgp_rte_update_in_notify(const struct proto *P, const struct channel *C,
     .proto = p,
     .channel = c,
     .pool = tmp_linpool,
-    .mp_reach = (bgp_channel_is_ipv6(c) || rem->ext_next_hop),
-    .as4_session = peer->as4_support,
+    .mp_reach = (c->afi != BGP_AF_IPV4) || rem->ext_next_hop,
+    .as4_session = 1,
     .add_path = c->add_path_rx,
     .mpls = c->desc->mpls,
+    .sham = 1,
   };
 
-  const u32 path_id = c->add_path_rx ? src->private_id : 0;
-  byte *pos = pkt;
-  if (!s.mp_reach)
+  if (!update)
   {
-    pos = bgp_bmp_create_ip_unreach(&s, n, new, old, path_id, pkt, end - pkt);
-    if (!pos)
-    {
-      log(L_ERR "Failed to create unreachable field in UPDATE message");
-      return;
-    }
-
-    pos = bgp_bmp_create_ip_reach(&s, n, new, old, path_id, pos, end - pos);
-    if (!pos)
-    {
-      log(L_ERR "Failed to create reachable field in UPDATE message");
-      return;
-    }
-
-    bgp_bmp_prepare_bgp_hdr(buf, pos - buf, PKT_UPDATE);
-    bmp_route_monitor_put_update_in_pre_msg(buf, pos - buf);
+    return !s.mp_reach ?
+      bgp_create_ip_unreach(&s, buck, buf, end):
+      bgp_create_mp_unreach(&s, buck, buf, end);
   }
-  else if (new) // && s.mp_reach
+  else
   {
-    pos = s.mp_reach
-            ? bgp_bmp_create_mp_reach(&s, n, new, old, path_id, pos, end - pos)
-            : bgp_bmp_create_ip_reach(&s, n, new, old, path_id, pos, end - pos);
-    if (!pos)
-    {
-      log(L_ERR "Failed to create reachable field in UPDATE message");
-      return;
-    }
-
-    bgp_bmp_prepare_bgp_hdr(buf, pos - buf, PKT_UPDATE);
-    bmp_route_monitor_put_update_in_pre_msg(buf, pos - buf);
+    return !s.mp_reach ?
+      bgp_create_ip_reach(&s, buck, buf, end):
+      bgp_create_mp_reach(&s, buck, buf, end);
   }
+}
 
-  if (!new && old)
-  {
-    bmp_route_monitor_update_in_pre_commit(p);
-    bmp_route_monitor_update_in_pre_end();
-    bmp_route_monitor_update_in_pre_begin();
-    pkt = buf + BGP_HEADER_LENGTH;
-    end = pkt + (bgp_max_packet_length(p->conn) - BGP_HEADER_LENGTH);
-    pos = bgp_bmp_create_mp_unreach(&s, n, new, old, path_id, pkt, end - pkt);
-    if (!pos)
-    {
-      log(L_ERR "Failed to create unreachable field in UPDATE message");
-      return;
-    }
+static byte *
+bgp_bmp_prepare_bgp_hdr(byte *buf, const u16 msg_size, const u8 msg_type)
+{
+  memset(buf + BGP_MSG_HDR_MARKER_POS, 0xff, BGP_MSG_HDR_MARKER_SIZE);
+  put_u16(buf + BGP_MSG_HDR_LENGTH_POS, msg_size);
+  put_u8(buf + BGP_MSG_HDR_TYPE_POS, msg_type);
 
-    bgp_bmp_prepare_bgp_hdr(buf, pos - buf, PKT_UPDATE);
-    bmp_route_monitor_put_update_in_pre_msg(buf, pos - buf);
-  }
+  return buf + BGP_MSG_HDR_TYPE_POS + BGP_MSG_HDR_TYPE_SIZE;
+}
+
+void
+bgp_rte_update_in_notify(struct channel *C, const net_addr *n,
+			 const struct rte *new, const struct rte_src *src)
+{
+//  struct bgp_proto *p = (void *) C->proto;
+  struct bgp_channel *c = (void *) C;
+
+  byte buf[BGP_MAX_EXT_MSG_LENGTH];
+  byte *pkt = buf + BGP_HEADER_LENGTH;
+
+  ea_list *attrs = new ? new->attrs->eattrs : NULL;
+  uint ea_size = new ? (sizeof(ea_list) + attrs->count * sizeof(eattr)) : 0;
+  uint bucket_size = sizeof(struct bgp_bucket) + ea_size;
+  uint prefix_size = sizeof(struct bgp_prefix) + n->length;
+
+  /* Sham bucket */
+  struct bgp_bucket *b = alloca(bucket_size);
+  *b = (struct bgp_bucket) { };
+  init_list(&b->prefixes);
+
+  if (attrs)
+    memcpy(b->eattrs, attrs, ea_size);
+
+  /* Sham prefix */
+  struct bgp_prefix *px = alloca(prefix_size);
+  *px = (struct bgp_prefix) { };
+  px->path_id = src->private_id;
+  net_copy(px->net, n);
+  add_tail(&b->prefixes, &px->buck_node);
+
+  byte *end = bgp_create_update_bmp(c, pkt, b, !!new);
+  if (!end)
+    return;
+
+  bgp_bmp_prepare_bgp_hdr(buf, end - buf, PKT_UPDATE);
+  bmp_route_monitor_put_update_in_pre_msg(buf, end - buf);
 }
 
 static byte *
