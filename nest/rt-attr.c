@@ -748,14 +748,22 @@ static inline ea_list *
 ea_list_copy(ea_list *o)
 {
   ea_list *n;
-  unsigned i, len;
+  unsigned i, adpos, elen;
 
   if (!o)
     return NULL;
   ASSERT(!o->next);
-  len = sizeof(ea_list) + sizeof(eattr) * o->count;
-  n = mb_alloc(rta_pool, len);
-  memcpy(n, o, len);
+  elen = adpos = sizeof(ea_list) + sizeof(eattr) * o->count;
+
+  for(i=0; i<o->count; i++)
+    {
+      eattr *a = &o->attrs[i];
+      if (!(a->type & EAF_EMBEDDED))
+	elen += sizeof(struct adata) + a->u.ptr->length;
+    }
+
+  n = mb_alloc(rta_pool, elen);
+  memcpy(n, o, adpos);
   n->flags |= EALF_CACHED;
   for(i=0; i<o->count; i++)
     {
@@ -763,28 +771,25 @@ ea_list_copy(ea_list *o)
       if (!(a->type & EAF_EMBEDDED))
 	{
 	  unsigned size = sizeof(struct adata) + a->u.ptr->length;
-	  struct adata *d = mb_alloc(rta_pool, size);
+	  ASSERT_DIE(adpos + size <= elen);
+
+	  struct adata *d = ((void *) n) + adpos;
 	  memcpy(d, a->u.ptr, size);
 	  a->u.ptr = d;
+
+	  adpos += size;
 	}
     }
+  ASSERT_DIE(adpos == elen);
   return n;
 }
 
 static inline void
 ea_free(ea_list *o)
 {
-  int i;
-
   if (o)
     {
       ASSERT(!o->next);
-      for(i=0; i<o->count; i++)
-	{
-	  eattr *a = &o->attrs[i];
-	  if (!(a->type & EAF_EMBEDDED))
-	    mb_free((void *) a->u.ptr);
-	}
       mb_free(o);
     }
 }
