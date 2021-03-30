@@ -224,12 +224,15 @@ mrt_next_table_(rtable *tab, rtable *tab_ptr, const char *pattern)
     return !tab ? tab_ptr : NULL;
 
   /* Walk routing_tables list, starting after tab (if non-NULL) */
-  for (tab = !tab ? HEAD(routing_tables) : NODE_NEXT(tab);
-       NODE_VALID(tab);
-       tab = NODE_NEXT(tab))
+  for (node *tn = tab ? tab->n.next : HEAD(routing_tables);
+       NODE_VALID(tn);
+       tn = tn->next)
+  {
+    tab = SKIP_BACK(struct rtable, n, tn);
     if (patmatch(pattern, tab->name) &&
 	((tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6)))
       return tab;
+  }
 
   return NULL;
 }

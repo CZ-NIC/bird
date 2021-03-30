@@ -1741,8 +1741,9 @@ void
 rt_dump_all(void)
 {
   rtable *t;
+  node *n;
 
-  WALK_LIST(t, routing_tables)
+  WALK_LIST2(t, n, routing_tables, n)
     rt_dump(t);
 }
 
