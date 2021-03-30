@@ -393,6 +393,21 @@ mb_realloc(void *m, unsigned size)
   return b->data;
 }
 
+/**
+ * mb_move - move a memory block
+ * @m: memory block
+ * @p: target pool
+ *
+ * mb_move() moves the given memory block to another pool in the same way
+ * as rmove() moves a plain resource.
+ */
+void
+mb_move(void *m, pool *p)
+{
+  struct mblock *b = SKIP_BACK(struct mblock, data, m);
+  rmove(b, p);
+}
+
 
 /**
  * mb_free - free a memory block

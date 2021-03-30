@@ -53,6 +53,7 @@ extern pool root_pool;
 void *mb_alloc(pool *, unsigned size);
 void *mb_allocz(pool *, unsigned size);
 void *mb_realloc(void *m, unsigned size);
+void mb_move(void *, pool *);
 void mb_free(void *);
 
 /* Memory pools with linear allocation */
