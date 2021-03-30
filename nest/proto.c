@@ -518,11 +518,12 @@ void
 channel_setup_in_table(struct channel *c)
 {
   struct rtable_config *cf = mb_allocz(c->proto->pool, sizeof(struct rtable_config));
+
   cf->name = "import";
   cf->addr_type = c->net_type;
+  cf->internal = 1;
 
-  c->in_table = mb_allocz(c->proto->pool, sizeof(struct rtable));
-  rt_setup(c->proto->pool, c->in_table, cf);
+  c->in_table = rt_setup(c->proto->pool, cf);
 
   c->reload_event = ev_new_init(c->proto->pool, channel_reload_loop, c);
 }
@@ -534,9 +535,9 @@ channel_setup_out_table(struct channel *c)
   struct rtable_config *cf = mb_allocz(c->proto->pool, sizeof(struct rtable_config));
   cf->name = "export";
   cf->addr_type = c->net_type;
+  cf->internal = 1;
 
-  c->out_table = mb_allocz(c->proto->pool, sizeof(struct rtable));
-  rt_setup(c->proto->pool, c->out_table, cf);
+  c->out_table = rt_setup(c->proto->pool, cf);
 }
 
 
@@ -608,6 +609,8 @@ channel_do_down(struct channel *c)
   c->in_table = NULL;
   c->reload_event = NULL;
   c->out_table = NULL;
+
+  /* The in_table and out_table are going to be freed by freeing their resource pools. */
 
   CALL(c->channel->cleanup, c);
 

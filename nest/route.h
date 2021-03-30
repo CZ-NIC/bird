@@ -148,12 +148,15 @@ struct rtable_config {
   int gc_max_ops;			/* Maximum number of operations before GC is run */
   int gc_min_time;			/* Minimum time between two consecutive GC runs */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
+  byte internal;			/* Internal table of a protocol */
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
 };
 
 typedef struct rtable {
+  resource r;
   node n;				/* Node in list of all tables */
+  pool *rp;				/* Resource pool to allocate everything from, including itself */
   struct fib fib;
   char *name;				/* Name of this table */
   list channels;			/* List of attached channels (struct channel) */
@@ -311,7 +314,9 @@ void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
 void rt_subscribe(rtable *tab, struct rt_subscription *s);
 void rt_unsubscribe(struct rt_subscription *s);
-void rt_setup(pool *, rtable *, struct rtable_config *);
+rtable *rt_setup(pool *, struct rtable_config *);
+static inline void rt_shutdown(rtable *r) { rfree(r->rp); }
+
 static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
 static inline net *net_find_valid(rtable *tab, const net_addr *addr)
 { net *n = net_find(tab, addr); return (n && rte_is_valid(n->routes)) ? n : NULL; }

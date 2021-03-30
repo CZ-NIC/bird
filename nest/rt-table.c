@@ -1839,7 +1839,7 @@ rt_kick_settle_timer(rtable *tab)
   tab->base_settle_time = current_time();
 
   if (!tab->settle_timer)
-    tab->settle_timer = tm_new_init(rt_table_pool, rt_settle_timer, tab, 0, 0);
+    tab->settle_timer = tm_new_init(tab->rp, rt_settle_timer, tab, 0, 0);
 
   if (!tm_active(tab->settle_timer))
     tm_set(tab->settle_timer, rt_settled_time(tab));
@@ -1872,23 +1872,78 @@ rt_unsubscribe(struct rt_subscription *s)
   rt_unlock_table(s->tab);
 }
 
-void
-rt_setup(pool *p, rtable *t, struct rtable_config *cf)
+static void
+rt_free(resource *_r)
 {
-  bzero(t, sizeof(*t));
+  rtable *r = (rtable *) _r;
+
+  DBG("Deleting routing table %s\n", r->name);
+  ASSERT_DIE(r->use_count == 0);
+
+  r->config->table = NULL;
+  rem_node(&r->n);
+
+  if (r->hostcache)
+    rt_free_hostcache(r);
+
+  /* Freed automagically by the resource pool
+  fib_free(&r->fib);
+  hmap_free(&r->id_map);
+  rfree(r->rt_event);
+  rfree(r->settle_timer);
+  mb_free(r);
+  */
+}
+
+static void
+rt_res_dump(resource *_r)
+{
+  rtable *r = (rtable *) _r;
+  debug("name \"%s\", addr_type=%s, rt_count=%u, use_count=%d\n",
+      r->name, net_label[r->addr_type], r->rt_count, r->use_count);
+}
+
+static struct resclass rt_class = {
+  .name = "Routing table",
+  .size = sizeof(struct rtable),
+  .free = rt_free,
+  .dump = rt_res_dump,
+  .lookup = NULL,
+  .memsize = NULL,
+};
+
+rtable *
+rt_setup(pool *pp, struct rtable_config *cf)
+{
+  int ns = strlen("Routing table ") + strlen(cf->name) + 1;
+  void *nb = mb_alloc(pp, ns);
+  ASSERT_DIE(ns - 1 == bsnprintf(nb, ns, "Routing table %s", cf->name));
+
+  pool *p = rp_new(pp, nb);
+  mb_move(nb, p);
+
+  rtable *t = ralloc(p, &rt_class);
+  t->rp = p;
+
   t->name = cf->name;
   t->config = cf;
   t->addr_type = cf->addr_type;
+
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
-  init_list(&t->channels);
 
-  hmap_init(&t->id_map, p, 1024);
-  hmap_set(&t->id_map, 0);
+  if (!cf->internal)
+  {
+    init_list(&t->channels);
+    hmap_init(&t->id_map, p, 1024);
+    hmap_set(&t->id_map, 0);
 
-  t->rt_event = ev_new_init(p, rt_event, t);
-  t->last_rt_change = t->gc_time = current_time();
+    init_list(&t->subscribers);
 
-  init_list(&t->subscribers);
+    t->rt_event = ev_new_init(p, rt_event, t);
+    t->last_rt_change = t->gc_time = current_time();
+  }
+
+  return t;
 }
 
 /**
@@ -2326,16 +2381,9 @@ rt_unlock_table(rtable *r)
   if (!--r->use_count && r->deleted)
     {
       struct config *conf = r->deleted;
-      DBG("Deleting routing table %s\n", r->name);
-      r->config->table = NULL;
-      if (r->hostcache)
-	rt_free_hostcache(r);
-      rem_node(&r->n);
-      fib_free(&r->fib);
-      hmap_free(&r->id_map);
-      rfree(r->rt_event);
-      rfree(r->settle_timer);
-      mb_free(r);
+
+      /* Delete the routing table by freeing its pool */
+      rt_shutdown(r);
       config_del_obstacle(conf);
     }
 }
@@ -2397,11 +2445,9 @@ rt_commit(struct config *new, struct config *old)
   WALK_LIST(r, new->tables)
     if (!r->table)
       {
-	rtable *t = mb_allocz(rt_table_pool, sizeof(struct rtable));
+	r->table = rt_setup(rt_table_pool, r);
 	DBG("\t%s: created\n", r->name);
-	rt_setup(rt_table_pool, t, r);
-	add_tail(&routing_tables, &t->n);
-	r->table = t;
+	add_tail(&routing_tables, &r->table->n);
       }
   DBG("\tdone\n");
 }
@@ -2566,6 +2612,9 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
     if (!old)
       goto drop_withdraw;
 
+    if (!net->routes)
+      fib_delete(&tab->fib, net);
+
     return 1;
   }
 
@@ -2600,6 +2649,10 @@ drop_update:
   c->stats.imp_updates_received++;
   c->stats.imp_updates_ignored++;
   rte_free(new);
+
+  if (!net->routes)
+    fib_delete(&tab->fib, net);
+
   return 0;
 
 drop_withdraw:
@@ -2669,9 +2722,15 @@ rt_reload_channel_abort(struct channel *c)
 void
 rt_prune_sync(rtable *t, int all)
 {
-  FIB_WALK(&t->fib, net, n)
+  struct fib_iterator fit;
+
+  FIB_ITERATE_INIT(&fit, &t->fib);
+
+again:
+  FIB_ITERATE_START(&t->fib, &fit, net, n)
   {
     rte *e, **ee = &n->routes;
+
     while (e = *ee)
     {
       if (all || (e->flags & (REF_STALE | REF_DISCARD)))
@@ -2683,8 +2742,15 @@ rt_prune_sync(rtable *t, int all)
       else
 	ee = &e->next;
     }
+
+    if (all || !n->routes)
+    {
+      FIB_ITERATE_PUT(&fit);
+      fib_delete(&t->fib, n);
+      goto again;
+    }
   }
-  FIB_WALK_END;
+  FIB_ITERATE_END;
 }
 
 
@@ -2750,6 +2816,9 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int re
     if (!old)
       goto drop_withdraw;
 
+    if (!net->routes)
+      fib_delete(&tab->fib, net);
+
     return 1;
   }
 
@@ -2809,7 +2878,7 @@ hc_remove(struct hostcache *hc, struct hostentry *he)
 #define HC_LO_ORDER 10
 
 static void
-hc_alloc_table(struct hostcache *hc, unsigned order)
+hc_alloc_table(struct hostcache *hc, pool *p, unsigned order)
 {
   uint hsize = 1 << order;
   hc->hash_order = order;
@@ -2817,18 +2886,18 @@ hc_alloc_table(struct hostcache *hc, unsigned order)
   hc->hash_max = (order >= HC_HI_ORDER) ? ~0U : (hsize HC_HI_MARK);
   hc->hash_min = (order <= HC_LO_ORDER) ?  0U : (hsize HC_LO_MARK);
 
-  hc->hash_table = mb_allocz(rt_table_pool, hsize * sizeof(struct hostentry *));
+  hc->hash_table = mb_allocz(p, hsize * sizeof(struct hostentry *));
 }
 
 static void
-hc_resize(struct hostcache *hc, unsigned new_order)
+hc_resize(struct hostcache *hc, pool *p, unsigned new_order)
 {
   struct hostentry **old_table = hc->hash_table;
   struct hostentry *he, *hen;
   uint old_size = 1 << hc->hash_order;
   uint i;
 
-  hc_alloc_table(hc, new_order);
+  hc_alloc_table(hc, p, new_order);
   for (i = 0; i < old_size; i++)
     for (he = old_table[i]; he != NULL; he=hen)
       {
@@ -2839,7 +2908,7 @@ hc_resize(struct hostcache *hc, unsigned new_order)
 }
 
 static struct hostentry *
-hc_new_hostentry(struct hostcache *hc, ip_addr a, ip_addr ll, rtable *dep, unsigned k)
+hc_new_hostentry(struct hostcache *hc, pool *p, ip_addr a, ip_addr ll, rtable *dep, unsigned k)
 {
   struct hostentry *he = sl_alloc(hc->slab);
 
@@ -2855,13 +2924,13 @@ hc_new_hostentry(struct hostcache *hc, ip_addr a, ip_addr ll, rtable *dep, unsig
 
   hc->hash_items++;
   if (hc->hash_items > hc->hash_max)
-    hc_resize(hc, hc->hash_order + HC_HI_STEP);
+    hc_resize(hc, p, hc->hash_order + HC_HI_STEP);
 
   return he;
 }
 
 static void
-hc_delete_hostentry(struct hostcache *hc, struct hostentry *he)
+hc_delete_hostentry(struct hostcache *hc, pool *p, struct hostentry *he)
 {
   rta_free(he->src);
 
@@ -2871,20 +2940,20 @@ hc_delete_hostentry(struct hostcache *hc, struct hostentry *he)
 
   hc->hash_items--;
   if (hc->hash_items < hc->hash_min)
-    hc_resize(hc, hc->hash_order - HC_LO_STEP);
+    hc_resize(hc, p, hc->hash_order - HC_LO_STEP);
 }
 
 static void
 rt_init_hostcache(rtable *tab)
 {
-  struct hostcache *hc = mb_allocz(rt_table_pool, sizeof(struct hostcache));
+  struct hostcache *hc = mb_allocz(tab->rp, sizeof(struct hostcache));
   init_list(&hc->hostentries);
 
   hc->hash_items = 0;
-  hc_alloc_table(hc, HC_DEF_ORDER);
-  hc->slab = sl_new(rt_table_pool, sizeof(struct hostentry));
+  hc_alloc_table(hc, tab->rp, HC_DEF_ORDER);
+  hc->slab = sl_new(tab->rp, sizeof(struct hostentry));
 
-  hc->lp = lp_new(rt_table_pool, LP_GOOD_SIZE(1024));
+  hc->lp = lp_new(tab->rp, LP_GOOD_SIZE(1024));
   hc->trie = f_new_trie(hc->lp, 0);
 
   tab->hostcache = hc;
@@ -2905,10 +2974,12 @@ rt_free_hostcache(rtable *tab)
 	log(L_ERR "Hostcache is not empty in table %s", tab->name);
     }
 
+  /* Freed automagically by the resource pool
   rfree(hc->slab);
   rfree(hc->lp);
   mb_free(hc->hash_table);
   mb_free(hc);
+  */
 }
 
 static void
@@ -3051,7 +3122,7 @@ rt_update_hostcache(rtable *tab)
       he = SKIP_BACK(struct hostentry, ln, n);
       if (!he->uc)
 	{
-	  hc_delete_hostentry(hc, he);
+	  hc_delete_hostentry(hc, tab->rp, he);
 	  continue;
 	}
 
@@ -3076,7 +3147,7 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
     if (ipa_equal(he->addr, a) && (he->tab == dep))
       return he;
 
-  he = hc_new_hostentry(hc, a, ipa_zero(ll) ? a : ll, dep, k);
+  he = hc_new_hostentry(hc, tab->rp, a, ipa_zero(ll) ? a : ll, dep, k);
   rt_update_hostentry(tab, he);
   return he;
 }

@@ -317,7 +317,7 @@ static void
 krt_learn_scan(struct krt_proto *p, rte *e)
 {
   net *n0 = e->net;
-  net *n = net_get(&p->krt_table, n0->n.addr);
+  net *n = net_get(p->krt_table, n0->n.addr);
   rte *m, **mm;
 
   e->attrs = rta_lookup(e->attrs);
@@ -354,7 +354,7 @@ krt_learn_scan(struct krt_proto *p, rte *e)
 static void
 krt_learn_prune(struct krt_proto *p)
 {
-  struct fib *fib = &p->krt_table.fib;
+  struct fib *fib = &p->krt_table->fib;
   struct fib_iterator fit;
 
   KRT_TRACE(p, D_EVENTS, "Pruning inherited routes");
@@ -430,7 +430,7 @@ static void
 krt_learn_async(struct krt_proto *p, rte *e, int new)
 {
   net *n0 = e->net;
-  net *n = net_get(&p->krt_table, n0->n.addr);
+  net *n = net_get(p->krt_table, n0->n.addr);
   rte *g, **gg, *best, **bestp, *old_best;
 
   e->attrs = rta_lookup(e->attrs);
@@ -511,8 +511,9 @@ krt_learn_init(struct krt_proto *p)
     struct rtable_config *cf = mb_allocz(p->p.pool, sizeof(struct rtable_config));
     cf->name = "Inherited";
     cf->addr_type = p->p.net_type;
+    cf->internal = 1;
 
-    rt_setup(p->p.pool, &p->krt_table, cf);
+    p->krt_table = rt_setup(p->p.pool, cf);
   }
 }
 
@@ -524,7 +525,7 @@ krt_dump(struct proto *P)
   if (!KRT_CF->learn)
     return;
   debug("KRT: Table of inheritable routes\n");
-  rt_dump(&p->krt_table);
+  rt_dump(p->krt_table);
 }
 
 static void
