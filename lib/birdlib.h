@@ -192,5 +192,8 @@ asm(
 /* Pseudorandom numbers */
 
 u32 random_u32(void);
+int random_bytes(char *buf, size_t size);
+void random_close(void);
+void random_init(void);
 
 #endif

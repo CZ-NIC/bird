@@ -524,6 +524,7 @@ order_shutdown(int gr)
   c->gr_down = gr;
 
   config_commit(c, RECONFIG_HARD, 0);
+  random_close();
   shutting_down = 1;
 }
 
