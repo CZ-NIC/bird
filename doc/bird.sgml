@@ -5122,10 +5122,10 @@ logical operators <cf/&&/ or <cf/||/. Allowed relational operators are <cf/=/,
 	(0xfff).
 
 	<tag><label id="flow-length">length <m/numbers-match/</tag>
-	Set a matching packet length (e.g. <cf>length > 1500;</cf>)
+	Set a matching packet length (e.g. <cf>length > 1500</cf>)
 
 	<tag><label id="flow-dscp">dscp <m/numbers-match/</tag>
-	Set a matching DiffServ Code Point number (e.g. <cf>length > 1500;</cf>).
+	Set a matching DiffServ Code Point number (e.g. <cf>dscp 8..15</cf>).
 
 	<tag><label id="flow-fragment">fragment <m/fragmentation-type/</tag>
 	Set a matching type of packet fragmentation. Allowed fragmentation
