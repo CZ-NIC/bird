@@ -1,0 +1,13 @@
+[Unit]
+Description=BIRD Internet Routing Daemon
+Wants=network.target
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/bird -f -u bird -g bird
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

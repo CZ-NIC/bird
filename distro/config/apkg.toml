@@ -1,0 +1,8 @@
+[project]
+name = "bird"
+# needed for make-archive
+make_archive_script = "tools/make-dev-archive"
+
+[upstream]
+# needed for get-archive
+archive_url = "https://bird.network.cz/download/bird-{{ version }}.tar.gz"

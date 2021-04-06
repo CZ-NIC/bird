@@ -1,5 +1,6 @@
 /autom4te.cache/
 /obj/
+/pkg/
 /Makefile
 /bird
 /birdc
@@ -12,3 +13,4 @@
 /sysdep/autoconf.h.in
 /sysdep/autoconf.h.in~
 /cscope.*
+*.tar.gz

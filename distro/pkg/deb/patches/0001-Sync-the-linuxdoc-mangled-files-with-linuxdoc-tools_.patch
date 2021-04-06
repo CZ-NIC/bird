@@ -1,0 +1,1394 @@
+From: =?utf-8?b?T25kxZllaiBTdXLDvQ==?= <ondrej@debian.org>
+Date: Mon, 11 May 2020 10:27:06 +0200
+Subject: Sync the linuxdoc mangled files with linuxdoc-tools_0.9.73-2
+
+---
+ doc/LinuxDocTools.pm | 903 ++++++++++++++++++++++++++-------------------------
+ doc/sgml2html        |  77 +++--
+ doc/sgml2latex       |  77 +++--
+ doc/sgml2txt         |  77 +++--
+ 4 files changed, 611 insertions(+), 523 deletions(-)
+
+diff --git a/doc/LinuxDocTools.pm b/doc/LinuxDocTools.pm
+index d32f317..c035f62 100644
+--- a/doc/LinuxDocTools.pm
++++ b/doc/LinuxDocTools.pm
+@@ -1,21 +1,19 @@
+-#! /usr/bin/perl 
++#! /usr/bin/perl
+ #
+ #  LinuxDocTools.pm
+ #
+-#  $Id$
+-#
+-#  LinuxDoc-Tools driver core. This contains all the basic functionality
+-#  we need to control all other components.
+-#
+-#  © Copyright 1996, Cees de Groot.
+-#  © Copyright 2000, Taketoshi Sano
+-#
+-#  THIS VERSION HAS BEEN HACKED FOR BIRD BY MARTIN MARES
++#  LinuxDoc-Tools driver core. This contains all the basic
++#  functionality we need to control all other components.
+ #
++#  Copyright © 1996, Cees de Groot.
++#  Copyright © 2000, Taketoshi Sano
++#  Copyright © 2006-2020, Agustin Martin
++# -------------------------------------------------------------------
+ package LinuxDocTools;
+ 
+-require 5.004;
++require 5.006;
+ use strict;
++use LinuxDocTools::Data::Latin1ToSgml qw{ldt_latin1tosgml};
+ 
+ =head1 NAME
+ 
+@@ -33,8 +31,8 @@ LinuxDocTools - SGML conversion utilities for LinuxDoc DTD.
+ =head1 DESCRIPTION
+ 
+ The LinuxDocTools package encapsulates all the functionality offered by
+-LinuxDoc-Tools. It is used, of course, by LinuxDoc-Tools; 
+-but the encapsulation should provide for a simple interface for other users as well. 
++LinuxDoc-Tools. It is used, of course, by LinuxDoc-Tools;
++but the encapsulation should provide for a simple interface for other users as well.
+ 
+ =head1 FUNCTIONS
+ 
+@@ -42,21 +40,24 @@ but the encapsulation should provide for a simple interface for other users as w
+ 
+ =cut
+ 
+-use DirHandle;
+-use File::Basename;
+-use File::Find;
+ use File::Copy;
+-use FileHandle;
+-use IPC::Open2;
+-use Cwd;
++use File::Temp qw(tempdir);
++use File::Basename qw(fileparse);
+ use LinuxDocTools::Lang;
+-use LinuxDocTools::Utils qw(process_options usage cleanup trap_signals remove_tmpfiles create_temp);
++use LinuxDocTools::Utils qw(
++  cleanup
++  create_temp
++  ldt_log
++  remove_tmpfiles
++  trap_signals
++  usage
++  );
+ use LinuxDocTools::Vars;
+ 
+ sub BEGIN
+ {
+   #
+-  #  Make sure we're always looking here. Note that "use lib" adds 
++  #  Make sure we're always looking here. Note that "use lib" adds
+   #  on the front of the search path, so we first push dist, then
+   #  site, so that site is searched first.
+   #
+@@ -64,54 +65,127 @@ sub BEGIN
+   use lib "$main::DataDir/site";
+ }
+ 
++# -------------------------------------------------------------------
++sub ldt_searchfile {
++  # -----------------------------------------------------------------
++  # Look for a readable file in the locations. Return first math.
++  # -----------------------------------------------------------------
++  my $files = shift;
++  foreach my $file  ( @$files ){
++    return $file if -r $file;
++  }
++}
++
++# -------------------------------------------------------------------
++sub ldt_getdtd_v1 {
++  # -----------------------------------------------------------------
++  # Get the dtd
++  # -----------------------------------------------------------------
++  my $file         = shift;
++  my $error_header = "LinuxdocTools::ldt_getdtd_v1";
++  my $dtd;
++
++  open ( my $FILE, "< $file")
++    or die "$error_header: Could not open \"$file\" for reading. Aborting ...\n";
++
++  while ( <$FILE> ) {
++    tr/A-Z/a-z/;
++    # check for [<!doctype ... system] type definition
++    if ( /<!doctype\s*(\w*)\s*system/ ) {
++      $dtd = $1;
++      last;
++      # check for <!doctype ... PUBLIC ... DTD ...
++    } elsif ( /<!doctype\s*\w*\s*public\s*.*\/\/dtd\s*(\w*)/mi ) {
++      $dtd = $1;
++      last;
++      # check for <!doctype ...
++      #          PUBLIC  ... DTD ...
++      # (multi-line version)
++    } elsif ( /<!doctype\s*(\w*)/ ) {
++      $dtd = "precheck";
++      next;
++    } elsif ( /\s*public\s*.*\/\/dtd\s*(\w*)/ && $dtd eq "precheck" ) {
++      $dtd = $1;
++      last;
++    }
++  }
++  close $FILE;
++
++  return $dtd;
++}
++
++# -------------------------------------------------------------------
++sub ldt_getdtd_v2 {
++  # -----------------------------------------------------------------
++  # Second way of getting dtd, fron nsgmls output.
++  # -----------------------------------------------------------------
++  my $preaspout    = shift;
++  my $error_header = "LinuxdocTools::ldt_getdtd_v2";
++  my $dtd2;
++
++  open (my $TMP,"< $preaspout")
++    or die "%error_header: Could not open $preaspout for reading. Aborting ...\n";
++  while ( defined ($dtd2 = <$TMP>) && ! ( $dtd2 =~ /^\(/) ) { };
++  close $TMP;
++  $dtd2 =~ s/^\(//;
++  $dtd2 =~ tr/A-Z/a-z/;
++  chomp $dtd2;
++  return $dtd2;
++}
++
++# -------------------------------------------------------------------
++
+ =item LinuxDocTools::init
+ 
+ Takes care of initialization of package-global variables (which are actually
+ defined in L<LinuxDocTools::Vars>). The package-global variables are I<$global>,
+ a reference to a hash containing numerous settings, I<%Formats>, a hash
+ containing all the formats, and I<%FmtList>, a hash containing the currently
+-active formats for help texts. 
++active formats for help texts.
+ 
+ Apart from this, C<LinuxDocTools::init> also finds all distributed and site-local
+ formatting backends and C<require>s them.
+ 
+ =cut
+ 
+-sub init
+-{
++# -------------------------------------------------------------------
++sub init {
++# -------------------------------------------------------------------
+   trap_signals;
+ 
+-  #
+-  #  Register the ``global'' pseudoformat. Apart from the global settings,
+-  #  we also use $global to keep the global variable name space clean; 
+-  #  everything that we need to provide to other modules is stuffed
+-  #  into $global.
+-  #
+-  $global = {};
+-  $global->{NAME} = "global";
+-  $global->{HELP} = "";
+-  $global->{OPTIONS} = [
+-    { option => "backend", type => "l",
+-      'values' => [ "html", "info", "latex", 
+-			"lyx", "rtf", "txt", "check" ],
+-	 short => "B" },
+-    { option => "papersize", type => "l",
+-      'values' => [ "a4", "letter" ], short => "p" },
+-    { option => "language",  type => "l",
+-      'values' => [ @LinuxDocTools::Lang::Languages ], short => "l" },
+-    { option => "charset",   type => "l",
+-      'values' => [ "latin", "ascii", "nippon", "euc-kr" ], short => "c" },
+-    { option => "style",     type => "s", short => "S" },
+-    { option => "tabsize",   type => "i", short => "t" },
+-#    { option => "verbose",   type => "f", short => "v" },
+-    { option => "debug",     type => "f", short => "d" },
+-    { option => "define",    type => "s", short => "D" },
+-    { option => "include",   type => "s", short => "i" },
+-    { option => "pass",      type => "s", short => "P" }
+-  ];
++  # Register the ``global'' pseudoformat. Apart from the global settings, we
++  # also use $global to keep the global variable name space clean everything
++  # that we need to provide to other modules is stuffed into $global.
++  $global              = {};
++  $global->{NAME}      = "global";
++  $global->{HELP}      = "";
++  $global->{OPTIONS}   = [
++			  { option => "backend",
++			    type => "l",
++			    'values' => [ "html", "info", "latex", "lyx", "rtf", "txt", "check" ],
++			    short => "B" },
++			  { option => "papersize",
++			    type => "l",
++			    'values' => [ "a4", "letter" ],
++			    short => "p" },
++			  { option => "language",
++			    type => "l",
++			    'values' => [ @LinuxDocTools::Lang::Languages ],
++			    short => "l" },
++			  { option => "charset",   type => "l",
++			    'values' => [ "latin", "ascii", "nippon", "euc-kr" , "utf-8"],
++			    short => "c" },
++			  { option => "style",     type => "s", short => "S" },
++			  { option => "tabsize",   type => "i", short => "t" },
++			  # { option => "verbose",   type => "f", short => "v" },
++			  { option => "debug",     type => "f", short => "d" },
++			  { option => "define",    type => "s", short => "D" },
++			  { option => "include",   type => "s", short => "i" },
++			  { option => "pass",      type => "s", short => "P" }
++			  ];
+   $global->{backend}   = "linuxdoc";
+   $global->{papersize} = "a4";
+-  $global->{language}  = "en";
++  $global->{language}  = '';
+   $global->{charset}   = "ascii";
+   $global->{style}     = "";
+   $global->{tabsize}   = 8;
+@@ -119,11 +193,24 @@ sub init
+   $global->{define}    = "";
+   $global->{debug}     = 0;
+   $global->{include}   = "";
++  $global->{logfile}   = '';
+   $global->{pass}      = "";
+   $global->{InFiles}   = [];
++  $global->{fmtlist}   = "";            # List of loaded fmt files
+   $Formats{$global->{NAME}} = $global;	# All formats we know.
+   $FmtList{$global->{NAME}} = $global;  # List of formats for help msgs.
+ 
++  $global->{sgmlpre}   = "$main::AuxBinDir/sgmlpre";
++  my $error_header     = "LinuxdocTools::init";
++
++  if ( -e "/etc/papersize" ){
++    open (my $PAPERSIZE,"< /etc/papersize") ||
++      die "$error_header: Count not open \"/etc/papersize\" for reading\n";
++    chomp (my $paper = <$PAPERSIZE>);
++    $global->{papersize} = "letter" if ( $paper eq "letter");
++    close $PAPERSIZE;
++  }
++
+   # automatic language detection: disabled by default
+   # {
+   #    my $lang;
+@@ -137,42 +224,39 @@ sub init
+   #     }
+   # }
+ 
+-  #
+-  #  Used when the format is "global" (from sgmlcheck).
+-  #
++  # -------------------------------------------------------------------
+   $global->{preNSGMLS} = sub {
+-    $global->{NsgmlsOpts} .= " -s ";
++    # -----------------------------------------------------------------
++    #  Define a fallback preNSGMLS. Used when the format is "global"
++    #  (from sgmlcheck).
++    # -----------------------------------------------------------------
++    $global->{NsgmlsOpts}   .= " -s ";
+     $global->{NsgmlsPrePipe} = "cat $global->{file}";
+   };
+ 
+-  #
+-  #  Build up the list of formatters.
+-  #
+-  my $savdir = cwd;
+-  my %Locs;
+-  chdir "$main::DataDir/dist";
+-  my $dir = new DirHandle(".");
+-  die "Unable to read directory $main::DataDir/dist: $!" unless defined($dir);
+-  foreach my $fmt (grep(/^fmt_.*\.pl$/, $dir->read()))
+-  {
+-    $Locs{$fmt} = "dist";
+-  }
+-  $dir->close();
+-  chdir "$main::DataDir/site";
+-  $dir = new DirHandle(".");
+-  die "Unable to read directory $main::DataDir/site: $!" unless defined($dir);
+-  foreach my $fmt (grep(/^fmt_.*\.pl$/, $dir->read()))
+-  {
+-    $Locs{$fmt} = "site";
++  # We need to load all fmt files here, so the allowed options for all
++  # format are put into $global and a complete usage message is built,
++  # including options for all formats.
++  my %locations = ();
++  foreach my $path ("$main::DataDir/site",
++		    "$main::DataDir/dist",
++		    "$main::DataDir/fmt"){
++    foreach my $location (<$path/fmt_*.pl>){
++      my $fmt =  $location;
++      $fmt    =~ s/^.*_//;
++      $fmt    =~ s/\.pl$//;
++      $locations{$fmt} = $location unless defined $locations{$fmt};
++    }
+   }
+-  $dir->close();
+-  foreach my $fmt (keys %Locs)
+-  {
+-    require $fmt;
++
++  foreach my $fmt ( keys %locations ){
++    $global->{fmtlist}   .= "  Loading $locations{$fmt}\n";
++    require $locations{$fmt};
+   }
+-  chdir $savdir;
+ }
+ 
++# ------------------------------------------------------------------------
++
+ =item LinuxDocTools::process_options ($0, @ARGV)
+ 
+ This function contains all initialization that is bound to the current
+@@ -181,91 +265,113 @@ should be used (ld2txt activates the I<txt> backend) and parses the
+ options array. It returns an array of filenames it encountered during
+ option processing.
+ 
+-As a side effect, the environment variables I<SGMLDECL> and 
+-I<SGML_CATALOG_FILES> are modified.
++As a side effect, the environment variable I<SGML_CATALOG_FILES> is
++modified and, once I<$global->{format}> is known, I<SGMLDECL> is set.
+ 
+ =cut
+ 
+-sub process_options
+-{
+-  my $progname = shift;
+-  my @args = @_;
++# -------------------------------------------------------------------
++sub process_options {
++  # -----------------------------------------------------------------
++  my $progname  = shift;
++  my @tmpargs   = @_;
++  my @args      = ();
++  my $format    = '';
++  my $msgheader = "LinuxDocTools::process_options";
++
++  # Try getting the format. We need to do this here so process_options
++  # knows which is the format and which format options are allowed
++
++  # First, see if we have an explicit backend option by looping over command line.
++  # Do not shift in the while condition itself, 0 in options like '-s 0' will
++  # otherwise stop looping
++  while ( @tmpargs ){
++    $_ = shift @tmpargs;
++    if ( s/--backend=// ){
++      $format = $_;
++    } elsif ( $_ eq "-B" ){
++      $format = shift @tmpargs;
++    } else {
++      push @args, $_;
++    }
++  }
+ 
+-  #
+-  #  Deduce the format from the caller's file name
+-  #
+-  my ($format, $dummy1, $dummy2) = fileparse ($progname, "");
+-  $global->{myname} = $format;
+-  $format =~ s/sgml2*(.*)/$1/;
++  unless ( $format ){
++    my ($tmpfmt, $dummy1, $dummy2) = fileparse($progname, "");
++    if ( $tmpfmt =~ s/^sgml2// ) {       # Calling program through sgml2xx symlinks
++      $format = $tmpfmt;
++    } elsif ( $tmpfmt eq "sgmlcheck" ) { # Calling program through sgmlcheck symlink
++      $format = "global";
++    }
++  }
+ 
+-  #
+-  # check the option "--backend / -B"
+-  #
+-  if ($format eq "linuxdoc") {
+-      my @backends = @args;
+-      my $arg;
+-      while (@backends) {
+-         $arg = shift @backends;
+-         if ($arg eq "-B") {
+-                $arg = shift @backends;
+-                $format = $arg;
+-                last;
+-	 }
+-         if ( $arg =~ s/--backend=(.*)/$1/ ) {
+-                $format = $arg;
+-                last;
+-         }
++  if ( $format ) {
++    if ( $format eq "check" ){
++      $format = "global";
++    } elsif ( $format eq "latex" ){
++      $format = "latex2e";
++    }
++    $FmtList{$format} = $Formats{$format} or
++      usage("$format: Unknown format");
++    $global->{format} = $format;
++  } else {
++    usage("");
++  }
++
++  # Parse all the options from @args, and return files.
++  my @files    = LinuxDocTools::Utils::process_options(@args);
++
++  # Check the number of given files
++  $#files > -1 || usage("No filenames given");
++
++  # Normalize language string
++  $global->{language} = Any2ISO($global->{language})
++    if ( defined $global->{language} );
++
++  # Fine tune japanese and korean charsets when not utf-8
++  if ($global->{charset} ne "utf-8") {
++    if ($global->{language} eq "ja" ){
++      $global->{charset} = "nippon";
++    } elsif ($global->{language} eq "ko"){
++      if ($global->{format} eq "groff") {
++	$global->{charset} = "latin1";
++      } else {
++	$global->{charset} = "euc-kr";
+       }
++    }
+   }
+ 
+-  $format = "global" if $format eq "check";
+-  usage ("") if $format eq "linuxdoc";
+-  $format = "latex2e" if $format eq "latex";
+-  $FmtList{$format} = $Formats{$format} or 
+-     usage ("$global->{myname}: unknown format");
+-  $global->{format} = $format;
++  # Setup the SGML environment.
++  my @sgmlcatalogs =
++    (# SGML iso-entities catalog location in Debian sgml-data package
++     "$main::isoentities_prefix/share/sgml/entities/sgml-iso-entities-8879.1986/catalog",
++     # SGML iso-entities catalog location in ArchLinux, Fedora and Gentoo
++     "$main::isoentities_prefix/share/sgml/sgml-iso-entities-8879.1986/catalog",
++     # SGML iso-entities catalog location when installed from linuxdoc-tools
++     "$main::isoentities_prefix/share/sgml/iso-entities-8879.1986/iso-entities.cat",
++     # dtd/catalog for SGML-Tools
++     "$main::DataDir/linuxdoc-tools.catalog",
++     # The super catalog
++     "/etc/sgml/catalog");
+ 
+-  #
+-  #  Parse all the options.
+-  #
+-  my @files = LinuxDocTools::Utils::process_options (@args);
+-  $global->{language} = Any2ISO ($global->{language});
+-  #
+-  # check the number of given files 
+-  $#files > -1 || usage ("no filenames given");
++  @sgmlcatalogs = ($ENV{SGML_CATALOG_FILES}, @sgmlcatalogs) if defined $ENV{SGML_CATALOG_FILES};
+ 
+-  #
+-  #  Setup the SGML environment.
+-  #  (Note that Debian package rewrite path to catalog of
+-  #   iso-entities using debian/rules so that it can use 
+-  #   entities from sgml-data pacakge.  debian/rules also
+-  #   removes iso-entites sub directory after doing make install.)
+-  #
+-  $ENV{SGML_CATALOG_FILES} .= (defined $ENV{SGML_CATALOG_FILES} ? ":" : "") .
+-     "$main::prefix/share/sgml/sgml-iso-entities-8879.1986/catalog:" .
+-     "$main::prefix/share/sgml/entities/sgml-iso-entities-8879.1986/catalog";
+-  $ENV{SGML_CATALOG_FILES} .= ":$main::DataDir/linuxdoc-tools.catalog";
+-  $ENV{SGML_CATALOG_FILES} .= ":$main::/etc/sgml.catalog";
+-  if (-f "$main::DataDir/dtd/$format.dcl")
+-    {
+-      $ENV{SGMLDECL} = "$main::DataDir/dtd/$format.dcl";
+-    }
+-  elsif (-f "$main::DataDir/dtd/$global->{style}.dcl")
+-    {
+-      $ENV{SGMLDECL} = "$main::DataDir/dtd/$global->{style}.dcl";
+-    }
+-  elsif (-f "$main::DataDir/dtd/sgml.dcl")
+-    {
+-      $ENV{SGMLDECL} = "$main::DataDir/dtd/sgml.dcl";
+-    }
++  $ENV{SGML_CATALOG_FILES} = join(':', @sgmlcatalogs);
+ 
+-  #
+-  #  OK. Give the list of files we distilled from the options
+-  #  back to the caller.
+-  #
++  # Set to one of these if readable, nil otherwise
++  $ENV{SGMLDECL} = ldt_searchfile(["$main::DataDir/dtd/$global->{format}.dcl",
++				   "$main::DataDir/dtd/$global->{style}.dcl",
++				   "$main::DataDir/dtd/sgml.dcl"]);
++
++  # Show the list of loaded fmt_*.pl files if debugging
++  print STDERR $global->{fmtlist} if $global->{debug};
++
++  # Return the list of files to be processed
+   return @files;
+ }
+ 
++# -------------------------------------------------------------------
++
+ =item LinuxDocTools::process_file
+ 
+ With all the configuration done, this routine will take a single filename
+@@ -294,330 +400,243 @@ etcetera. See the code for details.
+ 
+ =cut
+ 
+-sub process_file
+-{
+-  my $file = shift (@_);
+-  my $saved_umask = umask;
++# -------------------------------------------------------------------
++sub process_file {
++  # ----------------------------------------------------------------
++  my $file            = $global->{origfile} = shift (@_);
++  my $saved_umask     = umask;
++  my $error_header    = "LinuxdocTools::process_file";
++  my $fmtopts         = $Formats{$global->{format}};
+ 
+   print "Processing file $file\n";
+   umask 0077;
+ 
+-  my ($filename, $filepath, $filesuffix) = fileparse ($file, "\.sgml");
+-  my $tmpnam = $filepath . '/' . $filename;
+-  $file = $tmpnam . $filesuffix;
+-  -f $file || $file =~ /.*.sgml$/ || ($file .= '.sgml');
+-  -f $file || ($file = $tmpnam . '.SGML');
+-  -f $file || die "Cannot find $file\n";
++  my ($filename, $filepath, $filesuffix) = fileparse($file, "\.sgml");
+   $global->{filename} = $filename;
+-  $global->{file} = $file;
+   $global->{filepath} = $filepath;
++  $global->{file}     = ldt_searchfile(["$filepath/$filename.sgml",
++					"$filepath/$filename.SGML"])
++    or die "$error_header: Cannot find $file. Aborting ...\n";
++
++  my $dtd = ldt_getdtd_v1("$global->{file}");
++  print STDERR "DTD: " . $dtd . "\n" if $global->{debug};
++
++  # -- Prepare temporary directory
++  my $tmpdir    = $ENV{'TMPDIR'} || '/tmp';
++  $tmpdir       = tempdir("linuxdoc-tools.XXXXXXXXXX", DIR => "$tmpdir");
++
++  # -- Set common base name for temp files and temp file names
++  my $tmpbase   = $global->{tmpbase} = $tmpdir . '/sgmltmp.' . $filename;
++  my $precmdout = "$tmpbase.01.precmdout";
++  my $nsgmlsout = "$tmpbase.02.nsgmlsout";   # Was $tmpbase.1
++  my $preaspout = "$tmpbase.03.preaspout";   # Was $tmpbase.2
++  my $aspout    = "$tmpbase.04.aspout";      # Was $tmpbase.3
++
++  # -- Set $global->{logfile} and initialize logfile.
++  $global->{logfile} = "$tmpbase.$global->{format}.log";
++  open (my $LOGFILE, ">", "$global->{logfile}")
++    or die "$error_header: Could not open \"$global->{logfile}\" logfile for write.\n";
++  print $LOGFILE "--- Opening \"$global->{logfile}\" logfile ---\n";
++  close $LOGFILE;
++
++  # -- Write info about some global options
++  ldt_log "--- Begin: Info about global options";
++  foreach ( sort keys %$global ){
++    next if m/fmtlist|InFiles|OPTIONS/;
++    ldt_log "$_:  $global->{$_}";
++  }
++  ldt_log "--- End: Info about global options";
++  ldt_log "$global->{fmtlist}";
++
++  # -- Write info about some backend options
++  ldt_log "--- Begin: Info about backend options";
++  foreach ( sort keys %$fmtopts ){
++    next if m/fmtlist|InFiles|OPTIONS/;
++    ldt_log "$_:  $fmtopts->{$_}";
++  }
++  ldt_log "--- End: Info about backend options";
+ 
+-  my $tmp = new FileHandle "<$file";
+-  my $dtd;
+-  while ( <$tmp> )
+-    {
+-      tr/A-Z/a-z/;
+-      # check for [<!doctype ... system] type definition
+-      if ( /<!doctype\s*(\w*)\s*system/ )
+-        {
+-          $dtd = $1;
+-          last;
+-        }
+-      # check for <!doctype ... PUBLIC ... DTD ...
+-      if ( /<!doctype\s*\w*\s*public\s*.*\/\/dtd\s*(\w*)/mi )
+-        {
+-          $dtd = $1;
+-          last;
+-        }
+-      # check for <!doctype ...
+-      #          PUBLIC  ... DTD ...
+-      # (multi-line version)
+-      if ( /<!doctype\s*(\w*)/ )
+-        {
+-          $dtd = "precheck";
+-          next;
+-        }
+-      if ( /\s*public\s*.*\/\/dtd\s*(\w*)/ && $dtd eq "precheck" )
+-        {
+-          $dtd = $1;
+-          last;
+-        }
+-    }
+-  $tmp->close;
+-  if ( $global->{debug} )
+-    {
+-      print "DTD: " . $dtd . "\n";
++  # Set up the preprocessing command. Conditionals have to be
++  # handled here until they can be moved into the DTD, otherwise
++  # a validating SGML parser will choke on them.
++
++  # -- Check if output option for latex is pdf or not
++  if ($global->{format} eq "latex2e") {
++    if ($Formats{$global->{format}}{output} eq "pdf") {
++      $global->{define} .= " pdflatex=yes";
+     }
+-  $global->{dtd} = $dtd;
++  }
+ 
+-  # prepare temporary directory
+-  my $tmpdir = $ENV{'TMPDIR'} || '/tmp';
+-  $tmpdir = $tmpdir . '/' . 'linuxdoc-dir-' . $$;
+-  mkdir ($tmpdir, 0700) ||
+-   die " - temporary files can not be created, aborted - \n";
++  # -- Set the actual pre-processing command
++  my($precmd) = "| $global->{sgmlpre} output=$global->{format} $global->{define}";
++  ldt_log "  ${error_header}::precmd:\n    $precmd";
+ 
+-  my $tmpbase = $global->{tmpbase} = $tmpdir . '/sgmltmp.' . $filename;
++  # -- Make sure path of file to be processed is in SGML_SEARCH_PATH
+   $ENV{"SGML_SEARCH_PATH"} .= ":$filepath";
+ 
+-  #
+-  # Set up the preprocessing command.  Conditionals have to be
+-  # handled here until they can be moved into the DTD, otherwise
+-  # a validating SGML parser will choke on them.
+-  #
+-  # check if output option for latex is pdf or not
+-  if ($global->{format} eq "latex2e")
+-    {
+-      if ($Formats{$global->{format}}{output} eq "pdf")
+-        {
+-          $global->{define} .= " pdflatex=yes";
+-        }
+-    }
+-  #
++  # -- You can hack $NsgmlsOpts here, etcetera.
++  $global->{NsgmlsOpts}   .= "-D $main::prefix/share/sgml -D $main::DataDir";
++  $global->{NsgmlsOpts}   .= "-i$global->{include}" if ($global->{include});
++
++  # If a preNSGMLS function is defined in the fmt file, pipe its output to $FILE,
++  # otherwise just open $global->{file} as $IFILE
++  # -----------------------------------------------------------------
++  ldt_log "- PreNsgmls stage started.";
++  my $IFILE;
++  if ( defined $Formats{$global->{format}}{preNSGMLS} ) {
++    $global->{NsgmlsPrePipe} = &{$Formats{$global->{format}}{preNSGMLS}};
++    ldt_log  "  ${error_header}::NsgmlsPrePipe: $global->{NsgmlsPrePipe} |";
++    open ($IFILE,"$global->{NsgmlsPrePipe} |")
++      || die "$error_header: Could not open pipe from $global->{NsgmlsPrePipe}. Aborting ...\n";
++  } else {
++    ldt_log "  ${error_header}: No prepipe. Just opening \"$global->{file}\" for read";
++    open ($IFILE,"< $global->{file}")
++      || die "$error_header: Could not open $global->{file} for reading. Aborting ...\n";
++  }
+ 
+-  local $ENV{PATH} = "$ENV{PATH}:/usr/lib/linuxdoc-tools";
+-  my($precmd) = "|sgmlpre output=$global->{format} $global->{define}";
++  # -- Create a temp file with $precmd output
++  my $precmd_command    = "$precmd > $precmdout";
++  ldt_log "  ${error_header}::precmd_command:\n    $precmd_command";
+ 
+-  #
+-  #  You can hack $NsgmlsOpts here, etcetera.
+-  #
+-  $global->{NsgmlsOpts} .= "-D $main::prefix/share/sgml -D $main::DataDir";
+-  $global->{NsgmlsOpts} .= "-i$global->{include}" if ($global->{include});
+-  $global->{NsgmlsPrePipe} = "NOTHING";
+-  if ( defined $Formats{$global->{format}}{preNSGMLS} )
+-    {
+-      $global->{NsgmlsPrePipe} = &{$Formats{$global->{format}}{preNSGMLS}};
+-    }
++  open (my $PRECMDOUT, "$precmd_command")
++    or die "$error_header: Could not open pipe to $precmdout. Aborting ...\n";
+ 
+-  #
+-  #  Run the prepocessor and nsgmls.
+-  #
+-  my ($ifile, $writensgmls);
++  # -- Convert latin1 chars to sgml entities for html backend
++  if ( $global->{format} eq "html"
++       && $global->{charset} eq "latin"  ) {
++    ldt_log "  ${error_header}: Converting latin1 chars to sgml entities for html backend";
++    print $PRECMDOUT ldt_latin1tosgml($IFILE);
++  } else {
++    copy($IFILE,$PRECMDOUT);
++  }
+ 
+-  if ($global->{NsgmlsPrePipe} eq "NOTHING")
+-    {
+-      $ifile = new FileHandle $file;
+-    }
+-  else
+-    {
+-      $ifile = new FileHandle "$global->{NsgmlsPrePipe}|";
+-    }
++  close $IFILE;
++  close $PRECMDOUT;
++  ldt_log "- PreNsgmls stage finished.";
+ 
+-  create_temp("$tmpbase.1");
+-  $writensgmls = new FileHandle
+-      "$precmd|$main::progs->{NSGMLS} $global->{NsgmlsOpts} $ENV{SGMLDECL} >\"$tmpbase.1\"";
+-  if ($global->{charset} eq "latin")
+-    {
+-      while (<$ifile>) 
+-        {
+-	  # Outline these commands later on - CdG
+-	  #change latin1 characters to SGML
+-	  #by Farzad Farid, adapted by Greg Hankins
+-	  s/À/\&Agrave;/g;
+-	  s/Á/\&Aacute;/g;
+-	  s/Â/\&Acirc;/g;
+-	  s/Ã/\&Atilde;/g;
+-	  s/Ä/\&Auml;/g;
+-	  s/Å/\&Aring;/g;
+-	  s/Æ/\&AElig;/g;
+-	  s/Ç/\&Ccedil;/g;
+-	  s/È/\&Egrave;/g;
+-	  s/É/\&Eacute;/g;
+-	  s/Ê/\&Ecirc;/g;
+-	  s/Ë/\&Euml;/g;
+-	  s/Ì/\&Igrave;/g;
+-	  s/Í/\&Iacute;/g;
+-	  s/Î/\&Icirc;/g;
+-	  s/Ï/\&Iuml;/g;
+-	  s/Ñ/\&Ntilde;/g;
+-	  s/Ò/\&Ograve;/g;
+-	  s/Ó/\&Oacute;/g;
+-	  s/Ô/\&Ocirc;/g;
+-	  s/Õ/\&Otilde;/g;
+-	  s/Ö/\&Ouml;/g;
+-	  s/Ø/\&Oslash;/g;
+-	  s/Ù/\&Ugrave;/g;
+-	  s/Ú/\&Uacute;/g;
+-	  s/Û/\&Ucirc;/g;
+-	  s/Ü/\&Uuml;/g;
+-	  s/Ý/\&Yacute;/g;
+-	  s/Þ/\&THORN;/g;
+-	  s/ß/\&szlig;/g;
+-	  s/à/\&agrave;/g;
+-	  s/á/\&aacute;/g;
+-	  s/â/\&acirc;/g;
+-	  s/ã/\&atilde;/g;
+-	  s/ä/\&auml;/g;
+-	  s/å/\&aring;/g;
+-	  s/æ/\&aelig;/g;
+-	  s/ç/\&ccedil;/g;
+-	  s/è/\&egrave;/g;
+-	  s/é/\&eacute;/g;
+-	  s/ê/\&ecirc;/g;
+-	  s/ë/\&euml;/g;
+-	  s/ì/\&igrave;/g;
+-	  s/í/\&iacute;/g;
+-	  s/î/\&icirc;/g;
+-	  s/ï/\&iuml;/g;
+-	  s/µ/\&mu;/g;
+-	  s/ð/\&eth;/g;
+-	  s/ñ/\&ntilde;/g;
+-	  s/ò/\&ograve;/g;
+-	  s/ó/\&oacute;/g;
+-	  s/ô/\&ocirc;/g;
+-	  s/õ/\&otilde;/g;
+-	  s/ö/\&ouml;/g;
+-	  s/ø/\&oslash;/g;
+-	  s/ù/\&ugrave;/g;
+-	  s/ú/\&uacute;/g;
+-	  s/û/\&ucirc;/g;
+-	  s/ü/\&uuml;/g;
+-	  s/ý/\&yacute;/g;
+-	  s/þ/\&thorn;/g;
+-	  s/ÿ/\&yuml;/g;
+-          print $writensgmls $_;
+-	}
+-    }
+-  else
+-    {
+-      while (<$ifile>)
+-        {
+-          print $writensgmls $_;
+-	}
+-    }
+-  $ifile->close;
+-  $writensgmls->close;
+-        
+-  #
+-  #  Special case: if format is global, we're just checking.
+-  #
+-  $global->{format} eq "global" && cleanup;
++  ldt_log "- Nsgmls stage started.";
+ 
+-  #
+-  #  If the output file is empty, something went wrong.
+-  #
+-  ! -e "$tmpbase.1" and die "can't create file - exiting";
+-  -z "$tmpbase.1" and die "SGML parsing error - exiting";
+-  if ( $global->{debug} )
+-    {
+-      print "Nsgmls stage finished.\n";
+-    }
++  # -- Pass apropriate envvars to nsgmls to better deal with utf-8
++  my $NSGMLS_envvars = ($global->{charset} eq "utf-8")
++    ? "SP_CHARSET_FIXED=yes SP_ENCODING=utf-8" : "";
++
++  # -- Process with nsgmls.
++  my $nsgmls_command = "$NSGMLS_envvars $main::progs->{NSGMLS} $global->{NsgmlsOpts} $ENV{SGMLDECL} $precmdout > $nsgmlsout";
++  ldt_log "  ${error_header}::nsgmls_command:\n    $nsgmls_command";
++  system($nsgmls_command) == 0
++    or die "${error_header}: Error: \"$nsgmls_command\" failed with exit status: ",$? >> 8,"\n";
++
++  #  -- Special case: if format is global, we're just checking.
++  cleanup if ( $global->{format} eq "global");
++
++  # -- If output file does not exists or is empty, something went wrong.
++  if ( ! -e "$nsgmlsout" ) {
++    die "$error_header: Can't create file $nsgmlsout. Aborting ...\n";
++  } elsif ( -z "$nsgmlsout" ){
++    die "$error_header: $nsgmlsout empty, SGML parsing error. Aborting ...\n";
++  }
++
++  print "- Nsgmls stage finished.\n" if $global->{debug};
++  ldt_log "- Nsgmls stage finished.";
+ 
+-  #
+   #  If a preASP stage is defined, let the format handle it.
+-  #  
+-  #  preASP ($inhandle, $outhandle);
+-  #
+-  my $inpreasp = new FileHandle "<$tmpbase.1";
+-  my $outpreasp = new FileHandle "$tmpbase.2",O_WRONLY|O_CREAT|O_EXCL,0600;
+-  if (defined $Formats{$global->{format}}{preASP})
+-    {
+-      &{$Formats{$global->{format}}{preASP}}($inpreasp, $outpreasp) == 0 or
+-       die "error pre-processing $global->{format}.\n";
+-    }  
+-  else
+-    {
+-      copy ($inpreasp, $outpreasp);
+-    }
+-  $inpreasp->close;
+-  $outpreasp->close;
+-  ! -e "$tmpbase.2" and die "can't create file - exiting";
++  #  --------------------------------------------------------
++  ldt_log "- PreASP stage started.";
++  open (my $PREASP_IN, "< $nsgmlsout")
++    or die "$error_header: Could not open $nsgmlsout for reading. Aborting ...\n";
++  open (my $PREASP_OUT, "> $preaspout")
++    or die "$error_header: Could not open $preaspout for writing. Aborting ...\n";
++
++  if (defined $Formats{$global->{format}}{preASP}) {
++    # Usage: preASP ($INHANDLE, $OUTHANDLE);
++    &{$Formats{$global->{format}}{preASP}}($PREASP_IN, $PREASP_OUT) == 0
++      or die "$error_header: Error pre-processing $global->{format}.\n";
++  } else {
++    copy ($PREASP_IN, $PREASP_OUT);
++  }
+ 
+-  if ( $global->{debug} )
+-    {
+-      print "PreASP stage finished.\n";
+-    }
++  close $PREASP_IN;
++  close $PREASP_OUT;
++
++  die "$error_header: Can't create $preaspout file. Aborting ...\n"
++    unless -e "$preaspout";
++
++  print "- PreASP stage finished.\n" if ( $global->{debug} );
++  ldt_log "- PreASP stage finished.";
++
++  # Run sgmlsasp, with an optional style if specified.
++  # -----------------------------------------------------------
++  ldt_log "- ASP stage started.";
++  my $dtd2 = ldt_getdtd_v2($preaspout)
++    or die "$error_header: Could not read dtd from $preaspout. Aborting ...\n";
++
++  ldt_log "  $error_header: dtd_v1: $dtd, dtd_v2: $dtd2, both must match, dtd_v2 prevails";
++  unless ( $dtd eq $dtd2 ){
++    print STDERR "Warning: Two different values for dtd, dtd1: $dtd, dtd2: $dtd2\n";
++    $dtd = $dtd2;
++  }
++
++  $global->{'dtd'} = $dtd;
+ 
+-  #
+-  #  Run sgmlsasp, with an optional style if specified.
+-  #
+   #  Search order:
+   #  - datadir/site/<dtd>/<format>
+   #  - datadir/dist/<dtd>/<format>
+-  #  So we need to fetch the doctype from the intermediate.
+-  #
+-  #  Note: this is a very simplistic check - but as far as I know,
+-  #  it is correct. Am I right?
+-  #
+-  my $tmp = new FileHandle "<$tmpbase.2";
+-  my $dtd;
+-  while ( ($dtd = <$tmp>) && ! ( $dtd =~ /^\(/) ) { };
+-  $tmp->close;
+-  $dtd =~ s/^\(//;
+-  $dtd =~ tr/A-Z/a-z/;
+-  chop $dtd;
+-  $global->{dtd} = $dtd;
+-
+-  my $style = "";
+-  if ($global->{style})
+-    {
+-      $style = "$main::DataDir/site/$dtd/$global->{format}/$global->{style}mapping";
+-      -r $style or
+-         $style = "$main::DataDir/dist/$dtd/$global->{format}/$global->{style}mapping";
+-    }
+-  my $mapping = "$main::DataDir/site/$dtd/$global->{format}/mapping";
+-  -r $mapping or $mapping = "$main::DataDir/dist/$dtd/$global->{format}/mapping";
+ 
+-  $global->{charset} = "nippon" if ($global->{language} eq "ja");
+-  #
+-  # we don't have Korean groff so charset should be latin1.
+-  #
+-  if ($global->{language} eq "ko")
+-    {
+-      if ($global->{format} eq "groff")
+-        {
+-          $global->{charset} = "latin1";
+-        }
+-      else
+-        {
+-          $global->{charset} = "euc-kr";
+-        }
+-    }
+-  
+-  if ($global->{format} eq "groff" or $global->{format} eq "latex2e")
+-    {
+-      if ($dtd eq "linuxdoctr")
+-        {
+-          $mapping = "$main::DataDir/dist/$dtd/$global->{format}/tr-mapping";
+-        }
+-    }
++  my $style = ($global->{style}) ?
++    ldt_searchfile(["$main::DataDir/site/$dtd/$global->{format}/$global->{style}mapping",
++		    "$main::DataDir/dist/$dtd/$global->{format}/$global->{style}mapping",
++		    "$main::DataDir/mappings/$global->{format}/$global->{style}mapping"])
++    :
++    '';
+ 
+-  create_temp("$tmpbase.3");
+-  system ("$main::progs->{SGMLSASP} $style $mapping <\"$tmpbase.2\" |
+-      expand -$global->{tabsize} >\"$tmpbase.3\"");
+-  ! -e "$tmpbase.3" and die "can't create file - exiting";
++  my $mapping = ldt_searchfile(["$main::DataDir/site/$dtd/$global->{format}/mapping",
++				"$main::DataDir/dist/$dtd/$global->{format}/mapping",
++				"$main::DataDir/mappings/$global->{format}/mapping"])
++    or die "$error_header: Could not find mapping file for $dtd/$global->{format}. Aborting ...\n";
+ 
++  $mapping = "$style $mapping" if $style;
+ 
+-  if ( $global->{debug} )
+-    {
+-      print "ASP stage finished.\n";
++  if ($global->{format} eq "groff"){
++    if ($dtd eq "linuxdoctr") {
++      $mapping = "$main::DataDir/mappings/$global->{format}/tr-mapping";
+     }
++  }
++
++  my $sgmlsasp_command = "$main::progs->{SGMLSASP} $mapping < $preaspout |
++      expand -t $global->{tabsize} > $aspout";
++  ldt_log "  ${error_header}::sgmlsasp_command:\n    $sgmlsasp_command";
++  system ($sgmlsasp_command) == 0
++    or die "$error_header: Error running $sgmlsasp_command. Aborting ...\n";
++
++  die "$error_header: Can't create $aspout file. Aborting ...\n"
++    unless -e "$aspout";
++
++  print "- ASP stage finished.\n" if ( $global->{debug} );
++  ldt_log "- ASP stage finished.";
+ 
+-  #
+   #  If a postASP stage is defined, let the format handle it.
+-  #  It should leave whatever it thinks is right based on $file.
+-  #
+-  #  postASP ($inhandle)
+-  #
++  # ----------------------------------------------------------------
++  ldt_log "- postASP stage started.";
+   umask $saved_umask;
+-  my $inpostasp = new FileHandle "<$tmpbase.3";
+-  if (defined $Formats{$global->{format}}{postASP})
+-    {
+-      &{$Formats{$global->{format}}{postASP}}($inpostasp) == 0 or
+-	die "error post-processing $global->{format}.\n";
+-    }
+-  $inpostasp->close;
+-
+-  if ( $global->{debug} )
+-    {
+-      print "postASP stage finished.\n";
+-    }
+ 
+-  #
+-  #  All done, remove the temporaries.
+-  #
+-  if( !$global->{debug} ) {
+-      remove_tmpfiles($tmpbase);
++  open (my $INPOSTASP, "< $aspout" )
++    or die "$error_header: Could not open $aspout for reading. Aborting ...\n";
++  if (defined $Formats{$global->{format}}{postASP}) {
++    # Usage: postASP ($INHANDLE)
++    # Should leave whatever it thinks is right based on $INHANDLE.
++    &{$Formats{$global->{format}}{postASP}}($INPOSTASP) == 0
++      or die "$error_header: Error post-processing $global->{format}. Aborting ...\n";
+   }
++  close $INPOSTASP;
++
++  print "- postASP stage finished.\n" if ( $global->{debug} );
++  ldt_log "- postASP stage finished.";
++
++  # -- Reset $global->{logfile} for next file
++  $global->{logfile} = '';
++
++  # -- All done, remove the temporaries.
++  remove_tmpfiles($tmpbase) unless ( $global->{debug} );
+ }
+ 
+ =pod
+@@ -629,7 +648,7 @@ sub process_file
+ Documentation for various sub-packages of LinuxDocTools.
+ 
+ =head1 AUTHOR
+-SGMLTools are written by Cees de Groot, C<E<lt>cg@cdegroot.comE<gt>>, 
++SGMLTools are written by Cees de Groot, C<E<lt>cg@cdegroot.comE<gt>>,
+ and various SGML-Tools contributors as listed in C<CONTRIBUTORS>.
+ Taketoshi Sano C<E<lt>sano@debian.org<gt>> rename to LinuxDocTools.
+ 
+diff --git a/doc/sgml2html b/doc/sgml2html
+index ea8e8c9..98a688c 100755
+--- a/doc/sgml2html
++++ b/doc/sgml2html
+@@ -1,53 +1,76 @@
+ #!/usr/bin/perl 
+ #
+-#   sgmltools.in
+-#
+-#   $Id$
+-#
+-#   SGML-Tools driver. Calls all other SGML-Tools components, contains
+-#   configuration information, etcetera.
++#   linuxdoc.in
+ #
++#   LinuxDoc-Tools driver. Calls all other LinuxDoc-Tools components,
++#   contains configuration information, etcetera.
++# -------------------------------------------------------------------
++
+ package main;
+ 
+-sub BEGIN 
+-{
++sub BEGIN {
+   require 5.004;
+ }
++
+ use strict;
+ 
+-use vars qw($prefix $DataDir $BinDir $progs);
++use vars qw($prefix
++	    $isoentities_prefix
++	    $DataDir
++	    $AuxBinDir
++	    $progs);
+ 
+ use FindBin;
+ 
+-$prefix = "/usr";
+-$DataDir = "$FindBin::Bin/sbase";
+-$BinDir = "/usr/bin";
++$prefix             = "/usr";
++$isoentities_prefix = "/usr";
++$DataDir            = "$FindBin::Bin/sbase";
++$AuxBinDir          = "/usr/lib/linuxdoc-tools";
+ 
+ use lib "/usr/share/linuxdoc-tools";
+-use lib "/usr/perl5";
+-use lib "/usr/lib/perl5";
+ use lib "/usr/share/perl5";
+-$progs = {
+-  "NSGMLS" => "/usr/bin/nsgmls",
+-  "SGMLSASP" => "/usr/bin/sgmlsasp",
+-  "GROFF" => "/usr/bin/groff",
++
++# ---------------------------------------------------------------------
++sub ldt_which {
++# ---------------------------------------------------------------------
++# ---------------------------------------------------------------------
++  die "ldt_which: No filename(s) array given. Aborting ...\n" unless scalar @_;
++
++  foreach my $file ( @_ ){
++    if ( $file =~ m/\// ) {
++      return $file if -x $file;
++    } else {
++      foreach my $path ( split(':',$ENV{'PATH'}) ){
++	$path =~ s/\/+$//;
++	return $file if -x "$path/$file";
++      }
++    }
++  }
++  die "No executable found in path for (", join(' ',@_) ,"). Aborting ...\n";
++}
++
++$progs   = {
++  "SGMLSASP"   => ldt_which("sgmlsasp"),
++  "NSGMLS"     => ldt_which("nsgmls","onsgmls"),
++  "GROFF"      => ldt_which("groff"),
+   "GROFFMACRO" => "-ms",
+-  "AWK" => "/usr/share/linuxdoc-tools/awkwhich"
++#  "NKF" => "@NKF@"
+ };
+ 
+-if (! -x $progs->{"NSGMLS"})
+-  { $progs->{"NSGMLS"} = "/usr/bin/onsgmls"; }
+-
+ $ENV{"SGML_CATALOG_FILES"} = "$DataDir/dtd/catalog" .
+   (defined $ENV{SGML_CATALOG_FILES} ? ":$ENV{SGML_CATALOG_FILES}" : "");
+ 
+ require "$FindBin::Bin/LinuxDocTools.pm";
+ &LinuxDocTools::init;
+ 
+-my @FileList = LinuxDocTools::process_options ("html", @ARGV);
+-for my $curfile (@FileList)
+-  {
+-    LinuxDocTools::process_file ($curfile);
+-  }
++my @FileList = LinuxDocTools::process_options ($0, @ARGV);
++
++foreach my $curfile (@FileList) {
++  &LinuxDocTools::process_file ($curfile);
++}
+ 
+ exit 0;
++
++# Local Variables:
++#  mode: perl
++# End:
+diff --git a/doc/sgml2latex b/doc/sgml2latex
+index 79c6df0..98a688c 100755
+--- a/doc/sgml2latex
++++ b/doc/sgml2latex
+@@ -1,53 +1,76 @@
+ #!/usr/bin/perl 
+ #
+-#   sgmltools.in
+-#
+-#   $Id$
+-#
+-#   SGML-Tools driver. Calls all other SGML-Tools components, contains
+-#   configuration information, etcetera.
++#   linuxdoc.in
+ #
++#   LinuxDoc-Tools driver. Calls all other LinuxDoc-Tools components,
++#   contains configuration information, etcetera.
++# -------------------------------------------------------------------
++
+ package main;
+ 
+-sub BEGIN 
+-{
++sub BEGIN {
+   require 5.004;
+ }
++
+ use strict;
+ 
+-use vars qw($prefix $DataDir $BinDir $progs);
++use vars qw($prefix
++	    $isoentities_prefix
++	    $DataDir
++	    $AuxBinDir
++	    $progs);
+ 
+ use FindBin;
+ 
+-$prefix = "/usr";
+-$DataDir = "$FindBin::Bin/sbase";
+-$BinDir = "/usr/bin";
++$prefix             = "/usr";
++$isoentities_prefix = "/usr";
++$DataDir            = "$FindBin::Bin/sbase";
++$AuxBinDir          = "/usr/lib/linuxdoc-tools";
+ 
+ use lib "/usr/share/linuxdoc-tools";
+-use lib "/usr/perl5";
+-use lib "/usr/lib/perl5";
+ use lib "/usr/share/perl5";
+-$progs = {
+-  "NSGMLS" => "/usr/bin/nsgmls",
+-  "SGMLSASP" => "/usr/bin/sgmlsasp",
+-  "GROFF" => "/usr/bin/groff",
++
++# ---------------------------------------------------------------------
++sub ldt_which {
++# ---------------------------------------------------------------------
++# ---------------------------------------------------------------------
++  die "ldt_which: No filename(s) array given. Aborting ...\n" unless scalar @_;
++
++  foreach my $file ( @_ ){
++    if ( $file =~ m/\// ) {
++      return $file if -x $file;
++    } else {
++      foreach my $path ( split(':',$ENV{'PATH'}) ){
++	$path =~ s/\/+$//;
++	return $file if -x "$path/$file";
++      }
++    }
++  }
++  die "No executable found in path for (", join(' ',@_) ,"). Aborting ...\n";
++}
++
++$progs   = {
++  "SGMLSASP"   => ldt_which("sgmlsasp"),
++  "NSGMLS"     => ldt_which("nsgmls","onsgmls"),
++  "GROFF"      => ldt_which("groff"),
+   "GROFFMACRO" => "-ms",
+-  "AWK" => "/usr/share/linuxdoc-tools/awkwhich"
++#  "NKF" => "@NKF@"
+ };
+ 
+-if (! -x $progs->{"NSGMLS"})
+-  { $progs->{"NSGMLS"} = "/usr/bin/onsgmls"; }
+-
+ $ENV{"SGML_CATALOG_FILES"} = "$DataDir/dtd/catalog" .
+   (defined $ENV{SGML_CATALOG_FILES} ? ":$ENV{SGML_CATALOG_FILES}" : "");
+ 
+ require "$FindBin::Bin/LinuxDocTools.pm";
+ &LinuxDocTools::init;
+ 
+-my @FileList = LinuxDocTools::process_options ("latex", @ARGV);
+-for my $curfile (@FileList)
+-  {
+-    LinuxDocTools::process_file ($curfile);
+-  }
++my @FileList = LinuxDocTools::process_options ($0, @ARGV);
++
++foreach my $curfile (@FileList) {
++  &LinuxDocTools::process_file ($curfile);
++}
+ 
+ exit 0;
++
++# Local Variables:
++#  mode: perl
++# End:
+diff --git a/doc/sgml2txt b/doc/sgml2txt
+index 013479f..98a688c 100755
+--- a/doc/sgml2txt
++++ b/doc/sgml2txt
+@@ -1,53 +1,76 @@
+ #!/usr/bin/perl 
+ #
+-#   sgmltools.in
+-#
+-#   $Id$
+-#
+-#   SGML-Tools driver. Calls all other SGML-Tools components, contains
+-#   configuration information, etcetera.
++#   linuxdoc.in
+ #
++#   LinuxDoc-Tools driver. Calls all other LinuxDoc-Tools components,
++#   contains configuration information, etcetera.
++# -------------------------------------------------------------------
++
+ package main;
+ 
+-sub BEGIN 
+-{
++sub BEGIN {
+   require 5.004;
+ }
++
+ use strict;
+ 
+-use vars qw($prefix $DataDir $BinDir $progs);
++use vars qw($prefix
++	    $isoentities_prefix
++	    $DataDir
++	    $AuxBinDir
++	    $progs);
+ 
+ use FindBin;
+ 
+-$prefix = "/usr";
+-$DataDir = "$FindBin::Bin/sbase";
+-$BinDir = "/usr/bin";
++$prefix             = "/usr";
++$isoentities_prefix = "/usr";
++$DataDir            = "$FindBin::Bin/sbase";
++$AuxBinDir          = "/usr/lib/linuxdoc-tools";
+ 
+ use lib "/usr/share/linuxdoc-tools";
+-use lib "/usr/perl5";
+-use lib "/usr/lib/perl5";
+ use lib "/usr/share/perl5";
+-$progs = {
+-  "NSGMLS" => "/usr/bin/nsgmls",
+-  "SGMLSASP" => "/usr/bin/sgmlsasp",
+-  "GROFF" => "/usr/bin/groff",
++
++# ---------------------------------------------------------------------
++sub ldt_which {
++# ---------------------------------------------------------------------
++# ---------------------------------------------------------------------
++  die "ldt_which: No filename(s) array given. Aborting ...\n" unless scalar @_;
++
++  foreach my $file ( @_ ){
++    if ( $file =~ m/\// ) {
++      return $file if -x $file;
++    } else {
++      foreach my $path ( split(':',$ENV{'PATH'}) ){
++	$path =~ s/\/+$//;
++	return $file if -x "$path/$file";
++      }
++    }
++  }
++  die "No executable found in path for (", join(' ',@_) ,"). Aborting ...\n";
++}
++
++$progs   = {
++  "SGMLSASP"   => ldt_which("sgmlsasp"),
++  "NSGMLS"     => ldt_which("nsgmls","onsgmls"),
++  "GROFF"      => ldt_which("groff"),
+   "GROFFMACRO" => "-ms",
+-  "AWK" => "/usr/share/linuxdoc-tools/awkwhich"
++#  "NKF" => "@NKF@"
+ };
+ 
+-if (! -x $progs->{"NSGMLS"})
+-  { $progs->{"NSGMLS"} = "/usr/bin/onsgmls"; }
+-
+ $ENV{"SGML_CATALOG_FILES"} = "$DataDir/dtd/catalog" .
+   (defined $ENV{SGML_CATALOG_FILES} ? ":$ENV{SGML_CATALOG_FILES}" : "");
+ 
+ require "$FindBin::Bin/LinuxDocTools.pm";
+ &LinuxDocTools::init;
+ 
+-my @FileList = LinuxDocTools::process_options ("txt", @ARGV);
+-for my $curfile (@FileList)
+-  {
+-    LinuxDocTools::process_file ($curfile);
+-  }
++my @FileList = LinuxDocTools::process_options ($0, @ARGV);
++
++foreach my $curfile (@FileList) {
++  &LinuxDocTools::process_file ($curfile);
++}
+ 
+ exit 0;
++
++# Local Variables:
++#  mode: perl
++# End:

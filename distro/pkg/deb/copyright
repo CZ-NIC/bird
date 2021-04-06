@@ -1,0 +1,99 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: bird
+Upstream-Contact: bird-users@network.cz
+Source: https://bird.network.cz
+
+Files: *
+Copyright: 1998-2008 Martin Mareš
+	   1998-2019 Ondřej Filip
+	   1998-2000 Pavel Machek
+	   2008-2019 Ondřej Zajíček
+	   2015-2019 Maria Matějka
+License: GPL-2+
+
+Files: lib/heap.h
+Copyright: 2001 Martin Mareš <mj@ucw.cz>
+	   2005 Tomáš Valla <tom@ucw.cz>
+License: LGPL-2+
+
+Files: lib/md5.c
+Copyright: 1993 Colin Plumb
+License: public-domain
+
+Files: lib/printf.c
+Copyright: 1991-1992 Lars Wirzenius
+	   1991-1992 Linus Torvalds
+	   1998-2000 Martin Mareš
+License: GPL-2
+
+Files: lib/sha*
+Copyright: 1998-2009 Free Software Foundation, Inc.
+	   2015-2016 Pavel Tvrdík
+	   2015-2016 Ondřej Zajíček
+License: GPL-2+
+
+Files: proto/babel/*
+Copyright: 2015-2016 Toke Høiland-Jørgensen
+	   2016-2018 Ondřej Zajíček
+License: GPL-2+
+
+Files: proto/rpki/*
+Copyright: 2015-2016 Pavel Tvrdík
+	   2016-2018 Ondřej Zajíček
+License: GPL-2+
+
+Files: debian/*
+Copyright: 2010-2013 Ondřej Surý <ondrej@debian.org>
+License: GPL-2+
+
+License: GPL-2+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
+  .
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+  .
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+  .
+  On Debian systems, the complete text of the GNU General Public License
+  version 2 can be found in `/usr/share/common-licenses/GPL-2'.
+
+License: GPL-2
+ This package is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License version 2 as
+ published by the Free Software Foundation.
+ .
+ This package is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ .
+ You should have received a copy of the GNU General Public License
+ along with this package; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 2 can be found in `/usr/share/common-licenses/GPL-2'.
+
+License: LGPL-2+
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Library General Public
+ License as published by the Free Software Foundation; either
+ version 2 of the License, or (at your option) any later version.
+ .
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Library General Public License for more details.
+ .
+ On Debian systems, the complete text of the GNU Lesser General Public
+ License version 2 can be found in `/usr/share/common-licenses/LGPL-2'.
+
+License: public-domain
+  This code is in the public domain; do with it what you wish.

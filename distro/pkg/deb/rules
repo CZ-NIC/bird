@@ -1,0 +1,56 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# This file was originally written by Joey Hess and Craig Small.
+# As a special exception, when this file is copied by dh-make into a
+# dh-make output file, you may use that output file without restriction.
+# This special exception was added by Craig Small in version 0.37 of dh-make.
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+DPKG_EXPORT_BUILDFLAGS = 1
+include /usr/share/dpkg/default.mk
+
+COMMON_FLAGS= --prefix=/usr --sysconfdir=/etc/bird --mandir=\$${prefix}/share/man \
+	--infodir=\$${prefix}/share/info --localstatedir=/var --runstatedir=/run/bird \
+	--docdir=\$${prefix}/share/bird2 \
+	--enable-client
+
+CFLAGS += -g -O2 -fno-strict-aliasing -fno-strict-overflow -fPIC
+LDFLAGS += -g -O2 -fno-strict-aliasing -fno-strict-overflow -fPIC -Wl,-z,defs -Wl,--as-needed
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)" dh_auto_configure -- $(COMMON_FLAGS) --with-protocols=all
+
+override_dh_auto_build:
+	dh_auto_build
+	dh_auto_build -- docs
+
+override_dh_auto_install:
+	dh_auto_install --destdir=debian/tmp
+
+override_dh_installinit:
+	dh_installinit --name=bird --restart-after-upgrade
+
+override_dh_installsystemd:
+	dh_installsystemd --name=bird --restart-after-upgrade
+
+DB2MAN = /usr/share/sgml/docbook/stylesheet/xsl/nwalsh/manpages/docbook.xsl
+XP     = xsltproc -''-nonet -''-param man.charmap.use.subset "0"
+
+bird.8: debian/bird.xml
+	$(XP) $(DB2MAN) $<
+
+override_dh_installman: bird.8
+	dh_installman
+
+override_dh_clean:
+	dh_clean
+	-rm -f bird.8 birdc.8
+
+override_dh_missing:
+	dh_missing  --fail-missing
+
+override_dh_compress:
+	dh_compress -X.conf

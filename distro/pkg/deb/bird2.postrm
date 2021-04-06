@@ -1,0 +1,26 @@
+#!/bin/sh
+set -e
+
+if test "$1" = "purge"; then
+
+    # Check if there is no collision of ownership of /etc/bird/bird.conf
+    if ! command -v ucf ucfr >/dev/null || ucfr bird2 /etc/bird/bird.conf 2>/dev/null; then
+	dpkg-statoverride --remove /etc/bird >/dev/null 2>/dev/null || true
+	dpkg-statoverride --remove /etc/bird/bird.conf >/dev/null 2>/dev/null || true
+
+	for ext in '~' '%' .bak .ucf-new .ucf-old .ucf-dist;  do
+	    rm -f /etc/bird/bird.conf$ext
+	done
+	rm -f /etc/bird/bird.conf
+	if command -v ucf ucfr >/dev/null; then
+	    ucf --purge /etc/bird/bird.conf
+	    ucfr --purge bird2 /etc/bird/bird.conf
+	fi
+
+	deluser --quiet bird > /dev/null || true
+    fi
+fi
+
+#DEBHELPER#
+
+exit 0
