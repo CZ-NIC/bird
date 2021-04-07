@@ -125,11 +125,11 @@ add_num_const(char *name, int val, const char *file, const uint line)
 /* the code of read_iproute_table() is based on
    rtnl_tab_initialize() from iproute2 package */
 static void
-read_iproute_table(char *file, char *prefix, int max)
+read_iproute_table(char *file, char *prefix, uint max)
 {
   char buf[512], namebuf[512];
   char *name;
-  int val;
+  uint val;
   FILE *fp;
 
   strcpy(namebuf, prefix);
@@ -151,11 +151,11 @@ read_iproute_table(char *file, char *prefix, int max)
 
     if (sscanf(p, "0x%x %s\n", &val, name) != 2 &&
 	sscanf(p, "0x%x %s #", &val, name) != 2 &&
-	sscanf(p, "%d %s\n", &val, name) != 2 &&
-	sscanf(p, "%d %s #", &val, name) != 2)
+	sscanf(p, "%u %s\n", &val, name) != 2 &&
+	sscanf(p, "%u %s #", &val, name) != 2)
       continue;
 
-    if (val < 0 || val > max)
+    if (val > max)
       continue;
 
     for(p = name; *p; p++)
@@ -191,10 +191,10 @@ sysdep_preconfig(struct config *c)
   c->watchdog_warning = UNIX_DEFAULT_WATCHDOG_WARNING;
 
 #ifdef PATH_IPROUTE_DIR
-  read_iproute_table(PATH_IPROUTE_DIR "/rt_protos", "ipp_", 256);
-  read_iproute_table(PATH_IPROUTE_DIR "/rt_realms", "ipr_", 256);
-  read_iproute_table(PATH_IPROUTE_DIR "/rt_scopes", "ips_", 256);
-  read_iproute_table(PATH_IPROUTE_DIR "/rt_tables", "ipt_", 256);
+  read_iproute_table(PATH_IPROUTE_DIR "/rt_protos", "ipp_", 255);
+  read_iproute_table(PATH_IPROUTE_DIR "/rt_realms", "ipr_", 0xffffffff);
+  read_iproute_table(PATH_IPROUTE_DIR "/rt_scopes", "ips_", 255);
+  read_iproute_table(PATH_IPROUTE_DIR "/rt_tables", "ipt_", 0xffffffff);
 #endif
 }
 
