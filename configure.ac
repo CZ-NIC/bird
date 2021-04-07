@@ -376,7 +376,6 @@ fi
 
 AC_CHECK_FUNCS(getrandom)
 AC_CHECK_FUNCS(getentropy)
-AC_CHECK_HEADERS(sys/random.h)
 
 if test "$enable_debug" = yes ; then
   AC_DEFINE([DEBUGGING], [1], [Define to 1 if debugging is enabled])
