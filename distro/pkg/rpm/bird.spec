@@ -6,7 +6,7 @@ Version:          {{ version }}
 Release:          cznic.{{ release }}%{?dist}
 Summary:          BIRD Internet Routing Daemon
 
-License:          GPLv2+
+License:          GPL-2.0-or-later
 URL:              https://bird.network.cz/
 Source0:          https://bird.network.cz/download/bird-%{version}.tar.gz
 Source1:          bird.service
@@ -100,7 +100,7 @@ exit 0
 %{_sbindir}/birdc
 %{_sbindir}/birdcl
 %dir %attr(0750,bird,bird) %{_localstatedir}/lib/bird
-%dir %attr(0750,bird,bird) %{_rundir}/bird
+%dir %attr(0750,bird,bird) %ghost %{_rundir}/bird
 
 %if 0%{!?_without_doc:1}
 %files doc
