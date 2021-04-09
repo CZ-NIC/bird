@@ -1,9 +1,5 @@
 %global _hardened_build 1
-
-%if "x%{?suse_version}" == "x"
-# missing linuxdoc-tools and sgml-common on SUSE
-%define _without_doc 1
-%endif
+%global _without_doc 1
 
 Name:             bird
 Version:          {{ version }}
