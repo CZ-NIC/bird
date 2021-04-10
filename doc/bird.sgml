@@ -820,7 +820,7 @@ agreement").
 	<tag><label id="proto-pass-to">to "<m/time/"</tag>
 	Shorthand for setting both <cf/generate to/ and <cf/accept to/.
 
-	<tag><label id="proto-pass-algorithm">algorithm ( keyed md5 | keyed sha1 | hmac sha1 | hmac sha256 | hmac sha384 | hmac sha512 )</tag>
+	<tag><label id="proto-pass-algorithm">algorithm ( keyed md5 | keyed sha1 | hmac sha1 | hmac sha256 | hmac sha384 | hmac sha512 | blake2s128 | blake2s256 | blake2b256 | blake2b512 )</tag>
 	The message authentication algorithm for the password when cryptographic
 	authentication is enabled. The default value depends on the protocol.
 	For RIP and OSPFv2 it is Keyed-MD5 (for compatibility), for OSPFv3

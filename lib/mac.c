@@ -32,6 +32,7 @@
 #include "lib/sha1.h"
 #include "lib/sha256.h"
 #include "lib/sha512.h"
+#include "lib/blake2.h"
 
 
 /*
@@ -154,13 +155,26 @@ hmac_final(struct mac_context *ctx)
  *	Common code
  */
 
-#define HASH_DESC(name, px, PX) \
-  { name, PX##_SIZE, sizeof(struct nrmh_context), nrmh_init, nrmh_update, nrmh_final, \
-    PX##_SIZE, PX##_BLOCK_SIZE, px##_init, px##_update, px##_final }
+#define HASH_DESC(name, px, PX)						\
+  {									\
+    name, PX##_SIZE, sizeof(struct nrmh_context),			\
+    nrmh_init, nrmh_update, nrmh_final,					\
+    PX##_SIZE, PX##_BLOCK_SIZE, px##_init, px##_update, px##_final	\
+  }
 
 #define HMAC_DESC(name, px, PX)						\
-  { name, PX##_SIZE, sizeof(struct hmac_context), hmac_init, hmac_update, hmac_final, \
-    PX##_SIZE, PX##_BLOCK_SIZE, px##_init, px##_update, px##_final }
+  {									\
+    name, PX##_SIZE, sizeof(struct hmac_context),			\
+    hmac_init, hmac_update, hmac_final,					\
+    PX##_SIZE, PX##_BLOCK_SIZE, px##_init, px##_update, px##_final	\
+  }
+
+#define BLAKE_DESC(name, vx, VX, size)					\
+  {									\
+    name, size/8, sizeof(struct vx##_context),				\
+    vx##_mac_init, vx##_mac_update, vx##_mac_final,			\
+    size/8, VX##_BLOCK_SIZE, NULL, NULL, NULL				\
+  }
 
 const struct mac_desc mac_table[ALG_MAX] = {
   [ALG_MD5] =		HASH_DESC("Keyed MD5",		md5,	MD5),
@@ -169,6 +183,10 @@ const struct mac_desc mac_table[ALG_MAX] = {
   [ALG_SHA256] = 	HASH_DESC("Keyed SHA-256",	sha256,	SHA256),
   [ALG_SHA384] = 	HASH_DESC("Keyed SHA-384",	sha384,	SHA384),
   [ALG_SHA512] = 	HASH_DESC("Keyed SHA-512",	sha512,	SHA512),
+  [ALG_BLAKE2S_128] = 	BLAKE_DESC("Blake2s-128",	blake2s, BLAKE2S, 128),
+  [ALG_BLAKE2S_256] = 	BLAKE_DESC("Blake2s-256",	blake2s, BLAKE2S, 256),
+  [ALG_BLAKE2B_256] = 	BLAKE_DESC("Blake2b-256",	blake2b, BLAKE2B, 256),
+  [ALG_BLAKE2B_512] = 	BLAKE_DESC("Blake2b-512",	blake2b, BLAKE2B, 512),
   [ALG_HMAC_MD5] = 	HMAC_DESC("HMAC-MD5",		md5,	MD5),
   [ALG_HMAC_SHA1] = 	HMAC_DESC("HMAC-SHA-1",		sha1,	SHA1),
   [ALG_HMAC_SHA224] = 	HMAC_DESC("HMAC-SHA-224",	sha224,	SHA224),
