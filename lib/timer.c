@@ -365,8 +365,9 @@ tm_format_real_time(char *x, size_t max, const char *fmt, btime t)
   if (!localtime_r(&ts, &tm))
     return 0;
 
-  byte tbuf[TM_DATETIME_BUFFER_SIZE];
-  if (!strfusec(tbuf, max, fmt, t2))
+  size_t tbuf_size = MIN(max, 4096);
+  byte *tbuf = alloca(tbuf_size);
+  if (!strfusec(tbuf, tbuf_size, fmt, t2))
     return 0;
 
   if (!strftime(x, max, tbuf, &tm))
