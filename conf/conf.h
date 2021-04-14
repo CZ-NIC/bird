@@ -136,6 +136,11 @@ struct sym_scope {
   int active;				/* Currently entered */
 };
 
+struct bytestring {
+  size_t length;
+  byte data[];
+};
+
 #define SYM_MAX_LEN 64
 
 /* Remember to update cf_symbol_class_name() */

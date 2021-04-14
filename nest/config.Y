@@ -37,6 +37,25 @@ iface_patt_check(void)
       cf_error("Interface name/mask expected, not IP prefix");
 }
 
+static inline void
+init_password(const void *key, uint length, uint id)
+{
+   if (!this_p_list) {
+      this_p_list = cfg_allocz(sizeof(list));
+      init_list(this_p_list);
+      password_id = 1;
+   }
+   this_p_item = cfg_allocz(sizeof (struct password_item));
+   this_p_item->password = key;
+   this_p_item->length = length;
+   this_p_item->genfrom = 0;
+   this_p_item->gento = TIME_INFINITY;
+   this_p_item->accfrom = 0;
+   this_p_item->accto = TIME_INFINITY;
+   this_p_item->id = id;
+   this_p_item->alg = ALG_UNDEFINED;
+   add_tail(this_p_list, &this_p_item->n);
+}
 
 static inline void
 reset_passwords(void)
@@ -490,23 +509,8 @@ password_item:
 ;
 
 password_item_begin:
-   PASSWORD text {
-     if (!this_p_list) {
-	this_p_list = cfg_allocz(sizeof(list));
-	init_list(this_p_list);
-	password_id = 1;
-     }
-     this_p_item = cfg_allocz(sizeof(struct password_item));
-     this_p_item->password = $2;
-     this_p_item->length = strlen($2);
-     this_p_item->genfrom = 0;
-     this_p_item->gento = TIME_INFINITY;
-     this_p_item->accfrom = 0;
-     this_p_item->accto = TIME_INFINITY;
-     this_p_item->id = password_id++;
-     this_p_item->alg = ALG_UNDEFINED;
-     add_tail(this_p_list, &this_p_item->n);
-   }
+    PASSWORD text { init_password($2, strlen($2), password_id++); }
+  | PASSWORD BYTESTRING { init_password($2->data, $2->length, password_id++); }
 ;
 
 password_item_params:

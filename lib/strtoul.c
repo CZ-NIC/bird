@@ -59,3 +59,30 @@ bstrtoul16(const char *str, char **end)
   errno = ERANGE;
   return UINT64_MAX;
 }
+
+byte
+bstrtobyte16(const char *str)
+{
+  byte out = 0;
+  for (int i=0; i<2; i++) {
+    switch (str[i]) {
+      case '0' ... '9':
+	out *= 16;
+	out += str[i] - '0';
+	break;
+      case 'a' ... 'f':
+	out *= 16;
+	out += str[i] + 10 - 'a';
+	break;
+      case 'A' ... 'F':
+	out *= 16;
+	out += str[i] + 10 - 'A';
+	break;
+      default:
+	errno = ERANGE;
+	return -1;
+    }
+  }
+
+  return out;
+}

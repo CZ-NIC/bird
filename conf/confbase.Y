@@ -92,6 +92,7 @@ CF_DECLS
   struct channel_limit cl;
   struct timeformat *tf;
   mpls_label_stack *mls;
+  struct bytestring *bs;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT
@@ -103,6 +104,7 @@ CF_DECLS
 %token <i64> VPN_RD
 %token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED
 %token <t> TEXT
+%token <bs> BYTESTRING
 %type <iface> ipa_scope
 
 %type <i> expr bool pxlen4

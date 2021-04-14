@@ -26,6 +26,7 @@ void buffer_puts(buffer *buf, const char *str);
 
 u64 bstrtoul10(const char *str, char **end);
 u64 bstrtoul16(const char *str, char **end);
+byte bstrtobyte16(const char *str);
 
 int patmatch(const byte *pat, const byte *str);
 

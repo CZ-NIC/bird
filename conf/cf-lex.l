@@ -255,6 +255,37 @@ WHITE [ \t]
   return IP4;
 }
 
+{XIGIT}{2}(:{XIGIT}{2}|{XIGIT}{2}){15,} {
+  char *s = yytext;
+  size_t len = 0, i;
+  struct bytestring *bytes;
+  byte *b;
+
+  while (*s) {
+    len++;
+    s += 2;
+    if (*s == ':')
+      s++;
+  }
+  bytes = cfg_allocz(sizeof(*bytes) + len);
+
+  bytes->length = len;
+  b = &bytes->data[0];
+  s = yytext;
+  errno = 0;
+  for (i = 0; i < len; i++) {
+    *b = bstrtobyte16(s);
+    if (errno == ERANGE)
+      cf_error("Invalid hex string");
+    b++;
+    s += 2;
+    if (*s == ':')
+      s++;
+  }
+  cf_lval.bs = bytes;
+  return BYTESTRING;
+}
+
 ({XIGIT}*::|({XIGIT}*:){3,})({XIGIT}*|{DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+) {
   if (!ip6_pton(yytext, &cf_lval.ip6))
     cf_error("Invalid IPv6 address %s", yytext);
