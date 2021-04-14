@@ -1133,6 +1133,94 @@ t_sha512_concating(void)
   return 1;
 }
 
+#include "lib/blake2.h"
+#include "lib/blake2-kat.h"
+
+static void
+blake_in_fmt(char *buf, size_t size, const void *data, size_t key_len)
+{
+  uint8_t in[BLAKE2_KAT_LENGTH] = {0};
+  uint8_t key[64] = {0};
+  size_t i, len = (size_t)data;
+
+  if (size < len*2+key_len*2+2)
+    return;
+
+  for (i = 0; i < sizeof(in); ++i)
+    in[i] = i;
+  for (i = 0; i < sizeof(key); ++i)
+    key[i] = i;
+
+  bt_bytes_to_hex(buf, in, len);
+  buf[len*2] = ',';
+  bt_bytes_to_hex(buf+len*2+1, key, key_len);
+}
+
+#define define_blake_fmt(name, sz)					\
+static void								\
+name##_in_fmt(char *buf, size_t size, const void *data)			\
+{									\
+  if (size < sz * 2 + 1)						\
+    return;								\
+  blake_in_fmt(buf, size, data, sz);					\
+}									\
+static void								\
+name##_out_fmt(char *buf, size_t size, const void *data)		\
+{                                                               	\
+  if (size < sz * 2)							\
+    return;                                                     	\
+  bt_bytes_to_hex(buf, data, sz);					\
+}
+
+define_blake_fmt(blake2s, BLAKE2S_256_SIZE)
+define_blake_fmt(blake2b, BLAKE2B_512_SIZE)
+
+#define define_test_blake_fn(name, id)					\
+static int test_##name(void *out_, const void *in_,			\
+		       const void *expected_out_) {			\
+  uint8_t in[BLAKE2_KAT_LENGTH] = {0};					\
+  uint8_t key[64] = {0};						\
+  uint len = mac_type_length(id);					\
+  uint in_len = (size_t)in_;						\
+  byte *out;								\
+  size_t i;								\
+									\
+  for (i = 0; i < sizeof(in); ++i)					\
+    in[i] = i;								\
+									\
+  for (i = 0; i < sizeof(key); ++i)					\
+    key[i] = i;								\
+									\
+  struct mac_context ctx;						\
+  mac_init(&ctx, id, key, len);						\
+  mac_update(&ctx, in, in_len);						\
+  out = mac_final(&ctx);						\
+  memcpy(out_, out, len);						\
+  return memcmp(out, expected_out_, len) == 0;				\
+}
+
+define_test_blake_fn(blake2s, ALG_BLAKE2S_256)
+define_test_blake_fn(blake2b, ALG_BLAKE2B_512)
+
+
+#define define_t_blake(name)						\
+static int								\
+t_##name(void)								\
+{									\
+  struct bt_pair test_vectors[BLAKE2_KAT_LENGTH];			\
+  size_t i;								\
+									\
+  for (i = 0; i < BLAKE2_KAT_LENGTH; i++) {				\
+    test_vectors[i].in = (void *)i;					\
+    test_vectors[i].out = name##_keyed_kat[i];				\
+  }									\
+									\
+  return bt_assert_batch(test_vectors, test_##name, name##_in_fmt, name##_out_fmt); \
+}
+
+define_t_blake(blake2s)
+define_t_blake(blake2b)
+
 int
 main(int argc, char *argv[])
 {
@@ -1154,6 +1242,9 @@ main(int argc, char *argv[])
 
   bt_test_suite(t_sha256_concating, "Testing concatenation input string to hash using sha256_update");
   bt_test_suite(t_sha512_concating, "Testing concatenation input string to hash using sha512_update");
+
+  bt_test_suite(t_blake2s, "Testing Blake2s-256");
+  bt_test_suite(t_blake2b, "Testing Blake2b-512");
 
   return bt_exit_value();
 }
