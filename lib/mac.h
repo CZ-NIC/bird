@@ -94,6 +94,8 @@ struct mac_desc {
   void (*hash_init)(struct hash_context *ctx);
   void (*hash_update)(struct hash_context *ctx, const byte *data, uint datalen);
   byte *(*hash_final)(struct hash_context *ctx);
+  uint min_key_length;			/* Minimum allowed key length */
+  uint max_key_length;			/* Maximum allowed key length */
 };
 
 extern const struct mac_desc mac_table[ALG_MAX];

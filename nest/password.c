@@ -9,6 +9,7 @@
 
 #include "nest/bird.h"
 #include "nest/password.h"
+#include "conf/conf.h"
 #include "lib/string.h"
 #include "lib/timer.h"
 #include "lib/mac.h"
@@ -84,4 +85,29 @@ max_mac_length(list *l)
     val = MAX(val, mac_type_length(pi->alg));
 
   return val;
+}
+
+/**
+ * password_validate_length - enforce key length restrictions
+ * @pi: Password item
+ *
+ * This is a common MAC algorithm validation function that will enforce that the
+ * key length constrains specified in the MAC type table.
+ */
+
+void
+password_validate_length(const struct password_item *pi)
+{
+  if (!pi->alg)
+    return;
+
+  const struct mac_desc *alg = &mac_table[pi->alg];
+
+  if (alg->min_key_length && (pi->length < alg->min_key_length))
+    cf_error("Key length (%u B) below minimum length of %u B for %s",
+             pi->length, alg->min_key_length, alg->name);
+
+  if (alg->max_key_length && (pi->length > alg->max_key_length))
+    cf_error("Key length (%u B) exceeds maximum length of %u B for %s",
+             pi->length, alg->max_key_length, alg->name);
 }

@@ -173,7 +173,7 @@ hmac_final(struct mac_context *ctx)
   {									\
     name, size/8, sizeof(struct vx##_context),				\
     vx##_mac_init, vx##_mac_update, vx##_mac_final,			\
-    size/8, VX##_BLOCK_SIZE, NULL, NULL, NULL				\
+    size/8, VX##_BLOCK_SIZE, NULL, NULL, NULL, 0, VX##_SIZE		\
   }
 
 const struct mac_desc mac_table[ALG_MAX] = {

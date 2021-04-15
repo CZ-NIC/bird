@@ -24,6 +24,7 @@ extern struct password_item *last_password_item;
 struct password_item *password_find(list *l, int first_fit);
 struct password_item *password_find_by_id(list *l, uint id);
 struct password_item *password_find_by_value(list *l, char *pass, uint size);
+void password_validate_length(const struct password_item *p);
 
 static inline int password_verify(struct password_item *p1, char *p2, uint size)
 {
