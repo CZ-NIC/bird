@@ -277,6 +277,7 @@ bmp_startup(struct bmp_proto *p)
   buffer payload = bmp_buffer_alloc(p->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
   bmp_init_msg_serialize(&payload, p->sys_descr, p->sys_name);
   bmp_schedule_tx_packet(p, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
+  bmp_buffer_free(&payload);
 
   p->started = true;
 }
@@ -661,6 +662,7 @@ bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
     sk->saddr, sk->daddr, sk->sport, sk->dport, tx_data, tx_data_size,
     rx_data, rx_data_size);
   bmp_schedule_tx_packet(p, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
+  bmp_buffer_free(&payload);
 
   bmp_peer_up(bgp);
 }
@@ -849,6 +851,9 @@ bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp)
     bmp_buffer_flush(&payload);
     bmp_buffer_flush(&update_msgs);
   }
+
+  bmp_buffer_free(&payload);
+  bmp_buffer_free(&update_msgs);
 }
 
 void
