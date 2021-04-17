@@ -828,8 +828,8 @@ agreement").
 	<tag><label id="proto-pass-algorithm">algorithm ( keyed md5 | keyed sha1 | hmac sha1 | hmac sha256 | hmac sha384 | hmac sha512 | blake2s128 | blake2s256 | blake2b256 | blake2b512 )</tag>
 	The message authentication algorithm for the password when cryptographic
 	authentication is enabled. The default value depends on the protocol.
-	For RIP and OSPFv2 it is Keyed-MD5 (for compatibility), for OSPFv3
-	protocol it is HMAC-SHA-256.
+	For RIP and OSPFv2 it is Keyed-MD5 (for compatibility), for OSPFv3 and
+	Babel it is HMAC-SHA-256.
 
 </descrip>
 
@@ -1817,6 +1817,19 @@ protocol babel [<name>] {
 		check link <switch>;
 		next hop ipv4 <address>;
 		next hop ipv6 <address>;
+		authentication none|mac [permissive];
+		password "&lt;text&gt;";
+		password "&lt;text&gt;" {
+			id &lt;num&gt;;
+			generate from "&lt;date&gt;";
+			generate to "&lt;date&gt;";
+			accept from "&lt;date&gt;";
+			accept to "&lt;date&gt;";
+			from "&lt;date&gt;";
+			to "&lt;date&gt;";
+			algorithm ( hmac sha1 | hmac sha256 | hmac sha384 | hmac
+	sha512 | blake2s | blake2b );
+		};
 	};
 }
 </code>
@@ -1907,6 +1920,25 @@ protocol babel [<name>] {
       interface. If not set, the same link-local address that is used as the
       source for Babel packets will be used. In normal operation, it should not
       be necessary to set this option.
+
+      <tag><label id="babel-authentication">authentication none|mac [permissive]</tag>
+      Selects authentication method to be used. <cf/none/ means that packets
+      are not authenticated at all, <cf/mac/ means MAC authentication is
+      performed as described in <rfc id="8967">. If MAC authentication is
+      selected, the <cf/permissive/ suffix can be used to select an operation
+      mode where outgoing packets are signed, but incoming packets will be
+      accepted even if they fail authentication. This can be useful for
+      incremental deployment of MAC authentication across a network. If MAC
+      authentication is selected, a key must be specified with the
+      <cf/password/ configuration option. Default: none.
+
+      <tag><label id="babel-password">password "<m/text/"</tag> Specifies a
+      password used for authentication. See the <ref id="proto-pass"
+      name="password"> common option for a detailed description. The Babel
+      protocol will only accept HMAC-based algorithms or one of the Blake
+      algorithms, and the length of the supplied password string must match the
+      key size used by the selected algorithm.
+
 </descrip>
 
 <sect1>Attributes

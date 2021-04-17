@@ -19,6 +19,7 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/locks.h"
+#include "nest/password.h"
 #include "lib/resource.h"
 #include "lib/lists.h"
 #include "lib/socket.h"
@@ -60,6 +61,14 @@
 #define BABEL_OVERHEAD		(IP6_HEADER_LENGTH+UDP_HEADER_LENGTH)
 #define BABEL_MIN_MTU		(512 + BABEL_OVERHEAD)
 
+#define BABEL_AUTH_NONE		0
+#define BABEL_AUTH_MAC			1
+#define BABEL_AUTH_NONCE_LEN		10	/* we send 80 bit nonces */
+#define BABEL_AUTH_MAX_NONCE_LEN	192	/* max allowed by spec */
+#define BABEL_AUTH_INDEX_LEN		32	/* max size in spec */
+#define BABEL_AUTH_NEIGHBOR_TIMEOUT	(300 S_)
+#define BABEL_AUTH_CHALLENGE_TIMEOUT	(30 S_)
+#define BABEL_AUTH_CHALLENGE_INTERVAL	(300 MS_) /* used for both challenges and replies */
 
 enum babel_tlv_type {
   BABEL_TLV_PAD1		= 0,
@@ -73,13 +82,10 @@ enum babel_tlv_type {
   BABEL_TLV_UPDATE		= 8,
   BABEL_TLV_ROUTE_REQUEST	= 9,
   BABEL_TLV_SEQNO_REQUEST	= 10,
-  /* extensions - not implemented
-  BABEL_TLV_TS_PC		= 11,
-  BABEL_TLV_HMAC		= 12,
-  BABEL_TLV_SS_UPDATE		= 13,
-  BABEL_TLV_SS_REQUEST		= 14,
-  BABEL_TLV_SS_SEQNO_REQUEST	= 15,
-  */
+  BABEL_TLV_MAC		= 16,
+  BABEL_TLV_PC			= 17,
+  BABEL_TLV_CHALLENGE_REQ	= 18,
+  BABEL_TLV_CHALLENGE_REPLY	= 19,
   BABEL_TLV_MAX
 };
 
@@ -137,6 +143,12 @@ struct babel_iface_config {
 
   ip_addr next_hop_ip4;
   ip_addr next_hop_ip6;
+
+  u8 auth_type;			/* Authentication type (BABEL_AUTH_*) */
+  u8 auth_permissive;			/* Don't drop packets failing auth check */
+  uint mac_num_keys;			/* Number of configured HMAC keys */
+  uint mac_total_len;			/* Total digest length for all configured keys */
+  list *passwords;			/* Passwords for authentication */
 };
 
 struct babel_proto {
@@ -184,6 +196,10 @@ struct babel_iface {
 
   u16 hello_seqno;			/* To be increased on each hello */
 
+  u32 auth_pc;
+  int auth_tx_overhead;
+  u8 auth_index[BABEL_AUTH_INDEX_LEN];
+
   btime next_hello;
   btime next_regular;
   btime next_triggered;
@@ -206,9 +222,20 @@ struct babel_neighbor {
   u16 hello_map;
   u16 next_hello_seqno;
   uint last_hello_int;
+
+  u32 auth_pc;
+  u8 auth_passed;
+  u8 auth_index_len;
+  u8 auth_index[BABEL_AUTH_INDEX_LEN];
+  u8 auth_nonce[BABEL_AUTH_NONCE_LEN];
+  btime auth_nonce_expiry;
+  btime auth_next_challenge;
+  btime auth_next_challenge_reply;
+
   /* expiry timers */
   btime hello_expiry;
   btime ihu_expiry;
+  btime auth_expiry;
 
   list routes;				/* Routes this neighbour has sent us (struct babel_route) */
   list requests;			/* Seqno requests bound to this neighbor */
@@ -340,6 +367,12 @@ struct babel_msg_seqno_request {
   ip_addr sender;
 };
 
+struct babel_msg_challenge {
+  u8 type;
+  u8 nonce_len;
+  u8 *nonce;
+};
+
 union babel_msg {
   u8 type;
   struct babel_msg_ack_req ack_req;
@@ -349,11 +382,26 @@ union babel_msg {
   struct babel_msg_update update;
   struct babel_msg_route_request route_request;
   struct babel_msg_seqno_request seqno_request;
+  struct babel_msg_challenge challenge;
 };
 
 struct babel_msg_node {
   node n;
   union babel_msg msg;
+};
+
+/* only used for auth checking, so not a part of union above */
+struct babel_msg_auth {
+  ip_addr sender;
+  u32 pc;
+  u8 pc_seen;
+  u8 index_len;
+  u8 *index;
+  u8 challenge_reply_seen;
+  u8 challenge_reply[BABEL_AUTH_NONCE_LEN];
+  u8 challenge_seen;
+  u8 challenge_len;
+  u8 challenge[BABEL_AUTH_MAX_NONCE_LEN];
 };
 
 static inline int babel_sadr_enabled(struct babel_proto *p)
@@ -374,11 +422,15 @@ void babel_show_neighbors(struct proto *P, const char *iff);
 void babel_show_entries(struct proto *P);
 void babel_show_routes(struct proto *P);
 
+void babel_auth_reset_index(struct babel_iface *ifa);
+int babel_auth_check_pc(struct babel_iface *ifa, struct babel_msg_auth *msg);
+
 /* packets.c */
 void babel_enqueue(union babel_msg *msg, struct babel_iface *ifa);
 void babel_send_unicast(union babel_msg *msg, struct babel_iface *ifa, ip_addr dest);
 int babel_open_socket(struct babel_iface *ifa);
 void babel_send_queue(void *arg);
+void babel_auth_set_tx_overhead(struct babel_iface *ifa);
 
 
 #endif
