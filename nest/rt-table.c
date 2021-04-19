@@ -1880,6 +1880,9 @@ rt_free(resource *_r)
   DBG("Deleting routing table %s\n", r->name);
   ASSERT_DIE(r->use_count == 0);
 
+  if (r->internal)
+    return;
+
   r->config->table = NULL;
   rem_node(&r->n);
 
@@ -1931,7 +1934,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
 
-  if (!cf->internal)
+  if (!(t->internal = cf->internal))
   {
     init_list(&t->channels);
     hmap_init(&t->id_map, p, 1024);
