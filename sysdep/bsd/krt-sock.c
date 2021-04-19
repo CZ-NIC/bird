@@ -453,7 +453,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
     net_fill_ip4(&ndst, ipa_to_ip4(idst), pxlen);
 
   if ((flags & RTF_GATEWAY) && ipa_zero(igate))
-    { log(L_ERR "%s (%N) - missing gateway", errmsg, ndst); return; }
+    { log(L_ERR "%s (%N) - missing gateway", errmsg, &ndst); return; }
 
   u32 self_mask = RTF_PROTO1;
   u32 alien_mask = RTF_STATIC | RTF_PROTO1 | RTF_GATEWAY;
