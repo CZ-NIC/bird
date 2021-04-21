@@ -1,8 +1,8 @@
-FROM ubuntu:19.10
-ENV DEBIAN_FRONTEND noninteractive
+FROM amd64/debian:bullseye-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
 RUN sed -i 's/deb.debian.org/ftp.cz.debian.org/' /etc/apt/sources.list
-RUN apt-get -y update
-RUN apt-get -y upgrade
+RUN apt-get -y update && apt-get -y upgrade
 RUN apt-get -y install \
 	autoconf \
 	build-essential \
@@ -10,3 +10,4 @@ RUN apt-get -y install \
 	bison \
 	ncurses-dev \
 	libreadline-dev
+

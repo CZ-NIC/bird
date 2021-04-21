@@ -61,6 +61,16 @@ docker_debian-10-i386:
     IMG_NAME: "debian-10-i386"
   <<: *docker_build
 
+docker_debian-11-amd64:
+  variables:
+    IMG_NAME: "debian-11-amd64"
+  <<: *docker_build
+
+docker_debian-11-i386:
+  variables:
+    IMG_NAME: "debian-11-i386"
+  <<: *docker_build
+
 docker_debian-testing-amd64:
   variables:
     IMG_NAME: "debian-testing-amd64"
@@ -106,6 +116,21 @@ docker_fedora-31-amd64:
     IMG_NAME: "fedora-31-amd64"
   <<: *docker_build
 
+docker_fedora-32-amd64:
+  variables:
+    IMG_NAME: "fedora-32-amd64"
+  <<: *docker_build
+
+docker_fedora-33-amd64:
+  variables:
+    IMG_NAME: "fedora-33-amd64"
+  <<: *docker_build
+
+docker_fedora-34-amd64:
+  variables:
+    IMG_NAME: "fedora-34-amd64"
+  <<: *docker_build
+
 docker_centos-7-amd64:
   variables:
     IMG_NAME: "centos-7-amd64"
@@ -131,9 +156,19 @@ docker_ubuntu-18_04-amd64:
     IMG_NAME: "ubuntu-18.04-amd64"
   <<: *docker_build
  
-docker_ubuntu-19_10-amd64:
+docker_ubuntu-20_04-amd64:
   variables:
-    IMG_NAME: "ubuntu-19.10-amd64"
+    IMG_NAME: "ubuntu-20.04-amd64"
+  <<: *docker_build
+
+docker_ubuntu-20_10-amd64:
+  variables:
+    IMG_NAME: "ubuntu-20.10-amd64"
+  <<: *docker_build
+
+docker_ubuntu-21_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-21.04-amd64"
   <<: *docker_build
 
 docker_opensuse-15.0-amd64:
@@ -144,6 +179,16 @@ docker_opensuse-15.0-amd64:
 docker_opensuse-15.1-amd64:
   variables:
     IMG_NAME: "opensuse-15.1-amd64"
+  <<: *docker_build
+
+docker_opensuse-15.2-amd64:
+  variables:
+    IMG_NAME: "opensuse-15.2-amd64"
+  <<: *docker_build
+
+docker_opensuse-15.3-amd64:
+  variables:
+    IMG_NAME: "opensuse-15.3-amd64"
   <<: *docker_build
 
 # TODO We want to copy these BSDs to our own virtual machines, to make sure
@@ -205,6 +250,14 @@ build-debian-10-i386:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:debian-10-i386
 
+build-debian-11-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:debian-11-amd64
+
+build-debian-11-i386:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:debian-11-i386
+
 build-debian-testing-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:debian-testing-amd64
@@ -241,6 +294,18 @@ build-fedora-31-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
 
+build-fedora-32-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:fedora-32-amd64
+
+build-fedora-33-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:fedora-33-amd64
+
+build-fedora-34-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:fedora-33-amd64
+
 build-centos-7-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:centos-7-amd64
@@ -261,9 +326,17 @@ build-ubuntu-18_04-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
 
-build-ubuntu-19_04-amd64:
+build-ubuntu-20_04-amd64:
   <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:ubuntu-19.04-amd64
+  image: registry.labs.nic.cz/labs/bird:ubuntu-20.04-amd64
+
+build-ubuntu-20_10-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:ubuntu-20.10-amd64
+
+build-ubuntu-21_04-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:ubuntu-21.04-amd64
 
 build-opensuse-15.0-amd64:
   <<: *build-linux
@@ -272,6 +345,14 @@ build-opensuse-15.0-amd64:
 build-opensuse-15.1-amd64:
   <<: *build-linux
   image: registry.labs.nic.cz/labs/bird:opensuse-15.1-amd64
+
+build-opensuse-15.2-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:opensuse-15.2-amd64
+
+build-opensuse-15.3-amd64:
+  <<: *build-linux
+  image: registry.labs.nic.cz/labs/bird:opensuse-15.3-amd64
 
 build-freebsd-11-amd64:
   <<: *build-base
