@@ -9,6 +9,7 @@ variables:
 stages:
   - image
   - build
+  - pkg
   - test
 
 .docker: &docker_build
@@ -207,6 +208,7 @@ docker_opensuse-15.3-amd64:
   - freebsd
   - amd64
 
+
 .build: &build-base
   stage: build
   script:
@@ -366,6 +368,40 @@ build-freebsd-11-i386:
     - freebsd
     - i386
 
+
+.pkg-debian: &pkg-debian
+  stage: pkg
+  script:
+  - pip3 install apkg
+  - apkg build
+  - apkg install -y pkg/pkgs/*/*/*.deb
+
+pkg-debian-9-amd64:
+  <<: *pkg-debian
+  needs: [build-debian-9-amd64]
+  image: registry.labs.nic.cz/labs/bird:debian-9-amd64
+
+pkg-debian-9-i386:
+  <<: *pkg-debian
+  needs: [build-debian-9-i386]
+  image: registry.labs.nic.cz/labs/bird:debian-9-i386
+
+pkg-debian-10-amd64:
+  <<: *pkg-debian
+  needs: [build-debian-10-amd64]
+  image: registry.labs.nic.cz/labs/bird:debian-10-amd64
+
+pkg-debian-10-i386:
+  <<: *pkg-debian
+  needs: [build-debian-10-i386]
+  image: registry.labs.nic.cz/labs/bird:debian-10-i386
+
+pkg-debian-11-amd64:
+  <<: *pkg-debian
+  needs: [build-debian-11-amd64]
+  image: registry.labs.nic.cz/labs/bird:debian-11-amd64
+
+
 build-birdlab:
   stage: build
   tags:
@@ -417,10 +453,10 @@ test-ospf-ptmp:
   variables:
     TEST_NAME: cf-ospf-ptmp
 
-test-ospf-authentication:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ospf-authentication
+# test-ospf-authentication:
+#   <<: *test-base
+#   variables:
+#     TEST_NAME: cf-ospf-authentication
 
 test-ospf-bfd:
   <<: *test-base
