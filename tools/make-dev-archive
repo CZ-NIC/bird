@@ -11,28 +11,22 @@ VERSION=$BIRD_VERSION.$TIMESTAMP.$GIT_HASH
 
 REL=bird-$VERSION
 T=/tmp/bird
-AC=autoreconf
 
 set -e
 
 # prepare output dir
-rm -rf $T/$REL
-mkdir -p $T/$REL
-
-$AC
-
-# cleanup
-find . -name "*~" -exec rm -f '{}' '+'
-rm -rf autom4te*cache
+rm -rf $T/$REL $T/$REL.tar.gz
+mkdir -p $T
 
 echo Building $REL
-cp -a . $T/$REL
+git archive --format=tar --prefix=$REL/ HEAD | (cd $T && tar xf -)
+echo Running autoreconf
+( cd $T/$REL ; autoreconf ; rm -rf autom4te*cache )
 echo Generating ChangeLog
-git log  >$T/$REL/ChangeLog
+git log >$T/$REL/ChangeLog
 rm -f $T/$REL/bird.conf*
-rm -rf $T/$REL/.git/
-rm -rf `find $T/$REL -name CVS -o -name tmp` $T/$REL/{misc,rfc,doc/slides,doc/slt2001,doc/old,doc/*.out}
-( cd $T ; tar czvvf $REL.tar.gz $REL )
+rm -rf $T/$REL/misc $T/$REL/doc/slides $T/$REL/doc/slt2001 $T/$REL/doc/old
+( cd $T ; tar czf $REL.tar.gz $REL )
 rm -rf $T/$REL
 
 echo $T/$REL.tar.gz
