@@ -1,0 +1,85 @@
+
+This is `linuxdoc-tools', a series of tools to implement the Linux
+Documentation Project HOWTO and book styles in SGML.
+
+This copy was modified in order to work with birddoc DTD. It is
+based on version 0.9.73-2 from Debian 10.
+
+
+----------------------------------
+    The linuxdoc-tools license
+----------------------------------
+
+linuxdoc-tools is derived from linuxdoc-SGML, originally written by
+Matt Welsh and later maintained by Cees de Groot. Linuxdoc-SGML is
+based on James Clark's sgmls parser, and the QWERTZ DTD by Tom
+Gordon. Magnus Alvestad provided the current HTML support. For
+the rest of linuxdoc-SGML,
+
+  Copyright (C) 1994-1996 Matt Welsh <mdw@cs.cornell.edu>
+  Copyright (C) 1996-1998 Cees de Groot <cg@pobox.com>
+
+Original Linuxdoc-SGML itself does not have any limitations.
+Everything not having explicit additional conditions can be freely
+used, modified, and redistributed, under the usual fair use clauses:
+
+ * No warranty. Use at your own risk.
+ * Do not pretend to have written what you did not (Preserve credits
+   and Copyright notices of the different elements if present).
+
+Since then, lots of smaller and bigger changes resulted in a rename
+to SGML-Tools (and then to SGMLtools, the hyphen caused confusion)
+to indicate that it wasn't just for Linux anymore. See files
+CHANGES.old-v1 and CONTRIBUTORS.old-v1 for changelog and list of
+contributors to old linuxdoc-sgml and sgmltools-v1.
+
+When sgml-tools dropped support for the linuxdoc DTD, Taketoshi Sano
+<sano@debian.org> forked the code to linuxdoc-tools. See README file.
+
+Changes after the fork
+
+  Copyright (C) 1999-2002 Taketoshi Sano <sano@debian.org>
+  Copyright (C) 2000      Juan Jose Amor
+  Copyright (C) 2007-2018 Agustin Martin Domingo <agmartin@debian.org>
+
+Unless conflicting with other licenses, changes by Agustin Martin
+Domingo are free software: you can redistribute and/or modify them
+under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version. Otherwise they honour previous
+license.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+In Debian systems you can find a copy under /usr/share/common-licenses.
+
+
+----------------------------------
+    The entity-map license
+----------------------------------
+
+Copyright (C) 1997 Ken MacLeod
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL KEN MACLEOD BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
+OR OTHER DEALINGS IN THE SOFTWARE.
+
+Except as contained in this notice, the name of Ken MacLeod shall not
+be used in advertising or otherwise to promote the sale, use or other
+dealings in this Software without prior written authorization from
+Ken MacLeod.

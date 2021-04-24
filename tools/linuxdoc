@@ -1,0 +1,75 @@
+#!/usr/bin/perl 
+#
+#   linuxdoc.in
+#
+#   LinuxDoc-Tools driver. Calls all other LinuxDoc-Tools components,
+#   contains configuration information, etcetera.
+# -------------------------------------------------------------------
+
+package main;
+
+sub BEGIN {
+  require 5.004;
+}
+
+use strict;
+
+use vars qw($prefix
+	    $isoentities_prefix
+	    $DataDir
+	    $AuxBinDir
+	    $progs);
+
+use FindBin;
+
+$prefix             = "/usr";
+$isoentities_prefix = "/usr";
+$DataDir            = "$FindBin::Bin/../doc/sbase";
+$AuxBinDir          = "/usr/lib/linuxdoc-tools";
+
+use lib "$FindBin::Bin/linuxdoc-tools";
+
+# ---------------------------------------------------------------------
+sub ldt_which {
+# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------
+  die "ldt_which: No filename(s) array given. Aborting ...\n" unless scalar @_;
+
+  foreach my $file ( @_ ){
+    if ( $file =~ m/\// ) {
+      return $file if -x $file;
+    } else {
+      foreach my $path ( split(':',$ENV{'PATH'}) ){
+	$path =~ s/\/+$//;
+	return $file if -x "$path/$file";
+      }
+    }
+  }
+  die "No executable found in path for (", join(' ',@_) ,"). Aborting ...\n";
+}
+
+$progs   = {
+  "SGMLSASP"   => ldt_which("sgmlsasp"),
+  "NSGMLS"     => ldt_which("nsgmls","onsgmls"),
+  "GROFF"      => ldt_which("groff"),
+  "GROFFMACRO" => "-ms",
+#  "NKF" => "@NKF@"
+};
+
+$ENV{"SGML_CATALOG_FILES"} = "$DataDir/dtd/catalog" .
+  (defined $ENV{SGML_CATALOG_FILES} ? ":$ENV{SGML_CATALOG_FILES}" : "");
+
+require LinuxDocTools;
+&LinuxDocTools::init;
+
+my @FileList = LinuxDocTools::process_options ($0, @ARGV);
+
+foreach my $curfile (@FileList) {
+  &LinuxDocTools::process_file ($curfile);
+}
+
+exit 0;
+
+# Local Variables:
+#  mode: perl
+# End:

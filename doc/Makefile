@@ -1,8 +1,8 @@
 # Force rebuilds
 .PHONY: progspell docs progdocs userdocs
 
-doc-srcdir := $(shell cd $(s) && pwd)
-sgml2 := $(doc-srcdir)/sgml2
+doc-srcdir := $(realpath $(srcdir)/doc)
+toolsdir := $(realpath $(srcdir)/tools)
 
 docs: progdocs userdocs
 
@@ -23,10 +23,10 @@ $(o)%.sgml: $(s)%.sgml $(objdir)/.dir-stamp
 	cp $< $@
 
 $(o)%.html: $(o)%.sgml
-	cd $(dir $@) && $(sgml2)html $(notdir $<)
+	cd $(dir $@) && $(toolsdir)/linuxdoc -B html $(notdir $<)
 
 $(o)%.tex: $(o)%.sgml
-	cd $(dir $@) && $(sgml2)latex --output=tex $(notdir $<)
+	cd $(dir $@) && $(toolsdir)/linuxdoc -B latex --output=tex $(notdir $<)
 
 $(o)%.dvi: $(o)%.tex
 	cd $(dir $@) && TEXINPUTS=$(TEXINPUTS):$(doc-srcdir)/tex latex $(notdir $<)
@@ -40,7 +40,7 @@ $(o)%.pdf: $(o)%.tex
 	TEXINPUTS=$(TEXINPUTS):$(doc-srcdir)/tex pdflatex -output-directory=$(dir $@) $<
 
 $(o)%.txt: $(o)%.sgml
-	cd $(dir $@) && $(sgml2)txt $(notdir $<)
+	cd $(dir $@) && $(toolsdir)/linuxdoc -B txt $(notdir $<)
 
 $(o)prog.spell: $(o)prog.sgml $(s)prog-spell.sed
 	sed -f $(lastword $^) <$< >$@
