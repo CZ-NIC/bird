@@ -8,9 +8,11 @@ Build-Depends: bison,
                libncurses5-dev,
                libreadline-dev | libreadline6-dev | libreadline5-dev,
                libssh-gcrypt-dev,
+               linuxdoc-tools-latex,
                m4,
                opensp,
                quilt,
+               texlive-latex-extra,
                xsltproc
 Maintainer: Jakub Ružička <jakub.ruzicka@nic.cz>
 Uploaders: Ondřej Surý <ondrej@debian.org>
@@ -29,6 +31,7 @@ Depends: adduser,
          ${misc:Depends},
          ${shlibs:Depends}
 Conflicts: bird
+Suggests: bird2-doc
 Description: Internet Routing Daemon
  BIRD is an Internet routing daemon with full support for all the major
  routing protocols. It allows redistribution between protocols with a
@@ -38,3 +41,15 @@ Description: Internet Routing Daemon
  BIRD supports IPv4 and IPv6 versions of OSPF, RIP, BGP and Babel routing
  protocols. It also supports supplementary protocols like BFD, RPKI-Router
  and IPv6 router advertisements.
+
+Package: bird2-doc
+Architecture: all
+Section: doc
+Depends: ${misc:Depends}
+Description: Internet Routing Daemon - documentation
+ BIRD is an Internet routing daemon with full support for all the major
+ routing protocols. It allows redistribution between protocols with a
+ powerful route filtering syntax and an easy-to-use configuration
+ interface.
+ .
+ This package provides the user and developer documentation.
