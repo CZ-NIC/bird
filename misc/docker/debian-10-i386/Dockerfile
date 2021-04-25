@@ -1,4 +1,4 @@
-FROM i386/debian:stretch-slim
+FROM i386/debian:buster-slim
 ENV DEBIAN_FRONTEND noninteractive
 RUN sed -i 's/deb.debian.org/ftp.cz.debian.org/' /etc/apt/sources.list
 RUN apt-get -y update
