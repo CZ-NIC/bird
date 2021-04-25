@@ -11,6 +11,8 @@ RUN apt-get -y --no-install-recommends install \
 	ncurses-dev \
 	libreadline-dev \
 	libssh-gcrypt-dev \
+	linuxdoc-tools-latex \
+	texlive-latex-extra \
 	opensp \
 	docbook-xsl \
 	xsltproc
