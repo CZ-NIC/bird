@@ -218,8 +218,9 @@ docker_opensuse-15.3-amd64:
   - MAKE=make
   - which gmake 2>/dev/null >/dev/null && MAKE=gmake
   - $MAKE
-  # Run tests if they are available
   - $MAKE check
+  # Build docs when tools are available
+  - if which linuxdoc pdflatex >/dev/null ; then $MAKE docs ; fi
 
 .build-linux: &build-linux
   <<: *build-base
