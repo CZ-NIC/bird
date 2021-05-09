@@ -664,21 +664,44 @@ ospf_send_to(struct ospf_iface *ifa, ip_addr dst)
     log(L_WARN "OSPF: TX queue full on %s", ifa->ifname);
 }
 
-void
-ospf_send_to_agt(struct ospf_iface *ifa, u8 state)
+static void
+ospf_send_to_designated(struct ospf_iface *ifa)
+{
+  /* In case of real-broadcast mode */
+  if (ipa_zero(ifa->des_routers))
+  {
+    if (ipa_nonzero2(ifa->drip))
+      ospf_send_to(ifa, ifa->drip);
+
+    if (ipa_nonzero2(ifa->bdrip))
+      ospf_send_to(ifa, ifa->bdrip);
+
+    return;
+  }
+
+  ospf_send_to(ifa, ifa->des_routers);
+}
+
+static void
+ospf_send_to_adjacent(struct ospf_iface *ifa)
 {
   struct ospf_neighbor *n;
 
   WALK_LIST(n, ifa->neigh_list)
-    if (n->state >= state)
+    if (n->state >= NEIGHBOR_EXCHANGE)
       ospf_send_to(ifa, n->ip);
 }
 
 void
-ospf_send_to_bdr(struct ospf_iface *ifa)
+ospf_send_to_iface(struct ospf_iface *ifa)
 {
-  if (ipa_nonzero2(ifa->drip))
-    ospf_send_to(ifa, ifa->drip);
-  if (ipa_nonzero2(ifa->bdrip))
-    ospf_send_to(ifa, ifa->bdrip);
+  if (ifa->type == OSPF_IT_BCAST)
+  {
+    if ((ifa->state == OSPF_IS_DR) || (ifa->state == OSPF_IS_BACKUP))
+      ospf_send_to_all(ifa);
+    else
+      ospf_send_to_designated(ifa);
+  }
+  else /* Non-broadcast */
+    ospf_send_to_adjacent(ifa);
 }

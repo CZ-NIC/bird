@@ -398,15 +398,7 @@ ospf_flood_lsupd(struct ospf_proto *p, struct top_hash_entry **lsa_list, uint ls
     OSPF_PACKET(ospf_dump_lsupd, ospf_tx_buffer(ifa),
 		"LSUPD packet flooded via %s", ifa->ifname);
 
-    if (ifa->type == OSPF_IT_BCAST)
-    {
-      if ((ifa->state == OSPF_IS_DR) || (ifa->state == OSPF_IS_BACKUP))
-	ospf_send_to_all(ifa);
-      else
-	ospf_send_to_des(ifa);
-    }
-    else
-      ospf_send_to_agt(ifa, NEIGHBOR_EXCHANGE);
+    ospf_send_to_iface(ifa);
   }
 
   return i;

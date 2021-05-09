@@ -1056,22 +1056,13 @@ int ospf_rx_hook(sock * sk, uint size);
 void ospf_err_hook(sock * sk, int err);
 void ospf_verr_hook(sock *sk, int err);
 void ospf_send_to(struct ospf_iface *ifa, ip_addr ip);
-void ospf_send_to_agt(struct ospf_iface *ifa, u8 state);
-void ospf_send_to_bdr(struct ospf_iface *ifa);
-
-static inline uint ospf_pkt_maxsize(struct ospf_iface *ifa)
-{ return ifa->tx_length - ifa->tx_hdrlen; }
+void ospf_send_to_iface(struct ospf_iface *ifa);
 
 static inline void ospf_send_to_all(struct ospf_iface *ifa)
 { ospf_send_to(ifa, ifa->all_routers); }
 
-static inline void ospf_send_to_des(struct ospf_iface *ifa)
-{
-  if (ipa_nonzero(ifa->des_routers))
-    ospf_send_to(ifa, ifa->des_routers);
-  else
-    ospf_send_to_bdr(ifa);
-}
+static inline uint ospf_pkt_maxsize(struct ospf_iface *ifa)
+{ return ifa->tx_length - ifa->tx_hdrlen; }
 
 #ifndef PARSER
 #define DROP(DSC,VAL) do { err_dsc = DSC; err_val = VAL; goto drop; } while(0)

@@ -111,20 +111,12 @@ ospf_send_lsack_(struct ospf_proto *p, struct ospf_neighbor *n, int queue)
   {
     OSPF_PACKET(ospf_dump_lsack, pkt, "LSACK packet sent to nbr %R on %s", n->rid, ifa->ifname);
     ospf_send_to(ifa, n->ip);
-    return;
-  }
-
-  OSPF_PACKET(ospf_dump_lsack, pkt, "LSACK packet sent via %s", ifa->ifname);
-
-  if (ifa->type == OSPF_IT_BCAST)
-  {
-    if ((ifa->state == OSPF_IS_DR) || (ifa->state == OSPF_IS_BACKUP))
-      ospf_send_to_all(ifa);
-    else
-      ospf_send_to_des(ifa);
   }
   else
-    ospf_send_to_agt(ifa, NEIGHBOR_EXCHANGE);
+  {
+    OSPF_PACKET(ospf_dump_lsack, pkt, "LSACK packet sent via %s", ifa->ifname);
+    ospf_send_to_iface(ifa);
+  }
 }
 
 void
