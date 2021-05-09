@@ -420,7 +420,7 @@ ospf_send_lsupd(struct ospf_proto *p, struct top_hash_entry **lsa_list, uint lsa
     OSPF_PACKET(ospf_dump_lsupd, ospf_tx_buffer(ifa),
 		"LSUPD packet sent to nbr %R on %s", n->rid, ifa->ifname);
 
-    ospf_send_to(ifa, n->ip);
+    ospf_send_to_nbr(ifa, n);
   }
 
   return i;

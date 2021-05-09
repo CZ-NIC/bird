@@ -89,7 +89,7 @@ ospf_send_lsreq(struct ospf_proto *p, struct ospf_neighbor *n)
   pkt->length = htons(length);
 
   OSPF_PACKET(ospf_dump_lsreq, pkt, "LSREQ packet sent to nbr %R on %s", n->rid, ifa->ifname);
-  ospf_send_to(ifa, n->ip);
+  ospf_send_to_nbr(ifa, n);
 }
 
 

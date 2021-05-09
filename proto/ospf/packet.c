@@ -695,6 +695,14 @@ ospf_send_to_adjacent(struct ospf_iface *ifa)
 void
 ospf_send_to_iface(struct ospf_iface *ifa)
 {
+  /*
+   * Send packet to (relevant) neighbors on iface
+   *
+   * On broadcast networks, destination is either AllSPFRouters, or AllDRouters.
+   * On PtP networks, destination is always AllSPFRouters. On non-broadcast
+   * networks, packets are sent as unicast to every adjacent neighbor.
+   */
+
   if (ifa->type == OSPF_IT_BCAST)
   {
     if ((ifa->state == OSPF_IS_DR) || (ifa->state == OSPF_IS_BACKUP))
@@ -702,6 +710,8 @@ ospf_send_to_iface(struct ospf_iface *ifa)
     else
       ospf_send_to_designated(ifa);
   }
+  else if (ifa->type == OSPF_IT_PTP)
+    ospf_send_to_all(ifa);
   else /* Non-broadcast */
     ospf_send_to_adjacent(ifa);
 }

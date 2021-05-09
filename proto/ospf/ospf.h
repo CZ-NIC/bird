@@ -1058,6 +1058,9 @@ void ospf_verr_hook(sock *sk, int err);
 void ospf_send_to(struct ospf_iface *ifa, ip_addr ip);
 void ospf_send_to_iface(struct ospf_iface *ifa);
 
+static inline void ospf_send_to_nbr(struct ospf_iface *ifa, struct ospf_neighbor *n)
+{ ospf_send_to(ifa, (ifa->type == OSPF_IT_PTP) ? ifa->all_routers :  n->ip); }
+
 static inline void ospf_send_to_all(struct ospf_iface *ifa)
 { ospf_send_to(ifa, ifa->all_routers); }
 

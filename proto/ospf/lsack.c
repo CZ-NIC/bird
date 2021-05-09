@@ -110,7 +110,7 @@ ospf_send_lsack_(struct ospf_proto *p, struct ospf_neighbor *n, int queue)
   if (queue == ACKL_DIRECT)
   {
     OSPF_PACKET(ospf_dump_lsack, pkt, "LSACK packet sent to nbr %R on %s", n->rid, ifa->ifname);
-    ospf_send_to(ifa, n->ip);
+    ospf_send_to_nbr(ifa, n);
   }
   else
   {
