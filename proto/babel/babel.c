@@ -1639,6 +1639,20 @@ babel_remove_iface(struct babel_proto *p, struct babel_iface *ifa)
   rfree(ifa->pool); /* contains ifa itself, locks, socket, etc */
 }
 
+static int
+iface_is_valid(struct babel_proto *p, struct iface *iface)
+{
+  if (!(iface->flags & IF_MULTICAST))
+  {
+    log(L_ERR "%s: Interface %s does not support multicast",
+	p->p.name, iface->name);
+
+    return 0;
+  }
+
+  return 1;
+}
+
 static void
 babel_if_notify(struct proto *P, unsigned flags, struct iface *iface)
 {
@@ -1658,16 +1672,13 @@ babel_if_notify(struct proto *P, unsigned flags, struct iface *iface)
     if (!(iface->flags & IF_UP))
       return;
 
-    /* We only speak multicast */
-    if (!(iface->flags & IF_MULTICAST))
-      return;
-
     /* Ignore ifaces without link-local address */
     if (!iface->llv6)
       return;
 
     struct babel_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
-    if (ic)
+
+    if (ic && iface_is_valid(p, iface))
       babel_add_iface(p, iface, ic);
 
     return;
@@ -1736,16 +1747,15 @@ babel_reconfigure_ifaces(struct babel_proto *p, struct babel_config *cf)
     if (!(iface->flags & IF_UP))
       continue;
 
-    /* Ignore non-multicast ifaces */
-    if (!(iface->flags & IF_MULTICAST))
-      continue;
-
     /* Ignore ifaces without link-local address */
     if (!iface->llv6)
       continue;
 
     struct babel_iface *ifa = babel_find_iface(p, iface);
     struct babel_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
+
+    if (ic && iface_is_valid(p, iface))
+      ic = NULL;
 
     if (ifa && ic)
     {
