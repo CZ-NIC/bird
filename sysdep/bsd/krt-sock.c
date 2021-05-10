@@ -665,6 +665,9 @@ krt_read_ifinfo(struct ks_msg *msg, int scan)
   else
     f.flags |= IF_MULTIACCESS;      /* NBMA */
 
+  if (fl & IFF_MULTICAST)
+    f.flags |= IF_MULTICAST;
+
   iface = if_update(&f);
 
   if (!scan)
