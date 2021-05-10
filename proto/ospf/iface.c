@@ -529,14 +529,14 @@ add_nbma_node(struct ospf_iface *ifa, struct nbma_node *src, int found)
 }
 
 static int
-ospf_iface_stubby(struct ospf_iface_patt *ip, struct ifa *addr)
+ospf_iface_stubby(struct ospf_iface_patt *ip, struct ifa *addr, int type)
 {
   /* vlink cannot be stub */
-  if (ip->type == OSPF_IT_VLINK)
+  if (type == OSPF_IT_VLINK)
     return 0;
 
-  /* a host address */
-  if (addr->flags & IA_HOST)
+  /* Host address on Broadcast/NBMA */
+  if (((type == OSPF_IT_BCAST) || (type == OSPF_IT_NBMA)) && (addr->flags & IA_HOST))
     return 1;
 
   /* a loopback iface */
@@ -584,7 +584,6 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   ifa->strictnbma = ip->strictnbma;
   ifa->waitint = ip->waitint;
   ifa->deadint = ip->deadint;
-  ifa->stub = ospf_iface_stubby(ip, addr);
   ifa->ioprob = OSPF_I_OK;
   ifa->check_link = ip->check_link;
   ifa->ecmp_weight = ip->ecmp_weight;
@@ -598,18 +597,19 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   ifa->tx_length = ifa_tx_length(ifa);
   ifa->tx_hdrlen = ifa_tx_hdrlen(ifa);
 
-  ifa->ptp_netmask = !(addr->flags & IA_PEER);
+  ifa->ptp_netmask = !(addr->flags & (IA_HOST | IA_PEER));
   if (ip->ptp_netmask < 2)
     ifa->ptp_netmask = ip->ptp_netmask;
 
   /* For compatibility, we may use ptp_address even for unnumbered links */
-  ifa->ptp_address = !(addr->flags & IA_PEER) || (p->gr_mode != OSPF_GR_ABLE);
+  ifa->ptp_address = !(addr->flags & (IA_HOST | IA_PEER)) || (p->gr_mode != OSPF_GR_ABLE);
   if (ip->ptp_address < 2)
     ifa->ptp_address = ip->ptp_address;
 
   ifa->drip = ifa->bdrip = ospf_is_v2(p) ? IPA_NONE4 : IPA_NONE6;
 
   ifa->type = ospf_iface_classify(ip->type, addr);
+  ifa->stub = ospf_iface_stubby(ip, addr, ifa->type);
 
   /* Check validity of interface type */
   int old_type = ifa->type;
@@ -647,7 +647,7 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
        should be used). Because OSPFv3 iface is not subnet-specific,
        there is no need for ipa_in_net() check */
 
-    if (ospf_is_v2(p) && !ipa_in_netX(nb->ip, &addr->prefix))
+    if (ospf_is_v2(p) && !ospf_ipa_local(nb->ip, addr))
       continue;
 
     if (ospf_is_v3(p) && !ipa_is_link_local(nb->ip))
@@ -767,7 +767,7 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
   if (old_type != new_type)
     return 0;
 
-  int new_stub = ospf_iface_stubby(new, ifa->addr);
+  int new_stub = ospf_iface_stubby(new, ifa->addr, new_type);
   if (ifa->stub != new_stub)
     return 0;
 
@@ -929,7 +929,7 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
   WALK_LIST(nb, new->nbma_list)
   {
     /* See related note in ospf_iface_new() */
-    if (ospf_is_v2(p) && !ipa_in_netX(nb->ip, &ifa->addr->prefix))
+    if (ospf_is_v2(p) && !ospf_ipa_local(nb->ip, ifa->addr))
       continue;
 
     if (ospf_is_v3(p) && !ipa_is_link_local(nb->ip))
@@ -1011,7 +1011,7 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 
   /* PtP netmask */
   int new_ptp_netmask = (new->ptp_netmask < 2) ? new->ptp_netmask :
-    !(ifa->addr->flags & IA_PEER);
+    !(ifa->addr->flags & (IA_HOST | IA_PEER));
   if (ifa->ptp_netmask != new_ptp_netmask)
   {
     OSPF_TRACE(D_EVENTS, "Changing PtP netmask option of %s from %d to %d",
@@ -1021,7 +1021,7 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 
   /* PtP address */
   int new_ptp_address = (new->ptp_address < 2) ? new->ptp_address :
-    (!(ifa->addr->flags & IA_PEER) || (p->gr_mode != OSPF_GR_ABLE));
+    (!(ifa->addr->flags & (IA_HOST | IA_PEER)) || (p->gr_mode != OSPF_GR_ABLE));
   if (ifa->ptp_address != new_ptp_address)
   {
     /* Keep it silent for implicit changes */

@@ -946,6 +946,14 @@ struct lsadb_show_data {
 #define EA_OSPF_ROUTER_ID EA_CODE(PROTOCOL_OSPF, 3)
 
 
+/*
+ * For regular networks, neighbor address must match network prefix.
+ * For unnumbered networks, we consider every address local.
+ */
+static inline int ospf_ipa_local(ip_addr a, const struct ifa *addr)
+{ return ipa_in_netX(a, &addr->prefix) || (addr->flags & IA_HOST); }
+
+
 /* ospf.c */
 void ospf_schedule_rtcalc(struct ospf_proto *p);
 

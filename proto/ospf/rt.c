@@ -1827,7 +1827,12 @@ calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
 	return NULL;
     }
 
-    return new_nexthop(p, nh, ifa->iface, ifa->ecmp_weight);
+    struct nexthop *nhs = new_nexthop(p, nh, ifa->iface, ifa->ecmp_weight);
+
+    if (ifa->addr->flags & IA_HOST)
+      nhs->flags = RNF_ONLINK;
+
+    return nhs;
   }
 
   /* The third case - bcast or nbma neighbor */
@@ -2031,8 +2036,9 @@ again1:
       for (nh = nf->n.nhs; nh; nh = nh->next)
 	if (ipa_nonzero(nh->gw))
 	{
-	  neighbor *ng = neigh_find(&p->p, nh->gw, nh->iface, 0);
-	  if (!ng || (ng->scope == SCOPE_HOST))
+	  neighbor *nbr = neigh_find(&p->p, nh->gw, nh->iface,
+				    (nh->flags & RNF_ONLINK) ? NEF_ONLINK : 0);
+	  if (!nbr || (nbr->scope == SCOPE_HOST))
 	    { reset_ri(nf); break; }
 	}
     }

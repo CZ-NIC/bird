@@ -403,7 +403,7 @@ ospf_rx_hook(sock *sk, uint len)
     return 1;
 
   int src_local, dst_local, dst_mcast;
-  src_local = ipa_in_netX(sk->faddr, &ifa->addr->prefix);
+  src_local = ospf_ipa_local(sk->faddr, ifa->addr);
   dst_local = ipa_equal(sk->laddr, ifa->addr->ip);
   dst_mcast = ipa_equal(sk->laddr, ifa->all_routers) || ipa_equal(sk->laddr, ifa->des_routers);
 
