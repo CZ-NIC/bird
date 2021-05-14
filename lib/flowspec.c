@@ -31,6 +31,8 @@
  * flowspec component type.
  */
 
+#include <stdlib.h>
+
 #include "nest/bird.h"
 #include "lib/flowspec.h"
 #include "conf/conf.h"
@@ -304,6 +306,21 @@ ip6_addr
 flow_read_ip6_part(const byte *part)
 {
   return flow_read_ip6(part + 3, part[1], part[2]);
+}
+
+static uint
+get_value(const byte *val, u8 len)
+{
+  switch (len)
+  {
+  case 1: return *val;
+  case 2: return get_u16(val);
+  case 4: return get_u32(val);
+  // No component may have length 8
+  // case 8: return get_u64(val);
+  }
+
+  return 0;
 }
 
 
@@ -928,6 +945,209 @@ flow_builder_clear(struct flow_builder *fb)
 
 
 /*
+ *	Flowspec explication
+ */
+
+/**
+ * flow_explicate_buffer_size - return buffer size needed for explication
+ * @part: flowspec part to explicate
+ *
+ * This function computes and returns a required buffer size that has to be
+ * preallocated and passed to flow_explicate_part(). Note that it returns number
+ * of records, not number of bytes.
+ */
+uint
+flow_explicate_buffer_size(const byte *part)
+{
+  const byte *pos = part + 1;
+  uint first = 1;
+  uint len = 0;
+
+  while (1)
+  {
+    /*
+     * Conjunction sequences represent (mostly) one interval, do not count
+     * additional AND-ed operators. Ignore AND bit for the first operator.
+     */
+    if (!isset_and(pos) || first)
+      len++;
+
+    /*
+     * The exception is that NEQ operator adds one more interval (by splitting
+     * one of intervals defined by other operators).
+     */
+    if (num_op(pos) == FLOW_OP_NEQ)
+      len++;
+
+    if (isset_end(pos))
+      break;
+
+    first = 0;
+    pos = pos + 1 + get_value_length(pos);
+  }
+
+  return len;
+}
+
+static int flow_uint_cmp(const void *p1, const void *p2)
+{ return uint_cmp(* (const uint *) p1, * (const uint *) p2); }
+
+/**
+ * flow_explicate_part - compute explicit interval list from flowspec part
+ * @part: flowspec part to explicate
+ * @buf: pre-allocated buffer for result
+ *
+ * This function analyzes a flowspec part with numeric operators (e.g. port) and
+ * computes an explicit interval list of allowed values. The result is written
+ * to provided buffer @buf, which must have space for enough interval records as
+ * returned by flow_explicate_buffer_size(). The intervals are represented as
+ * two-sized arrays of lower and upper bound, both including. The return value
+ * is the number of intervals in the buffer.
+ */
+uint
+flow_explicate_part(const byte *part, uint (*buf)[2])
+{
+  /*
+   * The Flowspec numeric expression is almost in DNF form (as union of
+   * intersections), where each operator represents one elementary interval.
+   * The exception is NEQ operator, which represents union of two intervals,
+   * separated by the excluded value. Naive algorithm would be like:
+   *
+   * A <- empty set of intervals
+   * for each sequence of operators in conjunction
+   * {
+   *   B <- empty set of intervals
+   *   for each operator in the current sequence
+   *   {
+   *     C <- one or two elementary intervals from the current operator
+   *     B <- intersection(B, C)
+   *   }
+   *   A <- union(A, B)
+   * }
+   *
+   * We simplify this by representing B just as one interval (vars lo, hi) and a
+   * list of excluded values. After the inner cycle, we expand that to a proper
+   * list of intervals that is added to existing ones from previous cycles.
+   * Finally, we sort and merge intersecting or touching intervals in A.
+   *
+   * The code handles up to 32bit values in numeric operators. Intervals are
+   * represented by lower and upper bound, both including. Intermediate values
+   * use s64 to simplify representation of excluding bounds for 0 and UINT32_MAX.
+   */
+
+  const byte *pos = part + 1;
+  const s64 max = 0xffffffff;
+  s64 lo = 0;
+  s64 hi = max;
+  uint num = 0;
+  uint neqs = 0;
+
+  /* Step 1 - convert conjunction sequences to lists of intervals */
+  while (1)
+  {
+    uint op = num_op(pos);
+    uint len = get_value_length(pos);
+    s64  val = get_value(pos + 1, len);
+    uint last = isset_end(pos);
+    const byte *next_pos = pos + 1 + len;
+
+    /* Get a new interval from this operator */
+    s64 nlo = (op & FLOW_OP_LT) ? 0   : ((op & FLOW_OP_EQ) ? val : (val + 1));
+    s64 nhi = (op & FLOW_OP_GT) ? max : ((op & FLOW_OP_EQ) ? val : (val - 1));
+
+    /* Restrict current interval */
+    lo = MAX(lo, nlo);
+    hi = MIN(hi, nhi);
+
+    /* Store NEQs for later */
+    if (op == FLOW_OP_NEQ)
+    {
+      buf[num + neqs][0] = val;
+      buf[num + neqs][1] = 0;
+      neqs++;
+    }
+
+    /* End of conjunction sequence */
+    if (last || !isset_and(next_pos))
+    {
+      if (neqs)
+      {
+	/* Sort stored NEQs */
+	qsort(buf + num, neqs, 2 * sizeof(uint), flow_uint_cmp);
+
+	/* Dump stored NEQs as intervals */
+	uint base = num;
+	for (uint i = 0; i < neqs; i++)
+	{
+	  val = buf[base + i][0];
+
+	  if ((val < lo) || (val > hi))
+	    continue;
+
+	  if (val == lo)
+	  { lo++; continue; }
+
+	  if (val == hi)
+	  { hi--; continue; }
+
+	  buf[num][0] = lo;
+	  buf[num][1] = val - 1;
+	  num++;
+
+	  lo = val + 1;
+	}
+
+	neqs = 0;
+      }
+
+      /* Save final interval */
+      if (lo <= hi)
+      {
+	buf[num][0] = lo;
+	buf[num][1] = hi;
+	num++;
+      }
+
+      lo = 0;
+      hi = max;
+    }
+
+    if (last)
+      break;
+
+    pos = next_pos;
+  }
+
+  if (num < 2)
+    return num;
+
+  /* Step 2 - Sort and merge list of intervals */
+  qsort(buf, num, 2 * sizeof(uint), flow_uint_cmp);
+
+  uint i = 0, j = 0;
+  while (i < num)
+  {
+    lo = buf[i][0];
+    hi = buf[i][1];
+    i++;
+
+    /* If intervals are intersecting or just touching, merge them */
+    while ((i < num) && ((s64) buf[i][0] <= (hi + 1)))
+    {
+      hi = MAX(hi, (s64) buf[i][1]);
+      i++;
+    }
+
+    buf[j][0] = lo;
+    buf[j][1] = hi;
+    j++;
+  }
+
+  return j;
+}
+
+
+/*
  * 	Net Formatting
  */
 
@@ -949,21 +1169,6 @@ num_op_str(const byte *op)
   }
 
   return NULL;
-}
-
-static uint
-get_value(const byte *val, u8 len)
-{
-  switch (len)
-  {
-  case 1: return *val;
-  case 2: return get_u16(val);
-  case 4: return get_u32(val);
-  // No component may have length 8
-  // case 8: return get_u64(val);
-  }
-
-  return 0;
 }
 
 static const char *
