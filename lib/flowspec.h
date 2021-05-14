@@ -15,14 +15,14 @@
 
 
 /* Flow component operators */
-#define FLOW_OP_TRUE		0x00	/* 0b000 */
+#define FLOW_OP_FALSE		0x00	/* 0b000 */
 #define FLOW_OP_EQ		0x01	/* 0b001 */
 #define FLOW_OP_GT		0x02	/* 0b010 */
 #define FLOW_OP_GEQ		0x03	/* 0b011 */
 #define FLOW_OP_LT		0x04	/* 0b100 */
 #define FLOW_OP_LEQ		0x05	/* 0b101 */
 #define FLOW_OP_NEQ		0x06	/* 0b110 */
-#define FLOW_OP_FALSE		0x07	/* 0b111 */
+#define FLOW_OP_TRUE		0x07	/* 0b111 */
 
 #define FLOW_OP_OR		0x00
 #define FLOW_OP_AND		0x40
