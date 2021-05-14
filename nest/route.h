@@ -346,8 +346,9 @@ int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
+void rt_refeed_channel(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
-int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old, struct rte_storage **old_exported, int refeed);
+int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old, struct rte_storage **old_exported);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
 

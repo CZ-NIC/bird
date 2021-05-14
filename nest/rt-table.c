@@ -451,8 +451,11 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, rte *old, int ref
   struct rte_storage *old_exported = NULL;
   if (c->out_table)
   {
-    if (!rte_update_out(c, net, new, old, &old_exported, refeed))
+    if (!rte_update_out(c, net, new, old, &old_exported))
+    {
+      rte_trace_out(D_ROUTES, c, new, "idempotent");
       return;
+    }
   }
 
   if (new)
@@ -2406,7 +2409,7 @@ again:
  */
 
 int
-rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct rte_storage **old_exported, int refeed)
+rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct rte_storage **old_exported)
 {
   struct rtable *tab = c->out_table;
   struct rte_src *src;
@@ -2423,7 +2426,7 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct
     src = old0->src;
 
     if (!net)
-      goto drop_withdraw;
+      goto drop;
   }
 
   /* Find the old rte */
@@ -2433,7 +2436,7 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct
   if (old = *pos)
   {
     if (new && rte_same(&(*pos)->rte, new))
-      goto drop_update;
+      goto drop;
 
     /* Remove the old rte */
     *pos = old->next;
@@ -2444,7 +2447,7 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct
   if (!new)
   {
     if (!old)
-      goto drop_withdraw;
+      goto drop;
 
     if (!net->routes)
       fib_delete(&tab->fib, net);
@@ -2460,11 +2463,34 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct
   tab->rt_count++;
   return 1;
 
-drop_update:
-  return refeed;
-
-drop_withdraw:
+drop:
   return 0;
+}
+
+void
+rt_refeed_channel(struct channel *c)
+{
+  if (!c->out_table)
+  {
+    channel_request_feeding(c);
+    return;
+  }
+
+  ASSERT_DIE(c->ra_mode != RA_ANY);
+
+  c->proto->feed_begin(c, 0);
+
+  FIB_WALK(&c->out_table->fib, net, n)
+  {
+    if (!n->routes)
+      continue;
+
+    rte e = n->routes->rte;
+    c->proto->rt_notify(c->proto, c, n->n.addr, &e, NULL);
+  }
+  FIB_WALK_END;
+
+  c->proto->feed_end(c);
 }
 
 
