@@ -1716,6 +1716,15 @@ Common route attributes are:
 	are merged to one ECMP route during export to the Kernel protocol
 	(with active <ref id="krt-merge-paths" name="marge paths"> option).
 
+	<tag><label id="rta-gw-mpls"><m/int/ gw_mpls</tag>
+	Outgoing MPLS label attached to route (i.e., incoming MPLS label on the
+	next hop router for this label-switched path). Reading returns the label
+	value and setting it sets it to the start of the label stack. Setting
+	implicit-NULL label (3) disables the MPLS label stack. Only the first
+	next hop and only one label in the label stack supported right now. This
+	is experimental option, will be likely changed in the future to handle
+	full MPLS label stack.
+
 	<tag><label id="rta-igp-metric"><m/int/ igp_metric</tag>
 	The optional attribute that can be used to specify a distance to the
 	network for routes that do not have a native protocol metric attribute

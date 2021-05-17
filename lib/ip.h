@@ -47,6 +47,8 @@
 #define IP6_HEADER_LENGTH	40
 #define UDP_HEADER_LENGTH	8
 
+#define MPLS_NULL		3
+
 
 /* IANA Address Family Numbers */
 /* https://www.iana.org/assignments/address-family-numbers/address-family-numbers.xhtml */

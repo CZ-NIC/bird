@@ -533,6 +533,7 @@
       case SA_IFNAME:	RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
       case SA_IFINDEX:	RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
       case SA_WEIGHT:	RESULT(sa.f_type, i, rta->nh.weight + 1); break;
+      case SA_GW_MPLS:	RESULT(sa.f_type, i, rta->nh.labels ? rta->nh.label[0] : MPLS_NULL); break;
 
       default:
 	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
@@ -569,6 +570,7 @@
 	  rta->nh.iface = n->iface;
 	  rta->nh.next = NULL;
 	  rta->hostentry = NULL;
+	  rta->nh.labels = 0;
 	}
 	break;
 
@@ -587,6 +589,7 @@
 	  rta->nh.iface = NULL;
 	  rta->nh.next = NULL;
 	  rta->hostentry = NULL;
+	  rta->nh.labels = 0;
 	}
 	break;
 
@@ -601,6 +604,22 @@
 	  rta->nh.iface = ifa;
 	  rta->nh.next = NULL;
 	  rta->hostentry = NULL;
+	  rta->nh.labels = 0;
+	}
+	break;
+
+      case SA_GW_MPLS:
+	{
+	  if (v1.val.i >= 0x100000)
+	    runtime( "Invalid MPLS label" );
+
+	  if (v1.val.i != MPLS_NULL)
+	  {
+	    rta->nh.label[0] = v1.val.i;
+	    rta->nh.labels = 1;
+	  }
+	  else
+	    rta->nh.labels = 0;
 	}
 	break;
 
