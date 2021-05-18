@@ -1351,11 +1351,11 @@ net_format_flow(char *buf, uint blen, const byte *data, uint dlen, int ipv6)
     case FLOW_TYPE_ICMP_CODE:
     case FLOW_TYPE_PACKET_LENGTH:
     case FLOW_TYPE_DSCP:
+    case FLOW_TYPE_LABEL:
       net_format_flow_num(&b, part);
       break;
     case FLOW_TYPE_TCP_FLAGS:
     case FLOW_TYPE_FRAGMENT:
-    case FLOW_TYPE_LABEL:
       net_format_flow_bitmask(&b, part);
       break;
     }

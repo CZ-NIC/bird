@@ -650,14 +650,14 @@ t_formatting6(void)
     FLOW_TYPE_SRC_PREFIX, 8, 0, 0xc0,
     FLOW_TYPE_NEXT_HEADER, 0x81, 0x06,
     FLOW_TYPE_PORT, 0x03, 20, 0x45, 40, 0x91, 0x01, 0x11,
-    FLOW_TYPE_LABEL, 0xa0, 0x12, 0x34, 0x56, 0x78,
+    FLOW_TYPE_LABEL, 0xa4, 0x00, 0x07, 0xa1, 0x20,
   };
   *nlri = (u8) sizeof(nlri);
 
   net_addr_flow6 *input;
   NET_ADDR_FLOW6_(input, ip6_build(0, 1, 0x12345678, 0x98000000), 103, nlri);
 
-  const char *expect = "flow6 { dst ::1:1234:5678:9800:0/103 offset 61; src c000::/8; next header 6; port 20..40,273; label !0x0/0x12345678; }";
+  const char *expect = "flow6 { dst ::1:1234:5678:9800:0/103 offset 61; src c000::/8; next header 6; port 20..40,273; label < 500000; }";
 
   bt_assert(flow6_net_format(b, sizeof(b), input) == strlen(expect));
   bt_debug(" expect: '%s',\n output: '%s'\n", expect, b);

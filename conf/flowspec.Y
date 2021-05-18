@@ -59,12 +59,12 @@ flow_num_type_:
  | ICMP CODE	{ $$ = FLOW_TYPE_ICMP_CODE; }
  | LENGTH	{ $$ = FLOW_TYPE_PACKET_LENGTH; }
  | DSCP		{ $$ = FLOW_TYPE_DSCP; }
+ | LABEL	{ $$ = FLOW_TYPE_LABEL; }
  ;
 
 flow_num_type: flow_num_type_{ flow_builder_set_type(this_flow, $1); };
 flow_flag_type: TCP FLAGS    { flow_builder_set_type(this_flow, FLOW_TYPE_TCP_FLAGS); };
 flow_frag_type: FRAGMENT     { flow_builder_set_type(this_flow, FLOW_TYPE_FRAGMENT); };
-flow_label_type: LABEL       { flow_builder_set_type(this_flow, FLOW_TYPE_LABEL); };
 
 flow_srcdst:
    DST		{ $$ = FLOW_TYPE_DST_PREFIX; }
@@ -165,7 +165,6 @@ flow6_item:
  | flow_num_type flow_num_opts
  | flow_flag_type flow_bmk_opts
  | flow_frag_type flow_frag_opts
- | flow_label_type flow_bmk_opts
  ;
 
 flow4_opts:
