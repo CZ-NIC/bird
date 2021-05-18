@@ -630,7 +630,7 @@ t_formatting4(void)
   net_addr_flow4 *input;
   NET_ADDR_FLOW4_(input, ip4_build(5, 6, 7, 0), 24, nlri);
 
-  const char *expect = "flow4 { dst 10.0.0.0/8; proto 23; dport > 24 && < 30 || 40..50,60..70,80 && >= 90; sport > 24 && < 30 || 40,50,60..70,80; icmp type 80; icmp code 90; tcp flags 0x3/0x3,0x0/0xc; length 0..65535; dscp 63; fragment dont_fragment || !is_fragment; }";
+  const char *expect = "flow4 { dst 10.0.0.0/8; proto 23; dport > 24 && < 30 || 40..50,60..70,80 && >= 90; sport > 24 && < 30 || 40,50,60..70,80; icmp type 80; icmp code 90; tcp flags 0x3/0x3 && 0x0/0xc; length 0..65535; dscp 63; fragment dont_fragment || !is_fragment; }";
 
   bt_assert(flow4_net_format(b, sizeof(b), input) == strlen(expect));
   bt_debug(" expect: '%s',\n output: '%s'\n", expect, b);

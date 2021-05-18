@@ -5080,19 +5080,20 @@ options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 
 <p>The flow specification are rules for routers and firewalls for filtering
 purpose. It is described by <rfc id="5575">. There are 3 types of arguments:
-<m/inet4/ or <m/inet6/ prefixes, bitmasks matching expressions and numbers
+<m/inet4/ or <m/inet6/ prefixes, numeric matching expressions and bitmask
 matching expressions.
 
-Bitmasks matching is written using <m/value/<cf>/</cf><m/mask/ or
-<cf/!/<m/value/<cf>/</cf><m/mask/ pairs. It means that <cf/(/<m/data/ <cf/&/
-<m/mask/<cf/)/ is or is not equal to <m/value/.
-
-Numbers matching is a matching sequence of numbers and ranges separeted by a
+Numeric matching is a matching sequence of numbers and ranges separeted by a
 commas (<cf/,/) (e.g. <cf/10,20,30/). Ranges can be written using double dots
 <cf/../ notation (e.g. <cf/80..90,120..124/). An alternative notation are
 sequence of one or more pairs of relational operators and values separated by
 logical operators <cf/&&/ or <cf/||/. Allowed relational operators are <cf/=/,
 <cf/!=/, <cf/</, <cf/<=/, <cf/>/, <cf/>=/, <cf/true/ and <cf/false/.
+
+Bitmask matching is written using <m/value/<cf>/</cf><m/mask/ or
+<cf/!/<m/value/<cf>/</cf><m/mask/ pairs. It means that <cf/(/<m/data/ <cf/&/
+<m/mask/<cf/)/ is or is not equal to <m/value/. It is also possible to use
+multiple value/mask pairs connected by logical operators <cf/&&/ or <cf/||/.
 
 <sect2>IPv4 Flowspec
 
@@ -5199,7 +5200,7 @@ protocol static {
 		next header = 23;
 		sport > 24 && < 30 || = 40 || 50,60,70..80;
 		dport = 50;
-		tcp flags 0x03/0x0f, !0/0xff || 0x33/0x33;
+		tcp flags 0x03/0x0f && !0/0xff || 0x33/0x33;
 		fragment !is_fragment || !first_fragment;
 		label 0xaaaa/0xaaaa && 0x33/0x33;
 	};

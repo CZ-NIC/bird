@@ -1278,17 +1278,8 @@ net_format_flow_bitmask(buffer *b, const byte *part)
   while (1)
   {
     if (!first)
-    {
-      if (isset_and(op))
-      {
-	b->pos--; /* Remove last char (it is a space) */
-	buffer_puts(b, ",");
-      }
-      else
-      {
-	buffer_puts(b, "|| ");
-      }
-    }
+      buffer_puts(b, isset_and(op) ? "&& " : "|| ");
+
     first = 0;
 
     len = get_value_length(op);
