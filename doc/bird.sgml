@@ -5094,6 +5094,8 @@ Bitmask matching is written using <m/value/<cf>/</cf><m/mask/ or
 <cf/!/<m/value/<cf>/</cf><m/mask/ pairs. It means that <cf/(/<m/data/ <cf/&/
 <m/mask/<cf/)/ is or is not equal to <m/value/. It is also possible to use
 multiple value/mask pairs connected by logical operators <cf/&&/ or <cf/||/.
+Note that for negated matches, value must be either zero or equal to bitmask
+(e.g. !0x0/0xf or !0xf/0xf, but not !0x3/0xf).
 
 <sect2>IPv4 Flowspec
 

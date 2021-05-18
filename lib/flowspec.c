@@ -815,8 +815,8 @@ flow_builder_add_op_val(struct flow_builder *fb, byte op, u32 value)
  * @mask: bitmask
  *
  * It is required to set appropriate flowspec component type using function
- * flow_builder_set_type(). This function should return 1 for successful adding,
- * otherwise returns 0.
+ * flow_builder_set_type(). Note that for negation, value must be zero or equal
+ * to bitmask.
  */
 int
 flow_builder_add_val_mask(struct flow_builder *fb, byte op, u32 value, u32 mask)
