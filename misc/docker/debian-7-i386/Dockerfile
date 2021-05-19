@@ -5,9 +5,9 @@ RUN echo 'deb http://archive.debian.org/debian-security/ wheezy/updates main' >>
 RUN apt-get -y update -o Acquire::Check-Valid-Until=false
 RUN apt-get -y upgrade
 RUN apt-get -y install \
-	autoconf \
 	build-essential \
 	flex \
 	bison \
+	autoconf \
 	ncurses-dev \
 	libreadline-dev

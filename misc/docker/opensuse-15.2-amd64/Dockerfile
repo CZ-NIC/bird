@@ -1,12 +1,19 @@
 FROM opensuse/leap:15.2
-
 RUN zypper -n up
 RUN zypper -n install \
-	autoconf \
+	gcc \
+	make \
 	flex \
 	bison \
-	pkgconfig \
-	readline-devel \
+	autoconf \
+	libssh-devel \
 	ncurses-devel \
-	gcc \
-	gmake
+	readline-devel
+RUN zypper -n install \
+	git \
+	rpm-build \
+	systemd \
+	systemd-rpm-macros \
+	python3 \
+	python3-pip \
+	python3-setuptools

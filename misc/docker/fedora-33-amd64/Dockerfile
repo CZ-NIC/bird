@@ -1,13 +1,18 @@
 FROM fedora:33
-
-RUN dnf -y update  && dnf -y upgrade
+RUN dnf -y upgrade
 RUN dnf -y install \
-        make \
-        autoconf \
-        flex \
-        bison \
-        pkgconfig \
-        "readline-devel" \
-        "pkgconfig(ncurses)" \
-        gcc
-
+	gcc \
+	make \
+	flex \
+	bison \
+	autoconf \
+	libssh-devel \
+	ncurses-devel \
+	readline-devel
+RUN dnf -y install \
+	git \
+	rpm-build \
+	systemd-rpm-macros \
+	python3 \
+	python3-pip \
+	python3-setuptools

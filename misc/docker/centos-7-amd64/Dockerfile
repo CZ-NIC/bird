@@ -1,11 +1,18 @@
 FROM centos:7
 RUN yum -y upgrade
 RUN yum -y install \
-	autoconf \
+	gcc \
+	make \
 	flex \
 	bison \
-	pkgconfig \
-	'readline-devel' \
-	'pkgconfig(ncurses)' \
-	gcc \
-	make
+	autoconf \
+	libssh-devel \
+	ncurses-devel \
+	readline-devel
+RUN yum -y install \
+	git \
+	rpm-build \
+	systemd \
+	python3 \
+	python3-pip \
+	python3-setuptools
