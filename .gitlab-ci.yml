@@ -468,11 +468,12 @@ pkg-fedora-34-amd64:
   needs: [build-fedora-34-amd64]
   image: registry.labs.nic.cz/labs/bird:fedora-34-amd64
 
-# UnicodeDecodeError
-#pkg-centos-7-amd64:
-#  <<: *pkg-rpm-wa
-#  needs: [build-centos-7-amd64]
-#  image: registry.labs.nic.cz/labs/bird:centos-7-amd64
+pkg-centos-7-amd64:
+  <<: *pkg-rpm-wa
+  variables:
+    LC_ALL: en_US.UTF-8
+  needs: [build-centos-7-amd64]
+  image: registry.labs.nic.cz/labs/bird:centos-7-amd64
 
 pkg-centos-8-amd64:
   <<: *pkg-rpm-wa
