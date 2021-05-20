@@ -12,6 +12,7 @@ Source0:          https://bird.network.cz/download/bird-%{version}.tar.gz
 Source1:          bird.service
 Source2:          bird.tmpfilesd
 
+BuildRequires:    autoconf
 BuildRequires:    flex
 BuildRequires:    bison
 BuildRequires:    ncurses-devel
