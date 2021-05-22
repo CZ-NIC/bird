@@ -16,6 +16,7 @@
 #include "nest/bird.h"
 #include "nest/route.h"
 #include "nest/protocol.h"
+#include "nest/mpls.h"
 
 #include "sysdep/unix/unix.h"
 #include "sysdep/unix/krt.h"

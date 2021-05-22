@@ -195,3 +195,217 @@ hmap_check(struct hmap *b)
     }
   }
 }
+
+
+/*
+ *	Indirect bitmap for MPLS labels (20 bit range)
+ */
+
+void
+lmap_init(struct lmap *b, pool *p)
+{
+  b->slab = sl_new(p, 128);
+  b->size = 8;
+  b->data = mb_allocz(p, b->size * sizeof(u32 *));
+  b->root = sl_allocz(b->slab);
+}
+
+static void
+lmap_grow(struct lmap *b, uint need)
+{
+  uint old_size = b->size;
+
+  while (b->size < need)
+    b->size *= 2;
+
+  b->data = mb_realloc(b->data, b->size * sizeof(u32 *));
+
+  memset(b->data + old_size, 0, (b->size - old_size) * sizeof(u32 *));
+}
+
+void
+lmap_free(struct lmap *b)
+{
+  rfree(b->slab);
+  mb_free(b->data);
+  memset(b, 0, sizeof(struct lmap));
+}
+
+static inline int
+b1024_and(u32 *p)
+{
+  for (int i = 0; i < 32; i++)
+    if (~p[i])
+      return 0;
+
+  return 1;
+}
+
+static inline int
+b1024_or(u32 *p)
+{
+  for (int i = 0; i < 32; i++)
+    if (p[i])
+      return 1;
+
+  return 0;
+}
+
+int
+lmap_test(struct lmap *b, uint n)
+{
+  uint n0 = n >> 10;
+  uint n1 = n & 0x3ff;
+
+  return (n0 < b->size) && b->data[n0] && BIT32_TEST(b->data[n0], n1);
+}
+
+void
+lmap_set(struct lmap *b, uint n)
+{
+  uint n0 = n >> 10;
+  uint n1 = n & 0x3ff;
+
+  if (n0 >= b->size)
+    lmap_grow(b, n0 + 1);
+
+  if (! b->data[n0])
+    b->data[n0] = sl_allocz(b->slab);
+
+  BIT32_SET(b->data[n0], n1);
+
+  if (b1024_and(b->data[n0]))
+    BIT32_SET(b->root, n0);
+}
+
+void
+lmap_clear(struct lmap *b, uint n)
+{
+  uint n0 = n >> 10;
+  uint n1 = n & 0x3ff;
+
+  if (n0 >= b->size)
+    return;
+
+  if (! b->data[n0])
+    return;
+
+  BIT32_CLR(b->data[n0], n1);
+  BIT32_CLR(b->root, n0);
+
+  if (!b1024_or(b->data[n0]))
+  {
+    sl_free(b->data[n0]);
+    b->data[n0] = NULL;
+  }
+}
+
+static inline int
+b1024_first_zero(u32 *p)
+{
+  for (int i = 0; i < 32; i++)
+    if (~p[i])
+      return 32*i + u32_ctz(~p[i]);
+
+  return 1024;
+}
+
+uint
+lmap_first_zero(struct lmap *b)
+{
+  uint n0 = b1024_first_zero(b->root);
+  uint n1 = ((n0 < b->size) && b->data[n0]) ?
+    b1024_first_zero(b->data[n0]) : 0;
+
+  return (n0 << 10) + n1;
+}
+
+static uint
+b1024_first_zero_in_range(u32 *p, uint lo, uint hi)
+{
+  uint lo0 = lo >> 5;
+  uint lo1 = lo & 0x1f;
+  uint hi0 = hi >> 5;
+  uint hi1 = hi & 0x1f;
+  u32 mask = (1 << lo1) - 1;
+  u32 val;
+
+  for (uint i = lo0; i < hi0; i++)
+  {
+    val = p[i] | mask;
+    mask = 0;
+
+    if (~val)
+      return 32*i + u32_ctz(~val);
+  }
+
+  if (hi1)
+  {
+    mask |= ~((1u << hi1) - 1);
+    val = p[hi0] | mask;
+
+    if (~val)
+      return 32*hi0 + u32_ctz(~val);
+  }
+
+  return hi;
+}
+
+uint
+lmap_first_zero_in_range(struct lmap *b, uint lo, uint hi)
+{
+  uint lo0 = lo >> 10;
+  uint lo1 = lo & 0x3ff;
+  uint hi0 = hi >> 10;
+  uint hi1 = hi & 0x3ff;
+
+  if (lo1)
+  {
+    uint max = (lo0 == hi0) ? hi1 : 1024;
+    uint n0 = lo0;
+    uint n1 = ((n0 < b->size) && b->data[n0]) ?
+      b1024_first_zero_in_range(b->data[n0], lo1, max) : lo1;
+
+    if (n1 < 1024)
+      return (n0 << 10) + n1;
+
+    lo0++;
+    lo1 = 0;
+  }
+
+  if (lo0 < hi0)
+  {
+    uint n0 = b1024_first_zero_in_range(b->root, lo0, hi0);
+
+    if (n0 < hi0)
+    {
+      uint n1 = ((n0 < b->size) && b->data[n0]) ?
+	b1024_first_zero(b->data[n0]) : 0;
+
+      return (n0 << 10) + n1;
+    }
+  }
+
+  if (hi1)
+  {
+    uint n0 = hi0;
+    uint n1 = ((n0 < b->size) && b->data[n0]) ?
+      b1024_first_zero_in_range(b->data[n0], 0, hi1) : 0;
+
+    return (n0 << 10) + n1;
+  }
+
+  return hi;
+}
+
+void
+lmap_check(struct lmap *b)
+{
+  for (int i = 0; i < (int) b->size; i++)
+  {
+    int x = b->data[i] && b1024_and(b->data[i]);
+    int y = !!BIT32_TEST(b->root, i);
+    if (x != y)
+      bug("Inconsistent data on %d (%d vs %d)", i, x, y);
+  }
+}
