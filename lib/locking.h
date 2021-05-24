@@ -16,16 +16,14 @@ struct lock_order {
   struct domain_generic *the_bird;
 };
 
-#define LOCK_ORDER_DEPTH  (sizeof(struct lock_order) / sizeof(struct domain_generic *))
-
 extern _Thread_local struct lock_order locking_stack;
 extern _Thread_local struct domain_generic **last_locked;
 
 #define DOMAIN(type) struct domain__##type
 #define DEFINE_DOMAIN(type) DOMAIN(type) { struct domain_generic *type; }
 
-#define DOMAIN_NEW(type, name)  (DOMAIN(type)) { .type = domain_new(name) }
-struct domain_generic *domain_new(const char *name);
+#define DOMAIN_NEW(type, name)  (DOMAIN(type)) { .type = domain_new(name, OFFSETOF(struct lock_order, type)) }
+struct domain_generic *domain_new(const char *name, uint order);
 
 #define DOMAIN_NULL(type)   (DOMAIN(type)) {}
 

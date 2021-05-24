@@ -44,26 +44,31 @@
  *	Locking subsystem
  */
 
+_Thread_local struct lock_order locking_stack = {};
+_Thread_local struct domain_generic **last_locked = NULL;
+
 #define ASSERT_NO_LOCK	ASSERT_DIE(last_locked == NULL)
 
 struct domain_generic {
   pthread_mutex_t mutex;
+  uint order;
   struct domain_generic **prev;
   struct lock_order *locked_by;
   const char *name;
 };
 
-#define DOMAIN_INIT(_name) { .mutex = PTHREAD_MUTEX_INITIALIZER, .name = _name }
+#define DOMAIN_INIT(_name, _order) { .mutex = PTHREAD_MUTEX_INITIALIZER, .name = _name, .order = _order }
 
-static struct domain_generic the_bird_domain_gen = DOMAIN_INIT("The BIRD");
+static struct domain_generic the_bird_domain_gen = DOMAIN_INIT("The BIRD", OFFSETOF(struct lock_order, the_bird));
 
 DOMAIN(the_bird) the_bird_domain = { .the_bird = &the_bird_domain_gen };
 
 struct domain_generic *
-domain_new(const char *name)
+domain_new(const char *name, uint order)
 {
+  ASSERT_DIE(order < sizeof(struct lock_order));
   struct domain_generic *dg = xmalloc(sizeof(struct domain_generic));
-  *dg = (struct domain_generic) DOMAIN_INIT(name);
+  *dg = (struct domain_generic) DOMAIN_INIT(name, order);
   return dg;
 }
 
@@ -74,11 +79,11 @@ domain_free(struct domain_generic *dg)
   xfree(dg);
 }
 
-_Thread_local struct lock_order locking_stack = {};
-_Thread_local struct domain_generic **last_locked = NULL;
-
 void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
 {
+  if ((char *) lsp - (char *) &locking_stack != dg->order)
+    bug("Trying to lock on bad position: order=%u, lsp=%p, base=%p", dg->order, lsp, &locking_stack);
+
   if (lsp <= last_locked)
     bug("Trying to lock in a bad order");
   if (*lsp)
@@ -96,6 +101,9 @@ void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
 
 void do_unlock(struct domain_generic *dg, struct domain_generic **lsp)
 {
+  if ((char *) lsp - (char *) &locking_stack != dg->order)
+    bug("Trying to unlock on bad position: order=%u, lsp=%p, base=%p", dg->order, lsp, &locking_stack);
+
   if (dg->locked_by != &locking_stack)
     bug("Inconsistent domain state on unlock");
   if ((last_locked != lsp) || (*lsp != dg))
