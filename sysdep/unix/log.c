@@ -309,22 +309,15 @@ die(const char *msg, ...)
 void
 debug(const char *msg, ...)
 {
-#define MAX_DEBUG_BUFSIZE       65536
+#define MAX_DEBUG_BUFSIZE 16384
   va_list args;
-  static uint bufsize = 4096;
-  static char *buf = NULL;
-
-  if (!buf)
-    buf = mb_alloc(&root_pool, bufsize);
+  char buf[MAX_DEBUG_BUFSIZE];
 
   va_start(args, msg);
   if (dbgf)
     {
-      while (bvsnprintf(buf, bufsize, msg, args) < 0)
-        if (bufsize >= MAX_DEBUG_BUFSIZE)
-          bug("Extremely long debug output, split it.");
-        else
-          buf = mb_realloc(buf, (bufsize *= 2));
+      if (bvsnprintf(buf, MAX_DEBUG_BUFSIZE, msg, args) < 0)
+	bug("Extremely long debug output, split it.");
 
       fputs(buf, dbgf);
     }
