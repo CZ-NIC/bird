@@ -1251,7 +1251,7 @@ ospf_rt_abr1(struct ospf_proto *p)
   FIB_WALK_END;
 
 
-  if (ospf_is_v2(p))
+  if (ospf_is_ip4(p))
     net_fill_ip4(&default_net, IP4_NONE, 0);
   else
     net_fill_ip6(&default_net, IP6_NONE, 0);
