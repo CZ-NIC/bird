@@ -269,6 +269,9 @@ no_partial:
       goto okay;
     }
   h = alloc_page();
+#ifdef POISON
+  memset(h, 0xba, get_page_size());
+#endif
   ASSERT_DIE(SL_GET_HEAD(h) == h);
   memset(h, 0, s->head_size);
   add_head(&s->partial_heads, &h->n);
@@ -324,7 +327,12 @@ sl_free(slab *s, void *oo)
     {
       rem_node(&h->n);
       if (s->num_empty_heads >= MAX_EMPTY_HEADS)
+      {
+#ifdef POISON
+	memset(h, 0xde, get_page_size());
+#endif
 	free_page(h);
+      }
       else
 	{
 	  add_head(&s->empty_heads, &h->n);
