@@ -198,7 +198,6 @@ struct babel_neighbor {
   struct babel_iface *ifa;
 
   ip_addr addr;
-  uint uc;				/* Reference counter for seqno requests */
   u16 rxcost;				/* Sent in last IHU */
   u16 txcost;				/* Received in last IHU */
   u16 cost;				/* Computed neighbor cost */
@@ -212,6 +211,7 @@ struct babel_neighbor {
   btime ihu_expiry;
 
   list routes;				/* Routes this neighbour has sent us (struct babel_route) */
+  list requests;			/* Seqno requests bound to this neighbor */
 };
 
 struct babel_source {
@@ -241,6 +241,7 @@ struct babel_route {
 
 struct babel_seqno_request {
   node n;
+  node nbr_node;
   u64 router_id;
   u16 seqno;
   u8 hop_count;

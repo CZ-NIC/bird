@@ -56,13 +56,6 @@ static void babel_update_cost(struct babel_neighbor *n);
 static inline void babel_kick_timer(struct babel_proto *p);
 static inline void babel_iface_kick_timer(struct babel_iface *ifa);
 
-static inline void babel_lock_neighbor(struct babel_neighbor *nbr)
-{ if (nbr) nbr->uc++; }
-
-static inline void babel_unlock_neighbor(struct babel_neighbor *nbr)
-{ if (nbr && !--nbr->uc) mb_free(nbr); }
-
-
 /*
  *	Functions to maintain data structures
  */
@@ -316,8 +309,9 @@ babel_add_seqno_request(struct babel_proto *p, struct babel_entry *e,
 	return;
 
       /* Found older */
-      babel_unlock_neighbor(sr->nbr);
       rem_node(NODE sr);
+      rem_node(&sr->nbr_node);
+
       goto found;
     }
 
@@ -330,7 +324,10 @@ found:
   sr->hop_count = hop_count;
   sr->count = 0;
   sr->expires = current_time() + BABEL_SEQNO_REQUEST_EXPIRY;
-  babel_lock_neighbor(sr->nbr = nbr);
+
+  if (sr->nbr = nbr)
+    add_tail(&nbr->requests, &sr->nbr_node);
+
   add_tail(&e->requests, NODE sr);
 
   babel_send_seqno_request(p, e, sr);
@@ -339,7 +336,9 @@ found:
 static void
 babel_remove_seqno_request(struct babel_proto *p, struct babel_seqno_request *sr)
 {
-  babel_unlock_neighbor(sr->nbr);
+  if (sr->nbr)
+    rem_node(&sr->nbr_node);
+
   rem_node(NODE sr);
   sl_free(p->seqno_slab, sr);
 }
@@ -427,7 +426,7 @@ babel_get_neighbor(struct babel_iface *ifa, ip_addr addr)
   nbr->txcost = BABEL_INFINITY;
   nbr->cost = BABEL_INFINITY;
   init_list(&nbr->routes);
-  babel_lock_neighbor(nbr);
+  init_list(&nbr->requests);
   add_tail(&ifa->neigh_list, NODE nbr);
 
   return nbr;
@@ -448,9 +447,16 @@ babel_flush_neighbor(struct babel_proto *p, struct babel_neighbor *nbr)
     babel_flush_route(p, r);
   }
 
+  struct babel_seqno_request *sr;
+  WALK_LIST_FIRST2(sr, nbr_node, nbr->requests)
+  {
+    sr->nbr = NULL;
+    rem_node(&sr->nbr_node);
+  }
+
   nbr->ifa = NULL;
   rem_node(NODE nbr);
-  babel_unlock_neighbor(nbr);
+  mb_free(nbr);
 }
 
 static void
