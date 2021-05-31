@@ -1051,7 +1051,8 @@ bgp_use_next_hop(struct bgp_export_state *s, eattr *a)
     return 1;
 
   /* Keep it when forwarded between single-hop BGPs on the same iface */
-  struct iface *ifa = (s->src && s->src->neigh) ? s->src->neigh->iface : NULL;
+  struct iface *ifa = (s->src && s->src->neigh && (s->src->p.proto_state != PS_DOWN)) ?
+    s->src->neigh->iface : NULL;
   return p->neigh && (p->neigh->iface == ifa);
 }
 

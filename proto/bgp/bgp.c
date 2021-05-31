@@ -337,6 +337,8 @@ err2:
 err1:
   p->p.disabled = 1;
   bgp_store_error(p, NULL, BE_MISC, err_val);
+
+  p->neigh = NULL;
   proto_notify_state(&p->p, PS_DOWN);
 
   return;
@@ -472,6 +474,8 @@ bgp_down(struct bgp_proto *p)
     bgp_setup_auth(p, 0);
     bgp_close(p);
   }
+
+  p->neigh = NULL;
 
   BGP_TRACE(D_EVENTS, "Down");
   proto_notify_state(&p->p, PS_DOWN);
