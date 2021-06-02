@@ -17,6 +17,7 @@ stages:
   allow_failure: true
   script:
   - $DOCKER_CMD login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.labs.nic.cz
+  - $DOCKER_CMD --rm --privileged aptman/qus -s -- -p mips
   # Make sure we refresh the base image if it updates (eg. security updates, etc)
   # If we do just the build, cache is always reused and the freshness of the
   # base image is never checked. However, pull always asks and updates the
@@ -32,40 +33,45 @@ stages:
   # That's Docker in Docker
   - dind
 
-docker_debian-8-amd64:
+docker_debian-9-mips:
   variables:
-    IMG_NAME: "debian-8-amd64"
+    IMG_NAME: "debian-9-mips"
   <<: *docker_build
 
-docker_debian-8-i386:
-  variables:
-    IMG_NAME: "debian-8-i386"
-  <<: *docker_build
+#docker_debian-8-amd64:
+#  variables:
+#    IMG_NAME: "debian-8-amd64"
+#  <<: *docker_build
 
-docker_debian-9-amd64:
-  variables:
-    IMG_NAME: "debian-9-amd64"
-  <<: *docker_build
+#docker_debian-8-i386:
+#  variables:
+#    IMG_NAME: "debian-8-i386"
+#  <<: *docker_build
 
-docker_debian-9-i386:
-  variables:
-    IMG_NAME: "debian-9-i386"
-  <<: *docker_build
+#docker_debian-9-amd64:
+#  variables:
+#    IMG_NAME: "debian-9-amd64"
+#  <<: *docker_build
 
-docker_debian-10-amd64:
-  variables:
-    IMG_NAME: "debian-10-amd64"
-  <<: *docker_build
+#docker_debian-9-i386:
+#  variables:
+#    IMG_NAME: "debian-9-i386"
+#  <<: *docker_build
 
-docker_debian-10-i386:
-  variables:
-    IMG_NAME: "debian-10-i386"
-  <<: *docker_build
+#docker_debian-10-amd64:
+#  variables:
+#    IMG_NAME: "debian-10-amd64"
+#  <<: *docker_build
 
-docker_debian-11-amd64:
-  variables:
-    IMG_NAME: "debian-11-amd64"
-  <<: *docker_build
+#docker_debian-10-i386:
+#  variables:
+#    IMG_NAME: "debian-10-i386"
+#  <<: *docker_build
+
+#docker_debian-11-amd64:
+#  variables:
+#    IMG_NAME: "debian-11-amd64"
+#  <<: *docker_build
 
 # GPG error
 #docker_debian-11-i386:
@@ -73,10 +79,10 @@ docker_debian-11-amd64:
 #    IMG_NAME: "debian-11-i386"
 #  <<: *docker_build
 
-docker_debian-testing-amd64:
-  variables:
-    IMG_NAME: "debian-testing-amd64"
-  <<: *docker_build
+#docker_debian-testing-amd64:
+#  variables:
+#    IMG_NAME: "debian-testing-amd64"
+#  <<: *docker_build
 
 # GPG error
 #docker_debian-testing-i386:
@@ -84,90 +90,90 @@ docker_debian-testing-amd64:
 #    IMG_NAME: "debian-testing-i386"
 #  <<: *docker_build
 
-docker_fedora-25-amd64:
-  variables:
-    IMG_NAME: "fedora-25-amd64"
-  <<: *docker_build
+#docker_fedora-25-amd64:
+#  variables:
+#    IMG_NAME: "fedora-25-amd64"
+#  <<: *docker_build
 
-docker_fedora-26-amd64:
-  variables:
-    IMG_NAME: "fedora-26-amd64"
-  <<: *docker_build
+#docker_fedora-26-amd64:
+#  variables:
+#    IMG_NAME: "fedora-26-amd64"
+#  <<: *docker_build
 
-docker_fedora-27-amd64:
-  variables:
-    IMG_NAME: "fedora-27-amd64"
-  <<: *docker_build
+#docker_fedora-27-amd64:
+#  variables:
+#    IMG_NAME: "fedora-27-amd64"
+#  <<: *docker_build
 
-docker_fedora-28-amd64:
-  variables:
-    IMG_NAME: "fedora-28-amd64"
-  <<: *docker_build
+#docker_fedora-28-amd64:
+#  variables:
+#    IMG_NAME: "fedora-28-amd64"
+#  <<: *docker_build
 
-docker_fedora-29-amd64:
-  variables:
-    IMG_NAME: "fedora-29-amd64"
-  <<: *docker_build
+#docker_fedora-29-amd64:
+#  variables:
+#    IMG_NAME: "fedora-29-amd64"
+#  <<: *docker_build
 
-docker_fedora-30-amd64:
-  variables:
-    IMG_NAME: "fedora-30-amd64"
-  <<: *docker_build
+#docker_fedora-30-amd64:
+#  variables:
+#    IMG_NAME: "fedora-30-amd64"
+#  <<: *docker_build
 
-docker_fedora-31-amd64:
-  variables:
-    IMG_NAME: "fedora-31-amd64"
-  <<: *docker_build
+#docker_fedora-31-amd64:
+#  variables:
+#    IMG_NAME: "fedora-31-amd64"
+#  <<: *docker_build
 
-docker_fedora-32-amd64:
-  variables:
-    IMG_NAME: "fedora-32-amd64"
-  <<: *docker_build
+#docker_fedora-32-amd64:
+#  variables:
+#    IMG_NAME: "fedora-32-amd64"
+#  <<: *docker_build
 
-docker_fedora-33-amd64:
-  variables:
-    IMG_NAME: "fedora-33-amd64"
-  <<: *docker_build
+#docker_fedora-33-amd64:
+#  variables:
+#    IMG_NAME: "fedora-33-amd64"
+#  <<: *docker_build
 
-docker_fedora-34-amd64:
-  variables:
-    IMG_NAME: "fedora-34-amd64"
-  <<: *docker_build
+#docker_fedora-34-amd64:
+#  variables:
+#    IMG_NAME: "fedora-34-amd64"
+#  <<: *docker_build
 
-docker_centos-7-amd64:
-  variables:
-    IMG_NAME: "centos-7-amd64"
-  <<: *docker_build
+#docker_centos-7-amd64:
+#  variables:
+#    IMG_NAME: "centos-7-amd64"
+#  <<: *docker_build
 
-docker_centos-8-amd64:
-  variables:
-    IMG_NAME: "centos-8-amd64"
-  <<: *docker_build
+#docker_centos-8-amd64:
+#  variables:
+#    IMG_NAME: "centos-8-amd64"
+#  <<: *docker_build
 
-docker_ubuntu-14_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-14.04-amd64"
-  <<: *docker_build
+#docker_ubuntu-14_04-amd64:
+#  variables:
+#    IMG_NAME: "ubuntu-14.04-amd64"
+#  <<: *docker_build
 
-docker_ubuntu-16_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-16.04-amd64"
-  <<: *docker_build
+#docker_ubuntu-16_04-amd64:
+#  variables:
+#    IMG_NAME: "ubuntu-16.04-amd64"
+#  <<: *docker_build
 
-docker_ubuntu-18_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-18.04-amd64"
-  <<: *docker_build
+#docker_ubuntu-18_04-amd64:
+#  variables:
+#    IMG_NAME: "ubuntu-18.04-amd64"
+#  <<: *docker_build
 
-docker_ubuntu-20_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-20.04-amd64"
-  <<: *docker_build
+#docker_ubuntu-20_04-amd64:
+#  variables:
+#    IMG_NAME: "ubuntu-20.04-amd64"
+#  <<: *docker_build
 
-docker_ubuntu-20_10-amd64:
-  variables:
-    IMG_NAME: "ubuntu-20.10-amd64"
-  <<: *docker_build
+#docker_ubuntu-20_10-amd64:
+#  variables:
+#    IMG_NAME: "ubuntu-20.10-amd64"
+#  <<: *docker_build
 
 # GPG error
 #docker_ubuntu-21_04-amd64:
@@ -175,41 +181,41 @@ docker_ubuntu-20_10-amd64:
 #    IMG_NAME: "ubuntu-21.04-amd64"
 #  <<: *docker_build
 
-docker_opensuse-15.0-amd64:
-  variables:
-    IMG_NAME: "opensuse-15.0-amd64"
-  <<: *docker_build
+#docker_opensuse-15.0-amd64:
+#  variables:
+#    IMG_NAME: "opensuse-15.0-amd64"
+#  <<: *docker_build
 
-docker_opensuse-15.1-amd64:
-  variables:
-    IMG_NAME: "opensuse-15.1-amd64"
-  <<: *docker_build
+#docker_opensuse-15.1-amd64:
+#  variables:
+#    IMG_NAME: "opensuse-15.1-amd64"
+#  <<: *docker_build
 
-docker_opensuse-15.2-amd64:
-  variables:
-    IMG_NAME: "opensuse-15.2-amd64"
-  <<: *docker_build
+#docker_opensuse-15.2-amd64:
+#  variables:
+#    IMG_NAME: "opensuse-15.2-amd64"
+#  <<: *docker_build
 
-docker_opensuse-15.3-amd64:
-  variables:
-    IMG_NAME: "opensuse-15.3-amd64"
-  <<: *docker_build
+#docker_opensuse-15.3-amd64:
+#  variables:
+#    IMG_NAME: "opensuse-15.3-amd64"
+#  <<: *docker_build
 
 # TODO We want to copy these BSDs to our own virtual machines, to make sure
 # someone doesn't update them by accident.
-.freebsd-11-i386: &freebsd-11-i386_env
-  tags:
-  - freebsd
-  - i386
-  #only:
-  #- master
-  #- triggers
-  #- tags
+#.freebsd-11-i386: &freebsd-11-i386_env
+#  tags:
+#  - freebsd
+#  - i386
+#  #only:
+#  #- master
+#  #- triggers
+#  #- tags
 
-.freebsd-11-amd64: &freebsd-11-amd64_env
-  tags:
-  - freebsd
-  - amd64
+#.freebsd-11-amd64: &freebsd-11-amd64_env
+#  tags:
+#  - freebsd
+#  - amd64
 
 
 .build: &build-base
@@ -232,145 +238,149 @@ docker_opensuse-15.3-amd64:
     - linux
     - amd64
 
-build-debian-8-amd64:
+build-debian-9-mips:
   <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-8-amd64
+  image: registry.labs.nic.cz/labs/bird:debian-9-mips
 
-build-debian-8-i386:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-8-i386
+#build-debian-8-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:debian-8-amd64
 
-build-debian-9-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-9-amd64
+#build-debian-8-i386:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:debian-8-i386
 
-build-debian-9-i386:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-9-i386
+#build-debian-9-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:debian-9-amd64
 
-build-debian-10-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-10-amd64
+#build-debian-9-i386:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:debian-9-i386
 
-build-debian-10-i386:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-10-i386
+#build-debian-10-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:debian-10-amd64
 
-build-debian-11-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-11-amd64
+#build-debian-10-i386:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:debian-10-i386
+
+#build-debian-11-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:debian-11-amd64
 
 #build-debian-11-i386:
 #  <<: *build-linux
 #  image: registry.labs.nic.cz/labs/bird:debian-11-i386
 
-build-debian-testing-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:debian-testing-amd64
+#build-debian-testing-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:debian-testing-amd64
 
 #build-debian-testing-i386:
 #  <<: *build-linux
 #  image: registry.labs.nic.cz/labs/bird:debian-testing-i386
 
-build-fedora-25-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-25-amd64
+#build-fedora-25-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:fedora-25-amd64
 
-build-fedora-26-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-26-amd64
+#build-fedora-26-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:fedora-26-amd64
 
-build-fedora-27-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-27-amd64
+#build-fedora-27-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:fedora-27-amd64
 
-build-fedora-28-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-28-amd64
+#build-fedora-28-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:fedora-28-amd64
 
-build-fedora-29-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-29-amd64
+#build-fedora-29-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:fedora-29-amd64
 
-build-fedora-30-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-30-amd64
+#build-fedora-30-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:fedora-30-amd64
 
-build-fedora-31-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
+#build-fedora-31-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
 
-build-fedora-32-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-32-amd64
+#build-fedora-32-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:fedora-32-amd64
 
-build-fedora-33-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-33-amd64
+#build-fedora-33-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:fedora-33-amd64
 
-build-fedora-34-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:fedora-33-amd64
+#build-fedora-34-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:fedora-33-amd64
 
-build-centos-7-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:centos-7-amd64
+#build-centos-7-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:centos-7-amd64
 
-build-centos-8-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:centos-8-amd64
+#build-centos-8-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:centos-8-amd64
 
-build-ubuntu-14_04-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:ubuntu-14.04-amd64
+#build-ubuntu-14_04-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:ubuntu-14.04-amd64
 
-build-ubuntu-16_04-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:ubuntu-16.04-amd64
+#build-ubuntu-16_04-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:ubuntu-16.04-amd64
 
-build-ubuntu-18_04-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
+#build-ubuntu-18_04-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
 
-build-ubuntu-20_04-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:ubuntu-20.04-amd64
+#build-ubuntu-20_04-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:ubuntu-20.04-amd64
 
-build-ubuntu-20_10-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:ubuntu-20.10-amd64
+#build-ubuntu-20_10-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:ubuntu-20.10-amd64
 
 #build-ubuntu-21_04-amd64:
 #  <<: *build-linux
 #  image: registry.labs.nic.cz/labs/bird:ubuntu-21.04-amd64
 
-build-opensuse-15.0-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:opensuse-15.0-amd64
+#build-opensuse-15.0-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:opensuse-15.0-amd64
 
-build-opensuse-15.1-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:opensuse-15.1-amd64
+#build-opensuse-15.1-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:opensuse-15.1-amd64
 
-build-opensuse-15.2-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:opensuse-15.2-amd64
+#build-opensuse-15.2-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:opensuse-15.2-amd64
 
-build-opensuse-15.3-amd64:
-  <<: *build-linux
-  image: registry.labs.nic.cz/labs/bird:opensuse-15.3-amd64
+#build-opensuse-15.3-amd64:
+#  <<: *build-linux
+#  image: registry.labs.nic.cz/labs/bird:opensuse-15.3-amd64
 
-build-freebsd-11-amd64:
-  <<: *build-base
-  tags:
-    - freebsd
-    - amd64
+#build-freebsd-11-amd64:
+#  <<: *build-base
+#  tags:
+#    - freebsd
+#    - amd64
 
-build-freebsd-11-i386:
-  <<: *build-base
-  tags:
-    - freebsd
-    - i386
+#build-freebsd-11-i386:
+#  <<: *build-base
+#  tags:
+#    - freebsd
+#    - i386
 
 
 .pkg-deb: &pkg-deb
@@ -383,26 +393,31 @@ build-freebsd-11-i386:
     paths:
       - pkg/pkgs/*
 
-.pkg-rpm: &pkg-rpm
-  stage: pkg
-  script:
-    - pip3 install apkg
-    - apkg build
-    #- apkg install -y pkg/pkgs/*/*/*.rpm
-  artifacts:
-    paths:
-      - pkg/pkgs/*
+#.pkg-rpm: &pkg-rpm
+#  stage: pkg
+#  script:
+#    - pip3 install apkg
+#    - apkg build
+#    #- apkg install -y pkg/pkgs/*/*/*.rpm
+#  artifacts:
+#    paths:
+#      - pkg/pkgs/*
 
-.pkg-rpm-wa: &pkg-rpm-wa
-  stage: pkg
-  script:
-    - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
-    - pip3 install apkg
-    - apkg build
-    #- apkg install -y pkg/pkgs/*/*/*.rpm
-  artifacts:
-    paths:
-      - pkg/pkgs/*
+#.pkg-rpm-wa: &pkg-rpm-wa
+#  stage: pkg
+#  script:
+#    - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
+#    - pip3 install apkg
+#    - apkg build
+#    #- apkg install -y pkg/pkgs/*/*/*.rpm
+#  artifacts:
+#    paths:
+#      - pkg/pkgs/*
+
+pkg-debian-9-mips:
+  <<: *pkg-deb
+  needs: [build-debian-9-mips]
+  image: registry.labs.nic.cz/labs/bird:debian-9-mips
 
 # Dpkg error: PATH is not set
 #pkg-debian-8-amd64:
@@ -417,103 +432,103 @@ build-freebsd-11-i386:
 #  image: registry.labs.nic.cz/labs/bird:debian-8-i386
 
 # Dpkg error: PATH is not set
-pkg-debian-9-amd64:
-  <<: *pkg-deb
-  needs: [build-debian-9-amd64]
-  image: registry.labs.nic.cz/labs/bird:debian-9-amd64
+#pkg-debian-9-amd64:
+#  <<: *pkg-deb
+#  needs: [build-debian-9-amd64]
+#  image: registry.labs.nic.cz/labs/bird:debian-9-amd64
 
-# Dpkg error: PATH is not set
-pkg-debian-9-i386:
-  <<: *pkg-deb
-  needs: [build-debian-9-i386]
-  image: registry.labs.nic.cz/labs/bird:debian-9-i386
+## Dpkg error: PATH is not set
+#pkg-debian-9-i386:
+#  <<: *pkg-deb
+#  needs: [build-debian-9-i386]
+#  image: registry.labs.nic.cz/labs/bird:debian-9-i386
 
-pkg-debian-10-amd64:
-  <<: *pkg-deb
-  needs: [build-debian-10-amd64]
-  image: registry.labs.nic.cz/labs/bird:debian-10-amd64
+#pkg-debian-10-amd64:
+#  <<: *pkg-deb
+#  needs: [build-debian-10-amd64]
+#  image: registry.labs.nic.cz/labs/bird:debian-10-amd64
 
-pkg-debian-10-i386:
-  <<: *pkg-deb
-  needs: [build-debian-10-i386]
-  image: registry.labs.nic.cz/labs/bird:debian-10-i386
+#pkg-debian-10-i386:
+#  <<: *pkg-deb
+#  needs: [build-debian-10-i386]
+#  image: registry.labs.nic.cz/labs/bird:debian-10-i386
 
-pkg-debian-11-amd64:
-  <<: *pkg-deb
-  needs: [build-debian-11-amd64]
-  image: registry.labs.nic.cz/labs/bird:debian-11-amd64
+#pkg-debian-11-amd64:
+#  <<: *pkg-deb
+#  needs: [build-debian-11-amd64]
+#  image: registry.labs.nic.cz/labs/bird:debian-11-amd64
 
-pkg-fedora-30-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-fedora-30-amd64]
-  image: registry.labs.nic.cz/labs/bird:fedora-30-amd64
+#pkg-fedora-30-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-fedora-30-amd64]
+#  image: registry.labs.nic.cz/labs/bird:fedora-30-amd64
 
-pkg-fedora-31-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-fedora-31-amd64]
-  image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
+#pkg-fedora-31-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-fedora-31-amd64]
+#  image: registry.labs.nic.cz/labs/bird:fedora-31-amd64
 
-pkg-fedora-32-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-fedora-32-amd64]
-  image: registry.labs.nic.cz/labs/bird:fedora-32-amd64
+#pkg-fedora-32-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-fedora-32-amd64]
+#  image: registry.labs.nic.cz/labs/bird:fedora-32-amd64
 
-pkg-fedora-33-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-fedora-33-amd64]
-  image: registry.labs.nic.cz/labs/bird:fedora-33-amd64
+#pkg-fedora-33-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-fedora-33-amd64]
+#  image: registry.labs.nic.cz/labs/bird:fedora-33-amd64
 
-pkg-fedora-34-amd64:
-  <<: *pkg-rpm
-  needs: [build-fedora-34-amd64]
-  image: registry.labs.nic.cz/labs/bird:fedora-34-amd64
+#pkg-fedora-34-amd64:
+#  <<: *pkg-rpm
+#  needs: [build-fedora-34-amd64]
+#  image: registry.labs.nic.cz/labs/bird:fedora-34-amd64
 
-pkg-centos-7-amd64:
-  <<: *pkg-rpm-wa
-  variables:
-    LC_ALL: en_US.UTF-8
-  needs: [build-centos-7-amd64]
-  image: registry.labs.nic.cz/labs/bird:centos-7-amd64
+#pkg-centos-7-amd64:
+#  <<: *pkg-rpm-wa
+#  variables:
+#    LC_ALL: en_US.UTF-8
+#  needs: [build-centos-7-amd64]
+#  image: registry.labs.nic.cz/labs/bird:centos-7-amd64
 
-pkg-centos-8-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-centos-8-amd64]
-  image: registry.labs.nic.cz/labs/bird:centos-8-amd64
+#pkg-centos-8-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-centos-8-amd64]
+#  image: registry.labs.nic.cz/labs/bird:centos-8-amd64
 
-pkg-ubuntu-18.04-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-18_04-amd64]
-  image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
+#pkg-ubuntu-18.04-amd64:
+#  <<: *pkg-deb
+#  needs: [build-ubuntu-18_04-amd64]
+#  image: registry.labs.nic.cz/labs/bird:ubuntu-18.04-amd64
 
-pkg-ubuntu-20.04-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-20_04-amd64]
-  image: registry.labs.nic.cz/labs/bird:ubuntu-20.04-amd64
+#pkg-ubuntu-20.04-amd64:
+#  <<: *pkg-deb
+#  needs: [build-ubuntu-20_04-amd64]
+#  image: registry.labs.nic.cz/labs/bird:ubuntu-20.04-amd64
 
-pkg-ubuntu-20.10-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-20_10-amd64]
-  image: registry.labs.nic.cz/labs/bird:ubuntu-20.10-amd64
+#pkg-ubuntu-20.10-amd64:
+#  <<: *pkg-deb
+#  needs: [build-ubuntu-20_10-amd64]
+#  image: registry.labs.nic.cz/labs/bird:ubuntu-20.10-amd64
 
 #pkg-ubuntu-21.04-amd64:
 #  <<: *pkg-deb
 #  needs: [build-ubuntu-21_04-amd64]
 #  image: registry.labs.nic.cz/labs/bird:ubuntu-21.04-amd64
 
-pkg-opensuse-15.1-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-opensuse-15.1-amd64]
-  image: registry.labs.nic.cz/labs/bird:opensuse-15.1-amd64
+#pkg-opensuse-15.1-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-opensuse-15.1-amd64]
+#  image: registry.labs.nic.cz/labs/bird:opensuse-15.1-amd64
 
-pkg-opensuse-15.2-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-opensuse-15.2-amd64]
-  image: registry.labs.nic.cz/labs/bird:opensuse-15.2-amd64
+#pkg-opensuse-15.2-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-opensuse-15.2-amd64]
+#  image: registry.labs.nic.cz/labs/bird:opensuse-15.2-amd64
 
-pkg-opensuse-15.3-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-opensuse-15.3-amd64]
-  image: registry.labs.nic.cz/labs/bird:opensuse-15.3-amd64
+#pkg-opensuse-15.3-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-opensuse-15.3-amd64]
+#  image: registry.labs.nic.cz/labs/bird:opensuse-15.3-amd64
 
 
 build-birdlab:
