@@ -74,7 +74,8 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define PACKED __attribute__((packed))
 #define NONNULL(...) __attribute__((nonnull((__VA_ARGS__))))
 
-#define STATIC_ASSERT(...) _Static_assert(__VA_ARGS__)
+#define STATIC_ASSERT(EXP) _Static_assert(EXP, #EXP)
+#define STATIC_ASSERT_MSG(EXP,MSG) _Static_assert(EXP, MSG)
 
 #ifndef HAVE_THREAD_LOCAL
 #define _Thread_local
