@@ -38,13 +38,18 @@ iface_patt_check(void)
 }
 
 static inline void
-init_password(const void *key, uint length, uint id)
+init_password_list(void)
 {
    if (!this_p_list) {
       this_p_list = cfg_allocz(sizeof(list));
       init_list(this_p_list);
       password_id = 1;
    }
+}
+
+static inline void
+init_password(const void *key, uint length, uint id)
+{
    this_p_item = cfg_allocz(sizeof (struct password_item));
    this_p_item->password = key;
    this_p_item->length = length;
@@ -494,6 +499,10 @@ mrtdump_flag:
 /* Password lists */
 
 password_list:
+   password_list_body
+;
+
+password_list_body:
    PASSWORDS '{' password_items '}'
  | password_item
 ;
@@ -509,8 +518,8 @@ password_item:
 ;
 
 password_item_begin:
-    PASSWORD text { init_password($2, strlen($2), password_id++); }
-  | PASSWORD BYTESTRING { init_password($2->data, $2->length, password_id++); }
+    PASSWORD text { init_password_list(); init_password($2, strlen($2), password_id++); }
+  | PASSWORD BYTESTRING { init_password_list(); init_password($2->data, $2->length, password_id++); }
 ;
 
 password_item_params:
