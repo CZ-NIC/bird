@@ -61,8 +61,9 @@
 #define BABEL_OVERHEAD		(IP6_HEADER_LENGTH+UDP_HEADER_LENGTH)
 #define BABEL_MIN_MTU		(512 + BABEL_OVERHEAD)
 
-#define BABEL_AUTH_NONE		0
+#define BABEL_AUTH_NONE			0
 #define BABEL_AUTH_MAC			1
+
 #define BABEL_AUTH_NONCE_LEN		10	/* we send 80 bit nonces */
 #define BABEL_AUTH_MAX_NONCE_LEN	192	/* max allowed by spec */
 #define BABEL_AUTH_INDEX_LEN		32	/* max size in spec */
@@ -82,9 +83,9 @@ enum babel_tlv_type {
   BABEL_TLV_UPDATE		= 8,
   BABEL_TLV_ROUTE_REQUEST	= 9,
   BABEL_TLV_SEQNO_REQUEST	= 10,
-  BABEL_TLV_MAC		= 16,
+  BABEL_TLV_MAC			= 16,
   BABEL_TLV_PC			= 17,
-  BABEL_TLV_CHALLENGE_REQ	= 18,
+  BABEL_TLV_CHALLENGE_REQUEST	= 18,
   BABEL_TLV_CHALLENGE_REPLY	= 19,
   BABEL_TLV_MAX
 };

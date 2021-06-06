@@ -103,26 +103,24 @@ babel_iface_finish:
   {
     struct password_item *pass;
     uint len = 0, i = 0;
+
     WALK_LIST(pass, *BABEL_IFACE->passwords)
     {
       /* Set default crypto algorithm (HMAC-SHA256) */
       if (!pass->alg)
 	pass->alg = ALG_HMAC_SHA256;
 
-      if (pass->alg & ALG_HMAC) {
-        if (pass->length < mac_type_length(pass->alg) ||
-            pass->length > mac_type_block_size(pass->alg))
-          cf_error("key length %d is not between output size %d and block size %d for algorithm %s",
-                   pass->length, mac_type_length(pass->alg),
-                   mac_type_block_size(pass->alg), mac_type_name(pass->alg));
-      } else if (!(pass->alg == ALG_BLAKE2S_128 || pass->alg == ALG_BLAKE2S_256 ||
-                   pass->alg == ALG_BLAKE2B_256 || pass->alg == ALG_BLAKE2B_512)) {
-	cf_error("Only HMAC and Blake algorithms are supported");
-      }
+      if (!((pass->alg & ALG_HMAC) ||
+	    (pass->alg == ALG_BLAKE2S_128) ||
+	    (pass->alg == ALG_BLAKE2S_256) ||
+	    (pass->alg == ALG_BLAKE2B_256) ||
+	    (pass->alg == ALG_BLAKE2B_512)))
+	cf_error("Only HMAC and Blake2 algorithms are supported");
 
       len += mac_type_length(pass->alg);
       i++;
     }
+
     BABEL_IFACE->mac_num_keys = i;
     BABEL_IFACE->mac_total_len = len;
   }
@@ -146,9 +144,9 @@ babel_iface_item:
  | NEXT HOP IPV4 ipa { BABEL_IFACE->next_hop_ip4 = $4; if (!ipa_is_ip4($4)) cf_error("Must be an IPv4 address"); }
  | NEXT HOP IPV6 ipa { BABEL_IFACE->next_hop_ip6 = $4; if (!ipa_is_ip6($4)) cf_error("Must be an IPv6 address"); }
  | AUTHENTICATION NONE { BABEL_IFACE->auth_type = BABEL_AUTH_NONE; }
- | AUTHENTICATION MAC { BABEL_IFACE->auth_type = BABEL_AUTH_MAC; }
+ | AUTHENTICATION MAC { BABEL_IFACE->auth_type = BABEL_AUTH_MAC; BABEL_IFACE->auth_permissive = 0; }
  | AUTHENTICATION MAC PERMISSIVE { BABEL_IFACE->auth_type = BABEL_AUTH_MAC; BABEL_IFACE->auth_permissive = 1; }
- | password_list	{ }
+ | password_list
  ;
 
 babel_iface_opts:

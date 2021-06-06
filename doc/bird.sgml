@@ -1827,8 +1827,8 @@ protocol babel [<name>] {
 			accept to "&lt;date&gt;";
 			from "&lt;date&gt;";
 			to "&lt;date&gt;";
-			algorithm ( hmac sha1 | hmac sha256 | hmac sha384 | hmac
-	sha512 | blake2s | blake2b );
+			algorithm ( hmac sha1 | hmac sha256 | hmac sha384 |
+	hmac sha512 | blake2s128 | blake2s256 | blake2b256 | blake2b512 );
 		};
 	};
 }
@@ -1932,13 +1932,12 @@ protocol babel [<name>] {
       authentication is selected, a key must be specified with the
       <cf/password/ configuration option. Default: none.
 
-      <tag><label id="babel-password">password "<m/text/"</tag> Specifies a
-      password used for authentication. See the <ref id="proto-pass"
+      <tag><label id="babel-password">password "<m/text/"</tag>
+      Specifies a password used for authentication. See the <ref id="proto-pass"
       name="password"> common option for a detailed description. The Babel
       protocol will only accept HMAC-based algorithms or one of the Blake
       algorithms, and the length of the supplied password string must match the
       key size used by the selected algorithm.
-
 </descrip>
 
 <sect1>Attributes

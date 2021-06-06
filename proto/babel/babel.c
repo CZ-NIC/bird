@@ -1428,21 +1428,39 @@ babel_auth_init_neighbor(struct babel_neighbor *n)
 }
 
 static void
-babel_auth_send_challenge(struct babel_iface *ifa, struct babel_neighbor *n)
+babel_auth_send_challenge_request(struct babel_iface *ifa, struct babel_neighbor *n)
 {
   struct babel_proto *p = ifa->proto;
   union babel_msg msg = {};
 
-  TRACE(D_PACKETS, "Sending AUTH challenge to %I on %s",
+  TRACE(D_PACKETS, "Sending challenge request to %I on %s",
 	n->addr, ifa->ifname);
 
   random_bytes(n->auth_nonce, BABEL_AUTH_NONCE_LEN);
   n->auth_nonce_expiry = current_time() + BABEL_AUTH_CHALLENGE_TIMEOUT;
   n->auth_next_challenge = current_time() + BABEL_AUTH_CHALLENGE_INTERVAL;
 
-  msg.type = BABEL_TLV_CHALLENGE_REQ;
+  msg.type = BABEL_TLV_CHALLENGE_REQUEST;
   msg.challenge.nonce_len = BABEL_AUTH_NONCE_LEN;
   msg.challenge.nonce = n->auth_nonce;
+
+  babel_send_unicast(&msg, ifa, n->addr);
+}
+
+static void
+babel_auth_send_challenge_reply(struct babel_iface *ifa, struct babel_neighbor *n, struct babel_msg_auth *rcv)
+{
+  struct babel_proto *p = ifa->proto;
+  union babel_msg msg = {};
+
+  TRACE(D_PACKETS, "Sending challenge reply to %I on %s",
+	n->addr, ifa->ifname);
+
+  n->auth_next_challenge_reply = current_time() + BABEL_AUTH_CHALLENGE_INTERVAL;
+
+  msg.type = BABEL_TLV_CHALLENGE_REPLY;
+  msg.challenge.nonce_len = rcv->challenge_len;
+  msg.challenge.nonce = rcv->challenge;
 
   babel_send_unicast(&msg, ifa, n->addr);
 }
@@ -1453,68 +1471,69 @@ babel_auth_check_pc(struct babel_iface *ifa, struct babel_msg_auth *msg)
   struct babel_proto *p = ifa->proto;
   struct babel_neighbor *n;
 
-  TRACE(D_PACKETS, "Handling MAC check from %I on %s",
-        msg->sender,  ifa->ifname);
-
-  /* We create the neighbour entry at this point because it makes it easier to
+  /*
+   * We create the neighbour entry at this point because it makes it easier to
    * rate limit challenge replies; this is explicitly allowed by the spec (see
-   *  Section 4.3).
+   * Section 4.3).
    */
   n = babel_get_neighbor(ifa, msg->sender);
 
-  if (msg->challenge_seen && n->auth_next_challenge_reply <= current_time())
-  {
-    union babel_msg resp = {};
-    TRACE(D_PACKETS, "Sending MAC challenge response to %I", msg->sender);
-    resp.type = BABEL_TLV_CHALLENGE_REPLY;
-    resp.challenge.nonce_len = msg->challenge_len;
-    resp.challenge.nonce = msg->challenge;
-    n->auth_next_challenge_reply = current_time() + BABEL_AUTH_CHALLENGE_INTERVAL;
-    babel_send_unicast(&resp, ifa, msg->sender);
-  }
+  /* (3b) Handle challenge request */
+  if (msg->challenge_seen && (n->auth_next_challenge_reply <= current_time()))
+    babel_auth_send_challenge_reply(ifa, n, msg);
 
-  if (msg->index_len > BABEL_AUTH_INDEX_LEN || !msg->pc_seen)
+  /* (4a) If PC TLV is missing, drop the packet */
+  if (!msg->pc_seen)
   {
-    LOG_PKT_AUTH("Invalid index or no PC from %I on %s",
+    LOG_PKT_AUTH("Authentication failed for %I on %s - missing or invalid PC",
                  msg->sender, ifa->ifname);
-    return 1;
+    return 0;
   }
 
-  /* On successful challenge, update PC and index to current values */
+  /* (4b) On successful challenge, update PC and index to current values */
   if (msg->challenge_reply_seen &&
-      n->auth_nonce_expiry &&
-      n->auth_nonce_expiry >= current_time() &&
+      (n->auth_nonce_expiry > current_time()) &&
       !memcmp(msg->challenge_reply, n->auth_nonce, BABEL_AUTH_NONCE_LEN))
   {
     n->auth_index_len = msg->index_len;
     memcpy(n->auth_index, msg->index, msg->index_len);
-    n->auth_pc = msg->pc;
-  }
 
-  /* If index differs, send challenge */
-  if ((n->auth_index_len != msg->index_len ||
-      memcmp(n->auth_index, msg->index, msg->index_len)) &&
-      n->auth_next_challenge <= current_time())
-  {
-    LOG_PKT_AUTH("Index mismatch from %I on %s; sending challenge",
-                 msg->sender, ifa->ifname);
-    babel_auth_send_challenge(ifa, n);
+    n->auth_pc = msg->pc;
+    n->auth_expiry = current_time() + BABEL_AUTH_NEIGHBOR_TIMEOUT;
+    n->auth_passed = 1;
+
     return 1;
   }
 
-  /* Index matches; only accept if PC is greater than last */
+  /* (5) If index differs, send challenge and drop the packet */
+  if ((n->auth_index_len != msg->index_len) ||
+      memcmp(n->auth_index, msg->index, msg->index_len))
+  {
+    TRACE(D_PACKETS, "Index mismatch for packet from %I via %s",
+	  msg->sender, ifa->ifname);
+
+    if (n->auth_next_challenge <= current_time())
+      babel_auth_send_challenge_request(ifa, n);
+
+    return 0;
+  }
+
+  /* (6) Index matches; only accept if PC is greater than last */
   if (n->auth_pc >= msg->pc)
   {
-    LOG_PKT_AUTH("Packet counter too low from %I on %s",
-                 msg->sender, ifa->ifname);
-    return 1;
+    LOG_PKT_AUTH("Authentication failed for %I on %s - "
+		 "lower packet counter (rcv %u, old %u)",
+                 msg->sender, ifa->ifname, msg->pc, n->auth_pc);
+    return 0;
   }
 
   n->auth_pc = msg->pc;
   n->auth_expiry = current_time() + BABEL_AUTH_NEIGHBOR_TIMEOUT;
   n->auth_passed = 1;
-  return 0;
+
+  return 1;
 }
+
 
 /*
  *	Babel interfaces
@@ -1854,7 +1873,9 @@ babel_reconfigure_iface(struct babel_proto *p, struct babel_iface *ifa, struct b
   ifa->next_hop_ip4 = ipa_nonzero(new->next_hop_ip4) ? new->next_hop_ip4 : addr4;
   ifa->next_hop_ip6 = ipa_nonzero(new->next_hop_ip6) ? new->next_hop_ip6 : ifa->addr;
 
-  if (new->auth_type != BABEL_AUTH_NONE && old->auth_type != new->auth_type)
+  babel_iface_update_buffers(ifa);
+
+  if ((new->auth_type != BABEL_AUTH_NONE) && (new->auth_type != old->auth_type))
     babel_auth_reset_index(ifa);
 
   if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
@@ -1865,9 +1886,6 @@ babel_reconfigure_iface(struct babel_proto *p, struct babel_iface *ifa, struct b
 
   if (ifa->next_regular > (current_time() + new->update_interval))
     ifa->next_regular = current_time() + (random() % new->update_interval);
-
-  if ((new->tx_length != old->tx_length) || (new->rx_buffer != old->rx_buffer))
-    babel_iface_update_buffers(ifa);
 
   if (new->check_link != old->check_link)
     babel_iface_update_state(ifa);
