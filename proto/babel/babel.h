@@ -52,6 +52,7 @@
 #define BABEL_RXCOST_WIRELESS		256
 #define BABEL_INITIAL_HOP_COUNT		255
 #define BABEL_MAX_SEND_INTERVAL		5	/* Unused ? */
+#define BABEL_INITIAL_NEIGHBOR_TIMEOUT	(60 S_)
 
 /* Max interval that will not overflow when carried as 16-bit centiseconds */
 #define BABEL_TIME_UNITS		10000	/* On-wire times are counted in centiseconds */
@@ -67,7 +68,6 @@
 #define BABEL_AUTH_NONCE_LEN		10	/* we send 80 bit nonces */
 #define BABEL_AUTH_MAX_NONCE_LEN	192	/* max allowed by spec */
 #define BABEL_AUTH_INDEX_LEN		32	/* max size in spec */
-#define BABEL_AUTH_NEIGHBOR_TIMEOUT	(300 S_)
 #define BABEL_AUTH_CHALLENGE_TIMEOUT	(30 S_)
 #define BABEL_AUTH_CHALLENGE_INTERVAL	(300 MS_) /* used for both challenges and replies */
 
@@ -236,7 +236,7 @@ struct babel_neighbor {
   /* expiry timers */
   btime hello_expiry;
   btime ihu_expiry;
-  btime auth_expiry;
+  btime init_expiry;
 
   list routes;				/* Routes this neighbour has sent us (struct babel_route) */
   list requests;			/* Seqno requests bound to this neighbor */

@@ -57,7 +57,6 @@ static void babel_send_seqno_request(struct babel_proto *p, struct babel_entry *
 static void babel_update_cost(struct babel_neighbor *n);
 static inline void babel_kick_timer(struct babel_proto *p);
 static inline void babel_iface_kick_timer(struct babel_iface *ifa);
-static void babel_auth_init_neighbor(struct babel_neighbor *n);
 
 /*
  *	Functions to maintain data structures
@@ -428,10 +427,10 @@ babel_get_neighbor(struct babel_iface *ifa, ip_addr addr)
   nbr->rxcost = BABEL_INFINITY;
   nbr->txcost = BABEL_INFINITY;
   nbr->cost = BABEL_INFINITY;
+  nbr->init_expiry = current_time() + BABEL_INITIAL_NEIGHBOR_TIMEOUT;
   init_list(&nbr->routes);
   init_list(&nbr->requests);
   add_tail(&ifa->neigh_list, NODE nbr);
-  babel_auth_init_neighbor(nbr);
 
   return nbr;
 }
@@ -511,11 +510,11 @@ babel_expire_neighbors(struct babel_proto *p)
       if (nbr->ihu_expiry && nbr->ihu_expiry <= now_)
         babel_expire_ihu(p, nbr);
 
-      if (nbr->hello_expiry && nbr->hello_expiry <= now_)
-        babel_expire_hello(p, nbr, now_);
+      if (nbr->init_expiry && nbr->init_expiry <= now_)
+      { babel_flush_neighbor(p, nbr); continue; }
 
-      if (nbr->auth_expiry && nbr->auth_expiry <= now_)
-        babel_flush_neighbor(p, nbr);
+      if (nbr->hello_expiry && nbr->hello_expiry <= now_)
+      { babel_expire_hello(p, nbr, now_); continue; }
     }
   }
 }
@@ -1115,6 +1114,9 @@ babel_update_hello_history(struct babel_neighbor *n, u16 seqno, uint interval)
   /* Update expiration */
   n->hello_expiry = current_time() + BABEL_HELLO_EXPIRY_FACTOR(interval);
   n->last_hello_int = interval;
+
+  /* Disable initial timeout */
+  n->init_expiry = 0;
 }
 
 
@@ -1413,20 +1415,6 @@ babel_auth_reset_index(struct babel_iface *ifa)
   ifa->auth_pc = 1;
 }
 
-/**
- * babel_auth_init_neighbor - Initialise authentication data for neighbor
- * @n: Neighbor to initialise
- *
- * This function initialises the authentication-related state for a new neighbor
- * that has just been created.
- */
-void
-babel_auth_init_neighbor(struct babel_neighbor *n)
-{
-  if (n->ifa->cf->auth_type != BABEL_AUTH_NONE)
-    n->auth_expiry = current_time() + BABEL_AUTH_NEIGHBOR_TIMEOUT;
-}
-
 static void
 babel_auth_send_challenge_request(struct babel_iface *ifa, struct babel_neighbor *n)
 {
@@ -1499,7 +1487,6 @@ babel_auth_check_pc(struct babel_iface *ifa, struct babel_msg_auth *msg)
     memcpy(n->auth_index, msg->index, msg->index_len);
 
     n->auth_pc = msg->pc;
-    n->auth_expiry = current_time() + BABEL_AUTH_NEIGHBOR_TIMEOUT;
     n->auth_passed = 1;
 
     return 1;
@@ -1528,7 +1515,6 @@ babel_auth_check_pc(struct babel_iface *ifa, struct babel_msg_auth *msg)
   }
 
   n->auth_pc = msg->pc;
-  n->auth_expiry = current_time() + BABEL_AUTH_NEIGHBOR_TIMEOUT;
   n->auth_passed = 1;
 
   return 1;
@@ -2116,7 +2102,7 @@ babel_show_neighbors(struct proto *P, const char *iff)
         rts++;
 
       uint hellos = u32_popcount(n->hello_map);
-      btime timer = (n->hello_expiry ?: n->auth_expiry) - current_time();
+      btime timer = (n->hello_expiry ?: n->init_expiry) - current_time();
       cli_msg(-1024, "%-25I %-10s %6u %6u %6u %7t %-4s",
 	      n->addr, ifa->iface->name, n->cost, rts, hellos, MAX(timer, 0),
               n->auth_passed ? "Yes" : "No");
