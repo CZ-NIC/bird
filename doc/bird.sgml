@@ -789,10 +789,9 @@ agreement").
         specified this way must be at least 16 bytes (32 digits) long (although
         specific algorithms can impose other restrictions).
 
-	This option is allowed in BFD, OSPF and RIP protocols. BGP has also
-	<cf/password/ option, but it is slightly different and described
-	separately.
-	Default: none.
+	This option is allowed in BFD, OSPF, RIP, and Babel protocols. BGP has
+	also <cf/password/ option, but it is slightly different and described
+	separately. Default: none.
 </descrip>
 
 <p>Password option can contain section with some (not necessary all) password sub-options:

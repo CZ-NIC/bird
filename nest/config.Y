@@ -115,7 +115,7 @@ CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBU
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, DEFAULT, TABLE, STATES, ROUTES, FILTERS)
 CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
-CF_KEYWORDS(PASSWORD, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
+CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, BY, FOR, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
 CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION, SORTED)
@@ -517,9 +517,11 @@ password_item:
   | password_item_begin password_item_end
 ;
 
+pass_key: PASSWORD | KEY;
+
 password_item_begin:
-    PASSWORD text { init_password_list(); init_password($2, strlen($2), password_id++); }
-  | PASSWORD BYTESTRING { init_password_list(); init_password($2->data, $2->length, password_id++); }
+    pass_key text { init_password_list(); init_password($2, strlen($2), password_id++); }
+  | pass_key BYTESTRING { init_password_list(); init_password($2->data, $2->length, password_id++); }
 ;
 
 password_item_params:
