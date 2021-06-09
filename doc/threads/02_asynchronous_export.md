@@ -49,8 +49,8 @@ this way:
 3. Resulting changes are stored.
 
 Then, after the importing protocol returns, the exports are processed for each
-exporting channel. In future, this will be possible in parallel: Some protocols
-may process the export directly after it is stored, other protocols will wait
+exporting channel in parallel: Some protocols
+may process the export directly after it is stored, other protocols wait
 until they finish another job.
 
 This eliminates the risk of deadlocks and all protocols' `rt_notify` hooks can
@@ -120,7 +120,7 @@ whole route list and process it.
 In this mode, the channel runs export filters on a sorted list of routes, best first.
 If the best route gets rejected, it asks for the next one until it finds an
 acceptable route or exhausts the list. This export mode requires a sorted table.
-BIRD users will know this export mode as `secondary` in BGP.
+BIRD users may know this export mode as `secondary` in BGP.
 
 For now, BIRD stores two bits per route for each channel. The *export bit* is set
 if the route has been really exported to that channel. The *reject bit* is set
@@ -146,15 +146,22 @@ while export filters are running. To achieve this, we follow this algorithm:
 
 1. The exporting channel sees a pending export.
 2. *The table is locked.*
-3. The channel counts all the routes for the given destination.
-4. The channel stores pointers to that routes to a local array.
+3. All routes (pointers) for the given destination are dumped to a local array.
+4. Also first and last pending exports for the given destination are stored.
 5. *The table is unlocked.*
 6. The channel processes the local array of route pointers.
-7. The pending export is marked as processed by this channel.
+7. All pending exports between the first and last stored (incl.) are marked as processed to allow for cleanup.
 
 After unlocking the table, the pointed-to routes are implicitly guarded by the
-sole fact that the pending export has not yet been processed by all channels
-and the cleanup routine never frees any resource related to a pending export.
+sole fact that no pending export has not yet been processed by all channels
+and the cleanup routine frees only resources after being processed.
+
+The pending export range must be stored together with the feed. While
+processing export filters for the feed, another export may come in. We
+must process the export once again as the feed is now outdated, therefore we
+must mark only these exports that were pending for this destination when the
+feed was being stored. We also can't mark them before actually processing them
+as they would get freed inbetween.
 
 ## Pending export data structure
 
@@ -174,9 +181,8 @@ struct rt_pending_export {
 
 To allow for squashing outdated pending exports (e.g. for flap dampening
 purposes), there is a `next` pointer to the next export for the same
-destination. This is also needed for the export-by-feed algorithm: if there are
-several exports for one net at once, all of them are processed by one
-export-by-feed automatically marked as done.
+destination. This is also needed for the export-by-feed algorithm to traverse
+the list of pending exports.
 
 We should also add several items into `struct channel`.
 
@@ -191,23 +197,26 @@ We should also add several items into `struct channel`.
 To run the exports in parallel, `export_coro` is run and `export_sem` is
 used for signalling new exports to it. The exporter coroutine also marks all
 seen sequential IDs in its `export_seen_map` to make it possible to skip over
-them if seen again.
+them if seen again. The exporter coroutine is started when export is requested
+and stopped when export is stopped.
 
 There is also a table cleaner routine
 (see [previous chapter](https://en.blog.nic.cz/2021/03/23/bird-journey-to-threads-chapter-1-the-route-and-its-attributes/))
 which must cleanup also the pending exports after all the channels are finished with them.
 To signal that, there is `last_export` working as a release point: the channel
-guarantees that it doesn't touch the pointed-to pending export, nor any data
+guarantees that it doesn't touch the pointed-to pending export (or any older), nor any data
 from it.
 
-The last tricky point is channel flushing. When any channel stops, all its
+The last tricky point here is channel flushing. When any channel stops, all its
 routes are automatically freed and withdrawals are exported if appropriate.
 Until now, the routes could be flushed synchronously, anyway now flush has
-several phases:
+several phases, stored in `flush_active` channel variable:
 
-1. Flush started (here the channel stores the `seq` of last current pending export).
-2. All routes unlinked yet not freed, withdrawals pending.
-3. Pending withdrawals processed and cleaned up. Channel may safely stop and free its structures.
+1. Flush started.
+2. Withdrawals for all the channel's routes are issued. 
+   Here the channel stores the `seq` of last current pending export to `flush_seq`)
+3. When the table's cleanup routine cleans up the withdrawal with `flush_seq`,
+   the channel may safely stop and free its structures as all `sender` pointers in routes are now gone.
 
 Finally, some additional information has to be stored in tables:
 
@@ -223,7 +232,7 @@ Finally, some additional information has to be stored in tables:
 The exports are:
 1. Assigned the `next_export_seq` sequential ID, incrementing this item by one.
 2. Put into `pending_exports` and `export_fib` for both sequential and by-destination access.
-3. Signalled by setting `export_scheduled` and also `first_export` if not `NULL`.
+3. Signalled by setting `export_scheduled` and `first_export`.
 
 After processing several exports, `export_used` is set and route table maintenance
 coroutine is woken up to possibly do cleanup.
@@ -237,55 +246,64 @@ counts. If BIRD is almost idle, the optimization does nothing on the overall per
 ## Export algorithm
 
 As we have explained at the beginning, the current export algorithm is
-table-driven. The table walks the channel list and propagates the update.
-The now export algorithm is channel-driven. The table just indicates that it
+synchronous and table-driven. The table walks the channel list and propagates the update.
+The new export algorithm is channel-driven. The table just indicates that it
 has something new in export queue and the channel decides what to do with that and when.
 
 ### Pushing an export
 
-When a table has something to export, it enqueues an appropriate instance of
-`struct rt_pending_export`. Then it pings its maintenance coroutine
-(`rt_event`) to notify the exporting channels about a new route. This coroutine
-runs with only the table locked so the protocol may e.g. prepare the next route inbetween.
+When a table has something to export, it enqueues an instance of
+`struct rt_pending_export` together with updating the `last` pointer (and
+possibly also `first`) for this destination's pending exports.
+
+Then it pings its maintenance coroutine (`rt_event`) to notify the exporting
+channels about a new route. Before the maintenance coroutine acquires the table
+lock, the importing protocol may e.g. prepare the next route inbetween.
 The maintenance coroutine, when it wakes up, walks the list of channels and
 wakes their export coroutines.
 
-These two levels of asynchronicity are here for two reasons.
+These two levels of asynchronicity are here for an efficiency reason.
 
-1. There may be lots of channels (hundreds of them) and we don't want to
-   inefficiently iterate the list for each export.
-2. The notification is going to wait until the route author finishes, hopefully
-   importing more routes and therefore allowing more exports to be processed at once.
-
-The table also stores the first and last exports for every destination. These
-come handy mostly for cleanup purposes and for channel feeding.
+1. In case of low table load, the export is announced just after the import happens.
+2. In case of table congestion, the export notification locks the table as well
+   as all route importers, effectively reducing the number of channel list traversals.
 
 ### Processing an export
 
 After these two pings, the channel finally knows that there is an export pending.
-The channel checks whether there is a `last_export` stored. If yes, it proceeds
-with the next one, otherwise it takes `first_export` from the table (which is
-atomic for this reason).
 
-1. The channel checks its `export_seen_map` whether this export has been
-   already processed. If so, it skips to the next export. No action is needed.
-2. The export chain is scanned for the current first and last export. This is
-   done by following the `next` pointer in the exports as accessing the
-   auxiliary export fib needs locking.
-3. In the best-only and all-routes export mode, the changes are processed
-   without further table locking.
-4. If export-by-feed is used, the current state of routes in table are fetched.
-   Then the table is unlocked and the changes are processed without further locking.
-5. All processed exports are marked as seen.
-6. The channel stores the `last_export` and returns to beginning.to wait for next export.
+1. The channel waits for a semaphore. This semaphore is posted by the table
+   maintenance coroutine.
+2. The channel checks whether there is a `last_export` stored.
+   1. If yes, it proceeds with the next one.
+   2. Otherwise it takes `first_export` from the table. This special
+      pointer is atomic and can be accessed without locking and also without clashing
+      with the export cleanup routine.
+3. The channel checks its `export_seen_map` whether this export has been
+   already processed. If so, it goes back to 1. to get the next export. No
+   action is needed with this one.
+4. As now the export is clearly new, the export chain (single-linked list) is
+   scanned for the current first and last export. This is done by following the
+   `next` pointer in the exports.
+5. If all-routes mode is used, the exports are processed one-by-one. In future
+   versions, we may employ some simple flap-dampening by checking the pending
+   export list for the same route src. *No table locking happens.*
+6. If best-only mode is employed, just the first and last exports are
+   considered to find the old and new best routes. The inbetween exports do nothing. *No table locking happens.*
+7. If export-by-feed is used, the current state of routes in table are fetched and processed
+   as described above in the "Export by feed" section.
+8. All processed exports are marked as seen.
+9. The channel stores the first processed export to `last_export` and returns
+   to beginning.to wait for next exports. The latter exports are then skipped by
+   step 3 when the export coroutine gets to them.
 
-## The full route life-cycle
+## The full life-cycle of routes 
 
 Until now, we're always assuming that the channels *just exist*. In real life,
 any channel may go up or down and we must handle it, flushing the routes
 appropriately and freeing all the memory just in time to avoid both
-use-after-free and memory leaks. It should be noted here explicitly that BIRD
-is written in C which has no garbage collector or other modern features alike.
+use-after-free and memory leaks. BIRD is written in C which has no garbage
+collector or other modern features alike so memory management is a thing.
 
 ### Protocols and channels as viewed from a route
 
@@ -295,20 +313,21 @@ serving as a database of routes. To connect a protocol to a table, a
 **channel** is created.
 
 Every route has its `sender` storing the channel which has put the route into
-the current table. This comes handy when the channel goes down to know which
-routes to flush.
+the current table. Therefore we know which routes to flush when a channel goes down.
 
 Every route also has its `src`, a route source allocated by the protocol which
-originated it first. This is kept when a route is passed through a *pipe*.
+originated it first. This is kept when a route is passed through a *pipe*. The
+route source is always bound to protocol; it is possible that a protocol
+announces routes via several channels using the same src.
 
 Both `src` and `sender` must point to active protocols and channels as inactive
-protocols and channels may be deleted in any time.
+protocols and channels may be deleted any time.
 
 ### Protocol and channel lifecycle
 
 In the beginning, all channels and protocols are down. Until they fully start,
 no route from them is allowed to any table. When the protocol and channel is up,
-they may originate routes freely. However, the transitions are worth mentioning.
+they may originate and receive routes freely. However, the transitions are worth mentioning.
 
 ### Channel startup and feed
 
@@ -324,9 +343,9 @@ with a reasonable latency.
 
 When the exports were synchronous, we simply didn't care and just announced the
 exports to the channels from the time they started feeding. When making exports
-asynchronous, it was crucial to avoid most of the possible race conditions
+asynchronous, it is crucial to avoid (hopefully) all the possible race conditions
 which could arise from simultaneous feed and export. As the feeder routines had
-to be rewritten, it was a good opportunity to make this precise.
+to be rewritten, it is a good opportunity to make this precise.
 
 Therefore, when a channel goes up, it also starts exports:
 
@@ -345,8 +364,8 @@ Therefore, when a channel goes up, it also starts exports:
 8. Run the exporter loop.
 
 *Note: There are some nuances not mentioned here how to do things in right
-order to avoid missing some events while changing state. Precise description
-would be too detailed for this text.*
+order to avoid missing some events while changing state. For specifics, look
+into the code in `nest/rt-table.c` in branch `alderney`.*
 
 When the feeder loop finishes, it continues smoothly to process all the exports
 that have been queued while the feed was running. Step 5.3 ensures that already
@@ -363,18 +382,21 @@ cases follow the same routine.
 4. In the feed-export coroutine:
    1. At a designated cancellation point, check cancellation.
    2. Clean up local data.
-   3. *Lock main BIRD context locked*
+   3. *Lock main BIRD context*
    4. If shutdown requested, switch the channel to *flushing* state and request table maintenance.
+   5. *Stop the coroutine and unlock main BIRD context.*
 5. In the table maintenance coroutine:
-   1. Walk across all channels and check them for *flushing* state.
+   1. Walk across all channels and check them for *flushing* state, setting `flush_active` to 1.
    2. Walk across the table (split to allow for low latency updates) and
       generate a withdrawal for each route sent by the flushing channels.
-   3. Wait until all the withdrawals are processed.
+   3. When all the table is traversed, the flushing channels' `flush_active` is set to 2 and
+      `flush_seq` is set to the current last export seq.
+   3. Wait until all the withdrawals are processed by checking the `flush_seq`.
    4. Mark the flushing channels as *down* and eventually proceed to the protocol shutdown or restart.
 
 There is also a separate routine that handles bulk cleanup of `src`'s which
 contain a pointer to the originating protocol. This routine may get reworked in
-future, yet for now it is good enough.
+future; for now it is good enough.
 
 ### Route export cleanup
 
@@ -385,8 +407,8 @@ to let the importing protocol continue its work. We therefore need a routine to
 cleanup the withdrawn routes and also the processed exports.
 
 First of all, this routine refuses to cleanup when any export is feeding or
-shutting down. This may change in future, anyway for now we aren't sure about
-possible race conditions.
+shutting down. In future, cleanup while feeding should be possible, anyway for
+now we aren't sure about possible race conditions.
 
 Anyway, when all the exports are in a steady state, the routine works as follows:
 
@@ -412,22 +434,26 @@ of a base for the next steps:
   implement more output formats, e.g. JSON.
 * Unlocking of kernel route synchronization should fix latency issues induced
   by long-lasting kernel queries.
-* Partial unlocking of BGP packet processing should finally allow for parallel
+* Partial unlocking of BGP packet processing should allow for parallel
   execution in almost all phases of BGP route propagation.
+* Partial unlocking of OSPF route recalculation should raise the useful
+  maximums of topology size.
 
 The development is now being done mostly in the branch `alderney`. If you asked
 why such strange branch names like `jersey`, `guernsey` and `alderney`, here is
-a kind-of reason. Yes, these names could be named `mq-async-export`,
+a kind-of reason. Yes, these branches could be named `mq-async-export`,
 `mq-async-export-new`, `mq-async-export-new-new`, `mq-another-async-export` and
-so on. That's so ugly, isn't it? 
+so on. That's so ugly, isn't it? Let's be creative. *Jersey* is an island where a
+same-named knit was first produced – and knits are made of *threads*. Then, you
+just look into a map and find nearby islands.
 
 Also why so many branches? The development process is quite messy. BIRD's code
-heavily depends on single-threaded approach. This is exceptionally good for
-performance, as long as you have one thread only. On the other hand, lots of
-these assumptions are not documented so in many cases one desired
-change yields a chain of other unforeseen changes which must precede. This brings
-lots of backtracking, branch rebasing and other Git magic. There is always a
-can of worms somewhere in the code.
+heavily depends on single-threaded approach. This is (in this case)
+exceptionally good for performance, as long as you have one thread only. On the
+other hand, lots of these assumptions are not documented so in many cases one
+desired change yields a chain of other unforeseen changes which must precede.
+This brings lots of backtracking, branch rebasing and other Git magic. There is
+always a can of worms somewhere in the code.
 
 *It's still a long road to the version 2.1. This series of texts should document
 what is needed to be changed, why we do it and how. The

@@ -1,5 +1,5 @@
 SUFFICES := .pdf -wordpress.html
-CHAPTERS := 00_the_name_of_the_game 01_the_route_and_its_attributes 02_asynchronous_export
+CHAPTERS := 00_the_name_of_the_game 01_the_route_and_its_attributes 02_asynchronous_export 03_coroutines
 
 all: $(foreach ch,$(CHAPTERS),$(addprefix $(ch),$(SUFFICES)))
 
