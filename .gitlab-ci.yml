@@ -626,3 +626,13 @@ test-ibgp-star:
   <<: *test-base
   variables:
     TEST_NAME: cf-ibgp-flat
+
+test-babel-base:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-babel-base
+
+test-babel-auth:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-babel-auth
