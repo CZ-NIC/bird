@@ -618,6 +618,9 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
       goto reject;
     }
 
+  /* Needed for pipes */
+  rte_store_tmp_attrs(rt, pool, NULL);
+
  accept:
   if (rt != rt0)
     *rt_free = rt;
