@@ -618,6 +618,12 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
       goto reject;
     }
 
+#ifdef CONFIG_PIPE
+  /* Pipes need rte with stored tmpattrs, remaining protocols need expanded tmpattrs */
+  if (p->proto == &proto_pipe)
+    rte_store_tmp_attrs(rt, pool, NULL);
+#endif
+
  accept:
   if (rt != rt0)
     *rt_free = rt;
