@@ -85,7 +85,7 @@ ospf_proto_finish(void)
   struct ospf_iface_patt *ic;
 
   /* Define default channel */
-  if (EMPTY_LIST(this_proto->channels))
+  if (! proto_cf_main_channel(this_proto))
   {
     uint net_type = this_proto->net_type = ospf_cfg_is_v2() ? NET_IP4 : NET_IP6;
     channel_config_new(NULL, net_label[net_type], net_type, this_proto);
@@ -248,8 +248,7 @@ ospf_channel_start: net_type ospf_af_mc
   $$ = this_channel = channel_config_get(NULL, net_label[$1], $1, this_proto);
 
   /* Save the multicast flag */
-  if (this_channel == proto_cf_main_channel(this_proto))
-    OSPF_CFG->af_mc = $2;
+  OSPF_CFG->af_mc = $2;
 };
 
 ospf_channel: ospf_channel_start channel_opt_list channel_end;

@@ -434,7 +434,7 @@ static_postconfig(struct proto_config *CF)
   struct static_config *cf = (void *) CF;
   struct static_route *r;
 
-  if (EMPTY_LIST(CF->channels))
+  if (! proto_cf_main_channel(CF))
     cf_error("Channel not specified");
 
   struct channel_config *cc = proto_cf_main_channel(CF);

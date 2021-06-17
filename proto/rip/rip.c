@@ -1105,7 +1105,7 @@ rip_postconfig(struct proto_config *CF)
   // struct rip_config *cf = (void *) CF;
 
   /* Define default channel */
-  if (EMPTY_LIST(CF->channels))
+  if (! proto_cf_main_channel(CF))
     channel_config_new(NULL, net_label[CF->net_type], CF->net_type, CF);
 }
 

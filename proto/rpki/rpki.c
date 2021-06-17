@@ -923,7 +923,7 @@ rpki_postconfig(struct proto_config *CF)
 {
   /* Define default channel */
   if (EMPTY_LIST(CF->channels))
-    channel_config_new(NULL, net_label[CF->net_type], CF->net_type, CF);
+    cf_error("Channel not specified");
 }
 
 static void
