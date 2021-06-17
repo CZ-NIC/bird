@@ -1013,7 +1013,7 @@ krt_postconfig(struct proto_config *CF)
   if (cf->c.class == SYM_TEMPLATE)
     return;
 
-  if (EMPTY_LIST(CF->channels))
+  if (! proto_cf_main_channel(CF))
     cf_error("Channel not specified");
 
 #ifdef CONFIG_ALL_TABLES_AT_ONCE

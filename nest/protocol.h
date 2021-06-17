@@ -616,7 +616,7 @@ struct channel {
 
 struct channel_config *proto_cf_find_channel(struct proto_config *p, uint net_type);
 static inline struct channel_config *proto_cf_main_channel(struct proto_config *pc)
-{ struct channel_config *cc = HEAD(pc->channels); return NODE_VALID(cc) ? cc : NULL; }
+{ return proto_cf_find_channel(pc, pc->net_type); }
 
 struct channel *proto_find_channel_by_table(struct proto *p, struct rtable *t);
 struct channel *proto_find_channel_by_name(struct proto *p, const char *n);
