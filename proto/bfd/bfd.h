@@ -22,7 +22,7 @@
 #include "lib/string.h"
 
 #include "nest/bfd.h"
-#include "io.h"
+#include "sysdep/unix/io-loop.h"
 
 
 #define BFD_CONTROL_PORT	3784

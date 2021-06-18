@@ -4,8 +4,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#ifndef _BIRD_BFD_IO_H_
-#define _BIRD_BFD_IO_H_
+#ifndef _BIRD_IO_LOOP_H_
+#define _BIRD_IO_LOOP_H_
 
 #include "nest/bird.h"
 #include "lib/lists.h"
@@ -31,4 +31,4 @@ void birdloop_mask_wakeups(struct birdloop *loop);
 void birdloop_unmask_wakeups(struct birdloop *loop);
 
 
-#endif /* _BIRD_BFD_IO_H_ */
+#endif /* _BIRD_IO_LOOP_H_ */

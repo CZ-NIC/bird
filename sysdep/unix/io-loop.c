@@ -15,7 +15,7 @@
 #include <sys/time.h>
 
 #include "nest/bird.h"
-#include "proto/bfd/io.h"
+#include "sysdep/unix/io-loop.h"
 
 #include "lib/buffer.h"
 #include "lib/lists.h"
