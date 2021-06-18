@@ -43,38 +43,23 @@ struct timeloop main_timeloop;
 #include <pthread.h>
 
 /* Data accessed and modified from proto/bfd/io.c */
-pthread_key_t current_time_key;
-
-static inline struct timeloop *
-timeloop_current(void)
-{
-  return pthread_getspecific(current_time_key);
-}
-
-static inline void
-timeloop_init_current(void)
-{
-  pthread_key_create(&current_time_key, NULL);
-  pthread_setspecific(current_time_key, &main_timeloop);
-}
+_Thread_local struct timeloop *local_timeloop;
 
 void wakeup_kick_current(void);
 
 btime
 current_time(void)
 {
-  return timeloop_current()->last_time;
+  return local_timeloop->last_time;
 }
 
 btime
 current_real_time(void)
 {
-  struct timeloop *loop = timeloop_current();
+  if (!local_timeloop->real_time)
+    times_update_real_time(local_timeloop);
 
-  if (!loop->real_time)
-    times_update_real_time(loop);
-
-  return loop->real_time;
+  return local_timeloop->real_time;
 }
 
 
@@ -128,30 +113,29 @@ tm_new(pool *p)
 void
 tm_set(timer *t, btime when)
 {
-  struct timeloop *loop = timeloop_current();
-  uint tc = timers_count(loop);
+  uint tc = timers_count(local_timeloop);
 
   if (!t->expires)
   {
     t->index = ++tc;
     t->expires = when;
-    BUFFER_PUSH(loop->timers) = t;
-    HEAP_INSERT(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP);
+    BUFFER_PUSH(local_timeloop->timers) = t;
+    HEAP_INSERT(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP);
   }
   else if (t->expires < when)
   {
     t->expires = when;
-    HEAP_INCREASE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
+    HEAP_INCREASE(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
   }
   else if (t->expires > when)
   {
     t->expires = when;
-    HEAP_DECREASE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
+    HEAP_DECREASE(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
   }
 
 #ifdef CONFIG_BFD
   /* Hack to notify BFD loops */
-  if ((loop != &main_timeloop) && (t->index == 1))
+  if ((local_timeloop != &main_timeloop) && (t->index == 1))
     wakeup_kick_current();
 #endif
 }
@@ -168,11 +152,10 @@ tm_stop(timer *t)
   if (!t->expires)
     return;
 
-  struct timeloop *loop = timeloop_current();
-  uint tc = timers_count(loop);
+  uint tc = timers_count(local_timeloop);
 
-  HEAP_DELETE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
-  BUFFER_POP(loop->timers);
+  HEAP_DELETE(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
+  BUFFER_POP(local_timeloop->timers);
 
   t->index = -1;
   t->expires = 0;
@@ -230,7 +213,7 @@ void
 timer_init(void)
 {
   timers_init(&main_timeloop, &root_pool);
-  timeloop_init_current();
+  local_timeloop = &main_timeloop;
 }
 
 

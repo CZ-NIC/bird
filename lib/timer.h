@@ -42,6 +42,7 @@ static inline timer *timers_first(struct timeloop *loop)
 { return (loop->timers.used > 1) ? loop->timers.data[1] : NULL; }
 
 extern struct timeloop main_timeloop;
+extern _Thread_local struct timeloop *local_timeloop;
 
 btime current_time(void);
 btime current_real_time(void);
