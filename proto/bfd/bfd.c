@@ -113,8 +113,16 @@
 #define HASH_IP_EQ(a1,n1,a2,n2)	ipa_equal(a1, a2) && n1 == n2
 #define HASH_IP_FN(a,n)		ipa_hash(a) ^ u32_hash(n)
 
-static list bfd_proto_list;
-static list bfd_wait_list;
+DEFINE_DOMAIN(rtable);
+#define BFD_LOCK	LOCK_DOMAIN(rtable, bfd_global.lock)
+#define BFD_UNLOCK	UNLOCK_DOMAIN(rtable, bfd_global.lock)
+
+static struct {
+  DOMAIN(rtable) lock;
+  list wait_list;
+  list pickup_list;
+  list proto_list;
+} bfd_global;
 
 const char *bfd_state_names[] = { "AdminDown", "Down", "Init", "Up" };
 
@@ -188,7 +196,7 @@ bfd_session_update_tx_interval(struct bfd_session *s)
     return;
 
   /* Set timer relative to last tx_timer event */
-  tm_set(s->tx_timer, s->last_tx + tx_int_l);
+  tm_set_in(s->tx_timer, s->last_tx + tx_int_l, s->ifa->bfd->p.loop);
 }
 
 static void
@@ -202,7 +210,7 @@ bfd_session_update_detection_time(struct bfd_session *s, int kick)
   if (!s->last_rx)
     return;
 
-  tm_set(s->hold_timer, s->last_rx + timeout);
+  tm_set_in(s->hold_timer, s->last_rx + timeout, s->ifa->bfd->p.loop);
 }
 
 static void
@@ -226,7 +234,7 @@ bfd_session_control_tx_timer(struct bfd_session *s, int reset)
   if (reset || !tm_active(s->tx_timer))
   {
     s->last_tx = 0;
-    tm_start(s->tx_timer, 0);
+    tm_start_in(s->tx_timer, 0, s->ifa->bfd->p.loop);
   }
 
   return;
@@ -419,7 +427,7 @@ bfd_get_free_id(struct bfd_proto *p)
 static struct bfd_session *
 bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *iface, struct bfd_options *opts)
 {
-  birdloop_enter(p->loop);
+  ASSERT_DIE(birdloop_inside(p->p.loop));
 
   struct bfd_iface *ifa = bfd_get_iface(p, local, iface);
 
@@ -454,8 +462,6 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
 
   TRACE(D_EVENTS, "Session to %I added", s->addr);
 
-  birdloop_leave(p->loop);
-
   return s;
 }
 
@@ -463,37 +469,33 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
 static void
 bfd_open_session(struct bfd_proto *p, struct bfd_session *s, ip_addr local, struct iface *ifa)
 {
-  birdloop_enter(p->loop);
+  birdloop_enter(p->p.loop);
 
   s->opened = 1;
 
   bfd_session_control_tx_timer(s);
 
-  birdloop_leave(p->loop);
+  birdloop_leave(p->p.loop);
 }
 
 static void
 bfd_close_session(struct bfd_proto *p, struct bfd_session *s)
 {
-  birdloop_enter(p->loop);
+  birdloop_enter(p->p.loop);
 
   s->opened = 0;
 
   bfd_session_update_state(s, BFD_STATE_DOWN, BFD_DIAG_PATH_DOWN);
   bfd_session_control_tx_timer(s);
 
-  birdloop_leave(p->loop);
+  birdloop_leave(p->p.loop);
 }
 */
 
 static void
-bfd_remove_session(struct bfd_proto *p, struct bfd_session *s)
+bfd_remove_session_locked(struct bfd_proto *p, struct bfd_session *s)
 {
-  ip_addr ip = s->addr;
-
   /* Caller should ensure that request list is empty */
-
-  birdloop_enter(p->loop);
 
   /* Remove session from notify list if scheduled for notification */
   /* No need for bfd_lock_sessions(), we are already protected by birdloop_enter() */
@@ -508,11 +510,17 @@ bfd_remove_session(struct bfd_proto *p, struct bfd_session *s)
   HASH_REMOVE(p->session_hash_id, HASH_ID, s);
   HASH_REMOVE(p->session_hash_ip, HASH_IP, s);
 
+  TRACE(D_EVENTS, "Session to %I removed", s->addr);
+
   sl_free(p->session_slab, s);
+}
 
-  TRACE(D_EVENTS, "Session to %I removed", ip);
-
-  birdloop_leave(p->loop);
+static void
+bfd_remove_session(struct bfd_proto *p, struct bfd_session *s)
+{
+  birdloop_enter(p->p.loop);
+  bfd_remove_session_locked(p, s);
+  birdloop_leave(p->p.loop);
 }
 
 static void
@@ -521,7 +529,7 @@ bfd_reconfigure_session(struct bfd_proto *p, struct bfd_session *s)
   if (EMPTY_LIST(s->request_list))
     return;
 
-  birdloop_enter(p->loop);
+  birdloop_enter(p->p.loop);
 
   struct bfd_request *req = SKIP_BACK(struct bfd_request, n, HEAD(s->request_list));
   s->cf = bfd_merge_options(s->ifa->cf, &req->opts);
@@ -534,7 +542,7 @@ bfd_reconfigure_session(struct bfd_proto *p, struct bfd_session *s)
 
   bfd_session_control_tx_timer(s, 0);
 
-  birdloop_leave(p->loop);
+  birdloop_leave(p->p.loop);
 
   TRACE(D_EVENTS, "Session to %I reconfigured", s->addr);
 }
@@ -618,9 +626,9 @@ bfd_reconfigure_iface(struct bfd_proto *p, struct bfd_iface *ifa, struct bfd_con
     (new->passive != old->passive);
 
   /* This should be probably changed to not access ifa->cf from the BFD thread */
-  birdloop_enter(p->loop);
+  birdloop_enter(p->p.loop);
   ifa->cf = new;
-  birdloop_leave(p->loop);
+  birdloop_leave(p->p.loop);
 }
 
 
@@ -681,41 +689,68 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
 }
 
 static void
-bfd_submit_request(struct bfd_request *req)
+bfd_pickup_requests(void *_data UNUSED)
 {
   node *n;
+  WALK_LIST(n, bfd_global.proto_list)
+  {
+    struct bfd_proto *p = SKIP_BACK(struct bfd_proto, bfd_node, n);
+    birdloop_enter(p->p.loop);
+    BFD_LOCK;
 
-  WALK_LIST(n, bfd_proto_list)
-    if (bfd_add_request(SKIP_BACK(struct bfd_proto, bfd_node, n), req))
-      return;
+    node *rn, *rnxt;
+    WALK_LIST_DELSAFE(rn, rnxt, bfd_global.pickup_list)
+      bfd_add_request(p, SKIP_BACK(struct bfd_request, n, rn));
 
-  rem_node(&req->n);
-  add_tail(&bfd_wait_list, &req->n);
-  req->session = NULL;
-  bfd_request_notify(req, BFD_STATE_ADMIN_DOWN, 0);
+    BFD_UNLOCK;
+    birdloop_leave(p->p.loop);
+  }
+
+  BFD_LOCK;
+  node *rn, *rnxt;
+  WALK_LIST_DELSAFE(rn, rnxt, bfd_global.pickup_list)
+  {
+    rem_node(rn);
+    add_tail(&bfd_global.wait_list, rn);
+    bfd_request_notify(SKIP_BACK(struct bfd_request, n, rn), BFD_STATE_ADMIN_DOWN, 0);
+  }
+  BFD_UNLOCK;
 }
+
+static event bfd_pickup_event = { .hook = bfd_pickup_requests };
 
 static void
 bfd_take_requests(struct bfd_proto *p)
 {
   node *n, *nn;
-
-  WALK_LIST_DELSAFE(n, nn, bfd_wait_list)
+  BFD_LOCK;
+  WALK_LIST_DELSAFE(n, nn, bfd_global.wait_list)
     bfd_add_request(p, SKIP_BACK(struct bfd_request, n, n));
+  BFD_UNLOCK;
 }
 
 static void
 bfd_drop_requests(struct bfd_proto *p)
 {
   node *n;
-
-  HASH_WALK(p->session_hash_id, next_id, s)
+  BFD_LOCK;
+  HASH_WALK_DELSAFE(p->session_hash_id, next_id, s)
   {
-    /* We assume that p is not in bfd_proto_list */
     WALK_LIST_FIRST(n, s->request_list)
-      bfd_submit_request(SKIP_BACK(struct bfd_request, n, n));
+    {
+      struct bfd_request *req = SKIP_BACK(struct bfd_request, n, n);
+      rem_node(&req->n);
+      add_tail(&bfd_global.pickup_list, &req->n);
+      req->session = NULL;
+      bfd_request_notify(req, BFD_STATE_ADMIN_DOWN, 0);
+    }
+
+    ev_send(&global_event_list, &bfd_pickup_event);
+
+    bfd_remove_session_locked(p, s);
   }
   HASH_WALK_END;
+  BFD_UNLOCK;
 }
 
 static struct resclass bfd_request_class;
@@ -728,9 +763,6 @@ bfd_request_session(pool *p, ip_addr addr, ip_addr local,
 {
   struct bfd_request *req = ralloc(p, &bfd_request_class);
 
-  /* Hack: self-link req->n, we will call rem_node() on it */
-  req->n.prev = req->n.next = &req->n;
-
   req->addr = addr;
   req->local = local;
   req->iface = iface;
@@ -739,10 +771,15 @@ bfd_request_session(pool *p, ip_addr addr, ip_addr local,
   if (opts)
     req->opts = *opts;
 
-  bfd_submit_request(req);
-
   req->hook = hook;
   req->data = data;
+
+  req->session = NULL;
+
+  BFD_LOCK;
+  add_tail(&bfd_global.pickup_list, &req->n);
+  ev_send(&global_event_list, &bfd_pickup_event);
+  BFD_UNLOCK;
 
   return req;
 }
@@ -1001,8 +1038,10 @@ bfd_notify_init(struct bfd_proto *p)
 void
 bfd_init_all(void)
 {
-  init_list(&bfd_proto_list);
-  init_list(&bfd_wait_list);
+  bfd_global.lock = DOMAIN_NEW(rtable, "BFD Global");
+  init_list(&bfd_global.wait_list);
+  init_list(&bfd_global.pickup_list);
+  init_list(&bfd_global.proto_list);
 }
 
 static struct proto *
@@ -1021,9 +1060,9 @@ bfd_start(struct proto *P)
   struct bfd_proto *p = (struct bfd_proto *) P;
   struct bfd_config *cf = (struct bfd_config *) (P->cf);
 
-  p->loop = birdloop_new();
-  p->tpool = rp_new(NULL, "BFD thread root");
   pthread_spin_init(&p->lock, PTHREAD_PROCESS_PRIVATE);
+
+  p->tpool = rp_new(P->pool, "BFD loop pool");
 
   p->session_slab = sl_new(P->pool, sizeof(struct bfd_session));
   HASH_INIT(p->session_hash_id, P->pool, 8);
@@ -1034,9 +1073,7 @@ bfd_start(struct proto *P)
   init_list(&p->notify_list);
   bfd_notify_init(p);
 
-  add_tail(&bfd_proto_list, &p->bfd_node);
-
-  birdloop_enter(p->loop);
+  add_tail(&bfd_global.proto_list, &p->bfd_node);
 
   if (cf->accept_ipv4 && cf->accept_direct)
     p->rx4_1 = bfd_open_rx_sk(p, 0, SK_IPV4);
@@ -1050,42 +1087,33 @@ bfd_start(struct proto *P)
   if (cf->accept_ipv6 && cf->accept_multihop)
     p->rx6_m = bfd_open_rx_sk(p, 1, SK_IPV6);
 
-  birdloop_leave(p->loop);
-
   bfd_take_requests(p);
 
   struct bfd_neighbor *n;
   WALK_LIST(n, cf->neigh_list)
     bfd_start_neighbor(p, n);
 
-  birdloop_start(p->loop);
-
   return PS_UP;
 }
-
 
 static int
 bfd_shutdown(struct proto *P)
 {
   struct bfd_proto *p = (struct bfd_proto *) P;
-  struct bfd_config *cf = (struct bfd_config *) (P->cf);
+  struct bfd_config *cf = (struct bfd_config *) (p->p.cf);
 
   rem_node(&p->bfd_node);
 
-  birdloop_stop(p->loop);
-
-  struct bfd_neighbor *n;
-  WALK_LIST(n, cf->neigh_list)
-    bfd_stop_neighbor(p, n);
+  struct bfd_neighbor *bn;
+  WALK_LIST(bn, cf->neigh_list)
+    bfd_stop_neighbor(p, bn);
 
   bfd_drop_requests(p);
 
-  /* FIXME: This is hack */
-  birdloop_enter(p->loop);
-  rfree(p->tpool);
-  birdloop_leave(p->loop);
-
-  birdloop_free(p->loop);
+  if (p->rx4_1) sk_stop(p->rx4_1);
+  if (p->rx4_m) sk_stop(p->rx4_m);
+  if (p->rx6_1) sk_stop(p->rx6_1);
+  if (p->rx6_m) sk_stop(p->rx6_m);
 
   return PS_DOWN;
 }
@@ -1105,7 +1133,7 @@ bfd_reconfigure(struct proto *P, struct proto_config *c)
       (new->accept_multihop != old->accept_multihop))
     return 0;
 
-  birdloop_mask_wakeups(p->loop);
+  birdloop_mask_wakeups(p->p.loop);
 
   WALK_LIST(ifa, p->iface_list)
     bfd_reconfigure_iface(p, ifa, new);
@@ -1119,7 +1147,7 @@ bfd_reconfigure(struct proto *P, struct proto_config *c)
 
   bfd_reconfigure_neighbors(p, new);
 
-  birdloop_unmask_wakeups(p->loop);
+  birdloop_unmask_wakeups(p->p.loop);
 
   return 1;
 }

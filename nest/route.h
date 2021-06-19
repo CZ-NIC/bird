@@ -11,6 +11,7 @@
 #define _BIRD_ROUTE_H_
 
 #include "lib/lists.h"
+#include "lib/event.h"
 #include "lib/bitmap.h"
 #include "lib/resource.h"
 #include "lib/net.h"
@@ -328,6 +329,8 @@ struct rt_export_request {
   struct rt_export_hook *hook;		/* Table part of the export */
   char *name;
   u8 trace_routes;
+
+  event_list *list;			/* Where to schedule export events */
 
   /* There are two methods of export. You can either request feeding every single change
    * or feeding the whole route feed. In case of regular export, &export_one is preferred.

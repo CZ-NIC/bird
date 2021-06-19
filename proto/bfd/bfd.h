@@ -17,12 +17,12 @@
 #include "nest/password.h"
 #include "conf/conf.h"
 #include "lib/hash.h"
+#include "lib/io-loop.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/string.h"
 
 #include "nest/bfd.h"
-#include "sysdep/unix/io-loop.h"
 
 
 #define BFD_CONTROL_PORT	3784
@@ -87,9 +87,11 @@ struct bfd_neighbor
 struct bfd_proto
 {
   struct proto p;
-  struct birdloop *loop;
-  pool *tpool;
+
   pthread_spinlock_t lock;
+
+  pool *tpool;
+
   node bfd_node;
 
   slab *session_slab;

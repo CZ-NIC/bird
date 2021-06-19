@@ -15,6 +15,7 @@
 #include "lib/event.h"
 #include "lib/timer.h"
 #include "lib/string.h"
+#include "lib/coro.h"
 #include "conf/conf.h"
 #include "nest/route.h"
 #include "nest/iface.h"
@@ -58,7 +59,28 @@ static void channel_feed_end(struct channel *c);
 static void channel_export_stopped(struct rt_export_request *req);
 
 static inline int proto_is_done(struct proto *p)
-{ return (p->proto_state == PS_DOWN) && (p->active_channels == 0); }
+{ return (p->proto_state == PS_DOWN) && proto_is_inactive(p); }
+
+static inline event_list *proto_event_list(struct proto *p)
+{ return p->loop == &main_birdloop ? &global_event_list : birdloop_event_list(p->loop); }
+
+static inline event_list *proto_work_list(struct proto *p)
+{ return p->loop == &main_birdloop ? &global_work_list : birdloop_event_list(p->loop); }
+
+static inline void proto_send_event(struct proto *p)
+{ ev_send(proto_event_list(p), p->event); }
+
+#define PROTO_ENTER_FROM_MAIN(p)    ({ \
+    ASSERT_DIE(birdloop_inside(&main_birdloop)); \
+    struct birdloop *_loop = (p)->loop; \
+    if (_loop != &main_birdloop) birdloop_enter(_loop); \
+    _loop; \
+    })
+
+#define PROTO_LEAVE_FROM_MAIN(loop) ({ if (loop != &main_birdloop) birdloop_leave(loop); })
+
+#define PROTO_LOCKED_FROM_MAIN(p)	for (struct birdloop *_proto_loop = PROTO_ENTER_FROM_MAIN(p); _proto_loop; PROTO_LEAVE_FROM_MAIN(_proto_loop), (_proto_loop = NULL))
+
 
 static inline int channel_is_active(struct channel *c)
 { return (c->channel_state != CS_DOWN); }
@@ -473,6 +495,7 @@ channel_start_export(struct channel *c)
 
   c->out_req = (struct rt_export_request) {
     .name = rn,
+    .list = proto_work_list(c->proto),
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_dump_export_req,
     .log_state_change = channel_export_log_state_change,
@@ -517,7 +540,7 @@ channel_check_stopped(struct channel *c)
 	return;
 
       channel_set_state(c, CS_DOWN);
-      ev_schedule(c->proto->event);
+      proto_send_event(c->proto);
 
       break;
     case CS_PAUSE:
@@ -853,6 +876,7 @@ channel_setup_in_table(struct channel *c, int best)
   };
   c->in_table->get = (struct rt_export_request) {
     .name = cat->name,
+    .list = proto_work_list(c->proto),
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_in_get_dump_req,
     .log_state_change = channel_get_log_state_change,
@@ -895,6 +919,7 @@ channel_setup_out_table(struct channel *c)
   };
   c->out_table->get = (struct rt_export_request) {
     .name = cat->name,
+    .list = proto_work_list(c->proto),
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_out_get_dump_req,
     .log_state_change = channel_get_log_state_change,
@@ -997,7 +1022,7 @@ channel_do_down(struct channel *c)
 
   /* Schedule protocol shutddown */
   if (proto_is_done(c->proto))
-    ev_schedule(c->proto->event);
+    proto_send_event(c->proto);
 }
 
 void
@@ -1085,9 +1110,12 @@ channel_request_table_feeding(struct channel *c)
 void
 channel_request_feeding(struct channel *c)
 {
+  if (c->gr_wait || !c->proto->rt_notify)
+    return;
+
   CD(c, "Refeed requested");
 
-  ASSERT(c->out_req.hook);
+  ASSERT_DIE(c->out_req.hook);
 
   if (c->out_table)
     channel_aux_request_refeed(c->out_table);
@@ -1331,17 +1359,35 @@ proto_configure_channel(struct proto *p, struct channel **pc, struct channel_con
   return 1;
 }
 
+static void
+proto_cleanup(struct proto *p)
+{
+  rfree(p->pool);
+  p->pool = NULL;
+
+  p->active = 0;
+  proto_log_state_change(p);
+  proto_rethink_goal(p);
+}
+
+static void
+proto_loop_stopped(void *ptr)
+{
+  struct proto *p = ptr;
+
+  birdloop_enter(&main_birdloop);
+
+  p->loop = &main_birdloop;
+  p->event->list = NULL;
+  proto_cleanup(p);
+
+  birdloop_leave(&main_birdloop);
+}
 
 static void
 proto_event(void *ptr)
 {
   struct proto *p = ptr;
-
-  if (p->do_start)
-  {
-    if_feed_baby(p);
-    p->do_start = 0;
-  }
 
   if (p->do_stop)
   {
@@ -1351,14 +1397,10 @@ proto_event(void *ptr)
   }
 
   if (proto_is_done(p))
-  {
-    rfree(p->pool);
-    p->pool = NULL;
-
-    p->active = 0;
-    proto_log_state_change(p);
-    proto_rethink_goal(p);
-  }
+    if (p->loop != &main_birdloop)
+      birdloop_stop_self(p->loop, proto_loop_stopped, p);
+    else
+      proto_cleanup(p);
 }
 
 
@@ -1399,6 +1441,7 @@ proto_init(struct proto_config *c, node *n)
   struct protocol *pr = c->protocol;
   struct proto *p = pr->init(c);
 
+  p->loop = &main_birdloop;
   p->proto_state = PS_DOWN;
   p->last_state_change = current_time();
   p->vrf = c->vrf;
@@ -1415,11 +1458,27 @@ proto_init(struct proto_config *c, node *n)
 static void
 proto_start(struct proto *p)
 {
-  /* Here we cannot use p->cf->name since it won't survive reconfiguration */
-  p->pool = rp_new(proto_pool, p->proto->name);
+  DBG("Kicking %s up\n", p->name);
+  PD(p, "Starting");
+
+  int ns = strlen("Protocol ") + strlen(p->cf->name) + 1;
+  void *nb = mb_alloc(proto_pool, ns);
+  ASSERT_DIE(ns - 1 == bsnprintf(nb, ns, "Protocol %s", p->cf->name));
+
+  p->pool = rp_new(proto_pool, nb);
 
   if (graceful_restart_state == GRS_INIT)
     p->gr_recovery = 1;
+
+  if (p->cf->loop_order != DOMAIN_ORDER(the_bird))
+    p->loop = birdloop_new(p->pool, p->cf->loop_order, nb);
+
+  p->event->list = proto_event_list(p);
+
+  mb_move(nb, p->pool);
+
+  PROTO_LOCKED_FROM_MAIN(p)
+    proto_notify_state(p, (p->proto->start ? p->proto->start(p) : PS_UP));
 }
 
 
@@ -1455,6 +1514,7 @@ proto_config_new(struct protocol *pr, int class)
   cf->class = class;
   cf->debug = new_config->proto_default_debug;
   cf->mrtdump = new_config->proto_default_mrtdump;
+  cf->loop_order = DOMAIN_ORDER(the_bird);
 
   init_list(&cf->channels);
 
@@ -1744,11 +1804,20 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
 }
 
 static void
+proto_shutdown(struct proto *p)
+{
+  if (p->proto_state == PS_START || p->proto_state == PS_UP)
+  {
+    /* Going down */
+    DBG("Kicking %s down\n", p->name);
+    PD(p, "Shutting down");
+    proto_notify_state(p, (p->proto->shutdown ? p->proto->shutdown(p) : PS_DOWN));
+  }
+}
+
+static void
 proto_rethink_goal(struct proto *p)
 {
-  struct protocol *q;
-  byte goal;
-
   if (p->reconfiguring && !p->active)
   {
     struct proto_config *nc = p->cf_new;
@@ -1768,32 +1837,12 @@ proto_rethink_goal(struct proto *p)
 
   /* Determine what state we want to reach */
   if (p->disabled || p->reconfiguring)
-    goal = PS_DOWN;
-  else
-    goal = PS_UP;
-
-  q = p->proto;
-  if (goal == PS_UP)
   {
-    if (!p->active)
-    {
-      /* Going up */
-      DBG("Kicking %s up\n", p->name);
-      PD(p, "Starting");
-      proto_start(p);
-      proto_notify_state(p, (q->start ? q->start(p) : PS_UP));
-    }
+    PROTO_LOCKED_FROM_MAIN(p)
+      proto_shutdown(p);
   }
-  else
-  {
-    if (p->proto_state == PS_START || p->proto_state == PS_UP)
-    {
-      /* Going down */
-      DBG("Kicking %s down\n", p->name);
-      PD(p, "Shutting down");
-      proto_notify_state(p, (q->shutdown ? q->shutdown(p) : PS_DOWN));
-    }
-  }
+  else if (!p->active)
+    proto_start(p);
 }
 
 struct proto *
@@ -1998,7 +2047,7 @@ protos_dump_all(void)
 #define DPF(x)	(p->x ? " " #x : "")
     debug("  protocol %s (%p) state %s with %d active channels flags: %s%s%s%s\n",
 	p->name, p, p_states[p->proto_state], p->active_channels,
-	DPF(disabled), DPF(active), DPF(do_start), DPF(do_stop), DPF(reconfiguring));
+	DPF(disabled), DPF(active), DPF(do_stop), DPF(reconfiguring));
 #undef DPF
 
     struct channel *c;
@@ -2286,8 +2335,8 @@ static inline void
 proto_do_start(struct proto *p)
 {
   p->active = 1;
-  p->do_start = 1;
-  ev_schedule(p->event);
+  if (!p->cf->late_if_feed)
+    if_feed_baby(p);
 }
 
 static void
@@ -2300,6 +2349,9 @@ proto_do_up(struct proto *p)
   }
 
   proto_start_channels(p);
+
+  if (p->cf->late_if_feed)
+    if_feed_baby(p);
 }
 
 static inline void
@@ -2314,9 +2366,6 @@ proto_do_stop(struct proto *p)
   p->down_sched = 0;
   p->gr_recovery = 0;
 
-  p->do_stop = 1;
-  ev_schedule(p->event);
-
   if (p->main_source)
   {
     rt_unlock_source(p->main_source);
@@ -2324,6 +2373,9 @@ proto_do_stop(struct proto *p)
   }
 
   proto_stop_channels(p);
+
+  p->do_stop = 1;
+  proto_send_event(p);
 }
 
 static void
@@ -2334,7 +2386,7 @@ proto_do_down(struct proto *p)
 
   /* Shutdown is finished in the protocol event */
   if (proto_is_done(p))
-    ev_schedule(p->event);
+    proto_send_event(p);
 }
 
 
@@ -2573,7 +2625,7 @@ proto_cmd_disable(struct proto *p, uintptr_t arg, int cnt UNUSED)
   p->disabled = 1;
   p->down_code = PDC_CMD_DISABLE;
   proto_set_message(p, (char *) arg, -1);
-  proto_rethink_goal(p);
+  proto_shutdown(p);
   cli_msg(-9, "%s: disabled", p->name);
 }
 
@@ -2606,9 +2658,9 @@ proto_cmd_restart(struct proto *p, uintptr_t arg, int cnt UNUSED)
   p->disabled = 1;
   p->down_code = PDC_CMD_RESTART;
   proto_set_message(p, (char *) arg, -1);
-  proto_rethink_goal(p);
+  proto_shutdown(p);
   p->disabled = 0;
-  proto_rethink_goal(p);
+  /* After the protocol shuts down, proto_rethink_goal() is run from proto_event. */
   cli_msg(-12, "%s: restarted", p->name);
 }
 
@@ -2683,7 +2735,9 @@ proto_apply_cmd_symbol(const struct symbol *s, void (* cmd)(struct proto *, uint
 
   if (s->proto->proto)
   {
-    cmd(s->proto->proto, arg, 0);
+    struct proto *p = s->proto->proto;
+    PROTO_LOCKED_FROM_MAIN(p)
+      cmd(p, arg, 0);
     cli_msg(0, "");
   }
   else
@@ -2698,7 +2752,8 @@ proto_apply_cmd_patt(const char *patt, void (* cmd)(struct proto *, uintptr_t, i
 
   WALK_LIST(p, proto_list)
     if (!patt || patmatch(patt, p->name))
-      cmd(p, arg, cnt++);
+      PROTO_LOCKED_FROM_MAIN(p)
+	cmd(p, arg, cnt++);
 
   if (!cnt)
     cli_msg(8003, "No protocols match");

@@ -21,10 +21,9 @@
 #include "lib/resource.h"
 #include "lib/timer.h"
 
-/* Using a rather big stack for coroutines to allow for stack-local allocations.
- * In real world, the kernel doesn't alloc this memory until it is used.
- * */
-#define CORO_STACK_SIZE	1048576
+#include "conf/conf.h"
+
+#define CORO_STACK_SIZE	65536
 
 /*
  *	Implementation of coroutines based on POSIX threads
@@ -79,6 +78,11 @@ domain_free(struct domain_generic *dg)
   xfree(dg);
 }
 
+uint dg_order(struct domain_generic *dg)
+{
+  return dg->order;
+}
+
 void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
 {
   if ((char *) lsp - (char *) &locking_stack != dg->order)
@@ -89,7 +93,11 @@ void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
   if (*lsp)
     bug("Inconsistent locking stack state on lock");
 
+  btime lock_begin = current_time();
   pthread_mutex_lock(&dg->mutex);
+  btime duration = current_time() - lock_begin;
+  if (config && (duration > config->watchdog_warning))
+    log(L_WARN "Locking of %s took %d ms", dg->name, (int) (duration TO_MS));
 
   if (dg->prev || dg->locked_by)
     bug("Previous unlock not finished correctly");
@@ -140,10 +148,15 @@ static struct resclass coro_class = {
   .free = coro_free,
 };
 
+_Thread_local struct coroutine *this_coro = NULL;
+
 static void *coro_entry(void *p)
 {
   struct coroutine *c = p;
+
   ASSERT_DIE(c->entry);
+
+  this_coro = c;
 
   c->entry(c->data);
   ASSERT_DIE(coro_cleaned_up);

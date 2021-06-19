@@ -37,14 +37,7 @@
 #include "lib/resource.h"
 #include "lib/timer.h"
 
-
-struct timeloop main_timeloop;
-
-
 #include <pthread.h>
-
-/* Data accessed and modified from proto/bfd/io.c */
-_Thread_local struct timeloop *local_timeloop;
 
 _Atomic btime last_time;
 _Atomic btime real_time;
@@ -76,7 +69,7 @@ tm_dump(resource *r)
   if (t->recurrent)
     debug("recur %d, ", t->recurrent);
   if (t->expires)
-    debug("expires in %d ms)\n", (t->expires - current_time()) TO_MS);
+    debug("in loop %p expires in %d ms)\n", t->loop, (t->expires - current_time()) TO_MS);
   else
     debug("inactive)\n");
 }
@@ -99,8 +92,8 @@ tm_new(pool *p)
   return t;
 }
 
-void
-tm_set(timer *t, btime when)
+static void
+tm_set_in_tl(timer *t, btime when, struct timeloop *local_timeloop)
 {
   uint tc = timers_count(local_timeloop);
 
@@ -122,17 +115,17 @@ tm_set(timer *t, btime when)
     HEAP_DECREASE(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
   }
 
-#ifdef CONFIG_BFD
-  /* Hack to notify BFD loops */
-  if ((local_timeloop != &main_timeloop) && (t->index == 1))
-    wakeup_kick_current();
-#endif
+  t->loop = local_timeloop;
+
+  if ((t->index == 1) && (local_timeloop->coro != this_coro))
+    birdloop_ping(local_timeloop->loop);
 }
 
 void
-tm_start(timer *t, btime after)
+tm_set_in(timer *t, btime when, struct birdloop *loop)
 {
-  tm_set(t, current_time() + MAX(after, 0));
+  ASSERT_DIE(birdloop_inside(loop));
+  tm_set_in_tl(t, when, birdloop_time_loop(loop));
 }
 
 void
@@ -141,18 +134,23 @@ tm_stop(timer *t)
   if (!t->expires)
     return;
 
-  uint tc = timers_count(local_timeloop);
+  TLOCK_TIMER_ASSERT(t->loop);
 
-  HEAP_DELETE(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
-  BUFFER_POP(local_timeloop->timers);
+  uint tc = timers_count(t->loop);
+
+  HEAP_DELETE(t->loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
+  BUFFER_POP(t->loop->timers);
 
   t->index = -1;
   t->expires = 0;
+  t->loop = NULL;
 }
 
 void
 timers_init(struct timeloop *loop, pool *p)
 {
+  TLOCK_TIMER_ASSERT(loop);
+
   BUFFER_INIT(loop->timers, p, 4);
   BUFFER_PUSH(loop->timers) = NULL;
 }
@@ -160,8 +158,10 @@ timers_init(struct timeloop *loop, pool *p)
 void io_log_event(void *hook, void *data);
 
 void
-timers_fire(struct timeloop *loop)
+timers_fire(struct timeloop *loop, int io_log)
 {
+  TLOCK_TIMER_ASSERT(loop);
+
   btime base_time;
   timer *t;
 
@@ -183,24 +183,17 @@ timers_fire(struct timeloop *loop)
       if (t->randomize)
 	when += random() % (t->randomize + 1);
 
-      tm_set(t, when);
+      tm_set_in_tl(t, when, loop);
     }
     else
       tm_stop(t);
 
     /* This is ugly hack, we want to log just timers executed from the main I/O loop */
-    if (loop == &main_timeloop)
+    if (io_log)
       io_log_event(t->hook, t->data);
 
     t->hook(t);
   }
-}
-
-void
-timer_init(void)
-{
-  timers_init(&main_timeloop, &root_pool);
-  local_timeloop = &main_timeloop;
 }
 
 

@@ -12,6 +12,7 @@
 #include <errno.h>
 
 #include "lib/resource.h"
+#include "lib/event.h"
 #ifdef HAVE_LIBSSH
 #define LIBSSH_LEGACY_0_4
 #include <libssh/libssh.h>
@@ -79,6 +80,7 @@ typedef struct birdsock {
   const char *password;			/* Password for MD5 authentication */
   const char *err;			/* Error message */
   struct ssh_sock *ssh;			/* Used in SK_SSH */
+  struct event reloop;			/* Reloop event */
 } sock;
 
 sock *sock_new(pool *);			/* Allocate new socket */
@@ -128,6 +130,7 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
 #define SKF_TRUNCATED	0x200	/* Received packet was truncated, set by IO layer */
 #define SKF_HDRINCL	0x400	/* Used internally */
 #define SKF_PKTINFO	0x800	/* Used internally */
+#define SKF_PASSIVE_THREAD  0x1000  /* Child sockets used in thread, do not add to main loop */
 
 /*
  *	Socket types		     SA SP DA DP IF  TTL SendTo	(?=may, -=must not, *=must)

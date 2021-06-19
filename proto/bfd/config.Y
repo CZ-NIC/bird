@@ -36,6 +36,7 @@ proto: bfd_proto ;
 bfd_proto_start: proto_start BFD
 {
   this_proto = proto_config_new(&proto_bfd, $1);
+  this_proto->loop_order = DOMAIN_ORDER(proto);
   init_list(&BFD_CFG->patt_list);
   init_list(&BFD_CFG->neigh_list);
   BFD_CFG->accept_ipv4 = BFD_CFG->accept_ipv6 = 1;

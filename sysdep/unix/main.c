@@ -908,10 +908,12 @@ main(int argc, char **argv)
   parse_args(argc, argv);
   log_switch(1, NULL, NULL);
 
+  the_bird_lock();
+
   random_init();
   net_init();
   resource_init();
-  timer_init();
+  birdloop_init();
   olock_init();
   io_init();
   rt_init();
@@ -961,7 +963,6 @@ main(int argc, char **argv)
       dup2(0, 2);
     }
 
-  the_bird_lock();
 
   main_thread_init();
 

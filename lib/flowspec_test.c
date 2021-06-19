@@ -666,10 +666,13 @@ t_formatting6(void)
   return 1;
 }
 
+void resource_sys_init(void);
+
 int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+  resource_sys_init();
 
   bt_test_suite(t_read_length,  "Testing get NLRI length");
   bt_test_suite(t_write_length, "Testing set NLRI length");

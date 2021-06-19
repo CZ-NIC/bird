@@ -106,7 +106,6 @@ extern volatile sig_atomic_t async_shutdown_flag;
 
 void io_init(void);
 void io_loop(void);
-void io_loop_reload(void);
 void io_log_dump(void);
 int sk_open_unix(struct birdsock *s, char *name);
 struct rfile *rf_open(struct pool *, const char *name, const char *mode);

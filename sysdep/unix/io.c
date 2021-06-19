@@ -43,6 +43,7 @@
 #include "conf/conf.h"
 
 #include "sysdep/unix/unix.h"
+#include "sysdep/unix/io-loop.h"
 #include CONFIG_INCLUDE_SYSIO_H
 
 /* Maximum number of calls of tx handler for one socket in one
@@ -800,18 +801,16 @@ sk_free(resource *r)
     sk_ssh_free(s);
 #endif
 
-  if (s->fd < 0)
+  if ((s->fd < 0) || (s->flags & SKF_THREAD))
     return;
 
-  /* FIXME: we should call sk_stop() for SKF_THREAD sockets */
-  if (!(s->flags & SKF_THREAD))
-  {
-    if (s == current_sock)
-      current_sock = sk_next(s);
-    if (s == stored_sock)
-      stored_sock = sk_next(s);
+  if (s == current_sock)
+    current_sock = sk_next(s);
+  if (s == stored_sock)
+    stored_sock = sk_next(s);
+
+  if (enlisted(&s->n))
     rem_node(&s->n);
-  }
 
   if (s->type != SK_SSH && s->type != SK_SSH_ACTIVE)
     close(s->fd);
@@ -1104,7 +1103,11 @@ sk_passive_connected(sock *s, int type)
     return 1;
   }
 
-  sk_insert(t);
+  if (s->flags & SKF_PASSIVE_THREAD)
+    t->flags |= SKF_THREAD;
+  else
+    sk_insert(t);
+
   sk_alloc_bufs(t);
   s->rx_hook(t, 0);
   return 1;
@@ -1506,6 +1509,36 @@ sk_open_unix(sock *s, char *name)
   s->fd = fd;
   sk_insert(s);
   return 0;
+}
+
+static void
+sk_reloop_hook(void *_vs)
+{
+  sock *s = _vs;
+  if (birdloop_inside(&main_birdloop))
+  {
+    s->flags &= ~SKF_THREAD;
+    sk_insert(s);
+  }
+  else
+  {
+    s->flags |= SKF_THREAD;
+    sk_start(s);
+  }
+}
+
+void
+sk_reloop(sock *s, struct birdloop *loop)
+{
+  if (enlisted(&s->n))
+    rem_node(&s->n);
+
+  s->reloop = (event) {
+    .hook = sk_reloop_hook,
+    .data = s,
+  };
+
+  ev_send_loop(loop, &s->reloop);
 }
 
 
@@ -2143,8 +2176,9 @@ void
 io_init(void)
 {
   init_list(&sock_list);
-  init_list(&global_event_list);
-  init_list(&global_work_list);
+  ev_init_list(&global_event_list, &main_birdloop, "Global event list");
+  ev_init_list(&global_work_list, &main_birdloop, "Global work list");
+  ev_init_list(&main_birdloop.event_list, &main_birdloop, "Global fast event list");
   krt_io_init();
   // XXX init_times();
   // XXX update_times();
@@ -2158,14 +2192,7 @@ static int short_loops = 0;
 #define SHORT_LOOP_MAX 10
 #define WORK_EVENTS_MAX 10
 
-static int poll_reload_pipe[2];
-
-void
-io_loop_reload(void)
-{
-  char b;
-  write(poll_reload_pipe[1], &b, 1);
-}
+void pipe_drain(int fd);
 
 void
 io_loop(void)
@@ -2178,21 +2205,19 @@ io_loop(void)
   int fdmax = 256;
   struct pollfd *pfd = xmalloc(fdmax * sizeof(struct pollfd));
 
-  if (pipe(poll_reload_pipe) < 0)
-    die("pipe(poll_reload_pipe) failed: %m");
-
   watchdog_start1();
   for(;;)
     {
       times_update();
       events = ev_run_list(&global_event_list);
       events = ev_run_list_limited(&global_work_list, WORK_EVENTS_MAX) || events;
-      timers_fire(&main_timeloop);
+      events = ev_run_list(&main_birdloop.event_list) || events;
+      timers_fire(&main_birdloop.time, 1);
       io_close_event();
 
       // FIXME
       poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
-      if (t = timers_first(&main_timeloop))
+      if (t = timers_first(&main_birdloop.time))
       {
 	times_update();
 	timeout = (tm_remains(t) TO_MS) + 1;
@@ -2200,7 +2225,7 @@ io_loop(void)
       }
 
       /* A hack to reload main io_loop() when something has changed asynchronously. */
-      pfd[0].fd = poll_reload_pipe[0];
+      pfd[0].fd = main_birdloop.wakeup_fds[0];
       pfd[0].events = POLLIN;
 
       nfds = 1;
@@ -2263,9 +2288,9 @@ io_loop(void)
 
       /* And finally enter poll() to find active sockets */
       watchdog_stop();
-      the_bird_unlock();
+      birdloop_leave(&main_birdloop);
       pout = poll(pfd, nfds, poll_tout);
-      the_bird_lock();
+      birdloop_enter(&main_birdloop);
       watchdog_start();
 
       if (pout < 0)
@@ -2279,8 +2304,8 @@ io_loop(void)
 	  if (pfd[0].revents & POLLIN)
 	  {
 	    /* IO loop reload requested */
-	    char b;
-	    read(poll_reload_pipe[0], &b, 1);
+	    pipe_drain(main_birdloop.wakeup_fds[0]);
+	    atomic_exchange_explicit(&main_birdloop.ping_sent, 0, memory_order_acq_rel);
 	    continue;
 	  }
 

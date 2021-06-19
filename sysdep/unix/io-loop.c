@@ -15,50 +15,47 @@
 #include <sys/time.h>
 
 #include "nest/bird.h"
-#include "sysdep/unix/io-loop.h"
 
 #include "lib/buffer.h"
+#include "lib/coro.h"
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
 #include "lib/timer.h"
 #include "lib/socket.h"
 
-
-struct birdloop
-{
-  pool *pool;
-  pthread_t thread;
-  pthread_mutex_t mutex;
-
-  u8 stop_called;
-  u8 poll_active;
-  u8 wakeup_masked;
-  int wakeup_fds[2];
-
-  struct timeloop time;
-  list event_list;
-  list sock_list;
-  uint sock_num;
-
-  BUFFER(sock *) poll_sk;
-  BUFFER(struct pollfd) poll_fd;
-  u8 poll_changed;
-  u8 close_scheduled;
-};
-
+#include "lib/io-loop.h"
+#include "sysdep/unix/io-loop.h"
+#include "conf/conf.h"
 
 /*
  *	Current thread context
  */
 
-static _Thread_local struct birdloop *birdloop_current;
+_Thread_local struct birdloop *birdloop_current;
+static _Thread_local struct birdloop *birdloop_wakeup_masked;
+static _Thread_local uint birdloop_wakeup_masked_count;
 
-static inline void
-birdloop_set_current(struct birdloop *loop)
+event_list *
+birdloop_event_list(struct birdloop *loop)
 {
-  birdloop_current = loop;
-  local_timeloop = loop ? &loop->time : &main_timeloop;
+  return &loop->event_list;
+}
+
+struct timeloop *
+birdloop_time_loop(struct birdloop *loop)
+{
+  return &loop->time;
+}
+
+_Bool
+birdloop_inside(struct birdloop *loop)
+{
+  for (struct birdloop *c = birdloop_current; c; c = c->prev_loop)
+    if (loop == c)
+      return 1;
+
+  return 0;
 }
 
 /*
@@ -135,57 +132,17 @@ wakeup_do_kick(struct birdloop *loop)
   pipe_kick(loop->wakeup_fds[1]);
 }
 
-static inline void
-wakeup_kick(struct birdloop *loop)
+void
+birdloop_ping(struct birdloop *loop)
 {
-  if (!loop->wakeup_masked)
-    wakeup_do_kick(loop);
+  u32 ping_sent = atomic_fetch_add_explicit(&loop->ping_sent, 1, memory_order_acq_rel);
+  if (ping_sent)
+    return;
+
+  if (loop == birdloop_wakeup_masked)
+    birdloop_wakeup_masked_count++;
   else
-    loop->wakeup_masked = 2;
-}
-
-/* For notifications from outside */
-void
-wakeup_kick_current(void)
-{
-  if (birdloop_current && birdloop_current->poll_active)
-    wakeup_kick(birdloop_current);
-}
-
-
-/*
- *	Events
- */
-
-static inline uint
-events_waiting(struct birdloop *loop)
-{
-  return !EMPTY_LIST(loop->event_list);
-}
-
-static inline void
-events_init(struct birdloop *loop)
-{
-  init_list(&loop->event_list);
-}
-
-static void
-events_fire(struct birdloop *loop)
-{
-  times_update();
-  ev_run_list(&loop->event_list);
-}
-
-void
-ev2_schedule(event *e)
-{
-  if (birdloop_current->poll_active && EMPTY_LIST(birdloop_current->event_list))
-    wakeup_kick(birdloop_current);
-
-  if (e->n.next)
-    rem_node(&e->n);
-
-  add_tail(&birdloop_current->event_list, &e->n);
+    wakeup_do_kick(loop);
 }
 
 
@@ -213,13 +170,13 @@ sockets_add(struct birdloop *loop, sock *s)
   s->index = -1;
   loop->poll_changed = 1;
 
-  if (loop->poll_active)
-    wakeup_kick(loop);
+  birdloop_ping(loop);
 }
 
 void
 sk_start(sock *s)
 {
+  ASSERT_DIE(birdloop_current != &main_birdloop);
   sockets_add(birdloop_current, s);
 }
 
@@ -230,28 +187,21 @@ sockets_remove(struct birdloop *loop, sock *s)
   loop->sock_num--;
 
   if (s->index >= 0)
+  {
     loop->poll_sk.data[s->index] = NULL;
-
-  s->index = -1;
-  loop->poll_changed = 1;
-
-  /* Wakeup moved to sk_stop() */
+    s->index = -1;
+    loop->poll_changed = 1;
+    loop->close_scheduled = 1;
+    birdloop_ping(loop);
+  }
+  else
+    close(s->fd);
 }
 
 void
 sk_stop(sock *s)
 {
   sockets_remove(birdloop_current, s);
-
-  if (birdloop_current->poll_active)
-  {
-    birdloop_current->close_scheduled = 1;
-    wakeup_kick(birdloop_current);
-  }
-  else
-    close(s->fd);
-
-  s->fd = -1;
 }
 
 static inline uint sk_want_events(sock *s)
@@ -351,12 +301,15 @@ sockets_fire(struct birdloop *loop)
 
     if (pfd->revents & POLLIN)
       while (e && *psk && (*psk)->rx_hook)
-	e = sk_read(*psk, 0);
+	e = sk_read(*psk, pfd->revents);
 
     e = 1;
     if (pfd->revents & POLLOUT)
+    {
+      loop->poll_changed = 1;
       while (e && *psk)
 	e = sk_write(*psk);
+    }
   }
 }
 
@@ -365,104 +318,168 @@ sockets_fire(struct birdloop *loop)
  *	Birdloop
  */
 
-static void *birdloop_main(void *arg);
+struct birdloop main_birdloop;
+
+static void birdloop_enter_locked(struct birdloop *loop);
+
+void
+birdloop_init(void)
+{
+  wakeup_init(&main_birdloop);
+
+  main_birdloop.time.domain = the_bird_domain.the_bird;
+  main_birdloop.time.loop = &main_birdloop;
+
+  times_update();
+  timers_init(&main_birdloop.time, &root_pool);
+
+  birdloop_enter_locked(&main_birdloop);
+}
+
+static void birdloop_main(void *arg);
 
 struct birdloop *
-birdloop_new(void)
+birdloop_new(pool *pp, uint order, const char *name)
 {
-  pool *p = rp_new(NULL, "Birdloop root");
+  struct domain_generic *dg = domain_new(name, order);
+
+  pool *p = rp_new(pp, name);
   struct birdloop *loop = mb_allocz(p, sizeof(struct birdloop));
   loop->pool = p;
-  pthread_mutex_init(&loop->mutex, NULL);
+
+  loop->time.domain = dg;
+  loop->time.loop = loop;
+
+  birdloop_enter(loop);
 
   wakeup_init(loop);
-
-  events_init(loop);
+  ev_init_list(&loop->event_list, loop, name);
   timers_init(&loop->time, p);
   sockets_init(loop);
+
+  loop->time.coro = coro_run(p, birdloop_main, loop);
+
+  birdloop_leave(loop);
 
   return loop;
 }
 
-void
-birdloop_start(struct birdloop *loop)
+static void
+birdloop_do_stop(struct birdloop *loop, void (*stopped)(void *data), void *data)
 {
-  int rv = pthread_create(&loop->thread, NULL, birdloop_main, loop);
-  if (rv)
-    die("pthread_create(): %M", rv);
+  loop->stopped = stopped;
+  loop->stop_data = data;
+  wakeup_do_kick(loop);
 }
 
 void
-birdloop_stop(struct birdloop *loop)
+birdloop_stop(struct birdloop *loop, void (*stopped)(void *data), void *data)
 {
-  pthread_mutex_lock(&loop->mutex);
-  loop->stop_called = 1;
-  wakeup_do_kick(loop);
-  pthread_mutex_unlock(&loop->mutex);
+  DG_LOCK(loop->time.domain);
+  birdloop_do_stop(loop, stopped, data);
+  DG_UNLOCK(loop->time.domain);
+}
 
-  int rv = pthread_join(loop->thread, NULL);
-  if (rv)
-    die("pthread_join(): %M", rv);
+void
+birdloop_stop_self(struct birdloop *loop, void (*stopped)(void *data), void *data)
+{
+  ASSERT_DIE(loop == birdloop_current);
+  ASSERT_DIE(DG_IS_LOCKED(loop->time.domain));
+
+  birdloop_do_stop(loop, stopped, data);
 }
 
 void
 birdloop_free(struct birdloop *loop)
 {
+  ASSERT_DIE(loop->links == 0);
+  domain_free(loop->time.domain);
   rfree(loop->pool);
 }
 
+static void
+birdloop_enter_locked(struct birdloop *loop)
+{
+  ASSERT_DIE(DG_IS_LOCKED(loop->time.domain));
+  ASSERT_DIE(!birdloop_inside(loop));
+
+  /* Store the old context */
+  loop->prev_loop = birdloop_current;
+
+  /* Put the new context */
+  birdloop_current = loop;
+}
 
 void
 birdloop_enter(struct birdloop *loop)
 {
-  /* TODO: these functions could save and restore old context */
-  pthread_mutex_lock(&loop->mutex);
-  birdloop_set_current(loop);
+  DG_LOCK(loop->time.domain);
+  return birdloop_enter_locked(loop);
+}
+
+static void
+birdloop_leave_locked(struct birdloop *loop)
+{
+  /* Check the current context */
+  ASSERT_DIE(birdloop_current == loop);
+
+  /* Restore the old context */
+  birdloop_current = loop->prev_loop;
 }
 
 void
 birdloop_leave(struct birdloop *loop)
 {
-  /* TODO: these functions could save and restore old context */
-  birdloop_set_current(NULL);
-  pthread_mutex_unlock(&loop->mutex);
+  birdloop_leave_locked(loop);
+  DG_UNLOCK(loop->time.domain);
 }
 
 void
 birdloop_mask_wakeups(struct birdloop *loop)
 {
-  pthread_mutex_lock(&loop->mutex);
-  loop->wakeup_masked = 1;
-  pthread_mutex_unlock(&loop->mutex);
+  ASSERT_DIE(birdloop_wakeup_masked == NULL);
+  birdloop_wakeup_masked = loop;
 }
 
 void
 birdloop_unmask_wakeups(struct birdloop *loop)
 {
-  pthread_mutex_lock(&loop->mutex);
-  if (loop->wakeup_masked == 2)
+  ASSERT_DIE(birdloop_wakeup_masked == loop);
+  birdloop_wakeup_masked = NULL;
+  if (birdloop_wakeup_masked_count)
     wakeup_do_kick(loop);
-  loop->wakeup_masked = 0;
-  pthread_mutex_unlock(&loop->mutex);
+
+  birdloop_wakeup_masked_count = 0;
 }
 
-static void *
+void
+birdloop_link(struct birdloop *loop)
+{
+  ASSERT_DIE(birdloop_inside(loop));
+  loop->links++;
+}
+
+void
+birdloop_unlink(struct birdloop *loop)
+{
+  ASSERT_DIE(birdloop_inside(loop));
+  loop->links--;
+}
+
+static void
 birdloop_main(void *arg)
 {
   struct birdloop *loop = arg;
   timer *t;
   int rv, timeout;
 
-  birdloop_set_current(loop);
+  btime loop_begin = current_time();
 
-  pthread_mutex_lock(&loop->mutex);
+  birdloop_enter(loop);
   while (1)
   {
-    events_fire(loop);
-    timers_fire(&loop->time);
-
-    times_update();
-    if (events_waiting(loop))
+    timers_fire(&loop->time, 0);
+    if (ev_run_list(&loop->event_list))
       timeout = 0;
     else if (t = timers_first(&loop->time))
       timeout = (tm_remains(t) TO_MS) + 1;
@@ -472,8 +489,11 @@ birdloop_main(void *arg)
     if (loop->poll_changed)
       sockets_prepare(loop);
 
-    loop->poll_active = 1;
-    pthread_mutex_unlock(&loop->mutex);
+    btime duration = current_time() - loop_begin;
+    if (duration > config->watchdog_warning)
+      log(L_WARN "I/O loop cycle took %d ms", (int) (duration TO_MS));
+
+    birdloop_leave(loop);
 
   try:
     rv = poll(loop->poll_fd.data, loop->poll_fd.used, timeout);
@@ -484,25 +504,32 @@ birdloop_main(void *arg)
       die("poll: %m");
     }
 
-    pthread_mutex_lock(&loop->mutex);
-    loop->poll_active = 0;
+    birdloop_enter(loop);
 
     if (loop->close_scheduled)
       sockets_close_fds(loop);
 
-    if (loop->stop_called)
+    if (loop->stopped)
       break;
+
+    loop_begin = current_time();
 
     if (rv)
       sockets_fire(loop);
 
-    timers_fire(&loop->time);
+    atomic_exchange_explicit(&loop->ping_sent, 0, memory_order_acq_rel);
   }
 
-  loop->stop_called = 0;
-  pthread_mutex_unlock(&loop->mutex);
+  /* Flush remaining events */
+  ASSERT_DIE(!ev_run_list(&loop->event_list));
 
-  return NULL;
+  /* No timers allowed */
+  ASSERT_DIE(timers_count(&loop->time) == 0);
+  ASSERT_DIE(EMPTY_LIST(loop->sock_list));
+  ASSERT_DIE(loop->sock_num == 0);
+
+  birdloop_leave(loop);
+  loop->stopped(loop->stop_data);
 }
 
 

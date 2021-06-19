@@ -434,6 +434,7 @@ proto: dev_proto '}' ;
 dev_proto_start: proto_start DIRECT {
      this_proto = proto_config_new(&proto_device, $1);
      init_list(&DIRECT_CFG->iface_list);
+     this_proto->late_if_feed = 1;
    }
  ;
 

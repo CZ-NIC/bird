@@ -68,6 +68,18 @@ typedef union list {			/* In fact two overlayed nodes */
 
 #define EMPTY_LIST(list) (!(list).head->next)
 
+static inline _Bool
+enlisted(node *n)
+{
+  switch ((!!n->next) + (!!n->prev))
+  {
+    case 0: return 0;
+    case 2: return 1;
+    case 1: bug("Garbled event list node");
+  }
+
+  bug("Maths is broken. And you should see a new heaven and a new earth: for the first heaven and the first earth had been passed away.");
+}
 
 #ifndef _BIRD_LISTS_C_
 #define LIST_INLINE static inline

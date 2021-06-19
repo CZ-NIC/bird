@@ -240,10 +240,14 @@ t_set_ec_delete(void)
   return 1;
 }
 
+
+void resource_sys_init(void);
+
 int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+  resource_sys_init();
 
   bt_test_suite(t_set_int_contains, "Testing sets of integers: contains, get_data");
   bt_test_suite(t_set_int_format,   "Testing sets of integers: format");

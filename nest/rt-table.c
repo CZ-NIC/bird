@@ -1105,6 +1105,12 @@ rt_next_export(struct rt_export_hook *hook, rtable *tab)
     return tab->first_export;
 }
 
+static inline void
+rt_send_export_event(struct rt_export_hook *hook)
+{
+  ev_send(hook->req->list, hook->event);
+}
+
 static void
 rt_announce_exports(timer *tm)
 {
@@ -1116,7 +1122,7 @@ rt_announce_exports(timer *tm)
     if (atomic_load_explicit(&c->export_state, memory_order_acquire) != TES_READY)
       continue;
 
-    ev_schedule_work(c->event);
+    rt_send_export_event(c);
   }
 }
 
@@ -1169,7 +1175,7 @@ rt_export_hook(void *_data)
     rte_update_unlock();
   }
 
-  ev_schedule_work(c->event);
+  rt_send_export_event(c);
 }
 
 
@@ -1732,7 +1738,7 @@ rt_request_export(rtable *tab, struct rt_export_request *req)
   DBG("New export hook %p req %p in table %s uc=%u\n", hook, req, tab->name, tab->use_count);
 
   hook->event = ev_new_init(p, rt_feed_channel, hook);
-  ev_schedule_work(hook->event);
+  rt_send_export_event(hook);
 
   rt_set_export_state(hook, TES_FEEDING);
 }
@@ -1754,7 +1760,7 @@ rt_stop_export(struct rt_export_request *req, void (*stopped)(struct rt_export_r
   hook->event->hook = rt_export_stopped;
   hook->stopped = stopped;
 
-  ev_schedule(hook->event);
+  rt_send_export_event(hook);
 
   rt_set_export_state(hook, TES_STOP);
 }
@@ -2869,7 +2875,7 @@ rt_feed_channel(void *data)
       if (max_feed <= 0)
 	{
 	  FIB_ITERATE_PUT(fit);
-	  ev_schedule_work(c->event);
+	  rt_send_export_event(c);
 	  return;
 	}
 
@@ -2904,7 +2910,7 @@ rt_feed_channel(void *data)
   FIB_ITERATE_END;
 
   c->event->hook = rt_export_hook;
-  ev_schedule_work(c->event);
+  rt_send_export_event(c);
 
   rt_set_export_state(c, TES_READY);
 }

@@ -410,7 +410,7 @@ bfd_err_hook(sock *sk, int err)
 sock *
 bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
 {
-  sock *sk = sk_new(p->tpool);
+  sock *sk = sk_new(p->p.pool);
   sk->type = SK_UDP;
   sk->subtype = af;
   sk->sport = !multihop ? BFD_CONTROL_PORT : BFD_MULTI_CTL_PORT;
@@ -441,7 +441,7 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
 sock *
 bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
 {
-  sock *sk = sk_new(p->tpool);
+  sock *sk = sk_new(p->p.pool);
   sk->type = SK_UDP;
   sk->saddr = local;
   sk->dport = ifa ? BFD_CONTROL_PORT : BFD_MULTI_CTL_PORT;
