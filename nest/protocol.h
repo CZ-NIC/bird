@@ -132,29 +132,31 @@ struct proto_config {
 };
 
 /* Protocol statistics */
-struct proto_stats {
+struct import_stats {
   /* Import - from protocol to core */
-  u32 imp_routes;		/* Number of routes successfully imported to the (adjacent) routing table */
-  u32 filt_routes;		/* Number of routes rejected in import filter but kept in the routing table */
-  u32 pref_routes;		/* Number of routes selected as best in the (adjacent) routing table */
-  u32 imp_updates_received;	/* Number of route updates received */
-  u32 imp_updates_invalid;	/* Number of route updates rejected as invalid */
-  u32 imp_updates_filtered;	/* Number of route updates rejected by filters */
-  u32 imp_updates_ignored;	/* Number of route updates rejected as already in route table */
-  u32 imp_updates_accepted;	/* Number of route updates accepted and imported */
-  u32 imp_withdraws_received;	/* Number of route withdraws received */
-  u32 imp_withdraws_invalid;	/* Number of route withdraws rejected as invalid */
-  u32 imp_withdraws_ignored;	/* Number of route withdraws rejected as already not in route table */
-  u32 imp_withdraws_accepted;	/* Number of route withdraws accepted and processed */
+  u32 routes;			/* Number of routes successfully imported to the (adjacent) routing table */
+  u32 filtered;			/* Number of routes rejected in import filter but kept in the routing table */
+  u32 pref;			/* Number of routes selected as best in the (adjacent) routing table */
+  u32 updates_received;		/* Number of route updates received */
+  u32 updates_invalid;		/* Number of route updates rejected as invalid */
+  u32 updates_filtered;		/* Number of route updates rejected by filters */
+  u32 updates_ignored;		/* Number of route updates rejected as already in route table */
+  u32 updates_accepted;		/* Number of route updates accepted and imported */
+  u32 withdraws_received;	/* Number of route withdraws received */
+  u32 withdraws_invalid;	/* Number of route withdraws rejected as invalid */
+  u32 withdraws_ignored;	/* Number of route withdraws rejected as already not in route table */
+  u32 withdraws_accepted;	/* Number of route withdraws accepted and processed */
+};
 
+struct export_stats {
   /* Export - from core to protocol */
-  u32 exp_routes;		/* Number of routes successfully exported to the protocol */
-  u32 exp_updates_received;	/* Number of route updates received */
-  u32 exp_updates_rejected;	/* Number of route updates rejected by protocol */
-  u32 exp_updates_filtered;	/* Number of route updates rejected by filters */
-  u32 exp_updates_accepted;	/* Number of route updates accepted and exported */
-  u32 exp_withdraws_received;	/* Number of route withdraws received */
-  u32 exp_withdraws_accepted;	/* Number of route withdraws accepted and processed */
+  u32 routes;			/* Number of routes successfully exported to the protocol */
+  u32 updates_received;		/* Number of route updates received */
+  u32 updates_rejected;		/* Number of route updates rejected by protocol */
+  u32 updates_filtered;		/* Number of route updates rejected by filters */
+  u32 updates_accepted;		/* Number of route updates accepted and exported */
+  u32 withdraws_received;	/* Number of route withdraws received */
+  u32 withdraws_accepted;	/* Number of route withdraws accepted and processed */
 };
 
 struct proto {
@@ -516,7 +518,9 @@ struct channel {
 
   struct event *feed_event;		/* Event responsible for feeding */
   struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
-  struct proto_stats stats;		/* Per-channel protocol statistics */
+  struct import_stats import_stats;	/* Import statistics */
+  struct export_stats export_stats;	/* Export statistics */
+
   u32 refeed_count;			/* Number of routes exported during refeed regardless of out_limit */
 
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
