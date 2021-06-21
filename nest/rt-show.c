@@ -98,6 +98,29 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
     rta_show(c, a);
 }
 
+static uint
+rte_feed_count(net *n)
+{
+  uint count = 0;
+  for (struct rte_storage *e = n->routes; e; e = e->next)
+    if (rte_is_valid(RTE_OR_NULL(e)))
+      count++;
+  return count;
+}
+
+static void
+rte_feed_obtain(net *n, rte **feed, uint count)
+{
+  uint i = 0;
+  for (struct rte_storage *e = n->routes; e; e = e->next)
+    if (rte_is_valid(RTE_OR_NULL(e)))
+    {
+      ASSERT_DIE(i < count);
+      feed[i++] = &e->rte;
+    }
+  ASSERT_DIE(i == count);
+}
+
 static void
 rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 {
@@ -128,7 +151,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       struct rte e = er->rte;
 
       /* Export channel is down, do not try to export routes to it */
-      if (ec && (ec->export_state == ES_DOWN))
+      if (ec && !ec->out_req.hook)
 	goto skip;
 
       if (d->export_mode == RSEM_EXPORTED)
@@ -143,7 +166,14 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	{
 	  /* Special case for merged export */
 	  pass = 1;
-	  rte *em = rt_export_merged_show(ec, n, c->show_pool);
+	  uint count = rte_feed_count(n);
+	  if (!count)
+	    goto skip;
+
+	  rte **feed = alloca(count * sizeof(rte *));
+	  rte_feed_obtain(n, feed, count);
+	  rte *em = rt_export_merged(ec, feed, count, c->show_pool, 1);
+
 	  if (em)
 	    e = *em;
 	  else
@@ -315,7 +345,7 @@ rt_show_get_default_tables(struct rt_show_data *d)
   {
     WALK_LIST(c, d->export_protocol->channels)
     {
-      if (c->export_state == ES_DOWN)
+      if (!c->out_req.hook)
 	continue;
 
       tab = rt_show_add_table(d, c->table);

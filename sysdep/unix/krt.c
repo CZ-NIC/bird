@@ -542,6 +542,29 @@ krt_is_installed(struct krt_proto *p, net *n)
   return n->routes && bmap_test(&p->p.main_channel->export_map, n->routes->rte.id);
 }
 
+static uint
+rte_feed_count(net *n)
+{
+  uint count = 0;
+  for (struct rte_storage *e = n->routes; e; e = e->next)
+    if (rte_is_valid(RTE_OR_NULL(e)))
+      count++;
+  return count;
+}
+
+static void
+rte_feed_obtain(net *n, rte **feed, uint count)
+{
+  uint i = 0;
+  for (struct rte_storage *e = n->routes; e; e = e->next)
+    if (rte_is_valid(RTE_OR_NULL(e)))
+    {
+      ASSERT_DIE(i < count);
+      feed[i++] = &e->rte;
+    }
+  ASSERT_DIE(i == count);
+}
+
 static struct rte *
 krt_export_net(struct krt_proto *p, net *net)
 {
@@ -549,7 +572,15 @@ krt_export_net(struct krt_proto *p, net *net)
   const struct filter *filter = c->out_filter;
 
   if (c->ra_mode == RA_MERGED)
-    return rt_export_merged_show(c, net, krt_filter_lp);
+  {
+    uint count = rte_feed_count(net);
+    if (!count)
+      return NULL;
+
+    rte **feed = alloca(count * sizeof(rte *));
+    rte_feed_obtain(net, feed, count);
+    return rt_export_merged(c, feed, count, krt_filter_lp, 1);
+  }
 
   static _Thread_local rte rt;
   rt = net->routes->rte;

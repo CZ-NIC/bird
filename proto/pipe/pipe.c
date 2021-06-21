@@ -82,7 +82,7 @@ pipe_preexport(struct channel *c, rte *e)
   struct pipe_proto *p = (void *) c->proto;
 
   /* Avoid direct loopbacks */
-  if (e->sender == c)
+  if (e->sender == c->in_req.hook)
     return -1;
 
   /* Indirection check */
@@ -212,10 +212,15 @@ pipe_get_status(struct proto *P, byte *buf)
 static void
 pipe_show_stats(struct pipe_proto *p)
 {
-  struct import_stats *s1i = &p->pri->import_stats;
-  struct export_stats *s1e = &p->pri->export_stats;
-  struct import_stats *s2i = &p->sec->import_stats;
-  struct export_stats *s2e = &p->sec->export_stats;
+  struct channel_import_stats *s1i = &p->pri->import_stats;
+  struct channel_export_stats *s1e = &p->pri->export_stats;
+  struct channel_import_stats *s2i = &p->sec->import_stats;
+  struct channel_export_stats *s2e = &p->sec->export_stats;
+
+  struct rt_import_stats *rs1i = p->pri->in_req.hook ? &p->pri->in_req.hook->stats : NULL;
+  struct rt_export_stats *rs1e = p->pri->out_req.hook ? &p->pri->out_req.hook->stats : NULL;
+  struct rt_import_stats *rs2i = p->sec->in_req.hook ? &p->sec->in_req.hook->stats : NULL;
+  struct rt_export_stats *rs2e = p->sec->out_req.hook ? &p->sec->out_req.hook->stats : NULL;
 
   u32 pri_routes = p->pri->in_limit.count;
   u32 sec_routes = p->sec->in_limit.count;
@@ -245,20 +250,18 @@ pipe_show_stats(struct pipe_proto *p)
 	  pri_routes, sec_routes);
   cli_msg(-1006, "  Route change stats:     received   rejected   filtered    ignored   accepted");
   cli_msg(-1006, "    Import updates:     %10u %10u %10u %10u %10u",
-	  s2e->updates_received, s2e->updates_rejected + s1i->updates_invalid,
-	  s2e->updates_filtered, s1i->updates_ignored, s1i->updates_accepted);
+	  rs2e->updates_received, s2e->updates_rejected + s1i->updates_invalid,
+	  s2e->updates_filtered, rs1i->updates_ignored, rs1i->updates_accepted);
   cli_msg(-1006, "    Import withdraws:   %10u %10u        --- %10u %10u",
-	  s2e->withdraws_received, s1i->withdraws_invalid,
-	  s1i->withdraws_ignored, s1i->withdraws_accepted);
+	  rs2e->withdraws_received, s1i->withdraws_invalid,
+	  rs1i->withdraws_ignored, rs1i->withdraws_accepted);
   cli_msg(-1006, "    Export updates:     %10u %10u %10u %10u %10u",
-	  s1e->updates_received, s1e->updates_rejected + s2i->updates_invalid,
-	  s1e->updates_filtered, s2i->updates_ignored, s2i->updates_accepted);
+	  rs1e->updates_received, s1e->updates_rejected + s2i->updates_invalid,
+	  s1e->updates_filtered, rs2i->updates_ignored, rs2i->updates_accepted);
   cli_msg(-1006, "    Export withdraws:   %10u %10u        --- %10u %10u",
-	  s1e->withdraws_received, s2i->withdraws_invalid,
-	  s2i->withdraws_ignored, s2i->withdraws_accepted);
+	  rs1e->withdraws_received, s2i->withdraws_invalid,
+	  rs2i->withdraws_ignored, rs2i->withdraws_accepted);
 }
-
-static const char *pipe_feed_state[] = { [ES_DOWN] = "down", [ES_FEEDING] = "feed", [ES_READY] = "up" };
 
 static void
 pipe_show_proto_info(struct proto *P)
@@ -268,8 +271,8 @@ pipe_show_proto_info(struct proto *P)
   cli_msg(-1006, "  Channel %s", "main");
   cli_msg(-1006, "    Table:          %s", p->pri->table->name);
   cli_msg(-1006, "    Peer table:     %s", p->sec->table->name);
-  cli_msg(-1006, "    Import state:   %s", pipe_feed_state[p->sec->export_state]);
-  cli_msg(-1006, "    Export state:   %s", pipe_feed_state[p->pri->export_state]);
+  cli_msg(-1006, "    Import state:   %s", rt_export_state_name(rt_export_get_state(p->sec->out_req.hook)));
+  cli_msg(-1006, "    Export state:   %s", rt_export_state_name(rt_export_get_state(p->pri->out_req.hook)));
   cli_msg(-1006, "    Import filter:  %s", filter_name(p->sec->out_filter));
   cli_msg(-1006, "    Export filter:  %s", filter_name(p->pri->out_filter));
 

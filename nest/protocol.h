@@ -77,7 +77,6 @@ struct protocol {
   void (*dump)(struct proto *);			/* Debugging dump */
   int (*start)(struct proto *);			/* Start the instance */
   int (*shutdown)(struct proto *);		/* Stop the instance */
-  void (*cleanup)(struct proto *);		/* Called after shutdown when protocol became hungry/down */
   void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
   void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */
   int (*get_attr)(const struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
@@ -133,30 +132,6 @@ struct proto_config {
 };
 
 /* Protocol statistics */
-struct import_stats {
-  /* Import - from protocol to core */
-  u32 pref;			/* Number of routes selected as best in the (adjacent) routing table */
-  u32 updates_received;		/* Number of route updates received */
-  u32 updates_invalid;		/* Number of route updates rejected as invalid */
-  u32 updates_filtered;		/* Number of route updates rejected by filters */
-  u32 updates_ignored;		/* Number of route updates rejected as already in route table */
-  u32 updates_accepted;		/* Number of route updates accepted and imported */
-  u32 withdraws_received;	/* Number of route withdraws received */
-  u32 withdraws_invalid;	/* Number of route withdraws rejected as invalid */
-  u32 withdraws_ignored;	/* Number of route withdraws rejected as already not in route table */
-  u32 withdraws_accepted;	/* Number of route withdraws accepted and processed */
-};
-
-struct export_stats {
-  /* Export - from core to protocol */
-  u32 updates_received;		/* Number of route updates received */
-  u32 updates_rejected;		/* Number of route updates rejected by protocol */
-  u32 updates_filtered;		/* Number of route updates rejected by filters */
-  u32 updates_accepted;		/* Number of route updates accepted and exported */
-  u32 withdraws_received;	/* Number of route withdraws received */
-  u32 withdraws_accepted;	/* Number of route withdraws accepted and processed */
-};
-
 struct proto {
   node n;				/* Node in global proto_list */
   struct protocol *proto;		/* Protocol */
@@ -512,7 +487,6 @@ struct channel_config {
 
 struct channel {
   node n;				/* Node in proto->channels */
-  node table_node;			/* Node in table->channels */
 
   const char *name;			/* Channel name (may be NULL) */
   const struct channel_class *channel;
@@ -531,10 +505,28 @@ struct channel {
   u8 limit_actions[PLD_MAX];		/* Limit actions enum */
   u8 limit_active;			/* Flags for active limits */
 
-  struct event *feed_event;		/* Event responsible for feeding */
-  struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
-  struct import_stats import_stats;	/* Import statistics */
-  struct export_stats export_stats;	/* Export statistics */
+  struct channel_import_stats {
+    /* Import - from protocol to core */
+    u32 updates_received;		/* Number of route updates received */
+    u32 updates_invalid;		/* Number of route updates rejected as invalid */
+    u32 updates_filtered;		/* Number of route updates rejected by filters */
+    u32 updates_limited_rx;		/* Number of route updates exceeding the rx_limit */
+    u32 updates_limited_in;		/* Number of route updates exceeding the in_limit */
+    u32 withdraws_received;		/* Number of route withdraws received */
+    u32 withdraws_invalid;		/* Number of route withdraws rejected as invalid */
+  } import_stats;
+
+  struct channel_export_stats {
+    /* Export - from core to protocol */
+    u32 updates_rejected;		/* Number of route updates rejected by protocol */
+    u32 updates_filtered;		/* Number of route updates rejected by filters */
+    u32 updates_accepted;		/* Number of route updates accepted and exported */
+    u32 updates_limited;		/* Number of route updates exceeding the out_limit */
+    u32 withdraws_accepted;		/* Number of route withdraws accepted and processed */
+  } export_stats;
+
+  struct rt_import_request in_req;	/* Table import connection */
+  struct rt_export_request out_req;	/* Table export connection */
 
   u32 refeed_count;			/* Number of routes exported during refeed regardless of out_limit */
 
@@ -548,10 +540,7 @@ struct channel {
   u8 stale;				/* Used in reconfiguration */
 
   u8 channel_state;
-  u8 export_state;			/* Route export state (ES_*, see below) */
-  u8 feed_active;
-  u8 flush_active;
-  u8 refeeding;				/* We are refeeding (valid only if export_state == ES_FEEDING) */
+  u8 refeeding;				/* Refeeding the channel. */
   u8 reloadable;			/* Hook reload_routes() is allowed on the channel */
   u8 gr_lock;				/* Graceful restart mechanism should wait for this channel */
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
@@ -599,34 +588,34 @@ struct channel {
  * restricted by that and is on volition of the protocol. Generally, channels
  * are opened in protocols' start() hooks when going to PS_UP.
  *
- * CS_FLUSHING - The transitional state between initialized channel and closed
+ * CS_STOP - The transitional state between initialized channel and closed
  * channel. The channel is still initialized, but no route exchange is allowed.
  * Instead, the associated table is running flush loop to remove routes imported
  * through the channel. After that, the channel changes state to CS_DOWN and
  * is detached from the table (the table is unlocked and the channel is unlinked
- * from it). Unlike other states, the CS_FLUSHING state is not explicitly
+ * from it). Unlike other states, the CS_STOP state is not explicitly
  * entered or left by the protocol. A protocol may request to close a channel
  * (by calling channel_close()), which causes the channel to change state to
- * CS_FLUSHING and later to CS_DOWN. Also note that channels are closed
+ * CS_STOP and later to CS_DOWN. Also note that channels are closed
  * automatically by the core when the protocol is going down.
+ *
+ * CS_PAUSE - Almost the same as CS_STOP, just the table import is kept and
+ * the table export is stopped before transitioning to CS_START.
  *
  * Allowed transitions:
  *
  * CS_DOWN	-> CS_START / CS_UP
- * CS_START	-> CS_UP / CS_FLUSHING
- * CS_UP	-> CS_START / CS_FLUSHING
- * CS_FLUSHING	-> CS_DOWN (automatic)
+ * CS_START	-> CS_UP / CS_STOP
+ * CS_UP	-> CS_PAUSE / CS_STOP
+ * CS_PAUSE	-> CS_START (automatic)
+ * CS_STOP	-> CS_DOWN (automatic)
  */
 
 #define CS_DOWN		0
 #define CS_START	1
 #define CS_UP		2
-#define CS_FLUSHING	3
-
-#define ES_DOWN		0
-#define ES_FEEDING	1
-#define ES_READY	2
-
+#define CS_STOP		3
+#define CS_PAUSE	4
 
 struct channel_config *proto_cf_find_channel(struct proto_config *p, uint net_type);
 static inline struct channel_config *proto_cf_main_channel(struct proto_config *pc)
@@ -644,7 +633,7 @@ void channel_schedule_reload(struct channel *c);
 
 static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }
 static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP); }
-static inline void channel_close(struct channel *c) { channel_set_state(c, CS_FLUSHING); }
+static inline void channel_close(struct channel *c) { channel_set_state(c, CS_STOP); }
 
 void channel_request_feeding(struct channel *c);
 void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
