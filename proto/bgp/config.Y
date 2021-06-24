@@ -32,10 +32,12 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL, SETS,
 	DYNAMIC, RANGE, NAME, DIGITS, BGP_AIGP, AIGP, ORIGINATE, COST, ENFORCE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
-	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND)
+	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, BOTH, EMPTY, ONLY,
+	TRANSPARENT, SEND)
 
 %type <i> bgp_nh
 %type <i32> bgp_afi
+%type <i> nh_lladdr
 
 CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
 	CONFIGURATION, CHANGE, DECONFIGURED, CONNECTION, REJECTED, COLLISION,
@@ -264,6 +266,7 @@ bgp_channel_start: bgp_afi
     BGP_CC->llgr_able = 0xff;	/* undefined */
     BGP_CC->llgr_time = ~0U;	/* undefined */
     BGP_CC->aigp = 0xff;	/* undefined */
+    BGP_CC->next_hop_lladdr = NLL_TRANSPARENT;
   }
 };
 
@@ -274,12 +277,19 @@ bgp_nh:
 
 bgp_lladdr: SELF | DROP | IGNORE;
 
+nh_lladdr:
+   BOTH { $$ = NLL_BOTH; }
+ | ONLY { $$ = NLL_ONLY; }
+ | EMPTY { $$ = NLL_TRANSPARENT; /* for compatibility */ }
+ | TRANSPARENT { $$ = NLL_TRANSPARENT; }
+
 bgp_channel_item:
    channel_item
  | NEXT HOP ADDRESS ipa { BGP_CC->next_hop_addr = $4; }
  | NEXT HOP SELF bgp_nh { BGP_CC->next_hop_self = $4; }
  | NEXT HOP KEEP bgp_nh { BGP_CC->next_hop_keep = $4; }
  | NEXT HOP PREFER GLOBAL { BGP_CC->next_hop_prefer = NHP_GLOBAL; }
+ | NEXT HOP LLADDR nh_lladdr { BGP_CC->next_hop_lladdr = $4; }
  | MANDATORY bool { BGP_CC->mandatory = $2; }
  | MISSING LLADDR bgp_lladdr { cf_warn("%s.%s: Missing lladdr option is deprecated and ignored, remove it", this_proto->name, this_channel->name); }
  | GATEWAY DIRECT { BGP_CC->gw_mode = GW_DIRECT; }

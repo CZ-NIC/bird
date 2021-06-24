@@ -1317,6 +1317,7 @@ static uint
 bgp_encode_next_hop_ip(struct bgp_write_state *s, eattr *a, byte *buf, uint size UNUSED)
 {
   /* This function is used only for MP-BGP, see bgp_encode_next_hop() for IPv4 BGP */
+  ip_addr NH[2];
   ip_addr *nh = (void *) a->u.ptr->data;
   uint len = a->u.ptr->length;
 
@@ -1335,10 +1336,39 @@ bgp_encode_next_hop_ip(struct bgp_write_state *s, eattr *a, byte *buf, uint size
     return 4;
   }
 
-  put_ip6(buf, ipa_to_ip6(nh[0]));
+  NH[0] = nh[0];
+  NH[1] = (len == 32) ? nh[1] : IPA_NONE;
+
+  /*
+   * If we heave link-local next-hop, we always keep it in NH[1].
+   *
+   * Possible cases:
+   *  [ ::, fe80::XX ] - bird's default (TRANSPARENT or EMPTY).
+   *  [ fe80::XX, fe80::XX ] - used in JunoOS (BOTH).
+   *  [ fe80::XX ] - used by some Huawei implementations (ONLY).
+   *
+   * Apply changes iff NH[1] is link-local.
+   */
+  if (ipa_is_link_local(NH[1]))
+  {
+    switch (s->channel->cf->next_hop_lladdr)
+    {
+    case NLL_ONLY:
+       NH[0] = NH[1];
+       len = 16;
+       break;
+    case NLL_BOTH:
+       NH[0] = NH[1];
+       break;
+    default:
+       /* FALLTROUGH */
+       ;
+    }
+  }
+  put_ip6(buf, ipa_to_ip6(NH[0]));
 
   if (len == 32)
-    put_ip6(buf+16, ipa_to_ip6(nh[1]));
+    put_ip6(buf+16, ipa_to_ip6(NH[1]));
 
   return len;
 }
