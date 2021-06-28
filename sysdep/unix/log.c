@@ -439,6 +439,8 @@ done:
 void
 log_init_debug(char *f)
 {
+  clock_gettime(CLOCK_MONOTONIC, &dbg_time_start);
+
   if (dbgf && dbgf != stderr)
     fclose(dbgf);
   if (!f)
