@@ -172,7 +172,7 @@ events_init(struct birdloop *loop)
 static void
 events_fire(struct birdloop *loop)
 {
-  times_update(&loop->time);
+  times_update();
   ev_run_list(&loop->event_list);
 }
 
@@ -332,7 +332,7 @@ sockets_fire(struct birdloop *loop)
   sock **psk = loop->poll_sk.data;
   int poll_num = loop->poll_fd.used - 1;
 
-  times_update(&loop->time);
+  times_update();
 
   /* Last fd is internal wakeup fd */
   if (pfd[poll_num].revents & POLLIN)
@@ -365,7 +365,7 @@ sockets_fire(struct birdloop *loop)
  *	Birdloop
  */
 
-static void * birdloop_main(void *arg);
+static void *birdloop_main(void *arg);
 
 struct birdloop *
 birdloop_new(void)
@@ -461,7 +461,7 @@ birdloop_main(void *arg)
     events_fire(loop);
     timers_fire(&loop->time);
 
-    times_update(&loop->time);
+    times_update();
     if (events_waiting(loop))
       timeout = 0;
     else if (t = timers_first(&loop->time))

@@ -903,6 +903,7 @@ main(int argc, char **argv)
     dmalloc_debug(0x2f03d00);
 #endif
 
+  times_update();
   resource_sys_init();
   parse_args(argc, argv);
   log_switch(1, NULL, NULL);
