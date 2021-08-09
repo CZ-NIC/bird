@@ -35,11 +35,12 @@ check_list(list *l, node *n)
   if (!l)
   {
     ASSERT_DIE(n);
-    ASSERT_DIE(n->prev);
 
-    do { n = n->prev; } while (n->prev);
+    node *nn = n;
+    while (nn->prev)
+      nn = nn->prev;
 
-    l = SKIP_BACK(list, head_node, n);
+    l = SKIP_BACK(list, head_node, nn);
   }
 
   int seen = 0;
@@ -60,7 +61,7 @@ check_list(list *l, node *n)
   }
 
   ASSERT_DIE(cur == &(l->tail_node));
-  ASSERT_DIE(!n || (seen == 1));
+  ASSERT_DIE(!n || (seen == 1) || (n == &l->head_node) || (n == &l->tail_node));
 
   return 1;
 }
@@ -129,7 +130,7 @@ self_link(node *n)
 LIST_INLINE void
 insert_node(node *n, node *after)
 {
-  EXPENSIVE_CHECK(check_list(l, after));
+  EXPENSIVE_CHECK(check_list(NULL, after));
   ASSUME(n->prev == NULL);
   ASSUME(n->next == NULL);
 
@@ -150,7 +151,7 @@ insert_node(node *n, node *after)
 LIST_INLINE void
 rem_node(node *n)
 {
-  EXPENSIVE_CHECK(check_list(NULL, n));
+  EXPENSIVE_CHECK((n == n->prev) && (n == n->next) || check_list(NULL, n));
 
   node *z = n->prev;
   node *x = n->next;
