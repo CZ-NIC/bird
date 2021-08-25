@@ -1003,6 +1003,7 @@
     curline.vbase = curline.ventry;
 
     /* Storage for local variables */
+    f_vcnt_check_overflow(sym->function->vars);
     memset(&(fstk->vstk[fstk->vcnt]), 0, sizeof(struct f_val) * sym->function->vars);
     fstk->vcnt += sym->function->vars;
   }

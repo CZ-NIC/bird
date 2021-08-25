@@ -195,6 +195,7 @@ FID_INTERPRET_BODY()')
 #	that was needed in the former implementation.
 m4_define(LINEX, `FID_INTERPRET_EXEC()LINEX_($1)FID_INTERPRET_NEW()return $1 FID_INTERPRET_BODY()')
 m4_define(LINEX_, `do {
+  if (fstk->ecnt + 1 >= fstk->elen) runtime("Filter execution stack overflow");
   fstk->estk[fstk->ecnt].pos = 0;
   fstk->estk[fstk->ecnt].line = $1;
   fstk->estk[fstk->ecnt].ventry = fstk->vcnt;
@@ -232,7 +233,7 @@ FID_INTERPRET_BODY()')
 #	state the result and put it to the right place.
 m4_define(RESULT, `RESULT_TYPE([[$1]]) RESULT_([[$1]],[[$2]],[[$3]])')
 m4_define(RESULT_, `RESULT_VAL([[ (struct f_val) { .type = $1, .val.$2 = $3 } ]])')
-m4_define(RESULT_VAL, `FID_HIC(, [[do { res = $1; fstk->vcnt++; } while (0)]],
+m4_define(RESULT_VAL, `FID_HIC(, [[do { res = $1; f_vcnt_check_overflow(1); fstk->vcnt++; } while (0)]],
 [[return fi_constant(what, $1)]])')
 m4_define(RESULT_VOID, `RESULT_VAL([[ (struct f_val) { .type = T_VOID } ]])')
 

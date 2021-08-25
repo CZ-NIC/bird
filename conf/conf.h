@@ -35,6 +35,7 @@ struct config {
   u32 proto_default_debug;		/* Default protocol debug mask */
   u32 proto_default_mrtdump;		/* Default protocol mrtdump mask */
   u32 channel_default_debug;		/* Default channel debug mask */
+  u16 filter_vstk, filter_estk;		/* Filter stack depth */
   struct timeformat tf_route;		/* Time format for 'show route' */
   struct timeformat tf_proto;		/* Time format for 'show protocol' */
   struct timeformat tf_log;		/* Time format for the logfile */
