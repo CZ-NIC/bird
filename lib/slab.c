@@ -152,6 +152,7 @@ slab_memsize(resource *r)
 
 struct slab {
   resource r;
+  pool *p;
   uint obj_size, head_size, head_bitfield_len;
   uint objs_per_slab, num_empty_heads, data_size;
   list empty_heads, partial_heads, full_heads;
@@ -191,6 +192,7 @@ slab *
 sl_new(pool *p, uint size)
 {
   slab *s = ralloc(p, &sl_class);
+  s->p = p;
   uint align = sizeof(struct sl_alignment);
   if (align < sizeof(int))
     align = sizeof(int);
@@ -199,7 +201,6 @@ sl_new(pool *p, uint size)
   s->obj_size = size;
 
   s->head_size = sizeof(struct sl_head);
-  u64 page_size = get_page_size();
 
   do {
     s->objs_per_slab = (page_size - s->head_size) / size;
@@ -268,9 +269,9 @@ no_partial:
       s->num_empty_heads--;
       goto okay;
     }
-  h = alloc_page();
+  h = alloc_page(s->p);
 #ifdef POISON
-  memset(h, 0xba, get_page_size());
+  memset(h, 0xba, page_size);
 #endif
   ASSERT_DIE(SL_GET_HEAD(h) == h);
   memset(h, 0, s->head_size);
@@ -329,9 +330,9 @@ sl_free(slab *s, void *oo)
       if (s->num_empty_heads >= MAX_EMPTY_HEADS)
       {
 #ifdef POISON
-	memset(h, 0xde, get_page_size());
+	memset(h, 0xde, page_size);
 #endif
-	free_page(h);
+	free_page(s->p, h);
       }
       else
 	{
@@ -348,11 +349,11 @@ slab_free(resource *r)
   struct sl_head *h, *g;
 
   WALK_LIST_DELSAFE(h, g, s->empty_heads)
-    free_page(h);
+    free_page(s->p, h);
   WALK_LIST_DELSAFE(h, g, s->partial_heads)
-    free_page(h);
+    free_page(s->p, h);
   WALK_LIST_DELSAFE(h, g, s->full_heads)
-    free_page(h);
+    free_page(s->p, h);
 }
 
 static void
@@ -385,7 +386,8 @@ slab_memsize(resource *r)
   WALK_LIST(h, s->full_heads)
     heads++;
 
-  return ALLOC_OVERHEAD + sizeof(struct slab) + heads * (ALLOC_OVERHEAD + get_page_size());
+//  return ALLOC_OVERHEAD + sizeof(struct slab) + heads * (ALLOC_OVERHEAD + page_size);
+  return ALLOC_OVERHEAD + sizeof(struct slab); /* The page sizes are accounted for in the pool */
 }
 
 static resource *
@@ -395,10 +397,10 @@ slab_lookup(resource *r, unsigned long a)
   struct sl_head *h;
 
   WALK_LIST(h, s->partial_heads)
-    if ((unsigned long) h < a && (unsigned long) h + get_page_size() < a)
+    if ((unsigned long) h < a && (unsigned long) h + page_size < a)
       return r;
   WALK_LIST(h, s->full_heads)
-    if ((unsigned long) h < a && (unsigned long) h + get_page_size() < a)
+    if ((unsigned long) h < a && (unsigned long) h + page_size < a)
       return r;
   return NULL;
 }

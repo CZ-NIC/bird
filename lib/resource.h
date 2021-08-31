@@ -94,10 +94,12 @@ void sl_free(slab *, void *);
 
 void buffer_realloc(void **buf, unsigned *size, unsigned need, unsigned item_size);
 
+extern long page_size;
+
 /* Allocator of whole pages; for use in slabs and other high-level allocators. */
-u64 get_page_size(void);
-void *alloc_page(void);
-void free_page(void *);
+void *alloc_page(pool *);
+void free_page(pool *, void *);
+#define PAGE_HEAD(x)	((void *) (((intptr_t) (x)) & ~(page_size-1)))
 
 #ifdef HAVE_LIBDMALLOC
 /*

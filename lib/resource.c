@@ -31,8 +31,17 @@
 struct pool {
   resource r;
   list inside;
+  struct pool_pages *pages;
   const char *name;
 };
+
+struct pool_pages {
+  uint free;
+  uint used;
+  void *ptr[0];
+};
+
+#define POOL_PAGES_MAX	((page_size - sizeof(struct pool_pages)) / sizeof (void *))
 
 static void pool_dump(resource *);
 static void pool_free(resource *);
@@ -49,6 +58,10 @@ static struct resclass pool_class = {
 };
 
 pool root_pool;
+
+void *alloc_sys_page(void);
+void free_sys_page(void *);
+void resource_sys_init(void);
 
 static int indent;
 
@@ -82,6 +95,14 @@ pool_free(resource *P)
       xfree(r);
       r = rr;
     }
+
+  if (p->pages)
+    {
+      ASSERT_DIE(!p->pages->used);
+      for (uint i=0; i<p->pages->free; i++)
+	free_sys_page(p->pages->ptr[i]);
+      free_sys_page(p->pages);
+    }
 }
 
 static void
@@ -106,6 +127,9 @@ pool_memsize(resource *P)
 
   WALK_LIST(r, p->inside)
     sum += rmemsize(r);
+
+  if (p->pages)
+    sum += page_size * (p->pages->used + p->pages->free + 1);
 
   return sum;
 }
@@ -259,6 +283,7 @@ rlookup(unsigned long a)
 void
 resource_init(void)
 {
+  resource_sys_init();
   root_pool.r.class = &pool_class;
   root_pool.name = "Root";
   init_list(&root_pool.inside);
@@ -425,6 +450,39 @@ mb_free(void *m)
   rfree(b);
 }
 
+void *
+alloc_page(pool *p)
+{
+  if (!p->pages)
+  {
+    p->pages = alloc_sys_page();
+    p->pages->free = 0;
+    p->pages->used = 1;
+  }
+  else
+    p->pages->used++;
+
+  if (p->pages->free)
+  {
+    void *ptr = p->pages->ptr[--p->pages->free];
+    bzero(ptr, page_size);
+    return ptr;
+  }
+  else
+    return alloc_sys_page();
+}
+
+void
+free_page(pool *p, void *ptr)
+{
+  ASSERT_DIE(p->pages);
+  p->pages->used--;
+
+  if (p->pages->free >= POOL_PAGES_MAX)
+    return free_sys_page(ptr);
+  else
+    p->pages->ptr[p->pages->free++] = ptr;
+}
 
 
 #define STEP_UP(x) ((x) + (x)/2 + 4)
