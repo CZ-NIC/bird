@@ -37,9 +37,10 @@ const int lp_chunk_size = sizeof(struct lp_chunk);
 struct linpool {
   resource r;
   byte *ptr, *end;
+  pool *p;
   struct lp_chunk *first, *current;		/* Normal (reusable) chunks */
   struct lp_chunk *first_large;			/* Large chunks */
-  uint chunk_size, threshold, total, total_large;
+  uint chunk_size, threshold, total:31, use_pages:1, total_large;
 };
 
 static void lp_free(resource *);
@@ -69,6 +70,13 @@ linpool
 *lp_new(pool *p, uint blk)
 {
   linpool *m = ralloc(p, &lp_class);
+  m->p = p;
+  if (!blk)
+  {
+    m->use_pages = 1;
+    blk = page_size - lp_chunk_size;
+  }
+
   m->chunk_size = blk;
   m->threshold = 3*blk/4;
   return m;
@@ -121,7 +129,11 @@ lp_alloc(linpool *m, uint size)
 	  else
 	    {
 	      /* Need to allocate a new chunk */
-	      c = xmalloc(sizeof(struct lp_chunk) + m->chunk_size);
+	      if (m->use_pages)
+		c = alloc_page(m->p);
+	      else
+		c = xmalloc(sizeof(struct lp_chunk) + m->chunk_size);
+
 	      m->total += m->chunk_size;
 	      c->next = NULL;
 	      c->size = m->chunk_size;
@@ -258,7 +270,10 @@ lp_free(resource *r)
   for(d=m->first; d; d = c)
     {
       c = d->next;
-      xfree(d);
+      if (m->use_pages)
+	free_page(m->p, d);
+      else
+	xfree(d);
     }
   for(d=m->first_large; d; d = c)
     {
