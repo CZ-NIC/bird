@@ -558,6 +558,9 @@ ospf_shutdown(struct proto *P)
   }
   FIB_WALK_END;
 
+  if (tm_active(p->disp_timer))
+    tm_stop(p->disp_timer);
+
   return PS_DOWN;
 }
 
