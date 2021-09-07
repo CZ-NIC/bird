@@ -479,6 +479,14 @@ cli_err(sock *s, int err)
   cli_free(s->data);
 }
 
+static void
+cli_connect_err(sock *s UNUSED, int err)
+{
+  ASSERT_DIE(err);
+  if (config->cli_debug)
+    log(L_INFO "Failed to accept CLI connection: %s", strerror(err));
+}
+
 static int
 cli_connect(sock *s, uint size UNUSED)
 {
@@ -507,6 +515,7 @@ cli_init_unix(uid_t use_uid, gid_t use_gid)
   s = cli_sk = sk_new(cli_pool);
   s->type = SK_UNIX_PASSIVE;
   s->rx_hook = cli_connect;
+  s->err_hook = cli_connect_err;
   s->rbsize = 1024;
   s->fast_rx = 1;
 
