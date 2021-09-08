@@ -61,7 +61,6 @@ pool root_pool;
 
 void *alloc_sys_page(void);
 void free_sys_page(void *);
-void resource_sys_init(void);
 
 static int indent;
 
@@ -283,7 +282,6 @@ rlookup(unsigned long a)
 void
 resource_init(void)
 {
-  resource_sys_init();
   root_pool.r.class = &pool_class;
   root_pool.name = "Root";
   init_list(&root_pool.inside);
