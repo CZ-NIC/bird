@@ -339,7 +339,7 @@ rt_show_get_default_tables(struct rt_show_data *d)
   }
 
   for (int i=1; i<NET_MAX; i++)
-    if (config->def_tables[i])
+    if (config->def_tables[i] && config->def_tables[i]->table)
       rt_show_add_table(d, config->def_tables[i]->table);
 }
 
