@@ -910,7 +910,6 @@ rte_same(rte *x, rte *y)
     x->attrs == y->attrs &&
     x->pflags == y->pflags &&
     x->src == y->src &&
-    (!x->src->proto->rte_same || x->src->proto->rte_same(x, y)) &&
     rte_is_filtered(x) == rte_is_filtered(y);
 }
 
