@@ -188,12 +188,28 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
       a0.nh.iface = rt->from->ifa->iface;
     }
 
+    a0.eattrs = alloca(sizeof(ea_list) + 3*sizeof(eattr));
+    memset(a0.eattrs, 0, sizeof(ea_list)); /* Zero-ing only the ea_list header */
+    a0.eattrs->count = 3;
+    a0.eattrs->attrs[0] = (eattr) {
+      .id = EA_RIP_METRIC,
+      .type = EAF_TYPE_INT,
+      .u.data = rt_metric,
+    };
+    a0.eattrs->attrs[1] = (eattr) {
+      .id = EA_RIP_TAG,
+      .type = EAF_TYPE_INT,
+      .u.data = rt_tag,
+    };
+    a0.eattrs->attrs[2] = (eattr) {
+      .id = EA_RIP_FROM,
+      .type = EAF_TYPE_PTR,
+      .u.data = (uintptr_t) a0.nh.iface,
+    };
+
     rta *a = rta_lookup(&a0);
     rte *e = rte_get_temp(a, p->p.main_source);
 
-    e->u.rip.from = a0.nh.iface;
-    e->u.rip.metric = rt_metric;
-    e->u.rip.tag = rt_tag;
     e->pflags = EA_ID_FLAG(EA_RIP_METRIC) | EA_ID_FLAG(EA_RIP_TAG);
 
     rte_update(&p->p, en->n.addr, e);
@@ -307,8 +323,9 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
   if (new)
   {
     /* Update */
-    u32 rt_metric = ea_get_int(new->attrs->eattrs, EA_RIP_METRIC, 1);
     u32 rt_tag = ea_get_int(new->attrs->eattrs, EA_RIP_TAG, 0);
+    u32 rt_metric = ea_get_int(new->attrs->eattrs, EA_RIP_METRIC, 1);
+    struct iface *rt_from = (struct iface *) ea_get_int(new->attrs->eattrs, EA_RIP_FROM, 0);
 
     if (rt_metric > p->infinity)
     {
@@ -339,7 +356,7 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
     en->valid = RIP_ENTRY_VALID;
     en->metric = rt_metric;
     en->tag = rt_tag;
-    en->from = (new->src->proto == P) ? new->u.rip.from : NULL;
+    en->from = (new->src->proto == P) ? rt_from : NULL;
     en->iface = new->attrs->nh.iface;
     en->next_hop = new->attrs->nh.gw;
   }
@@ -1068,40 +1085,22 @@ rip_reload_routes(struct channel *C)
   rip_kick_timer(p);
 }
 
-static void
-rip_make_tmp_attrs(struct rte *rt, struct linpool *pool)
-{
-  rte_init_tmp_attrs(rt, pool, 2);
-  rte_make_tmp_attr(rt, EA_RIP_METRIC, EAF_TYPE_INT, rt->u.rip.metric);
-  rte_make_tmp_attr(rt, EA_RIP_TAG, EAF_TYPE_INT, rt->u.rip.tag);
-}
-
-static void
-rip_store_tmp_attrs(struct rte *rt, struct linpool *pool)
-{
-  rte_init_tmp_attrs(rt, pool, 2);
-  rt->u.rip.metric = rte_store_tmp_attr(rt, EA_RIP_METRIC);
-  rt->u.rip.tag = rte_store_tmp_attr(rt, EA_RIP_TAG);
-}
-
 static int
 rip_rte_better(struct rte *new, struct rte *old)
 {
-  return new->u.rip.metric < old->u.rip.metric;
-}
+  ASSERT_DIE(new->src == old->src);
+  struct rip_proto *p = (struct rip_proto *) new->src->proto;
 
-static int
-rip_rte_same(struct rte *new, struct rte *old)
-{
-  return ((new->u.rip.metric == old->u.rip.metric) &&
-	  (new->u.rip.tag == old->u.rip.tag) &&
-	  (new->u.rip.from == old->u.rip.from));
+  u32 new_metric = ea_get_int(new->attrs->eattrs, EA_RIP_METRIC, p->infinity);
+  u32 old_metric = ea_get_int(old->attrs->eattrs, EA_RIP_METRIC, p->infinity);
+
+  return new_metric < old_metric;
 }
 
 static u32
 rip_rte_igp_metric(struct rte *rt)
 {
-  return rt->u.rip.metric;
+  return ea_get_int(rt->attrs->eattrs, EA_RIP_METRIC, IGP_METRIC_UNKNOWN);
 }
 
 static void
@@ -1125,10 +1124,7 @@ rip_init(struct proto_config *CF)
   P->rt_notify = rip_rt_notify;
   P->neigh_notify = rip_neigh_notify;
   P->reload_routes = rip_reload_routes;
-  P->make_tmp_attrs = rip_make_tmp_attrs;
-  P->store_tmp_attrs = rip_store_tmp_attrs;
   P->rte_better = rip_rte_better;
-  P->rte_same = rip_rte_same;
   P->rte_igp_metric = rip_rte_igp_metric;
 
   return P;
@@ -1204,10 +1200,14 @@ rip_reconfigure(struct proto *P, struct proto_config *CF)
 static void
 rip_get_route_info(rte *rte, byte *buf)
 {
-  buf += bsprintf(buf, " (%d/%d)", rte->attrs->pref, rte->u.rip.metric);
+  struct rip_proto *p = (struct rip_proto *) rte->src->proto;
+  u32 rt_metric = ea_get_int(rte->attrs->eattrs, EA_RIP_METRIC, p->infinity);
+  u32 rt_tag = ea_get_int(rte->attrs->eattrs, EA_RIP_TAG, 0);
 
-  if (rte->u.rip.tag)
-    bsprintf(buf, " [%04x]", rte->u.rip.tag);
+  buf += bsprintf(buf, " (%d/%d)", rte->attrs->pref, rt_metric);
+
+  if (rt_tag)
+    bsprintf(buf, " [%04x]", rt_tag);
 }
 
 static int
