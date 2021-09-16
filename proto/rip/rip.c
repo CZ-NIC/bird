@@ -210,8 +210,6 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     rta *a = rta_lookup(&a0);
     rte *e = rte_get_temp(a, p->p.main_source);
 
-    e->pflags = EA_ID_FLAG(EA_RIP_METRIC) | EA_ID_FLAG(EA_RIP_TAG);
-
     rte_update(&p->p, en->n.addr, e);
   }
   else

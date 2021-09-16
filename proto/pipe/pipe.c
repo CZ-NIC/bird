@@ -77,10 +77,6 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
       a->cached = 0;
       a->hostentry = NULL;
       e = rte_get_temp(a, src);
-      e->pflags = 0;
-
-      /* Copy protocol specific embedded attributes. */
-      memcpy(&(e->u), &(new->u), sizeof(e->u));
       e->pflags = new->pflags;
 
 #ifdef CONFIG_BGP
