@@ -32,6 +32,7 @@ extern const char *bt_test_id;
 
 void bt_init(int argc, char *argv[]);
 int  bt_exit_value(void);
+void bt_reset_suite_case_timer(void);
 int bt_test_suite_base(int (*test_fn)(const void *), const char *test_id, const void *test_fn_argument, int forked, int timeout, const char *dsc, ...);
 static inline u64 bt_random(void)
 { return ((u64) random() & 0xffffffff) | ((u64) random() << 32); }
