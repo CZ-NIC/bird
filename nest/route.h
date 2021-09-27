@@ -590,7 +590,7 @@ struct rte_src {
 
 typedef struct rta {
   struct rta *next, **pprev;		/* Hash chain */
-  u32 uc;				/* Use count */
+  _Atomic u32 uc;			/* Use count */
   u32 hash_key;				/* Hash over important fields */
   struct ea_list *eattrs;		/* Extended Attribute chain */
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
@@ -862,15 +862,15 @@ static inline size_t rta_size(const rta *a) { return sizeof(rta) + sizeof(u32)*a
 #define RTA_MAX_SIZE (sizeof(rta) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
 rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */
 static inline int rta_is_cached(rta *r) { return r->cached; }
-static inline rta *rta_clone(rta *r) { r->uc++; return r; }
+static inline rta *rta_clone(rta *r) { ASSERT_DIE(0 < atomic_fetch_add_explicit(&r->uc, 1, memory_order_acq_rel)); return r; }
 void rta__free(rta *r);
-static inline void rta_free(rta *r) { if (r && !--r->uc) rta__free(r); }
+static inline void rta_free(rta *r) { if (r && (1 == atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel))) rta__free(r); }
 rta *rta_do_cow(rta *o, linpool *lp);
 static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta_do_cow(r, lp) : r; }
 static inline void rta_uncache(rta *r) { r->cached = 0; r->uc = 0; }
-void rta_dump(rta *);
+void rta_dump(const rta *);
 void rta_dump_all(void);
-void rta_show(struct cli *, rta *);
+void rta_show(struct cli *, const rta *);
 
 u32 rt_get_igp_metric(rte *);
 struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);

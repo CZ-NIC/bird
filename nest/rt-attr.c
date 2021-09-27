@@ -1281,9 +1281,16 @@ rta_lookup(rta *o)
     ea_normalize(o->eattrs);
 
   h = rta_hash(o);
+
+  RTA_LOCK;
+
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next)
     if (r->hash_key == h && rta_same(r, o))
-      return rta_clone(r);
+    {
+      atomic_fetch_add_explicit(&r->uc, 1, memory_order_acq_rel);
+      RTA_UNLOCK;
+      return r;
+    }
 
   r = rta_copy(o);
   r->hash_key = h;
@@ -1294,12 +1301,21 @@ rta_lookup(rta *o)
   if (++rta_cache_count > rta_cache_limit)
     rta_rehash();
 
+  RTA_UNLOCK;
   return r;
 }
 
 void
 rta__free(rta *a)
 {
+  RTA_LOCK;
+  if (atomic_load_explicit(&a->uc, memory_order_acquire))
+  {
+    /* Somebody has cloned this rta inbetween. This sometimes happens. */
+    RTA_UNLOCK;
+    return;
+  }
+
   ASSERT(rta_cache_count && a->cached);
   rta_cache_count--;
   *a->pprev = a->next;
@@ -1311,6 +1327,7 @@ rta__free(rta *a)
   ea_free(a->eattrs);
   a->cached = 0;
   sl_free(rta_slab(a), a);
+  RTA_UNLOCK;
 }
 
 rta *
@@ -1335,7 +1352,7 @@ rta_do_cow(rta *o, linpool *lp)
  * This function takes a &rta and dumps its contents to the debug output.
  */
 void
-rta_dump(rta *a)
+rta_dump(const rta *a)
 {
   static char *rts[] = { "", "RTS_STATIC", "RTS_INHERIT", "RTS_DEVICE",
 			 "RTS_STAT_DEV", "RTS_REDIR", "RTS_RIP",
@@ -1350,7 +1367,7 @@ rta_dump(rta *a)
     debug(" !CACHED");
   debug(" <-%I", a->from);
   if (a->dest == RTD_UNICAST)
-    for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
+    for (const struct nexthop *nh = &(a->nh); nh; nh = nh->next)
       {
 	if (ipa_nonzero(nh->gw)) debug(" ->%I", nh->gw);
 	if (nh->labels) debug(" L %d", nh->label[0]);
@@ -1377,6 +1394,8 @@ rta_dump_all(void)
   rta *a;
   uint h;
 
+  RTA_LOCK;
+
   debug("Route attribute cache (%d entries, rehash at %d):\n", rta_cache_count, rta_cache_limit);
   for(h=0; h<rta_cache_size; h++)
     for(a=rta_hash_table[h]; a; a=a->next)
@@ -1386,10 +1405,12 @@ rta_dump_all(void)
 	debug("\n");
       }
   debug("\n");
+
+  RTA_UNLOCK;
 }
 
 void
-rta_show(struct cli *c, rta *a)
+rta_show(struct cli *c, const rta *a)
 {
   cli_printf(c, -1008, "\tType: %s %s", rta_src_names[a->source], ip_scope_text(a->scope));
 
