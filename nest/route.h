@@ -15,6 +15,8 @@
 #include "lib/resource.h"
 #include "lib/net.h"
 
+#include <stdatomic.h>
+
 struct ea_list;
 struct protocol;
 struct proto;
@@ -152,6 +154,7 @@ struct rtable_config {
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
+  btime export_settle_time;		/* Delay before exports are announced */
 };
 
 typedef struct rtable {
@@ -181,12 +184,20 @@ typedef struct rtable {
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
+  byte export_used;			/* Export journal setup scheduled */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
 
   list subscribers;			/* Subscribers for notifications */
   struct timer *settle_timer;		/* Settle time for notifications */
+
+  list pending_exports;			/* List of packed struct rt_pending_export */
+  btime base_export_time;		/* When first pending export was announced */
+  struct timer *export_timer;
+
+  struct rt_pending_export *first_export;	/* First export to announce */
+  u64 next_export_seq;			/* The next export will have this ID */
 } rtable;
 
 struct rt_subscription {
@@ -203,6 +214,7 @@ struct rt_subscription {
 
 typedef struct network {
   struct rte_storage *routes;			/* Available routes for this network */
+  struct rt_pending_export *last, *first;	/* Routes with unfinished exports */
   struct fib_node n;			/* FIB flags reserved for kernel syncer */
 } net;
 
@@ -294,6 +306,7 @@ struct rt_import_hook {
     u32 withdraws_accepted;		/* Number of route withdraws accepted and processed */
   } stats;
 
+  u64 flush_seq;			/* Table export seq when the channel announced flushing */
   btime last_state_change;		/* Time of last state transition */
 
   u8 import_state;			/* IS_* */
@@ -306,7 +319,9 @@ struct rt_import_hook {
 };
 
 struct rt_pending_export {
+  struct rt_pending_export * _Atomic next;	/* Next export for the same destination */
   struct rte_storage *new, *new_best, *old, *old_best;
+  u64 seq;				/* Sequential ID (table-local) of the pending export */
 };
 
 struct rt_export_request {
@@ -333,7 +348,6 @@ struct rt_export_hook {
   rtable *table;			/* The connected table */
 
   pool *pool;
-  linpool *lp;
 
   struct rt_export_request *req;	/* The requestor */
 
@@ -345,10 +359,15 @@ struct rt_export_hook {
 
   struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
 
+  struct bmap seq_map;			/* Keep track which exports were already procesed */
+
+  struct rt_pending_export * _Atomic last_export;/* Last export processed */
+  struct rt_pending_export *rpe_next;	/* Next pending export to process */
+
   btime last_state_change;		/* Time of last state transition */
 
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
-  u8 export_state;			/* Route export state (TES_*, see below) */
+  _Atomic u8 export_state;		/* Route export state (TES_*, see below) */
 
   struct event *event;			/* Event running all the export operations */
 
@@ -383,6 +402,16 @@ static inline u8 rt_import_get_state(struct rt_import_hook *ih) { return ih ? ih
 static inline u8 rt_export_get_state(struct rt_export_hook *eh) { return eh ? eh->export_state : TES_DOWN; }
 
 void rte_import(struct rt_import_request *req, const net_addr *net, rte *new, struct rte_src *src);
+
+/* Get next rpe. If src is given, it must match. */
+struct rt_pending_export *rpe_next(struct rt_pending_export *rpe, struct rte_src *src);
+
+/* Mark the pending export processed */
+void rpe_mark_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
+
+/* Get pending export seen status */
+int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
+
 
 /* Types of route announcement, also used as flags */
 #define RA_UNDEF	0		/* Undefined RA type */

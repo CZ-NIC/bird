@@ -649,7 +649,7 @@ channel_aux_import_stopped(struct rt_import_request *req)
 static void
 channel_aux_export_stopped(struct rt_export_request *req)
 {
-  struct channel_aux_table *cat = SKIP_BACK(struct channel_aux_table, push, req);
+  struct channel_aux_table *cat = SKIP_BACK(struct channel_aux_table, get, req);
   req->hook = NULL;
 
   if (cat->refeed_pending && !cat->stop)
@@ -669,7 +669,6 @@ channel_aux_stop(struct channel_aux_table *cat)
   rt_stop_import(&cat->push, channel_aux_import_stopped);
   rt_stop_export(&cat->get, channel_aux_export_stopped);
 
-  rt_lock_table(cat->tab);
   cat->tab->deleted = channel_aux_stopped;
   cat->tab->del_data = cat;
   rt_unlock_table(cat->tab);
@@ -714,17 +713,51 @@ channel_get_log_state_change(struct rt_export_request *req, u8 state)
 
 void rte_update_direct(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 
+static int
+channel_aux_export_one_any(struct rt_export_request *req, struct rt_pending_export *rpe, rte **new, rte **old)
+{
+  struct rte_src *src = rpe->new ? rpe->new->rte.src : rpe->old->rte.src;
+  *old = RTES_OR_NULL(rpe->old);
+  struct rte_storage *new_stored;
+
+  while (rpe)
+  {
+    new_stored = rpe->new;
+    rpe_mark_seen(req->hook, rpe);
+    rpe = rpe_next(rpe, src);
+  }
+
+  *new = RTES_CLONE(new_stored, *new);
+
+  return (*new || *old) && (&new_stored->rte != *old);
+}
+
+static int
+channel_aux_export_one_best(struct rt_export_request *req, struct rt_pending_export *rpe, rte **new, rte **old)
+{
+  *old = RTES_OR_NULL(rpe->old_best);
+  struct rte_storage *new_stored;
+
+  while (rpe)
+  {
+    new_stored = rpe->new_best;
+    rpe_mark_seen(req->hook, rpe);
+    rpe = rpe_next(rpe, NULL);
+  }
+
+  *new = RTES_CLONE(new_stored, *new);
+
+  return (*new || *old) && (&new_stored->rte != *old);
+}
+
 static void
 channel_in_export_one_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe)
 {
   struct channel_aux_table *cat = SKIP_BACK(struct channel_aux_table, get, req);
 
-  if (!rpe->new && !rpe->old)
-    return;
-
-  rte n0;
-  struct rte_src *src = rpe->new ? rpe->new->rte.src : rpe->old->rte.src;
-  rte_update_direct(cat->c, net, RTES_CLONE(rpe->new, &n0), src);
+  rte n0, *new = &n0, *old;
+  if (channel_aux_export_one_any(req, rpe, &new, &old))
+    rte_update_direct(cat->c, net, new, old ? old->src : new->src);
 }
 
 static void
@@ -732,12 +765,9 @@ channel_in_export_one_best(struct rt_export_request *req, const net_addr *net, s
 {
   struct channel_aux_table *cat = SKIP_BACK(struct channel_aux_table, get, req);
 
-  if (!rpe->new && !rpe->old)
-    return;
-
-  rte n0;
-  struct rte_src *src = rpe->old_best ? rpe->old_best->rte.src : rpe->new_best->rte.src;
-  rte_update_direct(cat->c, net, RTES_CLONE(rpe->new_best, &n0), src);
+  rte n0, *new = &n0, *old;
+  if (channel_aux_export_one_best(req, rpe, &new, &old))
+    rte_update_direct(cat->c, net, new, old ? old->src : new->src);
 }
 
 static void
@@ -768,16 +798,18 @@ static void
 channel_out_export_one_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe)
 {
   struct channel_aux_table *cat = SKIP_BACK(struct channel_aux_table, get, req);
-  rte n0;
-  do_rt_notify_direct(cat->c, net, RTES_CLONE(rpe->new, &n0), RTES_OR_NULL(rpe->old));
+  rte n0, *new = &n0, *old;
+  if (channel_aux_export_one_any(req, rpe, &new, &old))
+    do_rt_notify_direct(cat->c, net, new, old);
 }
 
 static void
 channel_out_export_one_best(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe)
 {
   struct channel_aux_table *cat = SKIP_BACK(struct channel_aux_table, get, req);
-  rte n0;
-  do_rt_notify_direct(cat->c, net, RTES_CLONE(rpe->new_best, &n0), RTES_OR_NULL(rpe->old_best));
+  rte n0, *new = &n0, *old;
+  if (channel_aux_export_one_best(req, rpe, &new, &old))
+    do_rt_notify_direct(cat->c, net, new, old);
 }
 
 static void
@@ -831,6 +863,7 @@ channel_setup_in_table(struct channel *c, int best)
   c->in_table->c = c;
   c->in_table->tab = rt_setup(c->proto->pool, &cat->tab_cf);
   self_link(&c->in_table->tab->n);
+  rt_lock_table(c->in_table->tab);
 
   rt_request_import(c->in_table->tab, &c->in_table->push);
   rt_request_export(c->in_table->tab, &c->in_table->get);
@@ -872,6 +905,7 @@ channel_setup_out_table(struct channel *c)
   c->out_table->c = c;
   c->out_table->tab = rt_setup(c->proto->pool, &cat->tab_cf);
   self_link(&c->out_table->tab->n);
+  rt_lock_table(c->out_table->tab);
 
   rt_request_import(c->out_table->tab, &c->out_table->push);
   rt_request_export(c->out_table->tab, &c->out_table->get);
@@ -1051,6 +1085,8 @@ channel_request_table_feeding(struct channel *c)
 void
 channel_request_feeding(struct channel *c)
 {
+  CD(c, "Refeed requested");
+
   ASSERT(c->out_req.hook);
 
   if (c->out_table)
