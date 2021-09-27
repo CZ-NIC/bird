@@ -15,6 +15,8 @@
 #include "lib/bitmap.h"
 #include "lib/resource.h"
 #include "lib/net.h"
+#include "lib/hash.h"
+#include "lib/event.h"
 
 #include <stdatomic.h>
 
@@ -579,10 +581,10 @@ struct nexthop {
 
 struct rte_src {
   struct rte_src *next;			/* Hash chain */
-  struct proto *proto;			/* Protocol the source is based on */
+  struct rte_owner *owner;		/* Route source owner */
   u32 private_id;			/* Private ID, assigned by the protocol */
   u32 global_id;			/* Globally unique ID of the source */
-  unsigned uc;				/* Use count */
+  _Atomic u64 uc;			/* Use count */
 };
 
 
@@ -720,11 +722,57 @@ typedef struct ea_list {
 #define EALF_BISECT 2			/* Use interval bisection for searching */
 #define EALF_CACHED 4			/* Attributes belonging to cached rta */
 
-struct rte_src *rt_find_source(struct proto *p, u32 id);
-struct rte_src *rt_get_source(struct proto *p, u32 id);
-static inline void rt_lock_source(struct rte_src *src) { src->uc++; }
-static inline void rt_unlock_source(struct rte_src *src) { src->uc--; }
-void rt_prune_sources(void);
+struct rte_owner_class {
+  void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */
+  int (*rte_better)(struct rte *, struct rte *);
+  int (*rte_mergable)(struct rte *, struct rte *);
+  u32 (*rte_igp_metric)(struct rte *);
+};
+
+struct rte_owner {
+  struct rte_owner_class *class;
+  int (*rte_recalculate)(struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
+  HASH(struct rte_src) hash;
+  const char *name;
+  u32 hash_key;
+  u32 uc;
+  event_list *list;
+  event *prune;
+  event *stop;
+};
+
+DEFINE_DOMAIN(attrs);
+extern DOMAIN(attrs) attrs_domain;
+
+#define RTA_LOCK	LOCK_DOMAIN(attrs, attrs_domain)
+#define RTA_UNLOCK	UNLOCK_DOMAIN(attrs, attrs_domain)
+
+#define RTE_SRC_PU_SHIFT      44
+#define RTE_SRC_IN_PROGRESS   (1ULL << RTE_SRC_PU_SHIFT)
+
+struct rte_src *rt_get_source_o(struct rte_owner *o, u32 id);
+#define rt_get_source(p, id)  rt_get_source_o(&(p)->sources, (id))
+static inline void rt_lock_source(struct rte_src *src)
+{
+  u64 uc = atomic_fetch_add_explicit(&src->uc, 1, memory_order_acq_rel);
+  ASSERT_DIE(uc > 0);
+}
+
+static inline void rt_unlock_source(struct rte_src *src)
+{
+  u64 uc = atomic_fetch_add_explicit(&src->uc, RTE_SRC_IN_PROGRESS, memory_order_acq_rel);
+  u64 pending = uc >> RTE_SRC_PU_SHIFT;
+  uc &= RTE_SRC_IN_PROGRESS - 1;
+
+  ASSERT_DIE(uc > pending);
+  if (uc == pending + 1)
+    ev_send(src->owner->list, src->owner->prune);
+
+  atomic_fetch_sub_explicit(&src->uc, RTE_SRC_IN_PROGRESS + 1, memory_order_acq_rel);
+}
+
+void rt_init_sources(struct rte_owner *, const char *name, event_list *list);
+void rt_destroy_sources(struct rte_owner *, event *);
 
 struct ea_walk_state {
   ea_list *eattrs;			/* Ccurrent ea_list, initially set by caller */

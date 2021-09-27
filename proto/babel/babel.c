@@ -2264,7 +2264,7 @@ babel_preexport(struct channel *c, struct rte *new)
 {
   struct rta *a = new->attrs;
   /* Reject our own unreachable routes */
-  if ((a->dest == RTD_UNREACHABLE) && (new->src->proto == c->proto))
+  if ((a->dest == RTD_UNREACHABLE) && (new->src->owner == &c->proto->sources))
     return -1;
 
   return 0;
@@ -2288,7 +2288,7 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net,
     uint rt_metric = ea_get_int(new->attrs->eattrs, EA_BABEL_METRIC, 0);
     u64 rt_router_id = 0;
 
-    if (new->src->proto == P)
+    if (new->src->owner == &P->sources)
     {
       rt_seqno = ea_find(new->attrs->eattrs, EA_BABEL_SEQNO)->u.data;
       eattr *e = ea_find(new->attrs->eattrs, EA_BABEL_ROUTER_ID);
@@ -2372,6 +2372,12 @@ babel_postconfig(struct proto_config *CF)
   cf->ip6_channel = ip6 ?: ip6_sadr;
 }
 
+static struct rte_owner_class babel_rte_owner_class = {
+  .get_route_info =	babel_get_route_info,
+  .rte_better =		babel_rte_better,
+  .rte_igp_metric =	babel_rte_igp_metric,
+};
+
 static struct proto *
 babel_init(struct proto_config *CF)
 {
@@ -2385,8 +2391,8 @@ babel_init(struct proto_config *CF)
   P->if_notify = babel_if_notify;
   P->rt_notify = babel_rt_notify;
   P->preexport = babel_preexport;
-  P->rte_better = babel_rte_better;
-  P->rte_igp_metric = babel_rte_igp_metric;
+
+  P->sources.class = &babel_rte_owner_class;
 
   return P;
 }
@@ -2479,7 +2485,6 @@ babel_reconfigure(struct proto *P, struct proto_config *CF)
   return 1;
 }
 
-
 struct protocol proto_babel = {
   .name =		"Babel",
   .template =		"babel%d",
@@ -2494,6 +2499,5 @@ struct protocol proto_babel = {
   .start =		babel_start,
   .shutdown =		babel_shutdown,
   .reconfigure =	babel_reconfigure,
-  .get_route_info =	babel_get_route_info,
   .get_attr =		babel_get_attr
 };

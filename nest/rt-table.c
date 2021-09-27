@@ -367,16 +367,16 @@ rte_better(rte *new, rte *old)
     return 1;
   if (new->attrs->pref < old->attrs->pref)
     return 0;
-  if (new->src->proto->proto != old->src->proto->proto)
+  if (new->src->owner->class != old->src->owner->class)
     {
       /*
        *  If the user has configured protocol preferences, so that two different protocols
        *  have the same preference, try to break the tie by comparing addresses. Not too
        *  useful, but keeps the ordering of routes unambiguous.
        */
-      return new->src->proto->proto > old->src->proto->proto;
+      return new->src->owner->class > old->src->owner->class;
     }
-  if (better = new->src->proto->rte_better)
+  if (better = new->src->owner->class->rte_better)
     return better(new, old);
   return 0;
 }
@@ -392,10 +392,10 @@ rte_mergable(rte *pri, rte *sec)
   if (pri->attrs->pref != sec->attrs->pref)
     return 0;
 
-  if (pri->src->proto->proto != sec->src->proto->proto)
+  if (pri->src->owner->class != sec->src->owner->class)
     return 0;
 
-  if (mergable = pri->src->proto->rte_mergable)
+  if (mergable = pri->src->owner->class->rte_mergable)
     return mergable(pri, sec);
 
   return 0;
@@ -1269,10 +1269,10 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
 	{
 	  if (!old->generation && !new->generation)
 	    bug("Two protocols claim to author a route with the same rte_src in table %s: %N %s/%u:%u",
-		c->table->name, net->n.addr, old->src->proto->name, old->src->private_id, old->src->global_id);
+		c->table->name, net->n.addr, old->src->owner->name, old->src->private_id, old->src->global_id);
 
 	  log_rl(&table->rl_pipe, L_ERR "Route source collision in table %s: %N %s/%u:%u",
-		c->table->name, net->n.addr, old->src->proto->name, old->src->private_id, old->src->global_id);
+		c->table->name, net->n.addr, old->src->owner->name, old->src->private_id, old->src->global_id);
 	}
 
 	  if (new && rte_same(old, new))
@@ -1341,8 +1341,8 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
       /* If routes are not sorted, find the best route and move it on
 	 the first position. There are several optimized cases. */
 
-      if (src->proto->rte_recalculate &&
-	  src->proto->rte_recalculate(table, net, new_stored ? &new_stored->rte : NULL, old, old_best))
+      if (src->owner->rte_recalculate &&
+	  src->owner->rte_recalculate(table, net, new_stored ? &new_stored->rte : NULL, old, old_best))
 	goto do_recalculate;
 
       if (new_stored && rte_better(&new_stored->rte, old_best))
@@ -2237,8 +2237,6 @@ again:
   /* state change 2->0, 3->1 */
   tab->prune_state &= 1;
 
-  rt_prune_sources();
-
   uint flushed_channels = 0;
 
   /* Close flushed channels */
@@ -2409,7 +2407,6 @@ rt_export_cleanup(void *data)
 
 done:;
   struct rt_import_hook *ih; node *x;
-  _Bool imports_stopped = 0;
   WALK_LIST2_DELSAFE(ih, n, x, tab->imports, n)
     if (ih->import_state == TIS_WAITING)
       if (!first_export || (first_export->seq >= ih->flush_seq))
@@ -2419,16 +2416,8 @@ done:;
 	rem_node(&ih->n);
 	mb_free(ih);
 	rt_unlock_table(tab);
-	imports_stopped = 1;
       }
 
-  if (imports_stopped)
-  {
-    if (config->table_debug)
-      log(L_TRACE "%s: Sources pruning routine requested", tab->name);
-
-    rt_prune_sources();
-  }
 
   if (EMPTY_LIST(tab->pending_exports) && tm_active(tab->export_timer))
     tm_stop(tab->export_timer);
@@ -2610,8 +2599,8 @@ rt_next_hop_update_net(rtable *tab, net *n)
 
 	/* Call a pre-comparison hook */
 	/* Not really an efficient way to compute this */
-	if (e->rte.src->proto->rte_recalculate)
-	  e->rte.src->proto->rte_recalculate(tab, n, &new->rte, &e->rte, &old_best->rte);
+	if (e->rte.src->owner->rte_recalculate)
+	  e->rte.src->owner->rte_recalculate(tab, n, &new->rte, &e->rte, &old_best->rte);
 
 	updates[pos++] = (struct rte_multiupdate) {
 	  .old = e,
@@ -3083,8 +3072,8 @@ rt_get_igp_metric(rte *rt)
   if (rt->attrs->source == RTS_DEVICE)
     return 0;
 
-  if (rt->src->proto->rte_igp_metric)
-    return rt->src->proto->rte_igp_metric(rt);
+  if (rt->src->owner->class->rte_igp_metric)
+    return rt->src->owner->class->rte_igp_metric(rt);
 
   return IGP_METRIC_UNKNOWN;
 }

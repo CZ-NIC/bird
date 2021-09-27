@@ -523,6 +523,7 @@ rta_resolvable(rta *a)
   return a->dest == RTD_UNICAST;
 }
 
+extern struct rte_owner_class bgp_rte_owner_class;
 
 #ifdef LOCAL_DEBUG
 #define BGP_FORCE_DEBUG 1
@@ -593,6 +594,12 @@ int bgp_preexport(struct channel *, struct rte *);
 int bgp_get_attr(const struct eattr *e, byte *buf, int buflen);
 void bgp_get_route_info(struct rte *, byte *);
 int bgp_total_aigp_metric_(rta *a, u64 *metric, const struct adata **ad);
+
+static inline struct bgp_proto *bgp_rte_proto(struct rte *rte)
+{
+  return (rte->src->owner->class == &bgp_rte_owner_class) ?
+    SKIP_BACK(struct bgp_proto, p.sources, rte->src->owner) : NULL;
+}
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)

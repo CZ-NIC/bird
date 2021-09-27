@@ -472,9 +472,9 @@ mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
 
 #ifdef CONFIG_BGP
   /* Find peer index */
-  if (r->src->proto->proto == &proto_bgp)
+  struct bgp_proto *p = bgp_rte_proto(r);
+  if (p)
   {
-    struct bgp_proto *p = (void *) r->src->proto;
     struct mrt_peer_entry *n =
       HASH_FIND(s->peer_hash, PEER, p->remote_id, p->remote_as, p->remote_ip);
 

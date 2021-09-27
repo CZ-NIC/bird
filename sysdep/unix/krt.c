@@ -294,8 +294,9 @@ krt_rte_better(rte *a, rte *b)
 static void
 krt_learn_rte(struct krt_proto *p, rte *e)
 {
-  e->src = rt_get_source(&p->p, krt_metric(e));
+  struct rte_src *src = e->src = rt_get_source(&p->p, krt_metric(e));
   rte_update(p->p.main_channel, e->net, e, e->src);
+  rt_unlock_source(src);
 }
 
 static void
@@ -674,7 +675,7 @@ krt_scan_timer_kick(struct krt_proto *p)
 static int
 krt_preexport(struct channel *c, rte *e)
 {
-  if (e->src->proto == c->proto)
+  if (e->src->owner == &c->proto->sources)
     return -1;
 
   if (!krt_capable(e))

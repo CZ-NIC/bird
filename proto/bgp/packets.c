@@ -1339,6 +1339,8 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
 {
   if (path_id != s->last_id)
   {
+    rt_unlock_source(s->last_src);
+
     s->last_src = rt_get_source(&s->proto->p, path_id);
     s->last_id = path_id;
 
@@ -2421,6 +2423,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   s->last_id = 0;
   s->last_src = s->proto->p.main_source;
+  rt_lock_source(s->last_src);
 
   /*
    * IPv4 BGP and MP-BGP may be used together in one update, therefore we do not
@@ -2451,6 +2454,8 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   rta_free(s->cached_rta);
   s->cached_rta = NULL;
+
+  rt_unlock_source(s->last_src);
 }
 
 static void
