@@ -245,6 +245,8 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   channel_init_limit(c, &c->in_limit, PLD_IN, &cf->in_limit);
   channel_init_limit(c, &c->out_limit, PLD_OUT, &cf->out_limit);
 
+  c->rte_update_pool = lp_new_default(proto_pool);
+
   c->net_type = cf->net_type;
   c->ra_mode = cf->ra_mode;
   c->preference = cf->preference;

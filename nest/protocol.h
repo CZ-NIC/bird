@@ -509,6 +509,9 @@ struct channel {
   u8 limit_actions[PLD_MAX];		/* Limit actions enum */
   u8 limit_active;			/* Flags for active limits */
 
+  linpool *rte_update_pool;
+  uint rte_update_nest_cnt;
+
   struct channel_import_stats {
     /* Import - from protocol to core */
     u32 updates_received;		/* Number of route updates received */
