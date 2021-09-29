@@ -228,7 +228,7 @@ mrt_next_table_(rtable *tab, rtable *tab_ptr, const char *pattern)
        NODE_VALID(tn);
        tn = tn->next)
   {
-    tab = SKIP_BACK(struct rtable, n, tn);
+    tab = SKIP_BACK(rtable, n, tn);
     if (patmatch(pattern, tab->name) &&
 	((tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6)))
       return tab;
@@ -243,13 +243,21 @@ mrt_next_table(struct mrt_table_dump_state *s)
   rtable *tab = mrt_next_table_(s->table, s->table_ptr, s->table_expr);
 
   if (s->table)
-    rt_unlock_table(s->table);
+  {
+    RT_LOCK(s->table);
+    rt_unlock_table(RT_PRIV(s->table));
+    RT_UNLOCK(s->table);
+  }
 
   s->table = tab;
   s->ipv4 = tab ? (tab->addr_type == NET_IP4) : 0;
 
   if (s->table)
-    rt_lock_table(s->table);
+  {
+    RT_LOCK(s->table);
+    rt_lock_table(RT_PRIV(s->table));
+    RT_UNLOCK(s->table);
+  }
 
   return s->table;
 }
@@ -573,14 +581,23 @@ mrt_table_dump_init(pool *pp)
 static void
 mrt_table_dump_free(struct mrt_table_dump_state *s)
 {
-  if (s->table_open)
-    FIB_ITERATE_UNLINK(&s->fit, &s->table->fib);
-
   if (s->table)
-    rt_unlock_table(s->table);
+  {
+    RT_LOCK(s->table);
+
+    if (s->table_open)
+      FIB_ITERATE_UNLINK(&s->fit, &RT_PRIV(s->table)->fib);
+
+    rt_unlock_table(RT_PRIV(s->table));
+    RT_UNLOCK(s->table);
+  }
 
   if (s->table_ptr)
-    rt_unlock_table(s->table_ptr);
+  {
+    RT_LOCK(s->table_ptr);
+    rt_unlock_table(RT_PRIV(s->table_ptr));
+    RT_UNLOCK(s->table_ptr);
+  }
 
   config_del_obstacle(s->config);
 
@@ -596,8 +613,14 @@ mrt_table_dump_step(struct mrt_table_dump_state *s)
   s->max = 2048;
   s->bws = &bws;
 
+  rtable_private *tab;
+
   if (s->table_open)
+  {
+    RT_LOCK(s->table);
+    tab = RT_PRIV(s->table);
     goto step;
+  }
 
   while (mrt_next_table(s))
   {
@@ -606,15 +629,18 @@ mrt_table_dump_step(struct mrt_table_dump_state *s)
 
     mrt_peer_table_dump(s);
 
-    FIB_ITERATE_INIT(&s->fit, &s->table->fib);
+    RT_LOCK(s->table);
+    tab = RT_PRIV(s->table);
+    FIB_ITERATE_INIT(&s->fit, &tab->fib);
     s->table_open = 1;
 
   step:
-    FIB_ITERATE_START(&s->table->fib, &s->fit, net, n)
+    FIB_ITERATE_START(&tab->fib, &s->fit, net, n)
     {
       if (s->max < 0)
       {
 	FIB_ITERATE_PUT(&s->fit);
+	RT_UNLOCK(s->table);
 	return 0;
       }
 
@@ -634,6 +660,7 @@ mrt_table_dump_step(struct mrt_table_dump_state *s)
     mrt_peer_table_flush(s);
   }
 
+  RT_UNLOCK(s->table);
   return 1;
 }
 
@@ -661,7 +688,11 @@ mrt_timer(timer *t)
   s->always_add_path = cf->always_add_path;
 
   if (s->table_ptr)
-    rt_lock_table(s->table_ptr);
+  {
+    RT_LOCK(s->table_ptr);
+    rt_lock_table(RT_PRIV(s->table_ptr));
+    RT_UNLOCK(s->table_ptr);
+  }
 
   p->table_dump = s;
   ev_schedule(p->event);
@@ -734,7 +765,11 @@ mrt_dump_cmd(struct mrt_dump_data *d)
   s->filename = d->filename;
 
   if (s->table_ptr)
-    rt_lock_table(s->table_ptr);
+  {
+    RT_LOCK(s->table_ptr);
+    rt_lock_table(RT_PRIV(s->table_ptr));
+    RT_UNLOCK(s->table_ptr);
+  }
 
   this_cli->cont = mrt_dump_cont;
   this_cli->cleanup = mrt_dump_cleanup;

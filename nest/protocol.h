@@ -18,7 +18,6 @@
 
 struct iface;
 struct ifa;
-struct rtable;
 struct rte;
 struct neighbor;
 struct rta;
@@ -207,7 +206,7 @@ struct proto {
    *	   rte_remove	Called whenever a rte is removed from the routing table.
    */
 
-  int (*rte_recalculate)(struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
+  int (*rte_recalculate)(rtable *, struct network *, struct rte *, struct rte *, struct rte *);
   int (*rte_better)(struct rte *, struct rte *);
   int (*rte_mergable)(struct rte *, struct rte *);
   void (*rte_insert)(struct network *, struct rte *);
@@ -496,7 +495,7 @@ struct channel {
   const struct channel_class *channel;
   struct proto *proto;
 
-  struct rtable *table;
+  rtable *table;
   const struct filter *in_filter;	/* Input filter */
   const struct filter *out_filter;	/* Output filter */
   struct bmap export_map;		/* Keeps track which routes were really exported */
@@ -556,6 +555,7 @@ struct channel {
   btime last_state_change;		/* Time of last state transition */
 
   struct channel_aux_table *in_table;	/* Internal table for received routes */
+  struct event in_stopped;		/* Import stop callback */
 
   u8 reload_pending;			/* Reloading and another reload is scheduled */
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
@@ -570,6 +570,7 @@ struct channel_aux_table {
   struct channel *c;
   struct rt_import_request push;
   struct rt_export_request get;
+  event push_stopped;
   rtable *tab;
   event *stop;
   u8 refeed_pending;
@@ -633,7 +634,7 @@ struct channel_config *proto_cf_find_channel(struct proto_config *p, uint net_ty
 static inline struct channel_config *proto_cf_main_channel(struct proto_config *pc)
 { return proto_cf_find_channel(pc, pc->net_type); }
 
-struct channel *proto_find_channel_by_table(struct proto *p, struct rtable *t);
+struct channel *proto_find_channel_by_table(struct proto *p, rtable *t);
 struct channel *proto_find_channel_by_name(struct proto *p, const char *n);
 struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);

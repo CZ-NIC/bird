@@ -2140,7 +2140,7 @@ use_deterministic_med(struct rte_storage *r)
 }
 
 int
-bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
+bgp_rte_recalculate(rtable_private *table, net *net, rte *new, rte *old, rte *old_best)
 {
   rte *key = new ? new : old;
   u32 lpref = key->attrs->pref;

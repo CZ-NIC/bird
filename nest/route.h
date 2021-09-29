@@ -146,30 +146,21 @@ void fit_copy(struct fib *f, struct fib_iterator *dst, struct fib_iterator *src)
  *	It's guaranteed that there is at most one RTE for every (prefix,proto) pair.
  */
 
-struct rtable_config {
-  node n;
-  char *name;
-  struct config *config;
-  struct rtable *table;
-  struct proto_config *krt_attached;	/* Kernel syncer attached to this table */
-  uint addr_type;			/* Type of address data stored in table (NET_*) */
-  int gc_max_ops;			/* Maximum number of operations before GC is run */
-  int gc_min_time;			/* Minimum time between two consecutive GC runs */
-  byte sorted;				/* Routes of network are sorted according to rte_better() */
-  btime min_settle_time;		/* Minimum settle time for notifications */
-  btime max_settle_time;		/* Maximum settle time for notifications */
-  btime export_settle_time;		/* Delay before exports are announced */
-  uint cork_limit;			/* Amount of routes to be pending on export to cork imports */
-};
+typedef struct rtable_private {
+#define RTABLE_PUBLIC \
+  resource r; \
+  node n;				/* Node in list of all tables */ \
+  struct birdloop *loop;		/* This loop runs the table */ \
+  char *name;				/* Name of this table */ \
+  uint addr_type;			/* Type of address data stored in table (NET_*) */ \
+  struct rtable_config *config;		/* Configuration of this table */ \
+  struct event *nhu_event;		/* Event to update next hops */ \
+  _Atomic byte nhu_state;		/* Next Hop Update state */ \
 
-typedef struct rtable {
-  resource r;
-  node n;				/* Node in list of all tables */
+  RTABLE_PUBLIC;
   pool *rp;				/* Resource pool to allocate everything from, including itself */
   struct slab *rte_slab;		/* Slab to allocate route objects */
   struct fib fib;
-  char *name;				/* Name of this table */
-  uint addr_type;			/* Type of address data stored in table (NET_*) */
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
 
@@ -178,18 +169,15 @@ typedef struct rtable {
 
   struct hmap id_map;
   struct hostcache *hostcache;
-  struct rtable_config *config;		/* Configuration of this table */
   struct event *prune_event;		/* Event to prune abandoned routes */
   struct event *ec_event;		/* Event to prune finished exports */
   struct event *hcu_event;		/* Event to update host cache */
-  struct event *nhu_event;		/* Event to update next hops */
   struct event *delete_event;		/* Event to delete the table */
   btime last_rt_change;			/* Last time when route changed */
   btime base_settle_time;		/* Start time of rtable settling interval */
   btime gc_time;			/* Time of last GC */
   int gc_counter;			/* Number of operations since last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
-  byte nhu_state;			/* Next Hop Update state */
 
   byte cork_active;			/* Congestion control activated */
 
@@ -208,7 +196,34 @@ typedef struct rtable {
 
   struct rt_pending_export *first_export;	/* First export to announce */
   u64 next_export_seq;			/* The next export will have this ID */
+} rtable_private;
+
+typedef union {
+  struct { RTABLE_PUBLIC };
+  rtable_private priv;
 } rtable;
+
+#define RT_LOCK(tab)	({ birdloop_enter((tab)->loop); &(tab)->priv; })
+#define RT_UNLOCK(tab)	birdloop_leave((tab)->loop)
+#define RT_PRIV(tab)	({ ASSERT_DIE(birdloop_inside((tab)->loop)); &(tab)->priv; })
+
+#define RT_LOCKED(tpub, tpriv)	for (rtable_private *tpriv = RT_LOCK(tpub); tpriv; RT_UNLOCK(tpriv), (tpriv = NULL))
+
+struct rtable_config {
+  node n;
+  char *name;
+  struct config *config;
+  rtable *table;
+  struct proto_config *krt_attached;	/* Kernel syncer attached to this table */
+  uint addr_type;			/* Type of address data stored in table (NET_*) */
+  int gc_max_ops;			/* Maximum number of operations before GC is run */
+  int gc_min_time;			/* Minimum time between two consecutive GC runs */
+  byte sorted;				/* Routes of network are sorted according to rte_better() */
+  btime min_settle_time;		/* Minimum settle time for notifications */
+  btime max_settle_time;		/* Maximum settle time for notifications */
+  btime export_settle_time;		/* Delay before exports are announced */
+  uint cork_limit;			/* Amount of routes to be pending on export to cork imports */
+};
 
 struct rt_subscription {
   node n;
@@ -244,7 +259,7 @@ struct hostentry {
   ip_addr addr;				/* IP address of host, part of key */
   ip_addr link;				/* (link-local) IP address of host, used as gw
 					   if host is directly attached */
-  struct rtable *tab;			/* Dependent table, part of key */
+  rtable *tab;				/* Dependent table, part of key */
   struct hostentry *next;		/* Next in hash chain */
   unsigned hash_key;			/* Hash key */
   unsigned uc;				/* Use count */
@@ -324,7 +339,7 @@ struct rt_import_hook {
   u8 stale_pruned;			/* Last prune finished when this value was set at stale_valid */
   u8 stale_pruning;			/* Last prune started when this value was set at stale_valid */
 
-  void (*stopped)(struct rt_import_request *);	/* Stored callback when import is stopped */
+  struct event *stopped;		/* Event to run when import is stopped */
 };
 
 struct rt_pending_export {
@@ -405,7 +420,7 @@ extern struct event_cork rt_cork;
 void rt_request_import(rtable *tab, struct rt_import_request *req);
 void rt_request_export(rtable *tab, struct rt_export_request *req);
 
-void rt_stop_import(struct rt_import_request *, void (*stopped)(struct rt_import_request *));
+void rt_stop_import(struct rt_import_request *, struct event *stopped);
 void rt_stop_export(struct rt_export_request *, void (*stopped)(struct rt_export_request *));
 
 const char *rt_import_state_name(u8 state);
@@ -480,27 +495,27 @@ struct config;
 void rt_init(void);
 void rt_preconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
-void rt_lock_table(rtable *);
-void rt_unlock_table(rtable *);
+void rt_lock_table(rtable_private *);
+void rt_unlock_table(rtable_private *);
 void rt_subscribe(rtable *tab, struct rt_subscription *s);
 void rt_unsubscribe(struct rt_subscription *s);
 rtable *rt_setup(pool *, struct rtable_config *);
 
-static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
-static inline net *net_find_valid(rtable *tab, const net_addr *addr)
+static inline net *net_find(rtable_private *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
+static inline net *net_find_valid(rtable_private *tab, const net_addr *addr)
 { net *n = net_find(tab, addr); return (n && n->routes && rte_is_valid(&n->routes->rte)) ? n : NULL; }
-static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
-void *net_route(rtable *tab, const net_addr *n);
+static inline net *net_get(rtable_private *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
+void *net_route(rtable_private *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
-int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
+int rt_examine(rtable_private *t, net_addr *a, struct channel *c, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, rte ** feed, uint count, linpool *pool, int silent);
 
 void rt_refresh_begin(struct rt_import_request *);
 void rt_refresh_end(struct rt_import_request *);
-void rt_schedule_prune(rtable *t);
+void rt_schedule_prune(rtable_private *t);
 void rte_dump(struct rte_storage *);
-void rte_free(struct rte_storage *, rtable *);
-struct rte_storage *rte_store(const rte *, net *net, rtable *);
+void rte_free(struct rte_storage *, rtable_private *);
+struct rte_storage *rte_store(const rte *, net *net, rtable_private *);
 void rt_dump(rtable *);
 void rt_dump_all(void);
 void rt_dump_hooks(rtable *);
@@ -591,7 +606,7 @@ struct rte_src {
 
 typedef struct rta {
   struct rta *next, **pprev;		/* Hash chain */
-  _Atomic u32 uc;			/* Use count */
+  u32 uc;				/* Use count */
   u32 hash_key;				/* Hash over important fields */
   struct ea_list *eattrs;		/* Extended Attribute chain */
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
@@ -732,7 +747,7 @@ struct rte_owner_class {
 
 struct rte_owner {
   struct rte_owner_class *class;
-  int (*rte_recalculate)(struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
+  int (*rte_recalculate)(rtable_private *, struct network *, struct rte *, struct rte *, struct rte *);
   HASH(struct rte_src) hash;
   const char *name;
   u32 hash_key;
@@ -863,9 +878,20 @@ static inline size_t rta_size(const rta *a) { return sizeof(rta) + sizeof(u32)*a
 #define RTA_MAX_SIZE (sizeof(rta) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
 rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */
 static inline int rta_is_cached(rta *r) { return r->cached; }
-static inline rta *rta_clone(rta *r) { ASSERT_DIE(0 < atomic_fetch_add_explicit(&r->uc, 1, memory_order_acq_rel)); return r; }
+static inline rta *rta_clone(rta *r) {
+  RTA_LOCK;
+  r->uc++;
+  RTA_UNLOCK;
+  return r;
+}
+
 void rta__free(rta *r);
-static inline void rta_free(rta *r) { if (r && (1 == atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel))) rta__free(r); }
+static inline void rta_free(rta *r) {
+  RTA_LOCK;
+  if (r && !--r->uc)
+    rta__free(r);
+  RTA_UNLOCK;
+}
 rta *rta_do_cow(rta *o, linpool *lp);
 static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta_do_cow(r, lp) : r; }
 static inline void rta_uncache(rta *r) { r->cached = 0; r->uc = 0; }

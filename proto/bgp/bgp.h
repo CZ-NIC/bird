@@ -586,7 +586,7 @@ void bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *bp);
 
 int bgp_rte_better(struct rte *, struct rte *);
 int bgp_rte_mergable(rte *pri, rte *sec);
-int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
+int bgp_rte_recalculate(rtable_private *table, net *net, rte *new, rte *old, rte *old_best);
 void bgp_rte_modify_stale(struct rt_export_request *, const net_addr *, struct rt_pending_export *, rte **, uint);
 u32 bgp_rte_igp_metric(struct rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old);
