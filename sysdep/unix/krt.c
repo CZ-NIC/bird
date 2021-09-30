@@ -566,7 +566,7 @@ krt_export_net(struct krt_proto *p, net *net)
   const struct filter *filter = c->out_filter;
 
   if (c->ra_mode == RA_MERGED)
-    return rt_export_merged(c, net, krt_filter_lp, 1);
+    return rt_export_merged_show(c, net, krt_filter_lp);
 
   static _Thread_local rte rt;
   rt = net->routes->rte;

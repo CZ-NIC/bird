@@ -335,7 +335,7 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
-rte *rt_export_merged(struct channel *c, net *net, linpool *pool, int silent);
+rte *rt_export_merged_show(struct channel *c, net *n, linpool *pool);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
 void rt_modify_stale(rtable *t, struct channel *c);
