@@ -1245,8 +1245,7 @@ rta_do_cow(rta *o, linpool *lp)
       memcpy(*nhn, nho, nexthop_size(nho));
       nhn = &((*nhn)->next);
     }
-  r->cached = 0;
-  r->uc = 0;
+  rta_uncache(r);
   return r;
 }
 

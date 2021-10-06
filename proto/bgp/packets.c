@@ -2695,7 +2695,7 @@ bgp_rx_route_refresh(struct bgp_conn *conn, byte *pkt, uint len)
   {
   case BGP_RR_REQUEST:
     BGP_TRACE(D_PACKETS, "Got ROUTE-REFRESH");
-    rt_refeed_channel(&c->c);
+    channel_request_feeding(&c->c);
     break;
 
   case BGP_RR_BEGIN:

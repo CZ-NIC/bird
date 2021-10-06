@@ -2267,30 +2267,44 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
     return !old_suppressed;
 }
 
-rte *
-bgp_rte_modify_stale(struct rte *r, struct linpool *pool)
+void
+bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *rpe UNUSED, rte **feed, uint count)
 {
-  eattr *ea = ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));
-  const struct adata *ad = ea ? ea->u.ptr : NULL;
-  uint flags = ea ? ea->flags : BAF_PARTIAL;
+  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, stale_feed, req);
 
-  if (ad && int_set_contains(ad, BGP_COMM_NO_LLGR))
-    return NULL;
+  do {
+    rte *r = feed[--count];
+    if (r->sender != c->c.in_req.hook)
+      continue;
 
-  if (ad && int_set_contains(ad, BGP_COMM_LLGR_STALE))
-    return r;
+    /* A new route, do not mark as stale */
+    if (r->stale_cycle == c->c.in_req.hook->stale_set)
+      continue;
 
-  rta *a = rta_do_cow(r->attrs, pool);
-  
-  _Thread_local static rte e0;
-  e0 = *r;
-  e0.attrs = a;
+    eattr *ea = ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));
+    const struct adata *ad = ea ? ea->u.ptr : NULL;
+    uint flags = ea ? ea->flags : BAF_PARTIAL;
 
-  bgp_set_attr_ptr(&(a->eattrs), pool, BA_COMMUNITY, flags,
-		   int_set_add(pool, ad, BGP_COMM_LLGR_STALE));
-  e0.pflags |= BGP_REF_STALE;
+    rte e0 = *r;
+    e0.flags |= REF_USE_STALE;
 
-  return &e0;
+    if (ad && int_set_contains(ad, BGP_COMM_NO_LLGR))
+      rte_import(&c->c.in_req, n, NULL, r->src);
+
+    else if (ad && int_set_contains(ad, BGP_COMM_LLGR_STALE))
+      rte_import(&c->c.in_req, n, &e0, r->src);
+
+    else {
+      rta *a = e0.attrs = rta_do_cow(r->attrs, bgp_linpool);
+
+      bgp_set_attr_ptr(&(a->eattrs), bgp_linpool, BA_COMMUNITY, flags,
+	  int_set_add(bgp_linpool, ad, BGP_COMM_LLGR_STALE));
+      e0.pflags |= BGP_REF_STALE;
+
+      rte_import(&c->c.in_req, n, &e0, r->src);
+      lp_flush(bgp_linpool);
+    }
+  } while (count);
 }
 
 

@@ -285,249 +285,24 @@ krt_metric(rte *a)
 }
 
 static inline int
-krt_same_key(rte *a, rte *b)
+krt_rte_better(rte *a, rte *b)
 {
-  return (krt_metric(a) == krt_metric(b));
-}
-
-static inline int
-krt_uptodate(rte *a, rte *b)
-{
-  return (a->attrs == b->attrs);
-}
-
-static void
-krt_learn_announce_update(struct krt_proto *p, rte *e)
-{
-  rte e0 = {
-    .attrs = rta_clone(e->attrs),
-    .src = p->p.main_source,
-  };
-
-  rte_update(p->p.main_channel, e->net, &e0, p->p.main_source);
-}
-
-static void
-krt_learn_announce_delete(struct krt_proto *p, net_addr *n)
-{
-  rte_update(p->p.main_channel, n, NULL, p->p.main_source);
+  return (krt_metric(a) > krt_metric(b));
 }
 
 /* Called when alien route is discovered during scan */
 static void
-krt_learn_scan(struct krt_proto *p, rte *e)
+krt_learn_rte(struct krt_proto *p, rte *e)
 {
-  net *n = net_get(p->krt_table, e->net);
-  struct rte_storage *m, **mm;
-
-  struct rte_storage *ee = rte_store(e, n, p->krt_table);
-
-  for(mm = &n->routes; m = *mm; mm = &m->next)
-    if (krt_same_key(&m->rte, e))
-      break;
-  if (m)
-    {
-      if (krt_uptodate(&m->rte, e))
-	{
-	  krt_trace_in_rl(&rl_alien, p, e, "[alien] seen");
-	  rte_free(ee, p->krt_table);
-	  m->rte.pflags |= KRT_REF_SEEN;
-	}
-      else
-	{
-	  krt_trace_in(p, e, "[alien] updated");
-	  *mm = m->next;
-	  rte_free(m, p->krt_table);
-	  m = NULL;
-	}
-    }
-  else
-    krt_trace_in(p, e, "[alien] created");
-
-  if (!m)
-    {
-      ee->next = n->routes;
-      n->routes = ee;
-      ee->rte.pflags |= KRT_REF_SEEN;
-    }
-}
-
-static void
-krt_learn_prune(struct krt_proto *p)
-{
-  struct fib *fib = &p->krt_table->fib;
-  struct fib_iterator fit;
-
-  KRT_TRACE(p, D_EVENTS, "Pruning inherited routes");
-
-  FIB_ITERATE_INIT(&fit, fib);
-again:
-  FIB_ITERATE_START(fib, &fit, net, n)
-    {
-      struct rte_storage *e, **ee, *best, **pbest, *old_best;
-
-      /*
-       * Note that old_best may be NULL even if there was an old best route in
-       * the previous step, because it might be replaced in krt_learn_scan().
-       * But in that case there is a new valid best route.
-       */
-
-      old_best = NULL;
-      best = NULL;
-      pbest = NULL;
-      ee = &n->routes;
-      while (e = *ee)
-	{
-	  if (e->rte.pflags & KRT_REF_BEST)
-	    old_best = e;
-
-	  if (!(e->rte.pflags & KRT_REF_SEEN))
-	    {
-	      *ee = e->next;
-	      rte_free(e, p->krt_table);
-	      continue;
-	    }
-
-	  if (!best || krt_metric(&best->rte) > krt_metric(&e->rte))
-	    {
-	      best = e;
-	      pbest = ee;
-	    }
-
-	  e->rte.pflags &= ~(KRT_REF_SEEN | KRT_REF_BEST);
-	  ee = &e->next;
-	}
-      if (!n->routes)
-	{
-	  DBG("%I/%d: deleting\n", n->n.prefix, n->n.pxlen);
-	  if (old_best)
-	    krt_learn_announce_delete(p, n->n.addr);
-
-	  FIB_ITERATE_PUT(&fit);
-	  fib_delete(fib, n);
-	  goto again;
-	}
-
-      best->rte.pflags |= KRT_REF_BEST;
-      *pbest = best->next;
-      best->next = n->routes;
-      n->routes = best;
-
-      if ((best != old_best) || p->reload)
-	{
-	  DBG("%I/%d: announcing (metric=%d)\n", n->n.prefix, n->n.pxlen, krt_metric(&best->rte));
-	  krt_learn_announce_update(p, &best->rte);
-	}
-      else
-	DBG("%I/%d: uptodate (metric=%d)\n", n->n.prefix, n->n.pxlen, krt_metric(&best->rte));
-    }
-  FIB_ITERATE_END;
-
-  p->reload = 0;
-}
-
-static void
-krt_learn_async(struct krt_proto *p, rte *e, int new)
-{
-  net *n = net_get(p->krt_table, e->net);
-  struct rte_storage *g, **gg, *best, **bestp, *old_best;
-
-  ASSERT(!e->attrs->cached);
-  e->attrs->pref = p->p.main_channel->preference;
-
-  struct rte_storage *ee = rte_store(e, n, p->krt_table);
-
-  old_best = n->routes;
-  for(gg=&n->routes; g = *gg; gg = &g->next)
-    if (krt_same_key(&g->rte, e))
-      break;
-  if (new)
-    {
-      if (g)
-	{
-	  if (krt_uptodate(&g->rte, e))
-	    {
-	      krt_trace_in(p, e, "[alien async] same");
-	      rte_free(ee, p->krt_table);
-	      return;
-	    }
-	  krt_trace_in(p, e, "[alien async] updated");
-	  *gg = g->next;
-	  rte_free(g, p->krt_table);
-	}
-      else
-	krt_trace_in(p, e, "[alien async] created");
-
-      ee->next = n->routes;
-      n->routes = ee;
-    }
-  else if (!g)
-    {
-      krt_trace_in(p, e, "[alien async] delete failed");
-      rte_free(ee, p->krt_table);
-      return;
-    }
-  else
-    {
-      krt_trace_in(p, e, "[alien async] removed");
-      *gg = g->next;
-      rte_free(ee, p->krt_table);
-      rte_free(g, p->krt_table);
-    }
-  best = n->routes;
-  bestp = &n->routes;
-  for(gg=&n->routes; g=*gg; gg=&g->next)
-  {
-    if (krt_metric(&best->rte) > krt_metric(&g->rte))
-      {
-	best = g;
-	bestp = gg;
-      }
-
-    g->rte.pflags &= ~KRT_REF_BEST;
-  }
-
-  if (best)
-    {
-      best->rte.pflags |= KRT_REF_BEST;
-      *bestp = best->next;
-      best->next = n->routes;
-      n->routes = best;
-    }
-
-  if (best != old_best)
-    {
-      DBG("krt_learn_async: distributing change\n");
-      if (best)
-	krt_learn_announce_update(p, &best->rte);
-      else
-	krt_learn_announce_delete(p, n->n.addr);
-    }
+  e->src = rt_get_source(&p->p, krt_metric(e));
+  rte_update(p->p.main_channel, e->net, e, e->src);
 }
 
 static void
 krt_learn_init(struct krt_proto *p)
 {
   if (KRT_CF->learn)
-  {
-    struct rtable_config *cf = mb_allocz(p->p.pool, sizeof(struct rtable_config));
-    cf->name = "Inherited";
-    cf->addr_type = p->p.net_type;
-    cf->internal = 1;
-
-    p->krt_table = rt_setup(p->p.pool, cf);
-  }
-}
-
-static void
-krt_dump(struct proto *P)
-{
-  struct krt_proto *p = (struct krt_proto *) P;
-
-  if (!KRT_CF->learn)
-    return;
-  debug("KRT: Table of inheritable routes\n");
-  rt_dump(p->krt_table);
+    channel_setup_in_table(p->p.main_channel, 1);
 }
 
 #endif
@@ -547,7 +322,7 @@ rte_feed_count(net *n)
 {
   uint count = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTE_OR_NULL(e)))
+    if (rte_is_valid(RTES_OR_NULL(e)))
       count++;
   return count;
 }
@@ -557,7 +332,7 @@ rte_feed_obtain(net *n, rte **feed, uint count)
 {
   uint i = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTE_OR_NULL(e)))
+    if (rte_is_valid(RTES_OR_NULL(e)))
     {
       ASSERT_DIE(i < count);
       feed[i++] = &e->rte;
@@ -643,7 +418,7 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
 
     case  KRT_SRC_ALIEN:
       if (KRT_CF->learn)
-	krt_learn_scan(p, e);
+	krt_learn_rte(p, e);
       else
 	krt_trace_in_rl(&rl_alien, p, e, "[alien] ignored");
       return;
@@ -712,6 +487,11 @@ static void
 krt_init_scan(struct krt_proto *p)
 {
   bmap_reset(&p->seen_map, 1024);
+
+#ifdef KRT_ALLOW_LEARN
+  if (KRT_CF->learn)
+    channel_refresh_begin(p->p.main_channel);
+#endif
 }
 
 static void
@@ -739,7 +519,7 @@ krt_prune(struct krt_proto *p)
 
 #ifdef KRT_ALLOW_LEARN
   if (KRT_CF->learn)
-    krt_learn_prune(p);
+    channel_refresh_end(p->p.main_channel);
 #endif
 
   if (p->ready)
@@ -781,7 +561,7 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
     case KRT_SRC_ALIEN:
       if (KRT_CF->learn)
 	{
-	  krt_learn_async(p, e, new);
+	  krt_learn_rte(p, e);
 	  return;
 	}
 #endif
@@ -1027,6 +807,7 @@ krt_init(struct proto_config *CF)
   p->p.if_notify = krt_if_notify;
   p->p.reload_routes = krt_reload_routes;
   p->p.feed_end = krt_feed_end;
+  p->p.rte_better = krt_rte_better;
 
   krt_sys_init(p);
   return &p->p;
@@ -1182,7 +963,4 @@ struct protocol proto_unix_kernel = {
   .reconfigure =	krt_reconfigure,
   .copy_config =	krt_copy_config,
   .get_attr =		krt_get_attr,
-#ifdef KRT_ALLOW_LEARN
-  .dump =		krt_dump,
-#endif
 };

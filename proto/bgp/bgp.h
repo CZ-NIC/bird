@@ -366,6 +366,7 @@ struct bgp_channel {
 
   timer *stale_timer;			/* Long-lived stale timer for LLGR */
   u32 stale_time;			/* Stored LLGR stale time from last session */
+  struct rt_export_request stale_feed;	/* Feeder request for stale route modification */
 
   u8 add_path_rx;			/* Session expects receive of ADD-PATH extended NLRI */
   u8 add_path_tx;			/* Session expects transmit of ADD-PATH extended NLRI */
@@ -585,7 +586,7 @@ void bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *bp);
 int bgp_rte_better(struct rte *, struct rte *);
 int bgp_rte_mergable(rte *pri, rte *sec);
 int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
-struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
+void bgp_rte_modify_stale(struct rt_export_request *, const net_addr *, struct rt_pending_export *, rte **, uint);
 u32 bgp_rte_igp_metric(struct rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old);
 int bgp_preexport(struct channel *, struct rte *);

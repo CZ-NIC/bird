@@ -207,7 +207,6 @@ struct proto {
   int (*rte_recalculate)(struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
   int (*rte_better)(struct rte *, struct rte *);
   int (*rte_mergable)(struct rte *, struct rte *);
-  struct rte *(*rte_modify)(struct rte *, struct linpool *);
   void (*rte_insert)(struct network *, struct rte *);
   void (*rte_remove)(struct network *, struct rte *);
   u32 (*rte_igp_metric)(struct rte *);
@@ -544,24 +543,29 @@ struct channel {
   u8 reloadable;			/* Hook reload_routes() is allowed on the channel */
   u8 gr_lock;				/* Graceful restart mechanism should wait for this channel */
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
+  u8 restart_export;			/* Route export should restart as soon as it stops */
 
   btime last_state_change;		/* Time of last state transition */
 
-  struct rtable *in_table;		/* Internal table for received routes */
-  struct event *reload_event;		/* Event responsible for reloading from in_table */
-  struct fib_iterator reload_fit;	/* FIB iterator in in_table used during reloading */
-  struct rte_storage *reload_next_rte;	/* Route iterator in in_table used during reloading */
-  u8 reload_active;			/* Iterator reload_fit is linked */
+  struct channel_aux_table *in_table;	/* Internal table for received routes */
 
   u8 reload_pending;			/* Reloading and another reload is scheduled */
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
 
-  struct rtable *out_table;		/* Internal table for exported routes */
+  struct channel_aux_table *out_table;	/* Internal table for exported routes */
 
   list roa_subscriptions;		/* List of active ROA table subscriptions based on filters roa_check() */
 };
 
+struct channel_aux_table {
+  struct channel *c;
+  struct rt_import_request push;
+  struct rt_export_request get;
+  rtable *tab;
+  u8 stop;
+  u8 refeed_pending;
+};
 
 /*
  * Channel states
@@ -627,7 +631,7 @@ struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);
 
 void channel_set_state(struct channel *c, uint state);
-void channel_setup_in_table(struct channel *c);
+void channel_setup_in_table(struct channel *c, int best);
 void channel_setup_out_table(struct channel *c);
 void channel_schedule_reload(struct channel *c);
 
@@ -636,6 +640,9 @@ static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP)
 static inline void channel_close(struct channel *c) { channel_set_state(c, CS_STOP); }
 
 void channel_request_feeding(struct channel *c);
+void channel_request_reload(struct channel *c);
+void channel_refresh_begin(struct channel *c);
+void channel_refresh_end(struct channel *c);
 void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);

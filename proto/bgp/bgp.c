@@ -140,6 +140,15 @@ static void bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd);
 static int bgp_incoming_connection(sock *sk, uint dummy UNUSED);
 static void bgp_listen_sock_err(sock *sk UNUSED, int err);
 
+static void bgp_graceful_restart_feed(struct bgp_channel *c);
+static inline void channel_refresh_end_reload(struct channel *c)
+{
+  channel_refresh_end(c);
+
+  if (c->in_table)
+    channel_request_reload(c);
+}
+
 /**
  * bgp_open - open a BGP instance
  * @p: BGP instance
@@ -775,25 +784,25 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
       {
       case BGP_GRS_NONE:
 	c->gr_active = BGP_GRS_ACTIVE;
-	rt_refresh_begin(c->c.table, &c->c.in_req);
+	channel_refresh_begin(&c->c);
 	break;
 
       case BGP_GRS_ACTIVE:
-	rt_refresh_end(c->c.table, &c->c.in_req);
-	rt_refresh_begin(c->c.table, &c->c.in_req);
+	channel_refresh_end(&c->c);
+	channel_refresh_begin(&c->c);
 	break;
 
       case BGP_GRS_LLGR:
-	rt_refresh_begin(c->c.table, &c->c.in_req);
-	rt_modify_stale(c->c.table, &c->c.in_req);
+	channel_refresh_begin(&c->c);
+	bgp_graceful_restart_feed(c);
 	break;
       }
     }
     else
     {
       /* Just flush the routes */
-      rt_refresh_begin(c->c.table, &c->c.in_req);
-      rt_refresh_end(c->c.table, &c->c.in_req);
+      channel_refresh_begin(&c->c);
+      channel_refresh_end(&c->c);
     }
 
     /* Reset bucket and prefix tables */
@@ -810,6 +819,50 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
   proto_notify_state(&p->p, PS_START);
   tm_start(p->gr_timer, p->conn->remote_caps->gr_time S);
 }
+
+static void
+bgp_graceful_restart_feed_done(struct rt_export_request *req)
+{
+  req->hook = NULL;
+}
+
+static void
+bgp_graceful_restart_feed_dump_req(struct rt_export_request *req)
+{
+  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, stale_feed, req);
+  debug("  BGP-GR %s.%s export request %p\n", c->c.proto->name, c->c.name, req);
+}
+
+static void
+bgp_graceful_restart_feed_log_state_change(struct rt_export_request *req, u8 state)
+{
+  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, stale_feed, req);
+  struct bgp_proto *p = (void *) c->c.proto;
+  BGP_TRACE(D_EVENTS, "Long-lived graceful restart export state changed to %s", rt_export_state_name(state));
+
+  if (state == TES_READY)
+    rt_stop_export(req, bgp_graceful_restart_feed_done);
+}
+
+static void
+bgp_graceful_restart_drop_export(struct rt_export_request *req UNUSED, const net_addr *n UNUSED, struct rt_pending_export *rpe UNUSED)
+{ /* Nothing to do */ }
+
+static void
+bgp_graceful_restart_feed(struct bgp_channel *c)
+{
+  c->stale_feed = (struct rt_export_request) {
+    .name = "BGP-GR",
+    .trace_routes = c->c.debug | c->c.proto->debug,
+    .dump_req = bgp_graceful_restart_feed_dump_req,
+    .log_state_change = bgp_graceful_restart_feed_log_state_change,
+    .export_bulk = bgp_rte_modify_stale,
+    .export_one = bgp_graceful_restart_drop_export,
+  };
+
+  rt_request_export(c->c.table, &c->stale_feed);
+}
+
 
 /**
  * bgp_graceful_restart_done - finish active BGP graceful restart
@@ -833,8 +886,11 @@ bgp_graceful_restart_done(struct bgp_channel *c)
   if (!p->gr_active_num)
     BGP_TRACE(D_EVENTS, "Neighbor graceful restart done");
 
+  if (c->stale_feed.hook)
+    rt_stop_export(&c->stale_feed, bgp_graceful_restart_feed_done);
+
   tm_stop(c->stale_timer);
-  rt_refresh_end(c->c.table, &c->c.in_req);
+  channel_refresh_end_reload(&c->c);
 }
 
 /**
@@ -876,7 +932,7 @@ bgp_graceful_restart_timeout(timer *t)
       /* Channel is in GR, and supports LLGR -> start LLGR */
       c->gr_active = BGP_GRS_LLGR;
       tm_start(c->stale_timer, c->stale_time S);
-      rt_modify_stale(c->c.table, &c->c.in_req);
+      bgp_graceful_restart_feed(c);
     }
   }
   else
@@ -914,10 +970,7 @@ bgp_refresh_begin(struct bgp_channel *c)
   { log(L_WARN "%s: BEGIN-OF-RR received before END-OF-RIB, ignoring", p->p.name); return; }
 
   c->load_state = BFS_REFRESHING;
-  rt_refresh_begin(c->c.table, &c->c.in_req);
-
-  if (c->c.in_table)
-    rt_refresh_begin(c->c.in_table, &c->c.in_req);
+  channel_refresh_begin(&c->c);
 }
 
 /**
@@ -938,10 +991,7 @@ bgp_refresh_end(struct bgp_channel *c)
   { log(L_WARN "%s: END-OF-RR received without prior BEGIN-OF-RR, ignoring", p->p.name); return; }
 
   c->load_state = BFS_NONE;
-  rt_refresh_end(c->c.table, &c->c.in_req);
-
-  if (c->c.in_table)
-    rt_prune_sync(c->c.in_table, 0);
+  channel_refresh_end_reload(&c->c);
 }
 
 
@@ -1408,12 +1458,9 @@ bgp_reload_routes(struct channel *C)
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
 
-  ASSERT(p->conn && (p->route_refresh || c->c.in_table));
+  ASSERT(p->conn && (p->route_refresh));
 
-  if (c->c.in_table)
-    channel_schedule_reload(C);
-  else
-    bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
+  bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
 }
 
 static void
@@ -1693,7 +1740,6 @@ bgp_init(struct proto_config *CF)
   P->rte_better = bgp_rte_better;
   P->rte_mergable = bgp_rte_mergable;
   P->rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
-  P->rte_modify = bgp_rte_modify_stale;
   P->rte_igp_metric = bgp_rte_igp_metric;
 
   p->cf = cf;
@@ -1756,7 +1802,7 @@ bgp_channel_start(struct channel *C)
   bgp_init_prefix_table(c);
 
   if (c->cf->import_table)
-    channel_setup_in_table(C);
+    channel_setup_in_table(C, 0);
 
   if (c->cf->export_table)
     channel_setup_out_table(C);
