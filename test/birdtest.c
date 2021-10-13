@@ -58,11 +58,14 @@ u64 bt_random_state[] = {
   0x53d9772877c1b647, 0xab8ce3eb466de6c5, 0xad02844c8a8e865f, 0xe8cc78080295065d
 };
 
+void resource_sys_init(void);
+
 void
 bt_init(int argc, char *argv[])
 {
   int c;
 
+  resource_sys_init();
   initstate(BT_RANDOM_SEED, (char *) bt_random_state, sizeof(bt_random_state));
 
   bt_verbose = 0;
