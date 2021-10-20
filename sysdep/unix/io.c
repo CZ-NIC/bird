@@ -2234,7 +2234,7 @@ io_loop(void)
 	{
 	  pfd[nfds] = (struct pollfd) { .fd = -1 }; /* everything other set to 0 by this */
 	  s = SKIP_BACK(sock, n, n);
-	  if (s->rx_hook)
+	  if (s->rx_hook && !ev_corked(s->cork))
 	    {
 	      pfd[nfds].fd = s->fd;
 	      pfd[nfds].events |= POLLIN;
