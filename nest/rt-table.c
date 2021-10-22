@@ -3529,15 +3529,18 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
     {
       rte *e = n->routes;
       rta *a = e->attrs;
-      pxlen = n->n.addr->pxlen;
+      word pref = a->pref;
 
-      if (a->hostentry)
+      for (rte *ee = n->routes; ee; ee = ee->next)
+	if ((ee->attrs->pref >= pref) && ee->attrs->hostentry)
 	{
 	  /* Recursive route should not depend on another recursive route */
 	  log(L_WARN "Next hop address %I resolvable through recursive route for %N",
 	      he->addr, n->n.addr);
 	  goto done;
 	}
+
+      pxlen = n->n.addr->pxlen;
 
       if (a->dest == RTD_UNICAST)
 	{
