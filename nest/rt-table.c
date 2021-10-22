@@ -65,14 +65,14 @@ struct rt_export_block {
 
 static void rt_free_hostcache(rtable *tab);
 static void rt_notify_hostcache(rtable *tab, net *net);
-static void rt_update_hostcache(rtable *tab);
-static void rt_next_hop_update(rtable *tab);
-static inline void rt_prune_table(rtable *tab);
+static void rt_update_hostcache(void *tab);
+static void rt_next_hop_update(void *tab);
+static inline void rt_prune_table(void *tab);
 static inline void rt_schedule_notify(rtable *tab);
 static void rt_feed_channel(void *);
 
 static inline void rt_export_used(rtable *tab);
-static void rt_export_cleanup(rtable *tab);
+static void rt_export_cleanup(void *tab);
 
 static inline void rte_update_lock(void);
 static inline void rte_update_unlock(void);
@@ -1860,7 +1860,7 @@ rte_dump(struct rte_storage *e)
 void
 rt_dump(rtable *t)
 {
-  debug("Dump of routing table <%s>%s\n", t->name, t->deleted ? " (deleted)" : "");
+  debug("Dump of routing table <%s>%s\n", t->name, t->delete_event ? " (deleted)" : "");
 #ifdef DEBUGGING
   fib_check(&t->fib);
 #endif
@@ -1891,9 +1891,9 @@ rt_dump_all(void)
 void
 rt_dump_hooks(rtable *tab)
 {
-  debug("Dump of hooks in routing table <%s>%s\n", tab->name, tab->deleted ? " (deleted)" : "");
+  debug("Dump of hooks in routing table <%s>%s\n", tab->name, tab->delete_event ? " (deleted)" : "");
   debug("  nhu_state=%u hcu_scheduled=%u use_count=%d rt_count=%u\n",
-      tab->nhu_state, tab->hcu_scheduled, tab->use_count, tab->rt_count);
+      tab->nhu_state, ev_active(tab->hcu_event), tab->use_count, tab->rt_count);
   debug("  last_rt_change=%t gc_time=%t gc_counter=%d prune_state=%u\n",
       tab->last_rt_change, tab->gc_time, tab->gc_counter, tab->prune_state);
 
@@ -1931,20 +1931,10 @@ rt_dump_hooks_all(void)
 }
 
 static inline void
-rt_schedule_hcu(rtable *tab)
-{
-  if (tab->hcu_scheduled)
-    return;
-
-  tab->hcu_scheduled = 1;
-  ev_schedule(tab->rt_event);
-}
-
-static inline void
 rt_schedule_nhu(rtable *tab)
 {
   if (tab->nhu_state == NHU_CLEAN)
-    ev_schedule(tab->rt_event);
+    ev_schedule(tab->nhu_event);
 
   /* state change:
    *   NHU_CLEAN   -> NHU_SCHEDULED
@@ -1957,7 +1947,7 @@ void
 rt_schedule_prune(rtable *tab)
 {
   if (tab->prune_state == 0)
-    ev_schedule(tab->rt_event);
+    ev_schedule(tab->prune_event);
 
   /* state change 0->1, 2->3 */
   tab->prune_state |= 1;
@@ -1969,35 +1959,8 @@ rt_export_used(rtable *tab)
   if (config->table_debug)
     log(L_TRACE "%s: Export cleanup requested", tab->name);
 
-  if (tab->export_used)
-    return;
-
-  tab->export_used = 1;
-  ev_schedule(tab->rt_event);
+  ev_schedule(tab->ec_event);
 }
-
-static void
-rt_event(void *ptr)
-{
-  rtable *tab = ptr;
-
-  rt_lock_table(tab);
-
-  if (tab->export_used)
-    rt_export_cleanup(tab);
-
-  if (tab->hcu_scheduled)
-    rt_update_hostcache(tab);
-
-  if (tab->nhu_state)
-    rt_next_hop_update(tab);
-
-  if (tab->prune_state)
-    rt_prune_table(tab);
-
-  rt_unlock_table(tab);
-}
-
 
 static inline btime
 rt_settled_time(rtable *tab)
@@ -2078,13 +2041,9 @@ rt_free(resource *_r)
 
   DBG("Deleting routing table %s\n", r->name);
   ASSERT_DIE(r->use_count == 0);
-  ASSERT_DIE(r->deleted);
-
-  r->config->table = NULL;
-  rem_node(&r->n);
-
-  if (r->hostcache)
-    rt_free_hostcache(r);
+  ASSERT_DIE(r->rt_count == 0);
+  ASSERT_DIE(EMPTY_LIST(r->imports));
+  ASSERT_DIE(EMPTY_LIST(r->exports));
 
   /* Freed automagically by the resource pool
   fib_free(&r->fib);
@@ -2142,7 +2101,11 @@ rt_setup(pool *pp, struct rtable_config *cf)
   init_list(&t->pending_exports);
   init_list(&t->subscribers);
 
-  t->rt_event = ev_new_init(p, rt_event, t);
+  t->ec_event = ev_new_init(p, rt_export_cleanup, t);
+  t->prune_event = ev_new_init(p, rt_prune_table, t);
+  t->hcu_event = ev_new_init(p, rt_update_hostcache, t);
+  t->nhu_event = ev_new_init(p, rt_next_hop_update, t);
+
   t->export_timer = tm_new_init(p, rt_announce_exports, t, 0, 0);
   t->last_rt_change = t->gc_time = current_time();
   t->next_export_seq = 1;
@@ -2167,7 +2130,6 @@ rt_init(void)
   init_list(&routing_tables);
 }
 
-
 /**
  * rt_prune_table - prune a routing table
  *
@@ -2183,8 +2145,9 @@ rt_init(void)
  * iteration.
  */
 static void
-rt_prune_table(rtable *tab)
+rt_prune_table(void *data)
 {
+  rtable *tab = data;
   struct fib_iterator *fit = &tab->prune_fit;
   int limit = 512;
 
@@ -2232,7 +2195,7 @@ again:
 	    if (limit <= 0)
 	      {
 		FIB_ITERATE_PUT(fit);
-		ev_schedule(tab->rt_event);
+		ev_schedule(tab->prune_event);
 		return;
 	      }
 
@@ -2288,9 +2251,9 @@ again:
 }
 
 static void
-rt_export_cleanup(rtable *tab)
+rt_export_cleanup(void *data)
 {
-  tab->export_used = 0;
+  rtable *tab = data;
 
   u64 min_seq = ~((u64) 0);
   struct rt_pending_export *last_export_to_free = NULL;
@@ -2446,9 +2409,6 @@ done:;
 	rt_unlock_table(tab);
 	imports_stopped = 1;
       }
-
-  if (tab->export_used)
-    ev_schedule(tab->rt_event);
 
   if (imports_stopped)
   {
@@ -2683,8 +2643,9 @@ rt_next_hop_update_net(rtable *tab, net *n)
 }
 
 static void
-rt_next_hop_update(rtable *tab)
+rt_next_hop_update(void *data)
 {
+  rtable *tab = data;
   struct fib_iterator *fit = &tab->nhu_fit;
   int max_feed = 32;
 
@@ -2702,7 +2663,7 @@ rt_next_hop_update(rtable *tab)
       if (max_feed <= 0)
 	{
 	  FIB_ITERATE_PUT(fit);
-	  ev_schedule(tab->rt_event);
+	  ev_schedule(tab->nhu_event);
 	  return;
 	}
       max_feed -= rt_next_hop_update_net(tab, n);
@@ -2716,7 +2677,7 @@ rt_next_hop_update(rtable *tab)
   tab->nhu_state &= 1;
 
   if (tab->nhu_state != NHU_CLEAN)
-    ev_schedule(tab->rt_event);
+    ev_schedule(tab->nhu_event);
 }
 
 
@@ -2738,6 +2699,7 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->gc_min_time = 5;
   c->min_settle_time = 1 S;
   c->max_settle_time = 20 S;
+  c->config = new_config;
 
   add_tail(&new_config->tables, &c->n);
 
@@ -2773,16 +2735,11 @@ rt_lock_table(rtable *r)
 void
 rt_unlock_table(rtable *r)
 {
-  if (!--r->use_count && r->deleted)
-    {
-      void *del_data = r->del_data;
-      void (*deleted)(void *) = r->deleted;
-
-      /* Delete the routing table by freeing its pool */
-      rt_shutdown(r);
-      deleted(del_data);
-    }
+  if (!--r->use_count && r->delete_event)
+    /* Delete the routing table by freeing its pool */
+    ev_schedule(r->delete_event);
 }
+
 
 static struct rtable_config *
 rt_find_table_config(struct config *cf, char *name)
@@ -2791,7 +2748,23 @@ rt_find_table_config(struct config *cf, char *name)
   return (sym && (sym->class == SYM_TABLE)) ? sym->table : NULL;
 }
 
-static void rt_config_del_obstacle(void *data) { config_del_obstacle(data); }
+static void
+rt_done(void *data)
+{
+  rtable *t = data;
+  struct rtable_config *tc = t->config;
+  struct config *c = tc->config;
+
+  tc->table = NULL;
+  rem_node(&t->n);
+
+  if (t->hostcache)
+    rt_free_hostcache(t);
+
+  rfree(t->rp);
+
+  config_del_obstacle(c);
+}
 
 /**
  * rt_commit - commit new routing table configuration
@@ -2816,7 +2789,7 @@ rt_commit(struct config *new, struct config *old)
       WALK_LIST(o, old->tables)
 	{
 	  rtable *ot = o->table;
-	  if (!ot->deleted)
+	  if (!ot->delete_event)
 	    {
 	      r = rt_find_table_config(new, o->name);
 	      if (r && (r->addr_type == o->addr_type) && !new->shutdown)
@@ -2832,8 +2805,7 @@ rt_commit(struct config *new, struct config *old)
 		{
 		  DBG("\t%s: deleted\n", o->name);
 		  rt_lock_table(ot);
-		  ot->deleted = rt_config_del_obstacle;
-		  ot->del_data = old;
+		  ot->delete_event = ev_new_init(ot->rp, rt_done, ot);
 		  config_add_obstacle(old);
 		  rt_unlock_table(ot);
 		}
@@ -3060,11 +3032,11 @@ rt_free_hostcache(rtable *tab)
 static void
 rt_notify_hostcache(rtable *tab, net *net)
 {
-  if (tab->hcu_scheduled)
+  if (ev_active(tab->hcu_event))
     return;
 
   if (trie_match_net(tab->hostcache->trie, net->n.addr))
-    rt_schedule_hcu(tab);
+    ev_schedule(tab->hcu_event);
 }
 
 static int
@@ -3161,8 +3133,9 @@ done:
 }
 
 static void
-rt_update_hostcache(rtable *tab)
+rt_update_hostcache(void *data)
 {
+  rtable *tab = data;
   struct hostcache *hc = tab->hostcache;
   struct hostentry *he;
   node *n, *x;
@@ -3183,8 +3156,6 @@ rt_update_hostcache(rtable *tab)
       if (rt_update_hostentry(tab, he))
 	rt_schedule_nhu(he->tab);
     }
-
-  tab->hcu_scheduled = 0;
 }
 
 struct hostentry *

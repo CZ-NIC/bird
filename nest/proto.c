@@ -658,6 +658,8 @@ channel_aux_stopped(void *data)
   else
     c->in_table = NULL;
 
+  rfree(cat->tab->rp);
+
   mb_free(cat);
   return channel_check_stopped(c);
 }
@@ -666,7 +668,7 @@ static void
 channel_aux_import_stopped(struct rt_import_request *req)
 {
   struct channel_aux_table *cat = SKIP_BACK(struct channel_aux_table, push, req);
-  ASSERT_DIE(cat->stop);
+  ASSERT_DIE(cat->tab->delete_event);
 }
 
 static void
@@ -675,25 +677,23 @@ channel_aux_export_stopped(struct rt_export_request *req)
   struct channel_aux_table *cat = SKIP_BACK(struct channel_aux_table, get, req);
   req->hook = NULL;
 
-  if (cat->refeed_pending && !cat->stop)
+  if (cat->refeed_pending && !cat->tab->delete_event)
   {
     cat->refeed_pending = 0;
     rt_request_export(cat->tab, req);
   }
   else
-    ASSERT_DIE(cat->stop);
+    ASSERT_DIE(cat->tab->delete_event);
 }
 
 static void
 channel_aux_stop(struct channel_aux_table *cat)
 {
-  cat->stop = 1;
-
   rt_stop_import(&cat->push, channel_aux_import_stopped);
   rt_stop_export(&cat->get, channel_aux_export_stopped);
 
-  cat->tab->deleted = channel_aux_stopped;
-  cat->tab->del_data = cat;
+  cat->tab->delete_event = ev_new_init(cat->tab->rp, channel_aux_stopped, cat);
+
   rt_unlock_table(cat->tab);
 }
 
@@ -886,7 +886,6 @@ channel_setup_in_table(struct channel *c, int best)
 
   c->in_table->c = c;
   c->in_table->tab = rt_setup(c->proto->pool, &cat->tab_cf);
-  self_link(&c->in_table->tab->n);
   rt_lock_table(c->in_table->tab);
 
   rt_request_import(c->in_table->tab, &c->in_table->push);
@@ -929,7 +928,6 @@ channel_setup_out_table(struct channel *c)
 
   c->out_table->c = c;
   c->out_table->tab = rt_setup(c->proto->pool, &cat->tab_cf);
-  self_link(&c->out_table->tab->n);
   rt_lock_table(c->out_table->tab);
 
   rt_request_import(c->out_table->tab, &c->out_table->push);
