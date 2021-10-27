@@ -319,9 +319,9 @@ proto_remove_channels(struct proto *p)
 }
 
 static void
-channel_roa_in_changed(struct rt_subscription *s)
+channel_roa_in_changed(void *_data)
 {
-  struct channel *c = s->data;
+  struct channel *c = _data;
 
   CD(c, "Reload triggered by RPKI change");
 
@@ -329,9 +329,9 @@ channel_roa_in_changed(struct rt_subscription *s)
 }
 
 static void
-channel_roa_out_changed(struct rt_subscription *s)
+channel_roa_out_changed(void *_data)
 {
-  struct channel *c = s->data;
+  struct channel *c = _data;
   CD(c, "Feeding triggered by RPKI change");
 
   c->refeed_pending = 1;
@@ -349,14 +349,14 @@ struct roa_subscription {
 static int
 channel_roa_is_subscribed(struct channel *c, rtable *tab, int dir)
 {
-  void (*hook)(struct rt_subscription *) =
+  void (*hook)(void *) =
     dir ? channel_roa_in_changed : channel_roa_out_changed;
 
   struct roa_subscription *s;
   node *n;
 
   WALK_LIST2(s, n, c->roa_subscriptions, roa_node)
-    if ((s->s.tab == tab) && (s->s.hook == hook))
+    if ((s->s.tab == tab) && (s->s.event->hook == hook))
       return 1;
 
   return 0;
@@ -370,9 +370,9 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
     return;
 
   struct roa_subscription *s = mb_allocz(c->proto->pool, sizeof(struct roa_subscription));
+  s->s.event = ev_new_init(c->proto->pool, dir ? channel_roa_in_changed : channel_roa_out_changed, c);
+  s->s.event->list = proto_work_list(c->proto);
 
-  s->s.hook = dir ? channel_roa_in_changed : channel_roa_out_changed;
-  s->s.data = c;
   rt_subscribe(tab, &s->s);
 
   add_tail(&c->roa_subscriptions, &s->roa_node);
@@ -383,6 +383,7 @@ channel_roa_unsubscribe(struct roa_subscription *s)
 {
   rt_unsubscribe(&s->s);
   rem_node(&s->roa_node);
+  rfree(s->s.event);
   mb_free(s);
 }
 

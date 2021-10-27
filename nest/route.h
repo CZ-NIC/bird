@@ -213,8 +213,7 @@ typedef struct rtable {
 struct rt_subscription {
   node n;
   rtable *tab;
-  void (*hook)(struct rt_subscription *b);
-  void *data;
+  event *event;
 };
 
 #define NHU_CLEAN	0
