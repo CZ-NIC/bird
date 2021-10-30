@@ -897,6 +897,9 @@ rpki_rx_hook(struct birdsock *sk, uint size)
   struct rpki_cache *cache = sk->data;
   struct rpki_proto *p = cache->p;
 
+  if ((p->p.proto_state == PS_DOWN) || (p->cache != cache))
+    return 0;
+
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
 
