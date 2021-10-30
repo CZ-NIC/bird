@@ -956,6 +956,8 @@ rpki_err_hook(struct birdsock *sk, int error_num)
     CACHE_TRACE(D_EVENTS, cache, "The other side closed a connection");
   }
 
+  if (cache->p->cache != cache)
+    return;
 
   rpki_cache_change_state(cache, RPKI_CS_ERROR_TRANSPORT);
 }
@@ -975,6 +977,9 @@ rpki_tx_hook(sock *sk)
 {
   struct rpki_cache *cache = sk->data;
 
+  if (cache->p->cache != cache)
+    return;
+
   while (rpki_fire_tx(cache) > 0)
     ;
 }
@@ -983,6 +988,9 @@ void
 rpki_connected_hook(sock *sk)
 {
   struct rpki_cache *cache = sk->data;
+
+  if (cache->p->cache != cache)
+    return;
 
   CACHE_TRACE(D_EVENTS, cache, "Connected");
   proto_notify_state(&cache->p->p, PS_UP);
