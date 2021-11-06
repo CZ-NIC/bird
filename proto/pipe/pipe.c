@@ -217,6 +217,9 @@ pipe_show_stats(struct pipe_proto *p)
   struct import_stats *s2i = &p->sec->import_stats;
   struct export_stats *s2e = &p->sec->export_stats;
 
+  u32 pri_routes = p->pri->in_limit.count;
+  u32 sec_routes = p->sec->in_limit.count;
+
   /*
    * Pipe stats (as anything related to pipes) are a bit tricky. There
    * are two sets of stats - s1 for ahook to the primary routing and
@@ -239,7 +242,7 @@ pipe_show_stats(struct pipe_proto *p)
    */
 
   cli_msg(-1006, "  Routes:         %u imported, %u exported",
-	  s1i->routes, s2i->routes);
+	  pri_routes, sec_routes);
   cli_msg(-1006, "  Route change stats:     received   rejected   filtered    ignored   accepted");
   cli_msg(-1006, "    Import updates:     %10u %10u %10u %10u %10u",
 	  s2e->updates_received, s2e->updates_rejected + s1i->updates_invalid,
@@ -270,8 +273,12 @@ pipe_show_proto_info(struct proto *P)
   cli_msg(-1006, "    Import filter:  %s", filter_name(p->sec->out_filter));
   cli_msg(-1006, "    Export filter:  %s", filter_name(p->pri->out_filter));
 
-  channel_show_limit(&p->pri->in_limit, "Import limit:");
-  channel_show_limit(&p->sec->in_limit, "Export limit:");
+
+
+  channel_show_limit(&p->pri->in_limit, "Import limit:",
+      (p->pri->limit_active & (1 << PLD_IN)), p->pri->limit_actions[PLD_IN]);
+  channel_show_limit(&p->sec->in_limit, "Export limit:",
+      (p->sec->limit_active & (1 << PLD_IN)), p->sec->limit_actions[PLD_IN]);
 
   if (P->proto_state != PS_DOWN)
     pipe_show_stats(p);

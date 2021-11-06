@@ -13,6 +13,7 @@
 #include "lib/resource.h"
 #include "lib/event.h"
 #include "nest/route.h"
+#include "nest/limit.h"
 #include "conf/conf.h"
 
 struct iface;
@@ -134,8 +135,6 @@ struct proto_config {
 /* Protocol statistics */
 struct import_stats {
   /* Import - from protocol to core */
-  u32 routes;			/* Number of routes successfully imported to the (adjacent) routing table */
-  u32 filtered;			/* Number of routes rejected in import filter but kept in the routing table */
   u32 pref;			/* Number of routes selected as best in the (adjacent) routing table */
   u32 updates_received;		/* Number of route updates received */
   u32 updates_invalid;		/* Number of route updates rejected as invalid */
@@ -150,7 +149,6 @@ struct import_stats {
 
 struct export_stats {
   /* Export - from core to protocol */
-  u32 routes;			/* Number of routes successfully exported to the protocol */
   u32 updates_received;		/* Number of route updates received */
   u32 updates_rejected;		/* Number of route updates rejected by protocol */
   u32 updates_filtered;		/* Number of route updates rejected by filters */
@@ -277,7 +275,7 @@ void channel_graceful_restart_unlock(struct channel *c);
 
 #define DEFAULT_GR_WAIT	240
 
-void channel_show_limit(struct channel_limit *l, const char *dsc);
+void channel_show_limit(struct limit *l, const char *dsc, int active, int action);
 void channel_show_info(struct channel *c);
 void channel_cmd_debug(struct channel *c, uint mask);
 
@@ -432,18 +430,29 @@ extern struct proto_config *cf_dev_proto;
 #define PLA_RESTART	4	/* Force protocol restart */
 #define PLA_DISABLE	5	/* Shutdown and disable protocol */
 
-#define PLS_INITIAL	0	/* Initial limit state after protocol start */
-#define PLS_ACTIVE	1	/* Limit was hit */
-#define PLS_BLOCKED	2	/* Limit is active and blocking new routes */
-
 struct channel_limit {
   u32 limit;			/* Maximum number of prefixes */
   u8 action;			/* Action to take (PLA_*) */
-  u8 state;			/* State of limit (PLS_*) */
 };
 
-void channel_notify_limit(struct channel *c, struct channel_limit *l, int dir, u32 rt_count);
+struct channel_limit_data {
+  struct channel *c;
+  int dir;
+};
 
+#define CLP__RX(_c) (&(_c)->rx_limit)
+#define CLP__IN(_c) (&(_c)->in_limit)
+#define CLP__OUT(_c) (&(_c)->out_limit)
+
+
+#if 0
+#define CHANNEL_LIMIT_LOG(_c, _dir, _op)  log(L_TRACE "%s.%s: %s limit %s %u", (_c)->proto->name, (_c)->name, #_dir, _op, (CLP__##_dir(_c))->count)
+#else
+#define CHANNEL_LIMIT_LOG(_c, _dir, _op)
+#endif
+
+#define CHANNEL_LIMIT_PUSH(_c, _dir)  ({ CHANNEL_LIMIT_LOG(_c, _dir, "push from"); struct channel_limit_data cld = { .c = (_c), .dir = PLD_##_dir }; limit_push(CLP__##_dir(_c), &cld); })
+#define CHANNEL_LIMIT_POP(_c, _dir)   ({ limit_pop(CLP__##_dir(_c)); CHANNEL_LIMIT_LOG(_c, _dir, "pop to"); })
 
 /*
  *	Channels
@@ -486,6 +495,7 @@ struct channel_config {
   struct proto_config *parent;		/* Where channel is defined (proto or template) */
   struct rtable_config *table;		/* Table we're attached to */
   const struct filter *in_filter, *out_filter; /* Attached filters */
+
   struct channel_limit rx_limit;	/* Limit for receiving routes from protocol
 					   (relevant when in_keep_filtered is active) */
   struct channel_limit in_limit;	/* Limit for importing routes from protocol */
@@ -513,9 +523,13 @@ struct channel {
   const struct filter *out_filter;	/* Output filter */
   struct bmap export_map;		/* Keeps track which routes were really exported */
   struct bmap export_reject_map;	/* Keeps track which routes were rejected by export filter */
-  struct channel_limit rx_limit;	/* Receive limit (for in_keep_filtered) */
-  struct channel_limit in_limit;	/* Input limit */
-  struct channel_limit out_limit;	/* Output limit */
+
+  struct limit rx_limit;		/* Receive limit (for in_keep_filtered) */
+  struct limit in_limit;		/* Input limit */
+  struct limit out_limit;		/* Output limit */
+
+  u8 limit_actions[PLD_MAX];		/* Limit actions enum */
+  u8 limit_active;			/* Flags for active limits */
 
   struct event *feed_event;		/* Event responsible for feeding */
   struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */

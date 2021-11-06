@@ -473,20 +473,16 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, rte *old, int ref
   if (refeed && new)
     c->refeed_count++;
 
-  /* Apply export limit */
-  struct channel_limit *l = &c->out_limit;
-  if (l->action && !old && new)
-  {
-    if (stats->routes >= l->limit)
-      channel_notify_limit(c, l, PLD_OUT, stats->routes);
-
-    if (l->state == PLS_BLOCKED)
+  if (!old && new)
+    if (CHANNEL_LIMIT_PUSH(c, OUT))
     {
       stats->updates_rejected++;
       rte_trace_out(D_FILTERS, c, new, "rejected [limit]");
       return;
     }
-  }
+
+  if (!new && old)
+    CHANNEL_LIMIT_POP(c, OUT);
 
   /* Apply export table */
   struct rte_storage *old_exported = NULL;
@@ -505,16 +501,10 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, rte *old, int ref
     stats->withdraws_accepted++;
 
   if (old)
-  {
     bmap_clear(&c->export_map, old->id);
-    stats->routes--;
-  }
 
   if (new)
-  {
     bmap_set(&c->export_map, new->id);
-    stats->routes++;
-  }
 
   if (p->debug & D_ROUTES)
   {
@@ -973,58 +963,53 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
   int new_ok = rte_is_ok(new);
   int old_ok = rte_is_ok(old);
 
-  struct channel_limit *l = &c->rx_limit;
-  if (l->action && !old && new && !c->in_table)
+  if (!c->in_table)
+  {
+    if (!old && new)
+      if (CHANNEL_LIMIT_PUSH(c, RX))
+      {
+	/* In receive limit the situation is simple, old is NULL so
+	   we just free new and exit like nothing happened */
+
+	stats->updates_ignored++;
+	rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
+	return;
+      }
+
+    if (old && !new)
+      CHANNEL_LIMIT_POP(c, RX);
+  }
+
+  if (!old_ok && new_ok)
+    if (CHANNEL_LIMIT_PUSH(c, IN))
     {
-      u32 all_routes = stats->routes + stats->filtered;
+      /* In import limit the situation is more complicated. We
+	 shouldn't just drop the route, we should handle it like
+	 it was filtered. We also have to continue the route
+	 processing if old or new is non-NULL, but we should exit
+	 if both are NULL as this case is probably assumed to be
+	 already handled. */
 
-      if (all_routes >= l->limit)
-	channel_notify_limit(c, l, PLD_RX, all_routes);
+      stats->updates_ignored++;
+      rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
 
-      if (l->state == PLS_BLOCKED)
-	{
-	  /* In receive limit the situation is simple, old is NULL so
-	     we just free new and exit like nothing happened */
+      if (c->in_keep_filtered)
+	new->flags |= REF_FILTERED;
+      else
+	new = NULL;
 
-	  stats->updates_ignored++;
-	  rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
-	  return;
-	}
+      /* Note that old && !new could be possible when
+	 c->in_keep_filtered changed in the recent past. */
+
+      if (!old && !new)
+	return;
+
+      new_ok = 0;
+      goto skip_stats1;
     }
 
-  l = &c->in_limit;
-  if (l->action && !old_ok && new_ok)
-    {
-      if (stats->routes >= l->limit)
-	channel_notify_limit(c, l, PLD_IN, stats->routes);
-
-      if (l->state == PLS_BLOCKED)
-	{
-	  /* In import limit the situation is more complicated. We
-	     shouldn't just drop the route, we should handle it like
-	     it was filtered. We also have to continue the route
-	     processing if old or new is non-NULL, but we should exit
-	     if both are NULL as this case is probably assumed to be
-	     already handled. */
-
-	  stats->updates_ignored++;
-	  rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
-
-	  if (c->in_keep_filtered)
-	    new->flags |= REF_FILTERED;
-	  else
-	    new = NULL;
-
-	  /* Note that old && !new could be possible when
-	     c->in_keep_filtered changed in the recent past. */
-
-	  if (!old && !new)
-	    return;
-
-	  new_ok = 0;
-	  goto skip_stats1;
-	}
-    }
+  if (old_ok && !new_ok)
+    CHANNEL_LIMIT_POP(c, IN);
 
   if (new_ok)
     stats->updates_accepted++;
@@ -1038,11 +1023,6 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 
  skip_stats1:;
   struct rte_storage *new_stored = new ? rte_store(new, net, table) : NULL;
-
-  if (new)
-    rte_is_filtered(new) ? stats->filtered++ : stats->routes++;
-  if (old)
-    rte_is_filtered(old) ? stats->filtered-- : stats->routes--;
 
   if (table->config->sorted)
     {
@@ -2332,6 +2312,9 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 	goto drop_update;
       }
 
+      if (!new)
+	CHANNEL_LIMIT_POP(c, RX);
+
       /* Move iterator if needed */
       if (*pos == c->reload_next_rte)
 	c->reload_next_rte = (*pos)->next;
@@ -2342,7 +2325,18 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
       rte_free(del, tab);
       tab->rt_count--;
     }
-  else if (!new)
+  else if (new)
+    {
+      if (CHANNEL_LIMIT_PUSH(c, RX))
+      {
+	/* Required by rte_trace_in() */
+	new->net = n;
+
+	rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
+	goto drop_update;
+      }
+    }
+  else
     goto drop_withdraw;
 
   if (!new)
@@ -2351,22 +2345,6 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
       fib_delete(&tab->fib, net);
 
     return 1;
-  }
-
-  struct channel_limit *l = &c->rx_limit;
-  if (l->action && !*pos)
-  {
-    if (tab->rt_count >= l->limit)
-      channel_notify_limit(c, l, PLD_RX, tab->rt_count);
-
-    if (l->state == PLS_BLOCKED)
-    {
-      /* Required by rte_trace_in() */
-      new->net = n;
-
-      rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
-      goto drop_update;
-    }
   }
 
   /* Insert the new rte */

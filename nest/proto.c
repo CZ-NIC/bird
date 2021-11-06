@@ -52,9 +52,9 @@ static void channel_request_reload(struct channel *c);
 static void proto_shutdown_loop(timer *);
 static void proto_rethink_goal(struct proto *p);
 static char *proto_state_name(struct proto *p);
-static void channel_verify_limits(struct channel *c);
-static inline void channel_reset_limit(struct channel_limit *l);
-
+static void channel_init_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
+static void channel_update_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
+static void channel_reset_limit(struct channel *c, struct limit *l, int dir);
 
 static inline int proto_is_done(struct proto *p)
 { return (p->proto_state == PS_DOWN) && (p->active_channels == 0); }
@@ -168,9 +168,10 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
 
   c->in_filter = cf->in_filter;
   c->out_filter = cf->out_filter;
-  c->rx_limit = cf->rx_limit;
-  c->in_limit = cf->in_limit;
-  c->out_limit = cf->out_limit;
+
+  channel_init_limit(c, &c->rx_limit, PLD_RX, &cf->rx_limit);
+  channel_init_limit(c, &c->in_limit, PLD_IN, &cf->in_limit);
+  channel_init_limit(c, &c->out_limit, PLD_OUT, &cf->out_limit);
 
   c->net_type = cf->net_type;
   c->ra_mode = cf->ra_mode;
@@ -280,14 +281,12 @@ channel_feed_loop(void *ptr)
   }
 
   /* Reset export limit if the feed ended with acceptable number of exported routes */
-  struct channel_limit *l = &c->out_limit;
   if (c->refeeding &&
-      (l->state == PLS_BLOCKED) &&
-      (c->refeed_count <= l->limit) &&
-      (c->export_stats.routes <= l->limit))
+      (c->limit_active & (1 << PLD_OUT)) &&
+      (c->refeed_count <= c->out_limit.max))
   {
-    log(L_INFO "Protocol %s resets route export limit (%u)", c->proto->name, l->limit);
-    channel_reset_limit(&c->out_limit);
+    log(L_INFO "Protocol %s resets route export limit (%u)", c->proto->name, c->out_limit.max);
+    channel_reset_limit(c, &c->out_limit, PLD_OUT);
 
     /* Continue in feed - it will process routing table again from beginning */
     c->refeed_count = 0;
@@ -461,7 +460,8 @@ channel_stop_export(struct channel *c)
     rt_feed_channel_abort(c);
 
   c->export_state = ES_DOWN;
-  c->export_stats.routes = 0;
+
+  channel_reset_limit(c, &c->out_limit, PLD_OUT);
   bmap_reset(&c->export_map, 1024);
   bmap_reset(&c->export_reject_map, 1024);
 }
@@ -556,9 +556,9 @@ channel_do_start(struct channel *c)
   memset(&c->export_stats, 0, sizeof(struct export_stats));
   memset(&c->import_stats, 0, sizeof(struct import_stats));
 
-  channel_reset_limit(&c->rx_limit);
-  channel_reset_limit(&c->in_limit);
-  channel_reset_limit(&c->out_limit);
+  channel_reset_limit(c, &c->rx_limit, PLD_RX);
+  channel_reset_limit(c, &c->in_limit, PLD_IN);
+  channel_reset_limit(c, &c->out_limit, PLD_OUT);
 
   CALL(c->channel->start, c);
 }
@@ -604,8 +604,8 @@ channel_do_down(struct channel *c)
   rt_unlock_table(c->table);
   c->proto->active_channels--;
 
-  if ((c->import_stats.routes + c->import_stats.filtered) != 0)
-    log(L_ERR "%s: Channel %s is down but still has some routes", c->proto->name, c->name);
+  if (c->in_limit.count || c->rx_limit.count)
+    bug("%s: Channel %s is down but still has some routes", c->proto->name, c->name);
 
   // bmap_free(&c->export_map);
   memset(&c->import_stats, 0, sizeof(struct import_stats));
@@ -748,8 +748,8 @@ channel_request_reload(struct channel *c)
    * Should this be done before reload_routes() hook?
    * Perhaps, but routes are updated asynchronously.
    */
-  channel_reset_limit(&c->rx_limit);
-  channel_reset_limit(&c->in_limit);
+  channel_reset_limit(c, &c->rx_limit, PLD_RX);
+  channel_reset_limit(c, &c->in_limit, PLD_IN);
 }
 
 const struct channel_class channel_basic = {
@@ -852,9 +852,10 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   /* Reconfigure channel fields */
   c->in_filter = cf->in_filter;
   c->out_filter = cf->out_filter;
-  c->rx_limit = cf->rx_limit;
-  c->in_limit = cf->in_limit;
-  c->out_limit = cf->out_limit;
+
+  channel_update_limit(c, &c->rx_limit, PLD_RX, &cf->rx_limit);
+  channel_update_limit(c, &c->in_limit, PLD_IN, &cf->in_limit);
+  channel_update_limit(c, &c->out_limit, PLD_OUT, &cf->out_limit);
 
   // c->ra_mode = cf->ra_mode;
   c->merge_limit = cf->merge_limit;
@@ -862,8 +863,6 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   c->debug = cf->debug;
   c->in_keep_filtered = cf->in_keep_filtered;
   c->rpki_reload = cf->rpki_reload;
-
-  channel_verify_limits(c);
 
   /* Execute channel-specific reconfigure hook */
   if (c->channel->reconfigure && !c->channel->reconfigure(c, cf, &import_changed, &export_changed))
@@ -1785,88 +1784,104 @@ proto_set_message(struct proto *p, char *msg, int len)
 }
 
 
-static const char *
-channel_limit_name(struct channel_limit *l)
-{
-  const char *actions[] = {
-    [PLA_WARN] = "warn",
-    [PLA_BLOCK] = "block",
-    [PLA_RESTART] = "restart",
-    [PLA_DISABLE] = "disable",
-  };
+static const char * channel_limit_name[] = {
+  [PLA_WARN] = "warn",
+  [PLA_BLOCK] = "block",
+  [PLA_RESTART] = "restart",
+  [PLA_DISABLE] = "disable",
+};
 
-  return actions[l->action];
-}
 
-/**
- * channel_notify_limit: notify about limit hit and take appropriate action
- * @c: channel
- * @l: limit being hit
- * @dir: limit direction (PLD_*)
- * @rt_count: the number of routes
- *
- * The function is called by the route processing core when limit @l
- * is breached. It activates the limit and tooks appropriate action
- * according to @l->action.
- */
-void
-channel_notify_limit(struct channel *c, struct channel_limit *l, int dir, u32 rt_count)
+static void
+channel_log_limit(struct channel *c, struct limit *l, int dir)
 {
   const char *dir_name[PLD_MAX] = { "receive", "import" , "export" };
-  const byte dir_down[PLD_MAX] = { PDC_RX_LIMIT_HIT, PDC_IN_LIMIT_HIT, PDC_OUT_LIMIT_HIT };
-  struct proto *p = c->proto;
-
-  if (l->state == PLS_BLOCKED)
-    return;
-
-  /* For warning action, we want the log message every time we hit the limit */
-  if (!l->state || ((l->action == PLA_WARN) && (rt_count == l->limit)))
-    log(L_WARN "Protocol %s hits route %s limit (%d), action: %s",
-	p->name, dir_name[dir], l->limit, channel_limit_name(l));
-
-  switch (l->action)
-  {
-  case PLA_WARN:
-    l->state = PLS_ACTIVE;
-    break;
-
-  case PLA_BLOCK:
-    l->state = PLS_BLOCKED;
-    break;
-
-  case PLA_RESTART:
-  case PLA_DISABLE:
-    l->state = PLS_BLOCKED;
-    if (p->proto_state == PS_UP)
-      proto_schedule_down(p, l->action == PLA_RESTART, dir_down[dir]);
-    break;
-  }
+  log(L_WARN "Channel %s.%s hits route %s limit (%d), action: %s",
+      c->proto->name, c->name, dir_name[dir], l->max, channel_limit_name[c->limit_actions[dir]]);
 }
 
 static void
-channel_verify_limits(struct channel *c)
+channel_activate_limit(struct channel *c, struct limit *l, int dir)
 {
-  struct channel_limit *l;
-  u32 all_routes = c->import_stats.routes + c->import_stats.filtered;
+  if (c->limit_active & (1 << dir))
+    return;
 
-  l = &c->rx_limit;
-  if (l->action && (all_routes > l->limit))
-    channel_notify_limit(c, l, PLD_RX, all_routes);
-
-  l = &c->in_limit;
-  if (l->action && (c->import_stats.routes > l->limit))
-    channel_notify_limit(c, l, PLD_IN, c->import_stats.routes);
-
-  l = &c->out_limit;
-  if (l->action && (c->export_stats.routes > l->limit))
-    channel_notify_limit(c, l, PLD_OUT, c->export_stats.routes);
+  c->limit_active |= (1 << dir);
+  channel_log_limit(c, l, dir);
 }
 
-static inline void
-channel_reset_limit(struct channel_limit *l)
+static int
+channel_limit_warn(struct limit *l, void *data)
 {
-  if (l->action)
-    l->state = PLS_INITIAL;
+  struct channel_limit_data *cld = data;
+  struct channel *c = cld->c;
+  int dir = cld->dir;
+
+  channel_log_limit(c, l, dir);
+
+  return 0;
+}
+
+static int
+channel_limit_block(struct limit *l, void *data)
+{
+  struct channel_limit_data *cld = data;
+  struct channel *c = cld->c;
+  int dir = cld->dir;
+
+  channel_activate_limit(c, l, dir);
+
+  return 1;
+}
+
+static const byte chl_dir_down[PLD_MAX] = { PDC_RX_LIMIT_HIT, PDC_IN_LIMIT_HIT, PDC_OUT_LIMIT_HIT };
+
+static int
+channel_limit_down(struct limit *l, void *data)
+{
+  struct channel_limit_data *cld = data;
+  struct channel *c = cld->c;
+  struct proto *p = c->proto;
+  int dir = cld->dir;
+
+  channel_activate_limit(c, l, dir);
+
+  if (p->proto_state == PS_UP)
+    proto_schedule_down(p, c->limit_actions[dir] == PLA_RESTART, chl_dir_down[dir]);
+
+  return 1;
+}
+
+static int (*channel_limit_action[])(struct limit *, void *) = {
+  [PLA_NONE] = NULL,
+  [PLA_WARN] = channel_limit_warn,
+  [PLA_BLOCK] = channel_limit_block,
+  [PLA_RESTART] = channel_limit_down,
+  [PLA_DISABLE] = channel_limit_down,
+};
+
+static void
+channel_update_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf)
+{
+  l->action = channel_limit_action[cf->action];
+  c->limit_actions[dir] = cf->action;
+
+  struct channel_limit_data cld = { .c = c, .dir = dir };
+  limit_update(l, &cld, cf->action ? cf->limit : ~((u32) 0));
+}
+
+static void
+channel_init_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf)
+{
+  channel_reset_limit(c, l, dir);
+  channel_update_limit(c, l, dir, cf);
+}
+
+static void
+channel_reset_limit(struct channel *c, struct limit *l, int dir)
+{
+  limit_reset(l);
+  c->limit_active &= ~(1 << dir);
 }
 
 static inline void
@@ -2017,12 +2032,16 @@ channel_show_stats(struct channel *c)
   struct import_stats *is = &c->import_stats;
   struct export_stats *es = &c->export_stats;
 
+  u32 rx_routes = c->rx_limit.count;
+  u32 in_routes = c->in_limit.count;
+  u32 out_routes = c->out_limit.count;
+
   if (c->in_keep_filtered)
     cli_msg(-1006, "    Routes:         %u imported, %u filtered, %u exported, %u preferred",
-	    is->routes, is->filtered, es->routes, is->pref);
+	    in_routes, (rx_routes - in_routes), out_routes, is->pref);
   else
     cli_msg(-1006, "    Routes:         %u imported, %u exported, %u preferred",
-	    is->routes, es->routes, is->pref);
+	    in_routes, out_routes, is->pref);
 
   cli_msg(-1006, "    Route change stats:     received   rejected   filtered    ignored   accepted");
   cli_msg(-1006, "      Import updates:     %10u %10u %10u %10u %10u",
@@ -2040,13 +2059,13 @@ channel_show_stats(struct channel *c)
 }
 
 void
-channel_show_limit(struct channel_limit *l, const char *dsc)
+channel_show_limit(struct limit *l, const char *dsc, int active, int action)
 {
   if (!l->action)
     return;
 
-  cli_msg(-1006, "    %-16s%d%s", dsc, l->limit, l->state ? " [HIT]" : "");
-  cli_msg(-1006, "      Action:       %s", channel_limit_name(l));
+  cli_msg(-1006, "    %-16s%d%s", dsc, l->max, active ? " [HIT]" : "");
+  cli_msg(-1006, "      Action:       %s", channel_limit_name[action]);
 }
 
 void
@@ -2064,9 +2083,9 @@ channel_show_info(struct channel *c)
 	    c->gr_lock ? " pending" : "",
 	    c->gr_wait ? " waiting" : "");
 
-  channel_show_limit(&c->rx_limit, "Receive limit:");
-  channel_show_limit(&c->in_limit, "Import limit:");
-  channel_show_limit(&c->out_limit, "Export limit:");
+  channel_show_limit(&c->rx_limit, "Receive limit:", c->limit_active & (1 << PLD_RX), c->limit_actions[PLD_RX]);
+  channel_show_limit(&c->in_limit, "Import limit:", c->limit_active & (1 << PLD_IN), c->limit_actions[PLD_IN]);
+  channel_show_limit(&c->out_limit, "Export limit:", c->limit_active & (1 << PLD_OUT), c->limit_actions[PLD_OUT]);
 
   if (c->channel_state != CS_DOWN)
     channel_show_stats(c);
