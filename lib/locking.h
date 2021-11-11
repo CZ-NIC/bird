@@ -19,6 +19,7 @@ struct lock_order {
   struct domain_generic *attrs;
   struct domain_generic *cork;
   struct domain_generic *event;
+  struct domain_generic *resource;
 };
 
 extern _Thread_local struct lock_order locking_stack;

@@ -11,6 +11,8 @@
 
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdatomic.h>
+#include <errno.h>
 
 #ifdef HAVE_MMAP
 #include <sys/mman.h>
@@ -18,6 +20,13 @@
 
 long page_size = 0;
 _Bool alloc_multipage = 0;
+
+static _Atomic int global_page_list_not_empty;
+static list global_page_list;
+static _Atomic int global_page_spinlock;
+
+#define	GLOBAL_PAGE_SPIN_LOCK	for (int v = 0; !atomic_compare_exchange_weak_explicit(&global_page_spinlock, &v, 1, memory_order_acq_rel, memory_order_acquire); v = 0)
+#define GLOBAL_PAGE_SPIN_UNLOCK	do { int v = 1; ASSERT_DIE(atomic_compare_exchange_strong_explicit(&global_page_spinlock, &v, 0, memory_order_acq_rel, memory_order_acquire)); } while (0)
 
 #ifdef HAVE_MMAP
 static _Bool use_fake = 0;
@@ -28,12 +37,14 @@ static _Bool use_fake = 1;
 void resource_sys_init(void)
 {
 #ifdef HAVE_MMAP
+  init_list(&global_page_list);
+
   if (!(page_size = sysconf(_SC_PAGESIZE)))
     die("System page size must be non-zero");
 
   if ((u64_popcount(page_size) > 1) || (page_size > 16384))
-  {
 #endif
+  {
     /* Too big or strange page, use the aligned allocator instead */
     page_size = 4096;
     use_fake = 1;
@@ -46,6 +57,22 @@ alloc_sys_page(void)
 #ifdef HAVE_MMAP
   if (!use_fake)
   {
+    if (atomic_load_explicit(&global_page_list_not_empty, memory_order_relaxed))
+    {
+      GLOBAL_PAGE_SPIN_LOCK;
+      if (!EMPTY_LIST(global_page_list))
+      {
+	node *ret = HEAD(global_page_list);
+	rem_node(ret);
+	if (EMPTY_LIST(global_page_list))
+	  atomic_store_explicit(&global_page_list_not_empty, 0, memory_order_relaxed);
+	GLOBAL_PAGE_SPIN_UNLOCK;
+	memset(ret, 0, sizeof(node));
+	return (void *) ret;
+      }
+      GLOBAL_PAGE_SPIN_UNLOCK;
+    }
+
     if (alloc_multipage)
     {
       void *big = mmap(NULL, page_size * 2, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -90,7 +117,19 @@ free_sys_page(void *ptr)
   if (!use_fake)
   {
     if (munmap(ptr, page_size) < 0)
-      bug("munmap(%p) failed: %m", ptr);
+#ifdef ENOMEM
+      if (errno == ENOMEM)
+      {
+	memset(ptr, 0, page_size);
+
+	GLOBAL_PAGE_SPIN_LOCK;
+	add_tail(&global_page_list, (node *) ptr);
+	atomic_store_explicit(&global_page_list_not_empty, 1, memory_order_relaxed);
+	GLOBAL_PAGE_SPIN_UNLOCK;
+      }
+      else
+#endif
+	bug("munmap(%p) failed: %m", ptr);
   }
   else
 #endif

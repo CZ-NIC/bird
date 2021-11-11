@@ -60,7 +60,7 @@ static struct resclass pool_class = {
 pool root_pool;
 
 void *alloc_sys_page(void);
-void free_sys_page(void *);
+int free_sys_page(void *);
 
 static int indent;
 
@@ -98,8 +98,10 @@ pool_free(resource *P)
   if (p->pages)
     {
       ASSERT_DIE(!p->pages->used);
-      for (uint i=0; i<p->pages->free; i++)
+
+      for (uint i = 0; i < p->pages->free; i++)
 	free_sys_page(p->pages->ptr[i]);
+
       free_sys_page(p->pages);
     }
 }
@@ -476,10 +478,19 @@ free_page(pool *p, void *ptr)
   ASSERT_DIE(p->pages);
   p->pages->used--;
 
-  if (p->pages->free >= POOL_PAGES_MAX)
-    return free_sys_page(ptr);
-  else
-    p->pages->ptr[p->pages->free++] = ptr;
+  ASSERT_DIE(p->pages->free <= POOL_PAGES_MAX);
+
+  if (p->pages->free == POOL_PAGES_MAX)
+  {
+    const unsigned long keep = POOL_PAGES_MAX / 4;
+
+    for (uint i = keep; i < p->pages->free; i++)
+      free_sys_page(p->pages->ptr[i]);
+
+    p->pages->free = keep;
+  }
+
+  p->pages->ptr[p->pages->free++] = ptr;
 }
 
 
