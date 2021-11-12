@@ -51,4 +51,8 @@ void birdloop_unlink(struct birdloop *loop);
 void birdloop_ping(struct birdloop *loop);
 
 void birdloop_init(void);
+
+/* Yield for a little while. Use only in special cases. */
+void birdloop_yield(void);
+
 #endif /* _BIRD_IO_LOOP_H_ */

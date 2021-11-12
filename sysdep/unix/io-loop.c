@@ -416,6 +416,7 @@ birdloop_free(struct birdloop *loop)
   ASSERT_DIE(loop->links == 0);
   ASSERT_DIE(pthread_equal(pthread_self(), loop->thread_id));
 
+  rcu_birdloop_stop(&loop->rcu);
   pthread_attr_destroy(&loop->thread_attr);
 
   domain_free(loop->time.domain);
@@ -505,6 +506,8 @@ birdloop_main(void *arg)
   timer *t;
   int rv, timeout;
 
+  rcu_birdloop_start(&loop->rcu);
+
   btime loop_begin = current_time();
 
   tmp_init(loop->pool);
@@ -568,4 +571,8 @@ birdloop_main(void *arg)
   return NULL;
 }
 
-
+void
+birdloop_yield(void)
+{
+  usleep(100);
+}

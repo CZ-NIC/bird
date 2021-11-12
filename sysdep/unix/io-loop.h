@@ -7,6 +7,8 @@
 #ifndef _BIRD_SYSDEP_UNIX_IO_LOOP_H_
 #define _BIRD_SYSDEP_UNIX_IO_LOOP_H_
 
+#include "lib/rcu.h"
+
 struct birdloop
 {
   pool *pool;
@@ -27,6 +29,8 @@ struct birdloop
 
   pthread_t thread_id;
   pthread_attr_t thread_attr;
+
+  struct rcu_birdloop rcu;
 
   uint links;
 
