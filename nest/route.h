@@ -170,6 +170,7 @@ typedef struct rtable_private {
   struct hmap id_map;
   struct hostcache *hostcache;
   struct event *prune_event;		/* Event to prune abandoned routes */
+  struct event *announce_event;		/* Event to announce pending exports */
   struct event *ec_event;		/* Event to prune finished exports */
   struct event *hcu_event;		/* Event to update host cache */
   struct event *delete_event;		/* Event to delete the table */
@@ -191,8 +192,6 @@ typedef struct rtable_private {
   struct timer *settle_timer;		/* Settle time for notifications */
 
   list pending_exports;			/* List of packed struct rt_pending_export */
-  btime base_export_time;		/* When first pending export was announced */
-  struct timer *export_timer;
 
   struct rt_pending_export *first_export;	/* First export to announce */
   u64 next_export_seq;			/* The next export will have this ID */
@@ -221,7 +220,6 @@ struct rtable_config {
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
-  btime export_settle_time;		/* Delay before exports are announced */
   uint cork_limit;			/* Amount of routes to be pending on export to cork imports */
 };
 
@@ -309,6 +307,8 @@ struct rt_import_request {
   char *name;
   u8 trace_routes;
 
+  event_list *list;			/* Where to schedule import events */
+
   void (*dump_req)(struct rt_import_request *req);
   void (*log_state_change)(struct rt_import_request *req, u8 state);
   /* Preimport is called when the @new route is just-to-be inserted, replacing @old.
@@ -339,6 +339,7 @@ struct rt_import_hook {
   u8 stale_pruned;			/* Last prune finished when this value was set at stale_valid */
   u8 stale_pruning;			/* Last prune started when this value was set at stale_valid */
 
+  struct event *export_announce_event;	/* Event to run to announce new exports */
   struct event *stopped;		/* Event to run when import is stopped */
 };
 

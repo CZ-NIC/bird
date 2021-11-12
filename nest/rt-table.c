@@ -1023,8 +1023,6 @@ rte_announce(rtable_private *tab, net *net, struct rte_storage *new, struct rte_
       rt_notify_hostcache(tab, net);
   }
 
-  rt_schedule_notify(tab);
-
   if (EMPTY_LIST(tab->exports) && EMPTY_LIST(tab->pending_exports))
   {
     /* No export hook and no pending exports to cleanup. We may free the route immediately. */
@@ -1105,10 +1103,7 @@ rte_announce(rtable_private *tab, net *net, struct rte_storage *new, struct rte_
   {
     ev_cork(&rt_cork);
     tab->cork_active = 1;
-    tm_start_in(tab->export_timer, 0, tab->loop);
   }
-  else if (!tm_active(tab->export_timer))
-    tm_start_in(tab->export_timer, tab->config->export_settle_time, tab->loop);
 }
 
 static struct rt_pending_export *
@@ -1158,10 +1153,12 @@ rt_send_export_event(struct rt_export_hook *hook)
 }
 
 static void
-rt_announce_exports(timer *tm)
+rt_announce_exports(void *data)
 {
-  rtable_private *tab = tm->data;
+  rtable_private *tab = data;
   ASSERT_DIE(birdloop_inside(tab->loop));
+
+  rt_schedule_notify(tab);
 
   struct rt_export_hook *c; node *n;
   WALK_LIST2(c, n, tab->exports, n)
@@ -1170,6 +1167,26 @@ rt_announce_exports(timer *tm)
       continue;
 
     rt_send_export_event(c);
+  }
+}
+
+static void
+rt_import_announce_exports(void *data)
+{
+  struct rt_import_hook *hook = data;
+  RT_LOCKED(hook->table, tab)
+  {
+    if (hook->import_state == TIS_CLEARED)
+    {
+      rfree(hook->export_announce_event);
+
+      ev_send(hook->stopped->list, hook->stopped);
+      rem_node(&hook->n);
+      mb_free(hook);
+      rt_unlock_table(tab);
+    }
+    else
+      ev_send_loop(tab->loop, tab->announce_event);
   }
 }
 
@@ -1471,6 +1488,8 @@ rte_recalculate(rtable_private *table, struct rt_import_hook *c, net *net, rte *
   rte_announce(table, net, new_stored, old_stored,
       net->routes, old_best_stored);
 
+  ev_send(req->list, c->export_announce_event);
+
   if (!net->routes &&
       (table->gc_counter++ >= table->config->gc_max_ops) &&
       (table->gc_time + table->config->gc_min_time <= current_time()))
@@ -1709,6 +1728,8 @@ rt_request_import(rtable *t, struct rt_import_request *req)
   hook->req = req;
   hook->table = t;
 
+  hook->export_announce_event = ev_new_init(tab->rp, rt_import_announce_exports, hook);
+
   if (!hook->stale_set)
     hook->stale_set = hook->stale_valid = hook->stale_pruning = hook->stale_pruned = 1;
 
@@ -1727,11 +1748,12 @@ rt_stop_import(struct rt_import_request *req, event *stopped)
   struct rt_import_hook *hook = req->hook;
 
   RT_LOCK(hook->table);
+
   rt_schedule_prune(RT_PRIV(hook->table));
 
   rt_set_import_state(hook, TIS_STOP);
-
   hook->stopped = stopped;
+
   RT_UNLOCK(hook->table);
 }
 
@@ -2158,6 +2180,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   t->loop = birdloop_new(p, DOMAIN_ORDER(rtable), nb);
 
+  t->announce_event = ev_new_init(p, rt_announce_exports, t);
   t->ec_event = ev_new_init(p, rt_export_cleanup, t);
   t->prune_event = ev_new_init(p, rt_prune_table, t);
   t->hcu_event = ev_new_init(p, rt_update_hostcache, t);
@@ -2166,7 +2189,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->nhu_event->cork = &rt_cork;
   t->prune_event->cork = &rt_cork;
 
-  t->export_timer = tm_new_init(p, rt_announce_exports, t, 0, 0);
   t->last_rt_change = t->gc_time = current_time();
   t->next_export_seq = 1;
 
@@ -2472,15 +2494,11 @@ done:;
       if (!first_export || (first_export->seq >= ih->flush_seq))
       {
 	ih->import_state = TIS_CLEARED;
-	ev_send(ih->stopped->list, ih->stopped);
-	rem_node(&ih->n);
-	mb_free(ih);
-	rt_unlock_table(tab);
+	ev_send(ih->req->list, ih->export_announce_event);
       }
 
-
-  if (EMPTY_LIST(tab->pending_exports) && tm_active(tab->export_timer))
-    tm_stop(tab->export_timer);
+  if (EMPTY_LIST(tab->pending_exports) && ev_active(tab->announce_event))
+    ev_postpone(tab->announce_event);
 
   /* If reduced to at most one export block pending */
   if (tab->cork_active &&
@@ -2753,6 +2771,8 @@ rt_next_hop_update(void *data)
   if (atomic_fetch_and_explicit(&tab->nhu_state, NHU_SCHEDULED, memory_order_acq_rel) != NHU_RUNNING)
     ev_send_loop(tab->loop, tab->nhu_event);
 
+  ev_send_loop(tab->loop, tab->announce_event);
+
   rt_unlock_table(tab);
 }
 
@@ -2809,6 +2829,7 @@ rt_loop_stopped(void *data)
   r->loop = NULL;
   r->prune_event->list = r->ec_event->list = NULL;
   r->nhu_event->list = r->hcu_event->list = NULL;
+  r->announce_event->list = NULL;
   ev_send(r->delete_event->list, r->delete_event);
 }
 

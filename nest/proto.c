@@ -468,6 +468,7 @@ channel_start_import(struct channel *c)
 
   c->in_req = (struct rt_import_request) {
     .name = rn,
+    .list = proto_work_list(c->proto),
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_dump_import_req,
     .log_state_change = channel_import_log_state_change,
@@ -886,6 +887,7 @@ channel_setup_in_table(struct channel *c, int best)
   c->in_table = &cat->cat;
   c->in_table->push = (struct rt_import_request) {
     .name = cat->name,
+    .list = proto_work_list(c->proto),
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_in_push_dump_req,
     .log_state_change = channel_push_log_state_change,
@@ -928,6 +930,7 @@ channel_setup_out_table(struct channel *c)
   c->out_table = &cat->cat;
   c->out_table->push = (struct rt_import_request) {
     .name = cat->name,
+    .list = proto_work_list(c->proto),
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_out_push_dump_req,
     .log_state_change = channel_push_log_state_change,
