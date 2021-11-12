@@ -13,6 +13,7 @@
 #include "nest/bird.h"
 #include "lib/resource.h"
 #include "lib/string.h"
+#include "lib/rcu.h"
 
 /**
  * DOC: Resource pools
@@ -284,6 +285,8 @@ rlookup(unsigned long a)
 void
 resource_init(void)
 {
+  rcu_init();
+
   root_pool.r.class = &pool_class;
   root_pool.name = "Root";
   init_list(&root_pool.inside);

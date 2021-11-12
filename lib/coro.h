@@ -25,5 +25,7 @@ struct coroutine *coro_run(pool *, void (*entry)(void *), void *data);
 /* Get self. */
 extern _Thread_local struct coroutine *this_coro;
 
+/* Just wait for a little while. Not intended for general use; use events if possible. */
+void coro_yield(void);
 
 #endif

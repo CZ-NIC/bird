@@ -18,6 +18,7 @@
 #include "lib/birdlib.h"
 #include "lib/locking.h"
 #include "lib/coro.h"
+#include "lib/rcu.h"
 #include "lib/resource.h"
 #include "lib/timer.h"
 
@@ -128,6 +129,7 @@ struct coroutine {
   resource r;
   pthread_t id;
   pthread_attr_t attr;
+  struct rcu_coro rcu;
   void (*entry)(void *);
   void *data;
 };
@@ -137,6 +139,7 @@ static _Thread_local _Bool coro_cleaned_up = 0;
 static void coro_free(resource *r)
 {
   struct coroutine *c = (void *) r;
+  rcu_coro_stop(&c->rcu);
   ASSERT_DIE(pthread_equal(pthread_self(), c->id));
   pthread_attr_destroy(&c->attr);
   coro_cleaned_up = 1;
@@ -157,6 +160,7 @@ static void *coro_entry(void *p)
   ASSERT_DIE(c->entry);
 
   this_coro = c;
+  rcu_coro_start(&c->rcu);
 
   c->entry(c->data);
   ASSERT_DIE(coro_cleaned_up);
@@ -189,4 +193,10 @@ struct coroutine *coro_run(pool *p, void (*entry)(void *), void *data)
     die("pthread_create() failed: %M", e);
 
   return c;
+}
+
+void
+coro_yield(void)
+{
+  usleep(100);
 }
