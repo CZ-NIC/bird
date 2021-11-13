@@ -279,6 +279,24 @@ static inline uint ip6_pxlen(ip6_addr a, ip6_addr b)
   return 32 * i + 31 - u32_log2(a.addr[i] ^ b.addr[i]);
 }
 
+static inline int ip4_prefix_equal(ip4_addr a, ip4_addr b, uint n)
+{
+  return (_I(a) ^ _I(b)) < ((u64) 1 << (32 - n));
+}
+
+static inline int ip6_prefix_equal(ip6_addr a, ip6_addr b, uint n)
+{
+  uint n0 = n / 32;
+  uint n1 = n % 32;
+
+  return
+    ((n0 <= 0) || (_I0(a) == _I0(b))) &&
+    ((n0 <= 1) || (_I1(a) == _I1(b))) &&
+    ((n0 <= 2) || (_I2(a) == _I2(b))) &&
+    ((n0 <= 3) || (_I3(a) == _I3(b))) &&
+    (!n1 || ((a.addr[n0] ^ b.addr[n0]) < (1u << (32 - n1))));
+}
+
 static inline u32 ip4_getbit(ip4_addr a, uint pos)
 { return (_I(a) >> (31 - pos)) & 1; }
 

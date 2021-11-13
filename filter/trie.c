@@ -424,9 +424,6 @@ trie_add_prefix(struct f_trie *t, const net_addr *net, uint l, uint h)
 static int
 trie_match_net4(const struct f_trie *t, ip4_addr px, uint plen)
 {
-  ip4_addr pmask = ip4_mkmask(plen);
-  ip4_addr paddr = ip4_and(px, pmask);
-
   if (plen == 0)
     return t->zero;
 
@@ -437,10 +434,8 @@ trie_match_net4(const struct f_trie *t, ip4_addr px, uint plen)
 
   while (n)
   {
-    ip4_addr cmask = ip4_and(n->mask, pmask);
-
     /* We are out of path */
-    if (ip4_compare(ip4_and(paddr, cmask), ip4_and(n->addr, cmask)))
+    if (!ip4_prefix_equal(px, n->addr, MIN(plen, n->plen)))
       return 0;
 
     /* Check local mask */
@@ -452,11 +447,11 @@ trie_match_net4(const struct f_trie *t, ip4_addr px, uint plen)
       return 1;
 
     /* We finished trie walk and still no match */
-    if (plen <= n->plen)
+    if (nlen <= n->plen)
       return 0;
 
     /* Choose children */
-    n =  n->c[ip4_getbits(paddr, n->plen, TRIE_STEP)];
+    n =  n->c[ip4_getbits(px, n->plen, TRIE_STEP)];
   }
 
   return 0;
@@ -465,9 +460,6 @@ trie_match_net4(const struct f_trie *t, ip4_addr px, uint plen)
 static int
 trie_match_net6(const struct f_trie *t, ip6_addr px, uint plen)
 {
-  ip6_addr pmask = ip6_mkmask(plen);
-  ip6_addr paddr = ip6_and(px, pmask);
-
   if (plen == 0)
     return t->zero;
 
@@ -478,10 +470,8 @@ trie_match_net6(const struct f_trie *t, ip6_addr px, uint plen)
 
   while (n)
   {
-    ip6_addr cmask = ip6_and(n->mask, pmask);
-
     /* We are out of path */
-    if (ip6_compare(ip6_and(paddr, cmask), ip6_and(n->addr, cmask)))
+    if (!ip6_prefix_equal(px, n->addr, MIN(plen, n->plen)))
       return 0;
 
     /* Check local mask */
@@ -493,11 +483,11 @@ trie_match_net6(const struct f_trie *t, ip6_addr px, uint plen)
       return 1;
 
     /* We finished trie walk and still no match */
-    if (plen <= n->plen)
+    if (nlen <= n->plen)
       return 0;
 
     /* Choose children */
-    n =  n->c[ip6_getbits(paddr, n->plen, TRIE_STEP)];
+    n =  n->c[ip6_getbits(px, n->plen, TRIE_STEP)];
   }
 
   return 0;
