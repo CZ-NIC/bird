@@ -606,8 +606,8 @@ struct rte_src {
 
 
 typedef struct rta {
-  struct rta *next, **pprev;		/* Hash chain */
-  u32 uc;				/* Use count */
+  struct rta * _Atomic next, * _Atomic *pprev;	/* Hash chain */
+  _Atomic u32 uc;			/* Use count */
   u32 hash_key;				/* Hash over important fields */
   struct ea_list *eattrs;		/* Extended Attribute chain */
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
@@ -758,12 +758,6 @@ struct rte_owner {
   event *stop;
 };
 
-DEFINE_DOMAIN(attrs);
-extern DOMAIN(attrs) attrs_domain;
-
-#define RTA_LOCK	LOCK_DOMAIN(attrs, attrs_domain)
-#define RTA_UNLOCK	UNLOCK_DOMAIN(attrs, attrs_domain)
-
 #define RTE_SRC_PU_SHIFT      44
 #define RTE_SRC_IN_PROGRESS   (1ULL << RTE_SRC_PU_SHIFT)
 
@@ -879,20 +873,23 @@ static inline size_t rta_size(const rta *a) { return sizeof(rta) + sizeof(u32)*a
 #define RTA_MAX_SIZE (sizeof(rta) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
 rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */
 static inline int rta_is_cached(rta *r) { return r->cached; }
+
 static inline rta *rta_clone(rta *r) {
-  RTA_LOCK;
-  r->uc++;
-  RTA_UNLOCK;
+  u32 uc = atomic_fetch_add_explicit(&r->uc, 1, memory_order_acq_rel);
+  ASSERT_DIE(uc > 0);
   return r;
 }
 
 void rta__free(rta *r);
 static inline void rta_free(rta *r) {
-  RTA_LOCK;
-  if (r && !--r->uc)
+  if (!r)
+    return;
+
+  u32 uc = atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel);
+  if (uc == 1)
     rta__free(r);
-  RTA_UNLOCK;
 }
+
 rta *rta_do_cow(rta *o, linpool *lp);
 static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta_do_cow(r, lp) : r; }
 static inline void rta_uncache(rta *r) { r->cached = 0; r->uc = 0; }
