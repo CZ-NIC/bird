@@ -1130,7 +1130,7 @@ bgp_use_next_hop(struct bgp_export_state *s, eattr *a)
     return 0;
 
   /* Do not pass NEXT_HOP between different VRFs */
-  if (p->p.vrf_set && s->src && s->src->p.vrf_set && (p->p.vrf != s->src->p.vrf))
+  if (p->p.vrf && s->src && s->src->p.vrf && (p->p.vrf != s->src->p.vrf))
     return 0;
 
   /* Keep it when exported to internal peers */
@@ -1163,7 +1163,7 @@ bgp_use_gateway(struct bgp_export_state *s)
     return 0;
 
   /* Do not use gateway from different VRF */
-  if (p->p.vrf_set && ra->nh.iface && (p->p.vrf != ra->nh.iface->master))
+  if (p->p.vrf && ra->nh.iface && (p->p.vrf != ra->nh.iface->master))
     return 0;
 
   /* Use it when exported to internal peers */
