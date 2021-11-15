@@ -37,6 +37,7 @@
 static pool *if_pool;
 
 list iface_list;
+struct iface default_vrf;
 
 static void if_recalc_preferred(struct iface *i);
 
@@ -147,7 +148,7 @@ ifa_send_notify(struct proto *p, unsigned c, struct ifa *a)
 {
   if (p->ifa_notify &&
       (p->proto_state != PS_DOWN) &&
-      (!p->vrf_set || p->vrf == a->iface->master))
+      (!p->vrf || p->vrf == a->iface->master))
     {
       if (p->debug & D_IFACES)
 	log(L_TRACE "%s < address %N on interface %s %s",
@@ -185,7 +186,7 @@ if_send_notify(struct proto *p, unsigned c, struct iface *i)
 {
   if (p->if_notify &&
       (p->proto_state != PS_DOWN) &&
-      (!p->vrf_set || p->vrf == i->master))
+      (!p->vrf || p->vrf == i->master))
     {
       if (p->debug & D_IFACES)
 	log(L_TRACE "%s < interface %s %s", p->name, i->name,
@@ -243,7 +244,7 @@ if_recalc_flags(struct iface *i UNUSED, uint flags)
 {
   if ((flags & IF_ADMIN_UP) &&
       !(flags & (IF_SHUTDOWN | IF_TMP_DOWN)) &&
-      !(i->master_index && !i->master))
+      !(i->master_index && i->master == &default_vrf))
     flags |= IF_UP;
   else
     flags &= ~IF_UP;
@@ -300,6 +301,9 @@ if_update(struct iface *new)
 {
   struct iface *i;
   unsigned c;
+
+  if (!new->master)
+    new->master = &default_vrf;
 
   WALK_LIST(i, iface_list)
     if (!strcmp(new->name, i->name))
@@ -711,6 +715,7 @@ if_init(void)
 {
   if_pool = rp_new(&root_pool, "Interfaces");
   init_list(&iface_list);
+  strcpy(default_vrf.name, "default");
   neigh_init(if_pool);
 }
 
@@ -843,7 +848,7 @@ if_show(void)
 	continue;
 
       char mbuf[16 + sizeof(i->name)] = {};
-      if (i->master)
+      if (i->master != &default_vrf)
 	bsprintf(mbuf, " master=%s", i->master->name);
       else if (i->master_index)
 	bsprintf(mbuf, " master=#%u", i->master_index);
