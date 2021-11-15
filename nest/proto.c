@@ -883,6 +883,7 @@ channel_setup_in_table(struct channel *c, int best)
 
   cat->tab_cf.name = cat->name;
   cat->tab_cf.addr_type = c->net_type;
+  cat->tab_cf.cork_limit = 4 * page_size / sizeof(struct rt_pending_export);
 
   c->in_table = &cat->cat;
   c->in_table->push = (struct rt_import_request) {
@@ -926,6 +927,7 @@ channel_setup_out_table(struct channel *c)
 
   cat->tab_cf.name = cat->name;
   cat->tab_cf.addr_type = c->net_type;
+  cat->tab_cf.cork_limit = 4 * page_size / sizeof(struct rt_pending_export);
 
   c->out_table = &cat->cat;
   c->out_table->push = (struct rt_import_request) {

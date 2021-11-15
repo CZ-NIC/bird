@@ -1099,8 +1099,13 @@ rte_announce(rtable_private *tab, net *net, struct rte_storage *new, struct rte_
   if (tab->first_export == NULL)
     tab->first_export = rpe;
 
-  if ((tab->first_export->seq + tab->config->cork_limit <= tab->next_export_seq) && !tab->cork_active)
+  if (!EMPTY_LIST(tab->exports) &&
+      (tab->first_export->seq + tab->config->cork_limit <= tab->next_export_seq) &&
+      !tab->cork_active)
   {
+    if (config->table_debug)
+      log(L_TRACE "%s: cork activated", tab->name);
+
     ev_cork(&rt_cork);
     tab->cork_active = 1;
   }
@@ -1777,22 +1782,14 @@ rt_request_export(rtable *t, struct rt_export_request *req)
 
   rt_set_export_state(hook, TES_HUNGRY);
 
-  struct rt_pending_export *rpe = rt_last_export(tab);
-  DBG("store hook=%p last_export=%p seq=%lu\n", hook, rpe, rpe ? rpe->seq : 0);
-  atomic_store_explicit(&hook->last_export, rpe, memory_order_relaxed);
-
   hook->n = (node) {};
   add_tail(&tab->exports, &hook->n);
-
-  FIB_ITERATE_INIT(&hook->feed_fit, &tab->fib);
 
   DBG("New export hook %p req %p in table %s uc=%u\n", hook, req, tab->name, tab->use_count);
 
   hook->event = ev_new_init(p, rt_feed_channel, hook);
   RT_UNLOCK(t);
 
-  rt_set_export_state(hook, TES_FEEDING);
-  ASSERT_DIE(hook->export_state == TES_FEEDING);
   rt_send_export_event(hook);
 }
 
@@ -2506,6 +2503,8 @@ done:;
   {
     tab->cork_active = 0;
     ev_uncork(&rt_cork);
+    if (config->table_debug)
+      log(L_TRACE "%s: cork released", tab->name);
   }
 }
 
@@ -2955,10 +2954,23 @@ rt_feed_channel(void *data)
   struct fib_iterator *fit = &c->feed_fit;
   int max_feed = 256;
 
-  RT_LOCK(c->table);
-  rtable_private *tab = RT_PRIV(c->table);
+  rtable_private *tab;
+  if (c->export_state == TES_HUNGRY)
+  {
+    rt_set_export_state(c, TES_FEEDING);
 
-  ASSERT(atomic_load_explicit(&c->export_state, memory_order_relaxed) == TES_FEEDING);
+    tab = RT_LOCK(c->table);
+
+    struct rt_pending_export *rpe = rt_last_export(tab);
+    DBG("store hook=%p last_export=%p seq=%lu\n", c, rpe, rpe ? rpe->seq : 0);
+    atomic_store_explicit(&c->last_export, rpe, memory_order_relaxed);
+
+    FIB_ITERATE_INIT(&c->feed_fit, &tab->fib);
+  }
+  else
+    tab = RT_LOCK(c->table);
+
+  ASSERT_DIE(c->export_state == TES_FEEDING);
 
 redo:
   FIB_ITERATE_START(&tab->fib, fit, net, n)
