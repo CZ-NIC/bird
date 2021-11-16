@@ -233,7 +233,12 @@ static const size_t min_pdu_size[] = {
   [ERROR] 			= 16,
 };
 
-static int rpki_send_error_pdu(struct rpki_cache *cache, const enum pdu_error_type error_code, const u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...);
+static int rpki_send_error_pdu_(struct rpki_cache *cache, const enum pdu_error_type error_code, const u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...);
+
+#define rpki_send_error_pdu(cache, error_code, err_pdu_len, erroneous_pdu, fmt...) ({ \
+    rpki_send_error_pdu_(cache, error_code, err_pdu_len, erroneous_pdu, #fmt); \
+    CACHE_TRACE(D_PACKETS, cache, #fmt); \
+    })
 
 static void
 rpki_pdu_to_network_byte_order(struct pdu_header *pdu)
@@ -595,6 +600,7 @@ rpki_handle_error_pdu(struct rpki_cache *cache, const struct pdu_error *pdu)
   case INTERNAL_ERROR:
   case INVALID_REQUEST:
   case UNSUPPORTED_PDU_TYPE:
+    CACHE_TRACE(D_PACKETS, cache, "Got UNSUPPORTED_PDU_TYPE");
     rpki_cache_change_state(cache, RPKI_CS_ERROR_FATAL);
     break;
 
@@ -1013,7 +1019,7 @@ rpki_connected_hook(sock *sk)
  * This function prepares Error PDU and sends it to a cache server.
  */
 static int
-rpki_send_error_pdu(struct rpki_cache *cache, const enum pdu_error_type error_code, const u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...)
+rpki_send_error_pdu_(struct rpki_cache *cache, const enum pdu_error_type error_code, const u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...)
 {
   va_list args;
   char msg[128];
