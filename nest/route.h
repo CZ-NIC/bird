@@ -163,6 +163,7 @@ typedef struct rtable_private {
   struct fib fib;
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
+  u32 rr_count;				/* Number of running route refresh requests */
 
   list imports;				/* Registered route importers */
   list exports;				/* Registered route exporters */
@@ -220,6 +221,8 @@ struct rtable_config {
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
+  btime min_rr_settle_time;		/* Minimum settle time for notifications when route refresh is running */
+  btime max_rr_settle_time;		/* Maximum settle time for notifications when route refresh is running */
   uint cork_limit;			/* Amount of routes to be pending on export to cork imports */
 };
 

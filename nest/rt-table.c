@@ -1752,14 +1752,18 @@ rt_stop_import(struct rt_import_request *req, event *stopped)
   ASSERT_DIE(req->hook);
   struct rt_import_hook *hook = req->hook;
 
-  RT_LOCK(hook->table);
+  rtable_private *tab = RT_LOCK(hook->table);
 
-  rt_schedule_prune(RT_PRIV(hook->table));
+  rt_schedule_prune(tab);
 
   rt_set_import_state(hook, TIS_STOP);
   hook->stopped = stopped;
 
-  RT_UNLOCK(hook->table);
+  if (hook->stale_set < hook->stale_valid)
+    if (!--tab->rr_count)
+      rt_schedule_notify(tab);
+
+  RT_UNLOCK(tab);
 }
 
 void
@@ -1864,6 +1868,8 @@ rt_refresh_begin(struct rt_import_request *req)
     hook->stale_valid = 0;
   }
 
+  tab->rr_count++;
+
   if (req->trace_routes & D_STATES)
     log(L_TRACE "%s: route refresh begin [%u]", req->name, hook->stale_set);
 
@@ -1884,16 +1890,19 @@ rt_refresh_end(struct rt_import_request *req)
   struct rt_import_hook *hook = req->hook;
   ASSERT_DIE(hook);
 
-  RT_LOCK(hook->table);
+  rtable_private *tab = RT_LOCK(hook->table);
   hook->stale_valid++;
   ASSERT_DIE(hook->stale_set == hook->stale_valid);
 
-  rt_schedule_prune(RT_PRIV(hook->table));
+  rt_schedule_prune(tab);
 
   if (req->trace_routes & D_STATES)
     log(L_TRACE "%s: route refresh end [%u]", req->name, hook->stale_valid);
 
-  RT_UNLOCK(hook->table);
+  if (!--tab->rr_count)
+    rt_schedule_notify(tab);
+
+  RT_UNLOCK(tab);
 }
 
 /**
@@ -2032,8 +2041,17 @@ rt_settled_time(rtable_private *tab)
 {
   ASSUME(tab->base_settle_time != 0);
 
-  return MIN(tab->last_rt_change + tab->config->min_settle_time,
-	     tab->base_settle_time + tab->config->max_settle_time);
+  btime min_settle_time = tab->rr_count ? tab->config->min_rr_settle_time : tab->config->min_settle_time;
+  btime max_settle_time = tab->rr_count ? tab->config->max_rr_settle_time : tab->config->max_settle_time;
+
+  DBG("settled time computed from %t %t %t %t as %t / %t, now is %t\n",
+      tab->name, tab->last_rt_change, min_settle_time,
+	     tab->base_settle_time, max_settle_time,
+	     tab->last_rt_change + min_settle_time,
+	     tab->base_settle_time + max_settle_time, current_time());
+
+  return MIN(tab->last_rt_change + min_settle_time,
+	     tab->base_settle_time + max_settle_time);
 }
 
 static void
@@ -2794,6 +2812,8 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->gc_min_time = 5;
   c->min_settle_time = 1 S;
   c->max_settle_time = 20 S;
+  c->min_rr_settle_time = 30 S;
+  c->max_rr_settle_time = 90 S;
   c->cork_limit = 4 * page_size / sizeof(struct rt_pending_export);
   c->config = new_config;
 
