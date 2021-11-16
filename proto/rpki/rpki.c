@@ -139,6 +139,30 @@ rpki_table_remove_roa(struct rpki_cache *cache, struct channel *channel, const n
   rte_update(channel, &pfxr->n, NULL, p->p.main_source);
 }
 
+void
+rpki_start_refresh(struct rpki_proto *p)
+{
+  if (p->roa4_channel)
+    rt_refresh_begin(&p->roa4_channel->in_req);
+  if (p->roa6_channel)
+    rt_refresh_begin(&p->roa6_channel->in_req);
+
+  p->refresh_channels = 1;
+}
+
+void
+rpki_stop_refresh(struct rpki_proto *p)
+{
+  if (!p->refresh_channels)
+    return;
+
+  p->refresh_channels = 0;
+
+  if (p->roa4_channel)
+    rt_refresh_end(&p->roa4_channel->in_req);
+  if (p->roa6_channel)
+    rt_refresh_end(&p->roa6_channel->in_req);
+}
 
 /*
  *	RPKI Protocol Logic
@@ -626,6 +650,7 @@ rpki_close_connection(struct rpki_cache *cache)
 {
   CACHE_TRACE(D_EVENTS, cache, "Closing a connection");
   rpki_tr_close(cache->tr_sock);
+  rpki_stop_refresh(cache->p);
   proto_notify_state(&cache->p->p, PS_START);
 }
 

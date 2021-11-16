@@ -658,21 +658,7 @@ rpki_handle_cache_response_pdu(struct rpki_cache *cache, const struct pdu_cache_
 {
   if (cache->request_session_id)
   {
-    if (cache->last_update)
-    {
-      /*
-       * This isn't the first sync and we already received records. This point
-       * is after Reset Query and before importing new records from cache
-       * server. We need to load new ones and kick out missing ones.  So start
-       * a refresh cycle.
-       */
-      if (cache->p->roa4_channel)
-	rt_refresh_begin(&cache->p->roa4_channel->in_req);
-      if (cache->p->roa6_channel)
-	rt_refresh_begin(&cache->p->roa6_channel->in_req);
-
-      cache->p->refresh_channels = 1;
-    }
+    rpki_start_refresh(cache->p);
     cache->session_id = pdu->session_id;
     cache->request_session_id = 0;
   }
@@ -821,14 +807,7 @@ rpki_handle_end_of_data_pdu(struct rpki_cache *cache, const struct pdu_end_of_da
 		(cf->keep_expire_interval ? "keeps " : ""),  cache->expire_interval);
   }
 
-  if (cache->p->refresh_channels)
-  {
-    cache->p->refresh_channels = 0;
-    if (cache->p->roa4_channel)
-      rt_refresh_end(&cache->p->roa4_channel->in_req);
-    if (cache->p->roa6_channel)
-      rt_refresh_end(&cache->p->roa6_channel->in_req);
-  }
+  rpki_stop_refresh(cache->p);
 
   cache->last_update = current_time();
   cache->serial_num = pdu->serial_num;
