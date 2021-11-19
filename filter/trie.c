@@ -1,8 +1,8 @@
 /*
  *	Filters: Trie for prefix sets
  *
- *	(c) 2009--2020 Ondrej Zajicek <santiago@crfreenet.org>
- *	(c) 2009--2020 CZ.NIC z.s.p.o.
+ *	(c) 2009--2021 Ondrej Zajicek <santiago@crfreenet.org>
+ *	(c) 2009--2021 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -82,6 +82,24 @@
  * - we are still on path and keep walking (node length < &plen)
  *
  * The walking code in trie_match_net() is structured according to these cases.
+ *
+ * Iteration over prefixes in a trie can be done using TRIE_WALK() macro, or
+ * directly using trie_walk_init() and trie_walk_next() functions. The second
+ * approeach allows suspending the iteration and continuing in it later.
+ * Prefixes are enumerated in the usual lexicographic order and may be
+ * restricted to a subset of the trie (all subnets of a specified prefix).
+ *
+ * Note that the trie walk does not reliably enumerate `implicit' prefixes
+ * defined by &low and &high fields in prefix patterns, it is supposed to be
+ * used on tries constructed from `explicit' prefixes (&low == &plen == &high
+ * in call to trie_add_prefix()).
+ *
+ * The trie walk has three basic state variables stored in the struct
+ * &f_trie_walk_state -- the current node in &stack[stack_pos], &accept_length
+ * for iteration over inter-node prefixes (non-branching prefixes on compressed
+ * path between the current node and its parent node, stored in the bitmap
+ * &accept of the current node) and &local_pos for iteration over intra-node
+ * prefixes (stored in the bitmap &local).
  */
 
 #include "nest/bird.h"
@@ -224,7 +242,7 @@ trie_amask_to_local(ip_addr px, ip_addr amask, uint nlen)
 
 #define ADD_LOCAL(N,X,V) ({ uint v_ = (V); if (X) (N)->v4.local |= v_; else (N)->v6.local |= v_; })
 
-#define GET_CHILD(N,F,X,I) ((X) ? (struct f_trie_node *) (N)->v4.c[I] : (struct f_trie_node *) (N)->v6.c[I])
+#define GET_CHILD(N,X,I) ((X) ? (struct f_trie_node *) (N)->v4.c[I] : (struct f_trie_node *) (N)->v6.c[I])
 
 
 static void *
@@ -312,7 +330,7 @@ trie_add_node(struct f_trie *t, uint plen, ip_addr px, uint local, uint l, uint 
 
       /* n->plen < plen and plen <= 32 (128) */
       o = n;
-      n = GET_CHILD(n, c, v4, ipa_getbits(paddr, nlen, TRIE_STEP));
+      n = GET_CHILD(n, v4, ipa_getbits(paddr, nlen, TRIE_STEP));
     }
 
   /* We add new tail node 'a' after node 'o' */
@@ -521,6 +539,225 @@ trie_match_net(const struct f_trie *t, const net_addr *n)
     return 0;
   }
 }
+
+
+#define SAME_PREFIX(A,B,X,L) ((X) ? ip4_prefix_equal((A)->v4.addr, net4_prefix(B), (L)) : ip6_prefix_equal((A)->v6.addr, net6_prefix(B), (L)))
+#define GET_NET_BITS(N,X,A,B) ((X) ? ip4_getbits(net4_prefix(N), (A), (B)) : ip6_getbits(net6_prefix(N), (A), (B)))
+
+/**
+ * trie_walk_init
+ * @s: walk state
+ * @t: trie
+ * @net: optional subnet for walk
+ *
+ * Initialize walk state for subsequent walk through nodes of the trie @t by
+ * trie_walk_next(). The argument @net allows to restrict walk to given subnet,
+ * otherwise full walk over all nodes is used. This is done by finding node at
+ * or below @net and starting position in it.
+ */
+void
+trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_addr *net)
+{
+  *s = (struct f_trie_walk_state) {
+    .ipv4 = t->ipv4,
+    .accept_length = 0,
+    .start_pos = 1,
+    .local_pos = 1,
+    .stack_pos = 0,
+    .stack[0] = &t->root
+  };
+
+  if (!net)
+    return;
+
+  /* We want to find node of level at least plen */
+  int plen = ROUND_DOWN_POW2(net->pxlen, TRIE_STEP);
+  const struct f_trie_node *n = &t->root;
+  const int v4 = t->ipv4;
+
+  while (n)
+  {
+    int nlen = v4 ? n->v4.plen : n->v6.plen;
+
+    /* We are out of path */
+    if (!SAME_PREFIX(n, net, v4, MIN(net->pxlen, nlen)))
+      break;
+
+    /* We found final node */
+    if (nlen >= plen)
+    {
+      if (nlen == plen)
+      {
+	/* Find proper local_pos, while accept_length is not used */
+	int step = net->pxlen - plen;
+	s->start_pos = s->local_pos = (1u << step) + GET_NET_BITS(net, v4, plen, step);
+	s->accept_length = plen;
+      }
+      else
+      {
+	/* Start from pos 1 in local node, but first try accept mask */
+	s->accept_length = net->pxlen;
+      }
+
+      s->stack[0] = n;
+      return;
+    }
+
+    /* Choose child */
+    n = GET_CHILD(n, v4, GET_NET_BITS(net, v4, nlen, TRIE_STEP));
+  }
+
+  s->stack[0] = NULL;
+  return;
+}
+
+#define GET_ACCEPT_BIT(N,X,B) ((X) ? ip4_getbit((N)->v4.accept, (B)) : ip6_getbit((N)->v6.accept, (B)))
+#define GET_LOCAL_BIT(N,X,B) (((X) ? (N)->v4.local : (N)->v6.local) & (1u << (B)))
+
+/**
+ * trie_walk_next
+ * @s: walk state
+ * @net: return value
+ *
+ * Find the next prefix in the trie walk and return it in the buffer @net.
+ * Prefixes are walked in the usual lexicographic order and may be restricted
+ * to a subset of the trie during walk setup by trie_walk_init(). Note that the
+ * trie walk does not iterate reliably over 'implicit' prefixes defined by &low
+ * and &high fields in prefix patterns, it is supposed to be used on tries
+ * constructed from 'explicit' prefixes (&low == &plen == &high in call to
+ * trie_add_prefix()).
+ *
+ * Result: 1 if the next prefix was found, 0 for the end of walk.
+ */
+int
+trie_walk_next(struct f_trie_walk_state *s, net_addr *net)
+{
+  const struct f_trie_node *n = s->stack[s->stack_pos];
+  int len = s->accept_length;
+  int pos = s->local_pos;
+  int v4 = s->ipv4;
+
+  /*
+   * The walk has three basic state variables -- n, len and pos. In each node n,
+   * we first walk superprefixes (by len in &accept bitmask), and then we walk
+   * internal positions (by pos in &local bitmask). These positions are:
+   *
+   *          1
+   *      2       3
+   *    4   5   6   7
+   *   8 9 A B C D E F
+   *
+   * We walk them depth-first, including virtual positions 10-1F that are
+   * equivalent of position 1 in child nodes 0-F.
+   */
+
+  if (!n)
+  {
+    memset(net, 0, v4 ? sizeof(net_addr_ip4) : sizeof(net_addr_ip6));
+    return 0;
+  }
+
+next_node:;
+  /* Current node prefix length */
+  int nlen = v4 ? n->v4.plen : n->v6.plen;
+
+  /* First, check for accept prefix */
+  for (; len < nlen; len++)
+    if (GET_ACCEPT_BIT(n, v4, len - 1))
+    {
+      if (v4)
+	net_fill_ip4(net, ip4_and(n->v4.addr, ip4_mkmask(len)), len);
+      else
+	net_fill_ip6(net, ip6_and(n->v6.addr, ip6_mkmask(len)), len);
+
+      s->local_pos = pos;
+      s->accept_length = len + 1;
+      return 1;
+    }
+
+next_pos:
+  /* Bottom of this node */
+  if (pos >= (1 << TRIE_STEP))
+  {
+    const struct f_trie_node *child = GET_CHILD(n, v4, pos - (1 << TRIE_STEP));
+    int dir = 0;
+
+    /* No child node */
+    if (!child)
+    {
+      /* Step up until return from left child (pos is even) */
+      do
+      {
+	/* Step up from start node */
+	if ((s->stack_pos == 0) && (pos == s->start_pos))
+	{
+	  s->stack[0] = NULL;
+	  memset(net, 0, v4 ? sizeof(net_addr_ip4) : sizeof(net_addr_ip6));
+	  return 0;
+	}
+
+	/* Top of this node */
+	if (pos == 1)
+	{
+	  ASSERT(s->stack_pos);
+	  const struct f_trie_node *old = n;
+
+	  /* Move to parent node */
+	  s->stack_pos--;
+	  n = s->stack[s->stack_pos];
+	  nlen = v4 ? n->v4.plen : n->v6.plen;
+
+	  pos = v4 ?
+	    ip4_getbits(old->v4.addr, nlen, TRIE_STEP) :
+	    ip6_getbits(old->v6.addr, nlen, TRIE_STEP);
+	  pos += (1 << TRIE_STEP);
+	  len = nlen;
+
+	  ASSERT(GET_CHILD(n, v4, pos - (1 << TRIE_STEP)) == old);
+	}
+
+	/* Step up */
+	dir = pos % 2;
+	pos = pos / 2;
+      }
+      while (dir);
+
+      /* Continue with step down to the right child */
+      pos = 2 * pos + 1;
+      goto next_pos;
+    }
+
+    /* Move to child node */
+    pos = 1;
+    len = nlen + TRIE_STEP;
+
+    s->stack_pos++;
+    n = s->stack[s->stack_pos] = child;
+    goto next_node;
+  }
+
+  /* Check for local prefix */
+  if (GET_LOCAL_BIT(n, v4, pos))
+  {
+    /* Convert pos to address of local network */
+    int x = (pos >= 2) + (pos >= 4) + (pos >= 8);
+    int y = pos & ((1u << x) - 1);
+
+    if (v4)
+      net_fill_ip4(net, !x ? n->v4.addr : ip4_setbits(n->v4.addr, nlen + x - 1, y), nlen + x);
+    else
+      net_fill_ip6(net, !x ? n->v6.addr : ip6_setbits(n->v6.addr, nlen + x - 1, y), nlen + x);
+
+    s->local_pos = 2 * pos;
+    s->accept_length = len;
+    return 1;
+  }
+
+  /* Step down */
+  pos = 2 * pos;
+  goto next_pos;
+}
+
 
 static int
 trie_node_same4(const struct f_trie_node4 *t1, const struct f_trie_node4 *t2)

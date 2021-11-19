@@ -140,7 +140,8 @@ struct f_tree {
   void *data;
 };
 
-#define TRIE_STEP	4
+#define TRIE_STEP		4
+#define TRIE_STACK_LENGTH	33
 
 struct f_trie_node4
 {
@@ -175,6 +176,16 @@ struct f_trie
   struct f_trie_node root;		/* Root trie node */
 };
 
+struct f_trie_walk_state
+{
+  u8 ipv4;
+  u8 accept_length;			/* Current inter-node prefix position */
+  u8 start_pos;				/* Initial prefix position in stack[0] */
+  u8 local_pos;				/* Current intra-node prefix position */
+  u8 stack_pos;				/* Current node in stack below */
+  const struct f_trie_node *stack[TRIE_STACK_LENGTH];
+};
+
 struct f_tree *f_new_tree(void);
 struct f_tree *build_tree(struct f_tree *);
 const struct f_tree *find_tree(const struct f_tree *t, const struct f_val *val);
@@ -185,8 +196,18 @@ void tree_walk(const struct f_tree *t, void (*hook)(const struct f_tree *, void 
 struct f_trie *f_new_trie(linpool *lp, uint data_size);
 void *trie_add_prefix(struct f_trie *t, const net_addr *n, uint l, uint h);
 int trie_match_net(const struct f_trie *t, const net_addr *n);
+void trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_addr *from);
+int trie_walk_next(struct f_trie_walk_state *s, net_addr *net);
 int trie_same(const struct f_trie *t1, const struct f_trie *t2);
 void trie_format(const struct f_trie *t, buffer *buf);
+
+#define TRIE_WALK(trie, net, from) ({				\
+  net_addr net;							\
+  struct f_trie_walk_state tws_;				\
+  trie_walk_init(&tws_, trie, from);				\
+  while (trie_walk_next(&tws_, &net))
+
+#define TRIE_WALK_END })
 
 #define F_CMP_ERROR 999
 

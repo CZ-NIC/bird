@@ -45,6 +45,13 @@ get_exp_random(void)
   return n;
 }
 
+static int
+compare_prefixes(const void *a, const void *b)
+{
+  return net_compare(&((const struct f_prefix *) a)->net,
+		     &((const struct f_prefix *) b)->net);
+}
+
 static inline int
 matching_ip4_nets(const net_addr_ip4 *a, const net_addr_ip4 *b)
 {
@@ -106,11 +113,15 @@ get_random_net(net_addr *net, int v6)
 }
 
 static void
-get_random_prefix(struct f_prefix *px, int v6)
+get_random_prefix(struct f_prefix *px, int v6, int tight)
 {
   get_random_net(&px->net, v6);
 
-  if (bt_random() % 2)
+  if (tight)
+  {
+    px->lo = px->hi = px->net.pxlen;
+  }
+  else if (bt_random() % 2)
   {
     px->lo = 0;
     px->hi = px->net.pxlen;
@@ -238,7 +249,7 @@ get_outer_net(net_addr *net, const struct f_prefix *src)
 }
 
 static list *
-make_random_prefix_list(linpool *lp, int num, int v6)
+make_random_prefix_list(linpool *lp, int num, int v6, int tight)
 {
   list *prefixes = lp_allocz(lp, sizeof(struct f_prefix_node));
   init_list(prefixes);
@@ -246,7 +257,7 @@ make_random_prefix_list(linpool *lp, int num, int v6)
   for (int i = 0; i < num; i++)
   {
     struct f_prefix_node *px = lp_allocz(lp, sizeof(struct f_prefix_node));
-    get_random_prefix(&px->prefix, v6);
+    get_random_prefix(&px->prefix, v6, tight);
     add_tail(prefixes, &px->n);
 
     char buf[64];
@@ -429,7 +440,7 @@ t_match_random_net(void)
   linpool *lp = lp_new_default(&root_pool);
   for (int round = 0; round < TESTS_NUM; round++)
   {
-    list *prefixes = make_random_prefix_list(lp, PREFIXES_NUM, v6);
+    list *prefixes = make_random_prefix_list(lp, PREFIXES_NUM, v6, 0);
     struct f_trie *trie = make_trie_from_prefix_list(lp, prefixes);
 
     for (int i = 0; i < PREFIX_TESTS_NUM; i++)
@@ -457,7 +468,7 @@ t_match_inner_net(void)
   linpool *lp = lp_new_default(&root_pool);
   for (int round = 0; round < TESTS_NUM; round++)
   {
-    list *prefixes = make_random_prefix_list(lp, PREFIXES_NUM, v6);
+    list *prefixes = make_random_prefix_list(lp, PREFIXES_NUM, v6, 0);
     struct f_trie *trie = make_trie_from_prefix_list(lp, prefixes);
 
     struct f_prefix_node *n = HEAD(*prefixes);
@@ -488,7 +499,7 @@ t_match_outer_net(void)
   linpool *lp = lp_new_default(&root_pool);
   for (int round = 0; round < TESTS_NUM; round++)
   {
-    list *prefixes = make_random_prefix_list(lp, PREFIXES_NUM, v6);
+    list *prefixes = make_random_prefix_list(lp, PREFIXES_NUM, v6, 0);
     struct f_trie *trie = make_trie_from_prefix_list(lp, prefixes);
 
     struct f_prefix_node *n = HEAD(*prefixes);
@@ -613,7 +624,7 @@ t_trie_same(void)
   linpool *lp = lp_new_default(&root_pool);
   for (int round = 0; round < TESTS_NUM*4; round++)
   {
-    list *prefixes = make_random_prefix_list(lp, 100 * PREFIXES_NUM, v6);
+    list *prefixes = make_random_prefix_list(lp, 100 * PREFIXES_NUM, v6, 0);
     struct f_trie *trie1 = f_new_trie(lp, 0);
     struct f_trie *trie2 = f_new_trie(lp, 0);
 
@@ -630,6 +641,136 @@ t_trie_same(void)
     lp_flush(lp);
   }
 
+  bt_bird_cleanup();
+  return 1;
+}
+
+static inline void
+log_networks(const net_addr *a, const net_addr *b)
+{
+  if (bt_verbose >= BT_VERBOSE_ABSOLUTELY_ALL)
+  {
+    char buf0[64];
+    char buf1[64];
+    bt_format_net(buf0, 64, a);
+    bt_format_net(buf1, 64, b);
+    bt_debug("Found %s expected %s\n", buf0, buf1);
+  }
+}
+
+static int
+t_trie_walk(void)
+{
+  bt_bird_init();
+  bt_config_parse(BT_CONFIG_SIMPLE);
+
+  linpool *lp = lp_new_default(&root_pool);
+  for (int round = 0; round < TESTS_NUM*8; round++)
+  {
+    int level = round / TESTS_NUM;
+    int v6 = level % 2;
+    int num = PREFIXES_NUM * (int[]){1, 10, 100, 1000}[level / 2];
+    int pos = 0, end = 0;
+    list *prefixes = make_random_prefix_list(lp, num, v6, 1);
+    struct f_trie *trie = make_trie_from_prefix_list(lp, prefixes);
+    struct f_prefix *pxset = malloc((num + 1) * sizeof(struct f_prefix));
+
+    struct f_prefix_node *n;
+    WALK_LIST(n, *prefixes)
+      pxset[pos++] = n->prefix;
+    memset(&pxset[pos], 0, sizeof (struct f_prefix));
+
+    qsort(pxset, num, sizeof(struct f_prefix), compare_prefixes);
+
+
+    /* Full walk */
+    bt_debug("Full walk (round %d, %d nets)\n", round, num);
+
+    pos = 0;
+    TRIE_WALK(trie, net, NULL)
+    {
+      log_networks(&net, &pxset[pos].net);
+      bt_assert(net_equal(&net, &pxset[pos].net));
+
+      /* Skip possible duplicates */
+      while (net_equal(&pxset[pos].net, &pxset[pos + 1].net))
+	pos++;
+
+      pos++;
+    }
+    TRIE_WALK_END;
+
+    bt_assert(pos == num);
+    bt_debug("Full walk done\n");
+
+
+    /* Prepare net for subnet walk - start with random prefix */
+    pos = bt_random() % num;
+    end = pos + (int[]){2, 2, 3, 4}[level / 2];
+    end = MIN(end, num);
+
+    struct f_prefix from = pxset[pos];
+
+    /* Find a common superprefix to several subsequent prefixes */
+    for (; pos < end; pos++)
+    {
+      if (net_equal(&from.net, &pxset[pos].net))
+	continue;
+
+      int common = !v6 ?
+	ip4_pxlen(net4_prefix(&from.net), net4_prefix(&pxset[pos].net)) :
+	ip6_pxlen(net6_prefix(&from.net), net6_prefix(&pxset[pos].net));
+      from.net.pxlen = MIN(from.net.pxlen, common);
+
+      if (!v6)
+	((net_addr_ip4 *) &from.net)->prefix =
+	  ip4_and(net4_prefix(&from.net), net4_prefix(&pxset[pos].net));
+      else
+	((net_addr_ip6 *) &from.net)->prefix =
+	  ip6_and(net6_prefix(&from.net), net6_prefix(&pxset[pos].net));
+    }
+
+    /* Fix irrelevant bits */
+    if (!v6)
+      ((net_addr_ip4 *) &from.net)->prefix =
+	ip4_and(net4_prefix(&from.net), ip4_mkmask(net4_pxlen(&from.net)));
+    else
+      ((net_addr_ip6 *) &from.net)->prefix =
+	ip6_and(net6_prefix(&from.net), ip6_mkmask(net6_pxlen(&from.net)));
+
+
+    /* Find initial position for final prefix */
+    for (pos = 0; pos < num; pos++)
+      if (compare_prefixes(&pxset[pos], &from) >= 0)
+	break;
+
+    int p0 = pos;
+    char buf0[64];
+    bt_format_net(buf0, 64, &from.net);
+    bt_debug("Subnet walk for %s (round %d, %d nets)\n", buf0, round, num);
+
+    /* Subnet walk */
+    TRIE_WALK(trie, net, &from.net)
+    {
+      log_networks(&net, &pxset[pos].net);
+      bt_assert(net_equal(&net, &pxset[pos].net));
+      bt_assert(net_in_netX(&net, &from.net));
+
+      /* Skip possible duplicates */
+      while (net_equal(&pxset[pos].net, &pxset[pos + 1].net))
+	pos++;
+
+      pos++;
+    }
+    TRIE_WALK_END;
+
+    bt_assert((pos == num) || !net_in_netX(&pxset[pos].net, &from.net));
+    bt_debug("Subnet walk done for %s (found %d nets)\n", buf0, pos - p0);
+
+    lp_flush(lp);
+  }
+
+  bt_bird_cleanup();
   return 1;
 }
 
@@ -642,6 +783,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_match_inner_net, "Testing random inner prefix matching");
   bt_test_suite(t_match_outer_net, "Testing random outer prefix matching");
   bt_test_suite(t_trie_same, "A trie filled forward should be same with a trie filled backward.");
+  bt_test_suite(t_trie_walk, "Testing TRIE_WALK() on random tries");
 
   // bt_test_suite(t_bench_trie_datasets_subset, "Benchmark tries from datasets by random subset of nets");
   // bt_test_suite(t_bench_trie_datasets_random, "Benchmark tries from datasets by generated addresses");
