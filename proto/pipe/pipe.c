@@ -108,6 +108,23 @@ pipe_reload_routes(struct channel *C)
   channel_request_feeding((C == p->pri) ? p->sec : p->pri);
 }
 
+static void
+pipe_feed_begin(struct channel *C, int refeeding UNUSED)
+{
+  struct pipe_proto *p = (void *) C->proto;
+  struct channel *dst = (C == p->pri) ? p->sec : p->pri;
+
+  channel_refresh_begin(dst);
+}
+
+static void
+pipe_feed_end(struct channel *C)
+{
+  struct pipe_proto *p = (void *) C->proto;
+  struct channel *dst = (C == p->pri) ? p->sec : p->pri;
+
+  channel_refresh_end(dst);
+}
 
 static void
 pipe_postconfig(struct proto_config *CF)
@@ -178,6 +195,8 @@ pipe_init(struct proto_config *CF)
   P->rt_notify = pipe_rt_notify;
   P->preexport = pipe_preexport;
   P->reload_routes = pipe_reload_routes;
+  P->feed_begin = pipe_feed_begin;
+  P->feed_end = pipe_feed_end;
 
   p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 

@@ -589,6 +589,10 @@ channel_export_stopped(struct rt_export_request *req)
   {
     c->refeeding = 1;
     c->refeed_pending = 0;
+
+    bmap_reset(&c->export_map, 1024);
+    bmap_reset(&c->export_reject_map, 1024);
+
     rt_request_export(c->table, req);
     return;
   }
@@ -621,6 +625,7 @@ channel_feed_end(struct channel *c)
       (l->count <= l->max))
   {
     log(L_INFO "Protocol %s resets route export limit (%u)", c->proto->name, l->max);
+    channel_reset_limit(c, &c->out_limit, PLD_OUT);
 
     c->refeed_pending = 1;
     rt_stop_export(req, channel_export_stopped);
