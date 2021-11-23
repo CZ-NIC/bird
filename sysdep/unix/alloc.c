@@ -135,3 +135,32 @@ free_sys_page(void *ptr)
 #endif
     free(ptr);
 }
+
+void
+check_stored_pages(void)
+{
+#ifdef ENOMEM
+  if (atomic_load_explicit(&global_page_list_not_empty, memory_order_relaxed) == 0)
+    return;
+
+  for (uint limit = 0; limit < 256; limit++)
+  {
+    GLOBAL_PAGE_SPIN_LOCK;
+    void *ptr = HEAD(global_page_list);
+    if (!NODE_VALID(ptr))
+    {
+      atomic_store_explicit(&global_page_list_not_empty, 0, memory_order_relaxed);
+      GLOBAL_PAGE_SPIN_UNLOCK;
+      return;
+    }
+
+    rem_node(ptr);
+    if (munmap(ptr, page_size) < 0)
+      if (errno == ENOMEM)
+	add_tail(&global_page_list, ptr);
+      else
+	bug("munmap(%p) failed: %m", ptr);
+    GLOBAL_PAGE_SPIN_UNLOCK;
+  }
+#endif
+}

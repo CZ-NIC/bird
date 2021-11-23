@@ -2193,6 +2193,7 @@ static int short_loops = 0;
 #define WORK_EVENTS_MAX 10
 
 void pipe_drain(int fd);
+void check_stored_pages(void);
 
 void
 io_loop(void)
@@ -2214,6 +2215,9 @@ io_loop(void)
       events = ev_run_list(&main_birdloop.event_list) || events;
       timers_fire(&main_birdloop.time, 1);
       io_close_event();
+
+      /* Try to release some memory if possible */
+      check_stored_pages();
 
       // FIXME
       poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
