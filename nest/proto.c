@@ -596,6 +596,9 @@ channel_export_stopped(struct rt_export_request *req)
   mb_free(c->out_req.name);
   c->out_req.name = NULL;
 
+  bmap_free(&c->export_map);
+  bmap_free(&c->export_reject_map);
+
   if (c->restart_export)
   {
     c->restart_export = 0;
@@ -993,9 +996,6 @@ channel_do_pause(struct channel *c)
   }
 
   channel_roa_unsubscribe_all(c);
-
-  bmap_free(&c->export_map);
-  bmap_free(&c->export_reject_map);
 }
 
 static void
@@ -1035,15 +1035,10 @@ channel_do_down(struct channel *c)
 
   c->proto->active_channels--;
 
-  // bmap_free(&c->export_map);
   memset(&c->import_stats, 0, sizeof(struct channel_import_stats));
   memset(&c->export_stats, 0, sizeof(struct channel_export_stats));
 
   CALL(c->channel->cleanup, c);
-
-  /* This have to be done in here, as channel pool is freed before channel_do_down() */
-  bmap_free(&c->export_map);
-  bmap_free(&c->export_reject_map);
 
   /* Schedule protocol shutddown */
   if (proto_is_done(c->proto))

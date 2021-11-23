@@ -507,7 +507,7 @@ export_filter_(struct channel *c, rte *rt, linpool *pool, int silent)
       stats->updates_rejected++;
       if (v == RIC_REJECT)
 	channel_rte_trace_out(D_FILTERS, c, rt, "rejected by protocol");
-      goto reject_noset;
+      goto reject;
 
     }
   if (v > 0)
