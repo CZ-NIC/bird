@@ -1349,6 +1349,7 @@ rte_recalculate(rtable_private *table, struct rt_import_hook *c, net *net, rte *
 		  stats->updates_ignored++;
 		  rt_rte_trace_in(D_ROUTES, req, new, "ignored");
 		}
+	      return;
 	  }
 
 	*before_old = (*before_old)->next;
