@@ -91,7 +91,12 @@ cmd_show_memory(void)
   print_size("Routing tables:", rmemsize(rt_table_pool));
   print_size("Route attributes:", rmemsize(rta_pool));
   print_size("Protocols:", rmemsize(proto_pool));
-  print_size("Total:", rmemsize(&root_pool));
+  size_t total = rmemsize(&root_pool);
+#ifdef HAVE_MMAP
+  print_size("Standby memory:", get_page_size() * pages_kept);
+  total += get_page_size() * pages_kept;
+#endif
+  print_size("Total:", total);
   cli_msg(0, "");
 }
 

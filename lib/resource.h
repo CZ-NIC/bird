@@ -98,6 +98,7 @@ void buffer_realloc(void **buf, unsigned *size, unsigned need, unsigned item_siz
 u64 get_page_size(void);
 void *alloc_page(void);
 void free_page(void *);
+extern uint pages_kept;
 
 #ifdef HAVE_LIBDMALLOC
 /*
