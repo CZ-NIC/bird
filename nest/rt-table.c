@@ -341,7 +341,7 @@ rte_find(net *net, struct rte_src *src)
 }
 
 
-struct rte_storage *
+static struct rte_storage *
 rte_store(const rte *r, net *net, rtable_private *tab)
 {
   struct rte_storage *e = sl_alloc(tab->rte_slab);
@@ -350,11 +350,6 @@ rte_store(const rte *r, net *net, rtable_private *tab)
   e->rte.net = net->n.addr;
 
   rt_lock_source(e->rte.src);
-
-  if (e->rte.attrs->cached)
-    e->rte.attrs = rta_clone(e->rte.attrs);
-  else
-    e->rte.attrs = rta_lookup(e->rte.attrs);
 
   return e;
 }
@@ -1294,10 +1289,11 @@ rte_validate(struct channel *ch, rte *e)
 static int
 rte_same(rte *x, rte *y)
 {
+  ASSERT_DIE(x->attrs->cached && y->attrs->cached);
+
   /* rte.flags are not checked, as they are mostly internal to rtable */
   return
     x->attrs == y->attrs &&
-    x->pflags == y->pflags &&
     x->src == y->src &&
     rte_is_filtered(x) == rte_is_filtered(y);
 }
@@ -1319,6 +1315,15 @@ rte_recalculate(rtable_private *table, struct rt_import_hook *c, net *net, rte *
 
   /* Find and remove original route from the same protocol */
   struct rte_storage **before_old = rte_find(net, src);
+
+  if (!*before_old && !new)
+    {
+      stats->withdraws_ignored++;
+      return;
+    }
+
+  if (new)
+    new->attrs = rta_is_cached(new->attrs) ? rta_clone(new->attrs) : rta_lookup(new->attrs);
 
   if (*before_old)
     {
@@ -1349,17 +1354,13 @@ rte_recalculate(rtable_private *table, struct rt_import_hook *c, net *net, rte *
 		  stats->updates_ignored++;
 		  rt_rte_trace_in(D_ROUTES, req, new, "ignored");
 		}
+
+	      rta_free(new->attrs);
 	      return;
 	  }
 
 	*before_old = (*before_old)->next;
 	table->rt_count--;
-    }
-
-  if (!old && !new)
-    {
-      stats->withdraws_ignored++;
-      return;
     }
 
   if (req->preimport)
@@ -1523,7 +1524,10 @@ channel_preimport(struct rt_import_request *req, rte *new, rte *old)
   {
     if (new && !old)
       if (CHANNEL_LIMIT_PUSH(c, RX))
+      {
+	rta_free(new->attrs);
 	return NULL;
+      }
 
     if (!new && old)
       CHANNEL_LIMIT_POP(c, RX);
@@ -1540,7 +1544,10 @@ channel_preimport(struct rt_import_request *req, rte *new, rte *old)
 	return new;
       }
       else
+      {
+	rta_free(new->attrs);
 	return NULL;
+      }
 
   if (!new_in && old_in)
     CHANNEL_LIMIT_POP(c, IN);
@@ -2671,7 +2678,7 @@ rt_next_hop_update_rte(rtable_private *tab, net *n, rte *old)
   a->cached = 0;
 
   rte e0 = *old;
-  e0.attrs = a;
+  e0.attrs = rta_lookup(a);
 
   return rte_store(&e0, n, tab);
 }

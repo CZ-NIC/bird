@@ -519,7 +519,6 @@ void rt_refresh_end(struct rt_import_request *);
 void rt_schedule_prune(rtable_private *t);
 void rte_dump(struct rte_storage *);
 void rte_free(struct rte_storage *, rtable_private *);
-struct rte_storage *rte_store(const rte *, net *net, rtable_private *);
 void rt_dump(rtable *);
 void rt_dump_all(void);
 void rt_dump_hooks(rtable *);
