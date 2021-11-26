@@ -85,7 +85,7 @@
  *
  * Iteration over prefixes in a trie can be done using TRIE_WALK() macro, or
  * directly using trie_walk_init() and trie_walk_next() functions. The second
- * approeach allows suspending the iteration and continuing in it later.
+ * approach allows suspending the iteration and continuing in it later.
  * Prefixes are enumerated in the usual lexicographic order and may be
  * restricted to a subset of the trie (all subnets of a specified prefix).
  *
@@ -100,6 +100,13 @@
  * path between the current node and its parent node, stored in the bitmap
  * &accept of the current node) and &local_pos for iteration over intra-node
  * prefixes (stored in the bitmap &local).
+ *
+ * The trie also supports longest-prefix-match query by trie_match_longest_ip4()
+ * and it can be extended to iteration over all covering prefixes for a given
+ * prefix (from longest to shortest) using TRIE_WALK_TO_ROOT_IP4() macro. There
+ * are also IPv6 versions (for practical reasons, these functions and macros are
+ * separate for IPv4 and IPv6). There is the same limitation to enumeration of
+ * `implicit' prefixes like with the previous TRIE_WALK() macro.
  */
 
 #include "nest/bird.h"
@@ -540,6 +547,187 @@ trie_match_net(const struct f_trie *t, const net_addr *n)
   }
 }
 
+
+/**
+ * trie_match_longest_ip4
+ * @t: trie
+ * @net: net address
+ * @dst: return value
+ * @found0: optional returned bitmask of found nodes
+ *
+ * Perform longest prefix match for the address @net and return the resulting
+ * prefix in the buffer @dst. The bitmask @found0 is used to report lengths of
+ * prefixes on the path from the root to the resulting prefix. E.g., if there is
+ * also a /20 shorter matching prefix, then 20-th bit is set in @found0. This
+ * can be used to enumerate all matching prefixes for the network @net using
+ * function trie_match_next_longest_ip4() or macro TRIE_WALK_TO_ROOT_IP4().
+ *
+ * This function assumes IPv4 trie, there is also an IPv6 variant.
+ *
+ * Result: 1 if a matching prefix was found, 0 if not.
+ */
+int
+trie_match_longest_ip4(const struct f_trie *t, const net_addr_ip4 *net, net_addr_ip4 *dst, ip4_addr *found0)
+{
+  ASSERT(t->ipv4);
+
+  const struct f_trie_node4 *n = &t->root.v4;
+  int len = 0;
+
+  ip4_addr found = IP4_NONE;
+  int last = -1;
+
+  while (n)
+  {
+    /* We are out of path */
+    if (!ip4_prefix_equal(net->prefix, n->addr, MIN(net->pxlen, n->plen)))
+      goto done;
+
+    /* Check accept mask */
+    for (; len < n->plen; len++)
+    {
+      if (len > net->pxlen)
+	goto done;
+
+      if (ip4_getbit(n->accept, len - 1))
+      {
+	/* len is always < 32 due to len < n->plen */
+	ip4_setbit(&found, len);
+	last = len;
+      }
+    }
+
+    /* Special case for max length, there is only one valid local position */
+    if (len == IP4_MAX_PREFIX_LENGTH)
+    {
+      if (n->local & (1u << 1))
+	last = len;
+
+      goto done;
+    }
+
+    /* Check local mask */
+    for (int pos = 1; pos < (1 << TRIE_STEP); pos = 2 * pos + ip4_getbit(net->prefix, len), len++)
+    {
+      if (len > net->pxlen)
+	goto done;
+
+      if (n->local & (1u << pos))
+      {
+	/* len is always < 32 due to special case above */
+	ip4_setbit(&found, len);
+	last = len;
+      }
+    }
+
+    /* Choose child */
+    n = n->c[ip4_getbits(net->prefix, n->plen, TRIE_STEP)];
+  }
+
+done:
+  if (last < 0)
+    return 0;
+
+  net_copy_ip4(dst, net);
+  dst->prefix = ip4_and(dst->prefix, ip4_mkmask(last));
+  dst->pxlen = last;
+
+  if (found0)
+    *found0 = found;
+
+  return 1;
+}
+
+
+/**
+ * trie_match_longest_ip6
+ * @t: trie
+ * @net: net address
+ * @dst: return value
+ * @found0: optional returned bitmask of found nodes
+ *
+ * Perform longest prefix match for the address @net and return the resulting
+ * prefix in the buffer @dst. The bitmask @found0 is used to report lengths of
+ * prefixes on the path from the root to the resulting prefix. E.g., if there is
+ * also a /20 shorter matching prefix, then 20-th bit is set in @found0. This
+ * can be used to enumerate all matching prefixes for the network @net using
+ * function trie_match_next_longest_ip6() or macro TRIE_WALK_TO_ROOT_IP6().
+ *
+ * This function assumes IPv6 trie, there is also an IPv4 variant.
+ *
+ * Result: 1 if a matching prefix was found, 0 if not.
+ */
+int
+trie_match_longest_ip6(const struct f_trie *t, const net_addr_ip6 *net, net_addr_ip6 *dst, ip6_addr *found0)
+{
+  ASSERT(!t->ipv4);
+
+  const struct f_trie_node6 *n = &t->root.v6;
+  int len = 0;
+
+  ip6_addr found = IP6_NONE;
+  int last = -1;
+
+  while (n)
+  {
+    /* We are out of path */
+    if (!ip6_prefix_equal(net->prefix, n->addr, MIN(net->pxlen, n->plen)))
+      goto done;
+
+    /* Check accept mask */
+    for (; len < n->plen; len++)
+    {
+      if (len > net->pxlen)
+	goto done;
+
+      if (ip6_getbit(n->accept, len - 1))
+      {
+	/* len is always < 128 due to len < n->plen */
+	ip6_setbit(&found, len);
+	last = len;
+      }
+    }
+
+    /* Special case for max length, there is only one valid local position */
+    if (len == IP6_MAX_PREFIX_LENGTH)
+    {
+      if (n->local & (1u << 1))
+	last = len;
+
+      goto done;
+    }
+
+    /* Check local mask */
+    for (int pos = 1; pos < (1 << TRIE_STEP); pos = 2 * pos + ip6_getbit(net->prefix, len), len++)
+    {
+      if (len > net->pxlen)
+	goto done;
+
+      if (n->local & (1u << pos))
+      {
+	/* len is always < 128 due to special case above */
+	ip6_setbit(&found, len);
+	last = len;
+      }
+    }
+
+    /* Choose child */
+    n = n->c[ip6_getbits(net->prefix, n->plen, TRIE_STEP)];
+  }
+
+done:
+  if (last < 0)
+    return 0;
+
+  net_copy_ip6(dst, net);
+  dst->prefix = ip6_and(dst->prefix, ip6_mkmask(last));
+  dst->pxlen = last;
+
+  if (found0)
+    *found0 = found;
+
+  return 1;
+}
 
 #define SAME_PREFIX(A,B,X,L) ((X) ? ip4_prefix_equal((A)->v4.addr, net4_prefix(B), (L)) : ip6_prefix_equal((A)->v6.addr, net6_prefix(B), (L)))
 #define GET_NET_BITS(N,X,A,B) ((X) ? ip4_getbits(net4_prefix(N), (A), (B)) : ip6_getbits(net6_prefix(N), (A), (B)))

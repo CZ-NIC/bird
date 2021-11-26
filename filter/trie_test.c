@@ -774,6 +774,120 @@ t_trie_walk(void)
   return 1;
 }
 
+static int
+find_covering_nets(struct f_prefix *prefixes, int num, const net_addr *net, net_addr *found)
+{
+  struct f_prefix key;
+  net_addr *n = &key.net;
+  int found_num = 0;
+
+  net_copy(n, net);
+
+  while (1)
+  {
+    struct f_prefix *px =
+      bsearch(&key, prefixes, num, sizeof(struct f_prefix), compare_prefixes);
+
+    if (px)
+    {
+      net_copy(&found[found_num], n);
+      found_num++;
+    }
+
+    if (n->pxlen == 0)
+      return found_num;
+
+    n->pxlen--;
+
+    if (n->type == NET_IP4)
+      ip4_clrbit(&((net_addr_ip4 *) n)->prefix, n->pxlen);
+    else
+      ip6_clrbit(&((net_addr_ip6 *) n)->prefix, n->pxlen);
+  }
+}
+
+static int
+t_trie_walk_to_root(void)
+{
+  bt_bird_init();
+  bt_config_parse(BT_CONFIG_SIMPLE);
+
+  linpool *lp = lp_new_default(&root_pool);
+  for (int round = 0; round < TESTS_NUM * 4; round++)
+  {
+    int level = round / TESTS_NUM;
+    int v6 = level % 2;
+    int num = PREFIXES_NUM  * (int[]){32, 512}[level / 2];
+    int pos = 0;
+    int st = 0, sn = 0, sm = 0;
+
+    list *prefixes = make_random_prefix_list(lp, num, v6, 1);
+    struct f_trie *trie = make_trie_from_prefix_list(lp, prefixes);
+    struct f_prefix *pxset = malloc((num + 1) * sizeof(struct f_prefix));
+
+    struct f_prefix_node *pxn;
+    WALK_LIST(pxn, *prefixes)
+      pxset[pos++] = pxn->prefix;
+    memset(&pxset[pos], 0, sizeof (struct f_prefix));
+
+    qsort(pxset, num, sizeof(struct f_prefix), compare_prefixes);
+
+    int i;
+    for (i = 0; i < (PREFIX_TESTS_NUM / 10); i++)
+    {
+      net_addr from;
+      get_random_net(&from, v6);
+
+      net_addr found[129];
+      int found_num = find_covering_nets(pxset, num, &from, found);
+      int n = 0;
+
+      if (bt_verbose >= BT_VERBOSE_ABSOLUTELY_ALL)
+      {
+	char buf[64];
+	bt_format_net(buf, 64, &from);
+	bt_debug("Lookup for %s (expect %d)\n", buf, found_num);
+      }
+
+      /* Walk to root, separate for IPv4 and IPv6 */
+      if (!v6)
+      {
+	TRIE_WALK_TO_ROOT_IP4(trie, (net_addr_ip4 *) &from, net)
+	{
+	  log_networks((net_addr *) &net, &found[n]);
+	  bt_assert((n < found_num) && net_equal((net_addr *) &net, &found[n]));
+	  n++;
+	}
+	TRIE_WALK_TO_ROOT_END;
+      }
+      else
+      {
+	TRIE_WALK_TO_ROOT_IP6(trie, (net_addr_ip6 *) &from, net)
+	{
+	  log_networks((net_addr *) &net, &found[n]);
+	  bt_assert((n < found_num) && net_equal((net_addr *) &net, &found[n]));
+	  n++;
+	}
+	TRIE_WALK_TO_ROOT_END;
+      }
+
+      bt_assert(n == found_num);
+
+      /* Stats */
+      st += n;
+      sn += !!n;
+      sm = MAX(sm, n);
+    }
+
+    bt_debug("Success in %d / %d, sum %d, max %d\n", sn, i, st, sm);
+
+    lp_flush(lp);
+  }
+
+  bt_bird_cleanup();
+  return 1;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -784,6 +898,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_match_outer_net, "Testing random outer prefix matching");
   bt_test_suite(t_trie_same, "A trie filled forward should be same with a trie filled backward.");
   bt_test_suite(t_trie_walk, "Testing TRIE_WALK() on random tries");
+  bt_test_suite(t_trie_walk_to_root, "Testing TRIE_WALK_TO_ROOT() on random tries");
 
   // bt_test_suite(t_bench_trie_datasets_subset, "Benchmark tries from datasets by random subset of nets");
   // bt_test_suite(t_bench_trie_datasets_random, "Benchmark tries from datasets by generated addresses");
