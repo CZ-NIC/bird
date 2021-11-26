@@ -67,18 +67,43 @@ cmd_show_symbols(struct sym_show_data *sd)
   }
 }
 
-static void
-print_size(char *dsc, size_t val)
+#define SIZE_SUFFIX	" kMGT"
+#define SIZE_FORMAT	"% 4u.%1u % 1cB"
+#define SIZE_ARGS(a)	(a).val, (a).decimal, SIZE_SUFFIX[(a).magnitude]
+
+struct size_args {
+  u64 val:48;
+  u64 decimal:8;
+  u64 magnitude:8;
+};
+
+static struct size_args
+get_size_args(u64 val)
 {
-  char *px = " kMG";
-  int i = 0;
-  while ((val >= 10000) && (i < 3))
+#define VALDEC	10 /* One decimal place */
+  val *= VALDEC;
+
+  uint i = 0;
+  while ((val >= 10000 * VALDEC) && (i < 4))
     {
       val = (val + 512) / 1024;
       i++;
     }
 
-  cli_msg(-1018, "%-17s %4u %cB", dsc, (unsigned) val, px[i]);
+  return (struct size_args) {
+    .val = (val / VALDEC),
+    .decimal = (val % VALDEC),
+    .magnitude = i,
+  };
+}
+
+static void
+print_size(char *dsc, struct resmem vals)
+{
+  struct size_args effective = get_size_args(vals.effective);
+  struct size_args overhead = get_size_args(vals.overhead);
+
+  cli_msg(-1018, "%-17s " SIZE_FORMAT "   " SIZE_FORMAT, dsc, SIZE_ARGS(effective), SIZE_ARGS(overhead));
 }
 
 extern pool *rt_table_pool;
@@ -88,13 +113,14 @@ void
 cmd_show_memory(void)
 {
   cli_msg(-1018, "BIRD memory usage");
+  cli_msg(-1018, "%-17s Effective    Overhead", "");
   print_size("Routing tables:", rmemsize(rt_table_pool));
   print_size("Route attributes:", rmemsize(rta_pool));
   print_size("Protocols:", rmemsize(proto_pool));
-  size_t total = rmemsize(&root_pool);
+  struct resmem total = rmemsize(&root_pool);
 #ifdef HAVE_MMAP
-  print_size("Standby memory:", get_page_size() * pages_kept);
-  total += get_page_size() * pages_kept;
+  print_size("Standby memory:", (struct resmem) { .overhead = get_page_size() * pages_kept });
+  total.overhead += get_page_size() * pages_kept;
 #endif
   print_size("Total:", total);
   cli_msg(0, "");

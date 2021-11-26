@@ -45,7 +45,7 @@ struct linpool {
 static void lp_free(resource *);
 static void lp_dump(resource *);
 static resource *lp_lookup(resource *, unsigned long);
-static size_t lp_memsize(resource *r);
+static struct resmem lp_memsize(resource *r);
 
 static struct resclass lp_class = {
   "LinPool",
@@ -287,7 +287,7 @@ lp_dump(resource *r)
 	m->total_large);
 }
 
-static size_t
+static struct resmem
 lp_memsize(resource *r)
 {
   linpool *m = (linpool *) r;
@@ -299,9 +299,11 @@ lp_memsize(resource *r)
   for(c=m->first_large; c; c=c->next)
     cnt++;
 
-  return ALLOC_OVERHEAD + sizeof(struct linpool) +
-    cnt * (ALLOC_OVERHEAD + sizeof(struct lp_chunk)) +
-    m->total + m->total_large;
+  return (struct resmem) {
+    .effective = m->total + m->total_large,
+    .overhead = ALLOC_OVERHEAD + sizeof(struct linpool) +
+    cnt * (ALLOC_OVERHEAD + sizeof(struct lp_chunk)),
+  };
 }
 
 

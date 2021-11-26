@@ -2,6 +2,7 @@
  *	BIRD Resource Manager
  *
  *	(c) 1998--2000 Martin Mares <mj@ucw.cz>
+ *	(c) 2021 Maria Matejka <mq@jmq.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -37,7 +38,7 @@ struct pool {
 static void pool_dump(resource *);
 static void pool_free(resource *);
 static resource *pool_lookup(resource *, unsigned long);
-static size_t pool_memsize(resource *P);
+static struct resmem pool_memsize(resource *P);
 
 static struct resclass pool_class = {
   "Pool",
@@ -97,15 +98,22 @@ pool_dump(resource *P)
   indent -= 3;
 }
 
-static size_t
+static struct resmem
 pool_memsize(resource *P)
 {
   pool *p = (pool *) P;
   resource *r;
-  size_t sum = sizeof(pool) + ALLOC_OVERHEAD;
+  struct resmem sum = {
+    .effective = 0,
+    .overhead = sizeof(pool) + ALLOC_OVERHEAD,
+  };
 
   WALK_LIST(r, p->inside)
-    sum += rmemsize(r);
+  {
+    struct resmem add = rmemsize(r);
+    sum.effective += add.effective;
+    sum.overhead += add.overhead;
+  }
 
   return sum;
 }
@@ -193,14 +201,17 @@ rdump(void *res)
     debug("NULL\n");
 }
 
-size_t
+struct resmem
 rmemsize(void *res)
 {
   resource *r = res;
   if (!r)
-    return 0;
+    return (struct resmem) {};
   if (!r->class->memsize)
-    return r->class->size + ALLOC_OVERHEAD;
+    return (struct resmem) {
+      .effective = r->class->size - sizeof(resource),
+      .overhead = ALLOC_OVERHEAD + sizeof(resource),
+    };
   return r->class->memsize(r);
 }
 
@@ -305,11 +316,14 @@ mbl_lookup(resource *r, unsigned long a)
   return NULL;
 }
 
-static size_t
+static struct resmem
 mbl_memsize(resource *r)
 {
   struct mblock *m = (struct mblock *) r;
-  return ALLOC_OVERHEAD + sizeof(struct mblock) + m->size;
+  return (struct resmem) {
+    .effective = m->size,
+    .overhead = ALLOC_OVERHEAD + sizeof(struct mblock),
+  };
 }
 
 static struct resclass mb_class = {
