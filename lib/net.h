@@ -38,6 +38,7 @@
 
 #define NB_IP		(NB_IP4 | NB_IP6)
 #define NB_VPN		(NB_VPN4 | NB_VPN6)
+#define NB_ROA		(NB_ROA4 | NB_ROA6)
 #define NB_FLOW		(NB_FLOW4 | NB_FLOW6)
 #define NB_DEST		(NB_IP | NB_IP6_SADR | NB_VPN | NB_MPLS)
 #define NB_ANY		0xffffffff

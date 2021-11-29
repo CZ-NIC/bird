@@ -64,39 +64,178 @@ static inline void rt_prune_table(rtable *tab);
 static inline void rt_schedule_notify(rtable *tab);
 
 
-/* Like fib_route(), but skips empty net entries */
-static inline void *
-net_route_ip4(rtable *t, net_addr_ip4 *n)
+static void
+net_init_with_trie(struct fib *f, void *N)
 {
-  net *r;
+  rtable *tab = SKIP_BACK(rtable, fib, f);
+  net *n = N;
 
-  while (r = net_find_valid(t, (net_addr *) n), (!r) && (n->pxlen > 0))
+  if (tab->trie)
+    trie_add_prefix(tab->trie, n->n.addr, n->n.addr->pxlen, n->n.addr->pxlen);
+}
+
+static inline net *
+net_route_ip4_trie(rtable *t, const net_addr_ip4 *n0)
+{
+  TRIE_WALK_TO_ROOT_IP4(t->trie, n0, n)
   {
-    n->pxlen--;
-    ip4_clrbit(&n->prefix, n->pxlen);
+    net *r;
+    if (r = net_find_valid(t, (net_addr *) &n))
+      return r;
+  }
+  TRIE_WALK_TO_ROOT_END;
+
+  return NULL;
+}
+
+static inline net *
+net_route_vpn4_trie(rtable *t, const net_addr_vpn4 *n0)
+{
+  TRIE_WALK_TO_ROOT_IP4(t->trie, (const net_addr_ip4 *) n0, px)
+  {
+    net_addr_vpn4 n = NET_ADDR_VPN4(px.prefix, px.pxlen, n0->rd);
+
+    net *r;
+    if (r = net_find_valid(t, (net_addr *) &n))
+      return r;
+  }
+  TRIE_WALK_TO_ROOT_END;
+
+  return NULL;
+}
+
+static inline net *
+net_route_ip6_trie(rtable *t, const net_addr_ip6 *n0)
+{
+  TRIE_WALK_TO_ROOT_IP6(t->trie, n0, n)
+  {
+    net *r;
+    if (r = net_find_valid(t, (net_addr *) &n))
+      return r;
+  }
+  TRIE_WALK_TO_ROOT_END;
+
+  return NULL;
+}
+
+static inline net *
+net_route_vpn6_trie(rtable *t, const net_addr_vpn6 *n0)
+{
+  TRIE_WALK_TO_ROOT_IP6(t->trie, (const net_addr_ip6 *) n0, px)
+  {
+    net_addr_vpn6 n = NET_ADDR_VPN6(px.prefix, px.pxlen, n0->rd);
+
+    net *r;
+    if (r = net_find_valid(t, (net_addr *) &n))
+      return r;
+  }
+  TRIE_WALK_TO_ROOT_END;
+
+  return NULL;
+}
+
+static inline void *
+net_route_ip6_sadr_trie(rtable *t, const net_addr_ip6_sadr *n0)
+{
+  TRIE_WALK_TO_ROOT_IP6(t->trie, (const net_addr_ip6 *) n0, px)
+  {
+    net_addr_ip6_sadr n = NET_ADDR_IP6_SADR(px.prefix, px.pxlen, n0->src_prefix, n0->src_pxlen);
+    net *best = NULL;
+    int best_pxlen = 0;
+
+    /* We need to do dst first matching. Since sadr addresses are hashed on dst
+       prefix only, find the hash table chain and go through it to find the
+       match with the longest matching src prefix. */
+    for (struct fib_node *fn = fib_get_chain(&t->fib, (net_addr *) &n); fn; fn = fn->next)
+    {
+      net_addr_ip6_sadr *a = (void *) fn->addr;
+
+      if (net_equal_dst_ip6_sadr(&n, a) &&
+	  net_in_net_src_ip6_sadr(&n, a) &&
+	  (a->src_pxlen >= best_pxlen))
+      {
+	best = fib_node_to_user(&t->fib, fn);
+	best_pxlen = a->src_pxlen;
+      }
+    }
+
+    if (best)
+      return best;
+  }
+  TRIE_WALK_TO_ROOT_END;
+
+  return NULL;
+}
+
+static inline net *
+net_route_ip4_fib(rtable *t, const net_addr_ip4 *n0)
+{
+  net_addr_ip4 n;
+  net_copy_ip4(&n, n0);
+
+  net *r;
+  while (r = net_find_valid(t, (net_addr *) &n), (!r) && (n.pxlen > 0))
+  {
+    n.pxlen--;
+    ip4_clrbit(&n.prefix, n.pxlen);
+  }
+
+  return r;
+}
+
+static inline net *
+net_route_vpn4_fib(rtable *t, const net_addr_vpn4 *n0)
+{
+  net_addr_vpn4 n;
+  net_copy_vpn4(&n, n0);
+
+  net *r;
+  while (r = net_find_valid(t, (net_addr *) &n), (!r) && (n.pxlen > 0))
+  {
+    n.pxlen--;
+    ip4_clrbit(&n.prefix, n.pxlen);
+  }
+
+  return r;
+}
+
+static inline net *
+net_route_ip6_fib(rtable *t, const net_addr_ip6 *n0)
+{
+  net_addr_ip6 n;
+  net_copy_ip6(&n, n0);
+
+  net *r;
+  while (r = net_find_valid(t, (net_addr *) &n), (!r) && (n.pxlen > 0))
+  {
+    n.pxlen--;
+    ip6_clrbit(&n.prefix, n.pxlen);
+  }
+
+  return r;
+}
+
+static inline net *
+net_route_vpn6_fib(rtable *t, const net_addr_vpn6 *n0)
+{
+  net_addr_vpn6 n;
+  net_copy_vpn6(&n, n0);
+
+  net *r;
+  while (r = net_find_valid(t, (net_addr *) &n), (!r) && (n.pxlen > 0))
+  {
+    n.pxlen--;
+    ip6_clrbit(&n.prefix, n.pxlen);
   }
 
   return r;
 }
 
 static inline void *
-net_route_ip6(rtable *t, net_addr_ip6 *n)
+net_route_ip6_sadr_fib(rtable *t, const net_addr_ip6_sadr *n0)
 {
-  net *r;
-
-  while (r = net_find_valid(t, (net_addr *) n), (!r) && (n->pxlen > 0))
-  {
-    n->pxlen--;
-    ip6_clrbit(&n->prefix, n->pxlen);
-  }
-
-  return r;
-}
-
-static inline void *
-net_route_ip6_sadr(rtable *t, net_addr_ip6_sadr *n)
-{
-  struct fib_node *fn;
+  net_addr_ip6_sadr n;
+  net_copy_ip6_sadr(&n, n0);
 
   while (1)
   {
@@ -105,13 +244,13 @@ net_route_ip6_sadr(rtable *t, net_addr_ip6_sadr *n)
 
     /* We need to do dst first matching. Since sadr addresses are hashed on dst
        prefix only, find the hash table chain and go through it to find the
-       match with the smallest matching src prefix. */
-    for (fn = fib_get_chain(&t->fib, (net_addr *) n); fn; fn = fn->next)
+       match with the longest matching src prefix. */
+    for (struct fib_node *fn = fib_get_chain(&t->fib, (net_addr *) &n); fn; fn = fn->next)
     {
       net_addr_ip6_sadr *a = (void *) fn->addr;
 
-      if (net_equal_dst_ip6_sadr(n, a) &&
-	  net_in_net_src_ip6_sadr(n, a) &&
+      if (net_equal_dst_ip6_sadr(&n, a) &&
+	  net_in_net_src_ip6_sadr(&n, a) &&
 	  (a->src_pxlen >= best_pxlen))
       {
 	best = fib_node_to_user(&t->fib, fn);
@@ -122,38 +261,52 @@ net_route_ip6_sadr(rtable *t, net_addr_ip6_sadr *n)
     if (best)
       return best;
 
-    if (!n->dst_pxlen)
+    if (!n.dst_pxlen)
       break;
 
-    n->dst_pxlen--;
-    ip6_clrbit(&n->dst_prefix, n->dst_pxlen);
+    n.dst_pxlen--;
+    ip6_clrbit(&n.dst_prefix, n.dst_pxlen);
   }
 
   return NULL;
 }
 
-void *
+net *
 net_route(rtable *tab, const net_addr *n)
 {
   ASSERT(tab->addr_type == n->type);
 
-  net_addr *n0 = alloca(n->length);
-  net_copy(n0, n);
-
   switch (n->type)
   {
   case NET_IP4:
+    if (tab->trie)
+      return net_route_ip4_trie(tab, (net_addr_ip4 *) n);
+    else
+      return net_route_ip4_fib (tab, (net_addr_ip4 *) n);
+
   case NET_VPN4:
-  case NET_ROA4:
-    return net_route_ip4(tab, (net_addr_ip4 *) n0);
+    if (tab->trie)
+      return net_route_vpn4_trie(tab, (net_addr_vpn4 *) n);
+    else
+      return net_route_vpn4_fib (tab, (net_addr_vpn4 *) n);
 
   case NET_IP6:
+    if (tab->trie)
+      return net_route_ip6_trie(tab, (net_addr_ip6 *) n);
+    else
+      return net_route_ip6_fib (tab, (net_addr_ip6 *) n);
+
   case NET_VPN6:
-  case NET_ROA6:
-    return net_route_ip6(tab, (net_addr_ip6 *) n0);
+    if (tab->trie)
+      return net_route_vpn6_trie(tab, (net_addr_vpn6 *) n);
+    else
+      return net_route_vpn6_fib (tab, (net_addr_vpn6 *) n);
 
   case NET_IP6_SADR:
-    return net_route_ip6_sadr(tab, (net_addr_ip6_sadr *) n0);
+    if (tab->trie)
+      return net_route_ip6_sadr_trie(tab, (net_addr_ip6_sadr *) n);
+    else
+      return net_route_ip6_sadr_fib (tab, (net_addr_ip6_sadr *) n);
 
   default:
     return NULL;
@@ -162,7 +315,35 @@ net_route(rtable *tab, const net_addr *n)
 
 
 static int
-net_roa_check_ip4(rtable *tab, const net_addr_ip4 *px, u32 asn)
+net_roa_check_ip4_trie(rtable *tab, const net_addr_ip4 *px, u32 asn)
+{
+  int anything = 0;
+
+  TRIE_WALK_TO_ROOT_IP4(tab->trie, px, px0)
+  {
+    net_addr_roa4 roa0 = NET_ADDR_ROA4(px0.prefix, px0.pxlen, 0, 0);
+
+    struct fib_node *fn;
+    for (fn = fib_get_chain(&tab->fib, (net_addr *) &roa0); fn; fn = fn->next)
+    {
+      net_addr_roa4 *roa = (void *) fn->addr;
+      net *r = fib_node_to_user(&tab->fib, fn);
+
+      if (net_equal_prefix_roa4(roa, &roa0) && rte_is_valid(r->routes))
+      {
+	anything = 1;
+	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
+	  return ROA_VALID;
+      }
+    }
+  }
+  TRIE_WALK_TO_ROOT_END;
+
+  return anything ? ROA_INVALID : ROA_UNKNOWN;
+}
+
+static int
+net_roa_check_ip4_fib(rtable *tab, const net_addr_ip4 *px, u32 asn)
 {
   struct net_addr_roa4 n = NET_ADDR_ROA4(px->prefix, px->pxlen, 0, 0);
   struct fib_node *fn;
@@ -194,7 +375,35 @@ net_roa_check_ip4(rtable *tab, const net_addr_ip4 *px, u32 asn)
 }
 
 static int
-net_roa_check_ip6(rtable *tab, const net_addr_ip6 *px, u32 asn)
+net_roa_check_ip6_trie(rtable *tab, const net_addr_ip6 *px, u32 asn)
+{
+  int anything = 0;
+
+  TRIE_WALK_TO_ROOT_IP6(tab->trie, px, px0)
+  {
+    net_addr_roa6 roa0 = NET_ADDR_ROA6(px0.prefix, px0.pxlen, 0, 0);
+
+    struct fib_node *fn;
+    for (fn = fib_get_chain(&tab->fib, (net_addr *) &roa0); fn; fn = fn->next)
+    {
+      net_addr_roa6 *roa = (void *) fn->addr;
+      net *r = fib_node_to_user(&tab->fib, fn);
+
+      if (net_equal_prefix_roa6(roa, &roa0) && rte_is_valid(r->routes))
+      {
+	anything = 1;
+	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
+	  return ROA_VALID;
+      }
+    }
+  }
+  TRIE_WALK_TO_ROOT_END;
+
+  return anything ? ROA_INVALID : ROA_UNKNOWN;
+}
+
+static int
+net_roa_check_ip6_fib(rtable *tab, const net_addr_ip6 *px, u32 asn)
 {
   struct net_addr_roa6 n = NET_ADDR_ROA6(px->prefix, px->pxlen, 0, 0);
   struct fib_node *fn;
@@ -244,9 +453,19 @@ int
 net_roa_check(rtable *tab, const net_addr *n, u32 asn)
 {
   if ((tab->addr_type == NET_ROA4) && (n->type == NET_IP4))
-    return net_roa_check_ip4(tab, (const net_addr_ip4 *) n, asn);
+  {
+    if (tab->trie)
+      return net_roa_check_ip4_trie(tab, (const net_addr_ip4 *) n, asn);
+    else
+      return net_roa_check_ip4_fib (tab, (const net_addr_ip4 *) n, asn);
+  }
   else if ((tab->addr_type == NET_ROA6) && (n->type == NET_IP6))
-    return net_roa_check_ip6(tab, (const net_addr_ip6 *) n, asn);
+  {
+    if (tab->trie)
+      return net_roa_check_ip6_trie(tab, (const net_addr_ip6 *) n, asn);
+    else
+      return net_roa_check_ip6_fib (tab, (const net_addr_ip6 *) n, asn);
+  }
   else
     return ROA_UNKNOWN;	/* Should not happen */
 }
@@ -1940,6 +2159,14 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
 
+  if (cf->trie_used)
+  {
+    t->trie = f_new_trie(lp_new_default(p), 0);
+    t->trie->ipv4 = net_val_match(t->addr_type, NB_IP4 | NB_VPN4 | NB_ROA4);
+
+    t->fib.init = net_init_with_trie;
+  }
+
   if (!(t->internal = cf->internal))
   {
     init_list(&t->channels);
@@ -2352,6 +2579,7 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->gc_min_time = 5;
   c->min_settle_time = 1 S;
   c->max_settle_time = 20 S;
+  c->trie_used = net_val_match(addr_type, NB_IP | NB_VPN | NB_ROA | NB_IP6_SADR);
 
   add_tail(&new_config->tables, &c->n);
 

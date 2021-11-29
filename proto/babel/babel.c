@@ -63,7 +63,7 @@ static inline void babel_iface_kick_timer(struct babel_iface *ifa);
  */
 
 static void
-babel_init_entry(void *E)
+babel_init_entry(struct fib *f UNUSED, void *E)
 {
   struct babel_entry *e = E;
 
