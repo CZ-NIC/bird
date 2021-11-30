@@ -2216,9 +2216,6 @@ io_loop(void)
       timers_fire(&main_birdloop.time, 1);
       io_close_event();
 
-      /* Try to release some memory if possible */
-      check_stored_pages();
-
       // FIXME
       poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
       if (t = timers_first(&main_birdloop.time))

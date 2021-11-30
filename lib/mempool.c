@@ -130,7 +130,7 @@ lp_alloc(linpool *m, uint size)
 	    {
 	      /* Need to allocate a new chunk */
 	      if (m->use_pages)
-		c = alloc_page(m->p);
+		c = alloc_page();
 	      else
 		c = xmalloc(sizeof(struct lp_chunk) + m->chunk_size);
 
@@ -271,7 +271,7 @@ lp_free(resource *r)
     {
       c = d->next;
       if (m->use_pages)
-	free_page(m->p, d);
+	free_page(d);
       else
 	xfree(d);
     }

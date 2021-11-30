@@ -269,7 +269,7 @@ no_partial:
       s->num_empty_heads--;
       goto okay;
     }
-  h = alloc_page(s->p);
+  h = alloc_page();
 #ifdef POISON
   memset(h, 0xba, page_size);
 #endif
@@ -332,7 +332,7 @@ sl_free(slab *s, void *oo)
 #ifdef POISON
 	memset(h, 0xde, page_size);
 #endif
-	free_page(s->p, h);
+	free_page(h);
       }
       else
 	{
@@ -349,11 +349,11 @@ slab_free(resource *r)
   struct sl_head *h, *g;
 
   WALK_LIST_DELSAFE(h, g, s->empty_heads)
-    free_page(s->p, h);
+    free_page(h);
   WALK_LIST_DELSAFE(h, g, s->partial_heads)
-    free_page(s->p, h);
+    free_page(h);
   WALK_LIST_DELSAFE(h, g, s->full_heads)
-    free_page(s->p, h);
+    free_page(h);
 }
 
 static void
@@ -386,8 +386,7 @@ slab_memsize(resource *r)
   WALK_LIST(h, s->full_heads)
     heads++;
 
-//  return ALLOC_OVERHEAD + sizeof(struct slab) + heads * (ALLOC_OVERHEAD + page_size);
-  return ALLOC_OVERHEAD + sizeof(struct slab); /* The page sizes are accounted for in the pool */
+  return ALLOC_OVERHEAD + sizeof(struct slab) + heads * page_size;
 }
 
 static resource *

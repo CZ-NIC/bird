@@ -32,7 +32,7 @@
  *	Current thread context
  */
 
-_Thread_local struct birdloop *birdloop_current;
+_Thread_local struct birdloop *birdloop_current = NULL;
 static _Thread_local struct birdloop *birdloop_wakeup_masked;
 static _Thread_local uint birdloop_wakeup_masked_count;
 
@@ -391,6 +391,8 @@ birdloop_new(pool *pp, uint order, const char *name)
   timers_init(&loop->time, loop->pool);
   sockets_init(loop);
 
+  init_pages(loop);
+
   loop->time.coro = coro_run(loop->pool, birdloop_main, loop);
 
   birdloop_leave(loop);
@@ -571,6 +573,7 @@ birdloop_main(void *arg)
   /* Free the pool and loop */
   birdloop_enter(loop);
   rp_free(loop->pool, parent);
+  flush_pages(loop);
   birdloop_leave(loop);
   rfree(&loop->r);
 

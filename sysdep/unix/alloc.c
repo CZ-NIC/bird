@@ -9,6 +9,8 @@
 #include "nest/bird.h"
 #include "lib/resource.h"
 
+#include "sysdep/unix/io-loop.h"
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdatomic.h>
@@ -19,86 +21,47 @@
 #endif
 
 long page_size = 0;
-_Bool alloc_multipage = 0;
-
-static _Atomic int global_page_list_not_empty;
-static list global_page_list;
-static _Atomic int global_page_spinlock;
-
-#define	GLOBAL_PAGE_SPIN_LOCK	for (int v = 0; !atomic_compare_exchange_weak_explicit(&global_page_spinlock, &v, 1, memory_order_acq_rel, memory_order_acquire); v = 0)
-#define GLOBAL_PAGE_SPIN_UNLOCK	do { int v = 1; ASSERT_DIE(atomic_compare_exchange_strong_explicit(&global_page_spinlock, &v, 0, memory_order_acq_rel, memory_order_acquire)); } while (0)
 
 #ifdef HAVE_MMAP
+#if DEBUGGING
+#define FP_NODE_OFFSET	42
+#else
+#define FP_NODE_OFFSET   1
+#endif
 static _Bool use_fake = 0;
 #else
 static _Bool use_fake = 1;
 #endif
 
-void resource_sys_init(void)
+static void *
+alloc_sys_page(void)
 {
-#ifdef HAVE_MMAP
-  init_list(&global_page_list);
+  void *ptr = mmap(NULL, page_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-  if (!(page_size = sysconf(_SC_PAGESIZE)))
-    die("System page size must be non-zero");
+  if (ptr == MAP_FAILED)
+    bug("mmap(%lu) failed: %m", page_size);
 
-  if ((u64_popcount(page_size) > 1) || (page_size > 16384))
-#endif
-  {
-    /* Too big or strange page, use the aligned allocator instead */
-    page_size = 4096;
-    use_fake = 1;
-  }
+  return ptr;
 }
 
 void *
-alloc_sys_page(void)
+alloc_page(void)
 {
 #ifdef HAVE_MMAP
   if (!use_fake)
   {
-    if (atomic_load_explicit(&global_page_list_not_empty, memory_order_relaxed))
-    {
-      GLOBAL_PAGE_SPIN_LOCK;
-      if (!EMPTY_LIST(global_page_list))
-      {
-	node *ret = HEAD(global_page_list);
-	rem_node(ret);
-	if (EMPTY_LIST(global_page_list))
-	  atomic_store_explicit(&global_page_list_not_empty, 0, memory_order_relaxed);
-	GLOBAL_PAGE_SPIN_UNLOCK;
-	memset(ret, 0, sizeof(node));
-	return (void *) ret;
-      }
-      GLOBAL_PAGE_SPIN_UNLOCK;
-    }
+    struct free_pages *fp = &birdloop_current->pages;
+    if (!fp->cnt)
+      return alloc_sys_page();
+    
+    node *n = HEAD(fp->list);
+    rem_node(n);
+    if (--fp->cnt < fp->min)
+      ev_send(&global_work_list, fp->cleanup);
 
-    if (alloc_multipage)
-    {
-      void *big = mmap(NULL, page_size * 2, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-      if (big == MAP_FAILED)
-	bug("mmap(%lu) failed: %m", page_size);
-
-      uintptr_t offset = ((uintptr_t) big) % page_size;
-      if (offset)
-      {
-	void *ret = big + page_size - offset;
-	munmap(big, page_size - offset);
-	munmap(ret + page_size, offset);
-	return ret;
-      }
-      else
-      {
-	munmap(big + page_size, page_size);
-	return big;
-      }
-    }
-
-    void *ret = mmap(NULL, page_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (ret == MAP_FAILED)
-      bug("mmap(%lu) failed: %m", page_size);
-
-    return ret;
+    void *ptr = n - FP_NODE_OFFSET;
+    memset(ptr, 0, page_size);
+    return ptr;
   }
   else
 #endif
@@ -111,56 +74,156 @@ alloc_sys_page(void)
 }
 
 void
-free_sys_page(void *ptr)
+free_page(void *ptr)
 {
 #ifdef HAVE_MMAP
   if (!use_fake)
   {
-    if (munmap(ptr, page_size) < 0)
-#ifdef ENOMEM
-      if (errno == ENOMEM)
-      {
-	memset(ptr, 0, page_size);
+    struct free_pages *fp = &birdloop_current->pages;
+    struct node *n = ptr;
+    n += FP_NODE_OFFSET;
 
-	GLOBAL_PAGE_SPIN_LOCK;
-	add_tail(&global_page_list, (node *) ptr);
-	atomic_store_explicit(&global_page_list_not_empty, 1, memory_order_relaxed);
-	GLOBAL_PAGE_SPIN_UNLOCK;
-      }
-      else
-#endif
-	bug("munmap(%p) failed: %m", ptr);
+    memset(n, 0, sizeof(node));
+    add_tail(&fp->list, n);
+    if (++fp->cnt > fp->max)
+      ev_send(&global_work_list, fp->cleanup);
   }
   else
 #endif
     free(ptr);
 }
 
+#ifdef HAVE_MMAP
+
+#define GFP (&main_birdloop.pages)
+
 void
-check_stored_pages(void)
+flush_pages(struct birdloop *loop)
 {
-#ifdef ENOMEM
-  if (atomic_load_explicit(&global_page_list_not_empty, memory_order_relaxed) == 0)
-    return;
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
 
-  for (uint limit = 0; limit < 256; limit++)
-  {
-    GLOBAL_PAGE_SPIN_LOCK;
-    void *ptr = HEAD(global_page_list);
-    if (!NODE_VALID(ptr))
-    {
-      atomic_store_explicit(&global_page_list_not_empty, 0, memory_order_relaxed);
-      GLOBAL_PAGE_SPIN_UNLOCK;
-      return;
-    }
+  add_tail_list(&GFP->list, &loop->pages.list);
+  GFP->cnt += loop->pages.cnt;
+  
+  loop->pages.cnt = 0;
+  loop->pages.list = (list) {};
+  loop->pages.min = 0;
+  loop->pages.max = 0;
 
-    rem_node(ptr);
-    if (munmap(ptr, page_size) < 0)
-      if (errno == ENOMEM)
-	add_tail(&global_page_list, ptr);
-      else
-	bug("munmap(%p) failed: %m", ptr);
-    GLOBAL_PAGE_SPIN_UNLOCK;
-  }
-#endif
+  rfree(loop->pages.cleanup);
+  loop->pages.cleanup = NULL;
 }
+
+static void
+cleanup_pages(void *data)
+{
+  struct birdloop *loop = data;
+  birdloop_enter(loop);
+
+  struct free_pages *fp = &birdloop_current->pages;
+
+  while ((fp->cnt < fp->min) && (GFP->cnt > GFP->min))
+  {
+    node *n = HEAD(GFP->list);
+    rem_node(n);
+    add_tail(&fp->list, n);
+    fp->cnt++;
+    GFP->cnt--;
+  }
+  
+  while (fp->cnt < fp->min)
+  {
+    node *n = alloc_sys_page();
+    add_tail(&fp->list, n + FP_NODE_OFFSET);
+    fp->cnt++;
+  }
+
+  while (fp->cnt > fp->max)
+  {
+    node *n = HEAD(fp->list);
+    rem_node(n);
+    add_tail(&GFP->list, n);
+    fp->cnt--;
+    GFP->cnt++;
+  }
+
+  birdloop_leave(loop);
+
+  if (GFP->cnt > GFP->max)
+    ev_send(&global_work_list, GFP->cleanup);
+}
+
+static void
+cleanup_global_pages(void *data UNUSED)
+{
+  while (GFP->cnt < GFP->max)
+  {
+    node *n = alloc_sys_page();
+    add_tail(&GFP->list, n + FP_NODE_OFFSET);
+    GFP->cnt++;
+  }
+
+  for (uint limit = GFP->cnt; (limit > 0) && (GFP->cnt > GFP->max); limit--)
+  {
+    node *n = TAIL(GFP->list);
+    rem_node(n);
+
+    if (munmap(n - FP_NODE_OFFSET, page_size) == 0)
+      GFP->cnt--;
+    else if (errno == ENOMEM)
+      add_head(&GFP->list, n);
+    else
+      bug("munmap(%p) failed: %m", n - FP_NODE_OFFSET);
+  }
+}
+
+void
+init_pages(struct birdloop *loop)
+{
+  struct free_pages *fp = &loop->pages;
+
+  init_list(&fp->list);
+  fp->cleanup = ev_new_init(&root_pool, cleanup_pages, loop);
+  fp->min = 4;
+  fp->max = 16;
+
+  for (fp->cnt = 0; fp->cnt < fp->min; fp->cnt++)
+  {
+    node *n = alloc_sys_page();
+    add_tail(&fp->list, n + FP_NODE_OFFSET);
+  }
+}
+
+static event global_free_pages_cleanup_event = { .hook = cleanup_global_pages };
+
+void resource_sys_init(void)
+{
+  if (!(page_size = sysconf(_SC_PAGESIZE)))
+    die("System page size must be non-zero");
+
+  if (u64_popcount(page_size) == 1)
+  {
+    init_list(&GFP->list);
+    GFP->cleanup = &global_free_pages_cleanup_event;
+    GFP->min = 0;
+    GFP->max = 256;
+    return;
+  }
+
+  log(L_WARN "Got strange memory page size (%lu), using the aligned allocator instead", page_size);
+
+  /* Too big or strange page, use the aligned allocator instead */
+  page_size = 4096;
+  use_fake = 1;
+}
+
+#else
+
+void
+resource_sys_init(void)
+{
+  page_size = 4096;
+  use_fake = 1;
+}
+
+#endif

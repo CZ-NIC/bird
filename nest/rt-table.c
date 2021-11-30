@@ -1057,7 +1057,7 @@ rte_announce(rtable_private *tab, net *net, struct rte_storage *new, struct rte_
 
   if (!rpeb)
   {
-    rpeb = alloc_page(tab->rp);
+    rpeb = alloc_page();
     *rpeb = (struct rt_export_block) {};
     add_tail(&tab->pending_exports, &rpeb->n);
   }
@@ -2157,7 +2157,7 @@ rt_free(resource *_r)
 static void
 rt_res_dump(resource *_r)
 {
-  RT_LOCKED((rtable *) _r, r)
+  rtable_private *r = RT_PRIV((rtable *) _r);
   debug("name \"%s\", addr_type=%s, rt_count=%u, use_count=%d\n",
       r->name, net_label[r->addr_type], r->rt_count, r->use_count);
 }
@@ -2484,7 +2484,7 @@ rt_export_cleanup(void *data)
       memset(reb, 0xbe, page_size);
 #endif
 
-      free_page(tab->rp, reb);
+      free_page(reb);
 
       if (EMPTY_LIST(tab->pending_exports))
       {

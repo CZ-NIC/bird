@@ -30,14 +30,6 @@
  * is freed upon shutdown of the module.
  */
 
-struct pool_pages {
-  uint free;
-  uint used;
-  void *ptr[0];
-};
-
-#define POOL_PAGES_MAX	((page_size - sizeof(struct pool_pages)) / sizeof (void *))
-
 static void pool_dump(resource *);
 static void pool_free(resource *);
 static resource *pool_lookup(resource *, unsigned long);
@@ -53,9 +45,6 @@ static struct resclass pool_class = {
 };
 
 pool root_pool;
-
-void *alloc_sys_page(void);
-int free_sys_page(void *);
 
 static int indent;
 
@@ -101,16 +90,6 @@ pool_free(resource *P)
       r->class->free(r);
       xfree(r);
       r = rr;
-    }
-
-  if (p->pages)
-    {
-      ASSERT_DIE(!p->pages->used);
-
-      for (uint i = 0; i < p->pages->free; i++)
-	free_sys_page(p->pages->ptr[i]);
-
-      free_sys_page(p->pages);
     }
 
   pool_parent = parent;
@@ -184,9 +163,6 @@ pool_memsize_locked(pool *p)
 
   WALK_LIST(r, p->inside)
     sum += rmemsize(r);
-
-  if (p->pages)
-    sum += page_size * (p->pages->used + p->pages->free + 1);
 
   return sum;
 }
@@ -549,49 +525,6 @@ mb_free(void *m)
 
   struct mblock *b = SKIP_BACK(struct mblock, data, m);
   rfree(b);
-}
-
-void *
-alloc_page(pool *p)
-{
-  if (!p->pages)
-  {
-    p->pages = alloc_sys_page();
-    p->pages->free = 0;
-    p->pages->used = 1;
-  }
-  else
-    p->pages->used++;
-
-  if (p->pages->free)
-  {
-    void *ptr = p->pages->ptr[--p->pages->free];
-    bzero(ptr, page_size);
-    return ptr;
-  }
-  else
-    return alloc_sys_page();
-}
-
-void
-free_page(pool *p, void *ptr)
-{
-  ASSERT_DIE(p->pages);
-  p->pages->used--;
-
-  ASSERT_DIE(p->pages->free <= POOL_PAGES_MAX);
-
-  if (p->pages->free == POOL_PAGES_MAX)
-  {
-    const unsigned long keep = POOL_PAGES_MAX / 4;
-
-    for (uint i = keep; i < p->pages->free; i++)
-      free_sys_page(p->pages->ptr[i]);
-
-    p->pages->free = keep;
-  }
-
-  p->pages->ptr[p->pages->free++] = ptr;
 }
 
 

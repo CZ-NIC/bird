@@ -145,10 +145,13 @@ static void coro_free(resource *r)
   coro_cleaned_up = 1;
 }
 
+static void coro_dump(resource *r UNUSED) { }
+
 static struct resclass coro_class = {
   .name = "Coroutine",
   .size = sizeof(struct coroutine),
   .free = coro_free,
+  .dump = coro_dump,
 };
 
 _Thread_local struct coroutine *this_coro = NULL;

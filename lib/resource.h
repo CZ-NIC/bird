@@ -108,8 +108,8 @@ void buffer_realloc(void **buf, unsigned *size, unsigned need, unsigned item_siz
 extern long page_size;
 
 /* Allocator of whole pages; for use in slabs and other high-level allocators. */
-void *alloc_page(pool *);
-void free_page(pool *, void *);
+void *alloc_page(void);
+void free_page(void *);
 #define PAGE_HEAD(x)	((void *) (((intptr_t) (x)) & ~(page_size-1)))
 
 #ifdef HAVE_LIBDMALLOC

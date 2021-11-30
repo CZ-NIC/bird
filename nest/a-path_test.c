@@ -198,6 +198,7 @@ t_as_path_converting(void)
 #endif
 
 void resource_sys_init(void);
+void io_init(void);
 
 int
 main(int argc, char *argv[])
@@ -207,6 +208,7 @@ main(int argc, char *argv[])
   resource_init();
   the_bird_lock();
   birdloop_init();
+  io_init();
 
   bt_test_suite(t_as_path_match, "Testing AS path matching and some a-path utilities.");
   bt_test_suite(t_path_format, "Testing formating as path into byte buffer");
