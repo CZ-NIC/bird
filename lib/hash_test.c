@@ -9,7 +9,9 @@
 #undef LOCAL_DEBUG
 
 #include "test/birdtest.h"
+#include "test/bt-utils.h"
 
+#include "lib/io-loop.h"
 #include "lib/hash.h"
 
 struct test_node {
@@ -61,8 +63,7 @@ dump_nodes(void)
 static void
 init_hash_(uint order)
 {
-  resource_init();
-  my_pool = rp_new(&root_pool, "Test pool");
+  my_pool = rp_new(&root_pool, &main_birdloop, "Test pool");
 
   HASH_INIT(hash, my_pool, order);
 
@@ -290,6 +291,7 @@ int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+  bt_bird_init();
 
   bt_test_suite(t_insert_find, 		"HASH_INSERT and HASH_FIND");
   bt_test_suite(t_insert_find_random, 	"HASH_INSERT pseudo-random keys and HASH_FIND");

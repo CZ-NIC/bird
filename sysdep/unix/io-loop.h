@@ -9,7 +9,10 @@
 
 struct birdloop
 {
+  resource r;
+
   pool *pool;
+  pool *parent;
 
   struct timeloop time;
   event_list event_list;

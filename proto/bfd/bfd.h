@@ -90,8 +90,6 @@ struct bfd_proto
 
   pthread_spinlock_t lock;
 
-  pool *tpool;
-
   node bfd_node;
 
   slab *session_slab;

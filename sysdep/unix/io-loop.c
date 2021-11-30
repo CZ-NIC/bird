@@ -48,6 +48,12 @@ birdloop_time_loop(struct birdloop *loop)
   return &loop->time;
 }
 
+pool *
+birdloop_pool(struct birdloop *loop)
+{
+  return loop->pool;
+}
+
 _Bool
 birdloop_inside(struct birdloop *loop)
 {
@@ -333,31 +339,59 @@ birdloop_init(void)
   times_update();
   timers_init(&main_birdloop.time, &root_pool);
 
+  root_pool.loop = &main_birdloop;
+
   birdloop_enter_locked(&main_birdloop);
 }
 
 static void birdloop_main(void *arg);
+
+void
+birdloop_free(resource *r)
+{
+  struct birdloop *loop = (void *) r;
+
+  ASSERT_DIE(loop->links == 0);
+  domain_free(loop->time.domain);
+}
+
+void
+birdloop_dump(resource *r)
+{
+  struct birdloop *loop = (void *) r;
+
+  debug("%s\n", loop->pool->name);
+}
+
+struct resclass birdloop_class = {
+  .name = "IO Loop",
+  .size = sizeof(struct birdloop),
+  .free = birdloop_free,
+  .dump = birdloop_dump,
+};
 
 struct birdloop *
 birdloop_new(pool *pp, uint order, const char *name)
 {
   struct domain_generic *dg = domain_new(name, order);
 
-  pool *p = rp_new(pp, name);
-  struct birdloop *loop = mb_allocz(p, sizeof(struct birdloop));
-  loop->pool = p;
+  struct birdloop *loop = ralloc(pp, &birdloop_class);
 
   loop->time.domain = dg;
   loop->time.loop = loop;
 
   birdloop_enter(loop);
 
+  loop->pool = rp_new(pp, loop, name);
+  loop->parent = pp;
+  rmove(&loop->r, loop->pool);
+
   wakeup_init(loop);
   ev_init_list(&loop->event_list, loop, name);
-  timers_init(&loop->time, p);
+  timers_init(&loop->time, loop->pool);
   sockets_init(loop);
 
-  loop->time.coro = coro_run(p, birdloop_main, loop);
+  loop->time.coro = coro_run(loop->pool, birdloop_main, loop);
 
   birdloop_leave(loop);
 
@@ -387,14 +421,6 @@ birdloop_stop_self(struct birdloop *loop, void (*stopped)(void *data), void *dat
   ASSERT_DIE(DG_IS_LOCKED(loop->time.domain));
 
   birdloop_do_stop(loop, stopped, data);
-}
-
-void
-birdloop_free(struct birdloop *loop)
-{
-  ASSERT_DIE(loop->links == 0);
-  domain_free(loop->time.domain);
-  rfree(loop->pool);
 }
 
 static void
@@ -529,7 +555,25 @@ birdloop_main(void *arg)
   ASSERT_DIE(loop->sock_num == 0);
 
   birdloop_leave(loop);
+
+  /* Lock parent loop */
+  pool *parent = loop->parent;
+  birdloop_enter(parent->loop);
+
+  /* Move the loop temporarily to parent pool */
+  birdloop_enter(loop);
+  rmove(&loop->r, parent);
+  birdloop_leave(loop);
+
+  /* Announce loop stop */
   loop->stopped(loop->stop_data);
+
+  /* Free the pool and loop */
+  birdloop_enter(loop);
+  rp_free(loop->pool, parent);
+  birdloop_leave(loop);
+  rfree(&loop->r);
+
+  /* And finally leave the parent loop before finishing */
+  birdloop_leave(parent->loop);
 }
-
-

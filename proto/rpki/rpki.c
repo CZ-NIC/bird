@@ -596,7 +596,7 @@ rpki_check_expire_interval(uint seconds)
 static struct rpki_cache *
 rpki_init_cache(struct rpki_proto *p, struct rpki_config *cf)
 {
-  pool *pool = rp_new(p->p.pool, cf->hostname);
+  pool *pool = rp_new(p->p.pool, p->p.loop, cf->hostname);
 
   struct rpki_cache *cache = mb_allocz(pool, sizeof(struct rpki_cache));
 

@@ -117,7 +117,7 @@ static void
 rte_src_init(void)
 {
   src_domain = DOMAIN_NEW(attrs, "Route sources");
-  src_pool = rp_new(&root_pool, "Route sources");
+  src_pool = rp_new(&root_pool, &main_birdloop, "Route sources");
   rte_src_slab = sl_new(src_pool, sizeof(struct rte_src));
 
   idm_init(&src_ids, src_pool, SRC_ID_INIT_SIZE);
@@ -1534,7 +1534,7 @@ rta_init(void)
 {
   attrs_domain = DOMAIN_NEW(attrs, "Attributes");
 
-  rta_pool = rp_new(&root_pool, "Attributes");
+  rta_pool = rp_new(&root_pool, &main_birdloop, "Attributes");
 
   rta_slab_[0] = sl_new(rta_pool, sizeof(rta));
   rta_slab_[1] = sl_new(rta_pool, sizeof(rta) + sizeof(u32));

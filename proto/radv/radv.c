@@ -284,7 +284,7 @@ radv_iface_new(struct radv_proto *p, struct iface *iface, struct radv_iface_conf
 
   RADV_TRACE(D_EVENTS, "Adding interface %s", iface->name);
 
-  pool *pool = rp_new(p->p.pool, iface->name);
+  pool *pool = rp_new(p->p.pool, p->p.loop, iface->name);
   ifa = mb_allocz(pool, sizeof(struct radv_iface));
   ifa->pool = pool;
   ifa->ra = p;
@@ -317,7 +317,7 @@ radv_iface_remove(struct radv_iface *ifa)
 
   rem_node(NODE ifa);
 
-  rfree(ifa->pool);
+  rp_free(ifa->pool, p->p.pool);
 }
 
 static void

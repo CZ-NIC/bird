@@ -666,7 +666,10 @@ static uint channel_aux_imex(struct channel_aux_table *cat)
 static void
 channel_aux_stopped(void *data)
 {
-  struct channel_aux_table *cat = data;
+  struct channel_aux_table *cat;
+  RT_LOCKED((rtable *) data, t)
+    cat = t->config->owner;
+
   struct channel *c = cat->c;
 
   if (channel_aux_imex(cat))
@@ -674,7 +677,6 @@ channel_aux_stopped(void *data)
   else
     c->in_table = NULL;
 
-  rfree(cat->tab->priv.rp);
   mb_free(cat);
   channel_check_stopped(c);
 }
@@ -694,7 +696,7 @@ channel_aux_export_stopped(struct rt_export_request *req)
 
   int del;
   RT_LOCKED(cat->tab, t)
-    del = !!t->delete_event;
+    del = !!t->delete;
 
   if (del)
     return;
@@ -708,10 +710,7 @@ static void
 channel_aux_stop(struct channel_aux_table *cat)
 {
   RT_LOCKED(cat->tab, t)
-  {
-    t->delete_event = ev_new_init(t->rp, channel_aux_stopped, cat);
-    t->delete_event->list = proto_event_list(cat->c->proto);
-  }
+    t->delete = channel_aux_stopped;
 
   cat->push_stopped = (event) {
     .hook = channel_aux_import_stopped,
@@ -889,6 +888,7 @@ channel_setup_in_table(struct channel *c, int best)
 
   bsprintf(cat->name, "%s.%s.import", c->proto->name, c->name);
 
+  cat->tab_cf.owner = cat;
   cat->tab_cf.name = cat->name;
   cat->tab_cf.addr_type = c->net_type;
   cat->tab_cf.cork_limit = 4 * page_size / sizeof(struct rt_pending_export);
@@ -933,6 +933,7 @@ channel_setup_out_table(struct channel *c)
 
   bsprintf(cat->name, "%s.%s.export", c->proto->name, c->name);
 
+  cat->tab_cf.owner = cat;
   cat->tab_cf.name = cat->name;
   cat->tab_cf.addr_type = c->net_type;
   cat->tab_cf.cork_limit = 4 * page_size / sizeof(struct rt_pending_export);
@@ -1387,9 +1388,6 @@ proto_configure_channel(struct proto *p, struct channel **pc, struct channel_con
 static void
 proto_cleanup(struct proto *p)
 {
-  rfree(p->pool);
-  p->pool = NULL;
-
   p->active = 0;
   proto_log_state_change(p);
   proto_rethink_goal(p);
@@ -1400,13 +1398,13 @@ proto_loop_stopped(void *ptr)
 {
   struct proto *p = ptr;
 
-  birdloop_enter(&main_birdloop);
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
 
   p->loop = &main_birdloop;
+  p->pool = NULL;
   p->event->list = NULL;
-  proto_cleanup(p);
 
-  birdloop_leave(&main_birdloop);
+  proto_cleanup(p);
 }
 
 static void
@@ -1426,7 +1424,11 @@ proto_event(void *ptr)
     if (p->loop != &main_birdloop)
       birdloop_stop_self(p->loop, proto_loop_stopped, p);
     else
+    {
+      rp_free(p->pool, proto_pool);
+      p->pool = NULL;
       proto_cleanup(p);
+    }
 }
 
 
@@ -1490,13 +1492,16 @@ proto_start(struct proto *p)
   void *nb = mb_alloc(proto_pool, ns);
   ASSERT_DIE(ns - 1 == bsnprintf(nb, ns, "Protocol %s", p->cf->name));
 
-  p->pool = rp_new(proto_pool, nb);
-
   if (graceful_restart_state == GRS_INIT)
     p->gr_recovery = 1;
 
-  if (p->cf->loop_order != DOMAIN_ORDER(the_bird))
-    p->loop = birdloop_new(p->pool, p->cf->loop_order, nb);
+  if (p->cf->loop_order == DOMAIN_ORDER(the_bird))
+    p->pool = rp_new(proto_pool, &main_birdloop, nb);
+  else
+  {
+    p->loop = birdloop_new(proto_pool, p->cf->loop_order, nb);
+    p->pool = birdloop_pool(p->loop);
+  }
 
   p->event->list = proto_event_list(p);
 
@@ -2177,7 +2182,7 @@ protos_build(void)
   proto_build(&proto_perf);
 #endif
 
-  proto_pool = rp_new(&root_pool, "Protocols");
+  proto_pool = rp_new(&root_pool, &main_birdloop, "Protocols");
   proto_shutdown_timer = tm_new(proto_pool);
   proto_shutdown_timer->hook = proto_shutdown_loop;
 }

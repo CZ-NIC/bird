@@ -12,6 +12,7 @@
 #include "nest/route.h"
 #include "nest/attrs.h"
 #include "lib/resource.h"
+#include "lib/io-loop.h"
 
 #define TESTS_NUM 30
 #define AS_PATH_LENGTH 1000
@@ -23,8 +24,6 @@
 static int
 t_as_path_match(void)
 {
-  resource_init();
-
   int round;
   for (round = 0; round < TESTS_NUM; round++)
   {
@@ -70,8 +69,6 @@ t_as_path_match(void)
 static int
 t_path_format(void)
 {
-  resource_init();
-
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
   struct linpool *lp = lp_new_default(&root_pool);
@@ -116,8 +113,6 @@ count_asn_in_array(const u32 *array, u32 asn)
 static int
 t_path_include(void)
 {
-  resource_init();
-
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
   struct linpool *lp = lp_new_default(&root_pool);
@@ -161,8 +156,6 @@ t_path_include(void)
 static int
 t_as_path_converting(void)
 {
-  resource_init();
-
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
   struct linpool *lp = lp_new_default(&root_pool);
@@ -211,6 +204,9 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
   resource_sys_init();
+  resource_init();
+  the_bird_lock();
+  birdloop_init();
 
   bt_test_suite(t_as_path_match, "Testing AS path matching and some a-path utilities.");
   bt_test_suite(t_path_format, "Testing formating as path into byte buffer");

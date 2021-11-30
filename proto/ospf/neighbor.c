@@ -80,7 +80,7 @@ struct ospf_neighbor *
 ospf_neighbor_new(struct ospf_iface *ifa)
 {
   struct ospf_proto *p = ifa->oa->po;
-  struct pool *pool = rp_new(p->p.pool, "OSPF Neighbor");
+  struct pool *pool = rp_new(p->p.pool, p->p.loop, "OSPF Neighbor");
   struct ospf_neighbor *n = mb_allocz(pool, sizeof(struct ospf_neighbor));
 
   n->pool = pool;
@@ -120,7 +120,7 @@ ospf_neigh_down(struct ospf_neighbor *n)
   s_get(&(n->dbsi));
   release_lsrtl(p, n);
   rem_node(NODE n);
-  rfree(n->pool);
+  rp_free(n->pool, p->p.pool);
 
   OSPF_TRACE(D_EVENTS, "Neighbor %R on %s removed", rid, ifa->ifname);
 }

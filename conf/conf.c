@@ -89,7 +89,7 @@ int undo_available;			/* Undo was not requested from last reconfiguration */
 struct config *
 config_alloc(const char *name)
 {
-  pool *p = rp_new(&root_pool, "Config");
+  pool *p = rp_new(&root_pool, &main_birdloop, "Config");
   linpool *l = lp_new_default(p);
   struct config *c = lp_allocz(l, sizeof(struct config));
 
@@ -196,7 +196,7 @@ void
 config_free(struct config *c)
 {
   if (c)
-    rfree(c->pool);
+    rp_free(c->pool, &root_pool);
 }
 
 void

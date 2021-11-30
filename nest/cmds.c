@@ -88,10 +88,10 @@ void
 cmd_show_memory(void)
 {
   cli_msg(-1018, "BIRD memory usage");
-  print_size("Routing tables:", rmemsize(rt_table_pool));
-  print_size("Route attributes:", rmemsize(rta_pool));
-  print_size("Protocols:", rmemsize(proto_pool));
-  print_size("Total:", rmemsize(&root_pool));
+  print_size("Routing tables:", rp_memsize(rt_table_pool));
+  print_size("Route attributes:", rp_memsize(rta_pool));
+  print_size("Protocols:", rp_memsize(proto_pool));
+  print_size("Total:", rp_memsize(&root_pool));
   cli_msg(0, "");
 }
 

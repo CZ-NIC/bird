@@ -20,21 +20,24 @@ void sk_reloop(sock *s, struct birdloop *loop);
 
 extern struct birdloop main_birdloop;
 
-/* Start a new birdloop owned by given pool and domain */
+/* Start a new birdloop owned by given pool and domain.
+ * The loop allocates its internal pool for local allocations
+ * which is freed when the loop itself is stopped. */
 struct birdloop *birdloop_new(pool *p, uint order, const char *name);
 
-/* Stop the loop. At the end, the @stopped callback is called unlocked in tail
- * position to finish cleanup. Run birdloop_free() from that callback to free
- * the loop itself. */
+/* Stop the loop. At the end, the @stopped callback is called with locked
+ * parent to finish cleanup. The loop then frees itself together with its pool. */
 void birdloop_stop(struct birdloop *loop, void (*stopped)(void *data), void *data);
 void birdloop_stop_self(struct birdloop *loop, void (*stopped)(void *data), void *data);
-void birdloop_free(struct birdloop *loop);
 
 /* Get birdloop's event list */
 event_list *birdloop_event_list(struct birdloop *loop);
 
 /* Get birdloop's time heap */
 struct timeloop *birdloop_time_loop(struct birdloop *loop);
+
+/* Get birdloop's resource pool */
+pool *birdloop_pool(struct birdloop *loop);
 
 /* Enter and exit the birdloop */
 void birdloop_enter(struct birdloop *loop);

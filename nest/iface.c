@@ -713,7 +713,7 @@ if_choose_router_id(struct iface_patt *mask, u32 old_id)
 void
 if_init(void)
 {
-  if_pool = rp_new(&root_pool, "Interfaces");
+  if_pool = rp_new(&root_pool, &main_birdloop, "Interfaces");
   init_list(&iface_list);
   strcpy(default_vrf.name, "default");
   neigh_init(if_pool);

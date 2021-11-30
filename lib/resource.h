@@ -34,10 +34,16 @@ struct resclass {
 
 /* Generic resource manipulation */
 
-typedef struct pool pool;
+typedef struct pool {
+  resource r;
+  list inside;
+  struct pool_pages *pages;
+  struct birdloop *loop;
+  const char *name;
+} pool;
 
 void resource_init(void);
-pool *rp_new(pool *, const char *);	/* Create new pool */
+
 void rfree(void *);			/* Free single resource */
 void rdump(void *);			/* Dump to debug output */
 size_t rmemsize(void *res);		/* Return size of memory used by the resource */
@@ -45,6 +51,11 @@ void rlookup(unsigned long);		/* Look up address (only for debugging) */
 void rmove(void *, pool *);		/* Move to a different pool */
 
 void *ralloc(pool *, struct resclass *);
+
+pool *rp_new(pool *, struct birdloop *loop, const char *);	/* Create new pool */
+void rp_free(pool *p, pool *parent);	/* Free parent pool */ 
+size_t rp_memsize(pool *p);		/* Return size of memory used by the pool */
+void rp_dump(pool *p);			/* Dump pool to debug output */
 
 extern pool root_pool;
 

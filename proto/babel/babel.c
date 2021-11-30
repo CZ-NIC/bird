@@ -1747,7 +1747,7 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
 
   TRACE(D_EVENTS, "Adding interface %s", new->name);
 
-  pool *pool = rp_new(p->p.pool, new->name);
+  pool *pool = rp_new(p->p.pool, p->p.loop, new->name);
 
   ifa = mb_allocz(pool, sizeof(struct babel_iface));
   ifa->proto = p;

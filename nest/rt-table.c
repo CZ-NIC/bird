@@ -1695,7 +1695,7 @@ rt_export_stopped(void *data)
   RT_LOCKED(hook->table, tab)
   {
     /* Free the hook together with its coroutine. */
-    rfree(hook->pool);
+    rp_free(hook->pool, tab->rp);
     rt_unlock_table(tab);
 
     DBG("Export hook %p in table %s finished uc=%u\n", hook, tab->name, tab->use_count);
@@ -1777,7 +1777,7 @@ rt_request_export(rtable *t, struct rt_export_request *req)
   rtable_private *tab = RT_PRIV(t);
   rt_lock_table(tab);
 
-  pool *p = rp_new(tab->rp, "Export hook");
+  pool *p = rp_new(tab->rp, tab->loop, "Export hook");
   struct rt_export_hook *hook = req->hook = mb_allocz(p, sizeof(struct rt_export_hook));
   hook->pool = p;
   
@@ -1935,7 +1935,7 @@ rt_dump(rtable *tab)
 {
   RT_LOCK(tab);
   rtable_private *t = RT_PRIV(tab);
-  debug("Dump of routing table <%s>%s\n", t->name, t->delete_event ? " (deleted)" : "");
+  debug("Dump of routing table <%s>%s\n", t->name, t->delete ? " (deleted)" : "");
 #ifdef DEBUGGING
   fib_check(&t->fib);
 #endif
@@ -1969,7 +1969,7 @@ rt_dump_hooks(rtable *t)
 {
   RT_LOCK(t);
   rtable_private *tab = RT_PRIV(t);
-  debug("Dump of hooks in routing table <%s>%s\n", tab->name, tab->delete_event ? " (deleted)" : "");
+  debug("Dump of hooks in routing table <%s>%s\n", tab->name, tab->delete ? " (deleted)" : "");
   debug("  nhu_state=%u hcu_scheduled=%u use_count=%d rt_count=%u\n",
       atomic_load(&tab->nhu_state), ev_active(tab->hcu_event), tab->use_count, tab->rt_count);
   debug("  last_rt_change=%t gc_time=%t gc_counter=%d prune_state=%u\n",
@@ -2142,6 +2142,9 @@ rt_free(resource *_r)
   ASSERT_DIE(EMPTY_LIST(r->imports));
   ASSERT_DIE(EMPTY_LIST(r->exports));
 
+  if (r->hostcache)
+    rt_free_hostcache(r);
+
   /* Freed automagically by the resource pool
   fib_free(&r->fib);
   hmap_free(&r->id_map);
@@ -2175,10 +2178,14 @@ rt_setup(pool *pp, struct rtable_config *cf)
   void *nb = mb_alloc(pp, ns);
   ASSERT_DIE(ns - 1 == bsnprintf(nb, ns, "Routing table %s", cf->name));
 
-  pool *p = rp_new(pp, nb);
+  struct birdloop *l = birdloop_new(pp, DOMAIN_ORDER(rtable), nb);
+  pool *p = birdloop_pool(l);
+
+  birdloop_enter(l);
 
   rtable_private *t = ralloc(p, &rt_class);
   t->rp = p;
+  t->loop = l;
 
   t->rte_slab = sl_new(p, sizeof(struct rte_storage));
 
@@ -2197,8 +2204,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
   init_list(&t->pending_exports);
   init_list(&t->subscribers);
 
-  t->loop = birdloop_new(p, DOMAIN_ORDER(rtable), nb);
-
   t->announce_event = ev_new_init(p, rt_announce_exports, t);
   t->ec_event = ev_new_init(p, rt_export_cleanup, t);
   t->prune_event = ev_new_init(p, rt_prune_table, t);
@@ -2216,6 +2221,8 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->nhu_lp = lp_new_default(p);
 
   mb_move(nb, p);
+  birdloop_leave(l);
+
   return (rtable *) t;
 }
 
@@ -2229,7 +2236,7 @@ void
 rt_init(void)
 {
   rta_init();
-  rt_table_pool = rp_new(&root_pool, "Routing tables");
+  rt_table_pool = rp_new(&root_pool, &main_birdloop, "Routing tables");
   init_list(&routing_tables);
   ev_init_cork(&rt_cork, "Route Table Cork");
 }
@@ -2819,7 +2826,7 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->min_rr_settle_time = 30 S;
   c->max_rr_settle_time = 90 S;
   c->cork_limit = 4 * page_size / sizeof(struct rt_pending_export);
-  c->config = new_config;
+  c->owner = new_config;
 
   add_tail(&new_config->tables, &c->n);
 
@@ -2844,18 +2851,6 @@ rt_lock_table(rtable_private *r)
   r->use_count++;
 }
 
-static void
-rt_loop_stopped(void *data)
-{
-  rtable_private *r = data;
-  birdloop_free(r->loop);
-  r->loop = NULL;
-  r->prune_event->list = r->ec_event->list = NULL;
-  r->nhu_event->list = r->hcu_event->list = NULL;
-  r->announce_event->list = NULL;
-  ev_send(r->delete_event->list, r->delete_event);
-}
-
 /**
  * rt_unlock_table - unlock a routing table
  * @r: routing table to be unlocked
@@ -2867,10 +2862,9 @@ rt_loop_stopped(void *data)
 void
 rt_unlock_table(rtable_private *r)
 {
-  if (!--r->use_count && r->delete_event &&
+  if (!--r->use_count && r->delete &&
       !r->prune_state && !atomic_load_explicit(&r->nhu_state, memory_order_acquire))
-    /* Delete the routing table by freeing its pool */
-    birdloop_stop_self(r->loop, rt_loop_stopped, r);
+    birdloop_stop_self(r->loop, r->delete, r);
 }
 
 static struct rtable_config *
@@ -2883,22 +2877,16 @@ rt_find_table_config(struct config *cf, char *name)
 static void
 rt_done(void *data)
 {
-  rtable_private *t = data;
-  ASSERT_DIE(t->loop == NULL);
+  RT_LOCKED((rtable *) data, t)
+  {
+    struct rtable_config *tc = t->config;
+    struct config *c = tc->owner;
 
-  struct rtable_config *tc = t->config;
-  struct config *c = tc->config;
+    tc->table = NULL;
+    rem_node(&t->n);
 
-  tc->table = NULL;
-  rem_node(&t->n);
-
-  if (t->hostcache)
-    rt_free_hostcache(t);
-
-  rfree(t->delete_event);
-  rfree(t->rp);
-
-  config_del_obstacle(c);
+    config_del_obstacle(c);
+  }
 }
 
 /**
@@ -2925,7 +2913,7 @@ rt_commit(struct config *new, struct config *old)
 	{
 	  RT_LOCK(o->table);
 	  rtable_private *ot = RT_PRIV(o->table);
-	  if (!ot->delete_event)
+	  if (!ot->delete)
 	    {
 	      r = rt_find_table_config(new, o->name);
 	      if (r && (r->addr_type == o->addr_type) && !new->shutdown)
@@ -2941,8 +2929,7 @@ rt_commit(struct config *new, struct config *old)
 		{
 		  DBG("\t%s: deleted\n", o->name);
 		  rt_lock_table(ot);
-		  ot->delete_event = ev_new_init(&root_pool, rt_done, ot);
-		  ot->delete_event->list = &global_event_list;
+		  ot->delete = rt_done;
 		  config_add_obstacle(old);
 		  rt_unlock_table(ot);
 		}

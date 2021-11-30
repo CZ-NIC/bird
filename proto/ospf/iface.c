@@ -311,7 +311,7 @@ ospf_iface_remove(struct ospf_iface *ifa)
 
   ospf_iface_sm(ifa, ISM_DOWN);
   rem_node(NODE ifa);
-  rfree(ifa->pool);
+  rp_free(ifa->pool, p->p.pool);
 }
 
 void
@@ -567,7 +567,7 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
     OSPF_TRACE(D_EVENTS, "Adding interface %s (%N) to area %R",
 	       iface->name, &addr->prefix, oa->areaid);
 
-  pool = rp_new(p->p.pool, "OSPF Interface");
+  pool = rp_new(p->p.pool, p->p.loop, "OSPF Interface");
   ifa = mb_allocz(pool, sizeof(struct ospf_iface));
   ifa->iface = iface;
   ifa->addr = addr;
@@ -687,7 +687,7 @@ ospf_iface_new_vlink(struct ospf_proto *p, struct ospf_iface_patt *ip)
 
   /* Vlink ifname is stored just after the ospf_iface structure */
 
-  pool = rp_new(p->p.pool, "OSPF Vlink");
+  pool = rp_new(p->p.pool, p->p.loop, "OSPF Vlink");
   ifa = mb_allocz(pool, sizeof(struct ospf_iface) + 16);
   ifa->oa = p->backbone;
   ifa->cf = ip;

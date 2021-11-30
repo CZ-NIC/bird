@@ -561,10 +561,11 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
 static struct mrt_table_dump_state *
 mrt_table_dump_init(pool *pp)
 {
-  pool *pool = rp_new(pp, "MRT Table Dump");
+  pool *pool = rp_new(pp, &main_birdloop, "MRT Table Dump");
   struct mrt_table_dump_state *s = mb_allocz(pool, sizeof(struct mrt_table_dump_state));
 
   s->pool = pool;
+  s->parent = pp;
   s->linpool = lp_new(pool, 4080);
   s->peer_lp = lp_new(pool, 4080);
   mrt_buffer_init(&s->buf, pool, 2 * MRT_ATTR_BUFFER_SIZE);
@@ -601,7 +602,7 @@ mrt_table_dump_free(struct mrt_table_dump_state *s)
 
   config_del_obstacle(s->config);
 
-  rfree(s->pool);
+  rp_free(s->pool, s->parent);
 }
 
 

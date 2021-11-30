@@ -52,7 +52,7 @@ async_dump(void)
 {
   debug("INTERNAL STATE DUMP\n\n");
 
-  rdump(&root_pool);
+  rp_dump(&root_pool);
   sk_dump_all();
   // XXXX tm_dump_all();
   if_dump_all();

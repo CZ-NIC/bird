@@ -14,6 +14,7 @@
 #include "lib/resource.h"
 #include "lib/string.h"
 #include "lib/rcu.h"
+#include "lib/io-loop.h"
 
 /**
  * DOC: Resource pools
@@ -28,13 +29,6 @@
  * Example: Almost all modules of BIRD have their private pool which
  * is freed upon shutdown of the module.
  */
-
-struct pool {
-  resource r;
-  list inside;
-  struct pool_pages *pages;
-  const char *name;
-};
 
 struct pool_pages {
   uint free;
@@ -68,26 +62,39 @@ static int indent;
 /**
  * rp_new - create a resource pool
  * @p: parent pool
+ * @l: loop to assign
  * @name: pool name (to be included in debugging dumps)
  *
  * rp_new() creates a new resource pool inside the specified
  * parent pool.
  */
 pool *
-rp_new(pool *p, const char *name)
+rp_new(pool *p, struct birdloop *loop, const char *name)
 {
+  ASSERT_DIE(birdloop_inside(p->loop));
+  ASSERT_DIE(birdloop_inside(loop));
+
   pool *z = ralloc(p, &pool_class);
+  z->loop = loop;
   z->name = name;
   init_list(&z->inside);
   return z;
 }
 
+_Thread_local static pool *pool_parent = NULL;
+
 static void
 pool_free(resource *P)
 {
-  pool *p = (pool *) P;
-  resource *r, *rr;
+  ASSERT_DIE(pool_parent);
 
+  pool *p = (pool *) P;
+  ASSERT_DIE(birdloop_inside(p->loop));
+
+  pool *parent = pool_parent;
+  pool_parent = p;
+
+  resource *r, *rr;
   r = HEAD(p->inside);
   while (rr = (resource *) r->n.next)
     {
@@ -105,14 +112,25 @@ pool_free(resource *P)
 
       free_sys_page(p->pages);
     }
+
+  pool_parent = parent;
+}
+
+void
+rp_free(pool *p, pool *parent)
+{
+  ASSERT_DIE(pool_parent == NULL);
+  pool_parent = parent;
+  rfree(p);
+  ASSERT_DIE(pool_parent == parent);
+  pool_parent = NULL;
 }
 
 static void
-pool_dump(resource *P)
+pool_dump_locked(pool *p)
 {
-  pool *p = (pool *) P;
   resource *r;
-
+  
   debug("%s\n", p->name);
   indent += 3;
   WALK_LIST(r, p->inside)
@@ -120,10 +138,47 @@ pool_dump(resource *P)
   indent -= 3;
 }
 
-static size_t
-pool_memsize(resource *P)
+static void
+pool_dump(resource *P)
 {
   pool *p = (pool *) P;
+
+  if (p->loop != pool_parent->loop)
+    birdloop_enter(p->loop);
+
+  pool *parent = pool_parent;
+  pool_parent = p;
+
+  pool_dump_locked(p);
+
+  pool_parent = parent;
+
+  if (p->loop != pool_parent->loop)
+    birdloop_leave(p->loop);
+}
+
+void
+rp_dump(pool *p)
+{
+  int inside = birdloop_inside(p->loop);
+  if (!inside)
+    birdloop_enter(p->loop);
+
+  ASSERT_DIE(pool_parent == NULL);
+  pool_parent = p;
+
+  pool_dump_locked(p);
+
+  ASSERT_DIE(pool_parent == p);
+  pool_parent = NULL;
+
+  if (!inside)
+    birdloop_leave(p->loop);
+}
+
+static size_t
+pool_memsize_locked(pool *p)
+{
   resource *r;
   size_t sum = sizeof(pool) + ALLOC_OVERHEAD;
 
@@ -132,6 +187,46 @@ pool_memsize(resource *P)
 
   if (p->pages)
     sum += page_size * (p->pages->used + p->pages->free + 1);
+
+  return sum;
+}
+
+static size_t
+pool_memsize(resource *P)
+{
+  pool *p = (pool *) P;
+
+  pool *parent = pool_parent;
+  pool_parent = p;
+
+  if (p->loop != parent->loop)
+    birdloop_enter(p->loop);
+
+  size_t sum = pool_memsize_locked(p);
+
+  if (p->loop != parent->loop)
+    birdloop_leave(p->loop);
+
+  pool_parent = parent;
+
+  return sum;
+}
+
+size_t
+rp_memsize(pool *p)
+{
+  int inside = birdloop_inside(p->loop);
+  if (!inside)
+    birdloop_enter(p->loop);
+
+  ASSERT_DIE(pool_parent == NULL);
+  pool_parent = p;
+  size_t sum = pool_memsize_locked(p);
+  ASSERT_DIE(pool_parent == p);
+  pool_parent = NULL;
+
+  if (!inside)
+    birdloop_leave(p->loop);
 
   return sum;
 }
@@ -243,12 +338,15 @@ rmemsize(void *res)
 void *
 ralloc(pool *p, struct resclass *c)
 {
+  ASSERT_DIE(p);
+  ASSERT_DIE(birdloop_inside(p->loop));
+
   resource *r = xmalloc(c->size);
   bzero(r, c->size);
 
   r->class = c;
-  if (p)
-    add_tail(&p->inside, &r->n);
+  add_tail(&p->inside, &r->n);
+
   return r;
 }
 

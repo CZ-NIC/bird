@@ -452,8 +452,8 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
   s->passive = s->cf.passive;
   s->tx_csn = random_u32();
 
-  s->tx_timer = tm_new_init(p->tpool, bfd_tx_timer_hook, s, 0, 0);
-  s->hold_timer = tm_new_init(p->tpool, bfd_hold_timer_hook, s, 0, 0);
+  s->tx_timer = tm_new_init(p->p.pool, bfd_tx_timer_hook, s, 0, 0);
+  s->hold_timer = tm_new_init(p->p.pool, bfd_hold_timer_hook, s, 0, 0);
   bfd_session_update_tx_interval(s);
   bfd_session_control_tx_timer(s, 1);
 
@@ -581,7 +581,7 @@ bfd_get_iface(struct bfd_proto *p, ip_addr local, struct iface *iface)
   struct bfd_config *cf = (struct bfd_config *) (p->p.cf);
   struct bfd_iface_config *ic = bfd_find_iface_config(cf, iface);
 
-  ifa = mb_allocz(p->tpool, sizeof(struct bfd_iface));
+  ifa = mb_allocz(p->p.pool, sizeof(struct bfd_iface));
   ifa->local = local;
   ifa->iface = iface;
   ifa->cf = ic;
@@ -1061,8 +1061,6 @@ bfd_start(struct proto *P)
   struct bfd_config *cf = (struct bfd_config *) (P->cf);
 
   pthread_spin_init(&p->lock, PTHREAD_PROCESS_PRIVATE);
-
-  p->tpool = rp_new(P->pool, "BFD loop pool");
 
   p->session_slab = sl_new(P->pool, sizeof(struct bfd_session));
   HASH_INIT(p->session_hash_id, P->pool, 8);

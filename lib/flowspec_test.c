@@ -8,6 +8,7 @@
 
 #include "test/birdtest.h"
 #include "lib/flowspec.h"
+#include "lib/io-loop.h"
 
 #define NET_ADDR_FLOW4_(what,prefix,pxlen,data_)	\
   do 							\
@@ -446,8 +447,6 @@ t_validation6(void)
 static int
 t_builder4(void)
 {
-  resource_init();
-
   struct flow_builder *fb = flow_builder_init(&root_pool);
   linpool *lp = lp_new_default(&root_pool);
 
@@ -529,7 +528,6 @@ t_builder6(void)
 {
   net_addr_ip6 ip;
 
-  resource_init();
   linpool *lp = lp_new_default(&root_pool);
   struct flow_builder *fb = flow_builder_init(&root_pool);
   fb->ipv6 = 1;
@@ -673,6 +671,9 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
   resource_sys_init();
+  resource_init();
+  the_bird_lock();
+  birdloop_init();
 
   bt_test_suite(t_read_length,  "Testing get NLRI length");
   bt_test_suite(t_write_length, "Testing set NLRI length");
@@ -688,5 +689,6 @@ main(int argc, char *argv[])
   bt_test_suite(t_formatting4,  "Formatting Flow Specification (IPv4) into text representation");
   bt_test_suite(t_formatting6,  "Formatting Flow Specification (IPv6) into text representation");
 
+  the_bird_unlock();
   return bt_exit_value();
 }

@@ -262,7 +262,7 @@ cli_command(struct cli *c)
     log(L_TRACE "CLI: %s", c->rx_buf);
   bzero(&f, sizeof(f));
   f.mem = c->parser_pool;
-  f.pool = rp_new(c->pool, "Config");
+  f.pool = rp_new(c->pool, &main_birdloop, "Config");
   init_list(&f.symbols);
   cf_read_hook = cli_cmd_read_hook;
   cli_rh_pos = c->rx_buf;
@@ -308,7 +308,7 @@ cli_event(void *data)
 cli *
 cli_new(void *priv)
 {
-  pool *p = rp_new(cli_pool, "CLI");
+  pool *p = rp_new(cli_pool, &main_birdloop, "CLI");
   cli *c = mb_alloc(p, sizeof(cli));
 
   bzero(c, sizeof(cli));
@@ -413,7 +413,7 @@ cli_free(cli *c)
     c->cleanup(c);
   if (c == cmd_reconfig_stored_cli)
     cmd_reconfig_stored_cli = NULL;
-  rfree(c->pool);
+  rp_free(c->pool, &root_pool);
 }
 
 /**
@@ -425,7 +425,7 @@ cli_free(cli *c)
 void
 cli_init(void)
 {
-  cli_pool = rp_new(&root_pool, "CLI");
+  cli_pool = rp_new(&root_pool, &main_birdloop, "CLI");
   init_list(&cli_log_hooks);
   cli_log_inited = 1;
 }

@@ -174,7 +174,7 @@ typedef struct rtable_private {
   struct event *announce_event;		/* Event to announce pending exports */
   struct event *ec_event;		/* Event to prune finished exports */
   struct event *hcu_event;		/* Event to update host cache */
-  struct event *delete_event;		/* Event to delete the table */
+  void (*delete)(void *);		/* Delete callback (in parent loop context) */
   btime last_rt_change;			/* Last time when route changed */
   btime base_settle_time;		/* Start time of rtable settling interval */
   btime gc_time;			/* Time of last GC */
@@ -212,7 +212,7 @@ typedef union {
 struct rtable_config {
   node n;
   char *name;
-  struct config *config;
+  void *owner;				/* Main config if global table, channel_aux_table if channel table */
   rtable *table;
   struct proto_config *krt_attached;	/* Kernel syncer attached to this table */
   uint addr_type;			/* Type of address data stored in table (NET_*) */

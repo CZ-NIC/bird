@@ -13,6 +13,7 @@
 #include "nest/route.h"
 #include "nest/attrs.h"
 #include "lib/resource.h"
+#include "lib/io-loop.h"
 
 #define SET_SIZE 10
 static const struct adata *set_sequence;		/* <0; SET_SIZE) */
@@ -71,7 +72,6 @@ t_set_int_contains(void)
 {
   int i;
 
-  resource_init();
   generate_set_sequence(SET_TYPE_INT, SET_SIZE);
 
   bt_assert(int_set_get_size(set_sequence) == SET_SIZE);
@@ -92,7 +92,6 @@ t_set_int_contains(void)
 static int
 t_set_int_union(void)
 {
-  resource_init();
   generate_set_sequence(SET_TYPE_INT, SET_SIZE);
 
   const struct adata *set_union;
@@ -111,7 +110,6 @@ t_set_int_union(void)
 static int
 t_set_int_format(void)
 {
-  resource_init();
   generate_set_sequence(SET_TYPE_INT, SET_SIZE_FOR_FORMAT_OUTPUT);
 
   bt_assert(int_set_format(set_sequence, 0, 0, buf, BUFFER_SIZE) == 0);
@@ -132,7 +130,6 @@ t_set_int_format(void)
 static int
 t_set_int_delete(void)
 {
-  resource_init();
   generate_set_sequence(SET_TYPE_INT, SET_SIZE);
 
   const struct adata *deleting_sequence = set_sequence;
@@ -160,7 +157,6 @@ t_set_ec_contains(void)
 {
   u32 i;
 
-  resource_init();
   generate_set_sequence(SET_TYPE_EC, SET_SIZE);
 
   bt_assert(ec_set_get_size(set_sequence) == SET_SIZE);
@@ -181,7 +177,6 @@ t_set_ec_contains(void)
 static int
 t_set_ec_union(void)
 {
-  resource_init();
   generate_set_sequence(SET_TYPE_EC, SET_SIZE);
 
   const struct adata *set_union;
@@ -200,8 +195,6 @@ t_set_ec_union(void)
 static int
 t_set_ec_format(void)
 {
-  resource_init();
-
   const struct adata empty_as_path = {};
   set_sequence = set_sequence_same = set_sequence_higher = set_random = &empty_as_path;
   lp = lp_new_default(&root_pool);
@@ -222,7 +215,6 @@ t_set_ec_format(void)
 static int
 t_set_ec_delete(void)
 {
-  resource_init();
   generate_set_sequence(SET_TYPE_EC, SET_SIZE);
 
   const struct adata *deleting_sequence = set_sequence;
@@ -248,6 +240,9 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
   resource_sys_init();
+  resource_init();
+  the_bird_lock();
+  birdloop_init();
 
   bt_test_suite(t_set_int_contains, "Testing sets of integers: contains, get_data");
   bt_test_suite(t_set_int_format,   "Testing sets of integers: format");

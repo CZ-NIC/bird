@@ -67,6 +67,7 @@ struct mrt_table_dump_state {
 
   /* Allocated by mrt_table_dump_init() */
   pool *pool;				/* Pool for table dump */
+  pool *parent;				/* Parent pool for cleanup */
   linpool *linpool;			/* Temporary linear pool */
   linpool *peer_lp;			/* Linear pool for peer entries in peer_hash */
   buffer buf;				/* Buffer for MRT messages */
