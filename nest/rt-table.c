@@ -1498,8 +1498,6 @@ rte_recalculate(rtable_private *table, struct rt_import_hook *c, net *net, rte *
   rte_announce(table, net, new_stored, old_stored,
       net->routes, old_best_stored);
 
-  ev_send(req->list, c->export_announce_event);
-
   if (!net->routes &&
       (table->gc_counter++ >= table->config->gc_max_ops) &&
       (table->gc_time + table->config->gc_min_time <= current_time()))
@@ -1653,6 +1651,11 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
 
   /* And recalculate the best route */
   rte_recalculate(tab, hook, nn, new, src);
+
+  /* Schedule export announcement */
+  ev_send(req->list, hook->export_announce_event);
+
+  /* Done! */
   RT_UNLOCK(tab);
 }
 
@@ -2318,6 +2321,7 @@ again:
 	      {
 		FIB_ITERATE_PUT(fit);
 		ev_send_loop(tab->loop, tab->prune_event);
+		ev_send_loop(tab->loop, tab->announce_event);
 		rt_unlock_table(tab);
 		return;
 	      }
@@ -2371,6 +2375,7 @@ again:
   if (EMPTY_LIST(tab->exports) && flushed_channels)
     rt_export_cleanup(tab);
 
+  ev_send_loop(tab->loop, tab->announce_event);
   rt_unlock_table(tab);
 }
 
