@@ -66,6 +66,7 @@ static void rt_notify_hostcache(rtable_private *tab, net *net);
 static void rt_update_hostcache(void *tab);
 static void rt_next_hop_update(void *tab);
 static inline void rt_prune_table(void *tab);
+static void rt_fast_prune_check(rtable_private *tab);
 static inline void rt_schedule_notify(rtable_private *tab);
 static void rt_feed_channel(void *);
 
@@ -1708,6 +1709,8 @@ rt_export_stopped(void *data)
     rp_free(hook->pool, tab->rp);
     rt_unlock_table(tab);
 
+    rt_fast_prune_check(tab);
+
     DBG("Export hook %p in table %s finished uc=%u\n", hook, tab->name, tab->use_count);
   }
 }
@@ -1740,6 +1743,8 @@ rt_request_import(rtable *t, struct rt_import_request *req)
   rtable_private *tab = RT_PRIV(t);
   rt_lock_table(tab);
 
+  ASSERT_DIE(!tab->delete);
+
   struct rt_import_hook *hook = req->hook = mb_allocz(tab->rp, sizeof(struct rt_import_hook));
 
   DBG("Lock table %s for import %p req=%p uc=%u\n", tab->name, hook, req, tab->use_count);
@@ -1756,6 +1761,7 @@ rt_request_import(rtable *t, struct rt_import_request *req)
 
   hook->n = (node) {};
   add_tail(&tab->imports, &hook->n);
+  tab->imports_up++;
 
   RT_UNLOCK(t);
 }
@@ -1770,7 +1776,11 @@ rt_stop_import(struct rt_import_request *req, event *stopped)
 
   rt_schedule_prune(tab);
 
+  tab->imports_up--;
+  rt_fast_prune_check(tab);
+
   rt_set_import_state(hook, TIS_STOP);
+
   hook->stopped = stopped;
 
   if (hook->stale_set < hook->stale_valid)
@@ -2041,6 +2051,22 @@ rt_schedule_prune(rtable_private *tab)
   tab->prune_state |= 1;
 }
 
+static int
+rt_fast_prune_ready(rtable_private *tab)
+{
+  return EMPTY_LIST(tab->pending_exports) && EMPTY_LIST(tab->exports) && !tab->imports_up;
+}
+
+static void
+rt_fast_prune_check(rtable_private *tab)
+{
+  if (tab->delete && rt_fast_prune_ready(tab))
+  {
+    tab->prune_state |= 1;
+    ev_send_loop(tab->loop, tab->prune_event);
+  }
+}
+
 void
 rt_export_used(rtable_private *tab)
 {
@@ -2272,7 +2298,7 @@ rt_prune_table(void *data)
   ASSERT_DIE(birdloop_inside(tab->loop));
 
   struct fib_iterator *fit = &tab->prune_fit;
-  int limit = 512;
+  int limit = tab->delete ? 16384 : 512;
 
   struct rt_import_hook *ih;
   node *n, *x;
@@ -2289,6 +2315,12 @@ rt_prune_table(void *data)
 
   if (tab->prune_state == 1)
   {
+    if (tab->delete && !rt_fast_prune_ready(tab))
+    {
+      rt_unlock_table(tab);
+      return;
+    }
+
     /* Mark channels to flush */
     WALK_LIST2(ih, n, tab->imports, n)
       if (ih->import_state == TIS_STOP)
@@ -2308,6 +2340,27 @@ rt_prune_table(void *data)
 again:
   FIB_ITERATE_START(&tab->fib, fit, net, n)
     {
+      if (tab->delete)
+      {
+	ASSERT_DIE(!n->first);
+
+	for (struct rte_storage *e = n->routes, *next; e; e = next)
+	{
+	  next = e->next;
+
+	  struct rt_import_request *req = e->rte.sender->req;
+	  if (req->preimport)
+	    req->preimport(req, NULL, &e->rte);
+
+	  tab->rt_count--;
+	  hmap_clear(&tab->id_map, e->rte.id);
+	  rte_free(e, tab);
+	  limit--;
+	}
+
+	n->routes = NULL;
+      }
+      else
     rescan:
       for (struct rte_storage *e=n->routes; e; e=e->next)
       {
@@ -2547,6 +2600,8 @@ done:;
     if (config->table_debug)
       log(L_TRACE "%s: cork released", tab->name);
   }
+
+  rt_fast_prune_check(tab);
 }
 
 void

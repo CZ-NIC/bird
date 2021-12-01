@@ -164,6 +164,7 @@ typedef struct rtable_private {
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
   u32 rr_count;				/* Number of running route refresh requests */
+  u32 imports_up;			/* Number of imports in TIS_UP state */
 
   list imports;				/* Registered route importers */
   list exports;				/* Registered route exporters */
