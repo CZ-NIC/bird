@@ -340,6 +340,7 @@ birdloop_init(void)
   timers_init(&main_birdloop.time, &root_pool);
 
   root_pool.loop = &main_birdloop;
+  main_birdloop.pool = &root_pool;
 
   birdloop_enter_locked(&main_birdloop);
 }

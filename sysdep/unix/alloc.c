@@ -8,6 +8,8 @@
 
 #include "nest/bird.h"
 #include "lib/resource.h"
+#include "lib/lists.h"
+#include "lib/event.h"
 
 #include "sysdep/unix/io-loop.h"
 

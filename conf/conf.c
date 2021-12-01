@@ -520,6 +520,9 @@ order_shutdown(int gr)
   memcpy(c, config, sizeof(struct config));
   init_list(&c->protos);
   init_list(&c->tables);
+  init_list(&c->symbols);
+  memset(c->def_tables, 0, sizeof(c->def_tables));
+  HASH_INIT(c->sym_hash, c->pool, 4);
   c->shutdown = 1;
   c->gr_down = gr;
 
