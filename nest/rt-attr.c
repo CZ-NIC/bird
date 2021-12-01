@@ -1384,51 +1384,77 @@ rta_lookup(rta *o)
   return r;
 }
 
-void
-rta__free(rta *a)
+static void
+rta_cleanup(void *data UNUSED)
 {
-  ASSERT(a->cached);
+  u32 count = 0;
+  rta *ax[RTA_OBSOLETE_LIMIT];
 
   RTA_LOCK;
   struct rta_cache *c = atomic_load_explicit(&rta_cache, memory_order_acquire);
 
-  if (atomic_load_explicit(&a->uc, memory_order_acquire))
-  {
-    /* Acquired inbetween */
-    RTA_UNLOCK;
-    return;
-  }
+  for(u32 h=0; h<c->size; h++)
+    for(rta *a = atomic_load_explicit(&c->table[h], memory_order_acquire), *next;
+	a;
+	a = next)
+    {
+      next = atomic_load_explicit(&a->next, memory_order_acquire);
+      if (atomic_load_explicit(&a->uc, memory_order_acquire) > 0)
+	continue;
 
-  /* Relink the forward pointer */
-  rta *next = atomic_load_explicit(&a->next, memory_order_acquire);
-  atomic_store_explicit(a->pprev, next, memory_order_release);
+      /* Check if the cleanup fits in the buffer */
+      if (count == RTA_OBSOLETE_LIMIT)
+      {
+	ev_send(&global_work_list, &rta_cleanup_event);
+	goto wait;
+      }
 
-  /* Relink the backwards pointer */
-  if (next)
-    next->pprev = a->pprev;
+      /* Relink the forward pointer */
+      atomic_store_explicit(a->pprev, next, memory_order_release);
 
+      /* Relink the backwards pointer */
+      if (next)
+	next->pprev = a->pprev;
+
+      /* Store for freeing and go to the next */
+      ax[count++] = a;
+      a = next;
+    }
+
+wait:
   /* Wait until nobody knows about us */
   synchronize_rcu();
 
-  if (atomic_load_explicit(&a->uc, memory_order_acquire))
+  u32 freed = 0;
+
+  for (u32 i=0; i<count; i++)
   {
+    rta *a = ax[i];
     /* Acquired inbetween, relink back */
-    rta_insert(a, c);
-    RTA_UNLOCK;
-    return;
+    if (atomic_load_explicit(&a->uc, memory_order_acquire))
+    {
+      rta_insert(a, c);
+      continue;
+    }
+
+    /* Cleared to free the memory */
+    rt_unlock_hostentry(a->hostentry);
+    if (a->nh.next)
+      nexthop_free(a->nh.next);
+    ea_free(a->eattrs);
+    a->cached = 0;
+    c->count--;
+    sl_free(rta_slab(a), a);
+    freed++;
   }
 
-  /* Cleared to free the memory */
-  rt_unlock_hostentry(a->hostentry);
-  if (a->nh.next)
-    nexthop_free(a->nh.next);
-  ea_free(a->eattrs);
-  a->cached = 0;
-  c->count--;
-  sl_free(rta_slab(a), a);
+  atomic_fetch_sub_explicit(&rta_obsolete_count, freed, memory_order_release);
 
   RTA_UNLOCK;
 }
+
+_Atomic u32 rta_obsolete_count;
+event rta_cleanup_event = { .hook = rta_cleanup, .list = &global_work_list };
 
 rta *
 rta_do_cow(rta *o, linpool *lp)

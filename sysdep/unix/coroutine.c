@@ -201,5 +201,6 @@ struct coroutine *coro_run(pool *p, void (*entry)(void *), void *data)
 void
 coro_yield(void)
 {
-  usleep(100);
+  const struct timespec req = { .tv_nsec = 100 };
+  nanosleep(&req, NULL);
 }

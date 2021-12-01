@@ -883,14 +883,22 @@ static inline rta *rta_clone(rta *r) {
   return r;
 }
 
-void rta__free(rta *r);
+#define RTA_OBSOLETE_LIMIT 512
+
+extern _Atomic u32 rta_obsolete_count;
+extern event rta_cleanup_event;
+
 static inline void rta_free(rta *r) {
   if (!r)
     return;
 
   u32 uc = atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel);
-  if (uc == 1)
-    rta__free(r);
+  if (uc > 1)
+    return;
+
+  u32 obs = atomic_fetch_add_explicit(&rta_obsolete_count, 1, memory_order_acq_rel);
+  if (obs == RTA_OBSOLETE_LIMIT)
+    ev_send(&global_work_list, &rta_cleanup_event);
 }
 
 rta *rta_do_cow(rta *o, linpool *lp);
