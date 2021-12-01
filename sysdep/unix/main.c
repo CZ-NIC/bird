@@ -202,7 +202,9 @@ sysdep_preconfig(struct config *c)
 int
 sysdep_commit(struct config *new, struct config *old UNUSED)
 {
-  log_switch(0, &new->logfiles, new->syslog_name);
+  if (!new->shutdown)
+    log_switch(0, &new->logfiles, new->syslog_name);
+
   return 0;
 }
 
@@ -613,6 +615,7 @@ sysdep_shutdown_done(void)
   unlink_pid_file();
   unlink(path_control_socket);
   log_msg(L_FATAL "Shutdown completed");
+  log_cleanup(1);
   exit(0);
 }
 

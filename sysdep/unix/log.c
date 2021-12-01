@@ -388,6 +388,21 @@ default_log_list(int initial, const char **syslog_name)
 }
 
 void
+log_cleanup(int syslog)
+{
+  struct log_config *l;
+
+  if (current_log_list)
+    WALK_LIST(l, *current_log_list)
+      if (l->rf)
+	log_close(l);
+
+  if (syslog && current_syslog_name)
+    closelog();
+}
+
+
+void
 log_switch(int initial, list *logs, const char *new_syslog_name)
 {
   struct log_config *l;
@@ -399,10 +414,7 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
     logs = default_log_list(initial, &new_syslog_name);
 
   /* Close the logs to avoid pinning them on disk when deleted */
-  if (current_log_list)
-    WALK_LIST(l, *current_log_list)
-      if (l->rf)
-	log_close(l);
+  log_cleanup(0);
 
   /* Reopen the logs, needed for 'configure undo' */
   if (logs)
