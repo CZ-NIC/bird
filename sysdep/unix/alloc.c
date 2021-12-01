@@ -46,6 +46,8 @@ alloc_sys_page(void)
   return ptr;
 }
 
+extern int shutting_down; /* Shutdown requested. */
+
 void *
 alloc_page(void)
 {
@@ -58,7 +60,7 @@ alloc_page(void)
     
     node *n = HEAD(fp->list);
     rem_node(n);
-    if (--fp->cnt < fp->min)
+    if (!shutting_down && (--fp->cnt < fp->min))
       ev_send(&global_work_list, fp->cleanup);
 
     void *ptr = n - FP_NODE_OFFSET;
@@ -87,7 +89,7 @@ free_page(void *ptr)
 
     memset(n, 0, sizeof(node));
     add_tail(&fp->list, n);
-    if (++fp->cnt > fp->max)
+    if (!shutting_down && (++fp->cnt > fp->max))
       ev_send(&global_work_list, fp->cleanup);
   }
   else
@@ -151,7 +153,7 @@ cleanup_pages(void *data)
 
   birdloop_leave(loop);
 
-  if (GFP->cnt > GFP->max)
+  if (!shutting_down && (GFP->cnt > GFP->max))
     ev_send(&global_work_list, GFP->cleanup);
 }
 
