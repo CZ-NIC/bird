@@ -2200,6 +2200,7 @@ io_loop(void)
 {
   int poll_tout, timeout;
   int nfds, events, pout;
+  int reload_requested = 0;
   timer *t;
   sock *s;
   node *n;
@@ -2216,8 +2217,9 @@ io_loop(void)
       timers_fire(&main_birdloop.time, 1);
       io_close_event();
 
+restart_poll:
       // FIXME
-      poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
+      poll_tout = ((reload_requested || events) ? 0 : 3000); /* Time in milliseconds */
       if (t = timers_first(&main_birdloop.time))
       {
 	times_update();
@@ -2300,16 +2302,23 @@ io_loop(void)
 	    continue;
 	  die("poll: %m");
 	}
+
+      if (pout && (pfd[0].revents & POLLIN))
+      {
+	/* IO loop reload requested */
+	pipe_drain(main_birdloop.wakeup_fds[0]);
+	reload_requested = 1;
+	goto restart_poll;
+      }
+
+      if (reload_requested)
+      {
+	reload_requested = 0;
+	atomic_exchange_explicit(&main_birdloop.ping_sent, 0, memory_order_acq_rel);
+      }
+
       if (pout)
 	{
-	  if (pfd[0].revents & POLLIN)
-	  {
-	    /* IO loop reload requested */
-	    pipe_drain(main_birdloop.wakeup_fds[0]);
-	    atomic_exchange_explicit(&main_birdloop.ping_sent, 0, memory_order_acq_rel);
-	    continue;
-	  }
-
 	  times_update();
 
 	  /* guaranteed to be non-empty */
