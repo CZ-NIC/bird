@@ -111,9 +111,8 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
   ASSUME(!d->export_mode || ec);
 
   int first = 1;
+  int first_show = 1;
   int pass = 0;
-
-  bsnprintf(ia, sizeof(ia), "%N", n->n.addr);
 
   for (e = n->routes; e; e = e->next)
     {
@@ -188,10 +187,17 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	goto skip;
 
       if (d->stats < 2)
+      {
+	if (first_show)
+	  net_format(n->n.addr, ia, sizeof(ia));
+	else
+	  ia[0] = 0;
+
 	rt_show_rte(c, ia, e, d, (e->net->routes == ee));
+	first_show = 0;
+      }
 
       d->show_counter++;
-      ia[0] = 0;
 
     skip:
       if (e != ee)
