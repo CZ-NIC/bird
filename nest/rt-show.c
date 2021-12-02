@@ -15,6 +15,7 @@
 #include "nest/cli.h"
 #include "nest/iface.h"
 #include "filter/filter.h"
+#include "filter/data.h"
 #include "sysdep/unix/krt.h"
 
 static void
@@ -212,7 +213,7 @@ rt_show_cleanup(struct cli *c)
   struct rt_show_data_rtable *tab;
 
   /* Unlink the iterator */
-  if (d->table_open)
+  if (d->table_open && !d->trie_walk)
     fit_get(&d->tab->table->fib, &d->fit);
 
   /* Unlock referenced tables */
@@ -224,12 +225,13 @@ static void
 rt_show_cont(struct cli *c)
 {
   struct rt_show_data *d = c->rover;
+  struct rtable *tab = d->tab->table;
 #ifdef DEBUGGING
   unsigned max = 4;
 #else
   unsigned max = 64;
 #endif
-  struct fib *fib = &d->tab->table->fib;
+  struct fib *fib = &tab->fib;
   struct fib_iterator *it = &d->fit;
 
   if (d->running_on_config && (d->running_on_config != config))
@@ -240,7 +242,19 @@ rt_show_cont(struct cli *c)
 
   if (!d->table_open)
   {
-    FIB_ITERATE_INIT(&d->fit, &d->tab->table->fib);
+    /* We use either trie-based walk or fib-based walk */
+    d->trie_walk = tab->trie &&
+      (d->addr_mode == RSD_ADDR_IN) &&
+      net_val_match(tab->addr_type, NB_IP);
+
+    if (d->trie_walk && !d->walk_state)
+      d->walk_state = lp_allocz(c->parser_pool, sizeof (struct f_trie_walk_state));
+
+    if (d->trie_walk)
+      trie_walk_init(d->walk_state, tab->trie, d->addr);
+    else
+      FIB_ITERATE_INIT(&d->fit, &tab->fib);
+
     d->table_open = 1;
     d->table_counter++;
     d->kernel = rt_show_get_kernel(d);
@@ -253,21 +267,41 @@ rt_show_cont(struct cli *c)
       rt_show_table(c, d);
   }
 
-  FIB_ITERATE_START(fib, it, net, n)
+  if (d->trie_walk)
   {
-    if ((d->addr_mode == RSD_ADDR_IN) && (!net_in_netX(n->n.addr, d->addr)))
-      goto next;
-
-    if (!max--)
+    /* Trie-based walk */
+    net_addr addr;
+    while (trie_walk_next(d->walk_state, &addr))
     {
-      FIB_ITERATE_PUT(it);
-      return;
-    }
-    rt_show_net(c, n, d);
+      net *n = net_find(tab, &addr);
+      if (!n)
+	continue;
 
-  next:;
+      rt_show_net(c, n, d);
+
+      if (!--max)
+	return;
+    }
   }
-  FIB_ITERATE_END;
+  else
+  {
+    /* fib-based walk */
+    FIB_ITERATE_START(fib, it, net, n)
+    {
+      if ((d->addr_mode == RSD_ADDR_IN) && (!net_in_netX(n->n.addr, d->addr)))
+	goto next;
+
+      if (!max--)
+      {
+	FIB_ITERATE_PUT(it);
+	return;
+      }
+      rt_show_net(c, n, d);
+
+    next:;
+    }
+    FIB_ITERATE_END;
+  }
 
   if (d->stats)
   {
@@ -276,7 +310,7 @@ rt_show_cont(struct cli *c)
 
     cli_printf(c, -1007, "%d of %d routes for %d networks in table %s",
 	       d->show_counter - d->show_counter_last, d->rt_counter - d->rt_counter_last,
-	       d->net_counter - d->net_counter_last, d->tab->table->name);
+	       d->net_counter - d->net_counter_last, tab->name);
   }
 
   d->kernel = NULL;

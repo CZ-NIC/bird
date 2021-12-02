@@ -23,6 +23,7 @@ struct timer;
 struct fib;
 struct filter;
 struct f_trie;
+struct f_trie_walk_state;
 struct cli;
 
 /*
@@ -377,6 +378,7 @@ struct rt_show_data {
   struct rt_show_data_rtable *tab;	/* Iterator over table list */
   struct rt_show_data_rtable *last_table; /* Last table in output */
   struct fib_iterator fit;		/* Iterator over networks in table */
+  struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
   int verbose, tables_defined_by;
   const struct filter *filter;
   struct proto *show_protocol;
@@ -387,6 +389,7 @@ struct rt_show_data {
   int export_mode, addr_mode, primary_only, filtered, stats;
 
   int table_open;			/* Iteration (fit) is open */
+  int trie_walk;			/* Current table is iterated using trie */
   int net_counter, rt_counter, show_counter, table_counter;
   int net_counter_last, rt_counter_last, show_counter_last;
 };
