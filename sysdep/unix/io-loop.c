@@ -364,11 +364,22 @@ birdloop_dump(resource *r)
   debug("%s\n", loop->pool->name);
 }
 
+struct resmem birdloop_memsize(resource *r)
+{
+  struct birdloop *loop = (void *) r;
+
+  return (struct resmem) {
+    .effective = sizeof(struct birdloop) - sizeof(resource) - ALLOC_OVERHEAD,
+    .overhead = ALLOC_OVERHEAD + sizeof(resource) + page_size * list_length(&loop->pages.list),
+  };
+}
+
 struct resclass birdloop_class = {
   .name = "IO Loop",
   .size = sizeof(struct birdloop),
   .free = birdloop_free,
   .dump = birdloop_dump,
+  .memsize = birdloop_memsize,
 };
 
 struct birdloop *
