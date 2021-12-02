@@ -384,7 +384,7 @@ struct rt_show_data {
   struct channel *export_channel;
   struct config *running_on_config;
   struct krt_proto *kernel;
-  int export_mode, primary_only, filtered, stats, show_for;
+  int export_mode, addr_mode, primary_only, filtered, stats;
 
   int table_open;			/* Iteration (fit) is open */
   int net_counter, rt_counter, show_counter, table_counter;
@@ -402,6 +402,11 @@ struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t
 
 #define RSD_TDB_SET	  0x1		/* internal: show empty tables */
 #define RSD_TDB_NMN	  0x2		/* internal: need matching net */
+
+/* Value of addr_mode */
+#define RSD_ADDR_EQUAL	1		/* Exact query - show route <addr> */
+#define RSD_ADDR_FOR	2		/* Longest prefix match - show route for <addr> */
+#define RSD_ADDR_IN	3		/* Interval query - show route in <addr> */
 
 /* Value of export_mode in struct rt_show_data */
 #define RSEM_NONE	0		/* Export mode not used */

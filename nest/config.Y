@@ -117,7 +117,7 @@ CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
 CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
-CF_KEYWORDS(PRIMARY, STATS, COUNT, BY, FOR, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
+CF_KEYWORDS(PRIMARY, STATS, COUNT, BY, FOR, IN, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
 CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION, SORTED)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
@@ -621,14 +621,22 @@ r_args:
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      $$->addr = $2;
+     $$->addr_mode = RSD_ADDR_EQUAL;
    }
  | r_args FOR r_args_for {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
-     $$->show_for = 1;
      $$->addr = $3;
+     $$->addr_mode = RSD_ADDR_FOR;
    }
- | r_args TABLE CF_SYM_KNOWN {
+ | r_args IN net_any {
+     $$ = $1;
+     if ($$->addr) cf_error("Only one prefix expected");
+     if (!net_type_match($3, NB_IP)) cf_error("Only IP networks accepted for 'in' argument");
+     $$->addr = $3;
+     $$->addr_mode = RSD_ADDR_IN;
+   }
+| r_args TABLE CF_SYM_KNOWN {
      cf_assert_symbol($3, SYM_TABLE);
      $$ = $1;
      rt_show_add_table($$, $3->table->table);

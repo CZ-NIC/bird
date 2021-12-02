@@ -255,12 +255,17 @@ rt_show_cont(struct cli *c)
 
   FIB_ITERATE_START(fib, it, net, n)
   {
+    if ((d->addr_mode == RSD_ADDR_IN) && (!net_in_netX(n->n.addr, d->addr)))
+      goto next;
+
     if (!max--)
     {
       FIB_ITERATE_PUT(it);
       return;
     }
     rt_show_net(c, n, d);
+
+  next:;
   }
   FIB_ITERATE_END;
 
@@ -402,7 +407,7 @@ rt_show(struct rt_show_data *d)
 
   rt_show_prepare_tables(d);
 
-  if (!d->addr)
+  if (!d->addr || (d->addr_mode == RSD_ADDR_IN))
   {
     WALK_LIST(tab, d->tables)
       rt_lock_table(tab->table);
@@ -420,7 +425,7 @@ rt_show(struct rt_show_data *d)
       d->tab = tab;
       d->kernel = rt_show_get_kernel(d);
 
-      if (d->show_for)
+      if (d->addr_mode == RSD_ADDR_FOR)
 	n = net_route(tab->table, d->addr);
       else
 	n = net_find(tab->table, d->addr);
