@@ -208,6 +208,9 @@ add_tail_list(list *to, list *l)
   EXPENSIVE_CHECK(check_list(to, NULL));
   EXPENSIVE_CHECK(check_list(l, NULL));
 
+  ASSERT_DIE(l->head->prev == &l->head_node);
+  ASSERT_DIE(l->tail->next == &l->tail_node);
+
   node *p = to->tail;
   node *q = l->head;
 

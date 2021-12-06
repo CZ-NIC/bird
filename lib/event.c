@@ -182,6 +182,7 @@ ev_run_list(event_list *l)
   WALK_LIST_FIRST(n, tmp_list)
     {
       event *e = SKIP_BACK(event, n, n);
+      ASSERT_DIE(n->next->prev == n);
 
       if (legacy)
       {
