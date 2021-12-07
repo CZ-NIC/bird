@@ -70,10 +70,14 @@ alloc_page(void)
   else
 #endif
   {
+#ifdef HAVE_ALIGNED_ALLOC
     void *ret = aligned_alloc(page_size, page_size);
     if (!ret)
       bug("aligned_alloc(%lu) failed", page_size);
     return ret;
+#else
+    bug("BIRD should have already died on fatal error.");
+#endif
   }
 }
 
@@ -214,7 +218,11 @@ void resource_sys_init(void)
     return;
   }
 
+#ifdef HAVE_ALIGNED_ALLOC
   log(L_WARN "Got strange memory page size (%lu), using the aligned allocator instead", page_size);
+#else
+  die("Got strange memory page size (%lu) and aligned_alloc is not available", page_size);
+#endif
 
   /* Too big or strange page, use the aligned allocator instead */
   page_size = 4096;

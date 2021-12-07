@@ -681,7 +681,11 @@ static int
 krt_preexport(struct channel *c, rte *e)
 {
   if (e->src->owner == &c->proto->sources)
+#ifdef CONFIG_SINGLE_ROUTE
+    return 1; /* Passing the route directly for rt_notify() to ignore */
+#else
     return -1;
+#endif
 
   if (!krt_capable(e))
     return -1;
@@ -700,13 +704,10 @@ krt_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net,
 
 #ifdef CONFIG_SINGLE_ROUTE
   /*
-   * Implicit withdraw - when the imported kernel route becomes the best one,
-   * we know that the previous one exported to the kernel was already removed,
-   * but if we processed the update as usual, we would send withdraw to the
-   * kernel, which would remove the new imported route instead.
+   * When the imported kernel route becomes the best one, we get it directly and
+   * we simply know that it is already there. Nothing to do.
    */
-  rte *best = net->routes;
-  if (!new && best && (best->attrs->src->proto == P))
+  if (new->src->owner == &P->sources)
     return;
 #endif
 
