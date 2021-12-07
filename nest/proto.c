@@ -667,8 +667,13 @@ static void
 channel_aux_stopped(void *data)
 {
   struct channel_aux_table *cat;
+
   RT_LOCKED((rtable *) data, t)
     cat = t->config->owner;
+
+  ASSERT_DIE(cat->push.hook == NULL);
+  ASSERT_DIE(cat->get.hook == NULL);
+  ASSERT_DIE(cat->stop_pending);
 
   struct channel *c = cat->c;
 
@@ -685,7 +690,15 @@ static void
 channel_aux_import_stopped(void *_cat)
 {
   struct channel_aux_table *cat = _cat;
+
   cat->push.hook = NULL;
+
+  if (!cat->get.hook)
+    RT_LOCKED(cat->tab, t)
+    {
+      t->delete = channel_aux_stopped;
+      rt_unlock_table(t);
+    }
 }
 
 static void
@@ -694,23 +707,31 @@ channel_aux_export_stopped(struct rt_export_request *req)
   struct channel_aux_table *cat = SKIP_BACK(struct channel_aux_table, get, req);
   req->hook = NULL;
 
-  int del;
-  RT_LOCKED(cat->tab, t)
-    del = !!t->delete;
+  if (cat->refeed_pending && !cat->stop_pending)
+  {
+    cat->refeed_pending = 0;
+    rt_request_export(cat->tab, req);
 
-  if (del)
     return;
+  }
 
-  ASSERT_DIE(cat->refeed_pending);
-  cat->refeed_pending = 0;
-  rt_request_export(cat->tab, req);
+  if (!cat->push.hook)
+    RT_LOCKED(cat->tab, t)
+    {
+      t->delete = channel_aux_stopped;
+      rt_unlock_table(t);
+    }
 }
 
 static void
 channel_aux_stop(struct channel_aux_table *cat)
 {
+  ASSERT_DIE(!cat->stop_pending);
+
+  cat->stop_pending = 1;
+
   RT_LOCKED(cat->tab, t)
-    t->delete = channel_aux_stopped;
+    rt_lock_table(t);
 
   cat->push_stopped = (event) {
     .hook = channel_aux_import_stopped,
@@ -966,6 +987,9 @@ channel_setup_out_table(struct channel *c)
 static void
 channel_aux_request_refeed(struct channel_aux_table *cat)
 {
+  if (cat->stop_pending)
+    return;
+
   cat->refeed_pending = 1;
   rt_stop_export(&cat->get, channel_aux_export_stopped);
 }

@@ -572,6 +572,7 @@ struct channel_aux_table {
   rtable *tab;
   event *stop;
   u8 refeed_pending;
+  u8 stop_pending;
 };
 
 /*
