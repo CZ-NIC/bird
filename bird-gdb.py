@@ -290,19 +290,26 @@ class BIRDLinPoolResource(BIRDResource):
         self.lptype = gdb.lookup_type("struct linpool")
         self.val = val.cast(self.lptype)
         self.info = None
+        self.std = self.ChunkList(self.val["first"])
+        self.large = self.ChunkList(self.val["first_large"])
 
-    def count_chunk(self, which):
-        cnt = 0
-        chunk = self.val[which]
-        while str(chunk) != '0x0':
-            cnt += 1
-            chunk = chunk.dereference()["next"]
-        return cnt
+    class ChunkList:
+        def __init__(self, val):
+            self.val = val
+
+        def __iter__(self):
+            chunk = self.val
+            while str(chunk) != 0x0:
+                yield chunk
+                chunk = chunk.dereference()["next"]
+
+        def __len__(self):
+            return sum([1 for _ in self])
 
     def parse(self):
         self.info = {
-                "std_chunks": self.count_chunk("first"),
-                "large_chunks": self.count_chunk("first_large"),
+                "std_chunks": len(self.std),
+                "large_chunks": len(self.large),
                 }
 
     def memsize(self):
@@ -368,11 +375,25 @@ class BIRDSlabResource(BIRDResource):
                     f", {self.val['objs_per_slab']} objects of size {self.val['obj_size']} per head"
 
 
+class BIRDIOLoopResource(BIRDResource):
+    def __init__(self, val):
+        self.iolooptype = gdb.lookup_type("struct birdloop")
+        self.val = val.cast(self.iolooptype)
+        self.pages = self.val["pages"]
+        self.page_size = gdb.lookup_symbol("page_size")[0].value()
+
+    def memsize(self):
+        return BIRDResourceSize(0, self.iolooptype.sizeof, self.pages['cnt'] * self.page_size)
+
+    def __str__(self):
+        return f"IO Loop {self.val.address} containing {self.pages['cnt']} free pages (min {self.pages['min']} max {self.pages['max']}), cleanup event {self.pages['cleanup'].dereference().address}: " + \
+                ", ".join([ str(p) for p in BIRDList(self.pages["list"])])
+
+
 class BIRDPoolResource(BIRDResource):
     def __init__(self, val):
         self.pooltype = gdb.lookup_type("struct pool")
         self.resptrtype = gdb.lookup_type("struct resource").pointer()
-        self.page_size = gdb.lookup_symbol("page_size")[0].value()
         self.val = val.cast(self.pooltype)
         self.inside = BIRDList(self.val["inside"])
 
@@ -383,14 +404,8 @@ class BIRDPoolResource(BIRDResource):
     def __len__(self):
         return len(self.inside)
 
-    def free_pages(self):
-        if str(self.val['pages']) == '0x0':
-            return 0
-        else:
-            return self.val['pages'].dereference()['free']
-
     def memsize(self):
-        sum = BIRDResourceSize(0, self.pooltype.sizeof, self.free_pages() * self.page_size)
+        sum = BIRDResourceSize(0, self.pooltype.sizeof, 0)
 #        for i in self.items:
 #            sum += i.memsize()
 
@@ -400,13 +415,14 @@ class BIRDPoolResource(BIRDResource):
 #        for i in self.items:
 #            print(i)
 
-        return f"Resource pool {self.val.address} \"{self.val['name'].string()}\" containing {len(self)} items and {self.free_pages()} free pages"
+        return f"Resource pool {self.val.address} \"{self.val['name'].string()}\" containing {len(self)} items"
 
 BIRDResourceMap = {
         "mbl_memsize": BIRDMBResource,
         "pool_memsize": BIRDPoolResource,
         "lp_memsize": BIRDLinPoolResource,
         "slab_memsize": BIRDSlabResource,
+        "birdloop_memsize": BIRDIOLoopResource,
         }
 
 def BIRDNewResource(res):
