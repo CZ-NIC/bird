@@ -60,7 +60,7 @@ alloc_page(void)
     
     node *n = HEAD(fp->list);
     rem_node(n);
-    if (!shutting_down && (--fp->cnt < fp->min))
+    if ((--fp->cnt < fp->min) && !shutting_down)
       ev_send(&global_work_list, fp->cleanup);
 
     void *ptr = n - FP_NODE_OFFSET;
@@ -89,7 +89,7 @@ free_page(void *ptr)
 
     memset(n, 0, sizeof(node));
     add_tail(&fp->list, n);
-    if (!shutting_down && (++fp->cnt > fp->max))
+    if ((++fp->cnt > fp->max) && !shutting_down)
       ev_send(&global_work_list, fp->cleanup);
   }
   else
