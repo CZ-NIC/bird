@@ -1,122 +1,239 @@
-# BIRD Journey to Threads. Chapter 3: Coroutines and Locking
+# BIRD Journey to Threads. Chapter 3: Parallel execution and message passing.
 
-Parallel execution in BIRD uses an underlying mechanism of coroutines and
-locks. This chapter covers these two internal modules and their principles.
-Knowing this is a need if you want to create any non-trivial extension to
-future BIRD.
+Parallel execution in BIRD uses an underlying mechanism of dedicated IO loops
+and hierarchical locks. The original event scheduling module has been converted
+to do message passing in multithreaded environment. These mechanisms are
+crucial for understanding what happens inside BIRD and how the protocol API changes.
 
-## BIRD's internal logical structure
+BIRD is a fast, robust and memory-efficient routing daemon designed and
+implemented at the end of 20th century. We're doing a significant amount of
+BIRD's internal structure changes to make it run in multiple threads in parallel.
 
-The authors of original BIRD concepts wisely chose a highly modular structure.
-We can therefore use this structure with minimal rework needed. This structure is roughly:
+## Locking and deadlock prevention
 
-1. Reconfiguration routines
-2. Protocols
-3. BFD
-4. Private routing tables
-5. Standalone routing tables
-6. Route attribute cache
+Most of BIRD data structures and algorithms are thread-unsafe and not even
+reentrant. Checking and possibly updating all of these would take an
+unreasonable amount of time, thus the multithreaded version uses standard mutexes
+to lock all the parts which have not been checked and updated yet.
 
-This order is important for locking. Most actions in BIRD are called
-top-to-bottom in this list, e.g. a reconfiguration triggers protocol action,
-this triggers BFD update, then a routing table update which in turn calls route
-attribute cache. The major locking decision for BIRD is enforcement of this order.
+The authors of original BIRD concepts wisely chose a highly modular structure
+which allows to create a hierarchy for locks. The main chokepoint was between
+protocols and tables which has been solved by implementing asynchronous exports
+as described in the [previous chapter](https://en.blog.nic.cz/2021/06/14/bird-journey-to-threads-chapter-2-asynchronous-route-export/).
 
-We're not sure yet about where the interface list and `protocol device` should
-be. For now, it is somewhere between 1 and 2, as the interface updates are
-synchronous. It may move in future to 2+5 after implementing asynchronous
-interface updates.
+Locks in BIRD (called domains, as they always lock some defined part of BIRD)
+are partially ordered. Every *domain* has its *type* and all threads are
+strictly required to lock the domains in the order of their respective types.
+The full order is defined in `lib/locking.h`. It's forbidden to lock more than
+one domain of a type (these domains are uncomparable) and recursive locking as well.
 
-## Locking
+The locking hiearchy is (as of December 2021) like this:
 
-BIRD is split into so-called *domains*. These consist of data structures
-logically bound together. These domains should have their own lock guarding
-access to them. These domains are divided into the categories mentioned above.
+1. The BIRD Lock (for everything not yet checked and/or updated)
+2. Protocols (as of December 2021, it is BFD, RPKI and Pipe)
+3. Routing tables
+4. Global route attribute cache
+5. Message passing
+6. Internals
 
-Currently, lots of domains don't have their own lock. Last changes in branch
-`alderney` assigned locks to routing tables and route attribute cache (4, 5 and 6).
-BFD has had its own lock since it was added to BIRD as it needs much lower
-latency than BIRD typically allows. The rest of BIRD (reconfiguration,
-protocols and CLI) has one common lock, called `the_bird_lock`. This is going to change later.
+There are heavy checks to ensure proper locking and to help debugging any
+problem when any code violates the hierarchy rules. This impedes performance
+depending on how much that domain is contended and in some cases I have already
+implemented lockless (or partially lockless) data structures to overcome this.
 
-Locking and unlocking is heavily checked. BIRD always stores the thread's
-locking stack at one place for debug and consistency checking purposes. The
-locking stack is limited to the number of categories. All domains must be
-locked top-to-bottom in this order and unlocked bottom-to-top. No thread is
-allowed to lock more than one domain in each category.
+You may ask, why are these heavy checks then employed in production builds?
+Risks arising from dropping some locking checks include:
 
-This brings some possible problems in communication between tables (recursive
-nexthop updates had to be thoroughly checked) and it also needs the last big
-change, the asynchronous export. If any data needs to be handed from down to
-up, it must use some kind of asynchronicity to unlock the lower domain before
-accesing the higher level. On the other hand, data flow from up to down is
-straightforward as it is possible to just lock and call the appropriate function.
+* deadlocks; these are deadly in BIRD anyway so it should just fail with a meaningful message, or
+* data corruption; it either kills BIRD anyway, or it results into a slow and vicious death,
+  leaving undebuggable corefiles behind.
 
-## Coroutines
+To be honest, I believe in principles like "there is also one more bug somewhere"
+and I just don't trust my future self or anybody else to write bugless code when
+it comes to proper locking. I believe that if a lock becomes a bottle-neck,
+then we should think about what is locked inside and how to optimize that, instead
+of dropping thorough consistency checks.
 
-There are three principal types of coroutines. One-shot tasks, workers
-and IO handlers. They all share one coroutine data type, anyway the
-synchronization mechanisms are different.
+## IO Loop
 
-### One-shot tasks
+There has been a protocol, BFD, running in its own thread since 2013. This
+separation has a good reason; it needs low latency and the main BIRD loop just
+walks round-robin around all the available sockets which may last for a long
+time. BFD had its own IO loop implementation and simple message passing
+routines. This code could be easily updated for general use so I did it.
 
-The simplest coroutine type is a one-shot task. Some part of BIRD requests a
-one-time CPU-intensive work. This is used in reconfiguration rework. When
-reconfig is requested, BIRD starts a reconfig coroutine which first parses the
-file (which can take tens of seconds if you have a gigabyte of config files).
-Then this coroutine locks everything and applies the parsed configuration.
+To understand the internal principles, we should say that in the `master`
+branch, there is a big loop centered around a `poll()` call, dispatching and
+executing everything as needed. There are several means how to get something dispatched from the main loop.
 
-One-shot tasks simply start when they are requested and stop when they are
-done. To cancel them prematurely, it is typically enough to set/check an atomic
-variable.
+1. Requesting to read from a socket makes the main loop call your hook when there is some data received.
+   The same happens when a socket refuses to write data. Then the data is buffered and you are called when
+   the buffer is free. There is also a third callback, an error hook, for obvious reasons.
 
-### Workers
+2. Requesting to be called back after a given amount of time. The callback may
+   be delayed by any amount of time, anyway when it exceeds 5 seconds (default,
+   configurable) at least the user gets a warning. This is called *timer*.
 
-In lots of cases, a module has to wait for some supplied data. This is used in
-the channel feed-export coroutine. When feed-export is requested, BIRD starts a
-coroutine which waits on semaphore to get exports, processes the exports and
-then jumps back to wait on semaphore for more work.
+3. Requesting to be called back when possible. This is useful to run anything
+   not reentrant which might mess with the caller's data, e.g. when a protocol
+   decides to shutdown due to some inconsistency in received data. This is called *event*.
 
-These coroutines must be woken up by their semaphore after setting the
-cancellation variable. Then the coroutine cleans up and calls what is required
-next after its cleanup, until finally exiting.
+4. Requesting to do some work when possible. These are also events, there is only
+   a difference where this event is enqueued; in the main loop, there is a
+   special *work queue* with an execution limit, allowing sockets and timers to be
+   handled with a reasonable latency while still doing all the work needed.
 
-### IO handlers
+All these, sockets, timers and events, are tightly bound to some domain.
+Sockets typically belong to a protocol, timers and events to a protocol or table.
+With the modular structure of BIRD, the easy and convenient approach to multithreading
+is to get more IO loops bound to specific domains, running their events, timers and
+socket hooks in their threads.
 
-BIRD needs IO. It is possible to handle almost all IO events in parallel and
-these coroutines will take care of that. There is currently only one such
-thread, it is a low-latency BFD thread handling its own socket.
+## Message passing and loop entering
 
-IO coroutines are also possibly timer coroutines as the `poll` call typically
-has a timeout option. In future, there should be independent IO coroutines for
-each protocol instance to handle IO bottlenecks. It should be noted that e.g.
-in BGP, the protocol synchronously advertises and withdraws routes directly
-from the receive handler.
+To request some work in another module, the standard way is to pass a message.
+For this purpose, events have been modified to be sent to a given loop without
+locking that loop's domain. In fact, every event queue has its own lock with a
+low priority, allowing to pass messages from almost any part of BIRD, and also
+an assigned loop which executes the events enqueued. When a message is passed
+to a queue executed by another loop, that target loop must be woken up so we
+must know what loop to wake up to avoid unnecessary delays.
 
-These coroutines sometimes have to be updated (protocol shuts down, timer is
-modified), therefore every IO coroutine needs its own *fifo* which it polls for
-read. On any update, one byte is sent to this fifo, effectively waking up the
-poll. The fifo is always checked first for changes; if there are some, the poll
-is reloaded before looking at anything else.
+The other way is faster but not always possible. When the target loop domain
+may be locked from the original loop domain, we may simply *enter the target loop*,
+do the work and then *leave the loop*. Route import uses this approach to
+directly update the best route in the target table. In the other direction,
+loop entering is not possible and events must be used to pass messages.
 
-### The Main Loop
+Asynchronous message passing is expensive. It involves sending a byte to a pipe
+to wakeup a loop from `poll` to execute the message. If we had to send a ping
+for every route we import to every channel to export it, we'd spend more time
+pinging than computing the best route. The route update routines therefore
+employ a double-indirect delayed route announcement:
 
-Currently, BIRD executes everything (with exception of those parts already
-moved to their threads) in one single loop. There are all the sockets with a
-magic round-robin selection of what socket we're going to read from next. This
-loop also runs all the timers and other "asynchronous" events to handle the
-risk that some code would tamper with the caller's data structures badly.
+1. When a channel imports a route by entering a loop, it sends an event to its
+   own loop (no ping needed in such case). This operation is idempotent, thus
+   for several routes, only one event is enqueued.
+2. After all packet parsing is done, the channel import announcement event is
+   executed, sending another event to the table's loop. There may have been
+   multiple imports in the same time but the exports have to get a ping just once.
+3. The table's announcement event is executed from its loop, enqueuing export
+   events for all connected channels, finally initiating route exports.
 
-This loop should gradually lose its work to do when more and more routines get
-moved to their own domains and coroutines. After all, possibly the last task
-for the main loop would be signal handling and maybe basic CLI handling.
+This may seem overly complicated, yet it also allows the incoming changes to
+settle down before exports are finished, reducing also cache invalidation
+between importing and exporting threads.
 
-The main loop dismantling is a long term goal. Before that, we have to do lots of
-changes, allowing for more and more code to run independently. Since [route
-exports are now asynchronous](TODO), there is no more obstacle in adopting the
-locking order as shown here.
+## Choosing the right locking order
 
-*This chapter is last at least for a while. There will be more posts on BIRD
-internals in future, you may expect e.g. protocol API description and maybe
-also a tutorial how to create your own protocol. Thank you all for your support.
-It helps us make your BIRD run smooth and fast.*
+When considering the locking order of protocols and route tables, the answer was quite easy.
+If route tables could enter protocol loops, they would have to either directly
+execute protocol code, one export after another, or send whole routes by messages.
+Setting this other way around (protocol entering route tables), protocols do
+everything on their time, minimizing table time. Tables are contention points.
+
+The third major lock level is The BIRD Lock, containing virtually everything
+else. It is also established that BFD is after The BIRD Lock, as BFD is
+low-latency and can't wait until The BIRD gets unlocked. Thus it would be
+convenient to have all protocols on the same level, getting The BIRD Lock on top.
+
+The BIRD Lock also runs CLI, reconfiguration and other high-level tasks,
+requiring access to everything. Having The BIRD Lock anywhere else, these
+high-level tasks, scattered all around BIRD source code, would have to be split
+out to some super-loop.
+
+## Route tables
+
+BFD could be split out thanks to its special nature. There are no BFD routes,
+therefore no route tables are accessed. To split out any other protocol, we
+need the protocol to be able to directly access routing tables. Therefore
+route tables have to be split out first, to make space for protocols to go
+between tables and The BIRD main loop.
+
+Route tables are primarily data structures, yet they have their maintenance
+routines. Their purpose is (among others) to cleanup export buffers, update
+recursive routes and delete obsolete routes. This all may take lots of time
+occasionally so it makes sense to have a dedicated thread for these.
+
+In previous versions, I had a special type of event loop based on semaphores,
+contrary to the loop originating in BFD, based on `poll`. This was
+unnecessarily complicated, thus I rewrote that finally to use the universal IO
+loop, just with no sockets at all.
+
+There are some drawbacks of this, notably the number of filedescriptors BIRD
+now uses. The user should also check the maximum limit on threads per process.
+
+This change also means that imports and exports are started and stopped
+asynchronously. Stopping an import needs to wait until all its routes are gone.
+This induced some changes in the protocol state machine.
+
+## Protocols
+
+After tables were running in their own loops, the simplest protocol to split
+out was Pipe. There are still no sockets, just events. This also means that
+every single filter assigned to a pipe is run in its own thread, not blocking
+others. (To be precise, both directions of a pipe share the same thread.)
+
+When RPKI is in use, we want it to load the ROAs as soon as possible. Its table
+is independent and the protocol itself is so simple that it could be put into
+its own thread easily.
+
+Other protocols are pending (Kernel) or in progress (BGP).
+
+I tried to make the conversion also as easy as possible, implementing most of
+the code in the generic functions in `nest/proto.c`. There are some
+synchronization points in the protocol state machine; we can't simply delete
+all protocol data when there is another thread running. Together with the
+asynchronous import/export stopping, it is quite messy and it might need some
+future cleanup. Anyway, moving a protocol to its own thread should be now as simple
+as setting its locking level in its `config.Y` file and stopping all timers
+before shutting down.
+(See commits `4f3fa1623f66acd24c227cf0cc5a4af2f5133b6c`
+and `3fd1f46184aa74d8ab7ed65c9ab6954f7e49d309`.)
+
+## Cork
+
+In the old versions with synchronous route propagation, all the buffering
+happened after exporting routes to BGP. When a packet arrived, all the work was
+done in BGP receive hook – parsing, importing into a table, running all the
+filters and possibly sending to the peers. No more routes until the previous
+was done. This doesn't work any more.
+
+Route table import now returns immediately after inserting the route into a
+table, creating a buffer there. These buffers have to be processed by other protocols'
+export events, typically queued in the *global work queue* to be limited for lower latency.
+There is therefore no inherent limit for table export buffers which may lead
+(and occasionally leads) to memory bloating. This is even worse in configurations with pipes,
+as these multiply the exports by propagating them all the way down to other tables.
+
+There is therefore a cork to make this stop. Every table is checking how many
+exports it has pending, and when adding a new route, it may apply a cork,
+saying simply "please stop the flow for a while". When the exports are then processed, it uncorks.
+
+On the other side, there may be events and sockets with a cork assigned. When
+trying to enqueue an event and the cork is applied, the event is instead put
+into the cork's queue and released only when the cork is released. In case of
+sockets, when `poll` arguments are recalculated, the corked socket is not
+checked for received packets, effectively keeping them in the TCP queue and
+slowing down the flow.
+
+Both events and sockets have some delay before they get to the cork. This is
+intentional; the purpose of cork is to slow down and allow for exports.
+
+The cork implementation is probably due to some future changes after BGP gets
+split out of the main loop, depending on how it is going to perform. I suppose
+that the best way should be to implement a proper table API to allow for
+explicit backpressure on both sides:
+
+* (table to protocol) please do not import
+* (table to protocol) you may resume imports
+* (protocol to table) not processing any exports
+* (protocol to table) resuming export processing
+
+Anyway, for now it is good enough as it is.
+
+*It's still a long road to the version 2.1. This series of texts should document
+what is needed to be changed, why we do it and how. The
+[previous chapter](https://en.blog.nic.cz/2021/06/14/bird-journey-to-threads-chapter-2-asynchronous-route-export/)
+showed how the route export had to change to allow parallel execution. In the next chapter, we're most likely going
+to show performance difference between BIRD v2.0.8 and the parallelized implementation. Stay tuned!*
