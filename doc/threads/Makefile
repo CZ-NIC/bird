@@ -13,3 +13,17 @@ all: $(foreach ch,$(CHAPTERS),$(addprefix $(ch),$(SUFFICES)))
 
 %-wordpress.html: %.html Makefile
 	sed -r 's#</p>#\n#g; s#<p>##g; s#<(/?)code>#<\1tt>#g; s#<pre><tt>#<code>#g; s#</tt></pre>#</code>#g; s#</?figure>##g; s#<figcaption>#<p style="text-align: center">#; s#</figcaption>#</p>#; ' $< > $@
+
+stats-%.csv: stats.csv stats-filter.pl
+	perl stats-filter.pl $< $* > $@
+
+STATS_VARIANTS := multi imex mulimex single
+stats-all: $(patsubst %,stats-%.csv,$(STATS_VARIANTS))
+
+stats-2d-%.pdf: stats.csv stats-filter-2d.pl
+	perl stats-filter-2d.pl $< $* $@
+
+stats-2d-%.png: stats-2d-%.pdf
+	gs -dBATCH -dNOPAUSE -sDEVICE=pngalpha -sOutputFile=$@ -r300 $<
+
+stats-all-2d: $(foreach suf,pdf png,$(patsubst %,stats-2d-%.$(suf),$(STATS_VARIANTS)))
