@@ -2607,13 +2607,6 @@ using the following configuration parameters:
 	disabled. Default: on, with automatic fallback to off when received
 	capability-related error.
 
-	<tag><label id="bgp-advertise-ipv4">advertise ipv4 <m/switch/</tag>
-	Advertise IPv4 multiprotocol capability. This is not a correct behavior
-	according to the strict interpretation of <rfc id="4760">, but it is
-	widespread and required by some BGP implementations (Cisco and Quagga).
-	This option is relevant to IPv4 mode with enabled capability
-	advertisement only. Default: on.
-
 	<tag><label id="bgp-advertise-hostname">advertise hostname <m/switch/</tag>
 	Advertise hostname capability along with the hostname. Default: off.
 
