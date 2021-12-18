@@ -737,6 +737,33 @@ rpki_handle_prefix_pdu(struct rpki_cache *cache, const struct pdu_header *pdu)
   net_addr_union addr = {};
   rpki_prefix_pdu_2_net_addr(pdu, &addr);
 
+  if (type == IPV4_PREFIX)
+  {
+    if ((addr.roa4.pxlen > addr.roa4.max_pxlen) ||
+	(addr.roa4.max_pxlen > IP4_MAX_PREFIX_LENGTH))
+    {
+      RPKI_WARN(cache->p, "Received corrupt packet from RPKI cache server: invalid pxlen or max_pxlen");
+      byte tmp[pdu->len];
+      const struct pdu_header *hton_pdu = rpki_pdu_back_to_network_byte_order((void *) tmp, (const void *) pdu);
+      rpki_send_error_pdu(cache, CORRUPT_DATA, pdu->len, hton_pdu, "Corrupted PDU: invalid pxlen or max_pxlen");
+      rpki_cache_change_state(cache, RPKI_CS_ERROR_FATAL);
+      return RPKI_ERROR;
+    }
+  }
+  else
+  {
+    if ((addr.roa6.pxlen > addr.roa6.max_pxlen) ||
+	(addr.roa6.max_pxlen > IP6_MAX_PREFIX_LENGTH))
+    {
+      RPKI_WARN(cache->p, "Received corrupt packet from RPKI cache server: invalid pxlen or max_pxlen");
+      byte tmp[pdu->len];
+      const struct pdu_header *hton_pdu = rpki_pdu_back_to_network_byte_order((void *) tmp, (const void *) pdu);
+      rpki_send_error_pdu(cache, CORRUPT_DATA, pdu->len, hton_pdu, "Corrupted PDU: invalid pxlen or max_pxlen");
+      rpki_cache_change_state(cache, RPKI_CS_ERROR_FATAL);
+      return RPKI_ERROR;
+    }
+  }
+
   if (cf->ignore_max_length)
   {
     if (type == IPV4_PREFIX)
