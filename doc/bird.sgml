@@ -2274,6 +2274,7 @@ avoid routing loops.
 <item> <rfc id="8092"> - BGP Large Communities Attribute
 <item> <rfc id="8203"> - BGP Administrative Shutdown Communication
 <item> <rfc id="8212"> - Default EBGP Route Propagation Behavior without Policies
+<item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
 </itemize>
 
 <sect1>Route selection rules
@@ -2659,7 +2660,7 @@ using the following configuration parameters:
 
 	<tag><label id="bgp-error-wait-time">error wait time <m/number/,<m/number/</tag>
 	Minimum and maximum delay in seconds between a protocol failure (either
-	local or reported by the peer) and automatic restart. Doesn't apply
+	local or reported by the peer) and automatic restart. Doesn not apply
 	when <cf/disable after error/ is configured. If consecutive errors
 	happen, the delay is increased exponentially until it reaches the
 	maximum. Default: 60, 300.
@@ -2836,6 +2837,31 @@ be used in explicit configuration.
 	different tables to each client but do not want to have these tables
 	explicitly (to conserve memory). This option requires that the connected
 	routing table is <ref id="dsc-table-sorted" name="sorted">. Default: off.
+
+	<tag><label id="bgp-validate">validate <m/switch/</tag>
+	Apply flowspec validation procedure as described in <rfc id="8955">
+	section 6 and <rfc id="9117">. The Validation procedure enforces that
+	only routers in the forwarding path for a network can originate flowspec
+	rules for that network. The validation procedure should be used for EBGP
+	to prevent injection of malicious flowspec rules from outside, but it
+	should also be used for IBGP to ensure that selected flowspec rules are
+	consistent with selected IP routes. The validation procedure uses an IP
+	routing table (<ref id="bgp-base-table" name="base table">, see below)
+	against which flowspec rules are validated. This option is limited to
+	flowspec channels. Default: off (for compatibility reasons).
+
+	Note that currently the flowspec validation does not work reliably
+	together with <ref id="bgp-import-table" name="import table"> option
+	enabled on flowspec channels.
+
+	<tag><label id="bgp-base-table">base table <m/name/</tag>
+	Specifies an IP table used for the flowspec validation procedure. The
+	table must have enabled <cf/trie/ option, otherwise the validation
+	procedure would not work. The type of the table must be <cf/ipv4/ for
+	<cf/flow4/ channels and <cf/ipv6/ for <cf/flow6/ channels. This option
+	is limited to flowspec channels. Default: the main table of the
+	<cf/ipv4/ / <cf/ipv6/ channel of the same BGP instance, or the
+	<cf/master4/ / <cf/master6/ table if there is no such channel.
 
 	<tag><label id="bgp-extended-next-hop">extended next hop <m/switch/</tag>
 	BGP expects that announced next hops have the same address family as

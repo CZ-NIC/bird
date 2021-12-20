@@ -1676,6 +1676,10 @@ bgp_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
   if (src == NULL)
     return 0;
 
+  /* Reject flowspec that failed validation */
+  if ((e->attrs->dest == RTD_UNREACHABLE) && net_is_flow(e->net->n.addr))
+      return -1;
+
   /* IBGP route reflection, RFC 4456 */
   if (p->is_internal && src->is_internal && (p->local_as == src->local_as))
   {

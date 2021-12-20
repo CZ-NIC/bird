@@ -26,6 +26,66 @@
  * (see the route attribute module for a precise explanation) holding the
  * remaining route attributes which are expected to be shared by multiple
  * routes in order to conserve memory.
+ *
+ * There are several mechanisms that allow automatic update of routes in one
+ * routing table (dst) as a result of changes in another routing table (src).
+ * They handle issues of recursive next hop resolving, flowspec validation and
+ * RPKI validation.
+ *
+ * The first such mechanism is handling of recursive next hops. A route in the
+ * dst table has an indirect next hop address, which is resolved through a route
+ * in the src table (which may also be the same table) to get an immediate next
+ * hop. This is implemented using structure &hostcache attached to the src
+ * table, which contains &hostentry structures for each tracked next hop
+ * address. These structures are linked from recursive routes in dst tables,
+ * possibly multiple routes sharing one hostentry (as many routes may have the
+ * same indirect next hop). There is also a trie in the hostcache, which matches
+ * all prefixes that may influence resolving of tracked next hops.
+ *
+ * When a best route changes in the src table, the hostcache is notified using
+ * rt_notify_hostcache(), which immediately checks using the trie whether the
+ * change is relevant and if it is, then it schedules asynchronous hostcache
+ * recomputation. The recomputation is done by rt_update_hostcache() (called
+ * from rt_event() of src table), it walks through all hostentries and resolves
+ * them (by rt_update_hostentry()). It also updates the trie. If a change in
+ * hostentry resolution was found, then it schedules asynchronous nexthop
+ * recomputation of associated dst table. That is done by rt_next_hop_update()
+ * (called from rt_event() of dst table), it iterates over all routes in the dst
+ * table and re-examines their hostentries for changes. Note that in contrast to
+ * hostcache update, next hop update can be interrupted by main loop. These two
+ * full-table walks (over hostcache and dst table) are necessary due to absence
+ * of direct lookups (route -> affected nexthop, nexthop -> its route).
+ *
+ * The second mechanism is for flowspec validation, where validity of flowspec
+ * routes depends of resolving their network prefixes in IP routing tables. This
+ * is similar to the recursive next hop mechanism, but simpler as there are no
+ * intermediate hostcache and hostentries (because flows are less likely to
+ * share common net prefix than routes sharing a common next hop). In src table,
+ * there is a list of dst tables (list flowspec_links), this list is updated by
+ * flowpsec channels (by rt_flowspec_link() and rt_flowspec_unlink() during
+ * channel start/stop). Each dst table has its own trie of prefixes that may
+ * influence validation of flowspec routes in it (flowspec_trie).
+ *
+ * When a best route changes in the src table, rt_flowspec_notify() immediately
+ * checks all dst tables from the list using their tries to see whether the
+ * change is relevant for them. If it is, then an asynchronous re-validation of
+ * flowspec routes in the dst table is scheduled. That is also done by function
+ * rt_next_hop_update(), like nexthop recomputation above. It iterates over all
+ * flowspec routes and re-validates them. It also recalculates the trie.
+ *
+ * Note that in contrast to the hostcache update, here the trie is recalculated
+ * during the rt_next_hop_update(), which may be interleaved with IP route
+ * updates. The trie is flushed at the beginning of recalculation, which means
+ * that such updates may use partial trie to see if they are relevant. But it
+ * works anyway! Either affected flowspec was already re-validated and added to
+ * the trie, then IP route change would match the trie and trigger a next round
+ * of re-validation, or it was not yet re-validated and added to the trie, but
+ * will be re-validated later in this round anyway.
+ *
+ * The third mechanism is used for RPKI re-validation of IP routes and it is the
+ * simplest. It is just a list of subscribers in src table, who are notified
+ * when any change happened, but only after a settle time. Also, in RPKI case
+ * the dst is not a table, but a channel, who refeeds routes through a filter.
  */
 
 #undef LOCAL_DEBUG
@@ -44,6 +104,7 @@
 #include "lib/hash.h"
 #include "lib/string.h"
 #include "lib/alloca.h"
+#include "lib/flowspec.h"
 
 #ifdef CONFIG_BGP
 #include "proto/bgp/bgp.h"
@@ -62,6 +123,7 @@ static void rt_update_hostcache(rtable *tab);
 static void rt_next_hop_update(rtable *tab);
 static inline void rt_prune_table(rtable *tab);
 static inline void rt_schedule_notify(rtable *tab);
+static void rt_flowspec_notify(rtable *tab, net *net);
 
 
 static void
@@ -1193,6 +1255,9 @@ rte_announce(rtable *tab, uint type, net *net, rte *new, rte *old,
 
     if (tab->hostcache)
       rt_notify_hostcache(tab, net);
+
+    if (!EMPTY_LIST(tab->flowspec_links))
+      rt_flowspec_notify(tab, net);
   }
 
   rt_schedule_notify(tab);
@@ -1254,6 +1319,10 @@ rte_validate(rte *e)
 
   if (net_type_match(n->n.addr, NB_DEST) == !e->attrs->dest)
   {
+    /* Exception for flowspec that failed validation */
+    if (net_is_flow(n->n.addr) && (e->attrs->dest == RTD_UNREACHABLE))
+      return 1;
+
     log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
 	n->n.addr, e->attrs->dest, e->sender->proto->name);
     return 0;
@@ -2097,6 +2166,90 @@ rt_unsubscribe(struct rt_subscription *s)
   rt_unlock_table(s->tab);
 }
 
+static struct rt_flowspec_link *
+rt_flowspec_find_link(rtable *src, rtable *dst)
+{
+  struct rt_flowspec_link *ln;
+  WALK_LIST(ln, src->flowspec_links)
+    if ((ln->src == src) && (ln->dst == dst))
+      return ln;
+
+  return NULL;
+}
+
+void
+rt_flowspec_link(rtable *src, rtable *dst)
+{
+  ASSERT(rt_is_ip(src));
+  ASSERT(rt_is_flow(dst));
+
+  struct rt_flowspec_link *ln = rt_flowspec_find_link(src, dst);
+
+  if (!ln)
+  {
+    rt_lock_table(src);
+    rt_lock_table(dst);
+
+    ln = mb_allocz(src->rp, sizeof(struct rt_flowspec_link));
+    ln->src = src;
+    ln->dst = dst;
+    add_tail(&src->flowspec_links, &ln->n);
+  }
+
+  ln->uc++;
+}
+
+void
+rt_flowspec_unlink(rtable *src, rtable *dst)
+{
+  struct rt_flowspec_link *ln = rt_flowspec_find_link(src, dst);
+
+  ASSERT(ln && (ln->uc > 0));
+
+  ln->uc--;
+
+  if (!ln->uc)
+  {
+    rem_node(&ln->n);
+    mb_free(ln);
+
+    rt_unlock_table(src);
+    rt_unlock_table(dst);
+  }
+}
+
+static void
+rt_flowspec_notify(rtable *src, net *net)
+{
+  /* Only IP tables are src links */
+  ASSERT(rt_is_ip(src));
+
+  struct rt_flowspec_link *ln;
+  WALK_LIST(ln, src->flowspec_links)
+  {
+    rtable *dst = ln->dst;
+    ASSERT(rt_is_flow(dst));
+
+    /* No need to inspect it further if recalculation is already active */
+    if ((dst->nhu_state == NHU_SCHEDULED) || (dst->nhu_state == NHU_DIRTY))
+      continue;
+
+    if (trie_match_net(dst->flowspec_trie, net->n.addr))
+      rt_schedule_nhu(dst);
+  }
+}
+
+static void
+rt_flowspec_reset_trie(rtable *tab)
+{
+  linpool *lp = tab->flowspec_trie->lp;
+  int ipv4 = tab->flowspec_trie->ipv4;
+
+  lp_flush(lp);
+  tab->flowspec_trie = f_new_trie(lp, 0);
+  tab->flowspec_trie->ipv4 = ipv4;
+}
+
 static void
 rt_free(resource *_r)
 {
@@ -2167,16 +2320,23 @@ rt_setup(pool *pp, struct rtable_config *cf)
     t->fib.init = net_init_with_trie;
   }
 
+  init_list(&t->channels);
+  init_list(&t->flowspec_links);
+  init_list(&t->subscribers);
+
   if (!(t->internal = cf->internal))
   {
-    init_list(&t->channels);
     hmap_init(&t->id_map, p, 1024);
     hmap_set(&t->id_map, 0);
 
-    init_list(&t->subscribers);
-
     t->rt_event = ev_new_init(p, rt_event, t);
     t->last_rt_change = t->gc_time = current_time();
+
+    if (rt_is_flow(t))
+    {
+      t->flowspec_trie = f_new_trie(lp_new_default(p), 0);
+      t->flowspec_trie->ipv4 = (t->addr_type == NET_FLOW4);
+    }
   }
 
   return t;
@@ -2331,21 +2491,6 @@ rt_preconfig(struct config *c)
  * triggered by rt_schedule_nhu().
  */
 
-static inline int
-rta_next_hop_outdated(rta *a)
-{
-  struct hostentry *he = a->hostentry;
-
-  if (!he)
-    return 0;
-
-  if (!he->src)
-    return a->dest != RTD_UNREACHABLE;
-
-  return (a->dest != he->dest) || (a->igp_metric != he->igp_metric) ||
-    (!he->nexthop_linkable) || !nexthop_same(&(a->nh), &(he->src->nh));
-}
-
 void
 rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls)
 {
@@ -2437,9 +2582,27 @@ no_nexthop:
     }
 }
 
+static inline int
+rta_next_hop_outdated(rta *a)
+{
+  struct hostentry *he = a->hostentry;
+
+  if (!he)
+    return 0;
+
+  if (!he->src)
+    return a->dest != RTD_UNREACHABLE;
+
+  return (a->dest != he->dest) || (a->igp_metric != he->igp_metric) ||
+    (!he->nexthop_linkable) || !nexthop_same(&(a->nh), &(he->src->nh));
+}
+
 static inline rte *
 rt_next_hop_update_rte(rtable *tab UNUSED, rte *old)
 {
+  if (!rta_next_hop_outdated(old->attrs))
+    return NULL;
+
   rta *a = alloca(RTA_MAX_SIZE);
   memcpy(a, old->attrs, rta_size(old->attrs));
 
@@ -2456,6 +2619,152 @@ rt_next_hop_update_rte(rtable *tab UNUSED, rte *old)
   return e;
 }
 
+
+#ifdef CONFIG_BGP
+
+static inline int
+net_flow_has_dst_prefix(const net_addr *n)
+{
+  ASSUME(net_is_flow(n));
+
+  if (n->pxlen)
+    return 1;
+
+  if (n->type == NET_FLOW4)
+  {
+    const net_addr_flow4 *n4 = (void *) n;
+    return (n4->length > sizeof(net_addr_flow4)) && (n4->data[0] == FLOW_TYPE_DST_PREFIX);
+  }
+  else
+  {
+    const net_addr_flow6 *n6 = (void *) n;
+    return (n6->length > sizeof(net_addr_flow6)) && (n6->data[0] == FLOW_TYPE_DST_PREFIX);
+  }
+}
+
+static inline int
+rta_as_path_is_empty(rta *a)
+{
+  eattr *e = ea_find(a->eattrs, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
+  return !e || (as_path_getlen(e->u.ptr) == 0);
+}
+
+static inline u32
+rta_get_first_asn(rta *a)
+{
+  eattr *e = ea_find(a->eattrs, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
+  u32 asn;
+
+  return (e && as_path_get_first_regular(e->u.ptr, &asn)) ? asn : 0;
+}
+
+int
+rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, int interior)
+{
+  ASSERT(rt_is_ip(tab_ip));
+  ASSERT(rt_is_flow(tab_flow));
+  ASSERT(tab_ip->trie);
+
+  /* RFC 8955 6. a) Flowspec has defined dst prefix */
+  if (!net_flow_has_dst_prefix(n))
+    return 0;
+
+  /* RFC 9117 4.1. Accept  AS_PATH is empty (fr */
+  if (interior && rta_as_path_is_empty(a))
+    return 1;
+
+
+  /* RFC 8955 6. b) Flowspec and its best-match route have the same originator */
+
+  /* Find flowspec dst prefix */
+  net_addr dst;
+  if (n->type == NET_FLOW4)
+    net_fill_ip4(&dst, net4_prefix(n), net4_pxlen(n));
+  else
+    net_fill_ip6(&dst, net6_prefix(n), net6_pxlen(n));
+
+  /* Find best-match BGP unicast route for flowspec dst prefix */
+  net *nb = net_route(tab_ip, &dst);
+  rte *rb = nb ? nb->routes : NULL;
+
+  /* Register prefix to trie for tracking further changes */
+  int max_pxlen = (n->type == NET_FLOW4) ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH;
+  trie_add_prefix(tab_flow->flowspec_trie, &dst, (nb ? nb->n.addr->pxlen : 0), max_pxlen);
+
+  /* No best-match BGP route -> no flowspec */
+  if (!rb || (rb->attrs->source != RTS_BGP))
+    return 0;
+
+  /* Find ORIGINATOR_ID values */
+  u32 orig_a = ea_get_int(a->eattrs, EA_CODE(PROTOCOL_BGP, BA_ORIGINATOR_ID), 0);
+  u32 orig_b = ea_get_int(rb->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_ORIGINATOR_ID), 0);
+
+  /* Originator is either ORIGINATOR_ID (if present), or BGP neighbor address (if not) */
+  if ((orig_a != orig_b) || (!orig_a && !orig_b && !ipa_equal(a->from, rb->attrs->from)))
+    return 0;
+
+
+  /* Find ASN of the best-match route, for use in next checks */
+  u32 asn_b = rta_get_first_asn(rb->attrs);
+  if (!asn_b)
+    return 0;
+
+  /* RFC 9117 4.2. For EBGP, flowspec and its best-match route are from the same AS */
+  if (!interior && (rta_get_first_asn(a) != asn_b))
+    return 0;
+
+  /* RFC 8955 6. c) More-specific routes are from the same AS as the best-match route */
+  TRIE_WALK(tab_ip->trie, subnet, &dst)
+  {
+    net *nc = net_find_valid(tab_ip, &subnet);
+    if (!nc)
+      continue;
+
+    rte *rc = nc->routes;
+    if (rc->attrs->source != RTS_BGP)
+      return 0;
+
+    if (rta_get_first_asn(rc->attrs) != asn_b)
+      return 0;
+  }
+  TRIE_WALK_END;
+
+  return 1;
+}
+
+#endif /* CONFIG_BGP */
+
+static rte *
+rt_flowspec_update_rte(rtable *tab, rte *r)
+{
+#ifdef CONFIG_BGP
+  if ((r->attrs->source != RTS_BGP) || !r->u.bgp.base_table)
+    return NULL;
+
+  const net_addr *n = r->net->n.addr;
+  struct bgp_proto *p = (void *) r->attrs->src->proto;
+  int valid = rt_flowspec_check(r->u.bgp.base_table, tab, n, r->attrs, p->is_interior);
+  int dest = valid ? RTD_NONE : RTD_UNREACHABLE;
+
+  if (dest == r->attrs->dest)
+    return NULL;
+
+  rta *a = alloca(RTA_MAX_SIZE);
+  memcpy(a, r->attrs, rta_size(r->attrs));
+  a->dest = dest;
+  a->aflags = 0;
+
+  rte *new = sl_alloc(rte_slab);
+  memcpy(new, r, sizeof(rte));
+  new->attrs = rta_lookup(a);
+
+  return new;
+#else
+  return NULL;
+#endif
+}
+
+
 static inline int
 rt_next_hop_update_net(rtable *tab, net *n)
 {
@@ -2468,9 +2777,14 @@ rt_next_hop_update_net(rtable *tab, net *n)
     return 0;
 
   for (k = &n->routes; e = *k; k = &e->next)
-    if (rta_next_hop_outdated(e->attrs))
+  {
+    if (!net_is_flow(n->n.addr))
+      new = rt_next_hop_update_rte(tab, e);
+    else
+      new = rt_flowspec_update_rte(tab, e);
+
+    if (new)
       {
-	new = rt_next_hop_update_rte(tab, e);
 	*k = new;
 
 	rte_trace_in(D_ROUTES, new->sender, new, "updated");
@@ -2489,6 +2803,7 @@ rt_next_hop_update_net(rtable *tab, net *n)
 	e = new;
 	count++;
       }
+  }
 
   if (!count)
     return 0;
@@ -2536,6 +2851,9 @@ rt_next_hop_update(rtable *tab)
     {
       FIB_ITERATE_INIT(fit, &tab->fib);
       tab->nhu_state = NHU_RUNNING;
+
+      if (tab->flowspec_trie)
+	rt_flowspec_reset_trie(tab);
     }
 
   FIB_ITERATE_START(&tab->fib, fit, net, n)

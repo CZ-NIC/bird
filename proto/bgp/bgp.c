@@ -101,6 +101,7 @@
  * RFC 8203 - BGP Administrative Shutdown Communication
  * RFC 8212 - Default EBGP Route Propagation Behavior without Policies
  * RFC 8654 - Extended Message Support for BGP
+ * RFC 9117 - Revised Validation Procedure for BGP Flow Specifications
  * draft-ietf-idr-ext-opt-param-07
  * draft-uttaro-idr-bgp-persistence-04
  * draft-walton-bgp-hostname-capability-02
@@ -1735,6 +1736,9 @@ bgp_channel_init(struct channel *C, struct channel_config *CF)
 
   if (cf->igp_table_ip6)
     c->igp_table_ip6 = cf->igp_table_ip6->table;
+
+  if (cf->base_table)
+    c->base_table = cf->base_table->table;
 }
 
 static int
@@ -1749,6 +1753,12 @@ bgp_channel_start(struct channel *C)
 
   if (c->igp_table_ip6)
     rt_lock_table(c->igp_table_ip6);
+
+  if (c->base_table)
+  {
+    rt_lock_table(c->base_table);
+    rt_flowspec_link(c->base_table, c->c.table);
+  }
 
   c->pool = p->p.pool; // XXXX
   bgp_init_bucket_table(c);
@@ -1834,6 +1844,12 @@ bgp_channel_cleanup(struct channel *C)
   if (c->igp_table_ip6)
     rt_unlock_table(c->igp_table_ip6);
 
+  if (c->base_table)
+  {
+    rt_flowspec_unlink(c->base_table, c->c.table);
+    rt_unlock_table(c->base_table);
+  }
+
   c->index = 0;
 
   /* Cleanup rest of bgp_channel starting at pool field */
@@ -1881,6 +1897,25 @@ bgp_default_igp_table(struct bgp_config *cf, struct bgp_channel_config *cc, u32 
   cf_error("Undefined IGP table");
 }
 
+static struct rtable_config *
+bgp_default_base_table(struct bgp_config *cf, struct bgp_channel_config *cc)
+{
+  /* Expected table type */
+  u32 type = (cc->afi == BGP_AF_FLOW4) ? NET_IP4 : NET_IP6;
+
+  /* First, try appropriate IP channel */
+  u32 afi2 = BGP_AF(BGP_AFI(cc->afi), BGP_SAFI_UNICAST);
+  struct bgp_channel_config *cc2 = bgp_find_channel_config(cf, afi2);
+  if (cc2 && (cc2->c.table->addr_type == type))
+    return cc2->c.table;
+
+  /* Last, try default table of given type */
+  struct rtable_config *tab = cf->c.global->def_tables[type];
+  if (tab)
+    return tab;
+
+  cf_error("Undefined base table");
+}
 
 void
 bgp_postconfig(struct proto_config *CF)
@@ -2025,6 +2060,14 @@ bgp_postconfig(struct proto_config *CF)
 	cf_error("Mismatched IGP table type");
     }
 
+    /* Default value of base table */
+    if ((BGP_SAFI(cc->afi) == BGP_SAFI_FLOW) && cc->validate && !cc->base_table)
+      cc->base_table = bgp_default_base_table(cf, cc);
+
+    if (cc->base_table && !cc->base_table->trie_used)
+      cf_error("Flowspec validation requires base table (%s) with trie",
+	       cc->base_table->name);
+
     if (cf->multihop && (cc->gw_mode == GW_DIRECT))
       cf_error("Multihop BGP cannot use direct gateway mode");
 
@@ -2093,7 +2136,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   return same;
 }
 
-#define IGP_TABLE(cf, sym) ((cf)->igp_table_##sym ? (cf)->igp_table_##sym ->table : NULL )
+#define TABLE(cf, NAME) ((cf)->NAME ? (cf)->NAME->table : NULL )
 
 static int
 bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *import_changed, int *export_changed)
@@ -2104,6 +2147,7 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
   struct bgp_channel_config *old = c->cf;
 
   if ((new->secondary != old->secondary) ||
+      (new->validate != old->validate) ||
       (new->gr_able != old->gr_able) ||
       (new->llgr_able != old->llgr_able) ||
       (new->llgr_time != old->llgr_time) ||
@@ -2111,8 +2155,9 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
       (new->add_path != old->add_path) ||
       (new->import_table != old->import_table) ||
       (new->export_table != old->export_table) ||
-      (IGP_TABLE(new, ip4) != IGP_TABLE(old, ip4)) ||
-      (IGP_TABLE(new, ip6) != IGP_TABLE(old, ip6)))
+      (TABLE(new, igp_table_ip4) != TABLE(old, igp_table_ip4)) ||
+      (TABLE(new, igp_table_ip6) != TABLE(old, igp_table_ip6)) ||
+      (TABLE(new, base_table) != TABLE(old, base_table)))
     return 0;
 
   if (new->mandatory && !old->mandatory && (C->channel_state != CS_UP))
@@ -2526,6 +2571,9 @@ bgp_show_proto_info(struct proto *P)
 
       if (c->igp_table_ip6)
 	cli_msg(-1006, "    IGP IPv6 table: %s", c->igp_table_ip6->name);
+
+      if (c->base_table)
+	cli_msg(-1006, "    Base table:     %s", c->base_table->name);
     }
   }
 }

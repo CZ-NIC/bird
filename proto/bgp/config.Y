@@ -31,7 +31,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6, LONG,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL, SETS,
 	DYNAMIC, RANGE, NAME, DIGITS, BGP_AIGP, AIGP, ORIGINATE, COST, ENFORCE,
-	FIRST)
+	FIRST, VALIDATE, BASE)
 
 %type <i> bgp_nh
 %type <i32> bgp_afi
@@ -255,6 +255,11 @@ bgp_channel_item:
  | GATEWAY DIRECT { BGP_CC->gw_mode = GW_DIRECT; }
  | GATEWAY RECURSIVE { BGP_CC->gw_mode = GW_RECURSIVE; }
  | SECONDARY bool { BGP_CC->secondary = $2; }
+ | VALIDATE bool {
+    BGP_CC->validate = $2;
+    if (BGP_SAFI(BGP_CC->afi) != BGP_SAFI_FLOW)
+      cf_error("Validate option limited to flowspec channels");
+   }
  | GRACEFUL RESTART bool { BGP_CC->gr_able = $3; }
  | LONG LIVED GRACEFUL RESTART bool { BGP_CC->llgr_able = $5; }
  | LONG LIVED STALE TIME expr { BGP_CC->llgr_time = $5; }
@@ -277,6 +282,16 @@ bgp_channel_item:
       BGP_CC->igp_table_ip6 = $3;
     else
       cf_error("Mismatched IGP table type");
+   }
+ | BASE TABLE rtable {
+    if (BGP_SAFI(BGP_CC->afi) != BGP_SAFI_FLOW)
+      cf_error("Base table option limited to flowspec channels");
+
+    if (((BGP_CC->afi == BGP_AF_FLOW4) && ($3->addr_type == NET_IP4)) ||
+        ((BGP_CC->afi == BGP_AF_FLOW6) && ($3->addr_type == NET_IP6)))
+      BGP_CC->base_table = $3;
+    else
+      cf_error("Mismatched base table type");
    }
  ;
 

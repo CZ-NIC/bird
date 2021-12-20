@@ -192,6 +192,8 @@ typedef struct rtable {
 
   list subscribers;			/* Subscribers for notifications */
   struct timer *settle_timer;		/* Settle time for notifications */
+  list flowspec_links;			/* List of flowspec links, src for NET_IPx and dst for NET_FLOWx */
+  struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
 } rtable;
 
 struct rt_subscription {
@@ -199,6 +201,13 @@ struct rt_subscription {
   rtable *tab;
   void (*hook)(struct rt_subscription *b);
   void *data;
+};
+
+struct rt_flowspec_link {
+  node n;
+  rtable *src;
+  rtable *dst;
+  u32 uc;
 };
 
 #define NHU_CLEAN	0
@@ -267,6 +276,7 @@ typedef struct rte {
     struct {
       u8 suppressed;			/* Used for deterministic MED comparison */
       s8 stale;				/* Route is LLGR_STALE, -1 if unknown */
+      struct rtable *base_table;	/* Base table for Flowspec validation */
     } bgp;
 #endif
 #ifdef CONFIG_BABEL
@@ -322,6 +332,8 @@ void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
 void rt_subscribe(rtable *tab, struct rt_subscription *s);
 void rt_unsubscribe(struct rt_subscription *s);
+void rt_flowspec_link(rtable *src, rtable *dst);
+void rt_flowspec_unlink(rtable *src, rtable *dst);
 rtable *rt_setup(pool *, struct rtable_config *);
 static inline void rt_shutdown(rtable *r) { rfree(r->rp); }
 
@@ -742,6 +754,9 @@ rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr
 
 static inline void rt_lock_hostentry(struct hostentry *he) { if (he) he->uc++; }
 static inline void rt_unlock_hostentry(struct hostentry *he) { if (he) he->uc--; }
+
+int rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, int interior);
+
 
 /*
  *	Default protocol preferences
