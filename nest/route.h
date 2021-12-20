@@ -362,6 +362,18 @@ void rt_prune_sync(rtable *t, int all);
 int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
+static inline int rt_is_ip(rtable *tab)
+{ return (tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6); }
+
+static inline int rt_is_vpn(rtable *tab)
+{ return (tab->addr_type == NET_VPN4) || (tab->addr_type == NET_VPN6); }
+
+static inline int rt_is_roa(rtable *tab)
+{ return (tab->addr_type == NET_ROA4) || (tab->addr_type == NET_ROA6); }
+
+static inline int rt_is_flow(rtable *tab)
+{ return (tab->addr_type == NET_FLOW4) || (tab->addr_type == NET_FLOW6); }
+
 
 /* Default limit for ECMP next hops, defined in sysdep code */
 extern const int rt_default_ecmp;
