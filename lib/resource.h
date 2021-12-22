@@ -43,7 +43,6 @@ struct resclass {
 typedef struct pool {
   resource r;
   list inside;
-  struct pool_pages *pages;
   struct birdloop *loop;
   const char *name;
 } pool;

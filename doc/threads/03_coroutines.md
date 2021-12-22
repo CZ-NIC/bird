@@ -235,5 +235,5 @@ Anyway, for now it is good enough as it is.
 *It's still a long road to the version 2.1. This series of texts should document
 what is needed to be changed, why we do it and how. The
 [previous chapter](https://en.blog.nic.cz/2021/06/14/bird-journey-to-threads-chapter-2-asynchronous-route-export/)
-showed how the route export had to change to allow parallel execution. In the next chapter, we're most likely going
-to show performance difference between BIRD v2.0.8 and the parallelized implementation. Stay tuned!*
+showed how the route export had to change to allow parallel execution. In the next chapter, some memory management
+details are to be explained together with the reasons why memory management matters. Stay tuned!*
