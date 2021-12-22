@@ -17,6 +17,7 @@ CF_HDR
 
 CF_DEFINES
 
+static struct rtable_config *this_table;
 static struct proto_config *this_proto;
 static struct channel_config *this_channel;
 static struct iface_patt *this_ipatt;
@@ -118,12 +119,13 @@ CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERE
 CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, BY, FOR, IN, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
-CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION, SORTED)
+CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
 CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
+CF_KEYWORDS(SORTED, TRIE, MIN, MAX, SETTLE, TIME)
 
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
@@ -141,7 +143,7 @@ CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 %type <s> optproto
 %type <ra> r_args
 %type <sd> sym_args
-%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type table_sorted tos password_algorithm
+%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type tos password_algorithm
 %type <ps> proto_patt proto_patt2
 %type <cc> channel_start proto_channel
 %type <cl> limit_spec
@@ -206,16 +208,37 @@ CF_ENUM(T_ENUM_NETTYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, IP
 
 conf: table ;
 
-table_sorted:
-	  { $$ = 0; }
- | SORTED { $$ = 1; }
+table: table_start table_sorted table_opt_list ;
+
+table_start: net_type TABLE symbol {
+   this_table = rt_new_table($3, $1);
+   }
  ;
 
-table: net_type TABLE symbol table_sorted {
-   struct rtable_config *cf;
-   cf = rt_new_table($3, $1);
-   cf->sorted = $4;
+table_sorted:
+   /* empty */
+ | SORTED { this_table->sorted = 1; }
+ ;
+
+table_opt:
+   SORTED bool { this_table->sorted = $2; }
+ | TRIE bool {
+     if (!net_val_match(this_table->addr_type, NB_IP | NB_VPN | NB_ROA | NB_IP6_SADR))
+       cf_error("Trie option not supported for %s table", net_label[this_table->addr_type]);
+     this_table->trie_used = $2;
    }
+ | MIN SETTLE TIME expr_us { this_table->min_settle_time = $4; }
+ | MAX SETTLE TIME expr_us { this_table->max_settle_time = $4; }
+ ;
+
+table_opts:
+   /* empty */
+ | table_opts table_opt ';'
+ ;
+
+table_opt_list:
+   /* empty */
+ | '{' table_opts '}'
  ;
 
 

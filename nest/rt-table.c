@@ -2579,7 +2579,6 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->gc_min_time = 5;
   c->min_settle_time = 1 S;
   c->max_settle_time = 20 S;
-  c->trie_used = net_val_match(addr_type, NB_IP | NB_VPN | NB_ROA | NB_IP6_SADR);
 
   add_tail(&new_config->tables, &c->n);
 
@@ -2625,6 +2624,22 @@ rt_unlock_table(rtable *r)
     }
 }
 
+static int
+rt_reconfigure(rtable *tab, struct rtable_config *new, struct rtable_config *old)
+{
+  if ((new->addr_type != old->addr_type) ||
+      (new->sorted != old->sorted) ||
+      (new->trie_used != old->trie_used))
+    return 0;
+
+  DBG("\t%s: same\n", new->name);
+  new->table = tab;
+  tab->name = new->name;
+  tab->config = new;
+
+  return 1;
+}
+
 static struct rtable_config *
 rt_find_table_config(struct config *cf, char *name)
 {
@@ -2654,28 +2669,19 @@ rt_commit(struct config *new, struct config *old)
     {
       WALK_LIST(o, old->tables)
 	{
-	  rtable *ot = o->table;
-	  if (!ot->deleted)
-	    {
-	      r = rt_find_table_config(new, o->name);
-	      if (r && (r->addr_type == o->addr_type) && !new->shutdown)
-		{
-		  DBG("\t%s: same\n", o->name);
-		  r->table = ot;
-		  ot->name = r->name;
-		  ot->config = r;
-		  if (o->sorted != r->sorted)
-		    log(L_WARN "Reconfiguration of rtable sorted flag not implemented");
-		}
-	      else
-		{
-		  DBG("\t%s: deleted\n", o->name);
-		  ot->deleted = old;
-		  config_add_obstacle(old);
-		  rt_lock_table(ot);
-		  rt_unlock_table(ot);
-		}
-	    }
+	  rtable *tab = o->table;
+	  if (tab->deleted)
+	    continue;
+
+	  r = rt_find_table_config(new, o->name);
+	  if (r && !new->shutdown && rt_reconfigure(tab, r, o))
+	    continue;
+
+	  DBG("\t%s: deleted\n", o->name);
+	  tab->deleted = old;
+	  config_add_obstacle(old);
+	  rt_lock_table(tab);
+	  rt_unlock_table(tab);
 	}
     }
 
