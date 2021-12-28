@@ -1292,6 +1292,9 @@ in the foot).
 	The same syntax can also be used to construct a pair from two arbitrary
 	integer expressions (for example <cf/(1+2,a)/).
 
+	Operators <cf/.asn/ and <cf/.data/ can be used to extract corresponding
+	components of a pair: <cf>(<m/asn/, <m/data/)</cf>.
+
 	<tag><label id="type-quad">quad</tag>
 	This is a dotted quad of numbers used to represent router IDs (and
 	others). Each component can have a value from 0 to 255. Literals of
@@ -1381,6 +1384,10 @@ in the foot).
 	written as <cf/(123, 456, 789)/, with any integer values. Similarly to
 	pairs, LCs can be constructed using expressions for its parts, (e.g.
 	<cf/(myas, 10+20, 3*10)/, where <cf/myas/ is an integer variable).
+
+	Operators <cf/.asn/, <cf/.data1/, and <cf/.data2/ can be used
+	to extract corresponding components of LCs:
+	<cf>(<m/asn/, <m/data1/, <m/data2/)</cf>.
 
 	<tag><label id="type-set">int|pair|quad|ip|prefix|ec|lc|enum set</tag>
 	Filters recognize four types of sets. Sets are similar to strings: you
