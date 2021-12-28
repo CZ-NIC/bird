@@ -188,6 +188,8 @@ void trie_format(const struct f_trie *t, buffer *buf);
 
 const char *f_type_name(enum f_type t);
 
+enum f_type f_type_element_type(enum f_type t);
+
 int val_same(const struct f_val *v1, const struct f_val *v2);
 int val_compare(const struct f_val *v1, const struct f_val *v2);
 void val_format(const struct f_val *v, buffer *buf);

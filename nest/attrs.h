@@ -218,6 +218,12 @@ struct adata *ec_set_del_nontrans(struct linpool *pool, const struct adata *set)
 struct adata *int_set_sort(struct linpool *pool, const struct adata *src);
 struct adata *ec_set_sort(struct linpool *pool, const struct adata *src);
 struct adata *lc_set_sort(struct linpool *pool, const struct adata *src);
+int int_set_min(const struct adata *list, u32 *val);
+int ec_set_min(const struct adata *list, u64 *val);
+int lc_set_min(const struct adata *list, lcomm *val);
+int int_set_max(const struct adata *list, u32 *val);
+int ec_set_max(const struct adata *list, u64 *val);
+int lc_set_max(const struct adata *list, lcomm *val);
 
 void ec_set_sort_x(struct adata *set); /* Sort in place */
 

@@ -287,6 +287,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	DEFINED,
 	ADD, DELETE, CONTAINS, RESET,
 	PREPEND, FIRST, LAST, LAST_NONAGGREGATED, MATCH,
+	MIN, MAX,
 	EMPTY,
 	FILTER, WHERE, EVAL, ATTRIBUTE,
 	BT_ASSERT, BT_TEST_SUITE, BT_CHECK_ASSIGN, BT_TEST_SAME, FORMAT)
@@ -800,6 +801,8 @@ term:
  | term '.' DATA { $$ = f_new_inst(FI_PAIR_DATA, $1); }
  | term '.' DATA1 { $$ = f_new_inst(FI_LC_DATA1, $1); }
  | term '.' DATA2 { $$ = f_new_inst(FI_LC_DATA2, $1); }
+ | term '.' MIN  { $$ = f_new_inst(FI_MIN, $1); }
+ | term '.' MAX  { $$ = f_new_inst(FI_MAX, $1); }
 
 /* Communities */
 /* This causes one shift/reduce conflict

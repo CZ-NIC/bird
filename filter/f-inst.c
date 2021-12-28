@@ -983,6 +983,74 @@
     RESULT(T_INT, i, v1.val.lc.ldp2);
   }
 
+  INST(FI_MIN, 1, 1) {	/* Get minimum element from set */
+    ARG_ANY(1);
+    RESULT_TYPE(f_type_element_type(v1.type));
+    switch(v1.type)
+    {
+      case T_CLIST:
+        {
+          u32 val = 0;
+          int_set_min(v1.val.ad, &val);
+          RESULT_(T_PAIR, i, val);
+        }
+        break;
+
+      case T_ECLIST:
+        {
+          u64 val = 0;
+          ec_set_min(v1.val.ad, &val);
+          RESULT_(T_EC, ec, val);
+        }
+        break;
+
+      case T_LCLIST:
+        {
+          lcomm val = { 0, 0, 0 };
+          lc_set_min(v1.val.ad, &val);
+          RESULT_(T_LC, lc, val);
+        }
+        break;
+
+      default:
+        runtime( "Clist or lclist expected" );
+    }
+  }
+
+  INST(FI_MAX, 1, 1) {	/* Get maximum element from set */
+    ARG_ANY(1);
+    RESULT_TYPE(f_type_element_type(v1.type));
+    switch(v1.type)
+    {
+      case T_CLIST:
+        {
+          u32 val = 0;
+          int_set_max(v1.val.ad, &val);
+          RESULT_(T_PAIR, i, val);
+        }
+        break;
+
+      case T_ECLIST:
+        {
+          u64 val = 0;
+          ec_set_max(v1.val.ad, &val);
+          RESULT_(T_EC, ec, val);
+        }
+        break;
+
+      case T_LCLIST:
+        {
+          lcomm val = { 0, 0, 0 };
+          lc_set_max(v1.val.ad, &val);
+          RESULT_(T_LC, lc, val);
+        }
+        break;
+
+      default:
+        runtime( "Clist or lclist expected" );
+    }
+  }
+
   INST(FI_RETURN, 1, 1) {
     NEVER_CONSTANT;
     /* Acquire the return value */

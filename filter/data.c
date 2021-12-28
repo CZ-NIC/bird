@@ -68,6 +68,17 @@ f_type_name(enum f_type t)
   return "?";
 }
 
+enum f_type
+f_type_element_type(enum f_type t)
+{
+  switch(t) {
+    case T_CLIST:  return T_PAIR;
+    case T_ECLIST: return T_EC;
+    case T_LCLIST: return T_LC;
+    default: return T_VOID;
+  };
+}
+
 const struct f_val f_const_empty_path = {
   .type = T_PATH,
   .val.ad = &null_adata,
