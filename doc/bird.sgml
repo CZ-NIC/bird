@@ -252,16 +252,9 @@ The global best route selection algorithm is (roughly) as follows:
 </itemize>
 
 <p><label id="dsc-table-sorted">Usually, a routing table just chooses a selected
-route from a list of entries for one network. But if the <cf/sorted/ option is
-activated, these lists of entries are kept completely sorted (according to
-preference or some protocol-dependent metric). This is needed for some features
-of some protocols (e.g. <cf/secondary/ option of BGP protocol, which allows to
-accept not just a selected route, but the first route (in the sorted list) that
-is accepted by filters), but it is incompatible with some other features (e.g.
-<cf/deterministic med/ option of BGP protocol, which activates a way of choosing
-selected route that cannot be described using comparison and ordering). Minor
-advantage is that routes are shown sorted in <cf/show route/, minor disadvantage
-is that it is slightly more computationally expensive.
+route from a list of entries for one network. Optionally, these lists of entries
+are kept completely sorted (according to preference or some protocol-dependent
+metric). See <ref id="rtable-sorted" name="sorted"> table option for details.
 
 <sect>Routes and network types
 <label id="routes">
@@ -628,15 +621,70 @@ include "tablename.conf";;
 	<cf/protocol/ times, and the <cf/iso long ms/ format for <cf/base/ and
 	<cf/log/ times.
 
-	<tag><label id="opt-table"><m/nettype/ table <m/name/ [sorted]</tag>
-	Create a new routing table. The default routing tables <cf/master4/ and
-	<cf/master6/ are created implicitly, other routing tables have to be
-	added by this command.  Option <cf/sorted/ can be used to enable sorting
-	of routes, see <ref id="dsc-table-sorted" name="sorted table">
-	description for details.
+	<tag><label id="opt-table"><m/nettype/ table <m/name/ [ { <m/option/; [<m/.../] } ]</tag>
+	Define a new routing table. The default routing tables <cf/master4/ and
+	<cf/master6/ are defined implicitly, other routing tables have to be
+	defined by this option. See the <ref id="rtable-opts"
+	name="routing table configuration section"> for routing table options.
 
 	<tag><label id="opt-eval">eval <m/expr/</tag>
 	Evaluates given filter expression. It is used by the developers for testing of filters.
+</descrip>
+
+
+<sect>Routing table options
+<label id="rtable-opts">
+
+<p>Most routing tables do not need any options and are defined without an option
+block, but there are still some options to tweak routing table behavior. Note
+that implicit tables (<cf/master4/ and <cf/master6/) can be redefined in order
+to set options.
+
+<descrip>
+	<tag><label id="rtable-sorted">sorted <m/switch/</tag>
+	Usually, a routing table just chooses the selected (best) route from a
+	list of routes for each network, while keeping remaining routes unsorted.
+	If enabled, these lists of routes are kept completely sorted (according
+	to preference or some protocol-dependent metric).
+
+	This is needed for some protocol features (e.g. <cf/secondary/ option of
+	BGP protocol, which allows to accept not just a selected route, but the
+	first route (in the sorted list) that is accepted by filters), but it is
+	incompatible with some other features (e.g. <cf/deterministic med/
+	option of BGP protocol, which activates a way of choosing selected route
+	that cannot be described using comparison and ordering). Minor advantage
+	is that routes are shown sorted in <cf/show route/, minor disadvantage
+	is that it is slightly more computationally expensive. Default: off.
+
+	<tag><label id="rtable-trie">trie <m/switch/</tag>
+	BIRD routing tables are implemented with hash tables, which is efficient
+	for exact-match lookups, but inconvenient for longest-match lookups or
+	interval lookups (finding superprefix or subprefixes). This option
+	activates additional trie structure that is used to accelerate these
+	lookups, while using the hash table for exact-match lookups.
+
+	This has advantage for <ref id="rpki" name="RPKI"> (on ROA tables),
+	for <ref id="bgp-gateway" name="recursive next-hops"> (on IGP tables),
+	and is required for <ref id="bgp-validate" name="flowspec validation">
+	(on base IP tables). Another advantage is that interval results (like
+	from <cf/show route in .../ command) are lexicographically sorted. The
+	disadvantage is that trie-enabled routing tables require more memory,
+	which may be an issue especially in multi-table setups. Default: off.
+
+	<tag><label id="rtable-min-settle-time">min settle time <m/time/</tag>
+	Specify a minimum value of the settle time. When a ROA table changes,
+	automatic <ref id="proto-rpki-reload" name="RPKI reload"> may be
+	triggered, after a short settle time. Minimum settle time is a delay
+	from the last ROA table change to wait for more updates. Default: 1 s.
+
+
+	<tag><label id="rtable-max-settle-time">max settle time <m/time/</tag>
+	Specify a maximum value of the settle time. When a ROA table changes,
+	automatic <ref id="proto-rpki-reload" name="RPKI reload"> may be
+	triggered, after a short settle time. Maximum settle time is an upper
+	limit to the settle time from the initial ROA table change even if
+	there are consecutive updates gradually renewing the settle time.
+	Default: 20 s.
 </descrip>
 
 
