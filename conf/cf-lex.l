@@ -255,7 +255,7 @@ WHITE [ \t]
   return IP4;
 }
 
-{XIGIT}{2}(:{XIGIT}{2}|{XIGIT}{2}){15,} {
+{XIGIT}{2}((:{XIGIT}{2}){15,}|({XIGIT}{2}){15,}) {
   char *s = yytext;
   size_t len = 0, i;
   struct bytestring *bytes;
