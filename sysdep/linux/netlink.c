@@ -681,7 +681,7 @@ nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af, e
 }
 
 static struct nexthop *
-nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, const net_addr *n, struct rtattr *ra, int af)
+nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, const net_addr *n, struct rtattr *ra, int af, int krt_src)
 {
   struct rtattr *a[BIRD_RTA_MAX];
   struct rtnexthop *nh = RTA_DATA(ra);
@@ -697,7 +697,7 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, const net_addr
       if ((len < sizeof(*nh)) || (len < nh->rtnh_len))
 	goto err;
 
-      if (nh->rtnh_flags & RTNH_F_DEAD)
+      if ((nh->rtnh_flags & RTNH_F_DEAD) && (krt_src != KRT_SRC_BIRD))
 	goto next;
 
       *last = rv = lp_allocz(s->pool, NEXTHOP_MAX_SIZE);
@@ -1687,7 +1687,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 
       if (a[RTA_MULTIPATH])
         {
-	  struct nexthop *nh = nl_parse_multipath(s, p, n, a[RTA_MULTIPATH], i->rtm_family);
+	  struct nexthop *nh = nl_parse_multipath(s, p, n, a[RTA_MULTIPATH], i->rtm_family, krt_src);
 	  if (!nh)
 	    SKIP("strange RTA_MULTIPATH\n");
 
@@ -1695,7 +1695,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	  break;
 	}
 
-      if (i->rtm_flags & RTNH_F_DEAD)
+      if ((i->rtm_flags & RTNH_F_DEAD) && (krt_src != KRT_SRC_BIRD))
 	SKIP("ignore RTNH_F_DEAD\n");
 
       ra->nh.iface = if_find_by_index(oif);
