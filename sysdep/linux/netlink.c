@@ -681,7 +681,7 @@ nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af, e
 }
 
 static struct nexthop *
-nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr *ra, int af)
+nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, const net_addr *n, struct rtattr *ra, int af)
 {
   struct rtattr *a[BIRD_RTA_MAX];
   struct rtnexthop *nh = RTA_DATA(ra);
@@ -695,7 +695,7 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
     {
       /* Use RTNH_OK(nh,len) ?? */
       if ((len < sizeof(*nh)) || (len < nh->rtnh_len))
-	return NULL;
+	goto err;
 
       if (nh->rtnh_flags & RTNH_F_DEAD)
 	goto next;
@@ -706,7 +706,10 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
       rv->weight = nh->rtnh_hops;
       rv->iface = if_find_by_index(nh->rtnh_ifindex);
       if (!rv->iface)
-	return NULL;
+	{
+	  log(L_ERR "KRT: Received route %N with unknown ifindex %u", n, nh->rtnh_ifindex);
+	  return NULL;
+	}
 
       /* Nonexistent RTNH_PAYLOAD ?? */
       nl_attr_len = nh->rtnh_len - RTNH_LENGTH(0);
@@ -714,18 +717,18 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
         {
 	case AF_INET:
 	  if (!nl_parse_attrs(RTNH_DATA(nh), nexthop_attr_want4, a, sizeof(a)))
-	    return NULL;
+	    goto err;
 	  break;
 
 	case AF_INET6:
 	  if (!nl_parse_attrs(RTNH_DATA(nh), nexthop_attr_want6, a, sizeof(a)))
-	    return NULL;
+	    goto err;
 	  break;
 
 #ifdef HAVE_MPLS_KERNEL
 	case AF_MPLS:
 	  if (!nl_parse_attrs(RTNH_DATA(nh), nexthop_attr_want_mpls, a, sizeof(a)))
-	    return NULL;
+	    goto err;
 
 	  if (a[RTA_NEWDST])
 	    rv->labels = rta_get_mpls(a[RTA_NEWDST], rv->label);
@@ -734,7 +737,7 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
 #endif
 
 	default:
-	  return NULL;
+	  goto err;
 	}
 
       if (a[RTA_GATEWAY])
@@ -757,14 +760,19 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
 	  nbr = neigh_find(&p->p, rv->gw, rv->iface,
 			   (rv->flags & RNF_ONLINK) ? NEF_ONLINK : 0);
 	  if (!nbr || (nbr->scope == SCOPE_HOST))
-	    return NULL;
+	    {
+	        log(L_ERR "KRT: Received route %N with strange next-hop %I", n, rv->gw);
+	        return NULL;
+	    }
 	}
 
 #ifdef HAVE_MPLS_KERNEL
       if (a[RTA_ENCAP] && a[RTA_ENCAP_TYPE])
       {
-	if (rta_get_u16(a[RTA_ENCAP_TYPE]) != LWTUNNEL_ENCAP_MPLS) {
-	  log(L_WARN "KRT: Unknown encapsulation method %d in multipath", rta_get_u16(a[RTA_ENCAP_TYPE]));
+	if (rta_get_u16(a[RTA_ENCAP_TYPE]) != LWTUNNEL_ENCAP_MPLS)
+	{
+	  log(L_WARN "KRT: Received route %N with unknown encapsulation method %d",
+	      n, rta_get_u16(a[RTA_ENCAP_TYPE]));
 	  return NULL;
 	}
 
@@ -785,6 +793,10 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, struct rtattr 
     first = nexthop_sort(first);
 
   return first;
+
+err:
+  log(L_ERR "KRT: Received strange multipath route %N", n);
+  return NULL;
 }
 
 static void
@@ -1675,19 +1687,16 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 
       if (a[RTA_MULTIPATH])
         {
-	  struct nexthop *nh = nl_parse_multipath(s, p, a[RTA_MULTIPATH], i->rtm_family);
+	  struct nexthop *nh = nl_parse_multipath(s, p, n, a[RTA_MULTIPATH], i->rtm_family);
 	  if (!nh)
-	    {
-	      log(L_ERR "KRT: Received strange multipath route %N", net->n.addr);
-	      return;
-	    }
+	    SKIP("strange RTA_MULTIPATH\n");
 
 	  nexthop_link(ra, nh);
 	  break;
 	}
 
       if (i->rtm_flags & RTNH_F_DEAD)
-	return;
+	SKIP("ignore RTNH_F_DEAD\n");
 
       ra->nh.iface = if_find_by_index(oif);
       if (!ra->nh.iface)
