@@ -164,9 +164,9 @@ docker_ubuntu-20_04-amd64:
     IMG_NAME: "ubuntu-20.04-amd64"
   <<: *docker_build
 
-docker_ubuntu-20_10-amd64:
+docker_ubuntu-21_10-amd64:
   variables:
-    IMG_NAME: "ubuntu-20.10-amd64"
+    IMG_NAME: "ubuntu-21.10-amd64"
   <<: *docker_build
 
 # GPG error
@@ -336,9 +336,9 @@ build-ubuntu-20_04-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
 
-build-ubuntu-20_10-amd64:
+build-ubuntu-21_10-amd64:
   <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-20.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-21.10-amd64
 
 #build-ubuntu-21_04-amd64:
 #  <<: *build-linux
@@ -490,10 +490,11 @@ pkg-ubuntu-20.04-amd64:
   needs: [build-ubuntu-20_04-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
 
-pkg-ubuntu-20.10-amd64:
+
+pkg-ubuntu-21.10-amd64:
   <<: *pkg-deb
-  needs: [build-ubuntu-20_10-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-20.10-amd64
+  needs: [build-ubuntu-21_10-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-21.10-amd64
 
 #pkg-ubuntu-21.04-amd64:
 #  <<: *pkg-deb
