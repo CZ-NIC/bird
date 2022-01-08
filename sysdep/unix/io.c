@@ -1436,6 +1436,10 @@ sk_open(sock *s)
 	if (sk_set_high_port(s) < 0)
 	  log(L_WARN "Socket error: %s%#m", s->err);
 
+    if (s->flags & SKF_FREEBIND)
+      if (sk_set_freebind(s) < 0)
+        log(L_WARN "Socket error: %s%#m", s->err);
+
     sockaddr_fill(&sa, s->af, bind_addr, s->iface, bind_port);
     if (bind(fd, &sa.sa, SA_LEN(sa)) < 0)
       ERR2("bind");
