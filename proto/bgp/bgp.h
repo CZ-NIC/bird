@@ -86,6 +86,7 @@ struct bgp_config {
   int peer_type;			/* Internal or external BGP (BGP_PT_*, optional) */
   int multihop;				/* Number of hops if multihop */
   int strict_bind;			/* Bind listening socket to local address */
+  int free_bind;			/* Bind listening socket with SKF_FREEBIND */
   int ttl_security;			/* Enable TTL security [RFC 5082] */
   int compare_path_lengths;		/* Use path lengths when selecting best route */
   int med_metric;			/* Compare MULTI_EXIT_DISC even between routes from differen ASes */

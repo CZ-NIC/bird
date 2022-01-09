@@ -157,6 +157,8 @@ bgp_open(struct bgp_proto *p)
   ip_addr addr = p->cf->strict_bind ? p->cf->local_ip :
     (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
   uint port = p->cf->local_port;
+  uint flags = p->cf->free_bind ? SKF_FREEBIND : 0;
+  uint flag_mask = SKF_FREEBIND;
 
   /* FIXME: Add some global init? */
   if (!bgp_linpool)
@@ -165,8 +167,11 @@ bgp_open(struct bgp_proto *p)
   /* We assume that cf->iface is defined iff cf->local_ip is link-local */
 
   WALK_LIST(bs, bgp_sockets)
-    if (ipa_equal(bs->sk->saddr, addr) && (bs->sk->sport == port) &&
-	(bs->sk->iface == ifa) && (bs->sk->vrf == p->p.vrf))
+    if (ipa_equal(bs->sk->saddr, addr) &&
+	(bs->sk->sport == port) &&
+	(bs->sk->iface == ifa) &&
+	(bs->sk->vrf == p->p.vrf) &&
+	((bs->sk->flags & flag_mask) == flags))
     {
       bs->uc++;
       p->sock = bs;
@@ -180,7 +185,7 @@ bgp_open(struct bgp_proto *p)
   sk->sport = port;
   sk->iface = ifa;
   sk->vrf = p->p.vrf;
-  sk->flags = 0;
+  sk->flags = flags;
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->rbsize = BGP_RX_BUFFER_SIZE;
   sk->tbsize = BGP_TX_BUFFER_SIZE;

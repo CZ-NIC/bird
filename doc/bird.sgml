@@ -2412,6 +2412,12 @@ using the following configuration parameters:
 	same address family and using the same local port) should have set
 	<cf/strict bind/, or none of them. Default: disabled.
 
+	<tag><label id="bgp-free-bind">free bind <m/switch/</tag>
+	Use IP_FREEBIND socket option for the listening socket, which allows
+	binding to an IP address not (yet) assigned to an interface. Note that
+	all BGP instances that share a listening socket should have the same
+	value of the <cf/freebind/ option. Default: disabled.
+
 	<tag><label id="bgp-check-link">check link <M>switch</M></tag>
 	BGP could use hardware link state into consideration.  If enabled,
 	BIRD tracks the link state of the associated interface and when link
