@@ -61,7 +61,7 @@ alloc_page(void)
     node *n = HEAD(fp->list);
     rem_node(n);
     if ((--fp->cnt < fp->min) && !shutting_down)
-      ev_send(&global_work_list, fp->cleanup);
+      ev_send(fp->cleanup->list, fp->cleanup);
 
     void *ptr = n - FP_NODE_OFFSET;
     memset(ptr, 0, page_size);
@@ -94,7 +94,7 @@ free_page(void *ptr)
     memset(n, 0, sizeof(node));
     add_tail(&fp->list, n);
     if ((++fp->cnt > fp->max) && !shutting_down)
-      ev_send(&global_work_list, fp->cleanup);
+      ev_send(fp->cleanup->list, fp->cleanup);
   }
   else
 #endif
@@ -108,18 +108,21 @@ free_page(void *ptr)
 void
 flush_pages(struct birdloop *loop)
 {
-  ASSERT_DIE(birdloop_inside(&main_birdloop));
+  ASSERT_DIE(birdloop_inside(loop->parent->loop));
 
-  add_tail_list(&GFP->list, &loop->pages.list);
-  GFP->cnt += loop->pages.cnt;
+  struct free_pages *fp = &loop->pages;
+  struct free_pages *pfp = &loop->parent->loop->pages;
+
+  add_tail_list(&pfp->list, &fp->list);
+  pfp->cnt += fp->cnt;
   
-  loop->pages.cnt = 0;
-  loop->pages.list = (list) {};
-  loop->pages.min = 0;
-  loop->pages.max = 0;
+  fp->cnt = 0;
+  fp->list = (list) {};
+  fp->min = 0;
+  fp->max = 0;
 
-  rfree(loop->pages.cleanup);
-  loop->pages.cleanup = NULL;
+  rfree(fp->cleanup);
+  fp->cleanup = NULL;
 }
 
 static void
@@ -128,15 +131,18 @@ cleanup_pages(void *data)
   struct birdloop *loop = data;
   birdloop_enter(loop);
 
-  struct free_pages *fp = &birdloop_current->pages;
+  ASSERT_DIE(birdloop_inside(loop->parent->loop));
 
-  while ((fp->cnt < fp->min) && (GFP->cnt > GFP->min))
+  struct free_pages *fp = &loop->pages;
+  struct free_pages *pfp = &loop->parent->loop->pages;
+
+  while ((fp->cnt < fp->min) && (pfp->cnt > pfp->min))
   {
-    node *n = HEAD(GFP->list);
+    node *n = HEAD(pfp->list);
     rem_node(n);
     add_tail(&fp->list, n);
     fp->cnt++;
-    GFP->cnt--;
+    pfp->cnt--;
   }
   
   while (fp->cnt < fp->min)
@@ -150,15 +156,15 @@ cleanup_pages(void *data)
   {
     node *n = HEAD(fp->list);
     rem_node(n);
-    add_tail(&GFP->list, n);
+    add_tail(&pfp->list, n);
     fp->cnt--;
-    GFP->cnt++;
+    pfp->cnt++;
   }
 
   birdloop_leave(loop);
 
-  if (!shutting_down && (GFP->cnt > GFP->max))
-    ev_send(&global_work_list, GFP->cleanup);
+  if (!shutting_down && (pfp->cnt > pfp->max))
+    ev_send(pfp->cleanup->list, pfp->cleanup);
 }
 
 static void
@@ -191,7 +197,8 @@ init_pages(struct birdloop *loop)
   struct free_pages *fp = &loop->pages;
 
   init_list(&fp->list);
-  fp->cleanup = ev_new_init(&root_pool, cleanup_pages, loop);
+  fp->cleanup = ev_new_init(loop->parent->loop->pool, cleanup_pages, loop);
+  fp->cleanup->list = (loop->parent->loop == &main_birdloop) ? &global_work_list : birdloop_event_list(loop->parent->loop);
   fp->min = 4;
   fp->max = 16;
 
@@ -202,7 +209,7 @@ init_pages(struct birdloop *loop)
   }
 }
 
-static event global_free_pages_cleanup_event = { .hook = cleanup_global_pages };
+static event global_free_pages_cleanup_event = { .hook = cleanup_global_pages, .list = &global_work_list };
 
 void resource_sys_init(void)
 {
