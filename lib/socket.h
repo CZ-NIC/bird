@@ -40,6 +40,7 @@ struct ssh_sock {
 typedef struct birdsock {
   resource r;
   pool *pool;				/* Pool where incoming connections should be allocated (for SK_xxx_PASSIVE) */
+  struct birdloop *loop;		/* The birdloop where this socket belongs to */
   int type;				/* Socket type */
   int subtype;				/* Socket subtype */
   void *data;				/* User data */

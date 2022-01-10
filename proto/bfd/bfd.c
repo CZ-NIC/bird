@@ -1025,6 +1025,7 @@ bfd_notify_init(struct bfd_proto *p)
   sk->fd = pfds[1];
   sk->data = p;
   sk->flags = SKF_THREAD;
+  sk->loop = p->p.loop;
   if (sk_open(sk) < 0)
     die("bfd: sk_open failed");
   p->notify_ws = sk;

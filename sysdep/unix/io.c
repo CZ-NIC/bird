@@ -794,6 +794,7 @@ sk_free(resource *r)
 {
   sock *s = (sock *) r;
 
+  ASSERT_DIE(!s->loop || birdloop_inside(s->loop));
   sk_free_bufs(s);
 
 #ifdef HAVE_LIBSSH
@@ -804,13 +805,20 @@ sk_free(resource *r)
   if ((s->fd < 0) || (s->flags & SKF_THREAD))
     return;
 
-  if (s == current_sock)
-    current_sock = sk_next(s);
-  if (s == stored_sock)
-    stored_sock = sk_next(s);
+  if (!s->loop)
+    ;
+  else if (s->flags & SKF_THREAD)
+    sk_stop(s);
+  else
+  {
+    if (s == current_sock)
+      current_sock = sk_next(s);
+    if (s == stored_sock)
+      stored_sock = sk_next(s);
 
-  if (enlisted(&s->n))
-    rem_node(&s->n);
+    if (enlisted(&s->n))
+      rem_node(&s->n);
+  }
 
   if (s->type != SK_SSH && s->type != SK_SSH_ACTIVE)
     close(s->fd);
@@ -1106,7 +1114,11 @@ sk_passive_connected(sock *s, int type)
   if (s->flags & SKF_PASSIVE_THREAD)
     t->flags |= SKF_THREAD;
   else
+  {
+    ASSERT_DIE(s->loop == &main_birdloop);
+    t->loop = &main_birdloop;
     sk_insert(t);
+  }
 
   sk_alloc_bufs(t);
   s->rx_hook(t, 0);
@@ -1328,6 +1340,17 @@ sk_open(sock *s)
   ip_addr bind_addr = IPA_NONE;
   sockaddr sa;
 
+  if (s->flags & SKF_THREAD)
+  {
+    ASSERT_DIE(s->loop && (s->loop != &main_birdloop));
+    ASSERT_DIE(birdloop_inside(s->loop));
+  }
+  else
+  {
+    ASSERT_DIE(!s->loop);
+    s->loop = &main_birdloop;
+  }
+
   if (s->type <= SK_IP)
   {
     /*
@@ -1507,6 +1530,7 @@ sk_open_unix(sock *s, char *name)
     return -1;
 
   s->fd = fd;
+  s->loop = &main_birdloop;
   sk_insert(s);
   return 0;
 }

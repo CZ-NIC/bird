@@ -170,9 +170,12 @@ sockets_init(struct birdloop *loop)
 static void
 sockets_add(struct birdloop *loop, sock *s)
 {
+  ASSERT_DIE(!enlisted(&s->n));
+
   add_tail(&loop->sock_list, &s->n);
   loop->sock_num++;
 
+  s->loop = loop;
   s->index = -1;
   loop->poll_changed = 1;
 
@@ -189,6 +192,11 @@ sk_start(sock *s)
 static void
 sockets_remove(struct birdloop *loop, sock *s)
 {
+  ASSERT_DIE(s->loop == loop);
+
+  if (!enlisted(&s->n))
+    return;
+
   rem_node(&s->n);
   loop->sock_num--;
 
@@ -197,11 +205,10 @@ sockets_remove(struct birdloop *loop, sock *s)
     loop->poll_sk.data[s->index] = NULL;
     s->index = -1;
     loop->poll_changed = 1;
-    loop->close_scheduled = 1;
     birdloop_ping(loop);
   }
-  else
-    close(s->fd);
+
+  s->loop = NULL;
 }
 
 void
@@ -263,21 +270,6 @@ sockets_prepare(struct birdloop *loop)
   loop->poll_changed = 0;
 }
 
-static void
-sockets_close_fds(struct birdloop *loop)
-{
-  struct pollfd *pfd = loop->poll_fd.data;
-  sock **psk = loop->poll_sk.data;
-  int poll_num = loop->poll_fd.used - 1;
-
-  int i;
-  for (i = 0; i < poll_num; i++)
-    if (psk[i] == NULL)
-      close(pfd[i].fd);
-
-  loop->close_scheduled = 0;
-}
-
 int sk_read(sock *s, int revents);
 int sk_write(sock *s);
 
@@ -297,13 +289,16 @@ sockets_fire(struct birdloop *loop)
   int i;
   for (i = 0; i < poll_num; pfd++, psk++, i++)
   {
-    int e = 1;
+    if (!*psk)
+      continue;
 
     if (! pfd->revents)
       continue;
 
     if (pfd->revents & POLLNVAL)
-      die("poll: invalid fd %d", pfd->fd);
+      bug("poll: invalid fd %d", pfd->fd);
+
+    int e = 1;
 
     if (pfd->revents & POLLIN)
       while (e && *psk && (*psk)->rx_hook)
@@ -545,9 +540,6 @@ birdloop_main(void *arg)
     }
 
     birdloop_enter(loop);
-
-    if (loop->close_scheduled)
-      sockets_close_fds(loop);
 
     if (loop->stopped)
       break;
