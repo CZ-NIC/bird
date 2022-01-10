@@ -1799,7 +1799,7 @@ babel_remove_iface(struct babel_proto *p, struct babel_iface *ifa)
 
   rem_node(NODE ifa);
 
-  rfree(ifa->pool); /* contains ifa itself, locks, socket, etc */
+  rp_free(ifa->pool, p->p.pool);  /* contains ifa itself, locks, socket, etc */
 }
 
 static int
