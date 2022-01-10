@@ -124,11 +124,8 @@
 
 #include "bgp.h"
 
-
-struct linpool *bgp_linpool;		/* Global temporary pool */
-struct linpool *bgp_linpool2;		/* Global temporary pool for bgp_rt_notify() */
-static list bgp_sockets;		/* Global list of listening sockets */
-
+/* Global list of listening sockets */
+static list STATIC_LIST_INIT(bgp_sockets);
 
 static void bgp_connect(struct bgp_proto *p);
 static void bgp_active(struct bgp_proto *p);
@@ -167,10 +164,6 @@ bgp_open(struct bgp_proto *p)
     (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
   uint port = p->cf->local_port;
 
-  /* FIXME: Add some global init? */
-  if (!bgp_linpool)
-    init_list(&bgp_sockets);
-
   /* We assume that cf->iface is defined iff cf->local_ip is link-local */
 
   WALK_LIST(bs, bgp_sockets)
@@ -207,12 +200,6 @@ bgp_open(struct bgp_proto *p)
 
   add_tail(&bgp_sockets, &bs->n);
 
-  if (!bgp_linpool)
-  {
-    bgp_linpool  = lp_new_default(proto_pool);
-    bgp_linpool2 = lp_new_default(proto_pool);
-  }
-
   return 0;
 
 err:
@@ -241,15 +228,6 @@ bgp_close(struct bgp_proto *p)
   rfree(bs->sk);
   rem_node(&bs->n);
   mb_free(bs);
-
-  if (!EMPTY_LIST(bgp_sockets))
-    return;
-
-  rfree(bgp_linpool);
-  bgp_linpool = NULL;
-
-  rfree(bgp_linpool2);
-  bgp_linpool2 = NULL;
 }
 
 static inline int
@@ -1601,6 +1579,8 @@ bgp_start(struct proto *P)
   p->event = ev_new_init(p->p.pool, bgp_decision, p);
   p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
   p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
+
+  p->rx_lp = lp_new_default(p->p.pool);
 
   p->local_id = proto_get_router_id(P->cf);
   if (p->rr_client)

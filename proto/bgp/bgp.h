@@ -312,6 +312,7 @@ struct bgp_proto {
   struct bgp_conn *conn;		/* Connection we have established */
   struct bgp_conn outgoing_conn;	/* Outgoing connection we're working with */
   struct bgp_conn incoming_conn;	/* Incoming connection we have neither accepted nor rejected yet */
+  struct linpool *rx_lp;		/* Linpool for parsing received updates */
   struct object_lock *lock;		/* Lock for neighbor connection */
   struct neighbor *neigh;		/* Neighbor entry corresponding to remote ip, NULL if multihop */
   struct bgp_socket *sock;		/* Shared listening socket */
@@ -493,9 +494,6 @@ bgp_parse_error(struct bgp_parse_state *s, uint subcode)
   s->err_subcode = subcode;
   longjmp(s->err_jmpbuf, 1);
 }
-
-extern struct linpool *bgp_linpool;
-extern struct linpool *bgp_linpool2;
 
 
 void bgp_start_timer(timer *t, uint value);

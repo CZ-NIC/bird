@@ -42,6 +42,7 @@ typedef union list {			/* In fact two overlayed nodes */
   };
 } list;
 
+#define STATIC_LIST_INIT(name)	name = { .head = &name.tail_node, .tail = &name.head_node, .null = NULL }
 
 #define NODE (node *)
 #define HEAD(list) ((void *)((list).head))

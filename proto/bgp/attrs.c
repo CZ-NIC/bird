@@ -1847,13 +1847,11 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
 
   if (new)
   {
-    struct ea_list *attrs = bgp_update_attrs(p, c, new, new->attrs->eattrs, bgp_linpool2);
+    struct ea_list *attrs = bgp_update_attrs(p, c, new, new->attrs->eattrs, C->rte_update_pool);
 
     /* If attributes are invalid, we fail back to withdraw */
     buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
     path = new->src->global_id;
-
-    lp_flush(bgp_linpool2);
   }
   else
   {
@@ -2293,14 +2291,14 @@ bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt
       rte_import(&c->c.in_req, n, &e0, r->src);
 
     else {
-      rta *a = e0.attrs = rta_do_cow(r->attrs, bgp_linpool);
+      rta *a = e0.attrs = rta_do_cow(r->attrs, c->c.rte_update_pool);
 
-      bgp_set_attr_ptr(&(a->eattrs), bgp_linpool, BA_COMMUNITY, flags,
-	  int_set_add(bgp_linpool, ad, BGP_COMM_LLGR_STALE));
+      bgp_set_attr_ptr(&(a->eattrs), c->c.rte_update_pool, BA_COMMUNITY, flags,
+	  int_set_add(c->c.rte_update_pool, ad, BGP_COMM_LLGR_STALE));
       e0.pflags |= BGP_REF_STALE;
 
       rte_import(&c->c.in_req, n, &e0, r->src);
-      lp_flush(bgp_linpool);
+      lp_flush(c->c.rte_update_pool);
     }
   } while (count);
 }
