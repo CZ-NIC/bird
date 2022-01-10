@@ -322,7 +322,8 @@ struct bgp_proto {
   btime last_established;		/* Last time of enter/leave of established state */
   btime last_rx_update;			/* Last time of RX update */
   ip_addr link_addr;			/* Link-local version of local_ip */
-  event *event;				/* Event for respawning and shutting process */
+  event *active_event;			/* Event for respawning */
+  event *down_event;			/* Event to shut down */
   timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */
   timer *gr_timer;			/* Timer waiting for reestablishment after graceful restart */
   int dynamic_name_counter;		/* Counter for dynamic BGP names */
@@ -496,7 +497,7 @@ bgp_parse_error(struct bgp_parse_state *s, uint subcode)
 }
 
 
-void bgp_start_timer(timer *t, uint value);
+void bgp_start_timer(struct bgp_proto *p, timer *t, uint value);
 void bgp_check_config(struct bgp_config *c);
 void bgp_error(struct bgp_conn *c, unsigned code, unsigned subcode, byte *data, int len);
 void bgp_close_conn(struct bgp_conn *c);
@@ -760,5 +761,10 @@ void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 #define ORIGIN_EGP		1
 #define ORIGIN_INCOMPLETE	2
 
+/* Loop */
+
+#define BGP_ENTER(bgp)	birdloop_enter(bgp->p.loop)
+#define BGP_LEAVE(bgp)	birdloop_leave(bgp->p.loop)
+#define BGP_ASSERT_INSIDE(bgp)	ASSERT_DIE((bgp->p.loop != &main_birdloop) && birdloop_inside(bgp->p.loop))
 
 #endif

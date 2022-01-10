@@ -158,6 +158,8 @@ static inline void channel_refresh_end_reload(struct channel *c)
 static int
 bgp_open(struct bgp_proto *p)
 {
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+
   struct bgp_socket *bs = NULL;
   struct iface *ifa = p->cf->strict_bind ? p->cf->iface : NULL;
   ip_addr addr = p->cf->strict_bind ? p->cf->local_ip :
@@ -182,7 +184,7 @@ bgp_open(struct bgp_proto *p)
   sk->sport = port;
   sk->iface = ifa;
   sk->vrf = p->p.vrf;
-  sk->flags = 0;
+  sk->flags = SKF_PASSIVE_THREAD;
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->rbsize = BGP_RX_BUFFER_SIZE;
   sk->tbsize = BGP_TX_BUFFER_SIZE;
@@ -218,6 +220,7 @@ err:
 static void
 bgp_close(struct bgp_proto *p)
 {
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
   struct bgp_socket *bs = p->sock;
 
   ASSERT(bs && bs->uc);
@@ -312,7 +315,7 @@ bgp_initiate(struct bgp_proto *p)
   {
     p->start_state = BSS_DELAY;
     BGP_TRACE(D_EVENTS, "Startup delayed by %d seconds due to errors", p->startup_delay);
-    bgp_start_timer(p->startup_timer, p->startup_delay);
+    bgp_start_timer(p, p->startup_timer, p->startup_delay);
   }
   else
     bgp_startup(p);
@@ -333,6 +336,7 @@ err1:
 
 /**
  * bgp_start_timer - start a BGP timer
+ * @p: bgp_proto which the timer belongs to
  * @t: timer
  * @value: time (in seconds) to fire (0 to disable the timer)
  *
@@ -341,14 +345,16 @@ err1:
  * timers.
  */
 void
-bgp_start_timer(timer *t, uint value)
+bgp_start_timer(struct bgp_proto *p, timer *t, uint value)
 {
+  BGP_ASSERT_INSIDE(p);
+
   if (value)
   {
     /* The randomization procedure is specified in RFC 4271 section 10 */
     btime time = value S;
     btime randomize = random() % ((time / 4) + 1);
-    tm_start(t, time - randomize);
+    tm_start_in(t, time - randomize, p->p.loop);
   }
   else
     tm_stop(t);
@@ -364,7 +370,7 @@ bgp_start_timer(timer *t, uint value)
 void
 bgp_close_conn(struct bgp_conn *conn)
 {
-  // struct bgp_proto *p = conn->bgp;
+  BGP_ASSERT_INSIDE(conn->bgp);
 
   DBG("BGP: Closing connection\n");
   conn->packets_to_send = 0;
@@ -456,6 +462,8 @@ bgp_graceful_close_conn(struct bgp_conn *conn, int subcode, byte *data, uint len
 static void
 bgp_down(struct bgp_proto *p)
 {
+  bgp_start_timer(p, p->startup_timer, 0);
+
   if (p->start_state > BSS_PREPARE)
   {
     bgp_setup_auth(p, 0);
@@ -469,21 +477,34 @@ bgp_down(struct bgp_proto *p)
 }
 
 static void
-bgp_decision(void *vp)
+bgp_active_event(void *vp)
 {
   struct bgp_proto *p = vp;
 
-  DBG("BGP: Decision start\n");
+  BGP_ASSERT_INSIDE(p);
+
+  DBG("%s: Decision start\n", p->p.name);
   if ((p->p.proto_state == PS_START) &&
       (p->outgoing_conn.state == BS_IDLE) &&
       (p->incoming_conn.state != BS_OPENCONFIRM) &&
       !p->passive)
     bgp_active(p);
+}
 
+static void
+bgp_down_event(void *vp)
+{
+  struct bgp_proto *p = vp;
+
+  BGP_ENTER(p);
+
+  DBG("%s: Down event\n", p->p.name);
   if ((p->p.proto_state == PS_STOP) &&
       (p->outgoing_conn.state == BS_IDLE) &&
       (p->incoming_conn.state == BS_IDLE))
     bgp_down(p);
+
+  BGP_LEAVE(p);
 }
 
 static struct bgp_proto *
@@ -515,7 +536,7 @@ bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
   proto_notify_state(&p->p, PS_STOP);
   bgp_graceful_close_conn(&p->outgoing_conn, subcode, data, len);
   bgp_graceful_close_conn(&p->incoming_conn, subcode, data, len);
-  ev_schedule(p->event);
+  ev_send_loop(&main_birdloop, p->down_event);
 }
 
 static inline void
@@ -707,7 +728,7 @@ bgp_conn_enter_close_state(struct bgp_conn *conn)
   conn->sk->rx_hook = NULL;
 
   /* Timeout for CLOSE state, if we cannot send notification soon then we just hangup */
-  bgp_start_timer(conn->hold_timer, 10);
+  bgp_start_timer(p, conn->hold_timer, 10);
 
   if (os == BS_ESTABLISHED)
     bgp_conn_leave_established_state(p);
@@ -721,7 +742,8 @@ bgp_conn_enter_idle_state(struct bgp_conn *conn)
 
   bgp_close_conn(conn);
   bgp_conn_set_state(conn, BS_IDLE);
-  ev_schedule(p->event);
+  ev_send_loop(p->p.loop, p->active_event);
+  ev_send_loop(&main_birdloop, p->down_event);
 
   if (os == BS_ESTABLISHED)
     bgp_conn_leave_established_state(p);
@@ -796,7 +818,7 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
   ASSERT(p->gr_active_num > 0);
 
   proto_notify_state(&p->p, PS_START);
-  tm_start(p->gr_timer, p->conn->remote_caps->gr_time S);
+  tm_start_in(p->gr_timer, p->conn->remote_caps->gr_time S, p->p.loop);
 }
 
 static void
@@ -911,7 +933,7 @@ bgp_graceful_restart_timeout(timer *t)
 
       /* Channel is in GR, and supports LLGR -> start LLGR */
       c->gr_active = BGP_GRS_LLGR;
-      tm_start(c->stale_timer, c->stale_time S);
+      tm_start_in(c->stale_timer, c->stale_time S, p->p.loop);
       bgp_graceful_restart_feed(c);
     }
   }
@@ -988,7 +1010,7 @@ bgp_send_open(struct bgp_conn *conn)
   bgp_prepare_capabilities(conn);
   bgp_schedule_packet(conn, NULL, PKT_OPEN);
   bgp_conn_set_state(conn, BS_OPENSENT);
-  bgp_start_timer(conn->hold_timer, conn->bgp->cf->initial_hold_time);
+  bgp_start_timer(conn->bgp, conn->hold_timer, conn->bgp->cf->initial_hold_time);
 }
 
 static void
@@ -1065,7 +1087,7 @@ bgp_hold_timeout(timer *t)
      and perhaps just not processed BGP packets in time. */
 
   if (sk_rx_ready(conn->sk) > 0)
-    bgp_start_timer(conn->hold_timer, 10);
+    bgp_start_timer(p, conn->hold_timer, 10);
   else if ((conn->state == BS_ESTABLISHED) && p->llgr_ready)
   {
     BGP_TRACE(D_EVENTS, "Hold timer expired");
@@ -1110,10 +1132,12 @@ bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn)
 static void
 bgp_setup_sk(struct bgp_conn *conn, sock *s)
 {
+  ASSERT_DIE(s->flags & SKF_THREAD);
   s->data = conn;
   s->err_hook = bgp_sock_err;
   s->fast_rx = 1;
   conn->sk = s;
+  sk_start(s);
 }
 
 static void
@@ -1122,10 +1146,12 @@ bgp_active(struct bgp_proto *p)
   int delay = MAX(1, p->cf->connect_delay_time);
   struct bgp_conn *conn = &p->outgoing_conn;
 
+  BGP_ASSERT_INSIDE(p);
+
   BGP_TRACE(D_EVENTS, "Connect delayed by %d seconds", delay);
   bgp_setup_conn(p, conn);
   bgp_conn_set_state(conn, BS_ACTIVE);
-  bgp_start_timer(conn->connect_timer, delay);
+  bgp_start_timer(p, conn->connect_timer, delay);
 }
 
 /**
@@ -1142,9 +1168,12 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   struct bgp_conn *conn = &p->outgoing_conn;
   int hops = p->cf->multihop ? : 1;
 
+  BGP_ASSERT_INSIDE(p);
+
   DBG("BGP: Connecting\n");
   sock *s = sk_new(p->p.pool);
   s->type = SK_TCP_ACTIVE;
+  s->flags |= SKF_THREAD;
   s->saddr = p->local_ip;
   s->daddr = p->remote_ip;
   s->dport = p->cf->remote_port;
@@ -1172,7 +1201,7 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
       goto err;
 
   DBG("BGP: Waiting for connect success\n");
-  bgp_start_timer(conn->connect_timer, p->cf->connect_retry_time);
+  bgp_start_timer(p, conn->connect_timer, p->cf->connect_retry_time);
   return;
 
 err:
@@ -1244,6 +1273,8 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     return 0;
   }
 
+  BGP_ENTER(p);
+
   /*
    * BIRD should keep multiple incoming connections in OpenSent state (for
    * details RFC 4271 8.2.1 par 3), but it keeps just one. Duplicate incoming
@@ -1273,6 +1304,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   if (!acc)
   {
     rfree(sk);
+    BGP_LEAVE(p);
     return 0;
   }
 
@@ -1298,6 +1330,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     p = bgp_spawn(p, sk->daddr);
     p->postponed_sk = sk;
     rmove(sk, p->p.pool);
+    BGP_LEAVE(p);
     return 0;
   }
 
@@ -1305,12 +1338,14 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   bgp_setup_conn(p, &p->incoming_conn);
   bgp_setup_sk(&p->incoming_conn, sk);
   bgp_send_open(&p->incoming_conn);
+  BGP_LEAVE(p);
   return 0;
 
 err:
   sk_log_error(sk, p->p.name);
   log(L_ERR "%s: Incoming connection aborted", p->p.name);
   rfree(sk);
+  BGP_LEAVE(p);
   return 0;
 }
 
@@ -1345,10 +1380,9 @@ bgp_neigh_notify(neighbor *n)
   struct bgp_proto *p = (struct bgp_proto *) n->proto;
   int ps = p->p.proto_state;
 
-  if (n != p->neigh)
-    return;
+  BGP_ASSERT_INSIDE(p);
 
-  if ((ps == PS_DOWN) || (ps == PS_STOP))
+  if ((n != p->neigh) || (ps == PS_DOWN) || (ps == PS_STOP))
     return;
 
   int prepare = (ps == PS_START) && (p->start_state == BSS_PREPARE);
@@ -1504,9 +1538,12 @@ bgp_start_locked(struct object_lock *lock)
   struct bgp_proto *p = lock->data;
   const struct bgp_config *cf = p->cf;
 
+  BGP_ENTER(p);
+
   if (p->p.proto_state != PS_START)
   {
     DBG("BGP: Got lock in different state %d\n", p->p.proto_state);
+    BGP_LEAVE(p);
     return;
   }
 
@@ -1516,6 +1553,7 @@ bgp_start_locked(struct object_lock *lock)
   {
     /* Multi-hop sessions do not use neighbor entries */
     bgp_initiate(p);
+    BGP_LEAVE(p);
     return;
   }
 
@@ -1527,6 +1565,7 @@ bgp_start_locked(struct object_lock *lock)
     p->p.disabled = 1;
     bgp_store_error(p, NULL, BE_MISC, BEM_INVALID_NEXT_HOP);
     proto_notify_state(&p->p, PS_DOWN);
+    BGP_LEAVE(p);
     return;
   }
 
@@ -1538,6 +1577,8 @@ bgp_start_locked(struct object_lock *lock)
     BGP_TRACE(D_EVENTS, "Waiting for link on %s", n->iface->name);
   else
     bgp_start_neighbor(p);
+
+  BGP_LEAVE(p);
 }
 
 static int
@@ -1576,7 +1617,8 @@ bgp_start(struct proto *P)
   p->stats.rx_bytes = p->stats.tx_bytes = 0;
   p->last_rx_update = 0;
 
-  p->event = ev_new_init(p->p.pool, bgp_decision, p);
+  p->active_event = ev_new_init(p->p.pool, bgp_active_event, p);
+  p->down_event = ev_new_init(p->p.pool, bgp_down_event, p);
   p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
   p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
 
@@ -2471,6 +2513,9 @@ static void
 bgp_show_proto_info(struct proto *P)
 {
   struct bgp_proto *p = (struct bgp_proto *) P;
+
+  if (p->p.proto_state != PS_DOWN)
+    BGP_ASSERT_INSIDE(p);
 
   cli_msg(-1006, "  BGP state:          %s", bgp_state_dsc(p));
 
