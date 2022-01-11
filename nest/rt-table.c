@@ -2308,16 +2308,13 @@ rt_prune_table(void *data)
   if (tab->prune_state == 0)
     return;
 
+  if (tab->delete && !rt_fast_prune_ready(tab))
+    return;
+
   rt_lock_table(tab);
 
   if (tab->prune_state == 1)
   {
-    if (tab->delete && !rt_fast_prune_ready(tab))
-    {
-      rt_unlock_table(tab);
-      return;
-    }
-
     /* Mark channels to flush */
     WALK_LIST2(ih, n, tab->imports, n)
       if (ih->import_state == TIS_STOP)
