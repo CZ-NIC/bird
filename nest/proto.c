@@ -70,17 +70,6 @@ static inline event_list *proto_work_list(struct proto *p)
 static inline void proto_send_event(struct proto *p)
 { ev_send(proto_event_list(p), p->event); }
 
-#define PROTO_ENTER_FROM_MAIN(p)    ({ \
-    ASSERT_DIE(birdloop_inside(&main_birdloop)); \
-    struct birdloop *_loop = (p)->loop; \
-    if (_loop != &main_birdloop) birdloop_enter(_loop); \
-    _loop; \
-    })
-
-#define PROTO_LEAVE_FROM_MAIN(loop) ({ if (loop != &main_birdloop) birdloop_leave(loop); })
-
-#define PROTO_LOCKED_FROM_MAIN(p)	for (struct birdloop *_proto_loop = PROTO_ENTER_FROM_MAIN(p); _proto_loop; PROTO_LEAVE_FROM_MAIN(_proto_loop), (_proto_loop = NULL))
-
 
 static inline int channel_is_active(struct channel *c)
 { return (c->channel_state != CS_DOWN); }
@@ -2389,6 +2378,8 @@ static struct rte_owner_class default_rte_owner_class;
 static inline void
 proto_do_start(struct proto *p)
 {
+  ASSERT_DIE(birdloop_inside(p->loop));
+
   p->active = 1;
 
   rt_init_sources(&p->sources, p->name, proto_work_list(p));
@@ -2402,6 +2393,8 @@ proto_do_start(struct proto *p)
 static void
 proto_do_up(struct proto *p)
 {
+  ASSERT_DIE(birdloop_inside(p->loop));
+
   if (!p->main_source)
     p->main_source = rt_get_source(p, 0);
     // Locked automaticaly

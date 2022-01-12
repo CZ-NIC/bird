@@ -268,6 +268,18 @@ struct proto *proto_iterate_named(struct symbol *sym, struct protocol *proto, st
 #define PROTO_WALK_CMD(sym,pr,p) for(struct proto *p = NULL; p = proto_iterate_named(sym, pr, p); )
 
 
+#define PROTO_ENTER_FROM_MAIN(p)    ({ \
+    ASSERT_DIE(birdloop_inside(&main_birdloop)); \
+    struct birdloop *_loop = (p)->loop; \
+    if (_loop != &main_birdloop) birdloop_enter(_loop); \
+    _loop; \
+    })
+
+#define PROTO_LEAVE_FROM_MAIN(loop) ({ if (loop != &main_birdloop) birdloop_leave(loop); })
+
+#define PROTO_LOCKED_FROM_MAIN(p)	for (struct birdloop *_proto_loop = PROTO_ENTER_FROM_MAIN(p); _proto_loop; PROTO_LEAVE_FROM_MAIN(_proto_loop), (_proto_loop = NULL))
+
+
 #define CMD_RELOAD	0
 #define CMD_RELOAD_IN	1
 #define CMD_RELOAD_OUT	2

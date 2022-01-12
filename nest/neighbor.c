@@ -210,6 +210,8 @@ if_intersect(struct iface *ia, struct iface *ib)
 neighbor *
 neigh_find(struct proto *p, ip_addr a, struct iface *iface, uint flags)
 {
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+
   neighbor *n;
   int class, scope = -1;
   uint h = neigh_hash(p, a, iface);
@@ -308,8 +310,12 @@ neigh_dump_all(void)
 static inline void
 neigh_notify(neighbor *n)
 {
-  if (n->proto->neigh_notify && (n->proto->proto_state != PS_STOP))
-    n->proto->neigh_notify(n);
+  if (!n->proto->neigh_notify)
+    return;
+
+  PROTO_LOCKED_FROM_MAIN(n->proto)
+    if (n->proto->proto_state != PS_STOP)
+      n->proto->neigh_notify(n);
 }
 
 static void

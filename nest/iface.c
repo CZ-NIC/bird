@@ -166,7 +166,8 @@ ifa_notify_change_(unsigned c, struct ifa *a)
   DBG("IFA change notification (%x) for %s:%I\n", c, a->iface->name, a->ip);
 
   WALK_LIST(p, proto_list)
-    ifa_send_notify(p, c, a);
+    PROTO_LOCKED_FROM_MAIN(p)
+      ifa_send_notify(p, c, a);
 }
 
 static inline void
@@ -226,7 +227,8 @@ if_notify_change(unsigned c, struct iface *i)
       ifa_notify_change_(IF_CHANGE_DOWN, a);
 
   WALK_LIST(p, proto_list)
-    if_send_notify(p, c, i);
+    PROTO_LOCKED_FROM_MAIN(p)
+      if_send_notify(p, c, i);
 
   if (c & IF_CHANGE_UP)
     WALK_LIST(a, i->addrs)
