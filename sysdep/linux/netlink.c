@@ -1535,7 +1535,8 @@ nl_parse_end(struct nl_parse_state *s)
 }
 
 
-#define SKIP(ARG...) do { DBG("KRT: Ignoring route - " ARG); return; } while(0)
+#define SKIP0(ARG, ...) do { DBG("KRT: Ignoring route - " ARG, ##__VA_ARGS__); return; } while(0)
+#define SKIP(ARG, ...)  do { DBG("KRT: Ignoring route %N - " ARG, &dst, ##__VA_ARGS__); return; } while(0)
 
 static void
 nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
@@ -1588,10 +1589,10 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	return;
 
       if (!a[RTA_DST])
-	SKIP("MPLS route without RTA_DST");
+	SKIP0("MPLS route without RTA_DST\n");
 
       if (rta_get_mpls(a[RTA_DST], rta_mpls_stack) != 1)
-	SKIP("MPLS route with multi-label RTA_DST");
+	SKIP0("MPLS route with multi-label RTA_DST\n");
 
       net_fill_mpls(&dst, rta_mpls_stack[0]);
       break;
@@ -1608,6 +1609,9 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
     table_id = rta_get_u32(a[RTA_TABLE]);
   else
     table_id = i->rtm_table;
+
+  if (i->rtm_flags & RTM_F_CLONED)
+    SKIP("cloned\n");
 
   /* Do we know this table? */
   p = HASH_FIND(nl_table_map, RTH, i->rtm_family, table_id);
