@@ -69,6 +69,10 @@
 #define RTA_ENCAP  22
 #endif
 
+#ifndef NETLINK_GET_STRICT_CHK
+#define NETLINK_GET_STRICT_CHK 12
+#endif
+
 #define krt_ipv4(p) ((p)->af == AF_INET)
 #define krt_ecmp6(p) ((p)->af == AF_INET6)
 
