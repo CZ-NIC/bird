@@ -130,7 +130,7 @@ struct nl_sock
   uint last_size;
 };
 
-#define NL_RX_SIZE 8192
+#define NL_RX_SIZE 32768
 
 #define NL_OP_DELETE	0
 #define NL_OP_ADD	(NLM_F_CREATE|NLM_F_EXCL)
@@ -158,10 +158,18 @@ nl_open_sock(struct nl_sock *nl)
 }
 
 static void
+nl_set_strict_dump(struct nl_sock *nl, int strict)
+{
+  setsockopt(nl->fd, SOL_NETLINK, NETLINK_GET_STRICT_CHK, &strict, sizeof(strict));
+}
+
+static void
 nl_open(void)
 {
   nl_open_sock(&nl_scan);
   nl_open_sock(&nl_req);
+
+  nl_set_strict_dump(&nl_scan, 1);
 }
 
 static void
@@ -180,19 +188,59 @@ nl_send(struct nl_sock *nl, struct nlmsghdr *nh)
 }
 
 static void
-nl_request_dump(int af, int cmd)
+nl_request_dump_link(void)
 {
   struct {
     struct nlmsghdr nh;
-    struct rtgenmsg g;
+    struct ifinfomsg ifi;
   } req = {
-    .nh.nlmsg_type = cmd,
-    .nh.nlmsg_len = sizeof(req),
+    .nh.nlmsg_type = RTM_GETLINK,
+    .nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg)),
     .nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP,
-    .g.rtgen_family = af
+    .nh.nlmsg_seq = ++(nl_scan.seq),
+    .ifi.ifi_family = AF_UNSPEC,
   };
-  nl_send(&nl_scan, &req.nh);
+
+  send(nl_scan.fd, &req, sizeof(req), 0);
+  nl_scan.last_hdr = NULL;
 }
+
+static void
+nl_request_dump_addr(int af)
+{
+  struct {
+    struct nlmsghdr nh;
+    struct ifaddrmsg ifa;
+  } req = {
+    .nh.nlmsg_type = RTM_GETADDR,
+    .nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg)),
+    .nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP,
+    .nh.nlmsg_seq = ++(nl_scan.seq),
+    .ifa.ifa_family = af,
+  };
+
+  send(nl_scan.fd, &req, sizeof(req), 0);
+  nl_scan.last_hdr = NULL;
+}
+
+static void
+nl_request_dump_route(int af)
+{
+  struct {
+    struct nlmsghdr nh;
+    struct rtmsg rtm;
+  } req = {
+    .nh.nlmsg_type = RTM_GETROUTE,
+    .nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg)),
+    .nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP,
+    .nh.nlmsg_seq = ++(nl_scan.seq),
+    .rtm.rtm_family = af,
+  };
+
+  send(nl_scan.fd, &req, sizeof(req), 0);
+  nl_scan.last_hdr = NULL;
+}
+
 
 static struct nlmsghdr *
 nl_get_reply(struct nl_sock *nl)
@@ -1151,7 +1199,7 @@ kif_do_scan(struct kif_proto *p UNUSED)
 
   if_start_update();
 
-  nl_request_dump(AF_UNSPEC, RTM_GETLINK);
+  nl_request_dump_link();
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWLINK || h->nlmsg_type == RTM_DELLINK)
       nl_parse_link(h, 1);
@@ -1178,14 +1226,14 @@ kif_do_scan(struct kif_proto *p UNUSED)
       }
     }
 
-  nl_request_dump(AF_INET, RTM_GETADDR);
+  nl_request_dump_addr(AF_INET);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
       nl_parse_addr(h, 1);
     else
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
 
-  nl_request_dump(AF_INET6, RTM_GETADDR);
+  nl_request_dump_addr(AF_INET6);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWADDR || h->nlmsg_type == RTM_DELADDR)
       nl_parse_addr(h, 1);
@@ -1902,7 +1950,7 @@ krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NUL
   struct nl_parse_state s;
 
   nl_parse_begin(&s, 1);
-  nl_request_dump(AF_UNSPEC, RTM_GETROUTE);
+  nl_request_dump_route(AF_UNSPEC);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
       nl_parse_route(&s, h);
