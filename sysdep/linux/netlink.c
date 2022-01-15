@@ -164,7 +164,14 @@ nl_open_sock(struct nl_sock *nl)
 static void
 nl_set_strict_dump(struct nl_sock *nl, int strict)
 {
+  /*
+   * Strict checking is not necessary, it improves behavior on newer kernels.
+   * If it is not available (missing SOL_NETLINK compile-time, or ENOPROTOOPT
+   * run-time), we can just ignore it.
+   */
+#ifdef SOL_NETLINK
   setsockopt(nl->fd, SOL_NETLINK, NETLINK_GET_STRICT_CHK, &strict, sizeof(strict));
+#endif
 }
 
 static void
