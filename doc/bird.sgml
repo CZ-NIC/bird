@@ -3248,6 +3248,12 @@ channels.
 	allows to specify a limit on maximal number of nexthops in one route. By
 	default, multipath merging is disabled. If enabled, default value of the
 	limit is 16.
+
+	<tag><label id="krt-netlink-rx-buffer">netlink rx buffer <m/number/</tag> (Linux)
+	Set kernel receive buffer size (in bytes) for the netlink socket. The default
+	value is OS-dependent (from the <file>/proc/sys/net/core/rmem_default</file>
+	file), If you get some "Kernel dropped some netlink message ..." warnings,
+	you may increase this value.
 </descrip>
 
 <sect1>Attributes
