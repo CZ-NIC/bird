@@ -2051,6 +2051,7 @@ static btime loop_time;
 static void
 io_update_time(void)
 {
+  times_update();
   last_io_time = current_time();
 
   if (event_open)
@@ -2217,9 +2218,14 @@ io_loop(void)
       timers_fire(&main_birdloop.time, 1);
       io_close_event();
 
+#if DEBUGGING
+#define PERIODIC_WAKEUP	86400000
+#else
+#define PERIODIC_WAKEUP 3000
+#endif
 restart_poll:
       // FIXME
-      poll_tout = ((reload_requested || events) ? 0 : 3000); /* Time in milliseconds */
+      poll_tout = ((reload_requested || events) ? 0 : PERIODIC_WAKEUP); /* Time in milliseconds */
       if (t = timers_first(&main_birdloop.time))
       {
 	times_update();
