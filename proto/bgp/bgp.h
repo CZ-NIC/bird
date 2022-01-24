@@ -423,6 +423,7 @@ struct bgp_parse_state {
   int as4_session;
   int add_path;
   int mpls;
+  int reach_nlri_step;
 
   u32 attrs_seen[256/32];
 

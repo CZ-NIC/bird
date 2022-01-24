@@ -1845,6 +1845,10 @@ bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old)
   {
     struct ea_list *attrs = bgp_update_attrs(p, c, new, new->attrs->eattrs, bgp_linpool2);
 
+    /* Error during attribute processing */
+    if (!attrs)
+      log(L_ERR "%s: Invalid route %N withdrawn", p->p.name, n->n.addr);
+
     /* If attributes are invalid, we fail back to withdraw */
     buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
     path = new->attrs->src->global_id;

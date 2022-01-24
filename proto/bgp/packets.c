@@ -1335,7 +1335,7 @@ bgp_update_next_hop_none(struct bgp_export_state *s, eattr *a, ea_list **to)
  */
 
 static void
-bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
+bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a0)
 {
   if (path_id != s->last_id)
   {
@@ -1348,6 +1348,10 @@ bgp_rte_update(struct bgp_parse_state *s, net_addr *n, u32 path_id, rta *a0)
 
   if (!a0)
   {
+    /* Route update was changed to withdraw */
+    if (s->err_withdraw && s->reach_nlri_step)
+      REPORT("Invalid route %N withdrawn", n);
+
     /* Route withdraw */
     rte_update3(&s->channel->c, n, NULL, s->last_src);
     return;
@@ -2542,6 +2546,8 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
   if (s.mp_unreach_len)
     bgp_decode_nlri(&s, s.mp_unreach_af, s.mp_unreach_nlri, s.mp_unreach_len, NULL, NULL, 0);
+
+  s.reach_nlri_step = 1;
 
   if (s.ip_reach_len)
     bgp_decode_nlri(&s, BGP_AF_IPV4, s.ip_reach_nlri, s.ip_reach_len,
