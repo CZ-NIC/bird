@@ -12,7 +12,7 @@
 #include "lib/lists.h"
 #include "lib/ip.h"
 
-extern list iface_list;
+extern list global_iface_list;
 
 struct proto;
 struct pool;

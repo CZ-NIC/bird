@@ -664,7 +664,7 @@ radv_reconfigure(struct proto *P, struct proto_config *CF)
     channel_request_feeding(p->p.main_channel);
 
   struct iface *iface;
-  WALK_LIST(iface, iface_list)
+  WALK_LIST(iface, global_iface_list)
   {
     if (!(iface->flags & IF_UP))
       continue;

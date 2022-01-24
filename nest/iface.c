@@ -36,7 +36,7 @@
 
 static pool *if_pool;
 
-list iface_list;
+list global_iface_list;
 struct iface default_vrf;
 
 static void if_recalc_preferred(struct iface *i);
@@ -111,7 +111,7 @@ if_dump_all(void)
   struct iface *i;
 
   debug("Known network interfaces:\n");
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     if_dump(i);
   debug("Router ID: %08x\n", config->router_id);
 }
@@ -307,7 +307,7 @@ if_update(struct iface *new)
   if (!new->master)
     new->master = &default_vrf;
 
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     if (!strcmp(new->name, i->name))
       {
 	new->flags = if_recalc_flags(new, new->flags);
@@ -340,7 +340,7 @@ if_update(struct iface *new)
 newif:
   init_list(&i->neighbors);
   i->flags |= IF_UPDATED | IF_TMP_DOWN;		/* Tmp down as we don't have addresses yet */
-  add_tail(&iface_list, &i->n);
+  add_tail(&global_iface_list, &i->n);
   return i;
 }
 
@@ -350,7 +350,7 @@ if_start_update(void)
   struct iface *i;
   struct ifa *a;
 
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     {
       i->flags &= ~IF_UPDATED;
       WALK_LIST(a, i->addrs)
@@ -374,7 +374,7 @@ if_end_update(void)
   struct iface *i;
   struct ifa *a, *b;
 
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     {
       if (!(i->flags & IF_UPDATED))
 	if_change_flags(i, (i->flags & ~IF_ADMIN_UP) | IF_SHUTDOWN);
@@ -413,7 +413,7 @@ if_feed_baby(struct proto *p)
   if (!p->if_notify && !p->ifa_notify)	/* shortcut */
     return;
   DBG("Announcing interfaces to new protocol %s\n", p->name);
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     {
       if_send_notify(p, IF_CHANGE_CREATE | ((i->flags & IF_UP) ? IF_CHANGE_UP : 0), i);
       if (i->flags & IF_UP)
@@ -435,7 +435,7 @@ if_find_by_index(unsigned idx)
 {
   struct iface *i;
 
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     if (i->index == idx && !(i->flags & IF_SHUTDOWN))
       return i;
   return NULL;
@@ -454,7 +454,7 @@ if_find_by_name(const char *name)
 {
   struct iface *i;
 
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     if (!strcmp(i->name, name) && !(i->flags & IF_SHUTDOWN))
       return i;
   return NULL;
@@ -465,7 +465,7 @@ if_get_by_name(const char *name)
 {
   struct iface *i;
 
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     if (!strcmp(i->name, name))
       return i;
 
@@ -475,7 +475,7 @@ if_get_by_name(const char *name)
   i->flags = IF_SHUTDOWN;
   init_list(&i->addrs);
   init_list(&i->neighbors);
-  add_tail(&iface_list, &i->n);
+  add_tail(&global_iface_list, &i->n);
   return i;
 }
 
@@ -561,7 +561,7 @@ if_recalc_all_preferred_addresses(void)
 {
   struct iface *i;
 
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
   {
     if_recalc_preferred(i);
 
@@ -669,7 +669,7 @@ if_choose_router_id(struct iface_patt *mask, u32 old_id)
   struct ifa *a, *b;
 
   b = NULL;
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     {
       if (!(i->flags & IF_ADMIN_UP) ||
 	  (i->flags & IF_SHUTDOWN))
@@ -716,7 +716,7 @@ void
 if_init(void)
 {
   if_pool = rp_new(&root_pool, &main_birdloop, "Interfaces");
-  init_list(&iface_list);
+  init_list(&global_iface_list);
   strcpy(default_vrf.name, "default");
   neigh_init(if_pool);
 }
@@ -844,7 +844,7 @@ if_show(void)
   struct ifa *a;
   char *type;
 
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     {
       if (i->flags & IF_SHUTDOWN)
 	continue;
@@ -887,7 +887,7 @@ if_show_summary(void)
   struct iface *i;
 
   cli_msg(-2005, "%-10s %-6s %-18s %s", "Interface", "State", "IPv4 address", "IPv6 address");
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     {
       byte a4[IPA_MAX_TEXT_LENGTH + 17];
       byte a6[IPA_MAX_TEXT_LENGTH + 17];

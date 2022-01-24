@@ -1148,7 +1148,7 @@ kif_do_scan(struct kif_proto *p UNUSED)
 
   /* Re-resolve master interface for slaves */
   struct iface *i;
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     if (i->master_index)
     {
       struct iface f = {

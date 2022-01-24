@@ -242,7 +242,7 @@ krt_send_route(struct krt_proto *p, int cmd, const rte *e)
    */
   if (!i)
   {
-    WALK_LIST(j, iface_list)
+    WALK_LIST(j, global_iface_list)
     {
       if (j->flags & IF_LOOPBACK)
       {

@@ -152,7 +152,7 @@ if_connected_any(ip_addr a, struct iface *vrf, struct iface **iface, struct ifa 
   *addr = NULL;
 
   /* Prefer SCOPE_HOST or longer prefix */
-  WALK_LIST(i, iface_list)
+  WALK_LIST(i, global_iface_list)
     if ((!vrf || vrf == i->master) && ((s = if_connected(a, i, &b, flags)) >= 0))
       if (scope_better(s, scope) || (scope_remote(s, scope) && ifa_better(b, *addr)))
       {
@@ -440,7 +440,7 @@ neigh_if_up(struct iface *i)
   node *x, *y;
 
   /* Update neighbors that might be better off with the new iface */
-  WALK_LIST(ii, iface_list)
+  WALK_LIST(ii, global_iface_list)
     if (!EMPTY_LIST(ii->neighbors) && (ii != i) && if_intersect(i, ii))
       WALK_LIST2_DELSAFE(n, x, y, ii->neighbors, if_n)
 	neigh_update(n, i);
@@ -502,7 +502,7 @@ neigh_ifa_up(struct ifa *a)
   node *x, *y;
 
   /* Update neighbors that might be better off with the new ifa */
-  WALK_LIST(ii, iface_list)
+  WALK_LIST(ii, global_iface_list)
     if (!EMPTY_LIST(ii->neighbors) && ifa_intersect(a, ii))
       WALK_LIST2_DELSAFE(n, x, y, ii->neighbors, if_n)
 	neigh_update(n, i);
