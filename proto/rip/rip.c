@@ -776,6 +776,7 @@ rip_reconfigure_ifaces(struct rip_proto *p, struct rip_config *cf)
 {
   struct iface *iface;
 
+  IFACE_LEGACY_ACCESS;
   WALK_LIST(iface, global_iface_list)
   {
     if (!(iface->flags & IF_UP))

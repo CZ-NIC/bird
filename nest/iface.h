@@ -9,10 +9,20 @@
 #ifndef _BIRD_IFACE_H_
 #define _BIRD_IFACE_H_
 
+#include "lib/event.h"
 #include "lib/lists.h"
 #include "lib/ip.h"
+#include "lib/locking.h"
 
+DEFINE_DOMAIN(attrs);
 extern list global_iface_list;
+extern DOMAIN(attrs) iface_domain;
+
+#define IFACE_LEGACY_ACCESS	ASSERT_DIE(birdloop_inside(&main_birdloop))
+
+#define IFACE_LOCK	  LOCK_DOMAIN(attrs, iface_domain)
+#define IFACE_UNLOCK	UNLOCK_DOMAIN(attrs, iface_domain)
+#define ASSERT_IFACE_LOCKED	ASSERT_DIE(DOMAIN_IS_LOCKED(attrs, iface_domain))
 
 struct proto;
 struct pool;
@@ -131,6 +141,7 @@ typedef struct neighbor {
   struct ifa *ifa;			/* Ifa on related iface */
   struct iface *iface;			/* Interface it's connected to */
   struct iface *ifreq;			/* Requested iface, NULL for any */
+  struct event event;			/* Notification event */
   struct proto *proto;			/* Protocol this belongs to */
   void *data;				/* Protocol-specific data */
   uint aux;				/* Protocol-specific data */

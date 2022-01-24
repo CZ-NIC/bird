@@ -59,6 +59,7 @@
 
 static slab *neigh_slab;
 static list neigh_hash_table[NEIGH_HASH_SIZE], sticky_neigh_list;
+static void neigh_do_notify(void *);
 
 static inline uint
 neigh_hash(struct proto *p, ip_addr a, struct iface *i)
@@ -210,36 +211,40 @@ if_intersect(struct iface *ia, struct iface *ib)
 neighbor *
 neigh_find(struct proto *p, ip_addr a, struct iface *iface, uint flags)
 {
-  ASSERT_DIE(birdloop_inside(&main_birdloop));
-
   neighbor *n;
   int class, scope = -1;
   uint h = neigh_hash(p, a, iface);
   struct iface *ifreq = iface;
   struct ifa *addr = NULL;
 
+  IFACE_LOCK;
   WALK_LIST(n, neigh_hash_table[h])	/* Search the cache */
     if ((n->proto == p) && ipa_equal(n->addr, a) && (n->ifreq == iface))
+    {
+      IFACE_UNLOCK;
       return n;
+    }
+
+#define NOT_FOUND goto not_found
 
   if (flags & NEF_IFACE)
   {
     if (ipa_nonzero(a) || !iface)
-      return NULL;
+      NOT_FOUND;
   }
   else
   {
     class = ipa_classify(a);
     if (class < 0)			/* Invalid address */
-      return NULL;
+      NOT_FOUND;
     if (((class & IADDR_SCOPE_MASK) == SCOPE_HOST) ||
 	(((class & IADDR_SCOPE_MASK) == SCOPE_LINK) && !iface) ||
 	!(class & IADDR_HOST))
-      return NULL;			/* Bad scope or a somecast */
+      NOT_FOUND;			/* Bad scope or a somecast */
   }
 
   if ((flags & NEF_ONLINK) && !iface)
-      return NULL;
+    NOT_FOUND;
 
   if (iface)
   {
@@ -253,7 +258,7 @@ neigh_find(struct proto *p, ip_addr a, struct iface *iface, uint flags)
   /* scope >= 0  <=>  iface != NULL */
 
   if ((scope < 0) && !(flags & NEF_STICKY))
-    return NULL;
+    NOT_FOUND;
 
   n = sl_allocz(neigh_slab);
   add_tail(&neigh_hash_table[h], &n->n);
@@ -265,8 +270,23 @@ neigh_find(struct proto *p, ip_addr a, struct iface *iface, uint flags)
   n->proto = p;
   n->flags = flags;
   n->scope = scope;
+  n->event = (event) { .hook = neigh_do_notify, .data = n };
+  ASSERT_DIE(birdloop_inside(p->loop));
 
+  if (p->loop == &main_birdloop)
+    n->event.list = &global_event_list;
+  else
+  {
+    birdloop_link(p->loop);
+    n->event.list = birdloop_event_list(p->loop);
+  }
+
+  IFACE_UNLOCK;
   return n;
+
+not_found:
+  IFACE_UNLOCK;
+  return NULL;
 }
 
 /**
@@ -300,11 +320,15 @@ neigh_dump_all(void)
   neighbor *n;
   int i;
 
+  IFACE_LOCK;
+
   debug("Known neighbors:\n");
   for(i=0; i<NEIGH_HASH_SIZE; i++)
     WALK_LIST(n, neigh_hash_table[i])
       neigh_dump(n);
   debug("\n");
+
+  IFACE_UNLOCK;
 }
 
 static inline void
@@ -313,9 +337,18 @@ neigh_notify(neighbor *n)
   if (!n->proto->neigh_notify)
     return;
 
-  PROTO_LOCKED_FROM_MAIN(n->proto)
-    if (n->proto->proto_state != PS_STOP)
-      n->proto->neigh_notify(n);
+  ev_send(n->event.list, &n->event);
+}
+
+static void
+neigh_do_notify(void *data)
+{
+  neighbor *n = data;
+
+  ASSERT_DIE(birdloop_inside(n->proto->loop));
+
+  if (n->proto->proto_state != PS_STOP)
+    n->proto->neigh_notify(n);
 }
 
 static void
@@ -351,6 +384,8 @@ neigh_free(neighbor *n)
 {
   rem_node(&n->n);
   rem_node(&n->if_n);
+  ev_postpone(&n->event);
+  birdloop_unlink(n->proto->loop);
   sl_free(neigh_slab, n);
 }
 
@@ -366,6 +401,8 @@ neigh_free(neighbor *n)
 void
 neigh_update(neighbor *n, struct iface *iface)
 {
+  ASSERT_IFACE_LOCKED;
+
   struct proto *p = n->proto;
   struct ifa *ifa = NULL;
   int scope = -1;
@@ -439,6 +476,8 @@ neigh_if_up(struct iface *i)
   neighbor *n;
   node *x, *y;
 
+  IFACE_LOCK;
+
   /* Update neighbors that might be better off with the new iface */
   WALK_LIST(ii, global_iface_list)
     if (!EMPTY_LIST(ii->neighbors) && (ii != i) && if_intersect(i, ii))
@@ -447,6 +486,8 @@ neigh_if_up(struct iface *i)
 
   WALK_LIST2_DELSAFE(n, x, y, sticky_neigh_list, if_n)
     neigh_update(n, i);
+
+  IFACE_UNLOCK;
 }
 
 /**
@@ -463,8 +504,12 @@ neigh_if_down(struct iface *i)
   neighbor *n;
   node *x, *y;
 
+  IFACE_LOCK;
+
   WALK_LIST2_DELSAFE(n, x, y, i->neighbors, if_n)
     neigh_update(n, i);
+
+  IFACE_UNLOCK;
 }
 
 /**
@@ -480,8 +525,12 @@ neigh_if_link(struct iface *i)
   neighbor *n;
   node *x, *y;
 
+  IFACE_LOCK;
+
   WALK_LIST2_DELSAFE(n, x, y, i->neighbors, if_n)
     neigh_notify(n);
+
+  IFACE_UNLOCK;
 }
 
 /**
@@ -501,6 +550,8 @@ neigh_ifa_up(struct ifa *a)
   neighbor *n;
   node *x, *y;
 
+  IFACE_LOCK;
+
   /* Update neighbors that might be better off with the new ifa */
   WALK_LIST(ii, global_iface_list)
     if (!EMPTY_LIST(ii->neighbors) && ifa_intersect(a, ii))
@@ -510,6 +561,8 @@ neigh_ifa_up(struct ifa *a)
   /* Wake up all sticky neighbors that are reachable now */
   WALK_LIST2_DELSAFE(n, x, y, sticky_neigh_list, if_n)
     neigh_update(n, i);
+
+  IFACE_UNLOCK;
 }
 
 void
@@ -519,10 +572,14 @@ neigh_ifa_down(struct ifa *a)
   neighbor *n;
   node *x, *y;
 
+  IFACE_LOCK;
+
   /* Update all neighbors whose scope has changed */
   WALK_LIST2_DELSAFE(n, x, y, i->neighbors, if_n)
     if (n->ifa == a)
       neigh_update(n, i);
+
+  IFACE_UNLOCK;
 }
 
 static inline void
@@ -548,10 +605,14 @@ neigh_prune(void)
   node *m;
   int i;
 
+  IFACE_LOCK;
+
   DBG("Pruning neighbors\n");
   for(i=0; i<NEIGH_HASH_SIZE; i++)
     WALK_LIST_DELSAFE(n, m, neigh_hash_table[i])
       neigh_prune_one(n);
+
+  IFACE_UNLOCK;
 }
 
 /**

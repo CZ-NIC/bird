@@ -36,10 +36,12 @@
 
 static pool *if_pool;
 
+DOMAIN(attrs) iface_domain;
 list global_iface_list;
 struct iface default_vrf;
 
 static void if_recalc_preferred(struct iface *i);
+static void ifa_delete_locked(struct ifa *a);
 
 /**
  * ifa_dump - dump interface address
@@ -50,6 +52,7 @@ static void if_recalc_preferred(struct iface *i);
 void
 ifa_dump(struct ifa *a)
 {
+  IFACE_LEGACY_ACCESS;
   debug("\t%I, net %N bc %I -> %I%s%s%s%s\n", a->ip, &a->prefix, a->brd, a->opposite,
 	(a->flags & IA_PRIMARY) ? " PRIMARY" : "",
 	(a->flags & IA_SECONDARY) ? " SEC" : "",
@@ -69,6 +72,7 @@ if_dump(struct iface *i)
 {
   struct ifa *a;
 
+  IFACE_LEGACY_ACCESS;
   debug("IF%d: %s", i->index, i->name);
   if (i->flags & IF_SHUTDOWN)
     debug(" SHUTDOWN");
@@ -110,6 +114,7 @@ if_dump_all(void)
 {
   struct iface *i;
 
+  IFACE_LEGACY_ACCESS;
   debug("Known network interfaces:\n");
   WALK_LIST(i, global_iface_list)
     if_dump(i);
@@ -307,6 +312,9 @@ if_update(struct iface *new)
   if (!new->master)
     new->master = &default_vrf;
 
+  IFACE_LEGACY_ACCESS;
+  IFACE_LOCK;
+
   WALK_LIST(i, global_iface_list)
     if (!strcmp(new->name, i->name))
       {
@@ -328,6 +336,8 @@ if_update(struct iface *new)
 	  }
 
 	if_copy(i, new);
+	IFACE_UNLOCK;
+
 	if (c)
 	  if_notify_change(c, i);
 
@@ -341,6 +351,8 @@ newif:
   init_list(&i->neighbors);
   i->flags |= IF_UPDATED | IF_TMP_DOWN;		/* Tmp down as we don't have addresses yet */
   add_tail(&global_iface_list, &i->n);
+  IFACE_UNLOCK;
+
   return i;
 }
 
@@ -350,6 +362,7 @@ if_start_update(void)
   struct iface *i;
   struct ifa *a;
 
+  IFACE_LEGACY_ACCESS;
   WALK_LIST(i, global_iface_list)
     {
       i->flags &= ~IF_UPDATED;
@@ -361,6 +374,8 @@ if_start_update(void)
 void
 if_end_partial_update(struct iface *i)
 {
+  IFACE_LEGACY_ACCESS;
+
   if (i->flags & IF_NEEDS_RECALC)
     if_recalc_preferred(i);
 
@@ -374,6 +389,7 @@ if_end_update(void)
   struct iface *i;
   struct ifa *a, *b;
 
+  IFACE_LEGACY_ACCESS;
   WALK_LIST(i, global_iface_list)
     {
       if (!(i->flags & IF_UPDATED))
@@ -382,7 +398,11 @@ if_end_update(void)
 	{
 	  WALK_LIST_DELSAFE(a, b, i->addrs)
 	    if (!(a->flags & IA_UPDATED))
-	      ifa_delete(a);
+	    {
+	      IFACE_LOCK;
+	      ifa_delete_locked(a);
+	      IFACE_UNLOCK;
+	    }
 	  if_end_partial_update(i);
 	}
     }
@@ -391,6 +411,7 @@ if_end_update(void)
 void
 if_flush_ifaces(struct proto *p)
 {
+  IFACE_LEGACY_ACCESS;
   if (p->debug & D_EVENTS)
     log(L_TRACE "%s: Flushing interfaces", p->name);
   if_start_update();
@@ -409,6 +430,8 @@ if_feed_baby(struct proto *p)
 {
   struct iface *i;
   struct ifa *a;
+
+  IFACE_LEGACY_ACCESS;
 
   if (!p->if_notify && !p->ifa_notify)	/* shortcut */
     return;
@@ -435,9 +458,15 @@ if_find_by_index(unsigned idx)
 {
   struct iface *i;
 
+  IFACE_LOCK;
   WALK_LIST(i, global_iface_list)
     if (i->index == idx && !(i->flags & IF_SHUTDOWN))
+    {
+      IFACE_UNLOCK;
       return i;
+    }
+
+  IFACE_UNLOCK;
   return NULL;
 }
 
@@ -454,9 +483,15 @@ if_find_by_name(const char *name)
 {
   struct iface *i;
 
+  IFACE_LOCK;
   WALK_LIST(i, global_iface_list)
     if (!strcmp(i->name, name) && !(i->flags & IF_SHUTDOWN))
+    {
+      IFACE_UNLOCK;
       return i;
+    }
+
+  IFACE_UNLOCK;
   return NULL;
 }
 
@@ -465,17 +500,21 @@ if_get_by_name(const char *name)
 {
   struct iface *i;
 
+  IFACE_LEGACY_ACCESS;
+
   WALK_LIST(i, global_iface_list)
     if (!strcmp(i->name, name))
       return i;
 
   /* No active iface, create a dummy */
+  IFACE_LOCK;
   i = mb_allocz(if_pool, sizeof(struct iface));
   strncpy(i->name, name, sizeof(i->name)-1);
   i->flags = IF_SHUTDOWN;
   init_list(&i->addrs);
   init_list(&i->neighbors);
   add_tail(&global_iface_list, &i->n);
+  IFACE_UNLOCK;
   return i;
 }
 
@@ -561,6 +600,8 @@ if_recalc_all_preferred_addresses(void)
 {
   struct iface *i;
 
+  IFACE_LEGACY_ACCESS;
+
   WALK_LIST(i, global_iface_list)
   {
     if_recalc_preferred(i);
@@ -591,6 +632,8 @@ ifa_update(struct ifa *a)
   struct iface *i = a->iface;
   struct ifa *b;
 
+  IFACE_LEGACY_ACCESS;
+
   WALK_LIST(b, i->addrs)
     if (ifa_same(b, a))
       {
@@ -609,10 +652,12 @@ ifa_update(struct ifa *a)
   if ((a->prefix.type == NET_IP4) && (i->flags & IF_BROADCAST) && ipa_zero(a->brd))
     log(L_WARN "Missing broadcast address for interface %s", i->name);
 
+  IFACE_LOCK;
   b = mb_alloc(if_pool, sizeof(struct ifa));
   memcpy(b, a, sizeof(struct ifa));
   add_tail(&i->addrs, &b->n);
   b->flags |= IA_UPDATED;
+  IFACE_UNLOCK;
 
   i->flags |= IF_NEEDS_RECALC;
   if (i->flags & IF_UP)
@@ -637,6 +682,17 @@ ifa_delete(struct ifa *a)
   WALK_LIST(b, i->addrs)
     if (ifa_same(b, a))
       {
+	IFACE_LOCK;
+	ifa_delete_locked(b);
+	IFACE_UNLOCK;
+	return;
+      }
+}
+
+static void
+ifa_delete_locked(struct ifa *b)
+{
+	struct iface *i = b->iface;
 	rem_node(&b->n);
 
 	if (b->flags & IA_PRIMARY)
@@ -659,7 +715,6 @@ ifa_delete(struct ifa *a)
 
 	mb_free(b);
 	return;
-      }
 }
 
 u32
@@ -667,6 +722,8 @@ if_choose_router_id(struct iface_patt *mask, u32 old_id)
 {
   struct iface *i;
   struct ifa *a, *b;
+
+  IFACE_LEGACY_ACCESS;
 
   b = NULL;
   WALK_LIST(i, global_iface_list)
@@ -715,6 +772,7 @@ if_choose_router_id(struct iface_patt *mask, u32 old_id)
 void
 if_init(void)
 {
+  iface_domain = DOMAIN_NEW(attrs, "Interfaces");
   if_pool = rp_new(&root_pool, &main_birdloop, "Interfaces");
   init_list(&global_iface_list);
   strcpy(default_vrf.name, "default");
@@ -844,6 +902,8 @@ if_show(void)
   struct ifa *a;
   char *type;
 
+  IFACE_LEGACY_ACCESS;
+
   WALK_LIST(i, global_iface_list)
     {
       if (i->flags & IF_SHUTDOWN)
@@ -885,6 +945,8 @@ void
 if_show_summary(void)
 {
   struct iface *i;
+
+  IFACE_LEGACY_ACCESS;
 
   cli_msg(-2005, "%-10s %-6s %-18s %s", "Interface", "State", "IPv4 address", "IPv6 address");
   WALK_LIST(i, global_iface_list)

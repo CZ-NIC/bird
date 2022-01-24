@@ -663,6 +663,7 @@ radv_reconfigure(struct proto *P, struct proto_config *CF)
   if (!old->propagate_routes && new->propagate_routes)
     channel_request_feeding(p->p.main_channel);
 
+  IFACE_LEGACY_ACCESS;
   struct iface *iface;
   WALK_LIST(iface, global_iface_list)
   {

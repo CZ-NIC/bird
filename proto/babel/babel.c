@@ -1907,6 +1907,7 @@ babel_reconfigure_ifaces(struct babel_proto *p, struct babel_config *cf)
 {
   struct iface *iface;
 
+  IFACE_LEGACY_ACCESS;
   WALK_LIST(iface, global_iface_list)
   {
     if (!(iface->flags & IF_UP))

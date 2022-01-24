@@ -86,7 +86,6 @@ const char * rta_dest_names[RTD_MAX] = {
   [RTD_PROHIBIT]	= "prohibited",
 };
 
-DEFINE_DOMAIN(attrs);
 static DOMAIN(attrs) src_domain;
 
 #define SRC_LOCK	LOCK_DOMAIN(attrs, src_domain)

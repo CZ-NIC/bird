@@ -1225,6 +1225,7 @@ ospf_reconfigure_ifaces2(struct ospf_proto *p)
   struct iface *iface;
   struct ifa *a;
 
+  IFACE_LEGACY_ACCESS;
   WALK_LIST(iface, global_iface_list)
   {
     if (! (iface->flags & IF_UP))
@@ -1271,6 +1272,7 @@ ospf_reconfigure_ifaces3(struct ospf_proto *p)
   struct iface *iface;
   struct ifa *a;
 
+  IFACE_LEGACY_ACCESS;
   WALK_LIST(iface, global_iface_list)
   {
     if (! (iface->flags & IF_UP))

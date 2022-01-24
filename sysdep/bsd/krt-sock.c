@@ -242,6 +242,7 @@ krt_send_route(struct krt_proto *p, int cmd, const rte *e)
    */
   if (!i)
   {
+    IFACE_LOCK;
     WALK_LIST(j, global_iface_list)
     {
       if (j->flags & IF_LOOPBACK)
@@ -250,6 +251,7 @@ krt_send_route(struct krt_proto *p, int cmd, const rte *e)
         break;
       }
     }
+    IFACE_UNLOCK;
 
     if (!i)
     {
