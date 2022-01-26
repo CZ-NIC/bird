@@ -60,6 +60,7 @@
 static slab *neigh_slab;
 static list neigh_hash_table[NEIGH_HASH_SIZE], sticky_neigh_list;
 static void neigh_do_notify(void *);
+static void neigh_do_notify_main(void *);
 
 static inline uint
 neigh_hash(struct proto *p, ip_addr a, struct iface *i)
@@ -270,15 +271,29 @@ neigh_find(struct proto *p, ip_addr a, struct iface *iface, uint flags)
   n->proto = p;
   n->flags = flags;
   n->scope = scope;
-  n->event = (event) { .hook = neigh_do_notify, .data = n };
+
   ASSERT_DIE(birdloop_inside(p->loop));
 
-  if (p->loop == &main_birdloop)
-    n->event.list = &global_event_list;
+  if (flags & NEF_NOTIFY_MAIN)
+    n->event = (event) {
+      .hook = neigh_do_notify_main,
+      .data = n,
+      .list = &global_event_list,
+    };
+  else if (p->loop == &main_birdloop)
+    n->event = (event) {
+      .hook = neigh_do_notify,
+      .data = n,
+      .list = &global_event_list,
+    };
   else
   {
     birdloop_link(p->loop);
-    n->event.list = birdloop_event_list(p->loop);
+    n->event = (event) {
+      .hook = neigh_do_notify,
+      .data = n,
+      .list = birdloop_event_list(p->loop),
+    };
   }
 
   IFACE_UNLOCK;
@@ -341,6 +356,14 @@ neigh_notify(neighbor *n)
 }
 
 static void
+neigh_do_notify_main(void *data)
+{
+  neighbor *n = data;
+  PROTO_LOCKED_FROM_MAIN(n->proto)
+    neigh_do_notify(data);
+}
+
+static void
 neigh_do_notify(void *data)
 {
   neighbor *n = data;
@@ -382,10 +405,18 @@ neigh_down(neighbor *n)
 static inline void
 neigh_free(neighbor *n)
 {
+  ASSERT_DIE(birdloop_inside(n->proto->loop));
+
+  if (n->flags & NEF_NOTIFY_MAIN)
+    ASSERT_DIE(birdloop_inside(&main_birdloop));
+
   rem_node(&n->n);
   rem_node(&n->if_n);
+
+  if (n->event.list != &global_event_list)
+    birdloop_unlink(n->proto->loop);
+
   ev_postpone(&n->event);
-  birdloop_unlink(n->proto->loop);
   sl_free(neigh_slab, n);
 }
 

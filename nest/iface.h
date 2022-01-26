@@ -153,6 +153,7 @@ typedef struct neighbor {
 #define NEF_STICKY	1
 #define NEF_ONLINK	2
 #define NEF_IFACE	4		/* Entry for whole iface */
+#define NEF_NOTIFY_MAIN	0x100		/* Notify from main_birdloop context */
 
 
 neighbor *neigh_find(struct proto *p, ip_addr a, struct iface *ifa, uint flags);

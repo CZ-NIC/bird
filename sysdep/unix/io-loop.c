@@ -498,7 +498,9 @@ void
 birdloop_unlink(struct birdloop *loop)
 {
   ASSERT_DIE(birdloop_inside(loop));
-  loop->links--;
+  ASSERT_DIE(loop->links);
+  if (!--loop->links)
+    birdloop_ping(loop);
 }
 
 static void
@@ -541,7 +543,7 @@ birdloop_main(void *arg)
 
     birdloop_enter(loop);
 
-    if (loop->stopped)
+    if (loop->stopped && !loop->links)
       break;
 
     loop_begin = current_time();

@@ -1541,7 +1541,7 @@ bgp_start_locked(struct object_lock *lock)
     return;
   }
 
-  neighbor *n = neigh_find(&p->p, p->remote_ip, cf->iface, NEF_STICKY);
+  neighbor *n = neigh_find(&p->p, p->remote_ip, cf->iface, NEF_STICKY | NEF_NOTIFY_MAIN);
   if (!n)
   {
     log(L_ERR "%s: Invalid remote address %I%J", p->p.name, p->remote_ip, cf->iface);
