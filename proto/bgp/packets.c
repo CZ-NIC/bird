@@ -937,6 +937,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 #define NO_NEXT_HOP	"Missing NEXT_HOP attribute"
 #define NO_LABEL_STACK	"Missing MPLS stack"
 
+#define MISMATCHED_AF	" - mismatched address family (%I for %s)"
 
 static void
 bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
@@ -949,13 +950,18 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     neighbor *nbr = NULL;
 
     /* GW_DIRECT -> single_hop -> p->neigh != NULL */
-    if (ipa_nonzero(gw))
+    if (ipa_nonzero2(gw))
       nbr = neigh_find(&p->p, gw, NULL, 0);
     else if (ipa_nonzero(ll))
       nbr = neigh_find(&p->p, ll, p->neigh->iface, 0);
+    else
+      WITHDRAW(BAD_NEXT_HOP " - zero address");
 
-    if (!nbr || (nbr->scope == SCOPE_HOST))
-      WITHDRAW(BAD_NEXT_HOP);
+    if (!nbr)
+      WITHDRAW(BAD_NEXT_HOP " - address %I not directly reachable", ipa_nonzero(gw) ? gw : ll);
+
+    if (nbr->scope == SCOPE_HOST)
+      WITHDRAW(BAD_NEXT_HOP " - address %I is local", nbr->addr);
 
     a->dest = RTD_UNICAST;
     a->nh.gw = nbr->addr;
@@ -964,8 +970,8 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
   }
   else /* GW_RECURSIVE */
   {
-    if (ipa_zero(gw))
-      WITHDRAW(BAD_NEXT_HOP);
+    if (ipa_zero2(gw))
+      WITHDRAW(BAD_NEXT_HOP " - zero address");
 
     rtable *tab = ipa_is_ip4(gw) ? c->igp_table_ip4 : c->igp_table_ip6;
     s->hostentry = rt_get_hostentry(tab, gw, ll, c->c.table);
@@ -1127,17 +1133,17 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
   uint len = a->u.ptr->length;
 
   /* Forbid zero next hop */
-  if (ipa_zero(nh[0]) && ((len != 32) || ipa_zero(nh[1])))
-    WITHDRAW(BAD_NEXT_HOP);
+  if (ipa_zero2(nh[0]) && ((len != 32) || ipa_zero(nh[1])))
+    WITHDRAW(BAD_NEXT_HOP " - zero address");
 
   /* Forbid next hop equal to neighbor IP */
   if (ipa_equal(peer, nh[0]) || ((len == 32) && ipa_equal(peer, nh[1])))
-    WITHDRAW(BAD_NEXT_HOP);
+    WITHDRAW(BAD_NEXT_HOP " - neighbor address %I", peer);
 
   /* Forbid next hop with non-matching AF */
   if ((ipa_is_ip4(nh[0]) != bgp_channel_is_ipv4(s->channel)) &&
       !s->channel->ext_next_hop)
-    WITHDRAW(BAD_NEXT_HOP);
+    WITHDRAW(BAD_NEXT_HOP MISMATCHED_AF, nh[0], s->channel->desc->name);
 
   /* Just check if MPLS stack */
   if (s->mpls && !bgp_find_attr(*to, BA_MPLS_LABEL_STACK))
@@ -1212,7 +1218,7 @@ bgp_decode_next_hop_ip(struct bgp_parse_state *s, byte *data, uint len, rta *a)
     ad->length = 16;
 
   if ((bgp_channel_is_ipv4(c) != ipa_is_ip4(nh[0])) && !c->ext_next_hop)
-    WITHDRAW(BAD_NEXT_HOP);
+    WITHDRAW(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
 
   // XXXX validate next hop
 
@@ -1293,7 +1299,7 @@ bgp_decode_next_hop_vpn(struct bgp_parse_state *s, byte *data, uint len, rta *a)
     bgp_parse_error(s, 9);
 
   if ((bgp_channel_is_ipv4(c) != ipa_is_ip4(nh[0])) && !c->ext_next_hop)
-    WITHDRAW(BAD_NEXT_HOP);
+    WITHDRAW(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
 
   // XXXX validate next hop
 
