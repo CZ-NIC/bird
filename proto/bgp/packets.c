@@ -1422,7 +1422,7 @@ bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *p
 
     /* RFC 8277 2.4 - withdraw does not have variable-size MPLS stack but
        fixed-size 24-bit Compatibility field, which MUST be ignored */
-    if (!a && !s->err_withdraw)
+    if (!s->reach_nlri_step)
       return;
   }
   while (!(label & BGP_MPLS_BOS));

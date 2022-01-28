@@ -1397,19 +1397,19 @@ bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
 
   /* Reject routes with our ASN in AS_PATH attribute */
   if (bgp_as_path_loopy(p, attrs, p->local_as))
-    goto withdraw;
+    goto loop;
 
   /* Reject routes with our Confederation ID in AS_PATH attribute; RFC 5065 4.0 */
   if ((p->public_as != p->local_as) && bgp_as_path_loopy(p, attrs, p->public_as))
-    goto withdraw;
+    goto loop;
 
   /* Reject routes with our Router ID in ORIGINATOR_ID attribute; RFC 4456 8 */
   if (p->is_internal && bgp_originator_id_loopy(p, attrs))
-    goto withdraw;
+    goto loop;
 
   /* Reject routes with our Cluster ID in CLUSTER_LIST attribute; RFC 4456 8 */
   if (p->rr_client && bgp_cluster_list_loopy(p, attrs))
-    goto withdraw;
+    goto loop;
 
   /* If there is no local preference, define one */
   if (!BIT32_TEST(s->attrs_seen, BA_LOCAL_PREF))
@@ -1429,6 +1429,10 @@ withdraw:
     bgp_parse_error(s, 1);
 
   s->err_withdraw = 1;
+  return NULL;
+
+loop:
+  /* Loops are handled as withdraws, but ignored silently. Do not set err_withdraw. */
   return NULL;
 }
 
