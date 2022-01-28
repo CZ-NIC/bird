@@ -397,7 +397,7 @@ struct bgp_export_state {
   int mpls;
 
   u32 attrs_seen[1];
-  uint err_withdraw;
+  uint err_reject;
   uint local_next_hop;
 };
 

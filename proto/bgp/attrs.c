@@ -45,9 +45,9 @@
  *
  * export - Hook that validates and normalizes attribute during export phase.
  * Receives eattr, may modify it (e.g., sort community lists for canonical
- * representation), UNSET() it (e.g., skip empty lists), or WITHDRAW() it if
- * necessary. May assume that eattr has value valid w.r.t. its type, but may be
- * invalid w.r.t. BGP constraints. Optional.
+ * representation), UNSET() it (e.g., skip empty lists), or REJECT() the route
+ * if necessary. May assume that eattr has value valid w.r.t. its type, but may
+ * be invalid w.r.t. BGP constraints. Optional.
  *
  * encode - Hook that converts internal representation to external one during
  * packet writing. Receives eattr and puts it in the buffer (including attribute
@@ -107,6 +107,9 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
 
 #define UNSET(a) \
   ({ a->type = EAF_TYPE_UNDEF; return; })
+
+#define REJECT(msg, args...) \
+  ({ log(L_ERR "%s: " msg, s->proto->p.name, ## args); s->err_reject = 1; return; })
 
 #define NEW_BGP		"Discarding %s attribute received from AS4-aware neighbor"
 #define BAD_EBGP	"Discarding %s attribute received from EBGP neighbor"
@@ -380,7 +383,7 @@ static void
 bgp_export_origin(struct bgp_export_state *s, eattr *a)
 {
   if (a->u.data > 2)
-    WITHDRAW(BAD_VALUE, "ORIGIN", a->u.data);
+    REJECT(BAD_VALUE, "ORIGIN", a->u.data);
 }
 
 static void
@@ -902,20 +905,20 @@ bgp_export_mpls_label_stack(struct bgp_export_state *s, eattr *a)
 
   /* Perhaps we should just ignore it? */
   if (!s->mpls)
-    WITHDRAW("Unexpected MPLS stack");
+    REJECT("Unexpected MPLS stack");
 
   /* Empty MPLS stack is not allowed */
   if (!lnum)
-    WITHDRAW("Malformed MPLS stack - empty");
+    REJECT("Malformed MPLS stack - empty");
 
   /* This is ugly, but we must ensure that labels fit into NLRI field */
   if ((24*lnum + (net_is_vpn(n) ? 64 : 0) + net_pxlen(n)) > 255)
-    WITHDRAW("Malformed MPLS stack - too many labels (%u)", lnum);
+    REJECT("Malformed MPLS stack - too many labels (%u)", lnum);
 
   for (uint i = 0; i < lnum; i++)
   {
     if (labels[i] > 0xfffff)
-      WITHDRAW("Malformed MPLS stack - invalid label (%u)", labels[i]);
+      REJECT("Malformed MPLS stack - invalid label (%u)", labels[i]);
 
     /* TODO: Check for special-purpose label values? */
   }
@@ -1196,7 +1199,7 @@ bgp_export_attrs(struct bgp_export_state *s, ea_list *attrs)
   for (i = 0; i < count; i++)
     bgp_export_attr(s, &new->attrs[i], new);
 
-  if (s->err_withdraw)
+  if (s->err_reject)
     return NULL;
 
   return new;

@@ -932,6 +932,9 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 #define WITHDRAW(msg, args...) \
   ({ REPORT(msg, ## args); s->err_withdraw = 1; return; })
 
+#define REJECT(msg, args...)						\
+  ({ log(L_ERR "%s: " msg, s->proto->p.name, ## args); s->err_reject = 1; return; })
+
 #define BAD_AFI		"Unexpected AF <%u/%u> in UPDATE"
 #define BAD_NEXT_HOP	"Invalid NEXT_HOP attribute"
 #define NO_NEXT_HOP	"Missing NEXT_HOP attribute"
@@ -1126,7 +1129,7 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
   /* Check if next hop is valid */
   a = bgp_find_attr(*to, BA_NEXT_HOP);
   if (!a)
-    WITHDRAW(NO_NEXT_HOP);
+    REJECT(NO_NEXT_HOP);
 
   ip_addr *nh = (void *) a->u.ptr->data;
   ip_addr peer = s->proto->remote_ip;
@@ -1134,20 +1137,20 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
 
   /* Forbid zero next hop */
   if (ipa_zero2(nh[0]) && ((len != 32) || ipa_zero(nh[1])))
-    WITHDRAW(BAD_NEXT_HOP " - zero address");
+    REJECT(BAD_NEXT_HOP " - zero address");
 
   /* Forbid next hop equal to neighbor IP */
   if (ipa_equal(peer, nh[0]) || ((len == 32) && ipa_equal(peer, nh[1])))
-    WITHDRAW(BAD_NEXT_HOP " - neighbor address %I", peer);
+    REJECT(BAD_NEXT_HOP " - neighbor address %I", peer);
 
   /* Forbid next hop with non-matching AF */
   if ((ipa_is_ip4(nh[0]) != bgp_channel_is_ipv4(s->channel)) &&
       !s->channel->ext_next_hop)
-    WITHDRAW(BAD_NEXT_HOP MISMATCHED_AF, nh[0], s->channel->desc->name);
+    REJECT(BAD_NEXT_HOP MISMATCHED_AF, nh[0], s->channel->desc->name);
 
   /* Just check if MPLS stack */
   if (s->mpls && !bgp_find_attr(*to, BA_MPLS_LABEL_STACK))
-    WITHDRAW(NO_LABEL_STACK);
+    REJECT(NO_LABEL_STACK);
 }
 
 static uint
