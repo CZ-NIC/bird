@@ -283,7 +283,13 @@ void ev_uncork(struct event_cork *ec)
       birdloop_ping(el->loop);
     }
 
-  UNLOCK_DOMAIN(cork, ec->lock);
+  struct birdsock *sk;
+  WALK_LIST_FIRST2(sk, cork_node, ec->sockets)
+    {
+//      log(L_TRACE "Socket %p uncorked", sk);
+      rem_node(&sk->cork_node);
+      sk_ping(sk);
+    }
 
-  birdloop_ping(&main_birdloop);
+  UNLOCK_DOMAIN(cork, ec->lock);
 }

@@ -17,6 +17,7 @@
 void sk_start(sock *s);
 void sk_stop(sock *s);
 void sk_reloop(sock *s, struct birdloop *loop);
+void sk_ping(sock *s);
 
 extern struct birdloop main_birdloop;
 

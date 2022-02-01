@@ -38,6 +38,7 @@ struct event_cork {
   DOMAIN(cork) lock;
   u32 count;
   list events;
+  list sockets;
 };
 
 extern event_list global_event_list;
@@ -56,6 +57,7 @@ static inline void ev_init_list(event_list *el, struct birdloop *loop, const cha
 static inline void ev_init_cork(struct event_cork *ec, const char *name)
 {
   init_list(&ec->events);
+  init_list(&ec->sockets);
   ec->lock = DOMAIN_NEW(cork, name);
   ec->count = 0;
 };

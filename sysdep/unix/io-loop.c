@@ -218,7 +218,36 @@ sk_stop(sock *s)
 }
 
 static inline uint sk_want_events(sock *s)
-{ return ((s->rx_hook && !ev_corked(s->cork)) ? POLLIN : 0) | ((s->ttx != s->tpos) ? POLLOUT : 0); }
+{
+  uint out = ((s->ttx != s->tpos) ? POLLOUT : 0);
+  if (s->rx_hook)
+    if (s->cork)
+    {
+      LOCK_DOMAIN(cork, s->cork->lock);
+      if (!enlisted(&s->cork_node))
+	if (s->cork->count)
+	{
+//	    log(L_TRACE "Socket %p corked", s);
+	  add_tail(&s->cork->sockets, &s->cork_node);
+	}
+	else
+	  out |= POLLIN;
+      UNLOCK_DOMAIN(cork, s->cork->lock);
+    }
+    else
+      out |= POLLIN;
+
+//  log(L_TRACE "sk_want_events(%p) = %x", s, out);
+  return out;
+}
+
+
+void
+sk_ping(sock *s)
+{
+  s->loop->poll_changed = 1;
+  birdloop_ping(s->loop);
+}
 
 /*
 FIXME: this should be called from sock code
@@ -284,7 +313,10 @@ sockets_fire(struct birdloop *loop)
 
   /* Last fd is internal wakeup fd */
   if (pfd[poll_num].revents & POLLIN)
+  {
     wakeup_drain(loop);
+    loop->poll_changed = 1;
+  }
 
   int i;
   for (i = 0; i < poll_num; pfd++, psk++, i++)

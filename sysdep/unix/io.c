@@ -802,8 +802,13 @@ sk_free(resource *r)
     sk_ssh_free(s);
 #endif
 
-  if ((s->fd < 0) || (s->flags & SKF_THREAD))
-    return;
+  if (s->cork)
+  {
+    LOCK_DOMAIN(cork, s->cork->lock);
+    if (enlisted(&s->cork_node))
+      rem_node(&s->cork_node);
+    UNLOCK_DOMAIN(cork, s->cork->lock);
+  }
 
   if (!s->loop)
     ;
@@ -820,7 +825,7 @@ sk_free(resource *r)
       rem_node(&s->n);
   }
 
-  if (s->type != SK_SSH && s->type != SK_SSH_ACTIVE)
+  if (s->type != SK_SSH && s->type != SK_SSH_ACTIVE && s->fd != -1)
     close(s->fd);
 
   s->fd = -1;
@@ -1710,6 +1715,7 @@ sk_maybe_write(sock *s)
 	  s->err_hook(s, (errno != EPIPE) ? errno : 0);
 	  return -1;
 	}
+	sk_ping(s);
 	return 0;
       }
       s->ttx += e;
@@ -1917,6 +1923,25 @@ sk_read(sock *s, int revents)
   case SK_TCP:
   case SK_UNIX:
     {
+      if (s->cork)
+      {
+	int cont = 0;
+	LOCK_DOMAIN(cork, s->cork->lock);
+	if (!enlisted(&s->cork_node))
+	  if (s->cork->count)
+	  {
+//	    log(L_TRACE "Socket %p corked", s);
+	    add_tail(&s->cork->sockets, &s->cork_node);
+	    sk_ping(s);
+	  }
+	  else
+	    cont = 1;
+	UNLOCK_DOMAIN(cork, s->cork->lock);
+
+	if (!cont)
+	  return 0;
+      }
+
       int c = read(s->fd, s->rpos, s->rbuf + s->rbsize - s->rpos);
 
       if (c < 0)
