@@ -61,6 +61,7 @@ static slab *neigh_slab;
 static list neigh_hash_table[NEIGH_HASH_SIZE], sticky_neigh_list;
 static void neigh_do_notify(void *);
 static void neigh_do_notify_main(void *);
+static void neigh_free(neighbor *n);
 
 static inline uint
 neigh_hash(struct proto *p, ip_addr a, struct iface *i)
@@ -372,6 +373,9 @@ neigh_do_notify(void *data)
 
   if (n->proto->proto_state != PS_STOP)
     n->proto->neigh_notify(n);
+
+  if ((n->scope < 0) && !(n->flags & NEF_STICKY))
+    neigh_free(n);
 }
 
 static void
@@ -402,7 +406,7 @@ neigh_down(neighbor *n)
   neigh_notify(n);
 }
 
-static inline void
+static void
 neigh_free(neighbor *n)
 {
   ASSERT_DIE(birdloop_inside(n->proto->loop));
@@ -479,12 +483,6 @@ neigh_update(neighbor *n, struct iface *iface)
 
   if (n->scope >= 0)
     neigh_down(n);
-
-  if ((n->scope < 0) && !(n->flags & NEF_STICKY))
-  {
-    neigh_free(n);
-    return;
-  }
 
   if (scope >= 0)
     neigh_up(n, iface, ifa, scope);
@@ -630,7 +628,7 @@ neigh_prune_one(neighbor *n)
  * is shut down to get rid of all its heritage.
  */
 void
-neigh_prune(void)
+neigh_prune(struct proto *p)
 {
   neighbor *n;
   node *m;
@@ -641,7 +639,8 @@ neigh_prune(void)
   DBG("Pruning neighbors\n");
   for(i=0; i<NEIGH_HASH_SIZE; i++)
     WALK_LIST_DELSAFE(n, m, neigh_hash_table[i])
-      neigh_prune_one(n);
+      if (n->proto == p)
+	neigh_prune_one(n);
 
   IFACE_UNLOCK;
 }

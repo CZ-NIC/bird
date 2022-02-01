@@ -2434,7 +2434,7 @@ static void
 proto_do_down(struct proto *p)
 {
   p->down_code = 0;
-  neigh_prune();
+  neigh_prune(p);
 
   /* Shutdown is finished in the protocol event */
   if (proto_is_done(p))

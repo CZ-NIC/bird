@@ -160,7 +160,7 @@ neighbor *neigh_find(struct proto *p, ip_addr a, struct iface *ifa, uint flags);
 
 void neigh_dump(neighbor *);
 void neigh_dump_all(void);
-void neigh_prune(void);
+void neigh_prune(struct proto *p);
 void neigh_if_up(struct iface *);
 void neigh_if_down(struct iface *);
 void neigh_if_link(struct iface *);
