@@ -558,7 +558,7 @@ birdloop_main(void *arg)
     if (loop->poll_changed)
       sockets_prepare(loop);
 
-    btime duration = current_time() - loop_begin;
+    btime duration = current_time_update() - loop_begin;
     if (duration > config->watchdog_warning)
       log(L_WARN "I/O loop cycle took %d ms", (int) (duration TO_MS));
 
@@ -578,7 +578,7 @@ birdloop_main(void *arg)
     if (loop->stopped && !loop->links)
       break;
 
-    loop_begin = current_time();
+    loop_begin = current_time_update();
 
     if (rv)
       sockets_fire(loop);

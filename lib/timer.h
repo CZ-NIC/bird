@@ -55,6 +55,7 @@ static inline timer *timers_first(struct timeloop *loop)
 
 #define current_time()		atomic_load_explicit(&last_time, memory_order_acquire)
 #define current_real_time()	atomic_load_explicit(&real_time, memory_order_acquire)
+#define current_time_update()	({ times_update(); current_time(); })
 
 //#define now (current_time() TO_S)
 //#define now_real (current_real_time() TO_S)

@@ -2100,8 +2100,7 @@ static btime loop_time;
 static void
 io_update_time(void)
 {
-  times_update();
-  last_io_time = current_time();
+  last_io_time = current_time_update();
 
   if (event_open)
   {
