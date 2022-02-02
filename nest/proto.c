@@ -32,7 +32,6 @@ struct protocol *class_to_protocol[PROTOCOL__MAX];
 #define CD(c, msg, args...) ({ if (c->debug & D_STATES) log(L_TRACE "%s.%s: " msg, c->proto->name, c->name ?: "?", ## args); })
 #define PD(p, msg, args...) ({ if (p->debug & D_STATES) log(L_TRACE "%s: " msg, p->name, ## args); })
 
-static timer *proto_shutdown_timer;
 static timer *gr_wait_timer;
 
 #define GRS_NONE	0
@@ -49,7 +48,6 @@ static char *c_states[] = { "DOWN", "START", "UP", "STOP", "RESTART" };
 extern struct protocol proto_unix_iface;
 
 static void channel_aux_request_refeed(struct channel_aux_table *cat);
-static void proto_shutdown_loop(timer *);
 static void proto_rethink_goal(struct proto *p);
 static char *proto_state_name(struct proto *p);
 static void channel_init_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
@@ -2202,8 +2200,6 @@ protos_build(void)
 #endif
 
   proto_pool = rp_new(&root_pool, &main_birdloop, "Protocols");
-  proto_shutdown_timer = tm_new(proto_pool);
-  proto_shutdown_timer->hook = proto_shutdown_loop;
 }
 
 
@@ -2211,7 +2207,7 @@ protos_build(void)
 int proto_restart;
 
 static void
-proto_shutdown_loop(timer *t UNUSED)
+proto_shutdown_loop(void *data UNUSED)
 {
   struct proto *p, *p_next;
 
@@ -2230,6 +2226,11 @@ proto_shutdown_loop(timer *t UNUSED)
     }
 }
 
+static event proto_schedule_down_event = {
+  .hook = proto_shutdown_loop,
+  .list = &global_event_list,
+};
+
 static inline void
 proto_schedule_down(struct proto *p, byte restart, byte code)
 {
@@ -2242,7 +2243,8 @@ proto_schedule_down(struct proto *p, byte restart, byte code)
 
   p->down_sched = restart ? PDS_RESTART : PDS_DISABLE;
   p->down_code = code;
-  tm_start_max(proto_shutdown_timer, restart ? 250 MS : 0);
+
+  ev_send_self(&proto_schedule_down_event);
 }
 
 /**

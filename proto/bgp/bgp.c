@@ -1273,6 +1273,16 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     return 0;
   }
 
+  if (p->p.loop == &main_birdloop)
+  {
+    /* Protocol is down for whatever reason. No need for locking. */
+    BGP_TRACE(D_EVENTS, "Incoming connection from %I%J (port %d) rejected (protocol is down)",
+	    sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL,
+	    sk->dport);
+    rfree(sk);
+    return 0;
+  }
+
   BGP_ENTER(p);
 
   /*
