@@ -116,20 +116,23 @@
 DEFINE_DOMAIN(rtable);
 #define BFD_LOCK	LOCK_DOMAIN(rtable, bfd_global.lock)
 #define BFD_UNLOCK	UNLOCK_DOMAIN(rtable, bfd_global.lock)
+#define BFD_ASSERT_LOCKED	ASSERT_DIE(DOMAIN_IS_LOCKED(rtable, bfd_global.lock))
 
 static struct {
   DOMAIN(rtable) lock;
   list wait_list;
-  list pickup_list;
   list proto_list;
 } bfd_global;
+
+static struct bfd_session bfd_admin_down = { .loc = { .state = BFD_STATE_ADMIN_DOWN }, };
 
 const char *bfd_state_names[] = { "AdminDown", "Down", "Init", "Up" };
 
 static void bfd_session_set_min_tx(struct bfd_session *s, u32 val);
 static struct bfd_iface *bfd_get_iface(struct bfd_proto *p, ip_addr local, struct iface *iface);
 static void bfd_free_iface(struct bfd_iface *ifa);
-static inline void bfd_notify_kick(struct bfd_proto *p);
+static void bfd_remove_session(struct bfd_proto *p, struct bfd_session *s);
+static void bfd_reconfigure_session_hook(void *vsession);
 
 
 /*
@@ -148,28 +151,35 @@ bfd_merge_options(const struct bfd_iface_config *cf, const struct bfd_options *o
   };
 }
 
-static void
+static int
 bfd_session_update_state(struct bfd_session *s, uint state, uint diag)
 {
   struct bfd_proto *p = s->ifa->bfd;
-  uint old_state = s->loc_state;
-  int notify;
+  uint old_state = BFD_LOC_STATE(s).state;
 
   if (state == old_state)
-    return;
+  {
+    if (current_time() > s->last_reqlist_check + 5 S)
+    {
+      BFD_LOCK;
+      if (EMPTY_LIST(s->request_list))
+      {
+	bfd_remove_session(p, s);
+	BFD_UNLOCK;
+	return 1;
+      }
+
+      s->last_reqlist_check = current_time();
+      BFD_UNLOCK;
+    }
+    return 0;
+  }
 
   TRACE(D_EVENTS, "Session to %I changed state from %s to %s",
 	s->addr, bfd_state_names[old_state], bfd_state_names[state]);
 
-  bfd_lock_sessions(p);
-  s->loc_state = state;
-  s->loc_diag = diag;
+  atomic_store_explicit(&s->loc, ((struct bfd_session_state) { .state = state, .diag = diag }), memory_order_release);
   s->last_state_change = current_time();
-
-  notify = !NODE_VALID(&s->n);
-  if (notify)
-    add_tail(&p->notify_list, &s->n);
-  bfd_unlock_sessions(p);
 
   if (state == BFD_STATE_UP)
     bfd_session_set_min_tx(s, s->cf.min_tx_int);
@@ -177,8 +187,21 @@ bfd_session_update_state(struct bfd_session *s, uint state, uint diag)
   if (old_state == BFD_STATE_UP)
     bfd_session_set_min_tx(s, s->cf.idle_tx_int);
 
-  if (notify)
-    bfd_notify_kick(p);
+  BFD_LOCK;
+  if (EMPTY_LIST(s->request_list))
+  {
+    bfd_remove_session(p, s);
+    BFD_UNLOCK;
+    return 1;
+  }
+
+  struct bfd_request *req;
+  node *nn;
+  WALK_LIST2(req, nn, s->request_list, n)
+    ev_send_self(&req->event);
+
+  BFD_UNLOCK;
+  return 0;
 }
 
 static void
@@ -223,8 +246,8 @@ bfd_session_control_tx_timer(struct bfd_session *s, int reset)
 
   if (s->rem_demand_mode &&
       !s->poll_active &&
-      (s->loc_state == BFD_STATE_UP) &&
-      (s->rem_state == BFD_STATE_UP))
+      (BFD_LOC_STATE(s).state == BFD_STATE_UP) &&
+      (s->rem.state == BFD_STATE_UP))
     goto stop;
 
   if (s->rem_min_rx_int == 0)
@@ -294,28 +317,29 @@ bfd_session_process_ctl(struct bfd_session *s, u8 flags, u32 old_tx_int, u32 old
   int next_state = 0;
   int diag = BFD_DIAG_NOTHING;
 
-  switch (s->loc_state)
+  switch (BFD_LOC_STATE(s).state)
   {
   case BFD_STATE_ADMIN_DOWN:
     return;
 
   case BFD_STATE_DOWN:
-    if (s->rem_state == BFD_STATE_DOWN)		next_state = BFD_STATE_INIT;
-    else if (s->rem_state == BFD_STATE_INIT)	next_state = BFD_STATE_UP;
+    if (s->rem.state == BFD_STATE_DOWN)		next_state = BFD_STATE_INIT;
+    else if (s->rem.state == BFD_STATE_INIT)	next_state = BFD_STATE_UP;
     break;
 
   case BFD_STATE_INIT:
-    if (s->rem_state == BFD_STATE_ADMIN_DOWN)	next_state = BFD_STATE_DOWN, diag = BFD_DIAG_NEIGHBOR_DOWN;
-    else if (s->rem_state >= BFD_STATE_INIT)	next_state = BFD_STATE_UP;
+    if (s->rem.state == BFD_STATE_ADMIN_DOWN)	next_state = BFD_STATE_DOWN, diag = BFD_DIAG_NEIGHBOR_DOWN;
+    else if (s->rem.state >= BFD_STATE_INIT)	next_state = BFD_STATE_UP;
     break;
 
   case BFD_STATE_UP:
-    if (s->rem_state <= BFD_STATE_DOWN)		next_state = BFD_STATE_DOWN, diag = BFD_DIAG_NEIGHBOR_DOWN;
+    if (s->rem.state <= BFD_STATE_DOWN)		next_state = BFD_STATE_DOWN, diag = BFD_DIAG_NEIGHBOR_DOWN;
     break;
   }
 
   if (next_state)
-    bfd_session_update_state(s, next_state, diag);
+    if (bfd_session_update_state(s, next_state, diag))
+      return;
 
   bfd_session_control_tx_timer(s, 0);
 
@@ -330,7 +354,7 @@ bfd_session_timeout(struct bfd_session *s)
 
   TRACE(D_EVENTS, "Session to %I expired", s->addr);
 
-  s->rem_state = BFD_STATE_DOWN;
+  s->rem.state = BFD_STATE_DOWN;
   s->rem_id = 0;
   s->rem_min_tx_int = 0;
   s->rem_min_rx_int = 1;
@@ -341,7 +365,8 @@ bfd_session_timeout(struct bfd_session *s)
   s->poll_active = 0;
   s->poll_scheduled = 0;
 
-  bfd_session_update_state(s, BFD_STATE_DOWN, BFD_DIAG_TIMEOUT);
+  if (bfd_session_update_state(s, BFD_STATE_DOWN, BFD_DIAG_TIMEOUT))
+    return;
 
   bfd_session_control_tx_timer(s, 1);
 }
@@ -357,7 +382,7 @@ bfd_session_set_min_tx(struct bfd_session *s, u32 val)
   s->des_min_tx_new = val;
 
   /* Postpone timer update if des_min_tx_int increases and the session is up */
-  if ((s->loc_state != BFD_STATE_UP) || (val < s->des_min_tx_int))
+  if ((BFD_LOC_STATE(s).state != BFD_STATE_UP) || (val < s->des_min_tx_int))
   {
     s->des_min_tx_int = val;
     bfd_session_update_tx_interval(s);
@@ -377,7 +402,7 @@ bfd_session_set_min_rx(struct bfd_session *s, u32 val)
   s->req_min_rx_new = val;
 
   /* Postpone timer update if req_min_rx_int decreases and the session is up */
-  if ((s->loc_state != BFD_STATE_UP) || (val > s->req_min_rx_int))
+  if ((BFD_LOC_STATE(s).state != BFD_STATE_UP) || (val > s->req_min_rx_int))
   {
     s->req_min_rx_int = val;
     bfd_session_update_detection_time(s, 0);
@@ -389,12 +414,14 @@ bfd_session_set_min_rx(struct bfd_session *s, u32 val)
 struct bfd_session *
 bfd_find_session_by_id(struct bfd_proto *p, u32 id)
 {
+  ASSERT_DIE(birdloop_inside(p->p.loop));
   return HASH_FIND(p->session_hash_id, HASH_ID, id);
 }
 
 struct bfd_session *
 bfd_find_session_by_addr(struct bfd_proto *p, ip_addr addr, uint ifindex)
 {
+  ASSERT_DIE(birdloop_inside(p->p.loop));
   return HASH_FIND(p->session_hash_ip, HASH_IP, addr, ifindex);
 }
 
@@ -428,6 +455,7 @@ static struct bfd_session *
 bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *iface, struct bfd_options *opts)
 {
   ASSERT_DIE(birdloop_inside(p->p.loop));
+  BFD_ASSERT_LOCKED;
 
   struct bfd_iface *ifa = bfd_get_iface(p, local, iface);
 
@@ -441,10 +469,15 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
   HASH_INSERT(p->session_hash_ip, HASH_IP, s);
 
   s->cf = bfd_merge_options(ifa->cf, opts);
+  s->update_event = (event) {
+    .hook = bfd_reconfigure_session_hook,
+    .data = s,
+    .list = birdloop_event_list(p->p.loop),
+  };
 
   /* Initialization of state variables - see RFC 5880 6.8.1 */
-  s->loc_state = BFD_STATE_DOWN;
-  s->rem_state = BFD_STATE_DOWN;
+  atomic_store_explicit(&s->loc, ((struct bfd_session_state) { .state = BFD_STATE_DOWN }), memory_order_relaxed);
+  s->rem.state = BFD_STATE_DOWN;
   s->des_min_tx_int = s->des_min_tx_new = s->cf.idle_tx_int;
   s->req_min_rx_int = s->req_min_rx_new = s->cf.min_rx_int;
   s->rem_min_rx_int = 1;
@@ -465,42 +498,12 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
   return s;
 }
 
-/*
 static void
-bfd_open_session(struct bfd_proto *p, struct bfd_session *s, ip_addr local, struct iface *ifa)
+bfd_remove_session(struct bfd_proto *p, struct bfd_session *s)
 {
-  birdloop_enter(p->p.loop);
-
-  s->opened = 1;
-
-  bfd_session_control_tx_timer(s);
-
-  birdloop_leave(p->p.loop);
-}
-
-static void
-bfd_close_session(struct bfd_proto *p, struct bfd_session *s)
-{
-  birdloop_enter(p->p.loop);
-
-  s->opened = 0;
-
-  bfd_session_update_state(s, BFD_STATE_DOWN, BFD_DIAG_PATH_DOWN);
-  bfd_session_control_tx_timer(s);
-
-  birdloop_leave(p->p.loop);
-}
-*/
-
-static void
-bfd_remove_session_locked(struct bfd_proto *p, struct bfd_session *s)
-{
-  /* Caller should ensure that request list is empty */
-
-  /* Remove session from notify list if scheduled for notification */
-  /* No need for bfd_lock_sessions(), we are already protected by birdloop_enter() */
-  if (NODE_VALID(&s->n))
-    rem_node(&s->n);
+  ASSERT_DIE(birdloop_inside(p->p.loop));
+  BFD_ASSERT_LOCKED;
+  ASSERT_DIE(EMPTY_LIST(s->request_list));
 
   bfd_free_iface(s->ifa);
 
@@ -516,25 +519,21 @@ bfd_remove_session_locked(struct bfd_proto *p, struct bfd_session *s)
 }
 
 static void
-bfd_remove_session(struct bfd_proto *p, struct bfd_session *s)
-{
-  birdloop_enter(p->p.loop);
-  bfd_remove_session_locked(p, s);
-  birdloop_leave(p->p.loop);
-}
-
-static void
 bfd_reconfigure_session(struct bfd_proto *p, struct bfd_session *s)
 {
+  ASSERT_DIE(birdloop_inside(p->p.loop));
+  BFD_LOCK;
   if (EMPTY_LIST(s->request_list))
+  {
+    bfd_remove_session(p, s);
+    BFD_UNLOCK;
     return;
-
-  birdloop_enter(p->p.loop);
+  }
 
   struct bfd_request *req = SKIP_BACK(struct bfd_request, n, HEAD(s->request_list));
   s->cf = bfd_merge_options(s->ifa->cf, &req->opts);
 
-  u32 tx = (s->loc_state == BFD_STATE_UP) ? s->cf.min_tx_int : s->cf.idle_tx_int;
+  u32 tx = (BFD_LOC_STATE(s).state == BFD_STATE_UP) ? s->cf.min_tx_int : s->cf.idle_tx_int;
   bfd_session_set_min_tx(s, tx);
   bfd_session_set_min_rx(s, s->cf.min_rx_int);
   s->detect_mult = s->cf.multiplier;
@@ -542,9 +541,15 @@ bfd_reconfigure_session(struct bfd_proto *p, struct bfd_session *s)
 
   bfd_session_control_tx_timer(s, 0);
 
-  birdloop_leave(p->p.loop);
-
   TRACE(D_EVENTS, "Session to %I reconfigured", s->addr);
+  BFD_UNLOCK;
+}
+
+static void
+bfd_reconfigure_session_hook(void *data)
+{
+  struct bfd_session *s = data;
+  return bfd_reconfigure_session(s->ifa->bfd, s);
 }
 
 
@@ -612,7 +617,7 @@ bfd_free_iface(struct bfd_iface *ifa)
 }
 
 static void
-bfd_reconfigure_iface(struct bfd_proto *p, struct bfd_iface *ifa, struct bfd_config *nc)
+bfd_reconfigure_iface(struct bfd_proto *p UNUSED, struct bfd_iface *ifa, struct bfd_config *nc)
 {
   struct bfd_iface_config *new = bfd_find_iface_config(nc, ifa->iface);
   struct bfd_iface_config *old = ifa->cf;
@@ -626,9 +631,7 @@ bfd_reconfigure_iface(struct bfd_proto *p, struct bfd_iface *ifa, struct bfd_con
     (new->passive != old->passive);
 
   /* This should be probably changed to not access ifa->cf from the BFD thread */
-  birdloop_enter(p->p.loop);
   ifa->cf = new;
-  birdloop_leave(p->p.loop);
 }
 
 
@@ -637,17 +640,22 @@ bfd_reconfigure_iface(struct bfd_proto *p, struct bfd_iface *ifa, struct bfd_con
  */
 
 static void
-bfd_request_notify(struct bfd_request *req, u8 state, u8 diag)
+bfd_request_notify(void *data)
 {
-  u8 old_state = req->state;
+  struct bfd_request *req = data;
+  struct bfd_session_state old = req->old_state;
 
-  if (state == old_state)
+  BFD_LOCK; /* Needed to safely access req->session */
+  struct bfd_session_state new = atomic_load_explicit(&req->session->loc, memory_order_acquire);
+  BFD_UNLOCK;
+
+  if (new.state == old.state)
     return;
 
-  req->state = state;
-  req->diag = diag;
-  req->old_state = old_state;
-  req->down = (old_state == BFD_STATE_UP) && (state == BFD_STATE_DOWN);
+  req->state = new.state;
+  req->diag = new.diag;
+  req->old_state = new;
+  req->down = (old.state == BFD_STATE_UP) && (new.state == BFD_STATE_DOWN);
 
   if (req->hook)
     req->hook(req);
@@ -656,6 +664,9 @@ bfd_request_notify(struct bfd_request *req, u8 state, u8 diag)
 static int
 bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
 {
+  BFD_ASSERT_LOCKED;
+  ASSERT_DIE(req->session == &bfd_admin_down);
+
   struct bfd_config *cf = (struct bfd_config *) (p->p.cf);
 
   if (p->p.vrf && (p->p.vrf != req->vrf))
@@ -669,7 +680,6 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
 
   uint ifindex = req->iface ? req->iface->index : 0;
   struct bfd_session *s = bfd_find_session_by_addr(p, req->addr, ifindex);
-  u8 state, diag;
 
   if (!s)
     s = bfd_add_session(p, req->addr, req->local, req->iface, &req->opts);
@@ -678,12 +688,7 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
   add_tail(&s->request_list, &req->n);
   req->session = s;
 
-  bfd_lock_sessions(p);
-  state = s->loc_state;
-  diag = s->loc_diag;
-  bfd_unlock_sessions(p);
-
-  bfd_request_notify(req, state, diag);
+  ev_send_self(&req->event);
 
   return 1;
 }
@@ -691,41 +696,35 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
 static void
 bfd_pickup_requests(void *_data UNUSED)
 {
-  node *n;
-  WALK_LIST(n, bfd_global.proto_list)
+  struct bfd_proto *p;
+  node *nn;
+  WALK_LIST2(p, nn, bfd_global.proto_list, bfd_node)
   {
-    struct bfd_proto *p = SKIP_BACK(struct bfd_proto, bfd_node, n);
     birdloop_enter(p->p.loop);
     BFD_LOCK;
 
+    struct bfd_request *req;
     node *rn, *rnxt;
-    WALK_LIST_DELSAFE(rn, rnxt, bfd_global.pickup_list)
-      bfd_add_request(p, SKIP_BACK(struct bfd_request, n, rn));
+    WALK_LIST2_DELSAFE(req, rn, rnxt, bfd_global.wait_list, n)
+      bfd_add_request(p, req);
 
     BFD_UNLOCK;
+    birdloop_ping(p->p.loop);
     birdloop_leave(p->p.loop);
   }
-
-  BFD_LOCK;
-  node *rn, *rnxt;
-  WALK_LIST_DELSAFE(rn, rnxt, bfd_global.pickup_list)
-  {
-    rem_node(rn);
-    add_tail(&bfd_global.wait_list, rn);
-    bfd_request_notify(SKIP_BACK(struct bfd_request, n, rn), BFD_STATE_ADMIN_DOWN, 0);
-  }
-  BFD_UNLOCK;
 }
 
 static event bfd_pickup_event = { .hook = bfd_pickup_requests };
+#define bfd_schedule_pickup()	ev_send(&global_event_list, &bfd_pickup_event)
 
 static void
 bfd_take_requests(struct bfd_proto *p)
 {
+  struct bfd_request *req;
   node *n, *nn;
   BFD_LOCK;
-  WALK_LIST_DELSAFE(n, nn, bfd_global.wait_list)
-    bfd_add_request(p, SKIP_BACK(struct bfd_request, n, n));
+  WALK_LIST2_DELSAFE(req, n, nn, bfd_global.wait_list, n)
+    bfd_add_request(p, req);
   BFD_UNLOCK;
 }
 
@@ -740,14 +739,13 @@ bfd_drop_requests(struct bfd_proto *p)
     {
       struct bfd_request *req = SKIP_BACK(struct bfd_request, n, n);
       rem_node(&req->n);
-      add_tail(&bfd_global.pickup_list, &req->n);
-      req->session = NULL;
-      bfd_request_notify(req, BFD_STATE_ADMIN_DOWN, 0);
+      add_tail(&bfd_global.wait_list, &req->n);
+      req->session = &bfd_admin_down;
+      ev_send_self(&req->event);
     }
 
-    ev_send(&global_event_list, &bfd_pickup_event);
-
-    bfd_remove_session_locked(p, s);
+    bfd_schedule_pickup();
+    bfd_remove_session(p, s);
   }
   HASH_WALK_END;
   BFD_UNLOCK;
@@ -759,6 +757,7 @@ struct bfd_request *
 bfd_request_session(pool *p, ip_addr addr, ip_addr local,
 		    struct iface *iface, struct iface *vrf,
 		    void (*hook)(struct bfd_request *), void *data,
+		    struct event_list *list,
 		    const struct bfd_options *opts)
 {
   struct bfd_request *req = ralloc(p, &bfd_request_class);
@@ -773,12 +772,16 @@ bfd_request_session(pool *p, ip_addr addr, ip_addr local,
 
   req->hook = hook;
   req->data = data;
-
-  req->session = NULL;
+  req->event = (event) {
+    .hook = bfd_request_notify,
+    .data = req,
+    .list = list,
+  };
 
   BFD_LOCK;
-  add_tail(&bfd_global.pickup_list, &req->n);
-  ev_send(&global_event_list, &bfd_pickup_event);
+  req->session = &bfd_admin_down;
+  add_tail(&bfd_global.wait_list, &req->n);
+  bfd_schedule_pickup();
   BFD_UNLOCK;
 
   return req;
@@ -787,30 +790,29 @@ bfd_request_session(pool *p, ip_addr addr, ip_addr local,
 void
 bfd_update_request(struct bfd_request *req, const struct bfd_options *opts)
 {
-  struct bfd_session *s = req->session;
-
   if (!memcmp(opts, &req->opts, sizeof(const struct bfd_options)))
     return;
 
+  BFD_LOCK;
   req->opts = *opts;
 
-  if (s)
-    bfd_reconfigure_session(s->ifa->bfd, s);
+  struct bfd_session *s = req->session;
+  if (s != &bfd_admin_down)
+    ev_send_self(&s->update_event);
+
+  BFD_UNLOCK;
 }
 
 static void
 bfd_request_free(resource *r)
 {
   struct bfd_request *req = (struct bfd_request *) r;
-  struct bfd_session *s = req->session;
 
+  BFD_LOCK;
   rem_node(&req->n);
+  BFD_UNLOCK;
 
-  /* Remove the session if there is no request for it. Skip that if
-     inside notify hooks, will be handled by bfd_notify_hook() itself */
-
-  if (s && EMPTY_LIST(s->request_list) && !s->notify_running)
-    bfd_remove_session(s->ifa->bfd, s);
+  ev_postpone(&req->event);
 }
 
 static void
@@ -847,7 +849,7 @@ bfd_neigh_notify(struct neighbor *nb)
   if ((nb->scope > 0) && !n->req)
   {
     ip_addr local = ipa_nonzero(n->local) ? n->local : nb->ifa->ip;
-    n->req = bfd_request_session(p->p.pool, n->addr, local, nb->iface, p->p.vrf, NULL, NULL, NULL);
+    n->req = bfd_request_session(p->p.pool, n->addr, local, nb->iface, p->p.vrf, NULL, NULL, birdloop_event_list(p->p.loop), NULL);
   }
 
   if ((nb->scope <= 0) && n->req)
@@ -864,7 +866,7 @@ bfd_start_neighbor(struct bfd_proto *p, struct bfd_neighbor *n)
 
   if (n->multihop)
   {
-    n->req = bfd_request_session(p->p.pool, n->addr, n->local, NULL, p->p.vrf, NULL, NULL, NULL);
+    n->req = bfd_request_session(p->p.pool, n->addr, n->local, NULL, p->p.vrf, NULL, NULL, birdloop_event_list(p->p.loop), NULL);
     return;
   }
 
@@ -939,100 +941,6 @@ bfd_reconfigure_neighbors(struct bfd_proto *p, struct bfd_config *new)
 
 
 /*
- *	BFD notify socket
- */
-
-/* This core notify code should be replaced after main loop transition to birdloop */
-
-int pipe(int pipefd[2]);
-void pipe_drain(int fd);
-void pipe_kick(int fd);
-
-static int
-bfd_notify_hook(sock *sk, uint len UNUSED)
-{
-  struct bfd_proto *p = sk->data;
-  struct bfd_session *s;
-  list tmp_list;
-  u8 state, diag;
-  node *n, *nn;
-
-  pipe_drain(sk->fd);
-
-  bfd_lock_sessions(p);
-  init_list(&tmp_list);
-  add_tail_list(&tmp_list, &p->notify_list);
-  init_list(&p->notify_list);
-  bfd_unlock_sessions(p);
-
-  WALK_LIST_FIRST(s, tmp_list)
-  {
-    bfd_lock_sessions(p);
-    rem_node(&s->n);
-    state = s->loc_state;
-    diag = s->loc_diag;
-    bfd_unlock_sessions(p);
-
-    s->notify_running = 1;
-    WALK_LIST_DELSAFE(n, nn, s->request_list)
-      bfd_request_notify(SKIP_BACK(struct bfd_request, n, n), state, diag);
-    s->notify_running = 0;
-
-    /* Remove the session if all requests were removed in notify hooks */
-    if (EMPTY_LIST(s->request_list))
-      bfd_remove_session(p, s);
-  }
-
-  return 0;
-}
-
-static inline void
-bfd_notify_kick(struct bfd_proto *p)
-{
-  pipe_kick(p->notify_ws->fd);
-}
-
-static void
-bfd_noterr_hook(sock *sk, int err)
-{
-  struct bfd_proto *p = sk->data;
-  log(L_ERR "%s: Notify socket error: %m", p->p.name, err);
-}
-
-static void
-bfd_notify_init(struct bfd_proto *p)
-{
-  int pfds[2];
-  sock *sk;
-
-  int rv = pipe(pfds);
-  if (rv < 0)
-    die("pipe: %m");
-
-  sk = sk_new(p->p.pool);
-  sk->type = SK_MAGIC;
-  sk->rx_hook = bfd_notify_hook;
-  sk->err_hook = bfd_noterr_hook;
-  sk->fd = pfds[0];
-  sk->data = p;
-  if (sk_open(sk) < 0)
-    die("bfd: sk_open failed");
-  p->notify_rs = sk;
-
-  /* The write sock is not added to any event loop */
-  sk = sk_new(p->p.pool);
-  sk->type = SK_MAGIC;
-  sk->fd = pfds[1];
-  sk->data = p;
-  sk->flags = SKF_THREAD;
-  sk->loop = p->p.loop;
-  if (sk_open(sk) < 0)
-    die("bfd: sk_open failed");
-  p->notify_ws = sk;
-}
-
-
-/*
  *	BFD protocol glue
  */
 
@@ -1041,7 +949,6 @@ bfd_init_all(void)
 {
   bfd_global.lock = DOMAIN_NEW(rtable, "BFD Global");
   init_list(&bfd_global.wait_list);
-  init_list(&bfd_global.pickup_list);
   init_list(&bfd_global.proto_list);
 }
 
@@ -1061,16 +968,11 @@ bfd_start(struct proto *P)
   struct bfd_proto *p = (struct bfd_proto *) P;
   struct bfd_config *cf = (struct bfd_config *) (P->cf);
 
-  pthread_spin_init(&p->lock, PTHREAD_PROCESS_PRIVATE);
-
   p->session_slab = sl_new(P->pool, sizeof(struct bfd_session));
   HASH_INIT(p->session_hash_id, P->pool, 8);
   HASH_INIT(p->session_hash_ip, P->pool, 8);
 
   init_list(&p->iface_list);
-
-  init_list(&p->notify_list);
-  bfd_notify_init(p);
 
   add_tail(&bfd_global.proto_list, &p->bfd_node);
 
@@ -1125,6 +1027,8 @@ bfd_reconfigure(struct proto *P, struct proto_config *c)
   struct bfd_config *new = (struct bfd_config *) c;
   struct bfd_iface *ifa;
 
+  ASSERT_DIE(birdloop_inside(P->loop));
+
   /* TODO: Improve accept reconfiguration */
   if ((new->accept_ipv4 != old->accept_ipv4) ||
       (new->accept_ipv6 != old->accept_ipv6) ||
@@ -1137,12 +1041,12 @@ bfd_reconfigure(struct proto *P, struct proto_config *c)
   WALK_LIST(ifa, p->iface_list)
     bfd_reconfigure_iface(p, ifa, new);
 
-  HASH_WALK(p->session_hash_id, next_id, s)
+  HASH_WALK_DELSAFE(p->session_hash_id, next_id, s)
   {
     if (s->ifa->changed)
       bfd_reconfigure_session(p, s);
   }
-  HASH_WALK_END;
+  HASH_WALK_DELSAFE_END;
 
   bfd_reconfigure_neighbors(p, new);
 
@@ -1167,13 +1071,14 @@ bfd_show_sessions(struct proto *P)
 {
   byte tbuf[TM_DATETIME_BUFFER_SIZE];
   struct bfd_proto *p = (struct bfd_proto *) P;
-  uint state, diag UNUSED;
   btime tx_int, timeout;
   const char *ifname;
 
+  birdloop_enter(P->loop);
   if (p->p.proto_state != PS_UP)
   {
     cli_msg(-1020, "%s: is not up", p->p.name);
+    birdloop_leave(P->loop);
     return;
   }
 
@@ -1181,12 +1086,9 @@ bfd_show_sessions(struct proto *P)
   cli_msg(-1020, "%-25s %-10s %-10s %-12s  %8s %8s",
 	  "IP address", "Interface", "State", "Since", "Interval", "Timeout");
 
-
   HASH_WALK(p->session_hash_id, next_id, s)
   {
-    /* FIXME: this is thread-unsafe, but perhaps harmless */
-    state = s->loc_state;
-    diag = s->loc_diag;
+    uint state = BFD_LOC_STATE(s).state;
     ifname = (s->ifa && s->ifa->iface) ? s->ifa->iface->name : "---";
     tx_int = s->last_tx ? MAX(s->des_min_tx_int, s->rem_min_rx_int) : 0;
     timeout = (btime) MAX(s->req_min_rx_int, s->rem_min_tx_int) * s->rem_detect_mult;
@@ -1198,6 +1100,8 @@ bfd_show_sessions(struct proto *P)
 	    s->addr, ifname, bfd_state_names[state], tbuf, tx_int, timeout);
   }
   HASH_WALK_END;
+
+  birdloop_leave(P->loop);
 }
 
 

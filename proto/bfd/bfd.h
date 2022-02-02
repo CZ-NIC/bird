@@ -88,17 +88,11 @@ struct bfd_proto
 {
   struct proto p;
 
-  pthread_spinlock_t lock;
-
   node bfd_node;
 
   slab *session_slab;
   HASH(struct bfd_session) session_hash_id;
   HASH(struct bfd_session) session_hash_ip;
-
-  sock *notify_rs;
-  sock *notify_ws;
-  list notify_list;
 
   sock *rx4_1;
   sock *rx6_1;
@@ -122,7 +116,6 @@ struct bfd_iface
 
 struct bfd_session
 {
-  node n;
   ip_addr addr;				/* Address of session */
   struct bfd_iface *ifa;		/* Iface associated with session */
   struct bfd_session *next_id;		/* Next in bfd.session_hash_id */
@@ -133,14 +126,15 @@ struct bfd_session
   u8 poll_active;
   u8 poll_scheduled;
 
-  u8 loc_state;
-  u8 rem_state;
-  u8 loc_diag;
-  u8 rem_diag;
+  _Atomic struct bfd_session_state loc;
+  struct bfd_session_state rem;
+#define BFD_LOC_STATE(s)	atomic_load_explicit(&(s)->loc, memory_order_relaxed)
+
   u32 loc_id;				/* Local session ID (local discriminator) */
   u32 rem_id;				/* Remote session ID (remote discriminator) */
 
-  struct bfd_session_config cf;		/* Static configuration parameters */
+  struct bfd_session_config cf;		/* Static configuration parameers */
+  event update_event;			/* Reconfiguration requested */
 
   u32 des_min_tx_int;			/* Desired min rx interval, local option */
   u32 des_min_tx_new;			/* Used for des_min_tx_int change */
@@ -162,6 +156,7 @@ struct bfd_session
 
   list request_list;			/* List of client requests (struct bfd_request) */
   btime last_state_change;		/* Time of last state change */
+  btime last_reqlist_check;		/* Time of last check whether the request list is not empty */
   u8 notify_running;			/* 1 if notify hooks are running */
 
   u8 rx_csn_known;			/* Received crypto sequence number is known */
@@ -207,10 +202,6 @@ extern const char *bfd_state_names[];
 #define BFD_AUTH_METICULOUS_KEYED_SHA1	5
 
 extern const u8 bfd_auth_type_to_hash_alg[];
-
-
-static inline void bfd_lock_sessions(struct bfd_proto *p) { pthread_spin_lock(&p->lock); }
-static inline void bfd_unlock_sessions(struct bfd_proto *p) { pthread_spin_unlock(&p->lock); }
 
 /* bfd.c */
 struct bfd_session * bfd_find_session_by_id(struct bfd_proto *p, u32 id);

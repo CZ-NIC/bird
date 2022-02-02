@@ -290,9 +290,11 @@ bfd_send_ctl(struct bfd_proto *p, struct bfd_session *s, int final)
   if (!sk)
     return;
 
+  struct bfd_session_state loc = BFD_LOC_STATE(s);
+
   pkt = (struct bfd_ctl_packet *) sk->tbuf;
-  pkt->vdiag = bfd_pack_vdiag(1, s->loc_diag);
-  pkt->flags = bfd_pack_flags(s->loc_state, 0);
+  pkt->vdiag = bfd_pack_vdiag(1, loc.diag);
+  pkt->flags = bfd_pack_flags(loc.state, 0);
   pkt->detect_mult = s->detect_mult;
   pkt->length = BFD_BASE_LEN;
   pkt->snd_id = htonl(s->loc_id);
@@ -313,7 +315,7 @@ bfd_send_ctl(struct bfd_proto *p, struct bfd_session *s, int final)
     log(L_WARN "%s: Old packet overwritten in TX buffer", p->p.name);
 
   TRACE(D_PACKETS, "Sending CTL to %I [%s%s]", s->addr,
-	bfd_state_names[s->loc_state], bfd_format_flags(pkt->flags, fb));
+	bfd_state_names[loc.state], bfd_format_flags(pkt->flags, fb));
 
   sk_send_to(sk, pkt->length, s->addr, sk->dport);
 }
@@ -382,16 +384,17 @@ bfd_rx_hook(sock *sk, uint len)
   u32 old_rx_int = s->rem_min_rx_int;
 
   s->rem_id= ntohl(pkt->snd_id);
-  s->rem_state = bfd_pkt_get_state(pkt);
-  s->rem_diag = bfd_pkt_get_diag(pkt);
+  s->rem.state = bfd_pkt_get_state(pkt);
+  s->rem.diag = bfd_pkt_get_diag(pkt);
   s->rem_demand_mode = pkt->flags & BFD_FLAG_DEMAND;
   s->rem_min_tx_int = ntohl(pkt->des_min_tx_int);
   s->rem_min_rx_int = ntohl(pkt->req_min_rx_int);
   s->rem_detect_mult = pkt->detect_mult;
 
   TRACE(D_PACKETS, "CTL received from %I [%s%s]", sk->faddr,
-	bfd_state_names[s->rem_state], bfd_format_flags(pkt->flags, fb));
+	bfd_state_names[s->rem.state], bfd_format_flags(pkt->flags, fb));
 
+  /* This call may drop the session, must be called in tail position */
   bfd_session_process_ctl(s, pkt->flags, old_tx_int, old_rx_int);
   return 1;
 

@@ -1762,8 +1762,14 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
 	nc->proto = p;
 
 	/* We will try to reconfigure protocol p */
-	if (! force_reconfig && proto_reconfigure(p, oc, nc, type))
-	  continue;
+	if (!force_reconfig)
+	{
+	  int ok;
+	  PROTO_LOCKED_FROM_MAIN(p)
+	    ok = proto_reconfigure(p, oc, nc, type);
+	  if (ok)
+	    continue;
+	}
 
 	if (nc->parent)
 	{

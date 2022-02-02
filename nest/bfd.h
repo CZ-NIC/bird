@@ -23,6 +23,11 @@ struct bfd_options {
   u8 mode;
 };
 
+struct bfd_session_state {
+  u8 state;
+  u8 diag;
+};
+
 struct bfd_request {
   resource r;
   node n;
@@ -35,12 +40,12 @@ struct bfd_request {
 
   void (*hook)(struct bfd_request *);
   void *data;
+  event event;
 
   struct bfd_session *session;
-
+  struct bfd_session_state old_state;
   u8 state;
   u8 diag;
-  u8 old_state;
   u8 down;
 };
 
@@ -51,13 +56,12 @@ struct bfd_request {
 #define BFD_STATE_INIT		2
 #define BFD_STATE_UP		3
 
-
 static inline struct bfd_options * bfd_new_options(void)
 { return cfg_allocz(sizeof(struct bfd_options)); }
 
 #ifdef CONFIG_BFD
 
-struct bfd_request * bfd_request_session(pool *p, ip_addr addr, ip_addr local, struct iface *iface, struct iface *vrf, void (*hook)(struct bfd_request *), void *data, const struct bfd_options *opts);
+struct bfd_request * bfd_request_session(pool *p, ip_addr addr, ip_addr local, struct iface *iface, struct iface *vrf, void (*hook)(struct bfd_request *), void *data, struct event_list *list, const struct bfd_options *opts);
 void bfd_update_request(struct bfd_request *req, const struct bfd_options *opts);
 
 static inline void cf_check_bfd(int use UNUSED) { }

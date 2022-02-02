@@ -63,6 +63,7 @@ static inline void ev_init_cork(struct event_cork *ec, const char *name)
 };
 
 void ev_send(event_list *, event *);
+#define ev_send_self(e)	({ ASSERT_DIE((e)->list); ev_send((e)->list, (e)); })
 #define ev_send_loop(l, e) ev_send(birdloop_event_list((l)), (e))
 
 #define ev_schedule(e) ({ ASSERT_THE_BIRD_LOCKED; if (!ev_active((e))) ev_send(&global_event_list, (e)); })
