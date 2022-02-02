@@ -687,6 +687,7 @@ t_trie_walk(void)
     bt_debug("Full walk (round %d, %d nets)\n", round, num);
 
     pos = 0;
+    uint pxc = 0;
     TRIE_WALK(trie, net, NULL)
     {
       log_networks(&net, &pxset[pos].net);
@@ -697,10 +698,12 @@ t_trie_walk(void)
 	pos++;
 
       pos++;
+      pxc++;
     }
     TRIE_WALK_END;
 
     bt_assert(pos == num);
+    bt_assert(pxc == trie->prefix_count);
     bt_debug("Full walk done\n");
 
 

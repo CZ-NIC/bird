@@ -173,6 +173,7 @@ struct f_trie
   u8 zero;
   s8 ipv4;				/* -1 for undefined / empty */
   u16 data_size;			/* Additional data for each trie node */
+  u32 prefix_count;			/* Works only for restricted tries (pxlen == l == h) */
   struct f_trie_node root;		/* Root trie node */
 };
 

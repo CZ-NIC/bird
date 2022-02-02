@@ -247,6 +247,7 @@ trie_amask_to_local(ip_addr px, ip_addr amask, uint nlen)
 #define GET_ADDR(N,F,X) ((X) ? ipt_from_ip4((N)->v4.F) : ipa_from_ip6((N)->v6.F))
 #define SET_ADDR(N,F,X,V) ({ if (X) (N)->v4.F =ipt_to_ip4(V); else (N)->v6.F =ipa_to_ip6(V); })
 
+#define GET_LOCAL(N,X) ((X) ? (N)->v4.local : (N)->v6.local)
 #define ADD_LOCAL(N,X,V) ({ uint v_ = (V); if (X) (N)->v4.local |= v_; else (N)->v6.local |= v_; })
 
 #define GET_CHILD(N,X,I) ((X) ? (struct f_trie_node *) (N)->v4.c[I] : (struct f_trie_node *) (N)->v6.c[I])
@@ -299,6 +300,7 @@ trie_add_node(struct f_trie *t, uint plen, ip_addr px, uint local, uint l, uint 
 	  attach_node(o, b, v4);
 	  attach_node(b, n, v4);
 	  attach_node(b, a, v4);
+	  t->prefix_count++;
 
 	  DBG("Case 1\n");
 	  return a;
@@ -312,6 +314,7 @@ trie_add_node(struct f_trie *t, uint plen, ip_addr px, uint local, uint l, uint 
 	  struct f_trie_node *a = new_node(t, plen, local, paddr, pmask, amask);
 	  attach_node(o, a, v4);
 	  attach_node(a, n, v4);
+	  t->prefix_count++;
 
 	  DBG("Case 2\n");
 	  return a;
@@ -322,6 +325,10 @@ trie_add_node(struct f_trie *t, uint plen, ip_addr px, uint local, uint l, uint 
 	  /* We already found added node in trie. Just update accept and local mask */
 	  accept = ipa_or(accept, amask);
 	  SET_ADDR(n, accept, v4, accept);
+
+	  if ((GET_LOCAL(n, v4) & local) != local)
+	    t->prefix_count++;
+
 	  ADD_LOCAL(n, v4, local);
 
 	  DBG("Case 3\n");
@@ -343,6 +350,7 @@ trie_add_node(struct f_trie *t, uint plen, ip_addr px, uint local, uint l, uint 
   /* We add new tail node 'a' after node 'o' */
   struct f_trie_node *a = new_node(t, plen, local, paddr, pmask, amask);
   attach_node(o, a, v4);
+  t->prefix_count++;
 
   DBG("Case 4\n");
   return a;
