@@ -134,6 +134,9 @@ net_init_with_trie(struct fib *f, void *N)
 
   if (tab->trie)
     trie_add_prefix(tab->trie, n->n.addr, n->n.addr->pxlen, n->n.addr->pxlen);
+
+  if (tab->trie_new)
+    trie_add_prefix(tab->trie_new, n->n.addr, n->n.addr->pxlen, n->n.addr->pxlen);
 }
 
 static inline net *
@@ -2399,6 +2402,13 @@ rt_prune_table(rtable *tab)
 
     FIB_ITERATE_INIT(fit, &tab->fib);
     tab->prune_state = 2;
+
+    if (tab->prune_trie)
+    {
+      /* Init prefix trie pruning */
+      tab->trie_new = f_new_trie(lp_new_default(tab->rp), 0);
+      tab->trie_new->ipv4 = tab->trie->ipv4;
+    }
   }
 
 again:
@@ -2407,17 +2417,17 @@ again:
       rte *e;
 
     rescan:
+      if (limit <= 0)
+      {
+	FIB_ITERATE_PUT(fit);
+	ev_schedule(tab->rt_event);
+	return;
+      }
+
       for (e=n->routes; e; e=e->next)
       {
 	if (e->sender->flush_active || (e->flags & REF_DISCARD))
 	  {
-	    if (limit <= 0)
-	      {
-		FIB_ITERATE_PUT(fit);
-		ev_schedule(tab->rt_event);
-		return;
-	      }
-
 	    rte_discard(e);
 	    limit--;
 
@@ -2426,13 +2436,6 @@ again:
 
 	if (e->flags & REF_MODIFY)
 	  {
-	    if (limit <= 0)
-	      {
-		FIB_ITERATE_PUT(fit);
-		ev_schedule(tab->rt_event);
-		return;
-	      }
-
 	    rte_modify(e);
 	    limit--;
 
@@ -2446,6 +2449,12 @@ again:
 	  fib_delete(&tab->fib, n);
 	  goto again;
 	}
+
+      if (tab->trie_new)
+      {
+	trie_add_prefix(tab->trie_new, n->n.addr, n->n.addr->pxlen, n->n.addr->pxlen);
+	limit--;
+      }
     }
   FIB_ITERATE_END;
 
@@ -2458,6 +2467,25 @@ again:
 
   /* state change 2->0, 3->1 */
   tab->prune_state &= 1;
+
+  if (tab->trie_new)
+  {
+    /* Finish prefix trie pruning */
+    rfree(tab->trie->lp);
+    tab->trie = tab->trie_new;
+    tab->trie_new = NULL;
+    tab->prune_trie = 0;
+  }
+  else
+  {
+    /* Schedule prefix trie pruning */
+    if (tab->trie && (tab->trie->prefix_count > (2 * tab->fib.entries)))
+    {
+      /* state change 0->1, 2->3 */
+      tab->prune_state |= 1;
+      tab->prune_trie = 1;
+    }
+  }
 
   if (tab->prune_state > 0)
     ev_schedule(tab->rt_event);

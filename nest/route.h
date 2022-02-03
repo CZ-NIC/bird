@@ -185,10 +185,12 @@ typedef struct rtable {
   btime gc_time;			/* Time of last GC */
   int gc_counter;			/* Number of operations since last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
+  byte prune_trie;			/* Prune prefix trie during next table prune */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
+  struct f_trie *trie_new;		/* New prefix trie defined during pruning */
 
   list subscribers;			/* Subscribers for notifications */
   struct timer *settle_timer;		/* Settle time for notifications */
