@@ -93,7 +93,7 @@ set yrange [0.5:10800]
 
 set grid
 
-set key right bottom
+set key left top
 
 set output "$OUTPUT"
 EOF
