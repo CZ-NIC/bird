@@ -124,7 +124,7 @@ static struct {
   list proto_list;
 } bfd_global;
 
-static struct bfd_session bfd_admin_down = { .loc = { .state = BFD_STATE_ADMIN_DOWN }, };
+static struct bfd_session bfd_admin_down = { .loc = ATOMIC_VAR_INIT((struct bfd_session_state) { .state = BFD_STATE_ADMIN_DOWN }), };
 
 const char *bfd_state_names[] = { "AdminDown", "Down", "Init", "Up" };
 

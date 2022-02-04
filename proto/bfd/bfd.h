@@ -128,7 +128,7 @@ struct bfd_session
 
   _Atomic struct bfd_session_state loc;
   struct bfd_session_state rem;
-#define BFD_LOC_STATE(s)	atomic_load_explicit(&(s)->loc, memory_order_relaxed)
+#define BFD_LOC_STATE(s)	({ struct bfd_session_state _bss = atomic_load_explicit(&(s)->loc, memory_order_relaxed); _bss; })
 
   u32 loc_id;				/* Local session ID (local discriminator) */
   u32 rem_id;				/* Remote session ID (remote discriminator) */
