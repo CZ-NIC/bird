@@ -86,7 +86,7 @@ uint dg_order(struct domain_generic *dg)
 
 void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
 {
-  if ((char *) lsp - (char *) &locking_stack != dg->order)
+  if ((char *) lsp - (char *) &locking_stack != (int) dg->order)
     bug("Trying to lock on bad position: order=%u, lsp=%p, base=%p", dg->order, lsp, &locking_stack);
 
   if (lsp <= last_locked)
@@ -110,7 +110,7 @@ void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
 
 void do_unlock(struct domain_generic *dg, struct domain_generic **lsp)
 {
-  if ((char *) lsp - (char *) &locking_stack != dg->order)
+  if ((char *) lsp - (char *) &locking_stack != (int) dg->order)
     bug("Trying to unlock on bad position: order=%u, lsp=%p, base=%p", dg->order, lsp, &locking_stack);
 
   if (dg->locked_by != &locking_stack)
