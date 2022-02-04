@@ -279,9 +279,11 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ROA_CHECK, ASN, SRC, DST,
 	IS_V4, IS_V6,
 	LEN, MAXLEN,
+	DATA, DATA1, DATA2,
 	DEFINED,
 	ADD, DELETE, CONTAINS, RESET,
 	PREPEND, FIRST, LAST, LAST_NONAGGREGATED, MATCH,
+	MIN, MAX,
 	EMPTY,
 	FILTER, WHERE, EVAL, ATTRIBUTE,
 	BT_ASSERT, BT_TEST_SUITE, BT_CHECK_ASSIGN, BT_TEST_SAME, FORMAT, STACKS)
@@ -790,13 +792,18 @@ term:
  | term '.' RD { $$ = f_new_inst(FI_ROUTE_DISTINGUISHER, $1); }
  | term '.' LEN { $$ = f_new_inst(FI_LENGTH, $1); }
  | term '.' MAXLEN { $$ = f_new_inst(FI_ROA_MAXLEN, $1); }
- | term '.' ASN { $$ = f_new_inst(FI_ROA_ASN, $1); }
+ | term '.' ASN { $$ = f_new_inst(FI_ASN, $1); }
  | term '.' SRC { $$ = f_new_inst(FI_NET_SRC, $1); }
  | term '.' DST { $$ = f_new_inst(FI_NET_DST, $1); }
  | term '.' MASK '(' term ')' { $$ = f_new_inst(FI_IP_MASK, $1, $5); }
  | term '.' FIRST { $$ = f_new_inst(FI_AS_PATH_FIRST, $1); }
  | term '.' LAST  { $$ = f_new_inst(FI_AS_PATH_LAST, $1); }
  | term '.' LAST_NONAGGREGATED  { $$ = f_new_inst(FI_AS_PATH_LAST_NAG, $1); }
+ | term '.' DATA { $$ = f_new_inst(FI_PAIR_DATA, $1); }
+ | term '.' DATA1 { $$ = f_new_inst(FI_LC_DATA1, $1); }
+ | term '.' DATA2 { $$ = f_new_inst(FI_LC_DATA2, $1); }
+ | term '.' MIN  { $$ = f_new_inst(FI_MIN, $1); }
+ | term '.' MAX  { $$ = f_new_inst(FI_MAX, $1); }
 
 /* Communities */
 /* This causes one shift/reduce conflict

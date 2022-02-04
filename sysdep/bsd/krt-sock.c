@@ -368,6 +368,30 @@ krt_replace_rte(struct krt_proto *p, const net_addr *n UNUSED, rte *new, const r
   }
 }
 
+/**
+ * krt_assume_onlink - check if routes on interface are considered onlink
+ * @iface: The interface of the next hop
+ * @ipv6: Switch to only consider IPv6 or IPv4 addresses.
+ *
+ * The BSD kernel does not support an onlink flag. If the interface has only
+ * host addresses configured, all routes should be considered as onlink and
+ * the function returns 1.
+ */
+static int
+krt_assume_onlink(struct iface *iface, int ipv6)
+{
+  const u8 type = ipv6 ? NET_IP6 : NET_IP4;
+
+  struct ifa *ifa;
+  WALK_LIST(ifa, iface->addrs)
+  {
+    if ((ifa->prefix.type == type) && !(ifa->flags & IA_HOST))
+      return 0;
+  }
+
+  return 1;
+}
+
 #define SKIP(ARG...) do { DBG("KRT: Ignoring route - " ARG); return; } while(0)
 
 static void
@@ -525,15 +549,21 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   a.dest = RTD_UNICAST;
   if (flags & RTF_GATEWAY)
   {
-    neighbor *ng;
     a.nh.gw = igate;
 
     /* Clean up embedded interface ID returned in link-local address */
     if (ipa_is_link_local(a.nh.gw))
       _I0(a.nh.gw) = 0xfe800000;
 
-    ng = neigh_find(&p->p, a.nh.gw, a.nh.iface, 0);
-    if (!ng || (ng->scope == SCOPE_HOST))
+    /* The BSD kernel does not support an onlink flag. We heuristically
+       set the onlink flag, if the iface has only host addresses. */
+    if (krt_assume_onlink(a.nh.iface, ipv6))
+      a.nh.flags |= RNF_ONLINK;
+
+    neighbor *nbr;
+    nbr = neigh_find(&p->p, a.nh.gw, a.nh.iface,
+		    (a.nh.flags & RNF_ONLINK) ? NEF_ONLINK : 0);
+    if (!nbr || (nbr->scope == SCOPE_HOST))
       {
 	/* Ignore routes with next-hop 127.0.0.1, host routes with such
 	   next-hop appear on OpenBSD for address aliases. */

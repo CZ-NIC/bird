@@ -516,6 +516,48 @@ int_set_sort(struct linpool *pool, const struct adata *src)
   return dst;
 }
 
+int
+int_set_min(const struct adata *list, u32 *val)
+{
+  if (!list)
+    return 0;
+
+  u32 *l = (u32 *) list->data;
+  int len = int_set_get_size(list);
+  int i;
+
+  if (len < 1)
+    return 0;
+
+  *val = *l++;
+  for (i = 1; i < len; i++, l++)
+    if (int_set_cmp(val, l) > 0)
+      *val = *l;
+
+  return 1;
+}
+
+int
+int_set_max(const struct adata *list, u32 *val)
+{
+  if (!list)
+    return 0;
+
+  u32 *l = (u32 *) list->data;
+  int len = int_set_get_size(list);
+  int i;
+
+  if (len < 1)
+    return 0;
+
+  *val = *l++;
+  for (i = 1; i < len; i++, l++)
+    if (int_set_cmp(val, l) < 0)
+      *val = *l;
+
+  return 1;
+}
+
 
 static int
 ec_set_cmp(const void *X, const void *Y)
@@ -541,6 +583,50 @@ ec_set_sort_x(struct adata *set)
   qsort(set->data, set->length / 8, 8, ec_set_cmp);
 }
 
+int
+ec_set_min(const struct adata *list, u64 *val)
+{
+  if (!list)
+    return 0;
+
+  u32 *l = int_set_get_data(list);
+  int len = int_set_get_size(list);
+  int i;
+
+  if (len < 1)
+    return 0;
+
+  u32 *res = l; l += 2;
+  for (i = 2; i < len; i += 2, l += 2)
+    if (ec_set_cmp(res, l) > 0)
+      res = l;
+
+  *val = ec_generic(res[0], res[1]);
+  return 1;
+}
+
+int
+ec_set_max(const struct adata *list, u64 *val)
+{
+  if (!list)
+    return 0;
+
+  u32 *l = int_set_get_data(list);
+  int len = int_set_get_size(list);
+  int i;
+
+  if (len < 1)
+    return 0;
+
+  u32 *res = l; l += 2;
+  for (i = 2; i < len; i += 2, l += 2)
+    if (ec_set_cmp(res, l) < 0)
+      res = l;
+
+  *val = ec_generic(res[0], res[1]);
+  return 1;
+}
+
 
 static int
 lc_set_cmp(const void *X, const void *Y)
@@ -562,4 +648,48 @@ lc_set_sort(struct linpool *pool, const struct adata *src)
   memcpy(dst->data, src->data, src->length);
   qsort(dst->data, dst->length / LCOMM_LENGTH, LCOMM_LENGTH, lc_set_cmp);
   return dst;
+}
+
+int
+lc_set_min(const struct adata *list, lcomm *val)
+{
+  if (!list)
+    return 0;
+
+  u32 *l = int_set_get_data(list);
+  int len = int_set_get_size(list);
+  int i;
+
+  if (len < 1)
+    return 0;
+
+  u32 *res = l; l += 3;
+  for (i = 3; i < len; i += 3, l += 3)
+    if (lc_set_cmp(res, l) > 0)
+      res = l;
+
+  *val = (lcomm) { res[0], res[1], res[2] };
+  return 1;
+}
+
+int
+lc_set_max(const struct adata *list, lcomm *val)
+{
+  if (!list)
+    return 0;
+
+  u32 *l = int_set_get_data(list);
+  int len = int_set_get_size(list);
+  int i;
+
+  if (len < 1)
+    return 0;
+
+  u32 *res = l; l += 3;
+  for (i = 3; i < len; i += 3, l += 3)
+    if (lc_set_cmp(res, l) < 0)
+      res = l;
+
+  *val = (lcomm) { res[0], res[1], res[2] };
+  return 1;
 }

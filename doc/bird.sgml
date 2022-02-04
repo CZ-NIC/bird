@@ -1299,6 +1299,9 @@ in the foot).
 	The same syntax can also be used to construct a pair from two arbitrary
 	integer expressions (for example <cf/(1+2,a)/).
 
+	Operators <cf/.asn/ and <cf/.data/ can be used to extract corresponding
+	components of a pair: <cf>(<m/asn/, <m/data/)</cf>.
+
 	<tag><label id="type-quad">quad</tag>
 	This is a dotted quad of numbers used to represent router IDs (and
 	others). Each component can have a value from 0 to 255. Literals of
@@ -1388,6 +1391,10 @@ in the foot).
 	written as <cf/(123, 456, 789)/, with any integer values. Similarly to
 	pairs, LCs can be constructed using expressions for its parts, (e.g.
 	<cf/(myas, 10+20, 3*10)/, where <cf/myas/ is an integer variable).
+
+	Operators <cf/.asn/, <cf/.data1/, and <cf/.data2/ can be used
+	to extract corresponding components of LCs:
+	<cf>(<m/asn/, <m/data1/, <m/data2/)</cf>.
 
 	<tag><label id="type-set">int|pair|quad|ip|prefix|ec|lc|enum set</tag>
 	Filters recognize four types of sets. Sets are similar to strings: you
@@ -1532,7 +1539,7 @@ in the foot).
 	Clist is similar to a set, except that unlike other sets, it can be
 	modified. The type is used for community list (a set of pairs) and for
 	cluster list (a set of quads). There exist no literals of this type.
-	There are three special operators on clists:
+	There are special operators on clists:
 
 	<cf><m/C/.len</cf> returns the length of clist <m/C/.
 
@@ -1558,6 +1565,15 @@ in the foot).
 	Statement <cf><m/C/ = add(<m/C/, <m/P/);</cf> can be shortened to
 	<cf><m/C/.add(<m/P/);</cf> if <m/C/ is appropriate route attribute (for
 	example <cf/bgp_community/). Similarly for <cf/delete/ and <cf/filter/.
+
+	<cf><m/C/.min</cf> returns the minimum element of clist <m/C/.
+
+	<cf><m/C/.max</cf> returns the maximum element of clist <m/C/.
+
+	Operators <cf/.min/, <cf/.max/ can be used together with <cf/filter/
+	to extract the community from the specific subset of communities
+	(e.g. localpref or prepend) without the need to check every possible
+	value (e.g. <cf/filter(bgp_community, [(23456, 1000..1099)]).min/).
 
 	<tag><label id="type-eclist">eclist</tag>
 	Eclist is a data type used for BGP extended community lists. Eclists
