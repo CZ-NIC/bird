@@ -2471,7 +2471,19 @@ again:
   if (tab->trie_new)
   {
     /* Finish prefix trie pruning */
-    rfree(tab->trie->lp);
+
+    if (!tab->trie_lock_count)
+    {
+      rfree(tab->trie->lp);
+    }
+    else
+    {
+      ASSERT(!tab->trie_old);
+      tab->trie_old = tab->trie;
+      tab->trie_old_lock_count = tab->trie_lock_count;
+      tab->trie_lock_count = 0;
+    }
+
     tab->trie = tab->trie_new;
     tab->trie_new = NULL;
     tab->prune_trie = 0;
@@ -2479,7 +2491,7 @@ again:
   else
   {
     /* Schedule prefix trie pruning */
-    if (tab->trie && (tab->trie->prefix_count > (2 * tab->fib.entries)))
+    if (tab->trie && !tab->trie_old && (tab->trie->prefix_count > (2 * tab->fib.entries)))
     {
       /* state change 0->1, 2->3 */
       tab->prune_state |= 1;
@@ -2503,6 +2515,72 @@ again:
 
   return;
 }
+
+/**
+ * rt_lock_trie - lock a prefix trie of a routing table
+ * @tab: routing table with prefix trie to be locked
+ *
+ * The prune loop may rebuild the prefix trie and invalidate f_trie_walk_state
+ * structures. Therefore, asynchronous walks should lock the prefix trie using
+ * this function. That allows the prune loop to rebuild the trie, but postpones
+ * its freeing until all walks are done (unlocked by rt_unlock_trie()).
+ *
+ * Return a current trie that will be locked, the value should be passed back to
+ * rt_unlock_trie() for unlocking.
+ *
+ */
+struct f_trie *
+rt_lock_trie(rtable *tab)
+{
+  ASSERT(tab->trie);
+
+  tab->trie_lock_count++;
+  return tab->trie;
+}
+
+/**
+ * rt_unlock_trie - unlock a prefix trie of a routing table
+ * @tab: routing table with prefix trie to be locked
+ * @trie: value returned by matching rt_lock_trie()
+ *
+ * Done for trie locked by rt_lock_trie() after walk over the trie is done.
+ * It may free the trie and schedule next trie pruning.
+ */
+void
+rt_unlock_trie(rtable *tab, struct f_trie *trie)
+{
+  ASSERT(trie);
+
+  if (trie == tab->trie)
+  {
+    /* Unlock the current prefix trie */
+    ASSERT(tab->trie_lock_count);
+    tab->trie_lock_count--;
+  }
+  else if (trie == tab->trie_old)
+  {
+    /* Unlock the old prefix trie */
+    ASSERT(tab->trie_old_lock_count);
+    tab->trie_old_lock_count--;
+
+    /* Free old prefix trie that is no longer needed */
+    if (!tab->trie_old_lock_count)
+    {
+      rfree(tab->trie_old->lp);
+      tab->trie_old = NULL;
+
+      /* Kick prefix trie pruning that was postponed */
+      if (tab->trie && (tab->trie->prefix_count > (2 * tab->fib.entries)))
+      {
+	tab->prune_trie = 1;
+	rt_schedule_prune(tab);
+      }
+    }
+  }
+  else
+    log(L_BUG "Invalid arg to rt_unlock_trie()");
+}
+
 
 void
 rt_preconfig(struct config *c)

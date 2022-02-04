@@ -191,6 +191,9 @@ typedef struct rtable {
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
   struct f_trie *trie_new;		/* New prefix trie defined during pruning */
+  struct f_trie *trie_old;		/* Old prefix trie waiting to be freed */
+  u32 trie_lock_count;			/* Prefix trie locked by walks */
+  u32 trie_old_lock_count;		/* Old prefix trie locked by walks */
 
   list subscribers;			/* Subscribers for notifications */
   struct timer *settle_timer;		/* Settle time for notifications */
@@ -332,6 +335,8 @@ void rt_preconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
 void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
+struct f_trie * rt_lock_trie(rtable *tab);
+void rt_unlock_trie(rtable *tab, struct f_trie *trie);
 void rt_subscribe(rtable *tab, struct rt_subscription *s);
 void rt_unsubscribe(struct rt_subscription *s);
 void rt_flowspec_link(rtable *src, rtable *dst);
@@ -405,6 +410,7 @@ struct rt_show_data {
   struct rt_show_data_rtable *last_table; /* Last table in output */
   struct fib_iterator fit;		/* Iterator over networks in table */
   struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
+  struct f_trie *walk_lock;		/* Locked trie for walking */
   int verbose, tables_defined_by;
   const struct filter *filter;
   struct proto *show_protocol;

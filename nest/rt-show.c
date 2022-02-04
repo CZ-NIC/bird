@@ -222,6 +222,9 @@ rt_show_cleanup(struct cli *c)
   if (d->table_open && !d->trie_walk)
     fit_get(&d->tab->table->fib, &d->fit);
 
+  if (d->walk_lock)
+    rt_unlock_trie(d->tab->table, d->walk_lock);
+
   /* Unlock referenced tables */
   WALK_LIST(tab, d->tables)
     rt_unlock_table(tab->table);
@@ -257,7 +260,10 @@ rt_show_cont(struct cli *c)
       d->walk_state = lp_allocz(c->parser_pool, sizeof (struct f_trie_walk_state));
 
     if (d->trie_walk)
+    {
+      d->walk_lock = rt_lock_trie(tab);
       trie_walk_init(d->walk_state, tab->trie, d->addr);
+    }
     else
       FIB_ITERATE_INIT(&d->fit, &tab->fib);
 
@@ -288,6 +294,9 @@ rt_show_cont(struct cli *c)
       if (!--max)
 	return;
     }
+
+    rt_unlock_trie(tab, d->walk_lock);
+    d->walk_lock = NULL;
   }
   else
   {
