@@ -557,6 +557,11 @@ test-ospf-custom:
   variables:
     TEST_NAME: cf-ospf-custom
 
+test-ospf-area:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ospf-area
+
 test-ospf-vrf:
   <<: *test-base
   variables:
@@ -611,3 +616,8 @@ test-babel-auth:
   <<: *test-base
   variables:
     TEST_NAME: cf-babel-auth
+
+test-rip-base:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-rip-base
