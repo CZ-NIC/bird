@@ -271,3 +271,9 @@ sk_set_priority(sock *s, int prio UNUSED)
 {
   ERR_MSG("Socket priority not supported");
 }
+
+static inline int
+sk_set_freebind(sock *s)
+{
+  ERR_MSG("Freebind is not supported");
+}
