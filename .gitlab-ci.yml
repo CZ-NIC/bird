@@ -32,16 +32,6 @@ stages:
   # That's Docker in Docker
   - dind
 
-docker_debian-8-amd64:
-  variables:
-    IMG_NAME: "debian-8-amd64"
-  <<: *docker_build
-
-docker_debian-8-i386:
-  variables:
-    IMG_NAME: "debian-8-i386"
-  <<: *docker_build
-
 docker_debian-9-amd64:
   variables:
     IMG_NAME: "debian-9-amd64"
@@ -222,14 +212,6 @@ docker_opensuse-15.3-amd64:
     - linux
     - amd64
 
-build-debian-8-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:debian-8-amd64
-
-build-debian-8-i386:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:debian-8-i386
-
 build-debian-9-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:debian-9-amd64
@@ -385,18 +367,6 @@ build-freebsd-11-i386:
   artifacts:
     paths:
       - pkg/pkgs/*
-
-# Dpkg error: PATH is not set
-#pkg-debian-8-amd64:
-#  <<: *pkg-deb
-#  needs: [build-debian-8-amd64]
-#  image: registry.nic.cz/labs/bird:debian-8-amd64
-
-# Dpkg error: PATH is not set
-#pkg-debian-8-i386:
-#  <<: *pkg-deb
-#  needs: [build-debian-8-i386]
-#  image: registry.nic.cz/labs/bird:debian-8-i386
 
 # Dpkg error: PATH is not set
 pkg-debian-9-amd64:
