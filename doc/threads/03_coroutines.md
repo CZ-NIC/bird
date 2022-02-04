@@ -3,7 +3,7 @@
 Parallel execution in BIRD uses an underlying mechanism of dedicated IO loops
 and hierarchical locks. The original event scheduling module has been converted
 to do message passing in multithreaded environment. These mechanisms are
-crucial for understanding what happens inside BIRD and how the protocol API changes.
+crucial for understanding what happens inside BIRD and how its internal API changes.
 
 BIRD is a fast, robust and memory-efficient routing daemon designed and
 implemented at the end of 20th century. We're doing a significant amount of
@@ -18,7 +18,7 @@ to lock all the parts which have not been checked and updated yet.
 
 The authors of original BIRD concepts wisely chose a highly modular structure
 which allows to create a hierarchy for locks. The main chokepoint was between
-protocols and tables which has been solved by implementing asynchronous exports
+protocols and tables and it has been removed by implementing asynchronous exports
 as described in the [previous chapter](https://en.blog.nic.cz/2021/06/14/bird-journey-to-threads-chapter-2-asynchronous-route-export/).
 
 Locks in BIRD (called domains, as they always lock some defined part of BIRD)
@@ -72,42 +72,53 @@ The major lock level is still The BIRD Lock, containing not only the
 not-yet-converted protocols (like Babel, OSPF or RIP) but also processing CLI
 commands and reconfiguration. This involves an awful lot of direct access into
 other contexts which would be unnecessarily complicated to implement by message
-passing. Therefore, this lock is simply *"the director"*, sitting on the top.
+passing. Therefore, this lock is simply *"the director"*, sitting on the top
+with its own category. 
 
-The lower lock levels are mostly for shared global data structures accessed
-from everywhere. We'll address some of these later.
+The lower lock levels under routing tables are mostly for shared global data
+structures accessed from everywhere. We'll address some of these later.
 
 ## IO Loop
 
 There has been a protocol, BFD, running in its own thread since 2013. This
 separation has a good reason; it needs low latency and the main BIRD loop just
-walks round-robin around all the available sockets which may last for a long
-time. BFD had its own IO loop implementation and simple message passing
-routines. This code could be easily updated for general use so I did it.
+walks round-robin around all the available sockets and one round-trip may take
+a long time (even more than a minute with large configurations). BFD had its
+own IO loop implementation and simple message passing routines. This code could
+be easily updated for general use so I did it.
 
 To understand the internal principles, we should say that in the `master`
 branch, there is a big loop centered around a `poll()` call, dispatching and
-executing everything as needed. There are several means how to get something dispatched from a loop.
+executing everything as needed. In the `sark` branch, there are multiple loops
+of this kind. BIRD has several means how to get something dispatched from a
+loop.
 
-1. Requesting to read from a socket makes the main loop call your hook when there is some data received.
+1. Requesting to read from a **socket** makes the main loop call your hook when there is some data received.
    The same happens when a socket refuses to write data. Then the data is buffered and you are called when
-   the buffer is free. There is also a third callback, an error hook, for obvious reasons.
+   the buffer is free to continue writing. There is also a third callback, an error hook, for obvious reasons.
 
-2. Requesting to be called back after a given amount of time. This is called *timer*.
+2. Requesting to be called back after a given amount of time. This is called **timer**.
+   As is common with all timers, they aren't precise and the callback may be
+   delayed significantly. This was also the reason to have BFD loop separate
+   since the very beginning, yet now the abundance of threads may lead to
+   problems with BFD latency in large-scale configurations. We haven't tested
+   this yet.
 
-3. Requesting to be called back when possible. This is useful to run anything
-   not reentrant which might mess with the caller's data, e.g. when a protocol
-   decides to shutdown due to some inconsistency in received data. This is called *event*.
+3. Requesting to be called back from a clean context when possible. This is
+   useful to run anything not reentrant which might mess with the caller's
+   data, e.g. when a protocol decides to shutdown due to some inconsistency
+   in received data. This is called **event**.
 
 4. Requesting to do some work when possible. These are also events, there is only
    a difference where this event is enqueued; in the main loop, there is a
    special *work queue* with an execution limit, allowing sockets and timers to be
    handled with a reasonable latency while still doing all the work needed.
+   Other loops don't have designated work queues (we may add them later).
 
 All these, sockets, timers and events, are tightly bound to some domain.
 Sockets typically belong to a protocol, timers and events to a protocol or table.
 With the modular structure of BIRD, the easy and convenient approach to multithreading
-is to get more IO loops bound to specific domains, running their events, timers and
+is to get more IO loops, each bound to a specific domain, running their events, timers and
 socket hooks in their threads.
 
 ## Message passing and loop entering
@@ -155,17 +166,20 @@ triple-indirect delayed route announcement is employed:
 1. First, when a channel imports a route by entering a loop, it sends an event
    to its own loop (no ping needed in such case). This operation is idempotent,
    thus for several routes in a row, only one event is enqueued. This reduces
-   several route imports (even hundreds in case of massive BGP withdrawals) to
-   one single event.
+   several route import announcements (even hundreds in case of massive BGP
+   withdrawals) to one single event.
 2. When the channel is done importing (or at least takes a coffee break and
    checks its mailbox), the scheduled event in its own loop is run, sending
    another event to the table's loop, saying basically *"Hey, table, I've just
    imported something."*. This event is also idempotent and further reduces
-   route imports from multiple sources to one single event.
+   route import announcements from multiple sources to one single event.
 3. The table's announcement event is then executed from its loop, enqueuing export
    events for all connected channels, finally initiating route exports. As we
    already know, imports are done by direct access, therefore if protocols keep
-   importing, export announcements must wait.
+   importing, export announcements are slowed down.
+4. The actual data on what has been updated is stored in a table journal. This
+   peculiar technique is used only for informing the exporting channels that
+   *"there is something to do"*.
 
 This may seem overly complicated, yet it should work and it seems to work. In
 case of low load, all these notifications just come through smoothly. In case
@@ -191,16 +205,16 @@ as these multiply the exports by propagating them all the way down to other
 tables, eventually eating about twice the amount of memory than the single-threaded version.
 
 There is therefore a cork to make this stop. Every table is checking how many
-exports it has pending, and when adding a new export to the queue, it may apply
-a cork, saying simply "please stop the flow for a while". When the exports are
-then processed, it uncorks.
+exports it has pending, and when adding a new export to the queue, it may request
+a cork, saying simply "please stop the flow for a while". When the export buffer
+size is reduced low enough, the table uncorks.
 
-On the other side, there may be events and sockets with a cork assigned. When
+On the other side, there are events and sockets with a cork assigned. When
 trying to enqueue an event and the cork is applied, the event is instead put
 into the cork's queue and released only when the cork is released. In case of
-sockets, when `poll` arguments are recalculated, the corked socket is not
-checked for received packets, effectively keeping them in the TCP queue and
-slowing down the flow.
+sockets, when read is indicated or when `poll` arguments are recalculated,
+the corked socket is simply not checked for received packets, effectively
+keeping them in the TCP queue and slowing down the flow until cork is released.
 
 The cork implementation is quite crude and rough and fragile. It may get some
 rework while stabilizing the multi-threaded version of BIRD or we may even
