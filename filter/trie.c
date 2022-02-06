@@ -207,6 +207,19 @@ attach_node(struct f_trie_node *parent, struct f_trie_node *child, int v4)
 
 
 /*
+ * Internal prefixes of a node a represented by the local bitmask, each bit for
+ * one prefix. Bit 0 is unused, Bit 1 is for the main prefix of the node,
+ * remaining bits correspond to subprefixes by this pattern:
+ *
+ *          1
+ *      2       3
+ *    4   5   6   7
+ *   8 9 A B C D E F
+ *
+ * E.g. for 10.0.0.0/8 node, the 10.64.0.0/10 would be position 5.
+ */
+
+/*
  * Compute appropriate mask representing prefix px/plen in local bitmask of node
  * with prefix length nlen. Assuming that nlen <= plen < (nlen + TRIE_STEP).
  */
@@ -244,6 +257,18 @@ trie_amask_to_local(ip_addr px, ip_addr amask, uint nlen)
   return local;
 }
 
+/*
+ * Compute a bitmask representing a level of subprefixes (of the same length),
+ * using specified position as a root. E.g., level 2 from root position 3 would
+ * be bit positions C-F, returned as bitmask 0xf000.
+ */
+static inline uint
+trie_level_mask(uint pos, uint level)
+{
+  return ((1u << (1u << level)) - 1) << (pos << level);
+}
+
+
 #define GET_ADDR(N,F,X) ((X) ? ipt_from_ip4((N)->v4.F) : ipa_from_ip6((N)->v6.F))
 #define SET_ADDR(N,F,X,V) ({ if (X) (N)->v4.F =ipt_to_ip4(V); else (N)->v6.F =ipa_to_ip6(V); })
 
@@ -267,7 +292,7 @@ trie_add_node(struct f_trie *t, uint plen, ip_addr px, uint local, uint l, uint 
   /* Add all bits for each active level (0x0002 0x000c 0x00f0 0xff00) */
   for (uint i = 0; i < TRIE_STEP; i++)
     if ((l <= (plen + i)) && ((plen + i) <= h))
-      local |= ((1u << (1u << i)) - 1) << (1u << i);
+      local |= trie_level_mask(1, i);
 
   DBG("Insert node %I/%u (%I %x)\n", paddr, plen, amask, local);
   while (n)
@@ -1036,30 +1061,70 @@ trie_same(const struct f_trie *t1, const struct f_trie *t2)
     return trie_node_same6(&t1->root.v6, &t2->root.v6);
 }
 
-static void
-trie_node_format4(const struct f_trie_node4 *t, buffer *buf)
-{
-  if (t == NULL)
-    return;
 
-  if (ip4_nonzero(t->accept))
-    buffer_print(buf, "%I4/%d{%I4}, ", t->addr, t->plen, t->accept);
-
-  for (uint i = 0; i < (1 << TRIE_STEP); i++)
-    trie_node_format4(t->c[i], buf);
-}
+static const u8 log2[16] = {0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3};
 
 static void
-trie_node_format6(const struct f_trie_node6 *t, buffer *buf)
+trie_node_format(const struct f_trie_node *n, buffer *buf, int v4)
 {
-  if (t == NULL)
+  if (n == NULL)
     return;
 
-  if (ip6_nonzero(t->accept))
-    buffer_print(buf, "%I6/%d{%I6}, ", t->addr, t->plen, t->accept);
+  if (v4)
+  {
+    if (ip4_nonzero(n->v4.accept))
+      buffer_print(buf, "%I4/%d{%I4}, ", n->v4.addr, n->v4.plen, n->v4.accept);
+  }
+  else
+  {
+    if (ip6_nonzero(n->v6.accept))
+      buffer_print(buf, "%I6/%d{%I6}, ", n->v6.addr, n->v6.plen, n->v6.accept);
+  }
 
-  for (uint i = 0; i < (1 << TRIE_STEP); i++)
-    trie_node_format6(t->c[i], buf);
+  int nlen = v4 ? n->v4.plen : n->v6.plen;
+  uint local = v4 ? n->v4.local : n->v6.local;
+
+  for (int i = (nlen ? 0 : 1); i < TRIE_STEP; i++)
+    if (GET_ACCEPT_BIT(n, v4, nlen + i - 1))
+      local &= ~trie_level_mask(1, i);
+
+  for (int pos = 2; local && (pos < (1 << TRIE_STEP)); pos++)
+    if (local & (1u << pos))
+    {
+      int lvl = log2[pos];
+      int plen = nlen + lvl;
+
+      int i;
+      for (i = 0; lvl + i < TRIE_STEP; i++)
+      {
+	uint lmask = trie_level_mask(pos, i);
+
+	if ((local & lmask) != lmask)
+	  break;
+
+	local &= ~lmask;
+      }
+
+      uint addr_bits = pos & ((1u << lvl) - 1);
+      uint accept_bits = (1u << i) - 1;
+      int h = plen + i - 1;
+
+      if (v4)
+      {
+	ip4_addr addr = ip4_setbits(n->v4.addr, plen - 1, addr_bits);
+	ip4_addr mask = ip4_setbits(IP4_NONE, h - 1, accept_bits);
+	buffer_print(buf, "%I4/%d{%I4}, ", addr, plen, mask);
+      }
+      else
+      {
+	ip6_addr addr = ip6_setbits(n->v6.addr, plen - 1, addr_bits);
+	ip6_addr mask = ip6_setbits(IP6_NONE, h - 1, accept_bits);
+	buffer_print(buf, "%I6/%d{%I6}, ", addr, plen, mask);
+      }
+    }
+
+  for (int i = 0; i < (1 << TRIE_STEP); i++)
+    trie_node_format(GET_CHILD(n, v4, i), buf, v4);
 }
 
 /**
@@ -1077,10 +1142,7 @@ trie_format(const struct f_trie *t, buffer *buf)
   if (t->zero)
     buffer_print(buf, "%I/%d, ", t->ipv4 ? IPA_NONE4 : IPA_NONE6, 0);
 
-  if (t->ipv4)
-    trie_node_format4(&t->root.v4, buf);
-  else
-    trie_node_format6(&t->root.v6, buf);
+  trie_node_format(&t->root, buf, t->ipv4);
 
   if (buf->pos == buf->end)
     return;
