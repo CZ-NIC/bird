@@ -20,7 +20,10 @@ struct proto;
 struct rte_src;
 struct symbol;
 struct timer;
+struct fib;
 struct filter;
+struct f_trie;
+struct f_trie_walk_state;
 struct cli;
 
 /*
@@ -49,7 +52,7 @@ struct fib_iterator {			/* See lib/slists.h for an explanation */
   uint hash;
 };
 
-typedef void (*fib_init_fn)(void *);
+typedef void (*fib_init_fn)(struct fib *, void *);
 
 struct fib {
   pool *fib_pool;			/* Pool holding all our data */
@@ -149,6 +152,7 @@ struct rtable_config {
   int gc_min_time;			/* Minimum time between two consecutive GC runs */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte internal;			/* Internal table of a protocol */
+  byte trie_used;			/* Rtable has attached trie */
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
 };
@@ -158,6 +162,7 @@ typedef struct rtable {
   node n;				/* Node in list of all tables */
   pool *rp;				/* Resource pool to allocate everything from, including itself */
   struct fib fib;
+  struct f_trie *trie;			/* Trie of prefixes defined in fib */
   char *name;				/* Name of this table */
   list channels;			/* List of attached channels (struct channel) */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
@@ -180,13 +185,20 @@ typedef struct rtable {
   btime gc_time;			/* Time of last GC */
   int gc_counter;			/* Number of operations since last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
+  byte prune_trie;			/* Prune prefix trie during next table prune */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
+  struct f_trie *trie_new;		/* New prefix trie defined during pruning */
+  struct f_trie *trie_old;		/* Old prefix trie waiting to be freed */
+  u32 trie_lock_count;			/* Prefix trie locked by walks */
+  u32 trie_old_lock_count;		/* Old prefix trie locked by walks */
 
   list subscribers;			/* Subscribers for notifications */
   struct timer *settle_timer;		/* Settle time for notifications */
+  list flowspec_links;			/* List of flowspec links, src for NET_IPx and dst for NET_FLOWx */
+  struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
 } rtable;
 
 struct rt_subscription {
@@ -194,6 +206,13 @@ struct rt_subscription {
   rtable *tab;
   void (*hook)(struct rt_subscription *b);
   void *data;
+};
+
+struct rt_flowspec_link {
+  node n;
+  rtable *src;
+  rtable *dst;
+  u32 uc;
 };
 
 #define NHU_CLEAN	0
@@ -262,6 +281,7 @@ typedef struct rte {
     struct {
       u8 suppressed;			/* Used for deterministic MED comparison */
       s8 stale;				/* Route is LLGR_STALE, -1 if unknown */
+      struct rtable *base_table;	/* Base table for Flowspec validation */
     } bgp;
 #endif
 #ifdef CONFIG_BABEL
@@ -315,8 +335,12 @@ void rt_preconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
 void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
+struct f_trie * rt_lock_trie(rtable *tab);
+void rt_unlock_trie(rtable *tab, struct f_trie *trie);
 void rt_subscribe(rtable *tab, struct rt_subscription *s);
 void rt_unsubscribe(struct rt_subscription *s);
+void rt_flowspec_link(rtable *src, rtable *dst);
+void rt_flowspec_unlink(rtable *src, rtable *dst);
 rtable *rt_setup(pool *, struct rtable_config *);
 static inline void rt_shutdown(rtable *r) { rfree(r->rp); }
 
@@ -324,7 +348,8 @@ static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) 
 static inline net *net_find_valid(rtable *tab, const net_addr *addr)
 { net *n = net_find(tab, addr); return (n && rte_is_valid(n->routes)) ? n : NULL; }
 static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
-void *net_route(rtable *tab, const net_addr *n);
+net *net_get(rtable *tab, const net_addr *addr);
+net *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *);
@@ -356,6 +381,18 @@ void rt_prune_sync(rtable *t, int all);
 int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
+static inline int rt_is_ip(rtable *tab)
+{ return (tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6); }
+
+static inline int rt_is_vpn(rtable *tab)
+{ return (tab->addr_type == NET_VPN4) || (tab->addr_type == NET_VPN6); }
+
+static inline int rt_is_roa(rtable *tab)
+{ return (tab->addr_type == NET_ROA4) || (tab->addr_type == NET_ROA6); }
+
+static inline int rt_is_flow(rtable *tab)
+{ return (tab->addr_type == NET_FLOW4) || (tab->addr_type == NET_FLOW6); }
+
 
 /* Default limit for ECMP next hops, defined in sysdep code */
 extern const int rt_default_ecmp;
@@ -372,6 +409,8 @@ struct rt_show_data {
   struct rt_show_data_rtable *tab;	/* Iterator over table list */
   struct rt_show_data_rtable *last_table; /* Last table in output */
   struct fib_iterator fit;		/* Iterator over networks in table */
+  struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
+  struct f_trie *walk_lock;		/* Locked trie for walking */
   int verbose, tables_defined_by;
   const struct filter *filter;
   struct proto *show_protocol;
@@ -379,9 +418,10 @@ struct rt_show_data {
   struct channel *export_channel;
   struct config *running_on_config;
   struct krt_proto *kernel;
-  int export_mode, primary_only, filtered, stats, show_for;
+  int export_mode, addr_mode, primary_only, filtered, stats;
 
   int table_open;			/* Iteration (fit) is open */
+  int trie_walk;			/* Current table is iterated using trie */
   int net_counter, rt_counter, show_counter, table_counter;
   int net_counter_last, rt_counter_last, show_counter_last;
 };
@@ -397,6 +437,11 @@ struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t
 
 #define RSD_TDB_SET	  0x1		/* internal: show empty tables */
 #define RSD_TDB_NMN	  0x2		/* internal: need matching net */
+
+/* Value of addr_mode */
+#define RSD_ADDR_EQUAL	1		/* Exact query - show route <addr> */
+#define RSD_ADDR_FOR	2		/* Longest prefix match - show route for <addr> */
+#define RSD_ADDR_IN	3		/* Interval query - show route in <addr> */
 
 /* Value of export_mode in struct rt_show_data */
 #define RSEM_NONE	0		/* Export mode not used */
@@ -717,6 +762,9 @@ rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr
 
 static inline void rt_lock_hostentry(struct hostentry *he) { if (he) he->uc++; }
 static inline void rt_unlock_hostentry(struct hostentry *he) { if (he) he->uc--; }
+
+int rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, int interior);
+
 
 /*
  *	Default protocol preferences

@@ -309,6 +309,12 @@ bt_log_suite_case_result(int result, const char *fmt, ...)
   }
 }
 
+void
+bt_reset_suite_case_timer(void)
+{
+  clock_gettime(CLOCK_MONOTONIC, &bt_suite_case_begin);
+}
+
 int
 bt_test_suite_base(int (*fn)(const void *), const char *id, const void *fn_arg, int forked, int timeout, const char *dsc, ...)
 {
@@ -497,6 +503,15 @@ bt_fmt_ipa(char *buf, size_t size, const void *data)
   const ip_addr *ip = data;
   if (data)
     bsnprintf(buf, size, "%I", *ip);
+  else
+    bsnprintf(buf, size, "(null)");
+}
+
+void
+bt_format_net(char *buf, size_t size, const void *data)
+{
+  if (data)
+    bsnprintf(buf, size, "%N", (const net_addr *) data);
   else
     bsnprintf(buf, size, "(null)");
 }

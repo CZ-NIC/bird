@@ -279,11 +279,35 @@ static inline uint ip6_pxlen(ip6_addr a, ip6_addr b)
   return 32 * i + 31 - u32_log2(a.addr[i] ^ b.addr[i]);
 }
 
+static inline int ip4_prefix_equal(ip4_addr a, ip4_addr b, uint n)
+{
+  return (_I(a) ^ _I(b)) < ((u64) 1 << (32 - n));
+}
+
+static inline int ip6_prefix_equal(ip6_addr a, ip6_addr b, uint n)
+{
+  uint n0 = n / 32;
+  uint n1 = n % 32;
+
+  return
+    ((n0 <= 0) || (_I0(a) == _I0(b))) &&
+    ((n0 <= 1) || (_I1(a) == _I1(b))) &&
+    ((n0 <= 2) || (_I2(a) == _I2(b))) &&
+    ((n0 <= 3) || (_I3(a) == _I3(b))) &&
+    (!n1 || ((a.addr[n0] ^ b.addr[n0]) < (1u << (32 - n1))));
+}
+
 static inline u32 ip4_getbit(ip4_addr a, uint pos)
-{ return _I(a) & (0x80000000 >> pos); }
+{ return (_I(a) >> (31 - pos)) & 1; }
+
+static inline u32 ip4_getbits(ip4_addr a, uint pos, uint n)
+{ return (_I(a) >> ((32 - n) - pos)) & ((1u << n) - 1); }
 
 static inline u32 ip6_getbit(ip6_addr a, uint pos)
-{ return a.addr[pos / 32] & (0x80000000 >> (pos % 32)); }
+{ return (a.addr[pos / 32] >> (31 - (pos % 32))) & 0x1; }
+
+static inline u32 ip6_getbits(ip6_addr a, uint pos, uint n)
+{ return (a.addr[pos / 32] >> ((32 - n) - (pos % 32))) & ((1u << n) - 1); }
 
 static inline u32 ip4_setbit(ip4_addr *a, uint pos)
 { return _I(*a) |= (0x80000000 >> pos); }
@@ -296,6 +320,13 @@ static inline u32 ip4_clrbit(ip4_addr *a, uint pos)
 
 static inline u32 ip6_clrbit(ip6_addr *a, uint pos)
 { return a->addr[pos / 32] &= ~(0x80000000 >> (pos % 32)); }
+
+static inline ip4_addr ip4_setbits(ip4_addr a, uint pos, uint val)
+{ _I(a) |= val << (31 - pos); return a; }
+
+static inline ip6_addr ip6_setbits(ip6_addr a, uint pos, uint val)
+{ a.addr[pos / 32] |= val << (31 - pos % 32); return a; }
+
 
 static inline ip4_addr ip4_opposite_m1(ip4_addr a)
 { return _MI4(_I(a) ^ 1); }

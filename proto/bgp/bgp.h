@@ -147,6 +147,7 @@ struct bgp_channel_config {
   u8 mandatory;				/* Channel is mandatory in capability negotiation */
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
   u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
+  u8 validate;				/* Validate Flowspec per RFC 8955 (6) */
   u8 gr_able;				/* Allow full graceful restart for the channel */
   u8 llgr_able;				/* Allow full long-lived GR for the channel */
   uint llgr_time;			/* Long-lived graceful restart stale time */
@@ -160,6 +161,7 @@ struct bgp_channel_config {
 
   struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */
   struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
+  struct rtable_config *base_table;	/* Base table for Flowspec validation */
 };
 
 #define BGP_PT_INTERNAL		1
@@ -341,6 +343,7 @@ struct bgp_channel {
 
   rtable *igp_table_ip4;		/* Table for recursive IPv4 next hop lookups */
   rtable *igp_table_ip6;		/* Table for recursive IPv6 next hop lookups */
+  rtable *base_table;			/* Base table for Flowspec validation */
 
   /* Rest are zeroed when down */
   pool *pool;
@@ -451,6 +454,7 @@ struct bgp_parse_state {
   jmp_buf err_jmpbuf;
 
   struct hostentry *hostentry;
+  struct rtable *base_table;
   adata *mpls_labels;
 
   /* Cached state for bgp_rte_update() */
@@ -517,7 +521,7 @@ struct rte_source *bgp_get_source(struct bgp_proto *p, u32 path_id);
 static inline int
 rte_resolvable(rte *rt)
 {
-  return rt->attrs->dest == RTD_UNICAST;
+  return rt->attrs->dest != RTD_UNREACHABLE;
 }
 
 

@@ -331,7 +331,7 @@ fib_get(struct fib *f, const net_addr *a)
 
   memset(b, 0, f->node_offset);
   if (f->init)
-    f->init(b);
+    f->init(f, b);
 
   if (f->entries++ > f->entries_max)
     fib_rehash(f, HASH_HI_STEP);
