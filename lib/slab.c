@@ -195,8 +195,8 @@ sl_new(pool *p, uint size)
 {
   slab *s = ralloc(p, &sl_class);
   uint align = sizeof(struct sl_alignment);
-  if (align < sizeof(int))
-    align = sizeof(int);
+  if (align < sizeof(void *))
+    align = sizeof(void *);
   s->data_size = size;
   size = (size + align - 1) / align * align;
   s->obj_size = size;
