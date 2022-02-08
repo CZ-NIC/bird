@@ -162,7 +162,7 @@ nl_open_sock(struct nl_sock *nl)
 }
 
 static void
-nl_set_strict_dump(struct nl_sock *nl, int strict)
+nl_set_strict_dump(struct nl_sock *nl UNUSED, int strict UNUSED)
 {
   /*
    * Strict checking is not necessary, it improves behavior on newer kernels.
