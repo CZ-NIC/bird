@@ -72,16 +72,17 @@ alloc_page(void)
   {
     void *ret = mmap(NULL, get_page_size(), PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (ret == MAP_FAILED)
-      bug("mmap(%lu) failed: %m", page_size);
+      bug("mmap(%lu) failed: %m", (long unsigned int) page_size);
     return ret;
   }
   else
 #endif
   {
-    void *ret = aligned_alloc(page_size, page_size);
-    if (!ret)
-      bug("aligned_alloc(%lu) failed", page_size);
-    return ret;
+    void *ptr = NULL;
+    int err = posix_memalign(&ptr, page_size, page_size);
+    if (err || !ptr)
+      bug("posix_memalign(%lu) failed", (long unsigned int) page_size);
+    return ptr;
   }
 }
 
