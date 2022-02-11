@@ -267,7 +267,6 @@ typedef struct rte {
     struct {
       u8 suppressed;			/* Used for deterministic MED comparison */
       s8 stale;				/* Route is LLGR_STALE, -1 if unknown */
-      struct rtable *base_table;	/* Base table for Flowspec validation */
     } bgp;
 #endif
   } u;

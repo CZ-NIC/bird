@@ -453,7 +453,6 @@ struct bgp_parse_state {
   jmp_buf err_jmpbuf;
 
   struct hostentry *hostentry;
-  struct rtable *base_table;
   adata *mpls_labels;
 
   /* Cached state for bgp_rte_update() */

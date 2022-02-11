@@ -2831,12 +2831,16 @@ static rte *
 rt_flowspec_update_rte(rtable *tab, rte *r)
 {
 #ifdef CONFIG_BGP
-  if ((r->attrs->source != RTS_BGP) || !r->u.bgp.base_table)
+  if (r->attrs->source != RTS_BGP)
+    return NULL;
+
+  struct bgp_channel *bc = (struct bgp_channel *) r->sender;
+  if (!bc->base_table)
     return NULL;
 
   const net_addr *n = r->net->n.addr;
   struct bgp_proto *p = (void *) r->src->proto;
-  int valid = rt_flowspec_check(r->u.bgp.base_table, tab, n, r->attrs, p->is_interior);
+  int valid = rt_flowspec_check(bc->base_table, tab, n, r->attrs, p->is_interior);
   int dest = valid ? RTD_NONE : RTD_UNREACHABLE;
 
   if (dest == r->attrs->dest)

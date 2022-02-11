@@ -1025,9 +1025,6 @@ bgp_apply_flow_validation(struct bgp_parse_state *s, const net_addr *n, rta *a)
   int valid = rt_flowspec_check(c->base_table, c->c.table, n, a, s->proto->is_interior);
   a->dest = valid ? RTD_NONE : RTD_UNREACHABLE;
 
-  /* Set rte.bgp.base_table later from this state variable */
-  s->base_table = c->base_table;
-
   /* Invalidate cached rta if dest changes */
   if (s->cached_rta && (s->cached_rta->dest != a->dest))
   {
@@ -1398,7 +1395,6 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   e->pflags = 0;
   e->u.bgp.suppressed = 0;
   e->u.bgp.stale = -1;
-  e->u.bgp.base_table = s->base_table;
   rte_update3(&s->channel->c, n, e, s->last_src);
 }
 
@@ -2461,8 +2457,6 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   s->last_id = 0;
   s->last_src = s->proto->p.main_source;
-
-  s->base_table = NULL;
 
   /*
    * IPv4 BGP and MP-BGP may be used together in one update, therefore we do not
