@@ -25,7 +25,8 @@ use FindBin;
 $prefix             = "/usr";
 $isoentities_prefix = "/usr";
 $DataDir            = "$FindBin::Bin/../doc/sbase";
-$AuxBinDir          = "/usr/lib/linuxdoc-tools";
+#$AuxBinDir          = "/usr/lib/linuxdoc-tools";
+$AuxBinDir          = "/usr/bin";
 
 use lib "$FindBin::Bin/linuxdoc-tools";
 
