@@ -1899,7 +1899,7 @@ babel_reconfigure_ifaces(struct babel_proto *p, struct babel_config *cf)
     struct babel_iface *ifa = babel_find_iface(p, iface);
     struct babel_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
 
-    if (ic && iface_is_valid(p, iface))
+    if (ic && !iface_is_valid(p, iface))
       ic = NULL;
 
     if (ifa && ic)
