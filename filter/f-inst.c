@@ -1079,7 +1079,21 @@
 
   INST(FI_CALL, 0, 1) {
     NEVER_CONSTANT;
+    VARARG;
     SYMBOL;
+
+    FID_NEW_BODY()
+    ASSERT(sym->class == SYM_FUNCTION);
+
+    if (whati->varcount != sym->function->args)
+      cf_error("Function '%s' expects %u arguments, got %u arguments",
+	       sym->name, sym->function->args, whati->varcount);
+
+    /* Add implicit void slot for the return value */
+    struct f_inst *tmp = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
+    tmp->next = whati->fvar;
+    whati->fvar = tmp;
+    what->size += tmp->size;
 
     FID_SAME_BODY()
       if (!(f1->sym->flags & SYM_FLAG_SAME))
@@ -1092,15 +1106,11 @@
 
     /* Push the body on stack */
     LINEX(sym->function);
+    curline.vbase = curline.ventry;
     curline.emask |= FE_RETURN;
 
-    /* Before this instruction was called, there was the T_VOID
-     * automatic return value pushed on value stack and also
-     * sym->function->args function arguments. Setting the
-     * vbase to point to first argument. */
-    ASSERT(curline.ventry >= sym->function->args);
-    curline.ventry -= sym->function->args;
-    curline.vbase = curline.ventry;
+    /* Arguments on stack */
+    fstk->vcnt += sym->function->args;
 
     /* Storage for local variables */
     memset(&(fstk->vstk[fstk->vcnt]), 0, sizeof(struct f_val) * sym->function->vars);

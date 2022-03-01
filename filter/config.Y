@@ -700,27 +700,22 @@ var_list: /* EMPTY */ { $$ = NULL; }
  | var_list ',' term { $$ = $3; $$->next = $1; }
 
 function_call:
-   CF_SYM_KNOWN '(' var_list ')' {
+   CF_SYM_KNOWN '(' var_list ')'
+   {
      if ($1->class != SYM_FUNCTION)
        cf_error("You can't call something which is not a function. Really.");
 
-     struct f_inst *fc = f_new_inst(FI_CALL, $1);
-     uint args = 0;
+     /* Revert the var_list */
+     struct f_inst *args = NULL;
      while ($3) {
-       args++;
-       struct f_inst *tmp = $3->next;
-       $3->next = fc;
+       struct f_inst *tmp = $3;
+       $3 = $3->next;
 
-       fc = $3;
-       $3 = tmp;
+       tmp->next = args;
+       args = tmp;
      }
 
-     if (args != $1->function->args)
-       cf_error("Function call '%s' got %u arguments, need %u arguments.",
-	   $1->name, args, $1->function->args);
-
-     $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
-     $$->next = fc;
+     $$ = f_new_inst(FI_CALL, args, $1);
    }
  ;
 
