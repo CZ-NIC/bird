@@ -126,9 +126,7 @@
 #include "bgp.h"
 
 
-struct linpool *bgp_linpool;		/* Global temporary pool */
-struct linpool *bgp_linpool2;		/* Global temporary pool for bgp_rt_notify() */
-static list bgp_sockets;		/* Global list of listening sockets */
+static list STATIC_LIST_INIT(bgp_sockets);		/* Global list of listening sockets */
 
 
 static void bgp_connect(struct bgp_proto *p);
@@ -160,10 +158,6 @@ bgp_open(struct bgp_proto *p)
   uint port = p->cf->local_port;
   uint flags = p->cf->free_bind ? SKF_FREEBIND : 0;
   uint flag_mask = SKF_FREEBIND;
-
-  /* FIXME: Add some global init? */
-  if (!bgp_linpool)
-    init_list(&bgp_sockets);
 
   /* We assume that cf->iface is defined iff cf->local_ip is link-local */
 
@@ -204,12 +198,6 @@ bgp_open(struct bgp_proto *p)
 
   add_tail(&bgp_sockets, &bs->n);
 
-  if (!bgp_linpool)
-  {
-    bgp_linpool  = lp_new_default(proto_pool);
-    bgp_linpool2 = lp_new_default(proto_pool);
-  }
-
   return 0;
 
 err:
@@ -238,15 +226,6 @@ bgp_close(struct bgp_proto *p)
   rfree(bs->sk);
   rem_node(&bs->n);
   mb_free(bs);
-
-  if (!EMPTY_LIST(bgp_sockets))
-    return;
-
-  rfree(bgp_linpool);
-  bgp_linpool = NULL;
-
-  rfree(bgp_linpool2);
-  bgp_linpool2 = NULL;
 }
 
 static inline int

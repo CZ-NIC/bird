@@ -1854,7 +1854,7 @@ bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old)
 
   if (new)
   {
-    struct ea_list *attrs = bgp_update_attrs(p, c, new, new->attrs->eattrs, bgp_linpool2);
+    struct ea_list *attrs = bgp_update_attrs(p, c, new, new->attrs->eattrs, tmp_linpool);
 
     /* Error during attribute processing */
     if (!attrs)
@@ -1863,8 +1863,6 @@ bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old)
     /* If attributes are invalid, we fail back to withdraw */
     buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
     path = new->attrs->src->global_id;
-
-    lp_flush(bgp_linpool2);
   }
   else
   {

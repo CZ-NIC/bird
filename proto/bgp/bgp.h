@@ -20,7 +20,6 @@
 #include "lib/hash.h"
 #include "lib/socket.h"
 
-struct linpool;
 struct eattr;
 
 
@@ -494,9 +493,6 @@ bgp_parse_error(struct bgp_parse_state *s, uint subcode)
   s->err_subcode = subcode;
   longjmp(s->err_jmpbuf, 1);
 }
-
-extern struct linpool *bgp_linpool;
-extern struct linpool *bgp_linpool2;
 
 
 void bgp_start_timer(timer *t, uint value);

@@ -2335,7 +2335,7 @@ again: ;
   struct bgp_write_state s = {
     .proto = p,
     .channel = c,
-    .pool = bgp_linpool,
+    .pool = tmp_linpool,
     .mp_reach = (c->afi != BGP_AF_IPV4) || c->ext_next_hop,
     .as4_session = p->as4_session,
     .add_path = c->add_path_tx,
@@ -2518,7 +2518,7 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
   /* Initialize parse state */
   struct bgp_parse_state s = {
     .proto = p,
-    .pool = bgp_linpool,
+    .pool = tmp_linpool,
     .as4_session = p->as4_session,
   };
 
