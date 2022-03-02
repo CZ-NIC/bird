@@ -79,6 +79,15 @@ void lp_flush(linpool *);			/* Free everything, but leave linpool */
 void lp_save(linpool *m, lp_state *p);		/* Save state */
 void lp_restore(linpool *m, lp_state *p);	/* Restore state */
 
+extern _Thread_local linpool *tmp_linpool;	/* Temporary linpool autoflushed regularily */
+
+#define tmp_alloc(sz)	lp_alloc(tmp_linpool, sz)
+#define tmp_allocu(sz)	lp_allocu(tmp_linpool, sz)
+#define tmp_allocz(sz)	lp_allocz(tmp_linpool, sz)
+
+#define tmp_init(p)	tmp_linpool = lp_new_default(p)
+#define tmp_flush()	lp_flush(tmp_linpool)
+
 extern const int lp_chunk_size;
 #define LP_GAS		    1024
 #define LP_GOOD_SIZE(x)	    (((x + LP_GAS - 1) & (~(LP_GAS - 1))) - lp_chunk_size)

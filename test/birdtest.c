@@ -119,6 +119,8 @@ bt_init(int argc, char *argv[])
   clock_gettime(CLOCK_MONOTONIC, &bt_begin);
   bt_suite_case_begin = bt_suite_begin = bt_begin;
 
+  resource_init();
+
   return;
 
  usage:
@@ -171,6 +173,8 @@ int bt_run_test_fn(int (*fn)(const void *), const void *fn_arg, int timeout)
 
   if (!bt_suite_result)
     result = 0;
+
+  tmp_flush();
 
   return result;
 }

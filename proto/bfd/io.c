@@ -482,6 +482,8 @@ birdloop_main(void *arg)
 
   birdloop_set_current(loop);
 
+  tmp_init(loop->pool);
+
   pthread_mutex_lock(&loop->mutex);
   while (1)
   {

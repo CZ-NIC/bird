@@ -42,6 +42,8 @@ struct linpool {
   uint chunk_size, threshold, total, total_large;
 };
 
+_Thread_local linpool *tmp_linpool;
+
 static void lp_free(resource *);
 static void lp_dump(resource *);
 static resource *lp_lookup(resource *, unsigned long);

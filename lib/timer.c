@@ -233,6 +233,7 @@ timers_fire(struct timeloop *loop)
       io_log_event(t->hook, t->data);
 
     t->hook(t);
+    tmp_flush();
   }
 }
 

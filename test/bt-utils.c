@@ -60,7 +60,6 @@ bt_bird_init(void)
     log_init_debug("");
   log_switch(bt_verbose != 0, NULL, NULL);
 
-  resource_init();
   olock_init();
   timer_init();
   io_init();

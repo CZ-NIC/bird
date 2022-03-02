@@ -273,6 +273,7 @@ resource_init(void)
   root_pool.r.class = &pool_class;
   root_pool.name = "Root";
   init_list(&root_pool.inside);
+  tmp_init(&root_pool);
 }
 
 /**
