@@ -1,7 +1,7 @@
 <!doctype birddoc system>
 
 <!--
-	BIRD 2.0 documentation
+	BIRD 3.0 documentation
 
 This documentation can have 4 forms: sgml (this is master copy), html, ASCII
 text and dvi/postscript (generated from sgml using sgmltools). You should always
@@ -20,10 +20,9 @@ configuration - something in config which is not keyword.
 
 <book>
 
-<title>BIRD 2.0 User's Guide
+<title>BIRD 3.0 User's Guide
 <author>
 Ondrej Filip <it/&lt;feela@network.cz&gt;/,
-Pavel Machek <it/&lt;pavel@ucw.cz&gt;/,
 Martin Mares <it/&lt;mj@ucw.cz&gt;/,
 Maria Matejka <it/&lt;mq@jmq.cz&gt;/,
 Ondrej Zajicek <it/&lt;santiago@crfreenet.org&gt;/
@@ -5377,15 +5376,15 @@ name="atrey.karlin.mff.cuni.cz:/pub/rfc">).
 </book>
 
 <!--
-LocalWords:  GPL IPv GateD BGPv RIPv OSPFv Linux sgml html dvi sgmltools Pavel
+LocalWords:  GPL IPv GateD BGPv RIPv OSPFv Linux sgml html dvi sgmltools
 LocalWords:  linuxdoc dtd descrip config conf syslog stderr auth ospf bgp Mbps
 LocalWords:  router's eval expr num birdc ctl UNIX if's enums bool int ip GCC
 LocalWords:  len ipaddress pxlen netmask enum bgppath bgpmask clist gw md eth
-LocalWords:  RTS printn quitbird iBGP AS'es eBGP RFC multiprotocol IGP Machek
+LocalWords:  RTS printn quitbird iBGP AS'es eBGP RFC multiprotocol IGP
 LocalWords:  EGP misconfigurations keepalive pref aggr aggregator BIRD's RTC
 LocalWords:  OS'es AS's multicast nolisten misconfigured UID blackhole MRTD MTU
 LocalWords:  uninstalls ethernets IP binutils ANYCAST anycast dest RTD ICMP rfc
 LocalWords:  compat multicasts nonbroadcast pointopoint loopback sym stats
 LocalWords:  Perl SIGHUP dd mm yy HH MM SS EXT IA UNICAST multihop Discriminator txt
-LocalWords:  proto wildcard Ondrej Filip
+LocalWords:  proto wildcard
 -->
