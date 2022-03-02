@@ -46,9 +46,7 @@ run_function(const void *arg)
   if (t->cmp)
     return t->result == f_same(t->fn, t->cmp);
 
-  linpool *tmp = lp_new_default(&root_pool);
-  enum filter_return fret = f_eval(t->fn, tmp, NULL);
-  rfree(tmp);
+  enum filter_return fret = f_eval(t->fn, tmp_linpool, NULL);
 
   return (fret < F_REJECT);
 }

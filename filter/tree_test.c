@@ -19,10 +19,7 @@ static void
 start_conf_env(void)
 {
   bt_bird_init();
-
-  pool *p = rp_new(&root_pool, "helper_pool");
-  linpool *l = lp_new_default(p);
-  cfg_mem = l;
+  cfg_mem = tmp_linpool;
 }
 
 static struct f_tree *

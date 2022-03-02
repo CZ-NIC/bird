@@ -249,14 +249,14 @@ get_outer_net(net_addr *net, const struct f_prefix *src)
 }
 
 static list *
-make_random_prefix_list(linpool *lp, int num, int v6, int tight)
+make_random_prefix_list(int num, int v6, int tight)
 {
-  list *prefixes = lp_allocz(lp, sizeof(struct f_prefix_node));
+  list *prefixes = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
   init_list(prefixes);
 
   for (int i = 0; i < num; i++)
   {
-    struct f_prefix_node *px = lp_allocz(lp, sizeof(struct f_prefix_node));
+    struct f_prefix_node *px = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
     get_random_prefix(&px->prefix, v6, tight);
     add_tail(prefixes, &px->n);
 
@@ -269,9 +269,9 @@ make_random_prefix_list(linpool *lp, int num, int v6, int tight)
 }
 
 static struct f_trie *
-make_trie_from_prefix_list(linpool *lp, list *prefixes)
+make_trie_from_prefix_list(list *prefixes)
 {
-  struct f_trie *trie = f_new_trie(lp, 0);
+  struct f_trie *trie = f_new_trie(tmp_linpool, 0);
 
   struct f_prefix_node *n;
   WALK_LIST(n, *prefixes)
@@ -286,7 +286,7 @@ make_trie_from_prefix_list(linpool *lp, list *prefixes)
  * Arg @plus means prefix should include all longer ones.
  */
 static list *
-read_prefix_list(linpool *lp, FILE *f, int v6, int plus)
+read_prefix_list(FILE *f, int v6, int plus)
 {
   ASSERT(!v6);
 
@@ -294,7 +294,7 @@ read_prefix_list(linpool *lp, FILE *f, int v6, int plus)
   char s[32];
   int n;
 
-  list *pxlist = lp_allocz(lp, sizeof(struct f_prefix_node));
+  list *pxlist = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
   init_list(pxlist);
 
   errno = 0;
@@ -308,7 +308,7 @@ read_prefix_list(linpool *lp, FILE *f, int v6, int plus)
     if (n != 5)
       bt_abort_msg("Invalid content of trie_data");
 
-    struct f_prefix_node *px = lp_allocz(lp, sizeof(struct f_prefix_node));
+    struct f_prefix_node *px = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
     net_fill_ip4(&px->prefix.net, ip4_build(a0, a1, a2, a3), pl);
     px->prefix.lo = pl;
     px->prefix.hi = plus ? IP4_MAX_PREFIX_LENGTH : pl;
@@ -331,7 +331,6 @@ read_prefix_list(linpool *lp, FILE *f, int v6, int plus)
  */
 static int
 read_prefix_file(const char *filename, int plus,
-		 linpool *lp0, linpool *lp1,
 		 list *data[], struct f_trie *trie[])
 {
   FILE *f = fopen(filename, "r");
@@ -339,10 +338,10 @@ read_prefix_file(const char *filename, int plus,
 
   int n = 0;
   list *pxlist;
-  while (pxlist = read_prefix_list(lp0, f, 0, plus))
+  while (pxlist = read_prefix_list(f, 0, plus))
   {
     data[n] = pxlist;
-    trie[n] = make_trie_from_prefix_list(lp1, pxlist);
+    trie[n] = make_trie_from_prefix_list(pxlist);
     bt_debug("NEXT\n");
     n++;
   }
@@ -437,11 +436,10 @@ t_match_random_net(void)
   bt_config_parse(BT_CONFIG_SIMPLE);
 
   int v6 = 0;
-  linpool *lp = lp_new_default(&root_pool);
   for (int round = 0; round < TESTS_NUM; round++)
   {
-    list *prefixes = make_random_prefix_list(lp, PREFIXES_NUM, v6, 0);
-    struct f_trie *trie = make_trie_from_prefix_list(lp, prefixes);
+    list *prefixes = make_random_prefix_list(PREFIXES_NUM, v6, 0);
+    struct f_trie *trie = make_trie_from_prefix_list(prefixes);
 
     for (int i = 0; i < PREFIX_TESTS_NUM; i++)
     {
@@ -451,7 +449,7 @@ t_match_random_net(void)
     }
 
     v6 = !v6;
-    lp_flush(lp);
+    tmp_flush();
   }
 
   bt_bird_cleanup();
@@ -465,11 +463,10 @@ t_match_inner_net(void)
   bt_config_parse(BT_CONFIG_SIMPLE);
 
   int v6 = 0;
-  linpool *lp = lp_new_default(&root_pool);
   for (int round = 0; round < TESTS_NUM; round++)
   {
-    list *prefixes = make_random_prefix_list(lp, PREFIXES_NUM, v6, 0);
-    struct f_trie *trie = make_trie_from_prefix_list(lp, prefixes);
+    list *prefixes = make_random_prefix_list(PREFIXES_NUM, v6, 0);
+    struct f_trie *trie = make_trie_from_prefix_list(prefixes);
 
     struct f_prefix_node *n = HEAD(*prefixes);
     for (int i = 0; i < PREFIX_TESTS_NUM; i++)
@@ -482,7 +479,7 @@ t_match_inner_net(void)
     }
 
     v6 = !v6;
-    lp_flush(lp);
+    tmp_flush();
   }
 
   bt_bird_cleanup();
@@ -496,11 +493,10 @@ t_match_outer_net(void)
   bt_config_parse(BT_CONFIG_SIMPLE);
 
   int v6 = 0;
-  linpool *lp = lp_new_default(&root_pool);
   for (int round = 0; round < TESTS_NUM; round++)
   {
-    list *prefixes = make_random_prefix_list(lp, PREFIXES_NUM, v6, 0);
-    struct f_trie *trie = make_trie_from_prefix_list(lp, prefixes);
+    list *prefixes = make_random_prefix_list(PREFIXES_NUM, v6, 0);
+    struct f_trie *trie = make_trie_from_prefix_list(prefixes);
 
     struct f_prefix_node *n = HEAD(*prefixes);
     for (int i = 0; i < PREFIX_TESTS_NUM; i++)
@@ -513,7 +509,7 @@ t_match_outer_net(void)
     }
 
     v6 = !v6;
-    lp_flush(lp);
+    tmp_flush();
   }
 
   v6 = !v6;
@@ -531,24 +527,22 @@ static int
 benchmark_trie_dataset(const char *filename, int plus)
 {
   int n = 0;
-  linpool *lp0 = lp_new_default(&root_pool);
-  linpool *lp1 = lp_new_default(&root_pool);
   list *data[TRIE_BUFFER_SIZE];
   struct f_trie *trie[TRIE_BUFFER_SIZE];
   net_addr *nets;
 
   bt_reset_suite_case_timer();
   bt_log_suite_case_result(1, "Reading %s", filename, n);
-  n = read_prefix_file(filename, plus, lp0, lp1, data, trie);
+  n = read_prefix_file(filename, plus, data, trie);
   bt_log_suite_case_result(1, "Read prefix data, %d lists, ", n);
 
-  size_t trie_size = rmemsize(lp1).effective * 1000 / (1024*1024);
+  size_t trie_size = rmemsize(tmp_linpool).effective * 1000 / (1024*1024);
   bt_log_suite_case_result(1, "Trie size %u.%03u MB",
 			   (uint) (trie_size / 1000), (uint) (trie_size % 1000));
 
   int t = PREFIX_BENCH_NUM / n;
   int tb = MIN(t, TEST_BUFFER_SIZE);
-  nets = lp_alloc(lp0, tb * sizeof(net_addr));
+  nets = tmp_alloc(tb * sizeof(net_addr));
 
   if (!plus)
     select_random_prefix_subset(data, nets, n, tb);
@@ -573,9 +567,7 @@ benchmark_trie_dataset(const char *filename, int plus)
 
   bt_log_suite_case_result(1, "Matching done, %d / %d matches", match, t * n);
 
-  rfree(lp0);
-  rfree(lp1);
-
+  tmp_flush();
   return 1;
 }
 
@@ -621,12 +613,11 @@ t_trie_same(void)
   bt_config_parse(BT_CONFIG_SIMPLE);
 
   int v6 = 0;
-  linpool *lp = lp_new_default(&root_pool);
   for (int round = 0; round < TESTS_NUM*4; round++)
   {
-    list *prefixes = make_random_prefix_list(lp, 100 * PREFIXES_NUM, v6, 0);
-    struct f_trie *trie1 = f_new_trie(lp, 0);
-    struct f_trie *trie2 = f_new_trie(lp, 0);
+    list *prefixes = make_random_prefix_list(100 * PREFIXES_NUM, v6, 0);
+    struct f_trie *trie1 = f_new_trie(tmp_linpool, 0);
+    struct f_trie *trie2 = f_new_trie(tmp_linpool, 0);
 
     struct f_prefix_node *n;
     WALK_LIST(n, *prefixes)
@@ -638,7 +629,7 @@ t_trie_same(void)
     bt_assert(trie_same(trie1, trie2));
 
     v6 = !v6;
-    lp_flush(lp);
+    tmp_flush();
   }
 
   bt_bird_cleanup();
@@ -664,15 +655,14 @@ t_trie_walk(void)
   bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
 
-  linpool *lp = lp_new_default(&root_pool);
   for (int round = 0; round < TESTS_NUM*8; round++)
   {
     int level = round / TESTS_NUM;
     int v6 = level % 2;
     int num = PREFIXES_NUM * (int[]){1, 10, 100, 1000}[level / 2];
     int pos = 0, end = 0;
-    list *prefixes = make_random_prefix_list(lp, num, v6, 1);
-    struct f_trie *trie = make_trie_from_prefix_list(lp, prefixes);
+    list *prefixes = make_random_prefix_list(num, v6, 1);
+    struct f_trie *trie = make_trie_from_prefix_list(prefixes);
     struct f_prefix *pxset = malloc((num + 1) * sizeof(struct f_prefix));
 
     struct f_prefix_node *n;
@@ -770,7 +760,7 @@ t_trie_walk(void)
     bt_assert((pos == num) || !net_in_netX(&pxset[pos].net, &from.net));
     bt_debug("Subnet walk done for %s (found %d nets)\n", buf0, pos - p0);
 
-    lp_flush(lp);
+    tmp_flush();
   }
 
   bt_bird_cleanup();
@@ -815,7 +805,6 @@ t_trie_walk_to_root(void)
   bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
 
-  linpool *lp = lp_new_default(&root_pool);
   for (int round = 0; round < TESTS_NUM * 4; round++)
   {
     int level = round / TESTS_NUM;
@@ -824,8 +813,8 @@ t_trie_walk_to_root(void)
     int pos = 0;
     int st = 0, sn = 0, sm = 0;
 
-    list *prefixes = make_random_prefix_list(lp, num, v6, 1);
-    struct f_trie *trie = make_trie_from_prefix_list(lp, prefixes);
+    list *prefixes = make_random_prefix_list(num, v6, 1);
+    struct f_trie *trie = make_trie_from_prefix_list(prefixes);
     struct f_prefix *pxset = malloc((num + 1) * sizeof(struct f_prefix));
 
     struct f_prefix_node *pxn;
@@ -884,7 +873,7 @@ t_trie_walk_to_root(void)
 
     bt_debug("Success in %d / %d, sum %d, max %d\n", sn, i, st, sm);
 
-    lp_flush(lp);
+    tmp_flush();
   }
 
   bt_bird_cleanup();

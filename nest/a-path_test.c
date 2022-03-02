@@ -32,14 +32,13 @@ t_as_path_match(void)
     struct adata *as_path = &empty_as_path;
     u32 first_prepended, last_prepended;
     first_prepended = last_prepended = 0;
-    struct linpool *lp = lp_new_default(&root_pool);
 
     struct f_path_mask *mask = alloca(sizeof(struct f_path_mask) + AS_PATH_LENGTH * sizeof(struct f_path_mask_item));
     mask->len = AS_PATH_LENGTH;
     for (int i = AS_PATH_LENGTH - 1; i >= 0; i--)
     {
       u32 val = bt_random();
-      as_path = as_path_prepend(lp, as_path, val);
+      as_path = as_path_prepend(tmp_linpool, as_path, val);
       bt_debug("Prepending ASN: %10u \n", val);
 
       if (i == 0)
@@ -61,7 +60,7 @@ t_as_path_match(void)
     bt_assert(as_path_get_last(as_path, &asn));
     bt_assert_msg(asn == first_prepended, "as_path_get_last() should return the first prepended ASN");
 
-    rfree(lp);
+    tmp_flush();
   }
 
   return 1;
@@ -74,12 +73,11 @@ t_path_format(void)
 
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
-  struct linpool *lp = lp_new_default(&root_pool);
 
   uint i;
   for (i = 4294967285; i <= 4294967294; i++)
   {
-    as_path = as_path_prepend(lp, as_path, i);
+    as_path = as_path_prepend(tmp_linpool, as_path, i);
     bt_debug("Prepending ASN: %10u \n", i);
   }
 
@@ -97,7 +95,7 @@ t_path_format(void)
   as_path_format(as_path, buf2, SMALL_BUFFER_SIZE);
   bt_assert_msg(strcmp(buf2, "4294967294 42...") == 0, "Small Buffer(%zu): '%s'", strlen(buf2), buf2);
 
-  rfree(lp);
+  tmp_flush();
 
   return 1;
 }
@@ -120,7 +118,6 @@ t_path_include(void)
 
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
-  struct linpool *lp = lp_new_default(&root_pool);
 
   u32 as_nums[AS_PATH_LENGTH] = {};
   int i;
@@ -128,7 +125,7 @@ t_path_include(void)
   {
     u32 val = bt_random();
     as_nums[i] = val;
-    as_path = as_path_prepend(lp, as_path, val);
+    as_path = as_path_prepend(tmp_linpool, as_path, val);
   }
 
   for (i = 0; i < AS_PATH_LENGTH; i++)
@@ -136,8 +133,8 @@ t_path_include(void)
     int counts_of_contains = count_asn_in_array(as_nums, as_nums[i]);
     bt_assert_msg(as_path_contains(as_path, as_nums[i], counts_of_contains), "AS Path should contains %d-times number %d", counts_of_contains, as_nums[i]);
 
-    bt_assert(as_path_filter(lp, as_path, NULL, as_nums[i], 0) != NULL);
-    bt_assert(as_path_filter(lp, as_path, NULL, as_nums[i], 1) != NULL);
+    bt_assert(as_path_filter(tmp_linpool, as_path, NULL, as_nums[i], 0) != NULL);
+    bt_assert(as_path_filter(tmp_linpool, as_path, NULL, as_nums[i], 1) != NULL);
   }
 
   for (i = 0; i < 10000; i++)
@@ -152,7 +149,7 @@ t_path_include(void)
       bt_assert_msg(result == 0, "As path should not contain the number %u", test_val);
   }
 
-  rfree(lp);
+  tmp_flush();
 
   return 1;
 }
@@ -165,12 +162,11 @@ t_as_path_converting(void)
 
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
-  struct linpool *lp = lp_new_default(&root_pool);
 #define AS_PATH_LENGTH_FOR_CONVERTING_TEST 10
 
   int i;
   for (i = 0; i < AS_PATH_LENGTH_FOR_CONVERTING_TEST; i++)
-    as_path = as_path_prepend(lp, as_path, i);
+    as_path = as_path_prepend(tmp_linpool, as_path, i);
 
   bt_debug("data length: %u \n", as_path->length);
 
