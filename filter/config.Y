@@ -290,7 +290,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	MIN, MAX,
 	EMPTY,
 	FILTER, WHERE, EVAL, ATTRIBUTE,
-	BT_ASSERT, BT_TEST_SUITE, BT_CHECK_ASSIGN, BT_TEST_SAME, FORMAT)
+	BT_ASSERT, BT_TEST_SUITE, BT_CHECK_ASSIGN, BT_TEST_SAME, FORMAT, STACKS)
 
 %nonassoc THEN
 %nonassoc ELSE
@@ -313,6 +313,12 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <t> get_cf_position
 
 CF_GRAMMAR
+
+conf: FILTER STACKS expr expr ';' {
+  new_config->filter_vstk = $3;
+  new_config->filter_estk = $4;
+ }
+ ;
 
 conf: filter_def ;
 filter_def:

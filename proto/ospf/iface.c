@@ -522,7 +522,10 @@ static inline void
 add_nbma_node(struct ospf_iface *ifa, struct nbma_node *src, int found)
 {
   struct nbma_node *n = mb_alloc(ifa->pool, sizeof(struct nbma_node));
+
+  n->n = (node) {};
   add_tail(&ifa->nbma_list, NODE n);
+
   n->ip = src->ip;
   n->eligible = src->eligible;
   n->found = found;
