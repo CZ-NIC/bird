@@ -1103,7 +1103,7 @@
     }
   }
 
-  INST(FI_RETURN, 1, 1) {
+  INST(FI_RETURN, 1, 0) {
     NEVER_CONSTANT;
     /* Acquire the return value */
     ARG_ANY(1);
@@ -1133,6 +1133,9 @@
     NEVER_CONSTANT;
     VARARG;
     SYMBOL;
+
+    /* Fake result type declaration */
+    RESULT_TYPE(T_VOID);
 
     FID_NEW_BODY()
     ASSERT(sym->class == SYM_FUNCTION);
@@ -1443,7 +1446,7 @@
 
   }
 
-  INST(FI_FORMAT, 1, 0) {	/* Format */
+  INST(FI_FORMAT, 1, 1) {	/* Format */
     ARG_ANY(1);
     RESULT(T_STRING, s, val_format_str(fpool, &v1));
   }
