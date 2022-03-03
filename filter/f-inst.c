@@ -62,6 +62,7 @@
  *	m4_dnl	INST(FI_NOP, in, out) {			enum value, input args, output args
  *	m4_dnl	  ARG(num, type);			argument, its id (in data fields) and type accessible by v1, v2, v3
  *	m4_dnl	  ARG_ANY(num);				argument with no type check accessible by v1, v2, v3
+ *	m4_dnl	  ARG_TYPE(num, type);			just declare the type of argument
  *	m4_dnl	  VARARG;				variable-length argument list; accessible by vv(i) and whati->varcount
  *	m4_dnl	  LINE(num, unused);			this argument has to be converted to its own f_line
  *	m4_dnl	  SYMBOL;				symbol handed from config
@@ -80,7 +81,9 @@
  *	m4_dnl	  )
  *
  *	m4_dnl	  RESULT(type, union-field, value);	putting this on value stack
+ *	m4_dnl	  RESULT_(type, union-field, value);	like RESULT(), but do not declare the type
  *	m4_dnl	  RESULT_VAL(value-struct);		pass the struct f_val directly
+ *	m4_dnl	  RESULT_TYPE(type);			just declare the type of result value
  *	m4_dnl	  RESULT_VOID;				return undef
  *	m4_dnl	}
  *
@@ -90,6 +93,24 @@
  *	after m4_dnl INST() but all the code between them.
  *
  *	Other code is just copied into the interpreter part.
+ *
+ *	The filter language uses a simple type system, where values have types
+ *	(constants T_*) and also terms (instructions) are statically typed. Our
+ *	static typing is partial (some terms do not declare types of arguments
+ *	or results), therefore it can detect most but not all type errors and
+ *	therefore we still have runtime type checks.
+ *
+ *	m4_dnl  Types of arguments are declared by macros ARG() and ARG_TYPE(),
+ *	m4_dnl  types of results are declared by RESULT() and RESULT_TYPE().
+ *	m4_dnl  Macros ARG_ANY(), RESULT_() and RESULT_VAL() do not declare types
+ *	m4_dnl  themselves, but can be combined with ARG_TYPE() / RESULT_TYPE().
+ *
+ *	m4_dnl  Note that types should be declared only once. If there are
+ *	m4_dnl  multiple RESULT() macros in an instruction definition, they must
+ *	m4_dnl  use the exact same expression for type, or they should be replaced
+ *	m4_dnl  by multiple RESULT_() macros and a common RESULT_TYPE() macro.
+ *	m4_dnl  See e.g. FI_EA_GET or FI_MIN instructions.
+ *
  *
  *	If you are satisfied with this, you don't need to read the following
  *	detailed description of what is really done with the instruction definitions.
@@ -216,6 +237,37 @@
  *
  *	m4_dnl	If you are stymied, see FI_CALL or FI_CONSTANT or just search for
  *	m4_dnl	the mentioned macros in this file to see what is happening there in wild.
+ *
+ *
+ *	A note about soundness of the type system:
+ *
+ *	A type system is sound when types of expressions are consistent with
+ *	types of values resulting from evaluation of such expressions. Untyped
+ *	expressions are ok, but badly typed expressions are not sound. So is
+ *	the type system of BIRD filtering code sound? There are some points:
+ *
+ *	All cases of (one) m4_dnl RESULT() macro are obviously ok, as the macro
+ *	both declares a type and returns a value. One have to check instructions
+ *	that use m4_dnl RESULT_TYPE() macro. There are two issues:
+ *
+ *	FI_AND, FI_OR - second argument is statically checked to be T_BOOL and
+ *	passed as result without dynamic typecheck, declared to be T_BOOL. If
+ *	an untyped non-bool expression is used as a second argument, then
+ *	the mismatched type is returned.
+ *
+ *	FI_VAR_GET - soundness depends on consistency of declared symbol types
+ *	and stored values. This is maintained when values are stored by
+ *	FI_VAR_SET, but when they are stored by FI_CALL, only static checking is
+ *	used, so when an untyped expression returning mismatched value is used
+ *	as a function argument, then inconsistent value is stored and subsequent
+ *	FI_VAR_GET would be unsound.
+ *
+ *	Both of these issues are inconsequential, as mismatched values from
+ *	unsound expressions will be caught by dynamic typechecks like mismatched
+ *	values from untyped expressions.
+ *
+ *	Also note that FI_CALL is the only expression without properly declared
+ *	result type.
  */
 
 /* Binary operators */
