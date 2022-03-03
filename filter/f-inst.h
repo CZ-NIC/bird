@@ -35,12 +35,18 @@ const char *f_instruction_name_(enum f_instruction_code fi);
 static inline const char *f_instruction_name(enum f_instruction_code fi)
 { return f_instruction_name_(fi) + 3; }
 
+struct f_arg {
+  struct symbol *arg;
+  struct f_arg *next;
+};
+
 /* Filter structures for execution */
 /* Line of instructions to be unconditionally executed one after another */
 struct f_line {
   uint len;				/* Line length */
   u8 args;				/* Function: Args required */
   u8 vars;
+  struct f_arg *arg_list;
   struct f_line_item items[0];		/* The items themselves */
 };
 

@@ -302,9 +302,10 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <f> filter where_filter
 %type <fl> filter_body function_body
 %type <flv> lvalue
-%type <i> type function_args function_vars
+%type <i> type function_vars
+%type <fa> function_argsn function_args
 %type <ecs> ec_kind
-%type <fret> break_command 
+%type <fret> break_command
 %type <i32> cnum
 %type <e> pair_item ec_item lc_item set_item switch_item set_items switch_items switch_body
 %type <trie> fprefix_set
@@ -403,18 +404,21 @@ type:
  ;
 
 function_argsn:
-   /* EMPTY */
+   /* EMPTY */ { $$ = NULL; }
  | function_argsn type symbol ';' {
      if ($3->scope->slots >= 0xfe) cf_error("Too many declarations, at most 255 allowed");
-     cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++);
+     $$ = cfg_alloc(sizeof(struct f_arg));
+     $$->arg = cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++);
+     $$->next = $1;
    }
  ;
 
 function_args:
-   '(' ')' { $$ = 0; }
+   '(' ')' { $$ = NULL; }
  | '(' function_argsn type symbol ')' {
-     cf_define_symbol($4, SYM_VARIABLE | $3, offset, $4->scope->slots++);
-     $$ = $4->scope->slots;
+     $$ = cfg_alloc(sizeof(struct f_arg));
+     $$->arg = cf_define_symbol($4, SYM_VARIABLE | $3, offset, $4->scope->slots++);
+     $$->next = $2;
    }
  ;
 
@@ -459,9 +463,21 @@ function_def:
    FUNCTION symbol { DBG( "Beginning of function %s\n", $2->name );
      $2 = cf_define_symbol($2, SYM_FUNCTION, function, NULL);
      cf_push_scope($2);
-   } function_args function_body {
-     DBG("Definition of function %s with %u args and %u local vars.\n", $2->name, $4, $5->vars);
-     $5->args = $4;
+   }  function_args function_body
+   {
+     $5->arg_list = NULL;
+     $5->args = 0;
+
+     /* Revert the args */
+     while ($4) {
+       struct f_arg *tmp = $4;
+       $4 = $4->next;
+
+       tmp->next = $5->arg_list;
+       $5->arg_list = tmp;
+       $5->args++;
+     }
+
      $2->function = $5;
      cf_pop_scope();
    }

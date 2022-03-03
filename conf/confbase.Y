@@ -75,6 +75,7 @@ CF_DECLS
   struct f_static_attr fsa;
   struct f_lval flv;
   struct f_line *fl;
+  struct f_arg *fa;
   const struct filter *f;
   struct f_tree *e;
   struct f_trie *trie;
