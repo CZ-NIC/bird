@@ -1089,6 +1089,19 @@
       cf_error("Function '%s' expects %u arguments, got %u arguments",
 	       sym->name, sym->function->args, whati->varcount);
 
+    /* Typecheck individual arguments */
+    struct f_inst *a = fvar;
+    struct f_arg *b = sym->function->arg_list;
+    for (uint i = 1; a && b; a = a->next, b = b->next, i++)
+    {
+      enum f_type b_type = b->arg->class & 0xff;
+
+      if (a->type && (a->type != b_type) && !f_const_promotion(a, b_type))
+	cf_error("Argument %u of '%s' must be %s, got %s",
+		 i, sym->name, f_type_name(b_type), f_type_name(a->type));
+    }
+    ASSERT(!a && !b);
+
     /* Add implicit void slot for the return value */
     struct f_inst *tmp = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
     tmp->next = whati->fvar;
