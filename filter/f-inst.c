@@ -423,12 +423,14 @@
   INST(FI_NEQ, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
+    ARG_PREFER_SAME_TYPE(1, 2);
     RESULT(T_BOOL, i, !val_same(&v1, &v2));
   }
 
   INST(FI_EQ, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
+    ARG_PREFER_SAME_TYPE(1, 2);
     RESULT(T_BOOL, i, val_same(&v1, &v2));
   }
 
