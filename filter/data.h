@@ -282,6 +282,8 @@ static inline int eclist_set_type(const struct f_tree *set)
 { return set->from.type == T_EC; }
 static inline int lclist_set_type(const struct f_tree *set)
 { return set->from.type == T_LC; }
+static inline int path_set_type(const struct f_tree *set)
+{ return set->from.type == T_INT; }
 
 const struct adata *clist_filter(struct linpool *pool, const struct adata *list, const struct f_val *set, int pos);
 const struct adata *eclist_filter(struct linpool *pool, const struct adata *list, const struct f_val *set, int pos);

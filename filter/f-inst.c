@@ -1035,7 +1035,7 @@
     RESULT(T_INT, i, v1.val.lc.ldp2);
   }
 
-  INST(FI_MIN, 1, 1) {	/* Get minimum element from set */
+  INST(FI_MIN, 1, 1) {	/* Get minimum element from list */
     ARG_ANY(1);
     RESULT_TYPE(f_type_element_type(v1.type));
     switch(v1.type)
@@ -1069,7 +1069,7 @@
     }
   }
 
-  INST(FI_MAX, 1, 1) {	/* Get maximum element from set */
+  INST(FI_MAX, 1, 1) {	/* Get maximum element from list */
     ARG_ANY(1);
     RESULT_TYPE(f_type_element_type(v1.type));
     switch(v1.type)
@@ -1291,17 +1291,10 @@
 
     if (v1.type == T_PATH)
     {
-      const struct f_tree *set = NULL;
-      u32 key = 0;
-
-      if (v2.type == T_INT)
-	key = v2.val.i;
-      else if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
-	set = v2.val.t;
+      if ((v2.type == T_SET) && path_set_type(v2.val.t) || (v2.type == T_INT))
+	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else
 	runtime("Can't delete non-integer (set)");
-
-      RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, set, key, 0) ]]);
     }
 
     else if (v1.type == T_CLIST)
@@ -1353,10 +1346,8 @@
 
     if (v1.type == T_PATH)
     {
-      u32 key = 0;
-
-      if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
-	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, v2.val.t, key, 1) ]]);
+      if ((v2.type == T_SET) && path_set_type(v2.val.t))
+	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter integer");
     }
