@@ -192,7 +192,7 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
     if (val_is_ip4(v1) && (v2->type == T_QUAD))
       return uint_cmp(ipa_to_u32(v1->val.ip), v2->val.i);
 
-    debug( "Types do not match in val_compare\n" );
+    DBG( "Types do not match in val_compare\n" );
     return F_CMP_ERROR;
   }
 

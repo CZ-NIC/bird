@@ -186,6 +186,12 @@ if (f$1->type && f$2->type && (f$1->type != f$2->type) &&
   cf_error("Arguments $1 and $2 of %s must be of the same type", f_instruction_name(what->fi_code));
 FID_INTERPRET_BODY()')
 
+m4_define(ARG_PREFER_SAME_TYPE, `
+FID_NEW_BODY()m4_dnl
+if (f$1->type && f$2->type && (f$1->type != f$2->type))
+   (void) (f_const_promotion(f$2, f$1->type) || f_const_promotion(f$1, f$2->type));
+FID_INTERPRET_BODY()')
+
 #	Executing another filter line. This replaces the recursion
 #	that was needed in the former implementation.
 m4_define(LINEX, `FID_INTERPRET_EXEC()LINEX_($1)FID_INTERPRET_NEW()return $1 FID_INTERPRET_BODY()')
