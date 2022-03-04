@@ -79,6 +79,8 @@ f_type_element_type(enum f_type t)
   };
 }
 
+const struct f_trie f_const_empty_trie = { .ipv4 = -1, };
+
 const struct f_val f_const_empty_path = {
   .type = T_PATH,
   .val.ad = &null_adata,
@@ -91,6 +93,9 @@ const struct f_val f_const_empty_path = {
 }, f_const_empty_lclist = {
   .type = T_LCLIST,
   .val.ad = &null_adata,
+}, f_const_empty_prefix_set = {
+  .type = T_PREFIX_SET,
+  .val.ti = &f_const_empty_trie,
 };
 
 static struct adata *
@@ -301,6 +306,12 @@ val_same(const struct f_val *v1, const struct f_val *v2)
 int
 clist_set_type(const struct f_tree *set, struct f_val *v)
 {
+  if (!set)
+  {
+    v->type = T_VOID;
+    return 1;
+  }
+
   switch (set->from.type)
   {
   case T_PAIR:
@@ -536,6 +547,9 @@ val_in_range(const struct f_val *v1, const struct f_val *v2)
 
   if (v2->type != T_SET)
     return F_CMP_ERROR;
+
+  if (!v2->val.t)
+    return 0;
 
   /* With integrated Quad<->IP implicit conversion */
   if ((v1->type == v2->val.t->from.type) ||

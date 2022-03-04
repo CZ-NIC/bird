@@ -401,7 +401,7 @@
 	  break;
 
 	case T_SET:
-	  if (vv(i).val.t->from.type != T_INT)
+	  if (!path_set_type(vv(i).val.t))
 	    runtime("Only integer sets allowed in path mask");
 
 	  pm->item[i] = (struct f_path_mask_item) {

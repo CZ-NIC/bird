@@ -674,6 +674,7 @@ bgp_path:
 bgp_path_tail:
    NUM bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .asn = $1, .kind = PM_ASN, }, }); $$->next = $2;  }
  | NUM DDOT NUM bgp_path_tail	{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .from = $1, .to = $3, .kind = PM_ASN_RANGE }, }); $$->next = $4; }
+ | '[' ']' bgp_path_tail { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .set = NULL, .kind = PM_ASN_SET }, }); $$->next = $3; }
  | '[' set_items ']' bgp_path_tail {
    if ($2->from.type != T_INT) cf_error("Only integer sets allowed in path mask");
    $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .set = build_tree($2), .kind = PM_ASN_SET }, }); $$->next = $4;
@@ -693,6 +694,7 @@ constant:
  | fipa	  { $$ = f_new_inst(FI_CONSTANT, $1); }
  | VPN_RD { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_RD, .val.ec = $1, }); }
  | net_   { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_NET, .val.net = $1, }); }
+ | '[' ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_SET, .val.t = NULL, }); }
  | '[' set_items ']' {
      DBG( "We've got a set here..." );
      $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_SET, .val.t = build_tree($2), });

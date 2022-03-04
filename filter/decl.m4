@@ -501,6 +501,11 @@ f_const_promotion(struct f_inst *arg, enum f_type want)
     return 1;
   }
 
+  else if ((c->type == T_SET) && (!c->val.t) && (want == T_PREFIX_SET)) {
+    *c = f_const_empty_prefix_set;
+    return 1;
+  }
+
   return 0;
 }
 
