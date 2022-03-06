@@ -408,7 +408,7 @@ function_argsn:
  | function_argsn type symbol ';' {
      if ($3->scope->slots >= 0xfe) cf_error("Too many declarations, at most 255 allowed");
      $$ = cfg_alloc(sizeof(struct f_arg));
-     $$->arg = cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++);
+     $$->arg = cf_define_symbol($3, SYM_VARIABLE | $2, offset, sym_->scope->slots++);
      $$->next = $1;
    }
  ;
@@ -417,7 +417,7 @@ function_args:
    '(' ')' { $$ = NULL; }
  | '(' function_argsn type symbol ')' {
      $$ = cfg_alloc(sizeof(struct f_arg));
-     $$->arg = cf_define_symbol($4, SYM_VARIABLE | $3, offset, $4->scope->slots++);
+     $$->arg = cf_define_symbol($4, SYM_VARIABLE | $3, offset, sym_->scope->slots++);
      $$->next = $2;
    }
  ;
@@ -425,7 +425,7 @@ function_args:
 function_vars:
    /* EMPTY */ { $$ = 0; }
  | function_vars type symbol ';' {
-     cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++);
+     cf_define_symbol($3, SYM_VARIABLE | $2, offset, sym_->scope->slots++);
      $$ = $1 + 1;
    }
  ;
