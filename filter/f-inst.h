@@ -22,7 +22,7 @@
 
 /* Flags for instructions */
 enum f_instruction_flags {
-  FIF_PRINTED = 1,		/* FI_PRINT_AND_DIE: message put in buffer */
+  FIF_RECURSIVE = 1,		/* FI_CALL: function is directly recursive */
 } PACKED;
 
 /* Include generated filter instruction declarations */

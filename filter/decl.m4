@@ -376,6 +376,7 @@ case INST_NAME(): {
 #undef whati
 #undef item
   dest->items[pos].fi_code = what->fi_code;
+  dest->items[pos].flags = what->flags;
   dest->items[pos].lineno = what->lineno;
   break;
 }
@@ -647,6 +648,7 @@ FID_WR_PUT(4)m4_dnl
 struct f_inst {
   struct f_inst *next;			/* Next instruction */
   enum f_instruction_code fi_code;	/* Instruction code */
+  enum f_instruction_flags flags;	/* Flags, instruction-specific */
   enum f_type type;			/* Type of returned value, if known */
   int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */

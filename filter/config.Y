@@ -460,25 +460,28 @@ function_body:
 
 conf: function_def ;
 function_def:
-   FUNCTION symbol { DBG( "Beginning of function %s\n", $2->name );
+   FUNCTION symbol {
+     DBG( "Beginning of function %s\n", $2->name );
      $2 = cf_define_symbol($2, SYM_FUNCTION, function, NULL);
      cf_push_scope($2);
-   }  function_args function_body
-   {
-     $5->arg_list = NULL;
-     $5->args = 0;
+   } function_args {
+     /* Make dummy f_line for storing function prototype */
+     struct f_line *dummy = cfg_allocz(sizeof(struct f_line));
+     $2->function = dummy;
 
      /* Revert the args */
      while ($4) {
        struct f_arg *tmp = $4;
        $4 = $4->next;
 
-       tmp->next = $5->arg_list;
-       $5->arg_list = tmp;
-       $5->args++;
+       tmp->next = dummy->arg_list;
+       dummy->arg_list = tmp;
+       dummy->args++;
      }
-
-     $2->function = $5;
+   } function_body {
+     $6->args = $2->function->args;
+     $6->arg_list = $2->function->arg_list;
+     $2->function = $6;
      cf_pop_scope();
    }
  ;
