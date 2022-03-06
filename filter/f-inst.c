@@ -1165,11 +1165,16 @@
     whati->fvar = tmp;
     what->size += tmp->size;
 
+    /* Mark recursive calls, they have dummy f_line */
+    if (!sym->function->len)
+      what->flags |= FIF_RECURSIVE;
+
     FID_SAME_BODY()
-      if (!(f1->sym->flags & SYM_FLAG_SAME))
-	return 0;
+    if (!(f1->sym->flags & SYM_FLAG_SAME) && !(f1_->flags & FIF_RECURSIVE))
+      return 0;
 
     FID_ITERATE_BODY()
+    if (!(what->flags & FIF_RECURSIVE))
       BUFFER_PUSH(fit->lines) = whati->sym->function;
 
     FID_INTERPRET_BODY()
