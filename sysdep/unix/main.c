@@ -116,7 +116,7 @@ add_num_const(char *name, int val, const char *file, const uint line)
   struct f_val *v = cfg_alloc(sizeof(struct f_val));
   *v = (struct f_val) { .type = T_INT, .val.i = val };
   struct symbol *sym = cf_get_symbol(name);
-  if (sym->class && (sym->scope == conf_this_scope))
+  if (sym->class && cf_symbol_is_local(sym))
     cf_error("Error reading value for %s from %s:%d: already defined", name, file, line);
 
   cf_define_symbol(sym, SYM_CONSTANT | T_INT, val, v);
