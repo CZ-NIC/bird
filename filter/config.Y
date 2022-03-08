@@ -296,7 +296,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term block cmd cmds constant constructor print_list var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
+%type <x> term cmd cmds constant constructor print_list var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
 %type <fda> dynamic_attr
 %type <fsa> static_attr
 %type <f> filter where_filter
@@ -512,15 +512,6 @@ cmds_int: cmd_prep
     $1.end->next = $2.begin;
   }
  }
- ;
-
-block:
-   cmd {
-     $$=$1;
-   }
- | '{' cmds '}' {
-     $$=$2;
-   }
  ;
 
 /*
@@ -864,10 +855,13 @@ print_list: /* EMPTY */ { $$ = NULL; }
  ;
 
 cmd:
-   IF term THEN block {
+   '{' cmds '}' {
+     $$ = $2;
+   }
+ | IF term THEN cmd {
      $$ = f_new_inst(FI_CONDITION, $2, $4, NULL);
    }
- | IF term THEN block ELSE block {
+ | IF term THEN cmd ELSE cmd {
      $$ = f_new_inst(FI_CONDITION, $2, $4, $6);
    }
  | CF_SYM_KNOWN '=' term ';' {
