@@ -178,7 +178,7 @@ struct sl_alignment {			/* Magic structure for testing of alignment */
   int x[0];
 };
 
-#define SL_GET_HEAD(x)	((struct sl_head *) (((uintptr_t) (x)) & ~(page_size-1)))
+#define SL_GET_HEAD(x)	((struct sl_head *) (((uintptr_t) (x)) & ~(get_page_size()-1)))
 
 /**
  * sl_new - create a new Slab
