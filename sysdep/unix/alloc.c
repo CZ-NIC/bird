@@ -26,7 +26,7 @@ long page_size = 0;
 #define KEEP_PAGES_MAIN_MIN	8
 #define CLEANUP_PAGES_BULK	256
 
-_Static_assert(KEEP_PAGES_MAIN_MIN * 4 < KEEP_PAGES_MAIN_MAX);
+STATIC_ASSERT(KEEP_PAGES_MAIN_MIN * 4 < KEEP_PAGES_MAIN_MAX);
 
 static _Bool use_fake = 0;
 
