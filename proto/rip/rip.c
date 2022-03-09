@@ -207,16 +207,15 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
       .u.data = (uintptr_t) a0.nh.iface,
     };
 
-    rta *a = rta_lookup(&a0);
-    rte *e = rte_get_temp(a, p->p.main_source);
+    rte e0 = {
+      .attrs = &a0,
+      .src = p->p.main_source,
+    };
 
-    rte_update(&p->p, en->n.addr, e);
+    rte_update(p->p.main_channel, en->n.addr, &e0, p->p.main_source);
   }
   else
-  {
-    /* Withdraw */
-    rte_update(&p->p, en->n.addr, NULL);
-  }
+    rte_update(p->p.main_channel, en->n.addr, NULL, p->p.main_source);
 }
 
 /**
@@ -311,8 +310,8 @@ rip_withdraw_rte(struct rip_proto *p, net_addr *n, struct rip_neighbor *from)
  * it into our data structures.
  */
 static void
-rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, struct rte *new,
-	      struct rte *old UNUSED)
+rip_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net, struct rte *new,
+	      const struct rte *old UNUSED)
 {
   struct rip_proto *p = (struct rip_proto *) P;
   struct rip_entry *en;
@@ -328,14 +327,14 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
     if (rt_metric > p->infinity)
     {
       log(L_WARN "%s: Invalid rip_metric value %u for route %N",
-	  p->p.name, rt_metric, net->n.addr);
+	  p->p.name, rt_metric, net);
       rt_metric = p->infinity;
     }
 
     if (rt_tag > 0xffff)
     {
       log(L_WARN "%s: Invalid rip_tag value %u for route %N",
-	  p->p.name, rt_tag, net->n.addr);
+	  p->p.name, rt_tag, net);
       rt_metric = p->infinity;
       rt_tag = 0;
     }
@@ -347,7 +346,7 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
      * collection.
      */
 
-    en = fib_get(&p->rtable, net->n.addr);
+    en = fib_get(&p->rtable, net);
 
     old_metric = en->valid ? en->metric : -1;
 
@@ -361,7 +360,7 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
   else
   {
     /* Withdraw */
-    en = fib_find(&p->rtable, net->n.addr);
+    en = fib_find(&p->rtable, net);
 
     if (!en || en->valid != RIP_ENTRY_VALID)
       return;

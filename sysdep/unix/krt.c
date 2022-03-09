@@ -251,14 +251,14 @@ static inline void
 krt_trace_in(struct krt_proto *p, rte *e, char *msg)
 {
   if (p->p.debug & D_PACKETS)
-    log(L_TRACE "%s: %N: %s", p->p.name, e->net->n.addr, msg);
+    log(L_TRACE "%s: %N: %s", p->p.name, e->net, msg);
 }
 
 static inline void
 krt_trace_in_rl(struct tbf *f, struct krt_proto *p, rte *e, char *msg)
 {
   if (p->p.debug & D_PACKETS)
-    log_rl(f, L_TRACE "%s: %N: %s", p->p.name, e->net->n.addr, msg);
+    log_rl(f, L_TRACE "%s: %N: %s", p->p.name, e->net, msg);
 }
 
 /*
@@ -299,54 +299,56 @@ krt_uptodate(rte *a, rte *b)
 static void
 krt_learn_announce_update(struct krt_proto *p, rte *e)
 {
-  net *n = e->net;
-  rta *aa = rta_clone(e->attrs);
-  rte *ee = rte_get_temp(aa, p->p.main_source);
-  rte_update(&p->p, n->n.addr, ee);
+  rte e0 = {
+    .attrs = rta_clone(e->attrs),
+    .src = p->p.main_source,
+  };
+
+  rte_update(p->p.main_channel, e->net, &e0, p->p.main_source);
 }
 
 static void
-krt_learn_announce_delete(struct krt_proto *p, net *n)
+krt_learn_announce_delete(struct krt_proto *p, net_addr *n)
 {
-  rte_update(&p->p, n->n.addr, NULL);
+  rte_update(p->p.main_channel, n, NULL, p->p.main_source);
 }
 
 /* Called when alien route is discovered during scan */
 static void
 krt_learn_scan(struct krt_proto *p, rte *e)
 {
-  net *n0 = e->net;
-  net *n = net_get(p->krt_table, n0->n.addr);
-  rte *m, **mm;
+  net *n = net_get(p->krt_table, e->net);
+  struct rte_storage *m, **mm;
 
-  e->attrs = rta_lookup(e->attrs);
+  struct rte_storage *ee = rte_store(e, n, p->krt_table);
 
-  for(mm=&n->routes; m = *mm; mm=&m->next)
-    if (krt_same_key(m, e))
+  for(mm = &n->routes; m = *mm; mm = &m->next)
+    if (krt_same_key(&m->rte, e))
       break;
   if (m)
     {
-      if (krt_uptodate(m, e))
+      if (krt_uptodate(&m->rte, e))
 	{
 	  krt_trace_in_rl(&rl_alien, p, e, "[alien] seen");
-	  rte_free(e);
-	  m->pflags |= KRT_REF_SEEN;
+	  rte_free(ee, p->krt_table);
+	  m->rte.pflags |= KRT_REF_SEEN;
 	}
       else
 	{
 	  krt_trace_in(p, e, "[alien] updated");
 	  *mm = m->next;
-	  rte_free(m);
+	  rte_free(m, p->krt_table);
 	  m = NULL;
 	}
     }
   else
     krt_trace_in(p, e, "[alien] created");
+
   if (!m)
     {
-      e->next = n->routes;
-      n->routes = e;
-      e->pflags |= KRT_REF_SEEN;
+      ee->next = n->routes;
+      n->routes = ee;
+      ee->rte.pflags |= KRT_REF_SEEN;
     }
 }
 
@@ -362,7 +364,7 @@ krt_learn_prune(struct krt_proto *p)
 again:
   FIB_ITERATE_START(fib, &fit, net, n)
     {
-      rte *e, **ee, *best, **pbest, *old_best;
+      struct rte_storage *e, **ee, *best, **pbest, *old_best;
 
       /*
        * Note that old_best may be NULL even if there was an old best route in
@@ -376,48 +378,48 @@ again:
       ee = &n->routes;
       while (e = *ee)
 	{
-	  if (e->pflags & KRT_REF_BEST)
+	  if (e->rte.pflags & KRT_REF_BEST)
 	    old_best = e;
 
-	  if (!(e->pflags & KRT_REF_SEEN))
+	  if (!(e->rte.pflags & KRT_REF_SEEN))
 	    {
 	      *ee = e->next;
-	      rte_free(e);
+	      rte_free(e, p->krt_table);
 	      continue;
 	    }
 
-	  if (!best || krt_metric(best) > krt_metric(e))
+	  if (!best || krt_metric(&best->rte) > krt_metric(&e->rte))
 	    {
 	      best = e;
 	      pbest = ee;
 	    }
 
-	  e->pflags &= ~(KRT_REF_SEEN | KRT_REF_BEST);
+	  e->rte.pflags &= ~(KRT_REF_SEEN | KRT_REF_BEST);
 	  ee = &e->next;
 	}
       if (!n->routes)
 	{
 	  DBG("%I/%d: deleting\n", n->n.prefix, n->n.pxlen);
 	  if (old_best)
-	    krt_learn_announce_delete(p, n);
+	    krt_learn_announce_delete(p, n->n.addr);
 
 	  FIB_ITERATE_PUT(&fit);
 	  fib_delete(fib, n);
 	  goto again;
 	}
 
-      best->pflags |= KRT_REF_BEST;
+      best->rte.pflags |= KRT_REF_BEST;
       *pbest = best->next;
       best->next = n->routes;
       n->routes = best;
 
       if ((best != old_best) || p->reload)
 	{
-	  DBG("%I/%d: announcing (metric=%d)\n", n->n.prefix, n->n.pxlen, krt_metric(best));
-	  krt_learn_announce_update(p, best);
+	  DBG("%I/%d: announcing (metric=%d)\n", n->n.prefix, n->n.pxlen, krt_metric(&best->rte));
+	  krt_learn_announce_update(p, &best->rte);
 	}
       else
-	DBG("%I/%d: uptodate (metric=%d)\n", n->n.prefix, n->n.pxlen, krt_metric(best));
+	DBG("%I/%d: uptodate (metric=%d)\n", n->n.prefix, n->n.pxlen, krt_metric(&best->rte));
     }
   FIB_ITERATE_END;
 
@@ -427,68 +429,67 @@ again:
 static void
 krt_learn_async(struct krt_proto *p, rte *e, int new)
 {
-  net *n0 = e->net;
-  net *n = net_get(p->krt_table, n0->n.addr);
-  rte *g, **gg, *best, **bestp, *old_best;
+  net *n = net_get(p->krt_table, e->net);
+  struct rte_storage *g, **gg, *best, **bestp, *old_best;
 
   ASSERT(!e->attrs->cached);
   e->attrs->pref = p->p.main_channel->preference;
 
-  e->attrs = rta_lookup(e->attrs);
+  struct rte_storage *ee = rte_store(e, n, p->krt_table);
 
   old_best = n->routes;
   for(gg=&n->routes; g = *gg; gg = &g->next)
-    if (krt_same_key(g, e))
+    if (krt_same_key(&g->rte, e))
       break;
   if (new)
     {
       if (g)
 	{
-	  if (krt_uptodate(g, e))
+	  if (krt_uptodate(&g->rte, e))
 	    {
 	      krt_trace_in(p, e, "[alien async] same");
-	      rte_free(e);
+	      rte_free(ee, p->krt_table);
 	      return;
 	    }
 	  krt_trace_in(p, e, "[alien async] updated");
 	  *gg = g->next;
-	  rte_free(g);
+	  rte_free(g, p->krt_table);
 	}
       else
 	krt_trace_in(p, e, "[alien async] created");
 
-      e->next = n->routes;
-      n->routes = e;
+      ee->next = n->routes;
+      n->routes = ee;
     }
   else if (!g)
     {
       krt_trace_in(p, e, "[alien async] delete failed");
-      rte_free(e);
+      rte_free(ee, p->krt_table);
       return;
     }
   else
     {
       krt_trace_in(p, e, "[alien async] removed");
       *gg = g->next;
-      rte_free(e);
-      rte_free(g);
+      rte_free(ee, p->krt_table);
+      rte_free(g, p->krt_table);
     }
   best = n->routes;
   bestp = &n->routes;
   for(gg=&n->routes; g=*gg; gg=&g->next)
   {
-    if (krt_metric(best) > krt_metric(g))
+    if (krt_metric(&best->rte) > krt_metric(&g->rte))
       {
 	best = g;
 	bestp = gg;
       }
 
-    g->pflags &= ~KRT_REF_BEST;
+    g->rte.pflags &= ~KRT_REF_BEST;
   }
 
   if (best)
     {
-      best->pflags |= KRT_REF_BEST;
+      best->rte.pflags |= KRT_REF_BEST;
       *bestp = best->next;
       best->next = n->routes;
       n->routes = best;
@@ -498,9 +499,9 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
     {
       DBG("krt_learn_async: distributing change\n");
       if (best)
-	krt_learn_announce_update(p, best);
+	krt_learn_announce_update(p, &best->rte);
       else
-	krt_learn_announce_delete(p, n);
+	krt_learn_announce_delete(p, n->n.addr);
     }
 }
 
@@ -538,7 +539,7 @@ krt_dump(struct proto *P)
 static inline int
 krt_is_installed(struct krt_proto *p, net *n)
 {
-  return n->routes && bmap_test(&p->p.main_channel->export_map, n->routes->id);
+  return n->routes && bmap_test(&p->p.main_channel->export_map, n->routes->rte.id);
 }
 
 static void
@@ -552,26 +553,25 @@ krt_flush_routes(struct krt_proto *p)
       if (krt_is_installed(p, n))
 	{
 	  /* FIXME: this does not work if gw is changed in export filter */
-	  krt_replace_rte(p, n, NULL, n->routes);
+	  krt_replace_rte(p, n->n.addr, NULL, &n->routes->rte);
 	}
     }
   FIB_WALK_END;
 }
 
 static struct rte *
-krt_export_net(struct krt_proto *p, net *net, rte **rt_free)
+krt_export_net(struct krt_proto *p, net *net)
 {
   struct channel *c = p->p.main_channel;
   const struct filter *filter = c->out_filter;
-  rte *rt;
 
   if (c->ra_mode == RA_MERGED)
-    return rt_export_merged(c, net, rt_free, krt_filter_lp, 1);
+    return rt_export_merged(c, net, krt_filter_lp, 1);
 
-  rt = net->routes;
-  *rt_free = NULL;
+  static _Thread_local rte rt;
+  rt = net->routes->rte;
 
-  if (!rte_is_valid(rt))
+  if (!rte_is_valid(&rt))
     return NULL;
 
   if (filter == FILTER_REJECT)
@@ -587,13 +587,9 @@ krt_export_net(struct krt_proto *p, net *net, rte **rt_free)
 
 
 accept:
-  if (rt != net->routes)
-    *rt_free = rt;
-  return rt;
+  return &rt;
 
 reject:
-  if (rt != net->routes)
-    rte_free(rt);
   return NULL;
 }
 
@@ -619,8 +615,7 @@ krt_same_dest(rte *k, rte *e)
 void
 krt_got_route(struct krt_proto *p, rte *e, s8 src)
 {
-  rte *new = NULL, *rt_free = NULL;
-  net *n = e->net;
+  rte *new = NULL;
   e->pflags = 0;
 
 #ifdef KRT_ALLOW_LEARN
@@ -636,10 +631,7 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
       if (KRT_CF->learn)
 	krt_learn_scan(p, e);
       else
-	{
-	  krt_trace_in_rl(&rl_alien, p, e, "[alien] ignored");
-	  rte_free(e);
-	}
+	krt_trace_in_rl(&rl_alien, p, e, "[alien] ignored");
       return;
     }
 #endif
@@ -650,10 +642,11 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
   if (!p->ready)
     goto ignore;
 
-  if (!krt_is_installed(p, n))
+  net *net = net_find(p->p.main_channel->table, e->net);
+  if (!net || !krt_is_installed(p, net))
     goto delete;
 
-  new = krt_export_net(p, n, &rt_free);
+  new = krt_export_net(p, net);
 
   /* Rejected by filters */
   if (!new)
@@ -686,20 +679,15 @@ ignore:
 
 update:
   krt_trace_in(p, new, "updating");
-  krt_replace_rte(p, n, new, e);
+  krt_replace_rte(p, e->net, new, e);
   goto done;
 
 delete:
   krt_trace_in(p, e, "deleting");
-  krt_replace_rte(p, n, NULL, e);
+  krt_replace_rte(p, e->net, NULL, e);
   goto done;
 
 done:
-  rte_free(e);
-
-  if (rt_free)
-    rte_free(rt_free);
-
   lp_flush(krt_filter_lp);
 }
 
@@ -717,19 +705,15 @@ krt_prune(struct krt_proto *p)
   KRT_TRACE(p, D_EVENTS, "Pruning table %s", t->name);
   FIB_WALK(&t->fib, net, n)
   {
-    if (p->ready && krt_is_installed(p, n) && !bmap_test(&p->seen_map, n->routes->id))
+    if (p->ready && krt_is_installed(p, n) && !bmap_test(&p->seen_map, n->routes->rte.id))
     {
-      rte *rt_free = NULL;
-      rte *new = krt_export_net(p, n, &rt_free);
+      rte *new = krt_export_net(p, n);
 
       if (new)
       {
 	krt_trace_in(p, new, "installing");
-	krt_replace_rte(p, n, new, NULL);
+	krt_replace_rte(p, n->n.addr, new, NULL);
       }
-
-      if (rt_free)
-	rte_free(rt_free);
 
       lp_flush(krt_filter_lp);
     }
@@ -748,7 +732,6 @@ krt_prune(struct krt_proto *p)
 void
 krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
 {
-  net *net = e->net;
   e->pflags = 0;
 
   switch (src)
@@ -761,7 +744,7 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
       if (new)
 	{
 	  krt_trace_in(p, e, "[redirect] deleting");
-	  krt_replace_rte(p, net, NULL, e);
+	  krt_replace_rte(p, e->net, NULL, e);
 	}
       /* If !new, it is probably echo of our deletion */
       break;
@@ -775,7 +758,6 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
 	}
 #endif
     }
-  rte_free(e);
 }
 
 /*
@@ -882,10 +864,9 @@ krt_scan_timer_kick(struct krt_proto *p)
  */
 
 static int
-krt_preexport(struct proto *P, rte *e)
+krt_preexport(struct channel *c, rte *e)
 {
-  // struct krt_proto *p = (struct krt_proto *) P;
-  if (e->src->proto == P)
+  if (e->src->proto == c->proto)
     return -1;
 
   if (!krt_capable(e))
@@ -895,8 +876,8 @@ krt_preexport(struct proto *P, rte *e)
 }
 
 static void
-krt_rt_notify(struct proto *P, struct channel *ch UNUSED, net *net,
-	      rte *new, rte *old)
+krt_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net,
+	      rte *new, const rte *old)
 {
   struct krt_proto *p = (struct krt_proto *) P;
 

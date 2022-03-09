@@ -336,26 +336,26 @@ bgp_aigp_set_metric(struct linpool *pool, const struct adata *ad, u64 metric)
 }
 
 int
-bgp_total_aigp_metric_(rte *e, u64 *metric, const struct adata **ad)
+bgp_total_aigp_metric_(struct rta *a, u64 *metric, const struct adata **ad)
 {
-  eattr *a = ea_find(e->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_AIGP));
-  if (!a)
+  eattr *ea = ea_find(a->eattrs, EA_CODE(PROTOCOL_BGP, BA_AIGP));
+  if (!ea)
     return 0;
 
-  const byte *b = bgp_aigp_get_tlv(a->u.ptr, BGP_AIGP_METRIC);
+  const byte *b = bgp_aigp_get_tlv(ea->u.ptr, BGP_AIGP_METRIC);
   if (!b)
     return 0;
 
   u64 aigp = get_u64(b + 3);
-  u64 step = e->attrs->igp_metric;
+  u64 step = a->igp_metric;
 
-  if (!rte_resolvable(e) || (step >= IGP_METRIC_UNKNOWN))
+  if (!rta_resolvable(a) || (step >= IGP_METRIC_UNKNOWN))
     step = BGP_AIGP_MAX;
 
   if (!step)
     step = 1;
 
-  *ad = a->u.ptr;
+  *ad = ea->u.ptr;
   *metric = aigp + step;
   if (*metric < aigp)
     *metric = BGP_AIGP_MAX;
@@ -377,7 +377,7 @@ bgp_init_aigp_metric(rte *e, u64 *metric, const struct adata **ad)
 u32
 bgp_rte_igp_metric(struct rte *rt)
 {
-  u64 metric = bgp_total_aigp_metric(rt);
+  u64 metric = bgp_total_aigp_metric(rt->attrs);
   return (u32) MIN(metric, (u64) IGP_METRIC_UNKNOWN);
 }
 
@@ -906,7 +906,7 @@ bgp_decode_large_community(struct bgp_parse_state *s, uint code UNUSED, uint fla
 static void
 bgp_export_mpls_label_stack(struct bgp_export_state *s, eattr *a)
 {
-  net_addr *n = s->route->net->n.addr;
+  const net_addr *n = s->route->net;
   u32 *labels = (u32 *) a->u.ptr->data;
   uint lnum = a->u.ptr->length / 4;
 
@@ -1631,7 +1631,7 @@ bgp_free_prefix_table(struct bgp_channel *c)
 }
 
 static struct bgp_prefix *
-bgp_get_prefix(struct bgp_channel *c, net_addr *net, u32 path_id)
+bgp_get_prefix(struct bgp_channel *c, const net_addr *net, u32 path_id)
 {
   u32 hash = net_hash(net) ^ u32_hash(path_id);
   struct bgp_prefix *px = HASH_FIND(c->prefix_hash, PXH, net, path_id, hash);
@@ -1675,10 +1675,10 @@ bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
  */
 
 int
-bgp_preexport(struct proto *P, rte *e)
+bgp_preexport(struct channel *c, rte *e)
 {
   struct proto *SRC = e->src->proto;
-  struct bgp_proto *p = (struct bgp_proto *) P;
+  struct bgp_proto *p = (struct bgp_proto *) (c->proto);
   struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (struct bgp_proto *) SRC : NULL;
 
   /* Reject our routes */
@@ -1690,8 +1690,8 @@ bgp_preexport(struct proto *P, rte *e)
     return 0;
 
   /* Reject flowspec that failed validation */
-  if ((e->attrs->dest == RTD_UNREACHABLE) && net_is_flow(e->net->n.addr))
-      return -1;
+  if ((e->attrs->dest == RTD_UNREACHABLE) && net_is_flow(e->net))
+    return -1;
 
   /* IBGP route reflection, RFC 4456 */
   if (p->is_internal && src->is_internal && (p->local_as == src->local_as))
@@ -1707,11 +1707,11 @@ bgp_preexport(struct proto *P, rte *e)
   }
 
   /* Handle well-known communities, RFC 1997 */
-  struct eattr *c;
+  struct eattr *com;
   if (p->cf->interpret_communities &&
-      (c = ea_find(e->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY))))
+      (com = ea_find(e->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY))))
   {
-    const struct adata *d = c->u.ptr;
+    const struct adata *d = com->u.ptr;
 
     /* Do not export anywhere */
     if (int_set_contains(d, BGP_COMM_NO_ADVERTISE))
@@ -1791,7 +1791,7 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
   /* AIGP attribute - accumulate local metric or originate new one */
   u64 metric;
   if (s.local_next_hop &&
-      (bgp_total_aigp_metric_(e, &metric, &ad) ||
+      (bgp_total_aigp_metric_(e->attrs, &metric, &ad) ||
        (c->cf->aigp_originate && bgp_init_aigp_metric(e, &metric, &ad))))
   {
     ad = bgp_aigp_set_metric(pool, ad, metric);
@@ -1850,7 +1850,7 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
 }
 
 void
-bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old)
+bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old)
 {
   struct bgp_proto *p = (void *) P;
   struct bgp_channel *c = (void *) C;
@@ -1864,7 +1864,7 @@ bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old)
 
     /* Error during attribute processing */
     if (!attrs)
-      log(L_ERR "%s: Invalid route %N withdrawn", p->p.name, n->n.addr);
+      log(L_ERR "%s: Invalid route %N withdrawn", p->p.name, n);
 
     /* If attributes are invalid, we fail back to withdraw */
     buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
@@ -1876,7 +1876,7 @@ bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old)
     path = old->src->global_id;
   }
 
-  px = bgp_get_prefix(c, n->n.addr, c->add_path_tx ? path : 0);
+  px = bgp_get_prefix(c, n, c->add_path_tx ? path : 0);
   add_tail(&buck->prefixes, &px->buck_node);
 
   bgp_schedule_packet(p->conn, c, PKT_UPDATE);
@@ -1937,8 +1937,8 @@ bgp_rte_better(rte *new, rte *old)
     return 1;
 
   /* RFC 4271 9.1.2.1. Route resolvability test */
-  n = rte_resolvable(new);
-  o = rte_resolvable(old);
+  n = rta_resolvable(new->attrs);
+  o = rta_resolvable(old->attrs);
   if (n > o)
     return 1;
   if (n < o)
@@ -1963,8 +1963,8 @@ bgp_rte_better(rte *new, rte *old)
     return 0;
 
   /* RFC 7311 4.1 - Apply AIGP metric */
-  u64 n2 = bgp_total_aigp_metric(new);
-  u64 o2 = bgp_total_aigp_metric(old);
+  u64 n2 = bgp_total_aigp_metric(new->attrs);
+  u64 o2 = bgp_total_aigp_metric(old->attrs);
   if (n2 < o2)
     return 1;
   if (n2 > o2)
@@ -2079,7 +2079,7 @@ bgp_rte_mergable(rte *pri, rte *sec)
     return 0;
 
   /* RFC 4271 9.1.2.1. Route resolvability test */
-  if (rte_resolvable(pri) != rte_resolvable(sec))
+  if (rta_resolvable(pri->attrs) != rta_resolvable(sec->attrs))
     return 0;
 
   /* Start with local preferences */
@@ -2148,16 +2148,15 @@ same_group(rte *r, u32 lpref, u32 lasn)
 }
 
 static inline int
-use_deterministic_med(rte *r)
+use_deterministic_med(struct rte_storage *r)
 {
-  struct proto *P = r->src->proto;
+  struct proto *P = r->rte.src->proto;
   return (P->proto == &proto_bgp) && ((struct bgp_proto *) P)->cf->deterministic_med;
 }
 
 int
 bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
 {
-  rte *r, *s;
   rte *key = new ? new : old;
   u32 lpref = key->attrs->pref;
   u32 lasn = bgp_get_neighbor(key);
@@ -2225,13 +2224,13 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
   }
 
   /* The default case - find a new best-in-group route */
-  r = new; /* new may not be in the list */
-  for (s=net->routes; rte_is_valid(s); s=s->next)
-    if (use_deterministic_med(s) && same_group(s, lpref, lasn))
+  rte *r = new; /* new may not be in the list */
+  for (struct rte_storage *s = net->routes; rte_is_valid(s); s = s->next)
+    if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
     {
-      s->pflags |= BGP_REF_SUPPRESSED;
-      if (!r || bgp_rte_better(s, r))
-	r = s;
+      s->rte.pflags |= BGP_REF_SUPPRESSED;
+      if (!r || bgp_rte_better(&s->rte, r))
+	r = &s->rte;
     }
 
   /* Simple case - the last route in group disappears */
@@ -2243,10 +2242,10 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
     new->pflags &= ~BGP_REF_SUPPRESSED;
 
   /* Found all existing routes mergable with best-in-group */
-  for (s=net->routes; rte_is_valid(s); s=s->next)
-    if (use_deterministic_med(s) && same_group(s, lpref, lasn))
-      if ((s != r) && bgp_rte_mergable(r, s))
-	s->pflags &= ~BGP_REF_SUPPRESSED;
+  for (struct rte_storage *s = net->routes; rte_is_valid(s); s = s->next)
+    if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
+      if ((&s->rte != r) && bgp_rte_mergable(r, &s->rte))
+	s->rte.pflags &= ~BGP_REF_SUPPRESSED;
 
   /* Found best-in-group */
   r->pflags &= ~BGP_REF_SUPPRESSED;
@@ -2281,12 +2280,12 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
     return !old_suppressed;
 }
 
-struct rte *
+rte *
 bgp_rte_modify_stale(struct rte *r, struct linpool *pool)
 {
-  eattr *a = ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));
-  const struct adata *ad = a ? a->u.ptr : NULL;
-  uint flags = a ? a->flags : BAF_PARTIAL;
+  eattr *ea = ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));
+  const struct adata *ad = ea ? ea->u.ptr : NULL;
+  uint flags = ea ? ea->flags : BAF_PARTIAL;
 
   if (ad && int_set_contains(ad, BGP_COMM_NO_LLGR))
     return NULL;
@@ -2294,12 +2293,17 @@ bgp_rte_modify_stale(struct rte *r, struct linpool *pool)
   if (ad && int_set_contains(ad, BGP_COMM_LLGR_STALE))
     return r;
 
-  r = rte_cow_rta(r, pool);
-  bgp_set_attr_ptr(&(r->attrs->eattrs), pool, BA_COMMUNITY, flags,
-		   int_set_add(pool, ad, BGP_COMM_LLGR_STALE));
-  r->pflags |= BGP_REF_STALE;
+  rta *a = rta_do_cow(r->attrs, pool);
+  
+  _Thread_local static rte e0;
+  e0 = *r;
+  e0.attrs = a;
 
-  return r;
+  bgp_set_attr_ptr(&(a->eattrs), pool, BA_COMMUNITY, flags,
+		   int_set_add(pool, ad, BGP_COMM_LLGR_STALE));
+  e0.pflags |= BGP_REF_STALE;
+
+  return &e0;
 }
 
 
@@ -2390,14 +2394,14 @@ bgp_get_route_info(rte *e, byte *buf)
   if (rte_stale(e))
     buf += bsprintf(buf, "s");
 
-  u64 metric = bgp_total_aigp_metric(e);
+  u64 metric = bgp_total_aigp_metric(e->attrs);
   if (metric < BGP_AIGP_MAX)
   {
     buf += bsprintf(buf, "/%lu", metric);
   }
   else if (e->attrs->igp_metric)
   {
-    if (!rte_resolvable(e))
+    if (!rta_resolvable(e->attrs))
       buf += bsprintf(buf, "/-");
     else if (e->attrs->igp_metric >= IGP_METRIC_UNKNOWN)
       buf += bsprintf(buf, "/?");

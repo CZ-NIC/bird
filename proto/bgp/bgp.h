@@ -518,9 +518,9 @@ struct rte_source *bgp_find_source(struct bgp_proto *p, u32 path_id);
 struct rte_source *bgp_get_source(struct bgp_proto *p, u32 path_id);
 
 static inline int
-rte_resolvable(rte *rt)
+rta_resolvable(rta *a)
 {
-  return rt->attrs->dest != RTD_UNREACHABLE;
+  return a->dest != RTD_UNREACHABLE;
 }
 
 
@@ -588,22 +588,22 @@ int bgp_rte_mergable(rte *pri, rte *sec);
 int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
 struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
 u32 bgp_rte_igp_metric(struct rte *);
-void bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old);
-int bgp_preexport(struct proto *, struct rte *);
+void bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old);
+int bgp_preexport(struct channel *, struct rte *);
 int bgp_get_attr(const struct eattr *e, byte *buf, int buflen);
-void bgp_get_route_info(struct rte *, byte *buf);
-int bgp_total_aigp_metric_(rte *e, u64 *metric, const struct adata **ad);
+void bgp_get_route_info(struct rte *, byte *);
+int bgp_total_aigp_metric_(rta *a, u64 *metric, const struct adata **ad);
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
 
 static inline u64
-bgp_total_aigp_metric(rte *r)
+bgp_total_aigp_metric(rta *a)
 {
   u64 metric = BGP_AIGP_MAX;
   const struct adata *ad;
 
-  bgp_total_aigp_metric_(r, &metric, &ad);
+  bgp_total_aigp_metric_(a, &metric, &ad);
   return metric;
 }
 

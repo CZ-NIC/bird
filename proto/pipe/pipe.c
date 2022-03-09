@@ -48,14 +48,10 @@
 #endif
 
 static void
-pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *old)
+pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *new, const rte *old)
 {
   struct pipe_proto *p = (void *) P;
   struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
-  struct rte_src *src;
-
-  rte *e;
-  rta *a;
 
   if (!new && !old)
     return;
@@ -63,45 +59,39 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
   if (dst->table->pipe_busy)
     {
       log(L_ERR "Pipe loop detected when sending %N to table %s",
-	  n->n.addr, dst->table->name);
+	  n, dst->table->name);
       return;
     }
 
+  src_ch->table->pipe_busy = 1;
+
   if (new)
     {
-      src = new->src;
-
-      a = alloca(rta_size(new->attrs));
+      rta *a = alloca(rta_size(new->attrs));
       memcpy(a, new->attrs, rta_size(new->attrs));
 
       a->cached = 0;
       a->hostentry = NULL;
-      e = rte_get_temp(a, src);
-      e->pflags = new->pflags;
 
-#ifdef CONFIG_BGP
-      /* Hack to cleanup cached value */
-      if (e->src->proto->proto == &proto_bgp)
-	e->pflags &= ~(BGP_REF_STALE | BGP_REF_NOT_STALE);
-#endif
+      rte e0 = {
+	.attrs = a,
+	.src = new->src,
+      };
+
+      rte_update(dst, n, &e0, new->src);
     }
   else
-    {
-      e = NULL;
-      src = old->src;
-    }
+    rte_update(dst, n, NULL, old->src);
 
-  src_ch->table->pipe_busy = 1;
-  rte_update2(dst, n->n.addr, e, src);
   src_ch->table->pipe_busy = 0;
 }
 
 static int
-pipe_preexport(struct proto *P, rte *e)
+pipe_preexport(struct channel *c, rte *e)
 {
   struct proto *pp = e->sender->proto;
 
-  if (pp == P)
+  if (pp == c->proto)
     return -1;	/* Avoid local loops automatically */
 
   return 0;
