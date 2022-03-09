@@ -116,6 +116,13 @@ static linpool *rte_update_pool;
 
 list routing_tables;
 
+struct rt_pending_export {
+  struct rte_storage *new;		/* New route */
+  struct rte_storage *new_best;		/* New best route */
+  struct rte_storage *old;		/* Old route */
+  struct rte_storage *old_best;		/* Old best route */
+};
+
 static void rt_free_hostcache(rtable *tab);
 static void rt_notify_hostcache(rtable *tab, net *net);
 static void rt_update_hostcache(rtable *tab);
@@ -658,6 +665,29 @@ rte_trace_out(uint flag, struct channel *c, rte *e, const char *msg)
     rte_trace(c, e, '<', msg);
 }
 
+static uint
+rte_feed_count(net *n)
+{
+  uint count = 0;
+  for (struct rte_storage *e = n->routes; e; e = e->next)
+    if (rte_is_valid(RTE_OR_NULL(e)))
+      count++;
+  return count;
+}
+
+static void
+rte_feed_obtain(net *n, struct rte **feed, uint count)
+{
+  uint i = 0;
+  for (struct rte_storage *e = n->routes; e; e = e->next)
+    if (rte_is_valid(RTE_OR_NULL(e)))
+    {
+      ASSERT_DIE(i < count);
+      feed[i++] = &e->rte;
+    }
+  ASSERT_DIE(i == count);
+}
+
 static rte *
 export_filter_(struct channel *c, rte *rt, linpool *pool, int silent)
 {
@@ -811,81 +841,71 @@ rt_notify_basic(struct channel *c, const net_addr *net, rte *new, rte *old, int 
 }
 
 static void
-rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_changed, int refeed)
+rt_notify_accepted(struct channel *c, const net_addr *n, struct rt_pending_export *rpe,
+    struct rte **feed, uint count, int refeed)
 {
-  // struct proto *p = c->proto;
-  rte nb0;
-  rte *new_best = NULL;
-  rte *old_best = NULL;
-  int new_first = 0;
+  rte nb0, *new_best = NULL, *old_best = NULL;
 
-  /*
-   * We assume that there are no changes in net route order except (added)
-   * new_changed and (removed) old_changed. Therefore, the function is not
-   * compatible with deterministic_med (where nontrivial reordering can happen
-   * as a result of a route change) and with recomputation of recursive routes
-   * due to next hop update (where many routes can be changed in one step).
-   *
-   * Note that we need this assumption just for optimizations, we could just
-   * run full new_best recomputation otherwise.
-   *
-   * There are three cases:
-   * feed or old_best is old_changed -> we need to recompute new_best
-   * old_best is before new_changed -> new_best is old_best, ignore
-   * old_best is after new_changed -> try new_changed, otherwise old_best
-   */
-
-  if (net->routes)
-    c->export_stats.updates_received++;
-  else
-    c->export_stats.withdraws_received++;
-
-  /* Find old_best - either old_changed, or route for net->routes */
-  if (old_changed && bmap_test(&c->export_map, old_changed->id))
-    old_best = old_changed;
-  else
+  for (uint i = 0; i < count; i++)
   {
-    for (struct rte_storage *r = net->routes; rte_is_valid(r); r = r->next)
+    if (!rte_is_valid(feed[i]))
+      continue;
+
+    /* Has been already rejected, won't bother with it */
+    if (!refeed && bmap_test(&c->export_reject_map, feed[i]->id))
+      continue;
+
+    /* Previously exported */
+    if (!old_best && bmap_test(&c->export_map, feed[i]->id))
     {
-      if (bmap_test(&c->export_map, r->rte.id))
+      /* is still best */
+      if (!new_best)
       {
-	old_best = &r->rte;
+	DBG("rt_notify_accepted: idempotent\n");
+	return;
+      }
+
+      /* is superseded */
+      old_best = feed[i];
+      break;
+    }
+
+    /* Have no new best route yet */
+    if (!new_best)
+    {
+      /* Try this route not seen before */
+      nb0 = *feed[i];
+      new_best = export_filter(c, &nb0, 0);
+      DBG("rt_notify_accepted: checking route id %u: %s\n", feed[i]->id, new_best ? "ok" : "no");
+    }
+  }
+
+  /* Check obsolete routes for previously exported */
+  if (!old_best)
+    if (rpe && rpe->old && bmap_test(&c->export_map, rpe->old->rte.id))
+      old_best = &rpe->old->rte;
+
+/*    for (; rpe; rpe = atomic_load_explicit(&rpe->next, memory_order_relaxed))
+    {
+      if (rpe->old && bmap_test(&hook->accept_map, rpe->old->id))
+      {
+	old_best = &rpe->old.rte;
 	break;
       }
 
-      /* Note if new_changed found before old_best */
-      if (&r->rte == new_changed)
-	new_first = 1;
-    }
-  }
-
-  /* Find new_best */
-  if ((new_changed == old_changed) || (old_best == old_changed))
-  {
-    /* Feed or old_best changed -> find first accepted by filters */
-    for (struct rte_storage *r = net->routes; rte_is_valid(r); r = r->next)
-    {
-      /* Already rejected before */
-      if (!refeed && bmap_test(&c->export_reject_map, r->rte.id))
-	continue;
-
-      if (new_best = export_filter(c, ((nb0 = r->rte), &nb0), 0))
+      if (rpe == rpe_last)
 	break;
     }
-  }
-  else
-  {
-    /* Other cases -> either new_changed, or old_best (and nothing changed) */
-    if (new_first && (new_changed = export_filter(c, new_changed, 0)))
-      new_best = new_changed;
-    else
-      return;
-  }
+    */
 
+  /* Nothing to export */
   if (!new_best && !old_best)
+  {
+    DBG("rt_notify_accepted: nothing to export\n");
     return;
+  }
 
-  do_rt_notify(c, net->n.addr, new_best, old_best, refeed);
+  do_rt_notify(c, n, new_best, old_best, refeed);
 }
 
 
@@ -895,36 +915,45 @@ nexthop_merge_rta(struct nexthop *nhs, rta *a, linpool *pool, int max)
   return nexthop_merge(nhs, &(a->nh), 1, 0, max, pool);
 }
 
-rte *
-rt_export_merged(struct channel *c, net *net, linpool *pool, int silent)
+static rte *
+rt_export_merged(struct channel *c, struct rte **feed, uint count, linpool *pool, int silent, int refeed)
 {
+  _Thread_local static rte rloc;
+
   // struct proto *p = c->proto;
   struct nexthop *nhs = NULL;
-  _Thread_local static rte rme;
-  struct rte_storage *best0 = net->routes;
-  rte *best;
+  rte *best0 = feed[0], *best = NULL;
 
   if (!rte_is_valid(best0))
     return NULL;
 
-  best = export_filter_(c, ((rme = best0->rte), &rme), pool, silent);
+  /* Already rejected, no need to re-run the filter */
+  if (!refeed && bmap_test(&c->export_reject_map, best0->id))
+    return NULL;
 
-  if (!best || !rte_is_reachable(best))
+  rloc = *best0;
+  best = export_filter_(c, &rloc, pool, silent);
+
+  if (!best)
+    /* Best route doesn't pass the filter */
+    return NULL;
+
+  if (!rte_is_reachable(best))
+    /* Unreachable routes can't be merged */
     return best;
 
-  for (struct rte_storage *rt0 = best0->next; rt0; rt0 = rt0->next)
+  for (uint i = 1; i < count; i++)
   {
-    if (!rte_mergable(best, &rt0->rte))
+    if (!rte_mergable(best0, feed[i]))
       continue;
 
-    rte rnh = rt0->rte;
-    rte *rt = export_filter_(c, &rnh, pool, 1);
+    rte tmp0 = *feed[i];
+    rte *tmp = export_filter_(c, &tmp0, pool, 1);
 
-    if (!rt)
+    if (!tmp || !rte_is_reachable(tmp))
       continue;
 
-    if (rte_is_reachable(rt))
-      nhs = nexthop_merge_rta(nhs, rt->attrs, pool, c->merge_limit);
+    nhs = nexthop_merge_rta(nhs, tmp->attrs, pool, c->merge_limit);
   }
 
   if (nhs)
@@ -941,41 +970,77 @@ rt_export_merged(struct channel *c, net *net, linpool *pool, int silent)
   return best;
 }
 
+rte *
+rt_export_merged_show(struct channel *c, net *n, linpool *pool)
+{
+  uint count = rte_feed_count(n);
+  rte **feed = alloca(count * sizeof(rte *));
+  rte_feed_obtain(n, feed, count);
+  return rt_export_merged(c, feed, count, pool, 1, 0);
+}
 
 static void
-rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed,
-		 rte *new_best, rte *old_best, int refeed)
+rt_notify_merged(struct channel *c, const net_addr *n, struct rt_pending_export *rpe,
+    struct rte **feed, uint count, int refeed)
 {
-  /* We assume that all rte arguments are either NULL or rte_is_valid() */
+  // struct proto *p = c->proto;
 
-  /* This check should be done by the caller */
-  if (!new_best && !old_best)
-    return;
-
+#if 0 /* TODO: Find whether this check is possible when processing multiple changes at once. */
   /* Check whether the change is relevant to the merged route */
   if ((new_best == old_best) &&
       (new_changed != old_changed) &&
       !rte_mergable(new_best, new_changed) &&
       !rte_mergable(old_best, old_changed))
     return;
+#endif
 
-  if (new_best)
-    c->export_stats.updates_received++;
-  else
-    c->export_stats.withdraws_received++;
+  rte *old_best = NULL;
+  /* Find old best route */
+  for (uint i = 0; i < count; i++)
+    if (bmap_test(&c->export_map, feed[i]->id))
+    {
+      old_best = feed[i];
+      break;
+    }
+
+  /* Check obsolete routes for previously exported */
+  if (!old_best)
+    if (rpe && rpe->old && bmap_test(&c->export_map, rpe->old->rte.id))
+      old_best = &rpe->old->rte;
+
+/*    for (; rpe; rpe = atomic_load_explicit(&rpe->next, memory_order_relaxed))
+    {
+      if (rpe->old && bmap_test(&hook->accept_map, rpe->old->id))
+      {
+	old_best = &rpe->old.rte;
+	break;
+      }
+
+      if (rpe == rpe_last)
+	break;
+    }
+    */
 
   /* Prepare new merged route */
-  if (new_best)
-    new_best = rt_export_merged(c, net, rte_update_pool, 0);
+  rte *new_merged = count ? rt_export_merged(c, feed, count, rte_update_pool, 0, refeed) : NULL;
 
-  /* Check old merged route */
-  if (old_best && !bmap_test(&c->export_map, old_best->id))
-    old_best = NULL;
-
-  if (!new_best && !old_best)
+  if (!new_merged && !old_best)
     return;
 
-  do_rt_notify(c, net->n.addr, new_best, old_best, refeed);
+  do_rt_notify(c, n, new_merged, old_best, refeed);
+}
+
+static void
+rt_notify_bulk(struct channel *c, const net_addr *n, struct rt_pending_export *rpe,
+    struct rte **feed, uint count, int refeed)
+{
+  switch (c->ra_mode)
+  {
+    case RA_ACCEPTED:
+      return rt_notify_accepted(c, n, rpe, feed, count, refeed);
+    case RA_MERGED:
+      return rt_notify_merged(c, n, rpe, feed, count, refeed);
+  }
 }
 
 
@@ -1065,12 +1130,15 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
       break;
 
     case RA_ACCEPTED:
-      rt_notify_accepted(c, net, RTE_OR_NULL(new), RTE_OR_NULL(old), 0);
-      break;
-
     case RA_MERGED:
-      rt_notify_merged(c, net, RTE_OR_NULL(new), RTE_OR_NULL(old), RTE_OR_NULL(new_best), RTE_OR_NULL(old_best), 0);
-      break;
+      {
+	struct rt_pending_export rpe = { .new = new, .old = old, .new_best = new_best, .old_best = old_best };
+	uint count = rte_feed_count(net);
+	rte **feed = alloca(count * sizeof(rte *));
+	rte_feed_obtain(net, feed, count);
+	rt_notify_bulk(c, net->n.addr, &rpe, feed, count, 0);
+	break;
+      }
     }
 
     /* Drop the old stored rejection if applicable.
@@ -2786,10 +2854,13 @@ static inline void
 do_feed_channel(struct channel *c, net *n, rte *e)
 {
   rte_update_lock();
-  if (c->ra_mode == RA_ACCEPTED)
-    rt_notify_accepted(c, n, NULL, NULL, c->refeeding);
-  else if (c->ra_mode == RA_MERGED)
-    rt_notify_merged(c, n, NULL, NULL, e, e, c->refeeding);
+  if ((c->ra_mode == RA_ACCEPTED) || (c->ra_mode == RA_MERGED))
+  {
+    uint count = rte_feed_count(n);
+    rte **feed = alloca(count * sizeof(rte *));
+    rte_feed_obtain(n, feed, count);
+    rt_notify_bulk(c, n->n.addr, NULL, feed, count, c->refeeding);
+  }
   else /* RA_BASIC */
   {
     rte e0 = *e;

@@ -143,7 +143,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	{
 	  /* Special case for merged export */
 	  pass = 1;
-	  rte *em = rt_export_merged(ec, n, c->show_pool, 1);
+	  rte *em = rt_export_merged_show(ec, n, c->show_pool);
 	  if (em)
 	    e = *em;
 	  else
