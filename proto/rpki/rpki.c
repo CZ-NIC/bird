@@ -384,6 +384,9 @@ rpki_refresh_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
 
+  if (cache->p->cache != cache)
+    return;
+
   CACHE_DBG(cache, "%s", rpki_cache_state_to_str(cache->state));
 
   switch (cache->state)
@@ -430,6 +433,9 @@ rpki_retry_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
 
+  if (cache->p->cache != cache)
+    return;
+
   CACHE_DBG(cache, "%s", rpki_cache_state_to_str(cache->state));
 
   switch (cache->state)
@@ -474,6 +480,9 @@ static void
 rpki_expire_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
+
+  if (cache->p->cache != cache)
+    return;
 
   if (!cache->last_update)
     return;

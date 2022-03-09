@@ -2,6 +2,7 @@
  *	BIRD Internet Routing Daemon -- Routing Table
  *
  *	(c) 1998--2000 Martin Mares <mj@ucw.cz>
+ *	(c) 2019--2021 Maria Matejka <mq@jmq.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -17,6 +18,7 @@
 struct ea_list;
 struct protocol;
 struct proto;
+struct channel;
 struct rte_src;
 struct symbol;
 struct timer;
@@ -165,12 +167,12 @@ typedef struct rtable {
   struct fib fib;
   struct f_trie *trie;			/* Trie of prefixes defined in fib */
   char *name;				/* Name of this table */
-  list channels;			/* List of attached channels (struct channel) */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
 
-  byte internal;			/* Internal table of a protocol */
+  list imports;				/* Registered route importers */
+  list exports;				/* Registered route exporters */
 
   struct hmap id_map;
   struct hostcache *hostcache;
@@ -188,6 +190,7 @@ typedef struct rtable {
   byte prune_trie;			/* Prune prefix trie during next table prune */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
+  byte internal;			/* This table is internal for some other object */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
   struct f_trie *trie_new;		/* New prefix trie defined during pruning */
@@ -257,7 +260,7 @@ typedef struct rte {
   struct rta *attrs;			/* Attributes of this route */
   const net_addr *net;			/* Network this RTE belongs to */
   struct rte_src *src;			/* Route source that created the route */
-  struct channel *sender;		/* Channel used to send the route to the routing table */
+  struct rt_import_hook *sender;	/* Import hook used to send the route to the routing table */
   btime lastmod;			/* Last modified (set by table) */
   u32 id;				/* Table specific route id */
   byte flags;				/* Table-specific flags */
@@ -281,14 +284,129 @@ struct rte_storage {
 #define REF_MODIFY	16		/* Route is scheduled for modify */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
-static inline int rte_is_valid_rte(rte *r) { return r && !(r->flags & REF_FILTERED); }
-static inline int rte_is_valid_storage(struct rte_storage *r) { return r && rte_is_valid_rte(&r->rte); }
+static inline int rte_is_valid_rte(const rte *r) { return r && !(r->flags & REF_FILTERED); }
+static inline int rte_is_valid_storage(const struct rte_storage *r) { return r && rte_is_valid_rte(&r->rte); }
 
 #define rte_is_valid(r)		_Generic((*r), rte: rte_is_valid_rte, struct rte_storage: rte_is_valid_storage)(r)
 
 /* Route just has REF_FILTERED flag */
-static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); }
+static inline int rte_is_filtered(const rte *r) { return !!(r->flags & REF_FILTERED); }
 
+
+/* Table-channel connections */
+
+struct rt_import_request {
+  struct rt_import_hook *hook;		/* The table part of importer */
+  char *name;
+  u8 trace_routes;
+
+  void (*dump_req)(struct rt_import_request *req);
+  void (*log_state_change)(struct rt_import_request *req, u8 state);
+  /* Preimport is called when the @new route is just-to-be inserted, replacing @old.
+   * Return a route (may be different or modified in-place) to continue or NULL to withdraw. */
+  struct rte *(*preimport)(struct rt_import_request *req, struct rte *new, struct rte *old);
+  struct rte *(*rte_modify)(struct rte *, struct linpool *);
+};
+
+struct rt_import_hook {
+  node n;
+  rtable *table;			/* The connected table */
+  struct rt_import_request *req;	/* The requestor */
+
+  struct rt_import_stats {
+    /* Import - from protocol to core */
+    u32 pref;				/* Number of routes selected as best in the (adjacent) routing table */
+    u32 updates_ignored;		/* Number of route updates rejected as already in route table */
+    u32 updates_accepted;		/* Number of route updates accepted and imported */
+    u32 withdraws_ignored;		/* Number of route withdraws rejected as already not in route table */
+    u32 withdraws_accepted;		/* Number of route withdraws accepted and processed */
+  } stats;
+
+  btime last_state_change;		/* Time of last state transition */
+
+  u8 import_state;			/* IS_* */
+
+  void (*stopped)(struct rt_import_request *);	/* Stored callback when import is stopped */
+};
+
+struct rt_pending_export {
+  struct rte_storage *new, *new_best, *old, *old_best;
+};
+
+struct rt_export_request {
+  struct rt_export_hook *hook;		/* Table part of the export */
+  char *name;
+  u8 trace_routes;
+
+  /* There are two methods of export. You can either request feeding every single change
+   * or feeding the whole route feed. In case of regular export, &export_one is preferred.
+   * Anyway, when feeding, &export_bulk is preferred, falling back to &export_one.
+   * Thus, for RA_OPTIMAL, &export_one is only set,
+   *	   for RA_MERGED and RA_ACCEPTED, &export_bulk is only set
+   *	   and for RA_ANY, both are set to accomodate for feeding all routes but receiving single changes
+   */
+  void (*export_one)(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
+  void (*export_bulk)(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
+
+  void (*dump_req)(struct rt_export_request *req);
+  void (*log_state_change)(struct rt_export_request *req, u8);
+};
+
+struct rt_export_hook {
+  node n;
+  rtable *table;			/* The connected table */
+
+  pool *pool;
+  linpool *lp;
+
+  struct rt_export_request *req;	/* The requestor */
+
+  struct rt_export_stats {
+    /* Export - from core to protocol */
+    u32 updates_received;		/* Number of route updates received */
+    u32 withdraws_received;		/* Number of route withdraws received */
+  } stats;
+
+  struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
+
+  btime last_state_change;		/* Time of last state transition */
+
+  u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
+  u8 export_state;			/* Route export state (TES_*, see below) */
+
+  struct event *event;			/* Event running all the export operations */
+
+  void (*stopped)(struct rt_export_request *);	/* Stored callback when export is stopped */
+};
+
+#define TIS_DOWN	0
+#define TIS_UP		1
+#define TIS_STOP	2
+#define TIS_FLUSHING	3
+#define TIS_WAITING	4
+#define TIS_CLEARED	5
+#define TIS_MAX		6
+
+#define TES_DOWN	0
+#define TES_HUNGRY	1
+#define TES_FEEDING	2
+#define TES_READY	3
+#define TES_STOP	4
+#define TES_MAX		5
+
+void rt_request_import(rtable *tab, struct rt_import_request *req);
+void rt_request_export(rtable *tab, struct rt_export_request *req);
+
+void rt_stop_import(struct rt_import_request *, void (*stopped)(struct rt_import_request *));
+void rt_stop_export(struct rt_export_request *, void (*stopped)(struct rt_export_request *));
+
+const char *rt_import_state_name(u8 state);
+const char *rt_export_state_name(u8 state);
+
+static inline u8 rt_import_get_state(struct rt_import_hook *ih) { return ih ? ih->import_state : TIS_DOWN; }
+static inline u8 rt_export_get_state(struct rt_export_hook *eh) { return eh ? eh->export_state : TES_DOWN; }
+
+void rte_import(struct rt_import_request *req, const net_addr *net, rte *new, struct rte_src *src);
 
 /* Types of route announcement, also used as flags */
 #define RA_UNDEF	0		/* Undefined RA type */
@@ -303,6 +421,7 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RIC_REJECT	-1		/* Rejected by protocol */
 #define RIC_DROP	-2		/* Silently dropped by protocol */
 
+#define rte_update  channel_rte_import
 /**
  * rte_update - enter a new update to a routing table
  * @c: channel doing the update
@@ -362,23 +481,24 @@ net *net_get(rtable *tab, const net_addr *addr);
 net *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
-rte *rt_export_merged_show(struct channel *c, net *n, linpool *pool);
-void rt_refresh_begin(rtable *t, struct channel *c);
-void rt_refresh_end(rtable *t, struct channel *c);
-void rt_modify_stale(rtable *t, struct channel *c);
+rte *rt_export_merged(struct channel *c, rte ** feed, uint count, linpool *pool, int silent);
+void rt_refresh_begin(rtable *t, struct rt_import_request *);
+void rt_refresh_end(rtable *t, struct rt_import_request *);
+void rt_modify_stale(rtable *t, struct rt_import_request *);
 void rt_schedule_prune(rtable *t);
 void rte_dump(struct rte_storage *);
 void rte_free(struct rte_storage *, rtable *);
 struct rte_storage *rte_store(const rte *, net *net, rtable *);
 void rt_dump(rtable *);
 void rt_dump_all(void);
-int rt_feed_channel(struct channel *c);
-void rt_feed_channel_abort(struct channel *c);
+void rt_dump_hooks(rtable *);
+void rt_dump_hooks_all(void);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_refeed_channel(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
-int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old, struct rte_storage **old_exported);
+int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
+int rte_update_out(struct channel *c, const net_addr *n, rte *new, const rte *old, struct rte_storage **old_exported);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
 static inline int rt_is_ip(rtable *tab)
@@ -418,6 +538,7 @@ struct rt_show_data {
   struct channel *export_channel;
   struct config *running_on_config;
   struct krt_proto *kernel;
+  struct rt_export_hook *kernel_export_hook;
   int export_mode, addr_mode, primary_only, filtered, stats;
 
   int table_open;			/* Iteration (fit) is open */

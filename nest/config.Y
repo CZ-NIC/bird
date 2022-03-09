@@ -851,8 +851,10 @@ CF_CLI(DUMP NEIGHBORS,,, [[Dump neighbor cache]])
 { neigh_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP ATTRIBUTES,,, [[Dump attribute cache]])
 { rta_dump_all(); cli_msg(0, ""); } ;
-CF_CLI(DUMP ROUTES,,, [[Dump routing table]])
+CF_CLI(DUMP ROUTES,,, [[Dump routes]])
 { rt_dump_all(); cli_msg(0, ""); } ;
+CF_CLI(DUMP TABLES,,, [[Dump table connections]])
+{ rt_dump_hooks_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])
 { protos_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP FILTER ALL,,, [[Dump all filters in linearized form]])

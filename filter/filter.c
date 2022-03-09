@@ -425,6 +425,23 @@ filter_commit(struct config *new, struct config *old)
     }
 }
 
+void channel_filter_dump(const struct filter *f)
+{
+  if (f == FILTER_ACCEPT)
+    debug(" ALL");
+  else if (f == FILTER_REJECT)
+    debug(" NONE");
+  else if (f == FILTER_UNDEF)
+    debug(" UNDEF");
+  else if (f->sym) {
+    ASSERT(f->sym->filter == f);
+    debug(" named filter %s", f->sym->name);
+  } else {
+    debug("\n");
+    f_dump_line(f->root, 2);
+  }
+}
+
 void filters_dump_all(void)
 {
   struct symbol *sym;
@@ -444,19 +461,10 @@ void filters_dump_all(void)
 	  struct channel *c;
 	  WALK_LIST(c, sym->proto->proto->channels) {
 	    debug(" Channel %s (%s) IMPORT", c->name, net_label[c->net_type]);
-	    if (c->in_filter == FILTER_ACCEPT)
-	      debug(" ALL\n");
-	    else if (c->in_filter == FILTER_REJECT)
-	      debug(" NONE\n");
-	    else if (c->in_filter == FILTER_UNDEF)
-	      debug(" UNDEF\n");
-	    else if (c->in_filter->sym) {
-	      ASSERT(c->in_filter->sym->filter == c->in_filter);
-	      debug(" named filter %s\n", c->in_filter->sym->name);
-	    } else {
-	      debug("\n");
-	      f_dump_line(c->in_filter->root, 2);
-	    }
+	    channel_filter_dump(c->in_filter);
+	    debug(" EXPORT", c->name, net_label[c->net_type]);
+	    channel_filter_dump(c->out_filter);
+	    debug("\n");
 	  }
 	}
     }

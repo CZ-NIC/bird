@@ -661,9 +661,9 @@ rpki_handle_cache_response_pdu(struct rpki_cache *cache, const struct pdu_cache_
        * a refresh cycle.
        */
       if (cache->p->roa4_channel)
-	rt_refresh_begin(cache->p->roa4_channel->table, cache->p->roa4_channel);
+	rt_refresh_begin(cache->p->roa4_channel->table, &cache->p->roa4_channel->in_req);
       if (cache->p->roa6_channel)
-	rt_refresh_begin(cache->p->roa6_channel->table, cache->p->roa6_channel);
+	rt_refresh_begin(cache->p->roa6_channel->table, &cache->p->roa6_channel->in_req);
 
       cache->p->refresh_channels = 1;
     }
@@ -846,9 +846,9 @@ rpki_handle_end_of_data_pdu(struct rpki_cache *cache, const struct pdu_end_of_da
   {
     cache->p->refresh_channels = 0;
     if (cache->p->roa4_channel)
-      rt_refresh_end(cache->p->roa4_channel->table, cache->p->roa4_channel);
+      rt_refresh_end(cache->p->roa4_channel->table, &cache->p->roa4_channel->in_req);
     if (cache->p->roa6_channel)
-      rt_refresh_end(cache->p->roa6_channel->table, cache->p->roa6_channel);
+      rt_refresh_end(cache->p->roa6_channel->table, &cache->p->roa6_channel->in_req);
   }
 
   cache->last_update = current_time();
@@ -924,6 +924,9 @@ rpki_rx_hook(struct birdsock *sk, uint size)
   struct rpki_cache *cache = sk->data;
   struct rpki_proto *p = cache->p;
 
+  if ((p->p.proto_state == PS_DOWN) || (p->cache != cache))
+    return 0;
+
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
 
@@ -980,6 +983,8 @@ rpki_err_hook(struct birdsock *sk, int error_num)
     CACHE_TRACE(D_EVENTS, cache, "The other side closed a connection");
   }
 
+  if (cache->p->cache != cache)
+    return;
 
   rpki_cache_change_state(cache, RPKI_CS_ERROR_TRANSPORT);
 }
@@ -999,6 +1004,9 @@ rpki_tx_hook(sock *sk)
 {
   struct rpki_cache *cache = sk->data;
 
+  if (cache->p->cache != cache)
+    return;
+
   while (rpki_fire_tx(cache) > 0)
     ;
 }
@@ -1007,6 +1015,9 @@ void
 rpki_connected_hook(sock *sk)
 {
   struct rpki_cache *cache = sk->data;
+
+  if (cache->p->cache != cache)
+    return;
 
   CACHE_TRACE(D_EVENTS, cache, "Connected");
   proto_notify_state(&cache->p->p, PS_UP);

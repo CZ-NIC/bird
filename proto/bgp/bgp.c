@@ -760,25 +760,25 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
       {
       case BGP_GRS_NONE:
 	c->gr_active = BGP_GRS_ACTIVE;
-	rt_refresh_begin(c->c.table, &c->c);
+	rt_refresh_begin(c->c.table, &c->c.in_req);
 	break;
 
       case BGP_GRS_ACTIVE:
-	rt_refresh_end(c->c.table, &c->c);
-	rt_refresh_begin(c->c.table, &c->c);
+	rt_refresh_end(c->c.table, &c->c.in_req);
+	rt_refresh_begin(c->c.table, &c->c.in_req);
 	break;
 
       case BGP_GRS_LLGR:
-	rt_refresh_begin(c->c.table, &c->c);
-	rt_modify_stale(c->c.table, &c->c);
+	rt_refresh_begin(c->c.table, &c->c.in_req);
+	rt_modify_stale(c->c.table, &c->c.in_req);
 	break;
       }
     }
     else
     {
       /* Just flush the routes */
-      rt_refresh_begin(c->c.table, &c->c);
-      rt_refresh_end(c->c.table, &c->c);
+      rt_refresh_begin(c->c.table, &c->c.in_req);
+      rt_refresh_end(c->c.table, &c->c.in_req);
     }
 
     /* Reset bucket and prefix tables */
@@ -819,7 +819,7 @@ bgp_graceful_restart_done(struct bgp_channel *c)
     BGP_TRACE(D_EVENTS, "Neighbor graceful restart done");
 
   tm_stop(c->stale_timer);
-  rt_refresh_end(c->c.table, &c->c);
+  rt_refresh_end(c->c.table, &c->c.in_req);
 }
 
 /**
@@ -861,7 +861,7 @@ bgp_graceful_restart_timeout(timer *t)
       /* Channel is in GR, and supports LLGR -> start LLGR */
       c->gr_active = BGP_GRS_LLGR;
       tm_start(c->stale_timer, c->stale_time S);
-      rt_modify_stale(c->c.table, &c->c);
+      rt_modify_stale(c->c.table, &c->c.in_req);
     }
   }
   else
@@ -899,10 +899,10 @@ bgp_refresh_begin(struct bgp_channel *c)
   { log(L_WARN "%s: BEGIN-OF-RR received before END-OF-RIB, ignoring", p->p.name); return; }
 
   c->load_state = BFS_REFRESHING;
-  rt_refresh_begin(c->c.table, &c->c);
+  rt_refresh_begin(c->c.table, &c->c.in_req);
 
   if (c->c.in_table)
-    rt_refresh_begin(c->c.in_table, &c->c);
+    rt_refresh_begin(c->c.in_table, &c->c.in_req);
 }
 
 /**
@@ -923,7 +923,7 @@ bgp_refresh_end(struct bgp_channel *c)
   { log(L_WARN "%s: END-OF-RR received without prior BEGIN-OF-RR, ignoring", p->p.name); return; }
 
   c->load_state = BFS_NONE;
-  rt_refresh_end(c->c.table, &c->c);
+  rt_refresh_end(c->c.table, &c->c.in_req);
 
   if (c->c.in_table)
     rt_prune_sync(c->c.in_table, 0);

@@ -507,19 +507,13 @@ static_shutdown(struct proto *P)
   WALK_LIST(r, cf->routes)
     static_reset_rte(p, r);
 
-  return PS_DOWN;
-}
-
-static void
-static_cleanup(struct proto *P)
-{
-  struct static_proto *p = (void *) P;
-
   if (p->igp_table_ip4)
     rt_unlock_table(p->igp_table_ip4);
 
   if (p->igp_table_ip6)
     rt_unlock_table(p->igp_table_ip6);
+
+  return PS_DOWN;
 }
 
 static void
@@ -777,7 +771,6 @@ struct protocol proto_static = {
   .dump =		static_dump,
   .start =		static_start,
   .shutdown =		static_shutdown,
-  .cleanup =		static_cleanup,
   .reconfigure =	static_reconfigure,
   .copy_config =	static_copy_config,
   .get_route_info =	static_get_route_info,
