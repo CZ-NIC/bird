@@ -11,6 +11,7 @@
 #include "lib/lists.h"
 #include "lib/event.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -18,113 +19,167 @@
 #include <sys/mman.h>
 #endif
 
-#ifdef HAVE_MMAP
-#define KEEP_PAGES  512
+long page_size = 0;
 
-static u64 page_size = 0;
+#ifdef HAVE_MMAP
+#define KEEP_PAGES_MAIN_MAX	256
+#define KEEP_PAGES_MAIN_MIN	8
+#define CLEANUP_PAGES_BULK	256
+
+_Static_assert(KEEP_PAGES_MAIN_MIN * 4 < KEEP_PAGES_MAIN_MAX);
+
 static _Bool use_fake = 0;
 
-uint pages_kept = 0;
-static list pages_list;
-
-static void cleanup_pages(void *data);
-static event page_cleanup_event = { .hook = cleanup_pages };
-
+#if DEBUGGING
+struct free_page {
+  node unused[42];
+  node n;
+};
 #else
-static const u64 page_size = 4096; /* Fake page size */
+struct free_page {
+  node n;
+};
 #endif
 
-u64 get_page_size(void)
+struct free_pages {
+  list pages;
+  u16 min, max;		/* Minimal and maximal number of free pages kept */
+  uint cnt;		/* Number of empty pages */
+  event cleanup;
+};
+
+static void global_free_pages_cleanup_event(void *);
+
+static struct free_pages global_free_pages = {
+  .min = KEEP_PAGES_MAIN_MIN,
+  .max = KEEP_PAGES_MAIN_MAX,
+  .cleanup = { .hook = global_free_pages_cleanup_event },
+};
+
+uint *pages_kept = &global_free_pages.cnt;
+
+static void *
+alloc_sys_page(void)
 {
-  if (page_size)
-    return page_size;
+  void *ptr = mmap(NULL, page_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-#ifdef HAVE_MMAP
-  if (page_size = sysconf(_SC_PAGESIZE))
-  {
-    if ((u64_popcount(page_size) > 1) || (page_size > 16384))
-    {
-      /* Too big or strange page, use the aligned allocator instead */
-      page_size = 4096;
-      use_fake = 1;
-    }
-    return page_size;
-  }
+  if (ptr == MAP_FAILED)
+    bug("mmap(%lu) failed: %m", page_size);
 
-  bug("Page size must be non-zero");
-#endif
+  return ptr;
 }
+
+extern int shutting_down; /* Shutdown requested. */
+
+#else // ! HAVE_MMAP
+#define use_fake  1
+#endif
 
 void *
 alloc_page(void)
 {
-#ifdef HAVE_MMAP
-  if (pages_kept)
-  {
-    node *page = TAIL(pages_list);
-    rem_node(page);
-    pages_kept--;
-    memset(page, 0, get_page_size());
-    return page;
-  }
-
-  if (!use_fake)
-  {
-    void *ret = mmap(NULL, get_page_size(), PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (ret == MAP_FAILED)
-      bug("mmap(%lu) failed: %m", (long unsigned int) page_size);
-    return ret;
-  }
-  else
-#endif
+  if (use_fake)
   {
     void *ptr = NULL;
     int err = posix_memalign(&ptr, page_size, page_size);
+
     if (err || !ptr)
       bug("posix_memalign(%lu) failed", (long unsigned int) page_size);
+
     return ptr;
   }
+
+#ifdef HAVE_MMAP
+  struct free_pages *fps = &global_free_pages;
+
+  if (fps->cnt)
+  {
+    struct free_page *fp = SKIP_BACK(struct free_page, n, HEAD(fps->pages));
+    rem_node(&fp->n);
+    if ((--fps->cnt < fps->min) && !shutting_down)
+      ev_schedule(&fps->cleanup);
+
+    bzero(fp, page_size);
+    return fp;
+  }
+
+  return alloc_sys_page();
+#endif
 }
 
 void
 free_page(void *ptr)
 {
-#ifdef HAVE_MMAP
-  if (!use_fake)
+  if (use_fake)
   {
-    if (!pages_kept)
-      init_list(&pages_list);
-
-    memset(ptr, 0, sizeof(node));
-    add_tail(&pages_list, ptr);
-
-    if (++pages_kept > KEEP_PAGES)
-      ev_schedule(&page_cleanup_event);
-  }
-  else
-#endif
     free(ptr);
+    return;
+  }
+
+#ifdef HAVE_MMAP
+  struct free_pages *fps = &global_free_pages;
+  struct free_page *fp = ptr;
+
+  fp->n = (node) {};
+  add_tail(&fps->pages, &fp->n);
+
+  if ((++fps->cnt > fps->max) && !shutting_down)
+    ev_schedule(&fps->cleanup);
+#endif
 }
 
 #ifdef HAVE_MMAP
 static void
-cleanup_pages(void *data UNUSED)
+global_free_pages_cleanup_event(void *data UNUSED)
 {
-  for (uint seen = 0; (pages_kept > KEEP_PAGES) && (seen < KEEP_PAGES); seen++)
+  if (shutting_down)
+    return;
+
+  struct free_pages *fps = &global_free_pages;
+
+  while (fps->cnt / 2 < fps->min)
   {
-    void *ptr = HEAD(pages_list);
-    rem_node(ptr);
-    if (munmap(ptr, get_page_size()) == 0)
-      pages_kept--;
-#ifdef ENOMEM
-    else if (errno == ENOMEM)
-      add_tail(&pages_list, ptr);
-#endif
-    else
-      bug("munmap(%p) failed: %m", ptr);
+    struct free_page *fp = alloc_sys_page();
+    fp->n = (node) {};
+    add_tail(&fps->pages, &fp->n);
+    fps->cnt++;
   }
 
-  if (pages_kept > KEEP_PAGES)
-    ev_schedule(&page_cleanup_event);
+  for (uint seen = 0; (seen < CLEANUP_PAGES_BULK) && (fps->cnt > fps->max / 2); seen++)
+  {
+    struct free_page *fp = SKIP_BACK(struct free_page, n, TAIL(fps->pages));
+    rem_node(&fp->n);
+
+    if (munmap(fp, page_size) == 0)
+      fps->cnt--;
+    else if (errno == ENOMEM)
+      add_head(&fps->pages, &fp->n);
+    else
+      bug("munmap(%p) failed: %m", fp);
+  }
 }
 #endif
+
+void
+resource_sys_init(void)
+{
+#ifdef HAVE_MMAP
+  if (!(page_size = sysconf(_SC_PAGESIZE)))
+    die("System page size must be non-zero");
+
+  if (u64_popcount(page_size) == 1)
+  {
+    struct free_pages *fps = &global_free_pages;
+
+    init_list(&fps->pages);
+    global_free_pages_cleanup_event(NULL);
+    return;
+  }
+
+  /* Too big or strange page, use the aligned allocator instead */
+  log(L_WARN "Got strange memory page size (%lu), using the aligned allocator instead", page_size);
+  use_fake = 1;
+#endif
+
+  page_size = 4096;
+}

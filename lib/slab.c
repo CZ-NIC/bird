@@ -180,7 +180,7 @@ struct sl_alignment {			/* Magic structure for testing of alignment */
   int x[0];
 };
 
-#define SL_GET_HEAD(x)	((struct sl_head *) (((uintptr_t) (x)) & ~(get_page_size()-1)))
+#define SL_GET_HEAD(x)	((struct sl_head *) (((uintptr_t) (x)) & ~(page_size-1)))
 
 /**
  * sl_new - create a new Slab
@@ -202,7 +202,6 @@ sl_new(pool *p, uint size)
   s->obj_size = size;
 
   s->head_size = sizeof(struct sl_head);
-  u64 page_size = get_page_size();
 
   do {
     s->objs_per_slab = (page_size - s->head_size) / size;
@@ -273,7 +272,7 @@ no_partial:
     }
   h = alloc_page();
 #ifdef POISON
-  memset(h, 0xba, get_page_size());
+  memset(h, 0xba, page_size);
 #endif
   ASSERT_DIE(SL_GET_HEAD(h) == h);
   memset(h, 0, s->head_size);
@@ -332,7 +331,7 @@ sl_free(slab *s, void *oo)
       if (s->num_empty_heads >= MAX_EMPTY_HEADS)
       {
 #ifdef POISON
-	memset(h, 0xde, get_page_size());
+	memset(h, 0xde, page_size);
 #endif
 	free_page(h);
       }
@@ -399,7 +398,7 @@ slab_memsize(resource *r)
 
   return (struct resmem) {
     .effective = eff,
-    .overhead = ALLOC_OVERHEAD + sizeof(struct slab) + heads * get_page_size() - eff,
+    .overhead = ALLOC_OVERHEAD + sizeof(struct slab) + heads * page_size - eff,
   };
 }
 
@@ -410,10 +409,10 @@ slab_lookup(resource *r, unsigned long a)
   struct sl_head *h;
 
   WALK_LIST(h, s->partial_heads)
-    if ((unsigned long) h < a && (unsigned long) h + get_page_size() < a)
+    if ((unsigned long) h < a && (unsigned long) h + page_size < a)
       return r;
   WALK_LIST(h, s->full_heads)
-    if ((unsigned long) h < a && (unsigned long) h + get_page_size() < a)
+    if ((unsigned long) h < a && (unsigned long) h + page_size < a)
       return r;
   return NULL;
 }
