@@ -682,7 +682,7 @@ signal_init(void)
  *	Parsing of command-line arguments
  */
 
-static char *opt_list = "B:c:dD:ps:P:u:g:flRh";
+static char *opt_list = "bc:dD:ps:P:u:g:flRh";
 int parse_and_exit;
 char *bird_name;
 static char *use_user;
@@ -703,7 +703,6 @@ display_help(void)
   fprintf(stderr,
     "\n"
     "Options: \n"
-    "  -B <block-size>	    Use 2^this number as memory allocation block size (default: 12)\n"
     "  -c <config-file>     Use given configuration file instead of\n"
     "                       "  PATH_CONFIG_FILE "\n"
     "  -d                   Enable debug messages and run bird in foreground\n"
@@ -790,15 +789,12 @@ get_gid(const char *s)
   return gr->gr_gid;
 }
 
-extern _Bool alloc_multipage;
-
 static void
 parse_args(int argc, char **argv)
 {
   int config_changed = 0;
   int socket_changed = 0;
   int c;
-  int bp;
 
   bird_name = get_bird_name(argv[0], "bird");
   if (argc == 2)
@@ -811,29 +807,6 @@ parse_args(int argc, char **argv)
   while ((c = getopt(argc, argv, opt_list)) >= 0)
     switch (c)
       {
-      case 'B':
-	bp = atoi(optarg);
-	if (bp < 1)
-	{
-	  fprintf(stderr, "Strange block size power %d\n\n", bp);
-	  display_usage();
-	  exit(1);
-	}
-
-	if ((1 << bp) < page_size)
-	{
-	  fprintf(stderr, "Requested block size %ld is lesser than page size %ld\n\n", (1L<<bp), page_size);
-	  display_usage();
-	  exit(1);
-	}
-
-	if ((1L << bp) > page_size)
-	{
-	  alloc_multipage = 1;
-	  page_size = (1L << bp);
-	}
-
-	break;
       case 'c':
 	config_name = optarg;
 	config_changed = 1;
@@ -888,8 +861,6 @@ parse_args(int argc, char **argv)
    }
 }
 
-void resource_sys_init(void);
-
 /*
  *	Hic Est main()
  */
@@ -902,7 +873,6 @@ main(int argc, char **argv)
     dmalloc_debug(0x2f03d00);
 #endif
 
-  resource_sys_init();
   parse_args(argc, argv);
   log_switch(1, NULL, NULL);
 

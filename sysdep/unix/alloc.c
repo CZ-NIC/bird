@@ -17,7 +17,6 @@
 #endif
 
 long page_size = 0;
-_Bool alloc_multipage = 0;
 
 #ifdef HAVE_MMAP
 static _Bool use_fake = 0;
@@ -46,31 +45,9 @@ alloc_sys_page(void)
 #ifdef HAVE_MMAP
   if (!use_fake)
   {
-    if (alloc_multipage)
-    {
-      void *big = mmap(NULL, page_size * 2, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-      if (big == MAP_FAILED)
-	bug("mmap(%lu) failed: %m", page_size);
-
-      uintptr_t offset = ((uintptr_t) big) % page_size;
-      if (offset)
-      {
-	void *ret = big + page_size - offset;
-	munmap(big, page_size - offset);
-	munmap(ret + page_size, offset);
-	return ret;
-      }
-      else
-      {
-	munmap(big + page_size, page_size);
-	return big;
-      }
-    }
-
     void *ret = mmap(NULL, page_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (ret == MAP_FAILED)
       bug("mmap(%lu) failed: %m", page_size);
-
     return ret;
   }
   else

@@ -145,13 +145,6 @@ BIRD executable by configuring out routing protocols you don't use, and
 <p>You can pass several command-line options to bird:
 
 <descrip>
-	<tag><label id="argv-block">-B <m/exp/</tag>
-	allocate memory using 2^<cf/exp/ byte sized blocks;
-	if you're expecting high memory load, raise this to
-        reduce number of allocated memory pages. For a million routes
-	in one table, the recommended setting is 18.
-	Default is your system page size, typically 12 for 4096 bytes.
-
 	<tag><label id="argv-config">-c <m/config name/</tag>
 	use given configuration file instead of <it/prefix/<file>/etc/bird.conf</file>.
 
