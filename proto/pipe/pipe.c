@@ -43,6 +43,10 @@
 
 #include "pipe.h"
 
+#ifdef CONFIG_BGP
+#include "proto/bgp/bgp.h"
+#endif
+
 static void
 pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *old)
 {
@@ -73,16 +77,12 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
       a->cached = 0;
       a->hostentry = NULL;
       e = rte_get_temp(a, src);
-      e->pflags = 0;
-
-      /* Copy protocol specific embedded attributes. */
-      memcpy(&(e->u), &(new->u), sizeof(e->u));
       e->pflags = new->pflags;
 
 #ifdef CONFIG_BGP
       /* Hack to cleanup cached value */
       if (e->src->proto->proto == &proto_bgp)
-	e->u.bgp.stale = -1;
+	e->pflags &= ~(BGP_REF_STALE | BGP_REF_NOT_STALE);
 #endif
     }
   else

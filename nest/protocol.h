@@ -74,7 +74,6 @@ struct protocol {
   struct proto * (*init)(struct proto_config *);		/* Create new instance */
   int (*reconfigure)(struct proto *, struct proto_config *);	/* Try to reconfigure instance, returns success */
   void (*dump)(struct proto *);			/* Debugging dump */
-  void (*dump_attrs)(struct rte *);		/* Dump protocol-dependent attributes */
   int (*start)(struct proto *);			/* Start the instance */
   int (*shutdown)(struct proto *);		/* Stop the instance */
   void (*cleanup)(struct proto *);		/* Called after shutdown when protocol became hungry/down */
@@ -198,8 +197,6 @@ struct proto {
    *	   ifa_notify	Notify protocol about interface address changes.
    *	   rt_notify	Notify protocol about routing table updates.
    *	   neigh_notify	Notify protocol about neighbor cache events.
-   *	   make_tmp_attrs  Add attributes to rta from from private attrs stored in rte. The route and rta MUST NOT be cached.
-   *	   store_tmp_attrs Store private attrs back to rte and undef added attributes. The route and rta MUST NOT be cached.
    *	   preexport	Called as the first step of the route exporting process.
    *			It can decide whether the route shall be exported:
    *			  -1 = reject,
@@ -216,8 +213,6 @@ struct proto {
   void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
   void (*rt_notify)(struct proto *, struct channel *, struct network *net, struct rte *new, struct rte *old);
   void (*neigh_notify)(struct neighbor *neigh);
-  void (*make_tmp_attrs)(struct rte *rt, struct linpool *pool);
-  void (*store_tmp_attrs)(struct rte *rt, struct linpool *pool);
   int (*preexport)(struct proto *, struct rte *rt);
   void (*reload_routes)(struct channel *);
   void (*feed_begin)(struct channel *, int initial);
@@ -236,7 +231,6 @@ struct proto {
 
   int (*rte_recalculate)(struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
   int (*rte_better)(struct rte *, struct rte *);
-  int (*rte_same)(struct rte *, struct rte *);
   int (*rte_mergable)(struct rte *, struct rte *);
   struct rte * (*rte_modify)(struct rte *, struct linpool *);
   void (*rte_insert)(struct network *, struct rte *);
@@ -471,7 +465,6 @@ struct channel_class {
 
 
   void (*dump)(struct proto *);			/* Debugging dump */
-  void (*dump_attrs)(struct rte *);		/* Dump protocol-dependent attributes */
 
   void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
   void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */

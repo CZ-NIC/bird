@@ -76,16 +76,6 @@ void dump(struct proto *p)
 { DUMMY; }
 
 /**
- * dump_attrs - dump protocol-dependent attributes
- * @e: a route entry
- *
- * This hook dumps all attributes in the &rte which belong to this
- * protocol to the debug output.
- */
-void dump_attrs(rte *e)
-{ DUMMY; }
-
-/**
  * start - request instance startup
  * @p: protocol instance
  *
@@ -225,36 +215,6 @@ void rt_notify(struct proto *p, net *net, rte *new, rte *old, ea_list *attrs)
  * sticky neighbor gets connected.
  */
 void neigh_notify(neighbor *neigh)
-{ DUMMY; }
-
-/**
- * make_tmp_attrs - convert embedded attributes to temporary ones
- * @e: route entry
- * @pool: linear pool to allocate attribute memory in
- *
- * This hook is called by the routing table functions if they need
- * to convert the protocol attributes embedded directly in the &rte
- * to temporary extended attributes in order to distribute them
- * to other protocols or to filters. make_tmp_attrs() creates
- * an &ea_list in the linear pool @pool, fills it with values of the
- * temporary attributes and returns a pointer to it.
- */
-ea_list *make_tmp_attrs(rte *e, struct linpool *pool)
-{ DUMMY; }
-
-/**
- * store_tmp_attrs - convert temporary attributes to embedded ones
- * @e: route entry
- * @attrs: temporary attributes to be converted
- *
- * This hook is an exact opposite of make_tmp_attrs() -- it takes
- * a list of extended attributes and converts them to attributes
- * embedded in the &rte corresponding to this protocol.
- *
- * You must be prepared for any of the attributes being missing
- * from the list and use default values instead.
- */
-void store_tmp_attrs(rte *e, ea_list *attrs)
 { DUMMY; }
 
 /**

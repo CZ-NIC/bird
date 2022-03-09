@@ -127,7 +127,6 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	continue;
 
       ee = e;
-      rte_make_tmp_attrs(&e, c->show_pool, NULL);
 
       /* Export channel is down, do not try to export routes to it */
       if (ec && (ec->export_state == ES_DOWN))
