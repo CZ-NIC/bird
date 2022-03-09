@@ -37,7 +37,6 @@ const int lp_chunk_size = sizeof(struct lp_chunk);
 struct linpool {
   resource r;
   byte *ptr, *end;
-  pool *p;
   struct lp_chunk *first, *current;		/* Normal (reusable) chunks */
   struct lp_chunk *first_large;			/* Large chunks */
   uint chunk_size, threshold, total:31, use_pages:1, total_large;
@@ -72,7 +71,6 @@ linpool
 *lp_new(pool *p, uint blk)
 {
   linpool *m = ralloc(p, &lp_class);
-  m->p = p;
   if (!blk)
   {
     m->use_pages = 1;
@@ -132,7 +130,7 @@ lp_alloc(linpool *m, uint size)
 	    {
 	      /* Need to allocate a new chunk */
 	      if (m->use_pages)
-		c = alloc_page(m->p);
+		c = alloc_page();
 	      else
 		c = xmalloc(sizeof(struct lp_chunk) + m->chunk_size);
 
@@ -273,7 +271,7 @@ lp_free(resource *r)
     {
       c = d->next;
       if (m->use_pages)
-	free_page(m->p, d);
+	free_page(d);
       else
 	xfree(d);
     }
@@ -308,19 +306,24 @@ static struct resmem
 lp_memsize(resource *r)
 {
   linpool *m = (linpool *) r;
-  struct lp_chunk *c;
-  int cnt = 0;
-
-  for(c=m->first; c; c=c->next)
-    cnt++;
-  for(c=m->first_large; c; c=c->next)
-    cnt++;
-
-  return (struct resmem) {
-    .effective = m->total + m->total_large,
-    .overhead = ALLOC_OVERHEAD + sizeof(struct linpool) +
-    cnt * (ALLOC_OVERHEAD + sizeof(struct lp_chunk)),
+  struct resmem sz = {
+    .overhead = sizeof(struct linpool) + ALLOC_OVERHEAD,
   };
+
+  for (struct lp_chunk *c = m->first_large; c; c = c->next)
+  {
+    sz.effective += c->size;
+    sz.overhead += lp_chunk_size + ALLOC_OVERHEAD;
+  }
+
+  uint regular = 0;
+  for (struct lp_chunk *c = m->first; c; c = c->next)
+    regular++;
+
+  sz.effective += m->chunk_size * regular;
+  sz.overhead += (lp_chunk_size + ALLOC_OVERHEAD) * regular;
+
+  return sz;
 }
 
 
