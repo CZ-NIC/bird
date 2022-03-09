@@ -37,7 +37,7 @@ struct filter *f_new_where(struct f_inst *where)
 				   f_new_inst(FI_DIE, F_REJECT));
 
   struct filter *f = cfg_allocz(sizeof(struct filter));
-  f->root = f_linearize(cond);
+  f->root = f_linearize(cond, 0);
   return f;
 }
 

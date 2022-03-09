@@ -329,7 +329,7 @@ filter_def:
 
 conf: filter_eval ;
 filter_eval:
-   EVAL term { f_eval_int(f_linearize($2)); }
+   EVAL term { f_eval_int(f_linearize($2, 1)); }
  ;
 
 conf: custom_attr ;
@@ -453,7 +453,7 @@ where_filter:
 
 function_body:
    function_vars '{' cmds '}' {
-     $$ = f_linearize($3);
+     $$ = f_linearize($3, 0);
      $$->vars = $1;
    }
  ;
@@ -537,7 +537,7 @@ set_atom:
  | VPN_RD { $$.type = T_RD; $$.val.ec = $1; }
  | ENUM   { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
-     if (f_eval(f_linearize($2), cfg_mem, &($$)) > F_RETURN) cf_error("Runtime error");
+     if (f_eval(f_linearize($2, 1), cfg_mem, &($$)) > F_RETURN) cf_error("Runtime error");
      if (!f_valid_set_type($$.type)) cf_error("Set-incompatible type");
    }
  | CF_SYM_KNOWN {
@@ -549,13 +549,13 @@ set_atom:
 
 switch_atom:
    NUM   { $$.type = T_INT; $$.val.i = $1; }
- | '(' term ')' { $$.type = T_INT; $$.val.i = f_eval_int(f_linearize($2)); }
+ | '(' term ')' { $$.type = T_INT; $$.val.i = f_eval_int(f_linearize($2, 1)); }
  | fipa  { $$ = $1; }
  | ENUM  { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  ;
 
 cnum:
-   term { $$ = f_eval_int(f_linearize($1)); }
+   term { $$ = f_eval_int(f_linearize($1, 1)); }
 
 pair_item:
    '(' cnum ',' cnum ')'		{ $$ = f_new_pair_item($2, $2, $4, $4); }
@@ -642,7 +642,7 @@ switch_body: /* EMPTY */ { $$ = NULL; }
  | switch_body switch_items ':' cmds  {
      /* Fill data fields */
      struct f_tree *t;
-     struct f_line *line = f_linearize($4);
+     struct f_line *line = f_linearize($4, 0);
      for (t = $2; t; t = t->left)
        t->data = line;
      $$ = f_merge_items($1, $2);
@@ -651,7 +651,7 @@ switch_body: /* EMPTY */ { $$ = NULL; }
      struct f_tree *t = f_new_tree();
      t->from.type = t->to.type = T_VOID;
      t->right = t;
-     t->data = f_linearize($3);
+     t->data = f_linearize($3, 0);
      $$ = f_merge_items($1, t);
  }
  ;

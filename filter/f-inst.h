@@ -46,14 +46,15 @@ struct f_line {
   uint len;				/* Line length */
   u8 args;				/* Function: Args required */
   u8 vars;
+  u8 results;				/* Results left on stack: cmd -> 0, term -> 1 */
   struct f_arg *arg_list;
   struct f_line_item items[0];		/* The items themselves */
 };
 
 /* Convert the f_inst infix tree to the f_line structures */
-struct f_line *f_linearize_concat(const struct f_inst * const inst[], uint count);
-static inline struct f_line *f_linearize(const struct f_inst *root)
-{ return f_linearize_concat(&root, 1); }
+struct f_line *f_linearize_concat(const struct f_inst * const inst[], uint count, uint results);
+static inline struct f_line *f_linearize(const struct f_inst *root, uint results)
+{ return f_linearize_concat(&root, 1, results); }
 
 void f_dump_line(const struct f_line *, uint indent);
 

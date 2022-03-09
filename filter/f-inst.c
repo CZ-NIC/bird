@@ -64,7 +64,7 @@
  *	m4_dnl	  ARG_ANY(num);				argument with no type check accessible by v1, v2, v3
  *	m4_dnl	  ARG_TYPE(num, type);			just declare the type of argument
  *	m4_dnl	  VARARG;				variable-length argument list; accessible by vv(i) and whati->varcount
- *	m4_dnl	  LINE(num, unused);			this argument has to be converted to its own f_line
+ *	m4_dnl	  LINE(num, out);			this argument has to be converted to its own f_line
  *	m4_dnl	  SYMBOL;				symbol handed from config
  *	m4_dnl	  STATIC_ATTR;				static attribute definition
  *	m4_dnl	  DYNAMIC_ATTR;				dynamic attribute definition
@@ -298,7 +298,7 @@
     RESULT_TYPE(T_BOOL);
 
     if (v1.val.i)
-      LINE(2,0);
+      LINE(2,1);
     else
       RESULT_VAL(v1);
   }
@@ -308,7 +308,7 @@
     RESULT_TYPE(T_BOOL);
 
     if (!v1.val.i)
-      LINE(2,0);
+      LINE(2,1);
     else
       RESULT_VAL(v1);
   }
@@ -536,7 +536,7 @@
     if (v1.val.i)
       LINE(2,0);
     else
-      LINE(3,1);
+      LINE(3,0);
   }
 
   INST(FI_PRINT, 0, 0) {
