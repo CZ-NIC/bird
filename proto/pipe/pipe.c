@@ -212,8 +212,10 @@ pipe_get_status(struct proto *P, byte *buf)
 static void
 pipe_show_stats(struct pipe_proto *p)
 {
-  struct proto_stats *s1 = &p->pri->stats;
-  struct proto_stats *s2 = &p->sec->stats;
+  struct import_stats *s1i = &p->pri->import_stats;
+  struct export_stats *s1e = &p->pri->export_stats;
+  struct import_stats *s2i = &p->sec->import_stats;
+  struct export_stats *s2e = &p->sec->export_stats;
 
   /*
    * Pipe stats (as anything related to pipes) are a bit tricky. There
@@ -237,20 +239,20 @@ pipe_show_stats(struct pipe_proto *p)
    */
 
   cli_msg(-1006, "  Routes:         %u imported, %u exported",
-	  s1->imp_routes, s2->imp_routes);
+	  s1i->routes, s2i->routes);
   cli_msg(-1006, "  Route change stats:     received   rejected   filtered    ignored   accepted");
   cli_msg(-1006, "    Import updates:     %10u %10u %10u %10u %10u",
-	  s2->exp_updates_received, s2->exp_updates_rejected + s1->imp_updates_invalid,
-	  s2->exp_updates_filtered, s1->imp_updates_ignored, s1->imp_updates_accepted);
+	  s2e->updates_received, s2e->updates_rejected + s1i->updates_invalid,
+	  s2e->updates_filtered, s1i->updates_ignored, s1i->updates_accepted);
   cli_msg(-1006, "    Import withdraws:   %10u %10u        --- %10u %10u",
-	  s2->exp_withdraws_received, s1->imp_withdraws_invalid,
-	  s1->imp_withdraws_ignored, s1->imp_withdraws_accepted);
+	  s2e->withdraws_received, s1i->withdraws_invalid,
+	  s1i->withdraws_ignored, s1i->withdraws_accepted);
   cli_msg(-1006, "    Export updates:     %10u %10u %10u %10u %10u",
-	  s1->exp_updates_received, s1->exp_updates_rejected + s2->imp_updates_invalid,
-	  s1->exp_updates_filtered, s2->imp_updates_ignored, s2->imp_updates_accepted);
+	  s1e->updates_received, s1e->updates_rejected + s2i->updates_invalid,
+	  s1e->updates_filtered, s2i->updates_ignored, s2i->updates_accepted);
   cli_msg(-1006, "    Export withdraws:   %10u %10u        --- %10u %10u",
-	  s1->exp_withdraws_received, s2->imp_withdraws_invalid,
-	  s2->imp_withdraws_ignored, s2->imp_withdraws_accepted);
+	  s1e->withdraws_received, s2i->withdraws_invalid,
+	  s2i->withdraws_ignored, s2i->withdraws_accepted);
 }
 
 static const char *pipe_feed_state[] = { [ES_DOWN] = "down", [ES_FEEDING] = "feed", [ES_READY] = "up" };

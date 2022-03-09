@@ -663,19 +663,23 @@ export_filter_(struct channel *c, rte *rt, linpool *pool, int silent)
 {
   struct proto *p = c->proto;
   const struct filter *filter = c->out_filter;
-  struct proto_stats *stats = &c->stats;
-  int v;
+  struct export_stats *stats = &c->export_stats;
 
-  v = p->preexport ? p->preexport(c, rt) : 0;
+  /* Do nothing if we have already rejected the route */
+  if (silent && bmap_test(&c->export_reject_map, rt->id))
+    goto reject_noset;
+
+  int v = p->preexport ? p->preexport(c, rt) : 0;
   if (v < 0)
     {
       if (silent)
-	goto reject;
+	goto reject_noset;
 
-      stats->exp_updates_rejected++;
+      stats->updates_rejected++;
       if (v == RIC_REJECT)
 	rte_trace_out(D_FILTERS, c, rt, "rejected by protocol");
-      goto reject;
+      goto reject_noset;
+
     }
   if (v > 0)
     {
@@ -692,15 +696,22 @@ export_filter_(struct channel *c, rte *rt, linpool *pool, int silent)
       if (silent)
 	goto reject;
 
-      stats->exp_updates_filtered++;
+      stats->updates_filtered++;
       rte_trace_out(D_FILTERS, c, rt, "filtered out");
       goto reject;
     }
 
  accept:
+  /* We have accepted the route */
+  bmap_clear(&c->export_reject_map, rt->id);
   return rt;
 
  reject:
+  /* We have rejected the route by filter */
+  bmap_set(&c->export_reject_map, rt->id);
+
+reject_noset:
+  /* Invalidate the route */
   /* Discard temporary rte */
   return NULL;
 }
@@ -715,7 +726,7 @@ static void
 do_rt_notify(struct channel *c, const net_addr *net, rte *new, rte *old, int refeed)
 {
   struct proto *p = c->proto;
-  struct proto_stats *stats = &c->stats;
+  struct export_stats *stats = &c->export_stats;
 
   if (refeed && new)
     c->refeed_count++;
@@ -724,12 +735,12 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, rte *old, int ref
   struct channel_limit *l = &c->out_limit;
   if (l->action && !old && new)
   {
-    if (stats->exp_routes >= l->limit)
-      channel_notify_limit(c, l, PLD_OUT, stats->exp_routes);
+    if (stats->routes >= l->limit)
+      channel_notify_limit(c, l, PLD_OUT, stats->routes);
 
     if (l->state == PLS_BLOCKED)
     {
-      stats->exp_updates_rejected++;
+      stats->updates_rejected++;
       rte_trace_out(D_FILTERS, c, new, "rejected [limit]");
       return;
     }
@@ -747,20 +758,20 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, rte *old, int ref
   }
 
   if (new)
-    stats->exp_updates_accepted++;
+    stats->updates_accepted++;
   else
-    stats->exp_withdraws_accepted++;
+    stats->withdraws_accepted++;
 
   if (old)
   {
     bmap_clear(&c->export_map, old->id);
-    stats->exp_routes--;
+    stats->routes--;
   }
 
   if (new)
   {
     bmap_set(&c->export_map, new->id);
-    stats->exp_routes++;
+    stats->routes++;
   }
 
   if (p->debug & D_ROUTES)
@@ -783,9 +794,9 @@ static void
 rt_notify_basic(struct channel *c, const net_addr *net, rte *new, rte *old, int refeed)
 {
   if (new)
-    c->stats.exp_updates_received++;
+    c->export_stats.updates_received++;
   else
-    c->stats.exp_withdraws_received++;
+    c->export_stats.withdraws_received++;
 
   if (new)
     new = export_filter(c, new, 0);
@@ -825,9 +836,9 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
    */
 
   if (net->routes)
-    c->stats.exp_updates_received++;
+    c->export_stats.updates_received++;
   else
-    c->stats.exp_withdraws_received++;
+    c->export_stats.withdraws_received++;
 
   /* Find old_best - either old_changed, or route for net->routes */
   if (old_changed && bmap_test(&c->export_map, old_changed->id))
@@ -853,8 +864,14 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
   {
     /* Feed or old_best changed -> find first accepted by filters */
     for (struct rte_storage *r = net->routes; rte_is_valid(r); r = r->next)
+    {
+      /* Already rejected before */
+      if (!refeed && bmap_test(&c->export_reject_map, r->rte.id))
+	continue;
+
       if (new_best = export_filter(c, ((nb0 = r->rte), &nb0), 0))
 	break;
+    }
   }
   else
   {
@@ -943,9 +960,9 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
     return;
 
   if (new_best)
-    c->stats.exp_updates_received++;
+    c->export_stats.updates_received++;
   else
-    c->stats.exp_withdraws_received++;
+    c->export_stats.withdraws_received++;
 
   /* Prepare new merged route */
   if (new_best)
@@ -965,7 +982,6 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
 /**
  * rte_announce - announce a routing table change
  * @tab: table the route has been added to
- * @type: type of route announcement (RA_UNDEF or RA_ANY)
  * @net: network in question
  * @new: the new or changed route
  * @old: the previous route replaced by the new one
@@ -981,13 +997,6 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
  * and @new_best and @old_best describes best routes. Other routes are not
  * affected, but in sorted table the order of other routes might change.
  *
- * Second, There is a bulk change of multiple routes in @net, with shared best
- * route selection. In such case separate route changes are described using
- * @type of %RA_ANY, with @new and @old specifying the changed route, while
- * @new_best and @old_best are NULL. After that, another notification is done
- * where @new_best and @old_best are filled (may be the same), but @new and @old
- * are NULL.
- *
  * The function announces the change to all associated channels. For each
  * channel, an appropriate preprocessing is done according to channel &ra_mode.
  * For example, %RA_OPTIMAL channels receive just changes of best routes.
@@ -1002,7 +1011,7 @@ rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed
  * done outside of scope of rte_announce().
  */
 static void
-rte_announce(rtable *tab, uint type, net *net, struct rte_storage *new, struct rte_storage *old,
+rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage *old,
 	     struct rte_storage *new_best, struct rte_storage *old_best)
 {
   if (!rte_is_valid(new))
@@ -1023,9 +1032,9 @@ rte_announce(rtable *tab, uint type, net *net, struct rte_storage *new, struct r
   if (new_best != old_best)
   {
     if (new_best)
-      new_best->rte.sender->stats.pref_routes++;
+      new_best->rte.sender->import_stats.pref++;
     if (old_best)
-      old_best->rte.sender->stats.pref_routes--;
+      old_best->rte.sender->import_stats.pref--;
 
     if (tab->hostcache)
       rt_notify_hostcache(tab, net);
@@ -1040,9 +1049,6 @@ rte_announce(rtable *tab, uint type, net *net, struct rte_storage *new, struct r
   WALK_LIST2(c, n, tab->channels, table_node)
   {
     if (c->export_state == ES_DOWN)
-      continue;
-
-    if (type && (type != c->ra_mode))
       continue;
 
     rte n0;
@@ -1066,6 +1072,11 @@ rte_announce(rtable *tab, uint type, net *net, struct rte_storage *new, struct r
       rt_notify_merged(c, net, RTE_OR_NULL(new), RTE_OR_NULL(old), RTE_OR_NULL(new_best), RTE_OR_NULL(old_best), 0);
       break;
     }
+
+    /* Drop the old stored rejection if applicable.
+     * new->id == old->id happens when updating hostentries. */
+    if (old && (!new || (new->rte.id != old->rte.id)))
+      bmap_clear(&c->export_reject_map, old->rte.id);
   }
 }
 
@@ -1131,7 +1142,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 {
   struct proto *p = c->proto;
   struct rtable *table = c->table;
-  struct proto_stats *stats = &c->stats;
+  struct import_stats *stats = &c->import_stats;
   struct rte_storage *old_best_stored = net->routes, *old_stored = NULL;
   rte *old_best = old_best_stored ? &old_best_stored->rte : NULL;
   rte *old = NULL;
@@ -1168,7 +1179,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 
 	      if (!rte_is_filtered(new))
 		{
-		  stats->imp_updates_ignored++;
+		  stats->updates_ignored++;
 	          rte_trace_in(D_ROUTES, c, new, "ignored");
 		}
 
@@ -1182,7 +1193,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 
   if (!old && !new)
     {
-      stats->imp_withdraws_ignored++;
+      stats->withdraws_ignored++;
       return;
     }
 
@@ -1192,7 +1203,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
   struct channel_limit *l = &c->rx_limit;
   if (l->action && !old && new && !c->in_table)
     {
-      u32 all_routes = stats->imp_routes + stats->filt_routes;
+      u32 all_routes = stats->routes + stats->filtered;
 
       if (all_routes >= l->limit)
 	channel_notify_limit(c, l, PLD_RX, all_routes);
@@ -1202,7 +1213,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	  /* In receive limit the situation is simple, old is NULL so
 	     we just free new and exit like nothing happened */
 
-	  stats->imp_updates_ignored++;
+	  stats->updates_ignored++;
 	  rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
 	  return;
 	}
@@ -1211,8 +1222,8 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
   l = &c->in_limit;
   if (l->action && !old_ok && new_ok)
     {
-      if (stats->imp_routes >= l->limit)
-	channel_notify_limit(c, l, PLD_IN, stats->imp_routes);
+      if (stats->routes >= l->limit)
+	channel_notify_limit(c, l, PLD_IN, stats->routes);
 
       if (l->state == PLS_BLOCKED)
 	{
@@ -1223,7 +1234,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	     if both are NULL as this case is probably assumed to be
 	     already handled. */
 
-	  stats->imp_updates_ignored++;
+	  stats->updates_ignored++;
 	  rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
 
 	  if (c->in_keep_filtered)
@@ -1243,11 +1254,11 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
     }
 
   if (new_ok)
-    stats->imp_updates_accepted++;
+    stats->updates_accepted++;
   else if (old_ok)
-    stats->imp_withdraws_accepted++;
+    stats->withdraws_accepted++;
   else
-    stats->imp_withdraws_ignored++;
+    stats->withdraws_ignored++;
 
   if (old_ok || new_ok)
     table->last_rt_change = current_time();
@@ -1256,9 +1267,9 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
   struct rte_storage *new_stored = new ? rte_store(new, net, table) : NULL;
 
   if (new)
-    rte_is_filtered(new) ? stats->filt_routes++ : stats->imp_routes++;
+    rte_is_filtered(new) ? stats->filtered++ : stats->routes++;
   if (old)
-    rte_is_filtered(old) ? stats->filt_routes-- : stats->imp_routes--;
+    rte_is_filtered(old) ? stats->filtered-- : stats->routes--;
 
   if (table->config->sorted)
     {
@@ -1378,7 +1389,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
     }
 
   /* Propagate the route change */
-  rte_announce(table, RA_UNDEF, net, new_stored, old_stored,
+  rte_announce(table, net, new_stored, old_stored,
       net->routes, old_best_stored);
 
   if (!net->routes &&
@@ -1423,7 +1434,7 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   if (c->in_table && !rte_update_in(c, n, new, src))
     return;
 
-  struct proto_stats *stats = &c->stats;
+  struct import_stats *stats = &c->import_stats;
   const struct filter *filter = c->in_filter;
   net *nn;
 
@@ -1435,17 +1446,17 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
       new->net = n;
       new->sender = c;
 
-      stats->imp_updates_received++;
+      stats->updates_received++;
       if (!rte_validate(new))
 	{
 	  rte_trace_in(D_FILTERS, c, new, "invalid");
-	  stats->imp_updates_invalid++;
+	  stats->updates_invalid++;
 	  goto drop;
 	}
 
       if (filter == FILTER_REJECT)
 	{
-	  stats->imp_updates_filtered++;
+	  stats->updates_filtered++;
 	  rte_trace_in(D_FILTERS, c, new, "filtered out");
 
 	  if (! c->in_keep_filtered)
@@ -1459,7 +1470,7 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	  int fr = f_run(filter, new, rte_update_pool, 0);
 	  if (fr > F_ACCEPT)
 	  {
-	    stats->imp_updates_filtered++;
+	    stats->updates_filtered++;
 	    rte_trace_in(D_FILTERS, c, new, "filtered out");
 
 	    if (! c->in_keep_filtered)
@@ -1475,11 +1486,11 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     }
   else
     {
-      stats->imp_withdraws_received++;
+      stats->withdraws_received++;
 
       if (!(nn = net_find(c->table, n)) || !src)
 	{
-	  stats->imp_withdraws_ignored++;
+	  stats->withdraws_ignored++;
 	  rte_update_unlock();
 	  return;
 	}
@@ -1503,11 +1514,11 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 /* Independent call to rte_announce(), used from next hop
    recalculation, outside of rte_update(). new must be non-NULL */
 static inline void
-rte_announce_i(rtable *tab, uint type, net *net, struct rte_storage *new, struct rte_storage *old,
+rte_announce_i(rtable *tab, net *net, struct rte_storage *new, struct rte_storage *old,
 	       struct rte_storage *new_best, struct rte_storage *old_best)
 {
   rte_update_lock();
-  rte_announce(tab, type, net, new, old, new_best, old_best);
+  rte_announce(tab, net, new, old, new_best, old_best);
   rte_update_unlock();
 }
 
@@ -2587,7 +2598,7 @@ rt_next_hop_update_net(rtable *tab, net *n)
     _Bool nb = (new == updates[i].new), ob = (old_best == updates[i].old);
     const char *best_indicator[2][2] = { { "updated", "updated [-best]" }, { "updated [+best]", "updated [best]" } };
     rte_trace_in(D_ROUTES, new->rte.sender, &updates[i].new->rte, best_indicator[nb][ob]);
-    rte_announce_i(tab, RA_UNDEF, n, updates[i].new, updates[i].old, new, old_best);
+    rte_announce_i(tab, n, updates[i].new, updates[i].old, new, old_best);
   }
 
   for (int i=0; i<count; i++)
@@ -2956,8 +2967,8 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
   return 1;
 
 drop_update:
-  c->stats.imp_updates_received++;
-  c->stats.imp_updates_ignored++;
+  c->import_stats.updates_received++;
+  c->import_stats.updates_ignored++;
 
   if (!net->routes)
     fib_delete(&tab->fib, net);
@@ -2965,8 +2976,8 @@ drop_update:
   return 0;
 
 drop_withdraw:
-  c->stats.imp_withdraws_received++;
-  c->stats.imp_withdraws_ignored++;
+  c->import_stats.withdraws_received++;
+  c->import_stats.withdraws_ignored++;
   return 0;
 }
 
