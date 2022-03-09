@@ -2243,8 +2243,13 @@ proto_apply_cmd_symbol(const struct symbol *s, void (* cmd)(struct proto *, uint
     return;
   }
 
-  cmd(s->proto->proto, arg, 0);
-  cli_msg(0, "");
+  if (s->proto->proto)
+  {
+    cmd(s->proto->proto, arg, 0);
+    cli_msg(0, "");
+  }
+  else
+    cli_msg(9002, "%s does not exist", s->name);
 }
 
 static void

@@ -154,7 +154,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       else if (d->export_mode)
 	{
 	  struct proto *ep = ec->proto;
-	  int ic = ep->preexport ? ep->preexport(ep, &e, c->show_pool) : 0;
+	  int ic = ep->preexport ? ep->preexport(ep, e) : 0;
 
 	  if (ec->ra_mode == RA_OPTIMAL || ec->ra_mode == RA_MERGED)
 	    pass = 1;
@@ -393,7 +393,7 @@ rt_show_get_default_tables(struct rt_show_data *d)
   }
 
   for (int i=1; i<NET_MAX; i++)
-    if (config->def_tables[i])
+    if (config->def_tables[i] && config->def_tables[i]->table)
       rt_show_add_table(d, config->def_tables[i]->table);
 }
 

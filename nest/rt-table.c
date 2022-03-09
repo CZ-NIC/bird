@@ -617,6 +617,26 @@ rte_cow_rta(rte *r, linpool *lp)
   return r;
 }
 
+/**
+ * rte_free - delete a &rte
+ * @e: &rte to be deleted
+ *
+ * rte_free() deletes the given &rte from the routing table it's linked to.
+ */
+void
+rte_free(rte *e)
+{
+  if (rta_is_cached(e->attrs))
+    rta_free(e->attrs);
+  sl_free(rte_slab, e);
+}
+
+static inline void
+rte_free_quick(rte *e)
+{
+  rta_free(e->attrs);
+  sl_free(rte_slab, e);
+}
 
 /**
  * rte_init_tmp_attrs - initialize temporary ea_list for route
@@ -869,7 +889,7 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
   rt = rt0;
   *rt_free = NULL;
 
-  v = p->preexport ? p->preexport(p, &rt, pool) : 0;
+  v = p->preexport ? p->preexport(p, rt) : 0;
   if (v < 0)
     {
       if (silent)
@@ -951,8 +971,14 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
   }
 
   /* Apply export table */
-  if (c->out_table && !rte_update_out(c, net->n.addr, new, old, refeed))
-    return;
+  struct rte *old_exported = NULL;
+  if (c->out_table)
+  {
+    if (!rte_update_out(c, net->n.addr, new, old, &old_exported, refeed))
+      return;
+  }
+  else if (c->out_filter == FILTER_ACCEPT)
+    old_exported = old;
 
   if (new)
     stats->exp_updates_accepted++;
@@ -982,6 +1008,9 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
   }
 
   p->rt_notify(p, c, net, new, old);
+
+  if (c->out_table && old_exported)
+    rte_free_quick(old_exported);
 }
 
 static void
@@ -1339,27 +1368,6 @@ rte_validate(rte *e)
   }
 
   return 1;
-}
-
-/**
- * rte_free - delete a &rte
- * @e: &rte to be deleted
- *
- * rte_free() deletes the given &rte from the routing table it's linked to.
- */
-void
-rte_free(rte *e)
-{
-  if (rta_is_cached(e->attrs))
-    rta_free(e->attrs);
-  sl_free(rte_slab, e);
-}
-
-static inline void
-rte_free_quick(rte *e)
-{
-  rta_free(e->attrs);
-  sl_free(rte_slab, e);
 }
 
 static int
@@ -1894,7 +1902,7 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter)
   rte_update_lock();
 
   /* Rest is stripped down export_filter() */
-  int v = p->preexport ? p->preexport(p, &rt, rte_update_pool) : 0;
+  int v = p->preexport ? p->preexport(p, rt) : 0;
   if (v == RIC_PROCESS)
   {
     rte_make_tmp_attrs(&rt, rte_update_pool, NULL);
@@ -3426,7 +3434,7 @@ again:
  */
 
 int
-rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed)
+rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, rte **old_exported, int refeed)
 {
   struct rtable *tab = c->out_table;
   struct rte_src *src;
@@ -3472,7 +3480,7 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int re
 
       /* Remove the old rte */
       *pos = old->next;
-      rte_free_quick(old);
+      *old_exported = old;
       tab->rt_count--;
 
       break;
