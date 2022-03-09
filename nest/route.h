@@ -259,7 +259,10 @@ struct rte_storage {
 #define REF_MODIFY	16		/* Route is scheduled for modify */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
-static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED); }
+static inline int rte_is_valid_rte(rte *r) { return r && !(r->flags & REF_FILTERED); }
+static inline int rte_is_valid_storage(struct rte_storage *r) { return r && rte_is_valid_rte(&r->rte); }
+
+#define rte_is_valid(r)		_Generic((*r), rte: rte_is_valid_rte, struct rte_storage: rte_is_valid_storage)(r)
 
 /* Route just has REF_FILTERED flag */
 static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); }

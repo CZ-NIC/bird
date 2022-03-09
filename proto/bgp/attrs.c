@@ -2212,7 +2212,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
 
   /* The default case - find a new best-in-group route */
   rte *r = new; /* new may not be in the list */
-  for (struct rte_storage *s = net->routes; rte_is_valid(&s->rte); s = s->next)
+  for (struct rte_storage *s = net->routes; rte_is_valid(s); s = s->next)
     if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
     {
       s->rte.pflags |= BGP_REF_SUPPRESSED;
@@ -2229,7 +2229,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
     new->pflags &= ~BGP_REF_SUPPRESSED;
 
   /* Found all existing routes mergable with best-in-group */
-  for (struct rte_storage *s = net->routes; rte_is_valid(&s->rte); s = s->next)
+  for (struct rte_storage *s = net->routes; rte_is_valid(s); s = s->next)
     if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
       if ((&s->rte != r) && bgp_rte_mergable(r, &s->rte))
 	s->rte.pflags &= ~BGP_REF_SUPPRESSED;

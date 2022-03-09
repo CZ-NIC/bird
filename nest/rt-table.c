@@ -170,7 +170,7 @@ net_roa_check_ip4(rtable *tab, const net_addr_ip4 *px, u32 asn)
       net_addr_roa4 *roa = (void *) fn->addr;
       net *r = fib_node_to_user(&tab->fib, fn);
 
-      if (net_equal_prefix_roa4(roa, &n) && r->routes && rte_is_valid(&r->routes->rte))
+      if (net_equal_prefix_roa4(roa, &n) && rte_is_valid(r->routes))
       {
 	anything = 1;
 	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
@@ -202,7 +202,7 @@ net_roa_check_ip6(rtable *tab, const net_addr_ip6 *px, u32 asn)
       net_addr_roa6 *roa = (void *) fn->addr;
       net *r = fib_node_to_user(&tab->fib, fn);
 
-      if (net_equal_prefix_roa6(roa, &n) && r->routes && rte_is_valid(&r->routes->rte))
+      if (net_equal_prefix_roa6(roa, &n) && rte_is_valid(r->routes))
       {
 	anything = 1;
 	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
@@ -543,7 +543,7 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
     old_best = old_changed;
   else
   {
-    for (struct rte_storage *r = net->routes; r && rte_is_valid(&r->rte); r = r->next)
+    for (struct rte_storage *r = net->routes; rte_is_valid(r); r = r->next)
     {
       if (bmap_test(&c->export_map, r->rte.id))
       {
@@ -561,7 +561,7 @@ rt_notify_accepted(struct channel *c, net *net, rte *new_changed, rte *old_chang
   if ((new_changed == old_changed) || (old_best == old_changed))
   {
     /* Feed or old_best changed -> find first accepted by filters */
-    for (struct rte_storage *r = net->routes; r && rte_is_valid(&r->rte); r = r->next)
+    for (struct rte_storage *r = net->routes; rte_is_valid(r); r = r->next)
       if (new_best = export_filter(c, ((nb0 = r->rte), &nb0), 0))
 	break;
   }
@@ -596,7 +596,7 @@ rt_export_merged(struct channel *c, net *net, linpool *pool, int silent)
   struct rte_storage *best0 = net->routes;
   rte *best;
 
-  if (!best0 || !rte_is_valid(&best0->rte))
+  if (!rte_is_valid(best0))
     return NULL;
 
   best = export_filter_(c, ((rme = best0->rte), &rme), pool, silent);
@@ -714,16 +714,16 @@ static void
 rte_announce(rtable *tab, uint type, net *net, struct rte_storage *new, struct rte_storage *old,
 	     struct rte_storage *new_best, struct rte_storage *old_best)
 {
-  if (!new || !rte_is_valid(&new->rte))
+  if (!rte_is_valid(new))
     new = NULL;
 
-  if (!old || !rte_is_valid(&old->rte))
+  if (!rte_is_valid(old))
     old = NULL;
 
-  if (!new_best || !rte_is_valid(&new_best->rte))
+  if (!rte_is_valid(new_best))
     new_best = NULL;
 
-  if (!old_best || !rte_is_valid(&old_best->rte))
+  if (!rte_is_valid(old_best))
     old_best = NULL;
 
   if (!new && !old && !new_best && !old_best)
@@ -1246,13 +1246,10 @@ rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filte
 {
   net *n = net_find(t, a);
 
-  if (!n || !n->routes)
+  if (!n || !rte_is_valid(n->routes))
     return 0;
 
   rte rt = n->routes->rte;
-
-  if (!rte_is_valid(&rt))
-    return 0;
 
   rte_update_lock();
 
@@ -2151,7 +2148,7 @@ rt_feed_channel(struct channel *c)
       if ((c->ra_mode == RA_OPTIMAL) ||
 	  (c->ra_mode == RA_ACCEPTED) ||
 	  (c->ra_mode == RA_MERGED))
-	if (e && rte_is_valid(&e->rte))
+	if (rte_is_valid(e))
 	  {
 	    /* In the meantime, the protocol may fell down */
 	    if (c->export_state != ES_FEEDING)
@@ -2168,7 +2165,7 @@ rt_feed_channel(struct channel *c)
 	    if (c->export_state != ES_FEEDING)
 	      goto done;
 
-	    if (!rte_is_valid(&e->rte))
+	    if (!rte_is_valid(e))
 	      continue;
 
 	    do_feed_channel(c, n, &e->rte);
