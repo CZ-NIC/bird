@@ -374,6 +374,13 @@ bgp_init_aigp_metric(rte *e, u64 *metric, const struct adata **ad)
   return *metric < IGP_METRIC_UNKNOWN;
 }
 
+u32
+bgp_rte_igp_metric(struct rte *rt)
+{
+  u64 metric = bgp_total_aigp_metric(rt);
+  return (u32) MIN(metric, (u64) IGP_METRIC_UNKNOWN);
+}
+
 
 /*
  *	Attribute hooks

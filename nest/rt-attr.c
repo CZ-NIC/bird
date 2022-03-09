@@ -61,7 +61,6 @@
 const adata null_adata;		/* adata of length 0 */
 
 const char * const rta_src_names[RTS_MAX] = {
-  [RTS_DUMMY]		= "",
   [RTS_STATIC]		= "static",
   [RTS_INHERIT]		= "inherit",
   [RTS_DEVICE]		= "device",
@@ -541,8 +540,8 @@ ea_walk(struct ea_walk_state *s, uint id, uint max)
  * by calling ea_find() to find the attribute, extracting its value or returning
  * a provided default if no such attribute is present.
  */
-int
-ea_get_int(ea_list *e, unsigned id, int def)
+uintptr_t
+ea_get_int(ea_list *e, unsigned id, uintptr_t def)
 {
   eattr *a = ea_find(e, id);
   if (!a)
@@ -1260,7 +1259,7 @@ rta_do_cow(rta *o, linpool *lp)
 void
 rta_dump(rta *a)
 {
-  static char *rts[] = { "RTS_DUMMY", "RTS_STATIC", "RTS_INHERIT", "RTS_DEVICE",
+  static char *rts[] = { "", "RTS_STATIC", "RTS_INHERIT", "RTS_DEVICE",
 			 "RTS_STAT_DEV", "RTS_REDIR", "RTS_RIP",
 			 "RTS_OSPF", "RTS_OSPF_IA", "RTS_OSPF_EXT1",
 			 "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };

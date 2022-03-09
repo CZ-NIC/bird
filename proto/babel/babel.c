@@ -648,6 +648,29 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       .from = r->neigh->addr,
       .nh.gw = r->next_hop,
       .nh.iface = r->neigh->ifa->iface,
+      .eattrs = alloca(sizeof(ea_list) + 3*sizeof(eattr)),
+    };
+
+    *a0.eattrs = (ea_list) { .count = 3 };
+    a0.eattrs->attrs[0] = (eattr) {
+      .id = EA_BABEL_METRIC,
+      .type = EAF_TYPE_INT,
+      .u.data = r->metric,
+    };
+
+    struct adata *ad = alloca(sizeof(struct adata) + sizeof(u64));
+    ad->length = sizeof(u64);
+    memcpy(ad->data, &(r->router_id), sizeof(u64));
+    a0.eattrs->attrs[1] = (eattr) {
+      .id = EA_BABEL_ROUTER_ID,
+      .type = EAF_TYPE_OPAQUE,
+      .u.ptr = ad,
+    };
+
+    a0.eattrs->attrs[2] = (eattr) {
+      .id = EA_BABEL_SEQNO,
+      .type = EAF_TYPE_INT,
+      .u.data = r->seqno,
     };
 
     /*
@@ -660,10 +683,6 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
 
     rta *a = rta_lookup(&a0);
     rte *rte = rte_get_temp(a, p->p.main_source);
-    rte->u.babel.seqno = r->seqno;
-    rte->u.babel.metric = r->metric;
-    rte->u.babel.router_id = r->router_id;
-    rte->pflags = EA_ID_FLAG(EA_BABEL_METRIC) | EA_ID_FLAG(EA_BABEL_ROUTER_ID);
 
     e->unreachable = 0;
     rte_update2(c, e->n.addr, rte, p->p.main_source);
@@ -680,7 +699,6 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
 
     rta *a = rta_lookup(&a0);
     rte *rte = rte_get_temp(a, p->p.main_source);
-    memset(&rte->u.babel, 0, sizeof(rte->u.babel));
     rte->pflags = 0;
 
     e->unreachable = 1;
@@ -2009,7 +2027,13 @@ babel_dump(struct proto *P)
 static void
 babel_get_route_info(rte *rte, byte *buf)
 {
-  buf += bsprintf(buf, " (%d/%d) [%lR]", rte->attrs->pref, rte->u.babel.metric, rte->u.babel.router_id);
+  u64 rid = 0;
+  eattr *e = ea_find(rte->attrs->eattrs, EA_BABEL_ROUTER_ID);
+  if (e)
+    memcpy(&rid, e->u.ptr->data, sizeof(u64));
+
+  buf += bsprintf(buf, " (%d/%d) [%lR]", rte->attrs->pref,
+      ea_get_int(rte->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY), rid);
 }
 
 static int
@@ -2017,6 +2041,9 @@ babel_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
 {
   switch (a->id)
   {
+  case EA_BABEL_SEQNO:
+    return GA_FULL;
+
   case EA_BABEL_METRIC:
     bsprintf(buf, "metric: %d", a->u.data);
     return GA_FULL;
@@ -2240,27 +2267,6 @@ babel_preexport(struct proto *P, struct rte *new)
   return 0;
 }
 
-static void
-babel_make_tmp_attrs(struct rte *rt, struct linpool *pool)
-{
-  struct adata *id = lp_alloc_adata(pool, sizeof(u64));
-  memcpy(id->data, &rt->u.babel.router_id, sizeof(u64));
-
-  rte_init_tmp_attrs(rt, pool, 2);
-  rte_make_tmp_attr(rt, EA_BABEL_METRIC, EAF_TYPE_INT, rt->u.babel.metric);
-  rte_make_tmp_attr(rt, EA_BABEL_ROUTER_ID, EAF_TYPE_OPAQUE, (uintptr_t) id);
-}
-
-static void
-babel_store_tmp_attrs(struct rte *rt, struct linpool *pool)
-{
-  rte_init_tmp_attrs(rt, pool, 2);
-  rt->u.babel.metric = rte_store_tmp_attr(rt, EA_BABEL_METRIC);
-
-  /* EA_BABEL_ROUTER_ID is read-only, we do not really save the value */
-  rte_store_tmp_attr(rt, EA_BABEL_ROUTER_ID);
-}
-
 /*
  * babel_rt_notify - core tells us about new route (possibly our own),
  * so store it into our data structures.
@@ -2275,10 +2281,22 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
   if (new)
   {
     /* Update */
-    uint internal = (new->src->proto == P);
-    uint rt_seqno = internal ? new->u.babel.seqno : p->update_seqno;
+    uint rt_seqno;
     uint rt_metric = ea_get_int(new->attrs->eattrs, EA_BABEL_METRIC, 0);
-    u64 rt_router_id = internal ? new->u.babel.router_id : p->router_id;
+    u64 rt_router_id = 0;
+
+    if (new->src->proto == P)
+    {
+      rt_seqno = ea_find(new->attrs->eattrs, EA_BABEL_SEQNO)->u.data;
+      eattr *e = ea_find(new->attrs->eattrs, EA_BABEL_ROUTER_ID);
+      if (e)
+	memcpy(&rt_router_id, e->u.ptr->data, sizeof(u64));
+    }
+    else
+    {
+      rt_seqno = p->update_seqno;
+      rt_router_id = p->router_id;
+    }
 
     if (rt_metric > BABEL_INFINITY)
     {
@@ -2321,15 +2339,16 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
 static int
 babel_rte_better(struct rte *new, struct rte *old)
 {
-  return new->u.babel.metric < old->u.babel.metric;
+  uint new_metric = ea_find(new->attrs->eattrs, EA_BABEL_SEQNO)->u.data;
+  uint old_metric = ea_find(old->attrs->eattrs, EA_BABEL_SEQNO)->u.data;
+
+  return new_metric < old_metric;
 }
 
-static int
-babel_rte_same(struct rte *new, struct rte *old)
+static u32
+babel_rte_igp_metric(struct rte *rt)
 {
-  return ((new->u.babel.seqno == old->u.babel.seqno) &&
-	  (new->u.babel.metric == old->u.babel.metric) &&
-	  (new->u.babel.router_id == old->u.babel.router_id));
+  return ea_get_int(rt->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY);
 }
 
 
@@ -2363,10 +2382,8 @@ babel_init(struct proto_config *CF)
   P->if_notify = babel_if_notify;
   P->rt_notify = babel_rt_notify;
   P->preexport = babel_preexport;
-  P->make_tmp_attrs = babel_make_tmp_attrs;
-  P->store_tmp_attrs = babel_store_tmp_attrs;
   P->rte_better = babel_rte_better;
-  P->rte_same = babel_rte_same;
+  P->rte_igp_metric = babel_rte_igp_metric;
 
   return P;
 }

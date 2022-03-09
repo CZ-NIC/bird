@@ -1686,26 +1686,6 @@ rte_update_unlock(void)
     lp_flush(rte_update_pool);
 }
 
-static inline void
-rte_hide_dummy_routes(net *net, rte **dummy)
-{
-  if (net->routes && net->routes->attrs->source == RTS_DUMMY)
-  {
-    *dummy = net->routes;
-    net->routes = (*dummy)->next;
-  }
-}
-
-static inline void
-rte_unhide_dummy_routes(net *net, rte **dummy)
-{
-  if (*dummy)
-  {
-    (*dummy)->next = net->routes;
-    net->routes = *dummy;
-  }
-}
-
 /**
  * rte_update - enter a new update to a routing table
  * @table: table to be updated
@@ -1754,7 +1734,6 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   // struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
   const struct filter *filter = c->in_filter;
-  rte *dummy = NULL;
   net *nn;
 
   ASSERT(c->channel_state == CS_UP);
@@ -1833,9 +1812,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
  recalc:
   /* And recalculate the best route */
-  rte_hide_dummy_routes(nn, &dummy);
   rte_recalculate(c, nn, new, src);
-  rte_unhide_dummy_routes(nn, &dummy);
 
   rte_update_unlock();
   return;
@@ -3686,35 +3663,11 @@ rt_get_igp_metric(rte *rt)
   if (ea)
     return ea->u.data;
 
-  rta *a = rt->attrs;
-
-#ifdef CONFIG_OSPF
-  if ((a->source == RTS_OSPF) ||
-      (a->source == RTS_OSPF_IA) ||
-      (a->source == RTS_OSPF_EXT1))
-    return rt->u.ospf.metric1;
-#endif
-
-#ifdef CONFIG_RIP
-  if (a->source == RTS_RIP)
-    return rt->u.rip.metric;
-#endif
-
-#ifdef CONFIG_BGP
-  if (a->source == RTS_BGP)
-  {
-    u64 metric = bgp_total_aigp_metric(rt);
-    return (u32) MIN(metric, (u64) IGP_METRIC_UNKNOWN);
-  }
-#endif
-
-#ifdef CONFIG_BABEL
-  if (a->source == RTS_BABEL)
-    return rt->u.babel.metric;
-#endif
-
-  if (a->source == RTS_DEVICE)
+  if (rt->attrs->source == RTS_DEVICE)
     return 0;
+
+  if (rt->src->proto->rte_igp_metric)
+    return rt->src->proto->rte_igp_metric(rt);
 
   return IGP_METRIC_UNKNOWN;
 }
