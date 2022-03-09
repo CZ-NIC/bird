@@ -113,13 +113,13 @@ mrt_buffer_flush(buffer *b)
 }
 
 #define MRT_DEFINE_TYPE(S, T)						\
-  static inline void mrt_put_##S##_(buffer *b, T x)			\
+  UNUSED static inline void mrt_put_##S##_(buffer *b, T x)		\
   {									\
     put_##S(b->pos, x);							\
     b->pos += sizeof(T);						\
   }									\
 									\
-  static inline void mrt_put_##S(buffer *b, T x)			\
+  UNUSED static inline void mrt_put_##S(buffer *b, T x)			\
   {									\
     mrt_buffer_need(b, sizeof(T));					\
     put_##S(b->pos, x);							\
