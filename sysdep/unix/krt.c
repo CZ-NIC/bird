@@ -300,7 +300,7 @@ krt_learn_announce_update(struct krt_proto *p, rte *e)
 {
   net *n = e->net;
   rta *aa = rta_clone(e->attrs);
-  rte *ee = rte_get_temp(aa);
+  rte *ee = rte_get_temp(aa, p->p.main_source);
   ee->pflags = EA_ID_FLAG(EA_KRT_SOURCE) | EA_ID_FLAG(EA_KRT_METRIC);
   ee->u.krt = e->u.krt;
   rte_update(&p->p, n->n.addr, ee);
@@ -432,6 +432,9 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
   net *n0 = e->net;
   net *n = net_get(p->krt_table, n0->n.addr);
   rte *g, **gg, *best, **bestp, *old_best;
+
+  ASSERT(!e->attrs->cached);
+  e->attrs->pref = p->p.main_channel->preference;
 
   e->attrs = rta_lookup(e->attrs);
 
@@ -906,7 +909,7 @@ static int
 krt_preexport(struct proto *P, rte *e)
 {
   // struct krt_proto *p = (struct krt_proto *) P;
-  if (e->attrs->src->proto == P)
+  if (e->src->proto == P)
     return -1;
 
   if (!krt_capable(e))

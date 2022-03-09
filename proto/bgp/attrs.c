@@ -1670,7 +1670,7 @@ bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
 int
 bgp_preexport(struct proto *P, rte *e)
 {
-  struct proto *SRC = e->attrs->src->proto;
+  struct proto *SRC = e->src->proto;
   struct bgp_proto *p = (struct bgp_proto *) P;
   struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (struct bgp_proto *) SRC : NULL;
 
@@ -1729,7 +1729,7 @@ bgp_preexport(struct proto *P, rte *e)
 static ea_list *
 bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *attrs0, struct linpool *pool)
 {
-  struct proto *SRC = e->attrs->src->proto;
+  struct proto *SRC = e->src->proto;
   struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (void *) SRC : NULL;
   struct bgp_export_state s = { .proto = p, .channel = c, .pool = pool, .src = src, .route = e, .mpls = c->desc->mpls };
   ea_list *attrs = attrs0;
@@ -1861,12 +1861,12 @@ bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old)
 
     /* If attributes are invalid, we fail back to withdraw */
     buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
-    path = new->attrs->src->global_id;
+    path = new->src->global_id;
   }
   else
   {
     buck = bgp_get_withdraw_bucket(c);
-    path = old->attrs->src->global_id;
+    path = old->src->global_id;
   }
 
   px = bgp_get_prefix(c, n->n.addr, c->add_path_tx ? path : 0);
@@ -1886,7 +1886,7 @@ bgp_get_neighbor(rte *r)
     return as;
 
   /* If AS_PATH is not defined, we treat rte as locally originated */
-  struct bgp_proto *p = (void *) r->attrs->src->proto;
+  struct bgp_proto *p = (void *) r->src->proto;
   return p->cf->confederation ?: p->local_as;
 }
 
@@ -1906,8 +1906,8 @@ rte_stale(rte *r)
 int
 bgp_rte_better(rte *new, rte *old)
 {
-  struct bgp_proto *new_bgp = (struct bgp_proto *) new->attrs->src->proto;
-  struct bgp_proto *old_bgp = (struct bgp_proto *) old->attrs->src->proto;
+  struct bgp_proto *new_bgp = (struct bgp_proto *) new->src->proto;
+  struct bgp_proto *old_bgp = (struct bgp_proto *) old->src->proto;
   eattr *x, *y;
   u32 n, o;
 
@@ -2051,8 +2051,8 @@ bgp_rte_better(rte *new, rte *old)
 int
 bgp_rte_mergable(rte *pri, rte *sec)
 {
-  struct bgp_proto *pri_bgp = (struct bgp_proto *) pri->attrs->src->proto;
-  struct bgp_proto *sec_bgp = (struct bgp_proto *) sec->attrs->src->proto;
+  struct bgp_proto *pri_bgp = (struct bgp_proto *) pri->src->proto;
+  struct bgp_proto *sec_bgp = (struct bgp_proto *) sec->src->proto;
   eattr *x, *y;
   u32 p, s;
 
@@ -2130,13 +2130,13 @@ bgp_rte_mergable(rte *pri, rte *sec)
 static inline int
 same_group(rte *r, u32 lpref, u32 lasn)
 {
-  return (r->pref == lpref) && (bgp_get_neighbor(r) == lasn);
+  return (r->attrs->pref == lpref) && (bgp_get_neighbor(r) == lasn);
 }
 
 static inline int
 use_deterministic_med(rte *r)
 {
-  struct proto *P = r->attrs->src->proto;
+  struct proto *P = r->src->proto;
   return (P->proto == &proto_bgp) && ((struct bgp_proto *) P)->cf->deterministic_med;
 }
 
@@ -2145,7 +2145,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
 {
   rte *r, *s;
   rte *key = new ? new : old;
-  u32 lpref = key->pref;
+  u32 lpref = key->attrs->pref;
   u32 lasn = bgp_get_neighbor(key);
   int old_suppressed = old ? old->u.bgp.suppressed : 0;
 
@@ -2368,7 +2368,7 @@ bgp_get_route_info(rte *e, byte *buf)
   eattr *o = ea_find(e->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_ORIGIN));
   u32 origas;
 
-  buf += bsprintf(buf, " (%d", e->pref);
+  buf += bsprintf(buf, " (%d", e->attrs->pref);
 
   if (e->u.bgp.suppressed)
     buf += bsprintf(buf, "-");

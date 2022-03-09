@@ -526,13 +526,14 @@
       case SA_FROM:	RESULT(sa.f_type, ip, rta->from); break;
       case SA_GW:	RESULT(sa.f_type, ip, rta->nh.gw); break;
       case SA_NET:	RESULT(sa.f_type, net, (*fs->rte)->net->n.addr); break;
-      case SA_PROTO:	RESULT(sa.f_type, s, rta->src->proto->name); break;
+      case SA_PROTO:	RESULT(sa.f_type, s, (*fs->rte)->src->proto->name); break;
       case SA_SOURCE:	RESULT(sa.f_type, i, rta->source); break;
       case SA_SCOPE:	RESULT(sa.f_type, i, rta->scope); break;
       case SA_DEST:	RESULT(sa.f_type, i, rta->dest); break;
       case SA_IFNAME:	RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
       case SA_IFINDEX:	RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
       case SA_WEIGHT:	RESULT(sa.f_type, i, rta->nh.weight + 1); break;
+      case SA_PREF:	RESULT(sa.f_type, i, rta->pref); break;
       case SA_GW_MPLS:	RESULT(sa.f_type, i, rta->nh.labels ? rta->nh.label[0] : MPLS_NULL); break;
 
       default:
@@ -561,7 +562,7 @@
 	{
 	  ip_addr ip = v1.val.ip;
 	  struct iface *ifa = ipa_is_link_local(ip) ? rta->nh.iface : NULL;
-	  neighbor *n = neigh_find(rta->src->proto, ip, ifa, 0);
+	  neighbor *n = neigh_find((*fs->rte)->src->proto, ip, ifa, 0);
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
 
@@ -635,6 +636,10 @@
 	  for (struct nexthop *nh = &rta->nh; nh; nh = nh->next)
 	    nh->weight = i - 1;
         }
+	break;
+
+      case SA_PREF:
+	rta->pref = v1.val.i;
 	break;
 
       default:
@@ -802,20 +807,6 @@
       l->next = *fs->eattrs;
       *fs->eattrs = l;
     }
-  }
-
-  INST(FI_PREF_GET, 0, 1) {
-    ACCESS_RTE;
-    RESULT(T_INT, i, (*fs->rte)->pref);
-  }
-
-  INST(FI_PREF_SET, 1, 0) {
-    ACCESS_RTE;
-    ARG(1,T_INT);
-    if (v1.val.i > 0xFFFF)
-      runtime( "Setting preference value out of bounds" );
-    f_rte_cow(fs);
-    (*fs->rte)->pref = v1.val.i;
   }
 
   INST(FI_LENGTH, 1, 1) {	/* Get length of */

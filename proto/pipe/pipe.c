@@ -65,34 +65,33 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
 
   if (new)
     {
+      src = new->src;
+
       a = alloca(rta_size(new->attrs));
       memcpy(a, new->attrs, rta_size(new->attrs));
 
-      a->aflags = 0;
+      a->cached = 0;
       a->hostentry = NULL;
-      e = rte_get_temp(a);
+      e = rte_get_temp(a, src);
       e->pflags = 0;
 
       /* Copy protocol specific embedded attributes. */
       memcpy(&(e->u), &(new->u), sizeof(e->u));
-      e->pref = new->pref;
       e->pflags = new->pflags;
 
 #ifdef CONFIG_BGP
       /* Hack to cleanup cached value */
-      if (e->attrs->src->proto->proto == &proto_bgp)
+      if (e->src->proto->proto == &proto_bgp)
       {
 	e->u.bgp.stale = -1;
 	e->u.bgp.base_table = NULL;
       }
 #endif
-
-      src = a->src;
     }
   else
     {
       e = NULL;
-      src = old->attrs->src;
+      src = old->src;
     }
 
   src_ch->table->pipe_busy = 1;

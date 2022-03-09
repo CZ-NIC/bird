@@ -1386,8 +1386,6 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   /* Prepare cached route attributes */
   if (s->cached_rta == NULL)
   {
-    a0->src = s->last_src;
-
     /* Workaround for rta_lookup() breaking eattrs */
     ea_list *ea = a0->eattrs;
     s->cached_rta = rta_lookup(a0);
@@ -1395,7 +1393,7 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   }
 
   rta *a = rta_clone(s->cached_rta);
-  rte *e = rte_get_temp(a);
+  rte *e = rte_get_temp(a, s->last_src);
 
   e->pflags = 0;
   e->u.bgp.suppressed = 0;
@@ -2481,6 +2479,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
     a->scope = SCOPE_UNIVERSE;
     a->from = s->proto->remote_ip;
     a->eattrs = ea;
+    a->pref = c->c.preference;
 
     c->desc->decode_next_hop(s, nh, nh_len, a);
     bgp_finish_attrs(s, a);

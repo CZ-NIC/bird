@@ -2053,17 +2053,17 @@ again1:
     if (nf->n.type) /* Add the route */
     {
       rta a0 = {
-	.src = p->p.main_source,
 	.source = nf->n.type,
 	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,
 	.nh = *(nf->n.nhs),
+	.pref = p->p.main_channel->preference,
       };
 
       if (reload || ort_changed(nf, &a0))
       {
 	rta *a = rta_lookup(&a0);
-	rte *e = rte_get_temp(a);
+	rte *e = rte_get_temp(a, p->p.main_source);
 
 	rta_free(nf->old_rta);
 	nf->old_rta = rta_clone(a);

@@ -641,10 +641,10 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
   if (r)
   {
     rta a0 = {
-      .src = p->p.main_source,
       .source = RTS_BABEL,
       .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNICAST,
+      .pref = c->preference,
       .from = r->neigh->addr,
       .nh.gw = r->next_hop,
       .nh.iface = r->neigh->ifa->iface,
@@ -659,7 +659,7 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       a0.nh.flags = RNF_ONLINK;
 
     rta *a = rta_lookup(&a0);
-    rte *rte = rte_get_temp(a);
+    rte *rte = rte_get_temp(a, p->p.main_source);
     rte->u.babel.seqno = r->seqno;
     rte->u.babel.metric = r->metric;
     rte->u.babel.router_id = r->router_id;
@@ -672,17 +672,16 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
   {
     /* Unreachable */
     rta a0 = {
-      .src = p->p.main_source,
       .source = RTS_BABEL,
       .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNREACHABLE,
+      .pref = 1,
     };
 
     rta *a = rta_lookup(&a0);
-    rte *rte = rte_get_temp(a);
+    rte *rte = rte_get_temp(a, p->p.main_source);
     memset(&rte->u.babel, 0, sizeof(rte->u.babel));
     rte->pflags = 0;
-    rte->pref = 1;
 
     e->unreachable = 1;
     rte_update2(c, e->n.addr, rte, p->p.main_source);
@@ -2010,7 +2009,7 @@ babel_dump(struct proto *P)
 static void
 babel_get_route_info(rte *rte, byte *buf)
 {
-  buf += bsprintf(buf, " (%d/%d) [%lR]", rte->pref, rte->u.babel.metric, rte->u.babel.router_id);
+  buf += bsprintf(buf, " (%d/%d) [%lR]", rte->attrs->pref, rte->u.babel.metric, rte->u.babel.router_id);
 }
 
 static int
@@ -2235,7 +2234,7 @@ babel_preexport(struct proto *P, struct rte *new)
 {
   struct rta *a = new->attrs;
   /* Reject our own unreachable routes */
-  if ((a->dest == RTD_UNREACHABLE) && (a->src->proto == P))
+  if ((a->dest == RTD_UNREACHABLE) && (new->src->proto == P))
     return -1;
 
   return 0;
@@ -2276,7 +2275,7 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
   if (new)
   {
     /* Update */
-    uint internal = (new->attrs->src->proto == P);
+    uint internal = (new->src->proto == P);
     uint rt_seqno = internal ? new->u.babel.seqno : p->update_seqno;
     uint rt_metric = ea_get_int(new->attrs->eattrs, EA_BABEL_METRIC, 0);
     u64 rt_router_id = internal ? new->u.babel.router_id : p->router_id;
