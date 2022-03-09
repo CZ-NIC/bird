@@ -167,7 +167,6 @@ typedef struct rtable {
   char *name;				/* Name of this table */
   list channels;			/* List of attached channels (struct channel) */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
-  int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
 
@@ -195,6 +194,7 @@ typedef struct rtable {
   struct f_trie *trie_old;		/* Old prefix trie waiting to be freed */
   u32 trie_lock_count;			/* Prefix trie locked by walks */
   u32 trie_old_lock_count;		/* Old prefix trie locked by walks */
+  struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
 
   list subscribers;			/* Subscribers for notifications */
   struct timer *settle_timer;		/* Settle time for notifications */
@@ -262,6 +262,9 @@ typedef struct rte {
   u32 id;				/* Table specific route id */
   byte flags;				/* Table-specific flags */
   byte pflags;				/* Protocol-specific flags */
+  u8 generation;			/* If this route import is based on other previously exported route,
+					   this value should be 1 + MAX(generation of the parent routes).
+					   Otherwise the route is independent and this value is zero. */
 } rte;
 
 struct rte_storage {
@@ -373,8 +376,9 @@ int rt_feed_channel(struct channel *c);
 void rt_feed_channel_abort(struct channel *c);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
+void rt_refeed_channel(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
-int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old, struct rte_storage **old_exported, int refeed);
+int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old, struct rte_storage **old_exported);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
 static inline int rt_is_ip(rtable *tab)

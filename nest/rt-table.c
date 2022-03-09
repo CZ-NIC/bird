@@ -739,8 +739,11 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, rte *old, int ref
   struct rte_storage *old_exported = NULL;
   if (c->out_table)
   {
-    if (!rte_update_out(c, net, new, old, &old_exported, refeed))
+    if (!rte_update_out(c, net, new, old, &old_exported))
+    {
+      rte_trace_out(D_ROUTES, c, new, "idempotent");
       return;
+    }
   }
 
   if (new)
@@ -1129,7 +1132,6 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
   struct proto *p = c->proto;
   struct rtable *table = c->table;
   struct proto_stats *stats = &c->stats;
-  static struct tbf rl_pipe = TBF_DEFAULT_LOG_LIMITS;
   struct rte_storage *old_best_stored = net->routes, *old_stored = NULL;
   rte *old_best = old_best_stored ? &old_best_stored->rte : NULL;
   rte *old = NULL;
@@ -1141,22 +1143,22 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
     {
       old = &(old_stored = (*before_old))->rte;
 
-	  /* If there is the same route in the routing table but from
-	   * a different sender, then there are two paths from the
-	   * source protocol to this routing table through transparent
-	   * pipes, which is not allowed.
-	   *
-	   * We log that and ignore the route. If it is withdraw, we
-	   * ignore it completely (there might be 'spurious withdraws',
-	   * see FIXME in do_rte_announce())
-	   */
-	  if (old->sender->proto != p)
-	    {
-	      if (new)
-		  log_rl(&rl_pipe, L_ERR "Pipe collision detected when sending %N to table %s",
-		      net->n.addr, table->name);
-	      return;
-	    }
+      /* If there is the same route in the routing table but from
+       * a different sender, then there are two paths from the
+       * source protocol to this routing table through transparent
+       * pipes, which is not allowed.
+       * We log that and ignore the route. */
+      if (old->sender->proto != p)
+	{
+	  if (!old->generation && !new->generation)
+	    bug("Two protocols claim to author a route with the same rte_src in table %s: %N %s/%u:%u",
+		c->table->name, net->n.addr, old->src->proto->name, old->src->private_id, old->src->global_id);
+
+	  log_rl(&table->rl_pipe, L_ERR "Route source collision in table %s: %N %s/%u:%u",
+		c->table->name, net->n.addr, old->src->proto->name, old->src->private_id, old->src->global_id);
+
+	  return;
+	}
 
 	  if (new && rte_same(old, new))
 	    {
@@ -1167,14 +1169,15 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	      if (!rte_is_filtered(new))
 		{
 		  stats->imp_updates_ignored++;
-		  rte_trace_in(D_ROUTES, c, new, "ignored");
+	          rte_trace_in(D_ROUTES, c, new, "ignored");
 		}
 
-	      return;
-	    }
+	    return;
+	  }
 
-	  *before_old = (*before_old)->next;
-	  table->rt_count--;
+
+	*before_old = (*before_old)->next;
+	table->rt_count--;
     }
 
   if (!old && !new)
@@ -1420,7 +1423,6 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   if (c->in_table && !rte_update_in(c, n, new, src))
     return;
 
-  // struct proto *p = c->proto;
   struct proto_stats *stats = &c->stats;
   const struct filter *filter = c->in_filter;
   net *nn;
@@ -1977,6 +1979,8 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
     t->rt_event = ev_new_init(p, rt_event, t);
     t->last_rt_change = t->gc_time = current_time();
+
+    t->rl_pipe = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 
     if (rt_is_flow(t))
     {
@@ -3065,7 +3069,7 @@ again:
  */
 
 int
-rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct rte_storage **old_exported, int refeed)
+rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct rte_storage **old_exported)
 {
   struct rtable *tab = c->out_table;
   struct rte_src *src;
@@ -3082,7 +3086,7 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct
     src = old0->src;
 
     if (!net)
-      goto drop_withdraw;
+      goto drop;
   }
 
   /* Find the old rte */
@@ -3092,7 +3096,7 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct
   if (old = *pos)
   {
     if (new && rte_same(&(*pos)->rte, new))
-      goto drop_update;
+      goto drop;
 
     /* Remove the old rte */
     *pos = old->next;
@@ -3103,7 +3107,7 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct
   if (!new)
   {
     if (!old)
-      goto drop_withdraw;
+      goto drop;
 
     if (!net->routes)
       fib_delete(&tab->fib, net);
@@ -3119,11 +3123,34 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, struct
   tab->rt_count++;
   return 1;
 
-drop_update:
-  return refeed;
-
-drop_withdraw:
+drop:
   return 0;
+}
+
+void
+rt_refeed_channel(struct channel *c)
+{
+  if (!c->out_table)
+  {
+    channel_request_feeding(c);
+    return;
+  }
+
+  ASSERT_DIE(c->ra_mode != RA_ANY);
+
+  c->proto->feed_begin(c, 0);
+
+  FIB_WALK(&c->out_table->fib, net, n)
+  {
+    if (!n->routes)
+      continue;
+
+    rte e = n->routes->rte;
+    c->proto->rt_notify(c->proto, c, n->n.addr, &e, NULL);
+  }
+  FIB_WALK_END;
+
+  c->proto->feed_end(c);
 }
 
 

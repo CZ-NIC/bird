@@ -4211,6 +4211,14 @@ include standard channel config options; see the example below.
 	<tag><label id="pipe-peer-table">peer table <m/table/</tag>
 	Defines secondary routing table to connect to. The primary one is
 	selected by the <cf/table/ keyword.
+
+	<tag><label id="pipe-max-generation">max generation <m/expr/</tag>
+	Sets maximal generation of route that may pass through this pipe.
+	The generation value is increased by one by each pipe on its path.
+	Not meeting this requirement causes an error message complaining about
+	an overpiped route. If you have long chains of pipes, you probably want
+	to raise this value; anyway the default of 16 should be enough for even
+	most strange uses. Maximum is 254.
 </descrip>
 
 <sect1>Attributes
