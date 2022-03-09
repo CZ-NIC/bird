@@ -16,36 +16,41 @@
 #include <sys/mman.h>
 #endif
 
-long page_size = 0;
-
 #ifdef HAVE_MMAP
+static u64 page_size = 0;
 static _Bool use_fake = 0;
 #else
-static _Bool use_fake = 1;
+static const u64 page_size = 4096; /* Fake page size */
 #endif
 
-void resource_sys_init(void)
+u64 get_page_size(void)
 {
-#ifdef HAVE_MMAP
-  if (!(page_size = sysconf(_SC_PAGESIZE)))
-    die("System page size must be non-zero");
+  if (page_size)
+    return page_size;
 
-  if ((u64_popcount(page_size) > 1) || (page_size > 16384))
+#ifdef HAVE_MMAP
+  if (page_size = sysconf(_SC_PAGESIZE))
   {
-#endif
-    /* Too big or strange page, use the aligned allocator instead */
-    page_size = 4096;
-    use_fake = 1;
+    if ((u64_popcount(page_size) > 1) || (page_size > 16384))
+    {
+      /* Too big or strange page, use the aligned allocator instead */
+      page_size = 4096;
+      use_fake = 1;
+    }
+    return page_size;
   }
+
+  bug("Page size must be non-zero");
+#endif
 }
 
 void *
-alloc_sys_page(void)
+alloc_page(void)
 {
 #ifdef HAVE_MMAP
   if (!use_fake)
   {
-    void *ret = mmap(NULL, page_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void *ret = mmap(NULL, get_page_size(), PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (ret == MAP_FAILED)
       bug("mmap(%lu) failed: %m", page_size);
     return ret;
@@ -61,12 +66,12 @@ alloc_sys_page(void)
 }
 
 void
-free_sys_page(void *ptr)
+free_page(void *ptr)
 {
 #ifdef HAVE_MMAP
   if (!use_fake)
   {
-    if (munmap(ptr, page_size) < 0)
+    if (munmap(ptr, get_page_size()) < 0)
       bug("munmap(%p) failed: %m", ptr);
   }
   else
