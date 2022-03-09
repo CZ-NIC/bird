@@ -215,8 +215,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
     }
 
     /* End of current line. Drop local variables before exiting. */
-    fstk->vcnt -= curline.line->vars;
-    fstk->vcnt -= curline.line->args;
+    fstk->vcnt = curline.ventry + curline.line->results;
     fstk->ecnt--;
   }
 

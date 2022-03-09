@@ -216,7 +216,7 @@ whati->f$1 = f$1;
 FID_DUMP_BODY()m4_dnl
 f_dump_line(item->fl$1, indent + 1);
 FID_LINEARIZE_BODY()m4_dnl
-item->fl$1 = f_linearize(whati->f$1);
+item->fl$1 = f_linearize(whati->f$1, $2);
 FID_SAME_BODY()m4_dnl
 if (!f_same(f1->fl$1, f2->fl$1)) return 0;
 FID_ITERATE_BODY()m4_dnl
@@ -568,7 +568,7 @@ FID_WR_PUT(8)
 }
 
 struct f_line *
-f_linearize_concat(const struct f_inst * const inst[], uint count)
+f_linearize_concat(const struct f_inst * const inst[], uint count, uint results)
 {
   uint len = 0;
   for (uint i=0; i<count; i++)
@@ -579,6 +579,8 @@ f_linearize_concat(const struct f_inst * const inst[], uint count)
 
   for (uint i=0; i<count; i++)
     out->len = linearize(out, inst[i], out->len);
+
+    out->results = results;
 
 #ifdef LOCAL_DEBUG
   f_dump_line(out, 0);
