@@ -23,8 +23,6 @@
 static int
 t_as_path_match(void)
 {
-  resource_init();
-
   int round;
   for (round = 0; round < TESTS_NUM; round++)
   {
@@ -69,8 +67,6 @@ t_as_path_match(void)
 static int
 t_path_format(void)
 {
-  resource_init();
-
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
 
@@ -114,8 +110,6 @@ count_asn_in_array(const u32 *array, u32 asn)
 static int
 t_path_include(void)
 {
-  resource_init();
-
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
 
@@ -158,8 +152,6 @@ t_path_include(void)
 static int
 t_as_path_converting(void)
 {
-  resource_init();
-
   struct adata empty_as_path = {};
   struct adata *as_path = &empty_as_path;
 #define AS_PATH_LENGTH_FOR_CONVERTING_TEST 10

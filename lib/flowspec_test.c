@@ -446,8 +446,6 @@ t_validation6(void)
 static int
 t_builder4(void)
 {
-  resource_init();
-
   struct flow_builder *fb = flow_builder_init(&root_pool);
 
   /* Expectation */
@@ -528,7 +526,6 @@ t_builder6(void)
 {
   net_addr_ip6 ip;
 
-  resource_init();
   struct flow_builder *fb = flow_builder_init(&root_pool);
   fb->ipv6 = 1;
 

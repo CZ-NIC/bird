@@ -53,7 +53,6 @@ t_ev_run_list(void)
 {
   int i;
 
-  resource_init();
   olock_init();
   timer_init();
   io_init();

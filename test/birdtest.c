@@ -20,6 +20,7 @@
 
 #include "test/birdtest.h"
 #include "lib/string.h"
+#include "lib/event.h"
 
 #ifdef HAVE_EXECINFO_H
 #include <execinfo.h>
@@ -120,6 +121,7 @@ bt_init(int argc, char *argv[])
   bt_suite_case_begin = bt_suite_begin = bt_begin;
 
   resource_init();
+  ev_init_list(&global_event_list);
 
   return;
 

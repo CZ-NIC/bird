@@ -164,6 +164,8 @@ void
 resource_sys_init(void)
 {
 #ifdef HAVE_MMAP
+  ASSERT_DIE(global_free_pages.cnt == 0);
+
   if (!(page_size = sysconf(_SC_PAGESIZE)))
     die("System page size must be non-zero");
 
