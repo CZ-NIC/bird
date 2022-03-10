@@ -22,6 +22,36 @@ static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
 #define f_generate_complex(fi_code, da, arg) \
   f_new_inst(FI_EA_SET, f_new_inst(fi_code, f_new_inst(FI_EA_GET, da), arg), da)
 
+static int
+f_new_var(struct sym_scope *s)
+{
+  /*
+   * - A variable is an offset on vstack from vbase.
+   * - Vbase is set on filter start / function call.
+   * - Scopes contain anonymous scopes (blocks) inside filter/function scope
+   * - Each scope knows number of vars in that scope
+   * - Offset is therefore a sum of 'slots' up to named scope
+   * - New variables are added on top of vstk, so intermediate values cannot
+   *   be there during FI_VAR_INIT. I.e. no 'var' inside 'term'.
+   * - Also, each f_line must always have its scope, otherwise a variable may
+   *   be defined but not initialized if relevant f_line is not executed.
+   */
+
+  int offset = s->slots++;
+
+  while (!s->name)
+  {
+    s = s->next;
+    ASSERT(s);
+    offset += s->slots;
+  }
+
+  if (offset >= 0xff)
+    cf_error("Too many variables, at most 255 allowed");
+
+  return offset;
+}
+
 /*
  * Sets and their items are during parsing handled as lists, linked
  * through left ptr. The first item in a list also contains a pointer
@@ -296,7 +326,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term cmd cmds constant constructor print_list var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
+%type <x> term cmd cmd_var cmds cmds_scoped constant constructor print_list var var_init var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
 %type <fda> dynamic_attr
 %type <fsa> static_attr
 %type <f> filter where_filter
@@ -425,7 +455,7 @@ function_args:
 function_vars:
    /* EMPTY */ { $$ = 0; }
  | function_vars type symbol ';' {
-     cf_define_symbol($3, SYM_VARIABLE | $2, offset, sym_->scope->slots++);
+     cf_define_symbol($3, SYM_VARIABLE | $2, offset, f_new_var(sym_->scope));
      $$ = $1 + 1;
    }
  ;
@@ -492,7 +522,11 @@ cmds: /* EMPTY */ { $$ = NULL; }
  | cmds_int { $$ = $1.begin; }
  ;
 
-cmd_prep: cmd {
+cmds_scoped: { cf_push_soft_scope(); } cmds { cf_pop_soft_scope(); $$ = $2; } ;
+
+cmd_var: var | cmd ;
+
+cmd_prep: cmd_var {
   $$.begin = $$.end = $1;
   if ($1)
     while ($$.end->next)
@@ -639,7 +673,7 @@ fprefix_set:
  ;
 
 switch_body: /* EMPTY */ { $$ = NULL; }
- | switch_body switch_items ':' cmds  {
+ | switch_body switch_items ':' cmds_scoped  {
      /* Fill data fields */
      struct f_tree *t;
      struct f_line *line = f_linearize($4, 0);
@@ -647,7 +681,7 @@ switch_body: /* EMPTY */ { $$ = NULL; }
        t->data = line;
      $$ = f_merge_items($1, $2);
    }
- | switch_body ELSECOL cmds {
+ | switch_body ELSECOL cmds_scoped {
      struct f_tree *t = f_new_tree();
      t->from.type = t->to.type = T_VOID;
      t->right = t;
@@ -854,8 +888,19 @@ print_list: /* EMPTY */ { $$ = NULL; }
    }
  ;
 
+var_init:
+   /* empty */ { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { }); }
+ | '=' term { $$ = $2; }
+ ;
+
+var:
+   type symbol var_init ';' {
+     struct symbol *sym = cf_define_symbol($2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope));
+     $$ = f_new_inst(FI_VAR_INIT, $3, sym);
+   }
+
 cmd:
-   '{' cmds '}' {
+   '{' cmds_scoped '}' {
      $$ = $2;
    }
  | IF term THEN cmd {
@@ -912,7 +957,7 @@ cmd:
  | PRINTN print_list ';' {
     $$ = f_new_inst(FI_PRINT, $2);
    }
- | function_call ';' { $$ = f_new_inst(FI_DROP_RESULT, $1); } 
+ | function_call ';' { $$ = f_new_inst(FI_DROP_RESULT, $1); }
  | CASE term '{' switch_body '}' {
       $$ = f_new_inst(FI_SWITCH, $2, build_tree($4));
    }
