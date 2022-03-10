@@ -501,6 +501,18 @@
     RESULT(T_BOOL, i, ipa_is_ip4(v1.val.ip));
   }
 
+  INST(FI_VAR_INIT, 1, 0) {
+    NEVER_CONSTANT;
+    ARG_ANY(1);
+    SYMBOL;
+    ARG_TYPE(1, sym->class & 0xff);
+
+    /* New variable is always the last on stack */
+    uint pos = curline.vbase + sym->offset;
+    fstk->vstk[pos] = v1;
+    fstk->vcnt = pos + 1;
+  }
+
   /* Set to indirect value prepared in v1 */
   INST(FI_VAR_SET, 1, 0) {
     NEVER_CONSTANT;

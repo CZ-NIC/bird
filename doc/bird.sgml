@@ -1245,8 +1245,8 @@ this:
 
 <code>
 filter not_too_far
-int var;
 {
+	int var;
 	if defined( rip_metric ) then
 		var = rip_metric;
 	else {
@@ -1275,9 +1275,9 @@ local variables. Recursion is not allowed. Function definitions look like this:
 
 <code>
 function name ()
-int local_variable;
 {
-	local_variable = 5;
+	int local_variable;
+	int another_variable = 5;
 }
 
 function with_parameters (int parameter)
@@ -1286,16 +1286,19 @@ function with_parameters (int parameter)
 }
 </code>
 
-<p>Unlike in C, variables are declared after the <cf/function/ line, but before
-the first <cf/{/. You can't declare variables in nested blocks. Functions are
-called like in C: <cf>name(); with_parameters(5);</cf>. Function may return
-values using the <cf>return <m/[expr]/</cf> command. Returning a value exits
-from current function (this is similar to C).
+<p>Like in C programming language, variables are declared inside function body,
+either at the beginning, or mixed with other statements. Declarations may
+contain initialization. You can also declare variables in nested blocks, such
+variables have scope restricted to such block. There is a deprecated syntax to
+declare variables after the <cf/function/ line, but before the first <cf/{/.
+Functions are called like in C: <cf>name(); with_parameters(5);</cf>. Function
+may return values using the <cf>return <m/[expr]/</cf> command. Returning a
+value exits from current function (this is similar to C).
 
-<p>Filters are defined in a way similar to functions except they can't have
+<p>Filters are defined in a way similar to functions except they cannot have
 explicit parameters. They get a route table entry as an implicit parameter, it
 is also passed automatically to any functions called. The filter must terminate
-with either <cf/accept/ or <cf/reject/ statement. If there's a runtime error in
+with either <cf/accept/ or <cf/reject/ statement. If there is a runtime error in
 filter, the route is rejected.
 
 <p>A nice trick to debug filters is to use <cf>show route filter <m/name/</cf>
