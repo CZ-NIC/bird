@@ -1153,7 +1153,7 @@ bgp_export_attr(struct bgp_export_state *s, eattr *a, ea_list *to)
     a->flags = (a->flags & BAF_PARTIAL) | desc->flags;
 
     /* Set partial bit if new opt-trans attribute is attached to non-local route */
-    if ((s->src != NULL) && (a->type & EAF_ORIGINATED) &&
+    if ((s->src != NULL) && (a->originated) &&
 	(a->flags & BAF_OPTIONAL) && (a->flags & BAF_TRANSITIVE))
       a->flags |= BAF_PARTIAL;
 
@@ -1776,7 +1776,7 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
 
     /* MULTI_EXIT_DESC attribute - accept only if set in export filter */
     a = bgp_find_attr(attrs0, BA_MULTI_EXIT_DISC);
-    if (a && !(a->type & EAF_FRESH))
+    if (a && !(a->fresh))
       bgp_unset_attr(&attrs, pool, BA_MULTI_EXIT_DISC);
   }
 

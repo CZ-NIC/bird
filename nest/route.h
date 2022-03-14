@@ -502,7 +502,9 @@ static inline int rte_is_reachable(rte *r)
 typedef struct eattr {
   word id;				/* EA_CODE(PROTOCOL_..., protocol-dependent ID) */
   byte flags;				/* Protocol-dependent flags */
-  byte type;				/* Attribute type and several flags (EAF_...) */
+  byte type:5;				/* Attribute type */
+  byte originated:1;			/* The attribute has originated locally */
+  byte fresh:1;				/* An uncached attribute (e.g. modified in export filter) */
   union {
     uintptr_t data;
     const struct adata *ptr;		/* Attribute data elsewhere */
@@ -541,8 +543,6 @@ const char *ea_custom_name(uint ea);
 #define EAF_TYPE_UNDEF 0x1f		/* `force undefined' entry */
 #define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */
 #define EAF_VAR_LENGTH 0x02		/* Attribute length is variable (part of type spec) */
-#define EAF_ORIGINATED 0x20		/* The attribute has originated locally */
-#define EAF_FRESH 0x40			/* An uncached attribute (e.g. modified in export filter) */
 
 typedef struct adata {
   uint length;				/* Length of data */

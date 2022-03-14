@@ -623,7 +623,10 @@ ea_do_prune(ea_list *e)
       *d = *s0;
 
       /* Preserve info whether it originated locally */
-      d->type = (d->type & ~(EAF_ORIGINATED|EAF_FRESH)) | (s[-1].type & EAF_ORIGINATED);
+      d->originated = s[-1].originated;
+
+      /* Not fresh any more, we prefer surstroemming */
+      d->fresh = 0;
 
       /* Next destination */
       d++;
@@ -737,6 +740,8 @@ ea_same(ea_list *x, ea_list *y)
       if (a->id != b->id ||
 	  a->flags != b->flags ||
 	  a->type != b->type ||
+	  a->originated != b->originated ||
+	  a->fresh != b->fresh ||
 	  ((a->type & EAF_EMBEDDED) ? a->u.data != b->u.data : !adata_same(a->u.ptr, b->u.ptr)))
 	return 0;
     }
@@ -1004,7 +1009,7 @@ ea_dump(ea_list *e)
 	  eattr *a = &e->attrs[i];
 	  debug(" %02x:%02x.%02x", EA_PROTO(a->id), EA_ID(a->id), a->flags);
 	  debug("=%c", "?iO?I?P???S?????" [a->type & EAF_TYPE_MASK]);
-	  if (a->type & EAF_ORIGINATED)
+	  if (a->originated)
 	    debug("o");
 	  if (a->type & EAF_EMBEDDED)
 	    debug(":%08x", a->u.data);

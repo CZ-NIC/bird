@@ -737,7 +737,9 @@
       l->count = 1;
       l->attrs[0].id = da.ea_code;
       l->attrs[0].flags = 0;
-      l->attrs[0].type = da.type | EAF_ORIGINATED | EAF_FRESH;
+      l->attrs[0].type = da.type;
+      l->attrs[0].originated = 1;
+      l->attrs[0].fresh = 1;
 
       switch (da.type) {
       case EAF_TYPE_INT:
@@ -800,7 +802,9 @@
       l->count = 1;
       l->attrs[0].id = da.ea_code;
       l->attrs[0].flags = 0;
-      l->attrs[0].type = EAF_TYPE_UNDEF | EAF_ORIGINATED | EAF_FRESH;
+      l->attrs[0].type = EAF_TYPE_UNDEF;
+      l->attrs[0].originated = 1;
+      l->attrs[0].fresh = 1;
       l->attrs[0].u.data = 0;
 
       f_rta_cow(fs);
