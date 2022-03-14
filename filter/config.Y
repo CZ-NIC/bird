@@ -296,7 +296,7 @@ assert_assign(struct f_lval *lval, struct f_inst *expr, const char *start, const
 
   checker = f_new_inst(FI_EQ, expr, getter);
   setter->next = checker;
-  
+
   return assert_done(setter, start, end);
 }
 
@@ -307,6 +307,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	INT, BOOL, IP, TYPE, PREFIX, RD, PAIR, QUAD, EC, LC,
 	SET, STRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
+	FOR, IN, DO,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
 	FROM, GW, NET, MASK, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS,
 	PREFERENCE,
@@ -342,6 +343,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <v> set_atom switch_atom fipa
 %type <px> fprefix
 %type <t> get_cf_position
+%type <s> for_var
 
 CF_GRAMMAR
 
@@ -899,6 +901,11 @@ var:
      $$ = f_new_inst(FI_VAR_INIT, $3, sym);
    }
 
+for_var:
+   type symbol { $$ = cf_define_symbol($2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope)); }
+ | CF_SYM_KNOWN { $$ = $1; cf_assert_symbol($1, SYM_VARIABLE); }
+ ;
+
 cmd:
    '{' cmds_scoped '}' {
      $$ = $2;
@@ -908,6 +915,18 @@ cmd:
    }
  | IF term THEN cmd ELSE cmd {
      $$ = f_new_inst(FI_CONDITION, $2, $4, $6);
+   }
+ | FOR {
+     /* Reserve space for walk data on stack */
+     cf_push_scope(NULL);
+     conf_this_scope->slots += 2;
+   } for_var IN
+   /* Parse term in the parent scope */
+   { conf_this_scope->active = 0; } term { conf_this_scope->active = 1; }
+   DO cmd {
+     cf_pop_scope();
+     $$ = f_new_inst(FI_FOR_INIT, $6, $3);
+     $$->next = f_new_inst(FI_FOR_NEXT, $3, $9);
    }
  | CF_SYM_KNOWN '=' term ';' {
      switch ($1->class) {
