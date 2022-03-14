@@ -714,9 +714,6 @@
       case EAF_TYPE_LC_SET:
 	RESULT_(T_LCLIST, ad, e->u.ptr);
 	break;
-      case EAF_TYPE_UNDEF:
-	RESULT_VOID;
-	break;
       default:
 	bug("Unknown dynamic attribute type");
       }
@@ -794,23 +791,8 @@
     ACCESS_RTE;
     ACCESS_EATTRS;
 
-    {
-      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
-
-      l->next = NULL;
-      l->flags = EALF_SORTED;
-      l->count = 1;
-      l->attrs[0].id = da.ea_code;
-      l->attrs[0].flags = 0;
-      l->attrs[0].type = EAF_TYPE_UNDEF;
-      l->attrs[0].originated = 1;
-      l->attrs[0].fresh = 1;
-      l->attrs[0].u.data = 0;
-
-      f_rta_cow(fs);
-      l->next = *fs->eattrs;
-      *fs->eattrs = l;
-    }
+    f_rta_cow(fs);
+    ea_unset_attr(fs->eattrs, fs->pool, 1, da.ea_code);
   }
 
   INST(FI_LENGTH, 1, 1) {	/* Get length of */

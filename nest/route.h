@@ -505,6 +505,7 @@ typedef struct eattr {
   byte type:5;				/* Attribute type */
   byte originated:1;			/* The attribute has originated locally */
   byte fresh:1;				/* An uncached attribute (e.g. modified in export filter) */
+  byte undef:1;				/* Explicitly undefined */
   union {
     uintptr_t data;
     const struct adata *ptr;		/* Attribute data elsewhere */
@@ -540,7 +541,6 @@ const char *ea_custom_name(uint ea);
 #define EAF_TYPE_PTR 0x0d		/* Pointer to an object */
 #define EAF_TYPE_EC_SET 0x0e		/* Set of pairs of u32's - ext. community list */
 #define EAF_TYPE_LC_SET 0x12		/* Set of triplets of u32's - large community list */
-#define EAF_TYPE_UNDEF 0x1f		/* `force undefined' entry */
 #define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */
 #define EAF_VAR_LENGTH 0x02		/* Attribute length is variable (part of type spec) */
 
@@ -610,27 +610,50 @@ void ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const cha
     ea = NULL; \
 } while(0) \
 
+struct ea_one_attr_list {
+  ea_list l;
+  eattr a;
+};
+
 static inline eattr *
 ea_set_attr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, uintptr_t val)
 {
-  ea_list *a = lp_alloc(pool, sizeof(ea_list) + sizeof(eattr));
-  eattr *e = &a->attrs[0];
+  struct ea_one_attr_list *ea = lp_alloc(pool, sizeof(*ea));
+  *ea = (struct ea_one_attr_list) {
+    .l.flags = EALF_SORTED,
+    .l.count = 1,
+    .l.next = *to,
 
-  a->flags = EALF_SORTED;
-  a->count = 1;
-  a->next = *to;
-  *to = a;
-
-  e->id = id;
-  e->type = type;
-  e->flags = flags;
+    .a.id = id,
+    .a.type = type,
+    .a.flags = flags,
+  };
 
   if (type & EAF_EMBEDDED)
-    e->u.data = (u32) val;
+    ea->a.u.data = val;
   else
-    e->u.ptr = (struct adata *) val;
+    ea->a.u.ptr = (struct adata *) val;
 
-  return e;
+  *to = &ea->l;
+
+  return &ea->a;
+}
+
+static inline void
+ea_unset_attr(ea_list **to, struct linpool *pool, _Bool local, uint code)
+{
+  struct ea_one_attr_list *ea = lp_alloc(pool, sizeof(*ea));
+  *ea = (struct ea_one_attr_list) {
+    .l.flags = EALF_SORTED,
+    .l.count = 1,
+    .l.next = *to,
+    .a.id = code,
+    .a.fresh = local,
+    .a.originated = local,
+    .a.undef = 1,
+  };
+
+  *to = &ea->l;
 }
 
 static inline void

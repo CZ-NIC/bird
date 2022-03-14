@@ -106,7 +106,7 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
   ({ REPORT(msg, ## args); s->err_withdraw = 1; return; })
 
 #define UNSET(a) \
-  ({ a->type = EAF_TYPE_UNDEF; return; })
+  ({ a->undef = 1; return; })
 
 #define REJECT(msg, args...) \
   ({ log(L_ERR "%s: " msg, s->proto->p.name, ## args); s->err_reject = 1; return; })
@@ -1161,7 +1161,7 @@ bgp_export_attr(struct bgp_export_state *s, eattr *a, ea_list *to)
     CALL(desc->export, s, a);
 
     /* Attribute might become undefined in hook */
-    if ((a->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
+    if (a->undef)
       return;
   }
   else

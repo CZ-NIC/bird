@@ -448,8 +448,7 @@ ea_find(ea_list *e, unsigned id)
 {
   eattr *a = ea__find(e, id & EA_CODE_MASK);
 
-  if (a && (a->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF &&
-      !(id & EA_ALLOW_UNDEF))
+  if (a && a->undef && !(id & EA_ALLOW_UNDEF))
     return NULL;
   return a;
 }
@@ -516,7 +515,7 @@ ea_walk(struct ea_walk_state *s, uint id, uint max)
 
 	BIT32_SET(s->visited, n);
 
-	if ((a->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
+	if (a->undef)
 	  continue;
 
 	s->eattrs = e;
@@ -616,7 +615,7 @@ ea_do_prune(ea_list *e)
 
       /* Now s0 is the most recent version, s[-1] the oldest one */
       /* Drop undefs */
-      if ((s0->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
+      if (s0->undef)
 	continue;
 
       /* Copy the newest version to destination */
@@ -742,6 +741,7 @@ ea_same(ea_list *x, ea_list *y)
 	  a->type != b->type ||
 	  a->originated != b->originated ||
 	  a->fresh != b->fresh ||
+	  a->undef != b->undef ||
 	  ((a->type & EAF_EMBEDDED) ? a->u.data != b->u.data : !adata_same(a->u.ptr, b->u.ptr)))
 	return 0;
     }
@@ -944,6 +944,10 @@ ea_show(struct cli *c, const eattr *e)
     {
       *pos++ = ':';
       *pos++ = ' ';
+
+      if (e->undef)
+	bsprintf(pos, "undefined");
+      else
       switch (e->type & EAF_TYPE_MASK)
 	{
 	case EAF_TYPE_INT:
@@ -973,7 +977,6 @@ ea_show(struct cli *c, const eattr *e)
 	case EAF_TYPE_LC_SET:
 	  ea_show_lc_set(c, ad, pos, buf, end);
 	  return;
-	case EAF_TYPE_UNDEF:
 	default:
 	  bsprintf(pos, "<type %02x>", e->type);
 	}
