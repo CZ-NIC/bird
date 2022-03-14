@@ -669,6 +669,35 @@ as_path_filter(struct linpool *pool, const struct adata *path, const struct f_va
   return res;
 }
 
+int
+as_path_walk(const struct adata *path, uint *pos, uint *val)
+{
+  if (!path)
+    return 0;
+
+  const u8 *p = path->data;
+  const u8 *q = p + path->length;
+  uint n, x = *pos;
+
+  while (p < q)
+  {
+    n = p[1];
+    p += 2;
+
+    if (x < n)
+    {
+      *val = get_as(p + x * BS);
+      *pos += 1;
+      return 1;
+    }
+
+    p += n * BS;
+    x -= n;
+  }
+
+  return 0;
+}
+
 
 struct pm_pos
 {

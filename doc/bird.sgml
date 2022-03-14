@@ -1668,13 +1668,22 @@ prefix and an ASN as arguments.
 <sect>Control structures
 <label id="control-structures">
 
-<p>Filters support two control structures: conditions and case switches.
+<p>Filters support several control structures: conditions, for loops and case
+switches.
 
 <p>Syntax of a condition is: <cf>if <M>boolean expression</M> then <m/commandT/;
 else <m/commandF/;</cf> and you can use <cf>{ <m/command1/; <m/command2/;
 <M>...</M> }</cf> instead of either command. The <cf>else</cf> clause may be
 omitted. If the <cf><m>boolean expression</m></cf> is true, <m/commandT/ is
 executed, otherwise <m/commandF/ is executed.
+
+<p>For loops allow to iterate over elements in compound data like BGP paths or
+community lists. The syntax is: <cf>for [ <m/type/ ] <m/variable/ in <m/expr/
+do <m/command/;</cf> and you can also use compound command like in conditions.
+The expression is evaluated to a compound data, then for each element from such
+data the command is executed with the item assigned to the variable. A variable
+may be an existing one (when just name is used) or a locally defined (when type
+and name is used). In both cases, it must have the same type as elements.
 
 <p>The <cf>case</cf> is similar to case from Pascal. Syntax is <cf>case
 <m/expr/ { else: | <m/num_or_prefix [ .. num_or_prefix]/: <m/statement/ ; [
@@ -1688,15 +1697,20 @@ neither of the <cf/:/ clauses, the statements after <cf/else:/ are executed.
 <p>Here is example that uses <cf/if/ and <cf/case/ structures:
 
 <code>
+if 1234 = i then printn "."; else {
+	print "not 1234";
+	print "You need {} around multiple commands";
+}
+
+for int asn in bgp_path do {
+	printn "ASN: ", asn;
+	if asn < 65536 then print " (2B)"; else print " (4B)";
+}
+
 case arg1 {
 	2: print "two"; print "I can do more commands without {}";
 	3 .. 5: print "three to five";
 	else: print "something else";
-}
-
-if 1234 = i then printn "."; else {
-  print "not 1234";
-  print "You need {} around multiple commands";
 }
 </code>
 

@@ -87,6 +87,11 @@
  *	m4_dnl	  RESULT_VOID;				return undef
  *	m4_dnl	}
  *
+ *	Note that runtime arguments m4_dnl (ARG*, VARARG) must be defined before
+ *	parse-time arguments m4_dnl (LINE, SYMBOL, ...). During linearization,
+ *	first ones move position in f_line by linearizing arguments first, while
+ *	second ones store data to the current position.
+ *
  *	Also note that the { ... } blocks are not respected by M4 at all.
  *	If you get weird unmatched-brace-pair errors, check what it generated and why.
  *	What is really considered as one instruction is not the { ... } block
@@ -541,6 +546,94 @@
 
     RESULT_TYPE(val.type);
     RESULT_VAL(val);
+  }
+
+  INST(FI_FOR_INIT, 1, 0) {
+    NEVER_CONSTANT;
+    ARG_ANY(1);
+    SYMBOL;
+
+    FID_NEW_BODY()
+    ASSERT((sym->class & ~0xff) == SYM_VARIABLE);
+
+    /* Static type check */
+    if (f1->type)
+    {
+      enum f_type t_var = (sym->class & 0xff);
+      enum f_type t_arg = f_type_element_type(f1->type);
+      if (!t_arg)
+        cf_error("Value of expression in FOR must be iterable, got %s",
+		 f_type_name(f1->type));
+      if (t_var != t_arg)
+	cf_error("Loop variable '%s' in FOR must be %s, is %s",
+		 sym->name, f_type_name(t_arg), f_type_name(t_var));
+    }
+
+    FID_INTERPRET_BODY()
+
+    /* Dynamic type check */
+    if ((sym->class & 0xff) != f_type_element_type(v1.type))
+      runtime("Mismatched argument and variable type");
+
+    /* Setup the index */
+    v2 = (struct f_val) { .type = T_INT, .val.i = 0 };
+
+    /* Keep v1 and v2 on the stack */
+    fstk->vcnt += 2;
+  }
+
+  INST(FI_FOR_NEXT, 2, 0) {
+    NEVER_CONSTANT;
+    SYMBOL;
+
+    /* Type checks are done in FI_FOR_INIT */
+
+    /* Loop variable */
+    struct f_val *var = &fstk->vstk[curline.vbase + sym->offset];
+    int step = 0;
+
+    switch(v1.type)
+    {
+    case T_PATH:
+      var->type = T_INT;
+      step = as_path_walk(v1.val.ad, &v2.val.i, &var->val.i);
+      break;
+
+    case T_CLIST:
+      var->type = T_PAIR;
+      step = int_set_walk(v1.val.ad, &v2.val.i, &var->val.i);
+      break;
+
+    case T_ECLIST:
+      var->type = T_EC;
+      step = ec_set_walk(v1.val.ad, &v2.val.i, &var->val.ec);
+      break;
+
+    case T_LCLIST:
+      var->type = T_LC;
+      step = lc_set_walk(v1.val.ad, &v2.val.i, &var->val.lc);
+      break;
+
+    default:
+      runtime( "Clist or lclist expected" );
+    }
+
+    if (step)
+    {
+      /* Keep v1 and v2 on the stack */
+      fstk->vcnt += 2;
+
+      /* Repeat this instruction */
+      curline.pos--;
+
+      /* Execute the loop body */
+      LINE(1, 0);
+
+      /* Space for loop variable, may be unused */
+      fstk->vcnt += 1;
+    }
+    else
+      var->type = T_VOID;
   }
 
   INST(FI_CONDITION, 1, 0) {
