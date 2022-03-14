@@ -394,7 +394,7 @@ slab_memsize(resource *r)
   WALK_LIST(h, s->empty_heads)
     heads++;
 
-  size_t eff = items * s->obj_size;
+  size_t eff = items * s->data_size;
 
   return (struct resmem) {
     .effective = eff,
