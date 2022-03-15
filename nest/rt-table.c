@@ -2094,12 +2094,7 @@ static struct resclass rt_class = {
 rtable *
 rt_setup(pool *pp, struct rtable_config *cf)
 {
-  int ns = strlen("Routing table ") + strlen(cf->name) + 1;
-  void *nb = mb_alloc(pp, ns);
-  ASSERT_DIE(ns - 1 == bsnprintf(nb, ns, "Routing table %s", cf->name));
-
-  pool *p = rp_new(pp, nb);
-  mb_move(nb, p);
+  pool *p = rp_newf(pp, "Routing table %s", cf->name);
 
   rtable *t = ralloc(p, &rt_class);
   t->rp = p;

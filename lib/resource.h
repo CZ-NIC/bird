@@ -44,6 +44,7 @@ typedef struct pool pool;
 
 void resource_init(void);
 pool *rp_new(pool *, const char *);	/* Create new pool */
+pool *rp_newf(pool *, const char *, ...);	/* Create a new pool with a formatted string as its name */
 void rfree(void *);			/* Free single resource */
 void rdump(void *);			/* Dump to debug output */
 struct resmem rmemsize(void *res);		/* Return size of memory used by the resource */
@@ -59,7 +60,6 @@ extern pool root_pool;
 void *mb_alloc(pool *, unsigned size);
 void *mb_allocz(pool *, unsigned size);
 void *mb_realloc(void *m, unsigned size);
-void mb_move(void *, pool *);
 void mb_free(void *);
 
 /* Memory pools with linear allocation */
