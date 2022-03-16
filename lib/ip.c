@@ -85,25 +85,29 @@ ip4_classify(ip4_addr ad)
   u32 a = _I(ad);
   u32 b = a >> 24U;
 
-  if (b && b <= 0xdf)
+  if (b < 0xe0)
   {
-    if (b == 0x7f)
+    if (b == 0x00)				/* 0.0.0.0/8        This network */
+      return IADDR_INVALID;
+
+    if (b == 0x7f)				/* 127.0.0.0/8      Loopback address */
       return IADDR_HOST | SCOPE_HOST;
-    else if ((b == 0x0a) ||
-	     ((a & 0xffff0000) == 0xc0a80000) ||
-	     ((a & 0xfff00000) == 0xac100000))
+
+    if ((b == 0x0a) ||				/* 10.0.0.0/8       Private range */
+	((a & 0xffff0000) == 0xc0a80000) ||	/* 192.168.0.0/16   Private range */
+	((a & 0xfff00000) == 0xac100000))	/* 172.16.0.0/12    Private range */
       return IADDR_HOST | SCOPE_SITE;
-    else
-      return IADDR_HOST | SCOPE_UNIVERSE;
+
+    return IADDR_HOST | SCOPE_UNIVERSE;
   }
 
-  if (b >= 0xe0 && b <= 0xef)
+  if (b < 0xf0)					/* 224.0.0.0/4      Multicast address */
     return IADDR_MULTICAST | SCOPE_UNIVERSE;
 
-  if (a == 0xffffffff)
+  if (a == 0xffffffff)				/* 255.255.255.255  Broadcast address */
     return IADDR_BROADCAST | SCOPE_LINK;
 
-  return IADDR_INVALID;
+  return IADDR_HOST | SCOPE_SITE;		/* 240.0.0.0/4      Reserved / private */
 }
 
 int
