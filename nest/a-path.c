@@ -591,7 +591,7 @@ as_path_match_set(const struct adata *path, const struct f_tree *set)
       p += 2;
       for (i=0; i<n; i++)
 	{
-	  struct f_val v = {T_INT, .val.i = get_as(p)};
+	  struct f_val v = { .type = T_INT, .val.i = get_as(p)};
 	  if (find_tree(set, &v))
 	    return 1;
 	  p += BS;
@@ -631,7 +631,7 @@ as_path_filter(struct linpool *pool, const struct adata *path, const struct f_tr
 
 	  if (set)
 	    {
-	      struct f_val v = {T_INT, .val.i = as};
+	      struct f_val v = { .type = T_INT, .val.i = as};
 	      match = !!find_tree(set, &v);
 	    }
 	  else
