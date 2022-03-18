@@ -303,3 +303,9 @@ struct protocol proto_pipe = {
   .get_status = 	pipe_get_status,
   .show_proto_info = 	pipe_show_proto_info
 };
+
+void
+pipe_build(void)
+{
+  proto_build(&proto_pipe);
+}

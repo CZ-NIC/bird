@@ -949,3 +949,9 @@ struct protocol proto_rpki = {
   .reconfigure = 	rpki_reconfigure,
   .get_status = 	rpki_get_status,
 };
+
+void
+rpki_build(void)
+{
+  proto_build(&proto_rpki);
+}

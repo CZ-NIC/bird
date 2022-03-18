@@ -2592,3 +2592,8 @@ struct protocol proto_bgp = {
   .get_route_info = 	bgp_get_route_info,
   .show_proto_info = 	bgp_show_proto_info
 };
+
+void bgp_build(void)
+{
+  proto_build(&proto_bgp);
+}

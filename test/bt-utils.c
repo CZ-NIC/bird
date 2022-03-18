@@ -68,8 +68,6 @@ bt_bird_init(void)
   config_init();
 
   protos_build();
-  proto_build(&proto_unix_kernel);
-  proto_build(&proto_unix_iface);
 }
 
 void bt_bird_cleanup(void)

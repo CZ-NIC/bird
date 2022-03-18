@@ -1342,3 +1342,9 @@ struct protocol proto_rip = {
   .get_route_info =	rip_get_route_info,
   .get_attr =		rip_get_attr
 };
+
+void
+rip_build(void)
+{
+  proto_build(&proto_rip);
+}

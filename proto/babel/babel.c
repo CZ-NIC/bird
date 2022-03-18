@@ -2494,3 +2494,9 @@ struct protocol proto_babel = {
   .get_route_info =	babel_get_route_info,
   .get_attr =		babel_get_attr
 };
+
+void
+babel_build(void)
+{
+  proto_build(&proto_babel);
+}

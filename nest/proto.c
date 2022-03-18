@@ -23,9 +23,9 @@
 #include "filter/f-inst.h"
 
 pool *proto_pool;
-list  proto_list;
+list STATIC_LIST_INIT(proto_list);
 
-static list protocol_list;
+static list STATIC_LIST_INIT(protocol_list);
 struct protocol *class_to_protocol[PROTOCOL__MAX];
 
 #define CD(c, msg, args...) ({ if (c->debug & D_STATES) log(L_TRACE "%s.%s: " msg, c->proto->name, c->name ?: "?", ## args); })
@@ -1651,6 +1651,8 @@ proto_build(struct protocol *p)
 /* FIXME: convert this call to some protocol hook */
 extern void bfd_init_all(void);
 
+void protos_build_gen(void);
+
 /**
  * protos_build - build a protocol list
  *
@@ -1663,44 +1665,7 @@ extern void bfd_init_all(void);
 void
 protos_build(void)
 {
-  init_list(&proto_list);
-  init_list(&protocol_list);
-
-  proto_build(&proto_device);
-#ifdef CONFIG_RADV
-  proto_build(&proto_radv);
-#endif
-#ifdef CONFIG_RIP
-  proto_build(&proto_rip);
-#endif
-#ifdef CONFIG_STATIC
-  proto_build(&proto_static);
-#endif
-#ifdef CONFIG_MRT
-  proto_build(&proto_mrt);
-#endif
-#ifdef CONFIG_OSPF
-  proto_build(&proto_ospf);
-#endif
-#ifdef CONFIG_PIPE
-  proto_build(&proto_pipe);
-#endif
-#ifdef CONFIG_BGP
-  proto_build(&proto_bgp);
-#endif
-#ifdef CONFIG_BFD
-  proto_build(&proto_bfd);
-  bfd_init_all();
-#endif
-#ifdef CONFIG_BABEL
-  proto_build(&proto_babel);
-#endif
-#ifdef CONFIG_RPKI
-  proto_build(&proto_rpki);
-#endif
-#ifdef CONFIG_PERF
-  proto_build(&proto_perf);
-#endif
+  protos_build_gen();
 
   proto_pool = rp_new(&root_pool, "Protocols");
   proto_shutdown_timer = tm_new(proto_pool);

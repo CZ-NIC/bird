@@ -1534,3 +1534,9 @@ struct protocol proto_ospf = {
   .get_attr =		ospf_get_attr,
   .get_route_info =	ospf_get_route_info
 };
+
+void
+ospf_build(void)
+{
+  proto_build(&proto_ospf);
+}

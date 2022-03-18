@@ -793,3 +793,9 @@ struct protocol proto_static = {
   .copy_config =	static_copy_config,
   .get_route_info =	static_get_route_info,
 };
+
+void
+static_build(void)
+{
+  proto_build(&proto_static);
+}

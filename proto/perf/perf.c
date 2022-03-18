@@ -315,3 +315,9 @@ struct protocol proto_perf = {
   .reconfigure = 	perf_reconfigure,
   .copy_config =	perf_copy_config,
 };
+
+void
+perf_build(void)
+{
+  proto_build(&proto_perf);
+}

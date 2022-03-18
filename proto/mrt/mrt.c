@@ -916,3 +916,9 @@ struct protocol proto_mrt = {
   .reconfigure =	mrt_reconfigure,
   .copy_config =	mrt_copy_config,
 };
+
+void
+mrt_build(void)
+{
+  proto_build(&proto_mrt);
+}

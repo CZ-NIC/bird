@@ -195,3 +195,9 @@ struct protocol proto_device = {
   .reconfigure =	dev_reconfigure,
   .copy_config =	dev_copy_config
 };
+
+void
+dev_build(void)
+{
+  proto_build(&proto_device);
+}

@@ -243,6 +243,13 @@ struct protocol proto_unix_iface = {
   .copy_config =	kif_copy_config
 };
 
+void
+kif_build(void)
+{
+  proto_build(&proto_unix_iface);
+}
+
+
 /*
  *	Tracing of routes
  */
@@ -1177,3 +1184,9 @@ struct protocol proto_unix_kernel = {
   .dump =		krt_dump,
 #endif
 };
+
+void
+krt_build(void)
+{
+  proto_build(&proto_unix_kernel);
+}

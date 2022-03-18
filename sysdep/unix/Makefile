@@ -2,6 +2,8 @@ src := alloc.c io.c krt.c log.c main.c random.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
+$(call proto-build,kif_build)
+$(call proto-build,krt_build)
 $(conf-y-targets): $(s)krt.Y
 
 src := $(filter-out main.c, $(src))
