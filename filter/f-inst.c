@@ -1295,37 +1295,7 @@
       runtime("Can't filter non-[e|l]clist");
   }
 
-  INST(FI_ROA_CHECK_IMPLICIT, 0, 1) {	/* ROA Check */
-    NEVER_CONSTANT;
-    RTC(1);
-    struct rtable *table = rtc->table;
-    ACCESS_RTE;
-    ACCESS_EATTRS;
-    const net_addr *net = (*fs->rte)->net->n.addr;
-
-    /* We ignore temporary attributes, probably not a problem here */
-    /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */
-    eattr *e = ea_find(*fs->eattrs, EA_CODE(PROTOCOL_BGP, 0x02));
-
-    if (!e || ((e->type & EAF_TYPE_MASK) != EAF_TYPE_AS_PATH))
-      runtime("Missing AS_PATH attribute");
-
-    u32 as = 0;
-    as_path_get_last(e->u.ptr, &as);
-
-    if (!table)
-      runtime("Missing ROA table");
-
-    if (table->addr_type != NET_ROA4 && table->addr_type != NET_ROA6)
-      runtime("Table type must be either ROA4 or ROA6");
-
-    if (table->addr_type != (net->type == NET_IP4 ? NET_ROA4 : NET_ROA6))
-      RESULT(T_ENUM_ROA, i, ROA_UNKNOWN); /* Prefix and table type mismatch */
-    else
-      RESULT(T_ENUM_ROA, i, [[ net_roa_check(table, net, as) ]]);
-  }
-
-  INST(FI_ROA_CHECK_EXPLICIT, 2, 1) {	/* ROA Check */
+  INST(FI_ROA_CHECK, 2, 1) {	/* ROA Check */
     NEVER_CONSTANT;
     ARG(1, T_NET);
     ARG(2, T_INT);

@@ -409,14 +409,8 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
   {
     switch (fi->fi_code)
     {
-    case FI_ROA_CHECK_IMPLICIT:
-      tab = fi->i_FI_ROA_CHECK_IMPLICIT.rtc->table;
-      if (valid) channel_roa_subscribe(c, tab, dir);
-      found = 1;
-      break;
-
-    case FI_ROA_CHECK_EXPLICIT:
-      tab = fi->i_FI_ROA_CHECK_EXPLICIT.rtc->table;
+    case FI_ROA_CHECK:
+      tab = fi->i_FI_ROA_CHECK.rtc->table;
       if (valid) channel_roa_subscribe(c, tab, dir);
       found = 1;
       break;

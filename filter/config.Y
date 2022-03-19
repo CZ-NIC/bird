@@ -185,6 +185,21 @@ f_generate_empty(struct f_dynamic_attr dyn)
   return f_new_inst(FI_EA_SET, f_new_inst(FI_CONSTANT, empty), dyn);
 }
 
+#define BA_AS_PATH 0x02
+
+static inline struct f_inst *
+f_implicit_roa_check(struct rtable_config *tab)
+{
+  struct f_dynamic_attr fda = f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
+
+  struct f_static_attr fsa = f_new_static_attr(T_NET, SA_NET, 1);
+
+  return f_new_inst(FI_ROA_CHECK,
+	    f_new_inst(FI_RTA_GET, fsa),
+	    f_new_inst(FI_AS_PATH_LAST, f_new_inst(FI_EA_GET, fda)),
+	    tab);
+}
+
 /*
  * Remove all new lines and doubled whitespaces
  * and convert all tabulators to spaces
@@ -822,8 +837,8 @@ term:
  | DELETE '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_DEL, $3, $5); }
  | FILTER '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_FILTER, $3, $5); }
 
- | ROA_CHECK '(' rtable ')' { $$ = f_new_inst(FI_ROA_CHECK_IMPLICIT, $3); }
- | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ROA_CHECK_EXPLICIT, $5, $7, $3); }
+ | ROA_CHECK '(' rtable ')' { $$ = f_implicit_roa_check($3); }
+ | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ROA_CHECK, $5, $7, $3); }
 
  | FORMAT '(' term ')' {  $$ = f_new_inst(FI_FORMAT, $3); }
 
