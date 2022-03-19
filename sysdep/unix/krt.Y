@@ -122,9 +122,6 @@ kif_iface:
   kif_iface_start iface_patt_list_nopx kif_iface_opt_list;
 
 
-dynamic_attr: KRT_SOURCE { $$ = f_new_dynamic_attr(T_INT, EA_KRT_SOURCE); } ;
-dynamic_attr: KRT_METRIC { $$ = f_new_dynamic_attr(T_INT, EA_KRT_METRIC); } ;
-
 CF_CODE
 
 CF_END

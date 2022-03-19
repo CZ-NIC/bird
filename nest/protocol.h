@@ -37,37 +37,19 @@ struct symbol;
  *	Routing Protocol
  */
 
-enum protocol_class {
-  PROTOCOL_NONE,
-  PROTOCOL_BABEL,
-  PROTOCOL_BFD,
-  PROTOCOL_BGP,
-  PROTOCOL_DEVICE,
-  PROTOCOL_DIRECT,
-  PROTOCOL_KERNEL,
-  PROTOCOL_OSPF,
-  PROTOCOL_MRT,
-  PROTOCOL_PERF,
-  PROTOCOL_PIPE,
-  PROTOCOL_RADV,
-  PROTOCOL_RIP,
-  PROTOCOL_RPKI,
-  PROTOCOL_STATIC,
-  PROTOCOL__MAX
-};
-
-extern struct protocol *class_to_protocol[PROTOCOL__MAX];
 
 struct protocol {
   node n;
   char *name;
   char *template;			/* Template for automatic generation of names */
   int name_counter;			/* Counter for automatic name generation */
-  enum protocol_class class;		/* Machine readable protocol class */
   uint preference;			/* Default protocol preference */
   uint channel_mask;			/* Mask of accepted channel types (NB_*) */
   uint proto_size;			/* Size of protocol data structure */
   uint config_size;			/* Size of protocol config data structure */
+
+  uint eattr_begin;			/* First ID of registered eattrs */
+  uint eattr_end;			/* End of eattr id zone */
 
   void (*preconfig)(struct protocol *, struct config *);	/* Just before configuring */
   void (*postconfig)(struct proto_config *);			/* After configuring each instance */
@@ -79,7 +61,7 @@ struct protocol {
   void (*cleanup)(struct proto *);		/* Called after shutdown when protocol became hungry/down */
   void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
   void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */
-  int (*get_attr)(const struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
+//  int (*get_attr)(const struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
   void (*show_proto_info)(struct proto *);	/* Show protocol info (for `show protocols all' command) */
   void (*copy_config)(struct proto_config *, struct proto_config *);	/* Copy config from given protocol instance */
 };

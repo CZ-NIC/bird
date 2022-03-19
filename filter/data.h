@@ -21,13 +21,6 @@ struct f_val {
 
 #define fputip(a)   ({ ip_addr *ax = falloc(sizeof(*ax)); *ax = (a); ax; })
 
-/* Dynamic attribute definition (eattrs) */
-struct f_dynamic_attr {
-  btype type;		/* EA type (EAF_*) */
-  u8 bit;		/* For bitfield accessors */
-  uint ea_code;		/* EA code */
-};
-
 enum f_sa_code {
   SA_FROM = 1,
   SA_GW,
@@ -53,7 +46,6 @@ struct f_static_attr {
 /* Filter l-value type */
 enum f_lval_type {
   F_LVAL_VARIABLE,
-  F_LVAL_PREFERENCE,
   F_LVAL_SA,
   F_LVAL_EA,
 };
@@ -63,7 +55,7 @@ struct f_lval {
   enum f_lval_type type;
   union {
     struct symbol *sym;
-    struct f_dynamic_attr da;
+    const struct ea_class *da;
     struct f_static_attr sa;
   };
 };

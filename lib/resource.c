@@ -292,6 +292,25 @@ resource_init(void)
   tmp_init(&root_pool);
 }
 
+_Thread_local struct tmp_resources tmp_res;
+
+void
+tmp_init(pool *p)
+{
+  tmp_res.lp = lp_new_default(p);
+  tmp_res.parent = p;
+  tmp_res.pool = rp_new(p, "TMP");
+}
+
+void
+tmp_flush(void)
+{
+  lp_flush(tmp_linpool);
+  rfree(tmp_res.pool);
+  tmp_res.pool = rp_new(tmp_res.parent, "TMP");
+}
+
+
 /**
  * DOC: Memory blocks
  *

@@ -71,8 +71,9 @@ CF_DECLS
   } xp;
   enum filter_return fret;
   enum ec_subtype ecs;
-  struct f_dynamic_attr fda;
+  struct ea_class *ea_class;
   struct f_static_attr fsa;
+  struct f_attr_bit fab;
   struct f_lval flv;
   struct f_line *fl;
   const struct filter *f;

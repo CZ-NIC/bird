@@ -538,17 +538,13 @@ rte_resolvable(rte *rt)
 
 /* attrs.c */
 
-static inline eattr *
-bgp_find_attr(ea_list *attrs, uint code)
-{
-  return ea_find(attrs, EA_CODE(PROTOCOL_BGP, code));
-}
+eattr *
+bgp_find_attr(ea_list *attrs, uint code);
 
 void bgp_set_attr_u32(ea_list **to, uint code, uint flags, u32 val);
 void bgp_set_attr_ptr(ea_list **to, uint code, uint flags, const struct adata *ad);
 void bgp_set_attr_data(ea_list **to, uint code, uint flags, void *data, uint len);
-
-#define bgp_unset_attr(to, code) ea_unset_attr(to, 0, code)
+void bgp_unset_attr(ea_list **to, uint code);
 
 int bgp_encode_mp_reach_mrt(struct bgp_write_state *s, eattr *a, byte *buf, uint size);
 
@@ -573,7 +569,6 @@ struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
 u32 bgp_rte_igp_metric(struct rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old);
 int bgp_preexport(struct proto *, struct rte *);
-int bgp_get_attr(const struct eattr *e, byte *buf, int buflen);
 void bgp_get_route_info(struct rte *, byte *buf);
 int bgp_total_aigp_metric_(rte *e, u64 *metric, const struct adata **ad);
 
@@ -589,6 +584,8 @@ bgp_total_aigp_metric(rte *r)
   bgp_total_aigp_metric_(r, &metric, &ad);
   return metric;
 }
+
+void bgp_register_attrs(void);
 
 
 /* packets.c */
@@ -626,26 +623,31 @@ void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 
 #define BAF_DECODE_FLAGS	0x0100	/* Private flag - attribute flags are handled by the decode hook */
 
-#define BA_ORIGIN		0x01	/* RFC 4271 */		/* WM */
-#define BA_AS_PATH		0x02				/* WM */
-#define BA_NEXT_HOP		0x03				/* WM */
-#define BA_MULTI_EXIT_DISC	0x04				/* ON */
-#define BA_LOCAL_PREF		0x05				/* WD */
-#define BA_ATOMIC_AGGR		0x06				/* WD */
-#define BA_AGGREGATOR		0x07				/* OT */
-#define BA_COMMUNITY		0x08	/* RFC 1997 */		/* OT */
-#define BA_ORIGINATOR_ID	0x09	/* RFC 4456 */		/* ON */
-#define BA_CLUSTER_LIST		0x0a	/* RFC 4456 */		/* ON */
-#define BA_MP_REACH_NLRI	0x0e	/* RFC 4760 */
-#define BA_MP_UNREACH_NLRI	0x0f	/* RFC 4760 */
-#define BA_EXT_COMMUNITY	0x10	/* RFC 4360 */
-#define BA_AS4_PATH             0x11	/* RFC 6793 */
-#define BA_AS4_AGGREGATOR       0x12	/* RFC 6793 */
-#define BA_AIGP			0x1a	/* RFC 7311 */
-#define BA_LARGE_COMMUNITY	0x20	/* RFC 8092 */
+enum bgp_attr_id {
+  BA_ORIGIN		= 0x01,	/* RFC 4271 */		/* WM */
+  BA_AS_PATH		= 0x02,				/* WM */
+  BA_NEXT_HOP		= 0x03,				/* WM */
+  BA_MULTI_EXIT_DISC	= 0x04,				/* ON */
+  BA_LOCAL_PREF		= 0x05,				/* WD */
+  BA_ATOMIC_AGGR	= 0x06,				/* WD */
+  BA_AGGREGATOR		= 0x07,				/* OT */
+  BA_COMMUNITY		= 0x08,	/* RFC 1997 */		/* OT */
+  BA_ORIGINATOR_ID	= 0x09,	/* RFC 4456 */		/* ON */
+  BA_CLUSTER_LIST	= 0x0a,	/* RFC 4456 */		/* ON */
+  BA_MP_REACH_NLRI	= 0x0e,	/* RFC 4760 */
+  BA_MP_UNREACH_NLRI	= 0x0f,	/* RFC 4760 */
+  BA_EXT_COMMUNITY	= 0x10,	/* RFC 4360 */
+  BA_AS4_PATH		= 0x11,	/* RFC 6793 */
+  BA_AS4_AGGREGATOR	= 0x12,	/* RFC 6793 */
+  BA_AIGP		= 0x1a,	/* RFC 7311 */
+  BA_LARGE_COMMUNITY	= 0x20,	/* RFC 8092 */
 
 /* Bird's private internal BGP attributes */
-#define BA_MPLS_LABEL_STACK	0xfe	/* MPLS label stack transfer attribute */
+  BA_MPLS_LABEL_STACK	= 0x100, /* MPLS label stack transfer attribute */
+
+/* Maximum */
+  BGP_ATTR_MAX,
+};
 
 /* BGP connection states */
 

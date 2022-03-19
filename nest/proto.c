@@ -26,7 +26,6 @@ pool *proto_pool;
 list STATIC_LIST_INIT(proto_list);
 
 static list STATIC_LIST_INIT(protocol_list);
-struct protocol *class_to_protocol[PROTOCOL__MAX];
 
 #define CD(c, msg, args...) ({ if (c->debug & D_STATES) log(L_TRACE "%s.%s: " msg, c->proto->name, c->name ?: "?", ## args); })
 #define PD(p, msg, args...) ({ if (p->debug & D_STATES) log(L_TRACE "%s: " msg, p->name, ## args); })
@@ -1637,9 +1636,6 @@ void
 proto_build(struct protocol *p)
 {
   add_tail(&protocol_list, &p->n);
-  ASSERT(p->class);
-  ASSERT(!class_to_protocol[p->class]);
-  class_to_protocol[p->class] = p;
 }
 
 /* FIXME: convert this call to some protocol hook */

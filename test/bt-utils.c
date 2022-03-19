@@ -62,8 +62,8 @@ bt_bird_init(void)
 
   olock_init();
   timer_init();
-  io_init();
   rt_init();
+  io_init();
   if_init();
   config_init();
 
@@ -72,9 +72,6 @@ bt_bird_init(void)
 
 void bt_bird_cleanup(void)
 {
-  for (int i = 0; i < PROTOCOL__MAX; i++)
-    class_to_protocol[i] = NULL;
-
   config = new_config = NULL;
 }
 

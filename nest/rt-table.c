@@ -2536,14 +2536,14 @@ net_flow_has_dst_prefix(const net_addr *n)
 static inline int
 rta_as_path_is_empty(rta *a)
 {
-  eattr *e = ea_find(a->eattrs, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
+  eattr *e = ea_find(a->eattrs, "bgp_path");
   return !e || (as_path_getlen(e->u.ptr) == 0);
 }
 
 static inline u32
 rta_get_first_asn(rta *a)
 {
-  eattr *e = ea_find(a->eattrs, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
+  eattr *e = ea_find(a->eattrs, "bgp_path");
   u32 asn;
 
   return (e && as_path_get_first_regular(e->u.ptr, &asn)) ? asn : 0;
@@ -2587,8 +2587,8 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, i
     return 0;
 
   /* Find ORIGINATOR_ID values */
-  u32 orig_a = ea_get_int(a->eattrs, EA_CODE(PROTOCOL_BGP, BA_ORIGINATOR_ID), 0);
-  u32 orig_b = ea_get_int(rb->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_ORIGINATOR_ID), 0);
+  u32 orig_a = ea_get_int(a->eattrs, "bgp_originator_id", 0);
+  u32 orig_b = ea_get_int(rb->attrs->eattrs, "bgp_originator_id", 0);
 
   /* Originator is either ORIGINATOR_ID (if present), or BGP neighbor address (if not) */
   if ((orig_a != orig_b) || (!orig_a && !orig_b && !ipa_equal(a->from, rb->attrs->from)))
@@ -3458,7 +3458,7 @@ if_local_addr(ip_addr a, struct iface *i)
 u32
 rt_get_igp_metric(rte *rt)
 {
-  eattr *ea = ea_find(rt->attrs->eattrs, EA_GEN_IGP_METRIC);
+  eattr *ea = ea_find(rt->attrs->eattrs, "igp_metric");
 
   if (ea)
     return ea->u.data;
