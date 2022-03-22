@@ -2074,12 +2074,15 @@ bgp_rte_mergable(rte *pri, rte *sec)
   u32 p, s;
 
   /* Skip suppressed routes (see bgp_rte_recalculate()) */
-  /* LLGR draft - depreference stale routes */
-  if (pri->pflags != sec->pflags)
+  if ((pri->pflags ^ sec->pflags) & BGP_REF_SUPPRESSED)
     return 0;
 
   /* RFC 4271 9.1.2.1. Route resolvability test */
   if (rte_resolvable(pri) != rte_resolvable(sec))
+    return 0;
+
+  /* LLGR draft - depreference stale routes */
+  if (rte_stale(pri) != rte_stale(sec))
     return 0;
 
   /* Start with local preferences */
