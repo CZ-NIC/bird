@@ -965,9 +965,6 @@ ea_show(struct cli *c, const eattr *e)
 	case EAF_TYPE_AS_PATH:
 	  as_path_format(ad, pos, end - pos);
 	  break;
-	case EAF_TYPE_BITFIELD:
-	  bsprintf(pos, "%08x", e->u.data);
-	  break;
 	case EAF_TYPE_INT_SET:
 	  ea_show_int_set(c, ad, 1, pos, buf, end);
 	  return;

@@ -1928,7 +1928,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	  {
 	    ea->attrs[n].id = EA_CODE(PROTOCOL_KERNEL, KRT_METRICS_OFFSET + t);
 	    ea->attrs[n].flags = 0;
-	    ea->attrs[n].type = EAF_TYPE_INT; /* FIXME: Some are EAF_TYPE_BITFIELD */
+	    ea->attrs[n].type = EAF_TYPE_INT;
 	    ea->attrs[n].u.data = metrics[t];
 	    n++;
 	  }

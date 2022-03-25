@@ -308,7 +308,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 
 %type <xp> cmds_int cmd_prep
 %type <x> term block cmd cmds constant constructor print_list var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
-%type <fda> dynamic_attr
+%type <fda> dynamic_attr attr_bit
 %type <fsa> static_attr
 %type <f> filter where_filter
 %type <fl> filter_body function_body
@@ -802,6 +802,10 @@ term:
  | static_attr { $$ = f_new_inst(FI_RTA_GET, $1); }
 
  | dynamic_attr { $$ = f_new_inst(FI_EA_GET, $1); }
+ | attr_bit {
+    struct f_inst *c = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = (1U << $1.bit)});
+    $$ = f_new_inst(FI_EQ, c, f_new_inst(FI_BITAND, f_new_inst(FI_EA_GET, $1), c));
+  }
 
  | term '.' IS_V4 { $$ = f_new_inst(FI_IS_V4, $1); }
  | term '.' TYPE { $$ = f_new_inst(FI_TYPE, $1); }
@@ -898,6 +902,14 @@ cmd:
    }
  | UNSET '(' dynamic_attr ')' ';' {
      $$ = f_new_inst(FI_EA_UNSET, $3);
+   }
+ | attr_bit '=' term ';' {
+     $$ = f_new_inst(FI_CONDITION, $3,
+	f_generate_complex(FI_BITOR, $1,
+	      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = (1U << $1.bit)})),
+	f_generate_complex(FI_BITAND, $1,
+	      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = ~(1U << $1.bit)}))
+     );
    }
  | break_command print_list ';' {
     struct f_inst *breaker = f_new_inst(FI_DIE, $1);

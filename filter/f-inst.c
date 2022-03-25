@@ -712,9 +712,6 @@
       case EAF_TYPE_AS_PATH:
 	RESULT_(T_PATH, ad, e->u.ptr);
 	break;
-      case EAF_TYPE_BITFIELD:
-	RESULT_(T_BOOL, i, !!(e->u.data & (1u << da.bit)));
-	break;
       case EAF_TYPE_INT_SET:
 	RESULT_(T_CLIST, ad, e->u.ptr);
 	break;
@@ -772,19 +769,6 @@
       case EAF_TYPE_EC_SET:
       case EAF_TYPE_LC_SET:
 	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-
-      case EAF_TYPE_BITFIELD:
-	{
-	  /* First, we have to find the old value */
-	  eattr *e = ea_find(*fs->eattrs, da.ea_code);
-	  u32 data = e ? e->u.data : 0;
-
-	  if (v1.val.i)
-	    l->attrs[0].u.data = data | (1u << da.bit);
-	  else
-	    l->attrs[0].u.data = data & ~(1u << da.bit);
-	}
 	break;
 
       default:
