@@ -780,6 +780,8 @@ term:
  | term '-' term	{ $$ = f_new_inst(FI_SUBTRACT, $1, $3); }
  | term '*' term	{ $$ = f_new_inst(FI_MULTIPLY, $1, $3); }
  | term '/' term	{ $$ = f_new_inst(FI_DIVIDE, $1, $3); }
+ | term '&' term	{ $$ = f_new_inst(FI_BITAND, $1, $3); }
+ | term '|' term	{ $$ = f_new_inst(FI_BITOR, $1, $3); }
  | term AND term	{ $$ = f_new_inst(FI_AND, $1, $3); }
  | term OR  term	{ $$ = f_new_inst(FI_OR, $1, $3); }
  | term '=' term	{ $$ = f_new_inst(FI_EQ, $1, $3); }
