@@ -328,9 +328,9 @@ dynamic_attr: BGP_MED
 dynamic_attr: BGP_LOCAL_PREF
 	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF)); } ;
 dynamic_attr: BGP_ATOMIC_AGGR
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_ATOMIC_AGGR)); } ;
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_OPAQUE, EA_CODE(PROTOCOL_BGP, BA_ATOMIC_AGGR)); } ;
 dynamic_attr: BGP_AGGREGATOR
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_AGGREGATOR)); } ;
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_OPAQUE, EA_CODE(PROTOCOL_BGP, BA_AGGREGATOR)); } ;
 dynamic_attr: BGP_COMMUNITY
 	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY)); } ;
 dynamic_attr: BGP_ORIGINATOR_ID
@@ -340,7 +340,7 @@ dynamic_attr: BGP_CLUSTER_LIST
 dynamic_attr: BGP_EXT_COMMUNITY
 	{ $$ = f_new_dynamic_attr(EAF_TYPE_EC_SET, T_ECLIST, EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY)); } ;
 dynamic_attr: BGP_AIGP
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_AIGP)); } ;
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_OPAQUE, EA_CODE(PROTOCOL_BGP, BA_AIGP)); } ;
 dynamic_attr: BGP_LARGE_COMMUNITY
 	{ $$ = f_new_dynamic_attr(EAF_TYPE_LC_SET, T_LCLIST, EA_CODE(PROTOCOL_BGP, BA_LARGE_COMMUNITY)); } ;
 

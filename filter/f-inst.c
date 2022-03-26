@@ -704,7 +704,7 @@
 	RESULT_(T_QUAD, i, e->u.data);
 	break;
       case EAF_TYPE_OPAQUE:
-	RESULT_(T_ENUM_EMPTY, i, 0);
+	RESULT_(T_OPAQUE, ad, e->u.ptr);
 	break;
       case EAF_TYPE_IP_ADDRESS:
 	RESULT_(T_IP, ip, *((ip_addr *) e->u.ptr->data));
