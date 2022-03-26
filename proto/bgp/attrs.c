@@ -987,7 +987,7 @@ bgp_decode_unknown(struct bgp_parse_state *s, uint code, uint flags, byte *data,
 static const struct bgp_attr_desc bgp_attr_table[] = {
   [BA_ORIGIN] = {
     .name = "origin",
-    .type = EAF_TYPE_INT,
+    .type = EAF_TYPE_BGP_ORIGIN,
     .flags = BAF_TRANSITIVE,
     .export = bgp_export_origin,
     .encode = bgp_encode_u8,

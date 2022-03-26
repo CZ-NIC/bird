@@ -165,7 +165,7 @@ f_generate_empty(struct f_dynamic_attr dyn)
 {
   struct f_val empty;
 
-  switch (dyn.type & EAF_TYPE_MASK) {
+  switch (dyn.type) {
     case EAF_TYPE_AS_PATH:
       empty = f_const_empty_path;
       break;

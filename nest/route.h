@@ -540,6 +540,9 @@ const char *ea_custom_name(uint ea);
 #define EAF_TYPE_EC_SET 0x0e		/* Set of pairs of u32's - ext. community list */
 #define EAF_TYPE_LC_SET 0x08		/* Set of triplets of u32's - large community list */
 #define EAF_TYPE_IFACE 0x0c		/* Interface pointer stored in adata */
+#define EAF_TYPE_BGP_ORIGIN 0x11	/* BGP Origin enum */
+#define EAF_TYPE_RA_PREFERENCE 0x13	/* RA Preference enum */
+
 #define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */
 					/* Otherwise, attribute data is adata */
 

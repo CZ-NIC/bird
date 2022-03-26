@@ -696,7 +696,7 @@
 	break;
       }
 
-      switch (e->type & EAF_TYPE_MASK) {
+      switch (e->type) {
       case EAF_TYPE_INT:
 	RESULT_(da.f_type, i, e->u.data);
 	break;

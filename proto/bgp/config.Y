@@ -318,7 +318,7 @@ bgp_proto_channel: bgp_channel_start bgp_channel_opt_list bgp_channel_end;
 
 
 dynamic_attr: BGP_ORIGIN
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_BGP_ORIGIN, EA_CODE(PROTOCOL_BGP, BA_ORIGIN)); } ;
+	{ $$ = f_new_dynamic_attr(EAF_TYPE_BGP_ORIGIN, T_ENUM_BGP_ORIGIN, EA_CODE(PROTOCOL_BGP, BA_ORIGIN)); } ;
 dynamic_attr: BGP_PATH
 	{ $$ = f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH)); } ;
 dynamic_attr: BGP_NEXT_HOP
