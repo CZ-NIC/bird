@@ -163,26 +163,11 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
 static inline struct f_inst *
 f_generate_empty(struct f_dynamic_attr dyn)
 {
-  struct f_val empty;
+  const struct f_val *empty = f_get_empty(dyn.type);
+  if (!empty)
+    cf_error("Can't empty that attribute");
 
-  switch (dyn.type) {
-    case EAF_TYPE_AS_PATH:
-      empty = f_const_empty_path;
-      break;
-    case EAF_TYPE_INT_SET:
-      empty = f_const_empty_clist;
-      break;
-    case EAF_TYPE_EC_SET:
-      empty = f_const_empty_eclist;
-      break;
-    case EAF_TYPE_LC_SET:
-      empty = f_const_empty_lclist;
-      break;
-    default:
-      cf_error("Can't empty that attribute");
-  }
-
-  return f_new_inst(FI_EA_SET, f_new_inst(FI_CONSTANT, empty), dyn);
+  return f_new_inst(FI_EA_SET, f_new_inst(FI_CONSTANT, *empty), dyn);
 }
 
 #define BA_AS_PATH 0x02
@@ -190,7 +175,7 @@ f_generate_empty(struct f_dynamic_attr dyn)
 static inline struct f_inst *
 f_implicit_roa_check(struct rtable_config *tab)
 {
-  struct f_dynamic_attr fda = f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
+  struct f_dynamic_attr fda = f_new_dynamic_attr(T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
 
   struct f_static_attr fsa = f_new_static_attr(T_NET, SA_NET, 1);
 

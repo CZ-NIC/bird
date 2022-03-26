@@ -545,22 +545,28 @@ bgp_find_attr(ea_list *attrs, uint code)
 }
 
 eattr *
-bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintptr_t val);
+bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, union bval val);
 
 static inline void
 bgp_set_attr_u32(ea_list **to, struct linpool *pool, uint code, uint flags, u32 val)
-{ bgp_set_attr(to, pool, code, flags, (uintptr_t) val); }
+{
+  union bval bv = { .data = val };
+  bgp_set_attr(to, pool, code, flags, bv);
+}
 
 static inline void
-bgp_set_attr_ptr(ea_list **to, struct linpool *pool, uint code, uint flags, const struct adata *val)
-{ bgp_set_attr(to, pool, code, flags, (uintptr_t) val); }
+bgp_set_attr_ptr(ea_list **to, struct linpool *pool, uint code, uint flags, const struct adata *ad)
+{
+  union bval bv = { .ptr = ad };
+  bgp_set_attr(to, pool, code, flags, bv);
+}
 
 static inline void
 bgp_set_attr_data(ea_list **to, struct linpool *pool, uint code, uint flags, void *data, uint len)
 {
   struct adata *a = lp_alloc_adata(pool, len);
   bmemcpy(a->data, data, len);
-  bgp_set_attr(to, pool, code, flags, (uintptr_t) a);
+  bgp_set_attr_ptr(to, pool, code, flags, a);
 }
 
 #define bgp_unset_attr(to, pool, code) ea_unset_attr(to, pool, 0, code)

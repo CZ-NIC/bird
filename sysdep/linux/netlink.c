@@ -1587,12 +1587,12 @@ nl_announce_route(struct nl_parse_state *s)
 
   ea->attrs[0] = (eattr) {
     .id = EA_KRT_SOURCE,
-    .type = EAF_TYPE_INT,
+    .type = T_INT,
     .u.data = s->krt_proto,
   };
   ea->attrs[1] = (eattr) {
     .id = EA_KRT_METRIC,
-    .type = EAF_TYPE_INT,
+    .type = T_INT,
     .u.data = s->krt_metric,
   };
 
@@ -1873,7 +1873,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       ea->count = 1;
       ea->attrs[0].id = EA_KRT_SCOPE;
       ea->attrs[0].flags = 0;
-      ea->attrs[0].type = EAF_TYPE_INT;
+      ea->attrs[0].type = T_INT;
       ea->attrs[0].u.data = i->rtm_scope;
     }
 
@@ -1888,7 +1888,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       ea->count = 1;
       ea->attrs[0].id = EA_KRT_PREFSRC;
       ea->attrs[0].flags = 0;
-      ea->attrs[0].type = EAF_TYPE_IP_ADDRESS;
+      ea->attrs[0].type = T_IP;
 
       struct adata *ad = lp_alloc(s->pool, sizeof(struct adata) + sizeof(ps));
       ad->length = sizeof(ps);
@@ -1907,7 +1907,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       ea->count = 1;
       ea->attrs[0].id = EA_KRT_REALM;
       ea->attrs[0].flags = 0;
-      ea->attrs[0].type = EAF_TYPE_INT;
+      ea->attrs[0].type = T_INT;
       ea->attrs[0].u.data = s->rta_flow;
     }
 
@@ -1928,7 +1928,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	  {
 	    ea->attrs[n].id = EA_CODE(PROTOCOL_KERNEL, KRT_METRICS_OFFSET + t);
 	    ea->attrs[n].flags = 0;
-	    ea->attrs[n].type = EAF_TYPE_INT;
+	    ea->attrs[n].type = T_INT;
 	    ea->attrs[n].u.data = metrics[t];
 	    n++;
 	  }

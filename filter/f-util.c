@@ -82,8 +82,8 @@ static void
 ca_dump(resource *r)
 {
   struct custom_attribute *ca = (void *) r;
-  debug("name \"%s\" id 0x%04x ea_type 0x%02x f_type 0x%02x\n",
-      ca->name, ca->fda->ea_code, ca->fda->type, ca->fda->f_type);
+  debug("name \"%s\" id 0x%04x ea_type 0x%02x\n",
+      ca->name, ca->fda->ea_code, ca->fda->type);
 }
 
 static struct resclass ca_class = {
@@ -96,31 +96,16 @@ static struct resclass ca_class = {
 };
 
 struct custom_attribute *
-ca_lookup(pool *p, const char *name, int f_type)
+ca_lookup(pool *p, const char *name, btype type)
 {
-  int ea_type;
-
-  switch (f_type) {
+  switch (type) {
     case T_INT:
-      ea_type = EAF_TYPE_INT;
-      break;
     case T_IP:
-      ea_type = EAF_TYPE_IP_ADDRESS;
-      break;
     case T_QUAD:
-      ea_type = EAF_TYPE_ROUTER_ID;
-      break;
     case T_PATH:
-      ea_type = EAF_TYPE_AS_PATH;
-      break;
     case T_CLIST:
-      ea_type = EAF_TYPE_INT_SET;
-      break;
     case T_ECLIST:
-      ea_type = EAF_TYPE_EC_SET;
-      break;
     case T_LCLIST:
-      ea_type = EAF_TYPE_LC_SET;
       break;
     default:
       cf_error("Custom route attribute of unsupported type");
@@ -137,7 +122,7 @@ ca_lookup(pool *p, const char *name, int f_type)
     inited++;
   }
 
-  struct ca_storage *cas = HASH_FIND(ca_hash, CA, name, ea_type);
+  struct ca_storage *cas = HASH_FIND(ca_hash, CA, name, type);
   if (cas) {
     cas->uc++;
   } else {
@@ -153,7 +138,7 @@ ca_lookup(pool *p, const char *name, int f_type)
     }
 
     cas = mb_allocz(&root_pool, sizeof(struct ca_storage) + strlen(name) + 1);
-    cas->fda = f_new_dynamic_attr(ea_type, f_type, EA_CUSTOM(id));
+    cas->fda = f_new_dynamic_attr(type, EA_CUSTOM(id));
     cas->uc = 1;
 
     strcpy(cas->name, name);

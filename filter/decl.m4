@@ -490,7 +490,7 @@ fi_constant(struct f_inst *what, struct f_val val)
 }
 
 static int
-f_const_promotion(struct f_inst *arg, enum f_type want)
+f_const_promotion(struct f_inst *arg, btype want)
 {
   if (arg->fi_code != FI_CONSTANT)
     return 0;
@@ -640,7 +640,7 @@ FID_WR_PUT(4)m4_dnl
 struct f_inst {
   struct f_inst *next;			/* Next instruction */
   enum f_instruction_code fi_code;	/* Instruction code */
-  enum f_type type;			/* Type of returned value, if known */
+  btype type;				/* Type of returned value, if known */
   int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */
   union {

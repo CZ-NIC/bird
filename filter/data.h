@@ -11,65 +11,15 @@
 #define _BIRD_FILTER_DATA_H_
 
 #include "nest/bird.h"
-
-/* Type numbers must be in 0..0xff range */
-#define T_MASK 0xff
-
-/* Internal types */
-enum f_type {
-/* Nothing. Simply nothing. */
-  T_VOID = 0,
-
-/* Something but inaccessible. */
-  T_OPAQUE = 0xee,
-
-/* User visible types, which fit in int */
-  T_INT = 0x10,
-  T_BOOL = 0x11,
-  T_PAIR = 0x12,  /*	Notice that pair is stored as integer: first << 16 | second */
-  T_QUAD = 0x13,
-
-/* Put enumerational types in 0x30..0x3f range */
-  T_ENUM_LO = 0x30,
-  T_ENUM_HI = 0x3f,
-
-  T_ENUM_RTS = 0x30,
-  T_ENUM_BGP_ORIGIN = 0x31,
-  T_ENUM_SCOPE = 0x32,
-  T_ENUM_RTC = 0x33,
-  T_ENUM_RTD = 0x34,
-  T_ENUM_ROA = 0x35,
-  T_ENUM_NETTYPE = 0x36,
-  T_ENUM_RA_PREFERENCE = 0x37,
-  T_ENUM_AF = 0x38,
-
-/* new enums go here */
-
-#define T_ENUM T_ENUM_LO ... T_ENUM_HI
-
-/* Bigger ones */
-  T_IP = 0x20,
-  T_NET = 0x21,
-  T_STRING = 0x22,
-  T_PATH_MASK = 0x23,	/* mask for BGP path */
-  T_PATH = 0x24,		/* BGP path */
-  T_CLIST = 0x25,		/* Community list */
-  T_EC = 0x26,		/* Extended community value, u64 */
-  T_ECLIST = 0x27,		/* Extended community list */
-  T_LC = 0x28,		/* Large community value, lcomm */
-  T_LCLIST = 0x29,		/* Large community list */
-  T_RD = 0x2a,		/* Route distinguisher for VPN addresses */
-  T_PATH_MASK_ITEM = 0x2b,	/* Path mask item for path mask constructors */
-
-  T_SET = 0x80,
-  T_PREFIX_SET = 0x81,
-} PACKED;
+#include "lib/type.h"
 
 /* Filter value; size of this affects filter memory consumption */
 struct f_val {
-  enum f_type type;	/* T_*  */
+  btype type;	/* T_*  */
   union {
-    uint i;
+    union bval bval;
+    BVAL_ITEMS;
+
     u64 ec;
     lcomm lc;
     ip_addr ip;
@@ -77,17 +27,17 @@ struct f_val {
     const char *s;
     const struct f_tree *t;
     const struct f_trie *ti;
-    const struct adata *ad;
     const struct f_path_mask *path_mask;
     struct f_path_mask_item pmi;
   } val;
 };
 
+#define fputip(a)   ({ ip_addr *ax = falloc(sizeof(*ax)); *ax = (a); ax; })
+
 /* Dynamic attribute definition (eattrs) */
 struct f_dynamic_attr {
-  u8 type;		/* EA type (EAF_*) */
+  btype type;		/* EA type (EAF_*) */
   u8 bit;		/* For bitfield accessors */
-  enum f_type f_type;	/* Filter type */
   uint ea_code;		/* EA code */
 };
 
@@ -108,9 +58,9 @@ enum f_sa_code {
 
 /* Static attribute definition (members of struct rta) */
 struct f_static_attr {
-  enum f_type f_type;		/* Filter type */
+  btype type;			/* Data type */
   enum f_sa_code sa_code;	/* Static attribute id */
-  int readonly:1;			/* Don't allow writing */
+  int readonly:1;		/* Don't allow writing */
 };
 
 /* Filter l-value type */
@@ -266,9 +216,9 @@ trie_match_next_longest_ip6(net_addr_ip6 *n, ip6_addr *found)
 
 #define F_CMP_ERROR 999
 
-const char *f_type_name(enum f_type t);
+const char *f_type_name(btype t);
 
-enum f_type f_type_element_type(enum f_type t);
+enum btype f_type_element_type(btype t);
 
 int val_same(const struct f_val *v1, const struct f_val *v2);
 int val_compare(const struct f_val *v1, const struct f_val *v2);
@@ -301,6 +251,16 @@ undef_value(struct f_val v)
 }
 
 extern const struct f_val f_const_empty_path, f_const_empty_clist, f_const_empty_eclist, f_const_empty_lclist;
+static inline const struct f_val *f_get_empty(btype t)
+{
+  switch (t) {
+    case T_PATH:	return &f_const_empty_path;
+    case T_CLIST:	return &f_const_empty_clist;
+    case T_ECLIST:	return &f_const_empty_eclist;
+    case T_LCLIST:	return &f_const_empty_lclist;
+    default:		return NULL;
+  }
+}
 
 enum filter_return f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres);
 

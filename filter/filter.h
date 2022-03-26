@@ -77,6 +77,6 @@ struct custom_attribute {
   const char *name;
 };
 
-struct custom_attribute *ca_lookup(pool *p, const char *name, int ea_type);
+struct custom_attribute *ca_lookup(pool *p, const char *name, btype type);
 
 #endif

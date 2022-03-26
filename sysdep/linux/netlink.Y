@@ -28,23 +28,23 @@ kern_sys_item:
  | NETLINK RX BUFFER expr { THIS_KRT->sys.netlink_rx_buffer = $4; }
  ;
 
-dynamic_attr: KRT_PREFSRC	{ $$ = f_new_dynamic_attr(EAF_TYPE_IP_ADDRESS, T_IP, EA_KRT_PREFSRC); } ;
-dynamic_attr: KRT_REALM	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_REALM); } ;
-dynamic_attr: KRT_SCOPE	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_SCOPE); } ;
+dynamic_attr: KRT_PREFSRC	{ $$ = f_new_dynamic_attr(T_IP, EA_KRT_PREFSRC); } ;
+dynamic_attr: KRT_REALM	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_REALM); } ;
+dynamic_attr: KRT_SCOPE	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_SCOPE); } ;
 
-dynamic_attr: KRT_MTU		{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_MTU); } ;
-dynamic_attr: KRT_WINDOW	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_WINDOW); } ;
-dynamic_attr: KRT_RTT		{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_RTT); } ;
-dynamic_attr: KRT_RTTVAR	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_RTTVAR); } ;
-dynamic_attr: KRT_SSTRESH	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_SSTRESH); } ;
-dynamic_attr: KRT_CWND		{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_CWND); } ;
-dynamic_attr: KRT_ADVMSS	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_ADVMSS); } ;
-dynamic_attr: KRT_REORDERING	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_REORDERING); } ;
-dynamic_attr: KRT_HOPLIMIT	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_HOPLIMIT); } ;
-dynamic_attr: KRT_INITCWND	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_INITCWND); } ;
-dynamic_attr: KRT_RTO_MIN	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_RTO_MIN); } ;
-dynamic_attr: KRT_INITRWND	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_INITRWND); } ;
-dynamic_attr: KRT_QUICKACK	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_QUICKACK); } ;
+dynamic_attr: KRT_MTU		{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_MTU); } ;
+dynamic_attr: KRT_WINDOW	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_WINDOW); } ;
+dynamic_attr: KRT_RTT		{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_RTT); } ;
+dynamic_attr: KRT_RTTVAR	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_RTTVAR); } ;
+dynamic_attr: KRT_SSTRESH	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_SSTRESH); } ;
+dynamic_attr: KRT_CWND		{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_CWND); } ;
+dynamic_attr: KRT_ADVMSS	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_ADVMSS); } ;
+dynamic_attr: KRT_REORDERING	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_REORDERING); } ;
+dynamic_attr: KRT_HOPLIMIT	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_HOPLIMIT); } ;
+dynamic_attr: KRT_INITCWND	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_INITCWND); } ;
+dynamic_attr: KRT_RTO_MIN	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_RTO_MIN); } ;
+dynamic_attr: KRT_INITRWND	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_INITRWND); } ;
+dynamic_attr: KRT_QUICKACK	{ $$ = f_new_dynamic_attr(T_INT, EA_KRT_QUICKACK); } ;
 
 /* Bits of EA_KRT_LOCK, based on RTAX_* constants */
 

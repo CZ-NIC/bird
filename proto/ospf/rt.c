@@ -2072,27 +2072,27 @@ again1:
 
 	a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
 	  .id = EA_OSPF_METRIC1,
-	  .type = EAF_TYPE_INT,
+	  .type = T_INT,
 	  .u.data = nf->n.metric1,
 	};
 
 	if (nf->n.type == RTS_OSPF_EXT2)
 	  a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
 	    .id = EA_OSPF_METRIC2,
-	    .type = EAF_TYPE_INT,
+	    .type = T_INT,
 	    .u.data = nf->n.metric2,
 	  };
 
 	if ((nf->n.type == RTS_OSPF_EXT1) || (nf->n.type == RTS_OSPF_EXT2))
 	  a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
 	    .id = EA_OSPF_TAG,
-	    .type = EAF_TYPE_INT,
+	    .type = T_INT,
 	    .u.data = nf->n.tag,
 	  };
 
 	a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
 	  .id = EA_OSPF_ROUTER_ID,
-	  .type = EAF_TYPE_ROUTER_ID,
+	  .type = T_QUAD,
 	  .u.data = nf->n.rid,
 	};
 

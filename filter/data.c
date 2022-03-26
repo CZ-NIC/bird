@@ -27,6 +27,8 @@
 
 static const char * const f_type_str[] = {
   [T_VOID]	= "void",
+  [T_OPAQUE]	= "opaque byte string",
+  [T_IFACE]	= "interface",
 
   [T_INT]	= "int",
   [T_BOOL]	= "bool",
@@ -47,6 +49,7 @@ static const char * const f_type_str[] = {
   [T_NET]	= "prefix",
   [T_STRING]	= "string",
   [T_PATH_MASK]	= "bgpmask",
+  [T_PATH_MASK_ITEM] = "bgpmask item",
   [T_PATH]	= "bgppath",
   [T_CLIST]	= "clist",
   [T_EC]	= "ec",
@@ -54,22 +57,19 @@ static const char * const f_type_str[] = {
   [T_LC]	= "lc",
   [T_LCLIST]	= "lclist",
   [T_RD]	= "rd",
+
+  [T_SET]	= "set",
+  [T_PREFIX_SET] = "prefix set",
 };
 
 const char *
-f_type_name(enum f_type t)
+f_type_name(btype t)
 {
-  if (t < ARRAY_SIZE(f_type_str))
-    return f_type_str[t] ?: "?";
-
-  if ((t == T_SET) || (t == T_PREFIX_SET))
-    return "set";
-
-  return "?";
+  return (t < ARRAY_SIZE(f_type_str)) ? (f_type_str[t] ?: "?") : "?";
 }
 
-enum f_type
-f_type_element_type(enum f_type t)
+btype
+f_type_element_type(btype t)
 {
   switch(t) {
     case T_CLIST:  return T_PAIR;
