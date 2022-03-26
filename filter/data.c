@@ -93,14 +93,6 @@ const struct f_val f_const_empty_path = {
   .val.ad = &null_adata,
 };
 
-static struct adata *
-adata_empty(struct linpool *pool, int l)
-{
-  struct adata *res = lp_alloc(pool, sizeof(struct adata) + l);
-  res->length = l;
-  return res;
-}
-
 static void
 pm_format(const struct f_path_mask *p, buffer *buf)
 {
@@ -423,7 +415,7 @@ clist_filter(struct linpool *pool, const struct adata *list, const struct f_val 
   if (nl == list->length)
     return list;
 
-  struct adata *res = adata_empty(pool, nl);
+  struct adata *res = lp_alloc_adata(pool, nl);
   memcpy(res->data, tmp, nl);
   return res;
 }
@@ -457,7 +449,7 @@ eclist_filter(struct linpool *pool, const struct adata *list, const struct f_val
   if (nl == list->length)
     return list;
 
-  struct adata *res = adata_empty(pool, nl);
+  struct adata *res = lp_alloc_adata(pool, nl);
   memcpy(res->data, tmp, nl);
   return res;
 }
@@ -489,7 +481,7 @@ lclist_filter(struct linpool *pool, const struct adata *list, const struct f_val
   if (nl == list->length)
     return list;
 
-  struct adata *res = adata_empty(pool, nl);
+  struct adata *res = lp_alloc_adata(pool, nl);
   memcpy(res->data, tmp, nl);
   return res;
 }
