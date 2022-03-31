@@ -10,6 +10,7 @@
 #define _BIRD_TYPE_H_
 
 #include "lib/birdlib.h"
+#include "lib/attrs.h"
 
 union bval {
 #define BVAL_ITEMS	\
@@ -18,8 +19,24 @@ union bval {
   const struct adata *ptr;	/* Generic attribute data inherited from eattrs */	\
   const struct adata *ad;     	/* Generic attribute data inherited from filters */	\
 
-  BVAL_ITEMS
+  BVAL_ITEMS;
 };
+
+union bval_long {
+  union bval bval;		/* For direct assignments */
+  BVAL_ITEMS;			/* For item-wise access */
+
+  u64 ec;
+  lcomm lc;
+  ip_addr ip;
+  const net_addr *net;
+  const char *s;
+  const struct f_tree *t;
+  const struct f_trie *ti;
+  const struct f_path_mask *path_mask;
+  struct f_path_mask_item pmi;
+};
+
 
 /* Internal types */
 enum btype {

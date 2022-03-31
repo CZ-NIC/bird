@@ -10,6 +10,8 @@
 #ifndef _BIRD_LIB_ROUTE_H_
 #define _BIRD_LIB_ROUTE_H_
 
+#include "lib/type.h"
+
 struct network;
 struct proto;
 struct cli;
@@ -162,25 +164,6 @@ const char *ea_custom_name(uint ea);
 #define EA_ALLOW_UNDEF 0x10000		/* ea_find: allow EAF_TYPE_UNDEF */
 #define EA_BIT(n) ((n) << 24)		/* Used in bitfield accessors */
 #define EA_BIT_GET(ea) ((ea) >> 24)
-
-typedef struct adata {
-  uint length;				/* Length of data */
-  byte data[0];
-} adata;
-
-extern const adata null_adata;		/* adata of length 0 */
-
-static inline struct adata *
-lp_alloc_adata(struct linpool *pool, uint len)
-{
-  struct adata *ad = lp_alloc(pool, sizeof(struct adata) + len);
-  ad->length = len;
-  return ad;
-}
-
-static inline int adata_same(const struct adata *a, const struct adata *b)
-{ return (a->length == b->length && !memcmp(a->data, b->data, a->length)); }
-
 
 typedef struct ea_list {
   struct ea_list *next;			/* In case we have an override list */
