@@ -45,7 +45,7 @@
  */
 
 #include "nest/bird.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "nest/cli.h"
@@ -527,25 +527,6 @@ ea_walk(struct ea_walk_state *s, uint id, uint max)
   }
 
   return NULL;
-}
-
-/**
- * ea_get_int - fetch an integer attribute
- * @e: attribute list
- * @id: attribute ID
- * @def: default value
- *
- * This function is a shortcut for retrieving a value of an integer attribute
- * by calling ea_find() to find the attribute, extracting its value or returning
- * a provided default if no such attribute is present.
- */
-u32
-ea_get_int(ea_list *e, unsigned id, u32 def)
-{
-  eattr *a = ea_find(e, id);
-  if (!a)
-    return def;
-  return a->u.data;
 }
 
 static inline void

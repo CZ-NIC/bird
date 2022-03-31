@@ -8,7 +8,7 @@
 
 #include "nest/bird.h"
 #include "nest/protocol.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "nest/cmds.h"

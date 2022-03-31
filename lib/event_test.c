@@ -15,7 +15,7 @@
 #include "nest/locks.h"
 #include "sysdep/unix/unix.h"
 #include "nest/iface.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 
 #define MAX_NUM 4
 

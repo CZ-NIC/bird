@@ -15,7 +15,7 @@
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/attrs.h"
 #include "proto/mrt/mrt.h"
 #include "conf/conf.h"

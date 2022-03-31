@@ -13,7 +13,7 @@
 #include "lib/resource.h"
 #include "lib/ip.h"
 #include "lib/macro.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/attrs.h"
 
 /* Possible return values of filter execution */

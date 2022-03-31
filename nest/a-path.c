@@ -8,7 +8,7 @@
  */
 
 #include "nest/bird.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/attrs.h"
 #include "lib/resource.h"
 #include "lib/unaligned.h"
