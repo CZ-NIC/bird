@@ -16,7 +16,7 @@
 #include "nest/iface.h"
 #include "nest/protocol.h"
 #include "nest/rt.h"
-#include "nest/attrs.h"
+#include "lib/attrs.h"
 #include "conf/conf.h"
 #include "lib/resource.h"
 #include "lib/string.h"

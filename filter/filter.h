@@ -14,7 +14,7 @@
 #include "lib/ip.h"
 #include "lib/macro.h"
 #include "nest/rt.h"
-#include "nest/attrs.h"
+#include "lib/attrs.h"
 
 /* Possible return values of filter execution */
 enum filter_return {
