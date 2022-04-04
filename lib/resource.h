@@ -69,9 +69,10 @@ typedef struct linpool linpool;
 typedef struct lp_state {
   void *current, *large;
   byte *ptr;
+  uint total_large;
 } lp_state;
 
-linpool *lp_new(pool *, unsigned blk);
+linpool *lp_new(pool *);
 void *lp_alloc(linpool *, unsigned size);	/* Aligned */
 void *lp_allocu(linpool *, unsigned size);	/* Unaligned */
 void *lp_allocz(linpool *, unsigned size);	/* With clear */
@@ -88,10 +89,7 @@ extern _Thread_local linpool *tmp_linpool;	/* Temporary linpool autoflushed regu
 #define tmp_init(p)	tmp_linpool = lp_new_default(p)
 #define tmp_flush()	lp_flush(tmp_linpool)
 
-extern const int lp_chunk_size;
-#define LP_GAS		    1024
-#define LP_GOOD_SIZE(x)	    (((x + LP_GAS - 1) & (~(LP_GAS - 1))) - lp_chunk_size)
-#define lp_new_default(p)   lp_new(p, 0)
+#define lp_new_default	lp_new
 
 /* Slabs */
 

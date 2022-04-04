@@ -560,8 +560,8 @@ mrt_table_dump_init(pool *pp)
   struct mrt_table_dump_state *s = mb_allocz(pool, sizeof(struct mrt_table_dump_state));
 
   s->pool = pool;
-  s->linpool = lp_new(pool, 4080);
-  s->peer_lp = lp_new(pool, 4080);
+  s->linpool = lp_new(pool);
+  s->peer_lp = lp_new(pool);
   mrt_buffer_init(&s->buf, pool, 2 * MRT_ATTR_BUFFER_SIZE);
 
   /* We lock the current config as we may reference it indirectly by filter */
