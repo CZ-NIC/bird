@@ -154,7 +154,7 @@ rt_prune_sources(void)
     {
       HASH_DO_REMOVE(src_hash, RSH, sp);
       idm_free(&src_ids, src->global_id);
-      sl_free(rte_src_slab, src);
+      sl_free(src);
     }
   }
   HASH_WALK_FILTER_END;
@@ -391,7 +391,7 @@ nexthop_free(struct nexthop *o)
   while (o)
     {
       n = o->next;
-      sl_free(nexthop_slab(o), o);
+      sl_free(o);
       o = n;
     }
 }
@@ -1231,7 +1231,7 @@ rta__free(rta *a)
     nexthop_free(a->nh.next);
   ea_free(a->eattrs);
   a->cached = 0;
-  sl_free(rta_slab(a), a);
+  sl_free(a);
 }
 
 rta *

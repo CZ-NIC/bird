@@ -631,7 +631,7 @@ rte_free(rte *e)
   rt_unlock_source(e->src);
   if (rta_is_cached(e->attrs))
     rta_free(e->attrs);
-  sl_free(rte_slab, e);
+  sl_free(e);
 }
 
 static inline void
@@ -639,7 +639,7 @@ rte_free_quick(rte *e)
 {
   rt_unlock_source(e->src);
   rta_free(e->attrs);
-  sl_free(rte_slab, e);
+  sl_free(e);
 }
 
 static int				/* Actually better or at least as good as */
@@ -3393,7 +3393,7 @@ hc_delete_hostentry(struct hostcache *hc, pool *p, struct hostentry *he)
 
   rem_node(&he->ln);
   hc_remove(hc, he);
-  sl_free(hc->slab, he);
+  sl_free(he);
 
   hc->hash_items--;
   if (hc->hash_items < hc->hash_min)

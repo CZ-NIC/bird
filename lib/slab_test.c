@@ -17,6 +17,25 @@ static const int sizes[] = {
 #define TEST_SIZE	1024 * 128
 #define ITEMS(sz)	TEST_SIZE / ( (sz) >> u32_log2((sz))/2 )
 
+struct test_request {
+  int size;
+  enum strategy {
+    TEST_NONE,
+    TEST_FORWARDS,
+    TEST_BACKWARDS,
+    TEST_RANDOM,
+    TEST_MIXED,
+    TEST__MAX,
+  } strategy;
+};
+
+const char * const strategy_name[TEST__MAX] = {
+  [TEST_FORWARDS] = "forwards",
+  [TEST_BACKWARDS] = "backwards",
+  [TEST_RANDOM] = "random",
+  [TEST_MIXED] = "mixed",
+};
+
 static inline byte *test_alloc(slab *s, int sz, struct resmem *sliz)
 {
   byte *out = sl_alloc(s);
@@ -42,7 +61,7 @@ static inline void test_free(slab *s, byte *block, int sz, struct resmem *sliz)
     block[p]++;
   }
 
-  sl_free(s, block);
+  sl_free(block);
 
   struct resmem ns = rmemsize((resource *) s);
 
@@ -60,118 +79,93 @@ static inline struct resmem get_memsize(slab *s)
 }
 
 static int
-t_slab_forwards(const void *data)
+t_slab(const void *data)
 {
-  int sz = (intptr_t) data;
-  slab *s = sl_new(&root_pool, sz);
+  const struct test_request *tr = data;
+  int sz = tr->size;
 
+  slab *s = sl_new(&root_pool, sz);
   struct resmem sliz = get_memsize(s);
 
   int n = ITEMS(sz);
   byte **block = mb_alloc(&root_pool, n * sizeof(*block));
 
-  for (int i = 0; i < n; i++)
-    block[i] = test_alloc(s, sz, &sliz);
+  switch (tr->strategy) {
+    case TEST_FORWARDS:
+      for (int i = 0; i < n; i++)
+	block[i] = test_alloc(s, sz, &sliz);
 
-  for (int i = 0; i < n; i++)
-    test_free(s, block[i], sz, &sliz);
+      for (int i = 0; i < n; i++)
+	test_free(s, block[i], sz, &sliz);
 
-  mb_free(block);
+      break;
 
-  return 1;
-}
+    case TEST_BACKWARDS:
+      for (int i = 0; i < n; i++)
+	block[i] = test_alloc(s, sz, &sliz);
 
-static int
-t_slab_backwards(const void *data)
-{
-  int sz = (intptr_t) data;
-  slab *s = sl_new(&root_pool, sz);
+      for (int i = n - 1; i >= 0; i--)
+	test_free(s, block[i], sz, &sliz);
 
-  struct resmem sliz = get_memsize(s);
+      break;
 
-  int n = ITEMS(sz);
-  byte **block = mb_alloc(&root_pool, n * sizeof(*block));
+    case TEST_RANDOM:
+      for (int i = 0; i < n; i++)
+	block[i] = test_alloc(s, sz, &sliz);
 
-  for (int i = 0; i < n; i++)
-    block[i] = test_alloc(s, sz, &sliz);
+      for (int i = 0; i < n; i++)
+      {
+	int pos = bt_random() % (n - i);
+	test_free(s, block[pos], sz, &sliz);
+	if (pos != n - i - 1)
+	  block[pos] = block[n - i - 1];
+      }
 
-  for (int i = n - 1; i >= 0; i--)
-    test_free(s, block[i], sz, &sliz);
+      break;
 
-  mb_free(block);
+    case TEST_MIXED:
+      {
+	int cur = 0;
+	int pending = n;
 
-  return 1;
-}
+	while (cur + pending > 0) {
+	  int action = bt_random() % (cur + pending);
 
-static int
-t_slab_random(const void *data)
-{
-  int sz = (intptr_t) data;
-  slab *s = sl_new(&root_pool, sz);
+	  if (action < cur) {
+	    test_free(s, block[action], sz, &sliz);
+	    if (action != --cur)
+	      block[action] = block[cur];
+	  } else {
+	    block[cur++] = test_alloc(s, sz, &sliz);
+	    pending--;
+	  }
+	}
 
-  struct resmem sliz = get_memsize(s);
+	break;
+      }
 
-  int n = ITEMS(sz);
-  byte **block = mb_alloc(&root_pool, n * sizeof(*block));
-
-  for (int i = 0; i < n; i++)
-    block[i] = test_alloc(s, sz, &sliz);
-
-  for (int i = 0; i < n; i++)
-  {
-    int pos = bt_random() % (n - i);
-    test_free(s, block[pos], sz, &sliz);
-    if (pos != n - i - 1)
-      block[pos] = block[n - i - 1];
+    default: bug("This shouldn't happen");
   }
 
   mb_free(block);
-
-  return 1;
-}
-
-static int
-t_slab_mixed(const void *data)
-{
-  int sz = (intptr_t) data;
-  slab *s = sl_new(&root_pool, sz);
-
-  struct resmem sliz = get_memsize(s);
-
-  int n = ITEMS(sz);
-  byte **block = mb_alloc(&root_pool, n * sizeof(*block));
-
-  int cur = 0;
-  int pending = n;
-
-  while (cur + pending > 0) {
-    int action = bt_random() % (cur + pending);
-
-    if (action < cur) {
-      test_free(s, block[action], sz, &sliz);
-      if (action != --cur)
-	block[action] = block[cur];
-    } else {
-      block[cur++] = test_alloc(s, sz, &sliz);
-      pending--;
-    }
-  }
-
-  mb_free(block);
-
   return 1;
 }
 int main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
+  struct test_request tr;
+
   for (uint i = 0; i < sizeof(sizes) / sizeof(*sizes); i++)
-  {
-    bt_test_suite_arg(t_slab_forwards, (void *) (intptr_t) sizes[i], "Slab deallocation from beginning to end, size=%d", sizes[i]);
-    bt_test_suite_arg(t_slab_backwards, (void *) (intptr_t) sizes[i], "Slab deallocation from end to beginning, size=%d", sizes[i]);
-    bt_test_suite_arg(t_slab_random, (void *) (intptr_t) sizes[i], "Slab deallocation in random order, size=%d", sizes[i]);
-    bt_test_suite_arg(t_slab_mixed, (void *) (intptr_t) sizes[i], "Slab deallocation in mixed order, size=%d", sizes[i]);
-  }
+      for (uint strategy = TEST_FORWARDS; strategy < TEST__MAX; strategy++)
+      {
+	tr = (struct test_request) {
+	  .size = sizes[i],
+	  .strategy = strategy,
+	};
+	bt_test_suite_arg(t_slab, &tr, "Slab allocator test, size=%d, strategy=%s",
+	    tr.size, strategy_name[strategy]);
+      }
 
   return bt_exit_value();
 }

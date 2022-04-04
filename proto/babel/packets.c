@@ -1318,7 +1318,6 @@ babel_send_to(struct babel_iface *ifa, ip_addr dest)
 static uint
 babel_write_queue(struct babel_iface *ifa, list *queue)
 {
-  struct babel_proto *p = ifa->proto;
   struct babel_write_state state = { .next_hop_ip6 = ifa->addr };
 
   if (EMPTY_LIST(*queue))
@@ -1346,7 +1345,7 @@ babel_write_queue(struct babel_iface *ifa, list *queue)
 
     pos += len;
     rem_node(NODE msg);
-    sl_free(p->msg_slab, msg);
+    sl_free(msg);
   }
 
   pos += babel_auth_add_tlvs(ifa, (struct babel_tlv *) pos, end - pos);
@@ -1507,13 +1506,13 @@ babel_process_packet(struct babel_iface *ifa,
     else if (res == PARSE_IGNORE)
     {
       DBG("Babel: Ignoring TLV of type %d\n", tlv->type);
-      sl_free(p->msg_slab, msg);
+      sl_free(msg);
     }
     else /* PARSE_ERROR */
     {
       LOG_PKT("Bad TLV from %I via %s type %d pos %d - parse error",
 	      saddr, ifa->iface->name, tlv->type, (int) ((byte *)tlv - (byte *)pkt));
-      sl_free(p->msg_slab, msg);
+      sl_free(msg);
       break;
     }
   }
@@ -1525,7 +1524,7 @@ babel_process_packet(struct babel_iface *ifa,
     if (tlv_data[msg->msg.type].handle_tlv)
       tlv_data[msg->msg.type].handle_tlv(&msg->msg, ifa);
     rem_node(NODE msg);
-    sl_free(p->msg_slab, msg);
+    sl_free(msg);
   }
 }
 

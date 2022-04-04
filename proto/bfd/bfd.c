@@ -508,7 +508,7 @@ bfd_remove_session(struct bfd_proto *p, struct bfd_session *s)
   HASH_REMOVE(p->session_hash_id, HASH_ID, s);
   HASH_REMOVE(p->session_hash_ip, HASH_IP, s);
 
-  sl_free(p->session_slab, s);
+  sl_free(s);
 
   TRACE(D_EVENTS, "Session to %I removed", ip);
 
