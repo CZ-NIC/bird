@@ -2323,6 +2323,9 @@ bgp_create_update(struct bgp_channel *c, byte *buf)
 
 again: ;
 
+  struct lp_state tmpp;
+  lp_save(tmp_linpool, &tmpp);
+
   /* Initialize write state */
   struct bgp_write_state s = {
     .proto = p,
@@ -2353,6 +2356,7 @@ again: ;
     if (EMPTY_LIST(buck->prefixes))
     {
       bgp_free_bucket(c, buck);
+      lp_restore(tmp_linpool, &tmpp);
       goto again;
     }
 
@@ -2366,7 +2370,10 @@ again: ;
       bgp_defer_bucket(c, buck);
 
     if (!res)
+    {
+      lp_restore(tmp_linpool, &tmpp);
       goto again;
+    }
 
     goto done;
   }
@@ -2377,7 +2384,7 @@ again: ;
 done:
   BGP_TRACE_RL(&rl_snd_update, D_PACKETS, "Sending UPDATE");
   p->stats.tx_updates++;
-  lp_flush(s.pool);
+  lp_restore(tmp_linpool, &tmpp);
 
   return res;
 }
@@ -2506,6 +2513,9 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
   bgp_start_timer(conn->hold_timer, conn->hold_time);
 
+  struct lp_state tmpp;
+  lp_save(tmp_linpool, &tmpp);
+
   /* Initialize parse state */
   struct bgp_parse_state s = {
     .proto = p,
@@ -2587,7 +2597,7 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
 done:
   rta_free(s.cached_rta);
-  lp_flush(s.pool);
+  lp_restore(tmp_linpool, &tmpp);
   return;
 }
 
