@@ -582,6 +582,9 @@ bfd_get_iface(struct bfd_proto *p, ip_addr local, struct iface *iface)
   ifa->sk = bfd_open_tx_sk(p, local, iface);
   ifa->uc = 1;
 
+  if (cf->strict_bind)
+    ifa->rx = bfd_open_rx_sk_bound(p, local, iface);
+
   add_tail(&p->iface_list, &ifa->n);
 
   return ifa;
@@ -597,6 +600,12 @@ bfd_free_iface(struct bfd_iface *ifa)
   {
     sk_stop(ifa->sk);
     rfree(ifa->sk);
+  }
+
+  if (ifa->rx)
+  {
+    sk_stop(ifa->rx);
+    rfree(ifa->rx);
   }
 
   rem_node(&ifa->n);
@@ -1038,17 +1047,20 @@ bfd_start(struct proto *P)
 
   birdloop_enter(p->loop);
 
-  if (cf->accept_ipv4 && cf->accept_direct)
-    p->rx4_1 = bfd_open_rx_sk(p, 0, SK_IPV4);
+  if (!cf->strict_bind)
+  {
+    if (cf->accept_ipv4 && cf->accept_direct)
+      p->rx4_1 = bfd_open_rx_sk(p, 0, SK_IPV4);
 
-  if (cf->accept_ipv4 && cf->accept_multihop)
-    p->rx4_m = bfd_open_rx_sk(p, 1, SK_IPV4);
+    if (cf->accept_ipv4 && cf->accept_multihop)
+      p->rx4_m = bfd_open_rx_sk(p, 1, SK_IPV4);
 
-  if (cf->accept_ipv6 && cf->accept_direct)
-    p->rx6_1 = bfd_open_rx_sk(p, 0, SK_IPV6);
+    if (cf->accept_ipv6 && cf->accept_direct)
+      p->rx6_1 = bfd_open_rx_sk(p, 0, SK_IPV6);
 
-  if (cf->accept_ipv6 && cf->accept_multihop)
-    p->rx6_m = bfd_open_rx_sk(p, 1, SK_IPV6);
+    if (cf->accept_ipv6 && cf->accept_multihop)
+      p->rx6_m = bfd_open_rx_sk(p, 1, SK_IPV6);
+  }
 
   birdloop_leave(p->loop);
 
@@ -1102,7 +1114,8 @@ bfd_reconfigure(struct proto *P, struct proto_config *c)
   if ((new->accept_ipv4 != old->accept_ipv4) ||
       (new->accept_ipv6 != old->accept_ipv6) ||
       (new->accept_direct != old->accept_direct) ||
-      (new->accept_multihop != old->accept_multihop))
+      (new->accept_multihop != old->accept_multihop) ||
+      (new->strict_bind != old->strict_bind))
     return 0;
 
   birdloop_mask_wakeups(p->loop);

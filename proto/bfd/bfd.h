@@ -47,6 +47,7 @@ struct bfd_config
   u8 accept_ipv6;
   u8 accept_direct;
   u8 accept_multihop;
+  u8 strict_bind;
 };
 
 struct bfd_iface_config
@@ -116,6 +117,7 @@ struct bfd_iface
   struct bfd_proto *bfd;
 
   sock *sk;
+  sock *rx;
   u32 uc;
   u8 changed;
 };
@@ -221,6 +223,7 @@ void bfd_show_sessions(struct proto *P);
 /* packets.c */
 void bfd_send_ctl(struct bfd_proto *p, struct bfd_session *s, int final);
 sock * bfd_open_rx_sk(struct bfd_proto *p, int multihop, int inet_version);
+sock * bfd_open_rx_sk_bound(struct bfd_proto *p, ip_addr local, struct iface *ifa);
 sock * bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa);
 
 
