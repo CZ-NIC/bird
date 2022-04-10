@@ -717,12 +717,8 @@
 	runtime( "Setting opaque attribute is not allowed" );
 	break;
 
-      case T_IP:;
-	int len = sizeof(ip_addr);
-	struct adata *ad = lp_alloc(fs->pool, sizeof(struct adata) + len);
-	ad->length = len;
-	(* (ip_addr *) ad->data) = v1.val.ip;
-	l->attrs[0].u.ptr = ad;
+      case T_IP:
+	l->attrs[0].u.ptr = lp_store_adata(fs->pool, &v1.val.ip, sizeof(ip_addr));
 	break;
 
       default:

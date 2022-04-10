@@ -204,24 +204,16 @@ ea_get_int(ea_list *e, unsigned id, u32 def)
 }
 
 void ea_dump(ea_list *);
-void ea_sort(ea_list *);		/* Sort entries in all sub-lists */
-unsigned ea_scan(ea_list *);		/* How many bytes do we need for merged ea_list */
-void ea_merge(ea_list *from, ea_list *to); /* Merge sub-lists to allocated buffer */
 int ea_same(ea_list *x, ea_list *y);	/* Test whether two ea_lists are identical */
 uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
-#define ea_normalize(ea) do { \
-  if (ea->next) { \
-    ea_list *t = alloca(ea_scan(ea)); \
-    ea_merge(ea, t); \
-    ea = t; \
-  } \
-  ea_sort(ea); \
-  if (ea->count == 0) \
-    ea = NULL; \
-} while(0) \
+/* Normalize ea_list; allocates the result from tmp_linpool */
+ea_list *ea_normalize(const ea_list *e);
+
+uint ea_list_size(ea_list *);
+void ea_list_copy(ea_list *dest, ea_list *src, uint size);
 
 struct ea_one_attr_list {
   ea_list l;

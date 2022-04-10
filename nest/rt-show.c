@@ -55,7 +55,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
 
   /* Need to normalize the extended attributes */
   if (d->verbose && !rta_is_cached(a) && a->eattrs)
-    ea_normalize(a->eattrs);
+    a->eattrs = ea_normalize(a->eattrs);
 
   get_route_info = e->src->proto->proto->get_route_info;
   if (get_route_info)
