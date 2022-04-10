@@ -225,9 +225,14 @@ struct ea_one_attr_list {
     EA_LITERAL_GENERIC(_id, _type, _flags, .u.i = _val); \
     })
 
-#define EA_LITERAL_ADATA(_id, _type, _flags, _buf, _len) ({ \
+#define EA_LITERAL_STORE_ADATA(_id, _type, _flags, _buf, _len) ({ \
     ASSERT_DIE(!(_type & EAF_EMBEDDED)); \
-    EA_LITERAL_GENERIC(_id, _type, _flags, .u.ad = tmp_store_adata(_buf, _len)); \
+    EA_LITERAL_GENERIC(_id, _type, _flags, .u.ad = tmp_store_adata((_buf), (_len))); \
+    })
+
+#define EA_LITERAL_DIRECT_ADATA(_id, _type, _flags, _adata) ({ \
+    ASSERT_DIE(!(_type & EAF_EMBEDDED)); \
+    EA_LITERAL_GENERIC(_id, _type, _flags, .u.ad = _adata); \
     })
 
 #define EA_LITERAL_GENERIC(_id, _type, _flags, ...) \
@@ -261,7 +266,7 @@ ea_set_attr_u32(ea_list **to, uint id, uint flags, uint type, u32 data)
 
 static inline void
 ea_set_attr_data(ea_list **to, uint id, uint flags, uint type, void *data, uint len)
-{ ea_set_attr(to, EA_LITERAL_ADATA(id, type, flags, data, len)); }
+{ ea_set_attr(to, EA_LITERAL_STORE_ADATA(id, type, flags, data, len)); }
 
 
 #define NEXTHOP_MAX_SIZE (sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
