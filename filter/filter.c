@@ -82,9 +82,6 @@ struct filter_state {
   /* Cached pointer to ea_list */
   struct ea_list **eattrs;
 
-  /* Linpool for adata allocation */
-  struct linpool *pool;
-
   /* Buffer for log output */
   struct buffer buf;
 
@@ -134,7 +131,7 @@ f_rta_cow(struct filter_state *fs)
    * at the end of f_run()), also the lock of hostentry is inherited (we
    * suppose hostentry is not changed by filters).
    */
-  (*fs->rte)->attrs = rta_do_cow((*fs->rte)->attrs, fs->pool);
+  (*fs->rte)->attrs = rta_do_cow((*fs->rte)->attrs, tmp_linpool);
 
   /* Re-cache the ea_list */
   f_cache_eattrs(fs);
@@ -202,8 +199,8 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   return F_ERROR; \
 } while(0)
 
-#define falloc(size)  lp_alloc(fs->pool, size)
-#define fpool fs->pool
+#define falloc(size)	tmp_alloc(size)
+#define fpool		tmp_linpool
 
 #define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
 
@@ -268,7 +265,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
  * modified in place, old cached rta is possibly freed.
  */
 enum filter_return
-f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags)
+f_run(const struct filter *filter, struct rte **rte, int flags)
 {
   if (filter == FILTER_ACCEPT)
     return F_ACCEPT;
@@ -282,7 +279,6 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
   /* Initialize the filter state */
   filter_state = (struct filter_state) {
     .rte = rte,
-    .pool = tmp_pool,
     .flags = flags,
   };
 
@@ -343,11 +339,10 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
  */
 
 enum filter_return
-f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool)
+f_eval_rte(const struct f_line *expr, struct rte **rte)
 {
   filter_state = (struct filter_state) {
     .rte = rte,
-    .pool = tmp_pool,
   };
 
   f_stack_init(filter_state);
@@ -367,11 +362,9 @@ f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool
  * @pres: here the output will be stored
  */
 enum filter_return
-f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
+f_eval(const struct f_line *expr, struct f_val *pres)
 {
-  filter_state = (struct filter_state) {
-    .pool = tmp_pool,
-  };
+  filter_state = (struct filter_state) {};
 
   f_stack_init(filter_state);
 
@@ -390,9 +383,7 @@ uint
 f_eval_int(const struct f_line *expr)
 {
   /* Called independently in parse-time to eval expressions */
-  filter_state = (struct filter_state) {
-    .pool = cfg_mem,
-  };
+  filter_state = (struct filter_state) {};
 
   f_stack_init(filter_state);
 
@@ -413,10 +404,10 @@ f_eval_int(const struct f_line *expr)
  * f_eval_buf - get a value of a term and print it to the supplied buffer
  */
 enum filter_return
-f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf)
+f_eval_buf(const struct f_line *expr, buffer *buf)
 {
   struct f_val val;
-  enum filter_return fret = f_eval(expr, tmp_pool, &val);
+  enum filter_return fret = f_eval(expr, &val);
   if (fret <= F_RETURN)
     val_format(&val, buf);
   return fret;

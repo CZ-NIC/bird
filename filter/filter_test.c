@@ -46,7 +46,7 @@ run_function(const void *arg)
   if (t->cmp)
     return t->result == f_same(t->fn, t->cmp);
 
-  enum filter_return fret = f_eval(t->fn, tmp_linpool, NULL);
+  enum filter_return fret = f_eval(t->fn, NULL);
 
   return (fret < F_REJECT);
 }

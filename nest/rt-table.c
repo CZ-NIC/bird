@@ -713,7 +713,7 @@ rte_trace_out(uint flag, struct channel *c, rte *e, char *msg)
 }
 
 static rte *
-export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int silent)
+export_filter(struct channel *c, rte *rt0, rte **rt_free, int silent)
 {
   struct proto *p = c->proto;
   const struct filter *filter = c->out_filter;
@@ -743,7 +743,7 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
     }
 
   v = filter && ((filter == FILTER_REJECT) ||
-		 (f_run(filter, &rt, pool,
+		 (f_run(filter, &rt,
 			(silent ? FF_SILENT : 0)) > F_ACCEPT));
   if (v)
     {
@@ -765,12 +765,6 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
   if (rt != rt0)
     rte_free(rt);
   return NULL;
-}
-
-static inline rte *
-export_filter(struct channel *c, rte *rt0, rte **rt_free, int silent)
-{
-  return export_filter_(c, rt0, rt_free, rte_update_pool, silent);
 }
 
 static void
@@ -963,7 +957,7 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int 
   if (!rte_is_valid(best0))
     return NULL;
 
-  best = export_filter_(c, best0, rt_free, pool, silent);
+  best = export_filter(c, best0, rt_free, silent);
 
   if (!best || !rte_is_reachable(best))
     return best;
@@ -973,7 +967,7 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int 
     if (!rte_mergable(best0, rt0))
       continue;
 
-    rt = export_filter_(c, rt0, &tmp, pool, 1);
+    rt = export_filter(c, rt0, &tmp, 1);
 
     if (!rt)
       continue;
@@ -1592,7 +1586,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	}
       else if (filter)
 	{
-	  int fr = f_run(filter, &new, rte_update_pool, 0);
+	  int fr = f_run(filter, &new, 0);
 	  if (fr > F_ACCEPT)
 	  {
 	    stats->imp_updates_filtered++;
@@ -1696,7 +1690,7 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter)
   /* Rest is stripped down export_filter() */
   int v = p->preexport ? p->preexport(p, rt) : 0;
   if (v == RIC_PROCESS)
-    v = (f_run(filter, &rt, rte_update_pool, FF_SILENT) <= F_ACCEPT);
+    v = (f_run(filter, &rt, FF_SILENT) <= F_ACCEPT);
 
   /* Discard temporary rte */
   if (rt != n->routes)
