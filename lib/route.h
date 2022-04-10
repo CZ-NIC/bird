@@ -220,58 +220,48 @@ struct ea_one_attr_list {
   eattr a;
 };
 
+#define EA_LITERAL_EMBEDDED(_id, _type, _flags, _val) ({ \
+    ASSERT_DIE(_type & EAF_EMBEDDED); \
+    EA_LITERAL_GENERIC(_id, _type, _flags, .u.i = _val); \
+    })
+
+#define EA_LITERAL_ADATA(_id, _type, _flags, _buf, _len) ({ \
+    ASSERT_DIE(!(_type & EAF_EMBEDDED)); \
+    EA_LITERAL_GENERIC(_id, _type, _flags, .u.ad = tmp_store_adata(_buf, _len)); \
+    })
+
+#define EA_LITERAL_GENERIC(_id, _type, _flags, ...) \
+  ((eattr) { .id = _id, .type = _type, .flags = _flags, __VA_ARGS__ })
+
 static inline eattr *
-ea_set_attr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, union bval val)
+ea_set_attr(ea_list **to, eattr a)
 {
-  struct ea_one_attr_list *ea = lp_alloc(pool, sizeof(*ea));
+  struct ea_one_attr_list *ea = tmp_alloc(sizeof(*ea));
   *ea = (struct ea_one_attr_list) {
     .l.flags = EALF_SORTED,
     .l.count = 1,
     .l.next = *to,
-
-    .a.id = id,
-    .a.type = type,
-    .a.flags = flags,
+    .a = a,
   };
 
-  ea->a.u = val;
   *to = &ea->l;
-
   return &ea->a;
 }
 
 static inline void
-ea_unset_attr(ea_list **to, struct linpool *pool, _Bool local, uint code)
+ea_unset_attr(ea_list **to, _Bool local, uint code)
 {
-  struct ea_one_attr_list *ea = lp_alloc(pool, sizeof(*ea));
-  *ea = (struct ea_one_attr_list) {
-    .l.flags = EALF_SORTED,
-    .l.count = 1,
-    .l.next = *to,
-    .a.id = code,
-    .a.fresh = local,
-    .a.originated = local,
-    .a.undef = 1,
-  };
-
-  *to = &ea->l;
+  ea_set_attr(to, EA_LITERAL_GENERIC(code, 0, 0,
+	.fresh = local, .originated = local, .undef = 1));
 }
 
 static inline void
-ea_set_attr_u32(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, u32 data)
-{
-  union bval bv = { .data = data };
-  ea_set_attr(to, pool, id, flags, type, bv);
-}
+ea_set_attr_u32(ea_list **to, uint id, uint flags, uint type, u32 data)
+{ ea_set_attr(to, EA_LITERAL_EMBEDDED(id, type, flags, data)); }
 
 static inline void
-ea_set_attr_data(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, void *data, uint len)
-{
-  struct adata *a = lp_alloc_adata(pool, len);
-  memcpy(a->data, data, len);
-  union bval bv = { .ptr = a, };
-  ea_set_attr(to, pool, id, flags, type, bv);
-}
+ea_set_attr_data(ea_list **to, uint id, uint flags, uint type, void *data, uint len)
+{ ea_set_attr(to, EA_LITERAL_ADATA(id, type, flags, data, len)); }
 
 
 #define NEXTHOP_MAX_SIZE (sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK)

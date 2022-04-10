@@ -739,7 +739,7 @@
     ACCESS_EATTRS;
 
     f_rta_cow(fs);
-    ea_unset_attr(fs->eattrs, tmp_linpool, 1, da.ea_code);
+    ea_unset_attr(fs->eattrs, 1, da.ea_code);
   }
 
   INST(FI_LENGTH, 1, 1) {	/* Get length of */
