@@ -11,6 +11,7 @@
 #include "lib/lists.h"
 #include "lib/event.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -116,10 +117,8 @@ cleanup_pages(void *data UNUSED)
     rem_node(ptr);
     if (munmap(ptr, get_page_size()) == 0)
       pages_kept--;
-#ifdef ENOMEM
     else if (errno == ENOMEM)
       add_tail(&pages_list, ptr);
-#endif
     else
       bug("munmap(%p) failed: %m", ptr);
   }
