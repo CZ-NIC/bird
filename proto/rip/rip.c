@@ -124,6 +124,11 @@ static inline int rip_same_rte(struct rip_rte *a, struct rip_rte *b)
 static inline int rip_valid_rte(struct rip_rte *rt)
 { return rt->from->ifa != NULL; }
 
+struct rip_iface_adata {
+  struct adata ad;
+  struct iface *iface;
+};
+
 /**
  * rip_announce_rte - announce route from RIP routing table to the core
  * @p: RIP instance
@@ -188,24 +193,36 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
       a0.nh.iface = rt->from->ifa->iface;
     }
 
-    a0.eattrs = alloca(sizeof(ea_list) + 3*sizeof(eattr));
-    memset(a0.eattrs, 0, sizeof(ea_list)); /* Zero-ing only the ea_list header */
-    a0.eattrs->count = 3;
-    a0.eattrs->attrs[0] = (eattr) {
-      .id = EA_RIP_METRIC,
-      .type = EAF_TYPE_INT,
-      .u.data = rt_metric,
+    struct {
+      ea_list l;
+      eattr e[3];
+      struct rip_iface_adata riad;
+    } ea_block = {
+      .l = { .count = 3, },
+      .e = {
+	{
+	  .id = EA_RIP_METRIC,
+	  .type = EAF_TYPE_INT,
+	  .u.data = rt_metric,
+	},
+	{
+	  .id = EA_RIP_TAG,
+	  .type = EAF_TYPE_INT,
+	  .u.data = rt_tag,
+	},
+	{
+	  .id = EA_RIP_FROM,
+	  .type = EAF_TYPE_IFACE,
+	  .u.ptr = &ea_block.riad.ad,
+	}
+      },
+      .riad = {
+	.ad = { .length = sizeof(struct rip_iface_adata) - sizeof(struct adata) },
+	.iface = a0.nh.iface,
+      },
     };
-    a0.eattrs->attrs[1] = (eattr) {
-      .id = EA_RIP_TAG,
-      .type = EAF_TYPE_INT,
-      .u.data = rt_tag,
-    };
-    a0.eattrs->attrs[2] = (eattr) {
-      .id = EA_RIP_FROM,
-      .type = EAF_TYPE_PTR,
-      .u.data = (uintptr_t) a0.nh.iface,
-    };
+
+    a0.eattrs = &ea_block.l;
 
     rta *a = rta_lookup(&a0);
     rte *e = rte_get_temp(a, p->p.main_source);
@@ -323,7 +340,8 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
     /* Update */
     u32 rt_tag = ea_get_int(new->attrs->eattrs, EA_RIP_TAG, 0);
     u32 rt_metric = ea_get_int(new->attrs->eattrs, EA_RIP_METRIC, 1);
-    struct iface *rt_from = (struct iface *) ea_get_int(new->attrs->eattrs, EA_RIP_FROM, 0);
+    const eattr *rie = ea_find(new->attrs->eattrs, EA_RIP_FROM);
+    struct iface *rt_from = rie ? ((struct rip_iface_adata *) rie->u.ptr)->iface : NULL;
 
     if (rt_metric > p->infinity)
     {
