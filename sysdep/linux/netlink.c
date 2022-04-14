@@ -1581,20 +1581,21 @@ nl_announce_route(struct nl_parse_state *s)
   rte *e = rte_get_temp(s->attrs, s->proto->p.main_source);
   e->net = s->net;
 
-  ea_list *ea = alloca(sizeof(ea_list) + 2 * sizeof(eattr));
-  *ea = (ea_list) { .count = 2, .next = e->attrs->eattrs };
-  e->attrs->eattrs = ea;
+  EA_LOCAL_LIST(2) ea0 = {
+    .l = { .count = 2, .next = e->attrs->eattrs },
+    .a[0] = (eattr) {
+      .id = EA_KRT_SOURCE,
+      .type = T_INT,
+      .u.data = s->krt_proto,
+    },
+    .a[1] = (eattr) {
+      .id = EA_KRT_METRIC,
+      .type = T_INT,
+      .u.data = s->krt_metric,
+    },
+  };
 
-  ea->attrs[0] = (eattr) {
-    .id = EA_KRT_SOURCE,
-    .type = T_INT,
-    .u.data = s->krt_proto,
-  };
-  ea->attrs[1] = (eattr) {
-    .id = EA_KRT_METRIC,
-    .type = T_INT,
-    .u.data = s->krt_metric,
-  };
+  e->attrs->eattrs = &ea0.l;
 
   if (s->scan)
     krt_got_route(s->proto, e, s->krt_src);
@@ -1865,81 +1866,36 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 #endif
 
   if (i->rtm_scope != def_scope)
-    {
-      ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + sizeof(eattr));
-      ea->next = ra->eattrs;
-      ra->eattrs = ea;
-      ea->flags = EALF_SORTED;
-      ea->count = 1;
-      ea->attrs[0].id = EA_KRT_SCOPE;
-      ea->attrs[0].flags = 0;
-      ea->attrs[0].type = T_INT;
-      ea->attrs[0].u.data = i->rtm_scope;
-    }
+    ea_set_attr(&ra->eattrs,
+	EA_LITERAL_EMBEDDED(EA_KRT_SCOPE, T_INT, 0, i->rtm_scope));
 
   if (a[RTA_PREFSRC])
     {
       ip_addr ps = rta_get_ipa(a[RTA_PREFSRC]);
 
-      ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + sizeof(eattr));
-      ea->next = ra->eattrs;
-      ra->eattrs = ea;
-      ea->flags = EALF_SORTED;
-      ea->count = 1;
-      ea->attrs[0].id = EA_KRT_PREFSRC;
-      ea->attrs[0].flags = 0;
-      ea->attrs[0].type = T_IP;
-
-      struct adata *ad = lp_alloc(s->pool, sizeof(struct adata) + sizeof(ps));
-      ad->length = sizeof(ps);
-      memcpy(ad->data, &ps, sizeof(ps));
-
-      ea->attrs[0].u.ptr = ad;
+      ea_set_attr(&ra->eattrs,
+	  EA_LITERAL_STORE_ADATA(EA_KRT_PREFSRC, T_IP, 0, &ps, sizeof(ps)));
     }
 
   /* Can be set per-route or per-nexthop */
   if (s->rta_flow)
-    {
-      ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + sizeof(eattr));
-      ea->next = ra->eattrs;
-      ra->eattrs = ea;
-      ea->flags = EALF_SORTED;
-      ea->count = 1;
-      ea->attrs[0].id = EA_KRT_REALM;
-      ea->attrs[0].flags = 0;
-      ea->attrs[0].type = T_INT;
-      ea->attrs[0].u.data = s->rta_flow;
-    }
+    ea_set_attr(&ra->eattrs,
+	EA_LITERAL_EMBEDDED(EA_KRT_REALM, T_INT, 0, s->rta_flow));
 
   if (a[RTA_METRICS])
     {
       u32 metrics[KRT_METRICS_MAX];
-      ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + KRT_METRICS_MAX * sizeof(eattr));
-      int t, n = 0;
-
       if (nl_parse_metrics(a[RTA_METRICS], metrics, ARRAY_SIZE(metrics)) < 0)
         {
 	  log(L_ERR "KRT: Received route %N with strange RTA_METRICS attribute", net->n.addr);
 	  return;
 	}
 
-      for (t = 1; t < KRT_METRICS_MAX; t++)
+      for (int t = 1; t < KRT_METRICS_MAX; t++)
 	if (metrics[0] & (1 << t))
-	  {
-	    ea->attrs[n].id = EA_CODE(PROTOCOL_KERNEL, KRT_METRICS_OFFSET + t);
-	    ea->attrs[n].flags = 0;
-	    ea->attrs[n].type = T_INT;
-	    ea->attrs[n].u.data = metrics[t];
-	    n++;
-	  }
-
-      if (n > 0)
-        {
-	  ea->next = ra->eattrs;
-	  ea->flags = EALF_SORTED;
-	  ea->count = n;
-	  ra->eattrs = ea;
-	}
+	  ea_set_attr(&ra->eattrs,
+	      EA_LITERAL_EMBEDDED(EA_CODE(PROTOCOL_KERNEL, KRT_METRICS_OFFSET + t),
+		T_INT, 0, metrics[t]));
     }
 
   /*

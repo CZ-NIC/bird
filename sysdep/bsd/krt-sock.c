@@ -583,15 +583,8 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   e = rte_get_temp(&a);
   e->net = net;
 
-  ea_list *ea = alloca(sizeof(ea_list) + 1 * sizeof(eattr));
-  *ea = (ea_list) { .count = 1, .next = e->attrs->eattrs };
-  e->attrs->eattrs = ea;
-
-  ea->attrs[0] = (eattr) {
-    .id = EA_KRT_SOURCE,
-    .type = T_INT,
-    .u.data = src2,
-  };
+  ea_set_attr(e->attrs->eattrs,
+      EA_LITERAL_EMBEDDED(EA_KRT_SOURCE, T_INT, 0, src2));
 
   if (scan)
     krt_got_route(p, e, src);

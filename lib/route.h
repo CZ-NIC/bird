@@ -217,10 +217,7 @@ ea_list *ea_normalize(const ea_list *e);
 uint ea_list_size(ea_list *);
 void ea_list_copy(ea_list *dest, ea_list *src, uint size);
 
-struct ea_one_attr_list {
-  ea_list l;
-  eattr a;
-};
+#define EA_LOCAL_LIST(N)  struct { ea_list l; eattr a[N]; }
 
 #define EA_LITERAL_EMBEDDED(_id, _type, _flags, _val) ({ \
     ASSERT_DIE(_type & EAF_EMBEDDED); \
@@ -243,16 +240,16 @@ struct ea_one_attr_list {
 static inline eattr *
 ea_set_attr(ea_list **to, eattr a)
 {
-  struct ea_one_attr_list *ea = tmp_alloc(sizeof(*ea));
-  *ea = (struct ea_one_attr_list) {
+  EA_LOCAL_LIST(1) *ea = tmp_alloc(sizeof(*ea));
+  *ea = (typeof(*ea)) {
     .l.flags = EALF_SORTED,
     .l.count = 1,
     .l.next = *to,
-    .a = a,
+    .a[0] = a,
   };
 
   *to = &ea->l;
-  return &ea->a;
+  return &ea->a[0];
 }
 
 static inline void
