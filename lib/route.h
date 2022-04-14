@@ -144,6 +144,8 @@ typedef struct eattr {
   byte fresh:1;				/* An uncached attribute (e.g. modified in export filter) */
   byte undef:1;				/* Explicitly undefined */
 
+  PADDING(unused, 0, 4);
+
   union bval u;
 } eattr;
 

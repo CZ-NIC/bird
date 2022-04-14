@@ -360,6 +360,13 @@ AC_C_BIGENDIAN(
   [AC_MSG_ERROR([Cannot determine CPU endianity.])]
 )
 
+BIRD_CHECK_POINTER_ALIGNMENT
+if test "$bird_cv_pointer_alignment" = "unknown" ; then
+  AC_MSG_ERROR([Couldn't determine pointer alignment])
+else
+  AC_DEFINE_UNQUOTED([CPU_POINTER_ALIGNMENT], [$bird_cv_pointer_alignment], [Pointer alignment for macro usage])
+fi
+
 BIRD_CHECK_ANDROID_GLOB
 if test "$bird_cv_lib_glob" = no ; then
   AC_MSG_ERROR([glob.h not found.])
