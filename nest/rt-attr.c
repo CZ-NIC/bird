@@ -65,6 +65,11 @@ struct ea_class ea_gen_igp_metric = {
   .type = T_INT,
 };
 
+struct ea_class ea_gen_preference = {
+  .name = "preference",
+  .type = T_INT,
+};
+
 const char * const rta_src_names[RTS_MAX] = {
   [RTS_STATIC]		= "static",
   [RTS_INHERIT]		= "inherit",
@@ -1228,7 +1233,6 @@ rta_hash(rta *a)
   BMIX(source);
   BMIX(scope);
   BMIX(dest);
-  MIX(pref);
 #undef MIX
 
   return mem_hash_value(&h) ^ nexthop_hash(&(a->nh)) ^ ea_hash(a->eattrs);
@@ -1389,8 +1393,8 @@ rta_dump(rta *a)
 			 "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
-  debug("pref=%d uc=%d %s %s%s h=%04x",
-	a->pref, a->uc, rts[a->source], ip_scope_text(a->scope),
+  debug("uc=%d %s %s%s h=%04x",
+	a->uc, rts[a->source], ip_scope_text(a->scope),
 	rtd[a->dest], a->hash_key);
   if (!a->cached)
     debug(" !CACHED");
@@ -1469,6 +1473,7 @@ rta_init(void)
   rte_src_init();
   ea_class_init();
 
+  ea_register_init(&ea_gen_preference);
   ea_register_init(&ea_gen_igp_metric);
 }
 

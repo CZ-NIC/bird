@@ -438,7 +438,7 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
   rte *g, **gg, *best, **bestp, *old_best;
 
   ASSERT(!e->attrs->cached);
-  e->attrs->pref = p->p.main_channel->preference;
+  ea_set_attr_u32(&e->attrs->eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
 
   e->attrs = rta_lookup(e->attrs);
 

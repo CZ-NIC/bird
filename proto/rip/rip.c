@@ -152,7 +152,6 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   {
     /* Update */
     rta a0 = {
-      .pref = p->p.main_channel->preference,
       .source = RTS_RIP,
       .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNICAST,
@@ -197,11 +196,12 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 
     struct {
       ea_list l;
-      eattr a[3];
+      eattr a[4];
       struct rip_iface_adata riad;
     } ea_block = {
-      .l.count = 3,
+      .l.count = ARRAY_SIZE(ea_block.a),
       .a = {
+	EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, p->p.main_channel->preference),
 	EA_LITERAL_EMBEDDED(&ea_rip_metric, 0, rt_metric),
 	EA_LITERAL_EMBEDDED(&ea_rip_tag, 0, rt_tag),
 	EA_LITERAL_DIRECT_ADATA(&ea_rip_from, 0, &ea_block.riad.ad),
@@ -1210,7 +1210,7 @@ rip_get_route_info(rte *rte, byte *buf)
   u32 rt_metric = ea_get_int(rte->attrs->eattrs, &ea_rip_metric, p->infinity);
   u32 rt_tag = ea_get_int(rte->attrs->eattrs, &ea_rip_tag, 0);
 
-  buf += bsprintf(buf, " (%d/%d)", rte->attrs->pref, rt_metric);
+  buf += bsprintf(buf, " (%d/%d)", rt_get_preference(rte), rt_metric);
 
   if (rt_tag)
     bsprintf(buf, " [%04x]", rt_tag);

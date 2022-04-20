@@ -2169,7 +2169,7 @@ bgp_rte_mergable(rte *pri, rte *sec)
 static inline int
 same_group(rte *r, u32 lpref, u32 lasn)
 {
-  return (r->attrs->pref == lpref) && (bgp_get_neighbor(r) == lasn);
+  return (rt_get_preference(r) == lpref) && (bgp_get_neighbor(r) == lasn);
 }
 
 static inline int
@@ -2184,7 +2184,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
 {
   rte *r, *s;
   rte *key = new ? new : old;
-  u32 lpref = key->attrs->pref;
+  u32 lpref = rt_get_preference(key);
   u32 lasn = bgp_get_neighbor(key);
   int old_suppressed = old ? !!(old->pflags & BGP_REF_SUPPRESSED) : 0;
 
@@ -2381,7 +2381,7 @@ bgp_get_route_info(rte *e, byte *buf)
   eattr *o = ea_find(e->attrs->eattrs, BGP_EA_ID(BA_ORIGIN));
   u32 origas;
 
-  buf += bsprintf(buf, " (%d", e->attrs->pref);
+  buf += bsprintf(buf, " (%d", rt_get_preference(e));
 
   if (e->pflags & BGP_REF_SUPPRESSED)
     buf += bsprintf(buf, "-");

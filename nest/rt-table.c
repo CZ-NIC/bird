@@ -652,9 +652,12 @@ rte_better(rte *new, rte *old)
   if (!rte_is_valid(new))
     return 0;
 
-  if (new->attrs->pref > old->attrs->pref)
+  u32 np = rt_get_preference(new);
+  u32 op = rt_get_preference(old);
+
+  if (np > op)
     return 1;
-  if (new->attrs->pref < old->attrs->pref)
+  if (np < op)
     return 0;
   if (new->src->proto->proto != old->src->proto->proto)
     {
@@ -678,7 +681,7 @@ rte_mergable(rte *pri, rte *sec)
   if (!rte_is_valid(pri) || !rte_is_valid(sec))
     return 0;
 
-  if (pri->attrs->pref != sec->attrs->pref)
+  if (rt_get_preference(pri) != rt_get_preference(sec))
     return 0;
 
   if (pri->src->proto->proto != sec->src->proto->proto)

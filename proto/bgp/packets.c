@@ -2478,7 +2478,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
     a->scope = SCOPE_UNIVERSE;
     a->from = s->proto->remote_ip;
     a->eattrs = ea;
-    a->pref = c->c.preference;
+    ea_set_attr_u32(&a->eattrs, &ea_gen_preference, 0, c->c.preference);
 
     c->desc->decode_next_hop(s, nh, nh_len, a);
     bgp_finish_attrs(s, a);

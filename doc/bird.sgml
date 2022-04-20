@@ -1732,8 +1732,7 @@ Common route attributes are:
 	default value for new routes is <cf/SCOPE_UNIVERSE/.
 
 	<tag><label id="rta-preference"><m/int/ preference</tag>
-	Preference of the route. Valid values are 0-65535. (See the chapter
-	about routing tables.)
+	Preference of the route.
 
 	<tag><label id="rta-from"><m/ip/ from</tag>
 	The router which the route has originated from.
