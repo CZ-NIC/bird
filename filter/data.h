@@ -22,8 +22,7 @@ struct f_val {
 #define fputip(a)   ({ ip_addr *ax = falloc(sizeof(*ax)); *ax = (a); ax; })
 
 enum f_sa_code {
-  SA_FROM = 1,
-  SA_GW,
+  SA_GW = 1,
   SA_NET,
   SA_PROTO,
   SA_SOURCE,

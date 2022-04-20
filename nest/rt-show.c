@@ -48,8 +48,9 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   struct nexthop *nh;
 
   tm_format_time(tm, &config->tf_route, e->lastmod);
-  if (ipa_nonzero(a->from) && !ipa_equal(a->from, a->nh.gw))
-    bsprintf(from, " from %I", a->from);
+  ip_addr a_from = ea_get_ip(a->eattrs, &ea_gen_from, IPA_NONE);
+  if (ipa_nonzero(a_from) && !ipa_equal(a_from, a->nh.gw))
+    bsprintf(from, " from %I", a_from);
   else
     from[0] = 0;
 

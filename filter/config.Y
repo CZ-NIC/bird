@@ -762,8 +762,7 @@ symbol_value: CF_SYM_KNOWN
  ;
 
 static_attr:
-   FROM    { $$ = f_new_static_attr(T_IP,         SA_FROM,	0); }
- | GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	0); }
+   GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	0); }
  | NET     { $$ = f_new_static_attr(T_NET,	  SA_NET,	1); }
  | PROTO   { $$ = f_new_static_attr(T_STRING,     SA_PROTO,	1); }
  | SOURCE  { $$ = f_new_static_attr(T_ENUM_RTS,   SA_SOURCE,	1); }

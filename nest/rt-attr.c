@@ -70,6 +70,11 @@ struct ea_class ea_gen_preference = {
   .type = T_INT,
 };
 
+struct ea_class ea_gen_from = {
+  .name = "from",
+  .type = T_IP,
+};
+
 const char * const rta_src_names[RTS_MAX] = {
   [RTS_STATIC]		= "static",
   [RTS_INHERIT]		= "inherit",
@@ -1229,7 +1234,6 @@ rta_hash(rta *a)
 #define MIX(f) mem_hash_mix(&h, &(a->f), sizeof(a->f));
 #define BMIX(f) mem_hash_mix_num(&h, a->f);
   MIX(hostentry);
-  MIX(from);
   BMIX(source);
   BMIX(scope);
   BMIX(dest);
@@ -1244,7 +1248,6 @@ rta_same(rta *x, rta *y)
   return (x->source == y->source &&
 	  x->scope == y->scope &&
 	  x->dest == y->dest &&
-	  ipa_equal(x->from, y->from) &&
 	  x->hostentry == y->hostentry &&
 	  nexthop_same(&(x->nh), &(y->nh)) &&
 	  ea_same(x->eattrs, y->eattrs));
@@ -1398,7 +1401,6 @@ rta_dump(rta *a)
 	rtd[a->dest], a->hash_key);
   if (!a->cached)
     debug(" !CACHED");
-  debug(" <-%I", a->from);
   if (a->dest == RTD_UNICAST)
     for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
       {
@@ -1475,6 +1477,7 @@ rta_init(void)
 
   ea_register_init(&ea_gen_preference);
   ea_register_init(&ea_gen_igp_metric);
+  ea_register_init(&ea_gen_from);
 }
 
 /*

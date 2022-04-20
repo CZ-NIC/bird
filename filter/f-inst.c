@@ -533,7 +533,6 @@
 
       switch (sa.sa_code)
       {
-      case SA_FROM:	RESULT(sa.type, ip, rta->from); break;
       case SA_GW:	RESULT(sa.type, ip, rta->nh.gw); break;
       case SA_NET:	RESULT(sa.type, net, (*fs->rte)->net->n.addr); break;
       case SA_PROTO:	RESULT(sa.type, s, (*fs->rte)->src->proto->name); break;
@@ -563,10 +562,6 @@
 
       switch (sa.sa_code)
       {
-      case SA_FROM:
-	rta->from = v1.val.ip;
-	break;
-
       case SA_GW:
 	{
 	  ip_addr ip = v1.val.ip;
