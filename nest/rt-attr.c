@@ -1225,7 +1225,6 @@ rta_hash(rta *a)
 #define BMIX(f) mem_hash_mix_num(&h, a->f);
   MIX(hostentry);
   MIX(from);
-  MIX(igp_metric);
   BMIX(source);
   BMIX(scope);
   BMIX(dest);
@@ -1241,7 +1240,6 @@ rta_same(rta *x, rta *y)
   return (x->source == y->source &&
 	  x->scope == y->scope &&
 	  x->dest == y->dest &&
-	  x->igp_metric == y->igp_metric &&
 	  ipa_equal(x->from, y->from) &&
 	  x->hostentry == y->hostentry &&
 	  nexthop_same(&(x->nh), &(y->nh)) &&

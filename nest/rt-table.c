@@ -2386,7 +2386,8 @@ rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls)
 {
   a->hostentry = he;
   a->dest = he->dest;
-  a->igp_metric = he->igp_metric;
+
+  ea_set_attr_u32(&a->eattrs, &ea_gen_igp_metric, 0, he->igp_metric);
 
   if (a->dest != RTD_UNICAST)
   {
@@ -2483,7 +2484,8 @@ rta_next_hop_outdated(rta *a)
   if (!he->src)
     return a->dest != RTD_UNREACHABLE;
 
-  return (a->dest != he->dest) || (a->igp_metric != he->igp_metric) ||
+  return (a->dest != he->dest) ||
+    (ea_get_int(a->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN) != he->igp_metric) ||
     (!he->nexthop_linkable) || !nexthop_same(&(a->nh), &(he->src->nh));
 }
 

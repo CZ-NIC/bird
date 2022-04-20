@@ -969,7 +969,7 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     a->dest = RTD_UNICAST;
     a->nh.gw = nbr->addr;
     a->nh.iface = nbr->iface;
-    a->igp_metric = c->cf->cost;
+    ea_set_attr_u32(&a->eattrs, &ea_gen_igp_metric, 0, c->cf->cost);
   }
   else /* GW_RECURSIVE */
   {

@@ -383,7 +383,7 @@ bgp_total_aigp_metric_(rte *e, u64 *metric, const struct adata **ad)
     return 0;
 
   u64 aigp = get_u64(b + 3);
-  u64 step = e->attrs->igp_metric;
+  u64 step = rt_get_igp_metric(e);
 
   if (!rte_resolvable(e) || (step >= IGP_METRIC_UNKNOWN))
     step = BGP_AIGP_MAX;
@@ -2046,8 +2046,8 @@ bgp_rte_better(rte *new, rte *old)
     return 1;
 
   /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
-  n = new_bgp->cf->igp_metric ? new->attrs->igp_metric : 0;
-  o = old_bgp->cf->igp_metric ? old->attrs->igp_metric : 0;
+  n = new_bgp->cf->igp_metric ? rt_get_igp_metric(new) : 0;
+  o = old_bgp->cf->igp_metric ? rt_get_igp_metric(old) : 0;
   if (n < o)
     return 1;
   if (n > o)
@@ -2155,8 +2155,8 @@ bgp_rte_mergable(rte *pri, rte *sec)
     return 0;
 
   /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
-  p = pri_bgp->cf->igp_metric ? pri->attrs->igp_metric : 0;
-  s = sec_bgp->cf->igp_metric ? sec->attrs->igp_metric : 0;
+  p = pri_bgp->cf->igp_metric ? rt_get_igp_metric(pri) : 0;
+  s = sec_bgp->cf->igp_metric ? rt_get_igp_metric(sec) : 0;
   if (p != s)
     return 0;
 
@@ -2394,14 +2394,14 @@ bgp_get_route_info(rte *e, byte *buf)
   {
     buf += bsprintf(buf, "/%lu", metric);
   }
-  else if (e->attrs->igp_metric)
+  else if (metric = rt_get_igp_metric(e))
   {
     if (!rte_resolvable(e))
       buf += bsprintf(buf, "/-");
-    else if (e->attrs->igp_metric >= IGP_METRIC_UNKNOWN)
+    else if (metric >= IGP_METRIC_UNKNOWN)
       buf += bsprintf(buf, "/?");
     else
-      buf += bsprintf(buf, "/%d", e->attrs->igp_metric);
+      buf += bsprintf(buf, "/%d", metric);
   }
   buf += bsprintf(buf, ") [");
 
