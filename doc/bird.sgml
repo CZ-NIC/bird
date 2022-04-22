@@ -5251,7 +5251,7 @@ Note that for negated matches, value must be either zero or equal to bitmask
 	<cf>port 1..1023,1194,3306</cf>).
 
 	<tag><label id="flow-dport">dport <m/numbers-match/</tag>
-	Set a mating destination port numbers (e.g. <cf>dport 49151</cf>).
+	Set a matching destination port numbers (e.g. <cf>dport 49151</cf>).
 
 	<tag><label id="flow-sport">sport <m/numbers-match/</tag>
 	Set a matching source port numbers (e.g. <cf>sport = 0</cf>).
