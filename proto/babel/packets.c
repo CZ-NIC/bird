@@ -2011,7 +2011,7 @@ babel_auth_sign(struct babel_iface *ifa, ip_addr dest)
   }
 
   DBG("Added MAC signatures (%d bytes) on ifa %s for dest %I\n",
-      tot_len, ifa->ifname, dest);
+      pos - (pkt + len), ifa->ifname, dest);
 
   return pos - (pkt + len);
 }
