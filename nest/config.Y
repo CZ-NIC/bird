@@ -638,7 +638,7 @@ r_args:
      $$ = cfg_allocz(sizeof(struct rt_show_data));
      init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
-     $$->running_on_config = new_config->fallback;
+     $$->running_on_config = config;
    }
  | r_args net_any {
      $$ = $1;

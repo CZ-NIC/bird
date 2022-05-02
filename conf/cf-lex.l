@@ -77,18 +77,18 @@ static uint cf_hash(const byte *c);
 #define SYM_NEXT(n)		n->next
 #define SYM_EQ(a,s1,b,s2)	!strcmp(a,b) && s1 == s2
 #define SYM_FN(k,s)		cf_hash(k)
-#define SYM_ORDER		6 /* Initial */
+#define SYM_ORDER		4 /* Initial */
 
 #define SYM_REHASH		sym_rehash
-#define SYM_PARAMS		/8, *1, 2, 2, 6, 20
+#define SYM_PARAMS		/8, *1, 2, 2, 4, 20
 
 
 HASH_DEFINE_REHASH_FN(SYM, struct symbol)
 
 HASH(struct keyword) kw_hash;
 
-
 struct sym_scope *conf_this_scope;
+struct sym_scope *global_root_scope;
 
 linpool *cfg_mem;
 
@@ -587,41 +587,39 @@ cf_new_symbol(const byte *c)
   *s = (struct symbol) { .scope = conf_this_scope, .class = SYM_VOID, };
   strcpy(s->name, c);
 
-  if (!new_config->sym_hash.data)
-    HASH_INIT(new_config->sym_hash, new_config->pool, SYM_ORDER);
+  if (!conf_this_scope->hash.data)
+    HASH_INIT(conf_this_scope->hash, new_config->pool, SYM_ORDER);
 
-  HASH_INSERT2(new_config->sym_hash, SYM, new_config->pool, s);
+  HASH_INSERT2(conf_this_scope->hash, SYM, new_config->pool, s);
 
-  add_tail(&(new_config->symbols), &(s->n));
+  if (conf_this_scope == new_config->root_scope)
+    add_tail(&(new_config->symbols), &(s->n));
 
   return s;
 }
 
 /**
- * cf_find_symbol - find a symbol by name
- * @cfg: specificed config
+ * cf_find_symbol_scope - find a symbol by name
+ * @scope: config scope
  * @c: symbol name
  *
- * This functions searches the symbol table in the config @cfg for a symbol of
- * given name. First it examines the current scope, then the second recent one
+ * This functions searches the symbol table in the scope @scope for a symbol of
+ * given name. First it examines the current scope, then the underlying one
  * and so on until it either finds the symbol and returns a pointer to its
  * &symbol structure or reaches the end of the scope chain and returns %NULL to
  * signify no match.
  */
 struct symbol *
-cf_find_symbol(const struct config *cfg, const byte *c)
+cf_find_symbol_scope(const struct sym_scope *scope, const byte *c)
 {
   struct symbol *s;
 
-  if (cfg->sym_hash.data &&
-      (s = HASH_FIND(cfg->sym_hash, SYM, c, 1)))
-    return s;
-
-  /* In CLI command parsing, fallback points to the current config, otherwise it is NULL. */
-  if (cfg->fallback &&
-      cfg->fallback->sym_hash.data &&
-      (s = HASH_FIND(cfg->fallback->sym_hash, SYM, c, 1)))
-    return s;
+  /* Find the symbol here or anywhere below */
+  while (scope)
+    if (scope->hash.data && (s = HASH_FIND(scope->hash, SYM, c, 1)))
+      return s;
+    else
+      scope = scope->next;
 
   return NULL;
 }
@@ -638,7 +636,7 @@ cf_find_symbol(const struct config *cfg, const byte *c)
 struct symbol *
 cf_get_symbol(const byte *c)
 {
-  return cf_find_symbol(new_config, c) ?: cf_new_symbol(c);
+  return cf_find_symbol_scope(conf_this_scope, c) ?: cf_new_symbol(c);
 }
 
 /**
@@ -718,6 +716,8 @@ cf_lex_init_kh(void)
   struct keyword *k;
   for (k=keyword_list; k->name; k++)
     HASH_INSERT(kw_hash, KW, k);
+
+  global_root_scope = mb_allocz(&root_pool, sizeof(*global_root_scope));
 }
 
 /**
@@ -753,6 +753,11 @@ cf_lex_init(int is_cli, struct config *c)
   c->root_scope = cfg_allocz(sizeof(struct sym_scope));
   conf_this_scope = c->root_scope;
   conf_this_scope->active = 1;
+
+  if (is_cli)
+    conf_this_scope->next = config->root_scope;
+  else
+    conf_this_scope->next = global_root_scope;
 }
 
 /**
