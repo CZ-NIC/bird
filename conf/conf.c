@@ -170,7 +170,6 @@ int
 cli_parse(struct config *c)
 {
   int done = 0;
-  c->fallback = config;
   new_config = c;
   cfg_mem = c->mem;
   if (setjmp(conf_jmpbuf))
@@ -181,7 +180,6 @@ cli_parse(struct config *c)
   done = 1;
 
 cleanup:
-  c->fallback = NULL;
   new_config = NULL;
   cfg_mem = NULL;
   return done;
@@ -551,7 +549,6 @@ order_shutdown(int gr)
   init_list(&c->tables);
   init_list(&c->symbols);
   memset(c->def_tables, 0, sizeof(c->def_tables));
-  HASH_INIT(c->sym_hash, c->pool, 4);
   c->shutdown = 1;
   c->gr_down = gr;
 

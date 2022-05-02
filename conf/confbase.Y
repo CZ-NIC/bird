@@ -120,8 +120,7 @@ CF_DECLS
 %type <mls> label_stack_start label_stack
 
 %type <t> text opttext
-%type <s> symbol
-%type <kw> kw_sym
+%type <s> symbol symbol_known toksym 
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
@@ -166,7 +165,7 @@ definition:
 expr:
    NUM
  | '(' term ')' { $$ = f_eval_int(f_linearize($2, 1)); }
- | CF_SYM_KNOWN {
+ | symbol_known {
      if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number constant expected");
      $$ = SYM_VAL($1).i; }
  ;
@@ -177,7 +176,8 @@ expr_us:
  | expr US { $$ = $1 US_; }
  ;
 
-symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | kw_sym { $$ = cf_symbol_from_keyword($1); } ;
+symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | toksym ;
+symbol_known: CF_SYM_KNOWN | toksym ;
 
 /* Switches */
 

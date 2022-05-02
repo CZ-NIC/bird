@@ -16,7 +16,6 @@
 #include "lib/timer.h"
 
 /* Configuration structure */
-
 struct config {
   pool *pool;				/* Pool the configuration is stored in */
   linpool *mem;				/* Linear pool containing configuration data */
@@ -53,8 +52,7 @@ struct config {
   char *err_file_name;			/* File name containing error */
   char *file_name;			/* Name of main configuration file */
   int file_fd;				/* File descriptor of main configuration file */
-  HASH(struct symbol) sym_hash;		/* Lexer: symbol hash table */
-  struct config *fallback;		/* Link to regular config for CLI parsing */
+
   struct sym_scope *root_scope;		/* Scope for root symbols */
   int obstacle_count;			/* Number of items blocking freeing of this config */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
@@ -133,11 +131,16 @@ struct symbol {
 struct sym_scope {
   struct sym_scope *next;		/* Next on scope stack */
   struct symbol *name;			/* Name of this scope */
+
+  HASH(struct symbol) hash;		/* Local symbol hash */
+
   uint slots;				/* Variable slots */
   byte active;				/* Currently entered */
   byte block;				/* No independent stack frame */
   byte soft_scopes;			/* Number of soft scopes above */
 };
+
+extern struct sym_scope *global_root_scope;
 
 struct bytestring {
   size_t length;
@@ -187,12 +190,14 @@ int cf_lex(void);
 void cf_lex_init(int is_cli, struct config *c);
 void cf_lex_unwind(void);
 
-struct symbol *cf_find_local_symbol(const struct config *cfg, const struct sym_scope *scope, const byte *c);
-static inline struct symbol *cf_find_symbol(const struct config *cfg, const byte *c)
-{ return cf_find_local_symbol(cfg, cfg->root_scope, c); }
+struct symbol *cf_find_symbol_scope(const struct sym_scope *scope, const byte *c);
+static inline struct symbol *cf_find_symbol_cfg(const struct config *cfg, const byte *c)
+{ return cf_find_symbol_scope(cfg->root_scope, c); }
 
-struct keyword;
-struct symbol *cf_symbol_from_keyword(const struct keyword *kw);
+#define cf_find_symbol(where, what) _Generic(*(where), \
+    struct config: cf_find_symbol_cfg, \
+    struct sym_scope: cf_find_symbol_scope \
+    )((where), (what))
 
 struct symbol *cf_get_symbol(const byte *c);
 struct symbol *cf_default_name(char *template, int *counter);
