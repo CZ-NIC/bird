@@ -118,7 +118,7 @@ CF_DECLS
 
 %type <t> text opttext
 %type <bs> bytestring
-%type <s> symbol
+%type <s> symbol symbol_known
 
 %type <v> bytestring_text text_or_ipa
 %type <x> bytestring_expr
@@ -166,7 +166,7 @@ definition:
 expr:
    NUM
  | '(' term ')' { $$ = cf_eval_int($2); }
- | CF_SYM_KNOWN {
+ | symbol_known {
      if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number constant expected");
      $$ = SYM_VAL($1).i; }
  ;
@@ -177,7 +177,8 @@ expr_us:
  | expr US { $$ = $1 US_; }
  ;
 
-symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | KEYWORD { $$ = cf_symbol_from_keyword($1); } ;
+symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | KEYWORD ;
+symbol_known: CF_SYM_KNOWN | KEYWORD ;
 
 /* Switches */
 

@@ -317,8 +317,8 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	LEN, MAXLEN,
 	DATA, DATA1, DATA2,
 	DEFINED,
-	ADD, DELETE, CONTAINS, RESET,
-	PREPEND, FIRST, LAST, LAST_NONAGGREGATED, MATCH,
+	ADD, DELETE, RESET,
+	PREPEND, FIRST, LAST, LAST_NONAGGREGATED,
 	MIN, MAX,
 	EMPTY,
 	FILTER, WHERE, EVAL, ATTRIBUTE,
@@ -373,7 +373,7 @@ custom_attr: ATTRIBUTE type symbol ';' {
 
 conf: bt_test_suite ;
 bt_test_suite:
- BT_TEST_SUITE '(' CF_SYM_KNOWN ',' text ')' {
+ BT_TEST_SUITE '(' symbol_known ',' text ')' {
   cf_assert_symbol($3, SYM_FUNCTION);
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
   t->fn = $3->function;
@@ -386,7 +386,7 @@ bt_test_suite:
 
 conf: bt_test_same ;
 bt_test_same:
- BT_TEST_SAME '(' CF_SYM_KNOWN ',' CF_SYM_KNOWN ',' NUM ')' {
+ BT_TEST_SAME '(' symbol_known ',' symbol_known ',' NUM ')' {
   cf_assert_symbol($3, SYM_FUNCTION);
   cf_assert_symbol($5, SYM_FUNCTION);
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
@@ -468,7 +468,7 @@ function_vars:
 filter_body: function_body ;
 
 filter:
-   CF_SYM_KNOWN {
+   symbol_known {
      cf_assert_symbol($1, SYM_FILTER);
      $$ = $1->filter;
    }
@@ -581,7 +581,7 @@ set_atom:
      $$ = cf_eval($2, T_VOID);
      if (!f_valid_set_type($$.type)) cf_error("Set-incompatible type");
    }
- | CF_SYM_KNOWN {
+ | symbol_known {
      cf_assert_symbol($1, SYM_CONSTANT);
      if (!f_valid_set_type(SYM_TYPE($1))) cf_error("%s: set-incompatible type", $1->name);
      $$ = *$1->val;
@@ -753,7 +753,7 @@ var_list: /* EMPTY */ { $$ = NULL; }
  | var_list ',' term { $$ = $3; $$->next = $1; }
 
 function_call:
-   CF_SYM_KNOWN '(' var_list ')'
+   symbol_known '(' var_list ')'
    {
      if ($1->class != SYM_FUNCTION)
        cf_error("You can't call something which is not a function. Really.");
@@ -772,7 +772,7 @@ function_call:
    }
  ;
 
-symbol_value: CF_SYM_KNOWN
+symbol_value: symbol_known
   {
     switch ($1->class) {
       case SYM_CONSTANT_RANGE:
@@ -938,7 +938,7 @@ cmd:
      $$ = f_new_inst(FI_FOR_INIT, $6, $3);
      $$->next = f_new_inst(FI_FOR_NEXT, $3, $9);
    }
- | CF_SYM_KNOWN '=' term ';' {
+ | symbol_known '=' term ';' {
      switch ($1->class) {
        case SYM_VARIABLE_RANGE:
 	 $$ = f_new_inst(FI_VAR_SET, $3, $1);
