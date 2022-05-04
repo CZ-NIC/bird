@@ -709,10 +709,7 @@ cf_lex_symbol(const char *data)
   struct symbol *sym = cf_get_symbol(data);
   cf_lval.s = sym;
 
-  if (sym->class != SYM_VOID)
-    return CF_SYM_KNOWN;
-
-  /* Is it a keyword? */
+  /* Is it a keyword? Prefer the keyword. */
   struct keyword *k = HASH_FIND(kw_hash, KW, data);
   if (k)
   {
@@ -725,9 +722,11 @@ cf_lex_symbol(const char *data)
     }
   }
 
-  /* OK, undefined symbol */
-  cf_lval.s = sym;
-  return CF_SYM_UNDEFINED;
+  /* OK, only a symbol. */
+  if (sym->class == SYM_VOID)
+    return CF_SYM_UNDEFINED;
+  else
+    return CF_SYM_KNOWN;
 }
 
 static void

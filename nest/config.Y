@@ -118,11 +118,11 @@ CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
 CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
-CF_KEYWORDS(PRIMARY, STATS, COUNT, BY, FOR, IN, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
+CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, IN, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
 CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, CLASS, DSCP)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
-CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
+CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
 CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
 CF_KEYWORDS(SORTED, TRIE, MIN, MAX, SETTLE, TIME)
@@ -659,7 +659,7 @@ r_args:
      $$->addr = $3;
      $$->addr_mode = RSD_ADDR_IN;
    }
-| r_args TABLE CF_SYM_KNOWN {
+| r_args TABLE symbol_known {
      cf_assert_symbol($3, SYM_TABLE);
      $$ = $1;
      rt_show_add_table($$, $3->table->table);
@@ -704,7 +704,7 @@ r_args:
      $$ = $1;
      $$->filtered = 1;
    }
- | r_args export_mode CF_SYM_KNOWN {
+ | r_args export_mode symbol_known {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
@@ -721,7 +721,7 @@ r_args:
      $$->export_channel = $3;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
- | r_args PROTOCOL CF_SYM_KNOWN {
+ | r_args PROTOCOL symbol_known {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
