@@ -25,7 +25,6 @@ enum f_sa_code {
   SA_GW = 1,
   SA_NET,
   SA_PROTO,
-  SA_SOURCE,
   SA_DEST,
   SA_IFNAME,
   SA_IFINDEX,

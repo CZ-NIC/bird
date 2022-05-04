@@ -2588,7 +2588,7 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, i
   trie_add_prefix(tab_flow->flowspec_trie, &dst, (nb ? nb->n.addr->pxlen : 0), max_pxlen);
 
   /* No best-match BGP route -> no flowspec */
-  if (!rb || (rb->attrs->source != RTS_BGP))
+  if (!rb || (rt_get_source_attr(rb) != RTS_BGP))
     return 0;
 
   /* Find ORIGINATOR_ID values */
@@ -2620,7 +2620,7 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, i
       continue;
 
     rte *rc = nc->routes;
-    if (rc->attrs->source != RTS_BGP)
+    if (rt_get_source_attr(rc) != RTS_BGP)
       return 0;
 
     if (rta_get_first_asn(rc->attrs) != asn_b)
@@ -2637,7 +2637,7 @@ static rte *
 rt_flowspec_update_rte(rtable *tab, rte *r)
 {
 #ifdef CONFIG_BGP
-  if (r->attrs->source != RTS_BGP)
+  if (rt_get_source_attr(r) != RTS_BGP)
     return NULL;
 
   struct bgp_channel *bc = (struct bgp_channel *) r->sender;
@@ -3471,7 +3471,7 @@ rt_get_igp_metric(rte *rt)
   if (ea)
     return ea->u.data;
 
-  if (rt->attrs->source == RTS_DEVICE)
+  if (rt_get_source_attr(rt) == RTS_DEVICE)
     return 0;
 
   if (rt->src->proto->rte_igp_metric)

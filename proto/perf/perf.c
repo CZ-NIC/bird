@@ -143,7 +143,6 @@ perf_loop(void *data)
 
     if (!p->attrs_per_rte || !(i % p->attrs_per_rte)) {
       struct rta a0 = {
-	.source = RTS_PERF,
 	.dest = RTD_UNICAST,
 	.nh.iface = p->ifa->iface,
 	.nh.gw = gw,
@@ -151,6 +150,7 @@ perf_loop(void *data)
       };
 
       ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
+      ea_set_attr_u32(&a0.eattrs, &ea_gen_source, 0, RTS_PERF);
 
       p->data[i].a = rta_lookup(&a0);
     }

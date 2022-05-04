@@ -55,9 +55,9 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 {
   rta *a = allocz(RTA_MAX_SIZE);
   struct rte_src *src = static_get_source(p, r->index);
-  a->source = RTS_STATIC;
   a->dest = r->dest;
   ea_set_attr_u32(&a->eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
+  ea_set_attr_u32(&a->eattrs, &ea_gen_source, 0, RTS_STATIC);
 
   if (r->dest == RTD_UNICAST)
   {

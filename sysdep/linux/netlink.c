@@ -1854,7 +1854,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
     nl_announce_route(s);
 
   rta *ra = lp_allocz(s->pool, RTA_MAX_SIZE);
-  ra->source = RTS_INHERIT;
+  ea_set_attr_u32(&ra->eattrs, &ea_gen_source, 0, RTS_INHERIT);
 
   if (a[RTA_FLOW])
     s->rta_flow = rta_get_u32(a[RTA_FLOW]);

@@ -520,8 +520,9 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
 
   rta a = {
     .src = p->p.main_source,
-    .source = RTS_INHERIT,
   };
+
+  ea_set_attr_u32(&a->eattrs, &ea_gen_source, 0, RTS_INHERIT);
 
   /* reject/blackhole routes have also set RTF_GATEWAY,
      we wil check them first. */

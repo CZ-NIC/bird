@@ -92,6 +92,22 @@ const char * const rta_src_names[RTS_MAX] = {
   [RTS_RPKI]		= "RPKI",
 };
 
+static void
+ea_gen_source_format(const eattr *a, byte *buf, uint size)
+{
+  if ((a->u.data >= RTS_MAX) || !rta_src_names[a->u.data])
+    bsnprintf(buf, size, "unknown");
+  else
+    bsnprintf(buf, size, "%s", rta_src_names[a->u.data]);
+}
+
+struct ea_class ea_gen_source = {
+  .name = "source",
+  .type = T_ENUM_RTS,
+  .readonly = 1,
+  .format = ea_gen_source_format,
+};
+
 const char * rta_dest_names[RTD_MAX] = {
   [RTD_NONE]		= "",
   [RTD_UNICAST]		= "unicast",
@@ -1234,7 +1250,6 @@ rta_hash(rta *a)
 #define MIX(f) mem_hash_mix(&h, &(a->f), sizeof(a->f));
 #define BMIX(f) mem_hash_mix_num(&h, a->f);
   MIX(hostentry);
-  BMIX(source);
   BMIX(dest);
 #undef MIX
 
@@ -1244,8 +1259,7 @@ rta_hash(rta *a)
 static inline int
 rta_same(rta *x, rta *y)
 {
-  return (x->source == y->source &&
-	  x->dest == y->dest &&
+  return (x->dest == y->dest &&
 	  x->hostentry == y->hostentry &&
 	  nexthop_same(&(x->nh), &(y->nh)) &&
 	  ea_same(x->eattrs, y->eattrs));
@@ -1388,15 +1402,10 @@ rta_do_cow(rta *o, linpool *lp)
 void
 rta_dump(rta *a)
 {
-  static char *rts[] = { "", "RTS_STATIC", "RTS_INHERIT", "RTS_DEVICE",
-			 "RTS_STAT_DEV", "RTS_REDIR", "RTS_RIP",
-			 "RTS_OSPF", "RTS_OSPF_IA", "RTS_OSPF_EXT1",
-			 "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
-  debug("uc=%d %s %s h=%04x",
-	a->uc, rts[a->source],
-	rtd[a->dest], a->hash_key);
+  debug("uc=%d %s h=%04x",
+	a->uc, rtd[a->dest], a->hash_key);
   if (!a->cached)
     debug(" !CACHED");
   if (a->dest == RTD_UNICAST)
@@ -1441,8 +1450,6 @@ rta_dump_all(void)
 void
 rta_show(struct cli *c, rta *a)
 {
-  cli_printf(c, -1008, "\tType: %s", rta_src_names[a->source]);
-
   for(ea_list *eal = a->eattrs; eal; eal=eal->next)
     for(int i=0; i<eal->count; i++)
       ea_show(c, &eal->attrs[i]);
@@ -1476,6 +1483,7 @@ rta_init(void)
   ea_register_init(&ea_gen_preference);
   ea_register_init(&ea_gen_igp_metric);
   ea_register_init(&ea_gen_from);
+  ea_register_init(&ea_gen_source);
 }
 
 /*
