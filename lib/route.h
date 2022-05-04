@@ -86,7 +86,6 @@ typedef struct rta {
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
   u16 cached:1;				/* Are attributes cached? */
   u16 source:7;				/* Route source (RTS_...) */
-  u16 scope:4;				/* Route scope (SCOPE_... -- see ip.h) */
   u16 dest:4;				/* Route destination type (RTD_...) */
   struct nexthop nh;			/* Next hop */
 } rta;

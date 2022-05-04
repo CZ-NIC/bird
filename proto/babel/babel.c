@@ -659,7 +659,6 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
 
     rta a0 = {
       .source = RTS_BABEL,
-      .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNICAST,
       .nh.gw = r->next_hop,
       .nh.iface = r->neigh->ifa->iface,
@@ -685,7 +684,6 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
     /* Unreachable */
     rta a0 = {
       .source = RTS_BABEL,
-      .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNREACHABLE,
     };
 

@@ -1235,7 +1235,6 @@ rta_hash(rta *a)
 #define BMIX(f) mem_hash_mix_num(&h, a->f);
   MIX(hostentry);
   BMIX(source);
-  BMIX(scope);
   BMIX(dest);
 #undef MIX
 
@@ -1246,7 +1245,6 @@ static inline int
 rta_same(rta *x, rta *y)
 {
   return (x->source == y->source &&
-	  x->scope == y->scope &&
 	  x->dest == y->dest &&
 	  x->hostentry == y->hostentry &&
 	  nexthop_same(&(x->nh), &(y->nh)) &&
@@ -1396,8 +1394,8 @@ rta_dump(rta *a)
 			 "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
-  debug("uc=%d %s %s%s h=%04x",
-	a->uc, rts[a->source], ip_scope_text(a->scope),
+  debug("uc=%d %s %s h=%04x",
+	a->uc, rts[a->source],
 	rtd[a->dest], a->hash_key);
   if (!a->cached)
     debug(" !CACHED");
@@ -1443,7 +1441,7 @@ rta_dump_all(void)
 void
 rta_show(struct cli *c, rta *a)
 {
-  cli_printf(c, -1008, "\tType: %s %s", rta_src_names[a->source], ip_scope_text(a->scope));
+  cli_printf(c, -1008, "\tType: %s", rta_src_names[a->source]);
 
   for(ea_list *eal = a->eattrs; eal; eal=eal->next)
     for(int i=0; i<eal->count; i++)

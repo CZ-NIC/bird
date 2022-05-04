@@ -153,7 +153,6 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     /* Update */
     rta a0 = {
       .source = RTS_RIP,
-      .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNICAST,
     };
 

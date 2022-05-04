@@ -521,7 +521,6 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   rta a = {
     .src = p->p.main_source,
     .source = RTS_INHERIT,
-    .scope = SCOPE_UNIVERSE,
   };
 
   /* reject/blackhole routes have also set RTF_GATEWAY,

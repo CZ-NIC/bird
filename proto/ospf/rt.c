@@ -2054,7 +2054,6 @@ again1:
     {
       rta a0 = {
 	.source = nf->n.type,
-	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,
 	.nh = *(nf->n.nhs),
       };

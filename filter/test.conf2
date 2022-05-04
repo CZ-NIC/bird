@@ -38,12 +38,6 @@ protocol static {
 			print from;
 			from = 1.2.3.4;
 			print from;
-			print scope;
-			scope = SCOPE_HOST;
-			print scope;
-			if !(scope ~ [ SCOPE_HOST, SCOPE_SITE ]) then {
-				print "Failed in test";
-			}
 
 			preference = 15;
 			print preference;
