@@ -92,7 +92,7 @@ CF_DECLS
   struct proto_spec ps;
   struct channel_limit cl;
   struct timeformat *tf;
-  mpls_label_stack *mls;
+  struct adata *ad;
   struct bytestring *bs;
 }
 
@@ -113,7 +113,7 @@ CF_DECLS
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
-%type <mls> label_stack_start label_stack
+%type <ad> label_stack_start label_stack
 
 %type <t> text opttext
 %type <s> symbol symbol_known toksym 
@@ -351,17 +351,19 @@ net_or_ipa:
 
 label_stack_start: NUM
 {
-  $$ = cfg_allocz(sizeof(mpls_label_stack));
-  $$->len = 1;
-  $$->stack[0] = $1;
+  $$ = cfg_allocz(ADATA_SIZE(MPLS_MAX_LABEL_STACK * sizeof(u32)));
+  $$->length = sizeof(u32);
+  *((u32 *)$$->data) = $1;
 };
 
 label_stack:
     label_stack_start
   | label_stack '/' NUM {
-    if ($1->len >= MPLS_MAX_LABEL_STACK)
+    if ($1->length >= MPLS_MAX_LABEL_STACK * sizeof(u32))
       cf_error("Too many labels in stack");
-    $1->stack[$1->len++] = $3;
+
+    *((u32 *)($$->data + $1->length)) = $3;
+    $1->length += sizeof(u32);
     $$ = $1;
   }
 ;

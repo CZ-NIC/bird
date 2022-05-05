@@ -49,7 +49,7 @@ struct static_route {
   byte weight;				/* Multipath next hop weight */
   byte use_bfd;				/* Configured to use BFD */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
-  mpls_label_stack *mls;		/* MPLS label stack; may be NULL */
+  struct adata *mls;			/* MPLS label stack; may be NULL */
 };
 
 /*

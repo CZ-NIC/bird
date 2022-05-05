@@ -108,6 +108,12 @@ struct ea_class ea_gen_source = {
   .format = ea_gen_source_format,
 };
 
+struct ea_class ea_mpls_labels = {
+  .name = "mpls_labels",
+  .type = T_CLIST,
+  .readonly = 1,
+};
+
 const char * rta_dest_names[RTD_MAX] = {
   [RTD_NONE]		= "",
   [RTD_UNICAST]		= "unicast",
@@ -220,7 +226,7 @@ nexthop__same(struct nexthop *x, struct nexthop *y)
   {
     if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) ||
 	(x->flags != y->flags) || (x->weight != y->weight) ||
-	(x->labels_orig != y->labels_orig) || (x->labels != y->labels))
+	(x->labels != y->labels))
       return 0;
 
     for (int i = 0; i < x->labels; i++)
@@ -402,7 +408,6 @@ nexthop_copy(struct nexthop *o)
       n->next = NULL;
       n->flags = o->flags;
       n->weight = o->weight;
-      n->labels_orig = o->labels_orig;
       n->labels = o->labels;
       for (int i=0; i<o->labels; i++)
 	n->label[i] = o->label[i];
@@ -1484,6 +1489,8 @@ rta_init(void)
   ea_register_init(&ea_gen_igp_metric);
   ea_register_init(&ea_gen_from);
   ea_register_init(&ea_gen_source);
+
+  ea_register_init(&ea_mpls_labels);
 }
 
 /*
