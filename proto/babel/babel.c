@@ -643,26 +643,14 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
 
   if (r)
   {
-    struct {
-      ea_list l;
-      eattr a[6];
-    } eattrs = {
-      .l.count = ARRAY_SIZE(eattrs.a),
-      .a = {
-	EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, c->preference),
-	EA_LITERAL_STORE_ADATA(&ea_gen_from, 0, &r->neigh->addr, sizeof(r->neigh->addr)),
-	EA_LITERAL_EMBEDDED(&ea_gen_source, 0, RTS_BABEL),
-	EA_LITERAL_EMBEDDED(&ea_babel_metric, 0, r->metric),
-	EA_LITERAL_STORE_ADATA(&ea_babel_router_id, 0, &r->router_id, sizeof(r->router_id)),
-	EA_LITERAL_EMBEDDED(&ea_babel_seqno, 0, r->seqno),
-      }
-    };
-
-    rta a0 = {
-      .dest = RTD_UNICAST,
-      .nh.gw = r->next_hop,
-      .nh.iface = r->neigh->ifa->iface,
-      .eattrs = &eattrs.l,
+    struct nexthop_adata nhad = {
+      .nh = {
+	.gw = r->next_hop,
+	.iface = r->neigh->ifa->iface,
+      },
+      .ad = {
+	.length = sizeof nhad - sizeof nhad.ad,
+      },
     };
 
     /*
@@ -671,7 +659,28 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
      * have routing work.
      */
     if (!neigh_find(&p->p, r->next_hop, r->neigh->ifa->iface, 0))
-      a0.nh.flags = RNF_ONLINK;
+      nhad.nh.flags = RNF_ONLINK;
+    
+    struct {
+      ea_list l;
+      eattr a[7];
+    } eattrs = {
+      .l.count = ARRAY_SIZE(eattrs.a),
+      .a = {
+	EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, c->preference),
+	EA_LITERAL_STORE_ADATA(&ea_gen_from, 0, &r->neigh->addr, sizeof(r->neigh->addr)),
+	EA_LITERAL_EMBEDDED(&ea_gen_source, 0, RTS_BABEL),
+	EA_LITERAL_STORE_ADATA(&ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length),
+	EA_LITERAL_EMBEDDED(&ea_babel_metric, 0, r->metric),
+	EA_LITERAL_STORE_ADATA(&ea_babel_router_id, 0, &r->router_id, sizeof(r->router_id)),
+	EA_LITERAL_EMBEDDED(&ea_babel_seqno, 0, r->seqno),
+      }
+    };
+
+    rta a0 = {
+      .dest = RTD_UNICAST,
+      .eattrs = &eattrs.l,
+    };
 
     rta *a = rta_lookup(&a0);
     rte *rte = rte_get_temp(a, p->p.main_source);

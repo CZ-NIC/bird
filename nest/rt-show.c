@@ -45,11 +45,12 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   rta *a = e->attrs;
   int sync_error = d->kernel ? krt_get_sync_error(d->kernel, e) : 0;
   void (*get_route_info)(struct rte *, byte *buf);
-  struct nexthop *nh;
+  eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+  struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
 
   tm_format_time(tm, &config->tf_route, e->lastmod);
   ip_addr a_from = ea_get_ip(a->eattrs, &ea_gen_from, IPA_NONE);
-  if (ipa_nonzero(a_from) && !ipa_equal(a_from, a->nh.gw))
+  if (ipa_nonzero(a_from) && (!nhad || !ipa_equal(a_from, nhad->nh.gw)))
     bsprintf(from, " from %I", a_from);
   else
     from[0] = 0;
@@ -71,7 +72,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
 	     e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
 
   if (a->dest == RTD_UNICAST)
-    for (nh = &(a->nh); nh; nh = nh->next)
+    NEXTHOP_WALK(nh, nhad)
     {
       char mpls[MPLS_MAX_LABEL_STACK*12 + 5], *lsp = mpls;
       char *onlink = (nh->flags & RNF_ONLINK) ? " onlink" : "";
@@ -85,7 +86,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
 	}
       *lsp = '\0';
 
-      if (a->nh.next)
+      if (!NEXTHOP_ONE(nhad))
 	bsprintf(weight, " weight %d", nh->weight + 1);
 
       if (ipa_nonzero(nh->gw))

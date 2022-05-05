@@ -169,38 +169,58 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     a0.eattrs = &ea_block.l;
 
     u16 rt_tag = rt->tag;
+    struct iface *rt_from = NULL;
 
     if (p->ecmp)
     {
       /* ECMP route */
-      struct nexthop *nhs = NULL;
       int num = 0;
+
+      for (rt = en->routes; rt && (num < p->ecmp); rt = rt->next)
+	if (rip_valid_rte(rt))
+	  num++;
+
+      struct nexthop_adata *nhad = (struct nexthop_adata *) tmp_alloc_adata((num+1) * sizeof(struct nexthop));
+      struct nexthop *nh = &nhad->nh;
 
       for (rt = en->routes; rt && (num < p->ecmp); rt = rt->next)
       {
 	if (!rip_valid_rte(rt))
-	    continue;
+	  continue;
 
-	struct nexthop *nh = allocz(sizeof(struct nexthop));
+	*nh = (struct nexthop) {
+	  .gw = rt->next_hop,
+	  .iface = rt->from->ifa->iface,
+	  .weight = rt->from->ifa->cf->ecmp_weight,
+	};
 
-	nh->gw = rt->next_hop;
-	nh->iface = rt->from->ifa->iface;
-	nh->weight = rt->from->ifa->cf->ecmp_weight;
+	if (!rt_from)
+	  rt_from = rt->from->ifa->iface;
 
-	nexthop_insert(&nhs, nh);
-	num++;
+	nh = NEXTHOP_NEXT(nh);
 
 	if (rt->tag != rt_tag)
 	  rt_tag = 0;
       }
 
-      a0.nh = *nhs;
+      nhad->ad.length = ((void *) nh - (void *) nhad->ad.data);
+
+      ea_set_attr(&a0.eattrs,
+	  EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0,
+	    &(nexthop_sort(nhad, tmp_linpool)->ad)));
     }
     else
     {
       /* Unipath route */
-      a0.nh.gw = rt->next_hop;
-      a0.nh.iface = rt->from->ifa->iface;
+      rt_from = rt->from->ifa->iface;
+
+      struct nexthop_adata nhad = {
+	.nh.gw = rt->next_hop,
+	.nh.iface = rt->from->ifa->iface,
+      };
+
+      ea_set_attr_data(&a0.eattrs, &ea_gen_nexthop, 0,
+	  &nhad.ad.data, sizeof nhad - sizeof nhad.ad);
       ea_set_attr_data(&a0.eattrs, &ea_gen_from, 0, &rt->from->nbr->addr, sizeof(ip_addr));
     }
 
@@ -208,7 +228,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 
     struct rip_iface_adata riad = {
       .ad = { .length = sizeof(struct rip_iface_adata) - sizeof(struct adata) },
-      .iface = a0.nh.iface,
+      .iface = rt_from,
     };
     ea_set_attr(&a0.eattrs,
 	EA_LITERAL_DIRECT_ADATA(&ea_rip_from, 0, &riad.ad));
@@ -362,8 +382,14 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
     en->metric = rt_metric;
     en->tag = rt_tag;
     en->from = (new->src->proto == P) ? rt_from : NULL;
-    en->iface = new->attrs->nh.iface;
-    en->next_hop = new->attrs->nh.gw;
+
+    eattr *nhea = ea_find(new->attrs->eattrs, &ea_gen_nexthop);
+    if (nhea)
+    {
+      struct nexthop_adata *nhad = (struct nexthop_adata *) nhea->u.ptr;
+      en->iface = nhad->nh.iface;
+      en->next_hop = nhad->nh.gw;
+    }
   }
   else
   {

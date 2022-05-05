@@ -37,7 +37,9 @@ lp_store_adata(struct linpool *pool, const void *buf, uint len)
   return ad;
 }
 
+#define tmp_alloc_adata(len)	  lp_alloc_adata(tmp_linpool, len)
 #define tmp_store_adata(buf, len) lp_store_adata(tmp_linpool, buf, len)
+#define tmp_copy_adata(ad)	  tmp_store_adata((ad)->data, (ad)->length)
 
 static inline int adata_same(const struct adata *a, const struct adata *b)
 { return (a->length == b->length && !memcmp(a->data, b->data, a->length)); }

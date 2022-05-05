@@ -52,6 +52,7 @@ enum btype {
 /* Something but inaccessible. */
   T_OPAQUE = 0x02,		/* Opaque byte string (not filterable) */
   T_IFACE = 0x0c,		/* Pointer to an interface (inside adata) */
+  T_NEXTHOP_LIST = 0x2c,	/* The whole nexthop block */
 
 /* Types shared with eattrs */
   T_INT = 0x01,			/* 32-bit unsigned integer number */

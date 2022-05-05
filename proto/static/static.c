@@ -61,32 +61,40 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 
   if (r->dest == RTD_UNICAST)
   {
-    struct static_route *r2;
-    struct nexthop *nhs = NULL;
+    uint sz = 0;
+    for (struct static_route *r2 = r; r2; r2 = r2->mp_next)
+      if (r2->active)
+	sz += NEXTHOP_SIZE_CNT(r2->mls ? r2->mls->length / sizeof(u32) : 0);
 
-    for (r2 = r; r2; r2 = r2->mp_next)
+    if (!sz)
+      goto withdraw;
+
+    struct nexthop_adata *nhad = allocz(sz + sizeof *nhad);
+    struct nexthop *nh = &nhad->nh;
+
+    for (struct static_route *r2 = r; r2; r2 = r2->mp_next)
     {
       if (!r2->active)
 	continue;
 
-      struct nexthop *nh = allocz(NEXTHOP_MAX_SIZE);
-      nh->gw = r2->via;
-      nh->iface = r2->neigh->iface;
-      nh->flags = r2->onlink ? RNF_ONLINK : 0;
-      nh->weight = r2->weight;
+      *nh = (struct nexthop) {
+	.gw = r2->via,
+	.iface = r2->neigh->iface,
+	.flags = r2->onlink ? RNF_ONLINK : 0,
+	.weight = r2->weight,
+      };
+
       if (r2->mls)
       {
 	nh->labels = r2->mls->length / sizeof(u32);
 	memcpy(nh->label, r2->mls->data, r2->mls->length);
       }
 
-      nexthop_insert(&nhs, nh);
+      nh = NEXTHOP_NEXT(nh);
     }
 
-    if (!nhs)
-      goto withdraw;
-
-    nexthop_link(a, nhs);
+    ea_set_attr_data(&a->eattrs, &ea_gen_nexthop, 0,
+	nhad->ad.data, (void *) nh - (void *) nhad->ad.data);
   }
 
   if (r->dest == RTDX_RECURSIVE)
