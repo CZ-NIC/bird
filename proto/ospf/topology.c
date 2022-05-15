@@ -1366,16 +1366,9 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   uint tag = ea_get_int(a->eattrs, &ea_ospf_tag, 0);
 
   ip_addr fwd = IPA_NONE;
-  if (a->dest == RTD_UNICAST)
+  eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+  if (nhea)
   {
-    eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
-    if (!nhea)
-    {
-      log(L_ERR "%s: Unicast route without nexthop for %N",
-	  p->p.name, n->n.addr);
-      return;
-    }
-
     struct nexthop_adata *nhad = (struct nexthop_adata *) nhea->u.ptr;
     if (use_gw_for_fwaddr(p, nhad->nh.gw, nhad->nh.iface))
       fwd = nhad->nh.gw;

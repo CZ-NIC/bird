@@ -1983,8 +1983,7 @@ ort_changed(ort *nf, rta *nr)
 
   if (!or ||
     (nf->n.metric1 != nf->old_metric1) || (nf->n.metric2 != nf->old_metric2) ||
-    (nf->n.tag != nf->old_tag) || (nf->n.rid != nf->old_rid) ||
-    (nr->dest != or->dest))
+    (nf->n.tag != nf->old_tag) || (nf->n.rid != nf->old_rid))
     return 1;
 
   eattr *nhea_n = ea_find(nr->eattrs, &ea_gen_nexthop);
@@ -2049,7 +2048,6 @@ again1:
     if (nf->n.type) /* Add the route */
     {
       rta a0 = {
-	.dest = RTD_UNICAST,
       };
 
       struct {

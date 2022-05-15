@@ -608,17 +608,10 @@ krt_same_dest(rte *k, rte *e)
 {
   rta *ka = k->attrs, *ea = e->attrs;
 
-  if (ka->dest != ea->dest)
-    return 0;
-
-  if (ka->dest != RTD_UNICAST)
-    return 1;
-
   eattr *nhea_k = ea_find(ka->eattrs, &ea_gen_nexthop);
   eattr *nhea_e = ea_find(ea->eattrs, &ea_gen_nexthop);
 
-  ASSUME(nhea_k && nhea_e);
-  return adata_same(nhea_k->u.ptr, nhea_e->u.ptr);
+  return (!nhea_k == !nhea_e) && adata_same(nhea_k->u.ptr, nhea_e->u.ptr);
 }
 
 /*

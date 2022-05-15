@@ -530,20 +530,24 @@
       STATIC_ATTR;
       ACCESS_RTE;
       ACCESS_EATTRS;
-      struct rta *rta = (*fs->rte)->attrs;
 
       switch (sa.sa_code)
       {
       case SA_NET:	RESULT(sa.type, net, (*fs->rte)->net->n.addr); break;
       case SA_PROTO:	RESULT(sa.type, s, (*fs->rte)->src->proto->name); break;
-      case SA_DEST:	RESULT(sa.type, i, rta->dest); break;
       default:
 	{
-	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
-	  struct nexthop *nh = nh_ea ? &((struct nexthop_adata *) nh_ea->u.ptr)->nh : NULL;
+	  struct eattr *nhea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
+	  struct nexthop *nh = nhad ? &nhad->nh : NULL;
 
 	  switch (sa.sa_code)
 	  {
+	    case SA_DEST:
+	      RESULT(sa.type, i, nhad ?
+		  (NEXTHOP_IS_REACHABLE(nhad) ? RTD_UNICAST : nhad->dest)
+		  : RTD_NONE);
+	      break;
 	    case SA_GW:
 	      RESULT(sa.type, ip, nh ? nh->gw : IPA_NONE);
 	      break;
@@ -576,36 +580,33 @@
 
     f_rta_cow(fs);
     {
-      struct rta *rta = (*fs->rte)->attrs;
+      union {
+	struct nexthop_adata nha;
+	struct {
+	  struct adata ad;
+	  struct nexthop nh;
+	  u32 label;
+	};
+      } nha;
 
-      if (sa.sa_code == SA_DEST)
+      nha.ad = (struct adata) {
+	.length = sizeof (struct nexthop_adata) - sizeof (struct adata),
+      };
+
+      eattr *a = NULL;
+
+      switch (sa.sa_code)
+      {
+      case SA_DEST:
 	{
 	  int i = v1.val.i;
 	  if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
 	    runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
 
-	  rta->dest = i;
-	  ea_unset_attr(fs->eattrs, 1, &ea_gen_nexthop);
+	  nha.nha.dest = i;
+	  nha.ad.length = NEXTHOP_DEST_SIZE;
+	  break;
 	}
-      else
-      {
-	union {
-	  struct nexthop_adata nha;
-	  struct {
-	    struct adata ad;
-	    struct nexthop nh;
-	    u32 label;
-	  };
-	} nha;
-
-	nha.ad = (struct adata) {
-	  .length = sizeof (struct nexthop_adata) - sizeof (struct adata),
-	};
-
-	eattr *a = NULL;
-
-	switch (sa.sa_code)
-	  {
       case SA_GW:
 	{
 	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
@@ -618,7 +619,6 @@
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
 
-	  rta->dest = RTD_UNICAST;
 	  nha.nh = (struct nexthop) {
 	    .gw = ip,
 	    .iface = n->iface,
@@ -632,7 +632,6 @@
 	  if (!ifa)
 	    runtime( "Invalid iface name" );
 
-	  rta->dest = RTD_UNICAST;
 	  nha.nh = (struct nexthop) {
 	    .iface = ifa,
 	  };
@@ -666,15 +665,16 @@
 	  int i = v1.val.i;
 	  if (i < 1 || i > 256)
 	    runtime( "Setting weight value out of bounds" );
-	  if (rta->dest != RTD_UNICAST)
-	    runtime( "Setting weight needs regular nexthop " );
 
 	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
 	  if (!nh_ea)
 	    runtime( "No nexthop to set weight on" );
 
-	  struct nexthop_adata *nhax = (struct nexthop_adata *)
-	    tmp_copy_adata(&((struct nexthop_adata *) nh_ea->u.ptr)->ad);
+	  struct nexthop_adata *nhad = (struct nexthop_adata *) nh_ea->u.ptr;
+	  if (!NEXTHOP_IS_REACHABLE(nhad))
+	    runtime( "Setting weight needs regular nexthop " );
+
+	  struct nexthop_adata *nhax = (struct nexthop_adata *) tmp_copy_adata(&nhad->ad);
 
 	  /* Set weight on all next hops */
 	  NEXTHOP_WALK(nh, nhax)
@@ -687,15 +687,14 @@
 
       default:
 	bug("Invalid static attribute access (%u/%u)", sa.type, sa.sa_code);
-	  }
-
-	if (!a)
-	  a = ea_set_attr(fs->eattrs,
-	      EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, tmp_copy_adata(&nha.ad)));
-
-	a->originated = 1;
-	a->fresh = 1;
       }
+
+      if (!a)
+	a = ea_set_attr(fs->eattrs,
+	    EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, tmp_copy_adata(&nha.ad)));
+
+      a->originated = 1;
+      a->fresh = 1;
     }
   }
 

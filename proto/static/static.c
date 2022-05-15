@@ -55,7 +55,6 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 {
   rta *a = allocz(RTA_MAX_SIZE);
   struct rte_src *src = static_get_source(p, r->index);
-  a->dest = r->dest;
   ea_set_attr_u32(&a->eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
   ea_set_attr_u32(&a->eattrs, &ea_gen_source, 0, RTS_STATIC);
 
@@ -97,7 +96,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 	nhad->ad.data, (void *) nh - (void *) nhad->ad.data);
   }
 
-  if (r->dest == RTDX_RECURSIVE)
+  else if (r->dest == RTDX_RECURSIVE)
   {
     rtable *tab = ipa_is_ip4(r->via) ? p->igp_table_ip4 : p->igp_table_ip6;
     u32 *labels = r->mls ? (void *) r->mls->data : NULL;
@@ -106,6 +105,9 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
     ea_set_hostentry(&a->eattrs, p->p.main_channel->table, tab,
 	r->via, IPA_NONE, lnum, labels);
   }
+
+  else if (r->dest)
+    ea_set_dest(&a->eattrs, 0, r->dest);
 
   /* Already announced */
   if (r->state == SRS_CLEAN)

@@ -699,7 +699,7 @@ rte_trace(struct channel *c, rte *e, int dir, char *msg)
 {
   log(L_TRACE "%s.%s %c %s %N %uL %uG %s",
       c->proto->name, c->name ?: "?", dir, msg, e->net->n.addr, e->src->private_id, e->src->global_id,
-      rta_dest_name(e->attrs->dest));
+      rta_dest_name(rte_dest(e)));
 }
 
 static inline void
@@ -1177,26 +1177,17 @@ rte_validate(rte *e)
     return 0;
   }
 
-  if (net_type_match(n->n.addr, NB_DEST) == !e->attrs->dest)
-  {
-    /* Exception for flowspec that failed validation */
-    if (net_is_flow(n->n.addr) && (e->attrs->dest == RTD_UNREACHABLE))
-      return 1;
-
-    log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
-	n->n.addr, e->attrs->dest, e->sender->proto->name);
-    return 0;
-  }
-
   eattr *nhea = ea_find(e->attrs->eattrs, &ea_gen_nexthop);
-  if ((!nhea) != (e->attrs->dest != RTD_UNICAST))
+  int dest = nhea_dest(nhea);
+
+  if (net_type_match(n->n.addr, NB_DEST) == !dest)
   {
-    log(L_WARN "Ignoring route %N with destination %d and %snexthop received via %s",
-	n->n.addr, e->attrs->dest, (nhea ? "" : "no "), e->sender->proto->name);
+    log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
+	n->n.addr, dest, e->sender->proto->name);
     return 0;
   }
 
-  if ((e->attrs->dest == RTD_UNICAST) &&
+  if ((dest == RTD_UNICAST) &&
       !nexthop_is_sorted((struct nexthop_adata *) nhea->u.ptr))
   {
     log(L_WARN "Ignoring unsorted multipath route %N received via %s",
@@ -2431,25 +2422,26 @@ rta_apply_hostentry(rta *a, struct hostentry_adata *head)
   u32 *labels = head->labels;
   u32 lnum = (u32 *) (head->ad.data + head->ad.length) - labels;
 
-  a->dest = he->dest;
-
   ea_set_attr_u32(&a->eattrs, &ea_gen_igp_metric, 0, he->igp_metric);
 
-  if (a->dest != RTD_UNICAST)
+  if (!he->src)
   {
-    /* No nexthop */
-    ea_unset_attr(&a->eattrs, 0, &ea_gen_nexthop);
-    return;
-  }
-
-  if (!lnum && he->nexthop_linkable)
-  { /* Just link the nexthop chain, no label append happens. */
-    ea_copy_attr(&a->eattrs, he->src->eattrs, &ea_gen_nexthop);
+    ea_set_dest(&a->eattrs, 0, RTD_UNREACHABLE);
     return;
   }
 
   eattr *he_nh_ea = ea_find(he->src->eattrs, &ea_gen_nexthop);
+  ASSERT_DIE(he_nh_ea);
+
   struct nexthop_adata *nhad = (struct nexthop_adata *) he_nh_ea->u.ptr;
+  int idest = nhea_dest(he_nh_ea);
+
+  if ((idest != RTD_UNICAST) ||
+      !lnum && he->nexthop_linkable)
+  { /* Just link the nexthop chain, no label append happens. */
+    ea_copy_attr(&a->eattrs, he->src->eattrs, &ea_gen_nexthop);
+    return;
+  }
 
   uint total_size = OFFSETOF(struct nexthop_adata, nh);
 
@@ -2467,10 +2459,14 @@ rta_apply_hostentry(rta *a, struct hostentry_adata *head)
 
   if (total_size == OFFSETOF(struct nexthop_adata, nh))
   {
-    a->dest = RTD_UNREACHABLE;
     log(L_WARN "No valid nexthop remaining, setting route unreachable");
 
-    ea_unset_attr(&a->eattrs, 0, &ea_gen_nexthop);
+    struct nexthop_adata nha = {
+      .ad.length = NEXTHOP_DEST_SIZE,
+      .dest = RTD_UNREACHABLE,
+    };
+
+    ea_set_attr_data(&a->eattrs, &ea_gen_nexthop, 0, &nha.ad.data, nha.ad.length);
     return;
   }
 
@@ -2511,19 +2507,28 @@ rta_apply_hostentry(rta *a, struct hostentry_adata *head)
 static inline struct hostentry_adata *
 rta_next_hop_outdated(rta *a)
 {
+  /* First retrieve the hostentry */
   eattr *heea = ea_find(a->eattrs, &ea_gen_hostentry);
   if (!heea)
     return NULL;
 
   struct hostentry_adata *head = (struct hostentry_adata *) heea->u.ptr;
 
-  if (!head->he->src)
-    return (a->dest != RTD_UNREACHABLE) ? head : NULL;
-
-  eattr *he_nh_ea = ea_find(head->he->src->eattrs, &ea_gen_nexthop);
+  /* If no nexthop is present, we have to create one */
   eattr *a_nh_ea = ea_find(a->eattrs, &ea_gen_nexthop);
+  if (!a_nh_ea)
+    return head;
 
-  return ((a->dest != head->he->dest) ||
+  struct nexthop_adata *nhad = (struct nexthop_adata *) a_nh_ea->u.ptr;
+
+  /* Shortcut for unresolvable hostentry */
+  if (!head->he->src)
+    return NEXTHOP_IS_REACHABLE(nhad) ? head : NULL;
+
+  /* Comparing our nexthop with the hostentry nexthop */
+  eattr *he_nh_ea = ea_find(head->he->src->eattrs, &ea_gen_nexthop);
+
+  return (
       (ea_get_int(a->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN) != head->he->igp_metric) ||
       (!head->he->nexthop_linkable) ||
       (!he_nh_ea != !a_nh_ea) ||
@@ -2682,15 +2687,15 @@ rt_flowspec_update_rte(rtable *tab, rte *r)
   const net_addr *n = r->net->n.addr;
   struct bgp_proto *p = (void *) r->src->proto;
   int valid = rt_flowspec_check(bc->base_table, tab, n, r->attrs, p->is_interior);
-  int dest = valid ? RTD_NONE : RTD_UNREACHABLE;
-
-  if (dest == r->attrs->dest)
+  int old = rt_get_flowspec_valid(r);
+  if (old == valid)
     return NULL;
 
   rta *a = alloca(RTA_MAX_SIZE);
   memcpy(a, r->attrs, rta_size(r->attrs));
-  a->dest = dest;
   a->cached = 0;
+
+  ea_set_attr_u32(&a->eattrs, &ea_gen_flowspec_valid, 0, valid);
 
   rte *new = sl_alloc(rte_slab);
   memcpy(new, r, sizeof(rte));
@@ -3524,7 +3529,6 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 
   /* Reset the hostentry */
   he->src = NULL;
-  he->dest = RTD_UNREACHABLE;
   he->nexthop_linkable = 0;
   he->igp_metric = 0;
 
@@ -3545,16 +3549,12 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 	  goto done;
 	}
 
-      if (a->dest == RTD_UNICAST)
-	{
-	  eattr *ea = ea_find(a->eattrs, &ea_gen_nexthop);
-	  if (!ea)
-	    {
-	      log(L_WARN "No nexthop in unicast route");
-	      goto done;
-	    }
-	    
-	  NEXTHOP_WALK(nh, (struct nexthop_adata *) ea->u.ptr)
+      eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+      ASSERT_DIE(nhea);
+      struct nexthop_adata *nhad = (void *) nhea->u.ptr;
+
+      if (NEXTHOP_IS_REACHABLE(nhad))
+	  NEXTHOP_WALK(nh, nhad)
 	    if (ipa_zero(nh->gw))
 	      {
 		if (if_local_addr(he->addr, nh->iface))
@@ -3567,10 +3567,8 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 
 		direct++;
 	      }
-	}
 
       he->src = rta_clone(a);
-      he->dest = a->dest;
       he->nexthop_linkable = !direct;
       he->igp_metric = rt_get_igp_metric(e);
     }

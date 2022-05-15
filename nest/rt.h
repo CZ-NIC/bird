@@ -144,7 +144,6 @@ struct hostentry {
   unsigned hash_key;			/* Hash key */
   unsigned uc;				/* Use count */
   struct rta *src;			/* Source rta entry */
-  byte dest;				/* Chosen route destination type (RTD_...) */
   byte nexthop_linkable;		/* Nexthop list is completely non-device */
   u32 igp_metric;			/* Chosen route IGP metric */
 };

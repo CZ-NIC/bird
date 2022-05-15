@@ -166,6 +166,12 @@ const char * rta_dest_names[RTD_MAX] = {
   [RTD_PROHIBIT]	= "prohibited",
 };
 
+struct ea_class ea_gen_flowspec_valid = {
+  .name = "flowspec_valid",
+  .type = T_ENUM_FLOWSPEC_VALID,
+  .readonly = 1,
+};
+
 pool *rta_pool;
 
 static slab *rta_slab;
@@ -1246,20 +1252,13 @@ rta_alloc_hash(void)
 static inline uint
 rta_hash(rta *a)
 {
-  u64 h;
-  mem_hash_init(&h);
-#define BMIX(f) mem_hash_mix_num(&h, a->f);
-  BMIX(dest);
-#undef MIX
-
-  return mem_hash_value(&h) ^ ea_hash(a->eattrs);
+  return ea_hash(a->eattrs);
 }
 
 static inline int
 rta_same(rta *x, rta *y)
 {
-  return (x->dest == y->dest &&
-	  ea_same(x->eattrs, y->eattrs));
+  return ea_same(x->eattrs, y->eattrs);
 }
 
 static rta *
@@ -1382,10 +1381,8 @@ rta_do_cow(rta *o, linpool *lp)
 void
 rta_dump(rta *a)
 {
-  static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
-
-  debug("uc=%d %s h=%04x",
-	a->uc, rtd[a->dest], a->hash_key);
+  debug("uc=%d h=%04x",
+	a->uc, a->hash_key);
   if (!a->cached)
     debug(" !CACHED");
   if (a->eattrs)
@@ -1449,6 +1446,7 @@ rta_init(void)
   ea_register_init(&ea_gen_source);
   ea_register_init(&ea_gen_nexthop);
   ea_register_init(&ea_gen_hostentry);
+  ea_register_init(&ea_gen_flowspec_valid);
 }
 
 /*

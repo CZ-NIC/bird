@@ -968,7 +968,6 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
 
     ea_set_attr_u32(&a->eattrs, &ea_gen_igp_metric, 0, c->cf->cost);
 
-    a->dest = RTD_UNICAST;
     struct nexthop_adata nhad = {
       .nh = {
 	.gw = nbr->addr,
@@ -1003,8 +1002,7 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 lnum, u32 labels[ln
   {
     REPORT("Too many MPLS labels ($u)", lnum);
 
-    a->dest = RTD_UNREACHABLE;
-    ea_unset_attr(&a->eattrs, 0, &ea_gen_nexthop);
+    ea_set_dest(&a->eattrs, 0, RTD_UNREACHABLE);
     return;
   }
 
@@ -1039,15 +1037,21 @@ static void
 bgp_apply_flow_validation(struct bgp_parse_state *s, const net_addr *n, rta *a)
 {
   struct bgp_channel *c = s->channel;
-  int valid = rt_flowspec_check(c->base_table, c->c.table, n, a, s->proto->is_interior);
-  a->dest = valid ? RTD_NONE : RTD_UNREACHABLE;
+  uint valid = rt_flowspec_check(c->base_table, c->c.table, n, a, s->proto->is_interior);
 
-  /* Invalidate cached rta if dest changes */
-  if (s->cached_rta && (s->cached_rta->dest != a->dest))
+  /* Invalidate cached rta */
+  if (s->cached_rta)
   {
+    /* Has't changed */
+    if (valid == ea_get_int(s->cached_rta->eattrs, &ea_gen_flowspec_valid, FLOWSPEC_UNKNOWN))
+      return;
+
     rta_free(s->cached_rta);
     s->cached_rta = NULL;
   }
+
+  /* Set the value */
+  ea_set_attr_u32(&a->eattrs, &ea_gen_flowspec_valid, 0, valid);
 }
 
 static int
@@ -1107,17 +1111,14 @@ bgp_use_gateway(struct bgp_export_state *s)
   if (c->cf->next_hop_self && bgp_match_src(s, c->cf->next_hop_self))
     return NULL;
 
-  /* Unreachable */
-  if (ra->dest != RTD_UNICAST)
-    return NULL;
-
   eattr *nhea = ea_find(ra->eattrs, &ea_gen_nexthop);
   if (!nhea)
     return NULL;
 
   /* We need one valid global gateway */
   struct nexthop_adata *nhad = (struct nexthop_adata *) nhea->u.ptr;
-  if (!NEXTHOP_ONE(nhad) || ipa_zero(nhad->nh.gw) ||
+  if (!NEXTHOP_IS_REACHABLE(nhad) ||
+      !NEXTHOP_ONE(nhad) || ipa_zero(nhad->nh.gw) ||
       ipa_is_link_local(nhad->nh.gw))
     return NULL;
 

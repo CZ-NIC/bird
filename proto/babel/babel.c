@@ -677,10 +677,7 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       }
     };
 
-    rta a0 = {
-      .dest = RTD_UNICAST,
-      .eattrs = &eattrs.l,
-    };
+    rta a0 = { .eattrs = &eattrs.l, };
 
     rta *a = rta_lookup(&a0);
     rte *rte = rte_get_temp(a, p->p.main_source);
@@ -691,12 +688,11 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
   else if (e->valid && (e->router_id != p->router_id))
   {
     /* Unreachable */
-    rta a0 = {
-      .dest = RTD_UNREACHABLE,
-    };
+    rta a0 = {};
 
     ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, 1);
     ea_set_attr_u32(&a0.eattrs, &ea_gen_source, 0, RTS_BABEL);
+    ea_set_dest(&a0.eattrs, 0, RTD_UNREACHABLE);
 
     rta *a = rta_lookup(&a0);
     rte *rte = rte_get_temp(a, p->p.main_source);
@@ -2263,9 +2259,13 @@ babel_kick_timer(struct babel_proto *p)
 static int
 babel_preexport(struct proto *P, struct rte *new)
 {
-  struct rta *a = new->attrs;
+  if (new->src->proto != P)
+    return 0;
+
   /* Reject our own unreachable routes */
-  if ((a->dest == RTD_UNREACHABLE) && (new->src->proto == P))
+  eattr *ea = ea_find(new->attrs->eattrs, &ea_gen_nexthop);
+  struct nexthop_adata *nhad = (void *) ea->u.ptr;
+  if (!NEXTHOP_IS_REACHABLE(nhad))
     return -1;
 
   return 0;
