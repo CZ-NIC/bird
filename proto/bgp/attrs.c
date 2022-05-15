@@ -1458,7 +1458,7 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
 #define RBH_FN(a,h)		h
 
 #define RBH_REHASH		bgp_rbh_rehash
-#define RBH_PARAMS		/8, *2, 2, 2, 8, 20
+#define RBH_PARAMS		/8, *2, 2, 2, 12, 20
 
 
 HASH_DEFINE_REHASH_FN(RBH, struct bgp_bucket)
@@ -1600,7 +1600,7 @@ bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b)
 #define PXH_FN(n,i,h)		h
 
 #define PXH_REHASH		bgp_pxh_rehash
-#define PXH_PARAMS		/8, *2, 2, 2, 8, 24
+#define PXH_PARAMS		/8, *2, 2, 2, 12, 24
 
 
 HASH_DEFINE_REHASH_FN(PXH, struct bgp_prefix)
@@ -1626,7 +1626,8 @@ bgp_free_prefix_table(struct bgp_channel *c)
 static struct bgp_prefix *
 bgp_get_prefix(struct bgp_channel *c, net_addr *net, u32 path_id)
 {
-  u32 hash = net_hash(net) ^ u32_hash(path_id);
+  /* We must use a different hash function than the rtable */
+  u32 hash = u32_hash(net_hash(net) ^ u32_hash(path_id));
   struct bgp_prefix *px = HASH_FIND(c->prefix_hash, PXH, net, path_id, hash);
 
   if (px)
