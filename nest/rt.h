@@ -280,39 +280,27 @@ struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t
 #define RSEM_NOEXPORT	3		/* Routes rejected by export filter */
 #define RSEM_EXPORTED	4		/* Routes marked in export map */
 
-struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
-void rta_apply_hostentry(rta *a, struct hostentry *he);
+/* Host entry: Resolve hook for recursive nexthops */
+extern struct ea_class ea_gen_hostentry;
+struct hostentry_adata {
+  adata ad;
+  struct hostentry *he;
+  u32 labels[0];
+};
 
-static inline void
-rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll)
-{
-  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ll, dep));
-}
+void
+ea_set_hostentry(ea_list **to, struct rtable *dep, struct rtable *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum]);
 
 /*
- * rta_set_recursive_next_hop() acquires hostentry from hostcache and fills
- * rta->hostentry field.  New hostentry has zero use count. Cached rta locks its
- * hostentry (increases its use count), uncached rta does not lock it. Hostentry
- * with zero use count is removed asynchronously during host cache update,
- * therefore it is safe to hold such hostentry temorarily. Hostentry holds a
- * lock for a 'source' rta, mainly to share multipath nexthops.
- *
- * There is no need to hold a lock for hostentry->dep table, because that table
- * contains routes responsible for that hostentry, and therefore is non-empty if
- * given hostentry has non-zero use count. If the hostentry has zero use count,
- * the entry is removed before dep is referenced.
- *
- * The protocol responsible for routes with recursive next hops should hold a
- * lock for a 'source' table governing that routes (argument tab to
- * rta_set_recursive_next_hop()), because its routes reference hostentries
- * (through rta) related to the governing table. When all such routes are
- * removed, rtas are immediately removed achieving zero uc. Then the 'source'
- * table lock could be immediately released, although hostentries may still
- * exist - they will be freed together with the 'source' table.
- */
+struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
+void rta_apply_hostentry(rta *a, struct hostentry *he, u32 lnum, u32 labels[lnum]);
 
-static inline void rt_lock_hostentry(struct hostentry *he) { if (he) he->uc++; }
-static inline void rt_unlock_hostentry(struct hostentry *he) { if (he) he->uc--; }
+static inline void
+rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum])
+{
+  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ll, dep), lnum, labels);
+}
+*/
 
 int rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, int interior);
 

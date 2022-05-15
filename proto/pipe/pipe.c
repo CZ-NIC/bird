@@ -75,7 +75,8 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
       memcpy(a, new->attrs, rta_size(new->attrs));
 
       a->cached = 0;
-      a->hostentry = NULL;
+      ea_unset_attr(&a->eattrs, 0, &ea_gen_hostentry);
+
       e = rte_get_temp(a, src);
       e->pflags = new->pflags;
 

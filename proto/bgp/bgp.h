@@ -456,7 +456,6 @@ struct bgp_parse_state {
   uint err_subcode;
   jmp_buf err_jmpbuf;
 
-  struct hostentry *hostentry;
   adata *mpls_labels;
 
   /* Cached state for bgp_rte_update() */
