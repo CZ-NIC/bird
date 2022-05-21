@@ -2487,6 +2487,9 @@ bgp_show_proto_info(struct proto *P)
   else
     cli_msg(-1006, "    Neighbor address: %I%J", p->remote_ip, p->cf->iface);
 
+  if ((p->conn == &p->outgoing_conn) && (p->cf->remote_port != BGP_PORT))
+    cli_msg(-1006, "    Neighbor port:    %u", p->cf->remote_port);
+
   cli_msg(-1006, "    Neighbor AS:      %u", p->remote_as);
   cli_msg(-1006, "    Local AS:         %u", p->cf->local_as);
 
