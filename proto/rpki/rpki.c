@@ -828,16 +828,27 @@ rpki_show_proto_info(struct proto *P)
   if (cache)
   {
     const char *transport_name = "---";
+    uint default_port = 0;
 
     switch (cf->tr_config.type)
     {
 #if HAVE_LIBSSH
-    case RPKI_TR_SSH: transport_name = "SSHv2"; break;
+    case RPKI_TR_SSH:
+      transport_name = "SSHv2";
+      default_port = RPKI_SSH_PORT;
+      break;
 #endif
-    case RPKI_TR_TCP: transport_name = "Unprotected over TCP"; break;
+    case RPKI_TR_TCP:
+      transport_name = "Unprotected over TCP";
+      default_port = RPKI_TCP_PORT;
+      break;
     };
 
     cli_msg(-1006, "  Cache server:     %s", cf->hostname);
+
+    if (cf->port != default_port)
+      cli_msg(-1006, "  Cache port:       %u", cf->port);
+
     cli_msg(-1006, "  Status:           %s", rpki_cache_state_to_str(cache->state));
     cli_msg(-1006, "  Transport:        %s", transport_name);
     cli_msg(-1006, "  Protocol version: %u", cache->version);
