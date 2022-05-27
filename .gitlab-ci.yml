@@ -360,17 +360,17 @@ build-opensuse-15.3-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
 
-build-freebsd-11-amd64:
-  <<: *build-base
-  tags:
-    - freebsd
-    - amd64
+#build-freebsd-11-amd64:
+#  <<: *build-base
+#  tags:
+#    - freebsd
+#    - amd64
 
-build-freebsd-11-i386:
-  <<: *build-base
-  tags:
-    - freebsd
-    - i386
+#build-freebsd-11-i386:
+#  <<: *build-base
+#  tags:
+#    - freebsd
+#    - i386
 
 
 .pkg-deb: &pkg-deb
