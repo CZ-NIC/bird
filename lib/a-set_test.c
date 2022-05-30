@@ -11,7 +11,7 @@
 
 #include "lib/net.h"
 #include "nest/rt.h"
-#include "nest/attrs.h"
+#include "lib/attrs.h"
 #include "lib/resource.h"
 
 #define SET_SIZE 10

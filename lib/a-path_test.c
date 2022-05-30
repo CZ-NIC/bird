@@ -10,7 +10,7 @@
 #include "test/bt-utils.h"
 
 #include "nest/rt.h"
-#include "nest/attrs.h"
+#include "lib/attrs.h"
 #include "lib/resource.h"
 
 #define TESTS_NUM 30

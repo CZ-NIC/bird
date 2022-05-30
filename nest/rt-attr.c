@@ -49,7 +49,7 @@
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "nest/cli.h"
-#include "nest/attrs.h"
+#include "lib/attrs.h"
 #include "lib/alloca.h"
 #include "lib/hash.h"
 #include "lib/idm.h"
