@@ -146,11 +146,12 @@ perf_loop(void *data)
 	.source = RTS_PERF,
 	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,
-	.pref = p->p.main_channel->preference,
 	.nh.iface = p->ifa->iface,
 	.nh.gw = gw,
 	.nh.weight = 1,
       };
+
+      ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
 
       p->data[i].a = rta_lookup(&a0);
     }

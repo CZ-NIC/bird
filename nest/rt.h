@@ -487,6 +487,7 @@ int rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *
 #define DEF_PREF_BGP		100	/* BGP */
 #define DEF_PREF_RPKI		100	/* RPKI */
 #define DEF_PREF_INHERITED	10	/* Routes inherited from other routing daemons */
+#define DEF_PREF_UNKNOWN	0	/* Routes with no preference set */
 
 /*
  *	Route Origin Authorization

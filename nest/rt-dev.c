@@ -80,12 +80,13 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
       struct rte_src *src = rt_get_source(P, ad->iface->index);
 
       rta a0 = {
-	.pref = c->preference,
 	.source = RTS_DEVICE,
 	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,
 	.nh.iface = ad->iface,
       };
+
+      ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, c->preference);
 
       rte e0 = {
 	.attrs = rta_lookup(&a0),

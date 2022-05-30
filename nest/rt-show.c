@@ -61,7 +61,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   if (get_route_info)
     get_route_info(e, info);
   else
-    bsprintf(info, " (%d)", a->pref);
+    bsprintf(info, " (%d)", rt_get_preference(e));
 
   if (d->last_table != d->tab)
     rt_show_table(c, d);

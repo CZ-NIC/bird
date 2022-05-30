@@ -588,7 +588,7 @@ ospf_get_route_info(rte * rte, byte * buf)
   }
 
   buf += bsprintf(buf, " %s", type);
-  buf += bsprintf(buf, " (%d/%d", rte->attrs->pref, ea_get_int(rte->attrs->eattrs, &ea_ospf_metric1, LSINFINITY));
+  buf += bsprintf(buf, " (%d/%d", rt_get_preference(rte), ea_get_int(rte->attrs->eattrs, &ea_ospf_metric1, LSINFINITY));
   if (rte->attrs->source == RTS_OSPF_EXT2)
     buf += bsprintf(buf, "/%d", ea_get_int(rte->attrs->eattrs, &ea_ospf_metric2, LSINFINITY));
   buf += bsprintf(buf, ")");

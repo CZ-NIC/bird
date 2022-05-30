@@ -2057,7 +2057,6 @@ again1:
 	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,
 	.nh = *(nf->n.nhs),
-	.pref = p->p.main_channel->preference,
       };
 
       if (reload || ort_changed(nf, &a0))
@@ -2069,10 +2068,13 @@ again1:
 
 	struct {
 	  ea_list l;
-	  eattr a[4];
+	  eattr a[5];
 	} eattrs;
 
 	eattrs.l = (ea_list) {};
+
+	eattrs.a[eattrs.l.count++] =
+	  EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, p->p.main_channel->preference);
 
 	eattrs.a[eattrs.l.count++] =
 	  EA_LITERAL_EMBEDDED(&ea_ospf_metric1, 0, nf->n.metric1);

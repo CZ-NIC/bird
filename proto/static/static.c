@@ -58,7 +58,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   a->source = RTS_STATIC;
   a->scope = SCOPE_UNIVERSE;
   a->dest = r->dest;
-  a->pref = p->p.main_channel->preference;
+  ea_set_attr_u32(&a->eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
 
   if (r->dest == RTD_UNICAST)
   {
@@ -695,10 +695,11 @@ static void
 static_get_route_info(rte *rte, byte *buf)
 {
   eattr *a = ea_find(rte->attrs->eattrs, &ea_gen_igp_metric);
+  u32 pref = rt_get_preference(rte);
   if (a)
-    buf += bsprintf(buf, " (%d/%u)", rte->attrs->pref, a->u.data);
+    buf += bsprintf(buf, " (%d/%u)", pref, a->u.data);
   else
-    buf += bsprintf(buf, " (%d)", rte->attrs->pref);
+    buf += bsprintf(buf, " (%d)", pref);
 }
 
 static void

@@ -91,7 +91,6 @@ typedef struct rta {
   u16 source:7;				/* Route source (RTS_...) */
   u16 scope:4;				/* Route scope (SCOPE_... -- see ip.h) */
   u16 dest:4;				/* Route destination type (RTD_...) */
-  word pref;
   struct nexthop nh;			/* Next hop */
 } rta;
 
@@ -182,10 +181,6 @@ struct ea_class_ref {
   resource r;
   struct ea_class *class;
 };
-
-#define IGP_METRIC_UNKNOWN 0x80000000	/* Default igp_metric used when no other
-					   protocol-specific metric is availabe */
-extern struct ea_class ea_gen_igp_metric;
 
 void ea_register_init(struct ea_class *);
 struct ea_class_ref *ea_register_alloc(pool *, struct ea_class);
@@ -292,6 +287,23 @@ static inline void
 ea_set_attr_data(ea_list **to, const struct ea_class *def, uint flags, void *data, uint len)
 { ea_set_attr(to, EA_LITERAL_STORE_ADATA(def, flags, data, len)); }
 
+/*
+ *	Common route attributes
+ */
+
+/* Preference: first-order comparison */
+extern struct ea_class ea_gen_preference;
+static inline u32 rt_get_preference(rte *rt)
+{ return ea_get_int(rt->attrs->eattrs, &ea_gen_preference, 0); }
+
+/* IGP metric: second-order comparison */
+extern struct ea_class ea_gen_igp_metric;
+u32 rt_get_igp_metric(const rte *rt);
+#define IGP_METRIC_UNKNOWN 0x80000000	/* Default igp_metric used when no other
+					   protocol-specific metric is availabe */
+
+
+/* Next hop structures */
 
 #define NEXTHOP_MAX_SIZE (sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
 
@@ -320,7 +332,5 @@ static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta
 void rta_dump(rta *);
 void rta_dump_all(void);
 void rta_show(struct cli *, rta *);
-
-u32 rt_get_igp_metric(const rte *rt);
 
 #endif
