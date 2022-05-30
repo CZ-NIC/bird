@@ -737,6 +737,7 @@
       l->attrs[0].type = da.type;
       l->attrs[0].originated = 1;
       l->attrs[0].fresh = 1;
+      l->attrs[0].undef = 0;
 
       switch (da.type) {
       case EAF_TYPE_INT:

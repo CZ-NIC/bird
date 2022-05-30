@@ -862,14 +862,14 @@ babel_send_ihus(struct babel_iface *ifa)
 }
 
 static void
-babel_send_hello(struct babel_iface *ifa)
+babel_send_hello(struct babel_iface *ifa, uint interval)
 {
   struct babel_proto *p = ifa->proto;
   union babel_msg msg = {};
 
   msg.type = BABEL_TLV_HELLO;
   msg.hello.seqno = ifa->hello_seqno++;
-  msg.hello.interval = ifa->cf->hello_interval;
+  msg.hello.interval = interval ?: ifa->cf->hello_interval;
 
   TRACE(D_PACKETS, "Sending hello on %s with seqno %d interval %t",
 	ifa->ifname, msg.hello.seqno, (btime) msg.hello.interval);
@@ -1577,7 +1577,7 @@ babel_iface_timer(timer *t)
 
   if (now_ >= ifa->next_hello)
   {
-    babel_send_hello(ifa);
+    babel_send_hello(ifa, 0);
     ifa->next_hello += hello_period * (1 + (now_ - ifa->next_hello) / hello_period);
   }
 
@@ -1624,7 +1624,7 @@ babel_iface_start(struct babel_iface *ifa)
   tm_start(ifa->timer, 100 MS);
   ifa->up = 1;
 
-  babel_send_hello(ifa);
+  babel_send_hello(ifa, 0);
   babel_send_wildcard_retraction(ifa);
   babel_send_wildcard_request(ifa);
   babel_send_update(ifa, 0);	/* Full update */
@@ -2435,6 +2435,11 @@ babel_iface_shutdown(struct babel_iface *ifa)
 {
   if (ifa->sk)
   {
+    /*
+     * Retract all our routes and lower the hello interval so peers' neighbour
+     * state expires quickly
+     */
+    babel_send_hello(ifa, BABEL_MIN_INTERVAL);
     babel_send_wildcard_retraction(ifa);
     babel_send_queue(ifa);
   }

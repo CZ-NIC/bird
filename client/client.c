@@ -50,6 +50,7 @@ static byte *server_read_pos = server_read_buf;
 int init = 1;		/* During intial sequence */
 int busy = 1;		/* Executing BIRD command */
 int interactive;	/* Whether stdin is terminal */
+int last_code;		/* Last return code */
 
 static int num_lines, skip_input;
 int term_lns, term_cls;
@@ -196,7 +197,7 @@ init_commands(void)
     {
       /* Initial command is finished and we want to exit */
       cleanup();
-      exit(0);
+      exit((last_code < 8000) ? 0 : 1);
     }
 
   input_init();
@@ -282,6 +283,8 @@ server_got_reply(char *x)
     {
       if (code)
         PRINTF(len, "%s\n", verbose ? x : x+5);
+
+      last_code = code;
 
       if (x[4] == ' ')
       {
