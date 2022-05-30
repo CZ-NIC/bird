@@ -944,20 +944,13 @@ done:
     bmap_clear(&c->export_reject_map, rpe->old->rte.id);
 }
 
-
-static struct nexthop *
-nexthop_merge_rta(struct nexthop *nhs, rta *a, linpool *pool, int max)
-{
-  return nexthop_merge(nhs, &(a->nh), 1, 0, max, pool);
-}
-
 rte *
 rt_export_merged(struct channel *c, struct rte **feed, uint count, linpool *pool, int silent)
 {
   _Thread_local static rte rloc;
 
   // struct proto *p = c->proto;
-  struct nexthop *nhs = NULL;
+  struct nexthop_adata *nhs = NULL;
   rte *best0 = feed[0];
   rte *best = NULL;
 
@@ -990,18 +983,25 @@ rt_export_merged(struct channel *c, struct rte **feed, uint count, linpool *pool
     if (!tmp || !rte_is_reachable(tmp))
       continue;
 
-    nhs = nexthop_merge_rta(nhs, tmp->attrs, pool, c->merge_limit);
+    eattr *nhea = ea_find(tmp->attrs->eattrs, &ea_gen_nexthop);
+    ASSERT_DIE(nhea);
+
+    if (nhs)
+      nhs = nexthop_merge(nhs, (struct nexthop_adata *) nhea->u.ptr, c->merge_limit, pool);
+    else
+      nhs = (struct nexthop_adata *) nhea->u.ptr;
   }
 
   if (nhs)
   {
-    nhs = nexthop_merge_rta(nhs, best->attrs, pool, c->merge_limit);
+    eattr *nhea = ea_find(best->attrs->eattrs, &ea_gen_nexthop);
+    ASSERT_DIE(nhea);
 
-    if (nhs->next)
-    {
-      best->attrs = rta_cow(best->attrs, pool);
-      nexthop_link(best->attrs, nhs);
-    }
+    nhs = nexthop_merge(nhs, (struct nexthop_adata *) nhea->u.ptr, c->merge_limit, pool);
+
+    best->attrs = rta_cow(best->attrs, pool);
+    ea_set_attr(&best->attrs->eattrs,
+	EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nhs->ad));
   }
 
   return best;
@@ -1234,7 +1234,16 @@ rte_validate(struct channel *ch, rte *e)
     return 0;
   }
 
-  if ((e->attrs->dest == RTD_UNICAST) && !nexthop_is_sorted(&(e->attrs->nh)))
+  eattr *nhea = ea_find(e->attrs->eattrs, &ea_gen_nexthop);
+  if ((!nhea) != (e->attrs->dest != RTD_UNICAST))
+  {
+    log(L_WARN "Ignoring route %N with destination %d and %snexthop received via %s",
+	n, e->attrs->dest, (nhea ? "" : "no "), ch->proto->name);
+    return 0;
+  }
+
+  if ((e->attrs->dest == RTD_UNICAST) &&
+      !nexthop_is_sorted((struct nexthop_adata *) nhea->u.ptr))
   {
     log(L_WARN "Ignoring unsorted multipath route %N received via %s",
 	n, ch->proto->name);
@@ -2514,8 +2523,7 @@ rta_apply_hostentry(rta *a, struct hostentry *he)
   if (a->dest != RTD_UNICAST)
   {
     /* No nexthop */
-no_nexthop:
-    a->nh = (struct nexthop) {};
+    ea_unset_attr(&a->eattrs, 0, &ea_gen_nexthop);
     return;
   }
 
@@ -2523,74 +2531,71 @@ no_nexthop:
 
   if (!mls_ea && he->nexthop_linkable)
   { /* Just link the nexthop chain, no label append happens. */
-    memcpy(&(a->nh), &(he->src->nh), nexthop_size(&(he->src->nh)));
+    ea_copy_attr(&a->eattrs, he->src->eattrs, &ea_gen_nexthop);
     return;
   }
-
-  struct nexthop *nhp = NULL, *nhr = NULL;
-  int skip_nexthop = 0;
 
   const struct adata *mls = mls_ea ? mls_ea->u.ptr : NULL;
   uint mls_cnt = mls ? mls->length / sizeof(u32) : 0;
 
-  for (struct nexthop *nh = &(he->src->nh); nh; nh = nh->next)
+  eattr *he_nh_ea = ea_find(he->src->eattrs, &ea_gen_nexthop);
+  struct nexthop_adata *nhad = (struct nexthop_adata *) he_nh_ea->u.ptr;
+
+  uint total_size = OFFSETOF(struct nexthop_adata, nh);
+
+  NEXTHOP_WALK(nh, nhad)
   {
-    if (skip_nexthop)
-      skip_nexthop--;
-    else
+    if (nh->labels + mls_cnt > MPLS_MAX_LABEL_STACK)
     {
-      nhr = nhp;
-      nhp = (nhp ? (nhp->next = lp_alloc(rte_update_pool, NEXTHOP_MAX_SIZE)) : &(a->nh));
+      log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
+	    nh->labels, mls_cnt, nh->labels + mls_cnt, MPLS_MAX_LABEL_STACK);
+      continue;
     }
 
-    memset(nhp, 0, NEXTHOP_MAX_SIZE);
-    nhp->iface = nh->iface;
-    nhp->weight = nh->weight;
+    total_size += NEXTHOP_SIZE_CNT(nh->labels + mls_cnt);
+  }
 
-    if (mls)
+  if (total_size == OFFSETOF(struct nexthop_adata, nh))
+  {
+    a->dest = RTD_UNREACHABLE;
+    log(L_WARN "No valid nexthop remaining, setting route unreachable");
+
+    ea_unset_attr(&a->eattrs, 0, &ea_gen_nexthop);
+    return;
+  }
+
+  struct nexthop_adata *new = (struct nexthop_adata *) tmp_alloc_adata(total_size);
+  struct nexthop *dest = &new->nh;
+
+  NEXTHOP_WALK(nh, nhad)
+  {
+    if (nh->labels + mls_cnt > MPLS_MAX_LABEL_STACK)
+      continue;
+
+    memcpy(dest, nh, NEXTHOP_SIZE(nh));
+    if (mls_cnt)
     {
-      nhp->labels = nh->labels + mls_cnt;
-      if (nhp->labels <= MPLS_MAX_LABEL_STACK)
-      {
-	memcpy(nhp->label, nh->label, nh->labels * sizeof(u32)); /* First the hostentry labels */
-	memcpy(&(nhp->label[nh->labels]), mls->data, mls->length); /* Then the bottom labels */
-      }
-      else
-      {
-	log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
-	    nh->labels, mls_cnt, nhp->labels, MPLS_MAX_LABEL_STACK);
-	skip_nexthop++;
-	continue;
-      }
-    }
-    else if (nh->labels)
-    {
-      nhp->labels = nh->labels;
-      memcpy(nhp->label, nh->label, nh->labels * sizeof(u32));
+      memcpy(&(dest->label[dest->labels]), mls->data, mls->length);
+      dest->labels += mls_cnt;
     }
 
     if (ipa_nonzero(nh->gw))
-    {
-      nhp->gw = nh->gw;			/* Router nexthop */
-      nhp->flags |= (nh->flags & RNF_ONLINK);
-    }
+      /* Router nexthop */
+      dest->flags = (dest->flags & RNF_ONLINK);
     else if (!(nh->iface->flags & IF_MULTIACCESS) || (nh->iface->flags & IF_LOOPBACK))
-      nhp->gw = IPA_NONE;		/* PtP link - no need for nexthop */
+      dest->gw = IPA_NONE;		/* PtP link - no need for nexthop */
     else if (ipa_nonzero(he->link))
-      nhp->gw = he->link;		/* Device nexthop with link-local address known */
+      dest->gw = he->link;		/* Device nexthop with link-local address known */
     else
-      nhp->gw = he->addr;		/* Device nexthop with link-local address unknown */
+      dest->gw = he->addr;		/* Device nexthop with link-local address unknown */
+
+    dest = NEXTHOP_NEXT(dest);
   }
 
-  if (skip_nexthop)
-    if (nhr)
-      nhr->next = NULL;
-    else
-    {
-      a->dest = RTD_UNREACHABLE;
-      log(L_WARN "No valid nexthop remaining, setting route unreachable");
-      goto no_nexthop;
-    }
+  /* Fix final length */
+  new->ad.length = (void *) dest - (void *) new->ad.data;
+  ea_set_attr(&a->eattrs, EA_LITERAL_DIRECT_ADATA(
+	&ea_gen_nexthop, 0, &new->ad));
 }
 
 static inline int
@@ -2604,9 +2609,14 @@ rta_next_hop_outdated(rta *a)
   if (!he->src)
     return a->dest != RTD_UNREACHABLE;
 
+  eattr *he_nh_ea = ea_find(he->src->eattrs, &ea_gen_nexthop);
+  eattr *a_nh_ea = ea_find(a->eattrs, &ea_gen_nexthop);
+
   return (a->dest != he->dest) ||
     (ea_get_int(a->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN) != he->igp_metric) ||
-    (!he->nexthop_linkable) || !nexthop_same(&(a->nh), &(he->src->nh));
+    (!he->nexthop_linkable) ||
+    (!he_nh_ea != !a_nh_ea) ||
+    (he_nh_ea && a_nh_ea && !adata_same(he_nh_ea->u.ptr, a_nh_ea->u.ptr));
 }
 
 static inline struct rte_storage *
@@ -3585,7 +3595,14 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 
       if (a->dest == RTD_UNICAST)
 	{
-	  for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
+	  eattr *ea = ea_find(a->eattrs, &ea_gen_nexthop);
+	  if (!ea)
+	    {
+	      log(L_WARN "No nexthop in unicast route");
+	      goto done;
+	    }
+	    
+	  NEXTHOP_WALK(nh, (struct nexthop_adata *) ea->u.ptr)
 	    if (ipa_zero(nh->gw))
 	      {
 		if (if_local_addr(he->addr, nh->iface))

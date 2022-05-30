@@ -57,6 +57,7 @@
 #include "lib/string.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 
 const adata null_adata;		/* adata of length 0 */
 
@@ -108,6 +109,11 @@ struct ea_class ea_gen_source = {
   .format = ea_gen_source_format,
 };
 
+struct ea_class ea_gen_nexthop = {
+  .name = "nexthop",
+  .type = T_NEXTHOP_LIST,
+};
+
 struct ea_class ea_mpls_labels = {
   .name = "mpls_labels",
   .type = T_CLIST,
@@ -124,8 +130,7 @@ const char * rta_dest_names[RTD_MAX] = {
 
 pool *rta_pool;
 
-static slab *rta_slab_[4];
-static slab *nexthop_slab_[4];
+static slab *rta_slab;
 static slab *rte_src_slab;
 
 static struct idm src_ids;
@@ -204,50 +209,10 @@ rt_prune_sources(void)
  *	Multipath Next Hop
  */
 
-static inline u32
-nexthop_hash(struct nexthop *x)
-{
-  u32 h = 0;
-  for (; x; x = x->next)
-  {
-    h ^= ipa_hash(x->gw) ^ (h << 5) ^ (h >> 9);
-
-    for (int i = 0; i < x->labels; i++)
-      h ^= x->label[i] ^ (h << 6) ^ (h >> 7);
-  }
-
-  return h;
-}
-
-int
-nexthop__same(struct nexthop *x, struct nexthop *y)
-{
-  for (; x && y; x = x->next, y = y->next)
-  {
-    if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) ||
-	(x->flags != y->flags) || (x->weight != y->weight) ||
-	(x->labels != y->labels))
-      return 0;
-
-    for (int i = 0; i < x->labels; i++)
-      if (x->label[i] != y->label[i])
-	return 0;
-  }
-
-  return x == y;
-}
-
 static int
 nexthop_compare_node(const struct nexthop *x, const struct nexthop *y)
 {
   int r;
-
-  if (!x)
-    return 1;
-
-  if (!y)
-    return -1;
-
   /* Should we also compare flags ? */
 
   r = ((int) y->weight) - ((int) x->weight);
@@ -272,23 +237,16 @@ nexthop_compare_node(const struct nexthop *x, const struct nexthop *y)
   return ((int) x->iface->index) - ((int) y->iface->index);
 }
 
-static inline struct nexthop *
-nexthop_copy_node(const struct nexthop *src, linpool *lp)
+static int
+nexthop_compare_qsort(const void *x, const void *y)
 {
-  struct nexthop *n = lp_alloc(lp, nexthop_size(src));
-
-  memcpy(n, src, nexthop_size(src));
-  n->next = NULL;
-
-  return n;
+  return nexthop_compare_node( *(const struct nexthop **) x, *(const struct nexthop **) y );
 }
 
 /**
  * nexthop_merge - merge nexthop lists
  * @x: list 1
  * @y: list 2
- * @rx: reusability of list @x
- * @ry: reusability of list @y
  * @max: max number of nexthops
  * @lp: linpool for allocating nexthops
  *
@@ -305,133 +263,110 @@ nexthop_copy_node(const struct nexthop *src, linpool *lp)
  * resulting list is no longer needed. When reusability is not set, the
  * corresponding lists are not modified nor linked from the resulting list.
  */
-struct nexthop *
-nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, linpool *lp)
+struct nexthop_adata *
+nexthop_merge(struct nexthop_adata *xin, struct nexthop_adata *yin, int max, linpool *lp)
 {
-  struct nexthop *root = NULL;
-  struct nexthop **n = &root;
+  uint outlen = ADATA_SIZE(xin->ad.length) + ADATA_SIZE(yin->ad.length);
+  struct nexthop_adata *out = lp_alloc(lp, outlen);
+  out->ad.length = outlen - sizeof (struct adata);
 
-  while ((x || y) && max--)
+  struct nexthop *x = &xin->nh, *y = &yin->nh, *cur = &out->nh;
+  int xvalid, yvalid;
+
+  while (max--)
   {
-    int cmp = nexthop_compare_node(x, y);
+    xvalid = NEXTHOP_VALID(x, xin);
+    yvalid = NEXTHOP_VALID(y, yin);
 
-    if (cmp < 0)
-    {
-      ASSUME(x);
-      *n = rx ? x : nexthop_copy_node(x, lp);
-      x = x->next;
-    }
-    else if (cmp > 0)
-    {
-      ASSUME(y);
-      *n = ry ? y : nexthop_copy_node(y, lp);
-      y = y->next;
-    }
-    else
-    {
-      ASSUME(x && y);
-      *n = rx ? x : (ry ? y : nexthop_copy_node(x, lp));
-      x = x->next;
-      y = y->next;
-    }
-    n = &((*n)->next);
-  }
-  *n = NULL;
-
-  return root;
-}
-
-void
-nexthop_insert(struct nexthop **n, struct nexthop *x)
-{
-  for (; *n; n = &((*n)->next))
-  {
-    int cmp = nexthop_compare_node(*n, x);
-
-    if (cmp < 0)
-      continue;
-    else if (cmp > 0)
+    if (!xvalid && !yvalid)
       break;
+
+    ASSUME(NEXTHOP_VALID(cur, out));
+
+    int cmp = !xvalid ? 1 : !yvalid ? -1 : nexthop_compare_node(x, y);
+
+    if (cmp < 0)
+    {
+      ASSUME(NEXTHOP_VALID(x, xin));
+      memcpy(cur, x, nexthop_size(x));
+      x = NEXTHOP_NEXT(x);
+    }
+    else if (cmp > 0)
+    {
+      ASSUME(NEXTHOP_VALID(y, yin));
+      memcpy(cur, y, nexthop_size(y));
+      y = NEXTHOP_NEXT(y);
+    }
     else
-      return;
+    {
+      ASSUME(NEXTHOP_VALID(x, xin));
+      memcpy(cur, x, nexthop_size(x));
+      x = NEXTHOP_NEXT(x);
+
+      ASSUME(NEXTHOP_VALID(y, yin));
+      y = NEXTHOP_NEXT(y);
+    }
+    cur = NEXTHOP_NEXT(cur);
   }
 
-  x->next = *n;
-  *n = x;
+  out->ad.length = (void *) cur - (void *) out->ad.data;
+
+  return out;
 }
 
-struct nexthop *
-nexthop_sort(struct nexthop *x)
+struct nexthop_adata *
+nexthop_sort(struct nexthop_adata *nhad, linpool *lp)
 {
-  struct nexthop *s = NULL;
+  /* Count the nexthops */
+  uint cnt = 0;
+  NEXTHOP_WALK(nh, nhad)
+    cnt++;
 
-  /* Simple insert-sort */
-  while (x)
+  if (cnt <= 1)
+    return nhad;
+
+  /* Get pointers to them */
+  struct nexthop **sptr = tmp_alloc(cnt * sizeof(struct nexthop *));
+
+  uint i = 0;
+  NEXTHOP_WALK(nh, nhad)
+    sptr[i++] = nh;
+
+  /* Sort the pointers */
+  qsort(sptr, cnt, sizeof(struct nexthop *), nexthop_compare_qsort);
+
+  /* Allocate the output */
+  struct nexthop_adata *out = (struct nexthop_adata *) lp_alloc_adata(lp, nhad->ad.length);
+  struct nexthop *dest = &out->nh;
+
+  /* Deduplicate nexthops while storing them */
+  for (uint i = 0; i < cnt; i++)
   {
-    struct nexthop *n = x;
-    x = n->next;
-    n->next = NULL;
+    if (i && !nexthop_compare_node(sptr[i], sptr[i-1]))
+      continue;
 
-    nexthop_insert(&s, n);
+    memcpy(dest, sptr[i], NEXTHOP_SIZE(sptr[i]));
+    dest = NEXTHOP_NEXT(dest);
   }
 
-  return s;
+  out->ad.length = (void *) dest - (void *) out->ad.data;
+  return out;
 }
 
 int
-nexthop_is_sorted(struct nexthop *x)
+nexthop_is_sorted(struct nexthop_adata *nhad)
 {
-  for (; x && x->next; x = x->next)
-    if (nexthop_compare_node(x, x->next) >= 0)
+  struct nexthop *prev = NULL;
+  NEXTHOP_WALK(nh, nhad)
+  {
+    if (prev && (nexthop_compare_node(prev, nh) >= 0))
       return 0;
+
+    prev = nh;
+  }
 
   return 1;
 }
-
-static inline slab *
-nexthop_slab(struct nexthop *nh)
-{
-  return nexthop_slab_[MIN(nh->labels, 3)];
-}
-
-static struct nexthop *
-nexthop_copy(struct nexthop *o)
-{
-  struct nexthop *first = NULL;
-  struct nexthop **last = &first;
-
-  for (; o; o = o->next)
-    {
-      struct nexthop *n = sl_allocz(nexthop_slab(o));
-      n->gw = o->gw;
-      n->iface = o->iface;
-      n->next = NULL;
-      n->flags = o->flags;
-      n->weight = o->weight;
-      n->labels = o->labels;
-      for (int i=0; i<o->labels; i++)
-	n->label[i] = o->label[i];
-
-      *last = n;
-      last = &(n->next);
-    }
-
-  return first;
-}
-
-static void
-nexthop_free(struct nexthop *o)
-{
-  struct nexthop *n;
-
-  while (o)
-    {
-      n = o->next;
-      sl_free(o);
-      o = n;
-    }
-}
-
 
 /*
  *	Extended Attributes
@@ -1122,6 +1057,23 @@ ea_show(struct cli *c, const eattr *e)
   cli_printf(c, -1012, "\t%s", buf);
 }
 
+static void
+nexthop_dump(const struct adata *ad)
+{
+  struct nexthop_adata *nhad = (struct nexthop_adata *) ad;
+
+  debug(":");
+
+  NEXTHOP_WALK(nh, nhad)
+    {
+      if (ipa_nonzero(nh->gw)) debug(" ->%I", nh->gw);
+      if (nh->labels) debug(" L %d", nh->label[0]);
+      for (int i=1; i<nh->labels; i++)
+	debug("/%d", nh->label[i]);
+      debug(" [%s]", nh->iface ? nh->iface->name : "???");
+    }
+}
+
 /**
  * ea_dump - dump an extended attribute
  * @e: attribute to be dumped
@@ -1157,6 +1109,8 @@ ea_dump(ea_list *e)
 	    debug("o");
 	  if (a->type & EAF_EMBEDDED)
 	    debug(":%08x", a->u.data);
+	  else if (a->id == ea_gen_nexthop.id)
+	    nexthop_dump(a->u.ptr);
 	  else
 	    {
 	      int j, len = a->u.ptr->length;
@@ -1258,7 +1212,7 @@ rta_hash(rta *a)
   BMIX(dest);
 #undef MIX
 
-  return mem_hash_value(&h) ^ nexthop_hash(&(a->nh)) ^ ea_hash(a->eattrs);
+  return mem_hash_value(&h) ^ ea_hash(a->eattrs);
 }
 
 static inline int
@@ -1266,24 +1220,16 @@ rta_same(rta *x, rta *y)
 {
   return (x->dest == y->dest &&
 	  x->hostentry == y->hostentry &&
-	  nexthop_same(&(x->nh), &(y->nh)) &&
 	  ea_same(x->eattrs, y->eattrs));
-}
-
-static inline slab *
-rta_slab(rta *a)
-{
-  return rta_slab_[a->nh.labels > 2 ? 3 : a->nh.labels];
 }
 
 static rta *
 rta_copy(rta *o)
 {
-  rta *r = sl_alloc(rta_slab(o));
+  rta *r = sl_alloc(rta_slab);
 
   memcpy(r, o, rta_size(o));
   r->uc = 1;
-  r->nh.next = nexthop_copy(o->nh.next);
   if (!r->eattrs)
     return r;
 
@@ -1375,8 +1321,6 @@ rta__free(rta *a)
   if (a->next)
     a->next->pprev = a->pprev;
   rt_unlock_hostentry(a->hostentry);
-  if (a->nh.next)
-    nexthop_free(a->nh.next);
   ea_free(a->eattrs);
   a->cached = 0;
   sl_free(a);
@@ -1387,12 +1331,6 @@ rta_do_cow(rta *o, linpool *lp)
 {
   rta *r = lp_alloc(lp, rta_size(o));
   memcpy(r, o, rta_size(o));
-  for (struct nexthop **nhn = &(r->nh.next), *nho = o->nh.next; nho; nho = nho->next)
-    {
-      *nhn = lp_alloc(lp, nexthop_size(nho));
-      memcpy(*nhn, nho, nexthop_size(nho));
-      nhn = &((*nhn)->next);
-    }
   r->cached = 0;
   r->uc = 0;
   return r;
@@ -1413,15 +1351,6 @@ rta_dump(rta *a)
 	a->uc, rtd[a->dest], a->hash_key);
   if (!a->cached)
     debug(" !CACHED");
-  if (a->dest == RTD_UNICAST)
-    for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
-      {
-	if (ipa_nonzero(nh->gw)) debug(" ->%I", nh->gw);
-	if (nh->labels) debug(" L %d", nh->label[0]);
-	for (int i=1; i<nh->labels; i++)
-	  debug("/%d", nh->label[i]);
-	debug(" [%s]", nh->iface ? nh->iface->name : "???");
-      }
   if (a->eattrs)
     {
       debug(" EA: ");
@@ -1471,15 +1400,7 @@ rta_init(void)
 {
   rta_pool = rp_new(&root_pool, "Attributes");
 
-  rta_slab_[0] = sl_new(rta_pool, sizeof(rta));
-  rta_slab_[1] = sl_new(rta_pool, sizeof(rta) + sizeof(u32));
-  rta_slab_[2] = sl_new(rta_pool, sizeof(rta) + sizeof(u32)*2);
-  rta_slab_[3] = sl_new(rta_pool, sizeof(rta) + sizeof(u32)*MPLS_MAX_LABEL_STACK);
-
-  nexthop_slab_[0] = sl_new(rta_pool, sizeof(struct nexthop));
-  nexthop_slab_[1] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32));
-  nexthop_slab_[2] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*2);
-  nexthop_slab_[3] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK);
+  rta_slab = sl_new(rta_pool, sizeof(rta));
 
   rta_alloc_hash();
   rte_src_init();
@@ -1489,6 +1410,7 @@ rta_init(void)
   ea_register_init(&ea_gen_igp_metric);
   ea_register_init(&ea_gen_from);
   ea_register_init(&ea_gen_source);
+  ea_register_init(&ea_gen_nexthop);
 
   ea_register_init(&ea_mpls_labels);
 }

@@ -69,11 +69,16 @@ void rt_prune_sources(void);
 struct nexthop {
   ip_addr gw;				/* Next hop */
   struct iface *iface;			/* Outgoing interface */
-  struct nexthop *next;
   byte flags;
   byte weight;
   byte labels;				/* Number of all labels */
   u32 label[0];
+};
+
+/* For packing one into eattrs */
+struct nexthop_adata {
+  struct adata ad;
+  struct nexthop nh;
 };
 
 #define RNF_ONLINK		0x1	/* Gateway is onlink regardless of IP ranges */
@@ -87,7 +92,6 @@ typedef struct rta {
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
   u16 cached:1;				/* Are attributes cached? */
   u16 dest:4;				/* Route destination type (RTD_...) */
-  struct nexthop nh;			/* Next hop */
 } rta;
 
 #define RTS_STATIC 1			/* Normal static route */
@@ -288,8 +292,21 @@ ea_set_attr_u32(ea_list **to, const struct ea_class *def, uint flags, u64 data)
 { ea_set_attr(to, EA_LITERAL_EMBEDDED(def, flags, data)); }
 
 static inline void
-ea_set_attr_data(ea_list **to, const struct ea_class *def, uint flags, void *data, uint len)
+ea_set_attr_data(ea_list **to, const struct ea_class *def, uint flags, const void *data, uint len)
 { ea_set_attr(to, EA_LITERAL_STORE_ADATA(def, flags, data, len)); }
+
+static inline void
+ea_copy_attr(ea_list **to, ea_list *from, const struct ea_class *def)
+{
+  eattr *e = ea_find_by_class(from, def);
+  if (e)
+    if (e->type & EAF_EMBEDDED)
+      ea_set_attr_u32(to, def, e->flags, e->u.data);
+    else
+      ea_set_attr_data(to, def, e->flags, e->u.ptr->data, e->u.ptr->length);
+  else
+    ea_unset_attr(to, 0, def);
+}
 
 /*
  *	Common route attributes
@@ -319,25 +336,39 @@ static inline u32 rt_get_source_attr(const rte *rt)
  * to add additional labels to the resolved nexthop */
 extern struct ea_class ea_mpls_labels;
 
+/* Next hop: For now, stored as adata */
+extern struct ea_class ea_gen_nexthop;
+
 /* Next hop structures */
 
-#define NEXTHOP_MAX_SIZE (sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
+#define NEXTHOP_ALIGNMENT	(_Alignof(struct nexthop))
+#define NEXTHOP_MAX_SIZE	(sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
+#define NEXTHOP_SIZE(_nh)	NEXTHOP_SIZE_CNT(((_nh)->labels))
+#define NEXTHOP_SIZE_CNT(cnt)	BIRD_ALIGN((sizeof(struct nexthop) + sizeof(u32) * (cnt)), NEXTHOP_ALIGNMENT)
+#define nexthop_size(nh)	NEXTHOP_SIZE((nh))
 
-static inline size_t nexthop_size(const struct nexthop *nh)
-{ return sizeof(struct nexthop) + sizeof(u32)*nh->labels; }
-int nexthop__same(struct nexthop *x, struct nexthop *y); /* Compare multipath nexthops */
-static inline int nexthop_same(struct nexthop *x, struct nexthop *y)
-{ return (x == y) || nexthop__same(x, y); }
-struct nexthop *nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, linpool *lp);
-struct nexthop *nexthop_sort(struct nexthop *x);
-static inline void nexthop_link(struct rta *a, struct nexthop *from)
-{ memcpy(&a->nh, from, nexthop_size(from)); }
-void nexthop_insert(struct nexthop **n, struct nexthop *y);
-int nexthop_is_sorted(struct nexthop *x);
+#define NEXTHOP_NEXT(_nh)	((void *) (_nh) + NEXTHOP_SIZE(_nh))
+#define NEXTHOP_END(_nhad)	((_nhad)->ad.data + (_nhad)->ad.length)
+#define NEXTHOP_VALID(_nh, _nhad) ((void *) (_nh) < (void *) NEXTHOP_END(_nhad))
+#define NEXTHOP_ONE(_nhad)	(NEXTHOP_NEXT(&(_nhad)->nh) == NEXTHOP_END(_nhad))
+
+#define NEXTHOP_WALK(_iter, _nhad) for ( \
+    struct nexthop *_iter = &(_nhad)->nh; \
+    (void *) _iter < (void *) NEXTHOP_END(_nhad); \
+    _iter = NEXTHOP_NEXT(_iter))
+
+
+static inline int nexthop_same(struct nexthop_adata *x, struct nexthop_adata *y)
+{ return adata_same(&x->ad, &y->ad); }
+struct nexthop_adata *nexthop_merge(struct nexthop_adata *x, struct nexthop_adata *y, int max, linpool *lp);
+struct nexthop_adata *nexthop_sort(struct nexthop_adata *x, linpool *lp);
+int nexthop_is_sorted(struct nexthop_adata *x);
+
+
 
 void rta_init(void);
-static inline size_t rta_size(const rta *a) { return sizeof(rta) + sizeof(u32)*a->nh.labels; }
-#define RTA_MAX_SIZE (sizeof(rta) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
+#define rta_size(...) (sizeof(rta))
+#define RTA_MAX_SIZE (sizeof(rta))
 rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */
 static inline int rta_is_cached(rta *r) { return r->cached; }
 static inline rta *rta_clone(rta *r) { r->uc++; return r; }

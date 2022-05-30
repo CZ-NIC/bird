@@ -28,7 +28,7 @@ struct top_hash_entry
   u16 next_lsa_opts;		/* For postponed LSA origination */
   btime inst_time;		/* Time of installation into DB */
   struct ort *nf;		/* Reference fibnode for sum and ext LSAs, NULL for otherwise */
-  struct nexthop *nhs;		/* Computed nexthops - valid only in ospf_rt_spf() */
+  struct nexthop_adata *nhs;	/* Computed nexthops - valid only in ospf_rt_spf() */
   ip_addr lb;			/* In OSPFv2, link back address. In OSPFv3, any global address in the area useful for vlinks */
   u32 lb_id;			/* Interface ID of link back iface (for bcast or NBMA networks) */
   u32 dist;			/* Distance from the root */
@@ -39,8 +39,6 @@ struct top_hash_entry
 #define CANDIDATE 1
 #define INSPF 2
   u8 mode;			/* LSA generated during RT calculation (LSA_RTCALC or LSA_STALE)*/
-  u8 nhs_reuse;			/* Whether nhs nodes can be reused during merging.
-				   See a note in rt.c:add_cand() */
 };
 
 

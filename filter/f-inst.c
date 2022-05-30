@@ -529,27 +529,47 @@
     {
       STATIC_ATTR;
       ACCESS_RTE;
+      ACCESS_EATTRS;
       struct rta *rta = fs->rte->attrs;
 
       switch (sa.sa_code)
       {
-      case SA_GW:	RESULT(sa.type, ip, rta->nh.gw); break;
       case SA_NET:	RESULT(sa.type, net, fs->rte->net); break;
       case SA_PROTO:	RESULT(sa.type, s, fs->rte->src->proto->name); break;
       case SA_DEST:	RESULT(sa.type, i, rta->dest); break;
-      case SA_IFNAME:	RESULT(sa.type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
-      case SA_IFINDEX:	RESULT(sa.type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
-      case SA_WEIGHT:	RESULT(sa.type, i, rta->nh.weight + 1); break;
-      case SA_GW_MPLS:	RESULT(sa.type, i, rta->nh.labels ? rta->nh.label[0] : MPLS_NULL); break;
-
       default:
-	bug("Invalid static attribute access (%u/%u)", sa.type, sa.sa_code);
+	{
+	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  struct nexthop *nh = nh_ea ? &((struct nexthop_adata *) nh_ea->u.ptr)->nh : NULL;
+
+	  switch (sa.sa_code)
+	  {
+	    case SA_GW:
+	      RESULT(sa.type, ip, nh ? nh->gw : IPA_NONE);
+	      break;
+	    case SA_IFNAME:
+	      RESULT(sa.type, s, (nh && nh->iface) ? nh->iface->name : "");
+	      break;
+	    case SA_IFINDEX:
+	      RESULT(sa.type, i, (nh && nh->iface) ? nh->iface->index : 0);
+	      break;
+	    case SA_WEIGHT:
+	      RESULT(sa.type, i, (nh ? nh->weight : 0) + 1);
+	      break;
+	    case SA_GW_MPLS:
+	      RESULT(sa.type, i, (nh && nh->labels) ? nh->label[0] : MPLS_NULL);
+	      break;
+	    default:
+	      bug("Invalid static attribute access (%u/%u)", sa.type, sa.sa_code);
+	  }
+	}
       }
     }
   }
 
   INST(FI_RTA_SET, 1, 0) {
     ACCESS_RTE;
+    ACCESS_EATTRS;
     ARG_ANY(1);
     STATIC_ATTR;
     ARG_TYPE(1, sa.type);
@@ -558,37 +578,51 @@
     {
       struct rta *rta = fs->rte->attrs;
 
-      switch (sa.sa_code)
-      {
-      case SA_GW:
-	{
-	  ip_addr ip = v1.val.ip;
-	  struct iface *ifa = ipa_is_link_local(ip) ? rta->nh.iface : NULL;
-	  neighbor *n = neigh_find(fs->rte->src->proto, ip, ifa, 0);
-	  if (!n || (n->scope == SCOPE_HOST))
-	    runtime( "Invalid gw address" );
-
-	  rta->dest = RTD_UNICAST;
-	  rta->nh.gw = ip;
-	  rta->nh.iface = n->iface;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	  rta->nh.labels = 0;
-	}
-	break;
-
-      case SA_DEST:
+      if (sa.sa_code == SA_DEST)
 	{
 	  int i = v1.val.i;
 	  if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
 	    runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
 
 	  rta->dest = i;
-	  rta->nh.gw = IPA_NONE;
-	  rta->nh.iface = NULL;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	  rta->nh.labels = 0;
+	  ea_unset_attr(fs->eattrs, 1, &ea_gen_nexthop);
+	}
+      else
+      {
+	union {
+	  struct nexthop_adata nha;
+	  struct {
+	    struct adata ad;
+	    struct nexthop nh;
+	    u32 label;
+	  };
+	} nha;
+
+	nha.ad = (struct adata) {
+	  .length = sizeof (struct nexthop_adata) - sizeof (struct adata),
+	};
+
+	eattr *a = NULL;
+
+	switch (sa.sa_code)
+	  {
+      case SA_GW:
+	{
+	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+
+	  ip_addr ip = v1.val.ip;
+	  struct iface *ifa = (ipa_is_link_local(ip) && nh_ea) ?
+	    ((struct nexthop_adata *) nh_ea->u.ptr)->nh.iface : NULL;
+	  
+	  neighbor *n = neigh_find(fs->rte->src->proto, ip, ifa, 0);
+	  if (!n || (n->scope == SCOPE_HOST))
+	    runtime( "Invalid gw address" );
+
+	  rta->dest = RTD_UNICAST;
+	  nha.nh = (struct nexthop) {
+	    .gw = ip,
+	    .iface = n->iface,
+	  };
 	}
 	break;
 
@@ -599,11 +633,9 @@
 	    runtime( "Invalid iface name" );
 
 	  rta->dest = RTD_UNICAST;
-	  rta->nh.gw = IPA_NONE;
-	  rta->nh.iface = ifa;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	  rta->nh.labels = 0;
+	  nha.nh = (struct nexthop) {
+	    .iface = ifa,
+	  };
 	}
 	break;
 
@@ -612,13 +644,20 @@
 	  if (v1.val.i >= 0x100000)
 	    runtime( "Invalid MPLS label" );
 
+	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  if (!nh_ea)
+	    runtime( "No nexthop to add a MPLS label to" );
+
+	  nha.nh = ((struct nexthop_adata *) nh_ea->u.ptr)->nh;
+	  
 	  if (v1.val.i != MPLS_NULL)
 	  {
-	    rta->nh.label[0] = v1.val.i;
-	    rta->nh.labels = 1;
+	    nha.nh.label[0] = v1.val.i;
+	    nha.nh.labels = 1;
+	    nha.ad.length = sizeof nha - sizeof (struct adata);
 	  }
 	  else
-	    rta->nh.labels = 0;
+	    nha.nh.labels = 0;
 	}
 	break;
 
@@ -630,14 +669,32 @@
 	  if (rta->dest != RTD_UNICAST)
 	    runtime( "Setting weight needs regular nexthop " );
 
+	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  if (!nh_ea)
+	    runtime( "No nexthop to set weight on" );
+
+	  struct nexthop_adata *nhax = (struct nexthop_adata *)
+	    tmp_copy_adata(&((struct nexthop_adata *) nh_ea->u.ptr)->ad);
+
 	  /* Set weight on all next hops */
-	  for (struct nexthop *nh = &rta->nh; nh; nh = nh->next)
+	  NEXTHOP_WALK(nh, nhax)
 	    nh->weight = i - 1;
+
+	  a = ea_set_attr(fs->eattrs,
+	      EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nhax->ad));
         }
 	break;
 
       default:
 	bug("Invalid static attribute access (%u/%u)", sa.type, sa.sa_code);
+	  }
+
+	if (!a)
+	  a = ea_set_attr(fs->eattrs,
+	      EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, tmp_copy_adata(&nha.ad)));
+
+	a->originated = 1;
+	a->fresh = 1;
       }
     }
   }
