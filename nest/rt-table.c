@@ -3488,7 +3488,7 @@ rt_init_hostcache(rtable *tab)
   hc_alloc_table(hc, tab->rp, HC_DEF_ORDER);
   hc->slab = sl_new(tab->rp, sizeof(struct hostentry));
 
-  hc->lp = lp_new(tab->rp, LP_GOOD_SIZE(1024));
+  hc->lp = lp_new(tab->rp);
   hc->trie = f_new_trie(hc->lp, 0);
 
   tab->hostcache = hc;

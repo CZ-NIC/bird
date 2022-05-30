@@ -299,7 +299,7 @@ ospf_start(struct proto *P)
   p->lsab_size = 256;
   p->lsab_used = 0;
   p->lsab = mb_alloc(P->pool, p->lsab_size);
-  p->nhpool = lp_new(P->pool, 12*sizeof(struct nexthop));
+  p->nhpool = lp_new(P->pool);
   init_list(&(p->iface_list));
   init_list(&(p->area_list));
   fib_init(&p->rtf, P->pool, ospf_get_af(p), sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
