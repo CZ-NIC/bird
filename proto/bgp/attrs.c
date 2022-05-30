@@ -106,7 +106,7 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
   ({ REPORT(msg, ## args); s->err_withdraw = 1; return; })
 
 #define UNSET(a) \
-  ({ a->type = EAF_TYPE_UNDEF; return; })
+  ({ a->undef = 1; return; })
 
 #define REJECT(msg, args...) \
   ({ log(L_ERR "%s: " msg, s->proto->p.name, ## args); s->err_reject = 1; return; })
@@ -1153,7 +1153,7 @@ bgp_export_attr(struct bgp_export_state *s, eattr *a, ea_list *to)
     a->flags = (a->flags & BAF_PARTIAL) | desc->flags;
 
     /* Set partial bit if new opt-trans attribute is attached to non-local route */
-    if ((s->src != NULL) && (a->type & EAF_ORIGINATED) &&
+    if ((s->src != NULL) && (a->originated) &&
 	(a->flags & BAF_OPTIONAL) && (a->flags & BAF_TRANSITIVE))
       a->flags |= BAF_PARTIAL;
 
@@ -1161,7 +1161,7 @@ bgp_export_attr(struct bgp_export_state *s, eattr *a, ea_list *to)
     CALL(desc->export, s, a);
 
     /* Attribute might become undefined in hook */
-    if ((a->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
+    if (a->undef)
       return;
   }
   else
@@ -1776,7 +1776,7 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
 
     /* MULTI_EXIT_DESC attribute - accept only if set in export filter */
     a = bgp_find_attr(attrs0, BA_MULTI_EXIT_DISC);
-    if (a && !(a->type & EAF_FRESH))
+    if (a && !(a->fresh))
       bgp_unset_attr(&attrs, pool, BA_MULTI_EXIT_DISC);
   }
 

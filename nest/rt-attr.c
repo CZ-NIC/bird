@@ -448,8 +448,7 @@ ea_find(ea_list *e, unsigned id)
 {
   eattr *a = ea__find(e, id & EA_CODE_MASK);
 
-  if (a && (a->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF &&
-      !(id & EA_ALLOW_UNDEF))
+  if (a && a->undef && !(id & EA_ALLOW_UNDEF))
     return NULL;
   return a;
 }
@@ -516,7 +515,7 @@ ea_walk(struct ea_walk_state *s, uint id, uint max)
 
 	BIT32_SET(s->visited, n);
 
-	if ((a->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
+	if (a->undef)
 	  continue;
 
 	s->eattrs = e;
@@ -616,14 +615,17 @@ ea_do_prune(ea_list *e)
 
       /* Now s0 is the most recent version, s[-1] the oldest one */
       /* Drop undefs */
-      if ((s0->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
+      if (s0->undef)
 	continue;
 
       /* Copy the newest version to destination */
       *d = *s0;
 
       /* Preserve info whether it originated locally */
-      d->type = (d->type & ~(EAF_ORIGINATED|EAF_FRESH)) | (s[-1].type & EAF_ORIGINATED);
+      d->originated = s[-1].originated;
+
+      /* Not fresh any more, we prefer surstroemming */
+      d->fresh = 0;
 
       /* Next destination */
       d++;
@@ -737,6 +739,9 @@ ea_same(ea_list *x, ea_list *y)
       if (a->id != b->id ||
 	  a->flags != b->flags ||
 	  a->type != b->type ||
+	  a->originated != b->originated ||
+	  a->fresh != b->fresh ||
+	  a->undef != b->undef ||
 	  ((a->type & EAF_EMBEDDED) ? a->u.data != b->u.data : !adata_same(a->u.ptr, b->u.ptr)))
 	return 0;
     }
@@ -939,6 +944,10 @@ ea_show(struct cli *c, const eattr *e)
     {
       *pos++ = ':';
       *pos++ = ' ';
+
+      if (e->undef)
+	bsprintf(pos, "undefined");
+      else
       switch (e->type & EAF_TYPE_MASK)
 	{
 	case EAF_TYPE_INT:
@@ -968,7 +977,6 @@ ea_show(struct cli *c, const eattr *e)
 	case EAF_TYPE_LC_SET:
 	  ea_show_lc_set(c, ad, pos, buf, end);
 	  return;
-	case EAF_TYPE_UNDEF:
 	default:
 	  bsprintf(pos, "<type %02x>", e->type);
 	}
@@ -1004,7 +1012,7 @@ ea_dump(ea_list *e)
 	  eattr *a = &e->attrs[i];
 	  debug(" %02x:%02x.%02x", EA_PROTO(a->id), EA_ID(a->id), a->flags);
 	  debug("=%c", "?iO?I?P???S?????" [a->type & EAF_TYPE_MASK]);
-	  if (a->type & EAF_ORIGINATED)
+	  if (a->originated)
 	    debug("o");
 	  if (a->type & EAF_EMBEDDED)
 	    debug(":%08x", a->u.data);

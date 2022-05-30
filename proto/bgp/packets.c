@@ -1062,7 +1062,7 @@ bgp_use_next_hop(struct bgp_export_state *s, eattr *a)
     return 1;
 
   /* Keep it when explicitly set in export filter */
-  if (a->type & EAF_FRESH)
+  if (a->fresh)
     return 1;
 
   /* Check for non-matching AF */

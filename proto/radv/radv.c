@@ -771,3 +771,9 @@ struct protocol proto_radv = {
   .get_status =		radv_get_status,
   .get_attr =		radv_get_attr
 };
+
+void
+radv_build(void)
+{
+  proto_build(&proto_radv);
+}

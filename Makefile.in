@@ -82,6 +82,9 @@ conf-lex-targets := $(addprefix $(objdir)/conf/,cf-lex.o)
 conf-y-targets := $(addprefix $(objdir)/conf/,cf-parse.y keywords.h commands.h)
 cf-local = $(conf-y-targets): $(s)config.Y
 
+# nest/Makefile declarations needed for all other modules
+proto-build-c := $(addprefix $(objdir)/nest/,proto-build.c)
+
 src-o-files = $(patsubst %.c,$(o)%.o,$(src))
 tests-target-files = $(patsubst %.c,$(o)%,$(tests_src))
 
@@ -94,6 +97,13 @@ ifeq ($(srcdir),.)
 else
   o = $(patsubst $(srcdir)%,$(objdir)%,$(s))
 endif
+
+define proto-build_in =
+PROTO_BUILD += $(1)
+$(proto-build-c): $(lastword $(MAKEFILE_LIST))
+endef
+
+proto-build = $(eval $(call proto-build_in,$(1)))
 
 define clean_in =
 clean::
