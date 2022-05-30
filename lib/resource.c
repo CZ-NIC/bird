@@ -70,6 +70,20 @@ rp_new(pool *p, const char *name)
   return z;
 }
 
+pool *
+rp_newf(pool *p, const char *fmt, ...)
+{
+  pool *z = rp_new(p, NULL);
+
+  va_list args;
+  va_start(args, fmt);
+  z->name = mb_vsprintf(p, fmt, args);
+  va_end(args);
+
+  return z;
+}
+
+
 static void
 pool_free(resource *P)
 {
@@ -408,21 +422,6 @@ mb_realloc(void *m, unsigned size)
   update_node(&b->r.n);
   b->size = size;
   return b->data;
-}
-
-/**
- * mb_move - move a memory block
- * @m: memory block
- * @p: target pool
- *
- * mb_move() moves the given memory block to another pool in the same way
- * as rmove() moves a plain resource.
- */
-void
-mb_move(void *m, pool *p)
-{
-  struct mblock *b = SKIP_BACK(struct mblock, data, m);
-  rmove(b, p);
 }
 
 
