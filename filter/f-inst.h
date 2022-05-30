@@ -87,14 +87,16 @@ void f_add_lines(const struct f_line_item *what, struct filter_iterator *fit);
 
 
 struct filter *f_new_where(struct f_inst *);
-static inline struct f_dynamic_attr f_new_dynamic_attr(u8 type, uint code)
-{ return (struct f_dynamic_attr) { .type = type, .ea_code = code }; }
-static inline struct f_dynamic_attr f_new_dynamic_attr_bit(u8 bit, uint code)
-{ return (struct f_dynamic_attr) { .type = T_INT, .bit = bit, .ea_code = code }; }
 static inline struct f_static_attr f_new_static_attr(btype type, int code, int readonly)
 { return (struct f_static_attr) { .type = type, .sa_code = code, .readonly = readonly }; }
-struct f_inst *f_generate_complex(enum f_instruction_code fi_code, struct f_dynamic_attr da, struct f_inst *argument);
 struct f_inst *f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn);
+
+struct f_attr_bit {
+  const struct ea_class *class;
+  uint bit;
+};
+
+#define f_new_dynamic_attr_bit(_bit, _name)  ((struct f_attr_bit) { .bit = _bit, .class = ea_class_find(_name) })
 
 /* Hook for call bt_assert() function in configuration */
 extern void (*bt_assert_hook)(int result, const struct f_line_item *assert);

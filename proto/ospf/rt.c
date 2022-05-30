@@ -2075,18 +2075,18 @@ again1:
 	eattrs.l = (ea_list) {};
 
 	eattrs.a[eattrs.l.count++] =
-	  EA_LITERAL_EMBEDDED(EA_OSPF_METRIC1, T_INT, 0, nf->n.metric1);
+	  EA_LITERAL_EMBEDDED(&ea_ospf_metric1, 0, nf->n.metric1);
 
 	if (nf->n.type == RTS_OSPF_EXT2)
 	  eattrs.a[eattrs.l.count++] =
-	    EA_LITERAL_EMBEDDED(EA_OSPF_METRIC2, T_INT, 0, nf->n.metric2);
+	    EA_LITERAL_EMBEDDED(&ea_ospf_metric2, 0, nf->n.metric2);
 
 	if ((nf->n.type == RTS_OSPF_EXT1) || (nf->n.type == RTS_OSPF_EXT2))
 	  eattrs.a[eattrs.l.count++] =
-	    EA_LITERAL_EMBEDDED(EA_OSPF_TAG, T_INT, 0, nf->n.tag);
+	    EA_LITERAL_EMBEDDED(&ea_ospf_tag, 0, nf->n.tag);
 
 	eattrs.a[eattrs.l.count++] =
-	  EA_LITERAL_EMBEDDED(EA_OSPF_ROUTER_ID, T_QUAD, 0, nf->n.rid);
+	  EA_LITERAL_EMBEDDED(&ea_ospf_router_id, 0, nf->n.rid);
 
 	a0.eattrs = &eattrs.l;
 

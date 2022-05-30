@@ -397,16 +397,16 @@ static_reload_routes(struct channel *C)
 static int
 static_rte_better(rte *new, rte *old)
 {
-  u32 n = ea_get_int(new->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
-  u32 o = ea_get_int(old->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
+  u32 n = ea_get_int(new->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
+  u32 o = ea_get_int(old->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
   return n < o;
 }
 
 static int
 static_rte_mergable(rte *pri, rte *sec)
 {
-  u32 a = ea_get_int(pri->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
-  u32 b = ea_get_int(sec->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
+  u32 a = ea_get_int(pri->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
+  u32 b = ea_get_int(sec->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
   return a == b;
 }
 
@@ -694,7 +694,7 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
 static void
 static_get_route_info(rte *rte, byte *buf)
 {
-  eattr *a = ea_find(rte->attrs->eattrs, EA_GEN_IGP_METRIC);
+  eattr *a = ea_find(rte->attrs->eattrs, &ea_gen_igp_metric);
   if (a)
     buf += bsprintf(buf, " (%d/%u)", rte->attrs->pref, a->u.data);
   else
@@ -752,7 +752,6 @@ static_show(struct proto *P)
 struct protocol proto_static = {
   .name =		"Static",
   .template =		"static%d",
-  .class =		PROTOCOL_STATIC,
   .preference =		DEF_PREF_STATIC,
   .channel_mask =	NB_ANY,
   .proto_size =		sizeof(struct static_proto),

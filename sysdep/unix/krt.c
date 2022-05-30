@@ -232,7 +232,6 @@ kif_copy_config(struct proto_config *dest, struct proto_config *src)
 struct protocol proto_unix_iface = {
   .name = 		"Device",
   .template = 		"device%d",
-  .class =		PROTOCOL_DEVICE,
   .proto_size =		sizeof(struct kif_proto),
   .config_size =	sizeof(struct kif_config),
   .preconfig =		kif_preconfig,
@@ -287,7 +286,7 @@ static struct tbf rl_alien = TBF_DEFAULT_LOG_LIMITS;
 static inline u32
 krt_metric(rte *a)
 {
-  eattr *ea = ea_find(a->attrs->eattrs, EA_KRT_METRIC);
+  eattr *ea = ea_find(a->attrs->eattrs, &ea_krt_metric);
   return ea ? ea->u.data : 0;
 }
 
@@ -1142,24 +1141,15 @@ krt_copy_config(struct proto_config *dest, struct proto_config *src)
   krt_sys_copy_config(d, s);
 }
 
-static int
-krt_get_attr(const eattr *a, byte *buf, int buflen)
-{
-  switch (a->id)
-  {
-  case EA_KRT_SOURCE:
-    bsprintf(buf, "source");
-    return GA_NAME;
+struct ea_class ea_krt_source = {
+  .name = "krt_source",
+  .type = T_INT,
+};
 
-  case EA_KRT_METRIC:
-    bsprintf(buf, "metric");
-    return GA_NAME;
-
-  default:
-    return krt_sys_get_attr(a, buf, buflen);
-  }
-}
-
+struct ea_class ea_krt_metric = {
+  .name = "krt_metric",
+  .type = T_INT,
+};
 
 #ifdef CONFIG_IP6_SADR_KERNEL
 #define MAYBE_IP6_SADR	NB_IP6_SADR
@@ -1176,7 +1166,6 @@ krt_get_attr(const eattr *a, byte *buf, int buflen)
 struct protocol proto_unix_kernel = {
   .name =		"Kernel",
   .template =		"kernel%d",
-  .class =		PROTOCOL_KERNEL,
   .preference =		DEF_PREF_INHERITED,
   .channel_mask =	NB_IP | MAYBE_IP6_SADR | MAYBE_MPLS,
   .proto_size =		sizeof(struct krt_proto),
@@ -1188,7 +1177,6 @@ struct protocol proto_unix_kernel = {
   .shutdown =		krt_shutdown,
   .reconfigure =	krt_reconfigure,
   .copy_config =	krt_copy_config,
-  .get_attr =		krt_get_attr,
 #ifdef KRT_ALLOW_LEARN
   .dump =		krt_dump,
 #endif
@@ -1198,4 +1186,9 @@ void
 krt_build(void)
 {
   proto_build(&proto_unix_kernel);
+
+  EA_REGISTER_ALL(
+      &ea_krt_source,
+      &ea_krt_metric,
+      );
 }

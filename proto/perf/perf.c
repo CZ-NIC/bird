@@ -305,7 +305,6 @@ perf_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUS
 struct protocol proto_perf = {
   .name = 		"Perf",
   .template =		"perf%d",
-  .class =		PROTOCOL_PERF,
   .channel_mask = 	NB_IP,
   .proto_size =		sizeof(struct perf_proto),
   .config_size = 	sizeof(struct perf_config),

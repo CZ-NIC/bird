@@ -70,13 +70,4 @@ void filters_dump_all(void);
 
 #define FF_SILENT 2			/* Silent filter execution */
 
-/* Custom route attributes */
-struct custom_attribute {
-  resource r;
-  struct f_dynamic_attr *fda;
-  const char *name;
-};
-
-struct custom_attribute *ca_lookup(pool *p, const char *name, btype type);
-
 #endif

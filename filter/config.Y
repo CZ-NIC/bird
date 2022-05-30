@@ -22,6 +22,13 @@ static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
 #define f_generate_complex(fi_code, da, arg) \
   f_new_inst(FI_EA_SET, f_new_inst(fi_code, f_new_inst(FI_EA_GET, da), arg), da)
 
+#define f_generate_complex_sym(fi_code, sym, arg) ({ \
+  if (sym->class != SYM_ATTRIBUTE) \
+    cf_error("Can't empty %s: not an attribute", sym->name); \
+  f_generate_complex(fi_code, sym->attribute, arg); \
+})
+  
+
 /*
  * Sets and their items are during parsing handled as lists, linked
  * through left ptr. The first item in a list also contains a pointer
@@ -161,27 +168,31 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
 }
 
 static inline struct f_inst *
-f_generate_empty(struct f_dynamic_attr dyn)
+f_generate_empty(const struct symbol *sym)
 {
-  const struct f_val *empty = f_get_empty(dyn.type);
+  if (sym->class != SYM_ATTRIBUTE)
+    cf_error("Can't empty %s: not an attribute", sym->name);
+
+  const struct ea_class *def = sym->attribute;
+  const struct f_val *empty = f_get_empty(def->type);
   if (!empty)
-    cf_error("Can't empty that attribute");
+    cf_error("Can't empty attribute %s", def->name);
 
-  return f_new_inst(FI_EA_SET, f_new_inst(FI_CONSTANT, *empty), dyn);
+  return f_new_inst(FI_EA_SET, f_new_inst(FI_CONSTANT, *empty), def);
 }
-
-#define BA_AS_PATH 0x02
 
 static inline struct f_inst *
 f_implicit_roa_check(struct rtable_config *tab)
 {
-  struct f_dynamic_attr fda = f_new_dynamic_attr(T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
+  const struct ea_class *def = ea_class_find("bgp_path");
+  if (!def)
+    cf_error("Fatal: Couldn't find BGP path attribute definition.");
 
   struct f_static_attr fsa = f_new_static_attr(T_NET, SA_NET, 1);
 
   return f_new_inst(FI_ROA_CHECK,
 	    f_new_inst(FI_RTA_GET, fsa),
-	    f_new_inst(FI_AS_PATH_LAST, f_new_inst(FI_EA_GET, fda)),
+	    f_new_inst(FI_AS_PATH_LAST, f_new_inst(FI_EA_GET, def)),
 	    tab);
 }
 
@@ -293,8 +304,8 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 
 %type <xp> cmds_int cmd_prep
 %type <x> term block cmd cmds constant constructor print_list var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
-%type <fda> dynamic_attr attr_bit
 %type <fsa> static_attr
+%type <fab> attr_bit
 %type <f> filter where_filter
 %type <fl> filter_body function_body
 %type <flv> lvalue
@@ -335,7 +346,14 @@ filter_eval:
 
 conf: custom_attr ;
 custom_attr: ATTRIBUTE type symbol ';' {
-  cf_define_symbol($3, SYM_ATTRIBUTE, attribute, ca_lookup(new_config->pool, $3->name, $2)->fda);
+  if (($3->class == SYM_ATTRIBUTE) && ($3->scope == new_config->root_scope))
+    cf_error("Duplicate attribute %s definition", $3->name);
+
+  cf_define_symbol($3, SYM_ATTRIBUTE, attribute,
+      ea_register_alloc(new_config->pool, (struct ea_class) {
+	.name = $3->name,
+	.type = $2,
+	})->class);
 };
 
 conf: bt_test_suite ;
@@ -736,7 +754,7 @@ symbol_value: CF_SYM_KNOWN
 	$$ = f_new_inst(FI_VAR_GET, $1);
 	break;
       case SYM_ATTRIBUTE:
-	$$ = f_new_inst(FI_EA_GET, *$1->attribute);
+	$$ = f_new_inst(FI_EA_GET, $1->attribute);
 	break;
       default:
 	cf_error("Can't get value of symbol %s", $1->name);
@@ -785,11 +803,9 @@ term:
  | constructor { $$ = $1; }
 
  | static_attr { $$ = f_new_inst(FI_RTA_GET, $1); }
-
- | dynamic_attr { $$ = f_new_inst(FI_EA_GET, $1); }
  | attr_bit {
     struct f_inst *c = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = (1U << $1.bit)});
-    $$ = f_new_inst(FI_EQ, c, f_new_inst(FI_BITAND, f_new_inst(FI_EA_GET, $1), c));
+    $$ = f_new_inst(FI_EQ, c, f_new_inst(FI_BITAND, f_new_inst(FI_EA_GET, $1.class), c));
   }
 
  | term '.' IS_V4 { $$ = f_new_inst(FI_IS_V4, $1); }
@@ -833,8 +849,6 @@ term:
 
  | FORMAT '(' term ')' {  $$ = f_new_inst(FI_FORMAT, $3); }
 
-/* | term '.' LEN { $$->code = P('P','l'); } */
-
  | function_call
  ;
 
@@ -867,7 +881,9 @@ cmd:
 	 $$ = f_new_inst(FI_VAR_SET, $3, $1);
 	 break;
        case SYM_ATTRIBUTE:
-	 $$ = f_new_inst(FI_EA_SET, $3, *$1->attribute);
+	 if ($1->attribute->readonly)
+	   cf_error("Attribute %s is read-only", $1->attribute->name);
+	 $$ = f_new_inst(FI_EA_SET, $3, $1->attribute);
 	 break;
        default:
 	 cf_error("Can't assign to symbol %s", $1->name);
@@ -877,22 +893,23 @@ cmd:
      DBG( "Ook, we'll return the value\n" );
      $$ = f_new_inst(FI_RETURN, $2);
    }
- | dynamic_attr '=' term ';' {
-     $$ = f_new_inst(FI_EA_SET, $3, $1);
-   }
  | static_attr '=' term ';' {
      if ($1.readonly)
        cf_error( "This static attribute is read-only.");
      $$ = f_new_inst(FI_RTA_SET, $3, $1);
    }
- | UNSET '(' dynamic_attr ')' ';' {
-     $$ = f_new_inst(FI_EA_UNSET, $3);
+ | UNSET '(' CF_SYM_KNOWN ')' ';' {
+     if ($3->class != SYM_ATTRIBUTE)
+       cf_error("Can't unset %s", $3->name);
+     if ($3->attribute->readonly)
+       cf_error("Attribute %s is read-only", $3->attribute->name);
+     $$ = f_new_inst(FI_EA_UNSET, $3->attribute);
    }
  | attr_bit '=' term ';' {
      $$ = f_new_inst(FI_CONDITION, $3,
-	f_generate_complex(FI_BITOR, $1,
+	f_generate_complex(FI_BITOR, $1.class,
 	      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = (1U << $1.bit)})),
-	f_generate_complex(FI_BITAND, $1,
+	f_generate_complex(FI_BITAND, $1.class,
 	      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = ~(1U << $1.bit)}))
      );
    }
@@ -919,11 +936,11 @@ cmd:
       $$ = f_new_inst(FI_SWITCH, $2, build_tree($4));
    }
 
- | dynamic_attr '.' EMPTY ';' { $$ = f_generate_empty($1); }
- | dynamic_attr '.' PREPEND '(' term ')' ';'   { $$ = f_generate_complex( FI_PATH_PREPEND, $1, $5 ); }
- | dynamic_attr '.' ADD '(' term ')' ';'       { $$ = f_generate_complex( FI_CLIST_ADD, $1, $5 ); }
- | dynamic_attr '.' DELETE '(' term ')' ';'    { $$ = f_generate_complex( FI_CLIST_DEL, $1, $5 ); }
- | dynamic_attr '.' FILTER '(' term ')' ';'    { $$ = f_generate_complex( FI_CLIST_FILTER, $1, $5 ); }
+ | CF_SYM_KNOWN '.' EMPTY ';' { $$ = f_generate_empty($1); }
+ | CF_SYM_KNOWN '.' PREPEND '(' term ')' ';'   { $$ = f_generate_complex_sym( FI_PATH_PREPEND, $1, $5 ); }
+ | CF_SYM_KNOWN '.' ADD '(' term ')' ';'       { $$ = f_generate_complex_sym( FI_CLIST_ADD, $1, $5 ); }
+ | CF_SYM_KNOWN '.' DELETE '(' term ')' ';'    { $$ = f_generate_complex_sym( FI_CLIST_DEL, $1, $5 ); }
+ | CF_SYM_KNOWN '.' FILTER '(' term ')' ';'    { $$ = f_generate_complex_sym( FI_CLIST_FILTER, $1, $5 ); }
  | BT_ASSERT '(' get_cf_position term get_cf_position ')' ';' { $$ = assert_done($4, $3 + 1, $5 - 1); }
  | BT_CHECK_ASSIGN '(' get_cf_position lvalue get_cf_position ',' term ')' ';' { $$ = assert_assign(&$4, $7, $3 + 1, $5 - 1); }
  ;
@@ -934,8 +951,17 @@ get_cf_position:
 };
 
 lvalue:
-   CF_SYM_KNOWN { cf_assert_symbol($1, SYM_VARIABLE); $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 }; }
+   CF_SYM_KNOWN {
+      switch ($1->class) {
+	case SYM_VARIABLE_RANGE:
+	  $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 };
+	  break;
+	case SYM_ATTRIBUTE:
+	  $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1->attribute };
+	  break;
+      }
+  }
  | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1 }; }
- | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1 }; };
+ ;
 
 CF_END

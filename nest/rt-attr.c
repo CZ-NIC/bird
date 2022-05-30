@@ -60,6 +60,11 @@
 
 const adata null_adata;		/* adata of length 0 */
 
+struct ea_class ea_gen_igp_metric = {
+  .name = "igp_metric",
+  .type = T_INT,
+};
+
 const char * const rta_src_names[RTS_MAX] = {
   [RTS_STATIC]		= "static",
   [RTS_INHERIT]		= "inherit",
@@ -401,6 +406,117 @@ nexthop_free(struct nexthop *o)
  *	Extended Attributes
  */
 
+#define EA_CLASS_INITIAL_MAX	128
+static struct ea_class **ea_class_global = NULL;
+static uint ea_class_max;
+static struct idm ea_class_idm;
+
+/* Config parser lex register function */
+void ea_lex_register(struct ea_class *def);
+void ea_lex_unregister(struct ea_class *def);
+
+static void
+ea_class_free(struct ea_class *cl)
+{
+  /* No more ea class references. Unregister the attribute. */
+  idm_free(&ea_class_idm, cl->id);
+  ea_class_global[cl->id] = NULL;
+  ea_lex_unregister(cl);
+}
+
+static void
+ea_class_ref_free(resource *r)
+{
+  struct ea_class_ref *ref = SKIP_BACK(struct ea_class_ref, r, r);
+  if (!--ref->class->uc)
+    ea_class_free(ref->class);
+}
+
+static void
+ea_class_ref_dump(resource *r)
+{
+  struct ea_class_ref *ref = SKIP_BACK(struct ea_class_ref, r, r);
+  debug("name \"%s\", type=%d\n", ref->class->name, ref->class->type);
+}
+
+static struct resclass ea_class_ref_class = {
+  .name = "Attribute class reference",
+  .size = sizeof(struct ea_class_ref),
+  .free = ea_class_ref_free,
+  .dump = ea_class_ref_dump,
+  .lookup = NULL,
+  .memsize = NULL,
+};
+
+static void
+ea_class_init(void)
+{
+  idm_init(&ea_class_idm, rta_pool, EA_CLASS_INITIAL_MAX);
+  ea_class_global = mb_allocz(rta_pool,
+      sizeof(*ea_class_global) * (ea_class_max = EA_CLASS_INITIAL_MAX));
+}
+
+static struct ea_class_ref *
+ea_ref_class(pool *p, struct ea_class *def)
+{
+  def->uc++;
+  struct ea_class_ref *ref = ralloc(p, &ea_class_ref_class);
+  ref->class = def;
+  return ref;
+}
+
+static struct ea_class_ref *
+ea_register(pool *p, struct ea_class *def)
+{
+  def->id = idm_alloc(&ea_class_idm);
+
+  ASSERT_DIE(ea_class_global);
+  while (def->id >= ea_class_max)
+    ea_class_global = mb_realloc(ea_class_global, sizeof(*ea_class_global) * (ea_class_max *= 2));
+
+  ASSERT_DIE(def->id < ea_class_max);
+  ea_class_global[def->id] = def;
+
+  ea_lex_register(def);
+
+  return ea_ref_class(p, def);
+}
+
+struct ea_class_ref *
+ea_register_alloc(pool *p, struct ea_class cl)
+{
+  struct ea_class *clp = ea_class_find_by_name(cl.name);
+  if (clp && clp->type == cl.type)
+    return ea_ref_class(p, clp);
+
+  uint namelen = strlen(cl.name) + 1;
+
+  struct {
+    struct ea_class cl;
+    char name[0];
+  } *cla = mb_alloc(rta_pool, sizeof(struct ea_class) + namelen);
+  cla->cl = cl;
+  memcpy(cla->name, cl.name, namelen);
+  cla->cl.name = cla->name;
+
+  return ea_register(p, &cla->cl);
+}
+
+void
+ea_register_init(struct ea_class *clp)
+{
+  ASSERT_DIE(!ea_class_find_by_name(clp->name));
+  ea_register(&root_pool, clp);
+}
+
+struct ea_class *
+ea_class_find_by_id(uint id)
+{
+  ASSERT_DIE(id < ea_class_max);
+  ASSERT_DIE(ea_class_global[id]);
+  return ea_class_global[id];
+}
+
 static inline eattr *
 ea__find(ea_list *e, unsigned id)
 {
@@ -444,7 +560,7 @@ ea__find(ea_list *e, unsigned id)
  * to its &eattr structure or %NULL if no such attribute exists.
  */
 eattr *
-ea_find(ea_list *e, unsigned id)
+ea_find_by_id(ea_list *e, unsigned id)
 {
   eattr *a = ea__find(e, id & EA_CODE_MASK);
 
@@ -784,26 +900,44 @@ ea_list_copy(ea_list *n, ea_list *o, uint elen)
   ASSERT_DIE(adpos == elen);
 }
 
+static void
+ea_list_ref(ea_list *l)
+{
+  for(uint i=0; i<l->count; i++)
+    {
+      eattr *a = &l->attrs[i];
+      ASSERT_DIE(a->id < ea_class_max);
+
+      struct ea_class *cl = ea_class_global[a->id];
+      ASSERT_DIE(cl && cl->uc);
+      cl->uc++;
+    }
+}
+
+static void
+ea_list_unref(ea_list *l)
+{
+  for(uint i=0; i<l->count; i++)
+    {
+      eattr *a = &l->attrs[i];
+      ASSERT_DIE(a->id < ea_class_max);
+
+      struct ea_class *cl = ea_class_global[a->id];
+      ASSERT_DIE(cl && cl->uc);
+      if (!--cl->uc)
+	ea_class_free(cl);
+    }
+}
+
 static inline void
 ea_free(ea_list *o)
 {
   if (o)
     {
+      ea_list_unref(o);
       ASSERT(!o->next);
       mb_free(o);
     }
-}
-
-static int
-get_generic_attr(const eattr *a, byte **buf, int buflen UNUSED)
-{
-  if (a->id == EA_GEN_IGP_METRIC)
-    {
-      *buf += bsprintf(*buf, "igp_metric");
-      return GA_NAME;
-    }
-
-  return GA_UNKNOWN;
 }
 
 void
@@ -905,47 +1039,27 @@ ea_show_lc_set(struct cli *c, const struct adata *ad, byte *pos, byte *buf, byte
 void
 ea_show(struct cli *c, const eattr *e)
 {
-  struct protocol *p;
-  int status = GA_UNKNOWN;
   const struct adata *ad = (e->type & EAF_EMBEDDED) ? NULL : e->u.ptr;
   byte buf[CLI_MSG_SIZE];
   byte *pos = buf, *end = buf + sizeof(buf);
 
-  if (EA_IS_CUSTOM(e->id))
-    {
-      const char *name = ea_custom_name(e->id);
-      if (name)
-        {
-	  pos += bsprintf(pos, "%s", name);
-	  status = GA_NAME;
-	}
-      else
-	pos += bsprintf(pos, "%02x.", EA_PROTO(e->id));
-    }
-  else if (p = class_to_protocol[EA_PROTO(e->id)])
-    {
-      pos += bsprintf(pos, "%s.", p->name);
-      if (p->get_attr)
-	status = p->get_attr(e, pos, end - pos);
-      pos += strlen(pos);
-    }
-  else if (EA_PROTO(e->id))
-    pos += bsprintf(pos, "%02x.", EA_PROTO(e->id));
+  ASSERT_DIE(e->id < ea_class_max);
+
+  struct ea_class *cls = ea_class_global[e->id];
+  ASSERT_DIE(cls);
+
+  pos += bsprintf(pos, "%s", cls->name);
+
+  *pos++ = ':';
+  *pos++ = ' ';
+
+  if (e->undef)
+    bsprintf(pos, "undefined (should not happen)");
+  else if (cls->format)
+    cls->format(e, buf, end - buf);
   else
-    status = get_generic_attr(e, &pos, end - pos);
-
-  if (status < GA_NAME)
-    pos += bsprintf(pos, "%02x", EA_ID(e->id));
-  if (status < GA_FULL)
-    {
-      *pos++ = ':';
-      *pos++ = ' ';
-
-      if (e->undef)
-	bsprintf(pos, "undefined");
-      else
-      switch (e->type)
-	{
+    switch (e->type)
+      {
 	case T_INT:
 	  bsprintf(pos, "%u", e->u.data);
 	  break;
@@ -970,13 +1084,10 @@ ea_show(struct cli *c, const eattr *e)
 	case T_LCLIST:
 	  ea_show_lc_set(c, ad, pos, buf, end);
 	  return;
-	case T_IFACE:
-	  bsprintf(pos, "%s", ((struct iface *) e->u.ptr)->name);
-	  return;
 	default:
 	  bsprintf(pos, "<type %02x>", e->type);
-	}
-    }
+      }
+
   cli_printf(c, -1012, "\t%s", buf);
 }
 
@@ -1006,7 +1117,7 @@ ea_dump(ea_list *e)
       for(i=0; i<e->count; i++)
 	{
 	  eattr *a = &e->attrs[i];
-	  debug(" %02x:%02x.%02x", EA_PROTO(a->id), EA_ID(a->id), a->flags);
+	  debug(" %04x.%02x", a->id, a->flags);
 	  debug("=%c",
 	      "?iO?IRP???S??pE?"
 	      "??L???N?????????"
@@ -1157,6 +1268,7 @@ rta_copy(rta *o)
   uint elen = ea_list_size(o->eattrs);
   r->eattrs = mb_alloc(rta_pool, elen);
   ea_list_copy(r->eattrs, o->eattrs, elen);
+  ea_list_ref(r->eattrs);
   r->eattrs->flags |= EALF_CACHED;
   return r;
 }
@@ -1357,6 +1469,9 @@ rta_init(void)
 
   rta_alloc_hash();
   rte_src_init();
+  ea_class_init();
+
+  ea_register_init(&ea_gen_igp_metric);
 }
 
 /*

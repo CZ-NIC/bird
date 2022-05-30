@@ -80,14 +80,21 @@ void lp_flush(linpool *);			/* Free everything, but leave linpool */
 void lp_save(linpool *m, lp_state *p);		/* Save state */
 void lp_restore(linpool *m, lp_state *p);	/* Restore state */
 
-extern _Thread_local linpool *tmp_linpool;	/* Temporary linpool autoflushed regularily */
+struct tmp_resources {
+  pool *pool, *parent;
+  linpool *lp;
+};
 
+extern _Thread_local struct tmp_resources tmp_res;
+
+#define tmp_linpool	tmp_res.lp
 #define tmp_alloc(sz)	lp_alloc(tmp_linpool, sz)
 #define tmp_allocu(sz)	lp_allocu(tmp_linpool, sz)
 #define tmp_allocz(sz)	lp_allocz(tmp_linpool, sz)
 
-#define tmp_init(p)	tmp_linpool = lp_new_default(p)
-#define tmp_flush()	lp_flush(tmp_linpool)
+void tmp_init(pool *p);
+void tmp_flush(void);
+
 
 #define lp_new_default	lp_new
 

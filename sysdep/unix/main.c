@@ -881,8 +881,8 @@ main(int argc, char **argv)
   resource_init();
   timer_init();
   olock_init();
-  io_init();
   rt_init();
+  io_init();
   if_init();
 //  roa_init();
   config_init();

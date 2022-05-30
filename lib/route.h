@@ -152,19 +152,7 @@ typedef struct eattr {
 } eattr;
 
 
-#define EA_CODE(proto,id) (((proto) << 8) | (id))
-#define EA_ID(ea) ((ea) & 0xff)
-#define EA_PROTO(ea) ((ea) >> 8)
-#define EA_CUSTOM(id) ((id) | EA_CUSTOM_BIT)
-#define EA_IS_CUSTOM(ea) ((ea) & EA_CUSTOM_BIT)
-#define EA_CUSTOM_ID(ea) ((ea) & ~EA_CUSTOM_BIT)
-
-const char *ea_custom_name(uint ea);
-
-#define EA_GEN_IGP_METRIC EA_CODE(PROTOCOL_NONE, 0)
-
 #define EA_CODE_MASK 0xffff
-#define EA_CUSTOM_BIT 0x8000
 #define EA_ALLOW_UNDEF 0x10000		/* ea_find: allow EAF_TYPE_UNDEF */
 #define EA_BIT(n) ((n) << 24)		/* Used in bitfield accessors */
 #define EA_BIT_GET(ea) ((ea) >> 24)
@@ -181,32 +169,67 @@ typedef struct ea_list {
 #define EALF_BISECT 2			/* Use interval bisection for searching */
 #define EALF_CACHED 4			/* Attributes belonging to cached rta */
 
+struct ea_class {
+#define EA_CLASS_INSIDE \
+  const char *name;			/* Name (both print and filter) */ \
+  struct symbol *sym;			/* Symbol to export to configs */ \
+  uint id;				/* Autoassigned attribute ID */ \
+  uint uc;				/* Reference count */ \
+  btype type;				/* Data type ID */ \
+  uint readonly:1;			/* This attribute can't be changed by filters */ \
+  uint conf:1;				/* Requested by config */ \
+  void (*format)(const eattr *ea, byte *buf, uint size); \
+
+  EA_CLASS_INSIDE;
+};
+
+struct ea_class_ref {
+  resource r;
+  struct ea_class *class;
+};
+
+extern struct ea_class ea_gen_igp_metric;
+
+void ea_register_init(struct ea_class *);
+struct ea_class_ref *ea_register_alloc(pool *, struct ea_class);
+
+#define EA_REGISTER_ALL_HELPER(x)	ea_register_init(x);
+#define EA_REGISTER_ALL(...)		MACRO_FOREACH(EA_REGISTER_ALL_HELPER, __VA_ARGS__)
+
+struct ea_class *ea_class_find_by_id(uint id);
+struct ea_class *ea_class_find_by_name(const char *name);
+static inline struct ea_class *ea_class_self(struct ea_class *self) { return self; }
+#define ea_class_find(_arg)	_Generic((_arg), \
+  uint: ea_class_find_by_id, \
+  word: ea_class_find_by_id, \
+  char *: ea_class_find_by_name, \
+  const char *: ea_class_find_by_name, \
+  struct ea_class *: ea_class_self)(_arg)
+
 struct ea_walk_state {
   ea_list *eattrs;			/* Ccurrent ea_list, initially set by caller */
   eattr *ea;				/* Current eattr, initially NULL */
   u32 visited[4];			/* Bitfield, limiting max to 128 */
 };
 
-eattr *ea_find(ea_list *, unsigned ea);
-eattr *ea_walk(struct ea_walk_state *s, uint id, uint max);
-
-/**
- * ea_get_int - fetch an integer attribute
- * @e: attribute list
- * @id: attribute ID
- * @def: default value
- *
- * This function is a shortcut for retrieving a value of an integer attribute
- * by calling ea_find() to find the attribute, extracting its value or returning
- * a provided default if no such attribute is present.
- */
-static inline u32
-ea_get_int(ea_list *e, unsigned id, u32 def)
+#define ea_find(_l, _arg)	_Generic((_arg), uint: ea_find_by_id, struct ea_class *: ea_find_by_class, char *: ea_find_by_name)(_l, _arg)
+eattr *ea_find_by_id(ea_list *, unsigned ea);
+static inline eattr *ea_find_by_class(ea_list *l, const struct ea_class *def)
+{ return ea_find_by_id(l, def->id); }
+static inline eattr *ea_find_by_name(ea_list *l, const char *name)
 {
-  eattr *a = ea_find(e, id);
-  return a ? a->u.data : def;
+  const struct ea_class *def = ea_class_find_by_name(name);
+  return def ? ea_find_by_class(l, def) : NULL;
 }
 
+#define ea_get_int(_l, _ident, _def)  ({ \
+    struct ea_class *cls = ea_class_find((_ident)); \
+    ASSERT_DIE(cls->type & EAF_EMBEDDED); \
+    const eattr *ea = ea_find((_l), cls->id); \
+    (ea ? ea->u.data : (_def)); \
+    })
+
+eattr *ea_walk(struct ea_walk_state *s, uint id, uint max);
 void ea_dump(ea_list *);
 int ea_same(ea_list *x, ea_list *y);	/* Test whether two ea_lists are identical */
 uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
@@ -221,19 +244,22 @@ void ea_list_copy(ea_list *dest, ea_list *src, uint size);
 
 #define EA_LOCAL_LIST(N)  struct { ea_list l; eattr a[N]; }
 
-#define EA_LITERAL_EMBEDDED(_id, _type, _flags, _val) ({ \
+#define EA_LITERAL_EMBEDDED(_class, _flags, _val) ({ \
+    btype _type = (_class)->type; \
     ASSERT_DIE(_type & EAF_EMBEDDED); \
-    EA_LITERAL_GENERIC(_id, _type, _flags, .u.i = _val); \
+    EA_LITERAL_GENERIC((_class)->id, _type, _flags, .u.i = _val); \
     })
 
-#define EA_LITERAL_STORE_ADATA(_id, _type, _flags, _buf, _len) ({ \
+#define EA_LITERAL_STORE_ADATA(_class, _flags, _buf, _len) ({ \
+    btype _type = (_class)->type; \
     ASSERT_DIE(!(_type & EAF_EMBEDDED)); \
-    EA_LITERAL_GENERIC(_id, _type, _flags, .u.ad = tmp_store_adata((_buf), (_len))); \
+    EA_LITERAL_GENERIC((_class)->id, _type, _flags, .u.ad = tmp_store_adata((_buf), (_len))); \
     })
 
-#define EA_LITERAL_DIRECT_ADATA(_id, _type, _flags, _adata) ({ \
+#define EA_LITERAL_DIRECT_ADATA(_class, _flags, _adata) ({ \
+    btype _type = (_class)->type; \
     ASSERT_DIE(!(_type & EAF_EMBEDDED)); \
-    EA_LITERAL_GENERIC(_id, _type, _flags, .u.ad = _adata); \
+    EA_LITERAL_GENERIC((_class)->id, _type, _flags, .u.ad = _adata); \
     })
 
 #define EA_LITERAL_GENERIC(_id, _type, _flags, ...) \
@@ -255,19 +281,19 @@ ea_set_attr(ea_list **to, eattr a)
 }
 
 static inline void
-ea_unset_attr(ea_list **to, _Bool local, uint code)
+ea_unset_attr(ea_list **to, _Bool local, const struct ea_class *def)
 {
-  ea_set_attr(to, EA_LITERAL_GENERIC(code, 0, 0,
+  ea_set_attr(to, EA_LITERAL_GENERIC(def->id, 0, 0,
 	.fresh = local, .originated = local, .undef = 1));
 }
 
 static inline void
-ea_set_attr_u32(ea_list **to, uint id, uint flags, uint type, u32 data)
-{ ea_set_attr(to, EA_LITERAL_EMBEDDED(id, type, flags, data)); }
+ea_set_attr_u32(ea_list **to, const struct ea_class *def, uint flags, u64 data)
+{ ea_set_attr(to, EA_LITERAL_EMBEDDED(def, flags, data)); }
 
 static inline void
-ea_set_attr_data(ea_list **to, uint id, uint flags, uint type, void *data, uint len)
-{ ea_set_attr(to, EA_LITERAL_STORE_ADATA(id, type, flags, data, len)); }
+ea_set_attr_data(ea_list **to, const struct ea_class *def, uint flags, void *data, uint len)
+{ ea_set_attr(to, EA_LITERAL_STORE_ADATA(def, flags, data, len)); }
 
 
 #define NEXTHOP_MAX_SIZE (sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK)

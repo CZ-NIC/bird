@@ -904,7 +904,6 @@ mrt_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUSE
 struct protocol proto_mrt = {
   .name =		"MRT",
   .template =		"mrt%d",
-  .class =		PROTOCOL_MRT,
   .proto_size =		sizeof(struct mrt_proto),
   .config_size =	sizeof(struct mrt_config),
   .init =		mrt_init,

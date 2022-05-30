@@ -163,8 +163,6 @@ babel_iface_opt_list:
 babel_iface:
   babel_iface_start iface_patt_list_nopx babel_iface_opt_list babel_iface_finish;
 
-dynamic_attr: BABEL_METRIC { $$ = f_new_dynamic_attr(T_INT, EA_BABEL_METRIC); } ;
-
 CF_CLI_HELP(SHOW BABEL, ..., [[Show information about Babel protocol]]);
 
 CF_CLI(SHOW BABEL INTERFACES, optproto opttext, [<name>] [\"<interface>\"], [[Show information about Babel interfaces]])

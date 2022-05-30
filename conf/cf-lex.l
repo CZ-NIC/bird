@@ -86,9 +86,12 @@ static uint cf_hash(const byte *c);
 HASH_DEFINE_REHASH_FN(SYM, struct symbol)
 
 HASH(struct keyword) kw_hash;
+HASH(struct ea_class) ea_name_hash;
 
 struct sym_scope *conf_this_scope;
-struct sym_scope *global_root_scope;
+
+static struct sym_scope global_root_scope__init = { .active = 1, };
+struct sym_scope *global_root_scope = &global_root_scope__init;
 
 linpool *cfg_mem;
 
@@ -598,6 +601,25 @@ cf_new_symbol(const byte *c)
   return s;
 }
 
+static struct symbol *
+cf_root_symbol(const byte *c)
+{
+  uint l = strlen(c);
+  if (l > SYM_MAX_LEN)
+    bug("Root symbol %s too long", c);
+
+  struct symbol *s = mb_alloc(&root_pool, sizeof(struct symbol) + l + 1);
+  *s = (struct symbol) { .scope = global_root_scope, .class = SYM_VOID, };
+  memcpy(s->name, c, l+1);
+
+  if (!global_root_scope->hash.data)
+    HASH_INIT(global_root_scope->hash, &root_pool, SYM_ORDER);
+
+  HASH_INSERT2(global_root_scope->hash, SYM, &root_pool, s);
+  return s;
+}
+
+
 /**
  * cf_find_symbol_scope - find a symbol by name
  * @scope: config scope
@@ -652,7 +674,7 @@ cf_localize_symbol(struct symbol *sym)
   /* If the symbol type is void, it has been recently allocated just in this scope. */
   if (!sym->class)
     return sym;
-  
+
   /* If the scope is the current, it is already defined in this scope. */
   if (sym->scope == conf_this_scope)
     cf_error("Symbol already defined");
@@ -716,8 +738,34 @@ cf_lex_init_kh(void)
   struct keyword *k;
   for (k=keyword_list; k->name; k++)
     HASH_INSERT(kw_hash, KW, k);
+}
 
-  global_root_scope = mb_allocz(&root_pool, sizeof(*global_root_scope));
+void
+ea_lex_register(struct ea_class *def)
+{
+  struct symbol *sym = cf_root_symbol(def->name);
+  sym->class = SYM_ATTRIBUTE;
+  sym->attribute = def;
+  def->sym = sym;
+}
+
+void
+ea_lex_unregister(struct ea_class *def)
+{
+  struct symbol *sym = def->sym;
+  HASH_REMOVE2(global_root_scope->hash, SYM, &root_pool, sym);
+  mb_free(sym);
+  def->sym = NULL;
+}
+
+struct ea_class *
+ea_class_find_by_name(const char *name)
+{
+  struct symbol *sym = cf_find_symbol(global_root_scope, name);
+  if (!sym || (sym->class != SYM_ATTRIBUTE))
+    return NULL;
+  else
+    return sym->attribute;
 }
 
 /**

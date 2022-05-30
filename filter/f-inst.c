@@ -662,14 +662,14 @@
     DYNAMIC_ATTR;
     ACCESS_RTE;
     ACCESS_EATTRS;
-    RESULT_TYPE(da.type);
+    RESULT_TYPE(da->type);
     {
       const struct f_val *empty;
-      eattr *e = ea_find(*fs->eattrs, da.ea_code);
+      const eattr *e = ea_find(*fs->eattrs, da->id);
 
       if (e)
       {
-	ASSERT_DIE(e->type == da.type);
+	ASSERT_DIE(e->type == da->type);
 
 	switch (e->type) {
 	  case T_IP:
@@ -682,7 +682,7 @@
 		}]]);
 	}
       }
-      else if (empty = f_get_empty(da.type))
+      else if (empty = f_get_empty(da->type))
 	RESULT_VAL(*empty);
       else
 	RESULT_VOID;
@@ -694,16 +694,16 @@
     ACCESS_EATTRS;
     ARG_ANY(1);
     DYNAMIC_ATTR;
-    ARG_TYPE(1, da.type);
+    ARG_TYPE(1, da->type);
     {
       struct eattr *a;
 
-      if (da.type >= EAF_TYPE__MAX)
+      if (da->type >= EAF_TYPE__MAX)
 	bug("Unsupported attribute type");
 
       f_rta_cow(fs);
 
-      switch (da.type) {
+      switch (da->type) {
       case T_OPAQUE:
       case T_IFACE:
 	runtime( "Setting opaque attribute is not allowed" );
@@ -711,12 +711,12 @@
 
       case T_IP:
 	a = ea_set_attr(fs->eattrs,
-	    EA_LITERAL_STORE_ADATA(da.ea_code, da.type, 0, &v1.val.ip, sizeof(ip_addr)));
+	    EA_LITERAL_STORE_ADATA(da, 0, &v1.val.ip, sizeof(ip_addr)));
 	break;
 
       default:
 	a = ea_set_attr(fs->eattrs,
-	    EA_LITERAL_GENERIC(da.ea_code, da.type, 0, .u = v1.val.bval));
+	    EA_LITERAL_GENERIC(da->id, da->type, 0, .u = v1.val.bval));
 	break;
       }
 
@@ -731,7 +731,7 @@
     ACCESS_EATTRS;
 
     f_rta_cow(fs);
-    ea_unset_attr(fs->eattrs, 1, da.ea_code);
+    ea_unset_attr(fs->eattrs, 1, da);
   }
 
   INST(FI_LENGTH, 1, 1) {	/* Get length of */
