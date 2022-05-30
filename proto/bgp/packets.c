@@ -1115,27 +1115,27 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
     {
       rta *ra = s->route->attrs;
       ip_addr nh[1] = { ra->nh.gw };
-      bgp_set_attr_data(to, s->pool, BA_NEXT_HOP, 0, nh, 16);
+      bgp_set_attr_data(to, BA_NEXT_HOP, 0, nh, 16);
 
       if (s->mpls)
       {
 	u32 implicit_null = BGP_MPLS_NULL;
 	u32 *labels = ra->nh.labels ? ra->nh.label : &implicit_null;
 	uint lnum = ra->nh.labels ? ra->nh.labels : 1;
-	bgp_set_attr_data(to, s->pool, BA_MPLS_LABEL_STACK, 0, labels, lnum * 4);
+	bgp_set_attr_data(to, BA_MPLS_LABEL_STACK, 0, labels, lnum * 4);
       }
     }
     else
     {
       ip_addr nh[2] = { s->channel->next_hop_addr, s->channel->link_addr };
-      bgp_set_attr_data(to, s->pool, BA_NEXT_HOP, 0, nh, ipa_nonzero(nh[1]) ? 32 : 16);
+      bgp_set_attr_data(to, BA_NEXT_HOP, 0, nh, ipa_nonzero(nh[1]) ? 32 : 16);
       s->local_next_hop = 1;
 
       /* TODO: Use local MPLS assigned label */
       if (s->mpls)
       {
 	u32 implicit_null = BGP_MPLS_NULL;
-	bgp_set_attr_data(to, s->pool, BA_MPLS_LABEL_STACK, 0, &implicit_null, 4);
+	bgp_set_attr_data(to, BA_MPLS_LABEL_STACK, 0, &implicit_null, 4);
       }
     }
   }
@@ -1239,7 +1239,7 @@ bgp_decode_next_hop_ip(struct bgp_parse_state *s, byte *data, uint len, rta *a)
 
   // XXXX validate next hop
 
-  bgp_set_attr_ptr(&(a->eattrs), s->pool, BA_NEXT_HOP, 0, ad);
+  bgp_set_attr_ptr(&(a->eattrs), BA_NEXT_HOP, 0, ad);
   bgp_apply_next_hop(s, a, nh[0], nh[1]);
 }
 
@@ -1320,7 +1320,7 @@ bgp_decode_next_hop_vpn(struct bgp_parse_state *s, byte *data, uint len, rta *a)
 
   // XXXX validate next hop
 
-  bgp_set_attr_ptr(&(a->eattrs), s->pool, BA_NEXT_HOP, 0, ad);
+  bgp_set_attr_ptr(&(a->eattrs), BA_NEXT_HOP, 0, ad);
   bgp_apply_next_hop(s, a, nh[0], nh[1]);
 }
 
@@ -1345,11 +1345,11 @@ bgp_decode_next_hop_none(struct bgp_parse_state *s UNUSED, byte *data UNUSED, ui
 }
 
 static void
-bgp_update_next_hop_none(struct bgp_export_state *s, eattr *a, ea_list **to)
+bgp_update_next_hop_none(struct bgp_export_state *s UNUSED, eattr *a, ea_list **to)
 {
   /* NEXT_HOP shall not pass */
   if (a)
-    bgp_unset_attr(to, s->pool, BA_NEXT_HOP);
+    bgp_unset_attr(to, BA_NEXT_HOP);
 }
 
 
@@ -1445,7 +1445,7 @@ bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *p
   if (!s->mpls_labels)
   {
     s->mpls_labels = lp_alloc_adata(s->pool, 4*BGP_MPLS_MAX);
-    bgp_set_attr_ptr(&(a->eattrs), s->pool, BA_MPLS_LABEL_STACK, 0, s->mpls_labels);
+    bgp_set_attr_ptr(&(a->eattrs), BA_MPLS_LABEL_STACK, 0, s->mpls_labels);
   }
 
   /* Overwrite data in the attribute */
