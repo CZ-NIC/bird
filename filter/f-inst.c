@@ -696,20 +696,12 @@
     DYNAMIC_ATTR;
     ARG_TYPE(1, da.type);
     {
-      struct ea_list *l = tmp_alloc(sizeof(struct ea_list) + sizeof(eattr));
-
-      l->next = NULL;
-      l->flags = EALF_SORTED;
-      l->count = 1;
-      l->attrs[0].id = da.ea_code;
-      l->attrs[0].flags = 0;
-      l->attrs[0].type = da.type;
-      l->attrs[0].originated = 1;
-      l->attrs[0].fresh = 1;
-      l->attrs[0].undef = 0;
+      struct eattr *a;
 
       if (da.type >= EAF_TYPE__MAX)
 	bug("Unsupported attribute type");
+
+      f_rta_cow(fs);
 
       switch (da.type) {
       case T_OPAQUE:
@@ -718,18 +710,18 @@
 	break;
 
       case T_IP:
-	l->attrs[0].u.ptr = tmp_store_adata(&v1.val.ip, sizeof(ip_addr));
+	a = ea_set_attr(fs->eattrs,
+	    EA_LITERAL_STORE_ADATA(da.ea_code, da.type, 0, &v1.val.ip, sizeof(ip_addr)));
 	break;
 
       default:
-	l->attrs[0].u = v1.val.bval;
+	a = ea_set_attr(fs->eattrs,
+	    EA_LITERAL_GENERIC(da.ea_code, da.type, 0, .u = v1.val.bval));
 	break;
-
       }
 
-      f_rta_cow(fs);
-      l->next = *fs->eattrs;
-      *fs->eattrs = l;
+      a->originated = 1;
+      a->fresh = 1;
     }
   }
 
