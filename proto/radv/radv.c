@@ -447,11 +447,11 @@ radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   {
     /* Update */
 
-    ea = ea_find(new->attrs->eattrs, &ea_radv_preference);
+    ea = ea_find(new->attrs, &ea_radv_preference);
     uint preference = ea ? ea->u.data : RA_PREF_MEDIUM;
     uint preference_set = !!ea;
 
-    ea = ea_find(new->attrs->eattrs, &ea_radv_lifetime);
+    ea = ea_find(new->attrs, &ea_radv_lifetime);
     uint lifetime = ea ? ea->u.data : 0;
     uint lifetime_set = !!ea;
 

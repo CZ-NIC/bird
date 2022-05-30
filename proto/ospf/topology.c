@@ -1337,9 +1337,9 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   ASSERT(p->asbr);
 
   /* Get route attributes */
-  rta *a = new->attrs;
-  eattr *m1a = ea_find(a->eattrs, &ea_ospf_metric1);
-  eattr *m2a = ea_find(a->eattrs, &ea_ospf_metric2);
+  ea_list *a = new->attrs;
+  eattr *m1a = ea_find(a, &ea_ospf_metric1);
+  eattr *m2a = ea_find(a, &ea_ospf_metric2);
   uint m1 = m1a ? m1a->u.data : 0;
   uint m2 = m2a ? m2a->u.data : 10000;
 
@@ -1363,10 +1363,10 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
 
   uint ebit = m2a || !m1a;
   uint metric = ebit ? m2 : m1;
-  uint tag = ea_get_int(a->eattrs, &ea_ospf_tag, 0);
+  uint tag = ea_get_int(a, &ea_ospf_tag, 0);
 
   ip_addr fwd = IPA_NONE;
-  eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+  eattr *nhea = ea_find(a, &ea_gen_nexthop);
   if (nhea)
   {
     struct nexthop_adata *nhad = (struct nexthop_adata *) nhea->u.ptr;

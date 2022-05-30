@@ -849,7 +849,7 @@ CF_CLI(DUMP INTERFACES,,, [[Dump interface information]])
 CF_CLI(DUMP NEIGHBORS,,, [[Dump neighbor cache]])
 { neigh_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP ATTRIBUTES,,, [[Dump attribute cache]])
-{ rta_dump_all(); cli_msg(0, ""); } ;
+{ ea_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP ROUTES,,, [[Dump routing table]])
 { rt_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])

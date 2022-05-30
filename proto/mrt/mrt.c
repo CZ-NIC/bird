@@ -423,7 +423,7 @@ mrt_rib_table_header(struct mrt_table_dump_state *s, net_addr *n)
 static void
 mrt_rib_table_entry_bgp_attrs(struct mrt_table_dump_state *s, rte *r)
 {
-  struct ea_list *eattrs = r->attrs->eattrs;
+  struct ea_list *eattrs = r->attrs;
   buffer *b = &s->buf;
 
   if (!eattrs)

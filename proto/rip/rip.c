@@ -151,8 +151,6 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   if (rt)
   {
     /* Update */
-    rta a0 = {};
-
     struct {
       ea_list l;
       eattr a[3];
@@ -164,7 +162,8 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 	EA_LITERAL_EMBEDDED(&ea_rip_metric, 0, rt->metric),
       },
     };
-    a0.eattrs = &ea_block.l;
+
+    ea_list *ea = &ea_block.l;
 
     u16 rt_tag = rt->tag;
     struct iface *rt_from = NULL;
@@ -203,7 +202,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 
       nhad->ad.length = ((void *) nh - (void *) nhad->ad.data);
 
-      ea_set_attr(&a0.eattrs,
+      ea_set_attr(&ea,
 	  EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0,
 	    &(nexthop_sort(nhad, tmp_linpool)->ad)));
     }
@@ -217,22 +216,21 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 	.nh.iface = rt->from->ifa->iface,
       };
 
-      ea_set_attr_data(&a0.eattrs, &ea_gen_nexthop, 0,
+      ea_set_attr_data(&ea, &ea_gen_nexthop, 0,
 	  &nhad.ad.data, sizeof nhad - sizeof nhad.ad);
-      ea_set_attr_data(&a0.eattrs, &ea_gen_from, 0, &rt->from->nbr->addr, sizeof(ip_addr));
+      ea_set_attr_data(&ea, &ea_gen_from, 0, &rt->from->nbr->addr, sizeof(ip_addr));
     }
 
-    ea_set_attr_u32(&a0.eattrs, &ea_rip_tag, 0, rt_tag);
+    ea_set_attr_u32(&ea, &ea_rip_tag, 0, rt_tag);
 
     struct rip_iface_adata riad = {
       .ad = { .length = sizeof(struct rip_iface_adata) - sizeof(struct adata) },
       .iface = rt_from,
     };
-    ea_set_attr(&a0.eattrs,
+    ea_set_attr(&ea,
 	EA_LITERAL_DIRECT_ADATA(&ea_rip_from, 0, &riad.ad));
 
-    rta *a = rta_lookup(&a0);
-    rte *e = rte_get_temp(a, p->p.main_source);
+    rte *e = rte_get_temp(rta_lookup(ea), p->p.main_source);
 
     rte_update(&p->p, en->n.addr, e);
   }
@@ -345,9 +343,9 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
   if (new)
   {
     /* Update */
-    u32 rt_tag = ea_get_int(new->attrs->eattrs, &ea_rip_tag, 0);
-    u32 rt_metric = ea_get_int(new->attrs->eattrs, &ea_rip_metric, 1);
-    const eattr *rie = ea_find(new->attrs->eattrs, &ea_rip_from);
+    u32 rt_tag = ea_get_int(new->attrs, &ea_rip_tag, 0);
+    u32 rt_metric = ea_get_int(new->attrs, &ea_rip_metric, 1);
+    const eattr *rie = ea_find(new->attrs, &ea_rip_from);
     struct iface *rt_from = rie ? ((struct rip_iface_adata *) rie->u.ptr)->iface : NULL;
 
     if (rt_metric > p->infinity)
@@ -381,7 +379,7 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
     en->tag = rt_tag;
     en->from = (new->src->proto == P) ? rt_from : NULL;
 
-    eattr *nhea = ea_find(new->attrs->eattrs, &ea_gen_nexthop);
+    eattr *nhea = ea_find(new->attrs, &ea_gen_nexthop);
     if (nhea)
     {
       struct nexthop_adata *nhad = (struct nexthop_adata *) nhea->u.ptr;
@@ -1120,8 +1118,8 @@ rip_rte_better(struct rte *new, struct rte *old)
   ASSERT_DIE(new->src == old->src);
   struct rip_proto *p = (struct rip_proto *) new->src->proto;
 
-  u32 new_metric = ea_get_int(new->attrs->eattrs, &ea_rip_metric, p->infinity);
-  u32 old_metric = ea_get_int(old->attrs->eattrs, &ea_rip_metric, p->infinity);
+  u32 new_metric = ea_get_int(new->attrs, &ea_rip_metric, p->infinity);
+  u32 old_metric = ea_get_int(old->attrs, &ea_rip_metric, p->infinity);
 
   return new_metric < old_metric;
 }
@@ -1129,7 +1127,7 @@ rip_rte_better(struct rte *new, struct rte *old)
 static u32
 rip_rte_igp_metric(struct rte *rt)
 {
-  return ea_get_int(rt->attrs->eattrs, &ea_rip_metric, IGP_METRIC_UNKNOWN);
+  return ea_get_int(rt->attrs, &ea_rip_metric, IGP_METRIC_UNKNOWN);
 }
 
 static void
@@ -1230,8 +1228,8 @@ static void
 rip_get_route_info(rte *rte, byte *buf)
 {
   struct rip_proto *p = (struct rip_proto *) rte->src->proto;
-  u32 rt_metric = ea_get_int(rte->attrs->eattrs, &ea_rip_metric, p->infinity);
-  u32 rt_tag = ea_get_int(rte->attrs->eattrs, &ea_rip_tag, 0);
+  u32 rt_metric = ea_get_int(rte->attrs, &ea_rip_metric, p->infinity);
+  u32 rt_tag = ea_get_int(rte->attrs, &ea_rip_tag, 0);
 
   buf += bsprintf(buf, " (%d/%d)", rt_get_preference(rte), rt_metric);
 

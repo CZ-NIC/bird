@@ -55,7 +55,6 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
   struct rte_src *src;
 
   rte *e;
-  rta *a;
 
   if (!new && !old)
     return;
@@ -71,11 +70,8 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
     {
       src = new->src;
 
-      a = alloca(rta_size(new->attrs));
-      memcpy(a, new->attrs, rta_size(new->attrs));
-
-      a->cached = 0;
-      ea_unset_attr(&a->eattrs, 0, &ea_gen_hostentry);
+      ea_list *a = new->attrs;
+      ea_unset_attr(&a, 0, &ea_gen_hostentry);
 
       e = rte_get_temp(a, src);
       e->pflags = new->pflags;

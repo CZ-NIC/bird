@@ -71,7 +71,6 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
     }
   else if (flags & IF_CHANGE_UP)
     {
-      rta *a;
       rte *e;
 
       DBG("dev_if_notify: %s:%I going up\n", ad->iface->name, ad->ip);
@@ -82,18 +81,17 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
       /* Use iface ID as local source ID */
       struct rte_src *src = rt_get_source(P, ad->iface->index);
 
-      rta a0 = {};
+      ea_list *ea = NULL;
       struct nexthop_adata nhad = {
 	.nh = { .iface = ad->iface, },
 	.ad = { .length = (void *) NEXTHOP_NEXT(&nhad.nh) - (void *) nhad.ad.data, },
       };
 
-      ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, c->preference);
-      ea_set_attr_u32(&a0.eattrs, &ea_gen_source, 0, RTS_DEVICE);
-      ea_set_attr_data(&a0.eattrs, &ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length);
+      ea_set_attr_u32(&ea, &ea_gen_preference, 0, c->preference);
+      ea_set_attr_u32(&ea, &ea_gen_source, 0, RTS_DEVICE);
+      ea_set_attr_data(&ea, &ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length);
 
-      a = rta_lookup(&a0);
-      e = rte_get_temp(a, src);
+      e = rte_get_temp(rta_lookup(ea), src);
       e->pflags = 0;
       rte_update2(c, net, e, src);
     }

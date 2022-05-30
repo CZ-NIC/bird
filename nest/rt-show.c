@@ -42,23 +42,23 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
 {
   byte from[IPA_MAX_TEXT_LENGTH+8];
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
-  rta *a = e->attrs;
+  ea_list *a = e->attrs;
   int sync_error = d->kernel ? krt_get_sync_error(d->kernel, e) : 0;
   void (*get_route_info)(struct rte *, byte *buf);
-  eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+  eattr *nhea = ea_find(a, &ea_gen_nexthop);
   struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
   int dest = NEXTHOP_IS_REACHABLE(nhad) ? RTD_UNICAST : nhad->dest;
 
   tm_format_time(tm, &config->tf_route, e->lastmod);
-  ip_addr a_from = ea_get_ip(a->eattrs, &ea_gen_from, IPA_NONE);
+  ip_addr a_from = ea_get_ip(a, &ea_gen_from, IPA_NONE);
   if (ipa_nonzero(a_from) && (!nhad || !ipa_equal(a_from, nhad->nh.gw)))
     bsprintf(from, " from %I", a_from);
   else
     from[0] = 0;
 
   /* Need to normalize the extended attributes */
-  if (d->verbose && !rta_is_cached(a) && a->eattrs)
-    a->eattrs = ea_normalize(a->eattrs);
+  if (d->verbose && !rta_is_cached(a) && a)
+    a = ea_normalize(a);
 
   get_route_info = e->src->proto->proto->get_route_info;
   if (get_route_info)
@@ -99,7 +99,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
     }
 
   if (d->verbose)
-    rta_show(c, a);
+    ea_show_list(c, a);
 }
 
 static void

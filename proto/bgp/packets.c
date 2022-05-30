@@ -943,7 +943,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 #define MISMATCHED_AF	" - mismatched address family (%I for %s)"
 
 static void
-bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
+bgp_apply_next_hop(struct bgp_parse_state *s, ea_list **to, ip_addr gw, ip_addr ll)
 {
   struct bgp_proto *p = s->proto;
   struct bgp_channel *c = s->channel;
@@ -966,7 +966,7 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     if (nbr->scope == SCOPE_HOST)
       WITHDRAW(BAD_NEXT_HOP " - address %I is local", nbr->addr);
 
-    ea_set_attr_u32(&a->eattrs, &ea_gen_igp_metric, 0, c->cf->cost);
+    ea_set_attr_u32(to, &ea_gen_igp_metric, 0, c->cf->cost);
 
     struct nexthop_adata nhad = {
       .nh = {
@@ -977,7 +977,7 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
 	.length = sizeof nhad - sizeof nhad.ad,
       },
     };
-    ea_set_attr_data(&a->eattrs, &ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length);
+    ea_set_attr_data(to, &ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length);
   }
   else /* GW_RECURSIVE */
   {
@@ -988,21 +988,21 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     if (s->mpls)
     {
       u32 labels[BGP_MPLS_MAX];
-      ea_set_hostentry(&a->eattrs, c->c.table, tab, gw, ll, BGP_MPLS_MAX, labels);
+      ea_set_hostentry(to, c->c.table, tab, gw, ll, BGP_MPLS_MAX, labels);
     }
     else
-      ea_set_hostentry(&a->eattrs, c->c.table, tab, gw, ll, 0, NULL);
+      ea_set_hostentry(to, c->c.table, tab, gw, ll, 0, NULL);
   }
 }
 
 static void
-bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 lnum, u32 labels[lnum])
+bgp_apply_mpls_labels(struct bgp_parse_state *s, ea_list **to, u32 lnum, u32 labels[lnum])
 {
   if (lnum > MPLS_MAX_LABEL_STACK)
   {
     REPORT("Too many MPLS labels ($u)", lnum);
 
-    ea_set_dest(&a->eattrs, 0, RTD_UNREACHABLE);
+    ea_set_dest(to, 0, RTD_UNREACHABLE);
     return;
   }
 
@@ -1012,7 +1012,7 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 lnum, u32 labels[ln
 
   if (s->channel->cf->gw_mode == GW_DIRECT)
   {
-    eattr *e = ea_find(a->eattrs, &ea_gen_nexthop);
+    eattr *e = ea_find(*to, &ea_gen_nexthop);
     struct {
       struct nexthop_adata nhad;
       u32 labels[MPLS_MAX_LABEL_STACK];
@@ -1025,7 +1025,7 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 lnum, u32 labels[ln
   }
   else /* GW_RECURSIVE */
   {
-    eattr *e = ea_find(a->eattrs, &ea_gen_hostentry);
+    eattr *e = ea_find(*to, &ea_gen_hostentry);
     ASSERT_DIE(e);
     struct hostentry_adata *head = (void *) e->u.ptr;
     memcpy(&head->labels, labels, lnum * sizeof(u32));
@@ -1034,24 +1034,24 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 lnum, u32 labels[ln
 }
 
 static void
-bgp_apply_flow_validation(struct bgp_parse_state *s, const net_addr *n, rta *a)
+bgp_apply_flow_validation(struct bgp_parse_state *s, const net_addr *n, ea_list **to)
 {
   struct bgp_channel *c = s->channel;
-  uint valid = rt_flowspec_check(c->base_table, c->c.table, n, a, s->proto->is_interior);
+  uint valid = rt_flowspec_check(c->base_table, c->c.table, n, *to, s->proto->is_interior);
 
   /* Invalidate cached rta */
-  if (s->cached_rta)
+  if (s->cached_ea)
   {
     /* Has't changed */
-    if (valid == ea_get_int(s->cached_rta->eattrs, &ea_gen_flowspec_valid, FLOWSPEC_UNKNOWN))
+    if (valid == ea_get_int(s->cached_ea, &ea_gen_flowspec_valid, FLOWSPEC_UNKNOWN))
       return;
 
-    rta_free(s->cached_rta);
-    s->cached_rta = NULL;
+    rta_free(s->cached_ea);
+    s->cached_ea = NULL;
   }
 
   /* Set the value */
-  ea_set_attr_u32(&a->eattrs, &ea_gen_flowspec_valid, 0, valid);
+  ea_set_attr_u32(to, &ea_gen_flowspec_valid, 0, valid);
 }
 
 static int
@@ -1105,13 +1105,13 @@ bgp_use_gateway(struct bgp_export_state *s)
 {
   struct bgp_proto *p = s->proto;
   struct bgp_channel *c = s->channel;
-  rta *ra = s->route->attrs;
+  ea_list *ra = s->route->attrs;
 
   /* Handle next hop self option - also applies to gateway */
   if (c->cf->next_hop_self && bgp_match_src(s, c->cf->next_hop_self))
     return NULL;
 
-  eattr *nhea = ea_find(ra->eattrs, &ea_gen_nexthop);
+  eattr *nhea = ea_find(ra, &ea_gen_nexthop);
   if (!nhea)
     return NULL;
 
@@ -1229,7 +1229,7 @@ bgp_encode_next_hop_ip(struct bgp_write_state *s, eattr *a, byte *buf, uint size
 }
 
 static void
-bgp_decode_next_hop_ip(struct bgp_parse_state *s, byte *data, uint len, rta *a)
+bgp_decode_next_hop_ip(struct bgp_parse_state *s, byte *data, uint len, ea_list **to)
 {
   struct bgp_channel *c = s->channel;
   struct adata *ad = lp_alloc_adata(s->pool, 32);
@@ -1270,8 +1270,8 @@ bgp_decode_next_hop_ip(struct bgp_parse_state *s, byte *data, uint len, rta *a)
 
   // XXXX validate next hop
 
-  bgp_set_attr_ptr(&(a->eattrs), BA_NEXT_HOP, 0, ad);
-  bgp_apply_next_hop(s, a, nh[0], nh[1]);
+  bgp_set_attr_ptr(to, BA_NEXT_HOP, 0, ad);
+  bgp_apply_next_hop(s, to, nh[0], nh[1]);
 }
 
 static uint
@@ -1309,7 +1309,7 @@ bgp_encode_next_hop_vpn(struct bgp_write_state *s, eattr *a, byte *buf, uint siz
 }
 
 static void
-bgp_decode_next_hop_vpn(struct bgp_parse_state *s, byte *data, uint len, rta *a)
+bgp_decode_next_hop_vpn(struct bgp_parse_state *s, byte *data, uint len, ea_list **to)
 {
   struct bgp_channel *c = s->channel;
   struct adata *ad = lp_alloc_adata(s->pool, 32);
@@ -1351,8 +1351,8 @@ bgp_decode_next_hop_vpn(struct bgp_parse_state *s, byte *data, uint len, rta *a)
 
   // XXXX validate next hop
 
-  bgp_set_attr_ptr(&(a->eattrs), BA_NEXT_HOP, 0, ad);
-  bgp_apply_next_hop(s, a, nh[0], nh[1]);
+  bgp_set_attr_ptr(to, BA_NEXT_HOP, 0, ad);
+  bgp_apply_next_hop(s, to, nh[0], nh[1]);
 }
 
 
@@ -1364,7 +1364,7 @@ bgp_encode_next_hop_none(struct bgp_write_state *s UNUSED, eattr *a UNUSED, byte
 }
 
 static void
-bgp_decode_next_hop_none(struct bgp_parse_state *s UNUSED, byte *data UNUSED, uint len UNUSED, rta *a UNUSED)
+bgp_decode_next_hop_none(struct bgp_parse_state *s UNUSED, byte *data UNUSED, uint len UNUSED, ea_list **to UNUSED)
 {
   /*
    * Although we expect no next hop and RFC 7606 7.11 states that attribute
@@ -1389,15 +1389,15 @@ bgp_update_next_hop_none(struct bgp_export_state *s UNUSED, eattr *a, ea_list **
  */
 
 static void
-bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a0)
+bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, ea_list *a0)
 {
   if (path_id != s->last_id)
   {
     s->last_src = rt_get_source(&s->proto->p, path_id);
     s->last_id = path_id;
 
-    rta_free(s->cached_rta);
-    s->cached_rta = NULL;
+    ea_free(s->cached_ea);
+    s->cached_ea = NULL;
   }
 
   if (!a0)
@@ -1412,16 +1412,10 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   }
 
   /* Prepare cached route attributes */
-  if (s->cached_rta == NULL)
-  {
-    /* Workaround for rta_lookup() breaking eattrs */
-    ea_list *ea = a0->eattrs;
-    s->cached_rta = rta_lookup(a0);
-    a0->eattrs = ea;
-  }
+  if (s->cached_ea == NULL)
+    s->cached_ea = ea_lookup(a0);
 
-  rta *a = rta_clone(s->cached_rta);
-  rte *e = rte_get_temp(a, s->last_src);
+  rte *e = rte_get_temp(rta_clone(s->cached_ea), s->last_src);
 
   e->pflags = 0;
   rte_update3(&s->channel->c, n, e, s->last_src);
@@ -1447,7 +1441,7 @@ bgp_encode_mpls_labels(struct bgp_write_state *s UNUSED, const adata *mpls, byte
 }
 
 static void
-bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *pxlen, rta *a)
+bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *pxlen, ea_list **to)
 {
   u32 labels[BGP_MPLS_MAX];
   u32 label;
@@ -1469,15 +1463,15 @@ bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *p
   }
   while (!(label & BGP_MPLS_BOS));
 
-  if (!a)
+  if (!*to)
     return;
 
   /* Update next hop entry in rta */
-  bgp_apply_mpls_labels(s, a, lnum, labels);
+  bgp_apply_mpls_labels(s, to, lnum, labels);
 
   /* Attributes were changed, invalidate cached entry */
-  rta_free(s->cached_rta);
-  s->cached_rta = NULL;
+  rta_free(s->cached_ea);
+  s->cached_ea = NULL;
 
   return;
 }
@@ -1520,7 +1514,7 @@ bgp_encode_nlri_ip4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
 }
 
 static void
-bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
+bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 {
   while (len)
   {
@@ -1546,7 +1540,7 @@ bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     /* Decode MPLS labels */
     if (s->mpls)
-      bgp_decode_mpls_labels(s, &pos, &len, &l, a);
+      bgp_decode_mpls_labels(s, &pos, &len, &l, &a);
 
     if (l > IP4_MAX_PREFIX_LENGTH)
       bgp_parse_error(s, 10);
@@ -1605,7 +1599,7 @@ bgp_encode_nlri_ip6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
 }
 
 static void
-bgp_decode_nlri_ip6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
+bgp_decode_nlri_ip6(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 {
   while (len)
   {
@@ -1631,7 +1625,7 @@ bgp_decode_nlri_ip6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     /* Decode MPLS labels */
     if (s->mpls)
-      bgp_decode_mpls_labels(s, &pos, &len, &l, a);
+      bgp_decode_mpls_labels(s, &pos, &len, &l, &a);
 
     if (l > IP6_MAX_PREFIX_LENGTH)
       bgp_parse_error(s, 10);
@@ -1693,7 +1687,7 @@ bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
 }
 
 static void
-bgp_decode_nlri_vpn4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
+bgp_decode_nlri_vpn4(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 {
   while (len)
   {
@@ -1719,7 +1713,7 @@ bgp_decode_nlri_vpn4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     /* Decode MPLS labels */
     if (s->mpls)
-      bgp_decode_mpls_labels(s, &pos, &len, &l, a);
+      bgp_decode_mpls_labels(s, &pos, &len, &l, &a);
 
     /* Decode route distinguisher */
     if (l < 64)
@@ -1790,7 +1784,7 @@ bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
 }
 
 static void
-bgp_decode_nlri_vpn6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
+bgp_decode_nlri_vpn6(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 {
   while (len)
   {
@@ -1816,7 +1810,7 @@ bgp_decode_nlri_vpn6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     /* Decode MPLS labels */
     if (s->mpls)
-      bgp_decode_mpls_labels(s, &pos, &len, &l, a);
+      bgp_decode_mpls_labels(s, &pos, &len, &l, &a);
 
     /* Decode route distinguisher */
     if (l < 64)
@@ -1877,7 +1871,7 @@ bgp_encode_nlri_flow4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
 }
 
 static void
-bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
+bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 {
   while (len)
   {
@@ -1930,7 +1924,7 @@ bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     /* Apply validation procedure per RFC 8955 (6) */
     if (a && s->channel->cf->validate)
-      bgp_apply_flow_validation(s, n, a);
+      bgp_apply_flow_validation(s, n, &a);
 
     bgp_rte_update(s, n, path_id, a);
   }
@@ -1969,7 +1963,7 @@ bgp_encode_nlri_flow6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
 }
 
 static void
-bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
+bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 {
   while (len)
   {
@@ -2022,7 +2016,7 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
 
     /* Apply validation procedure per RFC 8955 (6) */
     if (a && s->channel->cf->validate)
-      bgp_apply_flow_validation(s, n, a);
+      bgp_apply_flow_validation(s, n, &a);
 
     bgp_rte_update(s, n, path_id, a);
   }
@@ -2472,7 +2466,6 @@ static inline void
 bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_list *ea, byte *nh, uint nh_len)
 {
   struct bgp_channel *c = bgp_get_channel(s->proto, afi);
-  rta *a = NULL;
 
   if (!c)
     DISCARD(BAD_AFI, BGP_AFI(afi), BGP_SAFI(afi));
@@ -2493,26 +2486,22 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   if (ea)
   {
-    a = allocz(RTA_MAX_SIZE);
+    ea_set_attr_data(&ea, &ea_gen_from, 0, &s->proto->remote_ip, sizeof(ip_addr));
+    ea_set_attr_u32(&ea, &ea_gen_preference, 0, c->c.preference);
+    ea_set_attr_u32(&ea, &ea_gen_source, 0, RTS_BGP);
 
-    a->eattrs = ea;
-
-    ea_set_attr_data(&a->eattrs, &ea_gen_from, 0, &s->proto->remote_ip, sizeof(ip_addr));
-    ea_set_attr_u32(&a->eattrs, &ea_gen_preference, 0, c->c.preference);
-    ea_set_attr_u32(&a->eattrs, &ea_gen_source, 0, RTS_BGP);
-
-    c->desc->decode_next_hop(s, nh, nh_len, a);
-    bgp_finish_attrs(s, a);
+    c->desc->decode_next_hop(s, nh, nh_len, &ea);
+    bgp_finish_attrs(s, &ea);
 
     /* Handle withdraw during next hop decoding */
     if (s->err_withdraw)
-      a = NULL;
+      ea = NULL;
   }
 
-  c->desc->decode_nlri(s, nlri, len, a);
+  c->desc->decode_nlri(s, nlri, len, ea);
 
-  rta_free(s->cached_rta);
-  s->cached_rta = NULL;
+  rta_free(s->cached_ea);
+  s->cached_ea = NULL;
 }
 
 static void
@@ -2617,7 +2606,7 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 		    ea, s.mp_next_hop_data, s.mp_next_hop_len);
 
 done:
-  rta_free(s.cached_rta);
+  rta_free(s.cached_ea);
   lp_restore(tmp_linpool, &tmpp);
   return;
 }

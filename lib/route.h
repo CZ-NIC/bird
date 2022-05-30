@@ -21,7 +21,7 @@ typedef struct rte {
   struct network *net;			/* Network this RTE belongs to */
   struct rte_src *src;			/* Route source that created the route */
   struct channel *sender;		/* Channel used to send the route to the routing table */
-  struct rta *attrs;			/* Attributes of this route */
+  struct ea_list *attrs;		/* Attributes of this route */
   u32 id;				/* Table specific route id */
   byte flags;				/* Flags (REF_...) */
   byte pflags;				/* Protocol-specific flags */
@@ -90,14 +90,6 @@ struct nexthop_adata {
 #define RNF_ONLINK		0x1	/* Gateway is onlink regardless of IP ranges */
 
 
-typedef struct rta {
-  struct rta *next, **pprev;		/* Hash chain */
-  u32 uc;				/* Use count */
-  u32 hash_key;				/* Hash over important fields */
-  struct ea_list *eattrs;		/* Extended Attribute chain */
-  u16 cached:1;				/* Are attributes cached? */
-} rta;
-
 #define RTS_STATIC 1			/* Normal static route */
 #define RTS_INHERIT 2			/* Route inherited from kernel */
 #define RTS_DEVICE 3			/* Device route */
@@ -153,6 +145,10 @@ typedef struct eattr {
 #define EA_BIT_GET(ea) ((ea) >> 24)
 
 typedef struct ea_list {
+  struct ea_list *next_hash;		/* Next in hash chain */
+  struct ea_list **pprev_hash;		/* Previous in hash chain */
+  u32 uc;				/* Use count */
+  u32 hash_key;				/* List hash */
   struct ea_list *next;			/* In case we have an override list */
   byte flags;				/* Flags: EALF_... */
   byte rfu;
@@ -162,7 +158,7 @@ typedef struct ea_list {
 
 #define EALF_SORTED 1			/* Attributes are sorted by code */
 #define EALF_BISECT 2			/* Use interval bisection for searching */
-#define EALF_CACHED 4			/* Attributes belonging to cached rta */
+#define EALF_CACHED 4			/* List is cached */
 
 struct ea_class {
 #define EA_CLASS_INSIDE \
@@ -317,7 +313,7 @@ ea_copy_attr(ea_list **to, ea_list *from, const struct ea_class *def)
 /* Preference: first-order comparison */
 extern struct ea_class ea_gen_preference;
 static inline u32 rt_get_preference(rte *rt)
-{ return ea_get_int(rt->attrs->eattrs, &ea_gen_preference, 0); }
+{ return ea_get_int(rt->attrs, &ea_gen_preference, 0); }
 
 /* IGP metric: second-order comparison */
 extern struct ea_class ea_gen_igp_metric;
@@ -332,7 +328,7 @@ extern struct ea_class ea_gen_from;
  * To be superseded in a near future by something more informative. */
 extern struct ea_class ea_gen_source;
 static inline u32 rt_get_source_attr(rte *rt)
-{ return ea_get_int(rt->attrs->eattrs, &ea_gen_source, 0); }
+{ return ea_get_int(rt->attrs, &ea_gen_source, 0); }
 
 /* Flowspec validation result */
 #define FLOWSPEC_UNKNOWN	0
@@ -341,7 +337,7 @@ static inline u32 rt_get_source_attr(rte *rt)
 
 extern struct ea_class ea_gen_flowspec_valid;
 static inline u32 rt_get_flowspec_valid(rte *rt)
-{ return ea_get_int(rt->attrs->eattrs, &ea_gen_flowspec_valid, FLOWSPEC_UNKNOWN); }
+{ return ea_get_int(rt->attrs, &ea_gen_flowspec_valid, FLOWSPEC_UNKNOWN); }
 
 /* Next hop: For now, stored as adata */
 extern struct ea_class ea_gen_nexthop;
@@ -382,7 +378,7 @@ int nexthop_is_sorted(struct nexthop_adata *x);
 /* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
 static inline int rte_is_reachable(rte *r)
 {
-  eattr *nhea = ea_find(r->attrs->eattrs, &ea_gen_nexthop);
+  eattr *nhea = ea_find(r->attrs, &ea_gen_nexthop);
   if (!nhea)
     return 0;
 
@@ -404,21 +400,23 @@ static inline int nhea_dest(eattr *nhea)
 
 static inline int rte_dest(rte *r)
 {
-  return nhea_dest(ea_find(r->attrs->eattrs, &ea_gen_nexthop));
+  return nhea_dest(ea_find(r->attrs, &ea_gen_nexthop));
 }
 
 void rta_init(void);
-#define rta_size(...) (sizeof(rta))
-#define RTA_MAX_SIZE (sizeof(rta))
-rta *rta_lookup(rta *);			/* Get rta equivalent to this one, uc++ */
-static inline int rta_is_cached(rta *r) { return r->cached; }
-static inline rta *rta_clone(rta *r) { r->uc++; return r; }
-void rta__free(rta *r);
-static inline void rta_free(rta *r) { if (r && !--r->uc) rta__free(r); }
-rta *rta_do_cow(rta *o, linpool *lp);
-static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta_do_cow(r, lp) : r; }
-void rta_dump(rta *);
-void rta_dump_all(void);
-void rta_show(struct cli *, rta *);
+ea_list *ea_lookup(ea_list *);		/* Get a cached (and normalized) variant of this attribute list */
+static inline int ea_is_cached(ea_list *r) { return r->flags & EALF_CACHED; }
+static inline ea_list *ea_clone(ea_list *r) { r->uc++; return r; }
+void ea__free(ea_list *r);
+static inline void ea_free(ea_list *r) { if (r && !--r->uc) ea__free(r); }
+
+void ea_dump(ea_list *);
+void ea_dump_all(void);
+void ea_show_list(struct cli *, ea_list *);
+
+#define rta_lookup	ea_lookup
+#define rta_is_cached	ea_is_cached
+#define rta_clone	ea_clone
+#define rta_free	ea_free
 
 #endif

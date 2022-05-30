@@ -67,10 +67,10 @@ struct bgp_af_desc {
   u8 no_igp;
   const char *name;
   uint (*encode_nlri)(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size);
-  void (*decode_nlri)(struct bgp_parse_state *s, byte *pos, uint len, rta *a);
+  void (*decode_nlri)(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a);
   void (*update_next_hop)(struct bgp_export_state *s, eattr *nh, ea_list **to);
   uint (*encode_next_hop)(struct bgp_write_state *s, eattr *nh, byte *buf, uint size);
-  void (*decode_next_hop)(struct bgp_parse_state *s, byte *pos, uint len, rta *a);
+  void (*decode_next_hop)(struct bgp_parse_state *s, byte *pos, uint len, ea_list **to);
 };
 
 
@@ -461,7 +461,7 @@ struct bgp_parse_state {
   /* Cached state for bgp_rte_update() */
   u32 last_id;
   struct rte_src *last_src;
-  rta *cached_rta;
+  ea_list *cached_ea;
 };
 
 #define BGP_PORT		179
@@ -519,7 +519,7 @@ struct rte_source *bgp_get_source(struct bgp_proto *p, u32 path_id);
 static inline int
 rte_resolvable(rte *rt)
 {
-  eattr *nhea = ea_find(rt->attrs->eattrs, &ea_gen_nexthop);
+  eattr *nhea = ea_find(rt->attrs, &ea_gen_nexthop);
   struct nexthop_adata *nhad = (void *) nhea->u.ptr;
   return NEXTHOP_IS_REACHABLE(nhad) || (nhad->dest != RTD_UNREACHABLE);
 }
@@ -551,7 +551,7 @@ int bgp_encode_mp_reach_mrt(struct bgp_write_state *s, eattr *a, byte *buf, uint
 
 int bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte *end);
 ea_list * bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len);
-void bgp_finish_attrs(struct bgp_parse_state *s, rta *a);
+void bgp_finish_attrs(struct bgp_parse_state *s, ea_list **to);
 
 void bgp_init_bucket_table(struct bgp_channel *c);
 void bgp_free_bucket_table(struct bgp_channel *c);

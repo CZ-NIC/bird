@@ -1977,17 +1977,17 @@ add_cand(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry 
 }
 
 static inline int
-ort_changed(ort *nf, rta *nr)
+ort_changed(ort *nf, ea_list *nr)
 {
-  rta *or = nf->old_rta;
+  ea_list *or = nf->old_ea;
 
   if (!or ||
     (nf->n.metric1 != nf->old_metric1) || (nf->n.metric2 != nf->old_metric2) ||
     (nf->n.tag != nf->old_tag) || (nf->n.rid != nf->old_rid))
     return 1;
 
-  eattr *nhea_n = ea_find(nr->eattrs, &ea_gen_nexthop);
-  eattr *nhea_o = ea_find(or->eattrs, &ea_gen_nexthop);
+  eattr *nhea_n = ea_find(nr, &ea_gen_nexthop);
+  eattr *nhea_o = ea_find(or, &ea_gen_nexthop);
   if (!nhea_n != !nhea_o)
     return 1;
 
@@ -2000,8 +2000,8 @@ ort_changed(ort *nf, rta *nr)
       return 1;
   }
 
-  if (	ea_get_int(nr->eattrs, &ea_gen_source, 0)
-     != ea_get_int(or->eattrs, &ea_gen_source, 0))
+  if (	ea_get_int(nr, &ea_gen_source, 0)
+     != ea_get_int(or, &ea_gen_source, 0))
     return 1;
 
   return 0;
@@ -2047,9 +2047,6 @@ again1:
 
     if (nf->n.type) /* Add the route */
     {
-      rta a0 = {
-      };
-
       struct {
 	ea_list l;
 	eattr a[7];
@@ -2066,7 +2063,7 @@ again1:
       eattrs.a[eattrs.l.count++] =
 	EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nf->n.nhs->ad);
 
-      if (reload || ort_changed(nf, &a0))
+      if (reload || ort_changed(nf, &eattrs.l))
       {
 	nf->old_metric1 = nf->n.metric1;
 	nf->old_metric2 = nf->n.metric2;
@@ -2088,24 +2085,25 @@ again1:
 	  EA_LITERAL_EMBEDDED(&ea_ospf_router_id, 0, nf->n.rid);
 
 	ASSERT_DIE(ARRAY_SIZE(eattrs.a) >= eattrs.l.count);
-	a0.eattrs = &eattrs.l;
 
-	rta *a = rta_lookup(&a0);
+	ea_list *a = rta_lookup(&eattrs.l);
 	rte *e = rte_get_temp(a, p->p.main_source);
 
-	rta_free(nf->old_rta);
-	nf->old_rta = rta_clone(a);
+	rta_free(nf->old_ea);
+	nf->old_ea = rta_clone(a);
 
+	/*
 	DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
 	    a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
+	    */
 	rte_update(&p->p, nf->fn.addr, e);
       }
     }
-    else if (nf->old_rta)
+    else if (nf->old_ea)
     {
       /* Remove the route */
-      rta_free(nf->old_rta);
-      nf->old_rta = NULL;
+      rta_free(nf->old_ea);
+      nf->old_ea = NULL;
 
       rte_update(&p->p, nf->fn.addr, NULL);
     }
