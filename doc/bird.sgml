@@ -2153,6 +2153,13 @@ protocol bfd [&lt;name&gt;] {
 	to configure separate BFD protocol instances for IPv4 and for IPv6
 	sessions.
 
+	<tag><label id="bfd-strict-bind">strict bind <m/switch/</tag>
+	Specify whether each BFD interface should use a separate listening
+	socket bound to its local address, or just use a shared listening socket
+	accepting all addresses. Binding to a specific address could be useful
+	in cases like running multiple BIRD instances on a machine, each
+	handling a different set of interfaces. Default: disabled.
+
 	<tag><label id="bfd-iface">interface <m/pattern/ [, <m/.../] { <m/options/ }</tag>
 	Interface definitions allow to specify options for sessions associated
 	with such interfaces and also may contain interface specific options.
