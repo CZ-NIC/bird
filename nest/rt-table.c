@@ -2170,7 +2170,7 @@ static void
 rt_prune_table(rtable *tab)
 {
   struct fib_iterator *fit = &tab->prune_fit;
-  int limit = 512;
+  int limit = 2000;
 
   struct channel *c;
   node *n, *x;
