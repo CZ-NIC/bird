@@ -87,7 +87,6 @@ typedef struct rta {
   struct ea_list *eattrs;		/* Extended Attribute chain */
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
   u16 cached:1;				/* Are attributes cached? */
-  u16 source:7;				/* Route source (RTS_...) */
   u16 dest:4;				/* Route destination type (RTD_...) */
   struct nexthop nh;			/* Next hop */
 } rta;
@@ -133,12 +132,13 @@ static inline int rte_is_reachable(rte *r)
 typedef struct eattr {
   word id;				/* EA_CODE(PROTOCOL_..., protocol-dependent ID) */
   byte flags;				/* Protocol-dependent flags */
-  byte type:5;				/* Attribute type */
+  byte type;				/* Attribute type */
+  byte rfu:5;
   byte originated:1;			/* The attribute has originated locally */
   byte fresh:1;				/* An uncached attribute (e.g. modified in export filter) */
   byte undef:1;				/* Explicitly undefined */
 
-  PADDING(unused, 0, 4);
+  PADDING(unused, 3, 3);
 
   union bval u;
 } eattr;
@@ -309,6 +309,12 @@ u32 rt_get_igp_metric(const rte *rt);
 
 /* From: Advertising router */
 extern struct ea_class ea_gen_from;
+
+/* Source: An old method to devise the route source protocol and kind.
+ * To be superseded in a near future by something more informative. */
+extern struct ea_class ea_gen_source;
+static inline u32 rt_get_source_attr(const rte *rt)
+{ return ea_get_int(rt->attrs->eattrs, &ea_gen_source, 0); }
 
 /* Next hop structures */
 

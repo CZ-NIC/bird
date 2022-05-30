@@ -2475,11 +2475,11 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
   {
     a = allocz(RTA_MAX_SIZE);
 
-    a->source = RTS_BGP;
     a->eattrs = ea;
 
     ea_set_attr_data(&a->eattrs, &ea_gen_from, 0, &s->proto->remote_ip, sizeof(ip_addr));
     ea_set_attr_u32(&a->eattrs, &ea_gen_preference, 0, c->c.preference);
+    ea_set_attr_u32(&a->eattrs, &ea_gen_source, 0, RTS_BGP);
 
     c->desc->decode_next_hop(s, nh, nh_len, a);
     bgp_finish_attrs(s, a);

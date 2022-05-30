@@ -392,15 +392,18 @@ ospf_rte_better(struct rte *new, struct rte *old)
   if (new_metric1 == LSINFINITY)
     return 0;
 
-  if(new->attrs->source < old->attrs->source) return 1;
-  if(new->attrs->source > old->attrs->source) return 0;
+  u32 ns = rt_get_source_attr(new);
+  u32 os = rt_get_source_attr(old);
 
-  if(new->attrs->source == RTS_OSPF_EXT2)
+  if (ns < os) return 1;
+  if (ns > os) return 0;
+
+  if (ns == RTS_OSPF_EXT2)
   {
     u32 old_metric2 = ea_get_int(old->attrs->eattrs, &ea_ospf_metric2, LSINFINITY);
     u32 new_metric2 = ea_get_int(new->attrs->eattrs, &ea_ospf_metric2, LSINFINITY);
-    if(new_metric2 < old_metric2) return 1;
-    if(new_metric2 > old_metric2) return 0;
+    if (new_metric2 < old_metric2) return 1;
+    if (new_metric2 > old_metric2) return 0;
   }
 
   u32 old_metric1 = ea_get_int(old->attrs->eattrs, &ea_ospf_metric1, LSINFINITY);
@@ -413,7 +416,7 @@ ospf_rte_better(struct rte *new, struct rte *old)
 static u32
 ospf_rte_igp_metric(const rte *rt)
 {
-  if (rt->attrs->source == RTS_OSPF_EXT2)
+  if (rt_get_source_attr(rt) == RTS_OSPF_EXT2)
     return IGP_METRIC_UNKNOWN;
 
   return ea_get_int(rt->attrs->eattrs, &ea_ospf_metric1, LSINFINITY);
@@ -571,7 +574,8 @@ ospf_get_route_info(rte * rte, byte * buf)
 {
   char *type = "<bug>";
 
-  switch (rte->attrs->source)
+  uint source = rt_get_source_attr(rte);
+  switch (source)
   {
   case RTS_OSPF:
     type = "I";
@@ -589,10 +593,10 @@ ospf_get_route_info(rte * rte, byte * buf)
 
   buf += bsprintf(buf, " %s", type);
   buf += bsprintf(buf, " (%d/%d", rt_get_preference(rte), ea_get_int(rte->attrs->eattrs, &ea_ospf_metric1, LSINFINITY));
-  if (rte->attrs->source == RTS_OSPF_EXT2)
+  if (source == RTS_OSPF_EXT2)
     buf += bsprintf(buf, "/%d", ea_get_int(rte->attrs->eattrs, &ea_ospf_metric2, LSINFINITY));
   buf += bsprintf(buf, ")");
-  if (rte->attrs->source == RTS_OSPF_EXT1 || rte->attrs->source == RTS_OSPF_EXT2)
+  if (source == RTS_OSPF_EXT1 || source == RTS_OSPF_EXT2)
   {
     eattr *ea = ea_find(rte->attrs->eattrs, &ea_ospf_tag);
     if (ea && (ea->u.data > 0))

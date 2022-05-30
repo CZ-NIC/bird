@@ -2004,11 +2004,19 @@ static inline int
 ort_changed(ort *nf, rta *nr)
 {
   rta *or = nf->old_rta;
-  return !or ||
+
+  if (!or ||
     (nf->n.metric1 != nf->old_metric1) || (nf->n.metric2 != nf->old_metric2) ||
     (nf->n.tag != nf->old_tag) || (nf->n.rid != nf->old_rid) ||
-    (nr->source != or->source) || (nr->dest != or->dest) ||
-    !nexthop_same(&(nr->nh), &(or->nh));
+    (nr->dest != or->dest) ||
+    !nexthop_same(&(nr->nh), &(or->nh)))
+    return 1;
+
+  if (	ea_get_int(nr->eattrs, &ea_gen_source, 0)
+     != ea_get_int(or->eattrs, &ea_gen_source, 0))
+    return 1;
+
+  return 0;
 }
 
 static void
@@ -2053,7 +2061,6 @@ again1:
     if (nf->n.type) /* Add the route */
     {
       rta a0 = {
-	.source = nf->n.type,
 	.dest = RTD_UNICAST,
 	.nh = *(nf->n.nhs),
       };
@@ -2067,13 +2074,16 @@ again1:
 
 	struct {
 	  ea_list l;
-	  eattr a[5];
+	  eattr a[6];
 	} eattrs;
 
 	eattrs.l = (ea_list) {};
 
 	eattrs.a[eattrs.l.count++] =
 	  EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, p->p.main_channel->preference);
+
+	eattrs.a[eattrs.l.count++] = 
+	  EA_LITERAL_EMBEDDED(&ea_gen_source, 0, nf->n.type);
 
 	eattrs.a[eattrs.l.count++] =
 	  EA_LITERAL_EMBEDDED(&ea_ospf_metric1, 0, nf->n.metric1);
@@ -2089,6 +2099,7 @@ again1:
 	eattrs.a[eattrs.l.count++] =
 	  EA_LITERAL_EMBEDDED(&ea_ospf_router_id, 0, nf->n.rid);
 
+	ASSERT_DIE(ARRAY_SIZE(eattrs.a) >= eattrs.l.count);
 	a0.eattrs = &eattrs.l;
 
 	rta_free(nf->old_rta);

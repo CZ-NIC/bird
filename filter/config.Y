@@ -285,7 +285,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	SET, STRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
-	FROM, GW, NET, MASK, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS,
+	FROM, GW, NET, MASK, PROTO, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS,
 	ROA_CHECK, ASN, SRC, DST,
 	IS_V4, IS_V6,
 	LEN, MAXLEN,
@@ -765,7 +765,6 @@ static_attr:
    GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	0); }
  | NET     { $$ = f_new_static_attr(T_NET,	  SA_NET,	1); }
  | PROTO   { $$ = f_new_static_attr(T_STRING,     SA_PROTO,	1); }
- | SOURCE  { $$ = f_new_static_attr(T_ENUM_RTS,   SA_SOURCE,	1); }
  | DEST    { $$ = f_new_static_attr(T_ENUM_RTD,   SA_DEST,	0); }
  | IFNAME  { $$ = f_new_static_attr(T_STRING,     SA_IFNAME,	0); }
  | IFINDEX { $$ = f_new_static_attr(T_INT,        SA_IFINDEX,	1); }

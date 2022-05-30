@@ -152,17 +152,17 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   {
     /* Update */
     rta a0 = {
-      .source = RTS_RIP,
       .dest = RTD_UNICAST,
     };
 
     struct {
       ea_list l;
-      eattr a[2];
+      eattr a[3];
     } ea_block = {
       .l.count = ARRAY_SIZE(ea_block.a),
       .a = {
 	EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, p->p.main_channel->preference),
+	EA_LITERAL_EMBEDDED(&ea_gen_source, 0, RTS_RIP),
 	EA_LITERAL_EMBEDDED(&ea_rip_metric, 0, rt->metric),
       },
     };

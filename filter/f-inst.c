@@ -536,7 +536,6 @@
       case SA_GW:	RESULT(sa.type, ip, rta->nh.gw); break;
       case SA_NET:	RESULT(sa.type, net, fs->rte->net); break;
       case SA_PROTO:	RESULT(sa.type, s, fs->rte->src->proto->name); break;
-      case SA_SOURCE:	RESULT(sa.type, i, rta->source); break;
       case SA_DEST:	RESULT(sa.type, i, rta->dest); break;
       case SA_IFNAME:	RESULT(sa.type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
       case SA_IFINDEX:	RESULT(sa.type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;

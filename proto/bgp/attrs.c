@@ -404,7 +404,7 @@ bgp_total_aigp_metric_(const rte *e, u64 *metric, const struct adata **ad)
 static inline int
 bgp_init_aigp_metric(rte *e, u64 *metric, const struct adata **ad)
 {
-  if (e->attrs->source == RTS_BGP)
+  if (rt_get_source_attr(e) == RTS_BGP)
     return 0;
 
   *metric = rt_get_igp_metric(e);

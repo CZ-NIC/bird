@@ -54,6 +54,7 @@ t_eattr(void)
   e.id = ~0;
   e.flags = ~0;
   e.type = ~0;
+  e.rfu = ~0;
   e.originated = ~0;
   e.fresh = ~0;
   e.undef = ~0;
