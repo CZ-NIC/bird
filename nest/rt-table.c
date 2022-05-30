@@ -2713,7 +2713,10 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, i
   u32 orig_b = ea_get_int(rb->attrs->eattrs, "bgp_originator_id", 0);
 
   /* Originator is either ORIGINATOR_ID (if present), or BGP neighbor address (if not) */
-  if ((orig_a != orig_b) || (!orig_a && !orig_b && !ipa_equal(a->from, rb->attrs->from)))
+  if ((orig_a != orig_b) || (!orig_a && !orig_b && !ipa_equal(
+	  ea_get_ip(a->eattrs, &ea_gen_from, IPA_NONE),
+	  ea_get_ip(rb->attrs->eattrs, &ea_gen_from, IPA_NONE)
+	  )))
     return 0;
 
 

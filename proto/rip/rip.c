@@ -153,11 +153,21 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     /* Update */
     rta a0 = {
       .source = RTS_RIP,
-      .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNICAST,
     };
 
-    u8 rt_metric = rt->metric;
+    struct {
+      ea_list l;
+      eattr a[2];
+    } ea_block = {
+      .l.count = ARRAY_SIZE(ea_block.a),
+      .a = {
+	EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, p->p.main_channel->preference),
+	EA_LITERAL_EMBEDDED(&ea_rip_metric, 0, rt->metric),
+      },
+    };
+    a0.eattrs = &ea_block.l;
+
     u16 rt_tag = rt->tag;
 
     if (p->ecmp)
@@ -189,30 +199,19 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
     else
     {
       /* Unipath route */
-      a0.from = rt->from->nbr->addr;
       a0.nh.gw = rt->next_hop;
       a0.nh.iface = rt->from->ifa->iface;
+      ea_set_attr_data(&a0.eattrs, &ea_gen_from, 0, &rt->from->nbr->addr, sizeof(ip_addr));
     }
 
-    struct {
-      ea_list l;
-      eattr a[4];
-      struct rip_iface_adata riad;
-    } ea_block = {
-      .l.count = ARRAY_SIZE(ea_block.a),
-      .a = {
-	EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, p->p.main_channel->preference),
-	EA_LITERAL_EMBEDDED(&ea_rip_metric, 0, rt_metric),
-	EA_LITERAL_EMBEDDED(&ea_rip_tag, 0, rt_tag),
-	EA_LITERAL_DIRECT_ADATA(&ea_rip_from, 0, &ea_block.riad.ad),
-      },
-      .riad = {
-	.ad = { .length = sizeof(struct rip_iface_adata) - sizeof(struct adata) },
-	.iface = a0.nh.iface,
-      },
-    };
+    ea_set_attr_u32(&a0.eattrs, &ea_rip_tag, 0, rt_tag);
 
-    a0.eattrs = &ea_block.l;
+    struct rip_iface_adata riad = {
+      .ad = { .length = sizeof(struct rip_iface_adata) - sizeof(struct adata) },
+      .iface = a0.nh.iface,
+    };
+    ea_set_attr(&a0.eattrs,
+	EA_LITERAL_DIRECT_ADATA(&ea_rip_from, 0, &riad.ad));
 
     rte e0 = {
       .attrs = &a0,

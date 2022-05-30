@@ -291,8 +291,8 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	LEN, MAXLEN,
 	DATA, DATA1, DATA2,
 	DEFINED,
-	ADD, DELETE, CONTAINS, RESET,
-	PREPEND, FIRST, LAST, LAST_NONAGGREGATED, MATCH,
+	ADD, DELETE, RESET,
+	PREPEND, FIRST, LAST, LAST_NONAGGREGATED,
 	MIN, MAX,
 	EMPTY,
 	FILTER, WHERE, EVAL, ATTRIBUTE,
@@ -357,7 +357,7 @@ custom_attr: ATTRIBUTE type symbol ';' {
 
 conf: bt_test_suite ;
 bt_test_suite:
- BT_TEST_SUITE '(' CF_SYM_KNOWN ',' text ')' {
+ BT_TEST_SUITE '(' symbol_known ',' text ')' {
   cf_assert_symbol($3, SYM_FUNCTION);
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
   t->fn = $3->function;
@@ -370,7 +370,7 @@ bt_test_suite:
 
 conf: bt_test_same ;
 bt_test_same:
- BT_TEST_SAME '(' CF_SYM_KNOWN ',' CF_SYM_KNOWN ',' NUM ')' {
+ BT_TEST_SAME '(' symbol_known ',' symbol_known ',' NUM ')' {
   cf_assert_symbol($3, SYM_FUNCTION);
   cf_assert_symbol($5, SYM_FUNCTION);
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
@@ -448,7 +448,7 @@ function_vars:
 filter_body: function_body ;
 
 filter:
-   CF_SYM_KNOWN {
+   symbol_known {
      cf_assert_symbol($1, SYM_FILTER);
      $$ = $1->filter;
    }
@@ -549,7 +549,7 @@ set_atom:
      if (f_eval(f_linearize($2), &($$)) > F_RETURN) cf_error("Runtime error");
      if (!f_valid_set_type($$.type)) cf_error("Set-incompatible type");
    }
- | CF_SYM_KNOWN {
+ | symbol_known {
      cf_assert_symbol($1, SYM_CONSTANT);
      if (!f_valid_set_type(SYM_TYPE($1))) cf_error("%s: set-incompatible type", $1->name);
      $$ = *$1->val;
@@ -719,7 +719,7 @@ var_list: /* EMPTY */ { $$ = NULL; }
  | var_list ',' term { $$ = $3; $$->next = $1; }
 
 function_call:
-   CF_SYM_KNOWN '(' var_list ')' {
+   symbol_known '(' var_list ')' {
      if ($1->class != SYM_FUNCTION)
        cf_error("You can't call something which is not a function. Really.");
 
@@ -743,7 +743,7 @@ function_call:
    }
  ;
 
-symbol_value: CF_SYM_KNOWN
+symbol_value: symbol_known 
   {
     switch ($1->class) {
       case SYM_CONSTANT_RANGE:
@@ -762,12 +762,10 @@ symbol_value: CF_SYM_KNOWN
  ;
 
 static_attr:
-   FROM    { $$ = f_new_static_attr(T_IP,         SA_FROM,	0); }
- | GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	0); }
+   GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	0); }
  | NET     { $$ = f_new_static_attr(T_NET,	  SA_NET,	1); }
  | PROTO   { $$ = f_new_static_attr(T_STRING,     SA_PROTO,	1); }
  | SOURCE  { $$ = f_new_static_attr(T_ENUM_RTS,   SA_SOURCE,	1); }
- | SCOPE   { $$ = f_new_static_attr(T_ENUM_SCOPE, SA_SCOPE,	0); }
  | DEST    { $$ = f_new_static_attr(T_ENUM_RTD,   SA_DEST,	0); }
  | IFNAME  { $$ = f_new_static_attr(T_STRING,     SA_IFNAME,	0); }
  | IFINDEX { $$ = f_new_static_attr(T_INT,        SA_IFINDEX,	1); }
@@ -873,7 +871,7 @@ cmd:
  | IF term THEN block ELSE block {
      $$ = f_new_inst(FI_CONDITION, $2, $4, $6);
    }
- | CF_SYM_KNOWN '=' term ';' {
+ | symbol_known '=' term ';' {
      switch ($1->class) {
        case SYM_VARIABLE_RANGE:
 	 $$ = f_new_inst(FI_VAR_SET, $3, $1);
@@ -896,7 +894,7 @@ cmd:
        cf_error( "This static attribute is read-only.");
      $$ = f_new_inst(FI_RTA_SET, $3, $1);
    }
- | UNSET '(' CF_SYM_KNOWN ')' ';' {
+ | UNSET '(' symbol_known ')' ';' {
      if ($3->class != SYM_ATTRIBUTE)
        cf_error("Can't unset %s", $3->name);
      if ($3->attribute->readonly)
@@ -934,11 +932,11 @@ cmd:
       $$ = f_new_inst(FI_SWITCH, $2, build_tree($4));
    }
 
- | CF_SYM_KNOWN '.' EMPTY ';' { $$ = f_generate_empty($1); }
- | CF_SYM_KNOWN '.' PREPEND '(' term ')' ';'   { $$ = f_generate_complex_sym( FI_PATH_PREPEND, $1, $5 ); }
- | CF_SYM_KNOWN '.' ADD '(' term ')' ';'       { $$ = f_generate_complex_sym( FI_CLIST_ADD, $1, $5 ); }
- | CF_SYM_KNOWN '.' DELETE '(' term ')' ';'    { $$ = f_generate_complex_sym( FI_CLIST_DEL, $1, $5 ); }
- | CF_SYM_KNOWN '.' FILTER '(' term ')' ';'    { $$ = f_generate_complex_sym( FI_CLIST_FILTER, $1, $5 ); }
+ | symbol_known '.' EMPTY ';' { $$ = f_generate_empty($1); }
+ | symbol_known '.' PREPEND '(' term ')' ';'   { $$ = f_generate_complex_sym( FI_PATH_PREPEND, $1, $5 ); }
+ | symbol_known '.' ADD '(' term ')' ';'       { $$ = f_generate_complex_sym( FI_CLIST_ADD, $1, $5 ); }
+ | symbol_known '.' DELETE '(' term ')' ';'    { $$ = f_generate_complex_sym( FI_CLIST_DEL, $1, $5 ); }
+ | symbol_known '.' FILTER '(' term ')' ';'    { $$ = f_generate_complex_sym( FI_CLIST_FILTER, $1, $5 ); }
  | BT_ASSERT '(' get_cf_position term get_cf_position ')' ';' { $$ = assert_done($4, $3 + 1, $5 - 1); }
  | BT_CHECK_ASSIGN '(' get_cf_position lvalue get_cf_position ',' term ')' ';' { $$ = assert_assign(&$4, $7, $3 + 1, $5 - 1); }
  ;
@@ -949,7 +947,7 @@ get_cf_position:
 };
 
 lvalue:
-   CF_SYM_KNOWN {
+   symbol_known {
       switch ($1->class) {
 	case SYM_VARIABLE_RANGE:
 	  $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 };

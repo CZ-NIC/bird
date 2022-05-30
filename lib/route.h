@@ -86,10 +86,8 @@ typedef struct rta {
   u32 hash_key;				/* Hash over important fields */
   struct ea_list *eattrs;		/* Extended Attribute chain */
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
-  ip_addr from;				/* Advertising router */
   u16 cached:1;				/* Are attributes cached? */
   u16 source:7;				/* Route source (RTS_...) */
-  u16 scope:4;				/* Route scope (SCOPE_... -- see ip.h) */
   u16 dest:4;				/* Route destination type (RTD_...) */
   struct nexthop nh;			/* Next hop */
 } rta;
@@ -221,6 +219,13 @@ static inline eattr *ea_find_by_name(ea_list *l, const char *name)
     (ea ? ea->u.data : (_def)); \
     })
 
+#define ea_get_ip(_l, _ident, _def)  ({ \
+    struct ea_class *cls = ea_class_find((_ident)); \
+    ASSERT_DIE(cls->type == T_IP); \
+    const eattr *ea = ea_find((_l), cls->id); \
+    (ea ? *((const ip_addr *) ea->u.ptr->data) : (_def)); \
+    })
+
 eattr *ea_walk(struct ea_walk_state *s, uint id, uint max);
 void ea_dump(ea_list *);
 int ea_same(ea_list *x, ea_list *y);	/* Test whether two ea_lists are identical */
@@ -302,6 +307,8 @@ u32 rt_get_igp_metric(const rte *rt);
 #define IGP_METRIC_UNKNOWN 0x80000000	/* Default igp_metric used when no other
 					   protocol-specific metric is availabe */
 
+/* From: Advertising router */
+extern struct ea_class ea_gen_from;
 
 /* Next hop structures */
 

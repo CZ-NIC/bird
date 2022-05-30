@@ -1723,14 +1723,6 @@ Common route attributes are:
 	primary key of the routing table. Read-only. (See the <ref id="routes"
 	name="chapter about routes">.)
 
-	<tag><label id="rta-scope"><m/enum/ scope</tag>
-	The scope of the route. Possible values: <cf/SCOPE_HOST/ for routes
-	local to this host, <cf/SCOPE_LINK/ for those specific for a physical
-	link, <cf/SCOPE_SITE/ and <cf/SCOPE_ORGANIZATION/ for private routes and
-	<cf/SCOPE_UNIVERSE/ for globally visible routes. This attribute is not
-	interpreted by BIRD and can be used to mark routes in filters. The
-	default value for new routes is <cf/SCOPE_UNIVERSE/.
-
 	<tag><label id="rta-preference"><m/int/ preference</tag>
 	Preference of the route.
 

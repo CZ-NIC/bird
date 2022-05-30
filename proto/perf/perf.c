@@ -144,7 +144,6 @@ perf_loop(void *data)
     if (!p->attrs_per_rte || !(i % p->attrs_per_rte)) {
       struct rta a0 = {
 	.source = RTS_PERF,
-	.scope = SCOPE_UNIVERSE,
 	.dest = RTD_UNICAST,
 	.nh.iface = p->ifa->iface,
 	.nh.gw = gw,
