@@ -700,9 +700,9 @@ const char *ea_custom_name(uint ea);
 #define EAF_TYPE_AS_PATH 0x06		/* BGP AS path (encoding per RFC 1771:4.3) */
 #define EAF_TYPE_BITFIELD 0x09		/* 32-bit embedded bitfield */
 #define EAF_TYPE_INT_SET 0x0a		/* Set of u32's (e.g., a community list) */
-#define EAF_TYPE_PTR 0x0d		/* Pointer to an object */
 #define EAF_TYPE_EC_SET 0x0e		/* Set of pairs of u32's - ext. community list */
 #define EAF_TYPE_LC_SET 0x12		/* Set of triplets of u32's - large community list */
+#define EAF_TYPE_IFACE 0x16		/* Interface pointer stored in adata */
 #define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */
 #define EAF_VAR_LENGTH 0x02		/* Attribute length is variable (part of type spec) */
 
