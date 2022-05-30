@@ -566,22 +566,22 @@ int bgp_rte_better(struct rte *, struct rte *);
 int bgp_rte_mergable(rte *pri, rte *sec);
 int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
 struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
-u32 bgp_rte_igp_metric(struct rte *);
+u32 bgp_rte_igp_metric(const rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old);
 int bgp_preexport(struct channel *, struct rte *);
 void bgp_get_route_info(struct rte *, byte *);
-int bgp_total_aigp_metric_(rta *a, u64 *metric, const struct adata **ad);
+int bgp_total_aigp_metric_(const rte *e, u64 *metric, const struct adata **ad);
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
 
 static inline u64
-bgp_total_aigp_metric(rta *a)
+bgp_total_aigp_metric(const rte *e)
 {
   u64 metric = BGP_AIGP_MAX;
   const struct adata *ad;
 
-  bgp_total_aigp_metric_(a, &metric, &ad);
+  bgp_total_aigp_metric_(e, &metric, &ad);
   return metric;
 }
 

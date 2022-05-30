@@ -87,7 +87,6 @@ typedef struct rta {
   struct ea_list *eattrs;		/* Extended Attribute chain */
   struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
   ip_addr from;				/* Advertising router */
-  u32 igp_metric;			/* IGP metric to next hop (for iBGP routes) */
   u16 cached:1;				/* Are attributes cached? */
   u16 source:7;				/* Route source (RTS_...) */
   u16 scope:4;				/* Route scope (SCOPE_... -- see ip.h) */
@@ -119,10 +118,6 @@ typedef struct rta {
 #define RTD_UNREACHABLE 3		/* Reject as unreachable */
 #define RTD_PROHIBIT 4			/* Administratively prohibited */
 #define RTD_MAX 5
-
-#define IGP_METRIC_UNKNOWN 0x80000000	/* Default igp_metric used when no other
-					   protocol-specific metric is availabe */
-
 
 extern const char * rta_dest_names[RTD_MAX];
 
@@ -188,6 +183,8 @@ struct ea_class_ref {
   struct ea_class *class;
 };
 
+#define IGP_METRIC_UNKNOWN 0x80000000	/* Default igp_metric used when no other
+					   protocol-specific metric is availabe */
 extern struct ea_class ea_gen_igp_metric;
 
 void ea_register_init(struct ea_class *);
@@ -324,6 +321,6 @@ void rta_dump(rta *);
 void rta_dump_all(void);
 void rta_show(struct cli *, rta *);
 
-u32 rt_get_igp_metric(rte *rt);
+u32 rt_get_igp_metric(const rte *rt);
 
 #endif

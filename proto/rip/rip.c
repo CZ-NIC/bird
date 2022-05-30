@@ -1103,7 +1103,7 @@ rip_rte_better(struct rte *new, struct rte *old)
 }
 
 static u32
-rip_rte_igp_metric(struct rte *rt)
+rip_rte_igp_metric(const rte *rt)
 {
   return ea_get_int(rt->attrs->eattrs, &ea_rip_metric, IGP_METRIC_UNKNOWN);
 }

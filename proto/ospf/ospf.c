@@ -111,7 +111,7 @@
 static int ospf_preexport(struct channel *C, rte *new);
 static void ospf_reload_routes(struct channel *C);
 static int ospf_rte_better(struct rte *new, struct rte *old);
-static u32 ospf_rte_igp_metric(struct rte *rt);
+static u32 ospf_rte_igp_metric(const rte *rt);
 static void ospf_disp(timer *timer);
 
 
@@ -411,7 +411,7 @@ ospf_rte_better(struct rte *new, struct rte *old)
 }
 
 static u32
-ospf_rte_igp_metric(struct rte *rt)
+ospf_rte_igp_metric(const rte *rt)
 {
   if (rt->attrs->source == RTS_OSPF_EXT2)
     return IGP_METRIC_UNKNOWN;

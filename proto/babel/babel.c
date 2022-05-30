@@ -2344,7 +2344,7 @@ babel_rte_better(struct rte *new, struct rte *old)
 }
 
 static u32
-babel_rte_igp_metric(struct rte *rt)
+babel_rte_igp_metric(const rte *rt)
 {
   return ea_get_int(rt->attrs->eattrs, &ea_babel_metric, BABEL_INFINITY);
 }
