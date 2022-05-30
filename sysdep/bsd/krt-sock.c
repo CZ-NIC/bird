@@ -586,7 +586,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
 
   ea->attrs[0] = (eattr) {
     .id = EA_KRT_SOURCE,
-    .type = EAF_TYPE_INT,
+    .type = T_INT,
     .u.data = src2,
   };
 

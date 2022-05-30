@@ -14,6 +14,7 @@
 #include "lib/bitmap.h"
 #include "lib/resource.h"
 #include "lib/net.h"
+#include "lib/type.h"
 
 struct ea_list;
 struct protocol;
@@ -668,10 +669,8 @@ typedef struct eattr {
   byte originated:1;			/* The attribute has originated locally */
   byte fresh:1;				/* An uncached attribute (e.g. modified in export filter) */
   byte undef:1;				/* Explicitly undefined */
-  union {
-    uintptr_t data;
-    const struct adata *ptr;		/* Attribute data elsewhere */
-  } u;
+
+  union bval u;
 } eattr;
 
 
@@ -691,22 +690,6 @@ const char *ea_custom_name(uint ea);
 #define EA_ALLOW_UNDEF 0x10000		/* ea_find: allow EAF_TYPE_UNDEF */
 #define EA_BIT(n) ((n) << 24)		/* Used in bitfield accessors */
 #define EA_BIT_GET(ea) ((ea) >> 24)
-
-#define EAF_TYPE_MASK 0x1f		/* Mask with this to get type */
-#define EAF_TYPE_INT 0x01		/* 32-bit unsigned integer number */
-#define EAF_TYPE_OPAQUE 0x02		/* Opaque byte string (not filterable) */
-#define EAF_TYPE_IP_ADDRESS 0x04	/* IP address */
-#define EAF_TYPE_ROUTER_ID 0x05		/* Router ID (IPv4 address) */
-#define EAF_TYPE_AS_PATH 0x06		/* BGP AS path (encoding per RFC 1771:4.3) */
-#define EAF_TYPE_INT_SET 0x0a		/* Set of u32's (e.g., a community list) */
-#define EAF_TYPE_EC_SET 0x0e		/* Set of pairs of u32's - ext. community list */
-#define EAF_TYPE_LC_SET 0x08		/* Set of triplets of u32's - large community list */
-#define EAF_TYPE_IFACE 0x0c		/* Interface pointer stored in adata */
-#define EAF_TYPE_BGP_ORIGIN 0x11	/* BGP Origin enum */
-#define EAF_TYPE_RA_PREFERENCE 0x13	/* RA Preference enum */
-
-#define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */
-					/* Otherwise, attribute data is adata */
 
 typedef struct adata {
   uint length;				/* Length of data */
@@ -753,7 +736,7 @@ struct ea_walk_state {
 
 eattr *ea_find(ea_list *, unsigned ea);
 eattr *ea_walk(struct ea_walk_state *s, uint id, uint max);
-uintptr_t ea_get_int(ea_list *, unsigned ea, uintptr_t def);
+u32 ea_get_int(ea_list *, unsigned ea, u32 def);
 void ea_dump(ea_list *);
 void ea_sort(ea_list *);		/* Sort entries in all sub-lists */
 unsigned ea_scan(ea_list *);		/* How many bytes do we need for merged ea_list */
@@ -780,7 +763,7 @@ struct ea_one_attr_list {
 };
 
 static inline eattr *
-ea_set_attr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, uintptr_t val)
+ea_set_attr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, union bval val)
 {
   struct ea_one_attr_list *ea = lp_alloc(pool, sizeof(*ea));
   *ea = (struct ea_one_attr_list) {
@@ -793,11 +776,7 @@ ea_set_attr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, 
     .a.flags = flags,
   };
 
-  if (type & EAF_EMBEDDED)
-    ea->a.u.data = val;
-  else
-    ea->a.u.ptr = (struct adata *) val;
-
+  ea->a.u = val;
   *to = &ea->l;
 
   return &ea->a;
@@ -821,19 +800,19 @@ ea_unset_attr(ea_list **to, struct linpool *pool, _Bool local, uint code)
 }
 
 static inline void
-ea_set_attr_u32(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, u32 val)
-{ ea_set_attr(to, pool, id, flags, type, (uintptr_t) val); }
-
-static inline void
-ea_set_attr_ptr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, struct adata *val)
-{ ea_set_attr(to, pool, id, flags, type, (uintptr_t) val); }
+ea_set_attr_u32(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, u32 data)
+{
+  union bval bv = { .data = data };
+  ea_set_attr(to, pool, id, flags, type, bv);
+}
 
 static inline void
 ea_set_attr_data(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, void *data, uint len)
 {
   struct adata *a = lp_alloc_adata(pool, len);
   memcpy(a->data, data, len);
-  ea_set_attr(to, pool, id, flags, type, (uintptr_t) a);
+  union bval bv = { .ptr = a, };
+  ea_set_attr(to, pool, id, flags, type, bv);
 }
 
 

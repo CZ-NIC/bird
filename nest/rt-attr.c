@@ -539,8 +539,8 @@ ea_walk(struct ea_walk_state *s, uint id, uint max)
  * by calling ea_find() to find the attribute, extracting its value or returning
  * a provided default if no such attribute is present.
  */
-uintptr_t
-ea_get_int(ea_list *e, unsigned id, uintptr_t def)
+u32
+ea_get_int(ea_list *e, unsigned id, u32 def)
 {
   eattr *a = ea_find(e, id);
   if (!a)
@@ -950,29 +950,32 @@ ea_show(struct cli *c, const eattr *e)
       else
       switch (e->type)
 	{
-	case EAF_TYPE_INT:
+	case T_INT:
 	  bsprintf(pos, "%u", e->u.data);
 	  break;
-	case EAF_TYPE_OPAQUE:
+	case T_OPAQUE:
 	  opaque_format(ad, pos, end - pos);
 	  break;
-	case EAF_TYPE_IP_ADDRESS:
+	case T_IP:
 	  bsprintf(pos, "%I", *(ip_addr *) ad->data);
 	  break;
-	case EAF_TYPE_ROUTER_ID:
+	case T_QUAD:
 	  bsprintf(pos, "%R", e->u.data);
 	  break;
-	case EAF_TYPE_AS_PATH:
+	case T_PATH:
 	  as_path_format(ad, pos, end - pos);
 	  break;
-	case EAF_TYPE_INT_SET:
+	case T_CLIST:
 	  ea_show_int_set(c, ad, 1, pos, buf, end);
 	  return;
-	case EAF_TYPE_EC_SET:
+	case T_ECLIST:
 	  ea_show_ec_set(c, ad, pos, buf, end);
 	  return;
-	case EAF_TYPE_LC_SET:
+	case T_LCLIST:
 	  ea_show_lc_set(c, ad, pos, buf, end);
+	  return;
+	case T_IFACE:
+	  bsprintf(pos, "%s", ((struct iface *) e->u.ptr)->name);
 	  return;
 	default:
 	  bsprintf(pos, "<type %02x>", e->type);

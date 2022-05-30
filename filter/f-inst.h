@@ -87,12 +87,12 @@ void f_add_lines(const struct f_line_item *what, struct filter_iterator *fit);
 
 
 struct filter *f_new_where(struct f_inst *);
-static inline struct f_dynamic_attr f_new_dynamic_attr(u8 type, enum f_type f_type, uint code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */
-{ return (struct f_dynamic_attr) { .type = type, .f_type = f_type, .ea_code = code }; }   /* f_type currently unused; will be handy for static type checking */
-static inline struct f_dynamic_attr f_new_dynamic_attr_bit(u8 bit, uint code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */
-{ return (struct f_dynamic_attr) { .type = EAF_TYPE_INT, .bit = bit, .f_type = T_INT, .ea_code = code }; }   /* f_type currently unused; will be handy for static type checking */
-static inline struct f_static_attr f_new_static_attr(int f_type, int code, int readonly)
-{ return (struct f_static_attr) { .f_type = f_type, .sa_code = code, .readonly = readonly }; }
+static inline struct f_dynamic_attr f_new_dynamic_attr(u8 type, uint code)
+{ return (struct f_dynamic_attr) { .type = type, .ea_code = code }; }
+static inline struct f_dynamic_attr f_new_dynamic_attr_bit(u8 bit, uint code)
+{ return (struct f_dynamic_attr) { .type = T_INT, .bit = bit, .ea_code = code }; }
+static inline struct f_static_attr f_new_static_attr(btype type, int code, int readonly)
+{ return (struct f_static_attr) { .type = type, .sa_code = code, .readonly = readonly }; }
 struct f_inst *f_generate_complex(enum f_instruction_code fi_code, struct f_dynamic_attr da, struct f_inst *argument);
 struct f_inst *f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn);
 

@@ -654,7 +654,7 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
     *a0.eattrs = (ea_list) { .count = 3 };
     a0.eattrs->attrs[0] = (eattr) {
       .id = EA_BABEL_METRIC,
-      .type = EAF_TYPE_INT,
+      .type = T_INT,
       .u.data = r->metric,
     };
 
@@ -663,13 +663,13 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
     memcpy(ad->data, &(r->router_id), sizeof(u64));
     a0.eattrs->attrs[1] = (eattr) {
       .id = EA_BABEL_ROUTER_ID,
-      .type = EAF_TYPE_OPAQUE,
+      .type = T_OPAQUE,
       .u.ptr = ad,
     };
 
     a0.eattrs->attrs[2] = (eattr) {
       .id = EA_BABEL_SEQNO,
-      .type = EAF_TYPE_INT,
+      .type = T_INT,
       .u.data = r->seqno,
     };
 

@@ -80,7 +80,7 @@ static const struct bgp_attr_desc bgp_attr_table[];
 static inline int bgp_attr_known(uint code);
 
 eattr *
-bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintptr_t val)
+bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, union bval val)
 {
   ASSERT(bgp_attr_known(code));
 
@@ -976,7 +976,7 @@ static inline void
 bgp_decode_unknown(struct bgp_parse_state *s, uint code, uint flags, byte *data, uint len, ea_list **to)
 {
   /* Cannot use bgp_set_attr_data() as it works on known attributes only */
-  ea_set_attr_data(to, s->pool, EA_CODE(PROTOCOL_BGP, code), flags, EAF_TYPE_OPAQUE, data, len);
+  ea_set_attr_data(to, s->pool, EA_CODE(PROTOCOL_BGP, code), flags, T_OPAQUE, data, len);
 }
 
 
@@ -987,7 +987,7 @@ bgp_decode_unknown(struct bgp_parse_state *s, uint code, uint flags, byte *data,
 static const struct bgp_attr_desc bgp_attr_table[] = {
   [BA_ORIGIN] = {
     .name = "origin",
-    .type = EAF_TYPE_BGP_ORIGIN,
+    .type = T_ENUM_BGP_ORIGIN,
     .flags = BAF_TRANSITIVE,
     .export = bgp_export_origin,
     .encode = bgp_encode_u8,
@@ -996,14 +996,14 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
   },
   [BA_AS_PATH] = {
     .name = "as_path",
-    .type = EAF_TYPE_AS_PATH,
+    .type = T_PATH,
     .flags = BAF_TRANSITIVE,
     .encode = bgp_encode_as_path,
     .decode = bgp_decode_as_path,
   },
   [BA_NEXT_HOP] = {
     .name = "next_hop",
-    .type = EAF_TYPE_IP_ADDRESS,
+    .type = T_IP,
     .flags = BAF_TRANSITIVE,
     .encode = bgp_encode_next_hop,
     .decode = bgp_decode_next_hop,
@@ -1011,14 +1011,14 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
   },
   [BA_MULTI_EXIT_DISC] = {
     .name = "med",
-    .type = EAF_TYPE_INT,
+    .type = T_INT,
     .flags = BAF_OPTIONAL,
     .encode = bgp_encode_u32,
     .decode = bgp_decode_med,
   },
   [BA_LOCAL_PREF] = {
     .name = "local_pref",
-    .type = EAF_TYPE_INT,
+    .type = T_INT,
     .flags = BAF_TRANSITIVE,
     .export = bgp_export_local_pref,
     .encode = bgp_encode_u32,
@@ -1026,14 +1026,14 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
   },
   [BA_ATOMIC_AGGR] = {
     .name = "atomic_aggr",
-    .type = EAF_TYPE_OPAQUE,
+    .type = T_OPAQUE,
     .flags = BAF_TRANSITIVE,
     .encode = bgp_encode_raw,
     .decode = bgp_decode_atomic_aggr,
   },
   [BA_AGGREGATOR] = {
     .name = "aggregator",
-    .type = EAF_TYPE_OPAQUE,
+    .type = T_OPAQUE,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .encode = bgp_encode_aggregator,
     .decode = bgp_decode_aggregator,
@@ -1041,7 +1041,7 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
   },
   [BA_COMMUNITY] = {
     .name = "community",
-    .type = EAF_TYPE_INT_SET,
+    .type = T_CLIST,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .export = bgp_export_community,
     .encode = bgp_encode_u32s,
@@ -1049,7 +1049,7 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
   },
   [BA_ORIGINATOR_ID] = {
     .name = "originator_id",
-    .type = EAF_TYPE_ROUTER_ID,
+    .type = T_QUAD,
     .flags = BAF_OPTIONAL,
     .export = bgp_export_originator_id,
     .encode = bgp_encode_u32,
@@ -1057,7 +1057,7 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
   },
   [BA_CLUSTER_LIST] = {
     .name = "cluster_list",
-    .type = EAF_TYPE_INT_SET,
+    .type = T_CLIST,
     .flags = BAF_OPTIONAL,
     .export = bgp_export_cluster_list,
     .encode = bgp_encode_u32s,
@@ -1066,19 +1066,19 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
   },
   [BA_MP_REACH_NLRI] = {
     .name = "mp_reach_nlri",
-    .type = EAF_TYPE_OPAQUE,
+    .type = T_OPAQUE,
     .flags = BAF_OPTIONAL,
     .decode = bgp_decode_mp_reach_nlri,
   },
   [BA_MP_UNREACH_NLRI] = {
     .name = "mp_unreach_nlri",
-    .type = EAF_TYPE_OPAQUE,
+    .type = T_OPAQUE,
     .flags = BAF_OPTIONAL,
     .decode = bgp_decode_mp_unreach_nlri,
   },
   [BA_EXT_COMMUNITY] = {
     .name = "ext_community",
-    .type = EAF_TYPE_EC_SET,
+    .type = T_ECLIST,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .export = bgp_export_ext_community,
     .encode = bgp_encode_u32s,
@@ -1086,14 +1086,14 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
   },
   [BA_AS4_PATH] = {
     .name = "as4_path",
-    .type = EAF_TYPE_AS_PATH,
+    .type = T_PATH,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .encode = bgp_encode_raw,
     .decode = bgp_decode_as4_path,
   },
   [BA_AS4_AGGREGATOR] = {
     .name = "as4_aggregator",
-    .type = EAF_TYPE_OPAQUE,
+    .type = T_OPAQUE,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .encode = bgp_encode_raw,
     .decode = bgp_decode_as4_aggregator,
@@ -1101,7 +1101,7 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
   },
   [BA_AIGP] = {
     .name = "aigp",
-    .type = EAF_TYPE_OPAQUE,
+    .type = T_OPAQUE,
     .flags = BAF_OPTIONAL | BAF_DECODE_FLAGS,
     .export = bgp_export_aigp,
     .encode = bgp_encode_raw,
@@ -1110,7 +1110,7 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
   },
   [BA_LARGE_COMMUNITY] = {
     .name = "large_community",
-    .type = EAF_TYPE_LC_SET,
+    .type = T_LCLIST,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .export = bgp_export_large_community,
     .encode = bgp_encode_u32s,
@@ -1118,7 +1118,7 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
   },
   [BA_MPLS_LABEL_STACK] = {
     .name = "mpls_label_stack",
-    .type = EAF_TYPE_INT_SET,
+    .type = T_CLIST,
     .export = bgp_export_mpls_label_stack,
     .encode = bgp_encode_mpls_label_stack,
     .decode = bgp_decode_mpls_label_stack,

@@ -533,21 +533,21 @@
 
       switch (sa.sa_code)
       {
-      case SA_FROM:	RESULT(sa.f_type, ip, rta->from); break;
-      case SA_GW:	RESULT(sa.f_type, ip, rta->nh.gw); break;
-      case SA_NET:	RESULT(sa.f_type, net, fs->rte->net); break;
-      case SA_PROTO:	RESULT(sa.f_type, s, fs->rte->src->proto->name); break;
-      case SA_SOURCE:	RESULT(sa.f_type, i, rta->source); break;
-      case SA_SCOPE:	RESULT(sa.f_type, i, rta->scope); break;
-      case SA_DEST:	RESULT(sa.f_type, i, rta->dest); break;
-      case SA_IFNAME:	RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
-      case SA_IFINDEX:	RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
-      case SA_WEIGHT:	RESULT(sa.f_type, i, rta->nh.weight + 1); break;
-      case SA_PREF:	RESULT(sa.f_type, i, rta->pref); break;
-      case SA_GW_MPLS:	RESULT(sa.f_type, i, rta->nh.labels ? rta->nh.label[0] : MPLS_NULL); break;
+      case SA_FROM:	RESULT(sa.type, ip, rta->from); break;
+      case SA_GW:	RESULT(sa.type, ip, rta->nh.gw); break;
+      case SA_NET:	RESULT(sa.type, net, fs->rte->net); break;
+      case SA_PROTO:	RESULT(sa.type, s, fs->rte->src->proto->name); break;
+      case SA_SOURCE:	RESULT(sa.type, i, rta->source); break;
+      case SA_SCOPE:	RESULT(sa.type, i, rta->scope); break;
+      case SA_DEST:	RESULT(sa.type, i, rta->dest); break;
+      case SA_IFNAME:	RESULT(sa.type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
+      case SA_IFINDEX:	RESULT(sa.type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
+      case SA_WEIGHT:	RESULT(sa.type, i, rta->nh.weight + 1); break;
+      case SA_PREF:	RESULT(sa.type, i, rta->pref); break;
+      case SA_GW_MPLS:	RESULT(sa.type, i, rta->nh.labels ? rta->nh.label[0] : MPLS_NULL); break;
 
       default:
-	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
+	bug("Invalid static attribute access (%u/%u)", sa.type, sa.sa_code);
       }
     }
   }
@@ -556,7 +556,7 @@
     ACCESS_RTE;
     ARG_ANY(1);
     STATIC_ATTR;
-    ARG_TYPE(1, sa.f_type);
+    ARG_TYPE(1, sa.type);
 
     f_rta_cow(fs);
     {
@@ -653,7 +653,7 @@
 	break;
 
       default:
-	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
+	bug("Invalid static attribute access (%u/%u)", sa.type, sa.sa_code);
       }
     }
   }
@@ -662,68 +662,30 @@
     DYNAMIC_ATTR;
     ACCESS_RTE;
     ACCESS_EATTRS;
-    RESULT_TYPE(da.f_type);
+    RESULT_TYPE(da.type);
     {
+      const struct f_val *empty;
       eattr *e = ea_find(*fs->eattrs, da.ea_code);
 
-      if (!e) {
-	/* A special case: undefined as_path looks like empty as_path */
-	if (da.type == EAF_TYPE_AS_PATH) {
-	  RESULT_(T_PATH, ad, &null_adata);
-	  break;
-	}
+      if (e)
+      {
+	ASSERT_DIE(e->type == da.type);
 
-	/* The same special case for int_set */
-	if (da.type == EAF_TYPE_INT_SET) {
-	  RESULT_(T_CLIST, ad, &null_adata);
-	  break;
+	switch (e->type) {
+	  case T_IP:
+	    RESULT_(T_IP, ip, *((const ip_addr *) e->u.ptr->data));
+	    break;
+	  default:
+	    RESULT_VAL([[(struct f_val) {
+		.type = e->type,
+		.val.bval = e->u,
+		}]]);
 	}
-
-	/* The same special case for ec_set */
-	if (da.type == EAF_TYPE_EC_SET) {
-	  RESULT_(T_ECLIST, ad, &null_adata);
-	  break;
-	}
-
-	/* The same special case for lc_set */
-	if (da.type == EAF_TYPE_LC_SET) {
-	  RESULT_(T_LCLIST, ad, &null_adata);
-	  break;
-	}
-
-	/* Undefined value */
+      }
+      else if (empty = f_get_empty(da.type))
+	RESULT_VAL(*empty);
+      else
 	RESULT_VOID;
-	break;
-      }
-
-      switch (e->type) {
-      case EAF_TYPE_INT:
-	RESULT_(da.f_type, i, e->u.data);
-	break;
-      case EAF_TYPE_ROUTER_ID:
-	RESULT_(T_QUAD, i, e->u.data);
-	break;
-      case EAF_TYPE_OPAQUE:
-	RESULT_(T_OPAQUE, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_IP_ADDRESS:
-	RESULT_(T_IP, ip, *((ip_addr *) e->u.ptr->data));
-	break;
-      case EAF_TYPE_AS_PATH:
-	RESULT_(T_PATH, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_INT_SET:
-	RESULT_(T_CLIST, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_EC_SET:
-	RESULT_(T_ECLIST, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_LC_SET:
-	RESULT_(T_LCLIST, ad, e->u.ptr);
-	break;
-      default:
-	bug("Unknown dynamic attribute type");
-      }
     }
   }
 
@@ -732,7 +694,7 @@
     ACCESS_EATTRS;
     ARG_ANY(1);
     DYNAMIC_ATTR;
-    ARG_TYPE(1, da.f_type);
+    ARG_TYPE(1, da.type);
     {
       struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
 
@@ -746,17 +708,16 @@
       l->attrs[0].fresh = 1;
       l->attrs[0].undef = 0;
 
-      switch (da.type) {
-      case EAF_TYPE_INT:
-      case EAF_TYPE_ROUTER_ID:
-	l->attrs[0].u.data = v1.val.i;
-	break;
+      if (da.type >= EAF_TYPE__MAX)
+	bug("Unsupported attribute type");
 
-      case EAF_TYPE_OPAQUE:
+      switch (da.type) {
+      case T_OPAQUE:
+      case T_IFACE:
 	runtime( "Setting opaque attribute is not allowed" );
 	break;
 
-      case EAF_TYPE_IP_ADDRESS:;
+      case T_IP:;
 	int len = sizeof(ip_addr);
 	struct adata *ad = lp_alloc(fs->pool, sizeof(struct adata) + len);
 	ad->length = len;
@@ -764,15 +725,10 @@
 	l->attrs[0].u.ptr = ad;
 	break;
 
-      case EAF_TYPE_AS_PATH:
-      case EAF_TYPE_INT_SET:
-      case EAF_TYPE_EC_SET:
-      case EAF_TYPE_LC_SET:
-	l->attrs[0].u.ptr = v1.val.ad;
+      default:
+	l->attrs[0].u = v1.val.bval;
 	break;
 
-      default:
-	bug("Unknown dynamic attribute type");
       }
 
       f_rta_cow(fs);

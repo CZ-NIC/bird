@@ -202,17 +202,17 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
       .e = {
 	{
 	  .id = EA_RIP_METRIC,
-	  .type = EAF_TYPE_INT,
+	  .type = T_INT,
 	  .u.data = rt_metric,
 	},
 	{
 	  .id = EA_RIP_TAG,
-	  .type = EAF_TYPE_INT,
+	  .type = T_INT,
 	  .u.data = rt_tag,
 	},
 	{
 	  .id = EA_RIP_FROM,
-	  .type = EAF_TYPE_IFACE,
+	  .type = T_IFACE,
 	  .u.ptr = &ea_block.riad.ad,
 	}
       },
