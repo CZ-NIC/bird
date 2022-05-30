@@ -108,14 +108,14 @@ rip_add_rte(struct rip_proto *p, struct rip_rte **rp, struct rip_rte *src)
 }
 
 static inline void
-rip_remove_rte(struct rip_proto *p, struct rip_rte **rp)
+rip_remove_rte(struct rip_proto *p UNUSED, struct rip_rte **rp)
 {
   struct rip_rte *rt = *rp;
 
   rip_unlock_neighbor(rt->from);
 
   *rp = rt->next;
-  sl_free(p->rte_slab, rt);
+  sl_free(rt);
 }
 
 static inline int rip_same_rte(struct rip_rte *a, struct rip_rte *b)

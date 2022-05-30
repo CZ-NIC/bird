@@ -119,7 +119,7 @@ babel_get_source(struct babel_proto *p, struct babel_entry *e, u64 router_id)
 }
 
 static void
-babel_expire_sources(struct babel_proto *p, struct babel_entry *e)
+babel_expire_sources(struct babel_proto *p UNUSED, struct babel_entry *e)
 {
   struct babel_source *n, *nx;
   btime now_ = current_time();
@@ -129,7 +129,7 @@ babel_expire_sources(struct babel_proto *p, struct babel_entry *e)
     if (n->expires && n->expires <= now_)
     {
       rem_node(NODE n);
-      sl_free(p->source_slab, n);
+      sl_free(n);
     }
   }
 }
@@ -174,7 +174,7 @@ babel_retract_route(struct babel_proto *p, struct babel_route *r)
 }
 
 static void
-babel_flush_route(struct babel_proto *p, struct babel_route *r)
+babel_flush_route(struct babel_proto *p UNUSED, struct babel_route *r)
 {
   DBG("Babel: Flush route %N router_id %lR neigh %I\n",
       r->e->n.addr, r->router_id, r->neigh->addr);
@@ -185,7 +185,7 @@ babel_flush_route(struct babel_proto *p, struct babel_route *r)
   if (r->e->selected == r)
     r->e->selected = NULL;
 
-  sl_free(p->route_slab, r);
+  sl_free(r);
 }
 
 static void
@@ -336,13 +336,13 @@ found:
 }
 
 static void
-babel_remove_seqno_request(struct babel_proto *p, struct babel_seqno_request *sr)
+babel_remove_seqno_request(struct babel_proto *p UNUSED, struct babel_seqno_request *sr)
 {
   if (sr->nbr)
     rem_node(&sr->nbr_node);
 
   rem_node(NODE sr);
-  sl_free(p->seqno_slab, sr);
+  sl_free(sr);
 }
 
 static int

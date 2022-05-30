@@ -617,11 +617,11 @@ rte_store(const rte *r, net *net, rtable *tab)
  */
 
 void
-rte_free(struct rte_storage *e, rtable *tab)
+rte_free(struct rte_storage *e)
 {
   rt_unlock_source(e->rte.src);
   rta_free(e->rte.attrs);
-  sl_free(tab->rte_slab, e);
+  sl_free(e);
 }
 
 static int				/* Actually better or at least as good as */
@@ -852,7 +852,7 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
   p->rt_notify(p, c, net, new, old_exported ? &old_exported->rte : old);
 
   if (c->out_table && old_exported)
-    rte_free(old_exported, c->out_table);
+    rte_free(old_exported);
 }
 
 static void
@@ -1469,7 +1469,7 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
       if (!new_stored)
 	hmap_clear(&table->id_map, old->id);
 
-      rte_free(old_stored, table);
+      rte_free(old_stored);
     }
 }
 
@@ -2856,7 +2856,7 @@ rt_next_hop_update_net(rtable *tab, net *n)
   }
 
   for (int i=0; i<count; i++)
-    rte_free(updates[i].old, tab);
+    rte_free(updates[i].old);
 
   return count;
 }
@@ -3144,7 +3144,7 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
       /* Remove the old rte */
       struct rte_storage *del = *pos;
       *pos = (*pos)->next;
-      rte_free(del, tab);
+      rte_free(del);
       tab->rt_count--;
     }
   else if (new)
@@ -3268,7 +3268,7 @@ again:
       if (all || (e->rte.flags & (REF_STALE | REF_DISCARD)))
       {
 	*ee = e->next;
-	rte_free(e, t);
+	rte_free(e);
 	t->rt_count--;
       }
       else
@@ -3471,7 +3471,7 @@ hc_delete_hostentry(struct hostcache *hc, pool *p, struct hostentry *he)
 
   rem_node(&he->ln);
   hc_remove(hc, he);
-  sl_free(hc->slab, he);
+  sl_free(he);
 
   hc->hash_items--;
   if (hc->hash_items < hc->hash_min)

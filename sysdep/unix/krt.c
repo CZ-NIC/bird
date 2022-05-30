@@ -330,14 +330,14 @@ krt_learn_scan(struct krt_proto *p, rte *e)
       if (krt_uptodate(&m->rte, e))
 	{
 	  krt_trace_in_rl(&rl_alien, p, e, "[alien] seen");
-	  rte_free(ee, p->krt_table);
+	  rte_free(ee);
 	  m->rte.pflags |= KRT_REF_SEEN;
 	}
       else
 	{
 	  krt_trace_in(p, e, "[alien] updated");
 	  *mm = m->next;
-	  rte_free(m, p->krt_table);
+	  rte_free(m);
 	  m = NULL;
 	}
     }
@@ -384,7 +384,7 @@ again:
 	  if (!(e->rte.pflags & KRT_REF_SEEN))
 	    {
 	      *ee = e->next;
-	      rte_free(e, p->krt_table);
+	      rte_free(e);
 	      continue;
 	    }
 
@@ -448,12 +448,12 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
 	  if (krt_uptodate(&g->rte, e))
 	    {
 	      krt_trace_in(p, e, "[alien async] same");
-	      rte_free(ee, p->krt_table);
+	      rte_free(ee);
 	      return;
 	    }
 	  krt_trace_in(p, e, "[alien async] updated");
 	  *gg = g->next;
-	  rte_free(g, p->krt_table);
+	  rte_free(g);
 	}
       else
 	krt_trace_in(p, e, "[alien async] created");
@@ -464,15 +464,15 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
   else if (!g)
     {
       krt_trace_in(p, e, "[alien async] delete failed");
-      rte_free(ee, p->krt_table);
+      rte_free(ee);
       return;
     }
   else
     {
       krt_trace_in(p, e, "[alien async] removed");
       *gg = g->next;
-      rte_free(ee, p->krt_table);
-      rte_free(g, p->krt_table);
+      rte_free(ee);
+      rte_free(g);
     }
   best = n->routes;
   bestp = &n->routes;

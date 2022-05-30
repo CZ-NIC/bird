@@ -1664,7 +1664,7 @@ bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
   HASH_REMOVE2(c->prefix_hash, PXH, c->pool, px);
 
   if (c->prefix_slab)
-    sl_free(c->prefix_slab, px);
+    sl_free(px);
   else
     mb_free(px);
 }

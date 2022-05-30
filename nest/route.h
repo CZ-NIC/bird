@@ -487,7 +487,7 @@ void rt_refresh_end(rtable *t, struct rt_import_request *);
 void rt_modify_stale(rtable *t, struct rt_import_request *);
 void rt_schedule_prune(rtable *t);
 void rte_dump(struct rte_storage *);
-void rte_free(struct rte_storage *, rtable *);
+void rte_free(struct rte_storage *);
 struct rte_storage *rte_store(const rte *, net *net, rtable *);
 void rt_dump(rtable *);
 void rt_dump_all(void);

@@ -475,7 +475,7 @@ fib_delete(struct fib *f, void *E)
 	    }
 
 	  if (f->fib_slab)
-	    sl_free(f->fib_slab, E);
+	    sl_free(E);
 	  else
 	    mb_free(E);
 

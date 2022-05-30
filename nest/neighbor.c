@@ -345,7 +345,7 @@ neigh_free(neighbor *n)
 {
   rem_node(&n->n);
   rem_node(&n->if_n);
-  sl_free(neigh_slab, n);
+  sl_free(n);
 }
 
 /**

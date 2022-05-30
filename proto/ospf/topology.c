@@ -2135,7 +2135,7 @@ ospf_hash_delete(struct top_graph *f, struct top_hash_entry *e)
     if (*ee == e)
     {
       *ee = e->next;
-      sl_free(f->hash_slab, e);
+      sl_free(e);
       if (f->hash_entries-- < f->hash_entries_min)
 	ospf_top_rehash(f, -HASH_LO_STEP);
       return;
