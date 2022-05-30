@@ -525,7 +525,7 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
     }
 
     rte e = rt->rte;
-    if (f_run(s->filter, &e, s->linpool, 0) <= F_ACCEPT)
+    if (f_run(s->filter, &e, 0) <= F_ACCEPT)
       mrt_rib_table_entry(s, &e);
 
     lp_flush(s->linpool);

@@ -602,3 +602,75 @@ val_dump(const struct f_val *v) {
   return val_dump_buffer;
 }
 
+
+struct f_val *
+lp_val_copy(struct linpool *lp, const struct f_val *v)
+{
+  switch (v->type)
+  {
+    case T_VOID:
+    case T_BOOL:
+    case T_INT:
+    case T_IP:
+    case T_PAIR:
+    case T_QUAD:
+    case T_EC:
+    case T_LC:
+    case T_RD:
+    case T_ENUM:
+    case T_PATH_MASK_ITEM:
+      /* These aren't embedded but there is no need to copy them */
+    case T_SET:
+    case T_PREFIX_SET:
+    case T_PATH_MASK:
+    case T_IFACE:
+      {
+	struct f_val *out = lp_alloc(lp, sizeof(*out));
+	*out = *v;
+	return out;
+      }
+
+    case T_NET:
+      {
+	struct {
+	  struct f_val val;
+	  net_addr net[0];
+	} *out = lp_alloc(lp, sizeof(*out) + v->val.net->length);
+	out->val = *v;
+	out->val.val.net = out->net;
+	net_copy(out->net, v->val.net);
+	return &out->val;
+      }
+
+    case T_STRING:
+      {
+	uint len = strlen(v->val.s);
+	struct {
+	  struct f_val val;
+	  char buf[0];
+	} *out = lp_alloc(lp, sizeof(*out) + len + 1);
+	out->val = *v;
+	out->val.val.s = out->buf;
+	memcpy(out->buf, v->val.s, len+1);
+	return &out->val;
+      }
+
+    case T_PATH:
+    case T_CLIST:
+    case T_ECLIST:
+    case T_LCLIST:
+      {
+	struct {
+	  struct f_val val;
+	  struct adata ad;
+	} *out = lp_alloc(lp, sizeof(*out) + v->val.ad->length);
+	out->val = *v;
+	out->val.val.ad = &out->ad;
+	memcpy(&out->ad, v->val.ad, v->val.ad->length);
+	return &out->val;
+      }
+
+    default:
+      bug("Unknown type in value copy: %d", v->type);
+  }
+}

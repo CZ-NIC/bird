@@ -47,8 +47,6 @@
 
 #include "static.h"
 
-static linpool *static_lp;
-
 static inline struct rte_src * static_get_source(struct static_proto *p, uint i)
 { return i ? rt_get_source(&p->p, i) : p->p.main_source; }
 
@@ -107,14 +105,10 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 
   /* Evaluate the filter */
   if (r->cmds)
-    f_eval_rte(r->cmds, e, static_lp);
+    f_eval_rte(r->cmds, e);
 
   rte_update(p->p.main_channel, r->net, e, src);
   r->state = SRS_CLEAN;
-
-  if (r->cmds)
-    lp_flush(static_lp);
-
   return;
 
 withdraw:
@@ -473,9 +467,6 @@ static_start(struct proto *P)
   struct static_proto *p = (void *) P;
   struct static_config *cf = (void *) P->cf;
   struct static_route *r;
-
-  if (!static_lp)
-    static_lp = lp_new(&root_pool);
 
   if (p->igp_table_ip4)
     rt_lock_table(p->igp_table_ip4);

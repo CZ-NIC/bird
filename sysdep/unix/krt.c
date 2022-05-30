@@ -603,7 +603,7 @@ krt_export_net(struct krt_proto *p, net *net)
   if (filter == FILTER_ACCEPT)
     goto accept;
 
-  if (f_run(filter, &rt, krt_filter_lp, FF_SILENT) > F_ACCEPT)
+  if (f_run(filter, &rt, FF_SILENT) > F_ACCEPT)
     goto reject;
 
 

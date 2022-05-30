@@ -133,7 +133,7 @@ cmd_eval(const struct f_line *expr)
   buffer buf;
   LOG_BUFFER_INIT(buf);
 
-  if (f_eval_buf(expr, this_cli->parser_pool, &buf) > F_RETURN)
+  if (f_eval_buf(expr, &buf) > F_RETURN)
     {
       cli_msg(8008, "runtime error");
       return;

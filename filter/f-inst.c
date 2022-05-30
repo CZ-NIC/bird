@@ -696,7 +696,7 @@
     DYNAMIC_ATTR;
     ARG_TYPE(1, da.type);
     {
-      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
+      struct ea_list *l = tmp_alloc(sizeof(struct ea_list) + sizeof(eattr));
 
       l->next = NULL;
       l->flags = EALF_SORTED;
@@ -718,7 +718,7 @@
 	break;
 
       case T_IP:
-	l->attrs[0].u.ptr = lp_store_adata(fs->pool, &v1.val.ip, sizeof(ip_addr));
+	l->attrs[0].u.ptr = tmp_store_adata(&v1.val.ip, sizeof(ip_addr));
 	break;
 
       default:
@@ -739,7 +739,7 @@
     ACCESS_EATTRS;
 
     f_rta_cow(fs);
-    ea_unset_attr(fs->eattrs, fs->pool, 1, da.ea_code);
+    ea_unset_attr(fs->eattrs, tmp_linpool, 1, da.ea_code);
   }
 
   INST(FI_LENGTH, 1, 1) {	/* Get length of */

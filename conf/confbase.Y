@@ -152,9 +152,9 @@ conf: definition ;
 
 definition:
    DEFINE symbol '=' term ';' {
-     struct f_val *val = cfg_allocz(sizeof(struct f_val));
-     if (f_eval(f_linearize($4), cfg_mem, val) > F_RETURN) cf_error("Runtime error");
-     cf_define_symbol($2, SYM_CONSTANT | val->type, val, val);
+     struct f_val val;
+     if (f_eval(f_linearize($4), &val) > F_RETURN) cf_error("Runtime error");
+     cf_define_symbol($2, SYM_CONSTANT | val.type, val, lp_val_copy(cfg_mem, &val));
    }
  ;
 
