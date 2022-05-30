@@ -22,7 +22,7 @@
 #include "lib/resource.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/cli.h"
 #include "nest/locks.h"
 #include "nest/bfd.h"

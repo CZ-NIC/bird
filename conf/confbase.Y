@@ -18,7 +18,7 @@ CF_HDR
 #include "lib/string.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/bfd.h"
 #include "nest/cli.h"
 #include "filter/filter.h"

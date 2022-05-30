@@ -91,7 +91,7 @@
 #undef LOCAL_DEBUG
 
 #include "nest/bird.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "lib/resource.h"
@@ -429,7 +429,7 @@ net_roa_check_ip4_trie(rtable *tab, const net_addr_ip4 *px, u32 asn)
       net_addr_roa4 *roa = (void *) fn->addr;
       net *r = fib_node_to_user(&tab->fib, fn);
 
-      if (net_equal_prefix_roa4(roa, &roa0) && rte_is_valid(r->routes))
+      if (net_equal_prefix_roa4(roa, &roa0) && r->routes && rte_is_valid(&r->routes->rte))
       {
 	anything = 1;
 	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
@@ -456,7 +456,7 @@ net_roa_check_ip4_fib(rtable *tab, const net_addr_ip4 *px, u32 asn)
       net_addr_roa4 *roa = (void *) fn->addr;
       net *r = fib_node_to_user(&tab->fib, fn);
 
-      if (net_equal_prefix_roa4(roa, &n) && rte_is_valid(r->routes))
+      if (net_equal_prefix_roa4(roa, &n) && r->routes && rte_is_valid(&r->routes->rte))
       {
 	anything = 1;
 	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
@@ -489,7 +489,7 @@ net_roa_check_ip6_trie(rtable *tab, const net_addr_ip6 *px, u32 asn)
       net_addr_roa6 *roa = (void *) fn->addr;
       net *r = fib_node_to_user(&tab->fib, fn);
 
-      if (net_equal_prefix_roa6(roa, &roa0) && rte_is_valid(r->routes))
+      if (net_equal_prefix_roa6(roa, &roa0) && r->routes && rte_is_valid(&r->routes->rte))
       {
 	anything = 1;
 	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
@@ -516,7 +516,7 @@ net_roa_check_ip6_fib(rtable *tab, const net_addr_ip6 *px, u32 asn)
       net_addr_roa6 *roa = (void *) fn->addr;
       net *r = fib_node_to_user(&tab->fib, fn);
 
-      if (net_equal_prefix_roa6(roa, &n) && rte_is_valid(r->routes))
+      if (net_equal_prefix_roa6(roa, &n) && r->routes && rte_is_valid(&r->routes->rte))
       {
 	anything = 1;
 	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
@@ -1143,16 +1143,16 @@ static void
 rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage *old,
 	     struct rte_storage *new_best, struct rte_storage *old_best)
 {
-  if (!rte_is_valid(new))
+  if (!rte_is_valid(RTE_OR_NULL(new)))
     new = NULL;
 
-  if (!rte_is_valid(old))
+  if (!rte_is_valid(RTE_OR_NULL(old)))
     old = NULL;
 
-  if (!rte_is_valid(new_best))
+  if (!rte_is_valid(RTE_OR_NULL(new_best)))
     new_best = NULL;
 
-  if (!rte_is_valid(old_best))
+  if (!rte_is_valid(RTE_OR_NULL(old_best)))
     old_best = NULL;
 
   if (!new && !old && !new_best && !old_best)
@@ -1643,7 +1643,7 @@ rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filte
 {
   net *n = net_find(t, a);
 
-  if (!n || !rte_is_valid(n->routes))
+  if (!n || !rte_is_valid(RTE_OR_NULL(n->routes)))
     return 0;
 
   rte rt = n->routes->rte;
