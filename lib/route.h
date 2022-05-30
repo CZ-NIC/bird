@@ -72,7 +72,6 @@ struct nexthop {
   struct nexthop *next;
   byte flags;
   byte weight;
-  byte labels_orig;			/* Number of labels before hostentry was applied */
   byte labels;				/* Number of all labels */
   u32 label[0];
 };
@@ -315,6 +314,10 @@ extern struct ea_class ea_gen_from;
 extern struct ea_class ea_gen_source;
 static inline u32 rt_get_source_attr(const rte *rt)
 { return ea_get_int(rt->attrs->eattrs, &ea_gen_source, 0); }
+
+/* MPLS labels: Use with a recursive nexthop specification
+ * to add additional labels to the resolved nexthop */
+extern struct ea_class ea_mpls_labels;
 
 /* Next hop structures */
 

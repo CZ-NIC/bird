@@ -2504,7 +2504,7 @@ rt_preconfig(struct config *c)
  */
 
 void
-rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls)
+rta_apply_hostentry(rta *a, struct hostentry *he)
 {
   a->hostentry = he;
   a->dest = he->dest;
@@ -2516,15 +2516,12 @@ rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls)
     /* No nexthop */
 no_nexthop:
     a->nh = (struct nexthop) {};
-    if (mls)
-    { /* Store the label stack for later changes */
-      a->nh.labels_orig = a->nh.labels = mls->len;
-      memcpy(a->nh.label, mls->stack, mls->len * sizeof(u32));
-    }
     return;
   }
 
-  if (((!mls) || (!mls->len)) && he->nexthop_linkable)
+  eattr *mls_ea = ea_find(a->eattrs, &ea_mpls_labels);
+
+  if (!mls_ea && he->nexthop_linkable)
   { /* Just link the nexthop chain, no label append happens. */
     memcpy(&(a->nh), &(he->src->nh), nexthop_size(&(he->src->nh)));
     return;
@@ -2532,6 +2529,9 @@ no_nexthop:
 
   struct nexthop *nhp = NULL, *nhr = NULL;
   int skip_nexthop = 0;
+
+  const struct adata *mls = mls_ea ? mls_ea->u.ptr : NULL;
+  uint mls_cnt = mls ? mls->length / sizeof(u32) : 0;
 
   for (struct nexthop *nh = &(he->src->nh); nh; nh = nh->next)
   {
@@ -2549,17 +2549,16 @@ no_nexthop:
 
     if (mls)
     {
-      nhp->labels = nh->labels + mls->len;
-      nhp->labels_orig = mls->len;
+      nhp->labels = nh->labels + mls_cnt;
       if (nhp->labels <= MPLS_MAX_LABEL_STACK)
       {
 	memcpy(nhp->label, nh->label, nh->labels * sizeof(u32)); /* First the hostentry labels */
-	memcpy(&(nhp->label[nh->labels]), mls->stack, mls->len * sizeof(u32)); /* Then the bottom labels */
+	memcpy(&(nhp->label[nh->labels]), mls->data, mls->length); /* Then the bottom labels */
       }
       else
       {
 	log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
-	    nh->labels, mls->len, nhp->labels, MPLS_MAX_LABEL_STACK);
+	    nh->labels, mls_cnt, nhp->labels, MPLS_MAX_LABEL_STACK);
 	skip_nexthop++;
 	continue;
       }
@@ -2567,7 +2566,6 @@ no_nexthop:
     else if (nh->labels)
     {
       nhp->labels = nh->labels;
-      nhp->labels_orig = 0;
       memcpy(nhp->label, nh->label, nh->labels * sizeof(u32));
     }
 
@@ -2620,10 +2618,7 @@ rt_next_hop_update_rte(rtable *tab, net *n, rte *old)
   rta *a = alloca(RTA_MAX_SIZE);
   memcpy(a, old->attrs, rta_size(old->attrs));
 
-  mpls_label_stack mls = { .len = a->nh.labels_orig };
-  memcpy(mls.stack, &a->nh.label[a->nh.labels - mls.len], mls.len * sizeof(u32));
-
-  rta_apply_hostentry(a, old->attrs->hostentry, &mls);
+  rta_apply_hostentry(a, old->attrs->hostentry);
   a->cached = 0;
 
   rte e0 = *old;

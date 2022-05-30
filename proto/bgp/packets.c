@@ -980,15 +980,18 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     s->hostentry = rt_get_hostentry(tab, gw, ll, c->c.table);
 
     if (!s->mpls)
-      rta_apply_hostentry(a, s->hostentry, NULL);
+      rta_apply_hostentry(a, s->hostentry);
 
     /* With MPLS, hostentry is applied later in bgp_apply_mpls_labels() */
   }
 }
 
 static void
-bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 *labels, uint lnum)
+bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a)
 {
+  u32 *labels = (u32 *) s->mpls_labels->data;
+  u32 lnum = s->mpls_labels->length / sizeof(u32);
+
   if (lnum > MPLS_MAX_LABEL_STACK)
   {
     REPORT("Too many MPLS labels ($u)", lnum);
@@ -1001,7 +1004,7 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 *labels, uint lnum)
 
   /* Handle implicit NULL as empty MPLS stack */
   if ((lnum == 1) && (labels[0] == BGP_MPLS_NULL))
-    lnum = 0;
+    lnum = s->mpls_labels->length = 0;
 
   if (s->channel->cf->gw_mode == GW_DIRECT)
   {
@@ -1009,13 +1012,7 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 *labels, uint lnum)
     memcpy(a->nh.label, labels, 4*lnum);
   }
   else /* GW_RECURSIVE */
-  {
-    mpls_label_stack ms;
-
-    ms.len = lnum;
-    memcpy(ms.stack, labels, 4*lnum);
-    rta_apply_hostentry(a, s->hostentry, &ms);
-  }
+    rta_apply_hostentry(a, s->hostentry);
 }
 
 static void
@@ -1419,7 +1416,13 @@ bgp_encode_mpls_labels(struct bgp_write_state *s UNUSED, const adata *mpls, byte
 static void
 bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *pxlen, rta *a)
 {
-  u32 labels[BGP_MPLS_MAX], label;
+  struct {
+    struct adata ad;
+    u32 labels[BGP_MPLS_MAX];
+  } labels_adata;
+
+  u32 *labels = labels_adata.labels;
+  u32 label;
   uint lnum = 0;
 
   do {
@@ -1441,19 +1444,19 @@ bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *p
   if (!a)
     return;
 
+  labels_adata.ad.length = lnum * sizeof(u32);
+
   /* Attach MPLS attribute unless we already have one */
   if (!s->mpls_labels)
-  {
-    s->mpls_labels = lp_alloc_adata(s->pool, 4*BGP_MPLS_MAX);
-    bgp_set_attr_ptr(&(a->eattrs), BA_MPLS_LABEL_STACK, 0, s->mpls_labels);
-  }
-
-  /* Overwrite data in the attribute */
-  s->mpls_labels->length = 4*lnum;
-  memcpy(s->mpls_labels->data, labels, 4*lnum);
+    ea_set_attr(&(a->eattrs),
+	EA_LITERAL_DIRECT_ADATA(&ea_mpls_labels, 0,
+	  (s->mpls_labels = tmp_store_adata(labels, BGP_MPLS_MAX * sizeof(u32)))));
+  else
+    /* Overwrite data in the attribute */
+    memcpy(s->mpls_labels, &labels_adata, sizeof labels_adata);
 
   /* Update next hop entry in rta */
-  bgp_apply_mpls_labels(s, a, labels, lnum);
+  bgp_apply_mpls_labels(s, a);
 
   /* Attributes were changed, invalidate cached entry */
   rta_free(s->cached_rta);

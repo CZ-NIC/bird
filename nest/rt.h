@@ -439,12 +439,12 @@ struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t
 #define RSEM_EXPORTED	4		/* Routes marked in export map */
 
 struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
-void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls);
+void rta_apply_hostentry(rta *a, struct hostentry *he);
 
 static inline void
-rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, mpls_label_stack *mls)
+rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll)
 {
-  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ll, dep), mls);
+  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ll, dep));
 }
 
 /*
