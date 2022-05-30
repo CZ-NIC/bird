@@ -948,7 +948,7 @@ ea_show(struct cli *c, const eattr *e)
       if (e->undef)
 	bsprintf(pos, "undefined");
       else
-      switch (e->type & EAF_TYPE_MASK)
+      switch (e->type)
 	{
 	case EAF_TYPE_INT:
 	  bsprintf(pos, "%u", e->u.data);
@@ -964,9 +964,6 @@ ea_show(struct cli *c, const eattr *e)
 	  break;
 	case EAF_TYPE_AS_PATH:
 	  as_path_format(ad, pos, end - pos);
-	  break;
-	case EAF_TYPE_BITFIELD:
-	  bsprintf(pos, "%08x", e->u.data);
 	  break;
 	case EAF_TYPE_INT_SET:
 	  ea_show_int_set(c, ad, 1, pos, buf, end);
@@ -1011,7 +1008,10 @@ ea_dump(ea_list *e)
 	{
 	  eattr *a = &e->attrs[i];
 	  debug(" %02x:%02x.%02x", EA_PROTO(a->id), EA_ID(a->id), a->flags);
-	  debug("=%c", "?iO?I?P???S?????" [a->type & EAF_TYPE_MASK]);
+	  debug("=%c",
+	      "?iO?IRP???S??pE?"
+	      "??L???N?????????"
+	      "?o???r??????????" [a->type]);
 	  if (a->originated)
 	    debug("o");
 	  if (a->type & EAF_EMBEDDED)

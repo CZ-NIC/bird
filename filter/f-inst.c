@@ -240,6 +240,16 @@
     if (v2.val.i == 0) runtime( "Mother told me not to divide by 0" );
     RESULT(T_INT, i, v1.val.i / v2.val.i);
   }
+  INST(FI_BITOR, 2, 1) {
+    ARG(1,T_INT);
+    ARG(2,T_INT);
+    RESULT(T_INT, i, v1.val.i | v2.val.i);
+  }
+  INST(FI_BITAND, 2, 1) {
+    ARG(1,T_INT);
+    ARG(2,T_INT);
+    RESULT(T_INT, i, v1.val.i & v2.val.i);
+  }
   INST(FI_AND, 1, 1) {
     ARG(1,T_BOOL);
     ARG_TYPE_STATIC(2,T_BOOL);
@@ -686,7 +696,7 @@
 	break;
       }
 
-      switch (e->type & EAF_TYPE_MASK) {
+      switch (e->type) {
       case EAF_TYPE_INT:
 	RESULT_(da.f_type, i, e->u.data);
 	break;
@@ -694,16 +704,13 @@
 	RESULT_(T_QUAD, i, e->u.data);
 	break;
       case EAF_TYPE_OPAQUE:
-	RESULT_(T_ENUM_EMPTY, i, 0);
+	RESULT_(T_OPAQUE, ad, e->u.ptr);
 	break;
       case EAF_TYPE_IP_ADDRESS:
 	RESULT_(T_IP, ip, *((ip_addr *) e->u.ptr->data));
 	break;
       case EAF_TYPE_AS_PATH:
 	RESULT_(T_PATH, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_BITFIELD:
-	RESULT_(T_BOOL, i, !!(e->u.data & (1u << da.bit)));
 	break;
       case EAF_TYPE_INT_SET:
 	RESULT_(T_CLIST, ad, e->u.ptr);
@@ -762,19 +769,6 @@
       case EAF_TYPE_EC_SET:
       case EAF_TYPE_LC_SET:
 	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-
-      case EAF_TYPE_BITFIELD:
-	{
-	  /* First, we have to find the old value */
-	  eattr *e = ea_find(*fs->eattrs, da.ea_code);
-	  u32 data = e ? e->u.data : 0;
-
-	  if (v1.val.i)
-	    l->attrs[0].u.data = data | (1u << da.bit);
-	  else
-	    l->attrs[0].u.data = data & ~(1u << da.bit);
-	}
 	break;
 
       default:

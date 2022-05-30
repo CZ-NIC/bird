@@ -20,6 +20,9 @@ enum f_type {
 /* Nothing. Simply nothing. */
   T_VOID = 0,
 
+/* Something but inaccessible. */
+  T_OPAQUE = 0xee,
+
 /* User visible types, which fit in int */
   T_INT = 0x10,
   T_BOOL = 0x11,
@@ -41,7 +44,6 @@ enum f_type {
   T_ENUM_AF = 0x38,
 
 /* new enums go here */
-  T_ENUM_EMPTY = 0x3f,	/* Special hack for atomic_aggr */
 
 #define T_ENUM T_ENUM_LO ... T_ENUM_HI
 
