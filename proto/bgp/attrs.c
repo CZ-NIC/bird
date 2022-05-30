@@ -1191,12 +1191,11 @@ bgp_export_attr(struct bgp_export_state *s, eattr *a, ea_list *to)
  * Result: one sorted attribute list segment, or NULL if attributes are unsuitable.
  */
 static inline ea_list *
-bgp_export_attrs(struct bgp_export_state *s, ea_list *attrs)
+bgp_export_attrs(struct bgp_export_state *s, const ea_list *a)
 {
   /* Merge the attribute list */
-  ea_list *new = lp_alloc(s->pool, ea_scan(attrs));
-  ea_merge(attrs, new);
-  ea_sort(new);
+  ea_list *new = ea_normalize(a);
+  ASSERT_DIE(new);
 
   uint i, count;
   count = new->count;
@@ -1498,6 +1497,7 @@ bgp_free_bucket_table(struct bgp_channel *c)
 static struct bgp_bucket *
 bgp_get_bucket(struct bgp_channel *c, ea_list *new)
 {
+
   /* Hash and lookup */
   u32 hash = ea_hash(new);
   struct bgp_bucket *b = HASH_FIND(c->bucket_hash, RBH, new, hash);
@@ -1505,45 +1505,18 @@ bgp_get_bucket(struct bgp_channel *c, ea_list *new)
   if (b)
     return b;
 
-  uint ea_size = sizeof(ea_list) + new->count * sizeof(eattr);
-  uint ea_size_aligned = BIRD_ALIGN(ea_size, CPU_STRUCT_ALIGN);
-  uint size = sizeof(struct bgp_bucket) + ea_size_aligned;
-  uint i;
-  byte *dest;
+  /* Scan the list for total size */
+  uint ea_size = BIRD_CPU_ALIGN(ea_list_size(new));
+  uint size = sizeof(struct bgp_bucket) + ea_size;
 
-  /* Gather total size of non-inline attributes */
-  for (i = 0; i < new->count; i++)
-  {
-    eattr *a = &new->attrs[i];
-
-    if (!(a->type & EAF_EMBEDDED))
-      size += BIRD_ALIGN(sizeof(struct adata) + a->u.ptr->length, CPU_STRUCT_ALIGN);
-  }
-
-  /* Create the bucket */
+  /* Allocate the bucket */
   b = mb_alloc(c->pool, size);
   *b = (struct bgp_bucket) { };
   init_list(&b->prefixes);
   b->hash = hash;
 
-  /* Copy list of extended attributes */
-  memcpy(b->eattrs, new, ea_size);
-  dest = ((byte *) b->eattrs) + ea_size_aligned;
-
-  /* Copy values of non-inline attributes */
-  for (i = 0; i < new->count; i++)
-  {
-    eattr *a = &b->eattrs->attrs[i];
-
-    if (!(a->type & EAF_EMBEDDED))
-    {
-      const struct adata *oa = a->u.ptr;
-      struct adata *na = (struct adata *) dest;
-      memcpy(na, oa, sizeof(struct adata) + oa->length);
-      a->u.ptr = na;
-      dest += BIRD_ALIGN(sizeof(struct adata) + na->length, CPU_STRUCT_ALIGN);
-    }
-  }
+  /* Copy the ea_list */
+  ea_list_copy(b->eattrs, new, ea_size);
 
   /* Insert the bucket to send queue and bucket hash */
   add_tail(&c->bucket_queue, &b->send_node);

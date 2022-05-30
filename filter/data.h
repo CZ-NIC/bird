@@ -16,20 +16,7 @@
 /* Filter value; size of this affects filter memory consumption */
 struct f_val {
   btype type;	/* T_*  */
-  union {
-    union bval bval;
-    BVAL_ITEMS;
-
-    u64 ec;
-    lcomm lc;
-    ip_addr ip;
-    const net_addr *net;
-    const char *s;
-    const struct f_tree *t;
-    const struct f_trie *ti;
-    const struct f_path_mask *path_mask;
-    struct f_path_mask_item pmi;
-  } val;
+  union bval_long val;
 };
 
 #define fputip(a)   ({ ip_addr *ax = falloc(sizeof(*ax)); *ax = (a); ax; })

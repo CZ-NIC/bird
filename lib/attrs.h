@@ -11,7 +11,35 @@
 
 #include <stdint.h>
 #include "lib/unaligned.h"
-#include "lib/route.h"
+
+typedef struct adata {
+  uint length;				/* Length of data */
+  byte data[0];
+} adata;
+
+#define ADATA_SIZE(s)	BIRD_CPU_ALIGN(sizeof(struct adata) + s)
+
+extern const adata null_adata;		/* adata of length 0 */
+
+static inline struct adata *
+lp_alloc_adata(struct linpool *pool, uint len)
+{
+  struct adata *ad = lp_alloc(pool, sizeof(struct adata) + len);
+  ad->length = len;
+  return ad;
+}
+
+static inline struct adata *
+lp_store_adata(struct linpool *pool, const void *buf, uint len)
+{
+  struct adata *ad = lp_alloc_adata(pool, len);
+  memcpy(ad->data, buf, len);
+  return ad;
+}
+
+static inline int adata_same(const struct adata *a, const struct adata *b)
+{ return (a->length == b->length && !memcmp(a->data, b->data, a->length)); }
+
 
 
 /* a-path.c */

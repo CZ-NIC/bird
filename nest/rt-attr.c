@@ -626,7 +626,7 @@ ea_do_prune(ea_list *e)
  * If an attribute occurs multiple times in a single &ea_list,
  * ea_sort() leaves only the first (the only significant) occurrence.
  */
-void
+static void
 ea_sort(ea_list *e)
 {
   while (e)
@@ -650,8 +650,8 @@ ea_sort(ea_list *e)
  * This function calculates an upper bound of the size of
  * a given &ea_list after merging with ea_merge().
  */
-unsigned
-ea_scan(ea_list *e)
+static unsigned
+ea_scan(const ea_list *e)
 {
   unsigned cnt = 0;
 
@@ -677,8 +677,8 @@ ea_scan(ea_list *e)
  * segments with ea_merge() and finally sort and prune the result
  * by calling ea_sort().
  */
-void
-ea_merge(ea_list *e, ea_list *t)
+static void
+ea_merge(const ea_list *e, ea_list *t)
 {
   eattr *d = t->attrs;
 
@@ -692,6 +692,16 @@ ea_merge(ea_list *e, ea_list *t)
       d += e->count;
       e = e->next;
     }
+}
+
+ea_list *
+ea_normalize(const ea_list *e)
+{
+  ea_list *t = tmp_alloc(ea_scan(e));
+  ea_merge(e, t);
+  ea_sort(t);
+
+  return t->count ? t : NULL;
 }
 
 /**
@@ -729,33 +739,38 @@ ea_same(ea_list *x, ea_list *y)
   return 1;
 }
 
-static inline ea_list *
-ea_list_copy(ea_list *o)
+uint
+ea_list_size(ea_list *o)
 {
-  ea_list *n;
-  unsigned i, adpos, elen;
+  unsigned i, elen;
 
-  if (!o)
-    return NULL;
-  ASSERT(!o->next);
-  elen = adpos = sizeof(ea_list) + sizeof(eattr) * o->count;
+  ASSERT_DIE(o);
+  ASSERT_DIE(!o->next);
+  elen = BIRD_CPU_ALIGN(sizeof(ea_list) + sizeof(eattr) * o->count);
 
   for(i=0; i<o->count; i++)
     {
       eattr *a = &o->attrs[i];
       if (!(a->type & EAF_EMBEDDED))
-	elen += sizeof(struct adata) + a->u.ptr->length;
+	elen += ADATA_SIZE(a->u.ptr->length);
     }
 
-  n = mb_alloc(rta_pool, elen);
+  return elen;
+}
+
+void
+ea_list_copy(ea_list *n, ea_list *o, uint elen)
+{
+  uint adpos = sizeof(ea_list) + sizeof(eattr) * o->count;
   memcpy(n, o, adpos);
-  n->flags |= EALF_CACHED;
-  for(i=0; i<o->count; i++)
+  adpos = BIRD_CPU_ALIGN(adpos);
+
+  for(uint i=0; i<o->count; i++)
     {
       eattr *a = &n->attrs[i];
       if (!(a->type & EAF_EMBEDDED))
 	{
-	  unsigned size = sizeof(struct adata) + a->u.ptr->length;
+	  unsigned size = ADATA_SIZE(a->u.ptr->length);
 	  ASSERT_DIE(adpos + size <= elen);
 
 	  struct adata *d = ((void *) n) + adpos;
@@ -765,8 +780,8 @@ ea_list_copy(ea_list *o)
 	  adpos += size;
 	}
     }
+
   ASSERT_DIE(adpos == elen);
-  return n;
 }
 
 static inline void
@@ -1029,6 +1044,7 @@ ea_hash(ea_list *e)
 
   if (e)			/* Assuming chain of length 1 */
     {
+      ASSERT_DIE(!e->next);
       for(i=0; i<e->count; i++)
 	{
 	  struct eattr *a = &e->attrs[i];
@@ -1135,7 +1151,13 @@ rta_copy(rta *o)
   memcpy(r, o, rta_size(o));
   r->uc = 1;
   r->nh.next = nexthop_copy(o->nh.next);
-  r->eattrs = ea_list_copy(o->eattrs);
+  if (!r->eattrs)
+    return r;
+
+  uint elen = ea_list_size(o->eattrs);
+  r->eattrs = mb_alloc(rta_pool, elen);
+  ea_list_copy(r->eattrs, o->eattrs, elen);
+  r->eattrs->flags |= EALF_CACHED;
   return r;
 }
 
@@ -1191,7 +1213,7 @@ rta_lookup(rta *o)
 
   ASSERT(!o->cached);
   if (o->eattrs)
-    ea_normalize(o->eattrs);
+    o->eattrs = ea_normalize(o->eattrs);
 
   h = rta_hash(o);
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next)

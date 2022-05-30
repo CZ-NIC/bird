@@ -431,7 +431,7 @@ mrt_rib_table_entry_bgp_attrs(struct mrt_table_dump_state *s, rte *r)
 
   /* Attribute list must be normalized for bgp_encode_attrs() */
   if (!rta_is_cached(r->attrs))
-    ea_normalize(eattrs);
+    eattrs = ea_normalize(eattrs);
 
   mrt_buffer_need(b, MRT_ATTR_BUFFER_SIZE);
   byte *pos = b->pos;

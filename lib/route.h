@@ -10,6 +10,8 @@
 #ifndef _BIRD_LIB_ROUTE_H_
 #define _BIRD_LIB_ROUTE_H_
 
+#include "lib/type.h"
+
 struct network;
 struct proto;
 struct cli;
@@ -165,25 +167,6 @@ const char *ea_custom_name(uint ea);
 #define EA_BIT(n) ((n) << 24)		/* Used in bitfield accessors */
 #define EA_BIT_GET(ea) ((ea) >> 24)
 
-typedef struct adata {
-  uint length;				/* Length of data */
-  byte data[0];
-} adata;
-
-extern const adata null_adata;		/* adata of length 0 */
-
-static inline struct adata *
-lp_alloc_adata(struct linpool *pool, uint len)
-{
-  struct adata *ad = lp_alloc(pool, sizeof(struct adata) + len);
-  ad->length = len;
-  return ad;
-}
-
-static inline int adata_same(const struct adata *a, const struct adata *b)
-{ return (a->length == b->length && !memcmp(a->data, b->data, a->length)); }
-
-
 typedef struct ea_list {
   struct ea_list *next;			/* In case we have an override list */
   byte flags;				/* Flags: EALF_... */
@@ -223,24 +206,16 @@ ea_get_int(ea_list *e, unsigned id, u32 def)
 }
 
 void ea_dump(ea_list *);
-void ea_sort(ea_list *);		/* Sort entries in all sub-lists */
-unsigned ea_scan(ea_list *);		/* How many bytes do we need for merged ea_list */
-void ea_merge(ea_list *from, ea_list *to); /* Merge sub-lists to allocated buffer */
 int ea_same(ea_list *x, ea_list *y);	/* Test whether two ea_lists are identical */
 uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
-#define ea_normalize(ea) do { \
-  if (ea->next) { \
-    ea_list *t = alloca(ea_scan(ea)); \
-    ea_merge(ea, t); \
-    ea = t; \
-  } \
-  ea_sort(ea); \
-  if (ea->count == 0) \
-    ea = NULL; \
-} while(0) \
+/* Normalize ea_list; allocates the result from tmp_linpool */
+ea_list *ea_normalize(const ea_list *e);
+
+uint ea_list_size(ea_list *);
+void ea_list_copy(ea_list *dest, ea_list *src, uint size);
 
 struct ea_one_attr_list {
   ea_list l;
