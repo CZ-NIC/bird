@@ -1,6 +1,32 @@
 dnl ** Additional Autoconf tests for BIRD configure script
 dnl ** (c) 1999 Martin Mares <mj@ucw.cz>
 
+AC_DEFUN([BIRD_CHECK_POINTER_ALIGNMENT],
+[
+  AC_CACHE_CHECK(
+    [how pointers are aligned],
+    [bird_cv_pointer_alignment],
+    AC_COMPILE_IFELSE([
+      AC_LANG_PROGRAM(
+	[
+	  _Static_assert(_Alignof(void *) == 8, "bad");
+	], []
+      )
+    ],
+    [bird_cv_pointer_alignment=8],
+    AC_COMPILE_IFELSE([
+      AC_LANG_PROGRAM(
+	[
+	  _Static_assert(_Alignof(void *) == 4, "bad");
+	], []
+      )
+    ],
+    [bird_cv_pointer_alignment=4],
+    [bird_cv_pointer_alignment=unknown]
+    ))
+  )
+])
+
 AC_DEFUN([BIRD_CHECK_THREAD_LOCAL],
 [
   AC_CACHE_CHECK(

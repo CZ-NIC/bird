@@ -13,9 +13,15 @@
 #include "lib/attrs.h"
 
 union bval {
-#define BVAL_ITEMS	\
-  u32 data;			/* Integer type inherited from eattrs */		\
-  u32 i;			/* Integer type inherited from filters */		\
+#define BVAL_ITEMS									\
+  struct {										\
+    u32 data;			/* Integer type inherited from eattrs */		\
+    PADDING(data, 0, 4);	/* Must be padded on 64-bits */				\
+  };											\
+  struct {										\
+    u32 i;			/* Integer type inherited from filters */		\
+    PADDING(i, 0, 4);		/* Must be padded on 64-bits */				\
+  };											\
   const struct adata *ptr;	/* Generic attribute data inherited from eattrs */	\
   const struct adata *ad;     	/* Generic attribute data inherited from filters */	\
 

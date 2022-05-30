@@ -640,6 +640,18 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
 
   if (r)
   {
+    struct {
+      ea_list l;
+      eattr a[3];
+    } eattrs = {
+      .l.count = 3,
+      .a = {
+	EA_LITERAL_EMBEDDED(EA_BABEL_METRIC, T_INT, 0, r->metric),
+	EA_LITERAL_STORE_ADATA(EA_BABEL_ROUTER_ID, T_OPAQUE, 0, &r->router_id, sizeof(r->router_id)),
+	EA_LITERAL_EMBEDDED(EA_BABEL_SEQNO, T_INT, 0, r->seqno),
+      }
+    };
+
     rta a0 = {
       .source = RTS_BABEL,
       .scope = SCOPE_UNIVERSE,
@@ -648,29 +660,7 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
       .from = r->neigh->addr,
       .nh.gw = r->next_hop,
       .nh.iface = r->neigh->ifa->iface,
-      .eattrs = alloca(sizeof(ea_list) + 3*sizeof(eattr)),
-    };
-
-    *a0.eattrs = (ea_list) { .count = 3 };
-    a0.eattrs->attrs[0] = (eattr) {
-      .id = EA_BABEL_METRIC,
-      .type = T_INT,
-      .u.data = r->metric,
-    };
-
-    struct adata *ad = alloca(sizeof(struct adata) + sizeof(u64));
-    ad->length = sizeof(u64);
-    memcpy(ad->data, &(r->router_id), sizeof(u64));
-    a0.eattrs->attrs[1] = (eattr) {
-      .id = EA_BABEL_ROUTER_ID,
-      .type = T_OPAQUE,
-      .u.ptr = ad,
-    };
-
-    a0.eattrs->attrs[2] = (eattr) {
-      .id = EA_BABEL_SEQNO,
-      .type = T_INT,
-      .u.data = r->seqno,
+      .eattrs = &eattrs.l,
     };
 
     /*

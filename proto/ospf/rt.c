@@ -2062,39 +2062,33 @@ again1:
 
       if (reload || ort_changed(nf, &a0))
       {
-	a0.eattrs = alloca(sizeof(ea_list) + 4 * sizeof(eattr));
-	memset(a0.eattrs, 0, sizeof(ea_list));
-
 	nf->old_metric1 = nf->n.metric1;
 	nf->old_metric2 = nf->n.metric2;
 	nf->old_tag = nf->n.tag;
 	nf->old_rid = nf->n.rid;
 
-	a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
-	  .id = EA_OSPF_METRIC1,
-	  .type = T_INT,
-	  .u.data = nf->n.metric1,
-	};
+	struct {
+	  ea_list l;
+	  eattr a[4];
+	} eattrs;
+
+	eattrs.l = (ea_list) {};
+
+	eattrs.a[eattrs.l.count++] =
+	  EA_LITERAL_EMBEDDED(EA_OSPF_METRIC1, T_INT, 0, nf->n.metric1);
 
 	if (nf->n.type == RTS_OSPF_EXT2)
-	  a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
-	    .id = EA_OSPF_METRIC2,
-	    .type = T_INT,
-	    .u.data = nf->n.metric2,
-	  };
+	  eattrs.a[eattrs.l.count++] =
+	    EA_LITERAL_EMBEDDED(EA_OSPF_METRIC2, T_INT, 0, nf->n.metric2);
 
 	if ((nf->n.type == RTS_OSPF_EXT1) || (nf->n.type == RTS_OSPF_EXT2))
-	  a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
-	    .id = EA_OSPF_TAG,
-	    .type = T_INT,
-	    .u.data = nf->n.tag,
-	  };
+	  eattrs.a[eattrs.l.count++] =
+	    EA_LITERAL_EMBEDDED(EA_OSPF_TAG, T_INT, 0, nf->n.tag);
 
-	a0.eattrs->attrs[a0.eattrs->count++] = (eattr) {
-	  .id = EA_OSPF_ROUTER_ID,
-	  .type = T_QUAD,
-	  .u.data = nf->n.rid,
-	};
+	eattrs.a[eattrs.l.count++] =
+	  EA_LITERAL_EMBEDDED(EA_OSPF_ROUTER_ID, T_QUAD, 0, nf->n.rid);
+
+	a0.eattrs = &eattrs.l;
 
 	rta_free(nf->old_rta);
 	nf->old_rta = rta_lookup(&a0);

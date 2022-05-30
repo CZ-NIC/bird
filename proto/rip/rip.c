@@ -195,26 +195,14 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 
     struct {
       ea_list l;
-      eattr e[3];
+      eattr a[3];
       struct rip_iface_adata riad;
     } ea_block = {
-      .l = { .count = 3, },
-      .e = {
-	{
-	  .id = EA_RIP_METRIC,
-	  .type = T_INT,
-	  .u.data = rt_metric,
-	},
-	{
-	  .id = EA_RIP_TAG,
-	  .type = T_INT,
-	  .u.data = rt_tag,
-	},
-	{
-	  .id = EA_RIP_FROM,
-	  .type = T_IFACE,
-	  .u.ptr = &ea_block.riad.ad,
-	}
+      .l.count = 3,
+      .a = {
+	EA_LITERAL_EMBEDDED(EA_RIP_METRIC, T_INT, 0, rt_metric),
+	EA_LITERAL_EMBEDDED(EA_RIP_TAG, T_INT, 0, rt_tag),
+	EA_LITERAL_DIRECT_ADATA(EA_RIP_FROM, T_IFACE, 0, &ea_block.riad.ad),
       },
       .riad = {
 	.ad = { .length = sizeof(struct rip_iface_adata) - sizeof(struct adata) },

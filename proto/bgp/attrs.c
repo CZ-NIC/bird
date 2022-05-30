@@ -94,13 +94,12 @@ void bgp_set_attr_u32(ea_list **to, uint code, uint flags, u32 val)
 void bgp_set_attr_ptr(ea_list **to, uint code, uint flags, const struct adata *ad)
 {
   ASSERT(bgp_attr_known(code));
-  ASSERT_DIE(!(bgp_attr_table[code].type & EAF_EMBEDDED));
 
-  ea_set_attr(to, EA_LITERAL_GENERIC(
+  ea_set_attr(to, EA_LITERAL_DIRECT_ADATA(
 	EA_CODE(PROTOCOL_BGP, code),
 	bgp_attr_table[code].type,
 	flags & ~BAF_EXT_LEN,
-	.u.ad = ad
+	ad
 	));
 }
 
@@ -109,7 +108,7 @@ bgp_set_attr_data(ea_list **to, uint code, uint flags, void *data, uint len)
 {
   ASSERT(bgp_attr_known(code));
 
-  ea_set_attr(to, EA_LITERAL_ADATA(
+  ea_set_attr(to, EA_LITERAL_STORE_ADATA(
 	EA_CODE(PROTOCOL_BGP, code),
 	bgp_attr_table[code].type,
 	flags & ~BAF_EXT_LEN,

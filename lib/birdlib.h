@@ -9,17 +9,29 @@
 #ifndef _BIRD_BIRDLIB_H_
 #define _BIRD_BIRDLIB_H_
 
+#include "sysdep/config.h"
 #include "lib/alloca.h"
 
 /* Ugly structure offset handling macros */
 
-struct align_probe { char x; long int y; };
-
 #define OFFSETOF(s, i) ((size_t) &((s *)0)->i)
 #define SKIP_BACK(s, i, p) ((s *)((char *)p - OFFSETOF(s, i)))
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
-#define CPU_STRUCT_ALIGN (sizeof(struct align_probe))
+#define CPU_STRUCT_ALIGN  (MAX_(_Alignof(void*), _Alignof(u64)))
 #define BIRD_CPU_ALIGN(s) BIRD_ALIGN((s), CPU_STRUCT_ALIGN)
+
+/* Structure item alignment macros */
+
+#define PADDING_NAME(id)	_padding_##id
+#define PADDING_(id, sz)	u8 PADDING_NAME(id)[sz]
+
+#if CPU_POINTER_ALIGNMENT == 4
+#define PADDING(id, n32, n64)	PADDING_(id, n32)
+#elif CPU_POINTER_ALIGNMENT == 8
+#define PADDING(id, n32, n64)	PADDING_(id, n64)
+#else
+#error "Strange CPU pointer alignment: " CPU_POINTER_ALIGNMENT
+#endif
 
 /* Utility macros */
 
