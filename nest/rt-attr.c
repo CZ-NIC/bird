@@ -114,10 +114,48 @@ struct ea_class ea_gen_nexthop = {
   .type = T_NEXTHOP_LIST,
 };
 
-struct ea_class ea_mpls_labels = {
-  .name = "mpls_labels",
-  .type = T_CLIST,
+/*
+ * ea_set_hostentry() acquires hostentry from hostcache.
+ * New hostentry has zero use count. Cached rta locks its
+ * hostentry (increases its use count), uncached rta does not lock it.
+ * Hostentry with zero use count is removed asynchronously
+ * during host cache update, therefore it is safe to hold
+ * such hostentry temporarily as long as you hold the table lock.
+ *
+ * There is no need to hold a lock for hostentry->dep table, because that table
+ * contains routes responsible for that hostentry, and therefore is non-empty if
+ * given hostentry has non-zero use count. If the hostentry has zero use count,
+ * the entry is removed before dep is referenced.
+ *
+ * The protocol responsible for routes with recursive next hops should hold a
+ * lock for a 'source' table governing that routes (argument tab),
+ * because its routes reference hostentries related to the governing table.
+ * When all such routes are
+ * removed, rtas are immediately removed achieving zero uc. Then the 'source'
+ * table lock could be immediately released, although hostentries may still
+ * exist - they will be freed together with the 'source' table.
+ */
+
+  static void
+ea_gen_hostentry_stored(const eattr *ea)
+{
+  struct hostentry_adata *had = (struct hostentry_adata *) ea->u.ptr;
+  had->he->uc++;
+}
+
+static void
+ea_gen_hostentry_freed(const eattr *ea)
+{
+  struct hostentry_adata *had = (struct hostentry_adata *) ea->u.ptr;
+  had->he->uc--;
+}
+
+struct ea_class ea_gen_hostentry = {
+  .name = "hostentry",
+  .type = T_HOSTENTRY,
   .readonly = 1,
+  .stored = ea_gen_hostentry_stored,
+  .freed = ea_gen_hostentry_freed,
 };
 
 const char * rta_dest_names[RTD_MAX] = {
@@ -876,6 +914,8 @@ ea_list_ref(ea_list *l)
 
       struct ea_class *cl = ea_class_global[a->id];
       ASSERT_DIE(cl && cl->uc);
+
+      CALL(cl->stored, a);
       cl->uc++;
     }
 }
@@ -890,6 +930,8 @@ ea_list_unref(ea_list *l)
 
       struct ea_class *cl = ea_class_global[a->id];
       ASSERT_DIE(cl && cl->uc);
+
+      CALL(cl->freed, a);
       if (!--cl->uc)
 	ea_class_free(cl);
     }
@@ -1206,9 +1248,7 @@ rta_hash(rta *a)
 {
   u64 h;
   mem_hash_init(&h);
-#define MIX(f) mem_hash_mix(&h, &(a->f), sizeof(a->f));
 #define BMIX(f) mem_hash_mix_num(&h, a->f);
-  MIX(hostentry);
   BMIX(dest);
 #undef MIX
 
@@ -1219,7 +1259,6 @@ static inline int
 rta_same(rta *x, rta *y)
 {
   return (x->dest == y->dest &&
-	  x->hostentry == y->hostentry &&
 	  ea_same(x->eattrs, y->eattrs));
 }
 
@@ -1303,7 +1342,6 @@ rta_lookup(rta *o)
   r = rta_copy(o);
   r->hash_key = h;
   r->cached = 1;
-  rt_lock_hostentry(r->hostentry);
   rta_insert(r);
 
   if (++rta_cache_count > rta_cache_limit)
@@ -1320,7 +1358,6 @@ rta__free(rta *a)
   *a->pprev = a->next;
   if (a->next)
     a->next->pprev = a->pprev;
-  rt_unlock_hostentry(a->hostentry);
   ea_free(a->eattrs);
   a->cached = 0;
   sl_free(a);
@@ -1411,8 +1448,7 @@ rta_init(void)
   ea_register_init(&ea_gen_from);
   ea_register_init(&ea_gen_source);
   ea_register_init(&ea_gen_nexthop);
-
-  ea_register_init(&ea_mpls_labels);
+  ea_register_init(&ea_gen_hostentry);
 }
 
 /*

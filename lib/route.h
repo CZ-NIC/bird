@@ -89,7 +89,6 @@ typedef struct rta {
   u32 uc;				/* Use count */
   u32 hash_key;				/* Hash over important fields */
   struct ea_list *eattrs;		/* Extended Attribute chain */
-  struct hostentry *hostentry;		/* Hostentry for recursive next-hops */
   u16 cached:1;				/* Are attributes cached? */
   u16 dest:4;				/* Route destination type (RTD_...) */
 } rta;
@@ -174,6 +173,8 @@ struct ea_class {
   uint readonly:1;			/* This attribute can't be changed by filters */ \
   uint conf:1;				/* Requested by config */ \
   void (*format)(const eattr *ea, byte *buf, uint size); \
+  void (*stored)(const eattr *ea);	/* When stored into global hash */ \
+  void (*freed)(const eattr *ea);	/* When released from global hash */ \
 
   EA_CLASS_INSIDE;
 };
@@ -331,10 +332,6 @@ extern struct ea_class ea_gen_from;
 extern struct ea_class ea_gen_source;
 static inline u32 rt_get_source_attr(const rte *rt)
 { return ea_get_int(rt->attrs->eattrs, &ea_gen_source, 0); }
-
-/* MPLS labels: Use with a recursive nexthop specification
- * to add additional labels to the resolved nexthop */
-extern struct ea_class ea_mpls_labels;
 
 /* Next hop: For now, stored as adata */
 extern struct ea_class ea_gen_nexthop;

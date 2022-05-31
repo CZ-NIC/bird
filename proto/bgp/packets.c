@@ -986,27 +986,24 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
       WITHDRAW(BAD_NEXT_HOP " - zero address");
 
     rtable *tab = ipa_is_ip4(gw) ? c->igp_table_ip4 : c->igp_table_ip6;
-    s->hostentry = rt_get_hostentry(tab, gw, ll, c->c.table);
-
-    if (!s->mpls)
-      rta_apply_hostentry(a, s->hostentry);
-
-    /* With MPLS, hostentry is applied later in bgp_apply_mpls_labels() */
+    if (s->mpls)
+    {
+      u32 labels[BGP_MPLS_MAX];
+      ea_set_hostentry(&a->eattrs, c->c.table, tab, gw, ll, BGP_MPLS_MAX, labels);
+    }
+    else
+      ea_set_hostentry(&a->eattrs, c->c.table, tab, gw, ll, 0, NULL);
   }
 }
 
 static void
-bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a)
+bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 lnum, u32 labels[lnum])
 {
-  u32 *labels = (u32 *) s->mpls_labels->data;
-  u32 lnum = s->mpls_labels->length / sizeof(u32);
-
   if (lnum > MPLS_MAX_LABEL_STACK)
   {
     REPORT("Too many MPLS labels ($u)", lnum);
 
     a->dest = RTD_UNREACHABLE;
-    a->hostentry = NULL;
     ea_unset_attr(&a->eattrs, 0, &ea_gen_nexthop);
     return;
   }
@@ -1029,7 +1026,13 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a)
     nh.nhad.ad.length = sizeof nh.nhad + lnum * sizeof(u32);
   }
   else /* GW_RECURSIVE */
-    rta_apply_hostentry(a, s->hostentry);
+  {
+    eattr *e = ea_find(a->eattrs, &ea_gen_hostentry);
+    ASSERT_DIE(e);
+    struct hostentry_adata *head = (void *) e->u.ptr;
+    memcpy(&head->labels, labels, lnum * sizeof(u32));
+    head->ad.length = (void *)(&head->labels[lnum]) - (void *) head->ad.data;
+  }
 }
 
 static void
@@ -1446,12 +1449,7 @@ bgp_encode_mpls_labels(struct bgp_write_state *s UNUSED, const adata *mpls, byte
 static void
 bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *pxlen, rta *a)
 {
-  struct {
-    struct adata ad;
-    u32 labels[BGP_MPLS_MAX];
-  } labels_adata;
-
-  u32 *labels = labels_adata.labels;
+  u32 labels[BGP_MPLS_MAX];
   u32 label;
   uint lnum = 0;
 
@@ -1474,19 +1472,8 @@ bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *p
   if (!a)
     return;
 
-  labels_adata.ad.length = lnum * sizeof(u32);
-
-  /* Attach MPLS attribute unless we already have one */
-  if (!s->mpls_labels)
-    ea_set_attr(&(a->eattrs),
-	EA_LITERAL_DIRECT_ADATA(&ea_mpls_labels, 0,
-	  (s->mpls_labels = tmp_store_adata(labels, BGP_MPLS_MAX * sizeof(u32)))));
-  else
-    /* Overwrite data in the attribute */
-    memcpy(s->mpls_labels, &labels_adata, sizeof labels_adata);
-
   /* Update next hop entry in rta */
-  bgp_apply_mpls_labels(s, a);
+  bgp_apply_mpls_labels(s, a, lnum, labels);
 
   /* Attributes were changed, invalidate cached entry */
   rta_free(s->cached_rta);

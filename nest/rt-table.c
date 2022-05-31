@@ -121,6 +121,7 @@ static void rt_free_hostcache(rtable *tab);
 static void rt_notify_hostcache(rtable *tab, net *net);
 static void rt_update_hostcache(rtable *tab);
 static void rt_next_hop_update(rtable *tab);
+static inline void rt_next_hop_resolve_rte(rte *r);
 static inline void rt_prune_table(rtable *tab);
 static inline void rt_schedule_notify(rtable *tab);
 static void rt_flowspec_notify(rtable *tab, net *net);
@@ -159,7 +160,8 @@ const char *rt_export_state_name(u8 state)
     return rt_export_state_name_array[state];
 }
 
-
+static inline struct rte_storage *rt_next_hop_update_rte(rtable *tab, net *n, rte *old);
+static struct hostentry *rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
 
 static void
 net_init_with_trie(struct fib *f, void *N)
@@ -1555,13 +1557,7 @@ rte_update_direct(struct channel *c, const net_addr *n, rte *new, struct rte_src
       int fr;
 
       stats->updates_received++;
-      if (!rte_validate(c, new))
-	{
-	  channel_rte_trace_in(D_FILTERS, c, new, "invalid");
-	  stats->updates_invalid++;
-	  new = NULL;
-	}
-      else if ((filter == FILTER_REJECT) ||
+      if ((filter == FILTER_REJECT) ||
 	((fr = f_run(filter, new, 0)) > F_ACCEPT))
 	{
 	  stats->updates_filtered++;
@@ -1572,6 +1568,17 @@ rte_update_direct(struct channel *c, const net_addr *n, rte *new, struct rte_src
 	  else
 	    new = NULL;
 	}
+
+      if (new)
+	rt_next_hop_resolve_rte(new);
+
+      if (new && !rte_validate(c, new))
+	{
+	  channel_rte_trace_in(D_FILTERS, c, new, "invalid");
+	  stats->updates_invalid++;
+	  new = NULL;
+	}
+
     }
   else
     stats->withdraws_received++;
@@ -2513,9 +2520,29 @@ rt_preconfig(struct config *c)
  */
 
 void
-rta_apply_hostentry(rta *a, struct hostentry *he)
+ea_set_hostentry(ea_list **to, struct rtable *dep, struct rtable *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum])
 {
-  a->hostentry = he;
+  struct {
+    struct adata ad;
+    struct hostentry *he;
+    u32 labels[lnum];
+  } *head = (void *) tmp_alloc_adata(sizeof *head - sizeof(struct adata));
+
+  head->he = rt_get_hostentry(tab, gw, ll, dep);
+  memcpy(head->labels, labels, lnum * sizeof(u32));
+
+  ea_set_attr(to, EA_LITERAL_DIRECT_ADATA(
+	&ea_gen_hostentry, 0, &head->ad));
+}
+
+
+static void
+rta_apply_hostentry(rta *a, struct hostentry_adata *head)
+{
+  struct hostentry *he = head->he;
+  u32 *labels = head->labels;
+  u32 lnum = (u32 *) (head->ad.data + head->ad.length) - labels;
+
   a->dest = he->dest;
 
   ea_set_attr_u32(&a->eattrs, &ea_gen_igp_metric, 0, he->igp_metric);
@@ -2527,16 +2554,11 @@ rta_apply_hostentry(rta *a, struct hostentry *he)
     return;
   }
 
-  eattr *mls_ea = ea_find(a->eattrs, &ea_mpls_labels);
-
-  if (!mls_ea && he->nexthop_linkable)
+  if (!lnum && he->nexthop_linkable)
   { /* Just link the nexthop chain, no label append happens. */
     ea_copy_attr(&a->eattrs, he->src->eattrs, &ea_gen_nexthop);
     return;
   }
-
-  const struct adata *mls = mls_ea ? mls_ea->u.ptr : NULL;
-  uint mls_cnt = mls ? mls->length / sizeof(u32) : 0;
 
   eattr *he_nh_ea = ea_find(he->src->eattrs, &ea_gen_nexthop);
   struct nexthop_adata *nhad = (struct nexthop_adata *) he_nh_ea->u.ptr;
@@ -2545,14 +2567,14 @@ rta_apply_hostentry(rta *a, struct hostentry *he)
 
   NEXTHOP_WALK(nh, nhad)
   {
-    if (nh->labels + mls_cnt > MPLS_MAX_LABEL_STACK)
+    if (nh->labels + lnum > MPLS_MAX_LABEL_STACK)
     {
       log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
-	    nh->labels, mls_cnt, nh->labels + mls_cnt, MPLS_MAX_LABEL_STACK);
+	    nh->labels, lnum, nh->labels + lnum, MPLS_MAX_LABEL_STACK);
       continue;
     }
 
-    total_size += NEXTHOP_SIZE_CNT(nh->labels + mls_cnt);
+    total_size += NEXTHOP_SIZE_CNT(nh->labels + lnum);
   }
 
   if (total_size == OFFSETOF(struct nexthop_adata, nh))
@@ -2569,14 +2591,14 @@ rta_apply_hostentry(rta *a, struct hostentry *he)
 
   NEXTHOP_WALK(nh, nhad)
   {
-    if (nh->labels + mls_cnt > MPLS_MAX_LABEL_STACK)
+    if (nh->labels + lnum > MPLS_MAX_LABEL_STACK)
       continue;
 
     memcpy(dest, nh, NEXTHOP_SIZE(nh));
-    if (mls_cnt)
+    if (lnum)
     {
-      memcpy(&(dest->label[dest->labels]), mls->data, mls->length);
-      dest->labels += mls_cnt;
+      memcpy(&(dest->label[dest->labels]), labels, lnum * sizeof labels[0]);
+      dest->labels += lnum;
     }
 
     if (ipa_nonzero(nh->gw))
@@ -2598,45 +2620,65 @@ rta_apply_hostentry(rta *a, struct hostentry *he)
 	&ea_gen_nexthop, 0, &new->ad));
 }
 
-static inline int
+static inline struct hostentry_adata *
 rta_next_hop_outdated(rta *a)
 {
-  struct hostentry *he = a->hostentry;
+  eattr *heea = ea_find(a->eattrs, &ea_gen_hostentry);
+  if (!heea)
+    return NULL;
 
-  if (!he)
-    return 0;
+  struct hostentry_adata *head = (struct hostentry_adata *) heea->u.ptr;
 
-  if (!he->src)
-    return a->dest != RTD_UNREACHABLE;
+  if (!head->he->src)
+    return (a->dest != RTD_UNREACHABLE) ? head : NULL;
 
-  eattr *he_nh_ea = ea_find(he->src->eattrs, &ea_gen_nexthop);
+  eattr *he_nh_ea = ea_find(head->he->src->eattrs, &ea_gen_nexthop);
   eattr *a_nh_ea = ea_find(a->eattrs, &ea_gen_nexthop);
 
-  return (a->dest != he->dest) ||
-    (ea_get_int(a->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN) != he->igp_metric) ||
-    (!he->nexthop_linkable) ||
-    (!he_nh_ea != !a_nh_ea) ||
-    (he_nh_ea && a_nh_ea && !adata_same(he_nh_ea->u.ptr, a_nh_ea->u.ptr));
+  return ((a->dest != head->he->dest) ||
+      (ea_get_int(a->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN) != head->he->igp_metric) ||
+      (!head->he->nexthop_linkable) ||
+      (!he_nh_ea != !a_nh_ea) ||
+      (he_nh_ea && a_nh_ea && !adata_same(he_nh_ea->u.ptr, a_nh_ea->u.ptr)))
+    ? head : NULL;
 }
 
 static inline struct rte_storage *
 rt_next_hop_update_rte(rtable *tab, net *n, rte *old)
 {
-  if (!rta_next_hop_outdated(old->attrs))
+  struct hostentry_adata *head = rta_next_hop_outdated(old->attrs);
+  if (!head)
     return NULL;
 
-  rta *a = alloca(RTA_MAX_SIZE);
-  memcpy(a, old->attrs, rta_size(old->attrs));
-
-  rta_apply_hostentry(a, old->attrs->hostentry);
-  a->cached = 0;
+  rta a = *old->attrs;
+  a.cached = 0;
+  rta_apply_hostentry(&a, head);
 
   rte e0 = *old;
-  e0.attrs = a;
+  e0.attrs = &a;
 
   return rte_store(&e0, n, tab);
 }
 
+static inline void
+rt_next_hop_resolve_rte(rte *r)
+{
+  eattr *heea = ea_find(r->attrs->eattrs, &ea_gen_hostentry);
+  if (!heea)
+    return;
+
+  struct hostentry_adata *head = (struct hostentry_adata *) heea->u.ptr;
+
+  if (r->attrs->cached)
+  {
+    rta *a = tmp_alloc(RTA_MAX_SIZE);
+    *a = *r->attrs;
+    a->cached = 0;
+    r->attrs = a;
+  }
+
+  rta_apply_hostentry(r->attrs, head);
+}
 
 #ifdef CONFIG_BGP
 
@@ -3585,7 +3627,7 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
       rta *a = e->rte.attrs;
       pxlen = n->n.addr->pxlen;
 
-      if (a->hostentry)
+      if (ea_find(a->eattrs, &ea_gen_hostentry))
 	{
 	  /* Recursive route should not depend on another recursive route */
 	  log(L_WARN "Next hop address %I resolvable through recursive route for %N",
@@ -3658,7 +3700,7 @@ rt_update_hostcache(rtable *tab)
   tab->hcu_scheduled = 0;
 }
 
-struct hostentry *
+static struct hostentry *
 rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
 {
   struct hostentry *he;

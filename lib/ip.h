@@ -362,7 +362,7 @@ static inline ip6_addr ip6_hton(ip6_addr a)
 static inline ip6_addr ip6_ntoh(ip6_addr a)
 { return _MI6(ntohl(_I0(a)), ntohl(_I1(a)), ntohl(_I2(a)), ntohl(_I3(a))); }
 
-#define MPLS_MAX_LABEL_STACK 8
+#define MPLS_MAX_LABEL_STACK 16
 
 static inline int
 mpls_get(const char *buf, int buflen, u32 *stack)

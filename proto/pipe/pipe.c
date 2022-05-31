@@ -62,7 +62,8 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
       memcpy(a, new->attrs, rta_size(new->attrs));
 
       a->cached = 0;
-      a->hostentry = NULL;
+      ea_unset_attr(&a->eattrs, 0, &ea_gen_hostentry);
+
 
       rte e0 = {
 	.attrs = a,

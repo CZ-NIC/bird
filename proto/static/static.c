@@ -100,11 +100,11 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   if (r->dest == RTDX_RECURSIVE)
   {
     rtable *tab = ipa_is_ip4(r->via) ? p->igp_table_ip4 : p->igp_table_ip6;
-    if (r->mls)
-      ea_set_attr(&a->eattrs,
-	  EA_LITERAL_DIRECT_ADATA(&ea_mpls_labels, 0, r->mls));
+    u32 *labels = r->mls ? (void *) r->mls->data : NULL;
+    u32 lnum = r->mls ? r->mls->length / sizeof(u32) : 0;
 
-    rta_set_recursive_next_hop(p->p.main_channel->table, a, tab, r->via, IPA_NONE);
+    ea_set_hostentry(&a->eattrs, p->p.main_channel->table, tab,
+	r->via, IPA_NONE, lnum, labels);
   }
 
   /* Already announced */
