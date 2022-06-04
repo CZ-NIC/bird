@@ -148,8 +148,8 @@ struct rtable_config {
   struct rtable *table;
   struct proto_config *krt_attached;	/* Kernel syncer attached to this table */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
-  int gc_max_ops;			/* Maximum number of operations before GC is run */
-  int gc_min_time;			/* Minimum time between two consecutive GC runs */
+  uint gc_threshold;			/* Maximum number of operations before GC is run */
+  uint gc_period;			/* Approximate time between two consecutive GC runs */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte internal;			/* Internal table of a protocol */
   byte trie_used;			/* Rtable has attached trie */
@@ -180,10 +180,11 @@ typedef struct rtable {
 					 * obstacle from this routing table.
 					 */
   struct event *rt_event;		/* Routing table event */
+  struct timer *prune_timer;		/* Timer for periodic pruning / GC */
   btime last_rt_change;			/* Last time when route changed */
   btime base_settle_time;		/* Start time of rtable settling interval */
   btime gc_time;			/* Time of last GC */
-  int gc_counter;			/* Number of operations since last GC */
+  uint gc_counter;			/* Number of operations since last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte prune_trie;			/* Prune prefix trie during next table prune */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
@@ -332,6 +333,7 @@ struct config;
 
 void rt_init(void);
 void rt_preconfig(struct config *);
+void rt_postconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
 void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
