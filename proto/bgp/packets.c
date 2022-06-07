@@ -1035,21 +1035,6 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 lnum, u32 labels[ln
   }
 }
 
-static void
-bgp_apply_flow_validation(struct bgp_parse_state *s, const net_addr *n, rta *a)
-{
-  struct bgp_channel *c = s->channel;
-  int valid = rt_flowspec_check(c->base_table, c->c.table, n, a, s->proto->is_interior);
-  a->dest = valid ? RTD_NONE : RTD_UNREACHABLE;
-
-  /* Invalidate cached rta if dest changes */
-  if (s->cached_rta && (s->cached_rta->dest != a->dest))
-  {
-    rta_free(s->cached_rta);
-    s->cached_rta = NULL;
-  }
-}
-
 static int
 bgp_match_src(struct bgp_export_state *s, int mode)
 {
@@ -1928,10 +1913,6 @@ bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     net_fill_flow4(n, px, pxlen, pos, flen);
     ADVANCE(pos, len, flen);
 
-    /* Apply validation procedure per RFC 8955 (6) */
-    if (a && s->channel->cf->validate)
-      bgp_apply_flow_validation(s, n, a);
-
     bgp_rte_update(s, n, path_id, a);
   }
 }
@@ -2019,10 +2000,6 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     net_addr *n = alloca(sizeof(struct net_addr_flow6) + flen);
     net_fill_flow6(n, px, pxlen, pos, flen);
     ADVANCE(pos, len, flen);
-
-    /* Apply validation procedure per RFC 8955 (6) */
-    if (a && s->channel->cf->validate)
-      bgp_apply_flow_validation(s, n, a);
 
     bgp_rte_update(s, n, path_id, a);
   }

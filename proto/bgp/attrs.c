@@ -2390,25 +2390,28 @@ bgp_get_route_info(rte *e, byte *buf)
 
   buf += bsprintf(buf, " (%d", rt_get_preference(e));
 
-  if (e->pflags & BGP_REF_SUPPRESSED)
-    buf += bsprintf(buf, "-");
-
-  if (rte_stale(e))
-    buf += bsprintf(buf, "s");
-
-  u64 metric = bgp_total_aigp_metric(e);
-  if (metric < BGP_AIGP_MAX)
+  if (!net_is_flow(e->net))
   {
-    buf += bsprintf(buf, "/%lu", metric);
-  }
-  else if (metric = rt_get_igp_metric(e))
-  {
-    if (!rta_resolvable(e->attrs))
-      buf += bsprintf(buf, "/-");
-    else if (metric >= IGP_METRIC_UNKNOWN)
-      buf += bsprintf(buf, "/?");
-    else
-      buf += bsprintf(buf, "/%d", metric);
+    if (e->pflags & BGP_REF_SUPPRESSED)
+      buf += bsprintf(buf, "-");
+
+    if (rte_stale(e))
+      buf += bsprintf(buf, "s");
+
+    u64 metric = bgp_total_aigp_metric(e);
+    if (metric < BGP_AIGP_MAX)
+    {
+      buf += bsprintf(buf, "/%lu", metric);
+    }
+    else if (metric = rt_get_igp_metric(e))
+    {
+      if (!rta_resolvable(e->attrs))
+	buf += bsprintf(buf, "/-");
+      else if (metric >= IGP_METRIC_UNKNOWN)
+	buf += bsprintf(buf, "/?");
+      else
+	buf += bsprintf(buf, "/%d", metric);
+    }
   }
   buf += bsprintf(buf, ") [");
 

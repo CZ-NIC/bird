@@ -122,6 +122,7 @@ static void rt_notify_hostcache(rtable *tab, net *net);
 static void rt_update_hostcache(rtable *tab);
 static void rt_next_hop_update(rtable *tab);
 static inline void rt_next_hop_resolve_rte(rte *r);
+static inline void rt_flowspec_resolve_rte(rte *r, struct channel *c);
 static inline void rt_prune_table(rtable *tab);
 static inline void rt_schedule_notify(rtable *tab);
 static void rt_flowspec_notify(rtable *tab, net *net);
@@ -1570,7 +1571,10 @@ rte_update_direct(struct channel *c, const net_addr *n, rte *new, struct rte_src
 	}
 
       if (new)
-	rt_next_hop_resolve_rte(new);
+	if (net_is_flow(n))
+	  rt_flowspec_resolve_rte(new, c);
+	else
+	  rt_next_hop_resolve_rte(new);
 
       if (new && !rte_validate(c, new))
 	{
@@ -2804,7 +2808,7 @@ rt_flowspec_update_rte(rtable *tab, net *n, rte *r)
   if (rt_get_source_attr(r) != RTS_BGP)
     return NULL;
 
-  struct bgp_channel *bc = (struct bgp_channel *) r->sender;
+  struct bgp_channel *bc = (struct bgp_channel *) SKIP_BACK(struct channel, in_req, r->sender->req);
   if (!bc->base_table)
     return NULL;
 
@@ -2816,7 +2820,7 @@ rt_flowspec_update_rte(rtable *tab, net *n, rte *r)
     return NULL;
 
   rta *a = alloca(RTA_MAX_SIZE);
-  memcpy(a, r->attrs, rta_size(r->attrs));
+  *a = *r->attrs;
   a->dest = dest;
   a->cached = 0;
 
@@ -2830,6 +2834,35 @@ rt_flowspec_update_rte(rtable *tab, net *n, rte *r)
 #endif
 }
 
+static inline void
+rt_flowspec_resolve_rte(rte *r, struct channel *c)
+{
+#ifdef CONFIG_BGP
+  if (rt_get_source_attr(r) != RTS_BGP)
+    return;
+
+  struct bgp_channel *bc = (struct bgp_channel *) c;
+  if (!bc->base_table)
+    return;
+
+  struct bgp_proto *p = (void *) r->src->proto;
+  int valid = rt_flowspec_check(bc->base_table, c->in_req.hook->table, r->net, r->attrs, p->is_interior);
+  int dest = valid ? RTD_NONE : RTD_UNREACHABLE;
+
+  if (dest == r->attrs->dest)
+    return;
+
+  if (r->attrs->cached)
+  {
+    rta *a = tmp_alloc(RTA_MAX_SIZE);
+    *a = *r->attrs;
+    a->cached = 0;
+    r->attrs = a;
+  }
+
+  r->attrs->dest = dest;
+#endif
+}
 
 static inline int
 rt_next_hop_update_net(rtable *tab, net *n)
@@ -2861,6 +2894,9 @@ rt_next_hop_update_net(rtable *tab, net *n)
 	  ? rt_flowspec_update_rte(tab, n, &e->rte)
 	  : rt_next_hop_update_rte(tab, n, &e->rte);
 
+	if (!new)
+	  continue;
+
 	/* Call a pre-comparison hook */
 	/* Not really an efficient way to compute this */
 	if (e->rte.src->proto->rte_recalculate)
@@ -2876,7 +2912,8 @@ rt_next_hop_update_net(rtable *tab, net *n)
 	*k = e = new;
       }
 
-  ASSERT_DIE(pos == count);
+  ASSERT_DIE(pos <= count);
+  count = pos;
 
   /* Find the new best route */
   struct rte_storage **new_best = NULL;
