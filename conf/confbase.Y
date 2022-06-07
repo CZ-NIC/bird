@@ -110,7 +110,7 @@ CF_DECLS
 %type <i> expr bool pxlen4
 %type <time> expr_us time
 %type <a> ipa
-%type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
+%type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
 %type <mls> label_stack_start label_stack
 
@@ -302,6 +302,15 @@ net_:
 
 
 /* Networks - regular */
+
+net_ip4:
+   net_ip4_
+ | CF_SYM_KNOWN {
+     if (($1->class != (SYM_CONSTANT | T_NET)) || (SYM_VAL($1).net->type != NET_IP4))
+       cf_error("IPv4 network constant expected");
+     $$ = * SYM_VAL($1).net;
+   }
+ ;
 
 net_ip6:
    net_ip6_
