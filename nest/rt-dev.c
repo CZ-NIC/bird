@@ -79,18 +79,18 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
       /* Use iface ID as local source ID */
       struct rte_src *src = rt_get_source(P, ad->iface->index);
 
-      rta a0 = {};
+      ea_list *ea = NULL;
       struct nexthop_adata nhad = {
 	.nh = { .iface = ad->iface, },
 	.ad = { .length = (void *) NEXTHOP_NEXT(&nhad.nh) - (void *) nhad.ad.data, },
       };
 
-      ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, c->preference);
-      ea_set_attr_u32(&a0.eattrs, &ea_gen_source, 0, RTS_DEVICE);
-      ea_set_attr_data(&a0.eattrs, &ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length);
+      ea_set_attr_u32(&ea, &ea_gen_preference, 0, c->preference);
+      ea_set_attr_u32(&ea, &ea_gen_source, 0, RTS_DEVICE);
+      ea_set_attr_data(&ea, &ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length);
 
       rte e0 = {
-	.attrs = rta_lookup(&a0),
+	.attrs = ea,
 	.src = src,
       };
 

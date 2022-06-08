@@ -286,7 +286,7 @@ static struct tbf rl_alien = TBF_DEFAULT_LOG_LIMITS;
 static inline u32
 krt_metric(rte *a)
 {
-  eattr *ea = ea_find(a->attrs->eattrs, &ea_krt_metric);
+  eattr *ea = ea_find(a->attrs, &ea_krt_metric);
   return ea ? ea->u.data : 0;
 }
 
@@ -306,7 +306,7 @@ static void
 krt_learn_announce_update(struct krt_proto *p, rte *e)
 {
   rte e0 = {
-    .attrs = rta_clone(e->attrs),
+    .attrs = ea_clone(e->attrs),
     .src = p->p.main_source,
   };
 
@@ -438,9 +438,7 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
   net *n = net_get(p->krt_table, e->net);
   struct rte_storage *g, **gg, *best, **bestp, *old_best;
 
-  ASSERT(!e->attrs->cached);
-  ea_set_attr_u32(&e->attrs->eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
-
+  ea_set_attr_u32(&e->attrs, &ea_gen_preference, 0, p->p.main_channel->preference);
   struct rte_storage *ee = rte_store(e, n, p->krt_table);
 
   old_best = n->routes;
@@ -616,10 +614,10 @@ reject:
 static int
 krt_same_dest(rte *k, rte *e)
 {
-  rta *ka = k->attrs, *ea = e->attrs;
+  ea_list *ka = k->attrs, *ea = e->attrs;
 
-  eattr *nhea_k = ea_find(ka->eattrs, &ea_gen_nexthop);
-  eattr *nhea_e = ea_find(ea->eattrs, &ea_gen_nexthop);
+  eattr *nhea_k = ea_find(ka, &ea_gen_nexthop);
+  eattr *nhea_e = ea_find(ea, &ea_gen_nexthop);
 
   return (!nhea_k == !nhea_e) && adata_same(nhea_k->u.ptr, nhea_e->u.ptr);
 }

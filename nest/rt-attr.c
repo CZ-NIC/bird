@@ -180,7 +180,6 @@ const char * flowspec_valid_names[FLOWSPEC__MAX] = {
 
 pool *rta_pool;
 
-static slab *rta_slab;
 static slab *rte_src_slab;
 
 static struct idm src_ids;
@@ -949,17 +948,6 @@ ea_list_unref(ea_list *l)
     }
 }
 
-static inline void
-ea_free(ea_list *o)
-{
-  if (o)
-    {
-      ea_list_unref(o);
-      ASSERT(!o->next);
-      mb_free(o);
-    }
-}
-
 void
 ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max)
 {
@@ -1056,7 +1044,7 @@ ea_show_lc_set(struct cli *c, const struct adata *ad, byte *pos, byte *buf, byte
  * If the protocol defining the attribute provides its own
  * get_attr() hook, it's consulted first.
  */
-void
+static void
 ea_show(struct cli *c, const eattr *e)
 {
   const struct adata *ad = (e->type & EAF_EMBEDDED) ? NULL : e->u.ptr;
@@ -1147,10 +1135,11 @@ ea_dump(ea_list *e)
     }
   while (e)
     {
-      debug("[%c%c%c]",
+      debug("[%c%c%c] uc=%d h=%08x",
 	    (e->flags & EALF_SORTED) ? 'S' : 's',
 	    (e->flags & EALF_BISECT) ? 'B' : 'b',
-	    (e->flags & EALF_CACHED) ? 'C' : 'c');
+	    (e->flags & EALF_CACHED) ? 'C' : 'c',
+	    e->uc, e->hash_key);
       for(i=0; i<e->count; i++)
 	{
 	  eattr *a = &e->attrs[i];
@@ -1242,12 +1231,12 @@ static uint rta_cache_count;
 static uint rta_cache_size = 32;
 static uint rta_cache_limit;
 static uint rta_cache_mask;
-static rta **rta_hash_table;
+static ea_list **rta_hash_table;
 
 static void
 rta_alloc_hash(void)
 {
-  rta_hash_table = mb_allocz(rta_pool, sizeof(rta *) * rta_cache_size);
+  rta_hash_table = mb_allocz(rta_pool, sizeof(ea_list *) * rta_cache_size);
   if (rta_cache_size < 32768)
     rta_cache_limit = rta_cache_size * 2;
   else
@@ -1255,44 +1244,14 @@ rta_alloc_hash(void)
   rta_cache_mask = rta_cache_size - 1;
 }
 
-static inline uint
-rta_hash(rta *a)
-{
-  return ea_hash(a->eattrs);
-}
-
-static inline int
-rta_same(rta *x, rta *y)
-{
-  return ea_same(x->eattrs, y->eattrs);
-}
-
-static rta *
-rta_copy(rta *o)
-{
-  rta *r = sl_alloc(rta_slab);
-
-  memcpy(r, o, rta_size(o));
-  r->uc = 1;
-  if (!r->eattrs)
-    return r;
-
-  uint elen = ea_list_size(o->eattrs);
-  r->eattrs = mb_alloc(rta_pool, elen);
-  ea_list_copy(r->eattrs, o->eattrs, elen);
-  ea_list_ref(r->eattrs);
-  r->eattrs->flags |= EALF_CACHED;
-  return r;
-}
-
 static inline void
-rta_insert(rta *r)
+rta_insert(ea_list *r)
 {
   uint h = r->hash_key & rta_cache_mask;
-  r->next = rta_hash_table[h];
-  if (r->next)
-    r->next->pprev = &r->next;
-  r->pprev = &rta_hash_table[h];
+  r->next_hash = rta_hash_table[h];
+  if (r->next_hash)
+    r->next_hash->pprev_hash = &r->next_hash;
+  r->pprev_hash = &rta_hash_table[h];
   rta_hash_table[h] = r;
 }
 
@@ -1301,8 +1260,8 @@ rta_rehash(void)
 {
   uint ohs = rta_cache_size;
   uint h;
-  rta *r, *n;
-  rta **oht = rta_hash_table;
+  ea_list *r, *n;
+  ea_list **oht = rta_hash_table;
 
   rta_cache_size = 2*rta_cache_size;
   DBG("Rehashing rta cache from %d to %d entries.\n", ohs, rta_cache_size);
@@ -1310,7 +1269,7 @@ rta_rehash(void)
   for(h=0; h<ohs; h++)
     for(r=oht[h]; r; r=n)
       {
-	n = r->next;
+	n = r->next_hash;
 	rta_insert(r);
       }
   mb_free(oht);
@@ -1329,24 +1288,29 @@ rta_rehash(void)
  * The extended attribute lists attached to the &rta are automatically
  * converted to the normalized form.
  */
-rta *
-rta_lookup(rta *o)
+ea_list *
+ea_lookup(ea_list *o)
 {
-  rta *r;
+  ea_list *r;
   uint h;
 
-  ASSERT(!o->cached);
-  if (o->eattrs)
-    o->eattrs = ea_normalize(o->eattrs);
+  ASSERT(!ea_is_cached(o));
+  o = ea_normalize(o);
+  h = ea_hash(o);
 
-  h = rta_hash(o);
-  for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next)
-    if (r->hash_key == h && rta_same(r, o))
-      return rta_clone(r);
+  for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next_hash)
+    if (r->hash_key == h && ea_same(r, o))
+      return ea_clone(r);
 
-  r = rta_copy(o);
+  uint elen = ea_list_size(o);
+  r = mb_alloc(rta_pool, elen);
+  ea_list_copy(r, o, elen);
+  ea_list_ref(r);
+
+  r->flags |= EALF_CACHED;
   r->hash_key = h;
-  r->cached = 1;
+  r->uc = 1;
+
   rta_insert(r);
 
   if (++rta_cache_count > rta_cache_limit)
@@ -1356,46 +1320,17 @@ rta_lookup(rta *o)
 }
 
 void
-rta__free(rta *a)
+ea__free(ea_list *a)
 {
-  ASSERT(rta_cache_count && a->cached);
+  ASSERT(rta_cache_count && ea_is_cached(a));
   rta_cache_count--;
-  *a->pprev = a->next;
-  if (a->next)
-    a->next->pprev = a->pprev;
-  ea_free(a->eattrs);
-  a->cached = 0;
-  sl_free(a);
-}
+  *a->pprev_hash = a->next_hash;
+  if (a->next_hash)
+    a->next_hash->pprev_hash = a->pprev_hash;
 
-rta *
-rta_do_cow(rta *o, linpool *lp)
-{
-  rta *r = lp_alloc(lp, rta_size(o));
-  memcpy(r, o, rta_size(o));
-  r->cached = 0;
-  r->uc = 0;
-  return r;
-}
-
-/**
- * rta_dump - dump route attributes
- * @a: attribute structure to dump
- *
- * This function takes a &rta and dumps its contents to the debug output.
- */
-void
-rta_dump(rta *a)
-{
-  debug("uc=%d h=%04x",
-	a->uc, a->hash_key);
-  if (!a->cached)
-    debug(" !CACHED");
-  if (a->eattrs)
-    {
-      debug(" EA: ");
-      ea_dump(a->eattrs);
-    }
+  ASSERT(!a->next);
+  ea_list_unref(a);
+  mb_free(a);
 }
 
 /**
@@ -1405,26 +1340,23 @@ rta_dump(rta *a)
  * to the debug output.
  */
 void
-rta_dump_all(void)
+ea_dump_all(void)
 {
-  rta *a;
-  uint h;
-
   debug("Route attribute cache (%d entries, rehash at %d):\n", rta_cache_count, rta_cache_limit);
-  for(h=0; h<rta_cache_size; h++)
-    for(a=rta_hash_table[h]; a; a=a->next)
+  for (uint h=0; h < rta_cache_size; h++)
+    for (ea_list *a = rta_hash_table[h]; a; a = a->next_hash)
       {
 	debug("%p ", a);
-	rta_dump(a);
+	ea_dump(a);
 	debug("\n");
       }
   debug("\n");
 }
 
 void
-rta_show(struct cli *c, rta *a)
+ea_show_list(struct cli *c, ea_list *eal)
 {
-  for(ea_list *eal = a->eattrs; eal; eal=eal->next)
+  for( ; eal; eal=eal->next)
     for(int i=0; i<eal->count; i++)
       ea_show(c, &eal->attrs[i]);
 }
@@ -1439,8 +1371,6 @@ void
 rta_init(void)
 {
   rta_pool = rp_new(&root_pool, "Attributes");
-
-  rta_slab = sl_new(rta_pool, sizeof(rta));
 
   rta_alloc_hash();
   rte_src_init();

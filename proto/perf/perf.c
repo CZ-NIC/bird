@@ -85,7 +85,7 @@ random_net_ip4(void)
 }
 
 struct perf_random_routes {
-  struct rta *a;
+  ea_list *a;
   net_addr net;
 };
 
@@ -142,10 +142,10 @@ perf_loop(void *data)
     *((net_addr_ip4 *) &(p->data[i].net)) = random_net_ip4();
 
     if (!p->attrs_per_rte || !(i % p->attrs_per_rte)) {
-      struct rta a0 = {};
+      ea_list *ea = NULL;
 
-      ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
-      ea_set_attr_u32(&a0.eattrs, &ea_gen_source, 0, RTS_PERF);
+      ea_set_attr_u32(&ea, &ea_gen_preference, 0, p->p.main_channel->preference);
+      ea_set_attr_u32(&ea, &ea_gen_source, 0, RTS_PERF);
 
       struct nexthop_adata nhad = {
 	.nh.iface = p->ifa->iface,
@@ -153,10 +153,10 @@ perf_loop(void *data)
 	.nh.weight = 1,
       };
 
-      ea_set_attr_data(&a0.eattrs, &ea_gen_nexthop, 0,
+      ea_set_attr_data(&ea, &ea_gen_nexthop, 0,
 	  &nhad.ad.data, sizeof nhad - sizeof nhad.ad);
 
-      p->data[i].a = rta_lookup(&a0);
+      p->data[i].a = rta_lookup(ea);
     }
     else
       p->data[i].a = rta_clone(p->data[i-1].a);

@@ -56,7 +56,7 @@ async_dump(void)
   // XXXX tm_dump_all();
   if_dump_all();
   neigh_dump_all();
-  rta_dump_all();
+  ea_dump_all();
   rt_dump_all();
   protos_dump_all();
 
