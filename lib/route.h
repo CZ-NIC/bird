@@ -78,8 +78,16 @@ struct nexthop {
 /* For packing one into eattrs */
 struct nexthop_adata {
   struct adata ad;
-  struct nexthop nh;
+  /* There is either a set of nexthops or a special destination (RTD_*) */
+  union {
+    struct nexthop nh;
+    uint dest;
+  };
 };
+
+#define NEXTHOP_DEST_SIZE	(OFFSETOF(struct nexthop_adata, dest) + sizeof(uint) - OFFSETOF(struct adata, data))
+#define NEXTHOP_DEST_LITERAL(x)	((struct nexthop_adata) { \
+      .ad.length = NEXTHOP_DEST_SIZE, .dest = (x), })
 
 #define RNF_ONLINK		0x1	/* Gateway is onlink regardless of IP ranges */
 
@@ -90,7 +98,6 @@ typedef struct rta {
   u32 hash_key;				/* Hash over important fields */
   struct ea_list *eattrs;		/* Extended Attribute chain */
   u16 cached:1;				/* Are attributes cached? */
-  u16 dest:4;				/* Route destination type (RTD_...) */
 } rta;
 
 #define RTS_STATIC 1			/* Normal static route */
@@ -111,7 +118,7 @@ typedef struct rta {
 #define RTS_MAX 16
 
 #define RTD_NONE 0			/* Undefined next hop */
-#define RTD_UNICAST 1			/* Next hop is neighbor router */
+#define RTD_UNICAST 1			/* A standard next hop */
 #define RTD_BLACKHOLE 2			/* Silently drop packets */
 #define RTD_UNREACHABLE 3		/* Reject as unreachable */
 #define RTD_PROHIBIT 4			/* Administratively prohibited */
@@ -121,10 +128,6 @@ extern const char * rta_dest_names[RTD_MAX];
 
 static inline const char *rta_dest_name(uint n)
 { return (n < RTD_MAX) ? rta_dest_names[n] : "???"; }
-
-/* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
-static inline int rte_is_reachable(rte *r)
-{ return r->attrs->dest == RTD_UNICAST; }
 
 
 /*
@@ -333,8 +336,30 @@ extern struct ea_class ea_gen_source;
 static inline u32 rt_get_source_attr(const rte *rt)
 { return ea_get_int(rt->attrs->eattrs, &ea_gen_source, 0); }
 
+/* Flowspec validation result */
+enum flowspec_valid {
+  FLOWSPEC_UNKNOWN	= 0,
+  FLOWSPEC_VALID	= 1,
+  FLOWSPEC_INVALID	= 2,
+  FLOWSPEC__MAX,
+};
+
+extern const char * flowspec_valid_names[FLOWSPEC__MAX];
+static inline const char *flowspec_valid_name(enum flowspec_valid v)
+{ return (v < FLOWSPEC__MAX) ? flowspec_valid_names[v] : "???"; }
+
+extern struct ea_class ea_gen_flowspec_valid;
+static inline enum flowspec_valid rt_get_flowspec_valid(rte *rt)
+{ return ea_get_int(rt->attrs->eattrs, &ea_gen_flowspec_valid, FLOWSPEC_UNKNOWN); }
+
 /* Next hop: For now, stored as adata */
 extern struct ea_class ea_gen_nexthop;
+
+static inline void ea_set_dest(struct ea_list **to, uint flags, uint dest)
+{
+  struct nexthop_adata nhad = NEXTHOP_DEST_LITERAL(dest);
+  ea_set_attr_data(to, &ea_gen_nexthop, flags, &nhad.ad.data, nhad.ad.length);
+}
 
 /* Next hop structures */
 
@@ -361,7 +386,35 @@ struct nexthop_adata *nexthop_merge(struct nexthop_adata *x, struct nexthop_adat
 struct nexthop_adata *nexthop_sort(struct nexthop_adata *x, linpool *lp);
 int nexthop_is_sorted(struct nexthop_adata *x);
 
+#define NEXTHOP_IS_REACHABLE(nhad)	((nhad)->ad.length > NEXTHOP_DEST_SIZE)
 
+/* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
+static inline int rte_is_reachable(rte *r)
+{
+  eattr *nhea = ea_find(r->attrs->eattrs, &ea_gen_nexthop);
+  if (!nhea)
+    return 0;
+
+  struct nexthop_adata *nhad = (void *) nhea->u.ptr;
+  return NEXTHOP_IS_REACHABLE(nhad);
+}
+
+static inline int nhea_dest(eattr *nhea)
+{
+  if (!nhea)
+    return RTD_NONE;
+
+  struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
+  if (NEXTHOP_IS_REACHABLE(nhad))
+    return RTD_UNICAST;
+  else
+    return nhad->dest;
+}
+
+static inline int rte_dest(const rte *r)
+{
+  return nhea_dest(ea_find(r->attrs->eattrs, &ea_gen_nexthop));
+}
 
 void rta_init(void);
 #define rta_size(...) (sizeof(rta))

@@ -683,7 +683,7 @@ rte_trace(const char *name, const rte *e, int dir, const char *msg)
 {
   log(L_TRACE "%s %c %s %N %uL %uG %s",
       name, dir, msg, e->net, e->src->private_id, e->src->global_id,
-      rta_dest_name(e->attrs->dest));
+      rta_dest_name(rte_dest(e)));
 }
 
 static inline void
@@ -1226,29 +1226,29 @@ rte_validate(struct channel *ch, rte *e)
     return 0;
   }
 
-  if (net_type_match(n, NB_DEST) == !e->attrs->dest)
+  if (net_type_match(n, NB_DEST))
   {
-    /* Exception for flowspec that failed validation */
-    if (net_is_flow(n) && (e->attrs->dest == RTD_UNREACHABLE))
-      return 1;
+    eattr *nhea = ea_find(e->attrs->eattrs, &ea_gen_nexthop);
+    int dest = nhea_dest(nhea);
 
-    log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
-	n, e->attrs->dest, ch->proto->name);
-    return 0;
+    if (dest == RTD_NONE)
+    {
+      log(L_WARN "Ignoring route %N with no destination received via %s",
+	  n, ch->proto->name);
+      return 0;
+    }
+
+    if ((dest == RTD_UNICAST) &&
+	!nexthop_is_sorted((struct nexthop_adata *) nhea->u.ptr))
+    {
+      log(L_WARN "Ignoring unsorted multipath route %N received via %s",
+	  n, ch->proto->name);
+      return 0;
+    }
   }
-
-  eattr *nhea = ea_find(e->attrs->eattrs, &ea_gen_nexthop);
-  if ((!nhea) != (e->attrs->dest != RTD_UNICAST))
+  else if (ea_find(e->attrs->eattrs, &ea_gen_nexthop))
   {
-    log(L_WARN "Ignoring route %N with destination %d and %snexthop received via %s",
-	n, e->attrs->dest, (nhea ? "" : "no "), ch->proto->name);
-    return 0;
-  }
-
-  if ((e->attrs->dest == RTD_UNICAST) &&
-      !nexthop_is_sorted((struct nexthop_adata *) nhea->u.ptr))
-  {
-    log(L_WARN "Ignoring unsorted multipath route %N received via %s",
+    log(L_WARN "Ignoring route %N having a nexthop attribute received via %s",
 	n, ch->proto->name);
     return 0;
   }
@@ -2547,25 +2547,26 @@ rta_apply_hostentry(rta *a, struct hostentry_adata *head)
   u32 *labels = head->labels;
   u32 lnum = (u32 *) (head->ad.data + head->ad.length) - labels;
 
-  a->dest = he->dest;
-
   ea_set_attr_u32(&a->eattrs, &ea_gen_igp_metric, 0, he->igp_metric);
 
-  if (a->dest != RTD_UNICAST)
+  if (!he->src)
   {
-    /* No nexthop */
-    ea_unset_attr(&a->eattrs, 0, &ea_gen_nexthop);
-    return;
-  }
-
-  if (!lnum && he->nexthop_linkable)
-  { /* Just link the nexthop chain, no label append happens. */
-    ea_copy_attr(&a->eattrs, he->src->eattrs, &ea_gen_nexthop);
+    ea_set_dest(&a->eattrs, 0, RTD_UNREACHABLE);
     return;
   }
 
   eattr *he_nh_ea = ea_find(he->src->eattrs, &ea_gen_nexthop);
+  ASSERT_DIE(he_nh_ea);
+
   struct nexthop_adata *nhad = (struct nexthop_adata *) he_nh_ea->u.ptr;
+  int idest = nhea_dest(he_nh_ea);
+
+  if ((idest != RTD_UNICAST) ||
+      !lnum && he->nexthop_linkable)
+  { /* Just link the nexthop chain, no label append happens. */
+    ea_copy_attr(&a->eattrs, he->src->eattrs, &ea_gen_nexthop);
+    return;
+  }
 
   uint total_size = OFFSETOF(struct nexthop_adata, nh);
 
@@ -2583,10 +2584,14 @@ rta_apply_hostentry(rta *a, struct hostentry_adata *head)
 
   if (total_size == OFFSETOF(struct nexthop_adata, nh))
   {
-    a->dest = RTD_UNREACHABLE;
     log(L_WARN "No valid nexthop remaining, setting route unreachable");
 
-    ea_unset_attr(&a->eattrs, 0, &ea_gen_nexthop);
+    struct nexthop_adata nha = {
+      .ad.length = NEXTHOP_DEST_SIZE,
+      .dest = RTD_UNREACHABLE,
+    };
+
+    ea_set_attr_data(&a->eattrs, &ea_gen_nexthop, 0, &nha.ad.data, nha.ad.length);
     return;
   }
 
@@ -2627,19 +2632,28 @@ rta_apply_hostentry(rta *a, struct hostentry_adata *head)
 static inline struct hostentry_adata *
 rta_next_hop_outdated(rta *a)
 {
+  /* First retrieve the hostentry */
   eattr *heea = ea_find(a->eattrs, &ea_gen_hostentry);
   if (!heea)
     return NULL;
 
   struct hostentry_adata *head = (struct hostentry_adata *) heea->u.ptr;
 
-  if (!head->he->src)
-    return (a->dest != RTD_UNREACHABLE) ? head : NULL;
-
-  eattr *he_nh_ea = ea_find(head->he->src->eattrs, &ea_gen_nexthop);
+  /* If no nexthop is present, we have to create one */
   eattr *a_nh_ea = ea_find(a->eattrs, &ea_gen_nexthop);
+  if (!a_nh_ea)
+    return head;
 
-  return ((a->dest != head->he->dest) ||
+  struct nexthop_adata *nhad = (struct nexthop_adata *) a_nh_ea->u.ptr;
+
+  /* Shortcut for unresolvable hostentry */
+  if (!head->he->src)
+    return NEXTHOP_IS_REACHABLE(nhad) ? head : NULL;
+
+  /* Comparing our nexthop with the hostentry nexthop */
+  eattr *he_nh_ea = ea_find(head->he->src->eattrs, &ea_gen_nexthop);
+
+  return (
       (ea_get_int(a->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN) != head->he->igp_metric) ||
       (!head->he->nexthop_linkable) ||
       (!he_nh_ea != !a_nh_ea) ||
@@ -2722,7 +2736,7 @@ rta_get_first_asn(rta *a)
   return (e && as_path_get_first_regular(e->u.ptr, &asn)) ? asn : 0;
 }
 
-int
+static inline enum flowspec_valid
 rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, int interior)
 {
   ASSERT(rt_is_ip(tab_ip));
@@ -2731,11 +2745,11 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, i
 
   /* RFC 8955 6. a) Flowspec has defined dst prefix */
   if (!net_flow_has_dst_prefix(n))
-    return 0;
+    return FLOWSPEC_INVALID;
 
   /* RFC 9117 4.1. Accept  AS_PATH is empty (fr */
   if (interior && rta_as_path_is_empty(a))
-    return 1;
+    return FLOWSPEC_VALID;
 
 
   /* RFC 8955 6. b) Flowspec and its best-match route have the same originator */
@@ -2757,7 +2771,7 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, i
 
   /* No best-match BGP route -> no flowspec */
   if (!rb || (rt_get_source_attr(rb) != RTS_BGP))
-    return 0;
+    return FLOWSPEC_INVALID;
 
   /* Find ORIGINATOR_ID values */
   u32 orig_a = ea_get_int(a->eattrs, "bgp_originator_id", 0);
@@ -2768,17 +2782,17 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, i
 	  ea_get_ip(a->eattrs, &ea_gen_from, IPA_NONE),
 	  ea_get_ip(rb->attrs->eattrs, &ea_gen_from, IPA_NONE)
 	  )))
-    return 0;
+    return FLOWSPEC_INVALID;
 
 
   /* Find ASN of the best-match route, for use in next checks */
   u32 asn_b = rta_get_first_asn(rb->attrs);
   if (!asn_b)
-    return 0;
+    return FLOWSPEC_INVALID;
 
   /* RFC 9117 4.2. For EBGP, flowspec and its best-match route are from the same AS */
   if (!interior && (rta_get_first_asn(a) != asn_b))
-    return 0;
+    return FLOWSPEC_INVALID;
 
   /* RFC 8955 6. c) More-specific routes are from the same AS as the best-match route */
   TRIE_WALK(tab_ip->trie, subnet, &dst)
@@ -2789,14 +2803,14 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, i
 
     const rte *rc = &nc->routes->rte;
     if (rt_get_source_attr(rc) != RTS_BGP)
-      return 0;
+      return FLOWSPEC_INVALID;
 
     if (rta_get_first_asn(rc->attrs) != asn_b)
-      return 0;
+      return FLOWSPEC_INVALID;
   }
   TRIE_WALK_END;
 
-  return 1;
+  return FLOWSPEC_VALID;
 }
 
 #endif /* CONFIG_BGP */
@@ -2812,17 +2826,19 @@ rt_flowspec_update_rte(rtable *tab, net *n, rte *r)
   if (!bc->base_table)
     return NULL;
 
-  struct bgp_proto *p = (void *) r->src->proto;
-  int valid = rt_flowspec_check(bc->base_table, tab, n->n.addr, r->attrs, p->is_interior);
-  int dest = valid ? RTD_NONE : RTD_UNREACHABLE;
+  struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, bc->c.proto);
 
-  if (dest == r->attrs->dest)
+  enum flowspec_valid old = rt_get_flowspec_valid(r),
+		      valid = rt_flowspec_check(bc->base_table, tab, n->n.addr, r->attrs, p->is_interior);
+
+  if (old == valid)
     return NULL;
 
   rta *a = alloca(RTA_MAX_SIZE);
   *a = *r->attrs;
-  a->dest = dest;
   a->cached = 0;
+
+  ea_set_attr_u32(&a->eattrs, &ea_gen_flowspec_valid, 0, valid);
 
   rte new;
   memcpy(&new, r, sizeof(rte));
@@ -2838,18 +2854,23 @@ static inline void
 rt_flowspec_resolve_rte(rte *r, struct channel *c)
 {
 #ifdef CONFIG_BGP
-  if (rt_get_source_attr(r) != RTS_BGP)
-    return;
-
+  enum flowspec_valid valid, old = rt_get_flowspec_valid(r);
   struct bgp_channel *bc = (struct bgp_channel *) c;
-  if (!bc->base_table)
-    return;
 
-  struct bgp_proto *p = (void *) r->src->proto;
-  int valid = rt_flowspec_check(bc->base_table, c->in_req.hook->table, r->net, r->attrs, p->is_interior);
-  int dest = valid ? RTD_NONE : RTD_UNREACHABLE;
+  if (	(rt_get_source_attr(r) == RTS_BGP)
+     && (c->channel == &channel_bgp)
+     && (bc->base_table))
+  {
+    struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, bc->c.proto);
+    valid = rt_flowspec_check(
+	bc->base_table,
+	c->in_req.hook->table,
+	r->net, r->attrs, p->is_interior);
+  }
+  else
+    valid = FLOWSPEC_UNKNOWN;
 
-  if (dest == r->attrs->dest)
+  if (valid == old)
     return;
 
   if (r->attrs->cached)
@@ -2860,7 +2881,10 @@ rt_flowspec_resolve_rte(rte *r, struct channel *c)
     r->attrs = a;
   }
 
-  r->attrs->dest = dest;
+  if (valid == FLOWSPEC_UNKNOWN)
+    ea_unset_attr(&r->attrs->eattrs, 0, &ea_gen_flowspec_valid);
+  else
+    ea_set_attr_u32(&r->attrs->eattrs, &ea_gen_flowspec_valid, 0, valid);
 #endif
 }
 
@@ -3651,7 +3675,6 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 
   /* Reset the hostentry */
   he->src = NULL;
-  he->dest = RTD_UNREACHABLE;
   he->nexthop_linkable = 0;
   he->igp_metric = 0;
 
@@ -3672,16 +3695,12 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 	  goto done;
 	}
 
-      if (a->dest == RTD_UNICAST)
-	{
-	  eattr *ea = ea_find(a->eattrs, &ea_gen_nexthop);
-	  if (!ea)
-	    {
-	      log(L_WARN "No nexthop in unicast route");
-	      goto done;
-	    }
-	    
-	  NEXTHOP_WALK(nh, (struct nexthop_adata *) ea->u.ptr)
+      eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+      ASSERT_DIE(nhea);
+      struct nexthop_adata *nhad = (void *) nhea->u.ptr;
+
+      if (NEXTHOP_IS_REACHABLE(nhad))
+	  NEXTHOP_WALK(nh, nhad)
 	    if (ipa_zero(nh->gw))
 	      {
 		if (if_local_addr(he->addr, nh->iface))
@@ -3694,10 +3713,8 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 
 		direct++;
 	      }
-	}
 
       he->src = rta_clone(a);
-      he->dest = a->dest;
       he->nexthop_linkable = !direct;
       he->igp_metric = rt_get_igp_metric(&e->rte);
     }

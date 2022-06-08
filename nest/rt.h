@@ -148,7 +148,6 @@ struct hostentry {
   unsigned hash_key;			/* Hash key */
   unsigned uc;				/* Use count */
   struct rta *src;			/* Source rta entry */
-  byte dest;				/* Chosen route destination type (RTD_...) */
   byte nexthop_linkable;		/* Nexthop list is completely non-device */
   u32 igp_metric;			/* Chosen route IGP metric */
 };
@@ -459,9 +458,6 @@ rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr
   rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ll, dep), lnum, labels);
 }
 */
-
-int rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, int interior);
-
 
 /*
  *	Default protocol preferences

@@ -120,9 +120,7 @@ rpki_table_add_roa(struct rpki_cache *cache, struct channel *channel, const net_
 {
   struct rpki_proto *p = cache->p;
 
-  rta a0 = {
-    .dest = RTD_NONE,
-  };
+  rta a0 = {};
 
   ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, channel->preference);
   ea_set_attr_u32(&a0.eattrs, &ea_gen_source, 0, RTS_RPKI);

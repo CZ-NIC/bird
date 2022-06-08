@@ -66,6 +66,7 @@ enum btype {
 
   T_ENUM_BGP_ORIGIN = 0x11,	/* BGP Origin enum */
   T_ENUM_RA_PREFERENCE = 0x13,	/* RA Preference enum */
+  T_ENUM_FLOWSPEC_VALID = 0x15,	/* Flowspec validation result */
 
 #define EAF_TYPE__MAX 0x1f
 #define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */

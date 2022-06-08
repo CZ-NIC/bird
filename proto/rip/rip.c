@@ -151,9 +151,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   if (rt)
   {
     /* Update */
-    rta a0 = {
-      .dest = RTD_UNICAST,
-    };
+    rta a0 = {};
 
     struct {
       ea_list l;

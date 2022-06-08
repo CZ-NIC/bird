@@ -519,7 +519,9 @@ struct rte_source *bgp_get_source(struct bgp_proto *p, u32 path_id);
 static inline int
 rta_resolvable(rta *a)
 {
-  return a->dest != RTD_UNREACHABLE;
+  eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+  struct nexthop_adata *nhad = (void *) nhea->u.ptr;
+  return NEXTHOP_IS_REACHABLE(nhad) || (nhad->dest != RTD_UNREACHABLE);
 }
 
 

@@ -45,8 +45,11 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   rta *a = e->attrs;
   int sync_error = d->kernel ? krt_get_sync_error(d->kernel, e) : 0;
   void (*get_route_info)(struct rte *, byte *buf);
-  eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+  eattr *nhea = net_type_match(e->net, NB_DEST) ?
+    ea_find(a->eattrs, &ea_gen_nexthop) : NULL;
   struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
+  int dest = nhad ? (NEXTHOP_IS_REACHABLE(nhad) ? RTD_UNICAST : nhad->dest) : RTD_NONE;
+  int flowspec_valid = net_is_flow(e->net) ? rt_get_flowspec_valid(e) : FLOWSPEC_UNKNOWN;
 
   tm_format_time(tm, &config->tf_route, e->lastmod);
   ip_addr a_from = ea_get_ip(a->eattrs, &ea_gen_from, IPA_NONE);
@@ -68,10 +71,11 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   if (d->last_table != d->tab)
     rt_show_table(c, d);
 
-  cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s", ia, rta_dest_name(a->dest),
-	     e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
+  cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s", ia, 
+      net_is_flow(e->net) ? flowspec_valid_name(flowspec_valid) : rta_dest_name(dest),
+      e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
 
-  if (a->dest == RTD_UNICAST)
+  if (dest == RTD_UNICAST)
     NEXTHOP_WALK(nh, nhad)
     {
       char mpls[MPLS_MAX_LABEL_STACK*12 + 5], *lsp = mpls;

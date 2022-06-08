@@ -79,10 +79,7 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
       /* Use iface ID as local source ID */
       struct rte_src *src = rt_get_source(P, ad->iface->index);
 
-      rta a0 = {
-	.dest = RTD_UNICAST,
-      };
-
+      rta a0 = {};
       struct nexthop_adata nhad = {
 	.nh = { .iface = ad->iface, },
 	.ad = { .length = (void *) NEXTHOP_NEXT(&nhad.nh) - (void *) nhad.ad.data, },

@@ -1715,8 +1715,20 @@ bgp_preexport(struct channel *c, rte *e)
     return 0;
 
   /* Reject flowspec that failed validation */
-  if ((e->attrs->dest == RTD_UNREACHABLE) && net_is_flow(e->net))
-    return -1;
+  if (net_is_flow(e->net))
+    switch (rt_get_flowspec_valid(e))
+    {
+      case FLOWSPEC_VALID:
+	break;
+      case FLOWSPEC_INVALID:
+	return -1;
+      case FLOWSPEC_UNKNOWN:
+ 	ASSUME((rt_get_source_attr(e) != RTS_BGP) ||
+	    !((struct bgp_channel *) SKIP_BACK(struct channel, in_req, e->sender->req))->base_table);
+	break;
+      case FLOWSPEC__MAX:
+	bug("This never happens.");
+    }
 
   /* IBGP route reflection, RFC 4456 */
   if (p->is_internal && src->is_internal && (p->local_as == src->local_as))

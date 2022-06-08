@@ -1407,11 +1407,16 @@ HASH_DEFINE_REHASH_FN(RTH, struct krt_proto)
 int
 krt_capable(rte *e)
 {
-  rta *a = e->attrs;
+  eattr *ea = ea_find(e->attrs->eattrs, &ea_gen_nexthop);
+  if (!ea)
+    return 0;
 
-  switch (a->dest)
+  struct nexthop_adata *nhad = (void *) ea->u.ptr;
+  if (NEXTHOP_IS_REACHABLE(nhad))
+    return 1;
+
+  switch (nhad->dest)
   {
-    case RTD_UNICAST:
     case RTD_BLACKHOLE:
     case RTD_UNREACHABLE:
     case RTD_PROHIBIT:
@@ -1590,7 +1595,7 @@ nl_add_rte(struct krt_proto *p, rte *e)
   eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
   struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
 
-  if (krt_ecmp6(p) && nhad && !NEXTHOP_ONE(nhad))
+  if (krt_ecmp6(p) && nhad && NEXTHOP_IS_REACHABLE(nhad) && !NEXTHOP_ONE(nhad))
   {
     uint cnt = 0;
     NEXTHOP_WALK(nh, nhad)
@@ -1615,7 +1620,8 @@ nl_add_rte(struct krt_proto *p, rte *e)
     return err;
   }
 
-  return nl_send_route(p, e, NL_OP_ADD, a->dest, nhad);
+  return nl_send_route(p, e, NL_OP_ADD,
+      NEXTHOP_IS_REACHABLE(nhad) ? RTD_UNICAST : nhad->dest, nhad);
 }
 
 static inline int
@@ -1637,7 +1643,8 @@ nl_replace_rte(struct krt_proto *p, rte *e)
   rta *a = e->attrs;
   eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
   struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
-  return nl_send_route(p, e, NL_OP_REPLACE, a->dest, nhad);
+  return nl_send_route(p, e, NL_OP_REPLACE,
+      NEXTHOP_IS_REACHABLE(nhad) ? RTD_UNICAST : nhad->dest, nhad);
 }
 
 
@@ -1900,8 +1907,6 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   switch (i->rtm_type)
     {
     case RTN_UNICAST:
-      ra->dest = RTD_UNICAST;
-
       if (a[RTA_MULTIPATH])
         {
 	  struct nexthop_adata *nh = nl_parse_multipath(s, p, net, a[RTA_MULTIPATH], i->rtm_family, krt_src);
@@ -1952,47 +1957,46 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	    }
 	}
 
+#ifdef HAVE_MPLS_KERNEL
+      if ((i->rtm_family == AF_MPLS) && a[RTA_NEWDST] && !a[RTA_MULTIPATH])
+	nhad.nh.labels = rta_get_mpls(a[RTA_NEWDST], nhad.nh.label);
+
+      if (a[RTA_ENCAP] && a[RTA_ENCAP_TYPE] && !a[RTA_MULTIPATH])
+	{
+	  switch (rta_get_u16(a[RTA_ENCAP_TYPE]))
+	    {
+	      case LWTUNNEL_ENCAP_MPLS:
+		{
+		  struct rtattr *enca[BIRD_RTA_MAX];
+		  nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
+		  nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
+		  nhad.nh.labels = rta_get_mpls(enca[RTA_DST], nhad.nh.label);
+		  break;
+		}
+	      default:
+		SKIP("unknown encapsulation method %d\n", rta_get_u16(a[RTA_ENCAP_TYPE]));
+		break;
+	    }
+	}
+#endif
+
+      /* Finalize the nexthop */
+      nhad.ad.length = (void *) NEXTHOP_NEXT(&nhad.nh) - (void *) nhad.ad.data;
       break;
     case RTN_BLACKHOLE:
-      ra->dest = RTD_BLACKHOLE;
+      nhad.nhad = NEXTHOP_DEST_LITERAL(RTD_BLACKHOLE);
       break;
     case RTN_UNREACHABLE:
-      ra->dest = RTD_UNREACHABLE;
+      nhad.nhad = NEXTHOP_DEST_LITERAL(RTD_UNREACHABLE);
       break;
     case RTN_PROHIBIT:
-      ra->dest = RTD_PROHIBIT;
+      nhad.nhad = NEXTHOP_DEST_LITERAL(RTD_PROHIBIT);
       break;
     /* FIXME: What about RTN_THROW? */
     default:
       SKIP("type %d\n", i->rtm_type);
       return;
     }
-
-#ifdef HAVE_MPLS_KERNEL
-  if ((i->rtm_family == AF_MPLS) && a[RTA_NEWDST] && !a[RTA_MULTIPATH])
-    nhad.nh.labels = rta_get_mpls(a[RTA_NEWDST], nhad.nh.label);
-
-  if (a[RTA_ENCAP] && a[RTA_ENCAP_TYPE] && !a[RTA_MULTIPATH])
-    {
-      switch (rta_get_u16(a[RTA_ENCAP_TYPE]))
-	{
-	  case LWTUNNEL_ENCAP_MPLS:
-	    {
-	      struct rtattr *enca[BIRD_RTA_MAX];
-	      nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
-	      nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
-	      nhad.nh.labels = rta_get_mpls(enca[RTA_DST], nhad.nh.label);
-	      break;
-	    }
-	  default:
-	    SKIP("unknown encapsulation method %d\n", rta_get_u16(a[RTA_ENCAP_TYPE]));
-	    break;
-	}
-    }
-#endif
-
-  /* Finalize the nexthop */
-  nhad.ad.length = (void *) NEXTHOP_NEXT(&nhad.nh) - (void *) nhad.ad.data;
 
   if (i->rtm_scope != def_scope)
     ea_set_attr(&ra->eattrs,

@@ -142,9 +142,7 @@ perf_loop(void *data)
     *((net_addr_ip4 *) &(p->data[i].net)) = random_net_ip4();
 
     if (!p->attrs_per_rte || !(i % p->attrs_per_rte)) {
-      struct rta a0 = {
-	.dest = RTD_UNICAST,
-      };
+      struct rta a0 = {};
 
       ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
       ea_set_attr_u32(&a0.eattrs, &ea_gen_source, 0, RTS_PERF);
