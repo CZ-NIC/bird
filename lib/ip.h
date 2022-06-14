@@ -194,14 +194,28 @@ static inline int ipa_nonzero2(ip_addr a)
  *	Hash and compare functions
  */
 
+static inline u64 ip4_hash0(ip4_addr a, u32 p, u64 acc)
+{ return (acc + _I(a)) * p; }
+
 static inline u32 ip4_hash(ip4_addr a)
-{ return u32_hash(_I(a)); }
+{ return hash_value(ip4_hash0(a, HASH_PARAM, 0)); }
+
+static inline u64 ip6_hash0(ip6_addr a, u32 p, u64 acc)
+{
+  acc += _I0(a); acc *= p;
+  acc += _I1(a); acc *= p;
+  acc += _I2(a); acc *= p;
+  acc += _I3(a); acc *= p;
+  return acc;
+}
 
 static inline u32 ip6_hash(ip6_addr a)
 {
-  /* Returns a 32-bit hash key, although low-order bits are not mixed */
-  u32 x = _I0(a) ^ _I1(a) ^ _I2(a) ^ _I3(a);
-  return x ^ (x << 16) ^ (x << 24);
+  /* Equivalent of ip6_hash0(a, HASH_PARAM, 0) */
+  return hash_value(_I0(a) * HASH_PARAM4 +
+		    _I1(a) * HASH_PARAM3 +
+		    _I2(a) * HASH_PARAM2 +
+		    _I3(a) * HASH_PARAM1);
 }
 
 static inline int ip4_compare(ip4_addr a, ip4_addr b)

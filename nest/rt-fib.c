@@ -159,6 +159,7 @@ fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offse
   f->addr_type = addr_type;
   f->node_size = node_size;
   f->node_offset = node_offset;
+  f->hash_param = random_hash_param();
   f->hash_order = hash_order;
   fib_ht_alloc(f);
   bzero(f->hash_table, f->hash_size * sizeof(struct fib_node *));
@@ -213,7 +214,8 @@ fib_rehash(struct fib *f, int step)
 #define CAST(t) (const net_addr_##t *)
 #define CAST2(t) (net_addr_##t *)
 
-#define FIB_HASH(f,a,t) (net_hash_##t(CAST(t) a) >> f->hash_shift)
+#define FIB_HASH0(f,a,t) (net_hash_##t(CAST(t) a, f->hash_param))
+#define FIB_HASH(f,a,t) (FIB_HASH0(f, a, t) >> f->hash_shift)
 
 #define FIB_FIND(f,a,t)							\
   ({									\
@@ -225,11 +227,11 @@ fib_rehash(struct fib *f, int step)
 
 #define FIB_INSERT(f,a,e,t)						\
   ({									\
-  u32 h = net_hash_##t(CAST(t) a);					\
+  u32 h = FIB_HASH0(f, a, t);						\
   struct fib_node **ee = f->hash_table + (h >> f->hash_shift);		\
   struct fib_node *g;							\
 									\
-  while ((g = *ee) && (net_hash_##t(CAST(t) g->addr) < h))		\
+  while ((g = *ee) && (FIB_HASH0(f, g->addr, t) < h))			\
     ee = &g->next;							\
 									\
   net_copy_##t(CAST2(t) e->addr, CAST(t) a);				\
@@ -242,7 +244,7 @@ static inline u32
 fib_hash(struct fib *f, const net_addr *a)
 {
   /* Same as FIB_HASH() */
-  return net_hash(a) >> f->hash_shift;
+  return net_hash(a, f->hash_param) >> f->hash_shift;
 }
 
 void *

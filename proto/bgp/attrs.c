@@ -1609,6 +1609,7 @@ void
 bgp_init_prefix_table(struct bgp_channel *c)
 {
   HASH_INIT(c->prefix_hash, c->pool, 8);
+  c->prefix_param = random_hash_param();
 
   uint alen = net_addr_length[c->c.net_type];
   c->prefix_slab = alen ? sl_new(c->pool, sizeof(struct bgp_prefix) + alen) : NULL;
@@ -1626,8 +1627,7 @@ bgp_free_prefix_table(struct bgp_channel *c)
 static struct bgp_prefix *
 bgp_get_prefix(struct bgp_channel *c, net_addr *net, u32 path_id)
 {
-  /* We must use a different hash function than the rtable */
-  u32 hash = u32_hash(net_hash(net) ^ u32_hash(path_id));
+  u32 hash = net_hash(net, c->prefix_param) ^ u32_hash(path_id);
   struct bgp_prefix *px = HASH_FIND(c->prefix_hash, PXH, net, path_id, hash);
 
   if (px)

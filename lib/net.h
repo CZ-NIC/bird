@@ -479,41 +479,43 @@ static inline void net_copy_mpls(net_addr_mpls *dst, const net_addr_mpls *src)
 { memcpy(dst, src, sizeof(net_addr_mpls)); }
 
 
-/* XXXX */
-static inline u32 u64_hash(u64 a)
-{ return u32_hash(a); }
+static inline u64 px4_hash0(ip4_addr prefix, u32 pxlen, u32 p)
+{ return ip4_hash0(prefix, p, 0) ^ (pxlen << 26); }
 
-static inline u32 net_hash_ip4(const net_addr_ip4 *n)
-{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+static inline u64 px6_hash0(ip6_addr prefix, u32 pxlen, u32 p)
+{ return ip6_hash0(prefix, p, 0) ^ (pxlen << 26); }
 
-static inline u32 net_hash_ip6(const net_addr_ip6 *n)
-{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+static inline u32 net_hash_ip4(const net_addr_ip4 *n, u32 p)
+{ return hash_value(px4_hash0(n->prefix, n->pxlen, p)); }
 
-static inline u32 net_hash_vpn4(const net_addr_vpn4 *n)
-{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
+static inline u32 net_hash_ip6(const net_addr_ip6 *n, u32 p)
+{ return hash_value(px6_hash0(n->prefix, n->pxlen, p)); }
 
-static inline u32 net_hash_vpn6(const net_addr_vpn6 *n)
-{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
+static inline u32 net_hash_vpn4(const net_addr_vpn4 *n, u32 p)
+{ return hash_value(u64_hash0(n->rd, p, px4_hash0(n->prefix, n->pxlen, p))); }
 
-static inline u32 net_hash_roa4(const net_addr_roa4 *n)
-{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+static inline u32 net_hash_vpn6(const net_addr_vpn6 *n, u32 p)
+{ return hash_value(u64_hash0(n->rd, p, px6_hash0(n->prefix, n->pxlen, p))); }
 
-static inline u32 net_hash_roa6(const net_addr_roa6 *n)
-{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+static inline u32 net_hash_roa4(const net_addr_roa4 *n, u32 p)
+{ return hash_value(px4_hash0(n->prefix, n->pxlen, p)); }
 
-static inline u32 net_hash_flow4(const net_addr_flow4 *n)
-{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+static inline u32 net_hash_roa6(const net_addr_roa6 *n, u32 p)
+{ return hash_value(px6_hash0(n->prefix, n->pxlen, p)); }
 
-static inline u32 net_hash_flow6(const net_addr_flow6 *n)
-{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+static inline u32 net_hash_flow4(const net_addr_flow4 *n, u32 p)
+{ return hash_value(px4_hash0(n->prefix, n->pxlen, p)); }
 
-static inline u32 net_hash_ip6_sadr(const net_addr_ip6_sadr *n)
-{ return net_hash_ip6((net_addr_ip6 *) n); }
+static inline u32 net_hash_flow6(const net_addr_flow6 *n, u32 p)
+{ return hash_value(px6_hash0(n->prefix, n->pxlen, p)); }
 
-static inline u32 net_hash_mpls(const net_addr_mpls *n)
-{ return n->label; }
+static inline u32 net_hash_ip6_sadr(const net_addr_ip6_sadr *n, u32 p)
+{ return hash_value(px6_hash0(n->dst_prefix, n->dst_pxlen, p)); }
 
-u32 net_hash(const net_addr *a);
+static inline u32 net_hash_mpls(const net_addr_mpls *n, u32 p)
+{ return hash_value(u32_hash0(n->label, p, 0)); }
+
+u32 net_hash(const net_addr *a, u32 p);
 
 
 static inline int net_validate_px4(const ip4_addr prefix, uint pxlen)

@@ -25,7 +25,17 @@ uint u32_masklen(u32 x);
 
 u32 u32_log2(u32 v);
 
-static inline u32 u32_hash(u32 v) { return v * 2902958171u; }
+static inline u64 u32_hash0(u32 v, u32 p, u64 acc)
+{ return (acc + v) * p; }
+
+static inline u32 u32_hash(u32 v)
+{ return hash_value(u32_hash0(v, HASH_PARAM, 0)); }
+
+static inline u64 u64_hash0(u64 v, u32 p, u64 acc)
+{ return u32_hash0(v >> 32, p, u32_hash0(v, p, acc)); }
+
+static inline u32 u64_hash(u64 v)
+{ return hash_value(u64_hash0(v, HASH_PARAM, 0)); }
 
 static inline u8 u32_popcount(u32 v) { return __builtin_popcount(v); }
 static inline u8 u64_popcount(u64 v) { return __builtin_popcountll(v); }

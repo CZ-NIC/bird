@@ -201,4 +201,23 @@ u32 random_u32(void);
 void random_init(void);
 void random_bytes(void *buf, size_t size);
 
+
+/* Hashing */
+
+/* Constant parameter for non-parametrized hashes */
+#define HASH_PARAM 2902958171u
+
+/* Precomputed powers of HASH_PARAM */
+#define HASH_PARAM1 ((u64) HASH_PARAM)
+#define HASH_PARAM2 (HASH_PARAM1 * HASH_PARAM)
+#define HASH_PARAM3 (HASH_PARAM2 * HASH_PARAM)
+#define HASH_PARAM4 (HASH_PARAM3 * HASH_PARAM)
+
+/* Reduce intermediate 64-bit value to final 32-bit value */
+static inline u32 hash_value(u64 a)
+{ return ((u32) a) ^ ((u32) (a >> 32)); }
+
+u32 random_hash_param(void);
+
+
 #endif

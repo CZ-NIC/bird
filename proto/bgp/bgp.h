@@ -352,6 +352,7 @@ struct bgp_channel {
   list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
 
   HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
+  u32 prefix_param;			/* Parameter for prefix hash function */
   slab *prefix_slab;			/* Slab holding prefix nodes */
 
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */

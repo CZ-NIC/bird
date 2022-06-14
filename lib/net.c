@@ -171,23 +171,23 @@ net_compare(const net_addr *a, const net_addr *b)
   return 0;
 }
 
-#define NET_HASH(a,t) net_hash_##t((const net_addr_##t *) a)
+#define NET_HASH(a, p, t) net_hash_##t((const net_addr_##t *) a, p)
 
 u32
-net_hash(const net_addr *n)
+net_hash(const net_addr *n, u32 p)
 {
   switch (n->type)
   {
-  case NET_IP4: return NET_HASH(n, ip4);
-  case NET_IP6: return NET_HASH(n, ip6);
-  case NET_VPN4: return NET_HASH(n, vpn4);
-  case NET_VPN6: return NET_HASH(n, vpn6);
-  case NET_ROA4: return NET_HASH(n, roa4);
-  case NET_ROA6: return NET_HASH(n, roa6);
-  case NET_FLOW4: return NET_HASH(n, flow4);
-  case NET_FLOW6: return NET_HASH(n, flow6);
-  case NET_IP6_SADR: return NET_HASH(n, ip6_sadr);
-  case NET_MPLS: return NET_HASH(n, mpls);
+  case NET_IP4: return NET_HASH(n, p, ip4);
+  case NET_IP6: return NET_HASH(n, p, ip6);
+  case NET_VPN4: return NET_HASH(n, p, vpn4);
+  case NET_VPN6: return NET_HASH(n, p, vpn6);
+  case NET_ROA4: return NET_HASH(n, p, roa4);
+  case NET_ROA6: return NET_HASH(n, p, roa6);
+  case NET_FLOW4: return NET_HASH(n, p, flow4);
+  case NET_FLOW6: return NET_HASH(n, p, flow6);
+  case NET_IP6_SADR: return NET_HASH(n, p, ip6_sadr);
+  case NET_MPLS: return NET_HASH(n, p, mpls);
   default: bug("invalid type");
   }
 }

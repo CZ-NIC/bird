@@ -24,11 +24,25 @@
 u32
 random_u32(void)
 {
-  long int rand_low, rand_high;
+  u32 rand_low, rand_high;
 
   rand_low = random();
   rand_high = random();
   return (rand_low & 0xffff) | ((rand_high & 0xffff) << 16);
+}
+
+/* Generate random hash parameter (odd, bits roughly balanced) */
+u32
+random_hash_param(void)
+{
+  while (1)
+  {
+    u32 p = random_u32() | 1;
+    u32 c = u32_popcount(p);
+
+    if ((c >= 12) && (c <= 20))
+      return p;
+  }
 }
 
 

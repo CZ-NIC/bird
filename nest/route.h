@@ -58,6 +58,7 @@ struct fib {
   pool *fib_pool;			/* Pool holding all our data */
   slab *fib_slab;			/* Slab holding all fib nodes */
   struct fib_node **hash_table;		/* Node hash table */
+  u32  hash_param;			/* Parameter for hash function */
   uint hash_size;			/* Number of hash table entries (a power of two) */
   uint hash_order;			/* Binary logarithm of hash_size */
   uint hash_shift;			/* 32 - hash_order */
