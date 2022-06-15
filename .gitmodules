@@ -1,0 +1,3 @@
+[submodule "bird-tools"]
+	path = bird-tools
+	url = https://gitlab.nic.cz/labs/bird-tools

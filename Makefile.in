@@ -84,6 +84,7 @@ cf-local = $(conf-y-targets): $(s)config.Y
 
 src-o-files = $(patsubst %.c,$(o)%.o,$(src))
 tests-target-files = $(patsubst %.c,$(o)%,$(tests_src))
+tests_targets_ok := 
 
 all-daemon = $(daemon): $(obj)
 all-client = $(client): $(obj)
@@ -167,7 +168,7 @@ $(objdir)/sysdep/paths.h: Makefile
 
 # Unit tests rules
 
-tests_targets_ok = $(addsuffix .ok,$(tests_targets))
+tests_targets_ok += $(addsuffix .ok,$(tests_targets))
 
 $(tests_targets): %: %.o $(tests_objs) | prepare
 	$(E)echo LD $(LDFLAGS) -o $@ $< "..." $(LIBS)
@@ -178,6 +179,9 @@ $(tests_targets): LIBS += $(DAEMON_LIBS)
 
 $(tests_targets_ok): %.ok: %
 	$(Q)$* 2>/dev/null && touch $*.ok
+
+# Include the netlab testsuite target listing
+-include bird-tools/netlab/runtests.mk
 
 test: testsclean check
 check: tests tests_run
