@@ -1,3 +1,11 @@
+Version 2.0.10 (2022-06-16)
+  o BGP performance improvements
+  o BFD: New 'strict bind' option
+  o RPKI: VRF support
+  o Allow use of 240.0.0.0/4 as a private range
+  o BIRD client uses exit status to report errors
+  o Important bugfixes
+
 Version 2.0.9 (2022-02-09)
   o BGP: Flowspec validation procedure
   o Babel: MAC authentication support
