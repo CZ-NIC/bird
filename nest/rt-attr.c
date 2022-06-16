@@ -726,8 +726,8 @@ ea_do_prune(ea_list *e)
 	s++;
 
       /* Now s0 is the most recent version, s[-1] the oldest one */
-      /* Drop undefs */
-      if (s0->undef)
+      /* Drop undefs unless this is a true overlay */
+      if (s0->undef && !e->next)
 	continue;
 
       /* Copy the newest version to destination */
@@ -760,18 +760,15 @@ ea_do_prune(ea_list *e)
 static void
 ea_sort(ea_list *e)
 {
-  while (e)
-    {
-      if (!(e->flags & EALF_SORTED))
-	{
-	  ea_do_sort(e);
-	  ea_do_prune(e);
-	  e->flags |= EALF_SORTED;
-	}
-      if (e->count > 5)
-	e->flags |= EALF_BISECT;
-      e = e->next;
-    }
+  if (!(e->flags & EALF_SORTED))
+  {
+    ea_do_sort(e);
+    ea_do_prune(e);
+    e->flags |= EALF_SORTED;
+  }
+
+  if (e->count > 5)
+    e->flags |= EALF_BISECT;
 }
 
 /**
@@ -782,7 +779,7 @@ ea_sort(ea_list *e)
  * a given &ea_list after merging with ea_merge().
  */
 static unsigned
-ea_scan(const ea_list *e)
+ea_scan(const ea_list *e, int overlay)
 {
   unsigned cnt = 0;
 
@@ -790,6 +787,8 @@ ea_scan(const ea_list *e)
     {
       cnt += e->count;
       e = e->next;
+      if (e && overlay && ea_is_cached(e))
+	break;
     }
   return sizeof(ea_list) + sizeof(eattr)*cnt;
 }
@@ -809,27 +808,32 @@ ea_scan(const ea_list *e)
  * by calling ea_sort().
  */
 static void
-ea_merge(const ea_list *e, ea_list *t)
+ea_merge(ea_list *e, ea_list *t, int overlay)
 {
   eattr *d = t->attrs;
 
   t->flags = 0;
   t->count = 0;
-  t->next = NULL;
+
   while (e)
     {
       memcpy(d, e->attrs, sizeof(eattr)*e->count);
       t->count += e->count;
       d += e->count;
       e = e->next;
+
+      if (e && overlay && ea_is_cached(e))
+	break;
     }
+
+  t->next = e;
 }
 
 ea_list *
-ea_normalize(const ea_list *e)
+ea_normalize(ea_list *e, int overlay)
 {
-  ea_list *t = tmp_alloc(ea_scan(e));
-  ea_merge(e, t);
+  ea_list *t = tmp_alloc(ea_scan(e, overlay));
+  ea_merge(e, t, overlay);
   ea_sort(t);
 
   return t->count ? t : NULL;
@@ -850,7 +854,8 @@ ea_same(ea_list *x, ea_list *y)
 
   if (!x || !y)
     return x == y;
-  ASSERT(!x->next && !y->next);
+  if (x->next != y->next)
+    return 0;
   if (x->count != y->count)
     return 0;
   for(c=0; c<x->count; c++)
@@ -876,13 +881,12 @@ ea_list_size(ea_list *o)
   unsigned i, elen;
 
   ASSERT_DIE(o);
-  ASSERT_DIE(!o->next);
   elen = BIRD_CPU_ALIGN(sizeof(ea_list) + sizeof(eattr) * o->count);
 
   for(i=0; i<o->count; i++)
     {
       eattr *a = &o->attrs[i];
-      if (!(a->type & EAF_EMBEDDED))
+      if (!a->undef && !(a->type & EAF_EMBEDDED))
 	elen += ADATA_SIZE(a->u.ptr->length);
     }
 
@@ -899,7 +903,7 @@ ea_list_copy(ea_list *n, ea_list *o, uint elen)
   for(uint i=0; i<o->count; i++)
     {
       eattr *a = &n->attrs[i];
-      if (!(a->type & EAF_EMBEDDED))
+      if (!a->undef && !(a->type & EAF_EMBEDDED))
 	{
 	  unsigned size = ADATA_SIZE(a->u.ptr->length);
 	  ASSERT_DIE(adpos + size <= elen);
@@ -923,12 +927,21 @@ ea_list_ref(ea_list *l)
       eattr *a = &l->attrs[i];
       ASSERT_DIE(a->id < ea_class_max);
 
+      if (a->undef)
+	continue;
+
       struct ea_class *cl = ea_class_global[a->id];
       ASSERT_DIE(cl && cl->uc);
 
       CALL(cl->stored, a);
       cl->uc++;
     }
+
+  if (l->next)
+  {
+    ASSERT_DIE(ea_is_cached(l->next));
+    ea_clone(l->next);
+  }
 }
 
 static void
@@ -939,6 +952,9 @@ ea_list_unref(ea_list *l)
       eattr *a = &l->attrs[i];
       ASSERT_DIE(a->id < ea_class_max);
 
+      if (a->undef)
+	continue;
+
       struct ea_class *cl = ea_class_global[a->id];
       ASSERT_DIE(cl && cl->uc);
 
@@ -946,6 +962,9 @@ ea_list_unref(ea_list *l)
       if (!--cl->uc)
 	ea_class_free(cl);
     }
+
+  if (l->next)
+    ea_free(l->next);
 }
 
 void
@@ -1183,11 +1202,13 @@ ea_hash(ea_list *e)
 
   if (e)			/* Assuming chain of length 1 */
     {
-      ASSERT_DIE(!e->next);
+      h ^= mem_hash(&e->next, sizeof(e->next));
       for(i=0; i<e->count; i++)
 	{
 	  struct eattr *a = &e->attrs[i];
 	  h ^= a->id; h *= mul;
+	  if (a->undef)
+	    continue;
 	  if (a->type & EAF_EMBEDDED)
 	    h ^= a->u.data;
 	  else
@@ -1295,7 +1316,7 @@ ea_lookup(ea_list *o)
   uint h;
 
   ASSERT(!ea_is_cached(o));
-  o = ea_normalize(o);
+  o = ea_normalize(o, 1);
   h = ea_hash(o);
 
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next_hash)
@@ -1328,7 +1349,6 @@ ea__free(ea_list *a)
   if (a->next_hash)
     a->next_hash->pprev_hash = a->pprev_hash;
 
-  ASSERT(!a->next);
   ea_list_unref(a);
   mb_free(a);
 }

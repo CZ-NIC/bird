@@ -1253,10 +1253,10 @@ bgp_export_attr(struct bgp_export_state *s, eattr *a, ea_list *to)
  * Result: one sorted attribute list segment, or NULL if attributes are unsuitable.
  */
 static inline ea_list *
-bgp_export_attrs(struct bgp_export_state *s, const ea_list *a)
+bgp_export_attrs(struct bgp_export_state *s, ea_list *a)
 {
   /* Merge the attribute list */
-  ea_list *new = ea_normalize(a);
+  ea_list *new = ea_normalize(a, 0);
   ASSERT_DIE(new);
 
   uint i, count;

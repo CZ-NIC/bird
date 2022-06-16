@@ -237,7 +237,7 @@ ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
 /* Normalize ea_list; allocates the result from tmp_linpool */
-ea_list *ea_normalize(const ea_list *e);
+ea_list *ea_normalize(ea_list *e, int overlay);
 
 uint ea_list_size(ea_list *);
 void ea_list_copy(ea_list *dest, ea_list *src, uint size);
@@ -414,7 +414,7 @@ static inline int rte_dest(const rte *r)
 
 void rta_init(void);
 ea_list *ea_lookup(ea_list *);		/* Get a cached (and normalized) variant of this attribute list */
-static inline int ea_is_cached(ea_list *r) { return r->flags & EALF_CACHED; }
+static inline int ea_is_cached(const ea_list *r) { return r->flags & EALF_CACHED; }
 static inline ea_list *ea_clone(ea_list *r) { r->uc++; return r; }
 void ea__free(ea_list *r);
 static inline void ea_free(ea_list *r) { if (r && !--r->uc) ea__free(r); }
