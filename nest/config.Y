@@ -311,7 +311,14 @@ channel_item_:
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
  | PREFERENCE expr { this_channel->preference = $2; check_u16($2); }
- | IMPORT KEEP FILTERED bool { this_channel->in_keep_filtered = $4; }
+ | IMPORT KEEP FILTERED bool {
+     if ($4)
+       this_channel->in_keep |= RIK_REJECTED;
+     else if ((this_channel->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
+       cf_error("Import keep filtered is implied by the import table.");
+     else
+       this_channel->in_keep &= ~RIK_REJECTED;
+   }
  | RPKI RELOAD bool { this_channel->rpki_reload = $3; }
  ;
 
@@ -674,8 +681,8 @@ r_args:
      $$->tables_defined_by = RSD_TDB_ALL;
    }
  | r_args IMPORT TABLE channel_arg {
-     if (!$4->in_table) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_table($$, $4->in_table);
+     if (!($4->in_keep & RIK_PREFILTER)) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
+     rt_show_add_table($$, $4->table)->prefilter = $4;
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args EXPORT TABLE channel_arg {

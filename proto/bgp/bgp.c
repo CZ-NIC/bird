@@ -900,9 +900,6 @@ bgp_refresh_begin(struct bgp_channel *c)
 
   c->load_state = BFS_REFRESHING;
   rt_refresh_begin(c->c.table, &c->c.in_req);
-
-  if (c->c.in_table)
-    rt_refresh_begin(c->c.in_table, &c->c.in_req);
 }
 
 /**
@@ -924,9 +921,6 @@ bgp_refresh_end(struct bgp_channel *c)
 
   c->load_state = BFS_NONE;
   rt_refresh_end(c->c.table, &c->c.in_req);
-
-  if (c->c.in_table)
-    rt_prune_sync(c->c.in_table, 0);
 }
 
 
@@ -1393,9 +1387,9 @@ bgp_reload_routes(struct channel *C)
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
 
-  ASSERT(p->conn && (p->route_refresh || c->c.in_table));
+  ASSERT(p->conn && (p->route_refresh || (C->in_keep & RIK_PREFILTER)));
 
-  if (c->c.in_table)
+  if (C->in_keep & RIK_PREFILTER)
     channel_schedule_reload(C);
   else
     bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
@@ -2153,7 +2147,7 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
       (new->cost != old->cost))
   {
     /* import_changed itself does not force ROUTE_REFRESH when import_table is active */
-    if (c->c.in_table && (c->c.channel_state == CS_UP))
+    if ((c->c.in_keep & RIK_PREFILTER) && (c->c.channel_state == CS_UP))
       bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
 
     *import_changed = 1;

@@ -454,7 +454,7 @@ struct channel_config {
   const struct filter *in_filter, *out_filter; /* Attached filters */
 
   struct channel_limit rx_limit;	/* Limit for receiving routes from protocol
-					   (relevant when in_keep_filtered is active) */
+					   (relevant when in_keep & RIK_REJECTED) */
   struct channel_limit in_limit;	/* Limit for importing routes from protocol */
   struct channel_limit out_limit;	/* Limit for exporting routes to protocol */
 
@@ -463,7 +463,7 @@ struct channel_config {
   u16 preference;			/* Default route preference */
   u32 debug;				/* Debugging flags (D_*) */
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
-  u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
+  u8 in_keep;				/* Which states of routes to keep (RIK_*) */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
 };
 
@@ -480,7 +480,7 @@ struct channel {
   struct bmap export_map;		/* Keeps track which routes were really exported */
   struct bmap export_reject_map;	/* Keeps track which routes were rejected by export filter */
 
-  struct limit rx_limit;		/* Receive limit (for in_keep_filtered) */
+  struct limit rx_limit;		/* Receive limit (for in_keep & RIK_REJECTED) */
   struct limit in_limit;		/* Input limit */
   struct limit out_limit;		/* Output limit */
 
@@ -517,7 +517,7 @@ struct channel {
   u16 preference;			/* Default route preference */
   u32 debug;				/* Debugging flags (D_*) */
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
-  u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
+  u8 in_keep;				/* Which states of routes to keep (RIK_*) */
   u8 disabled;
   u8 stale;				/* Used in reconfiguration */
 
@@ -529,11 +529,7 @@ struct channel {
 
   btime last_state_change;		/* Time of last state transition */
 
-  struct rtable *in_table;		/* Internal table for received routes */
-  struct event *reload_event;		/* Event responsible for reloading from in_table */
-  struct fib_iterator reload_fit;	/* FIB iterator in in_table used during reloading */
-  struct rte_storage *reload_next_rte;	/* Route iterator in in_table used during reloading */
-  u8 reload_active;			/* Iterator reload_fit is linked */
+  struct rt_export_request reload_req;	/* Feeder for import reload */
 
   u8 reload_pending;			/* Reloading and another reload is scheduled */
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
@@ -544,6 +540,8 @@ struct channel {
   list roa_subscriptions;		/* List of active ROA table subscriptions based on filters roa_check() */
 };
 
+#define RIK_REJECTED	1			/* Routes rejected in import filter are kept */
+#define RIK_PREFILTER	(2 | RIK_REJECTED)	/* All routes' attribute state before import filter is kept */
 
 /*
  * Channel states

@@ -387,6 +387,7 @@ struct rt_show_data_rtable {
   node n;
   rtable *table;
   struct channel *export_channel;
+  struct channel *prefilter;
 };
 
 struct rt_show_data {

@@ -161,6 +161,7 @@ typedef struct ea_list {
 #define EALF_SORTED 1			/* Attributes are sorted by code */
 #define EALF_BISECT 2			/* Use interval bisection for searching */
 #define EALF_CACHED 4			/* List is cached */
+#define EALF_OVERLAY  8			/* List is an overlay in the same table */
 
 struct ea_class {
 #define EA_CLASS_INSIDE \
@@ -413,7 +414,7 @@ static inline int rte_dest(const rte *r)
 }
 
 void rta_init(void);
-ea_list *ea_lookup(ea_list *);		/* Get a cached (and normalized) variant of this attribute list */
+ea_list *ea_lookup(ea_list *, int overlay);		/* Get a cached (and normalized) variant of this attribute list */
 static inline int ea_is_cached(const ea_list *r) { return r->flags & EALF_CACHED; }
 static inline ea_list *ea_clone(ea_list *r) { r->uc++; return r; }
 void ea__free(ea_list *r);

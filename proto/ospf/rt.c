@@ -2086,7 +2086,7 @@ again1:
 
 	ASSERT_DIE(ARRAY_SIZE(eattrs.a) >= eattrs.l.count);
 
-	ea_list *eal = ea_lookup(&eattrs.l);
+	ea_list *eal = ea_lookup(&eattrs.l, 0);
 	ea_free(nf->old_ea);
 	nf->old_ea = eal;
 

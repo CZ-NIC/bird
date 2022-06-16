@@ -126,7 +126,7 @@ pipe_postconfig(struct proto_config *CF)
   if (cc->rx_limit.action)
     cf_error("Pipe protocol does not support receive limits");
 
-  if (cc->in_keep_filtered)
+  if (cc->in_keep)
     cf_error("Pipe protocol prohibits keeping filtered routes");
 
   cc->debug = cf->c.debug;

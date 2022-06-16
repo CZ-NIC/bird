@@ -26,7 +26,8 @@ rt_show_table(struct cli *c, struct rt_show_data *d)
     return;
 
   if (d->last_table) cli_printf(c, -1007, "");
-  cli_printf(c, -1007, "Table %s:", d->tab->table->name);
+  cli_printf(c, -1007, "Table %s:",
+      d->tab->prefilter ? "import" : d->tab->table->name);
   d->last_table = d->tab;
 }
 
@@ -156,7 +157,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
   for (struct rte_storage *er = n->routes; er; er = er->next)
     {
-      if (rte_is_filtered(&er->rte) != d->filtered)
+      if (!d->tab->prefilter && (rte_is_filtered(&er->rte) != d->filtered))
 	continue;
 
       d->rt_counter++;
@@ -167,6 +168,11 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	continue;
 
       struct rte e = er->rte;
+      if (d->tab->prefilter)
+	if (e.sender != d->tab->prefilter->in_req.hook)
+	  continue;
+	else while (e.attrs->next)
+	  e.attrs = e.attrs->next;
 
       /* Export channel is down, do not try to export routes to it */
       if (ec && !ec->out_req.hook)
@@ -239,7 +245,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	else
 	  ia[0] = 0;
 
-	rt_show_rte(c, ia, &e, d, (n->routes == er));
+	rt_show_rte(c, ia, &e, d, !d->tab->prefilter && (n->routes == er));
 	first_show = 0;
       }
 

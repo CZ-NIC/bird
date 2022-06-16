@@ -1392,7 +1392,7 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, ea_lis
 
   /* Prepare cached route attributes */
   if (s->cached_ea == NULL)
-    s->cached_ea = ea_lookup(a0);
+    s->cached_ea = ea_lookup(a0, 0);
 
   rte e0 = {
     .attrs = s->cached_ea,

@@ -1310,13 +1310,13 @@ rta_rehash(void)
  * converted to the normalized form.
  */
 ea_list *
-ea_lookup(ea_list *o)
+ea_lookup(ea_list *o, int overlay)
 {
   ea_list *r;
   uint h;
 
   ASSERT(!ea_is_cached(o));
-  o = ea_normalize(o, 1);
+  o = ea_normalize(o, overlay);
   h = ea_hash(o);
 
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next_hash)

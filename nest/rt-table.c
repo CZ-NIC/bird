@@ -606,7 +606,7 @@ rte_store(const rte *r, net *net, rtable *tab)
   if (ea_is_cached(e->rte.attrs))
     e->rte.attrs = rta_clone(e->rte.attrs);
   else
-    e->rte.attrs = rta_lookup(e->rte.attrs);
+    e->rte.attrs = rta_lookup(e->rte.attrs, 1);
 
   return e;
 }
@@ -1513,7 +1513,7 @@ channel_preimport(struct rt_import_request *req, rte *new, rte *old)
 
   if (new_in && !old_in)
     if (CHANNEL_LIMIT_PUSH(c, IN))
-      if (c->in_keep_filtered)
+      if (c->in_keep & RIK_REJECTED)
       {
 	new->flags |= REF_FILTERED;
 	return new;
@@ -1527,8 +1527,6 @@ channel_preimport(struct rt_import_request *req, rte *new, rte *old)
   return new;
 }
 
-static void rte_update_direct(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
-
 void
 rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
@@ -1537,15 +1535,13 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
   ASSERT(c->channel_state == CS_UP);
 
-  if (c->in_table && !rte_update_in(c, n, new, src))
-    return;
+  /* The import reloader requires prefilter routes to be the first layer */
+  if (new && (c->in_keep & RIK_PREFILTER))
+    if (ea_is_cached(new->attrs) && !new->attrs->next)
+      new->attrs = ea_clone(new->attrs);
+    else
+      new->attrs = ea_lookup(new->attrs, 0);
 
-  return rte_update_direct(c, n, new, src);
-}
-
-static void
-rte_update_direct(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
-{
   const struct filter *filter = c->in_filter;
   struct channel_import_stats *stats = &c->import_stats;
 
@@ -1563,7 +1559,7 @@ rte_update_direct(struct channel *c, const net_addr *n, rte *new, struct rte_src
 	  stats->updates_filtered++;
 	  channel_rte_trace_in(D_FILTERS, c, new, "filtered out");
 
-	  if (c->in_keep_filtered)
+	  if (c->in_keep & RIK_REJECTED)
 	    new->flags |= REF_FILTERED;
 	  else
 	    new = NULL;
@@ -1587,6 +1583,11 @@ rte_update_direct(struct channel *c, const net_addr *n, rte *new, struct rte_src
     stats->withdraws_received++;
 
   rte_import(&c->in_req, n, new, src);
+
+  /* Now the route attributes are kept by the in-table cached version
+   * and we may drop the local handle */
+  if (new && (c->in_keep & RIK_PREFILTER))
+    ea_free(new->attrs);
 
   rte_update_unlock();
 }
@@ -3183,154 +3184,22 @@ done:
  *	Import table
  */
 
-int
-rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
+
+void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe UNUSED, rte **feed, uint count)
 {
-  struct rtable *tab = c->in_table;
-  net *net;
+  struct channel *c = SKIP_BACK(struct channel, reload_req, req);
 
-  if (new)
-    net = net_get(tab, n);
-  else
-  {
-    net = net_find(tab, n);
-
-    if (!net)
-      goto drop_withdraw;
-  }
-
-  /* Find the old rte */
-  struct rte_storage **pos = rte_find(net, src);
-  if (*pos)
+  for (uint i=0; i<count; i++)
+    if (feed[i]->sender == c->in_req.hook)
     {
-      rte *old = &(*pos)->rte;
-      if (new && rte_same(old, new))
-      {
-	/* Refresh the old rte, continue with update to main rtable */
-	if (old->flags & (REF_STALE | REF_DISCARD | REF_MODIFY))
-	{
-	  old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
-	  return 1;
-	}
+      /* Strip the later attribute layers */
+      rte new = *feed[i];
+      while (new.attrs->next)
+	new.attrs = new.attrs->next;
 
-	goto drop_update;
-      }
-
-      if (!new)
-	CHANNEL_LIMIT_POP(c, RX);
-
-      /* Move iterator if needed */
-      if (*pos == c->reload_next_rte)
-	c->reload_next_rte = (*pos)->next;
-
-      /* Remove the old rte */
-      struct rte_storage *del = *pos;
-      *pos = (*pos)->next;
-      rte_free(del);
-      tab->rt_count--;
+      /* And reload the route */
+      rte_update(c, net, &new, new.src);
     }
-  else if (new)
-    {
-      if (CHANNEL_LIMIT_PUSH(c, RX))
-      {
-	/* Required by rte_trace_in() */
-	new->net = n;
-
-	channel_rte_trace_in(D_FILTERS, c, new, "ignored [limit]");
-	goto drop_update;
-      }
-    }
-  else
-    goto drop_withdraw;
-
-  if (!new)
-  {
-    if (!net->routes)
-      fib_delete(&tab->fib, net);
-
-    return 1;
-  }
-
-  /* Insert the new rte */
-  struct rte_storage *e = rte_store(new, net, tab);
-  e->rte.lastmod = current_time();
-  e->next = *pos;
-  *pos = e;
-  tab->rt_count++;
-  return 1;
-
-drop_update:
-  c->import_stats.updates_received++;
-  c->in_req.hook->stats.updates_ignored++;
-
-  if (!net->routes)
-    fib_delete(&tab->fib, net);
-
-  return 0;
-
-drop_withdraw:
-  c->import_stats.withdraws_received++;
-  c->in_req.hook->stats.withdraws_ignored++;
-  return 0;
-}
-
-int
-rt_reload_channel(struct channel *c)
-{
-  struct rtable *tab = c->in_table;
-  struct fib_iterator *fit = &c->reload_fit;
-  int max_feed = 64;
-
-  ASSERT(c->channel_state == CS_UP);
-
-  if (!c->reload_active)
-  {
-    FIB_ITERATE_INIT(fit, &tab->fib);
-    c->reload_active = 1;
-  }
-
-  do {
-    for (struct rte_storage *e = c->reload_next_rte; e; e = e->next)
-    {
-      if (max_feed-- <= 0)
-      {
-	c->reload_next_rte = e;
-	debug("%s channel reload burst split (max_feed=%d)", c->proto->name, max_feed);
-	return 0;
-      }
-
-      rte r = e->rte;
-      rte_update_direct(c, r.net, &r, r.src);
-    }
-
-    c->reload_next_rte = NULL;
-
-    FIB_ITERATE_START(&tab->fib, fit, net, n)
-    {
-      if (c->reload_next_rte = n->routes)
-      {
-	FIB_ITERATE_PUT_NEXT(fit, &tab->fib);
-	break;
-      }
-    }
-    FIB_ITERATE_END;
-  }
-  while (c->reload_next_rte);
-
-  c->reload_active = 0;
-  return 1;
-}
-
-void
-rt_reload_channel_abort(struct channel *c)
-{
-  if (c->reload_active)
-  {
-    /* Unlink the iterator */
-    fit_get(&c->in_table->fib, &c->reload_fit);
-    c->reload_next_rte = NULL;
-    c->reload_active = 0;
-  }
 }
 
 void
