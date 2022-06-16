@@ -71,8 +71,13 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   if (d->last_table != d->tab)
     rt_show_table(c, d);
 
-  cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s", ia, 
-      net_is_flow(e->net) ? flowspec_valid_name(flowspec_valid) : rta_dest_name(dest),
+  eattr *heea;
+  struct hostentry_adata *had = NULL;
+  if (!net_is_flow(e->net) && (dest == RTD_NONE) && (heea = ea_find(a, &ea_gen_hostentry)))
+    had = (struct hostentry_adata *) heea->u.ptr;
+
+  cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s", ia,
+      net_is_flow(e->net) ? flowspec_valid_name(flowspec_valid) : had ? "recursive" : rta_dest_name(dest),
       e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
 
   if (dest == RTD_UNICAST)
@@ -99,6 +104,13 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
       else
 	cli_printf(c, -1007, "\tdev %s%s%s",
 		   nh->iface->name, mpls,  onlink, weight);
+    }
+  else if (had)
+    {
+      if (ipa_nonzero(had->he->link) && !ipa_equal(had->he->link, had->he->addr))
+	cli_printf(c, -1007, "\tvia %I %I table %s", had->he->addr, had->he->link, had->he->tab->name);
+      else
+	cli_printf(c, -1007, "\tvia %I table %s", had->he->addr, had->he->tab->name);
     }
 
   if (d->verbose)

@@ -520,6 +520,9 @@ static inline int
 rte_resolvable(const rte *rt)
 {
   eattr *nhea = ea_find(rt->attrs, &ea_gen_nexthop);
+  if (!nhea)
+    return 0;
+
   struct nexthop_adata *nhad = (void *) nhea->u.ptr;
   return NEXTHOP_IS_REACHABLE(nhad) || (nhad->dest != RTD_UNREACHABLE);
 }
