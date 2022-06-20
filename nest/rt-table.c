@@ -820,17 +820,6 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
   if (!new && old)
     CHANNEL_LIMIT_POP(c, OUT);
 
-  /* Apply export table */
-  struct rte_storage *old_exported = NULL;
-  if (c->out_table)
-  {
-    if (!rte_update_out(c, net, new, old, &old_exported))
-    {
-      channel_rte_trace_out(D_ROUTES, c, new, "idempotent");
-      return;
-    }
-  }
-
   if (new)
     stats->updates_accepted++;
   else
@@ -852,10 +841,7 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
       channel_rte_trace_out(D_ROUTES, c, old, "removed");
   }
 
-  p->rt_notify(p, c, net, new, old_exported ? &old_exported->rte : old);
-
-  if (c->out_table && old_exported)
-    rte_free(old_exported);
+  p->rt_notify(p, c, net, new, old);
 }
 
 static void
@@ -1747,7 +1733,7 @@ rt_export_stopped(void *data)
   hook->stopped(hook->req);
 
   /* Reporting the hook as finished. */
-  tab->done(hook);
+  CALL(tab->done, hook);
 
   /* Freeing the hook together with its coroutine. */
   rfree(hook->pool);
@@ -1763,7 +1749,7 @@ rt_set_import_state(struct rt_import_hook *hook, u8 state)
     hook->req->log_state_change(hook->req, state);
 }
 
-static inline void
+void
 rt_set_export_state(struct rt_export_hook *hook, u8 state)
 {
   hook->last_state_change = current_time();
@@ -1874,16 +1860,22 @@ rt_table_export_stop(struct rt_export_hook *hook)
   if (hook->export_state != TES_FEEDING)
     return;
 
-  if (hook->walk_lock)
+  switch (hook->req->addr_mode)
   {
-    rt_unlock_trie(tab, hook->walk_lock);
-    hook->walk_lock = NULL;
-
-    mb_free(hook->walk_state);
-    hook->walk_state = NULL;
+    case TE_ADDR_IN:
+      if (hook->walk_lock)
+      {
+	rt_unlock_trie(tab, hook->walk_lock);
+	hook->walk_lock = NULL;
+	mb_free(hook->walk_state);
+	hook->walk_state = NULL;
+	break;
+      }
+      /* fall through */
+    case TE_ADDR_NONE:
+      fit_get(&tab->fib, &hook->feed_fit);
+      break;
   }
-  else
-    fit_get(&tab->fib, &hook->feed_fit);
 }
 
 void
@@ -1896,7 +1888,7 @@ rt_stop_export(struct rt_export_request *req, void (*stopped)(struct rt_export_r
   ev_postpone(hook->event);
 
   /* Stop feeding from the exporter */
-  hook->table->stop(hook);
+  CALL(hook->table->stop, hook);
 
   /* Reset the event as the stopped event */
   hook->event->hook = rt_export_stopped;
@@ -3395,130 +3387,6 @@ void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *n
       /* And reload the route */
       rte_update(c, net, &new, new.src);
     }
-}
-
-void
-rt_prune_sync(rtable *t, int all)
-{
-  struct fib_iterator fit;
-
-  FIB_ITERATE_INIT(&fit, &t->fib);
-
-again:
-  FIB_ITERATE_START(&t->fib, &fit, net, n)
-  {
-    struct rte_storage *e, **ee = &n->routes;
-
-    while (e = *ee)
-    {
-      if (all || (e->rte.flags & (REF_STALE | REF_DISCARD)))
-      {
-	*ee = e->next;
-	rte_free(e);
-	t->rt_count--;
-      }
-      else
-	ee = &e->next;
-    }
-
-    if (all || !n->routes)
-    {
-      FIB_ITERATE_PUT(&fit);
-      fib_delete(&t->fib, n);
-      goto again;
-    }
-  }
-  FIB_ITERATE_END;
-}
-
-
-/*
- *	Export table
- */
-
-int
-rte_update_out(struct channel *c, const net_addr *n, rte *new, const rte *old0, struct rte_storage **old_exported)
-{
-  struct rtable *tab = c->out_table;
-  struct rte_src *src;
-  net *net;
-
-  if (new)
-  {
-    net = net_get(tab, n);
-    src = new->src;
-  }
-  else
-  {
-    net = net_find(tab, n);
-    src = old0->src;
-
-    if (!net)
-      goto drop;
-  }
-
-  /* Find the old rte */
-  struct rte_storage **pos = (c->ra_mode == RA_ANY) ? rte_find(net, src) : &net->routes;
-  struct rte_storage *old = NULL;
-
-  if (old = *pos)
-  {
-    if (new && rte_same(&(*pos)->rte, new))
-      goto drop;
-
-    /* Remove the old rte */
-    *pos = old->next;
-    *old_exported = old;
-    tab->rt_count--;
-  }
-
-  if (!new)
-  {
-    if (!old)
-      goto drop;
-
-    if (!net->routes)
-      fib_delete(&tab->fib, net);
-
-    return 1;
-  }
-
-  /* Insert the new rte */
-  struct rte_storage *e = rte_store(new, net, tab);
-  e->rte.lastmod = current_time();
-  e->next = *pos;
-  *pos = e;
-  tab->rt_count++;
-  return 1;
-
-drop:
-  return 0;
-}
-
-void
-rt_refeed_channel(struct channel *c)
-{
-  if (!c->out_table)
-  {
-    channel_request_feeding(c);
-    return;
-  }
-
-  ASSERT_DIE(c->ra_mode != RA_ANY);
-
-  c->proto->feed_begin(c, 0);
-
-  FIB_WALK(&c->out_table->fib, net, n)
-  {
-    if (!n->routes)
-      continue;
-
-    rte e = n->routes->rte;
-    c->proto->rt_notify(c->proto, c, n->n.addr, &e, NULL);
-  }
-  FIB_WALK_END;
-
-  c->proto->feed_end(c);
 }
 
 

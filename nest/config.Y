@@ -694,7 +694,7 @@ r_args:
    }
  | r_args EXPORT TABLE channel_arg {
      if (!$4->out_table) cf_error("No export table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_exporter($$, &$4->out_table->exporter, "export");
+     rt_show_add_exporter($$, $4->out_table, "export");
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args FILTER filter {

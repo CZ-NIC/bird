@@ -247,14 +247,20 @@ struct rt_export_hook {
     u32 withdraws_received;		/* Number of route withdraws received */
   } stats;
 
-  struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
-  struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
-  struct f_trie *walk_lock;		/* Locked trie for walking */
+  union {
+    struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
+    struct {
+      struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
+      struct f_trie *walk_lock;			/* Locked trie for walking */
+    };
+    u32 hash_iter;				/* Iterator over hash */
+  };
 
   btime last_state_change;		/* Time of last state transition */
 
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
   u8 export_state;			/* Route export state (TES_*, see below) */
+  u8 feed_type;				/* Which feeding method is used (TFT_*, see below) */
 
   struct event *event;			/* Event running all the export operations */
 
@@ -282,6 +288,10 @@ struct rt_export_hook {
 #define TE_ADDR_IN	3		/* Interval query - show route in <addr> */
 
 
+#define TFT_FIB		1
+#define TFT_TRIE	2
+#define TFT_HASH	3
+
 void rt_request_import(rtable *tab, struct rt_import_request *req);
 void rt_request_export(struct rt_exporter *tab, struct rt_export_request *req);
 
@@ -295,6 +305,8 @@ const char *rt_export_state_name(u8 state);
 
 static inline u8 rt_import_get_state(struct rt_import_hook *ih) { return ih ? ih->import_state : TIS_DOWN; }
 static inline u8 rt_export_get_state(struct rt_export_hook *eh) { return eh ? eh->export_state : TES_DOWN; }
+
+void rt_set_export_state(struct rt_export_hook *hook, u8 state);
 
 void rte_import(struct rt_import_request *req, const net_addr *net, rte *new, struct rte_src *src);
 
@@ -386,8 +398,6 @@ int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_refeed_channel(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
-int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
-int rte_update_out(struct channel *c, const net_addr *n, rte *new, const rte *old, struct rte_storage **old_exported);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
 static inline int rt_is_ip(rtable *tab)

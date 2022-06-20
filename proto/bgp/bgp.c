@@ -1740,14 +1740,15 @@ bgp_channel_start(struct channel *C)
   }
 
   c->pool = p->p.pool; // XXXX
-  bgp_init_bucket_table(c);
-  bgp_init_prefix_table(c);
 
   if (c->cf->import_table)
     channel_setup_in_table(C);
 
   if (c->cf->export_table)
-    channel_setup_out_table(C);
+    bgp_setup_out_table(c);
+
+  bgp_init_bucket_table(c);
+  bgp_init_prefix_table(c);
 
   c->stale_timer = tm_new_init(c->pool, bgp_long_lived_stale_timeout, c, 0, 0);
 

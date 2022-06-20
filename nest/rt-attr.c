@@ -197,11 +197,14 @@ static struct idm src_ids;
 #define RSH_INIT_ORDER		6
 
 static HASH(struct rte_src) src_hash;
+static struct rte_src **rte_src_global;
+static uint rte_src_global_max = SRC_ID_INIT_SIZE;
 
 static void
 rte_src_init(void)
 {
   rte_src_slab = sl_new(rta_pool, sizeof(struct rte_src));
+  rte_src_global = mb_allocz(rta_pool, sizeof(struct rte_src *) * rte_src_global_max);
 
   idm_init(&src_ids, rta_pool, SRC_ID_INIT_SIZE);
 
@@ -232,8 +235,25 @@ rt_get_source(struct proto *p, u32 id)
   src->uc = 0;
 
   HASH_INSERT2(src_hash, RSH, rta_pool, src);
+  if (src->global_id >= rte_src_global_max)
+  {
+    rte_src_global = mb_realloc(rte_src_global, sizeof(struct rte_src *) * (rte_src_global_max *= 2));
+    memset(&rte_src_global[rte_src_global_max / 2], 0,
+	sizeof(struct rte_src *) * (rte_src_global_max / 2));
+  }
+
+  rte_src_global[src->global_id] = src;
 
   return src;
+}
+
+struct rte_src *
+rt_find_source_global(u32 id)
+{
+  if (id >= rte_src_global_max)
+    return NULL;
+  else
+    return rte_src_global[id];
 }
 
 void
@@ -1081,8 +1101,11 @@ ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad)
       bsprintf(weight, " weight %d", nh->weight + 1);
 
     if (ipa_nonzero(nh->gw))
-      cli_printf(c, -1007, "\tvia %I on %s%s%s%s",
-	  nh->gw, nh->iface->name, mpls, onlink, weight);
+      if (nh->iface)
+	cli_printf(c, -1007, "\tvia %I on %s%s%s%s",
+	    nh->gw, nh->iface->name, mpls, onlink, weight);
+      else
+	cli_printf(c, -1007, "\tvia %I", nh->gw);
     else
       cli_printf(c, -1007, "\tdev %s%s%s",
 	  nh->iface->name, mpls,  onlink, weight);

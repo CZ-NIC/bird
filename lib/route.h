@@ -35,6 +35,7 @@ typedef struct rte {
 #define REF_STALE	4		/* Route is stale in a refresh cycle */
 #define REF_DISCARD	8		/* Route is scheduled for discard */
 #define REF_MODIFY	16		/* Route is scheduled for modify */
+#define REF_PENDING	32		/* Route has not propagated completely yet */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
 static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED); }
@@ -53,6 +54,7 @@ struct rte_src {
 
 struct rte_src *rt_find_source(struct proto *p, u32 id);
 struct rte_src *rt_get_source(struct proto *p, u32 id);
+struct rte_src *rt_find_source_global(u32 id);
 static inline void rt_lock_source(struct rte_src *src) { src->uc++; }
 static inline void rt_unlock_source(struct rte_src *src) { src->uc--; }
 void rt_prune_sources(void);

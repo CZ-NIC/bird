@@ -559,10 +559,6 @@ channel_export_stopped(struct rt_export_request *req)
     return;
   }
 
-  /* Free the routes from out_table */
-  if (c->out_table)
-    rt_prune_sync(c->out_table, 1);
-
   mb_free(c->out_req.name);
   c->out_req.name = NULL;
 
@@ -645,18 +641,6 @@ channel_setup_in_table(struct channel *c)
   };
 
   c->in_keep |= RIK_PREFILTER;
-}
-
-/* Called by protocol to activate out_table */
-void
-channel_setup_out_table(struct channel *c)
-{
-  struct rtable_config *cf = mb_allocz(c->proto->pool, sizeof(struct rtable_config));
-  cf->name = "export";
-  cf->addr_type = c->net_type;
-  cf->internal = 1;
-
-  c->out_table = rt_setup(c->proto->pool, cf);
 }
 
 
