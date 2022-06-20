@@ -139,7 +139,6 @@ const char *rt_import_state_name_array[TIS_MAX] = {
 
 const char *rt_export_state_name_array[TES_MAX] = {
   [TES_DOWN] = "DOWN",
-  [TES_HUNGRY] = "HUNGRY",
   [TES_FEEDING] = "FEEDING",
   [TES_READY] = "READY",
   [TES_STOP] = "STOP"
@@ -1183,7 +1182,7 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
   }
 
   struct rt_export_hook *eh;
-  WALK_LIST(eh, tab->exports)
+  WALK_LIST(eh, tab->exporter.hooks)
   {
     if (eh->export_state == TES_STOP)
       continue;
@@ -1678,10 +1677,20 @@ rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filte
 }
 
 static void
+rt_table_export_done(struct rt_export_hook *hook)
+{
+  struct rt_exporter *re = hook->table;
+  struct rtable *tab = SKIP_BACK(struct rtable, exporter, re);
+
+  rt_unlock_table(tab);
+  DBG("Export hook %p in table %s finished uc=%u\n", hook, tab->name, tab->use_count);
+}
+
+static void
 rt_export_stopped(void *data)
 {
   struct rt_export_hook *hook = data;
-  rtable *tab = hook->table;
+  struct rt_exporter *tab = hook->table;
 
   /* Unlist */
   rem_node(&hook->n);
@@ -1689,13 +1698,12 @@ rt_export_stopped(void *data)
   /* Reporting the channel as stopped. */
   hook->stopped(hook->req);
 
+  /* Reporting the hook as finished. */
+  tab->done(hook);
+
   /* Freeing the hook together with its coroutine. */
   rfree(hook->pool);
-  rt_unlock_table(tab);
-
-  DBG("Export hook %p in table %s finished uc=%u\n", hook, tab->name, tab->use_count);
 }
-
 
 static inline void
 rt_set_import_state(struct rt_import_hook *hook, u8 state)
@@ -1748,34 +1756,51 @@ rt_stop_import(struct rt_import_request *req, void (*stopped)(struct rt_import_r
   hook->stopped = stopped;
 }
 
-void
-rt_request_export(rtable *tab, struct rt_export_request *req)
+static struct rt_export_hook *
+rt_table_export_start(struct rt_exporter *re, struct rt_export_request *req)
 {
+  rtable *tab = SKIP_BACK(rtable, exporter, re);
   rt_lock_table(tab);
 
   pool *p = rp_new(tab->rp, "Export hook");
-  struct rt_export_hook *hook = req->hook = mb_allocz(p, sizeof(struct rt_export_hook));
+  struct rt_export_hook *hook = mb_allocz(p, sizeof(struct rt_export_hook));
   hook->pool = p;
   hook->lp = lp_new_default(p);
-  
-  hook->req = req;
-  hook->table = tab;
 
   /* stats zeroed by mb_allocz */
-
-  rt_set_export_state(hook, TES_HUNGRY);
-
-  hook->n = (node) {};
-  add_tail(&tab->exports, &hook->n);
 
   FIB_ITERATE_INIT(&hook->feed_fit, &tab->fib);
 
   DBG("New export hook %p req %p in table %s uc=%u\n", hook, req, tab->name, tab->use_count);
 
+  hook->event = ev_new_init(p, rt_feed_channel, hook);
+
+  return hook;
+}
+
+void
+rt_request_export(struct rt_exporter *re, struct rt_export_request *req)
+{
+  struct rt_export_hook *hook = req->hook = re->start(re, req);
+
+  hook->req = req;
+  hook->table = re;
+
+  hook->n = (node) {};
+  add_tail(&re->hooks, &hook->n);
+
   rt_set_export_state(hook, TES_FEEDING);
 
-  hook->event = ev_new_init(p, rt_feed_channel, hook);
   ev_schedule_work(hook->event);
+}
+
+static void
+rt_table_export_stop(struct rt_export_hook *hook)
+{
+  rtable *tab = SKIP_BACK(rtable, exporter, hook->table);
+
+  if (hook->export_state == TES_FEEDING)
+    fit_get(&tab->fib, &hook->feed_fit);
 }
 
 void
@@ -1784,18 +1809,20 @@ rt_stop_export(struct rt_export_request *req, void (*stopped)(struct rt_export_r
   ASSERT_DIE(req->hook);
   struct rt_export_hook *hook = req->hook;
 
-  rtable *tab = hook->table;
-
-  /* Stop feeding */
+  /* Cancel the feeder event */
   ev_postpone(hook->event);
 
-  if (hook->export_state == TES_FEEDING)
-    fit_get(&tab->fib, &hook->feed_fit);
+  /* Stop feeding from the exporter */
+  hook->table->stop(hook);
 
+  /* Reset the event as the stopped event */
   hook->event->hook = rt_export_stopped;
   hook->stopped = stopped;
 
+  /* Update export state */
   rt_set_export_state(hook, TES_STOP);
+
+  /* Run the stopped event */
   ev_schedule(hook->event);
 }
 
@@ -1948,7 +1975,7 @@ rt_dump_hooks(rtable *tab)
   }
 
   struct rt_export_hook *eh;
-  WALK_LIST(eh, tab->exports)
+  WALK_LIST(eh, tab->exporter.hooks)
   {
     eh->req->dump_req(eh->req);
     debug("  Export hook %p requested by %p:"
@@ -2252,10 +2279,17 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   init_list(&t->flowspec_links);
 
+  t->exporter = (struct rt_exporter) {
+    .start = rt_table_export_start,
+    .stop = rt_table_export_stop,
+    .done = rt_table_export_done,
+  };
+  init_list(&t->exporter.hooks);
+
   if (!(t->internal = cf->internal))
   {
     init_list(&t->imports);
-    init_list(&t->exports);
+
     hmap_init(&t->id_map, p, 1024);
     hmap_set(&t->id_map, 0);
 
@@ -3138,7 +3172,9 @@ rt_feed_channel(void *data)
 
   ASSERT(c->export_state == TES_FEEDING);
 
-  FIB_ITERATE_START(&c->table->fib, fit, net, n)
+  rtable *tab = SKIP_BACK(rtable, exporter, c->table);
+
+  FIB_ITERATE_START(&tab->fib, fit, net, n)
     {
       if (max_feed <= 0)
 	{

@@ -56,6 +56,16 @@ struct rtable_config {
   btime max_settle_time;		/* Maximum settle time for notifications */
 };
 
+struct rt_export_hook;
+struct rt_export_request;
+
+struct rt_exporter {
+  list hooks;				/* Registered route export hooks */
+  struct rt_export_hook *(*start)(struct rt_exporter *, struct rt_export_request *);
+  void (*stop)(struct rt_export_hook *);
+  void (*done)(struct rt_export_hook *);
+};
+
 typedef struct rtable {
   resource r;
   node n;				/* Node in list of all tables */
@@ -69,7 +79,7 @@ typedef struct rtable {
   u32 rt_count;				/* Number of routes in the table */
 
   list imports;				/* Registered route importers */
-  list exports;				/* Registered route exporters */
+  struct rt_exporter exporter;		/* Exporter API structure */
 
   struct hmap id_map;
   struct hostcache *hostcache;
@@ -221,7 +231,7 @@ struct rt_export_request {
 
 struct rt_export_hook {
   node n;
-  rtable *table;			/* The connected table */
+  struct rt_exporter *table;		/* The connected table */
 
   pool *pool;
   linpool *lp;
@@ -255,14 +265,13 @@ struct rt_export_hook {
 #define TIS_MAX		6
 
 #define TES_DOWN	0
-#define TES_HUNGRY	1
 #define TES_FEEDING	2
 #define TES_READY	3
 #define TES_STOP	4
 #define TES_MAX		5
 
 void rt_request_import(rtable *tab, struct rt_import_request *req);
-void rt_request_export(rtable *tab, struct rt_export_request *req);
+void rt_request_export(struct rt_exporter *tab, struct rt_export_request *req);
 
 void rt_stop_import(struct rt_import_request *, void (*stopped)(struct rt_import_request *));
 void rt_stop_export(struct rt_export_request *, void (*stopped)(struct rt_export_request *));

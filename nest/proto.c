@@ -498,7 +498,7 @@ channel_start_export(struct channel *c)
   }
 
   DBG("%s.%s: Channel start export req=%p\n", c->proto->name, c->name, &c->out_req);
-  rt_request_export(c->table, &c->out_req);
+  rt_request_export(&c->table->exporter, &c->out_req);
 }
 
 static void
@@ -552,7 +552,7 @@ channel_export_stopped(struct rt_export_request *req)
   {
     c->refeeding = 1;
     c->refeed_pending = 0;
-    rt_request_export(c->table, req);
+    rt_request_export(&c->table->exporter, req);
     return;
   }
 
@@ -600,7 +600,7 @@ channel_schedule_reload(struct channel *c)
 {
   ASSERT(c->in_req.hook);
 
-  rt_request_export(c->table, &c->reload_req);
+  rt_request_export(&c->table->exporter, &c->reload_req);
 }
 
 static void
