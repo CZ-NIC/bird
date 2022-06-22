@@ -306,6 +306,12 @@ channel_item_:
      this_channel->table = $2;
    }
  | IMPORT imexport { this_channel->in_filter = $2; }
+ | EXPORT IN net_any imexport {
+     if (this_channel->net_type && ($3->type != this_channel->net_type))
+       cf_error("Incompatible export prefilter type");
+     this_channel->out_subprefix = $3;
+     this_channel->out_filter = $4;
+   }
  | EXPORT imexport { this_channel->out_filter = $2; }
  | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }

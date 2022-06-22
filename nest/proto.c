@@ -214,6 +214,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
 
   c->in_filter = cf->in_filter;
   c->out_filter = cf->out_filter;
+  c->out_subprefix = cf->out_subprefix;
 
   channel_init_limit(c, &c->rx_limit, PLD_RX, &cf->rx_limit);
   channel_init_limit(c, &c->in_limit, PLD_IN, &cf->in_limit);
@@ -467,6 +468,7 @@ channel_start_export(struct channel *c)
 
   c->out_req = (struct rt_export_request) {
     .name = rn,
+    .addr_in = c->out_subprefix,
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_dump_export_req,
     .log_state_change = channel_export_log_state_change,
@@ -922,7 +924,10 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   /* FIXME: better handle these changes, also handle in_keep_filtered */
   if ((c->table != cf->table->table) ||
       (cf->ra_mode && (c->ra_mode != cf->ra_mode)) ||
-      (cf->in_keep != c->in_keep))
+      (cf->in_keep != c->in_keep) ||
+      cf->out_subprefix && c->out_subprefix &&
+	  !net_equal(cf->out_subprefix, c->out_subprefix) ||
+      (!cf->out_subprefix != !c->out_subprefix))
     return 0;
 
   /* Note that filter_same() requires arguments in (new, old) order */
@@ -947,6 +952,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   // c->ra_mode = cf->ra_mode;
   c->merge_limit = cf->merge_limit;
   c->preference = cf->preference;
+  c->out_req.addr_in = c->out_subprefix = cf->out_subprefix;
   c->debug = cf->debug;
   c->in_req.trace_routes = c->out_req.trace_routes = c->debug | c->proto->debug;
   c->rpki_reload = cf->rpki_reload;

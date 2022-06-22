@@ -212,6 +212,7 @@ struct rt_pending_export {
 
 struct rt_export_request {
   struct rt_export_hook *hook;		/* Table part of the export */
+  const net_addr *addr_in;		/* Subnet export request */
   char *name;
   u8 trace_routes;
 
@@ -245,6 +246,8 @@ struct rt_export_hook {
   } stats;
 
   struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
+  struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
+  struct f_trie *walk_lock;		/* Locked trie for walking */
 
   btime last_state_change;		/* Time of last state transition */
 

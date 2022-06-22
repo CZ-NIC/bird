@@ -126,7 +126,9 @@ static inline void rt_flowspec_resolve_rte(rte *r, struct channel *c);
 static inline void rt_prune_table(rtable *tab);
 static inline void rt_schedule_notify(rtable *tab);
 static void rt_flowspec_notify(rtable *tab, net *net);
-static void rt_feed_channel(void *);
+static void rt_feed_by_fib(void *);
+static void rt_feed_by_trie(void *);
+static uint rt_feed_net(struct rt_export_hook *c, net *n);
 
 const char *rt_import_state_name_array[TIS_MAX] = {
   [TIS_DOWN] = "DOWN",
@@ -1187,6 +1189,9 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
     if (eh->export_state == TES_STOP)
       continue;
 
+    if (eh->req->addr_in && !net_in_netX(net->n.addr, eh->req->addr_in))
+      continue;
+
     if (new)
       eh->stats.updates_received++;
     else
@@ -1768,12 +1773,20 @@ rt_table_export_start(struct rt_exporter *re, struct rt_export_request *req)
   hook->lp = lp_new_default(p);
 
   /* stats zeroed by mb_allocz */
-
-  FIB_ITERATE_INIT(&hook->feed_fit, &tab->fib);
+  if (tab->trie && req->addr_in && net_val_match(tab->addr_type, NB_IP))
+  {
+    hook->walk_state = mb_allocz(p, sizeof (struct f_trie_walk_state));
+    hook->walk_lock = rt_lock_trie(tab);
+    trie_walk_init(hook->walk_state, tab->trie, req->addr_in);
+    hook->event = ev_new_init(p, rt_feed_by_trie, hook);
+  }
+  else
+  {
+    FIB_ITERATE_INIT(&hook->feed_fit, &tab->fib);
+    hook->event = ev_new_init(p, rt_feed_by_fib, hook);
+  }
 
   DBG("New export hook %p req %p in table %s uc=%u\n", hook, req, tab->name, tab->use_count);
-
-  hook->event = ev_new_init(p, rt_feed_channel, hook);
 
   return hook;
 }
@@ -3154,7 +3167,7 @@ rt_commit(struct config *new, struct config *old)
 }
 
 /**
- * rt_feed_channel - advertise all routes to a channel
+ * rt_feed_by_fib - advertise all routes to a channel by walking a fib
  * @c: channel to be fed
  *
  * This function performs one pass of advertisement of routes to a channel that
@@ -3163,7 +3176,7 @@ rt_commit(struct config *new, struct config *old)
  * order not to monopolize CPU time.)
  */
 static void
-rt_feed_channel(void *data)
+rt_feed_by_fib(void *data)
 {
   struct rt_export_hook *c = data;
 
@@ -3183,9 +3196,55 @@ rt_feed_channel(void *data)
 	  return;
 	}
 
-      if (c->export_state != TES_FEEDING)
-	goto done;
+      ASSERT(c->export_state == TES_FEEDING);
 
+      if (!c->req->addr_in || net_in_netX(n->n.addr, c->req->addr_in))
+	max_feed -= rt_feed_net(c, n);
+    }
+  FIB_ITERATE_END;
+
+  rt_set_export_state(c, TES_READY);
+}
+
+static void
+rt_feed_by_trie(void *data)
+{
+  struct rt_export_hook *c = data;
+  rtable *tab = SKIP_BACK(rtable, exporter, c->table);
+
+  ASSERT_DIE(c->walk_state);
+  struct f_trie_walk_state *ws = c->walk_state;
+
+  int max_feed = 256;
+
+  ASSERT_DIE(c->export_state == TES_FEEDING);
+
+  net_addr addr;
+  while (trie_walk_next(ws, &addr))
+  {
+    net *n = net_find(tab, &addr);
+    if (!n)
+      continue;
+
+    if ((max_feed -= rt_feed_net(c, n)) <= 0)
+      return;
+
+    ASSERT_DIE(c->export_state == TES_FEEDING);
+  }
+
+  rt_unlock_trie(tab, c->walk_lock);
+  c->walk_lock = NULL;
+
+  mb_free(c->walk_state);
+  c->walk_state = NULL;
+
+  rt_set_export_state(c, TES_READY);
+}
+
+
+static uint
+rt_feed_net(struct rt_export_hook *c, net *n)
+{
       if (c->req->export_bulk)
       {
 	uint count = rte_feed_count(n);
@@ -3196,23 +3255,21 @@ rt_feed_channel(void *data)
 	  rte_feed_obtain(n, feed, count);
 	  struct rt_pending_export rpe = { .new_best = n->routes };
 	  c->req->export_bulk(c->req, n->n.addr, &rpe, feed, count);
-	  max_feed -= count;
 	  rte_update_unlock();
 	}
+	return count;
       }
-      else if (n->routes && rte_is_valid(&n->routes->rte))
+
+      if (n->routes && rte_is_valid(&n->routes->rte))
       {
 	rte_update_lock();
 	struct rt_pending_export rpe = { .new = n->routes, .new_best = n->routes };
 	c->req->export_one(c->req, n->n.addr, &rpe);
-	max_feed--;
 	rte_update_unlock();
+	return 1;
       }
-    }
-  FIB_ITERATE_END;
 
-done:
-  rt_set_export_state(c, TES_READY);
+      return 0;
 }
 
 

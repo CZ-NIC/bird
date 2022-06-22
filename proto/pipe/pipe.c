@@ -123,6 +123,12 @@ pipe_postconfig(struct proto_config *CF)
   if (cc->table->addr_type != cf->peer->addr_type)
     cf_error("Primary table and peer table must have the same type");
 
+  if (cc->out_subprefix && (cc->table->addr_type != cc->out_subprefix->type))
+    cf_error("Export subprefix must match table type");
+
+  if (cf->in_subprefix && (cc->table->addr_type != cf->in_subprefix->type))
+    cf_error("Import subprefix must match table type");
+
   if (cc->rx_limit.action)
     cf_error("Pipe protocol does not support receive limits");
 
@@ -142,6 +148,7 @@ pipe_configure_channels(struct pipe_proto *p, struct pipe_config *cf)
     .channel = cc->channel,
     .table = cc->table,
     .out_filter = cc->out_filter,
+    .out_subprefix = cc->out_subprefix,
     .in_limit = cc->in_limit,
     .ra_mode = RA_ANY,
     .debug = cc->debug,
@@ -153,6 +160,7 @@ pipe_configure_channels(struct pipe_proto *p, struct pipe_config *cf)
     .channel = cc->channel,
     .table = cf->peer,
     .out_filter = cc->in_filter,
+    .out_subprefix = cf->in_subprefix,
     .in_limit = cc->out_limit,
     .ra_mode = RA_ANY,
     .debug = cc->debug,

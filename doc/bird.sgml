@@ -914,10 +914,12 @@ inherited from templates can be updated by new definitions.
 	<cf/none/ is for dropping all routes. Default: <cf/all/ (except for
 	EBGP).
 
-	<tag><label id="proto-export">export <m/filter/</tag>
+	<tag><label id="proto-export">export [ in <m/prefix/ ] <m/filter/</tag>
 	This is similar to the <cf>import</cf> keyword, except that it works in
-	the direction from the routing table to the protocol. Default: <cf/none/
-	(except for EBGP).
+	the direction from the routing table to the protocol. If <cf/in/ keyword is used,
+	only routes inside the given prefix are exported. Other routes are completely
+	ignored (e.g. no logging and no statistics).
+	Default: <cf/none/ (except for EBGP).
 
 	<tag><label id="proto-import-keep-filtered">import keep filtered <m/switch/</tag>
 	Usually, if an import filter rejects a route, the route is forgotten.

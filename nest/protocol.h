@@ -452,6 +452,7 @@ struct channel_config {
   struct proto_config *parent;		/* Where channel is defined (proto or template) */
   struct rtable_config *table;		/* Table we're attached to */
   const struct filter *in_filter, *out_filter; /* Attached filters */
+  const net_addr *out_subprefix;	/* Export only subprefixes of this net */
 
   struct channel_limit rx_limit;	/* Limit for receiving routes from protocol
 					   (relevant when in_keep & RIK_REJECTED) */
@@ -477,6 +478,7 @@ struct channel {
   struct rtable *table;
   const struct filter *in_filter;	/* Input filter */
   const struct filter *out_filter;	/* Output filter */
+  const net_addr *out_subprefix;	/* Export only subprefixes of this net */
   struct bmap export_map;		/* Keeps track which routes were really exported */
   struct bmap export_reject_map;	/* Keeps track which routes were rejected by export filter */
 
