@@ -14,11 +14,11 @@
 #include "lib/event.h"
 #include "lib/socket.h"
 
+extern struct birdloop main_birdloop;
+
 void sk_start(sock *s);
 void sk_stop(sock *s);
 void sk_reloop(sock *s, struct birdloop *loop);
-
-extern struct birdloop main_birdloop;
 
 /* Start a new birdloop owned by given pool and domain */
 struct birdloop *birdloop_new(pool *p, uint order, const char *name);

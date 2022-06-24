@@ -1072,7 +1072,6 @@ proto_loop_stopped(void *ptr)
   birdloop_enter(&main_birdloop);
 
   p->loop = &main_birdloop;
-  p->event->list = NULL;
   proto_cleanup(p);
 
   birdloop_leave(&main_birdloop);
@@ -1162,8 +1161,6 @@ proto_start(struct proto *p)
 
   if (p->cf->loop_order != DOMAIN_ORDER(the_bird))
     p->loop = birdloop_new(p->pool, p->cf->loop_order, p->pool->name);
-
-  p->event->list = proto_event_list(p);
 
   PROTO_LOCKED_FROM_MAIN(p)
     proto_notify_state(p, (p->proto->start ? p->proto->start(p) : PS_UP));
