@@ -653,6 +653,7 @@ r_args:
      init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
      $$->running_on_config = config;
+     $$->cli = this_cli;
    }
  | r_args net_any {
      $$ = $1;

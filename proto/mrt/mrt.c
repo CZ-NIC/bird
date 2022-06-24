@@ -703,14 +703,17 @@ mrt_dump_cont(struct cli *c)
 
   cli_printf(c, 0, "");
   mrt_table_dump_free(c->rover);
-  c->cont = c->cleanup = c->rover = NULL;
+  c->cont = NULL;
+  c->cleanup = NULL;
+  c->rover = NULL;
 }
 
-static void
+static int
 mrt_dump_cleanup(struct cli *c)
 {
   mrt_table_dump_free(c->rover);
   c->rover = NULL;
+  return 0;
 }
 
 void

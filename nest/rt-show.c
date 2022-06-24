@@ -19,8 +19,10 @@
 #include "sysdep/unix/krt.h"
 
 static void
-rt_show_table(struct cli *c, struct rt_show_data *d)
+rt_show_table(struct rt_show_data *d)
 {
+  struct cli *c = d->cli;
+
   /* No table blocks in 'show route count' */
   if (d->stats == 2)
     return;
@@ -70,7 +72,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
     bsprintf(info, " (%d)", rt_get_preference(e));
 
   if (d->last_table != d->tab)
-    rt_show_table(c, d);
+    rt_show_table(d);
 
   eattr *heea;
   struct hostentry_adata *had = NULL;
@@ -118,32 +120,10 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
     ea_show_list(c, a);
 }
 
-static uint
-rte_feed_count(net *n)
-{
-  uint count = 0;
-  for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTE_OR_NULL(e)))
-      count++;
-  return count;
-}
-
 static void
-rte_feed_obtain(net *n, rte **feed, uint count)
+rt_show_net(struct rt_show_data *d, const net_addr *n, rte **feed, uint count)
 {
-  uint i = 0;
-  for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTE_OR_NULL(e)))
-    {
-      ASSERT_DIE(i < count);
-      feed[i++] = &e->rte;
-    }
-  ASSERT_DIE(i == count);
-}
-
-static void
-rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
-{
+  struct cli *c = d->cli;
   byte ia[NET_MAX_TEXT_LENGTH+1];
   struct channel *ec = d->tab->export_channel;
 
@@ -155,9 +135,9 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
   int first_show = 1;
   int pass = 0;
 
-  for (struct rte_storage *er = n->routes; er; er = er->next)
+  for (uint i = 0; i < count; i++)
     {
-      if (!d->tab->prefilter && (rte_is_filtered(&er->rte) != d->filtered))
+      if (!d->tab->prefilter && (rte_is_filtered(feed[i]) != d->filtered))
 	continue;
 
       d->rt_counter++;
@@ -167,7 +147,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       if (pass)
 	continue;
 
-      struct rte e = er->rte;
+      struct rte e = *feed[i];
       if (d->tab->prefilter)
 	if (e.sender != d->tab->prefilter->in_req.hook)
 	  continue;
@@ -190,13 +170,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 	{
 	  /* Special case for merged export */
 	  pass = 1;
-	  uint count = rte_feed_count(n);
-	  if (!count)
-	    goto skip;
-
-	  rte **feed = alloca(count * sizeof(rte *));
-	  rte_feed_obtain(n, feed, count);
-	  rte *em = rt_export_merged(ec, feed, count, c->show_pool, 1);
+	  rte *em = rt_export_merged(ec, feed, count, tmp_linpool, 1);
 
 	  if (em)
 	    e = *em;
@@ -241,159 +215,166 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       if (d->stats < 2)
       {
 	if (first_show)
-	  net_format(n->n.addr, ia, sizeof(ia));
+	  net_format(n, ia, sizeof(ia));
 	else
 	  ia[0] = 0;
 
-	rt_show_rte(c, ia, &e, d, !d->tab->prefilter && (n->routes == er));
+	rt_show_rte(c, ia, &e, d, !d->tab->prefilter && !i);
 	first_show = 0;
       }
 
       d->show_counter++;
 
     skip:
-      lp_flush(c->show_pool);
-
       if (d->primary_only)
 	break;
     }
+
+  if ((d->show_counter - d->show_counter_last_flush) > 64)
+  {
+    d->show_counter_last_flush = d->show_counter;
+    cli_write_trigger(d->cli);
+  }
 }
 
 static void
+rt_show_net_export_bulk(struct rt_export_request *req, const net_addr *n,
+    struct rt_pending_export *rpe UNUSED, rte **feed, uint count)
+{
+  struct rt_show_data *d = SKIP_BACK(struct rt_show_data, req, req);
+  return rt_show_net(d, n, feed, count);
+}
+
+static void
+rt_show_export_stopped_cleanup(struct rt_export_request *req)
+{
+  struct rt_show_data *d = SKIP_BACK(struct rt_show_data, req, req);
+
+  /* The hook is now invalid */
+  req->hook = NULL;
+
+  /* Unlock referenced tables */
+  struct rt_show_data_rtable *tab;
+  WALK_LIST(tab, d->tables)
+    rt_unlock_table(tab->table);
+
+  /* And free the CLI (deferred) */
+  rfree(d->cli->pool);
+}
+
+static int
 rt_show_cleanup(struct cli *c)
 {
   struct rt_show_data *d = c->rover;
-  struct rt_show_data_rtable *tab;
 
-  /* Unlink the iterator */
-  if (d->table_open && !d->trie_walk)
-    fit_get(&d->tab->table->fib, &d->fit);
+  /* Cancel the feed */
+  if (d->req.hook)
+  {
+    rt_stop_export(&d->req, rt_show_export_stopped_cleanup);
+    return 1;
+  }
+  else
+    return 0;
+}
 
-  if (d->walk_lock)
-    rt_unlock_trie(d->tab->table, d->walk_lock);
+static void rt_show_export_stopped(struct rt_export_request *req);
 
-  /* Unlock referenced tables */
-  WALK_LIST(tab, d->tables)
-    rt_unlock_table(tab->table);
+static void
+rt_show_log_state_change(struct rt_export_request *req, u8 state)
+{
+  if (state == TES_READY)
+    rt_stop_export(req, rt_show_export_stopped);
 }
 
 static void
-rt_show_cont(struct cli *c)
+rt_show_dump_req(struct rt_export_request *req)
 {
-  struct rt_show_data *d = c->rover;
-  struct rtable *tab = d->tab->table;
-#ifdef DEBUGGING
-  unsigned max = 4;
-#else
-  unsigned max = 64;
-#endif
-  struct fib *fib = &tab->fib;
-  struct fib_iterator *it = &d->fit;
+  debug("  CLI Show Route Feed %p\n", req);
+}
+
+static void
+rt_show_cont(struct rt_show_data *d)
+{
+  struct cli *c = d->cli;
 
   if (d->running_on_config && (d->running_on_config != config))
   {
     cli_printf(c, 8004, "Stopped due to reconfiguration");
-    goto done;
+
+    /* Unlock referenced tables */
+    struct rt_show_data_rtable *tab;
+    WALK_LIST(tab, d->tables)
+      rt_unlock_table(tab->table);
+
+    /* No more action */
+    c->cleanup = NULL;
+    c->cont = NULL;
+    c->rover = NULL;
+    cli_write_trigger(c);
+    return;
   }
 
-  if (!d->table_open)
-  {
-    /* We use either trie-based walk or fib-based walk */
-    d->trie_walk = tab->trie &&
-      (d->addr_mode == RSD_ADDR_IN) &&
-      net_val_match(tab->addr_type, NB_IP);
+  d->req = (struct rt_export_request) {
+    .addr_in = (d->addr_mode == RSD_ADDR_IN) ? d->addr : NULL,
+    .name = "CLI Show Route",
+    .export_bulk = rt_show_net_export_bulk,
+    .dump_req = rt_show_dump_req,
+    .log_state_change = rt_show_log_state_change,
+  };
 
-    if (d->trie_walk && !d->walk_state)
-      d->walk_state = lp_allocz(c->parser_pool, sizeof (struct f_trie_walk_state));
+  d->table_counter++;
+  d->kernel = rt_show_get_kernel(d);
 
-    if (d->trie_walk)
-    {
-      d->walk_lock = rt_lock_trie(tab);
-      trie_walk_init(d->walk_state, tab->trie, d->addr);
-    }
-    else
-      FIB_ITERATE_INIT(&d->fit, &tab->fib);
+  d->show_counter_last = d->show_counter;
+  d->rt_counter_last   = d->rt_counter;
+  d->net_counter_last  = d->net_counter;
 
-    d->table_open = 1;
-    d->table_counter++;
-    d->kernel = rt_show_get_kernel(d);
+  if (d->tables_defined_by & RSD_TDB_SET)
+    rt_show_table(d);
 
-    d->show_counter_last = d->show_counter;
-    d->rt_counter_last   = d->rt_counter;
-    d->net_counter_last  = d->net_counter;
+  rt_request_export(&d->tab->table->exporter, &d->req);
+}
 
-    if (d->tables_defined_by & RSD_TDB_SET)
-      rt_show_table(c, d);
-  }
+static void
+rt_show_export_stopped(struct rt_export_request *req)
+{
+  struct rt_show_data *d = SKIP_BACK(struct rt_show_data, req, req);
 
-  if (d->trie_walk)
-  {
-    /* Trie-based walk */
-    net_addr addr;
-    while (trie_walk_next(d->walk_state, &addr))
-    {
-      net *n = net_find(tab, &addr);
-      if (!n)
-	continue;
-
-      rt_show_net(c, n, d);
-
-      if (!--max)
-	return;
-    }
-
-    rt_unlock_trie(tab, d->walk_lock);
-    d->walk_lock = NULL;
-  }
-  else
-  {
-    /* fib-based walk */
-    FIB_ITERATE_START(fib, it, net, n)
-    {
-      if ((d->addr_mode == RSD_ADDR_IN) && (!net_in_netX(n->n.addr, d->addr)))
-	goto next;
-
-      if (!max--)
-      {
-	FIB_ITERATE_PUT(it);
-	return;
-      }
-      rt_show_net(c, n, d);
-
-    next:;
-    }
-    FIB_ITERATE_END;
-  }
+  /* The hook is now invalid */
+  req->hook = NULL;
 
   if (d->stats)
   {
     if (d->last_table != d->tab)
-      rt_show_table(c, d);
+      rt_show_table(d);
 
-    cli_printf(c, -1007, "%d of %d routes for %d networks in table %s",
+    cli_printf(d->cli, -1007, "%d of %d routes for %d networks in table %s",
 	       d->show_counter - d->show_counter_last, d->rt_counter - d->rt_counter_last,
-	       d->net_counter - d->net_counter_last, tab->name);
+	       d->net_counter - d->net_counter_last, d->tab->table->name);
   }
 
   d->kernel = NULL;
-  d->table_open = 0;
   d->tab = NODE_NEXT(d->tab);
 
   if (NODE_VALID(d->tab))
-    return;
+    return rt_show_cont(d);
 
+  /* Unlock referenced tables */
+  struct rt_show_data_rtable *tab;
+  WALK_LIST(tab, d->tables)
+    rt_unlock_table(tab->table);
+
+  /* Printout total stats */
   if (d->stats && (d->table_counter > 1))
   {
-    if (d->last_table) cli_printf(c, -1007, "");
-    cli_printf(c, 14, "Total: %d of %d routes for %d networks in %d tables",
+    if (d->last_table) cli_printf(d->cli, -1007, "");
+    cli_printf(d->cli, 14, "Total: %d of %d routes for %d networks in %d tables",
 	       d->show_counter, d->rt_counter, d->net_counter, d->table_counter);
   }
   else
-    cli_printf(c, 0, "");
+    cli_printf(d->cli, 0, "");
 
-done:
-  rt_show_cleanup(c);
-  c->cont = c->cleanup = NULL;
+  cli_write_trigger(d->cli);
 }
 
 struct rt_show_data_rtable *
@@ -491,6 +472,12 @@ rt_show_prepare_tables(struct rt_show_data *d)
     cf_error("No valid tables");
 }
 
+static void
+rt_show_dummy_cont(struct cli *c UNUSED)
+{
+  /* Explicitly do nothing to prevent CLI from trying to parse another command. */
+}
+
 void
 rt_show(struct rt_show_data *d)
 {
@@ -510,12 +497,16 @@ rt_show(struct rt_show_data *d)
 
     /* There is at least one table */
     d->tab = HEAD(d->tables);
-    this_cli->cont = rt_show_cont;
     this_cli->cleanup = rt_show_cleanup;
     this_cli->rover = d;
+    this_cli->cont = rt_show_dummy_cont;
+    rt_show_cont(d);
   }
   else
   {
+    uint max = 64;
+    rte **feed = mb_alloc(d->cli->pool, sizeof(rte *) * max);
+
     WALK_LIST(tab, d->tables)
     {
       d->tab = tab;
@@ -526,8 +517,24 @@ rt_show(struct rt_show_data *d)
       else
 	n = net_find(tab->table, d->addr);
 
-      if (n)
-	rt_show_net(this_cli, n, d);
+      uint count = 0;
+      for (struct rte_storage *e = n->routes; e; e = e->next)
+	count++;
+
+      if (!count)
+	continue;
+
+      if (count > max)
+      {
+	do max *= 2; while (count > max);
+	feed = mb_realloc(feed, sizeof(rte *) * max);
+      }
+
+      uint i = 0;
+      for (struct rte_storage *e = n->routes; e; e = e->next)
+	feed[i++] = &e->rte;
+
+      rt_show_net(d, n->n.addr, feed, count);
     }
 
     if (d->rt_counter)

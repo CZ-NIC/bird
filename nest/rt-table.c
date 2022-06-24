@@ -1813,7 +1813,16 @@ rt_table_export_stop(struct rt_export_hook *hook)
   rtable *tab = SKIP_BACK(rtable, exporter, hook->table);
 
   if (hook->export_state == TES_FEEDING)
-    fit_get(&tab->fib, &hook->feed_fit);
+    if (hook->walk_lock)
+    {
+      rt_unlock_trie(tab, hook->walk_lock);
+      hook->walk_lock = NULL;
+
+      mb_free(hook->walk_state);
+      hook->walk_state = NULL;
+    }
+    else
+      fit_get(&tab->fib, &hook->feed_fit);
 }
 
 void
