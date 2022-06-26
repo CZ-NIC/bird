@@ -727,7 +727,7 @@ ea_do_prune(ea_list *e)
 
       /* Now s0 is the most recent version, s[-1] the oldest one */
       /* Drop undefs unless this is a true overlay */
-      if (s0->undef && !e->next)
+      if (s0->undef && (s[-1].undef || !e->next))
 	continue;
 
       /* Copy the newest version to destination */
@@ -1081,7 +1081,7 @@ ea_show(struct cli *c, const eattr *e)
   *pos++ = ' ';
 
   if (e->undef)
-    bsprintf(pos, "undefined (should not happen)");
+    return;
   else if (cls->format)
     cls->format(e, buf, end - buf);
   else
