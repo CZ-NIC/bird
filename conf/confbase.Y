@@ -173,7 +173,7 @@ expr_us:
  | expr US { $$ = $1 US_; }
  ;
 
-toksym: FROM ;
+toksym: FROM | PREFERENCE ;
 symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | toksym ;
 symbol_known: CF_SYM_KNOWN | toksym ;
 
