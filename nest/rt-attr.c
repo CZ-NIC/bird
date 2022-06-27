@@ -436,7 +436,8 @@ ea_class_free(struct ea_class *cl)
   /* No more ea class references. Unregister the attribute. */
   idm_free(&ea_class_idm, cl->id);
   ea_class_global[cl->id] = NULL;
-  ea_lex_unregister(cl);
+  if (!cl->hidden)
+    ea_lex_unregister(cl);
 }
 
 static void
@@ -492,7 +493,8 @@ ea_register(pool *p, struct ea_class *def)
   ASSERT_DIE(def->id < ea_class_max);
   ea_class_global[def->id] = def;
 
-  ea_lex_register(def);
+  if (!def->hidden)
+    ea_lex_register(def);
 
   return ea_ref_class(p, def);
 }
@@ -1017,37 +1019,40 @@ opaque_format(const struct adata *ad, byte *buf, uint size)
 }
 
 static inline void
-ea_show_int_set(struct cli *c, const struct adata *ad, int way, byte *pos, byte *buf, byte *end)
+ea_show_int_set(struct cli *c, const char *name, const struct adata *ad, int way, byte *buf)
 {
-  int i = int_set_format(ad, way, 0, pos, end - pos);
-  cli_printf(c, -1012, "\t%s", buf);
+  int nlen = strlen(name);
+  int i = int_set_format(ad, way, 0, buf, CLI_MSG_SIZE - nlen - 3);
+  cli_printf(c, -1012, "\t%s: %s", name, buf);
   while (i)
     {
-      i = int_set_format(ad, way, i, buf, end - buf - 1);
+      i = int_set_format(ad, way, i, buf, CLI_MSG_SIZE - 1);
       cli_printf(c, -1012, "\t\t%s", buf);
     }
 }
 
 static inline void
-ea_show_ec_set(struct cli *c, const struct adata *ad, byte *pos, byte *buf, byte *end)
+ea_show_ec_set(struct cli *c, const char *name, const struct adata *ad, byte *buf)
 {
-  int i = ec_set_format(ad, 0, pos, end - pos);
-  cli_printf(c, -1012, "\t%s", buf);
+  int nlen = strlen(name);
+  int i = ec_set_format(ad, 0, buf, CLI_MSG_SIZE - nlen - 3);
+  cli_printf(c, -1012, "\t%s: %s", name, buf);
   while (i)
     {
-      i = ec_set_format(ad, i, buf, end - buf - 1);
+      i = ec_set_format(ad, i, buf, CLI_MSG_SIZE - 1);
       cli_printf(c, -1012, "\t\t%s", buf);
     }
 }
 
 static inline void
-ea_show_lc_set(struct cli *c, const struct adata *ad, byte *pos, byte *buf, byte *end)
+ea_show_lc_set(struct cli *c, const char *name, const struct adata *ad, byte *buf)
 {
-  int i = lc_set_format(ad, 0, pos, end - pos);
-  cli_printf(c, -1012, "\t%s", buf);
+  int nlen = strlen(name);
+  int i = lc_set_format(ad, 0, buf, CLI_MSG_SIZE - nlen - 3);
+  cli_printf(c, -1012, "\t%s: %s", name, buf);
   while (i)
     {
-      i = lc_set_format(ad, i, buf, end - buf - 1);
+      i = lc_set_format(ad, i, buf, CLI_MSG_SIZE - 1);
       cli_printf(c, -1012, "\t\t%s", buf);
     }
 }
@@ -1075,7 +1080,7 @@ ea_show(struct cli *c, const eattr *e)
   struct ea_class *cls = ea_class_global[e->id];
   ASSERT_DIE(cls);
 
-  if (e->undef)
+  if (e->undef || cls->hidden)
     return;
   else if (cls->format)
     cls->format(e, buf, end - buf);
@@ -1098,13 +1103,13 @@ ea_show(struct cli *c, const eattr *e)
 	  as_path_format(ad, pos, end - pos);
 	  break;
 	case T_CLIST:
-	  ea_show_int_set(c, ad, 1, pos, buf, end);
+	  ea_show_int_set(c, cls->name, ad, 1, buf);
 	  return;
 	case T_ECLIST:
-	  ea_show_ec_set(c, ad, pos, buf, end);
+	  ea_show_ec_set(c, cls->name, ad, buf);
 	  return;
 	case T_LCLIST:
-	  ea_show_lc_set(c, ad, pos, buf, end);
+	  ea_show_lc_set(c, cls->name, ad, buf);
 	  return;
 	default:
 	  bsprintf(pos, "<type %02x>", e->type);

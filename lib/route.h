@@ -172,6 +172,7 @@ struct ea_class {
   btype type;				/* Data type ID */ \
   uint readonly:1;			/* This attribute can't be changed by filters */ \
   uint conf:1;				/* Requested by config */ \
+  uint hidden:1;			/* Technical attribute, do not show, do not expose to filters */ \
   void (*format)(const eattr *ea, byte *buf, uint size); \
   void (*stored)(const eattr *ea);	/* When stored into global hash */ \
   void (*freed)(const eattr *ea);	/* When released from global hash */ \

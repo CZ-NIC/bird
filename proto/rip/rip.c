@@ -1240,7 +1240,7 @@ rip_get_route_info(rte *rte, byte *buf)
 static void
 rip_tag_format(const eattr *a, byte *buf, uint buflen)
 {
-  bsnprintf(buf, buflen, "tag: %04x", a->u.data);
+  bsnprintf(buf, buflen, "%04x", a->u.data);
 }
 
 static struct ea_class ea_rip_metric = {
