@@ -29,15 +29,8 @@ rt_show_table(struct rt_show_data *d)
 
   if (d->last_table) cli_printf(c, -1007, "");
   cli_printf(c, -1007, "Table %s:",
-      d->tab->prefilter ? "import" : d->tab->table->name);
+      d->tab->name);
   d->last_table = d->tab;
-}
-
-static inline struct krt_proto *
-rt_show_get_kernel(struct rt_show_data *d)
-{
-  struct proto_config *krt = d->tab->table->config->krt_attached;
-  return krt ? (struct krt_proto *) krt->proto : NULL;
 }
 
 static void
@@ -46,7 +39,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   byte from[IPA_MAX_TEXT_LENGTH+8];
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
   ea_list *a = e->attrs;
-  int sync_error = d->kernel ? krt_get_sync_error(d->kernel, e) : 0;
+  int sync_error = d->tab->kernel ? krt_get_sync_error(d->tab->kernel, e) : 0;
   void (*get_route_info)(struct rte *, byte *buf);
   eattr *nhea = net_type_match(e->net, NB_DEST) ?
     ea_find(a, &ea_gen_nexthop) : NULL;
@@ -228,11 +221,6 @@ rt_show_export_stopped_cleanup(struct rt_export_request *req)
   /* The hook is now invalid */
   req->hook = NULL;
 
-  /* Unlock referenced tables */
-  struct rt_show_data_rtable *tab;
-  WALK_LIST(tab, d->tables)
-    rt_unlock_table(tab->table);
-
   /* And free the CLI (deferred) */
   rfree(d->cli->pool);
 }
@@ -276,11 +264,6 @@ rt_show_cont(struct rt_show_data *d)
   {
     cli_printf(c, 8004, "Stopped due to reconfiguration");
 
-    /* Unlock referenced tables */
-    struct rt_show_data_rtable *tab;
-    WALK_LIST(tab, d->tables)
-      rt_unlock_table(tab->table);
-
     /* No more action */
     c->cleanup = NULL;
     c->cont = NULL;
@@ -290,15 +273,15 @@ rt_show_cont(struct rt_show_data *d)
   }
 
   d->req = (struct rt_export_request) {
-    .addr_in = (d->addr_mode == RSD_ADDR_IN) ? d->addr : NULL,
+    .addr = d->addr,
     .name = "CLI Show Route",
     .export_bulk = rt_show_net_export_bulk,
     .dump_req = rt_show_dump_req,
     .log_state_change = rt_show_log_state_change,
+    .addr_mode = d->addr_mode,
   };
 
   d->table_counter++;
-  d->kernel = rt_show_get_kernel(d);
 
   d->show_counter_last = d->show_counter;
   d->rt_counter_last   = d->rt_counter;
@@ -307,7 +290,7 @@ rt_show_cont(struct rt_show_data *d)
   if (d->tables_defined_by & RSD_TDB_SET)
     rt_show_table(d);
 
-  rt_request_export(&d->tab->table->exporter, &d->req);
+  rt_request_export(d->tab->table, &d->req);
 }
 
 static void
@@ -325,19 +308,14 @@ rt_show_export_stopped(struct rt_export_request *req)
 
     cli_printf(d->cli, -1007, "%d of %d routes for %d networks in table %s",
 	       d->show_counter - d->show_counter_last, d->rt_counter - d->rt_counter_last,
-	       d->net_counter - d->net_counter_last, d->tab->table->name);
+	       d->net_counter - d->net_counter_last, d->tab->name);
   }
 
-  d->kernel = NULL;
   d->tab = NODE_NEXT(d->tab);
 
   if (NODE_VALID(d->tab))
     return rt_show_cont(d);
 
-  /* Unlock referenced tables */
-  struct rt_show_data_rtable *tab;
-  WALK_LIST(tab, d->tables)
-    rt_unlock_table(tab->table);
 
   /* Printout total stats */
   if (d->stats && (d->table_counter > 1))
@@ -346,6 +324,8 @@ rt_show_export_stopped(struct rt_export_request *req)
     cli_printf(d->cli, 14, "Total: %d of %d routes for %d networks in %d tables",
 	       d->show_counter, d->rt_counter, d->net_counter, d->table_counter);
   }
+  else if (!d->rt_counter && ((d->addr_mode == TE_ADDR_EQUAL) || (d->addr_mode == TE_ADDR_FOR)))
+    cli_printf(d->cli, 8001, "Network not found");
   else
     cli_printf(d->cli, 0, "");
 
@@ -353,12 +333,25 @@ rt_show_export_stopped(struct rt_export_request *req)
 }
 
 struct rt_show_data_rtable *
-rt_show_add_table(struct rt_show_data *d, rtable *t)
+rt_show_add_exporter(struct rt_show_data *d, struct rt_exporter *t, const char *name)
 {
   struct rt_show_data_rtable *tab = cfg_allocz(sizeof(struct rt_show_data_rtable));
   tab->table = t;
+  tab->name = name;
   add_tail(&(d->tables), &(tab->n));
   return tab;
+}
+
+struct rt_show_data_rtable *
+rt_show_add_table(struct rt_show_data *d, struct rtable *t)
+{
+  struct rt_show_data_rtable *rsdr = rt_show_add_exporter(d, &t->exporter, t->name);
+
+  struct proto_config *krt = t->config->krt_attached;
+  if (krt)
+    rsdr->kernel = (struct krt_proto *) krt->proto;
+
+  return rsdr;
 }
 
 static inline void
@@ -415,16 +408,16 @@ rt_show_prepare_tables(struct rt_show_data *d)
     if (d->export_mode)
     {
       if (!tab->export_channel && d->export_channel &&
-	  (tab->table == d->export_channel->table))
+	  (tab->table == &d->export_channel->table->exporter))
 	tab->export_channel = d->export_channel;
 
       if (!tab->export_channel && d->export_protocol)
-	tab->export_channel = proto_find_channel_by_table(d->export_protocol, tab->table);
+	tab->export_channel = proto_find_channel_by_table(d->export_protocol, SKIP_BACK(rtable, exporter, tab->table));
 
       if (!tab->export_channel)
       {
 	if (d->tables_defined_by & RSD_TDB_NMN)
-	  cf_error("No export channel for table %s", tab->table->name);
+	  cf_error("No export channel for table %s", tab->name);
 
 	rem_node(&(tab->n));
 	continue;
@@ -435,7 +428,7 @@ rt_show_prepare_tables(struct rt_show_data *d)
     if (d->addr && (tab->table->addr_type != d->addr->type))
     {
       if (d->tables_defined_by & RSD_TDB_NMN)
-	cf_error("Incompatible type of prefix/ip for table %s", tab->table->name);
+	cf_error("Incompatible type of prefix/ip for table %s", tab->name);
 
       rem_node(&(tab->n));
       continue;
@@ -456,65 +449,20 @@ rt_show_dummy_cont(struct cli *c UNUSED)
 void
 rt_show(struct rt_show_data *d)
 {
-  struct rt_show_data_rtable *tab;
-  net *n;
-
   /* Filtered routes are neither exported nor have sensible ordering */
   if (d->filtered && (d->export_mode || d->primary_only))
     cf_error("Incompatible show route options");
 
   rt_show_prepare_tables(d);
 
-  if (!d->addr || (d->addr_mode == RSD_ADDR_IN))
-  {
-    WALK_LIST(tab, d->tables)
-      rt_lock_table(tab->table);
+  if (EMPTY_LIST(d->tables))
+    cf_error("No suitable tables found");
 
-    /* There is at least one table */
-    d->tab = HEAD(d->tables);
-    this_cli->cleanup = rt_show_cleanup;
-    this_cli->rover = d;
-    this_cli->cont = rt_show_dummy_cont;
-    rt_show_cont(d);
-  }
-  else
-  {
-    uint max = 64;
-    rte **feed = mb_alloc(d->cli->pool, sizeof(rte *) * max);
+  d->tab = HEAD(d->tables);
 
-    WALK_LIST(tab, d->tables)
-    {
-      d->tab = tab;
-      d->kernel = rt_show_get_kernel(d);
+  this_cli->cleanup = rt_show_cleanup;
+  this_cli->rover = d;
+  this_cli->cont = rt_show_dummy_cont;
 
-      if (d->addr_mode == RSD_ADDR_FOR)
-	n = net_route(tab->table, d->addr);
-      else
-	n = net_find(tab->table, d->addr);
-
-      uint count = 0;
-      for (struct rte_storage *e = n->routes; e; e = e->next)
-	count++;
-
-      if (!count)
-	continue;
-
-      if (count > max)
-      {
-	do max *= 2; while (count > max);
-	feed = mb_realloc(feed, sizeof(rte *) * max);
-      }
-
-      uint i = 0;
-      for (struct rte_storage *e = n->routes; e; e = e->next)
-	feed[i++] = &e->rte;
-
-      rt_show_net(d, n->n.addr, feed, count);
-    }
-
-    if (d->rt_counter)
-      cli_msg(0, "");
-    else
-      cli_msg(8001, "Network not found");
-  }
+  rt_show_cont(d);
 }

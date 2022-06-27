@@ -128,6 +128,8 @@ static inline void rt_schedule_notify(rtable *tab);
 static void rt_flowspec_notify(rtable *tab, net *net);
 static void rt_feed_by_fib(void *);
 static void rt_feed_by_trie(void *);
+static void rt_feed_equal(void *);
+static void rt_feed_for(void *);
 static uint rt_feed_net(struct rt_export_hook *c, net *n);
 
 const char *rt_import_state_name_array[TIS_MAX] = {
@@ -1189,8 +1191,27 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
     if (eh->export_state == TES_STOP)
       continue;
 
-    if (eh->req->addr_in && !net_in_netX(net->n.addr, eh->req->addr_in))
-      continue;
+    switch (eh->req->addr_mode)
+    {
+      case TE_ADDR_NONE:
+	break;
+
+      case TE_ADDR_IN:
+	if (!net_in_netX(net->n.addr, eh->req->addr))
+	  continue;
+	break;
+
+      case TE_ADDR_EQUAL:
+	if (!net_equal(net->n.addr, eh->req->addr))
+	  continue;
+	break;
+
+      case TE_ADDR_FOR:
+	bug("Continuos export of best prefix match not implemented yet.");
+
+      default:
+	bug("Strange table export address mode: %d", eh->req->addr_mode);
+    }
 
     if (new)
       eh->stats.updates_received++;
@@ -1788,17 +1809,33 @@ rt_table_export_start(struct rt_exporter *re, struct rt_export_request *req)
   hook->lp = lp_new_default(p);
 
   /* stats zeroed by mb_allocz */
-  if (tab->trie && req->addr_in && net_val_match(tab->addr_type, NB_IP))
+  switch (req->addr_mode)
   {
-    hook->walk_state = mb_allocz(p, sizeof (struct f_trie_walk_state));
-    hook->walk_lock = rt_lock_trie(tab);
-    trie_walk_init(hook->walk_state, tab->trie, req->addr_in);
-    hook->event = ev_new_init(p, rt_feed_by_trie, hook);
-  }
-  else
-  {
-    FIB_ITERATE_INIT(&hook->feed_fit, &tab->fib);
-    hook->event = ev_new_init(p, rt_feed_by_fib, hook);
+    case TE_ADDR_IN:
+      if (tab->trie && net_val_match(tab->addr_type, NB_IP))
+      {
+	hook->walk_state = mb_allocz(p, sizeof (struct f_trie_walk_state));
+	hook->walk_lock = rt_lock_trie(tab);
+	trie_walk_init(hook->walk_state, tab->trie, req->addr);
+	hook->event = ev_new_init(p, rt_feed_by_trie, hook);
+	break;
+      }
+      /* fall through */
+    case TE_ADDR_NONE:
+      FIB_ITERATE_INIT(&hook->feed_fit, &tab->fib);
+      hook->event = ev_new_init(p, rt_feed_by_fib, hook);
+      break;
+
+    case TE_ADDR_EQUAL:
+      hook->event = ev_new_init(p, rt_feed_equal, hook);
+      break;
+
+    case TE_ADDR_FOR:
+      hook->event = ev_new_init(p, rt_feed_for, hook);
+      break;
+
+    default:
+      bug("Requested an unknown export address mode");
   }
 
   DBG("New export hook %p req %p in table %s uc=%u\n", hook, req, tab->name, tab->use_count);
@@ -1817,8 +1854,8 @@ rt_request_export(struct rt_exporter *re, struct rt_export_request *req)
   hook->n = (node) {};
   add_tail(&re->hooks, &hook->n);
 
+  /* Regular export */
   rt_set_export_state(hook, TES_FEEDING);
-
   ev_schedule_work(hook->event);
 }
 
@@ -1827,17 +1864,19 @@ rt_table_export_stop(struct rt_export_hook *hook)
 {
   rtable *tab = SKIP_BACK(rtable, exporter, hook->table);
 
-  if (hook->export_state == TES_FEEDING)
-    if (hook->walk_lock)
-    {
-      rt_unlock_trie(tab, hook->walk_lock);
-      hook->walk_lock = NULL;
+  if (hook->export_state != TES_FEEDING)
+    return;
 
-      mb_free(hook->walk_state);
-      hook->walk_state = NULL;
-    }
-    else
-      fit_get(&tab->fib, &hook->feed_fit);
+  if (hook->walk_lock)
+  {
+    rt_unlock_trie(tab, hook->walk_lock);
+    hook->walk_lock = NULL;
+
+    mb_free(hook->walk_state);
+    hook->walk_state = NULL;
+  }
+  else
+    fit_get(&tab->fib, &hook->feed_fit);
 }
 
 void
@@ -2317,6 +2356,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   init_list(&t->flowspec_links);
 
   t->exporter = (struct rt_exporter) {
+    .addr_type = t->addr_type,
     .start = rt_table_export_start,
     .stop = rt_table_export_stop,
     .done = rt_table_export_done,
@@ -3222,7 +3262,7 @@ rt_feed_by_fib(void *data)
 
       ASSERT(c->export_state == TES_FEEDING);
 
-      if (!c->req->addr_in || net_in_netX(n->n.addr, c->req->addr_in))
+      if ((c->req->addr_mode == TE_ADDR_NONE) || net_in_netX(n->n.addr, c->req->addr))
 	max_feed -= rt_feed_net(c, n);
     }
   FIB_ITERATE_END;
@@ -3265,6 +3305,37 @@ rt_feed_by_trie(void *data)
   rt_set_export_state(c, TES_READY);
 }
 
+static void
+rt_feed_equal(void *data)
+{
+  struct rt_export_hook *c = data;
+  rtable *tab = SKIP_BACK(rtable, exporter, c->table);
+
+  ASSERT_DIE(c->export_state == TES_FEEDING);
+  ASSERT_DIE(c->req->addr_mode == TE_ADDR_EQUAL);
+
+  net *n = net_find(tab, c->req->addr);
+  if (n)
+    rt_feed_net(c, n);
+
+  rt_set_export_state(c, TES_READY);
+}
+
+static void
+rt_feed_for(void *data)
+{
+  struct rt_export_hook *c = data;
+  rtable *tab = SKIP_BACK(rtable, exporter, c->table);
+
+  ASSERT_DIE(c->export_state == TES_FEEDING);
+  ASSERT_DIE(c->req->addr_mode == TE_ADDR_FOR);
+
+  net *n = net_route(tab, c->req->addr);
+  if (n)
+    rt_feed_net(c, n);
+
+  rt_set_export_state(c, TES_READY);
+}
 
 static uint
 rt_feed_net(struct rt_export_hook *c, net *n)

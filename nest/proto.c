@@ -468,7 +468,8 @@ channel_start_export(struct channel *c)
 
   c->out_req = (struct rt_export_request) {
     .name = rn,
-    .addr_in = c->out_subprefix,
+    .addr = c->out_subprefix,
+    .addr_mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_dump_export_req,
     .log_state_change = channel_export_log_state_change,
@@ -952,7 +953,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   // c->ra_mode = cf->ra_mode;
   c->merge_limit = cf->merge_limit;
   c->preference = cf->preference;
-  c->out_req.addr_in = c->out_subprefix = cf->out_subprefix;
+  c->out_req.addr = c->out_subprefix = cf->out_subprefix;
   c->debug = cf->debug;
   c->in_req.trace_routes = c->out_req.trace_routes = c->debug | c->proto->debug;
   c->rpki_reload = cf->rpki_reload;

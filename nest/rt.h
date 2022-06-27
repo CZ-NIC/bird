@@ -61,6 +61,7 @@ struct rt_export_request;
 
 struct rt_exporter {
   list hooks;				/* Registered route export hooks */
+  uint addr_type;			/* Type of address data exported (NET_*) */
   struct rt_export_hook *(*start)(struct rt_exporter *, struct rt_export_request *);
   void (*stop)(struct rt_export_hook *);
   void (*done)(struct rt_export_hook *);
@@ -212,9 +213,10 @@ struct rt_pending_export {
 
 struct rt_export_request {
   struct rt_export_hook *hook;		/* Table part of the export */
-  const net_addr *addr_in;		/* Subnet export request */
   char *name;
+  const net_addr *addr;			/* Network prefilter address */
   u8 trace_routes;
+  u8 addr_mode;				/* Network prefilter mode (TE_ADDR_*) */
 
   /* There are two methods of export. You can either request feeding every single change
    * or feeding the whole route feed. In case of regular export, &export_one is preferred.
@@ -273,8 +275,17 @@ struct rt_export_hook {
 #define TES_STOP	4
 #define TES_MAX		5
 
+/* Value of addr_mode */
+#define TE_ADDR_NONE	0		/* No address matching */
+#define TE_ADDR_EQUAL	1		/* Exact query - show route <addr> */
+#define TE_ADDR_FOR	2		/* Longest prefix match - show route for <addr> */
+#define TE_ADDR_IN	3		/* Interval query - show route in <addr> */
+
+
 void rt_request_import(rtable *tab, struct rt_import_request *req);
 void rt_request_export(struct rt_exporter *tab, struct rt_export_request *req);
+
+void rt_export_once(struct rt_exporter *tab, struct rt_export_request *req);
 
 void rt_stop_import(struct rt_import_request *, void (*stopped)(struct rt_import_request *));
 void rt_stop_export(struct rt_export_request *, void (*stopped)(struct rt_export_request *));
@@ -397,9 +408,11 @@ extern const int rt_default_ecmp;
 
 struct rt_show_data_rtable {
   node n;
-  rtable *table;
+  const char *name;
+  struct rt_exporter *table;
   struct channel *export_channel;
   struct channel *prefilter;
+  struct krt_proto *kernel;
 };
 
 struct rt_show_data {
@@ -415,7 +428,6 @@ struct rt_show_data {
   struct proto *export_protocol;
   struct channel *export_channel;
   struct config *running_on_config;
-  struct krt_proto *kernel;
   struct rt_export_hook *kernel_export_hook;
   int export_mode, addr_mode, primary_only, filtered, stats;
 
@@ -425,7 +437,8 @@ struct rt_show_data {
 };
 
 void rt_show(struct rt_show_data *);
-struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t);
+struct rt_show_data_rtable * rt_show_add_exporter(struct rt_show_data *d, struct rt_exporter *t, const char *name);
+struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, struct rtable *t);
 
 /* Value of table definition mode in struct rt_show_data */
 #define RSD_TDB_DEFAULT	  0		/* no table specified */
@@ -435,11 +448,6 @@ struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t
 
 #define RSD_TDB_SET	  0x1		/* internal: show empty tables */
 #define RSD_TDB_NMN	  0x2		/* internal: need matching net */
-
-/* Value of addr_mode */
-#define RSD_ADDR_EQUAL	1		/* Exact query - show route <addr> */
-#define RSD_ADDR_FOR	2		/* Longest prefix match - show route for <addr> */
-#define RSD_ADDR_IN	3		/* Interval query - show route in <addr> */
 
 /* Value of export_mode in struct rt_show_data */
 #define RSEM_NONE	0		/* Export mode not used */

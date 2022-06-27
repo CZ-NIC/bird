@@ -659,20 +659,20 @@ r_args:
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      $$->addr = $2;
-     $$->addr_mode = RSD_ADDR_EQUAL;
+     $$->addr_mode = TE_ADDR_EQUAL;
    }
  | r_args FOR r_args_for {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      $$->addr = $3;
-     $$->addr_mode = RSD_ADDR_FOR;
+     $$->addr_mode = TE_ADDR_FOR;
    }
  | r_args IN net_any {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      if (!net_type_match($3, NB_IP)) cf_error("Only IP networks accepted for 'in' argument");
      $$->addr = $3;
-     $$->addr_mode = RSD_ADDR_IN;
+     $$->addr_mode = TE_ADDR_IN;
    }
 | r_args TABLE symbol_known {
      cf_assert_symbol($3, SYM_TABLE);
@@ -689,12 +689,12 @@ r_args:
    }
  | r_args IMPORT TABLE channel_arg {
      if (!($4->in_keep & RIK_PREFILTER)) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_table($$, $4->table)->prefilter = $4;
+     rt_show_add_exporter($$, &$4->table->exporter, "import")->prefilter = $4;
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args EXPORT TABLE channel_arg {
      if (!$4->out_table) cf_error("No export table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_table($$, $4->out_table);
+     rt_show_add_exporter($$, &$4->out_table->exporter, "export");
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args FILTER filter {
