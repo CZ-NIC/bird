@@ -459,6 +459,8 @@ struct hostentry_adata {
 void
 ea_set_hostentry(ea_list **to, struct rtable *dep, struct rtable *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum]);
 
+void ea_show_hostentry(const struct adata *ad, byte *buf, uint size);
+void ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad);
 
 /*
  *	Default protocol preferences

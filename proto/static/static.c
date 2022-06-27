@@ -695,7 +695,7 @@ static_get_route_info(rte *rte, byte *buf)
 {
   eattr *a = ea_find(rte->attrs, &ea_gen_igp_metric);
   u32 pref = rt_get_preference(rte);
-  if (a)
+  if (a && (a->u.data < IGP_METRIC_UNKNOWN))
     buf += bsprintf(buf, " (%d/%u)", pref, a->u.data);
   else
     buf += bsprintf(buf, " (%d)", pref);

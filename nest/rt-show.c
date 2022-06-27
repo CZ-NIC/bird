@@ -83,41 +83,16 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
       net_is_flow(e->net) ? flowspec_valid_name(flowspec_valid) : had ? "recursive" : rta_dest_name(dest),
       e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
 
-  if (dest == RTD_UNICAST)
-    NEXTHOP_WALK(nh, nhad)
-    {
-      char mpls[MPLS_MAX_LABEL_STACK*12 + 5], *lsp = mpls;
-      char *onlink = (nh->flags & RNF_ONLINK) ? " onlink" : "";
-      char weight[16] = "";
-
-      if (nh->labels)
-	{
-	  lsp += bsprintf(lsp, " mpls %d", nh->label[0]);
-	  for (int i=1;i<nh->labels; i++)
-	    lsp += bsprintf(lsp, "/%d", nh->label[i]);
-	}
-      *lsp = '\0';
-
-      if (!NEXTHOP_ONE(nhad))
-	bsprintf(weight, " weight %d", nh->weight + 1);
-
-      if (ipa_nonzero(nh->gw))
-	cli_printf(c, -1007, "\tvia %I on %s%s%s%s",
-		   nh->gw, nh->iface->name, mpls, onlink, weight);
-      else
-	cli_printf(c, -1007, "\tdev %s%s%s",
-		   nh->iface->name, mpls,  onlink, weight);
-    }
-  else if (had)
-    {
-      if (ipa_nonzero(had->he->link) && !ipa_equal(had->he->link, had->he->addr))
-	cli_printf(c, -1007, "\tvia %I %I table %s", had->he->addr, had->he->link, had->he->tab->name);
-      else
-	cli_printf(c, -1007, "\tvia %I table %s", had->he->addr, had->he->tab->name);
-    }
-
   if (d->verbose)
     ea_show_list(c, a);
+  else if (dest == RTD_UNICAST)
+    ea_show_nexthop_list(c, nhad);
+  else if (had)
+  {
+    char hetext[256];
+    ea_show_hostentry(&had->ad, hetext, sizeof hetext);
+    cli_printf(c, -1007, "\t%s", hetext);
+  }
 }
 
 static void

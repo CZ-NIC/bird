@@ -1057,6 +1057,49 @@ ea_show_lc_set(struct cli *c, const char *name, const struct adata *ad, byte *bu
     }
 }
 
+void
+ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad)
+{
+  if (!NEXTHOP_IS_REACHABLE(nhad))
+    return;
+
+  NEXTHOP_WALK(nh, nhad)
+  {
+    char mpls[MPLS_MAX_LABEL_STACK*12 + 5], *lsp = mpls;
+    char *onlink = (nh->flags & RNF_ONLINK) ? " onlink" : "";
+    char weight[16] = "";
+
+    if (nh->labels)
+    {
+      lsp += bsprintf(lsp, " mpls %d", nh->label[0]);
+      for (int i=1;i<nh->labels; i++)
+	lsp += bsprintf(lsp, "/%d", nh->label[i]);
+    }
+    *lsp = '\0';
+
+    if (!NEXTHOP_ONE(nhad))
+      bsprintf(weight, " weight %d", nh->weight + 1);
+
+    if (ipa_nonzero(nh->gw))
+      cli_printf(c, -1007, "\tvia %I on %s%s%s%s",
+	  nh->gw, nh->iface->name, mpls, onlink, weight);
+    else
+      cli_printf(c, -1007, "\tdev %s%s%s",
+	  nh->iface->name, mpls,  onlink, weight);
+  }
+}
+
+void
+ea_show_hostentry(const struct adata *ad, byte *buf, uint size)
+{
+  const struct hostentry_adata *had = (const struct hostentry_adata *) ad;
+
+  if (ipa_nonzero(had->he->link) && !ipa_equal(had->he->link, had->he->addr))
+    bsnprintf(buf, size, "via %I %I table %s", had->he->addr, had->he->link, had->he->tab->name);
+  else
+    bsnprintf(buf, size, "via %I table %s", had->he->addr, had->he->tab->name);
+}
+
 /**
  * ea_show - print an &eattr to CLI
  * @c: destination CLI
@@ -1088,6 +1131,9 @@ ea_show(struct cli *c, const eattr *e)
     switch (e->type)
       {
 	case T_INT:
+	  if ((cls == &ea_gen_igp_metric) && e->u.data >= IGP_METRIC_UNKNOWN)
+	    return;
+
 	  bsprintf(pos, "%u", e->u.data);
 	  break;
 	case T_OPAQUE:
@@ -1111,6 +1157,12 @@ ea_show(struct cli *c, const eattr *e)
 	case T_LCLIST:
 	  ea_show_lc_set(c, cls->name, ad, buf);
 	  return;
+	case T_NEXTHOP_LIST:
+	  ea_show_nexthop_list(c, (struct nexthop_adata *) e->u.ptr);
+	  return;
+	case T_HOSTENTRY:
+	  ea_show_hostentry(ad, pos, end - pos);
+	  break;
 	default:
 	  bsprintf(pos, "<type %02x>", e->type);
       }
@@ -1396,12 +1448,15 @@ rta_init(void)
   rte_src_init();
   ea_class_init();
 
+  /* These attributes are required to be first for nice "show route" output */
+  ea_register_init(&ea_gen_nexthop);
+  ea_register_init(&ea_gen_hostentry);
+
+  /* Other generic route attributes */
   ea_register_init(&ea_gen_preference);
   ea_register_init(&ea_gen_igp_metric);
   ea_register_init(&ea_gen_from);
   ea_register_init(&ea_gen_source);
-  ea_register_init(&ea_gen_nexthop);
-  ea_register_init(&ea_gen_hostentry);
   ea_register_init(&ea_gen_flowspec_valid);
 }
 
