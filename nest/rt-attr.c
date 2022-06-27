@@ -836,7 +836,7 @@ ea_normalize(ea_list *e, int overlay)
   ea_merge(e, t, overlay);
   ea_sort(t);
 
-  return t->count ? t : NULL;
+  return t->count ? t : t->next;
 }
 
 /**
@@ -1075,11 +1075,6 @@ ea_show(struct cli *c, const eattr *e)
   struct ea_class *cls = ea_class_global[e->id];
   ASSERT_DIE(cls);
 
-  pos += bsprintf(pos, "%s", cls->name);
-
-  *pos++ = ':';
-  *pos++ = ' ';
-
   if (e->undef)
     return;
   else if (cls->format)
@@ -1115,7 +1110,7 @@ ea_show(struct cli *c, const eattr *e)
 	  bsprintf(pos, "<type %02x>", e->type);
       }
 
-  cli_printf(c, -1012, "\t%s", buf);
+  cli_printf(c, -1012, "\t%s: %s", cls->name, buf);
 }
 
 static void

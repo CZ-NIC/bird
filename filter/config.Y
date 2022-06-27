@@ -27,6 +27,9 @@ static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
     cf_error("Can't empty %s: not an attribute", sym->name); \
   f_generate_complex(fi_code, sym->attribute, arg); \
 })
+
+#define f_generate_complex_default(fi_code, da, arg, def) \
+  f_new_inst(FI_EA_SET, f_new_inst(fi_code, f_new_inst(FI_DEFAULT, f_new_inst(FI_EA_GET, da), f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = def })), arg), da)
   
 
 /*
@@ -902,10 +905,10 @@ cmd:
    }
  | attr_bit '=' term ';' {
      $$ = f_new_inst(FI_CONDITION, $3,
-	f_generate_complex(FI_BITOR, $1.class,
-	      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = (1U << $1.bit)})),
-	f_generate_complex(FI_BITAND, $1.class,
-	      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = ~(1U << $1.bit)}))
+	f_generate_complex_default(FI_BITOR, $1.class,
+	      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = (1U << $1.bit)}), 0),
+	f_generate_complex_default(FI_BITAND, $1.class,
+	      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = ~(1U << $1.bit)}), 0)
      );
    }
  | break_command print_list ';' {
