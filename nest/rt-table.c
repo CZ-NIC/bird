@@ -1282,6 +1282,14 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
   rte *old_best = old_best_stored ? &old_best_stored->rte : NULL;
   rte *old = NULL;
 
+  /* If the new route is identical to the old one, we find the attributes in
+   * cache and clone these with no performance drop. OTOH, if we were to lookup
+   * the attributes, such a route definitely hasn't been anywhere yet,
+   * therefore it's definitely worth the time. */
+  struct rte_storage *new_stored = NULL;
+  if (new)
+    new = &(new_stored = rte_store(new, net, table))->rte;
+
   /* Find and remove original route from the same protocol */
   struct rte_storage **before_old = rte_find(net, src);
 
@@ -1304,7 +1312,7 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
 		c->table->name, net->n.addr, old->src->proto->name, old->src->private_id, old->src->global_id);
 	}
 
-	  if (new && rte_same(old, new))
+	  if (new && rte_same(old, &new_stored->rte))
 	    {
 	      /* No changes, ignore the new route and refresh the old one */
 
@@ -1315,6 +1323,10 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
 		  stats->updates_ignored++;
 		  rt_rte_trace_in(D_ROUTES, req, new, "ignored");
 		}
+
+	      /* We need to free the already stored route here before returning */
+	      rte_free(new_stored);
+	      return;
 	  }
 
 	*before_old = (*before_old)->next;
@@ -1327,8 +1339,13 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
       return;
     }
 
-  if (req->preimport)
-    new = req->preimport(req, new, old);
+  /* If rejected by import limit, we need to pretend there is no route */
+  if (req->preimport && (req->preimport(req, new, old) == 0))
+  {
+    rte_free(new_stored);
+    new_stored = NULL;
+    new = NULL;
+  }
 
   int new_ok = rte_is_ok(new);
   int old_ok = rte_is_ok(old);
@@ -1342,8 +1359,6 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
 
   if (old_ok || new_ok)
     table->last_rt_change = current_time();
-
-  struct rte_storage *new_stored = new ? rte_store(new, net, table) : NULL;
 
   if (table->config->sorted)
     {
@@ -1500,14 +1515,14 @@ rte_update_unlock(void)
     lp_flush(rte_update_pool);
 }
 
-rte *
+int
 channel_preimport(struct rt_import_request *req, rte *new, rte *old)
 {
   struct channel *c = SKIP_BACK(struct channel, in_req, req);
 
   if (new && !old)
     if (CHANNEL_LIMIT_PUSH(c, RX))
-      return NULL;
+      return 0;
 
   if (!new && old)
     CHANNEL_LIMIT_POP(c, RX);
@@ -1520,15 +1535,15 @@ channel_preimport(struct rt_import_request *req, rte *new, rte *old)
       if (c->in_keep & RIK_REJECTED)
       {
 	new->flags |= REF_FILTERED;
-	return new;
+	return 1;
       }
       else
-	return NULL;
+	return 0;
 
   if (!new_in && old_in)
     CHANNEL_LIMIT_POP(c, IN);
 
-  return new;
+  return 1;
 }
 
 void

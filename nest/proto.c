@@ -177,7 +177,7 @@ proto_find_channel_by_name(struct proto *p, const char *n)
   return NULL;
 }
 
-rte * channel_preimport(struct rt_import_request *req, rte *new, rte *old);
+int channel_preimport(struct rt_import_request *req, rte *new, rte *old);
 
 void rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
 void rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
