@@ -1376,9 +1376,9 @@ ea_dump_all(void)
 void
 ea_show_list(struct cli *c, ea_list *eal)
 {
-  for( ; eal; eal=eal->next)
-    for(int i=0; i<eal->count; i++)
-      ea_show(c, &eal->attrs[i]);
+  ea_list *n = ea_normalize(eal, 0);
+  for (int i  =0; i < n->count; i++)
+    ea_show(c, &n->attrs[i]);
 }
 
 /**
