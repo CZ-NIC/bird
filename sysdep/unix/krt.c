@@ -903,12 +903,12 @@ krt_store_tmp_attrs(struct rte *rt, struct linpool *pool)
 }
 
 static int
-krt_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
+krt_preexport(struct channel *C, rte **new, struct linpool *pool UNUSED)
 {
   // struct krt_proto *p = (struct krt_proto *) P;
   rte *e = *new;
 
-  if (e->attrs->src->proto == P)
+  if (e->attrs->src->proto == C->proto)
     return -1;
 
   if (!krt_capable(e))

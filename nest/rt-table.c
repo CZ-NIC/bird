@@ -870,7 +870,7 @@ export_filter_(struct channel *c, rte *rt0, rte **rt_free, linpool *pool, int si
   rt = rt0;
   *rt_free = NULL;
 
-  v = p->preexport ? p->preexport(p, &rt, pool) : 0;
+  v = p->preexport ? p->preexport(c, &rt, pool) : 0;
   if (v < 0)
     {
       if (silent)
@@ -1883,8 +1883,9 @@ rte_modify(rte *old)
 
 /* Check rtable for best route to given net whether it would be exported do p */
 int
-rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter)
+rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter)
 {
+  struct proto *p = c->proto;
   net *n = net_find(t, a);
   rte *rt = n ? n->routes : NULL;
 
@@ -1894,7 +1895,7 @@ rt_examine(rtable *t, net_addr *a, struct proto *p, const struct filter *filter)
   rte_update_lock();
 
   /* Rest is stripped down export_filter() */
-  int v = p->preexport ? p->preexport(p, &rt, rte_update_pool) : 0;
+  int v = p->preexport ? p->preexport(c, &rt, rte_update_pool) : 0;
   if (v == RIC_PROCESS)
   {
     rte_make_tmp_attrs(&rt, rte_update_pool, NULL);

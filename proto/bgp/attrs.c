@@ -1669,11 +1669,11 @@ bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
  */
 
 int
-bgp_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
+bgp_preexport(struct channel *C, rte **new, struct linpool *pool UNUSED)
 {
   rte *e = *new;
   struct proto *SRC = e->attrs->src->proto;
-  struct bgp_proto *p = (struct bgp_proto *) P;
+  struct bgp_proto *p = (struct bgp_proto *) C->proto;
   struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (struct bgp_proto *) SRC : NULL;
 
   /* Reject our routes */

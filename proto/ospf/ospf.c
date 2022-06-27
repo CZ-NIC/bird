@@ -107,7 +107,7 @@
 #include <stdlib.h>
 #include "ospf.h"
 
-static int ospf_preexport(struct proto *P, rte **new, struct linpool *pool);
+static int ospf_preexport(struct channel *C, rte **new, struct linpool *pool);
 static void ospf_make_tmp_attrs(struct rte *rt, struct linpool *pool);
 static void ospf_store_tmp_attrs(struct rte *rt, struct linpool *pool);
 static void ospf_reload_routes(struct channel *C);
@@ -484,14 +484,14 @@ ospf_disp(timer * timer)
  * import to the filters.
  */
 static int
-ospf_preexport(struct proto *P, rte **new, struct linpool *pool UNUSED)
+ospf_preexport(struct channel *C, rte **new, struct linpool *pool UNUSED)
 {
-  struct ospf_proto *p = (struct ospf_proto *) P;
+  struct ospf_proto *p = (struct ospf_proto *) C->proto;
   struct ospf_area *oa = ospf_main_area(p);
   rte *e = *new;
 
   /* Reject our own routes */
-  if (e->attrs->src->proto == P)
+  if (e->attrs->src->proto == &p->p)
     return -1;
 
   /* Do not export routes to stub areas */

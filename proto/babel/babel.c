@@ -2230,12 +2230,12 @@ babel_kick_timer(struct babel_proto *p)
 
 
 static int
-babel_preexport(struct proto *P, struct rte **new, struct linpool *pool UNUSED)
+babel_preexport(struct channel *C, struct rte **new, struct linpool *pool UNUSED)
 {
   struct rta *a = (*new)->attrs;
 
   /* Reject our own unreachable routes */
-  if ((a->dest == RTD_UNREACHABLE) && (a->src->proto == P))
+  if ((a->dest == RTD_UNREACHABLE) && (a->src->proto == C->proto))
     return -1;
 
   return 0;

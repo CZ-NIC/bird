@@ -217,7 +217,7 @@ struct proto {
   void (*neigh_notify)(struct neighbor *neigh);
   void (*make_tmp_attrs)(struct rte *rt, struct linpool *pool);
   void (*store_tmp_attrs)(struct rte *rt, struct linpool *pool);
-  int (*preexport)(struct proto *, struct rte **rt, struct linpool *pool);
+  int (*preexport)(struct channel *, struct rte **rt, struct linpool *pool);
   void (*reload_routes)(struct channel *);
   void (*feed_begin)(struct channel *, int initial);
   void (*feed_end)(struct channel *);
