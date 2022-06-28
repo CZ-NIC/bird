@@ -1206,11 +1206,12 @@ ea_dump(ea_list *e)
     }
   while (e)
     {
+      struct ea_storage *s = ea_is_cached(e) ? ea_get_storage(e) : NULL;
       debug("[%c%c%c] uc=%d h=%08x",
 	    (e->flags & EALF_SORTED) ? 'S' : 's',
 	    (e->flags & EALF_BISECT) ? 'B' : 'b',
 	    (e->flags & EALF_CACHED) ? 'C' : 'c',
-	    e->uc, e->hash_key);
+	    s ? s->uc : 0, s ? s->hash_key : 0);
       for(i=0; i<e->count; i++)
 	{
 	  eattr *a = &e->attrs[i];
@@ -1304,12 +1305,12 @@ static uint rta_cache_count;
 static uint rta_cache_size = 32;
 static uint rta_cache_limit;
 static uint rta_cache_mask;
-static ea_list **rta_hash_table;
+static struct ea_storage **rta_hash_table;
 
 static void
 rta_alloc_hash(void)
 {
-  rta_hash_table = mb_allocz(rta_pool, sizeof(ea_list *) * rta_cache_size);
+  rta_hash_table = mb_allocz(rta_pool, sizeof(struct ea_storage *) * rta_cache_size);
   if (rta_cache_size < 32768)
     rta_cache_limit = rta_cache_size * 2;
   else
@@ -1318,7 +1319,7 @@ rta_alloc_hash(void)
 }
 
 static inline void
-rta_insert(ea_list *r)
+rta_insert(struct ea_storage *r)
 {
   uint h = r->hash_key & rta_cache_mask;
   r->next_hash = rta_hash_table[h];
@@ -1333,8 +1334,8 @@ rta_rehash(void)
 {
   uint ohs = rta_cache_size;
   uint h;
-  ea_list *r, *n;
-  ea_list **oht = rta_hash_table;
+  struct ea_storage *r, *n;
+  struct ea_storage **oht = rta_hash_table;
 
   rta_cache_size = 2*rta_cache_size;
   DBG("Rehashing rta cache from %d to %d entries.\n", ohs, rta_cache_size);
@@ -1364,7 +1365,7 @@ rta_rehash(void)
 ea_list *
 ea_lookup(ea_list *o, int overlay)
 {
-  ea_list *r;
+  struct ea_storage *r;
   uint h;
 
   ASSERT(!ea_is_cached(o));
@@ -1372,15 +1373,15 @@ ea_lookup(ea_list *o, int overlay)
   h = ea_hash(o);
 
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next_hash)
-    if (r->hash_key == h && ea_same(r, o))
-      return ea_clone(r);
+    if (r->hash_key == h && ea_same(r->l, o))
+      return ea_clone(r->l);
 
   uint elen = ea_list_size(o);
-  r = mb_alloc(rta_pool, elen);
-  ea_list_copy(r, o, elen);
-  ea_list_ref(r);
+  r = mb_alloc(rta_pool, elen + sizeof(struct ea_storage));
+  ea_list_copy(r->l, o, elen);
+  ea_list_ref(r->l);
 
-  r->flags |= EALF_CACHED;
+  r->l->flags |= EALF_CACHED;
   r->hash_key = h;
   r->uc = 1;
 
@@ -1389,19 +1390,19 @@ ea_lookup(ea_list *o, int overlay)
   if (++rta_cache_count > rta_cache_limit)
     rta_rehash();
 
-  return r;
+  return r->l;
 }
 
 void
-ea__free(ea_list *a)
+ea__free(struct ea_storage *a)
 {
-  ASSERT(rta_cache_count && ea_is_cached(a));
+  ASSERT(rta_cache_count);
   rta_cache_count--;
   *a->pprev_hash = a->next_hash;
   if (a->next_hash)
     a->next_hash->pprev_hash = a->pprev_hash;
 
-  ea_list_unref(a);
+  ea_list_unref(a->l);
   mb_free(a);
 }
 
@@ -1416,10 +1417,10 @@ ea_dump_all(void)
 {
   debug("Route attribute cache (%d entries, rehash at %d):\n", rta_cache_count, rta_cache_limit);
   for (uint h=0; h < rta_cache_size; h++)
-    for (ea_list *a = rta_hash_table[h]; a; a = a->next_hash)
+    for (struct ea_storage *a = rta_hash_table[h]; a; a = a->next_hash)
       {
 	debug("%p ", a);
-	ea_dump(a);
+	ea_dump(a->l);
 	debug("\n");
       }
   debug("\n");
