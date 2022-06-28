@@ -1627,7 +1627,14 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   /* Now the route attributes are kept by the in-table cached version
    * and we may drop the local handle */
   if (new && (c->in_keep & RIK_PREFILTER))
-    ea_free(new->attrs);
+  {
+    /* There may be some updates on top of the original attribute block */
+    ea_list *a = new->attrs;
+    while (a->next)
+      a = a->next;
+
+    ea_free(a);
+  }
 
   rte_update_unlock();
 }
