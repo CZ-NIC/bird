@@ -2925,7 +2925,7 @@ static struct rte_storage *
 rt_flowspec_update_rte(rtable *tab, net *n, rte *r)
 {
 #ifdef CONFIG_BGP
-  if (rt_get_source_attr(r) != RTS_BGP)
+  if (r->generation || (rt_get_source_attr(r) != RTS_BGP))
     return NULL;
 
   struct bgp_channel *bc = (struct bgp_channel *) SKIP_BACK(struct channel, in_req, r->sender->req);
