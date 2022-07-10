@@ -684,6 +684,21 @@ to set options.
 	limit to the settle time from the initial ROA table change even if
 	there are consecutive updates gradually renewing the settle time.
 	Default: 20 s.
+
+	<tag><label id="rtable-gc-threshold">gc threshold <m/number/</tag>
+	Specify a minimum amount of removed networks that triggers a garbage
+	collection (GC) cycle. Default: 1000.
+
+	<tag><label id="rtable-gc-period">gc period <m/time/</tag>
+	Specify a period of time between consecutive GC cycles. When there is a
+	significant amount of route withdraws, GC cycles are executed repeatedly
+	with given period time (with some random factor). When there is just
+	small amount of changes, GC cycles are not executed. In extensive route
+	server setups, running GC on hundreds of full BGP routing tables can
+	take significant amount of time, therefore they should use higher GC
+	periods. Default: adaptive, based on number of routing tables in the
+	configuration. From 10 s (with <= 25 routing tables) up to 600 s (with
+	>= 1500 routing tables).
 </descrip>
 
 
