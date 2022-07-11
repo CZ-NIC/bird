@@ -896,6 +896,18 @@ bgp_decode_large_community(struct bgp_parse_state *s, uint code UNUSED, uint fla
   bgp_set_attr_ptr(to, s->pool, BA_LARGE_COMMUNITY, flags, ad);
 }
 
+
+static void
+bgp_decode_otc(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data UNUSED, uint len, ea_list **to)
+{
+  if (len != 4)
+    WITHDRAW(BAD_LENGTH, "OTC", len);
+
+  u32 val = get_u32(data);
+  bgp_set_attr_u32(to, s->pool, BA_ONLY_TO_CUSTOMER, flags, val);
+}
+
+
 static void
 bgp_export_mpls_label_stack(struct bgp_export_state *s, eattr *a)
 {
@@ -1108,6 +1120,13 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
     .export = bgp_export_large_community,
     .encode = bgp_encode_u32s,
     .decode = bgp_decode_large_community,
+  },
+  [BA_ONLY_TO_CUSTOMER] = {
+    .name = "otc",
+    .type = EAF_TYPE_INT,
+    .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
+    .encode = bgp_encode_u32,
+    .decode = bgp_decode_otc,
   },
   [BA_MPLS_LABEL_STACK] = {
     .name = "mpls_label_stack",
@@ -1445,6 +1464,29 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
     REPORT("Discarding AIGP attribute received on non-AIGP session");
     bgp_unset_attr(&a->eattrs, s->pool, BA_AIGP);
   }
+
+  /* Handle OTC ingress procedure, RFC 9234 */
+  if (bgp_channel_is_role_applicable(s->channel))
+  {
+    struct bgp_proto *p = s->proto;
+    eattr *e = bgp_find_attr(a->eattrs, BA_ONLY_TO_CUSTOMER);
+
+    /* Reject routes from downstream if they are leaked */
+    if (e && (p->cf->local_role == BGP_ROLE_PROVIDER ||
+	      p->cf->local_role == BGP_ROLE_RS_SERVER))
+      WITHDRAW("Route leak detected - OTC attribute from downstream");
+
+    /* Reject routes from peers if they are leaked */
+    if (e && (p->cf->local_role == BGP_ROLE_PEER) && (e->u.data != p->cf->remote_as))
+      WITHDRAW("Route leak detected - OTC attribute with mismatched ASN (%u)",
+	       (uint) e->u.data);
+
+    /* Mark routes from upstream if it did not happened before */
+    if (!e && (p->cf->local_role == BGP_ROLE_CUSTOMER ||
+	       p->cf->local_role == BGP_ROLE_PEER ||
+	       p->cf->local_role == BGP_ROLE_RS_CLIENT))
+      bgp_set_attr_u32(&a->eattrs, s->pool, BA_ONLY_TO_CUSTOMER, 0, p->cf->remote_as);
+  }
 }
 
 
@@ -1673,6 +1715,7 @@ bgp_preexport(struct channel *C, rte **new, struct linpool *pool UNUSED)
 {
   rte *e = *new;
   struct proto *SRC = e->attrs->src->proto;
+  struct bgp_channel *c = (struct bgp_channel *) C;
   struct bgp_proto *p = (struct bgp_proto *) C->proto;
   struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (struct bgp_proto *) SRC : NULL;
 
@@ -1702,11 +1745,11 @@ bgp_preexport(struct channel *C, rte **new, struct linpool *pool UNUSED)
   }
 
   /* Handle well-known communities, RFC 1997 */
-  struct eattr *c;
+  struct eattr *a;
   if (p->cf->interpret_communities &&
-      (c = ea_find(e->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY))))
+      (a = bgp_find_attr(e->attrs->eattrs, BA_COMMUNITY)))
   {
-    const struct adata *d = c->u.ptr;
+    const struct adata *d = a->u.ptr;
 
     /* Do not export anywhere */
     if (int_set_contains(d, BGP_COMM_NO_ADVERTISE))
@@ -1722,6 +1765,16 @@ bgp_preexport(struct channel *C, rte **new, struct linpool *pool UNUSED)
 
     /* Do not export LLGR_STALE routes to LLGR-ignorant peers */
     if (!p->conn->remote_caps->llgr_aware && int_set_contains(d, BGP_COMM_LLGR_STALE))
+      return -1;
+  }
+
+  /* Do not export routes marked with OTC to upstream, RFC 9234 */
+  if (bgp_channel_is_role_applicable(c))
+  {
+    a = bgp_find_attr(e->attrs->eattrs, BA_ONLY_TO_CUSTOMER);
+    if (a && (p->cf->local_role==BGP_ROLE_CUSTOMER ||
+	      p->cf->local_role==BGP_ROLE_PEER ||
+	      p->cf->local_role==BGP_ROLE_RS_CLIENT))
       return -1;
   }
 
@@ -1832,6 +1885,16 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
       bgp_set_attr_ptr(&attrs, pool, BA_AGGREGATOR, 0, aggregator_to_old(pool, a->u.ptr));
       bgp_set_attr_ptr(&attrs, pool, BA_AS4_AGGREGATOR, 0, a->u.ptr);
     }
+  }
+
+  /* Mark routes for downstream with OTC, RFC 9234 */
+  if (bgp_channel_is_role_applicable(c))
+  {
+    a = bgp_find_attr(attrs, BA_ONLY_TO_CUSTOMER);
+    if (!a && (p->cf->local_role == BGP_ROLE_PROVIDER ||
+	       p->cf->local_role == BGP_ROLE_PEER ||
+	       p->cf->local_role == BGP_ROLE_RS_SERVER))
+      bgp_set_attr_u32(&attrs, pool, BA_ONLY_TO_CUSTOMER, 0, p->public_as);
   }
 
   /*

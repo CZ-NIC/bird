@@ -2377,6 +2377,7 @@ avoid routing loops.
 <item> <rfc id="8203"> - BGP Administrative Shutdown Communication
 <item> <rfc id="8212"> - Default EBGP Route Propagation Behavior without Policies
 <item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
+<item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
 </itemize>
 
 <sect1>Route selection rules
@@ -2817,6 +2818,28 @@ using the following configuration parameters:
 	protocol itself (for example, if a route is received through eBGP and
 	therefore does not have such attribute). Default: 100 (0 in pre-1.2.0
 	versions of BIRD).
+
+	<tag><label id="bgp-local-role">local role <m/role-name/</tag>
+	BGP roles are a mechanism for route leak prevention and automatic route
+	filtering based on common BGP topology relationships. They are defined
+	in <rfc id="9234">. Instead of manually configuring filters and
+	communities, automatic filtering is done with the help of the OTC
+	attribute - a flag for routes that should be sent only to customers.
+	The same attribute is also used to automatically detect and filter route
+	leaks created by third parties.
+
+	This option is valid for EBGP sessions, but it is not recommended to be
+	used within AS confederations.
+
+	Possible <cf><m/role-name/</cf> values are: <cf/provider/,
+	<cf/rs_server/, <cf/rs_client/, <cf/customer/ and <cf/peer/.
+	Default: No local role assigned.
+
+	<tag><label id="bgp-require-roles">require roles <m/switch/</tag>
+	If this option is set, the BGP roles must be defined on both sides,
+	otherwise the session will not be established. This behavior is defined
+	in <rfc id="9234"> as "strict mode" and is used to enforce corresponding
+	configuration at your conterpart side. Default: disabled.
 </descrip>
 
 <sect1>Channel configuration
@@ -3124,6 +3147,11 @@ some of them (marked with `<tt/O/') are optional.
 	This attribute contains accumulated IGP metric, which is a total
 	distance to the destination through multiple autonomous systems.
 	Currently, the attribute is not accessible from filters.
+
+	<tag><label id="bgp-otc">int bgp_otc [O]</tag>
+	This attribute is defined in <rfc id="9234">. OTC is a flag that marks
+	routes that should be sent only to customers. If <ref id="bgp-role"
+	name="local Role"> is configured it set automatically.
 </descrip>
 
 <sect1>Example
