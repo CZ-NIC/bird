@@ -2674,7 +2674,7 @@ static rte *
 rt_flowspec_update_rte(rtable *tab, rte *r)
 {
 #ifdef CONFIG_BGP
-  if (r->attrs->source != RTS_BGP)
+  if ((r->attrs->source != RTS_BGP) || (r->sender->proto != r->src->proto))
     return NULL;
 
   struct bgp_channel *bc = (struct bgp_channel *) r->sender;
@@ -2697,6 +2697,7 @@ rt_flowspec_update_rte(rtable *tab, rte *r)
   rte *new = sl_alloc(rte_slab);
   memcpy(new, r, sizeof(rte));
   new->attrs = rta_lookup(a);
+  rt_lock_source(new->src);
 
   return new;
 #else
