@@ -2042,11 +2042,10 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
     s->net = lp_alloc(s->pool, net->length);
     net_copy(s->net, net);
 
-    s->attrs = ra;
-
     ea_set_attr_data(&ra, &ea_gen_nexthop, 0,
 	nhad.ad.data, nhad.ad.length);
 
+    s->attrs = ra;
     s->proto = p;
     s->new = new;
     s->krt_src = krt_src;

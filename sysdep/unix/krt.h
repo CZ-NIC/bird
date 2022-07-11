@@ -55,10 +55,6 @@ struct krt_proto {
   struct proto p;
   struct krt_state sys;		/* Sysdep state */
 
-#ifdef KRT_ALLOW_LEARN
-  struct rtable *krt_table;	/* Internal table of inherited routes */
-#endif
-
 #ifndef CONFIG_ALL_TABLES_AT_ONCE
   timer *scan_timer;
 #endif
