@@ -2293,9 +2293,6 @@ rt_free(resource *_r)
   DBG("Deleting routing table %s\n", r->name);
   ASSERT_DIE(r->use_count == 0);
 
-  if (r->internal)
-    return;
-
   r->config->table = NULL;
   rem_node(&r->n);
 
@@ -2362,25 +2359,22 @@ rt_setup(pool *pp, struct rtable_config *cf)
   };
   init_list(&t->exporter.hooks);
 
-  if (!(t->internal = cf->internal))
+  init_list(&t->imports);
+
+  hmap_init(&t->id_map, p, 1024);
+  hmap_set(&t->id_map, 0);
+
+  init_list(&t->subscribers);
+
+  t->rt_event = ev_new_init(p, rt_event, t);
+  t->last_rt_change = t->gc_time = current_time();
+
+  t->rl_pipe = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
+
+  if (rt_is_flow(t))
   {
-    init_list(&t->imports);
-
-    hmap_init(&t->id_map, p, 1024);
-    hmap_set(&t->id_map, 0);
-
-    init_list(&t->subscribers);
-
-    t->rt_event = ev_new_init(p, rt_event, t);
-    t->last_rt_change = t->gc_time = current_time();
-
-    t->rl_pipe = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
-
-    if (rt_is_flow(t))
-    {
-      t->flowspec_trie = f_new_trie(lp_new_default(p), 0);
-      t->flowspec_trie->ipv4 = (t->addr_type == NET_FLOW4);
-    }
+    t->flowspec_trie = f_new_trie(lp_new_default(p), 0);
+    t->flowspec_trie->ipv4 = (t->addr_type == NET_FLOW4);
   }
 
   return t;

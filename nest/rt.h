@@ -50,7 +50,6 @@ struct rtable_config {
   int gc_max_ops;			/* Maximum number of operations before GC is run */
   int gc_min_time;			/* Minimum time between two consecutive GC runs */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
-  byte internal;			/* Internal table of a protocol */
   byte trie_used;			/* Rtable has attached trie */
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
@@ -98,7 +97,6 @@ typedef struct rtable {
   byte prune_trie;			/* Prune prefix trie during next table prune */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
-  byte internal;			/* This table is internal for some other object */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
   struct f_trie *trie_new;		/* New prefix trie defined during pruning */
