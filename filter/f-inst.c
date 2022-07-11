@@ -62,8 +62,9 @@
  *	m4_dnl	INST(FI_NOP, in, out) {			enum value, input args, output args
  *	m4_dnl	  ARG(num, type);			argument, its id (in data fields) and type accessible by v1, v2, v3
  *	m4_dnl	  ARG_ANY(num);				argument with no type check accessible by v1, v2, v3
+ *	m4_dnl	  ARG_TYPE(num, type);			just declare the type of argument
  *	m4_dnl	  VARARG;				variable-length argument list; accessible by vv(i) and whati->varcount
- *	m4_dnl	  LINE(num, unused);			this argument has to be converted to its own f_line
+ *	m4_dnl	  LINE(num, out);			this argument has to be converted to its own f_line
  *	m4_dnl	  SYMBOL;				symbol handed from config
  *	m4_dnl	  STATIC_ATTR;				static attribute definition
  *	m4_dnl	  DYNAMIC_ATTR;				dynamic attribute definition
@@ -80,9 +81,16 @@
  *	m4_dnl	  )
  *
  *	m4_dnl	  RESULT(type, union-field, value);	putting this on value stack
+ *	m4_dnl	  RESULT_(type, union-field, value);	like RESULT(), but do not declare the type
  *	m4_dnl	  RESULT_VAL(value-struct);		pass the struct f_val directly
+ *	m4_dnl	  RESULT_TYPE(type);			just declare the type of result value
  *	m4_dnl	  RESULT_VOID;				return undef
  *	m4_dnl	}
+ *
+ *	Note that runtime arguments m4_dnl (ARG*, VARARG) must be defined before
+ *	parse-time arguments m4_dnl (LINE, SYMBOL, ...). During linearization,
+ *	first ones move position in f_line by linearizing arguments first, while
+ *	second ones store data to the current position.
  *
  *	Also note that the { ... } blocks are not respected by M4 at all.
  *	If you get weird unmatched-brace-pair errors, check what it generated and why.
@@ -90,6 +98,24 @@
  *	after m4_dnl INST() but all the code between them.
  *
  *	Other code is just copied into the interpreter part.
+ *
+ *	The filter language uses a simple type system, where values have types
+ *	(constants T_*) and also terms (instructions) are statically typed. Our
+ *	static typing is partial (some terms do not declare types of arguments
+ *	or results), therefore it can detect most but not all type errors and
+ *	therefore we still have runtime type checks.
+ *
+ *	m4_dnl  Types of arguments are declared by macros ARG() and ARG_TYPE(),
+ *	m4_dnl  types of results are declared by RESULT() and RESULT_TYPE().
+ *	m4_dnl  Macros ARG_ANY(), RESULT_() and RESULT_VAL() do not declare types
+ *	m4_dnl  themselves, but can be combined with ARG_TYPE() / RESULT_TYPE().
+ *
+ *	m4_dnl  Note that types should be declared only once. If there are
+ *	m4_dnl  multiple RESULT() macros in an instruction definition, they must
+ *	m4_dnl  use the exact same expression for type, or they should be replaced
+ *	m4_dnl  by multiple RESULT_() macros and a common RESULT_TYPE() macro.
+ *	m4_dnl  See e.g. FI_EA_GET or FI_MIN instructions.
+ *
  *
  *	If you are satisfied with this, you don't need to read the following
  *	detailed description of what is really done with the instruction definitions.
@@ -216,6 +242,37 @@
  *
  *	m4_dnl	If you are stymied, see FI_CALL or FI_CONSTANT or just search for
  *	m4_dnl	the mentioned macros in this file to see what is happening there in wild.
+ *
+ *
+ *	A note about soundness of the type system:
+ *
+ *	A type system is sound when types of expressions are consistent with
+ *	types of values resulting from evaluation of such expressions. Untyped
+ *	expressions are ok, but badly typed expressions are not sound. So is
+ *	the type system of BIRD filtering code sound? There are some points:
+ *
+ *	All cases of (one) m4_dnl RESULT() macro are obviously ok, as the macro
+ *	both declares a type and returns a value. One have to check instructions
+ *	that use m4_dnl RESULT_TYPE() macro. There are two issues:
+ *
+ *	FI_AND, FI_OR - second argument is statically checked to be T_BOOL and
+ *	passed as result without dynamic typecheck, declared to be T_BOOL. If
+ *	an untyped non-bool expression is used as a second argument, then
+ *	the mismatched type is returned.
+ *
+ *	FI_VAR_GET - soundness depends on consistency of declared symbol types
+ *	and stored values. This is maintained when values are stored by
+ *	FI_VAR_SET, but when they are stored by FI_CALL, only static checking is
+ *	used, so when an untyped expression returning mismatched value is used
+ *	as a function argument, then inconsistent value is stored and subsequent
+ *	FI_VAR_GET would be unsound.
+ *
+ *	Both of these issues are inconsequential, as mismatched values from
+ *	unsound expressions will be caught by dynamic typechecks like mismatched
+ *	values from untyped expressions.
+ *
+ *	Also note that FI_CALL is the only expression without properly declared
+ *	result type.
  */
 
 /* Binary operators */
@@ -246,7 +303,7 @@
     RESULT_TYPE(T_BOOL);
 
     if (v1.val.i)
-      LINE(2,0);
+      LINE(2,1);
     else
       RESULT_VAL(v1);
   }
@@ -256,7 +313,7 @@
     RESULT_TYPE(T_BOOL);
 
     if (!v1.val.i)
-      LINE(2,0);
+      LINE(2,1);
     else
       RESULT_VAL(v1);
   }
@@ -349,7 +406,7 @@
 	  break;
 
 	case T_SET:
-	  if (vv(i).val.t->from.type != T_INT)
+	  if (!path_set_type(vv(i).val.t))
 	    runtime("Only integer sets allowed in path mask");
 
 	  pm->item[i] = (struct f_path_mask_item) {
@@ -371,12 +428,14 @@
   INST(FI_NEQ, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
+    ARG_PREFER_SAME_TYPE(1, 2);
     RESULT(T_BOOL, i, !val_same(&v1, &v2));
   }
 
   INST(FI_EQ, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
+    ARG_PREFER_SAME_TYPE(1, 2);
     RESULT(T_BOOL, i, val_same(&v1, &v2));
   }
 
@@ -447,6 +506,18 @@
     RESULT(T_BOOL, i, ipa_is_ip4(v1.val.ip));
   }
 
+  INST(FI_VAR_INIT, 1, 0) {
+    NEVER_CONSTANT;
+    ARG_ANY(1);
+    SYMBOL;
+    ARG_TYPE(1, sym->class & 0xff);
+
+    /* New variable is always the last on stack */
+    uint pos = curline.vbase + sym->offset;
+    fstk->vstk[pos] = v1;
+    fstk->vcnt = pos + 1;
+  }
+
   /* Set to indirect value prepared in v1 */
   INST(FI_VAR_SET, 1, 0) {
     NEVER_CONSTANT;
@@ -477,12 +548,100 @@
     RESULT_VAL(val);
   }
 
+  INST(FI_FOR_INIT, 1, 0) {
+    NEVER_CONSTANT;
+    ARG_ANY(1);
+    SYMBOL;
+
+    FID_NEW_BODY()
+    ASSERT((sym->class & ~0xff) == SYM_VARIABLE);
+
+    /* Static type check */
+    if (f1->type)
+    {
+      enum f_type t_var = (sym->class & 0xff);
+      enum f_type t_arg = f_type_element_type(f1->type);
+      if (!t_arg)
+        cf_error("Value of expression in FOR must be iterable, got %s",
+		 f_type_name(f1->type));
+      if (t_var != t_arg)
+	cf_error("Loop variable '%s' in FOR must be %s, is %s",
+		 sym->name, f_type_name(t_arg), f_type_name(t_var));
+    }
+
+    FID_INTERPRET_BODY()
+
+    /* Dynamic type check */
+    if ((sym->class & 0xff) != f_type_element_type(v1.type))
+      runtime("Mismatched argument and variable type");
+
+    /* Setup the index */
+    v2 = (struct f_val) { .type = T_INT, .val.i = 0 };
+
+    /* Keep v1 and v2 on the stack */
+    fstk->vcnt += 2;
+  }
+
+  INST(FI_FOR_NEXT, 2, 0) {
+    NEVER_CONSTANT;
+    SYMBOL;
+
+    /* Type checks are done in FI_FOR_INIT */
+
+    /* Loop variable */
+    struct f_val *var = &fstk->vstk[curline.vbase + sym->offset];
+    int step = 0;
+
+    switch(v1.type)
+    {
+    case T_PATH:
+      var->type = T_INT;
+      step = as_path_walk(v1.val.ad, &v2.val.i, &var->val.i);
+      break;
+
+    case T_CLIST:
+      var->type = T_PAIR;
+      step = int_set_walk(v1.val.ad, &v2.val.i, &var->val.i);
+      break;
+
+    case T_ECLIST:
+      var->type = T_EC;
+      step = ec_set_walk(v1.val.ad, &v2.val.i, &var->val.ec);
+      break;
+
+    case T_LCLIST:
+      var->type = T_LC;
+      step = lc_set_walk(v1.val.ad, &v2.val.i, &var->val.lc);
+      break;
+
+    default:
+      runtime( "Clist or lclist expected" );
+    }
+
+    if (step)
+    {
+      /* Keep v1 and v2 on the stack */
+      fstk->vcnt += 2;
+
+      /* Repeat this instruction */
+      curline.pos--;
+
+      /* Execute the loop body */
+      LINE(1, 0);
+
+      /* Space for loop variable, may be unused */
+      fstk->vcnt += 1;
+    }
+    else
+      var->type = T_VOID;
+  }
+
   INST(FI_CONDITION, 1, 0) {
     ARG(1, T_BOOL);
     if (v1.val.i)
       LINE(2,0);
     else
-      LINE(3,1);
+      LINE(3,0);
   }
 
   INST(FI_PRINT, 0, 0) {
@@ -961,7 +1120,7 @@
     RESULT(T_INT, i, v1.val.lc.ldp2);
   }
 
-  INST(FI_MIN, 1, 1) {	/* Get minimum element from set */
+  INST(FI_MIN, 1, 1) {	/* Get minimum element from list */
     ARG_ANY(1);
     RESULT_TYPE(f_type_element_type(v1.type));
     switch(v1.type)
@@ -995,7 +1154,7 @@
     }
   }
 
-  INST(FI_MAX, 1, 1) {	/* Get maximum element from set */
+  INST(FI_MAX, 1, 1) {	/* Get maximum element from list */
     ARG_ANY(1);
     RESULT_TYPE(f_type_element_type(v1.type));
     switch(v1.type)
@@ -1029,7 +1188,7 @@
     }
   }
 
-  INST(FI_RETURN, 1, 1) {
+  INST(FI_RETURN, 1, 0) {
     NEVER_CONSTANT;
     /* Acquire the return value */
     ARG_ANY(1);
@@ -1057,28 +1216,59 @@
 
   INST(FI_CALL, 0, 1) {
     NEVER_CONSTANT;
+    VARARG;
     SYMBOL;
 
+    /* Fake result type declaration */
+    RESULT_TYPE(T_VOID);
+
+    FID_NEW_BODY()
+    ASSERT(sym->class == SYM_FUNCTION);
+
+    if (whati->varcount != sym->function->args)
+      cf_error("Function '%s' expects %u arguments, got %u arguments",
+	       sym->name, sym->function->args, whati->varcount);
+
+    /* Typecheck individual arguments */
+    struct f_inst *a = fvar;
+    struct f_arg *b = sym->function->arg_list;
+    for (uint i = 1; a && b; a = a->next, b = b->next, i++)
+    {
+      enum f_type b_type = b->arg->class & 0xff;
+
+      if (a->type && (a->type != b_type) && !f_const_promotion(a, b_type))
+	cf_error("Argument %u of '%s' must be %s, got %s",
+		 i, sym->name, f_type_name(b_type), f_type_name(a->type));
+    }
+    ASSERT(!a && !b);
+
+    /* Add implicit void slot for the return value */
+    struct f_inst *tmp = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
+    tmp->next = whati->fvar;
+    whati->fvar = tmp;
+    what->size += tmp->size;
+
+    /* Mark recursive calls, they have dummy f_line */
+    if (!sym->function->len)
+      what->flags |= FIF_RECURSIVE;
+
     FID_SAME_BODY()
-      if (!(f1->sym->flags & SYM_FLAG_SAME))
-	return 0;
+    if (!(f1->sym->flags & SYM_FLAG_SAME) && !(f1_->flags & FIF_RECURSIVE))
+      return 0;
 
     FID_ITERATE_BODY()
+    if (!(what->flags & FIF_RECURSIVE))
       BUFFER_PUSH(fit->lines) = whati->sym->function;
 
     FID_INTERPRET_BODY()
 
     /* Push the body on stack */
     LINEX(sym->function);
+    curline.vbase = curline.ventry;
     curline.emask |= FE_RETURN;
 
-    /* Before this instruction was called, there was the T_VOID
-     * automatic return value pushed on value stack and also
-     * sym->function->args function arguments. Setting the
-     * vbase to point to first argument. */
-    ASSERT(curline.ventry >= sym->function->args);
-    curline.ventry -= sym->function->args;
-    curline.vbase = curline.ventry;
+    /* Arguments on stack */
+    fstk->vcnt += sym->function->args;
 
     /* Storage for local variables */
     f_vcnt_check_overflow(sym->function->vars);
@@ -1192,17 +1382,10 @@
 
     if (v1.type == T_PATH)
     {
-      const struct f_tree *set = NULL;
-      u32 key = 0;
-
-      if (v2.type == T_INT)
-	key = v2.val.i;
-      else if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
-	set = v2.val.t;
+      if ((v2.type == T_SET) && path_set_type(v2.val.t) || (v2.type == T_INT))
+	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else
 	runtime("Can't delete non-integer (set)");
-
-      RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, set, key, 0) ]]);
     }
 
     else if (v1.type == T_CLIST)
@@ -1254,10 +1437,8 @@
 
     if (v1.type == T_PATH)
     {
-      u32 key = 0;
-
-      if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
-	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, v2.val.t, key, 1) ]]);
+      if ((v2.type == T_SET) && path_set_type(v2.val.t))
+	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter integer");
     }
@@ -1347,7 +1528,7 @@
 
   }
 
-  INST(FI_FORMAT, 1, 0) {	/* Format */
+  INST(FI_FORMAT, 1, 1) {	/* Format */
     ARG_ANY(1);
     RESULT(T_STRING, s, val_format_str(fpool, &v1));
   }

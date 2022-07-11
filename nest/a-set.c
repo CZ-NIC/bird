@@ -693,3 +693,51 @@ lc_set_max(const struct adata *list, lcomm *val)
   *val = (lcomm) { res[0], res[1], res[2] };
   return 1;
 }
+
+int
+int_set_walk(const struct adata *list, uint *pos, uint *val)
+{
+  if (!list)
+    return 0;
+
+  if (*pos >= (uint) int_set_get_size(list))
+    return 0;
+
+  u32 *res = int_set_get_data(list) + *pos;
+  *val = *res;
+  *pos += 1;
+
+  return 1;
+}
+
+int
+ec_set_walk(const struct adata *list, uint *pos, u64 *val)
+{
+  if (!list)
+    return 0;
+
+  if (*pos >= (uint) int_set_get_size(list))
+    return 0;
+
+  u32 *res = int_set_get_data(list) + *pos;
+  *val = ec_generic(res[0], res[1]);
+  *pos += 2;
+
+  return 1;
+}
+
+int
+lc_set_walk(const struct adata *list, uint *pos, lcomm *val)
+{
+  if (!list)
+    return 0;
+
+  if (*pos >= (uint) int_set_get_size(list))
+    return 0;
+
+  u32 *res = int_set_get_data(list) + *pos;
+  *val = (lcomm) { res[0], res[1], res[2] };
+  *pos += 3;
+
+  return 1;
+}

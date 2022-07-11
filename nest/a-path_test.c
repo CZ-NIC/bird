@@ -12,6 +12,7 @@
 #include "nest/route.h"
 #include "nest/attrs.h"
 #include "lib/resource.h"
+#include "filter/data.h"
 
 #define TESTS_NUM 30
 #define AS_PATH_LENGTH 1000
@@ -127,8 +128,9 @@ t_path_include(void)
     int counts_of_contains = count_asn_in_array(as_nums, as_nums[i]);
     bt_assert_msg(as_path_contains(as_path, as_nums[i], counts_of_contains), "AS Path should contains %d-times number %d", counts_of_contains, as_nums[i]);
 
-    bt_assert(as_path_filter(tmp_linpool, as_path, NULL, as_nums[i], 0) != NULL);
-    bt_assert(as_path_filter(tmp_linpool, as_path, NULL, as_nums[i], 1) != NULL);
+    struct f_val v = { .type = T_INT, .val.i = as_nums[i] };
+    bt_assert(as_path_filter(tmp_linpool, as_path, &v, 0) != NULL);
+    bt_assert(as_path_filter(tmp_linpool, as_path, &v, 1) != NULL);
   }
 
   for (i = 0; i < 10000; i++)

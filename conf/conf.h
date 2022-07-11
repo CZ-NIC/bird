@@ -134,7 +134,8 @@ struct sym_scope {
   struct sym_scope *next;		/* Next on scope stack */
   struct symbol *name;			/* Name of this scope */
   uint slots;				/* Variable slots */
-  int active;				/* Currently entered */
+  byte active;				/* Currently entered */
+  byte soft_scopes;			/* Number of soft scopes above */
 };
 
 struct bytestring {
@@ -191,6 +192,9 @@ struct symbol *cf_get_symbol(const byte *c);
 struct symbol *cf_default_name(char *template, int *counter);
 struct symbol *cf_localize_symbol(struct symbol *sym);
 
+static inline int cf_symbol_is_local(struct symbol *sym)
+{ return (sym->scope == conf_this_scope) && !conf_this_scope->soft_scopes; }
+
 /**
  * cf_define_symbol - define meaning of a symbol
  * @sym: symbol to be defined
@@ -214,6 +218,9 @@ struct symbol *cf_localize_symbol(struct symbol *sym);
 
 void cf_push_scope(struct symbol *);
 void cf_pop_scope(void);
+void cf_push_soft_scope(void);
+void cf_pop_soft_scope(void);
+
 char *cf_symbol_class_name(struct symbol *sym);
 
 /* Parser */

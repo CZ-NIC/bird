@@ -28,6 +28,7 @@
  * to 16bit slot (like in 16bit AS_PATH). See RFC 4893 for details
  */
 
+struct f_val;
 struct f_tree;
 
 int as_path_valid(byte *data, uint len, int bs, int sets, int confed, char *err, uint elen);
@@ -49,7 +50,8 @@ int as_path_get_last(const struct adata *path, u32 *last_as);
 u32 as_path_get_last_nonaggregated(const struct adata *path);
 int as_path_contains(const struct adata *path, u32 as, int min);
 int as_path_match_set(const struct adata *path, const struct f_tree *set);
-const struct adata *as_path_filter(struct linpool *pool, const struct adata *path, const struct f_tree *set, u32 key, int pos);
+const struct adata *as_path_filter(struct linpool *pool, const struct adata *path, const struct f_val *set, int pos);
+int as_path_walk(const struct adata *path, uint *pos, uint *val);
 
 static inline struct adata *as_path_prepend(struct linpool *pool, const struct adata *path, u32 as)
 { return as_path_prepend2(pool, path, AS_PATH_SEQUENCE, as); }
@@ -224,6 +226,9 @@ int lc_set_min(const struct adata *list, lcomm *val);
 int int_set_max(const struct adata *list, u32 *val);
 int ec_set_max(const struct adata *list, u64 *val);
 int lc_set_max(const struct adata *list, lcomm *val);
+int int_set_walk(const struct adata *list, uint *pos, u32 *val);
+int ec_set_walk(const struct adata *list, uint *pos, u64 *val);
+int lc_set_walk(const struct adata *list, uint *pos, lcomm *val);
 
 void ec_set_sort_x(struct adata *set); /* Sort in place */
 

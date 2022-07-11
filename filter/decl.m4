@@ -191,6 +191,12 @@ if (f$1->type && f$2->type && (f$1->type != f$2->type) &&
   cf_error("Arguments $1 and $2 of %s must be of the same type", f_instruction_name(what->fi_code));
 FID_INTERPRET_BODY()')
 
+m4_define(ARG_PREFER_SAME_TYPE, `
+FID_NEW_BODY()m4_dnl
+if (f$1->type && f$2->type && (f$1->type != f$2->type))
+   (void) (f_const_promotion(f$2, f$1->type) || f_const_promotion(f$1, f$2->type));
+FID_INTERPRET_BODY()')
+
 #	Executing another filter line. This replaces the recursion
 #	that was needed in the former implementation.
 m4_define(LINEX, `FID_INTERPRET_EXEC()LINEX_($1)FID_INTERPRET_NEW()return $1 FID_INTERPRET_BODY()')
@@ -216,7 +222,7 @@ whati->f$1 = f$1;
 FID_DUMP_BODY()m4_dnl
 f_dump_line(item->fl$1, indent + 1);
 FID_LINEARIZE_BODY()m4_dnl
-item->fl$1 = f_linearize(whati->f$1);
+item->fl$1 = f_linearize(whati->f$1, $2);
 FID_SAME_BODY()m4_dnl
 if (!f_same(f1->fl$1, f2->fl$1)) return 0;
 FID_ITERATE_BODY()m4_dnl
@@ -244,8 +250,12 @@ m4_define(ERROR,
 #	This macro specifies result type and makes there are no conflicting definitions
 m4_define(RESULT_TYPE,
 	`m4_ifdef([[INST_RESULT_TYPE]],
-		  [[m4_ifelse(INST_RESULT_TYPE,$1,,[[ERROR([[Multiple type definitons]])]])]],
+		  [[m4_ifelse(INST_RESULT_TYPE,$1,,[[ERROR([[Multiple type definitions in]] INST_NAME)]])]],
 		  [[m4_define(INST_RESULT_TYPE,$1) RESULT_TYPE_($1)]])')
+
+m4_define(RESULT_TYPE_CHECK,
+	`m4_ifelse(INST_OUTVAL,0,,
+		   [[m4_ifdef([[INST_RESULT_TYPE]],,[[ERROR([[Missing type definition in]] INST_NAME)]])]])')
 
 m4_define(RESULT_TYPE_, `
 FID_NEW_BODY()m4_dnl
@@ -300,6 +310,7 @@ m4_define(FID_ITERATE, `FID_ZONE(10, Iteration)')
 
 #	This macro does all the code wrapping. See inline comments.
 m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
+RESULT_TYPE_CHECK()m4_dnl		 Check for defined RESULT_TYPE()
 FID_ENUM()m4_dnl			 Contents of enum fi_code { ... }
   INST_NAME(),
 FID_ENUM_STR()m4_dnl			 Contents of const char * indexed by enum fi_code
@@ -375,6 +386,7 @@ case INST_NAME(): {
 #undef whati
 #undef item
   dest->items[pos].fi_code = what->fi_code;
+  dest->items[pos].flags = what->flags;
   dest->items[pos].lineno = what->lineno;
   break;
 }
@@ -402,6 +414,7 @@ m4_define(INST, `m4_dnl				This macro is called on beginning of each instruction
 INST_FLUSH()m4_dnl				First, old data is flushed
 m4_define([[INST_NAME]], [[$1]])m4_dnl		Then we store instruction name,
 m4_define([[INST_INVAL]], [[$2]])m4_dnl		instruction input value count,
+m4_define([[INST_OUTVAL]], [[$3]])m4_dnl	instruction output value count,
 m4_undefine([[INST_NEVER_CONSTANT]])m4_dnl	reset NEVER_CONSTANT trigger,
 m4_undefine([[INST_RESULT_TYPE]])m4_dnl		and reset RESULT_TYPE value.
 FID_INTERPRET_BODY()m4_dnl 			By default, every code is interpreter code.
@@ -505,6 +518,11 @@ f_const_promotion(struct f_inst *arg, enum f_type want)
     return 1;
   }
 
+  else if ((c->type == T_SET) && (!c->val.t) && (want == T_PREFIX_SET)) {
+    *c = f_const_empty_prefix_set;
+    return 1;
+  }
+
   return 0;
 }
 
@@ -560,7 +578,7 @@ FID_WR_PUT(8)
 }
 
 struct f_line *
-f_linearize_concat(const struct f_inst * const inst[], uint count)
+f_linearize_concat(const struct f_inst * const inst[], uint count, uint results)
 {
   uint len = 0;
   for (uint i=0; i<count; i++)
@@ -571,6 +589,8 @@ f_linearize_concat(const struct f_inst * const inst[], uint count)
 
   for (uint i=0; i<count; i++)
     out->len = linearize(out, inst[i], out->len);
+
+    out->results = results;
 
 #ifdef LOCAL_DEBUG
   f_dump_line(out, 0);
@@ -640,6 +660,7 @@ FID_WR_PUT(4)m4_dnl
 struct f_inst {
   struct f_inst *next;			/* Next instruction */
   enum f_instruction_code fi_code;	/* Instruction code */
+  enum f_instruction_flags flags;	/* Flags, instruction-specific */
   enum f_type type;			/* Type of returned value, if known */
   int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */
