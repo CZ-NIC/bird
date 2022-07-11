@@ -29,7 +29,7 @@ typedef struct cli {
   node n;				/* Node in list of all log hooks */
   pool *pool;
   void *priv;				/* Private to sysdep layer */
-  byte *rx_buf, *rx_pos, *rx_aux;	/* sysdep */
+  byte *rx_buf, *rx_pos;		/* sysdep */
   struct cli_out *tx_buf, *tx_pos, *tx_write;
   event *event;
   void (*cont)(struct cli *c);
@@ -81,6 +81,13 @@ static inline int cli_access_restricted(void)
 /* Functions provided by sysdep layer */
 
 void cli_write_trigger(cli *);
-int cli_get_command(cli *);
+enum cli_get_command_result {
+  CGC_OK,
+  CGC_INCOMPLETE,
+  CGC_TOO_LONG,
+  CGC_TRAILING,
+};
+
+enum cli_get_command_result cli_get_command(cli *);
 
 #endif

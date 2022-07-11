@@ -430,11 +430,11 @@ cli_tx(sock *s)
   cli_write(s->data);
 }
 
-int
+enum cli_get_command_result
 cli_get_command(cli *c)
 {
   sock *s = c->priv;
-  byte *t = c->rx_aux ? : s->rbuf;
+  byte *t = s->rbuf;
   byte *tend = s->rpos;
   byte *d = c->rx_pos;
   byte *dend = c->rx_buf + CLI_RX_BUF_SIZE - 2;
@@ -445,18 +445,21 @@ cli_get_command(cli *c)
 	t++;
       else if (*t == '\n')
 	{
-	  t++;
+	  if (++t < tend)
+	    return CGC_TRAILING;
+
+	  s->rpos = s->rbuf;
 	  c->rx_pos = c->rx_buf;
-	  c->rx_aux = t;
 	  *d = 0;
-	  return (d < dend) ? 1 : -1;
+	  return (d < dend) ? CGC_OK : CGC_TOO_LONG;
 	}
       else if (d < dend)
 	*d++ = *t++;
     }
-  c->rx_aux = s->rpos = s->rbuf;
+
+  s->rpos = s->rbuf;
   c->rx_pos = d;
-  return 0;
+  return CGC_INCOMPLETE;
 }
 
 static int
@@ -493,7 +496,6 @@ cli_connect(sock *s, uint size UNUSED)
   s->pool = c->pool;		/* We need to have all the socket buffers allocated in the cli pool */
   s->fast_rx = 1;
   c->rx_pos = c->rx_buf;
-  c->rx_aux = NULL;
   rmove(s, c->pool);
   return 1;
 }

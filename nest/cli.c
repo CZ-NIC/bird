@@ -293,13 +293,20 @@ cli_event(void *data)
     c->cont(c);
   else
     {
-      err = cli_get_command(c);
-      if (!err)
-	return;
-      if (err < 0)
-	cli_printf(c, 9000, "Command too long");
-      else
-	cli_command(c);
+      switch (cli_get_command(c))
+      {
+	case CGC_OK:
+	  cli_command(c);
+	  break;
+	case CGC_INCOMPLETE:
+	  return;
+	case CGC_TOO_LONG:
+	  cli_printf(c, 9000, "Command too long");
+	  break;
+	case CGC_TRAILING:
+	  cli_printf(c, 9003, "Pipelining not supported");
+	  break;
+      }
     }
 
   cli_write_trigger(c);

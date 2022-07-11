@@ -549,6 +549,6 @@ int sysdep_commit(struct config *new UNUSED, struct config *old UNUSED) { return
 void sysdep_shutdown_done(void) {}
 
 #include "nest/cli.h"
-int cli_get_command(cli *c UNUSED) { return 0; }
+enum cli_get_command_result cli_get_command(cli *c UNUSED) { return CGC_OK; }
 void cli_write_trigger(cli *c UNUSED) {}
 cli *cmd_reconfig_stored_cli;
