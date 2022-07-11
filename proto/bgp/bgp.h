@@ -587,7 +587,7 @@ int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_be
 struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
 u32 bgp_rte_igp_metric(struct rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old);
-int bgp_preexport(struct proto *, struct rte *);
+int bgp_preexport(struct channel *, struct rte *);
 int bgp_get_attr(const struct eattr *e, byte *buf, int buflen);
 void bgp_get_route_info(struct rte *, byte *buf);
 int bgp_total_aigp_metric_(rte *e, u64 *metric, const struct adata **ad);

@@ -97,11 +97,11 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
 }
 
 static int
-pipe_preexport(struct proto *P, rte *e)
+pipe_preexport(struct channel *C, rte *e)
 {
   struct proto *pp = e->sender->proto;
 
-  if (pp == P)
+  if (pp == C->proto)
     return -1;	/* Avoid local loops automatically */
 
   return 0;
