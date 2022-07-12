@@ -3573,15 +3573,20 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
     {
       struct rte_storage *e = n->routes;
       ea_list *a = e->rte.attrs;
-      pxlen = n->n.addr->pxlen;
+      u32 pref = rt_get_preference(&e->rte);
 
-      if (ea_find(a, &ea_gen_hostentry))
+      for (struct rte_storage *ee = n->routes; ee; ee = ee->next)
+	if (rte_is_valid(&ee->rte) &&
+	    (rt_get_preference(&ee->rte) >= pref) &&
+	    ea_find(ee->rte.attrs, &ea_gen_hostentry))
 	{
 	  /* Recursive route should not depend on another recursive route */
 	  log(L_WARN "Next hop address %I resolvable through recursive route for %N",
 	      he->addr, n->n.addr);
 	  goto done;
 	}
+
+      pxlen = n->n.addr->pxlen;
 
       eattr *nhea = ea_find(a, &ea_gen_nexthop);
       ASSERT_DIE(nhea);
