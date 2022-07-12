@@ -77,7 +77,11 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
       e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
 
   if (d->verbose)
+  {
     ea_show_list(c, a);
+    cli_printf(c, -1008, "\tInternal route handling values: %uL %uG %uS",
+	e->src->private_id, e->src->global_id, e->stale_cycle);
+  }
   else if (dest == RTD_UNICAST)
     ea_show_nexthop_list(c, nhad);
   else if (had)

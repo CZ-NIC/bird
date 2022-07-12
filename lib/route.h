@@ -29,11 +29,10 @@ typedef struct rte {
   u8 generation;			/* If this route import is based on other previously exported route,
 					   this value should be 1 + MAX(generation of the parent routes).
 					   Otherwise the route is independent and this value is zero. */
+  u8 stale_cycle;			/* Auxiliary value for route refresh */
 } rte;
 
 #define REF_FILTERED	2		/* Route is rejected by import filter */
-#define REF_STALE	4		/* Route is stale in a refresh cycle */
-#define REF_DISCARD	8		/* Route is scheduled for discard */
 #define REF_MODIFY	16		/* Route is scheduled for modify */
 #define REF_PENDING	32		/* Route has not propagated completely yet */
 

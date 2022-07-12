@@ -201,6 +201,10 @@ struct rt_import_hook {
   btime last_state_change;		/* Time of last state transition */
 
   u8 import_state;			/* IS_* */
+  u8 stale_set;				/* Set this stale_cycle to imported routes */
+  u8 stale_valid;			/* Routes with this stale_cycle and bigger are considered valid */
+  u8 stale_pruned;			/* Last prune finished when this value was set at stale_valid */
+  u8 stale_pruning;			/* Last prune started when this value was set at stale_valid */
 
   void (*stopped)(struct rt_import_request *);	/* Stored callback when import is stopped */
 };
@@ -381,8 +385,8 @@ net *net_get(rtable *tab, const net_addr *addr);
 net *net_route(rtable *tab, const net_addr *n);
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, rte ** feed, uint count, linpool *pool, int silent);
-void rt_refresh_begin(rtable *t, struct rt_import_request *);
-void rt_refresh_end(rtable *t, struct rt_import_request *);
+void rt_refresh_begin(struct rt_import_request *);
+void rt_refresh_end(struct rt_import_request *);
 void rt_modify_stale(rtable *t, struct rt_import_request *);
 void rt_schedule_prune(rtable *t);
 void rte_dump(struct rte_storage *);

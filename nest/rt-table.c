@@ -1323,7 +1323,8 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
 	    {
 	      /* No changes, ignore the new route and refresh the old one */
 
-	      old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
+	      old->flags &= ~REF_MODIFY;
+	      old->stale_cycle = new->stale_cycle;
 
 	      if (!rte_is_filtered(new))
 		{
@@ -1639,6 +1640,9 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
       nn = net_get(hook->table, n);
       new->net = nn->n.addr;
       new->sender = hook;
+
+      /* Set the stale cycle */
+      new->stale_cycle = hook->stale_set;
     }
   else if (!(nn = net_find(hook->table, n)))
     {
@@ -1916,15 +1920,38 @@ rt_stop_export(struct rt_export_request *req, void (*stopped)(struct rt_export_r
  * flag in rt_refresh_end() and then removing such routes in the prune loop.
  */
 void
-rt_refresh_begin(rtable *t, struct rt_import_request *req)
+rt_refresh_begin(struct rt_import_request *req)
 {
-  FIB_WALK(&t->fib, net, n)
-    {
-      for (struct rte_storage *e = n->routes; e; e = e->next)
-	if (e->rte.sender == req->hook)
-	  e->rte.flags |= REF_STALE;
-    }
-  FIB_WALK_END;
+  struct rt_import_hook *hook = req->hook;
+  ASSERT_DIE(hook);
+  ASSERT_DIE(hook->stale_set == hook->stale_valid);
+
+  /* If the pruning routine is too slow */
+  if ((hook->stale_pruned < hook->stale_valid) && (hook->stale_pruned + 128 < hook->stale_valid)
+      || (hook->stale_pruned > hook->stale_valid) && (hook->stale_pruned > hook->stale_valid + 128))
+  {
+    log(L_WARN "Route refresh flood in table %s", hook->table->name);
+    FIB_WALK(&hook->table->fib, net, n)
+      {
+       for (struct rte_storage *e = n->routes; e; e = e->next)
+         if (e->rte.sender == req->hook)
+           e->rte.stale_cycle = 0;
+      }
+    FIB_WALK_END;
+    hook->stale_set = 1;
+    hook->stale_valid = 0;
+    hook->stale_pruned = 0;
+  }
+  /* Setting a new value of the stale modifier */
+  else if (!++hook->stale_set)
+  {
+    /* Let's reserve the stale_cycle zero value for always-invalid routes */
+    hook->stale_set = 1;
+    hook->stale_valid = 0;
+  }
+
+  if (req->trace_routes & D_STATES)
+    log(L_TRACE "%s: route refresh begin [%u]", req->name, hook->stale_set);
 }
 
 /**
@@ -1936,34 +1963,32 @@ rt_refresh_begin(rtable *t, struct rt_import_request *req)
  * hook. See rt_refresh_begin() for description of refresh cycles.
  */
 void
-rt_refresh_end(rtable *t, struct rt_import_request *req)
+rt_refresh_end(struct rt_import_request *req)
 {
-  int prune = 0;
+  struct rt_import_hook *hook = req->hook;
+  ASSERT_DIE(hook);
 
-  FIB_WALK(&t->fib, net, n)
-    {
-      for (struct rte_storage *e = n->routes; e; e = e->next)
-	if ((e->rte.sender == req->hook) && (e->rte.flags & REF_STALE))
-	  {
-	    e->rte.flags |= REF_DISCARD;
-	    prune = 1;
-	  }
-    }
-  FIB_WALK_END;
+  hook->stale_valid++;
+  ASSERT_DIE(hook->stale_set == hook->stale_valid);
 
-  if (prune)
-    rt_schedule_prune(t);
+  rt_schedule_prune(hook->table);
+
+  if (req->trace_routes & D_STATES)
+    log(L_TRACE "%s: route refresh end [%u]", req->name, hook->stale_valid);
 }
 
 void
 rt_modify_stale(rtable *t, struct rt_import_request *req)
 {
   int prune = 0;
+  struct rt_import_hook *s = req->hook;
 
   FIB_WALK(&t->fib, net, n)
     {
       for (struct rte_storage *e = n->routes; e; e = e->next)
-	if ((e->rte.sender == req->hook) && (e->rte.flags & REF_STALE) && !(e->rte.flags & REF_FILTERED))
+	if ((e->rte.sender == s) &&
+	    !(e->rte.flags & REF_FILTERED) &&
+	    (e->rte.stale_cycle + 1 == s->stale_set))
 	  {
 	    e->rte.flags |= REF_MODIFY;
 	    prune = 1;
@@ -2434,6 +2459,13 @@ rt_prune_table(rtable *tab)
     WALK_LIST2(ih, n, tab->imports, n)
       if (ih->import_state == TIS_STOP)
 	rt_set_import_state(ih, TIS_FLUSHING);
+      else if ((ih->stale_valid != ih->stale_pruning) && (ih->stale_pruning == ih->stale_pruned))
+      {
+	ih->stale_pruning = ih->stale_valid;
+
+	if (ih->req->trace_routes & D_STATES)
+	  log(L_TRACE "%s: table prune after refresh begin [%u]", ih->req->name, ih->stale_pruning);
+      }
 
     FIB_ITERATE_INIT(fit, &tab->fib);
     tab->prune_state = 2;
@@ -2459,7 +2491,10 @@ again:
 
       for (struct rte_storage *e=n->routes; e; e=e->next)
       {
-	if ((e->rte.sender->import_state == TIS_FLUSHING) || (e->rte.flags & REF_DISCARD))
+	struct rt_import_hook *s = e->rte.sender;
+	if ((s->import_state == TIS_FLUSHING) ||
+	    (e->rte.stale_cycle < s->stale_valid) ||
+	    (e->rte.stale_cycle > s->stale_set))
 	  {
 	    rte_discard(n, &e->rte);
 	    limit--;
@@ -2543,6 +2578,12 @@ again:
       rem_node(&ih->n);
       mb_free(ih);
       rt_unlock_table(tab);
+    }
+    else if (ih->stale_pruning != ih->stale_pruned)
+    {
+      ih->stale_pruned = ih->stale_pruning;
+      if (ih->req->trace_routes & D_STATES)
+	log(L_TRACE "%s: table prune after refresh end [%u]", ih->req->name, ih->stale_pruned);
     }
 }
 
