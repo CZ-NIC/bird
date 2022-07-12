@@ -139,6 +139,9 @@ static void bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd);
 static int bgp_incoming_connection(sock *sk, uint dummy UNUSED);
 static void bgp_listen_sock_err(sock *sk UNUSED, int err);
 
+static void bgp_graceful_restart_feed(struct bgp_channel *c);
+
+
 /**
  * bgp_open - open a BGP instance
  * @p: BGP instance
@@ -770,7 +773,7 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
 
       case BGP_GRS_LLGR:
 	rt_refresh_begin(&c->c.in_req);
-	rt_modify_stale(c->c.table, &c->c.in_req);
+	bgp_graceful_restart_feed(c);
 	break;
       }
     }
@@ -795,6 +798,52 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
   proto_notify_state(&p->p, PS_START);
   tm_start(p->gr_timer, p->conn->remote_caps->gr_time S);
 }
+
+static void
+bgp_graceful_restart_feed_done(struct rt_export_request *req)
+{
+  req->hook = NULL;
+}
+
+static void
+bgp_graceful_restart_feed_dump_req(struct rt_export_request *req)
+{
+  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, stale_feed, req);
+  debug("  BGP-GR %s.%s export request %p\n", c->c.proto->name, c->c.name, req);
+}
+
+static void
+bgp_graceful_restart_feed_log_state_change(struct rt_export_request *req, u8 state)
+{
+  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, stale_feed, req);
+  struct bgp_proto *p = (void *) c->c.proto;
+  BGP_TRACE(D_EVENTS, "Long-lived graceful restart export state changed to %s", rt_export_state_name(state));
+
+  if (state == TES_READY)
+    rt_stop_export(req, bgp_graceful_restart_feed_done);
+}
+
+static void
+bgp_graceful_restart_drop_export(struct rt_export_request *req UNUSED, const net_addr *n UNUSED, struct rt_pending_export *rpe UNUSED)
+{ /* Nothing to do */ }
+
+static void
+bgp_graceful_restart_feed(struct bgp_channel *c)
+{
+  c->stale_feed = (struct rt_export_request) {
+    .name = "BGP-GR",
+    .trace_routes = c->c.debug | c->c.proto->debug,
+    .dump_req = bgp_graceful_restart_feed_dump_req,
+    .log_state_change = bgp_graceful_restart_feed_log_state_change,
+    .export_bulk = bgp_rte_modify_stale,
+    .export_one = bgp_graceful_restart_drop_export,
+  };
+
+  rt_request_export(&c->c.table->exporter, &c->stale_feed);
+}
+
+
+
 
 /**
  * bgp_graceful_restart_done - finish active BGP graceful restart
@@ -861,7 +910,7 @@ bgp_graceful_restart_timeout(timer *t)
       /* Channel is in GR, and supports LLGR -> start LLGR */
       c->gr_active = BGP_GRS_LLGR;
       tm_start(c->stale_timer, c->stale_time S);
-      rt_modify_stale(c->c.table, &c->c.in_req);
+      bgp_graceful_restart_feed(c);
     }
   }
   else
@@ -1672,7 +1721,6 @@ bgp_init(struct proto_config *CF)
   P->rte_better = bgp_rte_better;
   P->rte_mergable = bgp_rte_mergable;
   P->rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
-  P->rte_modify = bgp_rte_modify_stale;
   P->rte_igp_metric = bgp_rte_igp_metric;
 
   p->cf = cf;

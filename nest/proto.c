@@ -438,7 +438,6 @@ channel_start_import(struct channel *c)
     .dump_req = channel_dump_import_req,
     .log_state_change = channel_import_log_state_change,
     .preimport = channel_preimport,
-    .rte_modify = c->proto->rte_modify,
   };
 
   ASSERT(c->channel_state == CS_UP);

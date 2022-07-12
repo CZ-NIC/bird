@@ -1322,8 +1322,6 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
 	  if (new && rte_same(old, &new_stored->rte))
 	    {
 	      /* No changes, ignore the new route and refresh the old one */
-
-	      old->flags &= ~REF_MODIFY;
 	      old->stale_cycle = new->stale_cycle;
 
 	      if (!rte_is_filtered(new))
@@ -1673,24 +1671,6 @@ rte_discard(net *net, rte *old)	/* Non-filtered route deletion, used during garb
   rte_update_unlock();
 }
 
-/* Modify existing route by protocol hook, used for long-lived graceful restart */
-static inline void
-rte_modify(net *net, rte *old)
-{
-  rte_update_lock();
-
-  rte *new = old->sender->req->rte_modify(old, rte_update_pool);
-  if (new != old)
-  {
-    if (new)
-      new->flags = old->flags & ~REF_MODIFY;
-
-    rte_recalculate(old->sender, net, new, old->src);
-  }
-
-  rte_update_unlock();
-}
-
 /* Check rtable for best route to given net whether it would be exported do p */
 int
 rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter)
@@ -1975,29 +1955,6 @@ rt_refresh_end(struct rt_import_request *req)
 
   if (req->trace_routes & D_STATES)
     log(L_TRACE "%s: route refresh end [%u]", req->name, hook->stale_valid);
-}
-
-void
-rt_modify_stale(rtable *t, struct rt_import_request *req)
-{
-  int prune = 0;
-  struct rt_import_hook *s = req->hook;
-
-  FIB_WALK(&t->fib, net, n)
-    {
-      for (struct rte_storage *e = n->routes; e; e = e->next)
-	if ((e->rte.sender == s) &&
-	    !(e->rte.flags & REF_FILTERED) &&
-	    (e->rte.stale_cycle + 1 == s->stale_set))
-	  {
-	    e->rte.flags |= REF_MODIFY;
-	    prune = 1;
-	  }
-    }
-  FIB_WALK_END;
-
-  if (prune)
-    rt_schedule_prune(t);
 }
 
 /**
@@ -2497,14 +2454,6 @@ again:
 	    (e->rte.stale_cycle > s->stale_set))
 	  {
 	    rte_discard(n, &e->rte);
-	    limit--;
-
-	    goto rescan;
-	  }
-
-	if (e->rte.flags & REF_MODIFY)
-	  {
-	    rte_modify(n, &e->rte);
 	    limit--;
 
 	    goto rescan;

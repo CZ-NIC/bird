@@ -181,7 +181,6 @@ struct rt_import_request {
   /* Preimport is called when the @new route is just-to-be inserted, replacing @old.
    * Return a route (may be different or modified in-place) to continue or NULL to withdraw. */
   int (*preimport)(struct rt_import_request *req, struct rte *new, struct rte *old);
-  struct rte *(*rte_modify)(struct rte *, struct linpool *);
 };
 
 struct rt_import_hook {

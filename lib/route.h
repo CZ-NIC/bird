@@ -33,7 +33,6 @@ typedef struct rte {
 } rte;
 
 #define REF_FILTERED	2		/* Route is rejected by import filter */
-#define REF_MODIFY	16		/* Route is scheduled for modify */
 #define REF_PENDING	32		/* Route has not propagated completely yet */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
