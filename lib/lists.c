@@ -109,15 +109,6 @@ add_head(list *l, node *n)
   l->head = n;
 }
 
-LIST_INLINE void
-self_link(node *n)
-{
-  ASSUME(n->prev == NULL);
-  ASSUME(n->next == NULL);
-
-  n->prev = n->next = n;
-}
-
 /**
  * insert_node - insert a node to a list
  * @n: a new list node

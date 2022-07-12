@@ -95,10 +95,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
     }
 
   if (d->verbose)
-  {
-    cli_printf(c, -1008, "\tInternal route ID: %uL %uG %uS", e->src->private_id, e->src->global_id, e->stale_cycle);
     rta_show(c, a);
-  }
 }
 
 static uint
@@ -106,7 +103,7 @@ rte_feed_count(net *n)
 {
   uint count = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTES_OR_NULL(e)))
+    if (rte_is_valid(RTE_OR_NULL(e)))
       count++;
   return count;
 }
@@ -116,7 +113,7 @@ rte_feed_obtain(net *n, rte **feed, uint count)
 {
   uint i = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTES_OR_NULL(e)))
+    if (rte_is_valid(RTE_OR_NULL(e)))
     {
       ASSERT_DIE(i < count);
       feed[i++] = &e->rte;

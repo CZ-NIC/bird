@@ -78,7 +78,6 @@ typedef union list {			/* In fact two overlayed nodes */
 #define LIST_INLINE
 void add_tail(list *, node *);
 void add_head(list *, node *);
-void self_link(node *);
 void rem_node(node *);
 void add_tail_list(list *, list *);
 void init_list(list *);

@@ -661,9 +661,9 @@ rpki_handle_cache_response_pdu(struct rpki_cache *cache, const struct pdu_cache_
        * a refresh cycle.
        */
       if (cache->p->roa4_channel)
-	rt_refresh_begin(&cache->p->roa4_channel->in_req);
+	rt_refresh_begin(cache->p->roa4_channel->table, &cache->p->roa4_channel->in_req);
       if (cache->p->roa6_channel)
-	rt_refresh_begin(&cache->p->roa6_channel->in_req);
+	rt_refresh_begin(cache->p->roa6_channel->table, &cache->p->roa6_channel->in_req);
 
       cache->p->refresh_channels = 1;
     }
@@ -819,9 +819,9 @@ rpki_handle_end_of_data_pdu(struct rpki_cache *cache, const struct pdu_end_of_da
   {
     cache->p->refresh_channels = 0;
     if (cache->p->roa4_channel)
-      rt_refresh_end(&cache->p->roa4_channel->in_req);
+      rt_refresh_end(cache->p->roa4_channel->table, &cache->p->roa4_channel->in_req);
     if (cache->p->roa6_channel)
-      rt_refresh_end(&cache->p->roa6_channel->in_req);
+      rt_refresh_end(cache->p->roa6_channel->table, &cache->p->roa6_channel->in_req);
   }
 
   cache->last_update = current_time();

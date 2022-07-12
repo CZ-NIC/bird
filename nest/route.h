@@ -150,6 +150,7 @@ struct rtable_config {
   int gc_max_ops;			/* Maximum number of operations before GC is run */
   int gc_min_time;			/* Minimum time between two consecutive GC runs */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
+  byte internal;			/* Internal table of a protocol */
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
 };
@@ -171,8 +172,10 @@ typedef struct rtable {
   struct hmap id_map;
   struct hostcache *hostcache;
   struct rtable_config *config;		/* Configuration of this table */
-  void (*deleted)(void *);		/* Table should free itself. Call this when it is done. */
-  void *del_data;
+  struct config *deleted;		/* Table doesn't exist in current configuration,
+					 * delete as soon as use_count becomes 0 and remove
+					 * obstacle from this routing table.
+					 */
   struct event *rt_event;		/* Routing table event */
   btime last_rt_change;			/* Last time when route changed */
   btime base_settle_time;		/* Start time of rtable settling interval */
@@ -181,6 +184,7 @@ typedef struct rtable {
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
+  byte internal;			/* This table is internal for some other object */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
@@ -245,7 +249,6 @@ typedef struct rte {
   u8 generation;			/* If this route import is based on other previously exported route,
 					   this value should be 1 + MAX(generation of the parent routes).
 					   Otherwise the route is independent and this value is zero. */
-  u8 stale_cycle;			/* Auxiliary value for route refresh */
 } rte;
 
 struct rte_storage {
@@ -253,11 +256,13 @@ struct rte_storage {
   struct rte rte;			/* Route data */
 };
 
-#define RTES_CLONE(r, l)	((r) ? (((*(l)) = (r)->rte), (l)) : NULL)
-#define RTES_OR_NULL(r)		((r) ? &((r)->rte) : NULL)
+#define RTE_COPY(r, l)	((r) ? (((*(l)) = (r)->rte), (l)) : NULL)
+#define RTE_OR_NULL(r)	((r) ? &((r)->rte) : NULL)
 
 #define REF_FILTERED	2		/* Route is rejected by import filter */
-#define REF_USE_STALE	4		/* Do not reset route's stale_cycle to the actual value */
+#define REF_STALE	4		/* Route is stale in a refresh cycle */
+#define REF_DISCARD	8		/* Route is scheduled for discard */
+#define REF_MODIFY	16		/* Route is scheduled for modify */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
 static inline int rte_is_valid(const rte *r) { return r && !(r->flags & REF_FILTERED); }
@@ -278,6 +283,7 @@ struct rt_import_request {
   /* Preimport is called when the @new route is just-to-be inserted, replacing @old.
    * Return a route (may be different or modified in-place) to continue or NULL to withdraw. */
   struct rte *(*preimport)(struct rt_import_request *req, struct rte *new, struct rte *old);
+  struct rte *(*rte_modify)(struct rte *, struct linpool *);
 };
 
 struct rt_import_hook {
@@ -297,10 +303,6 @@ struct rt_import_hook {
   btime last_state_change;		/* Time of last state transition */
 
   u8 import_state;			/* IS_* */
-  u8 stale_set;				/* Set this stale_cycle to imported routes */
-  u8 stale_valid;			/* Routes with this stale_cycle and bigger are considered valid */
-  u8 stale_pruned;			/* Last prune finished when this value was set at stale_valid */
-  u8 stale_pruning;			/* Last prune started when this value was set at stale_valid */
 
   void (*stopped)(struct rt_import_request *);	/* Stored callback when import is stopped */
 };
@@ -453,9 +455,9 @@ void *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, rte ** feed, uint count, linpool *pool, int silent);
-
-void rt_refresh_begin(struct rt_import_request *);
-void rt_refresh_end(struct rt_import_request *);
+void rt_refresh_begin(rtable *t, struct rt_import_request *);
+void rt_refresh_end(rtable *t, struct rt_import_request *);
+void rt_modify_stale(rtable *t, struct rt_import_request *);
 void rt_schedule_prune(rtable *t);
 void rte_dump(struct rte_storage *);
 void rte_free(struct rte_storage *, rtable *);
@@ -464,8 +466,14 @@ void rt_dump(rtable *);
 void rt_dump_all(void);
 void rt_dump_hooks(rtable *);
 void rt_dump_hooks_all(void);
+int rt_reload_channel(struct channel *c);
+void rt_reload_channel_abort(struct channel *c);
+void rt_refeed_channel(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
+int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
+int rte_update_out(struct channel *c, const net_addr *n, rte *new, const rte *old, struct rte_storage **old_exported);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
+
 
 /* Default limit for ECMP next hops, defined in sysdep code */
 extern const int rt_default_ecmp;
@@ -781,7 +789,6 @@ void rta__free(rta *r);
 static inline void rta_free(rta *r) { if (r && !--r->uc) rta__free(r); }
 rta *rta_do_cow(rta *o, linpool *lp);
 static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta_do_cow(r, lp) : r; }
-static inline void rta_uncache(rta *r) { r->cached = 0; r->uc = 0; }
 void rta_dump(rta *);
 void rta_dump_all(void);
 void rta_show(struct cli *, rta *);
