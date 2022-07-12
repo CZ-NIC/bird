@@ -1987,6 +1987,9 @@ bgp_postconfig(struct proto_config *CF)
   if (internal && (cf->local_role != BGP_ROLE_UNDEFINED))
     cf_error("Local role cannot be set on IBGP sessions");
 
+  if (interior && (cf->local_role != BGP_ROLE_UNDEFINED))
+    log(L_WARN "BGP roles are not recommended to be used within AS confederations");
+
   if (cf->require_roles && (cf->local_role == BGP_ROLE_UNDEFINED))
     cf_error("Local role must be set if roles are required");
 
@@ -2357,7 +2360,7 @@ bgp_format_role_name(u8 role)
 {
   static const char *bgp_role_names[] = { "provider", "rs_server", "rs_client", "customer", "peer" };
   if (role == BGP_ROLE_UNDEFINED) return "undefined";
-  if (role < 5) return bgp_role_names[role];
+  if (role < ARRAY_SIZE(bgp_role_names)) return bgp_role_names[role];
   return "?";
 }
 

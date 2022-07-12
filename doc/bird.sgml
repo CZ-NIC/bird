@@ -2829,7 +2829,8 @@ using the following configuration parameters:
 	leaks created by third parties.
 
 	This option is valid for EBGP sessions, but it is not recommended to be
-	used within AS confederations.
+	used within AS confederations (which would require manual filtering of
+	<cf/bgp_otc/ attribute on confederation boundaries).
 
 	Possible <cf><m/role-name/</cf> values are: <cf/provider/,
 	<cf/rs_server/, <cf/rs_client/, <cf/customer/ and <cf/peer/.
