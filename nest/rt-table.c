@@ -126,6 +126,7 @@ static inline void rt_flowspec_resolve_rte(rte *r, struct channel *c);
 static inline void rt_prune_table(rtable *tab);
 static inline void rt_schedule_notify(rtable *tab);
 static void rt_flowspec_notify(rtable *tab, net *net);
+static void rt_kick_prune_timer(rtable *tab);
 static void rt_feed_by_fib(void *);
 static void rt_feed_by_trie(void *);
 static void rt_feed_equal(void *);
@@ -1485,9 +1486,8 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
       net->routes, old_best_stored);
 
   if (!net->routes &&
-      (table->gc_counter++ >= table->config->gc_max_ops) &&
-      (table->gc_time + table->config->gc_min_time <= current_time()))
-    rt_schedule_prune(table);
+      (table->gc_counter++ >= table->config->gc_threshold))
+    rt_kick_prune_timer(table);
 
 #if 0
   /* Enable and reimplement these callbacks if anybody wants to use them */
@@ -2111,6 +2111,29 @@ rt_event(void *ptr)
 }
 
 
+static void
+rt_prune_timer(timer *t)
+{
+  rtable *tab = t->data;
+
+  if (tab->gc_counter >= tab->config->gc_threshold)
+    rt_schedule_prune(tab);
+}
+
+static void
+rt_kick_prune_timer(rtable *tab)
+{
+  /* Return if prune is already scheduled */
+  if (tm_active(tab->prune_timer) || (tab->prune_state & 1))
+    return;
+
+  /* Randomize GC period to +/- 50% */
+  btime gc_period = tab->config->gc_period;
+  gc_period = (gc_period / 2) + (random_u32() % (uint) gc_period);
+  tm_start(tab->prune_timer, gc_period);
+}
+
+
 static inline btime
 rt_settled_time(rtable *tab)
 {
@@ -2349,6 +2372,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   init_list(&t->subscribers);
 
   t->rt_event = ev_new_init(p, rt_event, t);
+  t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
   t->last_rt_change = t->gc_time = current_time();
 
   t->rl_pipe = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
@@ -2427,6 +2451,9 @@ rt_prune_table(rtable *tab)
     FIB_ITERATE_INIT(fit, &tab->fib);
     tab->prune_state = 2;
 
+    tab->gc_counter = 0;
+    tab->gc_time = current_time();
+
     if (tab->prune_trie)
     {
       /* Init prefix trie pruning */
@@ -2478,9 +2505,6 @@ again:
 #ifdef DEBUGGING
   fib_check(&tab->fib);
 #endif
-
-  tab->gc_counter = 0;
-  tab->gc_time = current_time();
 
   /* state change 2->0, 3->1 */
   tab->prune_state &= 1;
@@ -2609,6 +2633,20 @@ rt_preconfig(struct config *c)
 
   rt_new_table(cf_get_symbol("master4"), NET_IP4);
   rt_new_table(cf_get_symbol("master6"), NET_IP6);
+}
+
+void
+rt_postconfig(struct config *c)
+{
+  uint num_tables = list_length(&c->tables);
+  btime def_gc_period = 400 MS * num_tables;
+  def_gc_period = MAX(def_gc_period, 10 S);
+  def_gc_period = MIN(def_gc_period, 600 S);
+
+  struct rtable_config *rc;
+  WALK_LIST(rc, c->tables)
+    if (rc->gc_period == (uint) -1)
+      rc->gc_period = (uint) def_gc_period;
 }
 
 
@@ -3093,8 +3131,8 @@ rt_new_table(struct symbol *s, uint addr_type)
   cf_define_symbol(s, SYM_TABLE, table, c);
   c->name = s->name;
   c->addr_type = addr_type;
-  c->gc_max_ops = 1000;
-  c->gc_min_time = 5;
+  c->gc_threshold = 1000;
+  c->gc_period = (uint) -1;	/* set in rt_postconfig() */
   c->min_settle_time = 1 S;
   c->max_settle_time = 20 S;
 
