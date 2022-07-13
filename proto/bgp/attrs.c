@@ -1929,10 +1929,10 @@ bgp_setup_out_table(struct bgp_channel *c)
  */
 
 int
-bgp_preexport(struct channel *c, rte *e)
+bgp_preexport(struct channel *C, rte *e)
 {
   struct proto *SRC = e->src->proto;
-  struct bgp_proto *p = (struct bgp_proto *) (c->proto);
+  struct bgp_proto *p = (struct bgp_proto *) C->proto;
   struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (struct bgp_proto *) SRC : NULL;
 
   /* Reject our routes */

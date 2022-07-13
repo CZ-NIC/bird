@@ -681,9 +681,9 @@ krt_scan_timer_kick(struct krt_proto *p)
  */
 
 static int
-krt_preexport(struct channel *c, rte *e)
+krt_preexport(struct channel *C, rte *e)
 {
-  if (e->src->proto == c->proto)
+  if (e->src->proto == C->proto)
     return -1;
 
   if (!krt_capable(e))

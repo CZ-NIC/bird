@@ -73,12 +73,12 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
 }
 
 static int
-pipe_preexport(struct channel *c, rte *e)
+pipe_preexport(struct channel *C, rte *e)
 {
-  struct pipe_proto *p = (void *) c->proto;
+  struct pipe_proto *p = (void *) C->proto;
 
   /* Avoid direct loopbacks */
-  if (e->sender == c->in_req.hook)
+  if (e->sender == C->in_req.hook)
     return -1;
 
   /* Indirection check */
@@ -86,8 +86,8 @@ pipe_preexport(struct channel *c, rte *e)
   if (e->generation >= max_generation)
   {
     log_rl(&p->rl_gen, L_ERR "Route overpiped (%u hops of %u configured in %s) in table %s: %N %s/%u:%u",
-	e->generation, max_generation, c->proto->name,
-	c->table->name, e->net, e->src->proto->name, e->src->private_id, e->src->global_id);
+	e->generation, max_generation, C->proto->name,
+	C->table->name, e->net, e->src->proto->name, e->src->private_id, e->src->global_id);
 
     return -1;
   }

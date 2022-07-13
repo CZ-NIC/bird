@@ -394,10 +394,10 @@ radv_net_match_trigger(struct radv_config *cf, const net_addr *n)
 }
 
 int
-radv_preexport(struct channel *c, rte *new)
+radv_preexport(struct channel *C, rte *new)
 {
   // struct radv_proto *p = (struct radv_proto *) P;
-  struct radv_config *cf = (struct radv_config *) (c->proto->cf);
+  struct radv_config *cf = (struct radv_config *) (C->proto->cf);
 
   if (radv_net_match_trigger(cf, new->net))
     return RIC_PROCESS;

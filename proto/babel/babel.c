@@ -2257,9 +2257,9 @@ babel_kick_timer(struct babel_proto *p)
 
 
 static int
-babel_preexport(struct channel *c, struct rte *new)
+babel_preexport(struct channel *C, struct rte *new)
 {
-  if (new->src->proto != c->proto)
+  if (new->src->proto != C->proto)
     return 0;
 
   /* Reject our own unreachable routes */
