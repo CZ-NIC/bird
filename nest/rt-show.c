@@ -260,6 +260,18 @@ rt_show_dump_req(struct rt_export_request *req)
 }
 
 static void
+rt_show_done(struct rt_show_data *d)
+{
+  /* No more action */
+  d->cli->cleanup = NULL;
+  d->cli->cont = NULL;
+  d->cli->rover = NULL;
+
+  /* Write pending messages */
+  cli_write_trigger(d->cli);
+}
+
+static void
 rt_show_cont(struct rt_show_data *d)
 {
   struct cli *c = d->cli;
@@ -267,13 +279,7 @@ rt_show_cont(struct rt_show_data *d)
   if (d->running_on_config && (d->running_on_config != config))
   {
     cli_printf(c, 8004, "Stopped due to reconfiguration");
-
-    /* No more action */
-    c->cleanup = NULL;
-    c->cont = NULL;
-    c->rover = NULL;
-    cli_write_trigger(c);
-    return;
+    return rt_show_done(d);
   }
 
   d->req = (struct rt_export_request) {
@@ -320,7 +326,6 @@ rt_show_export_stopped(struct rt_export_request *req)
   if (NODE_VALID(d->tab))
     return rt_show_cont(d);
 
-
   /* Printout total stats */
   if (d->stats && (d->table_counter > 1))
   {
@@ -333,7 +338,8 @@ rt_show_export_stopped(struct rt_export_request *req)
   else
     cli_printf(d->cli, 0, "");
 
-  cli_write_trigger(d->cli);
+  /* No more route showing */
+  rt_show_done(d);
 }
 
 struct rt_show_data_rtable *
