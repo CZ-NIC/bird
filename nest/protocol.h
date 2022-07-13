@@ -93,7 +93,8 @@ void protos_dump_all(void);
 extern struct protocol
   proto_device, proto_radv, proto_rip, proto_static, proto_mrt,
   proto_ospf, proto_perf,
-  proto_pipe, proto_bgp, proto_bfd, proto_babel, proto_rpki;
+  proto_pipe, proto_bgp, proto_bfd, proto_babel, proto_rpki,
+  proto_stats;
 
 /*
  *	Routing Protocol Instance
@@ -492,6 +493,7 @@ struct channel_class {
 };
 
 extern struct channel_class channel_bgp;
+extern struct channel_class channel_stats;
 
 struct channel_config {
   node n;

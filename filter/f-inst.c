@@ -542,6 +542,20 @@
     RESULT_VAL(fstk->vstk[curline.vbase + sym->offset]);
   }
 
+  INST(FI_COUNTER, 0, 1) {
+    SYMBOL;
+    NEVER_CONSTANT;
+    RESULT(T_INT, i, stats_get_counter(sym));
+  }
+
+  INST(FI_COUNTER_TERM, 0, 1) {
+    SYMBOL;
+    NEVER_CONSTANT;
+
+    RESULT_TYPE(sym->val->type);
+    RESULT_VAL(*sym->val);
+  }
+
   INST(FI_CONSTANT, 0, 1) {
     FID_MEMBER(
       struct f_val,

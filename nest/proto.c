@@ -1031,6 +1031,10 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
     }
   }
 
+  /* update pointers from config to channel and vice versa */
+  cf->channel = c;
+  c->config = cf;
+
   /* Execute channel-specific reconfigure hook */
   if (c->class->reconfigure && !c->class->reconfigure(c, cf, &import_changed, &export_changed))
     return 0;

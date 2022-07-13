@@ -134,4 +134,22 @@ btime tm_parse_time(const char *x);
 void tm_format_time(char *x, struct timeformat *fmt, btime t);
 int tm_format_real_time(char *x, size_t max, const char *fmt, btime t);
 
+/*
+ *   Settle timer
+ */
+
+struct settle_timer {
+  btime min_settle_time;
+  btime max_settle_time;
+  btime base_settle_time;
+  btime last_change;
+  timer *t;
+  void (*settle_hook)(struct settle_timer *t);
+  void *settle_data;
+};
+
+void stm_init(struct settle_timer *st, pool *p, void *data, void (*settle_hook)(struct settle_timer *st));
+void kick_settle_timer(struct settle_timer *st);
+void settle_timer_changed(struct settle_timer *st);
+
 #endif

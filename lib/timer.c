@@ -325,3 +325,71 @@ tm_format_real_time(char *x, size_t max, const char *fmt, btime t)
 
   return strftime(x, max, tbuf, &tm);
 }
+
+
+/*
+ *  Settle timer
+ */
+
+static inline btime
+settled_time(struct settle_timer *st)
+{
+  ASSUME(st->base_settle_time != 0);
+
+  return MIN_(st->last_change + st->min_settle_time,
+	      st->base_settle_time + st->max_settle_time);
+}
+
+inline void
+settle_timer_changed(struct settle_timer *st)
+{
+  st->last_change = current_time();
+}
+
+void
+settle_timer(timer *t)
+{
+  struct settle_timer *st = t->data;
+
+  if (!st->base_settle_time)
+    return;
+
+  btime settled_t = settled_time(st);
+  if (current_time() < settled_t)
+  {
+    tm_set(t, settled_t);
+    return;
+  }
+
+
+  /* Settled */
+  st->base_settle_time = 0;
+
+  /* t->hook already occupied by settle_timer() */
+  if (st->settle_hook)
+    st->settle_hook(st);
+}
+
+void
+stm_init(struct settle_timer *st, pool *p, void *data, 
+         void (*settle_hook)(struct settle_timer *st))
+{
+  st->t = tm_new_init(p, (void *) st, settle_timer, 0, 0); 
+  st->t->hook = settle_timer;
+  st->t->data = (void *) st;
+
+  st->settle_data = data;
+  st->settle_hook = settle_hook;
+}
+
+void
+kick_settle_timer(struct settle_timer *st)
+{
+  ASSUME(st != NULL);
+
+  st->base_settle_time = current_time();
+
+  timer *t = st->t;
+  if (!tm_active(t))
+    tm_set(t, settled_time(st));
+}
