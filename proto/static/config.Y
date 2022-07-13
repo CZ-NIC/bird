@@ -40,7 +40,7 @@ static_route_finish(void)
   if (net_type_match(this_srt->net, NB_DEST) == !this_srt->dest)
     cf_error("Unexpected or missing nexthop/type");
 
-  this_srt->cmds = f_linearize(this_srt_cmds);
+  this_srt->cmds = f_linearize(this_srt_cmds, 0);
 }
 
 CF_DECLS

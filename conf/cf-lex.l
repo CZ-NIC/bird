@@ -577,6 +577,8 @@ check_eof(void)
   return 0;
 }
 
+static inline void cf_swap_soft_scope(void);
+
 static struct symbol *
 cf_new_symbol(const byte *c)
 {
@@ -585,6 +587,8 @@ cf_new_symbol(const byte *c)
   uint l = strlen(c);
   if (l > SYM_MAX_LEN)
     cf_error("Symbol too long");
+
+  cf_swap_soft_scope();
 
   s = cfg_allocz(sizeof(struct symbol) + l + 1);
   *s = (struct symbol) { .scope = conf_this_scope, .class = SYM_VOID, };
@@ -676,8 +680,8 @@ cf_localize_symbol(struct symbol *sym)
     return sym;
 
   /* If the scope is the current, it is already defined in this scope. */
-  if (sym->scope == conf_this_scope)
-    cf_error("Symbol already defined");
+  if (cf_symbol_is_local(sym))
+    cf_error("Symbol '%s' already defined", sym->name);
 
   /* Not allocated here yet, doing it now. */
   return cf_new_symbol(sym->name);
@@ -839,10 +843,58 @@ cf_push_scope(struct symbol *sym)
 void
 cf_pop_scope(void)
 {
+  ASSERT(!conf_this_scope->soft_scopes);
+
   conf_this_scope->active = 0;
   conf_this_scope = conf_this_scope->next;
 
   ASSERT(conf_this_scope);
+}
+
+/**
+ * cf_push_soft_scope - enter new soft scope
+ *
+ * If we want to enter a new anonymous scope that most likely will not contain
+ * any symbols, we can use cf_push_soft_scope() insteas of cf_push_scope().
+ * Such scope will be converted to a regular scope on first use.
+ */
+void
+cf_push_soft_scope(void)
+{
+  if (conf_this_scope->soft_scopes < 0xfe)
+    conf_this_scope->soft_scopes++;
+  else
+    cf_push_scope(NULL);
+}
+
+/**
+ * cf_pop_soft_scope - leave a soft scope
+ *
+ * Leave a soft scope entered by cf_push_soft_scope().
+ */
+void
+cf_pop_soft_scope(void)
+{
+  if (conf_this_scope->soft_scopes)
+    conf_this_scope->soft_scopes--;
+  else
+    cf_pop_scope();
+}
+
+/**
+ * cf_swap_soft_scope - convert soft scope to regular scope
+ *
+ * Soft scopes cannot hold symbols, so they must be converted to regular scopes
+ * on first use. It is done automatically by cf_new_symbol().
+ */
+static inline void
+cf_swap_soft_scope(void)
+{
+  if (conf_this_scope->soft_scopes)
+  {
+    conf_this_scope->soft_scopes--;
+    cf_push_scope(NULL);
+  }
 }
 
 /**

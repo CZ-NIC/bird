@@ -76,6 +76,7 @@ CF_DECLS
   struct f_attr_bit fab;
   struct f_lval flv;
   struct f_line *fl;
+  struct f_arg *fa;
   const struct filter *f;
   struct f_tree *e;
   struct f_trie *trie;
@@ -154,14 +155,14 @@ conf: definition ;
 definition:
    DEFINE symbol '=' term ';' {
      struct f_val val;
-     if (f_eval(f_linearize($4), &val) > F_RETURN) cf_error("Runtime error");
+     if (f_eval(f_linearize($4, 1), &val) > F_RETURN) cf_error("Runtime error");
      cf_define_symbol($2, SYM_CONSTANT | val.type, val, lp_val_copy(cfg_mem, &val));
    }
  ;
 
 expr:
    NUM
- | '(' term ')' { $$ = f_eval_int(f_linearize($2)); }
+ | '(' term ')' { $$ = f_eval_int(f_linearize($2, 1)); }
  | symbol_known {
      if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number constant expected");
      $$ = SYM_VAL($1).i; }
