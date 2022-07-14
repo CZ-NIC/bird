@@ -726,8 +726,8 @@ rte_feed_count(net *n)
 {
   uint count = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTE_OR_NULL(e)))
-      count++;
+    count++;
+
   return count;
 }
 
@@ -736,11 +736,11 @@ rte_feed_obtain(net *n, struct rte **feed, uint count)
 {
   uint i = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTE_OR_NULL(e)))
     {
       ASSERT_DIE(i < count);
       feed[i++] = &e->rte;
     }
+
   ASSERT_DIE(i == count);
 }
 
@@ -1059,10 +1059,15 @@ void
 rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
-  rte n0;
 
   if (rpe->new_best != rpe->old_best)
-    rt_notify_basic(c, net, RTE_COPY(rpe->new_best, &n0), RTE_OR_NULL(rpe->old_best));
+  {
+    rte n0 = RTE_COPY_VALID(rpe->new_best);
+    rte *o = RTE_VALID_OR_NULL(rpe->old_best);
+
+    if (n0.src || o)
+      rt_notify_basic(c, net, n0.src ? &n0 : NULL, o);
+  }
 
   /* Drop the old stored rejection if applicable.
    * new->id == old->id happens when updating hostentries. */
@@ -1074,10 +1079,14 @@ void
 rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
-  rte n0;
 
   if (rpe->new != rpe->old)
-    rt_notify_basic(c, net, RTE_COPY(rpe->new, &n0), RTE_OR_NULL(rpe->old));
+  {
+    rte n0 = RTE_COPY_VALID(rpe->new);
+    rte *o = RTE_VALID_OR_NULL(rpe->old);
+    if (n0.src || o)
+      rt_notify_basic(c, net, n0.src ? &n0 : NULL, o);
+  }
 
   /* Drop the old stored rejection if applicable.
    * new->id == old->id happens when updating hostentries. */
@@ -1091,10 +1100,11 @@ rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pendin
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
 
   for (uint i=0; i<count; i++)
-  {
-    rte n0 = *feed[i];
-    rt_notify_basic(c, net, &n0, NULL);
-  }
+    if (rte_is_valid(feed[i]))
+    {
+      rte n0 = *feed[i];
+      rt_notify_basic(c, net, &n0, NULL);
+    }
 }
 
 /**
@@ -1132,26 +1142,17 @@ static void
 rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage *old,
 	     struct rte_storage *new_best, struct rte_storage *old_best)
 {
-  if (!rte_is_valid(RTE_OR_NULL(new)))
-    new = NULL;
-
-  if (!rte_is_valid(RTE_OR_NULL(old)))
-    old = NULL;
-
-  if (!rte_is_valid(RTE_OR_NULL(new_best)))
-    new_best = NULL;
-
-  if (!rte_is_valid(RTE_OR_NULL(old_best)))
-    old_best = NULL;
+  int new_best_valid = rte_is_valid(RTE_OR_NULL(new_best));
+  int old_best_valid = rte_is_valid(RTE_OR_NULL(old_best));
 
   if (!new && !old && !new_best && !old_best)
     return;
 
-  if (new_best != old_best)
+  if (new_best_valid || old_best_valid)
   {
-    if (new_best)
+    if (new_best_valid)
       new_best->rte.sender->stats.pref++;
-    if (old_best)
+    if (old_best_valid)
       old_best->rte.sender->stats.pref--;
 
     if (tab->hostcache)

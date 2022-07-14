@@ -2557,12 +2557,10 @@ bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt
   {
     rte *r = feed[i];
 
-    /* Not our route */
-    if (r->sender != irh)
-      continue;
-
-    /* A new route, do not mark as stale */
-    if (r->stale_cycle == irh->stale_set)
+    if (
+	!rte_is_valid(r) ||			/* Not a valid route */
+	(r->sender != irh) ||			/* Not our route */
+	(r->stale_cycle == irh->stale_set))	/* A new route, do not mark as stale */
       continue;
 
     eattr *ea = ea_find(r->attrs, BGP_EA_ID(BA_COMMUNITY));

@@ -167,8 +167,10 @@ struct rte_storage {
   struct rte rte;			/* Route data */
 };
 
-#define RTE_COPY(r, l) ((r) ? (((*(l)) = (r)->rte), (l)) : NULL)
-#define RTE_OR_NULL(r) ((r) ? &((r)->rte) : NULL)
+#define RTE_COPY(r)		((r) ? (r)->rte : (rte) {})
+#define RTE_COPY_VALID(r)	(((r) && (rte_is_valid(&(r)->rte))) ? (r)->rte : (rte) {})
+#define RTE_OR_NULL(r)		((r) ? &((r)->rte) : NULL)
+#define RTE_VALID_OR_NULL(r)	(((r) && (rte_is_valid(&(r)->rte))) ? &((r)->rte) : NULL)
 
 /* Table-channel connections */
 
