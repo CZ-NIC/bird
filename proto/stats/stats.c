@@ -1,5 +1,5 @@
 /*
- *	BIRD -- Table-to-Table Routing Protocol a.k.a Pipe
+ *	BIRD -- Statistics Protocol
  *
  *      (c) 2022       Vojtech Vilimek <vojtech.vilimek@nic.cz>
  *      (c) 2022       CZ.NIC z.s.p.o.
@@ -33,12 +33,33 @@ static void
 stats_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *new, const rte *old)
 {
   struct stats_proto *p = (void *) P;
+  log(L_INFO "stats_rf_notify()");
+
+  if (new && old)
+  {
+    new->generation = old->generation + 1;
+    p->counters[old->generation]--;
+    p->counters[new->generation]++;
+    log(L_INFO "counter %u increased", new->generation);
+  }
+  else if (new && !old)
+  {
+    new->generation = 0;
+    p->counters[0]++;
+    log(L_INFO "counter 0 increased");
+  }
+  else if (!new && old)
+  {
+    (p->counters[old->generation])--;
+    log(L_INFO "counter %u decreased", old->generation);
+  }
 }
 
 static int
 stats_preexport(struct channel *c, rte *e)
 {
   struct stats_proto *p = (void *) c->proto;
+  log(L_INFO "stats_preexport()");
 
   return 0;
 }
@@ -59,6 +80,7 @@ stats_init(struct proto_config *CF)
   struct proto *P = proto_new(CF);
   struct stats_proto *p = (void *) P;
   struct stats_config *cf = (void *) CF;
+  log(L_INFO "stats_init()");
 
   P->rt_notify = stats_rt_notify;
   P->preexport = stats_preexport;
@@ -74,6 +96,17 @@ stats_init(struct proto_config *CF)
   }
 
   return P;
+}
+
+static int
+stats_start(struct proto *P) 
+{
+  struct stats_proto *p = (struct stats_proto *) P;
+  log(L_INFO "stats_start() ");
+
+  p->counters = (u32 *) mb_allocz(p->p.pool, 256 * sizeof(u32));
+
+  return PS_UP;
 }
 
 static int
@@ -99,16 +132,20 @@ stats_get_status(struct proto *P, byte *buf)
 }
 
 static void
-stats_show_stats(struct stats_proto *p)
-{
-
-}
-
-static void
 stats_show_proto_info(struct proto *P)
 {
   struct stats_proto *p = (void *) P;
 
+  cli_msg(-1006, "  Counters contents  ");
+  for (int i = 0; i < 64; i++) 
+  {
+    cli_msg(-1006, "%3u: %10u | %3u: %10u | %3u: %10u | %3u: %10u",
+       i       , *(p->counters + i),
+      (i + 64 ), *(p->counters + i + 64),
+      (i + 128), *(p->counters + i + 128),
+      (i + 192), *(p->counters + i + 192)
+    );
+  }   
 }
 
 void
@@ -127,6 +164,7 @@ struct protocol proto_stats = {
   .proto_size =		sizeof(struct stats_proto),
   .config_size =	sizeof(struct stats_config),
   .init =		stats_init,
+  .start =		stats_start,
   .reconfigure =	stats_reconfigure,
   .copy_config = 	stats_copy_config,
   .get_status = 	stats_get_status,

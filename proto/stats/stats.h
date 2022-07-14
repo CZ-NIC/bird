@@ -1,5 +1,5 @@
 /*
- *	BIRD -- Table-to-Table Routing Protocol a.k.a Pipe
+ *	BIRD -- Statistics Protocol
  *
  *      (c) 2022 Vojtech Vilimek <vojtech.vilimek@nic.cz>
  *      (c) 2022 CZ.NIC z.s.p.o.
@@ -20,6 +20,7 @@ struct stats_proto {
   struct proto p;
   struct channel *c;
   struct tbf rl_gen;
+  u32 *counters;
 };
 
 #endif
