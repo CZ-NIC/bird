@@ -178,8 +178,13 @@ void debug(const char *msg, ...);	/* Printf to debug output */
 
 #if defined(LOCAL_DEBUG) || defined(GLOBAL_DEBUG)
 #define DBG(x, y...) debug(x, ##y)
+#define DBGL(x, y...) debug(x "\n", ##y)
+#elif defined(DEBUG_TO_LOG)
+#define DBG(...) do { } while (0)
+#define DBGL(...) log(L_DEBUG __VA_ARGS__)
 #else
-#define DBG(x, y...) do { } while(0)
+#define DBG(...) do { } while(0)
+#define DBGL(...) do { } while (0)
 #endif
 
 #define ASSERT_DIE(x) do { if (!(x)) bug("Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)

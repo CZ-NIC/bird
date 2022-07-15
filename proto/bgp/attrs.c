@@ -1901,7 +1901,6 @@ bgp_out_table_export_start(struct rt_exporter *re, struct rt_export_request *req
   pool *p = rp_new(c->c.proto->pool, "Export hook");
   struct rt_export_hook *hook = mb_allocz(p, sizeof(struct rt_export_hook));
   hook->pool = p;
-  hook->lp = lp_new_default(p);
   hook->event = ev_new_init(p, bgp_out_table_feed, hook);
   hook->feed_type = TFT_HASH;
 
@@ -1919,6 +1918,7 @@ bgp_setup_out_table(struct bgp_channel *c)
   };
 
   init_list(&c->prefix_exporter.hooks);
+  init_list(&c->prefix_exporter.pending);
 
   c->c.out_table = &c->prefix_exporter;
 }

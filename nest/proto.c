@@ -697,8 +697,6 @@ channel_do_stop(struct channel *c)
 
   CALL(c->channel->shutdown, c);
 
-  /* This have to be done in here, as channel pool is freed before channel_do_down() */
-  c->out_table = NULL;
 }
 
 static void
