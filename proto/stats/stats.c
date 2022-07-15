@@ -36,23 +36,16 @@ stats_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte 
   struct stats_config *cf = (void *) P->cf;
   log(L_INFO "stats_rf_notify()");
 
-  if (new && old)
+  if (old)
   {
-    new->generation = old->generation + 1;
     p->counters[old->generation]--;
+    log(L_INFO "counter %u decreased", old->generation);
+  }
+
+  if (new)
+  {
     p->counters[new->generation]++;
     log(L_INFO "counter %u increased", new->generation);
-  }
-  else if (new && !old)
-  {
-    new->generation = 0;
-    p->counters[0]++;
-    log(L_INFO "counter 0 increased");
-  }
-  else if (!new && old)
-  {
-    (p->counters[old->generation])--;
-    log(L_INFO "counter %u decreased", old->generation);
   }
 }
 
