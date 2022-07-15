@@ -12,7 +12,6 @@
 
 struct stats_config {
   struct proto_config c;
-  const net_addr *in_subprefix;
   u8 max_generation;
 };
 

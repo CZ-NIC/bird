@@ -33,6 +33,7 @@ static void
 stats_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *new, const rte *old)
 {
   struct stats_proto *p = (void *) P;
+  struct stats_config *cf = (void *) P->cf;
   log(L_INFO "stats_rf_notify()");
 
   if (new && old)
@@ -70,9 +71,22 @@ stats_reload_routes(struct channel *C)
   struct stats_proto *p = (void *) C->proto;
 
   /* Route reload on one channel is just refeed on the other */
-  channel_request_feeding(p->c);
+  //channel_request_feeding(p->c);
 }
 
+static void 
+stats_configure_channels(struct proto *P, struct proto_config *CF)
+{
+  struct stats_proto *p = (void *) P;
+  struct stats_config *cf = (void *) CF;
+
+  struct channel_config *cc;
+  WALK_LIST(cc, CF->channels)
+  {
+    struct channel *c = NULL;
+    proto_configure_channel(P, &c, cc);
+  } 
+}
 
 static struct proto *
 stats_init(struct proto_config *CF)
@@ -88,16 +102,22 @@ stats_init(struct proto_config *CF)
 
   p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 
-  struct channel_config *cc;
-  WALK_LIST(cc, CF->channels) 
-  {
-    struct channel *c = NULL;
-    proto_configure_channel(P, &c, cc);
-  }
+  stats_configure_channels(P, CF);
 
   return P;
 }
 
+static struct channel *
+stats_find_channel(struct stats_proto *p, const char *name)
+{
+  struct channel *c;
+  WALK_LIST(c, p->p.channels)
+    if (strcmp(c->name, name))
+      return c;
+
+  return NULL;
+}
+ 
 static int
 stats_start(struct proto *P) 
 {
@@ -113,9 +133,30 @@ static int
 stats_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct stats_proto *p = (void *) P;
-  struct stats_config *cf = (void *) CF;
+  struct stats_config *new = (void *) CF;
+  struct stats_config *old = (void *) P->cf;
+  log(L_INFO "stats_reconfigure()");
 
-  //return stats_configure_channels(p, cf);
+  struct channel *c;
+  WALK_LIST(c, p->p.channels)
+    c->stale = 1;
+
+  struct channel_config *cc;
+  WALK_LIST(cc, new->c.channels)
+  {
+    c = (struct channel *) stats_find_channel(p, cc->name);
+    if (!proto_configure_channel(P, &c, cc))
+      return 0;
+
+    if (c)
+      c->stale = 0;
+  }
+
+  struct channel *c2;
+  WALK_LIST_DELSAFE(c, c2, p->p.channels)
+    if (c->stale && !proto_configure_channel(P, &c, NULL))
+      return 0;
+  
   return 1;
 }
 
