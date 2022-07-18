@@ -6,7 +6,11 @@ $(call proto-build,dev_build)
 
 $(proto-build-c): $(lastword $(MAKEFILE_LIST))
 	$(E)echo GEN $@
-	$(Q)echo "#include \"lib/birdlib.h\"\n$(patsubst %,void %(void);\n,$(PROTO_BUILD)) void protos_build_gen(void) { $(patsubst %,  %();\n,$(PROTO_BUILD))}" > $@
+	$(Q)echo "#include \"lib/birdlib.h\"" > $@
+	$(Q)$(patsubst %,echo 'void %(void);' >> $@;,$(PROTO_BUILD))
+	$(Q)echo "void protos_build_gen(void) {" >> $@
+	$(Q)$(patsubst %,echo '  %();'>>$@;,$(PROTO_BUILD))
+	$(Q)echo "}" >> $@
 
 tests_src :=
 tests_targets := $(tests_targets) $(tests-target-files)
