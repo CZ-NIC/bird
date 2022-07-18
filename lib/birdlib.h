@@ -15,7 +15,7 @@
 /* Ugly structure offset handling macros */
 
 #define OFFSETOF(s, i) ((size_t) &((s *)0)->i)
-#define SKIP_BACK(s, i, p) ((s *)((char *)p - OFFSETOF(s, i)))
+#define SKIP_BACK(s, i, p) ({ s *_ptr = ((s *)((char *)p - OFFSETOF(s, i))); ASSERT_DIE(&_ptr->i == p); _ptr; })
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
 #define CPU_STRUCT_ALIGN  (MAX_(_Alignof(void*), _Alignof(u64)))
 #define BIRD_CPU_ALIGN(s) BIRD_ALIGN((s), CPU_STRUCT_ALIGN)

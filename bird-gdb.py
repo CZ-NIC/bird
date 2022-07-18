@@ -122,7 +122,7 @@ class BIRDFLinePrinter(BIRDPrinter):
                         "n": n,
                         "code": str(self.val['items'][n]['fi_code']),
                     } if n % 8 == 0 else str(self.val['items'][n]['fi_code']) for n in range(cnt)]))
-        
+
 
 class BIRDFExecStackPrinter(BIRDPrinter):
     "Print BIRD's struct f_exec_stack"
@@ -139,6 +139,118 @@ class BIRDFExecStackPrinter(BIRDPrinter):
                     "line": str(self.val['item'][n]['line'].dereference()),
                     "n": n
                         } for n in range(cnt-1, -1, -1) ])
+
+
+class BIRD:
+    def skip_back(t, i, v):
+        if isinstance(t, str):
+            t = gdb.lookup_type(t)
+        elif isinstance(t, gdb.Value):
+            t = gdb.lookup_type(t.string())
+        elif not isinstance(t, gdb.Type):
+            raise Exception(f"First argument of skip_back(t, i, v) must be a type, got {type(t)}")
+
+        t = t.strip_typedefs()
+        nullptr = gdb.Value(0).cast(t.pointer())
+
+        if isinstance(i, gdb.Value):
+            i = i.string()
+        elif not isinstance(i, str):
+            raise Exception(f"Second argument of skip_back(t, i, v) must be a item name, got {type(i)}")
+
+        if not isinstance(v, gdb.Value):
+            raise Exception(f"Third argument of skip_back(t, i, v) must be a value, got {type(v)}")
+        if v.type.code != gdb.TYPE_CODE_PTR and v.type.code != gdb.TYPE_CODE_REF:
+            raise Exception(f"Third argument of skip_back(t, i, v) must be a pointer, is {v.type} ({v.type.code})")
+        if v.type.target().strip_typedefs() != nullptr[i].type:
+            raise Exception(f"Third argument of skip_back(t, i, v) points to type {v.type.target().strip_typedefs()}, should be {nullptr[i].type}")
+
+        uintptr_t = gdb.lookup_type("uintptr_t")
+        taddr = v.dereference().address.cast(uintptr_t) - nullptr[i].address.cast(uintptr_t)
+        return gdb.Value(taddr).cast(t.pointer())
+
+    class skip_back_gdb(gdb.Function):
+        "Given address of a structure item, returns address of the structure, as the SKIP_BACK macro does"
+        def __init__(self):
+            gdb.Function.__init__(self, "SKIP_BACK")
+
+        def invoke(self, t, i, v):
+            return BIRD.skip_back(t, i, v)
+
+
+BIRD.skip_back_gdb()
+
+
+class BIRDList:
+    def __init__(self, val):
+        ltype = val.type.strip_typedefs()
+        if ltype.code != gdb.TYPE_CODE_UNION or ltype.tag != "list":
+            raise Exception(f"Not a list, is type {ltype}")
+
+        self.head = val["head"]
+        self.tail_node = val["tail_node"]
+
+        if str(self.head.address) == '0x0':
+            raise Exception("List head is NULL")
+
+        if str(self.tail_node["prev"].address) == '0x0':
+            raise Exception("List tail is NULL")
+
+    def walk(self, do):
+        cur = self.head
+        while cur.dereference() != self.tail_node:
+            do(cur)
+            cur = cur.dereference()["next"]
+
+
+class BIRDListLength(gdb.Function):
+    """Returns length of the list, as in
+    print $list_length(routing_tables)"""
+    def __init__(self):
+        super(BIRDListLength, self).__init__("list_length")
+
+    def count(self, _):
+        self.cnt += 1
+
+    def invoke(self, l):
+        self.cnt = 0
+        BIRDList(l).walk(self.count)
+        return self.cnt
+
+BIRDListLength()
+
+class BIRDListItem(gdb.Function):
+    """Returns n-th item of the list."""
+    def __init__(self):
+        super(BIRDListItem, self).__init__("list_item")
+
+    class BLException(Exception):
+        def __init__(self, node, msg):
+            Exception.__init__(self, msg)
+            self.node = node
+
+    def count(self, node):
+        if self.cnt == self.pos:
+            raise self.BLException(node, "Node found")
+
+        self.cnt += 1
+
+    def invoke(self, l, n, t=None, item="n"):
+        self.cnt = 0
+        self.pos = n
+        bl = BIRDList(l)
+        try:
+            bl.walk(self.count)
+        except self.BLException as e:
+            if t is None:
+                return e.node
+            else:
+                return BIRD.skip_back(t, item, e.node)
+
+        raise Exception("List too short")
+
+BIRDListItem()
+
 
 def register_printers(objfile):
     objfile.pretty_printers.append(BIRDFInstPrinter.lookup)
