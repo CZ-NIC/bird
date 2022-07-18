@@ -28,6 +28,7 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/event.h"
+#include "lib/locking.h"
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/rt.h"
@@ -873,6 +874,7 @@ main(int argc, char **argv)
     dmalloc_debug(0x2f03d00);
 #endif
 
+  times_update();
   parse_args(argc, argv);
   log_switch(1, NULL, NULL);
 
@@ -926,6 +928,8 @@ main(int argc, char **argv)
       dup2(0, 1);
       dup2(0, 2);
     }
+
+  the_bird_lock();
 
   main_thread_init();
 

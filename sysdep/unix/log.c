@@ -15,6 +15,7 @@
  * user's manual.
  */
 
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -35,8 +36,10 @@ static FILE *dbgf;
 static list *current_log_list;
 static char *current_syslog_name; /* NULL -> syslog closed */
 
+static _Atomic uint max_coro_id = ATOMIC_VAR_INIT(1);
+static _Thread_local uint this_coro_id;
 
-#ifdef USE_PTHREADS
+#define THIS_CORO_ID  (this_coro_id ?: (this_coro_id = atomic_fetch_add_explicit(&max_coro_id, 1, memory_order_acq_rel)))
 
 #include <pthread.h>
 
@@ -47,15 +50,6 @@ static inline void log_unlock(void) { pthread_mutex_unlock(&log_mutex); }
 static pthread_t main_thread;
 void main_thread_init(void) { main_thread = pthread_self(); }
 static int main_thread_self(void) { return pthread_equal(pthread_self(), main_thread); }
-
-#else
-
-static inline void log_lock(void) {  }
-static inline void log_unlock(void) {  }
-void main_thread_init(void) { }
-static int main_thread_self(void) { return 1; }
-
-#endif
 
 
 #ifdef HAVE_SYSLOG_H
@@ -189,7 +183,7 @@ log_commit(int class, buffer *buf)
 		l->pos += msg_len;
 	      }
 
-	      fprintf(l->fh, "%s <%s> ", tbuf, class_names[class]);
+	      fprintf(l->fh, "%s [%04x] <%s> ", tbuf, THIS_CORO_ID, class_names[class]);
 	    }
 	  fputs(buf->start, l->fh);
 	  fputc('\n', l->fh);
@@ -299,6 +293,8 @@ die(const char *msg, ...)
   exit(1);
 }
 
+static struct timespec dbg_time_start;
+
 /**
  * debug - write to debug output
  * @msg: a printf-like message
@@ -311,12 +307,33 @@ debug(const char *msg, ...)
 {
 #define MAX_DEBUG_BUFSIZE 16384
   va_list args;
-  char buf[MAX_DEBUG_BUFSIZE];
+  char buf[MAX_DEBUG_BUFSIZE], *pos = buf;
+  int max = MAX_DEBUG_BUFSIZE;
 
   va_start(args, msg);
   if (dbgf)
     {
-      if (bvsnprintf(buf, MAX_DEBUG_BUFSIZE, msg, args) < 0)
+      struct timespec dbg_time;
+      clock_gettime(CLOCK_MONOTONIC, &dbg_time);
+      uint nsec;
+      uint sec;
+
+      if (dbg_time.tv_nsec > dbg_time_start.tv_nsec)
+      {
+	nsec = dbg_time.tv_nsec - dbg_time_start.tv_nsec;
+	sec = dbg_time.tv_sec - dbg_time_start.tv_sec;
+      }
+      else
+      {
+	nsec = 1000000000 + dbg_time.tv_nsec - dbg_time_start.tv_nsec;
+	sec = dbg_time.tv_sec - dbg_time_start.tv_sec - 1;
+      }
+
+      int n = bsnprintf(pos, max, "%u.%09u: [%04x] ", sec, nsec, THIS_CORO_ID);
+      pos += n;
+      max -= n;
+
+      if (bvsnprintf(pos, max, msg, args) < 0)
 	bug("Extremely long debug output, split it.");
 
       fputs(buf, dbgf);
@@ -422,6 +439,8 @@ done:
 void
 log_init_debug(char *f)
 {
+  clock_gettime(CLOCK_MONOTONIC, &dbg_time_start);
+
   if (dbgf && dbgf != stderr)
     fclose(dbgf);
   if (!f)

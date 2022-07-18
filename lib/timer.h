@@ -14,6 +14,10 @@
 #include "lib/buffer.h"
 #include "lib/resource.h"
 
+#include <stdatomic.h>
+
+extern _Atomic btime last_time;
+extern _Atomic btime real_time;
 
 typedef struct timer
 {
@@ -31,8 +35,6 @@ typedef struct timer
 struct timeloop
 {
   BUFFER_(timer *) timers;
-  btime last_time;
-  btime real_time;
 };
 
 static inline uint timers_count(struct timeloop *loop)
@@ -42,9 +44,10 @@ static inline timer *timers_first(struct timeloop *loop)
 { return (loop->timers.used > 1) ? loop->timers.data[1] : NULL; }
 
 extern struct timeloop main_timeloop;
+extern _Thread_local struct timeloop *local_timeloop;
 
-btime current_time(void);
-btime current_real_time(void);
+#define current_time()		atomic_load_explicit(&last_time, memory_order_acquire)
+#define current_real_time()	atomic_load_explicit(&real_time, memory_order_acquire)
 
 //#define now (current_time() TO_S)
 //#define now_real (current_real_time() TO_S)
@@ -94,9 +97,7 @@ tm_start_max(timer *t, btime after)
 }
 
 /* In sysdep code */
-void times_init(struct timeloop *loop);
-void times_update(struct timeloop *loop);
-void times_update_real_time(struct timeloop *loop);
+void times_update(void);
 
 /* For I/O loop */
 void timers_init(struct timeloop *loop, pool *p);

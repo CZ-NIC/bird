@@ -32,6 +32,7 @@
 
 #include "nest/bird.h"
 
+#include "lib/coro.h"
 #include "lib/heap.h"
 #include "lib/resource.h"
 #include "lib/timer.h"
@@ -40,52 +41,15 @@
 struct timeloop main_timeloop;
 
 
-#ifdef USE_PTHREADS
-
 #include <pthread.h>
 
 /* Data accessed and modified from proto/bfd/io.c */
-pthread_key_t current_time_key;
+_Thread_local struct timeloop *local_timeloop;
 
-static inline struct timeloop *
-timeloop_current(void)
-{
-  return pthread_getspecific(current_time_key);
-}
-
-static inline void
-timeloop_init_current(void)
-{
-  pthread_key_create(&current_time_key, NULL);
-  pthread_setspecific(current_time_key, &main_timeloop);
-}
+_Atomic btime last_time;
+_Atomic btime real_time;
 
 void wakeup_kick_current(void);
-
-#else
-
-/* Just use main timelooop */
-static inline struct timeloop * timeloop_current(void) { return &main_timeloop; }
-static inline void timeloop_init_current(void) { }
-
-#endif
-
-btime
-current_time(void)
-{
-  return timeloop_current()->last_time;
-}
-
-btime
-current_real_time(void)
-{
-  struct timeloop *loop = timeloop_current();
-
-  if (!loop->real_time)
-    times_update_real_time(loop);
-
-  return loop->real_time;
-}
 
 
 #define TIMER_LESS(a,b)		((a)->expires < (b)->expires)
@@ -138,30 +102,29 @@ tm_new(pool *p)
 void
 tm_set(timer *t, btime when)
 {
-  struct timeloop *loop = timeloop_current();
-  uint tc = timers_count(loop);
+  uint tc = timers_count(local_timeloop);
 
   if (!t->expires)
   {
     t->index = ++tc;
     t->expires = when;
-    BUFFER_PUSH(loop->timers) = t;
-    HEAP_INSERT(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP);
+    BUFFER_PUSH(local_timeloop->timers) = t;
+    HEAP_INSERT(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP);
   }
   else if (t->expires < when)
   {
     t->expires = when;
-    HEAP_INCREASE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
+    HEAP_INCREASE(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
   }
   else if (t->expires > when)
   {
     t->expires = when;
-    HEAP_DECREASE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
+    HEAP_DECREASE(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
   }
 
 #ifdef CONFIG_BFD
   /* Hack to notify BFD loops */
-  if ((loop != &main_timeloop) && (t->index == 1))
+  if ((local_timeloop != &main_timeloop) && (t->index == 1))
     wakeup_kick_current();
 #endif
 }
@@ -178,11 +141,10 @@ tm_stop(timer *t)
   if (!t->expires)
     return;
 
-  struct timeloop *loop = timeloop_current();
-  uint tc = timers_count(loop);
+  uint tc = timers_count(local_timeloop);
 
-  HEAP_DELETE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
-  BUFFER_POP(loop->timers);
+  HEAP_DELETE(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
+  BUFFER_POP(local_timeloop->timers);
 
   t->index = -1;
   t->expires = 0;
@@ -191,8 +153,6 @@ tm_stop(timer *t)
 void
 timers_init(struct timeloop *loop, pool *p)
 {
-  times_init(loop);
-
   BUFFER_INIT(loop->timers, p, 4);
   BUFFER_PUSH(loop->timers) = NULL;
 }
@@ -205,8 +165,8 @@ timers_fire(struct timeloop *loop)
   btime base_time;
   timer *t;
 
-  times_update(loop);
-  base_time = loop->last_time;
+  times_update();
+  base_time = current_time();
 
   while (t = timers_first(loop))
   {
@@ -217,8 +177,8 @@ timers_fire(struct timeloop *loop)
     {
       btime when = t->expires + t->recurrent;
 
-      if (when <= loop->last_time)
-	when = loop->last_time + t->recurrent;
+      if (when <= base_time)
+	when = base_time + t->recurrent;
 
       if (t->randomize)
 	when += random() % (t->randomize + 1);
@@ -241,7 +201,7 @@ void
 timer_init(void)
 {
   timers_init(&main_timeloop, &root_pool);
-  timeloop_init_current();
+  local_timeloop = &main_timeloop;
 }
 
 

@@ -52,28 +52,14 @@ struct birdloop
  *	Current thread context
  */
 
-static pthread_key_t current_loop_key;
-extern pthread_key_t current_time_key;
-
-static inline struct birdloop *
-birdloop_current(void)
-{
-  return pthread_getspecific(current_loop_key);
-}
+static _Thread_local struct birdloop *birdloop_current;
 
 static inline void
 birdloop_set_current(struct birdloop *loop)
 {
-  pthread_setspecific(current_loop_key, loop);
-  pthread_setspecific(current_time_key, loop ? &loop->time : &main_timeloop);
+  birdloop_current = loop;
+  local_timeloop = loop ? &loop->time : &main_timeloop;
 }
-
-static inline void
-birdloop_init_current(void)
-{
-  pthread_key_create(&current_loop_key, NULL);
-}
-
 
 /*
  *	Wakeup code for birdloop
@@ -162,10 +148,8 @@ wakeup_kick(struct birdloop *loop)
 void
 wakeup_kick_current(void)
 {
-  struct birdloop *loop = birdloop_current();
-
-  if (loop && loop->poll_active)
-    wakeup_kick(loop);
+  if (birdloop_current && birdloop_current->poll_active)
+    wakeup_kick(birdloop_current);
 }
 
 
@@ -188,22 +172,20 @@ events_init(struct birdloop *loop)
 static void
 events_fire(struct birdloop *loop)
 {
-  times_update(&loop->time);
+  times_update();
   ev_run_list(&loop->event_list);
 }
 
 void
 ev2_schedule(event *e)
 {
-  struct birdloop *loop = birdloop_current();
-
-  if (loop->poll_active && EMPTY_LIST(loop->event_list))
-    wakeup_kick(loop);
+  if (birdloop_current->poll_active && EMPTY_LIST(birdloop_current->event_list))
+    wakeup_kick(birdloop_current);
 
   if (e->n.next)
     rem_node(&e->n);
 
-  add_tail(&loop->event_list, &e->n);
+  add_tail(&birdloop_current->event_list, &e->n);
 }
 
 
@@ -238,9 +220,7 @@ sockets_add(struct birdloop *loop, sock *s)
 void
 sk_start(sock *s)
 {
-  struct birdloop *loop = birdloop_current();
-
-  sockets_add(loop, s);
+  sockets_add(birdloop_current, s);
 }
 
 static void
@@ -261,14 +241,12 @@ sockets_remove(struct birdloop *loop, sock *s)
 void
 sk_stop(sock *s)
 {
-  struct birdloop *loop = birdloop_current();
+  sockets_remove(birdloop_current, s);
 
-  sockets_remove(loop, s);
-
-  if (loop->poll_active)
+  if (birdloop_current->poll_active)
   {
-    loop->close_scheduled = 1;
-    wakeup_kick(loop);
+    birdloop_current->close_scheduled = 1;
+    wakeup_kick(birdloop_current);
   }
   else
     close(s->fd);
@@ -354,7 +332,7 @@ sockets_fire(struct birdloop *loop)
   sock **psk = loop->poll_sk.data;
   int poll_num = loop->poll_fd.used - 1;
 
-  times_update(&loop->time);
+  times_update();
 
   /* Last fd is internal wakeup fd */
   if (pfd[poll_num].revents & POLLIN)
@@ -387,16 +365,11 @@ sockets_fire(struct birdloop *loop)
  *	Birdloop
  */
 
-static void * birdloop_main(void *arg);
+static void *birdloop_main(void *arg);
 
 struct birdloop *
 birdloop_new(void)
 {
-  /* FIXME: this init should be elsewhere and thread-safe */
-  static int init = 0;
-  if (!init)
-    { birdloop_init_current(); init = 1; }
-
   pool *p = rp_new(NULL, "Birdloop root");
   struct birdloop *loop = mb_allocz(p, sizeof(struct birdloop));
   loop->pool = p;
@@ -490,7 +463,7 @@ birdloop_main(void *arg)
     events_fire(loop);
     timers_fire(&loop->time);
 
-    times_update(&loop->time);
+    times_update();
     if (events_waiting(loop))
       timeout = 0;
     else if (t = timers_first(&loop->time))

@@ -26,7 +26,7 @@
 
 #define _BIRD_LISTS_C_
 
-#include "nest/bird.h"
+#include "lib/birdlib.h"
 #include "lib/lists.h"
 
 LIST_INLINE int
