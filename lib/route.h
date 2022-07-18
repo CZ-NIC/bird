@@ -423,7 +423,7 @@ static inline int ea_is_cached(const ea_list *r) { return r->flags & EALF_CACHED
 static inline struct ea_storage *ea_get_storage(ea_list *r)
 {
   ASSERT_DIE(ea_is_cached(r));
-  return SKIP_BACK(struct ea_storage, l, r);
+  return SKIP_BACK(struct ea_storage, l[0], r);
 }
 
 static inline ea_list *ea_clone(ea_list *r) { ea_get_storage(r)->uc++; return r; }
