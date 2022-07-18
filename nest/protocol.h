@@ -102,8 +102,10 @@ struct proto_config {
   u8 net_type;				/* Protocol network type (NET_*), 0 for undefined */
   u8 disabled;				/* Protocol enabled/disabled by default */
   u8 vrf_set;				/* Related VRF instance (below) is defined */
+  u8 late_if_feed;			/* Delay interface feed after channels are up */
   u32 debug, mrtdump;			/* Debugging bitfields, both use D_* constants */
   u32 router_id;			/* Protocol specific router ID */
+  uint loop_order;			/* Launch a birdloop on this locking level; use DOMAIN_ORDER(the_bird) for mainloop */
 
   list channels;			/* List of channel configs (struct channel_config) */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
@@ -121,6 +123,7 @@ struct proto {
   struct proto_config *cf_new;		/* Configuration we want to switch to after shutdown (NULL=delete) */
   pool *pool;				/* Pool containing local objects */
   event *event;				/* Protocol event */
+  struct birdloop *loop;		/* BIRDloop running this protocol */
 
   list channels;			/* List of channels to rtables (struct channel) */
   struct channel *main_channel;		/* Primary channel */
@@ -131,12 +134,12 @@ struct proto {
   u32 debug;				/* Debugging flags */
   u32 mrtdump;				/* MRTDump flags */
   uint active_channels;			/* Number of active channels */
+  uint active_coroutines;		/* Number of active coroutines */
   byte net_type;			/* Protocol network type (NET_*), 0 for undefined */
   byte disabled;			/* Manually disabled */
   byte vrf_set;				/* Related VRF instance (above) is defined */
   byte proto_state;			/* Protocol state machine (PS_*, see below) */
   byte active;				/* From PS_START to cleanup after PS_STOP */
-  byte do_start;			/* Start actions are scheduled */
   byte do_stop;				/* Stop actions are scheduled */
   byte reconfiguring;			/* We're shutting down due to reconfiguration */
   byte gr_recovery;			/* Protocol should participate in graceful restart recovery */
@@ -338,6 +341,8 @@ void proto_notify_state(struct proto *p, unsigned state);
  *	as a result of received ROUTE-REFRESH request).
  */
 
+static inline int proto_is_inactive(struct proto *p)
+{ return (p->active_channels == 0) && (p->active_coroutines == 0); }
 
 
 /*

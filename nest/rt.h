@@ -17,6 +17,7 @@
 #include "lib/type.h"
 #include "lib/fib.h"
 #include "lib/route.h"
+#include "lib/event.h"
 
 #include <stdatomic.h>
 
@@ -237,6 +238,8 @@ struct rt_export_request {
   const net_addr *addr;			/* Network prefilter address */
   u8 trace_routes;
   u8 addr_mode;				/* Network prefilter mode (TE_ADDR_*) */
+
+  event_list *list;			/* Where to schedule export events */
 
   /* There are two methods of export. You can either request feeding every single change
    * or feeding the whole route feed. In case of regular export, &export_one is preferred.

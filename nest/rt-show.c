@@ -285,6 +285,7 @@ rt_show_cont(struct rt_show_data *d)
   d->req = (struct rt_export_request) {
     .addr = d->addr,
     .name = "CLI Show Route",
+    .list = &global_work_list,
     .export_bulk = rt_show_net_export_bulk,
     .dump_req = rt_show_dump_req,
     .log_state_change = rt_show_log_state_change,

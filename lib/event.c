@@ -19,8 +19,14 @@
  * events in them and explicitly ask to run them.
  */
 
+#undef LOCAL_DEBUG
+
 #include "nest/bird.h"
 #include "lib/event.h"
+#include "lib/locking.h"
+#include "lib/io-loop.h"
+
+extern _Thread_local struct coroutine *this_coro;
 
 event_list global_event_list;
 event_list global_work_list;
@@ -28,11 +34,16 @@ event_list global_work_list;
 inline void
 ev_postpone(event *e)
 {
+  event_list *el = e->list;
+  if (!el)
+    return;
+
+  ASSERT_DIE(birdloop_inside(el->loop));
+
+  LOCK_DOMAIN(event, el->lock);
   if (ev_active(e))
-    {
-      rem_node(&e->n);
-      e->n.next = NULL;
-    }
+    rem_node(&e->n);
+  UNLOCK_DOMAIN(event, el->lock);
 }
 
 static void
@@ -95,40 +106,25 @@ ev_run(event *e)
  * list @l which can be run by calling ev_run_list().
  */
 inline void
-ev_enqueue(event_list *l, event *e)
+ev_send(event_list *l, event *e)
 {
-  ev_postpone(e);
-  add_tail(l, &e->n);
-}
+  DBG("ev_send(%p, %p)\n", l, e);
+  ASSERT_DIE(e->hook);
+  ASSERT_DIE(!e->list || (e->list == l) || (e->list->loop == l->loop));
 
-/**
- * ev_schedule - schedule an event
- * @e: an event
- *
- * This function schedules an event by enqueueing it to a system-wide
- * event list which is run by the platform dependent code whenever
- * appropriate.
- */
-void
-ev_schedule(event *e)
-{
-  ev_enqueue(&global_event_list, e);
-}
+  e->list = l;
 
-/**
- * ev_schedule_work - schedule a work-event.
- * @e: an event
- *
- * This function schedules an event by enqueueing it to a system-wide work-event
- * list which is run by the platform dependent code whenever appropriate. This
- * is designated for work-events instead of regular events. They are executed
- * less often in order to not clog I/O loop.
- */
-void
-ev_schedule_work(event *e)
-{
-  if (!ev_active(e))
-    add_tail(&global_work_list, &e->n);
+  LOCK_DOMAIN(event, l->lock);
+  if (enlisted(&e->n))
+  {
+    UNLOCK_DOMAIN(event, l->lock);
+    return;
+  }
+
+  add_tail(&l->events, &e->n);
+  UNLOCK_DOMAIN(event, l->lock);
+
+  birdloop_ping(l->loop);
 }
 
 void io_log_event(void *hook, void *data);
@@ -142,36 +138,65 @@ void io_log_event(void *hook, void *data);
 int
 ev_run_list(event_list *l)
 {
-  node *n;
-  list tmp_list;
+  const _Bool legacy = LEGACY_EVENT_LIST(l);
 
+  if (legacy)
+    ASSERT_THE_BIRD_LOCKED;
+
+  node *n;
+
+  list tmp_list;
   init_list(&tmp_list);
-  add_tail_list(&tmp_list, l);
-  init_list(l);
+
+  /* Move the event list contents to a local list to avoid executing repeatedly added events */
+  LOCK_DOMAIN(event, l->lock);
+  add_tail_list(&tmp_list, &l->events);
+  init_list(&l->events);
+  UNLOCK_DOMAIN(event, l->lock);
+
   WALK_LIST_FIRST(n, tmp_list)
     {
       event *e = SKIP_BACK(event, n, n);
 
-      /* This is ugly hack, we want to log just events executed from the main I/O loop */
-      if ((l == &global_event_list) || (l == &global_work_list))
+      if (legacy)
+      {
+	/* The legacy way of event execution */
 	io_log_event(e->hook, e->data);
-
-      ev_run(e);
+	ev_postpone(e);
+	e->hook(e->data);
+      }
+      else
+      {
+	// io_log_event(e->hook, e->data); /* TODO: add support for event logging in other io loops */
+	ASSERT_DIE(e->list == l);
+	LOCK_DOMAIN(event, l->lock);
+	rem_node(&e->n);
+	UNLOCK_DOMAIN(event, l->lock);
+	e->hook(e->data);
+      }
       tmp_flush();
     }
 
-  return !EMPTY_LIST(*l);
+  LOCK_DOMAIN(event, l->lock);
+  int repeat = ! EMPTY_LIST(l->events);
+  UNLOCK_DOMAIN(event, l->lock);
+  return repeat;
 }
 
 int
 ev_run_list_limited(event_list *l, uint limit)
 {
+  ASSERT_DIE(LEGACY_EVENT_LIST(l));
+  ASSERT_THE_BIRD_LOCKED;
+
   node *n;
   list tmp_list;
 
+  LOCK_DOMAIN(event, l->lock);
   init_list(&tmp_list);
-  add_tail_list(&tmp_list, l);
-  init_list(l);
+  add_tail_list(&tmp_list, &l->events);
+  init_list(&l->events);
+  UNLOCK_DOMAIN(event, l->lock);
 
   WALK_LIST_FIRST(n, tmp_list)
     {
@@ -180,22 +205,24 @@ ev_run_list_limited(event_list *l, uint limit)
       if (!limit)
 	break;
 
-      /* This is ugly hack, we want to log just events executed from the main I/O loop */
-      if ((l == &global_event_list) || (l == &global_work_list))
-	io_log_event(e->hook, e->data);
+      io_log_event(e->hook, e->data);
 
       ev_run(e);
       tmp_flush();
       limit--;
     }
 
+  LOCK_DOMAIN(event, l->lock);
   if (!EMPTY_LIST(tmp_list))
   {
     /* Attach new items after the unprocessed old items */
-    add_tail_list(&tmp_list, l);
-    init_list(l);
-    add_tail_list(l, &tmp_list);
+    add_tail_list(&tmp_list, &l->events);
+    init_list(&l->events);
+    add_tail_list(&l->events, &tmp_list);
   }
 
-  return !EMPTY_LIST(*l);
+  int repeat = ! EMPTY_LIST(l->events);
+  UNLOCK_DOMAIN(event, l->lock);
+
+  return repeat;
 }

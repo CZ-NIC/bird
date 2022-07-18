@@ -54,7 +54,7 @@ t_ev_run_list(void)
   int i;
 
   olock_init();
-  timer_init();
+  birdloop_init();
   rt_init();
   io_init();
   if_init();
@@ -81,7 +81,9 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
+  the_bird_lock();
   bt_test_suite(t_ev_run_list, "Schedule and run 3 events in right order.");
+  the_bird_unlock();
 
   return bt_exit_value();
 }

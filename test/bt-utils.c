@@ -53,6 +53,8 @@ cf_file_read(byte *dest, uint max_len, int fd)
   return l;
 }
 
+void resource_sys_init(void);
+
 void
 bt_bird_init(void)
 {
@@ -60,8 +62,9 @@ bt_bird_init(void)
     log_init_debug("");
   log_switch(bt_verbose != 0, NULL, NULL);
 
+  the_bird_lock();
   olock_init();
-  timer_init();
+  birdloop_init();
   rt_init();
   io_init();
   if_init();
@@ -73,6 +76,7 @@ bt_bird_init(void)
 void bt_bird_cleanup(void)
 {
   config = new_config = NULL;
+  the_bird_unlock();
 }
 
 static char *

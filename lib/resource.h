@@ -40,7 +40,12 @@ struct resclass {
 
 /* Generic resource manipulation */
 
-typedef struct pool pool;
+typedef struct pool {
+  resource r;
+  list inside;
+  const char *name;
+} pool;
+
 
 void resource_init(void);
 pool *rp_new(pool *, const char *);	/* Create new pool */

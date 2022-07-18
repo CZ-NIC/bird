@@ -97,7 +97,7 @@ alloc_page(void)
     struct free_page *fp = SKIP_BACK(struct free_page, n, HEAD(fps->pages));
     rem_node(&fp->n);
     if ((--fps->cnt < fps->min) && !shutting_down)
-      ev_schedule(&fps->cleanup);
+      ev_send(&global_work_list, &fps->cleanup);
 
     bzero(fp, page_size);
     return fp;
@@ -124,7 +124,7 @@ free_page(void *ptr)
   add_tail(&fps->pages, &fp->n);
 
   if ((++fps->cnt > fps->max) && !shutting_down)
-    ev_schedule(&fps->cleanup);
+    ev_send(&global_work_list, &fps->cleanup);
 #endif
 }
 

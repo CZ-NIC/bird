@@ -86,6 +86,7 @@ static inline int u64_cmp(u64 i1, u64 i2)
 /* Macros for gcc attributes */
 
 #define NORET __attribute__((noreturn))
+#define USE_RESULT __atribute__((warn_unused_result))
 #define UNUSED __attribute__((unused))
 #define PACKED __attribute__((packed))
 #define NONNULL(...) __attribute__((nonnull((__VA_ARGS__))))

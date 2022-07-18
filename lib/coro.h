@@ -2,7 +2,7 @@
  *	BIRD Coroutines
  *
  *	(c) 2017 Martin Mares <mj@ucw.cz>
- *	(c) 2020 Maria Matejka <mq@jmq.cz>
+ *	(c) 2020-2021 Maria Matejka <mq@jmq.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -21,6 +21,9 @@ struct coroutine;
  * The running coroutine must free itself by rfree() before returning.
  */
 struct coroutine *coro_run(pool *, void (*entry)(void *), void *data);
+
+/* Get self. */
+extern _Thread_local struct coroutine *this_coro;
 
 
 #endif

@@ -10,33 +10,62 @@
 #define _BIRD_EVENT_H_
 
 #include "lib/resource.h"
+#include "lib/locking.h"
+
+#include <stdatomic.h>
+
+DEFINE_DOMAIN(event);
 
 typedef struct event {
   resource r;
   void (*hook)(void *);
   void *data;
   node n;				/* Internal link */
+  struct event_list *list;		/* List where this event is put in */
 } event;
 
-typedef list event_list;
+typedef struct event_list {
+  list events;
+  pool *pool;
+  struct birdloop *loop;
+  DOMAIN(event) lock;
+} event_list;
 
 extern event_list global_event_list;
 extern event_list global_work_list;
 
 event *ev_new(pool *);
 void ev_run(event *);
-#define ev_init_list(el) init_list(el)
-void ev_enqueue(event_list *, event *);
-void ev_schedule(event *);
-void ev_schedule_work(event *);
+
+static inline void ev_init_list(event_list *el, struct birdloop *loop, const char *name)
+{
+  init_list(&el->events);
+  el->loop = loop;
+  el->lock = DOMAIN_NEW(event, name);
+}
+
+void ev_send(event_list *, event *);
+#define ev_send_loop(l, e) ev_send(birdloop_event_list((l)), (e))
+
+#define ev_schedule(e) ({ ASSERT_THE_BIRD_LOCKED; if (!ev_active((e))) ev_send(&global_event_list, (e)); })
+#define ev_schedule_work(e) ({ ASSERT_THE_BIRD_LOCKED; if (!ev_active((e))) ev_send(&global_work_list, (e)); })
+
 void ev_postpone(event *);
 int ev_run_list(event_list *);
 int ev_run_list_limited(event_list *, uint);
 
+#define LEGACY_EVENT_LIST(l)  (((l) == &global_event_list) || ((l) == &global_work_list))
+
+_Bool birdloop_inside(struct birdloop *loop);
+
 static inline int
 ev_active(event *e)
 {
-  return e->n.next != NULL;
+  if (e->list == NULL)
+    return 0;
+
+  ASSERT_DIE(birdloop_inside(e->list->loop));
+  return enlisted(&e->n);
 }
 
 static inline event*

@@ -29,12 +29,6 @@
  * is freed upon shutdown of the module.
  */
 
-struct pool {
-  resource r;
-  list inside;
-  const char *name;
-};
-
 static void pool_dump(resource *);
 static void pool_free(resource *);
 static resource *pool_lookup(resource *, unsigned long);

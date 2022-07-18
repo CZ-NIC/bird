@@ -1415,6 +1415,12 @@ rt_next_export(struct rt_export_hook *hook, struct rt_exporter *tab)
     return tab->first;
 }
 
+static inline void
+rt_send_export_event(struct rt_export_hook *hook)
+{
+  ev_send(hook->req->list, hook->event);
+}
+
 static void
 rt_announce_exports(timer *tm)
 {
@@ -1426,7 +1432,7 @@ rt_announce_exports(timer *tm)
     if (atomic_load_explicit(&c->export_state, memory_order_acquire) != TES_READY)
       continue;
 
-    ev_schedule_work(c->event);
+    rt_send_export_event(c);
   }
 }
 
@@ -1479,7 +1485,7 @@ rt_export_hook(void *_data)
     rte_update_unlock();
   }
 
-  ev_schedule_work(c->event);
+  rt_send_export_event(c);
 }
 
 
@@ -2097,7 +2103,7 @@ rt_request_export(struct rt_exporter *re, struct rt_export_request *req)
 
   /* Regular export */
   rt_set_export_state(hook, TES_FEEDING);
-  ev_schedule_work(hook->event);
+  rt_send_export_event(hook);
 }
 
 static void
@@ -2146,7 +2152,7 @@ rt_stop_export(struct rt_export_request *req, void (*stopped)(struct rt_export_r
   rt_set_export_state(hook, TES_STOP);
 
   /* Run the stopped event */
-  ev_schedule(hook->event);
+  rt_send_export_event(hook);
 }
 
 /**
@@ -3727,7 +3733,7 @@ rt_feed_done(struct rt_export_hook *c)
 
   rt_set_export_state(c, TES_READY);
 
-  ev_schedule_work(c->event);
+  rt_send_export_event(c);
 }
 
 /**
@@ -3756,7 +3762,7 @@ rt_feed_by_fib(void *data)
       if (max_feed <= 0)
 	{
 	  FIB_ITERATE_PUT(fit);
-	  ev_schedule_work(c->event);
+	  rt_send_export_event(c);
 	  return;
 	}
 
