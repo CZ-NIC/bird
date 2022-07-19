@@ -30,9 +30,9 @@
 #endif
 
 static void
-stats_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *new, const rte *old)
+stats_rt_notify(struct proto *P UNUSED, struct channel *src_ch, const net_addr *n UNUSED, rte *new, const rte *old)
 {
-  struct stats_channel *ch = src_ch;
+  struct stats_channel *ch = (void *) src_ch;
   log(L_INFO "stats_rt_notify() %u", ch->max_generation);
 
   if (old)
@@ -66,20 +66,9 @@ stats_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte 
   }  
 }
 
-static int
-stats_preexport(struct channel *c, rte *e)
-{
-  struct stats_proto *p = (void *) c->proto;
-  log(L_INFO "stats_preexport()");
-
-  return 0;
-}
-
 static void
-stats_reload_routes(struct channel *C)
+stats_reload_routes(struct channel *C UNUSED)
 {
-  struct stats_proto *p = (void *) C->proto;
-
   /* Route reload on one channel is just refeed on the other */
   //channel_request_feeding(p->c);
 }
@@ -87,8 +76,6 @@ stats_reload_routes(struct channel *C)
 static void 
 stats_configure_channels(struct proto *P, struct proto_config *CF)
 {
-  struct stats_proto *p = (void *) P;
-  struct stats_config *cf = (void *) CF;
   log(L_INFO "stats_configure_channels()");
 
   struct channel_config *cc;
@@ -109,11 +96,9 @@ stats_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
   struct stats_proto *p = (void *) P;
-  struct stats_config *cf = (void *) CF;
   log(L_INFO "stats_init()");
 
   P->rt_notify = stats_rt_notify;
-  P->preexport = stats_preexport;
   P->reload_routes = stats_reload_routes;
 
   p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
@@ -135,9 +120,8 @@ stats_find_channel(struct stats_proto *p, const char *name)
 }
  
 static int
-stats_start(struct proto *P) 
+stats_start(struct proto *P UNUSED) 
 {
-  struct stats_proto *p = (struct stats_proto *) P;
   log(L_INFO "stats_start()");
 
   return PS_UP;
@@ -148,7 +132,6 @@ stats_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct stats_proto *p = (void *) P;
   struct stats_config *new = (void *) CF;
-  struct stats_config *old = (void *) P->cf;
   log(L_INFO "stats_reconfigure()");
 
   struct channel *c;
@@ -245,9 +228,8 @@ stats_show_proto_info(struct proto *P)
 }
 
 void
-stats_update_debug(struct proto *P)
+stats_update_debug(struct proto *P UNUSED)
 {
-  struct stats_proto *p = (void *) P;
 
   //p->c->debug = p->p.debug;
 }
@@ -255,8 +237,8 @@ stats_update_debug(struct proto *P)
 static int
 stats_channel_start(struct channel *C)
 {
-  struct stats_proto *p = (void *) C->proto;
   struct stats_channel *c = (void *) C;
+  struct stats_proto *p = (void *) C->proto;
   log(L_INFO "stats_channel_start() %s", C->name);
 
   c->pool = p->p.pool;
