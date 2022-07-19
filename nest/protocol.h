@@ -443,6 +443,7 @@ struct channel_class {
 };
 
 extern struct channel_class channel_bgp;
+extern struct channel_class channel_stats;
 
 struct channel_config {
   node n;

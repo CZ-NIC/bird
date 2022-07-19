@@ -15,7 +15,7 @@ CF_HDR
 CF_DEFINES
 
 /* old: #define PIPE_CFG ((struct pipe_config *) this_proto) */
-#define STATS_CFG ((struct stats_config *) this_proto) 
+#define STATS_CC ((struct stats_channel_config *) this_channel)
 
 CF_DECLS
 
@@ -31,16 +31,36 @@ proto: stats_proto '}' { this_channel = NULL; }  ;
 stats_proto_start: proto_start STATS
 {
   this_proto = proto_config_new(&proto_stats, $1);
-  STATS_CFG->max_generation = 16;
 }
 
 proto_name ;
 
-stats_proto_channel: stats_channel_start channel_opt_list channel_end ;
+stats_channel_opt_list:
+    /* empty */
+  | '{' stats_opts '}'
+  ;
+
+
+channel_max_gen:
+  MAX GENERATION expr {
+    if ($3 > 254) cf_error("Max generation must be in range 0..254, got %u", $3);
+    STATS_CC->max_generation = $3;
+  }
+  ;
+
+stats_opts:
+    /* empty */
+  | stats_opts channel_item ';'
+  | stats_opts channel_max_gen ';'
+  ;
+     
+stats_proto_channel: stats_channel_start stats_channel_opt_list channel_end ;
+/* stats_proto_channel: stats_channel_start stats_max_gen channel_opt_list channel_end ; */
 
 stats_channel_start: net_type symbol
 {
-  $$ = this_channel = channel_config_get(NULL, $2->name, $1, this_proto);
+  this_channel = channel_config_get(&channel_stats, $2->name, $1, this_proto);
+  STATS_CC->max_generation = 16;
 }
 
 stats_proto:

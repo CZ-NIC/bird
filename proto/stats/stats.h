@@ -10,16 +10,28 @@
 #ifndef _BIRD_STATS_H_
 #define _BIRD_STATS_H_
 
+struct stats_channel;
+
 struct stats_config {
   struct proto_config c;
-  u8 max_generation;
 };
 
 struct stats_proto {
   struct proto p;
-  struct channel *c;
+  struct stats_channel *c;
   struct tbf rl_gen;
+};
+
+struct stats_channel {
+  struct channel c;
+  pool *pool;
+  u8 max_generation;
   u32 *counters;
+};
+
+struct stats_channel_config {
+  struct channel_config c;
+  u8 max_generation;
 };
 
 #endif

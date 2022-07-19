@@ -32,21 +32,38 @@
 static void
 stats_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *new, const rte *old)
 {
-  struct stats_proto *p = (void *) P;
-  struct stats_config *cf = (void *) P->cf;
-  log(L_INFO "stats_rf_notify()");
+  struct stats_channel *ch = src_ch;
+  log(L_INFO "stats_rt_notify() %u", ch->max_generation);
 
   if (old)
   {
-    p->counters[old->generation]--;
-    log(L_INFO "counter %u decreased", old->generation);
+    if (old->generation < ch->max_generation)
+    {
+      ch->counters[old->generation]--;
+      log(L_INFO "channel %s counter %u was decreased", src_ch->name, old->generation);
+    }
+    else
+    {
+      log(L_WARN "Stats: Maximum generation reached in channel %s, route is dropped.",
+	src_ch->name
+      );
+    }
   }
 
   if (new)
   {
-    p->counters[new->generation]++;
-    log(L_INFO "counter %u increased", new->generation);
-  }
+    if (new->generation < ch->max_generation)
+    {
+      ch->counters[new->generation]++;
+      log(L_INFO "channel %s counter %u was increased", src_ch->name, new->generation);
+    }
+    else
+    {
+      log(L_WARN "Stats: Maximum generation reached in channel %s, route is dropped.",
+	src_ch->name
+      );
+    }
+  }  
 }
 
 static int
@@ -72,6 +89,7 @@ stats_configure_channels(struct proto *P, struct proto_config *CF)
 {
   struct stats_proto *p = (void *) P;
   struct stats_config *cf = (void *) CF;
+  log(L_INFO "stats_configure_channels()");
 
   struct channel_config *cc;
   WALK_LIST(cc, CF->channels)
@@ -115,9 +133,7 @@ static int
 stats_start(struct proto *P) 
 {
   struct stats_proto *p = (struct stats_proto *) P;
-  log(L_INFO "stats_start() ");
-
-  p->counters = (u32 *) mb_allocz(p->p.pool, 256 * sizeof(u32));
+  log(L_INFO "stats_start()");
 
   return PS_UP;
 }
@@ -159,27 +175,49 @@ stats_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNU
   /* Just a shallow copy, not many items here */
 }
 
+/* NO NEED TO PRINT ANYTHING BEFORE protocols header
+
 static void
 stats_get_status(struct proto *P, byte *buf)
 {
   struct stats_proto *p = (void *) P;
+  
+  cli_msg(-1006, " another super informative message "); 
 }
+*/
 
 static void
 stats_show_proto_info(struct proto *P)
 {
   struct stats_proto *p = (void *) P;
+  log(L_INFO "stats_show_proto_info() ");
 
-  cli_msg(-1006, "  Counters contents  ");
-  for (int i = 0; i < 64; i++) 
+  u32 *a = mb_alloc(p->p.pool, 256 * sizeof(u32));
+
+  struct stats_channel *sc;
+  WALK_LIST(sc, p->p.channels)
   {
-    cli_msg(-1006, "%3u: %10u | %3u: %10u | %3u: %10u | %3u: %10u",
-       i       , *(p->counters + i),
-      (i + 64 ), *(p->counters + i + 64),
-      (i + 128), *(p->counters + i + 128),
-      (i + 192), *(p->counters + i + 192)
-    );
-  }   
+    for (uint i = 0; i < 256; i++)
+    {
+      *(a + i) = 0;
+    }
+  
+    u8 len = 0;
+    for (u8 i = 0; i < sc->max_generation; i++)
+      if (*(sc->counters + i) != 0)
+      {
+	log(L_INFO "found non-zero %u in counter %u", sc->counters[i], i);
+	*(a + len) = i;
+	len++;
+      }
+
+    cli_msg(-1006, "  Channel %s counter contents  ", sc->c.name);
+
+    for (u8 i = 0; i < len; i ++)
+      cli_msg(-1006, " %3u: %10u ", i, *(a + i));
+  }
+
+  mb_free(a);
 }
 
 void
@@ -187,9 +225,42 @@ stats_update_debug(struct proto *P)
 {
   struct stats_proto *p = (void *) P;
 
-  p->c->debug = p->p.debug;
+  //p->c->debug = p->p.debug;
 }
 
+static int
+stats_channel_start(struct channel *C)
+{
+  struct stats_proto *p = (void *) C->proto;
+  struct stats_channel *c = (void *) C;
+  log(L_INFO "stats_channel_start() %s", C->name);
+
+  c->pool = p->p.pool;
+
+  c->counters = mb_allocz(c->pool, c->max_generation * sizeof(u32));
+
+  return 0;
+}
+
+static void
+stats_channel_shutdown(struct channel *C)
+{
+  struct stats_channel *c = (void *) C;
+  log(L_INFO "stats_channel_shutdown() %s", C->name);
+
+  mb_free(c->counters);
+  
+  c->max_generation = 0;
+  c->counters = NULL;
+  c->pool = NULL;
+}
+
+struct channel_class channel_stats = {
+  .channel_size =	sizeof(struct stats_channel),
+  .config_size =	sizeof(struct stats_channel_config),
+  .start =		stats_channel_start,
+  .shutdown =		stats_channel_shutdown,
+};
 
 struct protocol proto_stats = {
   .name =		"Stats",
@@ -201,7 +272,7 @@ struct protocol proto_stats = {
   .start =		stats_start,
   .reconfigure =	stats_reconfigure,
   .copy_config = 	stats_copy_config,
-  .get_status = 	stats_get_status,
+  //.get_status = 	stats_get_status,
   .show_proto_info = 	stats_show_proto_info
 };
 
