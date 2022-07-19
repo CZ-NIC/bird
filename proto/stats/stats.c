@@ -96,6 +96,11 @@ stats_configure_channels(struct proto *P, struct proto_config *CF)
   {
     struct channel *c = NULL;
     proto_configure_channel(P, &c, cc);
+
+    struct stats_channel *sc = (void *) c;
+    struct stats_channel_config *scc = (void *) cc;
+
+    sc->max_generation = scc->max_generation;
   } 
 }
 
@@ -158,7 +163,19 @@ stats_reconfigure(struct proto *P, struct proto_config *CF)
       return 0;
 
     if (c)
+    {
+      struct stats_channel *sc = (void *) c;
+      struct stats_channel_config *scc = (void *) cc;
+
+      sc->counters = mb_realloc(sc->counters, scc->max_generation);
+
+      if (sc->max_generation < scc->max_generation)
+	/* zero newly created counters */
+	memset(sc->counters + sc->max_generation, 0, scc->max_generation - sc->max_generation);
+
+      sc->max_generation = scc->max_generation;
       c->stale = 0;
+    }
   }
 
   struct channel *c2;
@@ -175,7 +192,7 @@ stats_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNU
   /* Just a shallow copy, not many items here */
 }
 
-/* NO NEED TO PRINT ANYTHING BEFORE protocols header
+/* NO NEED TO PRINT ANYTHING BEFORE protocol header
 
 static void
 stats_get_status(struct proto *P, byte *buf)
@@ -192,32 +209,39 @@ stats_show_proto_info(struct proto *P)
   struct stats_proto *p = (void *) P;
   log(L_INFO "stats_show_proto_info() ");
 
-  u32 *a = mb_alloc(p->p.pool, 256 * sizeof(u32));
+  u32 *arr = mb_alloc(p->p.pool, 256 * sizeof(u32));
 
   struct stats_channel *sc;
   WALK_LIST(sc, p->p.channels)
   {
     for (uint i = 0; i < 256; i++)
     {
-      *(a + i) = 0;
+      arr[i] = 0;
     }
   
     u8 len = 0;
     for (u8 i = 0; i < sc->max_generation; i++)
-      if (*(sc->counters + i) != 0)
+      if (sc->counters[i])
       {
 	log(L_INFO "found non-zero %u in counter %u", sc->counters[i], i);
-	*(a + len) = i;
+	arr[len] = i;
 	len++;
       }
 
-    cli_msg(-1006, "  Channel %s counter contents  ", sc->c.name);
+    cli_msg(-1006, "  Channel %s", sc->c.name);
+    cli_msg(-1006, "    Max generation:  %3u", sc->max_generation);
+    cli_msg(-1006, "    Counter     exported");
 
-    for (u8 i = 0; i < len; i ++)
-      cli_msg(-1006, " %3u: %10u ", i, *(a + i));
+    for (u8 i = 0; i < len; i++)
+      cli_msg(-1006, "      %3u:    %10u ", arr[i], sc->counters[arr[i]]);
+
+    if (!len)
+      cli_msg(-1006, "      <all zeroes>");
+
+    cli_msg(-1006, "");
   }
 
-  mb_free(a);
+  mb_free(arr);
 }
 
 void
