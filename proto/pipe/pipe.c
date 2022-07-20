@@ -145,7 +145,7 @@ pipe_configure_channels(struct pipe_proto *p, struct pipe_config *cf)
 
   struct channel_config pri_cf = {
     .name = "pri",
-    .channel = cc->channel,
+    .class = cc->class,
     .table = cc->table,
     .out_filter = cc->out_filter,
     .out_subprefix = cc->out_subprefix,
@@ -157,7 +157,7 @@ pipe_configure_channels(struct pipe_proto *p, struct pipe_config *cf)
 
   struct channel_config sec_cf = {
     .name = "sec",
-    .channel = cc->channel,
+    .class = cc->class,
     .table = cf->peer,
     .out_filter = cc->in_filter,
     .out_subprefix = cf->in_subprefix,

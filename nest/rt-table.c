@@ -3441,7 +3441,7 @@ rt_flowspec_resolve_rte(rte *r, struct channel *c)
   struct bgp_channel *bc = (struct bgp_channel *) c;
 
   if (	(rt_get_source_attr(r) == RTS_BGP)
-     && (c->channel == &channel_bgp)
+     && (c->class == &channel_bgp)
      && (bc->base_table))
   {
     struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, bc->c.proto);
