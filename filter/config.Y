@@ -758,6 +758,9 @@ symbol_value: symbol_known
       case SYM_ATTRIBUTE:
 	$$ = f_new_inst(FI_EA_GET, $1->attribute);
 	break;
+      case SYM_COUNTER:
+	$$ = f_new_inst(FI_COUNTER, $1);
+	break;
       default:
 	cf_error("Can't get value of symbol %s", $1->name);
     }

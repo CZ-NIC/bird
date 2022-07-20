@@ -61,6 +61,9 @@ stats_channel_start: net_type symbol
 {
   this_channel = channel_config_get(&channel_stats, $2->name, $1, this_proto);
   STATS_CC->max_generation = 16;
+  /* from filter/config.Y:
+       cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++) */
+  $2 = cf_define_symbol($2, SYM_COUNTER, ch_config, this_channel);
 }
 
 stats_proto:

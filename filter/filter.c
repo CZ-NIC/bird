@@ -43,6 +43,7 @@
 #include "filter/filter.h"
 #include "filter/f-inst.h"
 #include "filter/data.h"
+#include "proto/stats/stats.h"  /* provides function get_stats_sum used in f-inst.c */
 
 
 /* Exception bits */

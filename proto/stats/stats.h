@@ -35,6 +35,13 @@ struct stats_channel_config {
   u8 max_generation;
 };
 
-
+static inline int
+get_stats_sum(struct symbol *sym)
+{
+  if (sym->ch_config->channel)
+    return (int) ((struct stats_channel *) sym->ch_config->channel)->sum;
+  else
+    return 0;
+}
 
 #endif
