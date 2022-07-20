@@ -88,17 +88,6 @@ stats_init(struct proto_config *CF)
   return P;
 }
 
-static struct channel *
-stats_find_channel(struct stats_proto *p, const char *name)
-{
-  struct channel *c;
-  WALK_LIST(c, p->p.channels)
-    if (strcmp(c->name, name))
-      return c;
-
-  return NULL;
-}
- 
 static int
 stats_start(struct proto *P UNUSED) 
 {
@@ -118,7 +107,7 @@ stats_reconfigure(struct proto *P, struct proto_config *CF)
   struct channel_config *cc;
   WALK_LIST(cc, new->c.channels)
   {
-    c = (struct channel *) stats_find_channel(p, cc->name);
+    c = proto_find_channel_by_name(P, cc->name);
     if (!proto_configure_channel(P, &c, cc))
       return 0;
 
