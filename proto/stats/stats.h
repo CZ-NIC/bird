@@ -27,11 +27,14 @@ struct stats_channel {
   pool *pool;
   u8 max_generation;
   u32 *counters;
+  u32 sum;
 };
 
 struct stats_channel_config {
   struct channel_config c;
   u8 max_generation;
 };
+
+
 
 #endif
