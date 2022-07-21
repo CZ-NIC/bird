@@ -5411,6 +5411,54 @@ protocol static {
 }
 </code>
 
+<sect>Stats
+<label id="stats">
+
+<sect1>
+<label id="stats-intro">
+
+<p>The Statistics protocol allows you to measure number of exported routes from
+a table. You can also narrow the view by applying export filter inside stats
+channel. One instance of stats protocol can have multiple channels attached.
+Stats protocol could be particullary useful when making conditional route advertising.
+
+<p>Statistics are accessed in filters by same name as channel connected to desired
+table. Value of this expresion is evaluated to the sum of all routes with
+generation smaller than max generation (see below).
+
+<sect1>Configuration
+<label id="stats-config">
+
+<p><descrtip>
+	<tag><label id="stats-max-generation">max generation <m/expr/</tag>
+	Statistics counter contains sum of all routes with generation less
+	than or equal to max generation. This copies behavior of pipe's
+	<ref id="pipe-max-generation" name="max generetion">. Must be in range
+	from 0 to 254. Default: 16.
+
+	<tag><label id="stats-update-after">settle time <m/time/ <m/number/</tag>
+	Wait given amount of time before notifying and recalculting filters
+	which reference this counter in seconds. If counter changes during this period,
+	current value is used. If set to zero, the notification is done instantly.
+	Default: 5 s.
+</descrip>
+
+<p>Example
+<code>
+protocol stats {
+  ipv4 stats1 { table bgp_tab1; };
+}
+
+protocol static {
+  # note that the stats1 is unrelated
+  ipv4 { import where stats1 > 200; };
+  route 0.0.0.0:0;
+}
+</code>
+
+<p>Beware that configuration with cyclic references (even logical ones) are
+considered invalid and the behaviour is not defined! You <em>should</em> avoid
+them. No detection is implemented.
 
 <chapt>Conclusions
 <label id="conclusion">

@@ -28,11 +28,14 @@ struct stats_channel {
   u8 max_generation;
   u32 *counters;
   u32 sum;
+  timer *timer;
+  btime settle;
 };
 
 struct stats_channel_config {
   struct channel_config c;
   u8 max_generation;
+  btime settle;
 };
 
 static inline int

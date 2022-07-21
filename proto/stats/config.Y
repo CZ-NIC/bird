@@ -9,18 +9,15 @@
 
 CF_HDR
 
-/* old: #include "proto/pipe/pipe.h" */
 #include "proto/stats/stats.h"
 
 CF_DEFINES
 
-/* old: #define PIPE_CFG ((struct pipe_config *) this_proto) */
 #define STATS_CC ((struct stats_channel_config *) this_channel)
 
 CF_DECLS
 
-/* TODO here add more keywords */
-CF_KEYWORDS(STATS, TABLE, MAX, GENERATION)
+CF_KEYWORDS(STATS, TABLE, MAX, GENERATION, SETTLE, TIME)
 
 %type <cc> stats_channel_start
 
@@ -48,21 +45,25 @@ channel_max_gen:
   }
   ;
 
+stats_settle:
+  SETTLE TIME time {
+    STATS_CC->settle = $3 S_;
+  }
+
 stats_opts:
     /* empty */
   | stats_opts channel_item ';'
   | stats_opts channel_max_gen ';'
+  | stats_opts stats_settle ';'
   ;
      
 stats_proto_channel: stats_channel_start stats_channel_opt_list channel_end ;
-/* stats_proto_channel: stats_channel_start stats_max_gen channel_opt_list channel_end ; */
 
 stats_channel_start: net_type symbol
 {
   this_channel = channel_config_get(&channel_stats, $2->name, $1, this_proto);
   STATS_CC->max_generation = 16;
-  /* from filter/config.Y:
-       cf_define_symbol($3, SYM_VARIABLE | $2, offset, $3->scope->slots++) */
+  STATS_CC->settle = 5 S_;
   $2 = cf_define_symbol($2, SYM_COUNTER, ch_config, this_channel);
 }
 

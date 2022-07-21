@@ -22,31 +22,45 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "lib/string.h"
+#include "lib/timer.h"
 
 #include "stats.h"
 
-#ifdef CONFIG_BGP
-#include "proto/bgp/bgp.h"
-#endif
+#define COUNTER 255
+
+static void stats_kick_timer(struct stats_channel *c);
 
 static void
 stats_rt_notify(struct proto *P UNUSED, struct channel *src_ch, const net_addr *n UNUSED, rte *new, const rte *old)
 {
   struct stats_channel *ch = (void *) src_ch;
 
+  int changed = 0;
   if (old)
   {
     ch->counters[old->generation]--;
     if (old->generation < ch->max_generation)
-      ch->sum--;
+    {
+      changed = 1;
+      ch->counters[COUNTER]--;
+    }
   }
 
   if (new)
   {
     ch->counters[new->generation]++;
     if (new->generation < ch->max_generation)
-      ch->sum++;
+    {
+      changed = 1;
+      ch->counters[COUNTER]++;
+    }
   }  
+
+  if (changed)
+  {
+    log(L_INFO "stats: timer kicked with time %u", ch->settle);
+    stats_kick_timer((struct stats_channel *) ch);
+  }
 }
 
 static void
@@ -69,6 +83,7 @@ stats_configure_channels(struct proto *P, struct proto_config *CF)
     struct stats_channel_config *scc = (void *) cc;
 
     sc->max_generation = scc->max_generation;
+    sc->settle = scc->settle;
   } 
 }
 
@@ -117,11 +132,17 @@ stats_reconfigure(struct proto *P, struct proto_config *CF)
       struct stats_channel_config *scc = (void *) cc;
 
       sc->max_generation = scc->max_generation;
+      sc->settle = scc->settle;
 
       /* recalculate sum */
-      sc->sum = 0;
+      sc->counters[COUNTER] = 0;
       for (u8 i = 0; i < sc->max_generation; i++)
-	sc->sum += sc->counters[i];
+	sc->counters[COUNTER] += sc->counters[i];
+
+      sc->sum = sc->counters[COUNTER];
+
+      /* notify all hooked filters */
+      // TODO here
 
       c->stale = 0;
     }
@@ -161,7 +182,11 @@ stats_show_proto_info(struct proto *P)
 
     cli_msg(-1006, "  Channel %s", sc->c.name);
     cli_msg(-1006, "    Max generation:  %3u", sc->max_generation);
-    cli_msg(-1006, "    Exports:  %10u", sc->sum);
+    // FIXME : actual or visible to filters ? AND TIME below in the comment
+    cli_msg(-1006, "    Exports:  %10u (currently:  %10u)",
+	      sc->sum,
+	      sc->counters[COUNTER]);
+    cli_msg(-1006, "    Settle time:  %7u s", sc->settle / 1000000 );
     cli_msg(-1006, "    Counter     exported");
 
     for (u8 i = 0; i < len; i++)
@@ -186,6 +211,32 @@ stats_update_debug(struct proto *P)
   }
 }
 
+static void
+stats_timer(timer *t)
+{
+  log(L_INFO "timer executing update");
+  struct stats_channel *c = (struct stats_channel *) t->data;
+
+  /* update the sum correct counter data */
+  c->sum = c->counters[COUNTER];
+
+  /* notify all filters to reevaluate them */
+  // TODO here
+
+}
+
+static void
+stats_kick_timer(struct stats_channel *c)
+{
+
+  /* if set to zero execute immediately */
+  if (!c->settle)
+    stats_timer(c->timer);
+
+  if (!tm_active(c->timer))
+    tm_start(c->timer, c->settle);
+}
+
 static int
 stats_channel_start(struct channel *C)
 {
@@ -193,6 +244,8 @@ stats_channel_start(struct channel *C)
   struct stats_proto *p = (void *) C->proto;
 
   c->pool = p->p.pool;
+
+  c->timer = tm_new_init(c->pool, stats_timer, (void *) c, 0, 0);
 
   c->counters = mb_allocz(c->pool, 256 * sizeof(u32));
   c->sum = 0;
@@ -206,6 +259,10 @@ stats_channel_shutdown(struct channel *C)
   struct stats_channel *c = (void *) C;
 
   mb_free(c->counters);
+
+  /* FIXME freed automatically by the resource pool ?
+  rfree(c->timer);
+  */
   
   c->max_generation = 0;
   c->counters = NULL;
