@@ -39,7 +39,7 @@ stats_rt_notify(struct proto *P UNUSED, struct channel *src_ch, const net_addr *
   if (old)
   {
     ch->counters[old->generation]--;
-    if (old->generation < ch->max_generation)
+    if (old->generation <= ch->max_generation)
     {
       changed = 1;
       ch->counters[COUNTER]--;
@@ -49,7 +49,7 @@ stats_rt_notify(struct proto *P UNUSED, struct channel *src_ch, const net_addr *
   if (new)
   {
     ch->counters[new->generation]++;
-    if (new->generation < ch->max_generation)
+    if (new->generation <= ch->max_generation)
     {
       changed = 1;
       ch->counters[COUNTER]++;
@@ -136,7 +136,7 @@ stats_reconfigure(struct proto *P, struct proto_config *CF)
 
       /* recalculate sum */
       sc->counters[COUNTER] = 0;
-      for (u8 i = 0; i < sc->max_generation; i++)
+      for (u8 i = 0; i <= sc->max_generation; i++)
 	sc->counters[COUNTER] += sc->counters[i];
 
       sc->sum = sc->counters[COUNTER];
