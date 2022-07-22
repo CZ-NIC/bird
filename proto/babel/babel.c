@@ -2338,8 +2338,8 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
 static int
 babel_rte_better(struct rte *new, struct rte *old)
 {
-  uint new_metric = ea_find(new->attrs->eattrs, EA_BABEL_SEQNO)->u.data;
-  uint old_metric = ea_find(old->attrs->eattrs, EA_BABEL_SEQNO)->u.data;
+  uint new_metric = ea_get_int(new->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY);
+  uint old_metric = ea_get_int(old->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY);
 
   return new_metric < old_metric;
 }
