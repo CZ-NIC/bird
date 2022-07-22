@@ -620,29 +620,6 @@ rte_cow_rta(rte *r, linpool *lp)
   return r;
 }
 
-/**
- * rte_free - delete a &rte
- * @e: &rte to be deleted
- *
- * rte_free() deletes the given &rte from the routing table it's linked to.
- */
-void
-rte_free(rte *e)
-{
-  rt_unlock_source(e->src);
-  if (rta_is_cached(e->attrs))
-    rta_free(e->attrs);
-  sl_free(e);
-}
-
-static inline void
-rte_free_quick(rte *e)
-{
-  rt_unlock_source(e->src);
-  rta_free(e->attrs);
-  sl_free(e);
-}
-
 static int				/* Actually better or at least as good as */
 rte_better(rte *new, rte *old)
 {
@@ -799,14 +776,8 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
   }
 
   /* Apply export table */
-  struct rte *old_exported = NULL;
-  if (c->out_table)
-  {
-    if (!rte_update_out(c, net->n.addr, new, old, &old_exported, refeed))
-      return;
-  }
-  else if (c->out_filter == FILTER_ACCEPT)
-    old_exported = old;
+  if (c->out_table && !rte_update_out(c, net->n.addr, new, old, refeed))
+    return;
 
   if (new)
     stats->exp_updates_accepted++;
@@ -836,9 +807,6 @@ do_rt_notify(struct channel *c, net *net, rte *new, rte *old, int refeed)
   }
 
   p->rt_notify(p, c, net, new, old);
-
-  if (c->out_table && old_exported)
-    rte_free_quick(old_exported);
 }
 
 static void
@@ -1196,6 +1164,29 @@ rte_validate(rte *e)
   }
 
   return 1;
+}
+
+/**
+ * rte_free - delete a &rte
+ * @e: &rte to be deleted
+ *
+ * rte_free() deletes the given &rte from the routing table it's linked to.
+ */
+void
+rte_free(rte *e)
+{
+  rt_unlock_source(e->src);
+  if (rta_is_cached(e->attrs))
+    rta_free(e->attrs);
+  sl_free(e);
+}
+
+static inline void
+rte_free_quick(rte *e)
+{
+  rt_unlock_source(e->src);
+  rta_free(e->attrs);
+  sl_free(e);
 }
 
 static int
@@ -3258,7 +3249,7 @@ again:
  */
 
 int
-rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, rte **old_exported, int refeed)
+rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed)
 {
   struct rtable *tab = c->out_table;
   struct rte_src *src;
@@ -3302,7 +3293,7 @@ rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, rte **
 
       /* Remove the old rte */
       *pos = old->next;
-      *old_exported = old;
+      rte_free_quick(old);
       tab->rt_count--;
 
       break;
