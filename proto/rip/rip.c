@@ -1101,22 +1101,16 @@ rip_reload_routes(struct channel *C)
   rip_kick_timer(p);
 }
 
-static int
-rip_rte_better(struct rte *new, struct rte *old)
-{
-  ASSERT_DIE(new->src == old->src);
-  struct rip_proto *p = (struct rip_proto *) new->src->proto;
-
-  u32 new_metric = ea_get_int(new->attrs->eattrs, EA_RIP_METRIC, p->infinity);
-  u32 old_metric = ea_get_int(old->attrs->eattrs, EA_RIP_METRIC, p->infinity);
-
-  return new_metric < old_metric;
-}
-
 static u32
 rip_rte_igp_metric(struct rte *rt)
 {
   return ea_get_int(rt->attrs->eattrs, EA_RIP_METRIC, IGP_METRIC_UNKNOWN);
+}
+
+static int
+rip_rte_better(struct rte *new, struct rte *old)
+{
+  return rip_rte_igp_metric(new) < rip_rte_igp_metric(old);
 }
 
 static void
