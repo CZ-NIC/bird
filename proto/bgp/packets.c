@@ -238,6 +238,7 @@ bgp_prepare_capabilities(struct bgp_conn *conn)
   caps->ext_messages = p->cf->enable_extended_messages;
   caps->route_refresh = p->cf->enable_refresh;
   caps->enhanced_refresh = p->cf->enable_refresh;
+  caps->role = p->cf->local_role;
 
   if (caps->as4_support)
     caps->as4_number = p->public_as;
@@ -350,6 +351,13 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
     *buf++ = 0;			/* Capability data length */
   }
 
+  if (caps->role != BGP_ROLE_UNDEFINED)
+  {
+    *buf++ = 9;			/* Capability 9: Announce chosen BGP role */
+    *buf++ = 1;			/* Capability data length */
+    *buf++ = caps->role;
+  }
+
   if (caps->gr_aware)
   {
     *buf++ = 64;		/* Capability 64: Support for graceful restart */
@@ -449,11 +457,15 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
   struct bgp_proto *p = conn->bgp;
   struct bgp_caps *caps;
   struct bgp_af_caps *ac;
+  uint err_subcode = 0;
   int i, cl;
   u32 af;
 
   if (!conn->remote_caps)
+  {
     caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps) + sizeof(struct bgp_af_caps));
+    caps->role = BGP_ROLE_UNDEFINED;
+  }
   else
   {
     caps = conn->remote_caps;
@@ -511,6 +523,21 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
 	goto err;
 
       caps->ext_messages = 1;
+      break;
+
+    case  9: /* BGP role capability, RFC 9234 */
+      if (cl != 1)
+        goto err;
+
+      /* Reserved value */
+      if (pos[2] == BGP_ROLE_UNDEFINED)
+      { err_subcode = 11; goto err; }
+
+      /* Multiple inconsistent values */
+      if ((caps->role != BGP_ROLE_UNDEFINED) && (caps->role != pos[2]))
+      { err_subcode = 11; goto err; }
+
+      caps->role = pos[2];
       break;
 
     case 64: /* Graceful restart capability, RFC 4724 */
@@ -638,7 +665,7 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
 
 err:
   mb_free(caps);
-  bgp_error(conn, 2, 0, NULL, 0);
+  bgp_error(conn, 2, err_subcode, NULL, 0);
   return -1;
 }
 
@@ -853,6 +880,22 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 
     conn->received_as = asn;
   }
+
+  /* RFC 9234 4.2 - check role agreement */
+  u8 local_role = p->cf->local_role;
+  u8 neigh_role = caps->role;
+
+  if ((local_role != BGP_ROLE_UNDEFINED) &&
+      (neigh_role != BGP_ROLE_UNDEFINED) &&
+      !((local_role == BGP_ROLE_PEER && neigh_role == BGP_ROLE_PEER) ||
+	(local_role == BGP_ROLE_CUSTOMER && neigh_role == BGP_ROLE_PROVIDER) ||
+	(local_role == BGP_ROLE_PROVIDER && neigh_role == BGP_ROLE_CUSTOMER) ||
+	(local_role == BGP_ROLE_RS_CLIENT && neigh_role == BGP_ROLE_RS_SERVER) ||
+	(local_role == BGP_ROLE_RS_SERVER && neigh_role == BGP_ROLE_RS_CLIENT)))
+  { bgp_error(conn, 2, 11, NULL, 0); return; }
+
+  if ((p->cf->require_roles) && (neigh_role == BGP_ROLE_UNDEFINED))
+  { bgp_error(conn, 2, 11, NULL, 0); return; }
 
   /* Check the other connection */
   other = (conn == &p->outgoing_conn) ? &p->incoming_conn : &p->outgoing_conn;
@@ -2985,6 +3028,7 @@ static struct {
   { 2, 6, "Unacceptable hold time" },
   { 2, 7, "Required capability missing" }, /* [RFC5492] */
   { 2, 8, "No supported AFI/SAFI" }, /* This error msg is nonstandard */
+  { 2,11, "Role mismatch" }, /* From Open Policy, RFC 9234 */
   { 3, 0, "Invalid UPDATE message" },
   { 3, 1, "Malformed attribute list" },
   { 3, 2, "Unrecognized well-known attribute" },
