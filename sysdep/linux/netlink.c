@@ -74,51 +74,16 @@
 #endif
 
 #define krt_ipv4(p) ((p)->af == AF_INET)
-#define krt_ecmp6(p) ((p)->af == AF_INET6)
 
 const int rt_default_ecmp = 16;
 
-/*
- * Structure nl_parse_state keeps state of received route processing. Ideally,
- * we could just independently parse received Netlink messages and immediately
- * propagate received routes to the rest of BIRD, but older Linux kernel (before
- * version 4.11) represents and announces IPv6 ECMP routes not as one route with
- * multiple next hops (like RTA_MULTIPATH in IPv4 ECMP), but as a sequence of
- * routes with the same prefix. More recent kernels work as with IPv4.
- *
- * Therefore, BIRD keeps currently processed route in nl_parse_state structure
- * and postpones its propagation until we expect it to be final; i.e., when
- * non-matching route is received or when the scan ends. When another matching
- * route is received, it is merged with the already processed route to form an
- * ECMP route. Note that merging is done only for IPv6 (merge == 1), but the
- * postponing is done in both cases (for simplicity). All IPv4 routes or IPv6
- * routes with RTA_MULTIPATH set are just considered non-matching.
- *
- * This is ignored for asynchronous notifications (every notification is handled
- * as a separate route). It is not an issue for our routes, as we ignore such
- * notifications anyways. But importing alien IPv6 ECMP routes does not work
- * properly with older kernels.
- *
- * Whatever the kernel version is, IPv6 ECMP routes are sent as multiple routes
- * for the same prefix.
- */
-
 struct nl_parse_state
 {
+  struct krt_proto *proto;
   struct linpool *pool;
   int scan;
-  int merge;
 
-  net *net;
-  rta *attrs;
-  struct krt_proto *proto;
-  s8 new;
-  s8 krt_src;
-  u8 krt_type;
-  u8 krt_proto;
-  u32 krt_metric;
-
-  u32 rta_flow;		/* Used during parsing */
+  u32 rta_flow;
 };
 
 /*
@@ -1341,7 +1306,7 @@ nh_bufsize(struct nexthop *nh)
 }
 
 static int
-nl_send_route(struct krt_proto *p, rte *e, int op, int dest, struct nexthop *nh)
+nl_send_route(struct krt_proto *p, rte *e, int op)
 {
   eattr *ea;
   net *net = e->net;
@@ -1425,15 +1390,17 @@ nl_send_route(struct krt_proto *p, rte *e, int op, int dest, struct nexthop *nh)
 
   /* For route delete, we do not specify remaining route attributes */
   if (op == NL_OP_DELETE)
-    goto dest;
+    goto done;
 
   /* Default scope is LINK for device routes, UNIVERSE otherwise */
   if (p->af == AF_MPLS)
     r->r.rtm_scope = RT_SCOPE_UNIVERSE;
   else if (ea = ea_find(eattrs, EA_KRT_SCOPE))
     r->r.rtm_scope = ea->u.data;
+  else if (a->dest == RTD_UNICAST && ipa_zero(a->nh.gw))
+    r->r.rtm_scope = RT_SCOPE_LINK;
   else
-    r->r.rtm_scope = (dest == RTD_UNICAST && ipa_zero(nh->gw)) ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE;
+    r->r.rtm_scope = RT_SCOPE_UNIVERSE;
 
   if (ea = ea_find(eattrs, EA_KRT_PREFSRC))
     nl_add_attr_ipa(&r->h, rsize, RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data);
@@ -1456,13 +1423,12 @@ nl_send_route(struct krt_proto *p, rte *e, int op, int dest, struct nexthop *nh)
   if (metrics[0])
     nl_add_metrics(&r->h, rsize, metrics, KRT_METRICS_MAX);
 
-
-dest:
-  switch (dest)
+  switch (a->dest)
     {
     case RTD_UNICAST:
       r->r.rtm_type = RTN_UNICAST;
-      if (nh->next && !krt_ecmp6(p))
+      struct nexthop *nh = &(a->nh);
+      if (nh->next)
 	nl_add_multipath(&r->h, rsize, nh, p->af, eattrs);
       else
       {
@@ -1488,82 +1454,27 @@ dest:
       bug("krt_capable inconsistent with nl_send_route");
     }
 
+done:
   /* Ignore missing for DELETE */
   return nl_exchange(&r->h, (op == NL_OP_DELETE));
 }
-
-static inline int
-nl_add_rte(struct krt_proto *p, rte *e)
-{
-  rta *a = e->attrs;
-  int err = 0;
-
-  if (krt_ecmp6(p) && a->nh.next)
-  {
-    struct nexthop *nh = &(a->nh);
-
-    err = nl_send_route(p, e, NL_OP_ADD, RTD_UNICAST, nh);
-    if (err < 0)
-      return err;
-
-    for (nh = nh->next; nh; nh = nh->next)
-      err += nl_send_route(p, e, NL_OP_APPEND, RTD_UNICAST, nh);
-
-    return err;
-  }
-
-  return nl_send_route(p, e, NL_OP_ADD, a->dest, &(a->nh));
-}
-
-static inline int
-nl_delete_rte(struct krt_proto *p, rte *e)
-{
-  int err = 0;
-
-  /* For IPv6, we just repeatedly request DELETE until we get error */
-  do
-    err = nl_send_route(p, e, NL_OP_DELETE, RTD_NONE, NULL);
-  while (krt_ecmp6(p) && !err);
-
-  return err;
-}
-
-static inline int
-nl_replace_rte(struct krt_proto *p, rte *e)
-{
-  rta *a = e->attrs;
-  return nl_send_route(p, e, NL_OP_REPLACE, a->dest, &(a->nh));
-}
-
 
 void
 krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
 {
   int err = 0;
 
-  /*
-   * We use NL_OP_REPLACE for IPv4, it has an issue with not checking for
-   * matching rtm_protocol, but that is OK when dedicated priority is used.
-   *
-   * We do not use NL_OP_REPLACE for IPv6, as it has broken semantics for ECMP
-   * and with some kernel versions ECMP replace crashes kernel. Would need more
-   * testing and checks for kernel versions.
-   *
-   * For IPv6, we use NL_OP_DELETE and then NL_OP_ADD. We also do not trust the
-   * old route value, so we do not try to optimize IPv6 ECMP reconfigurations.
-   */
-
-  if (krt_ipv4(p) && old && new)
+  if (old && new)
   {
-    err = nl_replace_rte(p, new);
+    err = nl_send_route(p, new, NL_OP_REPLACE);
   }
   else
   {
     if (old)
-      nl_delete_rte(p, old);
+      nl_send_route(p, old, NL_OP_DELETE);
 
     if (new)
-      err = nl_add_rte(p, new);
+      err = nl_send_route(p, new, NL_OP_ADD);
   }
 
   if (new)
@@ -1573,61 +1484,6 @@ krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
     else
       bmap_set(&p->sync_map, new->id);
   }
-}
-
-static int
-nl_mergable_route(struct nl_parse_state *s, net *net, struct krt_proto *p, uint priority, uint krt_type, uint rtm_family)
-{
-  /* Route merging is used for IPv6 scans */
-  if (!s->scan || (rtm_family != AF_INET6))
-    return 0;
-
-  /* Saved and new route must have same network, proto/table, and priority */
-  if ((s->net != net) || (s->proto != p) || (s->krt_metric != priority))
-    return 0;
-
-  /* Both must be regular unicast routes */
-  if ((s->krt_type != RTN_UNICAST) || (krt_type != RTN_UNICAST))
-    return 0;
-
-  return 1;
-}
-
-static void
-nl_announce_route(struct nl_parse_state *s)
-{
-  rte *e = rte_get_temp(s->attrs);
-  e->net = s->net;
-  e->u.krt.src = s->krt_src;
-  e->u.krt.proto = s->krt_proto;
-  e->u.krt.seen = 0;
-  e->u.krt.best = 0;
-  e->u.krt.metric = s->krt_metric;
-
-  if (s->scan)
-    krt_got_route(s->proto, e);
-  else
-    krt_got_route_async(s->proto, e, s->new);
-
-  s->net = NULL;
-  s->attrs = NULL;
-  s->proto = NULL;
-  lp_flush(s->pool);
-}
-
-static inline void
-nl_parse_begin(struct nl_parse_state *s, int scan)
-{
-  memset(s, 0, sizeof (struct nl_parse_state));
-  s->pool = nl_linpool;
-  s->scan = scan;
-}
-
-static inline void
-nl_parse_end(struct nl_parse_state *s)
-{
-  if (s->net)
-    nl_announce_route(s);
 }
 
 
@@ -1766,9 +1622,6 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   }
 
   net *net = net_get(p->p.main_channel->table, n);
-
-  if (s->net && !nl_mergable_route(s, net, p, priority, i->rtm_type, i->rtm_family))
-    nl_announce_route(s);
 
   rta *ra = lp_allocz(s->pool, RTA_MAX_SIZE);
   ra->src = p->p.main_source;
@@ -1951,53 +1804,30 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	}
     }
 
-  /*
-   * Ideally, now we would send the received route to the rest of kernel code.
-   * But IPv6 ECMP routes before 4.11 are sent as a sequence of routes, so we
-   * postpone it and merge next hops until the end of the sequence. Note that
-   * when doing merging of next hops, we expect the new route to be unipath.
-   * Otherwise, we ignore additional next hops in nexthop_insert().
-   */
+  rte *e = rte_get_temp(ra);
+  e->net = net;
+  e->u.krt.src = krt_src;
+  e->u.krt.proto = i->rtm_protocol;
+  e->u.krt.seen = 0;
+  e->u.krt.best = 0;
+  e->u.krt.metric = priority;
 
-  if (!s->net)
-  {
-    /* Store the new route */
-    s->net = net;
-    s->attrs = ra;
-    s->proto = p;
-    s->new = new;
-    s->krt_src = krt_src;
-    s->krt_type = i->rtm_type;
-    s->krt_proto = i->rtm_protocol;
-    s->krt_metric = priority;
-  }
+  if (s->scan)
+    krt_got_route(p, e);
   else
-  {
-    /* Merge next hops with the stored route */
-    rta *oa = s->attrs;
+    krt_got_route_async(p, e, new);
 
-    struct nexthop *nhs = &oa->nh;
-    nexthop_insert(&nhs, &ra->nh);
-
-    /* Perhaps new nexthop is inserted at the first position */
-    if (nhs == &ra->nh)
-    {
-      /* Swap rtas */
-      s->attrs = ra;
-
-      /* Keep old eattrs */
-      ra->eattrs = oa->eattrs;
-    }
-  }
+  lp_flush(s->pool);
 }
 
 void
 krt_do_scan(struct krt_proto *p)
 {
-  struct nlmsghdr *h;
-  struct nl_parse_state s;
-
-  nl_parse_begin(&s, 1);
+  struct nl_parse_state s = {
+    .proto = p,
+    .pool = nl_linpool,
+    .scan = 1,
+  };
 
   /* Table-specific scan or shared scan */
   if (p)
@@ -2005,6 +1835,7 @@ krt_do_scan(struct krt_proto *p)
   else
     nl_request_dump_route(AF_UNSPEC, 0);
 
+  struct nlmsghdr *h;
   while (h = nl_get_scan())
   {
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
@@ -2012,8 +1843,6 @@ krt_do_scan(struct krt_proto *p)
     else
       log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
   }
-
-  nl_parse_end(&s);
 }
 
 /*
@@ -2028,16 +1857,18 @@ static struct config *nl_last_config;	/* For tracking changes to nl_async_bufsiz
 static void
 nl_async_msg(struct nlmsghdr *h)
 {
-  struct nl_parse_state s;
+  struct nl_parse_state s = {
+    .proto = NULL,
+    .pool = nl_linpool,
+    .scan = 0,
+  };
 
   switch (h->nlmsg_type)
     {
     case RTM_NEWROUTE:
     case RTM_DELROUTE:
       DBG("KRT: Received async route notification (%d)\n", h->nlmsg_type);
-      nl_parse_begin(&s, 0);
       nl_parse_route(&s, h);
-      nl_parse_end(&s);
       break;
     case RTM_NEWLINK:
     case RTM_DELLINK:
