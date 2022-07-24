@@ -161,16 +161,13 @@ nl_open_sock(struct nl_sock *nl)
     }
 }
 
-static void
+static int
 nl_set_strict_dump(struct nl_sock *nl UNUSED, int strict UNUSED)
 {
-  /*
-   * Strict checking is not necessary, it improves behavior on newer kernels.
-   * If it is not available (missing SOL_NETLINK compile-time, or ENOPROTOOPT
-   * run-time), we can just ignore it.
-   */
 #ifdef SOL_NETLINK
-  setsockopt(nl->fd, SOL_NETLINK, NETLINK_GET_STRICT_CHK, &strict, sizeof(strict));
+  return setsockopt(nl->fd, SOL_NETLINK, NETLINK_GET_STRICT_CHK, &strict, sizeof(strict));
+#else
+  return -1;
 #endif
 }
 
@@ -198,10 +195,17 @@ nl_cfg_rx_buffer_size(struct config *cfg)
 static void
 nl_open(void)
 {
+  if ((nl_scan.fd >= 0) && (nl_req.fd >= 0))
+    return;
+
   nl_open_sock(&nl_scan);
   nl_open_sock(&nl_req);
 
-  nl_set_strict_dump(&nl_scan, 1);
+  if (nl_set_strict_dump(&nl_scan, 1) < 0)
+  {
+    log(L_WARN "KRT: Netlink strict checking failed, will scan all tables at once");
+    krt_use_shared_scan();
+  }
 }
 
 static void
@@ -256,11 +260,13 @@ nl_request_dump_addr(int af)
 }
 
 static void
-nl_request_dump_route(int af)
+nl_request_dump_route(int af, int table_id)
 {
   struct {
     struct nlmsghdr nh;
     struct rtmsg rtm;
+    struct rtattr rta;
+    u32 table_id;
   } req = {
     .nh.nlmsg_type = RTM_GETROUTE,
     .nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg)),
@@ -269,7 +275,17 @@ nl_request_dump_route(int af)
     .rtm.rtm_family = af,
   };
 
-  send(nl_scan.fd, &req, sizeof(req), 0);
+  if (table_id < 256)
+    req.rtm.rtm_table = table_id;
+  else
+  {
+    req.rta.rta_type = RTA_TABLE;
+    req.rta.rta_len = RTA_LENGTH(4);
+    req.table_id = table_id;
+    req.nh.nlmsg_len = NLMSG_ALIGN(req.nh.nlmsg_len) + req.rta.rta_len;
+  }
+
+  send(nl_scan.fd, &req, req.nh.nlmsg_len, 0);
   nl_scan.last_hdr = NULL;
 }
 
@@ -1976,18 +1992,27 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 }
 
 void
-krt_do_scan(struct krt_proto *p UNUSED)	/* CONFIG_ALL_TABLES_AT_ONCE => p is NULL */
+krt_do_scan(struct krt_proto *p)
 {
   struct nlmsghdr *h;
   struct nl_parse_state s;
 
   nl_parse_begin(&s, 1);
-  nl_request_dump_route(AF_UNSPEC);
+
+  /* Table-specific scan or shared scan */
+  if (p)
+    nl_request_dump_route(p->af, krt_table_id(p));
+  else
+    nl_request_dump_route(AF_UNSPEC, 0);
+
   while (h = nl_get_scan())
+  {
     if (h->nlmsg_type == RTM_NEWROUTE || h->nlmsg_type == RTM_DELROUTE)
       nl_parse_route(&s, h);
     else
       log(L_DEBUG "nl_scan_fire: Unknown packet received (type=%d)", h->nlmsg_type);
+  }
+
   nl_parse_end(&s);
 }
 
