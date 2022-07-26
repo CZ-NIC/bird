@@ -382,14 +382,18 @@ tm_format_real_time(char *x, size_t max, const char *fmt, btime t)
  *  Settle timer
  */
 
-static btime
+static inline btime
 settled_time(struct settle_timer *st)
 {
+  ASSUME(st->base_settle_time != 0);
+  if (st->base_settle_time + *(st->max_settle_time) <
+      st->last_change + *(st->min_settle_time))
+    log(L_INFO "settle_timer will be triggered by MAX SETTLE TIME");
   return MIN_(st->last_change + *(st->min_settle_time),
 	      st->base_settle_time + *(st->max_settle_time));
 }
 
-void
+inline void
 settle_timer_changed(struct settle_timer *st)
 {
   st->last_change = current_time();
@@ -398,7 +402,6 @@ settle_timer_changed(struct settle_timer *st)
 void
 settle_timer(timer *t)
 {
-  log(L_INFO "settle_timer()");
   struct settle_timer *st = (void *) t;
 
   if (!st->base_settle_time)
@@ -421,7 +424,6 @@ settle_timer(timer *t)
 struct settle_timer *
 stm_new_timer(pool *p, void *data, struct settle_timer_class *class)
 {
-  log(L_INFO "stm_new_timer() creating new timer");
   struct settle_timer *st;
   st = mb_allocz(p, sizeof(struct settle_timer));
   st->class = class;
@@ -438,7 +440,6 @@ stm_new_timer(pool *p, void *data, struct settle_timer_class *class)
 void
 kick_settle_timer(struct settle_timer *st)
 {
-  log(L_INFO "kick_settle_timer()");
   ASSUME(st != NULL);
 
   st->base_settle_time = current_time();

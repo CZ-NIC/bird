@@ -1365,7 +1365,7 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
     stats->withdraws_ignored++;
 
   if (old_ok || new_ok)
-    table->settle_timer->last_change = current_time();
+    settle_timer_changed(table->settle_timer);
 
   if (table->config->sorted)
     {
@@ -2346,7 +2346,8 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
   t->settle_timer = stm_new_timer(p, t, &rt_settle_class);
 
-  t->settle_timer->last_change = t->gc_time = current_time();
+  settle_timer_changed(t->settle_timer);
+  t->gc_time = current_time();
 
   t->rl_pipe = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 

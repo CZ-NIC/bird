@@ -145,5 +145,6 @@ struct settle_timer_class {
 
 struct settle_timer *stm_new_timer(pool *p, void *data, struct settle_timer_class *class);
 void kick_settle_timer(struct settle_timer *st);
+void settle_timer_changed(struct settle_timer *st);
 
 #endif
