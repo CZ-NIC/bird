@@ -5436,11 +5436,21 @@ generation smaller than max generation (see below).
 	<ref id="pipe-max-generation" name="max generetion">. Must be in range
 	from 0 to 254. Default: 16.
 
-	<tag><label id="stats-update-after">settle time <m/time/ <m/number/</tag>
-	Wait given amount of time before notifying and recalculting filters
-	which reference this counter in seconds. If counter changes during this period,
-	current value is used. If set to zero, the notification is done instantly.
-	Default: 5 s.
+	<tab><label id="stats-min-settle-time">min settle time <m/time/ </tag>
+	Specify a minimum value of the settle time. When a stats counter changes,
+	automatic recalcualtion of route filters may be triggered, after a short
+	settle time. Minimum settle time is a delay from the last counter change
+	to wait for more updates. No action is done if counter has same value
+	before and after changes. Default: 1 s.
+
+	<tab><label id="stats-max-settle-time">max settle time <m/time/ </tag>
+	Specify a maximum value of the settle time. When stats counter changes,
+	automatic route filter recalculation may be triggered, after a short
+	settle time. Maximum settle time is an upper limit to the settle time
+	from initial counter change even if there are consecutive updates
+	gradually renewing the settle time. No action is done if counter has
+	same value before and after changes. Defualt: 20 s.
+
 </descrip>
 
 <p>Example
@@ -5458,7 +5468,7 @@ protocol static {
 
 <p>Beware that configuration with cyclic references (even logical ones) are
 considered invalid and the behaviour is not defined! You <em>should</em> avoid
-them. No detection is implemented.
+them. No detection is implemented yet.
 
 <chapt>Conclusions
 <label id="conclusion">
