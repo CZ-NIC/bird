@@ -1365,7 +1365,7 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
     stats->withdraws_ignored++;
 
   if (old_ok || new_ok)
-    table->last_rt_change = current_time();
+    table->settle_timer->last_change = current_time();
 
   if (table->config->sorted)
     {
@@ -2019,7 +2019,7 @@ rt_dump_hooks(rtable *tab)
   debug("  nhu_state=%u hcu_scheduled=%u use_count=%d rt_count=%u\n",
       tab->nhu_state, tab->hcu_scheduled, tab->use_count, tab->rt_count);
   debug("  last_rt_change=%t gc_time=%t gc_counter=%d prune_state=%u\n",
-      tab->last_rt_change, tab->gc_time, tab->gc_counter, tab->prune_state);
+      tab->settle_timer->last_change, tab->gc_time, tab->gc_counter, tab->prune_state);
 
   struct rt_import_hook *ih;
   WALK_LIST(ih, tab->imports)
@@ -2133,50 +2133,21 @@ rt_kick_prune_timer(rtable *tab)
   tm_start(tab->prune_timer, gc_period);
 }
 
-
-static inline btime
-rt_settled_time(rtable *tab)
-{
-  ASSUME(tab->base_settle_time != 0);
-
-  return MIN(tab->last_rt_change + tab->config->min_settle_time,
-	     tab->base_settle_time + tab->config->max_settle_time);
-}
-
 static void
-rt_settle_timer(timer *t)
+rt_settle_timer(struct settle_timer *st)
 {
+  timer *t = (void *) st;
   rtable *tab = t->data;
-
-  if (!tab->base_settle_time)
-    return;
-
-  btime settled_time = rt_settled_time(tab);
-  if (current_time() < settled_time)
-  {
-    tm_set(tab->settle_timer, settled_time);
-    return;
-  }
-
-  /* Settled */
-  tab->base_settle_time = 0;
 
   struct rt_subscription *s;
   WALK_LIST(s, tab->subscribers)
     s->hook(s);
 }
 
-static void
-rt_kick_settle_timer(rtable *tab)
-{
-  tab->base_settle_time = current_time();
-
-  if (!tab->settle_timer)
-    tab->settle_timer = tm_new_init(tab->rp, rt_settle_timer, tab, 0, 0);
-
-  if (!tm_active(tab->settle_timer))
-    tm_set(tab->settle_timer, rt_settled_time(tab));
-}
+static struct settle_timer_class rt_settle_class = {
+  .action = rt_settle_timer,
+  .kick = NULL,
+};
 
 static inline void
 rt_schedule_notify(rtable *tab)
@@ -2184,10 +2155,10 @@ rt_schedule_notify(rtable *tab)
   if (EMPTY_LIST(tab->subscribers))
     return;
 
-  if (tab->base_settle_time)
+  if (tab->settle_timer->base_settle_time)
     return;
 
-  rt_kick_settle_timer(tab);
+  kick_settle_timer(tab->settle_timer);
 }
 
 void
@@ -2373,7 +2344,9 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   t->rt_event = ev_new_init(p, rt_event, t);
   t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
-  t->last_rt_change = t->gc_time = current_time();
+  t->settle_timer = stm_new_timer(p, t, &rt_settle_class);
+
+  t->settle_timer->last_change = t->gc_time = current_time();
 
   t->rl_pipe = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 

@@ -376,3 +376,74 @@ tm_format_real_time(char *x, size_t max, const char *fmt, btime t)
 
   return 1;
 }
+
+
+/*
+ *  Settle timer
+ */
+
+static btime
+settled_time(struct settle_timer *st)
+{
+  return MIN_(st->last_change + *(st->min_settle_time),
+	      st->base_settle_time + *(st->max_settle_time));
+}
+
+void
+settle_timer_changed(struct settle_timer *st)
+{
+  st->last_change = current_time();
+}
+
+void
+settle_timer(timer *t)
+{
+  log(L_INFO "settle_timer()");
+  struct settle_timer *st = (void *) t;
+
+  if (!st->base_settle_time)
+    return;
+
+  btime settled_t = settled_time(st);
+  if (current_time() < settled_t)
+  {
+    tm_set((timer *) st, settled_t);
+    return;
+  }
+
+  /* Settled */
+  st->base_settle_time = 0;
+
+  if (st->class->action)
+    st->class->action(st);
+}
+
+struct settle_timer *
+stm_new_timer(pool *p, void *data, struct settle_timer_class *class)
+{
+  log(L_INFO "stm_new_timer() creating new timer");
+  struct settle_timer *st;
+  st = mb_allocz(p, sizeof(struct settle_timer));
+  st->class = class;
+
+  /* timer option randomize and recurrent are set to zero */
+  timer *t = (void *) st;
+  t->index = -1;
+  t->hook = settle_timer;
+  t->data = data;
+
+  return st;
+}
+
+void
+kick_settle_timer(struct settle_timer *st)
+{
+  log(L_INFO "kick_settle_timer()");
+  ASSUME(st != NULL);
+
+  st->base_settle_time = current_time();
+
+  timer *t = (void *) st;
+  if (!tm_active(t))
+    tm_set(t, settled_time(st));
+}

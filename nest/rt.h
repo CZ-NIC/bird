@@ -17,6 +17,7 @@
 #include "lib/type.h"
 #include "lib/fib.h"
 #include "lib/route.h"
+#include "lib/timer.h"
 
 struct ea_list;
 struct protocol;
@@ -90,8 +91,6 @@ typedef struct rtable {
 					 */
   struct event *rt_event;		/* Routing table event */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
-  btime last_rt_change;			/* Last time when route changed */
-  btime base_settle_time;		/* Start time of rtable settling interval */
   btime gc_time;			/* Time of last GC */
   uint gc_counter;			/* Number of operations since last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
@@ -107,7 +106,7 @@ typedef struct rtable {
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
 
   list subscribers;			/* Subscribers for notifications */
-  struct timer *settle_timer;		/* Settle time for notifications */
+  struct settle_timer *settle_timer;	/* Settle time for notifications */
   list flowspec_links;			/* List of flowspec links, src for NET_IPx and dst for NET_FLOWx */
   struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
 } rtable;
