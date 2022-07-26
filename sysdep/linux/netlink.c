@@ -1459,12 +1459,38 @@ done:
   return nl_exchange(&r->h, (op == NL_OP_DELETE));
 }
 
+static inline int
+nl_allow_replace(struct krt_proto *p, rte *new)
+{
+  /*
+   * We use NL_OP_REPLACE for IPv4, it has an issue with not checking for
+   * matching rtm_protocol, but that is OK when dedicated priority is used.
+   *
+   * For IPv6, the NL_OP_REPLACE is still broken even in Linux 4.19 LTS
+   * (although it seems to be fixed in Linux 5.10 LTS) for sequence:
+   *
+   * ip route add 2001:db8::/32 via fe80::1 dev eth0
+   * ip route replace 2001:db8::/32 dev eth0
+   *
+   * (it ends with two routes instead of replacing the first by the second one)
+   *
+   * Replacing with direct and special type (e.g. unreachable) routes does not
+   * work, but replacing with regular routes work reliably
+   */
+
+  if (krt_ipv4(p))
+    return 1;
+
+  rta *a = new->attrs;
+  return (a->dest == RTD_UNICAST) && ipa_nonzero(a->nh.gw);
+}
+
 void
 krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
 {
   int err = 0;
 
-  if (old && new)
+  if (old && new && nl_allow_replace(p, new))
   {
     err = nl_send_route(p, new, NL_OP_REPLACE);
   }
