@@ -37,24 +37,21 @@ stats_channel_opt_list:
   | '{' stats_opts '}'
   ;
 
-
-channel_max_gen:
-  MAX GENERATION expr {
-    if ($3 > 254) cf_error("Max generation must be in range 0..254, got %u", $3);
-    STATS_CC->max_generation = $3;
-  }
+stats_opt:
+    type symbol '=' term {
+      struct f_val val;
+      if (f_eval(f_linearize($4), &val) > F_RETURN) cf_error("Runtime error");
+      if (val.type != $1) cf_error("The expresion does not match defined type");
+      /* cf_define_symbol($2, SYM_VARIABLE | $1, val )*/
+    }
+  | MIN SETTLE TIME expr_us { STATS_CC->min_settle_time = $4; }
+  | MAX SETTLE TIME expr_us { STATS_CC->max_settle_time = $4; }
   ;
-
-stats_settle:
-  SETTLE TIME time {
-    STATS_CC->settle = $3 S_;
-  }
 
 stats_opts:
     /* empty */
   | stats_opts channel_item ';'
-  | stats_opts channel_max_gen ';'
-  | stats_opts stats_settle ';'
+  | stats_opts stats_opt ';'
   ;
      
 stats_proto_channel: stats_channel_start stats_channel_opt_list channel_end ;
@@ -62,8 +59,8 @@ stats_proto_channel: stats_channel_start stats_channel_opt_list channel_end ;
 stats_channel_start: net_type symbol
 {
   this_channel = channel_config_get(&channel_stats, $2->name, $1, this_proto);
-  STATS_CC->max_generation = 16;
-  STATS_CC->settle = 5 S_;
+  STATS_CC->min_settle_time = 1 S_;
+  STATS_CC->max_settle_time = 20 S_;
   $2 = cf_define_symbol($2, SYM_COUNTER, ch_config, this_channel);
 }
 

@@ -476,7 +476,7 @@
   INST(FI_COUNTER, 0, 1) {
     SYMBOL;
     NEVER_CONSTANT;
-    RESULT(T_INT, i, get_stats_sum(sym));
+    RESULT(T_INT, i, get_stats_counter(sym));
   }
 
   INST(FI_CONSTANT, 0, 1) {

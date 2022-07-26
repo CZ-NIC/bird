@@ -26,9 +26,7 @@
 
 #include "stats.h"
 
-#define COUNTER 255
-
-static void stats_kick_timer(struct stats_channel *c);
+static void stats_settle_timer(struct settle_timer *st);
 
 static void
 stats_rt_notify(struct proto *P UNUSED, struct channel *src_ch, const net_addr *n UNUSED, rte *new, const rte *old)
@@ -36,60 +34,54 @@ stats_rt_notify(struct proto *P UNUSED, struct channel *src_ch, const net_addr *
   struct stats_channel *ch = (void *) src_ch;
 
   int changed = 0;
-  if (old)
+  if (new && old)
+    /* count of exported routes stays the same */
+    log(L_INFO "nothing happen - no change of counter");
+  else if (!old)
   {
-    ch->counters[old->generation]--;
-    if (old->generation <= ch->max_generation)
-    {
-      changed = 1;
-      ch->counters[COUNTER]--;
-    }
+    log(L_INFO "increasing _counter");
+    ch->_counter++;
+    changed = 1;
+    if (ch->_counter > 100)
+      log(L_INFO "underflow?");
+  }
+  else if (!new)
+  {
+    log(L_INFO "decreasing _counter");
+    ch->_counter--;
+    changed = 1;
+    if (ch->_counter > 100)
+      log(L_INFO "underflow? - ");
+  }
+  else  /* shouldn't happen */
+  {
+    log(L_INFO "BUG is here !!!");
+    bug("Both pointers *new and *old in rt_notify are NULL");
   }
 
-  if (new)
-  {
-    ch->counters[new->generation]++;
-    if (new->generation <= ch->max_generation)
-    {
-      changed = 1;
-      ch->counters[COUNTER]++;
-    }
-  }  
-
+  log(L_INFO "stats channel %s: preparing to kick the timer %d", src_ch->name,
+changed);
   if (changed)
   {
-    log(L_INFO "stats: timer kicked with time %u", ch->settle);
-    stats_kick_timer((struct stats_channel *) ch);
+    settle_timer_changed(ch->settle_timer);
+    kick_settle_timer(ch->settle_timer);
   }
 }
 
 static void
-stats_reload_routes(struct channel *C UNUSED)
+stats_reload_routes(struct channel *C)
 {
-  /* Route reload on one channel is just refeed on the other */
-  //channel_request_feeding(p->c);
-}
+  // TODO
+  struct stats_channel *c = (void *) C;
 
-static void 
-stats_configure_channels(struct proto *P, struct proto_config *CF)
-{
-  struct channel_config *cc;
-  WALK_LIST(cc, CF->channels)
-  {
-    struct channel *c = NULL;
-    proto_configure_channel(P, &c, cc);
-
-    struct stats_channel *sc = (void *) c;
-    struct stats_channel_config *scc = (void *) cc;
-
-    sc->max_generation = scc->max_generation;
-    sc->settle = scc->settle;
-  } 
+  c->_counter = c->counter = 0;
+  channel_request_feeding(C);
 }
 
 static struct proto *
 stats_init(struct proto_config *CF)
 {
+  log(L_INFO "stats_init() ");
   struct proto *P = proto_new(CF);
   struct stats_proto *p = (void *) P;
 
@@ -98,14 +90,31 @@ stats_init(struct proto_config *CF)
 
   p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 
-  stats_configure_channels(P, CF);
-
   return P;
 }
 
-static int
-stats_start(struct proto *P UNUSED) 
+static struct settle_timer_class stats_settle_class = {
+  .action = stats_settle_timer,
+  .kick = NULL,
+};
+
+static void 
+stats_configure_channels(struct proto *P, struct proto_config *CF)
 {
+  log(L_INFO "stats_configure_channels()");
+  struct channel_config *cc;
+  WALK_LIST(cc, CF->channels)
+  {
+    struct channel *c = proto_find_channel_by_name(P, cc->name);
+    proto_configure_channel(P, &c, cc);
+  } 
+}
+
+static int
+stats_start(struct proto *P)
+{
+  log(L_INFO "stats_start() ");
+  stats_configure_channels(P, P->cf);
   return PS_UP;
 }
 
@@ -131,18 +140,16 @@ stats_reconfigure(struct proto *P, struct proto_config *CF)
       struct stats_channel *sc = (void *) c;
       struct stats_channel_config *scc = (void *) cc;
 
-      sc->max_generation = scc->max_generation;
-      sc->settle = scc->settle;
+      sc->settle_timer->min_settle_time = &(scc->min_settle_time);
+      sc->settle_timer->max_settle_time = &(scc->max_settle_time);
 
-      /* recalculate sum */
-      sc->counters[COUNTER] = 0;
-      for (u8 i = 0; i <= sc->max_generation; i++)
-	sc->counters[COUNTER] += sc->counters[i];
+      if (sc->counter != sc->_counter)
+      {
+	sc->counter = sc->_counter;
 
-      sc->sum = sc->counters[COUNTER];
-
-      /* notify all hooked filters */
-      // TODO here
+	/* notify all hooked filters */
+	// TODO here
+      }
 
       c->stale = 0;
     }
@@ -161,44 +168,19 @@ stats_show_proto_info(struct proto *P)
 {
   struct stats_proto *p = (void *) P;
 
-  /* indexes of non-zero counters */
-  u32 *arr = mb_alloc(p->p.pool, 256 * sizeof(u32));
-
   struct stats_channel *sc;
   WALK_LIST(sc, p->p.channels)
   {
-    for (uint i = 0; i < 256; i++)
-    {
-      arr[i] = 0;
-    }
-  
-    u8 len = 0;
-    for (u8 i = 0; i < sc->max_generation; i++)
-      if (sc->counters[i])
-      {
-	arr[len] = i;
-	len++;
-      }
-
     cli_msg(-1006, "  Channel %s", sc->c.name);
-    cli_msg(-1006, "    Max generation:  %3u", sc->max_generation);
-    // FIXME : actual or visible to filters ? AND TIME below in the comment
     cli_msg(-1006, "    Exports:  %10u (currently:  %10u)",
-	      sc->sum,
-	      sc->counters[COUNTER]);
-    cli_msg(-1006, "    Settle time:  %7u s", sc->settle / 1000000 );
-    cli_msg(-1006, "    Counter     exported");
-
-    for (u8 i = 0; i < len; i++)
-      cli_msg(-1006, "      %3u:    %10u ", arr[i], sc->counters[arr[i]]);
-
-    if (!len)
-      cli_msg(-1006, "      <all zeroes>");
-
-    cli_msg(-1006, "");
+	      sc->counter,
+	      sc->_counter);
+    if (!P->disabled)
+    {
+      cli_msg(-1006, "    Settle time:  %4u s", (*(sc->settle_timer->min_settle_time)) TO_S);
+      cli_msg(-1006, "    Settle time:  %4u s", (*(sc->settle_timer->max_settle_time)) TO_S);
+    }
   }
-
-  mb_free(arr);
 }
 
 void
@@ -212,43 +194,41 @@ stats_update_debug(struct proto *P)
 }
 
 static void
-stats_timer(timer *t)
+stats_settle_timer(struct settle_timer *st)
 {
-  log(L_INFO "timer executing update");
-  struct stats_channel *c = (struct stats_channel *) t->data;
+  timer *t = (void *) st;
+  struct stats_channel *c = t->data;
+  log(L_INFO "stats_settle_timer() _counter: %u, counter: %u",
+      c->_counter, c->counter);
 
-  /* update the sum correct counter data */
-  c->sum = c->counters[COUNTER];
-
-  /* notify all filters to reevaluate them */
-  // TODO here
-
-}
-
-static void
-stats_kick_timer(struct stats_channel *c)
-{
-
-  /* if set to zero execute immediately */
-  if (!c->settle)
-    stats_timer(c->timer);
-
-  if (!tm_active(c->timer))
-    tm_start(c->timer, c->settle);
+  /* update only if real change happen */
+  if (c->counter != c->_counter)
+  {
+    c->counter = c->_counter;
+    /* do update here */
+    // WALK_LIST(s, subscribers)
+    // { ... }
+  }
 }
 
 static int
 stats_channel_start(struct channel *C)
 {
   struct stats_channel *c = (void *) C;
+  struct stats_channel_config *cc = (void *) C->config;
   struct stats_proto *p = (void *) C->proto;
 
   c->pool = p->p.pool;
 
-  c->timer = tm_new_init(c->pool, stats_timer, (void *) c, 0, 0);
+  if (!c->settle_timer)
+    c->settle_timer = stm_new_timer(
+      c->pool, (void *) c, &stats_settle_class);
 
-  c->counters = mb_allocz(c->pool, 256 * sizeof(u32));
-  c->sum = 0;
+  c->settle_timer->min_settle_time = &(cc->min_settle_time);
+  c->settle_timer->max_settle_time = &(cc->max_settle_time);
+
+  c->_counter = 0;
+  c->counter = 0;
 
   return 0;
 }
@@ -256,16 +236,19 @@ stats_channel_start(struct channel *C)
 static void
 stats_channel_shutdown(struct channel *C)
 {
+  log(L_INFO "stats_channel_shutdown()");
   struct stats_channel *c = (void *) C;
 
-  mb_free(c->counters);
+  tm_stop((timer *) c->settle_timer);
 
-  /* FIXME freed automatically by the resource pool ?
-  rfree(c->timer);
-  */
-  
-  c->max_generation = 0;
-  c->counters = NULL;
+  c->settle_timer->min_settle_time = NULL;
+  c->settle_timer->max_settle_time = NULL;
+
+  mb_free(c->settle_timer);
+  c->settle_timer = NULL;
+
+  c->_counter = 0;
+  c->counter = 0;
   c->pool = NULL;
 }
 

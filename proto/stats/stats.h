@@ -9,6 +9,7 @@
 
 #ifndef _BIRD_STATS_H_
 #define _BIRD_STATS_H_
+#include "lib/timer.h"
 
 struct stats_channel;
 
@@ -24,25 +25,28 @@ struct stats_proto {
 
 struct stats_channel {
   struct channel c;
-  pool *pool;
-  u8 max_generation;
-  u32 *counters;
-  u32 sum;
-  timer *timer;
-  btime settle;
+  pool *pool;                     /* copy of procotol pool */
+  u32 _counter;			  /* internal counter */
+  u32 counter;			  /* publicly accessible counter */
+  struct settle_timer *settle_timer;
 };
 
 struct stats_channel_config {
   struct channel_config c;
-  u8 max_generation;
-  btime settle;
+  btime min_settle_time;              /* wait before notifying filters */
+  btime max_settle_time;
 };
 
+/*
+ * get_stats_counter() - extract last notified counter
+ *   for specific stats channel if it runs
+ *
+ */
 static inline int
-get_stats_sum(struct symbol *sym)
+get_stats_counter(struct symbol *sym)
 {
   if (sym->ch_config->channel)
-    return (int) ((struct stats_channel *) sym->ch_config->channel)->sum;
+    return (int) ((struct stats_channel *) sym->ch_config->channel)->counter;
   else
     return 0;
 }
