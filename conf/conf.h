@@ -109,6 +109,7 @@ void cfg_copy_list(list *dest, list *src, unsigned node_size);
 
 extern int (*cf_read_hook)(byte *buf, uint max, int fd);
 
+struct stats_term_config;
 struct symbol {
   node n;				/* In list of symbols in config */
   struct symbol *next;
@@ -125,6 +126,7 @@ struct symbol {
     struct f_val *val;			/* For SYM_CONSTANT */
     uint offset;			/* For SYM_VARIABLE */
     struct channel_config *ch_config;	/* For SYM_COUNTER */
+    struct stats_term_config *term;     /* For SYM_COUNTER_TERM */
   };
 
   char name[0];
@@ -158,6 +160,7 @@ struct bytestring {
 #define SYM_TABLE 5
 #define SYM_ATTRIBUTE 6
 #define SYM_COUNTER 7
+#define SYM_COUNTER_TERM 8
 
 #define SYM_VARIABLE 0x100	/* 0x100-0x1ff are variable types */
 #define SYM_VARIABLE_RANGE SYM_VARIABLE ... (SYM_VARIABLE | 0xff)

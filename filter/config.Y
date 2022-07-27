@@ -761,6 +761,9 @@ symbol_value: symbol_known
       case SYM_COUNTER:
 	$$ = f_new_inst(FI_COUNTER, $1);
 	break;
+      case SYM_COUNTER_TERM:
+	$$ = f_new_inst(FI_COUNTER_TERM, $1);
+	break;
       default:
 	cf_error("Can't get value of symbol %s", $1->name);
     }

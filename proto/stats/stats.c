@@ -115,6 +115,16 @@ stats_start(struct proto *P)
 {
   log(L_INFO "stats_start() ");
   stats_configure_channels(P, P->cf);
+
+  struct stats_term_config *tc;
+  WALK_LIST(tc, ((struct stats_config *) P->cf)->terms)
+  {
+    log(L_INFO "term %s", tc->name);
+    f_eval(tc->code, &tc->val);
+    log(L_INFO "content: %s, matches %s", val_dump(&tc->val),
+      tc->type == tc->val.type ? "yes" : "no");
+  }
+
   return PS_UP;
 }
 
@@ -181,6 +191,9 @@ stats_show_proto_info(struct proto *P)
       cli_msg(-1006, "    Settle time:  %4u s", (*(sc->settle_timer->max_settle_time)) TO_S);
     }
   }
+
+  cli_msg(-1006, "  Terms:");
+  cli_msg(-1006, "terms list: %p", ((struct stats_config *) p->c)->terms);
 }
 
 void
@@ -251,6 +264,40 @@ stats_channel_shutdown(struct channel *C)
   c->counter = 0;
   c->pool = NULL;
 }
+
+int
+stats_get_counter(struct symbol *sym)
+{
+  if (sym->ch_config->channel)
+    return (int) ((struct stats_channel *) sym->ch_config->channel)->counter;
+  else
+    return 0;
+}
+
+struct f_val
+stats_eval_term(struct stats_term_config *tc)
+{
+  log(L_INFO "stats_eval_term() evaluating value of %s", 
+    tc->name);
+  enum filter_return fret = f_eval(tc->code, &tc->val);
+
+  if (fret > F_RETURN)
+    tc->val.type = T_VOID;
+
+  if (tc->type != tc->val.type)
+    tc->val.type = T_VOID;
+
+  log(L_INFO " stats_eval_term() returning %s", val_dump(&tc->val));
+  return tc->val;
+}
+
+int
+stats_get_type(struct stats_term_config *tc)
+{
+  log(L_INFO "stats_get_type()");
+  return tc->type;
+}
+
 
 struct channel_class channel_stats = {
   .channel_size =	sizeof(struct stats_channel),

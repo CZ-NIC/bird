@@ -13,11 +13,12 @@ CF_HDR
 
 CF_DEFINES
 
+#define STATS_CFG ((struct stats_config *) this_proto)
 #define STATS_CC ((struct stats_channel_config *) this_channel)
 
 CF_DECLS
 
-CF_KEYWORDS(STATS, TABLE, MAX, GENERATION, SETTLE, TIME)
+CF_KEYWORDS(STATS, TABLE, MAX, MIN, SETTLE, TIME)
 
 %type <cc> stats_channel_start
 
@@ -28,6 +29,7 @@ proto: stats_proto '}' { this_channel = NULL; }  ;
 stats_proto_start: proto_start STATS
 {
   this_proto = proto_config_new(&proto_stats, $1);
+  init_list(&STATS_CFG->terms);
 }
 
 proto_name ;
@@ -39,10 +41,20 @@ stats_channel_opt_list:
 
 stats_opt:
     type symbol '=' term {
-      struct f_val val;
-      if (f_eval(f_linearize($4), &val) > F_RETURN) cf_error("Runtime error");
+      
+      struct stats_term_config *tc = cfg_alloc(sizeof(struct stats_term_config));
+      tc->code = (const struct f_line *) f_linearize($4);
+      tc->type = $1;
+      tc->name = $2->name;
+     
+      struct f_val val; 
+      /* greater then F_RETURN, therefore 2 */
+      if (f_eval(f_linearize($4), &val) > 2) cf_error("Runtime error"); 
       if (val.type != $1) cf_error("The expresion does not match defined type");
-      /* cf_define_symbol($2, SYM_VARIABLE | $1, val )*/
+
+      add_tail(&STATS_CFG->terms, (node *) tc); 
+
+      $2 = cf_define_symbol($2, SYM_COUNTER_TERM, term, tc); 
     }
   | MIN SETTLE TIME expr_us { STATS_CC->min_settle_time = $4; }
   | MAX SETTLE TIME expr_us { STATS_CC->max_settle_time = $4; }
