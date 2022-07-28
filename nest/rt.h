@@ -106,7 +106,7 @@ typedef struct rtable {
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
 
   list subscribers;			/* Subscribers for notifications */
-  struct settle_timer *settle_timer;	/* Settle time for notifications */
+  struct settle_timer settle_timer;	/* Settle time for notifications */
   list flowspec_links;			/* List of flowspec links, src for NET_IPx and dst for NET_FLOWx */
   struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
 } rtable;

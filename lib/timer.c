@@ -386,11 +386,9 @@ static inline btime
 settled_time(struct settle_timer *st)
 {
   ASSUME(st->base_settle_time != 0);
-  if (st->base_settle_time + *(st->max_settle_time) <
-      st->last_change + *(st->min_settle_time))
-    log(L_INFO "settle_timer will be triggered by MAX SETTLE TIME");
-  return MIN_(st->last_change + *(st->min_settle_time),
-	      st->base_settle_time + *(st->max_settle_time));
+
+  return MIN_(st->last_change + st->min_settle_time,
+	      st->base_settle_time + st->max_settle_time);
 }
 
 inline void
@@ -402,7 +400,7 @@ settle_timer_changed(struct settle_timer *st)
 void
 settle_timer(timer *t)
 {
-  struct settle_timer *st = (void *) t;
+  struct settle_timer *st = t->data;
 
   if (!st->base_settle_time)
     return;
@@ -410,31 +408,29 @@ settle_timer(timer *t)
   btime settled_t = settled_time(st);
   if (current_time() < settled_t)
   {
-    tm_set((timer *) st, settled_t);
+    tm_set(t, settled_t);
     return;
   }
+
 
   /* Settled */
   st->base_settle_time = 0;
 
-  if (st->class->action)
-    st->class->action(st);
+  /* t->hook already occupied by settle_timer() */
+  if (st->settle_hook)
+    st->settle_hook(st);
 }
 
-struct settle_timer *
-stm_new_timer(pool *p, void *data, struct settle_timer_class *class)
+void
+stm_init(struct settle_timer *st, pool *p, void *data, 
+         void (*settle_hook)(struct settle_timer *st))
 {
-  struct settle_timer *st;
-  st = mb_allocz(p, sizeof(struct settle_timer));
-  st->class = class;
+  st->t = tm_new_init(p, (void *) st, settle_timer, 0, 0); 
+  st->t->hook = settle_timer;
+  st->t->data = (void *) st;
 
-  /* timer option randomize and recurrent are set to zero */
-  timer *t = (void *) st;
-  t->index = -1;
-  t->hook = settle_timer;
-  t->data = data;
-
-  return st;
+  st->settle_data = data;
+  st->settle_hook = settle_hook;
 }
 
 void
@@ -444,7 +440,7 @@ kick_settle_timer(struct settle_timer *st)
 
   st->base_settle_time = current_time();
 
-  timer *t = (void *) st;
+  timer *t = st->t;
   if (!tm_active(t))
     tm_set(t, settled_time(st));
 }

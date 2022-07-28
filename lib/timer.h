@@ -129,21 +129,16 @@ int tm_format_real_time(char *x, size_t max, const char *fmt, btime t);
  */
 
 struct settle_timer {
-  timer tm;
-  btime *min_settle_time;
-  btime *max_settle_time;
+  btime min_settle_time;
+  btime max_settle_time;
   btime base_settle_time;
   btime last_change;
-  const struct settle_timer_class *class;
+  timer *t;
+  void (*settle_hook)(struct settle_timer *t);
+  void *settle_data;
 };
 
-struct settle_timer_class {
-  void (*action)(struct settle_timer *st);
-  void (*changed)(struct settle_timer *st);
-  void (*kick)(struct settle_timer *st);
-};
-
-struct settle_timer *stm_new_timer(pool *p, void *data, struct settle_timer_class *class);
+void stm_init(struct settle_timer *st, pool *p, void *data, void (*settle_hook)(struct settle_timer *st));
 void kick_settle_timer(struct settle_timer *st);
 void settle_timer_changed(struct settle_timer *st);
 
