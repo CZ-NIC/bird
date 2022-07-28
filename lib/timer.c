@@ -32,7 +32,6 @@
 
 #include "nest/bird.h"
 
-#include "lib/coro.h"
 #include "lib/heap.h"
 #include "lib/resource.h"
 #include "lib/timer.h"
@@ -117,7 +116,7 @@ tm_set_in_tl(timer *t, btime when, struct timeloop *local_timeloop)
 
   t->loop = local_timeloop;
 
-  if ((t->index == 1) && (local_timeloop->coro != this_coro))
+  if (t->index == 1)
     birdloop_ping(local_timeloop->loop);
 }
 

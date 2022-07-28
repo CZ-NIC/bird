@@ -41,7 +41,6 @@ struct timeloop
   BUFFER_(timer *) timers;
   struct domain_generic *domain;
   struct birdloop *loop;
-  struct coroutine *coro;
 };
 
 #define TLOCK_TIMER_ASSERT(loop) ASSERT_DIE((loop)->domain && DG_IS_LOCKED((loop)->domain))

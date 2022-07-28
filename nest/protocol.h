@@ -134,7 +134,7 @@ struct proto {
   u32 debug;				/* Debugging flags */
   u32 mrtdump;				/* MRTDump flags */
   uint active_channels;			/* Number of active channels */
-  uint active_coroutines;		/* Number of active coroutines */
+  uint active_loops;			/* Number of active IO loops */
   byte net_type;			/* Protocol network type (NET_*), 0 for undefined */
   byte disabled;			/* Manually disabled */
   byte vrf_set;				/* Related VRF instance (above) is defined */
@@ -342,7 +342,7 @@ void proto_notify_state(struct proto *p, unsigned state);
  */
 
 static inline int proto_is_inactive(struct proto *p)
-{ return (p->active_channels == 0) && (p->active_coroutines == 0); }
+{ return (p->active_channels == 0) && (p->active_loops == 0); }
 
 
 /*

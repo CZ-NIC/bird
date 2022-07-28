@@ -1,7 +1,6 @@
 /*
- *	BIRD Coroutines
+ *	BIRD Locking
  *
- *	(c) 2017 Martin Mares <mj@ucw.cz>
  *	(c) 2020 Maria Matejka <mq@jmq.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
@@ -17,17 +16,10 @@
 
 #include "lib/birdlib.h"
 #include "lib/locking.h"
-#include "lib/coro.h"
 #include "lib/resource.h"
 #include "lib/timer.h"
 
 #include "conf/conf.h"
-
-#define CORO_STACK_SIZE	65536
-
-/*
- *	Implementation of coroutines based on POSIX threads
- */
 
 #include <errno.h>
 #include <fcntl.h>
@@ -121,72 +113,4 @@ void do_unlock(struct domain_generic *dg, struct domain_generic **lsp)
   *lsp = NULL;
   dg->prev = NULL;
   pthread_mutex_unlock(&dg->mutex);
-}
-
-/* Coroutines */
-struct coroutine {
-  resource r;
-  pthread_t id;
-  pthread_attr_t attr;
-  void (*entry)(void *);
-  void *data;
-};
-
-static _Thread_local _Bool coro_cleaned_up = 0;
-
-static void coro_free(resource *r)
-{
-  struct coroutine *c = (void *) r;
-  ASSERT_DIE(pthread_equal(pthread_self(), c->id));
-  pthread_attr_destroy(&c->attr);
-  coro_cleaned_up = 1;
-}
-
-static struct resclass coro_class = {
-  .name = "Coroutine",
-  .size = sizeof(struct coroutine),
-  .free = coro_free,
-};
-
-_Thread_local struct coroutine *this_coro = NULL;
-
-static void *coro_entry(void *p)
-{
-  struct coroutine *c = p;
-
-  ASSERT_DIE(c->entry);
-
-  this_coro = c;
-
-  c->entry(c->data);
-  ASSERT_DIE(coro_cleaned_up);
-
-  return NULL;
-}
-
-struct coroutine *coro_run(pool *p, void (*entry)(void *), void *data)
-{
-  ASSERT_DIE(entry);
-  ASSERT_DIE(p);
-
-  struct coroutine *c = ralloc(p, &coro_class);
-
-  c->entry = entry;
-  c->data = data;
-
-  int e = 0;
-
-  if (e = pthread_attr_init(&c->attr))
-    die("pthread_attr_init() failed: %M", e);
-
-  if (e = pthread_attr_setstacksize(&c->attr, CORO_STACK_SIZE))
-    die("pthread_attr_setstacksize(%u) failed: %M", CORO_STACK_SIZE, e);
-
-  if (e = pthread_attr_setdetachstate(&c->attr, PTHREAD_CREATE_DETACHED))
-    die("pthread_attr_setdetachstate(PTHREAD_CREATE_DETACHED) failed: %M", e);
-
-  if (e = pthread_create(&c->id, &c->attr, coro_entry, c))
-    die("pthread_create() failed: %M", e);
-
-  return c;
 }

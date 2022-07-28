@@ -21,8 +21,12 @@ struct birdloop
   u8 poll_changed;
   u8 close_scheduled;
 
+  uint ping_pending;
   _Atomic u32 ping_sent;
   int wakeup_fds[2];
+
+  pthread_t thread_id;
+  pthread_attr_t thread_attr;
 
   uint links;
 

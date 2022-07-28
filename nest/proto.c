@@ -15,7 +15,6 @@
 #include "lib/event.h"
 #include "lib/timer.h"
 #include "lib/string.h"
-#include "lib/coro.h"
 #include "conf/conf.h"
 #include "nest/rt.h"
 #include "nest/iface.h"

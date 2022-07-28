@@ -1984,7 +1984,7 @@ rt_export_stopped(void *data)
   /* Reporting the hook as finished. */
   CALL(tab->done, hook);
 
-  /* Free the hook together with its coroutine. */
+  /* Free the hook. */
   rfree(hook->pool);
 }
 
