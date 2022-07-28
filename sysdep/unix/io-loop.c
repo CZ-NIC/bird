@@ -205,7 +205,7 @@ sk_stop(sock *s)
 }
 
 static inline uint sk_want_events(sock *s)
-{ return ((s->rx_hook && !ev_corked(s->cork)) ? POLLIN : 0) | ((s->ttx != s->tpos) ? POLLOUT : 0); }
+{ return (s->rx_hook ? POLLIN : 0) | ((s->ttx != s->tpos) ? POLLOUT : 0); }
 
 /*
 FIXME: this should be called from sock code

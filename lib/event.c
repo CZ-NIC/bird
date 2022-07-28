@@ -114,42 +114,17 @@ ev_send(event_list *l, event *e)
 
   e->list = l;
 
-  struct event_cork *ec = e->cork;
-
-  uint ping = 0;
-
-  if (ec)
+  LOCK_DOMAIN(event, l->lock);
+  if (enlisted(&e->n))
   {
-    LOCK_DOMAIN(cork, ec->lock);
-    LOCK_DOMAIN(event, l->lock);
-
-    if (!enlisted(&e->n))
-      if (ec->count)
-	add_tail(&ec->events, &e->n);
-      else
-      {
-	add_tail(&l->events, &e->n);
-	ping = 1;
-      }
-
     UNLOCK_DOMAIN(event, l->lock);
-    UNLOCK_DOMAIN(cork, ec->lock);
-  }
-  else
-  {
-    LOCK_DOMAIN(event, l->lock);
-
-    if (!enlisted(&e->n))
-    {
-      add_tail(&l->events, &e->n);
-      ping = 1;
-    }
-
-    UNLOCK_DOMAIN(event, l->lock);
+    return;
   }
 
-  if (ping)
-    birdloop_ping(l->loop);
+  add_tail(&l->events, &e->n);
+  UNLOCK_DOMAIN(event, l->lock);
+
+  birdloop_ping(l->loop);
 }
 
 void io_log_event(void *hook, void *data);
@@ -248,41 +223,4 @@ ev_run_list_limited(event_list *l, uint limit)
   UNLOCK_DOMAIN(event, l->lock);
 
   return repeat;
-}
-
-void ev_cork(struct event_cork *ec)
-{
-  LOCK_DOMAIN(cork, ec->lock);
-  ec->count++;
-  UNLOCK_DOMAIN(cork, ec->lock);
-}
-
-void ev_uncork(struct event_cork *ec)
-{
-  LOCK_DOMAIN(cork, ec->lock);
-
-  if (--ec->count)
-  {
-    UNLOCK_DOMAIN(cork, ec->lock);
-    return;
-  }
-
-  node *n;
-  WALK_LIST_FIRST(n, ec->events)
-    {
-      event *e = SKIP_BACK(event, n, n);
-      event_list *el = e->list;
-
-      rem_node(&e->n);
-
-      LOCK_DOMAIN(event, el->lock);
-      add_tail(&el->events, &e->n);
-      UNLOCK_DOMAIN(event, el->lock);
-
-      birdloop_ping(el->loop);
-    }
-
-  UNLOCK_DOMAIN(cork, ec->lock);
-
-  birdloop_ping(&main_birdloop);
 }

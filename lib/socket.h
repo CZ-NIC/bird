@@ -57,7 +57,6 @@ typedef struct birdsock {
   uint fast_rx;				/* RX has higher priority in event loop */
   uint rbsize;
   int (*rx_hook)(struct birdsock *, uint size); /* NULL=receiving turned off, returns 1 to clear rx buffer */
-  struct event_cork *cork;		/* Cork to temporarily stop receiving data */
 
   byte *tbuf, *tpos;			/* NULL=allocate automatically */
   byte *ttx;				/* Internal */

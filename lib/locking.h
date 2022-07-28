@@ -16,7 +16,6 @@ struct lock_order {
   struct domain_generic *the_bird;
   struct domain_generic *proto;
   struct domain_generic *rtable;
-  struct domain_generic *cork;
   struct domain_generic *event;
 };
 

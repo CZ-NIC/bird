@@ -15,7 +15,6 @@
 #include <stdatomic.h>
 
 DEFINE_DOMAIN(event);
-DEFINE_DOMAIN(cork);
 
 typedef struct event {
   resource r;
@@ -23,8 +22,6 @@ typedef struct event {
   void *data;
   node n;				/* Internal link */
   struct event_list *list;		/* List where this event is put in */
-  struct event_cork *cork;		/* Event execution limiter */
-  node cork_node;
 } event;
 
 typedef struct event_list {
@@ -33,12 +30,6 @@ typedef struct event_list {
   struct birdloop *loop;
   DOMAIN(event) lock;
 } event_list;
-
-struct event_cork {
-  DOMAIN(cork) lock;
-  u32 count;
-  list events;
-};
 
 extern event_list global_event_list;
 extern event_list global_work_list;
@@ -53,13 +44,6 @@ static inline void ev_init_list(event_list *el, struct birdloop *loop, const cha
   el->lock = DOMAIN_NEW(event, name);
 }
 
-static inline void ev_init_cork(struct event_cork *ec, const char *name)
-{
-  init_list(&ec->events);
-  ec->lock = DOMAIN_NEW(cork, name);
-  ec->count = 0;
-};
-
 void ev_send(event_list *, event *);
 #define ev_send_loop(l, e) ev_send(birdloop_event_list((l)), (e))
 
@@ -71,20 +55,6 @@ int ev_run_list(event_list *);
 int ev_run_list_limited(event_list *, uint);
 
 #define LEGACY_EVENT_LIST(l)  (((l) == &global_event_list) || ((l) == &global_work_list))
-
-void ev_cork(struct event_cork *);
-void ev_uncork(struct event_cork *);
-
-static inline u32 ev_corked(struct event_cork *ec)
-{
-  if (!ec)
-    return 0;
-
-  LOCK_DOMAIN(cork, ec->lock);
-  u32 out = ec->count;
-  UNLOCK_DOMAIN(cork, ec->lock);
-  return out;
-}
 
 _Bool birdloop_inside(struct birdloop *loop);
 
