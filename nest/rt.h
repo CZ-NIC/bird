@@ -18,6 +18,7 @@
 #include "lib/fib.h"
 #include "lib/route.h"
 #include "lib/event.h"
+#include "lib/rcu.h"
 
 #include <stdatomic.h>
 
@@ -32,6 +33,10 @@ struct filter;
 struct f_trie;
 struct f_trie_walk_state;
 struct cli;
+
+struct rt_cork_threshold {
+  u64 low, high;
+};
 
 /*
  *	Master Routing Tables. Generally speaking, each of them contains a FIB
@@ -57,6 +62,7 @@ struct rtable_config {
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
   btime export_settle_time;		/* Delay before exports are announced */
+  struct rt_cork_threshold cork_threshold;	/* Cork threshold values */
 };
 
 struct rt_export_hook;
@@ -111,6 +117,8 @@ typedef struct rtable {
   byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
   byte export_used;			/* Pending Export pruning is scheduled */
+  byte cork_active;			/* Cork has been activated */
+  struct rt_cork_threshold cork_threshold;	/* Threshold for table cork */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
   struct f_trie *trie_new;		/* New prefix trie defined during pruning */
@@ -138,6 +146,40 @@ struct rt_flowspec_link {
   rtable *dst;
   u32 uc;
 };
+
+extern struct rt_cork {
+  _Atomic uint active;
+  event_list queue;
+  event run;
+} rt_cork;
+
+static inline void rt_cork_acquire(void)
+{
+  atomic_fetch_add_explicit(&rt_cork.active, 1, memory_order_acq_rel);
+}
+
+static inline void rt_cork_release(void)
+{
+  if (atomic_fetch_sub_explicit(&rt_cork.active, 1, memory_order_acq_rel) == 1)
+  {
+    synchronize_rcu();
+    ev_schedule_work(&rt_cork.run);
+  }
+}
+
+static inline int rt_cork_check(event *e)
+{
+  rcu_read_lock();
+
+  int corked = (atomic_load_explicit(&rt_cork.active, memory_order_acquire) > 0);
+  if (corked)
+    ev_send(&rt_cork.queue, e);
+
+  rcu_read_unlock();
+
+  return corked;
+}
+
 
 #define NHU_CLEAN	0
 #define NHU_SCHEDULED	1

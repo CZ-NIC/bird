@@ -119,6 +119,8 @@ static linpool *rte_update_pool;
 list routing_tables;
 list deleted_routing_tables;
 
+struct rt_cork rt_cork;
+
 /* Data structures for export journal */
 #define RT_PENDING_EXPORT_ITEMS		(page_size - sizeof(struct rt_export_block)) / sizeof(struct rt_pending_export)
 
@@ -144,6 +146,9 @@ static void rt_feed_by_trie(void *);
 static void rt_feed_equal(void *);
 static void rt_feed_for(void *);
 static uint rt_feed_net(struct rt_export_hook *c, net *n);
+static void rt_check_cork_low(rtable *tab);
+static void rt_check_cork_high(rtable *tab);
+static void rt_cork_release_hook(void *);
 
 static inline void rt_export_used(struct rt_exporter *);
 static void rt_export_cleanup(rtable *tab);
@@ -1370,6 +1375,8 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
 
   if (tab->exporter.first == NULL)
     tab->exporter.first = rpe;
+
+  rt_check_cork_high(tab);
 
   if (!tm_active(tab->exporter.export_timer))
     tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
@@ -2667,6 +2674,8 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->last_rt_change = t->gc_time = current_time();
   t->exporter.next_seq = 1;
 
+  t->cork_threshold = cf->cork_threshold;
+
   t->rl_pipe = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 
   if (rt_is_flow(t))
@@ -2692,6 +2701,8 @@ rt_init(void)
   rte_update_pool = lp_new_default(rt_table_pool);
   init_list(&routing_tables);
   init_list(&deleted_routing_tables);
+  ev_init_list(&rt_cork.queue, &main_birdloop, "Route cork release");
+  rt_cork.run = (event) { .hook = rt_cork_release_hook };
 }
 
 
@@ -3000,6 +3011,8 @@ rt_export_cleanup(rtable *tab)
     first = next;
   }
 
+  rt_check_cork_low(tab);
+
 done:;
   struct rt_import_hook *ih; node *x;
   _Bool imports_stopped = 0;
@@ -3028,6 +3041,16 @@ done:;
 
   if (EMPTY_LIST(tab->exporter.pending) && tm_active(tab->exporter.export_timer))
     tm_stop(tab->exporter.export_timer);
+}
+
+static void
+rt_cork_release_hook(void *data UNUSED)
+{
+  do synchronize_rcu();
+  while (
+      !atomic_load_explicit(&rt_cork.active, memory_order_acquire) &&
+      ev_run_list(&rt_cork.queue)
+      );
 }
 
 /**
@@ -3610,6 +3633,8 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->gc_period = (uint) -1;	/* set in rt_postconfig() */
   c->min_settle_time = 1 S;
   c->max_settle_time = 20 S;
+  c->cork_threshold.low = 128;
+  c->cork_threshold.high = 512;
 
   add_tail(&new_config->tables, &c->n);
 
@@ -3655,6 +3680,36 @@ rt_unlock_table(rtable *r)
     }
 }
 
+static void
+rt_check_cork_low(rtable *tab)
+{
+  if (!tab->cork_active)
+    return;
+
+  if (!tab->exporter.first || (tab->exporter.first->seq + tab->cork_threshold.low > tab->exporter.next_seq))
+  {
+    tab->cork_active = 0;
+    rt_cork_release();
+
+    if (config->table_debug)
+      log(L_TRACE "%s: Uncorked", tab->name);
+  }
+}
+
+static void
+rt_check_cork_high(rtable *tab)
+{
+  if (!tab->cork_active && tab->exporter.first && (tab->exporter.first->seq + tab->cork_threshold.high <= tab->exporter.next_seq))
+  {
+    tab->cork_active = 1;
+    rt_cork_acquire();
+
+    if (config->table_debug)
+      log(L_TRACE "%s: Corked", tab->name);
+  }
+}
+
+
 static int
 rt_reconfigure(rtable *tab, struct rtable_config *new, struct rtable_config *old)
 {
@@ -3667,6 +3722,14 @@ rt_reconfigure(rtable *tab, struct rtable_config *new, struct rtable_config *old
   new->table = tab;
   tab->name = new->name;
   tab->config = new;
+
+  tab->cork_threshold = new->cork_threshold;
+
+  if (new->cork_threshold.high != old->cork_threshold.high)
+    rt_check_cork_high(tab);
+
+  if (new->cork_threshold.low != old->cork_threshold.low)
+    rt_check_cork_low(tab);
 
   return 1;
 }

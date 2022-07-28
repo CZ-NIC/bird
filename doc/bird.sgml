@@ -699,6 +699,15 @@ to set options.
 	periods. Default: adaptive, based on number of routing tables in the
 	configuration. From 10 s (with <= 25 routing tables) up to 600 s (with
 	>= 1500 routing tables).
+
+	<tag><label id="rtable-cork-threshold">cork threshold <m/number/ <m/number/</tag>
+	Too many pending exports may lead to memory bloating. In such cases,
+        BIRD tries to relieve the memory pressure by pausing some routines until
+        the queue sizes get low enough. This option allows the user to set the
+        thresholds; first value is the low threshold (when to resume), the
+        second one is the high threshold (when to pause). The higher is the
+        threshold, the more memory can get used. In most cases, the defaults
+	should work for you. Default: 128, 512.
 </descrip>
 
 
