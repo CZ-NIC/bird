@@ -36,6 +36,7 @@ stats_rt_notify(struct proto *P UNUSED, struct channel *src_ch, const net_addr *
   int changed = 0;
   if (new && old)
     /* count of exported routes stays the same */
+    ;
   else if (!old)
   {
     ch->_counter++;
