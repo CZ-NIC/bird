@@ -36,35 +36,25 @@ stats_rt_notify(struct proto *P UNUSED, struct channel *src_ch, const net_addr *
   int changed = 0;
   if (new && old)
     /* count of exported routes stays the same */
-    log(L_INFO "nothing happen - no change of counter");
   else if (!old)
   {
-    log(L_INFO "increasing _counter");
     ch->_counter++;
     changed = 1;
-    if (ch->_counter > 100)
-      log(L_INFO "underflow?");
   }
   else if (!new)
   {
-    log(L_INFO "decreasing _counter");
     ch->_counter--;
     changed = 1;
-    if (ch->_counter > 100)
-      log(L_INFO "underflow? - ");
   }
   else  /* shouldn't happen */
   {
-    log(L_INFO "BUG is here !!!");
     bug("Both pointers *new and *old in rt_notify are NULL");
   }
 
-  log(L_INFO "stats channel %s: preparing to kick the timer %d", src_ch->name,
-changed);
   if (changed)
   {
-    settle_timer_changed(ch->settle_timer);
-    kick_settle_timer(ch->settle_timer);
+    settle_timer_changed(&ch->settle_timer);
+    kick_settle_timer(&ch->settle_timer);
   }
 }
 
@@ -81,7 +71,6 @@ stats_reload_routes(struct channel *C)
 static struct proto *
 stats_init(struct proto_config *CF)
 {
-  log(L_INFO "stats_init() ");
   struct proto *P = proto_new(CF);
   struct stats_proto *p = (void *) P;
 
@@ -93,15 +82,9 @@ stats_init(struct proto_config *CF)
   return P;
 }
 
-static struct settle_timer_class stats_settle_class = {
-  .action = stats_settle_timer,
-  .kick = NULL,
-};
-
 static void 
 stats_configure_channels(struct proto *P, struct proto_config *CF)
 {
-  log(L_INFO "stats_configure_channels()");
   struct channel_config *cc;
   WALK_LIST(cc, CF->channels)
   {
@@ -113,16 +96,13 @@ stats_configure_channels(struct proto *P, struct proto_config *CF)
 static int
 stats_start(struct proto *P)
 {
-  log(L_INFO "stats_start() ");
   stats_configure_channels(P, P->cf);
 
+  /* evaluate terms on protocol start */
   struct stats_term_config *tc;
   WALK_LIST(tc, ((struct stats_config *) P->cf)->terms)
   {
-    log(L_INFO "term %s", tc->name);
-    f_eval(tc->code, &tc->val);
-    log(L_INFO "content: %s, matches %s", val_dump(&tc->val),
-      tc->type == tc->val.type ? "yes" : "no");
+    stats_eval_term(tc);
   }
 
   return PS_UP;
@@ -150,8 +130,8 @@ stats_reconfigure(struct proto *P, struct proto_config *CF)
       struct stats_channel *sc = (void *) c;
       struct stats_channel_config *scc = (void *) cc;
 
-      sc->settle_timer->min_settle_time = &(scc->min_settle_time);
-      sc->settle_timer->max_settle_time = &(scc->max_settle_time);
+      sc->settle_timer.min_settle_time = scc->min_settle_time;
+      sc->settle_timer.max_settle_time = scc->max_settle_time;
 
       if (sc->counter != sc->_counter)
       {
@@ -187,13 +167,19 @@ stats_show_proto_info(struct proto *P)
 	      sc->_counter);
     if (!P->disabled)
     {
-      cli_msg(-1006, "    Settle time:  %4u s", (*(sc->settle_timer->min_settle_time)) TO_S);
-      cli_msg(-1006, "    Settle time:  %4u s", (*(sc->settle_timer->max_settle_time)) TO_S);
+      cli_msg(-1006, "    Settle time:  %4u s", sc->settle_timer.min_settle_time TO_S);
+      cli_msg(-1006, "    Settle time:  %4u s", sc->settle_timer.max_settle_time TO_S);
     }
   }
 
   cli_msg(-1006, "  Terms:");
-  cli_msg(-1006, "terms list: %p", ((struct stats_config *) p->c)->terms);
+
+  struct stats_term_config *tc;
+  WALK_LIST(tc, ((struct stats_config *) P->cf)->terms)
+  {
+    stats_eval_term(tc);
+    cli_msg(-1006, "    %s = %s", tc->name, val_dump(tc->val));
+  }
 }
 
 void
@@ -209,10 +195,7 @@ stats_update_debug(struct proto *P)
 static void
 stats_settle_timer(struct settle_timer *st)
 {
-  timer *t = (void *) st;
-  struct stats_channel *c = t->data;
-  log(L_INFO "stats_settle_timer() _counter: %u, counter: %u",
-      c->_counter, c->counter);
+  struct stats_channel *c = st->settle_data;
 
   /* update only if real change happen */
   if (c->counter != c->_counter)
@@ -233,12 +216,10 @@ stats_channel_start(struct channel *C)
 
   c->pool = p->p.pool;
 
-  if (!c->settle_timer)
-    c->settle_timer = stm_new_timer(
-      c->pool, (void *) c, &stats_settle_class);
+  stm_init(&c->settle_timer, c->pool, (void *)c, stats_settle_timer);
 
-  c->settle_timer->min_settle_time = &(cc->min_settle_time);
-  c->settle_timer->max_settle_time = &(cc->max_settle_time);
+  c->settle_timer.min_settle_time = cc->min_settle_time;
+  c->settle_timer.max_settle_time = cc->max_settle_time;
 
   c->_counter = 0;
   c->counter = 0;
@@ -249,16 +230,9 @@ stats_channel_start(struct channel *C)
 static void
 stats_channel_shutdown(struct channel *C)
 {
-  log(L_INFO "stats_channel_shutdown()");
   struct stats_channel *c = (void *) C;
 
-  tm_stop((timer *) c->settle_timer);
-
-  c->settle_timer->min_settle_time = NULL;
-  c->settle_timer->max_settle_time = NULL;
-
-  mb_free(c->settle_timer);
-  c->settle_timer = NULL;
+  tm_stop(c->settle_timer.t);
 
   c->_counter = 0;
   c->counter = 0;
@@ -274,30 +248,10 @@ stats_get_counter(struct symbol *sym)
     return 0;
 }
 
-struct f_val
-stats_eval_term(struct stats_term_config *tc)
+void stats_eval_term(struct stats_term_config *tc)
 {
-  log(L_INFO "stats_eval_term() evaluating value of %s", 
-    tc->name);
-  enum filter_return fret = f_eval(tc->code, &tc->val);
-
-  if (fret > F_RETURN)
-    tc->val.type = T_VOID;
-
-  if (tc->type != tc->val.type)
-    tc->val.type = T_VOID;
-
-  log(L_INFO " stats_eval_term() returning %s", val_dump(&tc->val));
-  return tc->val;
+  f_eval(tc->code, tc->val);
 }
-
-int
-stats_get_type(struct stats_term_config *tc)
-{
-  log(L_INFO "stats_get_type()");
-  return tc->type;
-}
-
 
 struct channel_class channel_stats = {
   .channel_size =	sizeof(struct stats_channel),

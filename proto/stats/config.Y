@@ -43,18 +43,20 @@ stats_opt:
     type symbol '=' term {
       
       struct stats_term_config *tc = cfg_alloc(sizeof(struct stats_term_config));
+      struct f_val *val = cfg_allocz(sizeof(struct stats_term_config));
       tc->code = (const struct f_line *) f_linearize($4);
       tc->type = $1;
       tc->name = $2->name;
+      tc->val = val;
      
-      struct f_val val; 
       /* greater then F_RETURN, therefore 2 */
-      if (f_eval(f_linearize($4), &val) > 2) cf_error("Runtime error"); 
-      if (val.type != $1) cf_error("The expresion does not match defined type");
+      //if (f_eval(f_linearize($4), &val) > 2) cf_error("Runtime error");
+      //if (val.type != $1) cf_error("The expresion does not match defined type");
 
-      add_tail(&STATS_CFG->terms, (node *) tc); 
+      add_tail(&STATS_CFG->terms, (node *) tc);
+      stats_eval_term(tc);
 
-      $2 = cf_define_symbol($2, SYM_COUNTER_TERM, term, tc); 
+      $2 = cf_define_symbol($2, SYM_COUNTER_TERM, val, val);
     }
   | MIN SETTLE TIME expr_us { STATS_CC->min_settle_time = $4; }
   | MAX SETTLE TIME expr_us { STATS_CC->max_settle_time = $4; }

@@ -483,8 +483,8 @@
     SYMBOL;
     NEVER_CONSTANT;
 
-    RESULT_TYPE(stats_get_type(sym->term));
-    RESULT_VAL(stats_eval_term(sym->term));
+    RESULT_TYPE(sym->val->type);
+    RESULT_VAL(*sym->val);
   }
 
   INST(FI_CONSTANT, 0, 1) {

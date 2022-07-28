@@ -17,7 +17,7 @@ struct stats_channel;
 struct stats_term_config {
   node n;
   const struct f_line *code;
-  struct f_val val;
+  struct f_val *val;
   int type;                     /* type declared in configuration */
   const char *name;
 };
@@ -38,7 +38,7 @@ struct stats_channel {
   pool *pool;                     /* copy of procotol pool */
   u32 _counter;			  /* internal counter */
   u32 counter;			  /* publicly accessible counter */
-  struct settle_timer *settle_timer;
+  struct settle_timer settle_timer;
 };
 
 struct stats_channel_config {
@@ -48,48 +48,6 @@ struct stats_channel_config {
 };
 
 int stats_get_counter(struct symbol *sym);
-struct f_val stats_eval_term(struct stats_term_config *tc);
-int stats_get_type(struct stats_term_config *tc);
-
-#if 0
-/*
- * get_stats_counter() - extract last notified counter
- *   for specific stats channel if it runs
- *
- */
-inline int
-stats_get_counter(struct symbol *sym)
-{
-  if (sym->ch_config->channel)
-    return (int) ((struct stats_channel *) sym->ch_config->channel)->counter;
-  else
-    return 0;
-}
-
-/*
- * stats_eval_term() - evaluate stats term
- *
- */
-inline struct f_val
-stats_eval_term(struct stats_term_config *tc)
-{
-  enum filter_return fret = f_eval(tc->code, &tc->val);
-
-  if (fret > F_RETURN)
-    tc->val.type = T_VOID;
-
-  if (tc->type != tc->val.type)
-    tc->val.type = T_VOID;
-
-  return tc->val;
-}
-
-int
-stats_get_type(struct stats_term_config *tc)
-{
-  return tc->type;
-}
-
-#endif // if 0
+void stats_eval_term(struct stats_term_config *tc);
 
 #endif
