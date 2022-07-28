@@ -183,6 +183,8 @@ ev_send(event_list *l, event *e)
   while (!atomic_compare_exchange_strong_explicit(
 	&l->receiver, &next, e,
 	memory_order_acq_rel, memory_order_acquire));
+
+  birdloop_ping(l->loop);
 }
 
 void io_log_event(void *hook, void *data);
