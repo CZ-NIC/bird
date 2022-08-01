@@ -62,9 +62,7 @@ bt_bird_init(void)
     log_init_debug("");
   log_switch(bt_verbose != 0, NULL, NULL);
 
-  the_bird_lock();
   olock_init();
-  birdloop_init();
   rt_init();
   io_init();
   if_init();
