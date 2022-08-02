@@ -131,7 +131,7 @@ shutdown_multihook(void)
 void
 snmp_shutdown_(struct proto *P)
 {
-  snmp_stop_subagent(shutdown_multihook); 
+  snmp_stop_subagent(shutdown_multihook);
 }
 
 struct protocol proto_snmp = {

@@ -41,12 +41,12 @@ snmp_start_subagent(void (*hook)(void))
    */
 
   /* for Win32 only */
-  SOCK_STARTUP; 
+  SOCK_STARTUP;
 
   /* init library */
   init_agent("bird");
- 
-  if (hook) 
+
+  if (hook)
     hook();
 
   /* used for loading config 'bird-snmp.conf' */

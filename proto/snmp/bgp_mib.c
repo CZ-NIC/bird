@@ -125,7 +125,7 @@ snmp_init_bgp_table(void)
 
 void
 snmp_del_bgp_table(void)
-{  
+{
   // XXX really needed ?
   const oid bgpPeerTable_oid[] = {1,3,6,1,2,1,15,3};
 
