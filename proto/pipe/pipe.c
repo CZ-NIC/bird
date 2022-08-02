@@ -87,7 +87,7 @@ pipe_preexport(struct channel *C, rte *e)
   {
     log_rl(&p->rl_gen, L_ERR "Route overpiped (%u hops of %u configured in %s) in table %s: %N %s/%u:%u",
 	e->generation, max_generation, C->proto->name,
-	C->table->name, e->net, e->src->proto->name, e->src->private_id, e->src->global_id);
+	C->table->name, e->net, e->src->owner->name, e->src->private_id, e->src->global_id);
 
     return -1;
   }

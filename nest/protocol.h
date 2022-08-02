@@ -60,7 +60,6 @@ struct protocol {
   int (*start)(struct proto *);			/* Start the instance */
   int (*shutdown)(struct proto *);		/* Stop the instance */
   void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
-  void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */
 //  int (*get_attr)(const struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
   void (*show_proto_info)(struct proto *);	/* Show protocol info (for `show protocols all' command) */
   void (*copy_config)(struct proto_config *, struct proto_config *);	/* Copy config from given protocol instance */
@@ -128,6 +127,7 @@ struct proto {
   list channels;			/* List of channels to rtables (struct channel) */
   struct channel *main_channel;		/* Primary channel */
   struct rte_src *main_source;		/* Primary route source */
+  struct rte_owner sources;		/* Route source owner structure */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
 
   const char *name;				/* Name of this instance (== cf->name) */
@@ -342,7 +342,7 @@ void proto_notify_state(struct proto *p, unsigned state);
  */
 
 static inline int proto_is_inactive(struct proto *p)
-{ return (p->active_channels == 0) && (p->active_loops == 0); }
+{ return (p->active_channels == 0) && (p->active_loops == 0) && (p->sources.uc == 0); }
 
 
 /*

@@ -1963,10 +1963,17 @@ channel_reset_limit(struct channel *c, struct limit *l, int dir)
   c->limit_active &= ~(1 << dir);
 }
 
+static struct rte_owner_class default_rte_owner_class;
+
 static inline void
 proto_do_start(struct proto *p)
 {
   p->active = 1;
+
+  rt_init_sources(&p->sources, p->name, proto_event_list(p));
+  if (!p->sources.class)
+    p->sources.class = &default_rte_owner_class;
+
   if (!p->cf->late_if_feed)
     if_feed_baby(p);
 }
@@ -1975,10 +1982,8 @@ static void
 proto_do_up(struct proto *p)
 {
   if (!p->main_source)
-  {
     p->main_source = rt_get_source(p, 0);
-    rt_lock_source(p->main_source);
-  }
+    // Locked automaticaly
 
   proto_start_channels(p);
 
@@ -2005,6 +2010,7 @@ proto_do_stop(struct proto *p)
   }
 
   proto_stop_channels(p);
+  rt_destroy_sources(&p->sources, p->event);
 
   p->do_stop = 1;
   proto_send_event(p);

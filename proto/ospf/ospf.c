@@ -377,8 +377,8 @@ ospf_init(struct proto_config *CF)
   P->reload_routes = ospf_reload_routes;
   P->feed_begin = ospf_feed_begin;
   P->feed_end = ospf_feed_end;
-  P->rte_better = ospf_rte_better;
-  P->rte_igp_metric = ospf_rte_igp_metric;
+
+  P->sources.class = &ospf_rte_owner_class;
 
   return P;
 }
@@ -492,7 +492,7 @@ ospf_preexport(struct channel *C, rte *e)
   struct ospf_area *oa = ospf_main_area(p);
 
   /* Reject our own routes */
-  if (e->src->proto == &p->p)
+  if (e->sender == C->in_req.hook)
     return -1;
 
   /* Do not export routes to stub areas */
@@ -1506,6 +1506,12 @@ ospf_sh_lsadb(struct lsadb_show_data *ld)
 }
 
 
+struct rte_owner_class ospf_rte_owner_class = {
+  .get_route_info =	ospf_get_route_info,
+  .rte_better =		ospf_rte_better,
+  .rte_igp_metric =	ospf_rte_igp_metric,
+};
+
 struct protocol proto_ospf = {
   .name =		"OSPF",
   .template =		"ospf%d",
@@ -1519,7 +1525,6 @@ struct protocol proto_ospf = {
   .shutdown =		ospf_shutdown,
   .reconfigure =	ospf_reconfigure,
   .get_status =		ospf_get_status,
-  .get_route_info =	ospf_get_route_info
 };
 
 struct ea_class ea_ospf_metric1 = {

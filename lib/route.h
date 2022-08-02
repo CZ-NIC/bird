@@ -11,11 +11,14 @@
 #define _BIRD_LIB_ROUTE_H_
 
 #include "lib/type.h"
+#include "lib/rcu.h"
+#include "lib/hash.h"
+#include "lib/event.h"
 
 struct network;
 struct proto;
 struct cli;
-
+struct rtable;
 
 typedef struct rte {
   struct ea_list *attrs;		/* Attributes of this route */
@@ -43,19 +46,101 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 
 struct rte_src {
   struct rte_src *next;			/* Hash chain */
-  struct proto *proto;			/* Protocol the source is based on */
+  struct rte_owner *owner;		/* Route source owner */
   u32 private_id;			/* Private ID, assigned by the protocol */
   u32 global_id;			/* Globally unique ID of the source */
-  unsigned uc;				/* Use count */
+  _Atomic u64 uc;			/* Use count */
 };
 
+struct rte_owner_class {
+  void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */
+  int (*rte_better)(struct rte *, struct rte *);
+  int (*rte_mergable)(struct rte *, struct rte *);
+  u32 (*rte_igp_metric)(const rte *);
+};
 
-struct rte_src *rt_find_source(struct proto *p, u32 id);
-struct rte_src *rt_get_source(struct proto *p, u32 id);
+struct rte_owner {
+  struct rte_owner_class *class;
+  int (*rte_recalculate)(struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
+  HASH(struct rte_src) hash;
+  const char *name;
+  u32 hash_key;
+  u32 uc;
+  event_list *list;
+  event *prune;
+  event *stop;
+};
+
+DEFINE_DOMAIN(attrs);
+extern DOMAIN(attrs) attrs_domain;
+
+#define RTA_LOCK       LOCK_DOMAIN(attrs, attrs_domain)
+#define RTA_UNLOCK     UNLOCK_DOMAIN(attrs, attrs_domain)
+
+#define RTE_SRC_PU_SHIFT      44
+#define RTE_SRC_IN_PROGRESS   (1ULL << RTE_SRC_PU_SHIFT)
+
+/* Get a route source. This also locks the source, therefore the caller has to
+ * unlock the source after the route has been propagated. */
+struct rte_src *rt_get_source_o(struct rte_owner *o, u32 id);
+#define rt_get_source(p, id)  rt_get_source_o(&(p)->sources, (id))
+
 struct rte_src *rt_find_source_global(u32 id);
-static inline void rt_lock_source(struct rte_src *src) { src->uc++; }
-static inline void rt_unlock_source(struct rte_src *src) { src->uc--; }
-void rt_prune_sources(void);
+
+static inline void rt_lock_source(struct rte_src *src)
+{
+  /* Locking a source is trivial; somebody already holds it so we just increase
+   * the use count. Nothing can be freed underneath our hands. */
+  u64 uc = atomic_fetch_add_explicit(&src->uc, 1, memory_order_acq_rel);
+  ASSERT_DIE(uc > 0);
+}
+
+static inline void rt_unlock_source(struct rte_src *src)
+{
+  /* Unlocking is tricky. We do it lockless so at the same time, the prune
+   * event may be running, therefore if the unlock gets us to zero, it must be
+   * the last thing in this routine, otherwise the prune routine may find the
+   * source's usecount zeroed, freeing it prematurely.
+   *
+   * The usecount is split into two parts:
+   * the top 20 bits are an in-progress indicator
+   * the bottom 44 bits keep the actual usecount.
+   *
+   * Therefore at most 1 million of writers can simultaneously unlock the same
+   * source, while at most ~17T different routes can reference it. Both limits
+   * are insanely high from the 2022 point of view. Let's suppose that when 17T
+   * routes or 1M writers get real, we get also 128bit atomic variables in the
+   * C norm. */
+
+  /* First, we push the in-progress indicator */
+  u64 uc = atomic_fetch_add_explicit(&src->uc, RTE_SRC_IN_PROGRESS, memory_order_acq_rel);
+
+  /* Then we split the indicator to its parts. Remember, we got the value before the operation happened. */
+  u64 pending = (uc >> RTE_SRC_PU_SHIFT) + 1;
+  uc &= RTE_SRC_IN_PROGRESS - 1;
+
+  /* We per-use the RCU critical section indicator to make the prune event wait
+   * until we finish here in the rare case we get preempted. */
+  rcu_read_lock();
+
+  /* Obviously, there can't be more pending unlocks than the usecount itself */
+  if (uc == pending)
+    /* If we're the last unlocker, schedule the owner's prune event */
+    ev_send(src->owner->list, src->owner->prune);
+  else
+    ASSERT_DIE(uc > pending);
+
+  /* And now, finally, simultaneously pop the in-progress indicator and the
+   * usecount, possibly allowing the source pruning routine to free this structure */
+  atomic_fetch_sub_explicit(&src->uc, RTE_SRC_IN_PROGRESS + 1, memory_order_acq_rel);
+
+  /* ... and to reduce the load a bit, the source pruning routine will better wait for
+   * RCU synchronization instead of a busy loop. */
+  rcu_read_unlock();
+}
+
+void rt_init_sources(struct rte_owner *, const char *name, event_list *list);
+void rt_destroy_sources(struct rte_owner *, event *);
 
 /*
  *	Route Attributes

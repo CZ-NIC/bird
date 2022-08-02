@@ -58,7 +58,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   if (d->verbose && !rta_is_cached(a) && a)
     a = ea_normalize(a, 0);
 
-  get_route_info = e->src->proto->proto->get_route_info;
+  get_route_info = e->src->owner->class ? e->src->owner->class->get_route_info : NULL;
   if (get_route_info)
     get_route_info(e, info);
   else
@@ -74,7 +74,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
 
   cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s", ia,
       net_is_flow(e->net) ? flowspec_valid_name(flowspec_valid) : had ? "recursive" : rta_dest_name(dest),
-      e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
+      e->src->owner->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
 
   if (d->verbose)
   {
@@ -178,7 +178,7 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, rte **feed, uint count)
 	    }
 	}
 
-      if (d->show_protocol && (d->show_protocol != e.src->proto))
+      if (d->show_protocol && (&d->show_protocol->sources != e.src->owner))
 	goto skip;
 
       if (f_run(d->filter, &e, 0) > F_ACCEPT)

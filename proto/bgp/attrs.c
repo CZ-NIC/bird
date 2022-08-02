@@ -1671,8 +1671,9 @@ bgp_free_prefix_table(struct bgp_channel *c)
 }
 
 static struct bgp_prefix *
-bgp_get_prefix(struct bgp_channel *c, const net_addr *net, u32 path_id)
+bgp_get_prefix(struct bgp_channel *c, const net_addr *net, struct rte_src *src)
 {
+  u32 path_id = src->global_id;
   u32 path_id_hash = c->add_path_tx ? path_id : 0;
   /* We must use a different hash function than the rtable */
   u32 hash = u32_hash(net_hash(net) ^ u32_hash(path_id_hash));
@@ -1690,6 +1691,7 @@ bgp_get_prefix(struct bgp_channel *c, const net_addr *net, u32 path_id)
   px->hash = hash;
   px->path_id = path_id;
   net_copy(px->net, net);
+  rt_lock_source(src);
 
   HASH_INSERT2(c->prefix_hash, PXH, c->pool, px);
 
@@ -1755,6 +1757,8 @@ static void
 bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
 {
   HASH_REMOVE2(c->prefix_hash, PXH, c->pool, px);
+
+  rt_unlock_source(rt_find_source_global(px->path_id));
 
   if (c->prefix_slab)
     sl_free(px);
@@ -1931,9 +1935,8 @@ bgp_setup_out_table(struct bgp_channel *c)
 int
 bgp_preexport(struct channel *C, rte *e)
 {
-  struct proto *SRC = e->src->proto;
   struct bgp_proto *p = (struct bgp_proto *) C->proto;
-  struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (struct bgp_proto *) SRC : NULL;
+  struct bgp_proto *src = bgp_rte_proto(e);
 
   /* Reject our routes */
   if (src == p)
@@ -2002,8 +2005,7 @@ bgp_preexport(struct channel *C, rte *e)
 static ea_list *
 bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *attrs0, struct linpool *pool)
 {
-  struct proto *SRC = e->src->proto;
-  struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (void *) SRC : NULL;
+  struct bgp_proto *src = bgp_rte_proto(e);
   struct bgp_export_state s = { .proto = p, .channel = c, .pool = pool, .src = src, .route = e, .mpls = c->desc->mpls };
   ea_list *attrs = attrs0;
   eattr *a;
@@ -2121,7 +2123,7 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
   struct bgp_proto *p = (void *) P;
   struct bgp_channel *c = (void *) C;
   struct bgp_bucket *buck;
-  u32 path;
+  struct rte_src *path;
 
   if (new)
   {
@@ -2133,12 +2135,12 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
 
     /* If attributes are invalid, we fail back to withdraw */
     buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
-    path = new->src->global_id;
+    path = new->src;
   }
   else
   {
     buck = bgp_get_withdraw_bucket(c);
-    path = old->src->global_id;
+    path = old->src;
   }
 
   if (bgp_update_prefix(c, bgp_get_prefix(c, n, path), buck))
@@ -2156,7 +2158,7 @@ bgp_get_neighbor(rte *r)
     return as;
 
   /* If AS_PATH is not defined, we treat rte as locally originated */
-  struct bgp_proto *p = (void *) r->src->proto;
+  struct bgp_proto *p = bgp_rte_proto(r);
   return p->cf->confederation ?: p->local_as;
 }
 
@@ -2186,8 +2188,8 @@ rte_stale(rte *r)
 int
 bgp_rte_better(rte *new, rte *old)
 {
-  struct bgp_proto *new_bgp = (struct bgp_proto *) new->src->proto;
-  struct bgp_proto *old_bgp = (struct bgp_proto *) old->src->proto;
+  struct bgp_proto *new_bgp = bgp_rte_proto(new);
+  struct bgp_proto *old_bgp = bgp_rte_proto(old);
   eattr *x, *y;
   u32 n, o;
 
@@ -2331,8 +2333,8 @@ bgp_rte_better(rte *new, rte *old)
 int
 bgp_rte_mergable(rte *pri, rte *sec)
 {
-  struct bgp_proto *pri_bgp = (struct bgp_proto *) pri->src->proto;
-  struct bgp_proto *sec_bgp = (struct bgp_proto *) sec->src->proto;
+  struct bgp_proto *pri_bgp = bgp_rte_proto(pri);
+  struct bgp_proto *sec_bgp = bgp_rte_proto(sec);
   eattr *x, *y;
   u32 p, s;
 
@@ -2416,8 +2418,8 @@ same_group(rte *r, u32 lpref, u32 lasn)
 static inline int
 use_deterministic_med(struct rte_storage *r)
 {
-  struct proto *P = r->rte.src->proto;
-  return (P->proto == &proto_bgp) && ((struct bgp_proto *) P)->cf->deterministic_med;
+  struct bgp_proto *p = bgp_rte_proto(&r->rte);
+  return p && p->cf->deterministic_med;
 }
 
 int

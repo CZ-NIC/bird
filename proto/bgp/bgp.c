@@ -1710,6 +1710,13 @@ done:
   return p->p.proto_state;
 }
 
+struct rte_owner_class bgp_rte_owner_class = {
+  .get_route_info = 	bgp_get_route_info,
+  .rte_better =		bgp_rte_better,
+  .rte_mergable =	bgp_rte_mergable,
+  .rte_igp_metric =	bgp_rte_igp_metric,
+};
+
 static struct proto *
 bgp_init(struct proto_config *CF)
 {
@@ -1723,10 +1730,9 @@ bgp_init(struct proto_config *CF)
   P->reload_routes = bgp_reload_routes;
   P->feed_begin = bgp_feed_begin;
   P->feed_end = bgp_feed_end;
-  P->rte_better = bgp_rte_better;
-  P->rte_mergable = bgp_rte_mergable;
-  P->rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
-  P->rte_igp_metric = bgp_rte_igp_metric;
+
+  P->sources.class = &bgp_rte_owner_class;
+  P->sources.rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
 
   p->cf = cf;
   p->is_internal = (cf->local_as == cf->remote_as);
@@ -2638,7 +2644,6 @@ struct protocol proto_bgp = {
   .reconfigure = 	bgp_reconfigure,
   .copy_config = 	bgp_copy_config,
   .get_status = 	bgp_get_status,
-  .get_route_info = 	bgp_get_route_info,
   .show_proto_info = 	bgp_show_proto_info
 };
 

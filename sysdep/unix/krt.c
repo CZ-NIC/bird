@@ -314,6 +314,7 @@ krt_learn_scan(struct krt_proto *p, rte *e)
   ea_set_attr_u32(&e0.attrs, &ea_gen_preference, 0, p->p.main_channel->preference);
 
   rte_update(p->p.main_channel, e->net, &e0, e0.src);
+  rt_unlock_source(e0.src);
 }
 
 static void
@@ -322,9 +323,9 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
   if (new)
     return krt_learn_scan(p, e);
 
-  struct rte_src *src = rt_find_source(&p->p, krt_metric(e));
-  if (src)
-    rte_update(p->p.main_channel, e->net, NULL, src);
+  struct rte_src *src = rt_get_source(&p->p, krt_metric(e));
+  rte_update(p->p.main_channel, e->net, NULL, src);
+  rt_unlock_source(src);
 }
 
 #endif
@@ -683,7 +684,7 @@ krt_scan_timer_kick(struct krt_proto *p)
 static int
 krt_preexport(struct channel *C, rte *e)
 {
-  if (e->src->proto == C->proto)
+  if (e->src->owner == &C->proto->sources)
     return -1;
 
   if (!krt_capable(e))
