@@ -12,8 +12,20 @@
 
 #include "proto/bgp/bgp.h"
 
+#define SNMP_UNDEFINED	0
+#define SNMP_BGP	1
+#define SNMP_OSPF	2
+#define SNMP_INVALID  255
+
+struct snmp_bond {
+  node n;
+  struct proto_config *proto;
+  u8 type;
+};
+
 struct snmp_config {
   struct channel_config c;
+  list bgp_entries;
 };
 
 struct snmp_proto {
@@ -24,6 +36,7 @@ struct snmp_proto {
 struct snmp_channel_config {
   struct channel_config c;
   struct bgp_config *bgp;
+  u8 type;
 };
 
 struct snmp_channel {
