@@ -147,7 +147,6 @@ void fit_copy(struct fib *f, struct fib_iterator *dst, struct fib_iterator *src)
 struct rtable_config {
   node n;
   char *name;
-  struct config *config;
   struct rtable *table;
   struct proto_config *krt_attached;	/* Kernel syncer attached to this table */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
@@ -176,17 +175,17 @@ typedef struct rtable {
   struct hmap id_map;
   struct hostcache *hostcache;
   struct rtable_config *config;		/* Configuration of this table */
-  struct event *prune_event;		/* Event to prune abandoned routes */
-  struct event *ec_event;		/* Event to prune finished exports */
-  struct event *hcu_event;		/* Event to update host cache */
-  struct event *nhu_event;		/* Event to update next hops */
-  struct event *delete_event;		/* Event to delete the table */
+  void (*deleted)(void *);		/* Table should free itself. Call this when it is done. */
+  void *del_data;
+  struct event *rt_event;		/* Routing table event */
   btime last_rt_change;			/* Last time when route changed */
   btime base_settle_time;		/* Start time of rtable settling interval */
   btime gc_time;			/* Time of last GC */
   int gc_counter;			/* Number of operations since last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
+  byte hcu_scheduled;			/* Hostcache update is scheduled */
   byte nhu_state;			/* Next Hop Update state */
+  byte export_used;			/* Export journal setup scheduled */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
@@ -476,6 +475,7 @@ void rt_unlock_table(rtable *);
 void rt_subscribe(rtable *tab, struct rt_subscription *s);
 void rt_unsubscribe(struct rt_subscription *s);
 rtable *rt_setup(pool *, struct rtable_config *);
+static inline void rt_shutdown(rtable *r) { rfree(r->rp); }
 
 static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
 static inline net *net_find_valid(rtable *tab, const net_addr *addr)

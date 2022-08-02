@@ -568,7 +568,7 @@ struct channel_aux_table {
   struct rt_import_request push;
   struct rt_export_request get;
   rtable *tab;
-  event *stop;
+  u8 stop;
   u8 refeed_pending;
 };
 
