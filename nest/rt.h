@@ -107,6 +107,7 @@ typedef struct rtable {
 					 * obstacle from this routing table.
 					 */
   struct event *rt_event;		/* Routing table event */
+  struct event *uncork_event;		/* Called when uncork happens */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
   btime last_rt_change;			/* Last time when route changed */
   btime base_settle_time;		/* Start time of rtable settling interval */
@@ -115,7 +116,9 @@ typedef struct rtable {
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte prune_trie;			/* Prune prefix trie during next table prune */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
+  byte hcu_corked;			/* Hostcache update is corked with this state */
   byte nhu_state;			/* Next Hop Update state */
+  byte nhu_corked;			/* Next Hop Update is corked with this state */
   byte export_used;			/* Pending Export pruning is scheduled */
   byte cork_active;			/* Cork has been activated */
   struct rt_cork_threshold cork_threshold;	/* Threshold for table cork */

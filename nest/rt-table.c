@@ -2392,6 +2392,22 @@ rt_event(void *ptr)
   if (tab->export_used)
     rt_export_cleanup(tab);
 
+  if (
+      tab->hcu_corked ||
+      tab->nhu_corked ||
+      (tab->hcu_scheduled || tab->nhu_state) && rt_cork_check(tab->uncork_event)
+      )
+  {
+    if (!tab->hcu_corked && !tab->nhu_corked && config->table_debug)
+      log(L_TRACE "%s: Auxiliary routines corked", tab->name);
+
+    tab->hcu_corked |= tab->hcu_scheduled;
+    tab->hcu_scheduled = 0;
+
+    tab->nhu_corked |= tab->nhu_state;
+    tab->nhu_state = 0;
+  }
+
   if (tab->hcu_scheduled)
     rt_update_hostcache(tab);
 
@@ -2404,6 +2420,22 @@ rt_event(void *ptr)
   rt_unlock_table(tab);
 }
 
+static void
+rt_uncork_event(void *ptr)
+{
+  rtable *tab = ptr;
+
+  tab->hcu_scheduled |= tab->hcu_corked;
+  tab->hcu_corked = 0;
+
+  tab->nhu_state |= tab->nhu_corked;
+  tab->nhu_corked = 0;
+
+  if (config->table_debug)
+    log(L_TRACE "%s: Auxiliary routines uncorked", tab->name);
+
+  ev_schedule(tab->rt_event);
+}
 
 static void
 rt_prune_timer(timer *t)
@@ -2669,6 +2701,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   init_list(&t->subscribers);
 
   t->rt_event = ev_new_init(p, rt_event, t);
+  t->uncork_event = ev_new_init(p, rt_uncork_event, t);
   t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
   t->exporter.export_timer = tm_new_init(p, rt_announce_exports, t, 0, 0);
   t->last_rt_change = t->gc_time = current_time();
