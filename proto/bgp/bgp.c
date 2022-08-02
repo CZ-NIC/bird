@@ -376,6 +376,7 @@ bgp_close_conn(struct bgp_conn *conn)
   conn->keepalive_timer = NULL;
   rfree(conn->hold_timer);
   conn->hold_timer = NULL;
+
   rfree(conn->tx_ev);
   conn->tx_ev = NULL;
   rfree(conn->sk);
@@ -514,6 +515,7 @@ void
 bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
 {
   proto_notify_state(&p->p, PS_STOP);
+  p->uncork_ev->data = NULL;
   bgp_graceful_close_conn(&p->outgoing_conn, subcode, data, len);
   bgp_graceful_close_conn(&p->incoming_conn, subcode, data, len);
   ev_schedule(p->event);
@@ -1576,6 +1578,8 @@ bgp_start(struct proto *P)
   p->last_rx_update = 0;
 
   p->event = ev_new_init(p->p.pool, bgp_decision, p);
+  p->uncork_ev = ev_new_init(p->p.pool, bgp_uncork, p);
+
   p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
   p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
 
