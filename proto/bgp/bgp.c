@@ -584,7 +584,6 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     p->link_addr = p->neigh->iface->llv6->ip;
 
   conn->sk->fast_rx = 0;
-  conn->sk->cork = &rt_cork;
 
   p->conn = conn;
   p->last_error_class = 0;

@@ -157,7 +157,6 @@ struct rtable_config {
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
   btime export_settle_time;		/* Delay before exports are announced */
-  uint cork_limit;			/* Amount of routes to be pending on export to cork imports */
 };
 
 typedef struct rtable {
@@ -188,9 +187,6 @@ typedef struct rtable {
   int gc_counter;			/* Number of operations since last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte nhu_state;			/* Next Hop Update state */
-
-  byte cork_active;			/* Congestion control activated */
-
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
@@ -381,8 +377,6 @@ struct rt_export_hook {
 
   void (*stopped)(struct rt_export_request *);	/* Stored callback when export is stopped */
 };
-
-extern struct event_cork rt_cork;
 
 #define TIS_DOWN	0
 #define TIS_UP		1

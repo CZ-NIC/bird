@@ -110,7 +110,6 @@ const char *rt_export_state_name(u8 state)
     return rt_export_state_name_array[state];
 }
 
-struct event_cork rt_cork;
 
 /* Like fib_route(), but skips empty net entries */
 static inline void *
@@ -1062,13 +1061,7 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
   if (tab->first_export == NULL)
     tab->first_export = rpe;
 
-  if ((tab->first_export->seq + tab->config->cork_limit <= tab->next_export_seq) && !tab->cork_active)
-  {
-    ev_cork(&rt_cork);
-    tab->cork_active = 1;
-    tm_start(tab->export_timer, 0);
-  }
-  else if (!tm_active(tab->export_timer))
+  if (!tm_active(tab->export_timer))
     tm_start(tab->export_timer, tab->config->export_settle_time);
 }
 
@@ -2049,7 +2042,6 @@ rt_free(resource *_r)
   DBG("Deleting routing table %s\n", r->name);
   ASSERT_DIE(r->use_count == 0);
   ASSERT_DIE(r->rt_count == 0);
-  ASSERT_DIE(!r->cork_active);
   ASSERT_DIE(EMPTY_LIST(r->imports));
   ASSERT_DIE(EMPTY_LIST(r->exports));
 
@@ -2114,9 +2106,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->hcu_event = ev_new_init(p, rt_update_hostcache, t);
   t->nhu_event = ev_new_init(p, rt_next_hop_update, t);
 
-  t->nhu_event->cork = &rt_cork;
-  t->prune_event->cork = &rt_cork;
-
   t->export_timer = tm_new_init(p, rt_announce_exports, t, 0, 0);
   t->last_rt_change = t->gc_time = current_time();
   t->next_export_seq = 1;
@@ -2139,7 +2128,6 @@ rt_init(void)
   rt_table_pool = rp_new(&root_pool, "Routing tables");
   rte_update_pool = lp_new_default(rt_table_pool);
   init_list(&routing_tables);
-  ev_init_cork(&rt_cork, "Route Table Cork");
 }
 
 /**
@@ -2432,14 +2420,6 @@ done:;
 
   if (EMPTY_LIST(tab->pending_exports) && tm_active(tab->export_timer))
     tm_stop(tab->export_timer);
-
-  /* If reduced to at most one export block pending */
-  if (tab->cork_active &&
-      ((!tab->first_export) || (tab->first_export->seq + 128 > tab->next_export_seq)))
-  {
-    tab->cork_active = 0;
-    ev_uncork(&rt_cork);
-  }
 }
 
 void
@@ -2719,7 +2699,6 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->gc_min_time = 5;
   c->min_settle_time = 1 S;
   c->max_settle_time = 20 S;
-  c->cork_limit = 4 * page_size / sizeof(struct rt_pending_export);
   c->config = new_config;
 
   add_tail(&new_config->tables, &c->n);
