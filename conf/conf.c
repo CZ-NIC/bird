@@ -46,7 +46,7 @@
 #undef LOCAL_DEBUG
 
 #include "nest/bird.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "lib/resource.h"
@@ -140,6 +140,7 @@ config_parse(struct config *c)
   protos_preconfig(c);
   rt_preconfig(c);
   cf_parse();
+  rt_postconfig(c);
 
   if (EMPTY_LIST(c->protos))
     cf_error("No protocol is specified in the config file");
@@ -168,7 +169,6 @@ int
 cli_parse(struct config *c)
 {
   int done = 0;
-  c->fallback = config;
   new_config = c;
   cfg_mem = c->mem;
   if (setjmp(conf_jmpbuf))
@@ -179,7 +179,6 @@ cli_parse(struct config *c)
   done = 1;
 
 cleanup:
-  c->fallback = NULL;
   new_config = NULL;
   cfg_mem = NULL;
   return done;
@@ -520,6 +519,8 @@ order_shutdown(int gr)
   memcpy(c, config, sizeof(struct config));
   init_list(&c->protos);
   init_list(&c->tables);
+  init_list(&c->symbols);
+  memset(c->def_tables, 0, sizeof(c->def_tables));
   c->shutdown = 1;
   c->gr_down = gr;
 

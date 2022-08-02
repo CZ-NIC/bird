@@ -9,7 +9,7 @@
 #ifndef _BIRD_STATIC_H_
 #define _BIRD_STATIC_H_
 
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/bfd.h"
 #include "lib/buffer.h"
 
@@ -49,7 +49,7 @@ struct static_route {
   byte weight;				/* Multipath next hop weight */
   byte use_bfd;				/* Configured to use BFD */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
-  mpls_label_stack *mls;		/* MPLS label stack; may be NULL */
+  struct adata *mls;			/* MPLS label stack; may be NULL */
 };
 
 /*

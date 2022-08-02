@@ -14,12 +14,24 @@
 
 /* Ugly structure offset handling macros */
 
-struct align_probe { char x; long int y; };
-
 #define OFFSETOF(s, i) ((size_t) &((s *)0)->i)
 #define SKIP_BACK(s, i, p) ({ s *_ptr = ((s *)((char *)p - OFFSETOF(s, i))); ASSERT_DIE(&_ptr->i == p); _ptr; })
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
-#define CPU_STRUCT_ALIGN (sizeof(struct align_probe))
+#define CPU_STRUCT_ALIGN  (MAX_(_Alignof(void*), _Alignof(u64)))
+#define BIRD_CPU_ALIGN(s) BIRD_ALIGN((s), CPU_STRUCT_ALIGN)
+
+/* Structure item alignment macros */
+
+#define PADDING_NAME(id)	_padding_##id
+#define PADDING_(id, sz)	u8 PADDING_NAME(id)[sz]
+
+#if CPU_POINTER_ALIGNMENT == 4
+#define PADDING(id, n32, n64)	PADDING_(id, n32)
+#elif CPU_POINTER_ALIGNMENT == 8
+#define PADDING(id, n32, n64)	PADDING_(id, n64)
+#else
+#error "Strange CPU pointer alignment: " CPU_POINTER_ALIGNMENT
+#endif
 
 /* Utility macros */
 
@@ -32,6 +44,9 @@ struct align_probe { char x; long int y; };
 #define MIN(a,b) MIN_(a,b)
 #define MAX(a,b) MAX_(a,b)
 #endif
+
+#define ROUND_DOWN_POW2(a,b)  ((a) & ~((b)-1))
+#define ROUND_UP_POW2(a,b)  (((a)+((b)-1)) & ~((b)-1))
 
 #define U64(c) UINT64_C(c)
 #define ABS(a)   ((a)>=0 ? (a) : -(a))
@@ -160,8 +175,13 @@ void debug(const char *msg, ...);	/* Printf to debug output */
 
 #if defined(LOCAL_DEBUG) || defined(GLOBAL_DEBUG)
 #define DBG(x, y...) debug(x, ##y)
+#define DBGL(x, y...) debug(x "\n", ##y)
+#elif defined(DEBUG_TO_LOG)
+#define DBG(...) do { } while (0)
+#define DBGL(...) log(L_DEBUG __VA_ARGS__)
 #else
-#define DBG(x, y...) do { } while(0)
+#define DBG(...) do { } while(0)
+#define DBGL(...) do { } while (0)
 #endif
 
 #define ASSERT_DIE(x) do { if (!(x)) bug("Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)

@@ -32,6 +32,7 @@
 #include "nest/bird.h"
 #include "lib/resource.h"
 #include "lib/string.h"
+#include "lib/tlists.h"
 
 #undef FAKE_SLAB	/* Turn on if you want to debug memory allocations */
 
@@ -42,7 +43,7 @@
 static void slab_free(resource *r);
 static void slab_dump(resource *r);
 static resource *slab_lookup(resource *r, unsigned long addr);
-static size_t slab_memsize(resource *r);
+static struct resmem slab_memsize(resource *r);
 
 #ifdef FAKE_SLAB
 
@@ -98,7 +99,7 @@ sl_allocz(slab *s)
 }
 
 void
-sl_free(slab *s, void *oo)
+sl_free(void *oo)
 {
   struct sl_obj *o = SKIP_BACK(struct sl_obj, data, oo);
 
@@ -128,7 +129,7 @@ slab_dump(resource *r)
   debug("(%d objects per %d bytes)\n", cnt, s->size);
 }
 
-static size_t
+static struct resmem
 slab_memsize(resource *r)
 {
   slab *s = (slab *) r;
@@ -138,7 +139,10 @@ slab_memsize(resource *r)
   WALK_LIST(o, s->objs)
     cnt++;
 
-  return ALLOC_OVERHEAD + sizeof(struct slab) + cnt * (ALLOC_OVERHEAD + s->size);
+  return (struct resmem) {
+    .effective = cnt * s->size,
+    .overhead = ALLOC_OVERHEAD + sizeof(struct slab) + cnt * ALLOC_OVERHEAD,
+  };
 }
 
 
@@ -150,12 +154,38 @@ slab_memsize(resource *r)
 
 #define MAX_EMPTY_HEADS 1
 
+enum sl_head_state {
+  slh_empty = 2,
+  slh_partial = 0,
+  slh_full = 1,
+} PACKED;
+
+struct sl_head {
+  struct slab *slab;
+  TLIST_NODE(sl_head, struct sl_head) n;
+  u16 num_full;
+  enum sl_head_state state;
+  u32 used_bits[0];
+};
+
+struct sl_alignment {			/* Magic structure for testing of alignment */
+  byte data;
+  int x[0];
+};
+
+#define TLIST_PREFIX sl_head
+#define TLIST_TYPE   struct sl_head
+#define TLIST_ITEM   n
+#define TLIST_WANT_WALK
+#define TLIST_WANT_ADD_HEAD
+
+#include "lib/tlists.h"
+
 struct slab {
   resource r;
-  pool *p;
   uint obj_size, head_size, head_bitfield_len;
   uint objs_per_slab, num_empty_heads, data_size;
-  list empty_heads, partial_heads, full_heads;
+  struct sl_head_list empty_heads, partial_heads, full_heads;
 };
 
 static struct resclass sl_class = {
@@ -167,18 +197,15 @@ static struct resclass sl_class = {
   slab_memsize
 };
 
-struct sl_head {
-  node n;
-  u32 num_full;
-  u32 used_bits[0];
-};
+#define SL_GET_HEAD(x)	PAGE_HEAD(x)
 
-struct sl_alignment {			/* Magic structure for testing of alignment */
-  byte data;
-  int x[0];
-};
+#define SL_HEAD_CHANGE_STATE(_s, _h, _from, _to) ({ \
+    ASSERT_DIE(_h->state == slh_##_from); \
+    sl_head_rem_node(&_s->_from##_heads, _h); \
+    sl_head_add_head(&_s->_to##_heads, _h); \
+    _h->state = slh_##_to; \
+    })
 
-#define SL_GET_HEAD(x)	((struct sl_head *) PAGE_HEAD(x))
 
 /**
  * sl_new - create a new Slab
@@ -192,10 +219,9 @@ slab *
 sl_new(pool *p, uint size)
 {
   slab *s = ralloc(p, &sl_class);
-  s->p = p;
   uint align = sizeof(struct sl_alignment);
-  if (align < sizeof(int))
-    align = sizeof(int);
+  if (align < sizeof(void *))
+    align = sizeof(void *);
   s->data_size = size;
   size = (size + align - 1) / align * align;
   s->obj_size = size;
@@ -216,9 +242,6 @@ sl_new(pool *p, uint size)
     bug("Slab: object too large");
   s->num_empty_heads = 0;
 
-  init_list(&s->empty_heads);
-  init_list(&s->partial_heads);
-  init_list(&s->full_heads);
   return s;
 }
 
@@ -235,8 +258,7 @@ sl_alloc(slab *s)
   struct sl_head *h;
 
 redo:
-  h = HEAD(s->partial_heads);
-  if (!h->n.next)
+  if (!(h = s->partial_heads.first))
     goto no_partial;
 okay:
   for (uint i=0; i<s->head_bitfield_len; i++)
@@ -256,26 +278,27 @@ okay:
       return out;
     }
 
-  rem_node(&h->n);
-  add_tail(&s->full_heads, &h->n);
+  SL_HEAD_CHANGE_STATE(s, h, partial, full);
   goto redo;
 
 no_partial:
-  h = HEAD(s->empty_heads);
-  if (h->n.next)
+  if (h = s->empty_heads.first)
     {
-      rem_node(&h->n);
-      add_head(&s->partial_heads, &h->n);
+      SL_HEAD_CHANGE_STATE(s, h, empty, partial);
       s->num_empty_heads--;
       goto okay;
     }
-  h = alloc_page(s->p);
+
+  h = alloc_page();
+  ASSERT_DIE(SL_GET_HEAD(h) == h);
+
 #ifdef POISON
   memset(h, 0xba, page_size);
 #endif
-  ASSERT_DIE(SL_GET_HEAD(h) == h);
+
   memset(h, 0, s->head_size);
-  add_head(&s->partial_heads, &h->n);
+  h->slab = s;
+  sl_head_add_head(&s->partial_heads, h);
   goto okay;
 }
 
@@ -304,9 +327,10 @@ sl_allocz(slab *s)
  * and returns it back to the Slab @s.
  */
 void
-sl_free(slab *s, void *oo)
+sl_free(void *oo)
 {
   struct sl_head *h = SL_GET_HEAD(oo);
+  struct slab *s = h->slab;
 
 #ifdef POISON
   memset(oo, 0xdb, s->data_size);
@@ -319,24 +343,22 @@ sl_free(slab *s, void *oo)
 
   h->used_bits[pos / 32] &= ~(1 << (pos % 32));
 
-  if (h->num_full-- == s->objs_per_slab)
-    {
-      rem_node(&h->n);
-      add_head(&s->partial_heads, &h->n);
-    }
+  if ((h->num_full-- == s->objs_per_slab) && (h->state == slh_full))
+    SL_HEAD_CHANGE_STATE(s, h, full, partial);
   else if (!h->num_full)
     {
-      rem_node(&h->n);
+      sl_head_rem_node(&s->partial_heads, h);
       if (s->num_empty_heads >= MAX_EMPTY_HEADS)
       {
 #ifdef POISON
 	memset(h, 0xde, page_size);
 #endif
-	free_page(s->p, h);
+	free_page(h);
       }
       else
 	{
-	  add_head(&s->empty_heads, &h->n);
+	  sl_head_add_head(&s->empty_heads, h);
+	  h->state = slh_empty;
 	  s->num_empty_heads++;
 	}
     }
@@ -346,14 +368,13 @@ static void
 slab_free(resource *r)
 {
   slab *s = (slab *) r;
-  struct sl_head *h, *g;
 
-  WALK_LIST_DELSAFE(h, g, s->empty_heads)
-    free_page(s->p, h);
-  WALK_LIST_DELSAFE(h, g, s->partial_heads)
-    free_page(s->p, h);
-  WALK_LIST_DELSAFE(h, g, s->full_heads)
-    free_page(s->p, h);
+  WALK_TLIST_DELSAFE(sl_head, h, &s->empty_heads)
+    free_page(h);
+  WALK_TLIST_DELSAFE(sl_head, h, &s->partial_heads)
+    free_page(h);
+  WALK_TLIST_DELSAFE(sl_head, h, &s->full_heads)
+    free_page(h);
 }
 
 static void
@@ -361,45 +382,53 @@ slab_dump(resource *r)
 {
   slab *s = (slab *) r;
   int ec=0, pc=0, fc=0;
-  struct sl_head *h;
 
-  WALK_LIST(h, s->empty_heads)
+  WALK_TLIST(sl_head, h, &s->empty_heads)
     ec++;
-  WALK_LIST(h, s->partial_heads)
+  WALK_TLIST(sl_head, h, &s->partial_heads)
     pc++;
-  WALK_LIST(h, s->full_heads)
+  WALK_TLIST(sl_head, h, &s->full_heads)
     fc++;
   debug("(%de+%dp+%df blocks per %d objs per %d bytes)\n", ec, pc, fc, s->objs_per_slab, s->obj_size);
 }
 
-static size_t
+static struct resmem
 slab_memsize(resource *r)
 {
   slab *s = (slab *) r;
   size_t heads = 0;
-  struct sl_head *h;
 
-  WALK_LIST(h, s->empty_heads)
-    heads++;
-  WALK_LIST(h, s->partial_heads)
-    heads++;
-  WALK_LIST(h, s->full_heads)
+  WALK_TLIST(sl_head, h, &s->full_heads)
     heads++;
 
-//  return ALLOC_OVERHEAD + sizeof(struct slab) + heads * (ALLOC_OVERHEAD + page_size);
-  return ALLOC_OVERHEAD + sizeof(struct slab); /* The page sizes are accounted for in the pool */
+  size_t items = heads * s->objs_per_slab;
+
+  WALK_TLIST(sl_head, h, &s->partial_heads)
+  {
+    heads++;
+    items += h->num_full;
+  }
+
+  WALK_TLIST(sl_head, h, &s->empty_heads)
+    heads++;
+
+  size_t eff = items * s->data_size;
+
+  return (struct resmem) {
+    .effective = eff,
+    .overhead = ALLOC_OVERHEAD + sizeof(struct slab) + heads * page_size - eff,
+  };
 }
 
 static resource *
 slab_lookup(resource *r, unsigned long a)
 {
   slab *s = (slab *) r;
-  struct sl_head *h;
 
-  WALK_LIST(h, s->partial_heads)
+  WALK_TLIST(sl_head, h, &s->partial_heads)
     if ((unsigned long) h < a && (unsigned long) h + page_size < a)
       return r;
-  WALK_LIST(h, s->full_heads)
+  WALK_TLIST(sl_head, h, &s->full_heads)
     if ((unsigned long) h < a && (unsigned long) h + page_size < a)
       return r;
   return NULL;

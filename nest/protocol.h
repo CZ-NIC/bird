@@ -12,7 +12,7 @@
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/limit.h"
 #include "conf/conf.h"
 
@@ -38,37 +38,19 @@ struct symbol;
  *	Routing Protocol
  */
 
-enum protocol_class {
-  PROTOCOL_NONE,
-  PROTOCOL_BABEL,
-  PROTOCOL_BFD,
-  PROTOCOL_BGP,
-  PROTOCOL_DEVICE,
-  PROTOCOL_DIRECT,
-  PROTOCOL_KERNEL,
-  PROTOCOL_OSPF,
-  PROTOCOL_MRT,
-  PROTOCOL_PERF,
-  PROTOCOL_PIPE,
-  PROTOCOL_RADV,
-  PROTOCOL_RIP,
-  PROTOCOL_RPKI,
-  PROTOCOL_STATIC,
-  PROTOCOL__MAX
-};
-
-extern struct protocol *class_to_protocol[PROTOCOL__MAX];
 
 struct protocol {
   node n;
   char *name;
   char *template;			/* Template for automatic generation of names */
   int name_counter;			/* Counter for automatic name generation */
-  enum protocol_class class;		/* Machine readable protocol class */
   uint preference;			/* Default protocol preference */
   uint channel_mask;			/* Mask of accepted channel types (NB_*) */
   uint proto_size;			/* Size of protocol data structure */
   uint config_size;			/* Size of protocol config data structure */
+
+  uint eattr_begin;			/* First ID of registered eattrs */
+  uint eattr_end;			/* End of eattr id zone */
 
   void (*preconfig)(struct protocol *, struct config *);	/* Just before configuring */
   void (*postconfig)(struct proto_config *);			/* After configuring each instance */
@@ -79,13 +61,13 @@ struct protocol {
   int (*shutdown)(struct proto *);		/* Stop the instance */
   void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
   void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */
-  int (*get_attr)(const struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
+//  int (*get_attr)(const struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
   void (*show_proto_info)(struct proto *);	/* Show protocol info (for `show protocols all' command) */
   void (*copy_config)(struct proto_config *, struct proto_config *);	/* Copy config from given protocol instance */
 };
 
-void protos_build(void);
-void proto_build(struct protocol *);
+void protos_build(void);		/* Called from sysdep to initialize protocols */
+void proto_build(struct protocol *);	/* Called from protocol to register itself */
 void protos_preconfig(struct config *);
 void protos_commit(struct config *new, struct config *old, int force_restart, int type);
 struct proto * proto_spawn(struct proto_config *cf, uint disabled);
@@ -152,7 +134,7 @@ struct proto {
   u32 debug;				/* Debugging flags */
   u32 mrtdump;				/* MRTDump flags */
   uint active_channels;			/* Number of active channels */
-  uint active_coroutines;		/* Number of active coroutines */
+  uint active_loops;			/* Number of active IO loops */
   byte net_type;			/* Protocol network type (NET_*), 0 for undefined */
   byte disabled;			/* Manually disabled */
   byte vrf_set;				/* Related VRF instance (above) is defined */
@@ -212,7 +194,7 @@ struct proto {
   int (*rte_mergable)(struct rte *, struct rte *);
   void (*rte_insert)(struct network *, struct rte *);
   void (*rte_remove)(struct network *, struct rte *);
-  u32 (*rte_igp_metric)(struct rte *);
+  u32 (*rte_igp_metric)(const struct rte *);
 
   /* Hic sunt protocol-specific data */
 };
@@ -360,7 +342,7 @@ void proto_notify_state(struct proto *p, unsigned state);
  */
 
 static inline int proto_is_inactive(struct proto *p)
-{ return (p->active_channels == 0) && (p->active_coroutines == 0); }
+{ return (p->active_channels == 0) && (p->active_loops == 0); }
 
 
 /*
@@ -474,9 +456,10 @@ struct channel_config {
   struct proto_config *parent;		/* Where channel is defined (proto or template) */
   struct rtable_config *table;		/* Table we're attached to */
   const struct filter *in_filter, *out_filter; /* Attached filters */
+  const net_addr *out_subprefix;	/* Export only subprefixes of this net */
 
   struct channel_limit rx_limit;	/* Limit for receiving routes from protocol
-					   (relevant when in_keep_filtered is active) */
+					   (relevant when in_keep & RIK_REJECTED) */
   struct channel_limit in_limit;	/* Limit for importing routes from protocol */
   struct channel_limit out_limit;	/* Limit for exporting routes to protocol */
 
@@ -485,7 +468,7 @@ struct channel_config {
   u16 preference;			/* Default route preference */
   u32 debug;				/* Debugging flags (D_*) */
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
-  u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
+  u8 in_keep;				/* Which states of routes to keep (RIK_*) */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
 };
 
@@ -499,10 +482,11 @@ struct channel {
   struct rtable *table;
   const struct filter *in_filter;	/* Input filter */
   const struct filter *out_filter;	/* Output filter */
+  const net_addr *out_subprefix;	/* Export only subprefixes of this net */
   struct bmap export_map;		/* Keeps track which routes were really exported */
   struct bmap export_reject_map;	/* Keeps track which routes were rejected by export filter */
 
-  struct limit rx_limit;		/* Receive limit (for in_keep_filtered) */
+  struct limit rx_limit;		/* Receive limit (for in_keep & RIK_REJECTED) */
   struct limit in_limit;		/* Input limit */
   struct limit out_limit;		/* Output limit */
 
@@ -539,7 +523,7 @@ struct channel {
   u16 preference;			/* Default route preference */
   u32 debug;				/* Debugging flags (D_*) */
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
-  u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
+  u8 in_keep;				/* Which states of routes to keep (RIK_*) */
   u8 disabled;
   u8 stale;				/* Used in reconfiguration */
 
@@ -548,29 +532,22 @@ struct channel {
   u8 reloadable;			/* Hook reload_routes() is allowed on the channel */
   u8 gr_lock;				/* Graceful restart mechanism should wait for this channel */
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
-  u8 restart_export;			/* Route export should restart as soon as it stops */
 
   btime last_state_change;		/* Time of last state transition */
 
-  struct channel_aux_table *in_table;	/* Internal table for received routes */
+  struct rt_export_request reload_req;	/* Feeder for import reload */
 
   u8 reload_pending;			/* Reloading and another reload is scheduled */
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
 
-  struct channel_aux_table *out_table;	/* Internal table for exported routes */
+  struct rt_exporter *out_table;	/* Internal table for exported routes */
 
   list roa_subscriptions;		/* List of active ROA table subscriptions based on filters roa_check() */
 };
 
-struct channel_aux_table {
-  struct channel *c;
-  struct rt_import_request push;
-  struct rt_export_request get;
-  rtable *tab;
-  u8 stop;
-  u8 refeed_pending;
-};
+#define RIK_REJECTED	1			/* Routes rejected in import filter are kept */
+#define RIK_PREFILTER	(2 | RIK_REJECTED)	/* All routes' attribute state before import filter is kept */
 
 /*
  * Channel states
@@ -636,8 +613,7 @@ struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);
 
 void channel_set_state(struct channel *c, uint state);
-void channel_setup_in_table(struct channel *c, int best);
-void channel_setup_out_table(struct channel *c);
+void channel_setup_in_table(struct channel *c);
 void channel_schedule_reload(struct channel *c);
 
 static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }
@@ -645,9 +621,6 @@ static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP)
 static inline void channel_close(struct channel *c) { channel_set_state(c, CS_STOP); }
 
 void channel_request_feeding(struct channel *c);
-void channel_request_reload(struct channel *c);
-void channel_refresh_begin(struct channel *c);
-void channel_refresh_end(struct channel *c);
 void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);

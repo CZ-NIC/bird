@@ -35,10 +35,10 @@
 #include "lib/ip.h"
 #include "lib/net.h"
 #include "lib/flowspec.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "nest/attrs.h"
+#include "lib/attrs.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/f-inst.h"
@@ -79,9 +79,6 @@ struct filter_state {
   /* Cached pointer to ea_list */
   struct ea_list **eattrs;
 
-  /* Linpool for adata allocation */
-  struct linpool *pool;
-
   /* Buffer for log output */
   struct buffer buf;
 
@@ -99,28 +96,7 @@ void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
 static inline void f_cache_eattrs(struct filter_state *fs)
 {
-  fs->eattrs = &(fs->rte->attrs->eattrs);
-}
-
-/*
- * rta_cow - prepare rta for modification by filter
- */
-static void
-f_rta_cow(struct filter_state *fs)
-{
-  if (!rta_is_cached(fs->rte->attrs))
-    return;
-
-  /*
-   * Get shallow copy of rta. Fields eattrs and nexthops of rta are shared
-   * with fs->old_rta (they will be copied when the cached rta will be obtained
-   * at the end of f_run()), also the lock of hostentry is inherited (we
-   * suppose hostentry is not changed by filters).
-   */
-  fs->rte->attrs = rta_do_cow(fs->rte->attrs, fs->pool);
-
-  /* Re-cache the ea_list */
-  f_cache_eattrs(fs);
+  fs->eattrs = &(fs->rte->attrs);
 }
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
@@ -185,8 +161,8 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   return F_ERROR; \
 } while(0)
 
-#define falloc(size)  lp_alloc(fs->pool, size)
-#define fpool fs->pool
+#define falloc(size)	tmp_alloc(size)
+#define fpool		tmp_linpool
 
 #define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
 
@@ -203,8 +179,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
     }
 
     /* End of current line. Drop local variables before exiting. */
-    fstk->vcnt -= curline.line->vars;
-    fstk->vcnt -= curline.line->args;
+    fstk->vcnt = curline.ventry + curline.line->results;
     fstk->ecnt--;
   }
 
@@ -237,7 +212,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
  * tmp_pool, otherwise the filters may modify it.
  */
 enum filter_return
-f_run(const struct filter *filter, struct rte *rte, struct linpool *tmp_pool, int flags)
+f_run(const struct filter *filter, struct rte *rte, int flags)
 {
   if (filter == FILTER_ACCEPT)
     return F_ACCEPT;
@@ -250,7 +225,6 @@ f_run(const struct filter *filter, struct rte *rte, struct linpool *tmp_pool, in
   /* Initialize the filter state */
   filter_state = (struct filter_state) {
     .rte = rte,
-    .pool = tmp_pool,
     .flags = flags,
   };
 
@@ -285,11 +259,10 @@ f_run(const struct filter *filter, struct rte *rte, struct linpool *tmp_pool, in
  */
 
 enum filter_return
-f_eval_rte(const struct f_line *expr, struct rte *rte, struct linpool *tmp_pool)
+f_eval_rte(const struct f_line *expr, struct rte *rte)
 {
   filter_state = (struct filter_state) {
     .rte = rte,
-    .pool = tmp_pool,
   };
 
   f_stack_init(filter_state);
@@ -308,11 +281,9 @@ f_eval_rte(const struct f_line *expr, struct rte *rte, struct linpool *tmp_pool)
  * @pres: here the output will be stored
  */
 enum filter_return
-f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
+f_eval(const struct f_line *expr, struct f_val *pres)
 {
-  filter_state = (struct filter_state) {
-    .pool = tmp_pool,
-  };
+  filter_state = (struct filter_state) {};
 
   f_stack_init(filter_state);
 
@@ -331,9 +302,7 @@ uint
 f_eval_int(const struct f_line *expr)
 {
   /* Called independently in parse-time to eval expressions */
-  filter_state = (struct filter_state) {
-    .pool = cfg_mem,
-  };
+  filter_state = (struct filter_state) {};
 
   f_stack_init(filter_state);
 
@@ -354,10 +323,10 @@ f_eval_int(const struct f_line *expr)
  * f_eval_buf - get a value of a term and print it to the supplied buffer
  */
 enum filter_return
-f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf)
+f_eval_buf(const struct f_line *expr, buffer *buf)
 {
   struct f_val val;
-  enum filter_return fret = f_eval(expr, tmp_pool, &val);
+  enum filter_return fret = f_eval(expr, &val);
   if (fret <= F_RETURN)
     val_format(&val, buf);
   return fret;

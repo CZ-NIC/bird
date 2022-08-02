@@ -18,7 +18,7 @@
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/rt-dev.h"
 #include "conf/conf.h"
 #include "lib/resource.h"
@@ -79,16 +79,18 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
       /* Use iface ID as local source ID */
       struct rte_src *src = rt_get_source(P, ad->iface->index);
 
-      rta a0 = {
-	.pref = c->preference,
-	.source = RTS_DEVICE,
-	.scope = SCOPE_UNIVERSE,
-	.dest = RTD_UNICAST,
-	.nh.iface = ad->iface,
+      ea_list *ea = NULL;
+      struct nexthop_adata nhad = {
+	.nh = { .iface = ad->iface, },
+	.ad = { .length = (void *) NEXTHOP_NEXT(&nhad.nh) - (void *) nhad.ad.data, },
       };
 
+      ea_set_attr_u32(&ea, &ea_gen_preference, 0, c->preference);
+      ea_set_attr_u32(&ea, &ea_gen_source, 0, RTS_DEVICE);
+      ea_set_attr_data(&ea, &ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length);
+
       rte e0 = {
-	.attrs = rta_lookup(&a0),
+	.attrs = ea,
 	.src = src,
       };
 
@@ -184,7 +186,6 @@ dev_copy_config(struct proto_config *dest, struct proto_config *src)
 struct protocol proto_device = {
   .name =		"Direct",
   .template =		"direct%d",
-  .class =		PROTOCOL_DIRECT,
   .preference =		DEF_PREF_DIRECT,
   .channel_mask =	NB_IP | NB_IP6_SADR,
   .proto_size =		sizeof(struct rt_dev_proto),
@@ -194,3 +195,9 @@ struct protocol proto_device = {
   .reconfigure =	dev_reconfigure,
   .copy_config =	dev_copy_config
 };
+
+void
+dev_build(void)
+{
+  proto_build(&proto_device);
+}

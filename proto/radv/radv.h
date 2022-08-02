@@ -19,7 +19,7 @@
 #include "lib/resource.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/cli.h"
 #include "nest/locks.h"
 #include "conf/conf.h"
@@ -194,10 +194,6 @@ struct radv_iface
 #define RA_PREF_MEDIUM	0x00
 #define RA_PREF_HIGH	0x08
 #define RA_PREF_MASK	0x18
-
-/* Attributes */
-#define EA_RA_PREFERENCE	EA_CODE(PROTOCOL_RADV, 0)
-#define EA_RA_LIFETIME		EA_CODE(PROTOCOL_RADV, 1)
 
 #ifdef LOCAL_DEBUG
 #define RADV_FORCE_DEBUG 1

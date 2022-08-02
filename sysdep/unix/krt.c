@@ -53,7 +53,7 @@
 
 #include "nest/bird.h"
 #include "nest/iface.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "filter/filter.h"
 #include "conf/conf.h"
@@ -232,7 +232,6 @@ kif_copy_config(struct proto_config *dest, struct proto_config *src)
 struct protocol proto_unix_iface = {
   .name = 		"Device",
   .template = 		"device%d",
-  .class =		PROTOCOL_DEVICE,
   .proto_size =		sizeof(struct kif_proto),
   .config_size =	sizeof(struct kif_config),
   .preconfig =		kif_preconfig,
@@ -242,6 +241,13 @@ struct protocol proto_unix_iface = {
   .reconfigure =	kif_reconfigure,
   .copy_config =	kif_copy_config
 };
+
+void
+kif_build(void)
+{
+  proto_build(&proto_unix_iface);
+}
+
 
 /*
  *	Tracing of routes
@@ -280,29 +286,45 @@ static struct tbf rl_alien = TBF_DEFAULT_LOG_LIMITS;
 static inline u32
 krt_metric(rte *a)
 {
-  eattr *ea = ea_find(a->attrs->eattrs, EA_KRT_METRIC);
+  eattr *ea = ea_find(a->attrs, &ea_krt_metric);
   return ea ? ea->u.data : 0;
 }
 
 static inline int
-krt_rte_better(rte *a, rte *b)
+krt_same_key(rte *a, rte *b)
 {
-  return (krt_metric(a) > krt_metric(b));
+  return (krt_metric(a) == krt_metric(b));
+}
+
+static inline int
+krt_uptodate(rte *a, rte *b)
+{
+  return (a->attrs == b->attrs);
 }
 
 /* Called when alien route is discovered during scan */
 static void
-krt_learn_rte(struct krt_proto *p, rte *e)
+krt_learn_scan(struct krt_proto *p, rte *e)
 {
-  e->src = rt_get_source(&p->p, krt_metric(e));
-  rte_update(p->p.main_channel, e->net, e, e->src);
+  rte e0 = {
+    .attrs = e->attrs,
+    .src = rt_get_source(&p->p, krt_metric(e)),
+  };
+
+  ea_set_attr_u32(&e0.attrs, &ea_gen_preference, 0, p->p.main_channel->preference);
+
+  rte_update(p->p.main_channel, e->net, &e0, e0.src);
 }
 
 static void
-krt_learn_init(struct krt_proto *p)
+krt_learn_async(struct krt_proto *p, rte *e, int new)
 {
-  if (KRT_CF->learn)
-    channel_setup_in_table(p->p.main_channel, 1);
+  if (new)
+    return krt_learn_scan(p, e);
+
+  struct rte_src *src = rt_find_source(&p->p, krt_metric(e));
+  if (src)
+    rte_update(p->p.main_channel, e->net, NULL, src);
 }
 
 #endif
@@ -322,7 +344,7 @@ rte_feed_count(net *n)
 {
   uint count = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTES_OR_NULL(e)))
+    if (rte_is_valid(RTE_OR_NULL(e)))
       count++;
   return count;
 }
@@ -332,7 +354,7 @@ rte_feed_obtain(net *n, rte **feed, uint count)
 {
   uint i = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTES_OR_NULL(e)))
+    if (rte_is_valid(RTE_OR_NULL(e)))
     {
       ASSERT_DIE(i < count);
       feed[i++] = &e->rte;
@@ -371,7 +393,7 @@ krt_export_net(struct krt_proto *p, net *net)
   if (filter == FILTER_ACCEPT)
     goto accept;
 
-  if (f_run(filter, &rt, krt_filter_lp, FF_SILENT) > F_ACCEPT)
+  if (f_run(filter, &rt, FF_SILENT) > F_ACCEPT)
     goto reject;
 
 
@@ -385,15 +407,12 @@ reject:
 static int
 krt_same_dest(rte *k, rte *e)
 {
-  rta *ka = k->attrs, *ea = e->attrs;
+  ea_list *ka = k->attrs, *ea = e->attrs;
 
-  if (ka->dest != ea->dest)
-    return 0;
+  eattr *nhea_k = ea_find(ka, &ea_gen_nexthop);
+  eattr *nhea_e = ea_find(ea, &ea_gen_nexthop);
 
-  if (ka->dest == RTD_UNICAST)
-    return nexthop_same(&(ka->nh), &(ea->nh));
-
-  return 1;
+  return (!nhea_k == !nhea_e) && adata_same(nhea_k->u.ptr, nhea_e->u.ptr);
 }
 
 /*
@@ -418,7 +437,7 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
 
     case  KRT_SRC_ALIEN:
       if (KRT_CF->learn)
-	krt_learn_rte(p, e);
+	krt_learn_scan(p, e);
       else
 	krt_trace_in_rl(&rl_alien, p, e, "[alien] ignored");
       return;
@@ -487,11 +506,6 @@ static void
 krt_init_scan(struct krt_proto *p)
 {
   bmap_reset(&p->seen_map, 1024);
-
-#ifdef KRT_ALLOW_LEARN
-  if (KRT_CF->learn)
-    channel_refresh_begin(p->p.main_channel);
-#endif
 }
 
 static void
@@ -516,11 +530,6 @@ krt_prune(struct krt_proto *p)
     }
   }
   FIB_WALK_END;
-
-#ifdef KRT_ALLOW_LEARN
-  if (KRT_CF->learn)
-    channel_refresh_end(p->p.main_channel);
-#endif
 
   if (p->ready)
     p->initialized = 1;
@@ -561,7 +570,7 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
     case KRT_SRC_ALIEN:
       if (KRT_CF->learn)
 	{
-	  krt_learn_rte(p, e);
+	  krt_learn_async(p, e, new);
 	  return;
 	}
 #endif
@@ -672,9 +681,9 @@ krt_scan_timer_kick(struct krt_proto *p)
  */
 
 static int
-krt_preexport(struct channel *c, rte *e)
+krt_preexport(struct channel *C, rte *e)
 {
-  if (e->src->proto == c->proto)
+  if (e->src->proto == C->proto)
     return -1;
 
   if (!krt_capable(e))
@@ -807,7 +816,6 @@ krt_init(struct proto_config *CF)
   p->p.if_notify = krt_if_notify;
   p->p.reload_routes = krt_reload_routes;
   p->p.feed_end = krt_feed_end;
-  p->p.rte_better = krt_rte_better;
 
   krt_sys_init(p);
   return &p->p;
@@ -832,10 +840,6 @@ krt_start(struct proto *P)
   bmap_init(&p->sync_map, p->p.pool, 1024);
   bmap_init(&p->seen_map, p->p.pool, 1024);
   add_tail(&krt_proto_list, &p->krt_node);
-
-#ifdef KRT_ALLOW_LEARN
-  krt_learn_init(p);
-#endif
 
   if (!krt_sys_start(p))
   {
@@ -916,24 +920,15 @@ krt_copy_config(struct proto_config *dest, struct proto_config *src)
   krt_sys_copy_config(d, s);
 }
 
-static int
-krt_get_attr(const eattr *a, byte *buf, int buflen)
-{
-  switch (a->id)
-  {
-  case EA_KRT_SOURCE:
-    bsprintf(buf, "source");
-    return GA_NAME;
+struct ea_class ea_krt_source = {
+  .name = "krt_source",
+  .type = T_INT,
+};
 
-  case EA_KRT_METRIC:
-    bsprintf(buf, "metric");
-    return GA_NAME;
-
-  default:
-    return krt_sys_get_attr(a, buf, buflen);
-  }
-}
-
+struct ea_class ea_krt_metric = {
+  .name = "krt_metric",
+  .type = T_INT,
+};
 
 #ifdef CONFIG_IP6_SADR_KERNEL
 #define MAYBE_IP6_SADR	NB_IP6_SADR
@@ -950,7 +945,6 @@ krt_get_attr(const eattr *a, byte *buf, int buflen)
 struct protocol proto_unix_kernel = {
   .name =		"Kernel",
   .template =		"kernel%d",
-  .class =		PROTOCOL_KERNEL,
   .preference =		DEF_PREF_INHERITED,
   .channel_mask =	NB_IP | MAYBE_IP6_SADR | MAYBE_MPLS,
   .proto_size =		sizeof(struct krt_proto),
@@ -962,5 +956,15 @@ struct protocol proto_unix_kernel = {
   .shutdown =		krt_shutdown,
   .reconfigure =	krt_reconfigure,
   .copy_config =	krt_copy_config,
-  .get_attr =		krt_get_attr,
 };
+
+void
+krt_build(void)
+{
+  proto_build(&proto_unix_kernel);
+
+  EA_REGISTER_ALL(
+      &ea_krt_source,
+      &ea_krt_metric,
+      );
+}

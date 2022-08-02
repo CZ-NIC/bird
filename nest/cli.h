@@ -33,12 +33,12 @@ typedef struct cli {
   struct cli_out *tx_buf, *tx_pos, *tx_write;
   event *event;
   void (*cont)(struct cli *c);
-  void (*cleanup)(struct cli *c);
+  int (*cleanup)(struct cli *c);	/* Return 0 if finished and cli may be freed immediately.
+					   Otherwise return 1 and call rfree(c->pool) when appropriate. */
   void *rover;				/* Private to continuation routine */
   int last_reply;
   int restricted;			/* CLI is restricted to read-only commands */
   struct linpool *parser_pool;		/* Pool used during parsing */
-  struct linpool *show_pool;		/* Pool used during route show */
   byte *ring_buf;			/* Ring buffer for asynchronous messages */
   byte *ring_end, *ring_read, *ring_write;	/* Pointers to the ring buffer */
   uint ring_overflow;			/* Counter of ring overflows */

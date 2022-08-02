@@ -17,6 +17,7 @@ CF_HDR
 
 CF_DEFINES
 
+static struct rtable_config *this_table;
 static struct proto_config *this_proto;
 static struct channel_config *this_channel;
 static struct iface_patt *this_ipatt;
@@ -117,13 +118,14 @@ CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
 CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
-CF_KEYWORDS(PRIMARY, STATS, COUNT, BY, FOR, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
-CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION, SORTED)
-CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
+CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, IN, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
+CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION)
+CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, CLASS, DSCP)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
-CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
+CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
 CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
+CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
@@ -131,7 +133,7 @@ CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4,
 CF_ENUM(T_ENUM_RTS, RTS_, STATIC, INHERIT, DEVICE, STATIC_DEVICE, REDIRECT,
 	RIP, OSPF, OSPF_IA, OSPF_EXT1, OSPF_EXT2, BGP, PIPE, BABEL)
 CF_ENUM(T_ENUM_SCOPE, SCOPE_, HOST, LINK, SITE, ORGANIZATION, UNIVERSE, UNDEFINED)
-CF_ENUM(T_ENUM_RTD, RTD_, UNICAST, BLACKHOLE, UNREACHABLE, PROHIBIT)
+CF_ENUM(T_ENUM_RTD, RTD_, BLACKHOLE, UNREACHABLE, PROHIBIT)
 CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 
@@ -141,7 +143,7 @@ CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 %type <s> optproto
 %type <ra> r_args
 %type <sd> sym_args
-%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type table_sorted tos password_algorithm
+%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type tos password_algorithm
 %type <ps> proto_patt proto_patt2
 %type <cc> channel_start proto_channel
 %type <cl> limit_spec
@@ -163,7 +165,7 @@ rtrid:
 
 idval:
    NUM { $$ = $1; }
- | '(' term ')' { $$ = f_eval_int(f_linearize($2)); }
+ | '(' term ')' { $$ = f_eval_int(f_linearize($2, 1)); }
  | IP4 { $$ = ip4_to_u32($1); }
  | CF_SYM_KNOWN {
      if ($1->class == (SYM_CONSTANT | T_INT) || $1->class == (SYM_CONSTANT | T_QUAD))
@@ -206,16 +208,43 @@ CF_ENUM(T_ENUM_NETTYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, IP
 
 conf: table ;
 
-table_sorted:
-	  { $$ = 0; }
- | SORTED { $$ = 1; }
+table: table_start table_sorted table_opt_list ;
+
+table_start: net_type TABLE symbol {
+   this_table = rt_new_table($3, $1);
+   }
  ;
 
-table: net_type TABLE symbol table_sorted {
-   struct rtable_config *cf;
-   cf = rt_new_table($3, $1);
-   cf->sorted = $4;
+table_sorted:
+   /* empty */
+ | SORTED { this_table->sorted = 1; }
+ ;
+
+table_opt:
+   SORTED bool { this_table->sorted = $2; }
+ | TRIE bool {
+     if (!net_val_match(this_table->addr_type, NB_IP | NB_VPN | NB_ROA | NB_IP6_SADR))
+       cf_error("Trie option not supported for %s table", net_label[this_table->addr_type]);
+     this_table->trie_used = $2;
    }
+ | MIN SETTLE TIME expr_us { this_table->min_settle_time = $4; }
+ | MAX SETTLE TIME expr_us { this_table->max_settle_time = $4; }
+ | GC THRESHOLD expr { this_table->gc_threshold = $3; }
+ | GC PERIOD expr_us { this_table->gc_period = (uint) $3; if ($3 > 3600 S_) cf_error("GC period must be at most 3600 s"); }
+ | CORK THRESHOLD expr expr {
+     if ($3 > $4) cf_error("Cork low threshold must be lower than the high threshold.");
+     this_table->cork_threshold.low = $3;
+     this_table->cork_threshold.high = $4; }
+ ;
+
+table_opts:
+   /* empty */
+ | table_opts table_opt ';'
+ ;
+
+table_opt_list:
+   /* empty */
+ | '{' table_opts '}'
  ;
 
 
@@ -283,12 +312,25 @@ channel_item_:
      this_channel->table = $2;
    }
  | IMPORT imexport { this_channel->in_filter = $2; }
+ | EXPORT IN net_any imexport {
+     if (this_channel->net_type && ($3->type != this_channel->net_type))
+       cf_error("Incompatible export prefilter type");
+     this_channel->out_subprefix = $3;
+     this_channel->out_filter = $4;
+   }
  | EXPORT imexport { this_channel->out_filter = $2; }
  | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
  | PREFERENCE expr { this_channel->preference = $2; check_u16($2); }
- | IMPORT KEEP FILTERED bool { this_channel->in_keep_filtered = $4; }
+ | IMPORT KEEP FILTERED bool {
+     if ($4)
+       this_channel->in_keep |= RIK_REJECTED;
+     else if ((this_channel->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
+       cf_error("Import keep filtered is implied by the import table.");
+     else
+       this_channel->in_keep &= ~RIK_REJECTED;
+   }
  | RPKI RELOAD bool { this_channel->rpki_reload = $3; }
  ;
 
@@ -617,20 +659,29 @@ r_args:
      $$ = cfg_allocz(sizeof(struct rt_show_data));
      init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
-     $$->running_on_config = new_config->fallback;
+     $$->running_on_config = config;
+     $$->cli = this_cli;
    }
  | r_args net_any {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      $$->addr = $2;
+     $$->addr_mode = TE_ADDR_EQUAL;
    }
  | r_args FOR r_args_for {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
-     $$->show_for = 1;
      $$->addr = $3;
+     $$->addr_mode = TE_ADDR_FOR;
    }
- | r_args TABLE CF_SYM_KNOWN {
+ | r_args IN net_any {
+     $$ = $1;
+     if ($$->addr) cf_error("Only one prefix expected");
+     if (!net_type_match($3, NB_IP)) cf_error("Only IP networks accepted for 'in' argument");
+     $$->addr = $3;
+     $$->addr_mode = TE_ADDR_IN;
+   }
+| r_args TABLE symbol_known {
      cf_assert_symbol($3, SYM_TABLE);
      $$ = $1;
      rt_show_add_table($$, $3->table->table);
@@ -644,13 +695,13 @@ r_args:
      $$->tables_defined_by = RSD_TDB_ALL;
    }
  | r_args IMPORT TABLE channel_arg {
-     if (!$4->in_table) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_table($$, $4->in_table->tab);
+     if (!($4->in_keep & RIK_PREFILTER)) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
+     rt_show_add_exporter($$, &$4->table->exporter, "import")->prefilter = $4;
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args EXPORT TABLE channel_arg {
      if (!$4->out_table) cf_error("No export table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_table($$, $4->out_table->tab);
+     rt_show_add_exporter($$, $4->out_table, "export");
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args FILTER filter {
@@ -675,7 +726,7 @@ r_args:
      $$ = $1;
      $$->filtered = 1;
    }
- | r_args export_mode CF_SYM_KNOWN {
+ | r_args export_mode symbol_known {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
@@ -692,7 +743,7 @@ r_args:
      $$->export_channel = $3;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
- | r_args PROTOCOL CF_SYM_KNOWN {
+ | r_args PROTOCOL symbol_known {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
@@ -820,7 +871,7 @@ CF_CLI(DUMP INTERFACES,,, [[Dump interface information]])
 CF_CLI(DUMP NEIGHBORS,,, [[Dump neighbor cache]])
 { neigh_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP ATTRIBUTES,,, [[Dump attribute cache]])
-{ rta_dump_all(); cli_msg(0, ""); } ;
+{ ea_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP ROUTES,,, [[Dump routes]])
 { rt_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP TABLES,,, [[Dump table connections]])
@@ -831,7 +882,7 @@ CF_CLI(DUMP FILTER ALL,,, [[Dump all filters in linearized form]])
 { filters_dump_all(); cli_msg(0, ""); } ;
 
 CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]])
-{ cmd_eval(f_linearize($2)); } ;
+{ cmd_eval(f_linearize($2, 1)); } ;
 
 CF_CLI_HELP(ECHO, ..., [[Control echoing of log messages]])
 CF_CLI(ECHO, echo_mask echo_size, (all | off | { debug|trace|info|remote|warning|error|auth [, ...] }) [<buffer-size>], [[Control echoing of log messages]]) {
@@ -893,9 +944,6 @@ proto_patt2:
  |      { $$.ptr = NULL; $$.patt = 1; }
  | TEXT { $$.ptr = $1; $$.patt = 1; }
  ;
-
-dynamic_attr: IGP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_GEN_IGP_METRIC); } ;
-
 
 CF_CODE
 

@@ -42,7 +42,7 @@
 #define PARSER 1
 
 #include "nest/bird.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "filter/filter.h"
 #include "filter/f-inst.h"
@@ -77,18 +77,21 @@ static uint cf_hash(const byte *c);
 #define SYM_NEXT(n)		n->next
 #define SYM_EQ(a,s1,b,s2)	!strcmp(a,b) && s1 == s2
 #define SYM_FN(k,s)		cf_hash(k)
-#define SYM_ORDER		6 /* Initial */
+#define SYM_ORDER		4 /* Initial */
 
 #define SYM_REHASH		sym_rehash
-#define SYM_PARAMS		/8, *1, 2, 2, 6, 20
+#define SYM_PARAMS		/8, *1, 2, 2, 4, 20
 
 
 HASH_DEFINE_REHASH_FN(SYM, struct symbol)
 
 HASH(struct keyword) kw_hash;
-
+HASH(struct ea_class) ea_name_hash;
 
 struct sym_scope *conf_this_scope;
+
+static struct sym_scope global_root_scope__init = { .active = 1, };
+struct sym_scope *global_root_scope = &global_root_scope__init;
 
 linpool *cfg_mem;
 
@@ -255,7 +258,7 @@ WHITE [ \t]
   return IP4;
 }
 
-{XIGIT}{2}(:{XIGIT}{2}|{XIGIT}{2}){15,} {
+{XIGIT}{2}((:{XIGIT}{2}){15,}|({XIGIT}{2}){15,}) {
   char *s = yytext;
   size_t len = 0, i;
   struct bytestring *bytes;
@@ -347,7 +350,7 @@ else: {
   return DDOT;
 }
 
-[={}:;,.()+*/%<>~\[\]?!\|-] {
+[={}:;,.()+*/%<>~\[\]?!\|&-] {
   return yytext[0];
 }
 
@@ -574,6 +577,8 @@ check_eof(void)
   return 0;
 }
 
+static inline void cf_swap_soft_scope(void);
+
 static struct symbol *
 cf_new_symbol(const byte *c)
 {
@@ -583,45 +588,64 @@ cf_new_symbol(const byte *c)
   if (l > SYM_MAX_LEN)
     cf_error("Symbol too long");
 
+  cf_swap_soft_scope();
+
   s = cfg_allocz(sizeof(struct symbol) + l + 1);
   *s = (struct symbol) { .scope = conf_this_scope, .class = SYM_VOID, };
   strcpy(s->name, c);
 
-  if (!new_config->sym_hash.data)
-    HASH_INIT(new_config->sym_hash, new_config->pool, SYM_ORDER);
+  if (!conf_this_scope->hash.data)
+    HASH_INIT(conf_this_scope->hash, new_config->pool, SYM_ORDER);
 
-  HASH_INSERT2(new_config->sym_hash, SYM, new_config->pool, s);
+  HASH_INSERT2(conf_this_scope->hash, SYM, new_config->pool, s);
 
-  add_tail(&(new_config->symbols), &(s->n));
+  if (conf_this_scope == new_config->root_scope)
+    add_tail(&(new_config->symbols), &(s->n));
 
   return s;
 }
 
+static struct symbol *
+cf_root_symbol(const byte *c)
+{
+  uint l = strlen(c);
+  if (l > SYM_MAX_LEN)
+    bug("Root symbol %s too long", c);
+
+  struct symbol *s = mb_alloc(&root_pool, sizeof(struct symbol) + l + 1);
+  *s = (struct symbol) { .scope = global_root_scope, .class = SYM_VOID, };
+  memcpy(s->name, c, l+1);
+
+  if (!global_root_scope->hash.data)
+    HASH_INIT(global_root_scope->hash, &root_pool, SYM_ORDER);
+
+  HASH_INSERT2(global_root_scope->hash, SYM, &root_pool, s);
+  return s;
+}
+
+
 /**
- * cf_find_symbol - find a symbol by name
- * @cfg: specificed config
+ * cf_find_symbol_scope - find a symbol by name
+ * @scope: config scope
  * @c: symbol name
  *
- * This functions searches the symbol table in the config @cfg for a symbol of
- * given name. First it examines the current scope, then the second recent one
+ * This functions searches the symbol table in the scope @scope for a symbol of
+ * given name. First it examines the current scope, then the underlying one
  * and so on until it either finds the symbol and returns a pointer to its
  * &symbol structure or reaches the end of the scope chain and returns %NULL to
  * signify no match.
  */
 struct symbol *
-cf_find_symbol(const struct config *cfg, const byte *c)
+cf_find_symbol_scope(const struct sym_scope *scope, const byte *c)
 {
   struct symbol *s;
 
-  if (cfg->sym_hash.data &&
-      (s = HASH_FIND(cfg->sym_hash, SYM, c, 1)))
-    return s;
-
-  /* In CLI command parsing, fallback points to the current config, otherwise it is NULL. */
-  if (cfg->fallback &&
-      cfg->fallback->sym_hash.data &&
-      (s = HASH_FIND(cfg->fallback->sym_hash, SYM, c, 1)))
-    return s;
+  /* Find the symbol here or anywhere below */
+  while (scope)
+    if (scope->hash.data && (s = HASH_FIND(scope->hash, SYM, c, 1)))
+      return s;
+    else
+      scope = scope->next;
 
   return NULL;
 }
@@ -638,7 +662,7 @@ cf_find_symbol(const struct config *cfg, const byte *c)
 struct symbol *
 cf_get_symbol(const byte *c)
 {
-  return cf_find_symbol(new_config, c) ?: cf_new_symbol(c);
+  return cf_find_symbol_scope(conf_this_scope, c) ?: cf_new_symbol(c);
 }
 
 /**
@@ -654,10 +678,10 @@ cf_localize_symbol(struct symbol *sym)
   /* If the symbol type is void, it has been recently allocated just in this scope. */
   if (!sym->class)
     return sym;
-  
+
   /* If the scope is the current, it is already defined in this scope. */
-  if (sym->scope == conf_this_scope)
-    cf_error("Symbol already defined");
+  if (cf_symbol_is_local(sym))
+    cf_error("Symbol '%s' already defined", sym->name);
 
   /* Not allocated here yet, doing it now. */
   return cf_new_symbol(sym->name);
@@ -689,10 +713,7 @@ cf_lex_symbol(const char *data)
   struct symbol *sym = cf_get_symbol(data);
   cf_lval.s = sym;
 
-  if (sym->class != SYM_VOID)
-    return CF_SYM_KNOWN;
-
-  /* Is it a keyword? */
+  /* Is it a keyword? Prefer the keyword. */
   struct keyword *k = HASH_FIND(kw_hash, KW, data);
   if (k)
   {
@@ -705,9 +726,11 @@ cf_lex_symbol(const char *data)
     }
   }
 
-  /* OK, undefined symbol */
-  cf_lval.s = sym;
-  return CF_SYM_UNDEFINED;
+  /* OK, only a symbol. */
+  if (sym->class == SYM_VOID)
+    return CF_SYM_UNDEFINED;
+  else
+    return CF_SYM_KNOWN;
 }
 
 static void
@@ -718,6 +741,34 @@ cf_lex_init_kh(void)
   struct keyword *k;
   for (k=keyword_list; k->name; k++)
     HASH_INSERT(kw_hash, KW, k);
+}
+
+void
+ea_lex_register(struct ea_class *def)
+{
+  struct symbol *sym = cf_root_symbol(def->name);
+  sym->class = SYM_ATTRIBUTE;
+  sym->attribute = def;
+  def->sym = sym;
+}
+
+void
+ea_lex_unregister(struct ea_class *def)
+{
+  struct symbol *sym = def->sym;
+  HASH_REMOVE2(global_root_scope->hash, SYM, &root_pool, sym);
+  mb_free(sym);
+  def->sym = NULL;
+}
+
+struct ea_class *
+ea_class_find_by_name(const char *name)
+{
+  struct symbol *sym = cf_find_symbol(global_root_scope, name);
+  if (!sym || (sym->class != SYM_ATTRIBUTE))
+    return NULL;
+  else
+    return sym->attribute;
 }
 
 /**
@@ -753,6 +804,11 @@ cf_lex_init(int is_cli, struct config *c)
   c->root_scope = cfg_allocz(sizeof(struct sym_scope));
   conf_this_scope = c->root_scope;
   conf_this_scope->active = 1;
+
+  if (is_cli)
+    conf_this_scope->next = config->root_scope;
+  else
+    conf_this_scope->next = global_root_scope;
 }
 
 /**
@@ -787,10 +843,58 @@ cf_push_scope(struct symbol *sym)
 void
 cf_pop_scope(void)
 {
+  ASSERT(!conf_this_scope->soft_scopes);
+
   conf_this_scope->active = 0;
   conf_this_scope = conf_this_scope->next;
 
   ASSERT(conf_this_scope);
+}
+
+/**
+ * cf_push_soft_scope - enter new soft scope
+ *
+ * If we want to enter a new anonymous scope that most likely will not contain
+ * any symbols, we can use cf_push_soft_scope() insteas of cf_push_scope().
+ * Such scope will be converted to a regular scope on first use.
+ */
+void
+cf_push_soft_scope(void)
+{
+  if (conf_this_scope->soft_scopes < 0xfe)
+    conf_this_scope->soft_scopes++;
+  else
+    cf_push_scope(NULL);
+}
+
+/**
+ * cf_pop_soft_scope - leave a soft scope
+ *
+ * Leave a soft scope entered by cf_push_soft_scope().
+ */
+void
+cf_pop_soft_scope(void)
+{
+  if (conf_this_scope->soft_scopes)
+    conf_this_scope->soft_scopes--;
+  else
+    cf_pop_scope();
+}
+
+/**
+ * cf_swap_soft_scope - convert soft scope to regular scope
+ *
+ * Soft scopes cannot hold symbols, so they must be converted to regular scopes
+ * on first use. It is done automatically by cf_new_symbol().
+ */
+static inline void
+cf_swap_soft_scope(void)
+{
+  if (conf_this_scope->soft_scopes)
+  {
+    conf_this_scope->soft_scopes--;
+    cf_push_scope(NULL);
+  }
 }
 
 /**

@@ -31,7 +31,7 @@
 #include "lib/locking.h"
 #include "lib/timer.h"
 #include "lib/string.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "nest/cli.h"
@@ -57,7 +57,7 @@ async_dump(void)
   // XXXX tm_dump_all();
   if_dump_all();
   neigh_dump_all();
-  rta_dump_all();
+  ea_dump_all();
   rt_dump_all();
   protos_dump_all();
 
@@ -117,7 +117,7 @@ add_num_const(char *name, int val, const char *file, const uint line)
   struct f_val *v = cfg_alloc(sizeof(struct f_val));
   *v = (struct f_val) { .type = T_INT, .val.i = val };
   struct symbol *sym = cf_get_symbol(name);
-  if (sym->class && (sym->scope == conf_this_scope))
+  if (sym->class && cf_symbol_is_local(sym))
     cf_error("Error reading value for %s from %s:%d: already defined", name, file, line);
 
   cf_define_symbol(sym, SYM_CONSTANT | T_INT, val, v);
@@ -683,7 +683,7 @@ signal_init(void)
  *	Parsing of command-line arguments
  */
 
-static char *opt_list = "B:c:dD:ps:P:u:g:flRh";
+static char *opt_list = "bc:dD:ps:P:u:g:flRh";
 int parse_and_exit;
 char *bird_name;
 static char *use_user;
@@ -704,7 +704,6 @@ display_help(void)
   fprintf(stderr,
     "\n"
     "Options: \n"
-    "  -B <block-size>	    Use 2^this number as memory allocation block size (default: 12)\n"
     "  -c <config-file>     Use given configuration file instead of\n"
     "                       "  PATH_CONFIG_FILE "\n"
     "  -d                   Enable debug messages and run bird in foreground\n"
@@ -791,15 +790,12 @@ get_gid(const char *s)
   return gr->gr_gid;
 }
 
-extern _Bool alloc_multipage;
-
 static void
 parse_args(int argc, char **argv)
 {
   int config_changed = 0;
   int socket_changed = 0;
   int c;
-  int bp;
 
   bird_name = get_bird_name(argv[0], "bird");
   if (argc == 2)
@@ -812,29 +808,6 @@ parse_args(int argc, char **argv)
   while ((c = getopt(argc, argv, opt_list)) >= 0)
     switch (c)
       {
-      case 'B':
-	bp = atoi(optarg);
-	if (bp < 1)
-	{
-	  fprintf(stderr, "Strange block size power %d\n\n", bp);
-	  display_usage();
-	  exit(1);
-	}
-
-	if ((1 << bp) < page_size)
-	{
-	  fprintf(stderr, "Requested block size %ld is lesser than page size %ld\n\n", (1L<<bp), page_size);
-	  display_usage();
-	  exit(1);
-	}
-
-	if ((1L << bp) > page_size)
-	{
-	  alloc_multipage = 1;
-	  page_size = (1L << bp);
-	}
-
-	break;
       case 'c':
 	config_name = optarg;
 	config_changed = 1;
@@ -889,8 +862,6 @@ parse_args(int argc, char **argv)
    }
 }
 
-void resource_sys_init(void);
-
 /*
  *	Hic Est main()
  */
@@ -904,7 +875,6 @@ main(int argc, char **argv)
 #endif
 
   times_update();
-  resource_sys_init();
   parse_args(argc, argv);
   log_switch(1, NULL, NULL);
 
@@ -915,8 +885,8 @@ main(int argc, char **argv)
   resource_init();
   birdloop_init();
   olock_init();
-  io_init();
   rt_init();
+  io_init();
   if_init();
 //  roa_init();
   config_init();
@@ -940,8 +910,6 @@ main(int argc, char **argv)
     open_pid_file();
 
   protos_build();
-  proto_build(&proto_unix_kernel);
-  proto_build(&proto_unix_iface);
 
   struct config *conf = read_config();
 

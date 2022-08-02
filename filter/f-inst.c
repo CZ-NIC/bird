@@ -62,8 +62,9 @@
  *	m4_dnl	INST(FI_NOP, in, out) {			enum value, input args, output args
  *	m4_dnl	  ARG(num, type);			argument, its id (in data fields) and type accessible by v1, v2, v3
  *	m4_dnl	  ARG_ANY(num);				argument with no type check accessible by v1, v2, v3
+ *	m4_dnl	  ARG_TYPE(num, type);			just declare the type of argument
  *	m4_dnl	  VARARG;				variable-length argument list; accessible by vv(i) and whati->varcount
- *	m4_dnl	  LINE(num, unused);			this argument has to be converted to its own f_line
+ *	m4_dnl	  LINE(num, out);			this argument has to be converted to its own f_line
  *	m4_dnl	  SYMBOL;				symbol handed from config
  *	m4_dnl	  STATIC_ATTR;				static attribute definition
  *	m4_dnl	  DYNAMIC_ATTR;				dynamic attribute definition
@@ -80,9 +81,16 @@
  *	m4_dnl	  )
  *
  *	m4_dnl	  RESULT(type, union-field, value);	putting this on value stack
+ *	m4_dnl	  RESULT_(type, union-field, value);	like RESULT(), but do not declare the type
  *	m4_dnl	  RESULT_VAL(value-struct);		pass the struct f_val directly
+ *	m4_dnl	  RESULT_TYPE(type);			just declare the type of result value
  *	m4_dnl	  RESULT_VOID;				return undef
  *	m4_dnl	}
+ *
+ *	Note that runtime arguments m4_dnl (ARG*, VARARG) must be defined before
+ *	parse-time arguments m4_dnl (LINE, SYMBOL, ...). During linearization,
+ *	first ones move position in f_line by linearizing arguments first, while
+ *	second ones store data to the current position.
  *
  *	Also note that the { ... } blocks are not respected by M4 at all.
  *	If you get weird unmatched-brace-pair errors, check what it generated and why.
@@ -90,6 +98,24 @@
  *	after m4_dnl INST() but all the code between them.
  *
  *	Other code is just copied into the interpreter part.
+ *
+ *	The filter language uses a simple type system, where values have types
+ *	(constants T_*) and also terms (instructions) are statically typed. Our
+ *	static typing is partial (some terms do not declare types of arguments
+ *	or results), therefore it can detect most but not all type errors and
+ *	therefore we still have runtime type checks.
+ *
+ *	m4_dnl  Types of arguments are declared by macros ARG() and ARG_TYPE(),
+ *	m4_dnl  types of results are declared by RESULT() and RESULT_TYPE().
+ *	m4_dnl  Macros ARG_ANY(), RESULT_() and RESULT_VAL() do not declare types
+ *	m4_dnl  themselves, but can be combined with ARG_TYPE() / RESULT_TYPE().
+ *
+ *	m4_dnl  Note that types should be declared only once. If there are
+ *	m4_dnl  multiple RESULT() macros in an instruction definition, they must
+ *	m4_dnl  use the exact same expression for type, or they should be replaced
+ *	m4_dnl  by multiple RESULT_() macros and a common RESULT_TYPE() macro.
+ *	m4_dnl  See e.g. FI_EA_GET or FI_MIN instructions.
+ *
  *
  *	If you are satisfied with this, you don't need to read the following
  *	detailed description of what is really done with the instruction definitions.
@@ -212,10 +238,40 @@
  *	m4_dnl	  NEVER_CONSTANT-> don't generate pre-interpretation code at all
  *	m4_dnl	  ACCESS_RTE	-> check that route is available, also NEVER_CONSTANT
  *	m4_dnl	  ACCESS_EATTRS	-> pre-cache the eattrs; use only with ACCESS_RTE
- *	m4_dnl	  f_rta_cow(fs)	-> function to call before any change to route should be done
  *
  *	m4_dnl	If you are stymied, see FI_CALL or FI_CONSTANT or just search for
  *	m4_dnl	the mentioned macros in this file to see what is happening there in wild.
+ *
+ *
+ *	A note about soundness of the type system:
+ *
+ *	A type system is sound when types of expressions are consistent with
+ *	types of values resulting from evaluation of such expressions. Untyped
+ *	expressions are ok, but badly typed expressions are not sound. So is
+ *	the type system of BIRD filtering code sound? There are some points:
+ *
+ *	All cases of (one) m4_dnl RESULT() macro are obviously ok, as the macro
+ *	both declares a type and returns a value. One have to check instructions
+ *	that use m4_dnl RESULT_TYPE() macro. There are two issues:
+ *
+ *	FI_AND, FI_OR - second argument is statically checked to be T_BOOL and
+ *	passed as result without dynamic typecheck, declared to be T_BOOL. If
+ *	an untyped non-bool expression is used as a second argument, then
+ *	the mismatched type is returned.
+ *
+ *	FI_VAR_GET - soundness depends on consistency of declared symbol types
+ *	and stored values. This is maintained when values are stored by
+ *	FI_VAR_SET, but when they are stored by FI_CALL, only static checking is
+ *	used, so when an untyped expression returning mismatched value is used
+ *	as a function argument, then inconsistent value is stored and subsequent
+ *	FI_VAR_GET would be unsound.
+ *
+ *	Both of these issues are inconsequential, as mismatched values from
+ *	unsound expressions will be caught by dynamic typechecks like mismatched
+ *	values from untyped expressions.
+ *
+ *	Also note that FI_CALL is the only expression without properly declared
+ *	result type.
  */
 
 /* Binary operators */
@@ -240,13 +296,23 @@
     if (v2.val.i == 0) runtime( "Mother told me not to divide by 0" );
     RESULT(T_INT, i, v1.val.i / v2.val.i);
   }
+  INST(FI_BITOR, 2, 1) {
+    ARG(1,T_INT);
+    ARG(2,T_INT);
+    RESULT(T_INT, i, v1.val.i | v2.val.i);
+  }
+  INST(FI_BITAND, 2, 1) {
+    ARG(1,T_INT);
+    ARG(2,T_INT);
+    RESULT(T_INT, i, v1.val.i & v2.val.i);
+  }
   INST(FI_AND, 1, 1) {
     ARG(1,T_BOOL);
     ARG_TYPE_STATIC(2,T_BOOL);
     RESULT_TYPE(T_BOOL);
 
     if (v1.val.i)
-      LINE(2,0);
+      LINE(2,1);
     else
       RESULT_VAL(v1);
   }
@@ -256,7 +322,7 @@
     RESULT_TYPE(T_BOOL);
 
     if (!v1.val.i)
-      LINE(2,0);
+      LINE(2,1);
     else
       RESULT_VAL(v1);
   }
@@ -349,7 +415,7 @@
 	  break;
 
 	case T_SET:
-	  if (vv(i).val.t->from.type != T_INT)
+	  if (!path_set_type(vv(i).val.t))
 	    runtime("Only integer sets allowed in path mask");
 
 	  pm->item[i] = (struct f_path_mask_item) {
@@ -371,12 +437,14 @@
   INST(FI_NEQ, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
+    ARG_PREFER_SAME_TYPE(1, 2);
     RESULT(T_BOOL, i, !val_same(&v1, &v2));
   }
 
   INST(FI_EQ, 2, 1) {
     ARG_ANY(1);
     ARG_ANY(2);
+    ARG_PREFER_SAME_TYPE(1, 2);
     RESULT(T_BOOL, i, val_same(&v1, &v2));
   }
 
@@ -447,6 +515,18 @@
     RESULT(T_BOOL, i, ipa_is_ip4(v1.val.ip));
   }
 
+  INST(FI_VAR_INIT, 1, 0) {
+    NEVER_CONSTANT;
+    ARG_ANY(1);
+    SYMBOL;
+    ARG_TYPE(1, sym->class & 0xff);
+
+    /* New variable is always the last on stack */
+    uint pos = curline.vbase + sym->offset;
+    fstk->vstk[pos] = v1;
+    fstk->vcnt = pos + 1;
+  }
+
   /* Set to indirect value prepared in v1 */
   INST(FI_VAR_SET, 1, 0) {
     NEVER_CONSTANT;
@@ -477,12 +557,100 @@
     RESULT_VAL(val);
   }
 
+  INST(FI_FOR_INIT, 1, 0) {
+    NEVER_CONSTANT;
+    ARG_ANY(1);
+    SYMBOL;
+
+    FID_NEW_BODY()
+    ASSERT((sym->class & ~0xff) == SYM_VARIABLE);
+
+    /* Static type check */
+    if (f1->type)
+    {
+      enum btype t_var = (sym->class & 0xff);
+      enum btype t_arg = f_type_element_type(f1->type);
+      if (!t_arg)
+        cf_error("Value of expression in FOR must be iterable, got %s",
+		 f_type_name(f1->type));
+      if (t_var != t_arg)
+	cf_error("Loop variable '%s' in FOR must be %s, is %s",
+		 sym->name, f_type_name(t_arg), f_type_name(t_var));
+    }
+
+    FID_INTERPRET_BODY()
+
+    /* Dynamic type check */
+    if ((sym->class & 0xff) != f_type_element_type(v1.type))
+      runtime("Mismatched argument and variable type");
+
+    /* Setup the index */
+    v2 = (struct f_val) { .type = T_INT, .val.i = 0 };
+
+    /* Keep v1 and v2 on the stack */
+    fstk->vcnt += 2;
+  }
+
+  INST(FI_FOR_NEXT, 2, 0) {
+    NEVER_CONSTANT;
+    SYMBOL;
+
+    /* Type checks are done in FI_FOR_INIT */
+
+    /* Loop variable */
+    struct f_val *var = &fstk->vstk[curline.vbase + sym->offset];
+    int step = 0;
+
+    switch(v1.type)
+    {
+    case T_PATH:
+      var->type = T_INT;
+      step = as_path_walk(v1.val.ad, &v2.val.i, &var->val.i);
+      break;
+
+    case T_CLIST:
+      var->type = T_PAIR;
+      step = int_set_walk(v1.val.ad, &v2.val.i, &var->val.i);
+      break;
+
+    case T_ECLIST:
+      var->type = T_EC;
+      step = ec_set_walk(v1.val.ad, &v2.val.i, &var->val.ec);
+      break;
+
+    case T_LCLIST:
+      var->type = T_LC;
+      step = lc_set_walk(v1.val.ad, &v2.val.i, &var->val.lc);
+      break;
+
+    default:
+      runtime( "Clist or lclist expected" );
+    }
+
+    if (step)
+    {
+      /* Keep v1 and v2 on the stack */
+      fstk->vcnt += 2;
+
+      /* Repeat this instruction */
+      curline.pos--;
+
+      /* Execute the loop body */
+      LINE(1, 0);
+
+      /* Space for loop variable, may be unused */
+      fstk->vcnt += 1;
+    }
+    else
+      var->type = T_VOID;
+  }
+
   INST(FI_CONDITION, 1, 0) {
     ARG(1, T_BOOL);
     if (v1.val.i)
       LINE(2,0);
     else
-      LINE(3,1);
+      LINE(3,0);
   }
 
   INST(FI_PRINT, 0, 0) {
@@ -519,78 +687,98 @@
     {
       STATIC_ATTR;
       ACCESS_RTE;
-      struct rta *rta = fs->rte->attrs;
+      ACCESS_EATTRS;
 
       switch (sa.sa_code)
       {
-      case SA_FROM:	RESULT(sa.f_type, ip, rta->from); break;
-      case SA_GW:	RESULT(sa.f_type, ip, rta->nh.gw); break;
-      case SA_NET:	RESULT(sa.f_type, net, fs->rte->net); break;
-      case SA_PROTO:	RESULT(sa.f_type, s, fs->rte->src->proto->name); break;
-      case SA_SOURCE:	RESULT(sa.f_type, i, rta->source); break;
-      case SA_SCOPE:	RESULT(sa.f_type, i, rta->scope); break;
-      case SA_DEST:	RESULT(sa.f_type, i, rta->dest); break;
-      case SA_IFNAME:	RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
-      case SA_IFINDEX:	RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
-      case SA_WEIGHT:	RESULT(sa.f_type, i, rta->nh.weight + 1); break;
-      case SA_PREF:	RESULT(sa.f_type, i, rta->pref); break;
-      case SA_GW_MPLS:	RESULT(sa.f_type, i, rta->nh.labels ? rta->nh.label[0] : MPLS_NULL); break;
-
+      case SA_NET:	RESULT(sa.type, net, fs->rte->net); break;
+      case SA_PROTO:	RESULT(sa.type, s, fs->rte->src->proto->name); break;
       default:
-	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
+	{
+	  struct eattr *nhea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
+	  struct nexthop *nh = nhad ? &nhad->nh : NULL;
+
+	  switch (sa.sa_code)
+	  {
+	    case SA_DEST:
+	      RESULT(sa.type, i, nhad ?
+		  (NEXTHOP_IS_REACHABLE(nhad) ? RTD_UNICAST : nhad->dest)
+		  : RTD_NONE);
+	      break;
+	    case SA_GW:
+	      RESULT(sa.type, ip, nh ? nh->gw : IPA_NONE);
+	      break;
+	    case SA_IFNAME:
+	      RESULT(sa.type, s, (nh && nh->iface) ? nh->iface->name : "");
+	      break;
+	    case SA_IFINDEX:
+	      RESULT(sa.type, i, (nh && nh->iface) ? nh->iface->index : 0);
+	      break;
+	    case SA_WEIGHT:
+	      RESULT(sa.type, i, (nh ? nh->weight : 0) + 1);
+	      break;
+	    case SA_GW_MPLS:
+	      RESULT(sa.type, i, (nh && nh->labels) ? nh->label[0] : MPLS_NULL);
+	      break;
+	    default:
+	      bug("Invalid static attribute access (%u/%u)", sa.type, sa.sa_code);
+	  }
+	}
       }
     }
   }
 
   INST(FI_RTA_SET, 1, 0) {
     ACCESS_RTE;
+    ACCESS_EATTRS;
     ARG_ANY(1);
     STATIC_ATTR;
-    ARG_TYPE(1, sa.f_type);
-
-    f_rta_cow(fs);
+    ARG_TYPE(1, sa.type);
     {
-      struct rta *rta = fs->rte->attrs;
+      union {
+	struct nexthop_adata nha;
+	struct {
+	  struct adata ad;
+	  struct nexthop nh;
+	  u32 label;
+	};
+      } nha;
+
+      nha.ad = (struct adata) {
+	.length = sizeof (struct nexthop_adata) - sizeof (struct adata),
+      };
+
+      eattr *a = NULL;
 
       switch (sa.sa_code)
       {
-      case SA_FROM:
-	rta->from = v1.val.ip;
-	break;
-
-      case SA_GW:
-	{
-	  ip_addr ip = v1.val.ip;
-	  struct iface *ifa = ipa_is_link_local(ip) ? rta->nh.iface : NULL;
-	  neighbor *n = neigh_find(fs->rte->src->proto, ip, ifa, 0);
-	  if (!n || (n->scope == SCOPE_HOST))
-	    runtime( "Invalid gw address" );
-
-	  rta->dest = RTD_UNICAST;
-	  rta->nh.gw = ip;
-	  rta->nh.iface = n->iface;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	  rta->nh.labels = 0;
-	}
-	break;
-
-      case SA_SCOPE:
-	rta->scope = v1.val.i;
-	break;
-
       case SA_DEST:
 	{
 	  int i = v1.val.i;
 	  if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
 	    runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
 
-	  rta->dest = i;
-	  rta->nh.gw = IPA_NONE;
-	  rta->nh.iface = NULL;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	  rta->nh.labels = 0;
+	  nha.nha.dest = i;
+	  nha.ad.length = NEXTHOP_DEST_SIZE;
+	  break;
+	}
+      case SA_GW:
+	{
+	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+
+	  ip_addr ip = v1.val.ip;
+	  struct iface *ifa = (ipa_is_link_local(ip) && nh_ea) ?
+	    ((struct nexthop_adata *) nh_ea->u.ptr)->nh.iface : NULL;
+	  
+	  neighbor *n = neigh_find(fs->rte->src->proto, ip, ifa, 0);
+	  if (!n || (n->scope == SCOPE_HOST))
+	    runtime( "Invalid gw address" );
+
+	  nha.nh = (struct nexthop) {
+	    .gw = ip,
+	    .iface = n->iface,
+	  };
 	}
 	break;
 
@@ -600,12 +788,9 @@
 	  if (!ifa)
 	    runtime( "Invalid iface name" );
 
-	  rta->dest = RTD_UNICAST;
-	  rta->nh.gw = IPA_NONE;
-	  rta->nh.iface = ifa;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	  rta->nh.labels = 0;
+	  nha.nh = (struct nexthop) {
+	    .iface = ifa,
+	  };
 	}
 	break;
 
@@ -614,13 +799,20 @@
 	  if (v1.val.i >= 0x100000)
 	    runtime( "Invalid MPLS label" );
 
+	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  if (!nh_ea)
+	    runtime( "No nexthop to add a MPLS label to" );
+
+	  nha.nh = ((struct nexthop_adata *) nh_ea->u.ptr)->nh;
+	  
 	  if (v1.val.i != MPLS_NULL)
 	  {
-	    rta->nh.label[0] = v1.val.i;
-	    rta->nh.labels = 1;
+	    nha.nh.label[0] = v1.val.i;
+	    nha.nh.labels = 1;
+	    nha.ad.length = sizeof nha - sizeof (struct adata);
 	  }
 	  else
-	    rta->nh.labels = 0;
+	    nha.nh.labels = 0;
 	}
 	break;
 
@@ -629,22 +821,36 @@
 	  int i = v1.val.i;
 	  if (i < 1 || i > 256)
 	    runtime( "Setting weight value out of bounds" );
-	  if (rta->dest != RTD_UNICAST)
+
+	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  if (!nh_ea)
+	    runtime( "No nexthop to set weight on" );
+
+	  struct nexthop_adata *nhad = (struct nexthop_adata *) nh_ea->u.ptr;
+	  if (!NEXTHOP_IS_REACHABLE(nhad))
 	    runtime( "Setting weight needs regular nexthop " );
 
+	  struct nexthop_adata *nhax = (struct nexthop_adata *) tmp_copy_adata(&nhad->ad);
+
 	  /* Set weight on all next hops */
-	  for (struct nexthop *nh = &rta->nh; nh; nh = nh->next)
+	  NEXTHOP_WALK(nh, nhax)
 	    nh->weight = i - 1;
+
+	  a = ea_set_attr(fs->eattrs,
+	      EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nhax->ad));
         }
 	break;
 
-      case SA_PREF:
-	rta->pref = v1.val.i;
-	break;
-
       default:
-	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
+	bug("Invalid static attribute access (%u/%u)", sa.type, sa.sa_code);
       }
+
+      if (!a)
+	a = ea_set_attr(fs->eattrs,
+	    EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, tmp_copy_adata(&nha.ad)));
+
+      a->originated = 1;
+      a->fresh = 1;
     }
   }
 
@@ -652,74 +858,30 @@
     DYNAMIC_ATTR;
     ACCESS_RTE;
     ACCESS_EATTRS;
-    RESULT_TYPE(da.f_type);
+    RESULT_TYPE(da->type);
     {
-      eattr *e = ea_find(*fs->eattrs, da.ea_code);
+      const struct f_val *empty;
+      const eattr *e = ea_find(*fs->eattrs, da->id);
 
-      if (!e) {
-	/* A special case: undefined as_path looks like empty as_path */
-	if (da.type == EAF_TYPE_AS_PATH) {
-	  RESULT_(T_PATH, ad, &null_adata);
-	  break;
+      if (e)
+      {
+	ASSERT_DIE(e->type == da->type);
+
+	switch (e->type) {
+	  case T_IP:
+	    RESULT_(T_IP, ip, *((const ip_addr *) e->u.ptr->data));
+	    break;
+	  default:
+	    RESULT_VAL([[(struct f_val) {
+		.type = e->type,
+		.val.bval = e->u,
+		}]]);
 	}
-
-	/* The same special case for int_set */
-	if (da.type == EAF_TYPE_INT_SET) {
-	  RESULT_(T_CLIST, ad, &null_adata);
-	  break;
-	}
-
-	/* The same special case for ec_set */
-	if (da.type == EAF_TYPE_EC_SET) {
-	  RESULT_(T_ECLIST, ad, &null_adata);
-	  break;
-	}
-
-	/* The same special case for lc_set */
-	if (da.type == EAF_TYPE_LC_SET) {
-	  RESULT_(T_LCLIST, ad, &null_adata);
-	  break;
-	}
-
-	/* Undefined value */
-	RESULT_VOID;
-	break;
       }
-
-      switch (e->type & EAF_TYPE_MASK) {
-      case EAF_TYPE_INT:
-	RESULT_(da.f_type, i, e->u.data);
-	break;
-      case EAF_TYPE_ROUTER_ID:
-	RESULT_(T_QUAD, i, e->u.data);
-	break;
-      case EAF_TYPE_OPAQUE:
-	RESULT_(T_ENUM_EMPTY, i, 0);
-	break;
-      case EAF_TYPE_IP_ADDRESS:
-	RESULT_(T_IP, ip, *((ip_addr *) e->u.ptr->data));
-	break;
-      case EAF_TYPE_AS_PATH:
-	RESULT_(T_PATH, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_BITFIELD:
-	RESULT_(T_BOOL, i, !!(e->u.data & (1u << da.bit)));
-	break;
-      case EAF_TYPE_INT_SET:
-	RESULT_(T_CLIST, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_EC_SET:
-	RESULT_(T_ECLIST, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_LC_SET:
-	RESULT_(T_LCLIST, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_UNDEF:
+      else if (empty = f_get_empty(da->type))
+	RESULT_VAL(*empty);
+      else
 	RESULT_VOID;
-	break;
-      default:
-	bug("Unknown dynamic attribute type");
-      }
     }
   }
 
@@ -728,62 +890,32 @@
     ACCESS_EATTRS;
     ARG_ANY(1);
     DYNAMIC_ATTR;
-    ARG_TYPE(1, da.f_type);
+    ARG_TYPE(1, da->type);
     {
-      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
+      struct eattr *a;
 
-      l->next = NULL;
-      l->flags = EALF_SORTED;
-      l->count = 1;
-      l->attrs[0].id = da.ea_code;
-      l->attrs[0].flags = 0;
-      l->attrs[0].type = da.type | EAF_ORIGINATED | EAF_FRESH;
+      if (da->type >= EAF_TYPE__MAX)
+	bug("Unsupported attribute type");
 
-      switch (da.type) {
-      case EAF_TYPE_INT:
-      case EAF_TYPE_ROUTER_ID:
-	l->attrs[0].u.data = v1.val.i;
-	break;
-
-      case EAF_TYPE_OPAQUE:
+      switch (da->type) {
+      case T_OPAQUE:
+      case T_IFACE:
 	runtime( "Setting opaque attribute is not allowed" );
 	break;
 
-      case EAF_TYPE_IP_ADDRESS:;
-	int len = sizeof(ip_addr);
-	struct adata *ad = lp_alloc(fs->pool, sizeof(struct adata) + len);
-	ad->length = len;
-	(* (ip_addr *) ad->data) = v1.val.ip;
-	l->attrs[0].u.ptr = ad;
-	break;
-
-      case EAF_TYPE_AS_PATH:
-      case EAF_TYPE_INT_SET:
-      case EAF_TYPE_EC_SET:
-      case EAF_TYPE_LC_SET:
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-
-      case EAF_TYPE_BITFIELD:
-	{
-	  /* First, we have to find the old value */
-	  eattr *e = ea_find(*fs->eattrs, da.ea_code);
-	  u32 data = e ? e->u.data : 0;
-
-	  if (v1.val.i)
-	    l->attrs[0].u.data = data | (1u << da.bit);
-	  else
-	    l->attrs[0].u.data = data & ~(1u << da.bit);
-	}
+      case T_IP:
+	a = ea_set_attr(fs->eattrs,
+	    EA_LITERAL_STORE_ADATA(da, 0, &v1.val.ip, sizeof(ip_addr)));
 	break;
 
       default:
-	bug("Unknown dynamic attribute type");
+	a = ea_set_attr(fs->eattrs,
+	    EA_LITERAL_GENERIC(da->id, da->type, 0, .u = v1.val.bval));
+	break;
       }
 
-      f_rta_cow(fs);
-      l->next = *fs->eattrs;
-      *fs->eattrs = l;
+      a->originated = 1;
+      a->fresh = 1;
     }
   }
 
@@ -792,21 +924,20 @@
     ACCESS_RTE;
     ACCESS_EATTRS;
 
-    {
-      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
+    ea_unset_attr(fs->eattrs, 1, da);
+  }
 
-      l->next = NULL;
-      l->flags = EALF_SORTED;
-      l->count = 1;
-      l->attrs[0].id = da.ea_code;
-      l->attrs[0].flags = 0;
-      l->attrs[0].type = EAF_TYPE_UNDEF | EAF_ORIGINATED | EAF_FRESH;
-      l->attrs[0].u.data = 0;
+  INST(FI_DEFAULT, 2, 1) {
+    ARG_ANY(1);
+    ARG_ANY(2);
+    RESULT_TYPE(f_type_element_type(v2.type));
 
-      f_rta_cow(fs);
-      l->next = *fs->eattrs;
-      *fs->eattrs = l;
-    }
+    log(L_INFO "Type of arg 1 is: %d", v1.type);
+
+    if (v1.type == T_VOID)
+      RESULT_VAL(v2);
+    else
+      RESULT_VAL(v1);
   }
 
   INST(FI_LENGTH, 1, 1) {	/* Get length of */
@@ -901,14 +1032,31 @@
       ((net_addr_roa6 *) v1.val.net)->max_pxlen);
   }
 
-  INST(FI_ROA_ASN, 1, 1) { 	/* Get ROA ASN */
-    ARG(1, T_NET);
-    if (!net_is_roa(v1.val.net))
-      runtime( "ROA expected" );
+  INST(FI_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
+    ARG_ANY(1);
+    RESULT_TYPE(T_INT);
+    switch(v1.type)
+    {
+      case T_NET:
+        if (!net_is_roa(v1.val.net))
+          runtime( "ROA expected" );
 
-    RESULT(T_INT, i, (v1.val.net->type == NET_ROA4) ?
-      ((net_addr_roa4 *) v1.val.net)->asn :
-      ((net_addr_roa6 *) v1.val.net)->asn);
+        RESULT_(T_INT, i, (v1.val.net->type == NET_ROA4) ?
+          ((net_addr_roa4 *) v1.val.net)->asn :
+          ((net_addr_roa6 *) v1.val.net)->asn);
+        break;
+
+      case T_PAIR:
+        RESULT_(T_INT, i, v1.val.i >> 16);
+        break;
+
+      case T_LC:
+        RESULT_(T_INT, i, v1.val.lc.asn);
+        break;
+
+      default:
+        runtime( "Net, pair or lc expected" );
+    }
   }
 
   INST(FI_IP, 1, 1) {	/* Convert prefix to ... */
@@ -942,7 +1090,90 @@
     RESULT(T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
   }
 
-  INST(FI_RETURN, 1, 1) {
+  INST(FI_PAIR_DATA, 1, 1) {	/* Get data part from the standard community */
+    ARG(1, T_PAIR);
+    RESULT(T_INT, i, v1.val.i & 0xFFFF);
+  }
+
+  INST(FI_LC_DATA1, 1, 1) {	/* Get data1 part from the large community */
+    ARG(1, T_LC);
+    RESULT(T_INT, i, v1.val.lc.ldp1);
+  }
+
+  INST(FI_LC_DATA2, 1, 1) {	/* Get data2 part from the large community */
+    ARG(1, T_LC);
+    RESULT(T_INT, i, v1.val.lc.ldp2);
+  }
+
+  INST(FI_MIN, 1, 1) {	/* Get minimum element from list */
+    ARG_ANY(1);
+    RESULT_TYPE(f_type_element_type(v1.type));
+    switch(v1.type)
+    {
+      case T_CLIST:
+        {
+          u32 val = 0;
+          int_set_min(v1.val.ad, &val);
+          RESULT_(T_PAIR, i, val);
+        }
+        break;
+
+      case T_ECLIST:
+        {
+          u64 val = 0;
+          ec_set_min(v1.val.ad, &val);
+          RESULT_(T_EC, ec, val);
+        }
+        break;
+
+      case T_LCLIST:
+        {
+          lcomm val = { 0, 0, 0 };
+          lc_set_min(v1.val.ad, &val);
+          RESULT_(T_LC, lc, val);
+        }
+        break;
+
+      default:
+        runtime( "Clist or lclist expected" );
+    }
+  }
+
+  INST(FI_MAX, 1, 1) {	/* Get maximum element from list */
+    ARG_ANY(1);
+    RESULT_TYPE(f_type_element_type(v1.type));
+    switch(v1.type)
+    {
+      case T_CLIST:
+        {
+          u32 val = 0;
+          int_set_max(v1.val.ad, &val);
+          RESULT_(T_PAIR, i, val);
+        }
+        break;
+
+      case T_ECLIST:
+        {
+          u64 val = 0;
+          ec_set_max(v1.val.ad, &val);
+          RESULT_(T_EC, ec, val);
+        }
+        break;
+
+      case T_LCLIST:
+        {
+          lcomm val = { 0, 0, 0 };
+          lc_set_max(v1.val.ad, &val);
+          RESULT_(T_LC, lc, val);
+        }
+        break;
+
+      default:
+        runtime( "Clist or lclist expected" );
+    }
+  }
+
+  INST(FI_RETURN, 1, 0) {
     NEVER_CONSTANT;
     /* Acquire the return value */
     ARG_ANY(1);
@@ -970,28 +1201,59 @@
 
   INST(FI_CALL, 0, 1) {
     NEVER_CONSTANT;
+    VARARG;
     SYMBOL;
 
+    /* Fake result type declaration */
+    RESULT_TYPE(T_VOID);
+
+    FID_NEW_BODY()
+    ASSERT(sym->class == SYM_FUNCTION);
+
+    if (whati->varcount != sym->function->args)
+      cf_error("Function '%s' expects %u arguments, got %u arguments",
+	       sym->name, sym->function->args, whati->varcount);
+
+    /* Typecheck individual arguments */
+    struct f_inst *a = fvar;
+    struct f_arg *b = sym->function->arg_list;
+    for (uint i = 1; a && b; a = a->next, b = b->next, i++)
+    {
+      enum btype b_type = b->arg->class & 0xff;
+
+      if (a->type && (a->type != b_type) && !f_const_promotion(a, b_type))
+	cf_error("Argument %u of '%s' must be %s, got %s",
+		 i, sym->name, f_type_name(b_type), f_type_name(a->type));
+    }
+    ASSERT(!a && !b);
+
+    /* Add implicit void slot for the return value */
+    struct f_inst *tmp = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_VOID });
+    tmp->next = whati->fvar;
+    whati->fvar = tmp;
+    what->size += tmp->size;
+
+    /* Mark recursive calls, they have dummy f_line */
+    if (!sym->function->len)
+      what->flags |= FIF_RECURSIVE;
+
     FID_SAME_BODY()
-      if (!(f1->sym->flags & SYM_FLAG_SAME))
-	return 0;
+    if (!(f1->sym->flags & SYM_FLAG_SAME) && !(f1_->flags & FIF_RECURSIVE))
+      return 0;
 
     FID_ITERATE_BODY()
+    if (!(what->flags & FIF_RECURSIVE))
       BUFFER_PUSH(fit->lines) = whati->sym->function;
 
     FID_INTERPRET_BODY()
 
     /* Push the body on stack */
     LINEX(sym->function);
+    curline.vbase = curline.ventry;
     curline.emask |= FE_RETURN;
 
-    /* Before this instruction was called, there was the T_VOID
-     * automatic return value pushed on value stack and also
-     * sym->function->args function arguments. Setting the
-     * vbase to point to first argument. */
-    ASSERT(curline.ventry >= sym->function->args);
-    curline.ventry -= sym->function->args;
-    curline.vbase = curline.ventry;
+    /* Arguments on stack */
+    fstk->vcnt += sym->function->args;
 
     /* Storage for local variables */
     f_vcnt_check_overflow(sym->function->vars);
@@ -1105,17 +1367,10 @@
 
     if (v1.type == T_PATH)
     {
-      const struct f_tree *set = NULL;
-      u32 key = 0;
-
-      if (v2.type == T_INT)
-	key = v2.val.i;
-      else if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
-	set = v2.val.t;
+      if ((v2.type == T_SET) && path_set_type(v2.val.t) || (v2.type == T_INT))
+	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else
 	runtime("Can't delete non-integer (set)");
-
-      RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, set, key, 0) ]]);
     }
 
     else if (v1.type == T_CLIST)
@@ -1167,10 +1422,8 @@
 
     if (v1.type == T_PATH)
     {
-      u32 key = 0;
-
-      if ((v2.type == T_SET) && (v2.val.t->from.type == T_INT))
-	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, v2.val.t, key, 1) ]]);
+      if ((v2.type == T_SET) && path_set_type(v2.val.t))
+	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter integer");
     }
@@ -1208,37 +1461,7 @@
       runtime("Can't filter non-[e|l]clist");
   }
 
-  INST(FI_ROA_CHECK_IMPLICIT, 0, 1) {	/* ROA Check */
-    NEVER_CONSTANT;
-    RTC(1);
-    struct rtable *table = rtc->table;
-    ACCESS_RTE;
-    ACCESS_EATTRS;
-    const net_addr *net = fs->rte->net;
-
-    /* We ignore temporary attributes, probably not a problem here */
-    /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */
-    eattr *e = ea_find(*fs->eattrs, EA_CODE(PROTOCOL_BGP, 0x02));
-
-    if (!e || ((e->type & EAF_TYPE_MASK) != EAF_TYPE_AS_PATH))
-      runtime("Missing AS_PATH attribute");
-
-    u32 as = 0;
-    as_path_get_last(e->u.ptr, &as);
-
-    if (!table)
-      runtime("Missing ROA table");
-
-    if (table->addr_type != NET_ROA4 && table->addr_type != NET_ROA6)
-      runtime("Table type must be either ROA4 or ROA6");
-
-    if (table->addr_type != (net->type == NET_IP4 ? NET_ROA4 : NET_ROA6))
-      RESULT(T_ENUM_ROA, i, ROA_UNKNOWN); /* Prefix and table type mismatch */
-    else
-      RESULT(T_ENUM_ROA, i, [[ net_roa_check(table, net, as) ]]);
-  }
-
-  INST(FI_ROA_CHECK_EXPLICIT, 2, 1) {	/* ROA Check */
+  INST(FI_ROA_CHECK, 2, 1) {	/* ROA Check */
     NEVER_CONSTANT;
     ARG(1, T_NET);
     ARG(2, T_INT);
@@ -1260,7 +1483,7 @@
 
   }
 
-  INST(FI_FORMAT, 1, 0) {	/* Format */
+  INST(FI_FORMAT, 1, 1) {	/* Format */
     ARG_ANY(1);
     RESULT(T_STRING, s, val_format_str(fpool, &v1));
   }

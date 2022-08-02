@@ -22,7 +22,7 @@
 #include "lib/resource.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/cli.h"
 #include "nest/locks.h"
 #include "nest/bfd.h"
@@ -939,12 +939,7 @@ struct lsadb_show_data {
   u32 router;		/* Advertising router, 0 -> all */
 };
 
-
-#define EA_OSPF_METRIC1	EA_CODE(PROTOCOL_OSPF, 0)
-#define EA_OSPF_METRIC2	EA_CODE(PROTOCOL_OSPF, 1)
-#define EA_OSPF_TAG	EA_CODE(PROTOCOL_OSPF, 2)
-#define EA_OSPF_ROUTER_ID EA_CODE(PROTOCOL_OSPF, 3)
-
+extern struct ea_class ea_ospf_metric1, ea_ospf_metric2, ea_ospf_tag, ea_ospf_router_id;
 
 /*
  * For regular networks, neighbor address must match network prefix.

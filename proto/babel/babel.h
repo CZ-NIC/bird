@@ -16,7 +16,7 @@
 #include "nest/bird.h"
 #include "nest/cli.h"
 #include "nest/iface.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "nest/locks.h"
 #include "nest/password.h"
@@ -25,10 +25,6 @@
 #include "lib/socket.h"
 #include "lib/string.h"
 #include "lib/timer.h"
-
-#define EA_BABEL_METRIC		EA_CODE(PROTOCOL_BABEL, 0)
-#define EA_BABEL_ROUTER_ID	EA_CODE(PROTOCOL_BABEL, 1)
-#define EA_BABEL_SEQNO		EA_CODE(PROTOCOL_BABEL, 2)
 
 #define BABEL_MAGIC		42
 #define BABEL_VERSION		2

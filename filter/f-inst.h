@@ -22,7 +22,7 @@
 
 /* Flags for instructions */
 enum f_instruction_flags {
-  FIF_PRINTED = 1,		/* FI_PRINT_AND_DIE: message put in buffer */
+  FIF_RECURSIVE = 1,		/* FI_CALL: function is directly recursive */
 } PACKED;
 
 /* Include generated filter instruction declarations */
@@ -35,19 +35,26 @@ const char *f_instruction_name_(enum f_instruction_code fi);
 static inline const char *f_instruction_name(enum f_instruction_code fi)
 { return f_instruction_name_(fi) + 3; }
 
+struct f_arg {
+  struct symbol *arg;
+  struct f_arg *next;
+};
+
 /* Filter structures for execution */
 /* Line of instructions to be unconditionally executed one after another */
 struct f_line {
   uint len;				/* Line length */
   u8 args;				/* Function: Args required */
   u8 vars;
+  u8 results;				/* Results left on stack: cmd -> 0, term -> 1 */
+  struct f_arg *arg_list;
   struct f_line_item items[0];		/* The items themselves */
 };
 
 /* Convert the f_inst infix tree to the f_line structures */
-struct f_line *f_linearize_concat(const struct f_inst * const inst[], uint count);
-static inline struct f_line *f_linearize(const struct f_inst *root)
-{ return f_linearize_concat(&root, 1); }
+struct f_line *f_linearize_concat(const struct f_inst * const inst[], uint count, uint results);
+static inline struct f_line *f_linearize(const struct f_inst *root, uint results)
+{ return f_linearize_concat(&root, 1, results); }
 
 void f_dump_line(const struct f_line *, uint indent);
 
@@ -87,14 +94,16 @@ void f_add_lines(const struct f_line_item *what, struct filter_iterator *fit);
 
 
 struct filter *f_new_where(struct f_inst *);
-static inline struct f_dynamic_attr f_new_dynamic_attr(u8 type, enum f_type f_type, uint code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */
-{ return (struct f_dynamic_attr) { .type = type, .f_type = f_type, .ea_code = code }; }   /* f_type currently unused; will be handy for static type checking */
-static inline struct f_dynamic_attr f_new_dynamic_attr_bit(u8 bit, enum f_type f_type, uint code) /* Type as core knows it, type as filters know it, and code of dynamic attribute */
-{ return (struct f_dynamic_attr) { .type = EAF_TYPE_BITFIELD, .bit = bit, .f_type = f_type, .ea_code = code }; }   /* f_type currently unused; will be handy for static type checking */
-static inline struct f_static_attr f_new_static_attr(int f_type, int code, int readonly)
-{ return (struct f_static_attr) { .f_type = f_type, .sa_code = code, .readonly = readonly }; }
-struct f_inst *f_generate_complex(enum f_instruction_code fi_code, struct f_dynamic_attr da, struct f_inst *argument);
+static inline struct f_static_attr f_new_static_attr(btype type, int code, int readonly)
+{ return (struct f_static_attr) { .type = type, .sa_code = code, .readonly = readonly }; }
 struct f_inst *f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn);
+
+struct f_attr_bit {
+  const struct ea_class *class;
+  uint bit;
+};
+
+#define f_new_dynamic_attr_bit(_bit, _name)  ((struct f_attr_bit) { .bit = _bit, .class = ea_class_find(_name) })
 
 /* Hook for call bt_assert() function in configuration */
 extern void (*bt_assert_hook)(int result, const struct f_line_item *assert);

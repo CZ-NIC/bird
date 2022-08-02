@@ -35,7 +35,7 @@
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
@@ -58,17 +58,13 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
 
   if (new)
     {
-      rta *a = alloca(rta_size(new->attrs));
-      memcpy(a, new->attrs, rta_size(new->attrs));
-
-      a->cached = 0;
-      a->hostentry = NULL;
-
       rte e0 = {
-	.attrs = a,
+	.attrs = new->attrs,
 	.src = new->src,
 	.generation = new->generation + 1,
       };
+
+      ea_unset_attr(&e0.attrs, 0, &ea_gen_hostentry);
 
       rte_update(dst, n, &e0, new->src);
     }
@@ -77,12 +73,12 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
 }
 
 static int
-pipe_preexport(struct channel *c, rte *e)
+pipe_preexport(struct channel *C, rte *e)
 {
-  struct pipe_proto *p = (void *) c->proto;
+  struct pipe_proto *p = (void *) C->proto;
 
   /* Avoid direct loopbacks */
-  if (e->sender == c->in_req.hook)
+  if (e->sender == C->in_req.hook)
     return -1;
 
   /* Indirection check */
@@ -90,8 +86,8 @@ pipe_preexport(struct channel *c, rte *e)
   if (e->generation >= max_generation)
   {
     log_rl(&p->rl_gen, L_ERR "Route overpiped (%u hops of %u configured in %s) in table %s: %N %s/%u:%u",
-	e->generation, max_generation, c->proto->name,
-	c->table->name, e->net, e->src->proto->name, e->src->private_id, e->src->global_id);
+	e->generation, max_generation, C->proto->name,
+	C->table->name, e->net, e->src->proto->name, e->src->private_id, e->src->global_id);
 
     return -1;
   }
@@ -127,10 +123,16 @@ pipe_postconfig(struct proto_config *CF)
   if (cc->table->addr_type != cf->peer->addr_type)
     cf_error("Primary table and peer table must have the same type");
 
+  if (cc->out_subprefix && (cc->table->addr_type != cc->out_subprefix->type))
+    cf_error("Export subprefix must match table type");
+
+  if (cf->in_subprefix && (cc->table->addr_type != cf->in_subprefix->type))
+    cf_error("Import subprefix must match table type");
+
   if (cc->rx_limit.action)
     cf_error("Pipe protocol does not support receive limits");
 
-  if (cc->in_keep_filtered)
+  if (cc->in_keep)
     cf_error("Pipe protocol prohibits keeping filtered routes");
 
   cc->debug = cf->c.debug;
@@ -146,6 +148,7 @@ pipe_configure_channels(struct pipe_proto *p, struct pipe_config *cf)
     .channel = cc->channel,
     .table = cc->table,
     .out_filter = cc->out_filter,
+    .out_subprefix = cc->out_subprefix,
     .in_limit = cc->in_limit,
     .ra_mode = RA_ANY,
     .debug = cc->debug,
@@ -157,6 +160,7 @@ pipe_configure_channels(struct pipe_proto *p, struct pipe_config *cf)
     .channel = cc->channel,
     .table = cf->peer,
     .out_filter = cc->in_filter,
+    .out_subprefix = cf->in_subprefix,
     .in_limit = cc->out_limit,
     .ra_mode = RA_ANY,
     .debug = cc->debug,
@@ -299,7 +303,6 @@ pipe_update_debug(struct proto *P)
 struct protocol proto_pipe = {
   .name =		"Pipe",
   .template =		"pipe%d",
-  .class =		PROTOCOL_PIPE,
   .proto_size =		sizeof(struct pipe_proto),
   .config_size =	sizeof(struct pipe_config),
   .postconfig =		pipe_postconfig,
@@ -309,3 +312,9 @@ struct protocol proto_pipe = {
   .get_status = 	pipe_get_status,
   .show_proto_info = 	pipe_show_proto_info
 };
+
+void
+pipe_build(void)
+{
+  proto_build(&proto_pipe);
+}

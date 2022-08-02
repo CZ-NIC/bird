@@ -512,7 +512,7 @@ bfd_remove_session_locked(struct bfd_proto *p, struct bfd_session *s)
 
   TRACE(D_EVENTS, "Session to %I removed", s->addr);
 
-  sl_free(p->session_slab, s);
+  sl_free(s);
 }
 
 static void
@@ -590,6 +590,9 @@ bfd_get_iface(struct bfd_proto *p, ip_addr local, struct iface *iface)
   ifa->sk = bfd_open_tx_sk(p, local, iface);
   ifa->uc = 1;
 
+  if (cf->strict_bind)
+    ifa->rx = bfd_open_rx_sk_bound(p, local, iface);
+
   add_tail(&p->iface_list, &ifa->n);
 
   return ifa;
@@ -605,6 +608,12 @@ bfd_free_iface(struct bfd_iface *ifa)
   {
     sk_stop(ifa->sk);
     rfree(ifa->sk);
+  }
+
+  if (ifa->rx)
+  {
+    sk_stop(ifa->rx);
+    rfree(ifa->rx);
   }
 
   rem_node(&ifa->n);
@@ -1035,15 +1044,6 @@ bfd_notify_init(struct bfd_proto *p)
  *	BFD protocol glue
  */
 
-void
-bfd_init_all(void)
-{
-  bfd_global.lock = DOMAIN_NEW(rtable, "BFD Global");
-  init_list(&bfd_global.wait_list);
-  init_list(&bfd_global.pickup_list);
-  init_list(&bfd_global.proto_list);
-}
-
 static struct proto *
 bfd_init(struct proto_config *c)
 {
@@ -1075,17 +1075,20 @@ bfd_start(struct proto *P)
 
   add_tail(&bfd_global.proto_list, &p->bfd_node);
 
-  if (cf->accept_ipv4 && cf->accept_direct)
-    p->rx4_1 = bfd_open_rx_sk(p, 0, SK_IPV4);
+  if (!cf->strict_bind)
+  {
+    if (cf->accept_ipv4 && cf->accept_direct)
+      p->rx4_1 = bfd_open_rx_sk(p, 0, SK_IPV4);
 
-  if (cf->accept_ipv4 && cf->accept_multihop)
-    p->rx4_m = bfd_open_rx_sk(p, 1, SK_IPV4);
+    if (cf->accept_ipv4 && cf->accept_multihop)
+      p->rx4_m = bfd_open_rx_sk(p, 1, SK_IPV4);
 
-  if (cf->accept_ipv6 && cf->accept_direct)
-    p->rx6_1 = bfd_open_rx_sk(p, 0, SK_IPV6);
+    if (cf->accept_ipv6 && cf->accept_direct)
+      p->rx6_1 = bfd_open_rx_sk(p, 0, SK_IPV6);
 
-  if (cf->accept_ipv6 && cf->accept_multihop)
-    p->rx6_m = bfd_open_rx_sk(p, 1, SK_IPV6);
+    if (cf->accept_ipv6 && cf->accept_multihop)
+      p->rx6_m = bfd_open_rx_sk(p, 1, SK_IPV6);
+  }
 
   bfd_take_requests(p);
 
@@ -1130,7 +1133,8 @@ bfd_reconfigure(struct proto *P, struct proto_config *c)
   if ((new->accept_ipv4 != old->accept_ipv4) ||
       (new->accept_ipv6 != old->accept_ipv6) ||
       (new->accept_direct != old->accept_direct) ||
-      (new->accept_multihop != old->accept_multihop))
+      (new->accept_multihop != old->accept_multihop) ||
+      (new->strict_bind != old->strict_bind))
     return 0;
 
   birdloop_mask_wakeups(p->p.loop);
@@ -1205,7 +1209,6 @@ bfd_show_sessions(struct proto *P)
 struct protocol proto_bfd = {
   .name =		"BFD",
   .template =		"bfd%d",
-  .class =		PROTOCOL_BFD,
   .proto_size =		sizeof(struct bfd_proto),
   .config_size =	sizeof(struct bfd_config),
   .init =		bfd_init,
@@ -1214,3 +1217,14 @@ struct protocol proto_bfd = {
   .reconfigure =	bfd_reconfigure,
   .copy_config =	bfd_copy_config,
 };
+
+void
+bfd_build(void)
+{
+  proto_build(&proto_bfd);
+
+  bfd_global.lock = DOMAIN_NEW(rtable, "BFD Global");
+  init_list(&bfd_global.wait_list);
+  init_list(&bfd_global.pickup_list);
+  init_list(&bfd_global.proto_list);
+}

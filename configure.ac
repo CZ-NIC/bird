@@ -337,7 +337,7 @@ case $sysdesc in
     ;;
 esac
 
-AC_CHECK_HEADERS_ONCE([alloca.h syslog.h])
+AC_CHECK_HEADERS_ONCE([alloca.h syslog.h stdatomic.h])
 AC_CHECK_HEADER([sys/mman.h], [AC_DEFINE([HAVE_MMAP], [1], [Define to 1 if mmap() is available.])], have_mman=no)
 AC_CHECK_FUNC([aligned_alloc], [AC_DEFINE([HAVE_ALIGNED_ALLOC], [1], [Define to 1 if aligned_alloc() is available.])], have_aligned_alloc=no)
 AC_CHECK_MEMBERS([struct sockaddr.sa_len], [], [], [#include <sys/socket.h>])
@@ -352,6 +352,13 @@ AC_C_BIGENDIAN(
   [AC_DEFINE([CPU_LITTLE_ENDIAN], [1], [Define to 1 if cpu is little endian])],
   [AC_MSG_ERROR([Cannot determine CPU endianity.])]
 )
+
+BIRD_CHECK_POINTER_ALIGNMENT
+if test "$bird_cv_pointer_alignment" = "unknown" ; then
+  AC_MSG_ERROR([Couldn't determine pointer alignment])
+else
+  AC_DEFINE_UNQUOTED([CPU_POINTER_ALIGNMENT], [$bird_cv_pointer_alignment], [Pointer alignment for macro usage])
+fi
 
 BIRD_CHECK_ANDROID_GLOB
 if test "$bird_cv_lib_glob" = no ; then

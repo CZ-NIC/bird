@@ -13,7 +13,7 @@
 #define _BIRD_RPKI_H_
 
 #include "nest/bird.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "lib/socket.h"
 #include "lib/ip.h"

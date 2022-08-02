@@ -10,6 +10,7 @@
 
 #include <stdlib.h>
 #include "radv.h"
+#include "lib/macro.h"
 
 /**
  * DOC: Router Advertisements
@@ -41,6 +42,8 @@
  * RFC 4191 - Default Router Preferences and More-Specific Routes
  * RFC 6106 - DNS extensions (RDDNS, DNSSL)
  */
+
+static struct ea_class ea_radv_preference, ea_radv_lifetime;
 
 static void radv_prune_prefixes(struct radv_iface *ifa);
 static void radv_prune_routes(struct radv_proto *p);
@@ -391,10 +394,10 @@ radv_net_match_trigger(struct radv_config *cf, const net_addr *n)
 }
 
 int
-radv_preexport(struct channel *c, rte *new)
+radv_preexport(struct channel *C, rte *new)
 {
   // struct radv_proto *p = (struct radv_proto *) P;
-  struct radv_config *cf = (struct radv_config *) (c->proto->cf);
+  struct radv_config *cf = (struct radv_config *) (C->proto->cf);
 
   if (radv_net_match_trigger(cf, new->net))
     return RIC_PROCESS;
@@ -444,11 +447,11 @@ radv_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *n, rt
   {
     /* Update */
 
-    ea = ea_find(new->attrs->eattrs, EA_RA_PREFERENCE);
+    ea = ea_find(new->attrs, &ea_radv_preference);
     uint preference = ea ? ea->u.data : RA_PREF_MEDIUM;
     uint preference_set = !!ea;
 
-    ea = ea_find(new->attrs->eattrs, EA_RA_LIFETIME);
+    ea = ea_find(new->attrs, &ea_radv_lifetime);
     uint lifetime = ea ? ea->u.data : 0;
     uint lifetime_set = !!ea;
 
@@ -738,27 +741,26 @@ radv_pref_str(u32 pref)
   }
 }
 
-/* The buffer has some minimal size */
-static int
-radv_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
+static void
+radv_preference_format(const eattr *a, byte *buf, uint buflen)
 {
-  switch (a->id)
-  {
-  case EA_RA_PREFERENCE:
-    bsprintf(buf, "preference: %s", radv_pref_str(a->u.data));
-    return GA_FULL;
-  case EA_RA_LIFETIME:
-    bsprintf(buf, "lifetime");
-    return GA_NAME;
-  default:
-    return GA_UNKNOWN;
-  }
+  bsnprintf(buf, buflen, "%s", radv_pref_str(a->u.data));
 }
+
+static struct ea_class ea_radv_preference = {
+  .name = "radv_preference",
+  .type = T_ENUM_RA_PREFERENCE,
+  .format = radv_preference_format,
+};
+
+static struct ea_class ea_radv_lifetime = {
+  .name = "radv_lifetime",
+  .type = T_INT,
+};
 
 struct protocol proto_radv = {
   .name =		"RAdv",
   .template =		"radv%d",
-  .class =		PROTOCOL_RADV,
   .channel_mask =	NB_IP6,
   .proto_size =		sizeof(struct radv_proto),
   .config_size =	sizeof(struct radv_config),
@@ -769,5 +771,15 @@ struct protocol proto_radv = {
   .reconfigure =	radv_reconfigure,
   .copy_config =	radv_copy_config,
   .get_status =		radv_get_status,
-  .get_attr =		radv_get_attr
 };
+
+void
+radv_build(void)
+{
+  proto_build(&proto_radv);
+
+  EA_REGISTER_ALL(
+      &ea_radv_preference,
+      &ea_radv_lifetime
+      );
+}

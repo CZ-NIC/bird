@@ -20,6 +20,8 @@
 
 #include "test/birdtest.h"
 #include "lib/string.h"
+#include "lib/event.h"
+#include "lib/io-loop.h"
 
 #ifdef HAVE_EXECINFO_H
 #include <execinfo.h>
@@ -58,14 +60,14 @@ u64 bt_random_state[] = {
   0x53d9772877c1b647, 0xab8ce3eb466de6c5, 0xad02844c8a8e865f, 0xe8cc78080295065d
 };
 
-void resource_sys_init(void);
-
 void
 bt_init(int argc, char *argv[])
 {
   int c;
 
-  resource_sys_init();
+  /* We have no interest in stdin */
+  close(0);
+
   initstate(BT_RANDOM_SEED, (char *) bt_random_state, sizeof(bt_random_state));
 
   bt_verbose = 0;
@@ -122,6 +124,11 @@ bt_init(int argc, char *argv[])
   clock_gettime(CLOCK_MONOTONIC, &bt_begin);
   bt_suite_case_begin = bt_suite_begin = bt_begin;
 
+  the_bird_lock();
+  resource_init();
+  ev_init_list(&global_event_list, &main_birdloop, "Global event list in unit tests");
+  ev_init_list(&global_work_list, &main_birdloop, "Global work list in unit tests");
+  birdloop_init();
   return;
 
  usage:
@@ -174,6 +181,8 @@ int bt_run_test_fn(int (*fn)(const void *), const void *fn_arg, int timeout)
 
   if (!bt_suite_result)
     result = 0;
+
+  tmp_flush();
 
   return result;
 }
@@ -310,6 +319,12 @@ bt_log_suite_case_result(int result, const char *fmt, ...)
     bt_log_result(result, get_time_diff(&bt_suite_case_begin), fmt, argptr);
     va_end(argptr);
   }
+}
+
+void
+bt_reset_suite_case_timer(void)
+{
+  clock_gettime(CLOCK_MONOTONIC, &bt_suite_case_begin);
 }
 
 int
@@ -500,6 +515,15 @@ bt_fmt_ipa(char *buf, size_t size, const void *data)
   const ip_addr *ip = data;
   if (data)
     bsnprintf(buf, size, "%I", *ip);
+  else
+    bsnprintf(buf, size, "(null)");
+}
+
+void
+bt_format_net(char *buf, size_t size, const void *data)
+{
+  if (data)
+    bsnprintf(buf, size, "%N", (const net_addr *) data);
   else
     bsnprintf(buf, size, "(null)");
 }

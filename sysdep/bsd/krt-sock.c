@@ -25,7 +25,7 @@
 
 #include "nest/bird.h"
 #include "nest/iface.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "sysdep/unix/unix.h"
@@ -366,6 +366,30 @@ krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old)
   }
 }
 
+/**
+ * krt_assume_onlink - check if routes on interface are considered onlink
+ * @iface: The interface of the next hop
+ * @ipv6: Switch to only consider IPv6 or IPv4 addresses.
+ *
+ * The BSD kernel does not support an onlink flag. If the interface has only
+ * host addresses configured, all routes should be considered as onlink and
+ * the function returns 1.
+ */
+static int
+krt_assume_onlink(struct iface *iface, int ipv6)
+{
+  const u8 type = ipv6 ? NET_IP6 : NET_IP4;
+
+  struct ifa *ifa;
+  WALK_LIST(ifa, iface->addrs)
+  {
+    if ((ifa->prefix.type == type) && !(ifa->flags & IA_HOST))
+      return 0;
+  }
+
+  return 1;
+}
+
 #define SKIP(ARG...) do { DBG("KRT: Ignoring route - " ARG); return; } while(0)
 
 static void
@@ -494,9 +518,9 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   net = net_get(p->p.main_channel->table, &ndst);
 
   rta a = {
-    .source = RTS_INHERIT,
-    .scope = SCOPE_UNIVERSE,
   };
+
+  ea_set_attr_u32(&a->eattrs, &ea_gen_source, 0, RTS_INHERIT);
 
   /* reject/blackhole routes have also set RTF_GATEWAY,
      we wil check them first. */
@@ -526,15 +550,21 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   a.dest = RTD_UNICAST;
   if (flags & RTF_GATEWAY)
   {
-    neighbor *ng;
     a.nh.gw = igate;
 
     /* Clean up embedded interface ID returned in link-local address */
     if (ipa_is_link_local(a.nh.gw))
       _I0(a.nh.gw) = 0xfe800000;
 
-    ng = neigh_find(&p->p, a.nh.gw, a.nh.iface, 0);
-    if (!ng || (ng->scope == SCOPE_HOST))
+    /* The BSD kernel does not support an onlink flag. We heuristically
+       set the onlink flag, if the iface has only host addresses. */
+    if (krt_assume_onlink(a.nh.iface, ipv6))
+      a.nh.flags |= RNF_ONLINK;
+
+    neighbor *nbr;
+    nbr = neigh_find(&p->p, a.nh.gw, a.nh.iface,
+		    (a.nh.flags & RNF_ONLINK) ? NEF_ONLINK : 0);
+    if (!nbr || (nbr->scope == SCOPE_HOST))
       {
 	/* Ignore routes with next-hop 127.0.0.1, host routes with such
 	   next-hop appear on OpenBSD for address aliases. */
@@ -550,15 +580,8 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
  done:;
   rte e0 = { .attrs = &a, .net = net, };
 
-  ea_list *ea = alloca(sizeof(ea_list) + 1 * sizeof(eattr));
-  *ea = (ea_list) { .count = 1, .next = e0.attrs->eattrs };
-  e0.attrs->eattrs = ea;
-
-  ea->attrs[0] = (eattr) {
-    .id = EA_KRT_SOURCE,
-    .type = EAF_TYPE_INT,
-    .u.data = src2,
-  };
+  ea_set_attr(e0.attrs->eattrs,
+      EA_LITERAL_EMBEDDED(EA_KRT_SOURCE, T_INT, 0, src2));
 
   if (scan)
     krt_got_route(p, &e0, src);

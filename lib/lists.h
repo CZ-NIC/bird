@@ -42,6 +42,7 @@ typedef union list {			/* In fact two overlayed nodes */
   };
 } list;
 
+#define STATIC_LIST_INIT(name)	name = { .head = &name.tail_node, .tail = &name.head_node, .null = NULL }
 
 #define NODE (node *)
 #define HEAD(list) ((void *)((list).head))
@@ -90,7 +91,6 @@ enlisted(node *n)
 #define LIST_INLINE
 void add_tail(list *, node *);
 void add_head(list *, node *);
-void self_link(node *);
 void rem_node(node *);
 void add_tail_list(list *, list *);
 void init_list(list *);

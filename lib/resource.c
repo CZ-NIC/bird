@@ -2,6 +2,7 @@
  *	BIRD Resource Manager
  *
  *	(c) 1998--2000 Martin Mares <mj@ucw.cz>
+ *	(c) 2021 Maria Matejka <mq@jmq.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -13,6 +14,7 @@
 #include "nest/bird.h"
 #include "lib/resource.h"
 #include "lib/string.h"
+#include "lib/rcu.h"
 
 /**
  * DOC: Resource pools
@@ -28,25 +30,10 @@
  * is freed upon shutdown of the module.
  */
 
-struct pool {
-  resource r;
-  list inside;
-  struct pool_pages *pages;
-  const char *name;
-};
-
-struct pool_pages {
-  uint free;
-  uint used;
-  void *ptr[0];
-};
-
-#define POOL_PAGES_MAX	((page_size - sizeof(struct pool_pages)) / sizeof (void *))
-
 static void pool_dump(resource *);
 static void pool_free(resource *);
 static resource *pool_lookup(resource *, unsigned long);
-static size_t pool_memsize(resource *P);
+static struct resmem pool_memsize(resource *P);
 
 static struct resclass pool_class = {
   "Pool",
@@ -58,9 +45,6 @@ static struct resclass pool_class = {
 };
 
 pool root_pool;
-
-void *alloc_sys_page(void);
-void free_sys_page(void *);
 
 static int indent;
 
@@ -81,6 +65,20 @@ rp_new(pool *p, const char *name)
   return z;
 }
 
+pool *
+rp_newf(pool *p, const char *fmt, ...)
+{
+  pool *z = rp_new(p, NULL);
+
+  va_list args;
+  va_start(args, fmt);
+  z->name = mb_vsprintf(p, fmt, args);
+  va_end(args);
+
+  return z;
+}
+
+
 static void
 pool_free(resource *P)
 {
@@ -93,14 +91,6 @@ pool_free(resource *P)
       r->class->free(r);
       xfree(r);
       r = rr;
-    }
-
-  if (p->pages)
-    {
-      ASSERT_DIE(!p->pages->used);
-      for (uint i=0; i<p->pages->free; i++)
-	free_sys_page(p->pages->ptr[i]);
-      free_sys_page(p->pages);
     }
 }
 
@@ -117,18 +107,22 @@ pool_dump(resource *P)
   indent -= 3;
 }
 
-static size_t
+static struct resmem
 pool_memsize(resource *P)
 {
   pool *p = (pool *) P;
   resource *r;
-  size_t sum = sizeof(pool) + ALLOC_OVERHEAD;
+  struct resmem sum = {
+    .effective = 0,
+    .overhead = sizeof(pool) + ALLOC_OVERHEAD,
+  };
 
   WALK_LIST(r, p->inside)
-    sum += rmemsize(r);
-
-  if (p->pages)
-    sum += page_size * (p->pages->used + p->pages->free + 1);
+  {
+    struct resmem add = rmemsize(r);
+    sum.effective += add.effective;
+    sum.overhead += add.overhead;
+  }
 
   return sum;
 }
@@ -216,14 +210,17 @@ rdump(void *res)
     debug("NULL\n");
 }
 
-size_t
+struct resmem
 rmemsize(void *res)
 {
   resource *r = res;
   if (!r)
-    return 0;
+    return (struct resmem) {};
   if (!r->class->memsize)
-    return r->class->size + ALLOC_OVERHEAD;
+    return (struct resmem) {
+      .effective = r->class->size - sizeof(resource),
+      .overhead = ALLOC_OVERHEAD + sizeof(resource),
+    };
   return r->class->memsize(r);
 }
 
@@ -282,10 +279,33 @@ rlookup(unsigned long a)
 void
 resource_init(void)
 {
+  resource_sys_init();
+  rcu_init();
+
   root_pool.r.class = &pool_class;
   root_pool.name = "Root";
   init_list(&root_pool.inside);
+  tmp_init(&root_pool);
 }
+
+_Thread_local struct tmp_resources tmp_res;
+
+void
+tmp_init(pool *p)
+{
+  tmp_res.lp = lp_new_default(p);
+  tmp_res.parent = p;
+  tmp_res.pool = rp_new(p, "TMP");
+}
+
+void
+tmp_flush(void)
+{
+  lp_flush(tmp_linpool);
+  rfree(tmp_res.pool);
+  tmp_res.pool = rp_new(tmp_res.parent, "TMP");
+}
+
 
 /**
  * DOC: Memory blocks
@@ -328,11 +348,14 @@ mbl_lookup(resource *r, unsigned long a)
   return NULL;
 }
 
-static size_t
+static struct resmem
 mbl_memsize(resource *r)
 {
   struct mblock *m = (struct mblock *) r;
-  return ALLOC_OVERHEAD + sizeof(struct mblock) + m->size;
+  return (struct resmem) {
+    .effective = m->size,
+    .overhead = ALLOC_OVERHEAD + sizeof(struct mblock),
+  };
 }
 
 static struct resclass mb_class = {
@@ -416,21 +439,6 @@ mb_realloc(void *m, unsigned size)
   return b->data;
 }
 
-/**
- * mb_move - move a memory block
- * @m: memory block
- * @p: target pool
- *
- * mb_move() moves the given memory block to another pool in the same way
- * as rmove() moves a plain resource.
- */
-void
-mb_move(void *m, pool *p)
-{
-  struct mblock *b = SKIP_BACK(struct mblock, data, m);
-  rmove(b, p);
-}
-
 
 /**
  * mb_free - free a memory block
@@ -448,39 +456,6 @@ mb_free(void *m)
   rfree(b);
 }
 
-void *
-alloc_page(pool *p)
-{
-  if (!p->pages)
-  {
-    p->pages = alloc_sys_page();
-    p->pages->free = 0;
-    p->pages->used = 1;
-  }
-  else
-    p->pages->used++;
-
-  if (p->pages->free)
-  {
-    void *ptr = p->pages->ptr[--p->pages->free];
-    bzero(ptr, page_size);
-    return ptr;
-  }
-  else
-    return alloc_sys_page();
-}
-
-void
-free_page(pool *p, void *ptr)
-{
-  ASSERT_DIE(p->pages);
-  p->pages->used--;
-
-  if (p->pages->free >= POOL_PAGES_MAX)
-    return free_sys_page(ptr);
-  else
-    p->pages->ptr[p->pages->free++] = ptr;
-}
 
 
 #define STEP_UP(x) ((x) + (x)/2 + 4)

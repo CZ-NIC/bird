@@ -1,3 +1,46 @@
+Version 2.0.10 (2022-06-16)
+  o BGP performance improvements
+  o BFD: New 'strict bind' option
+  o RPKI: VRF support
+  o Allow use of 240.0.0.0/4 as a private range
+  o BIRD client uses exit status to report errors
+  o Important bugfixes
+
+Version 2.0.9 (2022-02-09)
+  o BGP: Flowspec validation procedure
+  o Babel: MAC authentication support
+  o Routing table configuration blocks
+  o Optional prefix trie in routing table for faster LPM/interval queries
+  o CLI: New 'show route in <prefix>' command
+  o Filter: Faster (16-way) prefix sets
+  o Filter: MPLS label route attribute
+  o Filter: Operators to pick community components
+  o Filter: Operators to find minimum and maximum element of lists
+  o BGP: New 'free bind' option
+  o BGP: Log route updates that were changed to withdraws
+  o BGP: Improved 'invalid next hop' error reporting
+  o OSPF: Allow ifaces with host address as unnumbered PtP or PtMP ifaces
+  o OSPF: All packets on PtP networks should be sent to AllSPFRouters address
+  o Scripts for apkg-powered upstream packaging for deb and rpm
+  o Support for Blake2s and Blake2b hash functions
+  o Security keys / passwords can be entered in hexadecimal digits
+  o Memory statistics split into Effective and Overhead
+  o Linux: New option 'netlink rx buffer' to specify netlink socket buffer size
+  o BSD: Assume onlink flag on ifaces with only host addresses
+  o Many bugfixes
+
+  Notes:
+
+  For OSPF on PtP network, BIRD now sends all packets to multicast AllSPFRouters
+  address (as required in RFC 2328 8.1). This likely breaks setups with multiple
+  neighbors on a network configured as PtP, which worked in previous versions.
+  Such links should be configured as PtMP.
+
+  Since Linux 5.3, netlink socket can be flooded by route cache entries during
+  route table scan. This version mitigates that issue by using strict netlink
+  filtering.
+
+
 Version 2.0.8 (2021-03-18)
   o Automatic channel reloads based on RPKI changes
   o Multiple static routes with the same network

@@ -61,7 +61,6 @@ dump_nodes(void)
 static void
 init_hash_(uint order)
 {
-  resource_init();
   my_pool = rp_new(&root_pool, "Test pool");
 
   HASH_INIT(hash, my_pool, order);
@@ -286,6 +285,46 @@ t_walk_filter(void)
   return 1;
 }
 
+static int
+t_walk_iter(void)
+{
+  init_hash();
+  fill_hash();
+
+  u32 hit = 0;
+
+  u32 prev_hash = ~0;
+  for (uint cnt = 0; cnt < MAX_NUM; )
+  {
+    u32 last_hash = ~0;
+//    printf("PUT!\n");
+    HASH_WALK_ITER(hash, TEST, n, hit)
+    {
+      cnt++;
+      u32 cur_hash = HASH_FN(hash, TEST, n->key);
+      /*
+      printf("C%08x L%08x P%08x K%08x H%08x N%p S%d I%ld\n",
+	  cur_hash, last_hash, prev_hash, n->key, hit, n, _shift, n - &nodes[0]);
+	  */
+
+      if (last_hash == ~0U)
+      {
+	if (prev_hash != ~0U)
+	  bt_assert(prev_hash < cur_hash);
+	last_hash = prev_hash = cur_hash;
+      }
+      else
+	bt_assert(last_hash == cur_hash);
+
+      if (cnt < MAX_NUM)
+	HASH_WALK_ITER_PUT;
+    }
+    HASH_WALK_ITER_END;
+  }
+
+  return 1;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -300,6 +339,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_walk_delsafe_remove, 	"HASH_WALK_DELSAFE and HASH_REMOVE");
   bt_test_suite(t_walk_delsafe_remove2,	"HASH_WALK_DELSAFE and HASH_REMOVE2. HASH_REMOVE2 is HASH_REMOVE and smart auto-resize function");
   bt_test_suite(t_walk_filter,		"HASH_WALK_FILTER");
+  bt_test_suite(t_walk_iter,		"HASH_WALK_ITER");
 
   return bt_exit_value();
 }

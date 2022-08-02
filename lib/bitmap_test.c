@@ -24,7 +24,6 @@ t_bmap_set_clear_random(void)
 {
   struct bmap b;
 
-  resource_init();
   bmap_init(&b, &root_pool, 1024);
 
   char expected[MAX_NUM] = {};
@@ -60,7 +59,6 @@ t_hmap_set_clear_random(void)
 {
   struct hmap b;
 
-  resource_init();
   hmap_init(&b, &root_pool, 1024);
 
   char expected[MAX_NUM] = {};
@@ -119,7 +117,6 @@ t_hmap_set_clear_fill(void)
 {
   struct hmap b;
 
-  resource_init();
   hmap_init(&b, &root_pool, 1024);
 
   char expected[MAX_NUM] = {};

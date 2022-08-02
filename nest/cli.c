@@ -319,7 +319,6 @@ cli_new(void *priv)
   c->event->data = c;
   c->cont = cli_hello;
   c->parser_pool = lp_new_default(c->pool);
-  c->show_pool = lp_new_default(c->pool);
   c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
   ev_schedule(c->event);
   return c;
@@ -409,11 +408,14 @@ void
 cli_free(cli *c)
 {
   cli_set_log_echo(c, 0, 0);
+  int defer = 0;
   if (c->cleanup)
-    c->cleanup(c);
+    defer = c->cleanup(c);
   if (c == cmd_reconfig_stored_cli)
     cmd_reconfig_stored_cli = NULL;
-  rfree(c->pool);
+
+  if (!defer)
+    rfree(c->pool);
 }
 
 /**

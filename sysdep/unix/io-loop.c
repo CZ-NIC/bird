@@ -17,7 +17,6 @@
 #include "nest/bird.h"
 
 #include "lib/buffer.h"
-#include "lib/coro.h"
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
@@ -27,6 +26,8 @@
 #include "lib/io-loop.h"
 #include "sysdep/unix/io-loop.h"
 #include "conf/conf.h"
+
+#define THREAD_STACK_SIZE	65536	/* To be lowered in near future */
 
 /*
  *	Current thread context
@@ -132,17 +133,25 @@ wakeup_do_kick(struct birdloop *loop)
   pipe_kick(loop->wakeup_fds[1]);
 }
 
-void
-birdloop_ping(struct birdloop *loop)
+static inline void
+birdloop_do_ping(struct birdloop *loop)
 {
-  u32 ping_sent = atomic_fetch_add_explicit(&loop->ping_sent, 1, memory_order_acq_rel);
-  if (ping_sent)
+  if (atomic_fetch_add_explicit(&loop->ping_sent, 1, memory_order_acq_rel))
     return;
 
   if (loop == birdloop_wakeup_masked)
     birdloop_wakeup_masked_count++;
   else
     wakeup_do_kick(loop);
+}
+
+void
+birdloop_ping(struct birdloop *loop)
+{
+  if (birdloop_inside(loop) && !loop->ping_pending)
+    loop->ping_pending++;
+  else
+    birdloop_do_ping(loop);
 }
 
 
@@ -205,7 +214,7 @@ sk_stop(sock *s)
 }
 
 static inline uint sk_want_events(sock *s)
-{ return ((s->rx_hook && !ev_corked(s->cork)) ? POLLIN : 0) | ((s->ttx != s->tpos) ? POLLOUT : 0); }
+{ return (s->rx_hook ? POLLIN : 0) | ((s->ttx != s->tpos) ? POLLOUT : 0); }
 
 /*
 FIXME: this should be called from sock code
@@ -336,7 +345,7 @@ birdloop_init(void)
   birdloop_enter_locked(&main_birdloop);
 }
 
-static void birdloop_main(void *arg);
+static void *birdloop_main(void *arg);
 
 struct birdloop *
 birdloop_new(pool *pp, uint order, const char *name)
@@ -357,7 +366,19 @@ birdloop_new(pool *pp, uint order, const char *name)
   timers_init(&loop->time, p);
   sockets_init(loop);
 
-  loop->time.coro = coro_run(p, birdloop_main, loop);
+  int e = 0;
+
+  if (e = pthread_attr_init(&loop->thread_attr))
+    die("pthread_attr_init() failed: %M", e);
+
+  if (e = pthread_attr_setstacksize(&loop->thread_attr, THREAD_STACK_SIZE))
+    die("pthread_attr_setstacksize(%u) failed: %M", THREAD_STACK_SIZE, e);
+
+  if (e = pthread_attr_setdetachstate(&loop->thread_attr, PTHREAD_CREATE_DETACHED))
+    die("pthread_attr_setdetachstate(PTHREAD_CREATE_DETACHED) failed: %M", e);
+
+  if (e = pthread_create(&loop->thread_id, &loop->thread_attr, birdloop_main, loop))
+    die("pthread_create() failed: %M", e);
 
   birdloop_leave(loop);
 
@@ -393,6 +414,11 @@ void
 birdloop_free(struct birdloop *loop)
 {
   ASSERT_DIE(loop->links == 0);
+  ASSERT_DIE(pthread_equal(pthread_self(), loop->thread_id));
+
+  rcu_birdloop_stop(&loop->rcu);
+  pthread_attr_destroy(&loop->thread_attr);
+
   domain_free(loop->time.domain);
   rfree(loop->pool);
 }
@@ -422,6 +448,13 @@ birdloop_leave_locked(struct birdloop *loop)
 {
   /* Check the current context */
   ASSERT_DIE(birdloop_current == loop);
+
+  /* Send pending pings */
+  if (loop->ping_pending)
+  {
+    loop->ping_pending = 0;
+    birdloop_do_ping(loop);
+  }
 
   /* Restore the old context */
   birdloop_current = loop->prev_loop;
@@ -466,14 +499,18 @@ birdloop_unlink(struct birdloop *loop)
   loop->links--;
 }
 
-static void
+static void *
 birdloop_main(void *arg)
 {
   struct birdloop *loop = arg;
   timer *t;
   int rv, timeout;
 
+  rcu_birdloop_start(&loop->rcu);
+
   btime loop_begin = current_time();
+
+  tmp_init(loop->pool);
 
   birdloop_enter(loop);
   while (1)
@@ -530,6 +567,12 @@ birdloop_main(void *arg)
 
   birdloop_leave(loop);
   loop->stopped(loop->stop_data);
+
+  return NULL;
 }
 
-
+void
+birdloop_yield(void)
+{
+  usleep(100);
+}

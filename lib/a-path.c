@@ -8,8 +8,8 @@
  */
 
 #include "nest/bird.h"
-#include "nest/route.h"
-#include "nest/attrs.h"
+#include "nest/rt.h"
+#include "lib/attrs.h"
 #include "lib/resource.h"
 #include "lib/unaligned.h"
 #include "lib/string.h"
@@ -591,7 +591,7 @@ as_path_match_set(const struct adata *path, const struct f_tree *set)
       p += 2;
       for (i=0; i<n; i++)
 	{
-	  struct f_val v = {T_INT, .val.i = get_as(p)};
+	  struct f_val v = { .type = T_INT, .val.i = get_as(p)};
 	  if (find_tree(set, &v))
 	    return 1;
 	  p += BS;
@@ -602,8 +602,10 @@ as_path_match_set(const struct adata *path, const struct f_tree *set)
 }
 
 const struct adata *
-as_path_filter(struct linpool *pool, const struct adata *path, const struct f_tree *set, u32 key, int pos)
+as_path_filter(struct linpool *pool, const struct adata *path, const struct f_val *set, int pos)
 {
+  ASSERT((set->type == T_SET) || (set->type == T_INT));
+
   if (!path)
     return NULL;
 
@@ -629,13 +631,13 @@ as_path_filter(struct linpool *pool, const struct adata *path, const struct f_tr
 	  u32 as = get_as(p);
 	  int match;
 
-	  if (set)
+	  if (set->type == T_SET)
 	    {
-	      struct f_val v = {T_INT, .val.i = as};
-	      match = !!find_tree(set, &v);
+	      struct f_val v = { .type = T_INT, .val.i = as};
+	      match = !!find_tree(set->val.t, &v);
 	    }
-	  else
-	    match = (as == key);
+	  else /* T_INT */
+	    match = (as == set->val.i);
 
 	  if (match == pos)
 	    {
@@ -665,6 +667,35 @@ as_path_filter(struct linpool *pool, const struct adata *path, const struct f_tr
   memcpy(res->data, buf, nl);
 
   return res;
+}
+
+int
+as_path_walk(const struct adata *path, uint *pos, uint *val)
+{
+  if (!path)
+    return 0;
+
+  const u8 *p = path->data;
+  const u8 *q = p + path->length;
+  uint n, x = *pos;
+
+  while (p < q)
+  {
+    n = p[1];
+    p += 2;
+
+    if (x < n)
+    {
+      *val = get_as(p + x * BS);
+      *pos += 1;
+      return 1;
+    }
+
+    p += n * BS;
+    x -= n;
+  }
+
+  return 0;
 }
 
 
