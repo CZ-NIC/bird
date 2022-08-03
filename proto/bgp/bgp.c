@@ -518,6 +518,12 @@ bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
   p->uncork_ev->data = NULL;
   bgp_graceful_close_conn(&p->outgoing_conn, subcode, data, len);
   bgp_graceful_close_conn(&p->incoming_conn, subcode, data, len);
+
+  struct bgp_channel *c;
+  WALK_LIST(c, p->p.channels)
+    if (c->ptx)
+      bgp_free_pending_tx(c);
+
   ev_schedule(p->event);
 }
 
@@ -787,10 +793,8 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
     }
 
     /* Reset bucket and prefix tables */
-    bgp_free_bucket_table(c);
-    bgp_free_prefix_table(c);
-    bgp_init_bucket_table(c);
-    bgp_init_prefix_table(c);
+    bgp_free_pending_tx(c);
+    bgp_init_pending_tx(c);
     c->packets_to_send = 0;
   }
 
@@ -1806,8 +1810,7 @@ bgp_channel_start(struct channel *C)
   if (c->cf->export_table)
     bgp_setup_out_table(c);
 
-  bgp_init_bucket_table(c);
-  bgp_init_prefix_table(c);
+  bgp_init_pending_tx(c);
 
   c->stale_timer = tm_new_init(c->pool, bgp_long_lived_stale_timeout, c, 0, 0);
 

@@ -351,14 +351,8 @@ struct bgp_channel {
 
   /* Rest are zeroed when down */
   pool *pool;
-  HASH(struct bgp_bucket) bucket_hash;	/* Hash table of route buckets */
-  struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
-  list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
-
-  HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
-  slab *prefix_slab;			/* Slab holding prefix nodes */
-
-  struct rt_exporter prefix_exporter;	/* Table-like exporter for prefix_hash */
+  struct bgp_pending_tx	*ptx;		/* Routes waiting to be sent */
+  struct rt_exporter prefix_exporter;	/* Table-like exporter for ptx */
 
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   ip_addr link_addr;			/* Link-local version of next_hop_addr */
@@ -399,6 +393,18 @@ struct bgp_bucket {
   u32 hash;				/* Hash over extended attributes */
   u32 px_uc;				/* How many prefixes are linking this bucket */
   ea_list eattrs[0];			/* Per-bucket extended attributes */
+};
+
+struct bgp_pending_tx {
+  resource r;
+  pool *pool;
+
+  HASH(struct bgp_bucket) bucket_hash;	/* Hash table of route buckets */
+  struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
+  list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
+
+  HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
+  slab *prefix_slab;			/* Slab holding prefix nodes */
 };
 
 struct bgp_export_state {
@@ -567,13 +573,12 @@ void bgp_finish_attrs(struct bgp_parse_state *s, ea_list **to);
 
 void bgp_setup_out_table(struct bgp_channel *c);
 
-void bgp_init_bucket_table(struct bgp_channel *c);
-void bgp_free_bucket_table(struct bgp_channel *c);
+void bgp_init_pending_tx(struct bgp_channel *c);
+void bgp_free_pending_tx(struct bgp_channel *c);
+
 void bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 int bgp_done_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 
-void bgp_init_prefix_table(struct bgp_channel *c);
-void bgp_free_prefix_table(struct bgp_channel *c);
 void bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket *buck);
 
 int bgp_rte_better(struct rte *, struct rte *);

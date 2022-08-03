@@ -10,6 +10,8 @@
 #ifndef _BIRD_LIB_ROUTE_H_
 #define _BIRD_LIB_ROUTE_H_
 
+#undef RT_SOURCE_DEBUG
+
 #include "lib/type.h"
 #include "lib/rcu.h"
 #include "lib/hash.h"
@@ -87,6 +89,11 @@ struct rte_src *rt_get_source_o(struct rte_owner *o, u32 id);
 
 struct rte_src *rt_find_source_global(u32 id);
 
+#ifdef RT_SOURCE_DEBUG
+#define rt_lock_source _rt_lock_source_internal
+#define rt_unlock_source _rt_unlock_source_internal
+#endif
+
 static inline void rt_lock_source(struct rte_src *src)
 {
   /* Locking a source is trivial; somebody already holds it so we just increase
@@ -138,6 +145,14 @@ static inline void rt_unlock_source(struct rte_src *src)
    * RCU synchronization instead of a busy loop. */
   rcu_read_unlock();
 }
+
+#ifdef RT_SOURCE_DEBUG
+#undef rt_lock_source
+#undef rt_unlock_source
+
+#define rt_lock_source(x) ( log(L_INFO "Lock source %uG at %s:%d", (x)->global_id, __FILE__, __LINE__), _rt_lock_source_internal(x) )
+#define rt_unlock_source(x) ( log(L_INFO "Unlock source %uG at %s:%d", (x)->global_id, __FILE__, __LINE__), _rt_unlock_source_internal(x) )
+#endif
 
 void rt_init_sources(struct rte_owner *, const char *name, event_list *list);
 void rt_destroy_sources(struct rte_owner *, event *);
