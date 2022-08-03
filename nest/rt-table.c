@@ -2436,7 +2436,7 @@ rt_settle_timer(timer *t)
 
   struct rt_subscription *s;
   WALK_LIST(s, tab->subscribers)
-    s->hook(s);
+    ev_send(s->list, s->event);
 }
 
 static void
