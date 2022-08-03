@@ -2167,7 +2167,7 @@ bgp_create_ip_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
    *	var	IPv4 Network Layer Reachability Information
    */
 
-  ASSERT_DIE(s->channel->withdraw_bucket != buck);
+  ASSERT_DIE(s->channel->ptx->withdraw_bucket != buck);
 
   int lr, la;
 
@@ -2190,7 +2190,7 @@ bgp_create_ip_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
 static byte *
 bgp_create_mp_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, byte *end)
 {
-  ASSERT_DIE(s->channel->withdraw_bucket != buck);
+  ASSERT_DIE(s->channel->ptx->withdraw_bucket != buck);
 
   /*
    *	2 B	IPv4 Withdrawn Routes Length (zero)
@@ -2330,7 +2330,7 @@ again: ;
   };
 
   /* Try unreachable bucket */
-  if ((buck = c->withdraw_bucket) && !EMPTY_LIST(buck->prefixes))
+  if ((buck = c->ptx->withdraw_bucket) && !EMPTY_LIST(buck->prefixes))
   {
     res = (c->afi == BGP_AF_IPV4) && !c->ext_next_hop ?
       bgp_create_ip_unreach(&s, buck, buf, end):
@@ -2340,9 +2340,9 @@ again: ;
   }
 
   /* Try reachable buckets */
-  if (!EMPTY_LIST(c->bucket_queue))
+  if (!EMPTY_LIST(c->ptx->bucket_queue))
   {
-    buck = HEAD(c->bucket_queue);
+    buck = HEAD(c->ptx->bucket_queue);
 
     /* Cleanup empty buckets */
     if (bgp_done_bucket(c, buck))
