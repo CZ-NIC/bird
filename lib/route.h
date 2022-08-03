@@ -257,7 +257,7 @@ typedef struct ea_list {
 struct ea_storage {
   struct ea_storage *next_hash;		/* Next in hash chain */
   struct ea_storage **pprev_hash;	/* Previous in hash chain */
-  u32 uc;				/* Use count */
+  _Atomic u32 uc;			/* Use count */
   u32 hash_key;				/* List hash */
   ea_list l[0];				/* The list itself */
 };
@@ -526,12 +526,15 @@ static inline struct ea_storage *ea_get_storage(ea_list *r)
   return SKIP_BACK(struct ea_storage, l[0], r);
 }
 
-static inline ea_list *ea_clone(ea_list *r) { ea_get_storage(r)->uc++; return r; }
+static inline ea_list *ea_clone(ea_list *r) {
+  ASSERT_DIE(0 < atomic_fetch_add_explicit(&ea_get_storage(r)->uc, 1, memory_order_acq_rel));
+  return r;
+}
 void ea__free(struct ea_storage *r);
 static inline void ea_free(ea_list *l) {
   if (!l) return;
   struct ea_storage *r = ea_get_storage(l);
-  if (!--r->uc) ea__free(r);
+  if (1 == atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel)) ea__free(r);
 }
 
 void ea_dump(ea_list *);
