@@ -578,18 +578,17 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
     }
 }
 
+
 /*
  *	Periodic scanning
  */
 
-
-#ifdef CONFIG_ALL_TABLES_AT_ONCE
-
-static timer *krt_scan_timer;
-static int krt_scan_count;
+static timer *krt_scan_all_timer;
+static int krt_scan_all_count;
+static _Bool krt_scan_all_tables;
 
 static void
-krt_scan(timer *t UNUSED)
+krt_scan_all(timer *t UNUSED)
 {
   struct krt_proto *p;
   node *n;
@@ -610,35 +609,42 @@ krt_scan(timer *t UNUSED)
 }
 
 static void
-krt_scan_timer_start(struct krt_proto *p)
+krt_scan_all_timer_start(struct krt_proto *p)
 {
-  if (!krt_scan_count)
-    krt_scan_timer = tm_new_init(krt_pool, krt_scan, NULL, KRT_CF->scan_time, 0);
+  if (!krt_scan_all_count)
+    krt_scan_all_timer = tm_new_init(krt_pool, krt_scan_all, NULL, KRT_CF->scan_time, 0);
 
-  krt_scan_count++;
+  krt_scan_all_count++;
 
-  tm_start(krt_scan_timer, 1 S);
+  tm_start(krt_scan_all_timer, 1 S);
 }
 
 static void
-krt_scan_timer_stop(struct krt_proto *p UNUSED)
+krt_scan_all_timer_stop(void)
 {
-  krt_scan_count--;
+  ASSERT(krt_scan_all_count > 0);
 
-  if (!krt_scan_count)
+  krt_scan_all_count--;
+
+  if (!krt_scan_all_count)
   {
-    rfree(krt_scan_timer);
-    krt_scan_timer = NULL;
+    rfree(krt_scan_all_timer);
+    krt_scan_all_timer = NULL;
   }
 }
 
 static void
-krt_scan_timer_kick(struct krt_proto *p UNUSED)
+krt_scan_all_timer_kick(void)
 {
-  tm_start(krt_scan_timer, 0);
+  tm_start(krt_scan_all_timer, 0);
 }
 
-#else
+void
+krt_use_shared_scan(void)
+{
+  krt_scan_all_tables = 1;
+}
+
 
 static void
 krt_scan(timer *t)
@@ -656,25 +662,32 @@ krt_scan(timer *t)
 static void
 krt_scan_timer_start(struct krt_proto *p)
 {
-  p->scan_timer = tm_new_init(p->p.pool, krt_scan, p, KRT_CF->scan_time, 0);
-  tm_start(p->scan_timer, 1 S);
+  if (krt_scan_all_tables)
+    krt_scan_all_timer_start(p);
+  else
+  {
+    p->scan_timer = tm_new_init(p->p.pool, krt_scan, p, KRT_CF->scan_time, 0);
+    tm_start(p->scan_timer, 1 S);
+  }
 }
 
 static void
 krt_scan_timer_stop(struct krt_proto *p)
 {
-  tm_stop(p->scan_timer);
+  if (krt_scan_all_tables)
+    krt_scan_all_timer_stop();
+  else
+    tm_stop(p->scan_timer);
 }
 
 static void
 krt_scan_timer_kick(struct krt_proto *p)
 {
-  tm_start(p->scan_timer, 0);
+  if (krt_scan_all_tables)
+    krt_scan_all_timer_kick();
+  else
+    tm_start(p->scan_timer, 0);
 }
-
-#endif
-
-
 
 
 /*
@@ -783,11 +796,6 @@ krt_postconfig(struct proto_config *CF)
 
   if (! proto_cf_main_channel(CF))
     cf_error("Channel not specified");
-
-#ifdef CONFIG_ALL_TABLES_AT_ONCE
-  if (krt_cf->scan_time != cf->scan_time)
-    cf_error("All kernel syncers must use the same table scan interval");
-#endif
 
   struct channel_config *cc = proto_cf_main_channel(CF);
   struct rtable_config *tab = cc->table;
