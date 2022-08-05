@@ -30,7 +30,8 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6, LONG,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL, SETS,
 	DYNAMIC, RANGE, NAME, DIGITS, AIGP, ORIGINATE, COST, ENFORCE,
-	FIRST, FREE, VALIDATE, BASE)
+	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
+	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC)
 
 %type <i> bgp_nh
 %type <i32> bgp_afi
@@ -39,7 +40,7 @@ CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
 	CONFIGURATION, CHANGE, DECONFIGURED, CONNECTION, REJECTED, COLLISION,
 	OUT, OF, RESOURCES)
 
-%type<i> bgp_cease_mask bgp_cease_list bgp_cease_flag
+%type<i> bgp_cease_mask bgp_cease_list bgp_cease_flag bgp_role_name
 
 CF_GRAMMAR
 
@@ -73,6 +74,7 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->llgr_mode = -1;
      BGP_CFG->llgr_time = 3600;
      BGP_CFG->setkey = 1;
+     BGP_CFG->local_role = BGP_ROLE_UNDEFINED;
      BGP_CFG->dynamic_name = "dynbgp";
      BGP_CFG->check_link = -1;
    }
@@ -113,6 +115,14 @@ bgp_cease_flag:
  | CONFIGURATION CHANGE		{ $$ = 1 << 6; }
  | CONNECTION COLLISION		{ $$ = 1 << 7; }
  | OUT OF RESOURCES		{ $$ = 1 << 8; }
+ ;
+
+bgp_role_name:
+   PEER      { $$ = BGP_ROLE_PEER; }
+ | PROVIDER  { $$ = BGP_ROLE_PROVIDER; }
+ | CUSTOMER  { $$ = BGP_ROLE_CUSTOMER; }
+ | RS_SERVER { $$ = BGP_ROLE_RS_SERVER; }
+ | RS_CLIENT { $$ = BGP_ROLE_RS_CLIENT; }
  ;
 
 bgp_proto:
@@ -198,6 +208,8 @@ bgp_proto:
  | bgp_proto BFD GRACEFUL ';' { init_bfd_opts(&BGP_CFG->bfd); BGP_CFG->bfd->mode = BGP_BFD_GRACEFUL; }
  | bgp_proto BFD { open_bfd_opts(&BGP_CFG->bfd); } bfd_opts { close_bfd_opts(); } ';'
  | bgp_proto ENFORCE FIRST AS bool ';' { BGP_CFG->enforce_first_as = $5; }
+ | bgp_proto LOCAL ROLE bgp_role_name ';' { BGP_CFG->local_role = $4; }
+ | bgp_proto REQUIRE ROLES bool ';' { BGP_CFG->require_roles = $4; }
  ;
 
 bgp_afi:
