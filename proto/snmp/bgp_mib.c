@@ -24,15 +24,16 @@
 #undef PACKAGE_TARNAME
 #undef PACKAGE_VERSION
 
-#include "proto/snmp/bgp_mib.h"
-#include "lib/birdlib.h"
+#include "bgp_mib.h"
+#include "snmp.h"
 
 static int
 bgpPeerTable_handler(
   netsnmp_mib_handler               *handler, // contains void * for internal use
   netsnmp_handler_registration      *reginfo,
   netsnmp_agent_request_info        *reqinfo,
-  netsnmp_request_info              *requests) {
+  netsnmp_request_info              *requests)
+{
 
   /* perform anything here that you need to do.  The requests have
      already been processed by the master table_dataset handler, but

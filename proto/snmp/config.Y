@@ -28,14 +28,31 @@ snmp_proto:
    snmp_proto_start '{'
  | snmp_proto proto_item ';'
  | snmp_proto snmp_bgp_bond ';'
- | snmp_proto  ';'
+ | snmp_proto LOCAL PORT expr ';' { SNMP_CFG->local_port = $4; if (($4<1) ||
+($4>65535)) cf_error("Invalid port number"); }
+ | snmp_proto REMOTE PORT expr ';' { SNMP_CFG->remote_port = $4; if (($4<1) ||
+($4>65545)) cf_error("Invalid port number"); }
+ | snmp_proto LOCAL ipa ';' { SNMP_CFG->local_ip = $3; }
+ | snmp_proto REMOTE ipa ';' { SNMP_CFG->remote_ip = $3; if(!ipa_nonzero($3))
+cf_error("Invalid remote ip address"); }
  ;
 
 snmp_proto_start: proto_start SNMP
 {
   this_proto = proto_config_new(&proto_snmp, $1);
   init_list(&SNMP_CFG->bgp_entries);
+
+  SNMP_CFG->local_ip = IPA_NONE;
+  SNMP_CFG->remote_ip = ipa_build4(127,0,0,1);
+  SNMP_CFG->local_port = 0;
+  SNMP_CFG->remote_port = 705;
+
+  SNMP_CFG->timeout = 15;
 }
+
+proto_name ;
+
+
 
 snmp_bgp_bond: BGP symbol
 {

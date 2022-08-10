@@ -11,53 +11,142 @@
  */
 
 #include "nest/bird.h"
-#include "nest/protocol.h"
 #include "nest/cli.h"
+#include "nest/locks.h"
+#include "lib/socket.h"
 
-#include "proto/snmp/snmp.h"
-#include "proto/snmp/subagent.h"
-#include "proto/snmp/bgp_mib.h"
+#include "snmp.h"
+#include "subagent.h"
+
+static void snmp_connected(sock *sk);
+static void snmp_sock_err(sock *sk, int err);
+static void snmp_ping_timer(struct timer *tm);
 
 static struct proto *
 snmp_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
-  struct snmp_proto *p = (void *) P;
+  struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
+  struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, CF);
 
   p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
+
+  p->local_ip = cf->local_ip;
+  p->remote_ip = cf->remote_ip;
+  p->local_port = cf->local_port;
+  p->remote_port = cf->remote_port;
+
+  // p->timeout = cf->timeout;
+  p->timeout = 15;
+
+  log(L_INFO "snmp_reconfigure() lip: %I:%u rip: %I:%u",
+    cf->local_ip, cf->local_port, cf->remote_ip, cf->remote_port);
 
   return P;
 }
 
-void start_multihook(void)
+static void
+snmp_start_locked(struct object_lock *lock)
 {
-  /* init bgp MIB table */
-  snmp_init_bgp_table();
+  log(L_INFO "snmp_start_locked() - preparing socket ");
+  struct snmp_proto *p = lock->data;
 
-  /* init ospf MIB table */
-  //snmp_inti_ospf_table();
+  sock *s = sk_new(p->p.pool);
+  s->type = SK_TCP_ACTIVE;
+  s->saddr = p->local_ip;
+  s->daddr = p->remote_ip;
+  s->dport = p->remote_port;
+  s->rbsize = SNMP_RX_BUFFER_SIZE;
+  s->tbsize = SNMP_TX_BUFFER_SIZE;
+  
+  // s->tos = IP_PREC_INTERNET_CONTROL
+  //s->rx_hook = snmp_connected;
+  s->tx_hook = snmp_connected;
+  s->err_hook = snmp_sock_err;
+
+  p->sock = s;
+  s->data = p;
+
+  if (sk_open(s) < 0) 
+    log(L_ERR "Cannot open listening socket");
+  
+  log(L_INFO "socket ready!, trying to connect");
+}
+
+static void
+snmp_tx(sock *sk UNUSED)
+{
+  log(L_INFO "snmp_tx() recieved something, yay!");
+}
+
+
+static void
+snmp_connected(sock *sk)
+{
+  struct snmp_proto *p = sk->data;
+  log(L_INFO "snmp_connected() connection created");
+  byte *buf UNUSED = sk->rbuf;
+
+  sk->rx_hook = snmp_rx;
+  sk->tx_hook = snmp_tx;
+
+  snmp_start_subagent(p);
+}
+
+static void
+snmp_sock_err(sock *sk UNUSED, int err UNUSED)
+{
+  log(L_INFO "snmp_sock_err() ");
 }
 
 static int
 snmp_start(struct proto *P)
 {
-  /* init MIB tables */
-  if (snmp_start_subagent(start_multihook))
-    return PS_UP;
-  else
-    return PS_DOWN;
+  log(L_INFO "snmp_start() - starting timer (almost)");
+  struct snmp_proto *p = (void *) P;
+
+  p->ping_timer = tm_new_init(p->p.pool, snmp_ping_timer, p, 0, 0);
+  tm_set(p->ping_timer, current_time() + (7 S_)); 
+
+  /* starting agentX communicaiton channel */
+  log(L_INFO "preparing lock");
+  struct object_lock *lock;
+  lock = p->lock = olock_new(P->pool); 
+
+  lock->type = OBJLOCK_TCP;
+  lock->hook = snmp_start_locked;
+  lock->data = p;
+
+  olock_acquire(lock);
+  log(L_INFO "lock acquired");
+
+  log(L_INFO "local ip: %I:%u, remote ip: %I:%u",
+    p->local_ip, p->local_port, p->remote_ip, p->remote_port);
+  
+  return PS_START; 
 }
 
 static int
 snmp_reconfigure(struct proto *P, struct proto_config *CF)
 {
+  struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
+  struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, CF);
+
+  p->local_ip = cf->local_ip;
+  p->remote_ip = cf->remote_ip;
+  p->local_port = cf->local_port;
+  p->remote_port = cf->remote_port;
+  p->timeout = 15;
+
+  log(L_INFO "snmp_reconfigure() lip: %I:%u rip: %I:%u",
+    p->local_ip, p->local_port, p->remote_ip, p->remote_port);
   return 0;
 }
 
 static void
 snmp_show_proto_info(struct proto *P)
 {
-  struct snmp_proto *sp = (void *) P;
+  //struct snmp_proto *sp = (void *) P;
   struct snmp_config *c = (void *) P->cf;
 
   cli_msg(-1006, "  BGP peers");
@@ -66,7 +155,6 @@ snmp_show_proto_info(struct proto *P)
   {
     struct proto_config *cf = P->cf;
     struct bgp_config *bcf = (struct bgp_config *) cf;
-    struct proto_config *pcf = (void *) bond->proto;
     struct proto *p = cf->proto;
     struct bgp_proto *bp = (struct bgp_proto *) cf->proto;
     struct bgp_conn *conn = bp->conn;
@@ -83,10 +171,12 @@ snmp_show_proto_info(struct proto *P)
     cli_msg(-1006, "    remote ip: %u", bcf->remote_ip);
     cli_msg(-1006, "    local port: %u", bcf->local_port);
     cli_msg(-1006, "    remote port: %u", bcf->remote_port);
+    /*
     if (conn) {
       cli_msg(-1006, "    state: %u", conn->state);
       cli_msg(-1006, "    remote as: %u", conn->remote_caps->as4_number);
     }
+    */
     cli_msg(-1006, "    in updates: %u", bp->stats.rx_updates);
     cli_msg(-1006, "    out updates: %u", bp->stats.tx_updates);
     cli_msg(-1006, "    in total: %u", bp->stats.rx_messages);
@@ -98,10 +188,12 @@ bp->stats.fsm_established_transitions);
     cli_msg(-1006, "    fsm total time: --");
     cli_msg(-1006, "    retry interval: %u", bcf->connect_retry_time);
 
+    /*
     if (conn) {
       cli_msg(-1006, "    hold time: %u", conn->hold_time);
       cli_msg(-1006, "    keep alive: %u", conn->keepalive_time );
     }
+    */
 
     cli_msg(-1006, "    hold configurated: %u", bcf->hold_time );
     cli_msg(-1006, "    keep alive config: %u", bcf->keepalive_time );
@@ -119,19 +211,22 @@ bp->stats.fsm_established_transitions);
   }
 }
 
-
-void
-shutdown_multihook(void)
+static void
+snmp_ping_timer(struct timer *tm)
 {
-  snmp_del_bgp_table();
-  //snmp_del_ospf_table();
+  log(L_INFO "snmp_ping_timer() ");
+  struct snmp_proto *p = tm->data;  
+
+  // ping here
+  ping_pdu(p); 
 }
 
 /* snmp_shutdown already occupied by net-snmp */
-void
-snmp_shutdown_(struct proto *P)
+static int
+snmp_shutdown(struct proto *P)
 {
-  snmp_stop_subagent(shutdown_multihook);
+  struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
+  snmp_stop_subagent(p);
 }
 
 struct protocol proto_snmp = {
@@ -143,13 +238,13 @@ struct protocol proto_snmp = {
   .init =		snmp_init,
   .start =		snmp_start,
   .reconfigure =	snmp_reconfigure,
-  .shutdown =		snmp_shutdown_,
+  .shutdown =		snmp_shutdown,
   .show_proto_info = 	snmp_show_proto_info,
 };
 
-/* strange name because conflict with net-snmp lib snmp_lib() */
+/* strange name because of conflict with net-snmp lib snmp_lib() */
 void
-snmp_build_(void)
+snmp_build(void)
 {
   proto_build(&proto_snmp);
 }
