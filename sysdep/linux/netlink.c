@@ -1775,30 +1775,33 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       ra->eattrs = ea;
       ea->flags = EALF_SORTED;
       ea->count = 1;
-      ea->attrs[0].id = EA_KRT_SCOPE;
-      ea->attrs[0].flags = 0;
-      ea->attrs[0].type = EAF_TYPE_INT;
-      ea->attrs[0].u.data = i->rtm_scope;
+      ea->attrs[0] = (eattr) {
+        .id = EA_KRT_SCOPE,
+        .flags = 0,
+        .type = EAF_TYPE_INT,
+        .u.data = i->rtm_scope,
+      };
     }
 
   if (a[RTA_PREFSRC])
     {
       ip_addr ps = rta_get_ipa(a[RTA_PREFSRC]);
 
+      struct adata *ad = lp_alloc(s->pool, sizeof(struct adata) + sizeof(ps));
+      ad->length = sizeof(ps);
+      memcpy(ad->data, &ps, sizeof(ps));
+
       ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + sizeof(eattr));
       ea->next = ra->eattrs;
       ra->eattrs = ea;
       ea->flags = EALF_SORTED;
       ea->count = 1;
-      ea->attrs[0].id = EA_KRT_PREFSRC;
-      ea->attrs[0].flags = 0;
-      ea->attrs[0].type = EAF_TYPE_IP_ADDRESS;
-
-      struct adata *ad = lp_alloc(s->pool, sizeof(struct adata) + sizeof(ps));
-      ad->length = sizeof(ps);
-      memcpy(ad->data, &ps, sizeof(ps));
-
-      ea->attrs[0].u.ptr = ad;
+      ea->attrs[0] = (eattr) {
+	.id = EA_KRT_PREFSRC,
+        .flags = 0,
+        .type = EAF_TYPE_IP_ADDRESS,
+        .u.ptr = ad,
+      };
     }
 
   /* Can be set per-route or per-nexthop */
@@ -1809,10 +1812,12 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       ra->eattrs = ea;
       ea->flags = EALF_SORTED;
       ea->count = 1;
-      ea->attrs[0].id = EA_KRT_REALM;
-      ea->attrs[0].flags = 0;
-      ea->attrs[0].type = EAF_TYPE_INT;
-      ea->attrs[0].u.data = s->rta_flow;
+      ea->attrs[0] = (eattr) {
+	.id = EA_KRT_REALM,
+	.flags = 0,
+	.type = EAF_TYPE_INT,
+	.u.data = s->rta_flow,
+      };
     }
 
   if (a[RTA_METRICS])
@@ -1829,13 +1834,12 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 
       for (t = 1; t < KRT_METRICS_MAX; t++)
 	if (metrics[0] & (1 << t))
-	  {
-	    ea->attrs[n].id = EA_CODE(PROTOCOL_KERNEL, KRT_METRICS_OFFSET + t);
-	    ea->attrs[n].flags = 0;
-	    ea->attrs[n].type = EAF_TYPE_INT; /* FIXME: Some are EAF_TYPE_BITFIELD */
-	    ea->attrs[n].u.data = metrics[t];
-	    n++;
-	  }
+	  ea->attrs[n++] = (eattr) {
+	    .id = EA_CODE(PROTOCOL_KERNEL, KRT_METRICS_OFFSET + t),
+	    .flags = 0,
+	    .type = EAF_TYPE_INT, /* FIXME: Some are EAF_TYPE_BITFIELD */
+	    .u.data = metrics[t],
+	  };
 
       if (n > 0)
         {
