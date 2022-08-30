@@ -1748,10 +1748,6 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
   rte_announce(table, net, new_stored, old_stored,
       net->routes, old_best_stored);
 
-  if (!net->routes &&
-      (table->gc_counter++ >= table->config->gc_threshold))
-    rt_kick_prune_timer(table);
-
 #if 0
   /* Enable and reimplement these callbacks if anybody wants to use them */
   if (old_ok && p->rte_remove)
@@ -2852,6 +2848,7 @@ rt_export_cleanup(rtable *tab)
   u64 min_seq = ~((u64) 0);
   struct rt_pending_export *last_export_to_free = NULL;
   struct rt_pending_export *first = tab->exporter.first;
+  int want_prune = 0;
 
   struct rt_export_hook *eh;
   node *n;
@@ -2928,6 +2925,8 @@ rt_export_cleanup(rtable *tab)
       /* First is now the next one */
       net->first = atomic_load_explicit(&first->next, memory_order_relaxed);
 
+    want_prune += !net->routes && !net->first;
+
     /* For now, the old route may be finally freed */
     if (first->old)
     {
@@ -3002,6 +3001,9 @@ done:;
 	mb_free(ih);
 	rt_unlock_table(tab);
       }
+
+  if ((tab->gc_counter += want_prune) >= tab->config->gc_threshold)
+    rt_kick_prune_timer(tab);
 
   if (tab->export_used)
     ev_schedule(tab->rt_event);
