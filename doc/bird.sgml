@@ -505,6 +505,11 @@ include "tablename.conf";;
 	See <ref id="channel-debug" name="debug"> in the channel section.
 	Default: off.
 
+	<tag><label id="opt-debug-tables">debug tables all|off|{ states|routes|filters|events [, <m/.../] }</tag>
+	Set global defaults of table debugging options.
+	See <ref id="rtable-debug" name="debug"> in the table section.
+	Default: off.
+
 	<tag><label id="opt-debug-commands">debug commands <m/number/</tag>
 	Control logging of client connections (0 for no logging, 1 for logging
 	of connects and disconnects, 2 and higher for logging of all client
@@ -708,6 +713,16 @@ to set options.
         second one is the high threshold (when to pause). The higher is the
         threshold, the more memory can get used. In most cases, the defaults
 	should work for you. Default: 128, 512.
+
+	<tag><label id="rtable-debug">debug all|off|{ states|routes|events [, <m/.../] }</tag>
+	Set table debugging options. Each table can write some trace messages
+	into log with category <cf/trace/. You can request <cf/all/ trace messages
+	or select some types: <cf/states/ for table state changes and auxiliary
+	processes, <cf/routes/ for auxiliary route notifications (next hop update,
+        flowspec revalidation) and <cf/events/ for more detailed auxiliary routine
+	debug. See also <ref id="channel-debug" name="channel debugging option">.
+	Default: off.
+
 </descrip>
 
 

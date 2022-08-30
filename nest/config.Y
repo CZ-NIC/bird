@@ -235,6 +235,7 @@ table_opt:
      if ($3 > $4) cf_error("Cork low threshold must be lower than the high threshold.");
      this_table->cork_threshold.low = $3;
      this_table->cork_threshold.high = $4; }
+ | DEBUG bool { this_table->debug = $2; }
  ;
 
 table_opts:
@@ -394,7 +395,7 @@ debug_default:
    DEBUG PROTOCOLS debug_mask { new_config->proto_default_debug = $3; }
  | DEBUG CHANNELS debug_mask { new_config->channel_default_debug = $3; }
  | DEBUG COMMANDS expr { new_config->cli_debug = $3; }
- | DEBUG TABLES bool { new_config->table_debug = $3; }
+ | DEBUG TABLES debug_mask { new_config->table_debug = $3; }
  ;
 
 /* MRTDUMP PROTOCOLS is in systep/unix/config.Y */

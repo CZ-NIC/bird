@@ -59,6 +59,7 @@ struct rtable_config {
   uint gc_period;			/* Approximate time between two consecutive GC runs */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte trie_used;			/* Rtable has attached trie */
+  byte debug;				/* Whether to log */
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
   btime export_settle_time;		/* Delay before exports are announced */

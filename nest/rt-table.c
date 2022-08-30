@@ -188,6 +188,12 @@ const char *rt_export_state_name(u8 state)
 static inline struct rte_storage *rt_next_hop_update_rte(rtable *tab, net *n, rte *old);
 static struct hostentry *rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
 
+#define rt_trace(tab, level, fmt, args...)  do {\
+  rtable *t = (tab);				\
+  if (t->config->debug & (level))		\
+    log(L_TRACE "%s: " fmt, t->name, ##args);	\
+} while (0)
+
 static void
 net_init_with_trie(struct fib *f, void *N)
 {
@@ -2315,8 +2321,7 @@ rt_export_used(struct rt_exporter *e)
 {
   rtable *tab = SKIP_BACK(rtable, exporter, e);
 
-  if (config->table_debug)
-    log(L_TRACE "%s: Export cleanup requested", tab->name);
+  rt_trace(tab, D_EVENTS, "Export cleanup requested");
 
   if (tab->export_used)
     return;
@@ -2341,8 +2346,8 @@ rt_event(void *ptr)
       (tab->hcu_scheduled || tab->nhu_state) && rt_cork_check(tab->uncork_event)
       )
   {
-    if (!tab->hcu_corked && !tab->nhu_corked && config->table_debug)
-      log(L_TRACE "%s: Auxiliary routines corked", tab->name);
+    if (!tab->hcu_corked && !tab->nhu_corked)
+      rt_trace(tab, D_STATES, "Next hop updater corked");
 
     tab->hcu_corked |= tab->hcu_scheduled;
     tab->hcu_scheduled = 0;
@@ -2374,8 +2379,7 @@ rt_uncork_event(void *ptr)
   tab->nhu_state |= tab->nhu_corked;
   tab->nhu_corked = 0;
 
-  if (config->table_debug)
-    log(L_TRACE "%s: Auxiliary routines uncorked", tab->name);
+  rt_trace(tab, D_STATES, "Next hop updater uncorked");
 
   ev_schedule(tab->rt_event);
 }
@@ -2704,7 +2708,7 @@ rt_prune_table(rtable *tab)
   struct rt_import_hook *ih;
   node *n, *x;
 
-  DBG("Pruning route table %s\n", tab->name);
+  rt_trace(tab, D_STATES, "Pruning");
 #ifdef DEBUGGING
   fib_check(&tab->fib);
 #endif
@@ -2882,9 +2886,7 @@ rt_export_cleanup(rtable *tab)
 
   tab->exporter.first = last_export_to_free ? rt_next_export_fast(last_export_to_free) : NULL;
 
-  if (config->table_debug)
-    log(L_TRACE "%s: Export cleanup, old exporter.first seq %lu, new %lu, min_seq %ld",
-      tab->name,
+  rt_trace(tab, D_STATES, "Export cleanup, old exporter.first seq %lu, new %lu, min_seq %ld",
       first ? first->seq : 0,
       tab->exporter.first ? tab->exporter.first->seq : 0,
       min_seq);
@@ -2962,8 +2964,7 @@ rt_export_cleanup(rtable *tab)
 
       if (EMPTY_LIST(tab->exporter.pending))
       {
-	if (config->table_debug)
-	  log(L_TRACE "%s: Resetting export seq", tab->name);
+	rt_trace(tab, D_EVENTS, "Resetting export seq");
 
 	node *n;
 	WALK_LIST2(eh, n, tab->exporter.hooks, n)
@@ -3635,6 +3636,7 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->max_settle_time = 20 S;
   c->cork_threshold.low = 128;
   c->cork_threshold.high = 512;
+  c->debug = new_config->table_debug;
 
   add_tail(&new_config->tables, &c->n);
 
@@ -3691,8 +3693,7 @@ rt_check_cork_low(rtable *tab)
     tab->cork_active = 0;
     rt_cork_release();
 
-    if (config->table_debug)
-      log(L_TRACE "%s: Uncorked", tab->name);
+    rt_trace(tab, D_STATES, "Uncorked");
   }
 }
 
@@ -3704,8 +3705,7 @@ rt_check_cork_high(rtable *tab)
     tab->cork_active = 1;
     rt_cork_acquire();
 
-    if (config->table_debug)
-      log(L_TRACE "%s: Corked", tab->name);
+    rt_trace(tab, D_STATES, "Corked");
   }
 }
 
