@@ -60,15 +60,14 @@
  * routes depends of resolving their network prefixes in IP routing tables. This
  * is similar to the recursive next hop mechanism, but simpler as there are no
  * intermediate hostcache and hostentries (because flows are less likely to
- * share common net prefix than routes sharing a common next hop). In src table,
- * there is a list of dst tables (list flowspec_links), this list is updated by
- * flowpsec channels (by rt_flowspec_link() and rt_flowspec_unlink() during
- * channel start/stop). Each dst table has its own trie of prefixes that may
- * influence validation of flowspec routes in it (flowspec_trie).
+ * share common net prefix than routes sharing a common next hop). Every dst
+ * table has its own export request in every src table. Each dst table has its
+ * own trie of prefixes that may influence validation of flowspec routes in it
+ * (flowspec_trie).
  *
- * When a best route changes in the src table, rt_flowspec_notify() immediately
- * checks all dst tables from the list using their tries to see whether the
- * change is relevant for them. If it is, then an asynchronous re-validation of
+ * When a best route changes in the src table, the notification mechanism is
+ * invoked by the export request which checks its dst table's trie to see
+ * whether the change is relevant, and if so, an asynchronous re-validation of
  * flowspec routes in the dst table is scheduled. That is also done by function
  * rt_next_hop_update(), like nexthop recomputation above. It iterates over all
  * flowspec routes and re-validates them. It also recalculates the trie.
@@ -136,7 +135,6 @@ static inline void rt_next_hop_resolve_rte(rte *r);
 static inline void rt_flowspec_resolve_rte(rte *r, struct channel *c);
 static inline void rt_prune_table(rtable *tab);
 static inline void rt_schedule_notify(rtable *tab);
-static void rt_flowspec_notify(rtable *tab, net *net);
 static void rt_kick_prune_timer(rtable *tab);
 static void rt_feed_by_fib(void *);
 static void rt_feed_by_trie(void *);
@@ -1278,9 +1276,6 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
       new_best->rte.sender->stats.pref++;
     if (old_best_valid)
       old_best->rte.sender->stats.pref--;
-
-    if (!EMPTY_LIST(tab->flowspec_links))
-      rt_flowspec_notify(tab, net);
   }
 
   rt_schedule_notify(tab);
@@ -2448,13 +2443,59 @@ rt_unsubscribe(struct rt_subscription *s)
   rt_unlock_table(s->tab);
 }
 
+static void
+rt_flowspec_export_one(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
+{
+  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, req);
+  rtable *dst = ln->dst;
+  ASSUME(rt_is_flow(dst));
+
+  /* No need to inspect it further if recalculation is already active */
+  if ((dst->nhu_state == NHU_SCHEDULED) || (dst->nhu_state == NHU_DIRTY)
+      || !trie_match_net(dst->flowspec_trie, net))
+  {
+    rpe_mark_seen_all(req->hook, first, NULL);
+    return;
+  }
+
+  /* This net may affect some flowspecs, check the actual change */
+  rte *o = RTE_VALID_OR_NULL(first->old_best);
+  struct rte_storage *new_best = first->new_best;
+
+  RPE_WALK(first, rpe, NULL)
+  {
+    rpe_mark_seen(req->hook, rpe);
+    new_best = rpe->new_best;
+  }
+
+  /* Yes, something has actually changed. Schedule the update. */
+  if (o != RTE_VALID_OR_NULL(new_best))
+    rt_schedule_nhu(dst);
+}
+
+static void
+rt_flowspec_dump_req(struct rt_export_request *req)
+{
+  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, req);
+  debug("  Flowspec link for table %s (%p)\n", ln->dst->name, req);
+}
+
 static struct rt_flowspec_link *
 rt_flowspec_find_link(rtable *src, rtable *dst)
 {
-  struct rt_flowspec_link *ln;
-  WALK_LIST(ln, src->flowspec_links)
-    if ((ln->src == src) && (ln->dst == dst))
-      return ln;
+  struct rt_export_hook *hook; node *n;
+  WALK_LIST2(hook, n, src->exporter.hooks, n)
+    switch (atomic_load_explicit(&hook->export_state, memory_order_acquire))
+    {
+      case TES_FEEDING:
+      case TES_READY:
+	if (hook->req->export_one == rt_flowspec_export_one)
+	{
+	  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, hook->req);
+	  if (ln->dst == dst)
+	    return ln;
+	}
+    }
 
   return NULL;
 }
@@ -2469,16 +2510,34 @@ rt_flowspec_link(rtable *src, rtable *dst)
 
   if (!ln)
   {
-    rt_lock_table(src);
     rt_lock_table(dst);
 
-    ln = mb_allocz(src->rp, sizeof(struct rt_flowspec_link));
+    pool *p = src->rp;
+    ln = mb_allocz(p, sizeof(struct rt_flowspec_link));
     ln->src = src;
     ln->dst = dst;
-    add_tail(&src->flowspec_links, &ln->n);
+    ln->req = (struct rt_export_request) {
+      .name = mb_sprintf(p, "%s.flowspec.notifier", dst->name),
+      .list = &global_work_list,
+      .trace_routes = src->config->debug,
+      .dump_req = rt_flowspec_dump_req,
+      .export_one = rt_flowspec_export_one,
+    };
+
+    rt_request_export(&src->exporter, &ln->req);
   }
 
   ln->uc++;
+}
+
+static void
+rt_flowspec_link_stopped(struct rt_export_request *req)
+{
+  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, req);
+  rtable *dst = ln->dst;
+
+  mb_free(ln);
+  rt_unlock_table(dst);
 }
 
 void
@@ -2488,37 +2547,8 @@ rt_flowspec_unlink(rtable *src, rtable *dst)
 
   ASSERT(ln && (ln->uc > 0));
 
-  ln->uc--;
-
-  if (!ln->uc)
-  {
-    rem_node(&ln->n);
-    mb_free(ln);
-
-    rt_unlock_table(src);
-    rt_unlock_table(dst);
-  }
-}
-
-static void
-rt_flowspec_notify(rtable *src, net *net)
-{
-  /* Only IP tables are src links */
-  ASSERT(rt_is_ip(src));
-
-  struct rt_flowspec_link *ln;
-  WALK_LIST(ln, src->flowspec_links)
-  {
-    rtable *dst = ln->dst;
-    ASSERT(rt_is_flow(dst));
-
-    /* No need to inspect it further if recalculation is already active */
-    if ((dst->nhu_state == NHU_SCHEDULED) || (dst->nhu_state == NHU_DIRTY))
-      continue;
-
-    if (trie_match_net(dst->flowspec_trie, net->n.addr))
-      rt_schedule_nhu(dst);
-  }
+  if (!--ln->uc)
+    rt_stop_export(&ln->req, rt_flowspec_link_stopped);
 }
 
 static void
@@ -2595,8 +2625,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
     t->fib.init = net_init_with_trie;
   }
-
-  init_list(&t->flowspec_links);
 
   t->exporter = (struct rt_exporter) {
     .addr_type = t->addr_type,
@@ -3695,6 +3723,11 @@ rt_reconfigure(rtable *tab, struct rtable_config *new, struct rtable_config *old
   if (tab->hostcache)
     tab->hostcache->req.trace_routes = new->debug;
 
+  struct rt_export_hook *hook; node *n;
+  WALK_LIST2(hook, n, tab->exporter.hooks, n)
+    if (hook->req->export_one == rt_flowspec_export_one)
+      hook->req->trace_routes = new->debug;
+
   tab->cork_threshold = new->cork_threshold;
 
   if (new->cork_threshold.high != old->cork_threshold.high)
@@ -4063,8 +4096,7 @@ hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct 
     new_best = rpe->new_best;
   }
 
-  /* Yes, something has actually changed. Do the hostcache update.
-   * We don't need any more updates until then. */
+  /* Yes, something has actually changed. Do the hostcache update. */
   if (o != RTE_VALID_OR_NULL(new_best))
     ev_schedule_work(&hc->update);
 }

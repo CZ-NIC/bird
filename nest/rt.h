@@ -132,7 +132,6 @@ typedef struct rtable {
 
   list subscribers;			/* Subscribers for notifications */
   struct timer *settle_timer;		/* Settle time for notifications */
-  list flowspec_links;			/* List of flowspec links, src for NET_IPx and dst for NET_FLOWx */
   struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
 } rtable;
 
@@ -141,13 +140,6 @@ struct rt_subscription {
   rtable *tab;
   event *event;
   event_list *list;
-};
-
-struct rt_flowspec_link {
-  node n;
-  rtable *src;
-  rtable *dst;
-  u32 uc;
 };
 
 extern struct rt_cork {
@@ -416,6 +408,12 @@ struct hostcache {
   struct rt_export_request req;		/* Notifier */
 };
 
+struct rt_flowspec_link {
+  rtable *src;
+  rtable *dst;
+  u32 uc;
+  struct rt_export_request req;
+};
 
 #define rte_update  channel_rte_import
 /**
