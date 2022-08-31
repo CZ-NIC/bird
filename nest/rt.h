@@ -27,6 +27,7 @@ struct protocol;
 struct proto;
 struct channel;
 struct rte_src;
+struct hostcache;
 struct symbol;
 struct timer;
 struct filter;
@@ -116,8 +117,6 @@ typedef struct rtable {
   uint gc_counter;			/* Number of operations since last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte prune_trie;			/* Prune prefix trie during next table prune */
-  byte hcu_scheduled;			/* Hostcache update is scheduled */
-  byte hcu_corked;			/* Hostcache update is corked with this state */
   byte nhu_state;			/* Next Hop Update state */
   byte nhu_corked;			/* Next Hop Update is corked with this state */
   byte export_used;			/* Pending Export pruning is scheduled */
@@ -185,42 +184,11 @@ static inline int rt_cork_check(event *e)
 }
 
 
-#define NHU_CLEAN	0
-#define NHU_SCHEDULED	1
-#define NHU_RUNNING	2
-#define NHU_DIRTY	3
-
 typedef struct network {
   struct rte_storage *routes;		/* Available routes for this network */
   struct rt_pending_export *first, *last;
   struct fib_node n;			/* FIB flags reserved for kernel syncer */
 } net;
-
-struct hostcache {
-  slab *slab;				/* Slab holding all hostentries */
-  struct hostentry **hash_table;	/* Hash table for hostentries */
-  unsigned hash_order, hash_shift;
-  unsigned hash_max, hash_min;
-  unsigned hash_items;
-  linpool *lp;				/* Linpool for trie */
-  struct f_trie *trie;			/* Trie of prefixes that might affect hostentries */
-  list hostentries;			/* List of all hostentries */
-  byte update_hostcache;
-};
-
-struct hostentry {
-  node ln;
-  ip_addr addr;				/* IP address of host, part of key */
-  ip_addr link;				/* (link-local) IP address of host, used as gw
-					   if host is directly attached */
-  struct rtable *tab;			/* Dependent table, part of key */
-  struct hostentry *next;		/* Next in hash chain */
-  unsigned hash_key;			/* Hash key */
-  unsigned uc;				/* Use count */
-  ea_list *src;				/* Source attributes */
-  byte nexthop_linkable;		/* Nexthop list is completely non-device */
-  u32 igp_metric;			/* Chosen route IGP metric */
-};
 
 struct rte_storage {
   struct rte_storage *next;		/* Next in chain */
@@ -394,7 +362,7 @@ struct rt_pending_export *rpe_next(struct rt_pending_export *rpe, struct rte_src
 void rpe_mark_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
 
 #define rpe_mark_seen_all(hook, first, src) \
-  RPE_WALK(first, rpe, src) rpe_mark_seen((hook), rpe)
+  RPE_WALK((first), _rpe, (src)) rpe_mark_seen((hook), _rpe)
 
 /* Get pending export seen status */
 int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
@@ -411,6 +379,43 @@ int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
 #define RIC_PROCESS	0		/* Process it through import filter */
 #define RIC_REJECT	-1		/* Rejected by protocol */
 #define RIC_DROP	-2		/* Silently dropped by protocol */
+
+/*
+ * Next hop update data structures
+ */
+
+#define NHU_CLEAN	0
+#define NHU_SCHEDULED	1
+#define NHU_RUNNING	2
+#define NHU_DIRTY	3
+
+struct hostentry {
+  node ln;
+  ip_addr addr;				/* IP address of host, part of key */
+  ip_addr link;				/* (link-local) IP address of host, used as gw
+					   if host is directly attached */
+  struct rtable *tab;			/* Dependent table, part of key */
+  struct hostentry *next;		/* Next in hash chain */
+  unsigned hash_key;			/* Hash key */
+  unsigned uc;				/* Use count */
+  ea_list *src;				/* Source attributes */
+  byte nexthop_linkable;		/* Nexthop list is completely non-device */
+  u32 igp_metric;			/* Chosen route IGP metric */
+};
+
+struct hostcache {
+  slab *slab;				/* Slab holding all hostentries */
+  struct hostentry **hash_table;	/* Hash table for hostentries */
+  unsigned hash_order, hash_shift;
+  unsigned hash_max, hash_min;
+  unsigned hash_items;
+  linpool *lp;				/* Linpool for trie */
+  struct f_trie *trie;			/* Trie of prefixes that might affect hostentries */
+  list hostentries;			/* List of all hostentries */
+  event update;
+  struct rt_export_request req;		/* Notifier */
+};
+
 
 #define rte_update  channel_rte_import
 /**

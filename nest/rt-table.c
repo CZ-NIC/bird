@@ -43,10 +43,10 @@
  * all prefixes that may influence resolving of tracked next hops.
  *
  * When a best route changes in the src table, the hostcache is notified using
- * rt_notify_hostcache(), which immediately checks using the trie whether the
+ * an auxiliary export request, which checks using the trie whether the
  * change is relevant and if it is, then it schedules asynchronous hostcache
  * recomputation. The recomputation is done by rt_update_hostcache() (called
- * from rt_event() of src table), it walks through all hostentries and resolves
+ * as an event of src table), it walks through all hostentries and resolves
  * them (by rt_update_hostentry()). It also updates the trie. If a change in
  * hostentry resolution was found, then it schedules asynchronous nexthop
  * recomputation of associated dst table. That is done by rt_next_hop_update()
@@ -130,8 +130,7 @@ struct rt_export_block {
 };
 
 static void rt_free_hostcache(rtable *tab);
-static void rt_notify_hostcache(rtable *tab, net *net);
-static void rt_update_hostcache(rtable *tab);
+static void rt_update_hostcache(void *tab);
 static void rt_next_hop_update(rtable *tab);
 static inline void rt_next_hop_resolve_rte(rte *r);
 static inline void rt_flowspec_resolve_rte(rte *r, struct channel *c);
@@ -1280,9 +1279,6 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
     if (old_best_valid)
       old_best->rte.sender->stats.pref--;
 
-    if (tab->hostcache)
-      rt_notify_hostcache(tab, net);
-
     if (!EMPTY_LIST(tab->flowspec_links))
       rt_flowspec_notify(tab, net);
   }
@@ -2238,8 +2234,8 @@ void
 rt_dump_hooks(rtable *tab)
 {
   debug("Dump of hooks in routing table <%s>%s\n", tab->name, tab->deleted ? " (deleted)" : "");
-  debug("  nhu_state=%u hcu_scheduled=%u use_count=%d rt_count=%u\n",
-      tab->nhu_state, tab->hcu_scheduled, tab->use_count, tab->rt_count);
+  debug("  nhu_state=%u use_count=%d rt_count=%u\n",
+      tab->nhu_state, tab->use_count, tab->rt_count);
   debug("  last_rt_change=%t gc_time=%t gc_counter=%d prune_state=%u\n",
       tab->last_rt_change, tab->gc_time, tab->gc_counter, tab->prune_state);
 
@@ -2277,16 +2273,6 @@ rt_dump_hooks_all(void)
 
   WALK_LIST2(t, n, deleted_routing_tables, n)
     rt_dump_hooks(t);
-}
-
-static inline void
-rt_schedule_hcu(rtable *tab)
-{
-  if (tab->hcu_scheduled)
-    return;
-
-  tab->hcu_scheduled = 1;
-  ev_schedule(tab->rt_event);
 }
 
 static inline void
@@ -2336,24 +2322,14 @@ rt_event(void *ptr)
   if (tab->export_used)
     rt_export_cleanup(tab);
 
-  if (
-      tab->hcu_corked ||
-      tab->nhu_corked ||
-      (tab->hcu_scheduled || tab->nhu_state) && rt_cork_check(tab->uncork_event)
-      )
+  if (tab->nhu_corked || tab->nhu_state && rt_cork_check(tab->uncork_event))
   {
-    if (!tab->hcu_corked && !tab->nhu_corked)
+    if (!tab->nhu_corked)
       rt_trace(tab, D_STATES, "Next hop updater corked");
-
-    tab->hcu_corked |= tab->hcu_scheduled;
-    tab->hcu_scheduled = 0;
 
     tab->nhu_corked |= tab->nhu_state;
     tab->nhu_state = 0;
   }
-
-  if (tab->hcu_scheduled)
-    rt_update_hostcache(tab);
 
   if (tab->nhu_state)
     rt_next_hop_update(tab);
@@ -2368,9 +2344,6 @@ static void
 rt_uncork_event(void *ptr)
 {
   rtable *tab = ptr;
-
-  tab->hcu_scheduled |= tab->hcu_corked;
-  tab->hcu_corked = 0;
 
   tab->nhu_state |= tab->nhu_corked;
   tab->nhu_corked = 0;
@@ -3719,6 +3692,9 @@ rt_reconfigure(rtable *tab, struct rtable_config *new, struct rtable_config *old
   tab->name = new->name;
   tab->config = new;
 
+  if (tab->hostcache)
+    tab->hostcache->req.trace_routes = new->debug;
+
   tab->cork_threshold = new->cork_threshold;
 
   if (new->cork_threshold.high != old->cork_threshold.high)
@@ -3771,6 +3747,10 @@ rt_commit(struct config *new, struct config *old)
 	  tab->deleted = old;
 	  config_add_obstacle(old);
 	  rt_lock_table(tab);
+
+	  if (tab->hostcache)
+	    rt_stop_export(&tab->hostcache->req, NULL);
+
 	  rt_unlock_table(tab);
 	}
     }
@@ -4056,6 +4036,41 @@ hc_delete_hostentry(struct hostcache *hc, pool *p, struct hostentry *he)
 }
 
 static void
+hc_notify_dump_req(struct rt_export_request *req)
+{
+  debug("  Table %s (%p)\n", req->name, req);
+}
+
+static void
+hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
+{
+  struct hostcache *hc = SKIP_BACK(struct hostcache, req, req);
+
+  /* No interest in this update, mark seen only */
+  if (ev_active(&hc->update) || !trie_match_net(hc->trie, net))
+  {
+    rpe_mark_seen_all(req->hook, first, NULL);
+    return;
+  }
+
+  /* This net may affect some hostentries, check the actual change */
+  rte *o = RTE_VALID_OR_NULL(first->old_best);
+  struct rte_storage *new_best = first->new_best;
+
+  RPE_WALK(first, rpe, NULL)
+  {
+    rpe_mark_seen(req->hook, rpe);
+    new_best = rpe->new_best;
+  }
+
+  /* Yes, something has actually changed. Do the hostcache update.
+   * We don't need any more updates until then. */
+  if (o != RTE_VALID_OR_NULL(new_best))
+    ev_schedule_work(&hc->update);
+}
+
+
+static void
 rt_init_hostcache(rtable *tab)
 {
   struct hostcache *hc = mb_allocz(tab->rp, sizeof(struct hostcache));
@@ -4067,6 +4082,21 @@ rt_init_hostcache(rtable *tab)
 
   hc->lp = lp_new(tab->rp);
   hc->trie = f_new_trie(hc->lp, 0);
+
+  hc->update = (event) {
+    .hook = rt_update_hostcache,
+    .data = tab,
+  };
+
+  hc->req = (struct rt_export_request) {
+    .name = mb_sprintf(tab->rp, "%s.hcu.notifier", tab->name),
+    .list = &global_work_list,
+    .trace_routes = tab->config->debug,
+    .dump_req = hc_notify_dump_req,
+    .export_one = hc_notify_export_one,
+  };
+
+  rt_request_export(&tab->exporter, &hc->req);
 
   tab->hostcache = hc;
 }
@@ -4092,16 +4122,6 @@ rt_free_hostcache(rtable *tab)
   mb_free(hc->hash_table);
   mb_free(hc);
   */
-}
-
-static void
-rt_notify_hostcache(rtable *tab, net *net)
-{
-  if (tab->hcu_scheduled)
-    return;
-
-  if (trie_match_net(tab->hostcache->trie, net->n.addr))
-    rt_schedule_hcu(tab);
 }
 
 static int
@@ -4200,9 +4220,17 @@ done:
 }
 
 static void
-rt_update_hostcache(rtable *tab)
+rt_update_hostcache(void *data)
 {
+  rtable *tab = data;
   struct hostcache *hc = tab->hostcache;
+
+  if (rt_cork_check(&hc->update))
+  {
+    rt_trace(tab, D_STATES, "Hostcache update corked");
+    return;
+  }
+
   struct hostentry *he;
   node *n, *x;
 
@@ -4222,8 +4250,6 @@ rt_update_hostcache(rtable *tab)
       if (rt_update_hostentry(tab, he))
 	rt_schedule_nhu(he->tab);
     }
-
-  tab->hcu_scheduled = 0;
 }
 
 static struct hostentry *
