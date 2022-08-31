@@ -1977,6 +1977,12 @@ bgp_out_table_export_start(struct rt_exporter *re, struct rt_export_request *req
   return hook;
 }
 
+static void
+bgp_out_table_export_done(struct rt_export_hook *hook)
+{
+  rfree(hook->pool);
+}
+
 void
 bgp_setup_out_table(struct bgp_channel *c)
 {
@@ -1985,6 +1991,7 @@ bgp_setup_out_table(struct bgp_channel *c)
   c->prefix_exporter = (struct rt_exporter) {
     .addr_type = c->c.table->addr_type,
     .start = bgp_out_table_export_start,
+    .done = bgp_out_table_export_done,
   };
 
   init_list(&c->prefix_exporter.hooks);

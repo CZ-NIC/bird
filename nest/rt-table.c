@@ -908,7 +908,7 @@ channel_rpe_mark_seen(struct rt_export_request *req, struct rt_pending_export *r
 }
 
 void
-rt_notify_accepted(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *rpe,
+rt_notify_accepted(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *first,
     struct rte **feed, uint count)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
@@ -952,7 +952,7 @@ rt_notify_accepted(struct rt_export_request *req, const net_addr *n, struct rt_p
 
 done:
   /* Check obsolete routes for previously exported */
-  while (rpe)
+  RPE_WALK(first, rpe, NULL)
   {
     channel_rpe_mark_seen(req, rpe);
     if (rpe->old)
@@ -963,7 +963,6 @@ done:
 	old_best = &rpe->old->rte;
       }
     }
-    rpe = rpe_next(rpe, NULL);
   }
 
   /* Nothing to export */
@@ -1036,7 +1035,7 @@ rt_export_merged(struct channel *c, struct rte **feed, uint count, linpool *pool
 }
 
 void
-rt_notify_merged(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *rpe,
+rt_notify_merged(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *first,
     struct rte **feed, uint count)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
@@ -1062,7 +1061,7 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n, struct rt_pen
     }
 
   /* Check obsolete routes for previously exported */
-  while (rpe)
+  RPE_WALK(first, rpe, NULL)
   {
     channel_rpe_mark_seen(req, rpe);
     if (rpe->old)
@@ -1073,7 +1072,6 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n, struct rt_pen
 	old_best = &rpe->old->rte;
       }
     }
-    rpe = rpe_next(rpe, NULL);
   }
 
   /* Prepare new merged route */
@@ -1084,17 +1082,16 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n, struct rt_pen
 }
 
 void
-rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe)
+rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
-  rte *o = RTE_VALID_OR_NULL(rpe->old_best);
-  struct rte_storage *new_best = rpe->new_best;
+  rte *o = RTE_VALID_OR_NULL(first->old_best);
+  struct rte_storage *new_best = first->new_best;
 
-  while (rpe)
+  RPE_WALK(first, rpe, NULL)
   {
     channel_rpe_mark_seen(req, rpe);
     new_best = rpe->new_best;
-    rpe = rpe_next(rpe, NULL);
   }
 
   rte n0 = RTE_COPY_VALID(new_best);
@@ -1103,27 +1100,26 @@ rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_
 }
 
 void
-rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe)
+rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
 
-  rte *n = RTE_VALID_OR_NULL(rpe->new);
-  rte *o = RTE_VALID_OR_NULL(rpe->old);
+  rte *n = RTE_VALID_OR_NULL(first->new);
+  rte *o = RTE_VALID_OR_NULL(first->old);
 
   if (!n && !o)
   {
-    channel_rpe_mark_seen(req, rpe);
+    channel_rpe_mark_seen(req, first);
     return;
   }
 
   struct rte_src *src = n ? n->src : o->src;
-  struct rte_storage *new_latest = rpe->new;
+  struct rte_storage *new_latest = first->new;
 
-  while (rpe)
+  RPE_WALK(first, rpe, src)
   {
     channel_rpe_mark_seen(req, rpe);
     new_latest = rpe->new;
-    rpe = rpe_next(rpe, src);
   }
 
   rte n0 = RTE_COPY_VALID(new_latest);
@@ -1362,7 +1358,7 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
 	  &net->last->next, &rpenull, rpe,
 	  memory_order_relaxed,
 	  memory_order_relaxed));
-    
+
   }
 
   net->last = rpe;
@@ -1918,8 +1914,13 @@ rt_table_export_done(struct rt_export_hook *hook)
   struct rt_exporter *re = hook->table;
   struct rtable *tab = SKIP_BACK(struct rtable, exporter, re);
 
-  rt_unlock_table(tab);
   DBG("Export hook %p in table %s finished uc=%u\n", hook, tab->name, tab->use_count);
+
+  /* Free the hook before unlocking the table */
+  rfree(hook->pool);
+
+  /* Unlock the table; this may free it */
+  rt_unlock_table(tab);
 }
 
 static void
@@ -1935,13 +1936,10 @@ rt_export_stopped(void *data)
   rem_node(&hook->n);
 
   /* Report the channel as stopped. */
-  hook->stopped(hook->req);
+  CALL(hook->stopped, hook->req);
 
   /* Reporting the hook as finished. */
   CALL(tab->done, hook);
-
-  /* Free the hook. */
-  rfree(hook->pool);
 }
 
 static inline void
@@ -1950,8 +1948,7 @@ rt_set_import_state(struct rt_import_hook *hook, u8 state)
   hook->last_state_change = current_time();
   hook->import_state = state;
 
-  if (hook->req->log_state_change)
-    hook->req->log_state_change(hook->req, state);
+  CALL(hook->req->log_state_change, hook->req, state);
 }
 
 void
@@ -1960,8 +1957,7 @@ rt_set_export_state(struct rt_export_hook *hook, u8 state)
   hook->last_state_change = current_time();
   atomic_store_explicit(&hook->export_state, state, memory_order_release);
 
-  if (hook->req->log_state_change)
-    hook->req->log_state_change(hook->req, state);
+  CALL(hook->req->log_state_change, hook->req, state);
 }
 
 void
@@ -2919,7 +2915,7 @@ rt_export_cleanup(rtable *tab)
     net *net = SKIP_BACK(struct network, n.addr, (net_addr (*)[0]) n);
 
     ASSERT_DIE(net->first == first);
-    
+
     if (first == net->last)
       /* The only export here */
       net->last = net->first = NULL;
@@ -2949,7 +2945,7 @@ rt_export_cleanup(rtable *tab)
     ASSERT_DIE(pos < end);
 
     struct rt_pending_export *next = NULL;
-    
+
     if (++pos < end)
       next = &reb->export[pos];
     else
@@ -3931,9 +3927,7 @@ rt_feed_net(struct rt_export_hook *c, net *n)
     count = 1;
   }
 
-  for (struct rt_pending_export *rpe = n->first; rpe; rpe = rpe_next(rpe, NULL))
-    rpe_mark_seen(c, rpe);
-
+  rpe_mark_seen_all(c, n->first, NULL);
   return count;
 }
 

@@ -386,8 +386,15 @@ void rte_import(struct rt_import_request *req, const net_addr *net, rte *new, st
 /* Get next rpe. If src is given, it must match. */
 struct rt_pending_export *rpe_next(struct rt_pending_export *rpe, struct rte_src *src);
 
+/* Walk all rpe's */
+#define RPE_WALK(first, it, src) \
+  for (struct rt_pending_export *it = (first); it; it = rpe_next(it, (src)))
+
 /* Mark the pending export processed */
 void rpe_mark_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
+
+#define rpe_mark_seen_all(hook, first, src) \
+  RPE_WALK(first, rpe, src) rpe_mark_seen((hook), rpe)
 
 /* Get pending export seen status */
 int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);

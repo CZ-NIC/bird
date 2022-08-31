@@ -450,12 +450,8 @@ channel_start_import(struct channel *c)
     return;
   }
 
-  int nlen = strlen(c->name) + strlen(c->proto->name) + 2;
-  char *rn = mb_allocz(c->proto->pool, nlen);
-  bsprintf(rn, "%s.%s", c->proto->name, c->name);
-
   c->in_req = (struct rt_import_request) {
-    .name = rn,
+    .name = mb_sprintf(c->proto->pool, "%s.%s", c->proto->name, c->name),
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_dump_import_req,
     .log_state_change = channel_import_log_state_change,
@@ -483,12 +479,9 @@ channel_start_export(struct channel *c)
   }
 
   ASSERT(c->channel_state == CS_UP);
-  int nlen = strlen(c->name) + strlen(c->proto->name) + 2;
-  char *rn = mb_allocz(c->proto->pool, nlen);
-  bsprintf(rn, "%s.%s", c->proto->name, c->name);
 
   c->out_req = (struct rt_export_request) {
-    .name = rn,
+    .name = mb_sprintf(c->proto->pool, "%s.%s", c->proto->name, c->name),
     .list = proto_work_list(c->proto),
     .addr = c->out_subprefix,
     .addr_mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
