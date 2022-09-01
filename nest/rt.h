@@ -187,6 +187,8 @@ struct rt_import_request {
   char *name;
   u8 trace_routes;
 
+  event_list *list;			/* Where to schedule announce events */
+
   void (*dump_req)(struct rt_import_request *req);
   void (*log_state_change)(struct rt_import_request *req, u8 state);
   /* Preimport is called when the @new route is just-to-be inserted, replacing @old.
@@ -218,6 +220,7 @@ struct rt_import_hook {
   u8 stale_pruning;			/* Last prune started when this value was set at stale_valid */
 
   void (*stopped)(struct rt_import_request *);	/* Stored callback when import is stopped */
+  event announce_event;			/* This event announces table updates */
 };
 
 struct rt_pending_export {

@@ -1354,9 +1354,6 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
     tab->exporter.first = rpe;
 
   rt_check_cork_high(tab);
-
-  if (!tm_active(tab->exporter.export_timer))
-    tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
 }
 
 static struct rt_pending_export *
@@ -1410,6 +1407,9 @@ rt_announce_exports(timer *tm)
 {
   rtable *tab = tm->data;
 
+  if (EMPTY_LIST(tab->exporter.pending))
+    return;
+
   struct rt_export_hook *c; node *n;
   WALK_LIST2(c, n, tab->exporter.hooks, n)
   {
@@ -1418,6 +1418,28 @@ rt_announce_exports(timer *tm)
 
     rt_send_export_event(c);
   }
+}
+
+static void
+rt_import_announce_exports(void *_hook)
+{
+  struct rt_import_hook *hook = _hook;
+  rtable *tab = hook->table;
+
+
+  if (hook->import_state == TIS_CLEARED)
+  {
+    rt_trace(tab, D_EVENTS, "Hook %s stopped", hook->req->name);
+    hook->stopped(hook->req);
+    rem_node(&hook->n);
+    mb_free(hook);
+    rt_unlock_table(tab);
+  }
+
+  rt_trace(tab, D_EVENTS, "Announcing exports after imports from %s", hook->req->name);
+
+  if (!tm_active(tab->exporter.export_timer))
+    tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
 }
 
 static struct rt_pending_export *
@@ -1535,7 +1557,7 @@ rte_same(rte *x, rte *y)
 
 static inline int rte_is_ok(rte *e) { return e && !rte_is_filtered(e); }
 
-static void
+static int
 rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *src)
 {
   struct rt_import_request *req = c->req;
@@ -1588,7 +1610,7 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
 
 	      /* We need to free the already stored route here before returning */
 	      rte_free(new_stored);
-	      return;
+	      return 0;
 	  }
 
 	*before_old = (*before_old)->next;
@@ -1598,7 +1620,7 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
   if (!old && !new)
     {
       stats->withdraws_ignored++;
-      return;
+      return 0;
     }
 
   /* If rejected by import limit, we need to pretend there is no route */
@@ -1734,14 +1756,7 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
   rte_announce(table, net, new_stored, old_stored,
       net->routes, old_best_stored);
 
-#if 0
-  /* Enable and reimplement these callbacks if anybody wants to use them */
-  if (old_ok && p->rte_remove)
-    p->rte_remove(net, old);
-  if (new_ok && p->rte_insert)
-    p->rte_insert(net, &new_stored->rte);
-#endif
-
+  return 1;
 }
 
 int
@@ -1869,8 +1884,9 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
       return;
     }
 
-  /* And recalculate the best route */
-  rte_recalculate(hook, nn, new, src);
+  /* Recalculate the best route */
+  if (rte_recalculate(hook, nn, new, src))
+    ev_send(req->list, &hook->announce_event);
 }
 
 /* Check rtable for best route to given net whether it would be exported do p */
@@ -1951,14 +1967,14 @@ rt_request_import(rtable *tab, struct rt_import_request *req)
 
   struct rt_import_hook *hook = req->hook = mb_allocz(tab->rp, sizeof(struct rt_import_hook));
 
+  hook->announce_event = (event) { .hook = rt_import_announce_exports, .data = hook };
+
   DBG("Lock table %s for import %p req=%p uc=%u\n", tab->name, hook, req, tab->use_count);
 
   hook->req = req;
   hook->table = tab;
 
   rt_set_import_state(hook, TIS_UP);
-
-  hook->n = (node) {};
   add_tail(&tab->imports, &hook->n);
 }
 
@@ -2313,7 +2329,13 @@ rt_event(void *ptr)
   if (tab->nhu_corked || tab->nhu_state && rt_cork_check(tab->uncork_event))
   {
     if (!tab->nhu_corked)
+    {
       rt_trace(tab, D_STATES, "Next hop updater corked");
+      if ((tab->nhu_state & NHU_RUNNING)
+	  && !EMPTY_LIST(tab->exporter.pending)
+	  && !tm_active(tab->exporter.export_timer))
+	tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
+    }
 
     tab->nhu_corked |= tab->nhu_state;
     tab->nhu_state = 0;
@@ -2699,6 +2721,10 @@ again:
     }
   FIB_ITERATE_END;
 
+  rt_trace(tab, D_EVENTS, "Prune done, scheduling export timer");
+  if (!tm_active(tab->exporter.export_timer))
+    tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
+
 #ifdef DEBUGGING
   fib_check(&tab->fib);
 #endif
@@ -2912,10 +2938,7 @@ done:;
       if (!first || (first->seq >= ih->flush_seq))
       {
 	ih->import_state = TIS_CLEARED;
-	ih->stopped(ih->req);
-	rem_node(&ih->n);
-	mb_free(ih);
-	rt_unlock_table(tab);
+	ev_send(ih->req->list, &ih->announce_event);
       }
 
   if ((tab->gc_counter += want_prune) >= tab->config->gc_threshold)
@@ -3496,6 +3519,11 @@ rt_next_hop_update(rtable *tab)
       max_feed -= rt_next_hop_update_net(tab, n);
     }
   FIB_ITERATE_END;
+
+  rt_trace(tab, D_EVENTS, "NHU done, scheduling export timer");
+
+  if (!tm_active(tab->exporter.export_timer))
+    tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
 
   /* State change:
    *   NHU_DIRTY   -> NHU_SCHEDULED

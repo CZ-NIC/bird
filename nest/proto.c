@@ -511,6 +511,7 @@ channel_start_import(struct channel *c)
   c->in_req = (struct rt_import_request) {
     .name = mb_sprintf(c->proto->pool, "%s.%s", c->proto->name, c->name),
     .trace_routes = c->debug | c->proto->debug,
+    .list = proto_work_list(c->proto),
     .dump_req = channel_dump_import_req,
     .log_state_change = channel_import_log_state_change,
     .preimport = channel_preimport,
