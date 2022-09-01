@@ -61,8 +61,6 @@ struct rtable_config {
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte trie_used;			/* Rtable has attached trie */
   byte debug;				/* Whether to log */
-  btime min_settle_time;		/* Minimum settle time for notifications */
-  btime max_settle_time;		/* Maximum settle time for notifications */
   btime export_settle_time;		/* Delay before exports are announced */
   struct rt_cork_threshold cork_threshold;	/* Cork threshold values */
 };
@@ -112,7 +110,6 @@ typedef struct rtable {
   struct event *uncork_event;		/* Called when uncork happens */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
   btime last_rt_change;			/* Last time when route changed */
-  btime base_settle_time;		/* Start time of rtable settling interval */
   btime gc_time;			/* Time of last GC */
   uint gc_counter;			/* Number of operations since last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
@@ -130,17 +127,8 @@ typedef struct rtable {
   u32 trie_old_lock_count;		/* Old prefix trie locked by walks */
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
 
-  list subscribers;			/* Subscribers for notifications */
-  struct timer *settle_timer;		/* Settle time for notifications */
   struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
 } rtable;
-
-struct rt_subscription {
-  node n;
-  rtable *tab;
-  event *event;
-  event_list *list;
-};
 
 extern struct rt_cork {
   _Atomic uint active;
@@ -461,8 +449,6 @@ void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
 struct f_trie * rt_lock_trie(rtable *tab);
 void rt_unlock_trie(rtable *tab, struct f_trie *trie);
-void rt_subscribe(rtable *tab, struct rt_subscription *s);
-void rt_unsubscribe(struct rt_subscription *s);
 void rt_flowspec_link(rtable *src, rtable *dst);
 void rt_flowspec_unlink(rtable *src, rtable *dst);
 rtable *rt_setup(pool *, struct rtable_config *);

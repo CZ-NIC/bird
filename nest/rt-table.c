@@ -82,9 +82,8 @@
  * will be re-validated later in this round anyway.
  *
  * The third mechanism is used for RPKI re-validation of IP routes and it is the
- * simplest. It is just a list of subscribers in src table, who are notified
- * when any change happened, but only after a settle time. Also, in RPKI case
- * the dst is not a table, but a channel, who refeeds routes through a filter.
+ * simplest. It is also an auxiliary export request belonging to the
+ * appropriate channel, triggering its reload/refeed timer after a settle time.
  */
 
 #undef LOCAL_DEBUG
@@ -134,7 +133,6 @@ static void rt_next_hop_update(rtable *tab);
 static inline void rt_next_hop_resolve_rte(rte *r);
 static inline void rt_flowspec_resolve_rte(rte *r, struct channel *c);
 static inline void rt_prune_table(rtable *tab);
-static inline void rt_schedule_notify(rtable *tab);
 static void rt_kick_prune_timer(rtable *tab);
 static void rt_feed_by_fib(void *);
 static void rt_feed_by_trie(void *);
@@ -1270,15 +1268,10 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
   if ((new == old) && (new_best == old_best))
     return;
 
-  if (new_best_valid || old_best_valid)
-  {
-    if (new_best_valid)
-      new_best->rte.sender->stats.pref++;
-    if (old_best_valid)
-      old_best->rte.sender->stats.pref--;
-  }
-
-  rt_schedule_notify(tab);
+  if (new_best_valid)
+    new_best->rte.sender->stats.pref++;
+  if (old_best_valid)
+    old_best->rte.sender->stats.pref--;
 
   if (EMPTY_LIST(tab->exporter.hooks) && EMPTY_LIST(tab->exporter.pending))
   {
@@ -2371,78 +2364,6 @@ rt_kick_prune_timer(rtable *tab)
 }
 
 
-static inline btime
-rt_settled_time(rtable *tab)
-{
-  ASSUME(tab->base_settle_time != 0);
-
-  return MIN(tab->last_rt_change + tab->config->min_settle_time,
-	     tab->base_settle_time + tab->config->max_settle_time);
-}
-
-static void
-rt_settle_timer(timer *t)
-{
-  rtable *tab = t->data;
-
-  if (!tab->base_settle_time)
-    return;
-
-  btime settled_time = rt_settled_time(tab);
-  if (current_time() < settled_time)
-  {
-    tm_set(tab->settle_timer, settled_time);
-    return;
-  }
-
-  /* Settled */
-  tab->base_settle_time = 0;
-
-  struct rt_subscription *s;
-  WALK_LIST(s, tab->subscribers)
-    ev_send(s->list, s->event);
-}
-
-static void
-rt_kick_settle_timer(rtable *tab)
-{
-  tab->base_settle_time = current_time();
-
-  if (!tab->settle_timer)
-    tab->settle_timer = tm_new_init(tab->rp, rt_settle_timer, tab, 0, 0);
-
-  if (!tm_active(tab->settle_timer))
-    tm_set(tab->settle_timer, rt_settled_time(tab));
-}
-
-static inline void
-rt_schedule_notify(rtable *tab)
-{
-  if (EMPTY_LIST(tab->subscribers))
-    return;
-
-  if (tab->base_settle_time)
-    return;
-
-  rt_kick_settle_timer(tab);
-}
-
-void
-rt_subscribe(rtable *tab, struct rt_subscription *s)
-{
-  s->tab = tab;
-  rt_lock_table(tab);
-  DBG("rt_subscribe(%s)\n", tab->name);
-  add_tail(&tab->subscribers, &s->n);
-}
-
-void
-rt_unsubscribe(struct rt_subscription *s)
-{
-  rem_node(&s->n);
-  rt_unlock_table(s->tab);
-}
-
 static void
 rt_flowspec_export_one(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
@@ -2580,7 +2501,6 @@ rt_free(resource *_r)
   fib_free(&r->fib);
   hmap_free(&r->id_map);
   rfree(r->rt_event);
-  rfree(r->settle_timer);
   mb_free(r);
   */
 }
@@ -2641,8 +2561,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   hmap_init(&t->id_map, p, 1024);
   hmap_set(&t->id_map, 0);
-
-  init_list(&t->subscribers);
 
   t->rt_event = ev_new_init(p, rt_event, t);
   t->uncork_event = ev_new_init(p, rt_uncork_event, t);
@@ -3629,8 +3547,6 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->addr_type = addr_type;
   c->gc_threshold = 1000;
   c->gc_period = (uint) -1;	/* set in rt_postconfig() */
-  c->min_settle_time = 1 S;
-  c->max_settle_time = 20 S;
   c->cork_threshold.low = 128;
   c->cork_threshold.high = 512;
   c->debug = new_config->table_debug;

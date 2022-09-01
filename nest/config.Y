@@ -227,8 +227,6 @@ table_opt:
        cf_error("Trie option not supported for %s table", net_label[this_table->addr_type]);
      this_table->trie_used = $2;
    }
- | MIN SETTLE TIME expr_us { this_table->min_settle_time = $4; }
- | MAX SETTLE TIME expr_us { this_table->max_settle_time = $4; }
  | GC THRESHOLD expr { this_table->gc_threshold = $3; }
  | GC PERIOD expr_us { this_table->gc_period = (uint) $3; if ($3 > 3600 S_) cf_error("GC period must be at most 3600 s"); }
  | CORK THRESHOLD expr expr {
@@ -323,6 +321,8 @@ channel_item_:
  | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
+ | MIN SETTLE TIME expr_us { this_channel->min_settle_time = $4; }
+ | MAX SETTLE TIME expr_us { this_channel->max_settle_time = $4; }
  | PREFERENCE expr { this_channel->preference = $2; check_u16($2); }
  | IMPORT KEEP FILTERED bool {
      if ($4)

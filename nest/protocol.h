@@ -463,6 +463,9 @@ struct channel_config {
   struct channel_limit in_limit;	/* Limit for importing routes from protocol */
   struct channel_limit out_limit;	/* Limit for exporting routes to protocol */
 
+  btime min_settle_time;		/* Minimum settle time for ROA-induced reload */
+  btime max_settle_time;		/* Maximum settle time for ROA-induced reload */
+
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u16 preference;			/* Default route preference */
@@ -489,6 +492,9 @@ struct channel {
   struct limit rx_limit;		/* Receive limit (for in_keep & RIK_REJECTED) */
   struct limit in_limit;		/* Input limit */
   struct limit out_limit;		/* Output limit */
+
+  btime min_settle_time;		/* Minimum settle time for ROA-induced reload */
+  btime max_settle_time;		/* Maximum settle time for ROA-induced reload */
 
   u8 limit_actions[PLD_MAX];		/* Limit actions enum */
   u8 limit_active;			/* Flags for active limits */
@@ -543,7 +549,7 @@ struct channel {
 
   struct rt_exporter *out_table;	/* Internal table for exported routes */
 
-  list roa_subscriptions;		/* List of active ROA table subscriptions based on filters roa_check() */
+  list roa_subscriptions;		/* List of active ROA table subscriptions based on filters' roa_check() calls */
 };
 
 #define RIK_REJECTED	1			/* Routes rejected in import filter are kept */
