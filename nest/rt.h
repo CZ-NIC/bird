@@ -481,6 +481,8 @@ void rt_reload_channel_abort(struct channel *c);
 void rt_refeed_channel(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
+void rt_new_default_table(struct symbol *s);
+struct rtable_config *rt_get_default_table(struct config *cf, uint addr_type);
 
 static inline int rt_is_ip(rtable *tab)
 { return (tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6); }

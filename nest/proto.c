@@ -864,7 +864,7 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
     if (proto->net_type && (net_type != proto->net_type))
       cf_error("Different channel type");
 
-    tab = new_config->def_tables[net_type];
+    tab = rt_get_default_table(new_config, net_type);
   }
 
   if (!cc)

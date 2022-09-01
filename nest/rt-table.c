@@ -3094,8 +3094,8 @@ rt_preconfig(struct config *c)
 {
   init_list(&c->tables);
 
-  rt_new_table(cf_get_symbol("master4"), NET_IP4);
-  rt_new_table(cf_get_symbol("master6"), NET_IP6);
+  c->def_tables[NET_IP4] = cf_define_symbol(cf_get_symbol("master4"), SYM_TABLE, table, NULL);
+  c->def_tables[NET_IP6] = cf_define_symbol(cf_get_symbol("master6"), SYM_TABLE, table, NULL);
 }
 
 void
@@ -3110,6 +3110,13 @@ rt_postconfig(struct config *c)
   WALK_LIST(rc, c->tables)
     if (rc->gc_period == (uint) -1)
       rc->gc_period = (uint) def_gc_period;
+
+  for (uint net_type = 0; net_type < NET_MAX; net_type++)
+    if (c->def_tables[net_type] && !c->def_tables[net_type]->table)
+    {
+      c->def_tables[net_type]->class = SYM_VOID;
+      c->def_tables[net_type] = NULL;
+    }
 }
 
 
@@ -3584,19 +3591,42 @@ rt_next_hop_update(rtable *tab)
     ev_schedule(tab->rt_event);
 }
 
+void
+rt_new_default_table(struct symbol *s)
+{
+  for (uint addr_type = 0; addr_type < NET_MAX; addr_type++)
+    if (s == new_config->def_tables[addr_type])
+    {
+      s->table = rt_new_table(s, addr_type);
+      return;
+    }
+
+  bug("Requested an unknown new default table: %s", s->name);
+}
+
+struct rtable_config *
+rt_get_default_table(struct config *cf, uint addr_type)
+{
+  struct symbol *ts = cf->def_tables[addr_type];
+  if (!ts)
+    return NULL;
+
+  if (!ts->table)
+    rt_new_default_table(ts);
+
+  return ts->table;
+}
 
 struct rtable_config *
 rt_new_table(struct symbol *s, uint addr_type)
 {
-  /* Hack that allows to 'redefine' the master table */
-  if ((s->class == SYM_TABLE) &&
-      (s->table == new_config->def_tables[addr_type]) &&
-      ((addr_type == NET_IP4) || (addr_type == NET_IP6)))
-    return s->table;
-
   struct rtable_config *c = cfg_allocz(sizeof(struct rtable_config));
 
-  cf_define_symbol(s, SYM_TABLE, table, c);
+  if (s == new_config->def_tables[addr_type])
+    s->table = c;
+  else
+    cf_define_symbol(s, SYM_TABLE, table, c);
+
   c->name = s->name;
   c->addr_type = addr_type;
   c->gc_threshold = 1000;
@@ -3610,7 +3640,7 @@ rt_new_table(struct symbol *s, uint addr_type)
 
   /* First table of each type is kept as default */
   if (! new_config->def_tables[addr_type])
-    new_config->def_tables[addr_type] = c;
+    new_config->def_tables[addr_type] = s;
 
   return c;
 }

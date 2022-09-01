@@ -361,7 +361,11 @@ channel_end:
 proto_channel: channel_start channel_opt_list channel_end;
 
 
-rtable: CF_SYM_KNOWN { cf_assert_symbol($1, SYM_TABLE); $$ = $1->table; } ;
+rtable: CF_SYM_KNOWN {
+  cf_assert_symbol($1, SYM_TABLE);
+  if (!$1->table) rt_new_default_table($1);
+  $$ = $1->table;
+} ;
 
 imexport:
    FILTER filter { $$ = $2; }
@@ -683,6 +687,7 @@ r_args:
    }
 | r_args TABLE symbol_known {
      cf_assert_symbol($3, SYM_TABLE);
+     if (!$3->table) cf_error("Table %s not configured", $3->name);
      $$ = $1;
      rt_show_add_table($$, $3->table->table);
      $$->tables_defined_by = RSD_TDB_DIRECT;

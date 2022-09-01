@@ -1934,7 +1934,7 @@ bgp_default_igp_table(struct bgp_config *cf, struct bgp_channel_config *cc, u32 
     return cc2->c.table;
 
   /* Last, try default table of given type */
-  if (tab = cf->c.global->def_tables[type])
+  if (tab = rt_get_default_table(cf->c.global, type))
     return tab;
 
   cf_error("Undefined IGP table");
@@ -1953,7 +1953,7 @@ bgp_default_base_table(struct bgp_config *cf, struct bgp_channel_config *cc)
     return cc2->c.table;
 
   /* Last, try default table of given type */
-  struct rtable_config *tab = cf->c.global->def_tables[type];
+  struct rtable_config *tab = rt_get_default_table(cf->c.global, type);
   if (tab)
     return tab;
 
