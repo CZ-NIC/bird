@@ -91,6 +91,8 @@ struct rt_table_exporter {
   u64 next_seq;				/* The next export will have this ID */
 };
 
+extern uint rtable_max_id;
+
 typedef struct rtable {
   resource r;
   node n;				/* Node in list of all tables */
@@ -100,6 +102,7 @@ typedef struct rtable {
   struct f_trie *trie;			/* Trie of prefixes defined in fib */
   char *name;				/* Name of this table */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
+  uint id;				/* Integer table ID for fast lookup */
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
 

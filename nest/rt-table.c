@@ -103,6 +103,7 @@
 #include "lib/string.h"
 #include "lib/alloca.h"
 #include "lib/flowspec.h"
+#include "lib/idm.h"
 
 #ifdef CONFIG_BGP
 #include "proto/bgp/bgp.h"
@@ -2420,7 +2421,7 @@ rt_flowspec_export_one(struct rt_export_request *req, const net_addr *net, struc
   rtable *dst = ln->dst;
   ASSUME(rt_is_flow(dst));
 
-  /* No need to inspect it further if recalculation is already active */
+  /* No need to inspect it further if recalculation is already scheduled */
   if ((dst->nhu_state == NHU_SCHEDULED) || (dst->nhu_state == NHU_DIRTY)
       || !trie_match_net(dst->flowspec_trie, net))
   {
@@ -2583,6 +2584,9 @@ rt_exporter_init(struct rt_exporter *e)
   init_list(&e->hooks);
 }
 
+static struct idm rtable_idm;
+uint rtable_max_id = 0;
+
 rtable *
 rt_setup(pool *pp, struct rtable_config *cf)
 {
@@ -2596,6 +2600,9 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->name = cf->name;
   t->config = cf;
   t->addr_type = cf->addr_type;
+  t->id = idm_alloc(&rtable_idm);
+  if (t->id >= rtable_max_id)
+    rtable_max_id = t->id + 1;
 
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
 
@@ -2659,6 +2666,7 @@ rt_init(void)
   init_list(&deleted_routing_tables);
   ev_init_list(&rt_cork.queue, &main_birdloop, "Route cork release");
   rt_cork.run = (event) { .hook = rt_cork_release_hook };
+  idm_init(&rtable_idm, rt_table_pool, 256);
 }
 
 
@@ -4247,6 +4255,9 @@ rt_update_hostcache(void *data)
     return;
   }
 
+  /* Destination schedule map */
+  rtable **nhu_pending = tmp_allocz(sizeof(rtable *) * rtable_max_id);
+
   struct hostentry *he;
   node *n, *x;
 
@@ -4264,8 +4275,12 @@ rt_update_hostcache(void *data)
 	}
 
       if (rt_update_hostentry(tab, he))
-	rt_schedule_nhu(he->tab);
+	nhu_pending[he->tab->id] = he->tab;
     }
+
+  for (uint i=0; i<rtable_max_id; i++)
+    if (nhu_pending[i])
+      rt_schedule_nhu(nhu_pending[i]);
 }
 
 static struct hostentry *
