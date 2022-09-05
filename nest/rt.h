@@ -67,16 +67,23 @@ struct rtable_config {
 
 struct rt_export_hook;
 struct rt_export_request;
+struct rt_exporter;
+
+struct rt_exporter_class {
+  void (*start)(struct rt_exporter *, struct rt_export_request *);
+  void (*stop)(struct rt_export_hook *);
+  void (*done)(void *_rt_export_hook);
+};
 
 struct rt_exporter {
+  const struct rt_exporter_class *class;
+  pool *rp;
   list hooks;				/* Registered route export hooks */
   uint addr_type;			/* Type of address data exported (NET_*) */
+};
 
-  struct rt_export_hook *(*start)(struct rt_exporter *, struct rt_export_request *);
-  void (*stop)(struct rt_export_hook *);
-  void (*done)(struct rt_export_hook *);
-  void (*used)(struct rt_exporter *);
-
+struct rt_table_exporter {
+  struct rt_exporter e;
   list pending;				/* List of packed struct rt_pending_export */
   struct timer *export_timer;
 
@@ -97,7 +104,7 @@ typedef struct rtable {
   u32 rt_count;				/* Number of routes in the table */
 
   list imports;				/* Registered route importers */
-  struct rt_exporter exporter;		/* Exporter API structure */
+  struct rt_table_exporter exporter;	/* Exporter API structure */
 
   struct hmap id_map;
   struct hostcache *hostcache;
@@ -266,29 +273,39 @@ struct rt_export_hook {
     u32 withdraws_received;		/* Number of route withdraws received */
   } stats;
 
+  btime last_state_change;		/* Time of last state transition */
+
+  _Atomic u8 export_state;		/* Route export state (TES_*, see below) */
+  struct event event;			/* Event running all the export operations */
+
+  struct bmap seq_map;			/* Keep track which exports were already procesed */
+
+  void (*stopped)(struct rt_export_request *);	/* Stored callback when export is stopped */
+};
+
+struct rt_table_export_hook {
+  union {
+    struct rt_export_hook h;
+    struct {				/* Overriding the parent structure beginning */
+      node _n;
+      struct rt_table_exporter *table;
+    };
+  };
+  
   union {
     struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
     struct {
       struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
       struct f_trie *walk_lock;			/* Locked trie for walking */
     };
-    u32 hash_iter;				/* Iterator over hash */
   };
 
-  struct bmap seq_map;			/* Keep track which exports were already procesed */
-
-  struct rt_pending_export * _Atomic last_export;/* Last export processed */
+  struct rt_pending_export *_Atomic last_export;/* Last export processed */
   struct rt_pending_export *rpe_next;	/* Next pending export to process */
 
-  btime last_state_change;		/* Time of last state transition */
-
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
-  _Atomic u8 export_state;		/* Route export state (TES_*, see below) */
   u8 feed_type;				/* Which feeding method is used (TFT_*, see below) */
 
-  struct event *event;			/* Event running all the export operations */
-
-  void (*stopped)(struct rt_export_request *);	/* Stored callback when export is stopped */
 };
 
 #define TIS_DOWN	0
@@ -317,7 +334,8 @@ struct rt_export_hook {
 #define TFT_HASH	3
 
 void rt_request_import(rtable *tab, struct rt_import_request *req);
-void rt_request_export(struct rt_exporter *tab, struct rt_export_request *req);
+void rt_request_export(rtable *tab, struct rt_export_request *req);
+void rt_request_export_other(struct rt_exporter *tab, struct rt_export_request *req);
 
 void rt_export_once(struct rt_exporter *tab, struct rt_export_request *req);
 
@@ -334,6 +352,10 @@ void rt_set_export_state(struct rt_export_hook *hook, u8 state);
 
 void rte_import(struct rt_import_request *req, const net_addr *net, rte *new, struct rte_src *src);
 
+/*
+ * For table export processing
+ */
+
 /* Get next rpe. If src is given, it must match. */
 struct rt_pending_export *rpe_next(struct rt_pending_export *rpe, struct rte_src *src);
 
@@ -349,6 +371,15 @@ void rpe_mark_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
 
 /* Get pending export seen status */
 int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
+
+/*
+ * For rt_export_hook and rt_exporter inheritance
+ */
+
+void rt_init_export(struct rt_exporter *re, struct rt_export_hook *hook);
+struct rt_export_hook *rt_alloc_export(struct rt_exporter *re, uint size);
+void rt_export_stopped(void *data);
+void rt_exporter_init(struct rt_exporter *re);
 
 /* Types of route announcement, also used as flags */
 #define RA_UNDEF	0		/* Undefined RA type */

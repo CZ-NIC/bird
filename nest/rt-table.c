@@ -138,13 +138,13 @@ static void rt_feed_by_fib(void *);
 static void rt_feed_by_trie(void *);
 static void rt_feed_equal(void *);
 static void rt_feed_for(void *);
-static uint rt_feed_net(struct rt_export_hook *c, net *n);
+static uint rt_feed_net(struct rt_table_export_hook *c, net *n);
 static void rt_check_cork_low(rtable *tab);
 static void rt_check_cork_high(rtable *tab);
 static void rt_cork_release_hook(void *);
 
-static inline void rt_export_used(struct rt_exporter *);
-static void rt_export_cleanup(rtable *tab);
+static void rt_export_used(struct rt_table_exporter *);
+static void rt_export_cleanup(rtable *);
 
 static int rte_same(rte *x, rte *y);
 
@@ -1162,9 +1162,10 @@ rpe_next(struct rt_pending_export *rpe, struct rte_src *src)
 }
 
 static struct rt_pending_export * rt_next_export_fast(struct rt_pending_export *last);
-static void
-rte_export(struct rt_export_hook *hook, struct rt_pending_export *rpe)
+static int
+rte_export(struct rt_table_export_hook *th, struct rt_pending_export *rpe)
 {
+  struct rt_export_hook *hook = &th->h;
   if (bmap_test(&hook->seq_map, rpe->seq))
     goto ignore;	/* Seen already */
 
@@ -1216,15 +1217,16 @@ rte_export(struct rt_export_hook *hook, struct rt_pending_export *rpe)
 
 ignore:
   /* Get the next export if exists */
-  hook->rpe_next = rt_next_export_fast(rpe);
+  th->rpe_next = rt_next_export_fast(rpe);
 
   /* The last block may be available to free */
-  if (PAGE_HEAD(hook->rpe_next) != PAGE_HEAD(rpe))
-    CALL(hook->table->used, hook->table);
+  int used = (PAGE_HEAD(th->rpe_next) != PAGE_HEAD(rpe));
 
   /* Releasing this export for cleanup routine */
   DBG("store hook=%p last_export=%p seq=%lu\n", hook, rpe, rpe->seq);
-  atomic_store_explicit(&hook->last_export, rpe, memory_order_release);
+  atomic_store_explicit(&th->last_export, rpe, memory_order_release);
+
+  return used;
 }
 
 /**
@@ -1273,7 +1275,7 @@ rte_announce(rtable *tab, net *net, struct rte_storage *new, struct rte_storage 
   if (old_best_valid)
     old_best->rte.sender->stats.pref--;
 
-  if (EMPTY_LIST(tab->exporter.hooks) && EMPTY_LIST(tab->exporter.pending))
+  if (EMPTY_LIST(tab->exporter.e.hooks) && EMPTY_LIST(tab->exporter.pending))
   {
     /* No export hook and no pending exports to cleanup. We may free the route immediately. */
     if (!old)
@@ -1382,7 +1384,7 @@ rt_next_export_fast(struct rt_pending_export *last)
 }
 
 static struct rt_pending_export *
-rt_next_export(struct rt_export_hook *hook, struct rt_exporter *tab)
+rt_next_export(struct rt_table_export_hook *hook, struct rt_table_exporter *tab)
 {
   /* As the table is locked, it is safe to reload the last export pointer */
   struct rt_pending_export *last = atomic_load_explicit(&hook->last_export, memory_order_acquire);
@@ -1399,7 +1401,7 @@ rt_next_export(struct rt_export_hook *hook, struct rt_exporter *tab)
 static inline void
 rt_send_export_event(struct rt_export_hook *hook)
 {
-  ev_send(hook->req->list, hook->event);
+  ev_send(hook->req->list, &hook->event);
 }
 
 static void
@@ -1411,7 +1413,7 @@ rt_announce_exports(timer *tm)
     return;
 
   struct rt_export_hook *c; node *n;
-  WALK_LIST2(c, n, tab->exporter.hooks, n)
+  WALK_LIST2(c, n, tab->exporter.e.hooks, n)
   {
     if (atomic_load_explicit(&c->export_state, memory_order_acquire) != TES_READY)
       continue;
@@ -1443,7 +1445,7 @@ rt_import_announce_exports(void *_hook)
 }
 
 static struct rt_pending_export *
-rt_last_export(struct rt_exporter *tab)
+rt_last_export(struct rt_table_exporter *tab)
 {
   struct rt_pending_export *rpe = NULL;
 
@@ -1463,31 +1465,33 @@ rt_last_export(struct rt_exporter *tab)
 static void
 rt_export_hook(void *_data)
 {
-  struct rt_export_hook *c = _data;
+  struct rt_table_export_hook *c = _data;
 
-  ASSERT_DIE(atomic_load_explicit(&c->export_state, memory_order_relaxed) == TES_READY);
+  ASSERT_DIE(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_READY);
 
   if (!c->rpe_next)
   {
     c->rpe_next = rt_next_export(c, c->table);
 
     if (!c->rpe_next)
-    {
-      CALL(c->table->used, c->table);
-      return;
-    }
+      return rt_export_used(c->table);
   }
+
+  int used = 0;
 
   /* Process the export */
   for (uint i=0; i<RT_EXPORT_BULK; i++)
   {
-    rte_export(c, c->rpe_next);
+    used += rte_export(c, c->rpe_next);
 
     if (!c->rpe_next)
       break;
   }
 
-  rt_send_export_event(c);
+  if (used)
+    rt_export_used(c->table);
+
+  rt_send_export_event(&c->h);
 }
 
 
@@ -1909,28 +1913,27 @@ rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filte
 }
 
 static void
-rt_table_export_done(struct rt_export_hook *hook)
+rt_table_export_done(void *hh)
 {
-  struct rt_exporter *re = hook->table;
-  struct rtable *tab = SKIP_BACK(struct rtable, exporter, re);
+  struct rt_table_export_hook *hook = hh;
+  struct rtable *tab = SKIP_BACK(struct rtable, exporter, hook->table);
 
   DBG("Export hook %p in table %s finished uc=%u\n", hook, tab->name, tab->use_count);
 
-  /* Free the hook before unlocking the table */
-  rfree(hook->pool);
+  /* Drop pending exports */
+  rt_export_used(&tab->exporter);
+
+  /* Do the common code */
+  rt_export_stopped(&hook->h);
 
   /* Unlock the table; this may free it */
   rt_unlock_table(tab);
 }
 
-static void
+void
 rt_export_stopped(void *data)
 {
   struct rt_export_hook *hook = data;
-  struct rt_exporter *tab = hook->table;
-
-  /* Drop pending exports */
-  CALL(tab->used, tab);
 
   /* Unlist */
   rem_node(&hook->n);
@@ -1938,8 +1941,8 @@ rt_export_stopped(void *data)
   /* Report the channel as stopped. */
   CALL(hook->stopped, hook->req);
 
-  /* Reporting the hook as finished. */
-  CALL(tab->done, hook);
+  /* Free the hook itself together with its pool */
+  rfree(hook->pool);
 }
 
 static inline void
@@ -1991,15 +1994,16 @@ rt_stop_import(struct rt_import_request *req, void (*stopped)(struct rt_import_r
   hook->stopped = stopped;
 }
 
-static struct rt_export_hook *
+static void
 rt_table_export_start(struct rt_exporter *re, struct rt_export_request *req)
 {
-  rtable *tab = SKIP_BACK(rtable, exporter, re);
+  rtable *tab = SKIP_BACK(rtable, exporter.e, re);
   rt_lock_table(tab);
 
-  pool *p = rp_new(tab->rp, "Export hook");
-  struct rt_export_hook *hook = mb_allocz(p, sizeof(struct rt_export_hook));
-  hook->pool = p;
+  req->hook = rt_alloc_export(re, sizeof(struct rt_table_export_hook));
+  req->hook->req = req;
+
+  struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, req->hook);
 
   /* stats zeroed by mb_allocz */
   switch (req->addr_mode)
@@ -2007,24 +2011,24 @@ rt_table_export_start(struct rt_exporter *re, struct rt_export_request *req)
     case TE_ADDR_IN:
       if (tab->trie && net_val_match(tab->addr_type, NB_IP))
       {
-	hook->walk_state = mb_allocz(p, sizeof (struct f_trie_walk_state));
+	hook->walk_state = mb_allocz(hook->h.pool, sizeof (struct f_trie_walk_state));
 	hook->walk_lock = rt_lock_trie(tab);
 	trie_walk_init(hook->walk_state, tab->trie, req->addr);
-	hook->event = ev_new_init(p, rt_feed_by_trie, hook);
+	hook->h.event.hook = rt_feed_by_trie;
 	break;
       }
       /* fall through */
     case TE_ADDR_NONE:
       FIB_ITERATE_INIT(&hook->feed_fit, &tab->fib);
-      hook->event = ev_new_init(p, rt_feed_by_fib, hook);
+      hook->h.event.hook = rt_feed_by_fib;
       break;
 
     case TE_ADDR_EQUAL:
-      hook->event = ev_new_init(p, rt_feed_equal, hook);
+      hook->h.event.hook = rt_feed_equal;
       break;
 
     case TE_ADDR_FOR:
-      hook->event = ev_new_init(p, rt_feed_for, hook);
+      hook->h.event.hook = rt_feed_for;
       break;
 
     default:
@@ -2033,22 +2037,42 @@ rt_table_export_start(struct rt_exporter *re, struct rt_export_request *req)
 
   DBG("New export hook %p req %p in table %s uc=%u\n", hook, req, tab->name, tab->use_count);
 
+  struct rt_pending_export *rpe = rt_last_export(hook->table);
+  DBG("store hook=%p last_export=%p seq=%lu\n", hook, rpe, rpe ? rpe->seq : 0);
+  atomic_store_explicit(&hook->last_export, rpe, memory_order_relaxed);
+
+  rt_init_export(re, req->hook);
+}
+
+void rt_request_export(rtable *tab, struct rt_export_request *req)
+{
+  rt_table_export_start(&tab->exporter.e, req);
+}
+
+void
+rt_request_export_other(struct rt_exporter *re, struct rt_export_request *req)
+{
+  return re->class->start(re, req);
+}
+
+struct rt_export_hook *
+rt_alloc_export(struct rt_exporter *re, uint size)
+{
+  pool *p = rp_new(re->rp, "Export hook");
+  struct rt_export_hook *hook = mb_allocz(p, size);
+
+  hook->pool = p;
+  hook->table = re;
+
   return hook;
 }
 
 void
-rt_request_export(struct rt_exporter *re, struct rt_export_request *req)
+rt_init_export(struct rt_exporter *re, struct rt_export_hook *hook)
 {
-  struct rt_export_hook *hook = req->hook = re->start(re, req);
-
-  hook->req = req;
-  hook->table = re;
+  hook->event.data = hook;
 
   bmap_init(&hook->seq_map, hook->pool, 1024);
-
-  struct rt_pending_export *rpe = rt_last_export(hook->table);
-  DBG("store hook=%p last_export=%p seq=%lu\n", hook, rpe, rpe ? rpe->seq : 0);
-  atomic_store_explicit(&hook->last_export, rpe, memory_order_relaxed);
 
   hook->n = (node) {};
   add_tail(&re->hooks, &hook->n);
@@ -2059,14 +2083,15 @@ rt_request_export(struct rt_exporter *re, struct rt_export_request *req)
 }
 
 static void
-rt_table_export_stop(struct rt_export_hook *hook)
+rt_table_export_stop(struct rt_export_hook *hh)
 {
+  struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, hh);
   rtable *tab = SKIP_BACK(rtable, exporter, hook->table);
 
-  if (atomic_load_explicit(&hook->export_state, memory_order_relaxed) != TES_FEEDING)
+  if (atomic_load_explicit(&hh->export_state, memory_order_relaxed) != TES_FEEDING)
     return;
 
-  switch (hook->req->addr_mode)
+  switch (hh->req->addr_mode)
   {
     case TE_ADDR_IN:
       if (hook->walk_lock)
@@ -2087,17 +2112,18 @@ rt_table_export_stop(struct rt_export_hook *hook)
 void
 rt_stop_export(struct rt_export_request *req, void (*stopped)(struct rt_export_request *))
 {
+  ASSERT_DIE(birdloop_inside(req->list->loop));
   ASSERT_DIE(req->hook);
   struct rt_export_hook *hook = req->hook;
 
   /* Cancel the feeder event */
-  ev_postpone(hook->event);
+  ev_postpone(&hook->event);
 
   /* Stop feeding from the exporter */
-  CALL(hook->table->stop, hook);
+  CALL(hook->table->class->stop, hook);
 
   /* Reset the event as the stopped event */
-  hook->event->hook = rt_export_stopped;
+  hook->event.hook = hook->table->class->done;
   hook->stopped = stopped;
 
   /* Update export state */
@@ -2253,13 +2279,14 @@ rt_dump_hooks(rtable *tab)
        ih->last_state_change, ih->import_state, ih->stopped);
   }
 
-  struct rt_export_hook *eh;
-  WALK_LIST(eh, tab->exporter.hooks)
+  struct rt_table_export_hook *eh;
+  WALK_LIST(eh, tab->exporter.e.hooks)
   {
-    eh->req->dump_req(eh->req);
+    eh->h.req->dump_req(eh->h.req);
     debug("  Export hook %p requested by %p:"
        " refeed_pending=%u last_state_change=%t export_state=%u\n",
-       eh, eh->req, eh->refeed_pending, eh->last_state_change, atomic_load_explicit(&eh->export_state, memory_order_relaxed));
+       eh, eh->h.req, eh->refeed_pending, eh->h.last_state_change,
+       atomic_load_explicit(&eh->h.export_state, memory_order_relaxed));
   }
   debug("\n");
 }
@@ -2303,7 +2330,7 @@ rt_schedule_prune(rtable *tab)
 }
 
 static void
-rt_export_used(struct rt_exporter *e)
+rt_export_used(struct rt_table_exporter *e)
 {
   rtable *tab = SKIP_BACK(rtable, exporter, e);
 
@@ -2426,15 +2453,15 @@ rt_flowspec_dump_req(struct rt_export_request *req)
 static struct rt_flowspec_link *
 rt_flowspec_find_link(rtable *src, rtable *dst)
 {
-  struct rt_export_hook *hook; node *n;
-  WALK_LIST2(hook, n, src->exporter.hooks, n)
-    switch (atomic_load_explicit(&hook->export_state, memory_order_acquire))
+  struct rt_table_export_hook *hook; node *n;
+  WALK_LIST2(hook, n, src->exporter.e.hooks, h.n)
+    switch (atomic_load_explicit(&hook->h.export_state, memory_order_acquire))
     {
       case TES_FEEDING:
       case TES_READY:
-	if (hook->req->export_one == rt_flowspec_export_one)
+	if (hook->h.req->export_one == rt_flowspec_export_one)
 	{
-	  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, hook->req);
+	  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, hook->h.req);
 	  if (ln->dst == dst)
 	    return ln;
 	}
@@ -2467,7 +2494,7 @@ rt_flowspec_link(rtable *src, rtable *dst)
       .export_one = rt_flowspec_export_one,
     };
 
-    rt_request_export(&src->exporter, &ln->req);
+    rt_request_export(src, &ln->req);
   }
 
   ln->uc++;
@@ -2544,6 +2571,18 @@ static struct resclass rt_class = {
   .memsize = NULL,
 };
 
+static const struct rt_exporter_class rt_table_exporter_class = {
+  .start = rt_table_export_start,
+  .stop = rt_table_export_stop,
+  .done = rt_table_export_done,
+};
+
+void
+rt_exporter_init(struct rt_exporter *e)
+{
+  init_list(&e->hooks);
+}
+
 rtable *
 rt_setup(pool *pp, struct rtable_config *cf)
 {
@@ -2568,17 +2607,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
     t->fib.init = net_init_with_trie;
   }
 
-  t->exporter = (struct rt_exporter) {
-    .addr_type = t->addr_type,
-    .start = rt_table_export_start,
-    .stop = rt_table_export_stop,
-    .done = rt_table_export_done,
-    .used = rt_export_used,
-  };
-
-  init_list(&t->exporter.hooks);
-  init_list(&t->exporter.pending);
-
   init_list(&t->imports);
 
   hmap_init(&t->id_map, p, 1024);
@@ -2587,9 +2615,21 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->rt_event = ev_new_init(p, rt_event, t);
   t->uncork_event = ev_new_init(p, rt_uncork_event, t);
   t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
-  t->exporter.export_timer = tm_new_init(p, rt_announce_exports, t, 0, 0);
   t->last_rt_change = t->gc_time = current_time();
-  t->exporter.next_seq = 1;
+
+  t->exporter = (struct rt_table_exporter) {
+    .e = {
+      .class = &rt_table_exporter_class,
+      .addr_type = t->addr_type,
+      .rp = t->rp,
+    },
+    .export_timer = tm_new_init(p, rt_announce_exports, t, 0, 0),
+    .next_seq = 1,
+  };
+
+  rt_exporter_init(&t->exporter.e);
+
+  init_list(&t->exporter.pending);
 
   t->cork_threshold = cf->cork_threshold;
 
@@ -2781,7 +2821,7 @@ again:
     }
 
   /* In some cases, we may want to directly proceed to export cleanup */
-  if (EMPTY_LIST(tab->exporter.hooks) && flushed_channels)
+  if (EMPTY_LIST(tab->exporter.e.hooks) && flushed_channels)
     rt_export_cleanup(tab);
 }
 
@@ -2795,11 +2835,11 @@ rt_export_cleanup(rtable *tab)
   struct rt_pending_export *first = tab->exporter.first;
   int want_prune = 0;
 
-  struct rt_export_hook *eh;
+  struct rt_table_export_hook *eh;
   node *n;
-  WALK_LIST2(eh, n, tab->exporter.hooks, n)
+  WALK_LIST2(eh, n, tab->exporter.e.hooks, h.n)
   {
-    switch (atomic_load_explicit(&eh->export_state, memory_order_acquire))
+    switch (atomic_load_explicit(&eh->h.export_state, memory_order_acquire))
     {
       case TES_DOWN:
 	continue;
@@ -2832,9 +2872,9 @@ rt_export_cleanup(rtable *tab)
       tab->exporter.first ? tab->exporter.first->seq : 0,
       min_seq);
 
-  WALK_LIST2(eh, n, tab->exporter.hooks, n)
+  WALK_LIST2(eh, n, tab->exporter.e.hooks, h.n)
   {
-    if (atomic_load_explicit(&eh->export_state, memory_order_acquire) != TES_READY)
+    if (atomic_load_explicit(&eh->h.export_state, memory_order_acquire) != TES_READY)
       continue;
 
     struct rt_pending_export *last = atomic_load_explicit(&eh->last_export, memory_order_acquire);
@@ -2908,13 +2948,13 @@ rt_export_cleanup(rtable *tab)
 	rt_trace(tab, D_EVENTS, "Resetting export seq");
 
 	node *n;
-	WALK_LIST2(eh, n, tab->exporter.hooks, n)
+	WALK_LIST2(eh, n, tab->exporter.e.hooks, h.n)
 	{
-	  if (atomic_load_explicit(&eh->export_state, memory_order_acquire) != TES_READY)
+	  if (atomic_load_explicit(&eh->h.export_state, memory_order_acquire) != TES_READY)
 	    continue;
 
 	  ASSERT_DIE(atomic_load_explicit(&eh->last_export, memory_order_acquire) == NULL);
-	  bmap_reset(&eh->seq_map, 1024);
+	  bmap_reset(&eh->h.seq_map, 1024);
 	}
 
 	tab->exporter.next_seq = 1;
@@ -3667,10 +3707,10 @@ rt_reconfigure(rtable *tab, struct rtable_config *new, struct rtable_config *old
   if (tab->hostcache)
     tab->hostcache->req.trace_routes = new->debug;
 
-  struct rt_export_hook *hook; node *n;
-  WALK_LIST2(hook, n, tab->exporter.hooks, n)
-    if (hook->req->export_one == rt_flowspec_export_one)
-      hook->req->trace_routes = new->debug;
+  struct rt_table_export_hook *hook; node *n;
+  WALK_LIST2(hook, n, tab->exporter.e.hooks, h.n)
+    if (hook->h.req->export_one == rt_flowspec_export_one)
+      hook->h.req->trace_routes = new->debug;
 
   tab->cork_threshold = new->cork_threshold;
 
@@ -3745,7 +3785,7 @@ rt_commit(struct config *new, struct config *old)
 static void
 rt_feed_done(struct rt_export_hook *c)
 {
-  c->event->hook = rt_export_hook;
+  c->event.hook = rt_export_hook;
 
   rt_set_export_state(c, TES_READY);
 
@@ -3764,12 +3804,12 @@ rt_feed_done(struct rt_export_hook *c)
 static void
 rt_feed_by_fib(void *data)
 {
-  struct rt_export_hook *c = data;
+  struct rt_table_export_hook *c = data;
 
   struct fib_iterator *fit = &c->feed_fit;
   int max_feed = 256;
 
-  ASSERT(atomic_load_explicit(&c->export_state, memory_order_relaxed) == TES_FEEDING);
+  ASSERT(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
 
   rtable *tab = SKIP_BACK(rtable, exporter, c->table);
 
@@ -3778,25 +3818,25 @@ rt_feed_by_fib(void *data)
       if (max_feed <= 0)
 	{
 	  FIB_ITERATE_PUT(fit);
-	  rt_send_export_event(c);
+	  rt_send_export_event(&c->h);
 	  return;
 	}
 
-      if (atomic_load_explicit(&c->export_state, memory_order_acquire) != TES_FEEDING)
+      if (atomic_load_explicit(&c->h.export_state, memory_order_acquire) != TES_FEEDING)
 	return;
 
-      if ((c->req->addr_mode == TE_ADDR_NONE) || net_in_netX(n->n.addr, c->req->addr))
+      if ((c->h.req->addr_mode == TE_ADDR_NONE) || net_in_netX(n->n.addr, c->h.req->addr))
 	max_feed -= rt_feed_net(c, n);
     }
   FIB_ITERATE_END;
 
-  rt_feed_done(c);
+  rt_feed_done(&c->h);
 }
 
 static void
 rt_feed_by_trie(void *data)
 {
-  struct rt_export_hook *c = data;
+  struct rt_table_export_hook *c = data;
   rtable *tab = SKIP_BACK(rtable, exporter, c->table);
 
   ASSERT_DIE(c->walk_state);
@@ -3804,7 +3844,7 @@ rt_feed_by_trie(void *data)
 
   int max_feed = 256;
 
-  ASSERT(atomic_load_explicit(&c->export_state, memory_order_relaxed) == TES_FEEDING);
+  ASSERT(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
 
   net_addr addr;
   while (trie_walk_next(ws, &addr))
@@ -3816,7 +3856,7 @@ rt_feed_by_trie(void *data)
     if ((max_feed -= rt_feed_net(c, n)) <= 0)
       return;
 
-    if (atomic_load_explicit(&c->export_state, memory_order_acquire) != TES_FEEDING)
+    if (atomic_load_explicit(&c->h.export_state, memory_order_acquire) != TES_FEEDING)
       return;
   }
 
@@ -3826,65 +3866,65 @@ rt_feed_by_trie(void *data)
   mb_free(c->walk_state);
   c->walk_state = NULL;
 
-  rt_feed_done(c);
+  rt_feed_done(&c->h);
 }
 
 static void
 rt_feed_equal(void *data)
 {
-  struct rt_export_hook *c = data;
+  struct rt_table_export_hook *c = data;
   rtable *tab = SKIP_BACK(rtable, exporter, c->table);
 
-  ASSERT_DIE(atomic_load_explicit(&c->export_state, memory_order_relaxed) == TES_FEEDING);
-  ASSERT_DIE(c->req->addr_mode == TE_ADDR_EQUAL);
+  ASSERT_DIE(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
+  ASSERT_DIE(c->h.req->addr_mode == TE_ADDR_EQUAL);
 
-  net *n = net_find(tab, c->req->addr);
+  net *n = net_find(tab, c->h.req->addr);
   if (n)
     rt_feed_net(c, n);
 
-  rt_feed_done(c);
+  rt_feed_done(&c->h);
 }
 
 static void
 rt_feed_for(void *data)
 {
-  struct rt_export_hook *c = data;
+  struct rt_table_export_hook *c = data;
   rtable *tab = SKIP_BACK(rtable, exporter, c->table);
 
-  ASSERT_DIE(atomic_load_explicit(&c->export_state, memory_order_relaxed) == TES_FEEDING);
-  ASSERT_DIE(c->req->addr_mode == TE_ADDR_FOR);
+  ASSERT_DIE(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
+  ASSERT_DIE(c->h.req->addr_mode == TE_ADDR_FOR);
 
-  net *n = net_route(tab, c->req->addr);
+  net *n = net_route(tab, c->h.req->addr);
   if (n)
     rt_feed_net(c, n);
 
-  rt_feed_done(c);
+  rt_feed_done(&c->h);
 }
 
 static uint
-rt_feed_net(struct rt_export_hook *c, net *n)
+rt_feed_net(struct rt_table_export_hook *c, net *n)
 {
   uint count = 0;
 
-  if (c->req->export_bulk)
+  if (c->h.req->export_bulk)
   {
     count = rte_feed_count(n);
     if (count)
     {
       rte **feed = alloca(count * sizeof(rte *));
       rte_feed_obtain(n, feed, count);
-      c->req->export_bulk(c->req, n->n.addr, NULL, feed, count);
+      c->h.req->export_bulk(c->h.req, n->n.addr, NULL, feed, count);
     }
   }
 
   else if (n->routes)
   {
     struct rt_pending_export rpe = { .new = n->routes, .new_best = n->routes };
-    c->req->export_one(c->req, n->n.addr, &rpe);
+    c->h.req->export_one(c->h.req, n->n.addr, &rpe);
     count = 1;
   }
 
-  rpe_mark_seen_all(c, n->first, NULL);
+  rpe_mark_seen_all(&c->h, n->first, NULL);
   return count;
 }
 
@@ -4072,7 +4112,7 @@ rt_init_hostcache(rtable *tab)
     .export_one = hc_notify_export_one,
   };
 
-  rt_request_export(&tab->exporter, &hc->req);
+  rt_request_export(tab, &hc->req);
 
   tab->hostcache = hc;
 }

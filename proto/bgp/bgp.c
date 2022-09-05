@@ -847,7 +847,7 @@ bgp_graceful_restart_feed(struct bgp_channel *c)
     .export_one = bgp_graceful_restart_drop_export,
   };
 
-  rt_request_export(&c->c.table->exporter, &c->stale_feed);
+  rt_request_export(c->c.table, &c->stale_feed);
 }
 
 

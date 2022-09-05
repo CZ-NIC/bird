@@ -301,7 +301,7 @@ rt_show_cont(struct rt_show_data *d)
   if (d->tables_defined_by & RSD_TDB_SET)
     rt_show_table(d);
 
-  rt_request_export(d->tab->table, &d->req);
+  rt_request_export_other(d->tab->table, &d->req);
 }
 
 static void
@@ -356,7 +356,7 @@ rt_show_add_exporter(struct rt_show_data *d, struct rt_exporter *t, const char *
 struct rt_show_data_rtable *
 rt_show_add_table(struct rt_show_data *d, struct rtable *t)
 {
-  struct rt_show_data_rtable *rsdr = rt_show_add_exporter(d, &t->exporter, t->name);
+  struct rt_show_data_rtable *rsdr = rt_show_add_exporter(d, &t->exporter.e, t->name);
 
   struct proto_config *krt = t->config->krt_attached;
   if (krt)
@@ -419,11 +419,11 @@ rt_show_prepare_tables(struct rt_show_data *d)
     if (d->export_mode)
     {
       if (!tab->export_channel && d->export_channel &&
-	  (tab->table == &d->export_channel->table->exporter))
+	  (tab->table == &d->export_channel->table->exporter.e))
 	tab->export_channel = d->export_channel;
 
       if (!tab->export_channel && d->export_protocol)
-	tab->export_channel = proto_find_channel_by_table(d->export_protocol, SKIP_BACK(rtable, exporter, tab->table));
+	tab->export_channel = proto_find_channel_by_table(d->export_protocol, SKIP_BACK(rtable, exporter.e, tab->table));
 
       if (!tab->export_channel)
       {

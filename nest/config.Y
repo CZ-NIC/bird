@@ -702,7 +702,7 @@ r_args:
    }
  | r_args IMPORT TABLE channel_arg {
      if (!($4->in_keep & RIK_PREFILTER)) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_exporter($$, &$4->table->exporter, "import")->prefilter = $4;
+     rt_show_add_exporter($$, &$4->table->exporter.e, "import")->prefilter = $4;
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args EXPORT TABLE channel_arg {

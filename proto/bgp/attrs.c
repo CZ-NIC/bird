@@ -1867,25 +1867,30 @@ bgp_free_pending_tx(struct bgp_channel *c)
  *	Prefix hash table exporter
  */
 
+struct bgp_out_export_hook {
+  struct rt_export_hook h;
+  u32 hash_iter;				/* Iterator over hash */
+};
+
 static void
 bgp_out_table_feed(void *data)
 {
-  struct rt_export_hook *hook = data;
-  struct bgp_channel *bc = SKIP_BACK(struct bgp_channel, prefix_exporter, hook->table);
+  struct bgp_out_export_hook *hook = data;
+  struct bgp_channel *bc = SKIP_BACK(struct bgp_channel, prefix_exporter, hook->h.table);
   struct bgp_pending_tx *c = bc->ptx;
 
   int max = 512;
 
-  const net_addr *neq = (hook->req->addr_mode == TE_ADDR_EQUAL) ? hook->req->addr : NULL;
+  const net_addr *neq = (hook->h.req->addr_mode == TE_ADDR_EQUAL) ? hook->h.req->addr : NULL;
   const net_addr *cand = NULL;
 
   do {
     HASH_WALK_ITER(c->prefix_hash, PXH, n, hook->hash_iter)
     {
-      switch (hook->req->addr_mode)
+      switch (hook->h.req->addr_mode)
       {
 	case TE_ADDR_IN:
-	  if (!net_in_netX(n->net, hook->req->addr))
+	  if (!net_in_netX(n->net, hook->h.req->addr))
 	    continue;
 	  /* fall through */
 	case TE_ADDR_NONE:
@@ -1897,7 +1902,7 @@ bgp_out_table_feed(void *data)
 	case TE_ADDR_FOR:
 	  if (!neq)
 	  {
-	    if (net_in_netX(hook->req->addr, n->net) && (!cand || (n->net->length > cand->length)))
+	    if (net_in_netX(hook->h.req->addr, n->net) && (!cand || (n->net->length > cand->length)))
 	      cand = n->net;
 	    continue;
 	  }
@@ -1942,13 +1947,13 @@ bgp_out_table_feed(void *data)
 	.new = &es, .new_best = &es,
       };
 
-      if (hook->req->export_bulk)
+      if (hook->h.req->export_bulk)
       {
 	rte *feed = &es.rte;
-	hook->req->export_bulk(hook->req, n->net, &rpe, &feed, 1);
+	hook->h.req->export_bulk(hook->h.req, n->net, &rpe, &feed, 1);
       }
-      else if (hook->req->export_one)
-	hook->req->export_one(hook->req, n->net, &rpe);
+      else if (hook->h.req->export_one)
+	hook->h.req->export_one(hook->h.req, n->net, &rpe);
       else
 	bug("No export method in export request");
     }
@@ -1959,29 +1964,27 @@ bgp_out_table_feed(void *data)
   } while (neq);
 
   if (hook->hash_iter)
-    ev_schedule_work(hook->event);
+    ev_schedule_work(&hook->h.event);
   else
-    rt_set_export_state(hook, TES_READY);
-}
-
-static struct rt_export_hook *
-bgp_out_table_export_start(struct rt_exporter *re, struct rt_export_request *req UNUSED)
-{
-  struct bgp_channel *bc = SKIP_BACK(struct bgp_channel, prefix_exporter, re);
-  pool *p = rp_new(bc->c.proto->pool, "Export hook");
-  struct rt_export_hook *hook = mb_allocz(p, sizeof(struct rt_export_hook));
-  hook->pool = p;
-  hook->event = ev_new_init(p, bgp_out_table_feed, hook);
-  hook->feed_type = TFT_HASH;
-
-  return hook;
+    rt_set_export_state(&hook->h, TES_READY);
 }
 
 static void
-bgp_out_table_export_done(struct rt_export_hook *hook)
+bgp_out_table_export_start(struct rt_exporter *re, struct rt_export_request *req)
 {
-  rfree(hook->pool);
+  req->hook = rt_alloc_export(re, sizeof(struct bgp_out_export_hook));
+  req->hook->req = req;
+
+  struct bgp_out_export_hook *hook = SKIP_BACK(struct bgp_out_export_hook, h, req->hook);
+
+  hook->h.event.hook = bgp_out_table_feed;
+  rt_init_export(re, req->hook);
 }
+
+static const struct rt_exporter_class bgp_out_table_export_class = {
+  .start = bgp_out_table_export_start,
+  .done = rt_export_stopped,
+};
 
 void
 bgp_setup_out_table(struct bgp_channel *c)
@@ -1989,13 +1992,12 @@ bgp_setup_out_table(struct bgp_channel *c)
   ASSERT_DIE(c->c.out_table == NULL);
 
   c->prefix_exporter = (struct rt_exporter) {
+    .class = &bgp_out_table_export_class,
     .addr_type = c->c.table->addr_type,
-    .start = bgp_out_table_export_start,
-    .done = bgp_out_table_export_done,
+    .rp = c->c.proto->pool,
   };
 
-  init_list(&c->prefix_exporter.hooks);
-  init_list(&c->prefix_exporter.pending);
+  rt_exporter_init(&c->prefix_exporter);
 
   c->c.out_table = &c->prefix_exporter;
 }

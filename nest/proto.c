@@ -376,7 +376,7 @@ channel_dump_roa_req(struct rt_export_request *req)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
   struct channel *c = s->c;
-  rtable *tab = SKIP_BACK(rtable, exporter, req->hook->table);
+  rtable *tab = SKIP_BACK(rtable, exporter.e, req->hook->table);
 
   debug("  Channel %s.%s ROA %s change notifier from table %s request %p\n",
       c->proto->name, c->name,
@@ -394,7 +394,7 @@ channel_roa_is_subscribed(struct channel *c, rtable *tab, int dir)
   node *n;
 
   WALK_LIST2(s, n, c->roa_subscriptions, roa_node)
-    if ((s->req.hook->table == &tab->exporter) && (s->t.hook == hook))
+    if ((s->req.hook->table == &tab->exporter.e) && (s->t.hook == hook))
       return 1;
 
   return 0;
@@ -422,7 +422,7 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
   };
 
   add_tail(&c->roa_subscriptions, &s->roa_node);
-  rt_request_export(&tab->exporter, &s->req);
+  rt_request_export(tab, &s->req);
 }
 
 static void
@@ -575,7 +575,7 @@ channel_start_export(struct channel *c)
   }
 
   DBG("%s.%s: Channel start export req=%p\n", c->proto->name, c->name, &c->out_req);
-  rt_request_export(&c->table->exporter, &c->out_req);
+  rt_request_export(c->table, &c->out_req);
 }
 
 static void
@@ -629,7 +629,7 @@ channel_export_stopped(struct rt_export_request *req)
   {
     c->refeeding = 1;
     c->refeed_pending = 0;
-    rt_request_export(&c->table->exporter, req);
+    rt_request_export(c->table, req);
     return;
   }
 
@@ -673,7 +673,7 @@ channel_schedule_reload(struct channel *c)
 {
   ASSERT(c->in_req.hook);
 
-  rt_request_export(&c->table->exporter, &c->reload_req);
+  rt_request_export(c->table, &c->reload_req);
 }
 
 static void
