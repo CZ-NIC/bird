@@ -181,7 +181,6 @@ const char *rt_export_state_name(u8 state)
     return rt_export_state_name_array[state];
 }
 
-static inline struct rte_storage *rt_next_hop_update_rte(rtable *tab, net *n, rte *old);
 static struct hostentry *rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
 
 #define rt_trace(tab, level, fmt, args...)  do {\
@@ -3250,17 +3249,16 @@ rta_next_hop_outdated(ea_list *a)
     ? head : NULL;
 }
 
-static inline struct rte_storage *
-rt_next_hop_update_rte(rtable *tab, net *n, rte *old)
+static inline int
+rt_next_hop_update_rte(rte *old, rte *new)
 {
   struct hostentry_adata *head = rta_next_hop_outdated(old->attrs);
   if (!head)
-    return NULL;
+    return 0;
 
-  rte e0 = *old;
-  rta_apply_hostentry(&e0.attrs, head);
-
-  return rte_store(&e0, n, tab);
+  *new = *old;
+  rta_apply_hostentry(&new->attrs, head);
+  return 1;
 }
 
 static inline void
@@ -3392,31 +3390,30 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, ea_list *
 
 #endif /* CONFIG_BGP */
 
-static struct rte_storage *
-rt_flowspec_update_rte(rtable *tab, net *n, rte *r)
+static int
+rt_flowspec_update_rte(rtable *tab, rte *r, rte *new)
 {
 #ifdef CONFIG_BGP
   if (r->generation || (rt_get_source_attr(r) != RTS_BGP))
-    return NULL;
+    return 0;
 
   struct bgp_channel *bc = (struct bgp_channel *) SKIP_BACK(struct channel, in_req, r->sender->req);
   if (!bc->base_table)
-    return NULL;
+    return 0;
 
   struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, bc->c.proto);
 
   enum flowspec_valid old = rt_get_flowspec_valid(r),
-		      valid = rt_flowspec_check(bc->base_table, tab, n->n.addr, r->attrs, p->is_interior);
+		      valid = rt_flowspec_check(bc->base_table, tab, r->net, r->attrs, p->is_interior);
 
   if (old == valid)
-    return NULL;
+    return 0;
 
-  rte new = *r;
-  ea_set_attr_u32(&new.attrs, &ea_gen_flowspec_valid, 0, valid);
-
-  return rte_store(&new, n, tab);
+  *new = *r;
+  ea_set_attr_u32(&new->attrs, &ea_gen_flowspec_valid, 0, valid);
+  return 1;
 #else
-  return NULL;
+  return 0;
 #endif
 }
 
@@ -3453,8 +3450,7 @@ rt_flowspec_resolve_rte(rte *r, struct channel *c)
 static inline int
 rt_next_hop_update_net(rtable *tab, net *n)
 {
-  struct rte_storage *new;
-  int count = 0;
+  uint count = 0;
   int is_flow = net_is_flow(n->n.addr);
 
   struct rte_storage *old_best = n->routes;
@@ -3462,49 +3458,71 @@ rt_next_hop_update_net(rtable *tab, net *n)
     return 0;
 
   for (struct rte_storage *e, **k = &n->routes; e = *k; k = &e->next)
-    if (is_flow || rta_next_hop_outdated(e->rte.attrs))
-      count++;
+    count++;
 
   if (!count)
     return 0;
 
   struct rte_multiupdate {
-    struct rte_storage *old, *new;
-  } *updates = alloca(sizeof(struct rte_multiupdate) * count);
+    struct rte_storage *old, *new_stored;
+    rte new;
+  } *updates = tmp_allocz(sizeof(struct rte_multiupdate) * (count+1));
 
-  int pos = 0;
+  //struct rt_pending_export *last_pending = n->last;
+
+  uint pos = 0;
   for (struct rte_storage *e, **k = &n->routes; e = *k; k = &e->next)
-    if (is_flow || rta_next_hop_outdated(e->rte.attrs))
+    updates[pos++].old = e;
+
+  uint mod = 0;
+  if (is_flow)
+    for (uint i = 0; i < pos; i++)
+      mod += rt_flowspec_update_rte(tab, &updates[i].old->rte, &updates[i].new);
+
+  else
+    for (uint i = 0; i < pos; i++)
+      mod += rt_next_hop_update_rte(&updates[i].old->rte, &updates[i].new);
+
+  if (!mod)
+    return 0;
+
+  /* Next commit: Here check whether the network hasn't changed while generating updates */
+
+  for (uint i = 0; i < pos; i++)
+    if (updates[i].new.attrs)
       {
-	struct rte_storage *new = is_flow
-	  ? rt_flowspec_update_rte(tab, n, &e->rte)
-	  : rt_next_hop_update_rte(tab, n, &e->rte);
-
-	if (!new)
-	  continue;
-
 	/* Call a pre-comparison hook */
 	/* Not really an efficient way to compute this */
-	if (e->rte.src->owner->rte_recalculate)
-	  e->rte.src->owner->rte_recalculate(tab, n, &new->rte, &e->rte, &old_best->rte);
-
-	updates[pos++] = (struct rte_multiupdate) {
-	  .old = e,
-	  .new = new,
-	};
-
-	/* Replace the route in the list */
-	new->next = e->next;
-	*k = e = new;
+	if (updates[i].old->rte.src->owner->rte_recalculate)
+	  updates[i].old->rte.src->owner->rte_recalculate(tab, n, &updates[i].new, &updates[i].old->rte, &old_best->rte);
+	/* And store the route */
+	struct rte_storage *ns = updates[i].new_stored = rte_store(&updates[i].new, n, tab);
 
 	/* Get a new ID for the route */
-	new->rte.lastmod = current_time();
-	new->rte.id = hmap_first_zero(&tab->id_map);
-	hmap_set(&tab->id_map, new->rte.id);
+	ns->rte.lastmod = current_time();
+	ns->rte.id = hmap_first_zero(&tab->id_map);
+	hmap_set(&tab->id_map, ns->rte.id);
       }
 
-  ASSERT_DIE(pos <= count);
-  count = pos;
+  /* Now we reconstruct the original linked list */
+  struct rte_storage **nptr = &n->routes;
+  for (uint i = 0; i < pos; i++)
+  {
+    updates[i].old->next = NULL;
+
+    struct rte_storage *put = updates[i].new_stored ?: updates[i].old;
+    *nptr = put;
+    nptr = &put->next;
+  }
+  *nptr = NULL;
+
+  {
+    uint t = 0;
+    for (struct rte_storage *e = n->routes; e; e = e->next)
+      t++;
+    ASSERT_DIE(t == pos);
+    ASSERT_DIE(pos == count);
+  }
 
   /* Find the new best route */
   struct rte_storage **new_best = NULL;
@@ -3515,7 +3533,7 @@ rt_next_hop_update_net(rtable *tab, net *n)
     }
 
   /* Relink the new best route to the first position */
-  new = *new_best;
+  struct rte_storage *new = *new_best;
   if (new != n->routes)
     {
       *new_best = new->next;
@@ -3523,19 +3541,25 @@ rt_next_hop_update_net(rtable *tab, net *n)
       n->routes = new;
     }
 
+  uint total = 0;
   /* Announce the changes */
-  for (int i=0; i<count; i++)
+  for (uint i=0; i<count; i++)
   {
-    _Bool nb = (new == updates[i].new), ob = (old_best == updates[i].old);
+    if (!updates[i].new_stored)
+      continue;
+
+    _Bool nb = (new->rte.src == updates[i].new.src), ob = (i == 0);
     const char *best_indicator[2][2] = {
       { "autoupdated", "autoupdated [-best]" },
       { "autoupdated [+best]", "autoupdated [best]" }
     };
-    rt_rte_trace_in(D_ROUTES, updates[i].new->rte.sender->req, &updates[i].new->rte, best_indicator[nb][ob]);
-    rte_announce(tab, n, updates[i].new, updates[i].old, new, old_best);
+    rt_rte_trace_in(D_ROUTES, updates[i].new.sender->req, &updates[i].new, best_indicator[nb][ob]);
+    rte_announce(tab, n, updates[i].new_stored, updates[i].old, new, old_best);
+
+    total++;
   }
 
-  return count;
+  return total;
 }
 
 static void
@@ -3564,7 +3588,10 @@ rt_next_hop_update(rtable *tab)
 	  ev_schedule(tab->rt_event);
 	  return;
 	}
+      lp_state lps;
+      lp_save(tmp_linpool, &lps);
       max_feed -= rt_next_hop_update_net(tab, n);
+      lp_restore(tmp_linpool, &lps);
     }
   FIB_ITERATE_END;
 
