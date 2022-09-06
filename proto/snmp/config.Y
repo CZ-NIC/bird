@@ -61,7 +61,8 @@ snmp_bgp_bond: BGP symbol
 
   struct proto_config *pc;
   WALK_LIST(pc, this_proto->global->protos)
-    if (!strcmp(pc->name, $2->name) && pc->protocol == &proto_bgp)
+    if (!strcmp(pc->name, $2->name) && pc->protocol == &proto_bgp
+        && !ipa_zero(((struct bgp_proto *) pc)->remote_ip)) 
       this_bond->proto = pc;
 
   if (!this_bond->proto) cf_error("BGP protocol %s not found", $2->name);

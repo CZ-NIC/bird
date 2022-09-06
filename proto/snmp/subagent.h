@@ -6,36 +6,111 @@
 
 void snmp_start_subagent(struct snmp_proto *p);
 void snmp_stop_subagent(struct snmp_proto *p);
+void snmp_ping(struct snmp_proto *p);
 
-#define AGENTX_INTEGER		  2
-#define AGENTX_OCTET_STRING	  4
-#define AGENTX_NULL		  5
-#define AGENTX_OBJECT_ID	  6
-#define AGENTX_IP_ADDRESS	 64
-#define AGENTX_COUNTER_32	 65
-#define AGENTX_GAUGE_32		 66
-#define AGENTX_TIME_TICKS	 67
-#define AGENTX_OPAQUE		 68
-#define AGENTX_COUNTER_64	 70
-#define AGENTX_NO_SUCH_OBJECT	128
-#define AGENTX_NO_SUCH_INSTANCE 129
-#define AGENTX_END_OF_MIB_VIEW	130
+#define AGENTX_VERSION              1
+
+#define SNMP_OSPF_MIB 14	      /* part of oid .1.3.6.1.2.1.14 */
+#define SNMP_BGP4_MIB 15	      /* part of oid .1.3.6.1.2.1.15 */
+#define SNMP_OSPFv3_MIB 192	      /* part of oid .1.3.6.1.2.1.192 */
+
+enum agentx_type {
+  AGENTX_INTEGER	    =   2;
+  AGENTX_OCTET_STRING	    =   4;
+  AGENTX_NULL		    =   5;
+  AGENTX_OBJECT_ID	    =   6;
+  AGENTX_IP_ADDRESS	    =  64;
+  AGENTX_COUNTER_32	    =  65;
+  AGENTX_GAUGE_32	    =  66;
+  AGENTX_TIME_TICKS	    =  67;
+  AGENTX_OPAQUE		    =  68;
+  AGENTX_COUNTER_64	    =  70;
+  AGENTX_NO_SUCH_OBJECT	    = 128;
+  AGENTX_NO_SUCH_INSTANCE   = 129;
+  AGENTX_END_OF_MIB_VIEW    = 130;
+} PACKED;
+
+#define AGENTX_ADMIN_STOP   1
+#define AGENTX_ADMIN_START  2
 
 #define AGENTX_PRIORITY		127
 #define MAX_STR 0xFFFFFFFF
 
-#define PASTE_HEADER_(buf, v, t, f, s)		      \
-  memset(buf, 0, sizeof(struct agentx_header));	      \
-  struct agentx_header *h = (void *) buf;	      \
-  log(L_INFO "value : %d", (void *) h == buf? 1:0);   \
-  h->version = v;				      \
-  h->type = t;	    				      \
-  h->flags = f;		  			      \
-  h->pad = 0;			  		      \
-  ADVANCE(buf, s, sizeof(struct agentx_header));      \
+#define SNMP_NATIVE
 
-#define PASTE_HEADER(buf, t, f, s)	PASTE_HEADER_(buf, AGENTX_VERSION, t, f, s)
-#define U32_CPY(w, u) memcpy((w), (u), 4); ADVANCE((w), 4, 4);
+#ifdef SNMP_NATIVE
+#define STORE(v,c) (v) = (u32) (c)
+#define STORE_16(v,c) (v) = (u16) (c)
+#define STORE_PTR(v,c) *((u32 *) (v)) = (u32) (c)
+#define SNMP_UPDATE(h,l) \
+  STORE((h)->payload, l)
+
+#else
+#define STORE(v, c) put_u32(&v, c)
+#define STORE_16(v,c) put_u32(&v, c)
+#define STORE_PTR(v,c) put_u32(v, c)
+#define SNMP_UPDATE(h,l) \
+  STORE(h->payload, l)
+#endif
+
+/* storing byte (u8) is always the same */
+#define SNMP_HEADER_(h, v, t, f)  \
+  put_u8(&h->version, v);	  \
+  put_u8(&h->type, t);		  \
+  put_u8(&h->flags, f);		  \
+  put_u8(&h->pad, 0);
+
+#ifdef SNMP_NATIVE
+#define SNMP_HEADER(h,t,f)    SNMP_HEADER_(h, AGENTX_VERSION, t, f)
+#else
+#define SNMP_HEADER(h,t,f) \
+  SNMP_HEADER_(h, AGENTX_VERSION, t, f | SNMP_NETWORK_BYTE_ORDER)
+#endif
+
+#define SNMP_B_HEADER(h, t) SNMP_HEADER(h, t, AGENTX_FLAG_BLANK)
+
+#define SNMP_SESSION(h, p)			\
+  STORE(h->session_id, p->session_id);		\
+  STORE(h->transaction_id, p->transaction_id);	\
+  p->transaction_id++;				\
+  STORE(h->packet_id, p->packet_id);
+
+#define SNMP_CREATE(b, t, n)  \
+  n = (void *) (b);	      \
+  memset(n, 0, sizeof(t));    \
+  (b) += sizeof(t);
+
+#define LOAD(v, bo) ((bo) ? get_u32(&v) : (u32) (v))
+#define LOAD_16(v, bo) ((bo) ? get_u16(&v) : (u16) (v))
+#define LOAD_PTR(v, bo) ((bo) ? get_u32(v) : (u32) *(v))
+
+#define LOAD_STR(p, b, s, l, bo)    \
+  l = LOAD(*((u32 *) b), bo);	    \
+  log(L_INFO "LOAD_STR(), %p %u", p->p.pool, l + 1); \
+  s = mb_allocz(p->p.pool, l + 1);  \
+  memcpy(s, b, l);		    \
+  b += str_size(s);
+
+#define SNMP_LOAD_CONTEXT(p, h, b, s, l)      \
+  if (h->flags & AGENTX_NON_DEFAULT_CONTEXT)  \
+    { log(L_INFO "encountered non-default context"); \
+    LOAD_STR(p, b, s, l, h->flags & AGENTX_NETWORK_BYTE_ORDER); }
+
+#define SNMP_COPY_OID(b, o) \
+  memcpy(b, o, oid_size(o));   \
+  b += oid_size(o);
+
+#define SNMP_COPY_VB(b, s, e)	\
+  memcpy(b, s, 4);		\
+  b += 4;			\
+  SNMP_COPY_OID(b, &s->name)	\
+  SNMP_COPY_OID(b, e)
+
+#define BGP_DATA_(v, d, p, o) \
+  (v)->type = d;		  \
+  p += o;
+
+#define BGP_DATA(v, d, p) BGP_DATA(v, d, p, 4)
 
 struct agentx_header {
   u8 version;
@@ -50,17 +125,12 @@ struct agentx_header {
 
 #define AGENTX_HEADER_SIZE sizeof(struct agentx_header)
 
-struct subid{
-  u32 len;
-  u32 ids[];
-};
-
 struct oid {
   u8 n_subid;
   u8 prefix;
   u8 include;
   u8 pad;
-  struct subid subid;
+  u32 ids[];
 };
 
 struct agentx_varbind {
@@ -70,6 +140,7 @@ struct agentx_varbind {
   struct oid name;
 };
 
+/* this does not work */
 struct agentx_search_range {
   struct oid start;
   struct oid end;
@@ -82,7 +153,18 @@ struct agentx_response {
   u16 index;
 };
 
-#define AGENTX_VERSION		      1
+struct agentx_close_pdu {
+  struct agentx_header h;
+  u8 reason;
+};
+
+struct agentx_un_register_pdu {
+  struct agentx_header h;
+  u8 timeout;
+  u8 priority;
+  u8 range_subid;
+  u8 padd;
+};
 
 enum agentx_pdu {
   AGENTX_OPEN_PDU		=  1,
@@ -108,6 +190,7 @@ enum agentx_pdu {
 #define AGENTX_FLAGS_MASK          0x1F
 
 enum agentx_flags {
+  AGENTX_FLAG_BLANK		    = 0x00,
   AGENTX_FLAG_INSTANCE_REGISTRATION = 0x01,
   AGENTX_FLAG_NEW_INDEX		    = 0x02,
   AGENTX_FLAG_ANY_INDEX		    = 0x04,
