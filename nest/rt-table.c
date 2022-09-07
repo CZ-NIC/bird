@@ -130,7 +130,7 @@ struct rt_export_block {
 
 static void rt_free_hostcache(rtable *tab);
 static void rt_update_hostcache(void *tab);
-static void rt_next_hop_update(rtable *tab);
+static void rt_next_hop_update(void *tab);
 static inline void rt_next_hop_resolve_rte(rte *r);
 static inline void rt_flowspec_resolve_rte(rte *r, struct channel *c);
 static inline void rt_prune_table(rtable *tab);
@@ -2309,14 +2309,26 @@ rt_dump_hooks_all(void)
 static inline void
 rt_schedule_nhu(rtable *tab)
 {
-  if (tab->nhu_state == NHU_CLEAN)
-    ev_schedule(tab->rt_event);
+  if (tab->nhu_corked)
+  {
+    if (!(tab->nhu_corked & NHU_SCHEDULED))
+    {
+      tab->nhu_corked |= NHU_SCHEDULED;
+      rt_lock_table(tab);
+    }
+  }
+  else if (!(tab->nhu_state & NHU_SCHEDULED))
+  {
+    rt_trace(tab, D_EVENTS, "Scheduling NHU");
+    rt_lock_table(tab);
 
-  /* state change:
-   *   NHU_CLEAN   -> NHU_SCHEDULED
-   *   NHU_RUNNING -> NHU_DIRTY
-   */
-  tab->nhu_state |= NHU_SCHEDULED;
+    /* state change:
+     *   NHU_CLEAN   -> NHU_SCHEDULED
+     *   NHU_RUNNING -> NHU_DIRTY
+     */
+    if ((tab->nhu_state |= NHU_SCHEDULED) == NHU_SCHEDULED)
+      ev_schedule(tab->nhu_event);
+  }
 }
 
 void
@@ -2353,41 +2365,10 @@ rt_event(void *ptr)
   if (tab->export_used)
     rt_export_cleanup(tab);
 
-  if (tab->nhu_corked || tab->nhu_state && rt_cork_check(tab->uncork_event))
-  {
-    if (!tab->nhu_corked)
-    {
-      rt_trace(tab, D_STATES, "Next hop updater corked");
-      if ((tab->nhu_state & NHU_RUNNING)
-	  && !EMPTY_LIST(tab->exporter.pending)
-	  && !tm_active(tab->exporter.export_timer))
-	tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
-    }
-
-    tab->nhu_corked |= tab->nhu_state;
-    tab->nhu_state = 0;
-  }
-
-  if (tab->nhu_state)
-    rt_next_hop_update(tab);
-
   if (tab->prune_state)
     rt_prune_table(tab);
 
   rt_unlock_table(tab);
-}
-
-static void
-rt_uncork_event(void *ptr)
-{
-  rtable *tab = ptr;
-
-  tab->nhu_state |= tab->nhu_corked;
-  tab->nhu_corked = 0;
-
-  rt_trace(tab, D_STATES, "Next hop updater uncorked");
-
-  ev_schedule(tab->rt_event);
 }
 
 static void
@@ -2619,7 +2600,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   hmap_set(&t->id_map, 0);
 
   t->rt_event = ev_new_init(p, rt_event, t);
-  t->uncork_event = ev_new_init(p, rt_uncork_event, t);
+  t->nhu_event = ev_new_init(p, rt_next_hop_update, t);
   t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
   t->last_rt_change = t->gc_time = current_time();
 
@@ -3563,29 +3544,56 @@ rt_next_hop_update_net(rtable *tab, net *n)
 }
 
 static void
-rt_next_hop_update(rtable *tab)
+rt_next_hop_update(void *_tab)
 {
+  rtable *tab = _tab;
+
+  /* If called from an uncork hook, reset the state */
+  if (tab->nhu_corked)
+  {
+    ASSERT_DIE(tab->nhu_state == 0);
+    tab->nhu_state = tab->nhu_corked;
+    tab->nhu_corked = 0;
+    rt_trace(tab, D_STATES, "Next hop updater uncorked");
+  }
+
+  if (!tab->nhu_state)
+    bug("Called NHU event for no reason in table %s", tab->name);
+
+  /* Check corkedness */
+  if (rt_cork_check(tab->nhu_event))
+  {
+    rt_trace(tab, D_STATES, "Next hop updater corked");
+    if ((tab->nhu_state & NHU_RUNNING)
+	&& !EMPTY_LIST(tab->exporter.pending)
+	&& !tm_active(tab->exporter.export_timer))
+      tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
+
+    tab->nhu_corked = tab->nhu_state;
+    tab->nhu_state = 0;
+    return;
+  }
+
   struct fib_iterator *fit = &tab->nhu_fit;
   int max_feed = 32;
 
-  if (tab->nhu_state == NHU_CLEAN)
-    return;
-
+  /* Initialize a new run */
   if (tab->nhu_state == NHU_SCHEDULED)
-    {
-      FIB_ITERATE_INIT(fit, &tab->fib);
-      tab->nhu_state = NHU_RUNNING;
+  {
+    FIB_ITERATE_INIT(fit, &tab->fib);
+    tab->nhu_state = NHU_RUNNING;
 
-      if (tab->flowspec_trie)
-	rt_flowspec_reset_trie(tab);
-    }
+    if (tab->flowspec_trie)
+      rt_flowspec_reset_trie(tab);
+  }
 
+  /* Walk the fib one net after another */
   FIB_ITERATE_START(&tab->fib, fit, net, n)
     {
       if (max_feed <= 0)
 	{
 	  FIB_ITERATE_PUT(fit);
-	  ev_schedule(tab->rt_event);
+	  ev_schedule(tab->nhu_event);
 	  return;
 	}
       lp_state lps;
@@ -3595,6 +3603,7 @@ rt_next_hop_update(rtable *tab)
     }
   FIB_ITERATE_END;
 
+  /* Finished NHU, cleanup */
   rt_trace(tab, D_EVENTS, "NHU done, scheduling export timer");
 
   if (!tm_active(tab->exporter.export_timer))
@@ -3604,10 +3613,10 @@ rt_next_hop_update(rtable *tab)
    *   NHU_DIRTY   -> NHU_SCHEDULED
    *   NHU_RUNNING -> NHU_CLEAN
    */
-  tab->nhu_state &= 1;
+  if ((tab->nhu_state &= NHU_SCHEDULED) == NHU_SCHEDULED)
+    ev_schedule(tab->nhu_event);
 
-  if (tab->nhu_state != NHU_CLEAN)
-    ev_schedule(tab->rt_event);
+  rt_unlock_table(tab);
 }
 
 void

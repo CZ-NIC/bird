@@ -117,7 +117,7 @@ typedef struct rtable {
 					 * obstacle from this routing table.
 					 */
   struct event *rt_event;		/* Routing table event */
-  struct event *uncork_event;		/* Called when uncork happens */
+  struct event *nhu_event;		/* Specific event for next hop update */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
   btime last_rt_change;			/* Last time when route changed */
   btime gc_time;			/* Time of last GC */
