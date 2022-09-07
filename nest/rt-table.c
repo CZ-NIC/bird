@@ -3680,10 +3680,10 @@ rt_new_table(struct symbol *s, uint addr_type)
  * preventing it from being freed when it gets undefined in a new
  * configuration.
  */
-void
-rt_lock_table(rtable *r)
+void rt_lock_table_debug(rtable *tab, const char *file, uint line)
 {
-  r->use_count++;
+  rt_trace(tab, D_STATES, "Locked at %s:%d", file, line);
+  tab->use_count++;
 }
 
 /**
@@ -3694,9 +3694,9 @@ rt_lock_table(rtable *r)
  * that is decrease its use count and delete it if it's scheduled
  * for deletion by configuration changes.
  */
-void
-rt_unlock_table(rtable *r)
+void rt_unlock_table_debug(rtable *r, const char *file, uint line)
 {
+  rt_trace(r, D_STATES, "Unlocked at %s:%d", file, line);
   if (!--r->use_count && r->deleted)
     {
       struct config *conf = r->deleted;

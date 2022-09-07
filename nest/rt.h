@@ -482,8 +482,12 @@ void rt_init(void);
 void rt_preconfig(struct config *);
 void rt_postconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
-void rt_lock_table(rtable *);
-void rt_unlock_table(rtable *);
+
+void rt_lock_table_debug(rtable *, const char *file, uint line);
+void rt_unlock_table_debug(rtable *, const char *file, uint line);
+#define rt_lock_table(tab)	rt_lock_table_debug(tab, __FILE__, __LINE__)
+#define rt_unlock_table(tab)	rt_unlock_table_debug(tab, __FILE__, __LINE__)
+
 struct f_trie * rt_lock_trie(rtable *tab);
 void rt_unlock_trie(rtable *tab, struct f_trie *trie);
 void rt_flowspec_link(rtable *src, rtable *dst);
