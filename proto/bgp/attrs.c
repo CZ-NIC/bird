@@ -1981,9 +1981,20 @@ bgp_out_table_export_start(struct rt_exporter *re, struct rt_export_request *req
   rt_init_export(re, req->hook);
 }
 
+static void
+bgp_out_table_export_done(void *data)
+{
+  struct bgp_out_export_hook *hook = data;
+  struct rt_export_request *req = hook->h.req;
+  void (*stopped)(struct rt_export_request *) = hook->h.stopped;
+
+  rt_export_stopped(&hook->h);
+  CALL(stopped, req);
+}
+
 static const struct rt_exporter_class bgp_out_table_export_class = {
   .start = bgp_out_table_export_start,
-  .done = rt_export_stopped,
+  .done = bgp_out_table_export_done,
 };
 
 void
@@ -2519,7 +2530,7 @@ use_deterministic_med(struct rte_storage *r)
 }
 
 int
-bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
+bgp_rte_recalculate(struct rtable_private *table, net *net, rte *new, rte *old, rte *old_best)
 {
   rte *key = new ? new : old;
   u32 lpref = rt_get_preference(key);

@@ -354,9 +354,11 @@ rt_show_add_exporter(struct rt_show_data *d, struct rt_exporter *t, const char *
 }
 
 struct rt_show_data_rtable *
-rt_show_add_table(struct rt_show_data *d, struct rtable *t)
+rt_show_add_table(struct rt_show_data *d, rtable *t)
 {
-  struct rt_show_data_rtable *rsdr = rt_show_add_exporter(d, &t->exporter.e, t->name);
+  struct rt_show_data_rtable *rsdr;
+  RT_LOCKED(t, tp)
+    rsdr = rt_show_add_exporter(d, &tp->exporter.e, t->name);
 
   struct proto_config *krt = t->config->krt_attached;
   if (krt)
@@ -418,12 +420,13 @@ rt_show_prepare_tables(struct rt_show_data *d)
     /* Ensure there is defined export_channel for each table */
     if (d->export_mode)
     {
+      rtable *rt = SKIP_BACK(rtable, priv.exporter.e, tab->table);
       if (!tab->export_channel && d->export_channel &&
-	  (tab->table == &d->export_channel->table->exporter.e))
+	  (rt == d->export_channel->table))
 	tab->export_channel = d->export_channel;
 
       if (!tab->export_channel && d->export_protocol)
-	tab->export_channel = proto_find_channel_by_table(d->export_protocol, SKIP_BACK(rtable, exporter.e, tab->table));
+	tab->export_channel = proto_find_channel_by_table(d->export_protocol, rt);
 
       if (!tab->export_channel)
       {

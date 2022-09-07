@@ -169,7 +169,7 @@ proto_cf_find_channel(struct proto_config *pc, uint net_type)
  * Returns pointer to channel or NULL
  */
 struct channel *
-proto_find_channel_by_table(struct proto *p, struct rtable *t)
+proto_find_channel_by_table(struct proto *p, rtable *t)
 {
   struct channel *c;
 
@@ -376,7 +376,7 @@ channel_dump_roa_req(struct rt_export_request *req)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
   struct channel *c = s->c;
-  rtable *tab = SKIP_BACK(rtable, exporter.e, req->hook->table);
+  struct rtable_private *tab = SKIP_BACK(struct rtable_private, exporter.e, req->hook->table);
 
   debug("  Channel %s.%s ROA %s change notifier from table %s request %p\n",
       c->proto->name, c->name,
@@ -394,7 +394,8 @@ channel_roa_is_subscribed(struct channel *c, rtable *tab, int dir)
   node *n;
 
   WALK_LIST2(s, n, c->roa_subscriptions, roa_node)
-    if ((s->req.hook->table == &tab->exporter.e) && (s->t.hook == hook))
+    if ((tab == SKIP_BACK(rtable, priv.exporter.e, s->req.hook->table))
+	  && (s->t.hook == hook))
       return 1;
 
   return 0;
@@ -447,7 +448,7 @@ static void
 channel_roa_subscribe_filter(struct channel *c, int dir)
 {
   const struct filter *f = dir ? c->in_filter : c->out_filter;
-  struct rtable *tab;
+  rtable *tab;
   int valid = 1, found = 0;
 
   if ((f == FILTER_ACCEPT) || (f == FILTER_REJECT))
@@ -608,8 +609,6 @@ void
 channel_import_stopped(struct rt_import_request *req)
 {
   struct channel *c = SKIP_BACK(struct channel, in_req, req);
-
-  req->hook = NULL;
 
   mb_free(c->in_req.name);
   c->in_req.name = NULL;

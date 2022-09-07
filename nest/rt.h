@@ -53,7 +53,7 @@ struct rt_cork_threshold {
 struct rtable_config {
   node n;
   char *name;
-  struct rtable *table;
+  union rtable *table;
   struct proto_config *krt_attached;	/* Kernel syncer attached to this table */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
   uint gc_threshold;			/* Maximum number of operations before GC is run */
@@ -93,16 +93,28 @@ struct rt_table_exporter {
 
 extern uint rtable_max_id;
 
-typedef struct rtable {
-  resource r;
-  node n;				/* Node in list of all tables */
+DEFINE_DOMAIN(rtable);
+
+/* The public part of rtable structure */
+#define RTABLE_PUBLIC \
+    resource r;											\
+    node n;				/* Node in list of all tables */			\
+    char *name;				/* Name of this table */				\
+    uint addr_type;			/* Type of address data stored in table (NET_*) */	\
+    uint id;				/* Integer table ID for fast lookup */			\
+    DOMAIN(rtable) lock;		/* Lock to take to access the private parts */		\
+    struct rtable_config *config;	/* Configuration of this table */			\
+
+/* The complete rtable structure */
+struct rtable_private {
+  /* Once more the public part */
+  RTABLE_PUBLIC;
+
+  /* Here the private items not to be accessed without locking */
   pool *rp;				/* Resource pool to allocate everything from, including itself */
   struct slab *rte_slab;		/* Slab to allocate route objects */
   struct fib fib;
   struct f_trie *trie;			/* Trie of prefixes defined in fib */
-  char *name;				/* Name of this table */
-  uint addr_type;			/* Type of address data stored in table (NET_*) */
-  uint id;				/* Integer table ID for fast lookup */
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
 
@@ -111,7 +123,6 @@ typedef struct rtable {
 
   struct hmap id_map;
   struct hostcache *hostcache;
-  struct rtable_config *config;		/* Configuration of this table */
   struct config *deleted;		/* Table doesn't exist in current configuration,
 					 * delete as soon as use_count becomes 0 and remove
 					 * obstacle from this routing table.
@@ -138,7 +149,27 @@ typedef struct rtable {
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
 
   struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
+};
+
+/* The final union private-public rtable structure */
+typedef union rtable {
+  struct {
+    RTABLE_PUBLIC;
+  };
+  struct rtable_private priv;
 } rtable;
+
+#define RT_IS_LOCKED(tab)	DOMAIN_IS_LOCKED(rtable, (tab)->lock)
+
+#define RT_LOCK(tab)	({ LOCK_DOMAIN(rtable, (tab)->lock); &(tab)->priv; })
+#define RT_UNLOCK(tab)	UNLOCK_DOMAIN(rtable, (tab)->lock)
+#define RT_PRIV(tab)	({ ASSERT_DIE(RT_IS_LOCKED((tab))); &(tab)->priv; })
+#define RT_PUB(tab)	SKIP_BACK(rtable, priv, tab)
+
+#define RT_LOCKED(tpub, tpriv) for (struct rtable_private *tpriv = RT_LOCK(tpub); tpriv; RT_UNLOCK(tpriv), (tpriv = NULL))
+#define RT_RETURN(tpriv, ...) do { RT_UNLOCK(tpriv); return __VA_ARGS__; } while (0)
+
+#define RT_PRIV_SAME(tpriv, tpub)	(&(tpub)->priv == (tpriv))
 
 extern struct rt_cork {
   _Atomic uint active;
@@ -386,7 +417,7 @@ int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
 
 void rt_init_export(struct rt_exporter *re, struct rt_export_hook *hook);
 struct rt_export_hook *rt_alloc_export(struct rt_exporter *re, uint size);
-void rt_export_stopped(void *data);
+void rt_export_stopped(struct rt_export_hook *hook);
 void rt_exporter_init(struct rt_exporter *re);
 
 /* Types of route announcement, also used as flags */
@@ -416,7 +447,7 @@ struct hostentry {
   ip_addr addr;				/* IP address of host, part of key */
   ip_addr link;				/* (link-local) IP address of host, used as gw
 					   if host is directly attached */
-  struct rtable *tab;			/* Dependent table, part of key */
+  rtable *tab;				/* Dependent table, part of key */
   struct hostentry *next;		/* Next in hash chain */
   unsigned hash_key;			/* Hash key */
   unsigned uc;				/* Use count */
@@ -487,34 +518,36 @@ void rt_init(void);
 void rt_preconfig(struct config *);
 void rt_postconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
+void rt_lock_table_priv(struct rtable_private *, const char *file, uint line);
+void rt_unlock_table_priv(struct rtable_private *, const char *file, uint line);
+static inline void rt_lock_table_pub(rtable *t, const char *file, uint line)
+{ RT_LOCKED(t, tt) rt_lock_table_priv(tt, file, line); }
+static inline void rt_unlock_table_pub(rtable *t, const char *file, uint line)
+{ RT_LOCKED(t, tt) rt_unlock_table_priv(tt, file, line); }
 
-void rt_lock_table_debug(rtable *, const char *file, uint line);
-void rt_unlock_table_debug(rtable *, const char *file, uint line);
-#define rt_lock_table(tab)	rt_lock_table_debug(tab, __FILE__, __LINE__)
-#define rt_unlock_table(tab)	rt_unlock_table_debug(tab, __FILE__, __LINE__)
+#define rt_lock_table(t)	_Generic((t),  rtable *: rt_lock_table_pub, \
+				struct rtable_private *: rt_lock_table_priv)((t), __FILE__, __LINE__)
+#define rt_unlock_table(t)	_Generic((t),  rtable *: rt_unlock_table_pub, \
+				struct rtable_private *: rt_unlock_table_priv)((t), __FILE__, __LINE__)
 
-struct f_trie * rt_lock_trie(rtable *tab);
-void rt_unlock_trie(rtable *tab, struct f_trie *trie);
+struct f_trie * rt_lock_trie(struct rtable_private *tab);
+void rt_unlock_trie(struct rtable_private *tab, struct f_trie *trie);
 void rt_flowspec_link(rtable *src, rtable *dst);
 void rt_flowspec_unlink(rtable *src, rtable *dst);
 rtable *rt_setup(pool *, struct rtable_config *);
-static inline void rt_shutdown(rtable *r) { rfree(r->rp); }
 
-static inline net *net_find(rtable *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
-static inline net *net_find_valid(rtable *tab, const net_addr *addr)
+static inline net *net_find(struct rtable_private *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
+static inline net *net_find_valid(struct rtable_private *tab, const net_addr *addr)
 { net *n = net_find(tab, addr); return (n && n->routes && rte_is_valid(&n->routes->rte)) ? n : NULL; }
-static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
-net *net_get(rtable *tab, const net_addr *addr);
-net *net_route(rtable *tab, const net_addr *n);
+static inline net *net_get(struct rtable_private *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
+net *net_route(struct rtable_private *tab, const net_addr *n);
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, rte ** feed, uint count, linpool *pool, int silent);
 void rt_refresh_begin(struct rt_import_request *);
 void rt_refresh_end(struct rt_import_request *);
 void rt_modify_stale(rtable *t, struct rt_import_request *);
-void rt_schedule_prune(rtable *t);
+void rt_schedule_prune(struct rtable_private *t);
 void rte_dump(struct rte_storage *);
-void rte_free(struct rte_storage *);
-struct rte_storage *rte_store(const rte *, net *net, rtable *);
 void rt_dump(rtable *);
 void rt_dump_all(void);
 void rt_dump_hooks(rtable *);
@@ -575,7 +608,7 @@ struct rt_show_data {
 
 void rt_show(struct rt_show_data *);
 struct rt_show_data_rtable * rt_show_add_exporter(struct rt_show_data *d, struct rt_exporter *t, const char *name);
-struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, struct rtable *t);
+struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t);
 
 /* Value of table definition mode in struct rt_show_data */
 #define RSD_TDB_DEFAULT	  0		/* no table specified */
@@ -602,7 +635,7 @@ struct hostentry_adata {
 };
 
 void
-ea_set_hostentry(ea_list **to, struct rtable *dep, struct rtable *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum]);
+ea_set_hostentry(ea_list **to, rtable *dep, rtable *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum]);
 
 void ea_show_hostentry(const struct adata *ad, byte *buf, uint size);
 void ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad);
