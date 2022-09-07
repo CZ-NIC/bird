@@ -300,6 +300,11 @@ struct rt_table_export_hook {
     struct {
       struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
       struct f_trie *walk_lock;			/* Locked trie for walking */
+      union {					/* Last net visited but not processed */
+	net_addr walk_last;
+	net_addr_ip4 walk_last_ip4;
+	net_addr_ip6 walk_last_ip6;
+      };
     };
   };
 

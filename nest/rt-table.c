@@ -139,7 +139,6 @@ static void rt_feed_by_fib(void *);
 static void rt_feed_by_trie(void *);
 static void rt_feed_equal(void *);
 static void rt_feed_for(void *);
-static uint rt_feed_net(struct rt_table_export_hook *c, net *n);
 static void rt_check_cork_low(rtable *tab);
 static void rt_check_cork_high(rtable *tab);
 static void rt_cork_release_hook(void *);
@@ -2015,6 +2014,7 @@ rt_table_export_start(struct rt_exporter *re, struct rt_export_request *req)
 	hook->walk_lock = rt_lock_trie(tab);
 	trie_walk_init(hook->walk_state, tab->trie, req->addr);
 	hook->h.event.hook = rt_feed_by_trie;
+	hook->walk_last.type = 0;
 	break;
       }
       /* fall through */
@@ -3836,6 +3836,74 @@ rt_feed_done(struct rt_export_hook *c)
   rt_send_export_event(c);
 }
 
+#define MAX_FEED_BLOCK	1024
+typedef struct {
+  uint cnt, pos;
+  union {
+    struct rt_pending_export *rpe;
+    struct {
+      rte **feed;
+      uint *start;
+    };
+  };
+} rt_feed_block;
+
+static int
+rt_prepare_feed(struct rt_table_export_hook *c, net *n, rt_feed_block *b)
+{
+  if (n->routes)
+  {
+    if (c->h.req->export_bulk)
+    {
+      uint cnt = rte_feed_count(n);
+      if (b->cnt && (b->cnt + cnt > MAX_FEED_BLOCK))
+	return 0;
+
+      if (!b->cnt)
+      {
+	b->feed = tmp_alloc(sizeof(rte *) * MAX(MAX_FEED_BLOCK, cnt));
+	b->start = tmp_alloc(sizeof(uint) * ((cnt >= MAX_FEED_BLOCK) ? 2 : (MAX_FEED_BLOCK + 2 - cnt)));
+      }
+
+      rte_feed_obtain(n, &b->feed[b->cnt], cnt);
+      b->start[b->pos++] = b->cnt;
+      b->cnt += cnt;
+    }
+    else if (b->pos == MAX_FEED_BLOCK)
+      return 0;
+    else
+    {
+      if (!b->pos)
+	b->rpe = tmp_alloc(sizeof(struct rt_pending_export) * MAX_FEED_BLOCK);
+
+      b->rpe[b->pos++] = (struct rt_pending_export) { .new = n->routes, .new_best = n->routes };
+    }
+  }
+
+  rpe_mark_seen_all(&c->h, n->first, NULL);
+  return 1;
+}
+
+static void
+rt_process_feed(struct rt_table_export_hook *c, rt_feed_block *b)
+{
+  if (!b->pos)
+    return;
+
+  if (c->h.req->export_bulk)
+  {
+    b->start[b->pos] = b->cnt;
+    for (uint p = 0; p < b->pos; p++)
+    {
+      rte **feed = &b->feed[b->start[p]];
+      c->h.req->export_bulk(c->h.req, feed[0]->net, NULL, feed, b->start[p+1] - b->start[p]);
+    }
+  }
+  else
+    for (uint p = 0; p < b->pos; p++)
+      c->h.req->export_one(c->h.req, b->rpe[p].new->rte.net, &b->rpe[p]);
+}
+
 /**
  * rt_feed_by_fib - advertise all routes to a channel by walking a fib
  * @c: channel to be fed
@@ -3851,7 +3919,8 @@ rt_feed_by_fib(void *data)
   struct rt_table_export_hook *c = data;
 
   struct fib_iterator *fit = &c->feed_fit;
-  int max_feed = 256;
+
+  rt_feed_block block = {};
 
   ASSERT(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
 
@@ -3859,21 +3928,23 @@ rt_feed_by_fib(void *data)
 
   FIB_ITERATE_START(&tab->fib, fit, net, n)
     {
-      if (max_feed <= 0)
+      if ((c->h.req->addr_mode == TE_ADDR_NONE) || net_in_netX(n->n.addr, c->h.req->addr))
+      {
+	if (atomic_load_explicit(&c->h.export_state, memory_order_acquire) != TES_FEEDING)
+	  return;
+
+	if (!rt_prepare_feed(c, n, &block))
 	{
 	  FIB_ITERATE_PUT(fit);
+	  rt_process_feed(c, &block);
 	  rt_send_export_event(&c->h);
 	  return;
 	}
-
-      if (atomic_load_explicit(&c->h.export_state, memory_order_acquire) != TES_FEEDING)
-	return;
-
-      if ((c->h.req->addr_mode == TE_ADDR_NONE) || net_in_netX(n->n.addr, c->h.req->addr))
-	max_feed -= rt_feed_net(c, n);
+      }
     }
   FIB_ITERATE_END;
 
+  rt_process_feed(c, &block);
   rt_feed_done(&c->h);
 }
 
@@ -3886,29 +3957,37 @@ rt_feed_by_trie(void *data)
   ASSERT_DIE(c->walk_state);
   struct f_trie_walk_state *ws = c->walk_state;
 
-  int max_feed = 256;
+  rt_feed_block block = {};
 
   ASSERT(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
 
-  net_addr addr;
-  while (trie_walk_next(ws, &addr))
-  {
-    net *n = net_find(tab, &addr);
+  do {
+    if (!c->walk_last.type)
+      continue;
+
+    net *n = net_find(tab, &c->walk_last);
     if (!n)
       continue;
 
-    if ((max_feed -= rt_feed_net(c, n)) <= 0)
-      return;
-
     if (atomic_load_explicit(&c->h.export_state, memory_order_acquire) != TES_FEEDING)
       return;
+
+    if (!rt_prepare_feed(c, n, &block))
+    {
+      rt_process_feed(c, &block);
+      rt_send_export_event(&c->h);
+      return;
+    }
   }
+  while (trie_walk_next(ws, &c->walk_last));
 
   rt_unlock_trie(tab, c->walk_lock);
   c->walk_lock = NULL;
 
   mb_free(c->walk_state);
   c->walk_state = NULL;
+
+  c->walk_last.type = 0;
 
   rt_feed_done(&c->h);
 }
@@ -3922,9 +4001,14 @@ rt_feed_equal(void *data)
   ASSERT_DIE(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
   ASSERT_DIE(c->h.req->addr_mode == TE_ADDR_EQUAL);
 
+  rt_feed_block block = {};
+
   net *n = net_find(tab, c->h.req->addr);
   if (n)
-    rt_feed_net(c, n);
+  {
+    ASSERT_DIE(rt_prepare_feed(c, n, &block));
+    rt_process_feed(c, &block);
+  }
 
   rt_feed_done(&c->h);
 }
@@ -3938,39 +4022,18 @@ rt_feed_for(void *data)
   ASSERT_DIE(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
   ASSERT_DIE(c->h.req->addr_mode == TE_ADDR_FOR);
 
+  rt_feed_block block = {};
+
   net *n = net_route(tab, c->h.req->addr);
   if (n)
-    rt_feed_net(c, n);
+  {
+    ASSERT_DIE(rt_prepare_feed(c, n, &block));
+    rt_process_feed(c, &block);
+  }
 
   rt_feed_done(&c->h);
 }
 
-static uint
-rt_feed_net(struct rt_table_export_hook *c, net *n)
-{
-  uint count = 0;
-
-  if (c->h.req->export_bulk)
-  {
-    count = rte_feed_count(n);
-    if (count)
-    {
-      rte **feed = alloca(count * sizeof(rte *));
-      rte_feed_obtain(n, feed, count);
-      c->h.req->export_bulk(c->h.req, n->n.addr, NULL, feed, count);
-    }
-  }
-
-  else if (n->routes)
-  {
-    struct rt_pending_export rpe = { .new = n->routes, .new_best = n->routes };
-    c->h.req->export_one(c->h.req, n->n.addr, &rpe);
-    count = 1;
-  }
-
-  rpe_mark_seen_all(&c->h, n->first, NULL);
-  return count;
-}
 
 /*
  *	Import table
