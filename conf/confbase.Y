@@ -14,6 +14,7 @@ CF_HDR
 #include "conf/conf.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
+#include "lib/settle.h"
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/protocol.h"
@@ -93,6 +94,7 @@ CF_DECLS
   struct proto_spec ps;
   struct channel_limit cl;
   struct timeformat *tf;
+  struct settle_config settle;
   struct adata *ad;
   struct bytestring *bs;
 }
@@ -111,6 +113,7 @@ CF_DECLS
 
 %type <i> expr bool pxlen4
 %type <time> expr_us time
+%type <settle> settle
 %type <a> ipa
 %type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
@@ -385,6 +388,13 @@ time:
        cf_error("Invalid date/time");
    }
  ;
+
+/* Settle timer configuration */
+settle: expr_us expr_us {
+  if ($1 > $2) cf_error("Minimum settle time %t is bigger than maximum settle time %t", $1, $2);
+  $$.min = $1;
+  $$.max = $2;
+};
 
 text:
    TEXT

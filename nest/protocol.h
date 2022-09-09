@@ -12,6 +12,7 @@
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
+#include "lib/settle.h"
 #include "nest/rt.h"
 #include "nest/limit.h"
 #include "conf/conf.h"
@@ -462,8 +463,7 @@ struct channel_config {
   struct channel_limit in_limit;	/* Limit for importing routes from protocol */
   struct channel_limit out_limit;	/* Limit for exporting routes to protocol */
 
-  btime min_settle_time;		/* Minimum settle time for ROA-induced reload */
-  btime max_settle_time;		/* Maximum settle time for ROA-induced reload */
+  struct settle_config roa_settle;	/* Settle times for ROA-induced reload */
 
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
@@ -492,8 +492,7 @@ struct channel {
   struct limit in_limit;		/* Input limit */
   struct limit out_limit;		/* Output limit */
 
-  btime min_settle_time;		/* Minimum settle time for ROA-induced reload */
-  btime max_settle_time;		/* Maximum settle time for ROA-induced reload */
+  struct settle_config roa_settle;	/* Settle times for ROA-induced reload */
 
   u8 limit_actions[PLD_MAX];		/* Limit actions enum */
   u8 limit_active;			/* Flags for active limits */

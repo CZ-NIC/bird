@@ -965,14 +965,15 @@ inherited from templates can be updated by new definitions.
 	<ref id="bgp-export-table" name="export table"> (for respective
 	direction). Default: on.
 
-	<tag><label id="rtable-min-settle-time">min settle time <m/time/</tag>
-	Minimum settle time is a delay from the last ROA table change to wait
-	for more updates before triggering automatic reload. Default: 1 s.
-
-	<tag><label id="rtable-min-settle-time">min settle time <m/time/</tag>
-        Maximum settle time is an upper limit to the settle time from the
-        initial ROA table change even if there are consecutive updates gradually
-        renewing the settle time.  Default: 20 s.
+	<tag><label id="rtable-min-settle-time">roa settle time <m/time/ <m/time/</tag>
+	Minimum and maximum settle times, respectively, for ROA table changes.
+        The automatic reload is triggered after the minimum time after the last
+        ROA table change has been received but not later than the maximum time after
+        first unprocessed ROA table change. Therefore with default values, the
+        automatic reload happens 1 second after the ROA table stops updating, yet if it
+	were to be later than 20 seconds after the ROA table starts updating,
+	the automatic reload is triggered anyway. Default values: <cf/1 s 20 s/.
+	You have to always provide both values.
 
 	<tag><label id="proto-import-limit">import limit [<m/number/ | off ] [action warn | block | restart | disable]</tag>
 	Specify an import route limit (a maximum number of routes imported from
