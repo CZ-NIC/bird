@@ -111,6 +111,7 @@ struct rtable_private {
 
   /* Here the private items not to be accessed without locking */
   pool *rp;				/* Resource pool to allocate everything from, including itself */
+  struct birdloop *loop;		/* Service thread */
   struct slab *rte_slab;		/* Slab to allocate route objects */
   struct fib fib;
   struct f_trie *trie;			/* Trie of prefixes defined in fib */
@@ -128,6 +129,7 @@ struct rtable_private {
 					 */
   struct event *rt_event;		/* Routing table event */
   struct event *nhu_event;		/* Specific event for next hop update */
+  struct event *nhu_uncork_event;	/* Helper event to schedule NHU on uncork */
   struct event *export_event;		/* Event for export batching */
   struct timer *export_timer;		/* Timer for export batching */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
@@ -188,7 +190,7 @@ static inline void rt_cork_release(void)
   if (atomic_fetch_sub_explicit(&rt_cork.active, 1, memory_order_acq_rel) == 1)
   {
     synchronize_rcu();
-    ev_schedule_work(&rt_cork.run);
+    ev_send(&global_work_list, &rt_cork.run);
   }
 }
 

@@ -15,6 +15,7 @@ struct domain_generic;
 struct lock_order {
   struct domain_generic *the_bird;
   struct domain_generic *proto;
+  struct domain_generic *service;
   struct domain_generic *rtable;
   struct domain_generic *attrs;
   struct domain_generic *resource;
