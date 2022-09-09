@@ -2,14 +2,13 @@ src := cli.c cmds.c iface.c locks.c neighbor.c password.c proto.c proto-build.c 
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
-$(call proto-build,dev_build)
 
-$(proto-build-c): $(lastword $(MAKEFILE_LIST))
+$(objdir)/nest/proto-build.c: $(lastword $(MAKEFILE_LIST))
 	$(E)echo GEN $@
 	$(Q)echo "#include \"lib/birdlib.h\"" > $@
-	$(Q)$(patsubst %,echo 'void %(void);' >> $@;,$(PROTO_BUILD))
+	$(Q)$(patsubst %,echo 'void %_build(void);' >> $@;,$(PROTO_BUILD))
 	$(Q)echo "void protos_build_gen(void) {" >> $@
-	$(Q)$(patsubst %,echo '  %();'>>$@;,$(PROTO_BUILD))
+	$(Q)$(patsubst %,echo '  %_build();'>>$@;,$(PROTO_BUILD))
 	$(Q)echo "}" >> $@
 
 tests_src :=
