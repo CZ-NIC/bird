@@ -109,7 +109,6 @@ print_size(char *dsc, struct resmem vals)
 
 extern pool *rt_table_pool;
 extern pool *rta_pool;
-extern uint *pages_kept;
 
 void
 cmd_show_memory(void)
@@ -121,8 +120,9 @@ cmd_show_memory(void)
   print_size("Protocols:", rmemsize(proto_pool));
   struct resmem total = rmemsize(&root_pool);
 #ifdef HAVE_MMAP
-  print_size("Standby memory:", (struct resmem) { .overhead = page_size * *pages_kept });
-  total.overhead += page_size * *pages_kept;
+  int pages_kept = atomic_load_explicit(&pages_kept, memory_order_relaxed);
+  print_size("Standby memory:", (struct resmem) { .overhead = page_size * pages_kept });
+  total.overhead += page_size * pages_kept;
 #endif
   print_size("Total:", total);
   cli_msg(0, "");

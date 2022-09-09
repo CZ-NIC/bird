@@ -122,6 +122,7 @@ void buffer_realloc(void **buf, unsigned *size, unsigned need, unsigned item_siz
 /* Allocator of whole pages; for use in slabs and other high-level allocators. */
 #define PAGE_HEAD(x)	((void *) (((uintptr_t) (x)) & ~(page_size-1)))
 extern long page_size;
+extern _Atomic int pages_kept;
 void *alloc_page(void);
 void free_page(void *);
 
