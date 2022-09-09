@@ -1433,6 +1433,14 @@ rt_announce_exports(timer *tm)
 }
 
 static void
+rt_kick_announce_exports(void *_tab)
+{
+  RT_LOCKED((rtable *) _tab, tab)
+    if (!tm_active(tab->export_timer))
+      tm_start(tab->export_timer, tab->config->export_settle_time);
+}
+
+static void
 rt_import_announce_exports(void *_hook)
 {
   struct rt_import_hook *hook = _hook;
@@ -1455,9 +1463,7 @@ rt_import_announce_exports(void *_hook)
     }
 
     rt_trace(tab, D_EVENTS, "Announcing exports after imports from %s", hook->req->name);
-
-    if (!tm_active(tab->exporter.export_timer))
-      tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
+    ev_schedule(tab->export_event);
   }
 }
 
@@ -2703,6 +2709,8 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   t->rt_event = ev_new_init(p, rt_event, t);
   t->nhu_event = ev_new_init(p, rt_next_hop_update, t);
+  t->export_event = ev_new_init(p, rt_kick_announce_exports, t);
+  t->export_timer = tm_new_init(p, rt_announce_exports, t, 0, 0);
   t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
   t->last_rt_change = t->gc_time = current_time();
 
@@ -2712,7 +2720,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
       .addr_type = t->addr_type,
       .rp = t->rp,
     },
-    .export_timer = tm_new_init(p, rt_announce_exports, t, 0, 0),
     .next_seq = 1,
   };
 
@@ -2852,8 +2859,8 @@ again:
   FIB_ITERATE_END;
 
   rt_trace(tab, D_EVENTS, "Prune done, scheduling export timer");
-  if (!tm_active(tab->exporter.export_timer))
-    tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
+  if (!tm_active(tab->export_timer))
+    tm_start(tab->export_timer, tab->config->export_settle_time);
 
 #ifdef DEBUGGING
   fib_check(&tab->fib);
@@ -3078,8 +3085,8 @@ done:;
     ev_schedule(tab->rt_event);
 
 
-  if (EMPTY_LIST(tab->exporter.pending) && tm_active(tab->exporter.export_timer))
-    tm_stop(tab->exporter.export_timer);
+  if (EMPTY_LIST(tab->exporter.pending) && tm_active(tab->export_timer))
+    tm_stop(tab->export_timer);
 }
 
 static void
@@ -3704,8 +3711,8 @@ rt_next_hop_update(void *_tab)
     rt_trace(tab, D_STATES, "Next hop updater corked");
     if ((tab->nhu_state & NHU_RUNNING)
 	&& !EMPTY_LIST(tab->exporter.pending)
-	&& !tm_active(tab->exporter.export_timer))
-      tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
+	&& !tm_active(tab->export_timer))
+      tm_start(tab->export_timer, tab->config->export_settle_time);
 
     tab->nhu_corked = tab->nhu_state;
     tab->nhu_state = 0;
@@ -3744,8 +3751,8 @@ rt_next_hop_update(void *_tab)
   /* Finished NHU, cleanup */
   rt_trace(tab, D_EVENTS, "NHU done, scheduling export timer");
 
-  if (!tm_active(tab->exporter.export_timer))
-    tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
+  if (!tm_active(tab->export_timer))
+    tm_start(tab->export_timer, tab->config->export_settle_time);
 
   /* State change:
    *   NHU_DIRTY   -> NHU_SCHEDULED

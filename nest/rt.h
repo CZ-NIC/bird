@@ -85,7 +85,6 @@ struct rt_exporter {
 struct rt_table_exporter {
   struct rt_exporter e;
   list pending;				/* List of packed struct rt_pending_export */
-  struct timer *export_timer;
 
   struct rt_pending_export *first;	/* First export to announce */
   u64 next_seq;				/* The next export will have this ID */
@@ -129,6 +128,8 @@ struct rtable_private {
 					 */
   struct event *rt_event;		/* Routing table event */
   struct event *nhu_event;		/* Specific event for next hop update */
+  struct event *export_event;		/* Event for export batching */
+  struct timer *export_timer;		/* Timer for export batching */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
   btime last_rt_change;			/* Last time when route changed */
   btime gc_time;			/* Time of last GC */
