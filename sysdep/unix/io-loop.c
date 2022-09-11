@@ -560,8 +560,11 @@ birdloop_main(void *arg)
   /* Flush remaining events */
   ASSERT_DIE(!ev_run_list(&loop->event_list));
 
-  /* No timers allowed */
-  ASSERT_DIE(timers_count(&loop->time) == 0);
+  /* Drop timers */
+  while (t = timers_first(&loop->time))
+    tm_stop(t);
+
+  /* No sockets allowed */
   ASSERT_DIE(EMPTY_LIST(loop->sock_list));
   ASSERT_DIE(loop->sock_num == 0);
 
