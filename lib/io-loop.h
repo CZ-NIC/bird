@@ -50,6 +50,14 @@ void birdloop_unlink(struct birdloop *loop);
 
 void birdloop_ping(struct birdloop *loop);
 
+struct birdloop_flag_handler {
+  void (*hook)(struct birdloop_flag_handler *, u32 flags);
+  void *data;
+};
+
+void birdloop_flag(struct birdloop *loop, u32 flag);
+void birdloop_flag_set_handler(struct birdloop *, struct birdloop_flag_handler *);
+
 void birdloop_init(void);
 
 /* Yield for a little while. Use only in special cases. */

@@ -59,6 +59,31 @@ birdloop_inside(struct birdloop *loop)
   return 0;
 }
 
+void
+birdloop_flag(struct birdloop *loop, u32 flag)
+{
+  atomic_fetch_or_explicit(&loop->flags, flag, memory_order_acq_rel);
+  birdloop_ping(loop);
+}
+
+void
+birdloop_flag_set_handler(struct birdloop *loop, struct birdloop_flag_handler *fh)
+{
+  ASSERT_DIE(birdloop_inside(loop));
+  loop->flag_handler = fh;
+}
+
+static int
+birdloop_process_flags(struct birdloop *loop)
+{
+  if (!loop->flag_handler)
+    return 0;
+
+  u32 flags = atomic_exchange_explicit(&loop->flags, 0, memory_order_acq_rel);
+  loop->flag_handler->hook(loop->flag_handler, flags);
+  return !!flags;
+}
+
 /*
  *	Wakeup code for birdloop
  */
@@ -516,7 +541,7 @@ birdloop_main(void *arg)
   while (1)
   {
     timers_fire(&loop->time, 0);
-    if (ev_run_list(&loop->event_list))
+    if (birdloop_process_flags(loop) + ev_run_list(&loop->event_list))
       timeout = 0;
     else if (t = timers_first(&loop->time))
       timeout = (tm_remains(t) TO_MS) + 1;

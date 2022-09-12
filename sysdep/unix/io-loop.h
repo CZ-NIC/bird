@@ -34,6 +34,9 @@ struct birdloop
 
   uint links;
 
+  _Atomic u32 flags;
+  struct birdloop_flag_handler *flag_handler;
+
   void (*stopped)(void *data);
   void *stop_data;
 
