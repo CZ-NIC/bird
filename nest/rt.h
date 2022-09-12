@@ -19,6 +19,7 @@
 #include "lib/route.h"
 #include "lib/event.h"
 #include "lib/rcu.h"
+#include "lib/io-loop.h"
 
 #include <stdatomic.h>
 
@@ -103,6 +104,7 @@ DEFINE_DOMAIN(rtable);
     uint id;				/* Integer table ID for fast lookup */			\
     DOMAIN(rtable) lock;		/* Lock to take to access the private parts */		\
     struct rtable_config *config;	/* Configuration of this table */			\
+    struct birdloop *loop;		/* Service thread */					\
 
 /* The complete rtable structure */
 struct rtable_private {
@@ -111,7 +113,6 @@ struct rtable_private {
 
   /* Here the private items not to be accessed without locking */
   pool *rp;				/* Resource pool to allocate everything from, including itself */
-  struct birdloop *loop;		/* Service thread */
   struct slab *rte_slab;		/* Slab to allocate route objects */
   struct fib fib;
   struct f_trie *trie;			/* Trie of prefixes defined in fib */
@@ -127,12 +128,10 @@ struct rtable_private {
 					 * delete as soon as use_count becomes 0 and remove
 					 * obstacle from this routing table.
 					 */
-  struct event *rt_event;		/* Routing table event */
-  struct event *nhu_event;		/* Specific event for next hop update */
   struct event *nhu_uncork_event;	/* Helper event to schedule NHU on uncork */
-  struct event *export_event;		/* Event for export batching */
   struct timer *export_timer;		/* Timer for export batching */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
+  struct birdloop_flag_handler fh;	/* Handler for simple events */
   btime last_rt_change;			/* Last time when route changed */
   btime gc_time;			/* Time of last GC */
   uint gc_counter;			/* Number of operations since last GC */
@@ -173,6 +172,11 @@ typedef union rtable {
 #define RT_RETURN(tpriv, ...) do { RT_UNLOCK(tpriv); return __VA_ARGS__; } while (0)
 
 #define RT_PRIV_SAME(tpriv, tpub)	(&(tpub)->priv == (tpriv))
+
+/* Flags for birdloop_flag() */
+#define RTF_CLEANUP	1
+#define RTF_NHU		2
+#define RTF_EXPORT	4
 
 extern struct rt_cork {
   _Atomic uint active;
