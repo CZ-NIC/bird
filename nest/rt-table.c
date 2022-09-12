@@ -2881,7 +2881,8 @@ again:
 #endif
 
   /* state change 2->0, 3->1 */
-  tab->prune_state &= 1;
+  if (tab->prune_state &= 1)
+    birdloop_flag(tab->loop, RTF_CLEANUP);
 
   if (tab->trie_new)
   {
