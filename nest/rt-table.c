@@ -2188,18 +2188,15 @@ rt_stop_export(struct rt_export_request *req, void (*stopped)(struct rt_export_r
   ASSERT_DIE(req->hook);
   struct rt_export_hook *hook = req->hook;
 
-  /* Cancel the feeder event */
-  ev_postpone(&hook->event);
-
   /* Stop feeding from the exporter */
   CALL(hook->table->class->stop, hook);
+
+  /* Update export state */
+  rt_set_export_state(hook, TES_STOP);
 
   /* Reset the event as the stopped event */
   hook->event.hook = hook->table->class->done;
   hook->stopped = stopped;
-
-  /* Update export state */
-  rt_set_export_state(hook, TES_STOP);
 
   /* Run the stopped event */
   rt_send_export_event(hook);
@@ -4131,9 +4128,6 @@ rt_feed_by_fib(void *data)
     {
       if ((c->h.req->addr_mode == TE_ADDR_NONE) || net_in_netX(n->n.addr, c->h.req->addr))
       {
-	if (atomic_load_explicit(&c->h.export_state, memory_order_acquire) != TES_FEEDING)
-	  return;
-
 	if (!rt_prepare_feed(c, n, &block))
 	{
 	  FIB_ITERATE_PUT(fit);
@@ -4172,9 +4166,6 @@ rt_feed_by_trie(void *data)
     net *n = net_find(tab, &c->walk_last);
     if (!n)
       continue;
-
-    if (atomic_load_explicit(&c->h.export_state, memory_order_acquire) != TES_FEEDING)
-      RT_RETURN(tab);
 
     if (!rt_prepare_feed(c, n, &block))
     {
