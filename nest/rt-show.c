@@ -103,7 +103,7 @@ static void
 rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 {
   rte *e, *ee;
-  byte ia[NET_MAX_TEXT_LENGTH+1];
+  byte ia[NET_MAX_TEXT_LENGTH+16+1];
   struct channel *ec = d->tab->export_channel;
 
   /* The Clang static analyzer complains that ec may be NULL.
@@ -112,6 +112,7 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
   int first = 1;
   int first_show = 1;
+  int last_label = 0;
   int pass = 0;
 
   for (e = n->routes; e; e = e->next)
@@ -187,13 +188,21 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
       if (d->stats < 2)
       {
-	if (first_show)
-	  net_format(n->n.addr, ia, sizeof(ia));
+	int label = (int) ea_get_int(e->attrs->eattrs, EA_MPLS_LABEL, (uint) -1);
+
+	if (first_show || (last_label != label))
+	{
+	  if (label < 0)
+	    net_format(n->n.addr, ia, sizeof(ia));
+	  else
+	    bsnprintf(ia, sizeof(ia), "%N mpls %d", n->n.addr, label);
+	}
 	else
 	  ia[0] = 0;
 
 	rt_show_rte(c, ia, e, d, (e->net->routes == ee));
 	first_show = 0;
+	last_label = label;
       }
 
       d->show_counter++;

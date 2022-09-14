@@ -66,6 +66,7 @@ bt_bird_init(void)
   io_init();
   rt_init();
   if_init();
+  mpls_init();
   config_init();
 
   protos_build();

@@ -31,6 +31,7 @@ struct channel;
 struct ea_list;
 struct eattr;
 struct symbol;
+struct mpls_fec_map;
 
 
 /*
@@ -172,6 +173,8 @@ struct proto {
   struct channel *main_channel;		/* Primary channel */
   struct rte_src *main_source;		/* Primary route source */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
+  struct channel *mpls_channel;		/* MPLS channel, when used */
+  struct mpls_fec_map *mpls_map;	/* Maps protocol routes to FECs / labels */
 
   const char *name;				/* Name of this instance (== cf->name) */
   u32 debug;				/* Debugging flags */
@@ -619,12 +622,16 @@ struct channel {
 struct channel_config *proto_cf_find_channel(struct proto_config *p, uint net_type);
 static inline struct channel_config *proto_cf_main_channel(struct proto_config *pc)
 { return proto_cf_find_channel(pc, pc->net_type); }
+static inline struct channel_config *proto_cf_mpls_channel(struct proto_config *pc)
+{ return proto_cf_find_channel(pc, NET_MPLS); }
 
 struct channel *proto_find_channel_by_table(struct proto *p, struct rtable *t);
 struct channel *proto_find_channel_by_name(struct proto *p, const char *n);
 struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
 void proto_remove_channel(struct proto *p, struct channel *c);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);
+void proto_setup_mpls_map(struct proto *p, uint rts, int hooks);
+void proto_shutdown_mpls_map(struct proto *p, int hooks);
 
 void channel_set_state(struct channel *c, uint state);
 void channel_setup_in_table(struct channel *c);
