@@ -491,12 +491,10 @@ static_start(struct proto *P)
     static_lp = lp_new(&root_pool, LP_GOOD_SIZE(1024));
 
   if (p->igp_table_ip4)
-    RT_LOCKED(p->igp_table_ip4, t)
-      rt_lock_table(t);
+    rt_lock_table(p->igp_table_ip4);
 
   if (p->igp_table_ip6)
-    RT_LOCKED(p->igp_table_ip6, t)
-      rt_lock_table(t);
+    rt_lock_table(p->igp_table_ip6);
 
   p->event = ev_new_init(p->p.pool, static_announce_marked, p);
 
@@ -523,12 +521,10 @@ static_shutdown(struct proto *P)
     static_reset_rte(p, r);
 
   if (p->igp_table_ip4)
-    RT_LOCKED(p->igp_table_ip4, t)
-      rt_unlock_table(t);
+    rt_unlock_table(p->igp_table_ip4);
 
   if (p->igp_table_ip6)
-    RT_LOCKED(p->igp_table_ip6, t)
-      rt_unlock_table(t);
+    rt_unlock_table(p->igp_table_ip6);
 
   return PS_DOWN;
 }

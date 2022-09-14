@@ -1212,7 +1212,7 @@
   INST(FI_ROA_CHECK_IMPLICIT, 0, 1) {	/* ROA Check */
     NEVER_CONSTANT;
     RTC(1);
-    rtable *table = rtc->table;
+    struct rtable *table = rtc->table;
     ACCESS_RTE;
     ACCESS_EATTRS;
     const net_addr *net = fs->rte->net;
@@ -1244,7 +1244,7 @@
     ARG(1, T_NET);
     ARG(2, T_INT);
     RTC(3);
-    rtable *table = rtc->table;
+    struct rtable *table = rtc->table;
 
     u32 as = v2.val.i;
 

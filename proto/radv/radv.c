@@ -555,10 +555,7 @@ radv_check_active(struct radv_proto *p)
     return 1;
 
   struct channel *c = p->p.main_channel;
-  RT_LOCK(c->table);
-  int active = rt_examine(RT_PRIV(c->table), &cf->trigger, c, c->out_filter);
-  RT_UNLOCK(c->table);
-  return active;
+  return rt_examine(c->table, &cf->trigger, c, c->out_filter);
 }
 
 static void

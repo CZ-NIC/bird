@@ -239,13 +239,11 @@ rt_show_cleanup(struct cli *c)
 
   /* Unlink the iterator */
   if (d->table_open)
-    RT_LOCKED(d->tab->table, t)
-      fit_get(&t->fib, &d->fit);
+    fit_get(&d->tab->table->fib, &d->fit);
 
   /* Unlock referenced tables */
   WALK_LIST(tab, d->tables)
-    RT_LOCKED(tab->table, t)
-      rt_unlock_table(t);
+    rt_unlock_table(tab->table);
 }
 
 static void
@@ -257,6 +255,8 @@ rt_show_cont(struct cli *c)
 #else
   unsigned max = 64;
 #endif
+  struct fib *fib = &d->tab->table->fib;
+  struct fib_iterator *it = &d->fit;
 
   if (d->running_on_config && (d->running_on_config != config))
   {
@@ -264,14 +264,9 @@ rt_show_cont(struct cli *c)
     goto done;
   }
 
-  rtable_private *t = RT_LOCK(d->tab->table);
-
-  struct fib *fib = &t->fib;
-  struct fib_iterator *it = &d->fit;
-
   if (!d->table_open)
   {
-    FIB_ITERATE_INIT(&d->fit, fib);
+    FIB_ITERATE_INIT(&d->fit, &d->tab->table->fib);
     d->table_open = 1;
     d->table_counter++;
     d->kernel = rt_show_get_kernel(d);
@@ -289,7 +284,6 @@ rt_show_cont(struct cli *c)
     if (!max--)
     {
       FIB_ITERATE_PUT(it);
-      RT_UNLOCK(d->tab->table);
       return;
     }
     rt_show_net(c, n, d);
@@ -305,8 +299,6 @@ rt_show_cont(struct cli *c)
 	       d->show_counter - d->show_counter_last, d->rt_counter - d->rt_counter_last,
 	       d->net_counter - d->net_counter_last, d->tab->table->name);
   }
-
-  RT_UNLOCK(d->tab->table);
 
   d->kernel = NULL;
   d->table_open = 0;
@@ -439,8 +431,7 @@ rt_show(struct rt_show_data *d)
   if (!d->addr)
   {
     WALK_LIST(tab, d->tables)
-      RT_LOCKED(tab->table, t)
-	rt_lock_table(t);
+      rt_lock_table(tab->table);
 
     /* There is at least one table */
     d->tab = HEAD(d->tables);
@@ -455,17 +446,13 @@ rt_show(struct rt_show_data *d)
       d->tab = tab;
       d->kernel = rt_show_get_kernel(d);
 
-      RT_LOCK(tab->table);
-
       if (d->show_for)
-	n = net_route(RT_PRIV(tab->table), d->addr);
+	n = net_route(tab->table, d->addr);
       else
-	n = net_find(RT_PRIV(tab->table), d->addr);
+	n = net_find(tab->table, d->addr);
 
       if (n)
 	rt_show_net(this_cli, n, d);
-
-      RT_UNLOCK(tab->table);
     }
 
     if (d->rt_counter)

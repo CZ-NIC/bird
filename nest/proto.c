@@ -172,7 +172,7 @@ proto_cf_find_channel(struct proto_config *pc, uint net_type)
  * Returns pointer to channel or NULL
  */
 struct channel *
-proto_find_channel_by_table(struct proto *p, rtable *t)
+proto_find_channel_by_table(struct proto *p, struct rtable *t)
 {
   struct channel *c;
 
@@ -236,9 +236,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->channel = cf->channel;
   c->proto = p;
   c->table = cf->table->table;
-
-  RT_LOCKED(c->table, t)
-    rt_lock_table(t);
+  rt_lock_table(c->table);
 
   c->in_filter = cf->in_filter;
   c->out_filter = cf->out_filter;
@@ -279,9 +277,7 @@ proto_remove_channel(struct proto *p UNUSED, struct channel *c)
 
   CD(c, "Removed", c->name);
 
-  RT_LOCKED(c->table, t)
-    rt_unlock_table(t);
-
+  rt_unlock_table(c->table);
   rem_node(&c->n);
   mb_free(c);
 }
@@ -395,7 +391,7 @@ static void
 channel_roa_subscribe_filter(struct channel *c, int dir)
 {
   const struct filter *f = dir ? c->in_filter : c->out_filter;
-  rtable *tab;
+  struct rtable *tab;
   int valid = 1, found = 0;
 
   if ((f == FILTER_ACCEPT) || (f == FILTER_REJECT))
@@ -564,11 +560,11 @@ channel_check_stopped(struct channel *c)
 }
 
 void
-channel_import_stopped(void *_c)
+channel_import_stopped(struct rt_import_request *req)
 {
-  struct channel *c = _c;
+  struct channel *c = SKIP_BACK(struct channel, in_req, req);
 
-  c->in_req.hook = NULL;
+  req->hook = NULL;
 
   mb_free(c->in_req.name);
   c->in_req.name = NULL;
@@ -665,16 +661,17 @@ channel_aux_stopped(void *data)
   else
     c->in_table = NULL;
 
-  rfree(cat->tab->priv.rp);
+  rfree(cat->tab->rp);
+
   mb_free(cat);
-  channel_check_stopped(c);
+  return channel_check_stopped(c);
 }
 
 static void
-channel_aux_import_stopped(void *_cat)
+channel_aux_import_stopped(struct rt_import_request *req)
 {
-  struct channel_aux_table *cat = _cat;
-  cat->push.hook = NULL;
+  struct channel_aux_table *cat = SKIP_BACK(struct channel_aux_table, push, req);
+  ASSERT_DIE(cat->tab->delete_event);
 }
 
 static void
@@ -683,35 +680,24 @@ channel_aux_export_stopped(struct rt_export_request *req)
   struct channel_aux_table *cat = SKIP_BACK(struct channel_aux_table, get, req);
   req->hook = NULL;
 
-  int del;
-  RT_LOCKED(cat->tab, t)
-    del = !!t->delete_event;
-
-  if (del)
-    return;
-
-  ASSERT_DIE(cat->refeed_pending);
-  cat->refeed_pending = 0;
-  rt_request_export(cat->tab, req);
+  if (cat->refeed_pending && !cat->tab->delete_event)
+  {
+    cat->refeed_pending = 0;
+    rt_request_export(cat->tab, req);
+  }
+  else
+    ASSERT_DIE(cat->tab->delete_event);
 }
 
 static void
 channel_aux_stop(struct channel_aux_table *cat)
 {
-  RT_LOCKED(cat->tab, t)
-  {
-    t->delete_event = ev_new_init(t->rp, channel_aux_stopped, cat);
-    t->delete_event->list = proto_event_list(cat->c->proto);
-  }
-
-  cat->push_stopped = (event) {
-    .hook = channel_aux_import_stopped,
-    .data = cat,
-    .list = proto_event_list(cat->c->proto),
-  };
-
-  rt_stop_import(&cat->push, &cat->push_stopped);
+  rt_stop_import(&cat->push, channel_aux_import_stopped);
   rt_stop_export(&cat->get, channel_aux_export_stopped);
+
+  cat->tab->delete_event = ev_new_init(cat->tab->rp, channel_aux_stopped, cat);
+
+  rt_unlock_table(cat->tab);
 }
 
 static void
@@ -903,6 +889,7 @@ channel_setup_in_table(struct channel *c, int best)
 
   c->in_table->c = c;
   c->in_table->tab = rt_setup(c->proto->pool, &cat->tab_cf);
+  rt_lock_table(c->in_table->tab);
 
   rt_request_import(c->in_table->tab, &c->in_table->push);
   rt_request_export(c->in_table->tab, &c->in_table->get);
@@ -944,6 +931,7 @@ channel_setup_out_table(struct channel *c)
 
   c->out_table->c = c;
   c->out_table->tab = rt_setup(c->proto->pool, &cat->tab_cf);
+  rt_lock_table(c->out_table->tab);
 
   rt_request_import(c->out_table->tab, &c->out_table->push);
   rt_request_export(c->out_table->tab, &c->out_table->get);
@@ -1005,14 +993,7 @@ channel_do_stop(struct channel *c)
 
   /* Stop import */
   if (c->in_req.hook)
-  {
-    c->in_stopped = (event) {
-      .hook = channel_import_stopped,
-      .data = c,
-      .list = proto_event_list(c->proto),
-    };
-    rt_stop_import(&c->in_req, &c->in_stopped);
-  }
+    rt_stop_import(&c->in_req, channel_import_stopped);
 
   c->gr_wait = 0;
   if (c->gr_lock)
@@ -2358,7 +2339,7 @@ proto_do_start(struct proto *p)
 {
   p->active = 1;
 
-  rt_init_sources(&p->sources, p->name, proto_work_list(p));
+  rt_init_sources(&p->sources, p->name, proto_event_list(p));
   if (!p->sources.class)
     p->sources.class = &default_rte_owner_class;
 

@@ -427,7 +427,6 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
 #endif
   /* The rest is for KRT_SRC_BIRD (or KRT_SRC_UNKNOWN) */
 
-  RT_LOCK(p->p.main_channel->table);
   /* Deleting all routes if flush is requested */
   if (p->flush_routes)
     goto delete;
@@ -436,7 +435,7 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
   if (!p->ready)
     goto ignore;
 
-  net *net = net_find(RT_PRIV(p->p.main_channel->table), e->net);
+  net *net = net_find(p->p.main_channel->table, e->net);
   if (!net || !krt_is_installed(p, net))
     goto delete;
 
@@ -482,7 +481,6 @@ delete:
   goto done;
 
 done:
-  RT_UNLOCK(p->p.main_channel->table);
   lp_flush(krt_filter_lp);
 }
 
@@ -500,8 +498,7 @@ krt_init_scan(struct krt_proto *p)
 static void
 krt_prune(struct krt_proto *p)
 {
-  RT_LOCK(p->p.main_channel->table);
-  rtable_private *t = RT_PRIV(p->p.main_channel->table);
+  struct rtable *t = p->p.main_channel->table;
 
   KRT_TRACE(p, D_EVENTS, "Pruning table %s", t->name);
   FIB_WALK(&t->fib, net, n)
@@ -520,8 +517,6 @@ krt_prune(struct krt_proto *p)
     }
   }
   FIB_WALK_END;
-
-  RT_UNLOCK(p->p.main_channel->table);
 
 #ifdef KRT_ALLOW_LEARN
   if (KRT_CF->learn)

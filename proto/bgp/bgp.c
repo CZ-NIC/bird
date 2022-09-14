@@ -1800,12 +1800,10 @@ bgp_channel_start(struct channel *C)
   ip_addr src = p->local_ip;
 
   if (c->igp_table_ip4)
-    RT_LOCKED(c->igp_table_ip4, t)
-      rt_lock_table(t);
+    rt_lock_table(c->igp_table_ip4);
 
   if (c->igp_table_ip6)
-    RT_LOCKED(c->igp_table_ip6, t)
-      rt_lock_table(t);
+    rt_lock_table(c->igp_table_ip6);
 
   c->pool = p->p.pool; // XXXX
   bgp_init_bucket_table(c);
@@ -1886,12 +1884,10 @@ bgp_channel_cleanup(struct channel *C)
   struct bgp_channel *c = (void *) C;
 
   if (c->igp_table_ip4)
-    RT_LOCKED(c->igp_table_ip4, t)
-      rt_unlock_table(t);
+    rt_unlock_table(c->igp_table_ip4);
 
   if (c->igp_table_ip6)
-    RT_LOCKED(c->igp_table_ip6, t)
-      rt_unlock_table(t);
+    rt_unlock_table(c->igp_table_ip6);
 
   c->index = 0;
 

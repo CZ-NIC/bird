@@ -1287,7 +1287,7 @@ rta_lookup(rta *o)
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next)
     if (r->hash_key == h && rta_same(r, o))
     {
-      r->uc++;
+      atomic_fetch_add_explicit(&r->uc, 1, memory_order_acq_rel);
       RTA_UNLOCK;
       return r;
     }
@@ -1308,6 +1308,14 @@ rta_lookup(rta *o)
 void
 rta__free(rta *a)
 {
+  RTA_LOCK;
+  if (atomic_load_explicit(&a->uc, memory_order_acquire))
+  {
+    /* Somebody has cloned this rta inbetween. This sometimes happens. */
+    RTA_UNLOCK;
+    return;
+  }
+
   ASSERT(rta_cache_count && a->cached);
   rta_cache_count--;
   *a->pprev = a->next;
@@ -1319,6 +1327,7 @@ rta__free(rta *a)
   ea_free(a->eattrs);
   a->cached = 0;
   sl_free(rta_slab(a), a);
+  RTA_UNLOCK;
 }
 
 rta *
