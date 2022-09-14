@@ -4008,7 +4008,11 @@ rt_commit(struct config *new, struct config *old)
 	  rt_lock_table(tab);
 
 	  if (tab->hostcache)
+	  {
 	    rt_stop_export(&tab->hostcache->req, NULL);
+	    if (ev_get_list(&tab->hostcache->update) == &rt_cork.queue)
+	      ev_postpone(&tab->hostcache->update);
+	  }
 
 	  rt_unlock_table(tab);
 
@@ -4392,7 +4396,9 @@ hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct 
   /* Yes, something has actually changed. Do the hostcache update. */
   if (o != RTE_VALID_OR_NULL(new_best))
     RT_LOCKED((rtable *) hc->update.data, tab)
-      ev_send_loop(tab->loop, &hc->update);
+      if ((atomic_load_explicit(&req->hook->export_state, memory_order_acquire) == TES_READY)
+	  && !ev_active(&hc->update))
+	ev_send_loop(tab->loop, &hc->update);
 }
 
 
@@ -4554,6 +4560,10 @@ rt_update_hostcache(void *data)
   {
 
   struct hostcache *hc = tab->hostcache;
+
+  /* Shutdown shortcut */
+  if (!hc->req.hook)
+    RT_RETURN(tab);
 
   if (rt_cork_check(&hc->update))
   {
