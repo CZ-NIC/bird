@@ -246,7 +246,7 @@ bt_log_result(int result, u64 time, const char *fmt, va_list argptr)
   printf("%s\n", result_str);
 
   if (do_die && !result)
-    exit(1);
+    abort();
 }
 
 static u64
