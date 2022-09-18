@@ -1147,6 +1147,7 @@ proto_event(void *ptr)
   {
     if (p->proto == &proto_unix_iface)
       if_flush_ifaces(p);
+
     p->do_stop = 0;
   }
 
