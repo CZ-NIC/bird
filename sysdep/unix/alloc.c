@@ -93,9 +93,7 @@ alloc_page(void)
   if (!fp)
     return alloc_sys_page();
 
-  if (atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed) <= KEEP_PAGES_MIN)
-    SCHEDULE_CLEANUP;
-
+  atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
   return fp;
 #endif
 }
@@ -146,15 +144,15 @@ page_cleanup(void *_ UNUSED)
     else
       free_page(f);
   }
-  while (stack && (atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed) >= KEEP_PAGES_MAX / 2));
+  while ((atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed) >= KEEP_PAGES_MAX / 2) && stack);
 
   while (stack)
   {
-    atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
-
     struct free_page *f = stack;
     stack = atomic_load_explicit(&f->next, memory_order_acquire);
     free_page(f);
+
+    atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
   }
 }
 #endif
