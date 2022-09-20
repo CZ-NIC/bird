@@ -142,7 +142,7 @@ if_connected(ip_addr a, struct iface *i, struct ifa **ap, uint flags)
 }
 
 static inline int
-if_connected_any(ip_addr a, struct iface *vrf, uint vrf_set, struct iface **iface, struct ifa **addr, uint flags)
+if_connected_any(ip_addr a, struct iface *vrf, struct iface **iface, struct ifa **addr, uint flags)
 {
   struct iface *i;
   struct ifa *b;
@@ -153,7 +153,7 @@ if_connected_any(ip_addr a, struct iface *vrf, uint vrf_set, struct iface **ifac
 
   /* Prefer SCOPE_HOST or longer prefix */
   WALK_LIST(i, iface_list)
-    if ((!vrf_set || vrf == i->master) && ((s = if_connected(a, i, &b, flags)) >= 0))
+    if ((!vrf || vrf == i->master) && ((s = if_connected(a, i, &b, flags)) >= 0))
       if (scope_better(s, scope) || (scope_remote(s, scope) && ifa_better(b, *addr)))
       {
 	*iface = i;
@@ -245,7 +245,7 @@ neigh_find(struct proto *p, ip_addr a, struct iface *iface, uint flags)
     iface = (scope < 0) ? NULL : iface;
   }
   else
-    scope = if_connected_any(a, p->vrf, p->vrf_set, &iface, &addr, flags);
+    scope = if_connected_any(a, p->vrf, &iface, &addr, flags);
 
   /* scope < 0 means i don't know neighbor */
   /* scope >= 0  <=>  iface != NULL */
@@ -369,7 +369,7 @@ neigh_update(neighbor *n, struct iface *iface)
     return;
 
   /* VRF-bound neighbors ignore changes in other VRFs */
-  if (p->vrf_set && (p->vrf != iface->master))
+  if (p->vrf && (p->vrf != iface->master))
     return;
 
   scope = if_connected(n->addr, iface, &ifa, n->flags);
@@ -379,7 +379,7 @@ neigh_update(neighbor *n, struct iface *iface)
   {
     /* When neighbor is going down, try to respawn it on other ifaces */
     if ((scope < 0) && (n->scope >= 0) && !n->ifreq && (n->flags & NEF_STICKY))
-      scope = if_connected_any(n->addr, p->vrf, p->vrf_set, &iface, &ifa, n->flags);
+      scope = if_connected_any(n->addr, p->vrf, &iface, &ifa, n->flags);
   }
   else
   {

@@ -666,7 +666,7 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
 {
   struct bfd_config *cf = (struct bfd_config *) (p->p.cf);
 
-  if (p->p.vrf_set && (p->p.vrf != req->vrf))
+  if (p->p.vrf && (p->p.vrf != req->vrf))
     return 0;
 
   if (ipa_is_ip4(req->addr) ? !cf->accept_ipv4 : !cf->accept_ipv6)

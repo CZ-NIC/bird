@@ -100,7 +100,6 @@ struct proto_config {
   int class;				/* SYM_PROTO or SYM_TEMPLATE */
   u8 net_type;				/* Protocol network type (NET_*), 0 for undefined */
   u8 disabled;				/* Protocol enabled/disabled by default */
-  u8 vrf_set;				/* Related VRF instance (below) is defined */
   u8 late_if_feed;			/* Delay interface feed after channels are up */
   u32 debug, mrtdump;			/* Debugging bitfields, both use D_* constants */
   u32 router_id;			/* Protocol specific router ID */
@@ -137,7 +136,6 @@ struct proto {
   uint active_loops;			/* Number of active IO loops */
   byte net_type;			/* Protocol network type (NET_*), 0 for undefined */
   byte disabled;			/* Manually disabled */
-  byte vrf_set;				/* Related VRF instance (above) is defined */
   byte proto_state;			/* Protocol state machine (PS_*, see below) */
   byte active;				/* From PS_START to cleanup after PS_STOP */
   byte do_stop;				/* Stop actions are scheduled */
