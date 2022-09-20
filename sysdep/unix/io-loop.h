@@ -9,6 +9,16 @@
 
 #include "lib/rcu.h"
 
+struct pipe
+{
+  int fd[2];
+};
+
+void pipe_new(struct pipe *);
+void pipe_pollin(struct pipe *, struct pollfd *);
+void pipe_drain(struct pipe *);
+void pipe_kick(struct pipe *);
+
 struct birdloop
 {
   pool *pool;
@@ -25,7 +35,7 @@ struct birdloop
 
   uint ping_pending;
   _Atomic u32 ping_sent;
-  int wakeup_fds[2];
+  struct pipe wakeup;
 
   pthread_t thread_id;
   pthread_attr_t thread_attr;

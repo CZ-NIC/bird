@@ -951,10 +951,6 @@ bfd_reconfigure_neighbors(struct bfd_proto *p, struct bfd_config *new)
 
 /* This core notify code should be replaced after main loop transition to birdloop */
 
-int pipe(int pipefd[2]);
-void pipe_drain(int fd);
-void pipe_kick(int fd);
-
 static void
 bfd_notify_hook(void *data)
 {
