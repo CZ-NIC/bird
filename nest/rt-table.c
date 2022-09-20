@@ -162,6 +162,7 @@ const char *rt_import_state_name_array[TIS_MAX] = {
 
 const char *rt_export_state_name_array[TES_MAX] = {
   [TES_DOWN] = "DOWN",
+  [TES_HUNGRY] = "HUNGRY",
   [TES_FEEDING] = "FEEDING",
   [TES_READY] = "READY",
   [TES_STOP] = "STOP"
@@ -2007,9 +2008,10 @@ void
 rt_set_export_state(struct rt_export_hook *hook, u8 state)
 {
   hook->last_state_change = current_time();
-  atomic_store_explicit(&hook->export_state, state, memory_order_release);
+  u8 old = atomic_exchange_explicit(&hook->export_state, state, memory_order_release);
 
-  CALL(hook->req->log_state_change, hook->req, state);
+  if (old != state)
+    CALL(hook->req->log_state_change, hook->req, state);
 }
 
 void
@@ -2047,6 +2049,36 @@ rt_stop_import(struct rt_import_request *req, void (*stopped)(struct rt_import_r
   }
 }
 
+static void rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_hook *hook);
+static void
+rt_table_export_uncork(void *_hook)
+{
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+
+  struct rt_table_export_hook *hook = _hook;
+  struct birdloop *loop = hook->h.req->list->loop;
+
+  if (loop != &main_birdloop)
+    birdloop_enter(loop);
+
+  u8 state;
+  switch (state = atomic_load_explicit(&hook->h.export_state, memory_order_relaxed))
+  {
+    case TES_HUNGRY:
+      RT_LOCKED(RT_PUB(SKIP_BACK(struct rtable_private, exporter, hook->table)), tab)
+	rt_table_export_start_feed(tab, hook);
+      break;
+    case TES_STOP:
+      rt_stop_export_common(&hook->h);
+      break;
+    default:
+      bug("Uncorking a table export in a strange state: %u", state);
+  }
+
+  if (loop != &main_birdloop)
+    birdloop_leave(loop);
+}
+
 static void
 rt_table_export_start_locked(struct rtable_private *tab, struct rt_export_request *req)
 {
@@ -2057,6 +2089,22 @@ rt_table_export_start_locked(struct rtable_private *tab, struct rt_export_reques
   req->hook->req = req;
 
   struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, req->hook);
+  hook->h.event = (event) {
+    .hook = rt_table_export_uncork,
+    .data = hook,
+  };
+
+  if (rt_cork_check(&hook->h.event))
+    rt_set_export_state(&hook->h, TES_HUNGRY);
+  else
+    rt_table_export_start_feed(tab, hook);
+}
+
+static void
+rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_hook *hook)
+{
+  struct rt_exporter *re = &tab->exporter.e;
+  struct rt_export_request *req = hook->h.req;
 
   /* stats zeroed by mb_allocz */
   switch (req->addr_mode)
@@ -2144,41 +2192,54 @@ rt_init_export(struct rt_exporter *re, struct rt_export_hook *hook)
   rt_send_export_event(hook);
 }
 
-static void
+static int
 rt_table_export_stop_locked(struct rt_export_hook *hh)
 {
   struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, hh);
   struct rtable_private *tab = SKIP_BACK(struct rtable_private, exporter, hook->table);
 
-  if (atomic_load_explicit(&hh->export_state, memory_order_relaxed) == TES_FEEDING)
-    switch (hh->req->addr_mode)
-    {
-      case TE_ADDR_IN:
-	if (hook->walk_lock)
-	{
-	  rt_unlock_trie(tab, hook->walk_lock);
-	  hook->walk_lock = NULL;
-	  mb_free(hook->walk_state);
-	  hook->walk_state = NULL;
+  switch (atomic_load_explicit(&hh->export_state, memory_order_relaxed))
+  {
+    case TES_HUNGRY:
+      return 0;
+    case TES_FEEDING:
+      switch (hh->req->addr_mode)
+      {
+	case TE_ADDR_IN:
+	  if (hook->walk_lock)
+	  {
+	    rt_unlock_trie(tab, hook->walk_lock);
+	    hook->walk_lock = NULL;
+	    mb_free(hook->walk_state);
+	    hook->walk_state = NULL;
+	    break;
+	  }
+	  /* fall through */
+	case TE_ADDR_NONE:
+	  fit_get(&tab->fib, &hook->feed_fit);
 	  break;
-	}
-	/* fall through */
-      case TE_ADDR_NONE:
-	fit_get(&tab->fib, &hook->feed_fit);
-	break;
-    }
+      }
+
+  }
+  return 1;
 }
 
 static void
 rt_table_export_stop(struct rt_export_hook *hh)
 {
   struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, hh);
+  int ok = 0;
   rtable *t = SKIP_BACK(rtable, priv.exporter, hook->table);
   if (RT_IS_LOCKED(t))
-    rt_table_export_stop_locked(hh);
+    ok = rt_table_export_stop_locked(hh);
   else
     RT_LOCKED(t, tab)
-      rt_table_export_stop_locked(hh);
+      ok = rt_table_export_stop_locked(hh);
+
+  if (ok)
+    rt_stop_export_common(hh);
+  else
+    rt_set_export_state(&hook->h, TES_STOP);
 }
 
 void
@@ -2188,15 +2249,24 @@ rt_stop_export(struct rt_export_request *req, void (*stopped)(struct rt_export_r
   ASSERT_DIE(req->hook);
   struct rt_export_hook *hook = req->hook;
 
-  /* Stop feeding from the exporter */
-  CALL(hook->table->class->stop, hook);
+  /* Set the stopped callback */
+  hook->stopped = stopped;
 
+  /* Run the stop code */
+  if (hook->table->class->stop)
+    hook->table->class->stop(hook);
+  else
+    rt_stop_export_common(hook);
+}
+
+void
+rt_stop_export_common(struct rt_export_hook *hook)
+{
   /* Update export state */
   rt_set_export_state(hook, TES_STOP);
 
   /* Reset the event as the stopped event */
   hook->event.hook = hook->table->class->done;
-  hook->stopped = stopped;
 
   /* Run the stopped event */
   rt_send_export_event(hook);
@@ -2536,6 +2606,7 @@ rt_flowspec_find_link(struct rtable_private *src, rtable *dst)
   WALK_LIST2(hook, n, src->exporter.e.hooks, h.n)
     switch (atomic_load_explicit(&hook->h.export_state, memory_order_acquire))
     {
+      case TES_HUNGRY:
       case TES_FEEDING:
       case TES_READY:
 	if (hook->h.req->export_one == rt_flowspec_export_one)
@@ -2954,6 +3025,7 @@ rt_export_cleanup(struct rtable_private *tab)
     switch (atomic_load_explicit(&eh->h.export_state, memory_order_acquire))
     {
       case TES_DOWN:
+      case TES_HUNGRY:
 	continue;
 
       case TES_READY:

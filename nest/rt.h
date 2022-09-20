@@ -363,6 +363,7 @@ struct rt_table_export_hook {
 #define TIS_MAX		6
 
 #define TES_DOWN	0
+#define TES_HUNGRY	1
 #define TES_FEEDING	2
 #define TES_READY	3
 #define TES_STOP	4
@@ -424,6 +425,7 @@ int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
 
 void rt_init_export(struct rt_exporter *re, struct rt_export_hook *hook);
 struct rt_export_hook *rt_alloc_export(struct rt_exporter *re, uint size);
+void rt_stop_export_common(struct rt_export_hook *hook);
 void rt_export_stopped(struct rt_export_hook *hook);
 void rt_exporter_init(struct rt_exporter *re);
 
