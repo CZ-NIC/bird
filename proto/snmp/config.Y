@@ -14,11 +14,10 @@ CF_HDR
 CF_DEFINES
 
 #define SNMP_CFG ((struct snmp_config *) this_proto)
-#define SNMP_CC ((struct snmp_channel_config *) this_channel)
 
 CF_DECLS
 
-CF_KEYWORDS(SNMP, TABLE, PROTOCOL, BPG)
+CF_KEYWORDS(SNMP, PROTOCOL, BPG, LOCAL, AS, REMOTE, PORT)
 
 CF_GRAMMAR
 
@@ -33,25 +32,28 @@ snmp_proto:
  | snmp_proto REMOTE PORT expr ';' { SNMP_CFG->remote_port = $4; if (($4<1) ||
 ($4>65545)) cf_error("Invalid port number"); }
  | snmp_proto LOCAL ipa ';' { SNMP_CFG->local_ip = $3; }
- | snmp_proto REMOTE ipa ';' { SNMP_CFG->remote_ip = $3; if(!ipa_nonzero($3))
+ | snmp_proto REMOTE ipa ';' { SNMP_CFG->remote_ip = $3; if(ipa_zero($3))
 cf_error("Invalid remote ip address"); }
+ | snmp_proto LOCAL AS expr ';' { if ($4<1 || $4>65535) cf_error("invalid local as");
+  SNMP_CFG->local_as = $4; }
  ;
 
 snmp_proto_start: proto_start SNMP
 {
   this_proto = proto_config_new(&proto_snmp, $1);
+
   init_list(&SNMP_CFG->bgp_entries);
 
   SNMP_CFG->local_ip = IPA_NONE;
   SNMP_CFG->remote_ip = ipa_build4(127,0,0,1);
   SNMP_CFG->local_port = 0;
   SNMP_CFG->remote_port = 705;
+  SNMP_CFG->local_as = 0;
 
   SNMP_CFG->timeout = 15;
 }
 
 proto_name ;
-
 
 
 snmp_bgp_bond: BGP symbol

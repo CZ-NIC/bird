@@ -37,8 +37,8 @@
 
 
 /* hash table macros */
-#define SNMP_HASH_KEY(n)  n->peer_ip;
-#define SNMP_HASH_NEXT(n) n->next;
+#define SNMP_HASH_KEY(n)  n->peer_ip
+#define SNMP_HASH_NEXT(n) n->next
 #define SNMP_HASH_EQ(ip1, ip2) ipa_equal(ip1, ip2)
 #define SNMP_HASH_FN(ip)  ipa_hash(ip)
 
@@ -54,16 +54,17 @@ struct snmp_config {
   ip_addr remote_ip;
   u16 local_port;
   u16 remote_port;
+  u32 local_as;
   u8 timeout;
   //struct iface *iface;
   list bgp_entries;
 };
 
-struct snmp_bgp_peer_entry {
+struct snmp_bgp_peer {
   struct snmp_bond *bond;
   ip_addr peer_ip;
-  struct snmp_bgp_peer_entry *next;
-}
+  struct snmp_bgp_peer *next;
+};
 
 struct snmp_proto {
   struct proto p;
@@ -73,6 +74,7 @@ struct snmp_proto {
   ip_addr remote_ip;
   u16 local_port;
   u16 remote_port;
+  u32 local_as;
 
   sock *sock;
   u8 timeout;
@@ -83,10 +85,11 @@ struct snmp_proto {
 
   //struct iface *iface;
   // map goes here
-  HASH(struct snmp_bgp_peer_entry) bgp_hash;
+  HASH(struct snmp_bgp_peer) bgp_hash;
   struct tbf rl_gen;
 
   timer *ping_timer;
+  timer *retry_timer;
   u8 state;
 
   list bgp_entries;

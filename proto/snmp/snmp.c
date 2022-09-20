@@ -14,6 +14,7 @@
 #include "nest/cli.h"
 #include "nest/locks.h"
 #include "lib/socket.h"
+#include "lib/lists.h"
 
 #include "snmp.h"
 #include "subagent.h"
@@ -21,6 +22,7 @@
 static void snmp_connected(sock *sk);
 static void snmp_sock_err(sock *sk, int err);
 static void snmp_ping_timer(struct timer *tm);
+static void snmp_retry_timer(struct timer *tm);
 
 static struct proto *
 snmp_init(struct proto_config *CF)
@@ -98,7 +100,14 @@ static void
 snmp_sock_err(sock *sk UNUSED, int err UNUSED)
 {
   log(L_INFO "snmp_sock_err() %s - err no: %d",  strerror(err), err);
-  die("socket error");
+
+  struct snmp_proto *p = sk->data;
+
+  p->state = SNMP_ERR;
+  if (p->p.proto_state == PS_UP)
+    proto_notify_state(&p->p, PS_START);
+
+  tm_set(p->retry_timer, current_time() + 5 S);
 }
 
 static int
@@ -106,15 +115,17 @@ snmp_start(struct proto *P)
 {
   log(L_INFO "snmp_start() - starting timer (almost)");
   struct snmp_proto *p = (void *) P;
-  struct snmp_config *cf = P->cf;
+  struct snmp_config *cf = (struct snmp_config *) P->cf;
 
   p->ping_timer = tm_new_init(p->p.pool, snmp_ping_timer, p, 0, 0);
-  tm_set(p->ping_timer, current_time() + (2 S_));
+  tm_set(p->ping_timer, current_time() + 2 S);
+
+  p->retry_timer = tm_new_init(p->p.pool, snmp_retry_timer, p, 0, 0);
 
   /* starting agentX communicaiton channel */
   log(L_INFO "preparing lock");
   struct object_lock *lock;
-  lock = p->lock = olock_new(P->pool); 
+  lock = p->lock = olock_new(p->p.pool);
 
   lock->type = OBJLOCK_TCP;
   lock->hook = snmp_start_locked;
@@ -126,26 +137,29 @@ snmp_start(struct proto *P)
   log(L_INFO "local ip: %I:%u, remote ip: %I:%u",
     p->local_ip, p->local_port, p->remote_ip, p->remote_port);
 
-  init_list(p->bgp_entries);
+  init_list(&p->bgp_entries);
 
   /* create copy of bonds to bgp */
-  HASH_INIT(p->peer_hash, p->p.pool, 10);
+  HASH_INIT(p->bgp_hash, p->p.pool, 10);
 
-  struct snmp_bond *b;
+  struct snmp_bond *b, *b2;
   WALK_LIST(b, cf->bgp_entries)
   {
-    struct bgp_config *bc = b->proto;
+    struct bgp_config *bc = (struct bgp_config *) b->proto;
     if (bc && !ipa_zero(bc->remote_ip))
     {
-      struct snmp_bgp_peer_entry pe = {
-	.bond = b;
-	.peer_ip = bc->remote_ip;
-	.next = NULL;
-      }; 
+      struct snmp_bgp_peer *peer =
+	mb_allocz(p->p.pool, sizeof(struct snmp_bgp_peer));
+      peer->bond = b;
+      peer->peer_ip = bc->remote_ip;
 
-      HASH_INSERT(p->peer_hash, SNMP_HASH, pe)
+      HASH_INSERT(p->bgp_hash, SNMP_HASH, peer);
        
-      add_tail(&p->bgp_entries, b);
+      b2 = mb_allocz(p->p.pool, sizeof(struct snmp_bond));
+      b2->proto = b->proto;
+      b2->type = b->type;
+      add_tail(&p->bgp_entries, NODE b2);
+      mb_free(peer);
     }
   }
    
@@ -162,6 +176,7 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
   p->remote_ip = cf->remote_ip;
   p->local_port = cf->local_port;
   p->remote_port = cf->remote_port;
+  p->local_as = cf->local_as;
   p->timeout = 15;
 
   /* TODO walk all bind protocols and find their (new) IP
@@ -192,7 +207,7 @@ static void snmp_show_proto_info(struct proto *P)
     cli_msg(-1006, "    admin status: %s", (p->disabled) ? "start" :
 	      "stop");
     // version ?
-    cli_msg(-1006, "    version: ??, likely 4");
+    cli_msg(-1006, "    version: 4");
     cli_msg(-1006, "    local ip: %u", bcf->local_ip);
     cli_msg(-1006, "    remote ip: %u", bcf->remote_ip);
     cli_msg(-1006, "    local port: %u", bcf->local_port);
@@ -238,20 +253,58 @@ bp->stats.fsm_established_transitions);
 }
 
 static void
+snmp_postconfig(struct proto_config *CF)
+{
+  if (((struct snmp_config *) CF)->local_as == 0)
+    cf_error("local as not specified");
+}
+
+static void
 snmp_ping_timer(struct timer *tm)
 {
   log(L_INFO "snmp_ping_timer() ");
   struct snmp_proto *p = tm->data;  
 
-  snmp_ping(p);
+  if (p->state == SNMP_CONN)
+  {
+    snmp_ping(p);
+  }
 
   //tm_set(tm, current_time() + (7 S_));
+}
+
+static void
+snmp_retry_timer(struct timer *tm)
+{
+  log(L_INFO "snmp_retry_timer()");
+
+  struct snmp_proto *p = tm->data;
+
+  /* starting agentX communicaiton channel */
+  log(L_INFO "preparing lock");
+  struct object_lock *lock;
+  lock = p->lock = olock_new(p->p.pool);
+
+  lock->type = OBJLOCK_TCP;
+  lock->hook = snmp_start_locked;
+  lock->data = p;
+
+  olock_acquire(lock);
+  log(L_INFO "lock acquired");
+
+  log(L_INFO "local ip: %I:%u, remote ip: %I:%u",
+    p->local_ip, p->local_port, p->remote_ip, p->remote_port);
 }
 
 static int
 snmp_shutdown(struct proto *P)
 {
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
+  p->state = SNMP_INIT;
+
+  tm_stop(p->ping_timer);
+  tm_stop(p->retry_timer);
+
   snmp_stop_subagent(p);
   return PS_DOWN;
 }
@@ -262,6 +315,7 @@ struct protocol proto_snmp = {
   .channel_mask =	NB_ANY,
   .proto_size =		sizeof(struct snmp_proto),
   .config_size =	sizeof(struct snmp_config),
+  .postconfig =		snmp_postconfig,
   .init =		snmp_init,
   .start =		snmp_start,
   .reconfigure =	snmp_reconfigure,
