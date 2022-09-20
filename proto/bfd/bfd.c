@@ -82,7 +82,7 @@
  * BFD thread to the main thread. This is done in an asynchronous way, sesions
  * with pending notifications are linked (in the BFD thread) to @notify_list in
  * &bfd_proto, and then bfd_notify_hook() in the main thread is activated using
- * bfd_notify_kick() and a pipe. The hook then processes scheduled sessions and
+ * a standard event sending code. The hook then processes scheduled sessions and
  * calls hooks from associated BFD requests. This @notify_list (and state fields
  * in structure &bfd_session) is protected by a spinlock in &bfd_proto and
  * functions bfd_lock_sessions() / bfd_unlock_sessions().
@@ -128,7 +128,6 @@ const char *bfd_state_names[] = { "AdminDown", "Down", "Init", "Up" };
 static void bfd_session_set_min_tx(struct bfd_session *s, u32 val);
 static struct bfd_iface *bfd_get_iface(struct bfd_proto *p, ip_addr local, struct iface *iface);
 static void bfd_free_iface(struct bfd_iface *ifa);
-static inline void bfd_notify_kick(struct bfd_proto *p);
 
 
 /*
@@ -177,7 +176,7 @@ bfd_session_update_state(struct bfd_session *s, uint state, uint diag)
     bfd_session_set_min_tx(s, s->cf.idle_tx_int);
 
   if (notify)
-    bfd_notify_kick(p);
+    ev_send(&global_event_list, &p->notify_event);
 }
 
 static void
@@ -956,16 +955,14 @@ int pipe(int pipefd[2]);
 void pipe_drain(int fd);
 void pipe_kick(int fd);
 
-static int
-bfd_notify_hook(sock *sk, uint len UNUSED)
+static void
+bfd_notify_hook(void *data)
 {
-  struct bfd_proto *p = sk->data;
+  struct bfd_proto *p = data;
   struct bfd_session *s;
   list tmp_list;
   u8 state, diag;
   node *n, *nn;
-
-  pipe_drain(sk->fd);
 
   bfd_lock_sessions(p);
   init_list(&tmp_list);
@@ -990,54 +987,7 @@ bfd_notify_hook(sock *sk, uint len UNUSED)
     if (EMPTY_LIST(s->request_list))
       bfd_remove_session(p, s);
   }
-
-  return 0;
 }
-
-static inline void
-bfd_notify_kick(struct bfd_proto *p)
-{
-  pipe_kick(p->notify_ws->fd);
-}
-
-static void
-bfd_noterr_hook(sock *sk, int err)
-{
-  struct bfd_proto *p = sk->data;
-  log(L_ERR "%s: Notify socket error: %m", p->p.name, err);
-}
-
-static void
-bfd_notify_init(struct bfd_proto *p)
-{
-  int pfds[2];
-  sock *sk;
-
-  int rv = pipe(pfds);
-  if (rv < 0)
-    die("pipe: %m");
-
-  sk = sk_new(p->p.pool);
-  sk->type = SK_MAGIC;
-  sk->rx_hook = bfd_notify_hook;
-  sk->err_hook = bfd_noterr_hook;
-  sk->fd = pfds[0];
-  sk->data = p;
-  if (sk_open(sk) < 0)
-    die("bfd: sk_open failed");
-  p->notify_rs = sk;
-
-  /* The write sock is not added to any event loop */
-  sk = sk_new(p->p.pool);
-  sk->type = SK_MAGIC;
-  sk->fd = pfds[1];
-  sk->data = p;
-  sk->flags = SKF_THREAD;
-  if (sk_open(sk) < 0)
-    die("bfd: sk_open failed");
-  p->notify_ws = sk;
-}
-
 
 /*
  *	BFD protocol glue
@@ -1070,7 +1020,10 @@ bfd_start(struct proto *P)
   init_list(&p->iface_list);
 
   init_list(&p->notify_list);
-  bfd_notify_init(p);
+  p->notify_event = (event) {
+    .hook = bfd_notify_hook,
+    .data = p,
+  };
 
   add_tail(&bfd_global.proto_list, &p->bfd_node);
 
