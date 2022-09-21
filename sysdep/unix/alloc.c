@@ -23,10 +23,13 @@
 long page_size = 0;
 
 #ifdef HAVE_MMAP
-#define KEEP_PAGES_MAX	256
-#define KEEP_PAGES_MIN	8
+#define KEEP_PAGES_MAX	512
+#define KEEP_PAGES_MIN	32
+#define KEEP_PAGES_MAX_LOCAL	16
+#define ALLOC_PAGES_AT_ONCE	8
 
 STATIC_ASSERT(KEEP_PAGES_MIN * 4 < KEEP_PAGES_MAX);
+STATIC_ASSERT(ALLOC_PAGES_AT_ONCE < KEEP_PAGES_MAX_LOCAL);
 
 static _Bool use_fake = 0;
 static _Bool initialized = 0;
@@ -43,17 +46,20 @@ struct free_page {
 #endif
 
 static struct free_page * _Atomic page_stack = NULL;
+static _Thread_local struct free_page * local_page_stack = NULL;
 
 static void page_cleanup(void *);
 static event page_cleanup_event = { .hook = page_cleanup, };
 #define SCHEDULE_CLEANUP  do if (initialized && !shutting_down) ev_send(&global_event_list, &page_cleanup_event); while (0)
 
 _Atomic int pages_kept = 0;
+_Atomic int pages_kept_locally = 0;
+static int pages_kept_here = 0;
 
 static void *
 alloc_sys_page(void)
 {
-  void *ptr = mmap(NULL, page_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  void *ptr = mmap(NULL, page_size * ALLOC_PAGES_AT_ONCE, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
   if (ptr == MAP_FAILED)
     bug("mmap(%lu) failed: %m", page_size);
@@ -82,8 +88,17 @@ alloc_page(void)
   }
 
 #ifdef HAVE_MMAP
+  struct free_page *fp = local_page_stack;
+  if (fp)
+  {
+    local_page_stack = atomic_load_explicit(&fp->next, memory_order_acquire);
+    atomic_fetch_sub_explicit(&pages_kept_locally, 1, memory_order_relaxed);
+    pages_kept_here--;
+    return fp;
+  }
+
   rcu_read_lock();
-  struct free_page *fp = atomic_load_explicit(&page_stack, memory_order_acquire);
+  fp = atomic_load_explicit(&page_stack, memory_order_acquire);
   while (fp && !atomic_compare_exchange_strong_explicit(
 	&page_stack, &fp, atomic_load_explicit(&fp->next, memory_order_acquire),
 	memory_order_acq_rel, memory_order_acquire))
@@ -91,7 +106,12 @@ alloc_page(void)
   rcu_read_unlock();
 
   if (!fp)
-    return alloc_sys_page();
+  {
+    void *ptr = alloc_sys_page();
+    for (int i=1; i<ALLOC_PAGES_AT_ONCE; i++)
+      free_page(ptr + page_size * i);
+    return ptr;
+  }
 
   atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
   return fp;
@@ -108,8 +128,16 @@ free_page(void *ptr)
   }
 
 #ifdef HAVE_MMAP
-  rcu_read_lock();
   struct free_page *fp = ptr;
+  if (shutting_down || (pages_kept_here < KEEP_PAGES_MAX_LOCAL))
+  {
+    atomic_store_explicit(&fp->next, local_page_stack, memory_order_relaxed);
+    atomic_fetch_add_explicit(&pages_kept_locally, 1, memory_order_relaxed);
+    pages_kept_here++;
+    return;
+  }
+
+  rcu_read_lock();
   struct free_page *next = atomic_load_explicit(&page_stack, memory_order_acquire);
 
   do atomic_store_explicit(&fp->next, next, memory_order_release);
@@ -123,10 +151,46 @@ free_page(void *ptr)
 #endif
 }
 
+void
+flush_local_pages(void)
+{
+  if (use_fake || !local_page_stack || shutting_down)
+    return;
+
+  struct free_page *last = local_page_stack, *next;
+  int check_count = 1;
+  while (next = atomic_load_explicit(&last->next, memory_order_acquire))
+  {
+    check_count++;
+    last = next;
+  }
+
+  ASSERT_DIE(check_count == pages_kept_here);
+
+  rcu_read_lock();
+  next = atomic_load_explicit(&page_stack, memory_order_acquire);
+
+  do atomic_store_explicit(&last->next, next, memory_order_release);
+  while (!atomic_compare_exchange_strong_explicit(
+	&page_stack, &next, local_page_stack,
+	memory_order_acq_rel, memory_order_acquire));
+  rcu_read_unlock();
+
+  local_page_stack = NULL;
+  pages_kept_here = 0;
+
+  atomic_fetch_sub_explicit(&pages_kept_locally, check_count, memory_order_relaxed);
+  if (atomic_fetch_add_explicit(&pages_kept, check_count, memory_order_relaxed) >= KEEP_PAGES_MAX)
+    SCHEDULE_CLEANUP;
+}
+
 #ifdef HAVE_MMAP
 static void
 page_cleanup(void *_ UNUSED)
 {
+  if (shutting_down)
+    return;
+
   struct free_page *stack = atomic_exchange_explicit(&page_stack, NULL, memory_order_acq_rel);
   if (!stack)
     return;

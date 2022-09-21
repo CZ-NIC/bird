@@ -84,6 +84,21 @@ birdloop_process_flags(struct birdloop *loop)
   return !!flags;
 }
 
+static int
+birdloop_run_events(struct birdloop *loop)
+{
+  btime begin = current_time();
+  while (current_time() - begin < 5 MS)
+  {
+    if (!ev_run_list(&loop->event_list))
+      return 0;
+
+    times_update();
+  }
+
+  return 1;
+}
+
 /*
  *	Wakeup code for birdloop
  */
@@ -559,7 +574,7 @@ birdloop_main(void *arg)
   while (1)
   {
     timers_fire(&loop->time, 0);
-    if (birdloop_process_flags(loop) + ev_run_list(&loop->event_list))
+    if (birdloop_process_flags(loop) + birdloop_run_events(loop))
       timeout = 0;
     else if (t = timers_first(&loop->time))
       timeout = (tm_remains(t) TO_MS) + 1;
@@ -568,6 +583,9 @@ birdloop_main(void *arg)
 
     if (loop->poll_changed)
       sockets_prepare(loop);
+    else
+      if ((timeout < 0) || (timeout > 5000))
+	flush_local_pages();
 
     btime duration = current_time() - loop_begin;
     if (duration > config->watchdog_warning)
@@ -614,6 +632,7 @@ birdloop_main(void *arg)
   birdloop_leave(loop);
   loop->stopped(loop->stop_data);
 
+  flush_local_pages();
   return NULL;
 }
 

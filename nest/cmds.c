@@ -120,7 +120,8 @@ cmd_show_memory(void)
   print_size("Protocols:", rmemsize(proto_pool));
   struct resmem total = rmemsize(&root_pool);
 #ifdef HAVE_MMAP
-  int pk = atomic_load_explicit(&pages_kept, memory_order_relaxed);
+  int pk  = atomic_load_explicit(&pages_kept, memory_order_relaxed)
+	  + atomic_load_explicit(&pages_kept_locally, memory_order_relaxed);
   print_size("Standby memory:", (struct resmem) { .overhead = page_size * pk });
   total.overhead += page_size * pk;
 #endif
