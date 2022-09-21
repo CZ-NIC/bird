@@ -318,6 +318,15 @@ krt_learn_announce_delete(struct krt_proto *p, net *n)
   rte_update(&p->p, n->n.addr, NULL);
 }
 
+static void
+krt_learn_alien_attr(struct channel *c, rte *e)
+{
+  ASSERT(!e->attrs->cached);
+  e->attrs->pref = c->preference;
+
+  e->attrs = rta_lookup(e->attrs);
+}
+
 /* Called when alien route is discovered during scan */
 static void
 krt_learn_scan(struct krt_proto *p, rte *e)
@@ -326,7 +335,7 @@ krt_learn_scan(struct krt_proto *p, rte *e)
   net *n = net_get(p->krt_table, n0->n.addr);
   rte *m, **mm;
 
-  e->attrs = rta_lookup(e->attrs);
+  krt_learn_alien_attr(p->p.main_channel, e);
 
   for(mm=&n->routes; m = *mm; mm=&m->next)
     if (krt_same_key(m, e))
@@ -438,10 +447,7 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
   net *n = net_get(p->krt_table, n0->n.addr);
   rte *g, **gg, *best, **bestp, *old_best;
 
-  ASSERT(!e->attrs->cached);
-  e->attrs->pref = p->p.main_channel->preference;
-
-  e->attrs = rta_lookup(e->attrs);
+  krt_learn_alien_attr(p->p.main_channel, e);
 
   old_best = n->routes;
   for(gg=&n->routes; g = *gg; gg = &g->next)
