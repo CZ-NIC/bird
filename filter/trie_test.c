@@ -251,12 +251,12 @@ get_outer_net(net_addr *net, const struct f_prefix *src)
 static list *
 make_random_prefix_list(int num, int v6, int tight)
 {
-  list *prefixes = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
+  list *prefixes = tmp_allocz(sizeof(struct f_prefix_node));
   init_list(prefixes);
 
   for (int i = 0; i < num; i++)
   {
-    struct f_prefix_node *px = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
+    struct f_prefix_node *px = tmp_allocz(sizeof(struct f_prefix_node));
     get_random_prefix(&px->prefix, v6, tight);
     add_tail(prefixes, &px->n);
 
@@ -294,7 +294,7 @@ read_prefix_list(FILE *f, int v6, int plus)
   char s[32];
   int n;
 
-  list *pxlist = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
+  list *pxlist = tmp_allocz(sizeof(struct f_prefix_node));
   init_list(pxlist);
 
   errno = 0;
@@ -308,7 +308,7 @@ read_prefix_list(FILE *f, int v6, int plus)
     if (n != 5)
       bt_abort_msg("Invalid content of trie_data");
 
-    struct f_prefix_node *px = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
+    struct f_prefix_node *px = tmp_allocz(sizeof(struct f_prefix_node));
     net_fill_ip4(&px->prefix.net, ip4_build(a0, a1, a2, a3), pl);
     px->prefix.lo = pl;
     px->prefix.hi = plus ? IP4_MAX_PREFIX_LENGTH : pl;
