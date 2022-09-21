@@ -70,7 +70,6 @@
  *	m4_dnl	  DYNAMIC_ATTR;				dynamic attribute definition
  *	m4_dnl	  RTC;					route table config
  *	m4_dnl	  ACCESS_RTE;				this instruction needs route
- *	m4_dnl	  ACCESS_EATTRS;			this instruction needs extended attributes
  *
  *	m4_dnl	  FID_MEMBER(				custom instruction member
  *	m4_dnl	    C type,				for storage in structs
@@ -237,7 +236,6 @@
  *	m4_dnl	  fpool		-> the current linpool
  *	m4_dnl	  NEVER_CONSTANT-> don't generate pre-interpretation code at all
  *	m4_dnl	  ACCESS_RTE	-> check that route is available, also NEVER_CONSTANT
- *	m4_dnl	  ACCESS_EATTRS	-> pre-cache the eattrs; use only with ACCESS_RTE
  *
  *	m4_dnl	If you are stymied, see FI_CALL or FI_CONSTANT or just search for
  *	m4_dnl	the mentioned macros in this file to see what is happening there in wild.
@@ -687,7 +685,6 @@
     {
       STATIC_ATTR;
       ACCESS_RTE;
-      ACCESS_EATTRS;
 
       switch (sa.sa_code)
       {
@@ -695,7 +692,7 @@
       case SA_PROTO:	RESULT(sa.type, s, fs->rte->src->owner->name); break;
       default:
 	{
-	  struct eattr *nhea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  struct eattr *nhea = ea_find(fs->rte->attrs, &ea_gen_nexthop);
 	  struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
 	  struct nexthop *nh = nhad ? &nhad->nh : NULL;
 
@@ -731,7 +728,6 @@
 
   INST(FI_RTA_SET, 1, 0) {
     ACCESS_RTE;
-    ACCESS_EATTRS;
     ARG_ANY(1);
     STATIC_ATTR;
     ARG_TYPE(1, sa.type);
@@ -765,7 +761,7 @@
 	}
       case SA_GW:
 	{
-	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  struct eattr *nh_ea = ea_find(fs->rte->attrs, &ea_gen_nexthop);
 
 	  ip_addr ip = v1.val.ip;
 	  struct iface *ifa = (ipa_is_link_local(ip) && nh_ea) ?
@@ -800,7 +796,7 @@
 	  if (v1.val.i >= 0x100000)
 	    runtime( "Invalid MPLS label" );
 
-	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  struct eattr *nh_ea = ea_find(fs->rte->attrs, &ea_gen_nexthop);
 	  if (!nh_ea)
 	    runtime( "No nexthop to add a MPLS label to" );
 
@@ -823,7 +819,7 @@
 	  if (i < 1 || i > 256)
 	    runtime( "Setting weight value out of bounds" );
 
-	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  struct eattr *nh_ea = ea_find(fs->rte->attrs, &ea_gen_nexthop);
 	  if (!nh_ea)
 	    runtime( "No nexthop to set weight on" );
 
@@ -837,7 +833,7 @@
 	  NEXTHOP_WALK(nh, nhax)
 	    nh->weight = i - 1;
 
-	  a = ea_set_attr(fs->eattrs,
+	  a = ea_set_attr(&fs->rte->attrs,
 	      EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nhax->ad));
         }
 	break;
@@ -847,7 +843,7 @@
       }
 
       if (!a)
-	a = ea_set_attr(fs->eattrs,
+	a = ea_set_attr(&fs->rte->attrs,
 	    EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, tmp_copy_adata(&nha.ad)));
 
       a->originated = 1;
@@ -858,11 +854,10 @@
   INST(FI_EA_GET, 0, 1) {	/* Access to extended attributes */
     DYNAMIC_ATTR;
     ACCESS_RTE;
-    ACCESS_EATTRS;
     RESULT_TYPE(da->type);
     {
       const struct f_val *empty;
-      const eattr *e = ea_find(*fs->eattrs, da->id);
+      const eattr *e = ea_find(fs->rte->attrs, da->id);
 
       if (e)
       {
@@ -888,7 +883,6 @@
 
   INST(FI_EA_SET, 1, 0) {
     ACCESS_RTE;
-    ACCESS_EATTRS;
     ARG_ANY(1);
     DYNAMIC_ATTR;
     ARG_TYPE(1, da->type);
@@ -905,12 +899,12 @@
 	break;
 
       case T_IP:
-	a = ea_set_attr(fs->eattrs,
+	a = ea_set_attr(&fs->rte->attrs,
 	    EA_LITERAL_STORE_ADATA(da, 0, &v1.val.ip, sizeof(ip_addr)));
 	break;
 
       default:
-	a = ea_set_attr(fs->eattrs,
+	a = ea_set_attr(&fs->rte->attrs,
 	    EA_LITERAL_GENERIC(da->id, da->type, 0, .u = v1.val.bval));
 	break;
       }
@@ -923,9 +917,8 @@
   INST(FI_EA_UNSET, 0, 0) {
     DYNAMIC_ATTR;
     ACCESS_RTE;
-    ACCESS_EATTRS;
 
-    ea_unset_attr(fs->eattrs, 1, da);
+    ea_unset_attr(&fs->rte->attrs, 1, da);
   }
 
   INST(FI_DEFAULT, 2, 1) {
