@@ -170,6 +170,8 @@ t_balancing(void)
     show_tree(balanced_tree_from_simple);
 
     bt_assert(same_tree(balanced_tree_from_simple, expected_balanced_tree));
+
+    tmp_flush();
   }
 
   return 1;
@@ -191,6 +193,9 @@ t_balancing_random(void)
     uint i;
     for(i = 0; i < 10; i++)
     {
+      struct lp_state lps;
+      lp_save(tmp_linpool, &lps);
+
       struct f_tree *random_degenerated_tree = get_random_degenerated_left_tree(nodes_count);
       show_tree(random_degenerated_tree);
 
@@ -200,7 +205,11 @@ t_balancing_random(void)
       show_tree(balanced_tree_from_random);
 
       bt_assert(same_tree(balanced_tree_from_random, expected_balanced_tree));
+
+      lp_restore(tmp_linpool, &lps);
     }
+
+    tmp_flush();
   }
 
   return 1;
@@ -227,6 +236,8 @@ t_find(void)
       const struct f_tree *found_tree = find_tree(tree, &looking_up_value);
       bt_assert((val_compare(&looking_up_value, &(found_tree->from)) == 0) && (val_compare(&looking_up_value, &(found_tree->to)) == 0));
     }
+
+    tmp_flush();
   }
 
   return 1;
@@ -283,6 +294,8 @@ t_find_ranges(void)
 	 ((val_compare(&needle, &(found_tree->from)) == 1) && (val_compare(&needle, &(found_tree->to)) == -1))
       );
     }
+
+    tmp_flush();
   }
 
   return 1;
