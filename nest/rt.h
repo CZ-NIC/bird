@@ -20,6 +20,7 @@
 #include "lib/event.h"
 #include "lib/rcu.h"
 #include "lib/io-loop.h"
+#include "lib/settle.h"
 
 #include <stdatomic.h>
 
@@ -62,8 +63,8 @@ struct rtable_config {
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte trie_used;			/* Rtable has attached trie */
   byte debug;				/* Whether to log */
-  btime export_settle_time;		/* Delay before exports are announced */
   struct rt_cork_threshold cork_threshold;	/* Cork threshold values */
+  struct settle_config export_settle;	/* Export announcement settler */
 };
 
 struct rt_export_hook;
@@ -129,7 +130,7 @@ struct rtable_private {
 					 * obstacle from this routing table.
 					 */
   struct event *nhu_uncork_event;	/* Helper event to schedule NHU on uncork */
-  struct timer *export_timer;		/* Timer for export batching */
+  struct settle export_settle;		/* Export batching settle timer */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
   struct birdloop_flag_handler fh;	/* Handler for simple events */
   btime last_rt_change;			/* Last time when route changed */

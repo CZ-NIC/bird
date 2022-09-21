@@ -1423,9 +1423,9 @@ rt_send_export_event(struct rt_export_hook *hook)
 }
 
 static void
-rt_announce_exports(timer *tm)
+rt_announce_exports(struct settle *s)
 {
-  RT_LOCKED((rtable *) tm->data, tab)
+  RT_LOCKED(RT_PUB(SKIP_BACK(struct rtable_private, export_settle, s)), tab)
     if (!EMPTY_LIST(tab->exporter.pending))
     {
       struct rt_export_hook *c; node *n;
@@ -1437,13 +1437,6 @@ rt_announce_exports(timer *tm)
 	rt_send_export_event(c);
       }
     }
-}
-
-static void
-rt_kick_announce_exports(struct rtable_private *tab)
-{
-  if (!tm_active(tab->export_timer))
-    tm_start_in(tab->export_timer, tab->config->export_settle_time, tab->loop);
 }
 
 static void
@@ -2521,7 +2514,7 @@ rt_flag_handler(struct birdloop_flag_handler *fh, u32 flags)
       rt_next_hop_update(tab);
 
     if (flags & RTF_EXPORT)
-      rt_kick_announce_exports(tab);
+      settle_kick(&tab->export_settle, tab->loop);
 
     if (flags & RTF_CLEANUP)
     {
@@ -2789,9 +2782,10 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   t->fh = (struct birdloop_flag_handler) { .hook = rt_flag_handler, };
   t->nhu_uncork_event = ev_new_init(p, rt_nhu_uncork, t);
-  t->export_timer = tm_new_init(p, rt_announce_exports, t, 0, 0);
   t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
   t->last_rt_change = t->gc_time = current_time();
+
+  t->export_settle = SETTLE_INIT(&cf->export_settle, rt_announce_exports, NULL);
 
   t->exporter = (struct rt_table_exporter) {
     .e = {
@@ -2944,8 +2938,7 @@ again:
   FIB_ITERATE_END;
 
   rt_trace(tab, D_EVENTS, "Prune done, scheduling export timer");
-  if (!tm_active(tab->export_timer))
-    tm_start_in(tab->export_timer, tab->config->export_settle_time, tab->loop);
+  settle_kick(&tab->export_settle, tab->loop);
 
 #ifdef DEBUGGING
   fib_check(&tab->fib);
@@ -3172,7 +3165,7 @@ done:;
     birdloop_flag(tab->loop, RTF_CLEANUP);
 
   if (EMPTY_LIST(tab->exporter.pending))
-    tm_stop(tab->export_timer);
+    settle_cancel(&tab->export_settle);
 }
 
 static void
@@ -3806,9 +3799,8 @@ rt_next_hop_update(struct rtable_private *tab)
   {
     rt_trace(tab, D_STATES, "Next hop updater corked");
     if ((tab->nhu_state & NHU_RUNNING)
-	&& !EMPTY_LIST(tab->exporter.pending)
-	&& !tm_active(tab->export_timer))
-      tm_start_in(tab->export_timer, tab->config->export_settle_time, tab->loop);
+	&& !EMPTY_LIST(tab->exporter.pending))
+      settle_kick(&tab->export_settle, tab->loop);
 
     tab->nhu_corked = tab->nhu_state;
     tab->nhu_state = 0;
@@ -3846,9 +3838,7 @@ rt_next_hop_update(struct rtable_private *tab)
 
   /* Finished NHU, cleanup */
   rt_trace(tab, D_EVENTS, "NHU done, scheduling export timer");
-
-  if (!tm_active(tab->export_timer))
-    tm_start_in(tab->export_timer, tab->config->export_settle_time, tab->loop);
+  settle_kick(&tab->export_settle, tab->loop);
 
   /* State change:
    *   NHU_DIRTY   -> NHU_SCHEDULED
@@ -3900,6 +3890,10 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->gc_period = (uint) -1;	/* set in rt_postconfig() */
   c->cork_threshold.low = 128;
   c->cork_threshold.high = 512;
+  c->export_settle = (struct settle_config) {
+    .min = 1 MS,
+    .max = 100 MS,
+  };
   c->debug = new_config->table_debug;
 
   add_tail(&new_config->tables, &c->n);
@@ -4010,6 +4004,8 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
   new->table = RT_PUB(tab);
   tab->name = new->name;
   tab->config = new;
+
+  tab->export_settle.cf = new->export_settle;
 
   if (tab->hostcache)
     tab->hostcache->req.trace_routes = new->debug;

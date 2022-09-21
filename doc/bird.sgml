@@ -699,6 +699,13 @@ to set options.
         threshold, the more memory can get used. In most cases, the defaults
 	should work for you. Default: 128, 512.
 
+	<tag><label id="rtable-export-settle-time">export settle time <m/time/ <m/time/</tag>
+	Minimum and maximum settle times, respectively, for export announcements.
+	When multiple routes are changing, this mechanism waits for the changes
+	to settle before waking up sleeping export threads but if the changes are coming
+	steadily, BIRD isn't waiting forever; at most the maximum time.
+	Default values: <cf/1 ms 100 ms/. You have to always provide both values.
+
 	<tag><label id="rtable-debug">debug all|off|{ states|routes|events [, <m/.../] }</tag>
 	Set table debugging options. Each table can write some trace messages
 	into log with category <cf/trace/. You can request <cf/all/ trace messages
