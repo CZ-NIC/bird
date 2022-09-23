@@ -4445,11 +4445,16 @@ hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct 
   struct hostcache *hc = SKIP_BACK(struct hostcache, req, req);
 
   /* No interest in this update, mark seen only */
-  if (ev_active(&hc->update) || !trie_match_net(hc->trie, net))
-  {
-    rpe_mark_seen_all(req->hook, first, NULL);
+  int interested = 1;
+  RT_LOCKED((rtable *) hc->update.data, tab)
+    if (ev_active(&hc->update) || !trie_match_net(hc->trie, net))
+    {
+      rpe_mark_seen_all(req->hook, first, NULL);
+      interested = 0;
+    }
+
+  if (!interested)
     return;
-  }
 
   /* This net may affect some hostentries, check the actual change */
   rte *o = RTE_VALID_OR_NULL(first->old_best);
