@@ -146,7 +146,7 @@ static void rt_cork_release_hook(void *);
 static void rt_shutdown(void *);
 static void rt_delete(void *);
 
-static void rt_export_used(struct rt_table_exporter *);
+static void rt_export_used(struct rt_table_exporter *, const char *, const char *);
 static void rt_export_cleanup(struct rtable_private *tab);
 
 static int rte_same(rte *x, rte *y);
@@ -1499,7 +1499,7 @@ rt_export_hook(void *_data)
 
     if (!c->rpe_next)
     {
-      rt_export_used(c->table);
+      rt_export_used(c->table, c->h.req->name, "done exporting");
       RT_UNLOCK(tab);
       return;
     }
@@ -1520,7 +1520,7 @@ rt_export_hook(void *_data)
 
   if (used)
     RT_LOCKED(tab, _)
-      rt_export_used(c->table);
+      rt_export_used(c->table, c->h.req->name, "finished export bulk");
 
   rt_send_export_event(&c->h);
 }
@@ -1962,7 +1962,7 @@ rt_table_export_done(void *hh)
     DBG("Export hook %p in table %s finished uc=%u\n", hook, tab->name, tab->use_count);
 
     /* Drop pending exports */
-    rt_export_used(&tab->exporter);
+    rt_export_used(&tab->exporter, hook->h.req->name, "stopped");
 
     /* Do the common code; this frees the hook */
     rt_export_stopped(&hook->h);
@@ -2488,12 +2488,12 @@ rt_schedule_prune(struct rtable_private *tab)
 }
 
 static void
-rt_export_used(struct rt_table_exporter *e)
+rt_export_used(struct rt_table_exporter *e, const char *who, const char *why)
 {
   struct rtable_private *tab = SKIP_BACK(struct rtable_private, exporter, e);
   ASSERT_DIE(RT_IS_LOCKED(tab));
 
-  rt_trace(tab, D_EVENTS, "Export cleanup requested");
+  rt_trace(tab, D_EVENTS, "Export cleanup requested by %s %s", who, why);
 
   if (tab->export_used)
     return;
@@ -2592,6 +2592,14 @@ rt_flowspec_dump_req(struct rt_export_request *req)
   debug("  Flowspec link for table %s (%p)\n", ln->dst->name, req);
 }
 
+static void
+rt_flowspec_log_state_change(struct rt_export_request *req, u8 state)
+{
+  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, req);
+  rt_trace(ln->dst, D_STATES, "Flowspec link from %s export state changed to %s",
+      ln->src->name, rt_export_state_name(state));
+}
+
 static struct rt_flowspec_link *
 rt_flowspec_find_link(struct rtable_private *src, rtable *dst)
 {
@@ -2636,6 +2644,7 @@ rt_flowspec_link(rtable *src_pub, rtable *dst_pub)
 	.list = &global_work_list,
 	.trace_routes = src->config->debug,
 	.dump_req = rt_flowspec_dump_req,
+	.log_state_change = rt_flowspec_log_state_change,
 	.export_one = rt_flowspec_export_one,
       };
 
@@ -4440,6 +4449,13 @@ hc_notify_dump_req(struct rt_export_request *req)
 }
 
 static void
+hc_notify_log_state_change(struct rt_export_request *req, u8 state)
+{
+  struct hostcache *hc = SKIP_BACK(struct hostcache, req, req);
+  rt_trace((rtable *) hc->update.data, D_STATES, "HCU Export state changed to %s", rt_export_state_name(state));
+}
+
+static void
 hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
   struct hostcache *hc = SKIP_BACK(struct hostcache, req, req);
@@ -4498,6 +4514,7 @@ rt_init_hostcache(struct rtable_private *tab)
     .list = &global_work_list,
     .trace_routes = tab->config->debug,
     .dump_req = hc_notify_dump_req,
+    .log_state_change = hc_notify_log_state_change,
     .export_one = hc_notify_export_one,
   };
 
