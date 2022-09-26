@@ -706,6 +706,14 @@ to set options.
 	steadily, BIRD isn't waiting forever; at most the maximum time.
 	Default values: <cf/1 ms 100 ms/. You have to always provide both values.
 
+	<tag><label id="rtable-route-refresh-export-settle-time">route refresh export settle time <m/time/ <m/time/</tag>
+	Minimum and maximum settle times, respectively, for export announcements
+	(the same as above), valid when any channel is currently doing a route refresh.
+	This serves a purpose of even more aggresive change bundling, knowing that there
+	is some active process generating changes in a fast pace. If you don't want
+	this feature, set this to the same values as <ref id="rtable-export-settle-time" name="export settle time">.
+	Default values: <cf/100 ms 3 s/.
+
 	<tag><label id="rtable-debug">debug all|off|{ states|routes|events [, <m/.../] }</tag>
 	Set table debugging options. Each table can write some trace messages
 	into log with category <cf/trace/. You can request <cf/all/ trace messages

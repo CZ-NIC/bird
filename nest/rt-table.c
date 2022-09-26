@@ -1440,6 +1440,13 @@ rt_announce_exports(struct settle *s)
 }
 
 static void
+rt_kick_export_settle(struct rtable_private *tab)
+{
+  tab->export_settle.cf = tab->rr_counter ? tab->config->export_rr_settle : tab->config->export_settle;
+  settle_kick(&tab->export_settle, tab->loop);
+}
+
+static void
 rt_import_announce_exports(void *_hook)
 {
   struct rt_import_hook *hook = _hook;
@@ -2039,6 +2046,13 @@ rt_stop_import(struct rt_import_request *req, void (*stopped)(struct rt_import_r
     rt_schedule_prune(tab);
     rt_set_import_state(hook, TIS_STOP);
     hook->stopped = stopped;
+
+    if (hook->stale_set != hook->stale_pruned)
+      tab->rr_counter -= (hook->stale_set - hook->stale_pruned - 1);
+    else
+      tab->rr_counter++;
+
+    hook->stale_set = hook->stale_pruned = hook->stale_pruning = hook->stale_valid = 0;
   }
 }
 
@@ -2301,6 +2315,7 @@ rt_refresh_begin(struct rt_import_request *req)
            e->rte.stale_cycle = 0;
       }
     FIB_WALK_END;
+    tab->rr_counter -= (hook->stale_set - hook->stale_pruned - 1);
     hook->stale_set = 1;
     hook->stale_valid = 0;
     hook->stale_pruned = 0;
@@ -2311,6 +2326,7 @@ rt_refresh_begin(struct rt_import_request *req)
     /* Let's reserve the stale_cycle zero value for always-invalid routes */
     hook->stale_set = 1;
     hook->stale_valid = 0;
+    tab->rr_counter++;
   }
 
   if (req->trace_routes & D_STATES)
@@ -2514,7 +2530,7 @@ rt_flag_handler(struct birdloop_flag_handler *fh, u32 flags)
       rt_next_hop_update(tab);
 
     if (flags & RTF_EXPORT)
-      settle_kick(&tab->export_settle, tab->loop);
+      rt_kick_export_settle(tab);
 
     if (flags & RTF_CLEANUP)
     {
@@ -2947,7 +2963,7 @@ again:
   FIB_ITERATE_END;
 
   rt_trace(tab, D_EVENTS, "Prune done, scheduling export timer");
-  settle_kick(&tab->export_settle, tab->loop);
+  rt_kick_export_settle(tab);
 
 #ifdef DEBUGGING
   fib_check(&tab->fib);
@@ -2997,9 +3013,11 @@ again:
       ih->flush_seq = tab->exporter.next_seq;
       rt_set_import_state(ih, TIS_WAITING);
       flushed_channels++;
+      tab->rr_counter--;
     }
     else if (ih->stale_pruning != ih->stale_pruned)
     {
+      tab->rr_counter -= (ih->stale_pruned - ih->stale_pruning);
       ih->stale_pruned = ih->stale_pruning;
       if (ih->req->trace_routes & D_STATES)
 	log(L_TRACE "%s: table prune after refresh end [%u]", ih->req->name, ih->stale_pruned);
@@ -3809,7 +3827,7 @@ rt_next_hop_update(struct rtable_private *tab)
     rt_trace(tab, D_STATES, "Next hop updater corked");
     if ((tab->nhu_state & NHU_RUNNING)
 	&& !EMPTY_LIST(tab->exporter.pending))
-      settle_kick(&tab->export_settle, tab->loop);
+      rt_kick_export_settle(tab);
 
     tab->nhu_corked = tab->nhu_state;
     tab->nhu_state = 0;
@@ -3847,7 +3865,7 @@ rt_next_hop_update(struct rtable_private *tab)
 
   /* Finished NHU, cleanup */
   rt_trace(tab, D_EVENTS, "NHU done, scheduling export timer");
-  settle_kick(&tab->export_settle, tab->loop);
+  rt_kick_export_settle(tab);
 
   /* State change:
    *   NHU_DIRTY   -> NHU_SCHEDULED
@@ -3902,6 +3920,10 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->export_settle = (struct settle_config) {
     .min = 1 MS,
     .max = 100 MS,
+  };
+  c->export_rr_settle = (struct settle_config) {
+    .min = 100 MS,
+    .max = 3 S,
   };
   c->debug = new_config->table_debug;
 
@@ -4013,8 +4035,6 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
   new->table = RT_PUB(tab);
   tab->name = new->name;
   tab->config = new;
-
-  tab->export_settle.cf = new->export_settle;
 
   if (tab->hostcache)
     tab->hostcache->req.trace_routes = new->debug;

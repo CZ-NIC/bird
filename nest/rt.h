@@ -65,6 +65,8 @@ struct rtable_config {
   byte debug;				/* Whether to log */
   struct rt_cork_threshold cork_threshold;	/* Cork threshold values */
   struct settle_config export_settle;	/* Export announcement settler */
+  struct settle_config export_rr_settle;/* Export announcement settler config valid when any
+					   route refresh is running */
 };
 
 struct rt_export_hook;
@@ -136,6 +138,9 @@ struct rtable_private {
   btime last_rt_change;			/* Last time when route changed */
   btime gc_time;			/* Time of last GC */
   uint gc_counter;			/* Number of operations since last GC */
+  uint rr_counter;			/* Number of currently running route refreshes,
+					   in fact sum of (stale_set - stale_pruned) over all importers
+					   + one for each TIS_FLUSHING importer */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte prune_trie;			/* Prune prefix trie during next table prune */
   byte nhu_state;			/* Next Hop Update state */

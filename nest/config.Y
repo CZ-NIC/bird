@@ -125,7 +125,7 @@ CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
 CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
-CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, ROA, SETTLE, TIME, GC, THRESHOLD, PERIOD)
+CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, ROA, ROUTE, REFRESH, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
@@ -233,6 +233,8 @@ table_opt:
      if ($3 > $4) cf_error("Cork low threshold must be lower than the high threshold.");
      this_table->cork_threshold.low = $3;
      this_table->cork_threshold.high = $4; }
+ | EXPORT SETTLE TIME settle { this_table->export_settle = $4; }
+ | ROUTE REFRESH EXPORT SETTLE TIME settle { this_table->export_rr_settle = $6; }
  | DEBUG bool { this_table->debug = $2; }
  ;
 
