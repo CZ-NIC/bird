@@ -313,14 +313,22 @@ krt_learn_announce_delete(struct krt_proto *p, net_addr *n)
   rte_update(p->p.main_channel, n, NULL, p->p.main_source);
 }
 
+static struct rte_storage *
+krt_store_async(struct krt_proto *p, net *n, rte *e)
+{
+  ASSERT(!e->attrs->cached);
+  e->attrs->pref = p->p.main_channel->preference;
+  e->src = p->p.main_source;
+  return rte_store(e, n, p->krt_table);
+}
+
 /* Called when alien route is discovered during scan */
 static void
 krt_learn_scan(struct krt_proto *p, rte *e)
 {
   net *n = net_get(p->krt_table, e->net);
   struct rte_storage *m, **mm;
-
-  struct rte_storage *ee = rte_store(e, n, p->krt_table);
+  struct rte_storage *ee = krt_store_async(p, n, e);
 
   for(mm = &n->routes; m = *mm; mm = &m->next)
     if (krt_same_key(&m->rte, e))
@@ -431,11 +439,7 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
 {
   net *n = net_get(p->krt_table, e->net);
   struct rte_storage *g, **gg, *best, **bestp, *old_best;
-
-  ASSERT(!e->attrs->cached);
-  e->attrs->pref = p->p.main_channel->preference;
-
-  struct rte_storage *ee = rte_store(e, n, p->krt_table);
+  struct rte_storage *ee = krt_store_async(p, n, e);
 
   old_best = n->routes;
   for(gg=&n->routes; g = *gg; gg = &g->next)
