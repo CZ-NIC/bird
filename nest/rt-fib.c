@@ -55,7 +55,7 @@
 #undef LOCAL_DEBUG
 
 #include "nest/bird.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "lib/string.h"
 
 /*
@@ -331,7 +331,7 @@ fib_get(struct fib *f, const net_addr *a)
 
   memset(b, 0, f->node_offset);
   if (f->init)
-    f->init(b);
+    f->init(f, b);
 
   if (f->entries++ > f->entries_max)
     fib_rehash(f, HASH_HI_STEP);
@@ -475,7 +475,7 @@ fib_delete(struct fib *f, void *E)
 	    }
 
 	  if (f->fib_slab)
-	    sl_free(f->fib_slab, E);
+	    sl_free(E);
 	  else
 	    mb_free(E);
 

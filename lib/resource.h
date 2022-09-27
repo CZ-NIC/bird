@@ -2,6 +2,7 @@
  *	BIRD Resource Manager
  *
  *	(c) 1998--1999 Martin Mares <mj@ucw.cz>
+ *	(c) 2021 Maria Matejka <mq@jmq.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -10,6 +11,11 @@
 #define _BIRD_RESOURCE_H_
 
 #include "lib/lists.h"
+
+struct resmem {
+  size_t effective;			/* Memory actually used for data storage */
+  size_t overhead;			/* Overhead memory imposed by allocator strategies */
+};
 
 /* Resource */
 
@@ -26,11 +32,11 @@ struct resclass {
   void (*free)(resource *);		/* Freeing function */
   void (*dump)(resource *);		/* Dump to debug output */
   resource *(*lookup)(resource *, unsigned long);	/* Look up address (only for debugging) */
-  size_t (*memsize)(resource *);	/* Return size of memory used by the resource, may be NULL */
+  struct resmem (*memsize)(resource *);	/* Return size of memory used by the resource, may be NULL */
 };
 
 /* Estimate of system allocator overhead per item, for memory consumtion stats */
-#define ALLOC_OVERHEAD		8
+#define ALLOC_OVERHEAD		16
 
 /* Generic resource manipulation */
 
@@ -38,9 +44,10 @@ typedef struct pool pool;
 
 void resource_init(void);
 pool *rp_new(pool *, const char *);	/* Create new pool */
+pool *rp_newf(pool *, const char *, ...);	/* Create a new pool with a formatted string as its name */
 void rfree(void *);			/* Free single resource */
 void rdump(void *);			/* Dump to debug output */
-size_t rmemsize(void *res);		/* Return size of memory used by the resource */
+struct resmem rmemsize(void *res);		/* Return size of memory used by the resource */
 void rlookup(unsigned long);		/* Look up address (only for debugging) */
 void rmove(void *, pool *);		/* Move to a different pool */
 
@@ -53,7 +60,6 @@ extern pool root_pool;
 void *mb_alloc(pool *, unsigned size);
 void *mb_allocz(pool *, unsigned size);
 void *mb_realloc(void *m, unsigned size);
-void mb_move(void *, pool *);
 void mb_free(void *);
 
 /* Memory pools with linear allocation */
@@ -63,9 +69,10 @@ typedef struct linpool linpool;
 typedef struct lp_state {
   void *current, *large;
   byte *ptr;
+  uint total_large;
 } lp_state;
 
-linpool *lp_new(pool *, unsigned blk);
+linpool *lp_new(pool *);
 void *lp_alloc(linpool *, unsigned size);	/* Aligned */
 void *lp_allocu(linpool *, unsigned size);	/* Unaligned */
 void *lp_allocz(linpool *, unsigned size);	/* With clear */
@@ -73,10 +80,23 @@ void lp_flush(linpool *);			/* Free everything, but leave linpool */
 void lp_save(linpool *m, lp_state *p);		/* Save state */
 void lp_restore(linpool *m, lp_state *p);	/* Restore state */
 
-extern const int lp_chunk_size;
-#define LP_GAS		    1024
-#define LP_GOOD_SIZE(x)	    (((x + LP_GAS - 1) & (~(LP_GAS - 1))) - lp_chunk_size)
-#define lp_new_default(p)   lp_new(p, 0)
+struct tmp_resources {
+  pool *pool, *parent;
+  linpool *lp;
+};
+
+extern _Thread_local struct tmp_resources tmp_res;
+
+#define tmp_linpool	tmp_res.lp
+#define tmp_alloc(sz)	lp_alloc(tmp_linpool, sz)
+#define tmp_allocu(sz)	lp_allocu(tmp_linpool, sz)
+#define tmp_allocz(sz)	lp_allocz(tmp_linpool, sz)
+
+void tmp_init(pool *p);
+void tmp_flush(void);
+
+
+#define lp_new_default	lp_new
 
 /* Slabs */
 
@@ -85,7 +105,7 @@ typedef struct slab slab;
 slab *sl_new(pool *, unsigned size);
 void *sl_alloc(slab *);
 void *sl_allocz(slab *);
-void sl_free(slab *, void *);
+void sl_free(void *);
 
 /*
  * Low-level memory allocation functions, please don't use
@@ -94,12 +114,12 @@ void sl_free(slab *, void *);
 
 void buffer_realloc(void **buf, unsigned *size, unsigned need, unsigned item_size);
 
-extern long page_size;
-
 /* Allocator of whole pages; for use in slabs and other high-level allocators. */
-void *alloc_page(pool *);
-void free_page(pool *, void *);
-#define PAGE_HEAD(x)	((void *) (((intptr_t) (x)) & ~(page_size-1)))
+extern long page_size;
+void *alloc_page(void);
+void free_page(void *);
+
+void resource_sys_init(void);
 
 #ifdef HAVE_LIBDMALLOC
 /*

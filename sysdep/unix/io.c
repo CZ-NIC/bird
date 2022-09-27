@@ -1436,6 +1436,10 @@ sk_open(sock *s)
 	if (sk_set_high_port(s) < 0)
 	  log(L_WARN "Socket error: %s%#m", s->err);
 
+    if (s->flags & SKF_FREEBIND)
+      if (sk_set_freebind(s) < 0)
+        log(L_WARN "Socket error: %s%#m", s->err);
+
     sockaddr_fill(&sa, s->af, bind_addr, s->iface, bind_port);
     if (bind(fd, &sa.sa, SA_LEN(sa)) < 0)
       ERR2("bind");
@@ -1850,8 +1854,8 @@ sk_read_ssh(sock *s)
 
  /* sk_read() and sk_write() are called from BFD's event loop */
 
-int
-sk_read(sock *s, int revents)
+static inline int
+sk_read_noflush(sock *s, int revents)
 {
   switch (s->type)
   {
@@ -1914,7 +1918,15 @@ sk_read(sock *s, int revents)
 }
 
 int
-sk_write(sock *s)
+sk_read(sock *s, int revents)
+{
+  int e = sk_read_noflush(s, revents);
+  tmp_flush();
+  return e;
+}
+
+static inline int
+sk_write_noflush(sock *s)
 {
   switch (s->type)
   {
@@ -1962,6 +1974,14 @@ sk_write(sock *s)
   }
 }
 
+int
+sk_write(sock *s)
+{
+  int e = sk_write_noflush(s);
+  tmp_flush();
+  return e;
+}
+
 int sk_is_ipv4(sock *s)
 { return s->af == AF_INET; }
 
@@ -1980,6 +2000,7 @@ sk_err(sock *s, int revents)
     }
 
   s->err_hook(s, se);
+  tmp_flush();
 }
 
 void

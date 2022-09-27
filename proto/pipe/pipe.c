@@ -35,7 +35,7 @@
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
@@ -56,43 +56,46 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
   if (!new && !old)
     return;
 
-  if (dst->table->pipe_busy)
-    {
-      log(L_ERR "Pipe loop detected when sending %N to table %s",
-	  n, dst->table->name);
-      return;
-    }
-
-  src_ch->table->pipe_busy = 1;
-
   if (new)
     {
       rta *a = alloca(rta_size(new->attrs));
       memcpy(a, new->attrs, rta_size(new->attrs));
 
       a->cached = 0;
-      a->hostentry = NULL;
+      ea_unset_attr(&a->eattrs, 0, &ea_gen_hostentry);
+
 
       rte e0 = {
 	.attrs = a,
 	.src = new->src,
+	.generation = new->generation + 1,
       };
 
       rte_update(dst, n, &e0, new->src);
     }
   else
     rte_update(dst, n, NULL, old->src);
-
-  src_ch->table->pipe_busy = 0;
 }
 
 static int
 pipe_preexport(struct channel *c, rte *e)
 {
-  struct proto *pp = e->sender->proto;
+  struct pipe_proto *p = (void *) c->proto;
 
-  if (pp == c->proto)
-    return -1;	/* Avoid local loops automatically */
+  /* Avoid direct loopbacks */
+  if (e->sender == c->in_req.hook)
+    return -1;
+
+  /* Indirection check */
+  uint max_generation = ((struct pipe_config *) p->p.cf)->max_generation;
+  if (e->generation >= max_generation)
+  {
+    log_rl(&p->rl_gen, L_ERR "Route overpiped (%u hops of %u configured in %s) in table %s: %N %s/%u:%u",
+	e->generation, max_generation, c->proto->name,
+	c->table->name, e->net, e->src->proto->name, e->src->private_id, e->src->global_id);
+
+    return -1;
+  }
 
   return 0;
 }
@@ -177,6 +180,8 @@ pipe_init(struct proto_config *CF)
   P->preexport = pipe_preexport;
   P->reload_routes = pipe_reload_routes;
 
+  p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
+
   pipe_configure_channels(p, cf);
 
   return P;
@@ -208,8 +213,18 @@ pipe_get_status(struct proto *P, byte *buf)
 static void
 pipe_show_stats(struct pipe_proto *p)
 {
-  struct proto_stats *s1 = &p->pri->stats;
-  struct proto_stats *s2 = &p->sec->stats;
+  struct channel_import_stats *s1i = &p->pri->import_stats;
+  struct channel_export_stats *s1e = &p->pri->export_stats;
+  struct channel_import_stats *s2i = &p->sec->import_stats;
+  struct channel_export_stats *s2e = &p->sec->export_stats;
+
+  struct rt_import_stats *rs1i = p->pri->in_req.hook ? &p->pri->in_req.hook->stats : NULL;
+  struct rt_export_stats *rs1e = p->pri->out_req.hook ? &p->pri->out_req.hook->stats : NULL;
+  struct rt_import_stats *rs2i = p->sec->in_req.hook ? &p->sec->in_req.hook->stats : NULL;
+  struct rt_export_stats *rs2e = p->sec->out_req.hook ? &p->sec->out_req.hook->stats : NULL;
+
+  u32 pri_routes = p->pri->in_limit.count;
+  u32 sec_routes = p->sec->in_limit.count;
 
   /*
    * Pipe stats (as anything related to pipes) are a bit tricky. There
@@ -233,23 +248,21 @@ pipe_show_stats(struct pipe_proto *p)
    */
 
   cli_msg(-1006, "  Routes:         %u imported, %u exported",
-	  s1->imp_routes, s2->imp_routes);
+	  pri_routes, sec_routes);
   cli_msg(-1006, "  Route change stats:     received   rejected   filtered    ignored   accepted");
   cli_msg(-1006, "    Import updates:     %10u %10u %10u %10u %10u",
-	  s2->exp_updates_received, s2->exp_updates_rejected + s1->imp_updates_invalid,
-	  s2->exp_updates_filtered, s1->imp_updates_ignored, s1->imp_updates_accepted);
+	  rs2e->updates_received, s2e->updates_rejected + s1i->updates_invalid,
+	  s2e->updates_filtered, rs1i->updates_ignored, rs1i->updates_accepted);
   cli_msg(-1006, "    Import withdraws:   %10u %10u        --- %10u %10u",
-	  s2->exp_withdraws_received, s1->imp_withdraws_invalid,
-	  s1->imp_withdraws_ignored, s1->imp_withdraws_accepted);
+	  rs2e->withdraws_received, s1i->withdraws_invalid,
+	  rs1i->withdraws_ignored, rs1i->withdraws_accepted);
   cli_msg(-1006, "    Export updates:     %10u %10u %10u %10u %10u",
-	  s1->exp_updates_received, s1->exp_updates_rejected + s2->imp_updates_invalid,
-	  s1->exp_updates_filtered, s2->imp_updates_ignored, s2->imp_updates_accepted);
+	  rs1e->updates_received, s1e->updates_rejected + s2i->updates_invalid,
+	  s1e->updates_filtered, rs2i->updates_ignored, rs2i->updates_accepted);
   cli_msg(-1006, "    Export withdraws:   %10u %10u        --- %10u %10u",
-	  s1->exp_withdraws_received, s2->imp_withdraws_invalid,
-	  s2->imp_withdraws_ignored, s2->imp_withdraws_accepted);
+	  rs1e->withdraws_received, s2i->withdraws_invalid,
+	  rs2i->withdraws_ignored, rs2i->withdraws_accepted);
 }
-
-static const char *pipe_feed_state[] = { [ES_DOWN] = "down", [ES_FEEDING] = "feed", [ES_READY] = "up" };
 
 static void
 pipe_show_proto_info(struct proto *P)
@@ -259,13 +272,17 @@ pipe_show_proto_info(struct proto *P)
   cli_msg(-1006, "  Channel %s", "main");
   cli_msg(-1006, "    Table:          %s", p->pri->table->name);
   cli_msg(-1006, "    Peer table:     %s", p->sec->table->name);
-  cli_msg(-1006, "    Import state:   %s", pipe_feed_state[p->sec->export_state]);
-  cli_msg(-1006, "    Export state:   %s", pipe_feed_state[p->pri->export_state]);
+  cli_msg(-1006, "    Import state:   %s", rt_export_state_name(rt_export_get_state(p->sec->out_req.hook)));
+  cli_msg(-1006, "    Export state:   %s", rt_export_state_name(rt_export_get_state(p->pri->out_req.hook)));
   cli_msg(-1006, "    Import filter:  %s", filter_name(p->sec->out_filter));
   cli_msg(-1006, "    Export filter:  %s", filter_name(p->pri->out_filter));
 
-  channel_show_limit(&p->pri->in_limit, "Import limit:");
-  channel_show_limit(&p->sec->in_limit, "Export limit:");
+
+
+  channel_show_limit(&p->pri->in_limit, "Import limit:",
+      (p->pri->limit_active & (1 << PLD_IN)), p->pri->limit_actions[PLD_IN]);
+  channel_show_limit(&p->sec->in_limit, "Export limit:",
+      (p->sec->limit_active & (1 << PLD_IN)), p->sec->limit_actions[PLD_IN]);
 
   if (P->proto_state != PS_DOWN)
     pipe_show_stats(p);
@@ -283,7 +300,6 @@ pipe_update_debug(struct proto *P)
 struct protocol proto_pipe = {
   .name =		"Pipe",
   .template =		"pipe%d",
-  .class =		PROTOCOL_PIPE,
   .proto_size =		sizeof(struct pipe_proto),
   .config_size =	sizeof(struct pipe_config),
   .postconfig =		pipe_postconfig,
@@ -293,3 +309,9 @@ struct protocol proto_pipe = {
   .get_status = 	pipe_get_status,
   .show_proto_info = 	pipe_show_proto_info
 };
+
+void
+pipe_build(void)
+{
+  proto_build(&proto_pipe);
+}

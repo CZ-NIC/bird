@@ -20,6 +20,11 @@ int bvsprintf(char *str, const char *fmt, va_list args);
 int bsnprintf(char *str, int size, const char *fmt, ...);
 int bvsnprintf(char *str, int size, const char *fmt, va_list args);
 
+char *mb_sprintf(pool *p, const char *fmt, ...);
+char *mb_vsprintf(pool *p, const char *fmt, va_list args);
+char *lp_sprintf(linpool *p, const char *fmt, ...);
+char *lp_vsprintf(linpool *p, const char *fmt, va_list args);
+
 int buffer_vprint(buffer *buf, const char *fmt, va_list args);
 int buffer_print(buffer *buf, const char *fmt, ...);
 void buffer_puts(buffer *buf, const char *str);

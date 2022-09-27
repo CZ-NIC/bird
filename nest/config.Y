@@ -17,6 +17,7 @@ CF_HDR
 
 CF_DEFINES
 
+static struct rtable_config *this_table;
 static struct proto_config *this_proto;
 static struct channel_config *this_channel;
 static struct iface_patt *this_ipatt;
@@ -111,19 +112,20 @@ proto_postconfig(void)
 
 CF_DECLS
 
-CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
+CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT, PIPE)
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, DEFAULT, TABLE, STATES, ROUTES, FILTERS)
 CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
 CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
-CF_KEYWORDS(PRIMARY, STATS, COUNT, BY, FOR, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
-CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION, SORTED)
-CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
+CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, IN, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
+CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION)
+CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, CLASS, DSCP)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
-CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, FLUSH, AS)
+CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
 CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
+CF_KEYWORDS(SORTED, TRIE, MIN, MAX, SETTLE, TIME)
 
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
@@ -131,7 +133,7 @@ CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4,
 CF_ENUM(T_ENUM_RTS, RTS_, STATIC, INHERIT, DEVICE, STATIC_DEVICE, REDIRECT,
 	RIP, OSPF, OSPF_IA, OSPF_EXT1, OSPF_EXT2, BGP, PIPE, BABEL)
 CF_ENUM(T_ENUM_SCOPE, SCOPE_, HOST, LINK, SITE, ORGANIZATION, UNIVERSE, UNDEFINED)
-CF_ENUM(T_ENUM_RTD, RTD_, UNICAST, BLACKHOLE, UNREACHABLE, PROHIBIT)
+CF_ENUM(T_ENUM_RTD, RTD_, BLACKHOLE, UNREACHABLE, PROHIBIT)
 CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 
@@ -141,7 +143,7 @@ CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 %type <s> optproto
 %type <ra> r_args
 %type <sd> sym_args
-%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type table_sorted tos password_algorithm
+%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type tos password_algorithm
 %type <ps> proto_patt proto_patt2
 %type <cc> channel_start proto_channel
 %type <cl> limit_spec
@@ -206,16 +208,37 @@ CF_ENUM(T_ENUM_NETTYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, IP
 
 conf: table ;
 
-table_sorted:
-	  { $$ = 0; }
- | SORTED { $$ = 1; }
+table: table_start table_sorted table_opt_list ;
+
+table_start: net_type TABLE symbol {
+   this_table = rt_new_table($3, $1);
+   }
  ;
 
-table: net_type TABLE symbol table_sorted {
-   struct rtable_config *cf;
-   cf = rt_new_table($3, $1);
-   cf->sorted = $4;
+table_sorted:
+   /* empty */
+ | SORTED { this_table->sorted = 1; }
+ ;
+
+table_opt:
+   SORTED bool { this_table->sorted = $2; }
+ | TRIE bool {
+     if (!net_val_match(this_table->addr_type, NB_IP | NB_VPN | NB_ROA | NB_IP6_SADR))
+       cf_error("Trie option not supported for %s table", net_label[this_table->addr_type]);
+     this_table->trie_used = $2;
    }
+ | MIN SETTLE TIME expr_us { this_table->min_settle_time = $4; }
+ | MAX SETTLE TIME expr_us { this_table->max_settle_time = $4; }
+ ;
+
+table_opts:
+   /* empty */
+ | table_opts table_opt ';'
+ ;
+
+table_opt_list:
+   /* empty */
+ | '{' table_opts '}'
  ;
 
 
@@ -348,6 +371,7 @@ debug_default:
    DEBUG PROTOCOLS debug_mask { new_config->proto_default_debug = $3; }
  | DEBUG CHANNELS debug_mask { new_config->channel_default_debug = $3; }
  | DEBUG COMMANDS expr { new_config->cli_debug = $3; }
+ | DEBUG PIPE bool { new_config->pipe_debug = $3; }
  ;
 
 /* MRTDUMP PROTOCOLS is in systep/unix/config.Y */
@@ -615,20 +639,28 @@ r_args:
      $$ = cfg_allocz(sizeof(struct rt_show_data));
      init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
-     $$->running_on_config = new_config->fallback;
+     $$->running_on_config = config;
    }
  | r_args net_any {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      $$->addr = $2;
+     $$->addr_mode = RSD_ADDR_EQUAL;
    }
  | r_args FOR r_args_for {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
-     $$->show_for = 1;
      $$->addr = $3;
+     $$->addr_mode = RSD_ADDR_FOR;
    }
- | r_args TABLE CF_SYM_KNOWN {
+ | r_args IN net_any {
+     $$ = $1;
+     if ($$->addr) cf_error("Only one prefix expected");
+     if (!net_type_match($3, NB_IP)) cf_error("Only IP networks accepted for 'in' argument");
+     $$->addr = $3;
+     $$->addr_mode = RSD_ADDR_IN;
+   }
+| r_args TABLE symbol_known {
      cf_assert_symbol($3, SYM_TABLE);
      $$ = $1;
      rt_show_add_table($$, $3->table->table);
@@ -673,7 +705,7 @@ r_args:
      $$ = $1;
      $$->filtered = 1;
    }
- | r_args export_mode CF_SYM_KNOWN {
+ | r_args export_mode symbol_known {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
@@ -690,7 +722,7 @@ r_args:
      $$->export_channel = $3;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
- | r_args PROTOCOL CF_SYM_KNOWN {
+ | r_args PROTOCOL symbol_known {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
@@ -819,8 +851,10 @@ CF_CLI(DUMP NEIGHBORS,,, [[Dump neighbor cache]])
 { neigh_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP ATTRIBUTES,,, [[Dump attribute cache]])
 { rta_dump_all(); cli_msg(0, ""); } ;
-CF_CLI(DUMP ROUTES,,, [[Dump routing table]])
+CF_CLI(DUMP ROUTES,,, [[Dump routes]])
 { rt_dump_all(); cli_msg(0, ""); } ;
+CF_CLI(DUMP TABLES,,, [[Dump table connections]])
+{ rt_dump_hooks_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])
 { protos_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP FILTER ALL,,, [[Dump all filters in linearized form]])
@@ -889,9 +923,6 @@ proto_patt2:
  |      { $$.ptr = NULL; $$.patt = 1; }
  | TEXT { $$.ptr = $1; $$.patt = 1; }
  ;
-
-dynamic_attr: IGP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_GEN_IGP_METRIC); } ;
-
 
 CF_CODE
 

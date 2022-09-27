@@ -94,7 +94,7 @@ FID_DUMP_BODY()m4_dnl
 debug("%s" $4 "\n", INDENT, $5);
 ]])
 FID_INTERPRET_EXEC()m4_dnl
-const $1 $2 = whati->$2
+$1 $2 = whati->$2
 FID_INTERPRET_BODY')
 
 #	Instruction arguments are needed only until linearization is done.
@@ -256,7 +256,7 @@ FID_INTERPRET_BODY()')
 m4_define(SYMBOL, `FID_MEMBER(struct symbol *, sym, [[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], "symbol %s", item->sym->name)')
 m4_define(RTC, `FID_MEMBER(struct rtable_config *, rtc, [[strcmp(f1->rtc->name, f2->rtc->name)]], "route table %s", item->rtc->name)')
 m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, f1->sa.sa_code != f2->sa.sa_code,,)')
-m4_define(DYNAMIC_ATTR, `FID_MEMBER(struct f_dynamic_attr, da, f1->da.ea_code != f2->da.ea_code,,)')
+m4_define(DYNAMIC_ATTR, `FID_MEMBER(const struct ea_class *, da, f1->da != f2->da,,)')
 m4_define(ACCESS_RTE, `FID_HIC(,[[do { if (!fs->rte) runtime("No route to access"); } while (0)]],NEVER_CONSTANT())')
 
 #	2) Code wrapping
@@ -490,7 +490,7 @@ fi_constant(struct f_inst *what, struct f_val val)
 }
 
 static int
-f_const_promotion(struct f_inst *arg, enum f_type want)
+f_const_promotion(struct f_inst *arg, btype want)
 {
   if (arg->fi_code != FI_CONSTANT)
     return 0;
@@ -640,7 +640,7 @@ FID_WR_PUT(4)m4_dnl
 struct f_inst {
   struct f_inst *next;			/* Next instruction */
   enum f_instruction_code fi_code;	/* Instruction code */
-  enum f_type type;			/* Type of returned value, if known */
+  btype type;				/* Type of returned value, if known */
   int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */
   union {

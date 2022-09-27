@@ -29,7 +29,7 @@ kif_set_preferred(ip_addr ip)
 
 CF_DECLS
 
-CF_KEYWORDS(KERNEL, PERSIST, SCAN, TIME, LEARN, DEVICE, ROUTES, GRACEFUL, RESTART, KRT_SOURCE, KRT_METRIC, MERGE, PATHS)
+CF_KEYWORDS(KERNEL, PERSIST, SCAN, TIME, LEARN, DEVICE, ROUTES, GRACEFUL, RESTART, MERGE, PATHS)
 CF_KEYWORDS(INTERFACE, PREFERRED)
 
 %type <i> kern_mp_limit
@@ -121,9 +121,6 @@ kif_iface_opt_list:
 kif_iface:
   kif_iface_start iface_patt_list_nopx kif_iface_opt_list;
 
-
-dynamic_attr: KRT_SOURCE { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_SOURCE); } ;
-dynamic_attr: KRT_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_KRT_METRIC); } ;
 
 CF_CODE
 

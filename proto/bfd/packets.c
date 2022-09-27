@@ -366,7 +366,9 @@ bfd_rx_hook(sock *sk, uint len)
     if (ps > BFD_STATE_DOWN)
       DROP("invalid init state", ps);
 
-    uint ifindex = (sk->sport == BFD_CONTROL_PORT) ? sk->lifindex : 0;
+    uint ifindex = (sk->sport == BFD_CONTROL_PORT) ?
+      (sk->iface ? sk->iface->index : sk->lifindex) :
+      0;
     s = bfd_find_session_by_addr(p, sk->faddr, ifindex);
 
     /* FIXME: better session matching and message */
@@ -425,6 +427,38 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->priority = sk_priority_control;
   sk->flags = SKF_THREAD | SKF_LADDR_RX | (!multihop ? SKF_TTL_RX : 0);
+
+  if (sk_open(sk) < 0)
+    goto err;
+
+  sk_start(sk);
+  return sk;
+
+ err:
+  sk_log_error(sk, p->p.name);
+  rfree(sk);
+  return NULL;
+}
+
+sock *
+bfd_open_rx_sk_bound(struct bfd_proto *p, ip_addr local, struct iface *ifa)
+{
+  sock *sk = sk_new(p->tpool);
+  sk->type = SK_UDP;
+  sk->saddr = local;
+  sk->sport = ifa ? BFD_CONTROL_PORT : BFD_MULTI_CTL_PORT;
+  sk->iface = ifa;
+  sk->vrf = p->p.vrf;
+  sk->data = p;
+
+  sk->rbsize = BFD_MAX_LEN;
+  sk->rx_hook = bfd_rx_hook;
+  sk->err_hook = bfd_err_hook;
+
+  /* TODO: configurable ToS and priority */
+  sk->tos = IP_PREC_INTERNET_CONTROL;
+  sk->priority = sk_priority_control;
+  sk->flags = SKF_THREAD | SKF_BIND | (ifa ? SKF_TTL_RX : 0);
 
   if (sk_open(sk) < 0)
     goto err;

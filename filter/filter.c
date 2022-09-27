@@ -35,10 +35,10 @@
 #include "lib/ip.h"
 #include "lib/net.h"
 #include "lib/flowspec.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "nest/attrs.h"
+#include "lib/attrs.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/f-inst.h"
@@ -79,9 +79,6 @@ struct filter_state {
   /* Cached pointer to ea_list */
   struct ea_list **eattrs;
 
-  /* Linpool for adata allocation */
-  struct linpool *pool;
-
   /* Buffer for log output */
   struct buffer buf;
 
@@ -117,7 +114,7 @@ f_rta_cow(struct filter_state *fs)
    * at the end of f_run()), also the lock of hostentry is inherited (we
    * suppose hostentry is not changed by filters).
    */
-  fs->rte->attrs = rta_do_cow(fs->rte->attrs, fs->pool);
+  fs->rte->attrs = rta_do_cow(fs->rte->attrs, tmp_linpool);
 
   /* Re-cache the ea_list */
   f_cache_eattrs(fs);
@@ -185,8 +182,8 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   return F_ERROR; \
 } while(0)
 
-#define falloc(size)  lp_alloc(fs->pool, size)
-#define fpool fs->pool
+#define falloc(size)	tmp_alloc(size)
+#define fpool		tmp_linpool
 
 #define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
 
@@ -237,7 +234,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
  * tmp_pool, otherwise the filters may modify it.
  */
 enum filter_return
-f_run(const struct filter *filter, struct rte *rte, struct linpool *tmp_pool, int flags)
+f_run(const struct filter *filter, struct rte *rte, int flags)
 {
   if (filter == FILTER_ACCEPT)
     return F_ACCEPT;
@@ -250,7 +247,6 @@ f_run(const struct filter *filter, struct rte *rte, struct linpool *tmp_pool, in
   /* Initialize the filter state */
   filter_state = (struct filter_state) {
     .rte = rte,
-    .pool = tmp_pool,
     .flags = flags,
   };
 
@@ -285,11 +281,10 @@ f_run(const struct filter *filter, struct rte *rte, struct linpool *tmp_pool, in
  */
 
 enum filter_return
-f_eval_rte(const struct f_line *expr, struct rte *rte, struct linpool *tmp_pool)
+f_eval_rte(const struct f_line *expr, struct rte *rte)
 {
   filter_state = (struct filter_state) {
     .rte = rte,
-    .pool = tmp_pool,
   };
 
   f_stack_init(filter_state);
@@ -308,11 +303,9 @@ f_eval_rte(const struct f_line *expr, struct rte *rte, struct linpool *tmp_pool)
  * @pres: here the output will be stored
  */
 enum filter_return
-f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
+f_eval(const struct f_line *expr, struct f_val *pres)
 {
-  filter_state = (struct filter_state) {
-    .pool = tmp_pool,
-  };
+  filter_state = (struct filter_state) {};
 
   f_stack_init(filter_state);
 
@@ -331,9 +324,7 @@ uint
 f_eval_int(const struct f_line *expr)
 {
   /* Called independently in parse-time to eval expressions */
-  filter_state = (struct filter_state) {
-    .pool = cfg_mem,
-  };
+  filter_state = (struct filter_state) {};
 
   f_stack_init(filter_state);
 
@@ -354,10 +345,10 @@ f_eval_int(const struct f_line *expr)
  * f_eval_buf - get a value of a term and print it to the supplied buffer
  */
 enum filter_return
-f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf)
+f_eval_buf(const struct f_line *expr, buffer *buf)
 {
   struct f_val val;
-  enum filter_return fret = f_eval(expr, tmp_pool, &val);
+  enum filter_return fret = f_eval(expr, &val);
   if (fret <= F_RETURN)
     val_format(&val, buf);
   return fret;
@@ -425,6 +416,23 @@ filter_commit(struct config *new, struct config *old)
     }
 }
 
+void channel_filter_dump(const struct filter *f)
+{
+  if (f == FILTER_ACCEPT)
+    debug(" ALL");
+  else if (f == FILTER_REJECT)
+    debug(" NONE");
+  else if (f == FILTER_UNDEF)
+    debug(" UNDEF");
+  else if (f->sym) {
+    ASSERT(f->sym->filter == f);
+    debug(" named filter %s", f->sym->name);
+  } else {
+    debug("\n");
+    f_dump_line(f->root, 2);
+  }
+}
+
 void filters_dump_all(void)
 {
   struct symbol *sym;
@@ -444,19 +452,10 @@ void filters_dump_all(void)
 	  struct channel *c;
 	  WALK_LIST(c, sym->proto->proto->channels) {
 	    debug(" Channel %s (%s) IMPORT", c->name, net_label[c->net_type]);
-	    if (c->in_filter == FILTER_ACCEPT)
-	      debug(" ALL\n");
-	    else if (c->in_filter == FILTER_REJECT)
-	      debug(" NONE\n");
-	    else if (c->in_filter == FILTER_UNDEF)
-	      debug(" UNDEF\n");
-	    else if (c->in_filter->sym) {
-	      ASSERT(c->in_filter->sym->filter == c->in_filter);
-	      debug(" named filter %s\n", c->in_filter->sym->name);
-	    } else {
-	      debug("\n");
-	      f_dump_line(c->in_filter->root, 2);
-	    }
+	    channel_filter_dump(c->in_filter);
+	    debug(" EXPORT", c->name, net_label[c->net_type]);
+	    channel_filter_dump(c->out_filter);
+	    debug("\n");
 	  }
 	}
     }

@@ -37,7 +37,7 @@ CF_KEYWORDS(RIP, NG, ECMP, LIMIT, WEIGHT, INFINITY, METRIC, UPDATE, TIMEOUT,
 	    PASSIVE, VERSION, SPLIT, HORIZON, POISON, REVERSE, CHECK, ZERO,
 	    TIME, BFD, AUTHENTICATION, NONE, PLAINTEXT, CRYPTOGRAPHIC, MD5,
 	    TTL, SECURITY, RX, TX, BUFFER, LENGTH, PRIORITY, ONLY, LINK,
-	    DEMAND, CIRCUIT, RIP_METRIC, RIP_TAG)
+	    DEMAND, CIRCUIT)
 
 %type <i> rip_variant rip_auth
 
@@ -189,9 +189,6 @@ rip_iface_opt_list:
 rip_iface:
   rip_iface_start iface_patt_list_nopx rip_iface_opt_list rip_iface_finish;
 
-
-dynamic_attr: RIP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_RIP_METRIC); } ;
-dynamic_attr: RIP_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_RIP_TAG); } ;
 
 CF_CLI_HELP(SHOW RIP, ..., [[Show information about RIP protocol]]);
 

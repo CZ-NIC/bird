@@ -53,7 +53,7 @@
 
 #include "nest/bird.h"
 #include "nest/iface.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "filter/filter.h"
 #include "conf/conf.h"
@@ -232,7 +232,6 @@ kif_copy_config(struct proto_config *dest, struct proto_config *src)
 struct protocol proto_unix_iface = {
   .name = 		"Device",
   .template = 		"device%d",
-  .class =		PROTOCOL_DEVICE,
   .proto_size =		sizeof(struct kif_proto),
   .config_size =	sizeof(struct kif_config),
   .preconfig =		kif_preconfig,
@@ -242,6 +241,13 @@ struct protocol proto_unix_iface = {
   .reconfigure =	kif_reconfigure,
   .copy_config =	kif_copy_config
 };
+
+void
+kif_build(void)
+{
+  proto_build(&proto_unix_iface);
+}
+
 
 /*
  *	Tracing of routes
@@ -280,7 +286,7 @@ static struct tbf rl_alien = TBF_DEFAULT_LOG_LIMITS;
 static inline u32
 krt_metric(rte *a)
 {
-  eattr *ea = ea_find(a->attrs->eattrs, EA_KRT_METRIC);
+  eattr *ea = ea_find(a->attrs->eattrs, &ea_krt_metric);
   return ea ? ea->u.data : 0;
 }
 
@@ -317,7 +323,7 @@ static struct rte_storage *
 krt_store_async(struct krt_proto *p, net *n, rte *e)
 {
   ASSERT(!e->attrs->cached);
-  e->attrs->pref = p->p.main_channel->preference;
+  ea_set_attr_u32(&e->attrs->eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
   e->src = p->p.main_source;
   return rte_store(e, n, p->krt_table);
 }
@@ -338,14 +344,14 @@ krt_learn_scan(struct krt_proto *p, rte *e)
       if (krt_uptodate(&m->rte, e))
 	{
 	  krt_trace_in_rl(&rl_alien, p, e, "[alien] seen");
-	  rte_free(ee, p->krt_table);
+	  rte_free(ee);
 	  m->rte.pflags |= KRT_REF_SEEN;
 	}
       else
 	{
 	  krt_trace_in(p, e, "[alien] updated");
 	  *mm = m->next;
-	  rte_free(m, p->krt_table);
+	  rte_free(m);
 	  m = NULL;
 	}
     }
@@ -392,7 +398,7 @@ again:
 	  if (!(e->rte.pflags & KRT_REF_SEEN))
 	    {
 	      *ee = e->next;
-	      rte_free(e, p->krt_table);
+	      rte_free(e);
 	      continue;
 	    }
 
@@ -452,12 +458,12 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
 	  if (krt_uptodate(&g->rte, e))
 	    {
 	      krt_trace_in(p, e, "[alien async] same");
-	      rte_free(ee, p->krt_table);
+	      rte_free(ee);
 	      return;
 	    }
 	  krt_trace_in(p, e, "[alien async] updated");
 	  *gg = g->next;
-	  rte_free(g, p->krt_table);
+	  rte_free(g);
 	}
       else
 	krt_trace_in(p, e, "[alien async] created");
@@ -468,15 +474,15 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
   else if (!g)
     {
       krt_trace_in(p, e, "[alien async] delete failed");
-      rte_free(ee, p->krt_table);
+      rte_free(ee);
       return;
     }
   else
     {
       krt_trace_in(p, e, "[alien async] removed");
       *gg = g->next;
-      rte_free(ee, p->krt_table);
-      rte_free(g, p->krt_table);
+      rte_free(ee);
+      rte_free(g);
     }
   best = n->routes;
   bestp = &n->routes;
@@ -546,21 +552,27 @@ krt_is_installed(struct krt_proto *p, net *n)
   return n->routes && bmap_test(&p->p.main_channel->export_map, n->routes->rte.id);
 }
 
-static void
-krt_flush_routes(struct krt_proto *p)
+static uint
+rte_feed_count(net *n)
 {
-  struct rtable *t = p->p.main_channel->table;
+  uint count = 0;
+  for (struct rte_storage *e = n->routes; e; e = e->next)
+    if (rte_is_valid(RTE_OR_NULL(e)))
+      count++;
+  return count;
+}
 
-  KRT_TRACE(p, D_EVENTS, "Flushing kernel routes");
-  FIB_WALK(&t->fib, net, n)
+static void
+rte_feed_obtain(net *n, rte **feed, uint count)
+{
+  uint i = 0;
+  for (struct rte_storage *e = n->routes; e; e = e->next)
+    if (rte_is_valid(RTE_OR_NULL(e)))
     {
-      if (krt_is_installed(p, n))
-	{
-	  /* FIXME: this does not work if gw is changed in export filter */
-	  krt_replace_rte(p, n->n.addr, NULL, &n->routes->rte);
-	}
+      ASSERT_DIE(i < count);
+      feed[i++] = &e->rte;
     }
-  FIB_WALK_END;
+  ASSERT_DIE(i == count);
 }
 
 static struct rte *
@@ -570,7 +582,15 @@ krt_export_net(struct krt_proto *p, net *net)
   const struct filter *filter = c->out_filter;
 
   if (c->ra_mode == RA_MERGED)
-    return rt_export_merged(c, net, krt_filter_lp, 1);
+  {
+    uint count = rte_feed_count(net);
+    if (!count)
+      return NULL;
+
+    rte **feed = alloca(count * sizeof(rte *));
+    rte_feed_obtain(net, feed, count);
+    return rt_export_merged(c, feed, count, krt_filter_lp, 1);
+  }
 
   static _Thread_local rte rt;
   rt = net->routes->rte;
@@ -586,7 +606,7 @@ krt_export_net(struct krt_proto *p, net *net)
   if (filter == FILTER_ACCEPT)
     goto accept;
 
-  if (f_run(filter, &rt, krt_filter_lp, FF_SILENT) > F_ACCEPT)
+  if (f_run(filter, &rt, FF_SILENT) > F_ACCEPT)
     goto reject;
 
 
@@ -602,13 +622,10 @@ krt_same_dest(rte *k, rte *e)
 {
   rta *ka = k->attrs, *ea = e->attrs;
 
-  if (ka->dest != ea->dest)
-    return 0;
+  eattr *nhea_k = ea_find(ka->eattrs, &ea_gen_nexthop);
+  eattr *nhea_e = ea_find(ea->eattrs, &ea_gen_nexthop);
 
-  if (ka->dest == RTD_UNICAST)
-    return nexthop_same(&(ka->nh), &(ea->nh));
-
-  return 1;
+  return (!nhea_k == !nhea_e) && adata_same(nhea_k->u.ptr, nhea_e->u.ptr);
 }
 
 /*
@@ -641,6 +658,9 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
 #endif
   /* The rest is for KRT_SRC_BIRD (or KRT_SRC_UNKNOWN) */
 
+  /* Deleting all routes if flush is requested */
+  if (p->flush_routes)
+    goto delete;
 
   /* We wait for the initial feed to have correct installed state */
   if (!p->ready)
@@ -731,6 +751,17 @@ krt_prune(struct krt_proto *p)
 
   if (p->ready)
     p->initialized = 1;
+}
+
+static void
+krt_flush_routes(struct krt_proto *p)
+{
+  KRT_TRACE(p, D_EVENTS, "Flushing kernel routes");
+  p->flush_routes = 1;
+  krt_init_scan(p);
+  krt_do_scan(p);
+  /* No prune! */
+  p->flush_routes = 0;
 }
 
 void
@@ -1111,24 +1142,15 @@ krt_copy_config(struct proto_config *dest, struct proto_config *src)
   krt_sys_copy_config(d, s);
 }
 
-static int
-krt_get_attr(const eattr *a, byte *buf, int buflen)
-{
-  switch (a->id)
-  {
-  case EA_KRT_SOURCE:
-    bsprintf(buf, "source");
-    return GA_NAME;
+struct ea_class ea_krt_source = {
+  .name = "krt_source",
+  .type = T_INT,
+};
 
-  case EA_KRT_METRIC:
-    bsprintf(buf, "metric");
-    return GA_NAME;
-
-  default:
-    return krt_sys_get_attr(a, buf, buflen);
-  }
-}
-
+struct ea_class ea_krt_metric = {
+  .name = "krt_metric",
+  .type = T_INT,
+};
 
 #ifdef CONFIG_IP6_SADR_KERNEL
 #define MAYBE_IP6_SADR	NB_IP6_SADR
@@ -1145,7 +1167,6 @@ krt_get_attr(const eattr *a, byte *buf, int buflen)
 struct protocol proto_unix_kernel = {
   .name =		"Kernel",
   .template =		"kernel%d",
-  .class =		PROTOCOL_KERNEL,
   .preference =		DEF_PREF_INHERITED,
   .channel_mask =	NB_IP | MAYBE_IP6_SADR | MAYBE_MPLS,
   .proto_size =		sizeof(struct krt_proto),
@@ -1157,8 +1178,18 @@ struct protocol proto_unix_kernel = {
   .shutdown =		krt_shutdown,
   .reconfigure =	krt_reconfigure,
   .copy_config =	krt_copy_config,
-  .get_attr =		krt_get_attr,
 #ifdef KRT_ALLOW_LEARN
   .dump =		krt_dump,
 #endif
 };
+
+void
+krt_build(void)
+{
+  proto_build(&proto_unix_kernel);
+
+  EA_REGISTER_ALL(
+      &ea_krt_source,
+      &ea_krt_metric,
+      );
+}

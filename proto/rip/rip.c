@@ -78,6 +78,7 @@
 
 #include <stdlib.h>
 #include "rip.h"
+#include "lib/macro.h"
 
 
 static inline void rip_lock_neighbor(struct rip_neighbor *n);
@@ -88,6 +89,7 @@ static inline void rip_iface_kick_timer(struct rip_iface *ifa);
 static void rip_iface_timer(timer *timer);
 static void rip_trigger_update(struct rip_proto *p);
 
+static struct ea_class ea_rip_metric, ea_rip_tag, ea_rip_from;
 
 /*
  *	RIP routes
@@ -108,14 +110,14 @@ rip_add_rte(struct rip_proto *p, struct rip_rte **rp, struct rip_rte *src)
 }
 
 static inline void
-rip_remove_rte(struct rip_proto *p, struct rip_rte **rp)
+rip_remove_rte(struct rip_proto *p UNUSED, struct rip_rte **rp)
 {
   struct rip_rte *rt = *rp;
 
   rip_unlock_neighbor(rt->from);
 
   *rp = rt->next;
-  sl_free(p->rte_slab, rt);
+  sl_free(rt);
 }
 
 static inline int rip_same_rte(struct rip_rte *a, struct rip_rte *b)
@@ -123,6 +125,11 @@ static inline int rip_same_rte(struct rip_rte *a, struct rip_rte *b)
 
 static inline int rip_valid_rte(struct rip_rte *rt)
 { return rt->from->ifa != NULL; }
+
+struct rip_iface_adata {
+  struct adata ad;
+  struct iface *iface;
+};
 
 /**
  * rip_announce_rte - announce route from RIP routing table to the core
@@ -144,68 +151,85 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   if (rt)
   {
     /* Update */
-    rta a0 = {
-      .pref = p->p.main_channel->preference,
-      .source = RTS_RIP,
-      .scope = SCOPE_UNIVERSE,
-      .dest = RTD_UNICAST,
-    };
+    rta a0 = {};
 
-    u8 rt_metric = rt->metric;
+    struct {
+      ea_list l;
+      eattr a[3];
+    } ea_block = {
+      .l.count = ARRAY_SIZE(ea_block.a),
+      .a = {
+	EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, p->p.main_channel->preference),
+	EA_LITERAL_EMBEDDED(&ea_gen_source, 0, RTS_RIP),
+	EA_LITERAL_EMBEDDED(&ea_rip_metric, 0, rt->metric),
+      },
+    };
+    a0.eattrs = &ea_block.l;
+
     u16 rt_tag = rt->tag;
+    struct iface *rt_from = NULL;
 
     if (p->ecmp)
     {
       /* ECMP route */
-      struct nexthop *nhs = NULL;
       int num = 0;
+
+      for (rt = en->routes; rt && (num < p->ecmp); rt = rt->next)
+	if (rip_valid_rte(rt))
+	  num++;
+
+      struct nexthop_adata *nhad = (struct nexthop_adata *) tmp_alloc_adata((num+1) * sizeof(struct nexthop));
+      struct nexthop *nh = &nhad->nh;
 
       for (rt = en->routes; rt && (num < p->ecmp); rt = rt->next)
       {
 	if (!rip_valid_rte(rt))
-	    continue;
+	  continue;
 
-	struct nexthop *nh = allocz(sizeof(struct nexthop));
+	*nh = (struct nexthop) {
+	  .gw = rt->next_hop,
+	  .iface = rt->from->ifa->iface,
+	  .weight = rt->from->ifa->cf->ecmp_weight,
+	};
 
-	nh->gw = rt->next_hop;
-	nh->iface = rt->from->ifa->iface;
-	nh->weight = rt->from->ifa->cf->ecmp_weight;
+	if (!rt_from)
+	  rt_from = rt->from->ifa->iface;
 
-	nexthop_insert(&nhs, nh);
-	num++;
+	nh = NEXTHOP_NEXT(nh);
 
 	if (rt->tag != rt_tag)
 	  rt_tag = 0;
       }
 
-      a0.nh = *nhs;
+      nhad->ad.length = ((void *) nh - (void *) nhad->ad.data);
+
+      ea_set_attr(&a0.eattrs,
+	  EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0,
+	    &(nexthop_sort(nhad, tmp_linpool)->ad)));
     }
     else
     {
       /* Unipath route */
-      a0.from = rt->from->nbr->addr;
-      a0.nh.gw = rt->next_hop;
-      a0.nh.iface = rt->from->ifa->iface;
+      rt_from = rt->from->ifa->iface;
+
+      struct nexthop_adata nhad = {
+	.nh.gw = rt->next_hop,
+	.nh.iface = rt->from->ifa->iface,
+      };
+
+      ea_set_attr_data(&a0.eattrs, &ea_gen_nexthop, 0,
+	  &nhad.ad.data, sizeof nhad - sizeof nhad.ad);
+      ea_set_attr_data(&a0.eattrs, &ea_gen_from, 0, &rt->from->nbr->addr, sizeof(ip_addr));
     }
 
-    a0.eattrs = alloca(sizeof(ea_list) + 3*sizeof(eattr));
-    memset(a0.eattrs, 0, sizeof(ea_list)); /* Zero-ing only the ea_list header */
-    a0.eattrs->count = 3;
-    a0.eattrs->attrs[0] = (eattr) {
-      .id = EA_RIP_METRIC,
-      .type = EAF_TYPE_INT,
-      .u.data = rt_metric,
+    ea_set_attr_u32(&a0.eattrs, &ea_rip_tag, 0, rt_tag);
+
+    struct rip_iface_adata riad = {
+      .ad = { .length = sizeof(struct rip_iface_adata) - sizeof(struct adata) },
+      .iface = rt_from,
     };
-    a0.eattrs->attrs[1] = (eattr) {
-      .id = EA_RIP_TAG,
-      .type = EAF_TYPE_INT,
-      .u.data = rt_tag,
-    };
-    a0.eattrs->attrs[2] = (eattr) {
-      .id = EA_RIP_FROM,
-      .type = EAF_TYPE_PTR,
-      .u.data = (uintptr_t) a0.nh.iface,
-    };
+    ea_set_attr(&a0.eattrs,
+	EA_LITERAL_DIRECT_ADATA(&ea_rip_from, 0, &riad.ad));
 
     rte e0 = {
       .attrs = &a0,
@@ -320,9 +344,10 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net, s
   if (new)
   {
     /* Update */
-    u32 rt_tag = ea_get_int(new->attrs->eattrs, EA_RIP_TAG, 0);
-    u32 rt_metric = ea_get_int(new->attrs->eattrs, EA_RIP_METRIC, 1);
-    struct iface *rt_from = (struct iface *) ea_get_int(new->attrs->eattrs, EA_RIP_FROM, 0);
+    u32 rt_tag = ea_get_int(new->attrs->eattrs, &ea_rip_tag, 0);
+    u32 rt_metric = ea_get_int(new->attrs->eattrs, &ea_rip_metric, 1);
+    const eattr *rie = ea_find(new->attrs->eattrs, &ea_rip_from);
+    struct iface *rt_from = rie ? ((struct rip_iface_adata *) rie->u.ptr)->iface : NULL;
 
     if (rt_metric > p->infinity)
     {
@@ -354,8 +379,14 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net, s
     en->metric = rt_metric;
     en->tag = rt_tag;
     en->from = (new->src->proto == P) ? rt_from : NULL;
-    en->iface = new->attrs->nh.iface;
-    en->next_hop = new->attrs->nh.gw;
+
+    eattr *nhea = ea_find(new->attrs->eattrs, &ea_gen_nexthop);
+    if (nhea)
+    {
+      struct nexthop_adata *nhad = (struct nexthop_adata *) nhea->u.ptr;
+      en->iface = nhad->nh.iface;
+      en->next_hop = nhad->nh.gw;
+    }
   }
   else
   {
@@ -1088,16 +1119,16 @@ rip_rte_better(struct rte *new, struct rte *old)
   ASSERT_DIE(new->src == old->src);
   struct rip_proto *p = (struct rip_proto *) new->src->proto;
 
-  u32 new_metric = ea_get_int(new->attrs->eattrs, EA_RIP_METRIC, p->infinity);
-  u32 old_metric = ea_get_int(old->attrs->eattrs, EA_RIP_METRIC, p->infinity);
+  u32 new_metric = ea_get_int(new->attrs->eattrs, &ea_rip_metric, p->infinity);
+  u32 old_metric = ea_get_int(old->attrs->eattrs, &ea_rip_metric, p->infinity);
 
   return new_metric < old_metric;
 }
 
 static u32
-rip_rte_igp_metric(struct rte *rt)
+rip_rte_igp_metric(const rte *rt)
 {
-  return ea_get_int(rt->attrs->eattrs, EA_RIP_METRIC, IGP_METRIC_UNKNOWN);
+  return ea_get_int(rt->attrs->eattrs, &ea_rip_metric, IGP_METRIC_UNKNOWN);
 }
 
 static void
@@ -1198,32 +1229,37 @@ static void
 rip_get_route_info(rte *rte, byte *buf)
 {
   struct rip_proto *p = (struct rip_proto *) rte->src->proto;
-  u32 rt_metric = ea_get_int(rte->attrs->eattrs, EA_RIP_METRIC, p->infinity);
-  u32 rt_tag = ea_get_int(rte->attrs->eattrs, EA_RIP_TAG, 0);
+  u32 rt_metric = ea_get_int(rte->attrs->eattrs, &ea_rip_metric, p->infinity);
+  u32 rt_tag = ea_get_int(rte->attrs->eattrs, &ea_rip_tag, 0);
 
-  buf += bsprintf(buf, " (%d/%d)", rte->attrs->pref, rt_metric);
+  buf += bsprintf(buf, " (%d/%d)", rt_get_preference(rte), rt_metric);
 
   if (rt_tag)
     bsprintf(buf, " [%04x]", rt_tag);
 }
 
-static int
-rip_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
+static void
+rip_tag_format(const eattr *a, byte *buf, uint buflen)
 {
-  switch (a->id)
-  {
-  case EA_RIP_METRIC:
-    bsprintf(buf, "metric: %d", a->u.data);
-    return GA_FULL;
-
-  case EA_RIP_TAG:
-    bsprintf(buf, "tag: %04x", a->u.data);
-    return GA_FULL;
-
-  default:
-    return GA_UNKNOWN;
-  }
+  bsnprintf(buf, buflen, "tag: %04x", a->u.data);
 }
+
+static struct ea_class ea_rip_metric = {
+  .name = "rip_metric",
+  .type = T_INT,
+};
+
+static struct ea_class ea_rip_tag = {
+  .name = "rip_tag",
+  .type = T_INT,
+  .format = rip_tag_format,
+};
+
+static struct ea_class ea_rip_from = {
+  .name = "rip_from",
+  .type = T_IFACE,
+  .readonly = 1,
+};
 
 void
 rip_show_interfaces(struct proto *P, const char *iff)
@@ -1327,7 +1363,6 @@ rip_dump(struct proto *P)
 struct protocol proto_rip = {
   .name =		"RIP",
   .template =		"rip%d",
-  .class =		PROTOCOL_RIP,
   .preference =		DEF_PREF_RIP,
   .channel_mask =	NB_IP,
   .proto_size =		sizeof(struct rip_proto),
@@ -1339,5 +1374,16 @@ struct protocol proto_rip = {
   .shutdown =		rip_shutdown,
   .reconfigure =	rip_reconfigure,
   .get_route_info =	rip_get_route_info,
-  .get_attr =		rip_get_attr
 };
+
+void
+rip_build(void)
+{
+  proto_build(&proto_rip);
+
+  EA_REGISTER_ALL(
+      &ea_rip_metric,
+      &ea_rip_tag,
+      &ea_rip_from
+      );
+}

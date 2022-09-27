@@ -113,13 +113,13 @@ mrt_buffer_flush(buffer *b)
 }
 
 #define MRT_DEFINE_TYPE(S, T)						\
-  static inline void mrt_put_##S##_(buffer *b, T x)			\
+  UNUSED static inline void mrt_put_##S##_(buffer *b, T x)		\
   {									\
     put_##S(b->pos, x);							\
     b->pos += sizeof(T);						\
   }									\
 									\
-  static inline void mrt_put_##S(buffer *b, T x)			\
+  UNUSED static inline void mrt_put_##S(buffer *b, T x)			\
   {									\
     mrt_buffer_need(b, sizeof(T));					\
     put_##S(b->pos, x);							\
@@ -431,7 +431,7 @@ mrt_rib_table_entry_bgp_attrs(struct mrt_table_dump_state *s, rte *r)
 
   /* Attribute list must be normalized for bgp_encode_attrs() */
   if (!rta_is_cached(r->attrs))
-    ea_normalize(eattrs);
+    eattrs = ea_normalize(eattrs);
 
   mrt_buffer_need(b, MRT_ATTR_BUFFER_SIZE);
   byte *pos = b->pos;
@@ -525,7 +525,7 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
     }
 
     rte e = rt->rte;
-    if (f_run(s->filter, &e, s->linpool, 0) <= F_ACCEPT)
+    if (f_run(s->filter, &e, 0) <= F_ACCEPT)
       mrt_rib_table_entry(s, &e);
 
     lp_flush(s->linpool);
@@ -557,8 +557,8 @@ mrt_table_dump_init(pool *pp)
   struct mrt_table_dump_state *s = mb_allocz(pool, sizeof(struct mrt_table_dump_state));
 
   s->pool = pool;
-  s->linpool = lp_new(pool, 4080);
-  s->peer_lp = lp_new(pool, 4080);
+  s->linpool = lp_new(pool);
+  s->peer_lp = lp_new(pool);
   mrt_buffer_init(&s->buf, pool, 2 * MRT_ATTR_BUFFER_SIZE);
 
   /* We lock the current config as we may reference it indirectly by filter */
@@ -904,7 +904,6 @@ mrt_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUSE
 struct protocol proto_mrt = {
   .name =		"MRT",
   .template =		"mrt%d",
-  .class =		PROTOCOL_MRT,
   .proto_size =		sizeof(struct mrt_proto),
   .config_size =	sizeof(struct mrt_config),
   .init =		mrt_init,
@@ -913,3 +912,9 @@ struct protocol proto_mrt = {
   .reconfigure =	mrt_reconfigure,
   .copy_config =	mrt_copy_config,
 };
+
+void
+mrt_build(void)
+{
+  proto_build(&proto_mrt);
+}

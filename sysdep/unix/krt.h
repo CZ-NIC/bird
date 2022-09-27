@@ -21,8 +21,12 @@ struct kif_proto;
 
 #define KRT_DEFAULT_ECMP_LIMIT	16
 
+#if 0
 #define EA_KRT_SOURCE	EA_CODE(PROTOCOL_KERNEL, 0)
 #define EA_KRT_METRIC	EA_CODE(PROTOCOL_KERNEL, 1)
+#endif
+
+extern struct ea_class ea_krt_source, ea_krt_metric;
 
 #define KRT_REF_SEEN	0x1	/* Seen in table */
 #define KRT_REF_BEST	0x2	/* Best in table */
@@ -66,6 +70,7 @@ struct krt_proto {
   byte ready;			/* Initial feed has been finished */
   byte initialized;		/* First scan has been finished */
   byte reload;			/* Next scan is doing reload */
+  byte flush_routes;		/* Scanning to flush */
 };
 
 extern pool *krt_pool;

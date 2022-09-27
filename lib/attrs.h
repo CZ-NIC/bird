@@ -11,7 +11,39 @@
 
 #include <stdint.h>
 #include "lib/unaligned.h"
-#include "nest/route.h"
+
+typedef struct adata {
+  uint length;				/* Length of data */
+  byte data[0];
+} adata;
+
+#define ADATA_SIZE(s)	BIRD_CPU_ALIGN(sizeof(struct adata) + s)
+
+extern const adata null_adata;		/* adata of length 0 */
+
+static inline struct adata *
+lp_alloc_adata(struct linpool *pool, uint len)
+{
+  struct adata *ad = lp_alloc(pool, sizeof(struct adata) + len);
+  ad->length = len;
+  return ad;
+}
+
+static inline struct adata *
+lp_store_adata(struct linpool *pool, const void *buf, uint len)
+{
+  struct adata *ad = lp_alloc_adata(pool, len);
+  memcpy(ad->data, buf, len);
+  return ad;
+}
+
+#define tmp_alloc_adata(len)	  lp_alloc_adata(tmp_linpool, len)
+#define tmp_store_adata(buf, len) lp_store_adata(tmp_linpool, buf, len)
+#define tmp_copy_adata(ad)	  tmp_store_adata((ad)->data, (ad)->length)
+
+static inline int adata_same(const struct adata *a, const struct adata *b)
+{ return (a->length == b->length && !memcmp(a->data, b->data, a->length)); }
+
 
 
 /* a-path.c */
@@ -218,6 +250,12 @@ struct adata *ec_set_del_nontrans(struct linpool *pool, const struct adata *set)
 struct adata *int_set_sort(struct linpool *pool, const struct adata *src);
 struct adata *ec_set_sort(struct linpool *pool, const struct adata *src);
 struct adata *lc_set_sort(struct linpool *pool, const struct adata *src);
+int int_set_min(const struct adata *list, u32 *val);
+int ec_set_min(const struct adata *list, u64 *val);
+int lc_set_min(const struct adata *list, lcomm *val);
+int int_set_max(const struct adata *list, u32 *val);
+int ec_set_max(const struct adata *list, u64 *val);
+int lc_set_max(const struct adata *list, lcomm *val);
 
 void ec_set_sort_x(struct adata *set); /* Sort in place */
 

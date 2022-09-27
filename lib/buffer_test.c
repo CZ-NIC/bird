@@ -41,7 +41,6 @@ fill_expected_array(void)
 static void
 init_buffer(void)
 {
-  resource_init();
   buffer_pool = &root_pool;
   BUFFER_INIT(buf, buffer_pool, MAX_NUM);
 }

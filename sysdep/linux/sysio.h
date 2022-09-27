@@ -10,6 +10,10 @@
 #define IPV6_MINHOPCOUNT 73
 #endif
 
+#ifndef IPV6_FREEBIND
+#define IPV6_FREEBIND 78
+#endif
+
 #ifndef TCP_MD5SIG_EXT
 #define TCP_MD5SIG_EXT 32
 #endif
@@ -266,3 +270,18 @@ sk_set_priority(sock *s, int prio)
   return 0;
 }
 
+static inline int
+sk_set_freebind(sock *s)
+{
+  int y = 1;
+
+  if (sk_is_ipv4(s))
+    if (setsockopt(s->fd, SOL_IP, IP_FREEBIND, &y, sizeof(y)) < 0)
+      ERR("IP_FREEBIND");
+
+  if (sk_is_ipv6(s))
+    if (setsockopt(s->fd, SOL_IPV6, IPV6_FREEBIND, &y, sizeof(y)) < 0)
+      ERR("IPV6_FREEBIND");
+
+  return 0;
+}

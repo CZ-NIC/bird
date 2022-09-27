@@ -120,12 +120,10 @@ rpki_table_add_roa(struct rpki_cache *cache, struct channel *channel, const net_
 {
   struct rpki_proto *p = cache->p;
 
-  rta a0 = {
-    .pref = channel->preference,
-    .source = RTS_RPKI,
-    .scope = SCOPE_UNIVERSE,
-    .dest = RTD_NONE,
-  };
+  rta a0 = {};
+
+  ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, channel->preference);
+  ea_set_attr_u32(&a0.eattrs, &ea_gen_source, 0, RTS_RPKI);
 
   rte e0 = { .attrs = &a0, .src = p->p.main_source, };
 
@@ -384,6 +382,9 @@ rpki_refresh_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
 
+  if (cache->p->cache != cache)
+    return;
+
   CACHE_DBG(cache, "%s", rpki_cache_state_to_str(cache->state));
 
   switch (cache->state)
@@ -430,6 +431,9 @@ rpki_retry_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
 
+  if (cache->p->cache != cache)
+    return;
+
   CACHE_DBG(cache, "%s", rpki_cache_state_to_str(cache->state));
 
   switch (cache->state)
@@ -474,6 +478,9 @@ static void
 rpki_expire_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
+
+  if (cache->p->cache != cache)
+    return;
 
   if (!cache->last_update)
     return;
@@ -825,16 +832,27 @@ rpki_show_proto_info(struct proto *P)
   if (cache)
   {
     const char *transport_name = "---";
+    uint default_port = 0;
 
     switch (cf->tr_config.type)
     {
 #if HAVE_LIBSSH
-    case RPKI_TR_SSH: transport_name = "SSHv2"; break;
+    case RPKI_TR_SSH:
+      transport_name = "SSHv2";
+      default_port = RPKI_SSH_PORT;
+      break;
 #endif
-    case RPKI_TR_TCP: transport_name = "Unprotected over TCP"; break;
+    case RPKI_TR_TCP:
+      transport_name = "Unprotected over TCP";
+      default_port = RPKI_TCP_PORT;
+      break;
     };
 
     cli_msg(-1006, "  Cache server:     %s", cf->hostname);
+
+    if (cf->port != default_port)
+      cli_msg(-1006, "  Cache port:       %u", cf->port);
+
     cli_msg(-1006, "  Status:           %s", rpki_cache_state_to_str(cache->state));
     cli_msg(-1006, "  Transport:        %s", transport_name);
     cli_msg(-1006, "  Protocol version: %u", cache->version);
@@ -932,7 +950,6 @@ rpki_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUS
 struct protocol proto_rpki = {
   .name = 		"RPKI",
   .template = 		"rpki%d",
-  .class =		PROTOCOL_RPKI,
   .preference = 	DEF_PREF_RPKI,
   .proto_size = 	sizeof(struct rpki_proto),
   .config_size =	sizeof(struct rpki_config),
@@ -946,3 +963,9 @@ struct protocol proto_rpki = {
   .reconfigure = 	rpki_reconfigure,
   .get_status = 	rpki_get_status,
 };
+
+void
+rpki_build(void)
+{
+  proto_build(&proto_rpki);
+}

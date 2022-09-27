@@ -568,3 +568,51 @@ buffer_puts(buffer *buf, const char *str)
 
   buf->pos = (bp < be) ? bp : buf->end;
 }
+
+#define POOL_PRINTF_MAXBUF	1024
+
+char *mb_vsprintf(pool *p, const char *fmt, va_list args)
+{
+  char buf[POOL_PRINTF_MAXBUF];
+  int count = bvsnprintf(buf, POOL_PRINTF_MAXBUF, fmt, args);
+
+  if (count < 0)
+    bug("Attempted to mb_vsprintf() a too long string");
+
+  char *out = mb_alloc(p, count + 1);
+  memcpy(out, buf, count + 1);
+  return out;
+}
+
+char *mb_sprintf(pool *p, const char *fmt, ...)
+{
+  va_list args;
+  char *out;
+  va_start(args, fmt);
+  out = mb_vsprintf(p, fmt, args);
+  va_end(args);
+  return out;
+}
+
+char *lp_vsprintf(linpool *p, const char *fmt, va_list args)
+{
+  char buf[POOL_PRINTF_MAXBUF];
+  int count = bvsnprintf(buf, POOL_PRINTF_MAXBUF, fmt, args);
+
+  if (count < 0)
+    bug("Attempted to mb_vsprintf() a too long string");
+
+  char *out = lp_alloc(p, count + 1);
+  memcpy(out, buf, count + 1);
+  return out;
+}
+
+char *lp_sprintf(linpool *p, const char *fmt, ...)
+{
+  va_list args;
+  char *out;
+  va_start(args, fmt);
+  out = lp_vsprintf(p, fmt, args);
+  va_end(args);
+  return out;
+}

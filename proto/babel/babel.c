@@ -37,6 +37,7 @@
 
 #include <stdlib.h>
 #include "babel.h"
+#include "lib/macro.h"
 
 #define LOG_PKT_AUTH(msg, args...) \
   log_rl(&p->log_pkt_tbf, L_AUTH "%s: " msg, p->p.name, args)
@@ -58,12 +59,14 @@ static void babel_update_cost(struct babel_neighbor *n);
 static inline void babel_kick_timer(struct babel_proto *p);
 static inline void babel_iface_kick_timer(struct babel_iface *ifa);
 
+static struct ea_class ea_babel_metric, ea_babel_router_id, ea_babel_seqno;
+
 /*
  *	Functions to maintain data structures
  */
 
 static void
-babel_init_entry(void *E)
+babel_init_entry(struct fib *f UNUSED, void *E)
 {
   struct babel_entry *e = E;
 
@@ -119,7 +122,7 @@ babel_get_source(struct babel_proto *p, struct babel_entry *e, u64 router_id)
 }
 
 static void
-babel_expire_sources(struct babel_proto *p, struct babel_entry *e)
+babel_expire_sources(struct babel_proto *p UNUSED, struct babel_entry *e)
 {
   struct babel_source *n, *nx;
   btime now_ = current_time();
@@ -129,7 +132,7 @@ babel_expire_sources(struct babel_proto *p, struct babel_entry *e)
     if (n->expires && n->expires <= now_)
     {
       rem_node(NODE n);
-      sl_free(p->source_slab, n);
+      sl_free(n);
     }
   }
 }
@@ -174,7 +177,7 @@ babel_retract_route(struct babel_proto *p, struct babel_route *r)
 }
 
 static void
-babel_flush_route(struct babel_proto *p, struct babel_route *r)
+babel_flush_route(struct babel_proto *p UNUSED, struct babel_route *r)
 {
   DBG("Babel: Flush route %N router_id %lR neigh %I\n",
       r->e->n.addr, r->router_id, r->neigh->addr);
@@ -185,7 +188,7 @@ babel_flush_route(struct babel_proto *p, struct babel_route *r)
   if (r->e->selected == r)
     r->e->selected = NULL;
 
-  sl_free(p->route_slab, r);
+  sl_free(r);
 }
 
 static void
@@ -336,13 +339,13 @@ found:
 }
 
 static void
-babel_remove_seqno_request(struct babel_proto *p, struct babel_seqno_request *sr)
+babel_remove_seqno_request(struct babel_proto *p UNUSED, struct babel_seqno_request *sr)
 {
   if (sr->nbr)
     rem_node(&sr->nbr_node);
 
   rem_node(NODE sr);
-  sl_free(p->seqno_slab, sr);
+  sl_free(sr);
 }
 
 static int
@@ -640,37 +643,14 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
 
   if (r)
   {
-    rta a0 = {
-      .source = RTS_BABEL,
-      .scope = SCOPE_UNIVERSE,
-      .dest = RTD_UNICAST,
-      .pref = c->preference,
-      .from = r->neigh->addr,
-      .nh.gw = r->next_hop,
-      .nh.iface = r->neigh->ifa->iface,
-      .eattrs = alloca(sizeof(ea_list) + 3*sizeof(eattr)),
-    };
-
-    *a0.eattrs = (ea_list) { .count = 3 };
-    a0.eattrs->attrs[0] = (eattr) {
-      .id = EA_BABEL_METRIC,
-      .type = EAF_TYPE_INT,
-      .u.data = r->metric,
-    };
-
-    struct adata *ad = alloca(sizeof(struct adata) + sizeof(u64));
-    ad->length = sizeof(u64);
-    memcpy(ad->data, &(r->router_id), sizeof(u64));
-    a0.eattrs->attrs[1] = (eattr) {
-      .id = EA_BABEL_ROUTER_ID,
-      .type = EAF_TYPE_OPAQUE,
-      .u.ptr = ad,
-    };
-
-    a0.eattrs->attrs[2] = (eattr) {
-      .id = EA_BABEL_SEQNO,
-      .type = EAF_TYPE_INT,
-      .u.data = r->seqno,
+    struct nexthop_adata nhad = {
+      .nh = {
+	.gw = r->next_hop,
+	.iface = r->neigh->ifa->iface,
+      },
+      .ad = {
+	.length = sizeof nhad - sizeof nhad.ad,
+      },
     };
 
     /*
@@ -679,7 +659,25 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
      * have routing work.
      */
     if (!neigh_find(&p->p, r->next_hop, r->neigh->ifa->iface, 0))
-      a0.nh.flags = RNF_ONLINK;
+      nhad.nh.flags = RNF_ONLINK;
+    
+    struct {
+      ea_list l;
+      eattr a[7];
+    } eattrs = {
+      .l.count = ARRAY_SIZE(eattrs.a),
+      .a = {
+	EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, c->preference),
+	EA_LITERAL_STORE_ADATA(&ea_gen_from, 0, &r->neigh->addr, sizeof(r->neigh->addr)),
+	EA_LITERAL_EMBEDDED(&ea_gen_source, 0, RTS_BABEL),
+	EA_LITERAL_STORE_ADATA(&ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length),
+	EA_LITERAL_EMBEDDED(&ea_babel_metric, 0, r->metric),
+	EA_LITERAL_STORE_ADATA(&ea_babel_router_id, 0, &r->router_id, sizeof(r->router_id)),
+	EA_LITERAL_EMBEDDED(&ea_babel_seqno, 0, r->seqno),
+      }
+    };
+
+    rta a0 = { .eattrs = &eattrs.l, };
 
     rte e0 = {
       .attrs = &a0,
@@ -692,12 +690,11 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
   else if (e->valid && (e->router_id != p->router_id))
   {
     /* Unreachable */
-    rta a0 = {
-      .source = RTS_BABEL,
-      .scope = SCOPE_UNIVERSE,
-      .dest = RTD_UNREACHABLE,
-      .pref = 1,
-    };
+    rta a0 = {};
+
+    ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, 1);
+    ea_set_attr_u32(&a0.eattrs, &ea_gen_source, 0, RTS_BABEL);
+    ea_set_dest(&a0.eattrs, 0, RTD_UNREACHABLE);
 
     rte e0 = {
       .attrs = &a0,
@@ -862,14 +859,14 @@ babel_send_ihus(struct babel_iface *ifa)
 }
 
 static void
-babel_send_hello(struct babel_iface *ifa)
+babel_send_hello(struct babel_iface *ifa, uint interval)
 {
   struct babel_proto *p = ifa->proto;
   union babel_msg msg = {};
 
   msg.type = BABEL_TLV_HELLO;
   msg.hello.seqno = ifa->hello_seqno++;
-  msg.hello.interval = ifa->cf->hello_interval;
+  msg.hello.interval = interval ?: ifa->cf->hello_interval;
 
   TRACE(D_PACKETS, "Sending hello on %s with seqno %d interval %t",
 	ifa->ifname, msg.hello.seqno, (btime) msg.hello.interval);
@@ -1577,7 +1574,7 @@ babel_iface_timer(timer *t)
 
   if (now_ >= ifa->next_hello)
   {
-    babel_send_hello(ifa);
+    babel_send_hello(ifa, 0);
     ifa->next_hello += hello_period * (1 + (now_ - ifa->next_hello) / hello_period);
   }
 
@@ -1624,7 +1621,7 @@ babel_iface_start(struct babel_iface *ifa)
   tm_start(ifa->timer, 100 MS);
   ifa->up = 1;
 
-  babel_send_hello(ifa);
+  babel_send_hello(ifa, 0);
   babel_send_wildcard_retraction(ifa);
   babel_send_wildcard_request(ifa);
   babel_send_update(ifa, 0);	/* Full update */
@@ -1919,7 +1916,7 @@ babel_reconfigure_ifaces(struct babel_proto *p, struct babel_config *cf)
     struct babel_iface *ifa = babel_find_iface(p, iface);
     struct babel_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
 
-    if (ic && iface_is_valid(p, iface))
+    if (ic && !iface_is_valid(p, iface))
       ic = NULL;
 
     if (ifa && ic)
@@ -2031,38 +2028,41 @@ static void
 babel_get_route_info(rte *rte, byte *buf)
 {
   u64 rid = 0;
-  eattr *e = ea_find(rte->attrs->eattrs, EA_BABEL_ROUTER_ID);
+  eattr *e = ea_find(rte->attrs->eattrs, &ea_babel_router_id);
   if (e)
     memcpy(&rid, e->u.ptr->data, sizeof(u64));
 
-  buf += bsprintf(buf, " (%d/%d) [%lR]", rte->attrs->pref,
-      ea_get_int(rte->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY), rid);
+  buf += bsprintf(buf, " (%d/%d) [%lR]",
+      rt_get_preference(rte),
+      ea_get_int(rte->attrs->eattrs, &ea_babel_metric, BABEL_INFINITY), rid);
 }
 
-static int
-babel_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
+static void
+babel_router_id_format(const eattr *a, byte *buf, uint len)
 {
-  switch (a->id)
-  {
-  case EA_BABEL_SEQNO:
-    return GA_FULL;
-
-  case EA_BABEL_METRIC:
-    bsprintf(buf, "metric: %d", a->u.data);
-    return GA_FULL;
-
-  case EA_BABEL_ROUTER_ID:
-  {
-    u64 rid = 0;
-    memcpy(&rid, a->u.ptr->data, sizeof(u64));
-    bsprintf(buf, "router_id: %lR", rid);
-    return GA_FULL;
-  }
-
-  default:
-    return GA_UNKNOWN;
-  }
+  u64 rid = 0;
+  memcpy(&rid, a->u.ptr->data, sizeof(u64));
+  bsnprintf(buf, len, "%lR", rid);
 }
+
+static struct ea_class ea_babel_metric = {
+  .name = "babel_metric",
+  .type = T_INT,
+};
+
+static struct ea_class ea_babel_router_id = {
+  .name = "babel_router_id",
+  .type = T_OPAQUE,
+  .readonly = 1,
+  .format = babel_router_id_format,
+};
+
+static struct ea_class ea_babel_seqno = {
+  .name = "babel_seqno",
+  .type = T_INT,
+  .readonly = 1,
+};
+
 
 void
 babel_show_interfaces(struct proto *P, const char *iff)
@@ -2262,9 +2262,13 @@ babel_kick_timer(struct babel_proto *p)
 static int
 babel_preexport(struct channel *c, struct rte *new)
 {
-  struct rta *a = new->attrs;
+  if (new->src->proto != c->proto)
+    return 0;
+
   /* Reject our own unreachable routes */
-  if ((a->dest == RTD_UNREACHABLE) && (new->src->proto == c->proto))
+  eattr *ea = ea_find(new->attrs->eattrs, &ea_gen_nexthop);
+  struct nexthop_adata *nhad = (void *) ea->u.ptr;
+  if (!NEXTHOP_IS_REACHABLE(nhad))
     return -1;
 
   return 0;
@@ -2285,13 +2289,13 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net,
   {
     /* Update */
     uint rt_seqno;
-    uint rt_metric = ea_get_int(new->attrs->eattrs, EA_BABEL_METRIC, 0);
+    uint rt_metric = ea_get_int(new->attrs->eattrs, &ea_babel_metric, 0);
     u64 rt_router_id = 0;
 
     if (new->src->proto == P)
     {
-      rt_seqno = ea_find(new->attrs->eattrs, EA_BABEL_SEQNO)->u.data;
-      eattr *e = ea_find(new->attrs->eattrs, EA_BABEL_ROUTER_ID);
+      rt_seqno = ea_get_int(new->attrs->eattrs, &ea_babel_seqno, 0);
+      eattr *e = ea_find(new->attrs->eattrs, &ea_babel_router_id);
       if (e)
 	memcpy(&rt_router_id, e->u.ptr->data, sizeof(u64));
     }
@@ -2342,16 +2346,16 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net,
 static int
 babel_rte_better(struct rte *new, struct rte *old)
 {
-  uint new_metric = ea_find(new->attrs->eattrs, EA_BABEL_SEQNO)->u.data;
-  uint old_metric = ea_find(old->attrs->eattrs, EA_BABEL_SEQNO)->u.data;
+  uint new_metric = ea_get_int(new->attrs->eattrs, &ea_babel_metric, BABEL_INFINITY);
+  uint old_metric = ea_get_int(old->attrs->eattrs, &ea_babel_metric, BABEL_INFINITY);
 
   return new_metric < old_metric;
 }
 
 static u32
-babel_rte_igp_metric(struct rte *rt)
+babel_rte_igp_metric(const rte *rt)
 {
-  return ea_get_int(rt->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY);
+  return ea_get_int(rt->attrs->eattrs, &ea_babel_metric, BABEL_INFINITY);
 }
 
 
@@ -2435,6 +2439,11 @@ babel_iface_shutdown(struct babel_iface *ifa)
 {
   if (ifa->sk)
   {
+    /*
+     * Retract all our routes and lower the hello interval so peers' neighbour
+     * state expires quickly
+     */
+    babel_send_hello(ifa, BABEL_MIN_INTERVAL);
     babel_send_wildcard_retraction(ifa);
     babel_send_queue(ifa);
   }
@@ -2479,11 +2488,9 @@ babel_reconfigure(struct proto *P, struct proto_config *CF)
   return 1;
 }
 
-
 struct protocol proto_babel = {
   .name =		"Babel",
   .template =		"babel%d",
-  .class =		PROTOCOL_BABEL,
   .preference =		DEF_PREF_BABEL,
   .channel_mask =	NB_IP | NB_IP6_SADR,
   .proto_size =		sizeof(struct babel_proto),
@@ -2495,5 +2502,16 @@ struct protocol proto_babel = {
   .shutdown =		babel_shutdown,
   .reconfigure =	babel_reconfigure,
   .get_route_info =	babel_get_route_info,
-  .get_attr =		babel_get_attr
 };
+
+void
+babel_build(void)
+{
+  proto_build(&proto_babel);
+
+  EA_REGISTER_ALL(
+      &ea_babel_metric,
+      &ea_babel_router_id,
+      &ea_babel_seqno
+      );
+}

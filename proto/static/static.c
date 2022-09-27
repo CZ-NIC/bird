@@ -38,7 +38,7 @@
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
@@ -46,8 +46,6 @@
 #include "lib/alloca.h"
 
 #include "static.h"
-
-static linpool *static_lp;
 
 static inline struct rte_src * static_get_source(struct static_proto *p, uint i)
 { return i ? rt_get_source(&p->p, i) : p->p.main_source; }
@@ -57,46 +55,59 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 {
   rta *a = allocz(RTA_MAX_SIZE);
   struct rte_src *src = static_get_source(p, r->index);
-  a->source = RTS_STATIC;
-  a->scope = SCOPE_UNIVERSE;
-  a->dest = r->dest;
-  a->pref = p->p.main_channel->preference;
+  ea_set_attr_u32(&a->eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
+  ea_set_attr_u32(&a->eattrs, &ea_gen_source, 0, RTS_STATIC);
 
   if (r->dest == RTD_UNICAST)
   {
-    struct static_route *r2;
-    struct nexthop *nhs = NULL;
+    uint sz = 0;
+    for (struct static_route *r2 = r; r2; r2 = r2->mp_next)
+      if (r2->active)
+	sz += NEXTHOP_SIZE_CNT(r2->mls ? r2->mls->length / sizeof(u32) : 0);
 
-    for (r2 = r; r2; r2 = r2->mp_next)
+    if (!sz)
+      goto withdraw;
+
+    struct nexthop_adata *nhad = allocz(sz + sizeof *nhad);
+    struct nexthop *nh = &nhad->nh;
+
+    for (struct static_route *r2 = r; r2; r2 = r2->mp_next)
     {
       if (!r2->active)
 	continue;
 
-      struct nexthop *nh = allocz(NEXTHOP_MAX_SIZE);
-      nh->gw = r2->via;
-      nh->iface = r2->neigh->iface;
-      nh->flags = r2->onlink ? RNF_ONLINK : 0;
-      nh->weight = r2->weight;
+      *nh = (struct nexthop) {
+	.gw = r2->via,
+	.iface = r2->neigh->iface,
+	.flags = r2->onlink ? RNF_ONLINK : 0,
+	.weight = r2->weight,
+      };
+
       if (r2->mls)
       {
-	nh->labels = r2->mls->len;
-	memcpy(nh->label, r2->mls->stack, r2->mls->len * sizeof(u32));
+	nh->labels = r2->mls->length / sizeof(u32);
+	memcpy(nh->label, r2->mls->data, r2->mls->length);
       }
 
-      nexthop_insert(&nhs, nh);
+      nh = NEXTHOP_NEXT(nh);
     }
 
-    if (!nhs)
-      goto withdraw;
-
-    nexthop_link(a, nhs);
+    ea_set_attr_data(&a->eattrs, &ea_gen_nexthop, 0,
+	nhad->ad.data, (void *) nh - (void *) nhad->ad.data);
   }
 
-  if (r->dest == RTDX_RECURSIVE)
+  else if (r->dest == RTDX_RECURSIVE)
   {
     rtable *tab = ipa_is_ip4(r->via) ? p->igp_table_ip4 : p->igp_table_ip6;
-    rta_set_recursive_next_hop(p->p.main_channel->table, a, tab, r->via, IPA_NONE, r->mls);
+    u32 *labels = r->mls ? (void *) r->mls->data : NULL;
+    u32 lnum = r->mls ? r->mls->length / sizeof(u32) : 0;
+
+    ea_set_hostentry(&a->eattrs, p->p.main_channel->table, tab,
+	r->via, IPA_NONE, lnum, labels);
   }
+
+  else if (r->dest)
+    ea_set_dest(&a->eattrs, 0, r->dest);
 
   /* Already announced */
   if (r->state == SRS_CLEAN)
@@ -107,14 +118,10 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 
   /* Evaluate the filter */
   if (r->cmds)
-    f_eval_rte(r->cmds, e, static_lp);
+    f_eval_rte(r->cmds, e);
 
   rte_update(p->p.main_channel, r->net, e, src);
   r->state = SRS_CLEAN;
-
-  if (r->cmds)
-    lp_flush(static_lp);
-
   return;
 
 withdraw:
@@ -310,30 +317,16 @@ static_same_dest(struct static_route *x, struct static_route *y)
 	  (x->weight != y->weight) ||
 	  (x->use_bfd != y->use_bfd) ||
 	  (!x->mls != !y->mls) ||
-	  ((x->mls) && (y->mls) && (x->mls->len != y->mls->len)))
+	  ((x->mls) && (y->mls) && adata_same(x->mls, y->mls)))
 	return 0;
-
-      if (!x->mls)
-	continue;
-
-      for (uint i = 0; i < x->mls->len; i++)
-	if (x->mls->stack[i] != y->mls->stack[i])
-	  return 0;
     }
     return !x && !y;
 
   case RTDX_RECURSIVE:
     if (!ipa_equal(x->via, y->via) ||
 	(!x->mls != !y->mls) ||
-	((x->mls) && (y->mls) && (x->mls->len != y->mls->len)))
+	((x->mls) && (y->mls) && adata_same(x->mls, y->mls)))
       return 0;
-
-    if (!x->mls)
-      return 1;
-
-    for (uint i = 0; i < x->mls->len; i++)
-      if (x->mls->stack[i] != y->mls->stack[i])
-	return 0;
 
     return 1;
 
@@ -403,16 +396,16 @@ static_reload_routes(struct channel *C)
 static int
 static_rte_better(rte *new, rte *old)
 {
-  u32 n = ea_get_int(new->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
-  u32 o = ea_get_int(old->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
+  u32 n = ea_get_int(new->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
+  u32 o = ea_get_int(old->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
   return n < o;
 }
 
 static int
 static_rte_mergable(rte *pri, rte *sec)
 {
-  u32 a = ea_get_int(pri->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
-  u32 b = ea_get_int(sec->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
+  u32 a = ea_get_int(pri->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
+  u32 b = ea_get_int(sec->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
   return a == b;
 }
 
@@ -474,9 +467,6 @@ static_start(struct proto *P)
   struct static_config *cf = (void *) P->cf;
   struct static_route *r;
 
-  if (!static_lp)
-    static_lp = lp_new(&root_pool, LP_GOOD_SIZE(1024));
-
   if (p->igp_table_ip4)
     rt_lock_table(p->igp_table_ip4);
 
@@ -507,19 +497,13 @@ static_shutdown(struct proto *P)
   WALK_LIST(r, cf->routes)
     static_reset_rte(p, r);
 
-  return PS_DOWN;
-}
-
-static void
-static_cleanup(struct proto *P)
-{
-  struct static_proto *p = (void *) P;
-
   if (p->igp_table_ip4)
     rt_unlock_table(p->igp_table_ip4);
 
   if (p->igp_table_ip6)
     rt_unlock_table(p->igp_table_ip6);
+
+  return PS_DOWN;
 }
 
 static void
@@ -709,11 +693,12 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
 static void
 static_get_route_info(rte *rte, byte *buf)
 {
-  eattr *a = ea_find(rte->attrs->eattrs, EA_GEN_IGP_METRIC);
+  eattr *a = ea_find(rte->attrs->eattrs, &ea_gen_igp_metric);
+  u32 pref = rt_get_preference(rte);
   if (a)
-    buf += bsprintf(buf, " (%d/%u)", rte->attrs->pref, a->u.data);
+    buf += bsprintf(buf, " (%d/%u)", pref, a->u.data);
   else
-    buf += bsprintf(buf, " (%d)", rte->attrs->pref);
+    buf += bsprintf(buf, " (%d)", pref);
 }
 
 static void
@@ -767,7 +752,6 @@ static_show(struct proto *P)
 struct protocol proto_static = {
   .name =		"Static",
   .template =		"static%d",
-  .class =		PROTOCOL_STATIC,
   .preference =		DEF_PREF_STATIC,
   .channel_mask =	NB_ANY,
   .proto_size =		sizeof(struct static_proto),
@@ -777,8 +761,13 @@ struct protocol proto_static = {
   .dump =		static_dump,
   .start =		static_start,
   .shutdown =		static_shutdown,
-  .cleanup =		static_cleanup,
   .reconfigure =	static_reconfigure,
   .copy_config =	static_copy_config,
   .get_route_info =	static_get_route_info,
 };
+
+void
+static_build(void)
+{
+  proto_build(&proto_static);
+}

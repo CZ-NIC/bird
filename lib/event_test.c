@@ -15,7 +15,7 @@
 #include "nest/locks.h"
 #include "sysdep/unix/unix.h"
 #include "nest/iface.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 
 #define MAX_NUM 4
 
@@ -53,11 +53,10 @@ t_ev_run_list(void)
 {
   int i;
 
-  resource_init();
   olock_init();
   timer_init();
-  io_init();
   rt_init();
+  io_init();
   if_init();
 //  roa_init();
   config_init();

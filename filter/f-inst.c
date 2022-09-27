@@ -240,6 +240,16 @@
     if (v2.val.i == 0) runtime( "Mother told me not to divide by 0" );
     RESULT(T_INT, i, v1.val.i / v2.val.i);
   }
+  INST(FI_BITOR, 2, 1) {
+    ARG(1,T_INT);
+    ARG(2,T_INT);
+    RESULT(T_INT, i, v1.val.i | v2.val.i);
+  }
+  INST(FI_BITAND, 2, 1) {
+    ARG(1,T_INT);
+    ARG(2,T_INT);
+    RESULT(T_INT, i, v1.val.i & v2.val.i);
+  }
   INST(FI_AND, 1, 1) {
     ARG(1,T_BOOL);
     ARG_TYPE_STATIC(2,T_BOOL);
@@ -519,78 +529,100 @@
     {
       STATIC_ATTR;
       ACCESS_RTE;
-      struct rta *rta = fs->rte->attrs;
+      ACCESS_EATTRS;
 
       switch (sa.sa_code)
       {
-      case SA_FROM:	RESULT(sa.f_type, ip, rta->from); break;
-      case SA_GW:	RESULT(sa.f_type, ip, rta->nh.gw); break;
-      case SA_NET:	RESULT(sa.f_type, net, fs->rte->net); break;
-      case SA_PROTO:	RESULT(sa.f_type, s, fs->rte->src->proto->name); break;
-      case SA_SOURCE:	RESULT(sa.f_type, i, rta->source); break;
-      case SA_SCOPE:	RESULT(sa.f_type, i, rta->scope); break;
-      case SA_DEST:	RESULT(sa.f_type, i, rta->dest); break;
-      case SA_IFNAME:	RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
-      case SA_IFINDEX:	RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
-      case SA_WEIGHT:	RESULT(sa.f_type, i, rta->nh.weight + 1); break;
-      case SA_PREF:	RESULT(sa.f_type, i, rta->pref); break;
-      case SA_GW_MPLS:	RESULT(sa.f_type, i, rta->nh.labels ? rta->nh.label[0] : MPLS_NULL); break;
-
+      case SA_NET:	RESULT(sa.type, net, fs->rte->net); break;
+      case SA_PROTO:	RESULT(sa.type, s, fs->rte->src->proto->name); break;
       default:
-	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
+	{
+	  struct eattr *nhea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
+	  struct nexthop *nh = nhad ? &nhad->nh : NULL;
+
+	  switch (sa.sa_code)
+	  {
+	    case SA_DEST:
+	      RESULT(sa.type, i, nhad ?
+		  (NEXTHOP_IS_REACHABLE(nhad) ? RTD_UNICAST : nhad->dest)
+		  : RTD_NONE);
+	      break;
+	    case SA_GW:
+	      RESULT(sa.type, ip, nh ? nh->gw : IPA_NONE);
+	      break;
+	    case SA_IFNAME:
+	      RESULT(sa.type, s, (nh && nh->iface) ? nh->iface->name : "");
+	      break;
+	    case SA_IFINDEX:
+	      RESULT(sa.type, i, (nh && nh->iface) ? nh->iface->index : 0);
+	      break;
+	    case SA_WEIGHT:
+	      RESULT(sa.type, i, (nh ? nh->weight : 0) + 1);
+	      break;
+	    case SA_GW_MPLS:
+	      RESULT(sa.type, i, (nh && nh->labels) ? nh->label[0] : MPLS_NULL);
+	      break;
+	    default:
+	      bug("Invalid static attribute access (%u/%u)", sa.type, sa.sa_code);
+	  }
+	}
       }
     }
   }
 
   INST(FI_RTA_SET, 1, 0) {
     ACCESS_RTE;
+    ACCESS_EATTRS;
     ARG_ANY(1);
     STATIC_ATTR;
-    ARG_TYPE(1, sa.f_type);
+    ARG_TYPE(1, sa.type);
 
     f_rta_cow(fs);
     {
-      struct rta *rta = fs->rte->attrs;
+      union {
+	struct nexthop_adata nha;
+	struct {
+	  struct adata ad;
+	  struct nexthop nh;
+	  u32 label;
+	};
+      } nha;
+
+      nha.ad = (struct adata) {
+	.length = sizeof (struct nexthop_adata) - sizeof (struct adata),
+      };
+
+      eattr *a = NULL;
 
       switch (sa.sa_code)
       {
-      case SA_FROM:
-	rta->from = v1.val.ip;
-	break;
-
-      case SA_GW:
-	{
-	  ip_addr ip = v1.val.ip;
-	  struct iface *ifa = ipa_is_link_local(ip) ? rta->nh.iface : NULL;
-	  neighbor *n = neigh_find(fs->rte->src->proto, ip, ifa, 0);
-	  if (!n || (n->scope == SCOPE_HOST))
-	    runtime( "Invalid gw address" );
-
-	  rta->dest = RTD_UNICAST;
-	  rta->nh.gw = ip;
-	  rta->nh.iface = n->iface;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	  rta->nh.labels = 0;
-	}
-	break;
-
-      case SA_SCOPE:
-	rta->scope = v1.val.i;
-	break;
-
       case SA_DEST:
 	{
 	  int i = v1.val.i;
 	  if ((i != RTD_BLACKHOLE) && (i != RTD_UNREACHABLE) && (i != RTD_PROHIBIT))
 	    runtime( "Destination can be changed only to blackhole, unreachable or prohibit" );
 
-	  rta->dest = i;
-	  rta->nh.gw = IPA_NONE;
-	  rta->nh.iface = NULL;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	  rta->nh.labels = 0;
+	  nha.nha.dest = i;
+	  nha.ad.length = NEXTHOP_DEST_SIZE;
+	  break;
+	}
+      case SA_GW:
+	{
+	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+
+	  ip_addr ip = v1.val.ip;
+	  struct iface *ifa = (ipa_is_link_local(ip) && nh_ea) ?
+	    ((struct nexthop_adata *) nh_ea->u.ptr)->nh.iface : NULL;
+	  
+	  neighbor *n = neigh_find(fs->rte->src->proto, ip, ifa, 0);
+	  if (!n || (n->scope == SCOPE_HOST))
+	    runtime( "Invalid gw address" );
+
+	  nha.nh = (struct nexthop) {
+	    .gw = ip,
+	    .iface = n->iface,
+	  };
 	}
 	break;
 
@@ -600,12 +632,9 @@
 	  if (!ifa)
 	    runtime( "Invalid iface name" );
 
-	  rta->dest = RTD_UNICAST;
-	  rta->nh.gw = IPA_NONE;
-	  rta->nh.iface = ifa;
-	  rta->nh.next = NULL;
-	  rta->hostentry = NULL;
-	  rta->nh.labels = 0;
+	  nha.nh = (struct nexthop) {
+	    .iface = ifa,
+	  };
 	}
 	break;
 
@@ -614,13 +643,20 @@
 	  if (v1.val.i >= 0x100000)
 	    runtime( "Invalid MPLS label" );
 
+	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  if (!nh_ea)
+	    runtime( "No nexthop to add a MPLS label to" );
+
+	  nha.nh = ((struct nexthop_adata *) nh_ea->u.ptr)->nh;
+	  
 	  if (v1.val.i != MPLS_NULL)
 	  {
-	    rta->nh.label[0] = v1.val.i;
-	    rta->nh.labels = 1;
+	    nha.nh.label[0] = v1.val.i;
+	    nha.nh.labels = 1;
+	    nha.ad.length = sizeof nha - sizeof (struct adata);
 	  }
 	  else
-	    rta->nh.labels = 0;
+	    nha.nh.labels = 0;
 	}
 	break;
 
@@ -629,22 +665,36 @@
 	  int i = v1.val.i;
 	  if (i < 1 || i > 256)
 	    runtime( "Setting weight value out of bounds" );
-	  if (rta->dest != RTD_UNICAST)
+
+	  struct eattr *nh_ea = ea_find(*fs->eattrs, &ea_gen_nexthop);
+	  if (!nh_ea)
+	    runtime( "No nexthop to set weight on" );
+
+	  struct nexthop_adata *nhad = (struct nexthop_adata *) nh_ea->u.ptr;
+	  if (!NEXTHOP_IS_REACHABLE(nhad))
 	    runtime( "Setting weight needs regular nexthop " );
 
+	  struct nexthop_adata *nhax = (struct nexthop_adata *) tmp_copy_adata(&nhad->ad);
+
 	  /* Set weight on all next hops */
-	  for (struct nexthop *nh = &rta->nh; nh; nh = nh->next)
+	  NEXTHOP_WALK(nh, nhax)
 	    nh->weight = i - 1;
+
+	  a = ea_set_attr(fs->eattrs,
+	      EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nhax->ad));
         }
 	break;
 
-      case SA_PREF:
-	rta->pref = v1.val.i;
-	break;
-
       default:
-	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
+	bug("Invalid static attribute access (%u/%u)", sa.type, sa.sa_code);
       }
+
+      if (!a)
+	a = ea_set_attr(fs->eattrs,
+	    EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, tmp_copy_adata(&nha.ad)));
+
+      a->originated = 1;
+      a->fresh = 1;
     }
   }
 
@@ -652,74 +702,30 @@
     DYNAMIC_ATTR;
     ACCESS_RTE;
     ACCESS_EATTRS;
-    RESULT_TYPE(da.f_type);
+    RESULT_TYPE(da->type);
     {
-      eattr *e = ea_find(*fs->eattrs, da.ea_code);
+      const struct f_val *empty;
+      const eattr *e = ea_find(*fs->eattrs, da->id);
 
-      if (!e) {
-	/* A special case: undefined as_path looks like empty as_path */
-	if (da.type == EAF_TYPE_AS_PATH) {
-	  RESULT_(T_PATH, ad, &null_adata);
-	  break;
+      if (e)
+      {
+	ASSERT_DIE(e->type == da->type);
+
+	switch (e->type) {
+	  case T_IP:
+	    RESULT_(T_IP, ip, *((const ip_addr *) e->u.ptr->data));
+	    break;
+	  default:
+	    RESULT_VAL([[(struct f_val) {
+		.type = e->type,
+		.val.bval = e->u,
+		}]]);
 	}
-
-	/* The same special case for int_set */
-	if (da.type == EAF_TYPE_INT_SET) {
-	  RESULT_(T_CLIST, ad, &null_adata);
-	  break;
-	}
-
-	/* The same special case for ec_set */
-	if (da.type == EAF_TYPE_EC_SET) {
-	  RESULT_(T_ECLIST, ad, &null_adata);
-	  break;
-	}
-
-	/* The same special case for lc_set */
-	if (da.type == EAF_TYPE_LC_SET) {
-	  RESULT_(T_LCLIST, ad, &null_adata);
-	  break;
-	}
-
-	/* Undefined value */
-	RESULT_VOID;
-	break;
       }
-
-      switch (e->type & EAF_TYPE_MASK) {
-      case EAF_TYPE_INT:
-	RESULT_(da.f_type, i, e->u.data);
-	break;
-      case EAF_TYPE_ROUTER_ID:
-	RESULT_(T_QUAD, i, e->u.data);
-	break;
-      case EAF_TYPE_OPAQUE:
-	RESULT_(T_ENUM_EMPTY, i, 0);
-	break;
-      case EAF_TYPE_IP_ADDRESS:
-	RESULT_(T_IP, ip, *((ip_addr *) e->u.ptr->data));
-	break;
-      case EAF_TYPE_AS_PATH:
-	RESULT_(T_PATH, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_BITFIELD:
-	RESULT_(T_BOOL, i, !!(e->u.data & (1u << da.bit)));
-	break;
-      case EAF_TYPE_INT_SET:
-	RESULT_(T_CLIST, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_EC_SET:
-	RESULT_(T_ECLIST, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_LC_SET:
-	RESULT_(T_LCLIST, ad, e->u.ptr);
-	break;
-      case EAF_TYPE_UNDEF:
+      else if (empty = f_get_empty(da->type))
+	RESULT_VAL(*empty);
+      else
 	RESULT_VOID;
-	break;
-      default:
-	bug("Unknown dynamic attribute type");
-      }
     }
   }
 
@@ -728,62 +734,34 @@
     ACCESS_EATTRS;
     ARG_ANY(1);
     DYNAMIC_ATTR;
-    ARG_TYPE(1, da.f_type);
+    ARG_TYPE(1, da->type);
     {
-      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
+      struct eattr *a;
 
-      l->next = NULL;
-      l->flags = EALF_SORTED;
-      l->count = 1;
-      l->attrs[0].id = da.ea_code;
-      l->attrs[0].flags = 0;
-      l->attrs[0].type = da.type | EAF_ORIGINATED | EAF_FRESH;
+      if (da->type >= EAF_TYPE__MAX)
+	bug("Unsupported attribute type");
 
-      switch (da.type) {
-      case EAF_TYPE_INT:
-      case EAF_TYPE_ROUTER_ID:
-	l->attrs[0].u.data = v1.val.i;
-	break;
+      f_rta_cow(fs);
 
-      case EAF_TYPE_OPAQUE:
+      switch (da->type) {
+      case T_OPAQUE:
+      case T_IFACE:
 	runtime( "Setting opaque attribute is not allowed" );
 	break;
 
-      case EAF_TYPE_IP_ADDRESS:;
-	int len = sizeof(ip_addr);
-	struct adata *ad = lp_alloc(fs->pool, sizeof(struct adata) + len);
-	ad->length = len;
-	(* (ip_addr *) ad->data) = v1.val.ip;
-	l->attrs[0].u.ptr = ad;
-	break;
-
-      case EAF_TYPE_AS_PATH:
-      case EAF_TYPE_INT_SET:
-      case EAF_TYPE_EC_SET:
-      case EAF_TYPE_LC_SET:
-	l->attrs[0].u.ptr = v1.val.ad;
-	break;
-
-      case EAF_TYPE_BITFIELD:
-	{
-	  /* First, we have to find the old value */
-	  eattr *e = ea_find(*fs->eattrs, da.ea_code);
-	  u32 data = e ? e->u.data : 0;
-
-	  if (v1.val.i)
-	    l->attrs[0].u.data = data | (1u << da.bit);
-	  else
-	    l->attrs[0].u.data = data & ~(1u << da.bit);
-	}
+      case T_IP:
+	a = ea_set_attr(fs->eattrs,
+	    EA_LITERAL_STORE_ADATA(da, 0, &v1.val.ip, sizeof(ip_addr)));
 	break;
 
       default:
-	bug("Unknown dynamic attribute type");
+	a = ea_set_attr(fs->eattrs,
+	    EA_LITERAL_GENERIC(da->id, da->type, 0, .u = v1.val.bval));
+	break;
       }
 
-      f_rta_cow(fs);
-      l->next = *fs->eattrs;
-      *fs->eattrs = l;
+      a->originated = 1;
+      a->fresh = 1;
     }
   }
 
@@ -792,21 +770,8 @@
     ACCESS_RTE;
     ACCESS_EATTRS;
 
-    {
-      struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
-
-      l->next = NULL;
-      l->flags = EALF_SORTED;
-      l->count = 1;
-      l->attrs[0].id = da.ea_code;
-      l->attrs[0].flags = 0;
-      l->attrs[0].type = EAF_TYPE_UNDEF | EAF_ORIGINATED | EAF_FRESH;
-      l->attrs[0].u.data = 0;
-
-      f_rta_cow(fs);
-      l->next = *fs->eattrs;
-      *fs->eattrs = l;
-    }
+    f_rta_cow(fs);
+    ea_unset_attr(fs->eattrs, 1, da);
   }
 
   INST(FI_LENGTH, 1, 1) {	/* Get length of */
@@ -901,14 +866,31 @@
       ((net_addr_roa6 *) v1.val.net)->max_pxlen);
   }
 
-  INST(FI_ROA_ASN, 1, 1) { 	/* Get ROA ASN */
-    ARG(1, T_NET);
-    if (!net_is_roa(v1.val.net))
-      runtime( "ROA expected" );
+  INST(FI_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
+    ARG_ANY(1);
+    RESULT_TYPE(T_INT);
+    switch(v1.type)
+    {
+      case T_NET:
+        if (!net_is_roa(v1.val.net))
+          runtime( "ROA expected" );
 
-    RESULT(T_INT, i, (v1.val.net->type == NET_ROA4) ?
-      ((net_addr_roa4 *) v1.val.net)->asn :
-      ((net_addr_roa6 *) v1.val.net)->asn);
+        RESULT_(T_INT, i, (v1.val.net->type == NET_ROA4) ?
+          ((net_addr_roa4 *) v1.val.net)->asn :
+          ((net_addr_roa6 *) v1.val.net)->asn);
+        break;
+
+      case T_PAIR:
+        RESULT_(T_INT, i, v1.val.i >> 16);
+        break;
+
+      case T_LC:
+        RESULT_(T_INT, i, v1.val.lc.asn);
+        break;
+
+      default:
+        runtime( "Net, pair or lc expected" );
+    }
   }
 
   INST(FI_IP, 1, 1) {	/* Convert prefix to ... */
@@ -940,6 +922,89 @@
   INST(FI_AS_PATH_LAST_NAG, 1, 1) {	/* Get last ASN from non-aggregated part of AS PATH */
     ARG(1, T_PATH);
     RESULT(T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
+  }
+
+  INST(FI_PAIR_DATA, 1, 1) {	/* Get data part from the standard community */
+    ARG(1, T_PAIR);
+    RESULT(T_INT, i, v1.val.i & 0xFFFF);
+  }
+
+  INST(FI_LC_DATA1, 1, 1) {	/* Get data1 part from the large community */
+    ARG(1, T_LC);
+    RESULT(T_INT, i, v1.val.lc.ldp1);
+  }
+
+  INST(FI_LC_DATA2, 1, 1) {	/* Get data2 part from the large community */
+    ARG(1, T_LC);
+    RESULT(T_INT, i, v1.val.lc.ldp2);
+  }
+
+  INST(FI_MIN, 1, 1) {	/* Get minimum element from set */
+    ARG_ANY(1);
+    RESULT_TYPE(f_type_element_type(v1.type));
+    switch(v1.type)
+    {
+      case T_CLIST:
+        {
+          u32 val = 0;
+          int_set_min(v1.val.ad, &val);
+          RESULT_(T_PAIR, i, val);
+        }
+        break;
+
+      case T_ECLIST:
+        {
+          u64 val = 0;
+          ec_set_min(v1.val.ad, &val);
+          RESULT_(T_EC, ec, val);
+        }
+        break;
+
+      case T_LCLIST:
+        {
+          lcomm val = { 0, 0, 0 };
+          lc_set_min(v1.val.ad, &val);
+          RESULT_(T_LC, lc, val);
+        }
+        break;
+
+      default:
+        runtime( "Clist or lclist expected" );
+    }
+  }
+
+  INST(FI_MAX, 1, 1) {	/* Get maximum element from set */
+    ARG_ANY(1);
+    RESULT_TYPE(f_type_element_type(v1.type));
+    switch(v1.type)
+    {
+      case T_CLIST:
+        {
+          u32 val = 0;
+          int_set_max(v1.val.ad, &val);
+          RESULT_(T_PAIR, i, val);
+        }
+        break;
+
+      case T_ECLIST:
+        {
+          u64 val = 0;
+          ec_set_max(v1.val.ad, &val);
+          RESULT_(T_EC, ec, val);
+        }
+        break;
+
+      case T_LCLIST:
+        {
+          lcomm val = { 0, 0, 0 };
+          lc_set_max(v1.val.ad, &val);
+          RESULT_(T_LC, lc, val);
+        }
+        break;
+
+      default:
+        runtime( "Clist or lclist expected" );
+    }
   }
 
   INST(FI_RETURN, 1, 1) {
@@ -1208,37 +1273,7 @@
       runtime("Can't filter non-[e|l]clist");
   }
 
-  INST(FI_ROA_CHECK_IMPLICIT, 0, 1) {	/* ROA Check */
-    NEVER_CONSTANT;
-    RTC(1);
-    struct rtable *table = rtc->table;
-    ACCESS_RTE;
-    ACCESS_EATTRS;
-    const net_addr *net = fs->rte->net;
-
-    /* We ignore temporary attributes, probably not a problem here */
-    /* 0x02 is a value of BA_AS_PATH, we don't want to include BGP headers */
-    eattr *e = ea_find(*fs->eattrs, EA_CODE(PROTOCOL_BGP, 0x02));
-
-    if (!e || ((e->type & EAF_TYPE_MASK) != EAF_TYPE_AS_PATH))
-      runtime("Missing AS_PATH attribute");
-
-    u32 as = 0;
-    as_path_get_last(e->u.ptr, &as);
-
-    if (!table)
-      runtime("Missing ROA table");
-
-    if (table->addr_type != NET_ROA4 && table->addr_type != NET_ROA6)
-      runtime("Table type must be either ROA4 or ROA6");
-
-    if (table->addr_type != (net->type == NET_IP4 ? NET_ROA4 : NET_ROA6))
-      RESULT(T_ENUM_ROA, i, ROA_UNKNOWN); /* Prefix and table type mismatch */
-    else
-      RESULT(T_ENUM_ROA, i, [[ net_roa_check(table, net, as) ]]);
-  }
-
-  INST(FI_ROA_CHECK_EXPLICIT, 2, 1) {	/* ROA Check */
+  INST(FI_ROA_CHECK, 2, 1) {	/* ROA Check */
     NEVER_CONSTANT;
     ARG(1, T_NET);
     ARG(2, T_INT);

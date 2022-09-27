@@ -61,7 +61,6 @@ dump_nodes(void)
 static void
 init_hash_(uint order)
 {
-  resource_init();
   my_pool = rp_new(&root_pool, "Test pool");
 
   HASH_INIT(hash, my_pool, order);

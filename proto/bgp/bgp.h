@@ -14,13 +14,12 @@
 #include <stdint.h>
 #include <setjmp.h>
 #include "nest/bird.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/bfd.h"
 //#include "lib/lists.h"
 #include "lib/hash.h"
 #include "lib/socket.h"
 
-struct linpool;
 struct eattr;
 
 
@@ -86,6 +85,7 @@ struct bgp_config {
   int peer_type;			/* Internal or external BGP (BGP_PT_*, optional) */
   int multihop;				/* Number of hops if multihop */
   int strict_bind;			/* Bind listening socket to local address */
+  int free_bind;			/* Bind listening socket with SKF_FREEBIND */
   int ttl_security;			/* Enable TTL security [RFC 5082] */
   int compare_path_lengths;		/* Use path lengths when selecting best route */
   int med_metric;			/* Compare MULTI_EXIT_DISC even between routes from differen ASes */
@@ -146,6 +146,7 @@ struct bgp_channel_config {
   u8 mandatory;				/* Channel is mandatory in capability negotiation */
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
   u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
+  u8 validate;				/* Validate Flowspec per RFC 8955 (6) */
   u8 gr_able;				/* Allow full graceful restart for the channel */
   u8 llgr_able;				/* Allow full long-lived GR for the channel */
   uint llgr_time;			/* Long-lived graceful restart stale time */
@@ -159,6 +160,7 @@ struct bgp_channel_config {
 
   struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */
   struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
+  struct rtable_config *base_table;	/* Base table for Flowspec validation */
 };
 
 #define BGP_PT_INTERNAL		1
@@ -344,6 +346,7 @@ struct bgp_channel {
 
   rtable *igp_table_ip4;		/* Table for recursive IPv4 next hop lookups */
   rtable *igp_table_ip6;		/* Table for recursive IPv6 next hop lookups */
+  rtable *base_table;			/* Base table for Flowspec validation */
 
   /* Rest are zeroed when down */
   pool *pool;
@@ -400,7 +403,7 @@ struct bgp_export_state {
   int mpls;
 
   u32 attrs_seen[1];
-  uint err_withdraw;
+  uint err_reject;
   uint local_next_hop;
 };
 
@@ -426,6 +429,7 @@ struct bgp_parse_state {
   int as4_session;
   int add_path;
   int mpls;
+  int reach_nlri_step;
 
   u32 attrs_seen[256/32];
 
@@ -452,7 +456,6 @@ struct bgp_parse_state {
   uint err_subcode;
   jmp_buf err_jmpbuf;
 
-  struct hostentry *hostentry;
   adata *mpls_labels;
 
   /* Cached state for bgp_rte_update() */
@@ -493,9 +496,6 @@ bgp_parse_error(struct bgp_parse_state *s, uint subcode)
   longjmp(s->err_jmpbuf, 1);
 }
 
-extern struct linpool *bgp_linpool;
-extern struct linpool *bgp_linpool2;
-
 
 void bgp_start_timer(timer *t, uint value);
 void bgp_check_config(struct bgp_config *c);
@@ -519,7 +519,9 @@ struct rte_source *bgp_get_source(struct bgp_proto *p, u32 path_id);
 static inline int
 rta_resolvable(rta *a)
 {
-  return a->dest == RTD_UNICAST;
+  eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+  struct nexthop_adata *nhad = (void *) nhea->u.ptr;
+  return NEXTHOP_IS_REACHABLE(nhad) || (nhad->dest != RTD_UNREACHABLE);
 }
 
 
@@ -537,34 +539,13 @@ rta_resolvable(rta *a)
 
 /* attrs.c */
 
-static inline eattr *
-bgp_find_attr(ea_list *attrs, uint code)
-{
-  return ea_find(attrs, EA_CODE(PROTOCOL_BGP, code));
-}
-
 eattr *
-bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintptr_t val);
+bgp_find_attr(ea_list *attrs, uint code);
 
-static inline void
-bgp_set_attr_u32(ea_list **to, struct linpool *pool, uint code, uint flags, u32 val)
-{ bgp_set_attr(to, pool, code, flags, (uintptr_t) val); }
-
-static inline void
-bgp_set_attr_ptr(ea_list **to, struct linpool *pool, uint code, uint flags, const struct adata *val)
-{ bgp_set_attr(to, pool, code, flags, (uintptr_t) val); }
-
-static inline void
-bgp_set_attr_data(ea_list **to, struct linpool *pool, uint code, uint flags, void *data, uint len)
-{
-  struct adata *a = lp_alloc_adata(pool, len);
-  bmemcpy(a->data, data, len);
-  bgp_set_attr(to, pool, code, flags, (uintptr_t) a);
-}
-
-static inline void
-bgp_unset_attr(ea_list **to, struct linpool *pool, uint code)
-{ eattr *e = bgp_set_attr(to, pool, code, 0, 0); e->type = EAF_TYPE_UNDEF; }
+void bgp_set_attr_u32(ea_list **to, uint code, uint flags, u32 val);
+void bgp_set_attr_ptr(ea_list **to, uint code, uint flags, const struct adata *ad);
+void bgp_set_attr_data(ea_list **to, uint code, uint flags, void *data, uint len);
+void bgp_unset_attr(ea_list **to, uint code);
 
 int bgp_encode_mp_reach_mrt(struct bgp_write_state *s, eattr *a, byte *buf, uint size);
 
@@ -586,25 +567,26 @@ int bgp_rte_better(struct rte *, struct rte *);
 int bgp_rte_mergable(rte *pri, rte *sec);
 int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
 struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
-u32 bgp_rte_igp_metric(struct rte *);
+u32 bgp_rte_igp_metric(const rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old);
 int bgp_preexport(struct channel *, struct rte *);
-int bgp_get_attr(const struct eattr *e, byte *buf, int buflen);
 void bgp_get_route_info(struct rte *, byte *);
-int bgp_total_aigp_metric_(rta *a, u64 *metric, const struct adata **ad);
+int bgp_total_aigp_metric_(const rte *e, u64 *metric, const struct adata **ad);
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
 
 static inline u64
-bgp_total_aigp_metric(rta *a)
+bgp_total_aigp_metric(const rte *e)
 {
   u64 metric = BGP_AIGP_MAX;
   const struct adata *ad;
 
-  bgp_total_aigp_metric_(a, &metric, &ad);
+  bgp_total_aigp_metric_(e, &metric, &ad);
   return metric;
 }
+
+void bgp_register_attrs(void);
 
 
 /* packets.c */
@@ -642,26 +624,31 @@ void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 
 #define BAF_DECODE_FLAGS	0x0100	/* Private flag - attribute flags are handled by the decode hook */
 
-#define BA_ORIGIN		0x01	/* RFC 4271 */		/* WM */
-#define BA_AS_PATH		0x02				/* WM */
-#define BA_NEXT_HOP		0x03				/* WM */
-#define BA_MULTI_EXIT_DISC	0x04				/* ON */
-#define BA_LOCAL_PREF		0x05				/* WD */
-#define BA_ATOMIC_AGGR		0x06				/* WD */
-#define BA_AGGREGATOR		0x07				/* OT */
-#define BA_COMMUNITY		0x08	/* RFC 1997 */		/* OT */
-#define BA_ORIGINATOR_ID	0x09	/* RFC 4456 */		/* ON */
-#define BA_CLUSTER_LIST		0x0a	/* RFC 4456 */		/* ON */
-#define BA_MP_REACH_NLRI	0x0e	/* RFC 4760 */
-#define BA_MP_UNREACH_NLRI	0x0f	/* RFC 4760 */
-#define BA_EXT_COMMUNITY	0x10	/* RFC 4360 */
-#define BA_AS4_PATH             0x11	/* RFC 6793 */
-#define BA_AS4_AGGREGATOR       0x12	/* RFC 6793 */
-#define BA_AIGP			0x1a	/* RFC 7311 */
-#define BA_LARGE_COMMUNITY	0x20	/* RFC 8092 */
+enum bgp_attr_id {
+  BA_ORIGIN		= 0x01,	/* RFC 4271 */		/* WM */
+  BA_AS_PATH		= 0x02,				/* WM */
+  BA_NEXT_HOP		= 0x03,				/* WM */
+  BA_MULTI_EXIT_DISC	= 0x04,				/* ON */
+  BA_LOCAL_PREF		= 0x05,				/* WD */
+  BA_ATOMIC_AGGR	= 0x06,				/* WD */
+  BA_AGGREGATOR		= 0x07,				/* OT */
+  BA_COMMUNITY		= 0x08,	/* RFC 1997 */		/* OT */
+  BA_ORIGINATOR_ID	= 0x09,	/* RFC 4456 */		/* ON */
+  BA_CLUSTER_LIST	= 0x0a,	/* RFC 4456 */		/* ON */
+  BA_MP_REACH_NLRI	= 0x0e,	/* RFC 4760 */
+  BA_MP_UNREACH_NLRI	= 0x0f,	/* RFC 4760 */
+  BA_EXT_COMMUNITY	= 0x10,	/* RFC 4360 */
+  BA_AS4_PATH		= 0x11,	/* RFC 6793 */
+  BA_AS4_AGGREGATOR	= 0x12,	/* RFC 6793 */
+  BA_AIGP		= 0x1a,	/* RFC 7311 */
+  BA_LARGE_COMMUNITY	= 0x20,	/* RFC 8092 */
 
 /* Bird's private internal BGP attributes */
-#define BA_MPLS_LABEL_STACK	0xfe	/* MPLS label stack transfer attribute */
+  BA_MPLS_LABEL_STACK	= 0x100, /* MPLS label stack transfer attribute */
+
+/* Maximum */
+  BGP_ATTR_MAX,
+};
 
 /* BGP connection states */
 

@@ -18,7 +18,7 @@ CF_HDR
 #include "lib/string.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/bfd.h"
 #include "nest/cli.h"
 #include "filter/filter.h"
@@ -71,8 +71,9 @@ CF_DECLS
   } xp;
   enum filter_return fret;
   enum ec_subtype ecs;
-  struct f_dynamic_attr fda;
+  struct ea_class *ea_class;
   struct f_static_attr fsa;
+  struct f_attr_bit fab;
   struct f_lval flv;
   struct f_line *fl;
   const struct filter *f;
@@ -91,7 +92,7 @@ CF_DECLS
   struct proto_spec ps;
   struct channel_limit cl;
   struct timeformat *tf;
-  mpls_label_stack *mls;
+  struct adata *ad;
   struct bytestring *bs;
 }
 
@@ -112,14 +113,15 @@ CF_DECLS
 %type <a> ipa
 %type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
-%type <mls> label_stack_start label_stack
+%type <ad> label_stack_start label_stack
 
 %type <t> text opttext
-%type <s> symbol
+%type <s> symbol symbol_known toksym 
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
 %nonassoc '=' '<' '>' '~' GEQ LEQ NEQ NMA PO PC
+%left '|' '&'
 %left '+' '-'
 %left '*' '/' '%'
 %left '!'
@@ -151,16 +153,16 @@ conf: definition ;
 
 definition:
    DEFINE symbol '=' term ';' {
-     struct f_val *val = cfg_allocz(sizeof(struct f_val));
-     if (f_eval(f_linearize($4), cfg_mem, val) > F_RETURN) cf_error("Runtime error");
-     cf_define_symbol($2, SYM_CONSTANT | val->type, val, val);
+     struct f_val val;
+     if (f_eval(f_linearize($4), &val) > F_RETURN) cf_error("Runtime error");
+     cf_define_symbol($2, SYM_CONSTANT | val.type, val, lp_val_copy(cfg_mem, &val));
    }
  ;
 
 expr:
    NUM
  | '(' term ')' { $$ = f_eval_int(f_linearize($2)); }
- | CF_SYM_KNOWN {
+ | symbol_known {
      if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number constant expected");
      $$ = SYM_VAL($1).i; }
  ;
@@ -171,7 +173,9 @@ expr_us:
  | expr US { $$ = $1 US_; }
  ;
 
-symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN ;
+toksym: FROM ;
+symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | toksym ;
+symbol_known: CF_SYM_KNOWN | toksym ;
 
 /* Switches */
 
@@ -347,17 +351,19 @@ net_or_ipa:
 
 label_stack_start: NUM
 {
-  $$ = cfg_allocz(sizeof(mpls_label_stack));
-  $$->len = 1;
-  $$->stack[0] = $1;
+  $$ = cfg_allocz(ADATA_SIZE(MPLS_MAX_LABEL_STACK * sizeof(u32)));
+  $$->length = sizeof(u32);
+  *((u32 *)$$->data) = $1;
 };
 
 label_stack:
     label_stack_start
   | label_stack '/' NUM {
-    if ($1->len >= MPLS_MAX_LABEL_STACK)
+    if ($1->length >= MPLS_MAX_LABEL_STACK * sizeof(u32))
       cf_error("Too many labels in stack");
-    $1->stack[$1->len++] = $3;
+
+    *((u32 *)($$->data + $1->length)) = $3;
+    $1->length += sizeof(u32);
     $$ = $1;
   }
 ;

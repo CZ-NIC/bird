@@ -16,7 +16,6 @@
 #include "lib/timer.h"
 
 /* Configuration structure */
-
 struct config {
   pool *pool;				/* Pool the configuration is stored in */
   linpool *mem;				/* Linear pool containing configuration data */
@@ -45,6 +44,7 @@ struct config {
 
   int cli_debug;			/* Tracing of CLI connections and commands */
   int latency_debug;			/* I/O loop tracks duration of each event */
+  int pipe_debug;			/* Track route propagation through pipes */
   u32 latency_limit;			/* Events with longer duration are logged (us) */
   u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */
   u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
@@ -54,8 +54,7 @@ struct config {
   char *err_file_name;			/* File name containing error */
   char *file_name;			/* Name of main configuration file */
   int file_fd;				/* File descriptor of main configuration file */
-  HASH(struct symbol) sym_hash;		/* Lexer: symbol hash table */
-  struct config *fallback;		/* Link to regular config for CLI parsing */
+
   struct sym_scope *root_scope;		/* Scope for root symbols */
   int obstacle_count;			/* Number of items blocking freeing of this config */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
@@ -122,7 +121,7 @@ struct symbol {
     const struct f_line *function;	/* For SYM_FUNCTION */
     const struct filter *filter;	/* For SYM_FILTER */
     struct rtable_config *table;	/* For SYM_TABLE */
-    struct f_dynamic_attr *attribute;	/* For SYM_ATTRIBUTE */
+    struct ea_class *attribute;		/* For SYM_ATTRIBUTE */
     struct f_val *val;			/* For SYM_CONSTANT */
     uint offset;			/* For SYM_VARIABLE */
   };
@@ -133,9 +132,14 @@ struct symbol {
 struct sym_scope {
   struct sym_scope *next;		/* Next on scope stack */
   struct symbol *name;			/* Name of this scope */
+
+  HASH(struct symbol) hash;		/* Local symbol hash */
+
   uint slots;				/* Variable slots */
   int active;				/* Currently entered */
 };
+
+extern struct sym_scope *global_root_scope;
 
 struct bytestring {
   size_t length;
@@ -185,7 +189,14 @@ int cf_lex(void);
 void cf_lex_init(int is_cli, struct config *c);
 void cf_lex_unwind(void);
 
-struct symbol *cf_find_symbol(const struct config *cfg, const byte *c);
+struct symbol *cf_find_symbol_scope(const struct sym_scope *scope, const byte *c);
+static inline struct symbol *cf_find_symbol_cfg(const struct config *cfg, const byte *c)
+{ return cf_find_symbol_scope(cfg->root_scope, c); }
+
+#define cf_find_symbol(where, what) _Generic(*(where), \
+    struct config: cf_find_symbol_cfg, \
+    struct sym_scope: cf_find_symbol_scope \
+    )((where), (what))
 
 struct symbol *cf_get_symbol(const byte *c);
 struct symbol *cf_default_name(char *template, int *counter);

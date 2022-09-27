@@ -157,6 +157,7 @@ ev_run_list(event_list *l)
 	io_log_event(e->hook, e->data);
 
       ev_run(e);
+      tmp_flush();
     }
 
   return !EMPTY_LIST(*l);
@@ -184,6 +185,7 @@ ev_run_list_limited(event_list *l, uint limit)
 	io_log_event(e->hook, e->data);
 
       ev_run(e);
+      tmp_flush();
       limit--;
     }
 

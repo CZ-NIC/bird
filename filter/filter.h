@@ -13,8 +13,8 @@
 #include "lib/resource.h"
 #include "lib/ip.h"
 #include "lib/macro.h"
-#include "nest/route.h"
-#include "nest/attrs.h"
+#include "nest/rt.h"
+#include "lib/attrs.h"
 
 /* Possible return values of filter execution */
 enum filter_return {
@@ -51,10 +51,10 @@ struct filter {
 
 struct rte;
 
-enum filter_return f_run(const struct filter *filter, struct rte *rte, struct linpool *tmp_pool, int flags);
-enum filter_return f_eval_rte(const struct f_line *expr, struct rte *rte, struct linpool *tmp_pool);
+enum filter_return f_run(const struct filter *filter, struct rte *rte, int flags);
+enum filter_return f_eval_rte(const struct f_line *expr, struct rte *rte);
 uint f_eval_int(const struct f_line *expr);
-enum filter_return f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf);
+enum filter_return f_eval_buf(const struct f_line *expr, buffer *buf);
 
 const char *filter_name(const struct filter *filter);
 int filter_same(const struct filter *new, const struct filter *old);
@@ -69,14 +69,5 @@ void filters_dump_all(void);
 #define FILTER_UNDEF  ((struct filter *) 2)	/* Used in BGP */
 
 #define FF_SILENT 2			/* Silent filter execution */
-
-/* Custom route attributes */
-struct custom_attribute {
-  resource r;
-  struct f_dynamic_attr *fda;
-  const char *name;
-};
-
-struct custom_attribute *ca_lookup(pool *p, const char *name, int ea_type);
 
 #endif

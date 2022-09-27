@@ -18,7 +18,7 @@
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
@@ -142,15 +142,19 @@ perf_loop(void *data)
     *((net_addr_ip4 *) &(p->data[i].net)) = random_net_ip4();
 
     if (!p->attrs_per_rte || !(i % p->attrs_per_rte)) {
-      struct rta a0 = {
-	.source = RTS_PERF,
-	.scope = SCOPE_UNIVERSE,
-	.dest = RTD_UNICAST,
-	.pref = p->p.main_channel->preference,
+      struct rta a0 = {};
+
+      ea_set_attr_u32(&a0.eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
+      ea_set_attr_u32(&a0.eattrs, &ea_gen_source, 0, RTS_PERF);
+
+      struct nexthop_adata nhad = {
 	.nh.iface = p->ifa->iface,
 	.nh.gw = gw,
 	.nh.weight = 1,
       };
+
+      ea_set_attr_data(&a0.eattrs, &ea_gen_nexthop, 0,
+	  &nhad.ad.data, sizeof nhad - sizeof nhad.ad);
 
       p->data[i].a = rta_lookup(&a0);
     }
@@ -305,7 +309,6 @@ perf_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUS
 struct protocol proto_perf = {
   .name = 		"Perf",
   .template =		"perf%d",
-  .class =		PROTOCOL_PERF,
   .channel_mask = 	NB_IP,
   .proto_size =		sizeof(struct perf_proto),
   .config_size = 	sizeof(struct perf_config),
@@ -314,3 +317,9 @@ struct protocol proto_perf = {
   .reconfigure = 	perf_reconfigure,
   .copy_config =	perf_copy_config,
 };
+
+void
+perf_build(void)
+{
+  proto_build(&proto_perf);
+}

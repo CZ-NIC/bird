@@ -45,11 +45,11 @@
  */
 
 #include "nest/bird.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "nest/cli.h"
-#include "nest/attrs.h"
+#include "lib/attrs.h"
 #include "lib/alloca.h"
 #include "lib/hash.h"
 #include "lib/idm.h"
@@ -57,8 +57,24 @@
 #include "lib/string.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 
 const adata null_adata;		/* adata of length 0 */
+
+struct ea_class ea_gen_igp_metric = {
+  .name = "igp_metric",
+  .type = T_INT,
+};
+
+struct ea_class ea_gen_preference = {
+  .name = "preference",
+  .type = T_INT,
+};
+
+struct ea_class ea_gen_from = {
+  .name = "from",
+  .type = T_IP,
+};
 
 const char * const rta_src_names[RTS_MAX] = {
   [RTS_STATIC]		= "static",
@@ -77,6 +93,71 @@ const char * const rta_src_names[RTS_MAX] = {
   [RTS_RPKI]		= "RPKI",
 };
 
+static void
+ea_gen_source_format(const eattr *a, byte *buf, uint size)
+{
+  if ((a->u.data >= RTS_MAX) || !rta_src_names[a->u.data])
+    bsnprintf(buf, size, "unknown");
+  else
+    bsnprintf(buf, size, "%s", rta_src_names[a->u.data]);
+}
+
+struct ea_class ea_gen_source = {
+  .name = "source",
+  .type = T_ENUM_RTS,
+  .readonly = 1,
+  .format = ea_gen_source_format,
+};
+
+struct ea_class ea_gen_nexthop = {
+  .name = "nexthop",
+  .type = T_NEXTHOP_LIST,
+};
+
+/*
+ * ea_set_hostentry() acquires hostentry from hostcache.
+ * New hostentry has zero use count. Cached rta locks its
+ * hostentry (increases its use count), uncached rta does not lock it.
+ * Hostentry with zero use count is removed asynchronously
+ * during host cache update, therefore it is safe to hold
+ * such hostentry temporarily as long as you hold the table lock.
+ *
+ * There is no need to hold a lock for hostentry->dep table, because that table
+ * contains routes responsible for that hostentry, and therefore is non-empty if
+ * given hostentry has non-zero use count. If the hostentry has zero use count,
+ * the entry is removed before dep is referenced.
+ *
+ * The protocol responsible for routes with recursive next hops should hold a
+ * lock for a 'source' table governing that routes (argument tab),
+ * because its routes reference hostentries related to the governing table.
+ * When all such routes are
+ * removed, rtas are immediately removed achieving zero uc. Then the 'source'
+ * table lock could be immediately released, although hostentries may still
+ * exist - they will be freed together with the 'source' table.
+ */
+
+  static void
+ea_gen_hostentry_stored(const eattr *ea)
+{
+  struct hostentry_adata *had = (struct hostentry_adata *) ea->u.ptr;
+  had->he->uc++;
+}
+
+static void
+ea_gen_hostentry_freed(const eattr *ea)
+{
+  struct hostentry_adata *had = (struct hostentry_adata *) ea->u.ptr;
+  had->he->uc--;
+}
+
+struct ea_class ea_gen_hostentry = {
+  .name = "hostentry",
+  .type = T_HOSTENTRY,
+  .readonly = 1,
+  .stored = ea_gen_hostentry_stored,
+  .freed = ea_gen_hostentry_freed,
+};
+
 const char * rta_dest_names[RTD_MAX] = {
   [RTD_NONE]		= "",
   [RTD_UNICAST]		= "unicast",
@@ -85,10 +166,21 @@ const char * rta_dest_names[RTD_MAX] = {
   [RTD_PROHIBIT]	= "prohibited",
 };
 
+struct ea_class ea_gen_flowspec_valid = {
+  .name = "flowspec_valid",
+  .type = T_ENUM_FLOWSPEC_VALID,
+  .readonly = 1,
+};
+
+const char * flowspec_valid_names[FLOWSPEC__MAX] = {
+  [FLOWSPEC_UNKNOWN]	= "unknown",
+  [FLOWSPEC_VALID]	= "",
+  [FLOWSPEC_INVALID]	= "invalid",
+};
+
 pool *rta_pool;
 
-static slab *rta_slab_[4];
-static slab *nexthop_slab_[4];
+static slab *rta_slab;
 static slab *rte_src_slab;
 
 static struct idm src_ids;
@@ -154,7 +246,7 @@ rt_prune_sources(void)
     {
       HASH_DO_REMOVE(src_hash, RSH, sp);
       idm_free(&src_ids, src->global_id);
-      sl_free(rte_src_slab, src);
+      sl_free(src);
     }
   }
   HASH_WALK_FILTER_END;
@@ -167,50 +259,10 @@ rt_prune_sources(void)
  *	Multipath Next Hop
  */
 
-static inline u32
-nexthop_hash(struct nexthop *x)
-{
-  u32 h = 0;
-  for (; x; x = x->next)
-  {
-    h ^= ipa_hash(x->gw) ^ (h << 5) ^ (h >> 9);
-
-    for (int i = 0; i < x->labels; i++)
-      h ^= x->label[i] ^ (h << 6) ^ (h >> 7);
-  }
-
-  return h;
-}
-
-int
-nexthop__same(struct nexthop *x, struct nexthop *y)
-{
-  for (; x && y; x = x->next, y = y->next)
-  {
-    if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) ||
-	(x->flags != y->flags) || (x->weight != y->weight) ||
-	(x->labels_orig != y->labels_orig) || (x->labels != y->labels))
-      return 0;
-
-    for (int i = 0; i < x->labels; i++)
-      if (x->label[i] != y->label[i])
-	return 0;
-  }
-
-  return x == y;
-}
-
 static int
 nexthop_compare_node(const struct nexthop *x, const struct nexthop *y)
 {
   int r;
-
-  if (!x)
-    return 1;
-
-  if (!y)
-    return -1;
-
   /* Should we also compare flags ? */
 
   r = ((int) y->weight) - ((int) x->weight);
@@ -235,23 +287,16 @@ nexthop_compare_node(const struct nexthop *x, const struct nexthop *y)
   return ((int) x->iface->index) - ((int) y->iface->index);
 }
 
-static inline struct nexthop *
-nexthop_copy_node(const struct nexthop *src, linpool *lp)
+static int
+nexthop_compare_qsort(const void *x, const void *y)
 {
-  struct nexthop *n = lp_alloc(lp, nexthop_size(src));
-
-  memcpy(n, src, nexthop_size(src));
-  n->next = NULL;
-
-  return n;
+  return nexthop_compare_node( *(const struct nexthop **) x, *(const struct nexthop **) y );
 }
 
 /**
  * nexthop_merge - merge nexthop lists
  * @x: list 1
  * @y: list 2
- * @rx: reusability of list @x
- * @ry: reusability of list @y
  * @max: max number of nexthops
  * @lp: linpool for allocating nexthops
  *
@@ -268,138 +313,225 @@ nexthop_copy_node(const struct nexthop *src, linpool *lp)
  * resulting list is no longer needed. When reusability is not set, the
  * corresponding lists are not modified nor linked from the resulting list.
  */
-struct nexthop *
-nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, linpool *lp)
+struct nexthop_adata *
+nexthop_merge(struct nexthop_adata *xin, struct nexthop_adata *yin, int max, linpool *lp)
 {
-  struct nexthop *root = NULL;
-  struct nexthop **n = &root;
+  uint outlen = ADATA_SIZE(xin->ad.length) + ADATA_SIZE(yin->ad.length);
+  struct nexthop_adata *out = lp_alloc(lp, outlen);
+  out->ad.length = outlen - sizeof (struct adata);
 
-  while ((x || y) && max--)
+  struct nexthop *x = &xin->nh, *y = &yin->nh, *cur = &out->nh;
+  int xvalid, yvalid;
+
+  while (max--)
   {
-    int cmp = nexthop_compare_node(x, y);
+    xvalid = NEXTHOP_VALID(x, xin);
+    yvalid = NEXTHOP_VALID(y, yin);
 
-    if (cmp < 0)
-    {
-      ASSUME(x);
-      *n = rx ? x : nexthop_copy_node(x, lp);
-      x = x->next;
-    }
-    else if (cmp > 0)
-    {
-      ASSUME(y);
-      *n = ry ? y : nexthop_copy_node(y, lp);
-      y = y->next;
-    }
-    else
-    {
-      ASSUME(x && y);
-      *n = rx ? x : (ry ? y : nexthop_copy_node(x, lp));
-      x = x->next;
-      y = y->next;
-    }
-    n = &((*n)->next);
-  }
-  *n = NULL;
-
-  return root;
-}
-
-void
-nexthop_insert(struct nexthop **n, struct nexthop *x)
-{
-  for (; *n; n = &((*n)->next))
-  {
-    int cmp = nexthop_compare_node(*n, x);
-
-    if (cmp < 0)
-      continue;
-    else if (cmp > 0)
+    if (!xvalid && !yvalid)
       break;
+
+    ASSUME(NEXTHOP_VALID(cur, out));
+
+    int cmp = !xvalid ? 1 : !yvalid ? -1 : nexthop_compare_node(x, y);
+
+    if (cmp < 0)
+    {
+      ASSUME(NEXTHOP_VALID(x, xin));
+      memcpy(cur, x, nexthop_size(x));
+      x = NEXTHOP_NEXT(x);
+    }
+    else if (cmp > 0)
+    {
+      ASSUME(NEXTHOP_VALID(y, yin));
+      memcpy(cur, y, nexthop_size(y));
+      y = NEXTHOP_NEXT(y);
+    }
     else
-      return;
+    {
+      ASSUME(NEXTHOP_VALID(x, xin));
+      memcpy(cur, x, nexthop_size(x));
+      x = NEXTHOP_NEXT(x);
+
+      ASSUME(NEXTHOP_VALID(y, yin));
+      y = NEXTHOP_NEXT(y);
+    }
+    cur = NEXTHOP_NEXT(cur);
   }
 
-  x->next = *n;
-  *n = x;
+  out->ad.length = (void *) cur - (void *) out->ad.data;
+
+  return out;
 }
 
-struct nexthop *
-nexthop_sort(struct nexthop *x)
+struct nexthop_adata *
+nexthop_sort(struct nexthop_adata *nhad, linpool *lp)
 {
-  struct nexthop *s = NULL;
+  /* Count the nexthops */
+  uint cnt = 0;
+  NEXTHOP_WALK(nh, nhad)
+    cnt++;
 
-  /* Simple insert-sort */
-  while (x)
+  if (cnt <= 1)
+    return nhad;
+
+  /* Get pointers to them */
+  struct nexthop **sptr = tmp_alloc(cnt * sizeof(struct nexthop *));
+
+  uint i = 0;
+  NEXTHOP_WALK(nh, nhad)
+    sptr[i++] = nh;
+
+  /* Sort the pointers */
+  qsort(sptr, cnt, sizeof(struct nexthop *), nexthop_compare_qsort);
+
+  /* Allocate the output */
+  struct nexthop_adata *out = (struct nexthop_adata *) lp_alloc_adata(lp, nhad->ad.length);
+  struct nexthop *dest = &out->nh;
+
+  /* Deduplicate nexthops while storing them */
+  for (uint i = 0; i < cnt; i++)
   {
-    struct nexthop *n = x;
-    x = n->next;
-    n->next = NULL;
+    if (i && !nexthop_compare_node(sptr[i], sptr[i-1]))
+      continue;
 
-    nexthop_insert(&s, n);
+    memcpy(dest, sptr[i], NEXTHOP_SIZE(sptr[i]));
+    dest = NEXTHOP_NEXT(dest);
   }
 
-  return s;
+  out->ad.length = (void *) dest - (void *) out->ad.data;
+  return out;
 }
 
 int
-nexthop_is_sorted(struct nexthop *x)
+nexthop_is_sorted(struct nexthop_adata *nhad)
 {
-  for (; x && x->next; x = x->next)
-    if (nexthop_compare_node(x, x->next) >= 0)
+  struct nexthop *prev = NULL;
+  NEXTHOP_WALK(nh, nhad)
+  {
+    if (prev && (nexthop_compare_node(prev, nh) >= 0))
       return 0;
+
+    prev = nh;
+  }
 
   return 1;
 }
 
-static inline slab *
-nexthop_slab(struct nexthop *nh)
-{
-  return nexthop_slab_[MIN(nh->labels, 3)];
-}
-
-static struct nexthop *
-nexthop_copy(struct nexthop *o)
-{
-  struct nexthop *first = NULL;
-  struct nexthop **last = &first;
-
-  for (; o; o = o->next)
-    {
-      struct nexthop *n = sl_allocz(nexthop_slab(o));
-      n->gw = o->gw;
-      n->iface = o->iface;
-      n->next = NULL;
-      n->flags = o->flags;
-      n->weight = o->weight;
-      n->labels_orig = o->labels_orig;
-      n->labels = o->labels;
-      for (int i=0; i<o->labels; i++)
-	n->label[i] = o->label[i];
-
-      *last = n;
-      last = &(n->next);
-    }
-
-  return first;
-}
-
-static void
-nexthop_free(struct nexthop *o)
-{
-  struct nexthop *n;
-
-  while (o)
-    {
-      n = o->next;
-      sl_free(nexthop_slab(o), o);
-      o = n;
-    }
-}
-
-
 /*
  *	Extended Attributes
  */
+
+#define EA_CLASS_INITIAL_MAX	128
+static struct ea_class **ea_class_global = NULL;
+static uint ea_class_max;
+static struct idm ea_class_idm;
+
+/* Config parser lex register function */
+void ea_lex_register(struct ea_class *def);
+void ea_lex_unregister(struct ea_class *def);
+
+static void
+ea_class_free(struct ea_class *cl)
+{
+  /* No more ea class references. Unregister the attribute. */
+  idm_free(&ea_class_idm, cl->id);
+  ea_class_global[cl->id] = NULL;
+  ea_lex_unregister(cl);
+}
+
+static void
+ea_class_ref_free(resource *r)
+{
+  struct ea_class_ref *ref = SKIP_BACK(struct ea_class_ref, r, r);
+  if (!--ref->class->uc)
+    ea_class_free(ref->class);
+}
+
+static void
+ea_class_ref_dump(resource *r)
+{
+  struct ea_class_ref *ref = SKIP_BACK(struct ea_class_ref, r, r);
+  debug("name \"%s\", type=%d\n", ref->class->name, ref->class->type);
+}
+
+static struct resclass ea_class_ref_class = {
+  .name = "Attribute class reference",
+  .size = sizeof(struct ea_class_ref),
+  .free = ea_class_ref_free,
+  .dump = ea_class_ref_dump,
+  .lookup = NULL,
+  .memsize = NULL,
+};
+
+static void
+ea_class_init(void)
+{
+  idm_init(&ea_class_idm, rta_pool, EA_CLASS_INITIAL_MAX);
+  ea_class_global = mb_allocz(rta_pool,
+      sizeof(*ea_class_global) * (ea_class_max = EA_CLASS_INITIAL_MAX));
+}
+
+static struct ea_class_ref *
+ea_ref_class(pool *p, struct ea_class *def)
+{
+  def->uc++;
+  struct ea_class_ref *ref = ralloc(p, &ea_class_ref_class);
+  ref->class = def;
+  return ref;
+}
+
+static struct ea_class_ref *
+ea_register(pool *p, struct ea_class *def)
+{
+  def->id = idm_alloc(&ea_class_idm);
+
+  ASSERT_DIE(ea_class_global);
+  while (def->id >= ea_class_max)
+    ea_class_global = mb_realloc(ea_class_global, sizeof(*ea_class_global) * (ea_class_max *= 2));
+
+  ASSERT_DIE(def->id < ea_class_max);
+  ea_class_global[def->id] = def;
+
+  ea_lex_register(def);
+
+  return ea_ref_class(p, def);
+}
+
+struct ea_class_ref *
+ea_register_alloc(pool *p, struct ea_class cl)
+{
+  struct ea_class *clp = ea_class_find_by_name(cl.name);
+  if (clp && clp->type == cl.type)
+    return ea_ref_class(p, clp);
+
+  uint namelen = strlen(cl.name) + 1;
+
+  struct {
+    struct ea_class cl;
+    char name[0];
+  } *cla = mb_alloc(rta_pool, sizeof(struct ea_class) + namelen);
+  cla->cl = cl;
+  memcpy(cla->name, cl.name, namelen);
+  cla->cl.name = cla->name;
+
+  return ea_register(p, &cla->cl);
+}
+
+void
+ea_register_init(struct ea_class *clp)
+{
+  ASSERT_DIE(!ea_class_find_by_name(clp->name));
+  ea_register(&root_pool, clp);
+}
+
+struct ea_class *
+ea_class_find_by_id(uint id)
+{
+  ASSERT_DIE(id < ea_class_max);
+  ASSERT_DIE(ea_class_global[id]);
+  return ea_class_global[id];
+}
 
 static inline eattr *
 ea__find(ea_list *e, unsigned id)
@@ -444,12 +576,11 @@ ea__find(ea_list *e, unsigned id)
  * to its &eattr structure or %NULL if no such attribute exists.
  */
 eattr *
-ea_find(ea_list *e, unsigned id)
+ea_find_by_id(ea_list *e, unsigned id)
 {
   eattr *a = ea__find(e, id & EA_CODE_MASK);
 
-  if (a && (a->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF &&
-      !(id & EA_ALLOW_UNDEF))
+  if (a && a->undef && !(id & EA_ALLOW_UNDEF))
     return NULL;
   return a;
 }
@@ -516,7 +647,7 @@ ea_walk(struct ea_walk_state *s, uint id, uint max)
 
 	BIT32_SET(s->visited, n);
 
-	if ((a->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
+	if (a->undef)
 	  continue;
 
 	s->eattrs = e;
@@ -528,25 +659,6 @@ ea_walk(struct ea_walk_state *s, uint id, uint max)
   }
 
   return NULL;
-}
-
-/**
- * ea_get_int - fetch an integer attribute
- * @e: attribute list
- * @id: attribute ID
- * @def: default value
- *
- * This function is a shortcut for retrieving a value of an integer attribute
- * by calling ea_find() to find the attribute, extracting its value or returning
- * a provided default if no such attribute is present.
- */
-uintptr_t
-ea_get_int(ea_list *e, unsigned id, uintptr_t def)
-{
-  eattr *a = ea_find(e, id);
-  if (!a)
-    return def;
-  return a->u.data;
 }
 
 static inline void
@@ -616,14 +728,17 @@ ea_do_prune(ea_list *e)
 
       /* Now s0 is the most recent version, s[-1] the oldest one */
       /* Drop undefs */
-      if ((s0->type & EAF_TYPE_MASK) == EAF_TYPE_UNDEF)
+      if (s0->undef)
 	continue;
 
       /* Copy the newest version to destination */
       *d = *s0;
 
       /* Preserve info whether it originated locally */
-      d->type = (d->type & ~(EAF_ORIGINATED|EAF_FRESH)) | (s[-1].type & EAF_ORIGINATED);
+      d->originated = s[-1].originated;
+
+      /* Not fresh any more, we prefer surstroemming */
+      d->fresh = 0;
 
       /* Next destination */
       d++;
@@ -643,7 +758,7 @@ ea_do_prune(ea_list *e)
  * If an attribute occurs multiple times in a single &ea_list,
  * ea_sort() leaves only the first (the only significant) occurrence.
  */
-void
+static void
 ea_sort(ea_list *e)
 {
   while (e)
@@ -667,8 +782,8 @@ ea_sort(ea_list *e)
  * This function calculates an upper bound of the size of
  * a given &ea_list after merging with ea_merge().
  */
-unsigned
-ea_scan(ea_list *e)
+static unsigned
+ea_scan(const ea_list *e)
 {
   unsigned cnt = 0;
 
@@ -694,8 +809,8 @@ ea_scan(ea_list *e)
  * segments with ea_merge() and finally sort and prune the result
  * by calling ea_sort().
  */
-void
-ea_merge(ea_list *e, ea_list *t)
+static void
+ea_merge(const ea_list *e, ea_list *t)
 {
   eattr *d = t->attrs;
 
@@ -709,6 +824,16 @@ ea_merge(ea_list *e, ea_list *t)
       d += e->count;
       e = e->next;
     }
+}
+
+ea_list *
+ea_normalize(const ea_list *e)
+{
+  ea_list *t = tmp_alloc(ea_scan(e));
+  ea_merge(e, t);
+  ea_sort(t);
+
+  return t->count ? t : NULL;
 }
 
 /**
@@ -737,39 +862,47 @@ ea_same(ea_list *x, ea_list *y)
       if (a->id != b->id ||
 	  a->flags != b->flags ||
 	  a->type != b->type ||
+	  a->originated != b->originated ||
+	  a->fresh != b->fresh ||
+	  a->undef != b->undef ||
 	  ((a->type & EAF_EMBEDDED) ? a->u.data != b->u.data : !adata_same(a->u.ptr, b->u.ptr)))
 	return 0;
     }
   return 1;
 }
 
-static inline ea_list *
-ea_list_copy(ea_list *o)
+uint
+ea_list_size(ea_list *o)
 {
-  ea_list *n;
-  unsigned i, adpos, elen;
+  unsigned i, elen;
 
-  if (!o)
-    return NULL;
-  ASSERT(!o->next);
-  elen = adpos = sizeof(ea_list) + sizeof(eattr) * o->count;
+  ASSERT_DIE(o);
+  ASSERT_DIE(!o->next);
+  elen = BIRD_CPU_ALIGN(sizeof(ea_list) + sizeof(eattr) * o->count);
 
   for(i=0; i<o->count; i++)
     {
       eattr *a = &o->attrs[i];
       if (!(a->type & EAF_EMBEDDED))
-	elen += sizeof(struct adata) + a->u.ptr->length;
+	elen += ADATA_SIZE(a->u.ptr->length);
     }
 
-  n = mb_alloc(rta_pool, elen);
+  return elen;
+}
+
+void
+ea_list_copy(ea_list *n, ea_list *o, uint elen)
+{
+  uint adpos = sizeof(ea_list) + sizeof(eattr) * o->count;
   memcpy(n, o, adpos);
-  n->flags |= EALF_CACHED;
-  for(i=0; i<o->count; i++)
+  adpos = BIRD_CPU_ALIGN(adpos);
+
+  for(uint i=0; i<o->count; i++)
     {
       eattr *a = &n->attrs[i];
       if (!(a->type & EAF_EMBEDDED))
 	{
-	  unsigned size = sizeof(struct adata) + a->u.ptr->length;
+	  unsigned size = ADATA_SIZE(a->u.ptr->length);
 	  ASSERT_DIE(adpos + size <= elen);
 
 	  struct adata *d = ((void *) n) + adpos;
@@ -779,8 +912,41 @@ ea_list_copy(ea_list *o)
 	  adpos += size;
 	}
     }
+
   ASSERT_DIE(adpos == elen);
-  return n;
+}
+
+static void
+ea_list_ref(ea_list *l)
+{
+  for(uint i=0; i<l->count; i++)
+    {
+      eattr *a = &l->attrs[i];
+      ASSERT_DIE(a->id < ea_class_max);
+
+      struct ea_class *cl = ea_class_global[a->id];
+      ASSERT_DIE(cl && cl->uc);
+
+      CALL(cl->stored, a);
+      cl->uc++;
+    }
+}
+
+static void
+ea_list_unref(ea_list *l)
+{
+  for(uint i=0; i<l->count; i++)
+    {
+      eattr *a = &l->attrs[i];
+      ASSERT_DIE(a->id < ea_class_max);
+
+      struct ea_class *cl = ea_class_global[a->id];
+      ASSERT_DIE(cl && cl->uc);
+
+      CALL(cl->freed, a);
+      if (!--cl->uc)
+	ea_class_free(cl);
+    }
 }
 
 static inline void
@@ -788,21 +954,10 @@ ea_free(ea_list *o)
 {
   if (o)
     {
+      ea_list_unref(o);
       ASSERT(!o->next);
       mb_free(o);
     }
-}
-
-static int
-get_generic_attr(const eattr *a, byte **buf, int buflen UNUSED)
-{
-  if (a->id == EA_GEN_IGP_METRIC)
-    {
-      *buf += bsprintf(*buf, "igp_metric");
-      return GA_NAME;
-    }
-
-  return GA_UNKNOWN;
 }
 
 void
@@ -904,76 +1059,73 @@ ea_show_lc_set(struct cli *c, const struct adata *ad, byte *pos, byte *buf, byte
 void
 ea_show(struct cli *c, const eattr *e)
 {
-  struct protocol *p;
-  int status = GA_UNKNOWN;
   const struct adata *ad = (e->type & EAF_EMBEDDED) ? NULL : e->u.ptr;
   byte buf[CLI_MSG_SIZE];
   byte *pos = buf, *end = buf + sizeof(buf);
 
-  if (EA_IS_CUSTOM(e->id))
-    {
-      const char *name = ea_custom_name(e->id);
-      if (name)
-        {
-	  pos += bsprintf(pos, "%s", name);
-	  status = GA_NAME;
-	}
-      else
-	pos += bsprintf(pos, "%02x.", EA_PROTO(e->id));
-    }
-  else if (p = class_to_protocol[EA_PROTO(e->id)])
-    {
-      pos += bsprintf(pos, "%s.", p->name);
-      if (p->get_attr)
-	status = p->get_attr(e, pos, end - pos);
-      pos += strlen(pos);
-    }
-  else if (EA_PROTO(e->id))
-    pos += bsprintf(pos, "%02x.", EA_PROTO(e->id));
-  else
-    status = get_generic_attr(e, &pos, end - pos);
+  ASSERT_DIE(e->id < ea_class_max);
 
-  if (status < GA_NAME)
-    pos += bsprintf(pos, "%02x", EA_ID(e->id));
-  if (status < GA_FULL)
-    {
-      *pos++ = ':';
-      *pos++ = ' ';
-      switch (e->type & EAF_TYPE_MASK)
-	{
-	case EAF_TYPE_INT:
+  struct ea_class *cls = ea_class_global[e->id];
+  ASSERT_DIE(cls);
+
+  pos += bsprintf(pos, "%s", cls->name);
+
+  *pos++ = ':';
+  *pos++ = ' ';
+
+  if (e->undef)
+    bsprintf(pos, "undefined (should not happen)");
+  else if (cls->format)
+    cls->format(e, buf, end - buf);
+  else
+    switch (e->type)
+      {
+	case T_INT:
 	  bsprintf(pos, "%u", e->u.data);
 	  break;
-	case EAF_TYPE_OPAQUE:
+	case T_OPAQUE:
 	  opaque_format(ad, pos, end - pos);
 	  break;
-	case EAF_TYPE_IP_ADDRESS:
+	case T_IP:
 	  bsprintf(pos, "%I", *(ip_addr *) ad->data);
 	  break;
-	case EAF_TYPE_ROUTER_ID:
+	case T_QUAD:
 	  bsprintf(pos, "%R", e->u.data);
 	  break;
-	case EAF_TYPE_AS_PATH:
+	case T_PATH:
 	  as_path_format(ad, pos, end - pos);
 	  break;
-	case EAF_TYPE_BITFIELD:
-	  bsprintf(pos, "%08x", e->u.data);
-	  break;
-	case EAF_TYPE_INT_SET:
+	case T_CLIST:
 	  ea_show_int_set(c, ad, 1, pos, buf, end);
 	  return;
-	case EAF_TYPE_EC_SET:
+	case T_ECLIST:
 	  ea_show_ec_set(c, ad, pos, buf, end);
 	  return;
-	case EAF_TYPE_LC_SET:
+	case T_LCLIST:
 	  ea_show_lc_set(c, ad, pos, buf, end);
 	  return;
-	case EAF_TYPE_UNDEF:
 	default:
 	  bsprintf(pos, "<type %02x>", e->type);
-	}
-    }
+      }
+
   cli_printf(c, -1012, "\t%s", buf);
+}
+
+static void
+nexthop_dump(const struct adata *ad)
+{
+  struct nexthop_adata *nhad = (struct nexthop_adata *) ad;
+
+  debug(":");
+
+  NEXTHOP_WALK(nh, nhad)
+    {
+      if (ipa_nonzero(nh->gw)) debug(" ->%I", nh->gw);
+      if (nh->labels) debug(" L %d", nh->label[0]);
+      for (int i=1; i<nh->labels; i++)
+	debug("/%d", nh->label[i]);
+      debug(" [%s]", nh->iface ? nh->iface->name : "???");
+    }
 }
 
 /**
@@ -1002,12 +1154,17 @@ ea_dump(ea_list *e)
       for(i=0; i<e->count; i++)
 	{
 	  eattr *a = &e->attrs[i];
-	  debug(" %02x:%02x.%02x", EA_PROTO(a->id), EA_ID(a->id), a->flags);
-	  debug("=%c", "?iO?I?P???S?????" [a->type & EAF_TYPE_MASK]);
-	  if (a->type & EAF_ORIGINATED)
+	  debug(" %04x.%02x", a->id, a->flags);
+	  debug("=%c",
+	      "?iO?IRP???S??pE?"
+	      "??L???N?????????"
+	      "?o???r??????????" [a->type]);
+	  if (a->originated)
 	    debug("o");
 	  if (a->type & EAF_EMBEDDED)
 	    debug(":%08x", a->u.data);
+	  else if (a->id == ea_gen_nexthop.id)
+	    nexthop_dump(a->u.ptr);
 	  else
 	    {
 	      int j, len = a->u.ptr->length;
@@ -1037,6 +1194,7 @@ ea_hash(ea_list *e)
 
   if (e)			/* Assuming chain of length 1 */
     {
+      ASSERT_DIE(!e->next);
       for(i=0; i<e->count; i++)
 	{
 	  struct eattr *a = &e->attrs[i];
@@ -1100,50 +1258,30 @@ rta_alloc_hash(void)
 static inline uint
 rta_hash(rta *a)
 {
-  u64 h;
-  mem_hash_init(&h);
-#define MIX(f) mem_hash_mix(&h, &(a->f), sizeof(a->f));
-#define BMIX(f) mem_hash_mix_num(&h, a->f);
-  MIX(hostentry);
-  MIX(from);
-  MIX(igp_metric);
-  BMIX(source);
-  BMIX(scope);
-  BMIX(dest);
-  MIX(pref);
-#undef MIX
-
-  return mem_hash_value(&h) ^ nexthop_hash(&(a->nh)) ^ ea_hash(a->eattrs);
+  return ea_hash(a->eattrs);
 }
 
 static inline int
 rta_same(rta *x, rta *y)
 {
-  return (x->source == y->source &&
-	  x->scope == y->scope &&
-	  x->dest == y->dest &&
-	  x->igp_metric == y->igp_metric &&
-	  ipa_equal(x->from, y->from) &&
-	  x->hostentry == y->hostentry &&
-	  nexthop_same(&(x->nh), &(y->nh)) &&
-	  ea_same(x->eattrs, y->eattrs));
-}
-
-static inline slab *
-rta_slab(rta *a)
-{
-  return rta_slab_[a->nh.labels > 2 ? 3 : a->nh.labels];
+  return ea_same(x->eattrs, y->eattrs);
 }
 
 static rta *
 rta_copy(rta *o)
 {
-  rta *r = sl_alloc(rta_slab(o));
+  rta *r = sl_alloc(rta_slab);
 
   memcpy(r, o, rta_size(o));
   r->uc = 1;
-  r->nh.next = nexthop_copy(o->nh.next);
-  r->eattrs = ea_list_copy(o->eattrs);
+  if (!r->eattrs)
+    return r;
+
+  uint elen = ea_list_size(o->eattrs);
+  r->eattrs = mb_alloc(rta_pool, elen);
+  ea_list_copy(r->eattrs, o->eattrs, elen);
+  ea_list_ref(r->eattrs);
+  r->eattrs->flags |= EALF_CACHED;
   return r;
 }
 
@@ -1199,7 +1337,7 @@ rta_lookup(rta *o)
 
   ASSERT(!o->cached);
   if (o->eattrs)
-    ea_normalize(o->eattrs);
+    o->eattrs = ea_normalize(o->eattrs);
 
   h = rta_hash(o);
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next)
@@ -1209,7 +1347,6 @@ rta_lookup(rta *o)
   r = rta_copy(o);
   r->hash_key = h;
   r->cached = 1;
-  rt_lock_hostentry(r->hostentry);
   rta_insert(r);
 
   if (++rta_cache_count > rta_cache_limit)
@@ -1226,12 +1363,9 @@ rta__free(rta *a)
   *a->pprev = a->next;
   if (a->next)
     a->next->pprev = a->pprev;
-  rt_unlock_hostentry(a->hostentry);
-  if (a->nh.next)
-    nexthop_free(a->nh.next);
   ea_free(a->eattrs);
   a->cached = 0;
-  sl_free(rta_slab(a), a);
+  sl_free(a);
 }
 
 rta *
@@ -1239,12 +1373,6 @@ rta_do_cow(rta *o, linpool *lp)
 {
   rta *r = lp_alloc(lp, rta_size(o));
   memcpy(r, o, rta_size(o));
-  for (struct nexthop **nhn = &(r->nh.next), *nho = o->nh.next; nho; nho = nho->next)
-    {
-      *nhn = lp_alloc(lp, nexthop_size(nho));
-      memcpy(*nhn, nho, nexthop_size(nho));
-      nhn = &((*nhn)->next);
-    }
   r->cached = 0;
   r->uc = 0;
   return r;
@@ -1259,27 +1387,10 @@ rta_do_cow(rta *o, linpool *lp)
 void
 rta_dump(rta *a)
 {
-  static char *rts[] = { "", "RTS_STATIC", "RTS_INHERIT", "RTS_DEVICE",
-			 "RTS_STAT_DEV", "RTS_REDIR", "RTS_RIP",
-			 "RTS_OSPF", "RTS_OSPF_IA", "RTS_OSPF_EXT1",
-			 "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };
-  static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
-
-  debug("pref=%d uc=%d %s %s%s h=%04x",
-	a->pref, a->uc, rts[a->source], ip_scope_text(a->scope),
-	rtd[a->dest], a->hash_key);
+  debug("uc=%d h=%04x",
+	a->uc, a->hash_key);
   if (!a->cached)
     debug(" !CACHED");
-  debug(" <-%I", a->from);
-  if (a->dest == RTD_UNICAST)
-    for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
-      {
-	if (ipa_nonzero(nh->gw)) debug(" ->%I", nh->gw);
-	if (nh->labels) debug(" L %d", nh->label[0]);
-	for (int i=1; i<nh->labels; i++)
-	  debug("/%d", nh->label[i]);
-	debug(" [%s]", nh->iface ? nh->iface->name : "???");
-      }
   if (a->eattrs)
     {
       debug(" EA: ");
@@ -1313,8 +1424,6 @@ rta_dump_all(void)
 void
 rta_show(struct cli *c, rta *a)
 {
-  cli_printf(c, -1008, "\tType: %s %s", rta_src_names[a->source], ip_scope_text(a->scope));
-
   for(ea_list *eal = a->eattrs; eal; eal=eal->next)
     for(int i=0; i<eal->count; i++)
       ea_show(c, &eal->attrs[i]);
@@ -1331,18 +1440,19 @@ rta_init(void)
 {
   rta_pool = rp_new(&root_pool, "Attributes");
 
-  rta_slab_[0] = sl_new(rta_pool, sizeof(rta));
-  rta_slab_[1] = sl_new(rta_pool, sizeof(rta) + sizeof(u32));
-  rta_slab_[2] = sl_new(rta_pool, sizeof(rta) + sizeof(u32)*2);
-  rta_slab_[3] = sl_new(rta_pool, sizeof(rta) + sizeof(u32)*MPLS_MAX_LABEL_STACK);
-
-  nexthop_slab_[0] = sl_new(rta_pool, sizeof(struct nexthop));
-  nexthop_slab_[1] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32));
-  nexthop_slab_[2] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*2);
-  nexthop_slab_[3] = sl_new(rta_pool, sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK);
+  rta_slab = sl_new(rta_pool, sizeof(rta));
 
   rta_alloc_hash();
   rte_src_init();
+  ea_class_init();
+
+  ea_register_init(&ea_gen_preference);
+  ea_register_init(&ea_gen_igp_metric);
+  ea_register_init(&ea_gen_from);
+  ea_register_init(&ea_gen_source);
+  ea_register_init(&ea_gen_nexthop);
+  ea_register_init(&ea_gen_hostentry);
+  ea_register_init(&ea_gen_flowspec_valid);
 }
 
 /*

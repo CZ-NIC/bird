@@ -14,7 +14,7 @@
 #include "test/bt-utils.h"
 
 #include "nest/bird.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/protocol.h"
 
 #include "sysdep/unix/unix.h"
@@ -60,24 +60,18 @@ bt_bird_init(void)
     log_init_debug("");
   log_switch(bt_verbose != 0, NULL, NULL);
 
-  resource_init();
   olock_init();
   timer_init();
-  io_init();
   rt_init();
+  io_init();
   if_init();
   config_init();
 
   protos_build();
-  proto_build(&proto_unix_kernel);
-  proto_build(&proto_unix_iface);
 }
 
 void bt_bird_cleanup(void)
 {
-  for (int i = 0; i < PROTOCOL__MAX; i++)
-    class_to_protocol[i] = NULL;
-
   config = new_config = NULL;
 }
 

@@ -661,9 +661,9 @@ rpki_handle_cache_response_pdu(struct rpki_cache *cache, const struct pdu_cache_
        * a refresh cycle.
        */
       if (cache->p->roa4_channel)
-	rt_refresh_begin(cache->p->roa4_channel->table, cache->p->roa4_channel);
+	rt_refresh_begin(cache->p->roa4_channel->table, &cache->p->roa4_channel->in_req);
       if (cache->p->roa6_channel)
-	rt_refresh_begin(cache->p->roa6_channel->table, cache->p->roa6_channel);
+	rt_refresh_begin(cache->p->roa6_channel->table, &cache->p->roa6_channel->in_req);
 
       cache->p->refresh_channels = 1;
     }
@@ -736,6 +736,33 @@ rpki_handle_prefix_pdu(struct rpki_cache *cache, const struct pdu_header *pdu)
 
   net_addr_union addr = {};
   rpki_prefix_pdu_2_net_addr(pdu, &addr);
+
+  if (type == IPV4_PREFIX)
+  {
+    if ((addr.roa4.pxlen > addr.roa4.max_pxlen) ||
+	(addr.roa4.max_pxlen > IP4_MAX_PREFIX_LENGTH))
+    {
+      RPKI_WARN(cache->p, "Received corrupt packet from RPKI cache server: invalid pxlen or max_pxlen");
+      byte tmp[pdu->len];
+      const struct pdu_header *hton_pdu = rpki_pdu_back_to_network_byte_order((void *) tmp, (const void *) pdu);
+      rpki_send_error_pdu(cache, CORRUPT_DATA, pdu->len, hton_pdu, "Corrupted PDU: invalid pxlen or max_pxlen");
+      rpki_cache_change_state(cache, RPKI_CS_ERROR_FATAL);
+      return RPKI_ERROR;
+    }
+  }
+  else
+  {
+    if ((addr.roa6.pxlen > addr.roa6.max_pxlen) ||
+	(addr.roa6.max_pxlen > IP6_MAX_PREFIX_LENGTH))
+    {
+      RPKI_WARN(cache->p, "Received corrupt packet from RPKI cache server: invalid pxlen or max_pxlen");
+      byte tmp[pdu->len];
+      const struct pdu_header *hton_pdu = rpki_pdu_back_to_network_byte_order((void *) tmp, (const void *) pdu);
+      rpki_send_error_pdu(cache, CORRUPT_DATA, pdu->len, hton_pdu, "Corrupted PDU: invalid pxlen or max_pxlen");
+      rpki_cache_change_state(cache, RPKI_CS_ERROR_FATAL);
+      return RPKI_ERROR;
+    }
+  }
 
   if (cf->ignore_max_length)
   {
@@ -819,9 +846,9 @@ rpki_handle_end_of_data_pdu(struct rpki_cache *cache, const struct pdu_end_of_da
   {
     cache->p->refresh_channels = 0;
     if (cache->p->roa4_channel)
-      rt_refresh_end(cache->p->roa4_channel->table, cache->p->roa4_channel);
+      rt_refresh_end(cache->p->roa4_channel->table, &cache->p->roa4_channel->in_req);
     if (cache->p->roa6_channel)
-      rt_refresh_end(cache->p->roa6_channel->table, cache->p->roa6_channel);
+      rt_refresh_end(cache->p->roa6_channel->table, &cache->p->roa6_channel->in_req);
   }
 
   cache->last_update = current_time();
@@ -897,6 +924,9 @@ rpki_rx_hook(struct birdsock *sk, uint size)
   struct rpki_cache *cache = sk->data;
   struct rpki_proto *p = cache->p;
 
+  if ((p->p.proto_state == PS_DOWN) || (p->cache != cache))
+    return 0;
+
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
 
@@ -953,6 +983,8 @@ rpki_err_hook(struct birdsock *sk, int error_num)
     CACHE_TRACE(D_EVENTS, cache, "The other side closed a connection");
   }
 
+  if (cache->p->cache != cache)
+    return;
 
   rpki_cache_change_state(cache, RPKI_CS_ERROR_TRANSPORT);
 }
@@ -972,6 +1004,9 @@ rpki_tx_hook(sock *sk)
 {
   struct rpki_cache *cache = sk->data;
 
+  if (cache->p->cache != cache)
+    return;
+
   while (rpki_fire_tx(cache) > 0)
     ;
 }
@@ -980,6 +1015,9 @@ void
 rpki_connected_hook(sock *sk)
 {
   struct rpki_cache *cache = sk->data;
+
+  if (cache->p->cache != cache)
+    return;
 
   CACHE_TRACE(D_EVENTS, cache, "Connected");
   proto_notify_state(&cache->p->p, PS_UP);

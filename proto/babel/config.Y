@@ -24,7 +24,7 @@ CF_DECLS
 
 CF_KEYWORDS(BABEL, INTERFACE, METRIC, RXCOST, HELLO, UPDATE, INTERVAL, PORT,
 	TYPE, WIRED, WIRELESS, RX, TX, BUFFER, PRIORITY, LENGTH, CHECK, LINK,
-	NEXT, HOP, IPV4, IPV6, BABEL_METRIC, SHOW, INTERFACES, NEIGHBORS,
+	NEXT, HOP, IPV4, IPV6, SHOW, INTERFACES, NEIGHBORS,
 	ENTRIES, RANDOMIZE, ROUTER, ID, AUTHENTICATION, NONE, MAC, PERMISSIVE)
 
 CF_GRAMMAR
@@ -162,8 +162,6 @@ babel_iface_opt_list:
 
 babel_iface:
   babel_iface_start iface_patt_list_nopx babel_iface_opt_list babel_iface_finish;
-
-dynamic_attr: BABEL_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_BABEL_METRIC); } ;
 
 CF_CLI_HELP(SHOW BABEL, ..., [[Show information about Babel protocol]]);
 

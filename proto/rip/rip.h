@@ -16,7 +16,7 @@
 #include "nest/cli.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
-#include "nest/route.h"
+#include "nest/rt.h"
 #include "nest/password.h"
 #include "nest/locks.h"
 #include "nest/bfd.h"
@@ -194,10 +194,6 @@ struct rip_rte
 #define RIP_ENTRY_DUMMY		0	/* Only used to store list of incoming routes */
 #define RIP_ENTRY_VALID		1	/* Valid outgoing route */
 #define RIP_ENTRY_STALE		2	/* Stale outgoing route, waiting for GC */
-
-#define EA_RIP_METRIC		EA_CODE(PROTOCOL_RIP, 0)
-#define EA_RIP_TAG		EA_CODE(PROTOCOL_RIP, 1)
-#define EA_RIP_FROM		EA_CODE(PROTOCOL_RIP, 2)
 
 static inline int rip_is_v2(struct rip_proto *p)
 { return p->rip2; }
