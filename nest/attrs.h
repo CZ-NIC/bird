@@ -138,6 +138,11 @@ static inline const char *ec_subtype_str(const enum ec_subtype ecs) {
   }
 }
 
+/* Check for EC_RT subtype within different types (0-2) */
+static inline int ec_type_is_rt(uint type)
+{ return (type == EC_RT) || (type == (0x0100 | EC_RT)) || (type == (0x0200 | EC_RT)); }
+
+
 /* Transitive bit (for first u32 half of EC) */
 #define EC_TBIT 0x40000000
 
@@ -157,8 +162,12 @@ static inline u32 *int_set_get_data(const struct adata *list)
 
 static inline u32 ec_hi(u64 ec) { return ec >> 32; }
 static inline u32 ec_lo(u64 ec) { return ec; }
+
 static inline u64 ec_get(const u32 *l, int i)
 { return (((u64) l[i]) << 32) | l[i+1]; }
+
+static inline void ec_put(u32 *l, int i, u64 val)
+{ l[i] = ec_hi(val); l[i+1] = ec_lo(val); }
 
 /* RFC 4360 3.1.  Two-Octet AS Specific Extended Community */
 static inline u64 ec_as2(enum ec_subtype kind, u64 key, u64 val)

@@ -336,7 +336,7 @@ clist_set_type(const struct f_tree *set, struct f_val *v)
   }
 }
 
-static int
+int
 clist_match_set(const struct adata *clist, const struct f_tree *set)
 {
   if (!clist)
@@ -357,7 +357,7 @@ clist_match_set(const struct adata *clist, const struct f_tree *set)
   return 0;
 }
 
-static int
+int
 eclist_match_set(const struct adata *list, const struct f_tree *set)
 {
   if (!list)
@@ -381,7 +381,7 @@ eclist_match_set(const struct adata *list, const struct f_tree *set)
   return 0;
 }
 
-static int
+int
 lclist_match_set(const struct adata *list, const struct f_tree *set)
 {
   if (!list)
