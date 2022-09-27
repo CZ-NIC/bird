@@ -96,28 +96,7 @@ void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
 static inline void f_cache_eattrs(struct filter_state *fs)
 {
-  fs->eattrs = &(fs->rte->attrs->eattrs);
-}
-
-/*
- * rta_cow - prepare rta for modification by filter
- */
-static void
-f_rta_cow(struct filter_state *fs)
-{
-  if (!rta_is_cached(fs->rte->attrs))
-    return;
-
-  /*
-   * Get shallow copy of rta. Fields eattrs and nexthops of rta are shared
-   * with fs->old_rta (they will be copied when the cached rta will be obtained
-   * at the end of f_run()), also the lock of hostentry is inherited (we
-   * suppose hostentry is not changed by filters).
-   */
-  fs->rte->attrs = rta_do_cow(fs->rte->attrs, tmp_linpool);
-
-  /* Re-cache the ea_list */
-  f_cache_eattrs(fs);
+  fs->eattrs = &(fs->rte->attrs);
 }
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;

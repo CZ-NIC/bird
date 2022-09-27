@@ -603,7 +603,7 @@ rte_store(const rte *r, net *net, rtable *tab)
 
   rt_lock_source(e->rte.src);
 
-  if (e->rte.attrs->cached)
+  if (ea_is_cached(e->rte.attrs))
     e->rte.attrs = rta_clone(e->rte.attrs);
   else
     e->rte.attrs = rta_lookup(e->rte.attrs);
@@ -986,7 +986,7 @@ rt_export_merged(struct channel *c, struct rte **feed, uint count, linpool *pool
     if (!tmp || !rte_is_reachable(tmp))
       continue;
 
-    eattr *nhea = ea_find(tmp->attrs->eattrs, &ea_gen_nexthop);
+    eattr *nhea = ea_find(tmp->attrs, &ea_gen_nexthop);
     ASSERT_DIE(nhea);
 
     if (nhs)
@@ -997,13 +997,12 @@ rt_export_merged(struct channel *c, struct rte **feed, uint count, linpool *pool
 
   if (nhs)
   {
-    eattr *nhea = ea_find(best->attrs->eattrs, &ea_gen_nexthop);
+    eattr *nhea = ea_find(best->attrs, &ea_gen_nexthop);
     ASSERT_DIE(nhea);
 
     nhs = nexthop_merge(nhs, (struct nexthop_adata *) nhea->u.ptr, c->merge_limit, pool);
 
-    best->attrs = rta_cow(best->attrs, pool);
-    ea_set_attr(&best->attrs->eattrs,
+    ea_set_attr(&best->attrs,
 	EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nhs->ad));
   }
 
@@ -1228,7 +1227,7 @@ rte_validate(struct channel *ch, rte *e)
 
   if (net_type_match(n, NB_DEST))
   {
-    eattr *nhea = ea_find(e->attrs->eattrs, &ea_gen_nexthop);
+    eattr *nhea = ea_find(e->attrs, &ea_gen_nexthop);
     int dest = nhea_dest(nhea);
 
     if (dest == RTD_NONE)
@@ -1246,7 +1245,7 @@ rte_validate(struct channel *ch, rte *e)
       return 0;
     }
   }
-  else if (ea_find(e->attrs->eattrs, &ea_gen_nexthop))
+  else if (ea_find(e->attrs, &ea_gen_nexthop))
   {
     log(L_WARN "Ignoring route %N having a nexthop attribute received via %s",
 	n, ch->proto->name);
@@ -1884,7 +1883,7 @@ rte_dump(struct rte_storage *e)
 {
   debug("%-1N ", e->rte.net);
   debug("PF=%02x ", e->rte.pflags);
-  rta_dump(e->rte.attrs);
+  ea_dump(e->rte.attrs);
   debug("\n");
 }
 
@@ -2541,21 +2540,21 @@ ea_set_hostentry(ea_list **to, struct rtable *dep, struct rtable *tab, ip_addr g
 
 
 static void
-rta_apply_hostentry(rta *a, struct hostentry_adata *head)
+rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
 {
   struct hostentry *he = head->he;
   u32 *labels = head->labels;
   u32 lnum = (u32 *) (head->ad.data + head->ad.length) - labels;
 
-  ea_set_attr_u32(&a->eattrs, &ea_gen_igp_metric, 0, he->igp_metric);
+  ea_set_attr_u32(to, &ea_gen_igp_metric, 0, he->igp_metric);
 
   if (!he->src)
   {
-    ea_set_dest(&a->eattrs, 0, RTD_UNREACHABLE);
+    ea_set_dest(to, 0, RTD_UNREACHABLE);
     return;
   }
 
-  eattr *he_nh_ea = ea_find(he->src->eattrs, &ea_gen_nexthop);
+  eattr *he_nh_ea = ea_find(he->src, &ea_gen_nexthop);
   ASSERT_DIE(he_nh_ea);
 
   struct nexthop_adata *nhad = (struct nexthop_adata *) he_nh_ea->u.ptr;
@@ -2564,7 +2563,7 @@ rta_apply_hostentry(rta *a, struct hostentry_adata *head)
   if ((idest != RTD_UNICAST) ||
       !lnum && he->nexthop_linkable)
   { /* Just link the nexthop chain, no label append happens. */
-    ea_copy_attr(&a->eattrs, he->src->eattrs, &ea_gen_nexthop);
+    ea_copy_attr(to, he->src, &ea_gen_nexthop);
     return;
   }
 
@@ -2591,7 +2590,7 @@ rta_apply_hostentry(rta *a, struct hostentry_adata *head)
       .dest = RTD_UNREACHABLE,
     };
 
-    ea_set_attr_data(&a->eattrs, &ea_gen_nexthop, 0, &nha.ad.data, nha.ad.length);
+    ea_set_attr_data(to, &ea_gen_nexthop, 0, &nha.ad.data, nha.ad.length);
     return;
   }
 
@@ -2625,22 +2624,22 @@ rta_apply_hostentry(rta *a, struct hostentry_adata *head)
 
   /* Fix final length */
   new->ad.length = (void *) dest - (void *) new->ad.data;
-  ea_set_attr(&a->eattrs, EA_LITERAL_DIRECT_ADATA(
+  ea_set_attr(to, EA_LITERAL_DIRECT_ADATA(
 	&ea_gen_nexthop, 0, &new->ad));
 }
 
 static inline struct hostentry_adata *
-rta_next_hop_outdated(rta *a)
+rta_next_hop_outdated(ea_list *a)
 {
   /* First retrieve the hostentry */
-  eattr *heea = ea_find(a->eattrs, &ea_gen_hostentry);
+  eattr *heea = ea_find(a, &ea_gen_hostentry);
   if (!heea)
     return NULL;
 
   struct hostentry_adata *head = (struct hostentry_adata *) heea->u.ptr;
 
   /* If no nexthop is present, we have to create one */
-  eattr *a_nh_ea = ea_find(a->eattrs, &ea_gen_nexthop);
+  eattr *a_nh_ea = ea_find(a, &ea_gen_nexthop);
   if (!a_nh_ea)
     return head;
 
@@ -2651,10 +2650,10 @@ rta_next_hop_outdated(rta *a)
     return NEXTHOP_IS_REACHABLE(nhad) ? head : NULL;
 
   /* Comparing our nexthop with the hostentry nexthop */
-  eattr *he_nh_ea = ea_find(head->he->src->eattrs, &ea_gen_nexthop);
+  eattr *he_nh_ea = ea_find(head->he->src, &ea_gen_nexthop);
 
   return (
-      (ea_get_int(a->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN) != head->he->igp_metric) ||
+      (ea_get_int(a, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN) != head->he->igp_metric) ||
       (!head->he->nexthop_linkable) ||
       (!he_nh_ea != !a_nh_ea) ||
       (he_nh_ea && a_nh_ea && !adata_same(he_nh_ea->u.ptr, a_nh_ea->u.ptr)))
@@ -2668,12 +2667,8 @@ rt_next_hop_update_rte(rtable *tab, net *n, rte *old)
   if (!head)
     return NULL;
 
-  rta a = *old->attrs;
-  a.cached = 0;
-  rta_apply_hostentry(&a, head);
-
   rte e0 = *old;
-  e0.attrs = &a;
+  rta_apply_hostentry(&e0.attrs, head);
 
   return rte_store(&e0, n, tab);
 }
@@ -2681,21 +2676,13 @@ rt_next_hop_update_rte(rtable *tab, net *n, rte *old)
 static inline void
 rt_next_hop_resolve_rte(rte *r)
 {
-  eattr *heea = ea_find(r->attrs->eattrs, &ea_gen_hostentry);
+  eattr *heea = ea_find(r->attrs, &ea_gen_hostentry);
   if (!heea)
     return;
 
   struct hostentry_adata *head = (struct hostentry_adata *) heea->u.ptr;
 
-  if (r->attrs->cached)
-  {
-    rta *a = tmp_alloc(RTA_MAX_SIZE);
-    *a = *r->attrs;
-    a->cached = 0;
-    r->attrs = a;
-  }
-
-  rta_apply_hostentry(r->attrs, head);
+  rta_apply_hostentry(&r->attrs, head);
 }
 
 #ifdef CONFIG_BGP
@@ -2721,23 +2708,23 @@ net_flow_has_dst_prefix(const net_addr *n)
 }
 
 static inline int
-rta_as_path_is_empty(rta *a)
+rta_as_path_is_empty(ea_list *a)
 {
-  eattr *e = ea_find(a->eattrs, "bgp_path");
+  eattr *e = ea_find(a, "bgp_path");
   return !e || (as_path_getlen(e->u.ptr) == 0);
 }
 
 static inline u32
-rta_get_first_asn(rta *a)
+rta_get_first_asn(ea_list *a)
 {
-  eattr *e = ea_find(a->eattrs, "bgp_path");
+  eattr *e = ea_find(a, "bgp_path");
   u32 asn;
 
   return (e && as_path_get_first_regular(e->u.ptr, &asn)) ? asn : 0;
 }
 
 static inline enum flowspec_valid
-rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, int interior)
+rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, ea_list *a, int interior)
 {
   ASSERT(rt_is_ip(tab_ip));
   ASSERT(rt_is_flow(tab_flow));
@@ -2774,13 +2761,13 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *a, i
     return FLOWSPEC_INVALID;
 
   /* Find ORIGINATOR_ID values */
-  u32 orig_a = ea_get_int(a->eattrs, "bgp_originator_id", 0);
-  u32 orig_b = ea_get_int(rb->attrs->eattrs, "bgp_originator_id", 0);
+  u32 orig_a = ea_get_int(a, "bgp_originator_id", 0);
+  u32 orig_b = ea_get_int(rb->attrs, "bgp_originator_id", 0);
 
   /* Originator is either ORIGINATOR_ID (if present), or BGP neighbor address (if not) */
   if ((orig_a != orig_b) || (!orig_a && !orig_b && !ipa_equal(
-	  ea_get_ip(a->eattrs, &ea_gen_from, IPA_NONE),
-	  ea_get_ip(rb->attrs->eattrs, &ea_gen_from, IPA_NONE)
+	  ea_get_ip(a, &ea_gen_from, IPA_NONE),
+	  ea_get_ip(rb->attrs, &ea_gen_from, IPA_NONE)
 	  )))
     return FLOWSPEC_INVALID;
 
@@ -2834,15 +2821,8 @@ rt_flowspec_update_rte(rtable *tab, net *n, rte *r)
   if (old == valid)
     return NULL;
 
-  rta *a = alloca(RTA_MAX_SIZE);
-  *a = *r->attrs;
-  a->cached = 0;
-
-  ea_set_attr_u32(&a->eattrs, &ea_gen_flowspec_valid, 0, valid);
-
-  rte new;
-  memcpy(&new, r, sizeof(rte));
-  new.attrs = a;
+  rte new = *r;
+  ea_set_attr_u32(&new.attrs, &ea_gen_flowspec_valid, 0, valid);
 
   return rte_store(&new, n, tab);
 #else
@@ -2873,18 +2853,10 @@ rt_flowspec_resolve_rte(rte *r, struct channel *c)
   if (valid == old)
     return;
 
-  if (r->attrs->cached)
-  {
-    rta *a = tmp_alloc(RTA_MAX_SIZE);
-    *a = *r->attrs;
-    a->cached = 0;
-    r->attrs = a;
-  }
-
   if (valid == FLOWSPEC_UNKNOWN)
-    ea_unset_attr(&r->attrs->eattrs, 0, &ea_gen_flowspec_valid);
+    ea_unset_attr(&r->attrs, 0, &ea_gen_flowspec_valid);
   else
-    ea_set_attr_u32(&r->attrs->eattrs, &ea_gen_flowspec_valid, 0, valid);
+    ea_set_attr_u32(&r->attrs, &ea_gen_flowspec_valid, 0, valid);
 #endif
 }
 
@@ -3652,7 +3624,7 @@ if_local_addr(ip_addr a, struct iface *i)
 u32
 rt_get_igp_metric(const rte *rt)
 {
-  eattr *ea = ea_find(rt->attrs->eattrs, "igp_metric");
+  eattr *ea = ea_find(rt->attrs, "igp_metric");
 
   if (ea)
     return ea->u.data;
@@ -3669,7 +3641,7 @@ rt_get_igp_metric(const rte *rt)
 static int
 rt_update_hostentry(rtable *tab, struct hostentry *he)
 {
-  rta *old_src = he->src;
+  ea_list *old_src = he->src;
   int direct = 0;
   int pxlen = 0;
 
@@ -3684,10 +3656,10 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
   if (n)
     {
       struct rte_storage *e = n->routes;
-      rta *a = e->rte.attrs;
+      ea_list *a = e->rte.attrs;
       pxlen = n->n.addr->pxlen;
 
-      if (ea_find(a->eattrs, &ea_gen_hostentry))
+      if (ea_find(a, &ea_gen_hostentry))
 	{
 	  /* Recursive route should not depend on another recursive route */
 	  log(L_WARN "Next hop address %I resolvable through recursive route for %N",
@@ -3695,7 +3667,7 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 	  goto done;
 	}
 
-      eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+      eattr *nhea = ea_find(a, &ea_gen_nexthop);
       ASSERT_DIE(nhea);
       struct nexthop_adata *nhad = (void *) nhea->u.ptr;
 

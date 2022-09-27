@@ -147,7 +147,7 @@ struct hostentry {
   struct hostentry *next;		/* Next in hash chain */
   unsigned hash_key;			/* Hash key */
   unsigned uc;				/* Use count */
-  struct rta *src;			/* Source rta entry */
+  ea_list *src;				/* Source attributes */
   byte nexthop_linkable;		/* Nexthop list is completely non-device */
   u32 igp_metric;			/* Chosen route IGP metric */
 };
@@ -448,16 +448,6 @@ struct hostentry_adata {
 void
 ea_set_hostentry(ea_list **to, struct rtable *dep, struct rtable *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum]);
 
-/*
-struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
-void rta_apply_hostentry(rta *a, struct hostentry *he, u32 lnum, u32 labels[lnum]);
-
-static inline void
-rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum])
-{
-  rta_apply_hostentry(a, rt_get_hostentry(tab, gw, ll, dep), lnum, labels);
-}
-*/
 
 /*
  *	Default protocol preferences

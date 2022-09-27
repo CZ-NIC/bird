@@ -212,7 +212,6 @@
  *	m4_dnl	  NEVER_CONSTANT-> don't generate pre-interpretation code at all
  *	m4_dnl	  ACCESS_RTE	-> check that route is available, also NEVER_CONSTANT
  *	m4_dnl	  ACCESS_EATTRS	-> pre-cache the eattrs; use only with ACCESS_RTE
- *	m4_dnl	  f_rta_cow(fs)	-> function to call before any change to route should be done
  *
  *	m4_dnl	If you are stymied, see FI_CALL or FI_CONSTANT or just search for
  *	m4_dnl	the mentioned macros in this file to see what is happening there in wild.
@@ -577,8 +576,6 @@
     ARG_ANY(1);
     STATIC_ATTR;
     ARG_TYPE(1, sa.type);
-
-    f_rta_cow(fs);
     {
       union {
 	struct nexthop_adata nha;
@@ -741,8 +738,6 @@
       if (da->type >= EAF_TYPE__MAX)
 	bug("Unsupported attribute type");
 
-      f_rta_cow(fs);
-
       switch (da->type) {
       case T_OPAQUE:
       case T_IFACE:
@@ -770,7 +765,6 @@
     ACCESS_RTE;
     ACCESS_EATTRS;
 
-    f_rta_cow(fs);
     ea_unset_attr(fs->eattrs, 1, da);
   }
 

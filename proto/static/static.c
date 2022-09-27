@@ -53,10 +53,10 @@ static inline struct rte_src * static_get_source(struct static_proto *p, uint i)
 static void
 static_announce_rte(struct static_proto *p, struct static_route *r)
 {
-  rta *a = allocz(RTA_MAX_SIZE);
+  ea_list *ea = NULL;
   struct rte_src *src = static_get_source(p, r->index);
-  ea_set_attr_u32(&a->eattrs, &ea_gen_preference, 0, p->p.main_channel->preference);
-  ea_set_attr_u32(&a->eattrs, &ea_gen_source, 0, RTS_STATIC);
+  ea_set_attr_u32(&ea, &ea_gen_preference, 0, p->p.main_channel->preference);
+  ea_set_attr_u32(&ea, &ea_gen_source, 0, RTS_STATIC);
 
   if (r->dest == RTD_UNICAST)
   {
@@ -92,7 +92,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
       nh = NEXTHOP_NEXT(nh);
     }
 
-    ea_set_attr_data(&a->eattrs, &ea_gen_nexthop, 0,
+    ea_set_attr_data(&ea, &ea_gen_nexthop, 0,
 	nhad->ad.data, (void *) nh - (void *) nhad->ad.data);
   }
 
@@ -102,19 +102,19 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
     u32 *labels = r->mls ? (void *) r->mls->data : NULL;
     u32 lnum = r->mls ? r->mls->length / sizeof(u32) : 0;
 
-    ea_set_hostentry(&a->eattrs, p->p.main_channel->table, tab,
+    ea_set_hostentry(&ea, p->p.main_channel->table, tab,
 	r->via, IPA_NONE, lnum, labels);
   }
 
   else if (r->dest)
-    ea_set_dest(&a->eattrs, 0, r->dest);
+    ea_set_dest(&ea, 0, r->dest);
 
   /* Already announced */
   if (r->state == SRS_CLEAN)
     return;
 
   /* We skip rta_lookup() here */
-  rte e0 = { .attrs = a, .src = src, .net = r->net, }, *e = &e0;
+  rte e0 = { .attrs = ea, .src = src, .net = r->net, }, *e = &e0;
 
   /* Evaluate the filter */
   if (r->cmds)
@@ -396,16 +396,16 @@ static_reload_routes(struct channel *C)
 static int
 static_rte_better(rte *new, rte *old)
 {
-  u32 n = ea_get_int(new->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
-  u32 o = ea_get_int(old->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
+  u32 n = ea_get_int(new->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
+  u32 o = ea_get_int(old->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
   return n < o;
 }
 
 static int
 static_rte_mergable(rte *pri, rte *sec)
 {
-  u32 a = ea_get_int(pri->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
-  u32 b = ea_get_int(sec->attrs->eattrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
+  u32 a = ea_get_int(pri->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
+  u32 b = ea_get_int(sec->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
   return a == b;
 }
 
@@ -693,7 +693,7 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
 static void
 static_get_route_info(rte *rte, byte *buf)
 {
-  eattr *a = ea_find(rte->attrs->eattrs, &ea_gen_igp_metric);
+  eattr *a = ea_find(rte->attrs, &ea_gen_igp_metric);
   u32 pref = rt_get_preference(rte);
   if (a)
     buf += bsprintf(buf, " (%d/%u)", pref, a->u.data);

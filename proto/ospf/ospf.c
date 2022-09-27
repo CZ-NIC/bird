@@ -387,7 +387,7 @@ ospf_init(struct proto_config *CF)
 static int
 ospf_rte_better(struct rte *new, struct rte *old)
 {
-  u32 new_metric1 = ea_get_int(new->attrs->eattrs, &ea_ospf_metric1, LSINFINITY);
+  u32 new_metric1 = ea_get_int(new->attrs, &ea_ospf_metric1, LSINFINITY);
 
   if (new_metric1 == LSINFINITY)
     return 0;
@@ -400,13 +400,13 @@ ospf_rte_better(struct rte *new, struct rte *old)
 
   if (ns == RTS_OSPF_EXT2)
   {
-    u32 old_metric2 = ea_get_int(old->attrs->eattrs, &ea_ospf_metric2, LSINFINITY);
-    u32 new_metric2 = ea_get_int(new->attrs->eattrs, &ea_ospf_metric2, LSINFINITY);
+    u32 old_metric2 = ea_get_int(old->attrs, &ea_ospf_metric2, LSINFINITY);
+    u32 new_metric2 = ea_get_int(new->attrs, &ea_ospf_metric2, LSINFINITY);
     if (new_metric2 < old_metric2) return 1;
     if (new_metric2 > old_metric2) return 0;
   }
 
-  u32 old_metric1 = ea_get_int(old->attrs->eattrs, &ea_ospf_metric1, LSINFINITY);
+  u32 old_metric1 = ea_get_int(old->attrs, &ea_ospf_metric1, LSINFINITY);
   if (new_metric1 < old_metric1)
     return 1;
 
@@ -419,7 +419,7 @@ ospf_rte_igp_metric(const rte *rt)
   if (rt_get_source_attr(rt) == RTS_OSPF_EXT2)
     return IGP_METRIC_UNKNOWN;
 
-  return ea_get_int(rt->attrs->eattrs, &ea_ospf_metric1, LSINFINITY);
+  return ea_get_int(rt->attrs, &ea_ospf_metric1, LSINFINITY);
 }
 
 void
@@ -535,7 +535,7 @@ ospf_shutdown(struct proto *P)
   /* Cleanup locked rta entries */
   FIB_WALK(&p->rtf, ort, nf)
   {
-    rta_free(nf->old_rta);
+    ea_free(nf->old_ea);
   }
   FIB_WALK_END;
 
@@ -592,18 +592,18 @@ ospf_get_route_info(rte * rte, byte * buf)
   }
 
   buf += bsprintf(buf, " %s", type);
-  buf += bsprintf(buf, " (%d/%d", rt_get_preference(rte), ea_get_int(rte->attrs->eattrs, &ea_ospf_metric1, LSINFINITY));
+  buf += bsprintf(buf, " (%d/%d", rt_get_preference(rte), ea_get_int(rte->attrs, &ea_ospf_metric1, LSINFINITY));
   if (source == RTS_OSPF_EXT2)
-    buf += bsprintf(buf, "/%d", ea_get_int(rte->attrs->eattrs, &ea_ospf_metric2, LSINFINITY));
+    buf += bsprintf(buf, "/%d", ea_get_int(rte->attrs, &ea_ospf_metric2, LSINFINITY));
   buf += bsprintf(buf, ")");
   if (source == RTS_OSPF_EXT1 || source == RTS_OSPF_EXT2)
   {
-    eattr *ea = ea_find(rte->attrs->eattrs, &ea_ospf_tag);
+    eattr *ea = ea_find(rte->attrs, &ea_ospf_tag);
     if (ea && (ea->u.data > 0))
       buf += bsprintf(buf, " [%x]", ea->u.data);
   }
   
-  eattr *ea = ea_find(rte->attrs->eattrs, &ea_ospf_router_id);
+  eattr *ea = ea_find(rte->attrs, &ea_ospf_router_id);
   if (ea)
     buf += bsprintf(buf, " [%R]", ea->u.data);
 }

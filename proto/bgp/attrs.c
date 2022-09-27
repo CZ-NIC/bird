@@ -374,26 +374,24 @@ bgp_aigp_set_metric(struct linpool *pool, const struct adata *ad, u64 metric)
 int
 bgp_total_aigp_metric_(const rte *e, u64 *metric, const struct adata **ad)
 {
-  rta *a = e->attrs;
-
-  eattr *ea = ea_find(a->eattrs, BGP_EA_ID(BA_AIGP));
-  if (!ea)
+  eattr *a = ea_find(e->attrs, BGP_EA_ID(BA_AIGP));
+  if (!a)
     return 0;
 
-  const byte *b = bgp_aigp_get_tlv(ea->u.ptr, BGP_AIGP_METRIC);
+  const byte *b = bgp_aigp_get_tlv(a->u.ptr, BGP_AIGP_METRIC);
   if (!b)
     return 0;
 
   u64 aigp = get_u64(b + 3);
   u64 step = rt_get_igp_metric(e);
 
-  if (!rta_resolvable(a) || (step >= IGP_METRIC_UNKNOWN))
+  if (!rte_resolvable(e) || (step >= IGP_METRIC_UNKNOWN))
     step = BGP_AIGP_MAX;
 
   if (!step)
     step = 1;
 
-  *ad = ea->u.ptr;
+  *ad = a->u.ptr;
   *metric = aigp + step;
   if (*metric < aigp)
     *metric = BGP_AIGP_MAX;
@@ -1494,13 +1492,13 @@ loop:
 }
 
 void
-bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
+bgp_finish_attrs(struct bgp_parse_state *s, ea_list **to)
 {
   /* AIGP test here instead of in bgp_decode_aigp() - we need to know channel */
   if (BIT32_TEST(s->attrs_seen, BA_AIGP) && !s->channel->cf->aigp)
   {
     REPORT("Discarding AIGP attribute received on non-AIGP session");
-    bgp_unset_attr(&a->eattrs, BA_AIGP);
+    bgp_unset_attr(to, BA_AIGP);
   }
 }
 
@@ -1739,14 +1737,14 @@ bgp_preexport(struct channel *c, rte *e)
 
     /* Generally, this should be handled when path is received, but we check it
        also here as rr_cluster_id may be undefined or different in src. */
-    if (p->rr_cluster_id && bgp_cluster_list_loopy(p, e->attrs->eattrs))
+    if (p->rr_cluster_id && bgp_cluster_list_loopy(p, e->attrs))
       return -1;
   }
 
   /* Handle well-known communities, RFC 1997 */
   struct eattr *com;
   if (p->cf->interpret_communities &&
-      (com = ea_find(e->attrs->eattrs, BGP_EA_ID(BA_COMMUNITY))))
+      (com = ea_find(e->attrs, BGP_EA_ID(BA_COMMUNITY))))
   {
     const struct adata *d = com->u.ptr;
 
@@ -1897,7 +1895,7 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
 
   if (new)
   {
-    struct ea_list *attrs = bgp_update_attrs(p, c, new, new->attrs->eattrs, tmp_linpool);
+    struct ea_list *attrs = bgp_update_attrs(p, c, new, new->attrs, tmp_linpool);
 
     /* Error during attribute processing */
     if (!attrs)
@@ -1923,7 +1921,7 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
 static inline u32
 bgp_get_neighbor(rte *r)
 {
-  eattr *e = ea_find(r->attrs->eattrs, BGP_EA_ID(BA_AS_PATH));
+  eattr *e = ea_find(r->attrs, BGP_EA_ID(BA_AS_PATH));
   u32 as;
 
   if (e && as_path_get_first_regular(e->u.ptr, &as))
@@ -1944,7 +1942,7 @@ rte_stale(rte *r)
     return 0;
 
   /* If staleness is unknown, compute and cache it */
-  eattr *a = ea_find(r->attrs->eattrs, BGP_EA_ID(BA_COMMUNITY));
+  eattr *a = ea_find(r->attrs, BGP_EA_ID(BA_COMMUNITY));
   if (a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE))
   {
     r->pflags |= BGP_REF_STALE;
@@ -1974,8 +1972,8 @@ bgp_rte_better(rte *new, rte *old)
     return 1;
 
   /* RFC 4271 9.1.2.1. Route resolvability test */
-  n = rta_resolvable(new->attrs);
-  o = rta_resolvable(old->attrs);
+  n = rte_resolvable(new);
+  o = rte_resolvable(old);
   if (n > o)
     return 1;
   if (n < o)
@@ -1990,8 +1988,8 @@ bgp_rte_better(rte *new, rte *old)
     return 1;
 
  /* Start with local preferences */
-  x = ea_find(new->attrs->eattrs, BGP_EA_ID(BA_LOCAL_PREF));
-  y = ea_find(old->attrs->eattrs, BGP_EA_ID(BA_LOCAL_PREF));
+  x = ea_find(new->attrs, BGP_EA_ID(BA_LOCAL_PREF));
+  y = ea_find(old->attrs, BGP_EA_ID(BA_LOCAL_PREF));
   n = x ? x->u.data : new_bgp->cf->default_local_pref;
   o = y ? y->u.data : old_bgp->cf->default_local_pref;
   if (n > o)
@@ -2010,8 +2008,8 @@ bgp_rte_better(rte *new, rte *old)
   /* RFC 4271 9.1.2.2. a)  Use AS path lengths */
   if (new_bgp->cf->compare_path_lengths || old_bgp->cf->compare_path_lengths)
   {
-    x = ea_find(new->attrs->eattrs, BGP_EA_ID(BA_AS_PATH));
-    y = ea_find(old->attrs->eattrs, BGP_EA_ID(BA_AS_PATH));
+    x = ea_find(new->attrs, BGP_EA_ID(BA_AS_PATH));
+    y = ea_find(old->attrs, BGP_EA_ID(BA_AS_PATH));
     n = x ? as_path_getlen(x->u.ptr) : AS_PATH_MAXLEN;
     o = y ? as_path_getlen(y->u.ptr) : AS_PATH_MAXLEN;
     if (n < o)
@@ -2021,8 +2019,8 @@ bgp_rte_better(rte *new, rte *old)
   }
 
   /* RFC 4271 9.1.2.2. b) Use origins */
-  x = ea_find(new->attrs->eattrs, BGP_EA_ID(BA_ORIGIN));
-  y = ea_find(old->attrs->eattrs, BGP_EA_ID(BA_ORIGIN));
+  x = ea_find(new->attrs, BGP_EA_ID(BA_ORIGIN));
+  y = ea_find(old->attrs, BGP_EA_ID(BA_ORIGIN));
   n = x ? x->u.data : ORIGIN_INCOMPLETE;
   o = y ? y->u.data : ORIGIN_INCOMPLETE;
   if (n < o)
@@ -2044,8 +2042,8 @@ bgp_rte_better(rte *new, rte *old)
   if (new_bgp->cf->med_metric || old_bgp->cf->med_metric ||
       (bgp_get_neighbor(new) == bgp_get_neighbor(old)))
   {
-    x = ea_find(new->attrs->eattrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
-    y = ea_find(old->attrs->eattrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
+    x = ea_find(new->attrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
+    y = ea_find(old->attrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
     n = x ? x->u.data : new_bgp->cf->default_med;
     o = y ? y->u.data : old_bgp->cf->default_med;
     if (n < o)
@@ -2070,8 +2068,8 @@ bgp_rte_better(rte *new, rte *old)
 
   /* RFC 4271 9.1.2.2. f) Compare BGP identifiers */
   /* RFC 4456 9. a) Use ORIGINATOR_ID instead of local neighbor ID */
-  x = ea_find(new->attrs->eattrs, BGP_EA_ID(BA_ORIGINATOR_ID));
-  y = ea_find(old->attrs->eattrs, BGP_EA_ID(BA_ORIGINATOR_ID));
+  x = ea_find(new->attrs, BGP_EA_ID(BA_ORIGINATOR_ID));
+  y = ea_find(old->attrs, BGP_EA_ID(BA_ORIGINATOR_ID));
   n = x ? x->u.data : new_bgp->remote_id;
   o = y ? y->u.data : old_bgp->remote_id;
 
@@ -2088,8 +2086,8 @@ bgp_rte_better(rte *new, rte *old)
     return 0;
 
   /* RFC 4456 9. b) Compare cluster list lengths */
-  x = ea_find(new->attrs->eattrs, BGP_EA_ID(BA_CLUSTER_LIST));
-  y = ea_find(old->attrs->eattrs, BGP_EA_ID(BA_CLUSTER_LIST));
+  x = ea_find(new->attrs, BGP_EA_ID(BA_CLUSTER_LIST));
+  y = ea_find(old->attrs, BGP_EA_ID(BA_CLUSTER_LIST));
   n = x ? int_set_get_size(x->u.ptr) : 0;
   o = y ? int_set_get_size(y->u.ptr) : 0;
   if (n < o)
@@ -2115,7 +2113,7 @@ bgp_rte_mergable(rte *pri, rte *sec)
     return 0;
 
   /* RFC 4271 9.1.2.1. Route resolvability test */
-  if (rta_resolvable(pri->attrs) != rta_resolvable(sec->attrs))
+  if (rte_resolvable(pri) != rte_resolvable(sec))
     return 0;
 
   /* LLGR draft - depreference stale routes */
@@ -2123,8 +2121,8 @@ bgp_rte_mergable(rte *pri, rte *sec)
     return 0;
 
   /* Start with local preferences */
-  x = ea_find(pri->attrs->eattrs, BGP_EA_ID(BA_LOCAL_PREF));
-  y = ea_find(sec->attrs->eattrs, BGP_EA_ID(BA_LOCAL_PREF));
+  x = ea_find(pri->attrs, BGP_EA_ID(BA_LOCAL_PREF));
+  y = ea_find(sec->attrs, BGP_EA_ID(BA_LOCAL_PREF));
   p = x ? x->u.data : pri_bgp->cf->default_local_pref;
   s = y ? y->u.data : sec_bgp->cf->default_local_pref;
   if (p != s)
@@ -2133,8 +2131,8 @@ bgp_rte_mergable(rte *pri, rte *sec)
   /* RFC 4271 9.1.2.2. a)  Use AS path lengths */
   if (pri_bgp->cf->compare_path_lengths || sec_bgp->cf->compare_path_lengths)
   {
-    x = ea_find(pri->attrs->eattrs, BGP_EA_ID(BA_AS_PATH));
-    y = ea_find(sec->attrs->eattrs, BGP_EA_ID(BA_AS_PATH));
+    x = ea_find(pri->attrs, BGP_EA_ID(BA_AS_PATH));
+    y = ea_find(sec->attrs, BGP_EA_ID(BA_AS_PATH));
     p = x ? as_path_getlen(x->u.ptr) : AS_PATH_MAXLEN;
     s = y ? as_path_getlen(y->u.ptr) : AS_PATH_MAXLEN;
 
@@ -2146,8 +2144,8 @@ bgp_rte_mergable(rte *pri, rte *sec)
   }
 
   /* RFC 4271 9.1.2.2. b) Use origins */
-  x = ea_find(pri->attrs->eattrs, BGP_EA_ID(BA_ORIGIN));
-  y = ea_find(sec->attrs->eattrs, BGP_EA_ID(BA_ORIGIN));
+  x = ea_find(pri->attrs, BGP_EA_ID(BA_ORIGIN));
+  y = ea_find(sec->attrs, BGP_EA_ID(BA_ORIGIN));
   p = x ? x->u.data : ORIGIN_INCOMPLETE;
   s = y ? y->u.data : ORIGIN_INCOMPLETE;
   if (p != s)
@@ -2157,8 +2155,8 @@ bgp_rte_mergable(rte *pri, rte *sec)
   if (pri_bgp->cf->med_metric || sec_bgp->cf->med_metric ||
       (bgp_get_neighbor(pri) == bgp_get_neighbor(sec)))
   {
-    x = ea_find(pri->attrs->eattrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
-    y = ea_find(sec->attrs->eattrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
+    x = ea_find(pri->attrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
+    y = ea_find(sec->attrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
     p = x ? x->u.data : pri_bgp->cf->default_med;
     s = y ? y->u.data : sec_bgp->cf->default_med;
     if (p != s)
@@ -2323,7 +2321,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
 rte *
 bgp_rte_modify_stale(struct rte *r, struct linpool *pool)
 {
-  eattr *ea = ea_find(r->attrs->eattrs, BGP_EA_ID(BA_COMMUNITY));
+  eattr *ea = ea_find(r->attrs, BGP_EA_ID(BA_COMMUNITY));
   const struct adata *ad = ea ? ea->u.ptr : NULL;
   uint flags = ea ? ea->flags : BAF_PARTIAL;
 
@@ -2333,13 +2331,10 @@ bgp_rte_modify_stale(struct rte *r, struct linpool *pool)
   if (ad && int_set_contains(ad, BGP_COMM_LLGR_STALE))
     return r;
 
-  rta *a = rta_do_cow(r->attrs, pool);
-  
   _Thread_local static rte e0;
   e0 = *r;
-  e0.attrs = a;
 
-  bgp_set_attr_ptr(&(a->eattrs), BA_COMMUNITY, flags,
+  bgp_set_attr_ptr(&e0.attrs, BA_COMMUNITY, flags,
 		   int_set_add(pool, ad, BGP_COMM_LLGR_STALE));
   e0.pflags |= BGP_REF_STALE;
 
@@ -2396,8 +2391,8 @@ bgp_process_as4_attrs(ea_list **attrs, struct linpool *pool)
 void
 bgp_get_route_info(rte *e, byte *buf)
 {
-  eattr *p = ea_find(e->attrs->eattrs, BGP_EA_ID(BA_AS_PATH));
-  eattr *o = ea_find(e->attrs->eattrs, BGP_EA_ID(BA_ORIGIN));
+  eattr *p = ea_find(e->attrs, BGP_EA_ID(BA_AS_PATH));
+  eattr *o = ea_find(e->attrs, BGP_EA_ID(BA_ORIGIN));
   u32 origas;
 
   buf += bsprintf(buf, " (%d", rt_get_preference(e));
@@ -2417,7 +2412,7 @@ bgp_get_route_info(rte *e, byte *buf)
     }
     else if (metric = rt_get_igp_metric(e))
     {
-      if (!rta_resolvable(e->attrs))
+      if (!rte_resolvable(e))
 	buf += bsprintf(buf, "/-");
       else if (metric >= IGP_METRIC_UNKNOWN)
 	buf += bsprintf(buf, "/?");

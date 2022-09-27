@@ -111,7 +111,7 @@ struct nl_parse_state
   int merge;
 
   net_addr *net;
-  rta *attrs;
+  ea_list *attrs;
   struct krt_proto *proto;
   s8 new;
   s8 krt_src;
@@ -1407,7 +1407,7 @@ HASH_DEFINE_REHASH_FN(RTH, struct krt_proto)
 int
 krt_capable(rte *e)
 {
-  eattr *ea = ea_find(e->attrs->eattrs, &ea_gen_nexthop);
+  eattr *ea = ea_find(e->attrs, &ea_gen_nexthop);
   if (!ea)
     return 0;
 
@@ -1440,8 +1440,7 @@ static int
 nl_send_route(struct krt_proto *p, const rte *e, int op, int dest, struct nexthop_adata *nh)
 {
   eattr *ea;
-  rta *a = e->attrs;
-  ea_list *eattrs = a->eattrs;
+  ea_list *eattrs = e->attrs;
 
   int bufsize = 128 + KRT_METRICS_MAX*8 + (nh ? nh_bufsize(nh) : 0);
   u32 priority = 0;
@@ -1589,10 +1588,10 @@ dest:
 static inline int
 nl_add_rte(struct krt_proto *p, rte *e)
 {
-  rta *a = e->attrs;
+  ea_list *ea = e->attrs;
   int err = 0;
 
-  eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+  eattr *nhea = ea_find(ea, &ea_gen_nexthop);
   struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
 
   if (krt_ecmp6(p) && nhad && NEXTHOP_IS_REACHABLE(nhad) && !NEXTHOP_ONE(nhad))
@@ -1640,8 +1639,7 @@ nl_delete_rte(struct krt_proto *p, const rte *e)
 static inline int
 nl_replace_rte(struct krt_proto *p, rte *e)
 {
-  rta *a = e->attrs;
-  eattr *nhea = ea_find(a->eattrs, &ea_gen_nexthop);
+  eattr *nhea = ea_find(e->attrs, &ea_gen_nexthop);
   struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
   return nl_send_route(p, e, NL_OP_REPLACE,
       NEXTHOP_IS_REACHABLE(nhad) ? RTD_UNICAST : nhad->dest, nhad);
@@ -1714,14 +1712,14 @@ nl_announce_route(struct nl_parse_state *s)
   };
 
   EA_LOCAL_LIST(2) ea = {
-    .l = { .count = 2, .next = e0.attrs->eattrs },
+    .l = { .count = 2, .next = e0.attrs },
     .a = {
       EA_LITERAL_EMBEDDED(&ea_krt_source, 0, s->krt_proto),
       EA_LITERAL_EMBEDDED(&ea_krt_metric, 0, s->krt_metric),
     },
   };
 
-  e0.attrs->eattrs = &ea.l;
+  e0.attrs = &ea.l;
 
   if (s->scan)
     krt_got_route(s->proto, &e0, s->krt_src);
@@ -1887,8 +1885,8 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   if (s->net && !nl_mergable_route(s, net, p, priority, i->rtm_type, i->rtm_family))
     nl_announce_route(s);
 
-  rta *ra = lp_allocz(s->pool, RTA_MAX_SIZE);
-  ea_set_attr_u32(&ra->eattrs, &ea_gen_source, 0, RTS_INHERIT);
+  ea_list *ra = NULL;
+  ea_set_attr_u32(&ra, &ea_gen_source, 0, RTS_INHERIT);
 
   if (a[RTA_FLOW])
     s->rta_flow = rta_get_u32(a[RTA_FLOW]);
@@ -1913,7 +1911,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	  if (!nh)
 	    SKIP("strange RTA_MULTIPATH\n");
 
-	  ea_set_attr(&ra->eattrs, EA_LITERAL_DIRECT_ADATA(
+	  ea_set_attr(&ra, EA_LITERAL_DIRECT_ADATA(
 		&ea_gen_nexthop, 0, &nh->ad));
 	  break;
 	}
@@ -1999,20 +1997,20 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
     }
 
   if (i->rtm_scope != def_scope)
-    ea_set_attr(&ra->eattrs,
+    ea_set_attr(&ra,
 	EA_LITERAL_EMBEDDED(&ea_krt_scope, 0, i->rtm_scope));
 
   if (a[RTA_PREFSRC])
   {
     ip_addr ps = rta_get_ipa(a[RTA_PREFSRC]);
 
-    ea_set_attr(&ra->eattrs,
+    ea_set_attr(&ra,
 	EA_LITERAL_STORE_ADATA(&ea_krt_prefsrc, 0, &ps, sizeof(ps)));
   }
 
   /* Can be set per-route or per-nexthop */
   if (s->rta_flow)
-    ea_set_attr(&ra->eattrs,
+    ea_set_attr(&ra,
 	EA_LITERAL_EMBEDDED(&ea_krt_realm, 0, s->rta_flow));
 
   if (a[RTA_METRICS])
@@ -2026,7 +2024,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 
       for (uint t = 1; t < KRT_METRICS_MAX; t++)
 	if (metrics[0] & (1 << t))
-	  ea_set_attr(&ra->eattrs,
+	  ea_set_attr(&ra,
 	      EA_LITERAL_EMBEDDED(&ea_krt_metrics[t], 0, metrics[t]));
     }
 
@@ -2044,11 +2042,10 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
     s->net = lp_alloc(s->pool, net->length);
     net_copy(s->net, net);
 
-    s->attrs = ra;
-
-    ea_set_attr_data(&ra->eattrs, &ea_gen_nexthop, 0,
+    ea_set_attr_data(&ra, &ea_gen_nexthop, 0,
 	nhad.ad.data, nhad.ad.length);
 
+    s->attrs = ra;
     s->proto = p;
     s->new = new;
     s->krt_src = krt_src;
@@ -2059,17 +2056,17 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   else
   {
     /* Merge next hops with the stored route */
-    eattr *nhea = ea_find(s->attrs->eattrs, &ea_gen_nexthop);
+    eattr *nhea = ea_find(s->attrs, &ea_gen_nexthop);
     struct nexthop_adata *nhad_old = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
 
     if (nhad_old)
-      ea_set_attr(&s->attrs->eattrs,
+      ea_set_attr(&s->attrs,
 	  EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, 
 	    &(nexthop_merge(nhad_old, &nhad.nhad,
 		KRT_CF->merge_paths, s->pool)->ad)
 	  ));
     else
-      ea_set_attr_data(&s->attrs->eattrs, &ea_gen_nexthop, 0,
+      ea_set_attr_data(&s->attrs, &ea_gen_nexthop, 0,
 	  nhad.ad.data, nhad.ad.length);
   }
 }
