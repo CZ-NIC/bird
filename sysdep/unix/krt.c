@@ -786,6 +786,14 @@ krt_feed_end(struct channel *C)
   krt_scan_timer_kick(p);
 }
 
+static int
+krt_rte_better(rte *new, rte *old)
+{
+  u32 n = ea_get_int(new->attrs, &ea_krt_metric, IGP_METRIC_UNKNOWN);
+  u32 o = ea_get_int(old->attrs, &ea_krt_metric, IGP_METRIC_UNKNOWN);
+
+  return (n < o);
+}
 
 /*
  *	Protocol glue
@@ -840,6 +848,7 @@ krt_init(struct proto_config *CF)
   p->p.if_notify = krt_if_notify;
   p->p.reload_routes = krt_reload_routes;
   p->p.feed_end = krt_feed_end;
+  p->p.rte_better = krt_rte_better;
 
   krt_sys_init(p);
   return &p->p;
