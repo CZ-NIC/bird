@@ -431,7 +431,7 @@ mrt_rib_table_entry_bgp_attrs(struct mrt_table_dump_state *s, rte *r)
 
   /* Attribute list must be normalized for bgp_encode_attrs() */
   if (!rta_is_cached(r->attrs))
-    eattrs = ea_normalize(eattrs);
+    eattrs = ea_normalize(eattrs, 0);
 
   mrt_buffer_need(b, MRT_ATTR_BUFFER_SIZE);
   byte *pos = b->pos;
@@ -703,14 +703,17 @@ mrt_dump_cont(struct cli *c)
 
   cli_printf(c, 0, "");
   mrt_table_dump_free(c->rover);
-  c->cont = c->cleanup = c->rover = NULL;
+  c->cont = NULL;
+  c->cleanup = NULL;
+  c->rover = NULL;
 }
 
-static void
+static int
 mrt_dump_cleanup(struct cli *c)
 {
   mrt_table_dump_free(c->rover);
   c->rover = NULL;
+  return 0;
 }
 
 void

@@ -35,6 +35,7 @@ typedef struct rte {
 #define REF_STALE	4		/* Route is stale in a refresh cycle */
 #define REF_DISCARD	8		/* Route is scheduled for discard */
 #define REF_MODIFY	16		/* Route is scheduled for modify */
+#define REF_PENDING	32		/* Route has not propagated completely yet */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
 static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED); }
@@ -53,6 +54,7 @@ struct rte_src {
 
 struct rte_src *rt_find_source(struct proto *p, u32 id);
 struct rte_src *rt_get_source(struct proto *p, u32 id);
+struct rte_src *rt_find_source_global(u32 id);
 static inline void rt_lock_source(struct rte_src *src) { src->uc++; }
 static inline void rt_unlock_source(struct rte_src *src) { src->uc--; }
 void rt_prune_sources(void);
@@ -147,16 +149,20 @@ typedef struct eattr {
 #define EA_BIT_GET(ea) ((ea) >> 24)
 
 typedef struct ea_list {
-  struct ea_list *next_hash;		/* Next in hash chain */
-  struct ea_list **pprev_hash;		/* Previous in hash chain */
-  u32 uc;				/* Use count */
-  u32 hash_key;				/* List hash */
   struct ea_list *next;			/* In case we have an override list */
   byte flags;				/* Flags: EALF_... */
   byte rfu;
   word count;				/* Number of attributes */
   eattr attrs[0];			/* Attribute definitions themselves */
 } ea_list;
+
+struct ea_storage {
+  struct ea_storage *next_hash;		/* Next in hash chain */
+  struct ea_storage **pprev_hash;	/* Previous in hash chain */
+  u32 uc;				/* Use count */
+  u32 hash_key;				/* List hash */
+  ea_list l[0];				/* The list itself */
+};
 
 #define EALF_SORTED 1			/* Attributes are sorted by code */
 #define EALF_BISECT 2			/* Use interval bisection for searching */
@@ -171,6 +177,7 @@ struct ea_class {
   btype type;				/* Data type ID */ \
   uint readonly:1;			/* This attribute can't be changed by filters */ \
   uint conf:1;				/* Requested by config */ \
+  uint hidden:1;			/* Technical attribute, do not show, do not expose to filters */ \
   void (*format)(const eattr *ea, byte *buf, uint size); \
   void (*stored)(const eattr *ea);	/* When stored into global hash */ \
   void (*freed)(const eattr *ea);	/* When released from global hash */ \
@@ -237,7 +244,7 @@ ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
 /* Normalize ea_list; allocates the result from tmp_linpool */
-ea_list *ea_normalize(const ea_list *e);
+ea_list *ea_normalize(ea_list *e, int overlay);
 
 uint ea_list_size(ea_list *);
 void ea_list_copy(ea_list *dest, ea_list *src, uint size);
@@ -413,11 +420,21 @@ static inline int rte_dest(const rte *r)
 }
 
 void rta_init(void);
-ea_list *ea_lookup(ea_list *);		/* Get a cached (and normalized) variant of this attribute list */
-static inline int ea_is_cached(ea_list *r) { return r->flags & EALF_CACHED; }
-static inline ea_list *ea_clone(ea_list *r) { r->uc++; return r; }
-void ea__free(ea_list *r);
-static inline void ea_free(ea_list *r) { if (r && !--r->uc) ea__free(r); }
+ea_list *ea_lookup(ea_list *, int overlay);		/* Get a cached (and normalized) variant of this attribute list */
+static inline int ea_is_cached(const ea_list *r) { return r->flags & EALF_CACHED; }
+static inline struct ea_storage *ea_get_storage(ea_list *r)
+{
+  ASSERT_DIE(ea_is_cached(r));
+  return SKIP_BACK(struct ea_storage, l, r);
+}
+
+static inline ea_list *ea_clone(ea_list *r) { ea_get_storage(r)->uc++; return r; }
+void ea__free(struct ea_storage *r);
+static inline void ea_free(ea_list *l) {
+  if (!l) return;
+  struct ea_storage *r = ea_get_storage(l);
+  if (!--r->uc) ea__free(r);
+}
 
 void ea_dump(ea_list *);
 void ea_dump_all(void);

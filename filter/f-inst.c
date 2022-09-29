@@ -768,6 +768,18 @@
     ea_unset_attr(fs->eattrs, 1, da);
   }
 
+  INST(FI_DEFAULT, 2, 1) {
+    ARG_ANY(1);
+    ARG_ANY(2);
+
+    log(L_INFO "Type of arg 1 is: %d", v1.type);
+
+    if (v1.type == T_VOID)
+      RESULT_VAL(v2);
+    else
+      RESULT_VAL(v1);
+  }
+
   INST(FI_LENGTH, 1, 1) {	/* Get length of */
     ARG_ANY(1);
     switch(v1.type) {

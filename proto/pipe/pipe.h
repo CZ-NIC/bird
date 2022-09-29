@@ -12,6 +12,7 @@
 struct pipe_config {
   struct proto_config c;
   struct rtable_config *peer;		/* Table we're connected to */
+  const net_addr *in_subprefix;
   u8 max_generation;
 };
 

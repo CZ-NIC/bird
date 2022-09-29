@@ -156,7 +156,7 @@ perf_loop(void *data)
       ea_set_attr_data(&ea, &ea_gen_nexthop, 0,
 	  &nhad.ad.data, sizeof nhad - sizeof nhad.ad);
 
-      p->data[i].a = rta_lookup(ea);
+      p->data[i].a = rta_lookup(ea, 0);
     }
     else
       p->data[i].a = rta_clone(p->data[i-1].a);

@@ -1392,7 +1392,7 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, ea_lis
 
   /* Prepare cached route attributes */
   if (s->cached_ea == NULL)
-    s->cached_ea = ea_lookup(a0);
+    s->cached_ea = ea_lookup(a0, 0);
 
   rte e0 = {
     .attrs = s->cached_ea,
@@ -1488,7 +1488,7 @@ bgp_encode_nlri_ip4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_free_prefix(s->channel, px);
+    bgp_done_prefix(s->channel, px, buck);
   }
 
   return pos - buf;
@@ -1573,7 +1573,7 @@ bgp_encode_nlri_ip6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_free_prefix(s->channel, px);
+    bgp_done_prefix(s->channel, px, buck);
   }
 
   return pos - buf;
@@ -1661,7 +1661,7 @@ bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_free_prefix(s->channel, px);
+    bgp_done_prefix(s->channel, px, buck);
   }
 
   return pos - buf;
@@ -1758,7 +1758,7 @@ bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_free_prefix(s->channel, px);
+    bgp_done_prefix(s->channel, px, buck);
   }
 
   return pos - buf;
@@ -1845,7 +1845,7 @@ bgp_encode_nlri_flow4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
     memcpy(pos, net->data, flen);
     ADVANCE(pos, size, flen);
 
-    bgp_free_prefix(s->channel, px);
+    bgp_done_prefix(s->channel, px, buck);
   }
 
   return pos - buf;
@@ -1933,7 +1933,7 @@ bgp_encode_nlri_flow6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
     memcpy(pos, net->data, flen);
     ADVANCE(pos, size, flen);
 
-    bgp_free_prefix(s->channel, px);
+    bgp_done_prefix(s->channel, px, buck);
   }
 
   return pos - buf;
@@ -2167,6 +2167,8 @@ bgp_create_ip_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
    *	var	IPv4 Network Layer Reachability Information
    */
 
+  ASSERT_DIE(s->channel->withdraw_bucket != buck);
+
   int lr, la;
 
   la = bgp_encode_attrs(s, buck->eattrs, buf+4, buf + MAX_ATTRS_LENGTH);
@@ -2188,6 +2190,8 @@ bgp_create_ip_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
 static byte *
 bgp_create_mp_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, byte *end)
 {
+  ASSERT_DIE(s->channel->withdraw_bucket != buck);
+
   /*
    *	2 B	IPv4 Withdrawn Routes Length (zero)
    *	---	IPv4 Withdrawn Routes NLRI (unused)
@@ -2341,9 +2345,8 @@ again: ;
     buck = HEAD(c->bucket_queue);
 
     /* Cleanup empty buckets */
-    if (EMPTY_LIST(buck->prefixes))
+    if (bgp_done_bucket(c, buck))
     {
-      bgp_free_bucket(c, buck);
       lp_restore(tmp_linpool, &tmpp);
       goto again;
     }
@@ -2352,10 +2355,7 @@ again: ;
       bgp_create_ip_reach(&s, buck, buf, end):
       bgp_create_mp_reach(&s, buck, buf, end);
 
-    if (EMPTY_LIST(buck->prefixes))
-      bgp_free_bucket(c, buck);
-    else
-      bgp_defer_bucket(c, buck);
+    bgp_done_bucket(c, buck);
 
     if (!res)
     {
@@ -2724,7 +2724,7 @@ bgp_rx_route_refresh(struct bgp_conn *conn, byte *pkt, uint len)
   {
   case BGP_RR_REQUEST:
     BGP_TRACE(D_PACKETS, "Got ROUTE-REFRESH");
-    rt_refeed_channel(&c->c);
+    channel_request_feeding(&c->c);
     break;
 
   case BGP_RR_BEGIN:
@@ -2903,7 +2903,11 @@ bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
 {
   ASSERT(conn->sk);
 
-  DBG("BGP: Scheduling packet type %d\n", type);
+  struct bgp_proto *p = conn->bgp;
+  if (c)
+    BGP_TRACE(D_PACKETS, "Scheduling packet type %d for channel %s", type, c->c.name);
+  else
+    BGP_TRACE(D_PACKETS, "Scheduling packet type %d", type);
 
   if (c)
   {

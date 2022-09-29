@@ -197,11 +197,14 @@ static struct idm src_ids;
 #define RSH_INIT_ORDER		6
 
 static HASH(struct rte_src) src_hash;
+static struct rte_src **rte_src_global;
+static uint rte_src_global_max = SRC_ID_INIT_SIZE;
 
 static void
 rte_src_init(void)
 {
   rte_src_slab = sl_new(rta_pool, sizeof(struct rte_src));
+  rte_src_global = mb_allocz(rta_pool, sizeof(struct rte_src *) * rte_src_global_max);
 
   idm_init(&src_ids, rta_pool, SRC_ID_INIT_SIZE);
 
@@ -232,8 +235,25 @@ rt_get_source(struct proto *p, u32 id)
   src->uc = 0;
 
   HASH_INSERT2(src_hash, RSH, rta_pool, src);
+  if (src->global_id >= rte_src_global_max)
+  {
+    rte_src_global = mb_realloc(rte_src_global, sizeof(struct rte_src *) * (rte_src_global_max *= 2));
+    memset(&rte_src_global[rte_src_global_max / 2], 0,
+	sizeof(struct rte_src *) * (rte_src_global_max / 2));
+  }
+
+  rte_src_global[src->global_id] = src;
 
   return src;
+}
+
+struct rte_src *
+rt_find_source_global(u32 id)
+{
+  if (id >= rte_src_global_max)
+    return NULL;
+  else
+    return rte_src_global[id];
 }
 
 void
@@ -436,7 +456,8 @@ ea_class_free(struct ea_class *cl)
   /* No more ea class references. Unregister the attribute. */
   idm_free(&ea_class_idm, cl->id);
   ea_class_global[cl->id] = NULL;
-  ea_lex_unregister(cl);
+  if (!cl->hidden)
+    ea_lex_unregister(cl);
 }
 
 static void
@@ -492,7 +513,8 @@ ea_register(pool *p, struct ea_class *def)
   ASSERT_DIE(def->id < ea_class_max);
   ea_class_global[def->id] = def;
 
-  ea_lex_register(def);
+  if (!def->hidden)
+    ea_lex_register(def);
 
   return ea_ref_class(p, def);
 }
@@ -726,8 +748,8 @@ ea_do_prune(ea_list *e)
 	s++;
 
       /* Now s0 is the most recent version, s[-1] the oldest one */
-      /* Drop undefs */
-      if (s0->undef)
+      /* Drop undefs unless this is a true overlay */
+      if (s0->undef && (s[-1].undef || !e->next))
 	continue;
 
       /* Copy the newest version to destination */
@@ -760,18 +782,15 @@ ea_do_prune(ea_list *e)
 static void
 ea_sort(ea_list *e)
 {
-  while (e)
-    {
-      if (!(e->flags & EALF_SORTED))
-	{
-	  ea_do_sort(e);
-	  ea_do_prune(e);
-	  e->flags |= EALF_SORTED;
-	}
-      if (e->count > 5)
-	e->flags |= EALF_BISECT;
-      e = e->next;
-    }
+  if (!(e->flags & EALF_SORTED))
+  {
+    ea_do_sort(e);
+    ea_do_prune(e);
+    e->flags |= EALF_SORTED;
+  }
+
+  if (e->count > 5)
+    e->flags |= EALF_BISECT;
 }
 
 /**
@@ -782,7 +801,7 @@ ea_sort(ea_list *e)
  * a given &ea_list after merging with ea_merge().
  */
 static unsigned
-ea_scan(const ea_list *e)
+ea_scan(const ea_list *e, int overlay)
 {
   unsigned cnt = 0;
 
@@ -790,6 +809,8 @@ ea_scan(const ea_list *e)
     {
       cnt += e->count;
       e = e->next;
+      if (e && overlay && ea_is_cached(e))
+	break;
     }
   return sizeof(ea_list) + sizeof(eattr)*cnt;
 }
@@ -809,30 +830,35 @@ ea_scan(const ea_list *e)
  * by calling ea_sort().
  */
 static void
-ea_merge(const ea_list *e, ea_list *t)
+ea_merge(ea_list *e, ea_list *t, int overlay)
 {
   eattr *d = t->attrs;
 
   t->flags = 0;
   t->count = 0;
-  t->next = NULL;
+
   while (e)
     {
       memcpy(d, e->attrs, sizeof(eattr)*e->count);
       t->count += e->count;
       d += e->count;
       e = e->next;
+
+      if (e && overlay && ea_is_cached(e))
+	break;
     }
+
+  t->next = e;
 }
 
 ea_list *
-ea_normalize(const ea_list *e)
+ea_normalize(ea_list *e, int overlay)
 {
-  ea_list *t = tmp_alloc(ea_scan(e));
-  ea_merge(e, t);
+  ea_list *t = tmp_alloc(ea_scan(e, overlay));
+  ea_merge(e, t, overlay);
   ea_sort(t);
 
-  return t->count ? t : NULL;
+  return t->count ? t : t->next;
 }
 
 /**
@@ -850,7 +876,8 @@ ea_same(ea_list *x, ea_list *y)
 
   if (!x || !y)
     return x == y;
-  ASSERT(!x->next && !y->next);
+  if (x->next != y->next)
+    return 0;
   if (x->count != y->count)
     return 0;
   for(c=0; c<x->count; c++)
@@ -876,13 +903,12 @@ ea_list_size(ea_list *o)
   unsigned i, elen;
 
   ASSERT_DIE(o);
-  ASSERT_DIE(!o->next);
   elen = BIRD_CPU_ALIGN(sizeof(ea_list) + sizeof(eattr) * o->count);
 
   for(i=0; i<o->count; i++)
     {
       eattr *a = &o->attrs[i];
-      if (!(a->type & EAF_EMBEDDED))
+      if (!a->undef && !(a->type & EAF_EMBEDDED))
 	elen += ADATA_SIZE(a->u.ptr->length);
     }
 
@@ -899,7 +925,7 @@ ea_list_copy(ea_list *n, ea_list *o, uint elen)
   for(uint i=0; i<o->count; i++)
     {
       eattr *a = &n->attrs[i];
-      if (!(a->type & EAF_EMBEDDED))
+      if (!a->undef && !(a->type & EAF_EMBEDDED))
 	{
 	  unsigned size = ADATA_SIZE(a->u.ptr->length);
 	  ASSERT_DIE(adpos + size <= elen);
@@ -923,12 +949,21 @@ ea_list_ref(ea_list *l)
       eattr *a = &l->attrs[i];
       ASSERT_DIE(a->id < ea_class_max);
 
+      if (a->undef)
+	continue;
+
       struct ea_class *cl = ea_class_global[a->id];
       ASSERT_DIE(cl && cl->uc);
 
       CALL(cl->stored, a);
       cl->uc++;
     }
+
+  if (l->next)
+  {
+    ASSERT_DIE(ea_is_cached(l->next));
+    ea_clone(l->next);
+  }
 }
 
 static void
@@ -939,6 +974,9 @@ ea_list_unref(ea_list *l)
       eattr *a = &l->attrs[i];
       ASSERT_DIE(a->id < ea_class_max);
 
+      if (a->undef)
+	continue;
+
       struct ea_class *cl = ea_class_global[a->id];
       ASSERT_DIE(cl && cl->uc);
 
@@ -946,6 +984,9 @@ ea_list_unref(ea_list *l)
       if (!--cl->uc)
 	ea_class_free(cl);
     }
+
+  if (l->next)
+    ea_free(l->next);
 }
 
 void
@@ -998,39 +1039,88 @@ opaque_format(const struct adata *ad, byte *buf, uint size)
 }
 
 static inline void
-ea_show_int_set(struct cli *c, const struct adata *ad, int way, byte *pos, byte *buf, byte *end)
+ea_show_int_set(struct cli *c, const char *name, const struct adata *ad, int way, byte *buf)
 {
-  int i = int_set_format(ad, way, 0, pos, end - pos);
-  cli_printf(c, -1012, "\t%s", buf);
+  int nlen = strlen(name);
+  int i = int_set_format(ad, way, 0, buf, CLI_MSG_SIZE - nlen - 3);
+  cli_printf(c, -1012, "\t%s: %s", name, buf);
   while (i)
     {
-      i = int_set_format(ad, way, i, buf, end - buf - 1);
+      i = int_set_format(ad, way, i, buf, CLI_MSG_SIZE - 1);
       cli_printf(c, -1012, "\t\t%s", buf);
     }
 }
 
 static inline void
-ea_show_ec_set(struct cli *c, const struct adata *ad, byte *pos, byte *buf, byte *end)
+ea_show_ec_set(struct cli *c, const char *name, const struct adata *ad, byte *buf)
 {
-  int i = ec_set_format(ad, 0, pos, end - pos);
-  cli_printf(c, -1012, "\t%s", buf);
+  int nlen = strlen(name);
+  int i = ec_set_format(ad, 0, buf, CLI_MSG_SIZE - nlen - 3);
+  cli_printf(c, -1012, "\t%s: %s", name, buf);
   while (i)
     {
-      i = ec_set_format(ad, i, buf, end - buf - 1);
+      i = ec_set_format(ad, i, buf, CLI_MSG_SIZE - 1);
       cli_printf(c, -1012, "\t\t%s", buf);
     }
 }
 
 static inline void
-ea_show_lc_set(struct cli *c, const struct adata *ad, byte *pos, byte *buf, byte *end)
+ea_show_lc_set(struct cli *c, const char *name, const struct adata *ad, byte *buf)
 {
-  int i = lc_set_format(ad, 0, pos, end - pos);
-  cli_printf(c, -1012, "\t%s", buf);
+  int nlen = strlen(name);
+  int i = lc_set_format(ad, 0, buf, CLI_MSG_SIZE - nlen - 3);
+  cli_printf(c, -1012, "\t%s: %s", name, buf);
   while (i)
     {
-      i = lc_set_format(ad, i, buf, end - buf - 1);
+      i = lc_set_format(ad, i, buf, CLI_MSG_SIZE - 1);
       cli_printf(c, -1012, "\t\t%s", buf);
     }
+}
+
+void
+ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad)
+{
+  if (!NEXTHOP_IS_REACHABLE(nhad))
+    return;
+
+  NEXTHOP_WALK(nh, nhad)
+  {
+    char mpls[MPLS_MAX_LABEL_STACK*12 + 5], *lsp = mpls;
+    char *onlink = (nh->flags & RNF_ONLINK) ? " onlink" : "";
+    char weight[16] = "";
+
+    if (nh->labels)
+    {
+      lsp += bsprintf(lsp, " mpls %d", nh->label[0]);
+      for (int i=1;i<nh->labels; i++)
+	lsp += bsprintf(lsp, "/%d", nh->label[i]);
+    }
+    *lsp = '\0';
+
+    if (!NEXTHOP_ONE(nhad))
+      bsprintf(weight, " weight %d", nh->weight + 1);
+
+    if (ipa_nonzero(nh->gw))
+      if (nh->iface)
+	cli_printf(c, -1007, "\tvia %I on %s%s%s%s",
+	    nh->gw, nh->iface->name, mpls, onlink, weight);
+      else
+	cli_printf(c, -1007, "\tvia %I", nh->gw);
+    else
+      cli_printf(c, -1007, "\tdev %s%s%s",
+	  nh->iface->name, mpls,  onlink, weight);
+  }
+}
+
+void
+ea_show_hostentry(const struct adata *ad, byte *buf, uint size)
+{
+  const struct hostentry_adata *had = (const struct hostentry_adata *) ad;
+
+  if (ipa_nonzero(had->he->link) && !ipa_equal(had->he->link, had->he->addr))
+    bsnprintf(buf, size, "via %I %I table %s", had->he->addr, had->he->link, had->he->tab->name);
+  else
+    bsnprintf(buf, size, "via %I table %s", had->he->addr, had->he->tab->name);
 }
 
 /**
@@ -1056,19 +1146,17 @@ ea_show(struct cli *c, const eattr *e)
   struct ea_class *cls = ea_class_global[e->id];
   ASSERT_DIE(cls);
 
-  pos += bsprintf(pos, "%s", cls->name);
-
-  *pos++ = ':';
-  *pos++ = ' ';
-
-  if (e->undef)
-    bsprintf(pos, "undefined (should not happen)");
+  if (e->undef || cls->hidden)
+    return;
   else if (cls->format)
     cls->format(e, buf, end - buf);
   else
     switch (e->type)
       {
 	case T_INT:
+	  if ((cls == &ea_gen_igp_metric) && e->u.data >= IGP_METRIC_UNKNOWN)
+	    return;
+
 	  bsprintf(pos, "%u", e->u.data);
 	  break;
 	case T_OPAQUE:
@@ -1084,19 +1172,25 @@ ea_show(struct cli *c, const eattr *e)
 	  as_path_format(ad, pos, end - pos);
 	  break;
 	case T_CLIST:
-	  ea_show_int_set(c, ad, 1, pos, buf, end);
+	  ea_show_int_set(c, cls->name, ad, 1, buf);
 	  return;
 	case T_ECLIST:
-	  ea_show_ec_set(c, ad, pos, buf, end);
+	  ea_show_ec_set(c, cls->name, ad, buf);
 	  return;
 	case T_LCLIST:
-	  ea_show_lc_set(c, ad, pos, buf, end);
+	  ea_show_lc_set(c, cls->name, ad, buf);
 	  return;
+	case T_NEXTHOP_LIST:
+	  ea_show_nexthop_list(c, (struct nexthop_adata *) e->u.ptr);
+	  return;
+	case T_HOSTENTRY:
+	  ea_show_hostentry(ad, pos, end - pos);
+	  break;
 	default:
 	  bsprintf(pos, "<type %02x>", e->type);
       }
 
-  cli_printf(c, -1012, "\t%s", buf);
+  cli_printf(c, -1012, "\t%s: %s", cls->name, buf);
 }
 
 static void
@@ -1135,11 +1229,12 @@ ea_dump(ea_list *e)
     }
   while (e)
     {
+      struct ea_storage *s = ea_is_cached(e) ? ea_get_storage(e) : NULL;
       debug("[%c%c%c] uc=%d h=%08x",
 	    (e->flags & EALF_SORTED) ? 'S' : 's',
 	    (e->flags & EALF_BISECT) ? 'B' : 'b',
 	    (e->flags & EALF_CACHED) ? 'C' : 'c',
-	    e->uc, e->hash_key);
+	    s ? s->uc : 0, s ? s->hash_key : 0);
       for(i=0; i<e->count; i++)
 	{
 	  eattr *a = &e->attrs[i];
@@ -1183,11 +1278,13 @@ ea_hash(ea_list *e)
 
   if (e)			/* Assuming chain of length 1 */
     {
-      ASSERT_DIE(!e->next);
+      h ^= mem_hash(&e->next, sizeof(e->next));
       for(i=0; i<e->count; i++)
 	{
 	  struct eattr *a = &e->attrs[i];
 	  h ^= a->id; h *= mul;
+	  if (a->undef)
+	    continue;
 	  if (a->type & EAF_EMBEDDED)
 	    h ^= a->u.data;
 	  else
@@ -1231,12 +1328,12 @@ static uint rta_cache_count;
 static uint rta_cache_size = 32;
 static uint rta_cache_limit;
 static uint rta_cache_mask;
-static ea_list **rta_hash_table;
+static struct ea_storage **rta_hash_table;
 
 static void
 rta_alloc_hash(void)
 {
-  rta_hash_table = mb_allocz(rta_pool, sizeof(ea_list *) * rta_cache_size);
+  rta_hash_table = mb_allocz(rta_pool, sizeof(struct ea_storage *) * rta_cache_size);
   if (rta_cache_size < 32768)
     rta_cache_limit = rta_cache_size * 2;
   else
@@ -1245,7 +1342,7 @@ rta_alloc_hash(void)
 }
 
 static inline void
-rta_insert(ea_list *r)
+rta_insert(struct ea_storage *r)
 {
   uint h = r->hash_key & rta_cache_mask;
   r->next_hash = rta_hash_table[h];
@@ -1260,8 +1357,8 @@ rta_rehash(void)
 {
   uint ohs = rta_cache_size;
   uint h;
-  ea_list *r, *n;
-  ea_list **oht = rta_hash_table;
+  struct ea_storage *r, *n;
+  struct ea_storage **oht = rta_hash_table;
 
   rta_cache_size = 2*rta_cache_size;
   DBG("Rehashing rta cache from %d to %d entries.\n", ohs, rta_cache_size);
@@ -1289,25 +1386,25 @@ rta_rehash(void)
  * converted to the normalized form.
  */
 ea_list *
-ea_lookup(ea_list *o)
+ea_lookup(ea_list *o, int overlay)
 {
-  ea_list *r;
+  struct ea_storage *r;
   uint h;
 
   ASSERT(!ea_is_cached(o));
-  o = ea_normalize(o);
+  o = ea_normalize(o, overlay);
   h = ea_hash(o);
 
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next_hash)
-    if (r->hash_key == h && ea_same(r, o))
-      return ea_clone(r);
+    if (r->hash_key == h && ea_same(r->l, o))
+      return ea_clone(r->l);
 
   uint elen = ea_list_size(o);
-  r = mb_alloc(rta_pool, elen);
-  ea_list_copy(r, o, elen);
-  ea_list_ref(r);
+  r = mb_alloc(rta_pool, elen + sizeof(struct ea_storage));
+  ea_list_copy(r->l, o, elen);
+  ea_list_ref(r->l);
 
-  r->flags |= EALF_CACHED;
+  r->l->flags |= EALF_CACHED;
   r->hash_key = h;
   r->uc = 1;
 
@@ -1316,20 +1413,19 @@ ea_lookup(ea_list *o)
   if (++rta_cache_count > rta_cache_limit)
     rta_rehash();
 
-  return r;
+  return r->l;
 }
 
 void
-ea__free(ea_list *a)
+ea__free(struct ea_storage *a)
 {
-  ASSERT(rta_cache_count && ea_is_cached(a));
+  ASSERT(rta_cache_count);
   rta_cache_count--;
   *a->pprev_hash = a->next_hash;
   if (a->next_hash)
     a->next_hash->pprev_hash = a->pprev_hash;
 
-  ASSERT(!a->next);
-  ea_list_unref(a);
+  ea_list_unref(a->l);
   mb_free(a);
 }
 
@@ -1344,10 +1440,10 @@ ea_dump_all(void)
 {
   debug("Route attribute cache (%d entries, rehash at %d):\n", rta_cache_count, rta_cache_limit);
   for (uint h=0; h < rta_cache_size; h++)
-    for (ea_list *a = rta_hash_table[h]; a; a = a->next_hash)
+    for (struct ea_storage *a = rta_hash_table[h]; a; a = a->next_hash)
       {
 	debug("%p ", a);
-	ea_dump(a);
+	ea_dump(a->l);
 	debug("\n");
       }
   debug("\n");
@@ -1356,9 +1452,9 @@ ea_dump_all(void)
 void
 ea_show_list(struct cli *c, ea_list *eal)
 {
-  for( ; eal; eal=eal->next)
-    for(int i=0; i<eal->count; i++)
-      ea_show(c, &eal->attrs[i]);
+  ea_list *n = ea_normalize(eal, 0);
+  for (int i  =0; i < n->count; i++)
+    ea_show(c, &n->attrs[i]);
 }
 
 /**
@@ -1376,12 +1472,15 @@ rta_init(void)
   rte_src_init();
   ea_class_init();
 
+  /* These attributes are required to be first for nice "show route" output */
+  ea_register_init(&ea_gen_nexthop);
+  ea_register_init(&ea_gen_hostentry);
+
+  /* Other generic route attributes */
   ea_register_init(&ea_gen_preference);
   ea_register_init(&ea_gen_igp_metric);
   ea_register_init(&ea_gen_from);
   ea_register_init(&ea_gen_source);
-  ea_register_init(&ea_gen_nexthop);
-  ea_register_init(&ea_gen_hostentry);
   ea_register_init(&ea_gen_flowspec_valid);
 }
 

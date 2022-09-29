@@ -156,7 +156,7 @@ struct bgp_channel_config {
   u8 aigp_originate;			/* AIGP is originated automatically */
   u32 cost;				/* IGP cost for direct next hops */
   u8 import_table;			/* Use c.in_table as Adj-RIB-In */
-  u8 export_table;			/* Use c.out_table as Adj-RIB-Out */
+  u8 export_table;			/* Keep Adj-RIB-Out and export it */
 
   struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */
   struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
@@ -357,6 +357,8 @@ struct bgp_channel {
   HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
   slab *prefix_slab;			/* Slab holding prefix nodes */
 
+  struct rt_exporter prefix_exporter;	/* Table-like exporter for prefix_hash */
+
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   ip_addr link_addr;			/* Link-local version of next_hop_addr */
 
@@ -378,8 +380,11 @@ struct bgp_channel {
 };
 
 struct bgp_prefix {
-  node buck_node;			/* Node in per-bucket list */
+  node buck_node_xx;			/* Node in per-bucket list */
   struct bgp_prefix *next;		/* Node in prefix hash table */
+  struct bgp_bucket *last;		/* Last bucket sent with this prefix */
+  struct bgp_bucket *cur;		/* Current bucket (cur == last) if no update is required */
+  btime lastmod;			/* Last modification of this prefix */
   u32 hash;
   u32 path_id;
   net_addr net[0];
@@ -388,8 +393,9 @@ struct bgp_prefix {
 struct bgp_bucket {
   node send_node;			/* Node in send queue */
   struct bgp_bucket *next;		/* Node in bucket hash table */
-  list prefixes;			/* Prefixes in this bucket (struct bgp_prefix) */
+  list prefixes;			/* Prefixes to send in this bucket (struct bgp_prefix) */
   u32 hash;				/* Hash over extended attributes */
+  u32 px_uc;				/* How many prefixes are linking this bucket */
   ea_list eattrs[0];			/* Per-bucket extended attributes */
 };
 
@@ -520,6 +526,9 @@ static inline int
 rte_resolvable(const rte *rt)
 {
   eattr *nhea = ea_find(rt->attrs, &ea_gen_nexthop);
+  if (!nhea)
+    return 0;
+
   struct nexthop_adata *nhad = (void *) nhea->u.ptr;
   return NEXTHOP_IS_REACHABLE(nhad) || (nhad->dest != RTD_UNREACHABLE);
 }
@@ -553,15 +562,16 @@ int bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte 
 ea_list * bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len);
 void bgp_finish_attrs(struct bgp_parse_state *s, ea_list **to);
 
+void bgp_setup_out_table(struct bgp_channel *c);
+
 void bgp_init_bucket_table(struct bgp_channel *c);
 void bgp_free_bucket_table(struct bgp_channel *c);
-void bgp_free_bucket(struct bgp_channel *c, struct bgp_bucket *b);
-void bgp_defer_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 void bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b);
+int bgp_done_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 
 void bgp_init_prefix_table(struct bgp_channel *c);
 void bgp_free_prefix_table(struct bgp_channel *c);
-void bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *bp);
+void bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket *buck);
 
 int bgp_rte_better(struct rte *, struct rte *);
 int bgp_rte_mergable(rte *pri, rte *sec);

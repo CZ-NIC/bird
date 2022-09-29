@@ -56,6 +56,17 @@ struct rtable_config {
   btime max_settle_time;		/* Maximum settle time for notifications */
 };
 
+struct rt_export_hook;
+struct rt_export_request;
+
+struct rt_exporter {
+  list hooks;				/* Registered route export hooks */
+  uint addr_type;			/* Type of address data exported (NET_*) */
+  struct rt_export_hook *(*start)(struct rt_exporter *, struct rt_export_request *);
+  void (*stop)(struct rt_export_hook *);
+  void (*done)(struct rt_export_hook *);
+};
+
 typedef struct rtable {
   resource r;
   node n;				/* Node in list of all tables */
@@ -69,7 +80,7 @@ typedef struct rtable {
   u32 rt_count;				/* Number of routes in the table */
 
   list imports;				/* Registered route importers */
-  list exports;				/* Registered route exporters */
+  struct rt_exporter exporter;		/* Exporter API structure */
 
   struct hmap id_map;
   struct hostcache *hostcache;
@@ -171,7 +182,7 @@ struct rt_import_request {
   void (*log_state_change)(struct rt_import_request *req, u8 state);
   /* Preimport is called when the @new route is just-to-be inserted, replacing @old.
    * Return a route (may be different or modified in-place) to continue or NULL to withdraw. */
-  struct rte *(*preimport)(struct rt_import_request *req, struct rte *new, struct rte *old);
+  int (*preimport)(struct rt_import_request *req, struct rte *new, struct rte *old);
   struct rte *(*rte_modify)(struct rte *, struct linpool *);
 };
 
@@ -203,7 +214,9 @@ struct rt_pending_export {
 struct rt_export_request {
   struct rt_export_hook *hook;		/* Table part of the export */
   char *name;
+  const net_addr *addr;			/* Network prefilter address */
   u8 trace_routes;
+  u8 addr_mode;				/* Network prefilter mode (TE_ADDR_*) */
 
   /* There are two methods of export. You can either request feeding every single change
    * or feeding the whole route feed. In case of regular export, &export_one is preferred.
@@ -221,7 +234,7 @@ struct rt_export_request {
 
 struct rt_export_hook {
   node n;
-  rtable *table;			/* The connected table */
+  struct rt_exporter *table;		/* The connected table */
 
   pool *pool;
   linpool *lp;
@@ -234,12 +247,20 @@ struct rt_export_hook {
     u32 withdraws_received;		/* Number of route withdraws received */
   } stats;
 
-  struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
+  union {
+    struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
+    struct {
+      struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
+      struct f_trie *walk_lock;			/* Locked trie for walking */
+    };
+    u32 hash_iter;				/* Iterator over hash */
+  };
 
   btime last_state_change;		/* Time of last state transition */
 
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
   u8 export_state;			/* Route export state (TES_*, see below) */
+  u8 feed_type;				/* Which feeding method is used (TFT_*, see below) */
 
   struct event *event;			/* Event running all the export operations */
 
@@ -255,14 +276,26 @@ struct rt_export_hook {
 #define TIS_MAX		6
 
 #define TES_DOWN	0
-#define TES_HUNGRY	1
 #define TES_FEEDING	2
 #define TES_READY	3
 #define TES_STOP	4
 #define TES_MAX		5
 
+/* Value of addr_mode */
+#define TE_ADDR_NONE	0		/* No address matching */
+#define TE_ADDR_EQUAL	1		/* Exact query - show route <addr> */
+#define TE_ADDR_FOR	2		/* Longest prefix match - show route for <addr> */
+#define TE_ADDR_IN	3		/* Interval query - show route in <addr> */
+
+
+#define TFT_FIB		1
+#define TFT_TRIE	2
+#define TFT_HASH	3
+
 void rt_request_import(rtable *tab, struct rt_import_request *req);
-void rt_request_export(rtable *tab, struct rt_export_request *req);
+void rt_request_export(struct rt_exporter *tab, struct rt_export_request *req);
+
+void rt_export_once(struct rt_exporter *tab, struct rt_export_request *req);
 
 void rt_stop_import(struct rt_import_request *, void (*stopped)(struct rt_import_request *));
 void rt_stop_export(struct rt_export_request *, void (*stopped)(struct rt_export_request *));
@@ -272,6 +305,8 @@ const char *rt_export_state_name(u8 state);
 
 static inline u8 rt_import_get_state(struct rt_import_hook *ih) { return ih ? ih->import_state : TIS_DOWN; }
 static inline u8 rt_export_get_state(struct rt_export_hook *eh) { return eh ? eh->export_state : TES_DOWN; }
+
+void rt_set_export_state(struct rt_export_hook *hook, u8 state);
 
 void rte_import(struct rt_import_request *req, const net_addr *net, rte *new, struct rte_src *src);
 
@@ -363,8 +398,6 @@ int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_refeed_channel(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
-int rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
-int rte_update_out(struct channel *c, const net_addr *n, rte *new, const rte *old, struct rte_storage **old_exported);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
 static inline int rt_is_ip(rtable *tab)
@@ -385,36 +418,37 @@ extern const int rt_default_ecmp;
 
 struct rt_show_data_rtable {
   node n;
-  rtable *table;
+  const char *name;
+  struct rt_exporter *table;
   struct channel *export_channel;
+  struct channel *prefilter;
+  struct krt_proto *kernel;
 };
 
 struct rt_show_data {
+  struct cli *cli;			/* Pointer back to the CLI */
   net_addr *addr;
   list tables;
   struct rt_show_data_rtable *tab;	/* Iterator over table list */
   struct rt_show_data_rtable *last_table; /* Last table in output */
-  struct fib_iterator fit;		/* Iterator over networks in table */
-  struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
-  struct f_trie *walk_lock;		/* Locked trie for walking */
+  struct rt_export_request req;		/* Export request in use */
   int verbose, tables_defined_by;
   const struct filter *filter;
   struct proto *show_protocol;
   struct proto *export_protocol;
   struct channel *export_channel;
   struct config *running_on_config;
-  struct krt_proto *kernel;
   struct rt_export_hook *kernel_export_hook;
   int export_mode, addr_mode, primary_only, filtered, stats;
 
-  int table_open;			/* Iteration (fit) is open */
-  int trie_walk;			/* Current table is iterated using trie */
   int net_counter, rt_counter, show_counter, table_counter;
   int net_counter_last, rt_counter_last, show_counter_last;
+  int show_counter_last_flush;
 };
 
 void rt_show(struct rt_show_data *);
-struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t);
+struct rt_show_data_rtable * rt_show_add_exporter(struct rt_show_data *d, struct rt_exporter *t, const char *name);
+struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, struct rtable *t);
 
 /* Value of table definition mode in struct rt_show_data */
 #define RSD_TDB_DEFAULT	  0		/* no table specified */
@@ -424,11 +458,6 @@ struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t
 
 #define RSD_TDB_SET	  0x1		/* internal: show empty tables */
 #define RSD_TDB_NMN	  0x2		/* internal: need matching net */
-
-/* Value of addr_mode */
-#define RSD_ADDR_EQUAL	1		/* Exact query - show route <addr> */
-#define RSD_ADDR_FOR	2		/* Longest prefix match - show route for <addr> */
-#define RSD_ADDR_IN	3		/* Interval query - show route in <addr> */
 
 /* Value of export_mode in struct rt_show_data */
 #define RSEM_NONE	0		/* Export mode not used */
@@ -448,6 +477,8 @@ struct hostentry_adata {
 void
 ea_set_hostentry(ea_list **to, struct rtable *dep, struct rtable *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum]);
 
+void ea_show_hostentry(const struct adata *ad, byte *buf, uint size);
+void ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad);
 
 /*
  *	Default protocol preferences

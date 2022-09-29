@@ -177,7 +177,7 @@ proto_find_channel_by_name(struct proto *p, const char *n)
   return NULL;
 }
 
-rte * channel_preimport(struct rt_import_request *req, rte *new, rte *old);
+int channel_preimport(struct rt_import_request *req, rte *new, rte *old);
 
 void rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
 void rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
@@ -214,6 +214,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
 
   c->in_filter = cf->in_filter;
   c->out_filter = cf->out_filter;
+  c->out_subprefix = cf->out_subprefix;
 
   channel_init_limit(c, &c->rx_limit, PLD_RX, &cf->rx_limit);
   channel_init_limit(c, &c->in_limit, PLD_IN, &cf->in_limit);
@@ -224,7 +225,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->preference = cf->preference;
   c->debug = cf->debug;
   c->merge_limit = cf->merge_limit;
-  c->in_keep_filtered = cf->in_keep_filtered;
+  c->in_keep = cf->in_keep;
   c->rpki_reload = cf->rpki_reload;
 
   c->channel_state = CS_DOWN;
@@ -294,7 +295,7 @@ static void
 channel_roa_in_changed(struct rt_subscription *s)
 {
   struct channel *c = s->data;
-  int active = c->reload_event && ev_active(c->reload_event);
+  int active = !!c->reload_req.hook;
 
   CD(c, "Reload triggered by RPKI change%s", active ? " - already active" : "");
 
@@ -379,7 +380,7 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
 #ifdef CONFIG_BGP
   /* No automatic reload for BGP channels without in_table / out_table */
   if (c->channel == &channel_bgp)
-    valid = dir ? !!c->in_table : !!c->out_table;
+    valid = dir ? ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER) : !!c->out_table;
 #endif
 
   struct filter_iterator fit;
@@ -467,6 +468,8 @@ channel_start_export(struct channel *c)
 
   c->out_req = (struct rt_export_request) {
     .name = rn,
+    .addr = c->out_subprefix,
+    .addr_mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_dump_export_req,
     .log_state_change = channel_export_log_state_change,
@@ -498,7 +501,7 @@ channel_start_export(struct channel *c)
   }
 
   DBG("%s.%s: Channel start export req=%p\n", c->proto->name, c->name, &c->out_req);
-  rt_request_export(c->table, &c->out_req);
+  rt_request_export(&c->table->exporter, &c->out_req);
 }
 
 static void
@@ -534,9 +537,6 @@ channel_import_stopped(struct rt_import_request *req)
 
   req->hook = NULL;
 
-  if (c->in_table)
-    rt_prune_sync(c->in_table, 1);
-
   mb_free(c->in_req.name);
   c->in_req.name = NULL;
 
@@ -555,13 +555,9 @@ channel_export_stopped(struct rt_export_request *req)
   {
     c->refeeding = 1;
     c->refeed_pending = 0;
-    rt_request_export(c->table, req);
+    rt_request_export(&c->table->exporter, req);
     return;
   }
-
-  /* Free the routes from out_table */
-  if (c->out_table)
-    rt_prune_sync(c->out_table, 1);
 
   mb_free(c->out_req.name);
   c->out_req.name = NULL;
@@ -603,55 +599,48 @@ channel_schedule_reload(struct channel *c)
 {
   ASSERT(c->in_req.hook);
 
-  rt_reload_channel_abort(c);
-  ev_schedule_work(c->reload_event);
+  rt_request_export(&c->table->exporter, &c->reload_req);
 }
 
 static void
-channel_reload_loop(void *ptr)
+channel_reload_stopped(struct rt_export_request *req)
 {
-  struct channel *c = ptr;
-
-  /* Start reload */
-  if (!c->reload_active)
-    c->reload_pending = 0;
-
-  if (!rt_reload_channel(c))
-  {
-    ev_schedule_work(c->reload_event);
-    return;
-  }
+  struct channel *c = SKIP_BACK(struct channel, reload_req, req);
 
   /* Restart reload */
   if (c->reload_pending)
     channel_request_reload(c);
 }
 
+static void
+channel_reload_log_state_change(struct rt_export_request *req, u8 state)
+{
+  if (state == TES_READY)
+    rt_stop_export(req, channel_reload_stopped);
+}
+
+static void
+channel_reload_dump_req(struct rt_export_request *req)
+{
+  struct channel *c = SKIP_BACK(struct channel, reload_req, req);
+  debug("  Channel %s.%s import reload request %p\n", c->proto->name, c->name, req);
+}
+
+void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
+
 /* Called by protocol to activate in_table */
 void
 channel_setup_in_table(struct channel *c)
 {
-  struct rtable_config *cf = mb_allocz(c->proto->pool, sizeof(struct rtable_config));
+  c->reload_req = (struct rt_export_request) {
+    .name = mb_sprintf(c->proto->pool, "%s.%s.import", c->proto->name, c->name),
+    .trace_routes = c->debug | c->proto->debug,
+    .export_bulk = channel_reload_export_bulk,
+    .dump_req = channel_reload_dump_req,
+    .log_state_change = channel_reload_log_state_change,
+  };
 
-  cf->name = "import";
-  cf->addr_type = c->net_type;
-  cf->internal = 1;
-
-  c->in_table = rt_setup(c->proto->pool, cf);
-
-  c->reload_event = ev_new_init(c->proto->pool, channel_reload_loop, c);
-}
-
-/* Called by protocol to activate out_table */
-void
-channel_setup_out_table(struct channel *c)
-{
-  struct rtable_config *cf = mb_allocz(c->proto->pool, sizeof(struct rtable_config));
-  cf->name = "export";
-  cf->addr_type = c->net_type;
-  cf->internal = 1;
-
-  c->out_table = rt_setup(c->proto->pool, cf);
+  c->in_keep |= RIK_PREFILTER;
 }
 
 
@@ -680,10 +669,10 @@ static void
 channel_do_pause(struct channel *c)
 {
   /* Need to abort feeding */
-  if (c->reload_event)
+  if (c->reload_req.hook)
   {
-    ev_postpone(c->reload_event);
-    rt_reload_channel_abort(c);
+    c->reload_pending = 0;
+    rt_stop_export(&c->reload_req, channel_reload_stopped);
   }
 
   /* Stop export */
@@ -710,15 +699,13 @@ channel_do_stop(struct channel *c)
   CALL(c->channel->shutdown, c);
 
   /* This have to be done in here, as channel pool is freed before channel_do_down() */
-  c->in_table = NULL;
-  c->reload_event = NULL;
   c->out_table = NULL;
 }
 
 static void
 channel_do_down(struct channel *c)
 {
-  ASSERT(!c->reload_active);
+  ASSERT(!c->reload_req.hook);
 
   c->proto->active_channels--;
 
@@ -726,8 +713,6 @@ channel_do_down(struct channel *c)
   memset(&c->import_stats, 0, sizeof(struct channel_import_stats));
   memset(&c->export_stats, 0, sizeof(struct channel_export_stats));
 
-  c->in_table = NULL;
-  c->reload_event = NULL;
   c->out_table = NULL;
 
   /* The in_table and out_table are going to be freed by freeing their resource pools. */
@@ -922,7 +907,12 @@ int
 channel_reconfigure(struct channel *c, struct channel_config *cf)
 {
   /* FIXME: better handle these changes, also handle in_keep_filtered */
-  if ((c->table != cf->table->table) || (cf->ra_mode && (c->ra_mode != cf->ra_mode)))
+  if ((c->table != cf->table->table) ||
+      (cf->ra_mode && (c->ra_mode != cf->ra_mode)) ||
+      (cf->in_keep != c->in_keep) ||
+      cf->out_subprefix && c->out_subprefix &&
+	  !net_equal(cf->out_subprefix, c->out_subprefix) ||
+      (!cf->out_subprefix != !c->out_subprefix))
     return 0;
 
   /* Note that filter_same() requires arguments in (new, old) order */
@@ -947,9 +937,9 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   // c->ra_mode = cf->ra_mode;
   c->merge_limit = cf->merge_limit;
   c->preference = cf->preference;
+  c->out_req.addr = c->out_subprefix = cf->out_subprefix;
   c->debug = cf->debug;
   c->in_req.trace_routes = c->out_req.trace_routes = c->debug | c->proto->debug;
-  c->in_keep_filtered = cf->in_keep_filtered;
   c->rpki_reload = cf->rpki_reload;
 
   /* Execute channel-specific reconfigure hook */
@@ -2099,7 +2089,7 @@ channel_show_stats(struct channel *c)
   u32 in_routes = c->in_limit.count;
   u32 out_routes = c->out_limit.count;
 
-  if (c->in_keep_filtered)
+  if (c->in_keep)
     cli_msg(-1006, "    Routes:         %u imported, %u filtered, %u exported, %u preferred",
 	    in_routes, (rx_routes - in_routes), out_routes, SRI(pref));
   else

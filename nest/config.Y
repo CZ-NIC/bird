@@ -306,12 +306,25 @@ channel_item_:
      this_channel->table = $2;
    }
  | IMPORT imexport { this_channel->in_filter = $2; }
+ | EXPORT IN net_any imexport {
+     if (this_channel->net_type && ($3->type != this_channel->net_type))
+       cf_error("Incompatible export prefilter type");
+     this_channel->out_subprefix = $3;
+     this_channel->out_filter = $4;
+   }
  | EXPORT imexport { this_channel->out_filter = $2; }
  | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
  | PREFERENCE expr { this_channel->preference = $2; check_u16($2); }
- | IMPORT KEEP FILTERED bool { this_channel->in_keep_filtered = $4; }
+ | IMPORT KEEP FILTERED bool {
+     if ($4)
+       this_channel->in_keep |= RIK_REJECTED;
+     else if ((this_channel->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
+       cf_error("Import keep filtered is implied by the import table.");
+     else
+       this_channel->in_keep &= ~RIK_REJECTED;
+   }
  | RPKI RELOAD bool { this_channel->rpki_reload = $3; }
  ;
 
@@ -640,25 +653,26 @@ r_args:
      init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
      $$->running_on_config = config;
+     $$->cli = this_cli;
    }
  | r_args net_any {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      $$->addr = $2;
-     $$->addr_mode = RSD_ADDR_EQUAL;
+     $$->addr_mode = TE_ADDR_EQUAL;
    }
  | r_args FOR r_args_for {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      $$->addr = $3;
-     $$->addr_mode = RSD_ADDR_FOR;
+     $$->addr_mode = TE_ADDR_FOR;
    }
  | r_args IN net_any {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      if (!net_type_match($3, NB_IP)) cf_error("Only IP networks accepted for 'in' argument");
      $$->addr = $3;
-     $$->addr_mode = RSD_ADDR_IN;
+     $$->addr_mode = TE_ADDR_IN;
    }
 | r_args TABLE symbol_known {
      cf_assert_symbol($3, SYM_TABLE);
@@ -674,13 +688,13 @@ r_args:
      $$->tables_defined_by = RSD_TDB_ALL;
    }
  | r_args IMPORT TABLE channel_arg {
-     if (!$4->in_table) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_table($$, $4->in_table);
+     if (!($4->in_keep & RIK_PREFILTER)) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
+     rt_show_add_exporter($$, &$4->table->exporter, "import")->prefilter = $4;
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args EXPORT TABLE channel_arg {
      if (!$4->out_table) cf_error("No export table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_table($$, $4->out_table);
+     rt_show_add_exporter($$, $4->out_table, "export");
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args FILTER filter {
