@@ -25,41 +25,38 @@
 #undef PACKAGE_TARNAME
 #undef PACKAGE_VERSION
 
-#include "bgp_mib.h"
 #include "snmp.h"
+#include "subagent.h"
+#include "bgp_mib.h"
 
 void
 snmp_bgp_register()
 {}
 
-static inline int
-is_bgp_peer_entry(struct oid *o)
-{
-  if (o->ids[2] == BGP4_PEER_ENTRY &&
-      o->ids[3] > 0 &&
-      /* do not include bgpPeerInUpdatesElapsedTime
-         and bgpPeerFsmEstablishedTime */
-      o->ids[3] < SNMP_BGP_IN_UPDATE_ELAPSED_TIME &&
-      o->ids[3] != SNMP_BGP_FSM_ESTABLISHED_TIME)
-    return 1;
-  else
-    return 0;
-}
-
 int
 snmp_bgp_is_supported(struct oid *o)
 {
-  if (o->prefix == 2 && o->ids[0] == 1)
+  if (o->prefix == 2 && o->n_subid > 0 && o->ids[0] == 1)
   {
-    if (o->ids[1] == BGP4_MIB_VERSION ||
-        o->ids == BGP4_MIB_LOCAL_AS)
+    if (o->n_subid == 2 && o->ids[1] == BGP4_MIB_VERSION ||
+        o->ids[1] == BGP4_MIB_LOCAL_AS)
       return 1;
-    else if (o->ids[1] == BGP4_PEER_TABLE)
-      return is_bgp_peer_entry(o)
+    else if (o->n_subid > 2 && o->ids[1] == BGP4_PEER_TABLE &&
+             o->ids[2] == BGP4_PEER_ENTRY)
+    {
+	if (o->n_subid == 3)
+	  return 1;
+	if (o->n_subid == 8 &&
+	    o->ids[3] > 0 &&
+	    /* do not include bgpPeerInUpdatesElapsedTime
+	       and bgpPeerFsmEstablishedTime */
+	    o->ids[3] < SNMP_BGP_IN_UPDATE_ELAPSED_TIME &&
+	    o->ids[3] != SNMP_BGP_FSM_ESTABLISHED_TIME)
+	      return 1;
+    }
     else
       return 0;
   }
   else
     return 0;
 }
-

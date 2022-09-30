@@ -1,6 +1,8 @@
 #ifndef _BIRD_SNMP_BGP_MIB_H_
 #define _BIRD_SNMP_BGP_MIB_H_
 
+#include "snmp.h"
+
 /* peers attributes */
 enum BGP4_MIB {
   SNMP_BGP_IDENTIFIER		    =  1,
