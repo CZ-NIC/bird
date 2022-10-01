@@ -52,14 +52,16 @@
  * map, which can be used by the protocols that work with IP-prefix-based FECs.
  *
  * The FEC map keeps hash tables of FECs (struct &mpls_fec) based on network
- * prefix, next hop eattr and assigned label. It has three labeling policies:
+ * prefix, next hop eattr and assigned label. It has three general labeling policies:
  * static assignment (%MPLS_POLICY_STATIC), per-prefix policy (%MPLS_POLICY_PREFIX),
  * and aggregating policy (%MPLS_POLICY_AGGREGATE). In per-prefix policy, each
  * distinct LSP is a separate FEC and uses a separate label, which is kept even
  * if the next hop of the LSP changes. In aggregating policy, LSPs with a same
  * next hop form one FEC and use one label, but when a next hop (or remote
  * label) of such LSP changes then the LSP must be moved to a different FEC and
- * assigned a different label.
+ * assigned a different label. There is also a special VRF policy (%MPLS_POLICY_VRF)
+ * applicable for L3VPN protocols, which uses one label for all routes from a VRF,
+ * while replacing the original next hop with lookup in the VRF.
  *
  * The overall process works this way: A protocol wants to announce a LSP route,
  * it does that by announcing e.g. IP route with %EA_MPLS_POLICY attribute.
@@ -746,6 +748,28 @@ mpls_get_fec_by_rta(struct mpls_fec_map *m, const rta *src, u32 class_id)
   return fec;
 }
 
+struct mpls_fec *
+mpls_get_fec_for_vrf(struct mpls_fec_map *m)
+{
+  struct mpls_fec *fec = m->vrf_fec;
+
+  if (fec)
+    return fec;
+
+  fec = sl_allocz(mpls_slab(m, 0));
+
+  fec->label = mpls_new_label(m->domain, m->handle);
+  fec->policy = MPLS_POLICY_VRF;
+  fec->iface = m->vrf_iface;
+
+  DBG("New FEC vrf %u\n", fec->label);
+
+  m->vrf_fec = fec;
+  HASH_INSERT2(m->label_hash, LABEL, m->pool, fec);
+
+  return fec;
+}
+
 void
 mpls_free_fec(struct mpls_fec_map *m, struct mpls_fec *fec)
 {
@@ -769,6 +793,11 @@ mpls_free_fec(struct mpls_fec_map *m, struct mpls_fec *fec)
   case MPLS_POLICY_AGGREGATE:
     rta_free(fec->rta);
     HASH_REMOVE2(m->rta_hash, RTA, m->pool, fec);
+    break;
+
+  case MPLS_POLICY_VRF:
+    ASSERT(m->vrf_fec == fec);
+    m->vrf_fec = NULL;
     break;
 
   default:
@@ -892,6 +921,13 @@ mpls_apply_fec(rte *r, struct mpls_fec *fec, linpool *lp)
 
   r->attrs->eattrs = ea;
 
+  if (fec->policy == MPLS_POLICY_VRF)
+  {
+    r->attrs->hostentry = NULL;
+    r->attrs->dest = RTD_UNICAST;
+    r->attrs->nh = (struct nexthop) { .iface = fec->iface };
+  }
+
   if (rta_is_cached(old_attrs))
   {
     r->attrs = rta_lookup(r->attrs);
@@ -906,7 +942,6 @@ mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r, linpool *lp, 
   ASSERT(!(r->flags & REF_COW));
 
   struct mpls_fec *fec = NULL;
-
 
   /* Select FEC for route */
   uint policy = ea_get_int(r->attrs->eattrs, EA_MPLS_POLICY, 0);
@@ -933,6 +968,13 @@ mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r, linpool *lp, 
   case MPLS_POLICY_AGGREGATE:;
     uint class = ea_get_int(r->attrs->eattrs, EA_MPLS_CLASS, 0);
     fec = mpls_get_fec_by_rta(m, r->attrs, class);
+    break;
+
+  case MPLS_POLICY_VRF:
+    if (!m->vrf_iface)
+      return;
+
+    fec = mpls_get_fec_for_vrf(m);
     break;
 
   default:

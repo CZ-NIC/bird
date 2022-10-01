@@ -20,7 +20,7 @@ static struct mpls_range_config *this_mpls_range;
 
 CF_DECLS
 
-CF_KEYWORDS(MPLS, DOMAIN, LABEL, RANGE, STATIC, DYNAMIC, START, LENGTH, POLICY, PREFIX, AGGREGATE)
+CF_KEYWORDS(MPLS, DOMAIN, LABEL, RANGE, STATIC, DYNAMIC, START, LENGTH, POLICY, PREFIX, AGGREGATE, VRF)
 
 %type <i> mpls_label_policy
 %type <cc> mpls_channel_start mpls_channel
@@ -112,6 +112,7 @@ mpls_label_policy:
    STATIC { $$ = MPLS_POLICY_STATIC; }
  | PREFIX { $$ = MPLS_POLICY_PREFIX; }
  | AGGREGATE { $$ = MPLS_POLICY_AGGREGATE; }
+ | VRF { $$ = MPLS_POLICY_VRF; }
  ;
 
 mpls_channel_opt:
