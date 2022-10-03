@@ -48,6 +48,7 @@ enum protocol_class {
   PROTOCOL_DEVICE,
   PROTOCOL_DIRECT,
   PROTOCOL_KERNEL,
+  PROTOCOL_L3VPN,
   PROTOCOL_OSPF,
   PROTOCOL_MRT,
   PROTOCOL_PERF,
@@ -105,7 +106,7 @@ void protos_dump_all(void);
 
 extern struct protocol
   proto_device, proto_radv, proto_rip, proto_static, proto_mrt,
-  proto_ospf, proto_perf, proto_aggregator,
+  proto_ospf, proto_perf, proto_l3vpn, proto_aggregator,
   proto_pipe, proto_bgp, proto_bmp, proto_bfd, proto_babel, proto_rpki;
 
 /*

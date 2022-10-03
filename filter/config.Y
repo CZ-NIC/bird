@@ -387,7 +387,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <ecs> ec_kind
 %type <fret> break_command
 %type <i32> cnum
-%type <e> pair_item ec_item lc_item set_item switch_item set_items switch_items switch_body
+%type <e> pair_item ec_item lc_item set_item switch_item ec_items set_items switch_items switch_body
 %type <trie> fprefix_set
 %type <v> set_atom switch_atom fipa
 %type <px> fprefix
@@ -714,6 +714,11 @@ switch_item:
  | lc_item
  | switch_atom { $$ = f_new_item($1, $1); }
  | switch_atom DDOT switch_atom { $$ = f_new_item($1, $3); }
+ ;
+
+ec_items:
+   ec_item
+ | ec_items ',' ec_item { $$ = f_merge_items($1, $3); }
  ;
 
 set_items:

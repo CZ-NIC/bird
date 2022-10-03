@@ -477,8 +477,9 @@ typedef struct rta {
 #define RTS_BABEL 13			/* Babel route */
 #define RTS_RPKI 14			/* Route Origin Authorization */
 #define RTS_PERF 15			/* Perf checker */
-#define RTS_AGGREGATED 16		/* Aggregated route */
-#define RTS_MAX 17
+#define RTS_L3VPN 16			/* MPLS L3VPN */
+#define RTS_AGGREGATED 17		/* Aggregated route */
+#define RTS_MAX 18
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* Next hop is neighbor router */
@@ -759,6 +760,8 @@ int rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *
 #define DEF_PREF_RIP		120	/* RIP */
 #define DEF_PREF_BGP		100	/* BGP */
 #define DEF_PREF_RPKI		100	/* RPKI */
+#define DEF_PREF_L3VPN_IMPORT	 80	/* L3VPN import -> lower than BGP */
+#define DEF_PREF_L3VPN_EXPORT	120	/* L3VPN export -> higher than BGP */
 #define DEF_PREF_INHERITED	10	/* Routes inherited from other routing daemons */
 
 /*
