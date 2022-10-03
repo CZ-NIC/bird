@@ -493,6 +493,7 @@ struct channel_config {
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u16 preference;			/* Default route preference */
   u32 debug;				/* Debugging flags (D_*) */
+  u8 copy;				/* Value from channel_config_get() is new (0) or from template (1) */
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
   u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
