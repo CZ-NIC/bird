@@ -79,11 +79,11 @@ main(int argc, char *argv[])
   if (!bt_config_file_parse(BT_CONFIG_FILE))
     abort();
 
-  bt_test_suite(t_reconfig, "Testing reconfiguration");
+  bt_test_suite_extra(t_reconfig, 0, BT_TIMEOUT, "Testing reconfiguration");
 
   struct f_bt_test_suite *t;
   WALK_LIST(t, config->tests)
-    bt_test_suite_base(run_function, t->fn_name, t, BT_FORKING, BT_TIMEOUT, "%s", t->dsc);
+    bt_test_suite_base(run_function, t->fn_name, t, 0, BT_TIMEOUT, "%s", t->dsc);
 
   bt_bird_cleanup();
   return bt_exit_value();

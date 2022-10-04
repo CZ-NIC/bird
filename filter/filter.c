@@ -76,9 +76,6 @@ struct filter_state {
   /* The route we are processing. This may be NULL to indicate no route available. */
   struct rte *rte;
 
-  /* Cached pointer to ea_list */
-  struct ea_list **eattrs;
-
   /* Buffer for log output */
   struct buffer buf;
 
@@ -93,11 +90,6 @@ void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 #define _f_stack_init(fs, px, def) ((fs).stack.px##stk = alloca(sizeof(*(fs).stack.px##stk) * ((fs).stack.px##len = (config && config->filter_##px##stk) ? config->filter_##px##stk : (def))))
 
 #define f_stack_init(fs) ( _f_stack_init(fs, v, 128), _f_stack_init(fs, e, 128) )
-
-static inline void f_cache_eattrs(struct filter_state *fs)
-{
-  fs->eattrs = &(fs->rte->attrs);
-}
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
@@ -164,8 +156,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 #define falloc(size)	tmp_alloc(size)
 #define fpool		tmp_linpool
 
-#define ACCESS_EATTRS do { if (!fs->eattrs) f_cache_eattrs(fs); } while (0)
-
 #include "filter/inst-interpret.c"
 #undef res
 #undef v1
@@ -174,7 +164,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 #undef runtime
 #undef falloc
 #undef fpool
-#undef ACCESS_EATTRS
       }
     }
 

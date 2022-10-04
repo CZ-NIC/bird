@@ -59,78 +59,138 @@ birdloop_inside(struct birdloop *loop)
   return 0;
 }
 
+void
+birdloop_flag(struct birdloop *loop, u32 flag)
+{
+  atomic_fetch_or_explicit(&loop->flags, flag, memory_order_acq_rel);
+  birdloop_ping(loop);
+}
+
+void
+birdloop_flag_set_handler(struct birdloop *loop, struct birdloop_flag_handler *fh)
+{
+  ASSERT_DIE(birdloop_inside(loop));
+  loop->flag_handler = fh;
+}
+
+static int
+birdloop_process_flags(struct birdloop *loop)
+{
+  if (!loop->flag_handler)
+    return 0;
+
+  u32 flags = atomic_exchange_explicit(&loop->flags, 0, memory_order_acq_rel);
+  loop->flag_handler->hook(loop->flag_handler, flags);
+  return !!flags;
+}
+
+static int
+birdloop_run_events(struct birdloop *loop)
+{
+  btime begin = current_time();
+  while (current_time() - begin < 5 MS)
+  {
+    if (!ev_run_list(&loop->event_list))
+      return 0;
+
+    times_update();
+  }
+
+  return 1;
+}
+
 /*
  *	Wakeup code for birdloop
  */
 
-static void
-pipe_new(int *pfds)
+void
+pipe_new(struct pipe *p)
 {
-  int rv = pipe(pfds);
+  int rv = pipe(p->fd);
   if (rv < 0)
     die("pipe: %m");
 
-  if (fcntl(pfds[0], F_SETFL, O_NONBLOCK) < 0)
+  if (fcntl(p->fd[0], F_SETFL, O_NONBLOCK) < 0)
     die("fcntl(O_NONBLOCK): %m");
 
-  if (fcntl(pfds[1], F_SETFL, O_NONBLOCK) < 0)
+  if (fcntl(p->fd[1], F_SETFL, O_NONBLOCK) < 0)
     die("fcntl(O_NONBLOCK): %m");
 }
 
 void
-pipe_drain(int fd)
+pipe_drain(struct pipe *p)
 {
-  char buf[64];
-  int rv;
-  
- try:
-  rv = read(fd, buf, 64);
-  if (rv < 0)
-  {
-    if (errno == EINTR)
-      goto try;
-    if (errno == EAGAIN)
+  while (1) {
+    char buf[64];
+    int rv = read(p->fd[0], buf, sizeof(buf));
+    if ((rv < 0) && (errno == EAGAIN))
       return;
-    die("wakeup read: %m");
+
+    if (rv == 0)
+      bug("wakeup read eof");
+    if ((rv < 0) && (errno != EINTR))
+      bug("wakeup read: %m");
   }
-  if (rv == 64)
-    goto try;
+}
+
+int
+pipe_read_one(struct pipe *p)
+{
+  while (1) {
+    char v;
+    int rv = read(p->fd[0], &v, sizeof(v));
+    if (rv == 1)
+      return 1;
+    if ((rv < 0) && (errno == EAGAIN))
+      return 0;
+    if (rv > 1)
+      bug("wakeup read more bytes than expected: %d", rv);
+    if (rv == 0)
+      bug("wakeup read eof");
+    if (errno != EINTR)
+      bug("wakeup read: %m");
+  }
 }
 
 void
-pipe_kick(int fd)
+pipe_kick(struct pipe *p)
 {
-  u64 v = 1;
+  char v = 1;
   int rv;
 
- try:
-  rv = write(fd, &v, sizeof(u64));
-  if (rv < 0)
-  {
-    if (errno == EINTR)
-      goto try;
-    if (errno == EAGAIN)
+  while (1) {
+    rv = write(p->fd[1], &v, sizeof(v));
+    if ((rv >= 0) || (errno == EAGAIN)) 
       return;
-    die("wakeup write: %m");
+    if (errno != EINTR)
+      bug("wakeup write: %m");
   }
+}
+
+void
+pipe_pollin(struct pipe *p, struct pollfd *pfd)
+{
+  pfd->fd = p->fd[0];
+  pfd->events = POLLIN;
+  pfd->revents = 0;
 }
 
 static inline void
 wakeup_init(struct birdloop *loop)
 {
-  pipe_new(loop->wakeup_fds);
+  pipe_new(&loop->wakeup);
 }
 
 static inline void
 wakeup_drain(struct birdloop *loop)
 {
-  pipe_drain(loop->wakeup_fds[0]);
+  pipe_drain(&loop->wakeup);
 }
 
 static inline void
 wakeup_do_kick(struct birdloop *loop)
 {
-  pipe_kick(loop->wakeup_fds[1]);
+  pipe_kick(&loop->wakeup);
 }
 
 static inline void
@@ -259,9 +319,7 @@ sockets_prepare(struct birdloop *loop)
 
   /* Add internal wakeup fd */
   *psk = NULL;
-  pfd->fd = loop->wakeup_fds[0];
-  pfd->events = POLLIN;
-  pfd->revents = 0;
+  pipe_pollin(&loop->wakeup, pfd);
 
   loop->poll_changed = 0;
 }
@@ -516,7 +574,7 @@ birdloop_main(void *arg)
   while (1)
   {
     timers_fire(&loop->time, 0);
-    if (ev_run_list(&loop->event_list))
+    if (birdloop_process_flags(loop) + birdloop_run_events(loop))
       timeout = 0;
     else if (t = timers_first(&loop->time))
       timeout = (tm_remains(t) TO_MS) + 1;
@@ -525,6 +583,9 @@ birdloop_main(void *arg)
 
     if (loop->poll_changed)
       sockets_prepare(loop);
+    else
+      if ((timeout < 0) || (timeout > 5000))
+	flush_local_pages();
 
     btime duration = current_time() - loop_begin;
     if (duration > config->watchdog_warning)
@@ -560,14 +621,18 @@ birdloop_main(void *arg)
   /* Flush remaining events */
   ASSERT_DIE(!ev_run_list(&loop->event_list));
 
-  /* No timers allowed */
-  ASSERT_DIE(timers_count(&loop->time) == 0);
+  /* Drop timers */
+  while (t = timers_first(&loop->time))
+    tm_stop(t);
+
+  /* No sockets allowed */
   ASSERT_DIE(EMPTY_LIST(loop->sock_list));
   ASSERT_DIE(loop->sock_num == 0);
 
   birdloop_leave(loop);
   loop->stopped(loop->stop_data);
 
+  flush_local_pages();
   return NULL;
 }
 

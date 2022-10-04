@@ -25,6 +25,7 @@ proto: pipe_proto '}' { this_channel = NULL; }  ;
 pipe_proto_start: proto_start PIPE
 {
   this_proto = proto_config_new(&proto_pipe, $1);
+  this_proto->loop_order = DOMAIN_ORDER(proto);
   PIPE_CFG->max_generation = 16;
 }
 proto_name

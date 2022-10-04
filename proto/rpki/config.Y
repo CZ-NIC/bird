@@ -42,6 +42,7 @@ proto: rpki_proto ;
 
 rpki_proto_start: proto_start RPKI {
   this_proto = proto_config_new(&proto_rpki, $1);
+  this_proto->loop_order = DOMAIN_ORDER(proto);
   RPKI_CFG->retry_interval = RPKI_RETRY_INTERVAL;
   RPKI_CFG->refresh_interval = RPKI_REFRESH_INTERVAL;
   RPKI_CFG->expire_interval = RPKI_EXPIRE_INTERVAL;

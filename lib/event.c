@@ -28,7 +28,50 @@
 event_list global_event_list;
 event_list global_work_list;
 
-STATIC_ASSERT(OFFSETOF(event_list, _sentinel.next) >= OFFSETOF(event_list, _end[0]));
+//#ifdef DEBUGGING
+#if 0
+#define EDL_MAX		16384
+enum edl_caller {
+  EDL_REMOVE_FROM = 1,
+  EDL_POSTPONE = 2,
+  EDL_RUN = 3,
+  EDL_SEND = 4, 
+  EDL_RUN_LIST = 5,
+} caller;
+static struct event_debug_log {
+  event_list *target_list;
+  event *event;
+  event *receiver;
+  uint pos;
+  uint prev_edl_pos;
+  uint thread;
+  enum edl_caller caller;
+} edl[EDL_MAX];
+static _Atomic uint edl_cnt;
+_Thread_local static uint edl_thread;
+_Thread_local static uint prev_edl_pos = ~0;
+static inline void edlog(event_list *list, event *e, event *receiver, uint pos, enum edl_caller caller)
+{
+  uint edl_pos = atomic_fetch_add_explicit(&edl_cnt, 1, memory_order_acq_rel);
+  if (!edl_thread)
+    edl_thread = edl_pos;
+
+  edl[edl_pos % EDL_MAX] = (struct event_debug_log) {
+    .target_list = list,
+    .event = e,
+    .receiver = receiver,
+    .pos = pos,
+    .prev_edl_pos = prev_edl_pos,
+    .thread = edl_thread,
+    .caller = caller,
+  };
+
+  prev_edl_pos = edl_pos;
+}
+#else
+#define edlog(...)
+#endif
+
 
 void
 ev_init_list(event_list *el, struct birdloop *loop, const char *name)
@@ -36,9 +79,8 @@ ev_init_list(event_list *el, struct birdloop *loop, const char *name)
   el->name = name;
   el->loop = loop;
 
-  atomic_store_explicit(&el->receiver, &el->_sentinel, memory_order_relaxed);
-  atomic_store_explicit(&el->_executor, &el->_sentinel, memory_order_relaxed);
-  atomic_store_explicit(&el->_sentinel.next, NULL, memory_order_relaxed);
+  atomic_store_explicit(&el->receiver, NULL, memory_order_release);
+  atomic_store_explicit(&el->_executor, NULL, memory_order_release);
 }
 
 /*
@@ -61,13 +103,20 @@ ev_remove_from(event *e, event * _Atomic * head)
   /* The current event in queue to check */
   event *cur = atomic_load_explicit(prev, memory_order_acquire);
 
-  /* Pre-loaded next pointer; if NULL, this is sentinel */
-  event *next = atomic_load_explicit(&cur->next, memory_order_acquire);
+  /* This part of queue is empty! */
+  if (!cur)
+    return 0;
 
-  while (next)
+  edlog(NULL, e, cur, 1, EDL_REMOVE_FROM);
+  while (cur)
   {
+    /* Pre-loaded next pointer */
+    event *next = atomic_load_explicit(&cur->next, memory_order_acquire);
+
     if (e == cur)
     {
+      edlog(NULL, e, next, 3, EDL_REMOVE_FROM);
+
       /* Check whether we have collided with somebody else
        * adding an item to the queue. */
       if (!atomic_compare_exchange_strong_explicit(
@@ -86,11 +135,14 @@ ev_remove_from(event *e, event * _Atomic * head)
       return 1;
     }
 
+    edlog(NULL, e, next, 2, EDL_REMOVE_FROM);
+
     /* Go to the next event. */
     prev = &cur->next;
     cur = next;
-    next = atomic_load_explicit(&cur->next, memory_order_acquire);
   }
+
+  edlog(NULL, e, cur, 4, EDL_REMOVE_FROM);
 
   return 0;
 }
@@ -100,6 +152,7 @@ ev_postpone(event *e)
 {
   /* Find the list to remove the event from */
   event_list *sl = ev_get_list(e);
+  edlog(sl, e, NULL, 1, EDL_POSTPONE);
   if (!sl)
     return;
 
@@ -108,6 +161,10 @@ ev_postpone(event *e)
 
   /* Remove from one of these lists. */
   ASSERT(ev_remove_from(e, &sl->_executor) || ev_remove_from(e, &sl->receiver));
+
+  /* Mark as inactive */
+  ASSERT_DIE(sl == atomic_exchange_explicit(&e->list, NULL, memory_order_acq_rel));
+  edlog(sl, e, NULL, 2, EDL_POSTPONE);
 }
 
 static void
@@ -157,8 +214,10 @@ ev_new(pool *p)
 inline void
 ev_run(event *e)
 {
+  edlog(NULL, e, NULL, 1, EDL_RUN);
   ev_postpone(e);
   e->hook(e->data);
+  edlog(NULL, e, NULL, 2, EDL_RUN);
 }
 
 /**
@@ -172,18 +231,36 @@ ev_run(event *e)
 inline void
 ev_send(event_list *l, event *e)
 {
-  event_list *sl = ev_get_list(e);
-  if (sl == l)
-    return;
-  if (sl)
-    bug("Queuing an already queued event to another queue is not supported.");
+  edlog(l, e, NULL, 1, EDL_SEND);
+  /* Set the target list */
+  event_list *ol = NULL;
+  if (!atomic_compare_exchange_strong_explicit(
+	&e->list, &ol, l,
+	memory_order_acq_rel, memory_order_acquire))
+    if (ol == l)
+      return;
+    else
+      bug("Queuing an already queued event to another queue is not supported.");
 
+  /* Here should be no concurrent senders */
   event *next = atomic_load_explicit(&l->receiver, memory_order_acquire);
-  do atomic_store_explicit(&e->next, next, memory_order_relaxed);
+  edlog(l, e, next, 2, EDL_SEND);
+  event *old_next = NULL;
+  do
+    if (!atomic_compare_exchange_strong_explicit(
+	  &e->next, &old_next, next,
+	  memory_order_acq_rel, memory_order_acquire))
+      bug("Event %p in inconsistent state");
+    else
+    {
+      old_next = next;
+      edlog(l, old_next, next, 3, EDL_SEND);
+    }
   while (!atomic_compare_exchange_strong_explicit(
 	&l->receiver, &next, e,
 	memory_order_acq_rel, memory_order_acquire));
 
+  edlog(l, e, next, 4, EDL_SEND);
   birdloop_ping(l->loop);
 }
 
@@ -199,37 +276,41 @@ int
 ev_run_list_limited(event_list *l, uint limit)
 {
   event * _Atomic *ep = &l->_executor;
+  edlog(l, NULL, NULL, 1, EDL_RUN_LIST);
 
   /* No pending events, refill the queue. */
-  if (atomic_load_explicit(ep, memory_order_relaxed) == &l->_sentinel)
+  if (!atomic_load_explicit(ep, memory_order_acquire))
   {
     /* Move the current event list aside and create a new one. */
-    event *received = atomic_exchange_explicit(
-	&l->receiver, &l->_sentinel, memory_order_acq_rel);
+    event *received = atomic_exchange_explicit(&l->receiver, NULL, memory_order_acq_rel);
+    edlog(l, NULL, received, 2, EDL_RUN_LIST);
 
     /* No event to run. */
-    if (received == &l->_sentinel)
+    if (!received)
       return 0;
 
     /* Setup the executor queue */
-    event *head = &l->_sentinel;
+    event *head = NULL;
 
     /* Flip the order of the events by relinking them one by one (push-pop) */
-    while (received != &l->_sentinel)
+    while (received)
     {
       event *cur = received;
-      received = atomic_exchange_explicit(&cur->next, head, memory_order_relaxed);
+      received = atomic_exchange_explicit(&cur->next, head, memory_order_acq_rel);
+      edlog(l, head, received, 3, EDL_RUN_LIST);
       head = cur;
     }
 
     /* Store the executor queue to its designated place */
-    atomic_store_explicit(ep, head, memory_order_relaxed);
+    ASSERT_DIE(atomic_exchange_explicit(ep, head, memory_order_acq_rel) == NULL);
+    edlog(l, NULL, head, 4, EDL_RUN_LIST);
   }
 
   /* Run the events in order. */
   event *e;
-  while ((e = atomic_load_explicit(ep, memory_order_relaxed)) != &l->_sentinel)
+  while (e = atomic_load_explicit(ep, memory_order_acquire))
     {
+      edlog(l, e, NULL, 5, EDL_RUN_LIST);
       /* Check limit */
       if (!--limit)
 	return 1;
@@ -238,14 +319,20 @@ ev_run_list_limited(event_list *l, uint limit)
       if ((l == &global_event_list) || (l == &global_work_list))
 	io_log_event(e->hook, e->data);
 
+      edlog(l, e, NULL, 6, EDL_RUN_LIST);
       /* Inactivate the event */
-      atomic_store_explicit(ep, atomic_load_explicit(&e->next, memory_order_relaxed), memory_order_relaxed);
-      atomic_store_explicit(&e->next, NULL, memory_order_relaxed);
+      event *next = atomic_load_explicit(&e->next, memory_order_relaxed);
+      ASSERT_DIE(e == atomic_exchange_explicit(ep, next, memory_order_acq_rel));
+      ASSERT_DIE(next == atomic_exchange_explicit(&e->next, NULL, memory_order_acq_rel));
+      ASSERT_DIE(l == atomic_exchange_explicit(&e->list, NULL, memory_order_acq_rel));
+      edlog(l, e, next, 7, EDL_RUN_LIST);
 
       /* Run the event */
       e->hook(e->data);
       tmp_flush();
+
+      edlog(l, e, next, 8, EDL_RUN_LIST);
     }
 
-  return atomic_load_explicit(&l->receiver, memory_order_relaxed) != &l->_sentinel;
+  return !!atomic_load_explicit(&l->receiver, memory_order_acquire);
 }

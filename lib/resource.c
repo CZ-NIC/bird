@@ -279,8 +279,8 @@ rlookup(unsigned long a)
 void
 resource_init(void)
 {
-  resource_sys_init();
   rcu_init();
+  resource_sys_init();
 
   root_pool.r.class = &pool_class;
   root_pool.name = "Root";

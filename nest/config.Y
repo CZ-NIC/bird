@@ -125,7 +125,7 @@ CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
 CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
-CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, SETTLE, TIME, GC, THRESHOLD, PERIOD)
+CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, ROA, ROUTE, REFRESH, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
@@ -233,6 +233,8 @@ table_opt:
      if ($3 > $4) cf_error("Cork low threshold must be lower than the high threshold.");
      this_table->cork_threshold.low = $3;
      this_table->cork_threshold.high = $4; }
+ | EXPORT SETTLE TIME settle { this_table->export_settle = $4; }
+ | ROUTE REFRESH EXPORT SETTLE TIME settle { this_table->export_rr_settle = $6; }
  | DEBUG bool { this_table->debug = $2; }
  ;
 
@@ -294,8 +296,8 @@ proto_item:
  | MRTDUMP mrtdump_mask { this_proto->mrtdump = $2; }
  | ROUTER ID idval { this_proto->router_id = $3; }
  | DESCRIPTION text { this_proto->dsc = $2; }
- | VRF text { this_proto->vrf = if_get_by_name($2); this_proto->vrf_set = 1; }
- | VRF DEFAULT { this_proto->vrf = NULL; this_proto->vrf_set = 1; }
+ | VRF text { this_proto->vrf = if_get_by_name($2); }
+ | VRF DEFAULT { this_proto->vrf = &default_vrf; }
  ;
 
 
@@ -321,8 +323,7 @@ channel_item_:
  | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
- | MIN SETTLE TIME expr_us { this_channel->min_settle_time = $4; }
- | MAX SETTLE TIME expr_us { this_channel->max_settle_time = $4; }
+ | ROA SETTLE TIME settle { this_channel->roa_settle = $4; }
  | PREFERENCE expr { this_channel->preference = $2; check_u16($2); }
  | IMPORT KEEP FILTERED bool {
      if ($4)
@@ -423,7 +424,6 @@ timeformat_spec:
 timeformat_base:
    TIMEFORMAT timeformat_spec ';'
  ;
-
 
 /* Interface patterns */
 

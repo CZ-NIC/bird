@@ -315,16 +315,15 @@ proto_remove_channels(struct proto *p)
 
 struct roa_subscription {
   node roa_node;
-  timer t;
-  btime base_settle_time;		/* Start of settling interval */
+  struct settle settle;
   struct channel *c;
   struct rt_export_request req;
 };
 
 static void
-channel_roa_in_changed(struct timer *t)
+channel_roa_in_changed(struct settle *se)
 {
-  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, t, t);
+  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, settle, se);
   struct channel *c = s->c;
   int active = !!c->reload_req.hook;
 
@@ -337,9 +336,9 @@ channel_roa_in_changed(struct timer *t)
 }
 
 static void
-channel_roa_out_changed(struct timer *t)
+channel_roa_out_changed(struct settle *se)
 {
-  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, t, t);
+  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, settle, se);
   struct channel *c = s->c;
 
   CD(c, "Feeding triggered by RPKI change");
@@ -356,17 +355,7 @@ channel_export_one_roa(struct rt_export_request *req, const net_addr *net UNUSED
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
 
   /* TODO: use the information about what roa has changed */
-
-  if (!tm_active(&s->t))
-  {
-    s->base_settle_time = current_time();
-    tm_start(&s->t, s->base_settle_time + s->c->min_settle_time);
-  }
-  else
-    tm_set(&s->t,
-	MIN(s->base_settle_time + s->c->max_settle_time,
-	    current_time() + s->c->min_settle_time));
-
+  settle_kick(&s->settle, &main_birdloop);
 
   rpe_mark_seen_all(req->hook, first, NULL);
 }
@@ -380,14 +369,14 @@ channel_dump_roa_req(struct rt_export_request *req)
 
   debug("  Channel %s.%s ROA %s change notifier from table %s request %p\n",
       c->proto->name, c->name,
-      (s->t.hook == channel_roa_in_changed) ? "import" : "export",
+      (s->settle.hook == channel_roa_in_changed) ? "import" : "export",
       tab->name, req);
 }
 
 static int
 channel_roa_is_subscribed(struct channel *c, rtable *tab, int dir)
 {
-  void (*hook)(struct timer *) =
+  void (*hook)(struct settle *) =
     dir ? channel_roa_in_changed : channel_roa_out_changed;
 
   struct roa_subscription *s;
@@ -395,7 +384,7 @@ channel_roa_is_subscribed(struct channel *c, rtable *tab, int dir)
 
   WALK_LIST2(s, n, c->roa_subscriptions, roa_node)
     if ((tab == SKIP_BACK(rtable, priv.exporter.e, s->req.hook->table))
-	  && (s->t.hook == hook))
+	  && (s->settle.hook == hook))
       return 1;
 
   return 0;
@@ -410,7 +399,7 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
   struct roa_subscription *s = mb_allocz(c->proto->pool, sizeof(struct roa_subscription));
 
   *s = (struct roa_subscription) {
-    .t = { .hook = dir ? channel_roa_in_changed : channel_roa_out_changed, },
+    .settle = SETTLE_INIT(&c->roa_settle, dir ? channel_roa_in_changed : channel_roa_out_changed, NULL),
     .c = c,
     .req = {
       .name = mb_sprintf(c->proto->pool, "%s.%s.roa-%s.%s",
@@ -934,8 +923,10 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
   cf->debug = new_config->channel_default_debug;
   cf->rpki_reload = 1;
 
-  cf->min_settle_time = 1 S;
-  cf->max_settle_time = 20 S;
+  cf->roa_settle = (struct settle_config) {
+    .min = 1 S,
+    .max = 20 S,
+  };
 
   add_tail(&proto->channels, &cf->n);
 
@@ -1017,20 +1008,20 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   c->in_req.trace_routes = c->out_req.trace_routes = c->debug | c->proto->debug;
   c->rpki_reload = cf->rpki_reload;
 
-  if (	  (c->min_settle_time != cf->min_settle_time)
-       || (c->max_settle_time != cf->max_settle_time))
+  if (	  (c->roa_settle.min != cf->roa_settle.min)
+       || (c->roa_settle.max != cf->roa_settle.max))
   {
-    c->min_settle_time = cf->min_settle_time;
-    c->max_settle_time = cf->max_settle_time;
+    c->roa_settle = cf->roa_settle;
 
     struct roa_subscription *s;
     node *n;
 
     WALK_LIST2(s, n, c->roa_subscriptions, roa_node)
-      if (tm_active(&s->t))
-	tm_set(&s->t,
-	    MIN(s->base_settle_time + c->max_settle_time,
-	      current_time() + c->min_settle_time));
+    {
+      s->settle.cf = cf->roa_settle;
+      if (settle_active(&s->settle))
+	settle_kick(&s->settle, &main_birdloop);
+    }
   }
 
   /* Execute channel-specific reconfigure hook */
@@ -1156,6 +1147,7 @@ proto_event(void *ptr)
   {
     if (p->proto == &proto_unix_iface)
       if_flush_ifaces(p);
+
     p->do_stop = 0;
   }
 
@@ -1208,7 +1200,6 @@ proto_init(struct proto_config *c, node *n)
   p->proto_state = PS_DOWN;
   p->last_state_change = current_time();
   p->vrf = c->vrf;
-  p->vrf_set = c->vrf_set;
   insert_node(&p->n, n);
 
   p->event = ev_new_init(proto_pool, proto_event, p);
@@ -1385,8 +1376,7 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
   if ((nc->protocol != oc->protocol) ||
       (nc->net_type != oc->net_type) ||
       (nc->disabled != p->disabled) ||
-      (nc->vrf != oc->vrf) ||
-      (nc->vrf_set != oc->vrf_set))
+      (nc->vrf != oc->vrf))
     return 0;
 
   p->name = nc->name;
@@ -2305,8 +2295,8 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
       cli_msg(-1006, "  Message:        %s", p->message);
     if (p->cf->router_id)
       cli_msg(-1006, "  Router ID:      %R", p->cf->router_id);
-    if (p->vrf_set)
-      cli_msg(-1006, "  VRF:            %s", p->vrf ? p->vrf->name : "default");
+    if (p->vrf)
+      cli_msg(-1006, "  VRF:            %s", p->vrf->name);
 
     if (p->proto->show_proto_info)
       p->proto->show_proto_info(p);

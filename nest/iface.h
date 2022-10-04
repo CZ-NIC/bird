@@ -28,6 +28,8 @@ struct ifa {				/* Interface address */
   unsigned flags;			/* Analogous to iface->flags */
 };
 
+extern struct iface default_vrf;
+
 struct iface {
   node n;
   char name[16];

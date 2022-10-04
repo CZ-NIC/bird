@@ -2213,8 +2213,6 @@ static int short_loops = 0;
 #define SHORT_LOOP_MAX 10
 #define WORK_EVENTS_MAX 10
 
-void pipe_drain(int fd);
-
 void
 io_loop(void)
 {
@@ -2246,8 +2244,7 @@ io_loop(void)
       }
 
       /* A hack to reload main io_loop() when something has changed asynchronously. */
-      pfd[0].fd = main_birdloop.wakeup_fds[0];
-      pfd[0].events = POLLIN;
+      pipe_pollin(&main_birdloop.wakeup, &pfd[0]);
 
       nfds = 1;
 
@@ -2325,7 +2322,7 @@ io_loop(void)
 	  if (pfd[0].revents & POLLIN)
 	  {
 	    /* IO loop reload requested */
-	    pipe_drain(main_birdloop.wakeup_fds[0]);
+	    pipe_drain(&main_birdloop.wakeup);
 	    atomic_exchange_explicit(&main_birdloop.ping_sent, 0, memory_order_acq_rel);
 	    continue;
 	  }

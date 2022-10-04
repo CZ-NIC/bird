@@ -40,7 +40,7 @@ static inline u64 bt_random(void)
 void bt_log_suite_result(int result, const char *fmt, ...);
 void bt_log_suite_case_result(int result, const char *fmt, ...);
 
-#define BT_TIMEOUT 			5	/* Default timeout in seconds */
+#define BT_TIMEOUT 			20	/* Default timeout in seconds */
 #define BT_FORKING 			1	/* Forking is enabled in default */
 
 #define BT_RANDOM_SEED 			0x5097d2bb

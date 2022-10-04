@@ -11,6 +11,7 @@
 
 #include "lib/resource.h"
 #include "lib/locking.h"
+#include "lib/rcu.h"
 
 #include <stdatomic.h>
 
@@ -21,17 +22,14 @@ typedef struct event {
   void (*hook)(void *);
   void *data;
   struct event * _Atomic next;
+  struct event_list * _Atomic list;
 } event;
 
-typedef union event_list {
-  struct {
-    event * _Atomic receiver;	/* Event receive list */
-    event * _Atomic _executor;	/* Event execute list */
-    const char *name;
-    struct birdloop *loop;	/* The executor loop */
-    char _end[0];
-  };
-  event _sentinel;	/* Sentinel node to actively detect list end */
+typedef struct event_list {
+  event * _Atomic receiver;	/* Event receive list */
+  event * _Atomic _executor;	/* Event execute list */
+  const char *name;
+  struct birdloop *loop;	/* The executor loop */
 } event_list;
 
 extern event_list global_event_list;
@@ -56,23 +54,13 @@ int ev_run_list_limited(event_list *, uint);
 static inline int
 ev_active(event *e)
 {
-  return atomic_load_explicit(&e->next, memory_order_relaxed) != NULL;
+  return atomic_load_explicit(&e->list, memory_order_acquire) != NULL;
 }
 
 static inline event_list *
 ev_get_list(event *e)
 {
-  /* We are looking for the sentinel node at the list end.
-   * After this, we have s->next == NULL */
-  event *s = e;
-  for (event *sn; sn = atomic_load_explicit(&s->next, memory_order_acquire); s = sn)
-    ;
-
-  /* No sentinel, no list. */
-  if (s == e)
-    return NULL;
-  else
-    return SKIP_BACK(event_list, _sentinel, s);
+  return atomic_load_explicit(&e->list, memory_order_acquire);
 }
 
 static inline event*

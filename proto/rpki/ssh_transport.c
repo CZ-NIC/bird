@@ -38,6 +38,8 @@ rpki_tr_ssh_open(struct rpki_tr_sock *tr)
   if (sk_open(sk) != 0)
     return RPKI_TR_ERROR;
 
+  sk_start(sk);
+
   return RPKI_TR_SUCCESS;
 }
 

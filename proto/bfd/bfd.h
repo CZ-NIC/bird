@@ -99,8 +99,7 @@ struct bfd_proto
   HASH(struct bfd_session) session_hash_id;
   HASH(struct bfd_session) session_hash_ip;
 
-  sock *notify_rs;
-  sock *notify_ws;
+  event notify_event;
   list notify_list;
 
   sock *rx4_1;

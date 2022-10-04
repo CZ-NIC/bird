@@ -12,6 +12,7 @@
 #include "lib/lists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
+#include "lib/settle.h"
 #include "nest/rt.h"
 #include "nest/limit.h"
 #include "conf/conf.h"
@@ -99,7 +100,6 @@ struct proto_config {
   int class;				/* SYM_PROTO or SYM_TEMPLATE */
   u8 net_type;				/* Protocol network type (NET_*), 0 for undefined */
   u8 disabled;				/* Protocol enabled/disabled by default */
-  u8 vrf_set;				/* Related VRF instance (below) is defined */
   u8 late_if_feed;			/* Delay interface feed after channels are up */
   u32 debug, mrtdump;			/* Debugging bitfields, both use D_* constants */
   u32 router_id;			/* Protocol specific router ID */
@@ -136,7 +136,6 @@ struct proto {
   uint active_loops;			/* Number of active IO loops */
   byte net_type;			/* Protocol network type (NET_*), 0 for undefined */
   byte disabled;			/* Manually disabled */
-  byte vrf_set;				/* Related VRF instance (above) is defined */
   byte proto_state;			/* Protocol state machine (PS_*, see below) */
   byte active;				/* From PS_START to cleanup after PS_STOP */
   byte do_stop;				/* Stop actions are scheduled */
@@ -459,8 +458,7 @@ struct channel_config {
   struct channel_limit in_limit;	/* Limit for importing routes from protocol */
   struct channel_limit out_limit;	/* Limit for exporting routes to protocol */
 
-  btime min_settle_time;		/* Minimum settle time for ROA-induced reload */
-  btime max_settle_time;		/* Maximum settle time for ROA-induced reload */
+  struct settle_config roa_settle;	/* Settle times for ROA-induced reload */
 
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
@@ -489,8 +487,7 @@ struct channel {
   struct limit in_limit;		/* Input limit */
   struct limit out_limit;		/* Output limit */
 
-  btime min_settle_time;		/* Minimum settle time for ROA-induced reload */
-  btime max_settle_time;		/* Maximum settle time for ROA-induced reload */
+  struct settle_config roa_settle;	/* Settle times for ROA-induced reload */
 
   u8 limit_actions[PLD_MAX];		/* Limit actions enum */
   u8 limit_active;			/* Flags for active limits */

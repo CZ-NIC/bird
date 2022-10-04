@@ -130,7 +130,8 @@ struct rt_export_block {
 
 static void rt_free_hostcache(struct rtable_private *tab);
 static void rt_update_hostcache(void *tab);
-static void rt_next_hop_update(void *tab);
+static void rt_next_hop_update(struct rtable_private *tab);
+static void rt_nhu_uncork(void *_tab);
 static inline void rt_next_hop_resolve_rte(rte *r);
 static inline void rt_flowspec_resolve_rte(rte *r, struct channel *c);
 static inline void rt_prune_table(struct rtable_private *tab);
@@ -142,9 +143,10 @@ static void rt_feed_for(void *);
 static void rt_check_cork_low(struct rtable_private *tab);
 static void rt_check_cork_high(struct rtable_private *tab);
 static void rt_cork_release_hook(void *);
+static void rt_shutdown(void *);
 static void rt_delete(void *);
 
-static void rt_export_used(struct rt_table_exporter *);
+static void rt_export_used(struct rt_table_exporter *, const char *, const char *);
 static void rt_export_cleanup(struct rtable_private *tab);
 
 static int rte_same(rte *x, rte *y);
@@ -160,6 +162,7 @@ const char *rt_import_state_name_array[TIS_MAX] = {
 
 const char *rt_export_state_name_array[TES_MAX] = {
   [TES_DOWN] = "DOWN",
+  [TES_HUNGRY] = "HUNGRY",
   [TES_FEEDING] = "FEEDING",
   [TES_READY] = "READY",
   [TES_STOP] = "STOP"
@@ -183,8 +186,12 @@ const char *rt_export_state_name(u8 state)
 
 static struct hostentry *rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep);
 
+static inline rtable *rt_priv_to_pub(struct rtable_private *tab) { return RT_PUB(tab); }
+static inline rtable *rt_pub_to_pub(rtable *tab) { return tab; }
+#define RT_ANY_TO_PUB(tab)	_Generic((tab),rtable*:rt_pub_to_pub,struct rtable_private*:rt_priv_to_pub)((tab))
+
 #define rt_trace(tab, level, fmt, args...)  do {\
-  struct rtable_private *t = (tab);		\
+  rtable *t = RT_ANY_TO_PUB((tab));		\
   if (t->config->debug & (level))		\
     log(L_TRACE "%s: " fmt, t->name, ##args);	\
 } while (0)
@@ -1416,9 +1423,9 @@ rt_send_export_event(struct rt_export_hook *hook)
 }
 
 static void
-rt_announce_exports(timer *tm)
+rt_announce_exports(struct settle *s)
 {
-  RT_LOCKED((rtable *) tm->data, tab)
+  RT_LOCKED(RT_PUB(SKIP_BACK(struct rtable_private, export_settle, s)), tab)
     if (!EMPTY_LIST(tab->exporter.pending))
     {
       struct rt_export_hook *c; node *n;
@@ -1433,32 +1440,37 @@ rt_announce_exports(timer *tm)
 }
 
 static void
+rt_kick_export_settle(struct rtable_private *tab)
+{
+  tab->export_settle.cf = tab->rr_counter ? tab->config->export_rr_settle : tab->config->export_settle;
+  settle_kick(&tab->export_settle, tab->loop);
+}
+
+static void
 rt_import_announce_exports(void *_hook)
 {
   struct rt_import_hook *hook = _hook;
-  RT_LOCKED(hook->table, tab)
+  if (hook->import_state == TIS_CLEARED)
   {
-    if (hook->import_state == TIS_CLEARED)
+    void (*stopped)(struct rt_import_request *) = hook->stopped;
+    struct rt_import_request *req = hook->req;
+
+    RT_LOCKED(hook->table, tab)
     {
-      void (*stopped)(struct rt_import_request *) = hook->stopped;
-      struct rt_import_request *req = hook->req;
       req->hook = NULL;
 
       rt_trace(tab, D_EVENTS, "Hook %s stopped", req->name);
       rem_node(&hook->n);
       mb_free(hook);
       rt_unlock_table(tab);
-      RT_UNLOCK(tab);
-
-      stopped(req);
-      return;
     }
 
-    rt_trace(tab, D_EVENTS, "Announcing exports after imports from %s", hook->req->name);
-
-    if (!tm_active(tab->exporter.export_timer))
-      tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
+    stopped(req);
+    return;
   }
+
+  rt_trace(hook->table, D_EVENTS, "Announcing exports after imports from %s", hook->req->name);
+  birdloop_flag(hook->table->loop, RTF_EXPORT);
 }
 
 static struct rt_pending_export *
@@ -1494,7 +1506,7 @@ rt_export_hook(void *_data)
 
     if (!c->rpe_next)
     {
-      rt_export_used(c->table);
+      rt_export_used(c->table, c->h.req->name, "done exporting");
       RT_UNLOCK(tab);
       return;
     }
@@ -1515,7 +1527,7 @@ rt_export_hook(void *_data)
 
   if (used)
     RT_LOCKED(tab, _)
-      rt_export_used(c->table);
+      rt_export_used(c->table, c->h.req->name, "finished export bulk");
 
   rt_send_export_event(&c->h);
 }
@@ -1957,7 +1969,7 @@ rt_table_export_done(void *hh)
     DBG("Export hook %p in table %s finished uc=%u\n", hook, tab->name, tab->use_count);
 
     /* Drop pending exports */
-    rt_export_used(&tab->exporter);
+    rt_export_used(&tab->exporter, hook->h.req->name, "stopped");
 
     /* Do the common code; this frees the hook */
     rt_export_stopped(&hook->h);
@@ -1996,9 +2008,10 @@ void
 rt_set_export_state(struct rt_export_hook *hook, u8 state)
 {
   hook->last_state_change = current_time();
-  atomic_store_explicit(&hook->export_state, state, memory_order_release);
+  u8 old = atomic_exchange_explicit(&hook->export_state, state, memory_order_release);
 
-  CALL(hook->req->log_state_change, hook->req, state);
+  if (old != state)
+    CALL(hook->req->log_state_change, hook->req, state);
 }
 
 void
@@ -2033,7 +2046,44 @@ rt_stop_import(struct rt_import_request *req, void (*stopped)(struct rt_import_r
     rt_schedule_prune(tab);
     rt_set_import_state(hook, TIS_STOP);
     hook->stopped = stopped;
+
+    if (hook->stale_set != hook->stale_pruned)
+      tab->rr_counter -= (hook->stale_set - hook->stale_pruned - 1);
+    else
+      tab->rr_counter++;
+
+    hook->stale_set = hook->stale_pruned = hook->stale_pruning = hook->stale_valid = 0;
   }
+}
+
+static void rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_hook *hook);
+static void
+rt_table_export_uncork(void *_hook)
+{
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+
+  struct rt_table_export_hook *hook = _hook;
+  struct birdloop *loop = hook->h.req->list->loop;
+
+  if (loop != &main_birdloop)
+    birdloop_enter(loop);
+
+  u8 state;
+  switch (state = atomic_load_explicit(&hook->h.export_state, memory_order_relaxed))
+  {
+    case TES_HUNGRY:
+      RT_LOCKED(RT_PUB(SKIP_BACK(struct rtable_private, exporter, hook->table)), tab)
+	rt_table_export_start_feed(tab, hook);
+      break;
+    case TES_STOP:
+      rt_stop_export_common(&hook->h);
+      break;
+    default:
+      bug("Uncorking a table export in a strange state: %u", state);
+  }
+
+  if (loop != &main_birdloop)
+    birdloop_leave(loop);
 }
 
 static void
@@ -2046,6 +2096,22 @@ rt_table_export_start_locked(struct rtable_private *tab, struct rt_export_reques
   req->hook->req = req;
 
   struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, req->hook);
+  hook->h.event = (event) {
+    .hook = rt_table_export_uncork,
+    .data = hook,
+  };
+
+  if (rt_cork_check(&hook->h.event))
+    rt_set_export_state(&hook->h, TES_HUNGRY);
+  else
+    rt_table_export_start_feed(tab, hook);
+}
+
+static void
+rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_hook *hook)
+{
+  struct rt_exporter *re = &tab->exporter.e;
+  struct rt_export_request *req = hook->h.req;
 
   /* stats zeroed by mb_allocz */
   switch (req->addr_mode)
@@ -2133,41 +2199,54 @@ rt_init_export(struct rt_exporter *re, struct rt_export_hook *hook)
   rt_send_export_event(hook);
 }
 
-static void
+static int
 rt_table_export_stop_locked(struct rt_export_hook *hh)
 {
   struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, hh);
   struct rtable_private *tab = SKIP_BACK(struct rtable_private, exporter, hook->table);
 
-  if (atomic_load_explicit(&hh->export_state, memory_order_relaxed) == TES_FEEDING)
-    switch (hh->req->addr_mode)
-    {
-      case TE_ADDR_IN:
-	if (hook->walk_lock)
-	{
-	  rt_unlock_trie(tab, hook->walk_lock);
-	  hook->walk_lock = NULL;
-	  mb_free(hook->walk_state);
-	  hook->walk_state = NULL;
+  switch (atomic_load_explicit(&hh->export_state, memory_order_relaxed))
+  {
+    case TES_HUNGRY:
+      return 0;
+    case TES_FEEDING:
+      switch (hh->req->addr_mode)
+      {
+	case TE_ADDR_IN:
+	  if (hook->walk_lock)
+	  {
+	    rt_unlock_trie(tab, hook->walk_lock);
+	    hook->walk_lock = NULL;
+	    mb_free(hook->walk_state);
+	    hook->walk_state = NULL;
+	    break;
+	  }
+	  /* fall through */
+	case TE_ADDR_NONE:
+	  fit_get(&tab->fib, &hook->feed_fit);
 	  break;
-	}
-	/* fall through */
-      case TE_ADDR_NONE:
-	fit_get(&tab->fib, &hook->feed_fit);
-	break;
-    }
+      }
+
+  }
+  return 1;
 }
 
 static void
 rt_table_export_stop(struct rt_export_hook *hh)
 {
   struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, hh);
+  int ok = 0;
   rtable *t = SKIP_BACK(rtable, priv.exporter, hook->table);
   if (RT_IS_LOCKED(t))
-    rt_table_export_stop_locked(hh);
+    ok = rt_table_export_stop_locked(hh);
   else
     RT_LOCKED(t, tab)
-      rt_table_export_stop_locked(hh);
+      ok = rt_table_export_stop_locked(hh);
+
+  if (ok)
+    rt_stop_export_common(hh);
+  else
+    rt_set_export_state(&hook->h, TES_STOP);
 }
 
 void
@@ -2177,18 +2256,24 @@ rt_stop_export(struct rt_export_request *req, void (*stopped)(struct rt_export_r
   ASSERT_DIE(req->hook);
   struct rt_export_hook *hook = req->hook;
 
-  /* Cancel the feeder event */
-  ev_postpone(&hook->event);
+  /* Set the stopped callback */
+  hook->stopped = stopped;
 
-  /* Stop feeding from the exporter */
-  CALL(hook->table->class->stop, hook);
+  /* Run the stop code */
+  if (hook->table->class->stop)
+    hook->table->class->stop(hook);
+  else
+    rt_stop_export_common(hook);
+}
+
+void
+rt_stop_export_common(struct rt_export_hook *hook)
+{
+  /* Update export state */
+  rt_set_export_state(hook, TES_STOP);
 
   /* Reset the event as the stopped event */
   hook->event.hook = hook->table->class->done;
-  hook->stopped = stopped;
-
-  /* Update export state */
-  rt_set_export_state(hook, TES_STOP);
 
   /* Run the stopped event */
   rt_send_export_event(hook);
@@ -2230,6 +2315,7 @@ rt_refresh_begin(struct rt_import_request *req)
            e->rte.stale_cycle = 0;
       }
     FIB_WALK_END;
+    tab->rr_counter -= (hook->stale_set - hook->stale_pruned - 1);
     hook->stale_set = 1;
     hook->stale_valid = 0;
     hook->stale_pruned = 0;
@@ -2240,6 +2326,7 @@ rt_refresh_begin(struct rt_import_request *req)
     /* Let's reserve the stale_cycle zero value for always-invalid routes */
     hook->stale_set = 1;
     hook->stale_valid = 0;
+    tab->rr_counter++;
   }
 
   if (req->trace_routes & D_STATES)
@@ -2391,22 +2478,18 @@ rt_schedule_nhu(struct rtable_private *tab)
   if (tab->nhu_corked)
   {
     if (!(tab->nhu_corked & NHU_SCHEDULED))
-    {
       tab->nhu_corked |= NHU_SCHEDULED;
-      rt_lock_table(tab);
-    }
   }
   else if (!(tab->nhu_state & NHU_SCHEDULED))
   {
     rt_trace(tab, D_EVENTS, "Scheduling NHU");
-    rt_lock_table(tab);
 
     /* state change:
      *   NHU_CLEAN   -> NHU_SCHEDULED
      *   NHU_RUNNING -> NHU_DIRTY
      */
     if ((tab->nhu_state |= NHU_SCHEDULED) == NHU_SCHEDULED)
-      ev_schedule(tab->nhu_event);
+      birdloop_flag(tab->loop, RTF_NHU);
   }
 }
 
@@ -2414,42 +2497,51 @@ void
 rt_schedule_prune(struct rtable_private *tab)
 {
   if (tab->prune_state == 0)
-    ev_schedule(tab->rt_event);
+    birdloop_flag(tab->loop, RTF_CLEANUP);
 
   /* state change 0->1, 2->3 */
   tab->prune_state |= 1;
 }
 
 static void
-rt_export_used(struct rt_table_exporter *e)
+rt_export_used(struct rt_table_exporter *e, const char *who, const char *why)
 {
   struct rtable_private *tab = SKIP_BACK(struct rtable_private, exporter, e);
   ASSERT_DIE(RT_IS_LOCKED(tab));
 
-  rt_trace(tab, D_EVENTS, "Export cleanup requested");
+  rt_trace(tab, D_EVENTS, "Export cleanup requested by %s %s", who, why);
 
   if (tab->export_used)
     return;
 
   tab->export_used = 1;
-  ev_schedule(tab->rt_event);
+  birdloop_flag(tab->loop, RTF_CLEANUP);
 }
 
 static void
-rt_event(void *ptr)
+rt_flag_handler(struct birdloop_flag_handler *fh, u32 flags)
 {
-  RT_LOCKED((rtable *) ptr, tab)
+  RT_LOCKED(RT_PUB(SKIP_BACK(struct rtable_private, fh, fh)), tab)
   {
+    ASSERT_DIE(birdloop_inside(tab->loop));
+    rt_lock_table(tab);
 
-  rt_lock_table(tab);
+    if (flags & RTF_NHU)
+      rt_next_hop_update(tab);
 
-  if (tab->export_used)
-    rt_export_cleanup(tab);
+    if (flags & RTF_EXPORT)
+      rt_kick_export_settle(tab);
 
-  if (tab->prune_state)
-    rt_prune_table(tab);
+    if (flags & RTF_CLEANUP)
+    {
+      if (tab->export_used)
+	rt_export_cleanup(tab);
 
-  rt_unlock_table(tab);
+      if (tab->prune_state)
+	rt_prune_table(tab);
+    }
+
+    rt_unlock_table(tab);
   }
 }
 
@@ -2471,7 +2563,7 @@ rt_kick_prune_timer(struct rtable_private *tab)
   /* Randomize GC period to +/- 50% */
   btime gc_period = tab->config->gc_period;
   gc_period = (gc_period / 2) + (random_u32() % (uint) gc_period);
-  tm_start(tab->prune_timer, gc_period);
+  tm_start_in(tab->prune_timer, gc_period, tab->loop);
 }
 
 
@@ -2516,6 +2608,14 @@ rt_flowspec_dump_req(struct rt_export_request *req)
   debug("  Flowspec link for table %s (%p)\n", ln->dst->name, req);
 }
 
+static void
+rt_flowspec_log_state_change(struct rt_export_request *req, u8 state)
+{
+  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, req);
+  rt_trace(ln->dst, D_STATES, "Flowspec link from %s export state changed to %s",
+      ln->src->name, rt_export_state_name(state));
+}
+
 static struct rt_flowspec_link *
 rt_flowspec_find_link(struct rtable_private *src, rtable *dst)
 {
@@ -2523,6 +2623,7 @@ rt_flowspec_find_link(struct rtable_private *src, rtable *dst)
   WALK_LIST2(hook, n, src->exporter.e.hooks, h.n)
     switch (atomic_load_explicit(&hook->h.export_state, memory_order_acquire))
     {
+      case TES_HUNGRY:
       case TES_FEEDING:
       case TES_READY:
 	if (hook->h.req->export_one == rt_flowspec_export_one)
@@ -2559,6 +2660,7 @@ rt_flowspec_link(rtable *src_pub, rtable *dst_pub)
 	.list = &global_work_list,
 	.trace_routes = src->config->debug,
 	.dump_req = rt_flowspec_dump_req,
+	.log_state_change = rt_flowspec_log_state_change,
 	.export_one = rt_flowspec_export_one,
       };
 
@@ -2670,6 +2772,8 @@ uint rtable_max_id = 0;
 rtable *
 rt_setup(pool *pp, struct rtable_config *cf)
 {
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+
   pool *p = rp_newf(pp, "Routing table %s", cf->name);
 
   struct rtable_private *t = ralloc(p, &rt_class);
@@ -2701,10 +2805,12 @@ rt_setup(pool *pp, struct rtable_config *cf)
   hmap_init(&t->id_map, p, 1024);
   hmap_set(&t->id_map, 0);
 
-  t->rt_event = ev_new_init(p, rt_event, t);
-  t->nhu_event = ev_new_init(p, rt_next_hop_update, t);
+  t->fh = (struct birdloop_flag_handler) { .hook = rt_flag_handler, };
+  t->nhu_uncork_event = ev_new_init(p, rt_nhu_uncork, t);
   t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
   t->last_rt_change = t->gc_time = current_time();
+
+  t->export_settle = SETTLE_INIT(&cf->export_settle, rt_announce_exports, NULL);
 
   t->exporter = (struct rt_table_exporter) {
     .e = {
@@ -2712,7 +2818,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
       .addr_type = t->addr_type,
       .rp = t->rp,
     },
-    .export_timer = tm_new_init(p, rt_announce_exports, t, 0, 0),
     .next_seq = 1,
   };
 
@@ -2729,6 +2834,12 @@ rt_setup(pool *pp, struct rtable_config *cf)
     t->flowspec_trie = f_new_trie(lp_new_default(p), 0);
     t->flowspec_trie->ipv4 = (t->addr_type == NET_FLOW4);
   }
+
+  /* Start the service thread */
+  t->loop = birdloop_new(p, DOMAIN_ORDER(service), mb_sprintf(p, "Routing tahle %s", t->name));
+  birdloop_enter(t->loop);
+  birdloop_flag_set_handler(t->loop, &t->fh);
+  birdloop_leave(t->loop);
 
   return RT_PUB(t);
 }
@@ -2818,7 +2929,7 @@ again:
       if (limit <= 0)
       {
 	FIB_ITERATE_PUT(fit);
-	ev_schedule(tab->rt_event);
+	birdloop_flag(tab->loop, RTF_CLEANUP);
 	return;
       }
 
@@ -2852,15 +2963,15 @@ again:
   FIB_ITERATE_END;
 
   rt_trace(tab, D_EVENTS, "Prune done, scheduling export timer");
-  if (!tm_active(tab->exporter.export_timer))
-    tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
+  rt_kick_export_settle(tab);
 
 #ifdef DEBUGGING
   fib_check(&tab->fib);
 #endif
 
   /* state change 2->0, 3->1 */
-  tab->prune_state &= 1;
+  if (tab->prune_state &= 1)
+    birdloop_flag(tab->loop, RTF_CLEANUP);
 
   if (tab->trie_new)
   {
@@ -2902,9 +3013,11 @@ again:
       ih->flush_seq = tab->exporter.next_seq;
       rt_set_import_state(ih, TIS_WAITING);
       flushed_channels++;
+      tab->rr_counter--;
     }
     else if (ih->stale_pruning != ih->stale_pruned)
     {
+      tab->rr_counter -= (ih->stale_pruned - ih->stale_pruning);
       ih->stale_pruned = ih->stale_pruning;
       if (ih->req->trace_routes & D_STATES)
 	log(L_TRACE "%s: table prune after refresh end [%u]", ih->req->name, ih->stale_pruned);
@@ -2932,6 +3045,7 @@ rt_export_cleanup(struct rtable_private *tab)
     switch (atomic_load_explicit(&eh->h.export_state, memory_order_acquire))
     {
       case TES_DOWN:
+      case TES_HUNGRY:
 	continue;
 
       case TES_READY:
@@ -3075,11 +3189,10 @@ done:;
     rt_kick_prune_timer(tab);
 
   if (tab->export_used)
-    ev_schedule(tab->rt_event);
+    birdloop_flag(tab->loop, RTF_CLEANUP);
 
-
-  if (EMPTY_LIST(tab->exporter.pending) && tm_active(tab->exporter.export_timer))
-    tm_stop(tab->exporter.export_timer);
+  if (EMPTY_LIST(tab->exporter.pending))
+    settle_cancel(&tab->export_settle);
 }
 
 static void
@@ -3681,35 +3794,44 @@ rt_next_hop_update_net(struct rtable_private *tab, net *n)
 }
 
 static void
-rt_next_hop_update(void *_tab)
+rt_nhu_uncork(void *_tab)
 {
   RT_LOCKED((rtable *) _tab, tab)
   {
-
-  /* If called from an uncork hook, reset the state */
-  if (tab->nhu_corked)
-  {
+    ASSERT_DIE(tab->nhu_corked);
     ASSERT_DIE(tab->nhu_state == 0);
+
+    /* Reset the state */
     tab->nhu_state = tab->nhu_corked;
     tab->nhu_corked = 0;
     rt_trace(tab, D_STATES, "Next hop updater uncorked");
+
+    birdloop_flag(tab->loop, RTF_NHU);
   }
+}
+
+static void
+rt_next_hop_update(struct rtable_private *tab)
+{
+  ASSERT_DIE(birdloop_inside(tab->loop));
+
+  if (tab->nhu_corked)
+    return;
 
   if (!tab->nhu_state)
-    bug("Called NHU event for no reason in table %s", tab->name);
+    return;
 
   /* Check corkedness */
-  if (rt_cork_check(tab->nhu_event))
+  if (rt_cork_check(tab->nhu_uncork_event))
   {
     rt_trace(tab, D_STATES, "Next hop updater corked");
     if ((tab->nhu_state & NHU_RUNNING)
-	&& !EMPTY_LIST(tab->exporter.pending)
-	&& !tm_active(tab->exporter.export_timer))
-      tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
+	&& !EMPTY_LIST(tab->exporter.pending))
+      rt_kick_export_settle(tab);
 
     tab->nhu_corked = tab->nhu_state;
     tab->nhu_state = 0;
-    RT_RETURN(tab);
+    return;
   }
 
   struct fib_iterator *fit = &tab->nhu_fit;
@@ -3731,8 +3853,8 @@ rt_next_hop_update(void *_tab)
       if (max_feed <= 0)
 	{
 	  FIB_ITERATE_PUT(fit);
-	  ev_schedule(tab->nhu_event);
-	  RT_RETURN(tab);
+	  birdloop_flag(tab->loop, RTF_NHU);
+	  return;
 	}
       lp_state lps;
       lp_save(tmp_linpool, &lps);
@@ -3743,20 +3865,14 @@ rt_next_hop_update(void *_tab)
 
   /* Finished NHU, cleanup */
   rt_trace(tab, D_EVENTS, "NHU done, scheduling export timer");
-
-  if (!tm_active(tab->exporter.export_timer))
-    tm_start(tab->exporter.export_timer, tab->config->export_settle_time);
+  rt_kick_export_settle(tab);
 
   /* State change:
    *   NHU_DIRTY   -> NHU_SCHEDULED
    *   NHU_RUNNING -> NHU_CLEAN
    */
   if ((tab->nhu_state &= NHU_SCHEDULED) == NHU_SCHEDULED)
-    ev_schedule(tab->nhu_event);
-
-  rt_unlock_table(tab);
-
-  }
+    birdloop_flag(tab->loop, RTF_NHU);
 }
 
 void
@@ -3801,6 +3917,14 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->gc_period = (uint) -1;	/* set in rt_postconfig() */
   c->cork_threshold.low = 128;
   c->cork_threshold.high = 512;
+  c->export_settle = (struct settle_config) {
+    .min = 1 MS,
+    .max = 100 MS,
+  };
+  c->export_rr_settle = (struct settle_config) {
+    .min = 100 MS,
+    .max = 3 S,
+  };
   c->debug = new_config->table_debug;
 
   add_tail(&new_config->tables, &c->n);
@@ -3840,13 +3964,22 @@ rt_unlock_table_priv(struct rtable_private *r, const char *file, uint line)
 {
   rt_trace(r, D_STATES, "Unlocked at %s:%d", file, line);
   if (!--r->use_count && r->deleted)
-    /* Schedule the delete event to finish this up */
-    ev_send(&global_event_list, ev_new_init(r->rp, rt_delete, r));
+    /* Stop the service thread to finish this up */
+    ev_send(&global_event_list, ev_new_init(r->rp, rt_shutdown, r));
+}
+
+static void
+rt_shutdown(void *tab_)
+{
+  struct rtable_private *r = tab_;
+  birdloop_stop(r->loop, rt_delete, r);
 }
 
 static void
 rt_delete(void *tab_)
 {
+  birdloop_enter(&main_birdloop);
+
   /* We assume that nobody holds the table reference now as use_count is zero.
    * Anyway the last holder may still hold the lock. Therefore we lock and
    * unlock it the last time to be sure that nobody is there. */
@@ -3857,6 +3990,8 @@ rt_delete(void *tab_)
 
   rfree(tab->rp);
   config_del_obstacle(conf);
+
+  birdloop_leave(&main_birdloop);
 }
 
 
@@ -3970,7 +4105,11 @@ rt_commit(struct config *new, struct config *old)
 	  rt_lock_table(tab);
 
 	  if (tab->hostcache)
+	  {
 	    rt_stop_export(&tab->hostcache->req, NULL);
+	    if (ev_get_list(&tab->hostcache->update) == &rt_cork.queue)
+	      ev_postpone(&tab->hostcache->update);
+	  }
 
 	  rt_unlock_table(tab);
 
@@ -4091,9 +4230,6 @@ rt_feed_by_fib(void *data)
     {
       if ((c->h.req->addr_mode == TE_ADDR_NONE) || net_in_netX(n->n.addr, c->h.req->addr))
       {
-	if (atomic_load_explicit(&c->h.export_state, memory_order_acquire) != TES_FEEDING)
-	  return;
-
 	if (!rt_prepare_feed(c, n, &block))
 	{
 	  FIB_ITERATE_PUT(fit);
@@ -4132,9 +4268,6 @@ rt_feed_by_trie(void *data)
     net *n = net_find(tab, &c->walk_last);
     if (!n)
       continue;
-
-    if (atomic_load_explicit(&c->h.export_state, memory_order_acquire) != TES_FEEDING)
-      RT_RETURN(tab);
 
     if (!rt_prepare_feed(c, n, &block))
     {
@@ -4336,16 +4469,28 @@ hc_notify_dump_req(struct rt_export_request *req)
 }
 
 static void
+hc_notify_log_state_change(struct rt_export_request *req, u8 state)
+{
+  struct hostcache *hc = SKIP_BACK(struct hostcache, req, req);
+  rt_trace((rtable *) hc->update.data, D_STATES, "HCU Export state changed to %s", rt_export_state_name(state));
+}
+
+static void
 hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
   struct hostcache *hc = SKIP_BACK(struct hostcache, req, req);
 
   /* No interest in this update, mark seen only */
-  if (ev_active(&hc->update) || !trie_match_net(hc->trie, net))
-  {
-    rpe_mark_seen_all(req->hook, first, NULL);
+  int interested = 1;
+  RT_LOCKED((rtable *) hc->update.data, tab)
+    if (ev_active(&hc->update) || !trie_match_net(hc->trie, net))
+    {
+      rpe_mark_seen_all(req->hook, first, NULL);
+      interested = 0;
+    }
+
+  if (!interested)
     return;
-  }
 
   /* This net may affect some hostentries, check the actual change */
   rte *o = RTE_VALID_OR_NULL(first->old_best);
@@ -4359,7 +4504,10 @@ hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct 
 
   /* Yes, something has actually changed. Do the hostcache update. */
   if (o != RTE_VALID_OR_NULL(new_best))
-    ev_schedule_work(&hc->update);
+    RT_LOCKED((rtable *) hc->update.data, tab)
+      if ((atomic_load_explicit(&req->hook->export_state, memory_order_acquire) == TES_READY)
+	  && !ev_active(&hc->update))
+	ev_send_loop(tab->loop, &hc->update);
 }
 
 
@@ -4386,6 +4534,7 @@ rt_init_hostcache(struct rtable_private *tab)
     .list = &global_work_list,
     .trace_routes = tab->config->debug,
     .dump_req = hc_notify_dump_req,
+    .log_state_change = hc_notify_log_state_change,
     .export_one = hc_notify_export_one,
   };
 
@@ -4521,6 +4670,10 @@ rt_update_hostcache(void *data)
   {
 
   struct hostcache *hc = tab->hostcache;
+
+  /* Shutdown shortcut */
+  if (!hc->req.hook)
+    RT_RETURN(tab);
 
   if (rt_cork_check(&hc->update))
   {

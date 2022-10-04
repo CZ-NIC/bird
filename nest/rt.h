@@ -19,6 +19,8 @@
 #include "lib/route.h"
 #include "lib/event.h"
 #include "lib/rcu.h"
+#include "lib/io-loop.h"
+#include "lib/settle.h"
 
 #include <stdatomic.h>
 
@@ -61,8 +63,10 @@ struct rtable_config {
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte trie_used;			/* Rtable has attached trie */
   byte debug;				/* Whether to log */
-  btime export_settle_time;		/* Delay before exports are announced */
   struct rt_cork_threshold cork_threshold;	/* Cork threshold values */
+  struct settle_config export_settle;	/* Export announcement settler */
+  struct settle_config export_rr_settle;/* Export announcement settler config valid when any
+					   route refresh is running */
 };
 
 struct rt_export_hook;
@@ -85,7 +89,6 @@ struct rt_exporter {
 struct rt_table_exporter {
   struct rt_exporter e;
   list pending;				/* List of packed struct rt_pending_export */
-  struct timer *export_timer;
 
   struct rt_pending_export *first;	/* First export to announce */
   u64 next_seq;				/* The next export will have this ID */
@@ -104,6 +107,7 @@ DEFINE_DOMAIN(rtable);
     uint id;				/* Integer table ID for fast lookup */			\
     DOMAIN(rtable) lock;		/* Lock to take to access the private parts */		\
     struct rtable_config *config;	/* Configuration of this table */			\
+    struct birdloop *loop;		/* Service thread */					\
 
 /* The complete rtable structure */
 struct rtable_private {
@@ -127,12 +131,16 @@ struct rtable_private {
 					 * delete as soon as use_count becomes 0 and remove
 					 * obstacle from this routing table.
 					 */
-  struct event *rt_event;		/* Routing table event */
-  struct event *nhu_event;		/* Specific event for next hop update */
+  struct event *nhu_uncork_event;	/* Helper event to schedule NHU on uncork */
+  struct settle export_settle;		/* Export batching settle timer */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
+  struct birdloop_flag_handler fh;	/* Handler for simple events */
   btime last_rt_change;			/* Last time when route changed */
   btime gc_time;			/* Time of last GC */
   uint gc_counter;			/* Number of operations since last GC */
+  uint rr_counter;			/* Number of currently running route refreshes,
+					   in fact sum of (stale_set - stale_pruned) over all importers
+					   + one for each TIS_FLUSHING importer */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte prune_trie;			/* Prune prefix trie during next table prune */
   byte nhu_state;			/* Next Hop Update state */
@@ -171,6 +179,11 @@ typedef union rtable {
 
 #define RT_PRIV_SAME(tpriv, tpub)	(&(tpub)->priv == (tpriv))
 
+/* Flags for birdloop_flag() */
+#define RTF_CLEANUP	1
+#define RTF_NHU		2
+#define RTF_EXPORT	4
+
 extern struct rt_cork {
   _Atomic uint active;
   event_list queue;
@@ -187,7 +200,7 @@ static inline void rt_cork_release(void)
   if (atomic_fetch_sub_explicit(&rt_cork.active, 1, memory_order_acq_rel) == 1)
   {
     synchronize_rcu();
-    ev_schedule_work(&rt_cork.run);
+    ev_send(&global_work_list, &rt_cork.run);
   }
 }
 
@@ -356,6 +369,7 @@ struct rt_table_export_hook {
 #define TIS_MAX		6
 
 #define TES_DOWN	0
+#define TES_HUNGRY	1
 #define TES_FEEDING	2
 #define TES_READY	3
 #define TES_STOP	4
@@ -417,6 +431,7 @@ int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
 
 void rt_init_export(struct rt_exporter *re, struct rt_export_hook *hook);
 struct rt_export_hook *rt_alloc_export(struct rt_exporter *re, uint size);
+void rt_stop_export_common(struct rt_export_hook *hook);
 void rt_export_stopped(struct rt_export_hook *hook);
 void rt_exporter_init(struct rt_exporter *re);
 
