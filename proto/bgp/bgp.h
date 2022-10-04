@@ -113,6 +113,8 @@ struct bgp_config {
   int gr_mode;				/* Graceful restart mode (BGP_GR_*) */
   int llgr_mode;			/* Long-lived graceful restart mode (BGP_LLGR_*) */
   int setkey;				/* Set MD5 password to system SA/SP database */
+  u8  local_role;			/* Set peering role with neighbor [RFC 9234] */
+  int require_roles;			/* Require configured roles on both sides */
   /* Times below are in seconds */
   unsigned gr_time;			/* Graceful restart timeout */
   unsigned llgr_time;			/* Long-lived graceful restart stale time */
@@ -165,6 +167,13 @@ struct bgp_channel_config {
 
 #define BGP_PT_INTERNAL		1
 #define BGP_PT_EXTERNAL		2
+
+#define BGP_ROLE_UNDEFINED 	255
+#define BGP_ROLE_PROVIDER 	0
+#define BGP_ROLE_RS_SERVER 	1
+#define BGP_ROLE_RS_CLIENT 	2
+#define BGP_ROLE_CUSTOMER 	3
+#define BGP_ROLE_PEER 		4
 
 #define NH_NO			0
 #define NH_ALL			1
@@ -226,6 +235,7 @@ struct bgp_caps {
   u8 ext_messages;			/* Extended message length,  RFC draft */
   u8 route_refresh;			/* Route refresh capability, RFC 2918 */
   u8 enhanced_refresh;			/* Enhanced route refresh,   RFC 7313 */
+  u8 role;				/* BGP role capability,      RFC 9234 */
 
   u8 gr_aware;				/* Graceful restart capability, RFC 4724 */
   u8 gr_flags;				/* Graceful restart flags */
@@ -351,14 +361,8 @@ struct bgp_channel {
 
   /* Rest are zeroed when down */
   pool *pool;
-  HASH(struct bgp_bucket) bucket_hash;	/* Hash table of route buckets */
-  struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
-  list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
-
-  HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
-  slab *prefix_slab;			/* Slab holding prefix nodes */
-
-  struct rt_exporter prefix_exporter;	/* Table-like exporter for prefix_hash */
+  struct bgp_pending_tx	*ptx;		/* Routes waiting to be sent */
+  struct rt_exporter prefix_exporter;	/* Table-like exporter for ptx */
 
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   ip_addr link_addr;			/* Link-local version of next_hop_addr */
@@ -399,6 +403,18 @@ struct bgp_bucket {
   u32 hash;				/* Hash over extended attributes */
   u32 px_uc;				/* How many prefixes are linking this bucket */
   ea_list eattrs[0];			/* Per-bucket extended attributes */
+};
+
+struct bgp_pending_tx {
+  resource r;
+  pool *pool;
+
+  HASH(struct bgp_bucket) bucket_hash;	/* Hash table of route buckets */
+  struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
+  list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
+
+  HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
+  slab *prefix_slab;			/* Slab holding prefix nodes */
 };
 
 struct bgp_export_state {
@@ -494,6 +510,12 @@ static inline int bgp_cc_is_ipv4(struct bgp_channel_config *c)
 static inline int bgp_cc_is_ipv6(struct bgp_channel_config *c)
 { return BGP_AFI(c->afi) == BGP_AFI_IPV6; }
 
+static inline int bgp_channel_is_role_applicable(struct bgp_channel *c)
+{ return (c->afi == BGP_AF_IPV4 || c->afi == BGP_AF_IPV6); }
+
+static inline int bgp_cc_is_role_applicable(struct bgp_channel_config *c)
+{ return (c->afi == BGP_AF_IPV4 || c->afi == BGP_AF_IPV6); }
+
 static inline uint bgp_max_packet_length(struct bgp_conn *conn)
 { return conn->ext_messages ? BGP_MAX_EXT_MSG_LENGTH : BGP_MAX_MESSAGE_LENGTH; }
 
@@ -567,13 +589,12 @@ void bgp_finish_attrs(struct bgp_parse_state *s, ea_list **to);
 
 void bgp_setup_out_table(struct bgp_channel *c);
 
-void bgp_init_bucket_table(struct bgp_channel *c);
-void bgp_free_bucket_table(struct bgp_channel *c);
+void bgp_init_pending_tx(struct bgp_channel *c);
+void bgp_free_pending_tx(struct bgp_channel *c);
+
 void bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 int bgp_done_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 
-void bgp_init_prefix_table(struct bgp_channel *c);
-void bgp_free_prefix_table(struct bgp_channel *c);
 void bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket *buck);
 
 int bgp_rte_better(struct rte *, struct rte *);
@@ -662,6 +683,7 @@ enum bgp_attr_id {
   BA_AS4_AGGREGATOR	= 0x12,	/* RFC 6793 */
   BA_AIGP		= 0x1a,	/* RFC 7311 */
   BA_LARGE_COMMUNITY	= 0x20,	/* RFC 8092 */
+#define BA_ONLY_TO_CUSTOMER	0x23	/* RFC 9234 */
 
 /* Bird's private internal BGP attributes */
   BA_MPLS_LABEL_STACK	= 0x100, /* MPLS label stack transfer attribute */

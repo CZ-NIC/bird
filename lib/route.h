@@ -10,6 +10,8 @@
 #ifndef _BIRD_LIB_ROUTE_H_
 #define _BIRD_LIB_ROUTE_H_
 
+#undef RT_SOURCE_DEBUG
+
 #include "lib/type.h"
 #include "lib/rcu.h"
 #include "lib/hash.h"
@@ -87,6 +89,11 @@ struct rte_src *rt_get_source_o(struct rte_owner *o, u32 id);
 
 struct rte_src *rt_find_source_global(u32 id);
 
+#ifdef RT_SOURCE_DEBUG
+#define rt_lock_source _rt_lock_source_internal
+#define rt_unlock_source _rt_unlock_source_internal
+#endif
+
 static inline void rt_lock_source(struct rte_src *src)
 {
   /* Locking a source is trivial; somebody already holds it so we just increase
@@ -138,6 +145,14 @@ static inline void rt_unlock_source(struct rte_src *src)
    * RCU synchronization instead of a busy loop. */
   rcu_read_unlock();
 }
+
+#ifdef RT_SOURCE_DEBUG
+#undef rt_lock_source
+#undef rt_unlock_source
+
+#define rt_lock_source(x) ( log(L_INFO "Lock source %uG at %s:%d", (x)->global_id, __FILE__, __LINE__), _rt_lock_source_internal(x) )
+#define rt_unlock_source(x) ( log(L_INFO "Unlock source %uG at %s:%d", (x)->global_id, __FILE__, __LINE__), _rt_unlock_source_internal(x) )
+#endif
 
 void rt_init_sources(struct rte_owner *, const char *name, event_list *list);
 void rt_destroy_sources(struct rte_owner *, event *);
@@ -242,7 +257,7 @@ typedef struct ea_list {
 struct ea_storage {
   struct ea_storage *next_hash;		/* Next in hash chain */
   struct ea_storage **pprev_hash;	/* Previous in hash chain */
-  u32 uc;				/* Use count */
+  _Atomic u32 uc;			/* Use count */
   u32 hash_key;				/* List hash */
   ea_list l[0];				/* The list itself */
 };
@@ -511,12 +526,15 @@ static inline struct ea_storage *ea_get_storage(ea_list *r)
   return SKIP_BACK(struct ea_storage, l[0], r);
 }
 
-static inline ea_list *ea_clone(ea_list *r) { ea_get_storage(r)->uc++; return r; }
+static inline ea_list *ea_clone(ea_list *r) {
+  ASSERT_DIE(0 < atomic_fetch_add_explicit(&ea_get_storage(r)->uc, 1, memory_order_acq_rel));
+  return r;
+}
 void ea__free(struct ea_storage *r);
 static inline void ea_free(ea_list *l) {
   if (!l) return;
   struct ea_storage *r = ea_get_storage(l);
-  if (!--r->uc) ea__free(r);
+  if (1 == atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel)) ea__free(r);
 }
 
 void ea_dump(ea_list *);

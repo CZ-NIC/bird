@@ -114,8 +114,6 @@
 
 pool *rt_table_pool;
 
-static linpool *rte_update_pool;
-
 list routing_tables;
 list deleted_routing_tables;
 
@@ -152,9 +150,6 @@ static void rt_cork_release_hook(void *);
 
 static inline void rt_export_used(struct rt_exporter *);
 static void rt_export_cleanup(rtable *tab);
-
-static inline void rte_update_lock(void);
-static inline void rte_update_unlock(void);
 
 static int rte_same(rte *x, rte *y);
 
@@ -966,13 +961,10 @@ done:
   }
 
   /* Nothing to export */
-  if (!new_best && !old_best)
-  {
+  if (new_best || old_best)
+    do_rt_notify(c, n, new_best, old_best);
+  else
     DBG("rt_notify_accepted: nothing to export\n");
-    return;
-  }
-
-  do_rt_notify(c, n, new_best, old_best);
 }
 
 rte *
@@ -1079,7 +1071,7 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n, struct rt_pen
   }
 
   /* Prepare new merged route */
-  rte *new_merged = count ? rt_export_merged(c, feed, count, rte_update_pool, 0) : NULL;
+  rte *new_merged = count ? rt_export_merged(c, feed, count, tmp_linpool, 0) : NULL;
 
   if (new_merged || old_best)
     do_rt_notify(c, n, new_merged, old_best);
@@ -1089,7 +1081,6 @@ void
 rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
-
   rte *o = RTE_VALID_OR_NULL(rpe->old_best);
   struct rte_storage *new_best = rpe->new_best;
 
@@ -1482,14 +1473,10 @@ rt_export_hook(void *_data)
   /* Process the export */
   for (uint i=0; i<RT_EXPORT_BULK; i++)
   {
-    rte_update_lock();
-
     rte_export(c, c->rpe_next);
 
     if (!c->rpe_next)
       break;
-
-    rte_update_unlock();
   }
 
   rt_send_export_event(c);
@@ -1775,21 +1762,6 @@ rte_recalculate(struct rt_import_hook *c, net *net, rte *new, struct rte_src *sr
 
 }
 
-static int rte_update_nest_cnt;		/* Nesting counter to allow recursive updates */
-
-static inline void
-rte_update_lock(void)
-{
-  rte_update_nest_cnt++;
-}
-
-static inline void
-rte_update_unlock(void)
-{
-  if (!--rte_update_nest_cnt)
-    lp_flush(rte_update_pool);
-}
-
 int
 channel_preimport(struct rt_import_request *req, rte *new, rte *old)
 {
@@ -1839,7 +1811,6 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   const struct filter *filter = c->in_filter;
   struct channel_import_stats *stats = &c->import_stats;
 
-  rte_update_lock();
   if (new)
     {
       new->net = n;
@@ -1890,7 +1861,6 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     ea_free(a);
   }
 
-  rte_update_unlock();
 }
 
 void
@@ -1921,25 +1891,6 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
   rte_recalculate(hook, nn, new, src);
 }
 
-/* Independent call to rte_announce(), used from next hop
-   recalculation, outside of rte_update(). new must be non-NULL */
-static inline void
-rte_announce_i(rtable *tab, net *net, struct rte_storage *new, struct rte_storage *old,
-	       struct rte_storage *new_best, struct rte_storage *old_best)
-{
-  rte_update_lock();
-  rte_announce(tab, net, new, old, new_best, old_best);
-  rte_update_unlock();
-}
-
-static inline void
-rte_discard(net *net, rte *old)	/* Non-filtered route deletion, used during garbage collection */
-{
-  rte_update_lock();
-  rte_recalculate(old->sender, net, NULL, old->src);
-  rte_update_unlock();
-}
-
 /* Check rtable for best route to given net whether it would be exported do p */
 int
 rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter)
@@ -1951,14 +1902,10 @@ rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filte
 
   rte rt = n->routes->rte;
 
-  rte_update_lock();
-
   /* Rest is stripped down export_filter() */
   int v = c->proto->preexport ? c->proto->preexport(c, &rt) : 0;
   if (v == RIC_PROCESS)
     v = (f_run(filter, &rt, FF_SILENT) <= F_ACCEPT);
-
-  rte_update_unlock();
 
   return v > 0;
 }
@@ -2489,7 +2436,7 @@ rt_settle_timer(timer *t)
 
   struct rt_subscription *s;
   WALK_LIST(s, tab->subscribers)
-    s->hook(s);
+    ev_send(s->list, s->event);
 }
 
 static void
@@ -2731,7 +2678,6 @@ rt_init(void)
 {
   rta_init();
   rt_table_pool = rp_new(&root_pool, "Routing tables");
-  rte_update_pool = lp_new_default(rt_table_pool);
   init_list(&routing_tables);
   init_list(&deleted_routing_tables);
   ev_init_list(&rt_cork.queue, &main_birdloop, "Route cork release");
@@ -2816,7 +2762,7 @@ again:
 	    (e->rte.stale_cycle < s->stale_valid) ||
 	    (e->rte.stale_cycle > s->stale_set))
 	  {
-	    rte_discard(n, &e->rte);
+	    rte_recalculate(e->rte.sender, n, NULL, e->rte.src);
 	    limit--;
 
 	    goto rescan;
@@ -3590,7 +3536,7 @@ rt_next_hop_update_net(rtable *tab, net *n)
       { "autoupdated [+best]", "autoupdated [best]" }
     };
     rt_rte_trace_in(D_ROUTES, updates[i].new->rte.sender->req, &updates[i].new->rte, best_indicator[nb][ob]);
-    rte_announce_i(tab, n, updates[i].new, updates[i].old, new, old_best);
+    rte_announce(tab, n, updates[i].new, updates[i].old, new, old_best);
   }
 
   return count;
@@ -3940,20 +3886,16 @@ rt_feed_net(struct rt_export_hook *c, net *n)
     count = rte_feed_count(n);
     if (count)
     {
-      rte_update_lock();
       rte **feed = alloca(count * sizeof(rte *));
       rte_feed_obtain(n, feed, count);
       c->req->export_bulk(c->req, n->n.addr, NULL, feed, count);
-      rte_update_unlock();
     }
   }
 
   else if (n->routes)
   {
-    rte_update_lock();
     struct rt_pending_export rpe = { .new = n->routes, .new_best = n->routes };
     c->req->export_one(c->req, n->n.addr, &rpe);
-    rte_update_unlock();
     count = 1;
   }
 

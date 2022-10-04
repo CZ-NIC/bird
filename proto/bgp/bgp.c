@@ -102,6 +102,7 @@
  * RFC 8212 - Default EBGP Route Propagation Behavior without Policies
  * RFC 8654 - Extended Message Support for BGP
  * RFC 9117 - Revised Validation Procedure for BGP Flow Specifications
+ * RFC 9234 - Route Leak Prevention and Detection Using Roles
  * draft-ietf-idr-ext-opt-param-07
  * draft-uttaro-idr-bgp-persistence-04
  * draft-walton-bgp-hostname-capability-02
@@ -518,6 +519,12 @@ bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
   p->uncork_ev->data = NULL;
   bgp_graceful_close_conn(&p->outgoing_conn, subcode, data, len);
   bgp_graceful_close_conn(&p->incoming_conn, subcode, data, len);
+
+  struct bgp_channel *c;
+  WALK_LIST(c, p->p.channels)
+    if (c->ptx)
+      bgp_free_pending_tx(c);
+
   ev_schedule(p->event);
 }
 
@@ -787,10 +794,8 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
     }
 
     /* Reset bucket and prefix tables */
-    bgp_free_bucket_table(c);
-    bgp_free_prefix_table(c);
-    bgp_init_bucket_table(c);
-    bgp_init_prefix_table(c);
+    bgp_free_pending_tx(c);
+    bgp_init_pending_tx(c);
     c->packets_to_send = 0;
   }
 
@@ -1806,8 +1811,7 @@ bgp_channel_start(struct channel *C)
   if (c->cf->export_table)
     bgp_setup_out_table(c);
 
-  bgp_init_bucket_table(c);
-  bgp_init_prefix_table(c);
+  bgp_init_pending_tx(c);
 
   c->stale_timer = tm_new_init(c->pool, bgp_long_lived_stale_timeout, c, 0, 0);
 
@@ -2016,6 +2020,15 @@ bgp_postconfig(struct proto_config *CF)
 
   if (internal && cf->rs_client)
     cf_error("Only external neighbor can be RS client");
+
+  if (internal && (cf->local_role != BGP_ROLE_UNDEFINED))
+    cf_error("Local role cannot be set on IBGP sessions");
+
+  if (interior && (cf->local_role != BGP_ROLE_UNDEFINED))
+    log(L_WARN "BGP roles are not recommended to be used within AS confederations");
+
+  if (cf->require_roles && (cf->local_role == BGP_ROLE_UNDEFINED))
+    cf_error("Local role must be set if roles are required");
 
   if (!cf->confederation && cf->confederation_member)
     cf_error("Confederation ID must be set for member sessions");
@@ -2379,6 +2392,15 @@ bgp_show_afis(int code, char *s, u32 *afis, uint count)
   cli_msg(code, b.start);
 }
 
+static const char *
+bgp_format_role_name(u8 role)
+{
+  static const char *bgp_role_names[] = { "provider", "rs_server", "rs_client", "customer", "peer" };
+  if (role == BGP_ROLE_UNDEFINED) return "undefined";
+  if (role < ARRAY_SIZE(bgp_role_names)) return bgp_role_names[role];
+  return "?";
+}
+
 static void
 bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
 {
@@ -2507,6 +2529,9 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
 
   if (caps->hostname)
     cli_msg(-1006, "      Hostname: %s", caps->hostname);
+
+  if (caps->role != BGP_ROLE_UNDEFINED)
+    cli_msg(-1006, "      Role: %s", bgp_format_role_name(caps->role));
 }
 
 static void

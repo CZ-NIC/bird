@@ -1043,6 +1043,8 @@ ea_list_ref(ea_list *l)
   }
 }
 
+static void ea_free_nested(ea_list *l);
+
 static void
 ea_list_unref(ea_list *l)
 {
@@ -1063,7 +1065,7 @@ ea_list_unref(ea_list *l)
     }
 
   if (l->next)
-    ea_free(l->next);
+    ea_free_nested(l->next);
 }
 
 void
@@ -1472,9 +1474,15 @@ ea_lookup(ea_list *o, int overlay)
   o = ea_normalize(o, overlay);
   h = ea_hash(o);
 
+  RTA_LOCK;
+
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next_hash)
     if (r->hash_key == h && ea_same(r->l, o))
-      return ea_clone(r->l);
+    {
+      atomic_fetch_add_explicit(&r->uc, 1, memory_order_acq_rel);
+      RTA_UNLOCK;
+      return r->l;
+    }
 
   uint elen = ea_list_size(o);
   r = mb_alloc(rta_pool, elen + sizeof(struct ea_storage));
@@ -1490,12 +1498,17 @@ ea_lookup(ea_list *o, int overlay)
   if (++rta_cache_count > rta_cache_limit)
     rta_rehash();
 
+  RTA_UNLOCK;
   return r->l;
 }
 
-void
-ea__free(struct ea_storage *a)
+static void
+ea_free_locked(struct ea_storage *a)
 {
+  /* Somebody has cloned this rta inbetween. This sometimes happens. */
+  if (atomic_load_explicit(&a->uc, memory_order_acquire))
+    return;
+
   ASSERT(rta_cache_count);
   rta_cache_count--;
   *a->pprev_hash = a->next_hash;
@@ -1504,6 +1517,22 @@ ea__free(struct ea_storage *a)
 
   ea_list_unref(a->l);
   mb_free(a);
+}
+
+static void
+ea_free_nested(struct ea_list *l)
+{
+  struct ea_storage *r = ea_get_storage(l);
+  if (1 == atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel))
+    ea_free_locked(r);
+}
+
+void
+ea__free(struct ea_storage *a)
+{
+  RTA_LOCK;
+  ea_free_locked(a);
+  RTA_UNLOCK;
 }
 
 /**
@@ -1515,6 +1544,8 @@ ea__free(struct ea_storage *a)
 void
 ea_dump_all(void)
 {
+  RTA_LOCK;
+
   debug("Route attribute cache (%d entries, rehash at %d):\n", rta_cache_count, rta_cache_limit);
   for (uint h=0; h < rta_cache_size; h++)
     for (struct ea_storage *a = rta_hash_table[h]; a; a = a->next_hash)
@@ -1524,6 +1555,8 @@ ea_dump_all(void)
 	debug("\n");
       }
   debug("\n");
+
+  RTA_UNLOCK;
 }
 
 void

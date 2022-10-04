@@ -21,11 +21,6 @@ struct kif_proto;
 
 #define KRT_DEFAULT_ECMP_LIMIT	16
 
-#if 0
-#define EA_KRT_SOURCE	EA_CODE(PROTOCOL_KERNEL, 0)
-#define EA_KRT_METRIC	EA_CODE(PROTOCOL_KERNEL, 1)
-#endif
-
 extern struct ea_class ea_krt_source, ea_krt_metric;
 
 #define KRT_REF_SEEN	0x1	/* Seen in table */
@@ -55,10 +50,7 @@ struct krt_proto {
   struct proto p;
   struct krt_state sys;		/* Sysdep state */
 
-#ifndef CONFIG_ALL_TABLES_AT_ONCE
   timer *scan_timer;
-#endif
-
   struct bmap sync_map;		/* Keeps track which exported routes were successfully written to kernel */
   struct bmap seen_map;		/* Routes seen during last periodic scan */
   node krt_node;		/* Node in krt_proto_list */
@@ -80,6 +72,7 @@ extern pool *krt_pool;
 
 struct proto_config * kif_init_config(int class);
 void kif_request_scan(void);
+void krt_use_shared_scan(void);
 void krt_got_route(struct krt_proto *p, struct rte *e, s8 src);
 void krt_got_route_async(struct krt_proto *p, struct rte *e, int new, s8 src);
 
