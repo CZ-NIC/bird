@@ -1467,7 +1467,7 @@
     ARG(1, T_NET);
     ARG(2, T_INT);
     RTC(3);
-    struct rtable *table = rtc->table;
+    rtable *table = rtc->table;
 
     u32 as = v2.val.i;
 

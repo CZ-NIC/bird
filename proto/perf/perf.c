@@ -202,7 +202,9 @@ perf_loop(void *data)
     p->exp++;
   }
 
-  rt_schedule_prune(P->main_channel->table);
+  RT_LOCKED(P->main_channel->table, tab)
+    rt_schedule_prune(tab);
+
   ev_schedule(p->loop);
 }
 

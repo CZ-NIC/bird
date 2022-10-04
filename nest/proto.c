@@ -55,6 +55,7 @@ static void channel_update_limit(struct channel *c, struct limit *l, int dir, st
 static void channel_reset_limit(struct channel *c, struct limit *l, int dir);
 static void channel_feed_end(struct channel *c);
 static void channel_export_stopped(struct rt_export_request *req);
+static void channel_check_stopped(struct channel *c);
 
 static inline int proto_is_done(struct proto *p)
 { return (p->proto_state == PS_DOWN) && proto_is_inactive(p); }
@@ -168,7 +169,7 @@ proto_cf_find_channel(struct proto_config *pc, uint net_type)
  * Returns pointer to channel or NULL
  */
 struct channel *
-proto_find_channel_by_table(struct proto *p, struct rtable *t)
+proto_find_channel_by_table(struct proto *p, rtable *t)
 {
   struct channel *c;
 
@@ -312,10 +313,19 @@ proto_remove_channels(struct proto *p)
     proto_remove_channel(p, c);
 }
 
+struct roa_subscription {
+  node roa_node;
+  timer t;
+  btime base_settle_time;		/* Start of settling interval */
+  struct channel *c;
+  struct rt_export_request req;
+};
+
 static void
-channel_roa_in_changed(void *_data)
+channel_roa_in_changed(struct timer *t)
 {
-  struct channel *c = _data;
+  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, t, t);
+  struct channel *c = s->c;
   int active = !!c->reload_req.hook;
 
   CD(c, "Reload triggered by RPKI change%s", active ? " - already active" : "");
@@ -327,9 +337,11 @@ channel_roa_in_changed(void *_data)
 }
 
 static void
-channel_roa_out_changed(void *_data)
+channel_roa_out_changed(struct timer *t)
 {
-  struct channel *c = _data;
+  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, t, t);
+  struct channel *c = s->c;
+
   CD(c, "Feeding triggered by RPKI change");
 
   c->refeed_pending = 1;
@@ -338,28 +350,56 @@ channel_roa_out_changed(void *_data)
     rt_stop_export(&c->out_req, channel_export_stopped);
 }
 
-/* Temporary code, subscriptions should be changed to resources */
-struct roa_subscription {
-  struct rt_subscription s;
-  node roa_node;
-};
+static void
+channel_export_one_roa(struct rt_export_request *req, const net_addr *net UNUSED, struct rt_pending_export *first)
+{
+  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
+
+  /* TODO: use the information about what roa has changed */
+
+  if (!tm_active(&s->t))
+  {
+    s->base_settle_time = current_time();
+    tm_start(&s->t, s->base_settle_time + s->c->min_settle_time);
+  }
+  else
+    tm_set(&s->t,
+	MIN(s->base_settle_time + s->c->max_settle_time,
+	    current_time() + s->c->min_settle_time));
+
+
+  rpe_mark_seen_all(req->hook, first, NULL);
+}
+
+static void
+channel_dump_roa_req(struct rt_export_request *req)
+{
+  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
+  struct channel *c = s->c;
+  struct rtable_private *tab = SKIP_BACK(struct rtable_private, exporter.e, req->hook->table);
+
+  debug("  Channel %s.%s ROA %s change notifier from table %s request %p\n",
+      c->proto->name, c->name,
+      (s->t.hook == channel_roa_in_changed) ? "import" : "export",
+      tab->name, req);
+}
 
 static int
 channel_roa_is_subscribed(struct channel *c, rtable *tab, int dir)
 {
-  void (*hook)(void *) =
+  void (*hook)(struct timer *) =
     dir ? channel_roa_in_changed : channel_roa_out_changed;
 
   struct roa_subscription *s;
   node *n;
 
   WALK_LIST2(s, n, c->roa_subscriptions, roa_node)
-    if ((s->s.tab == tab) && (s->s.event->hook == hook))
+    if ((tab == SKIP_BACK(rtable, priv.exporter.e, s->req.hook->table))
+	  && (s->t.hook == hook))
       return 1;
 
   return 0;
 }
-
 
 static void
 channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
@@ -368,28 +408,47 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
     return;
 
   struct roa_subscription *s = mb_allocz(c->proto->pool, sizeof(struct roa_subscription));
-  s->s.event = ev_new_init(c->proto->pool, dir ? channel_roa_in_changed : channel_roa_out_changed, c);
-  s->s.list = proto_work_list(c->proto);
 
-  rt_subscribe(tab, &s->s);
+  *s = (struct roa_subscription) {
+    .t = { .hook = dir ? channel_roa_in_changed : channel_roa_out_changed, },
+    .c = c,
+    .req = {
+      .name = mb_sprintf(c->proto->pool, "%s.%s.roa-%s.%s",
+	  c->proto->name, c->name, dir ? "in" : "out", tab->name),
+      .list = proto_work_list(c->proto),
+      .trace_routes = c->debug | c->proto->debug,
+      .dump_req = channel_dump_roa_req,
+      .export_one = channel_export_one_roa,
+    },
+  };
 
   add_tail(&c->roa_subscriptions, &s->roa_node);
+  rt_request_export(tab, &s->req);
+}
+
+static void
+channel_roa_unsubscribed(struct rt_export_request *req)
+{
+  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
+  struct channel *c = s->c;
+
+  rem_node(&s->roa_node);
+  mb_free(s);
+  
+  channel_check_stopped(c);
 }
 
 static void
 channel_roa_unsubscribe(struct roa_subscription *s)
 {
-  rt_unsubscribe(&s->s);
-  rem_node(&s->roa_node);
-  rfree(s->s.event);
-  mb_free(s);
+  rt_stop_export(&s->req, channel_roa_unsubscribed);
 }
 
 static void
 channel_roa_subscribe_filter(struct channel *c, int dir)
 {
   const struct filter *f = dir ? c->in_filter : c->out_filter;
-  struct rtable *tab;
+  rtable *tab;
   int valid = 1, found = 0;
 
   if ((f == FILTER_ACCEPT) || (f == FILTER_REJECT))
@@ -450,13 +509,10 @@ channel_start_import(struct channel *c)
     return;
   }
 
-  int nlen = strlen(c->name) + strlen(c->proto->name) + 2;
-  char *rn = mb_allocz(c->proto->pool, nlen);
-  bsprintf(rn, "%s.%s", c->proto->name, c->name);
-
   c->in_req = (struct rt_import_request) {
-    .name = rn,
+    .name = mb_sprintf(c->proto->pool, "%s.%s", c->proto->name, c->name),
     .trace_routes = c->debug | c->proto->debug,
+    .list = proto_work_list(c->proto),
     .dump_req = channel_dump_import_req,
     .log_state_change = channel_import_log_state_change,
     .preimport = channel_preimport,
@@ -483,12 +539,9 @@ channel_start_export(struct channel *c)
   }
 
   ASSERT(c->channel_state == CS_UP);
-  int nlen = strlen(c->name) + strlen(c->proto->name) + 2;
-  char *rn = mb_allocz(c->proto->pool, nlen);
-  bsprintf(rn, "%s.%s", c->proto->name, c->name);
 
   c->out_req = (struct rt_export_request) {
-    .name = rn,
+    .name = mb_sprintf(c->proto->pool, "%s.%s", c->proto->name, c->name),
     .list = proto_work_list(c->proto),
     .addr = c->out_subprefix,
     .addr_mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
@@ -523,7 +576,7 @@ channel_start_export(struct channel *c)
   }
 
   DBG("%s.%s: Channel start export req=%p\n", c->proto->name, c->name, &c->out_req);
-  rt_request_export(&c->table->exporter, &c->out_req);
+  rt_request_export(c->table, &c->out_req);
 }
 
 static void
@@ -532,7 +585,7 @@ channel_check_stopped(struct channel *c)
   switch (c->channel_state)
   {
     case CS_STOP:
-      if (c->out_req.hook || c->in_req.hook)
+      if (!EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook || c->in_req.hook)
 	return;
 
       channel_set_state(c, CS_DOWN);
@@ -540,7 +593,7 @@ channel_check_stopped(struct channel *c)
 
       break;
     case CS_PAUSE:
-      if (c->out_req.hook)
+      if (!EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook)
 	return;
 
       channel_set_state(c, CS_START);
@@ -556,8 +609,6 @@ void
 channel_import_stopped(struct rt_import_request *req)
 {
   struct channel *c = SKIP_BACK(struct channel, in_req, req);
-
-  req->hook = NULL;
 
   mb_free(c->in_req.name);
   c->in_req.name = NULL;
@@ -577,7 +628,7 @@ channel_export_stopped(struct rt_export_request *req)
   {
     c->refeeding = 1;
     c->refeed_pending = 0;
-    rt_request_export(&c->table->exporter, req);
+    rt_request_export(c->table, req);
     return;
   }
 
@@ -621,7 +672,7 @@ channel_schedule_reload(struct channel *c)
 {
   ASSERT(c->in_req.hook);
 
-  rt_request_export(&c->table->exporter, &c->reload_req);
+  rt_request_export(c->table, &c->reload_req);
 }
 
 static void
@@ -864,7 +915,7 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
     if (proto->net_type && (net_type != proto->net_type))
       cf_error("Different channel type");
 
-    tab = new_config->def_tables[net_type];
+    tab = rt_get_default_table(new_config, net_type);
   }
 
   if (!cc)
@@ -882,6 +933,9 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
   cf->preference = proto->protocol->preference;
   cf->debug = new_config->channel_default_debug;
   cf->rpki_reload = 1;
+
+  cf->min_settle_time = 1 S;
+  cf->max_settle_time = 20 S;
 
   add_tail(&proto->channels, &cf->n);
 
@@ -962,6 +1016,22 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   c->debug = cf->debug;
   c->in_req.trace_routes = c->out_req.trace_routes = c->debug | c->proto->debug;
   c->rpki_reload = cf->rpki_reload;
+
+  if (	  (c->min_settle_time != cf->min_settle_time)
+       || (c->max_settle_time != cf->max_settle_time))
+  {
+    c->min_settle_time = cf->min_settle_time;
+    c->max_settle_time = cf->max_settle_time;
+
+    struct roa_subscription *s;
+    node *n;
+
+    WALK_LIST2(s, n, c->roa_subscriptions, roa_node)
+      if (tm_active(&s->t))
+	tm_set(&s->t,
+	    MIN(s->base_settle_time + c->max_settle_time,
+	      current_time() + c->min_settle_time));
+  }
 
   /* Execute channel-specific reconfigure hook */
   if (c->channel->reconfigure && !c->channel->reconfigure(c, cf, &import_changed, &export_changed))

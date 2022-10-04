@@ -113,7 +113,6 @@
 #define HASH_IP_EQ(a1,n1,a2,n2)	ipa_equal(a1, a2) && n1 == n2
 #define HASH_IP_FN(a,n)		ipa_hash(a) ^ u32_hash(n)
 
-DEFINE_DOMAIN(rtable);
 #define BFD_LOCK	LOCK_DOMAIN(rtable, bfd_global.lock)
 #define BFD_UNLOCK	UNLOCK_DOMAIN(rtable, bfd_global.lock)
 

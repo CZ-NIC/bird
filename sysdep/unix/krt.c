@@ -366,6 +366,13 @@ rte_feed_obtain(net *n, rte **feed, uint count)
 static struct rte *
 krt_export_net(struct krt_proto *p, net *net)
 {
+  /* FIXME: Here we are calling filters in table-locked context when exporting
+   * to kernel. Here BIRD can crash if the user requested ROA check in kernel
+   * export filter. It doesn't make much sense to write the filters like this,
+   * therefore we may keep this unfinished piece of work here for later as it
+   * won't really affect anybody. */
+  ASSERT_DIE(RT_IS_LOCKED(p->p.main_channel->table));
+
   struct channel *c = p->p.main_channel;
   const struct filter *filter = c->out_filter;
 
@@ -446,6 +453,9 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
 #endif
   /* The rest is for KRT_SRC_BIRD (or KRT_SRC_UNKNOWN) */
 
+  RT_LOCKED(p->p.main_channel->table, tab)
+  {
+
   /* Deleting all routes if flush is requested */
   if (p->flush_routes)
     goto delete;
@@ -454,7 +464,7 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
   if (!p->ready)
     goto ignore;
 
-  net *net = net_find(p->p.main_channel->table, e->net);
+  net *net = net_find(tab, e->net);
   if (!net || !krt_is_installed(p, net))
     goto delete;
 
@@ -499,7 +509,9 @@ delete:
   krt_replace_rte(p, e->net, NULL, e);
   goto done;
 
-done:
+done:;
+  }
+
   lp_flush(krt_filter_lp);
 }
 
@@ -512,7 +524,8 @@ krt_init_scan(struct krt_proto *p)
 static void
 krt_prune(struct krt_proto *p)
 {
-  struct rtable *t = p->p.main_channel->table;
+  RT_LOCKED(p->p.main_channel->table, t)
+  {
 
   KRT_TRACE(p, D_EVENTS, "Pruning table %s", t->name);
   FIB_WALK(&t->fib, net, n)
@@ -534,6 +547,8 @@ krt_prune(struct krt_proto *p)
 
   if (p->ready)
     p->initialized = 1;
+
+  }
 }
 
 static void

@@ -18,7 +18,6 @@
 
 struct iface;
 struct ifa;
-struct rtable;
 struct rte;
 struct neighbor;
 struct rta;
@@ -187,7 +186,7 @@ struct proto {
    *	   rte_remove	Called whenever a rte is removed from the routing table.
    */
 
-  int (*rte_recalculate)(struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
+  int (*rte_recalculate)(struct rtable_private *, struct network *, struct rte *, struct rte *, struct rte *);
   int (*rte_mergable)(struct rte *, struct rte *);
   void (*rte_insert)(struct network *, struct rte *);
   void (*rte_remove)(struct network *, struct rte *);
@@ -460,6 +459,9 @@ struct channel_config {
   struct channel_limit in_limit;	/* Limit for importing routes from protocol */
   struct channel_limit out_limit;	/* Limit for exporting routes to protocol */
 
+  btime min_settle_time;		/* Minimum settle time for ROA-induced reload */
+  btime max_settle_time;		/* Maximum settle time for ROA-induced reload */
+
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u16 preference;			/* Default route preference */
@@ -476,7 +478,7 @@ struct channel {
   const struct channel_class *channel;
   struct proto *proto;
 
-  struct rtable *table;
+  rtable *table;
   const struct filter *in_filter;	/* Input filter */
   const struct filter *out_filter;	/* Output filter */
   const net_addr *out_subprefix;	/* Export only subprefixes of this net */
@@ -486,6 +488,9 @@ struct channel {
   struct limit rx_limit;		/* Receive limit (for in_keep & RIK_REJECTED) */
   struct limit in_limit;		/* Input limit */
   struct limit out_limit;		/* Output limit */
+
+  btime min_settle_time;		/* Minimum settle time for ROA-induced reload */
+  btime max_settle_time;		/* Maximum settle time for ROA-induced reload */
 
   u8 limit_actions[PLD_MAX];		/* Limit actions enum */
   u8 limit_active;			/* Flags for active limits */
@@ -540,7 +545,7 @@ struct channel {
 
   struct rt_exporter *out_table;	/* Internal table for exported routes */
 
-  list roa_subscriptions;		/* List of active ROA table subscriptions based on filters roa_check() */
+  list roa_subscriptions;		/* List of active ROA table subscriptions based on filters' roa_check() calls */
 };
 
 #define RIK_REJECTED	1			/* Routes rejected in import filter are kept */
@@ -604,7 +609,7 @@ struct channel_config *proto_cf_find_channel(struct proto_config *p, uint net_ty
 static inline struct channel_config *proto_cf_main_channel(struct proto_config *pc)
 { return proto_cf_find_channel(pc, pc->net_type); }
 
-struct channel *proto_find_channel_by_table(struct proto *p, struct rtable *t);
+struct channel *proto_find_channel_by_table(struct proto *p, rtable *t);
 struct channel *proto_find_channel_by_name(struct proto *p, const char *n);
 struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);

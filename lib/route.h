@@ -20,7 +20,7 @@
 struct network;
 struct proto;
 struct cli;
-struct rtable;
+struct rtable_private;
 
 typedef struct rte {
   struct ea_list *attrs;		/* Attributes of this route */
@@ -63,7 +63,7 @@ struct rte_owner_class {
 
 struct rte_owner {
   struct rte_owner_class *class;
-  int (*rte_recalculate)(struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
+  int (*rte_recalculate)(struct rtable_private *, struct network *, struct rte *, struct rte *, struct rte *);
   HASH(struct rte_src) hash;
   const char *name;
   u32 hash_key;

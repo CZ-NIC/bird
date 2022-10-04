@@ -1121,22 +1121,16 @@ rip_rte_proto(struct rte *rte)
     SKIP_BACK(struct rip_proto, p.sources, rte->src->owner) : NULL;
 }
 
-static int
-rip_rte_better(struct rte *new, struct rte *old)
-{
-  ASSERT_DIE(new->src == old->src);
-  struct rip_proto *p = rip_rte_proto(new);
-
-  u32 new_metric = ea_get_int(new->attrs, &ea_rip_metric, p->infinity);
-  u32 old_metric = ea_get_int(old->attrs, &ea_rip_metric, p->infinity);
-
-  return new_metric < old_metric;
-}
-
 static u32
 rip_rte_igp_metric(const rte *rt)
 {
   return ea_get_int(rt->attrs, &ea_rip_metric, IGP_METRIC_UNKNOWN);
+}
+
+static int
+rip_rte_better(struct rte *new, struct rte *old)
+{
+  return rip_rte_igp_metric(new) < rip_rte_igp_metric(old);
 }
 
 static void

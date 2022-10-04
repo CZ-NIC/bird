@@ -436,11 +436,11 @@ static_postconfig(struct proto_config *CF)
 
   if (!cf->igp_table_ip4)
     cf->igp_table_ip4 = (cc->table->addr_type == NET_IP4) ?
-      cc->table : cf->c.global->def_tables[NET_IP4];
+      cc->table : rt_get_default_table(cf->c.global, NET_IP4);
 
   if (!cf->igp_table_ip6)
     cf->igp_table_ip6 = (cc->table->addr_type == NET_IP6) ?
-      cc->table : cf->c.global->def_tables[NET_IP6];
+      cc->table : rt_get_default_table(cf->c.global, NET_IP6);
 
   WALK_LIST(r, cf->routes)
     if (r->net && (r->net->type != CF->net_type))

@@ -227,14 +227,13 @@ table_opt:
        cf_error("Trie option not supported for %s table", net_label[this_table->addr_type]);
      this_table->trie_used = $2;
    }
- | MIN SETTLE TIME expr_us { this_table->min_settle_time = $4; }
- | MAX SETTLE TIME expr_us { this_table->max_settle_time = $4; }
  | GC THRESHOLD expr { this_table->gc_threshold = $3; }
  | GC PERIOD expr_us { this_table->gc_period = (uint) $3; if ($3 > 3600 S_) cf_error("GC period must be at most 3600 s"); }
  | CORK THRESHOLD expr expr {
      if ($3 > $4) cf_error("Cork low threshold must be lower than the high threshold.");
      this_table->cork_threshold.low = $3;
      this_table->cork_threshold.high = $4; }
+ | DEBUG bool { this_table->debug = $2; }
  ;
 
 table_opts:
@@ -322,6 +321,8 @@ channel_item_:
  | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
+ | MIN SETTLE TIME expr_us { this_channel->min_settle_time = $4; }
+ | MAX SETTLE TIME expr_us { this_channel->max_settle_time = $4; }
  | PREFERENCE expr { this_channel->preference = $2; check_u16($2); }
  | IMPORT KEEP FILTERED bool {
      if ($4)
@@ -361,7 +362,11 @@ channel_end:
 proto_channel: channel_start channel_opt_list channel_end;
 
 
-rtable: CF_SYM_KNOWN { cf_assert_symbol($1, SYM_TABLE); $$ = $1->table; } ;
+rtable: CF_SYM_KNOWN {
+  cf_assert_symbol($1, SYM_TABLE);
+  if (!$1->table) rt_new_default_table($1);
+  $$ = $1->table;
+} ;
 
 imexport:
    FILTER filter { $$ = $2; }
@@ -390,7 +395,7 @@ debug_default:
    DEBUG PROTOCOLS debug_mask { new_config->proto_default_debug = $3; }
  | DEBUG CHANNELS debug_mask { new_config->channel_default_debug = $3; }
  | DEBUG COMMANDS expr { new_config->cli_debug = $3; }
- | DEBUG TABLES bool { new_config->table_debug = $3; }
+ | DEBUG TABLES debug_mask { new_config->table_debug = $3; }
  ;
 
 /* MRTDUMP PROTOCOLS is in systep/unix/config.Y */
@@ -683,6 +688,7 @@ r_args:
    }
 | r_args TABLE symbol_known {
      cf_assert_symbol($3, SYM_TABLE);
+     if (!$3->table) cf_error("Table %s not configured", $3->name);
      $$ = $1;
      rt_show_add_table($$, $3->table->table);
      $$->tables_defined_by = RSD_TDB_DIRECT;
@@ -696,7 +702,8 @@ r_args:
    }
  | r_args IMPORT TABLE channel_arg {
      if (!($4->in_keep & RIK_PREFILTER)) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_exporter($$, &$4->table->exporter, "import")->prefilter = $4;
+     RT_LOCKED($4->table, tab)
+       rt_show_add_exporter($$, &tab->exporter.e, "import")->prefilter = $4;
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args EXPORT TABLE channel_arg {
