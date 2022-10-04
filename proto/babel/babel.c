@@ -2259,7 +2259,7 @@ babel_kick_timer(struct babel_proto *p)
 static int
 babel_preexport(struct channel *C, struct rte *new)
 {
-  if (new->src->proto != C->proto)
+  if (new->src->owner != &C->proto->sources)
     return 0;
 
   /* Reject our own unreachable routes */
@@ -2289,7 +2289,7 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net,
     uint rt_metric = ea_get_int(new->attrs, &ea_babel_metric, 0);
     u64 rt_router_id = 0;
 
-    if (new->src->proto == P)
+    if (new->src->owner == &P->sources)
     {
       rt_seqno = ea_get_int(new->attrs, &ea_babel_seqno, 0);
       eattr *e = ea_find(new->attrs, &ea_babel_router_id);
@@ -2373,6 +2373,12 @@ babel_postconfig(struct proto_config *CF)
   cf->ip6_channel = ip6 ?: ip6_sadr;
 }
 
+static struct rte_owner_class babel_rte_owner_class = {
+  .get_route_info =	babel_get_route_info,
+  .rte_better =		babel_rte_better,
+  .rte_igp_metric =	babel_rte_igp_metric,
+};
+
 static struct proto *
 babel_init(struct proto_config *CF)
 {
@@ -2386,8 +2392,8 @@ babel_init(struct proto_config *CF)
   P->if_notify = babel_if_notify;
   P->rt_notify = babel_rt_notify;
   P->preexport = babel_preexport;
-  P->rte_better = babel_rte_better;
-  P->rte_igp_metric = babel_rte_igp_metric;
+
+  P->sources.class = &babel_rte_owner_class;
 
   return P;
 }
@@ -2498,7 +2504,6 @@ struct protocol proto_babel = {
   .start =		babel_start,
   .shutdown =		babel_shutdown,
   .reconfigure =	babel_reconfigure,
-  .get_route_info =	babel_get_route_info,
 };
 
 void

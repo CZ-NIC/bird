@@ -692,7 +692,7 @@
       switch (sa.sa_code)
       {
       case SA_NET:	RESULT(sa.type, net, fs->rte->net); break;
-      case SA_PROTO:	RESULT(sa.type, s, fs->rte->src->proto->name); break;
+      case SA_PROTO:	RESULT(sa.type, s, fs->rte->src->owner->name); break;
       default:
 	{
 	  struct eattr *nhea = ea_find(*fs->eattrs, &ea_gen_nexthop);
@@ -771,7 +771,8 @@
 	  struct iface *ifa = (ipa_is_link_local(ip) && nh_ea) ?
 	    ((struct nexthop_adata *) nh_ea->u.ptr)->nh.iface : NULL;
 	  
-	  neighbor *n = neigh_find(fs->rte->src->proto, ip, ifa, 0);
+	  /* XXX this code supposes that every owner is a protocol XXX */
+	  neighbor *n = neigh_find(SKIP_BACK(struct proto, sources, fs->rte->src->owner), ip, ifa, 0);
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
 

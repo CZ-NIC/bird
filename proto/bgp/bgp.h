@@ -535,6 +535,7 @@ rte_resolvable(const rte *rt)
   return NEXTHOP_IS_REACHABLE(nhad) || (nhad->dest != RTD_UNREACHABLE);
 }
 
+extern struct rte_owner_class bgp_rte_owner_class;
 
 #ifdef LOCAL_DEBUG
 #define BGP_FORCE_DEBUG 1
@@ -584,6 +585,12 @@ void bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *n
 int bgp_preexport(struct channel *, struct rte *);
 void bgp_get_route_info(struct rte *, byte *);
 int bgp_total_aigp_metric_(const rte *e, u64 *metric, const struct adata **ad);
+
+static inline struct bgp_proto *bgp_rte_proto(struct rte *rte)
+{
+  return (rte->src->owner->class == &bgp_rte_owner_class) ?
+    SKIP_BACK(struct bgp_proto, p.sources, rte->src->owner) : NULL;
+}
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)

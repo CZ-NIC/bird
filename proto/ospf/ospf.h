@@ -1002,6 +1002,8 @@ void ospf_sh_state(struct proto *P, int verbose, int reachable);
 
 void ospf_sh_lsadb(struct lsadb_show_data *ld);
 
+extern struct rte_owner_class ospf_rte_owner_class;
+
 /* iface.c */
 void ospf_iface_chstate(struct ospf_iface *ifa, u8 state);
 void ospf_iface_sm(struct ospf_iface *ifa, int event);

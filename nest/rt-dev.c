@@ -68,6 +68,7 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
       /* Use iface ID as local source ID */
       struct rte_src *src = rt_get_source(P, ad->iface->index);
       rte_update(c, net, NULL, src);
+      rt_unlock_source(src);
     }
   else if (flags & IF_CHANGE_UP)
     {
@@ -95,6 +96,7 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
       };
 
       rte_update(c, net, &e0, src);
+      rt_unlock_source(src);
     }
 }
 

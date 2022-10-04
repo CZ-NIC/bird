@@ -377,7 +377,7 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net, s
     en->valid = RIP_ENTRY_VALID;
     en->metric = rt_metric;
     en->tag = rt_tag;
-    en->from = (new->src->proto == P) ? rt_from : NULL;
+    en->from = (new->src->owner == &P->sources) ? rt_from : NULL;
 
     eattr *nhea = ea_find(new->attrs, &ea_gen_nexthop);
     if (nhea)
@@ -1112,11 +1112,20 @@ rip_reload_routes(struct channel *C)
   rip_kick_timer(p);
 }
 
+static struct rte_owner_class rip_rte_owner_class;
+
+static inline struct rip_proto *
+rip_rte_proto(struct rte *rte)
+{
+  return (rte->src->owner->class == &rip_rte_owner_class) ?
+    SKIP_BACK(struct rip_proto, p.sources, rte->src->owner) : NULL;
+}
+
 static int
 rip_rte_better(struct rte *new, struct rte *old)
 {
   ASSERT_DIE(new->src == old->src);
-  struct rip_proto *p = (struct rip_proto *) new->src->proto;
+  struct rip_proto *p = rip_rte_proto(new);
 
   u32 new_metric = ea_get_int(new->attrs, &ea_rip_metric, p->infinity);
   u32 old_metric = ea_get_int(old->attrs, &ea_rip_metric, p->infinity);
@@ -1151,8 +1160,7 @@ rip_init(struct proto_config *CF)
   P->rt_notify = rip_rt_notify;
   P->neigh_notify = rip_neigh_notify;
   P->reload_routes = rip_reload_routes;
-  P->rte_better = rip_rte_better;
-  P->rte_igp_metric = rip_rte_igp_metric;
+  P->sources.class = &rip_rte_owner_class;
 
   return P;
 }
@@ -1227,7 +1235,7 @@ rip_reconfigure(struct proto *P, struct proto_config *CF)
 static void
 rip_get_route_info(rte *rte, byte *buf)
 {
-  struct rip_proto *p = (struct rip_proto *) rte->src->proto;
+  struct rip_proto *p = rip_rte_proto(rte);
   u32 rt_metric = ea_get_int(rte->attrs, &ea_rip_metric, p->infinity);
   u32 rt_tag = ea_get_int(rte->attrs, &ea_rip_tag, 0);
 
@@ -1359,6 +1367,12 @@ rip_dump(struct proto *P)
 }
 
 
+static struct rte_owner_class rip_rte_owner_class = {
+  .get_route_info =	rip_get_route_info,
+  .rte_better =		rip_rte_better,
+  .rte_igp_metric =	rip_rte_igp_metric,
+};
+
 struct protocol proto_rip = {
   .name =		"RIP",
   .template =		"rip%d",
@@ -1372,7 +1386,6 @@ struct protocol proto_rip = {
   .start =		rip_start,
   .shutdown =		rip_shutdown,
   .reconfigure =	rip_reconfigure,
-  .get_route_info =	rip_get_route_info,
 };
 
 void

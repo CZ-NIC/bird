@@ -178,6 +178,8 @@ const char * flowspec_valid_names[FLOWSPEC__MAX] = {
   [FLOWSPEC_INVALID]	= "invalid",
 };
 
+DOMAIN(attrs) attrs_domain;
+
 pool *rta_pool;
 
 static slab *rte_src_slab;
@@ -187,16 +189,14 @@ static struct idm src_ids;
 
 /* rte source hash */
 
-#define RSH_KEY(n)		n->proto, n->private_id
+#define RSH_KEY(n)		n->private_id
 #define RSH_NEXT(n)		n->next
-#define RSH_EQ(p1,n1,p2,n2)	p1 == p2 && n1 == n2
-#define RSH_FN(p,n)		p->hash_key ^ u32_hash(n)
+#define RSH_EQ(n1,n2)		n1 == n2
+#define RSH_FN(n)		u32_hash(n)
 
 #define RSH_REHASH		rte_src_rehash
 #define RSH_PARAMS		/2, *2, 1, 1, 8, 20
-#define RSH_INIT_ORDER		6
-
-static HASH(struct rte_src) src_hash;
+#define RSH_INIT_ORDER		2
 static struct rte_src **rte_src_global;
 static uint rte_src_global_max = SRC_ID_INIT_SIZE;
 
@@ -207,34 +207,44 @@ rte_src_init(void)
   rte_src_global = mb_allocz(rta_pool, sizeof(struct rte_src *) * rte_src_global_max);
 
   idm_init(&src_ids, rta_pool, SRC_ID_INIT_SIZE);
-
-  HASH_INIT(src_hash, rta_pool, RSH_INIT_ORDER);
 }
-
 
 HASH_DEFINE_REHASH_FN(RSH, struct rte_src)
 
-struct rte_src *
-rt_find_source(struct proto *p, u32 id)
+static struct rte_src *
+rt_find_source(struct rte_owner *p, u32 id)
 {
-  return HASH_FIND(src_hash, RSH, p, id);
+  return HASH_FIND(p->hash, RSH, id);
 }
 
 struct rte_src *
-rt_get_source(struct proto *p, u32 id)
+rt_get_source_o(struct rte_owner *p, u32 id)
 {
+  if (p->stop)
+    bug("Stopping route owner asked for another source.");
+
   struct rte_src *src = rt_find_source(p, id);
 
   if (src)
+  {
+    UNUSED u64 uc = atomic_fetch_add_explicit(&src->uc, 1, memory_order_acq_rel);
     return src;
+  }
 
+  RTA_LOCK;
   src = sl_allocz(rte_src_slab);
-  src->proto = p;
+  src->owner = p;
   src->private_id = id;
   src->global_id = idm_alloc(&src_ids);
-  src->uc = 0;
 
-  HASH_INSERT2(src_hash, RSH, rta_pool, src);
+  atomic_store_explicit(&src->uc, 1, memory_order_release);
+  p->uc++;
+
+  HASH_INSERT2(p->hash, RSH, rta_pool, src);
+  if (config->table_debug)
+    log(L_TRACE "Allocated new rte_src for %s, ID %uL %uG, have %u sources now",
+	p->name, src->private_id, src->global_id, p->uc);
+
   if (src->global_id >= rte_src_global_max)
   {
     rte_src_global = mb_realloc(rte_src_global, sizeof(struct rte_src *) * (rte_src_global_max *= 2));
@@ -243,6 +253,7 @@ rt_get_source(struct proto *p, u32 id)
   }
 
   rte_src_global[src->global_id] = src;
+  RTA_UNLOCK;
 
   return src;
 }
@@ -256,23 +267,89 @@ rt_find_source_global(u32 id)
     return rte_src_global[id];
 }
 
-void
-rt_prune_sources(void)
+static inline void
+rt_done_sources(struct rte_owner *o)
 {
-  HASH_WALK_FILTER(src_hash, next, src, sp)
+  ev_send(o->list, o->stop);
+}
+
+void
+rt_prune_sources(void *data)
+{
+  struct rte_owner *o = data;
+
+  HASH_WALK_FILTER(o->hash, next, src, sp)
   {
-    if (src->uc == 0)
+    u64 uc;
+    while ((uc = atomic_load_explicit(&src->uc, memory_order_acquire)) >> RTE_SRC_PU_SHIFT)
+      synchronize_rcu();
+
+    if (uc == 0)
     {
-      HASH_DO_REMOVE(src_hash, RSH, sp);
+      o->uc--;
+
+      HASH_DO_REMOVE(o->hash, RSH, sp);
+
+      RTA_LOCK;
+      rte_src_global[src->global_id] = NULL;
       idm_free(&src_ids, src->global_id);
       sl_free(src);
+      RTA_UNLOCK;
     }
   }
   HASH_WALK_FILTER_END;
 
-  HASH_MAY_RESIZE_DOWN(src_hash, RSH, rta_pool);
+  RTA_LOCK;
+  HASH_MAY_RESIZE_DOWN(o->hash, RSH, rta_pool);
+
+  if (o->stop && !o->uc)
+  {
+    rfree(o->prune);
+    RTA_UNLOCK;
+
+    if (config->table_debug)
+      log(L_TRACE "All rte_src's for %s pruned, scheduling stop event", o->name);
+
+    rt_done_sources(o);
+  }
+  else
+    RTA_UNLOCK;
 }
 
+void
+rt_init_sources(struct rte_owner *o, const char *name, event_list *list)
+{
+  RTA_LOCK;
+  HASH_INIT(o->hash, rta_pool, RSH_INIT_ORDER);
+  o->hash_key = random_u32();
+  o->uc = 0;
+  o->name = name;
+  o->prune = ev_new_init(rta_pool, rt_prune_sources, o);
+  o->stop = NULL;
+  o->list = list;
+  RTA_UNLOCK;
+}
+
+void
+rt_destroy_sources(struct rte_owner *o, event *done)
+{
+  o->stop = done;
+
+  if (!o->uc)
+  {
+    if (config->table_debug)
+      log(L_TRACE "Source owner %s destroy requested. All rte_src's already pruned, scheduling stop event", o->name);
+
+    RTA_LOCK;
+    rfree(o->prune);
+    RTA_UNLOCK;
+
+    rt_done_sources(o);
+  }
+  else
+    if (config->table_debug)
+      log(L_TRACE "Source owner %s destroy requested. Remaining %u rte_src's to prune.", o->name, o->uc);
+}
 
 /*
  *	Multipath Next Hop
@@ -1466,6 +1543,8 @@ ea_show_list(struct cli *c, ea_list *eal)
 void
 rta_init(void)
 {
+  attrs_domain = DOMAIN_NEW(attrs, "Attributes");
+
   rta_pool = rp_new(&root_pool, "Attributes");
 
   rta_alloc_hash();

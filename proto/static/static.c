@@ -50,11 +50,14 @@
 static inline struct rte_src * static_get_source(struct static_proto *p, uint i)
 { return i ? rt_get_source(&p->p, i) : p->p.main_source; }
 
+static inline void static_free_source(struct rte_src *src, uint i)
+{ if (i) rt_unlock_source(src); }
+
 static void
 static_announce_rte(struct static_proto *p, struct static_route *r)
 {
+  struct rte_src *src;
   ea_list *ea = NULL;
-  struct rte_src *src = static_get_source(p, r->index);
   ea_set_attr_u32(&ea, &ea_gen_preference, 0, p->p.main_channel->preference);
   ea_set_attr_u32(&ea, &ea_gen_source, 0, RTS_STATIC);
 
@@ -114,6 +117,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
     return;
 
   /* We skip rta_lookup() here */
+  src = static_get_source(p, r->index);
   rte e0 = { .attrs = ea, .src = src, .net = r->net, }, *e = &e0;
 
   /* Evaluate the filter */
@@ -121,6 +125,8 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
     f_eval_rte(r->cmds, e);
 
   rte_update(p->p.main_channel, r->net, e, src);
+  static_free_source(src, r->index);
+
   r->state = SRS_CLEAN;
   return;
 
@@ -128,7 +134,9 @@ withdraw:
   if (r->state == SRS_DOWN)
     return;
 
+  src = static_get_source(p, r->index);
   rte_update(p->p.main_channel, r->net, NULL, src);
+  static_free_source(src, r->index);
   r->state = SRS_DOWN;
 }
 
@@ -294,7 +302,11 @@ static void
 static_remove_rte(struct static_proto *p, struct static_route *r)
 {
   if (r->state)
-    rte_update(p->p.main_channel, r->net, NULL, static_get_source(p, r->index));
+  {
+    struct rte_src *src = static_get_source(p, r->index);
+    rte_update(p->p.main_channel, r->net, NULL, src);
+    static_free_source(src, r->index);
+  }
 
   static_reset_rte(p, r);
 }
@@ -437,6 +449,8 @@ static_postconfig(struct proto_config *CF)
   static_index_routes(cf);
 }
 
+static struct rte_owner_class static_rte_owner_class;
+
 static struct proto *
 static_init(struct proto_config *CF)
 {
@@ -448,8 +462,7 @@ static_init(struct proto_config *CF)
 
   P->neigh_notify = static_neigh_notify;
   P->reload_routes = static_reload_routes;
-  P->rte_better = static_rte_better;
-  P->rte_mergable = static_rte_mergable;
+  P->sources.class = &static_rte_owner_class;
 
   if (cf->igp_table_ip4)
     p->igp_table_ip4 = cf->igp_table_ip4->table;
@@ -748,6 +761,11 @@ static_show(struct proto *P)
     static_show_rt(r);
 }
 
+static struct rte_owner_class static_rte_owner_class = {
+  .get_route_info =	static_get_route_info,
+  .rte_better =		static_rte_better,
+  .rte_mergable =	static_rte_mergable,
+};
 
 struct protocol proto_static = {
   .name =		"Static",
@@ -763,7 +781,6 @@ struct protocol proto_static = {
   .shutdown =		static_shutdown,
   .reconfigure =	static_reconfigure,
   .copy_config =	static_copy_config,
-  .get_route_info =	static_get_route_info,
 };
 
 void
