@@ -774,8 +774,7 @@ sk_ssh_free(sock *s)
 
   if (ssh->channel)
   {
-    if (ssh_channel_is_open(ssh->channel))
-      ssh_channel_close(ssh->channel);
+    ssh_channel_close(ssh->channel);
     ssh_channel_free(ssh->channel);
     ssh->channel = NULL;
   }
@@ -1153,33 +1152,34 @@ sk_ssh_connect(sock *s)
       int server_identity_is_ok = 1;
 
       /* Check server identity */
-      switch (ssh_is_server_known(s->ssh->session))
+      switch (ssh_session_is_known_server(s->ssh->session))
       {
 #define LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s,msg,args...) log(L_WARN "SSH Identity %s@%s:%u: " msg, (s)->ssh->username, (s)->host, (s)->dport, ## args);
-      case SSH_SERVER_KNOWN_OK:
+      case SSH_KNOWN_HOSTS_OK:
 	/* The server is known and has not changed. */
 	break;
 
-      case SSH_SERVER_NOT_KNOWN:
+      case SSH_KNOWN_HOSTS_UNKNOWN:
 	LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "The server is unknown, its public key was not found in the known host file %s", s->ssh->server_hostkey_path);
+	server_identity_is_ok = 0;
 	break;
 
-      case SSH_SERVER_KNOWN_CHANGED:
+      case SSH_KNOWN_HOSTS_CHANGED:
 	LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "The server key has changed. Either you are under attack or the administrator changed the key.");
 	server_identity_is_ok = 0;
 	break;
 
-      case SSH_SERVER_FILE_NOT_FOUND:
+      case SSH_KNOWN_HOSTS_NOT_FOUND:
 	LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "The known host file %s does not exist", s->ssh->server_hostkey_path);
 	server_identity_is_ok = 0;
 	break;
 
-      case SSH_SERVER_ERROR:
+      case SSH_KNOWN_HOSTS_ERROR:
 	LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "Some error happened");
 	server_identity_is_ok = 0;
 	break;
 
-      case SSH_SERVER_FOUND_OTHER:
+      case SSH_KNOWN_HOSTS_OTHER:
 	LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "The server gave use a key of a type while we had an other type recorded. " \
 					     "It is a possible attack.");
 	server_identity_is_ok = 0;

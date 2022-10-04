@@ -252,6 +252,9 @@ sk_start(sock *s)
 static void
 sockets_remove(struct birdloop *loop, sock *s)
 {
+  if (!enlisted(&s->n))
+    return;
+
   rem_node(&s->n);
   loop->sock_num--;
 

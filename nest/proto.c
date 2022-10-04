@@ -355,7 +355,7 @@ channel_export_one_roa(struct rt_export_request *req, const net_addr *net UNUSED
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
 
   /* TODO: use the information about what roa has changed */
-  settle_kick(&s->settle, &main_birdloop);
+  settle_kick(&s->settle, s->c->proto->loop);
 
   rpe_mark_seen_all(req->hook, first, NULL);
 }
