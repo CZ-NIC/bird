@@ -14,6 +14,7 @@
 #include "nest/bird.h"
 #include "lib/resource.h"
 #include "lib/string.h"
+#include "lib/rcu.h"
 
 /**
  * DOC: Resource pools
@@ -28,12 +29,6 @@
  * Example: Almost all modules of BIRD have their private pool which
  * is freed upon shutdown of the module.
  */
-
-struct pool {
-  resource r;
-  list inside;
-  const char *name;
-};
 
 static void pool_dump(resource *);
 static void pool_free(resource *);
@@ -285,6 +280,7 @@ void
 resource_init(void)
 {
   resource_sys_init();
+  rcu_init();
 
   root_pool.r.class = &pool_class;
   root_pool.name = "Root";

@@ -77,7 +77,11 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
       e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
 
   if (d->verbose)
+  {
     ea_show_list(c, a);
+    cli_printf(c, -1008, "\tInternal route handling values: %uL %uG %uS id %u",
+	e->src->private_id, e->src->global_id, e->stale_cycle, e->id);
+  }
   else if (dest == RTD_UNICAST)
     ea_show_nexthop_list(c, nhad);
   else if (had)
@@ -256,6 +260,18 @@ rt_show_dump_req(struct rt_export_request *req)
 }
 
 static void
+rt_show_done(struct rt_show_data *d)
+{
+  /* No more action */
+  d->cli->cleanup = NULL;
+  d->cli->cont = NULL;
+  d->cli->rover = NULL;
+
+  /* Write pending messages */
+  cli_write_trigger(d->cli);
+}
+
+static void
 rt_show_cont(struct rt_show_data *d)
 {
   struct cli *c = d->cli;
@@ -263,18 +279,13 @@ rt_show_cont(struct rt_show_data *d)
   if (d->running_on_config && (d->running_on_config != config))
   {
     cli_printf(c, 8004, "Stopped due to reconfiguration");
-
-    /* No more action */
-    c->cleanup = NULL;
-    c->cont = NULL;
-    c->rover = NULL;
-    cli_write_trigger(c);
-    return;
+    return rt_show_done(d);
   }
 
   d->req = (struct rt_export_request) {
     .addr = d->addr,
     .name = "CLI Show Route",
+    .list = &global_work_list,
     .export_bulk = rt_show_net_export_bulk,
     .dump_req = rt_show_dump_req,
     .log_state_change = rt_show_log_state_change,
@@ -316,7 +327,6 @@ rt_show_export_stopped(struct rt_export_request *req)
   if (NODE_VALID(d->tab))
     return rt_show_cont(d);
 
-
   /* Printout total stats */
   if (d->stats && (d->table_counter > 1))
   {
@@ -329,7 +339,8 @@ rt_show_export_stopped(struct rt_export_request *req)
   else
     cli_printf(d->cli, 0, "");
 
-  cli_write_trigger(d->cli);
+  /* No more route showing */
+  rt_show_done(d);
 }
 
 struct rt_show_data_rtable *

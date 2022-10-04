@@ -1901,7 +1901,6 @@ bgp_out_table_export_start(struct rt_exporter *re, struct rt_export_request *req
   pool *p = rp_new(c->c.proto->pool, "Export hook");
   struct rt_export_hook *hook = mb_allocz(p, sizeof(struct rt_export_hook));
   hook->pool = p;
-  hook->lp = lp_new_default(p);
   hook->event = ev_new_init(p, bgp_out_table_feed, hook);
   hook->feed_type = TFT_HASH;
 
@@ -1919,6 +1918,7 @@ bgp_setup_out_table(struct bgp_channel *c)
   };
 
   init_list(&c->prefix_exporter.hooks);
+  init_list(&c->prefix_exporter.pending);
 
   c->c.out_table = &c->prefix_exporter;
 }
@@ -1929,10 +1929,10 @@ bgp_setup_out_table(struct bgp_channel *c)
  */
 
 int
-bgp_preexport(struct channel *c, rte *e)
+bgp_preexport(struct channel *C, rte *e)
 {
   struct proto *SRC = e->src->proto;
-  struct bgp_proto *p = (struct bgp_proto *) (c->proto);
+  struct bgp_proto *p = (struct bgp_proto *) C->proto;
   struct bgp_proto *src = (SRC->proto == &proto_bgp) ? (struct bgp_proto *) SRC : NULL;
 
   /* Reject our routes */
@@ -2546,27 +2546,57 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
     return !old_suppressed;
 }
 
-rte *
-bgp_rte_modify_stale(struct rte *r, struct linpool *pool)
+void
+bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *rpe UNUSED, rte **feed, uint count)
 {
-  eattr *ea = ea_find(r->attrs, BGP_EA_ID(BA_COMMUNITY));
-  const struct adata *ad = ea ? ea->u.ptr : NULL;
-  uint flags = ea ? ea->flags : BAF_PARTIAL;
+  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, stale_feed, req);
+  struct rt_import_hook *irh = c->c.in_req.hook;
 
-  if (ad && int_set_contains(ad, BGP_COMM_NO_LLGR))
-    return NULL;
+  /* Find our routes among others */
+  for (uint i=0; i<count; i++)
+  {
+    rte *r = feed[i];
 
-  if (ad && int_set_contains(ad, BGP_COMM_LLGR_STALE))
-    return r;
+    if (
+	!rte_is_valid(r) ||			/* Not a valid route */
+	(r->sender != irh) ||			/* Not our route */
+	(r->stale_cycle == irh->stale_set))	/* A new route, do not mark as stale */
+      continue;
 
-  _Thread_local static rte e0;
-  e0 = *r;
+    eattr *ea = ea_find(r->attrs, BGP_EA_ID(BA_COMMUNITY));
+    const struct adata *ad = ea ? ea->u.ptr : NULL;
+    uint flags = ea ? ea->flags : BAF_PARTIAL;
 
-  bgp_set_attr_ptr(&e0.attrs, BA_COMMUNITY, flags,
-		   int_set_add(pool, ad, BGP_COMM_LLGR_STALE));
-  e0.pflags |= BGP_REF_STALE;
+    /* LLGR not allowed, withdraw the route */
+    if (ad && int_set_contains(ad, BGP_COMM_NO_LLGR))
+    {
+      rte_import(&c->c.in_req, n, NULL, r->src);
+      continue;
+    }
 
-  return &e0;
+    /* Route already marked as LLGR, do nothing */
+    if (ad && int_set_contains(ad, BGP_COMM_LLGR_STALE))
+      continue;
+
+    /* Store the tmp_linpool state to aggresively save memory */
+    struct lp_state tmpp;
+    lp_save(tmp_linpool, &tmpp);
+
+    /* Mark the route as LLGR */
+    rte e0 = *r;
+    bgp_set_attr_ptr(&e0.attrs, BA_COMMUNITY, flags, int_set_add(tmp_linpool, ad, BGP_COMM_LLGR_STALE));
+    e0.pflags &= ~BGP_REF_NOT_STALE;
+    e0.pflags |= BGP_REF_STALE;
+
+    /* We need to update the route but keep it stale. */
+    ASSERT_DIE(irh->stale_set == irh->stale_valid + 1);
+    irh->stale_set--;
+    rte_import(&c->c.in_req, n, &e0, r->src);
+    irh->stale_set++;
+
+    /* Restore the memory state */
+    lp_restore(tmp_linpool, &tmpp);
+  }
 }
 
 

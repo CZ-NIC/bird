@@ -3175,6 +3175,21 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
   }
 }
 
+void
+bgp_uncork(void *vp)
+{
+  struct bgp_proto *p = vp;
+
+  if (p && p->conn && (p->conn->state == BS_ESTABLISHED) && !p->conn->sk->rx_hook)
+  {
+    struct birdsock *sk = p->conn->sk;
+    ASSERT_DIE(sk->rpos > sk->rbuf);
+    sk->rx_hook = bgp_rx;
+    bgp_rx(sk, sk->rpos - sk->rbuf);
+    BGP_TRACE(D_PACKETS, "Uncorked");
+  }
+}
+
 /**
  * bgp_rx - handle received data
  * @sk: socket
@@ -3189,6 +3204,7 @@ int
 bgp_rx(sock *sk, uint size)
 {
   struct bgp_conn *conn = sk->data;
+  struct bgp_proto *p = conn->bgp;
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
   uint i, len;
@@ -3198,6 +3214,12 @@ bgp_rx(sock *sk, uint size)
     {
       if ((conn->state == BS_CLOSE) || (conn->sk != sk))
 	return 0;
+      if ((conn->state == BS_ESTABLISHED) && rt_cork_check(conn->bgp->uncork_ev))
+      {
+	sk->rx_hook = NULL;
+	BGP_TRACE(D_PACKETS, "Corked");
+	return 0;
+      }
       for(i=0; i<16; i++)
 	if (pkt_start[i] != 0xff)
 	  {

@@ -28,6 +28,7 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/event.h"
+#include "lib/locking.h"
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/rt.h"
@@ -116,7 +117,7 @@ add_num_const(char *name, int val, const char *file, const uint line)
   struct f_val *v = cfg_alloc(sizeof(struct f_val));
   *v = (struct f_val) { .type = T_INT, .val.i = val };
   struct symbol *sym = cf_get_symbol(name);
-  if (sym->class && (sym->scope == conf_this_scope))
+  if (sym->class && cf_symbol_is_local(sym))
     cf_error("Error reading value for %s from %s:%d: already defined", name, file, line);
 
   cf_define_symbol(sym, SYM_CONSTANT | T_INT, val, v);
@@ -873,13 +874,16 @@ main(int argc, char **argv)
     dmalloc_debug(0x2f03d00);
 #endif
 
+  times_update();
   parse_args(argc, argv);
   log_switch(1, NULL, NULL);
+
+  the_bird_lock();
 
   random_init();
   net_init();
   resource_init();
-  timer_init();
+  birdloop_init();
   olock_init();
   rt_init();
   io_init();
@@ -926,6 +930,7 @@ main(int argc, char **argv)
       dup2(0, 1);
       dup2(0, 2);
     }
+
 
   main_thread_init();
 

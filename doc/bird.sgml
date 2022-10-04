@@ -684,6 +684,30 @@ to set options.
 	limit to the settle time from the initial ROA table change even if
 	there are consecutive updates gradually renewing the settle time.
 	Default: 20 s.
+
+	<tag><label id="rtable-gc-threshold">gc threshold <m/number/</tag>
+	Specify a minimum amount of removed networks that triggers a garbage
+	collection (GC) cycle. Default: 1000.
+
+	<tag><label id="rtable-gc-period">gc period <m/time/</tag>
+	Specify a period of time between consecutive GC cycles. When there is a
+	significant amount of route withdraws, GC cycles are executed repeatedly
+	with given period time (with some random factor). When there is just
+	small amount of changes, GC cycles are not executed. In extensive route
+	server setups, running GC on hundreds of full BGP routing tables can
+	take significant amount of time, therefore they should use higher GC
+	periods. Default: adaptive, based on number of routing tables in the
+	configuration. From 10 s (with <= 25 routing tables) up to 600 s (with
+	>= 1500 routing tables).
+
+	<tag><label id="rtable-cork-threshold">cork threshold <m/number/ <m/number/</tag>
+	Too many pending exports may lead to memory bloating. In such cases,
+        BIRD tries to relieve the memory pressure by pausing some routines until
+        the queue sizes get low enough. This option allows the user to set the
+        thresholds; first value is the low threshold (when to resume), the
+        second one is the high threshold (when to pause). The higher is the
+        threshold, the more memory can get used. In most cases, the defaults
+	should work for you. Default: 128, 512.
 </descrip>
 
 
@@ -1247,8 +1271,8 @@ this:
 
 <code>
 filter not_too_far
-int var;
 {
+	int var;
 	if defined( rip_metric ) then
 		var = rip_metric;
 	else {
@@ -1277,9 +1301,9 @@ local variables. Recursion is not allowed. Function definitions look like this:
 
 <code>
 function name ()
-int local_variable;
 {
-	local_variable = 5;
+	int local_variable;
+	int another_variable = 5;
 }
 
 function with_parameters (int parameter)
@@ -1288,16 +1312,19 @@ function with_parameters (int parameter)
 }
 </code>
 
-<p>Unlike in C, variables are declared after the <cf/function/ line, but before
-the first <cf/{/. You can't declare variables in nested blocks. Functions are
-called like in C: <cf>name(); with_parameters(5);</cf>. Function may return
-values using the <cf>return <m/[expr]/</cf> command. Returning a value exits
-from current function (this is similar to C).
+<p>Like in C programming language, variables are declared inside function body,
+either at the beginning, or mixed with other statements. Declarations may
+contain initialization. You can also declare variables in nested blocks, such
+variables have scope restricted to such block. There is a deprecated syntax to
+declare variables after the <cf/function/ line, but before the first <cf/{/.
+Functions are called like in C: <cf>name(); with_parameters(5);</cf>. Function
+may return values using the <cf>return <m/[expr]/</cf> command. Returning a
+value exits from current function (this is similar to C).
 
-<p>Filters are defined in a way similar to functions except they can't have
+<p>Filters are defined in a way similar to functions except they cannot have
 explicit parameters. They get a route table entry as an implicit parameter, it
 is also passed automatically to any functions called. The filter must terminate
-with either <cf/accept/ or <cf/reject/ statement. If there's a runtime error in
+with either <cf/accept/ or <cf/reject/ statement. If there is a runtime error in
 filter, the route is rejected.
 
 <p>A nice trick to debug filters is to use <cf>show route filter <m/name/</cf>
@@ -1667,13 +1694,22 @@ prefix and an ASN as arguments.
 <sect>Control structures
 <label id="control-structures">
 
-<p>Filters support two control structures: conditions and case switches.
+<p>Filters support several control structures: conditions, for loops and case
+switches.
 
 <p>Syntax of a condition is: <cf>if <M>boolean expression</M> then <m/commandT/;
 else <m/commandF/;</cf> and you can use <cf>{ <m/command1/; <m/command2/;
 <M>...</M> }</cf> instead of either command. The <cf>else</cf> clause may be
 omitted. If the <cf><m>boolean expression</m></cf> is true, <m/commandT/ is
 executed, otherwise <m/commandF/ is executed.
+
+<p>For loops allow to iterate over elements in compound data like BGP paths or
+community lists. The syntax is: <cf>for [ <m/type/ ] <m/variable/ in <m/expr/
+do <m/command/;</cf> and you can also use compound command like in conditions.
+The expression is evaluated to a compound data, then for each element from such
+data the command is executed with the item assigned to the variable. A variable
+may be an existing one (when just name is used) or a locally defined (when type
+and name is used). In both cases, it must have the same type as elements.
 
 <p>The <cf>case</cf> is similar to case from Pascal. Syntax is <cf>case
 <m/expr/ { else: | <m/num_or_prefix [ .. num_or_prefix]/: <m/statement/ ; [
@@ -1687,15 +1723,20 @@ neither of the <cf/:/ clauses, the statements after <cf/else:/ are executed.
 <p>Here is example that uses <cf/if/ and <cf/case/ structures:
 
 <code>
+if 1234 = i then printn "."; else {
+	print "not 1234";
+	print "You need {} around multiple commands";
+}
+
+for int asn in bgp_path do {
+	printn "ASN: ", asn;
+	if asn < 65536 then print " (2B)"; else print " (4B)";
+}
+
 case arg1 {
 	2: print "two"; print "I can do more commands without {}";
 	3 .. 5: print "three to five";
 	else: print "something else";
-}
-
-if 1234 = i then printn "."; else {
-  print "not 1234";
-  print "You need {} around multiple commands";
 }
 </code>
 

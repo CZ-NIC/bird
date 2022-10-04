@@ -54,7 +54,6 @@ t_ev_run_list(void)
   int i;
 
   olock_init();
-  timer_init();
   rt_init();
   io_init();
   if_init();

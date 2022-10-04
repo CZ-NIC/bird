@@ -17,6 +17,10 @@
 #include "lib/type.h"
 #include "lib/fib.h"
 #include "lib/route.h"
+#include "lib/event.h"
+#include "lib/rcu.h"
+
+#include <stdatomic.h>
 
 struct ea_list;
 struct protocol;
@@ -29,6 +33,10 @@ struct filter;
 struct f_trie;
 struct f_trie_walk_state;
 struct cli;
+
+struct rt_cork_threshold {
+  u64 low, high;
+};
 
 /*
  *	Master Routing Tables. Generally speaking, each of them contains a FIB
@@ -47,13 +55,14 @@ struct rtable_config {
   struct rtable *table;
   struct proto_config *krt_attached;	/* Kernel syncer attached to this table */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
-  int gc_max_ops;			/* Maximum number of operations before GC is run */
-  int gc_min_time;			/* Minimum time between two consecutive GC runs */
+  uint gc_threshold;			/* Maximum number of operations before GC is run */
+  uint gc_period;			/* Approximate time between two consecutive GC runs */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
-  byte internal;			/* Internal table of a protocol */
   byte trie_used;			/* Rtable has attached trie */
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
+  btime export_settle_time;		/* Delay before exports are announced */
+  struct rt_cork_threshold cork_threshold;	/* Cork threshold values */
 };
 
 struct rt_export_hook;
@@ -62,9 +71,17 @@ struct rt_export_request;
 struct rt_exporter {
   list hooks;				/* Registered route export hooks */
   uint addr_type;			/* Type of address data exported (NET_*) */
+
   struct rt_export_hook *(*start)(struct rt_exporter *, struct rt_export_request *);
   void (*stop)(struct rt_export_hook *);
   void (*done)(struct rt_export_hook *);
+  void (*used)(struct rt_exporter *);
+
+  list pending;				/* List of packed struct rt_pending_export */
+  struct timer *export_timer;
+
+  struct rt_pending_export *first;	/* First export to announce */
+  u64 next_seq;				/* The next export will have this ID */
 };
 
 typedef struct rtable {
@@ -90,15 +107,21 @@ typedef struct rtable {
 					 * obstacle from this routing table.
 					 */
   struct event *rt_event;		/* Routing table event */
+  struct event *uncork_event;		/* Called when uncork happens */
+  struct timer *prune_timer;		/* Timer for periodic pruning / GC */
   btime last_rt_change;			/* Last time when route changed */
   btime base_settle_time;		/* Start time of rtable settling interval */
   btime gc_time;			/* Time of last GC */
-  int gc_counter;			/* Number of operations since last GC */
+  uint gc_counter;			/* Number of operations since last GC */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte prune_trie;			/* Prune prefix trie during next table prune */
   byte hcu_scheduled;			/* Hostcache update is scheduled */
+  byte hcu_corked;			/* Hostcache update is corked with this state */
   byte nhu_state;			/* Next Hop Update state */
-  byte internal;			/* This table is internal for some other object */
+  byte nhu_corked;			/* Next Hop Update is corked with this state */
+  byte export_used;			/* Pending Export pruning is scheduled */
+  byte cork_active;			/* Cork has been activated */
+  struct rt_cork_threshold cork_threshold;	/* Threshold for table cork */
   struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
   struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
   struct f_trie *trie_new;		/* New prefix trie defined during pruning */
@@ -127,13 +150,48 @@ struct rt_flowspec_link {
   u32 uc;
 };
 
+extern struct rt_cork {
+  _Atomic uint active;
+  event_list queue;
+  event run;
+} rt_cork;
+
+static inline void rt_cork_acquire(void)
+{
+  atomic_fetch_add_explicit(&rt_cork.active, 1, memory_order_acq_rel);
+}
+
+static inline void rt_cork_release(void)
+{
+  if (atomic_fetch_sub_explicit(&rt_cork.active, 1, memory_order_acq_rel) == 1)
+  {
+    synchronize_rcu();
+    ev_schedule_work(&rt_cork.run);
+  }
+}
+
+static inline int rt_cork_check(event *e)
+{
+  rcu_read_lock();
+
+  int corked = (atomic_load_explicit(&rt_cork.active, memory_order_acquire) > 0);
+  if (corked)
+    ev_send(&rt_cork.queue, e);
+
+  rcu_read_unlock();
+
+  return corked;
+}
+
+
 #define NHU_CLEAN	0
 #define NHU_SCHEDULED	1
 #define NHU_RUNNING	2
 #define NHU_DIRTY	3
 
 typedef struct network {
-  struct rte_storage *routes;			/* Available routes for this network */
+  struct rte_storage *routes;		/* Available routes for this network */
+  struct rt_pending_export *first, *last;
   struct fib_node n;			/* FIB flags reserved for kernel syncer */
 } net;
 
@@ -168,8 +226,10 @@ struct rte_storage {
   struct rte rte;			/* Route data */
 };
 
-#define RTE_COPY(r, l) ((r) ? (((*(l)) = (r)->rte), (l)) : NULL)
-#define RTE_OR_NULL(r) ((r) ? &((r)->rte) : NULL)
+#define RTE_COPY(r)		((r) ? (r)->rte : (rte) {})
+#define RTE_COPY_VALID(r)	(((r) && (rte_is_valid(&(r)->rte))) ? (r)->rte : (rte) {})
+#define RTE_OR_NULL(r)		((r) ? &((r)->rte) : NULL)
+#define RTE_VALID_OR_NULL(r)	(((r) && (rte_is_valid(&(r)->rte))) ? &((r)->rte) : NULL)
 
 /* Table-channel connections */
 
@@ -183,7 +243,6 @@ struct rt_import_request {
   /* Preimport is called when the @new route is just-to-be inserted, replacing @old.
    * Return a route (may be different or modified in-place) to continue or NULL to withdraw. */
   int (*preimport)(struct rt_import_request *req, struct rte *new, struct rte *old);
-  struct rte *(*rte_modify)(struct rte *, struct linpool *);
 };
 
 struct rt_import_hook {
@@ -200,15 +259,22 @@ struct rt_import_hook {
     u32 withdraws_accepted;		/* Number of route withdraws accepted and processed */
   } stats;
 
+  u64 flush_seq;			/* Table export seq when the channel announced flushing */
   btime last_state_change;		/* Time of last state transition */
 
   u8 import_state;			/* IS_* */
+  u8 stale_set;				/* Set this stale_cycle to imported routes */
+  u8 stale_valid;			/* Routes with this stale_cycle and bigger are considered valid */
+  u8 stale_pruned;			/* Last prune finished when this value was set at stale_valid */
+  u8 stale_pruning;			/* Last prune started when this value was set at stale_valid */
 
   void (*stopped)(struct rt_import_request *);	/* Stored callback when import is stopped */
 };
 
 struct rt_pending_export {
+  struct rt_pending_export * _Atomic next;	/* Next export for the same destination */
   struct rte_storage *new, *new_best, *old, *old_best;
+  u64 seq;				/* Sequential ID (table-local) of the pending export */
 };
 
 struct rt_export_request {
@@ -217,6 +283,8 @@ struct rt_export_request {
   const net_addr *addr;			/* Network prefilter address */
   u8 trace_routes;
   u8 addr_mode;				/* Network prefilter mode (TE_ADDR_*) */
+
+  event_list *list;			/* Where to schedule export events */
 
   /* There are two methods of export. You can either request feeding every single change
    * or feeding the whole route feed. In case of regular export, &export_one is preferred.
@@ -237,7 +305,6 @@ struct rt_export_hook {
   struct rt_exporter *table;		/* The connected table */
 
   pool *pool;
-  linpool *lp;
 
   struct rt_export_request *req;	/* The requestor */
 
@@ -256,10 +323,15 @@ struct rt_export_hook {
     u32 hash_iter;				/* Iterator over hash */
   };
 
+  struct bmap seq_map;			/* Keep track which exports were already procesed */
+
+  struct rt_pending_export * _Atomic last_export;/* Last export processed */
+  struct rt_pending_export *rpe_next;	/* Next pending export to process */
+
   btime last_state_change;		/* Time of last state transition */
 
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
-  u8 export_state;			/* Route export state (TES_*, see below) */
+  _Atomic u8 export_state;		/* Route export state (TES_*, see below) */
   u8 feed_type;				/* Which feeding method is used (TFT_*, see below) */
 
   struct event *event;			/* Event running all the export operations */
@@ -309,6 +381,15 @@ static inline u8 rt_export_get_state(struct rt_export_hook *eh) { return eh ? eh
 void rt_set_export_state(struct rt_export_hook *hook, u8 state);
 
 void rte_import(struct rt_import_request *req, const net_addr *net, rte *new, struct rte_src *src);
+
+/* Get next rpe. If src is given, it must match. */
+struct rt_pending_export *rpe_next(struct rt_pending_export *rpe, struct rte_src *src);
+
+/* Mark the pending export processed */
+void rpe_mark_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
+
+/* Get pending export seen status */
+int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
 
 /* Types of route announcement, also used as flags */
 #define RA_UNDEF	0		/* Undefined RA type */
@@ -363,6 +444,7 @@ struct config;
 
 void rt_init(void);
 void rt_preconfig(struct config *);
+void rt_postconfig(struct config *);
 void rt_commit(struct config *new, struct config *old);
 void rt_lock_table(rtable *);
 void rt_unlock_table(rtable *);
@@ -383,8 +465,8 @@ net *net_get(rtable *tab, const net_addr *addr);
 net *net_route(rtable *tab, const net_addr *n);
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, rte ** feed, uint count, linpool *pool, int silent);
-void rt_refresh_begin(rtable *t, struct rt_import_request *);
-void rt_refresh_end(rtable *t, struct rt_import_request *);
+void rt_refresh_begin(struct rt_import_request *);
+void rt_refresh_end(struct rt_import_request *);
 void rt_modify_stale(rtable *t, struct rt_import_request *);
 void rt_schedule_prune(rtable *t);
 void rte_dump(struct rte_storage *);

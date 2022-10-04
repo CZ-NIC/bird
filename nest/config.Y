@@ -125,7 +125,7 @@ CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
 CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
-CF_KEYWORDS(SORTED, TRIE, MIN, MAX, SETTLE, TIME)
+CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
@@ -165,7 +165,7 @@ rtrid:
 
 idval:
    NUM { $$ = $1; }
- | '(' term ')' { $$ = f_eval_int(f_linearize($2)); }
+ | '(' term ')' { $$ = f_eval_int(f_linearize($2, 1)); }
  | IP4 { $$ = ip4_to_u32($1); }
  | CF_SYM_KNOWN {
      if ($1->class == (SYM_CONSTANT | T_INT) || $1->class == (SYM_CONSTANT | T_QUAD))
@@ -229,6 +229,12 @@ table_opt:
    }
  | MIN SETTLE TIME expr_us { this_table->min_settle_time = $4; }
  | MAX SETTLE TIME expr_us { this_table->max_settle_time = $4; }
+ | GC THRESHOLD expr { this_table->gc_threshold = $3; }
+ | GC PERIOD expr_us { this_table->gc_period = (uint) $3; if ($3 > 3600 S_) cf_error("GC period must be at most 3600 s"); }
+ | CORK THRESHOLD expr expr {
+     if ($3 > $4) cf_error("Cork low threshold must be lower than the high threshold.");
+     this_table->cork_threshold.low = $3;
+     this_table->cork_threshold.high = $4; }
  ;
 
 table_opts:
@@ -384,7 +390,7 @@ debug_default:
    DEBUG PROTOCOLS debug_mask { new_config->proto_default_debug = $3; }
  | DEBUG CHANNELS debug_mask { new_config->channel_default_debug = $3; }
  | DEBUG COMMANDS expr { new_config->cli_debug = $3; }
- | DEBUG PIPE bool { new_config->pipe_debug = $3; }
+ | DEBUG TABLES bool { new_config->table_debug = $3; }
  ;
 
 /* MRTDUMP PROTOCOLS is in systep/unix/config.Y */
@@ -470,6 +476,7 @@ proto: dev_proto '}' ;
 dev_proto_start: proto_start DIRECT {
      this_proto = proto_config_new(&proto_device, $1);
      init_list(&DIRECT_CFG->iface_list);
+     this_proto->late_if_feed = 1;
    }
  ;
 
@@ -875,7 +882,7 @@ CF_CLI(DUMP FILTER ALL,,, [[Dump all filters in linearized form]])
 { filters_dump_all(); cli_msg(0, ""); } ;
 
 CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]])
-{ cmd_eval(f_linearize($2)); } ;
+{ cmd_eval(f_linearize($2, 1)); } ;
 
 CF_CLI_HELP(ECHO, ..., [[Control echoing of log messages]])
 CF_CLI(ECHO, echo_mask echo_size, (all | off | { debug|trace|info|remote|warning|error|auth [, ...] }) [<buffer-size>], [[Control echoing of log messages]]) {

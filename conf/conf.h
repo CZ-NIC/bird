@@ -44,7 +44,7 @@ struct config {
 
   int cli_debug;			/* Tracing of CLI connections and commands */
   int latency_debug;			/* I/O loop tracks duration of each event */
-  int pipe_debug;			/* Track route propagation through pipes */
+  int table_debug;			/* Track route propagation through tables */
   u32 latency_limit;			/* Events with longer duration are logged (us) */
   u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */
   u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
@@ -136,7 +136,8 @@ struct sym_scope {
   HASH(struct symbol) hash;		/* Local symbol hash */
 
   uint slots;				/* Variable slots */
-  int active;				/* Currently entered */
+  byte active;				/* Currently entered */
+  byte soft_scopes;			/* Number of soft scopes above */
 };
 
 extern struct sym_scope *global_root_scope;
@@ -202,6 +203,9 @@ struct symbol *cf_get_symbol(const byte *c);
 struct symbol *cf_default_name(char *template, int *counter);
 struct symbol *cf_localize_symbol(struct symbol *sym);
 
+static inline int cf_symbol_is_local(struct symbol *sym)
+{ return (sym->scope == conf_this_scope) && !conf_this_scope->soft_scopes; }
+
 /**
  * cf_define_symbol - define meaning of a symbol
  * @sym: symbol to be defined
@@ -225,6 +229,9 @@ struct symbol *cf_localize_symbol(struct symbol *sym);
 
 void cf_push_scope(struct symbol *);
 void cf_pop_scope(void);
+void cf_push_soft_scope(void);
+void cf_pop_soft_scope(void);
+
 char *cf_symbol_class_name(struct symbol *sym);
 
 /* Parser */

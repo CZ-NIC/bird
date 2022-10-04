@@ -486,13 +486,13 @@ ospf_disp(timer * timer)
  * import to the filters.
  */
 static int
-ospf_preexport(struct channel *c, rte *e)
+ospf_preexport(struct channel *C, rte *e)
 {
-  struct ospf_proto *p = (struct ospf_proto *) c->proto;
+  struct ospf_proto *p = (struct ospf_proto *) C->proto;
   struct ospf_area *oa = ospf_main_area(p);
 
   /* Reject our own routes */
-  if (e->src->proto == c->proto)
+  if (e->src->proto == &p->p)
     return -1;
 
   /* Do not export routes to stub areas */

@@ -36,12 +36,14 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/event.h"
+#include "lib/locking.h"
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/iface.h"
 #include "conf/conf.h"
 
 #include "sysdep/unix/unix.h"
+#include "sysdep/unix/io-loop.h"
 #include CONFIG_INCLUDE_SYSIO_H
 
 /* Maximum number of calls of tx handler for one socket in one
@@ -122,11 +124,15 @@ rf_fileno(struct rfile *f)
 
 btime boot_time;
 
+
 void
-times_init(struct timeloop *loop)
+times_update(void)
 {
   struct timespec ts;
   int rv;
+
+  btime old_time = current_time();
+  btime old_real_time = current_real_time();
 
   rv = clock_gettime(CLOCK_MONOTONIC, &ts);
   if (rv < 0)
@@ -134,43 +140,34 @@ times_init(struct timeloop *loop)
 
   if ((ts.tv_sec < 0) || (((u64) ts.tv_sec) > ((u64) 1 << 40)))
     log(L_WARN "Monotonic clock is crazy");
-
-  loop->last_time = ts.tv_sec S + ts.tv_nsec NS;
-  loop->real_time = 0;
-}
-
-void
-times_update(struct timeloop *loop)
-{
-  struct timespec ts;
-  int rv;
-
-  rv = clock_gettime(CLOCK_MONOTONIC, &ts);
-  if (rv < 0)
-    die("clock_gettime: %m");
-
+  
   btime new_time = ts.tv_sec S + ts.tv_nsec NS;
 
-  if (new_time < loop->last_time)
+  if (new_time < old_time)
     log(L_ERR "Monotonic clock is broken");
-
-  loop->last_time = new_time;
-  loop->real_time = 0;
-}
-
-void
-times_update_real_time(struct timeloop *loop)
-{
-  struct timespec ts;
-  int rv;
 
   rv = clock_gettime(CLOCK_REALTIME, &ts);
   if (rv < 0)
     die("clock_gettime: %m");
 
-  loop->real_time = ts.tv_sec S + ts.tv_nsec NS;
-}
+  btime new_real_time = ts.tv_sec S + ts.tv_nsec NS;
 
+  if (!atomic_compare_exchange_strong_explicit(
+      &last_time,
+      &old_time,
+      new_time,
+      memory_order_acq_rel,
+      memory_order_relaxed))
+    DBG("Time update collision: last_time");
+
+  if (!atomic_compare_exchange_strong_explicit(
+      &real_time,
+      &old_real_time,
+      new_real_time,
+      memory_order_acq_rel,
+      memory_order_relaxed))
+    DBG("Time update collision: real_time");
+}
 
 /**
  * DOC: Sockets
@@ -804,18 +801,16 @@ sk_free(resource *r)
     sk_ssh_free(s);
 #endif
 
-  if (s->fd < 0)
+  if ((s->fd < 0) || (s->flags & SKF_THREAD))
     return;
 
-  /* FIXME: we should call sk_stop() for SKF_THREAD sockets */
-  if (!(s->flags & SKF_THREAD))
-  {
-    if (s == current_sock)
-      current_sock = sk_next(s);
-    if (s == stored_sock)
-      stored_sock = sk_next(s);
+  if (s == current_sock)
+    current_sock = sk_next(s);
+  if (s == stored_sock)
+    stored_sock = sk_next(s);
+
+  if (enlisted(&s->n))
     rem_node(&s->n);
-  }
 
   if (s->type != SK_SSH && s->type != SK_SSH_ACTIVE)
     close(s->fd);
@@ -1108,7 +1103,11 @@ sk_passive_connected(sock *s, int type)
     return 1;
   }
 
-  sk_insert(t);
+  if (s->flags & SKF_PASSIVE_THREAD)
+    t->flags |= SKF_THREAD;
+  else
+    sk_insert(t);
+
   sk_alloc_bufs(t);
   s->rx_hook(t, 0);
   return 1;
@@ -1514,6 +1513,36 @@ sk_open_unix(sock *s, char *name)
   s->fd = fd;
   sk_insert(s);
   return 0;
+}
+
+static void
+sk_reloop_hook(void *_vs)
+{
+  sock *s = _vs;
+  if (birdloop_inside(&main_birdloop))
+  {
+    s->flags &= ~SKF_THREAD;
+    sk_insert(s);
+  }
+  else
+  {
+    s->flags |= SKF_THREAD;
+    sk_start(s);
+  }
+}
+
+void
+sk_reloop(sock *s, struct birdloop *loop)
+{
+  if (enlisted(&s->n))
+    rem_node(&s->n);
+
+  s->reloop = (event) {
+    .hook = sk_reloop_hook,
+    .data = s,
+  };
+
+  ev_send_loop(loop, &s->reloop);
 }
 
 
@@ -2037,34 +2066,21 @@ struct event_log_entry
 static struct event_log_entry event_log[EVENT_LOG_LENGTH];
 static struct event_log_entry *event_open;
 static int event_log_pos, event_log_num, watchdog_active;
-static btime last_time;
+static btime last_io_time;
 static btime loop_time;
 
 static void
 io_update_time(void)
 {
-  struct timespec ts;
-  int rv;
-
-  /*
-   * This is third time-tracking procedure (after update_times() above and
-   * times_update() in BFD), dedicated to internal event log and latency
-   * tracking. Hopefully, we consolidate these sometimes.
-   */
-
-  rv = clock_gettime(CLOCK_MONOTONIC, &ts);
-  if (rv < 0)
-    die("clock_gettime: %m");
-
-  last_time = ts.tv_sec S + ts.tv_nsec NS;
+  last_io_time = current_time();
 
   if (event_open)
   {
-    event_open->duration = last_time - event_open->timestamp;
+    event_open->duration = last_io_time - event_open->timestamp;
 
     if (event_open->duration > config->latency_limit)
-      log(L_WARN "Event 0x%p 0x%p took %d ms",
-	  event_open->hook, event_open->data, (int) (event_open->duration TO_MS));
+      log(L_WARN "Event 0x%p 0x%p took %u.%03u ms",
+	  event_open->hook, event_open->data, (uint) (event_open->duration TO_MS), (uint) (event_open->duration % 1000));
 
     event_open = NULL;
   }
@@ -2089,7 +2105,7 @@ io_log_event(void *hook, void *data)
 
   en->hook = hook;
   en->data = data;
-  en->timestamp = last_time;
+  en->timestamp = last_io_time;
   en->duration = 0;
 
   event_log_num++;
@@ -2117,14 +2133,14 @@ io_log_dump(void)
     struct event_log_entry *en = event_log + (event_log_pos + i) % EVENT_LOG_LENGTH;
     if (en->hook)
       log(L_DEBUG "  Event 0x%p 0x%p at %8d for %d ms", en->hook, en->data,
-	  (int) ((last_time - en->timestamp) TO_MS), (int) (en->duration TO_MS));
+	  (int) ((last_io_time - en->timestamp) TO_MS), (int) (en->duration TO_MS));
   }
 }
 
 void
 watchdog_sigalrm(int sig UNUSED)
 {
-  /* Update last_time and duration, but skip latency check */
+  /* Update last_io_time and duration, but skip latency check */
   config->latency_limit = 0xffffffff;
   io_update_time();
 
@@ -2137,7 +2153,7 @@ watchdog_start1(void)
 {
   io_update_time();
 
-  loop_time = last_time;
+  loop_time = last_io_time;
 }
 
 static inline void
@@ -2145,7 +2161,7 @@ watchdog_start(void)
 {
   io_update_time();
 
-  loop_time = last_time;
+  loop_time = last_io_time;
   event_log_num = 0;
 
   if (config->watchdog_timeout)
@@ -2166,10 +2182,10 @@ watchdog_stop(void)
     watchdog_active = 0;
   }
 
-  btime duration = last_time - loop_time;
+  btime duration = last_io_time - loop_time;
   if (duration > config->watchdog_warning)
-    log(L_WARN "I/O loop cycle took %d ms for %d events",
-	(int) (duration TO_MS), event_log_num);
+    log(L_WARN "I/O loop cycle took %u.%03u ms for %d events",
+	(uint) (duration TO_MS), (uint) (duration % 1000), event_log_num);
 }
 
 
@@ -2181,8 +2197,9 @@ void
 io_init(void)
 {
   init_list(&sock_list);
-  init_list(&global_event_list);
-  init_list(&global_work_list);
+  ev_init_list(&global_event_list, &main_birdloop, "Global event list");
+  ev_init_list(&global_work_list, &main_birdloop, "Global work list");
+  ev_init_list(&main_birdloop.event_list, &main_birdloop, "Global fast event list");
   krt_io_init();
   // XXX init_times();
   // XXX update_times();
@@ -2195,6 +2212,8 @@ io_init(void)
 static int short_loops = 0;
 #define SHORT_LOOP_MAX 10
 #define WORK_EVENTS_MAX 10
+
+void pipe_drain(int fd);
 
 void
 io_loop(void)
@@ -2210,22 +2229,28 @@ io_loop(void)
   watchdog_start1();
   for(;;)
     {
-      times_update(&main_timeloop);
+      times_update();
       events = ev_run_list(&global_event_list);
       events = ev_run_list_limited(&global_work_list, WORK_EVENTS_MAX) || events;
-      timers_fire(&main_timeloop);
+      events = ev_run_list(&main_birdloop.event_list) || events;
+      timers_fire(&main_birdloop.time, 1);
       io_close_event();
 
       // FIXME
       poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
-      if (t = timers_first(&main_timeloop))
+      if (t = timers_first(&main_birdloop.time))
       {
-	times_update(&main_timeloop);
+	times_update();
 	timeout = (tm_remains(t) TO_MS) + 1;
 	poll_tout = MIN(poll_tout, timeout);
       }
 
-      nfds = 0;
+      /* A hack to reload main io_loop() when something has changed asynchronously. */
+      pfd[0].fd = main_birdloop.wakeup_fds[0];
+      pfd[0].events = POLLIN;
+
+      nfds = 1;
+
       WALK_LIST(n, sock_list)
 	{
 	  pfd[nfds] = (struct pollfd) { .fd = -1 }; /* everything other set to 0 by this */
@@ -2284,7 +2309,9 @@ io_loop(void)
 
       /* And finally enter poll() to find active sockets */
       watchdog_stop();
+      birdloop_leave(&main_birdloop);
       pout = poll(pfd, nfds, poll_tout);
+      birdloop_enter(&main_birdloop);
       watchdog_start();
 
       if (pout < 0)
@@ -2295,7 +2322,15 @@ io_loop(void)
 	}
       if (pout)
 	{
-	  times_update(&main_timeloop);
+	  if (pfd[0].revents & POLLIN)
+	  {
+	    /* IO loop reload requested */
+	    pipe_drain(main_birdloop.wakeup_fds[0]);
+	    atomic_exchange_explicit(&main_birdloop.ping_sent, 0, memory_order_acq_rel);
+	    continue;
+	  }
+
+	  times_update();
 
 	  /* guaranteed to be non-empty */
 	  current_sock = SKIP_BACK(sock, n, HEAD(sock_list));

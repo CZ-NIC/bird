@@ -319,6 +319,7 @@ struct bgp_proto {
   struct bgp_socket *sock;		/* Shared listening socket */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
+  event *uncork_ev;			/* Uncork event in case of congestion */
   struct bgp_stats stats;		/* BGP statistics */
   btime last_established;		/* Last time of enter/leave of established state */
   btime last_rx_update;			/* Last time of RX update */
@@ -371,6 +372,7 @@ struct bgp_channel {
 
   timer *stale_timer;			/* Long-lived stale timer for LLGR */
   u32 stale_time;			/* Stored LLGR stale time from last session */
+  struct rt_export_request stale_feed;	/* Feeder request for stale route modification */
 
   u8 add_path_rx;			/* Session expects receive of ADD-PATH extended NLRI */
   u8 add_path_tx;			/* Session expects transmit of ADD-PATH extended NLRI */
@@ -576,7 +578,7 @@ void bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bu
 int bgp_rte_better(struct rte *, struct rte *);
 int bgp_rte_mergable(rte *pri, rte *sec);
 int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
-struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
+void bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *rpe UNUSED, rte **feed, uint count);
 u32 bgp_rte_igp_metric(const rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old);
 int bgp_preexport(struct channel *, struct rte *);
@@ -609,6 +611,7 @@ void bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
 void bgp_kick_tx(void *vconn);
 void bgp_tx(struct birdsock *sk);
 int bgp_rx(struct birdsock *sk, uint size);
+void bgp_uncork(void *vp);
 const char * bgp_error_dsc(unsigned code, unsigned subcode);
 void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsigned subcode, byte *data, unsigned len);
 

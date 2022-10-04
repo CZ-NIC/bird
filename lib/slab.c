@@ -197,7 +197,7 @@ static struct resclass sl_class = {
   slab_memsize
 };
 
-#define SL_GET_HEAD(x)	((struct sl_head *) (((uintptr_t) (x)) & ~(page_size-1)))
+#define SL_GET_HEAD(x)	PAGE_HEAD(x)
 
 #define SL_HEAD_CHANGE_STATE(_s, _h, _from, _to) ({ \
     ASSERT_DIE(_h->state == slh_##_from); \

@@ -142,7 +142,7 @@ flow_frag_opts:
  ;
 
 flow4_item:
-   flow_srcdst net_ip {
+   flow_srcdst net_ip4 {
      flow_builder_set_type(this_flow, $1);
      flow_builder4_add_pfx(this_flow, (net_addr_ip4 *) &($2));
    }

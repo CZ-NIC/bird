@@ -12,8 +12,14 @@
 
 #include "nest/bird.h"
 #include "lib/buffer.h"
+#include "lib/io-loop.h"
+#include "lib/locking.h"
 #include "lib/resource.h"
 
+#include <stdatomic.h>
+
+extern _Atomic btime last_time;
+extern _Atomic btime real_time;
 
 typedef struct timer
 {
@@ -25,35 +31,41 @@ typedef struct timer
   uint randomize;			/* Amount of randomization */
   uint recurrent;			/* Timer recurrence */
 
+  struct timeloop *loop;		/* Loop where the timer is active */
+
   int index;
 } timer;
 
 struct timeloop
 {
   BUFFER_(timer *) timers;
-  btime last_time;
-  btime real_time;
+  struct domain_generic *domain;
+  struct birdloop *loop;
 };
 
+#define TLOCK_TIMER_ASSERT(loop) ASSERT_DIE((loop)->domain && DG_IS_LOCKED((loop)->domain))
+#define TLOCK_LOCAL_ASSERT(loop) ASSERT_DIE(!(loop)->domain || DG_IS_LOCKED((loop)->domain))
+
 static inline uint timers_count(struct timeloop *loop)
-{ return loop->timers.used - 1; }
+{ TLOCK_TIMER_ASSERT(loop); return loop->timers.used - 1; }
 
 static inline timer *timers_first(struct timeloop *loop)
-{ return (loop->timers.used > 1) ? loop->timers.data[1] : NULL; }
+{ TLOCK_TIMER_ASSERT(loop); return (loop->timers.used > 1) ? loop->timers.data[1] : NULL; }
 
-extern struct timeloop main_timeloop;
-
-btime current_time(void);
-btime current_real_time(void);
+#define current_time()		atomic_load_explicit(&last_time, memory_order_acquire)
+#define current_real_time()	atomic_load_explicit(&real_time, memory_order_acquire)
 
 //#define now (current_time() TO_S)
 //#define now_real (current_real_time() TO_S)
 extern btime boot_time;
 
 timer *tm_new(pool *p);
-void tm_set(timer *t, btime when);
-void tm_start(timer *t, btime after);
+#define tm_set(t, when) tm_set_in((t), (when), &main_birdloop)
+#define tm_start(t, after) tm_start_in((t), (after), &main_birdloop)
 void tm_stop(timer *t);
+
+void tm_set_in(timer *t, btime when, struct birdloop *loop);
+#define tm_start_in(t, after, loop) tm_set_in((t), (current_time() + MAX_((after), 0)), loop)
 
 static inline int
 tm_active(timer *t)
@@ -94,15 +106,11 @@ tm_start_max(timer *t, btime after)
 }
 
 /* In sysdep code */
-void times_init(struct timeloop *loop);
-void times_update(struct timeloop *loop);
-void times_update_real_time(struct timeloop *loop);
+void times_update(void);
 
 /* For I/O loop */
 void timers_init(struct timeloop *loop, pool *p);
-void timers_fire(struct timeloop *loop);
-
-void timer_init(void);
+void timers_fire(struct timeloop *loop, int io_log);
 
 
 struct timeformat {

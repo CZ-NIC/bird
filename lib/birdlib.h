@@ -15,7 +15,7 @@
 /* Ugly structure offset handling macros */
 
 #define OFFSETOF(s, i) ((size_t) &((s *)0)->i)
-#define SKIP_BACK(s, i, p) ((s *)((char *)p - OFFSETOF(s, i)))
+#define SKIP_BACK(s, i, p) ({ s *_ptr = ((s *)((char *)p - OFFSETOF(s, i))); ASSERT_DIE(&_ptr->i == p); _ptr; })
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
 #define CPU_STRUCT_ALIGN  (MAX_(_Alignof(void*), _Alignof(u64)))
 #define BIRD_CPU_ALIGN(s) BIRD_ALIGN((s), CPU_STRUCT_ALIGN)
@@ -86,16 +86,13 @@ static inline int u64_cmp(u64 i1, u64 i2)
 /* Macros for gcc attributes */
 
 #define NORET __attribute__((noreturn))
+#define USE_RESULT __atribute__((warn_unused_result))
 #define UNUSED __attribute__((unused))
 #define PACKED __attribute__((packed))
 #define NONNULL(...) __attribute__((nonnull((__VA_ARGS__))))
 
 #define STATIC_ASSERT(EXP) _Static_assert(EXP, #EXP)
 #define STATIC_ASSERT_MSG(EXP,MSG) _Static_assert(EXP, MSG)
-
-#ifndef HAVE_THREAD_LOCAL
-#define _Thread_local
-#endif
 
 /* Microsecond time */
 
@@ -178,8 +175,13 @@ void debug(const char *msg, ...);	/* Printf to debug output */
 
 #if defined(LOCAL_DEBUG) || defined(GLOBAL_DEBUG)
 #define DBG(x, y...) debug(x, ##y)
+#define DBGL(x, y...) debug(x "\n", ##y)
+#elif defined(DEBUG_TO_LOG)
+#define DBG(...) do { } while (0)
+#define DBGL(...) log(L_DEBUG __VA_ARGS__)
 #else
-#define DBG(x, y...) do { } while(0)
+#define DBG(...) do { } while(0)
+#define DBGL(...) do { } while (0)
 #endif
 
 #define ASSERT_DIE(x) do { if (!(x)) bug("Assertion '%s' failed at %s:%d", #x, __FILE__, __LINE__); } while(0)

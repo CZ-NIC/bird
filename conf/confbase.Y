@@ -76,6 +76,7 @@ CF_DECLS
   struct f_attr_bit fab;
   struct f_lval flv;
   struct f_line *fl;
+  struct f_arg *fa;
   const struct filter *f;
   struct f_tree *e;
   struct f_trie *trie;
@@ -111,7 +112,7 @@ CF_DECLS
 %type <i> expr bool pxlen4
 %type <time> expr_us time
 %type <a> ipa
-%type <net> net_ip4_ net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
+%type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
 %type <ad> label_stack_start label_stack
 
@@ -154,14 +155,14 @@ conf: definition ;
 definition:
    DEFINE symbol '=' term ';' {
      struct f_val val;
-     if (f_eval(f_linearize($4), &val) > F_RETURN) cf_error("Runtime error");
+     if (f_eval(f_linearize($4, 1), &val) > F_RETURN) cf_error("Runtime error");
      cf_define_symbol($2, SYM_CONSTANT | val.type, val, lp_val_copy(cfg_mem, &val));
    }
  ;
 
 expr:
    NUM
- | '(' term ')' { $$ = f_eval_int(f_linearize($2)); }
+ | '(' term ')' { $$ = f_eval_int(f_linearize($2, 1)); }
  | symbol_known {
      if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number constant expected");
      $$ = SYM_VAL($1).i; }
@@ -306,6 +307,15 @@ net_:
 
 
 /* Networks - regular */
+
+net_ip4:
+   net_ip4_
+ | CF_SYM_KNOWN {
+     if (($1->class != (SYM_CONSTANT | T_NET)) || (SYM_VAL($1).net->type != NET_IP4))
+       cf_error("IPv4 network constant expected");
+     $$ = * SYM_VAL($1).net;
+   }
+ ;
 
 net_ip6:
    net_ip6_
