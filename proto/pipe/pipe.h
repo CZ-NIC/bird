@@ -20,7 +20,11 @@ struct pipe_proto {
   struct proto p;
   struct channel *pri;
   struct channel *sec;
+  uint pri_flags;
+  uint sec_flags;
   struct tbf rl_gen;
 };
+
+#define PIPE_FL_RR_BEGIN_PENDING	1	/* Route refresh should start with the first route notified */
 
 #endif

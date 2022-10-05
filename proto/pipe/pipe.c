@@ -52,9 +52,17 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
 {
   struct pipe_proto *p = (void *) P;
   struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
+  uint *flags = (src_ch == p->pri) ? &p->sec_flags : &p->pri_flags;
 
   if (!new && !old)
     return;
+
+  /* Start the route refresh if requested to */
+  if (*flags & PIPE_FL_RR_BEGIN_PENDING)
+  {
+    *flags &= ~PIPE_FL_RR_BEGIN_PENDING;
+    rt_refresh_begin(&dst->in_req);
+  }
 
   if (new)
     {
@@ -104,6 +112,32 @@ pipe_reload_routes(struct channel *C)
   channel_request_feeding((C == p->pri) ? p->sec : p->pri);
 }
 
+static void
+pipe_feed_begin(struct channel *C, int initial UNUSED)
+{
+  struct pipe_proto *p = (void *) C->proto;
+  uint *flags = (C == p->pri) ? &p->sec_flags : &p->pri_flags;
+
+  *flags |= PIPE_FL_RR_BEGIN_PENDING;
+}
+
+static void
+pipe_feed_end(struct channel *C)
+{
+  struct pipe_proto *p = (void *) C->proto;
+  struct channel *dst = (C == p->pri) ? p->sec : p->pri;
+  uint *flags = (C == p->pri) ? &p->sec_flags : &p->pri_flags;
+
+  /* If not even started, start the RR now */
+  if (*flags & PIPE_FL_RR_BEGIN_PENDING)
+  {
+    *flags &= ~PIPE_FL_RR_BEGIN_PENDING;
+    rt_refresh_begin(&dst->in_req);
+  }
+
+  /* Finish RR always */
+  rt_refresh_end(&dst->in_req);
+}
 
 static void
 pipe_postconfig(struct proto_config *CF)
@@ -182,6 +216,8 @@ pipe_init(struct proto_config *CF)
   P->rt_notify = pipe_rt_notify;
   P->preexport = pipe_preexport;
   P->reload_routes = pipe_reload_routes;
+  P->feed_begin = pipe_feed_begin;
+  P->feed_end = pipe_feed_end;
 
   p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 
