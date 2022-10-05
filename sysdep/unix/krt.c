@@ -835,6 +835,10 @@ krt_postconfig(struct proto_config *CF)
   krt_sys_postconfig(cf);
 }
 
+struct rte_owner_class krt_rte_owner_class = {
+  .rte_better = krt_rte_better,
+};
+
 static struct proto *
 krt_init(struct proto_config *CF)
 {
@@ -848,7 +852,8 @@ krt_init(struct proto_config *CF)
   p->p.if_notify = krt_if_notify;
   p->p.reload_routes = krt_reload_routes;
   p->p.feed_end = krt_feed_end;
-  p->p.rte_better = krt_rte_better;
+
+  p->p.sources.class = &krt_rte_owner_class;
 
   krt_sys_init(p);
   return &p->p;

@@ -1874,6 +1874,9 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       return;
     }
 
+  if (nhad.ad.length)
+    ea_set_attr(&ra, EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nhad.ad));
+
   if (i->rtm_scope != def_scope)
     ea_set_attr(&ra,
 	EA_LITERAL_EMBEDDED(&ea_krt_scope, 0, i->rtm_scope));
