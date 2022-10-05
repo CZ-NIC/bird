@@ -367,7 +367,7 @@ sockets_fire(struct birdloop *loop)
       continue;
 
     if (pfd->revents & POLLNVAL)
-      die("poll: invalid fd %d", pfd->fd);
+      bug("poll: invalid fd %d", pfd->fd);
 
     if (pfd->revents & POLLIN)
       while (e && *psk && (*psk)->rx_hook)
@@ -602,7 +602,7 @@ birdloop_main(void *arg)
     {
       if (errno == EINTR || errno == EAGAIN)
 	goto try;
-      die("poll: %m");
+      bug("poll: %m");
     }
 
     birdloop_enter(loop);
@@ -615,7 +615,7 @@ birdloop_main(void *arg)
 
     loop_begin = current_time();
 
-    if (rv)
+    if (rv && !loop->poll_changed)
       sockets_fire(loop);
 
     atomic_exchange_explicit(&loop->ping_sent, 0, memory_order_acq_rel);

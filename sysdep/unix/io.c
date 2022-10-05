@@ -2315,7 +2315,7 @@ io_loop(void)
 	{
 	  if (errno == EINTR || errno == EAGAIN)
 	    continue;
-	  die("poll: %m");
+	  bug("poll: %m");
 	}
       if (pout)
 	{
