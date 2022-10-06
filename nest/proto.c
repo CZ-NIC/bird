@@ -739,7 +739,9 @@ channel_do_pause(struct channel *c)
   }
 
   /* Stop export */
-  if (c->out_req.hook)
+  if (c->refeed_pending)
+    c->refeed_pending = 0;
+  else if (c->out_req.hook)
     rt_stop_export(&c->out_req, channel_export_stopped);
 
   channel_roa_unsubscribe_all(c);
@@ -862,6 +864,9 @@ void
 channel_request_feeding(struct channel *c)
 {
   ASSERT(c->out_req.hook);
+
+  if (c->refeed_pending)
+    return;
 
   c->refeed_pending = 1;
   rt_stop_export(&c->out_req, channel_export_stopped);

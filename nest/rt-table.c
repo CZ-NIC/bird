@@ -2073,8 +2073,11 @@ rt_table_export_uncork(void *_hook)
   {
     case TES_HUNGRY:
       RT_LOCKED(RT_PUB(SKIP_BACK(struct rtable_private, exporter, hook->table)), tab)
-	rt_table_export_start_feed(tab, hook);
-      break;
+	if ((state = atomic_load_explicit(&hook->h.export_state, memory_order_relaxed)) == TES_HUNGRY)
+	  rt_table_export_start_feed(tab, hook);
+      if (state != TES_STOP)
+	break;
+      /* fall through */
     case TES_STOP:
       rt_stop_export_common(&hook->h);
       break;
@@ -2181,18 +2184,18 @@ rt_alloc_export(struct rt_exporter *re, uint size)
   hook->pool = p;
   hook->table = re;
 
+  hook->n = (node) {};
+  add_tail(&re->hooks, &hook->n);
+
   return hook;
 }
 
 void
-rt_init_export(struct rt_exporter *re, struct rt_export_hook *hook)
+rt_init_export(struct rt_exporter *re UNUSED, struct rt_export_hook *hook)
 {
   hook->event.data = hook;
 
   bmap_init(&hook->seq_map, hook->pool, 1024);
-
-  hook->n = (node) {};
-  add_tail(&re->hooks, &hook->n);
 
   /* Regular export */
   rt_set_export_state(hook, TES_FEEDING);
@@ -2208,6 +2211,7 @@ rt_table_export_stop_locked(struct rt_export_hook *hh)
   switch (atomic_load_explicit(&hh->export_state, memory_order_relaxed))
   {
     case TES_HUNGRY:
+      rt_trace(tab, D_EVENTS, "Stopping export hook %s must wait for uncorking; %p", hook->h.req->name, hook->h.n.next);
       return 0;
     case TES_FEEDING:
       switch (hh->req->addr_mode)
@@ -2228,6 +2232,8 @@ rt_table_export_stop_locked(struct rt_export_hook *hh)
       }
 
   }
+
+  rt_trace(tab, D_EVENTS, "Stopping export hook %s right now", hook->h.req->name);
   return 1;
 }
 
@@ -4001,7 +4007,7 @@ rt_check_cork_low(struct rtable_private *tab)
   if (!tab->cork_active)
     return;
 
-  if (!tab->exporter.first || (tab->exporter.first->seq + tab->cork_threshold.low > tab->exporter.next_seq))
+  if (tab->deleted || !tab->exporter.first || (tab->exporter.first->seq + tab->cork_threshold.low > tab->exporter.next_seq))
   {
     tab->cork_active = 0;
     rt_cork_release();
@@ -4013,7 +4019,7 @@ rt_check_cork_low(struct rtable_private *tab)
 static void
 rt_check_cork_high(struct rtable_private *tab)
 {
-  if (!tab->cork_active && tab->exporter.first && (tab->exporter.first->seq + tab->cork_threshold.high <= tab->exporter.next_seq))
+  if (!tab->deleted && !tab->cork_active && tab->exporter.first && (tab->exporter.first->seq + tab->cork_threshold.high <= tab->exporter.next_seq))
   {
     tab->cork_active = 1;
     rt_cork_acquire();
@@ -4111,6 +4117,7 @@ rt_commit(struct config *new, struct config *old)
 	      ev_postpone(&tab->hostcache->update);
 	  }
 
+	  rt_check_cork_low(tab);
 	  rt_unlock_table(tab);
 
 	  RT_UNLOCK(tab);
