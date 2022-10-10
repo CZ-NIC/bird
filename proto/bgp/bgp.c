@@ -2037,6 +2037,10 @@ bgp_postconfig(struct proto_config *CF)
     if (!cc->gw_mode)
       cc->gw_mode = cf->multihop ? GW_RECURSIVE : GW_DIRECT;
 
+    /* Different default for next_hop_prefer */
+    if (!cc->next_hop_prefer)
+      cc->next_hop_prefer = (cc->gw_mode == GW_DIRECT) ? NHP_GLOBAL : NHP_LOCAL;
+
     /* Defaults based on proto config */
     if (cc->gr_able == 0xff)
       cc->gr_able = (cf->gr_mode == BGP_GR_ABLE);
@@ -2167,6 +2171,7 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
     return 0;
 
   if ((new->gw_mode != old->gw_mode) ||
+      (new->next_hop_prefer != old->next_hop_prefer) ||
       (new->aigp != old->aigp) ||
       (new->cost != old->cost))
   {

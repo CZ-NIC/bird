@@ -1020,7 +1020,8 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
       WITHDRAW(BAD_NEXT_HOP " - zero address");
 
     rtable *tab = ipa_is_ip4(gw) ? c->igp_table_ip4 : c->igp_table_ip6;
-    s->hostentry = rt_get_hostentry(tab, gw, ll, c->c.table);
+    ip_addr lla = (c->cf->next_hop_prefer == NHP_LOCAL) ? ll : IPA_NONE;
+    s->hostentry = rt_get_hostentry(tab, gw, lla, c->c.table);
 
     if (!s->mpls)
       rta_apply_hostentry(a, s->hostentry, NULL);

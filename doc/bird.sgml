@@ -2911,6 +2911,20 @@ be used in explicit configuration.
 	BGP session (if acceptable), or the preferred address of an associated
 	interface.
 
+	<tag><label id="bgp-next-hop-prefer">next hop prefer global</tag>
+	Prefer global IPv6 address to link-local IPv6 address for immediate next
+	hops of received routes. For IPv6 routes, the Next Hop attribute may
+	contain both a global IP address and a link-local IP address. For IBGP
+	sessions, the global IP address is resolved (<ref id="bgp-gateway"
+	name="gateway recursive">) through an IGP routing table
+	(<ref id="bgp-igp-table" name="igp table">) to get an immediate next
+	hop. If the resulting IGP route is a direct route (i.e., the next hop is
+	a direct neighbor), then the link-local IP address from the Next Hop
+	attribute is used as the immediate next hop. This option change it to
+	use the global IP address instead. Note that even with this option
+	enabled a route may end with a link-local immediate next hop when the
+	IGP route has one. Default: disabled.
+
 	<tag><label id="bgp-gateway">gateway direct|recursive</tag>
 	For received routes, their <cf/gw/ (immediate next hop) attribute is
 	computed from received <cf/bgp_next_hop/ attribute. This option

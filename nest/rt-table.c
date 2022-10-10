@@ -3603,6 +3603,7 @@ rt_update_hostcache(rtable *tab)
 struct hostentry *
 rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
 {
+  ip_addr link = ipa_zero(ll) ? a : ll;
   struct hostentry *he;
 
   if (!tab->hostcache)
@@ -3611,10 +3612,10 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
   u32 k = hc_hash(a, dep);
   struct hostcache *hc = tab->hostcache;
   for (he = hc->hash_table[k >> hc->hash_shift]; he != NULL; he = he->next)
-    if (ipa_equal(he->addr, a) && (he->tab == dep))
+    if (ipa_equal(he->addr, a) && ipa_equal(he->link, link) && (he->tab == dep))
       return he;
 
-  he = hc_new_hostentry(hc, tab->rp, a, ipa_zero(ll) ? a : ll, dep, k);
+  he = hc_new_hostentry(hc, tab->rp, a, link, dep, k);
   rt_update_hostentry(tab, he);
   return he;
 }

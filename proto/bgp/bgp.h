@@ -145,6 +145,7 @@ struct bgp_channel_config {
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   u8 next_hop_self;			/* Always set next hop to local IP address (NH_*) */
   u8 next_hop_keep;			/* Do not modify next hop attribute (NH_*) */
+  u8 next_hop_prefer;			/* Prefer global or link-local next hop (NHP_*) */
   u8 mandatory;				/* Channel is mandatory in capability negotiation */
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
   u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
@@ -186,6 +187,9 @@ struct bgp_channel_config {
 
 #define GW_DIRECT		1
 #define GW_RECURSIVE		2
+
+#define NHP_GLOBAL		1
+#define NHP_LOCAL		2
 
 #define BGP_ADD_PATH_RX		1
 #define BGP_ADD_PATH_TX		2
