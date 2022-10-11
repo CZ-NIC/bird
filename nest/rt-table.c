@@ -1792,6 +1792,9 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, net *net
       else
 	rt_rte_trace_in(D_ROUTES, req, old, "removed [sole]");
     }
+  else
+    if (req->trace_routes & D_ROUTES)
+      log(L_TRACE "%s > ignored %N %s->%s", req->name, net->n.addr, old ? "filtered" : "none", new ? "filtered" : "none");
 
   /* Propagate the route change */
   rte_announce(table, net, new_stored, old_stored,
@@ -1835,7 +1838,10 @@ void
 rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
   if (!c->in_req.hook)
+  {
+    log(L_WARN "%s.%s: Called rte_update without import hook", c->proto->name, c->name);
     return;
+  }
 
   ASSERT(c->channel_state == CS_UP);
 
@@ -1906,7 +1912,10 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
 {
   struct rt_import_hook *hook = req->hook;
   if (!hook)
+  {
+    log(L_WARN "%s: Called rte_import without import hook", req->name);
     return;
+  }
 
   RT_LOCKED(hook->table, tab)
   {
@@ -1924,6 +1933,8 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
     else if (!(nn = net_find(tab, n)))
     {
       req->hook->stats.withdraws_ignored++;
+      if (req->trace_routes & D_ROUTES)
+	log(L_TRACE "%s > ignored %N withdraw", req->name, n);
       RT_RETURN(tab);
     }
 
