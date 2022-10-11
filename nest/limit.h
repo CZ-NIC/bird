@@ -32,6 +32,7 @@ static inline int limit_push(struct limit *l, void *data)
 
 static inline void limit_pop(struct limit *l)
 {
+  ASSERT_DIE(l->count > 0);
   --l->count;
 }
 
