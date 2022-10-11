@@ -3061,10 +3061,19 @@ rt_export_cleanup(struct rtable_private *tab)
   {
     switch (atomic_load_explicit(&eh->h.export_state, memory_order_acquire))
     {
-      case TES_DOWN:
-      case TES_HUNGRY:
+      /* Export cleanup while feeding isn't implemented */
+      case TES_FEEDING:
+	goto done;
+
+      /* States not interfering with export cleanup */
+      case TES_DOWN:	/* This should not happen at all */
+	log(L_WARN "%s: Export cleanup found hook %s in explicit state TES_DOWN", tab->name, eh->h.req->name);
+	/* fall through */
+      case TES_HUNGRY:	/* Feeding waiting for uncork */
+      case TES_STOP:	/* No more export will happen on this hook */
 	continue;
 
+      /* Regular export */
       case TES_READY:
 	{
 	  struct rt_pending_export *last = atomic_load_explicit(&eh->last_export, memory_order_acquire);
@@ -3081,8 +3090,7 @@ rt_export_cleanup(struct rtable_private *tab)
 	}
 
       default:
-	/* It's only safe to cleanup when the export state is idle or regular. No feeding or stopping allowed. */
-	goto done;
+	bug("%s: Strange export state of hook %s: %d", tab->name, eh->h.req->name, atomic_load_explicit(&eh->h.export_state, memory_order_relaxed));
     }
   }
 
