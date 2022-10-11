@@ -1447,12 +1447,8 @@ bgp_reload_routes(struct channel *C)
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
 
-  ASSERT(p->conn && (p->route_refresh || (C->in_keep & RIK_PREFILTER)));
-
-  if (C->in_keep & RIK_PREFILTER)
-    channel_schedule_reload(C);
-  else
-    bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
+  ASSERT(p->conn && p->route_refresh);
+  bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
 }
 
 static void

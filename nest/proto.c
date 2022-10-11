@@ -880,14 +880,10 @@ channel_request_reload(struct channel *c)
 
   CD(c, "Reload requested");
 
-  c->proto->reload_routes(c);
-
-  /*
-   * Should this be done before reload_routes() hook?
-   * Perhaps, but routes are updated asynchronously.
-   */
-  channel_reset_limit(c, &c->rx_limit, PLD_RX);
-  channel_reset_limit(c, &c->in_limit, PLD_IN);
+  if (c->in_keep & RIK_PREFILTER)
+    channel_schedule_reload(c);
+  else
+    c->proto->reload_routes(c);
 }
 
 const struct channel_class channel_basic = {
