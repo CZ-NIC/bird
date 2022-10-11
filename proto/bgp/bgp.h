@@ -383,6 +383,8 @@ struct bgp_channel {
 
   u8 feed_state;			/* Feed state (TX) for EoR, RR packets, see BFS_* */
   u8 load_state;			/* Load state (RX) for EoR, RR packets, see BFS_* */
+
+  u8 feed_out_table;			/* Refeed into out_table */
 };
 
 struct bgp_prefix {

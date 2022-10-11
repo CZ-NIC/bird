@@ -1464,6 +1464,12 @@ bgp_feed_begin(struct channel *C, int initial)
   if (initial && p->cf->gr_mode)
     c->feed_state = BFS_LOADING;
 
+  if (!initial && C->out_table)
+  {
+    c->feed_out_table = 1;
+    return;
+  }
+
   /* It is refeed and both sides support enhanced route refresh */
   if (!initial && p->enhanced_refresh)
   {
@@ -1481,6 +1487,12 @@ bgp_feed_end(struct channel *C)
 {
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
+
+  if (c->feed_out_table)
+  {
+    c->feed_out_table = 0;
+    return;
+  }
 
   /* This should not happen */
   if (!p->conn)

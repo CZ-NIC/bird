@@ -661,6 +661,7 @@ channel_schedule_reload(struct channel *c)
 {
   ASSERT(c->in_req.hook);
 
+  rt_refresh_begin(&c->in_req);
   rt_request_export(c->table, &c->reload_req);
 }
 
@@ -677,8 +678,13 @@ channel_reload_stopped(struct rt_export_request *req)
 static void
 channel_reload_log_state_change(struct rt_export_request *req, u8 state)
 {
+  struct channel *c = SKIP_BACK(struct channel, reload_req, req);
+
   if (state == TES_READY)
+  {
+    rt_refresh_end(&c->in_req);
     rt_stop_export(req, channel_reload_stopped);
+  }
 }
 
 static void
