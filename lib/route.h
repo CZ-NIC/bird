@@ -265,6 +265,7 @@ struct ea_storage {
 #define EALF_SORTED 1			/* Attributes are sorted by code */
 #define EALF_BISECT 2			/* Use interval bisection for searching */
 #define EALF_CACHED 4			/* List is cached */
+#define EALF_HUGE   8			/* List is too big to fit into slab */
 
 struct ea_class {
 #define EA_CLASS_INSIDE \

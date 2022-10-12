@@ -182,6 +182,10 @@ DOMAIN(attrs) attrs_domain;
 
 pool *rta_pool;
 
+/* Assuming page size of 4096, these are magic values for slab allocation */
+static const uint ea_slab_sizes[] = { 56, 112, 168, 288, 448, 800, 1344 };
+static slab *ea_slab[ARRAY_SIZE(ea_slab_sizes)];
+
 static slab *rte_src_slab;
 
 static struct idm src_ids;
@@ -1485,11 +1489,22 @@ ea_lookup(ea_list *o, int overlay)
     }
 
   uint elen = ea_list_size(o);
-  r = mb_alloc(rta_pool, elen + sizeof(struct ea_storage));
+  uint sz = elen + sizeof(struct ea_storage);
+  for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
+    if (sz <= ea_slab_sizes[i])
+    {
+      r = sl_alloc(ea_slab[i]);
+      break;
+    }
+
+  int huge = r ? 0 : EALF_HUGE;;
+  if (huge)
+    r = mb_alloc(rta_pool, sz);
+
   ea_list_copy(r->l, o, elen);
   ea_list_ref(r->l);
 
-  r->l->flags |= EALF_CACHED;
+  r->l->flags |= EALF_CACHED | huge;
   r->hash_key = h;
   r->uc = 1;
 
@@ -1516,7 +1531,10 @@ ea_free_locked(struct ea_storage *a)
     a->next_hash->pprev_hash = a->pprev_hash;
 
   ea_list_unref(a->l);
-  mb_free(a);
+  if (a->l->flags & EALF_HUGE)
+    mb_free(a);
+  else
+    sl_free(a);
 }
 
 static void
@@ -1579,6 +1597,9 @@ rta_init(void)
   attrs_domain = DOMAIN_NEW(attrs, "Attributes");
 
   rta_pool = rp_new(&root_pool, "Attributes");
+
+  for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
+    ea_slab[i] = sl_new(rta_pool, ea_slab_sizes[i]);
 
   rta_alloc_hash();
   rte_src_init();
