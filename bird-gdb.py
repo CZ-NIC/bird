@@ -396,17 +396,11 @@ class BIRDPoolResource(BIRDResource):
         self.items = []
         BIRDList(self.val["inside"]).walk(self.parse_inside)
 
-    def free_pages(self):
-        if str(self.val['pages']) == '0x0':
-            return 0
-        else:
-            return self.val['pages'].dereference()['free']
-
     def memsize(self):
         if self.items is None:
             self.parse()
 
-        sum = BIRDResourceSize(0, self.pooltype.sizeof, self.free_pages() * self.page_size)
+        sum = BIRDResourceSize(0, self.pooltype.sizeof, 0)
 #        for i in self.items:
 #            sum += i.memsize()
 
@@ -419,7 +413,7 @@ class BIRDPoolResource(BIRDResource):
 #        for i in self.items:
 #            print(i)
 
-        return f"Resource pool {self.val.address} \"{self.val['name'].string()}\" containing {len(self.items)} items and {self.free_pages()} free pages"
+        return f"Resource pool {self.val.address} \"{self.val['name'].string()}\" containing {len(self.items)} items"
 
 BIRDResourceMap = {
         "mbl_memsize": BIRDMBResource,
