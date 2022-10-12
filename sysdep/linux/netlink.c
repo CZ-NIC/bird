@@ -812,11 +812,11 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, const net_addr
 	rv->gw = rta_get_via(a[RTA_VIA]);
 #endif
 
+      if (nh->rtnh_flags & RTNH_F_ONLINK)
+	rv->flags |= RNF_ONLINK;
+
       if (ipa_nonzero(rv->gw))
 	{
-	  if (nh->rtnh_flags & RTNH_F_ONLINK)
-	    rv->flags |= RNF_ONLINK;
-
 	  neighbor *nbr;
 	  nbr = neigh_find(&p->p, rv->gw, rv->iface,
 			   (rv->flags & RNF_ONLINK) ? NEF_ONLINK : 0);
@@ -1708,15 +1708,15 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	ra->nh.gw = rta_get_via(a[RTA_VIA]);
 #endif
 
+      if (i->rtm_flags & RTNH_F_ONLINK)
+	ra->nh.flags |= RNF_ONLINK;
+
       if (ipa_nonzero(ra->nh.gw))
 	{
 	  /* Silently skip strange 6to4 routes */
 	  const net_addr_ip6 sit = NET_ADDR_IP6(IP6_NONE, 96);
 	  if ((i->rtm_family == AF_INET6) && ipa_in_netX(ra->nh.gw, (net_addr *) &sit))
 	    return;
-
-	  if (i->rtm_flags & RTNH_F_ONLINK)
-	    ra->nh.flags |= RNF_ONLINK;
 
 	  neighbor *nbr;
 	  nbr = neigh_find(&p->p, ra->nh.gw, ra->nh.iface,
