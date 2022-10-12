@@ -1151,6 +1151,16 @@ sk_ssh_connect(sock *s)
     {
       int server_identity_is_ok = 1;
 
+#ifdef HAVE_SSH_OLD_SERVER_VALIDATION_API
+#define ssh_session_is_known_server	ssh_is_server_known
+#define SSH_KNOWN_HOSTS_OK		SSH_SERVER_KNOWN_OK
+#define SSH_KNOWN_HOSTS_UNKNOWN		SSH_SERVER_NOT_KNOWN
+#define SSH_KNOWN_HOSTS_CHANGED		SSH_SERVER_KNOWN_CHANGED
+#define SSH_KNOWN_HOSTS_NOT_FOUND	SSH_SERVER_FILE_NOT_FOUND
+#define SSH_KNOWN_HOSTS_ERROR		SSH_SERVER_ERROR
+#define SSH_KNOWN_HOSTS_OTHER		SSH_SERVER_FOUND_OTHER
+#endif
+
       /* Check server identity */
       switch (ssh_session_is_known_server(s->ssh->session))
       {

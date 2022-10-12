@@ -276,6 +276,12 @@ if test "$enable_libssh" != no ; then
       enable_libssh=no
     fi
   fi
+
+  AC_CHECK_LIB([ssh], [ssh_session_is_known_server], [ssh_old_server_validation_api=no], [ssh_old_server_validation_api=yes])
+
+  if test "$ssh_old_server_validation_api" = yes; then
+    AC_DEFINE([HAVE_SSH_OLD_SERVER_VALIDATION_API], [1], [Define to 1 if ssh_session_is_known_server isn't defined])
+  fi
 fi
 
 if test "$enable_mpls_kernel" != no ; then
